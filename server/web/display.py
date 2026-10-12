@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.db.models import Sum
+
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.log import format_log
 from hakoniwa_core.naming import facility_name
 from hakoniwa_core.state import Facility, IslandState
 from hakoniwa_core.units import from_milli
+from server.economy.models import MarketRecord
 from server.game import get_game
 from server.world import models as m
 from server.world.repository import facility_from_row, island_from_row
@@ -51,12 +54,15 @@ def facility_info(row: m.Facility, island: IslandState) -> dict[str, Any]:
         "status_text": status_text(f),
         "stock": [
             {
-                "good": s.good,
-                "name": defs.name("goods", s.good),
-                "amount": amount(s.quantity),
-                "unit": defs.unit_name(s.good),
+                "good": good,
+                "name": defs.name("goods", good),
+                "amount": amount(qty),
+                "unit": defs.unit_name(good),
             }
-            for s in row.stocks.order_by("good")
+            for good, qty in row.stocks.values("good")
+            .annotate(qty=Sum("quantity"))
+            .order_by("good")
+            .values_list("good", "qty")
         ],
     }
     if not fdef:
@@ -76,6 +82,8 @@ def facility_info(row: m.Facility, island: IslandState) -> dict[str, Any]:
             info["next_level_name"] = defs.name("settlements", following)
             info["next_materials"] = goods_list(defs.settlements[following].get("materials", {}))
         return info
+    if f.economy.get("wage"):
+        info["wage"] = f.economy["wage"]
     if f.built:
         info["workers_needed"] = fdef["workers"]
         recipe = recipes.get(f.recipe, {})
@@ -133,7 +141,52 @@ def describe_order(kind: str, payload: dict[str, Any]) -> str:
     if kind in ("rename_island", "rename_facility", "rename_place"):
         new = payload.get("name", "")
         return f"{name}: {where} 「{new}」" if where else f"{name}: 「{new}」"
+    if kind in ("set_taxes", "set_labor_policy", "set_budget"):
+        parts = []
+        for k, v in payload.items():
+            label = message(_POLICY_LABELS.get(k, f"budget_{k}"))
+            parts.append(f"{label} {v:g}%" if k in _PERCENT else f"{label} {v:,}")
+        return f"{name}: " + "・".join(parts)
+    if kind == "warehouse_trade":
+        good = payload.get("good", "")
+        side = message("side_" + payload.get("side", ""))
+        qty = f"{payload.get('quantity', 0):g} {defs.unit_name(good)}" if good in defs.goods else ""
+        limit = f"（指値 {payload['limit']:,}）" if payload.get("limit") else ""
+        return f"{name}: {defs.name('goods', good)}を{side} {qty}{limit}"
+    if kind == "set_price_cap":
+        good = payload.get("good", "")
+        return f"{name}: {defs.name('goods', good)} {payload.get('price', 0):,}"
     return f"{name} {where}".strip()
+
+
+_PERCENT = ("income_tax", "corporate_tax", "consumption_tax", "unemployment_benefit")
+# 政策の命令の中身の項目の表示名（messages.yaml のキー）
+_POLICY_LABELS = {
+    "income_tax": "policy_income_tax",
+    "corporate_tax": "policy_corporate_tax",
+    "consumption_tax": "policy_consumption_tax",
+    "minimum_wage": "policy_minimum_wage",
+    "unemployment_benefit": "policy_unemployment_benefit",
+}
+
+
+def policy_view(island) -> dict[str, Any]:
+    """島の今の政策（税率と失業手当は %、予算と最低賃金はお金）。命令の入力の初めの値に使う。"""
+    policy = island.policy or {}
+    budget_items = get_game().config.get("fiscal.budget_items")
+    budget = policy.get("budget", {})
+    return {
+        "income_tax": policy.get("income_tax", 0) / 100,
+        "corporate_tax": policy.get("corporate_tax", 0) / 100,
+        "consumption_tax": policy.get("consumption_tax", 0) / 100,
+        "minimum_wage": policy.get("minimum_wage", 0),
+        "unemployment_benefit": policy.get("unemployment_benefit", 0) / 100,
+        "budget": {
+            item: {"name": message(f"budget_{item}"), "amount": budget.get(item, 0)}
+            for item in budget_items
+        },
+        "price_cap": policy.get("price_cap", {}),
+    }
 
 
 def log_entries(logs) -> list[dict[str, Any]]:
@@ -163,6 +216,13 @@ SUMMARY_STATS = [
     ("admin_power", "行政力（次ターンの命令実行数）", ""),
     ("facilities", "施設数", ""),
     ("construction", "建設中の施設", ""),
+    ("gdp", "GDP（1ターン）", "money"),
+    ("cpi", "物価指数（建国時 100）", "index"),
+    ("inflation", "物価上昇率（年率）", "%"),
+    ("wage.average", "平均賃金（1人1ターン）", "money"),
+    ("treasury", "国庫", "money"),
+    ("debt", "国債の残高", "money"),
+    ("policy_rate", "政策金利", "rate"),
 ]
 
 
@@ -174,7 +234,8 @@ def latest_stats(island: m.Island) -> tuple[int | None, dict[str, float]]:
     return last, dict(rows)
 
 
-def summary(stats: dict[str, float]) -> list[dict[str, Any]]:
+def summary(stats: dict[str, float], currency: str = "") -> list[dict[str, Any]]:
+    """国勢の表の行。currency はお金の額に付ける通貨記号。"""
     out = []
     for key, label, unit in SUMMARY_STATS:
         if key not in stats:
@@ -182,7 +243,15 @@ def summary(stats: dict[str, float]) -> list[dict[str, Any]]:
         value = stats[key]
         if unit.startswith("good:"):
             unit = " " + get_game().defs.unit_name(unit.removeprefix("good:"))
-        if unit == "%":
+        if unit == "money":
+            text = f"{currency}{int(value):,}"
+        elif unit == "index":
+            text = f"{value:.1f}"
+        elif unit == "rate":  # 統計に % の数で入っている率
+            text = f"{value:.2f}%"
+        elif key == "inflation":
+            text = f"{value * 100:+.1f}%"
+        elif unit == "%":
             text = f"{value * 100:.0f}%"
         elif isinstance(value, float) and not value.is_integer():
             text = f"{value:,.1f}{unit}"
@@ -192,14 +261,21 @@ def summary(stats: dict[str, float]) -> list[dict[str, Any]]:
     return out
 
 
-def goods_table(stats: dict[str, float]) -> list[dict[str, Any]]:
-    """資源ごとの在庫と、このターンの生産量。"""
+def goods_table(
+    stats: dict[str, float], markets: dict[str, Any] | None = None, currency: str = ""
+) -> list[dict[str, Any]]:
+    """資源ごとの国の倉庫の在庫と、このターンの生産量・市場の値段と売買の量。
+
+    markets は財 → そのターンの市場の記録（server.economy.models.MarketRecord）。
+    """
     defs = get_game().defs
+    markets = markets or {}
     rows = []
     for good, gdef in defs.goods.items():
         stock = stats.get(f"stock.{good}", 0)
         made = stats.get(f"production.{good}", 0)
-        if stock or made:
+        record = markets.get(good)
+        if stock or made or (record is not None and record.volume):
             rows.append(
                 {
                     "good": good,
@@ -208,6 +284,15 @@ def goods_table(stats: dict[str, float]) -> list[dict[str, Any]]:
                     "tier": gdef.get("tier"),
                     "stock": round(stock, 1),
                     "production": round(made, 1),
+                    "price": f"{currency}{record.price:,}" if record is not None else "",
+                    "volume": amount(record.volume) if record is not None else "",
                 }
             )
     return rows
+
+
+def latest_markets(island: m.Island, turn: int | None) -> dict[str, Any]:
+    """ターン turn の財ごとの市場の記録。"""
+    if turn is None:
+        return {}
+    return {r.good: r for r in MarketRecord.objects.filter(island=island, turn=turn)}

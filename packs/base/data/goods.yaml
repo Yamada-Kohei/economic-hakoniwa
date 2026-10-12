@@ -2,14 +2,16 @@
 # unit: 量の単位（表示名は locale/<言語>/units.yaml）
 # food: 住民が食べられる資源（nutrition: 1 単位で何人前か、quality: 食事の質 0〜1）
 # mining: 建国時に選べる鉱業資源
-grain:              {tier: 1, unit: ton, shelf_life: 8, food: {nutrition: 1, quality: 0.2}}
-fish:               {tier: 1, unit: ton, shelf_life: 2, food: {nutrition: 1, quality: 0.4}}
+# consumer: 家計が買う財（物価指数に入れる）
+grain:              {tier: 1, unit: ton, shelf_life: 8, consumer: true, food: {nutrition: 1, quality: 0.2}}
+fish:               {tier: 1, unit: ton, shelf_life: 2, consumer: true, food: {nutrition: 1, quality: 0.4}}
 wood:               {tier: 1, unit: cubic_meter}
 stone:              {tier: 1, unit: ton, mining: true}
 iron_ore:           {tier: 1, unit: ton, mining: true}
 coal:               {tier: 1, unit: ton, mining: true}
 steel:              {tier: 2, unit: ton}
 building_materials: {tier: 2, unit: ton}
-food:               {tier: 3, unit: ton, shelf_life: 6, food: {nutrition: 1.5, quality: 1}}
+food:               {tier: 3, unit: ton, shelf_life: 6, consumer: true, food: {nutrition: 1.5, quality: 1}}
 machinery:          {tier: 3, unit: piece}
-electricity:        {tier: 2, unit: megawatt_hour, shelf_life: 0}
+consumer_goods:     {tier: 3, unit: item, consumer: true}
+electricity:        {tier: 2, unit: megawatt_hour, shelf_life: 0, consumer: true}

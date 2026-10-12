@@ -1,6 +1,8 @@
 # 施設。数値はフェーズ1の試し遊びで調整する仮の値です。
 # 量は全力で動いたときの1ターンあたり。小数も書けます。
-# workers・labor は人数。priority は雇用と配分の優先順位（0〜9、大きいほど先）。プレイヤーが命令で施設ごとに変えられます。
+# workers・labor は人数。priority は雇用と市場の割当の優先順位（0〜9、大きいほど先）。プレイヤーが命令で施設ごとに変えられます。
+# public_service: 公務員の施設（賃金を国庫が払う）。zone: 指定したマス（オフィス街など）にだけ建つ。
+# tileless: マスを持たない施設（運送業）。
 
 farm:
   category: primary
@@ -143,10 +145,26 @@ hydro_power_plant:
       outputs: {electricity: 20}
   sprite: hydro_power_plant
 
+consumer_goods_factory:
+  category: industry
+  terrain: [plain]
+  construction: {turns: 4, labor: 500, materials: {building_materials: 20, machinery: 5}}
+  workers: 1000
+  pollution: {amount: 2, radius: 1}
+  recipes:
+    default:
+      inputs: {wood: 4, steel: 1, electricity: 2}
+      outputs: {consumer_goods: 6}
+    wood:                 # 鋼鉄を作れない島でも作れるが、手間がかかる
+      inputs: {wood: 8, electricity: 2}
+      outputs: {consumer_goods: 4}
+  sprite: consumer_goods_factory
+
 government_office:
   category: admin
   terrain: [plain]
   near_capital: 3
+  public_service: true
   construction: {turns: 3, labor: 300, materials: {building_materials: 10, wood: 5}}
   workers: 1000
   priority: 9
@@ -154,6 +172,29 @@ government_office:
   recipes:
     default: {}
   sprite: government_office
+
+# 市中銀行。オフィス街のマスに入ります。フェーズ2-1 は建国のときに島に1つ置き、建設の命令はフェーズ2-2 から。
+bank:
+  category: finance
+  terrain: [plain]
+  zone: office
+  buildable: false
+  construction: {turns: 3, labor: 300, materials: {building_materials: 15, machinery: 1}}
+  workers: 300
+  recipes:
+    default: {}
+  sprite: bank
+
+# 運送業。島に1つ、マスを持たずに置きます。運賃を受け取り、運んだ量に合わせて運転手を雇います。
+transport:
+  category: transport
+  terrain: [plain]
+  tileless: true
+  buildable: false
+  construction: {turns: 1}
+  workers: 0
+  recipes:
+    default: {}
 
 # 町（住宅地）は自動で建ちます（命令では建てられません）。住める人数・見た目・育つのに要る資源は
 # settlements.yaml で決まります。

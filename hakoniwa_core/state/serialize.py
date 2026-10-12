@@ -6,16 +6,20 @@ from dataclasses import asdict, fields
 from typing import Any
 
 from hakoniwa_core.state.model import (
+    Bond,
+    EconomyState,
     Facility,
     IslandState,
     LogEntry,
     OrderState,
+    Policy,
     Tile,
     WorldState,
 )
 
 # このターンだけの値なので、写しに入れない
-_TRANSIENT = ("stats", "scratch")
+_TRANSIENT = ("stats", "scratch", "journal", "trades", "markets", "books")
+_NESTED = ("tiles", "facilities", "orders", "log", "ext", "bonds", "economy", "policy")
 
 
 def world_to_dict(world: WorldState) -> dict[str, Any]:
@@ -47,21 +51,40 @@ def world_from_dict(data: dict[str, Any]) -> WorldState:
 def island_from_dict(d: dict[str, Any]) -> IslandState:
     """前のフェーズの写し（新しい項目がないもの）も読めるようにする。"""
     known = {f.name for f in fields(IslandState)} - set(_TRANSIENT)
-    rest = {
-        k: v
-        for k, v in d.items()
-        if k in known and k not in ("tiles", "facilities", "orders", "log", "ext")
-    }
+    rest = {k: v for k, v in d.items() if k in known and k not in _NESTED}
     return IslandState(
         **rest,
-        tiles=[_build(Tile, t) for t in d["tiles"]],
-        facilities=[_build(Facility, f) for f in d.get("facilities", [])],
-        orders=[_build(OrderState, o) for o in d.get("orders", [])],
+        tiles=[build(Tile, t) for t in d["tiles"]],
+        facilities=[facility_from_dict(f) for f in d.get("facilities", [])],
+        orders=[build(OrderState, o) for o in d.get("orders", [])],
         log=[LogEntry(**e) for e in d.get("log", [])],
+        bonds=[build(Bond, b) for b in d.get("bonds", [])],
+        economy=build(EconomyState, d.get("economy") or {}),
+        policy=build(Policy, d.get("policy") or {}),
         ext=dict(d.get("ext") or {}),
     )
 
 
-def _build(cls: type, data: dict[str, Any]) -> Any:
+def facility_from_dict(d: dict[str, Any]) -> Facility:
+    f = build(Facility, d)
+    f.stock = stock_from_json(f.stock)
+    return f
+
+
+def stock_from_json(value: Any) -> dict[str, list[list[int]]]:
+    """在庫を組の形に。フェーズ1の写しの施設の在庫（財 → 量）は、作られたターン 0 の組にする。"""
+    out: dict[str, list[list[int]]] = {}
+    for good, v in (value or {}).items():
+        if isinstance(v, int):
+            if v > 0:
+                out[good] = [[0, v]]
+        else:
+            batches = [[int(made), int(qty)] for made, qty in v if qty > 0]
+            if batches:
+                out[good] = batches
+    return out
+
+
+def build(cls: type, data: dict[str, Any]) -> Any:
     known = {f.name for f in fields(cls)}
     return cls(**{k: v for k, v in data.items() if k in known})

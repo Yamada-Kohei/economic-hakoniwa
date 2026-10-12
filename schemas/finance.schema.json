@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "金融の部品 finance.yaml の1項目（仕訳の種類・国債の期間）",
+  "type": "object",
+  "required": ["type"],
+  "additionalProperties": false,
+  "properties": {
+    "type": {"enum": ["journal", "bond_term"], "description": "journal: 仕訳の種類、bond_term: 国債の期間"},
+    "turns": {"type": "integer", "minimum": 1, "description": "国債の期間（ターン）"},
+    "premium": {"type": "number", "minimum": 0, "description": "国債の期間の上乗せの利回り（年率。0.01 は 1%）"},
+    "override": {"const": true}
+  },
+  "if": {"properties": {"type": {"const": "bond_term"}}},
+  "then": {"required": ["turns", "premium"]}
+}

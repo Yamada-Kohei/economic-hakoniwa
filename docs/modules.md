@@ -9,37 +9,71 @@
 標準のモジュールは `hakoniwa_core/modules/` に、パックのモジュールは `packs/<パック>/modules/` にあります。
 どちらも `register(registry)` 関数を持つ Python のパッケージです。
 
-## 標準のモジュール（フェーズ1）
+## 標準のモジュール（フェーズ2-1）
 
-1ターンは `game.yaml` の `stages:` の順に、次の段を実行します。
+1ターンは `game.yaml` の `stages:` の順に、次の段を実行します。フェーズ2から、物はお金で売り買いし、
+お金はすべて帳簿（`ledger.py`）の仕訳で動きます。
 
 | 段 | モジュール | すること |
 |---|---|---|
-| `execute_orders` | `planning` | 行政力の範囲で、並んだ命令を上から実行する（足りない分は次のターンへ） |
-| `employment` | `employment` | 町から通勤圏の施設へ、優先度の高い施設から労働者を割り当てる |
-| `production` | `production` | 送電網ごとに発電と配電をし、労働者・原料・電力の足りた割合で生産する |
+| `execute_orders` | `planning` | 行政力の範囲で、並んだ命令を上から実行する（足りない分は次のターンへ）。税率・予算などの政策もここで変わる |
+| `budget` | `fiscal` | 国庫のお金を、支出の項目ごとに支払いの順番で取り置く |
+| `employment` | `employment` | 町から通勤圏の施設へ、賃金の高い施設（並べば優先度の高い施設）から労働者を割り当てる |
+| `production` | `production` | 送電網ごとに電力を板寄せして電気代を払い、労働者・投入財・電力の足りた割合で生産する。産出は施設の在庫に入る |
 | `construction` | `construction` | 資材と人手のそろった工事を進め、終わった施設を動かし始める |
-| `distribution` | `distribution` | 共同倉庫の物を「住民の食料 → 工事の資材 → 工場の原料（次のターンに使う）」の順に、優先度の高い所から配る。傷んだ物を捨てる |
+| `payroll` | `labor` | 賃金・所得税・失業手当を払い、施設ごとの賃金を見直す |
+| `market` | `market` | 財ごとの板寄せ（施設・家計・工事・国の倉庫）、代金・運賃・消費税の支払い、傷んだ物を捨てる、希望価格と操業目標の見直し |
+| `banking` | `banking` | 預金と準備預金の利子 |
+| `bonds` | `bonds` | 国債の利払いと償還。国庫が足りなければ国債を発行し、中央銀行が直接引き受ける |
+| `accounts` | `accounts` | 決算: 損益、減価償却、法人税、配当と国庫への納付、中央銀行の納付 |
 | `population` | `population` | 食べる、増える・減る、幸福度、島を出て行く人 |
-| `housing` | `population` | 働き口の近くに町を作り、人が増えた町を育てる（倉庫の資源を使う） |
+| `housing` | `population` | 働き口の近くに町を作り、人が増えた町を育てる（資材は市場で買う） |
 | `events` | `events` | まれな災害で施設をしばらく止める |
-| `records` | `records` | 人口・雇用・在庫などをこのターンの統計に残す |
+| `records` | `records` | 物価指数・GDP などの統計を残し、帳簿の確かめ（合わなければその場で止める） |
 
-命令は `basics`（名前の変更）、`construction`（建設・取り壊し）、`land`（送電線・開発禁止）、
-`distribution`（優先度の変更）が登録します。差し替えられる式は `admin_power`（行政力）、
-`output_rate`（稼働率）、`food_need`（食料の必要量）、`happiness`（幸福度）です。
+命令は次のモジュールが登録します。
+
+| モジュール | 命令 |
+|---|---|
+| `basics` | `rename_island`・`rename_place`・`rename_facility`（名前の変更） |
+| `construction` | `build`・`demolish`（建設・取り壊し） |
+| `land` | `build_power_line`・`set_no_development`（送電線・開発禁止） |
+| `fiscal` | `set_taxes`（税率）・`set_budget`（年の予算） |
+| `labor` | `set_labor_policy`（失業手当・最低賃金） |
+| `accounts` | `set_accounting`（国営施設の会計の形） |
+| `market` | `set_priority`（優先度）・`warehouse_trade`（国の倉庫の売り買い）・`set_price_cap`（公共料金の上限） |
+
+差し替えられる式は次のとおりです。
+
+| 式 | モジュール | 中身 |
+|---|---|---|
+| `admin_power` | `planning` | 行政力 |
+| `output_rate` | `production` | 稼働率 |
+| `power_target` | `production` | 発電所の操業目標（送電網の買いたい量に合わせる） |
+| `food_need` | `population` | 食料の必要量 |
+| `happiness` | `population` | 幸福度 |
+| `wage_update` | `labor` | 賃金の見直し（人手の足りなさと物価上昇率で動く） |
+| `price_update` | `market` | 売り手の希望価格の見直し（企画書の式） |
+| `operating_target` | `market` | 施設の操業目標（売れ行きの見込みと在庫の目安から） |
+| `consumption` | `market` | 家計の層の使う額（所得と預金から） |
+| `bond_yield` | `bonds` | 国債の利回り |
 
 モジュールが共通で使う道具はコアの直下にあります。
 
 | 場所 | 中身 |
 |---|---|
+| `ledger.py` | お金の帳簿。お金はここの `post` と `pay` を通してだけ動く。毎ターンの4つの確かめ |
+| `market/auction.py` | 板寄せ（値幅の中で約定する量が最も多い値段を決め、有利な注文から配る） |
+| `economy/` | お金の経済の部品: 初めの値段と変動費（`prices.py`）、払えるお金の取り置き（`funds.py`）、国債（`debt.py`）、運賃の率（`freight.py`）、家計の層（`households.py`）、収支の記録（`books.py`）、物価指数（`stats.py`）、経済の始まりと移し替え（`start.py`） |
+| `units.py` | 量・お金・率の単位と丸め（丸めはここの関数だけで行う） |
 | `allocation.py` | 限りのある物を優先順位の順に配る `by_priority` |
-| `stock.py` | 共同倉庫（作られたターンごとの束で持ち、古い物から使う。傷む財の計算） |
+| `stock.py` | 在庫（作られたターンごとの束で持ち、古い物から使う。傷む財の計算） |
 | `facilities.py` | 施設の定義の読み出し、優先度、置ける場所と数の上限、町の施設 |
 | `geo.py` | 距離、隣のマス、つながった塊、最短の道 |
 | `naming.py` | 地名と、施設に自動で付く名前 |
 | `founding.py` | 建国（形と地形の検査、自動の地形、最初の中身の配置） |
 | `autoplan.py` | 試験用の「標準の計画」（ゲームのルールではない） |
+| `gate.py` | フェーズ2の関門の目安（ゲームのルールではない） |
 
 ## 例: 毎ターン少し人が増える段
 
@@ -83,6 +117,11 @@ growth:
   世界の種・ターン・段の名前・島の番号から作るので、同じ入力から必ず同じ結果が出ます。
   `random.random()` のようなグローバルな乱数は使いません。
 - 同じものを取り合うときは、定義データの優先順位と番号で順を決め、それでも並ぶときだけ乱数を使います。
+- **お金**は `ledger.py` の `post`・`pay`（とそれを包む `economy/funds.py`）を通してだけ動かし、
+  `IslandState.accounts` を直接書き換えません。記録の段が毎ターン帳簿を確かめ、合わなければ止まります。
+- **丸め**は `units.py` の関数（`round_money`・`money_of`・`part`・`scale_price` など）だけで行います。
+  量は 1000 分の 1 単位、お金は整数、率は 1 万分の 1 の整数で持ちます。
+- 板寄せの注文は、施設は番号の順、家計は層の順に出し、同じ値段の注文は優先順位と出した順で配ります。
 
 ## 命令
 
@@ -125,6 +164,9 @@ formulas:
 ## 状態の持ち方
 
 モジュール固有の状態は、島やマスの `ext`（拡張欄、JSON にできる値）に入れます。
+フェーズ2の経済の状態は、島の `economy`（値段・賃金・物価の履歴、家計の層など）と `policy`（税率・
+予算・政策金利など）、施設の `economy`（賃金・希望価格・操業目標など）に型付きで持ちます。
+お金の残高（勘定）と国債の銘柄、帳簿の記録は、サーバーでは `server/economy` のアプリの表に入ります。
 表が必要な大きいモジュールだけ、Django のアプリを対にして持ちます。
 
 ## 試す
@@ -132,8 +174,12 @@ formulas:
 ```sh
 python -m hakoniwa_core.simulate --islands 50 --turns 300             # 命令なし
 python -m hakoniwa_core.simulate --islands 50 --turns 300 --autoplan  # 標準の計画で命令を並べる
+python -m hakoniwa_core.simulate --islands 50 --turns 300 --autoplan --gate  # フェーズ2の関門の目安も見る
 ```
 
 最後に出る「状態の指紋」は、同じ種なら何度回しても同じになります。
 `tests/core/test_gate.py` は標準の計画で 300 ターン回し、鉄鉱石 → 鋼材 → 機械 → 新しい工場の連鎖が
-回ること、在庫が尽きないこと、人口が急に増えたり消えたりしないことを確かめます。
+回ること、在庫が尽きないこと、人口が急に増えたり消えたりしないこと、毎ターン帳簿が合うこと、
+GDP の生産の側と支出の側が合うこと、島の順番や保存と読み込みで結果が変わらないことを確かめます。
+50島の関門（`test_phase2_gate_50_islands`）は時間がかかるので、環境変数 `HAKONIWA_FULL_GATE=1`
+のときだけ回します。

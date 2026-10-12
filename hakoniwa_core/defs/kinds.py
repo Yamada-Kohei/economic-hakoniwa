@@ -85,6 +85,7 @@ def _check_facility(fid: str, entry: Mapping[str, Any], tables: Tables) -> Itera
             path = ("recipes", rname, "requires_resource")
             message = f"{resource} は鉱業資源（mining: true の財）ではありません"
             yield ("facilities", fid, path, message)
+    yield from _check_facility_zone(fid, entry)
 
 
 def _check_settlement(sid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator[Problem]:
@@ -96,6 +97,16 @@ def _check_order(oid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator
         Draft202012Validator.check_schema(thaw(entry["payload"]))
     except SchemaError as e:
         yield ("orders", oid, ("payload",), f"payload のスキーマが正しくありません: {e.message}")
+
+
+def _check_facility_zone(fid: str, entry: Mapping[str, Any]) -> Iterator[Problem]:
+    if entry.get("tileless") and entry.get("buildable") is not False:
+        yield (
+            "facilities",
+            fid,
+            ("tileless",),
+            "マスを持たない施設は buildable: false にしてください",
+        )
 
 
 def _check_regime(rid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator[Problem]:
@@ -169,6 +180,7 @@ KINDS: dict[str, KindSpec] = {
             check=_check_start,
         ),
         KindSpec("naming", "naming.schema.json", check=_check_naming, needs_locale=False),
+        KindSpec("finance", "finance.schema.json"),
     ]
 }
 

@@ -1,4 +1,7 @@
-"""フェーズ1のルール（段と命令）を、小さな手作りの島で確かめる。"""
+"""段と命令のルールを、小さな手作りの島で確かめる。
+
+お金の経済を使う段（雇用・生産・市場など）は、with_economy で経済を始めた島で確かめる。
+"""
 
 from __future__ import annotations
 
@@ -9,6 +12,8 @@ import pytest
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import stock
 from hakoniwa_core.allocation import by_priority, proportional
+from hakoniwa_core.economy.prices import initial_prices
+from hakoniwa_core.economy.start import init_facility, start_economy
 from hakoniwa_core.game import load_game
 from hakoniwa_core.log import format_log
 from hakoniwa_core.naming import facility_name
@@ -54,12 +59,24 @@ def make_island(game, terrain=None, capital=(5, 5)) -> IslandState:
     return island
 
 
-def add(island, kind, x, y, built=True, recipe="default", **kw) -> Facility:
+def add(island, kind, x, y, built=True, recipe="default", stock=None, **kw) -> Facility:
+    """施設を置く。stock は財 → 量（作られたターン 0 の組にする）。"""
     f = Facility(
         id=island.next_facility_id(), kind=kind, x=x, y=y, recipe=recipe, built=built, **kw
     )
+    f.stock = {g: [[0, q]] for g, q in (stock or {}).items()}
     island.facilities.append(f)
+    if island.has_economy:
+        game = load_game()
+        prices = initial_prices(game.defs, game.config)
+        init_facility(island, game.defs, game.config, f, prices, island.economy.average_wage)
     return f
+
+
+def with_economy(game, island) -> IslandState:
+    """置いた施設と住民で、お金の経済を始める（首都の近くに銀行、マスを持たない運送業が増える）。"""
+    start_economy(island, game.defs, game.config, 0)
+    return island
 
 
 def home(game, island, x, y, population, level="town") -> Facility:
@@ -108,106 +125,132 @@ def test_employment_by_priority_and_commute(game):
     office = add(island, "government_office", 5, 5)  # 優先順位 9、1,000 人
     farm = add(island, "farm", 7, 7)  # 優先順位 7
     far = add(island, "farm", 12, 12)  # 通勤圏の外
+    home(game, island, 2, 13, 20000, level="metropolis")  # どの施設の通勤圏の外（国庫を厚くする）
+    with_economy(game, island)
+    bank = next(f for f in island.facilities if f.kind == "bank")  # 優先順位 5
     run(game, island, ["employment"])
+    # 賃金が同じなので、優先順位の高い施設から雇う
     assert office.workers == 1000
     assert farm.workers == 0
     assert far.workers == 0
     island.tile(5, 6).population = 3000
     run(game, island, ["employment"])
-    assert (office.workers, farm.workers) == (1000, 500)
+    assert (office.workers, farm.workers, bank.workers) == (1000, 500, 0)
+    # 賃金の高い施設が先に雇う（同じ通勤圏の中から）
+    farm.economy["wage"] = 1200
+    run(game, island, ["employment"])
+    assert farm.workers == 500
+    assert office.economy["staff"] and farm.economy["staff"]
 
 
-def test_power_shortage_cuts_low_priority_and_needs_grid(game):
+def test_power_market_serves_by_priority_and_needs_grid(game):
     island = make_island(game)
-    home(game, island, 6, 6, 30000, level="metropolis")
-    home(game, island, 6, 7, 30000, level="metropolis")  # 家庭は 60000 人 × 0.0005 = 30 使う
-    plant = add(island, "thermal_power_plant", 5, 6, stock={"coal": 4000})  # 30 作る
+    home(game, island, 6, 6, 8000, level="city")  # 労働者 4,000 人
+    plant = add(island, "thermal_power_plant", 5, 6, stock={"coal": 400})  # 石炭 0.4 で 3 作る
     high = add(island, "mine", 4, 6, recipe="coal", priority=9)  # 2 使う
     low = add(island, "machinery_plant", 6, 5, stock={"steel": 4000}, priority=1)  # 4 使う
     home(game, island, 11, 11, 2000, level="village")
     cut_off = add(island, "mine", 11, 10, recipe="iron_ore")  # 発電所の送電網とつながっていない
+    with_economy(game, island)
     run(game, island, ["employment", "production"])
-    assert plant.operating_rate == 1000
-    assert high.operating_rate == 1000
-    # 優先順位 9 の鉱山 → 家庭（優先順位 4）→ 機械工場（優先順位 1）の順に配る
-    assert island.tile(6, 6).ext["power"] == 28 * 1000 // 30
-    assert (low.operating_rate, low.status) == (0, "power")
+    assert plant.operating_rate == 100
+    assert island.stats["power.capacity"] == 3
+    # 足りない電力は優先順位の高い鉱山に先に回り、機械工場は残りの分だけ動く
+    assert (high.operating_rate, high.status) == (1000, "")
+    assert (low.operating_rate, low.status) == (250, "power")
     assert cut_off.workers > 0
     assert (cut_off.operating_rate, cut_off.status) == (0, "power")
-    assert island.stats["power.capacity"] == 30
+    power = next(m for m in island.markets if m.good == "electricity")
+    assert power.volume == 3000
 
 
 def test_construction_uses_exact_materials(game):
     island = make_island(game)
     home(game, island, 5, 6, 6000)
     site = add(island, "farm", 6, 6, built=False)  # 2 ターン、人手 200、木材 5
+    with_economy(game, island)
     stock.add(island.warehouse, "wood", 3000, 0, game.defs.goods)
-    run(game, island, ["employment", "construction", "distribution"], turns=1)
-    assert site.progress == 0  # 最初のターンは資材が届くだけ
-    assert site.stock == {"wood": 2500}
-    run(game, island, ["employment", "construction", "distribution"], turns=1)
+    stages = ["employment", "construction", "market"]
+    run(game, island, stages, turns=1)
+    assert site.progress == 0  # 最初のターンは国の倉庫から資材が届くだけ
+    assert stock.total(site.stock, "wood") == 2500
+    run(game, island, stages, turns=1)
     assert site.progress == 1000
-    run(game, island, ["employment", "construction", "distribution"], turns=1)
+    run(game, island, stages, turns=1)
     # 木材は残り 500 しか届いていないので、2 ターン目の工事は 1/5 だけ進む
     assert site.progress == 1200
     assert not site.built
     stock.add(island.warehouse, "wood", 10_000, 0, game.defs.goods)
-    run(game, island, ["employment", "construction", "distribution"], turns=3)
+    run(game, island, stages, turns=3)
     assert site.built
     assert site.status == fac.STATUS_STARTING
     assert stock.total(island.warehouse, "wood") == 13_000 - 5_000
 
 
-def test_distribution_feeds_people_first(game):
+def test_market_sells_food_to_households(game):
     island = make_island(game)
-    home(game, island, 5, 6, 5000)  # 食料 10 が要る
-    factory = add(island, "food_factory", 6, 6)
-    factory.workers = 800
-    stock.add(island.warehouse, "grain", 15_000, 0, game.defs.goods)
-    run(game, island, ["distribution"])
-    assert island.stats["food.need"] == 10
-    assert island.stats["food.supplied"] == 10
-    assert factory.stock == {"grain": 5000}  # 残りの 5 だけ工場へ
+    home(game, island, 5, 6, 5000)  # 食料（栄養）10 が要る
+    add(island, "government_office", 5, 5)  # 働き口（賃金が家計の使う額になる）
+    farm = add(island, "farm", 6, 6, stock={"grain": 15_000})
+    with_economy(game, island)
+    run(game, island, ["employment", "payroll", "market", "population"])
+    food = island.scratch["food"]
+    assert (food["need"], food["supplied"]) == (10_000, 10_000)
+    grain = next(m for m in island.markets if m.good == "grain")
+    assert grain.volume > 0
+    assert stock.total(farm.stock, "grain") == 15_000 - grain.volume
+    assert any(t.good == "grain" and t.seller == f"fac:{farm.id}" for t in island.trades)
 
 
 def test_population_starves_without_food(game):
     island = make_island(game)
     home(game, island, 5, 6, 5000)
-    run(game, island, ["distribution", "population"], turns=3)
+    with_economy(game, island)
+    run(game, island, ["market", "population"], turns=3)
     assert island.tile(5, 6).population < 5000
 
 
 def test_housing_grows_near_vacancies_but_not_on_no_development(game):
     island = make_island(game)
-    home(game, island, 5, 5, 1000, level="village")  # まだ町に育つほど住んでいない
-    add(island, "steel_mill", 8, 8)
-    for x in range(5, 12):
-        for y in range(5, 12):
-            if (x, y) not in ((5, 5), (8, 8), (9, 9)):
-                island.tile(x, y).zone = ZONE_NO_DEVELOPMENT
-    # 資源がなければ町はできず、そのことを1度だけ知らせる
-    run(game, island, ["employment", "population", "housing"], turns=2)
-    assert [f for f in island.facilities if f.kind == "housing" and (f.x, f.y) != (5, 5)] == []
-    assert island.ext["housing_short"] == ["wood"]
-    stock.add(island.warehouse, "wood", 7000, 0, game.defs.goods)
-    island.log.clear()
-    run(game, island, ["employment", "population", "housing"])
-    new = [f for f in island.facilities if f.kind == "housing" and (f.x, f.y) != (5, 5)]
+    home(game, island, 3, 12, 1000, level="village")  # 官庁の通勤圏の外
+    add(island, "government_office", 8, 8)  # 人手の足りない施設（公務員はいつも 1,000 人雇う）
+    home(game, island, 2, 13, 20000, level="metropolis")  # 通勤圏の外（国庫を厚くする）
+    with_economy(game, island)
+    for tile in island.tiles:  # 官庁のそばの (9, 9) のほかは開発禁止区域（オフィス街は除く）
+        if (tile.x, tile.y) != (9, 9) and tile.zone == "":
+            tile.zone = ZONE_NO_DEVELOPMENT
+    stages = ["execute_orders", "employment", "market", "population", "housing"]
+    # 木材が市場に出ていなければ町はできない
+    before = {(f.x, f.y) for f in island.facilities if f.kind == "housing"}
+    run(game, island, stages, turns=2)
+    assert {(f.x, f.y) for f in island.facilities if f.kind == "housing"} == before
+    assert "wood" in island.ext["housing_short"]
+    # 国の倉庫の木材を市場に出すと、住民が（預金の決めた割合までずつ）買って村を作る
+    # （開発禁止区域には作らない）
+    stock.add(island.warehouse, "wood", 20_000, 0, game.defs.goods)
+    sell = {"good": "wood", "side": "sell", "quantity": 20}
+    for _ in range(3):
+        run(game, island, stages, orders=[("warehouse_trade", sell)])
+    new = [f for f in island.facilities if f.kind == "housing" and (f.x, f.y) not in before]
     assert [(f.x, f.y) for f in new] == [(9, 9)]
-    assert stock.total(island.warehouse, "wood") == 2000  # 村1つに木材 5 を使った
-    assert "housing_short" not in island.ext
+    assert "wood" not in island.ext.get("housing_short", [])
 
 
-def test_housing_short_is_logged_once(game):
+def test_housing_short_is_logged_after_two_turns(game):
     island = make_island(game)
     home(game, island, 5, 5, 1000, level="village")
     add(island, "steel_mill", 8, 8)
-    world = run(game, island, ["employment", "population", "housing"])
-    kinds = [e.kind for e in island.log]
-    assert kinds.count("housing_short") == 1
+    home(game, island, 2, 13, 20000, level="metropolis")  # 通勤圏の外（国庫を厚くする）
+    with_economy(game, island)
+    stages = ["employment", "population", "housing"]
+    world = run(game, island, stages)
+    assert "housing_short" not in [e.kind for e in island.log]
     island.log.clear()
-    game.engine.stages = [game.registry.stages[n] for n in ("employment", "population", "housing")]
+    game.engine.stages = [game.registry.stages[n] for n in stages]
     try:
+        game.engine.run_turn(world)
+        assert [e.kind for e in island.log].count("housing_short") == 1
+        island.log.clear()
         game.engine.run_turn(world)
     finally:
         game.engine.stages = [game.registry.stages[n] for n in game.config.stages]

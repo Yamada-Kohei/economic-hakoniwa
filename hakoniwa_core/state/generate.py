@@ -44,12 +44,16 @@ def generate_island(
     wy: int,
     config: GameConfig,
     defs: Defs | None = None,
+    regime: dict[str, str] | None = None,
 ) -> IslandState:
-    """ランダムな形の島。defs を渡すと、建国の処理で首都や初めの施設も置く。"""
+    """ランダムな形の島。defs を渡すと、建国の処理で首都や初めの施設も置く。
+
+    regime を渡すと、その軸だけはランダムに選ばずにその体制にする。
+    """
     size = config.get("island.size")
     land = generate_land(rng, size, config.get("island.land_min"), config.get("island.land_max"))
     if defs is not None:
-        return _found_random(rng, island_id, name, wx, wy, config, defs, land)
+        return _found_random(rng, island_id, name, wx, wy, config, defs, land, regime)
     tiles = []
     for y in range(size):
         for x in range(size):
@@ -64,13 +68,19 @@ def generate_island(
 
 
 def random_plan(
-    rng: random.Random, name: str, config: GameConfig, defs: Defs, land: set[tuple[int, int]]
+    rng: random.Random,
+    name: str,
+    config: GameConfig,
+    defs: Defs,
+    land: set[tuple[int, int]],
+    fixed: dict[str, str] | None = None,
 ):
-    """ランダムに選んだ建国の中身。"""
+    """ランダムに選んだ建国の中身。fixed に書いた体制の軸は、その選択にする。"""
     from hakoniwa_core import founding
 
     seed = rng.randrange(2**31)
     regime = {axis: rng.choice(choices) for axis, choices in defs.regime_axes().items()}
+    regime.update(fixed or {})
     terrain = founding.auto_terrain(land, config, seed)
     kind = founding.start_of(defs, regime)["capital"]["facility"]
     capital = founding.suggest_capital(terrain, land, defs, config, kind)
@@ -98,10 +108,10 @@ def random_plan(
     )
 
 
-def _found_random(rng, island_id, name, wx, wy, config, defs, land) -> IslandState:
+def _found_random(rng, island_id, name, wx, wy, config, defs, land, regime) -> IslandState:
     from hakoniwa_core.founding import found_island
 
-    plan = random_plan(rng, name, config, defs, land)
+    plan = random_plan(rng, name, config, defs, land, regime)
     return found_island(defs, config, plan, island_id, wx, wy)
 
 
@@ -113,11 +123,17 @@ def world_grid_size(n_islands: int, config: GameConfig) -> int:
 def generate_world(
     seed: int, n_islands: int, config: GameConfig, defs: Defs | None = None
 ) -> WorldState:
-    """n_islands 個の島の世界。defs を渡すと、どの島も建国の処理を通して作る。"""
+    """n_islands 個の島の世界。defs を渡すと、どの島も建国の処理を通して作る。
+
+    経済体制は、定義した順に島へ順番に割り当てる（市場・混合・計画経済の島が同じくらいの数になる。
+    ほかの軸と鉱業資源はランダム）。
+    """
     rng = random.Random(seed)
     grid = world_grid_size(n_islands, config)
     cells = rng.sample([(x, y) for y in range(grid) for x in range(grid)], n_islands)
+    economies = defs.regime_axes().get("economy", []) if defs is not None else []
     islands = {}
     for i, (wx, wy) in enumerate(cells, start=1):
-        islands[i] = generate_island(rng, i, f"島{i}", wx, wy, config, defs)
+        regime = {"economy": economies[(i - 1) % len(economies)]} if economies else None
+        islands[i] = generate_island(rng, i, f"島{i}", wx, wy, config, defs, regime)
     return WorldState(turn=0, seed=seed, islands=islands)

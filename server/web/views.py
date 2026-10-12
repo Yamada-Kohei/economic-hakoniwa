@@ -27,6 +27,7 @@ def island_page(request, island_id: int):
     island = get_object_or_404(Island.objects.select_related("owner", "world"), pk=island_id)
     defs = get_game().defs
     turn, stats = display.latest_stats(island)
+    currency = (island.names or {}).get("currency_symbol", "")
     founded = (island.ext or {}).get("founded_turn", 0)
     logs = TurnLog.objects.filter(island=island).order_by("-turn", "id")
     last_turn = logs.values_list("turn", flat=True).first()
@@ -42,8 +43,8 @@ def island_page(request, island_id: int):
         "island": island,
         "mine": request.user.is_authenticated and island.owner_id == request.user.id,
         "stats_turn": turn,
-        "summary": display.summary(stats),
-        "goods": display.goods_table(stats),
+        "summary": display.summary(stats, currency),
+        "goods": display.goods_table(stats, display.latest_markets(island, turn), currency),
         "regime": regime,
         "resources": [defs.name("goods", g) for g in island.resources or []],
         "capital_name": (island.names or {}).get("capital", ""),

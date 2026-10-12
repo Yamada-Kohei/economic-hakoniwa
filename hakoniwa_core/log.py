@@ -16,6 +16,10 @@ _ARG_KINDS = {
     "level": "settlements",
     "axis": "messages",
     "field": "messages",
+    "accounting": "messages",
+    "zone": "messages",
+    "item": "messages",
+    "term": "finance",
 }
 
 
@@ -35,5 +39,5 @@ def format_log(defs: Defs, kind: str, args: dict[str, Any], lang: str = "ja") ->
         shown["reason"] = format_log(defs, args["reason"], args.get("reason_args") or {}, lang)
     try:
         return template.format(**shown)
-    except (KeyError, IndexError):
+    except (KeyError, IndexError, ValueError):
         return f"{template} {shown}"

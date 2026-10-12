@@ -15,6 +15,7 @@
       "description": "経済体制: 既定が民営でも国営にする施設（基幹産業など）"
     },
     "state_accounting": {"enum": ["treasury", "self_supporting"], "description": "経済体制: 国営施設の会計の既定（国庫直轄か独立採算か。効くのはフェーズ2から）"},
+    "bank_owner": {"enum": ["state", "private"], "description": "経済体制: 建国のときに置く銀行の持ち主"},
     "start": {"type": "string", "description": "経済体制: 建国直後の島の中身（start_island.yaml の名前）"},
     "override": {"const": true}
   }

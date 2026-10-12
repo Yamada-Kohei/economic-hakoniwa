@@ -22,12 +22,15 @@ facilities:
   building_materials_plant: {color: "#c49a6c", height: 2}
   machinery_plant:          {color: "#6c7a89", height: 2.5}
   food_factory:             {color: "#e08e5a", height: 2}
+  consumer_goods_factory:   {color: "#b57fb3", height: 2}
   thermal_power_plant:      {color: "#555b63", height: 3.5}
   hydro_power_plant:        {color: "#3d7ea6", height: 2.5}
   government_office:        {color: "#f2efe6", height: 3}
+  bank:                     {color: "#d8c27a", height: 2.5}
   housing:                  {color: "#d9826b", height: 1}   # 高さは住宅地の段階（settlements の height）
 facility_fallback: {color: "#bbbbbb", height: 1.5}
 capital_roof: "#c9a227"   # 首都の建物の屋根の色
 construction: "#ffffff"   # 工事中の枠の色
 power_line: "#333333"     # 送電線
 no_development: "rgba(255, 255, 255, 0.45)"  # 開発を止めたマスの斜線
+office: "rgba(90, 120, 200, 0.35)"           # オフィス街のマス

@@ -125,6 +125,7 @@ export class TilePanel {
     } else if (f.workers_needed != null) {
       rows.push(["労働者", `${f.workers.toLocaleString()} / ${f.workers_needed.toLocaleString()} 人`]);
       rows.push(["稼働率", `${Math.round(f.operating_rate * 100)}%`]);
+      if (f.wage != null) rows.push(["賃金（1人1ターン）", f.wage.toLocaleString()]);
       if (f.inputs?.length) rows.push(["投入（1ターン）", goodsText(f.inputs)]);
       if (f.outputs?.length) rows.push(["産出（1ターン）", goodsText(f.outputs)]);
     }

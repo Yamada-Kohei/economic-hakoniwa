@@ -48,6 +48,9 @@ ja:
     building_materials_plant: {short: 建材, long: 建材工場}
     machinery_plant: {short: 重工業, long: 機械工場}
     food_factory: {short: 食品, long: 食品工場}
+    consumer_goods_factory: {short: 日用品, long: 消費財工場}
+    bank: {short: 銀行, long: 銀行}
+    transport: {short: 運輸, long: 運送会社}
     thermal_power_plant: {short: 電力, long: 火力発電所}
     hydro_power_plant: {short: 水力電気, long: 水力発電所}
     government_office: {short: 中央省庁, long: 中央省庁}

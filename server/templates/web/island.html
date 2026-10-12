@@ -64,12 +64,12 @@
     {% endif %}
   </section>
   <section class="panel">
-    <h2>{% translate "資源（倉庫在庫と当ターンの生産量）" %}</h2>
+    <h2>{% translate "資源（国の倉庫の在庫・当ターンの生産量と市場）" %}</h2>
     {% if goods %}
       <table class="goods">
-        <thead><tr><th>{% translate "資源" %}</th><th>{% translate "在庫" %}</th><th>{% translate "生産量" %}</th><th>{% translate "単位" %}</th></tr></thead>
+        <thead><tr><th>{% translate "資源" %}</th><th>{% translate "在庫" %}</th><th>{% translate "生産量" %}</th><th>{% translate "売買量" %}</th><th>{% translate "単位" %}</th><th>{% translate "値段（1単位）" %}</th></tr></thead>
         <tbody>
-          {% for g in goods %}<tr><td>{{ g.name }}</td><td>{{ g.stock }}</td><td>{{ g.production }}</td><td>{{ g.unit }}</td></tr>{% endfor %}
+          {% for g in goods %}<tr><td>{{ g.name }}</td><td>{{ g.stock }}</td><td>{{ g.production }}</td><td>{{ g.volume }}</td><td>{{ g.unit }}</td><td>{{ g.price }}</td></tr>{% endfor %}
         </tbody>
       </table>
     {% else %}

@@ -16,6 +16,7 @@ packs/base/
     regimes.yaml       体制の選択肢
     start_island.yaml  建国直後の島の中身
     naming.yaml        地名の様式と、施設に自動で付く名前の材料
+    finance.yaml       金融の部品（仕訳の種類と国債の期間）
   locale/ja/
     goods.yaml など    data/ と同じ名前のファイルに表示名
     recipes.yaml       作り方の表示名
@@ -58,14 +59,15 @@ steel_mill: 製鉄所
 
 | ファイル | 1項目の中身 | スキーマ |
 |---|---|---|
-| `goods.yaml` | `tier`（1 原料、2 中間財、3 最終財）、`unit`（量の単位。表示名は `locale/<言語>/units.yaml`）、`shelf_life`（持ち越せるターン数。0 は持ち越せない。書かなければ無期限）、`food`（食べられる財の `nutrition` と `quality`）、`mining`（建国時に選べる鉱業資源） | `schemas/goods.schema.json` |
+| `goods.yaml` | `tier`（1 原料、2 中間財、3 最終財）、`unit`（量の単位。表示名は `locale/<言語>/units.yaml`）、`shelf_life`（持ち越せるターン数。0 は持ち越せない。書かなければ無期限）、`food`（食べられる財の `nutrition` と `quality`）、`mining`（建国時に選べる鉱業資源）、`consumer`（家計が買う財。物価指数に入れる） | `schemas/goods.schema.json` |
 | `terrain.yaml` | `land`（陸地か）、`reclaimable`（埋め立てられるか）、`height`（描画用の高さ） | `schemas/terrain.schema.json` |
 | `facilities.yaml` | 上の例のとおり。ほかに下の表の項目 | `schemas/facilities.schema.json` |
 | `orders.yaml` | `admin_cost`（要る行政力。ふつう 1、名前の変更は 0）、`payload`（命令の中身の形を JSON Schema で） | `schemas/orders.schema.json` |
 | `settlements.yaml` | `min_population`（この段階になる人口）、`capacity`（住める人数）、`height`（描画用の高さ）、`subsistence`（働き口がなくても自給の農業で暮らせるか）、`materials`（この段階に育つ・いちばん下の段階なら新しくできるときに倉庫から使う資源） | `schemas/settlements.schema.json` |
 | `workers.yaml` | `share`（住民のうち、この種類の労働者になる割合） | `schemas/workers.schema.json` |
-| `regimes.yaml` | `axis`（政治の仕組み・国家元首の形・経済体制のどれか）、`capital_building`（首都に建つ建物）、経済体制では `owner`・`state_owned`・`state_accounting`・`start` | `schemas/regimes.schema.json` |
+| `regimes.yaml` | `axis`（政治の仕組み・国家元首の形・経済体制のどれか）、`capital_building`（首都に建つ建物）、経済体制では `owner`・`state_owned`・`state_accounting`・`start`・`bank_owner`（建国のときに置く銀行の持ち主） | `schemas/regimes.schema.json` |
 | `start_island.yaml` | 首都の施設と周りの町、村の数と人口、最初の施設（`if_resource` で資源があるときだけ）、送電線、倉庫の中身 | `schemas/start_island.schema.json` |
+| `finance.yaml` | `type: journal` は仕訳の種類（お金の動きの名前。帳簿の確かめは、ここにない種類の仕訳を誤りにする）、`type: bond_term` は国債の期間（`turns` と期間の上乗せの利回り `premium`） | `schemas/finance.schema.json` |
 | `naming.yaml` | 言語ごとの、地名の様式（`places`。様式ごとに表示名 `label`・前半 `first`・後半 `second`・つなぎ `joiner`）、数字、施設の種類ごとの短い名前と長い名前、名前の形 | `schemas/naming.schema.json` |
 
 施設の項目:
@@ -84,6 +86,9 @@ steel_mill: 製鉄所
 | `recipes` | 作り方。`inputs`・`outputs` は1ターンあたり。`requires_resource` はその地下資源を選んだ島だけで使える |
 | `pollution` | まわりのマスへの汚染（`amount` と `radius`） |
 | `admin_power` | 働く人1人あたりに増える行政力（中央省庁。0.001 なら 1,000 人で 1） |
+| `public_service` | 公務員の施設（中央省庁など）。賃金を国庫が払う |
+| `zone` | その指定（`office` のオフィス街など）のあるマスにだけ建つ（銀行） |
+| `tileless` | マスを持たない施設（運送業）。島に1つ自動で置かれる |
 
 建てられる地形は施設の側（`terrain:`）にだけ書きます。地形の側には書きません。
 
@@ -106,7 +111,14 @@ steel_mill: 製鉄所
 |---|---|
 | `orders` | 行政力（1ターンに実行できる命令の数）の最低（`base_admin_power`）と最大（`max_admin_power`）、並べられる命令の数（`max_queue`） |
 | `founding` | 選べる資源の数、描き直せる地形のマス数、自動で配る地形の割合、名前の長さの上限 |
-| `labor` | 町から通える距離（`commute_radius`）、優先度の既定 |
+| `labor` | 町から通える距離（`commute_radius`）、優先度の既定、初めの賃金と賃金の動き方（フェーズ2） |
+| `market` | 値幅（`band`）、希望価格の動きやすさ、操業目標と在庫の目安、初めの値段の解き方（フェーズ2） |
+| `freight` | 運賃の率（道のり1あたり・上限）と運送業（フェーズ2） |
+| `household` | 家計の層、使う額の式の係数、食費と消費財の買い方（フェーズ2） |
+| `firms` | 減価償却のターン数、運転資金など施設のお金（フェーズ2） |
+| `banking`・`central_bank`・`bonds` | 銀行の置き方と金利、中央銀行、国債の発行（フェーズ2） |
+| `fiscal` | 税率と予算の既定、予算を決められる項目（フェーズ2） |
+| `records` | 値段の履歴・物価指数の重み・仕訳・約定・施設の帳簿を残すターン数（フェーズ2） |
 | `power` | 電気の財、住民1人あたりの電力、町への配電の優先度 |
 | `population` | 1人あたりの食料、増え方と減り方、幸福度の計算の重み |
 | `housing` | 町が1ターンに新しくできる・育つ数 |
@@ -114,4 +126,4 @@ steel_mill: 製鉄所
 | `disasters` | 災害の起きる割合と、施設が止まるターン数 |
 | `accounts` | 同じ接続元から登録できる数（`signups_per_ip`、0 で無制限）と、覚えておく日数 |
 
-数値はフェーズ1の試し遊びで調整する仮の値です。
+数値は試し遊びと一括シミュレーションで調整する仮の値です。

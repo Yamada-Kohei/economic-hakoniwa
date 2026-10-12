@@ -8,10 +8,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from hakoniwa_core import stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.geo import distance, is_coastal
-from hakoniwa_core.state import OWNER_STATE, Facility, IslandState, Tile
+from hakoniwa_core.state import OWNER_STATE, ZONE_OFFICE, Facility, IslandState, Tile
 
 FULL = 1000  # 割合の 100%
 STATUS_STARTING = "starting"  # 工事が済んで、まだ動いたことがない（施設の status）
@@ -55,22 +56,41 @@ def is_housing(config: GameConfig, f: Facility) -> bool:
     return f.kind == housing_kind(config)
 
 
+def on_map(f: Facility) -> bool:
+    """マスを持つ施設か（運送業のようなマスを持たない施設は x, y が -1）。"""
+    return f.x >= 0 and f.y >= 0
+
+
+def is_tileless(defs: Defs, kind: str) -> bool:
+    return bool(defs.facilities[kind].get("tileless"))
+
+
+def workers_needed(defs: Defs, kind: str) -> int:
+    """全力で動くのに要る労働者の数。"""
+    return defs.facilities[kind]["workers"]
+
+
 def is_halted(f: Facility, turn: int) -> bool:
     """災害などで止まっているか。"""
     return f.ext.get("halted_until", 0) >= turn
 
 
-def labor_share(defs: Defs) -> float:
-    """住民のうち労働者になる割合（フェーズ1は一般労働者だけ）。"""
-    return defs.workers["general"].get("share", 1.0)
+def labor_share(defs: Defs, island: IslandState) -> float:
+    """住民のうち一般の労働者になる割合。
+
+    働かない家計の層（資産を持つ層。島全体の人数として持つ）の分だけ減る。
+    """
+    share = defs.workers["general"].get("share", 1.0)
+    idle = sum(h.get("share", 0.0) for h in island.economy.households.values())
+    return share * (1 - idle)
 
 
-def labor_force(defs: Defs, tile: Tile) -> int:
-    return int(tile.population * labor_share(defs))
+def labor_force(defs: Defs, island: IslandState, tile: Tile) -> int:
+    return int(tile.population * labor_share(defs, island))
 
 
 def labor_ratio(defs: Defs, f: Facility) -> int:
-    return ratio(f.workers, defs.facilities[f.kind]["workers"])
+    return ratio(f.workers, workers_needed(defs, f.kind))
 
 
 def step_materials(defs: Defs, f: Facility) -> dict[str, int]:
@@ -88,18 +108,19 @@ def step_materials(defs: Defs, f: Facility) -> dict[str, int]:
 def material_ratio(defs: Defs, f: Facility) -> int:
     """工事中の施設が、手元の資材で今のターンにどれだけ進めるか（1000 分の 1）。"""
     need = step_materials(defs, f)
-    return min((ratio(f.stock.get(g, 0), q) for g, q in need.items() if q > 0), default=FULL)
+    return min((ratio(stock.total(f.stock, g), q) for g, q in need.items() if q > 0), default=FULL)
 
 
 def labor_demand(defs: Defs, f: Facility, turn: int) -> int:
-    """このターンに雇いたい人数。工事中は、手元の資材で進められる分の人手だけ。"""
+    """このターンに雇いたい人数。工事中は手元の資材で進められる分の人手、動いている施設は
+    操業目標（economy["target"]、1000 分の 1）の分だけ。"""
     fdef = defs.facilities[f.kind]
     if not f.built:
         labor = fdef["construction"].get("labor", 0)
         return -(-labor * material_ratio(defs, f) // FULL)  # 切り上げ
     if is_halted(f, turn):
         return 0
-    return fdef["workers"]
+    return scale(workers_needed(defs, f.kind), f.economy.get("target", FULL))
 
 
 def placement_problem(
@@ -116,6 +137,11 @@ def placement_problem(
         return ("reason_wrong_terrain", {"facility": kind, "terrain": tile.terrain})
     if island.facility_at(x, y) is not None:
         return ("reason_tile_occupied", {})
+    zone = fdef.get("zone")
+    if zone is not None and tile.zone != zone:
+        return ("reason_zone_required", {"facility": kind, "zone": f"zone_{zone}"})
+    if zone is None and tile.zone == ZONE_OFFICE:
+        return ("reason_office_zone", {})
     if fdef.get("coastal") and not is_coastal(island, (x, y), lambda t: is_land(defs, t)):
         return ("reason_not_coastal", {"facility": kind})
     limit = fdef.get("max_per_island")
@@ -151,7 +177,7 @@ def default_recipe(defs: Defs, kind: str) -> str | None:
 
 def settlement_of(defs: Defs, population: int) -> str:
     """住民の数から決まる、町（住宅地）の見た目の段階（村・町など）。"""
-    levels = defs.settlement_levels()
+    levels = defs._settlement_levels
     found = levels[0]
     for level in levels:
         if population >= defs.settlements[level]["min_population"]:
