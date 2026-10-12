@@ -41,6 +41,22 @@ def test_tile_api(client, world):
     assert client.get(f"/api/islands/{island.id}/tiles/99,-1").status_code == 404
 
 
+def test_tile_api_construction_progress(client, world):
+    """工事の進みは、工事全体のうち進んだ割合で返す（工期6ターンの5ターン分なら 5/6）。"""
+    island = Island.objects.first()
+    tile = island.tiles.filter(terrain="plain", population=0).exclude(
+        x=island.capital_x, y=island.capital_y
+    )[0]
+    island.facilities.filter(x=tile.x, y=tile.y).delete()
+    number = max(island.facilities.values_list("number", flat=True), default=0) + 1
+    island.facilities.create(
+        number=number, kind="steel_mill", x=tile.x, y=tile.y, built=False, progress=5000
+    )
+    data = client.get(f"/api/islands/{island.id}/tiles/{tile.x},{tile.y}").json()
+    assert data["facility"]["turns"] == 6
+    assert data["facility"]["progress"] == pytest.approx(5 / 6)
+
+
 def test_defs_api(client, db):
     data = client.get("/api/defs").json()
     assert data["terrain"]["mountain"] == {"name": "山", "height": 2, "land": True}
