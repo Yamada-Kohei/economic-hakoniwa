@@ -92,7 +92,8 @@ def facility_info(row: m.Facility, island: IslandState) -> dict[str, Any]:
     else:
         construction = fdef["construction"]
         info["workers_needed"] = construction.get("labor", 0)
-        info["progress"] = f.progress / fac.FULL
+        # 工事全体のうち進んだ割合（progress は 1000 で1ターン分）
+        info["progress"] = f.progress / (construction["turns"] * fac.FULL)
         info["turns"] = construction["turns"]
         info["materials"] = goods_list(construction.get("materials", {}))
     if f.ext.get("halted_until") is not None:
