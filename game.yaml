@@ -14,7 +14,7 @@ stages:
   - construction     # 工事の進み
   - distribution     # 配分（フェーズ2で市場に差し替え）
   - population       # 消費と人口
-  - housing          # 都市の発展（住宅の自動建設）
+  - housing          # 都市の発展（町の自動建設と成長）
   - events           # 災害
   - records          # 記録
 
@@ -25,7 +25,10 @@ turn:
   interval_minutes: 60  # 更新の間隔
 
 orders:
-  base_admin_power: 10  # 建国直後の行政力（官庁が入るまでの最低限）
+  # 行政力 = 1ターンに実行できる命令の数。中央省庁で働く公務員の数で決まり（施設の定義の admin_power）、
+  # 最低 base_admin_power、最大 max_admin_power。命令ごとの消費は orders.yaml の admin_cost。
+  base_admin_power: 1   # どの国でも1ターンに実行できる命令の数
+  max_admin_power: 5    # 強大な国でもこれまで
   max_queue: 30         # 前もって並べておける命令の数
 
 world:
@@ -35,7 +38,7 @@ world:
 island:
   size: 32              # 島は size × size のマスの中に描く
   land_min: 120         # 陸地のマス数の下限
-  land_max: 400         # 陸地のマス数の上限
+  land_max: 400         # 陸地のマス数の上限（離れ小島も合わせた数）
 
 founding:
   max_resources: 2      # 選べる鉱業資源の数
@@ -60,13 +63,13 @@ labor:
 
 power:
   good: electricity     # 電力の財
-  household_use: 0.005  # 住民1人あたりの電力
+  household_use: 0.0005 # 住民1人あたりの電力
   household_priority: 4 # 家庭への送電の優先順位（施設の優先順位と比べる）
 
 population:
-  food_per_person: 0.02 # 1人1ターンあたりの食料
+  food_per_person: 0.002 # 1人1ターンあたりの食料
   growth_rate: 0.02     # 食料が足りて幸福度 100 のときの、1ターンの増え方
-  growth_min_jobs: 0.9  # 働き手のうち仕事のある人の割合がこれを下回るマスでは増えない
+  growth_min_jobs: 0.9  # 労働者のうち仕事のある人の割合がこれを下回るマスでは増えない
   starvation_rate: 0.1  # 食料がまったくないときの、1ターンの減り方
   emigration_happiness: 30  # 幸福度がこれより低いマスから、人が島の外へ出ていく
   emigration_rate: 0.02
@@ -77,16 +80,17 @@ population:
     jobs: 20
     power: 10
     food_quality: 20
-    pollution_per_point: 2
+    pollution_per_point: 1
 
 housing:
-  facility: housing     # 自動で建つ住宅の施設
-  max_new_per_turn: 2   # 1ターンに新しく建つ住宅の数
-  max_upgrades_per_turn: 2  # 1ターンに上の段階へ育つ住宅の数
-  fill_ratio: 0.8       # 住宅が上の段階へ育つのは、住む人が上限のこの割合を超えてから
+  facility: housing     # 自動で建つ町の施設（育つのに要る資源は settlements.yaml の materials）
+  max_new_per_turn: 2   # 1ターンに新しくできる町の数
+  max_upgrades_per_turn: 2  # 1ターンに上の段階へ育つ町の数
+  fill_ratio: 0.8       # 町が上の段階へ育つのは、住む人が上限のこの割合を超えてから
 
 naming:
   place_block: 8        # 地名は島をこのマス数四方の区画に分けて付ける
+  place_style: japanese # 地名の作風の既定（建国のときに選べる。naming.yaml の places）
 
 disasters:
   rate: 0.02            # 1つの島に1ターンで災害が起きる確率（0 で起きない）

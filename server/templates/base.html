@@ -11,7 +11,7 @@
     <a class="brand" href="{% url 'top' %}">{% translate "経済版箱庭諸国" %}</a>
     <nav>
       {% if own_island %}
-        <a href="{% url 'island' own_island.id %}">{% translate "自分の島" %}</a>
+        <a href="{% url 'island' own_island.id %}">{% translate "自国" %}</a>
       {% else %}
         <a href="{% url 'found' %}">{% translate "建国" %}</a>
       {% endif %}

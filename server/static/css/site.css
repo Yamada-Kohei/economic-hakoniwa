@@ -67,13 +67,17 @@ table.goods td:nth-child(n+2), table.goods th:nth-child(n+2) { text-align: right
 .pager { display: flex; gap: 12px; align-items: center; margin: 12px 0; }
 
 /* 世界マップと区画の選択 */
-.world-grid { display: grid; grid-template-columns: repeat(var(--grid, 10), minmax(0, 1fr)); gap: 2px; max-width: 640px;
+.world-grid { display: grid; grid-template-columns: repeat(var(--grid, 10), minmax(0, 1fr)); gap: 2px; max-width: 960px;
   background: #1d3f66; padding: 2px; border-radius: 4px; }
 .world-grid .cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: 11px;
-  overflow: hidden; text-decoration: none; border: 0; padding: 0; min-height: 0; }
+  overflow: hidden; text-decoration: none; border: 0; padding: 0; min-height: 0; position: relative; }
 .world-grid .sea { background: #2a5a8c; }
-.world-grid .island { background: #7cb342; color: #102000; }
-.world-grid .island.mine { background: #ffca28; }
+.world-grid .island { background: #2f6db5; color: #fff; }
+.world-grid .island.mine { outline: 2px solid #ffca28; outline-offset: -2px; z-index: 1; }
+/* 島の形は1マス1ピクセルの絵を、ぼかさずに区画いっぱいに広げる */
+.world-grid .island-pixels { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+.world-grid .cell-name { position: absolute; left: 0; right: 0; bottom: 0; padding: 1px 2px; font-size: 10px;
+  line-height: 1.2; background: rgba(0, 0, 0, 0.45); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .world-grid .free { background: #f0f4f8; cursor: pointer; }
 .world-grid .free:hover, .world-grid .free.chosen { background: #ff7043; }
 
@@ -105,3 +109,5 @@ textarea { width: 100%; }
   .site-header nav { gap: 8px; flex-wrap: wrap; }
   table.facilities { display: block; overflow-x: auto; }
 }
+/* 地名ラベルの下に隠れた島の形も見られるように、指を乗せたら消す */
+.world-grid .cell:hover .cell-name, .world-grid .cell:focus .cell-name { opacity: 0; }

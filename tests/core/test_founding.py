@@ -53,8 +53,9 @@ def test_shape_rules(game):
     assert "founding_edge" in reasons(shape_problems(square(0, 8, 12, 12), config))
     assert "founding_too_small" in reasons(shape_problems(square(8, 8, 5, 5), config))
     assert "founding_too_large" in reasons(shape_problems(square(1, 1, 30, 30), config))
+    # 離れ小島も描ける（陸地は1つにつながっていなくてよい）
     apart = square(2, 2, 10, 10) | square(18, 18, 10, 10)
-    assert "founding_not_connected" in reasons(shape_problems(apart, config))
+    assert shape_problems(apart, config) == []
 
 
 def test_auto_terrain_is_deterministic_and_keeps_shape(game):
@@ -98,7 +99,7 @@ def test_start_island(game):
     homes = [f for f in island.facilities if f.kind == "housing"]
     towns = [h for h in homes if h.ext["level"] == "town"]
     assert len(towns) == 4
-    assert all(island.tile(h.x, h.y).population == 300 for h in towns)
+    assert all(island.tile(h.x, h.y).population == 3000 for h in towns)
     assert len(homes) - len(towns) == 8
     kinds = [f.kind for f in island.facilities]
     assert kinds.count("farm") == 4
@@ -137,3 +138,39 @@ def test_owner_follows_economy(game, economy, state_kinds):
         if f.owner == OWNER_STATE:
             accounting = game.defs.regimes[economy]["state_accounting"]
             assert f.accounting == accounting
+
+
+def test_islet_can_be_founded(game):
+    # 本島と、海を隔てた離れ小島
+    plan = plan_for(game)
+    islet = square(26, 26, 3, 3)
+    plan.land = set(plan.land) | islet
+    assert not (islet & set(generate_land(random.Random(5), 32, 120, 400)))
+    island = found_island(game.defs, game.config, plan, 1, 0, 0)
+    assert all(game.defs.terrain[island.tile(x, y).terrain]["land"] for x, y in islet)
+
+
+def test_place_names_follow_style_and_capital(game):
+    from hakoniwa_core.naming import place_of
+
+    plan = plan_for(game, place_style="german")
+    island = found_island(game.defs, game.config, plan, 1, 0, 0)
+    assert island.ext["place_style"] == "german"
+    # 首都のある区画の地名は首都名
+    assert place_of(island, *plan.capital, game.config) == "テスト国市"
+    german = game.defs.naming["ja"]["places"]["german"]
+    others = [p for p in island.ext["places"] if p != "テスト国市"]
+    assert others and all(any(p.startswith(a) for a in german["first"]) for p in others)
+    bad = plan_for(game, place_style="martian")
+    assert "founding_unknown_place_style" in reasons(plan_problems(bad, game.defs, game.config))
+
+
+def test_housing_has_no_name_and_admin_has_no_place(game):
+    island = found_island(game.defs, game.config, plan_for(game, "market"), 1, 0, 0)
+    home = next(f for f in island.facilities if f.kind == "housing")
+    level = home.ext["level"]
+    assert facility_name(game.defs, game.config, island, home) == game.defs.name(
+        "settlements", level
+    )
+    office = island.facility_at(*island.capital)
+    assert facility_name(game.defs, game.config, island, office) == "中央省庁"

@@ -24,6 +24,7 @@ urlpatterns = [
     path("islands/<int:island_id>/log/", views.turn_log, name="turn_log"),
     path("api/defs", api.defs, name="api_defs"),
     path("api/world", api.world, name="api_world"),
+    path("api/world/shapes", api.world_shapes, name="api_world_shapes"),
     path("api/islands/<int:island_id>/map", api.island_map, name="api_island_map"),
     path("api/islands/<int:island_id>/tiles/<sint:x>,<sint:y>", api.tile, name="api_tile"),
     path("api/islands/<int:island_id>/orders", api.orders, name="api_orders"),

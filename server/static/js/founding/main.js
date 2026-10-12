@@ -2,15 +2,17 @@
 // 地形は「描いた形」と「種」からサーバーが配る。画面で見えている地形がそのまま建国後の地形になる。
 
 import { escapeHtml, getJson, sendJson } from "../island/api.js";
+import { drawAllIslands } from "../world/pixels.js";
 
 const root = document.getElementById("founding");
 const canvas = document.getElementById("founding-map");
 const ctx = canvas.getContext("2d");
 
-const [defs, world, cells] = await Promise.all([
+const [defs, world, cells, shapes] = await Promise.all([
   getJson(root.dataset.defs),
   getJson(root.dataset.world),
   getJson(root.dataset.cells),
+  getJson(root.dataset.shapes),
 ]);
 const config = defs.founding;
 const n = config.size;
@@ -42,7 +44,11 @@ function drawCells() {
       const key = `${x},${y}`;
       const island = islands.get(key);
       if (island) {
-        parts.push(`<span class="cell island" title="${escapeHtml(island.name)}">${escapeHtml(island.name.slice(0, 6))}</span>`);
+        parts.push(
+          `<span class="cell island" title="${escapeHtml(island.name)}">` +
+            `<canvas class="island-pixels" data-island="${island.id}" width="32" height="32" aria-hidden="true"></canvas>` +
+            `<span class="cell-name">${escapeHtml(island.name.slice(0, 8))}</span></span>`,
+        );
       } else if (free.has(key)) {
         const chosen = state.cell === key ? " chosen" : "";
         parts.push(`<button type="button" class="cell free${chosen}" data-cell="${key}" aria-label="区画 (${x}, ${y})"></button>`);
@@ -52,6 +58,7 @@ function drawCells() {
     }
   }
   grid.innerHTML = parts.join("");
+  drawAllIslands(grid, shapes, defs);
   document.getElementById("cell-text").textContent = state.cell ? `選んだ区画: (${state.cell})` : "";
 }
 
@@ -137,7 +144,7 @@ function refreshTerrain() {
 
 function updateShapeStatus() {
   const count = state.land.size;
-  const capital = state.capital ? `首都: (${state.capital.join(", ")})` : "首都: 自動で選ぶ（薄い赤の印）";
+  const capital = state.capital ? `首都: (${state.capital.join(", ")})` : "首都: 自動選択（薄い赤の印）";
   document.getElementById("shape-status").textContent =
     `陸地 ${count} マス（${config.land_min}〜${config.land_max}）・地形の変更 ${state.edits.size} / ${config.terrain_edits} ・ ${capital}`;
 }
@@ -224,14 +231,15 @@ document.getElementById("clear-edits").addEventListener("click", () => {
 const editTerrain = document.getElementById("edit-terrain");
 for (const t of config.land_terrains) editTerrain.add(new Option(defs.terrain[t].name, t));
 document.getElementById("shape-hint").textContent =
-  `陸地は ${config.land_min}〜${config.land_max} マスで、1つにつながった形にします（縁の1マスは海）。` +
-  `平地・森・山は自動で配られ、${config.terrain_edits} マスまで描き直せます。押したまま動かすと続けて描けます。`;
+  `陸地は ${config.land_min}〜${config.land_max} マスです（外周の1マスは海）。離れ小島も描けます。` +
+  `平地・森・山は自動で配られ、${config.terrain_edits} マスまで変更できます。押したまま動かすと続けて描けます。`;
 
 // --- 3. 地下資源 --------------------------------------------------------------
 
 function drawResources() {
   document.getElementById("resource-hint").textContent =
-    `${config.max_resources} つまで選べます。選んだ資源だけが山の鉱山で掘れます（鋼材には鉄鉱石と石炭の両方が要ります）。`;
+    `${config.max_resources} 種類まで選べます。選んだ資源だけを山の鉱山・採石場で採掘できます` +
+    `（鋼鉄には鉄鉱石と石炭の両方が必要です。鉱山は1国 ${defs.facilities.mine?.max_per_island ?? "-"} か所まで）。`;
   document.getElementById("resources").innerHTML = Object.entries(defs.mining)
     .map(([id, name]) => `<label><input type="checkbox" value="${id}"> ${escapeHtml(name)}</label>`)
     .join("");
@@ -274,9 +282,13 @@ document.getElementById("regimes").addEventListener("change", () => {
 // --- 5. 名前 -----------------------------------------------------------------
 
 function drawNames() {
-  document.getElementById("names").innerHTML = Object.entries(config.name_max)
-    .map(([key, max]) => `<label>${escapeHtml(config.name_labels[key])} <input name="${key}" maxlength="${max}" required></label>`)
+  const styles = Object.entries(config.place_styles)
+    .map(([id, label]) => `<option value="${id}"${id === config.place_style ? " selected" : ""}>${escapeHtml(label)}</option>`)
     .join("");
+  document.getElementById("names").innerHTML =
+    Object.entries(config.name_max)
+      .map(([key, max]) => `<label>${escapeHtml(config.name_labels[key])} <input name="${key}" maxlength="${max}" required></label>`)
+      .join("") + `<label>地名の様式 <select name="place_style">${styles}</select></label>`;
 }
 
 // --- 建国 --------------------------------------------------------------------
@@ -292,6 +304,7 @@ document.getElementById("found-button").addEventListener("click", async () => {
   }
   const names = {};
   for (const input of document.querySelectorAll("#names input")) names[input.name] = input.value.trim();
+  const placeStyle = document.querySelector("#names select[name=place_style]")?.value || "";
   const button = document.getElementById("found-button");
   button.disabled = true;
   const res = await sendJson(root.dataset.found, "POST", {
@@ -302,6 +315,7 @@ document.getElementById("found-button").addEventListener("click", async () => {
     resources: [...state.resources],
     edits: [...state.edits].map(([k, t]) => [...k.split(",").map(Number), t]),
     seed: state.seed,
+    place_style: placeStyle,
     cell: state.cell.split(",").map(Number),
   });
   button.disabled = false;

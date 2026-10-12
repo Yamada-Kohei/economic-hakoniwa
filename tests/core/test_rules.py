@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from hakoniwa_core import facilities as fac
@@ -102,27 +104,27 @@ def test_spoilage(game):
 
 def test_employment_by_priority_and_commute(game):
     island = make_island(game)
-    home(game, island, 5, 6, 200)  # 働き手 100 人
-    office = add(island, "government_office", 5, 5)  # 優先順位 9、100 人
+    home(game, island, 5, 6, 2000)  # 労働者 1,000 人
+    office = add(island, "government_office", 5, 5)  # 優先順位 9、1,000 人
     farm = add(island, "farm", 7, 7)  # 優先順位 7
     far = add(island, "farm", 12, 12)  # 通勤圏の外
     run(game, island, ["employment"])
-    assert office.workers == 100
+    assert office.workers == 1000
     assert farm.workers == 0
     assert far.workers == 0
-    island.tile(5, 6).population = 300
+    island.tile(5, 6).population = 3000
     run(game, island, ["employment"])
-    assert (office.workers, farm.workers) == (100, 50)
+    assert (office.workers, farm.workers) == (1000, 500)
 
 
 def test_power_shortage_cuts_low_priority_and_needs_grid(game):
     island = make_island(game)
-    home(game, island, 6, 6, 3000, level="metropolis")
-    home(game, island, 6, 7, 3000, level="metropolis")  # 家庭は 6000 人 × 0.005 = 30 使う
+    home(game, island, 6, 6, 30000, level="metropolis")
+    home(game, island, 6, 7, 30000, level="metropolis")  # 家庭は 60000 人 × 0.0005 = 30 使う
     plant = add(island, "thermal_power_plant", 5, 6, stock={"coal": 4000})  # 30 作る
     high = add(island, "mine", 4, 6, recipe="coal", priority=9)  # 2 使う
     low = add(island, "machinery_plant", 6, 5, stock={"steel": 4000}, priority=1)  # 4 使う
-    home(game, island, 11, 11, 200, level="village")
+    home(game, island, 11, 11, 2000, level="village")
     cut_off = add(island, "mine", 11, 10, recipe="iron_ore")  # 発電所の送電網とつながっていない
     run(game, island, ["employment", "production"])
     assert plant.operating_rate == 1000
@@ -137,8 +139,8 @@ def test_power_shortage_cuts_low_priority_and_needs_grid(game):
 
 def test_construction_uses_exact_materials(game):
     island = make_island(game)
-    home(game, island, 5, 6, 600)
-    site = add(island, "farm", 6, 6, built=False)  # 2 ターン、人手 20、木材 5
+    home(game, island, 5, 6, 6000)
+    site = add(island, "farm", 6, 6, built=False)  # 2 ターン、人手 200、木材 5
     stock.add(island.warehouse, "wood", 3000, 0, game.defs.goods)
     run(game, island, ["employment", "construction", "distribution"], turns=1)
     assert site.progress == 0  # 最初のターンは資材が届くだけ
@@ -158,9 +160,9 @@ def test_construction_uses_exact_materials(game):
 
 def test_distribution_feeds_people_first(game):
     island = make_island(game)
-    home(game, island, 5, 6, 500)  # 食料 10 が要る
+    home(game, island, 5, 6, 5000)  # 食料 10 が要る
     factory = add(island, "food_factory", 6, 6)
-    factory.workers = 80
+    factory.workers = 800
     stock.add(island.warehouse, "grain", 15_000, 0, game.defs.goods)
     run(game, island, ["distribution"])
     assert island.stats["food.need"] == 10
@@ -170,22 +172,46 @@ def test_distribution_feeds_people_first(game):
 
 def test_population_starves_without_food(game):
     island = make_island(game)
-    home(game, island, 5, 6, 500)
+    home(game, island, 5, 6, 5000)
     run(game, island, ["distribution", "population"], turns=3)
-    assert island.tile(5, 6).population < 500
+    assert island.tile(5, 6).population < 5000
 
 
 def test_housing_grows_near_vacancies_but_not_on_no_development(game):
     island = make_island(game)
-    home(game, island, 5, 5, 100, level="village")  # まだ町に育つほど住んでいない
+    home(game, island, 5, 5, 1000, level="village")  # まだ町に育つほど住んでいない
     add(island, "steel_mill", 8, 8)
     for x in range(5, 12):
         for y in range(5, 12):
             if (x, y) not in ((5, 5), (8, 8), (9, 9)):
                 island.tile(x, y).zone = ZONE_NO_DEVELOPMENT
+    # 資源がなければ町はできず、そのことを1度だけ知らせる
+    run(game, island, ["employment", "population", "housing"], turns=2)
+    assert [f for f in island.facilities if f.kind == "housing" and (f.x, f.y) != (5, 5)] == []
+    assert island.ext["housing_short"] == ["wood"]
+    stock.add(island.warehouse, "wood", 7000, 0, game.defs.goods)
+    island.log.clear()
     run(game, island, ["employment", "population", "housing"])
     new = [f for f in island.facilities if f.kind == "housing" and (f.x, f.y) != (5, 5)]
     assert [(f.x, f.y) for f in new] == [(9, 9)]
+    assert stock.total(island.warehouse, "wood") == 2000  # 村1つに木材 5 を使った
+    assert "housing_short" not in island.ext
+
+
+def test_housing_short_is_logged_once(game):
+    island = make_island(game)
+    home(game, island, 5, 5, 1000, level="village")
+    add(island, "steel_mill", 8, 8)
+    world = run(game, island, ["employment", "population", "housing"])
+    kinds = [e.kind for e in island.log]
+    assert kinds.count("housing_short") == 1
+    island.log.clear()
+    game.engine.stages = [game.registry.stages[n] for n in ("employment", "population", "housing")]
+    try:
+        game.engine.run_turn(world)
+    finally:
+        game.engine.stages = [game.registry.stages[n] for n in game.config.stages]
+    assert "housing_short" not in [e.kind for e in island.log]
 
 
 def test_build_order_checks(game):
@@ -209,11 +235,18 @@ def test_build_order_checks(game):
     assert reason("build", far) == "reason_far_from_capital"
     assert reason("build", {"facility": "farm", "x": 40, "y": 6}) == "reason_out_of_bounds"
     assert reason("build", {"facility": "farm", "x": 6}) == "reason_invalid_payload"
+    # 鉱山は1国2か所まで（工事中も数える）
+    island.resources = ["coal", "iron_ore"]
+    add(island, "mine", 3, 3, recipe="coal")
+    island.tile(5, 3).terrain = island.tile(6, 3).terrain = "mountain"
+    add(island, "mine", 5, 3, recipe="iron_ore", built=False)
+    third = {"facility": "mine", "x": 6, "y": 3, "recipe": "coal"}
+    assert reason("build", third) == "reason_too_many"
 
 
 def test_orders_run_in_turn(game):
     island = make_island(game)
-    add(island, "government_office", 5, 5, workers=100)  # 行政力 10 + 100 × 0.1
+    add(island, "government_office", 5, 5, workers=5000)  # 行政力 5000 × 0.001 = 5
     orders = [
         ("build", {"facility": "farm", "x": 7, "y": 7, "name": "みどり農場"}),
         ("build_power_line", {"tiles": [[6, 5], [7, 5]]}),
@@ -236,12 +269,13 @@ def test_orders_run_in_turn(game):
     assert island.facility_at(5, 5).priority == 3
     failed = next(e for e in island.log if e.kind == "order_failed")
     assert format_log(game.defs, failed.kind, failed.args) == (
-        "命令「取り壊し」を実行できませんでした（首都の建物は取り壊せません）"
+        "命令「撤去」を実行できませんでした（首都の建物は撤去できません）"
     )
 
 
 def test_demolish_returns_stock_and_removes_power_line(game):
     island = make_island(game)
+    add(island, "government_office", 5, 5, workers=2000)  # 行政力 2
     farm = add(island, "food_factory", 7, 7, stock={"grain": 3000})
     island.tile(8, 8).infra["power"] = 1
     orders = [("demolish", {"x": 7, "y": 7}), ("demolish", {"x": 8, "y": 8})]
@@ -254,9 +288,37 @@ def test_demolish_returns_stock_and_removes_power_line(game):
 def test_admin_power_limits_orders(game):
     island = make_island(game)
     orders = [("build", {"facility": "farm", "x": 6 + i, "y": 6}) for i in range(3)]
-    run(game, island, ["execute_orders"], orders=orders)  # 行政力 10、建設 5 ずつ
-    assert [o.status for o in island.orders] == [ORDER_DONE, ORDER_DONE, "pending"]
+    run(game, island, ["execute_orders"], orders=orders)  # 中央省庁がなければ行政力 1
+    assert [o.status for o in island.orders] == [ORDER_DONE, "pending", "pending"]
     assert island.log[-1].kind == "order_postponed"
+
+
+@pytest.mark.parametrize(("workers", "power"), [(0, 1), (999, 1), (1000, 1), (3000, 3), (9000, 5)])
+def test_admin_power_from_civil_servants(game, workers, power):
+    from hakoniwa_core.modules.planning import admin_power
+
+    island = make_island(game)
+    add(island, "government_office", 5, 5, workers=workers)
+    assert admin_power(island, SimpleNamespace(defs=game.defs, config=game.config)) == power
+
+
+def test_rename_place(game):
+    from hakoniwa_core.naming import place_of
+
+    island = make_island(game)
+    island.ext["places"] = [f"地{i}" for i in range(16)]
+    island.regime["economy"] = "market"  # 計画経済の自動の名前には地名が入らない
+    farm = add(island, "farm", 7, 7)
+    run(
+        game,
+        island,
+        ["execute_orders"],
+        orders=[("rename_place", {"x": 6, "y": 6, "name": "緑野"})],
+    )
+    assert island.orders[0].status == ORDER_DONE
+    assert place_of(island, 7, 7, game.config) == "緑野"  # 同じ区画（8 マス四方）
+    assert place_of(island, 9, 9, game.config) != "緑野"
+    assert "緑野" in facility_name(game.defs, game.config, island, farm)
 
 
 def test_disaster_halts_a_facility(game, game_dir):

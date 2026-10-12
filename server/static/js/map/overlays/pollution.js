@@ -3,7 +3,7 @@ import { heat } from "./scale.js";
 
 export default {
   id: "pollution",
-  label: "汚染",
+  label: "汚染度",
   color(map, i) {
     const p = map.pollution[i];
     if (!p) return null;

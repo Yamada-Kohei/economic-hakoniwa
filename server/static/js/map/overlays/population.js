@@ -7,6 +7,6 @@ export default {
   color(map, i) {
     const p = map.population[i];
     if (!p) return null;
-    return heat(Math.log10(p) / Math.log10(3000), 280);
+    return heat(Math.log10(p) / Math.log10(30000), 280);
   },
 };

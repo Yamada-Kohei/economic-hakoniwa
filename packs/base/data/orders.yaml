@@ -1,7 +1,8 @@
-# 命令。admin_cost: 要る行政力、payload: 命令の中身の形（JSON Schema）。
+# 命令。admin_cost: 要る行政力（ふつうは 1。名前の変更は 0 で、ほかの命令の数に数えない）、
+# payload: 命令の中身の形（JSON Schema）。
 # 処理する関数は hakoniwa_core/modules/ の各モジュールで登録します。
 rename_island:
-  admin_cost: 1
+  admin_cost: 0
   payload:
     type: object
     required: [name]
@@ -10,7 +11,7 @@ rename_island:
       name: {type: string, minLength: 1, maxLength: 32}
 
 rename_facility:
-  admin_cost: 1
+  admin_cost: 0
   payload:
     type: object
     required: [x, y, name]
@@ -20,8 +21,19 @@ rename_facility:
       y: {type: integer, minimum: 0}
       name: {type: string, maxLength: 32}   # 空にすると自動の名前に戻る
 
+rename_place:
+  admin_cost: 0
+  payload:
+    type: object
+    required: [x, y, name]
+    additionalProperties: false
+    properties:
+      x: {type: integer, minimum: 0}         # このマスを含む地名の区画の名前を変える
+      y: {type: integer, minimum: 0}
+      name: {type: string, minLength: 1, maxLength: 16}
+
 build:
-  admin_cost: 5
+  admin_cost: 1
   payload:
     type: object
     required: [facility, x, y]
@@ -34,7 +46,7 @@ build:
       name: {type: string, maxLength: 32}
 
 demolish:
-  admin_cost: 3
+  admin_cost: 1
   payload:
     type: object
     required: [x, y]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import string
 from functools import cache
 from typing import Any
 
@@ -15,7 +16,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.founding import land_terrains
-from hakoniwa_core.naming import place_of
+from hakoniwa_core.naming import default_place_style, place_of, place_styles
 from hakoniwa_core.orders import check_order
 from hakoniwa_core.units import from_milli
 from server.game import get_game
@@ -43,7 +44,7 @@ def defs(request):
             "terrain": {tid: _terrain_def(tid, t) for tid, t in d.terrain.items()},
             "facilities": {fid: _facility_def(fid, f) for fid, f in d.facilities.items()},
             "goods": {
-                gid: {"name": d.name("goods", gid), "tier": g.get("tier")}
+                gid: {"name": d.name("goods", gid), "tier": g.get("tier"), "unit": d.unit_name(gid)}
                 for gid, g in d.goods.items()
             },
             "orders": {
@@ -51,7 +52,12 @@ def defs(request):
                 for oid, o in d.orders.items()
             },
             "settlements": {
-                sid: {"name": d.name("settlements", sid), **s} for sid, s in d.settlements.items()
+                sid: {
+                    "name": d.name("settlements", sid),
+                    **{k: v for k, v in s.items() if k != "materials"},
+                    "materials": {g: from_milli(q) for g, q in s.get("materials", {}).items()},
+                }
+                for sid, s in d.settlements.items()
             },
             "axes": {
                 axis: {
@@ -88,6 +94,8 @@ def defs(request):
                     key: display.message(f"name_{key}")
                     for key in game.config.get("founding.name_max")
                 },
+                "place_styles": place_styles(d, game.config),
+                "place_style": default_place_style(d, game.config),
             },
             "theme": _theme(game.config.raw.get("theme", "default")),
         }
@@ -109,6 +117,7 @@ def _facility_def(fid: str, f: Any) -> dict[str, Any]:
         "buildable": f.get("buildable", True),
         "coastal": f.get("coastal", False),
         "near_capital": f.get("near_capital"),
+        "max_per_island": f.get("max_per_island"),
         "workers": f["workers"],
         "priority": f.get("priority"),
         "sprite": f.get("sprite", fid),
@@ -219,6 +228,7 @@ def tile(request, island_id: int, x: int, y: int):
         "capital": island.capital == (row.x, row.y),
     }
     if data["capital"]:
+        data["capital_name"] = island.names.get("capital", "")
         # 体制で決まる首都の建物（議事堂・王宮など）
         regimes = [d.regimes[r] for r in island.regime.values() if r in d.regimes]
         data["capital_buildings"] = [
@@ -327,6 +337,61 @@ def _orders_view(island: m.Island) -> dict[str, Any]:
 
 
 # --- 世界 -------------------------------------------------------------------
+
+
+SYMBOLS = string.ascii_uppercase + string.ascii_lowercase + string.digits
+
+
+@require_GET
+def world_shapes(request):
+    """世界マップに1マス1ピクセルで描く、島の形と町・施設の並び。
+
+    島ごとに、マスごとの1文字の記号を y * size + x の順に並べた文字列を返す。記号の意味は codes
+    （記号 → "terrain:地形"・"settlement:段階"・"facility:種類"・"capital"・"construction"）。
+    """
+    w = m.World.objects.order_by("id").first()
+    if w is None:
+        return _json({"codes": {}, "islands": []})
+    d = get_game().defs
+    housing = fac.housing_kind(get_game().config)
+    codes: dict[str, str] = {}
+    symbol: dict[str, str] = {}
+
+    def code_of(key: str) -> str:
+        if key not in symbol:
+            symbol[key] = SYMBOLS[len(symbol)] if len(symbol) < len(SYMBOLS) else "?"
+            codes[symbol[key]] = key
+        return symbol[key]
+
+    islands = {}
+    for i in w.islands.order_by("id").values("id", "size", "capital_x", "capital_y"):
+        islands[i["id"]] = {**i, "cells": ["?"] * (i["size"] * i["size"])}
+    tiles = m.Tile.objects.filter(island__world=w).values_list("island_id", "x", "y", "terrain")
+    for island_id, x, y, terrain in tiles.iterator(chunk_size=4000):
+        island = islands[island_id]
+        island["cells"][y * island["size"] + x] = code_of(f"terrain:{terrain}")
+    facilities = m.Facility.objects.filter(island__world=w).values_list(
+        "island_id", "x", "y", "kind", "built", "ext"
+    )
+    for island_id, x, y, kind, built, ext in facilities.iterator(chunk_size=4000):
+        island = islands[island_id]
+        if kind == housing:
+            level = (ext or {}).get("level") or d.settlement_levels()[0]
+            key = f"settlement:{level}"
+        elif (x, y) == (island["capital_x"], island["capital_y"]):
+            key = "capital"
+        else:
+            key = f"facility:{kind}" if built else "construction"
+        island["cells"][y * island["size"] + x] = code_of(key)
+    return _json(
+        {
+            "codes": codes,
+            "islands": [
+                {"id": i["id"], "size": i["size"], "cells": "".join(i["cells"])}
+                for i in islands.values()
+            ],
+        }
+    )
 
 
 @require_GET

@@ -2,11 +2,11 @@
 # 施設は首都に近い、建てられる空いたマスから順に置きます。
 default:
   capital:
-    facility: government_office   # 首都のマスに置く
-    town_tiles: 4                 # 首都の周りの町（住宅）
-    town_population: 300
+    facility: government_office   # 首都のマスに置く（中央省庁）
+    town_tiles: 4                 # 首都の周りの町
+    town_population: 3000
     town_level: town
-  villages: {count: 8, population: 150, min_distance: 3, max_distance: 7}
+  villages: {count: 8, population: 1500, min_distance: 3, max_distance: 7}
   facilities:
     - {kind: farm, count: 4}
     - {kind: fishing_port}

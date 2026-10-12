@@ -1,7 +1,9 @@
-"""施設に自動で付く名前。材料は naming.yaml にあります。
+"""地名と、施設に自動で付く名前。材料は naming.yaml にあります。
 
+地名は島を区画に分けて1つずつ付けます。建国のときに選んだ作風（日本風・イギリス風など）で
+自動で作り、プレイヤーが命令で付け直せます。首都のある区画の地名は首都名です。
 プレイヤーが名前を付けた施設はその名前を使い、付けていない施設は、今の体制・業種・地名から
-その場で名前を作ります（体制が変われば自動の名前も変わる）。
+その場で名前を作ります（体制が変われば自動の名前も変わる）。町（住宅地）には名前を付けません。
 """
 
 from __future__ import annotations
@@ -19,13 +21,31 @@ def _style(defs: Defs, config: GameConfig) -> Mapping[str, Any] | None:
     return defs.naming.get(config.raw.get("locale", "ja"))
 
 
-def generate_places(defs: Defs, config: GameConfig, rng: random.Random, count: int) -> list[str]:
-    """島の地名を count 個作る（なるべく重ならないように）。"""
+def place_styles(defs: Defs, config: GameConfig) -> dict[str, str]:
+    """選べる地名の作風と表示名（定義した順）。"""
+    style = _style(defs, config)
+    if style is None:
+        return {}
+    return {sid: s["label"] for sid, s in style["places"].items()}
+
+
+def default_place_style(defs: Defs, config: GameConfig) -> str:
+    styles = place_styles(defs, config)
+    chosen = config.raw.get("naming", {}).get("place_style")
+    return chosen if chosen in styles else next(iter(styles), "")
+
+
+def generate_places(
+    defs: Defs, config: GameConfig, rng: random.Random, count: int, style_id: str = ""
+) -> list[str]:
+    """島の地名を、作風 style_id で count 個作る（なるべく重ならないように）。"""
     style = _style(defs, config)
     if style is None:
         return [f"{i + 1}" for i in range(count)]
-    first, second = style["places"]["first"], style["places"]["second"]
-    pool = [a + b for a in first for b in second]
+    places = style["places"]
+    spec = places.get(style_id) or places[default_place_style(defs, config)]
+    joiner = spec.get("joiner", "")
+    pool = [a + joiner + b for a in spec["first"] for b in spec["second"] if a != b]
     rng.shuffle(pool)
     while len(pool) < count:
         pool += pool
@@ -38,14 +58,19 @@ def place_count(island_size: int, config: GameConfig) -> int:
     return per_side * per_side
 
 
+def place_index(island: IslandState, x: int, y: int, config: GameConfig) -> int:
+    """マスの地名の区画の番号。島を place_block マス四方の区画に分け、区画ごとに1つの地名を使う。"""
+    block = config.get("naming.place_block")
+    per_side = -(-island.size // block)
+    return (y // block) * per_side + x // block
+
+
 def place_of(island: IslandState, x: int, y: int, config: GameConfig) -> str:
-    """マスの地名。島を place_block マス四方の区画に分け、区画ごとに1つの地名を使う。"""
+    """マスの地名。"""
     places = island.ext.get("places") or []
     if not places:
         return island.names.get("capital", island.name)
-    block = config.get("naming.place_block")
-    per_side = -(-island.size // block)
-    return places[((y // block) * per_side + x // block) % len(places)]
+    return places[place_index(island, x, y, config) % len(places)]
 
 
 def assign_serial(island: IslandState, f: Facility) -> None:
@@ -56,6 +81,10 @@ def assign_serial(island: IslandState, f: Facility) -> None:
 
 
 def facility_name(defs: Defs, config: GameConfig, island: IslandState, f: Facility) -> str:
+    """施設の名前。町（住宅地）には名前を付けず、段階の表示名（村・町など）を返す。"""
+    if f.kind == config.get("housing.facility"):
+        level = f.ext.get("level") or defs.settlement_levels()[0]
+        return defs.name("settlements", level, config.raw.get("locale", "ja"))
     if f.name:
         return f.name
     return auto_name(defs, config, island, f)

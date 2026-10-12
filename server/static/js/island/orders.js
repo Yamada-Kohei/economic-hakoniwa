@@ -1,4 +1,5 @@
-// 命令の列: 次のターンに上から実行する命令を並べる。行政力が足りなくなった所から下は次のターンに回る。
+// 命令の列: 次のターンに上から実行する命令を並べる。行政力（1ターンに実行できる命令の数）を
+// 超えた所から下は次のターンに回る。名前の変更は行政力を使わない。
 // 列を変えるたびに、列を丸ごとサーバーに送って保存する。
 
 import { escapeHtml, getJson, sendJson } from "./api.js";
@@ -25,7 +26,7 @@ export class OrderQueue {
     try {
       this.apply(await getJson(this.url));
     } catch {
-      this.message = "命令の列を読めませんでした。";
+      this.message = "命令一覧を取得できませんでした。";
     }
     this.render();
   }
@@ -41,7 +42,7 @@ export class OrderQueue {
   add(kind, payload) {
     const cost = this.defs.orders[kind]?.admin_cost ?? 0;
     this.items.push({ kind, payload, cost, text: `${this.defs.orders[kind]?.name || kind}（保存中）` });
-    this.save(`「${this.defs.orders[kind]?.name || kind}」を列に足しました。`);
+    this.save(`「${this.defs.orders[kind]?.name || kind}」を命令に追加しました。`);
   }
 
   save(done) {
@@ -57,7 +58,7 @@ export class OrderQueue {
         this.message = res.data.errors.map((e) => `${e.index + 1} 番目: ${e.text}`).join(" ");
         await this.load();
       } else {
-        this.message = res.data.error || "保存できませんでした。";
+        this.message = res.data.error || "保存に失敗しました。";
         await this.load();
       }
       this.render();
@@ -70,13 +71,13 @@ export class OrderQueue {
     const rows = this.items.map((o, i) => {
       used += o.cost;
       const late = used > this.adminPower;
-      const divider = late && !cut ? `<li class="divider">ここから下は行政力が足りず、次のターン以降に回ります</li>` : "";
+      const divider = late && !cut ? `<li class="divider">以下は行政力が不足するため、次のターン以降に実行されます</li>` : "";
       if (late) cut = true;
       const warning = this.warnings.get(i);
       return `${divider}
         <li class="${late ? "late" : ""}">
           <span class="order-text">${i + 1}. ${escapeHtml(o.text)} <small>（行政力 ${o.cost}）</small></span>
-          ${warning ? `<span class="warning">今のままでは実行できません: ${escapeHtml(warning)}</span>` : ""}
+          ${warning ? `<span class="warning">現状では実行できません: ${escapeHtml(warning)}</span>` : ""}
           <span class="order-buttons">
             <button type="button" data-move="-1" data-index="${i}" aria-label="上へ"${i === 0 ? " disabled" : ""}>↑</button>
             <button type="button" data-move="1" data-index="${i}" aria-label="下へ"${i === this.items.length - 1 ? " disabled" : ""}>↓</button>
@@ -85,23 +86,23 @@ export class OrderQueue {
         </li>`;
     });
     const recent = this.recent.map((o) => {
-      const mark = o.status === "done" ? "済" : "失敗";
+      const mark = o.status === "done" ? "実行" : "失敗";
       const reason = o.reason ? `: ${escapeHtml(o.reason)}` : "";
       return `<li class="${o.status}">ターン ${o.turn ?? "-"} ${mark} ${escapeHtml(o.text)}${reason}</li>`;
     });
     const total = this.items.reduce((s, o) => s + o.cost, 0);
     this.el.innerHTML = `
-      <h2>命令の列</h2>
-      <p>次のターンの行政力: <strong>${this.adminPower}</strong> ／ 並べた命令: ${total}</p>
-      <ol class="order-list">${rows.join("") || `<li class="muted">命令はまだありません。地図でマスを選んで命令を足してください。</li>`}</ol>
+      <h2>命令</h2>
+      <p>次ターンの行政力（実行できる命令数）: <strong>${this.adminPower}</strong> ／ 予定の命令: ${total}</p>
+      <ol class="order-list">${rows.join("") || `<li class="muted">命令はありません。地図でマスを選択して命令を追加してください。</li>`}</ol>
       <p class="message" aria-live="polite">${escapeHtml(this.message)}</p>
       <form class="actions" data-form="rename-island">
-        <label>島の名前を変える <input name="name" maxlength="32" required></label>
-        <button type="submit">命令の列に足す</button>
+        <label>国名の変更 <input name="name" maxlength="32" required></label>
+        <button type="submit">命令に追加</button>
       </form>
       <details>
         <summary>最近の命令の結果</summary>
-        <ul class="recent">${recent.join("") || `<li class="muted">まだありません。</li>`}</ul>
+        <ul class="recent">${recent.join("") || `<li class="muted">なし</li>`}</ul>
       </details>`;
   }
 

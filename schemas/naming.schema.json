@@ -7,13 +7,20 @@
   "properties": {
     "places": {
       "type": "object",
-      "required": ["first", "second"],
-      "additionalProperties": false,
-      "properties": {
-        "first": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "description": "地名の前半"},
-        "second": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "description": "地名の後半"}
+      "minProperties": 1,
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {
+        "type": "object",
+        "required": ["label", "first", "second"],
+        "additionalProperties": false,
+        "properties": {
+          "label": {"type": "string", "minLength": 1, "description": "作風の表示名（例: イギリス風）"},
+          "first": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "description": "地名の前半"},
+          "second": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "description": "地名の後半"},
+          "joiner": {"type": "string", "description": "前半と後半の間に入れる文字（例: ・）。書かなければ続けて書く"}
+        }
       },
-      "description": "島ごとに作る地名の材料（前半と後半を組み合わせる）"
+      "description": "地名の作風ごとの材料。建国のときに作風を選び、前半と後半を組み合わせて島の地名を作る"
     },
     "numbers": {"type": "array", "items": {"type": "string"}, "description": "1, 2, 3 … の書き方。足りない番号は数字で書く"},
     "industries": {

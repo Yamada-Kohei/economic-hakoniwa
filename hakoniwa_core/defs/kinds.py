@@ -51,6 +51,12 @@ def _normalize_facility(entry: dict[str, Any]) -> dict[str, Any]:
     return entry
 
 
+def _normalize_settlement(entry: dict[str, Any]) -> dict[str, Any]:
+    entry = dict(entry)
+    entry["materials"] = _milli_map(entry.get("materials", {}))
+    return entry
+
+
 def _normalize_start(entry: dict[str, Any]) -> dict[str, Any]:
     entry = dict(entry)
     entry["warehouse"] = _milli_map(entry.get("warehouse", {}))
@@ -79,6 +85,10 @@ def _check_facility(fid: str, entry: Mapping[str, Any], tables: Tables) -> Itera
             path = ("recipes", rname, "requires_resource")
             message = f"{resource} は鉱業資源（mining: true の財）ではありません"
             yield ("facilities", fid, path, message)
+
+
+def _check_settlement(sid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator[Problem]:
+    yield from _goods("settlements", sid, ("materials",), entry.get("materials", {}), tables)
 
 
 def _check_order(oid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator[Problem]:
@@ -144,7 +154,12 @@ KINDS: dict[str, KindSpec] = {
             check=_check_facility,
         ),
         KindSpec("orders", "orders.schema.json", check=_check_order),
-        KindSpec("settlements", "settlements.schema.json"),
+        KindSpec(
+            "settlements",
+            "settlements.schema.json",
+            normalize=_normalize_settlement,
+            check=_check_settlement,
+        ),
         KindSpec("workers", "workers.schema.json"),
         KindSpec("regimes", "regimes.schema.json", check=_check_regime),
         KindSpec(
@@ -157,5 +172,6 @@ KINDS: dict[str, KindSpec] = {
     ]
 }
 
-# 表示名のファイルで使える種類。messages はターンログなどの文面、recipes は作り方の表示名。
-LOCALE_KINDS = (*KINDS, "messages", "recipes")
+# 表示名のファイルで使える種類。messages はターンログなどの文面、recipes は作り方の表示名、
+# units は量の単位（goods.yaml の unit）の表示名。
+LOCALE_KINDS = (*KINDS, "messages", "recipes", "units")

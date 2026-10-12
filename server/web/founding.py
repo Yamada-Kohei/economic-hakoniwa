@@ -124,6 +124,7 @@ def found(request):
             resources=[str(r) for r in data.get("resources", [])],
             terrain_edits={(int(x), int(y)): str(t) for x, y, t in data.get("edits", [])},
             seed=int(data.get("seed", 0)),
+            place_style=str(data.get("place_style") or ""),
         )
         wx, wy = int(data["cell"][0]), int(data["cell"][1])
     except (ValueError, TypeError, KeyError, IndexError):

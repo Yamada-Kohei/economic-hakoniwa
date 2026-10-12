@@ -1,11 +1,12 @@
-"""消費と人口の段と、都市の発展（住宅の自動建設）の段。
+"""消費と人口の段と、都市の発展（町の自動建設と成長）の段。
 
-- 住民は配分の段で受け取った食料を食べ、足りていて住宅に空きがあれば少しずつ増える。
+- 住民は配分の段で受け取った食料を食べ、足りていて町に空きがあれば少しずつ増える。
   足りなければ減る。村の住民のうち仕事のない人は、自給の農業で自分の食べる分をまかなう。
 - 幸福度は食料・働き口・電力・食事の質・汚染から計算する（式 happiness）。
-- 人は仕事のないマスから、人手の足りない施設の通勤圏にある住宅へ少しずつ移る。
-- 人手の足りない施設の通勤圏で住宅が足りなければ、住宅を上の段階へ育てるか、空いた平地に
-  新しい住宅を建てる。開発を止めたマスには建てない。
+- 人は仕事のないマスから、人手の足りない施設の通勤圏にある町へ少しずつ移る。
+- 人手の足りない施設の通勤圏で住む所が足りなければ、町を上の段階へ育てるか、空いた平地に
+  新しい町（村）を作る。どちらも倉庫の資源を使い（settlements.yaml の materials）、
+  足りなければ育たない。開発を止めたマスには作らない。
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import random
 from typing import Any
 
 from hakoniwa_core import facilities as fac
+from hakoniwa_core import stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.geo import within
@@ -43,11 +45,11 @@ def subsistence_persons(defs: Defs, tile: Tile) -> int:
 
 def food_need(island: IslandState, ctx: StageContext) -> int:
     """倉庫から配る食料の量（1000 分の 1 単位）。自給の農業で食べている人の分は除く。"""
-    per_person = to_milli(ctx.config.get("population.food_per_person"))
     persons = sum(
         t.population - subsistence_persons(ctx.defs, t) for t in island.tiles if t.population
     )
-    return persons * per_person
+    # 1人あたりの量は 1000 分の 1 単位より細かいことがあるので、人数を掛けてから丸める
+    return to_milli(persons * ctx.config.get("population.food_per_person"))
 
 
 def happiness(island: IslandState, tile: Tile, facts: dict[str, Any], ctx: StageContext) -> int:
@@ -142,7 +144,7 @@ class Population(IslandStage):
         rng: random.Random,
         homes: dict[Pos, Facility],
     ) -> None:
-        """住む所のない人と仕事のない人を、人手の足りない施設の近くの空いた住宅へ移す。"""
+        """住む所のない人と仕事のない人を、人手の足りない施設の近くの空いた町へ移す。"""
         defs, config = ctx.defs, ctx.config
         share = fac.labor_share(defs)
         if share <= 0:
@@ -214,7 +216,10 @@ class Population(IslandStage):
 
 
 class Housing(IslandStage):
-    """都市の発展: 人手の足りない施設の通勤圏で住宅が足りなければ、住宅を育てるか新しく建てる。"""
+    """都市の発展: 人手の足りない施設の通勤圏で住む所が足りなければ、町を育てるか新しく作る。
+
+    育つ・作るには、その段階の資源（settlements.yaml の materials）を倉庫から使う。
+    """
 
     name = "housing"
 
@@ -226,13 +231,14 @@ class Housing(IslandStage):
         kind = fac.housing_kind(config)
         levels = defs.settlement_levels()
         built = upgraded = 0
+        short: set[str] = set()  # 足りなくて町が育たなかった資源
         vacancies = sorted(_vacancies(defs, island, ctx.turn), key=lambda v: (-v[1], v[0].id))
         for f, missing in vacancies:
             if built >= h["max_new_per_turn"] and upgraded >= h["max_upgrades_per_turn"]:
                 break
             area = within(island, (f.x, f.y), fac.commute_radius(defs, config, f.kind))
             near = [pos for pos in area if pos in homes]
-            # 空いている住宅に入れる人と、もう近くに住んでいて仕事のない人で足りれば育てない
+            # 空いている町に入れる人と、もう近くに住んでいて仕事のない人で足りれば育てない
             room = sum(
                 fac.housing_capacity(defs, homes[pos]) - island.tile(*pos).population
                 for pos in near
@@ -244,14 +250,38 @@ class Housing(IslandStage):
                 pos = self._upgradable(island, defs, homes, near, levels, h["fill_ratio"])
                 if pos is not None:
                     home = homes[pos]
-                    home.ext["level"] = levels[levels.index(home.ext.get("level", levels[0])) + 1]
-                    upgraded += 1
-                    continue
+                    target = levels[levels.index(home.ext.get("level", levels[0])) + 1]
+                    missing = self._pay(island, defs, target)
+                    if not missing:
+                        home.ext["level"] = target
+                        upgraded += 1
+                        continue
+                    short.update(missing)
             if built < h["max_new_per_turn"]:
                 pos = self._empty_site(island, defs, kind, area)
                 if pos is not None:
-                    homes[pos] = fac.new_housing(island, kind, pos, levels[0])
-                    built += 1
+                    missing = self._pay(island, defs, levels[0])
+                    if not missing:
+                        homes[pos] = fac.new_housing(island, kind, pos, levels[0])
+                        built += 1
+                    short.update(missing)
+        # 資源が足りなくなったときだけ知らせる（足りない間は毎ターン同じ知らせを出さない）
+        if short:
+            if not island.ext.get("housing_short"):
+                island.log.append(LogEntry("housing_short", {"goods": sorted(short)}))
+            island.ext["housing_short"] = sorted(short)
+        else:
+            island.ext.pop("housing_short", None)
+
+    @staticmethod
+    def _pay(island: IslandState, defs: Defs, level: str) -> list[str]:
+        """段階 level に育つ資源を倉庫から使う。足りなければ何も使わず、足りない資源を返す。"""
+        need = defs.settlements[level].get("materials", {})
+        missing = [g for g, q in sorted(need.items()) if stock.total(island.warehouse, g) < q]
+        if not missing:
+            for good, qty in sorted(need.items()):
+                stock.take(island.warehouse, good, qty)
+        return missing
 
     @staticmethod
     def _upgradable(
@@ -288,9 +318,9 @@ def check_population_defs(defs: Defs, config: GameConfig) -> list[str]:
     if kind not in defs.facilities:
         problems.append(f"game.yaml の housing.facility にある施設 {kind} が定義されていません")
     if "general" not in defs.workers:
-        problems.append("workers.yaml に general（一般の労働者）がありません")
+        problems.append("workers.yaml に general（一般労働者）がありません")
     if not defs.settlements:
-        problems.append("settlements.yaml に住宅地の段階がありません")
+        problems.append("settlements.yaml に町の段階がありません")
     return problems
 
 

@@ -74,6 +74,7 @@ DB の表は、マス（`Tile`）・施設（`Facility`）・在庫（`Stock`、
 |---|---|
 | `GET /api/defs` | 画面が使う定義データと表示名、建国の設定、テーマ |
 | `GET /api/world` | 世界マップの島の一覧 |
+| `GET /api/world/shapes` | 世界マップに1マス1ピクセルで描く、島ごとの地形と町・施設の並び |
 | `GET /api/islands/<id>/map` | 島のマス（地形・人口・開発禁止・送電線・汚染・幸福度・電力を y × size + x の順に並べたもの）と施設 |
 | `GET /api/islands/<id>/tiles/<x>,<y>` | 1マスと、そこにある施設の詳しい情報 |
 | `GET /api/islands/<id>/orders` | 待っている命令の列、次のターンの行政力、最近の命令の結果 |
