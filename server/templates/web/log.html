@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% load i18n %}
+{% block title %}{{ island.name }} {% translate "ターンログ" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+<h1>{{ island.name }} {% translate "ターンログ" %}</h1>
+<p><a href="{% url 'island' island.id %}">{% translate "島の画面へ戻る" %}</a></p>
+{% for turn, entries in groups %}
+  <section class="panel">
+    <h2>{% blocktranslate %}ターン {{ turn }}{% endblocktranslate %}</h2>
+    {% include "web/log_entries.html" with entries=entries island=island %}
+  </section>
+{% empty %}
+  <p class="muted">{% translate "まだ記録がありません。" %}</p>
+{% endfor %}
+{% if page.paginator.num_pages > 1 %}
+<nav class="pager">
+  {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">{% translate "新しいターン" %}</a>{% endif %}
+  <span>{{ page.number }} / {{ page.paginator.num_pages }}</span>
+  {% if page.has_next %}<a href="?page={{ page.next_page_number }}">{% translate "古いターン" %}</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

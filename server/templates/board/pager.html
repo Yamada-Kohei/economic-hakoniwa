@@ -1,0 +1,7 @@
+{% load i18n %}{% if page.paginator.num_pages > 1 %}
+<nav class="pager">
+  {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">{% translate "前へ" %}</a>{% endif %}
+  <span>{{ page.number }} / {{ page.paginator.num_pages }}</span>
+  {% if page.has_next %}<a href="?page={{ page.next_page_number }}">{% translate "次へ" %}</a>{% endif %}
+</nav>
+{% endif %}

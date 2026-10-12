@@ -19,7 +19,12 @@ from server.orders.models import Order
 from server.turns.models import Backup, TurnLog
 from server.world import models as m
 from server.world.bulk import update_rows
-from server.world.repository import WorldRepository
+from server.world.repository import (
+    ORDER_FIELDS,
+    WorldRepository,
+    order_row,
+    replace_island_contents,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +112,13 @@ def _check_defs_cover(state: WorldState) -> None:
     for island in state.islands.values():
         missing.update(f"地形 {t.terrain}" for t in island.tiles if t.terrain not in defs.terrain)
         missing.update(f"命令 {o.kind}" for o in island.orders if o.kind not in defs.orders)
+        for f in island.facilities:
+            if f.kind not in defs.facilities:
+                missing.add(f"施設 {f.kind}")
+            elif f.recipe not in defs.facilities[f.kind]["recipes"]:
+                missing.add(f"施設 {f.kind} の作り方 {f.recipe}")
+            missing.update(f"財 {g}" for g in f.stock if g not in defs.goods)
+        missing.update(f"財 {g}" for g in island.warehouse if g not in defs.goods)
     if missing:
         raise TurnError("定義データから消えたものがあります: " + "、".join(sorted(missing)))
 
@@ -147,40 +159,15 @@ def rollback(to_turn: int) -> WorldState:
 
     existing = set(m.Island.objects.filter(world=world).values_list("id", flat=True))
     islands = [i for i in state.islands.values() if i.id in existing]
-    update_rows(
-        m.Island,
-        [m.Island(id=i.id, name=i.name, wx=i.wx, wy=i.wy, ext=i.ext) for i in islands],
-        ["name", "wx", "wy", "ext"],
-    )
-    tile_ids = {
-        (island_id, x, y): pk
-        for pk, island_id, x, y in m.Tile.objects.filter(island__world=world).values_list(
-            "id", "island_id", "x", "y"
-        )
-    }
-    update_rows(
-        m.Tile,
-        [
-            m.Tile(
-                id=tile_ids[(i.id, t.x, t.y)], terrain=t.terrain, population=t.population, ext=t.ext
-            )
-            for i in islands
-            for t in i.tiles
-        ],
-        ["terrain", "population", "ext"],
-    )
+    replace_island_contents(islands)
     order_ids = set(Order.objects.filter(island__world=world).values_list("id", flat=True))
     update_rows(
         Order,
-        [
-            Order(id=o.id, status=o.status, reason=o.reason or "", executed_turn=o.executed_turn)
-            for i in islands
-            for o in i.orders
-            if o.id in order_ids
-        ],
-        ["status", "reason", "executed_turn"],
+        [order_row(o) for i in islands for o in i.orders if o.id in order_ids],
+        ORDER_FIELDS,
     )
     TurnLog.objects.filter(island__world=world, turn__gt=to_turn).delete()
+    m.StatRecord.objects.filter(island__world=world, turn__gt=to_turn).delete()
     Backup.objects.filter(world=world, turn__gt=to_turn).delete()
     world.turn = state.turn
     world.ext = state.ext

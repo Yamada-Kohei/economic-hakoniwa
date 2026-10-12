@@ -1,0 +1,7 @@
+{% load i18n %}<ul class="log">
+  {% for e in entries %}
+    <li>{% if e.tile %}<a href="{% url 'island' island.id %}?x={{ e.tile.0 }}&amp;y={{ e.tile.1 }}" title="{% translate '地図でこのマスを見る' %}">{{ e.text }}</a>{% else %}{{ e.text }}{% endif %}</li>
+  {% empty %}
+    <li class="muted">{% translate "出来事はありません。" %}</li>
+  {% endfor %}
+</ul>

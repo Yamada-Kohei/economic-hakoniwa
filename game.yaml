@@ -26,6 +26,7 @@ turn:
 
 orders:
   base_admin_power: 10  # 建国直後の行政力（官庁が入るまでの最低限）
+  max_queue: 30         # 前もって並べておける命令の数
 
 world:
   cells_per_island: 2   # 世界マップの区画数は島数のおよそこの倍
@@ -97,6 +98,10 @@ disasters:
 
 backups:
   keep: 24              # 残すバックアップの数
+
+accounts:
+  signups_per_ip: 1     # 同じ IP から登録できるアカウントの数（0 で制限しない）
+  remember_days: 30     # 照合用に IP のハッシュを残す日数
 
 locale: ja              # 表示名を必ずそろえる言語
 theme: default          # 絵のテーマ（server/static/themes/<名前>/）

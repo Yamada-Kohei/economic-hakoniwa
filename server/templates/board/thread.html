@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% load i18n %}
+{% block title %}{{ thread.title }} - {% translate "掲示板" %}{% endblock %}
+{% block content %}
+<h1>{{ thread.title }}</h1>
+<p><a href="{% url 'board' %}">{% translate "掲示板へ戻る" %}</a></p>
+<ol class="posts">
+  {% for post in page %}
+    <li class="panel">
+      <p class="muted">{% if post.author %}{{ post.author.username }}{% else %}{% translate "退会した人" %}{% endif %} ・ {{ post.created_at|date:"Y-m-d H:i" }}</p>
+      <div class="post-body">{{ post.body|linebreaksbr }}</div>
+    </li>
+  {% endfor %}
+</ol>
+{% include "board/pager.html" %}
+{% if form %}
+  <form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">{% translate "書き込む" %}</button></form>
+{% else %}
+  <p class="muted">{% translate "書き込むにはログインしてください。" %}</p>
+{% endif %}
+{% endblock %}

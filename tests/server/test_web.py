@@ -26,13 +26,26 @@ def test_island_page_and_map_api(client, world):
 def test_tile_api(client, world):
     island = Island.objects.first()
     data = client.get(f"/api/islands/{island.id}/tiles/0,0").json()
-    assert data == {"x": 0, "y": 0, "terrain": "sea", "terrain_name": "海", "population": 0}
+    assert {k: data[k] for k in ("x", "y", "terrain", "terrain_name", "population")} == {
+        "x": 0,
+        "y": 0,
+        "terrain": "sea",
+        "terrain_name": "海",
+        "population": 0,
+    }
+    assert data["place"] and "facility" not in data
+    cx, cy = island.capital_x, island.capital_y
+    capital = client.get(f"/api/islands/{island.id}/tiles/{cx},{cy}").json()
+    assert capital["capital"] and capital["facility"]["owner"] in ("state", "private")
+    assert capital["capital_buildings"]
     assert client.get(f"/api/islands/{island.id}/tiles/99,-1").status_code == 404
 
 
 def test_defs_api(client, db):
     data = client.get("/api/defs").json()
-    assert data["terrain"]["mountain"] == {"name": "山", "height": 2}
+    assert data["terrain"]["mountain"] == {"name": "山", "height": 2, "land": True}
+    assert data["facilities"]["farm"]["buildable"] is True
+    assert data["founding"]["land_terrains"] == ["plain", "mountain", "forest"]
     assert data["theme"]["tile_width"] == 64
 
 

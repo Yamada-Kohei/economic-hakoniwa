@@ -6,6 +6,8 @@
 - DJANGO_DEBUG: 1 で開発モード（既定は 1。公開サーバーでは 0）
 - DJANGO_ALLOWED_HOSTS: カンマ区切り
 - HAKONIWA_GAME_CONFIG: game.yaml の場所（既定はリポジトリ直下）
+- HAKONIWA_CLIENT_IP_HEADER: 利用者の IP を読む場所（既定 REMOTE_ADDR。リバースプロキシの後ろでは
+  HTTP_X_REAL_IP など、プロキシが書き込む場所にする）
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ INSTALLED_APPS = [
     "server.world",
     "server.orders",
     "server.turns",
+    "server.board",
     "server.web",
 ]
 
@@ -64,6 +67,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "server.web.context.own_island",
             ],
         },
     },
@@ -116,3 +120,4 @@ STATICFILES_DIRS = [BASE_DIR / "server" / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 HAKONIWA_GAME_CONFIG = os.environ.get("HAKONIWA_GAME_CONFIG", str(BASE_DIR / "game.yaml"))
+HAKONIWA_CLIENT_IP_HEADER = os.environ.get("HAKONIWA_CLIENT_IP_HEADER", "REMOTE_ADDR")

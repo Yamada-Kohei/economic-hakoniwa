@@ -27,7 +27,7 @@ class WorldAdmin(admin.ModelAdmin):
 class TileInline(admin.TabularInline):
     model = m.Tile
     extra = 0
-    fields = ["x", "y", "terrain", "population"]
+    fields = ["x", "y", "terrain", "population", "zone", "pollution"]
     readonly_fields = ["x", "y"]
     show_change_link = True
 
@@ -44,10 +44,23 @@ class IslandAdmin(admin.ModelAdmin):
     def get_fields(self, request, obj=None):
         if obj is None:
             return ["name", "owner"]
-        return ["name", "owner", "wx", "wy", "size", "inactive", "ext"]
+        return [
+            "name",
+            "owner",
+            "wx",
+            "wy",
+            "size",
+            "capital_x",
+            "capital_y",
+            "resources",
+            "regime",
+            "names",
+            "inactive",
+            "ext",
+        ]
 
     def get_readonly_fields(self, request, obj=None):
-        return ["wx", "wy", "size"] if obj else []
+        return ["wx", "wy", "size", "capital_x", "capital_y"] if obj else []
 
     def get_inlines(self, request, obj):
         return [TileInline] if obj else []
@@ -56,7 +69,7 @@ class IslandAdmin(admin.ModelAdmin):
         if change:
             super().save_model(request, obj, form, change)
             return
-        # 新しい島: 空いている区画に、ランダムな形の陸地を作る（建国の画面はフェーズ1）
+        # 新しい島: 空いている区画に、ランダムな形・資源・体制で建国した島を作る
         created = create_sample_island(
             get_or_create_world(), obj.name, random.Random(), owner=obj.owner
         )
@@ -66,5 +79,24 @@ class IslandAdmin(admin.ModelAdmin):
 
 @admin.register(m.Tile)
 class TileAdmin(admin.ModelAdmin):
-    list_display = ["island", "x", "y", "terrain", "population"]
-    list_filter = ["terrain"]
+    list_display = ["island", "x", "y", "terrain", "population", "zone", "pollution"]
+    list_filter = ["terrain", "zone"]
+
+
+@admin.register(m.Facility)
+class FacilityAdmin(admin.ModelAdmin):
+    list_display = ["island", "number", "kind", "x", "y", "owner", "built", "workers", "status"]
+    list_filter = ["kind", "built", "owner"]
+    search_fields = ["name"]
+
+
+@admin.register(m.Stock)
+class StockAdmin(admin.ModelAdmin):
+    list_display = ["island", "facility", "good", "made_turn", "quantity"]
+    list_filter = ["good"]
+
+
+@admin.register(m.StatRecord)
+class StatRecordAdmin(admin.ModelAdmin):
+    list_display = ["island", "turn", "name", "value"]
+    list_filter = ["name"]

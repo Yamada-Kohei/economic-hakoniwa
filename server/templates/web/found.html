@@ -1,0 +1,62 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{% translate "建国" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+{% csrf_token %}
+<h1>{% translate "建国" %}</h1>
+<p class="muted">{% translate "島の場所・形・地形・地下資源・首都・体制・名前を決めて、最後に「建国する」を押します。建国したあとは、形と体制は変えられません。" %}</p>
+
+<div id="founding" data-seed="{{ seed }}" data-defs="{% url 'api_defs' %}" data-world="{% url 'api_world' %}"
+     data-cells="{% url 'api_founding_cells' %}" data-shape="{% url 'api_founding_shape' %}"
+     data-terrain="{% url 'api_founding_terrain' %}" data-found="{% url 'api_founding' %}">
+
+  <section class="panel">
+    <h2>1. {% translate "世界マップの場所" %}</h2>
+    <p class="muted">{% translate "空いている区画（白）から1つ選んでください。" %}</p>
+    <div id="cell-grid" class="world-grid"></div>
+    <p id="cell-text"></p>
+  </section>
+
+  <section class="panel">
+    <h2>2. {% translate "島の形と地形" %}</h2>
+    <p class="muted" id="shape-hint"></p>
+    <div class="founding-tools" role="group" aria-label="{% translate '描く道具' %}">
+      <label><input type="radio" name="tool" value="land" checked> {% translate "陸を描く" %}</label>
+      <label><input type="radio" name="tool" value="sea"> {% translate "海に戻す" %}</label>
+      <label><input type="radio" name="tool" value="terrain"> {% translate "地形を変える" %}</label>
+      <select id="edit-terrain" aria-label="{% translate '変える先の地形' %}"></select>
+      <label><input type="radio" name="tool" value="capital"> {% translate "首都を置く" %}</label>
+    </div>
+    <div class="founding-map-wrap">
+      <canvas id="founding-map" width="512" height="512" aria-label="{% translate '島の形' %}"></canvas>
+    </div>
+    <p>
+      <button type="button" id="random-shape">{% translate "ランダムな形にする" %}</button>
+      <button type="button" id="reroll-terrain">{% translate "地形を配り直す" %}</button>
+      <button type="button" id="clear-edits">{% translate "地形の変更を取り消す" %}</button>
+    </p>
+    <p id="shape-status" aria-live="polite"></p>
+    <ul id="shape-problems" class="problems"></ul>
+  </section>
+
+  <section class="panel">
+    <h2>3. {% translate "地下資源" %}</h2>
+    <p class="muted" id="resource-hint"></p>
+    <div id="resources" class="choices"></div>
+  </section>
+
+  <section class="panel">
+    <h2>4. {% translate "体制" %}</h2>
+    <div id="regimes" class="form-grid"></div>
+    <p class="muted" id="capital-building"></p>
+  </section>
+
+  <section class="panel">
+    <h2>5. {% translate "名前" %}</h2>
+    <div id="names" class="form-grid"></div>
+  </section>
+
+  <p><button type="button" id="found-button" class="primary">{% translate "建国する" %}</button></p>
+  <ul id="found-problems" class="problems" aria-live="polite"></ul>
+</div>
+<script type="module" src="{% static 'js/founding/main.js' %}"></script>
+{% endblock %}

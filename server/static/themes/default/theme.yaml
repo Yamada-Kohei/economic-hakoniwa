@@ -10,3 +10,24 @@ terrain:              # 地形ごとの色（上面、左の側面、右の側�
   forest:   {top: "#3f8a3a", left: "#326e2e", right: "#295a26"}
   mountain: {top: "#9a8b77", left: "#7b6f5f", right: "#665c4f"}
 fallback: {top: "#cccccc", left: "#aaaaaa", right: "#999999"}
+# 施設の色と高さ（段）。絵の代わりに色付きの箱で描きます。色は上面の色で、側面は少し暗くします。
+facility_unit: 10       # 施設の高さ1段あたりのピクセル
+facilities:
+  farm:                     {color: "#e3c565", height: 0.3}
+  lumber_camp:              {color: "#7a5a35", height: 1}
+  quarry:                   {color: "#b9b2a6", height: 1}
+  mine:                     {color: "#5e5248", height: 1.5}
+  fishing_port:             {color: "#4fa3c7", height: 1}
+  steel_mill:               {color: "#8a4b3c", height: 3}
+  building_materials_plant: {color: "#c49a6c", height: 2}
+  machinery_plant:          {color: "#6c7a89", height: 2.5}
+  food_factory:             {color: "#e08e5a", height: 2}
+  thermal_power_plant:      {color: "#555b63", height: 3.5}
+  hydro_power_plant:        {color: "#3d7ea6", height: 2.5}
+  government_office:        {color: "#f2efe6", height: 3}
+  housing:                  {color: "#d9826b", height: 1}   # 高さは住宅地の段階（settlements の height）
+facility_fallback: {color: "#bbbbbb", height: 1.5}
+capital_roof: "#c9a227"   # 首都の建物の屋根の色
+construction: "#ffffff"   # 工事中の枠の色
+power_line: "#333333"     # 送電線
+no_development: "rgba(255, 255, 255, 0.45)"  # 開発を止めたマスの斜線
