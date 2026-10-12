@@ -27,7 +27,7 @@ from hakoniwa_core.units import to_milli
 MAX_SITES = 2  # 同時に進める工事の数
 POWER_MARGIN = 1.25  # 発電の能力を、使う量のこの倍に保つ
 FOOD_MARGIN = 1.1  # 食料の生産を、食べる量のこの倍に保つ
-MAX_MISSING_WORKERS = 100  # 足りない働き手がこの人数より多い間は、連鎖を太くしない
+MAX_MISSING_WORKERS = 1000  # 足りない労働者がこの人数より多い間は、連鎖を太くしない
 # 連鎖を太くするときに、この順で数をそろえていく施設
 GROWTH = ("steel_mill", "machinery_plant", "building_materials_plant", "food_factory")
 
@@ -85,7 +85,7 @@ def _flows(island: IslandState, defs: Defs, config: GameConfig) -> tuple[dict, d
             demand[good] = demand.get(good, 0) + qty
     population = sum(t.population for t in island.tiles)
     power = config.get("power.good")
-    demand[power] = demand.get(power, 0) + population * to_milli(config.get("power.household_use"))
+    demand[power] = demand.get(power, 0) + to_milli(population * config.get("power.household_use"))
     return supply, demand
 
 

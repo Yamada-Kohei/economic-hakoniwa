@@ -23,21 +23,22 @@
     },
     "coastal": {"type": "boolean", "description": "海か浅瀬に接したマスにだけ建てられる"},
     "near_capital": {"type": "integer", "minimum": 0, "description": "首都のマスからこのマス数以内にだけ建てられる"},
-    "buildable": {"type": "boolean", "description": "命令で建てられるか。false は自動で建つもの（住宅など）。書かなければ true"},
+    "max_per_island": {"type": "integer", "minimum": 1, "description": "1つの国が持てる数（工事中も数える）。書かなければ上限なし"},
+    "buildable": {"type": "boolean", "description": "命令で建てられるか。false は自動で建つもの（町など）。書かなければ true"},
     "construction": {
       "type": "object",
       "required": ["turns"],
       "additionalProperties": false,
       "properties": {
         "turns": {"type": "integer", "minimum": 1, "description": "資材と人手がそろったときに工事にかかるターン数"},
-        "labor": {"type": "integer", "minimum": 0, "description": "工事に1ターンあたり要る人手"},
+        "labor": {"type": "integer", "minimum": 0, "description": "工事に1ターンあたり要る労働者の数"},
         "materials": {"$ref": "#/$defs/amounts", "description": "工事全体で要る資材"}
       }
     },
-    "workers": {"type": "integer", "minimum": 0, "description": "全力で動くのに要る働き手の数"},
+    "workers": {"type": "integer", "minimum": 0, "description": "全力で動くのに要る労働者の数"},
     "commute_radius": {"type": "integer", "minimum": 0, "description": "通勤圏（マス）。書かなければサーバー設定の既定値"},
     "priority": {"type": "integer", "minimum": 0, "maximum": 9, "description": "雇用と配分の優先順位の既定値（0〜9、大きいほど先）。書かなければサーバー設定の既定値"},
-    "admin_power": {"type": "number", "minimum": 0, "description": "働く人1人あたりに生む行政力（官庁など）"},
+    "admin_power": {"type": "number", "minimum": 0, "description": "働く人1人あたりに生む行政力（中央省庁など）"},
     "pollution": {
       "type": "object",
       "required": ["amount", "radius"],

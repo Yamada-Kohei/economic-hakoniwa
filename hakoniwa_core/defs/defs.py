@@ -76,7 +76,7 @@ class Defs:
         return [gid for gid, good in self.goods.items() if good.get("mining")]
 
     def settlement_levels(self) -> list[str]:
-        """住宅地の段階を、小さい順に。"""
+        """町（住宅地）の段階を、小さい順に。"""
         return sorted(self.settlements, key=lambda s: self.settlements[s]["min_population"])
 
     def recipe_name(self, facility: str, recipe: str, lang: str = "ja") -> str:
@@ -87,6 +87,11 @@ class Defs:
             return names[key]
         outputs = self.facilities[facility]["recipes"][recipe]["outputs"]
         return "・".join(self.name("goods", g, lang) for g in outputs) or recipe
+
+    def unit_name(self, good: str, lang: str = "ja") -> str:
+        """資源の量の単位の表示名（トンなど）。単位を決めていなければ空。"""
+        unit = self.goods.get(good, {}).get("unit")
+        return self.name("units", unit, lang) if unit else ""
 
     def name(self, kind: str, entry_id: str, lang: str = "ja") -> str:
         """表示名。見つからなければ名前そのものを返す。"""

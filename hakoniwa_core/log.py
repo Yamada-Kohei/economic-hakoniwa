@@ -27,6 +27,10 @@ def format_log(defs: Defs, kind: str, args: dict[str, Any], lang: str = "ja") ->
         for k, v in args.items()
         if k != "reason_args"
     }
+    if isinstance(args.get("good"), str):
+        shown.setdefault("unit", defs.unit_name(args["good"], lang))
+    if isinstance(args.get("goods"), list):
+        shown["goods"] = "・".join(defs.name("goods", g, lang) for g in args["goods"])
     if isinstance(args.get("reason"), str):
         shown["reason"] = format_log(defs, args["reason"], args.get("reason_args") or {}, lang)
     try:

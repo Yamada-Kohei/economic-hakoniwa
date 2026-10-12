@@ -104,7 +104,7 @@ class Production(IslandStage):
         """
         config = ctx.config
         grid_of = self._grids(island)
-        household_use = to_milli(config.get("power.household_use"))
+        household_use = config.get("power.household_use")
         household_priority = config.get("power.household_priority")
         housing = fac.housing_kind(config)
 
@@ -129,7 +129,7 @@ class Production(IslandStage):
         for grid in sorted(set(plants) | set(users) | set(homes)):
             demand = list(users.get(grid, []))
             home_need = sum(island.tile(x, y).population for x, y in homes.get(grid, ()))
-            home_need *= household_use
+            home_need = to_milli(home_need * household_use)
             if home_need:
                 demand.append((HOUSEHOLDS, home_need, household_priority))
             # 燃料の要らない発電所から先に、同じなら優先順位の高い順・番号の順に動かす

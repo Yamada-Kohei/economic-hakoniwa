@@ -50,7 +50,12 @@ def facility_info(row: m.Facility, island: IslandState) -> dict[str, Any]:
         "status": f.status,
         "status_text": status_text(f),
         "stock": [
-            {"good": s.good, "name": defs.name("goods", s.good), "amount": amount(s.quantity)}
+            {
+                "good": s.good,
+                "name": defs.name("goods", s.good),
+                "amount": amount(s.quantity),
+                "unit": defs.unit_name(s.good),
+            }
             for s in row.stocks.order_by("good")
         ],
     }
@@ -65,6 +70,11 @@ def facility_info(row: m.Facility, island: IslandState) -> dict[str, Any]:
         info["level"] = level
         info["level_name"] = defs.name("settlements", level)
         info["capacity"] = defs.settlements[level]["capacity"]
+        levels = defs.settlement_levels()
+        if levels.index(level) + 1 < len(levels):
+            following = levels[levels.index(level) + 1]
+            info["next_level_name"] = defs.name("settlements", following)
+            info["next_materials"] = goods_list(defs.settlements[following].get("materials", {}))
         return info
     if f.built:
         info["workers_needed"] = fdef["workers"]
@@ -97,7 +107,7 @@ def status_text(f: Facility) -> str:
 def goods_list(amounts: dict[str, int]) -> list[dict[str, Any]]:
     defs = get_game().defs
     return [
-        {"good": g, "name": defs.name("goods", g), "amount": amount(q)}
+        {"good": g, "name": defs.name("goods", g), "amount": amount(q), "unit": defs.unit_name(g)}
         for g, q in sorted(amounts.items())
     ]
 
@@ -120,7 +130,7 @@ def describe_order(kind: str, payload: dict[str, Any]) -> str:
         return f"{name}: {count} マス"
     if kind == "set_priority":
         return f"{name}: {where} → {payload.get('priority')}"
-    if kind in ("rename_island", "rename_facility"):
+    if kind in ("rename_island", "rename_facility", "rename_place"):
         new = payload.get("name", "")
         return f"{name}: {where} 「{new}」" if where else f"{name}: 「{new}」"
     return f"{name} {where}".strip()
@@ -139,20 +149,20 @@ def log_entries(logs) -> list[dict[str, Any]]:
     return out
 
 
-# 島の画面に出す統計の名前と表示名（StatRecord の name）
+# 島の画面に出す統計の名前と表示名（StatRecord の name）と単位。単位の good: は資源の単位
 SUMMARY_STATS = [
     ("population", "人口", "人"),
-    ("labor", "働き手", "人"),
-    ("employed", "雇われている人", "人"),
-    ("subsistence", "自給の農業", "人"),
+    ("labor", "労働者", "人"),
+    ("employed", "就業者", "人"),
+    ("subsistence", "自給農業従事者", "人"),
     ("unemployment", "失業率", "%"),
     ("happiness", "幸福度", ""),
-    ("food.ratio", "食料の足りている割合", "%"),
-    ("power.capacity", "発電できる量", ""),
-    ("power.demand", "電力を使いたい量", ""),
-    ("admin_power", "次のターンの行政力", ""),
-    ("facilities", "施設の数", ""),
-    ("construction", "工事中の施設", ""),
+    ("food.ratio", "食料充足率", "%"),
+    ("power.capacity", "発電量", "good:electricity"),
+    ("power.demand", "電力需要", "good:electricity"),
+    ("admin_power", "行政力（次ターンの命令実行数）", ""),
+    ("facilities", "施設数", ""),
+    ("construction", "建設中の施設", ""),
 ]
 
 
@@ -170,6 +180,8 @@ def summary(stats: dict[str, float]) -> list[dict[str, Any]]:
         if key not in stats:
             continue
         value = stats[key]
+        if unit.startswith("good:"):
+            unit = " " + get_game().defs.unit_name(unit.removeprefix("good:"))
         if unit == "%":
             text = f"{value * 100:.0f}%"
         elif isinstance(value, float) and not value.is_integer():
@@ -181,7 +193,7 @@ def summary(stats: dict[str, float]) -> list[dict[str, Any]]:
 
 
 def goods_table(stats: dict[str, float]) -> list[dict[str, Any]]:
-    """財ごとの在庫と、このターンの生産量。"""
+    """資源ごとの在庫と、このターンの生産量。"""
     defs = get_game().defs
     rows = []
     for good, gdef in defs.goods.items():
@@ -192,6 +204,7 @@ def goods_table(stats: dict[str, float]) -> list[dict[str, Any]]:
                 {
                     "good": good,
                     "name": defs.name("goods", good),
+                    "unit": defs.unit_name(good),
                     "tier": gdef.get("tier"),
                     "stock": round(stock, 1),
                     "production": round(made, 1),

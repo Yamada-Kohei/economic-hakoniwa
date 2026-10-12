@@ -46,6 +46,7 @@ def island_page(request, island_id: int):
         "goods": display.goods_table(stats),
         "regime": regime,
         "resources": [defs.name("goods", g) for g in island.resources or []],
+        "capital_name": (island.names or {}).get("capital", ""),
         "logs": display.log_entries(logs.filter(turn=last_turn)) if last_turn is not None else [],
         "log_turn": last_turn,
         "show_guide": island.world.turn - founded < GUIDE_TURNS,
@@ -127,14 +128,37 @@ def help_page(request):
             "orders": orders,
             "commute": game.config.get("labor.commute_radius"),
             "base_admin": game.config.get("orders.base_admin_power"),
+            "max_admin": game.config.get("orders.max_admin_power"),
+            "admin_per_office": _admin_people(defs),
+            "settlements": [
+                {
+                    "name": defs.name("settlements", sid),
+                    "capacity": s["capacity"],
+                    "materials": display.goods_list(s.get("materials", {})),
+                }
+                for sid, s in ((sid, defs.settlements[sid]) for sid in defs.settlement_levels())
+            ],
+            "units": [
+                {"name": defs.name("goods", g), "unit": defs.unit_name(g)}
+                for g in defs.goods
+                if defs.unit_name(g)
+            ],
         },
     )
+
+
+def _admin_people(defs) -> int | None:
+    """行政力 1 に要る公務員の数（admin_power を持つ施設の係数から）。"""
+    rates = [f["admin_power"] for f in defs.facilities.values() if f.get("admin_power")]
+    return round(1 / max(rates)) if rates else None
 
 
 def _placement_notes(f) -> str:
     notes = []
     if f.get("coastal"):
-        notes.append("海に面したマスだけ")
+        notes.append("海に面したマスのみ")
     if f.get("near_capital") is not None:
         notes.append(f"首都から {f['near_capital']} マス以内")
+    if f.get("max_per_island") is not None:
+        notes.append(f"1国 {f['max_per_island']} か所まで")
     return "・".join(notes)

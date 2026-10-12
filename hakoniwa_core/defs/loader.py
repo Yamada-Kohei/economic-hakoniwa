@@ -295,6 +295,15 @@ class _Loader:
     ) -> None:
         lang = self.config.raw.get("locale", "ja")
         names = locales.get(lang, {})
+        for gid, good in tables["goods"].items():
+            unit = good.get("unit")
+            if unit is not None and unit not in names.get("units", {}):
+                origin = origins[("goods", gid)]
+                self._issue(
+                    origin.file,
+                    origin.file.line_of([gid]),
+                    f"単位 {unit} の表示名が locale/{lang}/units.yaml にありません",
+                )
         for kind, entries in tables.items():
             if not KINDS[kind].needs_locale:
                 continue

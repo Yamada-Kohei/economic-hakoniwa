@@ -1,8 +1,10 @@
-# 住宅地の段階。住宅のマスは、働き手が要る建物の通勤圏で住宅が足りないと上の段階へ育ちます。
+# 町（住宅地）の段階。町のマスは、労働者が要る建物の通勤圏で住む所が足りないと上の段階へ育ちます。
 # capacity: この段階まで育ったマスに住める上限、min_population: この人数から見た目がこの段階になる、
 # height: 建物の高さ（段）、subsistence: 仕事のない住民が自給の農業で食べていけるか
+# materials: この段階に育つとき（いちばん下の段階は新しく建つとき）に倉庫から使う資源。
+#            足りなければ、そろうまで育ちません。
 # min_population は1つ下の段階の capacity より大きくします（育たないと見た目も変わらない）。
-village:    {min_population: 0,    capacity: 200,  height: 1, subsistence: true}
-town:       {min_population: 250,  capacity: 600,  height: 2}
-city:       {min_population: 800,  capacity: 1500, height: 4}
-metropolis: {min_population: 2000, capacity: 3000, height: 6}
+village:    {min_population: 0,     capacity: 2000,  height: 1, subsistence: true, materials: {wood: 5}}
+town:       {min_population: 2500,  capacity: 6000,  height: 2, materials: {wood: 10, building_materials: 10}}
+city:       {min_population: 8000,  capacity: 15000, height: 4, materials: {building_materials: 30, steel: 5}}
+metropolis: {min_population: 20000, capacity: 30000, height: 6, materials: {building_materials: 60, steel: 15, machinery: 2}}

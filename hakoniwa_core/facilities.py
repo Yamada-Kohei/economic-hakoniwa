@@ -61,7 +61,7 @@ def is_halted(f: Facility, turn: int) -> bool:
 
 
 def labor_share(defs: Defs) -> float:
-    """住民のうち働き手になる割合（フェーズ1は一般の労働者だけ）。"""
+    """住民のうち労働者になる割合（フェーズ1は一般労働者だけ）。"""
     return defs.workers["general"].get("share", 1.0)
 
 
@@ -118,6 +118,9 @@ def placement_problem(
         return ("reason_tile_occupied", {})
     if fdef.get("coastal") and not is_coastal(island, (x, y), lambda t: is_land(defs, t)):
         return ("reason_not_coastal", {"facility": kind})
+    limit = fdef.get("max_per_island")
+    if limit is not None and sum(1 for f in island.facilities if f.kind == kind) >= limit:
+        return ("reason_too_many", {"facility": kind, "max": limit})
     near = fdef.get("near_capital")
     if near is not None:
         capital = island.capital
@@ -147,7 +150,7 @@ def default_recipe(defs: Defs, kind: str) -> str | None:
 
 
 def settlement_of(defs: Defs, population: int) -> str:
-    """住民の数から決まる、住宅地の見た目の段階（村・町など）。"""
+    """住民の数から決まる、町（住宅地）の見た目の段階（村・町など）。"""
     levels = defs.settlement_levels()
     found = levels[0]
     for level in levels:
@@ -162,7 +165,7 @@ def housing_capacity(defs: Defs, f: Facility) -> int:
 
 
 def new_housing(island: IslandState, kind: str, pos: tuple[int, int], level: str) -> Facility:
-    """住宅を建てる（自動で建つので工事はない）。"""
+    """町（住宅地）を建てる（自動で建つので工事はない。資源は呼ぶ側が倉庫から使う）。"""
     home = Facility(
         id=island.next_facility_id(),
         kind=kind,

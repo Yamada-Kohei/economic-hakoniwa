@@ -270,8 +270,8 @@ def test_pages_render(client, world):
     log = client.get(f"/islands/{island.id}/log/").content.decode()
     assert "ターン 1" in log
     page = client.get(f"/islands/{island.id}/").content.decode()
-    assert 'id="orders"' not in page and "島のようす" in page
+    assert 'id="orders"' not in page and "国勢" in page
     _own_island(client)
     page = client.get(f"/islands/{island.id}/").content.decode()
-    assert 'id="orders"' in page and "自分の島" in page
+    assert 'id="orders"' in page and "自国" in page
     assert island.name in client.get("/world/").content.decode()

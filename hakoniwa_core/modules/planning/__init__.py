@@ -18,16 +18,20 @@ from hakoniwa_core.turn.context import StageContext
 
 
 def admin_power(island: IslandState, ctx: StageContext) -> int:
-    """そのターンに使える行政力 = 基本の値（建国直後の最低限）＋ 官庁で働く公務員の数 × 係数。
+    """そのターンに使える行政力（1ターンに実行できる命令の数）。
 
-    係数は施設の定義の admin_power（働く人1人あたり）。人数は前のターンに雇えた人数。
+    中央省庁で働く公務員の数 × 係数（施設の定義の admin_power、働く人1人あたり）の整数部分で、
+    最低 orders.base_admin_power、最大 orders.max_admin_power。人数は前のターンに雇えた人数。
     """
-    extra = 0.0
+    power = 0.0
     for f in island.facilities:
         per_worker = ctx.defs.facilities[f.kind].get("admin_power", 0)
         if f.built and per_worker:
-            extra += f.workers * per_worker
-    return ctx.config.get("orders.base_admin_power") + int(extra)
+            power += f.workers * per_worker
+    low = ctx.config.get("orders.base_admin_power")
+    high = ctx.config.get("orders.max_admin_power")
+    # 1e-9 は 0.001 × 1000 などの小数の誤差で 1 少なくならないように
+    return max(low, min(high, int(power + 1e-9)))
 
 
 class ExecuteOrders(IslandStage):

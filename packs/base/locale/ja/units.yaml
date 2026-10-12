@@ -1,0 +1,7 @@
+# 量の単位の表示名（goods.yaml の unit）。原油のガロンのように、資源を足すときに一緒に足せます。
+ton: トン
+cubic_meter: m³
+piece: 台
+megawatt_hour: MWh
+gallon: ガロン
+barrel: バレル

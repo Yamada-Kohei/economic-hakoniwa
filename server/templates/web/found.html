@@ -3,15 +3,15 @@
 {% block content %}
 {% csrf_token %}
 <h1>{% translate "建国" %}</h1>
-<p class="muted">{% translate "島の場所・形・地形・地下資源・首都・体制・名前を決めて、最後に「建国する」を押します。建国したあとは、形と体制は変えられません。" %}</p>
+<p class="muted">{% translate "島の場所・形・地形・地下資源・首都・体制・名前を決めて、最後に「建国する」を押します。建国後は形と体制を変更できません。" %}</p>
 
 <div id="founding" data-seed="{{ seed }}" data-defs="{% url 'api_defs' %}" data-world="{% url 'api_world' %}"
-     data-cells="{% url 'api_founding_cells' %}" data-shape="{% url 'api_founding_shape' %}"
+     data-cells="{% url 'api_founding_cells' %}" data-shapes="{% url 'api_world_shapes' %}" data-shape="{% url 'api_founding_shape' %}"
      data-terrain="{% url 'api_founding_terrain' %}" data-found="{% url 'api_founding' %}">
 
   <section class="panel">
     <h2>1. {% translate "世界マップの場所" %}</h2>
-    <p class="muted">{% translate "空いている区画（白）から1つ選んでください。" %}</p>
+    <p class="muted">{% translate "空いている区画（白）を1つ選んでください。" %}</p>
     <div id="cell-grid" class="world-grid"></div>
     <p id="cell-text"></p>
   </section>
@@ -22,7 +22,7 @@
     <div class="founding-tools" role="group" aria-label="{% translate '描く道具' %}">
       <label><input type="radio" name="tool" value="land" checked> {% translate "陸を描く" %}</label>
       <label><input type="radio" name="tool" value="sea"> {% translate "海に戻す" %}</label>
-      <label><input type="radio" name="tool" value="terrain"> {% translate "地形を変える" %}</label>
+      <label><input type="radio" name="tool" value="terrain"> {% translate "地形を変更" %}</label>
       <select id="edit-terrain" aria-label="{% translate '変える先の地形' %}"></select>
       <label><input type="radio" name="tool" value="capital"> {% translate "首都を置く" %}</label>
     </div>
@@ -52,6 +52,7 @@
 
   <section class="panel">
     <h2>5. {% translate "名前" %}</h2>
+    <p class="muted">{% translate "地名は選んだ様式で島の区画ごとに自動で付き、首都のある区画は首都名になります。建国後に命令で変更できます。" %}</p>
     <div id="names" class="form-grid"></div>
   </section>
 

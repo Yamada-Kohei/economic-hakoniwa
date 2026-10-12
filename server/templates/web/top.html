@@ -9,9 +9,9 @@
 {% if own %}
   <p class="lead"><a href="{% url 'island' own.id %}">{% blocktranslate with name=own.name %}{{ name }} を見る{% endblocktranslate %}</a></p>
 {% elif user.is_authenticated %}
-  <p class="lead"><a href="{% url 'found' %}">{% translate "島を作る（建国）" %}</a></p>
+  <p class="lead"><a href="{% url 'found' %}">{% translate "建国する" %}</a></p>
 {% else %}
-  <p class="lead">{% translate "島を作って、産業と人口を育てるゲームです。" %}
+  <p class="lead">{% translate "島国を建国し、産業と人口を育てるゲームです。" %}
     <a href="{% url 'signup' %}">{% translate "登録して建国する" %}</a> ・ <a href="{% url 'login' %}">{% translate "ログイン" %}</a></p>
 {% endif %}
 {% if world %}

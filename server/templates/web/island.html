@@ -6,6 +6,7 @@
   <h1>{{ island.name }}</h1>
   <p class="muted">
     {% if island.owner %}{{ island.owner.username }}{% else %}{% translate "持ち主なし" %}{% endif %}
+    {% if capital_name %} ・ {% translate "首都" %}: {{ capital_name }}{% endif %}
     {% for r in regime %} ・ {{ r.axis }}: {{ r.name }}{% endfor %}
     {% if resources %} ・ {% translate "地下資源" %}: {{ resources|join:"、" }}{% endif %}
     {% if stats_turn is not None %} ・ {% blocktranslate with turn=stats_turn %}ターン {{ turn }} の時点{% endblocktranslate %}{% endif %}
@@ -16,11 +17,11 @@
 <details class="guide" open>
   <summary>{% translate "はじめの手順" %}</summary>
   <ol>
-    <li>{% translate "地図のマスを押すと、地形・人口・施設の様子が右（狭い画面では下）に出ます。赤い点は止まっている施設です。" %}</li>
-    <li>{% translate "空いている平地を選び「建てる」で施設を建てる命令を足します。命令は次のターンの更新で上から実行されます。" %}</li>
-    <li>{% translate "工場には働き手・原料・電力が要ります。発電所から施設までを送電線（または施設どうしが隣り合うこと）でつないでください。" %}</li>
-    <li>{% translate "人は住宅地から近くの施設に通って働きます。住宅地は働き口のある所の近くに自然に広がります。" %}</li>
-    <li>{% translate "命令に使える行政力には限りがあります。官庁で働く人が増えると行政力も増えます。" %}</li>
+    <li>{% translate "地図のマスを押すと、地形・人口・施設の状況が右（狭い画面では下）に表示されます。赤い点は停止中の施設です。" %}</li>
+    <li>{% translate "空いている平地を選択し「建設」で命令を追加します。命令は次のターンの更新時に上から実行されます。" %}</li>
+    <li>{% translate "工場には労働者・原料・電力が必要です。発電所と施設を送電線（または施設同士の隣接）で接続してください。" %}</li>
+    <li>{% translate "労働者は町から近くの施設に通勤します。町は働き口の近くに自然に形成され、形成・発展には木材・建材などの資源を使います。" %}</li>
+    <li>{% translate "1ターンに実行できる命令の数（行政力）は原則1つです。中央省庁の公務員が増えると増え、最大5つまでです。名称・地名の変更は数に含みません。" %}</li>
   </ol>
   <p><a href="{% url 'help' %}">{% translate "手引きをもっと読む" %}</a></p>
 </details>
@@ -53,26 +54,26 @@
 
 <div class="island-stats">
   <section class="panel">
-    <h2>{% translate "島のようす" %}</h2>
+    <h2>{% translate "国勢" %}</h2>
     {% if summary %}
       <table class="info">
         {% for row in summary %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
       </table>
     {% else %}
-      <p class="muted">{% translate "まだ更新されていません。最初のターンの更新のあとに出ます。" %}</p>
+      <p class="muted">{% translate "未集計です。最初のターンの更新後に表示されます。" %}</p>
     {% endif %}
   </section>
   <section class="panel">
-    <h2>{% translate "財（倉庫の在庫とこのターンの生産）" %}</h2>
+    <h2>{% translate "資源（倉庫在庫と当ターンの生産量）" %}</h2>
     {% if goods %}
       <table class="goods">
-        <thead><tr><th>{% translate "財" %}</th><th>{% translate "在庫" %}</th><th>{% translate "生産" %}</th></tr></thead>
+        <thead><tr><th>{% translate "資源" %}</th><th>{% translate "在庫" %}</th><th>{% translate "生産量" %}</th><th>{% translate "単位" %}</th></tr></thead>
         <tbody>
-          {% for g in goods %}<tr><td>{{ g.name }}</td><td>{{ g.stock }}</td><td>{{ g.production }}</td></tr>{% endfor %}
+          {% for g in goods %}<tr><td>{{ g.name }}</td><td>{{ g.stock }}</td><td>{{ g.production }}</td><td>{{ g.unit }}</td></tr>{% endfor %}
         </tbody>
       </table>
     {% else %}
-      <p class="muted">{% translate "まだ記録がありません。" %}</p>
+      <p class="muted">{% translate "記録がありません。" %}</p>
     {% endif %}
   </section>
 </div>

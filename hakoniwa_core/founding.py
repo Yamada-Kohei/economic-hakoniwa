@@ -18,7 +18,14 @@ from hakoniwa_core import stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.geo import NEIGHBORS4, NEIGHBORS8, components, distance, shortest_path, within
-from hakoniwa_core.naming import assign_serial, generate_places, place_count
+from hakoniwa_core.naming import (
+    assign_serial,
+    default_place_style,
+    generate_places,
+    place_count,
+    place_index,
+    place_styles,
+)
 from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE, Facility, IslandState, LogEntry, Tile
 
 Pos = tuple[int, int]
@@ -44,13 +51,17 @@ class FoundingPlan:
     resources: list[str] = field(default_factory=list)  # 鉱業資源
     terrain_edits: dict[Pos, str] = field(default_factory=dict)  # 描き直した地形
     seed: int = 0  # 地形を配るときの種
+    place_style: str = ""  # 地名の作風（naming.yaml の places）。空なら既定の作風
 
 
 # --- 島の形と地形 ---------------------------------------------------------------
 
 
 def shape_problems(land: Iterable[Pos], config: GameConfig) -> list[Problem]:
-    """陸地の形の問題。縁の1マスは海、マス数は上限と下限の間、1つにつながっていること。"""
+    """陸地の形の問題。縁の1マスは海、マス数は上限と下限の間。
+
+    陸地は1つにつながっていなくてよい（同じ国の離れ小島も描ける）。
+    """
     land = set(land)
     size = config.get("island.size")
     problems: list[Problem] = []
@@ -62,29 +73,7 @@ def shape_problems(land: Iterable[Pos], config: GameConfig) -> list[Problem]:
         problems.append(("founding_too_small", {"count": len(land), "min": low}))
     if len(land) > high:
         problems.append(("founding_too_large", {"count": len(land), "max": high}))
-    if land and len(_connected(land)) > 1:
-        problems.append(("founding_not_connected", {}))
     return problems
-
-
-def _connected(land: set[Pos]) -> list[set[Pos]]:
-    remaining = set(land)
-    groups = []
-    while remaining:
-        start = min(remaining, key=lambda p: (p[1], p[0]))
-        remaining.discard(start)
-        group = {start}
-        queue = deque([start])
-        while queue:
-            x, y = queue.popleft()
-            for dx, dy in NEIGHBORS4:
-                n = (x + dx, y + dy)
-                if n in remaining:
-                    remaining.discard(n)
-                    group.add(n)
-                    queue.append(n)
-        groups.append(group)
-    return groups
 
 
 def auto_terrain(land: Iterable[Pos], config: GameConfig, seed: int) -> dict[Pos, str]:
@@ -198,6 +187,12 @@ def regime_problems(regime: Mapping[str, str], defs: Defs) -> list[Problem]:
     return problems
 
 
+def place_style_problems(style: str, defs: Defs, config: GameConfig) -> list[Problem]:
+    if style and style not in place_styles(defs, config):
+        return [("founding_unknown_place_style", {})]
+    return []
+
+
 def name_problems(names: Mapping[str, str], config: GameConfig) -> list[Problem]:
     problems: list[Problem] = []
     limits = config.get("founding.name_max")
@@ -236,6 +231,7 @@ def plan_problems(plan: FoundingPlan, defs: Defs, config: GameConfig) -> list[Pr
     problems += resource_problems(plan.resources, defs, config)
     problems += regime_problems(plan.regime, defs)
     problems += name_problems(plan.names, config)
+    problems += place_style_problems(plan.place_style, defs, config)
     if not problems:
         terrain = final_terrain(plan, config)
         start = start_of(defs, plan.regime)
@@ -301,7 +297,11 @@ def found_island(
         names=names,
     )
     rng = random.Random(f"start:{plan.seed}")
-    island.ext["places"] = generate_places(defs, config, rng, place_count(size, config))
+    style = plan.place_style or default_place_style(defs, config)
+    island.ext["place_style"] = style
+    places = generate_places(defs, config, rng, place_count(size, config), style)
+    places[place_index(island, *plan.capital, config) % len(places)] = names["capital"]
+    island.ext["places"] = places
     place_start(island, defs, config, rng, turn)
     island.log.append(LogEntry("island_founded", {"name": island.name}))
     return island
