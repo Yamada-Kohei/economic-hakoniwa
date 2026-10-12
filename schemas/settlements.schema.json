@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "住宅地の段階 settlements.yaml の1項目（村・町・都市・大都市など）",
+  "type": "object",
+  "required": ["min_population", "capacity", "height"],
+  "additionalProperties": false,
+  "properties": {
+    "min_population": {"type": "integer", "minimum": 0, "description": "マスの住民がこの人数から、この段階の見た目になる"},
+    "capacity": {"type": "integer", "minimum": 1, "description": "この段階まで育った住宅のマスに住める上限"},
+    "height": {"type": "integer", "minimum": 0, "description": "建物の高さ（描画用の段数）"},
+    "subsistence": {"type": "boolean", "description": "仕事のない住民が自給の農業で自分の食べる分をまかなえるか（村など）"},
+    "override": {"const": true}
+  }
+}

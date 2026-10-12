@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, fields
 from typing import Any
 
-from hakoniwa_core.state.model import IslandState, LogEntry, OrderState, Tile, WorldState
+from hakoniwa_core.state.model import (
+    Facility,
+    IslandState,
+    LogEntry,
+    OrderState,
+    Tile,
+    WorldState,
+)
+
+# このターンだけの値なので、写しに入れない
+_TRANSIENT = ("stats", "scratch")
 
 
 def world_to_dict(world: WorldState) -> dict[str, Any]:
@@ -18,7 +28,10 @@ def world_to_dict(world: WorldState) -> dict[str, Any]:
 
 
 def island_to_dict(island: IslandState) -> dict[str, Any]:
-    return asdict(island)
+    data = asdict(island)
+    for key in _TRANSIENT:
+        data.pop(key, None)
+    return data
 
 
 def world_from_dict(data: dict[str, Any]) -> WorldState:
@@ -32,14 +45,23 @@ def world_from_dict(data: dict[str, Any]) -> WorldState:
 
 
 def island_from_dict(d: dict[str, Any]) -> IslandState:
+    """前のフェーズの写し（新しい項目がないもの）も読めるようにする。"""
+    known = {f.name for f in fields(IslandState)} - set(_TRANSIENT)
+    rest = {
+        k: v
+        for k, v in d.items()
+        if k in known and k not in ("tiles", "facilities", "orders", "log", "ext")
+    }
     return IslandState(
-        id=d["id"],
-        name=d["name"],
-        wx=d["wx"],
-        wy=d["wy"],
-        size=d["size"],
-        tiles=[Tile(**t) for t in d["tiles"]],
-        orders=[OrderState(**o) for o in d.get("orders", [])],
+        **rest,
+        tiles=[_build(Tile, t) for t in d["tiles"]],
+        facilities=[_build(Facility, f) for f in d.get("facilities", [])],
+        orders=[_build(OrderState, o) for o in d.get("orders", [])],
         log=[LogEntry(**e) for e in d.get("log", [])],
         ext=dict(d.get("ext") or {}),
     )
+
+
+def _build(cls: type, data: dict[str, Any]) -> Any:
+    known = {f.name for f in fields(cls)}
+    return cls(**{k: v for k, v in data.items() if k in known})

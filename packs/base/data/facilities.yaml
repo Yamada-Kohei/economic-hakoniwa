@@ -1,11 +1,13 @@
-# 施設。数値はフェーズ1で調整する仮の値です。
+# 施設。数値はフェーズ1の試し遊びで調整する仮の値です。
 # 量は全力で動いたときの1ターンあたり。小数も書けます。
+# priority は雇用と配分の優先順位（0〜9、大きいほど先）。プレイヤーが命令で施設ごとに変えられます。
 
 farm:
   category: primary
   terrain: [plain]
   construction: {turns: 2, labor: 20, materials: {wood: 5}}
   workers: 50
+  priority: 7
   recipes:
     default:
       outputs: {grain: 20}
@@ -16,6 +18,7 @@ lumber_camp:
   terrain: [forest]
   construction: {turns: 2, labor: 20, materials: {wood: 2}}
   workers: 40
+  priority: 5
   recipes:
     default:
       outputs: {wood: 10}
@@ -26,42 +29,50 @@ quarry:
   terrain: [mountain]
   construction: {turns: 3, labor: 30, materials: {wood: 5}}
   workers: 60
+  priority: 5
+  pollution: {amount: 1, radius: 1}
   recipes:
     default:
-      outputs: {stone: 10}
+      requires_resource: stone
+      outputs: {stone: 12}
   sprite: quarry
 
 mine:
   category: primary
   terrain: [mountain]
   construction: {turns: 4, labor: 40, materials: {wood: 10, building_materials: 5}}
-  workers: 100
+  workers: 80
+  priority: 5
+  pollution: {amount: 2, radius: 1}
   recipes:
     iron_ore:
       requires_resource: iron_ore
       inputs: {electricity: 2}
-      outputs: {iron_ore: 10}
+      outputs: {iron_ore: 12}
     coal:
       requires_resource: coal
       inputs: {electricity: 2}
-      outputs: {coal: 10}
+      outputs: {coal: 12}
   sprite: mine
 
 fishing_port:
   category: primary
   terrain: [plain]
-  construction: {turns: 3, labor: 30, materials: {wood: 10, stone: 5}}
+  coastal: true
+  construction: {turns: 3, labor: 30, materials: {wood: 15}}
   workers: 60
+  priority: 7
   recipes:
     default:
-      outputs: {fish: 12}
+      outputs: {fish: 24}
   sprite: fishing_port
 
 steel_mill:
   category: industry
   terrain: [plain]
   construction: {turns: 6, labor: 80, materials: {building_materials: 30, machinery: 5}}
-  workers: 300
+  workers: 200
+  pollution: {amount: 8, radius: 2}
   recipes:
     default:
       inputs: {iron_ore: 10, coal: 5, electricity: 5}
@@ -71,19 +82,24 @@ steel_mill:
 building_materials_plant:
   category: industry
   terrain: [plain]
-  construction: {turns: 4, labor: 50, materials: {stone: 20, wood: 10}}
-  workers: 150
+  construction: {turns: 4, labor: 50, materials: {wood: 25}}
+  workers: 100
+  pollution: {amount: 3, radius: 1}
   recipes:
-    default:
+    stone:
       inputs: {stone: 10, wood: 2, electricity: 2}
       outputs: {building_materials: 8}
+    wood:
+      inputs: {wood: 12, electricity: 2}
+      outputs: {building_materials: 5}
   sprite: building_materials_plant
 
 machinery_plant:
   category: industry
   terrain: [plain]
   construction: {turns: 6, labor: 80, materials: {building_materials: 30, steel: 10}}
-  workers: 250
+  workers: 150
+  pollution: {amount: 3, radius: 1}
   recipes:
     default:
       inputs: {steel: 4, electricity: 4}
@@ -94,21 +110,24 @@ food_factory:
   category: industry
   terrain: [plain]
   construction: {turns: 3, labor: 40, materials: {building_materials: 10}}
-  workers: 120
+  workers: 80
+  priority: 6
   recipes:
     default:
-      inputs: {grain: 10, fish: 4, electricity: 1}
-      outputs: {food: 12}
+      inputs: {grain: 12, electricity: 1}
+      outputs: {food: 10}
   sprite: food_factory
 
 thermal_power_plant:
   category: power
   terrain: [plain]
   construction: {turns: 5, labor: 60, materials: {building_materials: 25, steel: 10, machinery: 5}}
-  workers: 80
+  workers: 60
+  priority: 8
+  pollution: {amount: 6, radius: 2}
   recipes:
     default:
-      inputs: {coal: 5}
+      inputs: {coal: 4}
       outputs: {electricity: 30}
   sprite: thermal_power_plant
 
@@ -117,6 +136,7 @@ hydro_power_plant:
   terrain: [mountain]
   construction: {turns: 8, labor: 100, materials: {building_materials: 60, steel: 10, machinery: 5}}
   workers: 30
+  priority: 8
   recipes:
     default:
       outputs: {electricity: 20}
@@ -125,8 +145,22 @@ hydro_power_plant:
 government_office:
   category: admin
   terrain: [plain]
+  near_capital: 3
   construction: {turns: 3, labor: 30, materials: {building_materials: 10, wood: 5}}
   workers: 100
+  priority: 9
+  admin_power: 0.1
   recipes:
     default: {}
   sprite: government_office
+
+# 住宅は自動で建ちます（命令では建てられません）。住める人数と見た目は settlements.yaml で決まります。
+housing:
+  category: housing
+  terrain: [plain]
+  buildable: false
+  construction: {turns: 1}
+  workers: 0
+  recipes:
+    default: {}
+  sprite: housing

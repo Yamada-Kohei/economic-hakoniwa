@@ -1,1 +1,7 @@
 rename_island: 島の名前の変更
+rename_facility: 施設の名前の変更
+build: 施設の建設
+demolish: 取り壊し
+build_power_line: 送電線を引く
+set_no_development: 開発を止めるマスの指定
+set_priority: 配分の優先順位の変更

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from hakoniwa_core.orders import check_order
 from hakoniwa_core.registry import IslandStage, OrderFailed, Registry
 from hakoniwa_core.state import (
@@ -16,8 +18,16 @@ from hakoniwa_core.turn.context import StageContext
 
 
 def admin_power(island: IslandState, ctx: StageContext) -> int:
-    """そのターンに使える行政力。フェーズ1で官庁の公務員の分を足す。"""
-    return ctx.config.get("orders.base_admin_power")
+    """そのターンに使える行政力 = 基本の値（建国直後の最低限）＋ 官庁で働く公務員の数 × 係数。
+
+    係数は施設の定義の admin_power（働く人1人あたり）。人数は前のターンに雇えた人数。
+    """
+    extra = 0.0
+    for f in island.facilities:
+        per_worker = ctx.defs.facilities[f.kind].get("admin_power", 0)
+        if f.built and per_worker:
+            extra += f.workers * per_worker
+    return ctx.config.get("orders.base_admin_power") + int(extra)
 
 
 class ExecuteOrders(IslandStage):
@@ -38,21 +48,25 @@ class ExecuteOrders(IslandStage):
             order.executed_turn = ctx.turn
             check = check_order(ctx.defs, registry, island, order.kind, order.payload)
             if not check.ok:
-                self._fail(island, order, check.reason or "reason_unknown_order")
+                self._fail(island, order, check.reason or "reason_unknown_order", check.args)
                 continue
             try:
                 registry.orders[order.kind].execute(island, order.payload, ctx)
             except OrderFailed as e:
-                self._fail(island, order, e.reason)
+                self._fail(island, order, e.reason, e.args_)
                 continue
             order.status = ORDER_DONE
             island.log.append(LogEntry("order_done", {"order": order.kind}))
 
     @staticmethod
-    def _fail(island: IslandState, order: OrderState, reason: str) -> None:
+    def _fail(island: IslandState, order: OrderState, reason: str, args: dict[str, Any]) -> None:
         order.status = ORDER_FAILED
         order.reason = reason
-        island.log.append(LogEntry("order_failed", {"order": order.kind, "reason": reason}))
+        order.reason_args = dict(args)
+        entry = {"order": order.kind, "reason": reason}
+        if args:
+            entry["reason_args"] = dict(args)
+        island.log.append(LogEntry("order_failed", entry))
 
 
 def register(registry: Registry) -> None:

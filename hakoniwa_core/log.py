@@ -13,15 +13,22 @@ _ARG_KINDS = {
     "facility": "facilities",
     "good": "goods",
     "terrain": "terrain",
+    "level": "settlements",
+    "axis": "messages",
+    "field": "messages",
 }
 
 
 def format_log(defs: Defs, kind: str, args: dict[str, Any], lang: str = "ja") -> str:
+    """文の種類と引数から文面を作る。reason の文に引数があれば reason_args に入れておく。"""
     template = defs.name("messages", kind, lang)
     shown = {
         k: defs.name(_ARG_KINDS[k], v, lang) if k in _ARG_KINDS and isinstance(v, str) else v
         for k, v in args.items()
+        if k != "reason_args"
     }
+    if isinstance(args.get("reason"), str):
+        shown["reason"] = format_log(defs, args["reason"], args.get("reason_args") or {}, lang)
     try:
         return template.format(**shown)
     except (KeyError, IndexError):

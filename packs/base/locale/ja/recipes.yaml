@@ -1,0 +1,5 @@
+# 作り方の表示名（施設に作り方が複数あるときに出します）。名前は「施設_作り方」です。
+mine_iron_ore: 鉄鉱石を掘る
+mine_coal: 石炭を掘る
+building_materials_plant_stone: 石材から作る
+building_materials_plant_wood: 木材から作る

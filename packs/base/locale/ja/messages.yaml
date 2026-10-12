@@ -1,8 +1,108 @@
-# ターンログの文面。{ } の中は文の引数。
+# ターンログや画面の文面。{ } の中は文の引数。
+# 引数 facility・good・terrain・order・level・reason は、その種類の表示名に置き換わります。
+
+# 命令
 order_done: "命令「{order}」を実行しました"
 order_failed: "命令「{order}」を実行できませんでした（{reason}）"
 order_postponed: "行政力が足りず、命令「{order}」から後は次のターンに回りました"
 island_renamed: "島の名前を「{old}」から「{new}」に変えました"
+facility_renamed: "({x}, {y}) の{facility}の名前を「{new}」にしました"
+construction_started: "({x}, {y}) で{facility}の工事を始めました"
+facility_demolished: "({x}, {y}) の{facility}を取り壊しました"
+power_line_built: "送電線を {count} マス引きました"
+power_line_removed: "({x}, {y}) の送電線を外しました"
+no_development_set: "{count} マスを開発を止めるマスにしました"
+no_development_cleared: "{count} マスの開発の停止を解きました"
+priority_changed: "({x}, {y}) の{facility}の優先順位を {priority} にしました"
+
+# 命令を実行できない理由
 reason_unknown_order: "知らない命令です"
 reason_invalid_payload: "命令の中身が正しくありません"
 reason_same_name: "今と同じ名前です"
+reason_unknown_facility: "知らない施設です"
+reason_out_of_bounds: "島の外のマスです"
+reason_wrong_terrain: "{facility}は{terrain}には建てられません"
+reason_tile_occupied: "そのマスにはもう建物があります"
+reason_not_coastal: "{facility}は海に面したマスにしか建てられません"
+reason_far_from_capital: "{facility}は首都から {distance} マス以内にしか建てられません"
+reason_recipe_required: "{facility}は作り方を選んでください"
+reason_unknown_recipe: "{facility}にその作り方はありません"
+reason_missing_resource: "{good}の資源がない島です"
+reason_not_buildable: "{facility}は命令では建てられません（自動で建ちます）"
+reason_capital_building: "首都の建物は取り壊せません"
+reason_nothing_to_demolish: "取り壊すものがありません"
+reason_not_land: "({x}, {y}) は陸地ではありません"
+reason_already_done: "もう済んでいます"
+reason_no_facility: "そのマスに施設がありません"
+
+# 工事と生産
+construction_done: "({x}, {y}) の{facility}が完成しました"
+facility_started: "({x}, {y}) の{facility}が動き始めました"
+facility_restarted: "({x}, {y}) の{facility}が再び動き始めました"
+facility_stopped_workers: "({x}, {y}) の{facility}が人手不足で止まりました"
+facility_stopped_input: "({x}, {y}) の{facility}が{good}不足で止まりました"
+facility_stopped_power: "({x}, {y}) の{facility}が電力不足で止まりました"
+facility_stopped_halted: "({x}, {y}) の{facility}が災害の被害で止まっています"
+facility_stopped_no_demand: "({x}, {y}) の{facility}は電気の使い手がなく止まりました"
+goods_spoiled: "{good}が {amount} 傷んで捨てられました"
+
+# 人口と都市
+settlement_grew: "({x}, {y}) の住宅地が{level}になりました"
+residents_left: "住む所がなく {count} 人が島を出ていきました"
+
+# 災害
+disaster_earthquake: "地震で ({x}, {y}) の{facility}が {turns} ターン止まります"
+disaster_typhoon: "台風で ({x}, {y}) の{facility}が {turns} ターン止まります"
+disaster_flood: "洪水で ({x}, {y}) の{facility}が {turns} ターン止まります"
+disaster_fire: "火事で ({x}, {y}) の{facility}が {turns} ターン止まります"
+
+# 建国
+island_founded: "{name}が建国されました"
+
+# 施設の状態（画面の表示）
+status_starting: "動き始める準備中"
+status_workers: "人手不足"
+status_input: "投入財の不足"
+status_power: "電力不足"
+status_halted: "災害で停止中"
+status_no_demand: "電気の使い手がいない"
+status_construction: "工事中"
+
+# 持ち主と会計
+owner_state: "国営"
+owner_private: "民営"
+accounting_treasury: "国庫直轄"
+accounting_self_supporting: "独立採算"
+
+# 体制の軸と首都の建物
+axis_politics: "政治の仕組み"
+axis_head_of_state: "国家元首の形"
+axis_economy: "経済体制"
+capital_building_parliament: "議事堂"
+capital_building_official_residence: "首相官邸"
+capital_building_party_headquarters: "党本部"
+capital_building_palace: "王宮"
+capital_building_presidential_office: "大統領府"
+
+# 建国の画面
+founding_edge: "陸地は枠の縁から1マス離してください"
+founding_too_small: "陸地が {count} マスです。{min} マス以上にしてください"
+founding_too_large: "陸地が {count} マスです。{max} マス以下にしてください"
+founding_not_connected: "陸地が離れています。1つにつながった形にしてください"
+founding_too_many_edits: "地形の描き直しは {max} マスまでです（今は {count} マス）"
+founding_edit_not_land: "({x}, {y}) は陸地ではないので地形を変えられません"
+founding_unknown_terrain: "{terrain}には描き直せません"
+founding_too_many_resources: "鉱業資源は {max} つまで、重ならないように選んでください"
+founding_unknown_resource: "{good}は選べる鉱業資源ではありません"
+founding_regime_missing: "{axis}を選んでください"
+founding_unknown_regime: "{axis}の選び方が正しくありません"
+founding_name_missing: "{field}を入れてください"
+founding_name_too_long: "{field}は {max} 文字までです"
+founding_capital_not_land: "首都は陸地に置いてください"
+founding_capital_terrain: "首都は{terrain}には置けません"
+founding_no_cell: "その区画は使えません"
+name_country: "国名"
+name_capital: "首都名"
+name_currency: "通貨名"
+name_currency_symbol: "通貨記号"
+name_leader: "国家元首の名前"

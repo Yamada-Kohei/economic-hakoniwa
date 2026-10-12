@@ -1,0 +1,31 @@
+# 体制の選択肢。建国時に軸ごとに1つずつ選びます。
+# フェーズ1で効くのは、首都に建つ建物の見た目と、建国直後の施設の持ち主だけです。
+# 体制ごとの特色（政情や命令の手続きへの効き目）はフェーズ3で足します。
+
+# 政治の仕組み
+democracy:     {axis: politics, capital_building: parliament}
+authoritarian: {axis: politics, capital_building: official_residence}
+totalitarian:  {axis: politics, capital_building: party_headquarters}
+
+# 国家元首の形
+monarchy: {axis: head_of_state, capital_building: palace}
+republic: {axis: head_of_state, capital_building: presidential_office}
+
+# 経済体制。owner: 建国直後の施設の持ち主の既定、state_owned: それでも国営にする施設
+market:
+  axis: economy
+  owner: private
+  state_owned: [government_office]
+  state_accounting: self_supporting
+  start: default
+mixed:
+  axis: economy
+  owner: private
+  state_owned: [government_office, thermal_power_plant, hydro_power_plant, mine, steel_mill]
+  state_accounting: self_supporting
+  start: default
+planned:
+  axis: economy
+  owner: state
+  state_accounting: treasury
+  start: default

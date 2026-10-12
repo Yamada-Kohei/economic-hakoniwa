@@ -8,3 +8,83 @@ rename_island:
     additionalProperties: false
     properties:
       name: {type: string, minLength: 1, maxLength: 32}
+
+rename_facility:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [x, y, name]
+    additionalProperties: false
+    properties:
+      x: {type: integer, minimum: 0}
+      y: {type: integer, minimum: 0}
+      name: {type: string, maxLength: 32}   # 空にすると自動の名前に戻る
+
+build:
+  admin_cost: 5
+  payload:
+    type: object
+    required: [facility, x, y]
+    additionalProperties: false
+    properties:
+      facility: {type: string}
+      x: {type: integer, minimum: 0}
+      y: {type: integer, minimum: 0}
+      recipe: {type: string}                # 作り方が複数ある施設では必ず選ぶ
+      name: {type: string, maxLength: 32}
+
+demolish:
+  admin_cost: 3
+  payload:
+    type: object
+    required: [x, y]
+    additionalProperties: false
+    properties:
+      x: {type: integer, minimum: 0}
+      y: {type: integer, minimum: 0}
+
+build_power_line:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [tiles]
+    additionalProperties: false
+    properties:
+      tiles:
+        type: array
+        minItems: 1
+        maxItems: 64
+        items:
+          type: array
+          prefixItems: [{type: integer, minimum: 0}, {type: integer, minimum: 0}]
+          minItems: 2
+          maxItems: 2
+
+set_no_development:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [tiles, value]
+    additionalProperties: false
+    properties:
+      value: {type: boolean}                # true で指定、false で解除
+      tiles:
+        type: array
+        minItems: 1
+        maxItems: 64
+        items:
+          type: array
+          prefixItems: [{type: integer, minimum: 0}, {type: integer, minimum: 0}]
+          minItems: 2
+          maxItems: 2
+
+set_priority:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [x, y, priority]
+    additionalProperties: false
+    properties:
+      x: {type: integer, minimum: 0}
+      y: {type: integer, minimum: 0}
+      priority: {type: integer, minimum: 0, maximum: 9}

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from hakoniwa_core.config import default_config_path, load_config
@@ -159,7 +161,7 @@ def test_pack_module_adds_stage(game_dir):
         """,
     )
     config = (path / "game.yaml").read_text(encoding="utf-8")
-    config = config.replace("  - execute_orders\n", "  - execute_orders\n  - growth\n")
+    config = re.sub(r"stages:\n(  - .*\n)+", "stages:\n  - execute_orders\n  - growth\n", config)
     (path / "game.yaml").write_text(config + "\ngrowth:\n  rate: 1.0\n", encoding="utf-8")
 
     game = load_game(path / "game.yaml")
