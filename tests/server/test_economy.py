@@ -57,6 +57,33 @@ def test_phase1_island_is_migrated_on_next_turn(world):
     assert JournalEntry.objects.filter(island=island, turn=1).exists()
 
 
+def test_island_without_capital_is_migrated(world):
+    """フェーズ0の世界から残っている、首都も施設もない島も移し替えられる。"""
+    island = Island.objects.order_by("id").first()
+    _make_phase1(island)
+    island.facilities.all().delete()
+    Island.objects.filter(pk=island.pk).update(capital_x=None, capital_y=None)
+    run_turn(force=True)
+    island.refresh_from_db()
+    assert island.economy.get("started") == 0
+    assert island.facilities.filter(kind=get_game().config.get("banking.facility")).count() == 1
+    assert sum(island.accounts.values_list("balance", flat=True)) == 0
+
+
+def test_empty_island_is_migrated_and_keeps_running(world):
+    """住民も首都も施設もない島（フェーズ0のサンプル島）も、移し替えた後のターンが止まらない。"""
+    island = Island.objects.order_by("id").first()
+    _make_phase1(island)
+    island.facilities.all().delete()
+    island.tiles.update(population=0)
+    Island.objects.filter(pk=island.pk).update(capital_x=None, capital_y=None)
+    for _ in range(3):
+        run_turn(force=True)
+    island.refresh_from_db()
+    assert island.economy.get("started") == 0
+    assert sum(island.accounts.values_list("balance", flat=True)) == 0
+
+
 def test_rollback_removes_later_records(world):
     run_turn(force=True)
     run_turn(force=True)
