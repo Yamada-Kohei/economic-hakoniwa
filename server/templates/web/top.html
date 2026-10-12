@@ -5,6 +5,16 @@
     {% if world.next_turn_at %} ・ {% translate "次の更新" %}: {{ world.next_turn_at|date:"Y-m-d H:i" }}{% endif %}
     {% if world.paused %} ・ {% translate "更新は一時停止中" %}{% endif %}
   </p>
+{% endif %}
+{% if own %}
+  <p class="lead"><a href="{% url 'island' own.id %}">{% blocktranslate with name=own.name %}{{ name }} を見る{% endblocktranslate %}</a></p>
+{% elif user.is_authenticated %}
+  <p class="lead"><a href="{% url 'found' %}">{% translate "島を作る（建国）" %}</a></p>
+{% else %}
+  <p class="lead">{% translate "島を作って、産業と人口を育てるゲームです。" %}
+    <a href="{% url 'signup' %}">{% translate "登録して建国する" %}</a> ・ <a href="{% url 'login' %}">{% translate "ログイン" %}</a></p>
+{% endif %}
+{% if world %}
   <h2>{% translate "島の一覧" %}</h2>
   <ul class="island-list">
     {% for island in islands %}
@@ -15,6 +25,6 @@
     {% endfor %}
   </ul>
 {% else %}
-  <p>{% translate "世界がまだありません。python manage.py setup_dev で作れます。" %}</p>
+  <p>{% translate "世界がまだありません。python manage.py setup_dev で作れます。最初の建国でも作られます。" %}</p>
 {% endif %}
 {% endblock %}

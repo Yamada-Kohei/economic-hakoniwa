@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from hakoniwa_core.state import IslandState
 
 if TYPE_CHECKING:
+    from hakoniwa_core.config import GameConfig
     from hakoniwa_core.defs import Defs
     from hakoniwa_core.turn.context import StageContext
 
@@ -84,6 +85,7 @@ class Registry:
         self.stages: dict[str, Stage] = {}
         self.orders: dict[str, OrderHandler] = {}
         self.formulas: dict[str, Callable[..., Any]] = {}
+        self.checks: list[Callable[[Defs, GameConfig], list[str]]] = []
 
     def add_stage(self, stage: Stage) -> None:
         if stage.name in self.stages:
@@ -100,3 +102,7 @@ class Registry:
         if name in self.formulas:
             raise RegistryError(f"式 {name} は登録済みです")
         self.formulas[name] = func
+
+    def add_check(self, func: Callable[[Defs, GameConfig], list[str]]) -> None:
+        """起動時の確認。モジュールが要る定義や設定がそろっているかを調べ、問題を文で返す関数。"""
+        self.checks.append(func)

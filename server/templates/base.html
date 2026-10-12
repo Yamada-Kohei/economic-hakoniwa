@@ -10,8 +10,16 @@
   <header class="site-header">
     <a class="brand" href="{% url 'top' %}">{% translate "経済版箱庭諸国" %}</a>
     <nav>
+      {% if own_island %}
+        <a href="{% url 'island' own_island.id %}">{% translate "自分の島" %}</a>
+      {% else %}
+        <a href="{% url 'found' %}">{% translate "建国" %}</a>
+      {% endif %}
+      <a href="{% url 'world' %}">{% translate "世界マップ" %}</a>
+      <a href="{% url 'board' %}">{% translate "掲示板" %}</a>
+      <a href="{% url 'help' %}">{% translate "手引き" %}</a>
       {% if user.is_authenticated %}
-        <span>{{ user.username }}</span>
+        <span class="muted">{{ user.username }}</span>
         <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}<button type="submit">{% translate "ログアウト" %}</button></form>
       {% else %}
         <a href="{% url 'login' %}">{% translate "ログイン" %}</a>

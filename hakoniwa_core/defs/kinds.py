@@ -28,6 +28,7 @@ class KindSpec:
     check: Callable[[str, Mapping[str, Any], Tables], Iterator[Problem]] = (
         lambda _id, _entry, _tables: iter(())
     )
+    needs_locale: bool = True  # 表示名（locale/<言語>/<種類>.yaml）が要るか
 
 
 def _milli_map(amounts: Mapping[str, float]) -> dict[str, int]:
@@ -50,20 +51,34 @@ def _normalize_facility(entry: dict[str, Any]) -> dict[str, Any]:
     return entry
 
 
+def _normalize_start(entry: dict[str, Any]) -> dict[str, Any]:
+    entry = dict(entry)
+    entry["warehouse"] = _milli_map(entry.get("warehouse", {}))
+    return entry
+
+
+def _goods(
+    kind: str, eid: str, path: tuple[str | int, ...], goods: Any, tables: Tables
+) -> Iterator[Problem]:
+    for good in goods:
+        if good not in tables["goods"]:
+            yield (kind, eid, (*path, good), f"財 {good} は定義されていません")
+
+
 def _check_facility(fid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator[Problem]:
     for i, terrain in enumerate(entry["terrain"]):
         if terrain not in tables["terrain"]:
             yield ("facilities", fid, ("terrain", i), f"地形 {terrain} は定義されていません")
-    for good in entry["construction"].get("materials", {}):
-        if good not in tables["goods"]:
-            path = ("construction", "materials", good)
-            yield ("facilities", fid, path, f"財 {good} は定義されていません")
+    materials = entry["construction"].get("materials", {})
+    yield from _goods("facilities", fid, ("construction", "materials"), materials, tables)
     for rname, recipe in entry["recipes"].items():
         for side in ("inputs", "outputs"):
-            for good in recipe.get(side, {}):
-                if good not in tables["goods"]:
-                    path = ("recipes", rname, side, good)
-                    yield ("facilities", fid, path, f"財 {good} は定義されていません")
+            yield from _goods("facilities", fid, ("recipes", rname, side), recipe[side], tables)
+        resource = recipe.get("requires_resource")
+        if resource is not None and not tables["goods"].get(resource, {}).get("mining"):
+            path = ("recipes", rname, "requires_resource")
+            message = f"{resource} は鉱業資源（mining: true の財）ではありません"
+            yield ("facilities", fid, path, message)
 
 
 def _check_order(oid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator[Problem]:
@@ -71,6 +86,50 @@ def _check_order(oid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator
         Draft202012Validator.check_schema(thaw(entry["payload"]))
     except SchemaError as e:
         yield ("orders", oid, ("payload",), f"payload のスキーマが正しくありません: {e.message}")
+
+
+def _check_regime(rid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator[Problem]:
+    for i, fid in enumerate(entry.get("state_owned", ())):
+        if fid not in tables["facilities"]:
+            yield ("regimes", rid, ("state_owned", i), f"施設 {fid} は定義されていません")
+    start = entry.get("start")
+    if start is not None and start not in tables["start_island"]:
+        yield ("regimes", rid, ("start",), f"start_island.yaml に {start} がありません")
+
+
+def _check_start(sid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator[Problem]:
+    facilities = tables["facilities"]
+    capital = entry["capital"]
+    if capital["facility"] not in facilities:
+        yield ("start_island", sid, ("capital", "facility"), "施設が定義されていません")
+    level = capital.get("town_level")
+    if level is not None and level not in tables["settlements"]:
+        yield ("start_island", sid, ("capital", "town_level"), f"段階 {level} がありません")
+    for i, item in enumerate(entry["facilities"]):
+        kind = item["kind"]
+        if kind not in facilities:
+            yield ("start_island", sid, ("facilities", i), f"施設 {kind} は定義されていません")
+            continue
+        recipe = item.get("recipe")
+        if recipe is not None and recipe not in facilities[kind]["recipes"]:
+            yield ("start_island", sid, ("facilities", i), f"{kind} に作り方 {recipe} はありません")
+        resource = item.get("if_resource")
+        if resource is not None and not tables["goods"].get(resource, {}).get("mining"):
+            yield ("start_island", sid, ("facilities", i), f"{resource} は鉱業資源ではありません")
+    yield from _goods("start_island", sid, ("warehouse",), entry.get("warehouse", {}), tables)
+
+
+def _check_naming(nid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator[Problem]:
+    for fid in entry.get("industries", {}):
+        if fid not in tables["facilities"]:
+            yield ("naming", nid, ("industries", fid), f"施設 {fid} は定義されていません")
+    keys = {r["axis"] for r in tables["regimes"].values()} | {"owner", "category"}
+    for i, pattern in enumerate(entry["patterns"]):
+        for key in pattern.get("when", {}):
+            if key not in keys:
+                path = ("patterns", i, "when", key)
+                message = f"条件 {key} は使えません（使えるもの: {sorted(keys)}）"
+                yield ("naming", nid, path, message)
 
 
 KINDS: dict[str, KindSpec] = {
@@ -85,8 +144,18 @@ KINDS: dict[str, KindSpec] = {
             check=_check_facility,
         ),
         KindSpec("orders", "orders.schema.json", check=_check_order),
+        KindSpec("settlements", "settlements.schema.json"),
+        KindSpec("workers", "workers.schema.json"),
+        KindSpec("regimes", "regimes.schema.json", check=_check_regime),
+        KindSpec(
+            "start_island",
+            "start_island.schema.json",
+            normalize=_normalize_start,
+            check=_check_start,
+        ),
+        KindSpec("naming", "naming.schema.json", check=_check_naming, needs_locale=False),
     ]
 }
 
-# 表示名のファイルで使える種類。messages はターンログなどの文面。
-LOCALE_KINDS = (*KINDS, "messages")
+# 表示名のファイルで使える種類。messages はターンログなどの文面、recipes は作り方の表示名。
+LOCALE_KINDS = (*KINDS, "messages", "recipes")

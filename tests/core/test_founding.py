@@ -1,0 +1,139 @@
+from __future__ import annotations
+
+import random
+
+import pytest
+
+from hakoniwa_core import facilities as fac
+from hakoniwa_core.founding import (
+    FoundingError,
+    FoundingPlan,
+    auto_terrain,
+    found_island,
+    plan_problems,
+    shape_problems,
+)
+from hakoniwa_core.game import load_game
+from hakoniwa_core.geo import components
+from hakoniwa_core.naming import facility_name
+from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE
+from hakoniwa_core.state.generate import generate_land, random_plan
+
+
+@pytest.fixture(scope="module")
+def game():
+    return load_game()
+
+
+def square(x0: int, y0: int, w: int, h: int) -> set[tuple[int, int]]:
+    return {(x, y) for y in range(y0, y0 + h) for x in range(x0, x0 + w)}
+
+
+def plan_for(game, economy="planned", seed=5, **changes) -> FoundingPlan:
+    rng = random.Random(seed)
+    config = game.config
+    land = generate_land(
+        rng, config.get("island.size"), config.get("island.land_min"), config.get("island.land_max")
+    )
+    plan = random_plan(rng, "テスト国", config, game.defs, land)
+    plan.regime["economy"] = economy
+    plan.resources = ["coal", "iron_ore"]
+    for key, value in changes.items():
+        setattr(plan, key, value)
+    return plan
+
+
+def reasons(problems):
+    return [reason for reason, _ in problems]
+
+
+def test_shape_rules(game):
+    config = game.config
+    assert shape_problems(square(8, 8, 12, 12), config) == []
+    assert "founding_edge" in reasons(shape_problems(square(0, 8, 12, 12), config))
+    assert "founding_too_small" in reasons(shape_problems(square(8, 8, 5, 5), config))
+    assert "founding_too_large" in reasons(shape_problems(square(1, 1, 30, 30), config))
+    apart = square(2, 2, 10, 10) | square(18, 18, 10, 10)
+    assert "founding_not_connected" in reasons(shape_problems(apart, config))
+
+
+def test_auto_terrain_is_deterministic_and_keeps_shape(game):
+    land = square(8, 8, 14, 14)
+    a = auto_terrain(land, game.config, 42)
+    assert a == auto_terrain(land, game.config, 42)
+    assert a != auto_terrain(land, game.config, 43)
+    on_land = {pos: t for pos, t in a.items() if pos in land}
+    assert all(game.defs.terrain[t]["land"] for t in on_land.values())
+    assert sum(t == "mountain" for t in on_land.values()) == round(len(land) * 0.12)
+    assert sum(t == "forest" for t in on_land.values()) == round(len(land) * 0.25)
+    assert a[(7, 8)] == "shallows"  # 陸地に接する海
+    assert a[(0, 0)] == "sea"
+
+
+def test_plan_problems(game):
+    plan = plan_for(game)
+    assert plan_problems(plan, game.defs, game.config) == []
+    bad = plan_for(game, resources=["coal", "iron_ore", "stone"])
+    assert "founding_too_many_resources" in reasons(plan_problems(bad, game.defs, game.config))
+    bad = plan_for(game, resources=["grain"])
+    assert "founding_unknown_resource" in reasons(plan_problems(bad, game.defs, game.config))
+    bad = plan_for(game, names={"country": "国"})
+    assert "founding_name_missing" in reasons(plan_problems(bad, game.defs, game.config))
+    bad = plan_for(game, regime={"politics": "democracy"})
+    assert "founding_regime_missing" in reasons(plan_problems(bad, game.defs, game.config))
+    sea = plan_for(game, capital=(0, 0))
+    assert reasons(plan_problems(sea, game.defs, game.config)) == ["founding_capital_not_land"]
+    with pytest.raises(FoundingError):
+        found_island(game.defs, game.config, sea, 1, 0, 0)
+
+
+def test_start_island(game):
+    plan = plan_for(game)
+    island = found_island(game.defs, game.config, plan, 1, 3, 4)
+    defs, config = game.defs, game.config
+    assert island.name == "テスト国"
+    assert island.names["capital"] == "テスト国市"
+    assert island.capital == plan.capital
+    assert island.facility_at(*plan.capital).kind == "government_office"
+    homes = [f for f in island.facilities if f.kind == "housing"]
+    towns = [h for h in homes if h.ext["level"] == "town"]
+    assert len(towns) == 4
+    assert all(island.tile(h.x, h.y).population == 300 for h in towns)
+    assert len(homes) - len(towns) == 8
+    kinds = [f.kind for f in island.facilities]
+    assert kinds.count("farm") == 4
+    assert "mine" in kinds  # 石炭を選んだので石炭の鉱山が建つ
+    assert "quarry" not in kinds  # 石材は選んでいない
+    assert all(f.built for f in island.facilities)
+    # 送電線で、すべての施設と住宅が首都と同じ送電網につながっている
+    nodes = {(f.x, f.y) for f in island.facilities}
+    nodes |= {(t.x, t.y) for t in island.tiles if t.power_line}
+    grid = next(g for g in components(island, nodes) if island.capital in g)
+    assert all((f.x, f.y) in grid for f in island.facilities)
+    # 倉庫の資材と、初めの施設の投入財
+    assert island.warehouse["steel"][0][1] == 40_000
+    plant = next(f for f in island.facilities if f.kind == "thermal_power_plant")
+    assert plant.stock["coal"] == 4_000
+    assert all(fac.housing_capacity(defs, h) >= island.tile(h.x, h.y).population for h in homes)
+    names = [facility_name(defs, config, island, f) for f in island.facilities if f.kind == "farm"]
+    assert names[0].startswith("国営第一")
+
+
+@pytest.mark.parametrize(
+    ("economy", "state_kinds"),
+    [
+        ("planned", None),
+        ("market", {"government_office"}),
+        ("mixed", {"government_office", "thermal_power_plant", "mine"}),
+    ],
+)
+def test_owner_follows_economy(game, economy, state_kinds):
+    island = found_island(game.defs, game.config, plan_for(game, economy), 1, 0, 0)
+    for f in island.facilities:
+        if f.kind == "housing":
+            continue
+        expected = OWNER_STATE if state_kinds is None or f.kind in state_kinds else OWNER_PRIVATE
+        assert f.owner == expected, f.kind
+        if f.owner == OWNER_STATE:
+            accounting = game.defs.regimes[economy]["state_accounting"]
+            assert f.accounting == accounting

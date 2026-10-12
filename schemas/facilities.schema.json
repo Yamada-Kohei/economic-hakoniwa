@@ -13,7 +13,7 @@
     }
   },
   "properties": {
-    "category": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "分類。primary, industry, power, admin など"},
+    "category": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "分類。primary, industry, power, admin, housing など"},
     "terrain": {
       "type": "array",
       "items": {"type": "string"},
@@ -21,6 +21,9 @@
       "uniqueItems": true,
       "description": "建てられる地形"
     },
+    "coastal": {"type": "boolean", "description": "海か浅瀬に接したマスにだけ建てられる"},
+    "near_capital": {"type": "integer", "minimum": 0, "description": "首都のマスからこのマス数以内にだけ建てられる"},
+    "buildable": {"type": "boolean", "description": "命令で建てられるか。false は自動で建つもの（住宅など）。書かなければ true"},
     "construction": {
       "type": "object",
       "required": ["turns"],
@@ -33,7 +36,18 @@
     },
     "workers": {"type": "integer", "minimum": 0, "description": "全力で動くのに要る働き手の数"},
     "commute_radius": {"type": "integer", "minimum": 0, "description": "通勤圏（マス）。書かなければサーバー設定の既定値"},
-    "priority": {"type": "integer", "description": "雇用と配分の優先順位の既定値（大きいほど先）"},
+    "priority": {"type": "integer", "minimum": 0, "maximum": 9, "description": "雇用と配分の優先順位の既定値（0〜9、大きいほど先）。書かなければサーバー設定の既定値"},
+    "admin_power": {"type": "number", "minimum": 0, "description": "働く人1人あたりに生む行政力（官庁など）"},
+    "pollution": {
+      "type": "object",
+      "required": ["amount", "radius"],
+      "additionalProperties": false,
+      "properties": {
+        "amount": {"type": "number", "minimum": 0, "description": "全力で動いたときに自分のマスに出す汚染"},
+        "radius": {"type": "integer", "minimum": 0, "description": "汚染が広がるマス数（遠いほど薄くなる）"}
+      },
+      "description": "汚染の出し方"
+    },
     "recipes": {
       "type": "object",
       "minProperties": 1,

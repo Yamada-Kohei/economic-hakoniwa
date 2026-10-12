@@ -44,6 +44,50 @@ class Defs:
     def orders(self) -> Mapping[str, Mapping[str, Any]]:
         return self.tables["orders"]
 
+    @property
+    def settlements(self) -> Mapping[str, Mapping[str, Any]]:
+        return self.tables["settlements"]
+
+    @property
+    def workers(self) -> Mapping[str, Mapping[str, Any]]:
+        return self.tables["workers"]
+
+    @property
+    def regimes(self) -> Mapping[str, Mapping[str, Any]]:
+        return self.tables["regimes"]
+
+    @property
+    def start_island(self) -> Mapping[str, Mapping[str, Any]]:
+        return self.tables["start_island"]
+
+    @property
+    def naming(self) -> Mapping[str, Mapping[str, Any]]:
+        return self.tables["naming"]
+
+    def regime_axes(self) -> dict[str, list[str]]:
+        """体制の軸ごとの選択肢（定義した順）。例: {"politics": ["democracy", ...], ...}"""
+        axes: dict[str, list[str]] = {}
+        for rid, regime in self.regimes.items():
+            axes.setdefault(regime["axis"], []).append(rid)
+        return axes
+
+    def mining_resources(self) -> list[str]:
+        """建国時に選べる鉱業資源（定義した順）。"""
+        return [gid for gid, good in self.goods.items() if good.get("mining")]
+
+    def settlement_levels(self) -> list[str]:
+        """住宅地の段階を、小さい順に。"""
+        return sorted(self.settlements, key=lambda s: self.settlements[s]["min_population"])
+
+    def recipe_name(self, facility: str, recipe: str, lang: str = "ja") -> str:
+        """作り方の表示名。recipes の表示名がなければ、作るものの名前を並べる。"""
+        key = f"{facility}_{recipe}"
+        names = self.locales.get(lang, {}).get("recipes", {})
+        if key in names:
+            return names[key]
+        outputs = self.facilities[facility]["recipes"][recipe]["outputs"]
+        return "・".join(self.name("goods", g, lang) for g in outputs) or recipe
+
     def name(self, kind: str, entry_id: str, lang: str = "ja") -> str:
         """表示名。見つからなければ名前そのものを返す。"""
         return self.locales.get(lang, {}).get(kind, {}).get(entry_id, entry_id)

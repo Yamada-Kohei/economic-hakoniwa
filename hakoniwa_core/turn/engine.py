@@ -46,6 +46,9 @@ class Engine:
         missing = sorted(set(defs.orders) - set(registry.orders))
         if missing:
             raise EngineError(f"処理する関数がない命令があります: {', '.join(missing)}")
+        problems = [p for check in registry.checks for p in check(defs, config)]
+        if problems:
+            raise EngineError("定義データか設定が足りません: " + " / ".join(problems))
 
     def run_turn(self, world: WorldState) -> TurnReport:
         """世界を1ターン進める。world をその場で書き換える。
@@ -57,6 +60,8 @@ class Engine:
         report = TurnReport(turn=turn)
         for island in world.islands.values():
             island.log.clear()
+            island.stats.clear()
+            island.scratch.clear()
         for stage in self.stages:
             started = time.perf_counter()
             if isinstance(stage, IslandStage):

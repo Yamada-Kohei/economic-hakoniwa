@@ -1,0 +1,57 @@
+{% extends "base.html" %}{% load i18n %}
+{% block title %}{% translate "手引き" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+<h1>{% translate "手引き" %}</h1>
+
+<section class="panel">
+  <h2>{% translate "遊び方の流れ" %}</h2>
+  <ol>
+    <li>{% translate "登録して建国します。島の形・地形・地下資源・首都・体制・名前を決めます。" %}</li>
+    <li>{% translate "島の画面で地図のマスを選び、施設を建てる命令などを「命令の列」に並べます。" %}</li>
+    <li>{% translate "決まった時刻ごとにターンが進み、命令が上から実行され、施設が働き、人口が増えたり減ったりします。" %}</li>
+    <li>{% translate "何が起きたかは島の画面の「出来事」とターンログで読めます。" %}</li>
+  </ol>
+</section>
+
+<section class="panel">
+  <h2>{% translate "しくみ" %}</h2>
+  <dl class="rules">
+    <dt>{% translate "働き手" %}</dt>
+    <dd>{% blocktranslate with r=commute %}人は住宅地から {{ r }} マス以内の施設に通って働きます。優先度の数が大きい施設から先に人が回ります。村の人は働き口がなくても自給の農業で暮らせます。{% endblocktranslate %}</dd>
+    <dt>{% translate "生産と倉庫" %}</dt>
+    <dd>{% translate "施設は働き手・原料・電力がそろった割合だけ動きます。作った物は島の倉庫に入り、優先度の高い施設から原料として配られます（このフェーズではお金は使いません）。古くなると傷む物もあります。" %}</dd>
+    <dt>{% translate "電力" %}</dt>
+    <dd>{% translate "発電所とつながった施設と住宅地にだけ電気が届きます。施設どうしが隣り合うか、送電線のマスでつなぎます。足りないときは優先度の高い所から配ります。" %}</dd>
+    <dt>{% translate "人口と住宅地" %}</dt>
+    <dd>{% translate "食料が足り、働き口があると人口が増えます。住宅地は働き口の近くに自然に広がり、人が増えると村・町・市・大都市へと育ちます。広げたくない所は「開発禁止」にできます。食料が足りないと人が減り、幸福度が低いと島を出て行く人が出ます。" %}</dd>
+    <dt>{% translate "行政力" %}</dt>
+    <dd>{% blocktranslate with base=base_admin %}命令にはそれぞれ行政力が要ります。行政力は {{ base }} に、官庁で働く人の分が足されます。足りない命令は次のターン以降に回ります。{% endblocktranslate %}</dd>
+    <dt>{% translate "地下資源" %}</dt>
+    <dd>{% translate "建国のときに選んだ資源だけが、山の鉱山で掘れます。鋼材を作るには鉄鉱石と石炭の両方が要るので、どちらかがない島では鋼材が作れません。" %}</dd>
+    <dt>{% translate "災害" %}</dt>
+    <dd>{% translate "まれに地震・台風・洪水・火事が起き、施設がしばらく止まります。" %}</dd>
+  </dl>
+</section>
+
+<section class="panel">
+  <h2>{% translate "命令と行政力" %}</h2>
+  <table class="info">
+    {% for o in orders %}<tr><th>{{ o.name }}</th><td>{{ o.cost }}</td></tr>{% endfor %}
+  </table>
+</section>
+
+<section class="panel">
+  <h2>{% translate "施設" %}</h2>
+  <table class="facilities">
+    <thead><tr><th>{% translate "施設" %}</th><th>{% translate "建てられる地形" %}</th><th>{% translate "働き手" %}</th><th>{% translate "作り方（1ターンあたり）" %}</th></tr></thead>
+    <tbody>
+      {% for f in facilities %}
+        <tr>
+          <td>{{ f.name }}</td><td>{{ f.terrain }}{% if f.notes %}<br><small>{{ f.notes }}</small>{% endif %}</td><td>{{ f.workers }}</td>
+          <td>{% for r in f.recipes %}<div>{% if f.recipes|length > 1 %}{{ r.name }}: {% endif %}{% for g in r.inputs %}{{ g.name }} {{ g.amount }}{% if not forloop.last %}・{% endif %}{% empty %}{% translate "なし" %}{% endfor %} → {% for g in r.outputs %}{{ g.name }} {{ g.amount }}{% if not forloop.last %}・{% endif %}{% empty %}{% translate "なし" %}{% endfor %}{% if r.resource %} <small>（{% blocktranslate with good=r.resource %}地下資源「{{ good }}」が要る{% endblocktranslate %}）</small>{% endif %}</div>{% endfor %}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

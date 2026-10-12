@@ -1,16 +1,21 @@
-"""試験用・サンプル用の島の地形を作る。
+"""試験用・サンプル用の島を作る。
 
-本番の建国ではプレイヤーが形を描きます（フェーズ1）。ここは自動テスト、一括シミュレーション、
-開発用のサンプル世界のための、つながった陸地をランダムに作る簡単な方法です。
+本番の建国ではプレイヤーが形を描きます（hakoniwa_core/founding.py）。ここは自動テスト、
+一括シミュレーション、開発用のサンプル世界のために、つながった陸地をランダムに作り、
+定義データを渡されたときは、資源・首都・体制もランダムに選んで建国します。
 """
 
 from __future__ import annotations
 
 import math
 import random
+from typing import TYPE_CHECKING
 
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.state.model import IslandState, Tile, WorldState
+
+if TYPE_CHECKING:
+    from hakoniwa_core.defs import Defs
 
 
 def generate_land(
@@ -32,10 +37,19 @@ def generate_land(
 
 
 def generate_island(
-    rng: random.Random, island_id: int, name: str, wx: int, wy: int, config: GameConfig
+    rng: random.Random,
+    island_id: int,
+    name: str,
+    wx: int,
+    wy: int,
+    config: GameConfig,
+    defs: Defs | None = None,
 ) -> IslandState:
+    """ランダムな形の島。defs を渡すと、建国の処理で首都や初めの施設も置く。"""
     size = config.get("island.size")
     land = generate_land(rng, size, config.get("island.land_min"), config.get("island.land_max"))
+    if defs is not None:
+        return _found_random(rng, island_id, name, wx, wy, config, defs, land)
     tiles = []
     for y in range(size):
         for x in range(size):
@@ -49,16 +63,61 @@ def generate_island(
     return IslandState(id=island_id, name=name, wx=wx, wy=wy, size=size, tiles=tiles)
 
 
+def random_plan(
+    rng: random.Random, name: str, config: GameConfig, defs: Defs, land: set[tuple[int, int]]
+):
+    """ランダムに選んだ建国の中身。"""
+    from hakoniwa_core import founding
+
+    seed = rng.randrange(2**31)
+    regime = {axis: rng.choice(choices) for axis, choices in defs.regime_axes().items()}
+    terrain = founding.auto_terrain(land, config, seed)
+    kind = founding.start_of(defs, regime)["capital"]["facility"]
+    capital = founding.suggest_capital(terrain, land, defs, config, kind)
+    if capital is None:  # 首都を置ける地形がなければ、陸地の真ん中を描き直して置く
+        capital = min(land, key=lambda p: (abs(p[0] - config.get("island.size") // 2), p))
+        edits = {capital: defs.facilities[kind]["terrain"][0]}
+    else:
+        edits = {}
+    resources = defs.mining_resources()
+    count = min(len(resources), config.get("founding.max_resources"))
+    return founding.FoundingPlan(
+        land=land,
+        capital=capital,
+        regime=regime,
+        names={
+            "country": name,
+            "capital": f"{name}市",
+            "currency": f"{name}通貨",
+            "currency_symbol": "¤",
+            "leader": f"{name}の元首",
+        },
+        resources=sorted(rng.sample(resources, count)),
+        terrain_edits=edits,
+        seed=seed,
+    )
+
+
+def _found_random(rng, island_id, name, wx, wy, config, defs, land) -> IslandState:
+    from hakoniwa_core.founding import found_island
+
+    plan = random_plan(rng, name, config, defs, land)
+    return found_island(defs, config, plan, island_id, wx, wy)
+
+
 def world_grid_size(n_islands: int, config: GameConfig) -> int:
     """世界マップの1辺の区画数。区画数は島数のおよそ cells_per_island 倍（50島なら 10×10）。"""
     return max(1, math.ceil(math.sqrt(n_islands * config.get("world.cells_per_island"))))
 
 
-def generate_world(seed: int, n_islands: int, config: GameConfig) -> WorldState:
+def generate_world(
+    seed: int, n_islands: int, config: GameConfig, defs: Defs | None = None
+) -> WorldState:
+    """n_islands 個の島の世界。defs を渡すと、どの島も建国の処理を通して作る。"""
     rng = random.Random(seed)
     grid = world_grid_size(n_islands, config)
     cells = rng.sample([(x, y) for y in range(grid) for x in range(grid)], n_islands)
     islands = {}
     for i, (wx, wy) in enumerate(cells, start=1):
-        islands[i] = generate_island(rng, i, f"島{i}", wx, wy, config)
+        islands[i] = generate_island(rng, i, f"島{i}", wx, wy, config, defs)
     return WorldState(turn=0, seed=seed, islands=islands)

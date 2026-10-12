@@ -296,6 +296,8 @@ class _Loader:
         lang = self.config.raw.get("locale", "ja")
         names = locales.get(lang, {})
         for kind, entries in tables.items():
+            if not KINDS[kind].needs_locale:
+                continue
             for entry_id in entries:
                 if entry_id not in names.get(kind, {}):
                     origin = origins[(kind, entry_id)]

@@ -1,15 +1,87 @@
 {% extends "base.html" %}{% load i18n static %}
 {% block title %}{{ island.name }} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
-<h1>{{ island.name }}</h1>
-<div class="map-wrap">
-  <canvas id="island-map" data-island="{{ island.id }}" data-api="{% url 'api_island_map' island.id %}"
-          data-defs="{% url 'api_defs' %}" aria-label="{% translate '島の俯瞰図' %}"></canvas>
-  <div class="map-buttons">
-    <button type="button" data-zoom="in" aria-label="{% translate '拡大' %}">＋</button>
-    <button type="button" data-zoom="out" aria-label="{% translate '縮小' %}">－</button>
-  </div>
+{% csrf_token %}
+<div class="island-header">
+  <h1>{{ island.name }}</h1>
+  <p class="muted">
+    {% if island.owner %}{{ island.owner.username }}{% else %}{% translate "持ち主なし" %}{% endif %}
+    {% for r in regime %} ・ {{ r.axis }}: {{ r.name }}{% endfor %}
+    {% if resources %} ・ {% translate "地下資源" %}: {{ resources|join:"、" }}{% endif %}
+    {% if stats_turn is not None %} ・ {% blocktranslate with turn=stats_turn %}ターン {{ turn }} の時点{% endblocktranslate %}{% endif %}
+  </p>
 </div>
-<p id="tile-info" class="tile-info">{% translate "マスを選ぶと、ここに詳しい情報が出ます。" %}</p>
+
+{% if mine and show_guide %}
+<details class="guide" open>
+  <summary>{% translate "はじめの手順" %}</summary>
+  <ol>
+    <li>{% translate "地図のマスを押すと、地形・人口・施設の様子が右（狭い画面では下）に出ます。赤い点は止まっている施設です。" %}</li>
+    <li>{% translate "空いている平地を選び「建てる」で施設を建てる命令を足します。命令は次のターンの更新で上から実行されます。" %}</li>
+    <li>{% translate "工場には働き手・原料・電力が要ります。発電所から施設までを送電線（または施設どうしが隣り合うこと）でつないでください。" %}</li>
+    <li>{% translate "人は住宅地から近くの施設に通って働きます。住宅地は働き口のある所の近くに自然に広がります。" %}</li>
+    <li>{% translate "命令に使える行政力には限りがあります。官庁で働く人が増えると行政力も増えます。" %}</li>
+  </ol>
+  <p><a href="{% url 'help' %}">{% translate "手引きをもっと読む" %}</a></p>
+</details>
+{% endif %}
+
+<div class="island-layout">
+  <section class="map-column">
+    <div class="map-tools">
+      <label>{% translate "重ねて表示" %}
+        <select id="overlay"><option value="">{% translate "なし" %}</option></select>
+      </label>
+    </div>
+    <div class="map-wrap">
+      <canvas id="island-map" data-island="{{ island.id }}" data-api="{% url 'api_island_map' island.id %}"
+              data-defs="{% url 'api_defs' %}" aria-label="{% translate '島の俯瞰図' %}"></canvas>
+      <div class="map-buttons">
+        <button type="button" data-zoom="in" aria-label="{% translate '拡大' %}">＋</button>
+        <button type="button" data-zoom="out" aria-label="{% translate '縮小' %}">－</button>
+      </div>
+      <canvas id="minimap" width="128" height="128" aria-label="{% translate '小さな地図' %}"></canvas>
+    </div>
+  </section>
+  <aside id="tile-panel" class="panel" data-tile-url="{% url 'api_tile' island.id 0 0 %}"
+         data-check-url="{% url 'api_order_check' island.id %}" aria-live="polite"></aside>
+</div>
+
+{% if mine %}
+<section id="orders" class="panel" data-url="{% url 'api_orders' island.id %}"></section>
+{% endif %}
+
+<div class="island-stats">
+  <section class="panel">
+    <h2>{% translate "島のようす" %}</h2>
+    {% if summary %}
+      <table class="info">
+        {% for row in summary %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
+      </table>
+    {% else %}
+      <p class="muted">{% translate "まだ更新されていません。最初のターンの更新のあとに出ます。" %}</p>
+    {% endif %}
+  </section>
+  <section class="panel">
+    <h2>{% translate "財（倉庫の在庫とこのターンの生産）" %}</h2>
+    {% if goods %}
+      <table class="goods">
+        <thead><tr><th>{% translate "財" %}</th><th>{% translate "在庫" %}</th><th>{% translate "生産" %}</th></tr></thead>
+        <tbody>
+          {% for g in goods %}<tr><td>{{ g.name }}</td><td>{{ g.stock }}</td><td>{{ g.production }}</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">{% translate "まだ記録がありません。" %}</p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="panel">
+  <h2>{% if log_turn is not None %}{% blocktranslate with turn=log_turn %}ターン {{ turn }} の出来事{% endblocktranslate %}{% else %}{% translate "出来事" %}{% endif %}</h2>
+  {% include "web/log_entries.html" with entries=logs island=island %}
+  <p><a href="{% url 'turn_log' island.id %}">{% translate "ターンログをすべて見る" %}</a></p>
+</section>
+
 <script type="module" src="{% static 'js/map/main.js' %}"></script>
 {% endblock %}

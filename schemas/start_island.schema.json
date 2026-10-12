@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "建国直後の島 start_island.yaml の1項目",
+  "type": "object",
+  "required": ["capital", "facilities"],
+  "additionalProperties": false,
+  "$defs": {
+    "amounts": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {"type": "number", "minimum": 0}
+    }
+  },
+  "properties": {
+    "capital": {
+      "type": "object",
+      "required": ["facility"],
+      "additionalProperties": false,
+      "properties": {
+        "facility": {"type": "string", "description": "首都のマスに置く施設（官庁）"},
+        "town_tiles": {"type": "integer", "minimum": 0, "description": "首都の周りに置く町（住宅）のマスの数"},
+        "town_population": {"type": "integer", "minimum": 0, "description": "町の1マスあたりの住民"},
+        "town_level": {"type": "string", "description": "町のマスの住宅の段階（settlements.yaml の名前）"}
+      }
+    },
+    "villages": {
+      "type": "object",
+      "required": ["count", "population"],
+      "additionalProperties": false,
+      "properties": {
+        "count": {"type": "integer", "minimum": 0, "description": "首都の周りに散らばる村の数"},
+        "population": {"type": "integer", "minimum": 0, "description": "村の1マスあたりの住民"},
+        "min_distance": {"type": "integer", "minimum": 1, "description": "首都から何マス以上離すか"},
+        "max_distance": {"type": "integer", "minimum": 1, "description": "首都から何マス以内に置くか"}
+      }
+    },
+    "facilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {"type": "string", "description": "施設の名前"},
+          "count": {"type": "integer", "minimum": 1, "description": "いくつ置くか（書かなければ1）"},
+          "recipe": {"type": "string", "description": "作り方（複数ある施設だけ）"},
+          "if_resource": {"type": "string", "description": "この鉱業資源を選んだ島にだけ置く"}
+        }
+      },
+      "description": "首都に近い、建てられる空いたマスから順に置く施設"
+    },
+    "power_lines": {"type": "boolean", "description": "置いた施設と首都を送電線でつなぐか"},
+    "warehouse": {"$ref": "#/$defs/amounts", "description": "島の倉庫に入れておく財"},
+    "override": {"const": true}
+  }
+}

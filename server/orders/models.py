@@ -16,6 +16,7 @@ class Order(models.Model):
     payload = models.JSONField("中身", default=dict, blank=True)
     status = models.CharField("状態", max_length=16, choices=STATUS_CHOICES, default="pending")
     reason = models.CharField("失敗の理由", max_length=64, blank=True, default="")
+    reason_args = models.JSONField("理由の文の引数", default=dict, blank=True)
     executed_turn = models.IntegerField("実行したターン", null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

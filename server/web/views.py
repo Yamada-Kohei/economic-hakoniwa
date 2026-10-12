@@ -1,90 +1,140 @@
-"""画面と JSON API。"""
+"""画面（テンプレート）。島の地図と命令の入力は JavaScript が JSON API（api.py）を使って動かす。"""
 
 from __future__ import annotations
 
-from functools import cache
-
-import yaml
-from django.conf import settings
-from django.http import Http404, JsonResponse
+from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, render
-from django.views.decorators.http import require_GET
 
 from server.game import get_game
-from server.world.models import Island, Tile, World
+from server.turns.models import TurnLog
+from server.web import display
+from server.world.models import Island, World
+from server.world.services import grid_size
+
+GUIDE_TURNS = 12  # 建国からこのターン数の間、島の画面に「はじめの手順」を出す
 
 
 def top(request):
     world = World.objects.order_by("id").first()
     islands = world.islands.select_related("owner").order_by("id") if world else []
-    return render(request, "web/top.html", {"world": world, "islands": islands})
+    own = None
+    if request.user.is_authenticated:
+        own = Island.objects.filter(owner=request.user).first()
+    return render(request, "web/top.html", {"world": world, "islands": islands, "own": own})
 
 
 def island_page(request, island_id: int):
-    island = get_object_or_404(Island, pk=island_id)
-    return render(request, "web/island.html", {"island": island})
-
-
-@require_GET
-def api_island_map(request, island_id: int):
-    """島のマスの一覧。terrain と population は y * size + x の順に並べる。"""
-    island = get_object_or_404(Island, pk=island_id)
-    rows = island.tiles.order_by("y", "x").values_list("terrain", "population")
-    terrain, population = [], []
-    for t, p in rows:
-        terrain.append(t)
-        population.append(p)
-    return JsonResponse(
-        {
-            "id": island.id,
-            "name": island.name,
-            "size": island.size,
-            "turn": island.world.turn,
-            "terrain": terrain,
-            "population": population,
-        }
-    )
-
-
-@require_GET
-def api_tile(request, island_id: int, x: int, y: int):
-    try:
-        tile = Tile.objects.get(island_id=island_id, x=x, y=y)
-    except Tile.DoesNotExist as e:
-        raise Http404 from e
+    island = get_object_or_404(Island.objects.select_related("owner", "world"), pk=island_id)
     defs = get_game().defs
-    return JsonResponse(
+    turn, stats = display.latest_stats(island)
+    founded = (island.ext or {}).get("founded_turn", 0)
+    logs = TurnLog.objects.filter(island=island).order_by("-turn", "id")
+    last_turn = logs.values_list("turn", flat=True).first()
+    regime = [
         {
-            "x": tile.x,
-            "y": tile.y,
-            "terrain": tile.terrain,
-            "terrain_name": defs.name("terrain", tile.terrain),
-            "population": tile.population,
+            "axis": display.message(f"axis_{defs.regimes[r]['axis']}"),
+            "name": defs.name("regimes", r),
         }
+        for r in (island.regime or {}).values()
+        if r in defs.regimes
+    ]
+    context = {
+        "island": island,
+        "mine": request.user.is_authenticated and island.owner_id == request.user.id,
+        "stats_turn": turn,
+        "summary": display.summary(stats),
+        "goods": display.goods_table(stats),
+        "regime": regime,
+        "resources": [defs.name("goods", g) for g in island.resources or []],
+        "logs": display.log_entries(logs.filter(turn=last_turn)) if last_turn is not None else [],
+        "log_turn": last_turn,
+        "show_guide": island.world.turn - founded < GUIDE_TURNS,
+    }
+    return render(request, "web/island.html", context)
+
+
+def turn_log(request, island_id: int):
+    """ターンログ。ターンごとに区切り、新しいターンから並べる。"""
+    island = get_object_or_404(Island, pk=island_id)
+    turns = (
+        TurnLog.objects.filter(island=island)
+        .order_by("-turn")
+        .values_list("turn", flat=True)
+        .distinct()
+    )
+    page = Paginator(list(turns), 10).get_page(request.GET.get("page"))
+    entries = display.log_entries(
+        TurnLog.objects.filter(island=island, turn__in=list(page)).order_by("-turn", "id")
+    )
+    groups: dict[int, list] = {}
+    for entry in entries:
+        groups.setdefault(entry["turn"], []).append(entry)
+    return render(
+        request,
+        "web/log.html",
+        {"island": island, "page": page, "groups": sorted(groups.items(), reverse=True)},
     )
 
 
-@require_GET
-def api_defs(request):
-    """画面が使う定義データと表示名、テーマ。"""
+def world_map(request):
+    """世界マップ: 区画を並べ、島のある区画にはその島へのリンクを置く。"""
+    world = World.objects.order_by("id").first()
+    rows: list[list[Island | None]] = []
+    if world is not None:
+        islands = list(world.islands.select_related("owner"))
+        grid = max([grid_size(world)] + [max(i.wx, i.wy) + 1 for i in islands])
+        at = {(i.wx, i.wy): i for i in islands}
+        rows = [[at.get((x, y)) for x in range(grid)] for y in range(grid)]
+    own_id = None
+    if request.user.is_authenticated:
+        own_id = Island.objects.filter(owner=request.user).values_list("id", flat=True).first()
+    return render(request, "web/world.html", {"world": world, "rows": rows, "own_id": own_id})
+
+
+def help_page(request):
     game = get_game()
     defs = game.defs
-    return JsonResponse(
+    facilities = [
         {
-            "terrain": {
-                tid: {"name": defs.name("terrain", tid), "height": t.get("height", 0)}
-                for tid, t in defs.terrain.items()
-            },
-            "facilities": {fid: {"name": defs.name("facilities", fid)} for fid in defs.facilities},
-            "goods": {gid: {"name": defs.name("goods", gid)} for gid in defs.goods},
-            "theme": _theme(game.config.raw.get("theme", "default")),
+            "name": defs.name("facilities", fid),
+            "terrain": "・".join(defs.name("terrain", t) for t in f["terrain"]),
+            "notes": _placement_notes(f),
+            "workers": f["workers"],
+            "recipes": [
+                {
+                    "name": defs.recipe_name(fid, rid),
+                    "inputs": display.goods_list(r["inputs"]),
+                    "outputs": display.goods_list(r["outputs"]),
+                    "resource": defs.name("goods", r["requires_resource"])
+                    if r.get("requires_resource")
+                    else "",
+                }
+                for rid, r in f["recipes"].items()
+            ],
+        }
+        for fid, f in defs.facilities.items()
+        if f.get("buildable", True)
+    ]
+    orders = [
+        {"name": defs.name("orders", oid), "cost": o["admin_cost"]}
+        for oid, o in defs.orders.items()
+    ]
+    return render(
+        request,
+        "web/help.html",
+        {
+            "facilities": facilities,
+            "orders": orders,
+            "commute": game.config.get("labor.commute_radius"),
+            "base_admin": game.config.get("orders.base_admin_power"),
         },
-        json_dumps_params={"ensure_ascii": False},
     )
 
 
-@cache
-def _theme(name: str) -> dict:
-    path = settings.BASE_DIR / "server" / "static" / "themes" / name / "theme.yaml"
-    with path.open(encoding="utf-8") as f:
-        return yaml.safe_load(f)
+def _placement_notes(f) -> str:
+    notes = []
+    if f.get("coastal"):
+        notes.append("海に面したマスだけ")
+    if f.get("near_capital") is not None:
+        notes.append(f"首都から {f['near_capital']} マス以内")
+    return "・".join(notes)

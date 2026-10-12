@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% load i18n %}
+{% block title %}{% translate "世界マップ" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+<h1>{% translate "世界マップ" %}</h1>
+{% if world %}
+  <p class="muted">{% blocktranslate with turn=world.turn %}ターン {{ turn }}。区画を押すとその島の画面へ移ります。{% endblocktranslate %}</p>
+  <div class="world-grid" style="--grid: {{ rows|length }}">
+    {% for row in rows %}{% for island in row %}
+      {% if island %}
+        <a class="cell island{% if island.id == own_id %} mine{% endif %}" href="{% url 'island' island.id %}"
+           title="{{ island.name }}{% if island.owner %}（{{ island.owner.username }}）{% endif %}">{{ island.name|truncatechars:6 }}</a>
+      {% else %}
+        <span class="cell sea" aria-hidden="true"></span>
+      {% endif %}
+    {% endfor %}{% endfor %}
+  </div>
+{% else %}
+  <p class="muted">{% translate "世界がまだありません。" %}</p>
+{% endif %}
+{% endblock %}

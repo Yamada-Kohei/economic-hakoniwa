@@ -20,4 +20,88 @@ form.inline { display: inline; }
 #island-map { display: block; width: 100%; height: min(70vh, 640px); touch-action: none; cursor: grab; }
 .map-buttons { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 4px; }
 .map-buttons button { width: 40px; height: 40px; font-size: 20px; }
-.tile-info { min-height: 1.5em; }
+.muted { color: #666; }
+.error { color: #c62828; }
+.warning { color: #b26a00; display: block; font-size: 0.9em; }
+.lead { font-size: 1.1em; }
+h1 { margin: 16px 0 8px; }
+h2 { font-size: 1.15em; margin: 0 0 8px; }
+h3 { font-size: 1.05em; margin: 8px 0 4px; }
+h4 { font-size: 0.95em; margin: 8px 0 4px; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin: 12px 0; }
+button { font: inherit; padding: 4px 10px; min-height: 32px; cursor: pointer; }
+button.primary { background: var(--accent); color: #fff; border: 1px solid var(--accent); border-radius: 4px; padding: 8px 20px; }
+input, select, textarea { font: inherit; max-width: 100%; }
+table.info, table.goods, table.facilities { border-collapse: collapse; width: 100%; }
+table.info th, table.info td, table.goods th, table.goods td, table.facilities th, table.facilities td {
+  text-align: left; padding: 3px 6px; border-bottom: 1px solid #eee; vertical-align: top; }
+table.info th { font-weight: normal; color: #555; width: 45%; }
+table.goods td:nth-child(n+2), table.goods th:nth-child(n+2) { text-align: right; }
+.table-scroll { overflow-x: auto; }
+
+/* 島の画面 */
+.island-header h1 { margin-bottom: 0; }
+.island-header p { margin-top: 4px; }
+.island-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; align-items: start; }
+.island-layout #tile-panel { margin: 0; max-height: min(78vh, 700px); overflow-y: auto; }
+.island-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.island-stats .panel { margin: 0; }
+.map-tools { margin: 4px 0; }
+#minimap { position: absolute; left: 8px; bottom: 8px; width: 96px; height: 96px; border: 1px solid rgba(255,255,255,0.6);
+  background: #1d3f66; image-rendering: pixelated; cursor: pointer; }
+.guide { background: #fffbe6; border: 1px solid #e6d9a6; border-radius: 6px; padding: 8px 12px; margin: 12px 0; }
+.guide summary { font-weight: bold; cursor: pointer; }
+.actions { border-top: 1px solid #eee; padding-top: 6px; margin-top: 8px; }
+.actions label { display: block; margin: 4px 0; }
+.actions button { margin: 2px 4px 2px 0; }
+.hint { font-size: 0.85em; color: #555; }
+.marking { background: #fff3e0; border: 1px solid #ffb74d; border-radius: 4px; padding: 6px 8px; }
+.order-list { padding-left: 0; list-style: none; }
+.order-list li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px; padding: 4px 0; border-bottom: 1px solid #eee; }
+.order-list li.late { color: #888; }
+.order-list li.divider { color: #b26a00; font-size: 0.85em; border-bottom: 1px dashed #e0b060; }
+.order-buttons button { min-width: 32px; padding: 2px 6px; }
+.recent li.failed { color: #c62828; }
+.log { padding-left: 1.2em; }
+.log li { margin: 2px 0; }
+.pager { display: flex; gap: 12px; align-items: center; margin: 12px 0; }
+
+/* 世界マップと区画の選択 */
+.world-grid { display: grid; grid-template-columns: repeat(var(--grid, 10), minmax(0, 1fr)); gap: 2px; max-width: 640px;
+  background: #1d3f66; padding: 2px; border-radius: 4px; }
+.world-grid .cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: 11px;
+  overflow: hidden; text-decoration: none; border: 0; padding: 0; min-height: 0; }
+.world-grid .sea { background: #2a5a8c; }
+.world-grid .island { background: #7cb342; color: #102000; }
+.world-grid .island.mine { background: #ffca28; }
+.world-grid .free { background: #f0f4f8; cursor: pointer; }
+.world-grid .free:hover, .world-grid .free.chosen { background: #ff7043; }
+
+/* 建国 */
+.founding-tools { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 8px; }
+.founding-map-wrap { max-width: 512px; }
+#founding-map { width: 100%; height: auto; aspect-ratio: 1; touch-action: none; display: block; background: #1d3f66; cursor: crosshair; }
+.problems { color: #c62828; }
+.choices label { margin-right: 16px; display: inline-block; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 16px; }
+.form-grid label { display: flex; flex-direction: column; gap: 2px; }
+
+/* 掲示板 */
+.thread-list li { margin: 4px 0; }
+.thread-list small { margin-left: 8px; color: #666; }
+.posts { list-style: none; padding: 0; }
+.posts .panel p { margin: 0 0 4px; }
+.post-body { overflow-wrap: anywhere; }
+textarea { width: 100%; }
+
+/* 手引き */
+.rules dt { font-weight: bold; margin-top: 8px; }
+.rules dd { margin: 2px 0 0 1em; }
+
+@media (max-width: 760px) {
+  .island-layout { grid-template-columns: minmax(0, 1fr); }
+  .island-layout #tile-panel { max-height: none; }
+  #island-map { height: 60vh; }
+  .site-header nav { gap: 8px; flex-wrap: wrap; }
+  table.facilities { display: block; overflow-x: auto; }
+}

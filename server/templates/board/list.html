@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% load i18n %}
+{% block title %}{% translate "掲示板" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+<h1>{% translate "掲示板" %}</h1>
+<ul class="thread-list">
+  {% for thread in page %}
+    <li><a href="{% url 'board_thread' thread.id %}">{{ thread.title }}</a>
+      <small>{% if thread.author %}{{ thread.author.username }}{% endif %} ・ {{ thread.updated_at|date:"Y-m-d H:i" }}</small></li>
+  {% empty %}
+    <li class="muted">{% translate "まだスレッドがありません。" %}</li>
+  {% endfor %}
+</ul>
+{% include "board/pager.html" %}
+{% if form %}
+  <section class="panel">
+    <h2>{% translate "スレッドを立てる" %}</h2>
+    <form method="post" action="{% url 'board_new' %}">{% csrf_token %}{{ form.as_p }}<button type="submit">{% translate "立てる" %}</button></form>
+  </section>
+{% else %}
+  <p class="muted">{% translate "書き込むにはログインしてください。" %}</p>
+{% endif %}
+{% endblock %}

@@ -7,6 +7,17 @@
   "properties": {
     "tier": {"type": "integer", "minimum": 1, "maximum": 3, "description": "階層。1 原料、2 中間財、3 最終財"},
     "shelf_life": {"type": "integer", "minimum": 0, "description": "持ち越せるターン数。0 は持ち越せない（電力など）。書かなければ無期限"},
+    "food": {
+      "type": "object",
+      "required": ["nutrition"],
+      "additionalProperties": false,
+      "properties": {
+        "nutrition": {"type": "number", "exclusiveMinimum": 0, "description": "1 単位で、住民の食べる量の何単位ぶんになるか"},
+        "quality": {"type": "number", "minimum": 0, "maximum": 1, "description": "食事の質（0〜1）。高いほど幸福度が上がり、先に食べられる"}
+      },
+      "description": "住民が食べられる財にだけ書く"
+    },
+    "mining": {"type": "boolean", "description": "建国時に選べる鉱業資源か（選んだ資源だけ鉱山などで採れる）"},
     "override": {"const": true}
   }
 }

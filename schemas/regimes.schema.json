@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "体制 regimes.yaml の1項目（政治の仕組み・国家元首の形・経済体制の選択肢）",
+  "type": "object",
+  "required": ["axis"],
+  "additionalProperties": false,
+  "properties": {
+    "axis": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "どの軸の選択肢か。politics（政治の仕組み）、head_of_state（国家元首の形）、economy（経済体制）"},
+    "capital_building": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "首都に建つ建物（絵の名前。表示名は messages の building_<名前>）"},
+    "owner": {"enum": ["state", "private"], "description": "経済体制: 建国直後の施設の持ち主の既定"},
+    "state_owned": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true,
+      "description": "経済体制: 既定が民営でも国営にする施設（基幹産業など）"
+    },
+    "state_accounting": {"enum": ["treasury", "self_supporting"], "description": "経済体制: 国営施設の会計の既定（国庫直轄か独立採算か。効くのはフェーズ2から）"},
+    "start": {"type": "string", "description": "経済体制: 建国直後の島の中身（start_island.yaml の名前）"},
+    "override": {"const": true}
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "働き手の種類 workers.yaml の1項目",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "share": {"type": "number", "minimum": 0, "maximum": 1, "description": "住民のうち、この種類の働き手になる割合"},
+    "override": {"const": true}
+  }
+}

@@ -1,8 +1,9 @@
 """画面も DB もなしで、同じ段を回す一括シミュレーション。
 
-    python -m hakoniwa_core.simulate --islands 50 --turns 300 --seed 1
+    python -m hakoniwa_core.simulate --islands 50 --turns 300 --seed 1 --autoplan
 
-更新にかかる時間の測定や、自動テストでの確認に使います。
+更新にかかる時間の測定や、自動テストでの確認に使います。--autoplan を付けると、
+どの島にも標準の計画（hakoniwa_core/autoplan.py）で命令を並べます。
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import statistics
 import sys
 import time
 
+from hakoniwa_core.autoplan import plan_turn, queue_orders
 from hakoniwa_core.game import load_game
 from hakoniwa_core.state import WorldState
 from hakoniwa_core.state.generate import generate_world
@@ -32,21 +34,31 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--turns", type=int, default=10)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--config", default=None, help="game.yaml の場所")
+    parser.add_argument("--autoplan", action="store_true", help="標準の計画で命令を並べる")
     args = parser.parse_args(argv)
 
     game = load_game(args.config)
     started = time.perf_counter()
-    world = generate_world(args.seed, args.islands, game.config)
+    world = generate_world(args.seed, args.islands, game.config, game.defs)
     print(f"世界を作りました: {args.islands} 島（{time.perf_counter() - started:.2f} 秒）")
 
     per_turn = []
     for _ in range(args.turns):
+        if args.autoplan:
+            for island in world.islands.values():
+                orders = plan_turn(island, game.defs, game.config, world.turn + 1)
+                queue_orders(island, orders)
         report = game.engine.run_turn(world)
         per_turn.append(report.total_seconds)
     print(
         f"{args.turns} ターン: 1ターンの平均 {statistics.mean(per_turn) * 1000:.1f} ms、"
         f"最大 {max(per_turn) * 1000:.1f} ms"
     )
+    population = sum(t.population for i in world.islands.values() for t in i.tiles)
+    facilities = sum(len(i.facilities) for i in world.islands.values())
+    print(f"人口の合計 {population}、施設の数 {facilities}")
+    slowest = max(report.seconds, key=report.seconds.get) if report.seconds else "-"
+    print(f"最後のターンで一番時間のかかった段: {slowest}")
     print(f"ターン {world.turn} の状態の指紋: {world_digest(world)}")
     return 0
 

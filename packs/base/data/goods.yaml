@@ -1,12 +1,14 @@
 # 財。tier: 1 原料、2 中間財、3 最終財。shelf_life: 持ち越せるターン数（書かなければ無期限）
-grain:              {tier: 1, shelf_life: 8}
-fish:               {tier: 1, shelf_life: 2}
+# food: 住民が食べられる財（nutrition: 1 単位で何人前か、quality: 食事の質 0〜1）
+# mining: 建国時に選べる鉱業資源
+grain:              {tier: 1, shelf_life: 8, food: {nutrition: 1, quality: 0.2}}
+fish:               {tier: 1, shelf_life: 2, food: {nutrition: 1, quality: 0.4}}
 wood:               {tier: 1}
-stone:              {tier: 1}
-iron_ore:           {tier: 1}
-coal:               {tier: 1}
+stone:              {tier: 1, mining: true}
+iron_ore:           {tier: 1, mining: true}
+coal:               {tier: 1, mining: true}
 steel:              {tier: 2}
 building_materials: {tier: 2}
-food:               {tier: 3, shelf_life: 6}
+food:               {tier: 3, shelf_life: 6, food: {nutrition: 1.5, quality: 1}}
 machinery:          {tier: 3}
 electricity:        {tier: 2, shelf_life: 0}

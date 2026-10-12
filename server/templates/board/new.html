@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% load i18n %}
+{% block title %}{% translate "スレッドを立てる" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+<h1>{% translate "スレッドを立てる" %}</h1>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">{% translate "立てる" %}</button></form>
+<p><a href="{% url 'board' %}">{% translate "掲示板へ戻る" %}</a></p>
+{% endblock %}

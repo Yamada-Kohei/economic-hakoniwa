@@ -1,0 +1,24 @@
+# 建国直後の島の中身。どれを使うかは regimes.yaml の経済体制の start で決めます。
+# 施設は首都に近い、建てられる空いたマスから順に置きます。
+default:
+  capital:
+    facility: government_office   # 首都のマスに置く
+    town_tiles: 4                 # 首都の周りの町（住宅）
+    town_population: 300
+    town_level: town
+  villages: {count: 8, population: 150, min_distance: 3, max_distance: 7}
+  facilities:
+    - {kind: farm, count: 4}
+    - {kind: fishing_port}
+    - {kind: lumber_camp, count: 2}
+    - {kind: thermal_power_plant}
+    - {kind: mine, recipe: coal, if_resource: coal}
+    - {kind: quarry, if_resource: stone}
+  power_lines: true
+  warehouse:
+    grain: 300
+    wood: 150
+    building_materials: 120
+    steel: 40
+    machinery: 20
+    coal: 120
