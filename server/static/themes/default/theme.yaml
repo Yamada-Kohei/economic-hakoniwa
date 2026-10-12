@@ -1,0 +1,12 @@
+# 既定のテーマ。絵はまだなく、色付きのひし形と立方体で描きます。
+name: default
+tile_width: 64        # マスの幅（ピクセル）
+tile_height: 32       # マスの高さ（ピクセル）
+step_height: 8        # 地面の高さ1段あたりのピクセル
+terrain:              # 地形ごとの色（上面、左の側面、右の側面）
+  sea:      {top: "#2f6db5", left: "#24558d", right: "#1d4774"}
+  shallows: {top: "#5b9bd5", left: "#4a80b0", right: "#3d6b94"}
+  plain:    {top: "#8cc163", left: "#6f9a4e", right: "#5c8040"}
+  forest:   {top: "#3f8a3a", left: "#326e2e", right: "#295a26"}
+  mountain: {top: "#9a8b77", left: "#7b6f5f", right: "#665c4f"}
+fallback: {top: "#cccccc", left: "#aaaaaa", right: "#999999"}

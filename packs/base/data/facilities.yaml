@@ -1,0 +1,132 @@
+# 施設。数値はフェーズ1で調整する仮の値です。
+# 量は全力で動いたときの1ターンあたり。小数も書けます。
+
+farm:
+  category: primary
+  terrain: [plain]
+  construction: {turns: 2, labor: 20, materials: {wood: 5}}
+  workers: 50
+  recipes:
+    default:
+      outputs: {grain: 20}
+  sprite: farm
+
+lumber_camp:
+  category: primary
+  terrain: [forest]
+  construction: {turns: 2, labor: 20, materials: {wood: 2}}
+  workers: 40
+  recipes:
+    default:
+      outputs: {wood: 10}
+  sprite: lumber_camp
+
+quarry:
+  category: primary
+  terrain: [mountain]
+  construction: {turns: 3, labor: 30, materials: {wood: 5}}
+  workers: 60
+  recipes:
+    default:
+      outputs: {stone: 10}
+  sprite: quarry
+
+mine:
+  category: primary
+  terrain: [mountain]
+  construction: {turns: 4, labor: 40, materials: {wood: 10, building_materials: 5}}
+  workers: 100
+  recipes:
+    iron_ore:
+      requires_resource: iron_ore
+      inputs: {electricity: 2}
+      outputs: {iron_ore: 10}
+    coal:
+      requires_resource: coal
+      inputs: {electricity: 2}
+      outputs: {coal: 10}
+  sprite: mine
+
+fishing_port:
+  category: primary
+  terrain: [plain]
+  construction: {turns: 3, labor: 30, materials: {wood: 10, stone: 5}}
+  workers: 60
+  recipes:
+    default:
+      outputs: {fish: 12}
+  sprite: fishing_port
+
+steel_mill:
+  category: industry
+  terrain: [plain]
+  construction: {turns: 6, labor: 80, materials: {building_materials: 30, machinery: 5}}
+  workers: 300
+  recipes:
+    default:
+      inputs: {iron_ore: 10, coal: 5, electricity: 5}
+      outputs: {steel: 5}
+  sprite: steel_mill
+
+building_materials_plant:
+  category: industry
+  terrain: [plain]
+  construction: {turns: 4, labor: 50, materials: {stone: 20, wood: 10}}
+  workers: 150
+  recipes:
+    default:
+      inputs: {stone: 10, wood: 2, electricity: 2}
+      outputs: {building_materials: 8}
+  sprite: building_materials_plant
+
+machinery_plant:
+  category: industry
+  terrain: [plain]
+  construction: {turns: 6, labor: 80, materials: {building_materials: 30, steel: 10}}
+  workers: 250
+  recipes:
+    default:
+      inputs: {steel: 4, electricity: 4}
+      outputs: {machinery: 2}
+  sprite: machinery_plant
+
+food_factory:
+  category: industry
+  terrain: [plain]
+  construction: {turns: 3, labor: 40, materials: {building_materials: 10}}
+  workers: 120
+  recipes:
+    default:
+      inputs: {grain: 10, fish: 4, electricity: 1}
+      outputs: {food: 12}
+  sprite: food_factory
+
+thermal_power_plant:
+  category: power
+  terrain: [plain]
+  construction: {turns: 5, labor: 60, materials: {building_materials: 25, steel: 10, machinery: 5}}
+  workers: 80
+  recipes:
+    default:
+      inputs: {coal: 5}
+      outputs: {electricity: 30}
+  sprite: thermal_power_plant
+
+hydro_power_plant:
+  category: power
+  terrain: [mountain]
+  construction: {turns: 8, labor: 100, materials: {building_materials: 60, steel: 10, machinery: 5}}
+  workers: 30
+  recipes:
+    default:
+      outputs: {electricity: 20}
+  sprite: hydro_power_plant
+
+government_office:
+  category: admin
+  terrain: [plain]
+  construction: {turns: 3, labor: 30, materials: {building_materials: 10, wood: 5}}
+  workers: 100
+  recipes:
+    default: {}
+  sprite: government_office

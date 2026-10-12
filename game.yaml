@@ -1,0 +1,35 @@
+# サーバー設定（ゲームの数値と組み立て）。
+# パスはこのファイルからの相対パスです。数値はここで変えられます。
+
+# 定義データ
+packs_dirs: [packs]     # パックを探すフォルダ
+packs: [base]           # 使うパック（本体パック base は必ず読み込まれます）
+schemas_dir: schemas    # 定義データのスキーマ
+
+# ターン処理の段。ここに並べた順に実行します。入れ外しもここで行います。
+stages:
+  - execute_orders
+
+# 名前付きの式の差し替え。例: admin_power: "my_pack_module:admin_power"
+formulas: {}
+
+turn:
+  interval_minutes: 60  # 更新の間隔
+
+orders:
+  base_admin_power: 10  # 建国直後の行政力（官庁が入るまでの最低限）
+
+world:
+  cells_per_island: 2   # 世界マップの区画数は島数のおよそこの倍
+  default_islands: 50   # 規模の目安（区画数の計算に使う）
+
+island:
+  size: 32              # 島は size × size のマスの中に描く
+  land_min: 120         # 陸地のマス数の下限
+  land_max: 400         # 陸地のマス数の上限
+
+backups:
+  keep: 24              # 残すバックアップの数
+
+locale: ja              # 表示名を必ずそろえる言語
+theme: default          # 絵のテーマ（server/static/themes/<名前>/）

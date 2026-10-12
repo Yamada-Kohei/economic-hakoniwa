@@ -1,0 +1,10 @@
+# 命令。admin_cost: 要る行政力、payload: 命令の中身の形（JSON Schema）。
+# 処理する関数は hakoniwa_core/modules/ の各モジュールで登録します。
+rename_island:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [name]
+    additionalProperties: false
+    properties:
+      name: {type: string, minLength: 1, maxLength: 32}

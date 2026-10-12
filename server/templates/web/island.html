@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{{ island.name }} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+<h1>{{ island.name }}</h1>
+<div class="map-wrap">
+  <canvas id="island-map" data-island="{{ island.id }}" data-api="{% url 'api_island_map' island.id %}"
+          data-defs="{% url 'api_defs' %}" aria-label="{% translate '島の俯瞰図' %}"></canvas>
+  <div class="map-buttons">
+    <button type="button" data-zoom="in" aria-label="{% translate '拡大' %}">＋</button>
+    <button type="button" data-zoom="out" aria-label="{% translate '縮小' %}">－</button>
+  </div>
+</div>
+<p id="tile-info" class="tile-info">{% translate "マスを選ぶと、ここに詳しい情報が出ます。" %}</p>
+<script type="module" src="{% static 'js/map/main.js' %}"></script>
+{% endblock %}

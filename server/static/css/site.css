@@ -1,0 +1,23 @@
+:root {
+  --bg: #f6f4ef;
+  --fg: #222;
+  --accent: #2f6db5;
+  --panel: #fff;
+  --border: #d8d3c8;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+main { padding: 0 16px 24px; max-width: 1100px; margin: 0 auto; }
+.site-header { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.site-header nav { display: flex; gap: 12px; align-items: center; }
+.brand { font-weight: bold; color: var(--fg); text-decoration: none; }
+a { color: var(--accent); }
+form.inline { display: inline; }
+.island-list li { margin: 4px 0; }
+.island-list small { margin-left: 8px; color: #666; }
+.map-wrap { position: relative; border: 1px solid var(--border); background: #1d3f66; }
+#island-map { display: block; width: 100%; height: min(70vh, 640px); touch-action: none; cursor: grab; }
+.map-buttons { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.map-buttons button { width: 40px; height: 40px; font-size: 20px; }
+.tile-info { min-height: 1.5em; }

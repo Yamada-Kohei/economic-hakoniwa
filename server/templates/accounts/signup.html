@@ -1,0 +1,5 @@
+{% extends "base.html" %}{% load i18n %}
+{% block content %}
+<h1>{% translate "登録" %}</h1>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">{% translate "登録する" %}</button></form>
+{% endblock %}

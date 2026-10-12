@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "表示名 locale/<言語>/<種類>.yaml",
+  "type": "object",
+  "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+  "additionalProperties": {"type": "string", "minLength": 1}
+}

@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "economic-hakoniwa"
+version = "0.0.1"
+description = "経済版箱庭諸国: 産業・市場・経済体制を遊ぶ箱庭諸国系のブラウザゲーム"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "Django>=5.2,<6",
+    "PyYAML>=6.0",
+    "jsonschema>=4.21",
+]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.1"]
+dev = [
+    "pytest>=8",
+    "pytest-django>=4.8",
+    "ruff>=0.6",
+]
+
+[tool.setuptools.packages.find]
+include = ["hakoniwa_core*", "server*"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "server.settings"
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "DJ"]
+
+[tool.ruff.lint.per-file-ignores]
+"server/*/migrations/*" = ["E501"]
