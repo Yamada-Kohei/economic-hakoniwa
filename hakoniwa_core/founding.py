@@ -17,6 +17,8 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
+from hakoniwa_core.economy import default_accounting
+from hakoniwa_core.economy.start import start_economy
 from hakoniwa_core.geo import NEIGHBORS4, NEIGHBORS8, components, distance, shortest_path, within
 from hakoniwa_core.naming import (
     assign_serial,
@@ -26,7 +28,14 @@ from hakoniwa_core.naming import (
     place_index,
     place_styles,
 )
-from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE, Facility, IslandState, LogEntry, Tile
+from hakoniwa_core.state import (
+    OWNER_PRIVATE,
+    OWNER_STATE,
+    Facility,
+    IslandState,
+    LogEntry,
+    Tile,
+)
 
 Pos = tuple[int, int]
 Problem = tuple[str, dict[str, Any]]
@@ -304,6 +313,7 @@ def found_island(
     island.ext["places"] = places
     place_start(island, defs, config, rng, turn)
     island.log.append(LogEntry("island_founded", {"name": island.name}))
+    start_economy(island, defs, config, turn)
     return island
 
 
@@ -373,7 +383,7 @@ def _prime_inputs(island: IslandState, defs: Defs, config: GameConfig) -> None:
     for f in island.facilities:
         for good, qty in sorted(fac.recipe_of(defs, f)["inputs"].items()):
             if good != power:
-                stock.stock_add(f.stock, good, stock.take(island.warehouse, good, qty))
+                stock.put_batches(f.stock, good, stock.take_batches(island.warehouse, good, qty))
 
 
 def _start_site(
@@ -410,7 +420,7 @@ def _add_facility(
         y=pos[1],
         recipe=recipe or fac.default_recipe(defs, kind) or "default",
         owner=OWNER_STATE if state else OWNER_PRIVATE,
-        accounting=economy.get("state_accounting", "treasury") if state else "self_supporting",
+        accounting=default_accounting(defs, island, kind, OWNER_STATE if state else OWNER_PRIVATE),
         built=True,
         status=fac.STATUS_STARTING,
     )

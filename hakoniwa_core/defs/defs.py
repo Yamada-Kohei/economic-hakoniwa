@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +65,18 @@ class Defs:
     def naming(self) -> Mapping[str, Mapping[str, Any]]:
         return self.tables["naming"]
 
+    @property
+    def finance(self) -> Mapping[str, Mapping[str, Any]]:
+        return self.tables["finance"]
+
+    def journal_kinds(self) -> list[str]:
+        """仕訳の種類（finance.yaml の type: journal）。"""
+        return [k for k, v in self.finance.items() if v["type"] == "journal"]
+
+    def bond_terms(self) -> dict[str, Mapping[str, Any]]:
+        """国債の期間（finance.yaml の type: bond_term）。"""
+        return {k: v for k, v in self.finance.items() if v["type"] == "bond_term"}
+
     def regime_axes(self) -> dict[str, list[str]]:
         """体制の軸ごとの選択肢（定義した順）。例: {"politics": ["democracy", ...], ...}"""
         axes: dict[str, list[str]] = {}
@@ -77,7 +90,11 @@ class Defs:
 
     def settlement_levels(self) -> list[str]:
         """町（住宅地）の段階を、小さい順に。"""
-        return sorted(self.settlements, key=lambda s: self.settlements[s]["min_population"])
+        return list(self._settlement_levels)
+
+    @cached_property
+    def _settlement_levels(self) -> tuple[str, ...]:
+        return tuple(sorted(self.settlements, key=lambda s: self.settlements[s]["min_population"]))
 
     def recipe_name(self, facility: str, recipe: str, lang: str = "ja") -> str:
         """作り方の表示名。recipes の表示名がなければ、作るものの名前を並べる。"""

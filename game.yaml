@@ -8,15 +8,20 @@ schemas_dir: schemas    # 定義データのスキーマ
 
 # ターン処理の段。ここに並べた順に実行します。入れ外しもここで行います。
 stages:
-  - execute_orders   # 計画の実行（命令）
-  - employment       # 通勤と雇用
-  - production       # 生産と電力
+  - execute_orders   # 計画の実行（命令）。税率・予算などの政策もここで変わる
+  - budget           # 国庫の取り置き（支出の項目ごとに、支払いの順番で）
+  - employment       # 通勤と雇用（賃金の高い施設から）
+  - production       # 生産と電力（電力は送電網ごとに板寄せし、電気代を払う）
   - construction     # 工事の進み
-  - distribution     # 配分（フェーズ2で市場に差し替え）
+  - payroll          # 賃金・所得税・失業手当と、賃金の見直し
+  - market           # 財ごとの板寄せ、代金・運賃・消費税、傷んだ物を捨てる、希望価格の見直し
+  - banking          # 預金と準備預金の利子
+  - bonds            # 国債の利払いと償還、足りない分の自動の発行（中央銀行の直接引き受け）
+  - accounts         # 決算: 損益、減価償却、法人税、配当と納付、中央銀行の納付
   - population       # 消費と人口
   - housing          # 都市の発展（町の自動建設と成長）
   - events           # 災害
-  - records          # 記録
+  - records          # 記録（統計と、帳簿の確かめ）
 
 # 名前付きの式の差し替え。例: admin_power: "my_pack_module:admin_power"
 formulas: {}
@@ -50,6 +55,11 @@ founding:
     - {terrain: mountain, share: 0.12, inland: true}   # inland: 海から遠いマスから
     - {terrain: forest, share: 0.25}                   # まとまりで散らす
   capital_margin: 2     # 首都の候補は、海からこのマス数以上離れたマスを優先する
+  money:                # 建国と移し替えのときのお金（仕訳の列として作る）
+    general_deposit: 1500   # 一般の層の預金（1人あたり）
+    owner_deposit: 30000    # 資産を持つ層の預金（1人あたり、出資の後に残る額）
+    treasury: 500           # 国庫（住民1人あたり）
+    bond: bond_5y           # 建国の国債の期間（finance.yaml の bond_term）
   name_max:             # 名前の長さの上限（文字数）
     country: 32
     capital: 16
@@ -60,11 +70,105 @@ founding:
 labor:
   commute_radius: 3     # 通勤圏（マス）。施設の定義の commute_radius で施設ごとに変えられる
   default_priority: 5   # 優先順位（0〜9）の既定値
+  initial_wage: 1000    # 初めの賃金（一般の労働者1人1ターン）。値段の基準になる
+  natural_unemployment: 0.05  # ふつうの失業率 u*
+  wage_speed: 0.03      # 人手が足りないときの賃金の動きやすさ k_w
+  slack_speed: 0.005    # 失業がふつうより多いときの賃金の動きやすさ
+  indexation: 0.5       # 物価の上がった分のうち、賃金が追いかける割合
+  max_raise: 0.03       # 1ターンに賃金が上がる上限
+  max_cut: 0            # 1ターンに賃金が下がる上限（0 で下げない。失業の多い島で賃金と物価が下がり続けないように）
+  poach_gap: 0.05       # 賃金がこの割合以上安い施設から働き手を引き抜く
+  poach_limit: 0.1      # 1つの施設から1ターンに引き抜かれる働き手の割合の上限
+
+market:
+  band: 0.10            # 値幅（前のターンの約定価格から1ターンに動ける幅）
+  price_speed: 0.2      # 希望価格の動きやすさ k
+  household_priority: 8 # 家計の買い注文の優先順位（値幅の端で止まって割り当てるとき）
+  # 操業目標 = (売れ行きの見込み ＋ (見込み × inventory_turns − 在庫) × inventory_adjust) ÷ 全力の産出
+  sales_smoothing: 0.5  # 売れ行きの見込みを、前のターンに売れた量へ近づける割合
+  inventory_turns: 2    # 産出物の在庫の目安（売れ行きの見込みの何ターン分）
+  inventory_adjust: 0.25 # 在庫と目安の差を、1ターンに埋める割合
+  target_step: 0.1      # 売り切れたときに多めに見る量（全力の産出に対する割合）。発電所の余裕
+  expand_margin: 0.2    # 売り切れて、値段が変動費よりこの割合以上高いときに増産する
+  max_target_change: 0.2  # 操業目標を1ターンに変える幅の上限（全力に対する割合）
+  initial_prices:       # 初めの値段は定義のレシピから「原価＋上乗せ」で解く
+    markup: 0.1         # 原価に上乗せする割合
+    capital_rate: 0.05  # 設備の利子（年率）。減価償却は firms.depreciation_turns
+    reference: {electricity: thermal_power_plant}  # この施設の原価で値段を決める財
+    default: 1000       # 作る施設のない財の値段
+
+freight:
+  facility: transport   # 運送業の施設（島に1つ、マスを持たない）
+  per_step: 0.01        # 拠点からの道のり1あたりの運賃の率
+  max_rate: 0.2         # 運賃の率の上限
+  hub_level: city       # 拠点になる町の段階（首都のマスはいつも拠点）
+  labor_share: 0.6      # 雇う人数 = 前のターンの運賃 × これ ÷ 賃金
+  max_surcharge: 2.0    # 人手が足りないときの運賃の割り増しの上限（倍）
+
+household:
+  layers:               # 家計の層。share を書いた層は住民のその割合で、働かない（資産を持つ層）
+    general: {c1: 0.9}
+    owners: {c1: 0.6, share: 0.01}
+  c2: 0.01              # 使う額 C = c1 × 直近の可処分所得の平均 + c2 × 預金
+  income_turns: 3       # 可処分所得を平均するターン数
+  c1_rate_effect: 0.02  # 預金の実質金利が1%高いごとに c1 を下げる量
+  c1_range: 0.1         # c1 を既定の値から動かす幅の上限
+  consumer_goods_share: 1.0     # 電気代と食費の残りのうち、消費財に使う割合
+  food_elasticity: 4    # 食料の割り振りで、値段の差をどれだけ効かせるか（質を足した栄養あたりの値段の比の乗数）
+  food_share: 0.25      # 食費の上限（使う額に対する割合）。安い食料の費用との差の分だけ、質の高い食料に替える
+  # 消費財の注文の指値（いつもの値段に対する倍率）。高い段から「その値段で使い切る量」まで足していく
+  consumer_goods_tiers: [0.95, 1.0, 1.05]
+  usual_price_turns: 12 # いつもの値段 = 直近このターン数の値段の平均
+  consumer_goods_target: 0.0005 # 1人1ターンあたりの消費財の目安（幸福度）
+  housing_share: 0.02   # 町の資材に使う預金の割合の上限
+
+firms:
+  operating_turns: 2    # 独立採算の施設に、出資で初めに持たせる手元の資金（支払いのターン数分）
+  depreciation_turns: 240  # 設備の減価償却のターン数（20年）
+  payout: 0.5           # 税引き後の利益のうち、配当（民営）・国庫への納付（国営）に回す割合
+  cash_turns: 6         # 手元の資金がこのターン数分の支払いを超えたら、超えた分も配当・納付に回す
+  loss_carry_turns: 60  # 赤字を繰り越せるターン数
+
+banking:
+  facility: bank        # 市中銀行の施設（フェーズ2-1 は島に1つ）
+  office_tiles: 2       # 建国のときに首都の近くでオフィス街に指定するマスの数
+  capital_ratio: 0.1    # 建国のときの銀行の自己資本（預金に対する割合）
+  bond_ratio: 0.2       # 建国のときに銀行が持つ国債（預金に対する割合）
+  reserve_ratio: 0.02   # 最低限の準備預金（預金に対する割合）
+  deposit_rate: 0.01    # 預金金利（フェーズ2-1 は固定）
+
+central_bank:
+  policy_rate: 0.03     # 政策金利（フェーズ2-1 は固定）
+  reserve_spread: 0.01  # 準備預金の余りに付ける利子は、政策金利からこれを引いた率
+  inflation_target: 0.02  # 物価の目標 π*
+
+bonds:
+  auto_terms: {bond_1y: 1.0}  # 自動の発行の期間（finance.yaml の bond_term）と割合
+  debt_threshold: 0.6   # 政府の借金の対年GDP比がこれを超えた分に、利回りを上乗せする
+  sigma: 0.05           # その上乗せの係数 σ
+  kappa: 0.5            # 物価上昇率が目標を超えた分の上乗せの係数 κ
+  max_yield: 0.2        # 利回りの上限
+  buffer_turns: 1       # 国庫に残す額（支出のターン数分）
+
+fiscal:
+  income_tax: 0.1       # 所得税（賃金から差し引く）
+  corporate_tax: 0.2    # 法人税（施設と銀行の利益）
+  consumption_tax: 0.05 # 消費税（家計の食料・消費財・電気の買い物）
+  minimum_wage: 0       # 最低賃金（0 は決めない）
+  unemployment_benefit: 0  # 失業手当（失業者1人に平均賃金の何割）
+  # 国庫が足りないときの支払いの順番（前の項目から取り置く）
+  payment_order: [bonds, civil_servants, unemployment, state_facilities, construction, warehouse]
+  # 年の予算を命令で決める項目（毎ターン予算の12分の1まで使う）。construction は公共事業費
+  # （国の工事の資材と作業員の賃金。インフラはフェーズ2-3 で足す）
+  budget_items: [construction, warehouse]
+  budget: {construction: 600, warehouse: 0}  # 建国のときの年の予算（住民1人あたり）
+  reserve_margin: 0.2   # 取り置きの見積もりを、前のターンの支出よりこの割合だけ多めにする
 
 power:
   good: electricity     # 電力の財
   household_use: 0.0005 # 住民1人あたりの電力
   household_priority: 4 # 家庭への送電の優先順位（施設の優先順位と比べる）
+  household_share: 0.3  # 家計が電気代に使う額の上限（使う額に対する割合）。これを超える電気料金では買わない
 
 population:
   food_per_person: 0.002 # 1人1ターンあたりの食料
@@ -74,13 +178,24 @@ population:
   emigration_happiness: 30  # 幸福度がこれより低いマスから、人が島の外へ出ていく
   emigration_rate: 0.02
   migration_rate: 0.1   # 仕事のない人のうち、1ターンに働き口の近くへ移る割合
-  happiness:            # 幸福度 = base + 各項目（足りている割合 × 重み） - 汚染 × pollution_per_point
-    base: 20
-    food: 30
-    jobs: 20
+  # 幸福度 = base + 各項目（足りている割合 × 重み） − 汚染 × pollution_per_point − 実質賃金と物価の減点
+  # 上下水道（5）と教育（5）はフェーズ2-3 で足す。それまでその分は base に入れておく
+  happiness:
+    base: 25
+    food: 25
+    jobs: 15
     power: 10
-    food_quality: 20
+    food_quality: 10
+    consumer_goods: 15
     pollution_per_point: 1
+    real_wage_per_point: 1   # 実質賃金が1年前より1%下がるごとの減点
+    real_wage_max: 15
+    inflation_threshold: 0.05  # 物価上昇率（年率）がこれを超えた1%ごとに減点
+    inflation_per_point: 1
+    inflation_max: 15
+  # フェーズ1の世界を移し替えた島は、幸福度の重みを blend_turns ターンかけてこの重みから移す
+  happiness_phase1: {base: 20, food: 30, jobs: 20, power: 10, food_quality: 20, consumer_goods: 0}
+  blend_turns: 12
 
 housing:
   facility: housing     # 自動で建つ町の施設（育つのに要る資源は settlements.yaml の materials）
@@ -99,6 +214,13 @@ disasters:
     typhoon: {halt_turns: [1, 2]}
     flood: {halt_turns: [1, 3]}
     fire: {halt_turns: [1, 3]}
+
+records:
+  history_turns: 24     # 値段・物価指数・平均賃金の履歴を状態に残すターン数
+  cpi_weight_turns: 12  # 物価指数の重み（家計が買った量）を数えるターン数
+  journal_turns: 24     # 仕訳を残すターン数
+  trades_turns: 24      # 約定を残すターン数
+  books_turns: 2400     # 施設の帳簿を残すターン数（200年）
 
 backups:
   keep: 24              # 残すバックアップの数

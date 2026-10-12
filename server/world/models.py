@@ -48,6 +48,9 @@ class Island(models.Model):
     regime = models.JSONField("体制", default=dict, blank=True)
     names = models.JSONField("首都名・通貨名と記号・国家元首", default=dict, blank=True)
     # 島の共同倉庫は在庫 Stock の行（facility が空の行）で持つ
+    # 経済の状態（値段・賃金・物価の履歴、家計の層など）と政策（税率・予算など）。フェーズ2
+    economy = models.JSONField("経済の状態", default=dict, blank=True)
+    policy = models.JSONField("政策", default=dict, blank=True)
     inactive = models.BooleanField("休止中", default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     ext = models.JSONField("拡張欄", default=dict, blank=True)
@@ -84,7 +87,10 @@ class Tile(models.Model):
 
 
 class Facility(models.Model):
-    """マスに建つ施設（住宅も施設の一種）。number は島の中での番号（コアの Facility.id）。"""
+    """マスに建つ施設（住宅も施設の一種）。number は島の中での番号（コアの Facility.id）。
+
+    運送業のようにマスを持たない施設は x, y が -1。
+    """
 
     island = models.ForeignKey(Island, on_delete=models.CASCADE, related_name="facilities")
     number = models.IntegerField("島の中の番号")
@@ -101,6 +107,8 @@ class Facility(models.Model):
     operating_rate = models.IntegerField("稼働率（1000 分の 1）", default=0)
     priority = models.SmallIntegerField("優先順位", null=True, blank=True)
     status = models.CharField("状態", max_length=64, blank=True, default="")
+    # 賃金・希望価格・操業目標など（フェーズ2）
+    economy = models.JSONField("経済の状態", default=dict, blank=True)
     ext = models.JSONField("拡張欄", default=dict, blank=True)
 
     class Meta:
@@ -115,7 +123,10 @@ class Facility(models.Model):
 
 
 class Stock(models.Model):
-    """在庫。facility が空なら島の共同倉庫の在庫。量は 1000 分の 1 単位の整数。"""
+    """在庫。facility が空なら国の倉庫の在庫。量は 1000 分の 1 単位の整数。
+
+    作られたターン（made_turn）ごとの行で持つ（持ち越せる期間を過ぎると傷んで捨てられる）。
+    """
 
     island = models.ForeignKey(Island, on_delete=models.CASCADE, related_name="stocks")
     facility = models.ForeignKey(

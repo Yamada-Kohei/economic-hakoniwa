@@ -1,0 +1,35 @@
+# 金融の部品。type: journal は仕訳の種類（お金の動きの名前。統計と施設の帳簿はこの名前で集計します）、
+# type: bond_term は国債の期間（turns: ターン数、premium: 期間の上乗せの利回り）。
+# 融資の種類と破綻処理の選択肢はフェーズ2-2 で足します。
+
+# 建国と出資
+grant:                {type: journal}   # 建国の給付（政府 → 家計）
+capital_injection:    {type: journal}   # 出資（持ち主 → 施設・銀行）
+equity_return:        {type: journal}   # 出資の払い戻し（施設 → 持ち主）
+# 売り買い
+sale:                 {type: journal}   # 物の代金（買い手 → 売り手）
+electricity:          {type: journal}   # 電気代（使う施設と家計 → 発電所）
+freight:              {type: journal}   # 運賃（売り手と買い手 → 運送業）
+# 賃金と税
+wage:                 {type: journal}   # 賃金（施設・政府・銀行 → 家計）
+unemployment_benefit: {type: journal}   # 失業手当（政府 → 家計）
+tax_income:           {type: journal}   # 所得税（家計 → 政府）
+tax_consumption:      {type: journal}   # 消費税（家計 → 政府）
+tax_corporate:        {type: journal}   # 法人税（施設・銀行 → 政府）
+dividend:             {type: journal}   # 配当と国庫への納付（施設・銀行 → 持ち主）
+# 銀行と中央銀行
+interest_deposit:     {type: journal}   # 預金の利子（銀行 → 預金者）
+interest_reserve:     {type: journal}   # 準備預金の利子（中央銀行 → 銀行）
+cb_payment:           {type: journal}   # 中央銀行の利益の納付（中央銀行 → 政府）
+# 国債
+bond_issue:           {type: journal}   # 国債の発行と引き受け
+bond_purchase:        {type: journal}   # 国債の買い入れ（売り手から買い手へ）
+bond_interest:        {type: journal}   # 国債の利払い（政府 → 持ち手）
+bond_redemption:      {type: journal}   # 国債の償還（政府 → 持ち手）
+# 家計の層
+layer_transfer:       {type: journal}   # 層を移った人の預金の付け替え
+
+# 国債の期間
+bond_1y:  {type: bond_term, turns: 12, premium: 0.0025}
+bond_5y:  {type: bond_term, turns: 60, premium: 0.01}
+bond_10y: {type: bond_term, turns: 120, premium: 0.015}

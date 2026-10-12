@@ -19,6 +19,13 @@ export class OrderQueue {
     this.saving = Promise.resolve();
     el.addEventListener("click", (e) => this.handleClick(e));
     el.addEventListener("submit", (e) => this.handleSubmit(e));
+    // 政策の欄を開いたままにする（列を描き直しても閉じないように）
+    el.addEventListener("toggle", (e) => {
+      if (e.target.dataset?.policy) this.policyOpen = e.target.open;
+    }, true);
+    this.policy = null;
+    this.powerGood = "";
+    this.policyOpen = false;
     this.load();
   }
 
@@ -32,6 +39,8 @@ export class OrderQueue {
   }
 
   apply(data) {
+    this.policy = data.policy || this.policy;
+    this.powerGood = data.power_good || this.powerGood;
     this.items = data.orders.map((o) => ({ kind: o.kind, payload: o.payload, cost: o.cost, text: o.text }));
     this.recent = data.recent || this.recent;
     this.adminPower = data.admin_power;
@@ -100,6 +109,7 @@ export class OrderQueue {
         <label>国名の変更 <input name="name" maxlength="32" required></label>
         <button type="submit">命令に追加</button>
       </form>
+      ${this.policyForms()}
       <details>
         <summary>最近の命令の結果</summary>
         <ul class="recent">${recent.join("") || `<li class="muted">なし</li>`}</ul>
@@ -121,10 +131,88 @@ export class OrderQueue {
     }
   }
 
+  /** 国の政策の命令（税率・予算・最低賃金と失業手当・国の倉庫の売買・公共料金の上限）の入力欄 */
+  policyForms() {
+    const p = this.policy;
+    if (!p) return "";
+    const num = (name, value, attrs = "") =>
+      `<input name="${name}" type="number" min="0" ${attrs} placeholder="${value}">`;
+    const budget = Object.entries(p.budget)
+      .map(([item, b]) => `<label>${escapeHtml(b.name)} ${num(item, b.amount, 'step="1"')}</label>`)
+      .join("");
+    const goods = Object.entries(this.defs.goods)
+      .filter(([g]) => g !== this.powerGood)
+      .map(([g, d]) => `<option value="${g}">${escapeHtml(d.name)}（${escapeHtml(d.unit)}）</option>`)
+      .join("");
+    const power = this.defs.goods[this.powerGood];
+    const cap = p.price_cap[this.powerGood] || 0;
+    return `
+      <details data-policy="1" ${this.policyOpen ? "open" : ""}>
+        <summary>国の政策の命令</summary>
+        <p class="muted">空欄の項目は変えません。欄の薄い数字が今の値です。</p>
+        <form class="actions" data-form="set_taxes">
+          <strong>税率（%）</strong>
+          <label>所得税 ${num("income_tax", p.income_tax, 'max="100" step="0.1"')}</label>
+          <label>法人税 ${num("corporate_tax", p.corporate_tax, 'max="100" step="0.1"')}</label>
+          <label>消費税 ${num("consumption_tax", p.consumption_tax, 'max="100" step="0.1"')}</label>
+          <button type="submit">命令に追加</button>
+        </form>
+        <form class="actions" data-form="set_budget">
+          <strong>年の予算</strong>${budget}
+          <button type="submit">命令に追加</button>
+        </form>
+        <form class="actions" data-form="set_labor_policy">
+          <strong>賃金と失業手当</strong>
+          <label>最低賃金（0 で決めない） ${num("minimum_wage", p.minimum_wage, 'step="1"')}</label>
+          <label>失業手当（平均賃金の %） ${num("unemployment_benefit", p.unemployment_benefit, 'max="100" step="1"')}</label>
+          <button type="submit">命令に追加</button>
+        </form>
+        <form class="actions" data-form="warehouse_trade">
+          <strong>国の倉庫の売買</strong>
+          <label>資源 <select name="good">${goods}</select></label>
+          <label><select name="side"><option value="sell">売る</option><option value="buy">買う</option></select></label>
+          <label>量 <input name="quantity" type="number" min="0.1" step="0.1" required></label>
+          <label>指値（1単位、買いは必須） <input name="limit" type="number" min="0" step="1"></label>
+          <button type="submit">命令に追加</button>
+        </form>
+        ${power ? `<form class="actions" data-form="set_price_cap">
+          <strong>公共料金の上限</strong>
+          <label>${escapeHtml(power.name)}（1${escapeHtml(power.unit)}あたり、0 で上限なし）
+            <input name="price" type="number" min="0" step="1" placeholder="${cap}" required></label>
+          <button type="submit">命令に追加</button>
+        </form>` : ""}
+      </details>`;
+  }
+
   handleSubmit(e) {
-    if (e.target.dataset.form !== "rename-island") return;
+    const kind = e.target.dataset.form;
+    if (!kind) return;
     e.preventDefault();
-    const name = new FormData(e.target).get("name").trim();
-    if (name) this.add("rename_island", { name });
+    const data = new FormData(e.target);
+    if (kind === "rename-island") {
+      const name = data.get("name").trim();
+      if (name) this.add("rename_island", { name });
+      return;
+    }
+    const payload = {};
+    for (const [key, value] of data.entries()) {
+      if (value === "") continue;
+      payload[key] = ["good", "side"].includes(key) ? value : Number(value);
+    }
+    if (kind === "set_price_cap") payload.good = this.powerGood;
+    if (kind === "warehouse_trade" && payload.side === "buy" && !payload.limit) {
+      this.message = "買うときは指値を入れてください。";
+      this.render();
+      return;
+    }
+    if (Object.keys(payload).length === 0) {
+      this.message = "変える項目を入れてください。";
+      this.render();
+      return;
+    }
+    for (const key of ["minimum_wage", "limit", "price", ...Object.keys(this.policy?.budget || {})]) {
+      if (key in payload) payload[key] = Math.round(payload[key]);
+    }
+    this.add(kind, payload);
   }
 }

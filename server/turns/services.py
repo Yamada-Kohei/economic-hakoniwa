@@ -12,6 +12,7 @@ from django.core.mail import mail_admins
 from django.db import transaction
 from django.utils import timezone
 
+from hakoniwa_core.economy.start import start_economy
 from hakoniwa_core.state import WorldState
 from hakoniwa_core.state.serialize import world_from_dict, world_to_dict
 from server.game import get_game
@@ -22,6 +23,7 @@ from server.world.bulk import update_rows
 from server.world.repository import (
     ORDER_FIELDS,
     WorldRepository,
+    delete_records_after,
     order_row,
     replace_island_contents,
 )
@@ -80,6 +82,7 @@ def run_turn(force: bool = False, now: datetime | None = None) -> TurnResult:
             state = repo.load(orders_until=now)
             _check_defs_cover(state)
             _make_backup(world, state)
+            _start_economies(state)
             report = game.engine.run_turn(state)
             logger.info("ターン %s の段ごとの時間（秒）: %s", report.turn, report.seconds)
             repo.save(state)
@@ -121,6 +124,20 @@ def _check_defs_cover(state: WorldState) -> None:
         missing.update(f"財 {g}" for g in island.warehouse if g not in defs.goods)
     if missing:
         raise TurnError("定義データから消えたものがあります: " + "、".join(sorted(missing)))
+
+
+def _start_economies(state: WorldState) -> None:
+    """フェーズ1のままの島（お金の経済がまだない島）に、お金と経済を始める（世界の移し替え）。
+
+    今の人口と施設から額を決め、施設の会計の形は経済体制の既定にする。バックアップの後に
+    行うので、このターンより前に巻き戻せばフェーズ1の島に戻り、次の更新でもう一度移し替える。
+    """
+    game = get_game()
+    for island_id in state.island_ids():
+        island = state.islands[island_id]
+        if not island.has_economy:
+            start_economy(island, game.defs, game.config, state.turn, migrated=True)
+            logger.info("島 %s にお金と経済を始めました", island_id)
 
 
 # --- バックアップと巻き戻し ---------------------------------------------------
@@ -168,6 +185,7 @@ def rollback(to_turn: int) -> WorldState:
     )
     TurnLog.objects.filter(island__world=world, turn__gt=to_turn).delete()
     m.StatRecord.objects.filter(island__world=world, turn__gt=to_turn).delete()
+    delete_records_after(world, to_turn)
     Backup.objects.filter(world=world, turn__gt=to_turn).delete()
     world.turn = state.turn
     world.ext = state.ext

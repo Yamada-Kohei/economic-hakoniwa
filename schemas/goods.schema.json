@@ -19,6 +19,7 @@
       "description": "住民が食べられる財にだけ書く"
     },
     "mining": {"type": "boolean", "description": "建国時に選べる鉱業資源か（選んだ資源だけ鉱山などで採れる）"},
+    "consumer": {"type": "boolean", "description": "家計が買う財か（物価指数に入れる）"},
     "override": {"const": true}
   }
 }

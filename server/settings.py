@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "server.accounts",
     "server.world",
+    "server.economy",
     "server.orders",
     "server.turns",
     "server.board",

@@ -3,16 +3,31 @@
 ターン更新では load() で世界全体をメモリに読み込み、コアで計算し、
 save() で変わったものだけを書き戻す。トランザクションは呼ぶ側が張る。
 
-在庫（倉庫と施設の手持ち）は毎ターンほとんど変わるので、島ごとに消して書き直す。
+在庫（倉庫と施設の手持ち）と、お金の勘定・国債は毎ターンほとんど変わるので、島ごとに消して
+書き直す。仕訳・約定・市場の記録・施設の帳簿はターンごとに足し、game.yaml の records の期間を
+過ぎた行を消す。
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from typing import Any
 
-from hakoniwa_core.state import Facility, IslandState, OrderState, Tile, WorldState
+from hakoniwa_core.state import (
+    Bond,
+    EconomyState,
+    Facility,
+    IslandState,
+    OrderState,
+    Policy,
+    Tile,
+    WorldState,
+)
+from hakoniwa_core.state.serialize import build
+from server.economy import models as em
+from server.game import get_game
 from server.orders.models import Order
 from server.turns.models import TurnLog
 from server.world import models as m
@@ -29,6 +44,8 @@ ISLAND_FIELDS = [
     "resources",
     "regime",
     "names",
+    "economy",
+    "policy",
     "ext",
 ]
 TILE_FIELDS = ["terrain", "population", "zone", "infra", "pollution", "ext"]
@@ -46,6 +63,7 @@ FACILITY_FIELDS = [
     "operating_rate",
     "priority",
     "status",
+    "economy",
     "ext",
 ]
 ORDER_FIELDS = ["status", "reason", "reason_args", "executed_turn"]
@@ -95,8 +113,12 @@ class WorldRepository:
             if facility_id is None:
                 islands[island_id].warehouse.setdefault(good, []).append([made, qty])
             else:
-                f = by_pk[facility_id]
-                f.stock[good] = f.stock.get(good, 0) + qty
+                by_pk[facility_id].stock.setdefault(good, []).append([made, qty])
+
+        load_money(islands, em.Account.objects.filter(island__world=self.world))
+        bonds = em.Bond.objects.filter(island__world=self.world).order_by("island_id", "number")
+        for b in bonds:
+            islands[b.island_id].bonds.append(bond_from_row(b))
 
         orders = Order.objects.filter(island__world=self.world, status="pending")
         if orders_until is not None:
@@ -139,6 +161,8 @@ class WorldRepository:
 
         self._save_facilities(islands)
         write_stocks(islands, replace=True)
+        write_money(islands, replace=True)
+        write_records(islands, state.turn)
 
         changed_orders = [
             order_row(o)
@@ -193,6 +217,7 @@ class WorldRepository:
 
 
 def island_from_row(row: m.Island) -> IslandState:
+    """島の行から、マス・施設・在庫・お金を除いた島の状態を作る（それぞれ別に読む）。"""
     return IslandState(
         id=row.id,
         name=row.name,
@@ -205,12 +230,14 @@ def island_from_row(row: m.Island) -> IslandState:
         resources=list(row.resources),
         regime=dict(row.regime),
         names=dict(row.names),
+        economy=build(EconomyState, row.economy or {}),
+        policy=build(Policy, row.policy or {}),
         ext=row.ext,
     )
 
 
 def island_row(island: IslandState) -> m.Island:
-    return m.Island(id=island.id, **{name: getattr(island, name) for name in ISLAND_FIELDS})
+    return m.Island(id=island.id, **{name: _plain(getattr(island, name)) for name in ISLAND_FIELDS})
 
 
 def tile_row(tile: Tile, **extra: Any) -> m.Tile:
@@ -270,20 +297,148 @@ def write_stocks(islands: Iterable[IslandState], replace: bool) -> None:
                 rows.append(m.Stock(island_id=island.id, good=good, made_turn=made, quantity=qty))
         for f in island.facilities:
             for good in sorted(f.stock):
-                rows.append(
-                    m.Stock(
-                        island_id=island.id,
-                        facility_id=facility_pk[(island.id, f.id)],
-                        good=good,
-                        quantity=f.stock[good],
+                for made, qty in f.stock[good]:
+                    rows.append(
+                        m.Stock(
+                            island_id=island.id,
+                            facility_id=facility_pk[(island.id, f.id)],
+                            good=good,
+                            made_turn=made,
+                            quantity=qty,
+                        )
                     )
-                )
     m.Stock.objects.bulk_create(rows, batch_size=BATCH)
+
+
+def load_money(islands: dict[int, IslandState], accounts) -> None:
+    """勘定の残高を島の状態に読み込む。"""
+    for island_id, name, balance in accounts.order_by("island_id", "name").values_list(
+        "island_id", "name", "balance"
+    ):
+        islands[island_id].accounts[name] = balance
+
+
+def write_money(islands: Iterable[IslandState], replace: bool) -> None:
+    """島の勘定と国債の銘柄を書く。replace なら、その島の今の行を消してから書く。"""
+    islands = list(islands)
+    if replace:
+        ids = [i.id for i in islands]
+        em.Account.objects.filter(island_id__in=ids).delete()
+        em.Bond.objects.filter(island_id__in=ids).delete()
+    em.Account.objects.bulk_create(
+        [
+            em.Account(island_id=island.id, name=name, balance=balance)
+            for island in islands
+            for name, balance in sorted(island.accounts.items())
+        ],
+        batch_size=BATCH,
+    )
+    em.Bond.objects.bulk_create(
+        [
+            em.Bond(
+                island_id=island.id,
+                number=b.id,
+                issued=b.issued,
+                term=b.term,
+                rate=b.rate,
+                face=b.face,
+            )
+            for island in islands
+            for b in island.bonds
+        ],
+        batch_size=BATCH,
+    )
+
+
+def bond_from_row(row: em.Bond) -> Bond:
+    return Bond(id=row.number, issued=row.issued, term=row.term, rate=row.rate, face=row.face)
+
+
+def write_records(islands: Iterable[IslandState], turn: int) -> None:
+    """このターンの仕訳・約定・市場の記録・施設の帳簿を足し、残す期間を過ぎた行を消す。"""
+    islands = list(islands)
+    em.JournalEntry.objects.bulk_create(
+        [
+            em.JournalEntry(
+                island_id=i.id,
+                turn=turn,
+                kind=e.kind,
+                debit=e.debit,
+                credit=e.credit,
+                amount=e.amount,
+            )
+            for i in islands
+            for e in i.journal
+        ],
+        batch_size=BATCH,
+    )
+    em.Trade.objects.bulk_create(
+        [
+            em.Trade(
+                island_id=i.id,
+                turn=turn,
+                good=t.good,
+                buyer=t.buyer,
+                seller=t.seller,
+                quantity=t.quantity,
+                amount=t.amount,
+            )
+            for i in islands
+            for t in i.trades
+        ],
+        batch_size=BATCH,
+    )
+    em.MarketRecord.objects.bulk_create(
+        [
+            em.MarketRecord(
+                island_id=i.id,
+                turn=turn,
+                good=r.good,
+                price=r.price,
+                volume=r.volume,
+                demand=r.demand,
+                supply=r.supply,
+            )
+            for i in islands
+            for r in i.markets
+        ],
+        batch_size=BATCH,
+    )
+    em.FacilityBook.objects.bulk_create(
+        [
+            em.FacilityBook(
+                island_id=i.id,
+                turn=turn,
+                facility=b.facility,
+                items=b.items,
+                deposit=b.deposit,
+                debt=b.debt,
+                inventory=b.inventory,
+            )
+            for i in islands
+            for b in i.books
+        ],
+        batch_size=BATCH,
+    )
+    records = get_game().config.get("records")
+    ids = [i.id for i in islands]
+    for model, key in (
+        (em.JournalEntry, "journal_turns"),
+        (em.Trade, "trades_turns"),
+        (em.FacilityBook, "books_turns"),
+    ):
+        model.objects.filter(island_id__in=ids, turn__lte=turn - records[key]).delete()
+
+
+def delete_records_after(world: m.World, turn: int) -> None:
+    """巻き戻し用: ターン turn より後の、お金と市場の記録を消す。"""
+    for model in (em.JournalEntry, em.Trade, em.MarketRecord, em.FacilityBook):
+        model.objects.filter(island__world=world, turn__gt=turn).delete()
 
 
 def create_island(world: m.World, island: IslandState, owner=None) -> m.Island:
     """コアの島の状態から、新しい島を DB に作る（番号は DB が決める）。"""
-    values = {name: getattr(island, name) for name in ISLAND_FIELDS}
+    values = {name: _plain(getattr(island, name)) for name in ISLAND_FIELDS}
     row = m.Island.objects.create(world=world, owner=owner, size=island.size, **values)
     island.id = row.id
     m.Tile.objects.bulk_create(
@@ -293,6 +448,7 @@ def create_island(world: m.World, island: IslandState, owner=None) -> m.Island:
         [facility_row(row.id, f) for f in island.facilities], batch_size=BATCH
     )
     write_stocks([island], replace=False)
+    write_money([island], replace=False)
     TurnLog.objects.bulk_create(
         [TurnLog(island=row, turn=world.turn, kind=e.kind, args=e.args) for e in island.log]
     )
@@ -320,6 +476,7 @@ def replace_island_contents(islands: list[IslandState]) -> None:
         [facility_row(i.id, f) for i in islands for f in i.facilities], batch_size=BATCH
     )
     write_stocks(islands, replace=False)
+    write_money(islands, replace=True)
 
 
 def load_island(row: m.Island) -> IslandState:
@@ -332,7 +489,12 @@ def load_island(row: m.Island) -> IslandState:
 
 
 def _values(obj: Any, names: list[str]) -> tuple[Any, ...]:
-    return tuple(_freeze_json(getattr(obj, name)) for name in names)
+    return tuple(_freeze_json(_plain(getattr(obj, name))) for name in names)
+
+
+def _plain(value: Any) -> Any:
+    """保存する形（JSON の欄に入れる dict）。経済の状態や政策の dataclass は dict にする。"""
+    return asdict(value) if is_dataclass(value) and not isinstance(value, type) else value
 
 
 def _freeze_json(value: Any) -> Any:

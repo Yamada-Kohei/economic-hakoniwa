@@ -1,53 +1,181 @@
-"""記録の段: 人口・雇用・幸福度・在庫・行政力などを、このターンの統計に残す。
+"""記録の段: このターンの統計を残し、経済の履歴を進め、最後に帳簿を確かめる。
 
-生産量と電力は生産の段が、食料は配分の段が書きます。統計の名前は「人口 population」
-「在庫 stock.<財>」「生産 production.<財>」のように付け、サーバーが統計の表に保存します。
+統計の名前は「人口 population」「在庫 stock.<財>」「値段 price.<財>」のように付け、サーバーが
+統計の表に保存します。生産量と電力は生産の段が書きます。お金の統計（GDP・物価・財政・家計の層）は
+このターンの仕訳と、段が残したお金と物の流れ（hakoniwa_core/economy/books.py）から作ります。
+
+最後に帳簿を確かめ（hakoniwa_core/ledger.py の check）、崩れていればそのターンを失敗にします
+（例外を出し、サーバーは何も保存しない）。
 """
 
 from __future__ import annotations
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import stock
+from hakoniwa_core import ledger, stock
+from hakoniwa_core.economy import GENERAL, OWNERS, books, funds, household
+from hakoniwa_core.economy.debt import annual_gdp, total_debt
+from hakoniwa_core.economy.households import close_income
+from hakoniwa_core.economy.stats import inflation, update_cpi
+from hakoniwa_core.modules.labor import has_own_wage
 from hakoniwa_core.modules.population import subsistence_persons
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import IslandState
 from hakoniwa_core.turn.context import StageContext
-from hakoniwa_core.units import from_milli
+from hakoniwa_core.units import BASIS, from_milli
+
+
+class LedgerCheckFailed(Exception):
+    """帳簿の確かめが通らなかった（そのターンは保存しない）。"""
 
 
 class Records(IslandStage):
     name = "records"
 
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
+        self._people(island, ctx)
+        if island.has_economy:
+            self._economy(island, ctx)
+            self._check(island, ctx)
+
+    # --- 人と物 -------------------------------------------------------------------
+
+    @staticmethod
+    def _people(island: IslandState, ctx: StageContext) -> None:
         defs, stats = ctx.defs, island.stats
         population = labor = employed = farming = 0
-        mood = 0
+        share = fac.labor_share(defs, island)
         for tile in island.tiles:
             if tile.population <= 0:
                 continue
             population += tile.population
-            labor += fac.labor_force(defs, tile)
+            force = fac.labor_force(defs, island, tile)
+            labor += force
             employed += tile.ext.get("employed", 0)
             farming += min(
-                fac.labor_force(defs, tile) - tile.ext.get("employed", 0),
-                int(subsistence_persons(defs, tile) * fac.labor_share(defs)),
+                force - tile.ext.get("employed", 0),
+                int(subsistence_persons(defs, island, tile) * share),
             )
-            mood += tile.ext.get("happiness", 0) * tile.population
         stats["population"] = population
         stats["labor"] = labor
         stats["employed"] = employed
         stats["subsistence"] = farming
         stats["unemployment"] = (labor - employed - farming) / labor if labor else 0.0
-        stats["happiness"] = mood / population if population else 0.0
+        layers = island.scratch.get("layer_happiness", {})
+        persons = {n: h["persons"] for n, h in island.economy.households.items()}
+        weight = sum(persons.get(n, 0) for n in layers)
+        if weight:
+            stats["happiness"] = sum(v * persons.get(n, 0) for n, v in layers.items()) / weight
+        else:
+            mood = sum(t.ext.get("happiness", 0) * t.population for t in island.tiles)
+            stats["happiness"] = mood / population if population else 0.0
         food = island.scratch.get("food")
         if food is not None:
             stats["food.ratio"] = food["ratio"] / fac.FULL
+            stats["food.need"] = from_milli(food["need"])
+            stats["food.supplied"] = from_milli(food["supplied"])
         for good, qty in stock.totals(island.warehouse).items():
             stats[f"stock.{good}"] = from_milli(qty)
         stats["facilities"] = sum(1 for f in island.facilities if f.built)
         stats["construction"] = sum(1 for f in island.facilities if not f.built)
         # 次のターンの初めに使える行政力（官庁の人手はこのターンに雇えた人数で決まる）
         stats["admin_power"] = ctx.formula("admin_power")(island, ctx)
+
+    # --- お金 ---------------------------------------------------------------------
+
+    def _economy(self, island: IslandState, ctx: StageContext) -> None:
+        defs, config, stats = ctx.defs, ctx.config, island.stats
+        economy = island.economy
+        prices = economy.prices
+        bought = island.scratch.get("household_bought", {})
+        cpi = update_cpi(economy, defs, config, prices, bought)
+        stats["cpi"] = cpi
+        stats["inflation"] = inflation(economy)
+        for good, price in sorted(prices.items()):
+            stats[f"price.{good}"] = price
+        for record in island.markets:
+            stats[f"volume.{record.good}"] = from_milli(record.volume)
+        # GDP（生産の側と支出の側。同じ流れから作るので一致する）
+        inventory = island.scratch.get("inventory_changes")
+        if inventory is None:
+            inventory = books.inventory_changes(island, prices)
+        production, spending = books.gdp(island, inventory)
+        stats["gdp"] = production
+        stats["gdp.spending"] = spending
+        stats["gdp.gap"] = abs(production - spending) / production if production else 0.0
+        keep = config.get("records.history_turns")
+        economy.gdp_history = [*economy.gdp_history, production][-keep:]
+        # 賃金
+        wages = [
+            f.economy["wage"] for f in island.facilities if has_own_wage(defs, f) and f.workers
+        ]
+        stats["wage.average"] = economy.average_wage
+        if wages:
+            stats["wage.min"] = min(wages)
+            stats["wage.max"] = max(wages)
+        stats["wage.real"] = economy.average_wage * 100 / cpi if cpi else 0.0
+        # お金の量と財政
+        money = ledger.aggregates(island.accounts)
+        stats["money.deposits"] = money["deposits"]
+        stats["money.central_bank"] = money["cb_money"]
+        stats["treasury"] = ledger.money(island, ledger.GOV)
+        debt = total_debt(island)
+        stats["debt"] = debt
+        year = annual_gdp(economy)
+        stats["debt_ratio"] = debt / year if year else 0.0
+        for kind, amount in sorted(self._fiscal(island).items()):
+            stats[f"fiscal.{kind}"] = amount
+        stats["policy_rate"] = island.policy.policy_rate * 100 / BASIS
+        # 家計の層
+        income = island.scratch.get("income", {})
+        per_capita = {}
+        for name, h in sorted(economy.households.items()):
+            persons = h["persons"]
+            stats[f"layer.{name}.persons"] = persons
+            stats[f"layer.{name}.income"] = income.get(name, 0)
+            stats[f"layer.{name}.deposits"] = ledger.money(island, household(name))
+            mood = island.scratch.get("layer_happiness", {}).get(name)
+            if mood is not None:
+                stats[f"layer.{name}.happiness"] = mood
+            if persons:
+                per_capita[name] = income.get(name, 0) / persons
+        if per_capita.get(GENERAL) and OWNERS in per_capita:
+            stats["inequality"] = per_capita[OWNERS] / per_capita[GENERAL]
+        # 施設の利益
+        stats["profit"] = sum(b.items.get(books.PROFIT, 0) for b in island.books)
+        stats["freight.surcharge"] = economy.freight.get("surcharge", BASIS) / BASIS
+        # 次のターンのための履歴
+        close_income(island, config.get("household.income_turns"))
+        economy.spending = funds.spent(island)
+        paid = economy.freight.pop("paid", 0)
+        surcharge = economy.freight.get("surcharge", BASIS) or BASIS
+        economy.freight["revenue"] = paid * BASIS // surcharge
+
+    @staticmethod
+    def _fiscal(island: IslandState) -> dict[str, int]:
+        """国庫の出入り（仕訳の種類ごと）。in.<種類> が収入、out.<種類> が支出。"""
+        out: dict[str, int] = {}
+        for e in island.journal:
+            if e.debit == ledger.TREASURY_ACCOUNT:
+                key = f"in.{e.kind}"
+            elif e.credit == ledger.TREASURY_ACCOUNT:
+                key = f"out.{e.kind}"
+            else:
+                continue
+            out[key] = out.get(key, 0) + e.amount
+        return out
+
+    # --- 帳簿の確かめ ----------------------------------------------------------------
+
+    @staticmethod
+    def _check(island: IslandState, ctx: StageContext) -> None:
+        opening = island.scratch.get("opening_accounts")
+        if opening is None:
+            return
+        problems = ledger.check(island, opening, ctx.defs.journal_kinds())
+        if problems:
+            shown = " / ".join(problems[:5])
+            more = f"（ほかに {len(problems) - 5} 件）" if len(problems) > 5 else ""
+            raise LedgerCheckFailed(f"島 {island.id} の帳簿が合いません: {shown}{more}")
 
 
 def register(registry: Registry) -> None:

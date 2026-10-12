@@ -183,7 +183,7 @@ def island_map(request, island_id: int):
             "status": f.status,
             "rate": f.operating_rate,
         }
-        for f in island.facilities.order_by("number")
+        for f in island.facilities.filter(x__gte=0).order_by("number")  # マスを持つ施設だけ
     ]
     return _json(
         {
@@ -315,6 +315,8 @@ def _orders_view(island: m.Island) -> dict[str, Any]:
     recent = island.orders.exclude(status="pending").order_by("-executed_turn", "-seq")[:20]
     return {
         "admin_power": int(admin_power),
+        "policy": display.policy_view(island),
+        "power_good": get_game().config.get("power.good"),
         "orders": [
             {
                 "kind": o.kind,
@@ -375,6 +377,8 @@ def world_shapes(request):
     )
     for island_id, x, y, kind, built, ext in facilities.iterator(chunk_size=4000):
         island = islands[island_id]
+        if x < 0 or y < 0:  # 運送業のようなマスを持たない施設
+            continue
         if kind == housing:
             level = (ext or {}).get("level") or d.settlement_levels()[0]
             key = f"settlement:{level}"

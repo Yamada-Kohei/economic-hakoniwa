@@ -3,3 +3,5 @@ mine_iron_ore: 鉄鉱石採掘
 mine_coal: 石炭採掘
 building_materials_plant_stone: 石材から製造
 building_materials_plant_wood: 木材から製造
+consumer_goods_factory_default: 鋼鉄と木材から製造
+consumer_goods_factory_wood: 木材から製造

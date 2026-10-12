@@ -6,3 +6,9 @@ demolish: 撤去
 build_power_line: 送電線の敷設
 set_no_development: 開発禁止区域の指定
 set_priority: 優先度の変更
+set_taxes: 税率の変更
+set_budget: 予算の変更
+set_labor_policy: 最低賃金・失業手当の変更
+set_price_cap: 公共料金の上限の変更
+warehouse_trade: 国の倉庫の売買
+set_accounting: 国営施設の会計方式の変更

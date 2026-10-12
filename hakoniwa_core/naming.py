@@ -99,8 +99,10 @@ def auto_name(defs: Defs, config: GameConfig, island: IslandState, f: Facility) 
     facts = {**island.regime, "owner": f.owner, "category": defs.facilities[f.kind]["category"]}
     industry = style.get("industries", {}).get(f.kind, {})
     numbers = style.get("numbers", [])
+    # マスを持たない施設（運送業）は首都の地名で呼ぶ
+    x, y = (f.x, f.y) if f.x >= 0 and f.y >= 0 else (island.capital or (0, 0))
     values = {
-        "place": place_of(island, f.x, f.y, config),
+        "place": place_of(island, x, y, config),
         "short": industry.get("short", display),
         "long": industry.get("long", display),
         "number": numbers[serial - 1] if 0 < serial <= len(numbers) else str(serial),

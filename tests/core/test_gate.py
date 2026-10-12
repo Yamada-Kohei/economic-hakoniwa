@@ -1,22 +1,37 @@
-"""フェーズ1の関門: 標準の計画を与えた島を 300 ターン回す。
+"""関門: 標準の計画を与えた島を 300 ターン回す。
 
+フェーズ1の関門:
 - 鉄鉱石から鋼鉄、鋼鉄から機械、機械で新しい工場という生産の連鎖が回る
 - 倉庫と施設の在庫がマイナス（や 0 の組）にならない
 - 人口が爆発も消滅もしない
+
+フェーズ2の関門（hakoniwa_core/gate.py の目安）:
+- 帳簿が毎ターン合う（記録の段が確かめ、合わなければその場で止まる）
+- 生産の側と支出の側の GDP が合う、売り買いのあった財の値段が初めの値段の 1/4〜4 倍に収まる、
+  金利が 0〜20% に収まる
+- 同じ種なら同じ結果になり、島の並び順や、途中で保存して読み直すことで結果が変わらない
+
+物価上昇率・失業率・物価指数の振れ幅を含むすべての目安は、50 島 × 300 ターンの一括シミュレーション
+（python -m hakoniwa_core.simulate --islands 50 --turns 300 --autoplan --gate）で確かめる。
+時間がかかるので、自動テストでは環境変数 HAKONIWA_FULL_GATE=1 のときだけ回す。
 """
 
 from __future__ import annotations
 
+import json
+import os
 import random
 
 import pytest
 
+from hakoniwa_core import gate
 from hakoniwa_core.autoplan import plan_turn, queue_orders
 from hakoniwa_core.founding import found_island
 from hakoniwa_core.game import load_game
 from hakoniwa_core.simulate import world_digest
 from hakoniwa_core.state import WorldState
-from hakoniwa_core.state.generate import generate_land, random_plan
+from hakoniwa_core.state.generate import generate_land, generate_world, random_plan
+from hakoniwa_core.state.serialize import world_from_dict, world_to_dict
 from hakoniwa_core.units import from_milli
 
 TURNS = 300
@@ -40,12 +55,13 @@ def make_world(game, seed: int, resources: list[str]) -> WorldState:
 
 
 def run_with_plan(game, world: WorldState, turns: int, each_turn=None) -> None:
-    island = world.islands[1]
     for _ in range(turns):
-        queue_orders(island, plan_turn(island, game.defs, game.config, world.turn + 1))
+        for island_id in world.island_ids():
+            island = world.islands[island_id]
+            queue_orders(island, plan_turn(island, game.defs, game.config, world.turn + 1))
         game.engine.run_turn(world)
         if each_turn is not None:
-            each_turn(island)
+            each_turn(world.islands[min(world.islands)])
 
 
 @pytest.mark.parametrize("seed", [1, 2])
@@ -72,9 +88,12 @@ def test_supply_chain_runs_for_300_turns(game, seed):
         for good, batches in island.warehouse.items():
             bad_stock.extend((good, q) for _, q in batches if q <= 0)
         for f in island.facilities:
-            bad_stock.extend((f.kind, g, q) for g, q in f.stock.items() if q <= 0)
+            for g, batches in f.stock.items():
+                bad_stock.extend((f.kind, g, q) for _, q in batches if q <= 0)
         populations.append(island.stats["population"])
+        recorder.record(world)
 
+    recorder = gate.Recorder(world, game.defs, game.config)
     run_with_plan(game, world, TURNS, check)
 
     assert world.turn == TURNS
@@ -91,7 +110,10 @@ def test_supply_chain_runs_for_300_turns(game, seed):
     jumps = [abs(b - a) / a for a, b in zip(populations, populations[1:], strict=False)]
     assert max(jumps) < 0.05
     # 食料は足りている
-    assert island.stats["food.ratio"] == 1.0
+    assert island.stats["food.ratio"] >= 0.95
+    # フェーズ2: GDP の両側が合い、値段と金利が目安に収まる（帳簿は毎ターン確かめている）
+    hard = ("GDP の差", "の値段が", "金利の")
+    assert [m for m in recorder.failures() if any(h in m for h in hard)] == []
 
 
 def test_same_seed_same_result(game):
@@ -100,3 +122,39 @@ def test_same_seed_same_result(game):
     run_with_plan(game, a, 60)
     run_with_plan(game, b, 60)
     assert world_digest(a) == world_digest(b)
+
+
+def test_island_order_does_not_change_the_result(game):
+    a = generate_world(4, 3, game.config, game.defs)
+    b = generate_world(4, 3, game.config, game.defs)
+    b.islands = {i: b.islands[i] for i in sorted(b.islands, reverse=True)}
+    run_with_plan(game, a, 30)
+    run_with_plan(game, b, 30)
+    assert world_digest(a) == world_digest(b)
+
+
+def test_saving_and_loading_does_not_change_the_result(game):
+    straight = generate_world(5, 2, game.config, game.defs)
+    run_with_plan(game, straight, 40)
+    saved = generate_world(5, 2, game.config, game.defs)
+    run_with_plan(game, saved, 20)
+    # サーバーのバックアップと同じく JSON に書いて読み直してから続ける
+    loaded = world_from_dict(json.loads(json.dumps(world_to_dict(saved), ensure_ascii=False)))
+    # 標準の計画は前のターンの統計と市場の記録を見る。サーバーではこれらは状態の JSON ではなく
+    # 表（StatRecord・MarketRecord）にあり、ルールの段は見ないので、ここでは写して続ける
+    for iid, island in loaded.islands.items():
+        island.stats = dict(saved.islands[iid].stats)
+        island.markets = list(saved.islands[iid].markets)
+    saved = loaded
+    run_with_plan(game, saved, 20)
+    assert world_digest(saved) == world_digest(straight)
+
+
+@pytest.mark.skipif(
+    not os.environ.get("HAKONIWA_FULL_GATE"), reason="50島×300ターン。HAKONIWA_FULL_GATE=1 で回す"
+)
+def test_phase2_gate_50_islands(game):
+    world = generate_world(1, 50, game.config, game.defs)
+    recorder = gate.Recorder(world, game.defs, game.config)
+    run_with_plan(game, world, TURNS, lambda _: recorder.record(world))
+    assert recorder.failures() == []

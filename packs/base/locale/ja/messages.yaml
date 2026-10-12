@@ -16,6 +16,14 @@ power_line_removed: "({x}, {y}) の送電線を撤去しました"
 no_development_set: "{count} マスを開発禁止区域に指定しました"
 no_development_cleared: "{count} マスの開発禁止区域の指定を解除しました"
 priority_changed: "({x}, {y}) の{facility}の優先度を {priority} に変更しました"
+taxes_set: "税率を変更しました（所得税 {income_tax:g}%・法人税 {corporate_tax:g}%・消費税 {consumption_tax:g}%）"
+budget_set: "{item}の年の予算を {amount:,} に変更しました"
+labor_policy_set: "最低賃金を {minimum_wage:,}、失業手当を平均賃金の {unemployment_benefit:g}% に変更しました"
+price_cap_set: "{good}の公共料金の上限を 1{unit}あたり {price:,} に設定しました"
+price_cap_cleared: "{good}の公共料金の上限を解除しました"
+warehouse_buy_ordered: "国の倉庫で{good} {amount:g} {unit}の買い注文を出しました"
+warehouse_sell_ordered: "国の倉庫から{good} {amount:g} {unit}の売り注文を出しました"
+accounting_changed: "({x}, {y}) の{facility}の会計方式を{accounting}に変更しました"
 
 # 命令を実行できない理由
 reason_unknown_order: "不明な命令です"
@@ -38,6 +46,15 @@ reason_not_land: "({x}, {y}) は陸地ではありません"
 reason_already_done: "既に実施済みです"
 reason_no_facility: "そのマスに施設がありません"
 reason_no_places: "この島には地名がありません"
+reason_zone_required: "{facility}は{zone}に指定したマスにのみ建設できます"
+reason_office_zone: "オフィス街には指定された施設しか建設できません"
+reason_cannot_demolish: "{facility}は撤去できません"
+reason_unknown_good: "不明な資源です"
+reason_not_in_warehouse: "国の倉庫に{good}がありません"
+reason_limit_required: "買い注文には指値が必要です"
+reason_not_state_owned: "{facility}は国営施設ではありません"
+reason_public_service: "{facility}は公務の施設のため、会計方式を変更できません"
+reason_accounting_unchanged: "{facility}は既にその会計方式です"
 
 # 建設と生産
 construction_done: "({x}, {y}) の{facility}が完成しました"
@@ -48,7 +65,8 @@ facility_stopped_input: "({x}, {y}) の{facility}が{good}不足で停止しま�
 facility_stopped_power: "({x}, {y}) の{facility}が電力不足で停止しました"
 facility_stopped_halted: "({x}, {y}) の{facility}が災害被害で停止しています"
 facility_stopped_no_demand: "({x}, {y}) の{facility}は電力需要がないため停止しました"
-goods_spoiled: "{good} {amount} {unit}が劣化により廃棄されました"
+facility_stopped_target: "({x}, {y}) の{facility}は売れ行きに合わせて生産を停止しました"
+goods_spoiled: "{good} {amount:g} {unit}が劣化により廃棄されました"
 
 # 人口と都市
 settlement_grew: "({x}, {y}) が{level}に発展しました"
@@ -63,6 +81,19 @@ disaster_fire: "火災により ({x}, {y}) の{facility}が {turns} ターン停
 
 # 建国
 island_founded: "{name}が建国されました"
+economy_started: "中央銀行と銀行が開業し、通貨と市場による経済が始まりました"
+
+# お金と国債
+bonds_issued: "{term}を {amount:,} 発行しました（利回り {rate:.2f}%）"
+budget_construction: "公共事業費"
+budget_warehouse: "国の倉庫の買い入れ費"
+policy_income_tax: "所得税"
+policy_corporate_tax: "法人税"
+policy_consumption_tax: "消費税"
+policy_minimum_wage: "最低賃金"
+policy_unemployment_benefit: "失業手当"
+side_buy: "買う"
+side_sell: "売る"
 
 # 施設の状態（画面の表示）
 status_starting: "稼働準備中"
@@ -71,6 +102,7 @@ status_input: "原料不足"
 status_power: "電力不足"
 status_halted: "災害により停止中"
 status_no_demand: "電力需要なし"
+status_target: "生産調整中"
 status_construction: "建設中"
 
 # 持ち主と会計
@@ -78,6 +110,7 @@ owner_state: "国営"
 owner_private: "民営"
 accounting_treasury: "国庫直轄"
 accounting_self_supporting: "独立採算"
+zone_office: "オフィス街"
 
 # 体制の軸と首都の建物
 axis_politics: "政治体制"

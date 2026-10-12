@@ -5,6 +5,7 @@ import random
 import pytest
 
 from hakoniwa_core import facilities as fac
+from hakoniwa_core import stock
 from hakoniwa_core.founding import (
     FoundingError,
     FoundingPlan,
@@ -16,7 +17,7 @@ from hakoniwa_core.founding import (
 from hakoniwa_core.game import load_game
 from hakoniwa_core.geo import components
 from hakoniwa_core.naming import facility_name
-from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE
+from hakoniwa_core.state import ACCOUNTING_SELF, ACCOUNTING_TREASURY, OWNER_PRIVATE, OWNER_STATE
 from hakoniwa_core.state.generate import generate_land, random_plan
 
 
@@ -106,15 +107,16 @@ def test_start_island(game):
     assert "mine" in kinds  # 石炭を選んだので石炭の鉱山が建つ
     assert "quarry" not in kinds  # 石材は選んでいない
     assert all(f.built for f in island.facilities)
-    # 送電線で、すべての施設と住宅が首都と同じ送電網につながっている
-    nodes = {(f.x, f.y) for f in island.facilities}
+    # 送電線で、マスを持つすべての施設と住宅が首都と同じ送電網につながっている
+    placed = [f for f in island.facilities if fac.on_map(f)]
+    nodes = {(f.x, f.y) for f in placed}
     nodes |= {(t.x, t.y) for t in island.tiles if t.power_line}
     grid = next(g for g in components(island, nodes) if island.capital in g)
-    assert all((f.x, f.y) in grid for f in island.facilities)
+    assert all((f.x, f.y) in grid for f in placed)
     # 倉庫の資材と、初めの施設の投入財
     assert island.warehouse["steel"][0][1] == 40_000
     plant = next(f for f in island.facilities if f.kind == "thermal_power_plant")
-    assert plant.stock["coal"] == 4_000
+    assert stock.total(plant.stock, "coal") == 4_000
     assert all(fac.housing_capacity(defs, h) >= island.tile(h.x, h.y).population for h in homes)
     names = [facility_name(defs, config, island, f) for f in island.facilities if f.kind == "farm"]
     assert names[0].startswith("国営第一")
@@ -131,13 +133,20 @@ def test_start_island(game):
 def test_owner_follows_economy(game, economy, state_kinds):
     island = found_island(game.defs, game.config, plan_for(game, economy), 1, 0, 0)
     for f in island.facilities:
-        if f.kind == "housing":
+        if f.kind in ("housing", "bank", "transport"):  # 銀行と運送業は体制ごとの別の決まり
             continue
         expected = OWNER_STATE if state_kinds is None or f.kind in state_kinds else OWNER_PRIVATE
         assert f.owner == expected, f.kind
-        if f.owner == OWNER_STATE:
+        if game.defs.facilities[f.kind].get("public_service"):
+            assert f.accounting == ACCOUNTING_TREASURY  # 公務員の施設はいつも国庫直轄
+        elif f.owner == OWNER_STATE:
             accounting = game.defs.regimes[economy]["state_accounting"]
             assert f.accounting == accounting
+        else:
+            assert f.accounting == ACCOUNTING_SELF
+    bank = next(f for f in island.facilities if f.kind == "bank")
+    assert bank.accounting == ACCOUNTING_SELF
+    assert bank.owner == game.defs.regimes[economy].get("bank_owner", OWNER_STATE)
 
 
 def test_islet_can_be_founded(game):

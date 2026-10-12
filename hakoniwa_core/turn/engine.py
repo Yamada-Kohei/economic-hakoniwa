@@ -62,6 +62,12 @@ class Engine:
             island.log.clear()
             island.stats.clear()
             island.scratch.clear()
+            island.journal.clear()
+            island.trades.clear()
+            island.markets.clear()
+            island.books.clear()
+            # 記録の段の帳簿の確かめで、前のターンの残高として使う
+            island.scratch["opening_accounts"] = dict(island.accounts)
         for stage in self.stages:
             started = time.perf_counter()
             if isinstance(stage, IslandStage):

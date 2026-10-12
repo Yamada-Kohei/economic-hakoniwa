@@ -100,3 +100,67 @@ set_priority:
       x: {type: integer, minimum: 0}
       y: {type: integer, minimum: 0}
       priority: {type: integer, minimum: 0, maximum: 9}
+
+# --- お金の経済（フェーズ2） ---
+
+set_taxes:
+  admin_cost: 1
+  payload:
+    type: object
+    minProperties: 1
+    additionalProperties: false
+    properties:                           # 税率（%）。書いた税だけ変わる
+      income_tax: {type: number, minimum: 0, maximum: 100}
+      corporate_tax: {type: number, minimum: 0, maximum: 100}
+      consumption_tax: {type: number, minimum: 0, maximum: 100}
+
+set_budget:
+  admin_cost: 1
+  payload:
+    type: object                          # 項目（game.yaml の fiscal.budget_items）ごとの年の予算
+    minProperties: 1
+    propertyNames: {pattern: "^[a-z_]+$"}
+    additionalProperties: {type: integer, minimum: 0}
+
+set_labor_policy:
+  admin_cost: 1
+  payload:
+    type: object
+    minProperties: 1
+    additionalProperties: false
+    properties:
+      minimum_wage: {type: integer, minimum: 0}                     # 0 で決めない
+      unemployment_benefit: {type: number, minimum: 0, maximum: 100} # 平均賃金に対する %
+
+set_price_cap:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [good, price]
+    additionalProperties: false
+    properties:
+      good: {type: string}
+      price: {type: integer, minimum: 0}  # 0 で上限をなくす
+
+warehouse_trade:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [good, side, quantity]
+    additionalProperties: false
+    properties:
+      good: {type: string}
+      side: {enum: [buy, sell]}
+      quantity: {type: number, exclusiveMinimum: 0}
+      limit: {type: integer, minimum: 0}  # 指値（買いは必ず。売りは 0 か書かなければ指値なし）
+
+set_accounting:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [x, y, accounting]
+    additionalProperties: false
+    properties:
+      x: {type: integer, minimum: 0}
+      y: {type: integer, minimum: 0}
+      accounting: {enum: [self_supporting, treasury]}
