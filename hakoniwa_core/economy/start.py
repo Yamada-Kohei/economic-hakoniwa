@@ -50,10 +50,6 @@ from hakoniwa_core.state import (
 from hakoniwa_core.units import BASIS, money_of, part, round_money, to_basis
 
 
-class StartError(Exception):
-    pass
-
-
 def default_policy(defs: Defs, config: GameConfig, population: int) -> Policy:
     """建国のときの政策。年の予算は fiscal.budget（住民1人あたり）× 人口。"""
     fiscal = config.get("fiscal")
@@ -165,16 +161,17 @@ def next_payments(island: IslandState, defs: Defs, config: GameConfig, f: Facili
 
 
 def _place_bank(island: IslandState, defs: Defs, config: GameConfig) -> Facility:
-    """首都の近くの空いたマスをオフィス街にして、銀行を置く。"""
+    """首都の近くの空いたマスをオフィス街にして、銀行を置く。
+
+    首都のない島（フェーズ0の世界から残っている島など）は、島の真ん中に近いマスに置く。
+    """
     kind = config.get("banking.facility")
-    capital = island.capital
-    if capital is None:
-        raise StartError("首都のない島ではお金の経済を始められません")
+    center = island.capital or (island.size // 2, island.size // 2)
     terrains = defs.facilities[kind]["terrain"]
     occupied = island.facilities_by_tile()
     spots = [
         pos
-        for pos in within(island, capital, island.size)
+        for pos in within(island, center, island.size)
         if island.tile(*pos).terrain in terrains
         and pos not in occupied
         and island.tile(*pos).zone in (ZONE_NONE, ZONE_OFFICE)
@@ -262,7 +259,8 @@ def _open_money(
     term = defs.bond_terms()[settings["bond"]]
     rate = island.policy.policy_rate + to_basis(term["premium"])
     bond = underwrite(island, face, term["turns"], rate, turn)
-    assert bond is not None
+    if bond is None:  # 住民も施設もない島（フェーズ0の世界から残っている島など）: 配るお金がない
+        return
     item = ledger.bond_item(bond.id)
 
     ledger.pay(island, ledger.GOV, household(GENERAL), general, "grant")
