@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "地形 terrain.yaml の1項目",
+  "type": "object",
+  "required": ["land"],
+  "additionalProperties": false,
+  "properties": {
+    "land": {"type": "boolean", "description": "陸地かどうか（島の陸地のマス数に数える）"},
+    "reclaimable": {"type": "boolean", "default": false, "description": "埋め立てて陸地にできるか"},
+    "height": {"type": "integer", "minimum": 0, "default": 0, "description": "地面の高さ（描画用の段数）"},
+    "override": {"const": true}
+  }
+}

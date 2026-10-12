@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "命令 orders.yaml の1項目",
+  "type": "object",
+  "required": ["admin_cost", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "admin_cost": {"type": "integer", "minimum": 0, "description": "実行に要る行政力"},
+    "payload": {"type": "object", "description": "命令の中身の形（JSON Schema で書く）"},
+    "override": {"const": true}
+  }
+}

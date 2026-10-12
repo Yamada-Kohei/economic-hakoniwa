@@ -1,0 +1,6 @@
+# 地形。land: 陸地か、reclaimable: 埋め立てられるか、height: 描画用の地面の高さ
+sea:      {land: false}
+shallows: {land: false, reclaimable: true}
+plain:    {land: true, height: 1}
+forest:   {land: true, height: 1}
+mountain: {land: true, height: 2}

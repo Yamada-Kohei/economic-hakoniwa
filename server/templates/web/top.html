@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% load i18n %}
+{% block content %}
+{% if world %}
+  <p>{% blocktranslate with turn=world.turn %}ターン {{ turn }}{% endblocktranslate %}
+    {% if world.next_turn_at %} ・ {% translate "次の更新" %}: {{ world.next_turn_at|date:"Y-m-d H:i" }}{% endif %}
+    {% if world.paused %} ・ {% translate "更新は一時停止中" %}{% endif %}
+  </p>
+  <h2>{% translate "島の一覧" %}</h2>
+  <ul class="island-list">
+    {% for island in islands %}
+      <li><a href="{% url 'island' island.id %}">{{ island.name }}</a>
+        <small>{% if island.owner %}{{ island.owner.username }}{% else %}{% translate "持ち主なし" %}{% endif %}</small></li>
+    {% empty %}
+      <li>{% translate "まだ島がありません。" %}</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>{% translate "世界がまだありません。python manage.py setup_dev で作れます。" %}</p>
+{% endif %}
+{% endblock %}

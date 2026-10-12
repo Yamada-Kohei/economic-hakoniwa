@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "財 goods.yaml の1項目",
+  "type": "object",
+  "required": ["tier"],
+  "additionalProperties": false,
+  "properties": {
+    "tier": {"type": "integer", "minimum": 1, "maximum": 3, "description": "階層。1 原料、2 中間財、3 最終財"},
+    "shelf_life": {"type": "integer", "minimum": 0, "description": "持ち越せるターン数。0 は持ち越せない（電力など）。書かなければ無期限"},
+    "override": {"const": true}
+  }
+}

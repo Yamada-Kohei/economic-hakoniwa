@@ -1,0 +1,24 @@
+{% load i18n static %}<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% translate "経済版箱庭諸国" %}{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/site.css' %}">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="{% url 'top' %}">{% translate "経済版箱庭諸国" %}</a>
+    <nav>
+      {% if user.is_authenticated %}
+        <span>{{ user.username }}</span>
+        <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}<button type="submit">{% translate "ログアウト" %}</button></form>
+      {% else %}
+        <a href="{% url 'login' %}">{% translate "ログイン" %}</a>
+        <a href="{% url 'signup' %}">{% translate "登録" %}</a>
+      {% endif %}
+    </nav>
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+</body>
+</html>

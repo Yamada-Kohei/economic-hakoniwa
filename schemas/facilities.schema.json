@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "施設 facilities.yaml の1項目",
+  "type": "object",
+  "required": ["category", "terrain", "construction", "workers", "recipes"],
+  "additionalProperties": false,
+  "$defs": {
+    "amounts": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {"type": "number", "minimum": 0},
+      "description": "財の名前と量。量は 2.5 のように小数も書ける（内部では 1000 分の 1 単位の整数）"
+    }
+  },
+  "properties": {
+    "category": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "分類。primary, industry, power, admin など"},
+    "terrain": {
+      "type": "array",
+      "items": {"type": "string"},
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "建てられる地形"
+    },
+    "construction": {
+      "type": "object",
+      "required": ["turns"],
+      "additionalProperties": false,
+      "properties": {
+        "turns": {"type": "integer", "minimum": 1, "description": "資材と人手がそろったときに工事にかかるターン数"},
+        "labor": {"type": "integer", "minimum": 0, "description": "工事に1ターンあたり要る人手"},
+        "materials": {"$ref": "#/$defs/amounts", "description": "工事全体で要る資材"}
+      }
+    },
+    "workers": {"type": "integer", "minimum": 0, "description": "全力で動くのに要る働き手の数"},
+    "commute_radius": {"type": "integer", "minimum": 0, "description": "通勤圏（マス）。書かなければサーバー設定の既定値"},
+    "priority": {"type": "integer", "description": "雇用と配分の優先順位の既定値（大きいほど先）"},
+    "recipes": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "inputs": {"$ref": "#/$defs/amounts", "description": "全力で動いたときの1ターンの投入"},
+          "outputs": {"$ref": "#/$defs/amounts", "description": "全力で動いたときの1ターンの産出"},
+          "requires_resource": {"type": "string", "description": "島で選んだ鉱業資源がこれのときだけ使える"}
+        }
+      },
+      "description": "作り方。複数あれば建てるときに選ぶ"
+    },
+    "sprite": {"type": "string", "description": "絵の名前（テーマの中のファイル名）"},
+    "override": {"const": true}
+  }
+}

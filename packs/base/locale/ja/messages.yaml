@@ -1,0 +1,8 @@
+# ターンログの文面。{ } の中は文の引数。
+order_done: "命令「{order}」を実行しました"
+order_failed: "命令「{order}」を実行できませんでした（{reason}）"
+order_postponed: "行政力が足りず、命令「{order}」から後は次のターンに回りました"
+island_renamed: "島の名前を「{old}」から「{new}」に変えました"
+reason_unknown_order: "知らない命令です"
+reason_invalid_payload: "命令の中身が正しくありません"
+reason_same_name: "今と同じ名前です"
