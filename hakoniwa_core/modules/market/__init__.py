@@ -501,10 +501,14 @@ class Market(IslandStage):
         if cost <= money:
             return {g: v for g, v in plan.items() if v[0] > 0}
         out = {}
+        left = money
         for good, (qty, limit) in plan.items():
             scaled = qty * money // cost if cost > 0 else 0
+            # 切り捨ての誤差で取り置けるお金を超えないように、残りのお金で買える量までにする
+            scaled = min(scaled, qty_for(left * BASIS // (BASIS + freight + tax), limit))
             if scaled > 0:
                 out[good] = (scaled, limit)
+                left -= gross_cost(limit, scaled, freight, tax)
         return out
 
     def _site_orders(

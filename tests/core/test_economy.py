@@ -7,12 +7,15 @@ import random
 import pytest
 
 from hakoniwa_core import ledger
+from hakoniwa_core.economy import Payer, funds
 from hakoniwa_core.game import load_game
 from hakoniwa_core.market import auction
 from hakoniwa_core.modules.market import (
+    Market,
     consumer_tiers,
     food_by_quality,
     food_split,
+    gross_cost,
     price_update,
     upgrade_food,
 )
@@ -80,6 +83,30 @@ def test_auction_without_cross_returns_midpoint_quote():
     result = auction.clear([auction.Order(5, 95)], [auction.Order(5, 105)], 100, width=1000)
     assert result.volume == 0
     assert result.price == 100
+
+
+def test_afford_never_exceeds_available_money(monkeypatch):
+    """量を同じ割合で減らしたとき、切り捨ての誤差で取り置けるお金を超えない。
+
+    50島の一括シミュレーションで、運賃込み 250,771 を 250,770 しかない施設が取り置こうとして
+    ターンが止まった組み合わせ。
+    """
+    monkeypatch.setattr(funds, "available", lambda island, payer: 250770)
+    out = Market._afford(None, Payer("fac:29"), {"grain": (9029, 27777)}, 200, 0)
+    assert 0 < sum(gross_cost(lim, q, 200, 0) for q, lim in out.values()) <= 250770
+
+    rng = random.Random(1)
+    for _ in range(2000):
+        plan = {
+            f"g{i}": (rng.randint(1, 50000), rng.randint(1, 3_000_000))
+            for i in range(rng.randint(1, 4))
+        }
+        freight, tax = rng.choice([0, 150, 200, 777]), rng.choice([0, 500])
+        cost = sum(gross_cost(lim, q, freight, tax) for q, lim in plan.values())
+        money = rng.randint(1, cost)
+        monkeypatch.setattr(funds, "available", lambda island, payer, m=money: m)
+        out = Market._afford(None, Payer("fac:1"), plan, freight, tax)
+        assert sum(gross_cost(lim, q, freight, tax) for q, lim in out.values()) <= money
 
 
 def test_price_update_moves_toward_balance_within_band(game):
