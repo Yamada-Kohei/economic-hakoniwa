@@ -18,6 +18,7 @@ from hakoniwa_core.economy import (
     Payer,
     default_accounting,
     facility_entity,
+    freight,
     is_self_supporting,
     owner_entity,
 )
@@ -101,6 +102,8 @@ def close_accounts(island: IslandState, f: Facility) -> None:
 
 # 資材があるのに人手が0のまま、このターン数続いた工事をログで知らせる（その後は進むまで出さない）
 NO_WORKERS_TURNS = 2
+# 資材が足りずに進まないまま、このターン数続いた工事をログで知らせる（同じく1度だけ）
+NO_MATERIALS_TURNS = 2
 
 
 class Construction(IslandStage):
@@ -116,6 +119,7 @@ class Construction(IslandStage):
             cdef = defs.facilities[f.kind]["construction"]
             materials = fac.material_ratio(defs, f)
             self._watch_workers(island, f, stalled=materials > 0 and cdef.get("labor", 0) > 0)
+            self._watch_materials(island, f, defs, materials)
             rate = min(fac.ratio(f.workers, cdef.get("labor", 0)), materials)
             if rate <= 0:
                 continue
@@ -141,14 +145,39 @@ class Construction(IslandStage):
             island.log.append(LogEntry("construction_no_workers", args))
 
     @staticmethod
+    def _watch_materials(island: IslandState, f: Facility, defs: Defs, materials: int) -> None:
+        """足りない資材を ext["waiting"] に書き（施設の状態に出す）、資材がなくて進まない工事が
+        続いたらログで知らせる。"""
+        if materials >= fac.FULL:
+            f.ext.pop("waiting", None)
+            f.ext.pop("no_materials_turns", None)
+            return
+        f.ext["waiting"] = sorted(
+            g
+            for g, q in fac.step_materials(defs, f).items()
+            if q > 0 and stock.total(f.stock, g) < q
+        )
+        if materials > 0:
+            f.ext.pop("no_materials_turns", None)
+            return
+        turns = f.ext.get("no_materials_turns", 0) + 1
+        f.ext["no_materials_turns"] = turns
+        if turns == NO_MATERIALS_TURNS:
+            args = {"facility": f.kind, "x": f.x, "y": f.y, "goods": f.ext["waiting"]}
+            island.log.append(LogEntry("construction_no_materials", args))
+
+    @staticmethod
     def _complete(island: IslandState, f: Facility, ctx: StageContext) -> None:
         f.built = True
         f.workers = 0
         f.status = fac.STATUS_STARTING
+        for key in ("waiting", "no_materials_turns", "no_workers_turns"):
+            f.ext.pop(key, None)
         stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
         island.log.append(LogEntry("construction_done", {"facility": f.kind, "x": f.x, "y": f.y}))
         if not island.has_economy:
             return
+        freight.forget(island)  # 取引の相手が変わるので、運賃の率を計算し直す
         capital = f.economy.get("capital", 0)
         init_facility(
             island,

@@ -181,7 +181,7 @@ class Employment(IslandStage):
             revenue = island.economy.freight.get("revenue", 0)
             share = to_basis(ctx.config.get("freight.labor_share"))
             return part(revenue, share) // max(1, wage)
-        return fac.labor_demand(ctx.defs, f, ctx.turn)
+        return fac.labor_demand(ctx.defs, f, ctx.turn, ctx.config.get("power.good"))
 
     @staticmethod
     def _power_per_worker(island: IslandState, ctx: StageContext, f: Facility) -> int:

@@ -52,6 +52,10 @@ from hakoniwa_core.units import (
     unit_price,
 )
 
+# 原料を買えなかったわけ（economy["short"]）ごとの施設の status: 売りに出ている量が足りない、
+# 指値（採算の合う値段）より高い、取り置けるお金が足りない
+SHORT_STATUS = {"supply": "input", "price": "input_price", "funds": "funds"}
+
 
 @dataclass
 class _Run:
@@ -137,17 +141,21 @@ class Production(IslandStage):
         if fac.is_halted(f, ctx.turn):
             return _Run(f, recipe, 0, "halted")
         rate, cause = fac.labor_ratio(ctx.defs, f), "workers"
-        if f.workers >= fac.labor_demand(
-            ctx.defs, f, ctx.turn
-        ):  # 雇いたい分は雇えた（売れ行きに合わせた）
-            cause = "target"
-        for good, need in sorted(recipe["inputs"].items()):
-            if good == power:
-                continue
-            r = fac.ratio(stock.total(f.stock, good), need)
-            if r < rate:
-                rate, cause = r, f"input:{good}"
+        have, short = fac.input_ratio(ctx.defs, f, power)
+        if f.workers >= fac.labor_demand(ctx.defs, f, ctx.turn, power):  # 雇いたい分は雇えた
+            # 原料のある分しか雇わなかったなら原料、そうでなければ売れ行きに合わせた
+            target = f.economy.get("target", fac.FULL)
+            cause = "target" if short is None or have >= target else Production._short(f, short)
+        if short is not None and have < rate:
+            rate, cause = have, Production._short(f, short)
         return _Run(f, recipe, rate, cause if rate < fac.FULL else "")
+
+    @staticmethod
+    def _short(f: Facility, good: str) -> str:
+        """原料 good が足りない理由（施設の status）。前のターンの市場で買えなかったわけ
+        （economy["short"]。hakoniwa_core/modules/market の _record_shortages）で決める。"""
+        reason = f.economy.get("short", {}).get(good, "supply")
+        return f"{SHORT_STATUS.get(reason, 'input')}:{good}"
 
     # --- 電力 ----------------------------------------------------------------
 
@@ -244,7 +252,7 @@ class Production(IslandStage):
                 self._update_asks(island, ctx, sellers, result, power)
                 demand = sum(b.need for b in buyers)
                 # 燃料が手に入らずに止まっている発電所は数えない（ほかの発電所が多めに動く）
-                able = sum(o for run, o in sellers if not run.cause.startswith("input:"))
+                able = sum(o for run, o in sellers if not fac.short_of_inputs(run.cause))
                 target = ctx.formula("power_target")(demand, able, ctx)
                 for run, _ in sellers:
                     if "target" in run.f.economy:

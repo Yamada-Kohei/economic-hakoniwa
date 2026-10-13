@@ -74,7 +74,7 @@ def start_economy(
     """島のお金の経済を始める。すでに始まっていれば何もしない。"""
     if island.has_economy:
         return
-    prices = initial_prices(defs, config)
+    prices = initial_prices(defs, config, island.resources)
     wage = config.get("labor.initial_wage")
     economy = island.economy
     economy.started = turn
@@ -231,14 +231,13 @@ def _open_money(
     households = island.economy.households
     population = sum(t.population for t in island.tiles)
     bank = ledger.bank_entity(bank_facility.id)
-    rates = freight_rates.rates(island, defs, config)
+    rates, _ = freight_rates.compute(island, defs, config)
     turns = config.get("firms.operating_turns")
 
     funds: dict[int, int] = {}
     for f in island.facilities:
         if is_self_supporting(f) and not is_bank(config, f) and fac.on_map(f):
-            rate = freight_rates.rate_at(rates, (f.x, f.y), config, island)
-            funds[f.id] = turns * operating_cost(defs, config, f, prices, wage, rate)
+            funds[f.id] = turns * operating_cost(defs, config, f, prices, wage, rates[f.id])
         elif is_self_supporting(f) and not is_bank(config, f):
             funds[f.id] = 0
     general = settings["general_deposit"] * households[GENERAL]["persons"]
@@ -282,8 +281,7 @@ def fund_facility(
 
     工事が済んだときと、会計の形を国庫直轄から独立採算に変えたときに使う。出資した額を返す。
     """
-    table = freight_rates.rates(island, defs, config)
-    rate = freight_rates.rate_at(table, (f.x, f.y), config, island)
+    rate = freight_rates.rate_of(island, defs, config, f)
     prices = dict(island.economy.prices)
     wage = f.economy.get("wage") or island.economy.average_wage
     want = config.get("firms.operating_turns") * operating_cost(defs, config, f, prices, wage, rate)

@@ -281,9 +281,9 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
     見込みに全力の target_step 分を足して増産する（儲かる物は多く作られ、値段が費用に近づく）。
     希望価格が約定価格より高くて売れなかった分は、市場に買えなかった人がいれば売れたと見る（値上げ
     して売れなかったターンに減産すると、品不足なのに作る量が上下して、値段が上がり続けたため）。
-    投入財か電力が足りずに止まった施設は、動けた割合に target_step を足した分までにする（動けない
-    のに人を雇い続けない）。1ターンに変えるのは全力の market.max_target_change まで（人の出入りと
-    仕入れを急に変えない）。
+    投入財が手に入らずに（品不足・割高・資金不足）か、電力が足りずに止まった施設は、動けた割合に
+    target_step を足した分までにする（動けないのに仕入れを増やし続けない）。1ターンに変えるのは
+    全力の market.max_target_change まで（人の出入りと仕入れを急に変えない）。
     発電所は在庫を持たないので、生産の段で、送電網の買いたい量に合わせて決める（power_target）。
     """
     settings = ctx.config.get("market")
@@ -324,7 +324,7 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
         gap = round_money(estimate * inventory_turns(ctx, good)) - held
         amount = estimate + round_money(gap * settings["inventory_adjust"])
         plan = max(plan, fac.ratio(max(0, amount), full))
-    if f.status.startswith("input:") or f.status == "power":  # 仕入れか電力が足りずに止まっている
+    if fac.short_of_inputs(f.status) or f.status == "power":  # 仕入れか電力が足りずに止まっている
         plan = min(plan, f.operating_rate + step)
     limit = round_money(settings["max_target_change"] * fac.FULL + 0.5)
     return max(target - limit, min(target + limit, plan))
@@ -353,6 +353,7 @@ class Market(IslandStage):
         self._site_orders(island, ctx, books_by_good, rates, offered)
         self._household_orders(island, ctx, books_by_good, hh_rate, offered)
         transport = self._transport_entity(island, ctx)
+        routes = freight_rates.Routes(island, defs)
         bought: dict[str, int] = island.scratch.setdefault("household_bought", {})
         results: dict[str, auction.Result] = {}
         width = to_basis(config.get("market.band"))
@@ -363,7 +364,8 @@ class Market(IslandStage):
                 [o for o, _ in book.buys], [o for o, _ in book.sells], reference, width
             )
             results[good] = result
-            self._settle(island, ctx, good, book, result, transport, bought)
+            self._settle(island, ctx, good, book, result, transport, bought, routes)
+        self._record_shortages(books_by_good, results)
         for _, book in sorted(books_by_good.items()):
             for _, party in book.buys:
                 funds.release(island, party.payer, party.reserved)
@@ -438,12 +440,16 @@ class Market(IslandStage):
                     order = Order(total - expiring, seller_limit(ask, rate, high))
                     self._add(books_by_good, good, "sell", order, seller)
             needs = self._input_needs(ctx, f, power)
+            f.economy.pop("short", None)
             if not needs:
                 continue
             plan = {
                 g: (q, net_limit(self._bid(ctx, f, g, prices, rate), rate, 0)) for g, q in needs
             }
             plan = self._afford(island, payer, plan, rate, 0)
+            short = {g: "funds" for g, q in needs if plan.get(g, (0, 0))[0] < q}
+            if short:  # 取り置けるお金が足りず、要る分を注文できなかった
+                f.economy["short"] = short
             priority = fac.priority_of(defs, config, f)
             for good, (qty, limit) in sorted(plan.items()):
                 party = Party(FACILITY, name, payer, rate, 0, f)
@@ -469,15 +475,25 @@ class Market(IslandStage):
 
     @staticmethod
     def _input_needs(ctx: StageContext, f: Facility, power: str) -> list[tuple[str, int]]:
-        """次のターンに要る投入財のうち手元にない分。人手の足りない施設は、今の人手より少し多い分。"""
+        """次のターンに要る投入財のうち手元にない分。
+
+        操業目標はこの段の終わりに見直すので、上がる分（market.max_target_change まで）も先に
+        買っておく（目標を上げた次のターンに原料が足りず、人を雇えないまま目標を下げ直して、
+        のこぎりの歯のように増えたり減ったりしないように）。雇いたいだけ雇えなかった施設は、
+        今の人手より少し多い分（market.target_step）まで。
+        """
+        settings = ctx.config.get("market")
         target = f.economy.get("target", fac.FULL)
         if fac.is_halted(f, ctx.turn + 1):
             expected = 0
         elif f.status == fac.STATUS_STARTING:
             expected = target
-        else:
-            headroom = round_money(ctx.config.get("market.target_step") * fac.FULL + 0.5)
+        elif f.workers < f.economy.get("wanted", 0):
+            headroom = round_money(settings["target_step"] * fac.FULL + 0.5)
             expected = min(target, fac.labor_ratio(ctx.defs, f) + headroom)
+        else:
+            change = round_money(settings["max_target_change"] * fac.FULL + 0.5)
+            expected = min(fac.FULL, target + change)
         needs = []
         for good, qty in sorted(fac.recipe_of(ctx.defs, f)["inputs"].items()):
             if good == power:
@@ -712,6 +728,22 @@ class Market(IslandStage):
                 funds.commit(island, payer, party.reserved)
                 self._add(books_by_good, g, "buy", Order(q, lim), party)
 
+    @staticmethod
+    def _record_shortages(books_by_good: dict[str, Book], results: dict[str, auction.Result]):
+        """施設が投入財を注文した分だけ買えなかったわけを economy["short"] に残す（次のターンの
+        生産の段で、止まった理由として出す）。指値が約定価格（売り買いがなければ気配）より安かった
+        のは price（高くて採算が合わない）、そうでなければ supply（売りに出ている量が足りない）。"""
+        for good, book in sorted(books_by_good.items()):
+            result = results[good]
+            for i, (order, party) in enumerate(book.buys):
+                f = party.facility
+                if party.kind != FACILITY or f is None or result.bought[i] >= order.quantity:
+                    continue
+                expensive = (
+                    result.supply > 0 and auction.buy_limit(order, result.high) < result.price
+                )
+                f.economy.setdefault("short", {})[good] = "price" if expensive else "supply"
+
     # --- 約定 ---------------------------------------------------------------------
 
     @staticmethod
@@ -730,10 +762,11 @@ class Market(IslandStage):
         result: auction.Result,
         transport: tuple[str, int | None],
         bought: dict[str, int],
+        routes: freight_rates.Routes,
     ) -> None:
         price = result.price
         carrier, carrier_id = transport
-        for b, s, qty in auction.match(result.bought, result.sold):
+        for b, s, qty in self._pairs(island, book, result, routes):
             _, buyer = book.buys[b]
             _, seller = book.sells[s]
             amount = money_of(price, qty)
@@ -760,6 +793,32 @@ class Market(IslandStage):
             else:
                 books.add_sector(island, books.WAREHOUSE, "sales", amount)
             island.trades.append(TradeRecord(good, buyer.name, seller.name, qty, amount))
+
+    @staticmethod
+    def _pairs(
+        island: IslandState, book: Book, result: auction.Result, routes: freight_rates.Routes
+    ) -> list[tuple[int, int, int]]:
+        """約定を、道のりの近い買い手と売り手の組から順に割り当てる（運賃の率は注文のときに
+        決めた見込みのままなので、払う額は変わらない。どこからどこへ運んだかの記録が変わる）。
+        国の倉庫は首都にあり、家計には一番近い住んでいるマスへ運ぶ。"""
+        far = 10**6
+
+        def where(party: Party) -> tuple[int, int] | str | None:
+            if party.facility is not None:
+                return (party.facility.x, party.facility.y)
+            return "homes" if party.kind == HOUSEHOLD else island.capital
+
+        buyers = [where(p) for _, p in book.buys]
+        sellers = [where(p) for _, p in book.sells]
+
+        def distance(b: int, s: int) -> int:
+            origin, goal = sellers[s], buyers[b]
+            if not isinstance(origin, tuple) or goal is None:
+                return far
+            d = routes.to_homes(origin) if goal == "homes" else routes.between(origin, goal)
+            return far if d is None else d
+
+        return auction.match_nearest(result.bought, result.sold, distance)
 
     @staticmethod
     def _take_from_seller(island: IslandState, good: str, seller: Party, qty: int) -> list:
