@@ -1,7 +1,8 @@
 """お金と経済の始まり。建国と、フェーズ1の世界の移し替えの両方がここを使います。
 
 1. 初めの値段をレシピから解き（economy/prices.py）、政策を game.yaml の既定にする。
-2. 家計の層を作り、首都の近くにオフィス街を指定して銀行を置き、運送業（マスを持たない）を置く。
+2. 家計の層を作り、首都の近くにオフィス街を指定して銀行を置き（混合経済は国営と民間の2つ）、
+   運送業（マスを持たない）を置く。
 3. 施設ごとに賃金・希望価格・操業目標・設備の額（建設費）を決める。
 4. お金を仕訳の列として作る（最初のターンから帳簿の確かめが通るように）:
    1. 政府が建国の国債を出し、中央銀行が引き受ける（国庫が増える）。
@@ -30,6 +31,7 @@ from hakoniwa_core.economy import (
     owner_entity,
 )
 from hakoniwa_core.economy import freight as freight_rates
+from hakoniwa_core.economy.banks import FINANCE_VERSION
 from hakoniwa_core.economy.debt import underwrite
 from hakoniwa_core.economy.households import init_layers
 from hakoniwa_core.economy.prices import construction_cost, initial_prices
@@ -89,14 +91,15 @@ def start_economy(
     economy.happiness_blend = config.get("population.blend_turns") if migrated else 0
     island.policy = default_policy(defs, config, sum(t.population for t in island.tiles))
     init_layers(island, defs, config)
-    bank = _place_bank(island, defs, config)
+    placed = _place_banks(island, defs, config)
     _place_transport(island, defs, config)
     for f in island.facilities:
         if defs.facilities[f.kind].get("public_service"):
             f.accounting = ACCOUNTING_TREASURY  # フェーズ1の島の中央省庁など
         init_facility(island, defs, config, f, prices, wage)
-    economy.banks = [bank.id]
-    _open_money(island, defs, config, bank, prices, wage, turn)
+    economy.banks = [b.id for b in placed]
+    economy.finance["version"] = FINANCE_VERSION
+    _open_money(island, defs, config, placed, prices, wage, turn)
     island.log.append(LogEntry("economy_started", {}))
 
 
@@ -164,12 +167,15 @@ def next_payments(island: IslandState, defs: Defs, config: GameConfig, f: Facili
 # --- 銀行と運送業 -----------------------------------------------------------------
 
 
-def _place_bank(island: IslandState, defs: Defs, config: GameConfig) -> Facility:
-    """首都の近くの空いたマスをオフィス街にして、銀行を置く。
+def _place_banks(island: IslandState, defs: Defs, config: GameConfig) -> list[Facility]:
+    """首都の近くの空いたマスをオフィス街にして、経済体制の bank_owner の数だけ銀行を置く。
 
     首都のない島（フェーズ0の世界から残っている島など）は、島の真ん中に近いマスに置く。
     """
     kind = config.get("banking.facility")
+    regime = defs.regimes.get(island.regime.get("economy", ""), {})
+    owners = regime.get("bank_owner", OWNER_STATE)
+    owners = [owners] if isinstance(owners, str) else list(owners)
     center = island.capital or (island.size // 2, island.size // 2)
     terrains = defs.facilities[kind]["terrain"]
     occupied = island.facilities_by_tile()
@@ -179,26 +185,29 @@ def _place_bank(island: IslandState, defs: Defs, config: GameConfig) -> Facility
         if island.tile(*pos).terrain in terrains
         and pos not in occupied
         and island.tile(*pos).zone in (ZONE_NONE, ZONE_OFFICE)
-    ][: config.get("banking.office_tiles")]
+    ][: max(len(owners), config.get("banking.office_tiles"))]
     for pos in spots:
         island.tile(*pos).zone = ZONE_OFFICE
-    x, y = spots[0] if spots else (-1, -1)
-    regime = defs.regimes.get(island.regime.get("economy", ""), {})
-    owner = regime.get("bank_owner", OWNER_STATE)
-    if owner == OWNER_PRIVATE and OWNERS not in island.economy.households:
-        owner = OWNER_STATE
-    bank = Facility(
-        id=island.next_facility_id(),
-        kind=kind,
-        x=x,
-        y=y,
-        owner=owner,
-        accounting=ACCOUNTING_SELF,
-        built=True,
-    )
-    assign_serial(island, bank)
-    island.facilities.append(bank)
-    return bank
+    placed = []
+    for i, owner in enumerate(owners):
+        if i > 0 and i >= len(spots):
+            break  # 2つ目からは、空いたマスがなければ置かない
+        x, y = spots[i] if i < len(spots) else (-1, -1)
+        if owner == OWNER_PRIVATE and OWNERS not in island.economy.households:
+            owner = OWNER_STATE
+        bank = Facility(
+            id=island.next_facility_id(),
+            kind=kind,
+            x=x,
+            y=y,
+            owner=owner,
+            accounting=ACCOUNTING_SELF,
+            built=True,
+        )
+        assign_serial(island, bank)
+        island.facilities.append(bank)
+        placed.append(bank)
+    return placed
 
 
 def _place_transport(island: IslandState, defs: Defs, config: GameConfig) -> Facility:
@@ -226,15 +235,17 @@ def _open_money(
     island: IslandState,
     defs: Defs,
     config: GameConfig,
-    bank_facility: Facility,
+    bank_facilities: list[Facility],
     prices: dict[str, int],
     wage: int,
     turn: int,
 ) -> None:
+    """銀行が2つ以上なら、一般の労働者の層の預金を等分して2つ目からの銀行に移し、
+    銀行ごとの自己資本と国債を、それぞれの預金から決める。"""
     settings = config.get("founding.money")
     households = island.economy.households
     population = sum(t.population for t in island.tiles)
-    bank = ledger.bank_entity(bank_facility.id)
+    bank_names = [ledger.bank_entity(b.id) for b in bank_facilities]
     rates, _ = freight_rates.compute(island, defs, config)
     turns = config.get("firms.operating_turns")
 
@@ -247,14 +258,18 @@ def _open_money(
     general = settings["general_deposit"] * households[GENERAL]["persons"]
     owners_keep = settings["owner_deposit"] * households.get(OWNERS, {}).get("persons", 0)
     deposits = general + owners_keep + sum(funds.values())
-    bank_capital = part(deposits, to_basis(config.get("banking.capital_ratio")))
-    bank_bonds = part(deposits, to_basis(config.get("banking.bond_ratio")))
+    moved = [0] + [general // len(bank_names)] * (len(bank_names) - 1)
+    held = [deposits - sum(moved), *moved[1:]]
+    capital_ratio = to_basis(config.get("banking.capital_ratio"))
+    bond_ratio = to_basis(config.get("banking.bond_ratio"))
+    capitals = [part(h, capital_ratio) for h in held]
+    bank_bonds = [part(h, bond_ratio) for h in held]
     by_owner: dict[str, int] = {}
     for f in island.facilities:
         if f.id in funds:
             by_owner[owner_entity(f)] = by_owner.get(owner_entity(f), 0) + funds[f.id]
-    bank_owner = owner_entity(bank_facility)
-    by_owner[bank_owner] = by_owner.get(bank_owner, 0) + bank_capital
+    for b, capital in zip(bank_facilities, capitals, strict=True):
+        by_owner[owner_entity(b)] = by_owner.get(owner_entity(b), 0) + capital
     owners_grant = owners_keep + by_owner.get(household(OWNERS), 0)
     treasury = settings["treasury"] * population
     face = general + owners_grant + by_owner.get(ledger.GOV, 0) + treasury
@@ -272,10 +287,15 @@ def _open_money(
     for f in sorted(island.facilities, key=lambda f: f.id):
         if f.id in funds:
             invest(island, owner_entity(f), facility_entity(f.id), funds[f.id])
-    invest(island, bank_owner, bank, bank_capital)
-
-    ledger.transfer(island, item, ledger.GOV, ledger.CB, bank, bank_bonds, "bond_purchase")
-    ledger.pay(island, bank, ledger.CB, bank_bonds, "bond_purchase")
+    for b, bank, capital in zip(bank_facilities, bank_names, capitals, strict=True):
+        invest(island, owner_entity(b), bank, capital)
+    for bank, amount in zip(bank_names[1:], moved[1:], strict=True):
+        ledger.move_deposit(
+            island, household(GENERAL), bank_names[0], bank, amount, "deposit_switch"
+        )
+    for bank, amount in zip(bank_names, bank_bonds, strict=True):
+        ledger.transfer(island, item, ledger.GOV, ledger.CB, bank, amount, "bond_purchase")
+        ledger.pay(island, bank, ledger.CB, amount, "bond_purchase")
 
 
 def fund_facility(

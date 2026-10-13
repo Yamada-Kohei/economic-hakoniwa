@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy.prices import initial_prices
-from hakoniwa_core.state import WorldState
+from hakoniwa_core.state import OWNER_PRIVATE, WorldState
 from hakoniwa_core.units import BASIS
 
 START = 120  # 目安を見始めるターン
@@ -29,6 +29,9 @@ POPULATION_FLOOR = 0.5  # 初めの人口に対する下限（フェーズ1と�
 POPULATION_CAP = 15  # 初めの人口に対する上限
 POPULATION_JUMP = 0.05  # 1ターンの人口の変化の上限
 GDP_GAP = 0.001  # 生産の側と支出の側の差
+FIRMS_WINDOW = 100  # 民営工場の数を見るターン数（最後から。市場経済の島）
+FIRMS_SPREAD = 0.5  # 民営工場の数の、その間の平均からの振れ幅の上限
+CASCADE_TURNS = 24  # 同じ島で銀行の破綻がこのターン数のうちに続いたら連鎖と見る
 
 
 @dataclass
@@ -46,12 +49,15 @@ class IslandRecord:
     price_ratio: dict[str, list[float]] = field(
         default_factory=dict
     )  # 財 → 売り買いのあったターンの比
+    private_firms: list[int] = field(default_factory=list)  # 動いている民営工場の数
+    bank_failures: list[int] = field(default_factory=list)  # 銀行が破綻したターン（1行1件）
 
 
 class Recorder:
     """島ごとの統計をターンごとに記録する。"""
 
     def __init__(self, world: WorldState, defs: Defs, config: GameConfig) -> None:
+        self.defs = defs
         self.initial = {  # 島ごとの初めの値段（島で使える作り方で解いた値段）
             i.id: initial_prices(defs, config, i.resources) for i in world.islands.values()
         }
@@ -78,6 +84,16 @@ class Recorder:
             rates = [island.policy.policy_rate] + [b.rate for b in island.bonds]
             rec.rates.append(max(rates) / BASIS)
             rec.low_rates.append(min(rates) / BASIS)
+            rec.private_firms.append(
+                sum(
+                    1
+                    for f in island.facilities
+                    if f.built
+                    and f.owner == OWNER_PRIVATE
+                    and self.defs.facilities[f.kind].get("category") != "finance"
+                )
+            )
+            rec.bank_failures += [world.turn] * int(s.get("banks.failed", 0))
             initial = self.initial.get(island.id, {})
             for m in island.markets:
                 if m.volume > 0 and initial.get(m.good):
@@ -103,6 +119,13 @@ class Recorder:
                 ratios += values[-len(window) :]
         if not unemployment:
             return {}
+        firm_spreads = [
+            max(abs(n - statistics.mean(tail)) for n in tail) / statistics.mean(tail)
+            for rec in self.islands.values()
+            if rec.regime == "market"
+            and (tail := rec.private_firms[-FIRMS_WINDOW:])
+            and statistics.mean(tail) > 0
+        ]
         return {
             "unemployment.min": min(unemployment),
             "unemployment.max": max(unemployment),
@@ -115,6 +138,8 @@ class Recorder:
             "cpi.spread.max": max(spreads),
             "price.ratio.min": min(ratios) if ratios else 1.0,
             "price.ratio.max": max(ratios) if ratios else 1.0,
+            "firms.spread.max": max(firm_spreads, default=0.0),
+            "banks.failed": float(sum(len(rec.bank_failures) for rec in self.islands.values())),
         }
 
     def prices(self, start: int = START) -> dict[str, tuple[float, float, float]]:
@@ -187,4 +212,14 @@ def _island_failures(rec: IslandRecord, start: int) -> list[str]:
     jumps = [abs(b - a) / a for a, b in zip(people, people[1:], strict=False) if a]
     if jumps and max(jumps) >= POPULATION_JUMP:
         out.append(f"人口が1ターンで {max(jumps):.1%} 変わった")
+    firms = rec.private_firms[-FIRMS_WINDOW:]
+    if rec.regime == "market" and firms:
+        mean = statistics.mean(firms)
+        low, high = (1 - FIRMS_SPREAD) * mean, (1 + FIRMS_SPREAD) * mean
+        if min(firms) < low or max(firms) > high:
+            out.append(f"民営工場の数が {min(firms)}〜{max(firms)}（平均 {mean:.1f}）")
+    failures = rec.bank_failures
+    chained = sum(1 for a, b in zip(failures, failures[1:], strict=False) if b - a <= CASCADE_TURNS)
+    if chained:
+        out.append(f"銀行の破綻が {CASCADE_TURNS} ターンのうちに続いた（{chained} 回）")
     return out

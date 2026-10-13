@@ -10,10 +10,12 @@
 
 from __future__ import annotations
 
+import math
+
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import GENERAL, OWNERS, books, funds, household
+from hakoniwa_core.economy import GENERAL, OWNERS, banks, books, funds, household
 from hakoniwa_core.economy.debt import annual_gdp, total_debt
 from hakoniwa_core.economy.households import close_income
 from hakoniwa_core.economy.stats import inflation, update_cpi
@@ -116,6 +118,8 @@ class Records(IslandStage):
         stats["money.deposits"] = money["deposits"]
         stats["money.central_bank"] = money["cb_money"]
         stats.update(_finances(island))
+        stats.update(_banking(island, ctx))
+        economy.finance["unemployment"] = stats["unemployment"]
         year = annual_gdp(economy)
         stats["debt_ratio"] = stats["debt"] / year if year else 0.0
         for kind, amount in sorted(self._fiscal(island).items()):
@@ -205,6 +209,33 @@ def _finances(island: IslandState) -> dict[str, float]:
         "debt": total_debt(island),
         "policy_rate": island.policy.policy_rate * 100 / BASIS,
     }
+
+
+def _banking(island: IslandState, ctx: StageContext) -> dict[str, float]:
+    """銀行ごとの預金・融資・自己資本比率と、融資の残高・遅れ・預金金利（フェーズ2-2）。"""
+    config, turn = ctx.config, ctx.turn
+    stats: dict[str, float] = {"deposit_rate": island.policy.deposit_rate * 100 / BASIS}
+    for bank in banks.bank_list(island):
+        number = banks.bank_number(bank)
+        stats[f"bank.{number}.deposits"] = banks.deposits_of(island, bank)
+        stats[f"bank.{number}.loans"] = banks.loans_of(island, bank)
+        stats[f"bank.{number}.net_worth"] = banks.net_worth(island, config, bank, turn)
+        ratio = banks.capital_ratio(island, config, bank, turn)
+        if math.isfinite(ratio):
+            stats[f"bank.{number}.capital_ratio"] = ratio
+    by_purpose: dict[str, int] = {}
+    late = 0
+    for loan in island.loans:
+        left = banks.outstanding(island, loan)
+        by_purpose[loan.purpose] = by_purpose.get(loan.purpose, 0) + left
+        late += left if loan.arrears else 0
+    stats["loans"] = sum(by_purpose.values())
+    for purpose, amount in sorted(by_purpose.items()):
+        stats[f"loans.{purpose}"] = amount
+    stats["loans.arrears"] = late
+    written = sum(b.items.get(books.WRITE_OFF, 0) for b in island.books)
+    stats["loans.write_off"] = written
+    return stats
 
 
 def register(registry: Registry) -> None:

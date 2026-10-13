@@ -20,6 +20,10 @@ _ARG_KINDS = {
     "zone": "messages",
     "item": "messages",
     "term": "finance",
+    "entry": "messages",
+    "unsold": "messages",
+    "method": "messages",
+    "subsidy": "messages",
 }
 
 

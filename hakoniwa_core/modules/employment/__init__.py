@@ -24,6 +24,7 @@ from hakoniwa_core.economy import (
     freight,
     funds,
     is_public_service,
+    is_stopped,
     is_transport,
     payer_of,
 )
@@ -183,7 +184,7 @@ class Employment(IslandStage):
     def _wage(island: IslandState, ctx: StageContext, f: Facility) -> int | None:
         """この施設の賃金。人を雇わない施設は None。"""
         config = ctx.config
-        if fac.is_housing(config, f):
+        if fac.is_housing(config, f) or is_stopped(f):
             return None
         if not f.built or is_public_service(ctx.defs, f):
             wage = island.economy.average_wage or config.get("labor.initial_wage")

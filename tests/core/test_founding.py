@@ -157,9 +157,13 @@ def test_owner_follows_economy(game, economy, state_kinds):
             assert f.accounting == accounting
         else:
             assert f.accounting == ACCOUNTING_SELF
-    bank = next(f for f in island.facilities if f.kind == "bank")
-    assert bank.accounting == ACCOUNTING_SELF
-    assert bank.owner == game.defs.regimes[economy].get("bank_owner", OWNER_STATE)
+    # 銀行は体制の bank_owner の順に置く（混合経済は国営と民営の2つ）
+    owners = game.defs.regimes[economy].get("bank_owner", OWNER_STATE)
+    owners = [owners] if isinstance(owners, str) else list(owners)
+    banks = [f for f in island.facilities if f.kind == "bank"]
+    assert [b.owner for b in banks] == owners
+    assert all(b.accounting == ACCOUNTING_SELF for b in banks)
+    assert island.economy.banks == [b.id for b in banks]
 
 
 def test_islet_can_be_founded(game):

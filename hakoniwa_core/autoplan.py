@@ -19,13 +19,21 @@
 失業率が高い間は、同時に進める工事を1つ増やします（工事の賃金と資材の買い物が働き口になる）。
 お金の経済の島では、国の倉庫にある財のうち島の施設が仕入れに困っている物（建国のときの石炭など）を、
 毎ターン市場に売ります（建てる命令と一緒に出します）。
+民営工場が建てられる島では、島で作っていない工事の資材（機械など）も、国の工事に取っておく分を除い
+て、民営の工事が待っている量か1つの工事に要る量まで売りに出します（国の倉庫の物は、売りに出さなけれ
+ば民間は買えないので）。民営の工事が待っていなければ、OFFER_TURNS + 1 ターンに一度にします。
 建てた施設は、陸地を通る一番短い送電線で送電網につなぎます。
 
 お金の経済の島では、初めに失業手当を平均賃金の BENEFIT % にし、BUDGET_TURNS ターンごとに
 公共事業費（国の工事の年の予算）を見直します。
 住民1人あたり PUBLIC_WORKS を基本に、失業率がふつう（5%）より高ければ増やし、物価上昇率が高ければ
 減らします（額を物価や GDP に合わせて動かさないので、物価が下がり続けたり上がり続けたりしにくい）。
+政府の借金の対年GDP比が DEBT_LIMIT を超えた分に応じても減らします（利回りが上がって利払いが
+膨らみ続けないように）。
 電気料金が初めの値段の POWER_CAP 倍を超えたら、そこを公共料金の上限にします。
+民営工場が建てられる島（市場経済と混合経済）では、空いた工業団地のマスが ZONE_SPARE より少なければ、
+町の通勤圏の空いた平地と、地下資源のある島では山を ZONE_BATCH マスまで工業団地に指定します（町の
+すぐ隣は町が育つ余地として残す）。
 """
 
 from __future__ import annotations
@@ -39,7 +47,16 @@ from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy.prices import initial_prices, unit_cost
 from hakoniwa_core.geo import components, distance, shortest_path, within
-from hakoniwa_core.state import ORDER_PENDING, ZONE_NONE, IslandState, OrderState
+from hakoniwa_core.modules.firms import private_allowed
+from hakoniwa_core.state import (
+    ORDER_PENDING,
+    OWNER_PRIVATE,
+    OWNER_STATE,
+    ZONE_INDUSTRIAL,
+    ZONE_NONE,
+    IslandState,
+    OrderState,
+)
 from hakoniwa_core.units import QUANTITY_SCALE, to_milli
 
 MAX_SITES = 2  # 同時に進める工事の数
@@ -55,11 +72,16 @@ UNEMPLOYMENT_RESPONSE = 5.0  # 失業率がふつうより 1% 高いごとに、
 INFLATION_RESPONSE = 5.0  # 物価上昇率が INFLATION_LIMIT より 1% 高いごとに、基本のこの % だけ減らす
 INFLATION_LIMIT = 0.05
 NATURAL_UNEMPLOYMENT = 0.05
+DEBT_LIMIT = 1.0  # 政府の借金の対年GDP比がこれを超えたら、公共事業費を減らす
+DEBT_RESPONSE = 0.5  # 対年GDP比が DEBT_LIMIT より 0.1 高いごとに、基本のこの × 10 % だけ減らす
 WORKS_RANGE = (0.2, 2.0)  # 基本に対する倍率の下限と上限
 UNDERUSED = 0.7  # 同じ物を作る施設の稼働率がこれより低い間は、増やさない
 POWER_CAP = 2.0  # 電気料金が初めの値段のこの倍を超えたら、そこを公共料金の上限にする
 BENEFIT = 40  # 失業手当（平均賃金に対する %）
 SALE_TURNS = 2  # 国の倉庫から一度に売りに出す量（島の施設が使う量の何ターン分か）
+OFFER_TURNS = 5  # 民営の工事が待っていない資材は、直近このターン数に売りに出ていなければ売りに出す
+ZONE_SPARE = 3  # 空いた工業団地のマスがこれより少なければ、工業団地を足す
+ZONE_BATCH = 6  # 一度に工業団地に指定するマスの数
 # 連鎖を太くするときに、この順で数をそろえていく施設
 GROWTH = ("steel_mill", "machinery_plant", "building_materials_plant")
 
@@ -80,6 +102,7 @@ def _plan_rest(
         _labor_policy_order(island),
         _budget_order(island, turn),
         _price_cap_order(island, defs, config),
+        _zone_order(island, defs, config),
     )
     for policy in policies:
         if policy is not None:
@@ -143,18 +166,49 @@ def _warehouse_sales(island: IslandState, defs: Defs, config: GameConfig) -> lis
     reserved = _reserved_materials(island, defs)
     initial = initial_prices(defs, config, island.resources)
     orders = []
+    sold: dict[str, int] = {}
     for good, qty in sorted(need.items()):
         spare = stock.total(island.warehouse, good) - reserved.get(good, 0)
         if spare <= 0 or (good not in stuck and good not in short):
             continue
+        sold[good] = min(spare, qty * SALE_TURNS)
+    for good, qty in sorted(_private_materials(island, defs).items()):
+        spare = stock.total(island.warehouse, good) - reserved.get(good, 0) - sold.get(good, 0)
+        if spare > 0:
+            sold[good] = sold.get(good, 0) + min(spare, qty)
+    for good, qty in sorted(sold.items()):
         payload = {
             "good": good,
             "side": "sell",
-            "quantity": min(spare, qty * SALE_TURNS) / QUANTITY_SCALE,
+            "quantity": qty / QUANTITY_SCALE,
             "limit": max(island.economy.prices.get(good, 0), initial.get(good, 0)),
         }
         orders.append(("warehouse_trade", payload))
     return orders
+
+
+def _private_materials(island: IslandState, defs: Defs) -> dict[str, int]:
+    """民営工場が建てられる島で、島で作っていない工事の資材の、売りに出す量（民営の工事が待っている
+    量と、民間が建てられる施設の1つの工事に要る量の大きい方）。民営の工事が待っていない資材は、直近
+    OFFER_TURNS ターンに売りに出ていなければ出す（売りに出ていることが民間に見えれば足りるので、行政
+    力を毎ターンは使わない）。"""
+    if not any(private_allowed(defs, island, kind) for kind in defs.facilities):
+        return {}
+    made = {g for f in island.facilities if f.built for g in fac.recipe_of(defs, f)["outputs"]}
+    amounts: dict[str, int] = {}
+    for kind, fdef in sorted(defs.facilities.items()):
+        if private_allowed(defs, island, kind):
+            for good, qty in fdef["construction"].get("materials", {}).items():
+                amounts[good] = max(amounts.get(good, 0), qty)
+    waiting = _reserved_materials(island, defs, OWNER_PRIVATE)
+    for good, qty in waiting.items():
+        amounts[good] = max(amounts.get(good, 0), qty)
+    offered = island.economy.finance.get("supply", {})
+    return {
+        g: q
+        for g, q in amounts.items()
+        if g not in made and (waiting.get(g, 0) > 0 or not any(offered.get(g, [])[-OFFER_TURNS:]))
+    }
 
 
 # --- 公共事業費 -------------------------------------------------------------------
@@ -178,6 +232,7 @@ def _budget_order(island: IslandState, turn: int) -> tuple[str, dict] | None:
     scale = 1.0
     scale += UNEMPLOYMENT_RESPONSE * (stats.get("unemployment", 0) - NATURAL_UNEMPLOYMENT)
     scale -= INFLATION_RESPONSE * max(0.0, stats.get("inflation", 0) - INFLATION_LIMIT)
+    scale -= DEBT_RESPONSE * max(0.0, stats.get("debt_ratio", 0) - DEBT_LIMIT)
     scale = min(WORKS_RANGE[1], max(WORKS_RANGE[0], scale))
     target = int(population_of(island) * PUBLIC_WORKS * scale)
     current = island.policy.budget.get("construction", 0)
@@ -297,11 +352,14 @@ def _makeable(defs: Defs, island: IslandState, good: str, seen: frozenset[str]) 
     )
 
 
-def _reserved_materials(island: IslandState, defs: Defs) -> dict[str, int]:
-    """工事中の施設が、これから使う資材のうち手元にない量。"""
+def _reserved_materials(
+    island: IslandState, defs: Defs, owner: str = OWNER_STATE
+) -> dict[str, int]:
+    """持ち主が owner の工事中の施設が、これから使う資材のうち手元にない量（国の倉庫の資材を使える
+    のは国の工事だけ。民営の工事は市場で買う）。"""
     reserved: dict[str, int] = {}
     for f in island.facilities:
-        if not f.built:
+        if not f.built and f.owner == owner:
             construction = defs.facilities[f.kind]["construction"]
             done = f.progress / (construction["turns"] * fac.FULL)
             for good, qty in construction.get("materials", {}).items():
@@ -395,6 +453,46 @@ def _candidates(
             if _feasible(defs, island, kind, rname) and spare(kind, rname):
                 yield (kind, rname)
                 break
+
+
+# --- 工業団地 ---------------------------------------------------------------------
+
+
+def _zone_order(island: IslandState, defs: Defs, config: GameConfig) -> tuple[str, dict] | None:
+    """民営工場が建てられる島で、空いた工業団地が少なければ、町の通勤圏に工業団地を足す。"""
+    regime = defs.regimes.get(island.regime.get("economy", ""), {})
+    if not island.has_economy or regime.get("private_entry", "none") == "none":
+        return None
+    capital = island.capital
+    if capital is None:
+        return None
+    occupied = island.facilities_by_tile()
+    spare = [t for t in island.tiles if t.zone == ZONE_INDUSTRIAL and (t.x, t.y) not in occupied]
+    if len(spare) >= ZONE_SPARE:
+        return None
+    housing = fac.housing_kind(config)
+    homes = [(f.x, f.y) for f in island.facilities if f.kind == housing]
+    if not homes:
+        return None
+    radius = config.get("labor.commute_radius")
+    terrains = {"plain"} | ({"mountain"} if island.resources else set())
+    picks = []
+    for t in island.tiles:
+        pos = (t.x, t.y)
+        if t.zone != ZONE_NONE or pos in occupied or pos == capital or t.terrain not in terrains:
+            continue
+        near = min(distance(pos, h) for h in homes)
+        if near <= 1 or near > radius:
+            continue
+        picks.append(((near, distance(pos, capital)), t.terrain, pos))
+    picks.sort()
+    has_mountain = any(t.terrain == "mountain" for t in spare)
+    mountains = [] if has_mountain else [p for _, k, p in picks if k == "mountain"][:1]
+    plains = [p for _, k, p in picks if k == "plain"]
+    tiles = [list(p) for p in mountains + plains[: ZONE_BATCH - len(mountains)]]
+    if not tiles:
+        return None
+    return ("set_zone", {"zone": "industrial", "tiles": tiles})
 
 
 # --- どこに建てるか ---------------------------------------------------------------

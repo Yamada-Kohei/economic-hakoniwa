@@ -1,6 +1,7 @@
 // マスの情報の欄: 選んだマスと、そこにある施設の詳しい情報を出す。
-// 島の持ち主には、そのマスへの命令（建設・撤去・名称・地名・優先度・会計方式）と、
-// 地図でマスを選んで出す命令（送電線・開発禁止区域）の入口も出す。
+// 島の持ち主には、そのマスへの命令（建設・撤去・名称・地名・優先度・会計方式・国有化と民営化・
+// 補助金・銀行への緊急の貸し出しと破綻処理）と、地図でマスを選んで出す命令（送電線・開発禁止区域・
+// 工業団地とオフィス街）の入口も出す。
 // 狭い画面では地図を画面の上に留め、その下でこの欄を読み進める（site.css）。命令を足しても
 // 地図はそのまま押せ、結果は地図のそばに出す。
 
@@ -14,11 +15,33 @@ const ACCOUNTING_HINTS = {
   treasury: "施設の預金は国庫に戻り、売上も費用も国庫で出し入れします。",
 };
 
+// 国有化・民営化で起きること
+const OWNERSHIP_HINTS = {
+  nationalize: "純資産（資産 − 借入）の額で政府が買い取り、借入も引き継ぎます。差し押さえ中の施設は、銀行から売り値で買います。国庫が足りなければ実行できません。",
+  privatize: "純資産の額で資産を持つ層に売ります。国庫直轄の施設は、先に運転資金を出資して独立採算にします。",
+};
+
+// 施設ごとの補助金の種類
+const SUBSIDY_KINDS = {
+  production: { name: "生産補助", hint: "売上の割合を、補助金の予算から毎ターン出します。" },
+  bailout: { name: "救済補助", hint: "赤字の分を、補助金の予算から毎ターン埋めます（割合は 0 でやめる、ほかの値はどれも同じです）。" },
+};
+
+// 破綻した銀行の処理（hakoniwa_core/modules/failures）
+const RESOLUTION_HINTS = {
+  bailout: "政府が自己資本を規制の値まで（資金繰りの破綻なら足りない準備預金も）注入し、国営銀行として残します。",
+  transfer: "預金・融資・国債・銀行間の貸し借りを、健全な銀行のうち預金の最も多い銀行に移します。損失は保護されない預金と、この銀行に貸していた銀行が同じ割合で負い、足りない分を政府が払います（預金保険）。",
+  liquidation: "融資を額面より安く健全な銀行に売ったとして損失を数え、引き継ぎと同じく移します。損失は引き継ぎより大きくなります。",
+};
+
 // 地図でマスを選んで出す命令
 const MARK_MODES = {
   power_line: { label: "送電線の敷設", kind: "build_power_line", payload: (tiles) => ({ tiles }) },
   no_dev_on: { label: "開発禁止区域の指定", kind: "set_no_development", payload: (tiles) => ({ tiles, value: true }) },
   no_dev_off: { label: "開発禁止区域の解除", kind: "set_no_development", payload: (tiles) => ({ tiles, value: false }) },
+  zone_industrial: { label: "工業団地の指定", kind: "set_zone", payload: (tiles) => ({ zone: "industrial", tiles }) },
+  zone_office: { label: "オフィス街の指定", kind: "set_zone", payload: (tiles) => ({ zone: "office", tiles }) },
+  zone_none: { label: "区域の指定の解除", kind: "set_zone", payload: (tiles) => ({ zone: "none", tiles }) },
 };
 
 export class TilePanel {
@@ -129,6 +152,8 @@ export class TilePanel {
     if (t.pollution) rows.push(["汚染度", t.pollution]);
     if (t.power_line) rows.push(["送電線", "あり"]);
     if (t.zone === "no_development") rows.push(["開発", "禁止区域（町が形成されません）"]);
+    if (t.zone === "industrial") rows.push(["区域", "工業団地（民営の工場が採算を見て建ちます）"]);
+    if (t.zone === "office") rows.push(["区域", "オフィス街（銀行が建ちます）"]);
     if (t.capital_buildings?.length) rows.push(["首都の建物", t.capital_buildings.join("・")]);
     const title = t.capital ? `首都 ${t.capital_name || ""}（${t.x}, ${t.y}）` : `(${t.x}, ${t.y})`;
     return `<h3>${escapeHtml(title)}</h3>${table(rows)}`;
@@ -147,6 +172,7 @@ export class TilePanel {
     const rows = [["種類", f.kind_name], ["所有", `${f.owner_name}・${f.accounting_name}`]];
     if (f.recipe_name) rows.push(["生産方式", f.recipe_name]);
     if (!f.built) {
+      if (f.private_site) rows.push(["建設", "民間の資本が自分の資金で建設中"]);
       rows.push(["建設進捗", `${Math.round(f.progress * 100)}%（工期 ${f.turns} ターン）`]);
       rows.push(["建設労働者", `${f.workers.toLocaleString()} / ${f.workers_needed.toLocaleString()} 人`]);
       if (f.materials.length) rows.push(["建設資材", goodsText(f.materials)]);
@@ -160,8 +186,17 @@ export class TilePanel {
     if (f.priority != null) rows.push(["優先度", `${f.priority}${f.priority_changed ? "（変更済み）" : ""}`]);
     if (f.status_text) rows.push(["状態", f.status_text]);
     if (f.halted_until != null) rows.push(["停止期間", `ターン ${f.halted_until} まで`]);
+    if (f.closing != null) rows.push(["閉鎖", `ターン ${f.closing} から閉鎖中（在庫を売り切ったら借入を返してマスを空けます）`]);
+    if (f.foreclosed) {
+      const s = f.foreclosed;
+      rows.push(["差し押さえ", `${s.bank}が差し押さえ中。売り値 ${s.price}（ターン ${s.until} までに売れなければ取り壊します）`]);
+    }
     if (f.stock.length) rows.push(["施設在庫", goodsText(f.stock)]);
-    return `<h3>${escapeHtml(f.name)}</h3>${table(rows)}${this.booksHtml(f.books)}`;
+    const parts = [`<h3>${escapeHtml(f.name)}</h3>${table(rows)}`];
+    if (f.bank) parts.push(bankHtml(f.bank));
+    parts.push(this.booksHtml(f.books));
+    if (f.loans?.length) parts.push(loansHtml(f.loans));
+    return parts.join("");
   }
 
   /** 施設の収支（直近のターンの内訳と、直近の数ターンの損益の合計）と預金。 */
@@ -169,7 +204,8 @@ export class TilePanel {
     if (!b) return "";
     const rows = b.rows.map((r) => [r.label, r.text]);
     rows.push([`損益（直近 ${b.turns} ターンの合計）`, b.profit_total]);
-    if (b.deposit != null) rows.push(["預金", b.deposit]);
+    if (b.deposit != null) rows.push([b.deposit_label || "預金", b.deposit]);
+    if (b.debt) rows.push(["借入", b.debt]);
     const result = b.profit < 0 ? "（赤字）" : "";
     return `<h4>収支（ターン ${b.turn}）${result}</h4>${table(rows)}`;
   }
@@ -236,11 +272,64 @@ export class TilePanel {
           <button type="submit">${escapeHtml(f.accounting_target_name)}に変更（命令に追加）</button>
         </form>`);
     }
+    if (f.ownership_target) {
+      // 命令が通る施設（民営なら国有化、民営にできる国営なら民営化）だけに出す
+      parts.push(`
+        <form class="actions" data-form="ownership">
+          <h4>${escapeHtml(f.ownership_target_name)}（現在: ${escapeHtml(f.owner_name)}）</h4>
+          <p class="hint">${escapeHtml(OWNERSHIP_HINTS[f.ownership_target] || "")}</p>
+          <input type="hidden" name="kind" value="${escapeHtml(f.ownership_target)}">
+          <button type="submit">${escapeHtml(f.ownership_target_name)}（命令に追加）</button>
+        </form>`);
+    }
+    if (f.subsidy_target) parts.push(this.subsidyForm(f));
+    if (f.emergency_loan) {
+      const now = f.bank?.emergency ? `（今の上限: ${escapeHtml(f.bank.emergency)}）` : "";
+      parts.push(`
+        <form class="actions" data-form="emergency">
+          <h4>緊急の貸し出し${now}</h4>
+          <p class="hint">準備預金が足りないとき、中央銀行が担保の足りない分も毎ターンこの額まで貸します。0 で取り消します。</p>
+          <label>上限額 <input name="amount" type="number" min="0" step="1" required></label>
+          <button type="submit">命令に追加</button>
+        </form>`);
+    }
+    if (f.resolve_methods) {
+      const methods = Object.entries(f.resolve_methods)
+        .map(([id, name]) => `
+          <label><input type="radio" name="method" value="${escapeHtml(id)}"${id === "transfer" ? " checked" : ""}>
+            ${escapeHtml(name)}: <span class="hint">${escapeHtml(RESOLUTION_HINTS[id] || "")}</span></label>`)
+        .join("");
+      parts.push(`
+        <form class="actions" data-form="resolve">
+          <h4>破綻した銀行の処理（行政力を使いません）</h4>
+          <p class="hint">次のターンまでに選ばなければ「引き継ぎ」（引き継ぐ銀行がなければ「救済」）になります。</p>
+          ${methods}
+          <button type="submit">命令に追加</button>
+        </form>`);
+    }
     if (!t.capital) {
       parts.push(`<p class="actions"><button type="button" data-action="demolish">撤去（命令に追加）</button></p>`);
     }
     parts.push(placeForm);
     return parts.join("");
+  }
+
+  /** この施設への補助金（生産補助・救済補助）の入力欄。 */
+  subsidyForm(f) {
+    const current = f.subsidies?.length ? `<p class="hint">今の補助金: ${escapeHtml(f.subsidies.join("、"))}</p>` : "";
+    const kinds = Object.entries(SUBSIDY_KINDS);
+    const options = kinds.map(([id, k]) => `<option value="${id}">${k.name}</option>`).join("");
+    const hints = kinds.map(([, k]) => `<li>${k.name}: ${k.hint}</li>`).join("");
+    return `
+      <form class="actions" data-form="subsidy">
+        <h4>この施設への補助金</h4>
+        ${current}
+        <label>種類 <select name="kind">${options}</select></label>
+        <ul class="hint">${hints}</ul>
+        <label>割合（%、0 でやめる） <input name="rate" type="number" min="0" max="100" step="0.1" required></label>
+        <label>期間（ターン） <input name="turns" type="number" min="1" max="1200" step="1" value="12" required></label>
+        <button type="submit">命令に追加</button>
+      </form>`;
   }
 
   /** この地形に建てられる施設。この島で使える生産方式のある施設を先に並べる。 */
@@ -381,6 +470,7 @@ export class TilePanel {
   }
 
   submit(form) {
+    if (!form.reportValidity()) return; // 入力の決まり（required・min など）を確かめる
     const { x, y } = this.tile;
     const data = new FormData(form);
     const name = String(data.get("name") ?? "").trim();
@@ -397,6 +487,15 @@ export class TilePanel {
       this.addOrder("set_priority", { x, y, priority: Number(data.get("priority")) });
     } else if (form.dataset.form === "accounting") {
       this.addOrder("set_accounting", { x, y, accounting: data.get("accounting") });
+    } else if (form.dataset.form === "ownership") {
+      this.addOrder(data.get("kind"), { x, y });
+    } else if (form.dataset.form === "subsidy") {
+      const payload = { kind: data.get("kind"), x, y, rate: Number(data.get("rate")) };
+      this.addOrder("set_subsidy", { ...payload, turns: Math.round(Number(data.get("turns"))) });
+    } else if (form.dataset.form === "emergency") {
+      this.addOrder("emergency_loan", { x, y, amount: Math.round(Number(data.get("amount"))) });
+    } else if (form.dataset.form === "resolve") {
+      this.addOrder("resolve_bank", { x, y, method: data.get("method") });
     }
   }
 
@@ -447,6 +546,34 @@ function idSet(text) {
 function table(rows) {
   const body = rows.map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`).join("");
   return `<table class="info">${body}</table>`;
+}
+
+/** 銀行の帳簿（直近の統計）と預金金利・破綻。 */
+function bankHtml(b) {
+  const rows = [];
+  if (b.failed != null) {
+    const why = b.failed_reason === "liquidity" ? "資金繰りに行き詰まり" : "債務超過で";
+    rows.push(["破綻", `ターン ${b.failed} に${why}破綻しました（新しい融資と預金の受け入れを止めています）`]);
+  }
+  if (b.deposits != null) rows.push(["預金", b.deposits]);
+  if (b.loans != null) rows.push(["融資", b.loans]);
+  if (b.net_worth != null) rows.push(["自己資本", b.net_worth]);
+  if (b.capital_ratio != null) {
+    rows.push(["自己資本比率", `${b.capital_ratio || "融資なし"}（規制 ${b.regulatory_ratio} 以上）`]);
+  }
+  rows.push(["預金金利（年）", b.deposit_rate]);
+  if (b.emergency) rows.push(["緊急の貸し出しの上限", b.emergency]);
+  const turn = b.turn != null ? `（ターン ${b.turn}）` : "";
+  return `<h4>銀行の帳簿${turn}</h4>${table(rows)}`;
+}
+
+/** 施設の借入（融資ごと）。 */
+function loansHtml(loans) {
+  const rows = loans.map((l) => {
+    const late = l.arrears ? `・返済の遅れ ${l.arrears} 回` : "";
+    return [`${l.lender}・${l.purpose}`, `${l.balance}（年利 ${l.rate}${late}）`];
+  });
+  return `<h4>借入</h4>${table(rows)}`;
 }
 
 function goodsText(list) {

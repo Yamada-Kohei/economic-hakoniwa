@@ -3,7 +3,7 @@
 ターン更新では load() で世界全体をメモリに読み込み、コアで計算し、
 save() で変わったものだけを書き戻す。トランザクションは呼ぶ側が張る。
 
-在庫（倉庫と施設の手持ち）と、お金の勘定・国債は毎ターンほとんど変わるので、島ごとに消して
+在庫（倉庫と施設の手持ち）と、お金の勘定・国債・融資は毎ターンほとんど変わるので、島ごとに消して
 書き直す。仕訳・約定・市場の記録・施設の帳簿はターンごとに足し、game.yaml の records の期間を
 過ぎた行を消す。
 """
@@ -21,6 +21,7 @@ from hakoniwa_core.state import (
     EconomyState,
     Facility,
     IslandState,
+    Loan,
     OrderState,
     Policy,
     Tile,
@@ -120,6 +121,9 @@ class WorldRepository:
         bonds = em.Bond.objects.filter(island__world=self.world).order_by("island_id", "number")
         for b in bonds:
             islands[b.island_id].bonds.append(bond_from_row(b))
+        loans = em.Loan.objects.filter(island__world=self.world).order_by("island_id", "number")
+        for row in loans:
+            islands[row.island_id].loans.append(loan_from_row(row))
 
         orders = Order.objects.filter(island__world=self.world, status="pending")
         if orders_until is not None:
@@ -320,12 +324,13 @@ def load_money(islands: dict[int, IslandState], accounts) -> None:
 
 
 def write_money(islands: Iterable[IslandState], replace: bool) -> None:
-    """島の勘定と国債の銘柄を書く。replace なら、その島の今の行を消してから書く。"""
+    """島の勘定・国債の銘柄・融資を書く。replace なら、その島の今の行を消してから書く。"""
     islands = list(islands)
     if replace:
         ids = [i.id for i in islands]
         em.Account.objects.filter(island_id__in=ids).delete()
         em.Bond.objects.filter(island_id__in=ids).delete()
+        em.Loan.objects.filter(island_id__in=ids).delete()
     em.Account.objects.bulk_create(
         [
             em.Account(island_id=island.id, name=name, balance=balance)
@@ -349,10 +354,40 @@ def write_money(islands: Iterable[IslandState], replace: bool) -> None:
         ],
         batch_size=BATCH,
     )
+    em.Loan.objects.bulk_create(
+        [
+            em.Loan(
+                island_id=island.id,
+                number=x.id,
+                **{name: getattr(x, name) for name in LOAN_FIELDS},
+            )
+            for island in islands
+            for x in island.loans
+        ],
+        batch_size=BATCH,
+    )
 
 
 def bond_from_row(row: em.Bond) -> Bond:
     return Bond(id=row.number, issued=row.issued, term=row.term, rate=row.rate, face=row.face)
+
+
+LOAN_FIELDS = [
+    "lender",
+    "borrower",
+    "purpose",
+    "principal",
+    "term",
+    "start",
+    "rate",
+    "installment",
+    "repay_from",
+    "arrears",
+]
+
+
+def loan_from_row(row: em.Loan) -> Loan:
+    return Loan(id=row.number, **{name: getattr(row, name) for name in LOAN_FIELDS})
 
 
 def write_records(islands: Iterable[IslandState], turn: int) -> None:
@@ -488,11 +523,15 @@ def replace_island_contents(islands: list[IslandState]) -> None:
 
 
 def load_island(row: m.Island) -> IslandState:
-    """1つの島のマスと施設を読む（画面で命令を確かめる用。倉庫と命令は読まない）。"""
+    """1つの島のマスと施設を読む（画面で命令を確かめる用。倉庫と命令は読まない）。
+
+    国債の銘柄も読む（国債の利払いの停止の命令は、国債がなければ通らない）。
+    """
     island = island_from_row(row)
     for x, y, *rest in row.tiles.values_list("x", "y", *TILE_FIELDS):
         island.tiles[y * island.size + x] = Tile(x, y, **dict(zip(TILE_FIELDS, rest, strict=True)))
     island.facilities = [facility_from_row(f) for f in row.facilities.order_by("number")]
+    island.bonds = [bond_from_row(b) for b in em.Bond.objects.filter(island=row).order_by("number")]
     return island
 
 

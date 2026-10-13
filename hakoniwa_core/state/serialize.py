@@ -10,6 +10,7 @@ from hakoniwa_core.state.model import (
     EconomyState,
     Facility,
     IslandState,
+    Loan,
     LogEntry,
     OrderState,
     Policy,
@@ -19,7 +20,7 @@ from hakoniwa_core.state.model import (
 
 # このターンだけの値なので、写しに入れない
 _TRANSIENT = ("stats", "scratch", "journal", "trades", "markets", "books")
-_NESTED = ("tiles", "facilities", "orders", "log", "ext", "bonds", "economy", "policy")
+_NESTED = ("tiles", "facilities", "orders", "log", "ext", "bonds", "loans", "economy", "policy")
 
 
 def world_to_dict(world: WorldState) -> dict[str, Any]:
@@ -59,6 +60,7 @@ def island_from_dict(d: dict[str, Any]) -> IslandState:
         orders=[build(OrderState, o) for o in d.get("orders", [])],
         log=[LogEntry(**e) for e in d.get("log", [])],
         bonds=[build(Bond, b) for b in d.get("bonds", [])],
+        loans=[build(Loan, x) for x in d.get("loans", [])],
         economy=build(EconomyState, d.get("economy") or {}),
         policy=build(Policy, d.get("policy") or {}),
         ext=dict(d.get("ext") or {}),

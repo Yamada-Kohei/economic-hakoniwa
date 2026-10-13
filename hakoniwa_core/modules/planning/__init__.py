@@ -1,4 +1,9 @@
-"""計画の実行: 行政力の範囲で、並んだ命令を上から実行する段。"""
+"""計画の実行: 行政力の範囲で、並んだ命令を上から実行する段。
+
+行政力が足りない命令から下は次のターンに回す。ただし、命令1つの行政力がその島の1ターンの行政力
+より大きいときは、列の先頭に来たターンに、そのターンの行政力をすべて使って実行する（行政力の小さい
+国でも、国有化のような重い命令がいつまでも止まらないように）。
+"""
 
 from __future__ import annotations
 
@@ -39,12 +44,15 @@ class ExecuteOrders(IslandStage):
 
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
         registry = ctx.registry
-        remaining = ctx.formula("admin_power")(island, ctx)
+        power = ctx.formula("admin_power")(island, ctx)
+        remaining = power
         pending = sorted(
             (o for o in island.orders if o.status == ORDER_PENDING), key=lambda o: (o.seq, o.id)
         )
         for order in pending:
             cost = ctx.defs.orders[order.kind]["admin_cost"] if order.kind in ctx.defs.orders else 0
+            if cost > power and remaining == power:
+                cost = power  # 1ターンの行政力を超える命令は、そのターンの行政力をすべて使う
             if cost > remaining:
                 island.log.append(LogEntry("order_postponed", {"order": order.kind}))
                 break

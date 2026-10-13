@@ -146,14 +146,7 @@ class _Trade:
         for f in sorted(island.facilities, key=lambda f: f.id):
             if not fac.on_map(f) or fac.is_housing(config, f):
                 continue
-            goods = []
-            if f.built:
-                recipe = fac.recipe_of(defs, f)
-                goods += [(g, q, True) for g, q in sorted(recipe["outputs"].items())]
-                goods += [(g, q, False) for g, q in sorted(recipe["inputs"].items())]
-            else:
-                goods += [(g, q, False) for g, q in fac.step_materials(defs, f).items()]
-            goods = [(g, q, sell) for g, q, sell in goods if g != power and q > 0]
+            goods = facility_goods(defs, power, f)
             self.goods[f.id] = goods
             for good, qty, sell in goods:
                 side = self.sellers if sell else self.buyers
@@ -161,11 +154,24 @@ class _Trade:
         self.household = set(household_goods(defs, config, island))
 
 
+def facility_goods(defs: Defs, power: str, f: Facility) -> list[tuple[str, int, bool]]:
+    """施設が売る物と買う物（財, 全力の量, 売るか）。工事中は次の1ターン分の資材。"""
+    goods = []
+    if f.built:
+        recipe = fac.recipe_of(defs, f)
+        goods += [(g, q, True) for g, q in sorted(recipe["outputs"].items())]
+        goods += [(g, q, False) for g, q in sorted(recipe["inputs"].items())]
+    else:
+        goods += [(g, q, False) for g, q in fac.step_materials(defs, f).items()]
+    return [(g, q, sell) for g, q, sell in goods if g != power and q > 0]
+
+
 class _Rates:
     """率の計算（1万分の1。割り増しの前）。"""
 
     def __init__(self, island: IslandState, defs: Defs, config: GameConfig) -> None:
         self.island = island
+        self.defs = defs
         self.routes = Routes(island, defs)
         self.trade = _Trade(island, defs, config)
         self.hub = distances(island, defs, config)
@@ -179,8 +185,10 @@ class _Rates:
             return self.top
         return min(self.top, distance * self.per_step // 2)
 
-    def facility(self, f: Facility) -> int:
-        goods = self.trade.goods.get(f.id, [])
+    def facility(self, f: Facility, power: str | None = None) -> int:
+        goods = self.trade.goods.get(f.id)
+        if goods is None:  # まだ建っていない施設（民営工場の参入の場所選び）
+            goods = facility_goods(self.defs, power or "", f) if power is not None else []
         hub = self.hub.get((f.x, f.y))
         if not goods:
             return self.rate(hub)
@@ -280,6 +288,24 @@ def rates_of(
     全部の施設の率は facility_rates で）。"""
     calc = _Rates(island, defs, config)
     return {f.id: _surcharged(island, calc.facility(f)) if fac.on_map(f) else 0 for f in facilities}
+
+
+def candidate_rates(
+    island: IslandState,
+    defs: Defs,
+    config: GameConfig,
+    kind: str,
+    recipe: str,
+    positions: list[Pos],
+) -> dict[Pos, int]:
+    """まだ建っていない施設 kind を positions のマスに建てたときの運賃の率（割り増しを含む）。"""
+    calc = _Rates(island, defs, config)
+    power = config.get("power.good")
+    out = {}
+    for x, y in positions:
+        probe = Facility(id=-1, kind=kind, x=x, y=y, recipe=recipe, built=True)
+        out[(x, y)] = _surcharged(island, calc.facility(probe, power))
+    return out
 
 
 def facility_rates(island: IslandState, defs: Defs, config: GameConfig) -> dict[int, int]:

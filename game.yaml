@@ -15,9 +15,12 @@ stages:
   - construction     # 工事の進み
   - payroll          # 賃金・所得税・失業手当と、賃金の見直し
   - market           # 財ごとの板寄せ、代金・運賃・消費税、傷んだ物を捨てる、希望価格の見直し
-  - banking          # 預金と準備預金の利子
-  - bonds            # 国債の利払いと償還、足りない分の自動の発行（中央銀行の直接引き受け）
-  - accounts         # 決算: 損益、減価償却、法人税、配当と納付、中央銀行の納付
+  - banking          # 銀行間と中央銀行への返済、融資の利払いと返済、預金の利子、運転資金の融資、預金の乗り換え
+  - bonds            # 国債の利払いと償還（不履行）、入札と売れ残りの引き受け、国債の売買の市場
+  - accounts         # 決算: 損益（国債の時価の評価を含む）、減価償却、補助金、法人税、配当と納付、中央銀行の納付
+  - central_bank     # 政策金利（独立のとき）、銀行間の貸し借り、中央銀行の貸し出し
+  - failures         # 返済の遅れが続いた施設の倒産、銀行の破綻と破綻処理
+  - entry_exit       # 民営工場と民間銀行の参入・撤退、差し押さえた施設の売却
   - population       # 消費と人口
   - housing          # 都市の発展（町の自動建設と成長）
   - events           # 災害
@@ -118,6 +121,8 @@ household:
   food_share: 0.25      # 食費の上限（使う額に対する割合）。安い食料の費用との差の分だけ、質の高い食料に替える
   # 消費財の注文の指値（いつもの値段に対する倍率）。高い段から「その値段で使い切る量」まで足していく
   consumer_goods_tiers: [0.95, 1.0, 1.05]
+  # 今の値段がいつもの値段の一番下の段より安いときに足す段（今の値段に対する倍率。値下がりした分だけ多く買う）
+  consumer_goods_low_tiers: [0.9, 0.95, 1.0]
   usual_price_turns: 12 # いつもの値段 = 直近このターン数の値段の平均
   consumer_goods_target: 0.0005 # 1人1ターンあたりの消費財の目安（幸福度）
   housing_share: 0.02   # 町の資材に使う預金の割合の上限
@@ -128,21 +133,81 @@ firms:
   payout: 0.5           # 税引き後の利益のうち、配当（民営）・国庫への納付（国営）に回す割合
   cash_turns: 6         # 手元の資金がこのターン数分の支払いを超えたら、超えた分も配当・納付に回す
   loss_carry_turns: 60  # 赤字を繰り越せるターン数
+  # 民営工場の参入（フェーズ2-2）。見込みの年の利益率 R（式 entry_return）が「借りる金利 + entry_margin」を
+  # 超え、その財が直近 price_turns ターンのうち shortage_turns ターン以上品切れか、値段が原価の
+  # cost_ratio 倍を超えていて、空いた工業団地のマスがあれば建つ。同じ財の民営工場が建設中か、
+  # 建ってから price_turns ターンたっていなければ待つ
+  entry_margin: 0.03
+  entries_per_turn: 1   # 1つの島で1ターンに建つ数
+  equity_share: 0.3     # 建設費のうち資産を持つ層が出資する割合（残りは建設資金の融資）
+  price_turns: 6        # 参入の計算で値段を平均するターン数
+  shortage_turns: 3
+  entry_gap: 0.5        # 品切れと見る足りない量（新しい工場の全力の産出に対する割合）
+  cost_ratio: 1.2
+  # 撤退と倒産
+  exit_idle_turns: 12   # 動かない（稼働率0）ままこのターン数続いたら閉鎖する
+  exit_loss_turns: 12   # 変動費の利益がこのターン数続けてマイナスなら閉鎖する
+  exit_loss_margin: 0.01  # マイナスと見るのは、全力の売上のこの割合を超える損のとき（端数で閉鎖しない）
+  abandon_turns: 12     # 民営の工事が資材を買えずに進まないままこのターン数続いたら、工事をやめる
+  foreclosure_turns: 12 # 倒産して差し押さえた施設を売りに出すターン数（売れなければ取り壊す）
+  foreclosure_price: 0.5  # 差し押さえた施設の売り値（帳簿の設備の値打ちに対する割合）
+  loss_notice_turns: 6  # 国営の独立採算の施設が、このターン数続けて赤字ならプレイヤーに知らせる
+  ebitda_turns: 6       # 融資の審査で見る「利払い前の利益 ＋ 減価償却」を平均するターン数
 
 banking:
-  facility: bank        # 市中銀行の施設（フェーズ2-1 は島に1つ）
+  facility: bank        # 市中銀行の施設
   office_tiles: 2       # 建国のときに首都の近くでオフィス街に指定するマスの数
-  capital_ratio: 0.1    # 建国のときの銀行の自己資本（預金に対する割合）
-  bond_ratio: 0.2       # 建国のときに銀行が持つ国債（預金に対する割合）
+  capital_ratio: 0.1    # 建国のときの銀行の自己資本（預金に対する割合）。債務超過の銀行の立て直しもこの割合まで
+  bond_ratio: 0.2       # 建国のときに銀行が持つ国債（預金に対する割合）。銀行の国債の持ち高の目安も同じ
   reserve_ratio: 0.02   # 最低限の準備預金（預金に対する割合）
-  deposit_rate: 0.01    # 預金金利（フェーズ2-1 は固定）
+  deposit_rate: 0.01    # 初めの預金金利
+  deposit_spread: 0.02  # 預金金利の目安 = 政策金利 − これ（準備預金が足りない銀行はさらに上げる）
+  liquidity_target: 0.05  # 準備預金の余りがこの割合（預金に対する）を下回る銀行は、預金金利を上げる
+  rate_step: 0.001      # 預金金利と利ざやを1ターンに動かす幅
+  regulatory_ratio: 0.08  # 自己資本比率（自己資本 ÷ 融資）の規制。下回ると新しく貸さない
+  large_exposure: 0.25  # 大口融資の規制: 1つの民営施設への融資の残高は、銀行の自己資本 × これまで
+  margin: 0.02          # 初めの利ざや m（融資の金利 = 政策金利 + m + ρ × 借入 ÷ 資産）
+  margin_range: [0.005, 0.06]
+  rho: 0.04             # ρ
+  risk_buffer: 0.05     # 自己資本比率が「規制 + これ」を下回ると、預金者は危なさを見て割り引く
+  risk_weight: 0.25     # その割り引きの係数（自己資本比率が1%低いごとに預金金利を 0.25% 低く見る）
+  capital_floor: 0.03   # 自己資本の目安の下限（預金に対する割合）。配当は目安を超える分から払い、救済も目安まで入れる
+  switch_share: 0.05    # 家計が1ターンに乗り換える預金の割合の上限
+  run_share: 0.2        # 取り付け: 規制を下回った銀行と中央銀行に頼る銀行から、1ターンに流れ出す割合
+  max_banks: 5          # 島の銀行の数の上限
+  entry_capital: 0.02   # 民間銀行の資本（島の預金に対する割合。資産を持つ層が出資する）
+  entry_deposits: 2000000 # 参入した後の銀行1つあたりの島の預金がこれを超え、利益の見込みが立てば民間銀行が入る
+  entry_roe_margin: 0.02  # 今ある銀行の自己資本利益率の平均が「政策金利 + これ」を超えたら
+  liquidation_price: 0.7  # 清算で融資を売る値段（額面に対する割合）
+  deposit_insurance: 30000  # 預金保護の上限額の既定（1人あたり、施設は1つあたり）
+  auction_share: 0.5    # 国債の入札に回す準備預金の余りの割合
+  auction_tiers: [0.0, 0.005, 0.01]  # 入札の3段（求める利回りへの上乗せ）
+  sell_premium: 0.005   # 国債を売るときに受け入れる利回りの上乗せ（求める利回りより高くても売る幅）
+
+loans:
+  working_turns: 6      # 運転資金を返す期間
+  construction_turns: 120  # 建設資金を返す期間（据え置きの後から）
+  grace_turns: 6        # 建設資金の元金の据え置き（工事が済んでからこのターン数は利子だけ払う）。
+                        # この間の運転資金の審査は、全力で動いたときの見込みの利益で見る
+  coverage: 1.2         # 審査: 利払い前の利益 ＋ 減価償却 ≧ 毎ターンの返済（利子 + 元金）× これ
+  max_leverage: 0.8     # 審査: 借入の合計 ≦ 資産（設備の値打ち + 預金 + 在庫）× これ
+  inventory_ratio: 0.5  # 審査: 利益で返せなくても、運転資金の残高が在庫の値打ち × これ以内なら貸す
+  arrears_limit: 3      # 返済がこのターン数続けて遅れたら倒産
 
 central_bank:
-  policy_rate: 0.03     # 政策金利（フェーズ2-1 は固定）
-  # 準備預金の余りに付ける利子は、政策金利からこれを引いた率。融資のないフェーズ2-1 は、銀行の
-  # 収入が国債と準備預金の利子だけなので 0 にする（銀行間の市場ができる 2-2 で見直す）
-  reserve_spread: 0.0
+  policy_rate: 0.03     # 初めの政策金利
+  # 準備預金の余りに付ける利子は、政策金利からこれを引いた率（銀行間の金利の下端）
+  reserve_spread: 0.01
+  corridor: 0.01        # 銀行間の金利の幅（政策金利 ± これ。上端は中央銀行から借りる金利）
   inflation_target: 0.02  # 物価の目標 π*
+  # 独立した中央銀行の政策金利: r* + π + a (π − π*) − b (u − u*)。1ターンに max_step まで、range の中
+  natural_rate: 0.01
+  inflation_weight: 0.5
+  unemployment_weight: 0.5
+  max_step: 0.0025
+  rate_range: [0.0, 0.2]
+  switch_lock_turns: 12 # 独立させる・戻す命令の後、このターン数は戻せない
+  collateral_ratio: 0.9 # 担保（国債の時価と延滞のない融資）の値打ちのうち、貸し出しに使える割合
 
 bonds:
   auto_terms: {bond_1y: 1.0}  # 自動の発行の期間（finance.yaml の bond_term）と割合
@@ -151,6 +216,13 @@ bonds:
   kappa: 0.5            # 物価上昇率が目標を超えた分の上乗せの係数 κ
   max_yield: 0.2        # 利回りの上限
   buffer_turns: 1       # 国庫に残す額（支出のターン数分）
+  default_premium: 0.05 # 債務不履行の上乗せ δ（不履行の直後。default_decay_turns ターンかけて 0 に減る）
+  default_decay_turns: 120
+  haircut: 0.5          # 不履行になった銘柄の額面を切り下げる割合
+  independence_discount: 0.005  # 中央銀行が独立しているときの利回りの割り引き β
+  buckets: [12, 36, 84] # 国債の売買の区分（残りのターン数の境目: 1年未満・1〜3年・3〜7年・7年以上）
+  bucket_terms: [6, 24, 60, 120]  # 区分の利回りを代表する残りのターン数（区分の間は直線でつなぐ）
+  trade_band: 0.01      # 国債の売買の値幅（前のターンの利回り ± これ）
 
 fiscal:
   income_tax: 0.1       # 所得税（賃金から差し引く）
@@ -159,11 +231,11 @@ fiscal:
   minimum_wage: 0       # 最低賃金（0 は決めない）
   unemployment_benefit: 0  # 失業手当（失業者1人に平均賃金の何割）
   # 国庫が足りないときの支払いの順番（前の項目から取り置く）
-  payment_order: [bonds, civil_servants, unemployment, state_facilities, construction, warehouse]
+  payment_order: [bonds, civil_servants, unemployment, state_facilities, construction, subsidies, warehouse]
   # 年の予算を命令で決める項目（毎ターン予算の12分の1まで使う）。construction は公共事業費
-  # （国の工事の資材と作業員の賃金。インフラはフェーズ2-3 で足す）
-  budget_items: [construction, warehouse]
-  budget: {construction: 600, warehouse: 0}  # 建国のときの年の予算（住民1人あたり）
+  # （国の工事の資材と作業員の賃金。インフラはフェーズ2-3 で足す）、subsidies は補助金
+  budget_items: [construction, subsidies, warehouse]
+  budget: {construction: 600, subsidies: 0, warehouse: 0}  # 建国のときの年の予算（住民1人あたり）
   reserve_margin: 0.2   # 取り置きの見積もりを、前のターンの支出よりこの割合だけ多めにする
 
 power:

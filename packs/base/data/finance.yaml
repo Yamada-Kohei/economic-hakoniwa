@@ -1,6 +1,5 @@
 # 金融の部品。type: journal は仕訳の種類（お金の動きの名前。統計と施設の帳簿はこの名前で集計します）、
 # type: bond_term は国債の期間（turns: ターン数、premium: 期間の上乗せの利回り）。
-# 融資の種類と破綻処理の選択肢はフェーズ2-2 で足します。
 
 # 建国と出資
 grant:                {type: journal}   # 建国の給付（政府 → 家計）
@@ -21,11 +20,37 @@ dividend:             {type: journal}   # 配当と国庫への納付（施設�
 interest_deposit:     {type: journal}   # 預金の利子（銀行 → 預金者）
 interest_reserve:     {type: journal}   # 準備預金の利子（中央銀行 → 銀行）
 cb_payment:           {type: journal}   # 中央銀行の利益の納付（中央銀行 → 政府）
+deposit_switch:       {type: journal}   # 預金の預け替え（銀行 → 銀行）
+# 融資と銀行間の貸し借り
+loan:                 {type: journal}   # 融資の実行（銀行 → 借り手）
+interest_loan:        {type: journal}   # 融資の利子（借り手 → 銀行。払えない分は貸し付けに足す）
+loan_repayment:       {type: journal}   # 融資の返済（借り手 → 銀行）
+loan_write_off:       {type: journal}   # 融資の貸し倒れ（取り消し）
+interbank:            {type: journal}   # 銀行間の貸し出しと返済（銀行 → 銀行）
+interest_interbank:   {type: journal}   # 銀行間の利子（借りた銀行 → 貸した銀行）
+cb_loan:              {type: journal}   # 中央銀行の貸し出しと返済（中央銀行 ↔ 銀行）
+interest_cb_loan:     {type: journal}   # 中央銀行への利子（銀行 → 中央銀行）
+# 倒産と破綻処理
+equity_loss:          {type: journal}   # 倒産した施設の出資の取り消し
+equity_transfer:      {type: journal}   # 差し押さえた施設の出資の付け替え（銀行 → 買い手）
+foreclosure_sale:     {type: journal}   # 差し押さえた施設の売却の代金（買い手 → 銀行）
+foreclosure_recovery: {type: journal}   # 差し押さえた施設を取り壊したときの残りのお金（施設 → 銀行）
+bank_transfer:        {type: journal}   # 破綻した銀行の預金・融資・国債の引き継ぎ（銀行 → 銀行）
+bank_bailout:         {type: journal}   # 破綻した銀行への公的資金（政府 → 銀行）
+deposit_insurance:    {type: journal}   # 預金保護の穴埋め（政府 → 引き継ぐ銀行）
+deposit_cut:          {type: journal}   # 保護されない預金の切り捨て
+interbank_loss:       {type: journal}   # 破綻した銀行に貸したお金の切り捨て
+# 補助金と国有化
+subsidy:              {type: journal}   # 補助金（政府 → 施設）
+nationalization:      {type: journal}   # 国有化の買い取り（政府 → 持ち主）
+privatization:        {type: journal}   # 民営化の売却（買い手 → 政府）
 # 国債
 bond_issue:           {type: journal}   # 国債の発行と引き受け
 bond_purchase:        {type: journal}   # 国債の買い入れ（売り手から買い手へ）
 bond_interest:        {type: journal}   # 国債の利払い（政府 → 持ち手）
 bond_redemption:      {type: journal}   # 国債の償還（政府 → 持ち手）
+bond_trade:           {type: journal}   # 国債の売買（買い手 → 売り手）
+bond_default:         {type: journal}   # 国債の不履行（額面の切り下げ）
 # 家計の層
 layer_transfer:       {type: journal}   # 層を移った人の預金の付け替え
 

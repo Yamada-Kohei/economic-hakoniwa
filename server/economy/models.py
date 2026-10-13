@@ -1,6 +1,6 @@
 """お金と市場の保存（フェーズ2）。計算はコア（hakoniwa_core）にあり、ここは保存だけを受け持つ。
 
-勘定と国債は島の今の状態なので、ターンごとに島の行を消して書き直す。仕訳・約定・市場の記録・
+勘定・国債・融資は島の今の状態なので、ターンごとに島の行を消して書き直す。仕訳・約定・市場の記録・
 施設の帳簿はターンごとの記録で、古い行は game.yaml の records の期間を過ぎたら消す。
 主体・勘定・財の名前は文字列で持ち、外部キーにしない（追加パックで種類が増えても移行が要らない）。
 """
@@ -47,6 +47,32 @@ class Bond(models.Model):
 
     def __str__(self) -> str:
         return f"{self.island} 国債 {self.number}"
+
+
+class Loan(models.Model):
+    """融資の1件（フェーズ2-2）。残高は勘定（<貸し手>/loan:<番号>/<借り手>）で持つ。"""
+
+    island = models.ForeignKey(Island, on_delete=models.CASCADE, related_name="loans")
+    number = models.IntegerField("島の中の番号")
+    lender = models.CharField("貸し手", max_length=64)
+    borrower = models.CharField("借り手", max_length=64)
+    purpose = models.CharField("使い道", max_length=32)
+    principal = models.BigIntegerField("貸した額")
+    term = models.IntegerField("返す期間（ターン）")
+    start = models.IntegerField("貸したターン")
+    rate = models.IntegerField("年利（1万分の1）", default=0)
+    installment = models.BigIntegerField("毎ターン返す元金", default=0)
+    repay_from = models.IntegerField("返し始めるターン", default=0)
+    arrears = models.IntegerField("続けて遅れた回数", default=0)
+
+    class Meta:
+        verbose_name = verbose_name_plural = "融資"
+        constraints = [
+            models.UniqueConstraint(fields=["island", "number"], name="unique_loan_number"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.island} 融資 {self.number}"
 
 
 class JournalEntry(models.Model):
