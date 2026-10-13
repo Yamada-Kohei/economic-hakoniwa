@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>マップの絵の見本</title>
+  <style>
+    html, body { margin: 0; height: 100%; font-family: sans-serif; background: #1b2633; color: #eee; }
+    header { padding: 8px 12px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; font-size: 14px; }
+    canvas { display: block; width: 100%; height: calc(100% - 48px); touch-action: none; }
+    a { color: #9cf; }
+  </style>
+</head>
+<body>
+  <!-- 開発用: 地形・施設・住宅の各段階・工事中・停止中・首都などを1枚の島に並べ、本番と同じ描画で見せる。
+       python manage.py runserver で動かし、/static/map-preview.html を開く。
+       ?sprites=0 で絵を使わない描画、?scale=2 で拡大、?overlay=population などで重ね表示。 -->
+  <header>
+    <strong>マップの絵の見本</strong>
+    <a href="?sprites=1">絵あり</a>
+    <a href="?sprites=0">絵なし（色の箱）</a>
+    <a href="?scale=2">2倍</a>
+    <a href="?overlay=population">重ね表示</a>
+    <span id="missing"></span>
+  </header>
+  <canvas id="preview" data-defs="/api/defs"></canvas>
+  <script type="module" src="js/map/preview.js"></script>
+</body>
+</html>

@@ -5,6 +5,7 @@ import { drawMinimap, minimapTile } from "./minimap.js";
 import { overlays } from "./overlays/index.js";
 import { lift, tileToWorld, worldToTile } from "./projection.js";
 import { drawIsland } from "./renderer.js";
+import { loadSprites } from "./sprites.js";
 import { OrderQueue } from "../island/orders.js";
 import { TilePanel } from "../island/panel.js";
 
@@ -19,7 +20,7 @@ const [defs, map] = await Promise.all([
 ]);
 const theme = defs.theme;
 const view = { scale: 1, offsetX: 0, offsetY: 0, dpr: window.devicePixelRatio || 1 };
-const state = { selected: null, marked: new Set(), overlay: null };
+const state = { selected: null, marked: new Set(), overlay: null, sprites: new Map() };
 let pending = false;
 
 function heightOf(x, y) {
@@ -124,6 +125,12 @@ if (minimap) {
 window.addEventListener("resize", resize);
 fit();
 resize();
+
+// 絵は読み込めたら描き直す（読み込むまでは色の箱で描く）
+loadSprites(theme).then((sprites) => {
+  state.sprites = sprites;
+  redraw();
+});
 
 // ターンログのリンクなどから ?x=..&y=.. で来たら、そのマスを選ぶ
 const params = new URLSearchParams(location.search);
