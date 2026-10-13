@@ -1,4 +1,4 @@
-# 既定のテーマ。絵はまだなく、色付きのひし形と立方体で描きます。
+# 既定のテーマ。登録したPNGの絵で地形・施設・住宅を描きます。
 name: default
 tile_width: 64        # マスの幅（ピクセル）
 tile_height: 32       # マスの高さ（ピクセル）
@@ -8,7 +8,7 @@ terrain:              # 地形ごとの色（上面、左の側面、右の側�
   shallows: {top: "#5b9bd5", left: "#4a80b0", right: "#3d6b94"}
   plain:    {top: "#8cc163", left: "#6f9a4e", right: "#5c8040"}
   forest:   {top: "#3f8a3a", left: "#326e2e", right: "#295a26"}
-  mountain: {top: "#9a8b77", left: "#7b6f5f", right: "#665c4f"}
+  mountain: {top: "#648247", left: "#4f6939", right: "#3f5530"}
 fallback: {top: "#cccccc", left: "#aaaaaa", right: "#999999"}
 # 施設の色と高さ（段）。絵の代わりに色付きの箱で描きます。色は上面の色で、側面は少し暗くします。
 facility_unit: 10       # 施設の高さ1段あたりのピクセル
@@ -42,4 +42,9 @@ industrial: "rgba(230, 140, 40, 0.45)"       # 工業団地のマス
 #     facility/steel_mill: {file: sprites/facility/steel_mill.svg, anchor: [32, 80]}
 #     facility/bank: {file: sprites/facility/bank.png, scale: 0.5}   # 2倍の大きさで描いた PNG
 sprite_scale: 1         # 画像の 1 ピクセルを何ピクセルとして描くか（項目の scale がなければこれ）
-sprites: {}
+sprites:
+  terrain/sea: {file: sprites/terrain/sea.png, scale: 0.5}
+  terrain/shallows: {file: sprites/terrain/shallows.png, scale: 0.5}
+  terrain/plain: {file: sprites/terrain/plain.png, scale: 0.5}
+  terrain/forest: {file: sprites/terrain/forest.png, scale: 0.5}
+  terrain/mountain: {file: sprites/terrain/mountain.png, scale: 0.5}
