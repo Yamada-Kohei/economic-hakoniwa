@@ -6,13 +6,16 @@ from server.turns.services import TurnError, run_turn
 from server.world import models as m
 from server.world.services import create_sample_island, get_or_create_world
 
+# 試し遊び・テスト用に、管理画面からまとめて進めるターン数
+TURNS_AT_ONCE = 10
+
 
 @admin.register(m.World)
 class WorldAdmin(admin.ModelAdmin):
     list_display = ["__str__", "next_turn_at", "paused", "updating_since"]
     readonly_fields = ["turn", "seed", "updating_since", "packs"]
     fields = ["turn", "seed", "next_turn_at", "paused", "updating_since", "packs", "ext"]
-    actions = ["advance_turn"]
+    actions = ["advance_turn", "advance_turns"]
 
     @admin.action(description="今すぐ1ターン進める")
     def advance_turn(self, request, queryset):
@@ -22,6 +25,28 @@ class WorldAdmin(admin.ModelAdmin):
             self.message_user(request, str(e), messages.ERROR)
             return
         self.message_user(request, result.message)
+
+    @admin.action(description=f"今すぐ{TURNS_AT_ONCE}ターン進める（テスト用）")
+    def advance_turns(self, request, queryset):
+        """1ターンずつ続けて進める（ターンごとにバックアップを取る）。途中で失敗したら、
+        そこで止めて、何ターン進んだかを出す。失敗したターンは何も書かれない。"""
+        done, seconds = 0, 0.0
+        for _ in range(TURNS_AT_ONCE):
+            try:
+                result = run_turn(force=True)
+            except Exception as e:  # 原因はログと管理者へのメールに残っている（run_turn）
+                turn = m.World.objects.order_by("id").values_list("turn", flat=True).first()
+                self.message_user(
+                    request,
+                    f"{done} ターン進めたところで止まりました（ターン {turn}）: {e}",
+                    messages.ERROR,
+                )
+                return
+            done += 1
+            seconds += result.seconds
+        self.message_user(
+            request, f"{done} ターン進めました（ターン {result.turn}、{seconds:.1f} 秒）"
+        )
 
 
 class TileInline(admin.TabularInline):
