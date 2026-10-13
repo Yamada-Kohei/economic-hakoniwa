@@ -61,6 +61,7 @@ construction_done: "({x}, {y}) の{facility}が完成しました"
 construction_no_workers: "({x}, {y}) の{facility}の工事は、通勤圏で労働者を雇えないため進んでいません"
 construction_no_materials: "({x}, {y}) の{facility}の工事は、資材（{goods}）が手に入らないため進んでいません"
 construction_no_funds: "({x}, {y}) の{facility}の工事は、公共事業費が足りず資材（{goods}）を買えないため進んでいません"
+construction_no_wages: "({x}, {y}) の{facility}の工事は、公共事業費が足りず作業員を雇えないため進んでいません"
 facility_started: "({x}, {y}) の{facility}が稼働を開始しました"
 facility_restarted: "({x}, {y}) の{facility}が稼働を再開しました"
 facility_stopped_workers: "({x}, {y}) の{facility}が労働者不足で停止しました"
@@ -91,6 +92,7 @@ economy_started: "中央銀行と銀行が開業し、通貨と市場による�
 
 # お金と国債
 bonds_issued: "{term}を {amount:,} 発行しました（利回り {rate:.2f}%）"
+bonds_refinanced: "国債の償還と利払いに充てるため、{term}を {amount:,} 発行しました（借り換え、利回り {rate:.2f}%）"
 budget_construction: "公共事業費"
 budget_warehouse: "国の倉庫の買い入れ費"
 policy_income_tax: "所得税"
@@ -116,6 +118,7 @@ status_construction: "建設中"
 status_construction_no_workers: "建設中（労働者を雇えず止まっています）"
 status_construction_materials: "建設中（資材の{goods}を待っています）"
 status_construction_funds: "建設中（公共事業費が足りず、資材の{goods}を買えません）"
+status_construction_wages: "建設中（公共事業費が足りず、作業員を雇いきれません）"
 
 # 持ち主と会計
 owner_state: "国営"

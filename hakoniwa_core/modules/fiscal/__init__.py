@@ -33,7 +33,9 @@ class Budget(IslandStage):
         estimates = {
             item: amount + part(amount, margin) for item, amount in island.economy.spending.items()
         }
-        estimates[BONDS] = due(island, ctx.turn)
+        # 国債は利払いの分だけ取り置く。満期の償還は国債の段で、足りない分を借り換えて払う
+        # （償還の額面を先に取り置くと、ほかの支出の取り置きが国庫に残らない）
+        estimates[BONDS] = due(island, ctx.turn, redemptions=False)
         caps = {item: island.policy.budget.get(item, 0) // YEAR for item in fiscal["budget_items"]}
         funds.open_treasury(island, estimates, list(fiscal["payment_order"]), caps)
 

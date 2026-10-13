@@ -270,9 +270,16 @@ def compute(island: IslandState, defs: Defs, config: GameConfig) -> tuple[dict[i
 
 def rate_of(island: IslandState, defs: Defs, config: GameConfig, f: Facility) -> int:
     """施設 f の今の運賃の率（ターンの途中で決まり方が変わった施設の出資の見積もりなど）。"""
-    if not fac.on_map(f):
-        return 0
-    return _surcharged(island, _Rates(island, defs, config).facility(f))
+    return rates_of(island, defs, config, [f])[f.id]
+
+
+def rates_of(
+    island: IslandState, defs: Defs, config: GameConfig, facilities: list[Facility]
+) -> dict[int, int]:
+    """いくつかの施設の今の運賃の率（市場の段より前の見積もり。施設の数だけ計算するので、
+    全部の施設の率は facility_rates で）。"""
+    calc = _Rates(island, defs, config)
+    return {f.id: _surcharged(island, calc.facility(f)) if fac.on_map(f) else 0 for f in facilities}
 
 
 def facility_rates(island: IslandState, defs: Defs, config: GameConfig) -> dict[int, int]:

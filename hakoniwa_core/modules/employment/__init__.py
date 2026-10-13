@@ -9,7 +9,9 @@
 3. それでも足りなければ、通勤圏の中で賃金が labor.poach_gap 以上安い施設の働き手を、安い施設から
    引き抜く。1つの施設から引き抜かれるのは1ターンに働き手の labor.poach_limit まで。
 
-工事の作業員と公務員は前のターンの島の平均賃金で雇います。運送業は通勤圏を見ず島のどこからでも、
+工事の作業員と公務員は前のターンの島の平均賃金で雇います。工事は、作業員の賃金に続けて、この
+ターンの市場で買う資材の代金の見込みも取り置きます（公共事業費は、賃金と資材の両方に優先度の高い
+工事から充てる。hakoniwa_core/modules/market の SiteFunds）。運送業は通勤圏を見ず島のどこからでも、
 前のターンの運賃 × freight.labor_share ÷ 賃金 の人数を雇い、足りない割合だけ運賃を割り増します。
 施設ごと・マスごとに雇った人数は、施設の economy["staff"] に残します。雇われなかった人は失業し、
 村の住民は自給の農業に戻ります（人口の段で扱う）。
@@ -26,6 +28,7 @@ from hakoniwa_core.economy import (
     payer_of,
 )
 from hakoniwa_core.geo import distance, within
+from hakoniwa_core.modules.market import SITE_HOLDS, SiteFunds
 from hakoniwa_core.modules.population import subsistence_persons
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import Facility, IslandState
@@ -67,16 +70,29 @@ class Employment(IslandStage):
         plans.sort(key=lambda p: (-p[1], -fac.priority_of(defs, config, p[0]), p[0].id))
         staff: dict[int, dict[Pos, int]] = {}
         wanted: dict[int, int] = {}
+        sites: SiteFunds | None = None
         # 雇いたい人数を決め、その賃金を取り置く（高い賃金の施設から）
         for f, wage in plans:
-            want = self._wanted(island, ctx, f, wage)
+            demand = self._wanted(island, ctx, f, wage)
             payer = payer_of(defs, config, f)
             per_worker = wage + self._power_per_worker(island, ctx, f)
+            want = demand
             if per_worker > 0:
                 want = min(want, funds.available(island, payer) // per_worker)
             want = max(0, want)
             wanted[f.id] = want
             funds.commit(island, payer, want * wage)
+            if not f.built and island.has_economy:
+                # 工事は、市場で買う資材の代金も続けて取り置く（作業員の賃金と資材の代金の両方に、
+                # 優先度の高い工事から公共事業費を充てる）。賃金が足りなかったことは状態に出す
+                if want < demand:
+                    f.ext["short_wages"] = True
+                else:
+                    f.ext.pop("short_wages", None)
+                sites = sites or SiteFunds(island, ctx)
+                hold = min(sites.cost(f, want), funds.available(island, payer))
+                funds.commit(island, payer, hold)
+                island.scratch.setdefault(SITE_HOLDS, []).append((payer, hold))
         # 1. 雇い続ける（遠いマスの人から減らす）
         for f, _ in plans:
             keep: dict[Pos, int] = {}

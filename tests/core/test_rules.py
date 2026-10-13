@@ -12,7 +12,7 @@ import pytest
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.allocation import by_priority, proportional
-from hakoniwa_core.economy import GENERAL, freight, household
+from hakoniwa_core.economy import BONDS, GENERAL, Payer, debt, freight, funds, household
 from hakoniwa_core.economy.prices import initial_prices, variable_profit
 from hakoniwa_core.economy.start import init_facility, start_economy
 from hakoniwa_core.game import load_game
@@ -560,6 +560,64 @@ def test_sites_are_funded_by_priority_and_show_why_they_wait(game):
     assert format_log(
         game.defs, "status_construction_funds", {"goods": ["building_materials"]}
     ) == ("建設中（公共事業費が足りず、資材の建材を買えません）")
+
+
+def test_urgent_site_materials_come_before_other_sites_wages(game):
+    """公共事業費が足りないときは、優先度の高い工事が市場で買う資材の代金を、優先度の低い工事の
+    作業員の賃金より先に取り置く。賃金が足りずに雇いきれなかった工事は、そのわけを状態に出す。"""
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    seller = add(island, "building_materials_plant", 8, 8, recipe="wood")
+    seller.accounting = ACCOUNTING_SELF  # 原料の代金を国庫から取り置かない
+    stock.add(seller.stock, "building_materials", 20_000, 0, game.defs.goods)
+    other = add(island, "food_factory", 6, 6, built=False)  # 資材がそろっていて、全員を雇いたい
+    urgent = add(island, "food_factory", 7, 6, built=False, priority=9)  # 資材がない
+    with_economy(game, island)
+    for good, qty in fac.step_materials(game.defs, other).items():
+        stock.add(other.stock, good, qty, 0, game.defs.goods)
+    seller.economy["sales"] = {"building_materials": [20_000, 0, 0]}  # 前のターンに売りに出た量
+    # 国庫には、急ぎの工事の1ターン分の建材の代金と、もう一方の工事の作業員の半分の賃金だけ残す
+    step = fac.step_materials(game.defs, urgent)["building_materials"]
+    limit = auction.band(island.economy.prices["building_materials"], 1000)[1]
+    rate = freight.compute(island, game.defs, game.config)[0][urgent.id]
+    labor = game.defs.facilities["food_factory"]["construction"]["labor"]
+    wage = island.economy.average_wage or game.config.get("labor.initial_wage")
+    keep = gross_cost(limit, step, rate, 0) + wage * (labor // 2)
+    gov = ledger.money(island, ledger.GOV)
+    ledger.pay(island, ledger.GOV, household(GENERAL), gov - keep, "test")
+    run(game, island, ["employment", "construction", "market"])
+    assert other.workers == labor // 2
+    assert other.ext["short_wages"] and "short_wages" not in urgent.ext
+    assert stock.total(urgent.stock, "building_materials") == step
+    assert "short_funds" not in urgent.ext
+    assert format_log(game.defs, "status_construction_wages", {}) == (
+        "建設中（公共事業費が足りず、作業員を雇いきれません）"
+    )
+
+
+def test_maturing_bonds_are_refinanced_in_their_turn(game):
+    """満期の国債の額面は、前のターンに発行して国庫に置いておかず、償還のターンに借り換える
+    （国債の残高と国庫が、償還の前のターンだけ膨らんで見えないように）。"""
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    with_economy(game, island)
+    base = debt.total_debt(island)  # 建国のときの国債
+    face = 50_000_000
+    bond = debt.underwrite(island, face, 2, 0, 0)  # ターン 2 に満期（利子なし）
+    ledger.pay(island, ledger.GOV, household(GENERAL), face, "test")  # 借りた分は使った
+    run(game, island, ["budget", "bonds"])  # ターン 1
+    assert debt.total_debt(island) == base + face
+    assert not [e for e in island.log if e.kind.startswith("bonds_")]
+    # 満期のターン: 予算の段は利払いの分だけ取り置き、国債の段で足りない分を借り換えてから返す
+    bond.term = 1
+    run(game, island, ["budget"])
+    interest = debt.due(island, 1, redemptions=False)
+    assert funds.fiscal_state(island)["reserved"][BONDS] == interest
+    usable = funds.available(island, Payer(ledger.GOV, BONDS))
+    run(game, island, ["budget", "bonds"])
+    refinanced = [e.args["amount"] for e in island.log if e.kind == "bonds_refinanced"]
+    assert refinanced == [face + interest - usable]
+    assert bond not in island.bonds
 
 
 def test_seller_raises_only_up_to_the_best_unfilled_bid(game):

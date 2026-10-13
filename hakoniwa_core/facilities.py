@@ -111,12 +111,15 @@ def labor_ratio(defs: Defs, f: Facility) -> int:
     return ratio(f.workers, workers_needed(defs, f.kind))
 
 
-def step_materials(defs: Defs, f: Facility) -> dict[str, int]:
-    """工事を今から1ターン分（1000）進めるのに要る資材。全部の工事で合計がちょうど定義の量になる。"""
+def step_materials(defs: Defs, f: Facility, progress: int | None = None) -> dict[str, int]:
+    """工事を今（progress を渡せばその進みから）1ターン分（1000）進めるのに要る資材。
+    全部の工事で合計がちょうど定義の量になる。"""
     construction = defs.facilities[f.kind]["construction"]
     total_progress = construction["turns"] * FULL
-    start = min(f.progress, total_progress)
-    end = min(f.progress + FULL, total_progress)
+    if progress is None:
+        progress = f.progress
+    start = min(progress, total_progress)
+    end = min(progress + FULL, total_progress)
     return {
         good: qty * end // total_progress - qty * start // total_progress
         for good, qty in sorted(construction.get("materials", {}).items())
