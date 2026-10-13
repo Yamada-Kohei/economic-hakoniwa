@@ -12,13 +12,13 @@ import pytest
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.allocation import by_priority, proportional
-from hakoniwa_core.economy import freight
+from hakoniwa_core.economy import GENERAL, freight, household
 from hakoniwa_core.economy.prices import initial_prices, variable_profit
 from hakoniwa_core.economy.start import init_facility, start_economy
 from hakoniwa_core.game import load_game
 from hakoniwa_core.log import format_log
 from hakoniwa_core.market import auction
-from hakoniwa_core.modules.market import Market
+from hakoniwa_core.modules.market import Market, gross_cost
 from hakoniwa_core.naming import facility_name
 from hakoniwa_core.orders import check_order
 from hakoniwa_core.state import (
@@ -163,7 +163,9 @@ def test_power_market_serves_by_priority_and_needs_grid(game):
     assert (high.operating_rate, high.status) == (1000, "")
     assert (low.operating_rate, low.status) == (250, "power")
     assert cut_off.workers > 0
-    assert (cut_off.operating_rate, cut_off.status) == (0, "power")
+    # 発電所のない送電網の施設は、電力不足ではなく「送電網につながっていない」
+    assert (cut_off.operating_rate, cut_off.status) == (0, "no_grid")
+    assert format_log(game.defs, "status_no_grid", {}) == "送電網につながっていません"
     power = next(m for m in island.markets if m.good == "electricity")
     assert power.volume == 3000
 
@@ -526,6 +528,38 @@ def test_construction_waiting_for_materials_is_shown_and_logged_once(game):
     run(game, island, ["employment", "construction", "market"], turns=2)
     assert site.progress > 0
     assert "waiting" not in site.ext and "no_materials_turns" not in site.ext
+
+
+def test_sites_are_funded_by_priority_and_show_why_they_wait(game):
+    """公共事業費が足りないときは、優先度の高い工事から資材を注文する（番号の順ではない）。
+    注文しきれなかった工事は、お金が足りないことを状態とログに出す。"""
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    seller = add(island, "building_materials_plant", 8, 8, recipe="wood")
+    seller.accounting = ACCOUNTING_SELF  # 原料の代金を国庫から取り置かない
+    stock.add(seller.stock, "building_materials", 20_000, 0, game.defs.goods)
+    first = add(island, "food_factory", 6, 6, built=False)  # 建材 10 を 3 ターンで
+    urgent = add(island, "food_factory", 7, 6, built=False, priority=9)
+    with_economy(game, island)
+    # 国庫には、優先度の高い工事の1ターン分の建材を、指値（値幅の上端）と運賃で買えるだけ残す
+    step = fac.step_materials(game.defs, urgent)["building_materials"]
+    limit = auction.band(island.economy.prices["building_materials"], 1000)[1]
+    rate = freight.compute(island, game.defs, game.config)[0][urgent.id]
+    gov = ledger.money(island, ledger.GOV)
+    ledger.pay(
+        island, ledger.GOV, household(GENERAL), gov - gross_cost(limit, step, rate, 0), "test"
+    )
+    run(game, island, ["market"])
+    assert stock.total(urgent.stock, "building_materials") == step
+    assert stock.total(first.stock, "building_materials") == 0
+    assert first.ext["short_funds"] and "short_funds" not in urgent.ext
+    run(game, island, ["construction"], turns=2)
+    assert first.ext["waiting"] == ["building_materials"]
+    funds = [e.args for e in island.log if e.kind == "construction_no_funds"]
+    assert [(a["x"], a["y"], a["goods"]) for a in funds] == [(6, 6, ["building_materials"])]
+    assert format_log(
+        game.defs, "status_construction_funds", {"goods": ["building_materials"]}
+    ) == ("建設中（公共事業費が足りず、資材の建材を買えません）")
 
 
 def test_no_dividend_in_a_loss_turn(game):

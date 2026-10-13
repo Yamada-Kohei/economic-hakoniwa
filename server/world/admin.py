@@ -17,6 +17,13 @@ class WorldAdmin(admin.ModelAdmin):
     fields = ["turn", "seed", "next_turn_at", "paused", "updating_since", "packs", "ext"]
     actions = ["advance_turn", "advance_turns"]
 
+    def get_actions(self, request):
+        # 「選択された世界の削除」は「今すぐ1ターン進める」のすぐ上に並び、押し間違えると世界ごと
+        # 消えるので、一覧の操作から外す（消すときは世界の画面の「削除」から）
+        actions = super().get_actions(request)
+        actions.pop("delete_selected", None)
+        return actions
+
     @admin.action(description="今すぐ1ターン進める")
     def advance_turn(self, request, queryset):
         try:

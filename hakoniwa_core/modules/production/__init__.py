@@ -106,13 +106,16 @@ class Production(IslandStage):
             f.economy.pop("sales", None)
         runs = [self._prepare(f, ctx, power) for f in island.facilities if self._operates(f, ctx)]
         served = self._power_market(island, runs, ctx, power)
+        unplugged: set[int] | None = None
         produced: dict[str, int] = {}
         for run in runs:
             f, rate, cause = run.f, run.rate, run.cause
             if f.id in served and served[f.id] < rate:
                 rate = served[f.id]
                 if run.recipe["inputs"].get(power):
-                    cause = "power"
+                    if unplugged is None:
+                        unplugged = self._unplugged(island, ctx, power)
+                    cause = "no_grid" if f.id in unplugged else "power"
                 else:  # 発電所は使われる分だけ動くのがふつうなので、止まったときだけ理由にする
                     cause = "no_demand" if rate == 0 else ""
             for good, need in sorted(run.recipe["inputs"].items()):
@@ -351,6 +354,25 @@ class Production(IslandStage):
             asks[power] = max(
                 result.low, min(result.high, update(ask, offered, sold, shortage, ctx))
             )
+
+    def _unplugged(self, island: IslandState, ctx: StageContext, power: str) -> set[int]:
+        """電力を使う施設のうち、発電所（止まっているものも数える）のない送電網にある施設の番号。
+
+        状態を「電力不足」ではなく「送電網につながっていない」にして、送電線を引けば動くと分かるように
+        する。
+        """
+        grid_of = self._grids(island)
+        powered = set()
+        users = []
+        for f in island.facilities:
+            if not f.built or not fac.on_map(f):
+                continue
+            recipe = fac.recipe_of(ctx.defs, f)
+            if recipe["outputs"].get(power):
+                powered.add(grid_of[(f.x, f.y)])
+            elif recipe["inputs"].get(power):
+                users.append(f)
+        return {f.id for f in users if grid_of[(f.x, f.y)] not in powered}
 
     @staticmethod
     def _grids(island: IslandState) -> dict[tuple[int, int], int]:

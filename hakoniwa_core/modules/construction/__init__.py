@@ -147,7 +147,8 @@ class Construction(IslandStage):
     @staticmethod
     def _watch_materials(island: IslandState, f: Facility, defs: Defs, materials: int) -> None:
         """足りない資材を ext["waiting"] に書き（施設の状態に出す）、資材がなくて進まない工事が
-        続いたらログで知らせる。"""
+        続いたらログで知らせる。前のターンの市場で、お金が足りずに注文しきれなかった工事
+        （ext["short_funds"]）は、そのわけで知らせる。"""
         if materials >= fac.FULL:
             f.ext.pop("waiting", None)
             f.ext.pop("no_materials_turns", None)
@@ -164,14 +165,15 @@ class Construction(IslandStage):
         f.ext["no_materials_turns"] = turns
         if turns == NO_MATERIALS_TURNS:
             args = {"facility": f.kind, "x": f.x, "y": f.y, "goods": f.ext["waiting"]}
-            island.log.append(LogEntry("construction_no_materials", args))
+            why = "funds" if f.ext.get("short_funds") else "materials"
+            island.log.append(LogEntry(f"construction_no_{why}", args))
 
     @staticmethod
     def _complete(island: IslandState, f: Facility, ctx: StageContext) -> None:
         f.built = True
         f.workers = 0
         f.status = fac.STATUS_STARTING
-        for key in ("waiting", "no_materials_turns", "no_workers_turns"):
+        for key in ("waiting", "short_funds", "no_materials_turns", "no_workers_turns"):
             f.ext.pop(key, None)
         stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
         island.log.append(LogEntry("construction_done", {"facility": f.kind, "x": f.x, "y": f.y}))

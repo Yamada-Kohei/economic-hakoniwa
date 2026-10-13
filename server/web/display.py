@@ -185,8 +185,9 @@ def facility_books(row: m.Facility, f: Facility, currency: str = "") -> dict[str
 
 def status_text(f: Facility) -> str:
     if not f.built:
-        if f.ext.get("waiting"):  # 資材が足りない（市場に売りに出ていないなど）
-            return message("status_construction_materials", goods=f.ext["waiting"])
+        if f.ext.get("waiting"):  # 資材が足りない（市場に売りに出ていない、お金が足りないなど）
+            key = "funds" if f.ext.get("short_funds") else "materials"
+            return message(f"status_construction_{key}", goods=f.ext["waiting"])
         if f.ext.get("no_workers_turns"):
             return message("status_construction_no_workers")
         return message("status_construction")

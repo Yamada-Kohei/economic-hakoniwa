@@ -324,7 +324,7 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
         gap = round_money(estimate * inventory_turns(ctx, good)) - held
         amount = estimate + round_money(gap * settings["inventory_adjust"])
         plan = max(plan, fac.ratio(max(0, amount), full))
-    if fac.short_of_inputs(f.status) or f.status == "power":  # 仕入れか電力が足りずに止まっている
+    if fac.short_of_inputs(f.status) or f.status in ("power", "no_grid"):  # 仕入れか電力が足りない
         plan = min(plan, f.operating_rate + step)
     limit = round_money(settings["max_target_change"] * fac.FULL + 0.5)
     return max(target - limit, min(target + limit, plan))
@@ -386,11 +386,16 @@ class Market(IslandStage):
         book = books_by_good.setdefault(good, Book())
         (book.buys if side == "buy" else book.sells).append((order, party))
 
+    @staticmethod
+    def _sites(island: IslandState, ctx: StageContext) -> list[Facility]:
+        """工事中の施設。資材とお金は優先度の高い工事から回す（同じ優先度は番号の順）。"""
+        sites = [f for f in island.facilities if not f.built]
+        sites.sort(key=lambda f: (-fac.priority_of(ctx.defs, ctx.config, f), f.id))
+        return sites
+
     def _supply_sites_from_warehouse(self, island: IslandState, ctx: StageContext) -> None:
         """国の工事は、国の倉庫にある資材を先に使う（次の1ターン分まで）。"""
-        for f in sorted(island.facilities, key=lambda f: f.id):
-            if f.built:
-                continue
+        for f in self._sites(island, ctx):
             for good, qty in sorted(fac.step_materials(ctx.defs, f).items()):
                 want = qty - stock.total(f.stock, good)
                 if want <= 0:
@@ -535,13 +540,18 @@ class Market(IslandStage):
         rates: dict[int, int],
         offered: dict[str, int],
     ) -> None:
-        width = to_basis(ctx.config.get("market.band"))
+        """工事の資材の注文（指値は値幅の上端）。公共事業費は優先度の高い工事から取り置く。
+
+        お金が足りずに要る分を注文できなかった工事は、ext["short_funds"] に残す（施設の状態に、
+        資材を待っているわけとして出す）。
+        """
+        defs, config = ctx.defs, ctx.config
+        width = to_basis(config.get("market.band"))
         wanted = island.scratch.setdefault("wanted", {})  # 売りに出ていなくて買えなかった量
-        for f in sorted(island.facilities, key=lambda f: f.id):
-            if f.built:
-                continue
+        for f in self._sites(island, ctx):
+            f.ext.pop("short_funds", None)
             rate = rates.get(f.id, 0)
-            payer = payer_of(ctx.defs, ctx.config, f)
+            payer = payer_of(defs, config, f)
             plan = {}
             for good, qty in sorted(fac.step_materials(ctx.defs, f).items()):
                 want = qty - stock.total(f.stock, good)
@@ -551,8 +561,11 @@ class Market(IslandStage):
                 if want > 0:
                     _, high = auction.band(island.economy.prices.get(good, 1), width)
                     plan[good] = (want, high)
-            priority = fac.priority_of(ctx.defs, ctx.config, f)
-            for good, (qty, limit) in sorted(self._afford(island, payer, plan, rate, 0).items()):
+            priority = fac.priority_of(defs, config, f)
+            afforded = self._afford(island, payer, plan, rate, 0)
+            if any(afforded.get(g, (0, 0))[0] < q for g, (q, _) in plan.items()):
+                f.ext["short_funds"] = True
+            for good, (qty, limit) in sorted(afforded.items()):
                 party = Party(SITE, facility_entity(f.id), payer, rate, 0, f)
                 party.reserved = gross_cost(limit, qty, rate, 0)
                 funds.commit(island, payer, party.reserved)
