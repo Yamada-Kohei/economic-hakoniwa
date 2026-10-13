@@ -217,7 +217,7 @@ class Population(IslandStage):
             capacity = fac.housing_capacity(defs, home) if home else 0
             pop = tile.population
             if general["food"] >= fac.FULL:
-                # 仕事のある人の割合が growth_min_jobs を下回るマスでは増えない
+                # 仕事のある人の割合が growth_min_jobs を下回るマスでは増えず、1に近いほどよく増える
                 low = p["growth_min_jobs"]
                 jobs = max(0.0, min(1.0, (facts["jobs"] / fac.FULL - low) / (1 - low)))
                 births = _rand_round(pop * p["growth_rate"] * mood / 100 * jobs, rng)
