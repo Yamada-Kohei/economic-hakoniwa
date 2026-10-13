@@ -593,3 +593,20 @@ def test_market_pairs_nearest_buyers_and_sellers(game):
         (1, 1, 3),
         (0, 1, 1),
     ]
+
+
+def test_transport_keeps_freight_income_to_hire_drivers(game):
+    """独立採算の運送業は、運賃の収入から賃金に充てる分を手元に残し、次のターンに運転手を雇う
+    （手元の資金 0 で始まっても、収入をみな配当に回してずっと雇えないままにならない）。"""
+    island, *_ = freight_island(game)
+    carrier = next(f for f in island.facilities if f.kind == "transport")
+    carrier.accounting = ACCOUNTING_SELF
+    entity = f"fac:{carrier.id}"
+    assert ledger.money(island, entity) == 0
+    stages = [s.name for s in game.engine.stages]
+    run(game, island, stages)
+    payroll = freight.payroll(island, game.config)  # 次のターンの雇用は、このターンの収入で見る
+    assert payroll > 0
+    assert ledger.money(island, entity) >= payroll
+    run(game, island, stages)
+    assert carrier.workers == payroll // carrier.economy["wage"] > 0

@@ -28,7 +28,7 @@ from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.geo import neighbors4
 from hakoniwa_core.state import Facility, IslandState
-from hakoniwa_core.units import BASIS, to_basis
+from hakoniwa_core.units import BASIS, part, to_basis
 
 Pos = tuple[int, int]
 
@@ -236,6 +236,21 @@ class _Rates:
             people += tile.population
             total += tile.population * rate
         return total // people if people else 0
+
+
+def payroll(island: IslandState, config: GameConfig) -> int:
+    """運送業が賃金に充てる額: 運賃の収入（割り増しの分を除く）× freight.labor_share。
+
+    このターンに受け取った運賃（economy.freight["paid"]）があればそれで、なければ前のターンの
+    収入（"revenue"）で見る。雇う人数と、会計の段で手元に残す額の両方に使う。
+    """
+    freight = island.economy.freight
+    surcharge = freight.get("surcharge", BASIS) or BASIS
+    if "paid" in freight:
+        revenue = freight["paid"] * BASIS // surcharge
+    else:
+        revenue = freight.get("revenue", 0)
+    return part(revenue, to_basis(config.get("freight.labor_share")))
 
 
 def _surcharged(island: IslandState, rate: int) -> int:

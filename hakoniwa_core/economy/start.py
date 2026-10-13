@@ -26,6 +26,7 @@ from hakoniwa_core.economy import (
     household,
     is_bank,
     is_self_supporting,
+    is_transport,
     owner_entity,
 )
 from hakoniwa_core.economy import freight as freight_rates
@@ -148,8 +149,11 @@ def operating_cost(
 
 
 def next_payments(island: IslandState, defs: Defs, config: GameConfig, f: Facility) -> int:
-    """独立採算の施設が次のターンに払う見込み（操業目標の分の支払い。運送業は雇いたい人数の賃金）。"""
+    """独立採算の施設が次のターンに払う見込み（操業目標の分の支払い。運送業は運賃の収入から
+    充てる賃金。雇えた人数の賃金で見ると、初めに手元の資金がない運送業はずっと人を雇えない）。"""
     wage = f.economy.get("wage", 0)
+    if is_transport(config, f):
+        return max(f.economy.get("wanted", 0) * wage, freight_rates.payroll(island, config))
     rate = freight_rates.facility_rates(island, defs, config).get(f.id, 0)
     cost = operating_cost(defs, config, f, island.economy.prices, wage, rate)
     return max(
