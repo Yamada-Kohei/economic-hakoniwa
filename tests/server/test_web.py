@@ -3,7 +3,9 @@ from __future__ import annotations
 import pytest
 from django.contrib.auth.models import User
 
-from server.world.models import Island
+from server.turns.models import Backup
+from server.world import admin as world_admin
+from server.world.models import Island, World
 
 pytestmark = pytest.mark.django_db
 
@@ -80,3 +82,37 @@ def test_admin_creates_island_with_tiles(admin_client, world):
     island = Island.objects.get(name="管理島")
     assert island.tiles.count() == island.size**2
     assert island.tiles.exclude(terrain__in=["sea", "shallows"]).count() >= 120
+
+
+def _advance_turns(admin_client, world):
+    return admin_client.post(
+        "/admin/world/world/",
+        {"action": "advance_turns", "_selected_action": [world.pk]},
+        follow=True,
+    )
+
+
+def test_admin_advances_ten_turns(admin_client, world):
+    page = admin_client.get("/admin/world/world/").content.decode()
+    assert "今すぐ10ターン進める（テスト用）" in page
+    res = _advance_turns(admin_client, world)
+    assert res.status_code == 200
+    assert World.objects.get().turn == 10
+    assert Backup.objects.count() == 10  # ターンごとに巻き戻せる
+    assert "10 ターン進めました（ターン 10、" in res.content.decode()
+
+
+def test_admin_ten_turns_stops_at_failed_turn(admin_client, world, monkeypatch):
+    real = world_admin.run_turn
+    calls = []
+
+    def fails_on_fourth(**kwargs):
+        calls.append(1)
+        if len(calls) == 4:
+            raise RuntimeError("壊れた")
+        return real(**kwargs)
+
+    monkeypatch.setattr(world_admin, "run_turn", fails_on_fourth)
+    res = _advance_turns(admin_client, world)
+    assert World.objects.get().turn == 3
+    assert "3 ターン進めたところで止まりました（ターン 3）: 壊れた" in res.content.decode()
