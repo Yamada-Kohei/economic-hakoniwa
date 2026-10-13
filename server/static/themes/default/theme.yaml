@@ -52,3 +52,8 @@ sprites:
   housing/town: {file: sprites/housing/town.png, scale: 0.5}
   housing/city: {file: sprites/housing/city.png, scale: 0.5}
   housing/metropolis: {file: sprites/housing/metropolis.png, scale: 0.5}
+  facility/farm: {file: sprites/facility/farm.png, scale: 0.5}
+  facility/lumber_camp: {file: sprites/facility/lumber_camp.png, scale: 0.5}
+  facility/quarry: {file: sprites/facility/quarry.png, scale: 0.5}
+  facility/mine: {file: sprites/facility/mine.png, scale: 0.5}
+  facility/fishing_port: {file: sprites/facility/fishing_port.png, scale: 0.5}
