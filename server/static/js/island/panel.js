@@ -1,10 +1,16 @@
 // マスの情報の欄: 選んだマスと、そこにある施設の詳しい情報を出す。
-// 島の持ち主には、そのマスへの命令（建設・撤去・名称・地名・優先度）と、
+// 島の持ち主には、そのマスへの命令（建設・撤去・名称・地名・優先度・会計方式）と、
 // 地図でマスを選んで出す命令（送電線・開発禁止区域）の入口も出す。
 
 import { escapeHtml, getJson, sendJson } from "./api.js";
 
 const MAX_TILES = 64; // 1つの命令で選べるマスの数（orders.yaml の maxItems と同じ）
+
+// 会計方式を変えたときに起きること（変えた先の会計方式ごと）
+const ACCOUNTING_HINTS = {
+  self_supporting: "政府が運転資金を出資し、施設が自分の預金で売上と費用を出し入れします。利益から法人税と国庫への納付を払います。",
+  treasury: "施設の預金は国庫に戻り、売上も費用も国庫で出し入れします。",
+};
 
 // 地図でマスを選んで出す命令
 const MARK_MODES = {
@@ -201,6 +207,16 @@ export class TilePanel {
           <button type="submit">命令に追加</button>
         </form>`);
     }
+    if (f.accounting_target) {
+      // 命令が通る施設（国営で、公務の施設でない）だけに出す。変えられる先は今と違う方だけ
+      parts.push(`
+        <form class="actions" data-form="accounting">
+          <h4>会計方式の変更（現在: ${escapeHtml(f.accounting_name)}）</h4>
+          <p class="hint">${escapeHtml(ACCOUNTING_HINTS[f.accounting_target] || "")}</p>
+          <input type="hidden" name="accounting" value="${escapeHtml(f.accounting_target)}">
+          <button type="submit">${escapeHtml(f.accounting_target_name)}に変更（命令に追加）</button>
+        </form>`);
+    }
     if (!t.capital) {
       parts.push(`<p class="actions"><button type="button" data-action="demolish">撤去（命令に追加）</button></p>`);
     }
@@ -359,6 +375,8 @@ export class TilePanel {
       if (name) this.orders.add("rename_place", { x, y, name });
     } else if (form.dataset.form === "priority") {
       this.orders.add("set_priority", { x, y, priority: Number(data.get("priority")) });
+    } else if (form.dataset.form === "accounting") {
+      this.orders.add("set_accounting", { x, y, accounting: data.get("accounting") });
     }
   }
 

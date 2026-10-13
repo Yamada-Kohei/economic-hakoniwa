@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from django.db.models import Sum
@@ -11,7 +12,8 @@ from hakoniwa_core import ledger
 from hakoniwa_core.economy import books, entity_of
 from hakoniwa_core.log import format_log
 from hakoniwa_core.naming import facility_name
-from hakoniwa_core.state import Facility, IslandState
+from hakoniwa_core.orders import check_order
+from hakoniwa_core.state import ACCOUNTING_SELF, ACCOUNTING_TREASURY, Facility, IslandState
 from hakoniwa_core.units import from_milli
 from server.economy.models import FacilityBook, MarketRecord
 from server.game import get_game
@@ -84,6 +86,11 @@ def facility_info(row: m.Facility, island: IslandState) -> dict[str, Any]:
             info["next_level_name"] = defs.name("settlements", following)
             info["next_materials"] = goods_list(defs.settlements[following].get("materials", {}))
         return info
+    # 会計方式の変更の命令を出せる施設には、変えた先を添える（マスの欄はそのときだけ入力欄を出す）
+    target = accounting_target(island, f)
+    if target is not None:
+        info["accounting_target"] = target
+        info["accounting_target_name"] = message(f"accounting_{target}")
     if f.economy.get("wage"):
         info["wage"] = f.economy["wage"]
     if f.built:
@@ -104,6 +111,24 @@ def facility_info(row: m.Facility, island: IslandState) -> dict[str, Any]:
         currency = (island.names or {}).get("currency_symbol", "")
         info["books"] = facility_books(row, f, currency)
     return info
+
+
+def accounting_target(island: IslandState, f: Facility) -> str | None:
+    """会計方式の変更の命令（set_accounting）で変えられる先の会計方式。命令が通らない施設は None。
+
+    通るかどうかはコアの命令の確かめ（check_accounting）に聞く。お金の経済が始まる前の島では
+    会計方式に意味がないので出さない。
+    """
+    if not island.has_economy:
+        return None
+    target = ACCOUNTING_SELF if f.accounting == ACCOUNTING_TREASURY else ACCOUNTING_TREASURY
+    game = get_game()
+    # 確かめは島の施設の並びからマスの施設を探すので、この施設だけを持たせた島で聞く
+    probe = replace(island, facilities=[f])
+    payload = {"x": f.x, "y": f.y, "accounting": target}
+    if not check_order(game.defs, game.registry, probe, "set_accounting", payload).ok:
+        return None
+    return target
 
 
 # マスの欄に出す施設の収支（hakoniwa_core/economy/books.py の項目、表示名、収入なら 1・支出なら -1）
@@ -200,6 +225,8 @@ def describe_order(kind: str, payload: dict[str, Any]) -> str:
         return f"{name}: {count} マス"
     if kind == "set_priority":
         return f"{name}: {where} → {payload.get('priority')}"
+    if kind == "set_accounting":
+        return f"{name}: {where} → {message('accounting_' + payload.get('accounting', ''))}"
     if kind in ("rename_island", "rename_facility", "rename_place"):
         new = payload.get("name", "")
         return f"{name}: {where} 「{new}」" if where else f"{name}: 「{new}」"
