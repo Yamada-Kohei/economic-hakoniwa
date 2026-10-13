@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.economy import (
+    freight,
     funds,
     is_public_service,
     is_transport,
@@ -178,10 +179,8 @@ class Employment(IslandStage):
     @staticmethod
     def _wanted(island: IslandState, ctx: StageContext, f: Facility, wage: int) -> int:
         if is_transport(ctx.config, f):
-            revenue = island.economy.freight.get("revenue", 0)
-            share = to_basis(ctx.config.get("freight.labor_share"))
-            return part(revenue, share) // max(1, wage)
-        return fac.labor_demand(ctx.defs, f, ctx.turn)
+            return freight.payroll(island, ctx.config) // max(1, wage)
+        return fac.labor_demand(ctx.defs, f, ctx.turn, ctx.config.get("power.good"))
 
     @staticmethod
     def _power_per_worker(island: IslandState, ctx: StageContext, f: Facility) -> int:

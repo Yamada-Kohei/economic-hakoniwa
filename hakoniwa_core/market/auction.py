@@ -205,3 +205,29 @@ def match(bought: Sequence[int], sold: Sequence[int]) -> list[tuple[int, int, in
         if sellers[s][1] == 0:
             s += 1
     return pairs
+
+
+def match_nearest(
+    bought: Sequence[int], sold: Sequence[int], distance: Callable[[int, int], int]
+) -> list[tuple[int, int, int]]:
+    """約定量を、道のり distance(買いの番号, 売りの番号) の近い組から順に突き合わせる。
+
+    同じ道のりの組は、買い注文、売り注文の並びの順。買いと売りの約定量の合計は同じなので、
+    どちらも残らない。
+    """
+    left_b, left_s = list(bought), list(sold)
+    candidates = sorted(
+        (distance(b, s), b, s)
+        for b in range(len(bought))
+        if bought[b] > 0
+        for s in range(len(sold))
+        if sold[s] > 0
+    )
+    pairs = []
+    for _, b, s in candidates:
+        qty = min(left_b[b], left_s[s])
+        if qty > 0:
+            pairs.append((b, s, qty))
+            left_b[b] -= qty
+            left_s[s] -= qty
+    return pairs

@@ -137,11 +137,11 @@ def _warehouse_sales(island: IslandState, defs: Defs, config: GameConfig) -> lis
         if f.built:
             for good, qty in fac.recipe_of(defs, f)["inputs"].items():
                 need[good] = need.get(good, 0) + qty
-            if f.status.startswith("input:"):
+            if fac.short_of_inputs(f.status):
                 stuck.add(f.status.split(":", 1)[1])
     short = {m.good for m in island.markets if m.supply < m.demand}
     reserved = _reserved_materials(island, defs)
-    initial = initial_prices(defs, config)
+    initial = initial_prices(defs, config, island.resources)
     orders = []
     for good, qty in sorted(need.items()):
         spare = stock.total(island.warehouse, good) - reserved.get(good, 0)
@@ -193,7 +193,7 @@ def _price_cap_order(
     power = config.get("power.good")
     if not island.has_economy or power in island.policy.price_cap:
         return None
-    initial = initial_prices(defs, config).get(power, 0)
+    initial = initial_prices(defs, config, island.resources).get(power, 0)
     if initial <= 0 or island.economy.prices.get(power, 0) <= initial * POWER_CAP:
         return None
     return ("set_price_cap", {"good": power, "price": int(initial * POWER_CAP)})
@@ -214,7 +214,7 @@ def _underused(island: IslandState, defs: Defs, config: GameConfig, kind: str, r
     outputs = set(defs.facilities[kind]["recipes"][recipe]["outputs"]) - {power}
     for f in island.facilities:
         if f.built and outputs & set(fac.recipe_of(defs, f)["outputs"]):
-            if f.status.startswith("input:"):
+            if fac.short_of_inputs(f.status):
                 continue
             if f.operating_rate < fac.FULL * UNDERUSED or f.status == fac.STATUS_STARTING:
                 return True
@@ -233,7 +233,7 @@ def _flows(island: IslandState, defs: Defs, config: GameConfig) -> tuple[dict, d
         if fac.is_housing(config, f):
             continue
         recipe = fac.recipe_of(defs, f)
-        stuck = f.built and f.status.startswith("input:")
+        stuck = f.built and fac.short_of_inputs(f.status)
         stuck = stuck or not _recipe_ok(defs, island, recipe, frozenset())
         for good, qty in recipe["outputs"].items():
             supply[good] = supply.get(good, 0) + (0 if stuck else qty)
@@ -260,7 +260,8 @@ def _producers(
     if island.has_economy:
         prices, wage = island.economy.prices, island.economy.average_wage
     else:
-        prices, wage = initial_prices(defs, config), config.get("labor.initial_wage")
+        prices = initial_prices(defs, config, island.resources)
+        wage = config.get("labor.initial_wage")
     found = []
     for kind, fdef in defs.facilities.items():
         if fdef.get("buildable") is False:
@@ -383,7 +384,10 @@ def _candidates(
 
     # 人手の足りない施設が多いか、失業者が少ないうちは増やさない
     # （住宅が育って人が移ってくるのを待つ）
-    missing = sum(max(0, fac.labor_demand(defs, f, turn) - f.workers) for f in island.facilities)
+    power = config.get("power.good")
+    missing = sum(
+        max(0, fac.labor_demand(defs, f, turn, power) - f.workers) for f in island.facilities
+    )
     if missing > MAX_MISSING_WORKERS or stats.get("unemployment", 0) < NATURAL_UNEMPLOYMENT:
         return
     for kind in sorted(GROWTH, key=lambda k: (_count(island, k), GROWTH.index(k))):

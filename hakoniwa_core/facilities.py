@@ -16,6 +16,14 @@ from hakoniwa_core.state import OWNER_STATE, ZONE_OFFICE, Facility, IslandState,
 
 FULL = 1000  # 割合の 100%
 STATUS_STARTING = "starting"  # 工事が済んで、まだ動いたことがない（施設の status）
+# 原料が手に入らずに動けない理由（施設の status の「:」の前）。input は品不足、input_price は
+# 原料が高くて採算が合わない、funds は原料を買うお金が足りない
+INPUT_SHORT = ("input", "input_price", "funds")
+
+
+def short_of_inputs(status: str) -> bool:
+    """施設の status が、原料が手に入らずに動けないことを表すか。"""
+    return status.partition(":")[0] in INPUT_SHORT
 
 
 def ratio(have: int, need: int) -> int:
@@ -121,16 +129,38 @@ def material_ratio(defs: Defs, f: Facility) -> int:
     return min((ratio(stock.total(f.stock, g), q) for g, q in need.items() if q > 0), default=FULL)
 
 
-def labor_demand(defs: Defs, f: Facility, turn: int) -> int:
+def input_ratio(defs: Defs, f: Facility, power: str) -> tuple[int, str | None]:
+    """手元の原料で今のターンにどれだけ動けるか（1000 分の 1）と、一番足りない原料。
+
+    電力（power）は在庫を持たず、生産の段で送電網から買うので数えない。
+    """
+    found, short = FULL, None
+    for good, qty in sorted(recipe_of(defs, f)["inputs"].items()):
+        if good == power:
+            continue
+        r = ratio(stock.total(f.stock, good), qty)
+        if r < found:
+            found, short = r, good
+    return found, short
+
+
+def labor_demand(defs: Defs, f: Facility, turn: int, power: str | None = None) -> int:
     """このターンに雇いたい人数。工事中は手元の資材で進められる分の人手、動いている施設は
-    操業目標（economy["target"]、1000 分の 1）の分だけ。"""
+    操業目標（economy["target"]、1000 分の 1）の分だけ。
+
+    お金の経済の施設は、power（電力の財）を渡すと、手元の原料で動ける分までにする（原料が届く
+    まで、動けない人を雇って賃金だけ払わない。工事中の資材と同じ）。
+    """
     fdef = defs.facilities[f.kind]
     if not f.built:
         labor = fdef["construction"].get("labor", 0)
         return -(-labor * material_ratio(defs, f) // FULL)  # 切り上げ
     if is_halted(f, turn):
         return 0
-    return scale(workers_needed(defs, f.kind), f.economy.get("target", FULL))
+    target = f.economy.get("target", FULL)
+    if power is not None and "target" in f.economy:
+        target = min(target, input_ratio(defs, f, power)[0])
+    return scale(workers_needed(defs, f.kind), target)
 
 
 def placement_problem(

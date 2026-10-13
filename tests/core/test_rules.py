@@ -10,15 +10,19 @@ from types import SimpleNamespace
 import pytest
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import stock
+from hakoniwa_core import ledger, stock
 from hakoniwa_core.allocation import by_priority, proportional
-from hakoniwa_core.economy.prices import initial_prices
+from hakoniwa_core.economy import freight
+from hakoniwa_core.economy.prices import initial_prices, variable_profit
 from hakoniwa_core.economy.start import init_facility, start_economy
 from hakoniwa_core.game import load_game
 from hakoniwa_core.log import format_log
+from hakoniwa_core.market import auction
+from hakoniwa_core.modules.market import Market
 from hakoniwa_core.naming import facility_name
 from hakoniwa_core.orders import check_order
 from hakoniwa_core.state import (
+    ACCOUNTING_SELF,
     ORDER_DONE,
     ORDER_FAILED,
     ZONE_NO_DEVELOPMENT,
@@ -260,7 +264,8 @@ def test_housing_grows_near_vacancies_but_not_on_no_development(game):
 def test_housing_short_is_logged_after_two_turns(game):
     island = make_island(game)
     home(game, island, 5, 5, 1000, level="village")
-    add(island, "steel_mill", 8, 8)
+    # 人手の足りない施設（原料のない間は人を雇わないので、原料を持たせておく）
+    add(island, "steel_mill", 8, 8, stock={"iron_ore": 100_000, "coal": 50_000})
     home(game, island, 2, 13, 20000, level="metropolis")  # 通勤圏の外（国庫を厚くする）
     with_economy(game, island)
     stages = ["employment", "population", "housing"]
@@ -409,3 +414,199 @@ def test_disaster_halts_a_facility(game, game_dir):
     assert farm.ext["halted_until"] >= 1
     assert island.log[0].kind.startswith("disaster_")
     assert fac.labor_demand(sure.defs, farm, 1) == 0
+
+
+# --- ターン91の試し遊びで見つかった点 -------------------------------------------------
+
+
+def test_initial_prices_use_recipes_the_island_can_run(game):
+    """石材のない島の建材の初めの値段は、木材から作る原価で決まる（木材の方式の工場が原料を買える）。"""
+    defs, config = game.defs, game.config
+    everywhere = initial_prices(defs, config)
+    no_stone = initial_prices(defs, config, ["coal", "iron_ore"])
+    assert no_stone["building_materials"] > everywhere["building_materials"]
+    assert initial_prices(defs, config, ["coal", "iron_ore", "stone"]) == everywhere
+    plant = Facility(id=1, kind="building_materials_plant", x=0, y=0, recipe="wood")
+    wage = config.get("labor.initial_wage")
+    assert variable_profit(defs, config, plant, everywhere, wage, 0) < 0
+    assert variable_profit(defs, config, plant, no_stone, wage, 0) > 0
+    # 島に石材がなくても作れない財（鉱石など）は、どの島でも同じ値段
+    assert initial_prices(defs, config, [])["coal"] == everywhere["coal"]
+
+
+def test_facility_hires_only_for_inputs_on_hand(game):
+    """原料が届くまで人を雇わない。足りない理由（市場で買えなかったわけ）が状態に出る。"""
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    plant = add(island, "building_materials_plant", 6, 6, recipe="wood")
+    add(island, "hydro_power_plant", 7, 6)  # 送電網でつながった発電所（原料がいらない）
+    with_economy(game, island)
+    run(game, island, ["employment", "production"])
+    assert plant.workers == 0
+    assert (plant.operating_rate, plant.status) == (0, "input:wood")
+    # 半分の原料があれば、半分だけ雇って動く
+    stock.add(plant.stock, "wood", 6000, 0, game.defs.goods)
+    plant.economy["short"] = {"wood": "price"}
+    run(game, island, ["employment", "production"])
+    assert plant.workers == 500
+    assert (plant.operating_rate, plant.status) == (500, "input_price:wood")
+    plant.economy["short"] = {"wood": "funds"}
+    stock.add(plant.stock, "wood", 3000, 0, game.defs.goods)
+    run(game, island, ["employment", "production"])
+    assert (plant.operating_rate, plant.status) == (250, "funds:wood")
+    assert format_log(game.defs, "status_input_price", {}) == "原料が割高"
+
+
+def test_inputs_are_bought_ahead_of_a_rising_target(game):
+    """操業目標は市場の後に上がるので、上がる分（max_target_change）まで先に仕入れる。
+    雇いたいだけ雇えなかった施設は、今の人手より少し多い分まで。"""
+    island = make_island(game)
+    plant = add(island, "building_materials_plant", 6, 6, recipe="wood")
+    with_economy(game, island)
+    plant.status = "target"
+    plant.economy.update(target=400, wanted=400)
+    plant.workers = 400
+    ctx = SimpleNamespace(defs=game.defs, config=game.config, turn=1)
+    assert Market._input_needs(ctx, plant, "electricity") == [("wood", 12_000 * 600 // 1000)]
+    plant.workers = 200  # 400 人雇いたかったが 200 人しか来なかった
+    assert Market._input_needs(ctx, plant, "electricity") == [("wood", 12_000 * 300 // 1000)]
+
+
+def test_market_records_why_inputs_were_not_bought(game):
+    """原料を買えなかったわけ: 指値（採算の合う値段）より高いと price、売りがないと supply。"""
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    plant = add(island, "building_materials_plant", 6, 6, recipe="wood")
+    camp = add(island, "lumber_camp", 7, 7, stock={"wood": 20_000})
+    with_economy(game, island)
+    # 建材が石材から作る原価の値段のままだと、木材から作る工場は木材の値段を払えない
+    island.economy.prices["building_materials"] = initial_prices(game.defs, game.config)[
+        "building_materials"
+    ]
+    run(game, island, ["market"])
+    assert plant.economy["short"] == {"wood": "price"}
+    assert stock.total(plant.stock, "wood") == 0
+    # 木材の方式の原価の値段なら買える
+    island.economy.prices["building_materials"] = initial_prices(
+        game.defs, game.config, island.resources
+    )["building_materials"]
+    run(game, island, ["market"])
+    assert "short" not in plant.economy
+    assert stock.total(plant.stock, "wood") > 0
+    # 売りに出ていなければ supply
+    camp.stock.clear()
+    plant.stock.clear()
+    run(game, island, ["market"])
+    assert plant.economy["short"] == {"wood": "supply"}
+
+
+def test_construction_waiting_for_materials_is_shown_and_logged_once(game):
+    """資材が手に入らない工事は、足りない資材を状態に出し、2ターン続いたらログで知らせる。"""
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    site = add(island, "farm", 6, 6, built=False)  # 木材 5 が要る
+    with_economy(game, island)
+    kinds = []
+    for _ in range(3):
+        run(game, island, ["employment", "construction", "market"])
+        kinds.append([e.kind for e in island.log if e.kind.startswith("construction")])
+    assert site.progress == 0 and site.ext["waiting"] == ["wood"]
+    assert kinds == [[], ["construction_no_materials"], []]
+    text = format_log(
+        game.defs,
+        "construction_no_materials",
+        {"facility": "farm", "x": 6, "y": 6, "goods": ["wood"]},
+    )
+    assert text == "(6, 6) の農場の工事は、資材（木材）が手に入らないため進んでいません"
+    assert format_log(
+        game.defs, "status_construction_materials", {"goods": ["wood", "machinery"]}
+    ) == ("建設中（資材の木材・機械を待っています）")
+    # 資材が届けば進み、待っている資材は消える
+    stock.add(island.warehouse, "wood", 5000, 0, game.defs.goods)
+    run(game, island, ["employment", "construction", "market"], turns=2)
+    assert site.progress > 0
+    assert "waiting" not in site.ext and "no_materials_turns" not in site.ext
+
+
+def test_no_dividend_in_a_loss_turn(game):
+    """売れずに止まって支払いの見込みが小さい施設でも、赤字のターンは手元の資金を持ち主に払わない。"""
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    mill = add(island, "steel_mill", 6, 6, accounting=ACCOUNTING_SELF)
+    with_economy(game, island)
+    entity = f"fac:{mill.id}"
+    cash = ledger.money(island, entity)
+    assert cash > 0
+    mill.economy["target"] = 0
+    run(game, island, ["accounts"])
+    book = next(b for b in island.books if b.facility == mill.id)
+    assert book.items["profit"] < 0
+    assert book.items.get("dividend", 0) == 0
+    assert ledger.money(island, entity) == cash
+
+
+# --- 運賃 -------------------------------------------------------------------------
+
+
+def freight_island(game):
+    """首都 (5, 5) から遠い (12, 12) の林業場の近くに建材工場、首都のそばに林業場と消費財工場。"""
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    far = add(island, "lumber_camp", 12, 12)
+    plant = add(island, "building_materials_plant", 12, 10, recipe="wood")
+    near = add(island, "lumber_camp", 5, 7)
+    goods = add(island, "consumer_goods_factory", 6, 7, recipe="wood")
+    with_economy(game, island)
+    return island, far, plant, near, goods
+
+
+def test_freight_depends_on_distance_to_trading_partners(game):
+    """運賃の率は取引の相手までの道のり（1 あたり1%）の半分。拠点から遠くても、近くに相手が
+    いれば安い。量の足りない分は、次に近い相手まで運ぶとして数える。"""
+    island, far, plant, near, goods = freight_island(game)
+    rates, _ = freight.compute(island, game.defs, game.config)
+    # 遠くの林業場の木材 10 は、2 マス先の建材工場（12 使う）がみな買える
+    assert rates[far.id] == 2 * 100 // 2
+    # 首都のそばの林業場は、1 マス先の消費財工場（8 使う）と、10 マス先の建材工場（残りの 2）
+    assert rates[near.id] == (8 * 50 + 2 * 500) // 10
+    # 陸でつながらない所の施設は、相手にも拠点にも行けないので上限の率
+    island.tiles[15 * island.size + 15].terrain = "plain"
+    alone = add(island, "lumber_camp", 15, 15)
+    rates, _ = freight.compute(island, game.defs, game.config)
+    assert rates[alone.id] == 2000
+    # 家計の率: 住んでいるマスから、食料と消費財の一番近い売り手まで（売り手のない財は数えない）。
+    # (5, 6) から (6, 7) の消費財工場まで 2
+    _, household = freight.compute(island, game.defs, game.config)
+    assert household == 2 * 100 // 2
+
+
+def test_market_pairs_nearest_buyers_and_sellers(game):
+    """約定は道のりの近い組から割り当てる（遠くの林業場の木材は、近くの建材工場へ）。"""
+    island, far, plant, near, goods = freight_island(game)
+    stock.add(far.stock, "wood", 10_000, 0, game.defs.goods)
+    stock.add(near.stock, "wood", 10_000, 0, game.defs.goods)
+    run(game, island, ["market"])
+    sellers = {t.seller for t in island.trades if t.good == "wood" and t.buyer == f"fac:{plant.id}"}
+    assert f"fac:{far.id}" in sellers
+    assert auction.match_nearest([5, 3], [4, 4], lambda b, s: abs(b - s)) == [
+        (0, 0, 4),
+        (1, 1, 3),
+        (0, 1, 1),
+    ]
+
+
+def test_transport_keeps_freight_income_to_hire_drivers(game):
+    """独立採算の運送業は、運賃の収入から賃金に充てる分を手元に残し、次のターンに運転手を雇う
+    （手元の資金 0 で始まっても、収入をみな配当に回してずっと雇えないままにならない）。"""
+    island, *_ = freight_island(game)
+    carrier = next(f for f in island.facilities if f.kind == "transport")
+    carrier.accounting = ACCOUNTING_SELF
+    entity = f"fac:{carrier.id}"
+    assert ledger.money(island, entity) == 0
+    stages = [s.name for s in game.engine.stages]
+    run(game, island, stages)
+    payroll = freight.payroll(island, game.config)  # 次のターンの雇用は、このターンの収入で見る
+    assert payroll > 0
+    assert ledger.money(island, entity) >= payroll
+    run(game, island, stages)
+    assert carrier.workers == payroll // carrier.economy["wage"] > 0

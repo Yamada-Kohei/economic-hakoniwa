@@ -52,7 +52,9 @@ class Recorder:
     """島ごとの統計をターンごとに記録する。"""
 
     def __init__(self, world: WorldState, defs: Defs, config: GameConfig) -> None:
-        self.initial = initial_prices(defs, config)
+        self.initial = {  # 島ごとの初めの値段（島で使える作り方で解いた値段）
+            i.id: initial_prices(defs, config, i.resources) for i in world.islands.values()
+        }
         self.islands = {
             i.id: IslandRecord(
                 regime=i.regime.get("economy", ""),
@@ -76,9 +78,10 @@ class Recorder:
             rates = [island.policy.policy_rate] + [b.rate for b in island.bonds]
             rec.rates.append(max(rates) / BASIS)
             rec.low_rates.append(min(rates) / BASIS)
+            initial = self.initial.get(island.id, {})
             for m in island.markets:
-                if m.volume > 0 and self.initial.get(m.good):
-                    ratio = m.price / self.initial[m.good]
+                if m.volume > 0 and initial.get(m.good):
+                    ratio = m.price / initial[m.good]
                     rec.price_ratio.setdefault(m.good, []).append(ratio)
 
     def failures(self, start: int = START) -> list[str]:

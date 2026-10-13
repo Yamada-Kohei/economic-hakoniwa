@@ -9,7 +9,8 @@
 払い、税引き後の利益の firms.payout を持ち主に払います（民営は資産を持つ層への配当、国営は国庫への
 納付）。手元の資金が次のターンの支払いの見込みの firms.cash_turns ターン分を超えたら、超えた分も
 払います。払えるのは、手元の資金のうち支払いの見込みの firms.operating_turns ターン分を残した額
-までです。国庫直轄の施設は
+までです。税引き後の利益が出なかったターンは払いません（売れずに止まって支払いの見込みが小さく
+なった施設が、赤字のまま手元の資金を持ち主に払ってしまわないように）。国庫直轄の施設は
 お金がすべて国庫のものなので、損益を帳簿に残すだけです。
 
 中央銀行の利益（国債の利子 − 準備預金の利子）は全額を国庫に納めます。損失は繰り越して、
@@ -119,7 +120,7 @@ class Accounts(IslandStage):
             keep = settings["operating_turns"] * cost
             cash = funds.available(island, payer)
         dividend = part(max(0, profit - tax), to_basis(settings["payout"]))
-        if cash > settings["cash_turns"] * cost:
+        if cash > settings["cash_turns"] * cost and profit - tax > 0:
             dividend = max(dividend, cash - settings["cash_turns"] * cost)
         if not ledger.is_bank(payer.entity):
             dividend = min(dividend, max(0, cash - keep))

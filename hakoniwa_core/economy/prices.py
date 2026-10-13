@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from hakoniwa_core import facilities as fac
@@ -65,32 +65,61 @@ def unit_cost(
     return _recipe_cost(defs, config, kind, recipe, prices, wage) * QUANTITY_SCALE / total
 
 
-_INITIAL: dict[tuple[int, int], tuple[Defs, GameConfig, dict[str, int]]] = {}
+_INITIAL: dict[
+    tuple[int, int, tuple[str, ...] | None], tuple[Defs, GameConfig, dict[str, int]]
+] = {}
 
 
-def initial_prices(defs: Defs, config: GameConfig) -> dict[str, int]:
-    """財ごとの初めの値段（財 1 単位あたり）。定義と設定ごとに1度だけ解く。"""
-    key = (id(defs), id(config))
+def initial_prices(
+    defs: Defs, config: GameConfig, resources: Iterable[str] | None = None
+) -> dict[str, int]:
+    """財ごとの初めの値段（財 1 単位あたり）。定義と設定（と地下資源）ごとに1度だけ解く。
+
+    resources（島の地下資源）を渡すと、その島で使える作り方（要る地下資源があり、原料をみな島で
+    作れる作り方）だけで解く。石材のない島の建材は木材から作る原価で決まる（安い作り方の値段の
+    ままだと、木材から作る工場が原料を買えない）。島で作れない財は、どの島でも同じ値段。
+    """
+    chosen = None if resources is None else tuple(sorted(set(resources)))
+    key = (id(defs), id(config), chosen)
     cached = _INITIAL.get(key)
     if cached is None or cached[0] is not defs or cached[1] is not config:
-        cached = (defs, config, _solve_prices(defs, config))
+        if chosen is None:
+            prices = _solve_prices(defs, config)
+        else:
+            prices = _solve_prices(defs, config, set(chosen), initial_prices(defs, config))
+        cached = (defs, config, prices)
         _INITIAL[key] = cached
     return dict(cached[2])
 
 
-def _solve_prices(defs: Defs, config: GameConfig) -> dict[str, int]:
+def _usable(recipe: Mapping[str, Any], resources: set[str], made: set[str]) -> bool:
+    resource = recipe.get("requires_resource")
+    return (resource is None or resource in resources) and set(recipe["inputs"]) <= made
+
+
+def _solve_prices(
+    defs: Defs,
+    config: GameConfig,
+    resources: set[str] | None = None,
+    fixed: Prices | None = None,
+) -> dict[str, int]:
+    """resources を渡すと、その島で使える作り方だけで解く。作る施設のない財は fixed の値段。"""
     settings = config.get("market.initial_prices")
     wage = config.get("labor.initial_wage")
     markup = 1 + settings["markup"]
     reference = settings.get("reference") or {}
+    made = None if resources is None else fac.producible_goods(defs, resources)
     producers: dict[str, list[tuple[str, Mapping[str, Any]]]] = {}
     for kind, fdef in defs.facilities.items():
         for recipe in fdef["recipes"].values():
+            if resources is not None and made is not None and not _usable(recipe, resources, made):
+                continue
             for good in recipe["outputs"]:
                 if good in reference and reference[good] != kind:
                     continue
                 producers.setdefault(good, []).append((kind, recipe))
-    prices: dict[str, float] = {g: float(settings["default"]) for g in defs.goods}
+    fixed = fixed or {}
+    prices: dict[str, float] = {g: float(fixed.get(g, settings["default"])) for g in defs.goods}
     for _ in range(settings.get("iterations", 500)):
         changed = 0.0
         for good in sorted(producers):
