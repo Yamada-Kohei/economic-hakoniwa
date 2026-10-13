@@ -48,3 +48,7 @@ sprites:
   terrain/plain: {file: sprites/terrain/plain.png, scale: 0.5}
   terrain/forest: {file: sprites/terrain/forest.png, scale: 0.5}
   terrain/mountain: {file: sprites/terrain/mountain.png, scale: 0.5}
+  housing/village: {file: sprites/housing/village.png, scale: 0.5}
+  housing/town: {file: sprites/housing/town.png, scale: 0.5}
+  housing/city: {file: sprites/housing/city.png, scale: 0.5}
+  housing/metropolis: {file: sprites/housing/metropolis.png, scale: 0.5}

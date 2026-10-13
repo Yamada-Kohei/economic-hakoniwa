@@ -34,6 +34,7 @@ AI で作った絵は、作った道具の名前と、依頼した人を書き�
 | パス | 作った人 | ライセンス | 出典 |
 |---|---|---|---|
 | `server/static/themes/default/sprites/terrain/` | OpenAI の組み込み画像生成（image_gen）。依頼者: Yamada-Kohei | MIT（本プロジェクトの LICENSE） | 2026-10-14 に新規生成。提供された見本は雰囲気の参照に用い、元画像の転載・切り出し・なぞりは行っていません。 |
+| `server/static/themes/default/sprites/housing/` | OpenAI の組み込み画像生成（image_gen）。依頼者: Yamada-Kohei | MIT（本プロジェクトの LICENSE） | 2026-10-14 に新規生成。提供された見本は雰囲気の参照に用い、元画像の転載・切り出し・なぞりは行っていません。 |
 
 ## GitHub Actions
 
