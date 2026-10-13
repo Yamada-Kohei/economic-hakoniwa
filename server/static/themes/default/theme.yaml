@@ -64,3 +64,6 @@ sprites:
   facility/consumer_goods_factory: {file: sprites/facility/consumer_goods_factory.png, scale: 0.5}
   facility/thermal_power_plant: {file: sprites/facility/thermal_power_plant.png, scale: 0.5}
   facility/hydro_power_plant: {file: sprites/facility/hydro_power_plant.png, scale: 0.5}
+  facility/government_office: {file: sprites/facility/government_office.png, scale: 0.5}
+  facility/bank: {file: sprites/facility/bank.png, scale: 0.5}
+  capital/government_office: {file: sprites/capital/government_office.png, scale: 0.5}
