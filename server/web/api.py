@@ -302,7 +302,15 @@ def check(request, island_id: int):
         get_game().defs, get_game().registry, state, body.get("kind"), body.get("payload")
     )
     text = "" if result.ok else display.message(result.reason or "", **result.args)
-    return _json({"ok": result.ok, "text": text, "details": list(result.details)})
+    data = {"ok": result.ok, "text": text, "details": list(result.details)}
+    if result.ok and body.get("kind") == "build":
+        # 建てても人手が集まるかを見られるように、通勤圏の労働者の数を添える
+        payload = body["payload"]
+        kind, x, y = payload["facility"], payload["x"], payload["y"]
+        labor, employed = fac.commute_labor(get_game().defs, get_game().config, state, kind, x, y)
+        radius = fac.commute_radius(get_game().defs, get_game().config, kind)
+        data["commute"] = {"radius": radius, "labor": labor, "employed": employed}
+    return _json(data)
 
 
 def _orders_view(island: m.Island) -> dict[str, Any]:

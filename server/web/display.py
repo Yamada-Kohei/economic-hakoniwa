@@ -7,11 +7,13 @@ from typing import Any
 from django.db.models import Sum
 
 from hakoniwa_core import facilities as fac
+from hakoniwa_core import ledger
+from hakoniwa_core.economy import books, entity_of
 from hakoniwa_core.log import format_log
 from hakoniwa_core.naming import facility_name
 from hakoniwa_core.state import Facility, IslandState
 from hakoniwa_core.units import from_milli
-from server.economy.models import MarketRecord
+from server.economy.models import FacilityBook, MarketRecord
 from server.game import get_game
 from server.world import models as m
 from server.world.repository import facility_from_row, island_from_row
@@ -98,11 +100,68 @@ def facility_info(row: m.Facility, island: IslandState) -> dict[str, Any]:
         info["materials"] = goods_list(construction.get("materials", {}))
     if f.ext.get("halted_until") is not None:
         info["halted_until"] = f.ext["halted_until"]
+    if f.built:
+        currency = (island.names or {}).get("currency_symbol", "")
+        info["books"] = facility_books(row, f, currency)
     return info
+
+
+# マスの欄に出す施設の収支（hakoniwa_core/economy/books.py の項目、表示名、収入なら 1・支出なら -1）
+BOOK_ITEMS = [
+    (books.SALES, "売上", 1),
+    (books.PURCHASES, "仕入れ", -1),
+    (books.ELECTRICITY, "電気代", -1),
+    (books.FREIGHT, "運賃", -1),
+    (books.INVENTORY, "在庫の増減", 1),
+    (books.WAGES, "賃金", -1),
+    (books.INTEREST, "受け取った利子", 1),
+    (books.DEPRECIATION, "減価償却", -1),
+    (books.PROFIT, "損益", 1),
+    (books.TAX, "法人税", -1),
+    (books.DIVIDEND, "配当・国庫への納付", -1),
+]
+BOOK_TURNS = 10  # 損益の合計を出すターン数
+
+
+def money_text(amount: int, currency: str = "") -> str:
+    return f"{'-' if amount < 0 else ''}{currency}{abs(int(amount)):,}"
+
+
+def facility_books(row: m.Facility, f: Facility, currency: str = "") -> dict[str, Any] | None:
+    """施設の直近のターンの収支と預金、直近 BOOK_TURNS ターンの損益の合計。
+
+    帳簿がまだなければ（完成してから決算を迎えていなければ）None。
+    """
+    recent = list(
+        FacilityBook.objects.filter(island_id=row.island_id, facility=f.id).order_by("-turn")[
+            :BOOK_TURNS
+        ]
+    )
+    if not recent:
+        return None
+    last = recent[0]
+    rows = [
+        {"label": label, "text": money_text(sign * last.items[key], currency)}
+        for key, label, sign in BOOK_ITEMS
+        if last.items.get(key)
+    ]
+    out: dict[str, Any] = {
+        "turn": last.turn,
+        "rows": rows,
+        "profit": last.items.get(books.PROFIT, 0),
+        "turns": len(recent),
+        "profit_total": money_text(sum(b.items.get(books.PROFIT, 0) for b in recent), currency),
+    }
+    # 国庫直轄の施設は自分の預金を持たない（お金は国庫が出し入れする）
+    if entity_of(get_game().config, f) != ledger.GOV:
+        out["deposit"] = money_text(last.deposit, currency)
+    return out
 
 
 def status_text(f: Facility) -> str:
     if not f.built:
+        if f.ext.get("no_workers_turns"):
+            return message("status_construction_no_workers")
         return message("status_construction")
     if not f.status:
         return ""

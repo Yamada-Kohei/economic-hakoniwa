@@ -58,6 +58,7 @@ reason_accounting_unchanged: "{facility}は既にその会計方式です"
 
 # 建設と生産
 construction_done: "({x}, {y}) の{facility}が完成しました"
+construction_no_workers: "({x}, {y}) の{facility}の工事は、通勤圏で労働者を雇えないため進んでいません"
 facility_started: "({x}, {y}) の{facility}が稼働を開始しました"
 facility_restarted: "({x}, {y}) の{facility}が稼働を再開しました"
 facility_stopped_workers: "({x}, {y}) の{facility}が労働者不足で停止しました"
@@ -104,6 +105,7 @@ status_halted: "災害により停止中"
 status_no_demand: "電力需要なし"
 status_target: "生産調整中"
 status_construction: "建設中"
+status_construction_no_workers: "建設中（労働者を雇えず止まっています）"
 
 # 持ち主と会計
 owner_state: "国営"

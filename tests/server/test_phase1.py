@@ -132,6 +132,11 @@ def test_founding_creates_one_island_per_user(client, world):
     assert (island.capital_x, island.capital_y) == tuple(plan["capital"])
     assert island.facilities.filter(x=island.capital_x, y=island.capital_y).exists()
     assert island.tiles.count() == island.size**2
+    # 最初の更新の前から、人口・国の倉庫・国庫が島の画面に出る
+    stats = dict(island.stats.values_list("name", "value"))
+    assert stats["population"] > 0 and stats["treasury"] > 0 and stats["stock.wood"] > 0
+    page = client.get(f"/islands/{island.id}/").content.decode()
+    assert "国庫" in page and "未集計です" not in page and "記録がありません" not in page
     # 2つ目は作れない。建国の画面は自分の島へ移る
     again = client.post("/api/founding", _plan(client, 6), content_type="application/json")
     assert again.status_code == 400 and again.json()["problems"]
@@ -222,6 +227,17 @@ def test_order_check(client, world):
     assert data["ok"] is False and data["text"]
     rename = {"kind": "rename_island", "payload": {"name": "よい名前"}}
     assert client.post(url, rename, content_type="application/json").json()["ok"] is True
+    # 建てられる場所なら、通勤圏の労働者の数を添える（首都の隣には町の住民がいる）
+    free = island.tiles.filter(terrain="plain", population=0).exclude(
+        x__in=[f.x for f in island.facilities.all()]
+    )
+    tile = min(free, key=lambda t: abs(t.x - island.capital_x) + abs(t.y - island.capital_y))
+    near = {"kind": "build", "payload": {"facility": "farm", "x": tile.x, "y": tile.y}}
+    data = client.post(url, near, content_type="application/json").json()
+    assert data["ok"] is True, data
+    commute = data["commute"]
+    assert commute["radius"] == 3 and commute["labor"] >= commute["employed"] >= 0
+    assert commute["labor"] > 0
 
 
 # --- 登録・掲示板・画面 -----------------------------------------------------------

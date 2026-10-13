@@ -187,6 +187,27 @@ def test_construction_uses_exact_materials(game):
     assert stock.total(island.warehouse, "wood") == 13_000 - 5_000
 
 
+def test_construction_without_workers_is_logged_once(game):
+    """資材があるのに通勤圏に住民がいない工事は、2ターン続いたらログで知らせる（その後は出さない）。"""
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    site = add(island, "farm", 12, 12, built=False, stock={"wood": 5000})  # 首都の町から遠い
+    with_economy(game, island)
+    kinds = []
+    for _ in range(3):
+        run(game, island, ["employment", "construction"])
+        kinds.append([e.kind for e in island.log])
+    assert site.progress == 0 and site.ext["no_workers_turns"] == 3
+    assert kinds == [[], ["construction_no_workers"], []]
+    # 通勤圏に、建設の労働者 200 人を出せる町ができると工事が進み、数え直しになる
+    labor, _ = fac.commute_labor(game.defs, game.config, island, "farm", 12, 12)
+    assert labor == 0
+    home(game, island, 11, 12, 2000)
+    assert fac.commute_labor(game.defs, game.config, island, "farm", 12, 12)[0] > 0
+    run(game, island, ["employment", "construction"])
+    assert site.progress > 0 and "no_workers_turns" not in site.ext
+
+
 def test_market_sells_food_to_households(game):
     island = make_island(game)
     home(game, island, 5, 6, 5000)  # 食料（栄養）10 が要る
@@ -285,6 +306,17 @@ def test_build_order_checks(game):
     add(island, "mine", 5, 3, recipe="iron_ore", built=False)
     third = {"facility": "mine", "x": 6, "y": 3, "recipe": "coal"}
     assert reason("build", third) == "reason_too_many"
+
+
+def test_producible_goods_follow_resources_and_inputs(game):
+    """島で生産できる資源は、地下資源と、原料をつないだ生産方式から決まる。"""
+    bare = fac.producible_goods(game.defs, [])
+    assert {"grain", "wood", "electricity", "building_materials"} <= bare
+    assert not {"stone", "iron_ore", "coal", "steel", "machinery"} & bare
+    # 鋼材は鉄鉱石と石炭の両方が要る
+    assert "steel" not in fac.producible_goods(game.defs, ["coal"])
+    both = fac.producible_goods(game.defs, ["coal", "iron_ore"])
+    assert {"steel", "machinery"} <= both and "stone" not in both
 
 
 def test_orders_run_in_turn(game):

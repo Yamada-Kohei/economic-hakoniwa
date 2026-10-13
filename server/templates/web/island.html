@@ -45,7 +45,8 @@
     </div>
   </section>
   <aside id="tile-panel" class="panel" data-tile-url="{% url 'api_tile' island.id 0 0 %}"
-         data-check-url="{% url 'api_order_check' island.id %}" aria-live="polite"></aside>
+         data-check-url="{% url 'api_order_check' island.id %}"
+         data-resources="{{ resource_ids|join:',' }}" data-producible="{{ producible|join:',' }}" aria-live="polite"></aside>
 </div>
 
 {% if mine %}

@@ -15,13 +15,16 @@ const MARK_MODES = {
 
 export class TilePanel {
   /**
-   * el: 欄の要素（data-tile-url に「…/tiles/0,0」、data-check-url に命令の確認の URL）
+   * el: 欄の要素（data-tile-url に「…/tiles/0,0」、data-check-url に命令の確認の URL、
+   *     data-resources に島の地下資源、data-producible に島で生産できる資源。どちらもカンマ区切り）
    * options: orders（命令の列。持ち主でなければ null）、marked（印を付けたマスの Set）、onMarkedChange
    */
   constructor(el, defs, map, options = {}) {
     this.el = el;
     this.defs = defs;
     this.map = map;
+    this.resources = idSet(el.dataset.resources);
+    this.producible = el.dataset.producible == null ? null : idSet(el.dataset.producible);
     this.orders = options.orders || null;
     this.marked = options.marked || new Set();
     this.onMarkedChange = options.onMarkedChange || (() => {});
@@ -133,7 +136,17 @@ export class TilePanel {
     if (f.status_text) rows.push(["状態", f.status_text]);
     if (f.halted_until != null) rows.push(["停止期間", `ターン ${f.halted_until} まで`]);
     if (f.stock.length) rows.push(["施設在庫", goodsText(f.stock)]);
-    return `<h3>${escapeHtml(f.name)}</h3>${table(rows)}`;
+    return `<h3>${escapeHtml(f.name)}</h3>${table(rows)}${this.booksHtml(f.books)}`;
+  }
+
+  /** 施設の収支（直近のターンの内訳と、直近の数ターンの損益の合計）と預金。 */
+  booksHtml(b) {
+    if (!b) return "";
+    const rows = b.rows.map((r) => [r.label, r.text]);
+    rows.push([`損益（直近 ${b.turns} ターンの合計）`, b.profit_total]);
+    if (b.deposit != null) rows.push(["預金", b.deposit]);
+    const result = b.profit < 0 ? "（赤字）" : "";
+    return `<h4>収支（ターン ${b.turn}）${result}</h4>${table(rows)}`;
   }
 
   actionsHtml(t) {
@@ -150,7 +163,12 @@ export class TilePanel {
       if (!this.defs.terrain[t.terrain]?.land) return "";
       const choices = this.buildChoices(t.terrain);
       if (!choices.length) return `<p class="muted">この地形に建設できる施設はありません。</p>${placeForm}`;
-      const options = choices.map(([id, d]) => `<option value="${id}">${escapeHtml(d.name)}</option>`).join("");
+      const options = choices
+        .map(([id, d]) => {
+          const note = this.facilityNote(d);
+          return `<option value="${id}">${escapeHtml(d.name)}${note ? `（${note}）` : ""}</option>`;
+        })
+        .join("");
       return `
         <form class="actions" data-form="build">
           <h4>建設</h4>
@@ -158,6 +176,7 @@ export class TilePanel {
           <span data-slot="recipe">${this.recipeSelect(choices[0][0])}</span>
           <label>名称（空欄なら自動） <input name="name" maxlength="32"></label>
           <p class="hint" data-slot="build-info">${this.buildInfo(choices[0][0])}</p>
+          <p class="hint" data-slot="commute"></p>
           <p class="warning" data-slot="check" aria-live="polite"></p>
           <button type="submit">命令に追加</button>
         </form>${placeForm}`;
@@ -189,23 +208,61 @@ export class TilePanel {
     return parts.join("");
   }
 
-  /** この地形に建てられる施設。 */
+  /** この地形に建てられる施設。この島で使える生産方式のある施設を先に並べる。 */
   buildChoices(terrain) {
-    return Object.entries(this.defs.facilities).filter(([, d]) => d.buildable && d.terrain.includes(terrain));
+    const choices = Object.entries(this.defs.facilities).filter(([, d]) => d.buildable && d.terrain.includes(terrain));
+    const usable = ([, d]) => !this.facilityNote(d);
+    return [...choices.filter(usable), ...choices.filter((c) => !usable(c))];
+  }
+
+  /** この島で生産方式が使えないわけ（使えれば ""）。 */
+  recipeProblem(recipe) {
+    const resource = recipe.requires_resource;
+    if (resource && !this.resources.has(resource)) return "地下資源なし";
+    if (this.producible && Object.keys(recipe.inputs).some((g) => !this.producible.has(g))) return "原料なし";
+    return "";
+  }
+
+  /** どの生産方式もこの島で使えない施設に付ける注記（使えるものがあれば ""）。 */
+  facilityNote(d) {
+    const problems = Object.values(d.recipes).map((r) => this.recipeProblem(r));
+    if (problems.some((p) => !p)) return "";
+    return problems.includes("原料なし") ? "原料なし" : "地下資源なし";
   }
 
   recipeSelect(facility) {
     const recipes = Object.entries(this.defs.facilities[facility]?.recipes || {});
     if (recipes.length <= 1) return "";
-    const options = recipes.map(([id, r]) => `<option value="${id}">${escapeHtml(r.name)}</option>`).join("");
+    // この島で使える生産方式を初めから選んでおく
+    const chosen = recipes.find(([, r]) => !this.recipeProblem(r))?.[0];
+    const options = recipes
+      .map(([id, r]) => {
+        const problem = this.recipeProblem(r);
+        const selected = id === chosen ? " selected" : "";
+        return `<option value="${id}"${selected}>${escapeHtml(r.name)}${problem ? `（${problem}）` : ""}</option>`;
+      })
+      .join("");
     return `<label>生産方式 <select name="recipe">${options}</select></label>`;
+  }
+
+  /** 選んでいる生産方式の原料をこの島で生産できないときの注意（なければ ""）。 */
+  inputWarning(payload) {
+    const recipes = this.defs.facilities[payload.facility]?.recipes || {};
+    const recipe = recipes[payload.recipe ?? Object.keys(recipes)[0]];
+    if (!recipe || !this.producible) return "";
+    const missing = Object.keys(recipe.inputs).filter((g) => !this.producible.has(g));
+    if (!missing.length) return "";
+    const names = missing.map((g) => this.goodName(g)).join("・");
+    return `原料の${names}をこの島では生産できないため、建てても操業できない見込みです。`;
   }
 
   buildInfo(facility) {
     const d = this.defs.facilities[facility];
     if (!d) return "";
     const c = d.construction;
-    const bits = [`工期 ${c.turns} ターン`, `労働者 ${d.workers.toLocaleString()} 人`];
+    const bits = [`工期 ${c.turns} ターン`];
+    if (c.labor) bits.push(`建設労働者 ${c.labor.toLocaleString()} 人`);
+    bits.push(`完成後の労働者 ${d.workers.toLocaleString()} 人`);
     const materials = Object.entries(c.materials);
     if (materials.length) bits.push(`建設資材 ${materials.map(([g, q]) => `${this.goodName(g)} ${q} ${this.unitName(g)}`).join("・")}`);
     if (d.coastal) bits.push("海に面したマスのみ");
@@ -314,16 +371,33 @@ export class TilePanel {
     return payload;
   }
 
-  /** 今の島で建てられるかをサーバーに聞き、建てられないなら理由を出す（それでも命令は足せる）。 */
+  /**
+   * 今の島で建てられるかをサーバーに聞き、建てられないなら理由を出す（それでも命令は足せる）。
+   * 通勤圏の労働者の数も出し、住民がいなければ工事が進まないことを知らせる。
+   */
   async checkBuild() {
     const payload = this.buildPayload();
     if (!payload) return;
     const request = this.request;
     const res = await sendJson(this.el.dataset.checkUrl, "POST", { kind: "build", payload });
     const slot = this.el.querySelector("[data-slot=check]");
+    const commuteSlot = this.el.querySelector("[data-slot=commute]");
     if (request !== this.request || !slot) return;
-    slot.textContent = res.ok && !res.data.ok ? `現状では建設できません: ${res.data.text}` : "";
+    const commute = res.ok ? res.data.commute : null;
+    if (commuteSlot) {
+      commuteSlot.textContent = commute
+        ? `通勤圏（${commute.radius} マス以内）の労働者 ${commute.labor.toLocaleString()} 人` +
+          `（うち就業者 ${commute.employed.toLocaleString()} 人）`
+        : "";
+    }
+    if (res.ok && !res.data.ok) slot.textContent = `現状では建設できません: ${res.data.text}`;
+    else if (commute && commute.labor === 0) slot.textContent = "通勤圏に住民がいないため、労働者を雇えず工事も操業も進みません。";
+    else slot.textContent = this.inputWarning(payload);
   }
+}
+
+function idSet(text) {
+  return new Set((text || "").split(",").filter(Boolean));
 }
 
 function table(rows) {

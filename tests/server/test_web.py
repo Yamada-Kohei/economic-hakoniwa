@@ -4,6 +4,7 @@ import pytest
 from django.contrib.auth.models import User
 
 from server.turns.models import Backup
+from server.turns.services import run_turn
 from server.world import admin as world_admin
 from server.world.models import Island, World
 
@@ -18,7 +19,12 @@ def test_top_lists_islands(client, world):
 
 def test_island_page_and_map_api(client, world):
     island = Island.objects.first()
-    assert client.get(f"/islands/{island.id}/").status_code == 200
+    page = client.get(f"/islands/{island.id}/")
+    assert page.status_code == 200
+    # 建設の欄が、この島で使えない施設や生産方式を見分けるのに使う
+    resources = ",".join(island.resources)
+    assert f'data-resources="{resources}"' in page.content.decode()
+    assert "data-producible=" in page.content.decode() and "wood" in page.content.decode()
     data = client.get(f"/api/islands/{island.id}/map").json()
     assert data["size"] == island.size
     assert len(data["terrain"]) == island.size**2
@@ -57,6 +63,20 @@ def test_tile_api_construction_progress(client, world):
     data = client.get(f"/api/islands/{island.id}/tiles/{tile.x},{tile.y}").json()
     assert data["facility"]["turns"] == 6
     assert data["facility"]["progress"] == pytest.approx(5 / 6)
+
+
+def test_tile_api_facility_books(client, world):
+    """施設のマスには、直近のターンの収支と損益の合計を出す（決算の前はない）。"""
+    island = Island.objects.first()
+    farm = island.facilities.filter(kind="farm", built=True).first()
+    url = f"/api/islands/{island.id}/tiles/{farm.x},{farm.y}"
+    assert client.get(url).json()["facility"]["books"] is None
+    run_turn(force=True)
+    books = client.get(url).json()["facility"]["books"]
+    assert books["turn"] == 1 and books["turns"] == 1
+    labels = [r["label"] for r in books["rows"]]
+    assert "損益" in labels
+    assert books["profit_total"]
 
 
 def test_defs_api(client, db):
