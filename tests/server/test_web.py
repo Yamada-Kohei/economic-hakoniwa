@@ -115,6 +115,8 @@ def _advance_turns(admin_client, world):
 def test_admin_advances_ten_turns(admin_client, world):
     page = admin_client.get("/admin/world/world/").content.decode()
     assert "今すぐ10ターン進める（テスト用）" in page
+    # 世界をまとめて消す操作は、ターンを進める操作と並べない（押し間違えると世界ごと消える）
+    assert 'value="delete_selected"' not in page
     res = _advance_turns(admin_client, world)
     assert res.status_code == 200
     assert World.objects.get().turn == 10
