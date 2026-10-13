@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
+from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import GENERAL, OWNERS, books, funds, household
 from hakoniwa_core.economy.debt import annual_gdp, total_debt
 from hakoniwa_core.economy.households import close_income
@@ -73,10 +74,7 @@ class Records(IslandStage):
             stats["food.ratio"] = food["ratio"] / fac.FULL
             stats["food.need"] = from_milli(food["need"])
             stats["food.supplied"] = from_milli(food["supplied"])
-        for good, qty in stock.totals(island.warehouse).items():
-            stats[f"stock.{good}"] = from_milli(qty)
-        stats["facilities"] = sum(1 for f in island.facilities if f.built)
-        stats["construction"] = sum(1 for f in island.facilities if not f.built)
+        stats.update(_holdings(island))
         # 次のターンの初めに使える行政力（官庁の人手はこのターンに雇えた人数で決まる）
         stats["admin_power"] = ctx.formula("admin_power")(island, ctx)
 
@@ -117,14 +115,11 @@ class Records(IslandStage):
         money = ledger.aggregates(island.accounts)
         stats["money.deposits"] = money["deposits"]
         stats["money.central_bank"] = money["cb_money"]
-        stats["treasury"] = ledger.money(island, ledger.GOV)
-        debt = total_debt(island)
-        stats["debt"] = debt
+        stats.update(_finances(island))
         year = annual_gdp(economy)
-        stats["debt_ratio"] = debt / year if year else 0.0
+        stats["debt_ratio"] = stats["debt"] / year if year else 0.0
         for kind, amount in sorted(self._fiscal(island).items()):
             stats[f"fiscal.{kind}"] = amount
-        stats["policy_rate"] = island.policy.policy_rate * 100 / BASIS
         # 家計の層
         income = island.scratch.get("income", {})
         per_capita = {}
@@ -176,6 +171,40 @@ class Records(IslandStage):
             shown = " / ".join(problems[:5])
             more = f"（ほかに {len(problems) - 5} 件）" if len(problems) > 5 else ""
             raise LedgerCheckFailed(f"島 {island.id} の帳簿が合いません: {shown}{more}")
+
+
+def opening_stats(island: IslandState, defs: Defs) -> dict[str, float]:
+    """建国したときの統計。最初の更新の前から、島の画面に人口・国の倉庫・国庫を出すためのもの。
+
+    就業者・幸福度・値段などは最初の更新で決まるので入れない。
+    """
+    stats: dict[str, float] = {
+        "population": sum(t.population for t in island.tiles if t.population > 0),
+        "labor": sum(fac.labor_force(defs, island, t) for t in island.tiles if t.population > 0),
+    }
+    stats.update(_holdings(island))
+    if island.has_economy:
+        stats.update(_finances(island))
+    return stats
+
+
+def _holdings(island: IslandState) -> dict[str, float]:
+    """国の倉庫の在庫と、施設の数。"""
+    stats: dict[str, float] = {
+        f"stock.{good}": from_milli(qty) for good, qty in stock.totals(island.warehouse).items()
+    }
+    stats["facilities"] = sum(1 for f in island.facilities if f.built)
+    stats["construction"] = sum(1 for f in island.facilities if not f.built)
+    return stats
+
+
+def _finances(island: IslandState) -> dict[str, float]:
+    """国庫・国債の残高・政策金利。"""
+    return {
+        "treasury": ledger.money(island, ledger.GOV),
+        "debt": total_debt(island),
+        "policy_rate": island.policy.policy_rate * 100 / BASIS,
+    }
 
 
 def register(registry: Registry) -> None:

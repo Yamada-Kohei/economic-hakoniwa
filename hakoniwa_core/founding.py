@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import random
 from collections import deque
 from collections.abc import Iterable, Mapping
@@ -91,11 +92,12 @@ def auto_terrain(land: Iterable[Pos], config: GameConfig, seed: int) -> dict[Pos
     陸地は既定の地形（平地）で埋め、founding.land_terrain の順に、陸地のうち share の割合を
     置き換える。inland: true の地形（山）は海から遠いマスから、ほかの地形（森）はまとまりで散らす。
     陸地に接する海は浅瀬、残りは海にする。
+    散らし方の乱れはマスごとに種と位置から決めるので、陸地を描き足しても、離れたマスの地形は
+    変わらない（変わるのは描き足したところの近くと、割合の境目のマスだけ）。
     """
     land = set(land)
     settings = config.get("founding")
     size = config.get("island.size")
-    rng = random.Random(f"terrain:{seed}")
     terrain: dict[Pos, str] = {}
     for y in range(size):
         for x in range(size):
@@ -110,9 +112,9 @@ def auto_terrain(land: Iterable[Pos], config: GameConfig, seed: int) -> dict[Pos
         free = sorted(p for p in land if terrain[p] == settings["base_terrain"])
         count = min(len(free), round(len(land) * rule["share"]))
         if rule.get("inland"):
-            score = {p: inland[p] + rng.random() * 1.5 for p in free}
+            score = {p: inland[p] + _noise(seed, rule["terrain"], p) * 1.5 for p in free}
         else:
-            noise = {p: rng.random() for p in sorted(land)}
+            noise = {p: _noise(seed, rule["terrain"], p) for p in land}
             score = {
                 p: sum(noise.get((p[0] + dx, p[1] + dy), 0.5) for dx, dy in ((0, 0), *NEIGHBORS8))
                 for p in free
@@ -120,6 +122,12 @@ def auto_terrain(land: Iterable[Pos], config: GameConfig, seed: int) -> dict[Pos
         for p in sorted(free, key=lambda p: (-score[p], p[1], p[0]))[:count]:
             terrain[p] = rule["terrain"]
     return terrain
+
+
+def _noise(seed: int, salt: str, pos: Pos) -> float:
+    """種とマスの位置だけで決まる、0 以上 1 未満の数（ほかのマスの有無で変わらない）。"""
+    key = f"terrain:{seed}:{salt}:{pos[0]},{pos[1]}".encode()
+    return int.from_bytes(hashlib.blake2b(key, digest_size=8).digest(), "big") / 2**64
 
 
 def _distance_to_sea(land: set[Pos]) -> dict[Pos, int]:

@@ -15,6 +15,7 @@ from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from typing import Any
 
+from hakoniwa_core.modules.records import opening_stats
 from hakoniwa_core.state import (
     Bond,
     EconomyState,
@@ -451,6 +452,13 @@ def create_island(world: m.World, island: IslandState, owner=None) -> m.Island:
     write_money([island], replace=False)
     TurnLog.objects.bulk_create(
         [TurnLog(island=row, turn=world.turn, kind=e.kind, args=e.args) for e in island.log]
+    )
+    # 最初の更新の前から、島の画面に人口・国の倉庫・国庫が出るように
+    m.StatRecord.objects.bulk_create(
+        [
+            m.StatRecord(island=row, turn=world.turn, name=name, value=value)
+            for name, value in sorted(opening_stats(island, get_game().defs).items())
+        ]
     )
     return row
 

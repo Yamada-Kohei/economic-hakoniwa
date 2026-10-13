@@ -5,6 +5,7 @@ from __future__ import annotations
 from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, render
 
+from hakoniwa_core import facilities as fac
 from server.game import get_game
 from server.turns.models import TurnLog
 from server.web import display
@@ -47,6 +48,9 @@ def island_page(request, island_id: int):
         "goods": display.goods_table(stats, display.latest_markets(island, turn), currency),
         "regime": regime,
         "resources": [defs.name("goods", g) for g in island.resources or []],
+        # 建設の欄で、この島で使えない施設や生産方式を見分けるため
+        "resource_ids": island.resources or [],
+        "producible": sorted(fac.producible_goods(defs, island.resources or [])),
         "capital_name": (island.names or {}).get("capital", ""),
         "logs": display.log_entries(logs.filter(turn=last_turn)) if last_turn is not None else [],
         "log_turn": last_turn,

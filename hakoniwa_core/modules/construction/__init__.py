@@ -99,6 +99,10 @@ def close_accounts(island: IslandState, f: Facility) -> None:
             ledger.cancel(island, owner, ledger.EQUITY, entity, value, "equity_return")
 
 
+# 資材があるのに人手が0のまま、このターン数続いた工事をログで知らせる（その後は進むまで出さない）
+NO_WORKERS_TURNS = 2
+
+
 class Construction(IslandStage):
     """工事中の施設を、手元の資材と雇えた人手の分だけ進める。"""
 
@@ -110,7 +114,9 @@ class Construction(IslandStage):
             if f.built:
                 continue
             cdef = defs.facilities[f.kind]["construction"]
-            rate = min(fac.ratio(f.workers, cdef.get("labor", 0)), fac.material_ratio(defs, f))
+            materials = fac.material_ratio(defs, f)
+            self._watch_workers(island, f, stalled=materials > 0 and cdef.get("labor", 0) > 0)
+            rate = min(fac.ratio(f.workers, cdef.get("labor", 0)), materials)
             if rate <= 0:
                 continue
             total = cdef["turns"] * fac.FULL
@@ -121,6 +127,18 @@ class Construction(IslandStage):
                 stock.take(f.stock, good, qty * f.progress // total - qty * before // total)
             if f.progress >= total:
                 self._complete(island, f, ctx)
+
+    @staticmethod
+    def _watch_workers(island: IslandState, f: Facility, stalled: bool) -> None:
+        """資材があるのに通勤圏から1人も雇えない工事を数え、続いたらログで知らせる。"""
+        if not stalled or f.workers > 0:
+            f.ext.pop("no_workers_turns", None)
+            return
+        turns = f.ext.get("no_workers_turns", 0) + 1
+        f.ext["no_workers_turns"] = turns
+        if turns == NO_WORKERS_TURNS:
+            args = {"facility": f.kind, "x": f.x, "y": f.y}
+            island.log.append(LogEntry("construction_no_workers", args))
 
     @staticmethod
     def _complete(island: IslandState, f: Facility, ctx: StageContext) -> None:

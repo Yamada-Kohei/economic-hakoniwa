@@ -5,13 +5,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from hakoniwa_core import stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.geo import distance, is_coastal
+from hakoniwa_core.geo import distance, is_coastal, within
 from hakoniwa_core.state import OWNER_STATE, ZONE_OFFICE, Facility, IslandState, Tile
 
 FULL = 1000  # 割合の 100%
@@ -46,6 +46,16 @@ def priority_of(defs: Defs, config: GameConfig, f: Facility) -> int:
 
 def commute_radius(defs: Defs, config: GameConfig, kind: str) -> int:
     return defs.facilities[kind].get("commute_radius", config.get("labor.commute_radius"))
+
+
+def commute_labor(
+    defs: Defs, config: GameConfig, island: IslandState, kind: str, x: int, y: int
+) -> tuple[int, int]:
+    """施設 kind を (x, y) に置いたときの通勤圏の (労働者, そのうち前のターンの就業者) の数。"""
+    tiles = [island.tile(*p) for p in within(island, (x, y), commute_radius(defs, config, kind))]
+    tiles = [t for t in tiles if t.population > 0]
+    labor = sum(labor_force(defs, island, t) for t in tiles)
+    return labor, sum(min(t.ext.get("employed", 0), labor_force(defs, island, t)) for t in tiles)
 
 
 def housing_kind(config: GameConfig) -> str:
@@ -167,6 +177,26 @@ def placement_problem(
 
 def is_land(defs: Defs, terrain: str) -> bool:
     return bool(defs.terrain.get(terrain, {}).get("land"))
+
+
+def producible_goods(defs: Defs, resources: Iterable[str]) -> set[str]:
+    """地下資源 resources のある島で、施設の生産方式をつないで生産できる資源。
+
+    要る地下資源があり、原料をみな島で生産できる生産方式の産出を、増えなくなるまで足していく。
+    """
+    resources = set(resources)
+    recipes = [
+        r
+        for f in defs.facilities.values()
+        for r in f["recipes"].values()
+        if r.get("requires_resource") is None or r["requires_resource"] in resources
+    ]
+    made: set[str] = set()
+    while True:
+        more = {g for r in recipes if set(r["inputs"]) <= made for g in r["outputs"]} - made
+        if not more:
+            return made
+        made |= more
 
 
 def default_recipe(defs: Defs, kind: str) -> str | None:
