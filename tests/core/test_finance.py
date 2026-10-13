@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import copy
+from types import SimpleNamespace
 
 import pytest
 
@@ -251,12 +252,14 @@ def test_bond_default_raises_yields_and_hits_bank_capital(game, warmed):
     state = order(game, world, island, "set_bond_payment", {"stop": True})
     assert state.status == ORDER_DONE
     assert any(e.kind == "bond_default_ordered" for e in island.log)
-    # 不履行の上乗せ δ が付き、区分の利回りも同じだけ跳ね上がる（借金が減った分の上乗せは減る）
+    # 不履行の上乗せ δ が付き、区分の利回りが跳ね上がる（借金が減った分の上乗せは減り、入札で
+    # 高めに付いていた区分は式の値に戻るので、区分ごとの上がり幅はそろわない）
     premium = game.config.get("bonds.default_premium")
     assert default_premium(island, context(game, world)) > premium * 0.9
-    jump = premium * 10000 * 0.9
     after = island.economy.finance["yields"]
-    assert all(a >= b + jump for a, b in zip(after, yields_before, strict=True))
+    assert all(a > b for a, b in zip(after, yields_before, strict=True))
+    rise = (sum(after) - sum(yields_before)) / len(after)
+    assert rise >= premium * 10000 * 0.5
     after = banks.net_worth(island, game.config, bank, world.turn)
     haircut = game.config.get("bonds.haircut")
     assert after < worth - held * haircut / 2
@@ -337,6 +340,31 @@ def test_entry_waits_while_inputs_are_short():
     assert not EntryExit._inputs_short(recipe, {"iron_ore": [1500] * 2 + [0] * 4}, settings)
     assert not EntryExit._inputs_short(recipe, {"iron_ore": [500] * 6}, settings)
     assert not EntryExit._inputs_short(recipe, {}, settings)
+
+
+def test_entry_needs_spare_input_when_its_source_is_capped(game):
+    """鉱山の数の上限などで原料を増やせない島では、原料に空きがなければ工場は建たない。"""
+    ctx = SimpleNamespace(config=game.config)
+    recipe = {"inputs": {"iron_ore": 2000}, "outputs": {"steel": 1000}}
+
+    def capped(uses, wanted, expandable=False):
+        return EntryExit._inputs_capped(
+            None,
+            ctx,
+            recipe,
+            {"iron_ore": 12000},
+            {"iron_ore": uses},
+            {"iron_ore": wanted},
+            {"iron_ore": expandable},
+        )
+
+    # 今ある工場が全力で使うと、空きが新しい工場の使う量の半分に足りない
+    assert capped(11500, [8000] * 6)
+    assert not capped(8000, [8000] * 6)
+    # 買いたい量が全力の使う量より多ければ、買いたい量で見る
+    assert capped(8000, [11500] * 6)
+    # 原料を作る施設を増やせるなら建つ（品切れになれば、そちらが参入する）
+    assert not capped(11500, [8000] * 6, expandable=True)
 
 
 def test_private_entry_happens_only_where_allowed(game, warmed):

@@ -50,7 +50,14 @@ from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
 from hakoniwa_core.modules.population import layer_food_needs
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
-from hakoniwa_core.state import Facility, IslandState, LogEntry, MarketRecord, TradeRecord
+from hakoniwa_core.state import (
+    OWNER_PRIVATE,
+    Facility,
+    IslandState,
+    LogEntry,
+    MarketRecord,
+    TradeRecord,
+)
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import (
     BASIS,
@@ -460,8 +467,11 @@ class Market(IslandStage):
         return sites
 
     def _supply_sites_from_warehouse(self, island: IslandState, ctx: StageContext) -> None:
-        """国の工事は、国の倉庫にある資材を先に使う（次の1ターン分まで）。"""
+        """国の工事は、国の倉庫にある資材を先に使う（次の1ターン分まで）。民営の工事は市場で買う
+        （国の倉庫の物は、政府が売りに出したときだけ買える）。"""
         for f in self._sites(island, ctx):
+            if f.owner == OWNER_PRIVATE:
+                continue
             for good, qty in sorted(fac.step_materials(ctx.defs, f).items()):
                 want = qty - stock.total(f.stock, good)
                 if want <= 0:

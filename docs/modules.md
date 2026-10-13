@@ -9,7 +9,7 @@
 標準のモジュールは `hakoniwa_core/modules/` に、パックのモジュールは `packs/<パック>/modules/` にあります。
 どちらも `register(registry)` 関数を持つ Python のパッケージです。
 
-## 標準のモジュール（フェーズ2-1）
+## 標準のモジュール（フェーズ2-2）
 
 1ターンは `game.yaml` の `stages:` の順に、次の段を実行します。フェーズ2から、物はお金で売り買いし、
 お金はすべて帳簿（`ledger.py`）の仕訳で動きます。
@@ -23,9 +23,12 @@
 | `construction` | `construction` | 資材と人手のそろった工事を進め、終わった施設を動かし始める |
 | `payroll` | `labor` | 賃金・所得税・失業手当を払い、施設ごとの賃金を見直す |
 | `market` | `market` | 財ごとの板寄せ（施設・家計・工事・国の倉庫）、代金・運賃・消費税の支払い、傷んだ物を捨てる、希望価格と操業目標の見直し |
-| `banking` | `banking` | 預金と準備預金の利子 |
-| `bonds` | `bonds` | 国債の利払いと償還。国庫が足りなければ国債を発行し、中央銀行が直接引き受ける |
-| `accounts` | `accounts` | 決算: 損益、減価償却、法人税、配当と国庫への納付、中央銀行の納付 |
+| `banking` | `banking` | 銀行間と中央銀行への返済、融資の利払いと返済、預金の利子、運転資金の融資（審査）、預金の乗り換えと取り付け |
+| `bonds` | `bonds` | 国債の利払いと償還（不履行）。国庫が足りない分を入札で発行し、売れ残りは政策に従って中央銀行が引き受けるか支出を減らす。国債の売買の市場 |
+| `accounts` | `accounts` | 決算: 損益（国債の時価の評価を含む）、減価償却、補助金、法人税、配当と国庫への納付、中央銀行の納付 |
+| `central_bank` | `central_bank` | 政策金利（独立のとき）、銀行間の貸し借り、中央銀行の貸し出し |
+| `failures` | `failures` | 返済の遅れが続いた施設の倒産と差し押さえ、銀行の破綻と破綻処理 |
+| `entry_exit` | `firms` | 民営工場と民間銀行の参入、民営工場の撤退、差し押さえた施設の売却 |
 | `population` | `population` | 食べる、増える・減る、幸福度、島を出て行く人 |
 | `housing` | `population` | 働き口の近くに町を作り、人が増えた町を育てる（資材は市場で買う） |
 | `events` | `events` | まれな災害で施設をしばらく止める |
@@ -42,6 +45,11 @@
 | `labor` | `set_labor_policy`（失業手当・最低賃金） |
 | `accounts` | `set_accounting`（国営施設の会計の形） |
 | `market` | `set_priority`（優先度）・`warehouse_trade`（国の倉庫の売り買い）・`set_price_cap`（公共料金の上限） |
+| `banking` | `set_bank_policy`（民間銀行の参入・預金保護）・`grant_bank_license`（銀行の免許） |
+| `bonds` | `set_bond_policy`（期間の割合・売れ残りの扱い・追加の発行・直接の引き受け）・`set_bond_payment`（国債の利払いを止める） |
+| `central_bank` | `set_monetary_policy`（政策金利・国債の売買）・`set_central_bank_independence`（中央銀行の独立）・`emergency_loan`（銀行への緊急の貸し出し） |
+| `failures` | `resolve_bank`（破綻した銀行の処理） |
+| `firms` | `set_zone`（工業団地・オフィス街）・`nationalize`・`privatize`（国有化・民営化）・`set_subsidy`（補助金） |
 
 差し替えられる式は次のとおりです。
 
@@ -57,6 +65,9 @@
 | `operating_target` | `market` | 施設の操業目標（売れ行きの見込みと在庫の目安から） |
 | `consumption` | `market` | 家計の層の使う額（所得と預金から） |
 | `bond_yield` | `bonds` | 国債の利回り |
+| `loan_rate` | `banking` | 融資の金利 |
+| `policy_rate` | `central_bank` | 独立した中央銀行の政策金利 |
+| `entry_return` | `firms` | 民営工場の見込みの年の利益率 |
 
 モジュールが共通で使う道具はコアの直下にあります。
 
@@ -64,7 +75,7 @@
 |---|---|
 | `ledger.py` | お金の帳簿。お金はここの `post` と `pay` を通してだけ動く。毎ターンの4つの確かめ |
 | `market/auction.py` | 板寄せ（値幅の中で約定する量が最も多い値段を決め、有利な注文から配る） |
-| `economy/` | お金の経済の部品: 初めの値段と変動費（`prices.py`）、払えるお金の取り置き（`funds.py`）、国債（`debt.py`）、運賃の率（`freight.py`）、家計の層（`households.py`）、収支の記録（`books.py`）、物価指数（`stats.py`）、経済の始まりと移し替え（`start.py`） |
+| `economy/` | お金の経済の部品: 初めの値段と変動費（`prices.py`）、払えるお金の取り置き（`funds.py`）、国債（`debt.py`）、銀行と融資（`banks.py`）、運賃の率（`freight.py`）、家計の層（`households.py`）、収支の記録（`books.py`）、物価指数（`stats.py`）、経済の始まりと移し替え（`start.py`） |
 | `units.py` | 量・お金・率の単位と丸め（丸めはここの関数だけで行う） |
 | `allocation.py` | 限りのある物を優先順位の順に配る `by_priority` |
 | `stock.py` | 在庫（作られたターンごとの束で持ち、古い物から使う。傷む財の計算） |

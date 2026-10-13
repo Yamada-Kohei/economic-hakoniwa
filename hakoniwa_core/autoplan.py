@@ -19,6 +19,9 @@
 失業率が高い間は、同時に進める工事を1つ増やします（工事の賃金と資材の買い物が働き口になる）。
 お金の経済の島では、国の倉庫にある財のうち島の施設が仕入れに困っている物（建国のときの石炭など）を、
 毎ターン市場に売ります（建てる命令と一緒に出します）。
+民営工場が建てられる島では、島で作っていない工事の資材（機械など）も、国の工事に取っておく分を除い
+て、民営の工事が待っている量か1つの工事に要る量まで売りに出します（国の倉庫の物は、売りに出さなけれ
+ば民間は買えないので）。民営の工事が待っていなければ、OFFER_TURNS + 1 ターンに一度にします。
 建てた施設は、陸地を通る一番短い送電線で送電網につなぎます。
 
 お金の経済の島では、初めに失業手当を平均賃金の BENEFIT % にし、BUDGET_TURNS ターンごとに
@@ -44,8 +47,11 @@ from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy.prices import initial_prices, unit_cost
 from hakoniwa_core.geo import components, distance, shortest_path, within
+from hakoniwa_core.modules.firms import private_allowed
 from hakoniwa_core.state import (
     ORDER_PENDING,
+    OWNER_PRIVATE,
+    OWNER_STATE,
     ZONE_INDUSTRIAL,
     ZONE_NONE,
     IslandState,
@@ -73,6 +79,7 @@ UNDERUSED = 0.7  # 同じ物を作る施設の稼働率がこれより低い間�
 POWER_CAP = 2.0  # 電気料金が初めの値段のこの倍を超えたら、そこを公共料金の上限にする
 BENEFIT = 40  # 失業手当（平均賃金に対する %）
 SALE_TURNS = 2  # 国の倉庫から一度に売りに出す量（島の施設が使う量の何ターン分か）
+OFFER_TURNS = 5  # 民営の工事が待っていない資材は、直近このターン数に売りに出ていなければ売りに出す
 ZONE_SPARE = 3  # 空いた工業団地のマスがこれより少なければ、工業団地を足す
 ZONE_BATCH = 6  # 一度に工業団地に指定するマスの数
 # 連鎖を太くするときに、この順で数をそろえていく施設
@@ -159,18 +166,49 @@ def _warehouse_sales(island: IslandState, defs: Defs, config: GameConfig) -> lis
     reserved = _reserved_materials(island, defs)
     initial = initial_prices(defs, config, island.resources)
     orders = []
+    sold: dict[str, int] = {}
     for good, qty in sorted(need.items()):
         spare = stock.total(island.warehouse, good) - reserved.get(good, 0)
         if spare <= 0 or (good not in stuck and good not in short):
             continue
+        sold[good] = min(spare, qty * SALE_TURNS)
+    for good, qty in sorted(_private_materials(island, defs).items()):
+        spare = stock.total(island.warehouse, good) - reserved.get(good, 0) - sold.get(good, 0)
+        if spare > 0:
+            sold[good] = sold.get(good, 0) + min(spare, qty)
+    for good, qty in sorted(sold.items()):
         payload = {
             "good": good,
             "side": "sell",
-            "quantity": min(spare, qty * SALE_TURNS) / QUANTITY_SCALE,
+            "quantity": qty / QUANTITY_SCALE,
             "limit": max(island.economy.prices.get(good, 0), initial.get(good, 0)),
         }
         orders.append(("warehouse_trade", payload))
     return orders
+
+
+def _private_materials(island: IslandState, defs: Defs) -> dict[str, int]:
+    """民営工場が建てられる島で、島で作っていない工事の資材の、売りに出す量（民営の工事が待っている
+    量と、民間が建てられる施設の1つの工事に要る量の大きい方）。民営の工事が待っていない資材は、直近
+    OFFER_TURNS ターンに売りに出ていなければ出す（売りに出ていることが民間に見えれば足りるので、行政
+    力を毎ターンは使わない）。"""
+    if not any(private_allowed(defs, island, kind) for kind in defs.facilities):
+        return {}
+    made = {g for f in island.facilities if f.built for g in fac.recipe_of(defs, f)["outputs"]}
+    amounts: dict[str, int] = {}
+    for kind, fdef in sorted(defs.facilities.items()):
+        if private_allowed(defs, island, kind):
+            for good, qty in fdef["construction"].get("materials", {}).items():
+                amounts[good] = max(amounts.get(good, 0), qty)
+    waiting = _reserved_materials(island, defs, OWNER_PRIVATE)
+    for good, qty in waiting.items():
+        amounts[good] = max(amounts.get(good, 0), qty)
+    offered = island.economy.finance.get("supply", {})
+    return {
+        g: q
+        for g, q in amounts.items()
+        if g not in made and (waiting.get(g, 0) > 0 or not any(offered.get(g, [])[-OFFER_TURNS:]))
+    }
 
 
 # --- 公共事業費 -------------------------------------------------------------------
@@ -314,11 +352,14 @@ def _makeable(defs: Defs, island: IslandState, good: str, seen: frozenset[str]) 
     )
 
 
-def _reserved_materials(island: IslandState, defs: Defs) -> dict[str, int]:
-    """工事中の施設が、これから使う資材のうち手元にない量。"""
+def _reserved_materials(
+    island: IslandState, defs: Defs, owner: str = OWNER_STATE
+) -> dict[str, int]:
+    """持ち主が owner の工事中の施設が、これから使う資材のうち手元にない量（国の倉庫の資材を使える
+    のは国の工事だけ。民営の工事は市場で買う）。"""
     reserved: dict[str, int] = {}
     for f in island.facilities:
-        if not f.built:
+        if not f.built and f.owner == owner:
             construction = defs.facilities[f.kind]["construction"]
             done = f.progress / (construction["turns"] * fac.FULL)
             for good, qty in construction.get("materials", {}).items():

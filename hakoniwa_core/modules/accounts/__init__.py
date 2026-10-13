@@ -20,10 +20,11 @@
 い、税引き後の利益の firms.payout を持ち主に払います（民営は資産を持つ層への配当、国営は国庫への納
 付）。手元の資金が次のターンの支払いの見込みの firms.cash_turns ターン分を超えたら、超えた分も払いま
 す。払えるのは、手元の資金のうち支払いの見込みの firms.operating_turns ターン分を残した額までです。
-税引き後の利益が出なかったターンは払いません。銀行は、払った後も自己資本比率が規制の値以上に残る分ま
-でしか払いません。国庫直轄の施設はお金がすべて国庫のものなので、損益を帳簿に残すだけです。国営の独立
-採算の施設が firms.loss_notice_turns ターン続けて赤字なら、ログで知らせます（補助金・縮小・閉鎖はプ
-レイヤーが選ぶ）。
+税引き後の利益が出なかったターンは払いません。銀行は、払った後も自己資本が目安（「融資 ×（規制の値 +
+banking.risk_buffer）」と「預金 × banking.capital_floor」の大きい方）以上に残る分までしか払いませ
+ん。国庫直轄の施設はお金がすべて国庫のものなので、損益を帳簿に残すだけです。国営の独立採算の施設が
+firms.loss_notice_turns ターン続けて赤字なら、ログで知らせます（補助金・縮小・閉鎖はプレイヤーが選
+ぶ）。
 
 中央銀行の利益（国債と貸し出しの利子 − 準備預金の利子 ＋ 国債の評価損益）は全額を国庫に納めます。
 損失は繰り越して、後の利益で埋めてから納めます。
@@ -229,9 +230,9 @@ class Accounts(IslandStage):
         dividend = part(max(0, profit - tax), to_basis(settings["payout"]))
         if ledger.is_bank(payer.entity):
             bank = payer.entity
-            room = banks.net_worth(island, ctx.config, bank, ctx.turn) - int(
-                banks.regulatory(ctx.config) * banks.loans_of(island, bank)
-            )
+            # 自己資本の目安（規制の値に上乗せした分）を超える分からだけ払う
+            room = banks.net_worth(island, ctx.config, bank, ctx.turn)
+            room -= banks.capital_target(island, ctx.config, bank)
             if banks.is_failed(island, bank):
                 room = 0
             dividend = max(0, min(dividend, room))

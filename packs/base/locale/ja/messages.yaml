@@ -126,6 +126,7 @@ bank_opened: "({x}, {y}) に民間銀行が開業しました（資本金 {capit
 facility_bankrupt: "({x}, {y}) の{facility}が借入を返せず倒産し、銀行に差し押さえられました"
 facility_closing: "({x}, {y}) の{facility}が採算が合わず閉鎖に入りました"
 facility_closed: "({x}, {y}) の{facility}が閉鎖しました"
+private_site_abandoned: "({x}, {y}) の{facility}の工事が資材を買えず、民間が建設をやめました"
 foreclosure_sold: "差し押さえられていた ({x}, {y}) の{facility}が {price:,} で売れ、稼働を再開します"
 foreclosure_demolished: "買い手のつかなかった ({x}, {y}) の{facility}を取り壊しました"
 private_entry: "民間の資本が ({x}, {y}) に{facility}の建設を始めました（資金 {amount:,}）"

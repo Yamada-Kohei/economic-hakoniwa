@@ -6,15 +6,22 @@
 firms.foreclosure_turns ターンの間、帳簿の設備の値打ちの firms.foreclosure_price で売りに出す（買う
 のは参入する民間か、国有化する政府。参入と撤退の段）。
 
-銀行の破綻: 自己資本がマイナスになった銀行と、資金繰りが破綻した銀行（中央銀行の段）は破綻し、
-新しい融資と預金の受け入れを止める。プレイヤーは命令 resolve_bank で処理を選ぶ（行政力を使わない）。
-次のターンまでに選ばれなければ「引き継ぎ」、引き継ぐ銀行がなければ「救済」にする。
+銀行の破綻: 自己資本がマイナスになった銀行と、資金繰りが破綻した銀行（中央銀行の段）は破綻し、新しい
+融資と預金の受け入れを止める。プレイヤーは命令 resolve_bank で処理を選ぶ（行政力を使わない）。次の
+ターンまでに選ばれなければ「引き継ぎ」、引き継いでも自己資本比率が規制の値を下回らない銀行がなければ
+「救済」にする。
 
-- 救済: 政府が自己資本を規制の値まで（資金繰りの破綻なら足りない準備預金も）注入し、銀行は国営銀行と
-  して残る。
-- 引き継ぎ: 預金・融資・国債・銀行間の貸し借りを、健全な銀行のうち預金の最も多い銀行に移す。
-- 清算: 融資を額面の banking.liquidation_price で健全な銀行に売ったとして損失を数え、引き継ぎと同じ
-  く移す（安く買えた分は買った銀行の得になる）。
+返ってこないおそれの大きい融資は、破綻処理では安く見る（返済が遅れているか借り手が倒産した融資は 0、
+借り手が動いていない融資は額面の banking.liquidation_price）。
+
+- 救済: 政府が自己資本を「融資 ×（規制の値 + banking.risk_buffer）」と「預金 ×
+  banking.capital_floor」の大きい方まで（資金繰りの破綻なら足りない準備預金も）注入し、銀行は国営銀
+  行として残る（融資の少ない銀行が、次の貸し倒れですぐまた破綻しないように）。
+- 引き継ぎ: 預金・融資・国債・銀行間の貸し借りを、健全な銀行のうち預金の最も多い銀行（引き継いでも
+  自己資本比率が規制の値を下回らない銀行があれば、そのうち預金の最も多い銀行）に移す。危ない融資を
+  安く見た分は、預金保険から引き継ぐ銀行に渡る（後で貸し倒れても引き継いだ銀行が倒れないように）。
+- 清算: 融資をすべて額面の banking.liquidation_price で健全な銀行に売ったとして損失を数え、引き継ぎ
+  と同じく移す（安く買えた分は買った銀行の得になる）。
 
 引き継ぎと清算の損失（資産が負債に足りない分）は、保護されない預金（銀行ごとに上限額を超えた分）と、
 破綻した銀行に貸していた銀行の貸し出しが、同じ割合で負う（破綻が連鎖することがある）。それでも足りない
@@ -81,14 +88,23 @@ class Failures(IslandStage):
             if method is None and f.economy["failed"] >= ctx.turn:
                 continue  # このターンに破綻した: 次のターンまでプレイヤーの命令を待つ
             others = [b for b in banks.healthy_banks(island, ctx.config, ctx.turn) if b != bank]
+            able = [b for b in others if _can_absorb(island, ctx, b, bank)]
             if method in (TRANSFER, LIQUIDATION) and not others:
                 method = None
             if method is None:
-                method = TRANSFER if others else BAILOUT
+                method = TRANSFER if able else BAILOUT
             if method == BAILOUT:
                 bailout(island, ctx, bank)
             else:
-                transfer(island, ctx, bank, others[0], liquidation=method == LIQUIDATION)
+                target = (able or others)[0]
+                transfer(island, ctx, bank, target, liquidation=method == LIQUIDATION)
+
+
+def _can_absorb(island: IslandState, ctx: StageContext, target: str, bank: str) -> bool:
+    """target が bank の融資を引き継いでも、自己資本比率が規制の値を下回らないか。"""
+    worth = banks.net_worth(island, ctx.config, target, ctx.turn)
+    loans = banks.loans_of(island, target) + banks.loans_of(island, bank)
+    return loans <= 0 or worth >= banks.regulatory(ctx.config) * loans
 
 
 # --- 施設の倒産 -------------------------------------------------------------------
@@ -169,12 +185,14 @@ def _government_pays(
 
 
 def bailout(island: IslandState, ctx: StageContext, bank: str) -> None:
-    """救済: 政府が自己資本を規制の値まで注入し、国営銀行として残す。"""
+    """救済: 政府が自己資本を目安（banks.capital_target）まで注入し、国営銀行として残す
+    （返ってこないおそれの大きい融資は安く見る。banks.impaired_discount）。"""
     f = banks.facility_of(island, bank)
     assert f is not None
     config = ctx.config
     worth = banks.net_worth(island, config, bank, ctx.turn)
-    want = int(banks.regulatory(config) * banks.loans_of(island, bank)) - worth
+    worth -= banks.impaired_discount(island, config, bank)
+    want = banks.capital_target(island, config, bank) - worth
     want = max(0, want) + max(0, -banks.excess_reserves(island, config, bank))
     _cancel_equity(island, bank)
     paid = _government_pays(island, ctx, bank, want, "bank_bailout")
@@ -198,6 +216,8 @@ def transfer(
     if liquidation:
         discount = 1 - config.get("banking.liquidation_price")
         worth -= int(banks.loans_of(island, bank) * discount)
+    else:
+        worth -= banks.impaired_discount(island, config, bank)
     loss = max(0, -worth)
     depositors = banks.depositors_of(island, bank)
     uninsured = {e: v - banks.layer_deposit_insured(island, e, v) for e, v in depositors.items()}

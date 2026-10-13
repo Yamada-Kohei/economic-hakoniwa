@@ -7,11 +7,15 @@
 - 見込みの年の利益率 R（式 entry_return）に売れる見込みの割合を掛けた値が「借りる金利 +
   firms.entry_margin」を上回り、その財が直近 firms.price_turns ターンのうち firms.shortage_turns
   ターン以上品切れ（買いたい量に売りに出た量が、新しい工場の全力の産出の firms.entry_gap 倍以上足り
-  ない）か、値段が原価の firms.cost_ratio 倍を超えているとき。売れる見込みの割合は、値段が合図なら
-  1、品切れだけが合図なら直近の足りない量の平均 ÷ 全力の産出（1まで）。1つの島で1ターンに
-  firms.entries_per_turn 件まで、見込みの大きい順。原料（投入財）のどれかが島で手に入らない（作って
-  いる施設がなく、国の倉庫にもない）か、品切れ続き（数え方は産出の品切れと同じで、量は新しい工場の使う
-  量で見る）の作り方では建たない。
+  ない）か、値段が原価の firms.cost_ratio 倍を超えているとき。売れる見込みの割合は、値段が合図なら直
+  近の買いたい量の平均 ÷（今ある施設と新しい工場の全力の産出の合計）、品切れが合図なら直近の足りない
+  量の平均 ÷ 新しい工場の全力の産出（どちらも1まで。両方なら大きい方）。1つの島で1ターンに
+  firms.entries_per_turn 件まで、見込みの大きい順。原料（投入財）のどれかが島で作られていないか、工
+  事の資材のどれかが島で作られておらず直近 firms.price_turns ターンに売りに出てもいない（国の倉庫の
+  物は政府が売りに出さなければ買えない）か、原料が品切れ続き（数え方は産出の品切れと同じで、量は新し
+  い工場の使う量で見る）の作り方では建たない。原料に新しい工場の使う量の firms.entry_gap 倍の空き
+  （今ある施設の全力の産出 − 今ある施設の全力の使う量か直近の買いたい量の平均の大きい方）がなく、そ
+  の原料を作る施設も島にこれ以上建てられない（鉱山の数の上限など）ときも建たない。
 - 同じ財を作る民営工場が建設中か、動き出して firms.price_turns ターンたっていなければ、その財では参
   入しない（新しい工場が売り出した後の値段と品切れを見てから決める）。
 - 場所: 地形の合う空いた工業団地のマスのうち、通勤圏の失業者が要る人数の半分以上いて、運賃の率が最も
@@ -24,11 +28,13 @@
 - 差し押さえ中の同じ施設があれば、その売り値を建設費として新しく建てる案と比べ、良い方を選ぶ（買い取
   るときも、動き出すときの支払いを合わせて調達し、元金を据え置く）。
 
-撤退: 民営の独立採算の施設は、操業目標が0のまま firms.exit_idle_turns ターン続くか、変動費の利益が
-firms.exit_loss_turns ターン続けてマイナス（全力の売上の firms.exit_loss_margin を超える損）なら閉鎖
-に入る（economy["closing"]）。人を雇わず仕入れず、在庫を売る。在庫がなくなるか
+撤退: 民営の独立採算の施設は、動かない（稼働率0）まま firms.exit_idle_turns ターン続くか、変動費の利
+益が firms.exit_loss_turns ターン続けてマイナス（全力の売上の firms.exit_loss_margin を超える損）な
+ら閉鎖に入る（economy["closing"]）。人を雇わず仕入れず、在庫を売る。在庫がなくなるか
 firms.foreclosure_turns ターンたったら、借入を預金で返し、残りを出資者に返してマスを空ける（工業団地
-の指定は残る）。返しきれなければ倒産と同じ扱い（差し押さえ）にする。
+の指定は残る）。返しきれなければ倒産と同じ扱い（差し押さえ）にする。民営の工事が資材を買えずに
+firms.abandon_turns ターン進まなければ、工事をやめる（建設資金は預金で返し、返しきれない分は貸し倒
+れ、買ってあった資材は国の倉庫へ）。
 
 差し押さえた施設は firms.foreclosure_turns ターン売れなければ取り壊す（在庫は国の倉庫へ、預金は差し
 押さえた銀行の回収）。
@@ -177,13 +183,14 @@ class EntryExit(IslandStage):
 
     @staticmethod
     def _record_shortages(island: IslandState, ctx: StageContext) -> None:
-        """財ごとの、買いたい量に売りに出た量が足りなかった量と、買いたい量（直近
+        """財ごとの、買いたい量に売りに出た量が足りなかった量と、買いたい量と、売りに出た量（直近
         firms.price_turns ターン）。"""
         keep = ctx.config.get("firms.price_turns")
         finance = island.economy.finance
         for key, amount in (
             ("shortages", lambda m: max(0, m.demand - m.supply)),
             ("demand", lambda m: m.demand),
+            ("supply", lambda m: m.supply),
         ):
             history = finance.setdefault(key, {})
             seen = set()
@@ -208,10 +215,14 @@ class EntryExit(IslandStage):
                 or "foreclosed" in f.economy
             ):
                 continue
+            if not f.built:
+                if f.ext.get("no_materials_turns", 0) >= settings["abandon_turns"]:
+                    self._abandon(island, ctx, f)
+                continue
             if "closing" in f.economy:
                 self._finish_closing(island, ctx, f)
                 continue
-            idle = f.economy.get("idle_turns", 0) + 1 if f.economy.get("target", 1) <= 0 else 0
+            idle = f.economy.get("idle_turns", 0) + 1 if f.operating_rate <= 0 else 0
             wage = f.economy.get("wage", 0)
             prices = island.economy.prices
             profit = variable_profit(ctx.defs, ctx.config, f, prices, wage, rates.get(f.id, 0))
@@ -228,6 +239,17 @@ class EntryExit(IslandStage):
                 island.log.append(
                     LogEntry("facility_closing", {"facility": f.kind, "x": f.x, "y": f.y})
                 )
+
+    @staticmethod
+    def _abandon(island: IslandState, ctx: StageContext, f: Facility) -> None:
+        """資材が手に入らずに止まった民営の工事をやめる（建設資金は預金で返し、返しきれない分は
+        貸し倒れ。買ってあった資材は国の倉庫へ）。"""
+        remove_facility(island, ctx, f)
+        island.log.append(
+            LogEntry("private_site_abandoned", {"facility": f.kind, "x": f.x, "y": f.y})
+        )
+        stats = island.stats
+        stats["firms.abandoned"] = stats.get("firms.abandoned", 0) + 1
 
     @staticmethod
     def _finish_closing(island: IslandState, ctx: StageContext, f: Facility) -> None:
@@ -276,8 +298,11 @@ class EntryExit(IslandStage):
         shortages = island.economy.finance.get("shortages", {})
         demand = island.economy.finance.get("demand", {})
         capacity = self._capacity(island, ctx)
+        uses = self._capacity(island, ctx, "inputs")
         busy = self._pipeline(island, ctx)
         supplied = self._supplied(island, ctx)
+        on_sale = {g for g, h in island.economy.finance.get("supply", {}).items() if any(h)}
+        expandable: dict[str, bool] = {}
         candidates = []
         for kind, fdef in sorted(defs.facilities.items()):
             if not private_allowed(defs, island, kind):
@@ -289,9 +314,11 @@ class EntryExit(IslandStage):
                 if not recipe["outputs"] or busy & set(recipe["outputs"]):
                     continue
                 if set(recipe.get("inputs", {})) - supplied:
-                    continue  # 原料が島で手に入らない
+                    continue  # 原料が島で作られていない
                 if self._inputs_short(recipe, shortages, settings):
                     continue  # 原料が品切れ続きで、新しい工場は原料を買えない
+                if self._inputs_capped(island, ctx, recipe, capacity, uses, demand, expandable):
+                    continue  # 原料に空きがなく、作る施設もこれ以上建てられない
                 cost = unit_cost(defs, config, kind, recipe, prices, wage)
                 fill = self._fill(recipe, shortages, demand, capacity, prices, cost, settings)
                 if fill <= 0:
@@ -308,6 +335,9 @@ class EntryExit(IslandStage):
                 break
             if self._buy_foreclosed(island, ctx, kind, rname, prices, threshold, estimate, fill):
                 return True
+            materials = defs.facilities[kind]["construction"].get("materials", {})
+            if set(materials) - supplied - on_sale:
+                continue  # 工事の資材が島で作られておらず、売りに出てもいない
             site = self._site(island, ctx, kind, rname)
             if site is None:
                 continue
@@ -350,13 +380,14 @@ class EntryExit(IslandStage):
         return best
 
     @staticmethod
-    def _capacity(island: IslandState, ctx: StageContext) -> dict[str, int]:
-        """財ごとの、動いている施設（閉鎖中と差し押さえ中を除く）の全力の産出の合計。"""
+    def _capacity(island: IslandState, ctx: StageContext, side: str = "outputs") -> dict[str, int]:
+        """財ごとの、動いている施設（閉鎖中と差し押さえ中を除く）の全力の産出（side が "inputs" なら
+        使う量）の合計。"""
         total: dict[str, int] = {}
         for f in island.facilities:
             if not f.built or is_stopped(f):
                 continue
-            for g, qty in fac.recipe_of(ctx.defs, f).get("outputs", {}).items():
+            for g, qty in fac.recipe_of(ctx.defs, f).get(side, {}).items():
                 total[g] = total.get(g, 0) + qty
         return total
 
@@ -385,9 +416,57 @@ class EntryExit(IslandStage):
         return False
 
     @staticmethod
+    def _inputs_capped(
+        island: IslandState,
+        ctx: StageContext,
+        recipe: dict[str, Any],
+        capacity: dict[str, int],
+        uses: dict[str, int],
+        demand: dict[str, list[int]],
+        expandable: dict[str, bool],
+    ) -> bool:
+        """原料のどれかに、新しい工場の全力の使う量の firms.entry_gap 倍の空き（今ある施設の全力の産
+        出 − 今ある施設の全力の使う量か直近の買いたい量の平均の大きい方）がなく、その原料を作る施設
+        も島にこれ以上建てられないか（鉱山の数の上限など。expandable に財ごとの答えをためる）。"""
+        gap = ctx.config.get("firms.entry_gap")
+        for g, qty in recipe.get("inputs", {}).items():
+            wanted = demand.get(g, [])
+            used = max(uses.get(g, 0), sum(wanted) / len(wanted) if wanted else 0)
+            spare = capacity.get(g, 0) - used
+            if spare >= gap * qty:
+                continue
+            if g not in expandable:
+                expandable[g] = EntryExit._expandable(island, ctx, g)
+            if not expandable[g]:
+                return True
+        return False
+
+    @staticmethod
+    def _expandable(island: IslandState, ctx: StageContext, good: str) -> bool:
+        """good を作る施設を、島のどこかに新しく建てられるか（数の上限・地下資源・地形で見る。
+        工業団地の指定はプレイヤーが足せるので見ない）。"""
+        defs = ctx.defs
+        occupied = island.facilities_by_tile()
+        for kind, fdef in sorted(defs.facilities.items()):
+            limit = fdef.get("max_per_island")
+            if limit is not None and sum(1 for f in island.facilities if f.kind == kind) >= limit:
+                continue
+            for rname, recipe in sorted(fdef["recipes"].items()):
+                if good not in recipe.get("outputs", {}):
+                    continue
+                for tile in island.tiles:
+                    if (tile.x, tile.y) in occupied:
+                        continue
+                    problem = fac.placement_problem(defs, island, kind, tile.x, tile.y, rname)
+                    if problem is None or problem[0] == "reason_zone_required":
+                        return True
+        return False
+
+    @staticmethod
     def _supplied(island: IslandState, ctx: StageContext) -> set[str]:
-        """島で手に入る財: 動いている施設が作っているか、国の倉庫にある財。"""
-        goods = {g for g, batches in island.warehouse.items() if batches}
+        """島で手に入る財: 動いている施設が作っている財（国の倉庫の物は、政府が売りに出さなければ
+        市場に出ないので数えない）。"""
+        goods: set[str] = set()
         for f in island.facilities:
             if f.built and not is_stopped(f):
                 goods |= set(ctx.defs.facilities[f.kind]["recipes"][f.recipe].get("outputs", {}))

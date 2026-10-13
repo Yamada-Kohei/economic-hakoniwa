@@ -211,6 +211,49 @@ def loans_by_lender(island: IslandState, lender: str) -> list[Loan]:
     return [x for x in island.loans if x.lender == lender]
 
 
+def impaired(island: IslandState, loan: Loan) -> bool:
+    """返ってこないおそれの大きい融資: 返済が遅れているか、借り手が動いていない（閉鎖中・差し押さえ
+    中・稼働率0、工事なら資材が買えずに止まっている）。"""
+    if loan.arrears > 0:
+        return True
+    f = island.facility(int(loan.borrower.split(":")[1]))
+    if f is None or "closing" in f.economy or "foreclosed" in f.economy:
+        return True
+    if not f.built:
+        return f.ext.get("no_materials_turns", 0) > 0
+    return f.operating_rate <= 0
+
+
+def defaulting(island: IslandState, loan: Loan) -> bool:
+    """返済が遅れているか、借り手が倒産した（いない・差し押さえ中の）融資。"""
+    if loan.arrears > 0:
+        return True
+    f = island.facility(int(loan.borrower.split(":")[1]))
+    return f is None or "foreclosed" in f.economy
+
+
+def impaired_discount(island: IslandState, config: GameConfig, bank: str) -> int:
+    """銀行の、返ってこないおそれの大きい融資を安く見たときに減る額。返済が遅れている融資は
+    0 と見て（倒産すると貸し倒れになり、差し押さえた施設を売れるのは後なので）、借り手が動いて
+    いない融資は額面の banking.liquidation_price で見る。"""
+    keep = config.get("banking.liquidation_price")
+    total = 0
+    for x in loans_by_lender(island, bank):
+        if defaulting(island, x):
+            total += outstanding(island, x)
+        elif impaired(island, x):
+            total += int(outstanding(island, x) * (1 - keep))
+    return total
+
+
+def capital_target(island: IslandState, config: GameConfig, bank: str) -> int:
+    """銀行が持っておく自己資本の目安: 「融資 ×（規制の値 + banking.risk_buffer）」と「預金 ×
+    banking.capital_floor」の大きい方。配当はこれを超える分から払い、救済はここまで注入する。"""
+    ratio = regulatory(config) + config.get("banking.risk_buffer")
+    floor = config.get("banking.capital_floor") * deposits_of(island, bank)
+    return int(max(ratio * loans_of(island, bank), floor))
+
+
 def debt_of(island: IslandState, borrower: str) -> int:
     """借り手の借入の合計。"""
     return sum(outstanding(island, x) for x in loans_by_borrower(island, borrower))

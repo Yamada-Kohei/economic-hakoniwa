@@ -14,10 +14,11 @@ from pathlib import Path
 
 import pytest
 
+from hakoniwa_core import ledger
 from hakoniwa_core.autoplan import plan_turn, queue_orders
-from hakoniwa_core.economy import banks
+from hakoniwa_core.economy import OWNERS, banks, household
 from hakoniwa_core.game import load_game
-from hakoniwa_core.state import WorldState
+from hakoniwa_core.state import OrderState, WorldState
 from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.state.serialize import world_from_dict
 
@@ -100,20 +101,30 @@ def control(game, base):
 
 
 def test_printing_money_raises_prices(game, base, control):
+    """国の支出を中央銀行の直接引き受けで賄うと、物価が上がる。
+
+    支出は減税と失業手当にする（お金がそのまま家計に渡る）。公共事業費を増やすと、国の工場が増えて
+    物が多く作られるので、物価は下がることもある。失業が多い島では、物価より先に生産が増えることも
+    ある（報告書 phase2/2-2-report.md）。
+    """
     world = only(base, "market")
-    island = next(iter(world.islands.values()))
-    budget = island.policy.budget["construction"]
 
     def printing(island):
-        # 公共事業費を4倍にし、足りない分を毎ターン中央銀行に直接引き受けさせる
-        orders = [("set_budget", {"construction": budget * 4})] if world.turn == START else []
+        orders = []
+        if world.turn == START:
+            orders += [
+                ("set_taxes", {"income_tax": 0, "consumption_tax": 0}),
+                ("set_labor_policy", {"unemployment_benefit": 100}),
+            ]
         gdp = island.stats.get("gdp", 0)
         return orders + [
             ("set_bond_policy", {"underwrite": int(gdp), "underwrite_term": "bond_1y"})
         ]
 
-    rows = history(game, world, AFTER, extra=printing, skip=("set_budget",))
-    assert rows[-1]["cpi"] > control[-1]["cpi"] * 1.1
+    skip = ("set_budget", "set_taxes", "set_labor_policy")
+    rows = history(game, world, AFTER, extra=printing, skip=skip)
+    # 物価は上下に揺れるので、最後の 60 ターンの平均で比べる
+    assert mean(rows[-60:], "cpi") > mean(control[-60:], "cpi") * 1.2
     assert max(p for r in rows for p in r["prices"].values()) < 10**12  # 桁あふれしない
 
 
@@ -156,30 +167,34 @@ def test_rate_hike_raises_deposit_and_lending_rates(game, base, control):
 
 @pytest.mark.parametrize("method", ["bailout", "transfer", "liquidation"])
 def test_bank_failure_is_resolved_without_cascade(game, base, method):
+    """融資の2割を貸し倒れにする。それで債務超過にならない（融資の少ない）銀行は、配当の払い
+    すぎで預金の5%の穴を開けて、必ず破綻させる。"""
     world = only(base, "mixed")  # 銀行が2つある島
     island = next(iter(world.islands.values()))
     bank = max(banks.active_banks(island), key=lambda b: banks.loans_of(island, b))
-    loans = sorted(banks.loans_by_lender(island, bank), key=lambda x: x.id)
-    for loan in loans:  # 融資の2割を貸し倒れにし、債務超過にならなければ残りも
+    for loan in sorted(banks.loans_by_lender(island, bank), key=lambda x: x.id):
         banks.write_off(island, loan, banks.outstanding(island, loan) // 5)
-    for loan in loans:
-        if banks.net_worth(island, game.config, bank, world.turn) < 0:
-            break
-        banks.write_off(island, loan, banks.outstanding(island, loan))
     banks.drop_settled(island)
+    hole = banks.net_worth(island, game.config, bank, world.turn)
+    hole += banks.deposits_of(island, bank) // 20
+    ledger.pay(island, bank, household(OWNERS), max(0, hole), "dividend")
     f = banks.facility_of(island, bank)
-
-    def resolve(island):
-        if any(e.kind.startswith("bank_failed") for e in island.log):
-            return [("resolve_bank", {"x": f.x, "y": f.y, "method": method})]
-        return []
 
     deposits = []
 
     def keep(island):
         deposits.append(sum(banks.deposits_of(island, b) for b in banks.bank_list(island)))
+        if any(e.kind.startswith("bank_failed") for e in island.log):
+            # 標準の計画の命令に行政力を使い切られないように、命令の列の先頭に置く
+            order = OrderState(
+                id=max((o.id for o in island.orders), default=0) + 1,
+                seq=0,
+                kind="resolve_bank",
+                payload={"x": f.x, "y": f.y, "method": method},
+            )
+            island.orders.insert(0, order)
 
-    rows = history(game, world, AFTER, extra=resolve, each=keep)
+    rows = history(game, world, AFTER, each=keep)
     logs = [[kind for kind in r["log"]] for r in rows]
     failed = [i for i, kinds in enumerate(logs) if any(k.startswith("bank_failed") for k in kinds)]
     done = {
