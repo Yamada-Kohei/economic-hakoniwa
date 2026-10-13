@@ -67,3 +67,4 @@ sprites:
   facility/government_office: {file: sprites/facility/government_office.png, scale: 0.5}
   facility/bank: {file: sprites/facility/bank.png, scale: 0.5}
   capital/government_office: {file: sprites/capital/government_office.png, scale: 0.5}
+  construction: {file: sprites/construction.png, scale: 0.5}
