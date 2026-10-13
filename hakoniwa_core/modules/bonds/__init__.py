@@ -3,8 +3,11 @@
 1. 今のターンの利払いと償還に国庫が足りなければ、足りない分を先に発行する（借り換え）。
 2. 持ち手ごとに利子を払い、満期の銘柄は額面を返して消す。
 3. 「このターンの国債以外の政府の支出（次のターンの見込み）× (1 + bonds.buffer_turns)
-   ＋ 次のターンの利払いと償還 − 国庫の残高」がプラスなら、その額を自動で発行する。期間は政策の割合
+   ＋ 次のターンの利払い − 国庫の残高」がプラスなら、その額を自動で発行する。期間は政策の割合
    （policy.bond_terms、既定は bonds.auto_terms）で分ける。
+
+満期の償還の額面は、前のターンに発行して国庫に置いておかず、償還のターンに 1. で借り換える
+（前のターンに発行すると、国債の残高と国庫が1ターンだけ償還の額ずつ膨らんで見える）。
 
 利率は名前付きの式 bond_yield で決め、中央銀行が額面で引き受けます。入札・売れ残りの扱い・
 債務不履行・売買の市場はフェーズ2-2 で足します。
@@ -47,11 +50,11 @@ class Bonds(IslandStage):
         payer = Payer(ledger.GOV, BONDS)
         short = debt.due(island, ctx.turn) - funds.available(island, payer)
         if short > 0:
-            self._issue(island, ctx, short)
+            self._issue(island, ctx, short, "bonds_refinanced")
         self._pay(island, ctx, payer)
         spending = sum(v for k, v in funds.spent(island).items() if k != BONDS)
         buffer = ctx.config.get("bonds.buffer_turns")
-        need = spending * (1 + buffer) + debt.due_next(island, ctx.turn)
+        need = spending * (1 + buffer) + debt.due(island, ctx.turn + 1, redemptions=False)
         need -= ledger.money(island, ledger.GOV)
         if need > 0:
             self._issue(island, ctx, need)
@@ -71,8 +74,11 @@ class Bonds(IslandStage):
         island.bonds = [b for b in island.bonds if debt.outstanding(island, b) > 0]
 
     @staticmethod
-    def _issue(island: IslandState, ctx: StageContext, amount: int) -> None:
-        """amount を、自動の発行の期間の割合で分けて発行する（端数は最後の期間に足す）。"""
+    def _issue(
+        island: IslandState, ctx: StageContext, amount: int, kind: str = "bonds_issued"
+    ) -> None:
+        """amount を、自動の発行の期間の割合で分けて発行する（端数は最後の期間に足す）。
+        kind はログの種類（借り換えは bonds_refinanced）。"""
         terms = ctx.defs.bond_terms()
         shares = sorted(island.policy.bond_terms.items()) or [
             (name, to_basis(share)) for name, share in ctx.config.get("bonds.auto_terms").items()
@@ -86,10 +92,7 @@ class Bonds(IslandStage):
             bond = debt.underwrite(island, face, terms[name]["turns"], rate, ctx.turn)
             if bond is not None:
                 island.log.append(
-                    LogEntry(
-                        "bonds_issued",
-                        {"amount": face, "term": name, "rate": rate * 100 / BASIS},
-                    )
+                    LogEntry(kind, {"amount": face, "term": name, "rate": rate * 100 / BASIS})
                 )
 
 

@@ -46,19 +46,14 @@ def interest_due(island: IslandState, bond: Bond, turn: int) -> dict[str, int]:
     return out
 
 
-def due(island: IslandState, turn: int) -> int:
-    """ターン turn の利払いと償還の合計。"""
+def due(island: IslandState, turn: int, redemptions: bool = True) -> int:
+    """ターン turn の利払いと償還の合計（今の持ち手のまま）。redemptions が偽なら利払いだけ。"""
     total = 0
     for bond in island.bonds:
         total += sum(interest_due(island, bond, turn).values())
-        if turn >= bond.maturity:
+        if redemptions and turn >= bond.maturity:
             total += outstanding(island, bond)
     return total
-
-
-def due_next(island: IslandState, turn: int) -> int:
-    """次のターン（turn + 1）の利払いと償還の見込み（今の持ち手のまま）。"""
-    return due(island, turn + 1)
 
 
 def issue_bond(island: IslandState, face: int, term: int, rate: int, turn: int) -> Bond:

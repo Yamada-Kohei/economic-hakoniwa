@@ -188,6 +188,8 @@ def status_text(f: Facility) -> str:
         if f.ext.get("waiting"):  # 資材が足りない（市場に売りに出ていない、お金が足りないなど）
             key = "funds" if f.ext.get("short_funds") else "materials"
             return message(f"status_construction_{key}", goods=f.ext["waiting"])
+        if f.ext.get("short_wages"):  # 公共事業費が足りず、作業員を雇いきれない
+            return message("status_construction_wages")
         if f.ext.get("no_workers_turns"):
             return message("status_construction_no_workers")
         return message("status_construction")

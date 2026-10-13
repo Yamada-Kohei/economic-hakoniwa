@@ -134,7 +134,8 @@ class Construction(IslandStage):
 
     @staticmethod
     def _watch_workers(island: IslandState, f: Facility, stalled: bool) -> None:
-        """資材があるのに通勤圏から1人も雇えない工事を数え、続いたらログで知らせる。"""
+        """資材があるのに1人も雇えない工事を数え、続いたらログで知らせる。雇用の段で公共事業費が
+        足りずに作業員を雇いきれなかった工事（ext["short_wages"]）は、そのわけで知らせる。"""
         if not stalled or f.workers > 0:
             f.ext.pop("no_workers_turns", None)
             return
@@ -142,7 +143,8 @@ class Construction(IslandStage):
         f.ext["no_workers_turns"] = turns
         if turns == NO_WORKERS_TURNS:
             args = {"facility": f.kind, "x": f.x, "y": f.y}
-            island.log.append(LogEntry("construction_no_workers", args))
+            why = "wages" if f.ext.get("short_wages") else "workers"
+            island.log.append(LogEntry(f"construction_no_{why}", args))
 
     @staticmethod
     def _watch_materials(island: IslandState, f: Facility, defs: Defs, materials: int) -> None:
@@ -173,7 +175,9 @@ class Construction(IslandStage):
         f.built = True
         f.workers = 0
         f.status = fac.STATUS_STARTING
-        for key in ("waiting", "short_funds", "no_materials_turns", "no_workers_turns"):
+        for key in ("waiting", "short_funds", "short_wages"):
+            f.ext.pop(key, None)
+        for key in ("no_materials_turns", "no_workers_turns"):
             f.ext.pop(key, None)
         stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
         island.log.append(LogEntry("construction_done", {"facility": f.kind, "x": f.x, "y": f.y}))

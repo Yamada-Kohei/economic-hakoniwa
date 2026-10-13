@@ -330,6 +330,58 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
     return max(target - limit, min(target + limit, plan))
 
 
+# --- 工事の資材の代金の取り置き ------------------------------------------------------
+
+SITE_HOLDS = "site_holds"  # island.scratch: 雇用の段で取り置いた資材の代金の (支払い手, 額)
+
+
+class SiteFunds:
+    """工事が市場で資材に払う額の見込み。雇用の段で、優先度の高い工事から順に作業員の賃金と
+    一緒に取り置く（優先度の低い工事が賃金で公共事業費を使い切り、優先度の高い工事が資材を
+    買えなくならないように）。取り置いた分は、市場の段で工事の注文を出す前に戻す（_site_orders）。
+
+    市場の段では、工事は国の倉庫の資材を先に使い、足りない分を値幅の上端の指値で買う。雇用の段
+    ではまだ売りの注文がないので、手元の資材と雇う人手で進んだ後に要る次の1ターン分を、国の倉庫の
+    在庫と前のターンに売りに出ていた量（どちらも見積もった工事の順に割り当てる）までで見積もる。
+    """
+
+    def __init__(self, island: IslandState, ctx: StageContext) -> None:
+        self.island, self.ctx = island, ctx
+        self.warehouse = stock.totals(island.warehouse)
+        self.supply: dict[str, int] = {}  # 前のターンに施設が売りに出した量（生産の段で消す前）
+        for f in island.facilities:
+            for good, entry in f.economy.get("sales", {}).items():
+                self.supply[good] = self.supply.get(good, 0) + entry[0]
+        self.rates: dict[int, int] | None = None
+
+    def cost(self, f: Facility, workers: int) -> int:
+        """工事 f が workers 人で進んだ後、市場で資材に払う額の見込み（運賃を含む）。"""
+        defs, config = self.ctx.defs, self.ctx.config
+        cdef = defs.facilities[f.kind]["construction"]
+        total = cdef["turns"] * fac.FULL
+        rate = min(fac.ratio(workers, cdef.get("labor", 0)), fac.material_ratio(defs, f))
+        after = min(f.progress + rate, total)
+        width = to_basis(config.get("market.band"))
+        amount = 0
+        for good, need in sorted(fac.step_materials(defs, f, after).items()):
+            qty = cdef["materials"][good]
+            used = qty * after // total - qty * f.progress // total
+            want = need - (stock.total(f.stock, good) - used)
+            free = max(0, min(want, self.warehouse.get(good, 0)))
+            if free:
+                self.warehouse[good] -= free
+            buy = min(want - free, self.supply.get(good, 0))
+            if buy <= 0:
+                continue
+            self.supply[good] -= buy
+            if self.rates is None:
+                sites = [s for s in self.island.facilities if not s.built]
+                self.rates = freight_rates.rates_of(self.island, defs, config, sites)
+            _, high = auction.band(self.island.economy.prices.get(good, 1), width)
+            amount += gross_cost(high, buy, self.rates.get(f.id, 0), 0)
+        return amount
+
+
 # --- 段 -------------------------------------------------------------------------
 
 
@@ -541,11 +593,14 @@ class Market(IslandStage):
         offered: dict[str, int],
     ) -> None:
         """工事の資材の注文（指値は値幅の上端）。公共事業費は優先度の高い工事から取り置く。
+        雇用の段で取り置いておいた資材の代金（SiteFunds）は、ここで戻してから注文する。
 
         お金が足りずに要る分を注文できなかった工事は、ext["short_funds"] に残す（施設の状態に、
         資材を待っているわけとして出す）。
         """
         defs, config = ctx.defs, ctx.config
+        for payer, amount in island.scratch.pop(SITE_HOLDS, []):
+            funds.release(island, payer, amount)
         width = to_basis(config.get("market.band"))
         wanted = island.scratch.setdefault("wanted", {})  # 売りに出ていなくて買えなかった量
         for f in self._sites(island, ctx):
