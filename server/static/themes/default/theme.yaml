@@ -57,3 +57,10 @@ sprites:
   facility/quarry: {file: sprites/facility/quarry.png, scale: 0.5}
   facility/mine: {file: sprites/facility/mine.png, scale: 0.5}
   facility/fishing_port: {file: sprites/facility/fishing_port.png, scale: 0.5}
+  facility/steel_mill: {file: sprites/facility/steel_mill.png, scale: 0.5}
+  facility/building_materials_plant: {file: sprites/facility/building_materials_plant.png, scale: 0.5}
+  facility/machinery_plant: {file: sprites/facility/machinery_plant.png, scale: 0.5}
+  facility/food_factory: {file: sprites/facility/food_factory.png, scale: 0.5}
+  facility/consumer_goods_factory: {file: sprites/facility/consumer_goods_factory.png, scale: 0.5}
+  facility/thermal_power_plant: {file: sprites/facility/thermal_power_plant.png, scale: 0.5}
+  facility/hydro_power_plant: {file: sprites/facility/hydro_power_plant.png, scale: 0.5}
