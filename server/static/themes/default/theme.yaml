@@ -35,3 +35,11 @@ power_line: "#333333"     # 送電線
 no_development: "rgba(255, 255, 255, 0.45)"  # 開発を止めたマスの斜線
 office: "rgba(90, 120, 200, 0.35)"           # オフィス街のマス
 industrial: "rgba(230, 140, 40, 0.45)"       # 工業団地のマス
+# 絵（スプライト）。名前 → このフォルダからのファイル名。ここにないものは上の色で描きます。
+# 名前は terrain/<地形>、facility/<施設の sprite>、housing/<住宅地の段階>、capital/<施設の sprite>（首都の建物）、
+# construction（工事中）。大きさ・基準点などの決まりは docs/map-art.md を見てください。
+# 例: terrain/plain: sprites/terrain/plain.svg
+#     facility/steel_mill: {file: sprites/facility/steel_mill.svg, anchor: [32, 80]}
+#     facility/bank: {file: sprites/facility/bank.png, scale: 0.5}   # 2倍の大きさで描いた PNG
+sprite_scale: 1         # 画像の 1 ピクセルを何ピクセルとして描くか（項目の scale がなければこれ）
+sprites: {}

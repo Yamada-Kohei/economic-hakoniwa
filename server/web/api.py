@@ -12,6 +12,7 @@ from django.conf import settings
 from django.db import transaction
 from django.http import Http404, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404
+from django.templatetags.static import static
 from django.views.decorators.http import require_GET, require_http_methods
 
 from hakoniwa_core import facilities as fac
@@ -121,6 +122,7 @@ def _facility_def(fid: str, f: Any) -> dict[str, Any]:
         "workers": f["workers"],
         "priority": f.get("priority"),
         "sprite": f.get("sprite", fid),
+        "tileless": f.get("tileless", False),
         "construction": {
             "turns": construction["turns"],
             "labor": construction.get("labor", 0),
@@ -142,7 +144,9 @@ def _facility_def(fid: str, f: Any) -> dict[str, Any]:
 def _theme(name: str) -> dict:
     path = settings.BASE_DIR / "server" / "static" / "themes" / name / "theme.yaml"
     with path.open(encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
+        data = yaml.safe_load(fh)
+    data["base"] = static(f"themes/{name}/")  # 絵（sprites）のファイル名はここからの相対
+    return data
 
 
 # --- 島 ---------------------------------------------------------------------
