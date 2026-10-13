@@ -954,7 +954,12 @@ class Market(IslandStage):
         books_by_good: dict[str, Book],
         results: dict[str, auction.Result],
     ) -> None:
-        """施設の売りの希望価格を見直す（買いの指値は注文のときに値幅と採算で決める。_bid）。"""
+        """施設の売りの希望価格を見直す（買いの指値は注文のときに値幅と採算で決める。_bid）。
+
+        値上げは、買えなかった買い手の一番高い指値まで（それより高く出すと誰も買わず、そのターンは
+        1つも売れないまま次のターンに値下げし直すことになる。家計は消費財をいつもの値段の
+        1.05 倍までしか買わない）。
+        """
         update = ctx.formula("price_update")
         width = to_basis(ctx.config.get("market.band"))
         rates = freight_rates.facility_rates(island, ctx.defs, ctx.config)
@@ -962,6 +967,12 @@ class Market(IslandStage):
             result = results[good]
             book = books_by_good[good]
             shortage = result.unfilled_demand / result.demand if result.demand else 0.0
+            unfilled = [
+                auction.buy_limit(order, result.high)
+                for i, (order, _) in enumerate(book.buys)
+                if result.bought[i] < order.quantity
+            ]
+            ceiling = max(unfilled) if unfilled else None
             low, high = auction.band(island.economy.prices.get(good, 1), width)
             # 売りに出した量、売れた量、希望価格が約定価格より高くて売れなかった量。持ち越せずに
             # 指値なしで出した分は、どれにも数えない（捨て値で売れるのを当てにして作り続けず、傷み
@@ -983,8 +994,11 @@ class Market(IslandStage):
                 asks = f.economy.setdefault("ask", {})
                 before = asks.get(good, result.price)
                 ask = update(before, offered, done, shortage, ctx)
-                ask = max(low, min(high, ask))
                 rate = rates.get(f.id, 0)
+                if ceiling is not None and ask > before:
+                    # 板寄せに出す指値（運賃を足した値段）が、買えなかった買い手の指値を超えない
+                    ask = min(ask, max(before, ceiling * (BASIS - rate) // BASIS))
+                ask = max(low, min(high, ask))
                 wage = f.economy.get("wage", 0)
                 floor = unit_floor(ctx.defs, ctx.config, f, good, island.economy.prices, wage, rate)
                 asks[good] = max(ask, floor)

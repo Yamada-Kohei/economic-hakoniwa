@@ -562,6 +562,26 @@ def test_sites_are_funded_by_priority_and_show_why_they_wait(game):
     ) == ("建設中（公共事業費が足りず、資材の建材を買えません）")
 
 
+def test_seller_raises_only_up_to_the_best_unfilled_bid(game):
+    """品不足でも、売り手の希望価格は買えなかった買い手の一番高い指値まで上げる（家計は消費財を
+    いつもの値段の 1.05 倍までしか買わないので、それを超えて1つも売れないターンを作らない）。"""
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    factory = add(island, "consumer_goods_factory", 6, 7)
+    with_economy(game, island)
+    island.economy.households[GENERAL]["income"] = [10_000_000] * 3
+    usual = island.economy.prices["consumer_goods"]
+    island.economy.price_history["consumer_goods"] = [usual] * 12
+    volumes = []
+    for _ in range(6):
+        stock.add(factory.stock, "consumer_goods", 2000, 0, game.defs.goods)
+        run(game, island, ["market"])
+        record = next(m for m in island.markets if m.good == "consumer_goods")
+        assert record.demand > record.supply  # 品不足
+        volumes.append(record.volume)
+    assert all(v > 0 for v in volumes)
+
+
 def test_no_dividend_in_a_loss_turn(game):
     """売れずに止まって支払いの見込みが小さい施設でも、赤字のターンは手元の資金を持ち主に払わない。"""
     island = make_island(game)
