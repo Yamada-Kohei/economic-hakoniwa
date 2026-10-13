@@ -29,6 +29,7 @@ from hakoniwa_core.economy import (
     freight,
     funds,
     is_bank,
+    is_private_site,
     is_self_supporting,
     owner_entity,
 )
@@ -102,9 +103,9 @@ def demolish(island: IslandState, payload: dict[str, Any], ctx: StageContext) ->
 
 
 def close_accounts(island: IslandState, f: Facility) -> None:
-    """独立採算の施設の借入を預金で返し（返しきれない分は貸し倒れ）、残りの預金を持ち主に返して、
-    出資を消す。"""
-    if not island.has_economy or not is_self_supporting(f):
+    """独立採算の施設と民営の工事の借入を預金で返し（返しきれない分は貸し倒れ）、残りの預金を持ち主
+    に返して、出資を消す。"""
+    if not island.has_economy or not (is_self_supporting(f) or is_private_site(f)):
         return
     entity = facility_entity(f.id)
     owner = owner_entity(f)

@@ -249,21 +249,29 @@ def test_power_outage_moves_price_within_band_and_recovers(game, base, control):
     island = next(iter(world.islands.values()))
     power = game.config.get("power.good")
     halt = 6
-    plants = [
-        f
-        for f in island.facilities
-        if f.built and power in game.defs.facilities[f.kind]["recipes"][f.recipe]["outputs"]
-    ]
-    # 一番大きな発電所を止める（全部止めると売り手がいなくなり、値段は付かずに前の値のまま）
+
+    def plants():
+        return [
+            f
+            for f in island.facilities
+            if f.built and power in game.defs.facilities[f.kind]["recipes"][f.recipe]["outputs"]
+        ]
+
+    # 発電所が2つ以上できるまで回す（全部止めると売り手がいなくなり、値段は付かずに前の値のまま）
+    for _ in range(START):
+        if len(plants()) > 1:
+            break
+        drive(game, world, 1)
+    assert len(plants()) > 1
+    # 一番大きな発電所を止める
     biggest = max(
-        plants, key=lambda f: game.defs.facilities[f.kind]["recipes"][f.recipe]["outputs"][power]
+        plants(), key=lambda f: game.defs.facilities[f.kind]["recipes"][f.recipe]["outputs"][power]
     )
     biggest.ext["halted_until"] = world.turn + halt
-    assert len(plants) > 1
+    before = island.economy.prices[power]
     rows = history(game, world, AFTER, skip=("set_budget",))
     band = game.config.get("market.band")
     prices = [r["prices"].get(power) for r in rows]
-    before = base.islands[island.id].economy.prices[power]
     for previous, price in zip([before, *prices], prices, strict=False):
         if previous and price:
             assert price <= previous * (1 + band) + 1  # 値幅の上端で止まる

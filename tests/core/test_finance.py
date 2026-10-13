@@ -12,18 +12,22 @@ import pytest
 
 from hakoniwa_core import ledger
 from hakoniwa_core.autoplan import plan_turn, queue_orders
-from hakoniwa_core.economy import OWNERS, banks, facility_entity, household
+from hakoniwa_core.economy import OWNERS, Payer, banks, facility_entity, funds, household
+from hakoniwa_core.economy.start import invest
 from hakoniwa_core.game import load_game
 from hakoniwa_core.modules import failures
+from hakoniwa_core.modules.banking import Banking
 from hakoniwa_core.modules.bonds import default_premium
 from hakoniwa_core.modules.firms import EntryExit
 from hakoniwa_core.orders import check_order
 from hakoniwa_core.state import (
+    ACCOUNTING_SELF,
     ORDER_DONE,
     ORDER_FAILED,
     OWNER_PRIVATE,
     OWNER_STATE,
     ZONE_INDUSTRIAL,
+    Facility,
     OrderState,
 )
 from hakoniwa_core.state.generate import generate_world
@@ -112,6 +116,47 @@ def test_working_loans_merge_per_lender_and_borrower(game, warmed):
     books_ok(game, island)
 
 
+def _unexposed_private(island, bank):
+    """bank から借りていない、できあがった民営施設の名前（勘定の持ち主）。"""
+    return next(
+        facility_entity(f.id)
+        for f in island.facilities
+        if f.owner == OWNER_PRIVATE
+        and f.built
+        and banks.exposure(island, bank, facility_entity(f.id)) == 0
+    )
+
+
+def test_large_exposure_keeps_but_does_not_grow_a_loan_over_the_limit(game, warmed):
+    """大口融資の規制: 上限を超えた残高は、返す元金の分を借り換えて保てるが、増やせない。"""
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    bank = banks.active_banks(island)[0]
+    borrower = _unexposed_private(island, bank)
+    limit = banks.exposure_limit(island, game.config, bank, world.turn)
+    assert limit > 0
+    assert banks.exposure_room(island, game.config, bank, borrower, world.turn) == limit
+    banks.lend(island, bank, borrower, limit, banks.WORKING, 6, world.turn, 500)
+    assert banks.exposure_room(island, game.config, bank, borrower, world.turn) == 0
+    assert banks.exposure_room(island, game.config, bank, borrower, world.turn, due=700) == 700
+
+
+def test_large_exposure_applies_to_private_facilities_only(game, warmed):
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "mixed")
+    ctx = context(game, world)
+    bank = banks.active_banks(island)[0]
+    lent = {b: [0, 0] for b in banks.bank_list(island)}
+    huge = 10**12
+    capital = banks.capital_room(island, game.config, bank, ctx.turn)
+    private = island.facility(int(_unexposed_private(island, bank).split(":")[1]))
+    state = next(f for f in island.facilities if f.owner == OWNER_STATE and f.built)
+    room = banks.exposure_room(island, game.config, bank, facility_entity(private.id), ctx.turn)
+    assert 0 < room < capital
+    assert Banking._room(island, ctx, private, bank, huge, lent, 0) == room
+    assert Banking._room(island, ctx, state, bank, huge, lent, 0) == capital
+
+
 def test_construction_loans_wait_for_grace(game):
     world = generate_world(1, 3, game.config, game.defs)
     grace = game.config.get("loans.grace_turns")
@@ -184,6 +229,9 @@ def _break_bank(game, world, island):
             break
         banks.write_off(island, loan, banks.outstanding(island, loan))
     banks.drop_settled(island)
+    worth = banks.net_worth(island, game.config, bank, world.turn)
+    if worth >= 0:  # 融資が自己資本より少ない銀行は、配当の払いすぎで債務超過にする
+        ledger.pay(island, bank, household(OWNERS), worth + 1000, "dividend")
     assert banks.net_worth(island, game.config, bank, world.turn) < 0
     return bank
 
@@ -367,6 +415,28 @@ def test_entry_needs_spare_input_when_its_source_is_capped(game):
     assert not capped(11500, [8000] * 6, expandable=True)
 
 
+def test_construction_loan_is_split_across_banks_within_the_limit(game, warmed):
+    """建設資金は、金利の低い銀行から大口融資の規制の残りまで借り、借りきれない分は資産を持つ層が
+    多く出資する。出資しきれなければ建たない。"""
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "mixed")  # 銀行が2つある島
+    ctx = context(game, world)
+    config = game.config
+    active = banks.active_banks(island)
+    assert len(active) >= 2
+    limits = {b: banks.exposure_limit(island, config, b, ctx.turn) for b in active}
+    owners = funds.available(island, Payer(household(OWNERS)))
+    amount = sum(limits.values()) * 2
+    assert amount - sum(limits.values()) <= owners  # 試験の前提: 資産を持つ層が残りを出せる
+    plan = EntryExit()._finance(island, ctx, amount, 10**12)
+    assert plan is not None and len(plan) == len(active)
+    for bank, loan, _ in plan:
+        assert 0 < loan <= limits[bank]
+    loan = sum(x for _, x, _ in plan)
+    assert amount - loan >= amount * config.get("firms.equity_share")
+    assert EntryExit()._finance(island, ctx, (owners + loan) * 2, 10**12) is None
+
+
 def test_private_entry_happens_only_where_allowed(game, warmed):
     entered = {i.regime["economy"]: 0 for i in warmed.islands.values()}
     world = copy.deepcopy(warmed)
@@ -378,6 +448,46 @@ def test_private_entry_happens_only_where_allowed(game, warmed):
             )
     assert entered["planned"] == 0
     assert entered["market"] + entered["mixed"] > 0
+
+
+def test_private_site_without_materials_is_abandoned(game, warmed):
+    """資材を買えずに firms.abandon_turns ターン進まない民営の工事はやめ、建設資金を預金で返して、
+    残りを出資者に返す。"""
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    ctx = context(game, world)
+    open_books(island)
+    occupied = island.facilities_by_tile()
+    tile = next(
+        t
+        for t in island.tiles
+        if t.terrain == "plain" and (t.x, t.y) not in occupied and not t.population
+    )
+    kind = "consumer_goods_factory"
+    site = Facility(
+        id=island.next_facility_id(),
+        kind=kind,
+        x=tile.x,
+        y=tile.y,
+        recipe=next(iter(game.defs.facilities[kind]["recipes"])),
+        owner=OWNER_PRIVATE,
+        accounting=ACCOUNTING_SELF,
+        economy={"capital": 0},
+        ext={"private_entry": True, "no_materials_turns": game.config.get("firms.abandon_turns")},
+    )
+    island.facilities.append(site)
+    entity = facility_entity(site.id)
+    invest(island, household(OWNERS), entity, 3000)
+    bank = banks.active_banks(island)[0]
+    banks.lend(island, bank, entity, 7000, banks.CONSTRUCTION, 120, ctx.turn, 500, 10**9)
+    owners = ledger.money(island, household(OWNERS))
+    EntryExit()._exits(island, ctx)
+    assert site not in island.facilities
+    assert any(e.kind == "private_site_abandoned" for e in island.log)
+    assert banks.loans_by_borrower(island, entity) == []
+    assert ledger.money(island, entity) == 0
+    assert ledger.money(island, household(OWNERS)) >= owners + 3000
+    books_ok(game, island)
 
 
 def test_closed_facility_leaves_power_line(game, warmed):

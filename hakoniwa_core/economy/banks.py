@@ -254,6 +254,35 @@ def capital_target(island: IslandState, config: GameConfig, bank: str) -> int:
     return int(max(ratio * loans_of(island, bank), floor))
 
 
+def exposure(island: IslandState, bank: str, borrower: str) -> int:
+    """銀行 bank から borrower への融資の残高の合計。"""
+    return sum(
+        outstanding(island, x) for x in island.loans if x.lender == bank and x.borrower == borrower
+    )
+
+
+def exposure_limit(island: IslandState, config: GameConfig, bank: str, turn: int) -> int:
+    """大口融資の規制: 1つの借り手への融資の残高の上限（自己資本 × banking.large_exposure）。"""
+    worth = max(0, net_worth(island, config, bank, turn))
+    return int(worth * config.get("banking.large_exposure"))
+
+
+def exposure_room(
+    island: IslandState, config: GameConfig, bank: str, borrower: str, turn: int, due: int = 0
+) -> int:
+    """大口融資の規制で、bank が borrower に新しく貸せる額。このターンに返す元金 due の分は借り換え
+    られる。自己資本が減って上限を超えた残高も、借り換えて保つことはできる（増やせない）。"""
+    held = exposure(island, bank, borrower)
+    limit = max(exposure_limit(island, config, bank, turn), held)
+    return max(0, limit - held + due)
+
+
+def capital_room(island: IslandState, config: GameConfig, bank: str, turn: int) -> int:
+    """自己資本比率の規制で、bank が新しく貸せる額（貸した後も規制の値を下回らない分）。"""
+    worth = net_worth(island, config, bank, turn)
+    return max(0, int(worth / regulatory(config)) - loans_of(island, bank))
+
+
 def debt_of(island: IslandState, borrower: str) -> int:
     """借り手の借入の合計。"""
     return sum(outstanding(island, x) for x in loans_by_borrower(island, borrower))

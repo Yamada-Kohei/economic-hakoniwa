@@ -23,8 +23,10 @@
 - 資金: 建設費（今の資材の値段と平均賃金。設備投資補助を引く）の1割増しと、動き出すときの支払い（全
   力で firms.operating_turns ターン分）の firms.equity_share を資産を持つ層の預金から出資し、残りを
   銀行の建設資金で借りる（元金は工事が済んでから loans.grace_turns ターン据え置き、その後
-  loans.construction_turns ターンで返す）。資産を持つ層の預金が足りないか、審査に通らなければ建たな
-  い。工事の資材と賃金は施設が自分の預金から払う。
+  loans.construction_turns ターンで返す）。金利の低い銀行から順に、自己資本比率の規制と大口融資の規
+  制（1つの借り手への残高は自己資本 × banking.large_exposure まで）の残りの分ずつ借り、借りきれない
+  分は資産を持つ層が多く出資する。資産を持つ層の預金が足りないか、審査に通らなければ建たない。工事の
+  資材と賃金は施設が自分の預金から払う。
 - 差し押さえ中の同じ施設があれば、その売り値を建設費として新しく建てる案と比べ、良い方を選ぶ（買い取
   るときも、動き出すときの支払いを合わせて調達し、元金を据え置く）。
 
@@ -209,7 +211,7 @@ class EntryExit(IslandStage):
         for f in sorted(island.facilities, key=lambda f: f.id):
             if (
                 f.owner != OWNER_PRIVATE
-                or not is_self_supporting(f)
+                or f.accounting != ACCOUNTING_SELF
                 or is_bank(ctx.config, f)
                 or is_transport(ctx.config, f)
                 or "foreclosed" in f.economy
@@ -515,32 +517,44 @@ class EntryExit(IslandStage):
 
     def _finance(
         self, island: IslandState, ctx: StageContext, amount: int, earnings: int
-    ) -> tuple[str, int, int] | None:
-        """出資と建設資金の融資の組み立て: (銀行, 借りる額, 金利)。審査に通らなければ None。"""
+    ) -> list[tuple[str, int, int]] | None:
+        """出資と建設資金の融資の組み立て: [(銀行, 借りる額, 金利)]（出資は amount − 借りる額の合
+        計）。資産を持つ層が出資しきれないか、審査に通らなければ None。"""
         config = ctx.config
-        equity = round_money(amount * config.get("firms.equity_share"))
-        loan = amount - equity
+        want = amount - round_money(amount * config.get("firms.equity_share"))
         owners = Payer(household(OWNERS))
-        if OWNERS not in island.economy.households or funds.available(island, owners) < equity:
+        if OWNERS not in island.economy.households:
             return None
-        turns = config.get("loans.construction_turns")
         offers = []
         for bank in banks.active_banks(island):
             if banks.labor_ratio(island, ctx.defs, bank) <= 0:
                 continue
-            worth = banks.net_worth(island, config, bank, ctx.turn)
-            if worth < banks.regulatory(config) * (banks.loans_of(island, bank) + loan):
-                continue
-            rate = island.policy.policy_rate + banks.margin_of(island, config, bank)
-            rate += to_basis(config.get("banking.rho")) * loan // max(1, amount)
-            offers.append((rate, bank))
-        if not offers:
+            offers.append((banks.margin_of(island, config, bank), bank))
+        pieces = []
+        left = want
+        for _, bank in sorted(offers):
+            room = min(
+                banks.capital_room(island, config, bank, ctx.turn),
+                banks.exposure_limit(island, config, bank, ctx.turn),
+            )
+            piece = min(left, room)
+            if piece > 0:
+                pieces.append((bank, piece))
+                left -= piece
+        loan = want - left
+        if funds.available(island, owners) < amount - loan:
             return None
-        rate, bank = min(offers)
-        service = ledger.interest(loan, rate) + -(-loan // turns)
+        turns = config.get("loans.construction_turns")
+        leverage = to_basis(config.get("banking.rho")) * loan // max(1, amount)
+        plan = []
+        service = 0
+        for bank, piece in pieces:
+            rate = island.policy.policy_rate + banks.margin_of(island, config, bank) + leverage
+            plan.append((bank, piece, rate))
+            service += ledger.interest(piece, rate) + -(-piece // turns)
         if earnings < config.get("loans.coverage") * service:
             return None
-        return bank, loan, rate
+        return plan
 
     def _build(
         self,
@@ -564,7 +578,6 @@ class EntryExit(IslandStage):
         plan = self._finance(island, ctx, amount, earnings)
         if plan is None:
             return False
-        bank, loan, loan_rate = plan
         f = Facility(
             id=island.next_facility_id(),
             kind=kind,
@@ -579,10 +592,12 @@ class EntryExit(IslandStage):
         assign_serial(island, f)
         island.facilities.append(f)
         entity = facility_entity(f.id)
-        invest(island, household(OWNERS), entity, amount - loan)
+        invest(island, household(OWNERS), entity, amount - sum(p for _, p, _ in plan))
         turns = config.get("loans.construction_turns")
         far = 10**9  # 元金は工事が済んでから返す（工事の段で返し始めるターンを決める）
-        banks.lend(island, bank, entity, loan, banks.CONSTRUCTION, turns, ctx.turn, loan_rate, far)
+        for bank, loan, loan_rate in plan:
+            purpose = banks.CONSTRUCTION
+            banks.lend(island, bank, entity, loan, purpose, turns, ctx.turn, loan_rate, far)
         freight_rates.forget(island)
         island.log.append(
             LogEntry(
@@ -623,16 +638,15 @@ class EntryExit(IslandStage):
             plan = self._finance(island, ctx, amount, earnings)
             if plan is None:
                 continue
-            bank, loan, loan_rate = plan
             seller = seized.get("bank")
             close_foreclosure(island, f)
             entity = facility_entity(f.id)
-            invest(island, household(OWNERS), entity, amount - loan)
+            invest(island, household(OWNERS), entity, amount - sum(p for _, p, _ in plan))
             turns = config.get("loans.construction_turns")
             grace = ctx.turn + 1 + config.get("loans.grace_turns")
-            banks.lend(
-                island, bank, entity, loan, banks.CONSTRUCTION, turns, ctx.turn, loan_rate, grace
-            )
+            for bank, loan, loan_rate in plan:
+                purpose = banks.CONSTRUCTION
+                banks.lend(island, bank, entity, loan, purpose, turns, ctx.turn, loan_rate, grace)
             pay_seller(island, entity, seller, price)
             restart(island, ctx, f, OWNER_PRIVATE, price)
             f.economy["entered"] = ctx.turn
