@@ -180,7 +180,7 @@ bank:
   zone: office
   buildable: false
   construction: {turns: 3, labor: 300, materials: {building_materials: 15, machinery: 1}}
-  workers: 300
+  workers: 50   # 融資のないフェーズ2-1 は利子の差だけが収入なので、職員を少なくして赤字にしない
   recipes:
     default: {}
   sprite: bank
