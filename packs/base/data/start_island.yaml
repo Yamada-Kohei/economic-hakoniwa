@@ -7,16 +7,21 @@ default:
     town_population: 3000
     town_level: town
   villages: {count: 8, population: 1500, min_distance: 3, max_distance: 7}
+  # 初めの施設は、建国のときの住民の買う量に合わせる。食料は漁港と農場1つで足りるが、災害で
+  # 漁港か農場が止まっても、止めていた農場が動き出すまで食べ物が半分を切らないよう、農場は3つ
+  # （2つ以下だと、50島の試し回しで1ターンに人口が5%を超えて減る島が出た）。消費財工場は木材
+  # から作り、林業場2つの木材で動く
   facilities:
-    - {kind: farm, count: 4}
+    - {kind: farm, count: 3}
     - {kind: fishing_port}
     - {kind: lumber_camp, count: 2}
+    - {kind: consumer_goods_factory, recipe: wood, count: 2}
     - {kind: thermal_power_plant}
     - {kind: mine, recipe: coal, if_resource: coal}
     - {kind: quarry, if_resource: stone}
   power_lines: true
   warehouse:
-    grain: 300
+    grain: 50                     # 多いと売れないまま傷んで捨てられる
     wood: 150
     building_materials: 120
     steel: 40

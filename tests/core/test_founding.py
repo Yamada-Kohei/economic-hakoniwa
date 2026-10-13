@@ -113,7 +113,10 @@ def test_start_island(game):
     assert all(island.tile(h.x, h.y).population == 3000 for h in towns)
     assert len(homes) - len(towns) == 8
     kinds = [f.kind for f in island.facilities]
-    assert kinds.count("farm") == 4
+    assert kinds.count("farm") == 3
+    # 住民の買う消費財は、初めから木材で作る（鋼鉄がなくても動く）
+    goods = [f for f in island.facilities if f.kind == "consumer_goods_factory"]
+    assert [f.recipe for f in goods] == ["wood", "wood"]
     assert "mine" in kinds  # 石炭を選んだので石炭の鉱山が建つ
     assert "quarry" not in kinds  # 石材は選んでいない
     assert all(f.built for f in island.facilities)
