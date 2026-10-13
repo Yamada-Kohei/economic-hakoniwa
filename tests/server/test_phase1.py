@@ -287,7 +287,10 @@ def test_pages_render(client, world):
     assert "ターン 1" in log
     page = client.get(f"/islands/{island.id}/").content.decode()
     assert 'id="orders"' not in page and "国勢" in page
+    assert 'id="order-notice"' not in page
     _own_island(client)
     page = client.get(f"/islands/{island.id}/").content.decode()
     assert 'id="orders"' in page and "自国" in page
+    # マスの欄から足した命令の結果は、地図の上に重ねて出す（命令の欄まで見に行かなくてよいように）
+    assert 'id="order-notice"' in page
     assert island.name in client.get("/world/").content.decode()

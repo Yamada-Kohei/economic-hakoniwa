@@ -47,6 +47,10 @@ table.goods td:nth-child(n+2), table.goods th:nth-child(n+2) { text-align: right
 .island-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
 .island-stats .panel { margin: 0; }
 .map-tools { margin: 4px 0; }
+/* マスの欄から足した命令の結果。地図の左上に重ねて出し、下のマスはそのまま押せるようにする */
+.map-notice { position: absolute; left: 8px; right: 56px; top: 8px; margin: 0; padding: 4px 8px; font-size: 0.9em;
+  background: rgba(255, 255, 255, 0.92); border-radius: 4px; pointer-events: none; }
+.map-notice:empty { display: none; }
 #minimap { position: absolute; left: 8px; bottom: 8px; width: 96px; height: 96px; border: 1px solid rgba(255,255,255,0.6);
   background: #1d3f66; image-rendering: pixelated; cursor: pointer; }
 .guide { background: #fffbe6; border: 1px solid #e6d9a6; border-radius: 6px; padding: 8px 12px; margin: 12px 0; }
@@ -103,9 +107,11 @@ textarea { width: 100%; }
 .rules dd { margin: 2px 0 0 1em; }
 
 @media (max-width: 760px) {
-  .island-layout { grid-template-columns: minmax(0, 1fr); }
+  /* 地図を画面の上に留め、その下でマスの欄を読み進める。命令を足した後も地図まで戻らずに次のマスを押せる */
+  .island-layout { display: block; }
+  .island-layout .map-column { position: sticky; top: 0; z-index: 1; background: var(--bg); padding-bottom: 8px; }
   .island-layout #tile-panel { max-height: none; }
-  #island-map { height: 60vh; }
+  #island-map { height: 50vh; }
   .site-header nav { gap: 8px; flex-wrap: wrap; }
   table.facilities { display: block; overflow-x: auto; }
 }

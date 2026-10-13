@@ -1,6 +1,8 @@
 // マスの情報の欄: 選んだマスと、そこにある施設の詳しい情報を出す。
 // 島の持ち主には、そのマスへの命令（建設・撤去・名称・地名・優先度・会計方式）と、
 // 地図でマスを選んで出す命令（送電線・開発禁止区域）の入口も出す。
+// 狭い画面では地図を画面の上に留め、その下でこの欄を読み進める（site.css）。命令を足しても
+// 地図はそのまま押せ、結果は地図のそばに出す。
 
 import { escapeHtml, getJson, sendJson } from "./api.js";
 
@@ -23,7 +25,8 @@ export class TilePanel {
   /**
    * el: 欄の要素（data-tile-url に「…/tiles/0,0」、data-check-url に命令の確認の URL、
    *     data-resources に島の地下資源、data-producible に島で生産できる資源。どちらもカンマ区切り）
-   * options: orders（命令の列。持ち主でなければ null）、marked（印を付けたマスの Set）、onMarkedChange
+   * options: orders（命令の列。持ち主でなければ null）、marked（印を付けたマスの Set）、onMarkedChange、
+   *          mapArea（地図の列の要素）、notice（命令を足した結果を出す、地図のそばの要素）
    */
   constructor(el, defs, map, options = {}) {
     this.el = el;
@@ -34,6 +37,8 @@ export class TilePanel {
     this.orders = options.orders || null;
     this.marked = options.marked || new Set();
     this.onMarkedChange = options.onMarkedChange || (() => {});
+    this.mapArea = options.mapArea || null;
+    this.notice = options.notice || null;
     this.mode = null;
     this.tile = null;
     this.info = null;
@@ -51,6 +56,8 @@ export class TilePanel {
   async show(tile) {
     this.tile = tile;
     this.info = null;
+    if (this.notice) this.notice.textContent = "";
+    this.revealTop();
     if (!tile) {
       this.render();
       return;
@@ -68,6 +75,18 @@ export class TilePanel {
       this.el.removeAttribute("aria-busy");
     }
     this.render();
+  }
+
+  /**
+   * 欄を上の端から見せる（新しいマスを選んだときと、地図でマスを選び始めたとき）。
+   * 欄の上の端が画面の上に（狭い画面では、上に留めた地図の下に）隠れていれば、見える所まで戻す。
+   */
+  revealTop() {
+    this.el.scrollTop = 0;
+    const pinned = this.mapArea && getComputedStyle(this.mapArea).position === "sticky";
+    const limit = pinned ? this.mapArea.getBoundingClientRect().bottom : 0;
+    const hidden = limit - this.el.getBoundingClientRect().top;
+    if (hidden > 0) window.scrollBy(0, -hidden);
   }
 
   toggleMark(tile) {
@@ -328,17 +347,18 @@ export class TilePanel {
       this.marked.clear();
       this.onMarkedChange();
       this.render();
+      this.revealTop();
     } else if (button.dataset.action === "mark-cancel") {
       this.endMarking();
     } else if (button.dataset.action === "mark-done") {
       const tiles = [...this.marked].map((k) => k.split(",").map(Number));
       const m = MARK_MODES[this.mode];
-      this.orders.add(m.kind, m.payload(tiles));
+      this.addOrder(m.kind, m.payload(tiles));
       this.endMarking();
     } else if (button.dataset.action === "demolish") {
       const f = this.info.facility;
       if (confirm(`${f.name} を撤去する命令を追加しますか？`)) {
-        this.orders.add("demolish", { x: this.tile.x, y: this.tile.y });
+        this.addOrder("demolish", { x: this.tile.x, y: this.tile.y });
       }
     }
   }
@@ -368,16 +388,22 @@ export class TilePanel {
       const payload = { facility: data.get("facility"), x, y };
       if (data.get("recipe")) payload.recipe = data.get("recipe");
       if (name) payload.name = name;
-      this.orders.add("build", payload);
+      this.addOrder("build", payload);
     } else if (form.dataset.form === "rename") {
-      this.orders.add("rename_facility", { x, y, name });
+      this.addOrder("rename_facility", { x, y, name });
     } else if (form.dataset.form === "place") {
-      if (name) this.orders.add("rename_place", { x, y, name });
+      if (name) this.addOrder("rename_place", { x, y, name });
     } else if (form.dataset.form === "priority") {
-      this.orders.add("set_priority", { x, y, priority: Number(data.get("priority")) });
+      this.addOrder("set_priority", { x, y, priority: Number(data.get("priority")) });
     } else if (form.dataset.form === "accounting") {
-      this.orders.add("set_accounting", { x, y, accounting: data.get("accounting") });
+      this.addOrder("set_accounting", { x, y, accounting: data.get("accounting") });
     }
+  }
+
+  /** 命令の列に足し、保存の結果を地図のそばに出す（命令の欄まで見に行かなくてよいように）。 */
+  async addOrder(kind, payload) {
+    await this.orders.add(kind, payload);
+    if (this.notice) this.notice.textContent = this.orders.message;
   }
 
   buildPayload() {

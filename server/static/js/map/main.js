@@ -73,6 +73,8 @@ const panel = new TilePanel(document.getElementById("tile-panel"), defs, map, {
   orders,
   marked: state.marked,
   onMarkedChange: redraw,
+  mapArea: canvas.closest(".map-column"),
+  notice: document.getElementById("order-notice"),
 });
 
 function select(tile) {

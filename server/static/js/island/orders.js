@@ -47,11 +47,11 @@ export class OrderQueue {
     this.warnings = new Map((data.warnings || []).map((w) => [w.index, w.text]));
   }
 
-  /** 命令を列の最後に足して保存する。 */
+  /** 命令を列の最後に足して保存する。保存が済むと解決する Promise を返す（結果は this.message）。 */
   add(kind, payload) {
     const cost = this.defs.orders[kind]?.admin_cost ?? 0;
     this.items.push({ kind, payload, cost, text: `${this.defs.orders[kind]?.name || kind}（保存中）` });
-    this.save(`「${this.defs.orders[kind]?.name || kind}」を命令に追加しました。`);
+    return this.save(`「${this.defs.orders[kind]?.name || kind}」を命令に追加しました。`);
   }
 
   save(done) {
@@ -72,6 +72,7 @@ export class OrderQueue {
       }
       this.render();
     });
+    return this.saving;
   }
 
   render() {

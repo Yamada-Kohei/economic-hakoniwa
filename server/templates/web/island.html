@@ -42,6 +42,7 @@
         <button type="button" data-zoom="out" aria-label="{% translate '縮小' %}">－</button>
       </div>
       <canvas id="minimap" width="128" height="128" aria-label="{% translate '小さな地図' %}"></canvas>
+      {% if mine %}<p id="order-notice" class="map-notice" aria-live="polite"></p>{% endif %}
     </div>
   </section>
   <aside id="tile-panel" class="panel" data-tile-url="{% url 'api_tile' island.id 0 0 %}"
