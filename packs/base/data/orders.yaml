@@ -164,3 +164,142 @@ set_accounting:
       x: {type: integer, minimum: 0}
       y: {type: integer, minimum: 0}
       accounting: {enum: [self_supporting, treasury]}
+
+# --- 銀行・国債・企業（フェーズ2-2） ---
+
+set_zone:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [zone, tiles]
+    additionalProperties: false
+    properties:
+      zone: {enum: [industrial, office, none]}   # 工業団地・オフィス街・解除
+      tiles:
+        type: array
+        minItems: 1
+        maxItems: 64
+        items:
+          type: array
+          prefixItems: [{type: integer, minimum: 0}, {type: integer, minimum: 0}]
+          minItems: 2
+          maxItems: 2
+
+set_subsidy:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [kind, rate, turns]
+    additionalProperties: false
+    properties:
+      kind: {enum: [production, capital, bailout]}  # 生産補助・設備投資補助・救済補助
+      good: {type: string}                          # 対象の財（生産補助と設備投資補助）
+      x: {type: integer, minimum: 0}                # 対象の施設のマス（生産補助と救済補助）
+      y: {type: integer, minimum: 0}
+      rate: {type: number, minimum: 0, maximum: 100}  # 割合（%）。0 でやめる
+      turns: {type: integer, minimum: 1, maximum: 1200}
+
+nationalize:
+  admin_cost: 2
+  payload:
+    type: object
+    required: [x, y]
+    additionalProperties: false
+    properties:
+      x: {type: integer, minimum: 0}
+      y: {type: integer, minimum: 0}
+
+privatize:
+  admin_cost: 2
+  payload:
+    type: object
+    required: [x, y]
+    additionalProperties: false
+    properties:
+      x: {type: integer, minimum: 0}
+      y: {type: integer, minimum: 0}
+
+set_monetary_policy:
+  admin_cost: 1
+  payload:
+    type: object
+    minProperties: 1
+    additionalProperties: false
+    properties:
+      policy_rate: {type: number, minimum: 0, maximum: 20}  # 政策金利（%）
+      bond_trade: {type: integer}                           # 中央銀行が毎ターン国債を買う額（マイナスは売る）
+
+set_central_bank_independence:
+  admin_cost: 2
+  payload:
+    type: object
+    required: [independent]
+    additionalProperties: false
+    properties:
+      independent: {type: boolean}
+
+set_bond_policy:
+  admin_cost: 1
+  payload:
+    type: object
+    minProperties: 1
+    additionalProperties: false
+    properties:
+      terms:                                # 自動の発行の期間の割合（finance.yaml の国債の期間ごと）
+        type: object
+        minProperties: 1
+        propertyNames: {pattern: "^[a-z0-9_]+$"}
+        additionalProperties: {type: number, minimum: 0}
+      unsold: {enum: [underwrite, cut]}     # 入札の売れ残り: 中央銀行が引き受ける・支出を減らす
+      issue: {type: integer, minimum: 0}    # 追加で入札に出す額（このターン）
+      issue_term: {type: string}
+      underwrite: {type: integer, minimum: 0}  # 中央銀行に直接引き受けさせる額（このターン）
+      underwrite_term: {type: string}
+
+set_bond_payment:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [stop]
+    additionalProperties: false
+    properties:
+      stop: {type: boolean}                 # true で利払いと償還を止める（不履行）
+
+set_bank_policy:
+  admin_cost: 1
+  payload:
+    type: object
+    minProperties: 1
+    additionalProperties: false
+    properties:
+      entry: {enum: [free, license, closed]}           # 民間銀行の参入
+      deposit_insurance: {type: integer, minimum: -1}  # 預金保護の上限額（1人あたり。-1 は無制限）
+
+grant_bank_license:
+  admin_cost: 1
+  payload:
+    type: object
+    additionalProperties: false
+    properties: {}
+
+emergency_loan:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [x, y, amount]
+    additionalProperties: false
+    properties:
+      x: {type: integer, minimum: 0}
+      y: {type: integer, minimum: 0}
+      amount: {type: integer, minimum: 0}   # 毎ターン担保なしで貸す上限。0 で取り消す
+
+resolve_bank:
+  admin_cost: 0
+  payload:
+    type: object
+    required: [x, y, method]
+    additionalProperties: false
+    properties:
+      x: {type: integer, minimum: 0}
+      y: {type: integer, minimum: 0}
+      method: {enum: [bailout, transfer, liquidation]}  # 救済・引き継ぎ・清算

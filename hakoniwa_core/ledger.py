@@ -21,6 +21,11 @@
 | treasury（政府預金・国庫） | 政府 | 中央銀行 |
 | bond:<番号>（国債） | 市中銀行・中央銀行 | 政府 |
 | equity（出資） | 資産を持つ層・政府 | 施設・銀行 |
+| loan:<番号>（融資。フェーズ2-2） | 市中銀行 | 独立採算の施設 |
+| interbank（銀行間の貸し借り） | 市中銀行 | 市中銀行 |
+| cb_loan（中央銀行の貸し出し） | 中央銀行 | 市中銀行 |
+
+家計の層と施設は預金を複数の銀行に持てます（払うときは取引銀行の預金から先に使う）。
 """
 
 from __future__ import annotations
@@ -38,6 +43,8 @@ DEPOSIT = "deposit"
 RESERVE = "reserve"
 TREASURY = "treasury"
 EQUITY = "equity"
+INTERBANK = "interbank"
+CB_LOAN = "cb_loan"
 
 # 毎ターンの確かめで見る「お金」の量
 MONEY_ITEMS = {"deposits": (DEPOSIT,), "cb_money": (RESERVE, TREASURY)}
@@ -76,6 +83,11 @@ def is_issued(name: str) -> bool:
 def bond_item(number: int) -> str:
     """国債の銘柄の持ち物の名前。"""
     return f"bond:{number}"
+
+
+def loan_item(number: int) -> str:
+    """融資の持ち物の名前。"""
+    return f"loan:{number}"
 
 
 def bank_entity(number: int) -> str:
@@ -182,19 +194,69 @@ def pay(island: IslandState, payer: str, payee: str, amount: int, kind: str) -> 
     預金どうしなら預金を付け替え、取引銀行が違えば銀行どうしの準備預金も付け替える。
     政府が払う・受け取るときは国庫と準備預金を付け替える。銀行が自分で払うときは預金を作り、
     自分が受け取るときは預金を消す。払えるかどうかは呼ぶ側が確かめる（確かめは記録の段）。
+
+    預金を複数の銀行に持つ主体は、取引銀行の預金から先に使い、足りない分をほかの銀行の預金
+    （勘定の名前の順）から使う。受け取る側は取引銀行の預金に入る。
     """
     if amount <= 0 or payer == payee:
         return
-    payer_bank = bank_of(island, payer) if is_depositor(payer) else None
     payee_bank = bank_of(island, payee) if is_depositor(payee) else None
-    if payer_bank is not None and payer_bank == payee_bank:
-        post(island, deposit(island, payee), deposit(island, payer), amount, kind)
+    if not is_depositor(payer):
+        if payee_bank is not None:
+            post(island, deposit(island, payee), issued(payee_bank, DEPOSIT), amount, kind)
+        _settle(island, payer, payee_bank or payee, amount, kind)
         return
-    if payee_bank is not None:
-        post(island, deposit(island, payee), issued(payee_bank, DEPOSIT), amount, kind)
-    if payer_bank is not None:
-        post(island, issued(payer_bank, DEPOSIT), deposit(island, payer), amount, kind)
-    _settle(island, payer_bank or payer, payee_bank or payee, amount, kind)
+    for source, take in _draw(island, payer, amount):
+        bank = parse(source)[2]
+        if bank == payee_bank:
+            post(island, deposit(island, payee), source, take, kind)
+            continue
+        if payee_bank is not None:
+            post(island, deposit(island, payee), issued(payee_bank, DEPOSIT), take, kind)
+        post(island, issued(bank, DEPOSIT), source, take, kind)
+        _settle(island, bank, payee_bank or payee, take, kind)
+
+
+def _draw(island: IslandState, entity: str, amount: int) -> list[tuple[str, int]]:
+    """amount を払うのに使う預金の勘定と額（取引銀行の預金から先に）。足りなければ、
+    足りない分も取引銀行の預金から払う（マイナスになり、記録の段の確かめで見つかる）。"""
+    main = deposit(island, entity)
+    have = island.accounts.get(main, 0)
+    if have >= amount:
+        return [(main, amount)]
+    out = [(main, have)] if have > 0 else []
+    left = amount - max(0, have)
+    prefix = f"{entity}/{DEPOSIT}/"
+    for name in sorted(k for k in island.accounts if k.startswith(prefix) and k != main):
+        value = island.accounts[name]
+        if value <= 0:
+            continue
+        take = min(value, left)
+        out.append((name, take))
+        left -= take
+        if left <= 0:
+            return out
+    out.append((main, left))
+    return out
+
+
+def deposits_by_bank(island: IslandState, entity: str) -> dict[str, int]:
+    """主体が銀行ごとに持つ預金（銀行の主体 → 額）。"""
+    prefix = f"{entity}/{DEPOSIT}/"
+    return {
+        parse(k)[2]: v for k, v in sorted(island.accounts.items()) if k.startswith(prefix) and v
+    }
+
+
+def move_deposit(
+    island: IslandState, entity: str, source: str, target: str, amount: int, kind: str
+) -> None:
+    """主体 entity の預金を、銀行 source から銀行 target へ移す（準備預金も一緒に動く）。"""
+    if amount <= 0 or source == target:
+        return
+    post(island, issued(source, DEPOSIT), account(entity, DEPOSIT, source), amount, kind)
+    post(island, account(entity, DEPOSIT, target), issued(target, DEPOSIT), amount, kind)
+    _settle(island, source, target, amount, kind)
 
 
 def _settle(island: IslandState, source: str, target: str, amount: int, kind: str) -> None:

@@ -38,6 +38,7 @@ from hakoniwa_core.economy import (
     funds,
     household,
     is_self_supporting,
+    is_stopped,
     is_transport,
     payer_of,
 )
@@ -122,20 +123,32 @@ def usual_price(island: IslandState, good: str, turns: int) -> int:
 
 
 def consumer_tiers(
-    budget: int, price: int, tiers: list[float], freight: int, tax: int
+    budget: int,
+    price: int,
+    tiers: list[float],
+    freight: int,
+    tax: int,
+    current: int = 0,
+    low_tiers: list[float] | None = None,
 ) -> list[tuple[int, int]]:
     """消費財の注文（量, 指値）の段。
 
-    指値はいつもの値段 price の tiers 倍で、運賃と税は量を決めるときに足す。
+    指値はいつもの値段 price の tiers 倍で、運賃と税は量を決めるときに足す。今の値段 current が
+    いつもの値段の一番下の段より安いときは、今の値段の low_tiers 倍の段も足す（値下がりした分だけ
+    多く買う。フェーズ2-2 の需要の見直し）。
 
     指値の高い段から順に「その値段で budget を使い切る量」になるまで足していくので、値段が
     p の段まで約定すると budget ÷ p だけ買う（使う額は値段によらずほぼ budget。
-    高いほど少なく買う）。
+    高いほど少なく買い、安いほど多く買う）。
     """
+    limits = {scale_price(price, tier) for tier in tiers}
+    if current > 0 and low_tiers and current < min(limits):
+        limits |= {scale_price(current, tier) for tier in low_tiers}
     out = []
     bought = 0
-    for tier in sorted(tiers, reverse=True):
-        limit = scale_price(price, tier)
+    for limit in sorted(limits, reverse=True):
+        if limit <= 0:
+            continue
         total = qty_for(budget, limit + part(limit, freight) + part(limit, tax))
         if total > bought:
             out.append((total - bought, limit))
@@ -429,7 +442,8 @@ class Market(IslandStage):
         for f in island.facilities:
             outputs = fac.recipe_of(defs, f)["outputs"]
             if f.built and "target" in f.economy and any(g != power for g in outputs):
-                f.economy["target"] = ctx.formula("operating_target")(island, f, ctx)
+                if not is_stopped(f):
+                    f.economy["target"] = ctx.formula("operating_target")(island, f, ctx)
 
     # --- 注文 ---------------------------------------------------------------------
 
@@ -707,9 +721,13 @@ class Market(IslandStage):
                 if d.get("consumer") and g != config.get("power.good") and "food" not in d
             ]
             tiers = settings["consumer_goods_tiers"]
+            low = settings["consumer_goods_low_tiers"]
             for good in goods:
                 price = usual_price(island, good, settings["usual_price_turns"])
-                for qty, limit in consumer_tiers(spend // len(goods), price, tiers, rate, tax):
+                now = prices.get(good, 0)
+                for qty, limit in consumer_tiers(
+                    spend // len(goods), price, tiers, rate, tax, now, low
+                ):
                     self._household_buy(
                         island, books_by_good, good, qty, limit, rate, tax, layer, priority
                     )

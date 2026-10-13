@@ -23,6 +23,7 @@ OWNER_PRIVATE = "private"  # 民営
 ZONE_NONE = ""
 ZONE_NO_DEVELOPMENT = "no_development"  # 開発を止めるマス（住宅が自動で建たない）
 ZONE_OFFICE = "office"  # オフィス街（銀行が入る。フェーズ2）
+ZONE_INDUSTRIAL = "industrial"  # 工業団地（民営の工場が採算を見て建つ。フェーズ2-2）
 
 ACCOUNTING_TREASURY = "treasury"  # 国庫直轄（国営だけ）
 ACCOUNTING_SELF = "self_supporting"  # 独立採算
@@ -153,6 +154,26 @@ class Bond:
 
 
 @dataclass
+class Loan:
+    """融資の1件。残高は勘定（<貸し手>/loan:<番号>/<借り手>）で持つ。
+
+    金利は変動金利で、銀行の段が毎ターン計算し直して rate に書く（式 loan_rate）。
+    """
+
+    id: int
+    lender: str  # 貸し手の銀行の主体（bank:<番号>）
+    borrower: str  # 借り手の主体（fac:<番号>）
+    purpose: str  # 使い道: construction（建設資金）、working（運転資金）
+    principal: int  # 貸した額
+    term: int  # 元金を返す期間（ターン）
+    start: int  # 貸したターン
+    rate: int = 0  # 今の年利（1万分の1）
+    installment: int = 0  # 毎ターン返す元金
+    repay_from: int = 0  # 元金を返し始めるターン（建設資金は工事が済んだ次のターンから）
+    arrears: int = 0  # 続けて返済が遅れた回数
+
+
+@dataclass
 class Policy:
     """島の政策。値は建国のときに game.yaml の既定から入れ、命令で変わる。
 
@@ -169,6 +190,16 @@ class Policy:
     policy_rate: int = 0  # 政策金利
     deposit_rate: int = 0  # 預金金利（フェーズ2-1 は固定。2-2 から銀行ごとに動く）
     bond_terms: dict[str, int] = field(default_factory=dict)  # 自動の発行の期間（ターン）→ 割合
+    # 以下はフェーズ2-2
+    cb_independent: bool = False  # 中央銀行が独立しているか
+    cb_bond_trade: int = 0  # 中央銀行が毎ターン国債を買う額（マイナスは売る。独立していないとき）
+    bond_unsold: str = (
+        "underwrite"  # 入札の売れ残り: underwrite（中央銀行が引き受ける）・cut（支出を減らす）
+    )
+    bank_entry: str = ""  # 民間銀行の参入: free・license・closed（"" は経済体制の既定）
+    deposit_insurance: int = 30000  # 預金保護の上限額（1人あたり、施設は1つあたり。-1 は無制限）
+    # 補助金: {"kind": production・capital・bailout, "good"/"x"/"y", "rate": 1万分の1, "until": ターン}
+    subsidies: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -193,6 +224,10 @@ class EconomyState:
     bond_seq: int = 0
     cb_loss: int = 0  # 中央銀行の繰り越した損失（後の利益で埋めてから国庫に納める）
     happiness_blend: int = 0  # 幸福度の重みをフェーズ1から移す残りのターン数
+    loan_seq: int = 0
+    # 金融（フェーズ2-2）: 国債の区分ごとの利回り、銀行間の金利、債務不履行のターン、品切れの履歴など
+    # （hakoniwa_core/economy/banks.py と modules/bonds・central_bank・firms が読み書きする）
+    finance: dict[str, Any] = field(default_factory=dict)
     ext: dict[str, Any] = field(default_factory=dict)
 
 
@@ -217,6 +252,7 @@ class IslandState:
     # お金: 勘定の名前（主体/持ち物/相手）→ 残高。hakoniwa_core/ledger.py を通してだけ動かす
     accounts: dict[str, int] = field(default_factory=dict)
     bonds: list[Bond] = field(default_factory=list)
+    loans: list[Loan] = field(default_factory=list)  # 融資（番号の小さい順）
     economy: EconomyState = field(default_factory=EconomyState)
     policy: Policy = field(default_factory=Policy)
     ext: dict[str, Any] = field(default_factory=dict)

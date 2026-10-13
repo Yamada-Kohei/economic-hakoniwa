@@ -4,6 +4,11 @@
 市場で買います。人手は雇用の段で通勤圏から島の平均賃金で雇います。資材と賃金は国庫が払い
 （国の工事）、そろった分だけこの段で工事が進みます。払った額が施設の設備の額になり、
 完成すると減価償却が始まります。独立採算の施設には、完成のときに政府が運転資金を出資します。
+
+民営工場の参入（フェーズ2-2、参入と撤退の段）で建つ工事は、施設が自分の預金（出資と建設資金の
+融資）から払います。完成すると、建設資金の返済が次のターンから始まり、設備投資補助があれば
+補助金の予算から払います。命令で建てた銀行は、完成すると国営銀行として開業し、政府が資本金
+（島の預金の banking.entry_capital）を出資します。
 """
 
 from __future__ import annotations
@@ -15,18 +20,24 @@ from hakoniwa_core import ledger, stock
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     CONSTRUCTION,
+    SUBSIDIES,
     Payer,
+    banks,
+    books,
     default_accounting,
     facility_entity,
     freight,
+    funds,
+    is_bank,
     is_self_supporting,
     owner_entity,
 )
 from hakoniwa_core.economy.start import fund_facility, init_facility
 from hakoniwa_core.naming import assign_serial
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
-from hakoniwa_core.state import OWNER_STATE, Facility, IslandState, LogEntry
+from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE, Facility, IslandState, LogEntry
 from hakoniwa_core.turn.context import StageContext
+from hakoniwa_core.units import part, to_basis
 
 
 def check_build(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
@@ -69,6 +80,8 @@ def check_demolish(island: IslandState, payload: dict[str, Any], defs: Defs) -> 
         raise OrderFailed("reason_nothing_to_demolish")
     if f is not None and defs.facilities[f.kind].get("category") == "finance":
         raise OrderFailed("reason_cannot_demolish", facility=f.kind)
+    if f is not None and (f.owner == OWNER_PRIVATE or "foreclosed" in f.economy):
+        raise OrderFailed("reason_private_demolish", facility=f.kind)
 
 
 def demolish(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
@@ -89,11 +102,16 @@ def demolish(island: IslandState, payload: dict[str, Any], ctx: StageContext) ->
 
 
 def close_accounts(island: IslandState, f: Facility) -> None:
-    """独立採算の施設の預金を持ち主に返し、出資を消す。"""
+    """独立採算の施設の借入を預金で返し（返しきれない分は貸し倒れ）、残りの預金を持ち主に返して、
+    出資を消す。"""
     if not island.has_economy or not is_self_supporting(f):
         return
     entity = facility_entity(f.id)
     owner = owner_entity(f)
+    for loan in sorted(banks.loans_by_borrower(island, entity), key=lambda x: x.id):
+        banks.repay(island, loan, min(banks.outstanding(island, loan), ledger.money(island, entity)))
+        banks.write_off(island, loan, banks.outstanding(island, loan))
+    banks.drop_settled(island)
     ledger.pay(island, entity, owner, ledger.money(island, entity), "equity_return")
     for name, value in sorted(ledger.holdings(island, owner, ledger.EQUITY).items()):
         if name.endswith(f"/{entity}"):
@@ -194,8 +212,42 @@ class Construction(IslandStage):
             island.economy.average_wage,
         )
         f.economy["capital"] = capital
-        if is_self_supporting(f):
+        if is_bank(ctx.config, f):
+            _open_state_bank(island, ctx, f)
+        elif f.ext.pop("private_entry", False):
+            _start_private(island, ctx, f)
+        elif is_self_supporting(f):
             fund_facility(island, ctx.defs, ctx.config, f, Payer(ledger.GOV, CONSTRUCTION))
+
+
+def _start_private(island: IslandState, ctx: StageContext, f: Facility) -> None:
+    """民営工場の完成: 建設資金の返済を次のターンから始め、設備投資補助を払う。"""
+    from hakoniwa_core.modules.firms import capital_subsidy
+
+    entity = facility_entity(f.id)
+    for loan in banks.loans_by_borrower(island, entity):
+        if loan.purpose == banks.CONSTRUCTION:
+            loan.repay_from = ctx.turn + 1
+    rate = capital_subsidy(island, f.kind, fac.recipe_of(ctx.defs, f))
+    payer = Payer(ledger.GOV, SUBSIDIES)
+    amount = min(part(f.economy.get("capital", 0), rate), funds.available(island, payer))
+    if amount > 0:
+        funds.pay(island, payer, entity, amount, "subsidy")
+        books.add(island, f.id, books.SUBSIDY, amount)
+
+
+def _open_state_bank(island: IslandState, ctx: StageContext, f: Facility) -> None:
+    """命令で建てた銀行の完成: 国営銀行として開業し、政府が資本金を出資する。"""
+    from hakoniwa_core.economy.start import invest
+    from hakoniwa_core.modules.firms import open_bank
+
+    f.owner = OWNER_STATE
+    open_bank(island, ctx, (f.x, f.y), OWNER_STATE)
+    total = sum(banks.deposits_of(island, b) for b in banks.bank_list(island))
+    want = part(total, to_basis(ctx.config.get("banking.entry_capital")))
+    amount = min(want, funds.available(island, Payer(ledger.GOV)))
+    invest(island, ledger.GOV, ledger.bank_entity(f.id), amount)
+    island.log.append(LogEntry("bank_opened", {"x": f.x, "y": f.y, "capital": amount}))
 
 
 def register(registry: Registry) -> None:

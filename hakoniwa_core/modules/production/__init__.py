@@ -29,6 +29,7 @@ from hakoniwa_core.economy import (
     funds,
     household,
     is_self_supporting,
+    is_stopped,
     payer_of,
 )
 from hakoniwa_core.economy.prices import input_limit, unit_floor
@@ -258,7 +259,7 @@ class Production(IslandStage):
                 able = sum(o for run, o in sellers if not fac.short_of_inputs(run.cause))
                 target = ctx.formula("power_target")(demand, able, ctx)
                 for run, _ in sellers:
-                    if "target" in run.f.economy:
+                    if "target" in run.f.economy and not is_stopped(run.f):
                         run.f.economy["target"] = target
             totals["capacity"] += result.supply
             totals["demand"] += sum(b.need for b in buyers)

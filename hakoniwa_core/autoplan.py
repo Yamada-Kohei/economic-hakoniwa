@@ -26,6 +26,9 @@
 住民1人あたり PUBLIC_WORKS を基本に、失業率がふつう（5%）より高ければ増やし、物価上昇率が高ければ
 減らします（額を物価や GDP に合わせて動かさないので、物価が下がり続けたり上がり続けたりしにくい）。
 電気料金が初めの値段の POWER_CAP 倍を超えたら、そこを公共料金の上限にします。
+民営工場が建てられる島（市場経済と混合経済）では、空いた工業団地のマスが ZONE_SPARE より少なければ、
+町の通勤圏の空いた平地と、地下資源のある島では山を ZONE_BATCH マスまで工業団地に指定します（町の
+すぐ隣は町が育つ余地として残す）。
 """
 
 from __future__ import annotations
@@ -39,7 +42,13 @@ from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy.prices import initial_prices, unit_cost
 from hakoniwa_core.geo import components, distance, shortest_path, within
-from hakoniwa_core.state import ORDER_PENDING, ZONE_NONE, IslandState, OrderState
+from hakoniwa_core.state import (
+    ORDER_PENDING,
+    ZONE_INDUSTRIAL,
+    ZONE_NONE,
+    IslandState,
+    OrderState,
+)
 from hakoniwa_core.units import QUANTITY_SCALE, to_milli
 
 MAX_SITES = 2  # 同時に進める工事の数
@@ -60,6 +69,8 @@ UNDERUSED = 0.7  # 同じ物を作る施設の稼働率がこれより低い間�
 POWER_CAP = 2.0  # 電気料金が初めの値段のこの倍を超えたら、そこを公共料金の上限にする
 BENEFIT = 40  # 失業手当（平均賃金に対する %）
 SALE_TURNS = 2  # 国の倉庫から一度に売りに出す量（島の施設が使う量の何ターン分か）
+ZONE_SPARE = 3  # 空いた工業団地のマスがこれより少なければ、工業団地を足す
+ZONE_BATCH = 6  # 一度に工業団地に指定するマスの数
 # 連鎖を太くするときに、この順で数をそろえていく施設
 GROWTH = ("steel_mill", "machinery_plant", "building_materials_plant")
 
@@ -80,6 +91,7 @@ def _plan_rest(
         _labor_policy_order(island),
         _budget_order(island, turn),
         _price_cap_order(island, defs, config),
+        _zone_order(island, defs, config),
     )
     for policy in policies:
         if policy is not None:
@@ -395,6 +407,48 @@ def _candidates(
             if _feasible(defs, island, kind, rname) and spare(kind, rname):
                 yield (kind, rname)
                 break
+
+
+# --- 工業団地 ---------------------------------------------------------------------
+
+
+def _zone_order(island: IslandState, defs: Defs, config: GameConfig) -> tuple[str, dict] | None:
+    """民営工場が建てられる島で、空いた工業団地が少なければ、町の通勤圏に工業団地を足す。"""
+    regime = defs.regimes.get(island.regime.get("economy", ""), {})
+    if not island.has_economy or regime.get("private_entry", "none") == "none":
+        return None
+    capital = island.capital
+    if capital is None:
+        return None
+    occupied = island.facilities_by_tile()
+    spare = [
+        t for t in island.tiles if t.zone == ZONE_INDUSTRIAL and (t.x, t.y) not in occupied
+    ]
+    if len(spare) >= ZONE_SPARE:
+        return None
+    housing = fac.housing_kind(config)
+    homes = [(f.x, f.y) for f in island.facilities if f.kind == housing]
+    if not homes:
+        return None
+    radius = config.get("labor.commute_radius")
+    terrains = {"plain"} | ({"mountain"} if island.resources else set())
+    picks = []
+    for t in island.tiles:
+        pos = (t.x, t.y)
+        if t.zone != ZONE_NONE or pos in occupied or pos == capital or t.terrain not in terrains:
+            continue
+        near = min(distance(pos, h) for h in homes)
+        if near <= 1 or near > radius:
+            continue
+        picks.append(((near, distance(pos, capital)), t.terrain, pos))
+    picks.sort()
+    has_mountain = any(t.terrain == "mountain" for t in spare)
+    mountains = [] if has_mountain else [p for _, k, p in picks if k == "mountain"][:1]
+    plains = [p for _, k, p in picks if k == "plain"]
+    tiles = [list(p) for p in mountains + plains[: ZONE_BATCH - len(mountains)]]
+    if not tiles:
+        return None
+    return ("set_zone", {"zone": "industrial", "tiles": tiles})
 
 
 # --- どこに建てるか ---------------------------------------------------------------

@@ -90,9 +90,14 @@ def clear(
     width: int = 1000,
     cap: int | None = None,
     allocate: Allocate = by_priority,
+    bounds: tuple[int, int] | None = None,
 ) -> Result:
-    """板寄せで約定価格と注文ごとの約定量を決める。"""
-    low, high = band(reference, width, cap)
+    """板寄せで約定価格と注文ごとの約定量を決める。
+
+    bounds（下端, 上端）を渡すと、値幅を割合でなくその範囲にする（金利や利回りを値段にする市場。
+    例: 銀行間の金利は政策金利 ± 1%）。
+    """
+    low, high = bounds if bounds is not None else band(reference, width, cap)
     demand = sum(o.quantity for o in buys)
     supply = sum(o.quantity for o in sells)
     result = Result(

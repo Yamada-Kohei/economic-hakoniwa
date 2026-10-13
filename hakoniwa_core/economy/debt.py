@@ -1,15 +1,21 @@
-"""国債の残高・利払い・償還の見込みと、中央銀行の直接引き受け。
+"""国債の残高・利払い・償還の見込み、中央銀行の直接引き受け、国債の時価。
 
 国債の銘柄は IslandState.bonds（発行ターン・期間・利率・発行額）に、持ち手ごとの額面は勘定
 ``<持ち手>/bond:<番号>/gov`` に持ちます。利払いは発行の次のターンから毎ターン「額面 × 利率 ÷ 12」、
-満期のターン（発行ターン ＋ 期間）に額面を返します。フェーズ2-1 では国債は中央銀行が直接
-引き受けます（入札と売買の市場はフェーズ2-2）。
+満期のターン（発行ターン ＋ 期間）に額面を返します。
+
+時価（フェーズ2-2）: 銘柄の値段は、残りの利払いと償還を、残りの期間の利回りで割り引いた額です。
+利回りは残りの期間で分けた4つの区分（game.yaml の bonds.buckets）ごとに economy.finance["yields"]
+に持ち、区分の間は区分を代表する残りのターン数（bonds.bucket_terms）の利回りを直線でつなぎます。
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from hakoniwa_core import ledger
 from hakoniwa_core.state import Bond, EconomyState, IslandState
+from hakoniwa_core.units import BASIS
 
 YEAR = 12
 
@@ -87,3 +93,72 @@ def debt_ratio(island: IslandState) -> float:
     """政府の借金の対年GDP比（GDP の記録がなければ 0）。"""
     gdp = annual_gdp(island.economy)
     return total_debt(island) / gdp if gdp > 0 else 0.0
+
+
+# --- 時価（フェーズ2-2） -----------------------------------------------------------
+
+
+def remaining(bond: Bond, turn: int) -> int:
+    """ターン turn の後に残る利払いの回数（= 満期までのターン数）。"""
+    return max(0, bond.maturity - turn)
+
+
+def bucket_of(months: int, edges: Sequence[int]) -> int:
+    """残りのターン数 months の区分の番号（0 から len(edges)）。"""
+    for i, edge in enumerate(edges):
+        if months < edge:
+            return i
+    return len(edges)
+
+
+def curve_yield(yields: Sequence[int], terms: Sequence[int], months: int) -> int:
+    """残りのターン数 months の利回り（区分の利回りを代表のターン数で直線でつなぐ）。"""
+    if not yields:
+        return 0
+    if months <= terms[0]:
+        return yields[0]
+    for i in range(1, len(terms)):
+        if months <= terms[i]:
+            a, b = terms[i - 1], terms[i]
+            return yields[i - 1] + (yields[i] - yields[i - 1]) * (months - a) // (b - a)
+    return yields[-1]
+
+
+def price(bond: Bond, turn: int, rate: int) -> float:
+    """額面1あたりの値段: 残りの利払い（毎ターン 利率 ÷ 12）と償還を、利回り rate（年率、1万分の1）の
+    1ターンあたりの複利で割り引いた額。"""
+    months = remaining(bond, turn)
+    if months <= 0:
+        return 1.0
+    coupon = bond.rate / BASIS / YEAR
+    j = max(0.0, rate / BASIS / YEAR)
+    if j == 0:
+        return 1.0 + coupon * months
+    factor = (1 + j) ** -months
+    return coupon * (1 - factor) / j + factor
+
+
+def bond_price(island: IslandState, bond: Bond, turn: int, terms: Sequence[int]) -> float:
+    """島の今の利回りの曲線での、銘柄の額面1あたりの値段。"""
+    yields = island.economy.finance.get("yields") or []
+    if not yields:
+        return 1.0
+    return price(bond, turn, curve_yield(yields, terms, remaining(bond, turn)))
+
+
+def holdings_of(island: IslandState, holder: str) -> dict[int, int]:
+    """持ち手 holder が持つ銘柄（番号 → 額面）。"""
+    found = {}
+    for name, value in ledger.holdings(island, holder, "bond:").items():
+        found[int(ledger.parse(name)[1].split(":")[1])] = value
+    return found
+
+
+def market_value(island: IslandState, holder: str, turn: int, terms: Sequence[int]) -> int:
+    """持ち手 holder の持つ国債の時価の合計。"""
+    by_id = {b.id: b for b in island.bonds}
+    total = 0.0
+    for number, face in sorted(holdings_of(island, holder).items()):
+        bond = by_id.get(number)
+        total += face * (bond_price(island, bond, turn, terms) if bond is not None else 1.0)
+    return int(total)

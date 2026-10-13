@@ -1,0 +1,359 @@
+"""市中銀行の帳簿の見方と、融資・預金の部品（フェーズ2-2）。
+
+銀行の貸借対照表は勘定から計算します（銀行の建物は設備の値打ちに数えない）。
+
+| 資産 | 負債と純資産 |
+|---|---|
+| 準備預金 | 預金 |
+| 融資 | 銀行間の借り入れ |
+| 国債（時価） | 中央銀行からの借り入れ |
+| 銀行間の貸し出し | 自己資本（残り） |
+
+自己資本比率は「自己資本 ÷ 融資の残高」です（国債と準備預金は危なさを 0 として数えない）。
+規制の値（game.yaml の banking.regulatory_ratio）を下回った銀行は、新しく貸しません。
+
+融資は IslandState.loans の1件ごとに、残高を勘定 ``<銀行>/loan:<番号>/<借り手>`` に持ちます。
+貸すと借り手の預金が生まれ、返すと消えます。金利は毎ターン計算し直す変動金利です（式 loan_rate）。
+破綻した銀行は施設の economy["failed"] に破綻したターンを持ち、貸し出しと預金の受け入れを止めます。
+"""
+
+from __future__ import annotations
+
+import math
+from typing import Any
+
+from hakoniwa_core import facilities as fac
+from hakoniwa_core import ledger, stock
+from hakoniwa_core.config import GameConfig
+from hakoniwa_core.economy import books, debt, household
+from hakoniwa_core.economy.households import layer_of
+from hakoniwa_core.state import OWNER_STATE, Facility, IslandState, Loan
+from hakoniwa_core.units import BASIS, money_of, part, to_basis
+
+WORKING = "working"  # 運転資金
+CONSTRUCTION = "construction"  # 建設資金
+
+FINANCE_VERSION = 2  # economy.finance["version"]: 2 はフェーズ2-2 の金融が始まった島
+
+
+# --- 銀行 -----------------------------------------------------------------------
+
+
+def bank_list(island: IslandState) -> list[str]:
+    """島の銀行の主体（設立した順）。"""
+    return [ledger.bank_entity(n) for n in island.economy.banks]
+
+
+def bank_number(bank: str) -> int:
+    return int(bank.split(":")[1])
+
+
+def facility_of(island: IslandState, bank: str) -> Facility | None:
+    return island.facility(bank_number(bank))
+
+
+def is_failed(island: IslandState, bank: str) -> bool:
+    f = facility_of(island, bank)
+    return f is None or f.economy.get("failed") is not None
+
+
+def active_banks(island: IslandState) -> list[str]:
+    """破綻していない銀行。"""
+    return [b for b in bank_list(island) if not is_failed(island, b)]
+
+
+def deposits_of(island: IslandState, bank: str) -> int:
+    """銀行が出している預金の合計。"""
+    return -ledger.balance(island, ledger.issued(bank, ledger.DEPOSIT))
+
+
+def reserves_of(island: IslandState, bank: str) -> int:
+    return ledger.balance(island, ledger.reserve(bank))
+
+
+def required_reserves(island: IslandState, config: GameConfig, bank: str) -> int:
+    """最低限の準備預金（預金 × banking.reserve_ratio）。"""
+    return part(deposits_of(island, bank), to_basis(config.get("banking.reserve_ratio")))
+
+
+def excess_reserves(island: IslandState, config: GameConfig, bank: str) -> int:
+    return reserves_of(island, bank) - required_reserves(island, config, bank)
+
+
+def loans_of(island: IslandState, bank: str) -> int:
+    """銀行の融資の残高の合計。"""
+    return sum(ledger.holdings(island, bank, "loan:").values())
+
+
+def interbank_lent(island: IslandState, bank: str) -> int:
+    return sum(ledger.holdings(island, bank, ledger.INTERBANK).values())
+
+
+def interbank_borrowed(island: IslandState, bank: str) -> int:
+    return -ledger.balance(island, ledger.issued(bank, ledger.INTERBANK))
+
+
+def cb_borrowed(island: IslandState, bank: str) -> int:
+    return -ledger.balance(island, ledger.issued(bank, ledger.CB_LOAN))
+
+
+def bond_terms(config: GameConfig) -> list[int]:
+    return list(config.get("bonds.bucket_terms"))
+
+
+def bond_value(island: IslandState, config: GameConfig, holder: str, turn: int) -> int:
+    """持ち手の国債の時価。"""
+    return debt.market_value(island, holder, turn, bond_terms(config))
+
+
+def net_worth(island: IslandState, config: GameConfig, bank: str, turn: int) -> int:
+    """銀行の自己資本（資産 − 負債。国債は時価）。"""
+    assets = (
+        reserves_of(island, bank)
+        + loans_of(island, bank)
+        + bond_value(island, config, bank, turn)
+        + interbank_lent(island, bank)
+    )
+    liabilities = (
+        deposits_of(island, bank) + interbank_borrowed(island, bank) + cb_borrowed(island, bank)
+    )
+    return assets - liabilities
+
+
+def capital_ratio(island: IslandState, config: GameConfig, bank: str, turn: int) -> float:
+    """自己資本比率（融資がなければ無限大）。"""
+    loans = loans_of(island, bank)
+    worth = net_worth(island, config, bank, turn)
+    if loans <= 0:
+        return math.inf if worth >= 0 else -math.inf
+    return worth / loans
+
+
+def regulatory(config: GameConfig) -> float:
+    return config.get("banking.regulatory_ratio")
+
+
+def healthy_banks(island: IslandState, config: GameConfig, turn: int) -> list[str]:
+    """破綻しておらず、自己資本比率が規制の値以上の銀行（預金の多い順）。"""
+    found = [
+        b
+        for b in active_banks(island)
+        if capital_ratio(island, config, b, turn) >= regulatory(config)
+    ]
+    return sorted(found, key=lambda b: (-deposits_of(island, b), b))
+
+
+def labor_ratio(island: IslandState, defs: Any, bank: str) -> float:
+    """銀行の職員が足りている割合（足りない割合だけ新しい融資を絞る）。"""
+    f = facility_of(island, bank)
+    if f is None:
+        return 0.0
+    need = fac.workers_needed(defs, f.kind)
+    return 1.0 if need <= 0 else min(1.0, f.workers / need)
+
+
+def deposit_rate_of(island: IslandState, bank: str) -> int:
+    f = facility_of(island, bank)
+    if f is None:
+        return 0
+    return f.economy.get("deposit_rate", island.policy.deposit_rate)
+
+
+def margin_of(island: IslandState, config: GameConfig, bank: str) -> int:
+    f = facility_of(island, bank)
+    if f is None:
+        return to_basis(config.get("banking.margin"))
+    return f.economy.get("margin", to_basis(config.get("banking.margin")))
+
+
+def roe(island: IslandState, config: GameConfig, bank: str, turn: int) -> float:
+    """自己資本利益率（直近の利益の年率 ÷ 自己資本）。記録がなければ 0。"""
+    f = facility_of(island, bank)
+    profits = (f.economy.get("profits") or []) if f is not None else []
+    worth = net_worth(island, config, bank, turn)
+    if not profits or worth <= 0:
+        return 0.0
+    return sum(profits) * 12 / len(profits) / worth
+
+
+# --- 預金の保護 -----------------------------------------------------------------
+
+
+def insured(island: IslandState, entity: str) -> int | None:
+    """主体の預金のうち、銀行ごとに守られる上限額（None は無制限）。
+
+    家計の層は「人数 × 上限額」、施設などは1つあたりの上限額。
+    """
+    limit = island.policy.deposit_insurance
+    if limit < 0:
+        return None
+    layer = layer_of(entity)
+    if layer is not None:
+        persons = island.economy.households.get(layer, {}).get("persons", 0)
+        return persons * limit
+    return limit
+
+
+# --- 融資 -----------------------------------------------------------------------
+
+
+def outstanding(island: IslandState, loan: Loan) -> int:
+    return ledger.balance(
+        island, ledger.account(loan.lender, ledger.loan_item(loan.id), loan.borrower)
+    )
+
+
+def loans_by_borrower(island: IslandState, borrower: str) -> list[Loan]:
+    return [x for x in island.loans if x.borrower == borrower]
+
+
+def loans_by_lender(island: IslandState, lender: str) -> list[Loan]:
+    return [x for x in island.loans if x.lender == lender]
+
+
+def debt_of(island: IslandState, borrower: str) -> int:
+    """借り手の借入の合計。"""
+    return sum(outstanding(island, x) for x in loans_by_borrower(island, borrower))
+
+
+def book_capital(f: Facility) -> int:
+    """設備の帳簿の値打ち（設備の額 − 減価償却した額）。"""
+    return max(0, f.economy.get("capital", 0) - f.economy.get("depreciated", 0))
+
+
+def inventory_value(island: IslandState, f: Facility) -> int:
+    prices = island.economy.prices
+    return sum(money_of(prices.get(g, 0), q) for g, q in stock.totals(f.stock).items())
+
+
+def assets_of(island: IslandState, f: Facility, entity: str) -> int:
+    """施設の資産（設備の値打ち + 預金 + 在庫）。"""
+    return book_capital(f) + ledger.money(island, entity) + inventory_value(island, f)
+
+
+def net_assets(island: IslandState, f: Facility, entity: str) -> int:
+    """施設の純資産（資産 − 借入。0 未満なら 0）。国有化・民営化の値段に使う。"""
+    return max(0, assets_of(island, f, entity) - debt_of(island, entity))
+
+
+def lend(
+    island: IslandState,
+    lender: str,
+    borrower: str,
+    amount: int,
+    purpose: str,
+    term: int,
+    turn: int,
+    rate: int,
+    repay_from: int | None = None,
+) -> Loan | None:
+    """銀行 lender が borrower に amount を貸す（借り手の預金が生まれる）。"""
+    if amount <= 0:
+        return None
+    economy = island.economy
+    economy.loan_seq += 1
+    loan = Loan(
+        id=economy.loan_seq,
+        lender=lender,
+        borrower=borrower,
+        purpose=purpose,
+        principal=amount,
+        term=term,
+        start=turn,
+        rate=rate,
+        installment=-(-amount // max(1, term)),
+        repay_from=turn + 1 if repay_from is None else repay_from,
+    )
+    island.loans.append(loan)
+    ledger.create(island, lender, ledger.loan_item(loan.id), borrower, amount, "loan")
+    economy.deposit_bank.setdefault(borrower, bank_number(lender))
+    ledger.pay(island, lender, borrower, amount, "loan")
+    return loan
+
+
+def repay(island: IslandState, loan: Loan, amount: int, kind: str = "loan_repayment") -> None:
+    """元金を返す（借り手の預金が消える）。"""
+    if amount <= 0:
+        return
+    ledger.pay(island, loan.borrower, loan.lender, amount, kind)
+    ledger.cancel(island, loan.lender, ledger.loan_item(loan.id), loan.borrower, amount, kind)
+
+
+def write_off(island: IslandState, loan: Loan, amount: int) -> None:
+    """返ってこない元金を、貸し手の損失として消す。"""
+    if amount <= 0:
+        return
+    ledger.cancel(
+        island, loan.lender, ledger.loan_item(loan.id), loan.borrower, amount, "loan_write_off"
+    )
+    books.add(island, bank_number(loan.lender), books.WRITE_OFF, amount)
+
+
+def drop_settled(island: IslandState) -> None:
+    """返し終わった融資を消す。"""
+    island.loans = [x for x in island.loans if outstanding(island, x) > 0]
+
+
+def debt_service(island: IslandState, borrower: str, turn: int) -> int:
+    """借り手が毎ターン返す額の見込み（今の金利の利子 ＋ 返す時期に入った元金）。"""
+    total = 0
+    for loan in loans_by_borrower(island, borrower):
+        balance = outstanding(island, loan)
+        total += ledger.interest(balance, loan.rate)
+        if turn + 1 >= loan.repay_from and loan.purpose != WORKING:
+            total += min(balance, loan.installment)
+    return total
+
+
+def loan_rate(island: IslandState, ctx: Any, bank: str, borrower: str, extra: int = 0) -> int:
+    """融資の金利: r_L = r_P + m + ρ × D ÷ A（名前付きの式 loan_rate の既定）。
+
+    m は銀行ごとの利ざや、D は借り手の借入（extra は新しく借りる額）、A は資産。経済体制が政策融資を
+    する体制（regimes.yaml の policy_loans。混合経済）では、国営銀行が基幹産業（経済体制で国営と
+    決まっている施設）に貸すときの利ざやを 0 にする。
+    """
+    config = ctx.config
+    f = island.facility(int(borrower.split(":")[1])) if borrower.startswith("fac:") else None
+    margin = margin_of(island, config, bank)
+    lender = facility_of(island, bank)
+    regime = ctx.defs.regimes.get(island.regime.get("economy", ""), {})
+    if f is not None and lender is not None and regime.get("policy_loans"):
+        if lender.owner == OWNER_STATE and f.kind in regime.get("state_owned", ()):
+            margin = 0
+    rate = island.policy.policy_rate + margin
+    if f is not None:
+        assets = assets_of(island, f, borrower) + extra
+        debt_now = debt_of(island, borrower) + extra
+        if assets > 0:
+            rate += to_basis(config.get("banking.rho")) * min(debt_now, assets) // assets
+    return max(0, rate)
+
+
+def ebitda(f: Facility) -> list[int]:
+    return list(f.economy.get("ebitda") or [])
+
+
+def layer_deposit_insured(island: IslandState, entity: str, amount: int) -> int:
+    """銀行1つの預金 amount のうち守られる額。"""
+    limit = insured(island, entity)
+    return amount if limit is None else min(amount, limit)
+
+
+def depositors_of(island: IslandState, bank: str) -> dict[str, int]:
+    """銀行の預金者と額（預金者の名前の順）。"""
+    suffix = f"/{ledger.DEPOSIT}/{bank}"
+    found = {}
+    for name in sorted(island.accounts):
+        if name.endswith(suffix) and not ledger.is_issued(name):
+            value = island.accounts[name]
+            if value:
+                found[ledger.parse(name)[0]] = value
+    return found
+
+
+def household_entities(island: IslandState) -> list[str]:
+    return [household(layer) for layer in sorted(island.economy.households)]
+
+
+def annual(rate: int) -> float:
+    return rate / BASIS

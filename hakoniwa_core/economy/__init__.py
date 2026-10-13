@@ -13,6 +13,7 @@
 | 国庫直轄の施設 | 政府（支出の項目 state_facilities） |
 | 公務員の施設（中央省庁など） | 政府（支出の項目 civil_servants） |
 | 工事中の施設（国の工事） | 政府（支出の項目 construction） |
+| 工事中の民営工場（民間の参入。フェーズ2-2） | 施設 ``fac:<番号>``（出資と建設資金の融資） |
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ STATE_FACILITIES = "state_facilities"
 UNEMPLOYMENT = "unemployment"
 BONDS = "bonds"
 WAREHOUSE = "warehouse"
+SUBSIDIES = "subsidies"
 
 GENERAL = "general"  # 一般の労働者の層
 OWNERS = "owners"  # 資産を持つ層
@@ -87,17 +89,29 @@ def is_self_supporting(f: Facility) -> bool:
     return f.built and f.accounting == ACCOUNTING_SELF
 
 
+def is_stopped(f: Facility) -> bool:
+    """閉鎖の途中か差し押さえ中で、人を雇わず物を作らない施設か（フェーズ2-2）。"""
+    return "closing" in f.economy or "foreclosed" in f.economy
+
+
+def is_private_site(f: Facility) -> bool:
+    """民間が自分のお金で建てている工事（民営工場の参入。フェーズ2-2）。"""
+    return not f.built and bool(f.ext.get("private_entry"))
+
+
 def entity_of(config: GameConfig, f: Facility) -> str:
     """施設のお金を持つ主体（独立採算なら施設、銀行なら銀行、ほかは政府）。"""
-    if is_bank(config, f):
+    if is_bank(config, f) and f.built:
         return ledger.bank_entity(f.id)
-    if is_self_supporting(f):
+    if is_self_supporting(f) or is_private_site(f):
         return facility_entity(f.id)
     return ledger.GOV
 
 
 def payer_of(defs: Defs, config: GameConfig, f: Facility) -> Payer:
     """施設の賃金・仕入れ・電気代を払う側。"""
+    if is_private_site(f):
+        return Payer(facility_entity(f.id))
     if not f.built:
         return Payer(ledger.GOV, CONSTRUCTION)
     if is_bank(config, f):

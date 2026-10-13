@@ -33,6 +33,9 @@ INTEREST = "interest"
 TAX = "tax"
 DIVIDEND = "dividend"
 CAPITAL = "capital_injection"
+SUBSIDY = "subsidy"  # 受け取った補助金（フェーズ2-2）
+WRITE_OFF = "write_off"  # 銀行の貸し倒れ（損失）
+VALUATION = "valuation"  # 銀行の国債の時価の評価損益
 PROFIT = "profit"
 
 # 施設でない部門
@@ -40,7 +43,9 @@ HOUSEHOLDS = "households"  # 項目: goods, electricity, freight, housing, tax
 CONSTRUCTION = "construction"  # 項目: materials, freight, wages
 WAREHOUSE = "warehouse"  # 項目: purchases, sales
 GOVERNMENT = "government"  # 項目: wages（公務員）
-CENTRAL_BANK = "central_bank"  # 項目: interest（受け取った利子 − 払った利子）
+CENTRAL_BANK = (
+    "central_bank"  # 項目: interest（受け取った利子 − 払った利子）、valuation（国債の評価損益）
+)
 
 
 def _flows(island: IslandState) -> dict:
