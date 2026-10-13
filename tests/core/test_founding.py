@@ -72,6 +72,16 @@ def test_auto_terrain_is_deterministic_and_keeps_shape(game):
     assert a[(0, 0)] == "sea"
 
 
+def test_auto_terrain_stays_put_when_land_is_added(game):
+    """陸地を数マス描き足しても、島全体の森と山は入れ替わらない。"""
+    land = square(8, 8, 14, 14)
+    for seed in (7, 42, 1234):
+        before = auto_terrain(land, game.config, seed)
+        after = auto_terrain(land | {(22, 10), (22, 11), (22, 12)}, game.config, seed)
+        changed = [p for p in land if before[p] != after[p]]
+        assert len(changed) <= 5, (seed, changed)
+
+
 def test_plan_problems(game):
     plan = plan_for(game)
     assert plan_problems(plan, game.defs, game.config) == []

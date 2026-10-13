@@ -157,15 +157,42 @@ function tool() {
   return document.querySelector("input[name=tool]:checked").value;
 }
 
+/** ポインターのあるマス（縁や島の外でも返す。描けるかは drawable で見る）。 */
 function tileAt(e) {
   const r = canvas.getBoundingClientRect();
   const x = Math.floor(((e.clientX - r.left) / r.width) * n);
   const y = Math.floor(((e.clientY - r.top) / r.height) * n);
-  if (x < 1 || y < 1 || x >= n - 1 || y >= n - 1) return null;
   return [x, y];
 }
 
-function paint(pos) {
+/** 縁の1マスは海のまま（描けない）。 */
+function drawable([x, y]) {
+  return x >= 1 && y >= 1 && x < n - 1 && y < n - 1;
+}
+
+/** from から to までの線が通るマス（from は含まない）。上下左右につながるように1マスずつ進む。 */
+function tilesBetween([x0, y0], [x1, y1]) {
+  const dx = Math.abs(x1 - x0);
+  const dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  const tiles = [];
+  let [x, y] = [x0, y0];
+  let err = dx - dy;
+  while (x !== x1 || y !== y1) {
+    if (2 * err > -dy) {
+      err -= dy;
+      x += sx;
+    } else {
+      err += dx;
+      y += sy;
+    }
+    tiles.push([x, y]);
+  }
+  return tiles;
+}
+
+function paintTile(pos) {
   const key = pos.join(",");
   const t = tool();
   if (t === "land") {
@@ -181,30 +208,39 @@ function paint(pos) {
   } else if (t === "capital") {
     if (state.land.has(key)) state.capital = pos;
   }
+}
+
+function paint(tiles) {
+  tiles = tiles.filter(drawable);
+  if (!tiles.length) return;
+  for (const pos of tiles) paintTile(pos);
   drawShape();
   refreshTerrain();
 }
 
 let drawing = false;
-let last = null;
+let last = null; // 前に描いたときのポインターのマス
 canvas.addEventListener("pointerdown", (e) => {
   const pos = tileAt(e);
-  if (!pos) return;
+  if (!drawable(pos)) return;
   drawing = tool() !== "capital";
-  last = pos.join(",");
+  last = pos;
   canvas.setPointerCapture(e.pointerId);
-  paint(pos);
+  paint([pos]);
 });
 canvas.addEventListener("pointermove", (e) => {
   if (!drawing) return;
   const pos = tileAt(e);
-  if (!pos || pos.join(",") === last) return;
-  last = pos.join(",");
-  paint(pos);
+  if (pos[0] === last[0] && pos[1] === last[1]) return;
+  // 速く動かすと1回の動きで何マスも進むので、間のマスも描く
+  paint(tilesBetween(last, pos));
+  last = pos;
 });
-canvas.addEventListener("pointerup", () => {
-  drawing = false;
-});
+for (const type of ["pointerup", "pointercancel"]) {
+  canvas.addEventListener(type, () => {
+    drawing = false;
+  });
+}
 
 document.getElementById("random-shape").addEventListener("click", async () => {
   state.seed = Math.floor(Math.random() * 2 ** 31);
