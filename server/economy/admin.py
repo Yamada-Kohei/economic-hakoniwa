@@ -16,6 +16,12 @@ class BondAdmin(admin.ModelAdmin):
     list_filter = ["island"]
 
 
+@admin.register(m.Loan)
+class LoanAdmin(admin.ModelAdmin):
+    list_display = ["island", "number", "lender", "borrower", "purpose", "principal", "rate"]
+    list_filter = ["island", "purpose"]
+
+
 @admin.register(m.MarketRecord)
 class MarketRecordAdmin(admin.ModelAdmin):
     list_display = ["island", "turn", "good", "price", "volume", "demand", "supply"]

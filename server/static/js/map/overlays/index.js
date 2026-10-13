@@ -5,5 +5,6 @@ import happiness from "./happiness.js";
 import pollution from "./pollution.js";
 import population from "./population.js";
 import power from "./power.js";
+import zone from "./zone.js";
 
-export const overlays = [population, happiness, power, pollution];
+export const overlays = [population, happiness, power, pollution, zone];

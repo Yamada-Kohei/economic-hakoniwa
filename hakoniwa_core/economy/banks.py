@@ -247,9 +247,22 @@ def lend(
     rate: int,
     repay_from: int | None = None,
 ) -> Loan | None:
-    """銀行 lender が borrower に amount を貸す（借り手の預金が生まれる）。"""
+    """銀行 lender が borrower に amount を貸す（借り手の預金が生まれる）。
+
+    運転資金は、同じ銀行から借りている運転資金に足して1件にまとめる（返す期間は今から数え直す）。
+    """
     if amount <= 0:
         return None
+    if purpose == WORKING:
+        for loan in island.loans:
+            if loan.lender == lender and loan.borrower == borrower and loan.purpose == WORKING:
+                ledger.create(island, lender, ledger.loan_item(loan.id), borrower, amount, "loan")
+                ledger.pay(island, lender, borrower, amount, "loan")
+                loan.principal = outstanding(island, loan)
+                loan.start, loan.term, loan.rate = turn, term, rate
+                loan.installment = -(-loan.principal // max(1, term))
+                loan.repay_from = turn + 1
+                return loan
     economy = island.economy
     economy.loan_seq += 1
     loan = Loan(

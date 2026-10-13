@@ -1,0 +1,430 @@
+"""フェーズ2-2 の金融の部品: 融資、銀行の破綻処理、国債の不履行、倒産、参入、新しい命令。
+
+ターンを回す試験では、記録の段が毎ターン帳簿を確かめる（合わなければその場で止まる）。
+"""
+
+from __future__ import annotations
+
+import copy
+
+import pytest
+
+from hakoniwa_core import ledger
+from hakoniwa_core.autoplan import plan_turn, queue_orders
+from hakoniwa_core.economy import OWNERS, banks, facility_entity, household
+from hakoniwa_core.game import load_game
+from hakoniwa_core.modules import failures
+from hakoniwa_core.modules.bonds import default_premium
+from hakoniwa_core.modules.firms import EntryExit
+from hakoniwa_core.orders import check_order
+from hakoniwa_core.state import (
+    ORDER_DONE,
+    ORDER_FAILED,
+    OWNER_PRIVATE,
+    OWNER_STATE,
+    ZONE_INDUSTRIAL,
+    OrderState,
+)
+from hakoniwa_core.state.generate import generate_world
+from hakoniwa_core.turn.context import StageContext
+
+WARMUP = 40  # 融資と民営工場がそろうまで回すターン数
+
+
+@pytest.fixture(scope="module")
+def game():
+    return load_game()
+
+
+@pytest.fixture(scope="module")
+def warmed(game):
+    """標準の計画で WARMUP ターン回した3島（市場・混合・計画経済）の世界。試験ごとに写して使う。"""
+    world = generate_world(1, 3, game.config, game.defs)
+    run(game, world, WARMUP)
+    return world
+
+
+def run(game, world, turns, extra=None):
+    """標準の計画で turns ターン回す。extra(island) は島ごとに足す命令（計画の後ろに並ぶ）。"""
+    for _ in range(turns):
+        for island in world.islands.values():
+            queue_orders(island, plan_turn(island, game.defs, game.config, world.turn + 1))
+            if extra is not None:
+                queue_orders(island, extra(island))
+        game.engine.run_turn(world)
+
+
+def order(game, world, island, kind, payload):
+    """命令を1つだけ並べて1ターン回し、その命令の状態を返す。"""
+    island.orders = [OrderState(id=1, seq=1, kind=kind, payload=payload)]
+    game.engine.run_turn(world)
+    return island.orders[0]
+
+
+def island_of(world, economy):
+    return next(i for i in world.islands.values() if i.regime["economy"] == economy)
+
+
+def context(game, world, stage="test"):
+    return StageContext(
+        defs=game.defs,
+        config=game.config,
+        registry=game.registry,
+        formulas=game.engine.formulas,
+        turn=world.turn + 1,
+        seed=world.seed,
+        stage=stage,
+        before=None,
+    )
+
+
+def open_books(island):
+    """直接呼ぶ処理の帳簿を確かめられるように、今の残高を始まりにして仕訳を空にする。"""
+    island.journal.clear()
+    island.scratch["opening_accounts"] = dict(island.accounts)
+
+
+def books_ok(game, island):
+    opening = island.scratch["opening_accounts"]
+    assert ledger.check(island, opening, game.defs.journal_kinds()) == []
+
+
+# --- 融資 -----------------------------------------------------------------------
+
+
+def test_working_loans_merge_per_lender_and_borrower(game, warmed):
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    bank = banks.active_banks(island)[0]
+    f = next(f for f in island.facilities if f.owner == OWNER_PRIVATE and f.built)
+    borrower = facility_entity(f.id)
+    open_books(island)
+    before = len(island.loans)
+    debt = banks.debt_of(island, borrower)
+    money = ledger.money(island, borrower)
+    first = banks.lend(island, bank, borrower, 1000, banks.WORKING, 6, world.turn, 500)
+    second = banks.lend(island, bank, borrower, 2000, banks.WORKING, 6, world.turn, 500)
+    assert first is second  # 同じ銀行からの運転資金は1件にまとめる（件数が増え続けないように）
+    assert len(island.loans) <= before + 1
+    assert banks.debt_of(island, borrower) == debt + 3000
+    assert ledger.money(island, borrower) == money + 3000
+    books_ok(game, island)
+
+
+def test_construction_loans_wait_for_grace(game):
+    world = generate_world(1, 3, game.config, game.defs)
+    grace = game.config.get("loans.grace_turns")
+    seen = {}
+    for _ in range(120):
+        for island in world.islands.values():
+            queue_orders(island, plan_turn(island, game.defs, game.config, world.turn + 1))
+        game.engine.run_turn(world)
+        for island in world.islands.values():
+            for e in island.log:
+                if e.kind == "construction_done":
+                    f = island.facility_at(e.args["x"], e.args["y"])
+                    if f is not None and f.economy.get("entered") == world.turn:
+                        seen[(island.id, f.id)] = (
+                            world.turn,
+                            banks.loans_by_borrower(island, facility_entity(f.id)),
+                        )
+        if seen:
+            break
+    assert seen, "民営工場が建たなかった"
+    for done, loans in seen.values():
+        for loan in loans:
+            if loan.purpose == banks.CONSTRUCTION:
+                assert loan.repay_from == done + 1 + grace
+
+
+def test_arrears_bankrupt_private_facility(game, warmed):
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    bank = banks.active_banks(island)[0]
+    f = next(
+        f
+        for f in island.facilities
+        if f.built
+        and f.owner == OWNER_PRIVATE
+        and f.x >= 0
+        and f.kind != "bank"
+        and "foreclosed" not in f.economy
+        and "closing" not in f.economy
+    )
+    entity = facility_entity(f.id)
+    loan = banks.lend(island, bank, entity, 10**9, banks.CONSTRUCTION, 120, world.turn, 500)
+    # 借りたお金はもう使ってしまった（出資者に払い戻した）ことにする
+    ledger.pay(island, entity, household(OWNERS), ledger.money(island, entity), "equity_return")
+    loan.arrears = game.config.get("loans.arrears_limit") - 1
+    loan.repay_from = world.turn  # 返せない額の元金が、このターンから返す時期に入る
+    game.engine.run_turn(world)
+    assert any(e.kind == "facility_bankrupt" for e in island.log)
+    assert f.economy["foreclosed"]["bank"] == bank
+    assert f.workers == 0 and banks.debt_of(island, entity) == 0
+
+
+# --- 銀行の破綻処理 ---------------------------------------------------------------
+
+
+def _break_bank(game, world, island):
+    """銀行の融資の2割を貸し倒れにし、それで足りなければ債務超過になるまで貸し倒れにする。"""
+    bank = max(banks.active_banks(island), key=lambda b: banks.loans_of(island, b))
+    loans = sorted(banks.loans_by_lender(island, bank), key=lambda x: x.id)
+    total = sum(banks.outstanding(island, x) for x in loans)
+    cut = total // 5
+    for loan in loans:
+        if cut <= 0:
+            break
+        amount = min(cut, banks.outstanding(island, loan))
+        banks.write_off(island, loan, amount)
+        cut -= amount
+    for loan in loans:
+        if banks.net_worth(island, game.config, bank, world.turn) < 0:
+            break
+        banks.write_off(island, loan, banks.outstanding(island, loan))
+    banks.drop_settled(island)
+    assert banks.net_worth(island, game.config, bank, world.turn) < 0
+    return bank
+
+
+def _depositors(island, bank):
+    return {e: v for e, v in banks.depositors_of(island, bank).items() if not ledger.is_bank(e)}
+
+
+@pytest.mark.parametrize("method", failures.METHODS)
+def test_bank_resolution_keeps_insured_deposits_and_books(game, warmed, method):
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "mixed")  # 銀行が2つある島
+    ctx = context(game, world)
+    open_books(island)
+    bank = _break_bank(game, world, island)
+    others = [b for b in banks.healthy_banks(island, game.config, ctx.turn) if b != bank]
+    if method != failures.BAILOUT and not others:
+        pytest.skip("引き継ぐ銀行がない")
+    before = _depositors(island, bank)
+    money_before = {e: ledger.money(island, e) for e in before}
+    f = banks.facility_of(island, bank)
+    f.economy["failed"] = ctx.turn
+    if method == failures.BAILOUT:
+        failures.bailout(island, ctx, bank)
+        assert banks.net_worth(island, game.config, bank, ctx.turn) >= 0
+        assert f.owner == OWNER_STATE and "failed" not in f.economy
+    else:
+        failures.transfer(island, ctx, bank, others[0], liquidation=method == failures.LIQUIDATION)
+        assert bank not in banks.bank_list(island)
+        assert banks.deposits_of(island, bank) == 0
+    for entity, amount in before.items():
+        insured = banks.insured(island, entity)
+        protected = amount if insured is None else min(amount, insured)
+        # 保護される分は必ず残る（削られるのは上限を超えた分だけ）
+        assert ledger.money(island, entity) >= money_before[entity] - (amount - protected)
+    books_ok(game, island)
+
+
+def test_resolve_bank_order_needs_failed_bank(game, warmed):
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    f = banks.facility_of(island, banks.active_banks(island)[0])
+    result = check_order(
+        game.defs,
+        game.registry,
+        island,
+        "resolve_bank",
+        {"x": f.x, "y": f.y, "method": "bailout"},
+    )
+    assert result.reason == "reason_bank_not_failed"
+
+
+# --- 国債 -------------------------------------------------------------------------
+
+
+def test_bond_default_raises_yields_and_hits_bank_capital(game, warmed):
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    bank = max(
+        banks.bank_list(island), key=lambda b: banks.bond_value(island, game.config, b, world.turn)
+    )
+    yields_before = list(island.economy.finance["yields"])
+    held = banks.bond_value(island, game.config, bank, world.turn)
+    worth = banks.net_worth(island, game.config, bank, world.turn)
+    assert held > 0
+    state = order(game, world, island, "set_bond_payment", {"stop": True})
+    assert state.status == ORDER_DONE
+    assert any(e.kind == "bond_default_ordered" for e in island.log)
+    # 不履行の上乗せ δ が付き、区分の利回りも同じだけ跳ね上がる（借金が減った分の上乗せは減る）
+    premium = game.config.get("bonds.default_premium")
+    assert default_premium(island, context(game, world)) > premium * 0.9
+    jump = premium * 10000 * 0.9
+    after = island.economy.finance["yields"]
+    assert all(a >= b + jump for a, b in zip(after, yields_before, strict=True))
+    after = banks.net_worth(island, game.config, bank, world.turn)
+    haircut = game.config.get("bonds.haircut")
+    assert after < worth - held * haircut / 2
+
+
+def test_unsold_bonds_cut_spending_instead_of_underwriting(game, warmed):
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    assert order(game, world, island, "set_bond_policy", {"unsold": "cut"}).status == ORDER_DONE
+    assert island.policy.bond_unsold == "cut"
+    run(game, world, 6)
+    assert island.stats.get("bonds.underwritten", 0) == 0
+
+
+# --- 中央銀行 ---------------------------------------------------------------------
+
+
+def test_monetary_policy_and_independence(game, warmed):
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    state = order(game, world, island, "set_monetary_policy", {"policy_rate": 5})
+    assert state.status == ORDER_DONE and island.policy.policy_rate == 500
+    state = order(game, world, island, "set_central_bank_independence", {"independent": True})
+    assert state.status == ORDER_DONE and island.policy.cb_independent
+    # 独立した中央銀行には政策金利を命令できず、決めたターンから一定のターンは戻せない
+    result = check_order(
+        game.defs, game.registry, island, "set_monetary_policy", {"policy_rate": 1}
+    )
+    assert result.reason == "reason_cb_independent"
+    state = order(game, world, island, "set_central_bank_independence", {"independent": False})
+    assert state.status == ORDER_FAILED and state.reason == "reason_cb_switch_locked"
+
+
+# --- 民営工場の参入と撤退 -----------------------------------------------------------
+
+
+def test_private_entry_needs_inputs_on_the_island(game, warmed):
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    ctx = context(game, world)
+    supplied = EntryExit._supplied(island, ctx)
+    made = {
+        g
+        for f in island.facilities
+        if f.built and "closing" not in f.economy and "foreclosed" not in f.economy
+        for g in game.defs.facilities[f.kind]["recipes"][f.recipe].get("outputs", {})
+    }
+    assert made <= supplied
+    if "stone" not in island.resources:
+        assert "stone" not in supplied or island.warehouse.get("stone")
+
+
+def test_entry_fill_follows_shortage_size():
+    settings = {"entry_gap": 0.5, "shortage_turns": 3, "cost_ratio": 1.2}
+    recipe = {"outputs": {"steel": 1000}}
+
+    def fill(shortages, demand=None, capacity=None, price=100):
+        demand, capacity = demand or {}, capacity or {}
+        return EntryExit._fill(recipe, shortages, demand, capacity, {"steel": price}, 100, settings)
+
+    # 品切れが続いても、足りない量が小さければ売れる見込みも小さい
+    small = fill({"steel": [600, 600, 600, 0, 0, 0]})
+    big = fill({"steel": [2000] * 6})
+    none = fill({"steel": [400] * 6})
+    assert 0 < small < 1 and big == 1.0 and none == 0
+    # 値段が原価を大きく超えていれば、買いたい量を今ある施設と分け合った分だけ売れると見る
+    assert fill({}, {"steel": [3000] * 6}, {"steel": 2000}, price=130) == 1.0
+    assert fill({}, {"steel": [1500] * 6}, {"steel": 2000}, price=130) == 0.5
+    # 売り買いがなく値段が前のままの財では、値段が高くても建たない
+    assert fill({}, {"steel": [0] * 6}, {"steel": 2000}, price=130) == 0
+
+
+def test_entry_waits_while_inputs_are_short():
+    settings = {"entry_gap": 0.5, "shortage_turns": 3}
+    recipe = {"inputs": {"iron_ore": 2000}, "outputs": {"steel": 1000}}
+    # 原料が、新しい工場の使う量の半分以上足りないターンが続けば建たない
+    assert EntryExit._inputs_short(recipe, {"iron_ore": [1500] * 3 + [0] * 3}, settings)
+    assert not EntryExit._inputs_short(recipe, {"iron_ore": [1500] * 2 + [0] * 4}, settings)
+    assert not EntryExit._inputs_short(recipe, {"iron_ore": [500] * 6}, settings)
+    assert not EntryExit._inputs_short(recipe, {}, settings)
+
+
+def test_private_entry_happens_only_where_allowed(game, warmed):
+    entered = {i.regime["economy"]: 0 for i in warmed.islands.values()}
+    world = copy.deepcopy(warmed)
+    for _ in range(40):
+        run(game, world, 1)
+        for island in world.islands.values():
+            entered[island.regime["economy"]] += sum(
+                1 for e in island.log if e.kind == "private_entry"
+            )
+    assert entered["planned"] == 0
+    assert entered["market"] + entered["mixed"] > 0
+
+
+def test_closed_facility_leaves_power_line(game, warmed):
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    f = next(f for f in island.facilities if f.owner == OWNER_PRIVATE and f.built and f.x >= 0)
+    from hakoniwa_core import facilities as fac
+
+    fac.vacate(island, f)
+    assert island.facility_at(f.x, f.y) is None
+    assert island.tile(f.x, f.y).power_line
+
+
+# --- 命令: 指定・国有化・民営化・補助金 ---------------------------------------------
+
+
+def test_set_zone_marks_tiles(game, warmed):
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    occupied = island.facilities_by_tile()
+    tiles = [
+        [t.x, t.y]
+        for t in island.tiles
+        if t.terrain == "plain" and (t.x, t.y) not in occupied and island.capital != (t.x, t.y)
+    ][:3]
+    state = order(game, world, island, "set_zone", {"zone": "industrial", "tiles": tiles})
+    assert state.status == ORDER_DONE
+    assert all(island.tile(x, y).zone == ZONE_INDUSTRIAL for x, y in tiles)
+    result = check_order(
+        game.defs,
+        game.registry,
+        island,
+        "set_zone",
+        {"zone": "industrial", "tiles": [list(island.capital)]},
+    )
+    assert result.reason == "reason_zone_capital"
+
+
+def test_nationalize_then_privatize(game, warmed):
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    f = next(
+        f
+        for f in island.facilities
+        if f.owner == OWNER_PRIVATE
+        and f.built
+        and f.kind in ("farm", "lumber_camp", "fishing_port")
+        and "foreclosed" not in f.economy
+        and "closing" not in f.economy
+    )
+    state = order(game, world, island, "nationalize", {"x": f.x, "y": f.y})
+    assert state.status == ORDER_DONE, state.reason
+    assert f.owner == OWNER_STATE
+    state = order(game, world, island, "privatize", {"x": f.x, "y": f.y})
+    assert state.status == ORDER_DONE, state.reason
+    assert f.owner == OWNER_PRIVATE
+
+
+def test_planned_economy_cannot_privatize_or_license_banks(game, warmed):
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "planned")
+    f = next(f for f in island.facilities if f.kind == "farm" and f.built)
+    result = check_order(game.defs, game.registry, island, "privatize", {"x": f.x, "y": f.y})
+    assert result.reason == "reason_cannot_privatize"
+    result = check_order(game.defs, game.registry, island, "grant_bank_license", {})
+    assert result.reason == "reason_planned_economy"
+
+
+def test_subsidy_is_set_and_cleared(game, warmed):
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    payload = {"kind": "production", "good": "steel", "rate": 10, "turns": 12}
+    assert order(game, world, island, "set_subsidy", payload).status == ORDER_DONE
+    (subsidy,) = [s for s in island.policy.subsidies if s.get("good") == "steel"]
+    assert subsidy["rate"] == 1000 and subsidy["until"] == world.turn + 11
+    payload = {**payload, "rate": 0}
+    assert order(game, world, island, "set_subsidy", payload).status == ORDER_DONE
+    assert not [s for s in island.policy.subsidies if s.get("good") == "steel"]

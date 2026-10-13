@@ -198,7 +198,8 @@ class Policy:
     )
     bank_entry: str = ""  # 民間銀行の参入: free・license・closed（"" は経済体制の既定）
     deposit_insurance: int = 30000  # 預金保護の上限額（1人あたり、施設は1つあたり。-1 は無制限）
-    # 補助金: {"kind": production・capital・bailout, "good"/"x"/"y", "rate": 1万分の1, "until": ターン}
+    # 補助金: {"kind": production・capital・bailout, "good"/"x"/"y", "rate": 1万分の1,
+    #          "until": ターン}
     subsidies: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -225,8 +226,8 @@ class EconomyState:
     cb_loss: int = 0  # 中央銀行の繰り越した損失（後の利益で埋めてから国庫に納める）
     happiness_blend: int = 0  # 幸福度の重みをフェーズ1から移す残りのターン数
     loan_seq: int = 0
-    # 金融（フェーズ2-2）: 国債の区分ごとの利回り、銀行間の金利、債務不履行のターン、品切れの履歴など
-    # （hakoniwa_core/economy/banks.py と modules/bonds・central_bank・firms が読み書きする）
+    # 金融（フェーズ2-2）: 国債の区分ごとの利回り、銀行間の金利、債務不履行のターン、品切れの
+    # 履歴など（economy/banks.py と modules/bonds・central_bank・firms が読み書きする）
     finance: dict[str, Any] = field(default_factory=dict)
     ext: dict[str, Any] = field(default_factory=dict)
 

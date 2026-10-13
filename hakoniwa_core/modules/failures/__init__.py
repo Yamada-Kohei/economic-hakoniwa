@@ -1,19 +1,20 @@
 """破綻の段（フェーズ2-2）: 返済の遅れが続いた施設の倒産と、銀行の破綻・破綻処理。
 
-施設の倒産（計画経済の島では起きない）: 融資の返済が loans.arrears_limit ターン続けて遅れた施設は倒産し、
-止まって労働者は失業する。預金は貸し手に借入の割合で返し、返しきれない分は貸し手の損失（貸し倒れ）、
-出資は 0 になる。施設はいちばん多く貸していた銀行が差し押さえ（economy["foreclosed"]）、
-firms.foreclosure_turns ターンの間、帳簿の設備の値打ちの firms.foreclosure_price で売りに出す
-（買うのは参入する民間か、国有化する政府。参入と撤退の段）。
+施設の倒産（計画経済の島では起きない）: 融資の返済が loans.arrears_limit ターン続けて遅れた施設は倒
+産し、止まって労働者は失業する。預金は貸し手に借入の割合で返し、返しきれない分は貸し手の損失（貸し倒
+れ）、出資は 0 になる。施設はいちばん多く貸していた銀行が差し押さえ（economy["foreclosed"]）、
+firms.foreclosure_turns ターンの間、帳簿の設備の値打ちの firms.foreclosure_price で売りに出す（買う
+のは参入する民間か、国有化する政府。参入と撤退の段）。
 
 銀行の破綻: 自己資本がマイナスになった銀行と、資金繰りが破綻した銀行（中央銀行の段）は破綻し、
 新しい融資と預金の受け入れを止める。プレイヤーは命令 resolve_bank で処理を選ぶ（行政力を使わない）。
 次のターンまでに選ばれなければ「引き継ぎ」、引き継ぐ銀行がなければ「救済」にする。
 
-- 救済: 政府が自己資本を規制の値まで（資金繰りの破綻なら足りない準備預金も）注入し、銀行は国営銀行として残る。
+- 救済: 政府が自己資本を規制の値まで（資金繰りの破綻なら足りない準備預金も）注入し、銀行は国営銀行と
+  して残る。
 - 引き継ぎ: 預金・融資・国債・銀行間の貸し借りを、健全な銀行のうち預金の最も多い銀行に移す。
-- 清算: 融資を額面の banking.liquidation_price で健全な銀行に売ったとして損失を数え、引き継ぎと同じく移す
-  （安く買えた分は買った銀行の得になる）。
+- 清算: 融資を額面の banking.liquidation_price で健全な銀行に売ったとして損失を数え、引き継ぎと同じ
+  く移す（安く買えた分は買った銀行の得になる）。
 
 引き継ぎと清算の損失（資産が負債に足りない分）は、保護されない預金（銀行ごとに上限額を超えた分）と、
 破綻した銀行に貸していた銀行の貸し出しが、同じ割合で負う（破綻が連鎖することがある）。それでも足りない
@@ -24,6 +25,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import Payer, banks, books, facility_entity, funds, owner_entity
@@ -47,7 +49,7 @@ class Failures(IslandStage):
             return
         if not is_planned(ctx.defs, island):
             for f in sorted(island.facilities, key=lambda f: f.id):
-                if "foreclosed" in f.economy or "bankrupt" in f.economy:
+                if "foreclosed" in f.economy:
                     continue
                 entity = facility_entity(f.id)
                 limit = ctx.config.get("loans.arrears_limit")
@@ -243,7 +245,7 @@ def transfer(
                 )
     _cancel_equity(island, bank)
     _move_everything(island, bank, target)
-    island.facilities.remove(f)
+    fac.vacate(island, f)
     island.economy.banks.remove(f.id)
     for entity, number in list(island.economy.deposit_bank.items()):
         if number == f.id:

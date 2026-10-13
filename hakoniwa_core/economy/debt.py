@@ -125,8 +125,8 @@ def curve_yield(yields: Sequence[int], terms: Sequence[int], months: int) -> int
 
 
 def price(bond: Bond, turn: int, rate: int) -> float:
-    """額面1あたりの値段: 残りの利払い（毎ターン 利率 ÷ 12）と償還を、利回り rate（年率、1万分の1）の
-    1ターンあたりの複利で割り引いた額。"""
+    """額面1あたりの値段: 残りの利払い（毎ターン 利率 ÷ 12）と償還を、利回り rate（年率、
+    1万分の1）の1ターンあたりの複利で割り引いた額。"""
     months = remaining(bond, turn)
     if months <= 0:
         return 1.0

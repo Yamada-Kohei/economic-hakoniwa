@@ -131,12 +131,12 @@ def test_accounting_order_from_the_island_page(client, world):
     assert info["accounting_target"] == "treasury"
     assert info["accounting_target_name"] == "国庫直轄"
 
-    # 民営・公務の施設・銀行（建てられない施設）・町では命令が通らないので出さない
+    # 民営・公務の施設・銀行（国営と民間の2つ）・町では出さない
     config = get_game().config
     others = [
         island.facilities.filter(owner="private", x__gte=0).first(),
         island.facilities.get(kind="government_office"),
-        island.facilities.get(kind=config.get("banking.facility")),
+        *island.facilities.filter(kind=config.get("banking.facility")),
         island.facilities.filter(kind="housing").first(),
     ]
     for f in others:

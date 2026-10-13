@@ -2,34 +2,44 @@
 命令: 工業団地とオフィス街の指定（set_zone）、国有化と民営化、補助金。
 
 民営工場の参入（市場経済と混合経済の島。計画経済の島では建たない）:
-- 建てられるのは、民間が建てられる施設（facilities.yaml の private が false でなく、行政・銀行・運送業・
-  町でない）のうち、経済体制で国営と決まっていない施設（混合経済の基幹産業は建たない）。
-- 見込みの年の利益率 R（式 entry_return）が「借りる金利 + firms.entry_margin」を上回り、その財が直近
-  firms.price_turns ターンのうち firms.shortage_turns ターン以上品切れか、値段が原価の firms.cost_ratio 倍を
-  超えているとき。1つの島で1ターンに firms.entries_per_turn 件まで、R の大きい順。
-- 場所: 地形の合う空いた工業団地のマスのうち、通勤圏の失業者が要る人数の半分以上いて、運賃の率が
-  最も低いマス。
-- 資金: 建設費（今の資材の値段と平均賃金。設備投資補助を引く）の firms.equity_share を資産を持つ層の
-  預金から出資し、残りを銀行の建設資金で借りる（loans.construction_turns ターンで、工事が済んだ次の
-  ターンから返す）。資産を持つ層の預金が足りないか、審査に通らなければ建たない。工事の資材と賃金は
-  施設が自分の預金から払う。
-- 差し押さえ中の同じ施設があれば、その売り値を建設費として新しく建てる案と比べ、良い方を選ぶ。
+- 建てられるのは、民間が建てられる施設（facilities.yaml の private が false でなく、行政・銀行・運送
+  業・町でない）のうち、経済体制で国営と決まっていない施設（混合経済の基幹産業は建たない）。
+- 見込みの年の利益率 R（式 entry_return）に売れる見込みの割合を掛けた値が「借りる金利 +
+  firms.entry_margin」を上回り、その財が直近 firms.price_turns ターンのうち firms.shortage_turns
+  ターン以上品切れ（買いたい量に売りに出た量が、新しい工場の全力の産出の firms.entry_gap 倍以上足り
+  ない）か、値段が原価の firms.cost_ratio 倍を超えているとき。売れる見込みの割合は、値段が合図なら
+  1、品切れだけが合図なら直近の足りない量の平均 ÷ 全力の産出（1まで）。1つの島で1ターンに
+  firms.entries_per_turn 件まで、見込みの大きい順。原料（投入財）のどれかが島で手に入らない（作って
+  いる施設がなく、国の倉庫にもない）か、品切れ続き（数え方は産出の品切れと同じで、量は新しい工場の使う
+  量で見る）の作り方では建たない。
+- 同じ財を作る民営工場が建設中か、動き出して firms.price_turns ターンたっていなければ、その財では参
+  入しない（新しい工場が売り出した後の値段と品切れを見てから決める）。
+- 場所: 地形の合う空いた工業団地のマスのうち、通勤圏の失業者が要る人数の半分以上いて、運賃の率が最も
+  低いマス。
+- 資金: 建設費（今の資材の値段と平均賃金。設備投資補助を引く）の1割増しと、動き出すときの支払い（全
+  力で firms.operating_turns ターン分）の firms.equity_share を資産を持つ層の預金から出資し、残りを
+  銀行の建設資金で借りる（元金は工事が済んでから loans.grace_turns ターン据え置き、その後
+  loans.construction_turns ターンで返す）。資産を持つ層の預金が足りないか、審査に通らなければ建たな
+  い。工事の資材と賃金は施設が自分の預金から払う。
+- 差し押さえ中の同じ施設があれば、その売り値を建設費として新しく建てる案と比べ、良い方を選ぶ（買い取
+  るときも、動き出すときの支払いを合わせて調達し、元金を据え置く）。
 
 撤退: 民営の独立採算の施設は、操業目標が0のまま firms.exit_idle_turns ターン続くか、変動費の利益が
-firms.exit_loss_turns ターン続けてマイナスなら閉鎖に入る（economy["closing"]）。人を雇わず仕入れず、
-在庫を売る。在庫がなくなるか firms.foreclosure_turns ターンたったら、借入を預金で返し、残りを出資者に
-返してマスを空ける（工業団地の指定は残る）。返しきれなければ倒産と同じ扱い（差し押さえ）にする。
+firms.exit_loss_turns ターン続けてマイナス（全力の売上の firms.exit_loss_margin を超える損）なら閉鎖
+に入る（economy["closing"]）。人を雇わず仕入れず、在庫を売る。在庫がなくなるか
+firms.foreclosure_turns ターンたったら、借入を預金で返し、残りを出資者に返してマスを空ける（工業団地
+の指定は残る）。返しきれなければ倒産と同じ扱い（差し押さえ）にする。
 
-差し押さえた施設は firms.foreclosure_turns ターン売れなければ取り壊す（在庫は国の倉庫へ、預金は
-差し押さえた銀行の回収）。
+差し押さえた施設は firms.foreclosure_turns ターン売れなければ取り壊す（在庫は国の倉庫へ、預金は差し
+押さえた銀行の回収）。
 
-民間銀行の参入: 参入の政策（policy.bank_entry。決めていなければ経済体制の既定）が「自由」なら、参入した
-後の銀行1つあたりの島の預金 D が banking.entry_deposits を超え、預金 D を集めたときの利益の見込み
-（今ある銀行の「賃金を払う前の利益 ÷ 預金」× D − 職員の賃金）の年率が、資本金に対して「政策金利 +
-banking.entry_roe_margin」を超え、銀行の数が banking.max_banks 未満で、空いたオフィス街のマスがあれば、
-島の預金の banking.entry_capital を資産を持つ層が出資して開業する。「許可制」なら免許の命令
-（grant_bank_license）を出したときだけ開業する。開業した銀行は、預金が D に届くまで預金金利を
-政策金利まで上げて預金を集める（銀行の段）。
+民間銀行の参入: 参入の政策（policy.bank_entry。決めていなければ経済体制の既定）が「自由」なら、参入
+した後の銀行1つあたりの島の預金 D が banking.entry_deposits を超え、預金 D を集めたときの利益の見込
+み（今ある銀行の「賃金を払う前の利益 ÷ 預金」× D − 職員の賃金）の年率が、資本金に対して「政策金利 +
+banking.entry_roe_margin」を超え、銀行の数が banking.max_banks 未満で、空いたオフィス街のマスがあれ
+ば、島の預金の banking.entry_capital を資産を持つ層が出資して開業する。「許可制」なら免許の命令
+（grant_bank_license）を出したときだけ開業する。開業した銀行は、預金が D に届くまで預金金利を政策金
+利まで上げて預金を集める（銀行の段）。
 """
 
 from __future__ import annotations
@@ -49,13 +59,15 @@ from hakoniwa_core.economy import (
     funds,
     household,
     is_bank,
+    is_private_site,
     is_public_service,
     is_self_supporting,
+    is_stopped,
     is_transport,
 )
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.prices import construction_cost, unit_cost, variable_profit
-from hakoniwa_core.economy.start import fund_facility, init_facility, invest
+from hakoniwa_core.economy.start import fund_facility, init_facility, invest, operating_cost
 from hakoniwa_core.geo import within
 from hakoniwa_core.modules.banking import entry_policy, is_planned
 from hakoniwa_core.modules.failures import bankrupt, close_foreclosure
@@ -74,7 +86,7 @@ from hakoniwa_core.state import (
     LogEntry,
 )
 from hakoniwa_core.turn.context import StageContext
-from hakoniwa_core.units import BASIS, part, round_money, to_basis
+from hakoniwa_core.units import BASIS, money_of, part, round_money, to_basis
 
 NOT_PRIVATE = ("admin", "finance", "housing", "transport")  # 民間が建てない施設の分類
 
@@ -165,16 +177,22 @@ class EntryExit(IslandStage):
 
     @staticmethod
     def _record_shortages(island: IslandState, ctx: StageContext) -> None:
+        """財ごとの、買いたい量に売りに出た量が足りなかった量と、買いたい量（直近
+        firms.price_turns ターン）。"""
         keep = ctx.config.get("firms.price_turns")
-        history = island.economy.finance.setdefault("shortages", {})
-        seen = set()
-        for m in island.markets:
-            short = 1 if m.demand > m.volume else 0
-            history[m.good] = [*history.get(m.good, []), short][-keep:]
-            seen.add(m.good)
-        for good in list(history):
-            if good not in seen:
-                history[good] = [*history[good], 0][-keep:]
+        finance = island.economy.finance
+        for key, amount in (
+            ("shortages", lambda m: max(0, m.demand - m.supply)),
+            ("demand", lambda m: m.demand),
+        ):
+            history = finance.setdefault(key, {})
+            seen = set()
+            for m in island.markets:
+                history[m.good] = [*history.get(m.good, []), amount(m)][-keep:]
+                seen.add(m.good)
+            for good in list(history):
+                if good not in seen:
+                    history[good] = [*history[good], 0][-keep:]
 
     # --- 撤退 -------------------------------------------------------------------------
 
@@ -195,10 +213,13 @@ class EntryExit(IslandStage):
                 continue
             idle = f.economy.get("idle_turns", 0) + 1 if f.economy.get("target", 1) <= 0 else 0
             wage = f.economy.get("wage", 0)
-            profit = variable_profit(
-                ctx.defs, ctx.config, f, island.economy.prices, wage, rates.get(f.id, 0)
-            )
-            losing = f.economy.get("loss_streak", 0) + 1 if profit < 0 else 0
+            prices = island.economy.prices
+            profit = variable_profit(ctx.defs, ctx.config, f, prices, wage, rates.get(f.id, 0))
+            outputs = fac.recipe_of(ctx.defs, f)["outputs"]
+            sales = sum(money_of(prices.get(g, 0), q) for g, q in outputs.items())
+            # 値段が変動費ちょうどの売り手は、端数でマイナスになることがあるので少し見逃す
+            margin = part(sales, to_basis(settings["exit_loss_margin"]))
+            losing = f.economy.get("loss_streak", 0) + 1 if profit < -margin else 0
             f.economy["idle_turns"] = idle
             f.economy["loss_streak"] = losing
             if idle >= settings["exit_idle_turns"] or losing >= settings["exit_loss_turns"]:
@@ -237,7 +258,7 @@ class EntryExit(IslandStage):
             if seized and ctx.turn - seized["since"] >= turns:
                 close_foreclosure(island, f)
                 stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
-                island.facilities.remove(f)
+                fac.vacate(island, f)
                 freight_rates.forget(island)
                 island.log.append(
                     LogEntry("foreclosure_demolished", {"facility": f.kind, "x": f.x, "y": f.y})
@@ -253,6 +274,10 @@ class EntryExit(IslandStage):
         rates = freight_rates.facility_rates(island, defs, config)
         typical = sum(rates.values()) // len(rates) if rates else 0
         shortages = island.economy.finance.get("shortages", {})
+        demand = island.economy.finance.get("demand", {})
+        capacity = self._capacity(island, ctx)
+        busy = self._pipeline(island, ctx)
+        supplied = self._supplied(island, ctx)
         candidates = []
         for kind, fdef in sorted(defs.facilities.items()):
             if not private_allowed(defs, island, kind):
@@ -261,38 +286,112 @@ class EntryExit(IslandStage):
                 resource = recipe.get("requires_resource")
                 if resource is not None and resource not in island.resources:
                     continue
-                if not recipe["outputs"]:
+                if not recipe["outputs"] or busy & set(recipe["outputs"]):
                     continue
+                if set(recipe.get("inputs", {})) - supplied:
+                    continue  # 原料が島で手に入らない
+                if self._inputs_short(recipe, shortages, settings):
+                    continue  # 原料が品切れ続きで、新しい工場は原料を買えない
                 cost = unit_cost(defs, config, kind, recipe, prices, wage)
-                signal = any(
-                    sum(shortages.get(g, [])) >= settings["shortage_turns"]
-                    or prices.get(g, 0) > settings["cost_ratio"] * cost
-                    for g in recipe["outputs"]
-                )
-                if not signal:
+                fill = self._fill(recipe, shortages, demand, capacity, prices, cost, settings)
+                if fill <= 0:
                     continue
                 capital = round_money(construction_cost(defs, kind, prices, wage))
                 capital -= part(capital, capital_subsidy(island, kind, recipe))
                 estimate = ctx.formula("entry_return")(
                     island, ctx, kind, rname, prices, typical, capital
                 )
-                candidates.append((estimate, kind, rname, capital))
+                candidates.append((estimate * fill, kind, rname, capital, fill))
         threshold = self._threshold(island, ctx)
-        for estimate, kind, rname, capital in sorted(candidates, reverse=True)[:3]:
+        for estimate, kind, rname, capital, fill in sorted(candidates, reverse=True)[:3]:
             if estimate <= threshold:
                 break
-            if self._buy_foreclosed(island, ctx, kind, rname, prices, threshold, estimate):
+            if self._buy_foreclosed(island, ctx, kind, rname, prices, threshold, estimate, fill):
                 return True
             site = self._site(island, ctx, kind, rname)
             if site is None:
                 continue
             pos, rate = site
             r = ctx.formula("entry_return")(island, ctx, kind, rname, prices, rate, capital)
-            if r <= threshold:
+            if r * fill <= threshold:
                 continue
             if self._build(island, ctx, kind, rname, pos, capital, prices, rate):
                 return True
         return False
+
+    @staticmethod
+    def _fill(
+        recipe: dict[str, Any],
+        shortages: dict[str, list[int]],
+        demand: dict[str, list[int]],
+        capacity: dict[str, int],
+        prices: dict[str, int],
+        cost: int,
+        settings: dict[str, Any],
+    ) -> float:
+        """新しい工場が売れると見込む割合（0 なら参入の合図がない）。
+
+        値段が原価の firms.cost_ratio 倍を超える財は、直近の買いたい量の平均を、今ある施設と新しい
+        工場の全力の産出の合計で割った割合（1まで）だけ売れると見る（買い手の少ない財や、売り買いが
+        なくて値段が前のままの財で、売れない工場が建たないように）。品切れが合図の財は、直近の足りない
+        量の平均を全力の産出で割った割合（1まで）だけ売れると見る（工事が重なったときだけの品不足で、
+        大きな工場が建たないように）。
+        """
+        best = 0.0
+        for g, qty in recipe["outputs"].items():
+            wanted = demand.get(g, [])
+            if prices.get(g, 0) > settings["cost_ratio"] * cost and wanted:
+                share = sum(wanted) / len(wanted) / (capacity.get(g, 0) + qty)
+                best = max(best, min(1.0, share))
+            history = shortages.get(g, [])
+            gap = settings["entry_gap"] * qty
+            if sum(1 for short in history if short >= gap) >= settings["shortage_turns"]:
+                best = max(best, min(1.0, sum(history) / len(history) / qty))
+        return best
+
+    @staticmethod
+    def _capacity(island: IslandState, ctx: StageContext) -> dict[str, int]:
+        """財ごとの、動いている施設（閉鎖中と差し押さえ中を除く）の全力の産出の合計。"""
+        total: dict[str, int] = {}
+        for f in island.facilities:
+            if not f.built or is_stopped(f):
+                continue
+            for g, qty in fac.recipe_of(ctx.defs, f).get("outputs", {}).items():
+                total[g] = total.get(g, 0) + qty
+        return total
+
+    @staticmethod
+    def _pipeline(island: IslandState, ctx: StageContext) -> set[str]:
+        """新しい民営工場が建てている途中か、動き出して firms.price_turns ターンたたない財
+        （その工場が売り出した後の値段と品切れを見てから、次の参入を決める）。"""
+        recent = ctx.turn - ctx.config.get("firms.price_turns")
+        goods: set[str] = set()
+        for f in island.facilities:
+            if is_private_site(f) or f.economy.get("entered", -(10**9)) > recent:
+                goods |= set(ctx.defs.facilities[f.kind]["recipes"][f.recipe]["outputs"])
+        return goods
+
+    @staticmethod
+    def _inputs_short(
+        recipe: dict[str, Any], shortages: dict[str, list[int]], settings: dict[str, Any]
+    ) -> bool:
+        """原料のどれかが、直近 firms.price_turns ターンのうち firms.shortage_turns ターン以上、
+        新しい工場の全力の使う量の firms.entry_gap 倍以上足りなかったか。"""
+        for g, qty in recipe.get("inputs", {}).items():
+            gap = settings["entry_gap"] * qty
+            short = sum(1 for amount in shortages.get(g, []) if amount >= gap)
+            if short >= settings["shortage_turns"]:
+                return True
+        return False
+
+    @staticmethod
+    def _supplied(island: IslandState, ctx: StageContext) -> set[str]:
+        """島で手に入る財: 動いている施設が作っているか、国の倉庫にある財。"""
+        goods = {g for g, batches in island.warehouse.items() if batches}
+        for f in island.facilities:
+            if f.built and not is_stopped(f):
+                goods |= set(ctx.defs.facilities[f.kind]["recipes"][f.recipe].get("outputs", {}))
+        return goods
 
     @staticmethod
     def _threshold(island: IslandState, ctx: StageContext) -> float:
@@ -377,8 +476,12 @@ class EntryExit(IslandStage):
     ) -> bool:
         defs, config = ctx.defs, ctx.config
         probe = Facility(id=-1, kind=kind, x=pos[0], y=pos[1], recipe=rname, built=True)
-        earnings = variable_profit(defs, config, probe, prices, island.economy.average_wage, rate)
-        amount = capital + capital // 10  # 資材の値上がりに備えて1割多めに用意する
+        wage = island.economy.average_wage
+        earnings = variable_profit(defs, config, probe, prices, wage, rate)
+        # 資材の値上がりに備えて建設費を1割多めに用意し、動き出すときの支払い（firms.operating_turns
+        # ターン分）も合わせて調達する
+        start = operating_cost(defs, config, probe, prices, wage, rate)
+        amount = capital + capital // 10 + start * config.get("firms.operating_turns")
         plan = self._finance(island, ctx, amount, earnings)
         if plan is None:
             return False
@@ -420,33 +523,40 @@ class EntryExit(IslandStage):
         prices: dict[str, int],
         threshold: float,
         estimate: float,
+        fill: float,
     ) -> bool:
         """差し押さえ中の同じ施設を、新しく建てるより利益率が高ければ買い取る。"""
-        rates = freight_rates.facility_rates(island, ctx.defs, ctx.config)
+        config = ctx.config
+        rates = freight_rates.facility_rates(island, ctx.defs, config)
+        wage = island.economy.average_wage
         for f in sorted(island.facilities, key=lambda f: f.id):
             seized = f.economy.get("foreclosed")
             if not seized or f.kind != kind or f.recipe != rname:
                 continue
             price = max(1, seized["price"])
             rate = rates.get(f.id, 0)
-            r = ctx.formula("entry_return")(island, ctx, kind, rname, prices, rate, price)
+            r = ctx.formula("entry_return")(island, ctx, kind, rname, prices, rate, price) * fill
             if r <= max(threshold, estimate):
                 continue
-            earnings = variable_profit(
-                ctx.defs, ctx.config, f, prices, island.economy.average_wage, rate
-            )
-            plan = self._finance(island, ctx, price, earnings)
+            earnings = variable_profit(ctx.defs, config, f, prices, wage, rate)
+            start = operating_cost(ctx.defs, config, f, prices, wage, rate)
+            amount = price + start * config.get("firms.operating_turns")
+            plan = self._finance(island, ctx, amount, earnings)
             if plan is None:
                 continue
             bank, loan, loan_rate = plan
             seller = seized.get("bank")
             close_foreclosure(island, f)
             entity = facility_entity(f.id)
-            invest(island, household(OWNERS), entity, price - loan)
-            turns = ctx.config.get("loans.construction_turns")
-            banks.lend(island, bank, entity, loan, banks.CONSTRUCTION, turns, ctx.turn, loan_rate)
+            invest(island, household(OWNERS), entity, amount - loan)
+            turns = config.get("loans.construction_turns")
+            grace = ctx.turn + 1 + config.get("loans.grace_turns")
+            banks.lend(
+                island, bank, entity, loan, banks.CONSTRUCTION, turns, ctx.turn, loan_rate, grace
+            )
             pay_seller(island, entity, seller, price)
             restart(island, ctx, f, OWNER_PRIVATE, price)
+            f.economy["entered"] = ctx.turn
             island.log.append(
                 LogEntry(
                     "foreclosure_sold", {"facility": f.kind, "x": f.x, "y": f.y, "price": price}
@@ -500,7 +610,9 @@ class EntryExit(IslandStage):
         island.log.append(LogEntry("bank_opened", {"x": spot[0], "y": spot[1], "capital": capital}))
 
     @staticmethod
-    def _entry_profit(island: IslandState, ctx: StageContext, current: list[str], share: int) -> float:
+    def _entry_profit(
+        island: IslandState, ctx: StageContext, current: list[str], share: int
+    ) -> float:
         """預金 share を集めた新しい銀行の1ターンの利益の見込み: 今ある銀行の「職員の賃金を払う
         前の利益 ÷ 預金」を当てはめ、自分の職員の賃金を引く。"""
         earned = deposits = 0.0
@@ -552,7 +664,7 @@ def remove_facility(island: IslandState, ctx: StageContext, f: Facility) -> None
 
     close_accounts(island, f)
     stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
-    island.facilities.remove(f)
+    fac.vacate(island, f)
     freight_rates.forget(island)
 
 

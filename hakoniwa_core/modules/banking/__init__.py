@@ -3,23 +3,28 @@
 
 1. 前のターンに中央銀行の段で借りた銀行間の借り入れと中央銀行の貸し出しを、利子を付けて返す。
 2. 融資ごとに、今の金利（式 loan_rate）で利子を払い、返す時期に入った元金を返す。預金が足りなければ
-   運転資金を借りて返し（4. と同じ審査）、借りられなければ払える分だけ払い（払えなかった利子は
-   残高に足す）、遅れの回数を1つ増やす。続けて
-   loans.arrears_limit 回で倒産（破綻の段）。計画経済の島では、国営銀行が足りない分を貸して借り換えさせる。
+   運転資金を借りて返し（4. と同じ審査）、借りられなければ払える分だけ払い（払えなかった利子は残高に
+   足す）、遅れの回数を1つ増やす。続けて loans.arrears_limit 回で倒産（破綻の段）。計画経済の島で
+   は、国営銀行が足りない分を貸して借り換えさせる。
 3. 銀行は預金者に「預金 × 銀行の預金金利 ÷ 12」を払い、中央銀行は準備預金の余りに「政策金利 −
    central_bank.reserve_spread」の利子を払う。
 4. 次のターンの支払い（操業目標の分の賃金・投入財・電気代・運賃）に預金が足りない独立採算の施設は、
    足りない分を運転資金として借りる（loans.working_turns ターンで返す）。借り先は審査に通った銀行の
-   うち金利のいちばん低い銀行。審査は ①直近の「利払い前の利益 ＋ 減価償却 − 在庫の増加」（現金の
-   出入りで見た営業の利益。売れずに積み上がった在庫は返済に使えないので引く）の平均が、借りた後の
-   毎ターンの返済の loans.coverage 倍以上（運転資金の元金は仕入れた物の売上で返すので、運転資金の
-   元金は数えない）、②借入が資産の loans.max_leverage 倍以下、③貸した後も銀行の自己資本比率が規制の
-   値以上。借りられない国営施設には、政府が出資する（フェーズ2-1 と同じ）。借りられない民営施設は、
-   変動費の利益が出ている間だけ、資産を持つ層が出資する（出ていなければ縮み、続けば撤退する）。
-5. 家計の層は、預金の banking.switch_share までを「預金金利 − 危なさ」の高い銀行へ移す。自己資本比率が
-   規制を下回った銀行と、中央銀行から借りている銀行からは banking.run_share が流れ出す（取り付け）。
-6. 銀行ごとに預金金利と利ざやを見直す。預金金利は「政策金利 − banking.deposit_spread」へ近づけ、
-   準備預金が足りない銀行と、開業して預金を集めている銀行は政策金利へ近づける。島の預金金利
+   うち金利のいちばん低い銀行。審査は ①直近の「利払い前の利益 ＋ 減価償却 − 在庫の増加」（現金の出入
+   りで見た営業の利益。売れずに積み上がった在庫は返済に使えないので引く）の平均が、借りた後の毎ター
+   ンの返済の loans.coverage 倍以上（運転資金の元金は仕入れた物の売上で返すので、運転資金の元金は数
+   えない）、②借入が資産の loans.max_leverage 倍以下、③貸した後も銀行の自己資本比率が規制の値以上。①
+   は、記録のない施設では今の値段の変動費の利益（操業目標の分）、動き出して建設資金の据え置き
+   （loans.grace_turns）の間の民営工場では全力で動いたときの変動費の利益で見る（立ち上がりの赤字は見
+   ない）。①を満たさなくても、運転資金の残高が在庫の値打ちの loans.inventory_ratio 倍以内なら貸す
+   （在庫の担保）。借りられない国営施設には、政府が出資する（フェーズ2-1 と同じ）。借りられない民営
+   施設は、変動費の利益が出ている間だけ、資産を持つ層が出資する（出ていなければ縮み、続けば撤退す
+   る）。
+5. 家計の層は、預金の banking.switch_share までを「預金金利 − 危なさ」の高い銀行へ移す。自己資本比率
+   が規制を下回った銀行と、中央銀行から借りている銀行からは banking.run_share が流れ出す（取り付
+   け）。
+6. 銀行ごとに預金金利と利ざやを見直す。預金金利は「政策金利 − banking.deposit_spread」へ近づけ、準備
+   預金が足りない銀行と、開業して預金を集めている銀行は政策金利へ近づける。島の預金金利
    （policy.deposit_rate）は銀行の預金金利の平均。
 """
 
@@ -49,7 +54,7 @@ from hakoniwa_core.economy.households import add_income, layer_of
 from hakoniwa_core.economy.prices import variable_profit
 from hakoniwa_core.economy.start import next_payments
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
-from hakoniwa_core.state import OWNER_STATE, Facility, IslandState, LogEntry
+from hakoniwa_core.state import OWNER_STATE, Facility, IslandState, Loan, LogEntry
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, part, to_basis
 
@@ -67,7 +72,7 @@ def is_planned(defs: Defs, island: IslandState) -> bool:
 
 def in_business(f: Facility) -> bool:
     """倒産・差し押さえ・閉鎖の途中でない施設か。"""
-    return not any(k in f.economy for k in ("bankrupt", "foreclosed", "closing"))
+    return not any(k in f.economy for k in ("foreclosed", "closing"))
 
 
 class Banking(IslandStage):
@@ -124,56 +129,55 @@ class Banking(IslandStage):
     ) -> None:
         planned = is_planned(ctx.defs, island)
         rate_of = ctx.formula("loan_rate")
+        due: dict[str, list[tuple[Loan, int, int]]] = {}
         for loan in sorted(island.loans, key=lambda x: x.id):
             balance = banks.outstanding(island, loan)
             if balance <= 0:
                 continue
-            borrower = loan.borrower
-            loan.rate = rate_of(island, ctx, loan.lender, borrower)
+            loan.rate = rate_of(island, ctx, loan.lender, loan.borrower)
             interest = ledger.interest(balance, loan.rate)
             principal = min(balance, loan.installment) if ctx.turn >= loan.repay_from else 0
+            due.setdefault(loan.borrower, []).append((loan, interest, principal))
+        for borrower, rows in sorted(due.items()):
             payer = Payer(borrower)
-            short = interest + principal - funds.available(island, payer)
-            if short > 0 and planned:
-                self._refinance(island, ctx, loan, interest + principal)
-            elif short > 0:
-                # 一時的な資金不足: 審査に通れば運転資金を借りて返す（通らなければ遅れになる）。
-                # 国営施設の返済は、借りられなければ政府が出資して穴を埋める（国庫が足りなければ遅れる）
-                f = island.facility(int(borrower.split(":")[1]))
-                if f is not None and in_business(f):
-                    if not self._borrow(island, ctx, f, short, lent, planned):
-                        if owner_entity(f) == ledger.GOV:
-                            self._inject(island, f, Payer(ledger.GOV, STATE_FACILITIES), short)
-            money = funds.available(island, payer)
-            paid_interest = min(interest, money)
-            paid_principal = min(principal, money - paid_interest)
-            number = int(borrower.split(":")[1])
-            if paid_interest:
-                ledger.pay(island, borrower, loan.lender, paid_interest, "interest_loan")
-            unpaid = interest - paid_interest
-            if unpaid > 0:  # 払えなかった利子は残高に足す（銀行の収入には数える）
-                ledger.create(
-                    island,
-                    loan.lender,
-                    ledger.loan_item(loan.id),
-                    borrower,
-                    unpaid,
-                    "interest_loan",
-                )
-            books.add(island, number, books.INTEREST, -interest)
-            books.add(island, banks.bank_number(loan.lender), books.INTEREST, interest)
-            banks.repay(island, loan, paid_principal)
-            if paid_interest + paid_principal < interest + principal:
-                loan.arrears += 1
-            else:
-                loan.arrears = 0
+            short = sum(i + p for _, i, p in rows) - funds.available(island, payer)
+            f = island.facility(int(borrower.split(":")[1]))
+            if short > 0 and f is not None and in_business(f):
+                if planned:
+                    self._refinance(island, ctx, rows[0][0], short)
+                elif not self._borrow(island, ctx, f, short, lent, planned):
+                    # 一時的な資金不足は、審査に通れば運転資金を借りて返す（通らなければ遅れ
+                    # になる）。国営施設は、借りられなければ政府が出資して穴を埋める（国庫が
+                    # 足りなければ遅れる）
+                    if owner_entity(f) == ledger.GOV:
+                        self._inject(island, f, Payer(ledger.GOV, STATE_FACILITIES), short)
+            for loan, interest, principal in rows:
+                self._pay_loan(island, loan, interest, principal)
 
     @staticmethod
-    def _refinance(island: IslandState, ctx: StageContext, loan: Any, need: int) -> None:
+    def _pay_loan(island: IslandState, loan: Loan, interest: int, principal: int) -> None:
+        borrower = loan.borrower
+        money = funds.available(island, Payer(borrower))
+        paid_interest = min(interest, money)
+        paid_principal = min(principal, money - paid_interest)
+        if paid_interest:
+            ledger.pay(island, borrower, loan.lender, paid_interest, "interest_loan")
+        unpaid = interest - paid_interest
+        if unpaid > 0:  # 払えなかった利子は残高に足す（銀行の収入には数える）
+            ledger.create(
+                island, loan.lender, ledger.loan_item(loan.id), borrower, unpaid, "interest_loan"
+            )
+        books.add(island, int(borrower.split(":")[1]), books.INTEREST, -interest)
+        books.add(island, banks.bank_number(loan.lender), books.INTEREST, interest)
+        banks.repay(island, loan, paid_principal)
+        if paid_interest + paid_principal < interest + principal:
+            loan.arrears += 1
+        else:
+            loan.arrears = 0
+
+    @staticmethod
+    def _refinance(island: IslandState, ctx: StageContext, loan: Loan, short: int) -> None:
         """計画経済の島で、返済に足りない分を国営銀行が運転資金として貸す（審査なし）。"""
-        short = need - funds.available(island, Payer(loan.borrower))
-        if short <= 0:
-            return
         rate = ctx.formula("loan_rate")(island, ctx, loan.lender, loan.borrower, short)
         turns = ctx.config.get("loans.working_turns")
         banks.lend(island, loan.lender, loan.borrower, short, banks.WORKING, turns, ctx.turn, rate)
@@ -212,7 +216,8 @@ class Banking(IslandStage):
     def _working_capital(
         self, island: IslandState, ctx: StageContext, lent: dict[str, list[int]]
     ) -> None:
-        """足りない運転資金を貸す。lent に銀行ごとの [貸した額, 断った額（銀行の体力が理由）] を足す。"""
+        """足りない運転資金を貸す。lent に銀行ごとの [貸した額, 断った額（銀行の体力が理由）] を
+        足す。"""
         planned = is_planned(ctx.defs, island)
         for f in sorted(island.facilities, key=lambda f: f.id):
             if not is_self_supporting(f) or is_bank(ctx.config, f) or not in_business(f):
@@ -283,16 +288,27 @@ class Banking(IslandStage):
         settings = config.get("loans")
         entity = facility_entity(f.id)
         history = banks.ebitda(f)[-config.get("firms.ebitda_turns") :]
-        if history:
+        young = ctx.turn - f.economy.get("entered", -(10**9)) <= settings["grace_turns"]
+        if history and not young:
             earnings = sum(history) / len(history)
-        else:  # 記録がない（できたばかり）: 今の値段の変動費の利益を操業目標の分だけ見る
+        else:
+            # 記録がないか、民営工場が動き出して据え置きの間（立ち上がりの赤字は見ない）:
+            # 今の値段の変動費の利益を、できたばかりなら操業目標の分、据え置きの間は全力の分だけ見る
             freight = freight_rates.facility_rates(island, ctx.defs, config).get(f.id, 0)
             wage = f.economy.get("wage", 0)
             profit = variable_profit(ctx.defs, config, f, island.economy.prices, wage, freight)
-            earnings = fac.scale(profit, f.economy.get("target", fac.FULL))
+            earnings = profit if young else fac.scale(profit, f.economy.get("target", fac.FULL))
         service = banks.debt_service(island, entity, ctx.turn) + ledger.interest(amount, rate)
         if service > 0 and earnings < settings["coverage"] * service:
-            return "borrower"
+            # 利益で返せなくても、売れ残りの在庫を担保に運転資金だけは貸す（在庫を売って返す）
+            working = sum(
+                banks.outstanding(island, x)
+                for x in banks.loans_by_borrower(island, entity)
+                if x.purpose == banks.WORKING
+            )
+            secured = part(banks.inventory_value(island, f), to_basis(settings["inventory_ratio"]))
+            if working + amount > secured:
+                return "borrower"
         debt_after = banks.debt_of(island, entity) + amount
         assets = banks.assets_of(island, f, entity) + amount
         if debt_after > settings["max_leverage"] * assets:
@@ -401,6 +417,7 @@ class Banking(IslandStage):
 
 # --- フェーズ2-1 の島の立て直し ----------------------------------------------------
 
+
 def upgrade(island: IslandState, ctx: StageContext) -> None:
     """フェーズ2-1 から続く島の金融を、フェーズ2-2 の形にする（1度だけ）。
 
@@ -502,4 +519,3 @@ def register(registry: Registry) -> None:
     registry.add_order(
         OrderHandler("grant_bank_license", execute=grant_bank_license, check=check_bank_license)
     )
-

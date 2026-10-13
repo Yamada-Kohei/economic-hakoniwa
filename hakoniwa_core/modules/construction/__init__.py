@@ -109,7 +109,9 @@ def close_accounts(island: IslandState, f: Facility) -> None:
     entity = facility_entity(f.id)
     owner = owner_entity(f)
     for loan in sorted(banks.loans_by_borrower(island, entity), key=lambda x: x.id):
-        banks.repay(island, loan, min(banks.outstanding(island, loan), ledger.money(island, entity)))
+        banks.repay(
+            island, loan, min(banks.outstanding(island, loan), ledger.money(island, entity))
+        )
         banks.write_off(island, loan, banks.outstanding(island, loan))
     banks.drop_settled(island)
     ledger.pay(island, entity, owner, ledger.money(island, entity), "equity_return")
@@ -221,13 +223,14 @@ class Construction(IslandStage):
 
 
 def _start_private(island: IslandState, ctx: StageContext, f: Facility) -> None:
-    """民営工場の完成: 建設資金の返済を次のターンから始め、設備投資補助を払う。"""
+    """民営工場の完成: 建設資金の元金を据え置きの後から返し始め、設備投資補助を払う。"""
     from hakoniwa_core.modules.firms import capital_subsidy
 
     entity = facility_entity(f.id)
+    f.economy["entered"] = ctx.turn
     for loan in banks.loans_by_borrower(island, entity):
         if loan.purpose == banks.CONSTRUCTION:
-            loan.repay_from = ctx.turn + 1
+            loan.repay_from = ctx.turn + 1 + ctx.config.get("loans.grace_turns")
     rate = capital_subsidy(island, f.kind, fac.recipe_of(ctx.defs, f))
     payer = Payer(ledger.GOV, SUBSIDIES)
     amount = min(part(f.economy.get("capital", 0), rate), funds.available(island, payer))

@@ -180,6 +180,7 @@ class Production(IslandStage):
         width = to_basis(config.get("market.band"))
         cap = island.policy.price_cap.get(power) if has_money else None
         _, high = auction.band(reference, width, cap)
+        rates_of = freight.facility_rates(island, defs, config) if has_money else {}
 
         plants: dict[int, list[tuple[_Run, int]]] = {}
         users: dict[int, list[_Run]] = {}
@@ -217,9 +218,11 @@ class Production(IslandStage):
             for run, out in sellers:
                 capacity = fac.scale(out, run.rate)
                 ask = run.f.economy.get("ask", {}).get(power, reference)
-                if has_money:  # 1単位の変動費より安くは売らない（国庫直轄も）
+                if has_money:  # 1単位の変動費（燃料の運賃を含む）より安くは売らない（国庫直轄も）
                     wage = run.f.economy.get("wage", 0)
-                    ask = max(ask, unit_floor(defs, config, run.f, power, economy.prices, wage, 0))
+                    rate = rates_of.get(run.f.id, 0)
+                    floor = unit_floor(defs, config, run.f, power, economy.prices, wage, rate)
+                    ask = max(ask, floor)
                 sell_orders.append(Order(capacity, min(ask, high)))  # 上端より高くては売れない
             buy_orders = []
             for b in buyers:

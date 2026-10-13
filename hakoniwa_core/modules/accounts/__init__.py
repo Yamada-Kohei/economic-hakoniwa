@@ -7,23 +7,23 @@
 在庫の増減は、そのターンの値段で数えます（hakoniwa_core/economy/books.py）。減価償却は、工事で
 実際に払った額（設備の額）を firms.depreciation_turns ターンで均等に費用にします。
 
-国債の時価の評価: 持ち手（銀行と中央銀行）ごとに「今の時価 − 前のターンの時価 − このターンに買った代金
-＋ 売った代金と償還の額」を評価損益にします（国債の段の bond_flows）。金利が上がると国債を多く持つ銀行の
-自己資本が減ります。
+国債の時価の評価: 持ち手（銀行と中央銀行）ごとに「今の時価 − 前のターンの時価 − このターンに
+買った代金 ＋ 売った代金と償還の額」を評価損益にします（国債の段の bond_flows）。金利が上がると
+国債を多く持つ銀行の自己資本が減ります。
 
 補助金（命令 set_subsidy、予算の項目 subsidies から払う。足りなければ比例で減らす）:
 - 生産補助: 品目か工業団地のマスを指定し、独立採算の施設の売上の決めた割合を払う。
 - 救済補助: 施設を指定し、そのターンの赤字を埋める。
 - 設備投資補助は、工事が済んだときに払う（工事の段）。
 
-独立採算の施設と銀行は、利益に法人税（政策の税率。赤字は firms.loss_carry_turns ターン繰り越す）を
-払い、税引き後の利益の firms.payout を持ち主に払います（民営は資産を持つ層への配当、国営は国庫への
-納付）。手元の資金が次のターンの支払いの見込みの firms.cash_turns ターン分を超えたら、超えた分も
-払います。払えるのは、手元の資金のうち支払いの見込みの firms.operating_turns ターン分を残した額
-までです。税引き後の利益が出なかったターンは払いません。銀行は、払った後も自己資本比率が規制の値
-以上に残る分までしか払いません。国庫直轄の施設はお金がすべて国庫のものなので、損益を帳簿に残すだけです。
-国営の独立採算の施設が firms.loss_notice_turns ターン続けて赤字なら、ログで知らせます（補助金・縮小・
-閉鎖はプレイヤーが選ぶ）。
+独立採算の施設と銀行は、利益に法人税（政策の税率。赤字は firms.loss_carry_turns ターン繰り越す）を払
+い、税引き後の利益の firms.payout を持ち主に払います（民営は資産を持つ層への配当、国営は国庫への納
+付）。手元の資金が次のターンの支払いの見込みの firms.cash_turns ターン分を超えたら、超えた分も払いま
+す。払えるのは、手元の資金のうち支払いの見込みの firms.operating_turns ターン分を残した額までです。
+税引き後の利益が出なかったターンは払いません。銀行は、払った後も自己資本比率が規制の値以上に残る分ま
+でしか払いません。国庫直轄の施設はお金がすべて国庫のものなので、損益を帳簿に残すだけです。国営の独立
+採算の施設が firms.loss_notice_turns ターン続けて赤字なら、ログで知らせます（補助金・縮小・閉鎖はプ
+レイヤーが選ぶ）。
 
 中央銀行の利益（国債と貸し出しの利子 − 準備預金の利子 ＋ 国債の評価損益）は全額を国庫に納めます。
 損失は繰り越して、後の利益で埋めてから納めます。
@@ -134,7 +134,7 @@ class Accounts(IslandStage):
 
     @staticmethod
     def _valuation(island: IslandState, ctx: StageContext) -> dict[str, int]:
-        """国債の持ち手ごとの時価の評価損益（前のターンの時価からの変化 − 売り買いと償還の出入り）。"""
+        """国債の持ち手ごとの時価の評価損益（前のターンの時価からの変化 − 売買と償還の出入り）。"""
         finance = island.economy.finance
         first = "bond_book" not in finance  # 初めのターンは今の時価を帳簿の値にする（評価損益なし）
         book = finance.setdefault("bond_book", {})
@@ -291,6 +291,8 @@ def check_accounting(island: IslandState, payload: dict[str, Any], defs: Defs) -
         raise OrderFailed("reason_not_state_owned", facility=f.kind)
     if is_public_service(defs, f):
         raise OrderFailed("reason_public_service", facility=f.kind)
+    if defs.facilities[f.kind].get("category") == "finance":
+        raise OrderFailed("reason_bank_accounting")
     if payload["accounting"] not in (ACCOUNTING_SELF, ACCOUNTING_TREASURY):
         raise OrderFailed("reason_invalid_payload")
     if f.accounting == payload["accounting"]:

@@ -135,6 +135,10 @@ def help_page(request):
             "base_admin": game.config.get("orders.base_admin_power"),
             "max_admin": game.config.get("orders.max_admin_power"),
             "admin_per_office": _admin_people(defs),
+            # 金融と企業（フェーズ2-2）の説明に出す数
+            "arrears_limit": game.config.get("loans.arrears_limit"),
+            "foreclosure_turns": game.config.get("firms.foreclosure_turns"),
+            "cb_lock_turns": game.config.get("central_bank.switch_lock_turns"),
             "settlements": [
                 {
                     "name": defs.name("settlements", sid),

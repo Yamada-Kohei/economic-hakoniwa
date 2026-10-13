@@ -34,3 +34,4 @@ construction: "#ffffff"   # 工事中の枠の色
 power_line: "#333333"     # 送電線
 no_development: "rgba(255, 255, 255, 0.45)"  # 開発を止めたマスの斜線
 office: "rgba(90, 120, 200, 0.35)"           # オフィス街のマス
+industrial: "rgba(230, 140, 40, 0.45)"       # 工業団地のマス

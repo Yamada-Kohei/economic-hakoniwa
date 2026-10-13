@@ -135,17 +135,20 @@ firms:
   loss_carry_turns: 60  # 赤字を繰り越せるターン数
   # 民営工場の参入（フェーズ2-2）。見込みの年の利益率 R（式 entry_return）が「借りる金利 + entry_margin」を
   # 超え、その財が直近 price_turns ターンのうち shortage_turns ターン以上品切れか、値段が原価の
-  # cost_ratio 倍を超えていて、空いた工業団地のマスがあれば建つ
+  # cost_ratio 倍を超えていて、空いた工業団地のマスがあれば建つ。同じ財の民営工場が建設中か、
+  # 建ってから price_turns ターンたっていなければ待つ
   entry_margin: 0.03
   entries_per_turn: 1   # 1つの島で1ターンに建つ数
   equity_share: 0.3     # 建設費のうち資産を持つ層が出資する割合（残りは建設資金の融資）
   price_turns: 6        # 参入の計算で値段を平均するターン数
   shortage_turns: 3
+  entry_gap: 0.5        # 品切れと見る足りない量（新しい工場の全力の産出に対する割合）
   cost_ratio: 1.2
   # 撤退と倒産
-  exit_idle_turns: 6    # 操業目標が0のままこのターン数続いたら閉鎖する
+  exit_idle_turns: 12   # 操業目標が0のままこのターン数続いたら閉鎖する
   exit_loss_turns: 12   # 変動費の利益がこのターン数続けてマイナスなら閉鎖する
-  foreclosure_turns: 6  # 倒産して差し押さえた施設を売りに出すターン数（売れなければ取り壊す）
+  exit_loss_margin: 0.01  # マイナスと見るのは、全力の売上のこの割合を超える損のとき（端数で閉鎖しない）
+  foreclosure_turns: 12 # 倒産して差し押さえた施設を売りに出すターン数（売れなければ取り壊す）
   foreclosure_price: 0.5  # 差し押さえた施設の売り値（帳簿の設備の値打ちに対する割合）
   loss_notice_turns: 6  # 国営の独立採算の施設が、このターン数続けて赤字ならプレイヤーに知らせる
   ebitda_turns: 6       # 融資の審査で見る「利払い前の利益 ＋ 減価償却」を平均するターン数
@@ -180,9 +183,12 @@ banking:
 
 loans:
   working_turns: 6      # 運転資金を返す期間
-  construction_turns: 120  # 建設資金を返す期間（工事が済んだ次のターンから）
+  construction_turns: 120  # 建設資金を返す期間（据え置きの後から）
+  grace_turns: 6        # 建設資金の元金の据え置き（工事が済んでからこのターン数は利子だけ払う）。
+                        # この間の運転資金の審査は、全力で動いたときの見込みの利益で見る
   coverage: 1.2         # 審査: 利払い前の利益 ＋ 減価償却 ≧ 毎ターンの返済（利子 + 元金）× これ
   max_leverage: 0.8     # 審査: 借入の合計 ≦ 資産（設備の値打ち + 預金 + 在庫）× これ
+  inventory_ratio: 0.5  # 審査: 利益で返せなくても、運転資金の残高が在庫の値打ち × これ以内なら貸す
   arrears_limit: 3      # 返済がこのターン数続けて遅れたら倒産
 
 central_bank:

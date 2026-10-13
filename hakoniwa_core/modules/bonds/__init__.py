@@ -10,8 +10,9 @@
    区分の利回りも同じだけ跳ね上がる。
 5. 命令で決めた中央銀行の直接引き受けと追加の発行。
 6. 国債の売買の市場（区分ごとの板寄せ）。
-7. 「このターンの国債以外の政府の支出（次のターンの見込み）× (1 + bonds.buffer_turns) ＋ 次のターンの
-   利払い − 国庫の残高」がプラスなら、その額を入札で発行する。期間は政策の割合（policy.bond_terms）で分ける。
+7. 「このターンの国債以外の政府の支出（次のターンの見込み）× (1 + bonds.buffer_turns) ＋ 次のターン
+   の利払い − 国庫の残高」がプラスなら、その額を入札で発行する。期間は政策の割合
+   （policy.bond_terms）で分ける。
 
 入札: 買い手は市中銀行です。各銀行は準備預金の余りの banking.auction_share を、求める利回り
 （式 bond_yield）と、それに banking.auction_tiers を足した利回りの3段に分けて注文し、発行額が売れる
@@ -19,12 +20,12 @@
 「引き受ける」で中央銀行が独立していなければ中央銀行が同じ利回りで引き受け、そうでなければ発行
 しません（足りない支出は支払いの順番で削られる）。
 
-国債の売買の市場: 残りの期間で分けた区分ごとに、利回りを値段にした板寄せで売り買いします（値幅は
-前のターンの利回り ± bonds.trade_band）。市中銀行は国債の時価を目安（預金 × banking.bond_ratio）に
-近づけるように注文し（売りは求める利回り ＋ banking.sell_premium まで受け入れ、買いは求める利回り
-以上）、準備預金が最低限に足りない銀行は足りない分を指値なしで売ります。独立していない中央銀行は、
-政策（policy.cb_bond_trade）の額を指値なしで買う・売ります。約定した区分の利回りは約定した利回りに
-なります。銘柄の代金は、約定した利回りで割り引いた値段です（hakoniwa_core/economy/debt.py の price）。
+国債の売買の市場: 残りの期間で分けた区分ごとに、利回りを値段にした板寄せで売り買いします（値幅は前の
+ターンの利回り ± bonds.trade_band）。市中銀行は国債の時価を目安（預金 × banking.bond_ratio）に近づけ
+るように注文し（売りは求める利回り ＋ banking.sell_premium まで受け入れ、買いは求める利回り以上）、
+準備預金が最低限に足りない銀行は足りない分を指値なしで売ります。独立していない中央銀行は、政策
+（policy.cb_bond_trade）の額を指値なしで買う・売ります。約定した区分の利回りは約定した利回りになりま
+す。銘柄の代金は、約定した利回りで割り引いた値段です（hakoniwa_core/economy/debt.py の price）。
 
 決算の段より前に置くのは、受け取った利子と時価の評価を、同じターンの損益に入れるためです。
 国債の持ち手ごとの「時価の評価の元になる額」の出入り（買った代金・売った代金・償還）は
@@ -505,7 +506,10 @@ def set_bond_policy(island: IslandState, payload: dict[str, Any], ctx: StageCont
     """自動の発行の期間の割合、売れ残りの扱い、追加の発行、中央銀行の直接引き受け（額は今のターンだけ）。"""
     policy = island.policy
     finance = island.economy.finance
-    default_term = sorted(policy.bond_terms or ctx.config.get("bonds.auto_terms"))[0]
+    terms = ctx.defs.bond_terms()
+    default_term = min(
+        policy.bond_terms or ctx.config.get("bonds.auto_terms"), key=lambda t: terms[t]["turns"]
+    )
     if payload.get("terms"):
         total = sum(payload["terms"].values())
         policy.bond_terms = {

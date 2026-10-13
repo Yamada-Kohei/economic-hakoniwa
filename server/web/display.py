@@ -9,13 +9,31 @@ from django.db.models import Sum
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger
-from hakoniwa_core.economy import books, entity_of
+from hakoniwa_core.economy import (
+    books,
+    entity_of,
+    facility_entity,
+    is_bank,
+    is_private_site,
+    is_self_supporting,
+)
 from hakoniwa_core.log import format_log
+from hakoniwa_core.modules.banking import ENTRY as BANK_ENTRY
+from hakoniwa_core.modules.bonds import CUT, UNDERWRITE
+from hakoniwa_core.modules.failures import METHODS as RESOLUTION_METHODS
 from hakoniwa_core.naming import facility_name
 from hakoniwa_core.orders import check_order
-from hakoniwa_core.state import ACCOUNTING_SELF, ACCOUNTING_TREASURY, Facility, IslandState
-from hakoniwa_core.units import from_milli
-from server.economy.models import FacilityBook, MarketRecord
+from hakoniwa_core.state import (
+    ACCOUNTING_SELF,
+    ACCOUNTING_TREASURY,
+    OWNER_STATE,
+    Facility,
+    IslandState,
+    Policy,
+)
+from hakoniwa_core.state.serialize import build
+from hakoniwa_core.units import BASIS, from_milli
+from server.economy.models import Account, FacilityBook, Loan, MarketRecord
 from server.game import get_game
 from server.world import models as m
 from server.world.repository import facility_from_row, island_from_row
@@ -107,28 +125,189 @@ def facility_info(row: m.Facility, island: IslandState) -> dict[str, Any]:
         info["materials"] = goods_list(construction.get("materials", {}))
     if f.ext.get("halted_until") is not None:
         info["halted_until"] = f.ext["halted_until"]
+    if is_private_site(f):
+        info["private_site"] = True  # 民間の資本が自分のお金で建てている
     if f.built:
         currency = (island.names or {}).get("currency_symbol", "")
         info["books"] = facility_books(row, f, currency)
+        if island.has_economy:
+            info.update(facility_finance(row, f, island, currency))
     return info
+
+
+def order_ok(island: IslandState, f: Facility, kind: str, payload: dict[str, Any]) -> bool:
+    """施設 f への命令がコアの確かめ（check_order）を通るか。
+
+    確かめは島の施設の並びからマスの施設を探すので、この施設だけを持たせた島で聞く。
+    """
+    game = get_game()
+    probe = replace(island, facilities=[f])
+    return check_order(game.defs, game.registry, probe, kind, payload).ok
 
 
 def accounting_target(island: IslandState, f: Facility) -> str | None:
     """会計方式の変更の命令（set_accounting）で変えられる先の会計方式。命令が通らない施設は None。
 
-    通るかどうかはコアの命令の確かめ（check_accounting）に聞く。お金の経済が始まる前の島では
-    会計方式に意味がないので出さない。
+    お金の経済が始まる前の島では会計方式に意味がないので出さない。銀行のお金はいつも銀行が持つので、
+    国営銀行にも出さない。
     """
-    if not island.has_economy:
+    if not island.has_economy or is_bank(get_game().config, f):
         return None
     target = ACCOUNTING_SELF if f.accounting == ACCOUNTING_TREASURY else ACCOUNTING_TREASURY
-    game = get_game()
-    # 確かめは島の施設の並びからマスの施設を探すので、この施設だけを持たせた島で聞く
-    probe = replace(island, facilities=[f])
-    payload = {"x": f.x, "y": f.y, "accounting": target}
-    if not check_order(game.defs, game.registry, probe, "set_accounting", payload).ok:
+    if not order_ok(island, f, "set_accounting", {"x": f.x, "y": f.y, "accounting": target}):
         return None
     return target
+
+
+def ownership_target(island: IslandState, f: Facility) -> str | None:
+    """出せる持ち主の変更の命令（nationalize・privatize）。どちらも通らなければ None。"""
+    if f.x < 0 or f.y < 0:
+        return None
+    for kind in ("nationalize", "privatize"):
+        if order_ok(island, f, kind, {"x": f.x, "y": f.y}):
+            return kind
+    return None
+
+
+def facility_finance(
+    row: m.Facility, f: Facility, island: IslandState, currency: str = ""
+) -> dict[str, Any]:
+    """施設の借入・閉鎖・差し押さえ・補助金と、出せる命令（フェーズ2-2）。銀行なら銀行の帳簿も。"""
+    game = get_game()
+    config = game.config
+    out: dict[str, Any] = {}
+    if f.economy.get("closing") is not None:
+        out["closing"] = f.economy["closing"]  # 閉鎖に入ったターン
+    seized = f.economy.get("foreclosed")
+    if seized:
+        until = seized.get("since", 0) + config.get("firms.foreclosure_turns")
+        out["foreclosed"] = {
+            "bank": bank_name(row.island_id, island, seized.get("bank")),
+            "since": seized.get("since"),
+            "until": until,
+            "price": money_text(seized.get("price", 0), currency),
+        }
+    loans = facility_loans(row, island, currency)
+    if loans:
+        out["loans"] = loans
+    target = ownership_target(island, f)
+    if target is not None:
+        out["ownership_target"] = target
+        out["ownership_target_name"] = game.defs.name("orders", target)
+    if is_bank(config, f):
+        out["bank"] = bank_view(row, f, island, currency)
+        if order_ok(island, f, "emergency_loan", {"x": f.x, "y": f.y, "amount": 0}):
+            out["emergency_loan"] = True
+        resolve = {"x": f.x, "y": f.y, "method": RESOLUTION_METHODS[0]}
+        if order_ok(island, f, "resolve_bank", resolve):
+            out["resolve_methods"] = {
+                method: message(f"resolution_{method}") for method in RESOLUTION_METHODS
+            }
+    elif is_self_supporting(f):
+        # 補助金は独立採算の施設にだけ出る（銀行を除く）
+        out["subsidy_target"] = True
+        recipe = game.defs.facilities[f.kind]["recipes"].get(f.recipe, {})
+        outputs = recipe.get("outputs", {})
+        out["subsidies"] = [
+            subsidy_text(s)
+            for s in island.policy.subsidies
+            if (s.get("x"), s.get("y")) == (f.x, f.y)
+            or (s["kind"] == "production" and s.get("good") in outputs)
+        ]
+    return out
+
+
+def facility_loans(
+    row: m.Facility, island: IslandState, currency: str = ""
+) -> list[dict[str, Any]]:
+    """施設の借入（融資ごとの貸し手・使い道・残高・金利・遅れ）。"""
+    borrower = facility_entity(row.number)
+    loans = list(Loan.objects.filter(island_id=row.island_id, borrower=borrower).order_by("number"))
+    if not loans:
+        return []
+    names = [ledger.account(x.lender, ledger.loan_item(x.number), borrower) for x in loans]
+    balances = dict(
+        Account.objects.filter(island_id=row.island_id, name__in=names).values_list(
+            "name", "balance"
+        )
+    )
+    return [
+        {
+            "lender": bank_name(row.island_id, island, x.lender),
+            "purpose": message(f"loan_{x.purpose}"),
+            "balance": money_text(balances.get(name, 0), currency),
+            "rate": rate_text(x.rate),
+            "arrears": x.arrears,
+        }
+        for x, name in zip(loans, names, strict=True)
+    ]
+
+
+def bank_name(island_id: int, island: IslandState, bank: str | None) -> str:
+    """銀行の主体（bank:<番号>）の表示名。施設が残っていなければ「銀行」。"""
+    game = get_game()
+    if not bank or not ledger.is_bank(bank):
+        return game.defs.name("facilities", game.config.get("banking.facility"))
+    row = m.Facility.objects.filter(island_id=island_id, number=int(bank.split(":")[1])).first()
+    if row is None:
+        return game.defs.name("facilities", game.config.get("banking.facility"))
+    return facility_name(game.defs, game.config, island, facility_from_row(row))
+
+
+def bank_view(row: m.Facility, f: Facility, island: IslandState, currency: str = "") -> dict:
+    """銀行の預金・融資・自己資本と比率（直近の統計）、預金金利、破綻、緊急の貸し出し。"""
+    config = get_game().config
+    prefix = f"bank.{f.id}."
+    stats = m.StatRecord.objects.filter(island_id=row.island_id, name__startswith=prefix)
+    turn = stats.order_by("-turn").values_list("turn", flat=True).first()
+    values = {
+        name.removeprefix(prefix): value
+        for name, value in stats.filter(turn=turn).values_list("name", "value")
+    }
+    out: dict[str, Any] = {
+        "deposit_rate": rate_text(f.economy.get("deposit_rate", island.policy.deposit_rate)),
+        "regulatory_ratio": f"{config.get('banking.regulatory_ratio') * 100:g}%",
+    }
+    if turn is not None:
+        out["turn"] = turn
+        for key in ("deposits", "loans", "net_worth"):
+            if key in values:
+                out[key] = money_text(values[key], currency)
+        ratio = values.get("capital_ratio")
+        out["capital_ratio"] = f"{ratio * 100:.1f}%" if ratio is not None else ""
+    failed = f.economy.get("failed")
+    if failed is not None:
+        out["failed"] = failed
+        out["failed_reason"] = (
+            "liquidity" if f.economy.get("liquidity_failure") == failed else "capital"
+        )
+    emergency = island.economy.finance.get("emergency", {}).get(ledger.bank_entity(f.id))
+    if emergency:
+        out["emergency"] = money_text(emergency, currency)
+    return out
+
+
+def rate_text(rate: int) -> str:
+    """1万分の1の率を % の文にする。"""
+    return f"{rate * 100 / BASIS:.2f}%"
+
+
+def subsidy_text(s: dict[str, Any]) -> str:
+    """補助金の1件（policy.subsidies）の文。"""
+    return (
+        f"{message('subsidy_' + s['kind'])}・{_subsidy_target(s)} "
+        f"{s.get('rate', 0) * 100 / BASIS:g}%（ターン {s.get('until')} まで）"
+    )
+
+
+def _subsidy_target(s: dict[str, Any]) -> str:
+    """補助金の対象（財と施設のマス）。"""
+    parts = []
+    if s.get("good") is not None:
+        parts.append(get_game().defs.name("goods", s["good"]))
+    if s.get("x") is not None and s.get("y") is not None:
+        parts.append(f"({s['x']}, {s['y']}) の施設")
+    return " ".join(parts)
 
 
 # マスの欄に出す施設の収支（hakoniwa_core/economy/books.py の項目、表示名、収入なら 1・支出なら -1）
@@ -139,7 +318,10 @@ BOOK_ITEMS = [
     (books.FREIGHT, "運賃", -1),
     (books.INVENTORY, "在庫の増減", 1),
     (books.WAGES, "賃金", -1),
-    (books.INTEREST, "受け取った利子", 1),
+    (books.SUBSIDY, "補助金", 1),
+    (books.INTEREST, "利子（受け取り − 支払い）", 1),
+    (books.VALUATION, "国債の評価損益", 1),
+    (books.WRITE_OFF, "貸し倒れ", -1),
     (books.DEPRECIATION, "減価償却", -1),
     (books.PROFIT, "損益", 1),
     (books.TAX, "法人税", -1),
@@ -153,7 +335,7 @@ def money_text(amount: int, currency: str = "") -> str:
 
 
 def facility_books(row: m.Facility, f: Facility, currency: str = "") -> dict[str, Any] | None:
-    """施設の直近のターンの収支と預金、直近 BOOK_TURNS ターンの損益の合計。
+    """施設の直近のターンの収支と預金・借入、直近 BOOK_TURNS ターンの損益の合計。
 
     帳簿がまだなければ（完成してから決算を迎えていなければ）None。
     """
@@ -178,8 +360,13 @@ def facility_books(row: m.Facility, f: Facility, currency: str = "") -> dict[str
         "profit_total": money_text(sum(b.items.get(books.PROFIT, 0) for b in recent), currency),
     }
     # 国庫直轄の施設は自分の預金を持たない（お金は国庫が出し入れする）
-    if entity_of(get_game().config, f) != ledger.GOV:
+    config = get_game().config
+    if entity_of(config, f) != ledger.GOV:
         out["deposit"] = money_text(last.deposit, currency)
+        # 銀行のすぐに払えるお金は、中央銀行に預けた準備預金
+        out["deposit_label"] = "準備預金" if is_bank(config, f) else "預金"
+    if last.debt:
+        out["debt"] = money_text(last.debt, currency)
     return out
 
 
@@ -248,7 +435,82 @@ def describe_order(kind: str, payload: dict[str, Any]) -> str:
     if kind == "set_price_cap":
         good = payload.get("good", "")
         return f"{name}: {defs.name('goods', good)} {payload.get('price', 0):,}"
+    text = _describe_finance(kind, payload, name, where)
+    if text:
+        return text
     return f"{name} {where}".strip()
+
+
+def _describe_finance(kind: str, payload: dict[str, Any], name: str, where: str) -> str:
+    """銀行・国債・企業の命令（フェーズ2-2）の説明。ほかの命令は ""。"""
+    defs = get_game().defs
+    if kind == "set_zone":
+        count = len(payload.get("tiles", []))
+        if payload.get("zone") == "none":
+            return f"{name}の解除: {count} マス"
+        return f"{name}: {message('zone_' + payload.get('zone', ''))} {count} マス"
+    if kind == "set_subsidy":
+        subsidy = f"{message('subsidy_' + payload.get('kind', ''))}・{_subsidy_target(payload)}"
+        if not payload.get("rate"):
+            return f"{name}: {subsidy}をやめる"
+        return f"{name}: {subsidy} {payload['rate']:g}% {payload.get('turns', 0)} ターン"
+    if kind == "set_monetary_policy":
+        parts = []
+        if "policy_rate" in payload:
+            parts.append(f"政策金利 {payload['policy_rate']:g}%")
+        if "bond_trade" in payload:
+            parts.append(bond_trade_text(payload["bond_trade"]))
+        return f"{name}: " + "・".join(parts)
+    if kind == "set_central_bank_independence":
+        return f"{name}: " + ("独立させる" if payload.get("independent") else "政府の下に戻す")
+    if kind == "set_bond_policy":
+        parts = []
+        if payload.get("unsold"):
+            parts.append(f"売れ残りは{message('bond_unsold_' + payload['unsold'])}")
+        for key, label in (("issue", "追加の入札"), ("underwrite", "中央銀行の直接の引き受け")):
+            if payload.get(key):
+                term = payload.get(f"{key}_term")
+                term_text = f"（{defs.name('finance', term)}）" if term else ""
+                parts.append(f"{label} {payload[key]:,}{term_text}")
+        terms = payload.get("terms") or {}
+        total = sum(terms.values())
+        if total > 0:
+            shares = "、".join(
+                f"{defs.name('finance', t)} {share * 100 / total:.0f}%"
+                for t, share in terms.items()
+                if share
+            )
+            parts.append(f"期間の割合（{shares}）")
+        return f"{name}: " + "・".join(parts) if parts else name
+    if kind == "set_bond_payment":
+        return f"{name}: " + ("止める（債務不履行）" if payload.get("stop") else "再開する")
+    if kind == "set_bank_policy":
+        parts = []
+        if payload.get("entry"):
+            parts.append(f"民間銀行の参入 {message('bank_entry_' + payload['entry'])}")
+        if "deposit_insurance" in payload:
+            parts.append(f"預金保護の上限 {insurance_text(payload['deposit_insurance'])}")
+        return f"{name}: " + "・".join(parts)
+    if kind == "emergency_loan":
+        amount = payload.get("amount", 0)
+        return f"{name}: {where} " + (f"上限 {amount:,}" if amount else "取り消し")
+    if kind == "resolve_bank":
+        return f"{name}: {where} {message('resolution_' + payload.get('method', ''))}"
+    return ""
+
+
+def bond_trade_text(amount: int) -> str:
+    """中央銀行が毎ターン国債を売り買いする額（マイナスは売る）の文。"""
+    if amount > 0:
+        return f"中央銀行が国債を毎ターン {amount:,} 買う"
+    if amount < 0:
+        return f"中央銀行が国債を毎ターン {-amount:,} 売る"
+    return "中央銀行の国債の売買なし"
+
+
+def insurance_text(limit: int) -> str:
+    """預金保護の上限額（-1 は無制限）の文。"""
+    return "無制限" if limit < 0 else f"1人あたり {limit:,}"
 
 
 _PERCENT = ("income_tax", "corporate_tax", "consumption_tax", "unemployment_benefit")
@@ -278,6 +540,71 @@ def policy_view(island) -> dict[str, Any]:
             for item in budget_items
         },
         "price_cap": policy.get("price_cap", {}),
+        **finance_policy_view(island),
+    }
+
+
+def finance_policy_view(island) -> dict[str, Any]:
+    """島の今の金融の政策（フェーズ2-2）。金利は %、国債の期間の割合は %。
+
+    民間銀行の参入を決めていなければ（""）、経済体制の既定を bank_entry_default に入れる。
+    """
+    game = get_game()
+    defs = game.defs
+    p: Policy = build(Policy, island.policy or {})
+    economy = island.economy or {}
+    finance = economy.get("finance", {})
+    regime = defs.regimes.get((island.regime or {}).get("economy", ""), {})
+    entry_default = str(regime.get("bank_entry", "closed"))
+    shares = p.bond_terms or {
+        term: round(share * BASIS) for term, share in game.config.get("bonds.auto_terms").items()
+    }
+    total = sum(shares.values()) or 1
+    # 中央銀行の独立を切り替えた後は、しばらく戻せない（次のターンの命令で戻せるようになるターン）
+    lock = game.config.get("central_bank.switch_lock_turns")
+    switched = finance.get("cb_switched")
+    unlock = switched + lock if switched is not None else None
+    return {
+        "has_economy": economy.get("started") is not None,
+        "planned": regime.get("owner") == OWNER_STATE,  # 計画経済（倒産も民間の参入もない）
+        "policy_rate": p.policy_rate * 100 / BASIS,
+        "cb_independent": p.cb_independent,
+        "cb_lock_turns": lock,
+        "cb_unlock_turn": unlock if unlock is not None and unlock > island.world.turn + 1 else None,
+        "cb_bond_trade": p.cb_bond_trade,
+        "cb_bond_trade_text": bond_trade_text(p.cb_bond_trade),
+        "bond_unsold": p.bond_unsold,
+        "bond_unsold_choices": {k: message(f"bond_unsold_{k}") for k in (UNDERWRITE, CUT)},
+        "bond_terms": {
+            term: {
+                "name": defs.name("finance", term),
+                "turns": t["turns"],
+                "share": round(shares.get(term, 0) * 100 / total, 1),
+            }
+            for term, t in defs.bond_terms().items()
+        },
+        "bonds": island.bonds.count(),  # 国債の銘柄の数
+        "default_turn": finance.get("default_turn"),  # 最後に債務不履行になったターン
+        "bank_entry": p.bank_entry,
+        "bank_entry_default": entry_default,
+        "bank_entry_choices": {k: message(f"bank_entry_{k}") for k in BANK_ENTRY},
+        "bank_license": bool(finance.get("bank_license")),  # 免許を出して開業を待っている
+        "deposit_insurance": p.deposit_insurance,
+        "deposit_insurance_text": insurance_text(p.deposit_insurance),
+        "subsidy_kinds": {k: message(f"subsidy_{k}") for k in ("production", "capital")},
+        "subsidies": [
+            {
+                "text": subsidy_text(s),
+                # やめる命令（率 0）を出すための対象
+                "stop": {
+                    "kind": s["kind"],
+                    **{k: s[k] for k in ("good", "x", "y") if s.get(k) is not None},
+                    "rate": 0,
+                    "turns": 1,
+                },
+            }
+            for s in p.subsidies
+        ],
     }
 
 
@@ -315,6 +642,16 @@ SUMMARY_STATS = [
     ("treasury", "国庫", "money"),
     ("debt", "国債の残高", "money"),
     ("policy_rate", "政策金利", "rate"),
+    ("deposit_rate", "預金金利（銀行の平均）", "rate"),
+    ("interbank_rate", "銀行間の金利", "rate"),
+    ("loans", "融資の残高", "money"),
+    ("loans.arrears", "うち返済が遅れている融資", "money"),
+    ("banks", "銀行の数", ""),
+    ("banks.failed", "破綻した銀行（このターン）", ""),
+    ("firms.private", "民営の施設の数", ""),
+    ("firms.entered", "参入した民営工場（このターン）", ""),
+    ("firms.bankrupt", "倒産した施設（このターン）", ""),
+    ("firms.closed", "閉鎖した施設（このターン）", ""),
 ]
 
 

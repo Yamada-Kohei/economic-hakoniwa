@@ -79,6 +79,16 @@ def on_map(f: Facility) -> bool:
     return f.x >= 0 and f.y >= 0
 
 
+def vacate(island: IslandState, f: Facility) -> None:
+    """閉鎖・倒産・破綻処理で施設を島から取り除く（プレイヤーの取り壊しの命令ではない）。
+
+    施設のマスは送電網の一部なので、マスに送電線を残して、まわりの施設の送電網が切れないようにする。
+    """
+    island.facilities.remove(f)
+    if on_map(f):
+        island.tile(f.x, f.y).infra["power"] = 1
+
+
 def is_tileless(defs: Defs, kind: str) -> bool:
     return bool(defs.facilities[kind].get("tileless"))
 

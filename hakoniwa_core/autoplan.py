@@ -25,6 +25,8 @@
 公共事業費（国の工事の年の予算）を見直します。
 住民1人あたり PUBLIC_WORKS を基本に、失業率がふつう（5%）より高ければ増やし、物価上昇率が高ければ
 減らします（額を物価や GDP に合わせて動かさないので、物価が下がり続けたり上がり続けたりしにくい）。
+政府の借金の対年GDP比が DEBT_LIMIT を超えた分に応じても減らします（利回りが上がって利払いが
+膨らみ続けないように）。
 電気料金が初めの値段の POWER_CAP 倍を超えたら、そこを公共料金の上限にします。
 民営工場が建てられる島（市場経済と混合経済）では、空いた工業団地のマスが ZONE_SPARE より少なければ、
 町の通勤圏の空いた平地と、地下資源のある島では山を ZONE_BATCH マスまで工業団地に指定します（町の
@@ -64,6 +66,8 @@ UNEMPLOYMENT_RESPONSE = 5.0  # 失業率がふつうより 1% 高いごとに、
 INFLATION_RESPONSE = 5.0  # 物価上昇率が INFLATION_LIMIT より 1% 高いごとに、基本のこの % だけ減らす
 INFLATION_LIMIT = 0.05
 NATURAL_UNEMPLOYMENT = 0.05
+DEBT_LIMIT = 1.0  # 政府の借金の対年GDP比がこれを超えたら、公共事業費を減らす
+DEBT_RESPONSE = 0.5  # 対年GDP比が DEBT_LIMIT より 0.1 高いごとに、基本のこの × 10 % だけ減らす
 WORKS_RANGE = (0.2, 2.0)  # 基本に対する倍率の下限と上限
 UNDERUSED = 0.7  # 同じ物を作る施設の稼働率がこれより低い間は、増やさない
 POWER_CAP = 2.0  # 電気料金が初めの値段のこの倍を超えたら、そこを公共料金の上限にする
@@ -190,6 +194,7 @@ def _budget_order(island: IslandState, turn: int) -> tuple[str, dict] | None:
     scale = 1.0
     scale += UNEMPLOYMENT_RESPONSE * (stats.get("unemployment", 0) - NATURAL_UNEMPLOYMENT)
     scale -= INFLATION_RESPONSE * max(0.0, stats.get("inflation", 0) - INFLATION_LIMIT)
+    scale -= DEBT_RESPONSE * max(0.0, stats.get("debt_ratio", 0) - DEBT_LIMIT)
     scale = min(WORKS_RANGE[1], max(WORKS_RANGE[0], scale))
     target = int(population_of(island) * PUBLIC_WORKS * scale)
     current = island.policy.budget.get("construction", 0)
@@ -421,9 +426,7 @@ def _zone_order(island: IslandState, defs: Defs, config: GameConfig) -> tuple[st
     if capital is None:
         return None
     occupied = island.facilities_by_tile()
-    spare = [
-        t for t in island.tiles if t.zone == ZONE_INDUSTRIAL and (t.x, t.y) not in occupied
-    ]
+    spare = [t for t in island.tiles if t.zone == ZONE_INDUSTRIAL and (t.x, t.y) not in occupied]
     if len(spare) >= ZONE_SPARE:
         return None
     housing = fac.housing_kind(config)
