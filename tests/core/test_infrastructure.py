@@ -224,7 +224,22 @@ def test_plan_keeps_the_machinery_a_steel_mill_waits_for(game):
         stock.add(island.warehouse, good, qty, 0, game.defs.goods)
     # 倉庫の機械は製鉄所の分しかないので、機械を使う発電所は建てない（製鉄所と機械工場が
     # 互いの鋼鉄と機械を待って止まるので）。機械を作る機械工場は建ててよい
-    assert not autoplan._materials_ok(island, game.defs, "thermal_power_plant")
-    assert autoplan._materials_ok(island, game.defs, "machinery_plant")
+    assert not autoplan._materials_ok(island, game.defs, game.config, "thermal_power_plant")
+    assert autoplan._materials_ok(island, game.defs, game.config, "machinery_plant")
     stock.add(island.warehouse, "machinery", 5000, 0, game.defs.goods)
-    assert autoplan._materials_ok(island, game.defs, "thermal_power_plant")
+    assert autoplan._materials_ok(island, game.defs, game.config, "thermal_power_plant")
+
+
+def test_plan_keeps_the_machinery_to_start_the_steel_chain(game):
+    island = make_island(game)
+    home(game, island, 5, 6, 8000)
+    with_economy(game, island)
+    island.warehouse = {}
+    for good, qty in (("machinery", 8000), ("steel", 20_000), ("building_materials", 200_000)):
+        stock.add(island.warehouse, good, qty, 0, game.defs.goods)
+    # 製鉄所がまだないので、製鉄所を建てる分の機械 5 は残す。機械 5 を使う消費財工場は建てない
+    keep = autoplan._chain_keep(island, game.defs, game.config)
+    assert keep["machinery"] == 5000 and keep["steel"] == 10_000
+    assert not autoplan._materials_ok(island, game.defs, game.config, "consumer_goods_factory")
+    assert autoplan._materials_ok(island, game.defs, game.config, "steel_mill")
+    assert autoplan._materials_ok(island, game.defs, game.config, "bank")  # 機械 1 なら残りで足りる

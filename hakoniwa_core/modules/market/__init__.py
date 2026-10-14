@@ -308,9 +308,11 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
     見込みに全力の target_step 分を足して増産する（儲かる物は多く作られ、値段が費用に近づく）。
     希望価格が約定価格より高くて売れなかった分は、市場に買えなかった人がいれば売れたと見る（値上げ
     して売れなかったターンに減産すると、品不足なのに作る量が上下して、値段が上がり続けたため）。
-    前のターンの売れ残りを持ち越せずに指値なしで出して売れた分も、売れた量に数える（数えないと、
-    売れ残りが翌ターンに捨て値で売れて新しく作った分が売れないように見え、魚の余った島でどの漁港も
-    同時に減産し、売れ残りが尽きたところで食料が足りなくなった）。
+    前のターンの売れ残りを持ち越せずに指値なしで出して売れた分も、値段が1単位あたりの変動費を
+    下回っていなければ、売れた量に数える（数えないと、売れ残りが翌ターンに捨て値で売れて新しく作った
+    分が売れないように見え、魚の余った島でどの漁港も同時に減産し、売れ残りが尽きたところで食料が
+    足りなくなった。変動費を下回っても数えると、買い手の少ない魚を作り続けて投げ売りし、値段が初めの
+    1% まで下がった）。
     投入財が手に入らずに（品不足・割高・資金不足）か、電力が足りずに止まった施設は、動けた割合に
     target_step を足した分までにする（動けないのに仕入れを増やし続けない）。1ターンに変えるのは
     全力の market.max_target_change まで（人の出入りと仕入れを急に変えない）。
@@ -332,13 +334,14 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
     plan = 0
     for good, full in sorted(outputs.items()):
         offered, sold, priced_out = f.economy.get("sales", {}).get(good, [0, 0, 0])
-        late_offered, late_sold = f.economy.get("late_sales", {}).get(good, [0, 0])
-        offered, sold = offered + late_offered, sold + late_sold
         record = records.get(good)
         unmet = record.demand - record.volume if record is not None else 0
         before = expected.get(good, fac.scale(full, target))
         held = stock.total(f.stock, good)
         floor = unit_floor(ctx.defs, ctx.config, f, good, prices, wage, rate)
+        if prices.get(good, 0) >= floor:  # 売れ残りを変動費より安く投げ売りしたのなら数えない
+            late_offered, late_sold = f.economy.get("late_sales", {}).get(good, [0, 0])
+            offered, sold = offered + late_offered, sold + late_sold
         if priced_out and unmet > 0 and prices.get(good, 0) >= floor:
             # 希望価格が高すぎて売れなかった分は、市場に買えなかった人がいれば売れたと見る
             # （次のターンに希望価格を下げて売れる。値上げで売れなかったターンに減産しない）

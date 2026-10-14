@@ -23,6 +23,8 @@
 取り合いで値段が跳ね上がるだけなので）。
 ほかの工事が待っている資材を建った施設がどれも作っていなければ、それを使う施設は、その資材を作る
 施設でない限り建てません（初めの倉庫の機械を発電所に使うと、製鉄所と機械工場が互いを待って止まる）。
+まだ島のどの施設も作っていない工事の資材（鋼鉄と機械）は、それを作る施設を1つ建てる分を国の倉庫に
+残し、発電所のほかの工事に使わず、売りにも出しません。
 失業率が高い間は、同時に進める工事を1つ増やします（工事の賃金と資材の買い物が働き口になる）。
 お金の経済の島では、国の倉庫にある財のうち島の施設が仕入れに困っている物（建国のときの石炭など）を、
 毎ターン市場に売ります（建てる命令と一緒に出します）。
@@ -135,7 +137,9 @@ def _plan_rest(
     else:
         candidates = _candidates(island, defs, config, turn)
     for kind, recipe in candidates:
-        if _underused(island, defs, config, kind, recipe) or not _materials_ok(island, defs, kind):
+        if _underused(island, defs, config, kind, recipe) or not _materials_ok(
+            island, defs, config, kind
+        ):
             continue
         pos = _site_for(island, defs, config, kind, recipe)
         if pos is not None:
@@ -172,7 +176,8 @@ def _warehouse_sales(island: IslandState, defs: Defs, config: GameConfig) -> lis
 
     指値は今の値段（初めの値段より安ければ初めの値段）。
 
-    建国のときに倉庫にあった石炭などを、火力発電所が使えるようにする（工事に取っておく分は売らない）。
+    建国のときに倉庫にあった石炭などを、火力発電所が使えるようにする（工事に取っておく分と、まだ誰も
+    作っていない資材を作る施設を建てる分は売らない）。
     """
     if not island.has_economy:
         return []
@@ -186,6 +191,8 @@ def _warehouse_sales(island: IslandState, defs: Defs, config: GameConfig) -> lis
                 stuck.add(f.status.split(":", 1)[1])
     short = {m.good for m in island.markets if m.supply < m.demand}
     reserved = _reserved_materials(island, defs)
+    for good, qty in _chain_keep(island, defs, config).items():
+        reserved[good] = reserved.get(good, 0) + qty
     initial = initial_prices(defs, config, island.resources)
     orders = []
     sold: dict[str, int] = {}
@@ -443,26 +450,55 @@ def _material_producers(
                 yield from _producers(defs, config, island, need)
 
 
-def _materials_ok(island: IslandState, defs: Defs, kind: str) -> bool:
-    """工事の資材が、倉庫にあるか（ほかの工事の残りの分を除いて）、島の中で作れるか。
+def _materials_ok(island: IslandState, defs: Defs, config: GameConfig, kind: str) -> bool:
+    """工事の資材が、倉庫にあるか（ほかの工事の残りの分と、連鎖を始める分を除いて）、島の中で作れるか。
 
     ほかの工事が待っている資材を建った施設がどれも作っていなければ、島で作れるはずでも、その資材を
     作る施設（を建てる工事）でない限り建てない。製鉄所と機械工場の工事は互いの鋼鉄と機械を待つので、
-    初めの倉庫の分をほかの工事に使うと、連鎖がいつまでも始まらない。
+    初めの倉庫の分をほかの工事に使うと、連鎖がいつまでも始まらない。同じわけで、まだ誰も作っていない
+    資材を作る施設を建てる分（_chain_keep）も、その施設と発電所のほかには使わない（電気はどの施設も
+    使うので、発電所は先にする）。
     """
     reserved = _reserved_materials(island, defs)
     made = _made(island, defs)
+    outputs = {g for r in defs.facilities[kind]["recipes"].values() for g in r["outputs"]}
+    first = _missing_materials(island, defs) | {config.get("power.good")}
+    keep = {} if outputs & first else _chain_keep(island, defs, config)
     short = {g for g, qty in reserved.items() if stock.total(island.warehouse, g) < qty}
-    helps = any(g in short for r in defs.facilities[kind]["recipes"].values() for g in r["outputs"])
+    helps = bool(outputs & short)
     for good, qty in defs.facilities[kind]["construction"].get("materials", {}).items():
-        have = stock.total(island.warehouse, good) - reserved.get(good, 0)
+        have = stock.total(island.warehouse, good) - reserved.get(good, 0) - keep.get(good, 0)
         if have >= qty or good in made:
             continue
-        if reserved.get(good, 0) > 0 and not helps:
+        if keep.get(good, 0) > 0 or (reserved.get(good, 0) > 0 and not helps):
             return False
         if not _makeable(defs, island, good, frozenset()):
             return False
     return True
+
+
+def _missing_materials(island: IslandState, defs: Defs) -> set[str]:
+    """工事の資材のうち、島のどの施設（工事中を含む）も作らない物。"""
+    present = {good for f in island.facilities for good in fac.recipe_of(defs, f)["outputs"]}
+    needed = {
+        g for fdef in defs.facilities.values() for g in fdef["construction"].get("materials", {})
+    }
+    return needed - present
+
+
+def _chain_keep(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, int]:
+    """国の倉庫に残しておく資材: 工事の資材のうち島のどの施設（工事中を含む）も作らない物ごとに、
+    それを作る施設を1つ建てる分の資材のうち、建った施設が作っていない物の量（製鉄所の機械と機械工場の
+    鋼鉄）。島で作れない物は残さない。"""
+    made = _made(island, defs)
+    keep: dict[str, int] = {}
+    for good in sorted(_missing_materials(island, defs)):
+        for kind, _ in _producers(defs, config, island, good):
+            for g, qty in defs.facilities[kind]["construction"].get("materials", {}).items():
+                if g not in made:
+                    keep[g] = max(keep.get(g, 0), qty)
+            break
+    return keep
 
 
 def _made(island: IslandState, defs: Defs) -> set[str]:
