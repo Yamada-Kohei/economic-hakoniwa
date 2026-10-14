@@ -33,6 +33,7 @@ AI で作った絵は、作った道具の名前と、依頼した人を書き�
 
 | パス | 作った人 | ライセンス | 出典 |
 |---|---|---|---|
+| server/static/themes/default/sprites | Claude（tools/sprites/silhouette.py で生成。依頼: セビーリャ） | MIT | このリポジトリ |
 
 ## GitHub Actions
 

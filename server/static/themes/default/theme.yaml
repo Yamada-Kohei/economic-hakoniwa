@@ -42,4 +42,24 @@ industrial: "rgba(230, 140, 40, 0.45)"       # 工業団地のマス
 #     facility/steel_mill: {file: sprites/facility/steel_mill.svg, anchor: [32, 80]}
 #     facility/bank: {file: sprites/facility/bank.png, scale: 0.5}   # 2倍の大きさで描いた PNG
 sprite_scale: 1         # 画像の 1 ピクセルを何ピクセルとして描くか（項目の scale がなければこれ）
-sprites: {}
+sprites:
+  facility/bank: sprites/facility/bank.svg
+  facility/building_materials_plant: sprites/facility/building_materials_plant.svg
+  facility/consumer_goods_factory: sprites/facility/consumer_goods_factory.svg
+  facility/farm: sprites/facility/farm.svg
+  facility/fishing_port: sprites/facility/fishing_port.svg
+  facility/food_factory: sprites/facility/food_factory.svg
+  facility/government_office: sprites/facility/government_office.svg
+  facility/hydro_power_plant: sprites/facility/hydro_power_plant.svg
+  facility/lumber_camp: sprites/facility/lumber_camp.svg
+  facility/machinery_plant: sprites/facility/machinery_plant.svg
+  facility/mine: sprites/facility/mine.svg
+  facility/quarry: sprites/facility/quarry.svg
+  facility/school: sprites/facility/school.svg
+  facility/steel_mill: sprites/facility/steel_mill.svg
+  facility/thermal_power_plant: sprites/facility/thermal_power_plant.svg
+  facility/university: sprites/facility/university.svg
+  housing/city: sprites/housing/city.svg
+  housing/metropolis: sprites/housing/metropolis.svg
+  housing/town: sprites/housing/town.svg
+  housing/village: sprites/housing/village.svg

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="86" viewBox="0 0 64 86">
+<g transform="translate(0 54)" stroke-linejoin="round" stroke-width="0.4">
+<path d="M 32.96 12.33 A 7.69 3.85 0 0 1 25.27 8.48 Q 28.89 -12.52 27.53 -33.52 L 32.96 -33.52 Z" fill="#c4c0b9" stroke="#c4c0b9"/>
+<path d="M 32.96 12.33 A 7.69 3.85 0 0 0 40.65 8.48 Q 37.03 -12.52 38.39 -33.52 L 32.96 -33.52 Z" fill="#9e9c96" stroke="#9e9c96"/>
+<path d="M 27.53 -33.52 A 5.43 2.72 0 1 0 38.39 -33.52 A 5.43 2.72 0 1 0 27.53 -33.52 Z" fill="#e9e5dc" stroke="#e9e5dc"/>
+<path d="M 47.04 13.23 A 1.81 0.91 0 0 1 45.23 12.32 L 45.23 -51.68 L 47.04 -51.68 Z" fill="#c4c0b9" stroke="#c4c0b9"/>
+<path d="M 47.04 13.23 A 1.81 0.91 0 0 0 48.85 12.32 L 48.85 -51.68 L 47.04 -51.68 Z" fill="#9e9c96" stroke="#9e9c96"/>
+<path d="M 45.23 -51.68 A 1.81 0.91 0 1 0 48.85 -51.68 A 1.81 0.91 0 1 0 45.23 -51.68 Z" fill="#e9e5dc" stroke="#e9e5dc"/>
+<polygon points="7.68,16.00 16.64,20.48 16.64,8.48 7.68,4.00" fill="#c4c0b9" stroke="#c4c0b9"/>
+<polygon points="25.60,16.00 16.64,20.48 16.64,8.48 25.60,4.00" fill="#9e9c96" stroke="#9e9c96"/>
+<polygon points="16.64,-0.48 25.60,4.00 16.64,8.48 7.68,4.00" fill="#e9e5dc" stroke="#e9e5dc"/>
+<polygon points="17.60,20.00 32.96,27.68 32.96,7.68 17.60,0.00" fill="#c4c0b9" stroke="#c4c0b9"/>
+<polygon points="47.36,20.48 32.96,27.68 32.96,7.68 47.36,0.48" fill="#9e9c96" stroke="#9e9c96"/>
+<polygon points="32.00,-7.20 47.36,0.48 32.96,7.68 17.60,0.00" fill="#e9e5dc" stroke="#e9e5dc"/>
+</g>
+</svg>
