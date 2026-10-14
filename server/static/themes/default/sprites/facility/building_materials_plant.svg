@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="61" viewBox="0 0 64 61">
+<g transform="translate(0 29)" stroke-linejoin="round" stroke-width="0.4">
+<path d="M 32.64 8.30 A 3.17 1.58 0 0 1 29.47 6.72 L 29.47 -23.28 L 32.64 -23.28 Z" fill="#8b9095" stroke="#8b9095"/>
+<path d="M 32.64 8.30 A 3.17 1.58 0 0 0 35.81 6.72 L 35.81 -23.28 L 32.64 -23.28 Z" fill="#707478" stroke="#707478"/>
+<polygon points="29.47,-23.28 32.64,-27.08 32.64,-21.70" fill="#9ca2a7" stroke="#9ca2a7"/>
+<polygon points="35.81,-23.28 32.64,-27.08 32.64,-21.70" fill="#7e8287" stroke="#7e8287"/>
+<path d="M 37.12 10.54 A 3.17 1.58 0 0 1 33.95 8.96 L 33.95 -21.04 L 37.12 -21.04 Z" fill="#8b9095" stroke="#8b9095"/>
+<path d="M 37.12 10.54 A 3.17 1.58 0 0 0 40.29 8.96 L 40.29 -21.04 L 37.12 -21.04 Z" fill="#707478" stroke="#707478"/>
+<polygon points="33.95,-21.04 37.12,-24.84 37.12,-19.46" fill="#9ca2a7" stroke="#9ca2a7"/>
+<polygon points="40.29,-21.04 37.12,-24.84 37.12,-19.46" fill="#7e8287" stroke="#7e8287"/>
+<path d="M 41.60 12.78 A 3.17 1.58 0 0 1 38.43 11.20 L 38.43 -18.80 L 41.60 -18.80 Z" fill="#8b9095" stroke="#8b9095"/>
+<path d="M 41.60 12.78 A 3.17 1.58 0 0 0 44.77 11.20 L 44.77 -18.80 L 41.60 -18.80 Z" fill="#707478" stroke="#707478"/>
+<polygon points="38.43,-18.80 41.60,-22.60 41.60,-17.22" fill="#9ca2a7" stroke="#9ca2a7"/>
+<polygon points="44.77,-18.80 41.60,-22.60 41.60,-17.22" fill="#7e8287" stroke="#7e8287"/>
+<polygon points="9.60,16.00 32.96,27.68 32.96,13.68 9.60,2.00" fill="#b1a38a" stroke="#b1a38a"/>
+<polygon points="47.36,20.48 32.96,27.68 32.96,13.68 47.36,6.48" fill="#8f836f" stroke="#8f836f"/>
+<polygon points="24.00,-5.20 47.36,6.48 32.96,13.68 9.60,2.00" fill="#c49a6c" stroke="#c49a6c"/>
+<polygon points="28.80,6.80 36.80,10.80 36.80,2.80 28.80,-1.20" fill="#b1a38a" stroke="#b1a38a"/>
+<polygon points="44.80,6.80 36.80,10.80 36.80,2.80 44.80,-1.20" fill="#8f836f" stroke="#8f836f"/>
+<polygon points="36.80,-5.20 44.80,-1.20 36.80,2.80 28.80,-1.20" fill="#c49a6c" stroke="#c49a6c"/>
+</g>
+</svg>
