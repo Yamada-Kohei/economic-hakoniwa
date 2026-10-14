@@ -143,7 +143,7 @@ class Bonds(IslandStage):
         self._secondary(island, ctx)
         self.top_up(island, ctx)
         finance["last_policy_rate"] = island.policy.policy_rate
-        self._stats(island, ctx)
+        self.record_stats(island)
 
     def top_up(
         self, island: IslandState, ctx: StageContext, spent: dict[str, int] | None = None
@@ -558,7 +558,9 @@ class Bonds(IslandStage):
     # --- 記録 -------------------------------------------------------------------------
 
     @staticmethod
-    def _stats(island: IslandState, ctx: StageContext) -> None:
+    def record_stats(island: IslandState) -> None:
+        """利回りと、このターンの引き受け・売買・中央銀行の保有の統計。破綻の段が救済のために
+        銀行を処理したら、もう一度取る（救済のための発行が、そのターンの統計から抜けていた）。"""
         stats = island.stats
         for k, rate in enumerate(island.economy.finance.get("yields") or []):
             stats[f"yield.{k}"] = rate * 100 / BASIS

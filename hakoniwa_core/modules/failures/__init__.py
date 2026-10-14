@@ -72,13 +72,19 @@ class Failures(IslandStage):
                     bankrupt(island, ctx, f)
         before = ledger.money(island, ledger.GOV)
         spent = dict(funds.spent(island))  # 救済の前の支出（救済の額は次のターンの見込みでない）
-        self._resolve(island, ctx)
+        resolved = self._resolve(island, ctx)
         if ledger.money(island, ledger.GOV) < before:
             # 救済と預金保護で国庫から出したら、国債の段と同じく次のターンの支出の分を発行で戻す
             # （戻さないと、次のターンの教育費などが払えず、学校が止まる）
             from hakoniwa_core.modules.bonds import Bonds
 
             Bonds().top_up(island, ctx, spent)
+        if resolved:
+            # 救済と預金保護のために出した国債を、国債の段で取った統計（中央銀行の保有と引き受け）に
+            # 足す（取り直さないと、そのターンの統計から抜けていた）
+            from hakoniwa_core.modules.bonds import Bonds
+
+            Bonds.record_stats(island)
         for bank in banks.active_banks(island):
             f = banks.facility_of(island, bank)
             assert f is not None
@@ -94,8 +100,10 @@ class Failures(IslandStage):
         island.stats["banks"] = len(banks.bank_list(island))
 
     @staticmethod
-    def _resolve(island: IslandState, ctx: StageContext) -> None:
+    def _resolve(island: IslandState, ctx: StageContext) -> bool:
+        """破綻した銀行を処理する。1つでも処理したかを返す。"""
         orders: dict[str, str] = island.economy.finance.pop("resolve", {})
+        resolved = False
         for bank in banks.bank_list(island):
             f = banks.facility_of(island, bank)
             if f is None or f.economy.get("failed") is None:
@@ -107,6 +115,7 @@ class Failures(IslandStage):
             able = [b for b in others if _can_absorb(island, ctx, b, bank)]
             if method is None:
                 method = TRANSFER if able else BAILOUT
+            resolved = True
             if method == BAILOUT:
                 bailout(island, ctx, bank)
             elif not others:  # 引き継ぐ銀行がない: 政府が引き取り、預金の切り捨てで立て直す
@@ -114,6 +123,7 @@ class Failures(IslandStage):
             else:
                 target = (able or others)[0]
                 transfer(island, ctx, bank, target, liquidation=method == LIQUIDATION)
+        return resolved
 
 
 def _can_absorb(island: IslandState, ctx: StageContext, target: str, bank: str) -> bool:
@@ -381,7 +391,7 @@ def transfer(
     cover = max(0, loss - cut_total)
     paid = _government_pays(island, ctx, bank, cover, "deposit_insurance")
     deposits = banks.deposits_of(island, bank)
-    _cut_all(island, bank, cover - paid)  # 政府も払えない分は、残りの預金から比例で削る
+    cut_total += _cut_all(island, bank, cover - paid)  # 政府も払えない分は、残りの預金から削る
     _cancel_equity(island, bank)
     _move_everything(island, bank, target)
     fac.vacate(island, f)
