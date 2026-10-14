@@ -25,7 +25,7 @@ from server.game import get_game
 from server.orders.models import Order
 from server.web import display, reports
 from server.world import models as m
-from server.world.repository import island_from_row, load_island
+from server.world.repository import load_island
 from server.world.services import grid_size
 
 JSON = {"json_dumps_params": {"ensure_ascii": False}}
@@ -255,7 +255,7 @@ def tile(request, island_id: int, x: int, y: int):
         raise Http404 from e
     game = get_game()
     d = game.defs
-    island = island_from_row(row.island)
+    island = display.island_for_naming(row.island)
     ext = row.ext or {}
     data: dict[str, Any] = {
         "x": row.x,

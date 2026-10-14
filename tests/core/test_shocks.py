@@ -238,8 +238,14 @@ def test_bond_default_raises_yields_and_hits_holders(game, base):
     premium = game.config.get("bonds.default_premium") * 10000
     assert yields[i] >= yields[i - 1] + 0.5 * premium
     assert worth[i] < worth[i - 1]
-    # 不履行の後も国債は売れ（借り換えが止まらない）、利回りは上限の中に収まる
-    assert any("bonds_issued" in kinds for kinds in logs[i:])
+    # 不履行から bonds.default_exclusion_turns ターンは銀行が国債を買わず、中央銀行が引き受ける
+    # （借り換えは止まらない）。期間が終われば、また入札で売れる。利回りは上限の中に収まる
+    exclusion = game.config.get("bonds.default_exclusion_turns")
+    closed = [k for kinds in logs[i - 1 : i - 1 + exclusion] for k in kinds]
+    assert "bonds_issued" not in closed and "bonds_refinanced" not in closed
+    assert any(k.endswith("_closed") for k in closed)
+    assert "bonds_market_reopened" in logs[i - 1 + exclusion]
+    assert any("bonds_issued" in kinds for kinds in logs[i - 1 + exclusion :])
     assert all(0 <= y <= game.config.get("bonds.max_yield") * 10000 for y in yields)
 
 

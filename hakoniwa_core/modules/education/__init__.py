@@ -78,8 +78,23 @@ class Education(IslandStage):
         carry[0], carry[1] = grown - int(grown), leaving - int(leaving)
         if grown_now or retired_now:
             set_workers(island, defs, fac.ENGINEER, pool + grown_now - retired_now)
+            _recount(island, pool, grown_now, retired_now)
         island.stats["engineers.trained"] = grown_now
         island.stats["engineers.retired"] = retired_now
+
+
+def _recount(island: IslandState, pool: int, grown: int, retired: int) -> None:
+    """育成と引退で変わった技術者の数を、雇用の段で数えた「働いている技術者」と「仕事のない技術者」
+    （このターンの記録に出す）に映す。引退は両方から人数の割合で抜け、育った人は仕事のない側に入る
+    （映さないと、働いている人が総数を超えるターンが出る）。"""
+    scratch = island.scratch
+    if "engineers_employed" not in scratch:
+        return
+    employed = scratch["engineers_employed"]
+    left = scratch.get("engineers_left", 0)
+    out = min(employed, retired * employed // pool) if pool > 0 else 0
+    scratch["engineers_employed"] = employed - out
+    scratch["engineers_left"] = max(0, left - (retired - out)) + grown
 
 
 def register(registry: Registry) -> None:

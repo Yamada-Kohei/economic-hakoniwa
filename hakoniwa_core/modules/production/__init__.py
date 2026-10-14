@@ -158,9 +158,16 @@ class Production(IslandStage):
         )
         have, short = fac.input_ratio(ctx.defs, f, power)
         if f.workers >= fac.labor_demand(ctx.defs, f, ctx.turn, power):  # 雇いたい分は雇えた
-            # 原料のある分しか雇わなかったなら原料、そうでなければ売れ行きに合わせた
+            # 原料のある分しか雇わなかったなら原料、そうでなければ売れ行きに合わせた。前のターン
+            # に買うつもりだった原料（economy["input_plan"] の稼働率の分）はそろっているなら、
+            # 原料が少ないのは売れ行きに合わせて少なく買ったため
             target = f.economy.get("target", fac.FULL)
-            cause = "target" if short is None or have >= target else Production._short(f, short)
+            planned = have >= f.economy.get("input_plan", fac.FULL + 1)
+            cause = (
+                "target"
+                if short is None or have >= target or planned
+                else Production._short(f, short)
+            )
         if short is not None and have < rate:
             rate, cause = have, Production._short(f, short)
         cap = fac.engineer_cap(ctx.config, f)  # 技術者が足りなければ、稼働率の上限が下がる

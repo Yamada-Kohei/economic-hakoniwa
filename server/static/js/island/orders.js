@@ -317,8 +317,8 @@ export class OrderQueue {
       </form>`;
     forms.set_bond_payment = `<form class="actions" data-form="set_bond_payment">
         <strong>国債の利払いと償還</strong>
-        ${p.default_turn != null ? `<p class="warning">ターン ${p.default_turn} に債務不履行になりました。</p>` : ""}
-        <p class="hint">止めると、そのターンにすべての国債が債務不履行になります（額面が切り下がって持っている銀行が損をし、国債の利回りがしばらく跳ね上がります）。</p>
+        ${p.default_turn != null ? `<p class="warning">ターン ${p.default_turn} に債務不履行になりました。${p.bonds_closed_until != null ? `ターン ${p.bonds_closed_until} までは銀行が国債を買わず、入札では売れません。` : ""}</p>` : ""}
+        <p class="hint">止めると、そのターンにすべての国債が債務不履行になります。額面が切り下がって持っている銀行が損をし、国債の利回りに ${p.default_premium}% が上乗せされます（${p.default_decay} ターンかけて減ります）。${p.default_exclusion} ターンは銀行が国債を買わず、入札では売れません（売れ残りは中央銀行が引き受けるか、その分の支出を減らします）。損をした銀行は ${p.default_crunch} ターン新しい融資を止めるので、民営工場の参入と新しい運転資金の借り入れが止まります。</p>
         <label><select name="stop"><option value="true">止める（債務不履行）</option><option value="false">止める命令を取り消す</option></select></label>
         <button type="submit">命令に追加</button>
       </form>`;

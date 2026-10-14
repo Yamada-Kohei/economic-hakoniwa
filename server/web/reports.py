@@ -23,7 +23,7 @@ from server.economy.models import Account, FacilityBook, MarketRecord, Trade
 from server.game import get_game
 from server.web import display
 from server.world import models as m
-from server.world.repository import bond_from_row, facility_from_row, island_from_row, load_money
+from server.world.repository import bond_from_row, facility_from_row, load_money
 
 DEFAULT_TURNS = 120  # 範囲を決めないときに返すターン数（10年）
 MAX_TURNS = 2400  # 1回に返せるターン数
@@ -441,7 +441,7 @@ def market_series(
             "supply": from_milli(latest.supply),
         }
     if mine:
-        state = island_from_row(island)
+        state = display.island_for_naming(island)
         turn = latest.turn if latest is not None else None
         data["trades"] = trades(island, state, good, turn) if turn is not None else []
         data["short"] = short_facilities(island, state, good)
@@ -538,7 +538,7 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
     数ターンの損益の合計・預金・借入。帳簿の turn は直近の決算のターン。"""
     game = get_game()
     defs, config = game.defs, game.config
-    state = island_from_row(island)
+    state = display.island_for_naming(island)
     housing = fac.housing_kind(config)
     last = FacilityBook.objects.filter(island=island).aggregate(turn=Max("turn"))["turn"]
     recent: dict[int, list[FacilityBook]] = defaultdict(list)
@@ -613,7 +613,7 @@ def facility_book(
     if row is not None:
         f = facility_from_row(row)
         if f.kind in game.defs.facilities:
-            name = facility_name(game.defs, game.config, island_from_row(island), f)
+            name = facility_name(game.defs, game.config, display.island_for_naming(island), f)
         kind_name = game.defs.name("facilities", f.kind)
     used = [key for key, _, _ in display.BOOK_ITEMS if any(r.items.get(key) for r in records)]
     return {
@@ -729,7 +729,7 @@ def bond_rows(island: m.Island, currency: str, mine: bool) -> list[dict[str, Any
     """国債の銘柄の一覧（満期の近い順）: 期間・発行と満期のターン・利率・発行額・残高・中央銀行の
     持ち分。持ち主には、銀行ごとの持ち分も。"""
     defs = get_game().defs
-    state = island_from_row(island)
+    state = display.island_for_naming(island)
     load_money({island.id: state}, Account.objects.filter(island=island))
     state.bonds = [bond_from_row(b) for b in island.bonds.order_by("number")]
     terms = {spec["turns"]: name for name, spec in defs.bond_terms().items()}
@@ -810,7 +810,7 @@ def bank_rows(island: m.Island, currency: str) -> list[dict[str, Any]]:
     """島の銀行（破綻したものを含む）ごとの帳簿（直近の統計）と、出せる命令（緊急の貸し出し・
     破綻処理）。持ち主にだけ出す。"""
     game = get_game()
-    state = island_from_row(island)
+    state = display.island_for_naming(island)
     out = []
     for row in island.facilities.filter(kind=game.config.get("banking.facility")).order_by(
         "number"

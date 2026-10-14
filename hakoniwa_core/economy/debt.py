@@ -14,10 +14,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from hakoniwa_core import ledger
+from hakoniwa_core.config import GameConfig
 from hakoniwa_core.state import Bond, EconomyState, IslandState
 from hakoniwa_core.units import BASIS
 
 YEAR = 12
+VALUED = "bonds_valued"  # island.scratch の印: 決算の段がこのターンの国債の時価を評価した
 
 
 def outstanding(island: IslandState, bond: Bond) -> int:
@@ -93,6 +95,21 @@ def debt_ratio(island: IslandState) -> float:
     """政府の借金の対年GDP比（GDP の記録がなければ 0）。"""
     gdp = annual_gdp(island.economy)
     return total_debt(island) / gdp if gdp > 0 else 0.0
+
+
+def reopen_turn(island: IslandState, config: GameConfig) -> int | None:
+    """債務不履行の後、銀行がまた国債を買うようになるターン（不履行のターン ＋
+    bonds.default_exclusion_turns）。不履行の記録がなければ None。"""
+    since = island.economy.finance.get("default_turn")
+    if since is None:
+        return None
+    return since + config.get("bonds.default_exclusion_turns")
+
+
+def market_closed(island: IslandState, config: GameConfig, turn: int) -> bool:
+    """債務不履行の後で、銀行が国債を買わない（入札で売れず、売買の市場でも買わない）ターンか。"""
+    reopen = reopen_turn(island, config)
+    return reopen is not None and turn < reopen
 
 
 # --- 時価（フェーズ2-2） -----------------------------------------------------------

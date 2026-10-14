@@ -100,7 +100,7 @@ def start_economy(
             f.accounting = ACCOUNTING_TREASURY  # フェーズ1の島の中央省庁など
         init_facility(island, defs, config, f, prices, wage)
     economy.banks = [b.id for b in placed]
-    groundwork.prepare(island, defs, config)
+    groundwork.prepare(island, defs, config, turn)
     economy.finance["version"] = FINANCE_VERSION
     _open_money(island, defs, config, placed, prices, wage, turn)
     island.log.append(LogEntry("economy_started", {}))

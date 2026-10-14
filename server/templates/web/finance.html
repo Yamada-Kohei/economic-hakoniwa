@@ -38,11 +38,11 @@
           <tbody>
             {% for b in banks %}
             <tr>
-              <td><a href="{% url 'island' island.id %}?x={{ b.x }}&amp;y={{ b.y }}">{{ b.name }}</a><br><small class="muted">{{ b.owner_name }}</small></td>
+              <td><a href="{% url 'island' island.id %}?x={{ b.x }}&amp;y={{ b.y }}">{{ b.name }}</a><br><small class="muted">({{ b.x }}, {{ b.y }})・{{ b.owner_name }}</small></td>
               <td>{{ b.deposits|default:"-" }}</td><td>{{ b.loans|default:"-" }}</td><td>{{ b.net_worth|default:"-" }}</td>
               <td>{{ b.capital_ratio|default:"融資なし" }}<br><small class="muted">{% blocktranslate with r=b.regulatory_ratio %}規制 {{ r }} 以上{% endblocktranslate %}</small></td>
               <td>{{ b.deposit_rate }}</td>
-              <td>{% if b.failed is not None %}<span class="error">{% blocktranslate with t=b.failed %}ターン {{ t }} に破綻{% endblocktranslate %}</span>{% elif not b.built %}{% translate "建設中" %}{% else %}{% translate "営業中" %}{% endif %}{% if b.emergency %}<br><small>{% blocktranslate with a=b.emergency %}緊急の貸し出しの上限 {{ a }}{% endblocktranslate %}</small>{% endif %}</td>
+              <td>{% if b.failed is not None %}<span class="error">{% blocktranslate with t=b.failed %}ターン {{ t }} に破綻{% endblocktranslate %}</span>{% elif not b.built %}{% translate "建設中" %}{% else %}{% translate "営業中" %}{% endif %}{% if b.crunch_until %}<small class="warning">{% blocktranslate with t=b.crunch_until %}国債の債務不履行で損をしたため、ターン {{ t }} まで新しい融資を止めています{% endblocktranslate %}</small>{% endif %}{% if b.emergency %}<br><small>{% blocktranslate with a=b.emergency %}緊急の貸し出しの上限 {{ a }}{% endblocktranslate %}</small>{% endif %}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -51,7 +51,7 @@
       {% for b in banks %}
         {% if b.resolve_methods %}
         <form class="actions bank-action" data-order="resolve_bank" data-x="{{ b.x }}" data-y="{{ b.y }}">
-          <h3>{% blocktranslate with name=b.name %}{{ name }}の破綻処理（行政力を使いません）{% endblocktranslate %}</h3>
+          <h3>{% blocktranslate with name=b.name x=b.x y=b.y %}{{ name }}（{{ x }}, {{ y }}）の破綻処理（行政力を使いません）{% endblocktranslate %}</h3>
           <p class="hint">{% translate "次のターンまでに選ばなければ「引き継ぎ」（引き継ぐ銀行がなければ「救済」）になります。" %}</p>
           {% for id, name in b.resolve_methods.items %}
           <label><input type="radio" name="method" value="{{ id }}"{% if id == "transfer" %} checked{% endif %}> {{ name }}</label>
@@ -61,7 +61,7 @@
         {% endif %}
         {% if b.emergency_loan %}
         <form class="actions bank-action" data-order="emergency_loan" data-x="{{ b.x }}" data-y="{{ b.y }}">
-          <h3>{% blocktranslate with name=b.name %}{{ name }}への緊急の貸し出し{% endblocktranslate %}</h3>
+          <h3>{% blocktranslate with name=b.name x=b.x y=b.y %}{{ name }}（{{ x }}, {{ y }}）への緊急の貸し出し{% endblocktranslate %}</h3>
           <p class="hint">{% translate "準備預金が足りないとき、中央銀行が担保の足りない分も毎ターンこの額まで貸します。0 で取り消します。" %}</p>
           <label>{% translate "上限額" %} <input name="amount" type="number" min="0" step="1" required></label>
           <button type="submit">{% translate "命令に追加" %}</button>

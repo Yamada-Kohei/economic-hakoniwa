@@ -32,7 +32,8 @@ firms.foreclosure_turns ターンの間、帳簿の設備の値打ちの firms.f
 （resolve_in_place）。
 
 救済と預金保護に国庫から出すのは、次のターンの優先度の高い支払いを残した額まで（rescue_room）。
-救済で債務超過を埋めきれなければ、残りは預金の切り捨てで埋める。
+救済で債務超過を埋めきれなければ、残りは預金の切り捨てで埋める。国庫から出したターンは、処理の後に
+国債の段と同じく、次のターンの支出の分まで国債を出して国庫を戻す（Bonds.top_up）。
 """
 
 from __future__ import annotations
@@ -69,7 +70,14 @@ class Failures(IslandStage):
                 limit = ctx.config.get("loans.arrears_limit")
                 if any(x.arrears >= limit for x in banks.loans_by_borrower(island, entity)):
                     bankrupt(island, ctx, f)
+        before = ledger.money(island, ledger.GOV)
         self._resolve(island, ctx)
+        if ledger.money(island, ledger.GOV) < before:
+            # 救済と預金保護で国庫から出したら、国債の段と同じく次のターンの支出の分を発行で戻す
+            # （戻さないと、次のターンの教育費などが払えず、学校が止まる）
+            from hakoniwa_core.modules.bonds import Bonds
+
+            Bonds().top_up(island, ctx)
         for bank in banks.active_banks(island):
             f = banks.facility_of(island, bank)
             assert f is not None
