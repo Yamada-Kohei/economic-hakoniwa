@@ -1,17 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="52" viewBox="0 0 64 52">
 <g transform="translate(0 20)" stroke-linejoin="round" stroke-width="0.4">
-<polygon points="11.20,13.60 36.80,26.40 36.80,8.40 11.20,-4.40" fill="#c4c0b9" stroke="#c4c0b9"/>
-<polygon points="52.80,18.40 36.80,26.40 36.80,8.40 52.80,0.40" fill="#9e9c96" stroke="#9e9c96"/>
-<polygon points="27.20,-12.40 52.80,0.40 36.80,8.40 11.20,-4.40" fill="#e9e5dc" stroke="#e9e5dc"/>
-<polygon points="20.80,-1.20 30.40,3.60 30.40,-2.40 20.80,-7.20" fill="#c4c0b9" stroke="#c4c0b9"/>
-<polygon points="43.20,-2.80 30.40,3.60 30.40,-2.40 43.20,-8.80" fill="#9e9c96" stroke="#9e9c96"/>
-<polygon points="33.60,-13.60 43.20,-8.80 30.40,-2.40 20.80,-7.20" fill="#e9e5dc" stroke="#e9e5dc"/>
-<path d="M 32.00 -5.06 A 5.88 2.94 0 0 1 26.12 -8.00 L 26.12 -14.00 L 32.00 -14.00 Z" fill="#c4c0b9" stroke="#c4c0b9"/>
-<path d="M 32.00 -5.06 A 5.88 2.94 0 0 0 37.88 -8.00 L 37.88 -14.00 L 32.00 -14.00 Z" fill="#9e9c96" stroke="#9e9c96"/>
-<path d="M 26.12 -14.00 Q 26.12 -18.41 32.00 -18.41 L 32.00 -11.06 A 5.88 2.94 0 0 1 26.12 -14.00 Z" fill="#dbd7cf" stroke="#dbd7cf"/>
-<path d="M 37.88 -14.00 Q 37.88 -18.41 32.00 -18.41 L 32.00 -11.06 A 5.88 2.94 0 0 0 37.88 -14.00 Z" fill="#b1aea7" stroke="#b1aea7"/>
-<polygon points="7.68,15.36 33.28,28.16 33.28,25.16 7.68,12.36" fill="#c4c0b9" stroke="#c4c0b9"/>
-<polygon points="36.80,26.40 33.28,28.16 33.28,25.16 36.80,23.40" fill="#9e9c96" stroke="#9e9c96"/>
-<polygon points="11.20,10.60 36.80,23.40 33.28,25.16 7.68,12.36" fill="#e9e5dc" stroke="#e9e5dc"/>
+<polygon points="11.20,13.60 36.80,26.40 36.80,8.40 11.20,-4.40" fill="#c8c6c0" stroke="#c8c6c0"/>
+<polygon points="52.80,18.40 36.80,26.40 36.80,8.40 52.80,0.40" fill="#a19f9a" stroke="#a19f9a"/>
+<polygon points="27.20,-12.40 52.80,0.40 36.80,8.40 11.20,-4.40" fill="#d9d4c8" stroke="#d9d4c8"/>
+<polygon points="20.80,-1.20 30.40,3.60 30.40,-2.40 20.80,-7.20" fill="#c8c6c0" stroke="#c8c6c0"/>
+<polygon points="43.20,-2.80 30.40,3.60 30.40,-2.40 43.20,-8.80" fill="#a19f9a" stroke="#a19f9a"/>
+<polygon points="33.60,-13.60 43.20,-8.80 30.40,-2.40 20.80,-7.20" fill="#f4f1ea" stroke="#f4f1ea"/>
+<path d="M 32.00 -5.06 A 5.88 2.94 0 0 1 26.12 -8.00 L 26.12 -14.00 L 32.00 -14.00 Z" fill="#c8c6c0" stroke="#c8c6c0"/>
+<path d="M 32.00 -5.06 A 5.88 2.94 0 0 0 37.88 -8.00 L 37.88 -14.00 L 32.00 -14.00 Z" fill="#a19f9a" stroke="#a19f9a"/>
+<path d="M 26.12 -14.00 Q 26.12 -18.41 32.00 -18.41 L 32.00 -11.06 A 5.88 2.94 0 0 1 26.12 -14.00 Z" fill="#669b84" stroke="#669b84"/>
+<path d="M 37.88 -14.00 Q 37.88 -18.41 32.00 -18.41 L 32.00 -11.06 A 5.88 2.94 0 0 0 37.88 -14.00 Z" fill="#527d6a" stroke="#527d6a"/>
+<polygon points="7.68,15.36 33.28,28.16 33.28,25.16 7.68,12.36" fill="#a5a097" stroke="#a5a097"/>
+<polygon points="36.80,26.40 33.28,28.16 33.28,25.16 36.80,23.40" fill="#858179" stroke="#858179"/>
+<polygon points="11.20,10.60 36.80,23.40 33.28,25.16 7.68,12.36" fill="#c9c3b8" stroke="#c9c3b8"/>
 </g>
 </svg>
