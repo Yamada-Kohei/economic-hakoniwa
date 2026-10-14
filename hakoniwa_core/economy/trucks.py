@@ -114,6 +114,19 @@ def pays(island: IslandState, config: GameConfig, wage: int) -> bool:
     return turn_cost(island, config) < _settings(config)["drivers"] * wage
 
 
+def fuel_limit(island: IslandState, config: GameConfig, f: Facility, good: str) -> int:
+    """トラックの燃料 good を買う値段の上限（1 単位あたり）: トラック1台を1ターン使う費用が、替える
+    運転手の賃金に届く値段。これより高い燃料を買うより、運転手を雇う方が安い。"""
+    settings = _settings(config)
+    per_truck = settings["fuel"].get(good, 0)
+    if per_truck <= 0:
+        return 0
+    rate = config.get("market.initial_prices.capital_rate") + settings["wear"]
+    car = island.economy.prices.get(settings["good"], 0) * rate / YEAR
+    room = settings["drivers"] * f.economy.get("wage", 0) - car
+    return max(0, int(room / per_truck))
+
+
 def orders(island: IslandState, config: GameConfig, f: Facility) -> dict[str, int]:
     """運送業が市場で買いたい自動車と燃料（1000 分の 1）。"""
     settings = _settings(config)

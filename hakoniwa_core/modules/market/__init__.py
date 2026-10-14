@@ -971,7 +971,19 @@ class Market(IslandStage):
                 )
                 for g in open_goods
             }
-            portions = needs.split(max(0, spend), needs.weights_of(config, open_goods), caps)
+            weights = needs.weights_of(config, open_goods)
+            portions = needs.split(max(0, spend), weights, caps)
+            # 上限に届いてほかの物に回した分は、買えなかった量として記録する（ほかのぜいたく品に
+            # 回すと品切れの合図が消え、値段も上がらず、消費財の工場が増えなかった）
+            total = sum(weights.values())
+            unplaced = island.scratch.setdefault("unplaced", {})
+            for good in open_goods:
+                ideal = max(0, spend) * weights[good] / total if total > 0 else 0
+                extra = int(ideal) - portions[good]
+                if extra > 0:
+                    top = scale_price(usual[good], max(tiers))
+                    qty = qty_for(extra * BASIS // (BASIS + rate + tax), top)
+                    unplaced[good] = unplaced.get(good, 0) + qty
             for good in open_goods:
                 price = usual[good]
                 now = prices.get(good, 0)
@@ -999,11 +1011,12 @@ class Market(IslandStage):
     ) -> int:
         """層の自動車の燃料と自動車の注文（economy/needs.py）。取り置いた額（注文した額）を返す。
 
-        燃料は持っている車の分を値幅の上端まで、自動車は買いたい台数を、ぜいたく品の予算の
-        household.cars.share までで、いつもの値段の倍率の段で買う。売りに出ていなければ、
-        買いたい量だけ記録する。売りに出ている台数のうち、この層の分（使う額の割合 portion で
-        分ける）を超える分は注文せず、買えなかった量として記録する（売りに出ていない車にお金を
-        取り置くと、その分がぜいたく品に回らずに預金に残った）。"""
+        燃料は持っている車の分を、いつもの値段の一番上の段（household.consumer_goods_tiers）と値幅の
+        上端の安い方まで（値幅の上端で買い続けると、品薄の島で燃料の値段が際限なく上がった）、
+        自動車は買いたい台数を、ぜいたく品の予算の household.cars.share までで、いつもの値段の
+        倍率の段で買う。売りに出ていなければ、買いたい量だけ記録する。売りに出ている台数のうち、
+        この層の分（使う額の割合 portion で分ける）を超える分は注文せず、買えなかった量として記録
+        する（売りに出ていない車にお金を取り置くと、その分がぜいたく品に回らずに預金に残った）。"""
         config = ctx.config
         settings = config.get("household")
         prices = island.economy.prices
@@ -1022,7 +1035,11 @@ class Market(IslandStage):
             if offered.get(good, 0) <= 0:
                 wanted[good] = wanted.get(good, 0) + qty
                 continue
-            limit = auction.band(prices.get(good, 1), width)[1]
+            usual = usual_price(island, good, settings["usual_price_turns"])
+            limit = min(
+                auction.band(prices.get(good, 1), width)[1],
+                scale_price(usual, max(settings["consumer_goods_tiers"])),
+            )
             cost = gross_cost(limit, qty, rate, tax)
             if cost > spend - used:
                 qty = qty * max(0, spend - used) // cost if cost > 0 else 0
@@ -1245,7 +1262,8 @@ class Market(IslandStage):
         offered: dict[str, int],
     ) -> None:
         """運送業のトラックにする自動車と、トラックの燃料の注文（フェーズ3-2。economy/trucks.py）。
-        値幅の上端を指値にし、売りに出ていなければ買いたい量だけ記録する。"""
+        値幅の上端を指値にし、売りに出ていなければ買いたい量だけ記録する。燃料の指値は、トラックが
+        運転手より安く使える値段まで（trucks.fuel_limit）。"""
         defs, config = ctx.defs, ctx.config
         f = next((f for f in island.facilities if is_transport(config, f)), None)
         if f is None or not f.built or is_stopped(f):
@@ -1258,7 +1276,11 @@ class Market(IslandStage):
             if offered.get(good, 0) <= 0:
                 wanted[good] = wanted.get(good, 0) + qty
                 continue
-            plan[good] = (qty, auction.band(prices.get(good, 1), width)[1])
+            limit = auction.band(prices.get(good, 1), width)[1]
+            if good != config.get("freight.trucks.good"):
+                limit = min(limit, trucks.fuel_limit(island, config, f, good))
+            if limit > 0:
+                plan[good] = (qty, limit)
         payer = payer_of(defs, config, f)
         name = facility_entity(f.id)
         for good, (qty, limit) in sorted(self._afford(island, payer, plan, rate, 0).items()):

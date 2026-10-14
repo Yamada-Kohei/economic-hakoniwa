@@ -228,8 +228,10 @@ consumer_goods_factory:
     wood:                 # 鋼鉄を作れない島でも作れるが、手間がかかる
       inputs: {wood: 8, electricity: 2}
       outputs: {consumer_goods: 4}
-    chemicals:            # 化学品（樹脂など）から作る（フェーズ3-2）
-      inputs: {chemicals: 2, electricity: 2}
+    chemicals:            # 化学品（樹脂など）から作る（フェーズ3-2）。原料の費用が初めの値段で
+      # 鋼鉄の作り方とそろうように 4（設計の 2 では、どの民営工場もこの作り方に替えて化学品の値段が
+      # 初めの十数倍まで上がった）
+      inputs: {chemicals: 4, electricity: 2}
       outputs: {consumer_goods: 6}
   sprite: consumer_goods_factory
 
