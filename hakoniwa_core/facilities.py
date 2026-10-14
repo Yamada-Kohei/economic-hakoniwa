@@ -15,6 +15,7 @@ from hakoniwa_core.geo import distance, is_coastal, within
 from hakoniwa_core.state import OWNER_STATE, ZONE_OFFICE, Facility, IslandState, Tile
 
 FULL = 1000  # 割合の 100%
+ENGINEER = "engineer"  # 技術者（島全体の人数として持つ働き手。フェーズ2-3）
 STATUS_STARTING = "starting"  # 工事が済んで、まだ動いたことがない（施設の status）
 # 原料が手に入らずに動けない理由（施設の status の「:」の前）。input は品不足、input_price は
 # 原料が高くて採算が合わない、funds は原料を買うお金が足りない
@@ -36,6 +37,17 @@ def ratio(have: int, need: int) -> int:
 def scale(amount: int, rate: int) -> int:
     """amount の rate / 1000（切り捨て）。"""
     return amount * rate // FULL
+
+
+def productivity_of(f: Facility) -> int:
+    """施設の生産性（1000 分の 1）。決め方は economy/productivity.py。"""
+    return f.economy.get("productivity", FULL)
+
+
+def outputs_of(defs: Defs, f: Facility) -> dict[str, int]:
+    """全力で動いたときの1ターンの産出（作り方の産出 × 生産性）。"""
+    p = productivity_of(f)
+    return {g: q * p // FULL for g, q in recipe_of(defs, f)["outputs"].items()}
 
 
 def facility_def(defs: Defs, f: Facility) -> Mapping[str, Any]:
@@ -82,11 +94,14 @@ def on_map(f: Facility) -> bool:
 def vacate(island: IslandState, f: Facility) -> None:
     """閉鎖・倒産・破綻処理で施設を島から取り除く（プレイヤーの取り壊しの命令ではない）。
 
-    施設のマスは送電網の一部なので、マスに送電線を残して、まわりの施設の送電網が切れないようにする。
+    施設のマスは送電網の一部なので、マスに送電網（100%）を残して、まわりの施設の送電網が切れない
+    ようにする。
     """
+    from hakoniwa_core import infra
+
     island.facilities.remove(f)
     if on_map(f):
-        island.tile(f.x, f.y).infra["power"] = 1
+        infra.set_level(island.tile(f.x, f.y), infra.POWER, infra.FULL)
 
 
 def is_tileless(defs: Defs, kind: str) -> bool:
@@ -94,8 +109,46 @@ def is_tileless(defs: Defs, kind: str) -> bool:
 
 
 def workers_needed(defs: Defs, kind: str) -> int:
-    """全力で動くのに要る労働者の数。"""
+    """全力で動くのに要る労働者の数（技術者を含む）。"""
     return defs.facilities[kind]["workers"]
+
+
+def engineers_needed(defs: Defs, kind: str) -> int:
+    """全力で動くのに要る労働者のうちの技術者の数。"""
+    return defs.facilities[kind].get("staff", {}).get(ENGINEER, 0)
+
+
+def engineer_wage_of(config: GameConfig, f: Facility | None, wage: Any) -> Any:
+    """施設の技術者の賃金。決まっていなければ、一般の賃金 wage の labor.engineer_wage_ratio 倍。"""
+    if f is not None and "engineer_wage" in f.economy:
+        return f.economy["engineer_wage"]
+    value = wage * config.get("labor.engineer_wage_ratio")
+    return round(value) if isinstance(wage, int) else value
+
+
+def labor_cost(
+    defs: Defs, config: GameConfig, kind: str, wage: Any, f: Facility | None = None
+) -> Any:
+    """全力で動いたときの1ターンの賃金: 一般の賃金 wage × 一般の人数 ＋ 技術者の賃金 × 技術者の人数
+    （施設 f があれば、その技術者の賃金で）。"""
+    engineers = engineers_needed(defs, kind)
+    general = workers_needed(defs, kind) - engineers
+    if not engineers:
+        return general * wage
+    return general * wage + engineers * engineer_wage_of(config, f, wage)
+
+
+def engineer_cap(config: GameConfig, f: Facility) -> int:
+    """技術者の足りなさで決まる稼働率の上限（1000 分の 1）: floor + (1 − floor) × 技術者の充足率。
+
+    floor は labor.engineer_floor。雇いたい技術者の席（雇用の段の economy["engineers_wanted"]）が
+    なければ上限はない。
+    """
+    seats = f.economy.get("engineers_wanted", 0)
+    if seats <= 0:
+        return FULL
+    floor = round(config.get("labor.engineer_floor") * FULL)
+    return floor + (FULL - floor) * ratio(f.economy.get("engineers", 0), seats) // FULL
 
 
 def is_halted(f: Facility, turn: int) -> bool:
@@ -106,7 +159,8 @@ def is_halted(f: Facility, turn: int) -> bool:
 def labor_share(defs: Defs, island: IslandState) -> float:
     """住民のうち一般の労働者になる割合。
 
-    働かない家計の層（資産を持つ層。島全体の人数として持つ）の分だけ減る。
+    島全体の人数として持つ家計の層（働かない資産を持つ層と、島のどこにでも通う技術者の層）の
+    分だけ減る。
     """
     share = defs.workers["general"].get("share", 1.0)
     idle = sum(h.get("share", 0.0) for h in island.economy.households.values())

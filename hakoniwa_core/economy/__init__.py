@@ -39,9 +39,11 @@ UNEMPLOYMENT = "unemployment"
 BONDS = "bonds"
 WAREHOUSE = "warehouse"
 SUBSIDIES = "subsidies"
+EDUCATION = "education"  # 教育費（学校と大学。フェーズ2-3）
 
 GENERAL = "general"  # 一般の労働者の層
 OWNERS = "owners"  # 資産を持つ層
+ENGINEERS = "engineers"  # 技術者の層（フェーズ2-3）
 
 
 @dataclass(frozen=True)
@@ -118,8 +120,8 @@ def payer_of(defs: Defs, config: GameConfig, f: Facility) -> Payer:
         return Payer(ledger.bank_entity(f.id))
     if is_self_supporting(f):
         return Payer(facility_entity(f.id))
-    if is_public_service(defs, f):
-        return Payer(ledger.GOV, CIVIL_SERVANTS)
+    if is_public_service(defs, f):  # 学校と大学は教育費（定義の budget）
+        return Payer(ledger.GOV, defs.facilities[f.kind].get("budget", CIVIL_SERVANTS))
     return Payer(ledger.GOV, STATE_FACILITIES)
 
 

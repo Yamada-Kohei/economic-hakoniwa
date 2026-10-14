@@ -73,6 +73,7 @@ from hakoniwa_core.economy import (
     is_self_supporting,
     is_stopped,
     is_transport,
+    productivity,
 )
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.prices import construction_cost, unit_cost, variable_profit
@@ -132,12 +133,13 @@ def entry_return(
     prices: dict[str, int],
     freight: int,
     capital: int,
+    pos: tuple[int, int] | None = None,
 ) -> float:
     """見込みの年の利益率 R = 12 × (変動費の利益 + 生産補助) × (1 − 法人税率) ÷ 建設費
-    （名前付きの式 entry_return の既定）。"""
+    （名前付きの式 entry_return の既定）。pos は建てるマス（生産性の係数に使う）。"""
     if capital <= 0:
         return 0.0
-    probe = Facility(id=-1, kind=kind, x=0, y=0, recipe=recipe, built=True)
+    probe = productivity.probe(island, ctx.defs, ctx.config, kind, recipe, pos)
     wage = island.economy.average_wage
     profit = variable_profit(ctx.defs, ctx.config, probe, prices, wage, freight)
     outputs = ctx.defs.facilities[kind]["recipes"][recipe]["outputs"]
@@ -402,7 +404,7 @@ class EntryExit(IslandStage):
                 blocks.append((estimate, kind, site, {}))
                 continue
             pos, freight = site
-            r = ctx.formula("entry_return")(island, ctx, kind, rname, prices, freight, capital)
+            r = ctx.formula("entry_return")(island, ctx, kind, rname, prices, freight, capital, pos)
             if r * fill <= threshold:
                 args = {"rate": r * fill * 100, "need": threshold * 100}
                 blocks.append((estimate, kind, "unprofitable_site", args))
@@ -642,7 +644,7 @@ class EntryExit(IslandStage):
         払い（建設費の残りだけを集めて、工事の途中で資金が尽きないように）、完成のときに精算する。
         """
         defs, config = ctx.defs, ctx.config
-        probe = Facility(id=-1, kind=kind, x=pos[0], y=pos[1], recipe=rname, built=True)
+        probe = productivity.probe(island, defs, config, kind, rname, pos)
         wage = island.economy.average_wage
         earnings = variable_profit(defs, config, probe, prices, wage, rate)
         # 資材の値上がりに備えて建設費を1割多めに用意し、動き出すときの支払い（firms.operating_turns

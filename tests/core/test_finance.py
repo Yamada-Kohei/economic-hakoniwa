@@ -205,8 +205,17 @@ def test_arrears_bankrupt_private_facility(game, warmed):
     loan.repay_from = world.turn  # 返せない額の元金が、このターンから返す時期に入る
     game.engine.run_turn(world)
     assert any(e.kind == "facility_bankrupt" for e in island.log)
-    assert f.economy["foreclosed"]["bank"] == bank
-    assert f.workers == 0 and banks.debt_of(island, entity) == 0
+    # 差し押さえた銀行が持つか、同じターンに買い手が見つかって売れる
+    sold = any(
+        e.kind == "foreclosure_sold" and (e.args["x"], e.args["y"]) == (f.x, f.y)
+        for e in island.log
+    )
+    assert sold or f.economy["foreclosed"]["bank"] == bank
+    assert f.workers == 0
+    # 返せなかった融資は消える（売れたなら、残る借入は買い手が買うために借りた分だけ）
+    left = banks.loans_by_borrower(island, entity)
+    assert all(x.id != loan.id for x in left)
+    assert sold or banks.debt_of(island, entity) == 0
 
 
 # --- 銀行の破綻処理 ---------------------------------------------------------------
@@ -428,8 +437,8 @@ def test_construction_loan_is_split_across_banks_within_the_limit(game, warmed):
     assert len(active) >= 2
     limits = {b: banks.exposure_limit(island, config, b, ctx.turn) for b in active}
     owners = funds.available(island, Payer(household(OWNERS)))
-    amount = sum(limits.values()) * 2
-    assert amount - sum(limits.values()) <= owners  # 試験の前提: 資産を持つ層が残りを出せる
+    # 銀行が貸せる上限の合計を超え、資産を持つ層が残りを出せる額
+    amount = sum(limits.values()) + min(sum(limits.values()), owners)
     plan = EntryExit()._finance(island, ctx, amount, 10**12)
     assert isinstance(plan, list) and len(plan) == len(active)
     for bank, loan, _ in plan:

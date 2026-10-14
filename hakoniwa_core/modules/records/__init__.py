@@ -19,7 +19,7 @@ from hakoniwa_core.economy import GENERAL, OWNERS, banks, books, funds, househol
 from hakoniwa_core.economy.debt import annual_gdp, total_debt
 from hakoniwa_core.economy.households import close_income
 from hakoniwa_core.economy.stats import inflation, update_cpi
-from hakoniwa_core.modules.labor import has_own_wage
+from hakoniwa_core.modules.labor import engineer_unemployment, has_own_wage
 from hakoniwa_core.modules.population import subsistence_persons
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import IslandState
@@ -76,6 +76,9 @@ class Records(IslandStage):
             stats["food.ratio"] = food["ratio"] / fac.FULL
             stats["food.need"] = from_milli(food["need"])
             stats["food.supplied"] = from_milli(food["supplied"])
+        demand = stats.get("power.demand", 0)
+        if demand:  # 電力の不足率（買いたかった量のうち届かなかった割合）
+            stats["power.shortage"] = max(0.0, 1 - stats.get("power.used", 0) / demand)
         stats.update(_holdings(island))
         # 次のターンの初めに使える行政力（官庁の人手はこのターンに雇えた人数で決まる）
         stats["admin_power"] = ctx.formula("admin_power")(island, ctx)
@@ -113,6 +116,7 @@ class Records(IslandStage):
             stats["wage.min"] = min(wages)
             stats["wage.max"] = max(wages)
         stats["wage.real"] = economy.average_wage * 100 / cpi if cpi else 0.0
+        stats.update(_engineers(island, defs, config))
         # お金の量と財政
         money = ledger.aggregates(island.accounts)
         stats["money.deposits"] = money["deposits"]
@@ -124,6 +128,9 @@ class Records(IslandStage):
         stats["debt_ratio"] = stats["debt"] / year if year else 0.0
         for kind, amount in sorted(self._fiscal(island).items()):
             stats[f"fiscal.{kind}"] = amount
+        # 予算の項目ごとにこのターンに使った額（公共事業費・教育費など）
+        for item, amount in sorted(funds.spent(island).items()):
+            stats[f"spent.{item}"] = amount
         # 家計の層
         income = island.scratch.get("income", {})
         per_capita = {}
@@ -209,6 +216,29 @@ def _finances(island: IslandState) -> dict[str, float]:
         "debt": total_debt(island),
         "policy_rate": island.policy.policy_rate * 100 / BASIS,
     }
+
+
+def _engineers(island: IslandState, defs: Defs, config) -> dict[str, float]:
+    """技術者の数・働いている数（一般の仕事に就いた分を含む）・技術者の席に就いた数・失業率・
+    技術者の賃金の平均（席に就いた人数で重み付け）。フェーズ2-3。"""
+    if fac.ENGINEER not in defs.workers:
+        return {}
+    pool = island.economy.workers.get(fac.ENGINEER, 0)
+    seated = paid = 0
+    for f in island.facilities:
+        hired = f.economy.get("engineers", 0)
+        if hired and has_own_wage(defs, f):
+            seated += hired
+            paid += hired * fac.engineer_wage_of(config, f, f.economy["wage"])
+    stats: dict[str, float] = {
+        "engineers": pool,
+        "engineers.employed": island.scratch.get("engineers_employed", seated),
+        "engineers.seated": seated,
+        "engineers.unemployment": engineer_unemployment(island),
+    }
+    if seated:
+        stats["engineers.wage"] = paid / seated
+    return stats
 
 
 def _banking(island: IslandState, ctx: StageContext) -> dict[str, float]:

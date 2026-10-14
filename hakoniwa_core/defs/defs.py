@@ -54,6 +54,14 @@ class Defs:
         return self.tables["workers"]
 
     @property
+    def infrastructure(self) -> Mapping[str, Mapping[str, Any]]:
+        return self.tables["infrastructure"]
+
+    def infra_kinds(self, role: str) -> list[str]:
+        """インフラの種類のうち、効き目が role（transport・water・power）のもの（定義した順）。"""
+        return [k for k, v in self.infrastructure.items() if v["role"] == role]
+
+    @property
     def regimes(self) -> Mapping[str, Mapping[str, Any]]:
         return self.tables["regimes"]
 

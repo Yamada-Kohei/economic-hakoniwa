@@ -158,6 +158,7 @@ def test_entry_block_is_recorded_and_logged_once(game, warmed):
     for tile in island.tiles:  # 工業団地をなくす
         if tile.zone == ZONE_INDUSTRIAL:
             tile.zone = ZONE_NONE
+    island.economy.finance.pop("entry_block", None)  # 前のターンまでのわけは消しておく
     ctx = context(game, world)
     entry = EntryExit()
     blocks = []

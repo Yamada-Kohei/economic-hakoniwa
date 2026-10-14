@@ -8,6 +8,7 @@ schemas_dir: schemas    # 定義データのスキーマ
 
 # ターン処理の段。ここに並べた順に実行します。入れ外しもここで行います。
 stages:
+  - upgrade          # 前のフェーズから続く島の移し替え（1度だけ）
   - execute_orders   # 計画の実行（命令）。税率・予算などの政策もここで変わる
   - budget           # 国庫の取り置き（支出の項目ごとに、支払いの順番で）
   - employment       # 通勤と雇用（賃金の高い施設から）
@@ -23,6 +24,8 @@ stages:
   - entry_exit       # 民営工場と民間銀行の参入・撤退、差し押さえた施設の売却
   - population       # 消費と人口
   - housing          # 都市の発展（町の自動建設と成長）
+  - infrastructure   # インフラの傷みと統計（工事と維持は雇用・工事・賃金・市場の段で進む）
+  - education        # 教育水準と、大学の技術者の育成・引退
   - events           # 災害
   - records          # 記録（統計と、帳簿の確かめ）
 
@@ -82,6 +85,9 @@ labor:
   max_cut: 0            # 1ターンに賃金が下がる上限（0 で下げない。失業の多い島で賃金と物価が下がり続けないように）
   poach_gap: 0.05       # 賃金がこの割合以上安い施設から働き手を引き抜く
   poach_limit: 0.1      # 1つの施設から1ターンに引き抜かれる働き手の割合の上限
+  # 技術者（フェーズ2-3）
+  engineer_wage_ratio: 2   # 施設の技術者の初めの賃金（一般の賃金に対する倍率）
+  engineer_floor: 0.6      # 技術者がいなくても動ける稼働率（上限 = floor + (1 − floor) × 技術者の充足率）
 
 market:
   band: 0.10            # 値幅（前のターンの約定価格から1ターンに動ける幅）
@@ -112,6 +118,7 @@ household:
   layers:               # 家計の層。share を書いた層は住民のその割合で、働かない（資産を持つ層）
     general: {c1: 0.9}
     owners: {c1: 0.6, share: 0.01}
+    engineers: {c1: 0.85, workers: engineer}   # 技術者とその家族（workers.yaml の engineer。フェーズ2-3）
   c2: 0.01              # 使う額 C = c1 × 直近の可処分所得の平均 + c2 × 預金
   income_turns: 3       # 可処分所得を平均するターン数
   c1_rate_effect: 0.02  # 預金の実質金利が1%高いごとに c1 を下げる量
@@ -231,14 +238,35 @@ fiscal:
   minimum_wage: 0       # 最低賃金（0 は決めない）
   unemployment_benefit: 0  # 失業手当（失業者1人に平均賃金の何割）
   # 国庫が足りないときの支払いの順番（前の項目から取り置く）
-  payment_order: [bonds, civil_servants, unemployment, state_facilities, construction, subsidies, warehouse]
+  payment_order: [bonds, civil_servants, unemployment, state_facilities, education, construction, subsidies, warehouse]
   # 銀行の救済と預金保護（支出の項目の外）は、この項目までの次のターンの支払いを国庫に残した額から出す
   rescue_after: civil_servants
   # 年の予算を命令で決める項目（毎ターン予算の12分の1まで使う）。construction は公共事業費
-  # （国の工事の資材と作業員の賃金。インフラはフェーズ2-3 で足す）、subsidies は補助金
-  budget_items: [construction, subsidies, warehouse]
+  # （国の工事とインフラの工事・維持の資材と作業員の賃金）、education は教育費（学校と大学の教員の
+  # 賃金と教材。建国のときの額は education.start_budget_years）、subsidies は補助金
+  budget_items: [construction, education, subsidies, warehouse]
   budget: {construction: 600, subsidies: 0, warehouse: 0}  # 建国のときの年の予算（住民1人あたり）
   reserve_margin: 0.2   # 取り置きの見積もりを、前のターンの支出よりこの割合だけ多めにする
+
+infrastructure:
+  # インフラと教育の係数 f = 1 + w ×（low + (high − low) × L − 1）の low と high（L が 0 のときと
+  # 1 のときの、w が 1 の施設の係数）。w はレシピの factors
+  factor: [0.7, 1.2]
+  pollution_floor: 0.5  # 汚染の係数の下限（農場と漁港。汚染1あたり factors の pollution だけ下げる）
+  upkeep_priority: 7    # 維持の資材の買い注文の優先順位（値幅の端で止まって割り当てるとき）
+  build_priority: 4     # 新しい工事の資材の買い注文の優先順位
+  # 建国と移し替えのときに、施設のマスとその周りの陸のマスと町のマスに引く道路の整備度
+  start_road: 0.6
+  start_water: 0.8      # 移し替えのときに、都市と大都市のマスに引く上下水道の整備度
+
+education:
+  start: 0.6            # 建国と移し替えのときの教育水準（インフラと教育の係数が 1 になる値）
+  children: 0.15        # 住民のうち子どもの割合（学校の定員と比べる）
+  speed: 12             # 教育水準が1ターンに目標との差の 1/speed だけ動く
+  start_school: school  # 建国と移し替えのときに首都の近くに建てた状態で置く学校
+  start_budget_years: 1.2   # 建国と移し替えのときの教育費の年の予算（学校1つを動かす費用の何年分）
+  engineer_share: 0.02  # 建国と移し替えのときの技術者の数（一般の労働者に対する割合）
+  retire_rate: 0.005    # 技術者が1ターンに引退して一般の層に戻る割合
 
 power:
   good: electricity     # 電力の財
@@ -257,22 +285,26 @@ population:
   emigration_rate: 0.02
   migration_rate: 0.1   # 仕事のない人のうち、1ターンに働き口の近くへ移る割合
   # 幸福度 = base + 各項目（足りている割合 × 重み） − 汚染 × pollution_per_point − 実質賃金と物価の減点
-  # 上下水道（5）と教育（5）はフェーズ2-3 で足す。それまでその分は base に入れておく
+  # 上下水道はそのマスの整備度、教育は島の教育水準（フェーズ2-3）
   happiness:
-    base: 25
+    base: 15
     food: 25
     jobs: 15
     power: 10
     food_quality: 10
     consumer_goods: 15
+    water: 5
+    education: 5
     pollution_per_point: 1
     real_wage_per_point: 1   # 実質賃金が1年前より1%下がるごとの減点
     real_wage_max: 15
     inflation_threshold: 0.05  # 物価上昇率（年率）がこれを超えた1%ごとに減点
     inflation_per_point: 1
     inflation_max: 15
-  # フェーズ1の世界を移し替えた島は、幸福度の重みを blend_turns ターンかけてこの重みから移す
-  happiness_phase1: {base: 20, food: 30, jobs: 20, power: 10, food_quality: 20, consumer_goods: 0}
+  # 前のフェーズの世界を移し替えた島は、幸福度の重みを blend_turns ターンかけて、その時の重みから移す
+  # （フェーズ1の島は happiness_phase1、フェーズ2-2 までの島は happiness_phase2 から）
+  happiness_phase1: {base: 20, food: 30, jobs: 20, power: 10, food_quality: 20, consumer_goods: 0, water: 0, education: 0}
+  happiness_phase2: {base: 25, food: 25, jobs: 15, power: 10, food_quality: 10, consumer_goods: 15, water: 0, education: 0}
   blend_turns: 12
 
 housing:

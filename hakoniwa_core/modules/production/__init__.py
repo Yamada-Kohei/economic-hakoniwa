@@ -1,11 +1,13 @@
 """生産と電力の段。
 
-稼働率 u = min(人手の充足率, 投入財の充足率, 電力の充足率)。産出量 = 基本の産出量 × u です
-（インフラと教育の係数はフェーズ2-3 から。式は output_rate で差し替えられます）。産出物は
-施設の在庫に入り、市場の段で売られます。
+稼働率 u = min(人手の充足率, 投入財の充足率, 電力の充足率, 技術者で決まる上限)。
+産出量 = 基本の産出量 × u × 生産性です（生産性はインフラ・教育・汚染の係数。フェーズ2-3 から。
+economy/productivity.py。式は output_rate で差し替えられます）。技術者で決まる上限は
+facilities.engineer_cap です。産出物は施設の在庫に入り、市場の段で売られます。
 
 電力はためておけないので、送電網ごとにその場で板寄せします（hakoniwa_core/market/auction.py）。
-施設や住宅のあるマスと送電線のマスが送電網で、上下左右につながったまとまりが1つの送電網です。
+施設や住宅のあるマスと、送電網の整備度が定義の grid（既定 30%）以上のマスが送電網で、上下左右に
+つながったまとまりが1つの送電網です。
 売りは発電所（動ける分、指値は希望価格）、買いは施設と家計（指値は払える電気料金まで。優先順位は
 施設の優先順位と、家計は power.household_priority）で、基準の値段は島の前のターンの電気料金です。
 値幅の上端でも足りなければ、優先順位の低い所から停電します。
@@ -20,7 +22,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger, stock
+from hakoniwa_core import infra, ledger, stock
+from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     Payer,
     books,
@@ -28,9 +31,11 @@ from hakoniwa_core.economy import (
     freight,
     funds,
     household,
+    is_public_service,
     is_self_supporting,
     is_stopped,
     payer_of,
+    productivity,
 )
 from hakoniwa_core.economy.prices import input_limit, unit_floor
 from hakoniwa_core.economy.stats import inflation
@@ -82,11 +87,9 @@ class _Buyer:
 
 
 def output_rate(island: IslandState, f: Facility, rate: int, ctx: StageContext) -> int:
-    """産出の倍率（1000 分の 1）。フェーズ2-1 までは稼働率そのまま。
-
-    フェーズ2-3 でインフラと教育の係数を掛ける。
-    """
-    return rate
+    """産出の倍率（1000 分の 1）: 稼働率 × 生産性（インフラ・教育・汚染の係数。
+    この段の初めに economy/productivity.py で計算し直したもの）。"""
+    return fac.scale(rate, fac.productivity_of(f))
 
 
 def power_target(demand: int, capacity: int, ctx: StageContext) -> int:
@@ -105,6 +108,7 @@ class Production(IslandStage):
         power = config.get("power.good")
         for f in island.facilities:  # このターンに売りに出した量と売れた量（電力とこの後の市場）
             f.economy.pop("sales", None)
+            productivity.update(island, defs, config, f)
         runs = [self._prepare(f, ctx, power) for f in island.facilities if self._operates(f, ctx)]
         served = self._power_market(island, runs, ctx, power)
         unplugged: set[int] | None = None
@@ -119,10 +123,12 @@ class Production(IslandStage):
                     cause = "no_grid" if f.id in unplugged else "power"
                 else:  # 発電所は使われる分だけ動くのがふつうなので、止まったときだけ理由にする
                     cause = "no_demand" if rate == 0 else ""
+            public = is_public_service(defs, f)  # 学校の教材は、買ったときに政府の消費に数える
             for good, need in sorted(run.recipe["inputs"].items()):
                 if good != power:
                     used = stock.take(f.stock, good, fac.scale(need, rate))
-                    books.stock_moved(island, f.id, good, -used)
+                    if not public:
+                        books.stock_moved(island, f.id, good, -used)
             out_rate = ctx.formula("output_rate")(island, f, rate, ctx)
             for good, qty in sorted(run.recipe["outputs"].items()):
                 amount = fac.scale(qty, out_rate)
@@ -156,6 +162,9 @@ class Production(IslandStage):
             cause = "target" if short is None or have >= target else Production._short(f, short)
         if short is not None and have < rate:
             rate, cause = have, Production._short(f, short)
+        cap = fac.engineer_cap(ctx.config, f)  # 技術者が足りなければ、稼働率の上限が下がる
+        if cap < rate:
+            rate, cause = cap, "engineers"
         return _Run(f, recipe, rate, cause if rate < fac.FULL else "")
 
     @staticmethod
@@ -175,7 +184,7 @@ class Production(IslandStage):
         住宅のマスには、住民が受け取れた電力の割合を ext["power"] に書く。
         """
         defs, config = ctx.defs, ctx.config
-        grid_of = self._grids(island)
+        grid_of = self._grids(island, defs)
         household_use = config.get("power.household_use")
         housing = fac.housing_kind(config)
         economy = island.economy
@@ -190,8 +199,9 @@ class Production(IslandStage):
         users: dict[int, list[_Run]] = {}
         for run in runs:
             grid = grid_of[(run.f.x, run.f.y)]
-            if run.recipe["outputs"].get(power, 0):
-                plants.setdefault(grid, []).append((run, run.recipe["outputs"][power]))
+            if run.recipe["outputs"].get(power, 0):  # 発電所の能力は生産性を掛けた量
+                out = fac.scale(run.recipe["outputs"][power], fac.productivity_of(run.f))
+                plants.setdefault(grid, []).append((run, out))
             elif run.recipe["inputs"].get(power, 0):
                 users.setdefault(grid, []).append(run)
         homes: dict[int, list[tuple[int, int]]] = {}
@@ -369,7 +379,7 @@ class Production(IslandStage):
         状態を「電力不足」ではなく「送電網につながっていない」にして、送電線を引けば動くと分かるように
         する。
         """
-        grid_of = self._grids(island)
+        grid_of = self._grids(island, ctx.defs)
         powered = set()
         users = []
         for f in island.facilities:
@@ -383,10 +393,10 @@ class Production(IslandStage):
         return {f.id for f in users if grid_of[(f.x, f.y)] not in powered}
 
     @staticmethod
-    def _grids(island: IslandState) -> dict[tuple[int, int], int]:
-        """送電網: 施設や住宅のあるマスと送電線のマスの、上下左右につながったまとまり。"""
+    def _grids(island: IslandState, defs: Defs) -> dict[tuple[int, int], int]:
+        """送電網: 施設や住宅のマスと、電力を通す送電網のマスの、上下左右につながったまとまり。"""
         nodes = {(f.x, f.y) for f in island.facilities if fac.on_map(f)}
-        nodes |= {(t.x, t.y) for t in island.tiles if t.power_line}
+        nodes |= {(t.x, t.y) for t in island.tiles if infra.carries_power(defs, t)}
         grid_of = {}
         for i, group in enumerate(components(island, nodes)):
             for pos in group:

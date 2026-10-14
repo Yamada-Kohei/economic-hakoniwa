@@ -5,6 +5,7 @@
   "additionalProperties": false,
   "properties": {
     "share": {"type": "number", "minimum": 0, "maximum": 1, "description": "住民のうち、この種類の働き手になる割合"},
+    "island_wide": {"type": "boolean", "description": "島全体の人数として持ち、島のどこの施設にも通う（技術者）"},
     "override": {"const": true}
   }
 }

@@ -39,13 +39,19 @@ class Tile:
     terrain: str
     population: int = 0
     zone: str = ZONE_NONE  # 指定（フェーズ2で工業団地・オフィス街を足す）
-    infra: dict[str, int] = field(default_factory=dict)  # インフラ。フェーズ1は送電線 {"power": 1}
+    # インフラ: 種類ごとの [整備度, 維持で戻す目標]（1000 分の 1。hakoniwa_core/infra.py）。
+    # フェーズ1・2 の送電線は {"power": 1}
+    infra: dict[str, Any] = field(default_factory=dict)
     pollution: int = 0
     ext: dict[str, Any] = field(default_factory=dict)
 
     @property
     def power_line(self) -> bool:
-        return self.infra.get("power", 0) > 0
+        """送電網の整備度が 0 より大きいか（電力を通すかは infra.py の carries_power）。"""
+        value = self.infra.get("power")
+        if isinstance(value, list):
+            return value[0] > 0
+        return bool(value)
 
 
 @dataclass
@@ -224,11 +230,16 @@ class EconomyState:
     housing: dict[str, Any] = field(default_factory=dict)  # 町の資材の注文と、買った資材
     bond_seq: int = 0
     cb_loss: int = 0  # 中央銀行の繰り越した損失（後の利益で埋めてから国庫に納める）
-    happiness_blend: int = 0  # 幸福度の重みをフェーズ1から移す残りのターン数
+    happiness_blend: int = 0  # 幸福度の重みを前のフェーズの重みから移す残りのターン数
     loan_seq: int = 0
     # 金融（フェーズ2-2）: 国債の区分ごとの利回り、銀行間の金利、債務不履行のターン、品切れの
     # 履歴など（economy/banks.py と modules/bonds・central_bank・firms が読み書きする）
     finance: dict[str, Any] = field(default_factory=dict)
+    # フェーズ2-3: インフラの工事の列・工事の資材・止まったわけ（modules/infrastructure）、
+    # 教育水準（1000 分の 1。modules/education）、島全体で数える働き手の人数（技術者 engineer）
+    infra: dict[str, Any] = field(default_factory=dict)
+    education: int = 0
+    workers: dict[str, int] = field(default_factory=dict)
     ext: dict[str, Any] = field(default_factory=dict)
 
 

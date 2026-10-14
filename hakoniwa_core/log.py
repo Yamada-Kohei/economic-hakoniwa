@@ -24,6 +24,7 @@ _ARG_KINDS = {
     "unsold": "messages",
     "method": "messages",
     "subsidy": "messages",
+    "infra": "infrastructure",
 }
 
 

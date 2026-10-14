@@ -9,6 +9,17 @@
 3. それでも足りなければ、通勤圏の中で賃金が labor.poach_gap 以上安い施設の働き手を、安い施設から
    引き抜く。1つの施設から引き抜かれるのは1ターンに働き手の labor.poach_limit まで。
 
+技術者（フェーズ2-3）は島全体の人数として持ち、通勤圏を見ずに島のどこの施設にも通います。施設の
+定義の技術者の数（workers の engineer）に、雇いたい人数の割合を掛けた分を技術者の席とし、2 の前に、
+前のターンの技術者を雇い続けたうえで、技術者の賃金の高い施設から順に割り当てます。埋まらなかった
+技術者の席は一般の労働者の席にします（技術者が足りない分、稼働率の上限が下がる。
+facilities.engineer_cap）。3 の後に余った技術者は、まだ埋まらない一般の席に、賃金の高い施設から
+島のどこへでも就きます（賃金は一般のもの）。
+
+インフラの公共事業（modules/infrastructure）は、維持の分を施設より先に、新しい工事の分を施設の
+後に、作業員の賃金と次のターンの資材の代金の見込みを取り置き、作業員は施設が雇った後に残った
+失業者から、島のどこからでも雇います（引き抜かない）。
+
 工事の作業員と公務員は前のターンの島の平均賃金で雇います。工事は、作業員の賃金に続けて、この
 ターンの市場で買う資材の代金の見込みも取り置きます（公共事業費は、賃金と資材の両方に優先度の高い
 工事から充てる。hakoniwa_core/modules/market の SiteFunds）。運送業は通勤圏を見ず島のどこからでも、
@@ -29,6 +40,7 @@ from hakoniwa_core.economy import (
     payer_of,
 )
 from hakoniwa_core.geo import distance, within
+from hakoniwa_core.modules import infrastructure
 from hakoniwa_core.modules.market import SITE_HOLDS, SiteFunds
 from hakoniwa_core.modules.population import subsistence_persons
 from hakoniwa_core.registry import IslandStage, Registry
@@ -72,18 +84,30 @@ class Employment(IslandStage):
         plans.sort(key=lambda p: (-p[1], -fac.priority_of(defs, config, p[0]), p[0].id))
         staff: dict[int, dict[Pos, int]] = {}
         wanted: dict[int, int] = {}
+        seats: dict[int, int] = {}  # 技術者の席
         sites: SiteFunds | None = None
+        works_wage = self._site_wage(island, ctx)
+        # インフラの維持は施設より先に取り置く（施設の工事の賃金で公共事業費を使い切らないように）
+        infrastructure.plan(island, ctx, upkeep=True, wage=works_wage)
         # 雇いたい人数を決め、その賃金を取り置く（高い賃金の施設から）
         for f, wage in plans:
             demand = self._wanted(island, ctx, f, wage)
             payer = payer_of(defs, config, f)
-            per_worker = wage + self._power_per_worker(island, ctx, f)
+            engineers, extra = self._engineer_terms(island, ctx, f, wage)
+            per_worker = wage + self._power_per_worker(island, ctx, f) + extra
             want = demand
             if per_worker > 0:
                 want = min(want, funds.available(island, payer) // per_worker)
             want = max(0, want)
             wanted[f.id] = want
-            funds.commit(island, payer, want * wage)
+            seats[f.id] = 0
+            if engineers:
+                need = fac.workers_needed(defs, f.kind)
+                seats[f.id] = engineers * want // need
+            if seats[f.id]:
+                f.economy["engineer_wage"] = fac.engineer_wage_of(config, f, wage)
+            cost = want * wage + seats[f.id] * (fac.engineer_wage_of(config, f, wage) - wage)
+            funds.commit(island, payer, cost)
             # 賃金を払うお金が足りずに雇いたい分を雇えなかったことは、施設の状態に出す（人手不足と
             # 分けて、国庫が空で止まった施設が「労働者不足」と出ないように）
             if want < demand:
@@ -97,10 +121,14 @@ class Employment(IslandStage):
                 hold = min(sites.cost(f, want), funds.available(island, payer))
                 funds.commit(island, payer, hold)
                 island.scratch.setdefault(SITE_HOLDS, []).append((payer, hold))
+        infrastructure.plan(island, ctx, upkeep=False, wage=works_wage)
+        # 0. 技術者を割り当て、埋まらなかった技術者の席を一般の席にする
+        engineers = self._assign_engineers(island, ctx, plans, seats)
+        general = {fid: wanted[fid] - engineers.get(fid, 0) for fid in wanted}
         # 1. 雇い続ける（遠いマスの人から減らす）
         for f, _ in plans:
             keep: dict[Pos, int] = {}
-            left = wanted[f.id]
+            left = general[f.id]
             for pos, count in sorted(
                 staff_of(f).items(), key=lambda kv: (self._dist(f, kv[0]), kv[0][1], kv[0][0])
             ):
@@ -117,7 +145,7 @@ class Employment(IslandStage):
         by_id = {f.id: (f, wage) for f, wage in plans}
         # 2. 失業者を雇う 3. 安い施設から引き抜く
         for f, wage in plans:
-            missing = wanted[f.id] - sum(staff[f.id].values())
+            missing = general[f.id] - sum(staff[f.id].values())
             if missing <= 0:
                 continue
             area = everywhere if self._island_wide(ctx, f) else self._area(island, ctx, f)
@@ -160,16 +188,30 @@ class Employment(IslandStage):
                     room -= take
                     if missing <= 0 or room <= 0:
                         break
+        # 4. 余った技術者を、まだ埋まらない一般の席に島のどこからでも就かせる
+        spare = self._spare_engineers(island, plans, general, staff, engineers)
+        # 5. インフラの作業員を、残った失業者から島のどこからでも雇う
+        employed: dict[Pos, int] = dict(infrastructure.hire(island, free, everywhere))
         # 雇えなかった分の賃金の取り置きを戻し、結果を書く
-        employed: dict[Pos, int] = {}
         for f, wage in plans:
             mine = {p: n for p, n in staff[f.id].items() if n > 0}
             hired = sum(mine.values())
-            f.workers = hired
+            skilled, spared = engineers.get(f.id, 0), spare.get(f.id, 0)
+            f.workers = hired + skilled + spared
             f.economy["staff"] = {_key(p): n for p, n in sorted(mine.items())}
             f.economy["wanted"] = wanted[f.id]
             f.economy["poached"] = poached.get(f.id, 0)
-            funds.release(island, payer_of(defs, config, f), (wanted[f.id] - hired) * wage)
+            for key, value in (
+                ("engineers", skilled),
+                ("engineers_wanted", seats[f.id]),
+                ("engineers_general", spared),
+            ):
+                if value:
+                    f.economy[key] = value
+                else:
+                    f.economy.pop(key, None)
+            unhired = general[f.id] - hired - spared
+            funds.release(island, payer_of(defs, config, f), unhired * wage)
             for pos, n in mine.items():
                 employed[pos] = employed.get(pos, 0) + n
             if is_transport(config, f):
@@ -181,6 +223,88 @@ class Employment(IslandStage):
             else:
                 tile.ext.pop("employed", None)
 
+    # --- 技術者 ----------------------------------------------------------------------
+
+    @staticmethod
+    def _engineer_terms(
+        island: IslandState, ctx: StageContext, f: Facility, wage: int
+    ) -> tuple[int, int]:
+        """施設の全力の技術者の数と、技術者の賃金が一般より高い分を働き手1人あたりにした額。
+
+        技術者を雇うのは、お金の経済のある島の、建っていてマスを持つ公務でない施設だけ。
+        """
+        defs = ctx.defs
+        if not island.has_economy or not f.built or is_public_service(defs, f):
+            return 0, 0
+        engineers = fac.engineers_needed(defs, f.kind)
+        if engineers <= 0:
+            return 0, 0
+        extra = max(0, fac.engineer_wage_of(ctx.config, f, wage) - wage)
+        return engineers, -(-extra * engineers // fac.workers_needed(defs, f.kind))
+
+    def _assign_engineers(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        plans: list[tuple[Facility, int]],
+        seats: dict[int, int],
+    ) -> dict[int, int]:
+        """技術者を席に割り当てる。前のターンの人を雇い続けてから、技術者の賃金の高い施設から順に。
+
+        埋まらなかった席の分は、技術者の賃金のうち一般より高い分の取り置きを戻す（一般の席になる）。
+        """
+        config = ctx.config
+        pool = island.economy.workers.get(fac.ENGINEER, 0)
+        out: dict[int, int] = {}
+        for f, _ in plans:
+            keep = min(f.economy.get("engineers", 0), seats[f.id], pool)
+            if keep > 0:
+                out[f.id] = keep
+                pool -= keep
+        ranked = sorted(
+            (p for p in plans if seats[p[0].id] > out.get(p[0].id, 0)),
+            key=lambda p: (
+                -fac.engineer_wage_of(config, p[0], p[1]),
+                -fac.priority_of(ctx.defs, config, p[0]),
+                p[0].id,
+            ),
+        )
+        for f, _ in ranked:
+            take = min(seats[f.id] - out.get(f.id, 0), pool)
+            if take > 0:
+                out[f.id] = out.get(f.id, 0) + take
+                pool -= take
+        for f, wage in plans:
+            empty = seats[f.id] - out.get(f.id, 0)
+            extra = fac.engineer_wage_of(config, f, wage) - wage
+            if empty > 0 and extra > 0:
+                funds.release(island, payer_of(ctx.defs, config, f), empty * extra)
+        island.scratch["engineers_left"] = pool
+        return out
+
+    @staticmethod
+    def _spare_engineers(
+        island: IslandState,
+        plans: list[tuple[Facility, int]],
+        general: dict[int, int],
+        staff: dict[int, dict[Pos, int]],
+        engineers: dict[int, int],
+    ) -> dict[int, int]:
+        """余った技術者を、一般の労働者で埋まらなかった席に就かせる（賃金の高い施設から）。"""
+        pool = island.scratch.get("engineers_left", 0)
+        out: dict[int, int] = {}
+        for f, _ in plans:
+            if pool <= 0:
+                break
+            missing = general[f.id] - sum(staff[f.id].values())
+            take = min(max(0, missing), pool)
+            if take > 0:
+                out[f.id] = take
+                pool -= take
+        island.scratch["engineers_left"] = pool
+        island.scratch["engineers_employed"] = sum(engineers.values()) + sum(out.values())
+        return out
+
     # --- 施設ごとの決まり ------------------------------------------------------------
 
     @staticmethod
@@ -190,11 +314,16 @@ class Employment(IslandStage):
         if fac.is_housing(config, f) or is_stopped(f):
             return None
         if not f.built or is_public_service(ctx.defs, f):
-            wage = island.economy.average_wage or config.get("labor.initial_wage")
-            return max(wage, island.policy.minimum_wage)
+            return Employment._site_wage(island, ctx)
         if "wage" not in f.economy:
             f.economy["wage"] = island.economy.average_wage or config.get("labor.initial_wage")
         return f.economy["wage"]
+
+    @staticmethod
+    def _site_wage(island: IslandState, ctx: StageContext) -> int:
+        """工事の作業員と公務員の賃金: 前のターンの島の平均賃金（最低賃金より下げない）。"""
+        wage = island.economy.average_wage or ctx.config.get("labor.initial_wage")
+        return max(wage, island.policy.minimum_wage)
 
     @staticmethod
     def _wanted(island: IslandState, ctx: StageContext, f: Facility, wage: int) -> int:

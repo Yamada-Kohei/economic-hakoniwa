@@ -10,6 +10,7 @@ GDP（生産の側）= 施設の付加価値（売上 − 仕入れ − 電気�
 GDP（支出の側）= 家計の消費（食料・消費財・電気・運賃）＋ 住宅の資材
                ＋ 工事（資材・運賃・作業員の賃金）＋ 施設の在庫の増減
                ＋ 国の倉庫の買い入れ − 売り渡し ＋ 公務員の賃金
+               ＋ 学校と大学の教材（代金・運賃。フェーズ2-3）
 売り買いの代金と運賃は払う側と受け取る側の両方に同じ額を足すので、2つは一致します。
 銀行の利ざやはフェーズ2では入れません（銀行の職員の賃金は、家計への移転として扱う）。
 """
@@ -42,7 +43,7 @@ PROFIT = "profit"
 HOUSEHOLDS = "households"  # 項目: goods, electricity, freight, housing, tax
 CONSTRUCTION = "construction"  # 項目: materials, freight, wages
 WAREHOUSE = "warehouse"  # 項目: purchases, sales
-GOVERNMENT = "government"  # 項目: wages（公務員）
+GOVERNMENT = "government"  # 項目: wages（公務員）、goods・freight（学校と大学の教材）
 CENTRAL_BANK = (
     "central_bank"  # 項目: interest（受け取った利子 − 払った利子）、valuation（国債の評価損益）
 )
@@ -125,5 +126,7 @@ def gdp(island: IslandState, inventory: Mapping[int, int]) -> tuple[int, int]:
         + store.get("purchases", 0)
         - store.get("sales", 0)
         + gov.get("wages", 0)
+        + gov.get("goods", 0)
+        + gov.get("freight", 0)
     )
     return production, spending

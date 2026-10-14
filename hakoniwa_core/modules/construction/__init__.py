@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger, stock
+from hakoniwa_core import infra, ledger, stock
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     CONSTRUCTION,
@@ -34,6 +34,7 @@ from hakoniwa_core.economy import (
     owner_entity,
 )
 from hakoniwa_core.economy.start import fund_facility, init_facility
+from hakoniwa_core.modules import infrastructure
 from hakoniwa_core.naming import assign_serial
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE, Facility, IslandState, LogEntry
@@ -77,7 +78,7 @@ def check_demolish(island: IslandState, payload: dict[str, Any], defs: Defs) -> 
     if island.capital == (x, y):
         raise OrderFailed("reason_capital_building")
     f = island.facility_at(x, y)
-    if f is None and not island.tile(x, y).power_line:
+    if f is None and not infra.has_any(island.tile(x, y)) and not infra.queued_at(island, x, y):
         raise OrderFailed("reason_nothing_to_demolish")
     if f is not None and defs.facilities[f.kind].get("category") == "finance":
         raise OrderFailed("reason_cannot_demolish", facility=f.kind)
@@ -86,15 +87,17 @@ def check_demolish(island: IslandState, payload: dict[str, Any], defs: Defs) -> 
 
 
 def demolish(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
-    """施設を取り壊す。施設がなければ送電線を外す。
+    """施設を取り壊す。施設がなければ、マスのインフラ（送電網など）と並んでいる工事をすべて外す。
 
     施設の在庫は国の倉庫に戻し、独立採算の施設の預金は出資の払い戻しとして持ち主に返す。
     """
     x, y = payload["x"], payload["y"]
     f = island.facility_at(x, y)
     if f is None:
-        island.tile(x, y).infra.pop("power", None)
-        island.log.append(LogEntry("power_line_removed", {"x": x, "y": y}))
+        infra.clear(island.tile(x, y))
+        infra.unqueue(island, x, y)
+        freight.forget(island)
+        island.log.append(LogEntry("infrastructure_removed", {"x": x, "y": y}))
         return
     close_accounts(island, f)
     stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
@@ -128,7 +131,7 @@ NO_MATERIALS_TURNS = 2
 
 
 class Construction(IslandStage):
-    """工事中の施設を、手元の資材と雇えた人手の分だけ進める。"""
+    """工事中の施設とインフラの公共事業を、手元の資材と雇えた人手の分だけ進める。"""
 
     name = "construction"
 
@@ -155,6 +158,7 @@ class Construction(IslandStage):
                 stock.take(f.stock, good, qty * f.progress // total - qty * before // total)
             if f.progress >= total:
                 self._complete(island, f, ctx)
+        infrastructure.progress(island, ctx)
 
     @staticmethod
     def _watch_workers(island: IslandState, f: Facility, stalled: bool) -> None:

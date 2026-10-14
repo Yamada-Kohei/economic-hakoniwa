@@ -14,6 +14,7 @@
       "additionalProperties": {"type": "number", "minimum": 0},
       "description": "町がこの段階に育つ（いちばん下の段階なら新しく建つ）ときに倉庫から使う資源"
     },
+    "water": {"type": "number", "minimum": 0, "maximum": 1, "description": "この段階に育つのに要る、そのマスの上下水道の整備度（0〜1）"},
     "subsistence": {"type": "boolean", "description": "仕事のない住民が自給の農業で自分の食べる分をまかなえるか（村など）"},
     "override": {"const": true}
   }
