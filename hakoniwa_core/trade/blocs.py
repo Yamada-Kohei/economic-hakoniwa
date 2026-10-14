@@ -11,7 +11,9 @@
 - volume・demand・supply: 財ごとの前のターンの約定した量・買い・売り
 
 命令（作る・入る・抜ける・設定・代表を譲る・引き継ぐ）は、命令の段で島の申し送りに積み、貿易の段の
-初めに島の番号の順に決めます（requests）。決められなかったわけはその島のログに書きます。
+初めに島の番号の順に決めます（requests）。決められなかったわけはその島のログに書きます。決済通貨・
+加盟の決まり・代表が変わったときは、加盟国すべてのログに知らせます（決済通貨は商社の売り買いに
+すぐ響くため）。
 
 圏の市場の値段は、初めは加盟国の島の値段を為替で決済通貨に直して平均したものです。売り買いのどちら
 かしかない財は、出ている注文の一番よい指値の方へ値幅の中で動き、どちらもない財は、加盟国の島の値段
@@ -23,7 +25,7 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core.state import IslandState, LogEntry, WorldState
-from hakoniwa_core.trade import cells, distance, next_id, world_state
+from hakoniwa_core.trade import cells, currency_label, distance, next_id, world_state
 from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.units import BASIS
 
@@ -55,6 +57,26 @@ def is_inactive(island: IslandState) -> bool:
 
 
 # --- 命令の申し送り ----------------------------------------------------------------
+
+
+def _tell(
+    world: WorldState, bloc: dict[str, Any], kind: str, args: dict[str, Any], skip: int = -1
+) -> None:
+    """加盟国（skip の島を除く）のログに知らせる。"""
+    for member in bloc["members"]:
+        island = world.islands.get(member)
+        if island is not None and member != skip:
+            island.log.append(LogEntry(kind, {"bloc": bloc["name"], **args}))
+
+
+def _new_rep(world: WorldState, bloc: dict[str, Any], rep: int) -> None:
+    """代表を rep にして、本人と、ほかの加盟国に知らせる。"""
+    bloc["rep"] = rep
+    island = world.islands.get(rep)
+    if island is None:
+        return
+    island.log.append(LogEntry("bloc_rep_received", {"bloc": bloc["name"]}))
+    _tell(world, bloc, "bloc_rep_changed", {"country": island.name}, skip=rep)
 
 
 def create(world: WorldState, island: IslandState, name: str, open_: bool, turn: int) -> None:
@@ -139,7 +161,7 @@ def settle_leaves(world: WorldState) -> None:
         if not bloc["members"]:
             continue
         if bloc["rep"] not in bloc["members"]:
-            bloc["rep"] = bloc["members"][0]
+            _new_rep(world, bloc, bloc["members"][0])
         if bloc["currency"] not in bloc["members"]:
             change_currency(world, bloc, bloc["rep"])
         keep.append(bloc)
@@ -159,6 +181,7 @@ def change_currency(world: WorldState, bloc: dict[str, Any], currency: int) -> N
     bloc["currency"] = currency
     for member in bloc["members"]:
         fxrates.ensure(world, world.islands[member], currency)
+    _tell(world, bloc, "bloc_currency_changed", {"currency": currency_label(world, currency)})
 
 
 def settings(
@@ -168,18 +191,16 @@ def settings(
         if currency not in bloc["members"]:
             return "reason_bloc_currency"
         change_currency(world, bloc, currency)
-    if open_ is not None:
+    if open_ is not None and open_ != bloc["open"]:
         bloc["open"] = open_
+        _tell(world, bloc, "bloc_opened" if open_ else "bloc_closed", {})
     return None
 
 
 def transfer(world: WorldState, bloc: dict[str, Any], to: int) -> str | None:
     if to not in bloc["members"] or to == bloc["rep"]:
         return "reason_bloc_not_member"
-    bloc["rep"] = to
-    other = world.islands.get(to)
-    if other is not None:
-        other.log.append(LogEntry("bloc_rep_received", {"bloc": bloc["name"]}))
+    _new_rep(world, bloc, to)
     return None
 
 
@@ -189,8 +210,7 @@ def take_over(world: WorldState, island: IslandState, bloc: dict[str, Any]) -> s
         return "reason_bloc_not_member"
     if rep is not None and not is_inactive(rep):
         return "reason_bloc_rep_active"
-    bloc["rep"] = island.id
-    island.log.append(LogEntry("bloc_rep_received", {"bloc": bloc["name"]}))
+    _new_rep(world, bloc, island.id)
     return None
 
 

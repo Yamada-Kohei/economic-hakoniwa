@@ -3,7 +3,8 @@
 島と島をまたぐ処理は、市場の段の後の世界の段 trade で、島の番号・距離・圏と契約の番号の順に決めます
 （島の順番は結果に効かない）。中身の部品は hakoniwa_core/trade/ にあります。
 
-1. 届いた荷を買い手の港で下ろす（下ろす港の使用料。港の積み下ろしの余裕を超えた荷は次のターンへ）
+1. 届いた荷を買い手の港で下ろす（下ろす港の使用料。港の積み下ろしの余裕を超えた荷は次のターンへ）。
+   国の倉庫に入る腐る物（契約で買った食品など）は、次のターンからの市場の段が売りに出す
 2. 海運業の船: 使えるターン数を過ぎた船を解体し、市場で買った船を船団に入れる
 3. 圏の作成・加盟・設定、契約の申し込み・受け入れ・やめる（命令の段の申し送りを、島の番号の順に）
 4. 為替の板寄せ（島の通貨と、その島が使う決済通貨の組ごと。hakoniwa_core/trade/fx.py）
@@ -47,6 +48,7 @@ from hakoniwa_core.trade import (
     next_id,
     one_way_turns,
     port_of,
+    send_to_market,
     shipping_of,
     ships,
     started,
@@ -201,6 +203,10 @@ class _Round:
             stock.put_batches(island.warehouse, good, batches)
             if s.get("facility") is not None:  # 買った商社がなくなった（倒産など）: 国の倉庫へ
                 island.log.append(LogEntry("cargo_to_warehouse", {"good": good}))
+            if self.defs.goods[good].get("shelf_life"):  # 腐る物は、住民に回るよう市場に出す
+                send_to_market(island, good, qty)
+                amount = qty / QUANTITY_SCALE
+                island.log.append(LogEntry("cargo_to_market", {"good": good, "amount": amount}))
             self._pay_fee(island, gov_payer(), port, fee, None)
         here.port_used += s["load"]
         here.handled += s["load"]
@@ -455,11 +461,14 @@ class _Round:
         want = c["qty"]
         limits = {"goods": stock.total(seller.warehouse, good)}
         if price > 0:
+            own = funds.available(buyer, gov_payer())
             if buyer.id == currency:
-                money = funds.available(buyer, gov_payer())
+                limits["money"] = own * QUANTITY_SCALE // price
             else:
-                money = fxmoney.holding(buyer, ledger.GOV, currency)
-            limits["money"] = money * QUANTITY_SCALE // price
+                held = fxmoney.holding(buyer, ledger.GOV, currency) * QUANTITY_SCALE // price
+                # 外貨が足りないとき、国庫の自国通貨なら足りるのは、外貨を買えなかったため（fx）
+                spare = fxrates.to_foreign(buyer, currency, own) * QUANTITY_SCALE // price
+                limits["fx" if held + spare >= want else "money"] = held
         limits["ships"] = self._ship_room(buyer, seller, good)
         limits["port"] = self._port_room(seller, good)
         qty = min(want, *limits.values())

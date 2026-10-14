@@ -18,8 +18,14 @@
 ます。島に商社が1つしかないと、売りと買いがそろわず両替ができないためです。輸出の稼ぎが多い島は
 中央銀行が買い取って通貨が高くなり、輸入が多い島は中央銀行の持ち高が尽きると通貨が安くなります。
 
-中央銀行の持ち高が尽きて買いしかないときは、出ている一番高い買いの指値の方へ、「相手のない量 ÷
-（相手のない量 + 市場の厚み）」の割合だけ動きます（売りしかないときも同じ）。
+通貨 C を発行した島の中央銀行も、同じように受け身の注文を出します（issuer_orders。試し遊びで、島の
+誰も持っていない通貨は売り手がなく買えず、その通貨の契約や貿易圏が止まったため）。前のレートより高い
+側で、市場の厚みの分の C を売り（自国通貨なので持ち高に頭打ちはない）、受け取ったこの島の通貨は発行
+した島の中央銀行の外貨準備になります。安い側では、その外貨準備の分だけ C を買い戻します。
+
+片側だけで買いしかないとき（どちらの中央銀行の注文も相手にならないほど偏ったとき）は、出ている一番
+高い買いの指値の方へ、「相手のない量 ÷（相手のない量 + 市場の厚み）」の割合だけ動きます（売りしか
+ないときも同じ）。
 """
 
 from __future__ import annotations
@@ -36,6 +42,8 @@ from hakoniwa_core.trade import money as fxmoney
 from hakoniwa_core.units import BASIS, to_basis
 
 TIERS = 5  # 注文を分ける段の数
+ISSUER = "issuer"  # 板の上での、通貨を発行した島の中央銀行（この島の主体ではない）
+_DEALERS = (ledger.CB, ISSUER)  # 受け身の注文を出す主体（レートを動かす量に数えない）
 
 
 def rates(island: IslandState) -> dict[str, int]:
@@ -176,17 +184,19 @@ def clear(
 ) -> tuple[int, int, int, int]:
     """組の板寄せをして、約定を払う。(新しいレート, 約定した量, 買い, 売り) を返す。
 
-    中央銀行が受け身の注文（dealer_orders）を足してから板寄せする。"""
+    島の中央銀行と、通貨を発行した島の中央銀行が受け身の注文（dealer_orders・issuer_orders）を
+    足してから板寄せする。"""
     reference = rate(island, currency)
     dealer_orders(island, currency, book, reference, width)
+    issuer_orders(world, island, currency, book, reference, width)
     buys = [o for o, _, _ in book.buys]
     sells = [o for o, _, _ in book.sells]
     result = auction.clear(buys, sells, reference, width)
     price = result.price
     # 片側だけのときに動かす量は、中央銀行の受け身の注文を除いた量（中央銀行の注文はレートを
     # 動かさない）
-    demand = sum(o.quantity for o, entity, _ in book.buys if entity != ledger.CB)
-    supply = sum(o.quantity for o, entity, _ in book.sells if entity != ledger.CB)
+    demand = sum(o.quantity for o, entity, _ in book.buys if entity not in _DEALERS)
+    supply = sum(o.quantity for o, entity, _ in book.sells if entity not in _DEALERS)
     if result.demand > 0 and result.supply <= 0:  # 売りがなければ、一番高い買いの指値の方へ上がる
         target = min(result.high, max(reference, max(o.limit or result.high for o in buys)))
         price = _step(reference, target, demand, book.depth)
@@ -196,27 +206,50 @@ def clear(
     for payer, amount in book.held:  # 取り置きを戻してから払う
         funds.release(island, payer, amount)
     dealt = 0
+    issued = 0  # 発行した島の中央銀行が受け取った（買い戻しで払った分を引いた）この島の通貨
     for b, s, qty in auction.match(result.bought, result.sold):
         _, buyer, buyer_payer = book.buys[b]
         _, seller, _ = book.sells[s]
         own = qty * price // BASIS
-        if own <= 0:
+        if own <= 0 or {buyer, seller} == set(_DEALERS):
             continue
-        if buyer == ledger.CB:  # 中央銀行が買う: 自国通貨を作って払う
+        if seller == ISSUER:  # 発行した島の中央銀行へ払う（その島の非居住者の預金になる）
+            fxmoney.transfer(
+                world,
+                island.id,
+                (island.id, buyer),
+                (currency, ledger.CB),
+                own,
+                "fx_exchange",
+                qty,
+                payer=buyer_payer,
+            )
+            issued += own
+        elif buyer == ISSUER:  # 発行した島の中央銀行が、持っているこの島の通貨で買い戻す
+            fxmoney.transfer(
+                world, island.id, (currency, ledger.CB), (island.id, seller), own, "fx_exchange"
+            )
+            issued -= own
+        elif buyer == ledger.CB:  # 中央銀行が買う: 自国通貨を作って払う
             ledger.pay(island, ledger.CB, seller, own, "fx_exchange")
             dealt += qty
         else:
             funds.pay(island, buyer_payer, seller, own, "fx_exchange")
             if seller == ledger.CB:
                 dealt -= qty
-        cost = fxmoney.transfer(
-            world, currency, (island.id, seller), (island.id, buyer), qty, "fx_exchange", own
-        )
-        _realized(island, seller, own - cost)
+        source = (currency, ledger.CB) if seller == ISSUER else (island.id, seller)
+        target = (currency, ledger.CB) if buyer == ISSUER else (island.id, buyer)
+        cost = fxmoney.transfer(world, currency, source, target, qty, "fx_exchange", own)
+        if seller != ISSUER:
+            _realized(island, seller, own - cost)
         island.trades.append(TradeRecord(f"fx:{currency}", buyer, seller, qty, own))
     rates(island)[str(currency)] = price
     stats = island.stats
     stats[f"fx.dealt.{currency}"] = stats.get(f"fx.dealt.{currency}", 0) + dealt
+    if issued:
+        theirs = world.islands[currency].stats
+        key = f"fx.dealt.{island.id}"
+        theirs[key] = theirs.get(key, 0) + issued
     return price, result.volume, result.demand, result.supply
 
 
@@ -245,6 +278,36 @@ def dealer_orders(
                 (Order(sell, reference + (high - reference) * j // TIERS), ledger.CB, payer)
             )
             have -= sell
+
+
+def issuer_orders(
+    world: WorldState,
+    island: IslandState,
+    currency: int,
+    book: Book,
+    reference: int,
+    width: int,
+) -> None:
+    """通貨 currency を発行した島の中央銀行の受け身の注文。前のレートより高い側に、市場の厚みの分の
+    currency を TIERS 段に分けて売り（自国通貨なので持ち高に頭打ちはない）、安い側に、持っている
+    この島の通貨（外貨準備）で買える分だけ同じように買い戻す。発行した島にお金の経済がなければ
+    出さない。"""
+    issuer = world.islands.get(currency)
+    if issuer is None or not issuer.has_economy or book.depth <= 0:
+        return
+    low, high = auction.band(reference, width)
+    payer = Payer(ledger.CB)
+    reserve = fxmoney.holding(issuer, ledger.CB, island.id)  # この島の通貨
+    for j in range(1, TIERS + 1):
+        qty = book.depth // TIERS
+        if qty <= 0:
+            break
+        book.sells.append((Order(qty, reference + (high - reference) * j // TIERS), ISSUER, payer))
+        price = reference - (reference - low) * j // TIERS
+        buy = min(qty, reserve * BASIS // max(1, price))
+        if buy > 0:
+            book.buys.append((Order(buy, price), ISSUER, payer))
+            reserve -= -(-buy * price // BASIS)
 
 
 def _step(reference: int, target: int, unmatched: int, depth: int) -> int:

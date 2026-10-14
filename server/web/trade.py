@@ -24,6 +24,7 @@ from hakoniwa_core.naming import facility_name
 from hakoniwa_core.state import IslandState, WorldState
 from hakoniwa_core.trade import (
     KEY,
+    currency_labels,
     is_port,
     is_trader,
     merchant,
@@ -108,6 +109,10 @@ def directory(world: m.World) -> dict[int, dict[str, Any]]:
             "wy": row["wy"],
             "inactive": row["inactive"],
         }
+    # 同じ名前の通貨がほかの島にもあれば、国名を前に付ける
+    labels = currency_labels({i: (e["name"], e["currency"]) for i, e in out.items()})
+    for island_id, entry in out.items():
+        entry["currency"] = labels[island_id]
     return out
 
 
