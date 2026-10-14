@@ -16,6 +16,7 @@ from hakoniwa_core.modules.market import (
     food_by_quality,
     food_split,
     gross_cost,
+    late_weight,
     price_update,
     upgrade_food,
 )
@@ -116,6 +117,18 @@ def test_price_update_moves_toward_balance_within_band(game):
     assert price_update(1000, 100, 100, 0.0, ctx) == 1000
     assert price_update(1000, 100, 60, 0.0, ctx) < 1000  # 売れ残れば下げる
     assert price_update(1000, 100, 0, 0.0, ctx) >= 1000 * (1 - band)
+
+
+def test_late_sales_count_less_as_the_price_falls_below_the_floor():
+    """売れ残りの投げ売りで売れた分は、値段が変動費を下回った幅に応じて少なく数える（少し下回った
+    だけで全く数えなくなると、魚の余った島でどの漁港も同時に減産して飢饉になった）。"""
+    assert late_weight(1100, 1000, 0.1) == 1.0
+    assert late_weight(1000, 1000, 0.1) == 1.0
+    assert late_weight(990, 1000, 0.1) == pytest.approx(0.9)
+    assert late_weight(950, 1000, 0.1) == pytest.approx(0.5)
+    assert late_weight(900, 1000, 0.1) == 0.0
+    assert late_weight(100, 1000, 0.1) == 0.0  # 大きく下回れば数えない（作り続けて値段が崩れない）
+    assert late_weight(0, 0, 0.1) == 1.0
 
 
 # --- 帳簿 -------------------------------------------------------------------------
