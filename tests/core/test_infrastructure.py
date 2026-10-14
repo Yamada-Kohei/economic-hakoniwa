@@ -6,7 +6,9 @@ from hakoniwa_core import autoplan, infra, stock
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.economy import EDUCATION, freight, groundwork, productivity
 from hakoniwa_core.economy.households import family_of, set_workers
+from hakoniwa_core.modules.infrastructure import Works
 from hakoniwa_core.orders import check_order
+from hakoniwa_core.turn.context import StageContext
 from tests.core.test_rules import (
     add,
     freight_island,
@@ -243,3 +245,42 @@ def test_plan_keeps_the_machinery_to_start_the_steel_chain(game):
     assert not autoplan._materials_ok(island, game.defs, game.config, "consumer_goods_factory")
     assert autoplan._materials_ok(island, game.defs, game.config, "steel_mill")
     assert autoplan._materials_ok(island, game.defs, game.config, "bank")  # 機械 1 なら残りで足りる
+
+
+def test_plan_builds_building_materials_before_a_university_it_cannot_supply(game):
+    island = make_island(game)
+    home(game, island, 5, 6, 8000)
+    add(island, "machinery_plant", 9, 9, stock={"steel": 4000})  # 技術者が要る（島の技術者は 0）
+    with_economy(game, island)
+    island.warehouse = {}
+    stock.add(island.warehouse, "wood", 100_000, 0, game.defs.goods)
+    # 建材を作る施設がなく倉庫にもないので、大学より先に建材工場
+    got = list(autoplan._education(island, game.defs, game.config))
+    assert any(kind == "building_materials_plant" for kind, _ in got)
+    assert all(kind != "university" for kind, _ in got)
+
+
+def test_power_lines_use_wood_while_the_steel_mill_is_not_running(game):
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    mill = add(island, "steel_mill", 9, 9)
+    with_economy(game, island)
+    island.warehouse = {}
+    stock.add(island.warehouse, "wood", 10_000, 0, game.defs.goods)
+    ctx = StageContext(
+        defs=game.defs,
+        config=game.config,
+        registry=game.registry,
+        formulas=game.engine.formulas,
+        turn=1,
+        seed=0,
+        stage="test",
+        before=None,
+    )
+    spec = game.defs.infrastructure["power"]
+    # 送電網につながらず動いていない製鉄所の鋼鉄は当てにせず、木の柱でつなぐ
+    mill.operating_rate = 0
+    assert Works(island, ctx).materials("power") == dict(spec["fallback"])
+    island.scratch.clear()  # 次のターン
+    mill.operating_rate = fac.FULL
+    assert Works(island, ctx).materials("power") == dict(spec["materials"])

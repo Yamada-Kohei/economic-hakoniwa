@@ -19,6 +19,7 @@
 次に学校を建てます。建っている施設（工事中を含む）が要る技術者が、島の技術者の ENGINEER_TARGET 倍を
 超え、大学がなければ大学を建てます。どちらも、資材が倉庫にあるか島で作っているときだけで、同じ資材を
 待っている工事があるあいだは建てません（大学は、民営工場の工事に要る分の資材を倉庫に残します）。
+資材が倉庫に足りず島のどの施設も作っていなければ、先にその資材を作る施設を建てます。
 4〜6 では、投入財に余裕のない施設は建てません（鉱山を増やせないのに製鉄所を増やすと、鉄鉱石の
 取り合いで値段が跳ね上がるだけなので）。
 ほかの工事が待っている資材を建った施設がどれも作っていなければ、それを使う施設は、その資材を作る
@@ -581,28 +582,49 @@ def _education(island: IslandState, defs: Defs, config: GameConfig) -> Iterator[
     """学校の定員が足りなければ学校、技術者が足りなくて大学がなければ大学（お金の経済の島だけ）。
 
     同じ資材を待っている工事があるあいだは建てない（学校と大学が建材を使い、原料や資材の工場の工事が
-    後回しになって、消費財と木材が足りなくなったため）。
+    後回しになって、消費財と木材が足りなくなったため）。工事の資材が倉庫に足りず、島のどの施設も
+    作っていなければ、先にその資材を作る施設を建てる（建材を作らない島に大学が建たず、技術者が引退で
+    減り続けて、工場が6割ほどしか動かなくなったため）。
     """
     if not island.has_economy:
         return
-    if SCHOOL in defs.facilities and not _materials_waited(island, _materials_of(defs, SCHOOL)):
+    if SCHOOL in defs.facilities:
         seats = sum(
             defs.facilities[f.kind].get("education", {}).get("capacity", 0)
             for f in island.facilities
         )
         children = population_of(island) * config.get("education.children")
-        if seats < children * SCHOOL_TARGET and _in_hand(island, defs, SCHOOL):
-            yield (SCHOOL, "default")
-    if (
-        UNIVERSITY in defs.facilities
-        and _count(island, UNIVERSITY) == 0
-        and not _materials_waited(island, _materials_of(defs, UNIVERSITY))
-    ):
+        if seats < children * SCHOOL_TARGET:
+            yield from _build_or_supply(island, defs, config, SCHOOL)
+    if UNIVERSITY in defs.facilities and _count(island, UNIVERSITY) == 0:
         needed = sum(fac.engineers_needed(defs, f.kind) for f in island.facilities)
-        if needed > island.economy.workers.get(fac.ENGINEER, 0) * ENGINEER_TARGET and _in_hand(
-            island, defs, UNIVERSITY, _private_needs(island, defs)
-        ):
-            yield (UNIVERSITY, "default")
+        if needed > island.economy.workers.get(fac.ENGINEER, 0) * ENGINEER_TARGET:
+            keep = _private_needs(island, defs)
+            yield from _build_or_supply(island, defs, config, UNIVERSITY, keep)
+
+
+def _build_or_supply(
+    island: IslandState,
+    defs: Defs,
+    config: GameConfig,
+    kind: str,
+    keep: dict[str, int] | None = None,
+) -> Iterator[tuple[str, str]]:
+    """kind を建てる。資材が倉庫に足りず島のどの施設（工事中を含む）も作っていなければ、代わりに
+    その資材を作る施設。同じ資材を待っている工事があるか、資材が手元にない（_in_hand）なら建てない。"""
+    present = {good for f in island.facilities for good in fac.recipe_of(defs, f)["outputs"]}
+    lacking = [
+        good
+        for good, qty in sorted(defs.facilities[kind]["construction"].get("materials", {}).items())
+        if good not in present and stock.total(island.warehouse, good) < qty
+    ]
+    if lacking:
+        for good in lacking:
+            yield from _producers(defs, config, island, good)
+    elif not _materials_waited(island, _materials_of(defs, kind)) and _in_hand(
+        island, defs, kind, keep
+    ):
+        yield (kind, "default")
 
 
 def _materials_waited(island: IslandState, goods: set[str]) -> bool:

@@ -78,29 +78,30 @@ class Works:
     def materials(self, kind: str) -> dict[str, int]:
         """1マスを 0% から 100% にする資材。手に入らない財があれば fallback を使う。
 
-        手に入るのは、島で作れて（地下資源）、建った施設が作っているか、国の倉庫か工事の資材に
-        ある財です（製鉄所が閉まって鋼鉄がなくなった島は、送電網を木の柱で直す）。ターンの途中で
-        変わらないように、ターンの初めに使うときに決めて island.scratch に置きます。
+        手に入るのは、島で作れて（地下資源）、建った施設が前のターンに作ったか、国の倉庫と工事の
+        資材に1マス分ある財です（製鉄所が閉まって鋼鉄がなくなった島は、送電網を木の柱で直す。送電網に
+        つながっていない製鉄所は、木の柱の送電網でつなぐ）。ターンの途中で変わらないように、ターンの
+        初めに使うときに決めて island.scratch に置きます。
         """
         spec = self.defs.infrastructure[kind]
         if "fallback" not in spec:
             return dict(spec["materials"])
         chosen = self.island.scratch.setdefault(MATERIALS, {})
         if kind not in chosen:
-            chosen[kind] = set(spec["materials"]) <= self._available()
+            producible = producible_goods(self.defs, self.island.resources)
+            chosen[kind] = all(
+                good in producible and self._available(good, qty)
+                for good, qty in spec["materials"].items()
+            )
         return dict(spec["materials"] if chosen[kind] else spec["fallback"])
 
-    def _available(self) -> set[str]:
+    def _available(self, good: str, qty: int) -> bool:
         island = self.island
-        made = {
-            good
-            for f in island.facilities
-            if f.built
-            for good in fac.recipe_of(self.defs, f)["outputs"]
-        }
-        held = {g for g, q in stock.totals(island.warehouse).items() if q > 0}
-        held |= {g for g, q in stock.totals(works_stock(island)).items() if q > 0}
-        return producible_goods(self.defs, island.resources) & (made | held)
+        for f in island.facilities:
+            if f.built and f.operating_rate > 0 and good in fac.recipe_of(self.defs, f)["outputs"]:
+                return True
+        held = stock.total(island.warehouse, good) + stock.total(works_stock(island), good)
+        return held >= qty
 
     def step(self, kind: str) -> int:
         """1マスを1ターンに上げられる整備度の上限（100% ÷ 工期）。"""
