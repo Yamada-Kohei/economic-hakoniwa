@@ -4,6 +4,9 @@
 初めの値。economy/groundwork.py）を置きます。幸福度の重みは、population.blend_turns ターンかけて
 フェーズ2-2 までの重み（game.yaml の happiness_phase2）から今の重みに移します。
 
+フェーズ3-1 からは、お金の経済のある島にまだ貿易の仕組みがなければ、港・海運業・輸送船・商社を置き、
+海外の商人を来させます（hakoniwa_core/trade/setup.py。建国したばかりの島も、最初の更新でここを通る）。
+
 移し替えをターンの中で行うのは、サーバーを通さずにコアだけで世界を回すとき（一括シミュレーションや
 テスト）にも同じに動くようにするためです。
 """
@@ -13,6 +16,8 @@ from __future__ import annotations
 from hakoniwa_core.economy import groundwork
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import IslandState
+from hakoniwa_core.trade import setup as trade_setup
+from hakoniwa_core.trade import started as trade_started
 from hakoniwa_core.turn.context import StageContext
 
 
@@ -21,12 +26,15 @@ class Upgrade(IslandStage):
 
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
         economy = island.economy
-        if not island.has_economy or economy.ext.get("version", 0) >= groundwork.VERSION:
+        if not island.has_economy:
             return
-        groundwork.prepare(island, ctx.defs, ctx.config, ctx.turn)
-        if economy.happiness_blend <= 0:
-            economy.happiness_blend = ctx.config.get("population.blend_turns")
-            economy.ext["happiness_from"] = "happiness_phase2"
+        if economy.ext.get("version", 0) < groundwork.VERSION:
+            groundwork.prepare(island, ctx.defs, ctx.config, ctx.turn)
+            if economy.happiness_blend <= 0:
+                economy.happiness_blend = ctx.config.get("population.blend_turns")
+                economy.ext["happiness_from"] = "happiness_phase2"
+        if not trade_started(island):
+            trade_setup.prepare(island, ctx.defs, ctx.config, ctx.turn)
 
 
 def register(registry: Registry) -> None:

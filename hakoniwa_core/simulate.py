@@ -16,7 +16,7 @@ import statistics
 import sys
 import time
 
-from hakoniwa_core.autoplan import plan_turn, queue_orders
+from hakoniwa_core.autoplan import plan_trade, plan_turn, queue_orders
 from hakoniwa_core.game import load_game
 from hakoniwa_core.gate import Recorder
 from hakoniwa_core.state import WorldState
@@ -52,6 +52,8 @@ def main(argv: list[str] | None = None) -> int:
             for island in world.islands.values():
                 orders = plan_turn(island, game.defs, game.config, world.turn + 1)
                 queue_orders(island, orders)
+            for island_id, orders in plan_trade(world, game.defs, game.config).items():
+                queue_orders(world.islands[island_id], orders)
         report = game.engine.run_turn(world)
         per_turn.append(report.total_seconds)
         if recorder is not None:

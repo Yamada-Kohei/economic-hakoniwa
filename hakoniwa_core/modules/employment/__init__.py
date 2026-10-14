@@ -24,6 +24,7 @@ facilities.engineer_cap）。3 の後に余った技術者は、まだ埋まら�
 ターンの市場で買う資材の代金の見込みも取り置きます（公共事業費は、賃金と資材の両方に優先度の高い
 工事から充てる。hakoniwa_core/modules/market の SiteFunds）。運送業は通勤圏を見ず島のどこからでも、
 前のターンの運賃 × freight.labor_share ÷ 賃金 の人数を雇い、足りない割合だけ運賃を割り増します。
+港・海運業・商社（フェーズ3-1）は、扱った荷の量と船の数に合わせて雇います（hakoniwa_core/trade）。
 施設ごと・マスごとに雇った人数は、施設の economy["staff"] に残します。雇われなかった人は失業し、
 村の住民は自給の農業に戻ります（人口の段で扱う）。
 """
@@ -31,6 +32,7 @@ facilities.engineer_cap）。3 の後に余った技術者は、まだ埋まら�
 from __future__ import annotations
 
 from hakoniwa_core import facilities as fac
+from hakoniwa_core import trade
 from hakoniwa_core.economy import (
     freight,
     funds,
@@ -45,6 +47,7 @@ from hakoniwa_core.modules.market import SITE_HOLDS, SiteFunds
 from hakoniwa_core.modules.population import subsistence_persons
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import Facility, IslandState
+from hakoniwa_core.trade import ships, traders
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, money_of, part, to_basis
 
@@ -327,9 +330,16 @@ class Employment(IslandStage):
 
     @staticmethod
     def _wanted(island: IslandState, ctx: StageContext, f: Facility, wage: int) -> int:
-        if is_transport(ctx.config, f):
-            return freight.payroll(island, ctx.config) // max(1, wage)
-        return fac.labor_demand(ctx.defs, f, ctx.turn, ctx.config.get("power.good"))
+        config = ctx.config
+        if is_transport(config, f):
+            return freight.payroll(island, config) // max(1, wage)
+        if f.built and trade.is_port(config, f):  # 港は扱った荷の量に合わせて（フェーズ3-1）
+            return ships.port_workers(config, ctx.defs, f)
+        if f.built and trade.is_shipping(config, f):  # 海運業は船の数に合わせて船員を
+            return ships.crew_wanted(config, f)
+        if f.built and trade.is_trader(config, f):  # 商社は扱った荷の量に合わせて
+            return traders.workers_wanted(config, ctx.defs, f)
+        return fac.labor_demand(ctx.defs, f, ctx.turn, config.get("power.good"))
 
     @staticmethod
     def _power_per_worker(island: IslandState, ctx: StageContext, f: Facility) -> int:

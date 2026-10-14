@@ -20,6 +20,10 @@ hakoniwa_core/infra.py の path_weight）で、隣のマスへ移る重さは2�
 
 運送業の人手が足りないときは、足りない割合だけ率を割り増します（economy.freight["surcharge"]、
 1万分の1、最大 freight.max_surcharge 倍）。
+
+作り方と違う物を売り買いする施設（商社。フェーズ3-1）は、施設の economy["freight_goods"]
+（[財, 量, 売るか] の並び）を売る物と買う物にし、economy["site"]（[x, y]。港のマス）があれば、
+そのマスから道のりを数えます。
 """
 
 from __future__ import annotations
@@ -210,8 +214,17 @@ class _Trade:
         self.household = set(household_goods(defs, config, island))
 
 
+def position(f: Facility) -> Pos:
+    """運賃の道のりを数えるマス（商社は港のマス。economy["site"]）。"""
+    site = f.economy.get("site")
+    return (site[0], site[1]) if site else (f.x, f.y)
+
+
 def facility_goods(defs: Defs, power: str, f: Facility) -> list[tuple[str, int, bool]]:
-    """施設が売る物と買う物（財, 全力の量, 売るか）。工事中は次の1ターン分の資材。"""
+    """施設が売る物と買う物（財, 全力の量, 売るか）。工事中は次の1ターン分の資材。
+    economy["freight_goods"] があれば、それを使う（商社）。"""
+    if "freight_goods" in f.economy:
+        return [(g, q, bool(sell)) for g, q, sell in f.economy["freight_goods"] if q > 0]
     goods = []
     if f.built:
         recipe = fac.recipe_of(defs, f)
@@ -242,7 +255,7 @@ class _Rates:
         goods = self.trade.goods.get(f.id)
         if goods is None:  # まだ建っていない施設（民営工場の参入の場所選び）
             goods = facility_goods(self.defs, power or "", f) if power is not None else []
-        hub = self.hub.get((f.x, f.y))
+        hub = self.hub.get(position(f))
         if not goods:
             return self.rate(hub)
         weighted = total = 0
@@ -255,11 +268,11 @@ class _Rates:
     def _cover(self, f: Facility, good: str, qty: int, sell: bool, hub: int | None) -> int:
         """good の量 qty を近い相手から順に埋めたときの、量で平均した率。"""
         partners = (self.trade.buyers if sell else self.trade.sellers).get(good, [])
-        here = (f.x, f.y)
+        here = position(f)
         found: list[tuple[int, int | None]] = []  # (道のり, 量)。量 None は限りなし（住民）
         for other, amount in partners:
             if other.id != f.id:
-                d = self.routes.between(here, (other.x, other.y))
+                d = self.routes.between(here, position(other))
                 if d is not None:
                     found.append((d, amount))
         if sell and good in self.trade.household:
@@ -279,7 +292,7 @@ class _Rates:
     def household(self) -> int:
         """住んでいるマスごとの、家計が買う財の一番近い売り手までの率の平均を、人口で平均する。"""
         sellers = {
-            g: [self.routes.from_((f.x, f.y)) for f, _ in self.trade.sellers.get(g, [])]
+            g: [self.routes.from_(position(f)) for f, _ in self.trade.sellers.get(g, [])]
             for g in sorted(self.trade.household)
         }
         sellers = {g: s for g, s in sellers.items() if s}

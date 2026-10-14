@@ -42,6 +42,12 @@ bond_redemption: 国債の償還
 bond_trade: 国債の売買
 bond_default: 国債の不履行
 layer_transfer: 層の移動
+trade: 貿易圏の市場の代金
+fx_exchange: 為替の売り買い
+contract: 二国間契約の代金
+port_fee: 港の使用料
+shipping_freight: 船の運賃
+merchant: 海外の商人への代金
 bond_1y: 1年国債
 bond_5y: 5年国債
 bond_10y: 10年国債

@@ -54,6 +54,13 @@ bond_trade:           {type: journal}   # 国債の売買（買い手 → 売り
 bond_default:         {type: journal}   # 国債の不履行（額面の切り下げ）
 # 家計の層
 layer_transfer:       {type: journal}   # 層を移った人の預金の付け替え
+# 貿易と為替（フェーズ3-1）
+trade:                {type: journal}   # 貿易圏の市場の代金（買い手の商社 → 売り手の商社。決済通貨の島の帳簿）
+fx_exchange:          {type: journal}   # 為替の売り買い（自国通貨と、発行した島の帳簿の非居住者の預金）
+contract:             {type: journal}   # 二国間契約の代金（買い手の政府 → 売り手の政府）
+port_fee:             {type: journal}   # 港の使用料（荷を積み下ろす商社・政府 → 港）
+shipping_freight:     {type: journal}   # 船の運賃（買い手の商社・政府 → 自国の海運業）
+merchant:             {type: journal}   # 海外の商人への代金（島の外に出て消える）
 
 # 国債の期間
 bond_1y:  {type: bond_term, turns: 12, premium: 0.0025}

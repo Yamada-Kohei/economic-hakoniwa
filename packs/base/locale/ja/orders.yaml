@@ -25,3 +25,12 @@ set_bank_policy: 銀行の政策の変更
 grant_bank_license: 銀行の免許
 emergency_loan: 銀行への緊急の貸し出し
 resolve_bank: 破綻した銀行の処理
+create_bloc: 貿易圏を作る
+join_bloc: 貿易圏に入る
+leave_bloc: 貿易圏を抜ける
+bloc_settings: 貿易圏の設定
+transfer_bloc: 貿易圏の代表を譲る
+take_over_bloc: 貿易圏の代表を引き継ぐ
+propose_contract: 二国間契約の申し込み
+accept_contract: 二国間契約を受ける
+cancel_contract: 二国間契約をやめる

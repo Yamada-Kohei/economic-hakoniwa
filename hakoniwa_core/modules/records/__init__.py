@@ -121,6 +121,11 @@ class Records(IslandStage):
         money = ledger.aggregates(island.accounts)
         stats["money.deposits"] = money["deposits"]
         stats["money.central_bank"] = money["cb_money"]
+        stats["money.nonresident"] = money["nonresident"]  # 海外が持つ自国通貨（フェーズ3-1）
+        trade = books.sector(island, books.TRADE)  # 貿易収支（商社・契約・海外の商人）
+        stats["trade.exports"] = trade.get("exports", 0)
+        stats["trade.imports"] = trade.get("imports", 0)
+        stats["trade.balance"] = trade.get("exports", 0) - trade.get("imports", 0)
         stats.update(_finances(island))
         stats.update(_banking(island, ctx))
         economy.finance["unemployment"] = stats["unemployment"]

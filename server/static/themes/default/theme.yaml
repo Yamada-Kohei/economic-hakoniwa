@@ -27,6 +27,9 @@ facilities:
   hydro_power_plant:        {color: "#3d7ea6", height: 2.5}
   government_office:        {color: "#f2efe6", height: 3}
   bank:                     {color: "#d8c27a", height: 2.5}
+  port:                     {color: "#c8473a", height: 2.5}   # フェーズ3-1
+  shipyard:                 {color: "#d9a62a", height: 3}
+  trading:                  {color: "#9db6c7", height: 3}
   housing:                  {color: "#d9826b", height: 1}   # 高さは住宅地の段階（settlements の height）
 facility_fallback: {color: "#bbbbbb", height: 1.5}
 capital_roof: "#c9a227"   # 首都の建物の屋根の色
@@ -54,10 +57,13 @@ sprites:
   facility/lumber_camp: sprites/facility/lumber_camp.svg
   facility/machinery_plant: sprites/facility/machinery_plant.svg
   facility/mine: sprites/facility/mine.svg
+  facility/port: sprites/facility/port.svg
   facility/quarry: sprites/facility/quarry.svg
   facility/school: sprites/facility/school.svg
+  facility/shipyard: sprites/facility/shipyard.svg
   facility/steel_mill: sprites/facility/steel_mill.svg
   facility/thermal_power_plant: sprites/facility/thermal_power_plant.svg
+  facility/trading: sprites/facility/trading.svg
   facility/university: sprites/facility/university.svg
   housing/city: sprites/housing/city.svg
   housing/metropolis: sprites/housing/metropolis.svg

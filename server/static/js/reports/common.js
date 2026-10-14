@@ -9,8 +9,8 @@ const whole = new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 0 });
 const fine = new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 2 });
 
 /**
- * 統計の値を文字にする。unit はサーバーの統計の単位（money・%・rate・percent・index・ratio、
- * または数の後ろに付ける文字）。exact なら丸めずに（お金は1の位まで）書く。
+ * 統計の値を文字にする。unit はサーバーの統計の単位（money・%・rate・percent・index・ratio・
+ * fx（為替レート）、または数の後ろに付ける文字）。exact なら丸めずに（お金は1の位まで）書く。
  */
 export function formatValue(value, unit, currency = "", exact = false) {
   if (value == null || !Number.isFinite(value)) return "-";
@@ -18,6 +18,8 @@ export function formatValue(value, unit, currency = "", exact = false) {
   switch (unit) {
     case "money":
       return `${value < 0 ? "-" : ""}${currency}${number.format(Math.abs(value))}`;
+    case "fx":
+      return value.toFixed(exact ? 4 : 3);
     case "%":
       return `${(value * 100).toFixed(exact ? 1 : 0)}%`;
     case "rate":

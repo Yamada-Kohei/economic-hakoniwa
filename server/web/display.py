@@ -32,6 +32,7 @@ from hakoniwa_core.state import (
     Policy,
 )
 from hakoniwa_core.state.serialize import build
+from hakoniwa_core.trade import KEY as TRADE_KEY
 from hakoniwa_core.units import BASIS, from_milli
 from server.economy.models import Account, FacilityBook, Loan, MarketRecord
 from server.game import get_game
@@ -536,10 +537,71 @@ def describe_order(kind: str, payload: dict[str, Any]) -> str:
     if kind == "set_price_cap":
         good = payload.get("good", "")
         return f"{name}: {defs.name('goods', good)} {payload.get('price', 0):,}"
-    text = _describe_finance(kind, payload, name, where)
+    text = _describe_finance(kind, payload, name, where) or _describe_trade(kind, payload, name)
     if text:
         return text
     return f"{name} {where}".strip()
+
+
+def _describe_trade(kind: str, payload: dict[str, Any], name: str) -> str:
+    """貿易の命令（フェーズ3-1）の説明。ほかの命令は ""。島と通貨は番号から名前にする。"""
+    defs = get_game().defs
+    bloc = _bloc_name(payload["bloc"]) if "bloc" in payload else ""
+    if kind == "create_bloc":
+        entry = "誰でも入れる" if payload.get("open", True) else "加盟は承認制"
+        return f"{name}: 「{payload.get('name', '')}」（{entry}）"
+    if kind in ("join_bloc", "leave_bloc", "take_over_bloc"):
+        return f"{name}: {bloc}"
+    if kind == "bloc_settings":
+        parts = []
+        if "open" in payload:
+            parts.append("誰でも入れる" if payload["open"] else "加盟は承認制")
+        if "currency" in payload:
+            parts.append(f"決済通貨を{currency_name(payload['currency'])}に")
+        if "approve" in payload:
+            parts.append(f"{_island_name(payload['approve'])}の加盟を承認")
+        return f"{name}: {bloc} " + "・".join(parts)
+    if kind == "transfer_bloc":
+        return f"{name}: {bloc} → {_island_name(payload.get('to'))}"
+    if kind == "propose_contract":
+        good = payload.get("good", "")
+        unit = defs.unit_name(good) if good in defs.goods else ""
+        side = SIDES.get(payload.get("side", ""), "")
+        currency = currency_name(payload["currency"]) if "currency" in payload else "自国通貨"
+        return (
+            f"{name}: {_island_name(payload.get('partner'))}に{defs.name('goods', good)}を"
+            f"毎ターン {payload.get('quantity', 0):g} {unit}{side}"
+            f"（1{unit} {payload.get('price', 0):,}・{currency}・{payload.get('turns', 0)} ターン）"
+        )
+    if kind in ("accept_contract", "cancel_contract"):
+        return f"{name}: 契約 {payload.get('contract')} 番"
+    return ""
+
+
+SIDES = {"sell": "売る", "buy": "買う"}
+
+
+def _bloc_name(bloc_id: Any) -> str:
+    """貿易圏の名前（世界の貿易の状態 World.ext["trade"] から）。見つからなければ番号。"""
+    world = m.World.objects.order_by("id").first()
+    blocs = ((world.ext or {}).get(TRADE_KEY) or {}).get("blocs", []) if world else []
+    for b in blocs:
+        if b.get("id") == bloc_id:
+            return f"「{b.get('name', '')}」"
+    return f"貿易圏 {bloc_id} 番"
+
+
+def _island_name(island_id: Any) -> str:
+    row = m.Island.objects.filter(pk=island_id).values_list("name", flat=True).first()
+    return row if row is not None else f"島 {island_id}"
+
+
+def currency_name(island_id: Any) -> str:
+    """通貨（番号は島の番号）の名前。島がなければ番号。"""
+    row = m.Island.objects.filter(pk=island_id).values_list("names", "name").first()
+    if row is None:
+        return f"通貨 {island_id}"
+    return (row[0] or {}).get("currency", row[1])
 
 
 def _describe_finance(kind: str, payload: dict[str, Any], name: str, where: str) -> str:
@@ -791,12 +853,15 @@ def stat_text(key: str, value: float, unit: str, currency: str = "") -> str:
     """統計の値の文。
 
     unit は money（お金）・index（指数）・rate（% の数で入っている率）・percent（% の数で入っている
-    割合）・%（0〜1 の割合）・ratio（倍）・good:<財>（その単位）か、数の後ろに付ける文字。
+    割合）・%（0〜1 の割合）・ratio（倍）・fx（為替レート）・good:<財>（その単位）か、数の後ろに
+    付ける文字。
     """
     if unit.startswith("good:"):
         unit = " " + get_game().defs.unit_name(unit.removeprefix("good:"))
     if unit == "money":
         return money_text(round(value), currency)
+    if unit == "fx":
+        return f"{value:.4f}"
     if unit == "index":
         return f"{value:.1f}"
     if unit == "rate":

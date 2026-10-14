@@ -51,6 +51,10 @@ ja:
     consumer_goods_factory: {short: 日用品, long: 消費財工場}
     bank: {short: 銀行, long: 銀行}
     transport: {short: 運輸, long: 運送会社}
+    port: {short: 港湾, long: 港}
+    shipping: {short: 海運, long: 海運会社}
+    shipyard: {short: 造船, long: 造船所}
+    trading: {short: 商事, long: 商社}
     thermal_power_plant: {short: 電力, long: 火力発電所}
     hydro_power_plant: {short: 水力電気, long: 水力発電所}
     government_office: {short: 中央省庁, long: 中央省庁}

@@ -24,8 +24,13 @@
 | loan:<番号>（融資。フェーズ2-2） | 市中銀行 | 独立採算の施設 |
 | interbank（銀行間の貸し借り） | 市中銀行 | 市中銀行 |
 | cb_loan（中央銀行の貸し出し） | 中央銀行 | 市中銀行 |
+| nr_deposit（非居住者の預金。フェーズ3-1） | 外国の主体 ``nr:<島>:<主体>`` | 中央銀行 |
 
 家計の層と施設は預金を複数の銀行に持てます（払うときは取引銀行の預金から先に使う）。
+
+外国の主体（ほかの島の商社や政府）が持つこの島の通貨は、中央銀行に置いた「非居住者の預金」です
+（持ち手は ``nr:<持ち主の島>:<主体>``。準備預金や国庫と同じく中央銀行のお金で、利子は付かない）。
+持ち主の島では、帳簿の外の「外貨の持ち高」として数えます（hakoniwa_core/trade/money.py）。
 """
 
 from __future__ import annotations
@@ -45,9 +50,14 @@ TREASURY = "treasury"
 EQUITY = "equity"
 INTERBANK = "interbank"
 CB_LOAN = "cb_loan"
+NONRESIDENT = "nr_deposit"  # 非居住者の預金（フェーズ3-1）
 
-# 毎ターンの確かめで見る「お金」の量
-MONEY_ITEMS = {"deposits": (DEPOSIT,), "cb_money": (RESERVE, TREASURY)}
+# 毎ターンの確かめで見る「お金」の量（nonresident は外国の主体が持つこの島の通貨）
+MONEY_ITEMS = {
+    "deposits": (DEPOSIT,),
+    "cb_money": (RESERVE, TREASURY),
+    "nonresident": (NONRESIDENT,),
+}
 
 
 class LedgerError(Exception):
@@ -103,6 +113,20 @@ def is_depositor(entity: str) -> bool:
     return entity.startswith(("hh:", "fac:"))
 
 
+def nonresident(island_id: int, entity: str) -> str:
+    """島 island_id の主体 entity を、ほかの島の帳簿で呼ぶ名前（非居住者。フェーズ3-1）。"""
+    return f"nr:{island_id}:{entity}"
+
+
+def is_nonresident(entity: str) -> bool:
+    return entity.startswith("nr:")
+
+
+def nonresident_account(entity: str) -> str:
+    """非居住者 entity（nr:<島>:<主体>）の預金の勘定。"""
+    return account(entity, NONRESIDENT, CB)
+
+
 def bank_of(island: IslandState, entity: str) -> str:
     """主体が預金を置いている銀行（決めていなければ島の最初の銀行）。"""
     economy = island.economy
@@ -138,6 +162,8 @@ def money(island: IslandState, entity: str) -> int:
         return balance(island, TREASURY_ACCOUNT)
     if is_bank(entity):
         return balance(island, reserve(entity))
+    if is_nonresident(entity):
+        return balance(island, nonresident_account(entity))
     if entity == CB:
         raise LedgerError("中央銀行はお金を作れるので、残高はありません")
     return sum(v for k, v in island.accounts.items() if k.startswith(f"{entity}/{DEPOSIT}/"))
@@ -282,6 +308,8 @@ def _cb_money_account(entity: str) -> str | None:
         return TREASURY_ACCOUNT
     if is_bank(entity):
         return reserve(entity)
+    if is_nonresident(entity):
+        return nonresident_account(entity)
     raise LedgerError(f"中央銀行のお金を持たない主体です: {entity}")
 
 
@@ -332,7 +360,7 @@ def check(
     1. 仕訳の借り方と貸し方の合計が一致し、どの仕訳も同じ持ち物の勘定の間にある
     2. 前のターンの残高にこのターンの仕訳を足した値が、今の残高と一致する
     3. 預金と中央銀行のお金の増減が、お金が生まれる・消える仕訳の合計と一致する
-    4. 預金と国庫がマイナスになっていない
+    4. 預金と国庫と非居住者の預金がマイナスになっていない
     （ほかに、持ち物ごとの残高の合計が 0 で、仕訳の種類が定義されていること）
     """
     problems: list[str] = []
@@ -370,7 +398,7 @@ def check(
         key = instrument(name)
         rows[key] = rows.get(key, 0) + value
         holder, item, _ = parse(name)
-        if item in (DEPOSIT, TREASURY) and value < 0:
+        if item in (DEPOSIT, TREASURY, NONRESIDENT) and value < 0:
             problems.append(f"勘定 {name} がマイナスです（{value}）")
     for key, total in sorted(rows.items()):
         if total != 0:

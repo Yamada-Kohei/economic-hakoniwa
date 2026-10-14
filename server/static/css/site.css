@@ -151,6 +151,8 @@ table.report-table td { white-space: nowrap; }
 table.trades-table td:nth-child(2), table.trades-table th:nth-child(2) { text-align: left; }
 table.bonds-table th, table.bonds-table td, table.banks-table th, table.banks-table td, table.budget-table td:nth-child(n+2) { white-space: nowrap; }
 table.budget-table td:first-child { min-width: 7em; }
+/* 貿易圏の値段と商社の表は列が多いので、字を縦に折り返さず横に送る（.table-scroll の中） */
+table.bloc-table th, table.bloc-table td, table.traders-table th, table.traders-table td { white-space: nowrap; }
 table.bonds-table td:nth-child(9), table.bonds-table th:nth-child(9) { text-align: left; }
 table.banks-table td:nth-child(7), table.banks-table th:nth-child(7) { text-align: left; }
 .plain-list { padding-left: 1.2em; margin: 4px 0; }

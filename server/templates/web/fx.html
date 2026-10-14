@@ -1,0 +1,135 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+{% include "web/report_header.html" %}
+
+<section class="panel" id="rates">
+  <h2>{% if stats_turn is not None %}{% blocktranslate with turn=stats_turn %}為替レート（ターン {{ turn }}）{% endblocktranslate %}{% else %}{% translate "為替レート" %}{% endif %}</h2>
+  <p class="hint">{% blocktranslate with c=fx.currency_name b=band %}自国の通貨は「{{ c }}」です。変動相場で、自国通貨と相手の通貨の組ごとに、商社と政府の売り買いの板寄せで毎ターン決まり、1ターンに {{ b }}% までしか動きません。中央銀行は少しの偏りを受け身の売り買いで引き受けます（前のレートより安ければ外貨を買い、高ければ持っている外貨を売る）。{% endblocktranslate %}</p>
+  {% if fx.rates %}
+  <div class="table-scroll">
+    <table class="goods rates-table">
+      <thead><tr>
+        <th>{% translate "通貨" %}</th><th>{% translate "相手の通貨 1 は" %}</th><th>{% translate "自国通貨 1 は" %}</th>
+        <th>{% translate "前ターン比" %}</th><th>{% translate "使い道" %}</th>
+      </tr></thead>
+      <tbody>
+        {% for r in fx.rates %}
+        <tr>
+          <td><a href="{% url 'island_fx' r.currency %}">{{ r.name }}</a><br><small class="muted">{{ r.island_name }}</small></td>
+          <td>{% blocktranslate with v=r.rate|floatformat:4 %}自国通貨 {{ v }}{% endblocktranslate %}</td>
+          <td>{% blocktranslate with v=r.inverse|floatformat:4 name=r.name %}{{ name }} {{ v }}{% endblocktranslate %}</td>
+          <td>{% if r.change is not None %}{{ r.change|floatformat:2 }}%{% endif %}</td>
+          <td>{% for u in r.uses %}{{ u }}{% if not forloop.last %}<br>{% endif %}{% empty %}<span class="muted">{% translate "今は使っていない" %}</span>{% endfor %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="hint">{% translate "前ターン比がプラスなら、相手の通貨が高くなった（自国通貨が安くなった）ことを表します。" %}</p>
+  {% else %}
+  <p class="muted">{% translate "使っている外国の通貨はまだありません。貿易圏に入る（決済通貨がほかの国の通貨のとき）か、ほかの国の通貨で契約を結ぶと、その通貨とのレートが決まります。" %}</p>
+  {% endif %}
+</section>
+
+{% if fx.cross %}
+<section class="panel" id="cross-rates">
+  <h2>{% translate "ほかの通貨（目安）" %}</h2>
+  <p class="hint">{% translate "この国が直接は売り買いしない通貨を、両方の国が使っている通貨のレートを通して計算した目安です。" %}</p>
+  <div class="table-scroll">
+    <table class="goods rates-table">
+      <thead><tr><th>{% translate "通貨" %}</th><th>{% translate "相手の通貨 1 は" %}</th></tr></thead>
+      <tbody>
+        {% for r in fx.cross %}
+        <tr>
+          <td><a href="{% url 'island_fx' r.currency %}">{{ r.name }}</a><br><small class="muted">{{ r.island_name }}</small></td>
+          <td>{% if r.rate is not None %}{% blocktranslate with v=r.rate|floatformat:4 %}自国通貨 {{ v }}{% endblocktranslate %}{% else %}<span class="muted">{% translate "共通の通貨がなく、計算できません" %}</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>{% if stats_turn is not None %}{% blocktranslate with turn=stats_turn %}国際収支（ターン {{ turn }}）{% endblocktranslate %}{% else %}{% translate "国際収支" %}{% endif %}</h2>
+  {% if stats %}
+  <table class="info">
+    {% for row in stats %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
+  </table>
+  <p class="hint">{% translate "貿易収支は、そのターンの輸出（商社が貿易圏で売った額と、国が契約で売った額）から輸入（商社が貿易圏で買った額、国が契約で買った額、海外の商人に払った額）を引いたものです（自国通貨）。輸出が多いと外貨が入り、中央銀行が買い取って外貨準備が増え、通貨が高くなりやすくなります。輸入が多いと外貨が出ていき、中央銀行の外貨が尽きると通貨が安くなります。" %}</p>
+  {% else %}
+  <p class="muted">{% translate "未集計です。" %}</p>
+  {% endif %}
+</section>
+
+{% if mine %}
+<section class="panel" id="holdings">
+  <h2>{% translate "外貨の持ち高" %}</h2>
+  {% if fx.holdings %}
+  <div class="table-scroll">
+    <table class="goods holdings-table">
+      <thead><tr>
+        <th>{% translate "持ち手" %}</th><th>{% translate "通貨" %}</th><th>{% translate "量（その通貨）" %}</th>
+        <th>{% translate "手に入れたときの値打ち" %}</th><th>{% translate "今の値打ち" %}</th><th>{% translate "為替の損益" %}</th>
+      </tr></thead>
+      <tbody>
+        {% for h in fx.holdings %}{% for c in h.currencies %}
+        <tr>
+          <td>{% if forloop.first %}{{ h.name }}{% endif %}</td><td>{{ c.name }}</td>
+          <td>{{ c.symbol }}{{ c.amount|floatformat:"0g" }}</td>
+          <td>{{ currency }}{{ c.book_value|floatformat:"0g" }}</td><td>{{ currency }}{{ c.value|floatformat:"0g" }}</td>
+          <td{% if c.gain < 0 %} class="loss"{% endif %}>{{ c.gain|floatformat:"0g" }}</td>
+        </tr>
+        {% endfor %}{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="hint">{% translate "値打ちは自国通貨です。中央銀行の持ち高は、受け身の売り買いで買い取った外貨（外貨準備）です。" %}</p>
+  {% else %}
+  <p class="muted">{% translate "外貨は持っていません。" %}</p>
+  {% endif %}
+</section>
+
+<section class="panel" id="nonresident">
+  <h2>{% translate "自国通貨を持つ外国" %}</h2>
+  {% if fx.nonresident %}
+  <div class="table-scroll">
+    <table class="goods nonresident-table">
+      <thead><tr><th>{% translate "国" %}</th><th>{% translate "政府" %}</th><th>{% translate "中央銀行" %}</th><th>{% translate "商社など" %}</th><th>{% translate "合計" %}</th></tr></thead>
+      <tbody>
+        {% for r in fx.nonresident %}
+        <tr>
+          <td><a href="{% url 'island_fx' r.island %}">{{ r.name }}</a></td>
+          <td>{{ currency }}{{ r.gov|floatformat:"0g" }}</td><td>{{ currency }}{{ r.cb|floatformat:"0g" }}</td>
+          <td>{{ currency }}{{ r.facilities|floatformat:"0g" }}</td><td>{{ currency }}{{ r.total|floatformat:"0g" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="hint">{% translate "外国の主体が持つ自国の通貨は、自国の中央銀行に置いた「非居住者の預金」です（利子は付きません）。" %}</p>
+  {% else %}
+  <p class="muted">{% translate "自国の通貨を持つ外国はありません。" %}</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="panel">
+  <div class="section-head">
+    <h2>{% translate "推移" %}</h2>
+    {% include "web/chart_range.html" %}
+  </div>
+  <div class="charts" id="charts" data-url="{% url 'api_island_economy' island.id %}"
+       data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
+    {% if rate_names %}<figure class="chart" data-names="{{ rate_names }}"><figcaption>{% translate "為替レート（相手の通貨 1 が自国通貨でいくらか）" %}</figcaption></figure>{% endif %}
+    <figure class="chart" data-names="trade.exports,trade.imports,trade.balance"><figcaption>{% translate "輸出・輸入・貿易収支（1ターン）" %}</figcaption></figure>
+    <figure class="chart" data-names="fx.holdings,money.nonresident"><figcaption>{% translate "外貨の持ち高と、外国が持つ自国通貨" %}</figcaption></figure>
+    <figure class="chart" data-names="fx.volume.*"><figcaption>{% translate "為替の売買量（1ターン）" %}</figcaption></figure>
+    <figure class="chart" data-names="fx.dealt.*"><figcaption>{% translate "中央銀行が買った外貨（1ターン。売りはマイナス）" %}</figcaption></figure>
+  </div>
+</section>
+
+<script type="module" src="{% static 'js/reports/fx.js' %}"></script>
+{% endblock %}

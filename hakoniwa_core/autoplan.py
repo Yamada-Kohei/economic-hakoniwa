@@ -37,6 +37,9 @@
 同じ資材を待っている工事があるあいだは引きません）。
 上下水道が足りずに育たない町があれば、そのマスに上下水道を引きます。
 
+貿易（フェーズ3-1）: plan_trade が世界を見て、北と南に1つずつ誰でも入れる貿易圏を作り、貿易の
+始まった島をそれぞれに加盟させます（真ん中の行の島は両方）。
+
 お金の経済の島では、初めに失業手当を平均賃金の BENEFIT % にし、BUDGET_TURNS ターンごとに
 公共事業費（国の工事とインフラの年の予算）と教育費を見直します。教育費は、学校と大学を全力で
 動かす年の費用（今の賃金と、値幅の上端の教材の値段で）の EDUCATION_MARGIN 倍です。
@@ -56,7 +59,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, stock
+from hakoniwa_core import infra, stock, trade
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy.prices import initial_prices, unit_cost
@@ -70,7 +73,9 @@ from hakoniwa_core.state import (
     ZONE_NONE,
     IslandState,
     OrderState,
+    WorldState,
 )
+from hakoniwa_core.trade import blocs as trade_blocs
 from hakoniwa_core.units import QUANTITY_SCALE, money_of, to_milli
 
 MAX_SITES = 2  # 同時に進める工事の数
@@ -790,3 +795,60 @@ def _power_line(island: IslandState, defs: Defs, pos: tuple[int, int]) -> list[t
     if path is None:
         return []
     return [p for p in path if p not in occupied and p != pos]
+
+
+# --- 貿易（フェーズ3-1） ---------------------------------------------------------------
+
+BLOC_NAMES = ("北の貿易圏", "南の貿易圏")
+
+
+def plan_trade(
+    world: WorldState, defs: Defs, config: GameConfig
+) -> dict[int, list[tuple[str, dict]]]:
+    """貿易圏の標準の計画（島ごとの命令）。島ごとの plan_turn の後に、世界を見て並べる。
+
+    貿易の始まった島を世界マップの縦の位置で北と南に分け（真ん中の行の島は両方）、どちらにも圏が
+    なければ、その側で人口の一番多い島が誰でも入れる圏を作ります（決済通貨はその島の通貨）。圏が
+    できたら、その側の島で入っていないものが加盟します。契約は結びません。
+    """
+    ready = [
+        i
+        for i in world.island_ids()
+        if world.islands[i].has_economy and trade.started(world.islands[i])
+    ]
+    if len(ready) < 2:
+        return {}
+    rows = sorted(world.islands[i].wy for i in ready)
+    middle = rows[len(rows) // 2]
+    sides = (
+        [i for i in ready if world.islands[i].wy <= middle],
+        [i for i in ready if world.islands[i].wy >= middle],
+    )
+    existing = {b["name"]: b for b in trade_blocs.blocs(world)}
+    waiting = {  # 前の加盟の命令がまだ済んでいない島（行政力が足りず繰り越したときなど）
+        i
+        for i in ready
+        if any(o.kind == "join_bloc" and o.status == ORDER_PENDING for o in world.islands[i].orders)
+    }
+    plans: dict[int, list[tuple[str, dict]]] = {}
+    for name, members in zip(BLOC_NAMES, sides, strict=True):
+        if len(members) < 2:
+            continue
+        bloc = existing.get(name)
+        if bloc is None:
+            if any(
+                o.kind == "create_bloc"
+                for i in members
+                for o in world.islands[i].orders
+                if o.status == ORDER_PENDING
+            ):
+                continue
+            founder = max(members, key=lambda i: (population_of(world.islands[i]), -i))
+            plans.setdefault(founder, []).append(("create_bloc", {"name": name, "open": True}))
+            continue
+        for i in members:
+            if i in waiting:
+                continue
+            if i not in bloc["members"] and i not in bloc["applicants"]:
+                plans.setdefault(i, []).append(("join_bloc", {"bloc": bloc["id"]}))
+    return plans

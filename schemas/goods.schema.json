@@ -20,6 +20,7 @@
     },
     "mining": {"type": "boolean", "description": "建国時に選べる鉱業資源か（選んだ資源だけ鉱山などで採れる）"},
     "consumer": {"type": "boolean", "description": "家計が買う財か（物価指数に入れる）"},
+    "freight_weight": {"type": "number", "minimum": 0, "description": "船で運ぶときの 1 単位の重さ（トン。フェーズ3-1）。書かない財は島の外へ運べない。0 は自分で航海して届く物（輸送船）"},
     "override": {"const": true}
   }
 }

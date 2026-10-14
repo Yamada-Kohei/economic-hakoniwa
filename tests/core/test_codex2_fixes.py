@@ -56,6 +56,9 @@ def test_bond_stats_include_bonds_issued_to_rescue_a_bank(game, warmed):
     for loan in banks.loans_by_lender(island, bank):
         banks.write_off(island, loan, banks.outstanding(island, loan))
     banks.drop_settled(island)
+    worth = banks.net_worth(island, game.config, bank, world.turn)
+    if worth >= 0:  # 貸し倒れだけで債務超過にならないときは、配当で自己資本を減らして債務超過にする
+        ledger.pay(island, bank, household(OWNERS), worth + 1_000_000, "dividend")
     island.scratch.clear()
     open_books(island)
     money = ledger.money(island, ledger.GOV)  # 国庫を空にして、救済の額を国債で集める

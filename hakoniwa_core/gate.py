@@ -1,8 +1,12 @@
-"""フェーズ2の関門の目安を、一括シミュレーションの記録で確かめる。
+"""フェーズ2・3の関門の目安を、一括シミュレーションの記録で確かめる。
 
 毎ターンの終わりに Recorder.record で島ごとの統計を記録し、最後に Recorder.failures で目安から
 外れたところを並べます（設計書「関門の確かめ方」の表）。帳簿の確かめは記録の段が毎ターン行い、
-合わなければその場で止まります。
+島をまたぐお金と運ぶ途中の荷の突き合わせは trade_check の段が毎ターン行い、合わなければその場で
+止まります。
+
+フェーズ3-1 から、為替の年の動き（FX_YEAR ターン前のレートからの変わり方の絶対値の平均）と、
+石炭の出ない島の失業率の平均（貿易で機械を買えるようになって下がるかを 2-3 と比べる）も見ます。
 
 目安はゲームのルールではなく確かめの基準なので、game.yaml ではなくこのファイルに置いています。
 """
@@ -32,6 +36,9 @@ GDP_GAP = 0.001  # 生産の側と支出の側の差
 FIRMS_WINDOW = 100  # 民営工場の数を見るターン数（最後から。市場経済の島）
 FIRMS_SPREAD = 0.5  # 民営工場の数の、その間の平均からの振れ幅の上限
 CASCADE_TURNS = 24  # 同じ島で銀行の破綻がこのターン数のうちに続いたら連鎖と見る
+FX_YEAR = 12  # 為替の年の動きを見るターン数
+FX_MOVE = 0.30  # 為替の年の動きの平均の上限（島ごと、相手の通貨ごと）
+NO_COAL = "coal"  # この資源の出ない島の失業率を別に出す
 
 
 @dataclass
@@ -51,6 +58,8 @@ class IslandRecord:
     )  # 財 → 売り買いのあったターンの比
     private_firms: list[int] = field(default_factory=list)  # 動いている民営工場の数
     bank_failures: list[int] = field(default_factory=list)  # 銀行が破綻したターン（1行1件）
+    resources: list[str] = field(default_factory=list)  # 島の鉱業資源
+    fx: dict[str, dict[int, float]] = field(default_factory=dict)  # 相手の通貨 → ターン → レート
 
 
 class Recorder:
@@ -65,6 +74,7 @@ class Recorder:
             i.id: IslandRecord(
                 regime=i.regime.get("economy", ""),
                 start_population=sum(t.population for t in i.tiles),
+                resources=list(i.resources),
             )
             for i in world.islands.values()
         }
@@ -90,10 +100,14 @@ class Recorder:
                     for f in island.facilities
                     if f.built
                     and f.owner == OWNER_PRIVATE
-                    and self.defs.facilities[f.kind].get("category") != "finance"
+                    and self.defs.facilities[f.kind].get("category") not in ("finance", "trade")
                 )
             )
             rec.bank_failures += [world.turn] * int(s.get("banks.failed", 0))
+            for key, value in s.items():
+                currency = key.removeprefix("fx.")
+                if currency != key and currency.isdigit() and value > 0:
+                    rec.fx.setdefault(currency, {})[world.turn] = value
             initial = self.initial.get(island.id, {})
             for m in island.markets:
                 if m.volume > 0 and initial.get(m.good):
@@ -119,6 +133,13 @@ class Recorder:
                 ratios += values[-len(window) :]
         if not unemployment:
             return {}
+        no_coal = [
+            rec.unemployment[i]
+            for rec in self.islands.values()
+            if NO_COAL not in rec.resources
+            for i in _window(rec, start)
+        ]
+        moves = [m for rec in self.islands.values() for m in _fx_moves(rec, start).values()]
         firm_spreads = [
             max(abs(n - statistics.mean(tail)) for n in tail) / statistics.mean(tail)
             for rec in self.islands.values()
@@ -140,6 +161,9 @@ class Recorder:
             "price.ratio.max": max(ratios) if ratios else 1.0,
             "firms.spread.max": max(firm_spreads, default=0.0),
             "banks.failed": float(sum(len(rec.bank_failures) for rec in self.islands.values())),
+            "unemployment.no_coal.mean": statistics.mean(no_coal) if no_coal else 0.0,
+            "fx.move.mean": statistics.mean(moves) if moves else 0.0,
+            "fx.move.max": max(moves, default=0.0),
         }
 
     def prices(self, start: int = START) -> dict[str, tuple[float, float, float]]:
@@ -172,6 +196,20 @@ def _cpi_spread(rec: IslandRecord) -> float:
     if len(tail) < 2 or statistics.mean(tail) <= 0:
         return 0.0
     return statistics.pstdev(tail) / statistics.mean(tail)
+
+
+def _fx_moves(rec: IslandRecord, start: int) -> dict[str, float]:
+    """相手の通貨ごとの、為替の年の動き（FX_YEAR ターン前のレートからの変わり方の絶対値）の平均。"""
+    out = {}
+    for currency, by_turn in rec.fx.items():
+        moves = [
+            abs(rate / by_turn[turn - FX_YEAR] - 1)
+            for turn, rate in by_turn.items()
+            if turn >= start and by_turn.get(turn - FX_YEAR, 0) > 0
+        ]
+        if moves:
+            out[currency] = statistics.mean(moves)
+    return out
 
 
 def _outside(values: list[float], low: float, high: float) -> tuple[int, float, float]:
@@ -222,4 +260,7 @@ def _island_failures(rec: IslandRecord, start: int) -> list[str]:
     chained = sum(1 for a, b in zip(failures, failures[1:], strict=False) if b - a <= CASCADE_TURNS)
     if chained:
         out.append(f"銀行の破綻が {CASCADE_TURNS} ターンのうちに続いた（{chained} 回）")
+    for currency, move in sorted(_fx_moves(rec, start).items(), key=lambda kv: int(kv[0])):
+        if move > FX_MOVE:
+            out.append(f"島 {currency} の通貨との為替の年の動きが平均 {move:.1%}")
     return out
