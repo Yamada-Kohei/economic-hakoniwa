@@ -18,8 +18,8 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core.state import IslandState, LogEntry, WorldState
+from hakoniwa_core.trade import currency_label, next_id, world_state
 from hakoniwa_core.trade import fx as fxrates
-from hakoniwa_core.trade import next_id, world_state
 from hakoniwa_core.units import QUANTITY_SCALE, from_milli
 
 PROPOSED = "proposed"
@@ -147,10 +147,6 @@ def _args(world: WorldState, c: dict[str, Any]) -> dict[str, Any]:
         island = world.islands.get(island_id)
         return island.name if island is not None else str(island_id)
 
-    def currency(island_id: int) -> str:
-        island = world.islands.get(island_id)
-        return island.names.get("currency", island.name) if island is not None else str(island_id)
-
     return {
         "contract": c["id"],
         "seller": name(c["seller"]),
@@ -158,7 +154,7 @@ def _args(world: WorldState, c: dict[str, Any]) -> dict[str, Any]:
         "good": c["good"],
         "amount": from_milli(c["qty"]),
         "price": c["price"],
-        "currency": currency(c["currency"]),
+        "currency": currency_label(world, c["currency"]),
     }
 
 

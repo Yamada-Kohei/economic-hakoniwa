@@ -32,7 +32,6 @@ facilities.engineer_cap）。3 の後に余った技術者は、まだ埋まら�
 from __future__ import annotations
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import trade
 from hakoniwa_core.economy import (
     freight,
     funds,
@@ -47,7 +46,7 @@ from hakoniwa_core.modules.market import SITE_HOLDS, SiteFunds
 from hakoniwa_core.modules.population import subsistence_persons
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import Facility, IslandState
-from hakoniwa_core.trade import ships, traders
+from hakoniwa_core.trade import staff
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, money_of, part, to_basis
 
@@ -333,12 +332,9 @@ class Employment(IslandStage):
         config = ctx.config
         if is_transport(config, f):
             return freight.payroll(island, config) // max(1, wage)
-        if f.built and trade.is_port(config, f):  # 港は扱った荷の量に合わせて（フェーズ3-1）
-            return ships.port_workers(config, ctx.defs, f)
-        if f.built and trade.is_shipping(config, f):  # 海運業は船の数に合わせて船員を
-            return ships.crew_wanted(config, f)
-        if f.built and trade.is_trader(config, f):  # 商社は扱った荷の量に合わせて
-            return traders.workers_wanted(config, ctx.defs, f)
+        cargo = staff.wanted(config, ctx.defs, f)  # 港・海運業・商社は扱う荷に合わせて（3-1）
+        if cargo is not None:
+            return cargo
         return fac.labor_demand(ctx.defs, f, ctx.turn, config.get("power.good"))
 
     @staticmethod

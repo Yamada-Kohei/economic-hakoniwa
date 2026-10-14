@@ -12,6 +12,7 @@ from server.game import get_game
 from server.orders.models import Order
 from server.turns.services import run_turn
 from server.web import display, reports
+from server.web import trade as trade_views
 from server.world import models as m
 from tests.server.test_phase1 import _login, _own_island
 
@@ -352,6 +353,19 @@ def test_describe_bloc_orders_by_name(world):
     world.save()
     assert display.describe_order("join_bloc", {"bloc": 2}) == "貿易圏に入る: 「北の圏」"
     assert display.describe_order("leave_bloc", {"bloc": 3}) == "貿易圏を抜ける: 貿易圏 3 番"
+
+
+def test_currencies_with_the_same_name_show_the_country(world):
+    """通貨の名前が重なる島は、国名を前に付けて見分ける（重ならない通貨はそのまま）。"""
+    first, second, third = m.Island.objects.order_by("id")
+    for island, currency in ((first, "クレジット"), (second, "クレジット"), (third, "ドル")):
+        island.names = {**(island.names or {}), "currency": currency}
+        island.save()
+    assert display.currency_name(first.id) == f"{first.name}のクレジット"
+    assert display.currency_name(third.id) == "ドル"
+    entries = trade_views.directory(world)
+    assert entries[second.id]["currency"] == f"{second.name}のクレジット"
+    assert entries[third.id]["currency"] == "ドル"
 
 
 def test_trade_orders_are_accepted(client, world):

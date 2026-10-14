@@ -44,6 +44,7 @@ from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import Facility, IslandState, LogEntry, MarketRecord, TradeRecord
+from hakoniwa_core.trade import staff
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import (
     BASIS,
@@ -61,6 +62,7 @@ from hakoniwa_core.units import (
 # 原料を買えなかったわけ（economy["short"]）ごとの施設の status: 売りに出ている量が足りない、
 # 指値（採算の合う値段）より高い、取り置けるお金が足りない
 SHORT_STATUS = {"supply": "input", "price": "input_price", "funds": "funds"}
+STATUS_CARGO = "cargo"  # 港・商社が扱う荷に合わせて少なく雇っている（フェーズ3-1）
 
 
 @dataclass
@@ -157,7 +159,11 @@ class Production(IslandStage):
             "wages" if f.ext.get("short_wages") else "workers",
         )
         have, short = fac.input_ratio(ctx.defs, f, power)
-        if f.workers >= fac.labor_demand(ctx.defs, f, ctx.turn, power):  # 雇いたい分は雇えた
+        cargo = staff.wanted(ctx.config, ctx.defs, f)
+        if cargo is not None and f.workers >= cargo:
+            # 港・商社は扱う荷に合わせて少なく雇う（定義の人数に足りなくても労働者不足ではない）
+            cause = STATUS_CARGO
+        elif f.workers >= fac.labor_demand(ctx.defs, f, ctx.turn, power):  # 雇いたい分は雇えた
             # 原料のある分しか雇わなかったなら原料、そうでなければ売れ行きに合わせた。前のターン
             # に買うつもりだった原料（economy["input_plan"] の稼働率の分）はそろっているなら、
             # 原料が少ないのは売れ行きに合わせて少なく買ったため

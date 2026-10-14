@@ -17,22 +17,33 @@ from hakoniwa_core import ledger, stock
 from hakoniwa_core.autoplan import plan_trade, plan_turn, queue_orders
 from hakoniwa_core.economy import Payer, entity_of
 from hakoniwa_core.game import load_game
+from hakoniwa_core.log import format_log
+from hakoniwa_core.market import auction
+from hakoniwa_core.market.auction import Order
+from hakoniwa_core.modules import market
 from hakoniwa_core.modules.trade import check
 from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.trade import (
     blocs,
     contracts,
+    currency_label,
+    currency_labels,
     merchant,
     port_of,
+    send_to_market,
     shipping_of,
     ships,
+    staff,
     started,
+    to_market,
+    traders,
     traders_of,
     world_state,
 )
 from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.trade import money as fxmoney
-from hakoniwa_core.units import BASIS, QUANTITY_SCALE
+from hakoniwa_core.turn.context import StageContext
+from hakoniwa_core.units import BASIS, QUANTITY_SCALE, to_basis
 
 TURNS = 36
 
@@ -179,8 +190,14 @@ def _pair(game, traded):
     raise AssertionError("決済通貨を使う島がない")
 
 
+def _without_issuer(world, currency):
+    """通貨を発行した島の中央銀行の受け身の注文を出さないようにする（島の中央銀行だけを確かめる）。"""
+    world.islands[currency].economy.started = None
+
+
 def test_central_bank_buys_when_there_are_only_sellers(game, traded):
     world, island, currency, seller = _pair(game, traded)
+    _without_issuer(world, currency)
     # 商社に外貨を持たせる（発行した島の中央銀行が非居住者の預金を作る）
     fxmoney.transfer(world, currency, (currency, ledger.CB), (island.id, seller), 50_000, "trade")
     width = fxrates.band_width(game.config)
@@ -202,6 +219,7 @@ def test_central_bank_buys_when_there_are_only_sellers(game, traded):
 
 def test_rate_moves_toward_buyers_without_sellers(game, traded):
     world, island, currency, buyer = _pair(game, traded)
+    _without_issuer(world, currency)
     fxmoney.holdings(island).get(ledger.CB, {}).pop(str(currency), None)  # 中央銀行は売る外貨がない
     ledger.pay(island, ledger.CB, buyer, 10**9, "trade")  # 払う自国通貨は足りている
     width = fxrates.band_width(game.config)
@@ -214,6 +232,31 @@ def test_rate_moves_toward_buyers_without_sellers(game, traded):
     assert volume == 0 and supply == 0
     # 相手のない量と市場の厚みが同じなので、値幅の上端までの半分だけ上がる
     assert price == before + (high - before) * depth // (depth + depth)
+
+
+def test_issuer_sells_a_currency_nobody_on_the_island_holds(game, traded):
+    """島の誰も持っていない通貨も、発行した島の中央銀行が前のレートより高い側で売る。受け取った
+    この島の通貨は、発行した島の中央銀行の外貨準備になる。"""
+    world, island, currency, buyer = _pair(game, traded)
+    issuer = world.islands[currency]
+    # 島の主体の持ち高を発行した島の中央銀行へ戻し、誰も持っていない形にする
+    for entity in sorted(fxmoney.holdings(island)):
+        have = fxmoney.holding(island, entity, currency)
+        if have > 0:
+            back = (currency, ledger.CB)
+            fxmoney.transfer(world, currency, (island.id, entity), back, have, "trade")
+    reserve = fxmoney.holding(issuer, ledger.CB, island.id)
+    ledger.pay(island, ledger.CB, buyer, 10**9, "trade")
+    width = fxrates.band_width(game.config)
+    before = fxrates.rate(island, currency)
+    book = fxrates.Book(depth=10_000)
+    fxrates.add_buy(island, book, buyer, Payer(buyer), 5_000, before, width)
+    price, volume, _, _ = fxrates.clear(world, island, currency, book, width)
+    assert volume > 0
+    assert before < price <= before + before * width // BASIS  # 高い側でだけ売る
+    assert fxmoney.holding(island, buyer, currency) == volume
+    assert fxmoney.holding(issuer, ledger.CB, island.id) > reserve
+    assert fxmoney.reconcile(world) == []
 
 
 # --- 二国間契約 -----------------------------------------------------------------------------
@@ -262,8 +305,9 @@ def test_contract_delivers_goods_and_money(game, traded):
     assert check(world) == []
 
 
-def test_contract_in_a_currency_nobody_sells_is_short_of_money(game, traded):
-    """買い手の島で誰も売らない通貨の契約は払えず、不足のわけを両方のログに書く（罰はない）。"""
+def test_contract_in_a_currency_nobody_holds_is_paid_through_its_issuer(game, traded):
+    """買い手の島で誰も持っていない通貨の契約も、政府が発行した島の中央銀行から買って払う。市場の厚み
+    より多くは買えず足りないときは、お金ではなく外貨を買えなかったことを不足のわけに書く。"""
     world = copy.deepcopy(traded[0])
     seller, buyer = world.islands[1], world.islands[2]
     assert blocs.currencies_of(world, buyer.id) == set()  # 島2は自分の通貨の圏にだけ入っている
@@ -281,10 +325,12 @@ def test_contract_in_a_currency_nobody_sells_is_short_of_money(game, traded):
     c = contracts.contracts(world)[-1]
     assert contracts.accept(world, buyer, c, world.turn) is None
     run(game, world, 2)
-    assert c["delivered"] == 0 and c["short"] == c["qty"]
+    assert c["delivered"] >= c["qty"]  # 止まらずに届く
+    assert fxmoney.holding(seller, ledger.CB, buyer.id) > 0  # 島1の中央銀行の外貨準備
     for island in (seller, buyer):
-        (log,) = [e for e in island.log if e.kind == "contract_short"]
-        assert log.args["reason"] == "contract_short_money"
+        reasons = {e.args["reason"] for e in island.log if e.kind == "contract_short"}
+        assert reasons <= {"contract_short_fx"}
+    assert check(world) == []
 
 
 def test_contract_cannot_be_accepted_by_the_proposer(game, traded):
@@ -363,3 +409,155 @@ def test_foreign_merchant_comes_for_a_limited_time(game, traded):
     )
     assert merchant.offers(island, game.defs, config, since + turns) == []
     assert merchant.offers(island, game.defs, config, since - 1) == []
+
+
+# --- 試し遊び（ターン150）の直し -----------------------------------------------------------
+
+
+def test_trade_facilities_hiring_for_their_cargo_are_not_short_of_workers(game, traded):
+    """港と商社は扱う量に合わせて少なく雇うので、雇いたい人数がそろっていれば「労働者不足」ではなく
+    「扱う荷に合わせて操業」と出す。"""
+    for island in traded[0].islands.values():
+        for f in [port_of(island, game.config), *traders_of(island, game.config)]:
+            assert f is not None and f.workers >= staff.wanted(game.config, game.defs, f)
+            assert f.status in ("", "cargo")
+    assert format_log(game.defs, "status_cargo", {}) == "扱う荷に合わせて操業"
+
+
+def test_new_port_and_trading_company_start_rather_than_restart(game):
+    """建国で置いた港と商社が初めて動いたときは「稼働を開始しました」（前は「再開しました」）。"""
+    world = generate_world(7, 4, game.config, game.defs)
+    first: dict[tuple[int, str], str] = {}
+
+    def keep(w):
+        for island in w.islands.values():
+            for e in island.log:
+                if e.kind in ("facility_started", "facility_restarted"):
+                    first.setdefault((island.id, e.args["facility"]), e.kind)
+
+    run(game, world, 3, keep)
+    for island in world.islands.values():
+        for f in (port_of(island, game.config), traders_of(island, game.config)[0]):
+            assert first.get((island.id, f.kind)) == "facility_started"
+
+
+def test_off_map_facility_logs_say_on_the_island(game, traded):
+    shipping = shipping_of(traded[0].islands[1], game.config)
+    args = {"facility": shipping.kind, "x": shipping.x, "y": shipping.y}
+    text = format_log(game.defs, "state_facility_losses", args)
+    assert text.startswith("島の国営の") and "(-" not in text
+    on_map = format_log(game.defs, "state_facility_losses", {**args, "x": 3, "y": 4})
+    assert on_map.startswith("(3, 4) の")
+
+
+def test_currencies_with_the_same_name_carry_the_country():
+    names = {1: ("共和国", "クレジット"), 2: ("連合", "クレジット"), 3: ("公国", "ドル")}
+    labels = currency_labels(names)
+    assert labels == {1: "共和国のクレジット", 2: "連合のクレジット", 3: "ドル"}
+
+
+def test_bloc_changes_are_told_to_every_member(game, traded):
+    world = copy.deepcopy(traded[0])
+    world_state(world)["blocs"] = []
+    a, b, c = (world.islands[i] for i in (1, 2, 3))
+    blocs.create(world, a, "試験の圏", True, world.turn)
+    (bloc,) = blocs.blocs(world)
+    for island in (b, c):
+        assert blocs.join(world, island, bloc) is None
+    for island in (a, b, c):
+        island.log.clear()
+    assert blocs.settings(world, bloc, False, b.id) is None
+    assert blocs.transfer(world, bloc, c.id) is None
+    for island in (a, b, c):
+        kinds = [e.kind for e in island.log]
+        assert "bloc_currency_changed" in kinds and "bloc_closed" in kinds
+        assert ("bloc_rep_received" if island is c else "bloc_rep_changed") in kinds
+    (log,) = [e for e in a.log if e.kind == "bloc_currency_changed"]
+    assert log.args["currency"] == currency_label(world, b.id)
+
+
+def _sold_by_government(island, good):
+    """このターンに国の倉庫が島の市場で売った量。"""
+    return sum(t.quantity for t in island.trades if t.good == good and t.seller == ledger.GOV)
+
+
+def _context(game, world):
+    return StageContext(
+        defs=game.defs,
+        config=game.config,
+        registry=game.registry,
+        formulas=game.engine.formulas,
+        turn=world.turn + 1,
+        seed=world.seed,
+        stage="market",
+        before=None,
+    )
+
+
+def test_goods_nobody_buys_fall_toward_the_export_price(game, traded, monkeypatch):
+    """島に買い手がなく売りだけの財は、圏で輸出が引き合う値段（売りの指値以上）まで値幅ずつ下がる。
+    輸出が引き合わないときは、前のとおり動かない。"""
+    world = copy.deepcopy(traded[0])
+    island = world.islands[1]
+    good, price, ask = "coal", 10_000, 7_000
+    width = to_basis(game.config.get("market.band"))
+    seller = market.Party(market.STORE, ledger.GOV, Payer(ledger.GOV))
+
+    def record(export_limit):
+        island.economy.prices[good] = price
+        island.scratch.pop("wanted", None)
+        book = market.Book(sells=[(Order(1000, ask), seller)])
+        result = auction.clear([], [o for o, _ in book.sells], price, width)
+        found = traders.Prospect(good, export_bloc=1, export_currency=1, export_limit=export_limit)
+        monkeypatch.setattr(traders, "prospects", lambda *args: {good: found})
+        market.Market._record(island, _context(game, world), {good: book}, {good: result}, {})
+        return island.economy.prices[good]
+
+    assert record(8_000) == auction.band(price, width)[0]
+    assert record(6_000) == price  # 売りの指値より安くしか輸出できない
+    assert record(12_000) == price  # 今の値段のままで輸出が引き合う
+
+
+def test_perishables_arriving_in_the_warehouse_go_to_the_market(game, traded):
+    """国の倉庫に船で届いた腐る物は、売り切れるまで毎ターン島の市場に売りに出す。前からある倉庫の
+    在庫には手を付けない。"""
+    world = copy.deepcopy(traded[0])
+    island = world.islands[2]
+    good = "food"
+    stock.add(island.warehouse, good, 3 * QUANTITY_SCALE, world.turn, game.defs.goods)  # 備蓄
+    stock.add(island.warehouse, good, 2 * QUANTITY_SCALE, world.turn, game.defs.goods)
+    send_to_market(island, good, 2 * QUANTITY_SCALE)
+    sold = []
+    run(game, world, 3, lambda w: sold.append(_sold_by_government(w.islands[2], good)))
+    assert 0 < sum(sold) <= 2 * QUANTITY_SCALE
+    assert to_market(island).get(good, 0) == 2 * QUANTITY_SCALE - sum(sold)
+    assert stock.total(island.warehouse, good) >= 3 * QUANTITY_SCALE  # 備蓄は売らない
+
+
+def test_food_bought_by_contract_reaches_the_market(game, traded):
+    world = copy.deepcopy(traded[0])
+    seller, buyer = world.islands[1], world.islands[2]
+    good = "food"
+    stock.add(seller.warehouse, good, 20 * QUANTITY_SCALE, world.turn, game.defs.goods)
+    payload = {
+        "partner": buyer.id,
+        "side": "sell",
+        "good": good,
+        "quantity": 1,
+        "price": buyer.economy.prices[good],
+        "currency": buyer.id,
+        "turns": 3,
+    }
+    assert contracts.propose(world, seller, payload, world.turn) is None
+    c = contracts.contracts(world)[-1]
+    assert contracts.accept(world, buyer, c, world.turn) is None
+    sold, told = [], []
+
+    def keep(w):
+        sold.append(_sold_by_government(w.islands[2], good))
+        told.extend(e for e in w.islands[2].log if e.kind == "cargo_to_market")
+
+    run(game, world, 8, keep)
+    assert c["delivered"] == 3 * QUANTITY_SCALE
+    assert told and told[0].args["good"] == good
+    assert sum(sold) > 0  # 国の倉庫から島の市場に出て、住民が買った

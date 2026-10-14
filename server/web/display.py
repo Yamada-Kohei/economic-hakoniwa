@@ -33,6 +33,7 @@ from hakoniwa_core.state import (
 )
 from hakoniwa_core.state.serialize import build
 from hakoniwa_core.trade import KEY as TRADE_KEY
+from hakoniwa_core.trade import currency_labels
 from hakoniwa_core.units import BASIS, from_milli
 from server.economy.models import Account, FacilityBook, Loan, MarketRecord
 from server.game import get_game
@@ -597,11 +598,19 @@ def _island_name(island_id: Any) -> str:
 
 
 def currency_name(island_id: Any) -> str:
-    """通貨（番号は島の番号）の名前。島がなければ番号。"""
-    row = m.Island.objects.filter(pk=island_id).values_list("names", "name").first()
-    if row is None:
+    """通貨（番号は島の番号）の名前。同じ名前の通貨がほかの島にもあれば国名を前に付ける。島が
+    なければ番号。"""
+    names = {
+        i: (name, (names or {}).get("currency", name))
+        for i, name, names in m.Island.objects.values_list("id", "name", "names")
+    }
+    try:
+        key = int(island_id)
+    except (TypeError, ValueError):
+        key = None
+    if key not in names:
         return f"通貨 {island_id}"
-    return (row[0] or {}).get("currency", row[1])
+    return currency_labels(names)[key]
 
 
 def _describe_finance(kind: str, payload: dict[str, Any], name: str, where: str) -> str:

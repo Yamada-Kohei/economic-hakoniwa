@@ -34,8 +34,9 @@ PUSH_MARGIN より上回るときは、島の市場の買いたい量より多�
 原価のほうへ下げる）。
 
 島で買い手がいるのに売りに出ていない物は、島で作る施設の変動費と同じように、輸入が引き合う値段
-（Prospect.import_floor）まで島の値段を1ターンに値幅ずつ上げます（市場の段の値段の記録。
-hakoniwa_core/modules/market）。
+（Prospect.import_floor）まで島の値段を1ターンに値幅ずつ上げます。反対に、売りに出ているのに買い手の
+いない物は、輸出が引き合う値段（Prospect.export_limit）が売りの一番安い指値以上なら、島の値段がそれを
+下回るまで1ターンに値幅ずつ下げます（どちらも市場の段の値段の記録。hakoniwa_core/modules/market）。
 """
 
 from __future__ import annotations

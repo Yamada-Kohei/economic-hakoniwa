@@ -27,11 +27,21 @@ _ARG_KINDS = {
     "subsidy": "messages",
     "infra": "infrastructure",
 }
+# マスを持たない施設（x, y が負）の場所の書き方: 文面のこの部分を、表示名 OFF_MAP_TO に置き換える
+OFF_MAP_FROM = "({x}, {y}) の"
+OFF_MAP_TO = "off_map_place"
+
+
+def _off_map(args: dict[str, Any]) -> bool:
+    x, y = args.get("x"), args.get("y")
+    return isinstance(x, int) and isinstance(y, int) and (x < 0 or y < 0)
 
 
 def format_log(defs: Defs, kind: str, args: dict[str, Any], lang: str = "ja") -> str:
     """文の種類と引数から文面を作る。reason の文に引数があれば reason_args に入れておく。"""
     template = defs.name("messages", kind, lang)
+    if _off_map(args):  # 運送業・海運業のようなマスを持たない施設は、島全体の施設として書く
+        template = template.replace(OFF_MAP_FROM, defs.name("messages", OFF_MAP_TO, lang))
     shown = {
         k: defs.name(_ARG_KINDS[k], v, lang) if k in _ARG_KINDS and isinstance(v, str) else v
         for k, v in args.items()

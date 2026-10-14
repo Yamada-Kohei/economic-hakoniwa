@@ -4,7 +4,8 @@
 - 施設（独立採算と国庫直轄）: 産出物の在庫を希望価格で売る（持ち越せる期間が今のターンで切れる物は
   指値なし）。次のターンの操業目標に要る投入財のうち手元にない分を、希望価格で買う（変動費の利益が
   0になる値段まで。品切れが続いても、払えない値段まで買い上がらない）。
-- 国の倉庫: 命令 warehouse_trade で決めた量を、指値で売る・買う。
+- 国の倉庫: 命令 warehouse_trade で決めた量を、指値で売る・買う。船で国の倉庫に届いた腐る物（契約で
+  買った食品など。trade.to_market）は、売り切れるか傷んで捨てられるまで、毎ターン指値なしで売る。
 - 工事中の施設（国の工事）: 次の1ターン分の資材のうち、国の倉庫にもない分を、いま売りに
   出ている量まで買う（指値は値幅の上端）。
 - インフラの公共事業（フェーズ2-3。modules/infrastructure）: 次のターンの維持と工事に要る資材の
@@ -98,6 +99,7 @@ MERCHANT = "merchant"  # 海外の商人（フェーズ3-1）
 TRADER_PRIORITY = 0  # 商社の輸出の買い注文の優先順位（値幅の端で止まったときは島の買い手が先）
 CONTRACT_PRIORITY = 9  # 契約で売る分を政府が買う注文の優先順位
 GOV_TRADE = "trade"  # 政府が貿易に払う項目（どの項目にも取り置いていない国庫から）
+IMPORTED = "imported"  # 国の倉庫に届いた腐る物の売り（Party.layer）
 
 
 @dataclass
@@ -493,7 +495,9 @@ class Market(IslandStage):
             for _, party in book.buys:
                 funds.release(island, party.payer, party.reserved)
                 party.reserved = 0
+        sold = self._imports_sold(books_by_good, results)
         self._spoil(island, ctx)
+        self._imports_left(island, sold)
         self._record(island, ctx, books_by_good, results, bought)
         self._update_prices(island, ctx, books_by_good, results)
         power = config.get("power.good")
@@ -948,16 +952,25 @@ class Market(IslandStage):
     def _warehouse_orders(
         self, island: IslandState, ctx: StageContext, books_by_good: dict[str, Book]
     ) -> None:
-        """命令 warehouse_trade で並べた国の倉庫の売り買い（このターンだけ）。"""
+        """命令 warehouse_trade で並べた国の倉庫の売り買い（このターンだけ）と、船で届いた腐る物の
+        売り（売り切れるまで毎ターン）。売りは合わせて倉庫にある量まで。"""
         orders = island.economy.ext.pop("warehouse_orders", [])
         payer = Payer(ledger.GOV, WAREHOUSE)
+        offered: dict[str, int] = {}
+
+        def sell(good: str, qty: int, limit: int | None, layer: str | None = None) -> None:
+            qty = min(qty, stock.total(island.warehouse, good) - offered.get(good, 0))
+            if qty > 0:
+                offered[good] = offered.get(good, 0) + qty
+                party = Party(STORE, ledger.GOV, Payer(ledger.GOV, WAREHOUSE), layer=layer)
+                self._add(books_by_good, good, "sell", Order(qty, limit), party)
+
+        for good, qty in sorted(trade.to_market(island).items()):
+            sell(good, qty, None, IMPORTED)
         for item in orders:
             good, qty, limit = item["good"], item["quantity"], item["limit"]
             if item["side"] == "sell":
-                qty = min(qty, stock.total(island.warehouse, good))
-                if qty > 0:
-                    party = Party(STORE, ledger.GOV, Payer(ledger.GOV, WAREHOUSE))
-                    self._add(books_by_good, good, "sell", Order(qty, limit or None), party)
+                sell(good, qty, limit or None)
                 continue
             plan = self._afford(island, payer, {good: (qty, limit)}, 0, 0)
             for g, (q, lim) in plan.items():
@@ -1318,6 +1331,31 @@ class Market(IslandStage):
     # --- 市場の後 -------------------------------------------------------------------
 
     @staticmethod
+    def _imports_sold(
+        books_by_good: dict[str, Book], results: dict[str, auction.Result]
+    ) -> dict[str, int]:
+        """船で国の倉庫に届いた腐る物の売りが、このターンに売れた量（財 → 量）。"""
+        sold: dict[str, int] = {}
+        for good, book in books_by_good.items():
+            for i, (_, party) in enumerate(book.sells):
+                if party.kind == STORE and party.layer == IMPORTED:
+                    sold[good] = sold.get(good, 0) + results[good].sold[i]
+        return sold
+
+    @staticmethod
+    def _imports_left(island: IslandState, sold: dict[str, int]) -> None:
+        """市場に出す残りから売れた量を引く。傷んで捨てられ倉庫に残っていない分も除く。"""
+        left = trade.to_market(island)
+        for good in sorted(left):
+            qty = min(left[good] - sold.get(good, 0), stock.total(island.warehouse, good))
+            if qty > 0:
+                left[good] = qty
+            else:
+                del left[good]
+        if not left:
+            island.ext.get(trade.KEY, {}).pop(trade.TO_MARKET, None)
+
+    @staticmethod
     def _spoil(island: IslandState, ctx: StageContext) -> None:
         """持ち越せる期間を過ぎた在庫を、施設・国の倉庫から捨てる。"""
         spoiled: dict[str, int] = {}
@@ -1362,9 +1400,24 @@ class Market(IslandStage):
         # 商社がいれば、輸入が引き合う値段も作る施設の変動費と同じに見る（フェーズ3-1）
         width = to_basis(ctx.config.get("market.band"))
         rates = freight_rates.facility_rates(island, ctx.defs, ctx.config)
+        # 売りに出ているのに買い手のいなかった財（一番安い売りの指値）
+        idle = {
+            good: min(auction.sell_limit(o) for o, _ in books_by_good[good].sells)
+            for good, result in results.items()
+            if result.supply > 0 and result.demand <= 0 and good in books_by_good
+        }
         found: dict[str, traders.Prospect] = {}
-        if wanted and traders.traders_of(island, ctx.config):
+        if (wanted or idle) and traders.traders_of(island, ctx.config):
             found = traders.prospects(island, ctx.defs, ctx.config)
+        # 商社がいて、輸出が引き合う値段（Prospect.export_limit）が売りの一番安い指値以上なのに、
+        # 島の値段がそれより高い財は、値幅の下端まで下げる（輸入の側と同じく1ターンに値幅ずつ。
+        # 値段が輸出の値段まで下がると、商社が輸出する物を買い始める。フェーズ3-1。前は売りしか
+        # ない財の値段が動かず、圏に買い手がいても輸出されなかった）
+        for good, ask in sorted(idle.items()):
+            p = found.get(good)
+            price = prices.get(good, 1)
+            if p is not None and p.export_bloc is not None and ask <= p.export_limit < price:
+                prices[good] = auction.band(price, width)[0]
         for good in sorted(wanted):
             if supply.get(good, 0) > 0:
                 continue

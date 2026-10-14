@@ -1,6 +1,8 @@
 # ターンログや画面の文面。{ } の中は文の引数。
 # 引数 facility・good・terrain・order・level・reason は、その種類の表示名に置き換わります。
 # good のある文では {unit} がその資源の単位に、goods（資源の並び）は表示名を「・」でつないだものになります。
+# マスを持たない施設（運送業・海運業）の文では、「({x}, {y}) の」が off_map_place に置き換わります。
+off_map_place: "島の"
 
 # 命令
 order_done: "命令「{order}」を実行しました"
@@ -202,6 +204,7 @@ ships_commissioned: "海運業が輸送船を {count:g} 隻就航させました
 ships_scrapped: "海運業が古くなった輸送船を {count:g} 隻廃船にしました"
 cargo_arrived: "{good} {amount:g} {unit}が船で港に着きました"
 cargo_to_warehouse: "受け取る商社がないため、船で着いた{good}を国の倉庫に入れました"
+cargo_to_market: "国の倉庫に着いた{good} {amount:g} {unit}は傷みやすいので、売り切れるまで島の市場に売りに出します"
 bloc_created: "貿易圏「{bloc}」をつくりました（この国が代表です）"
 bloc_applied: "貿易圏「{bloc}」に加盟を申し込みました（代表の国が認めると加盟します）"
 bloc_application: "{country}が貿易圏「{bloc}」に加盟を申し込みました"
@@ -209,6 +212,10 @@ bloc_joined: "貿易圏「{bloc}」に加盟しました"
 bloc_leaving: "貿易圏「{bloc}」から抜けます（次のターンに抜けます）"
 bloc_left: "貿易圏「{bloc}」から抜けました"
 bloc_rep_received: "貿易圏「{bloc}」の代表になりました"
+bloc_rep_changed: "貿易圏「{bloc}」の代表が{country}になりました"
+bloc_currency_changed: "貿易圏「{bloc}」の決済通貨が{currency}になりました（圏の市場の売り買いはこの通貨で行います）"
+bloc_opened: "貿易圏「{bloc}」は、誰でも加盟できるようになりました"
+bloc_closed: "貿易圏「{bloc}」は、加盟に代表の国の承認が要るようになりました"
 contract_proposed: "{seller}から{buyer}へ{good}を毎ターン {amount:g} {unit}、1{unit}あたり {price:,}（{currency}）で売る契約（{contract}番）を申し込みました"
 contract_offer: "{seller}から{buyer}へ{good} {amount:g} {unit}を毎ターン 1{unit}あたり {price:,}（{currency}）で売る契約（{contract}番）の申し込みが届きました"
 contract_started: "{seller}から{buyer}へ{good}を毎ターン {amount:g} {unit}売る契約（{contract}番）が次のターンから始まります"
@@ -217,6 +224,7 @@ contract_ended: "契約（{contract}番。{seller}から{buyer}への{good}）�
 contract_short: "契約（{contract}番。{seller}から{buyer}への{good}）で、このターンは {missing:g} {unit}届けられませんでした（{reason}）"
 contract_short_goods: "売る国の倉庫に品物が足りません"
 contract_short_money: "買う国の払うお金が足りません"
+contract_short_fx: "買う国が決済の通貨を必要なだけ買えませんでした（1ターンに為替の市場で買える量を超えています）"
 contract_short_ships: "空いた輸送船が足りません"
 contract_short_port: "港の扱える量が足りません"
 trade_request_sent: "命令「{order}」を貿易の段に回しました（このターンの貿易で行います）"
@@ -278,6 +286,7 @@ status_halted: "災害により停止中"
 status_no_demand: "電力需要なし"
 status_target: "生産調整中"
 status_engineers: "技術者不足"
+status_cargo: "扱う荷に合わせて操業"
 status_construction: "建設中"
 status_construction_no_workers: "建設中（労働者を雇えず止まっています）"
 status_construction_materials: "建設中（資材の{goods}を待っています）"

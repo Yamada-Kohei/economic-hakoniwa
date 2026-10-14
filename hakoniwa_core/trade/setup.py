@@ -109,6 +109,8 @@ def _new(island: IslandState, kind: str, pos: tuple[int, int], owner: str, accou
         owner=owner,
         accounting=accounting,
         built=True,
+        # マスのある施設（港・商社）は、初めて動いたときに「稼働を開始しました」と出す
+        status=fac.STATUS_STARTING if pos[0] >= 0 and pos[1] >= 0 else "",
     )
     assign_serial(island, f)
     island.facilities.append(f)

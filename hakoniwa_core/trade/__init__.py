@@ -23,6 +23,7 @@ JSON にそのまま保存できる形（辞書のキーは文字列）にしま
 from __future__ import annotations
 
 import math
+from collections import Counter
 from typing import Any
 
 from hakoniwa_core.config import GameConfig
@@ -58,6 +59,47 @@ def island_state(island: IslandState) -> dict[str, Any]:
 def started(island: IslandState) -> bool:
     """島に貿易の仕組み（港・海運業・商社）を置き終えたか（setup.py）。"""
     return "since" in island.ext.get(KEY, {})
+
+
+# --- 国の倉庫に届いた腐る物 ------------------------------------------------------
+
+TO_MARKET = "to_market"
+
+
+def to_market(island: IslandState) -> dict[str, int]:
+    """国の倉庫に船で届いた腐る物（契約で買った食品など）のうち、まだ島の市場で売れていない量
+    （財 → 量）。市場の段が、売り切れるか傷んで捨てられるまで、毎ターン指値なしで売りに出す
+    （試し遊びで、契約で輸入した食品が倉庫で腐り、住民に回らなかったため）。"""
+    return island.ext.get(KEY, {}).get(TO_MARKET, {})
+
+
+def send_to_market(island: IslandState, good: str, qty: int) -> None:
+    """国の倉庫に届いた腐る物 qty を、市場に出す量に足す。"""
+    left = island_state(island).setdefault(TO_MARKET, {})
+    left[good] = left.get(good, 0) + qty
+
+
+# --- 通貨の名前 ------------------------------------------------------------------
+
+
+def currency_labels(names: dict[int, tuple[str, str]]) -> dict[int, str]:
+    """島の番号 → (国名, 通貨の名前) から、見せる通貨の名前を作る。同じ名前の通貨がほかの島にも
+    あれば国名を前に付ける（「〇〇国のクレジット」。建国のときに通貨の名前を自由に決めるので、
+    重なると契約やレートでどの国の通貨か分からないため）。"""
+    count = Counter(currency for _, currency in names.values())
+    return {
+        i: f"{name}の{currency}" if count[currency] > 1 else currency
+        for i, (name, currency) in names.items()
+    }
+
+
+def currency_label(world: WorldState, island_id: int) -> str:
+    """通貨（番号は島の番号）の見せる名前。島がなければ番号。"""
+    names = {
+        i: (island.name, island.names.get("currency", island.name))
+        for i, island in world.islands.items()
+    }
+    return currency_labels(names).get(island_id, str(island_id))
 
 
 # --- 施設 ------------------------------------------------------------------------
