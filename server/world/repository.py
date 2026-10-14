@@ -523,14 +523,20 @@ def replace_island_contents(islands: list[IslandState]) -> None:
 
 
 def load_island(row: m.Island) -> IslandState:
-    """1つの島のマスと施設を読む（画面で命令を確かめる用。倉庫と命令は読まない）。
+    """1つの島のマスと施設を読む（画面で命令を確かめる用。施設の在庫と命令は読まない）。
 
-    国債の銘柄も読む（国債の利払いの停止の命令は、国債がなければ通らない）。
+    国の倉庫も読む（倉庫の財を売る命令は、倉庫になければ通らない）。国債の銘柄も読む（国債の
+    利払いの停止の命令は、国債がなければ通らない）。
     """
     island = island_from_row(row)
     for x, y, *rest in row.tiles.values_list("x", "y", *TILE_FIELDS):
         island.tiles[y * island.size + x] = Tile(x, y, **dict(zip(TILE_FIELDS, rest, strict=True)))
     island.facilities = [facility_from_row(f) for f in row.facilities.order_by("number")]
+    warehouse = m.Stock.objects.filter(island=row, facility__isnull=True)
+    for good, made, qty in warehouse.order_by("good", "made_turn", "id").values_list(
+        "good", "made_turn", "quantity"
+    ):
+        island.warehouse.setdefault(good, []).append([made, qty])
     island.bonds = [bond_from_row(b) for b in em.Bond.objects.filter(island=row).order_by("number")]
     return island
 

@@ -381,6 +381,34 @@ def test_banks_of_the_same_kind_have_distinct_names_and_positions(client, world)
     assert policy["default_premium"] == 15 and policy["default_crunch"] == 36
 
 
+def test_private_banks_in_the_same_place_have_distinct_names(client, world):
+    """民間の銀行が同じ地名の区画にいくつあっても、2つ目から地名に番号が付く（Codex の報告）。"""
+    island = _own_island(client)
+    config = get_game().config
+    first = island.facilities.filter(kind=config.get("banking.facility")).order_by("number")[0]
+    assert first.owner == "private"
+    block = config.get("naming.place_block")
+    used = set(island.facilities.values_list("x", "y"))
+    x0, y0 = first.x // block * block, first.y // block * block
+    free = [(x, y) for y in range(y0, y0 + block) for x in range(x0, x0 + block)]
+    free = [p for p in free if p not in used]
+    number = island.facilities.order_by("-number")[0].number
+    added = []
+    for i, (x, y) in enumerate(free[:3], start=1):
+        bank = m.Facility.objects.get(pk=first.pk)
+        bank.pk, bank.number, bank.x, bank.y = None, number + i, x, y
+        bank.owner = "private"
+        bank.ext = {**(first.ext or {}), "serial": 10 + i}
+        bank.economy = {}
+        bank.save()
+        added.append((x, y))
+    data = client.get(f"/api/islands/{island.id}/finance").json()
+    names = {(b["x"], b["y"]): b["name"] for b in data["banks"]}
+    shown = [names[(first.x, first.y)], *(names[p] for p in added)]
+    assert len(set(shown)) == 4  # 「首都銀行」が4つ並ばない
+    assert all(n in name for n, name in zip(("第二", "第三", "第四"), shown[1:], strict=True))
+
+
 def test_help_describes_default_penalties(client, world):
     html = client.get("/help/").content.decode()
     exclusion = get_game().config.get("bonds.default_exclusion_turns")

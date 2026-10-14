@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import copy
+import random
 from types import SimpleNamespace
 
 from hakoniwa_core import facilities as fac
@@ -26,6 +27,7 @@ from hakoniwa_core.modules import failures
 from hakoniwa_core.modules.banking import Banking
 from hakoniwa_core.modules.bonds import Bonds
 from hakoniwa_core.modules.education import _recount
+from hakoniwa_core.modules.events import Events
 from hakoniwa_core.modules.firms import EntryExit
 from hakoniwa_core.modules.market import Market
 from hakoniwa_core.modules.production import Production
@@ -337,3 +339,50 @@ def test_placed_school_has_its_first_materials(game):
             assert stock.total(school.stock, good) == qty
     have, short = fac.input_ratio(game.defs, school, power)
     assert have == fac.FULL and short is None
+
+
+# --- Codex の試し遊び（ターン50） -----------------------------------------------------
+
+
+def test_disaster_on_a_facility_without_a_tile_names_no_position(game):
+    """マスを持たない運送業が災害で止まったら、座標 (-1, -1) ではなく島の施設として知らせる。"""
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    with_economy(game, island)
+    transport = next(f for f in island.facilities if not fac.on_map(f))
+    island.facilities = [
+        f for f in island.facilities if f is transport or fac.is_housing(game.config, f)
+    ]
+    settings = {**game.config.get("disasters"), "rate": 1.0}
+    config = SimpleNamespace(
+        get=lambda key: settings if key == "disasters" else game.config.get(key)
+    )
+    ctx = SimpleNamespace(defs=game.defs, config=config, turn=4, rng=lambda _: random.Random(1))
+    Events().run_island(island, ctx)
+    assert transport.ext["halted_until"] > 4
+    log = next(e for e in island.log if e.kind.startswith("disaster_"))
+    assert log.kind.endswith("_island") and "x" not in log.args
+    text = format_log(game.defs, log.kind, log.args)
+    assert "-1" not in text and "島の" in text
+
+
+def test_new_stop_cause_is_logged_once_while_stopped(game):
+    """止まったままで理由だけが変わったとき（災害から売れ行きへ、など）も、止まっている間に1度だけ
+    新しい理由をログに出す。動き出したら、また初めから数える。"""
+    island = make_island(game)
+    f = add(island, "lumber_camp", 8, 8)
+    f.operating_rate, f.status = 0, "halted"  # 災害で止まったまま（止まったログはもう出ている）
+
+    def kinds(rate, cause):
+        island.log.clear()
+        Production._update_status(island, f, rate, cause)
+        return [e.kind for e in island.log]
+
+    assert kinds(0, "halted") == []
+    assert kinds(0, "target") == ["facility_stopped_target"]
+    assert kinds(0, "target") == []
+    assert kinds(0, "workers") == ["facility_stopped_workers"]
+    assert kinds(0, "target") == []  # 知らせた理由に戻っただけなら出さない
+    assert kinds(500, "target") == ["facility_restarted"]
+    assert kinds(0, "target") == ["facility_stopped_target"]
+    assert kinds(0, "input:wood") == ["facility_stopped_input"]

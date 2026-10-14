@@ -183,6 +183,10 @@ disaster_earthquake: "地震により ({x}, {y}) の{facility}が {turns} ター
 disaster_typhoon: "台風により ({x}, {y}) の{facility}が {turns} ターン停止します"
 disaster_flood: "洪水により ({x}, {y}) の{facility}が {turns} ターン停止します"
 disaster_fire: "火災により ({x}, {y}) の{facility}が {turns} ターン停止します"
+disaster_earthquake_island: "地震により島の{facility}が {turns} ターン停止します"
+disaster_typhoon_island: "台風により島の{facility}が {turns} ターン停止します"
+disaster_flood_island: "洪水により島の{facility}が {turns} ターン停止します"
+disaster_fire_island: "火災により島の{facility}が {turns} ターン停止します"
 
 # 建国
 island_founded: "{name}が建国されました"

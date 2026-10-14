@@ -415,15 +415,26 @@ class Production(IslandStage):
 
     @staticmethod
     def _update_status(island: IslandState, f: Facility, rate: int, cause: str) -> None:
+        """稼働率と理由を書き、止まったとき・動き出したときにログを出す。
+
+        止まっている間に理由が変わったとき（災害から売れ行きへ、など）も、止まっている間に1度
+        だけその理由を知らせる（知らせた理由は ext["stop_causes"]。動き出したら消す）。
+        """
         before_rate, before_status = f.operating_rate, f.status
         f.operating_rate = rate
         f.status = cause if rate < fac.FULL else ""
         where = {"facility": f.kind, "x": f.x, "y": f.y}
-        if rate == 0 and (before_rate > 0 or before_status == fac.STATUS_STARTING):
+        stopped = rate == 0 and (before_rate > 0 or before_status == fac.STATUS_STARTING)
+        if stopped:
+            f.ext["stop_causes"] = []
+        told = f.ext.get("stop_causes")
+        if rate == 0 and (stopped or (cause != before_status and cause not in (told or []))):
             kind, _, good = cause.partition(":")
             args = {**where, "good": good} if good else where
             island.log.append(LogEntry(f"facility_stopped_{kind}", args))
+            f.ext["stop_causes"] = [*(told or []), cause]
         elif rate > 0 and before_rate == 0:
+            f.ext.pop("stop_causes", None)
             started = before_status == fac.STATUS_STARTING
             kind = "facility_started" if started else "facility_restarted"
             island.log.append(LogEntry(kind, where))
