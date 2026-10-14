@@ -185,7 +185,11 @@ def check_independence(island: IslandState, payload: dict[str, Any], defs: Defs)
 
 
 def set_independence(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
-    """中央銀行を独立させる・戻す。切り替えた後 central_bank.switch_lock_turns ターンは戻せない。"""
+    """中央銀行を独立させる・戻す。切り替えた後 central_bank.switch_lock_turns ターンは戻せない。
+
+    独立した中央銀行は国債を引き受けないので、売れ残りの扱いが「中央銀行が引き受ける」なら
+    「支出を減らす」に変え、独立をやめたら元に戻す（その間に命令で変えていなければ）。
+    """
     finance = island.economy.finance
     lock = ctx.config.get("central_bank.switch_lock_turns")
     switched = finance.get("cb_switched")
@@ -199,6 +203,10 @@ def set_independence(island: IslandState, payload: dict[str, Any], ctx: StageCon
         finance.pop("emergency", None)
         if policy.bond_unsold == "underwrite":
             policy.bond_unsold = "cut"
+            finance["unsold_before"] = "underwrite"
+    elif finance.pop("unsold_before", None) and policy.bond_unsold == "cut":
+        # 独立のときに「支出を減らす」に変えた売れ残りの扱いを、独立をやめたら元に戻す
+        policy.bond_unsold = "underwrite"
     kind = "cb_independent" if policy.cb_independent else "cb_dependent"
     island.log.append(LogEntry(kind, {}))
 

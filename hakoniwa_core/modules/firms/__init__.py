@@ -60,6 +60,7 @@ from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     OWNERS,
     STATE_FACILITIES,
+    SUBSIDIES,
     Payer,
     banks,
     default_accounting,
@@ -218,7 +219,7 @@ class EntryExit(IslandStage):
             ):
                 continue
             if not f.built:
-                if f.ext.get("no_materials_turns", 0) >= settings["abandon_turns"]:
+                if f.ext.get("stalled_turns", 0) >= settings["abandon_turns"]:
                     self._abandon(island, ctx, f)
                 continue
             if "closing" in f.economy:
@@ -244,8 +245,14 @@ class EntryExit(IslandStage):
 
     @staticmethod
     def _abandon(island: IslandState, ctx: StageContext, f: Facility) -> None:
-        """資材が手に入らずに止まった民営の工事をやめる（建設資金は預金で返し、返しきれない分は
-        貸し倒れ。買ってあった資材は国の倉庫へ）。"""
+        """進まないまま止まった民営の工事をやめる（先に受け取った設備投資補助は、借入を返せる分を
+        残して政府に返し、建設資金は預金で返し、返しきれない分は貸し倒れ。買ってあった資材は国の
+        倉庫へ）。"""
+        entity = facility_entity(f.id)
+        spare = ledger.money(island, entity) - banks.debt_of(island, entity)
+        refund = min(f.ext.pop("subsidy_paid", 0), max(0, spare))
+        if refund > 0:
+            ledger.pay(island, entity, ledger.GOV, refund, "subsidy_refund")
         remove_facility(island, ctx, f)
         island.log.append(
             LogEntry("private_site_abandoned", {"facility": f.kind, "x": f.x, "y": f.y})
@@ -291,6 +298,36 @@ class EntryExit(IslandStage):
     # --- 民営工場の参入 ---------------------------------------------------------------
 
     def _enter(self, island: IslandState, ctx: StageContext) -> bool:
+        """民営工場を1つ参入させる。建たなかったときは、いちばん見込みのあった作り方の建たないわけを
+        economy.finance["entry_block"] に残し、わけが変わったらログで知らせる。"""
+        blocks: list[tuple[float, str, str, dict[str, Any]]] = []  # (見込み, 施設, わけ, 引数)
+        entered = self._try_enter(island, ctx, blocks)
+        finance = island.economy.finance
+        if entered or not blocks:
+            finance.pop("entry_block", None)
+            return entered
+        _, kind, reason, args = max(blocks, key=lambda b: b[0])
+        before = finance.get("entry_block") or {}
+        finance["entry_block"] = {"facility": kind, "reason": reason, "args": args}
+        if (before.get("facility"), before.get("reason")) != (kind, reason):
+            island.log.append(
+                LogEntry(
+                    "private_entry_blocked",
+                    {
+                        "facility": kind,
+                        "reason": f"entry_block_{reason}",
+                        "reason_args": dict(args),
+                    },
+                )
+            )
+        return False
+
+    def _try_enter(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        blocks: list[tuple[float, str, str, dict[str, Any]]],
+    ) -> bool:
         defs, config = ctx.defs, ctx.config
         settings = config.get("firms")
         prices = average_prices(island, settings["price_turns"])
@@ -305,6 +342,7 @@ class EntryExit(IslandStage):
         supplied = self._supplied(island, ctx)
         on_sale = {g for g, h in island.economy.finance.get("supply", {}).items() if any(h)}
         expandable: dict[str, bool] = {}
+        room = funds.available(island, Payer(ledger.GOV, SUBSIDIES))
         candidates = []
         for kind, fdef in sorted(defs.facilities.items()):
             if not private_allowed(defs, island, kind):
@@ -315,40 +353,66 @@ class EntryExit(IslandStage):
                     continue
                 if not recipe["outputs"] or busy & set(recipe["outputs"]):
                     continue
-                if set(recipe.get("inputs", {})) - supplied:
-                    continue  # 原料が島で作られていない
-                if self._inputs_short(recipe, shortages, settings):
-                    continue  # 原料が品切れ続きで、新しい工場は原料を買えない
-                if self._inputs_capped(island, ctx, recipe, capacity, uses, demand, expandable):
-                    continue  # 原料に空きがなく、作る施設もこれ以上建てられない
                 cost = unit_cost(defs, config, kind, recipe, prices, wage)
                 fill = self._fill(recipe, shortages, demand, capacity, prices, cost, settings)
                 if fill <= 0:
+                    continue  # 参入の合図（品切れか高い値段）がない
+                missing = sorted(set(recipe.get("inputs", {})) - supplied)
+                if missing:  # 原料が島で作られていない
+                    blocks.append((0.0, kind, "inputs_missing", {"goods": missing}))
                     continue
-                capital = round_money(construction_cost(defs, kind, prices, wage))
-                capital -= part(capital, capital_subsidy(island, kind, recipe))
+                short = self._inputs_short(recipe, shortages, settings)
+                if short:  # 原料が品切れ続きで、新しい工場は原料を買えない
+                    blocks.append((0.0, kind, "inputs_short", {"good": short}))
+                    continue
+                capped = self._inputs_capped(
+                    island, ctx, recipe, capacity, uses, demand, expandable
+                )
+                if capped:  # 原料に空きがなく、作る施設もこれ以上建てられない
+                    blocks.append((0.0, kind, "inputs_capped", {"good": capped}))
+                    continue
+                full = round_money(construction_cost(defs, kind, prices, wage))
+                rate = capital_subsidy(island, kind, recipe)
+                subsidy = min(part(full, rate), room)  # 先に払える分だけを補助として見る
+                capital = full - subsidy
                 estimate = ctx.formula("entry_return")(
                     island, ctx, kind, rname, prices, typical, capital
                 )
-                candidates.append((estimate * fill, kind, rname, capital, fill))
+                candidates.append((estimate * fill, kind, rname, capital, fill, rate, subsidy))
         threshold = self._threshold(island, ctx)
-        for estimate, kind, rname, capital, fill in sorted(candidates, reverse=True)[:3]:
+        for estimate, kind, rname, capital, fill, rate, subsidy in sorted(candidates, reverse=True)[
+            :3
+        ]:
             if estimate <= threshold:
+                if threshold == float("inf"):
+                    blocks.append((estimate, kind, "no_bank", {}))
+                else:
+                    args = {"rate": estimate * 100, "need": threshold * 100}
+                    blocks.append((estimate, kind, "unprofitable", args))
                 break
             if self._buy_foreclosed(island, ctx, kind, rname, prices, threshold, estimate, fill):
                 return True
             materials = defs.facilities[kind]["construction"].get("materials", {})
-            if set(materials) - supplied - on_sale:
-                continue  # 工事の資材が島で作られておらず、売りに出てもいない
+            unavailable = sorted(set(materials) - supplied - on_sale)
+            if unavailable:  # 工事の資材が島で作られておらず、売りに出てもいない
+                blocks.append((estimate, kind, "materials", {"goods": unavailable}))
+                continue
             site = self._site(island, ctx, kind, rname)
-            if site is None:
+            if isinstance(site, str):
+                blocks.append((estimate, kind, site, {}))
                 continue
-            pos, rate = site
-            r = ctx.formula("entry_return")(island, ctx, kind, rname, prices, rate, capital)
+            pos, freight = site
+            r = ctx.formula("entry_return")(island, ctx, kind, rname, prices, freight, capital)
             if r * fill <= threshold:
+                args = {"rate": r * fill * 100, "need": threshold * 100}
+                blocks.append((estimate, kind, "unprofitable_site", args))
                 continue
-            if self._build(island, ctx, kind, rname, pos, capital, prices, rate):
+            failure = self._build(
+                island, ctx, kind, rname, pos, capital, prices, freight, (rate, subsidy)
+            )
+            if failure is None:
                 return True
+            blocks.append((estimate, kind, failure[0], failure[1]))
         return False
 
     @staticmethod
@@ -407,15 +471,15 @@ class EntryExit(IslandStage):
     @staticmethod
     def _inputs_short(
         recipe: dict[str, Any], shortages: dict[str, list[int]], settings: dict[str, Any]
-    ) -> bool:
-        """原料のどれかが、直近 firms.price_turns ターンのうち firms.shortage_turns ターン以上、
-        新しい工場の全力の使う量の firms.entry_gap 倍以上足りなかったか。"""
-        for g, qty in recipe.get("inputs", {}).items():
+    ) -> str | None:
+        """直近 firms.price_turns ターンのうち firms.shortage_turns ターン以上、新しい工場の全力の
+        使う量の firms.entry_gap 倍以上足りなかった原料（なければ None）。"""
+        for g, qty in sorted(recipe.get("inputs", {}).items()):
             gap = settings["entry_gap"] * qty
             short = sum(1 for amount in shortages.get(g, []) if amount >= gap)
             if short >= settings["shortage_turns"]:
-                return True
-        return False
+                return g
+        return None
 
     @staticmethod
     def _inputs_capped(
@@ -426,12 +490,12 @@ class EntryExit(IslandStage):
         uses: dict[str, int],
         demand: dict[str, list[int]],
         expandable: dict[str, bool],
-    ) -> bool:
-        """原料のどれかに、新しい工場の全力の使う量の firms.entry_gap 倍の空き（今ある施設の全力の産
-        出 − 今ある施設の全力の使う量か直近の買いたい量の平均の大きい方）がなく、その原料を作る施設
-        も島にこれ以上建てられないか（鉱山の数の上限など。expandable に財ごとの答えをためる）。"""
+    ) -> str | None:
+        """新しい工場の全力の使う量の firms.entry_gap 倍の空き（今ある施設の全力の産出 − 今ある施設
+        の全力の使う量か直近の買いたい量の平均の大きい方）がなく、それを作る施設も島にこれ以上建てら
+        れない原料（鉱山の数の上限など。expandable に財ごとの答えをためる。なければ None）。"""
         gap = ctx.config.get("firms.entry_gap")
-        for g, qty in recipe.get("inputs", {}).items():
+        for g, qty in sorted(recipe.get("inputs", {}).items()):
             wanted = demand.get(g, [])
             used = max(uses.get(g, 0), sum(wanted) / len(wanted) if wanted else 0)
             spare = capacity.get(g, 0) - used
@@ -440,8 +504,8 @@ class EntryExit(IslandStage):
             if g not in expandable:
                 expandable[g] = EntryExit._expandable(island, ctx, g)
             if not expandable[g]:
-                return True
-        return False
+                return g
+        return None
 
     @staticmethod
     def _expandable(island: IslandState, ctx: StageContext, good: str) -> bool:
@@ -489,19 +553,22 @@ class EntryExit(IslandStage):
 
     def _site(
         self, island: IslandState, ctx: StageContext, kind: str, rname: str
-    ) -> tuple[tuple[int, int], int] | None:
+    ) -> tuple[tuple[int, int], int] | str:
         """建てる場所: 空いた工業団地のマスのうち、通勤圏の失業者が要る人数の半分以上いて、
-        運賃の率が最も低いマス。"""
+        運賃の率が最も低いマス。なければ、そのわけ（no_zone: 地形の合う空いた工業団地のマスが
+        ない、no_workers: あるが通勤圏に失業者が足りない）。"""
         defs, config = ctx.defs, ctx.config
         need = fac.workers_needed(defs, kind)
         radius = fac.commute_radius(defs, config, kind)
         occupied = island.facilities_by_tile()
         spots = []
+        fitting = 0
         for tile in island.tiles:
             if tile.zone != ZONE_INDUSTRIAL or (tile.x, tile.y) in occupied:
                 continue
             if fac.placement_problem(defs, island, kind, tile.x, tile.y, rname) is not None:
                 continue
+            fitting += 1
             idle = 0
             for x, y in within(island, (tile.x, tile.y), radius):
                 t = island.tile(x, y)
@@ -510,21 +577,21 @@ class EntryExit(IslandStage):
             if idle * 2 >= need:
                 spots.append((tile.x, tile.y))
         if not spots:
-            return None
+            return "no_workers" if fitting else "no_zone"
         rates = freight_rates.candidate_rates(island, defs, config, kind, rname, spots)
         best = min(spots, key=lambda p: (rates[p], p[1], p[0]))
         return best, rates[best]
 
     def _finance(
         self, island: IslandState, ctx: StageContext, amount: int, earnings: int
-    ) -> list[tuple[str, int, int]] | None:
+    ) -> list[tuple[str, int, int]] | tuple[str, dict[str, Any]]:
         """出資と建設資金の融資の組み立て: [(銀行, 借りる額, 金利)]（出資は amount − 借りる額の合
-        計）。資産を持つ層が出資しきれないか、審査に通らなければ None。"""
+        計）。資産を持つ層が出資しきれないか、審査に通らなければ、そのわけ（わけと引数の組）。"""
         config = ctx.config
         want = amount - round_money(amount * config.get("firms.equity_share"))
         owners = Payer(household(OWNERS))
         if OWNERS not in island.economy.households:
-            return None
+            return ("no_owners", {})
         offers = []
         for bank in banks.active_banks(island):
             if banks.labor_ratio(island, ctx.defs, bank) <= 0:
@@ -542,8 +609,9 @@ class EntryExit(IslandStage):
                 pieces.append((bank, piece))
                 left -= piece
         loan = want - left
-        if funds.available(island, owners) < amount - loan:
-            return None
+        have = funds.available(island, owners)
+        if have < amount - loan:
+            return ("owners_short", {"need": amount - loan, "have": have, "loan": loan})
         turns = config.get("loans.construction_turns")
         leverage = to_basis(config.get("banking.rho")) * loan // max(1, amount)
         plan = []
@@ -553,7 +621,7 @@ class EntryExit(IslandStage):
             plan.append((bank, piece, rate))
             service += ledger.interest(piece, rate) + -(-piece // turns)
         if earnings < config.get("loans.coverage") * service:
-            return None
+            return ("loan_refused", {"earnings": earnings, "service": service})
         return plan
 
     def _build(
@@ -566,7 +634,13 @@ class EntryExit(IslandStage):
         capital: int,
         prices: dict[str, int],
         rate: int,
-    ) -> bool:
+        subsidy: tuple[int, int] = (0, 0),
+    ) -> tuple[str, dict[str, Any]] | None:
+        """民営工場の工事を始める。建てられなければ、そのわけ（_finance）。
+
+        subsidy は設備投資補助の（率, 先に払う額）。先に払う額は工事を始めるときに補助金の予算から
+        払い（建設費の残りだけを集めて、工事の途中で資金が尽きないように）、完成のときに精算する。
+        """
         defs, config = ctx.defs, ctx.config
         probe = Facility(id=-1, kind=kind, x=pos[0], y=pos[1], recipe=rname, built=True)
         wage = island.economy.average_wage
@@ -576,8 +650,8 @@ class EntryExit(IslandStage):
         start = operating_cost(defs, config, probe, prices, wage, rate)
         amount = capital + capital // 10 + start * config.get("firms.operating_turns")
         plan = self._finance(island, ctx, amount, earnings)
-        if plan is None:
-            return False
+        if isinstance(plan, tuple):
+            return plan
         f = Facility(
             id=island.next_facility_id(),
             kind=kind,
@@ -598,15 +672,29 @@ class EntryExit(IslandStage):
         for bank, loan, loan_rate in plan:
             purpose = banks.CONSTRUCTION
             banks.lend(island, bank, entity, loan, purpose, turns, ctx.turn, loan_rate, far)
+        rate_of_subsidy, upfront = subsidy
+        payer = Payer(ledger.GOV, SUBSIDIES)
+        upfront = min(upfront, funds.available(island, payer))
+        if rate_of_subsidy:
+            f.ext["subsidy_rate"] = rate_of_subsidy
+        if upfront > 0:
+            funds.pay(island, payer, entity, upfront, "subsidy")
+            f.ext["subsidy_paid"] = upfront
         freight_rates.forget(island)
         island.log.append(
             LogEntry(
-                "private_entry", {"facility": kind, "x": pos[0], "y": pos[1], "amount": amount}
+                "private_entry",
+                {
+                    "facility": kind,
+                    "x": pos[0],
+                    "y": pos[1],
+                    "amount": amount + max(0, upfront),
+                },
             )
         )
         stats = island.stats
         stats["firms.entered"] = stats.get("firms.entered", 0) + 1
-        return True
+        return None
 
     def _buy_foreclosed(
         self,
@@ -636,7 +724,7 @@ class EntryExit(IslandStage):
             start = operating_cost(ctx.defs, config, f, prices, wage, rate)
             amount = price + start * config.get("firms.operating_turns")
             plan = self._finance(island, ctx, amount, earnings)
-            if plan is None:
+            if isinstance(plan, tuple):
                 continue
             seller = seized.get("bank")
             close_foreclosure(island, f)
@@ -661,25 +749,48 @@ class EntryExit(IslandStage):
     # --- 民間銀行の参入 ---------------------------------------------------------------
 
     def _bank_entry(self, island: IslandState, ctx: StageContext) -> None:
+        """民間銀行の参入。参入できる政策（自由か、免許を出した許可制）なのに開業しなかったときは、
+        そのわけを economy.finance["bank_entry_block"] に残し、わけが変わったらログで知らせる。"""
+        finance = island.economy.finance
+        reason = self._open_private_bank(island, ctx)
+        if reason is None:
+            finance.pop("bank_entry_block", None)
+            return
+        key, args = reason
+        before = finance.get("bank_entry_block") or {}
+        finance["bank_entry_block"] = {"reason": key, "args": args}
+        if before.get("reason") != key:
+            island.log.append(
+                LogEntry(
+                    "bank_entry_blocked",
+                    {"reason": f"bank_block_{key}", "reason_args": dict(args)},
+                )
+            )
+
+    def _open_private_bank(
+        self, island: IslandState, ctx: StageContext
+    ) -> tuple[str, dict[str, Any]] | None:
+        """条件がそろえば民間銀行を開業させる。参入できる政策なのに開業しなければ、そのわけ。"""
         config = ctx.config
         finance = island.economy.finance
         rule = entry_policy(island, ctx)
         licensed = finance.get("bank_license", False)
         if rule == "closed" or (rule == "license" and not licensed):
-            return
+            return None
         current = banks.bank_list(island)
         if len(current) >= config.get("banking.max_banks"):
             finance.pop("bank_license", None)
-            return
+            return ("max_banks", {"count": len(current)})
         total = sum(banks.deposits_of(island, b) for b in current)
         capital = part(total, to_basis(config.get("banking.entry_capital")))
         share = total // (len(current) + 1)
         if rule == "free" and not licensed:
             if not current or share <= config.get("banking.entry_deposits"):
-                return
+                need = config.get("banking.entry_deposits")
+                return ("deposits_low", {"share": share, "need": need})
             line = island.policy.policy_rate / BASIS + config.get("banking.entry_roe_margin")
             if self._entry_profit(island, ctx, current, share) * 12 <= line * max(1, capital):
-                return
+                return ("unprofitable", {})
         kind = config.get("banking.facility")
         spot = None
         occupied = island.facilities_by_tile()
@@ -689,18 +800,19 @@ class EntryExit(IslandStage):
                     spot = (tile.x, tile.y)
                     break
         owners = Payer(household(OWNERS))
-        if (
-            spot is None
-            or OWNERS not in island.economy.households
-            or funds.available(island, owners) < capital
-            or capital <= 0
-        ):
-            return
+        if spot is None:
+            return ("no_office", {})
+        if OWNERS not in island.economy.households:
+            return ("no_owners", {})
+        have = funds.available(island, owners)
+        if have < capital or capital <= 0:
+            return ("owners_short", {"need": capital, "have": have})
         finance.pop("bank_license", None)
         bank = open_bank(island, ctx, spot, OWNER_PRIVATE)
         invest(island, household(OWNERS), ledger.bank_entity(bank.id), capital)
         bank.economy["deposit_goal"] = share
         island.log.append(LogEntry("bank_opened", {"x": spot[0], "y": spot[1], "capital": capital}))
+        return None
 
     @staticmethod
     def _entry_profit(

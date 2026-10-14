@@ -32,6 +32,7 @@ deposit_insurance: 預金保護
 deposit_cut: 預金の切り捨て
 interbank_loss: 銀行間の貸し倒れ
 subsidy: 補助金
+subsidy_refund: 補助金の返還
 nationalization: 国有化の買い取り
 privatization: 民営化の売却
 bond_issue: 国債の発行

@@ -65,6 +65,7 @@ class Employment(IslandStage):
             wage = self._wage(island, ctx, f)
             if wage is None:
                 f.workers = 0
+                f.ext.pop("short_wages", None)
                 continue
             f.economy["wage"] = wage
             plans.append((f, wage))
@@ -83,13 +84,15 @@ class Employment(IslandStage):
             want = max(0, want)
             wanted[f.id] = want
             funds.commit(island, payer, want * wage)
+            # 賃金を払うお金が足りずに雇いたい分を雇えなかったことは、施設の状態に出す（人手不足と
+            # 分けて、国庫が空で止まった施設が「労働者不足」と出ないように）
+            if want < demand:
+                f.ext["short_wages"] = True
+            else:
+                f.ext.pop("short_wages", None)
             if not f.built and island.has_economy:
                 # 工事は、市場で買う資材の代金も続けて取り置く（作業員の賃金と資材の代金の両方に、
-                # 優先度の高い工事から公共事業費を充てる）。賃金が足りなかったことは状態に出す
-                if want < demand:
-                    f.ext["short_wages"] = True
-                else:
-                    f.ext.pop("short_wages", None)
+                # 優先度の高い工事から公共事業費を充てる）
                 sites = sites or SiteFunds(island, ctx)
                 hold = min(sites.cost(f, want), funds.available(island, payer))
                 funds.commit(island, payer, hold)

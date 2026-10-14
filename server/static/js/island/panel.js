@@ -226,7 +226,7 @@ export class TilePanel {
       if (!choices.length) return `<p class="muted">この地形に建設できる施設はありません。</p>${placeForm}`;
       const options = choices
         .map(([id, d]) => {
-          const note = this.facilityNote(d);
+          const note = this.facilityNote(id, d);
           return `<option value="${id}">${escapeHtml(d.name)}${note ? `（${note}）` : ""}</option>`;
         })
         .join("");
@@ -332,11 +332,16 @@ export class TilePanel {
       </form>`;
   }
 
-  /** この地形に建てられる施設。この島で使える生産方式のある施設を先に並べる。 */
+  /** この地形に建てられる施設。この島で使える生産方式があり、数の上限に達していない施設を先に並べる。 */
   buildChoices(terrain) {
     const choices = Object.entries(this.defs.facilities).filter(([, d]) => d.buildable && d.terrain.includes(terrain));
-    const usable = ([, d]) => !this.facilityNote(d);
+    const usable = ([id, d]) => !this.facilityNote(id, d);
     return [...choices.filter(usable), ...choices.filter((c) => !usable(c))];
+  }
+
+  /** 島にある（工事中を含む）施設 kind の数。 */
+  facilityCount(kind) {
+    return (this.map.facilities || []).filter((f) => f.kind === kind).length;
   }
 
   /** この島で生産方式が使えないわけ（使えれば ""）。 */
@@ -347,8 +352,9 @@ export class TilePanel {
     return "";
   }
 
-  /** どの生産方式もこの島で使えない施設に付ける注記（使えるものがあれば ""）。 */
-  facilityNote(d) {
+  /** 建てられない施設に付ける注記（数の上限に達した、どの生産方式もこの島で使えない。建てられれば ""）。 */
+  facilityNote(id, d) {
+    if (d.max_per_island != null && this.facilityCount(id) >= d.max_per_island) return "上限に達しています";
     const problems = Object.values(d.recipes).map((r) => this.recipeProblem(r));
     if (problems.some((p) => !p)) return "";
     return problems.includes("原料なし") ? "原料なし" : "地下資源なし";

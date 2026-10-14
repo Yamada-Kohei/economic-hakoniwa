@@ -6,8 +6,8 @@
 完成すると減価償却が始まります。独立採算の施設には、完成のときに政府が運転資金を出資します。
 
 民営工場の参入（フェーズ2-2、参入と撤退の段）で建つ工事は、施設が自分の預金（出資と建設資金の
-融資）から払います。完成すると、建設資金の返済が次のターンから始まり、設備投資補助があれば
-補助金の予算から払います。命令で建てた銀行は、完成すると国営銀行として開業し、政府が資本金
+融資と、参入のときに先に受け取った設備投資補助）から払います。完成すると、建設資金の返済が据え置きの
+後から始まり、設備投資補助をかかった設備の額で計算し直して差を受け取ります。命令で建てた銀行は、完成すると国営銀行として開業し、政府が資本金
 （島の預金の banking.entry_capital）を出資します。
 """
 
@@ -143,7 +143,10 @@ class Construction(IslandStage):
             self._watch_materials(island, f, defs, materials)
             rate = min(fac.ratio(f.workers, cdef.get("labor", 0)), materials)
             if rate <= 0:
+                # 進まなかったターン数（わけを問わない）。民営の工事は firms.abandon_turns でやめる
+                f.ext["stalled_turns"] = f.ext.get("stalled_turns", 0) + 1
                 continue
+            f.ext.pop("stalled_turns", None)
             total = cdef["turns"] * fac.FULL
             before = f.progress
             f.progress = min(before + rate, total)
@@ -165,6 +168,8 @@ class Construction(IslandStage):
         if turns == NO_WORKERS_TURNS:
             args = {"facility": f.kind, "x": f.x, "y": f.y}
             why = "wages" if f.ext.get("short_wages") else "workers"
+            if why == "wages" and is_private_site(f):  # 足りないのは会社のお金
+                why += "_private"
             island.log.append(LogEntry(f"construction_no_{why}", args))
 
     @staticmethod
@@ -189,6 +194,8 @@ class Construction(IslandStage):
         if turns == NO_MATERIALS_TURNS:
             args = {"facility": f.kind, "x": f.x, "y": f.y, "goods": f.ext["waiting"]}
             why = "funds" if f.ext.get("short_funds") else "materials"
+            if why == "funds" and is_private_site(f):
+                why += "_private"
             island.log.append(LogEntry(f"construction_no_{why}", args))
 
     @staticmethod
@@ -198,7 +205,7 @@ class Construction(IslandStage):
         f.status = fac.STATUS_STARTING
         for key in ("waiting", "short_funds", "short_wages"):
             f.ext.pop(key, None)
-        for key in ("no_materials_turns", "no_workers_turns"):
+        for key in ("no_materials_turns", "no_workers_turns", "stalled_turns"):
             f.ext.pop(key, None)
         stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
         island.log.append(LogEntry("construction_done", {"facility": f.kind, "x": f.x, "y": f.y}))
@@ -224,17 +231,21 @@ class Construction(IslandStage):
 
 
 def _start_private(island: IslandState, ctx: StageContext, f: Facility) -> None:
-    """民営工場の完成: 建設資金の元金を据え置きの後から返し始め、設備投資補助を払う。"""
-    from hakoniwa_core.modules.firms import capital_subsidy
+    """民営工場の完成: 建設資金の元金を据え置きの後から返し始める。
 
+    設備投資補助は参入のときに見込みの額を先に払ってある（firms の pay_capital_subsidy）。完成の
+    ときに、かかった設備の額で計算し直した額との差を払う（多く払っていても返させない）。
+    """
     entity = facility_entity(f.id)
     f.economy["entered"] = ctx.turn
     for loan in banks.loans_by_borrower(island, entity):
         if loan.purpose == banks.CONSTRUCTION:
             loan.repay_from = ctx.turn + 1 + ctx.config.get("loans.grace_turns")
-    rate = capital_subsidy(island, f.kind, fac.recipe_of(ctx.defs, f))
+    rate = f.ext.pop("subsidy_rate", 0)
+    paid = f.ext.pop("subsidy_paid", 0)
     payer = Payer(ledger.GOV, SUBSIDIES)
-    amount = min(part(f.economy.get("capital", 0), rate), funds.available(island, payer))
+    due = part(f.economy.get("capital", 0), rate) - paid
+    amount = min(due, funds.available(island, payer))
     if amount > 0:
         funds.pay(island, payer, entity, amount, "subsidy")
         books.add(island, f.id, books.SUBSIDY, amount)
@@ -251,7 +262,7 @@ def _open_state_bank(island: IslandState, ctx: StageContext, f: Facility) -> Non
     want = part(total, to_basis(ctx.config.get("banking.entry_capital")))
     amount = min(want, funds.available(island, Payer(ledger.GOV)))
     invest(island, ledger.GOV, ledger.bank_entity(f.id), amount)
-    island.log.append(LogEntry("bank_opened", {"x": f.x, "y": f.y, "capital": amount}))
+    island.log.append(LogEntry("bank_opened_state", {"x": f.x, "y": f.y, "capital": amount}))
 
 
 def register(registry: Registry) -> None:

@@ -372,11 +372,13 @@ def facility_books(row: m.Facility, f: Facility, currency: str = "") -> dict[str
 
 def status_text(f: Facility) -> str:
     if not f.built:
+        # 民営の工事でお金が足りないのは、公共事業費ではなく会社の資金
+        private = "_private" if f.ext.get("private_entry") else ""
         if f.ext.get("waiting"):  # 資材が足りない（市場に売りに出ていない、お金が足りないなど）
-            key = "funds" if f.ext.get("short_funds") else "materials"
+            key = "funds" + private if f.ext.get("short_funds") else "materials"
             return message(f"status_construction_{key}", goods=f.ext["waiting"])
-        if f.ext.get("short_wages"):  # 公共事業費が足りず、作業員を雇いきれない
-            return message("status_construction_wages")
+        if f.ext.get("short_wages"):  # 公共事業費（民営は会社の資金）が足りず、作業員を雇いきれない
+            return message(f"status_construction_wages{private}")
         if f.ext.get("no_workers_turns"):
             return message("status_construction_no_workers")
         return message("status_construction")

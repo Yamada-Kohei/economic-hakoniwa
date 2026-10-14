@@ -144,7 +144,11 @@ class Production(IslandStage):
         recipe = fac.recipe_of(ctx.defs, f)
         if fac.is_halted(f, ctx.turn):
             return _Run(f, recipe, 0, "halted")
-        rate, cause = fac.labor_ratio(ctx.defs, f), "workers"
+        # 雇いたい分を雇えなかった: 賃金を払うお金が足りなかったか、人がいなかったか
+        rate, cause = (
+            fac.labor_ratio(ctx.defs, f),
+            "wages" if f.ext.get("short_wages") else "workers",
+        )
         have, short = fac.input_ratio(ctx.defs, f, power)
         if f.workers >= fac.labor_demand(ctx.defs, f, ctx.turn, power):  # 雇いたい分は雇えた
             # 原料のある分しか雇わなかったなら原料、そうでなければ売れ行きに合わせた

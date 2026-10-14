@@ -91,10 +91,40 @@ def facility_name(defs: Defs, config: GameConfig, island: IslandState, f: Facili
 
 
 def auto_name(defs: Defs, config: GameConfig, island: IslandState, f: Facility) -> str:
+    """施設の自動の名前。地名で呼ぶ形（{place}）で、同じ種類の先に建った施設と同じ名前に
+    なるときは、地名に番号を付ける（作風の duplicate。既定は「{place}第{number}」で、
+    「オーパス第二銀行公社」のようになる）。
+    """
     style = _style(defs, config)
-    display = defs.name("facilities", f.kind, config.raw.get("locale", "ja"))
     if style is None:
-        return display
+        return defs.name("facilities", f.kind, config.raw.get("locale", "ja"))
+    name, values, text = _base_name(defs, config, island, f, style)
+    if text is None or "{place}" not in text:
+        return name
+    serial = f.ext.get("serial", f.id)
+    same = sum(
+        1
+        for other in island.facilities
+        if other.kind == f.kind
+        and other is not f
+        and not other.name
+        and other.ext.get("serial", other.id) < serial
+        and _base_name(defs, config, island, other, style)[0] == name
+    )
+    if same == 0:
+        return name
+    numbers = style.get("numbers", [])
+    number = numbers[same] if same < len(numbers) else str(same + 1)
+    duplicate = style.get("duplicate", "{place}第{number}")
+    values = {**values, "place": duplicate.format(place=values["place"], number=number)}
+    return text.format(**values)
+
+
+def _base_name(
+    defs: Defs, config: GameConfig, island: IslandState, f: Facility, style: Mapping[str, Any]
+) -> tuple[str, dict[str, str], str | None]:
+    """作風の形で作った名前と、形に入れた値と、使った形（形が合わなければ None）。"""
+    display = defs.name("facilities", f.kind, config.raw.get("locale", "ja"))
     serial = f.ext.get("serial", f.id)
     facts = {**island.regime, "owner": f.owner, "category": defs.facilities[f.kind]["category"]}
     industry = style.get("industries", {}).get(f.kind, {})
@@ -117,5 +147,5 @@ def auto_name(defs: Defs, config: GameConfig, island: IslandState, f: Facility) 
             continue
         if "{leader}" in pattern["text"] and not values["leader"]:
             continue
-        return pattern["text"].format(**values)
-    return display
+        return pattern["text"].format(**values), values, pattern["text"]
+    return display, values, None

@@ -23,6 +23,7 @@
       "description": "地名の作風ごとの材料。建国のときに作風を選び、前半と後半を組み合わせて島の地名を作る"
     },
     "numbers": {"type": "array", "items": {"type": "string"}, "description": "1, 2, 3 … の書き方。足りない番号は数字で書く"},
+    "duplicate": {"type": "string", "description": "地名で呼ぶ施設が、同じ種類の先の施設と同じ名前になるときの地名の書き方。{place} 地名、{number} 番号（既定「{place}第{number}」）"},
     "industries": {
       "type": "object",
       "additionalProperties": {

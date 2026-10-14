@@ -232,6 +232,8 @@ fiscal:
   unemployment_benefit: 0  # 失業手当（失業者1人に平均賃金の何割）
   # 国庫が足りないときの支払いの順番（前の項目から取り置く）
   payment_order: [bonds, civil_servants, unemployment, state_facilities, construction, subsidies, warehouse]
+  # 銀行の救済と預金保護（支出の項目の外）は、この項目までの次のターンの支払いを国庫に残した額から出す
+  rescue_after: civil_servants
   # 年の予算を命令で決める項目（毎ターン予算の12分の1まで使う）。construction は公共事業費
   # （国の工事の資材と作業員の賃金。インフラはフェーズ2-3 で足す）、subsidies は補助金
   budget_items: [construction, subsidies, warehouse]
