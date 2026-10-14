@@ -561,3 +561,25 @@ def test_food_bought_by_contract_reaches_the_market(game, traded):
     assert c["delivered"] == 3 * QUANTITY_SCALE
     assert told and told[0].args["good"] == good
     assert sum(sold) > 0  # 国の倉庫から島の市場に出て、住民が買った
+
+
+def test_bloc_buyer_in_the_settlement_currency_pays_only_what_it_has(game, traded, monkeypatch):
+    """決済通貨の島の商社は運賃と使用料も同じお金から払う。注文の見込みより払えるお金が少なくても、
+    払える分だけ約定し、ターンは止まらない（前は資金不足の例外でターンが止まることがあった）。"""
+    from hakoniwa_core.modules import trade as trade_stage
+
+    world = copy.deepcopy(traded[0])
+    original = trade_stage._Round._import_order
+    inflated = []
+
+    def import_order(self, island, f, entity, item, good, bloc, left, money_left):
+        order = original(self, island, f, entity, item, good, bloc, left, money_left)
+        if order is None or island.id != bloc["currency"]:
+            return order
+        inflated.append(good)
+        return Order(order.quantity * 50, order.limit)  # 払えるお金を超える注文
+
+    monkeypatch.setattr(trade_stage._Round, "_import_order", import_order)
+    run(game, world, 6)
+    assert inflated
+    assert check(world) == []
