@@ -1400,12 +1400,15 @@ class Market(IslandStage):
         # 商社がいれば、輸入が引き合う値段も作る施設の変動費と同じに見る（フェーズ3-1）
         width = to_basis(ctx.config.get("market.band"))
         rates = freight_rates.facility_rates(island, ctx.defs, ctx.config)
-        # 売りに出ているのに買い手のいなかった財（一番安い売りの指値）
-        idle = {
-            good: min(auction.sell_limit(o) for o, _ in books_by_good[good].sells)
-            for good, result in results.items()
-            if result.supply > 0 and result.demand <= 0 and good in books_by_good
-        }
+        # 売りに出ているのに買い手のいなかった財（指値のある売りの一番安い指値。今夜捨てられる分の
+        # 指値なしの売りは、売り手が付けた値段ではないので見ない）
+        idle = {}
+        for good, result in results.items():
+            if result.supply <= 0 or result.demand > 0 or good not in books_by_good:
+                continue
+            asks = [o.limit for o, _ in books_by_good[good].sells if o.limit is not None]
+            if asks:
+                idle[good] = min(asks)
         found: dict[str, traders.Prospect] = {}
         if (wanted or idle) and traders.traders_of(island, ctx.config):
             found = traders.prospects(island, ctx.defs, ctx.config)

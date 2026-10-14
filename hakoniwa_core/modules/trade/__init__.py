@@ -64,7 +64,15 @@ from hakoniwa_core.trade import cells as route_cells
 from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.trade import money as fxmoney
 from hakoniwa_core.turn.context import StageContext
-from hakoniwa_core.units import BASIS, QUANTITY_SCALE, money_of, part, round_money, to_basis
+from hakoniwa_core.units import (
+    BASIS,
+    QUANTITY_SCALE,
+    money_of,
+    part,
+    qty_for,
+    round_money,
+    to_basis,
+)
 
 GOV_ITEM = (
     "trade"  # 政府が貿易（契約・運賃・使用料）に払うお金の項目（どの項目にも取り置いていない国庫）
@@ -807,9 +815,15 @@ class _Round:
             bid, ask = bids[b], asks[s]
             buyer = self.world.islands[bid.island]
             seller = self.world.islands[ask.island]
+            payer = Payer(bid.entity) if buyer.id == currency else None
+            if payer is not None:
+                # 決済通貨の島の商社は、運賃と使用料も同じお金から払う。注文のときの運賃は見込み
+                # なので、前の約定の運賃（遠い売り手など）を払った後の残りまでにする
+                qty = min(qty, qty_for(funds.available(buyer, payer), price))
+                if qty <= 0:
+                    continue
             amount = money_of(price, qty)
             value = amount if seller.id == currency else fxrates.to_own(seller, currency, amount)
-            payer = Payer(bid.entity) if buyer.id == currency else None
             cost = fxmoney.transfer(
                 self.world,
                 currency,
