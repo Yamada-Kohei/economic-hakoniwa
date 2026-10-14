@@ -2,7 +2,7 @@
 
 import { attachControls } from "./controls.js";
 import { drawMinimap, minimapTile } from "./minimap.js";
-import { overlays } from "./overlays/index.js";
+import { overlayList } from "./overlays/index.js";
 import { lift, tileToWorld, worldToTile } from "./projection.js";
 import { drawIsland } from "./renderer.js";
 import { loadSprites } from "./sprites.js";
@@ -13,6 +13,7 @@ const canvas = document.getElementById("island-map");
 const ctx = canvas.getContext("2d");
 const minimap = document.getElementById("minimap");
 const overlaySelect = document.getElementById("overlay");
+const overlayLegend = document.getElementById("overlay-legend");
 
 const [defs, map] = await Promise.all([
   fetch(canvas.dataset.defs).then((r) => r.json()),
@@ -70,12 +71,15 @@ function centerOn(x, y) {
 }
 
 const orders = map.mine ? new OrderQueue(document.getElementById("orders"), defs, map) : null;
+const overlays = overlayList(defs);
 const panel = new TilePanel(document.getElementById("tile-panel"), defs, map, {
   orders,
   marked: state.marked,
   onMarkedChange: redraw,
   mapArea: canvas.closest(".map-column"),
   notice: document.getElementById("order-notice"),
+  // インフラの工事のマスを選ぶ間は、その種類の整備度を重ねて見せる
+  onInfraKind: (kind) => showOverlay(`infra:${kind}`),
 });
 
 function select(tile) {
@@ -105,12 +109,30 @@ document.querySelectorAll("[data-zoom]").forEach((button) => {
   });
 });
 
+/** 重ね表示を切り替える。要るデータ（運賃の率など）は、初めて選んだときに地図の API から読む。 */
+async function showOverlay(id) {
+  const overlay = overlays.find((o) => o.id === id) || null;
+  if (overlaySelect) overlaySelect.value = overlay ? overlay.id : "";
+  if (overlayLegend) overlayLegend.textContent = overlay?.legend || "";
+  if (overlay?.query && overlay.fields.some((f) => map[f] === undefined)) {
+    if (overlayLegend) overlayLegend.textContent = "読み込み中…";
+    try {
+      const extra = await fetch(`${canvas.dataset.api}?${overlay.query}`).then((r) => r.json());
+      for (const f of overlay.fields) map[f] = extra[f];
+    } catch {
+      if (overlayLegend) overlayLegend.textContent = "読み込めませんでした。";
+      return;
+    }
+    if (overlaySelect && overlaySelect.value !== overlay.id) return; // 待つ間に別のものが選ばれた
+    if (overlayLegend) overlayLegend.textContent = overlay.legend || "";
+  }
+  state.overlay = overlay;
+  redraw();
+}
+
 if (overlaySelect) {
   for (const o of overlays) overlaySelect.add(new Option(o.label, o.id));
-  overlaySelect.addEventListener("change", () => {
-    state.overlay = overlays.find((o) => o.id === overlaySelect.value) || null;
-    redraw();
-  });
+  overlaySelect.addEventListener("change", () => showOverlay(overlaySelect.value));
 }
 
 if (minimap) {

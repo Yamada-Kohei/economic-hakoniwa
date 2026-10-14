@@ -8,7 +8,7 @@ from typing import Any
 from django.db.models import Sum
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger
+from hakoniwa_core import infra, ledger
 from hakoniwa_core.economy import (
     books,
     entity_of,
@@ -111,6 +111,9 @@ def facility_info(row: m.Facility, island: IslandState) -> dict[str, Any]:
         info["accounting_target_name"] = message(f"accounting_{target}")
     if f.economy.get("wage"):
         info["wage"] = f.economy["wage"]
+    info.update(engineers_info(f, fdef))
+    if fdef.get("education"):
+        info["education"] = education_text(fdef["education"])
     if f.built:
         info["workers_needed"] = fdef["workers"]
         recipe = recipes.get(f.recipe, {})
@@ -133,6 +136,88 @@ def facility_info(row: m.Facility, island: IslandState) -> dict[str, Any]:
         if island.has_economy:
             info.update(facility_finance(row, f, island, currency))
     return info
+
+
+def engineers_info(f: Facility, fdef: Any) -> dict[str, Any]:
+    """施設の技術者（フェーズ2-3）: 全力で動くのに要る数・雇えた数・技術者の席・賃金。
+
+    技術者の要らない施設では、一般の仕事に回った技術者がいるときだけ出す。
+    """
+    out: dict[str, Any] = {}
+    needed = fdef.get("staff", {}).get(fac.ENGINEER, 0)
+    if needed:
+        out["engineers_needed"] = needed
+        out["engineers"] = f.economy.get("engineers", 0)
+        out["engineers_wanted"] = f.economy.get("engineers_wanted", 0)
+        if f.economy.get("engineer_wage"):
+            out["engineer_wage"] = f.economy["engineer_wage"]
+    if f.economy.get("engineers_general"):
+        out["engineers_general"] = f.economy["engineers_general"]
+    return out
+
+
+def education_text(spec: Any) -> str:
+    """学校と大学の働き（定義の education）の文。稼働率を掛ける前の数。"""
+    parts = []
+    if spec.get("capacity"):
+        parts.append(f"子どもの定員 {spec['capacity']:,} 人")
+    if spec.get("engineers"):
+        parts.append(f"1ターンに技術者を {spec['engineers']:,} 人育てる")
+    return "・".join(parts)
+
+
+def infra_view(infra_value: dict[str, Any], queue: list[list[Any]], x: int, y: int) -> dict:
+    """マスのインフラ（フェーズ2-3）: 種類ごとの整備度と維持の目標（%）、並んでいる工事。
+
+    infra_value はマスの infra の欄、queue は島の工事の列（[種類, x, y] の並び）。
+    """
+    defs = get_game().defs
+    tile = _InfraTile(infra_value or {})
+    levels = []
+    for kind in defs.infrastructure:
+        level, target = infra.level(tile, kind), infra.keep(tile, kind)
+        if level or target:
+            levels.append(
+                {
+                    "kind": kind,
+                    "name": defs.name("infrastructure", kind),
+                    "level": round(level * 100 / infra.FULL, 1),
+                    "keep": round(target * 100 / infra.FULL, 1),
+                }
+            )
+    works = [
+        {"kind": kind, "name": defs.name("infrastructure", kind), "position": i + 1}
+        for i, (kind, qx, qy) in enumerate(queue)
+        if (qx, qy) == (x, y)
+    ]
+    return {"infra": levels, "works": works, "power_line": infra.carries_power(defs, tile)}
+
+
+class _InfraTile:
+    """インフラの読み書きの関数（hakoniwa_core.infra）に渡す、infra の欄だけを持ったマス。"""
+
+    def __init__(self, value: dict[str, Any]) -> None:
+        self.infra = value
+
+
+def carries_power(infra_value: dict[str, Any]) -> bool:
+    """マスの infra の欄が送電網として電力を通すか（地図の送電線の表示）。"""
+    return infra.carries_power(get_game().defs, _InfraTile(infra_value or {}))
+
+
+def infra_levels(infra_value: dict[str, Any]) -> dict[str, int]:
+    """マスの種類ごとの整備度（%、整数）。地図の重ね表示に使う。"""
+    tile = _InfraTile(infra_value or {})
+    return {
+        kind: round(infra.level(tile, kind) * 100 / infra.FULL)
+        for kind in get_game().defs.infrastructure
+    }
+
+
+def works_why(island_economy: dict[str, Any]) -> str:
+    """インフラの工事が止まっているわけ（公共事業費・人手・資材）の文。進んでいれば ""。"""
+    why = (island_economy or {}).get("infra", {}).get("why")
+    return message(f"infrastructure_stalled_{why}") if why else ""
 
 
 def order_ok(island: IslandState, f: Facility, kind: str, payload: dict[str, Any]) -> bool:
@@ -410,6 +495,9 @@ def describe_order(kind: str, payload: dict[str, Any]) -> str:
         if recipe and payload.get("facility") in defs.facilities:
             facility += f"・{defs.recipe_name(payload['facility'], recipe)}"
         return f"{name}: {facility} {where}"
+    if kind == "build_infrastructure":
+        kind_name = defs.name("infrastructure", payload.get("kind", ""))
+        return f"{name}: {kind_name} {len(payload.get('tiles', []))} マス"
     if kind in ("build_power_line", "set_no_development"):
         count = len(payload.get("tiles", []))
         if kind == "set_no_development" and not payload.get("value", True):
@@ -654,6 +742,10 @@ SUMMARY_STATS = [
     ("firms.entered", "参入した民営工場（このターン）", ""),
     ("firms.bankrupt", "倒産した施設（このターン）", ""),
     ("firms.closed", "閉鎖した施設（このターン）", ""),
+    ("education.level", "教育水準", "percent"),
+    ("engineers", "技術者", "人"),
+    ("engineers.unemployment", "技術者の失業率", "%"),
+    ("power.shortage", "電力の不足率", "%"),
 ]
 
 
@@ -667,29 +759,38 @@ def latest_stats(island: m.Island) -> tuple[int | None, dict[str, float]]:
 
 def summary(stats: dict[str, float], currency: str = "") -> list[dict[str, Any]]:
     """国勢の表の行。currency はお金の額に付ける通貨記号。"""
-    out = []
-    for key, label, unit in SUMMARY_STATS:
-        if key not in stats:
-            continue
-        value = stats[key]
-        if unit.startswith("good:"):
-            unit = " " + get_game().defs.unit_name(unit.removeprefix("good:"))
-        if unit == "money":
-            text = f"{currency}{int(value):,}"
-        elif unit == "index":
-            text = f"{value:.1f}"
-        elif unit == "rate":  # 統計に % の数で入っている率
-            text = f"{value:.2f}%"
-        elif key == "inflation":
-            text = f"{value * 100:+.1f}%"
-        elif unit == "%":
-            text = f"{value * 100:.0f}%"
-        elif isinstance(value, float) and not value.is_integer():
-            text = f"{value:,.1f}{unit}"
-        else:
-            text = f"{int(value):,}{unit}"
-        out.append({"key": key, "label": label, "text": text})
-    return out
+    return [
+        {"key": key, "label": label, "text": stat_text(key, stats[key], unit, currency)}
+        for key, label, unit in SUMMARY_STATS
+        if key in stats
+    ]
+
+
+def stat_text(key: str, value: float, unit: str, currency: str = "") -> str:
+    """統計の値の文。
+
+    unit は money（お金）・index（指数）・rate（% の数で入っている率）・percent（% の数で入っている
+    割合）・%（0〜1 の割合）・ratio（倍）・good:<財>（その単位）か、数の後ろに付ける文字。
+    """
+    if unit.startswith("good:"):
+        unit = " " + get_game().defs.unit_name(unit.removeprefix("good:"))
+    if unit == "money":
+        return money_text(round(value), currency)
+    if unit == "index":
+        return f"{value:.1f}"
+    if unit == "rate":
+        return f"{value:.2f}%"
+    if unit == "percent":
+        return f"{value:.1f}%"
+    if unit == "ratio":
+        return f"{value:.2f} 倍"
+    if key == "inflation":
+        return f"{value * 100:+.1f}%"
+    if unit == "%":
+        return f"{value * 100:.0f}%"
+    if isinstance(value, float) and not value.is_integer():
+        return f"{value:,.1f}{unit}"
+    return f"{int(value):,}{unit}"
 
 
 def goods_table(

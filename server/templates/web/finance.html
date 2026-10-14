@@ -1,0 +1,104 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+{% include "web/report_header.html" %}
+
+<div class="report-layout{% if mine %} with-orders{% endif %}">
+  <div class="report-main">
+    <section class="panel">
+      <h2>{% translate "中央銀行" %}</h2>
+      <table class="info">
+        <tr><th>{% translate "政策金利" %}</th><td>{{ central_bank.policy_rate|floatformat:2 }}%</td></tr>
+        <tr><th>{% translate "独立" %}</th><td>{% if central_bank.independent %}{% translate "独立（政策金利は中央銀行が物価と失業率を見て決めます）" %}{% else %}{% translate "政府の下（政策金利と国債の売買を政府が決めます）" %}{% endif %}{% if central_bank.unlock_turn %}<br><small>{% blocktranslate with t=central_bank.unlock_turn %}ターン {{ t }} までは切り替えられません{% endblocktranslate %}</small>{% endif %}</td></tr>
+        <tr><th>{% translate "国債の売買の方針" %}</th><td>{{ central_bank.bond_trade_text }}</td></tr>
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>{% if stats_turn is not None %}{% blocktranslate with turn=stats_turn %}金利・お金・融資（ターン {{ turn }}）{% endblocktranslate %}{% else %}{% translate "金利・お金・融資" %}{% endif %}</h2>
+      {% if stats %}
+      <table class="info">
+        {% for row in stats %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
+      </table>
+      {% else %}
+      <p class="muted">{% translate "未集計です。" %}</p>
+      {% endif %}
+    </section>
+
+    {% if mine %}
+    <section class="panel" id="banks">
+      <h2>{% translate "銀行の一覧" %}</h2>
+      {% if banks %}
+      <div class="table-scroll">
+        <table class="goods banks-table">
+          <thead><tr>
+            <th>{% translate "銀行" %}</th><th>{% translate "預金" %}</th><th>{% translate "融資" %}</th><th>{% translate "自己資本" %}</th>
+            <th>{% translate "自己資本比率" %}</th><th>{% translate "預金金利（年）" %}</th><th>{% translate "状態" %}</th>
+          </tr></thead>
+          <tbody>
+            {% for b in banks %}
+            <tr>
+              <td><a href="{% url 'island' island.id %}?x={{ b.x }}&amp;y={{ b.y }}">{{ b.name }}</a><br><small class="muted">{{ b.owner_name }}</small></td>
+              <td>{{ b.deposits|default:"-" }}</td><td>{{ b.loans|default:"-" }}</td><td>{{ b.net_worth|default:"-" }}</td>
+              <td>{{ b.capital_ratio|default:"融資なし" }}<br><small class="muted">{% blocktranslate with r=b.regulatory_ratio %}規制 {{ r }} 以上{% endblocktranslate %}</small></td>
+              <td>{{ b.deposit_rate }}</td>
+              <td>{% if b.failed is not None %}<span class="error">{% blocktranslate with t=b.failed %}ターン {{ t }} に破綻{% endblocktranslate %}</span>{% elif not b.built %}{% translate "建設中" %}{% else %}{% translate "営業中" %}{% endif %}{% if b.emergency %}<br><small>{% blocktranslate with a=b.emergency %}緊急の貸し出しの上限 {{ a }}{% endblocktranslate %}</small>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% for b in banks %}
+        {% if b.resolve_methods %}
+        <form class="actions bank-action" data-order="resolve_bank" data-x="{{ b.x }}" data-y="{{ b.y }}">
+          <h3>{% blocktranslate with name=b.name %}{{ name }}の破綻処理（行政力を使いません）{% endblocktranslate %}</h3>
+          <p class="hint">{% translate "次のターンまでに選ばなければ「引き継ぎ」（引き継ぐ銀行がなければ「救済」）になります。" %}</p>
+          {% for id, name in b.resolve_methods.items %}
+          <label><input type="radio" name="method" value="{{ id }}"{% if id == "transfer" %} checked{% endif %}> {{ name }}</label>
+          {% endfor %}
+          <button type="submit">{% translate "命令に追加" %}</button>
+        </form>
+        {% endif %}
+        {% if b.emergency_loan %}
+        <form class="actions bank-action" data-order="emergency_loan" data-x="{{ b.x }}" data-y="{{ b.y }}">
+          <h3>{% blocktranslate with name=b.name %}{{ name }}への緊急の貸し出し{% endblocktranslate %}</h3>
+          <p class="hint">{% translate "準備預金が足りないとき、中央銀行が担保の足りない分も毎ターンこの額まで貸します。0 で取り消します。" %}</p>
+          <label>{% translate "上限額" %} <input name="amount" type="number" min="0" step="1" required></label>
+          <button type="submit">{% translate "命令に追加" %}</button>
+        </form>
+        {% endif %}
+      {% endfor %}
+      {% else %}
+      <p class="muted">{% translate "銀行はありません。" %}</p>
+      {% endif %}
+      <p class="bank-notice" aria-live="polite"></p>
+    </section>
+    {% endif %}
+
+    <section class="panel">
+      <div class="section-head">
+        <h2>{% translate "推移" %}</h2>
+        {% include "web/chart_range.html" %}
+      </div>
+      <div class="charts" id="charts" data-url="{% url 'api_island_economy' island.id %}"
+           data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
+        <figure class="chart" data-names="policy_rate,interbank_rate,deposit_rate,yield.*"><figcaption>{% translate "金利と国債の利回り" %}</figcaption></figure>
+        <figure class="chart" data-names="bonds.central_bank"><figcaption>{% translate "中央銀行が持つ国債" %}</figcaption></figure>
+        <figure class="chart" data-names="bonds.cb_bought,bonds.cb_sold,bonds.underwritten"><figcaption>{% translate "中央銀行の国債の売買と直接の引き受け（1ターン）" %}</figcaption></figure>
+        <figure class="chart" data-names="loans,loans.arrears"><figcaption>{% translate "融資の残高" %}</figcaption></figure>
+        <figure class="chart" data-names="money.deposits,money.central_bank"><figcaption>{% translate "お金の量" %}</figcaption></figure>
+        {% if bank_ratio_names %}<figure class="chart" data-names="{{ bank_ratio_names }}"><figcaption>{% translate "銀行の自己資本比率" %}</figcaption></figure>{% endif %}
+      </div>
+    </section>
+  </div>
+
+  {% if mine %}
+  <aside id="orders" class="panel report-orders" data-url="{% url 'api_orders' island.id %}" data-defs="{% url 'api_defs' %}"
+         data-forms="set_monetary_policy,set_central_bank_independence,set_bank_policy,grant_bank_license"
+         data-heading="{% translate '金融の命令' %}"></aside>
+  {% endif %}
+</div>
+
+{% csrf_token %}
+<script type="module" src="{% static 'js/reports/finance.js' %}"></script>
+{% endblock %}

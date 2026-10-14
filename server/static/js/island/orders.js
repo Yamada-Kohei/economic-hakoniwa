@@ -1,6 +1,9 @@
 // 命令の列: 次のターンに上から実行する命令を並べる。行政力（1ターンに実行できる命令の数）を
 // 超えた所から下は次のターンに回る。名前の変更は行政力を使わない。
-// 列を変えるたびに、列を丸ごとサーバーに送って保存する。
+// 列を変えるたびに、列を丸ごとサーバーに送って保存する。命令を足すときは、ほかの画面（別のタブの
+// 財政・金融の画面など）で変えた分を消さないように、今の列をサーバーから読み直して後ろに足す。
+// 島の画面では政策と金融の命令の入力欄をすべて出し、財政・金融の画面では options.forms で選んだ
+// 入力欄だけを出す。
 
 import { escapeHtml, getJson, sendJson } from "./api.js";
 
@@ -12,12 +15,17 @@ const INT_FIELDS = ["minimum_wage", "limit", "price", "bond_trade", "issue", "un
 const EMPTY_OK = new Set(["grant_bank_license"]);
 
 export class OrderQueue {
-  /** el: 欄の要素（data-url に命令の列の API の URL） */
-  constructor(el, defs, map) {
+  /**
+   * el: 欄の要素（data-url に命令の列の API の URL）
+   * options: forms（出す入力欄の命令の種類の並び。なければ島の画面の並び）、heading（見出し）
+   */
+  constructor(el, defs, map, options = {}) {
     this.el = el;
     this.defs = defs;
     this.map = map;
     this.url = el.dataset.url;
+    this.forms = options.forms || null;
+    this.heading = options.heading || "命令";
     this.items = [];
     this.recent = [];
     this.adminPower = 0;
@@ -55,31 +63,59 @@ export class OrderQueue {
     this.warnings = new Map((data.warnings || []).map((w) => [w.index, w.text]));
   }
 
-  /** 命令を列の最後に足して保存する。保存が済むと解決する Promise を返す（結果は this.message）。 */
+  /**
+   * 命令を列の最後に足して保存する。保存が済むと解決する Promise を返す（結果は this.message）。
+   * 今の列をサーバーから読み直して後ろに足し、足した命令が今の島で実行できなければ、そのわけも
+   * this.message に入れる（列を保存するときに、島の画面と同じ確かめをサーバーがする）。
+   */
   add(kind, payload) {
+    const name = this.defs.orders[kind]?.name || kind;
     const cost = this.defs.orders[kind]?.admin_cost ?? 0;
-    this.items.push({ kind, payload, cost, text: `${this.defs.orders[kind]?.name || kind}（保存中）` });
-    return this.save(`「${this.defs.orders[kind]?.name || kind}」を命令に追加しました。`);
+    this.items.push({ kind, payload, cost, text: `${name}（保存中）` });
+    this.render();
+    const shown = this.items.slice(0, -1).map(({ kind, payload }) => ({ kind, payload }));
+    return this.send(async () => {
+      let current = shown;
+      try {
+        current = (await getJson(this.url)).orders.map(({ kind, payload }) => ({ kind, payload }));
+      } catch {
+        // 読み直せなければ、画面に出ている列の後ろに足す
+      }
+      return { items: [...current, { kind, payload }], done: `「${name}」を命令に追加しました。`, added: current.length };
+    });
   }
 
+  /** 画面の列（並べ替え・消した後）を保存する。 */
   save(done) {
-    // 保存は1つずつ順に送る（先に送った列が後で上書きしないように）
     const items = this.items.map(({ kind, payload }) => ({ kind, payload }));
     this.render();
-    this.saving = this.saving.then(async () => {
-      const res = await sendJson(this.url, "PUT", { orders: items });
-      if (res.ok) {
-        this.apply(res.data);
-        this.message = done || "保存しました。";
-      } else if (res.data.errors) {
-        this.message = res.data.errors.map((e) => `${e.index + 1} 番目: ${e.text}`).join(" ");
-        await this.load();
-      } else {
-        this.message = res.data.error || "保存に失敗しました。";
-        await this.load();
-      }
-      this.render();
-    });
+    return this.send(async () => ({ items, done }));
+  }
+
+  /** 列を送る。保存は1つずつ順に送る（先に送った列が後で上書きしないように）。 */
+  send(prepare) {
+    this.saving = this.saving
+      .then(async () => {
+        const { items, done, added } = await prepare();
+        const res = await sendJson(this.url, "PUT", { orders: items });
+        if (res.ok) {
+          this.apply(res.data);
+          this.message = done || "保存しました。";
+          const warning = added != null ? this.warnings.get(added) : null;
+          if (warning) this.message += `（現状では実行できません: ${warning}）`;
+        } else if (res.data.errors) {
+          this.message = res.data.errors.map((e) => `${e.index + 1} 番目: ${e.text}`).join(" ");
+          await this.load();
+        } else {
+          this.message = res.data.error || "保存に失敗しました。";
+          await this.load();
+        }
+        this.render();
+      })
+      .catch(() => {
+        this.message = "保存に失敗しました。通信を確かめてください。";
+        this.render();
+      });
     return this.saving;
   }
 
@@ -111,17 +147,13 @@ export class OrderQueue {
       return `<li class="${o.status}">ターン ${o.turn ?? "-"} ${mark} ${escapeHtml(o.text)}${reason}</li>`;
     });
     const total = this.items.reduce((s, o) => s + o.cost, 0);
+    const empty = this.forms ? "命令はありません。" : "命令はありません。地図でマスを選択して命令を追加してください。";
     this.el.innerHTML = `
-      <h2>命令</h2>
+      <h2>${escapeHtml(this.heading)}</h2>
       <p>次ターンの行政力（実行できる命令数）: <strong>${this.adminPower}</strong> ／ 予定の命令: ${total}</p>
-      <ol class="order-list">${rows.join("") || `<li class="muted">命令はありません。地図でマスを選択して命令を追加してください。</li>`}</ol>
+      <ol class="order-list">${rows.join("") || `<li class="muted">${empty}</li>`}</ol>
       <p class="message" aria-live="polite">${escapeHtml(this.message)}</p>
-      <form class="actions" data-form="rename-island">
-        <label>国名の変更 <input name="name" maxlength="32" required></label>
-        <button type="submit">命令に追加</button>
-      </form>
-      ${this.policyForms()}
-      ${this.financeForms()}
+      ${this.forms ? this.chosenForms() : this.islandForms()}
       <details>
         <summary>最近の命令の結果</summary>
         <ul class="recent">${recent.join("") || `<li class="muted">なし</li>`}</ul>
@@ -146,10 +178,43 @@ export class OrderQueue {
     }
   }
 
-  /** 国の政策の命令（税率・予算・最低賃金と失業手当・国の倉庫の売買・公共料金の上限）の入力欄 */
+  /** 島の画面の入力欄: 国名の変更と、政策の命令・金融の命令（それぞれ開け閉めできる欄）。 */
+  islandForms() {
+    const finance = Object.values(this.financeForms()).join("");
+    return `
+      <form class="actions" data-form="rename-island">
+        <label>国名の変更 <input name="name" maxlength="32" required></label>
+        <button type="submit">命令に追加</button>
+      </form>
+      ${this.section("policy", "国の政策の命令", Object.values(this.policyForms()).join(""))}
+      ${finance ? this.section("finance", "金融の命令", finance) : ""}`;
+  }
+
+  section(key, title, body) {
+    if (!body) return "";
+    return `
+      <details data-policy="${key}" ${this.open[key] ? "open" : ""}>
+        <summary>${title}</summary>
+        <p class="muted">空欄の項目は変えません。欄の薄い数字が今の値です。</p>
+        ${body}
+      </details>`;
+  }
+
+  /** 財政・金融の画面の入力欄: options.forms で選んだ命令の入力欄だけを、その順に。 */
+  chosenForms() {
+    const all = { ...this.policyForms(), ...this.financeForms() };
+    const body = this.forms.map((kind) => all[kind] || "").join("");
+    if (!body) return "";
+    return `<p class="muted">空欄の項目は変えません。欄の薄い数字が今の値です。</p>${body}`;
+  }
+
+  /**
+   * 国の政策の命令（税率・予算・最低賃金と失業手当・国の倉庫の売買・公共料金の上限）の入力欄。
+   * 命令の種類 → 入力欄の HTML。
+   */
   policyForms() {
     const p = this.policy;
-    if (!p) return "";
+    if (!p) return {};
     const num = (name, value, attrs = "") =>
       `<input name="${name}" type="number" min="0" ${attrs} placeholder="${value}">`;
     const budget = Object.entries(p.budget)
@@ -161,27 +226,28 @@ export class OrderQueue {
       .join("");
     const power = this.defs.goods[this.powerGood];
     const cap = p.price_cap[this.powerGood] || 0;
-    return `
-      <details data-policy="policy" ${this.open.policy ? "open" : ""}>
-        <summary>国の政策の命令</summary>
-        <p class="muted">空欄の項目は変えません。欄の薄い数字が今の値です。</p>
+    return {
+      set_taxes: `
         <form class="actions" data-form="set_taxes">
           <strong>税率（%）</strong>
           <label>所得税 ${num("income_tax", p.income_tax, 'max="100" step="0.1"')}</label>
           <label>法人税 ${num("corporate_tax", p.corporate_tax, 'max="100" step="0.1"')}</label>
           <label>消費税 ${num("consumption_tax", p.consumption_tax, 'max="100" step="0.1"')}</label>
           <button type="submit">命令に追加</button>
-        </form>
+        </form>`,
+      set_budget: `
         <form class="actions" data-form="set_budget">
           <strong>年の予算</strong>${budget}
           <button type="submit">命令に追加</button>
-        </form>
+        </form>`,
+      set_labor_policy: `
         <form class="actions" data-form="set_labor_policy">
           <strong>賃金と失業手当</strong>
           <label>最低賃金（0 で決めない） ${num("minimum_wage", p.minimum_wage, 'step="1"')}</label>
           <label>失業手当（平均賃金の %） ${num("unemployment_benefit", p.unemployment_benefit, 'max="100" step="1"')}</label>
           <button type="submit">命令に追加</button>
-        </form>
+        </form>`,
+      warehouse_trade: `
         <form class="actions" data-form="warehouse_trade">
           <strong>国の倉庫の売買</strong>
           <label>資源 <select name="good">${goods}</select></label>
@@ -189,54 +255,55 @@ export class OrderQueue {
           <label>量 <input name="quantity" type="number" min="0.1" step="0.1" required></label>
           <label>指値（1単位、買いは必須） <input name="limit" type="number" min="0" step="1"></label>
           <button type="submit">命令に追加</button>
-        </form>
-        ${power ? `<form class="actions" data-form="set_price_cap">
+        </form>`,
+      set_price_cap: power ? `
+        <form class="actions" data-form="set_price_cap">
           <strong>公共料金の上限</strong>
           <label>${escapeHtml(power.name)}（1${escapeHtml(power.unit)}あたり、0 で上限なし）
             <input name="price" type="number" min="0" step="1" placeholder="${cap}" required></label>
           <button type="submit">命令に追加</button>
-        </form>` : ""}
-      </details>`;
+        </form>` : "",
+    };
   }
 
   /**
-   * 金融の命令（金融政策・中央銀行・国債・銀行・資源ごとの補助金）の入力欄。
+   * 金融の命令（金融政策・中央銀行・国債・銀行・資源ごとの補助金）の入力欄。命令の種類 → HTML。
    * お金の経済が始まる前の島では出さない。命令が通らない島でも、サーバーが警告を返す。
    */
   financeForms() {
     const p = this.policy;
-    if (!p?.has_economy) return "";
+    if (!p?.has_economy) return {};
     const num = (name, value, attrs = "") => `<input name="${name}" type="number" ${attrs} placeholder="${value}">`;
     const options = (choices, blank = "") =>
       (blank ? `<option value="">${escapeHtml(blank)}</option>` : "") +
       Object.entries(choices).map(([id, name]) => `<option value="${id}">${escapeHtml(name)}</option>`).join("");
     const independent = p.cb_independent;
     const terms = Object.fromEntries(Object.entries(p.bond_terms).map(([id, t]) => [id, t.name]));
-    const forms = [];
+    const forms = {};
 
     if (independent) {
-      forms.push(`<p class="hint">中央銀行が独立しているため、政策金利（今 ${p.policy_rate}%）は中央銀行が物価と失業率を見て決めます。国債の売買・直接の引き受け・銀行への緊急の貸し出しも政府は決められません。</p>`);
+      forms.set_monetary_policy = `<p class="hint">中央銀行が独立しているため、政策金利（今 ${p.policy_rate}%）は中央銀行が物価と失業率を見て決めます。国債の売買・直接の引き受け・銀行への緊急の貸し出しも政府は決められません。</p>`;
     } else {
-      forms.push(`<form class="actions" data-form="set_monetary_policy">
+      forms.set_monetary_policy = `<form class="actions" data-form="set_monetary_policy">
           <strong>金融政策</strong>
           <label>政策金利（%） ${num("policy_rate", p.policy_rate, 'min="0" max="20" step="0.05"')}</label>
           <label>中央銀行が毎ターン国債を買う額（マイナスで売る。今: ${escapeHtml(p.cb_bond_trade_text)}） ${num("bond_trade", p.cb_bond_trade, 'step="1"')}</label>
           <button type="submit">命令に追加</button>
-        </form>`);
+        </form>`;
     }
     const lock = p.cb_unlock_turn != null ? `ターン ${p.cb_unlock_turn} までは切り替えられません。` : `切り替えた後 ${p.cb_lock_turns} ターンは戻せません。`;
-    forms.push(`<form class="actions" data-form="set_central_bank_independence">
+    forms.set_central_bank_independence = `<form class="actions" data-form="set_central_bank_independence">
         <strong>中央銀行の独立（今: ${independent ? "独立" : "政府の下"}）</strong>
         <p class="hint">${independent ? "政府の下に戻すと、政策金利と国債の売買を命令で決められます。" : "独立させると、中央銀行が物価と失業率を見て政策金利を決め、国債の売買と売れ残りの引き受けをやめます。"}${lock}</p>
         <input type="hidden" name="independent" value="${independent ? "false" : "true"}">
         <button type="submit">${independent ? "政府の下に戻す" : "独立させる"}（命令に追加）</button>
-      </form>`);
+      </form>`;
 
     const unsold = Object.fromEntries(Object.entries(p.bond_unsold_choices).filter(([id]) => !(independent && id === "underwrite")));
     const shares = Object.entries(p.bond_terms)
       .map(([id, t]) => `<label>${escapeHtml(t.name)} ${num(`term:${id}`, t.share, 'min="0" step="1"')}</label>`)
       .join("");
-    forms.push(`<form class="actions" data-form="set_bond_policy">
+    forms.set_bond_policy = `<form class="actions" data-form="set_bond_policy">
         <strong>国債（${p.bonds ? `${p.bonds} 銘柄` : "まだ発行していません"}）</strong>
         <p class="hint">国庫が足りなくなる分は、毎ターン入札で発行して銀行に買ってもらいます。</p>
         <label>入札の売れ残り（今: ${escapeHtml(p.bond_unsold_choices[p.bond_unsold] || p.bond_unsold)}） <select name="unsold">${options(unsold, "変えない")}</select></label>
@@ -247,30 +314,30 @@ export class OrderQueue {
         ${independent ? "" : `<label>このターンに中央銀行に直接引き受けさせる額 ${num("underwrite", "", 'min="0" step="1"')}</label>
         <label>その期間 <select name="underwrite_term">${options(terms)}</select></label>`}
         <button type="submit">命令に追加</button>
-      </form>`);
-    forms.push(`<form class="actions" data-form="set_bond_payment">
+      </form>`;
+    forms.set_bond_payment = `<form class="actions" data-form="set_bond_payment">
         <strong>国債の利払いと償還</strong>
         ${p.default_turn != null ? `<p class="warning">ターン ${p.default_turn} に債務不履行になりました。</p>` : ""}
         <p class="hint">止めると、そのターンにすべての国債が債務不履行になります（額面が切り下がって持っている銀行が損をし、国債の利回りがしばらく跳ね上がります）。</p>
         <label><select name="stop"><option value="true">止める（債務不履行）</option><option value="false">止める命令を取り消す</option></select></label>
         <button type="submit">命令に追加</button>
-      </form>`);
+      </form>`;
 
     const entryNow = p.bank_entry || p.bank_entry_default;
     const entryName = `${p.bank_entry_choices[entryNow] || entryNow}${p.bank_entry ? "" : "・経済体制の既定"}`;
     const entryChoices = p.planned ? { closed: p.bank_entry_choices.closed } : p.bank_entry_choices;
-    forms.push(`<form class="actions" data-form="set_bank_policy">
+    forms.set_bank_policy = `<form class="actions" data-form="set_bank_policy">
         <strong>銀行</strong>
         <label>民間銀行の参入（今: ${escapeHtml(entryName)}） <select name="entry">${options(entryChoices, "変えない")}</select></label>
         <label>預金保護の上限（1人あたり、-1 で無制限。今: ${escapeHtml(p.deposit_insurance_text)}） ${num("deposit_insurance", p.deposit_insurance, 'min="-1" step="1"')}</label>
         <button type="submit">命令に追加</button>
-      </form>`);
+      </form>`;
     if (!p.planned && entryNow === "license") {
-      forms.push(`<form class="actions" data-form="grant_bank_license">
+      forms.grant_bank_license = `<form class="actions" data-form="grant_bank_license">
           <strong>民間銀行の免許</strong>
           <p class="hint">${p.bank_license ? "免許を出して、開業を待っています。" : "免許を出すと、空いたオフィス街のマスがあれば民間銀行が開業します。"}</p>
           <button type="submit">免許を出す（命令に追加）</button>
-        </form>`);
+        </form>`;
     }
 
     const goods = Object.entries(this.defs.goods)
@@ -279,7 +346,7 @@ export class OrderQueue {
     const current = p.subsidies
       .map((s, i) => `<li>${escapeHtml(s.text)} <button type="button" data-stop-subsidy="${i}">やめる（命令に追加）</button></li>`)
       .join("");
-    forms.push(`<form class="actions" data-form="set_subsidy">
+    forms.set_subsidy = `<form class="actions" data-form="set_subsidy">
         <strong>資源ごとの補助金</strong>
         <p class="hint">生産補助はその資源を作る施設に売上の割合を、設備投資補助はその資源を作る民営工場が新しく建つときに建設費の割合を、補助金の予算から出します。施設ごとの補助金は、地図で施設を選んで出します。</p>
         ${current ? `<ul>${current}</ul>` : ""}
@@ -288,14 +355,9 @@ export class OrderQueue {
         <label>割合（%、0 でやめる） <input name="rate" type="number" min="0" max="100" step="0.1" required></label>
         <label>期間（ターン） <input name="turns" type="number" min="1" max="1200" step="1" value="12" required></label>
         <button type="submit">命令に追加</button>
-      </form>`);
+      </form>`;
 
-    return `
-      <details data-policy="finance" ${this.open.finance ? "open" : ""}>
-        <summary>金融の命令</summary>
-        <p class="muted">空欄の項目は変えません。欄の薄い数字が今の値です。</p>
-        ${forms.join("")}
-      </details>`;
+    return forms;
   }
 
   handleSubmit(e) {

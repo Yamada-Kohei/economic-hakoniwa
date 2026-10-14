@@ -1,7 +1,8 @@
-// マスの情報の欄: 選んだマスと、そこにある施設の詳しい情報を出す。
+// マスの情報の欄: 選んだマスと、そこにある施設の詳しい情報を出す（インフラの整備度と並んでいる工事、
+// 施設の技術者、学校と大学の働きを含む）。
 // 島の持ち主には、そのマスへの命令（建設・撤去・名称・地名・優先度・会計方式・国有化と民営化・
-// 補助金・銀行への緊急の貸し出しと破綻処理）と、地図でマスを選んで出す命令（送電線・開発禁止区域・
-// 工業団地とオフィス街）の入口も出す。
+// 補助金・銀行への緊急の貸し出しと破綻処理）と、地図でマスを選んで出す命令（インフラの工事・送電線・
+// 開発禁止区域・工業団地とオフィス街）の入口も出す。
 // 狭い画面では地図を画面の上に留め、その下でこの欄を読み進める（site.css）。命令を足しても
 // 地図はそのまま押せ、結果は地図のそばに出す。
 
@@ -34,8 +35,9 @@ const RESOLUTION_HINTS = {
   liquidation: "融資を額面より安く健全な銀行に売ったとして損失を数え、引き継ぎと同じく移します。損失は引き継ぎより大きくなります。",
 };
 
-// 地図でマスを選んで出す命令
+// 地図でマスを選んで出す命令（infrastructure は、選んだインフラの種類 kind も送る）
 const MARK_MODES = {
+  infrastructure: { label: "インフラの工事", kind: "build_infrastructure", payload: (tiles, kind) => ({ kind, tiles }) },
   power_line: { label: "送電線の敷設", kind: "build_power_line", payload: (tiles) => ({ tiles }) },
   no_dev_on: { label: "開発禁止区域の指定", kind: "set_no_development", payload: (tiles) => ({ tiles, value: true }) },
   no_dev_off: { label: "開発禁止区域の解除", kind: "set_no_development", payload: (tiles) => ({ tiles, value: false }) },
@@ -49,7 +51,8 @@ export class TilePanel {
    * el: 欄の要素（data-tile-url に「…/tiles/0,0」、data-check-url に命令の確認の URL、
    *     data-resources に島の地下資源、data-producible に島で生産できる資源。どちらもカンマ区切り）
    * options: orders（命令の列。持ち主でなければ null）、marked（印を付けたマスの Set）、onMarkedChange、
-   *          mapArea（地図の列の要素）、notice（命令を足した結果を出す、地図のそばの要素）
+   *          mapArea（地図の列の要素）、notice（命令を足した結果を出す、地図のそばの要素）、
+   *          onInfraKind（インフラの工事のマスを選び始めたときと、種類を変えたときに種類を渡す）
    */
   constructor(el, defs, map, options = {}) {
     this.el = el;
@@ -62,6 +65,8 @@ export class TilePanel {
     this.onMarkedChange = options.onMarkedChange || (() => {});
     this.mapArea = options.mapArea || null;
     this.notice = options.notice || null;
+    this.onInfraKind = options.onInfraKind || (() => {});
+    this.infraKind = Object.keys(defs.infrastructure || {})[0] || null;
     this.mode = null;
     this.tile = null;
     this.info = null;
@@ -150,7 +155,17 @@ export class TilePanel {
     if (t.happiness != null && t.population) rows.push(["幸福度", Math.round(t.happiness)]);
     if (t.power != null && t.population) rows.push(["電力充足率", `${Math.round(t.power / 10)}%`]);
     if (t.pollution) rows.push(["汚染度", t.pollution]);
-    if (t.power_line) rows.push(["送電線", "あり"]);
+    for (const i of t.infra || []) {
+      const keep = i.keep > i.level ? `（維持の目標 ${i.keep}%）` : "";
+      const grid = this.defs.infrastructure?.[i.kind]?.role === "power" ? (t.power_line ? "・電力を通します" : "・電力を通すには整備度が足りません") : "";
+      rows.push([`${i.name}の整備度`, `${i.level}%${keep}${grid}`]);
+    }
+    if (t.power_line && !t.infra?.length) rows.push(["送電線", "あり"]);
+    if (t.works?.length) {
+      const list = t.works.map((w) => `${w.name}（${w.position} 番目）`).join("、");
+      rows.push(["インフラの工事", `${list} ／ 列は全 ${t.works_total} マス`]);
+      if (t.works_why) rows.push(["工事の状況", t.works_why]);
+    }
     if (t.zone === "no_development") rows.push(["開発", "禁止区域（町が形成されません）"]);
     if (t.zone === "industrial") rows.push(["区域", "工業団地（民営の工場が採算を見て建ちます）"]);
     if (t.zone === "office") rows.push(["区域", "オフィス街（銀行が建ちます）"]);
@@ -180,6 +195,13 @@ export class TilePanel {
       rows.push(["労働者", `${f.workers.toLocaleString()} / ${f.workers_needed.toLocaleString()} 人`]);
       rows.push(["稼働率", `${Math.round(f.operating_rate * 100)}%`]);
       if (f.wage != null) rows.push(["賃金（1人1ターン）", f.wage.toLocaleString()]);
+      if (f.engineers_needed) {
+        const seats = f.engineers_wanted !== f.engineers_needed ? `（技術者の席 ${f.engineers_wanted.toLocaleString()}）` : "";
+        rows.push(["うち技術者", `${f.engineers.toLocaleString()} / ${f.engineers_needed.toLocaleString()} 人${seats}`]);
+      }
+      if (f.engineer_wage != null) rows.push(["技術者の賃金（1人1ターン）", f.engineer_wage.toLocaleString()]);
+      if (f.engineers_general) rows.push(["一般の仕事に就いた技術者", `${f.engineers_general.toLocaleString()} 人`]);
+      if (f.education) rows.push(["教育", f.education]);
       if (f.inputs?.length) rows.push(["投入（1ターン）", goodsText(f.inputs)]);
       if (f.outputs?.length) rows.push(["産出（1ターン）", goodsText(f.outputs)]);
     }
@@ -421,10 +443,28 @@ export class TilePanel {
     return `
       <div class="marking">
         <p><strong>${m.label}</strong>: 地図のマスを押して選択してください（再度押すと解除。${MAX_TILES} マスまで）。</p>
+        ${this.mode === "infrastructure" ? this.infraChoiceHtml() : ""}
         <p>選択したマス: ${this.marked.size}</p>
         <button type="button" data-action="mark-done"${this.marked.size ? "" : " disabled"}>命令に追加</button>
         <button type="button" data-action="mark-cancel">取り消し</button>
       </div>`;
+  }
+
+  /** インフラの工事の種類を選ぶ欄と、1マスの費用の説明。 */
+  infraChoiceHtml() {
+    const kinds = this.defs.infrastructure || {};
+    const options = Object.entries(kinds)
+      .map(([id, d]) => `<option value="${id}"${id === this.infraKind ? " selected" : ""}>${escapeHtml(d.name)}</option>`)
+      .join("");
+    const d = kinds[this.infraKind];
+    const materials = d ? Object.entries(d.materials).map(([g, q]) => `${this.goodName(g)} ${q} ${this.unitName(g)}`).join("・") : "";
+    const cost = d
+      ? `1マスを 0% から 100% にするのに 資材 ${materials || "なし"}、作業員 ${d.labor.toLocaleString()} 人・ターン（工期 ${d.turns} ターン以上）。` +
+        "工事の列に並び、公共事業費で失業者を雇って順に工事します。海のマスと整備度 100% のマスは並びません。"
+      : "";
+    return `
+      <label>種類 <select data-infra-kind>${options}</select></label>
+      <p class="hint">${escapeHtml(cost)}</p>`;
   }
 
   // --- 操作 -----------------------------------------------------------------
@@ -441,6 +481,7 @@ export class TilePanel {
       this.mode = button.dataset.mark;
       this.marked.clear();
       this.onMarkedChange();
+      if (this.mode === "infrastructure" && this.infraKind) this.onInfraKind(this.infraKind);
       this.render();
       this.revealTop();
     } else if (button.dataset.action === "mark-cancel") {
@@ -448,7 +489,7 @@ export class TilePanel {
     } else if (button.dataset.action === "mark-done") {
       const tiles = [...this.marked].map((k) => k.split(",").map(Number));
       const m = MARK_MODES[this.mode];
-      this.addOrder(m.kind, m.payload(tiles));
+      this.addOrder(m.kind, m.payload(tiles, this.infraKind));
       this.endMarking();
     } else if (button.dataset.action === "demolish") {
       const f = this.info.facility;
@@ -459,6 +500,12 @@ export class TilePanel {
   }
 
   handleChange(e) {
+    if (e.target.matches("[data-infra-kind]")) {
+      this.infraKind = e.target.value;
+      this.onInfraKind(this.infraKind);
+      this.render();
+      return;
+    }
     const form = e.target.form;
     if (form?.dataset.form !== "build") return;
     if (e.target.name === "facility") {
