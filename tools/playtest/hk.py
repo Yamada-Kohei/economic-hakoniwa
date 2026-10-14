@@ -255,6 +255,31 @@ def cmd_map(c: Client, a) -> int:
     return 0
 
 
+def cmd_advance(c: Client, a) -> int:
+    """管理画面の「今すぐ1ターン進める」を n 回押す（管理者の権限が要る）。"""
+    for _ in range(a.turns):
+        _, body, final = c.get("/admin/world/world/")
+        if "/admin/login" in final:
+            print("管理画面に入れません（管理者の権限のあるアカウントでログインしてください）。")
+            return 1
+        ids = re.findall(r'name="_selected_action" value="(\d+)"', body)
+        if not ids:
+            print("世界が見つかりません。")
+            return 1
+        fields = {"action": "advance_turn", "_selected_action": ids[0], "index": "0"}
+        fields = {"csrfmiddlewaretoken": c.csrf(), **fields}
+        data = urllib.parse.urlencode(fields).encode()
+        _, body, _ = c.request(
+            "POST", "/admin/world/world/", data, "application/x-www-form-urlencoded"
+        )
+        found = re.findall(r'(?s)<ul class="messagelist">(.*?)</ul>', body)
+        message = text_of(found[0]).replace("\n", " ") if found else "結果が読めませんでした"
+        print(message)
+        if "error" in (found[0] if found else "error"):
+            return 1
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="経済版箱庭諸国の試し遊びの道具")
     p.add_argument(
@@ -314,6 +339,12 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("map", help="島の文字の地図と施設の一覧")
     s.add_argument("island", type=int)
     s.set_defaults(func=cmd_map)
+
+    s = sub.add_parser(
+        "advance", help="ターンを進める（管理者の権限が要る。A では run_turn でもよい）"
+    )
+    s.add_argument("turns", nargs="?", type=int, default=1)
+    s.set_defaults(func=cmd_advance)
 
     a = p.parse_args(argv)
     return a.func(Client(a.base), a)
