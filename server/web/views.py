@@ -8,7 +8,7 @@ from django.shortcuts import get_object_or_404, render
 from hakoniwa_core import facilities as fac
 from server.game import get_game
 from server.turns.models import TurnLog
-from server.web import display
+from server.web import display, reports
 from server.world.models import Island, World
 from server.world.services import grid_size
 
@@ -55,8 +55,115 @@ def island_page(request, island_id: int):
         "logs": display.log_entries(logs.filter(turn=last_turn)) if last_turn is not None else [],
         "log_turn": last_turn,
         "show_guide": island.world.turn - founded < GUIDE_TURNS,
+        "page": "island",
     }
     return render(request, "web/island.html", context)
+
+
+# --- 島の統計の画面（経済・市場・施設・財政・金融） ----------------------------------------
+# グラフは JavaScript（static/js/reports/）が統計の API を読んで描く。施設と金融の中身は島の持ち主
+# だけに出し、ほかの人には国全体の統計だけを出す。財政と金融の命令は、今の命令の列に足す。
+
+
+def _report(request, island_id: int, page: str, title: str) -> tuple[Island, dict, dict]:
+    """統計の画面に共通の値（島・持ち主か・直近の統計のターン・通貨記号・見出しのリンク）。"""
+    island = get_object_or_404(Island.objects.select_related("owner", "world"), pk=island_id)
+    turn, stats = display.latest_stats(island)
+    context = {
+        "island": island,
+        "mine": request.user.is_authenticated and island.owner_id == request.user.id,
+        "stats_turn": turn,
+        "currency": (island.names or {}).get("currency_symbol", ""),
+        "page": page,
+        "title": title,
+    }
+    return island, context, stats
+
+
+def economy_page(request, island_id: int):
+    """経済: 主な指標の直近の値と、その推移のグラフ。"""
+    island, context, stats = _report(request, island_id, "economy", "経済")
+    currency = context["currency"]
+    charts = [{**c, "names": ",".join(c["names"])} for c in reports.economy_charts()]
+    context.update(
+        tiles=reports.stat_rows(reports.with_fiscal(stats), reports.ECONOMY_TILES, currency),
+        summary=display.summary(stats, currency),
+        charts=charts,
+        choices=reports.stat_choices(island, context["mine"]),
+    )
+    return render(request, "web/economy.html", context)
+
+
+def market_page(request, island_id: int):
+    """市場: 財ごとの値段と売買の量、選んだ財の推移とこのターンの約定、買えなかった施設。"""
+    island, context, stats = _report(request, island_id, "market", "市場")
+    rows = reports.market_table(island, stats, context["currency"])
+    goods = [r["good"] for r in rows]
+    chosen = request.GET.get("good")
+    context.update(
+        rows=rows,
+        good=chosen if chosen in goods else (goods[0] if goods else ""),
+        market_turn=reports.market_turn(island),
+    )
+    if context["mine"]:
+        context["short"] = reports.short_facilities(island, display.island_for_naming(island))
+    else:
+        context["note"] = "約定の相手と、原料を買えずに止まった施設は、島の持ち主だけが見られます。"
+    return render(request, "web/market.html", context)
+
+
+OTHERS_NOTE = "他国の島のため、国全体の統計だけを表示しています。"
+
+# 他国の島の施設の画面に出す、国全体の施設の統計
+FACILITY_STATS = [
+    "facilities",
+    "construction",
+    "firms.private",
+    "firms.private_sites",
+    "profit",
+    "firms.entered",
+    "firms.bankrupt",
+    "firms.closed",
+    "firms.abandoned",
+]
+
+
+def facilities_page(request, island_id: int):
+    """施設: 自国の全施設の損益・預金・借入と帳簿の推移。他国は国全体の統計だけ。"""
+    island, context, stats = _report(request, island_id, "facilities", "施設")
+    context["stats"] = reports.stat_rows(stats, FACILITY_STATS, context["currency"])
+    context["chart_names"] = "facilities,construction,firms.private"
+    if context["mine"]:
+        context["table"] = reports.facility_rows(island, context["currency"])
+    else:
+        context["note"] = OTHERS_NOTE
+    return render(request, "web/facilities.html", context)
+
+
+def fiscal_page(request, island_id: int):
+    """財政: 国庫の収入と支出、予算と使った額、税率、国債の一覧。持ち主には命令の入力も。"""
+    island, context, stats = _report(request, island_id, "fiscal", "財政")
+    context.update(
+        fiscal=reports.fiscal_view(island, stats, context["currency"]),
+        bonds=reports.bond_rows(island, context["currency"], context["mine"]),
+    )
+    return render(request, "web/fiscal.html", context)
+
+
+def finance_page(request, island_id: int):
+    """金融: 中央銀行と金利・国債の利回り・融資の統計。持ち主には銀行の一覧・破綻処理・命令も。"""
+    island, context, stats = _report(request, island_id, "finance", "金融")
+    data = reports.finance_data(island, context["mine"], context["currency"])
+    banks = data.get("banks", [])
+    context.update(
+        stats=reports.stat_rows(stats, list(data["stats"]), context["currency"]),
+        central_bank=data["central_bank"],
+        banks=banks,
+        bank_ratio_names=",".join(f"bank.{b['number']}.capital_ratio" for b in banks),
+    )
+    if not context["mine"]:
+        context["note"] = OTHERS_NOTE
+    return render(request, "web/finance.html", context)
 
 
 def turn_log(request, island_id: int):

@@ -1,9 +1,13 @@
 """島の中の運賃の率。
 
-物は売り手の施設から買い手まで、陸のマスを上下左右にたどって運ばれます。運賃は道のり（歩数）
+物は売り手の施設から買い手まで、陸のマスを上下左右にたどって運ばれます。運賃は道のり
 1 あたり game.yaml の freight.per_step × 約定価格で、売り手と買い手が半分ずつ島の運送業に払います
-（1人が払う率の上限は freight.max_rate）。近い施設どうしの取引ほど安くなります。道路と鉄道で
-道のりが短くなるのはフェーズ2-3 から。
+（1人が払う率の上限は freight.max_rate）。近い施設どうしの取引ほど安くなります。
+
+道のりは、陸のマス1つを越えるのに1かかり、道路と鉄道で短くなります（フェーズ2-3）。マスを越える
+重さは「1 − 整備度 ×（1 − 定義の path）」（道路 100% で 0.5、鉄道 100% で 0.3。マスごとに軽い方。
+hakoniwa_core/infra.py の path_weight）で、隣のマスへ移る重さは2マスの重さの平均です。道のりは
+この重さで一番短い道で測ります（内部では1マスを STEP として整数で持つ）。
 
 板寄せでは取引の相手が決まる前に指値を出すので、率は施設ごとに見込みで決めます。施設が売る物と
 買う物のそれぞれについて、取引の相手になりうる所（売る物なら、それを買う施設・工事と住民。買う物
@@ -20,37 +24,84 @@
 
 from __future__ import annotations
 
+import heapq
 from array import array
-from collections import deque
 
 from hakoniwa_core import facilities as fac
+from hakoniwa_core import infra
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.geo import neighbors4
 from hakoniwa_core.state import Facility, IslandState
 from hakoniwa_core.units import BASIS, part, to_basis
 
 Pos = tuple[int, int]
 
-# 陸の形ごとの、出発のマスから各マスまでの道のり（陸の形は工事で変わらないので、ターンをまたいで
-# 使い回す。形が変わればキーが変わる）
+# 道のりの単位: 陸のマス1つを越える道のり（重さ 10 のマスどうしを移る 10 + 10）
+STEP = 20
+
+# 陸の形とマスの重さごとの、出発のマスから各マスまでの道のり（インフラが変わればキーが変わる
+# ので、ターンをまたいで使い回せる）
 _PATHS: dict[bytes, dict[Pos, array]] = {}
 _PATHS_MAX = 256
 
 
+WEIGHTS = "freight_weights"  # island.scratch: マスごとの重さ（整備度が変わったら捨てる）
+
+
+def _weights(island: IslandState, defs: Defs) -> bytes:
+    """マスごとの重さ（0 は海。陸は 1〜10 で、10 が道のない陸のマス）。
+
+    ターンの中では、整備度が変わるまで island.scratch に置いて使い回す（forget と forget_paths）。
+    """
+    cached = island.scratch.get(WEIGHTS)
+    if cached is None:
+        cached = island.scratch[WEIGHTS] = bytes(
+            infra.path_weight(defs, t) if fac.is_land(defs, t.terrain) else 0 for t in island.tiles
+        )
+    return cached
+
+
+def _search(size: int, weights: bytes, starts: list[int]) -> array:
+    """starts から各マスまでの一番短い道のり（STEP で1マス）。行けないマスは -1。"""
+    dist = array("i", [-1]) * (size * size)
+    heap = []
+    for start in starts:
+        dist[start] = 0
+        heap.append((0, start))
+    heapq.heapify(heap)
+    while heap:
+        d, p = heapq.heappop(heap)
+        if d > dist[p]:
+            continue
+        x = p % size
+        wp = weights[p]
+        for n in (
+            p - 1 if x > 0 else -1,
+            p + 1 if x < size - 1 else -1,
+            p - size,
+            p + size,
+        ):
+            if 0 <= n < size * size and weights[n]:
+                nd = d + wp + weights[n]
+                if dist[n] < 0 or nd < dist[n]:
+                    dist[n] = nd
+                    heapq.heappush(heap, (nd, n))
+    return dist
+
+
 class Routes:
-    """島の陸のマスの道のり。"""
+    """島の陸のマスの道のり（STEP で1マス）。"""
 
     def __init__(self, island: IslandState, defs: Defs) -> None:
         self.size = island.size
-        land = bytes(1 if fac.is_land(defs, t.terrain) else 0 for t in island.tiles)
-        key = self.size.to_bytes(2, "big") + land
+        weights = _weights(island, defs)
+        key = self.size.to_bytes(2, "big") + weights
         table = _PATHS.get(key)
         if table is None:
             if len(_PATHS) >= _PATHS_MAX:
                 _PATHS.clear()
             table = _PATHS[key] = {}
-        self._land = land
+        self._weights = weights
         self._table = table
         self.homes = [(t.x, t.y) for t in island.tiles if t.population > 0]
 
@@ -59,26 +110,13 @@ class Routes:
         found = self._table.get(origin)
         if found is not None:
             return found
-        size, land = self.size, self._land
-        dist = array("i", [-1]) * (size * size)
-        start = origin[1] * size + origin[0]
-        dist[start] = 0
-        queue = deque([start])
-        while queue:
-            p = queue.popleft()
-            d = dist[p] + 1
-            x = p % size
-            for n in (
-                p - 1 if x > 0 else -1,
-                p + 1 if x < size - 1 else -1,
-                p - size,
-                p + size,
-            ):
-                if 0 <= n < size * size and land[n] and dist[n] < 0:
-                    dist[n] = d
-                    queue.append(n)
+        dist = _search(self.size, self._weights, [origin[1] * self.size + origin[0]])
         self._table[origin] = dist
         return dist
+
+    def from_many(self, origins: list[Pos]) -> array:
+        """origins のどれかから各マスまでの一番短い道のり（拠点からの道のりなど）。"""
+        return _search(self.size, self._weights, [y * self.size + x for x, y in origins])
 
     def between(self, a: Pos, b: Pos) -> int | None:
         """a から b までの道のり。陸でつながらなければ None。"""
@@ -110,21 +148,39 @@ def hubs(island: IslandState, defs: Defs, config: GameConfig) -> list[Pos]:
     return sorted(found, key=lambda p: (p[1], p[0]))
 
 
-def distances(island: IslandState, defs: Defs, config: GameConfig) -> dict[Pos, int]:
-    """拠点から陸地の各マスまでの道のり（陸でつながらないマスは入らない）。"""
-    land = {(t.x, t.y) for t in island.tiles if fac.is_land(defs, t.terrain)}
-    dist: dict[Pos, int] = {}
-    queue: deque[Pos] = deque()
-    for pos in hubs(island, defs, config):
-        dist[pos] = 0
-        queue.append(pos)
-    while queue:
-        pos = queue.popleft()
-        for n in neighbors4(island, pos):
-            if n in land and n not in dist:
-                dist[n] = dist[pos] + 1
-                queue.append(n)
-    return dist
+def distances(
+    island: IslandState, defs: Defs, config: GameConfig, routes: Routes | None = None
+) -> dict[Pos, int]:
+    """拠点から陸地の各マスまでの道のり（STEP で1マス。陸でつながらないマスは入らない）。"""
+    routes = routes or Routes(island, defs)
+    found = hubs(island, defs, config)
+    if not found:
+        return {}
+    dist = routes.from_many(found)
+    size = island.size
+    return {(i % size, i // size): d for i, d in enumerate(dist) if d >= 0}
+
+
+def hub_rates(island: IslandState, defs: Defs, config: GameConfig) -> dict[Pos, int]:
+    """陸のマスごとの、拠点まで運ぶときの片側の運賃の率（1万分の1、割り増しを含む）。
+
+    地図の重ね表示に使う（施設を建てる場所の目安）。拠点に行けないマスは上限の率です。
+    """
+    per_step = to_basis(config.get("freight.per_step"))
+    top = to_basis(config.get("freight.max_rate"))
+    hub = distances(island, defs, config)
+    return {
+        (t.x, t.y): _surcharged(island, _one_side(hub.get((t.x, t.y)), per_step, top))
+        for t in island.tiles
+        if fac.is_land(defs, t.terrain)
+    }
+
+
+def _one_side(distance: int | None, per_step: int, top: int) -> int:
+    """片側の率: 道のり（STEP で1マス）の半分 × per_step（上限 top）。行けなければ上限。"""
+    if distance is None:
+        return top
+    return min(top, distance * per_step // (2 * STEP))
 
 
 def household_goods(defs: Defs, config: GameConfig, island: IslandState) -> list[str]:
@@ -174,16 +230,13 @@ class _Rates:
         self.defs = defs
         self.routes = Routes(island, defs)
         self.trade = _Trade(island, defs, config)
-        self.hub = distances(island, defs, config)
+        self.hub = distances(island, defs, config, self.routes)
         self.per_step = to_basis(config.get("freight.per_step"))
         self.top = to_basis(config.get("freight.max_rate"))
         self.prices = island.economy.prices
 
     def rate(self, distance: int | None) -> int:
-        """片側の率: 道のりの半分 × per_step（上限 top）。行けなければ上限。"""
-        if distance is None:
-            return self.top
-        return min(self.top, distance * self.per_step // 2)
+        return _one_side(distance, self.per_step, self.top)
 
     def facility(self, f: Facility, power: str | None = None) -> int:
         goods = self.trade.goods.get(f.id)
@@ -324,3 +377,9 @@ def forget(island: IslandState) -> None:
     """このターンに計算した率を捨てる（次に使うときに計算し直す）。"""
     island.scratch.pop("freight_rates", None)
     island.scratch.pop("freight_household", None)
+    forget_paths(island)
+
+
+def forget_paths(island: IslandState) -> None:
+    """マスの重さだけを捨てる（インフラの段の傷み。率はそのターンのものを使い続ける）。"""
+    island.scratch.pop(WEIGHTS, None)

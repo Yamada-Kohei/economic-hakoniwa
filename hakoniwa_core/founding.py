@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import stock
+from hakoniwa_core import infra, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import default_accounting
@@ -454,8 +454,9 @@ def connect_power(island: IslandState, defs: Defs) -> int:
         if path is None:
             continue
         for x, y in path:
-            if island.facility_at(x, y) is None and not island.tile(x, y).power_line:
-                island.tile(x, y).infra["power"] = 1
+            tile = island.tile(x, y)
+            if island.facility_at(x, y) is None and not tile.power_line:
+                infra.set_level(tile, infra.power_kind(defs), infra.FULL)
                 built += 1
     return built
 

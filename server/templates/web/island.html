@@ -11,6 +11,7 @@
     {% if resources %} ・ {% translate "地下資源" %}: {{ resources|join:"、" }}{% endif %}
     {% if stats_turn is not None %} ・ {% blocktranslate with turn=stats_turn %}ターン {{ turn }} の時点{% endblocktranslate %}{% endif %}
   </p>
+  {% include "web/island_nav.html" %}
 </div>
 
 {% if mine and show_guide %}
@@ -33,6 +34,7 @@
       <label>{% translate "重ねて表示" %}
         <select id="overlay"><option value="">{% translate "なし" %}</option></select>
       </label>
+      <span id="overlay-legend" class="hint" aria-live="polite"></span>
     </div>
     <div class="map-wrap">
       <canvas id="island-map" data-island="{{ island.id }}" data-api="{% url 'api_island_map' island.id %}"

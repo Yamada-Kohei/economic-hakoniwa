@@ -10,6 +10,15 @@
       "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
       "additionalProperties": {"type": "number", "minimum": 0},
       "description": "財の名前と量。量は 2.5 のように小数も書ける（内部では 1000 分の 1 単位の整数）"
+    },
+    "factors": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "infra": {"type": "number", "minimum": 0, "description": "施設の周りの交通の整備度の効き目の重み"},
+        "education": {"type": "number", "minimum": 0, "description": "島の教育水準の効き目の重み"},
+        "pollution": {"type": "number", "minimum": 0, "maximum": 1, "description": "施設のマスの汚染1あたりに産出を下げる割合"}
+      }
     }
   },
   "properties": {
@@ -38,7 +47,28 @@
         "materials": {"$ref": "#/$defs/amounts", "description": "工事全体で要る資材"}
       }
     },
-    "workers": {"type": "integer", "minimum": 0, "description": "全力で動くのに要る労働者の数"},
+    "workers": {
+      "oneOf": [
+        {"type": "integer", "minimum": 0},
+        {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        }
+      ],
+      "description": "全力で動くのに要る労働者の数。種類ごと（workers.yaml の名前）にも書ける。数だけなら一般"
+    },
+    "budget": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "公務の施設の賃金と仕入れを払う予算の項目（既定 civil_servants）"},
+    "education": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "capacity": {"type": "integer", "minimum": 0, "description": "学校の子どもの定員（全力で動いたとき）"},
+        "engineers": {"type": "number", "minimum": 0, "description": "大学が1ターンに育てる技術者の数（全力で動いたとき）"}
+      },
+      "description": "学校と大学の働き（フェーズ2-3）"
+    },
     "commute_radius": {"type": "integer", "minimum": 0, "description": "通勤圏（マス）。書かなければサーバー設定の既定値"},
     "priority": {"type": "integer", "minimum": 0, "maximum": 9, "description": "雇用と配分の優先順位の既定値（0〜9、大きいほど先）。書かなければサーバー設定の既定値"},
     "admin_power": {"type": "number", "minimum": 0, "description": "働く人1人あたりに生む行政力（中央省庁など）"},
@@ -62,11 +92,13 @@
         "properties": {
           "inputs": {"$ref": "#/$defs/amounts", "description": "全力で動いたときの1ターンの投入"},
           "outputs": {"$ref": "#/$defs/amounts", "description": "全力で動いたときの1ターンの産出"},
-          "requires_resource": {"type": "string", "description": "島で選んだ鉱業資源がこれのときだけ使える"}
+          "requires_resource": {"type": "string", "description": "島で選んだ鉱業資源がこれのときだけ使える"},
+          "factors": {"$ref": "#/$defs/factors", "description": "この作り方の生産性の係数の重み（書かなければ施設の factors）"}
         }
       },
       "description": "作り方。複数あれば建てるときに選ぶ"
     },
+    "factors": {"$ref": "#/$defs/factors", "description": "生産性の係数の重み（フェーズ2-3）"},
     "sprite": {"type": "string", "description": "絵の名前（テーマの中のファイル名）"},
     "override": {"const": true}
   }

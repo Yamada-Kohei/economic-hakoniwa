@@ -96,13 +96,14 @@ def test_override_changes_numbers_only(game_dir):
         """\
         steel_mill:
           override: true
-          workers: 999
+          workers: {general: 899}
           recipes: {default: {outputs: {steel: 7.5}}}
         """,
     )
     defs = load(path)
     mill = defs.facilities["steel_mill"]
-    assert mill["workers"] == 999
+    assert mill["workers"] == 999  # 一般 899 と、書かなかった技術者 100
+    assert mill["staff"] == {"general": 899, "engineer": 100}
     assert mill["recipes"]["default"]["outputs"]["steel"] == 7500
     assert mill["recipes"]["default"]["inputs"]["iron_ore"] == 10_000  # 書かなかった所は残る
 

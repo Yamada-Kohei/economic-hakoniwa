@@ -1,0 +1,76 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+{% include "web/report_header.html" %}
+
+{% if table %}
+<section class="panel">
+  <h2>{% if table.turn is not None %}{% blocktranslate with turn=table.turn %}施設の一覧と収支（ターン {{ turn }} の決算）{% endblocktranslate %}{% else %}{% translate "施設の一覧と収支" %}{% endif %}</h2>
+  <p class="hint">{% blocktranslate with turns=table.book_turns %}町を除く全施設（民営・建設中を含む）です。損益は直近のターン、合計は直近 {{ turns }} ターンの合計です。国庫直轄の施設は自分の預金を持ちません（お金は国庫が出し入れします）。{% endblocktranslate %}</p>
+  <div class="table-scroll">
+    <table class="facilities report-table">
+      <thead><tr>
+        <th>{% translate "施設" %}</th><th>{% translate "所有・会計" %}</th><th>{% translate "状態" %}</th>
+        <th>{% translate "労働者" %}</th><th>{% translate "技術者" %}</th><th>{% translate "稼働率" %}</th>
+        <th>{% translate "損益" %}</th><th>{% translate "合計" %}</th><th>{% translate "預金" %}</th><th>{% translate "借入" %}</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for f in table.rows %}
+        <tr>
+          <td>{% if f.on_map %}<a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a>{% else %}{{ f.name }}{% endif %}<br><small class="muted">{{ f.kind_name }}</small></td>
+          <td>{{ f.owner_name }}<br><small class="muted">{{ f.accounting_name }}</small></td>
+          <td>{% if not f.built %}{% translate "建設中" %}{% if f.status_text and f.status_text != "建設中" %}<br><small>{{ f.status_text }}</small>{% endif %}{% else %}{{ f.status_text|default:"稼働中" }}{% endif %}</td>
+          <td class="num">{{ f.workers }}{% if f.workers_needed %} / {{ f.workers_needed }}{% endif %}</td>
+          <td class="num">{% if f.engineers_needed %}{{ f.engineers }} / {{ f.engineers_needed }}{% elif f.engineers_general %}{{ f.engineers_general }}{% endif %}</td>
+          <td class="num">{% if f.operating_rate is not None %}{{ f.operating_rate }}%{% endif %}</td>
+          <td class="num{% if f.loss %} loss{% endif %}">{{ f.profit|default:"" }}</td>
+          <td class="num">{{ f.profit_total|default:"" }}</td>
+          <td class="num">{{ f.deposit|default:"" }}</td>
+          <td class="num">{{ f.debt|default:"" }}</td>
+          <td>{% if f.has_books %}<button type="button" data-book="{{ f.number }}">{% translate "推移" %}</button>{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="11" class="muted">{% translate "施設がありません。" %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p>{% blocktranslate with total=table.profit %}直近のターンの損益の合計: {{ total }}{% endblocktranslate %}</p>
+</section>
+
+<section class="panel" id="book-detail" hidden data-url="{% url 'api_facility_book' island.id 0 %}"
+         data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
+  <div class="section-head">
+    <h2 data-slot="title">{% translate "帳簿の推移" %}</h2>
+    {% include "web/chart_range.html" %}
+  </div>
+  <div class="charts">
+    <figure class="chart" data-chart="flows"><figcaption>{% translate "収支（1ターン）" %}</figcaption></figure>
+    <figure class="chart" data-chart="balance"><figcaption>{% translate "預金・借入・在庫の値打ち" %}</figcaption></figure>
+  </div>
+  <div data-slot="table" class="table-scroll"></div>
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>{% translate "国全体の施設の統計" %}</h2>
+  {% if stats %}
+  <table class="info">
+    {% for row in stats %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">{% translate "未集計です。" %}</p>
+  {% endif %}
+  <div class="section-head">
+    <h3>{% translate "推移" %}</h3>
+    {% include "web/chart_range.html" %}
+  </div>
+  <div class="charts" id="charts" data-url="{% url 'api_island_economy' island.id %}"
+       data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
+    <figure class="chart" data-names="{{ chart_names }}"><figcaption>{% translate "施設の数" %}</figcaption></figure>
+    <figure class="chart" data-names="profit"><figcaption>{% translate "施設の損益の合計（1ターン）" %}</figcaption></figure>
+  </div>
+</section>
+
+<script type="module" src="{% static 'js/reports/facilities.js' %}"></script>
+{% endblock %}

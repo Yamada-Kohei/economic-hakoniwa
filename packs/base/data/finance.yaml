@@ -42,6 +42,7 @@ deposit_cut:          {type: journal}   # 保護されない預金の切り捨�
 interbank_loss:       {type: journal}   # 破綻した銀行に貸したお金の切り捨て
 # 補助金と国有化
 subsidy:              {type: journal}   # 補助金（政府 → 施設）
+subsidy_refund:       {type: journal}   # 補助金の返還（やめた民営の工事 → 政府）
 nationalization:      {type: journal}   # 国有化の買い取り（政府 → 持ち主）
 privatization:        {type: journal}   # 民営化の売却（買い手 → 政府）
 # 国債

@@ -154,7 +154,11 @@ class StatRecord(models.Model):
 
     class Meta:
         verbose_name = verbose_name_plural = "統計"
-        indexes = [models.Index(fields=["island", "turn"])]
+        indexes = [
+            models.Index(fields=["island", "turn"]),
+            # 統計の画面とその API で、指標ごとの系列（ターンの範囲）を引くため
+            models.Index(fields=["island", "name", "turn"]),
+        ]
 
     def __str__(self) -> str:
         return f"{self.island} ターン {self.turn} {self.name}"

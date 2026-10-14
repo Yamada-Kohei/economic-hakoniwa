@@ -1,11 +1,14 @@
-"""国土の命令: 送電線を引く、開発を止めるマスの指定と解除。"""
+"""国土の命令: 送電線を引く（送電網の工事。フェーズ2-3 から資材と工期が要る）、開発を止めるマスの
+指定と解除。"""
 
 from __future__ import annotations
 
 from typing import Any
 
+from hakoniwa_core import infra
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.facilities import is_land
+from hakoniwa_core.modules.infrastructure import lay
 from hakoniwa_core.registry import OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import ZONE_NO_DEVELOPMENT, ZONE_NONE, IslandState, LogEntry
 from hakoniwa_core.turn.context import StageContext
@@ -21,19 +24,19 @@ def _check_land_tiles(island: IslandState, payload: dict[str, Any], defs: Defs) 
 
 def check_power_line(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
     _check_land_tiles(island, payload, defs)
-    if all(island.tile(x, y).power_line for x, y in payload["tiles"]):
+    kind = infra.power_kind(defs)
+    if all(
+        infra.level(island.tile(x, y), kind) >= infra.FULL or infra.queued(island, kind, x, y)
+        for x, y in payload["tiles"]
+    ):
         raise OrderFailed("reason_already_done")
 
 
 def build_power_line(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
-    """送電線を引く。施設や住宅のマスは、それだけで送電網の一部になる（線は要らない）。"""
-    count = 0
-    for x, y in payload["tiles"]:
-        tile = island.tile(x, y)
-        if not tile.power_line:
-            tile.infra["power"] = 1
-            count += 1
-    island.log.append(LogEntry("power_line_built", {"count": count}))
+    """送電線を引く: 送電網の工事を列に並べる（命令 build_infrastructure の送電網と同じ）。
+    施設や住宅のマスは、それだけで送電網の一部になる（線は要らない）。"""
+    kind = infra.power_kind(ctx.defs)
+    lay(island, ctx.defs, kind, [(x, y) for x, y in payload["tiles"]])
 
 
 def set_no_development(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:

@@ -13,6 +13,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.allocation import by_priority, proportional
 from hakoniwa_core.economy import BONDS, GENERAL, Payer, debt, freight, funds, household
+from hakoniwa_core.economy.households import set_workers
 from hakoniwa_core.economy.prices import initial_prices, variable_profit
 from hakoniwa_core.economy.start import init_facility, start_economy
 from hakoniwa_core.game import load_game
@@ -77,10 +78,26 @@ def add(island, kind, x, y, built=True, recipe="default", stock=None, **kw) -> F
     return f
 
 
-def with_economy(game, island) -> IslandState:
-    """置いた施設と住民で、お金の経済を始める（首都の近くに銀行、マスを持たない運送業が増える）。"""
+def with_economy(game, island, groundwork=False) -> IslandState:
+    """置いた施設と住民で、お金の経済を始める（首都の近くに銀行、マスを持たない運送業が増える）。
+
+    groundwork が False なら、フェーズ2-3 の基盤のうち学校と技術者を外す（雇用と予算の数を
+    手作りの島の施設だけで確かめるため）。道路と教育水準は、生産性の係数が 1 になる初めの値のまま。
+    """
     start_economy(island, game.defs, game.config, 0)
+    if not groundwork:
+        school = game.config.get("education.start_school")
+        island.facilities = [f for f in island.facilities if f.kind != school]
+        set_workers(island, game.defs, fac.ENGINEER, 0)
     return island
+
+
+def without_roads(island) -> None:
+    """マスの交通のインフラを外す（運賃の道のりを1マス1で確かめるため）。"""
+    for tile in island.tiles:
+        for kind in ("road", "rail"):
+            tile.infra.pop(kind, None)
+    freight.forget(island)  # 置いたときに計算したマスの重さを捨てる
 
 
 def home(game, island, x, y, population, level="town") -> Facility:
@@ -155,7 +172,7 @@ def test_power_market_serves_by_priority_and_needs_grid(game):
     low = add(island, "machinery_plant", 6, 5, stock={"steel": 4000}, priority=1)  # 4 使う
     home(game, island, 11, 11, 2000, level="village")
     cut_off = add(island, "mine", 11, 10, recipe="iron_ore")  # 発電所の送電網とつながっていない
-    with_economy(game, island)
+    with_economy(game, island, groundwork=True)  # 機械工場の技術者がそろっている
     run(game, island, ["employment", "production"])
     assert plant.operating_rate == 100
     assert island.stats["power.capacity"] == 3
@@ -541,6 +558,7 @@ def test_sites_are_funded_by_priority_and_show_why_they_wait(game):
     first = add(island, "food_factory", 6, 6, built=False)  # 建材 10 を 3 ターンで
     urgent = add(island, "food_factory", 7, 6, built=False, priority=9)
     with_economy(game, island)
+    without_roads(island)  # 道路の維持の資材が、先に公共事業費を使わないように
     # 国庫には、優先度の高い工事の1ターン分の建材を、指値（値幅の上端）と運賃で買えるだけ残す
     step = fac.step_materials(game.defs, urgent)["building_materials"]
     limit = auction.band(island.economy.prices["building_materials"], 1000)[1]
@@ -573,6 +591,7 @@ def test_urgent_site_materials_come_before_other_sites_wages(game):
     other = add(island, "food_factory", 6, 6, built=False)  # 資材がそろっていて、全員を雇いたい
     urgent = add(island, "food_factory", 7, 6, built=False, priority=9)  # 資材がない
     with_economy(game, island)
+    without_roads(island)  # 道路の維持の作業員と資材が、先に公共事業費を使わないように
     for good, qty in fac.step_materials(game.defs, other).items():
         stock.add(other.stock, good, qty, 0, game.defs.goods)
     seller.economy["sales"] = {"building_materials": [20_000, 0, 0]}  # 前のターンに売りに出た量
@@ -669,6 +688,7 @@ def freight_island(game):
     near = add(island, "lumber_camp", 5, 7)
     goods = add(island, "consumer_goods_factory", 6, 7, recipe="wood")
     with_economy(game, island)
+    without_roads(island)
     return island, far, plant, near, goods
 
 

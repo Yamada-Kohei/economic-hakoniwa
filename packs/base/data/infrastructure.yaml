@@ -1,0 +1,14 @@
+# インフラの種類（フェーズ2-3）。マスごとに整備度（0〜100%）で持ちます（hakoniwa_core/infra.py）。
+# 数値は案で、一括シミュレーションで調整します。
+# materials: 1マスを 0% から 100% にするのに要る資材（量は小数も書けます）
+# fallback: 島で materials の財を作れないときに代わりに使う資材（石材のない島の道路など）
+# labor: 1マスを 0% から 100% にするのに要る人手（人・ターン）
+# turns: 工期（1マスを 100% にするのに少なくともかかるターン数）
+# wear: 1ターンに下がる整備度（0.004 で 0.4%）
+# role: transport（道のりを短くし、インフラの係数の L に入る）、water（上下水道）、power（送電網）
+# path: 整備度 100% のときに、マスを越える道のりの重さ（transport だけ。1 で短くならない）
+# grid: この整備度以上のマスが送電網になる（power だけ）
+road:  {role: transport, materials: {stone: 2, building_materials: 1}, fallback: {building_materials: 3}, labor: 100, turns: 1, wear: 0.004, path: 0.5}
+rail:  {role: transport, materials: {steel: 2, building_materials: 2}, labor: 200, turns: 2, wear: 0.003, path: 0.3}
+water: {role: water, materials: {building_materials: 2, steel: 0.5}, fallback: {building_materials: 3}, labor: 150, turns: 2, wear: 0.003}
+power: {role: power, materials: {wood: 1, steel: 0.5}, fallback: {wood: 2, building_materials: 0.5}, labor: 50, turns: 1, wear: 0.003, grid: 0.3}

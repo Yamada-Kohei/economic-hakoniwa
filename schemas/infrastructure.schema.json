@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "インフラの種類 infrastructure.yaml の1項目（道路・鉄道・上下水道・送電網など）",
+  "type": "object",
+  "required": ["role", "materials", "labor", "turns", "wear"],
+  "additionalProperties": false,
+  "$defs": {
+    "amounts": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {"type": "number", "minimum": 0},
+      "description": "財の名前と量。量は 2.5 のように小数も書ける（内部では 1000 分の 1 単位の整数）"
+    }
+  },
+  "properties": {
+    "role": {"enum": ["transport", "water", "power"], "description": "効き目の種類: transport（道のりとインフラの係数）、water（幸福度と町の育ち方）、power（送電網）"},
+    "materials": {"$ref": "#/$defs/amounts", "description": "1マスを 0% から 100% にするのに要る資材"},
+    "fallback": {"$ref": "#/$defs/amounts", "description": "島で materials の財を作れないときに代わりに使う資材"},
+    "labor": {"type": "integer", "minimum": 0, "description": "1マスを 0% から 100% にするのに要る人手（人・ターン）"},
+    "turns": {"type": "integer", "minimum": 1, "description": "工期（1マスを 100% にするのに少なくともかかるターン数）"},
+    "wear": {"type": "number", "minimum": 0, "maximum": 1, "description": "1ターンに下がる整備度（0.004 で 0.4%）"},
+    "path": {"type": "number", "exclusiveMinimum": 0, "maximum": 1, "description": "整備度 100% のときに、マスを越える道のりの重さ（transport だけ）"},
+    "grid": {"type": "number", "minimum": 0, "maximum": 1, "description": "この整備度以上のマスが送電網になる（power だけ）"},
+    "override": {"const": true}
+  }
+}

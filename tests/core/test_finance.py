@@ -205,8 +205,17 @@ def test_arrears_bankrupt_private_facility(game, warmed):
     loan.repay_from = world.turn  # 返せない額の元金が、このターンから返す時期に入る
     game.engine.run_turn(world)
     assert any(e.kind == "facility_bankrupt" for e in island.log)
-    assert f.economy["foreclosed"]["bank"] == bank
-    assert f.workers == 0 and banks.debt_of(island, entity) == 0
+    # 差し押さえた銀行が持つか、同じターンに買い手が見つかって売れる
+    sold = any(
+        e.kind == "foreclosure_sold" and (e.args["x"], e.args["y"]) == (f.x, f.y)
+        for e in island.log
+    )
+    assert sold or f.economy["foreclosed"]["bank"] == bank
+    assert f.workers == 0
+    # 返せなかった融資は消える（売れたなら、残る借入は買い手が買うために借りた分だけ）
+    left = banks.loans_by_borrower(island, entity)
+    assert all(x.id != loan.id for x in left)
+    assert sold or banks.debt_of(island, entity) == 0
 
 
 # --- 銀行の破綻処理 ---------------------------------------------------------------
@@ -384,10 +393,12 @@ def test_entry_waits_while_inputs_are_short():
     settings = {"entry_gap": 0.5, "shortage_turns": 3}
     recipe = {"inputs": {"iron_ore": 2000}, "outputs": {"steel": 1000}}
     # 原料が、新しい工場の使う量の半分以上足りないターンが続けば建たない
-    assert EntryExit._inputs_short(recipe, {"iron_ore": [1500] * 3 + [0] * 3}, settings)
-    assert not EntryExit._inputs_short(recipe, {"iron_ore": [1500] * 2 + [0] * 4}, settings)
-    assert not EntryExit._inputs_short(recipe, {"iron_ore": [500] * 6}, settings)
-    assert not EntryExit._inputs_short(recipe, {}, settings)
+    assert EntryExit._inputs_short(recipe, {"iron_ore": [1500] * 3 + [0] * 3}, settings) == (
+        "iron_ore"
+    )
+    assert EntryExit._inputs_short(recipe, {"iron_ore": [1500] * 2 + [0] * 4}, settings) is None
+    assert EntryExit._inputs_short(recipe, {"iron_ore": [500] * 6}, settings) is None
+    assert EntryExit._inputs_short(recipe, {}, settings) is None
 
 
 def test_entry_needs_spare_input_when_its_source_is_capped(game):
@@ -407,12 +418,12 @@ def test_entry_needs_spare_input_when_its_source_is_capped(game):
         )
 
     # 今ある工場が全力で使うと、空きが新しい工場の使う量の半分に足りない
-    assert capped(11500, [8000] * 6)
-    assert not capped(8000, [8000] * 6)
+    assert capped(11500, [8000] * 6) == "iron_ore"
+    assert capped(8000, [8000] * 6) is None
     # 買いたい量が全力の使う量より多ければ、買いたい量で見る
-    assert capped(8000, [11500] * 6)
+    assert capped(8000, [11500] * 6) == "iron_ore"
     # 原料を作る施設を増やせるなら建つ（品切れになれば、そちらが参入する）
-    assert not capped(11500, [8000] * 6, expandable=True)
+    assert capped(11500, [8000] * 6, expandable=True) is None
 
 
 def test_construction_loan_is_split_across_banks_within_the_limit(game, warmed):
@@ -426,15 +437,18 @@ def test_construction_loan_is_split_across_banks_within_the_limit(game, warmed):
     assert len(active) >= 2
     limits = {b: banks.exposure_limit(island, config, b, ctx.turn) for b in active}
     owners = funds.available(island, Payer(household(OWNERS)))
-    amount = sum(limits.values()) * 2
-    assert amount - sum(limits.values()) <= owners  # 試験の前提: 資産を持つ層が残りを出せる
+    # 銀行が貸せる上限の合計を超え、資産を持つ層が残りを出せる額
+    amount = sum(limits.values()) + min(sum(limits.values()), owners)
     plan = EntryExit()._finance(island, ctx, amount, 10**12)
-    assert plan is not None and len(plan) == len(active)
+    assert isinstance(plan, list) and len(plan) == len(active)
     for bank, loan, _ in plan:
         assert 0 < loan <= limits[bank]
     loan = sum(x for _, x, _ in plan)
     assert amount - loan >= amount * config.get("firms.equity_share")
-    assert EntryExit()._finance(island, ctx, (owners + loan) * 2, 10**12) is None
+    reason, args = EntryExit()._finance(island, ctx, (owners + loan) * 2, 10**12)
+    assert reason == "owners_short" and args["have"] == owners
+    # 利益で返せなければ審査に通らない
+    assert EntryExit()._finance(island, ctx, amount, 0)[0] == "loan_refused"
 
 
 def test_private_entry_happens_only_where_allowed(game, warmed):
@@ -450,9 +464,9 @@ def test_private_entry_happens_only_where_allowed(game, warmed):
     assert entered["market"] + entered["mixed"] > 0
 
 
-def test_private_site_without_materials_is_abandoned(game, warmed):
-    """資材を買えずに firms.abandon_turns ターン進まない民営の工事はやめ、建設資金を預金で返して、
-    残りを出資者に返す。"""
+def test_stalled_private_site_is_abandoned(game, warmed):
+    """わけを問わず firms.abandon_turns ターン進まない民営の工事はやめ、先に受け取った設備投資補助を
+    政府に返し、建設資金を預金で返して、残りを出資者に返す。"""
     world = copy.deepcopy(warmed)
     island = island_of(world, "market")
     ctx = context(game, world)
@@ -473,11 +487,17 @@ def test_private_site_without_materials_is_abandoned(game, warmed):
         owner=OWNER_PRIVATE,
         accounting=ACCOUNTING_SELF,
         economy={"capital": 0},
-        ext={"private_entry": True, "no_materials_turns": game.config.get("firms.abandon_turns")},
+        ext={
+            "private_entry": True,
+            "stalled_turns": game.config.get("firms.abandon_turns"),
+            "subsidy_paid": 2000,
+        },
     )
     island.facilities.append(site)
     entity = facility_entity(site.id)
     invest(island, household(OWNERS), entity, 3000)
+    ledger.pay(island, ledger.GOV, entity, 2000, "subsidy")
+    treasury = ledger.money(island, ledger.GOV)
     bank = banks.active_banks(island)[0]
     banks.lend(island, bank, entity, 7000, banks.CONSTRUCTION, 120, ctx.turn, 500, 10**9)
     owners = ledger.money(island, household(OWNERS))
@@ -487,6 +507,7 @@ def test_private_site_without_materials_is_abandoned(game, warmed):
     assert banks.loans_by_borrower(island, entity) == []
     assert ledger.money(island, entity) == 0
     assert ledger.money(island, household(OWNERS)) >= owners + 3000
+    assert ledger.money(island, ledger.GOV) == treasury + 2000
     books_ok(game, island)
 
 

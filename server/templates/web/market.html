@@ -1,0 +1,73 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+{% include "web/report_header.html" %}
+
+<section class="panel">
+  <h2>{% if market_turn is not None %}{% blocktranslate with turn=market_turn %}財ごとの市場（ターン {{ turn }}）{% endblocktranslate %}{% else %}{% translate "財ごとの市場" %}{% endif %}</h2>
+  {% if rows %}
+  <div class="table-scroll">
+    <table class="goods market-table">
+      <thead><tr>
+        <th>{% translate "資源" %}</th><th>{% translate "値段（1単位）" %}</th><th>{% translate "前ターン比" %}</th>
+        <th>{% translate "売買量" %}</th><th>{% translate "買い注文" %}</th><th>{% translate "売り注文" %}</th>
+        <th>{% translate "買えなかった量" %}</th><th>{% translate "生産量" %}</th><th>{% translate "国の倉庫" %}</th><th>{% translate "単位" %}</th>
+      </tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr data-good="{{ r.good }}"{% if r.good == good %} class="chosen"{% endif %}>
+          <td><a href="?good={{ r.good }}" data-good-link="{{ r.good }}">{{ r.name }}</a></td>
+          <td>{{ r.price|default:"-" }}</td><td>{{ r.change|default:"" }}</td>
+          <td>{{ r.volume|default:"-" }}</td><td>{{ r.demand|default:"-" }}</td><td>{{ r.supply|default:"-" }}</td>
+          <td{% if r.unmet %} class="warning-cell"{% endif %}>{{ r.unmet|default:"" }}</td>
+          <td>{{ r.production }}</td><td>{{ r.stock }}</td><td>{{ r.unit }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="hint">{% translate "買い注文・売り注文は、そのターンに買いたかった量と売りたかった量の合計です（値段が折り合わず約定しなかった分を含みます）。資源名を押すと推移を表示します。" %}</p>
+  {% else %}
+  <p class="muted">{% translate "記録がありません。" %}</p>
+  {% endif %}
+</section>
+
+{% if good %}
+<section class="panel" id="market-detail" data-good="{{ good }}" data-mine="{{ mine|yesno:'1,0' }}"
+         data-url="{% url 'api_island_market' island.id 'GOOD' %}" data-island-url="{% url 'island' island.id %}"
+         data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
+  <div class="section-head">
+    <h2 data-slot="title">{% translate "資源の推移" %}</h2>
+    {% include "web/chart_range.html" %}
+  </div>
+  <div class="charts">
+    <figure class="chart" data-chart="price"><figcaption>{% translate "値段（1単位）" %}</figcaption></figure>
+    <figure class="chart" data-chart="volume"><figcaption>{% translate "売買量と注文の量" %}</figcaption></figure>
+  </div>
+  <div data-slot="latest"></div>
+  {% if mine %}
+  <h3>{% translate "直近のターンの約定（買い手と売り手の組ごと）" %}</h3>
+  <div data-slot="trades" class="table-scroll"><p class="muted">{% translate "読み込み中…" %}</p></div>
+  <h3>{% translate "この資源を買えずに止まった施設" %}</h3>
+  <div data-slot="short"></div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if mine %}
+<section class="panel">
+  <h2>{% translate "原料を買えずに止まった施設" %}</h2>
+  {% if short %}
+  <ul class="plain-list">
+    {% for f in short %}
+    <li><a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a> ・ {{ f.status_text }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">{% translate "ありません。" %}</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<script type="module" src="{% static 'js/reports/market.js' %}"></script>
+{% endblock %}

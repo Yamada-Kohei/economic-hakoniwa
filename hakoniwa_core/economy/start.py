@@ -2,7 +2,8 @@
 
 1. 初めの値段をレシピから解き（economy/prices.py）、政策を game.yaml の既定にする。
 2. 家計の層を作り、首都の近くにオフィス街を指定して銀行を置き（混合経済は国営と民間の2つ）、
-   運送業（マスを持たない）を置く。
+   運送業（マスを持たない）を置く。生産の基盤（インフラ・教育・技術者）の初めの値を置く
+   （economy/groundwork.py）。
 3. 施設ごとに賃金・希望価格・操業目標・設備の額（建設費）を決める。
 4. お金を仕訳の列として作る（最初のターンから帳簿の確かめが通るように）:
    1. 政府が建国の国債を出し、中央銀行が引き受ける（国庫が増える）。
@@ -24,6 +25,7 @@ from hakoniwa_core.economy import (
     default_accounting,
     facility_entity,
     funds,
+    groundwork,
     household,
     is_bank,
     is_self_supporting,
@@ -98,6 +100,7 @@ def start_economy(
             f.accounting = ACCOUNTING_TREASURY  # フェーズ1の島の中央省庁など
         init_facility(island, defs, config, f, prices, wage)
     economy.banks = [b.id for b in placed]
+    groundwork.prepare(island, defs, config)
     economy.finance["version"] = FINANCE_VERSION
     _open_money(island, defs, config, placed, prices, wage, turn)
     island.log.append(LogEntry("economy_started", {}))
@@ -141,7 +144,7 @@ def operating_cost(
     """全力で1ターン動いたときの支払い（賃金・投入財・電気代・運賃）。"""
     power = config.get("power.good")
     recipe = fac.recipe_of(defs, f)
-    total = wage * fac.workers_needed(defs, f.kind)
+    total = fac.labor_cost(defs, config, f.kind, wage, f)
     for good, qty in recipe["inputs"].items():
         amount = money_of(prices.get(good, 0), qty)
         total += amount if good == power else amount + part(amount, freight)

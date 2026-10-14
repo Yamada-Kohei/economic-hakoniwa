@@ -37,6 +37,11 @@ def _milli_map(amounts: Mapping[str, float]) -> dict[str, int]:
 
 def _normalize_facility(entry: dict[str, Any]) -> dict[str, Any]:
     entry = dict(entry)
+    # 労働者: workers は合計の人数にそろえ、種類ごとの人数を staff に残す（数だけなら一般）
+    workers = entry["workers"]
+    staff = dict(workers) if isinstance(workers, Mapping) else {"general": workers}
+    entry["workers"] = sum(staff.values())
+    entry["staff"] = staff
     construction = dict(entry["construction"])
     construction["materials"] = _milli_map(construction.get("materials", {}))
     entry["construction"] = construction
@@ -45,6 +50,7 @@ def _normalize_facility(entry: dict[str, Any]) -> dict[str, Any]:
             **recipe,
             "inputs": _milli_map(recipe.get("inputs", {})),
             "outputs": _milli_map(recipe.get("outputs", {})),
+            "factors": dict(recipe.get("factors", entry.get("factors", {}))),
         }
         for name, recipe in entry["recipes"].items()
     }
@@ -54,6 +60,14 @@ def _normalize_facility(entry: dict[str, Any]) -> dict[str, Any]:
 def _normalize_settlement(entry: dict[str, Any]) -> dict[str, Any]:
     entry = dict(entry)
     entry["materials"] = _milli_map(entry.get("materials", {}))
+    return entry
+
+
+def _normalize_infrastructure(entry: dict[str, Any]) -> dict[str, Any]:
+    entry = dict(entry)
+    entry["materials"] = _milli_map(entry.get("materials", {}))
+    if "fallback" in entry:
+        entry["fallback"] = _milli_map(entry["fallback"])
     return entry
 
 
@@ -72,6 +86,10 @@ def _goods(
 
 
 def _check_facility(fid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator[Problem]:
+    for kind in entry["staff"]:
+        if kind not in tables["workers"]:
+            message = f"労働者の種類 {kind} は定義されていません"
+            yield ("facilities", fid, ("workers", kind), message)
     for i, terrain in enumerate(entry["terrain"]):
         if terrain not in tables["terrain"]:
             yield ("facilities", fid, ("terrain", i), f"地形 {terrain} は定義されていません")
@@ -90,6 +108,15 @@ def _check_facility(fid: str, entry: Mapping[str, Any], tables: Tables) -> Itera
 
 def _check_settlement(sid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator[Problem]:
     yield from _goods("settlements", sid, ("materials",), entry.get("materials", {}), tables)
+
+
+def _check_infrastructure(iid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator[Problem]:
+    for key in ("materials", "fallback"):
+        yield from _goods("infrastructure", iid, (key,), entry.get(key, {}), tables)
+    if "path" in entry and entry["role"] != "transport":
+        yield ("infrastructure", iid, ("path",), "path は role: transport のときだけ書けます")
+    if "grid" in entry and entry["role"] != "power":
+        yield ("infrastructure", iid, ("grid",), "grid は role: power のときだけ書けます")
 
 
 def _check_order(oid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator[Problem]:
@@ -172,6 +199,12 @@ KINDS: dict[str, KindSpec] = {
             check=_check_settlement,
         ),
         KindSpec("workers", "workers.schema.json"),
+        KindSpec(
+            "infrastructure",
+            "infrastructure.schema.json",
+            normalize=_normalize_infrastructure,
+            check=_check_infrastructure,
+        ),
         KindSpec("regimes", "regimes.schema.json", check=_check_regime),
         KindSpec(
             "start_island",

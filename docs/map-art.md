@@ -48,6 +48,8 @@ sprites:
 | `facility/consumer_goods_factory` | 消費財工場 | 2 段・平地 |
 | `facility/government_office` | 中央省庁 | 3 段・平地 |
 | `facility/bank` | 銀行 | 2.5 段・平地 |
+| `facility/school` | 学校 | 2 段・平地 |
+| `facility/university` | 大学 | 3 段・平地 |
 | `housing/village` | 村 | 1 段 |
 | `housing/town` | 町 | 2 段 |
 | `housing/city` | 都市 | 4 段 |

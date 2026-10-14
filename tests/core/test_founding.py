@@ -148,7 +148,9 @@ def test_owner_follows_economy(game, economy, state_kinds):
     for f in island.facilities:
         if f.kind in ("housing", "bank", "transport"):  # 銀行と運送業は体制ごとの別の決まり
             continue
-        expected = OWNER_STATE if state_kinds is None or f.kind in state_kinds else OWNER_PRIVATE
+        public = game.defs.facilities[f.kind].get("public_service")  # 学校はいつも国営
+        state = state_kinds is None or f.kind in state_kinds or public
+        expected = OWNER_STATE if state else OWNER_PRIVATE
         assert f.owner == expected, f.kind
         if game.defs.facilities[f.kind].get("public_service"):
             assert f.accounting == ACCOUNTING_TREASURY  # 公務員の施設はいつも国庫直轄

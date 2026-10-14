@@ -26,6 +26,13 @@ firms.foreclosure_turns ターンの間、帳簿の設備の値打ちの firms.f
 引き継ぎと清算の損失（資産が負債に足りない分）は、保護されない預金（銀行ごとに上限額を超えた分）と、
 破綻した銀行に貸していた銀行の貸し出しが、同じ割合で負う（破綻が連鎖することがある）。それでも足りない
 分は政府が払う（預金保険）。政府のお金が足りなければ国債を出し、それでも足りなければ保護される預金も削る。
+
+引き継ぐ健全な銀行がない島（銀行が1つなど）で引き継ぎか清算を選ぶと、政府が銀行を引き取り、出資を
+消して、損失を同じ順番（保護されない預金と銀行間の貸し手、預金保護、保護される預金）で負わせて立て直す
+（resolve_in_place）。
+
+救済と預金保護に国庫から出すのは、次のターンの優先度の高い支払いを残した額まで（rescue_room）。
+救済で債務超過を埋めきれなければ、残りは預金の切り捨てで埋める。
 """
 
 from __future__ import annotations
@@ -89,12 +96,12 @@ class Failures(IslandStage):
                 continue  # このターンに破綻した: 次のターンまでプレイヤーの命令を待つ
             others = [b for b in banks.healthy_banks(island, ctx.config, ctx.turn) if b != bank]
             able = [b for b in others if _can_absorb(island, ctx, b, bank)]
-            if method in (TRANSFER, LIQUIDATION) and not others:
-                method = None
             if method is None:
                 method = TRANSFER if able else BAILOUT
             if method == BAILOUT:
                 bailout(island, ctx, bank)
+            elif not others:  # 引き継ぐ銀行がない: 政府が引き取り、預金の切り捨てで立て直す
+                resolve_in_place(island, ctx, bank)
             else:
                 target = (able or others)[0]
                 transfer(island, ctx, bank, target, liquidation=method == LIQUIDATION)
@@ -167,26 +174,117 @@ def close_foreclosure(island: IslandState, f: Facility) -> None:
 # --- 銀行の破綻処理 ---------------------------------------------------------------
 
 
+def rescue_room(island: IslandState, ctx: StageContext) -> int:
+    """国庫から銀行の救済と預金保護に出せる額。
+
+    救済は支出の項目の外なので、次のターンの優先度の高い支払い（fiscal.payment_order で
+    fiscal.rescue_after までの項目の、このターンに使った額と、次のターンの国債の利払い）を国庫に
+    残す。残さないと、国債の不履行の後のように、救済が毎ターン国庫を空にして公務員を雇えず、
+    利払いもできずに不履行が続く。
+    """
+    from hakoniwa_core.economy import BONDS
+    from hakoniwa_core.economy.debt import due
+
+    fiscal = ctx.config.get("fiscal")
+    order = list(fiscal["payment_order"])
+    last = fiscal.get("rescue_after")
+    items = order[: order.index(last) + 1] if last in order else []
+    spent = funds.spent(island)
+    keep = sum(spent.get(item, 0) for item in items if item != BONDS)
+    if BONDS in items:
+        keep += due(island, ctx.turn + 1, redemptions=False)
+    margin = to_basis(fiscal["reserve_margin"])
+    keep += part(keep, margin)
+    return max(0, funds.available(island, Payer(ledger.GOV)) - keep)
+
+
 def _government_pays(
     island: IslandState, ctx: StageContext, target: str, amount: int, kind: str
 ) -> int:
-    """政府が target に amount を払う（足りなければ国債を出す）。払えた額を返す。"""
+    """政府が target に amount を払う（国庫に出せる額が足りなければ国債を出す）。払えた額を返す。"""
     from hakoniwa_core.modules.bonds import Bonds
 
     if amount <= 0:
         return 0
-    payer = Payer(ledger.GOV)
-    short = amount - funds.available(island, payer)
+    short = amount - rescue_room(island, ctx)
     if short > 0:
         Bonds().raise_funds(island, ctx, short, "bonds_issued")
-    paid = min(amount, funds.available(island, payer))
-    funds.pay(island, payer, target, paid, kind)
+    paid = min(amount, rescue_room(island, ctx))
+    funds.pay(island, Payer(ledger.GOV), target, paid, kind)
     return paid
+
+
+def _cut_deposit(island: IslandState, bank: str, entity: str, amount: int) -> None:
+    ledger.post(
+        island,
+        ledger.issued(bank, ledger.DEPOSIT),
+        ledger.account(entity, ledger.DEPOSIT, bank),
+        amount,
+        "deposit_cut",
+    )
+
+
+def _cut_uninsured(island: IslandState, bank: str, loss: int) -> int:
+    """損失 loss を、保護されない預金（預金者ごとに上限額を超えた分）と、bank に貸していた銀行の
+    貸し出しが同じ割合で負う（破綻が連鎖することがある）。削った額を返す。"""
+    if loss <= 0:
+        return 0
+    depositors = banks.depositors_of(island, bank)
+    uninsured = {e: v - banks.layer_deposit_insured(island, e, v) for e, v in depositors.items()}
+    lenders = {
+        ledger.parse(name)[0]: value
+        for name, value in sorted(island.accounts.items())
+        if ledger.parse(name)[1:] == (ledger.INTERBANK, bank) and value > 0
+    }
+    exposed = sum(uninsured.values()) + sum(lenders.values())
+    if exposed <= 0:
+        return 0
+    ratio = min(1.0, loss / exposed)
+    total = 0
+    for entity, amount in sorted(uninsured.items()):
+        cut = int(amount * ratio)
+        if cut > 0:
+            _cut_deposit(island, bank, entity, cut)
+            total += cut
+    for lender, amount in sorted(lenders.items()):
+        cut = int(amount * ratio)
+        if cut > 0:
+            ledger.cancel(island, lender, ledger.INTERBANK, bank, cut, "interbank_loss")
+            books.add(island, banks.bank_number(lender), books.WRITE_OFF, cut)
+            total += cut
+    return total
+
+
+def _cut_all(island: IslandState, bank: str, amount: int) -> int:
+    """政府も払えない損失 amount を、残りの預金（保護される分も）から額の割合で削る。"""
+    if amount <= 0:
+        return 0
+    remaining = banks.depositors_of(island, bank)
+    total = sum(remaining.values())
+    done = 0
+    for entity, value in sorted(remaining.items()):
+        cut = min(value, -(-amount * value // max(1, total)))
+        cut = min(cut, amount - done)
+        if cut > 0:
+            _cut_deposit(island, bank, entity, cut)
+            done += cut
+    return done
+
+
+def _bail_in(island: IslandState, bank: str, hole: int) -> int:
+    """国庫で埋めきれない債務超過 hole を、預金の切り捨てで埋める（保護されない預金と銀行間の
+    貸し手から、足りなければ保護される預金も）。削った額を返す。"""
+    cut = _cut_uninsured(island, bank, hole)
+    return cut + _cut_all(island, bank, hole - cut)
 
 
 def bailout(island: IslandState, ctx: StageContext, bank: str) -> None:
     """救済: 政府が自己資本を目安（banks.capital_target）まで注入し、国営銀行として残す
-    （返ってこないおそれの大きい融資は安く見る。banks.impaired_discount）。"""
+    （返ってこないおそれの大きい融資は安く見る。banks.impaired_discount）。
+
+    国庫に出せる額（rescue_room）と国債で集めた額で債務超過を埋めきれなければ、残りは預金の
+    切り捨てで埋める（債務超過のまま残して、次のターンにまた破綻しないように）。
+    """
     f = banks.facility_of(island, bank)
     assert f is not None
     config = ctx.config
@@ -198,10 +296,43 @@ def bailout(island: IslandState, ctx: StageContext, bank: str) -> None:
     paid = _government_pays(island, ctx, bank, want, "bank_bailout")
     if paid > 0:
         ledger.create(island, ledger.GOV, ledger.EQUITY, bank, paid, "bank_bailout")
+    cut = _bail_in(island, bank, -(worth + paid))
     f.owner = OWNER_STATE
     f.economy.pop("failed", None)
     f.economy.pop("liquidity_failure", None)
     island.log.append(LogEntry("bank_bailed_out", {"x": f.x, "y": f.y, "amount": paid}))
+    if cut > 0:
+        island.log.append(LogEntry("bank_bailed_in", {"x": f.x, "y": f.y, "cut": cut}))
+
+
+def resolve_in_place(island: IslandState, ctx: StageContext, bank: str) -> None:
+    """引き継ぐ銀行のない島の引き継ぎ・清算: 政府が銀行を引き取り、出資を消して、損失を保護され
+    ない預金と銀行間の貸し手、預金保護（国庫）、保護される預金の順に負わせて立て直す。資金繰りの
+    破綻なら、足りない準備預金も政府が出資する。救済と違い、自己資本の目安までは入れない。"""
+    f = banks.facility_of(island, bank)
+    assert f is not None
+    config = ctx.config
+    worth = banks.net_worth(island, config, bank, ctx.turn)
+    worth -= banks.impaired_discount(island, config, bank)
+    loss = max(0, -worth)
+    _cancel_equity(island, bank)
+    cut = _cut_uninsured(island, bank, loss)
+    cover = loss - cut
+    paid = _government_pays(island, ctx, bank, cover, "deposit_insurance")
+    cut += _cut_all(island, bank, cover - paid)
+    liquidity = max(0, -banks.excess_reserves(island, config, bank))
+    injected = _government_pays(island, ctx, bank, liquidity, "bank_bailout")
+    if injected > 0:
+        ledger.create(island, ledger.GOV, ledger.EQUITY, bank, injected, "bank_bailout")
+    f.owner = OWNER_STATE
+    f.economy.pop("failed", None)
+    f.economy.pop("liquidity_failure", None)
+    island.log.append(
+        LogEntry(
+            "bank_resolved_in_place",
+            {"x": f.x, "y": f.y, "cut": cut, "insurance": paid + injected},
+        )
+    )
 
 
 def transfer(
@@ -219,50 +350,10 @@ def transfer(
     else:
         worth -= banks.impaired_discount(island, config, bank)
     loss = max(0, -worth)
-    depositors = banks.depositors_of(island, bank)
-    uninsured = {e: v - banks.layer_deposit_insured(island, e, v) for e, v in depositors.items()}
-    lenders = {
-        ledger.parse(name)[0]: value
-        for name, value in sorted(island.accounts.items())
-        if ledger.parse(name)[1:] == (ledger.INTERBANK, bank) and value > 0
-    }
-    exposed = sum(uninsured.values()) + sum(lenders.values())
-    cut_total = 0
-    if loss > 0 and exposed > 0:
-        ratio = min(1.0, loss / exposed)
-        for entity, amount in sorted(uninsured.items()):
-            cut = int(amount * ratio)
-            if cut > 0:
-                ledger.post(
-                    island,
-                    ledger.issued(bank, ledger.DEPOSIT),
-                    ledger.account(entity, ledger.DEPOSIT, bank),
-                    cut,
-                    "deposit_cut",
-                )
-                cut_total += cut
-        for lender, amount in sorted(lenders.items()):
-            cut = int(amount * ratio)
-            if cut > 0:
-                ledger.cancel(island, lender, ledger.INTERBANK, bank, cut, "interbank_loss")
-                books.add(island, banks.bank_number(lender), books.WRITE_OFF, cut)
-                cut_total += cut
+    cut_total = _cut_uninsured(island, bank, loss)
     cover = max(0, loss - cut_total)
     paid = _government_pays(island, ctx, bank, cover, "deposit_insurance")
-    if paid < cover:  # 政府も払えない分は、残りの預金から比例で削る
-        rest = cover - paid
-        remaining = banks.depositors_of(island, bank)
-        total = sum(remaining.values())
-        for entity, amount in sorted(remaining.items()):
-            cut = min(amount, rest * amount // max(1, total))
-            if cut > 0:
-                ledger.post(
-                    island,
-                    ledger.issued(bank, ledger.DEPOSIT),
-                    ledger.account(entity, ledger.DEPOSIT, bank),
-                    cut,
-                    "deposit_cut",
-                )
+    _cut_all(island, bank, cover - paid)  # 政府も払えない分は、残りの預金から比例で削る
     _cancel_equity(island, bank)
     _move_everything(island, bank, target)
     fac.vacate(island, f)

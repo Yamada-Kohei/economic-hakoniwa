@@ -16,7 +16,7 @@ import pytest
 
 from hakoniwa_core import ledger
 from hakoniwa_core.autoplan import plan_turn, queue_orders
-from hakoniwa_core.economy import OWNERS, banks, household
+from hakoniwa_core.economy import OWNERS, banks, groundwork, household
 from hakoniwa_core.game import load_game
 from hakoniwa_core.state import OrderState, WorldState
 from hakoniwa_core.state.generate import generate_world
@@ -228,16 +228,18 @@ def test_bond_default_raises_yields_and_hits_holders(game, base):
             )
         )
 
+    keep(next(iter(world.islands.values())))  # 回す前の値（不履行が1ターン目でも比べられるように）
     rows = history(game, world, AFTER, extra=stop, each=keep)
     logs = [r["log"] for r in rows]
-    # 命令は行政力の順番待ちで遅れることがあるので、不履行になったターンを探す
-    i = next(i for i, kinds in enumerate(logs) if "bond_default_ordered" in kinds)
+    # 命令は行政力の順番待ちで遅れることがあるので、不履行になったターンを探す（yields と worth は
+    # 回す前の値の分だけ1つずれる）
+    i = next(i for i, kinds in enumerate(logs) if "bond_default_ordered" in kinds) + 1
     # 利回りが跳ね上がり、国債を持っていた銀行の自己資本が減る
     premium = game.config.get("bonds.default_premium") * 10000
     assert yields[i] >= yields[i - 1] + 0.5 * premium
     assert worth[i] < worth[i - 1]
     # 不履行の後も国債は売れ（借り換えが止まらない）、利回りは上限の中に収まる
-    assert any("bonds_issued" in kinds for kinds in logs[i + 1 :])
+    assert any("bonds_issued" in kinds for kinds in logs[i:])
     assert all(0 <= y <= game.config.get("bonds.max_yield") * 10000 for y in yields)
 
 
@@ -312,3 +314,9 @@ def test_upgrade_from_phase2_1_keeps_production(game):
         assert made[island_id] >= 0.85 * sum(expected), island_id
     for island in world.islands.values():
         assert island.economy.finance["version"] == banks.FINANCE_VERSION
+        # フェーズ2-3 の基盤（送電線は送電網の整備度の形に、学校・技術者・教育水準）
+        assert island.economy.ext["version"] == groundwork.VERSION
+        assert all(not isinstance(v, int) for t in island.tiles for v in t.infra.values())
+        assert any(f.kind == "school" for f in island.facilities)
+        assert island.economy.workers.get("engineer", 0) > 0
+        assert island.economy.education > 0

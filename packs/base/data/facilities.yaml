@@ -1,8 +1,11 @@
 # 施設。数値はフェーズ1の試し遊びで調整する仮の値です。
 # 量は全力で動いたときの1ターンあたり。小数も書けます。
-# workers・labor は人数。priority は雇用と市場の割当の優先順位（0〜9、大きいほど先）。プレイヤーが命令で施設ごとに変えられます。
+# workers・labor は人数。workers は {general: 1350, engineer: 150} のように種類ごとにも書けます（数だけなら
+# 一般の労働者。技術者 engineer はフェーズ2-3 から）。priority は雇用と市場の割当の優先順位（0〜9、大きいほど先）。プレイヤーが命令で施設ごとに変えられます。
 # public_service: 公務員の施設（賃金を国庫が払う）。zone: 指定したマス（オフィス街など）にだけ建つ。
 # tileless: マスを持たない施設（運送業）。
+# factors: 生産性の係数の重み（フェーズ2-3）。infra は施設の周りの交通、education は島の教育水準、
+#   pollution は施設のマスの汚染1あたりに産出を下げる割合。作り方（recipes）ごとにも書けます。
 
 farm:
   category: primary
@@ -10,6 +13,7 @@ farm:
   construction: {turns: 2, labor: 200, materials: {wood: 5}}
   workers: 500
   priority: 7
+  factors: {infra: 0.3, education: 0.2, pollution: 0.02}
   recipes:
     default:
       outputs: {grain: 20}
@@ -21,6 +25,7 @@ lumber_camp:
   construction: {turns: 2, labor: 200, materials: {wood: 2}}
   workers: 400
   priority: 5
+  factors: {infra: 0.5, education: 0.1}
   recipes:
     default:
       outputs: {wood: 10}
@@ -33,6 +38,7 @@ quarry:
   workers: 600
   priority: 5
   pollution: {amount: 1, radius: 1}
+  factors: {infra: 0.8, education: 0.2}
   recipes:
     default:
       requires_resource: stone
@@ -47,6 +53,7 @@ mine:
   workers: 800
   priority: 5
   pollution: {amount: 2, radius: 1}
+  factors: {infra: 0.8, education: 0.2}
   recipes:
     iron_ore:
       requires_resource: iron_ore
@@ -65,6 +72,7 @@ fishing_port:
   construction: {turns: 3, labor: 300, materials: {wood: 15}}
   workers: 600
   priority: 7
+  factors: {infra: 0.3, education: 0.1, pollution: 0.02}
   recipes:
     default:
       outputs: {fish: 24}
@@ -74,8 +82,9 @@ steel_mill:
   category: industry
   terrain: [plain]
   construction: {turns: 6, labor: 800, materials: {building_materials: 30, machinery: 5}}
-  workers: 2000
+  workers: {general: 1900, engineer: 100}
   pollution: {amount: 8, radius: 2}
+  factors: {infra: 0.8, education: 0.4}
   recipes:
     default:
       inputs: {iron_ore: 10, coal: 5, electricity: 5}
@@ -88,6 +97,7 @@ building_materials_plant:
   construction: {turns: 4, labor: 500, materials: {wood: 25}}
   workers: 1000
   pollution: {amount: 3, radius: 1}
+  factors: {infra: 0.6, education: 0.3}
   recipes:
     stone:
       inputs: {stone: 10, wood: 2, electricity: 2}
@@ -101,8 +111,9 @@ machinery_plant:
   category: industry
   terrain: [plain]
   construction: {turns: 6, labor: 800, materials: {building_materials: 30, steel: 10}}
-  workers: 1500
+  workers: {general: 1350, engineer: 150}
   pollution: {amount: 3, radius: 1}
+  factors: {infra: 0.5, education: 0.8}
   recipes:
     default:
       inputs: {steel: 4, electricity: 4}
@@ -115,6 +126,7 @@ food_factory:
   construction: {turns: 3, labor: 400, materials: {building_materials: 10}}
   workers: 800
   priority: 6
+  factors: {infra: 0.5, education: 0.3}
   recipes:
     default:
       inputs: {grain: 12, electricity: 1}
@@ -125,9 +137,10 @@ thermal_power_plant:
   category: power
   terrain: [plain]
   construction: {turns: 5, labor: 600, materials: {building_materials: 25, steel: 10, machinery: 5}}
-  workers: 600
+  workers: {general: 550, engineer: 50}
   priority: 8
   pollution: {amount: 6, radius: 2}
+  factors: {infra: 0.4, education: 0.3}
   recipes:
     default:
       inputs: {coal: 4}
@@ -138,8 +151,9 @@ hydro_power_plant:
   category: power
   terrain: [mountain]
   construction: {turns: 8, labor: 1000, materials: {building_materials: 60, steel: 10, machinery: 5}}
-  workers: 300
+  workers: {general: 270, engineer: 30}
   priority: 8
+  factors: {infra: 0.2, education: 0.3}
   recipes:
     default:
       outputs: {electricity: 20}
@@ -149,8 +163,9 @@ consumer_goods_factory:
   category: industry
   terrain: [plain]
   construction: {turns: 4, labor: 500, materials: {building_materials: 20, machinery: 5}}
-  workers: 1000
+  workers: {general: 950, engineer: 50}
   pollution: {amount: 2, radius: 1}
+  factors: {infra: 0.5, education: 0.5}
   recipes:
     default:
       inputs: {wood: 4, steel: 1, electricity: 2}
@@ -172,6 +187,37 @@ government_office:
   recipes:
     default: {}
   sprite: government_office
+
+# 学校と大学（フェーズ2-3）。国庫直轄の公務の施設で、教員の賃金と教材（投入の消費財）は教育費から
+# 払います。education の capacity は学校の子どもの定員、engineers は大学が1ターンに育てる技術者の数で、
+# どちらも稼働率（教員と教材の足りている割合の小さい方）の分だけ効きます。
+school:
+  category: education
+  terrain: [plain]
+  public_service: true
+  budget: education       # 賃金と教材を払う予算の項目（書かなければ civil_servants）
+  construction: {turns: 3, labor: 300, materials: {building_materials: 15, wood: 5}}
+  workers: 200
+  priority: 8
+  education: {capacity: 3000}
+  recipes:
+    default:
+      inputs: {consumer_goods: 0.1}   # 教材（教員の賃金の2割ほど）
+  sprite: school
+
+university:
+  category: education
+  terrain: [plain]
+  public_service: true
+  budget: education
+  construction: {turns: 6, labor: 800, materials: {building_materials: 40, wood: 10}}  # 鋼鉄と機械の連鎖がない島にも建てられるように
+  workers: 500
+  priority: 8
+  education: {engineers: 10}       # 引退（1ターン 0.5%）と釣り合うのは 2,000 人
+  recipes:
+    default:
+      inputs: {consumer_goods: 0.3}
+  sprite: university
 
 # 市中銀行。オフィス街のマスに入ります。フェーズ2-1 は建国のときに島に1つ置き、建設の命令はフェーズ2-2 から。
 bank:

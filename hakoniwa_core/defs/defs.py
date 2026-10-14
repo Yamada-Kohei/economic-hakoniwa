@@ -54,6 +54,21 @@ class Defs:
         return self.tables["workers"]
 
     @property
+    def infrastructure(self) -> Mapping[str, Mapping[str, Any]]:
+        return self.tables["infrastructure"]
+
+    def infra_kinds(self, role: str) -> list[str]:
+        """インフラの種類のうち、効き目が role（transport・water・power）のもの（定義した順）。"""
+        return list(self._infra_roles.get(role, ()))
+
+    @cached_property
+    def _infra_roles(self) -> dict[str, tuple[str, ...]]:
+        roles: dict[str, list[str]] = {}
+        for kind, spec in self.infrastructure.items():
+            roles.setdefault(spec["role"], []).append(kind)
+        return {role: tuple(kinds) for role, kinds in roles.items()}
+
+    @property
     def regimes(self) -> Mapping[str, Mapping[str, Any]]:
         return self.tables["regimes"]
 

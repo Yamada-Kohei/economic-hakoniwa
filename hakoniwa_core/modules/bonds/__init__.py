@@ -163,6 +163,7 @@ class Bonds(IslandStage):
 
     def _pay(self, island: IslandState, ctx: StageContext, payer: Payer) -> None:
         unpaid: list[Bond] = []
+        redeemed: dict[int, int] = {}  # 期間（ターン）→ 償還した額面
         for bond in sorted(island.bonds, key=lambda b: b.id):
             interest = debt.interest_due(island, bond, ctx.turn)
             mature = ctx.turn >= bond.maturity
@@ -180,6 +181,13 @@ class Bonds(IslandStage):
                 funds.pay(island, payer, holder, face, "bond_redemption")
                 ledger.cancel(island, holder, item, ledger.GOV, face, "bond_redemption")
                 _add_flow(island, holder, -face)
+                redeemed[bond.term] = redeemed.get(bond.term, 0) + face
+        for turns, amount in sorted(redeemed.items()):
+            term = _term_name(ctx.defs, turns)
+            args: dict[str, Any] = {"amount": amount}
+            if term is not None:
+                args["term"] = term
+            island.log.append(LogEntry("bonds_redeemed" if term else "bonds_redeemed_any", args))
         if unpaid:
             self._default(island, ctx, unpaid, "bond_default")
         island.bonds = [b for b in island.bonds if debt.outstanding(island, b) > 0]
@@ -396,6 +404,7 @@ class Bonds(IslandStage):
                         sellers[k].append((Order(qty), ledger.CB))
         band = to_basis(config.get("bonds.trade_band"))
         top = to_basis(config.get("bonds.max_yield"))
+        cb_done = 0  # 中央銀行が売り買いした額面
         for k in range(count):
             if not sellers[k] or not buyers[k]:
                 continue
@@ -410,11 +419,27 @@ class Bonds(IslandStage):
                 continue
             yields[k] = result.price
             for s, b, qty in auction.match(result.bought, result.sold):
-                self._deliver(
-                    island, ctx, sellers[k][s][1], buyers[k][b][1], qty, k, result.price, by_id
-                )
+                seller, buyer = sellers[k][s][1], buyers[k][b][1]
+                self._deliver(island, ctx, seller, buyer, qty, k, result.price, by_id)
+                if ledger.CB in (seller, buyer):
+                    cb_done += qty
             stats = island.scratch.setdefault("bond_stats", {})
             stats["traded"] = stats.get("traded", 0) + result.volume
+        if trade and not island.policy.cb_independent:
+            self._log_cb_trade(island, trade, cb_done)
+
+    @staticmethod
+    def _log_cb_trade(island: IslandState, trade: int, done: int) -> None:
+        """中央銀行の国債の売り買い（政策 cb_bond_trade）の結果をログと統計に残す。
+
+        相手は売り買いしたい銀行だけなので、決めた額に届かないことがある（届かなかったわけも出す）。
+        """
+        stats = island.scratch.setdefault("bond_stats", {})
+        stats["cb_bought" if trade > 0 else "cb_sold"] = done
+        kind = "cb_bonds_bought" if trade > 0 else "cb_bonds_sold"
+        if done < abs(trade):
+            kind += "_short"
+        island.log.append(LogEntry(kind, {"amount": done, "target": abs(trade)}))
 
     @staticmethod
     def _by_bucket(
@@ -472,7 +497,17 @@ class Bonds(IslandStage):
         extra = island.scratch.get("bond_stats", {})
         stats["bonds.underwritten"] = extra.get("underwritten", 0)
         stats["bonds.traded"] = extra.get("traded", 0)
+        stats["bonds.cb_bought"] = extra.get("cb_bought", 0)
+        stats["bonds.cb_sold"] = extra.get("cb_sold", 0)
         stats["bonds.central_bank"] = sum(debt.holdings_of(island, ledger.CB).values())
+
+
+def _term_name(defs: Defs, turns: int) -> str | None:
+    """期間 turns（ターン）の bond_term の名前（定義になければ None）。"""
+    for name, spec in sorted(defs.bond_terms().items()):
+        if spec["turns"] == turns:
+            return name
+    return None
 
 
 def _book_interest(island: IslandState, holder: str, amount: int) -> None:
@@ -519,6 +554,7 @@ def set_bond_policy(island: IslandState, payload: dict[str, Any], ctx: StageCont
         }
     if payload.get("unsold") in (UNDERWRITE, CUT):
         policy.bond_unsold = payload["unsold"]
+        finance.pop("unsold_before", None)  # 命令で決めたら、独立をやめたときに戻さない
     if payload.get("issue"):
         finance["extra_issue"] = {
             "amount": int(payload["issue"]),
@@ -529,10 +565,17 @@ def set_bond_policy(island: IslandState, payload: dict[str, Any], ctx: StageCont
             "amount": int(payload["underwrite"]),
             "term": payload.get("underwrite_term") or default_term,
         }
+    shares = policy.bond_terms or {
+        name: to_basis(share) for name, share in ctx.config.get("bonds.auto_terms").items()
+    }
     island.log.append(
         LogEntry(
             "bond_policy_set",
             {
+                "terms": [
+                    [name, share * 100 // BASIS]
+                    for name, share in sorted(shares.items(), key=lambda kv: terms[kv[0]]["turns"])
+                ],
                 "unsold": f"bond_unsold_{policy.bond_unsold}",
                 "issue": int(payload.get("issue") or 0),
                 "underwrite": int(payload.get("underwrite") or 0),

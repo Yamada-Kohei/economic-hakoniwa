@@ -19,7 +19,7 @@ import random
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import stock
+from hakoniwa_core import infra, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import GENERAL
@@ -76,13 +76,15 @@ def layer_food_needs(island: IslandState, ctx: StageContext) -> dict[str, int]:
 
 
 def happiness_weights(island: IslandState, ctx: StageContext) -> dict[str, float]:
-    """幸福度の重み。移し替えたフェーズ1の島は、population.blend_turns ターンかけて
-    population.happiness_phase1 の重みから移す。"""
+    """幸福度の重み。前のフェーズから移し替えた島は、population.blend_turns ターンかけて、
+    その時の重み（economy.ext["happiness_from"] の名前の設定。既定は happiness_phase1）から移す。
+    """
     weights = dict(ctx.config.get("population.happiness"))
     left = island.economy.happiness_blend
     turns = ctx.config.get("population.blend_turns")
     if left > 0 and turns > 0:
-        old = ctx.config.get("population.happiness_phase1")
+        source = island.economy.ext.get("happiness_from", "happiness_phase1")
+        old = ctx.config.get(f"population.{source}")
         t = left / turns
         for key, value in old.items():
             weights[key] = weights[key] * (1 - t) + value * t
@@ -92,7 +94,8 @@ def happiness_weights(island: IslandState, ctx: StageContext) -> dict[str, float
 def happiness(island: IslandState, facts: dict[str, Any], ctx: StageContext) -> int:
     """幸福度（0〜100）。
 
-    facts: food・jobs・power・consumer_goods（1000 分の 1）、quality（0〜1）、pollution（汚染）。
+    facts: food・jobs・power・consumer_goods・water・education（1000 分の 1）、quality（0〜1）、
+    pollution（汚染）。water はそのマスの上下水道の整備度、education は島の教育水準。
     実質賃金が1年前より下がった分と、物価上昇率が目安を超えた分を減点する。
     """
     w = happiness_weights(island, ctx)
@@ -103,6 +106,8 @@ def happiness(island: IslandState, facts: dict[str, Any], ctx: StageContext) -> 
         + w["power"] * facts["power"] / fac.FULL
         + w["food_quality"] * facts["quality"]
         + w["consumer_goods"] * facts["consumer_goods"] / fac.FULL
+        + w.get("water", 0) * facts.get("water", 0) / fac.FULL
+        + w.get("education", 0) * facts.get("education", 0) / fac.FULL
         - w["pollution_per_point"] * facts["pollution"]
     )
     fall = -real_wage_change(island.economy) * 100
@@ -188,7 +193,8 @@ class Population(IslandStage):
         before = {(t.x, t.y): fac.settlement_of(defs, t.population) for t in island.tiles}
         p = config.get("population")
         moods: dict[str, list[float]] = {}
-        power_sum = pollution_sum = people = 0
+        power_sum = pollution_sum = water_sum = people = 0
+        education = island.economy.education
         for tile in island.tiles:
             if tile.population <= 0:
                 tile.ext.pop("happiness", None)
@@ -204,11 +210,14 @@ class Population(IslandStage):
                 "quality": general["quality"],
                 "consumer_goods": general["consumer_goods"],
                 "pollution": tile.pollution,
+                "water": infra.water(defs, tile),
+                "education": education,
             }
             mood = ctx.formula("happiness")(island, facts, ctx)
             tile.ext["happiness"] = mood
             power_sum += facts["power"] * tile.population
             pollution_sum += tile.pollution * tile.population
+            water_sum += facts["water"] * tile.population
             people += tile.population
             moods.setdefault(GENERAL, [0, 0])
             moods[GENERAL][0] += mood * tile.population
@@ -241,6 +250,8 @@ class Population(IslandStage):
                 "quality": f["quality"],
                 "consumer_goods": f["consumer_goods"],
                 "pollution": pollution_sum / people,
+                "water": water_sum // people,
+                "education": education,
             }
             moods_by_layer[layer] = ctx.formula("happiness")(island, facts, ctx)
         island.scratch["layer_happiness"] = moods_by_layer
@@ -255,7 +266,7 @@ class Population(IslandStage):
                         LogEntry("settlement_grew", {"x": tile.x, "y": tile.y, "level": level})
                     )
         if island.has_economy:
-            changes = split_persons(island, sum(t.population for t in island.tiles))
+            changes = split_persons(island, defs, sum(t.population for t in island.tiles))
             move_people(island, changes)
             if island.economy.happiness_blend > 0:
                 island.economy.happiness_blend -= 1
@@ -360,6 +371,7 @@ class Housing(IslandStage):
         levels = defs.settlement_levels()
         built = upgraded = 0
         short: set[str] = set()  # 足りなくて町が育たなかった資源
+        dry: set[Pos] = set()  # 上下水道が足りなくて育たなかった町のマス
         vacancies = sorted(_vacancies(defs, island, ctx.turn), key=lambda v: (-v[1], v[0].id))
         for f, missing in vacancies:
             if built >= h["max_new_per_turn"] and upgraded >= h["max_upgrades_per_turn"]:
@@ -375,7 +387,7 @@ class Housing(IslandStage):
             if share <= 0 or room * share + idle >= missing:
                 continue
             if upgraded < h["max_upgrades_per_turn"]:
-                pos = self._upgradable(island, defs, homes, near, levels, h["fill_ratio"])
+                pos = self._upgradable(island, defs, homes, near, levels, h["fill_ratio"], dry)
                 if pos is not None:
                     home = homes[pos]
                     target = levels[levels.index(home.ext.get("level", levels[0])) + 1]
@@ -393,6 +405,7 @@ class Housing(IslandStage):
                         homes[pos] = fac.new_housing(island, kind, pos, levels[0])
                         built += 1
                     short.update(missing)
+        self._watch_water(island, defs, homes, dry)
         # 2ターン続けて資材を買えなかったときだけ知らせる
         # （足りない間は毎ターン同じ知らせを出さない）
         if short:
@@ -432,15 +445,44 @@ class Housing(IslandStage):
         near: list[Pos],
         levels: list[str],
         fill_ratio: float,
+        dry: set[Pos],
     ) -> Pos | None:
+        """上の段階へ育てる町のマス。育つのに要る上下水道（settlements.yaml の water）が足りない
+        マスは飛ばして dry に入れる（お金の経済の島だけ）。"""
         for pos in near:
             home = homes[pos]
             level = home.ext.get("level", levels[0])
             if levels.index(level) + 1 >= len(levels):
                 continue
-            if island.tile(*pos).population >= fac.housing_capacity(defs, home) * fill_ratio:
-                return pos
+            if island.tile(*pos).population < fac.housing_capacity(defs, home) * fill_ratio:
+                continue
+            need = defs.settlements[levels[levels.index(level) + 1]].get("water", 0)
+            if island.has_economy and infra.water(defs, island.tile(*pos)) < round(need * 1000):
+                dry.add(pos)
+                continue
+            return pos
         return None
+
+    @staticmethod
+    def _watch_water(
+        island: IslandState, defs: Defs, homes: dict[Pos, Facility], dry: set[Pos]
+    ) -> None:
+        """上下水道が足りなくて育たなかった町を、マスごとに1度だけ知らせる（整備度が足りたら印を
+        外す）。印 ext["water_short"] は、育つのに要る整備度（1000 分の 1）。"""
+        levels = defs.settlement_levels()
+        for pos, home in sorted(homes.items(), key=lambda kv: (kv[0][1], kv[0][0])):
+            level = home.ext.get("level", levels[0])
+            if levels.index(level) + 1 >= len(levels):
+                home.ext.pop("water_short", None)
+                continue
+            need = round(defs.settlements[levels[levels.index(level) + 1]].get("water", 0) * 1000)
+            if pos in dry and not home.ext.get("water_short"):
+                home.ext["water_short"] = need
+                now = infra.water(defs, island.tile(*pos))
+                args = {"x": pos[0], "y": pos[1], "water": now / 10, "need": need / 10}
+                island.log.append(LogEntry("settlement_needs_water", args))
+            elif infra.water(defs, island.tile(*pos)) >= need:
+                home.ext.pop("water_short", None)
 
     @staticmethod
     def _empty_site(island: IslandState, defs: Defs, kind: str, area: list[Pos]) -> Pos | None:

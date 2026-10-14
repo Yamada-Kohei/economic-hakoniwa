@@ -16,13 +16,14 @@ from django.templatetags.static import static
 from django.views.decorators.http import require_GET, require_http_methods
 
 from hakoniwa_core import facilities as fac
+from hakoniwa_core.economy import freight
 from hakoniwa_core.founding import land_terrains
 from hakoniwa_core.naming import default_place_style, place_of, place_styles
 from hakoniwa_core.orders import check_order
-from hakoniwa_core.units import from_milli
+from hakoniwa_core.units import from_milli, to_basis
 from server.game import get_game
 from server.orders.models import Order
-from server.web import display
+from server.web import display, reports
 from server.world import models as m
 from server.world.repository import island_from_row, load_island
 from server.world.services import grid_size
@@ -79,6 +80,7 @@ def defs(request):
                 }
                 for rid, r in d.regimes.items()
             },
+            "infrastructure": {kid: _infra_def(kid, k) for kid, k in d.infrastructure.items()},
             "mining": {gid: d.name("goods", gid) for gid in d.mining_resources()},
             "housing": fac.housing_kind(game.config),
             "commute_radius": game.config.get("labor.commute_radius"),
@@ -108,6 +110,19 @@ def _terrain_def(tid: str, t: Any) -> dict[str, Any]:
     return {"name": name, "height": t.get("height", 0), "land": t["land"]}
 
 
+def _infra_def(kid: str, k: Any) -> dict[str, Any]:
+    """インフラの種類（フェーズ2-3）。資材と人手は 1マスを 0% から 100% にする分。"""
+    d = get_game().defs
+    return {
+        "name": d.name("infrastructure", kid),
+        "role": k["role"],
+        "grid": k.get("grid"),
+        "turns": k.get("turns", 1),
+        "labor": k.get("labor", 0),
+        "materials": {g: from_milli(q) for g, q in k.get("materials", {}).items()},
+    }
+
+
 def _facility_def(fid: str, f: Any) -> dict[str, Any]:
     d = get_game().defs
     construction = f["construction"]
@@ -120,6 +135,7 @@ def _facility_def(fid: str, f: Any) -> dict[str, Any]:
         "near_capital": f.get("near_capital"),
         "max_per_island": f.get("max_per_island"),
         "workers": f["workers"],
+        "staff": dict(f.get("staff", {})),
         "priority": f.get("priority"),
         "sprite": f.get("sprite", fid),
         "tileless": f.get("tileless", False),
@@ -154,10 +170,15 @@ def _theme(name: str) -> dict:
 
 @require_GET
 def island_map(request, island_id: int):
-    """島のマスと施設。マスの値は y * size + x の順に並べる。"""
+    """島のマスと施設。マスの値は y * size + x の順に並べる。
+
+    infra は種類ごとの整備度（%）の並び、infra_queue はインフラの工事の列（[種類, x, y]）。
+    ?freight=1 のときだけ、陸のマスごとの拠点までの運賃の率（freight、1万分の1。海は null）も返す
+    （計算が重いので、重ね表示で選んだときだけ読む）。
+    """
     island = get_object_or_404(m.Island, pk=island_id)
     columns = ["terrain", "population", "zone", "infra", "pollution", "ext"]
-    data: dict[str, list] = {
+    data: dict[str, Any] = {
         "terrain": [],
         "population": [],
         "zone": [],
@@ -165,6 +186,7 @@ def island_map(request, island_id: int):
         "pollution": [],
         "happiness": [],
         "power": [],
+        "infra": {kind: [] for kind in get_game().defs.infrastructure},
     }
     for terrain, population, zone, infra, pollution, ext in island.tiles.order_by(
         "y", "x"
@@ -172,10 +194,17 @@ def island_map(request, island_id: int):
         data["terrain"].append(terrain)
         data["population"].append(population)
         data["zone"].append(zone)
-        data["power_line"].append(1 if (infra or {}).get("power") else 0)
+        data["power_line"].append(1 if display.carries_power(infra) else 0)
         data["pollution"].append(pollution)
         data["happiness"].append((ext or {}).get("happiness"))
         data["power"].append((ext or {}).get("power"))
+        for kind, level in display.infra_levels(infra).items():
+            data["infra"][kind].append(level)
+    works = (island.economy or {}).get("infra", {})
+    data["infra_queue"] = works.get("queue", [])
+    data["infra_why"] = display.works_why(island.economy)
+    if request.GET.get("freight"):
+        data.update(_freight(island))
     facilities = [
         {
             "number": f.number,
@@ -206,6 +235,18 @@ def island_map(request, island_id: int):
     )
 
 
+def _freight(island: m.Island) -> dict[str, Any]:
+    """陸のマスごとの、拠点（首都と大きな町）まで運ぶときの片側の運賃の率（1万分の1）と上限。"""
+    game = get_game()
+    state = load_island(island)
+    rates = freight.hub_rates(state, game.defs, game.config)
+    size = island.size
+    return {
+        "freight": [rates.get((i % size, i // size)) for i in range(size * size)],
+        "freight_max": to_basis(game.config.get("freight.max_rate")),
+    }
+
+
 @require_GET
 def tile(request, island_id: int, x: int, y: int):
     try:
@@ -224,13 +265,18 @@ def tile(request, island_id: int, x: int, y: int):
         "population": row.population,
         "place": place_of(island, row.x, row.y, game.config),
         "zone": row.zone,
-        "power_line": bool((row.infra or {}).get("power")),
         "pollution": row.pollution,
         "employed": ext.get("employed", 0),
         "happiness": ext.get("happiness"),
         "power": ext.get("power"),
         "capital": island.capital == (row.x, row.y),
     }
+    # インフラの整備度と並んでいる工事（フェーズ2-3）。送電線の表示は送電網の整備度で決まる
+    economy = row.island.economy or {}
+    data.update(display.infra_view(row.infra, economy.get("infra", {}).get("queue", []), x, y))
+    if data["works"]:
+        data["works_total"] = len(economy["infra"]["queue"])
+        data["works_why"] = display.works_why(economy)
     if data["capital"]:
         data["capital_name"] = island.names.get("capital", "")
         # 体制で決まる首都の建物（議事堂・王宮など）
@@ -244,6 +290,64 @@ def tile(request, island_id: int, x: int, y: int):
     if f is not None:
         data["facility"] = display.facility_info(f, island)
     return _json(data)
+
+
+# --- 統計（経済・市場・施設・金融の画面） ---------------------------------------------
+
+
+def _mine(request, island: m.Island) -> bool:
+    return request.user.is_authenticated and island.owner_id == request.user.id
+
+
+def _currency(island: m.Island) -> str:
+    return (island.names or {}).get("currency_symbol", "")
+
+
+@require_GET
+def economy(request, island_id: int):
+    """統計の系列。?names=gdp,cpi,price.*（末尾の * はその頭の統計すべて）&from=&to=（ターン）。
+
+    名前を決めなければ経済の画面のグラフの統計を、範囲を決めなければ直近の 120 ターンを返す。
+    他国の島には銀行ごとの統計を返さない。
+    """
+    island = get_object_or_404(m.Island, pk=island_id)
+    names = [n.strip() for n in request.GET.get("names", "").split(",") if n.strip()]
+    start, end = reports.turn_range(island, request.GET.get("from"), request.GET.get("to"))
+    mine = _mine(request, island)
+    data = reports.series(island, names or reports.default_names(), start, end, mine)
+    return _json({**data, "mine": mine, "currency": _currency(island)})
+
+
+@require_GET
+def market(request, island_id: int, good: str):
+    """財の値段と量の推移と直近のターンの市場。約定の相手と買えなかった施設は持ち主だけ。"""
+    island = get_object_or_404(m.Island, pk=island_id)
+    if good not in get_game().defs.goods:
+        raise Http404
+    start, end = reports.turn_range(island, request.GET.get("from"), request.GET.get("to"))
+    return _json(
+        reports.market_series(island, good, start, end, _mine(request, island), _currency(island))
+    )
+
+
+@require_GET
+def facility_book(request, island_id: int, number: int):
+    """施設の帳簿の推移（島の持ち主だけ）。?from=&to=（ターン）。"""
+    island = get_object_or_404(m.Island, pk=island_id)
+    if not _mine(request, island):
+        return _json({"error": "施設の帳簿は島の持ち主だけが見られます"}, status=403)
+    start, end = reports.turn_range(island, request.GET.get("from"), request.GET.get("to"))
+    data = reports.facility_book(island, number, start, end, _currency(island))
+    if data is None:
+        raise Http404
+    return _json(data)
+
+
+@require_GET
+def finance(request, island_id: int):
+    """金融の統計と中央銀行の方針。持ち主には銀行ごとの帳簿と金融の政策も。"""
+    island = get_object_or_404(m.Island, pk=island_id)
+    return _json(reports.finance_data(island, _mine(request, island), _currency(island)))
 
 
 # --- 命令 -------------------------------------------------------------------

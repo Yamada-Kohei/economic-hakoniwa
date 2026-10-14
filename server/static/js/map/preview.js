@@ -2,7 +2,7 @@
 // 架空の島を作り、島の画面と同じ renderer.js で描く。絵を作るときと、その見直しに使う。
 
 import { attachControls } from "./controls.js";
-import { overlays } from "./overlays/index.js";
+import { overlayList } from "./overlays/index.js";
 import { tileToWorld } from "./projection.js";
 import { drawIsland } from "./renderer.js";
 import { loadSprites } from "./sprites.js";
@@ -16,7 +16,7 @@ const useSprites = params.get("sprites") !== "0";
 const sprites = useSprites ? await loadSprites(theme) : new Map();
 const { map, labels } = buildMap(defs);
 const view = { scale: Number(params.get("scale") || 1), offsetX: 0, offsetY: 0, dpr: window.devicePixelRatio || 1 };
-const options = { sprites, overlay: overlays.find((o) => o.id === params.get("overlay")) || null };
+const options = { sprites, overlay: overlayList(defs).find((o) => o.id === params.get("overlay")) || null };
 
 document.getElementById("missing").textContent = useSprites ? missingText(defs, sprites) : "";
 

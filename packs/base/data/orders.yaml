@@ -72,6 +72,24 @@ build_power_line:
           minItems: 2
           maxItems: 2
 
+build_infrastructure:                     # 道路・鉄道・上下水道・送電網の工事を列に並べる（フェーズ2-3）
+  admin_cost: 1
+  payload:
+    type: object
+    required: [kind, tiles]
+    additionalProperties: false
+    properties:
+      kind: {type: string}                  # infrastructure.yaml の種類
+      tiles:
+        type: array
+        minItems: 1
+        maxItems: 64
+        items:
+          type: array
+          prefixItems: [{type: integer, minimum: 0}, {type: integer, minimum: 0}]
+          minItems: 2
+          maxItems: 2
+
 set_no_development:
   admin_cost: 1
   payload:

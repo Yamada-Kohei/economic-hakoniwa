@@ -1,13 +1,16 @@
 """家計の層。
 
-層は game.yaml の household.layers で決めます（フェーズ2-1 は一般の労働者 general と資産を持つ層
-owners。技術者の層は大学と一緒にフェーズ2-3 で足します）。share を書いた層（資産を持つ層）は
-住民のその割合の人数を島全体として持ち、働かずに配当と預金の利子で暮らします。残りの住民は
-一般の層です。民営の施設を持たない経済体制（計画経済）の島には、資産を持つ層を置きません。
+層は game.yaml の household.layers で決めます（一般の労働者 general、資産を持つ層 owners、
+フェーズ2-3 からの技術者の層 engineers）。share を書いた層（資産を持つ層）は住民のその割合の人数を
+島全体として持ち、働かずに配当と預金の利子で暮らします。民営の施設を持たない経済体制（計画経済）の
+島には、資産を持つ層を置きません。workers を書いた層（技術者の層）は、島全体の働き手の人数
+（economy.workers）を家族ごと持ちます（人数 ÷ workers.yaml の share。働き手 0.5 なら2倍）。
+住民が減ると、働き手も同じ割合で減ります。残りの住民は一般の層です。
 
 層ごとの状態（economy.households[層]）:
 - persons: 人数
-- share: 住民に対する割合（share を持つ層だけ）
+- share: 住民に対する割合（share か workers を持つ層だけ）
+- workers: 層の働き手の種類（workers を持つ層だけ）
 - income: 直近のターンの可処分所得（賃金 − 所得税 ＋ 失業手当 ＋ 預金の利子 ＋ 配当）。古い順
 """
 
@@ -29,43 +32,78 @@ def has_private_owners(defs: Defs, island: IslandState) -> bool:
     return economy.get("owner") == OWNER_PRIVATE
 
 
+def new_worker_layer(kind: str) -> dict[str, Any]:
+    """島全体の働き手 kind の層の初めの状態。"""
+    return {"persons": 0, "share": 0.0, "workers": kind, "income": []}
+
+
 def init_layers(island: IslandState, defs: Defs, config: GameConfig) -> None:
     """層を作り、人数を住民の数から決める。"""
     population = sum(t.population for t in island.tiles)
     households: dict[str, dict[str, Any]] = {}
     for name, spec in layers(config).items():
-        if "share" in spec:
+        if "workers" in spec:
+            households[name] = new_worker_layer(spec["workers"])
+        elif "share" in spec:
             if not has_private_owners(defs, island):
                 continue
             households[name] = {"persons": 0, "share": spec["share"], "income": []}
         else:
             households[name] = {"persons": 0, "income": []}
     island.economy.households = households
-    split_persons(island, population)
+    split_persons(island, defs, population)
 
 
-def split_persons(island: IslandState, population: int) -> dict[str, int]:
-    """住民 population を層に割り振り、前のターンからの人数の変化を返す。"""
+def family_of(defs: Defs, kind: str, count: int) -> int:
+    """働き手 count 人の家族を合わせた人数（count ÷ workers.yaml の share）。"""
+    share = defs.workers[kind].get("share", 1.0)
+    return round_money(count / share + 0.5) if share > 0 else count
+
+
+def split_persons(island: IslandState, defs: Defs, population: int) -> dict[str, int]:
+    """住民 population を層に割り振り、前のターンからの人数の変化を返す。
+
+    住民が前より減っていれば、島全体の働き手（技術者）も同じ割合で減らす。
+    """
     households = island.economy.households
+    before = sum(h["persons"] for h in households.values())
     changes = {}
     fixed = 0
     for name in sorted(households):
         h = households[name]
-        if "share" in h:
+        if "workers" in h:
+            kind = h["workers"]
+            count = island.economy.workers.get(kind, 0)
+            if 0 <= population < before and count > 0:
+                count = count * population // before
+                island.economy.workers[kind] = count
+            persons = min(max(0, population - fixed), family_of(defs, kind, count))
+            h["share"] = persons / population if population > 0 else 0.0
+        elif "share" in h:
             persons = round_money(population * h["share"] + 0.5)
-            changes[name] = persons - h["persons"]
-            h["persons"] = persons
-            fixed += persons
+        else:
+            continue
+        changes[name] = persons - h["persons"]
+        h["persons"] = persons
+        fixed += persons
     general = households[GENERAL]
     changes[GENERAL] = population - fixed - general["persons"]
     general["persons"] = population - fixed
     return changes
 
 
+def set_workers(island: IslandState, defs: Defs, kind: str, count: int) -> None:
+    """島全体の働き手 kind の人数を count にし、層の人数を割り振り直して預金を一緒に移す
+    （大学で育った人・引退した人）。"""
+    island.economy.workers[kind] = max(0, count)
+    population = sum(h["persons"] for h in island.economy.households.values())
+    move_people(island, split_persons(island, defs, population))
+
+
 def move_people(island: IslandState, changes: dict[str, int]) -> None:
     """層を移った人の預金を、元の層の1人あたりの額で一緒に移す（仕訳で付け替える）。
 
-    share の層の人数が増えた分は一般の層から、減った分は一般の層へ移ったと考える。
+    share（と workers）の層の人数が増えた分は一般の層から、減った分は一般の層へ移ったと考える。
     """
     for name in sorted(changes):
         if name == GENERAL or not changes[name]:

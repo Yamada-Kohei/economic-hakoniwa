@@ -45,7 +45,7 @@ def _recipe_cost(
 ) -> float:
     """全力で1ターン動いたときの原価。"""
     inputs = sum(prices.get(g, 0) * q / QUANTITY_SCALE for g, q in recipe["inputs"].items())
-    labor = fac.workers_needed(defs, kind) * wage
+    labor = fac.labor_cost(defs, config, kind, wage)
     capital = construction_cost(defs, kind, prices, wage) * capital_rate(config)
     return inputs + labor + capital
 
@@ -140,19 +140,21 @@ def variable_profit(
     defs: Defs, config: GameConfig, f: Facility, prices: Prices, wage: int, freight: int
 ) -> int:
     """全力で1ターン動いたときの変動費の利益（売上 − 投入財 − 賃金 − 電気代 − 運賃）。
+    賃金は一般の賃金 wage と、施設の技術者の賃金（facilities.labor_cost）。
 
-    freight は施設の運賃の率（1万分の1）。電力は送電網で送るので運賃がかからない。
+    freight は施設の運賃の率（1万分の1）。電力は送電網で送るので運賃がかからない。産出は
+    生産性（インフラ・教育・汚染の係数）を掛けた量で見る。
     """
     power = config.get("power.good")
     recipe = fac.recipe_of(defs, f)
     value = 0
-    for good, qty in recipe["outputs"].items():
+    for good, qty in fac.outputs_of(defs, f).items():
         amount = money_of(prices.get(good, 0), qty)
         value += amount if good == power else amount - part(amount, freight)
     for good, qty in recipe["inputs"].items():
         amount = money_of(prices.get(good, 0), qty)
         value -= amount if good == power else amount + part(amount, freight)
-    return value - wage * fac.workers_needed(defs, f.kind)
+    return value - fac.labor_cost(defs, config, f.kind, wage, f)
 
 
 def input_limit(
@@ -190,10 +192,10 @@ def unit_floor(
     """
     power = config.get("power.good")
     recipe = fac.recipe_of(defs, f)
-    outputs = recipe["outputs"]
+    outputs = fac.outputs_of(defs, f)
     if good not in outputs or outputs[good] <= 0:
         return 0
-    cost = wage * fac.workers_needed(defs, f.kind)
+    cost = fac.labor_cost(defs, config, f.kind, wage, f)
     for g, qty in recipe["inputs"].items():
         amount = money_of(prices.get(g, 0), qty)
         cost += amount if g == power else amount + part(amount, freight)

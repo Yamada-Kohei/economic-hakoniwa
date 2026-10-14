@@ -1,0 +1,48 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+{% include "web/report_header.html" %}
+
+{% if tiles %}
+<section class="stat-tiles" aria-label="{% translate '直近の主な指標' %}">
+  {% for t in tiles %}<div class="stat-tile"><span>{{ t.label }}</span><strong>{{ t.text }}</strong></div>{% endfor %}
+</section>
+{% else %}
+<p class="muted">{% translate "未集計です。最初のターンの更新後に表示されます。" %}</p>
+{% endif %}
+
+<section class="panel">
+  <div class="section-head">
+    <h2>{% translate "推移" %}</h2>
+    {% include "web/chart_range.html" %}
+  </div>
+  <div class="charts" id="charts" data-url="{% url 'api_island_economy' island.id %}"
+       data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
+    {% for c in charts %}
+    <figure class="chart" data-names="{{ c.names }}"><figcaption>{{ c.title }}</figcaption></figure>
+    {% endfor %}
+    <figure class="chart" id="free-chart" hidden>
+      <figcaption>
+        <label>{% translate "統計を選んで表示" %}
+          <select id="stat-choice">
+            <option value="">{% translate "選択してください" %}</option>
+            {% for c in choices %}<option value="{{ c.name }}">{{ c.label }}</option>{% endfor %}
+          </select>
+        </label>
+      </figcaption>
+    </figure>
+  </div>
+  <p class="hint">{% translate "横軸はターン（12ターンで1年）です。グラフに指やマウスを乗せると、そのターンの値を表示します。凡例を押すと線を隠せます。" %}</p>
+</section>
+
+{% if summary %}
+<details class="panel">
+  <summary>{% blocktranslate with turn=stats_turn %}国勢の一覧（ターン {{ turn }}）{% endblocktranslate %}</summary>
+  <table class="info">
+    {% for row in summary %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
+  </table>
+</details>
+{% endif %}
+
+<script type="module" src="{% static 'js/reports/economy.js' %}"></script>
+{% endblock %}
