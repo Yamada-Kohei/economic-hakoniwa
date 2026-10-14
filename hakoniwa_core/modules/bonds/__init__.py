@@ -599,50 +599,56 @@ def check_bond_policy(island: IslandState, payload: dict[str, Any], defs: Defs) 
 
 
 def set_bond_policy(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
-    """自動の発行の期間の割合、売れ残りの扱い、追加の発行、中央銀行の直接引き受け（額は今のターンだけ）。"""
+    """自動の発行の期間の割合、売れ残りの扱い、追加の発行、中央銀行の直接引き受け（額は今のターンだけ）。
+
+    ログには、命令で変えた項目だけを出す（期間の割合と売れ残りの扱いは、前の値も）。
+    """
     policy = island.policy
     finance = island.economy.finance
     terms = ctx.defs.bond_terms()
     default_term = min(
         policy.bond_terms or ctx.config.get("bonds.auto_terms"), key=lambda t: terms[t]["turns"]
     )
+
+    def shares() -> list[list[Any]]:
+        now = policy.bond_terms or {
+            name: to_basis(share) for name, share in ctx.config.get("bonds.auto_terms").items()
+        }
+        return [
+            [name, share * 100 // BASIS]
+            for name, share in sorted(now.items(), key=lambda kv: terms[kv[0]]["turns"])
+        ]
+
     if payload.get("terms"):
+        before = shares()
         total = sum(payload["terms"].values())
         policy.bond_terms = {
             name: share * BASIS // total
             for name, share in sorted(payload["terms"].items())
             if share
         }
+        island.log.append(LogEntry("bond_terms_set", {"terms_before": before, "terms": shares()}))
     if payload.get("unsold") in (UNDERWRITE, CUT):
+        before = policy.bond_unsold
         policy.bond_unsold = payload["unsold"]
         finance.pop("unsold_before", None)  # 命令で決めたら、独立をやめたときに戻さない
-    if payload.get("issue"):
-        finance["extra_issue"] = {
-            "amount": int(payload["issue"]),
-            "term": payload.get("issue_term") or default_term,
-        }
-    if payload.get("underwrite"):
-        finance["underwrite_order"] = {
-            "amount": int(payload["underwrite"]),
-            "term": payload.get("underwrite_term") or default_term,
-        }
-    shares = policy.bond_terms or {
-        name: to_basis(share) for name, share in ctx.config.get("bonds.auto_terms").items()
-    }
-    island.log.append(
-        LogEntry(
-            "bond_policy_set",
-            {
-                "terms": [
-                    [name, share * 100 // BASIS]
-                    for name, share in sorted(shares.items(), key=lambda kv: terms[kv[0]]["turns"])
-                ],
-                "unsold": f"bond_unsold_{policy.bond_unsold}",
-                "issue": int(payload.get("issue") or 0),
-                "underwrite": int(payload.get("underwrite") or 0),
-            },
+        island.log.append(
+            LogEntry(
+                "bond_unsold_set",
+                {
+                    "unsold_before": f"bond_unsold_{before}",
+                    "unsold": f"bond_unsold_{policy.bond_unsold}",
+                },
+            )
         )
-    )
+    for key, kind, slot in (
+        ("issue", "bond_issue_ordered", "extra_issue"),
+        ("underwrite", "bond_underwrite_ordered", "underwrite_order"),
+    ):
+        if payload.get(key):
+            term = payload.get(f"{key}_term") or default_term
+            finance[slot] = {"amount": int(payload[key]), "term": term}
+            island.log.append(LogEntry(kind, {"term": term, "amount": int(payload[key])}))
 
 
 def check_bond_payment(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:

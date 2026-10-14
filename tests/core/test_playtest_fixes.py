@@ -290,7 +290,7 @@ def test_bond_policy_log_shows_terms(game, warmed):
     world = copy.deepcopy(warmed)
     island = island_of(world, "market")
     order(game, world, island, "set_bond_policy", {"terms": {"bond_5y": 1, "bond_10y": 1}})
-    entry = next(e for e in island.log if e.kind == "bond_policy_set")
+    entry = next(e for e in island.log if e.kind == "bond_terms_set")
     text = format_log(game.defs, entry.kind, entry.args)
     assert "5年国債 50%" in text and "10年国債 50%" in text
 

@@ -13,6 +13,11 @@
 - 家計の層: 食料、消費財、町の資材（economy/households.py と、この段の _household_orders）。
   食料は、いま売りに出ている量を見て財ごとに割り振る。
 
+持ち越せる期間が今のターンで切れる物（指値なしの売り）は、その場で食べる家計に先に回します。
+在庫に置く買い手（施設・工事・倉庫）が買うと、使う前に捨てられるためです。家計の買った量を
+超えて売れた分は、同じ値段で売れ残っていたほかの売りに回します（_late_to_eaters）。それもなく
+工場が買った分は、買えなかった量に数えて止まった理由に出します（_record_shortages）。
+
 注文は出すときに「量 × 指値」のお金（運賃と消費税を含む）を取り置き、取り置けない分は出せません。
 買い注文の指値は運賃と消費税の分だけ、売り注文の指値は運賃の分だけ割って板寄せに出すので、
 運賃と税を払っても指値より不利にはなりません。財ごとの板寄せは互いに独立で、順番で結果は
@@ -29,6 +34,7 @@ from typing import Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
+from hakoniwa_core.allocation import proportional
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     CONSTRUCTION,
@@ -444,6 +450,7 @@ class Market(IslandStage):
         routes = freight_rates.Routes(island, defs)
         bought: dict[str, int] = island.scratch.setdefault("household_bought", {})
         results: dict[str, auction.Result] = {}
+        stale: dict[str, dict[int, int]] = {}  # 財 → 買い注文の番号 → 今夜捨てられる分を買った量
         width = to_basis(config.get("market.band"))
         for good in sorted(books_by_good):
             book = books_by_good[good]
@@ -451,9 +458,10 @@ class Market(IslandStage):
             result = auction.clear(
                 [o for o, _ in book.buys], [o for o, _ in book.sells], reference, width
             )
+            self._late_to_eaters(book, result)
             results[good] = result
-            self._settle(island, ctx, good, book, result, transport, bought, routes)
-        self._record_shortages(books_by_good, results)
+            stale[good] = self._settle(island, ctx, good, book, result, transport, bought, routes)
+        self._record_shortages(books_by_good, results, stale)
         for _, book in sorted(books_by_good.items()):
             for _, party in book.buys:
                 funds.release(island, party.payer, party.reserved)
@@ -613,7 +621,11 @@ class Market(IslandStage):
         for good, qty in sorted(fac.recipe_of(ctx.defs, f)["inputs"].items()):
             if good == power:
                 continue
-            want = fac.scale(qty, expected) - stock.total(f.stock, good)
+            # このターンの終わりに捨てられる分は、次のターンに使えないので手元に数えない
+            have = stock.total(f.stock, good) - stock.expiring(
+                f.stock, good, ctx.turn, ctx.defs.goods
+            )
+            want = fac.scale(qty, expected) - have
             if want > 0:
                 needs.append((good, want))
         return needs
@@ -927,23 +939,82 @@ class Market(IslandStage):
                 funds.commit(island, payer, party.reserved)
                 self._add(books_by_good, g, "buy", Order(q, lim), party)
 
-    @staticmethod
-    def _record_shortages(books_by_good: dict[str, Book], results: dict[str, auction.Result]):
+    @classmethod
+    def _record_shortages(
+        cls,
+        books_by_good: dict[str, Book],
+        results: dict[str, auction.Result],
+        stale: dict[str, dict[int, int]],
+    ) -> None:
         """施設が投入財を注文した分だけ買えなかったわけを economy["short"] に残す（次のターンの
-        生産の段で、止まった理由として出す）。指値が約定価格（売り買いがなければ気配）より安かった
-        のは price（高くて採算が合わない）、そうでなければ supply（売りに出ている量が足りない）。"""
+        生産の段で、止まった理由として出す）。買えたうち今夜捨てられる分（stale）は、使えないので
+        買えなかった量に数える。
+
+        指値が約定価格（売り買いがなければ気配）より安かったか、次のターンまで持つ物が指値より
+        高い希望価格で売れ残っていたのは price（高くて採算が合わない）、そうでなければ supply
+        （売りに出ている量が足りない）。"""
         for good, book in sorted(books_by_good.items()):
             result = results[good]
+            dear = [
+                auction.sell_limit(o)
+                for i, (o, p) in enumerate(book.sells)
+                if not cls._late(o, p) and o.quantity > result.sold[i]
+            ]
+            cheapest = min(dear) if dear else None
             for i, (order, party) in enumerate(book.buys):
                 f = party.facility
-                if party.kind != FACILITY or f is None or result.bought[i] >= order.quantity:
+                usable = result.bought[i] - stale.get(good, {}).get(i, 0)
+                if party.kind != FACILITY or f is None or usable >= order.quantity:
                     continue
-                expensive = (
-                    result.supply > 0 and auction.buy_limit(order, result.high) < result.price
+                limit = auction.buy_limit(order, result.high)
+                expensive = (result.supply > 0 and limit < result.price) or (
+                    cheapest is not None and limit < cheapest
                 )
                 f.economy.setdefault("short", {})[good] = "price" if expensive else "supply"
 
     # --- 約定 ---------------------------------------------------------------------
+
+    @staticmethod
+    def _stores(party: Party) -> bool:
+        """買った物を在庫に置く買い手か（施設・工事・倉庫・住宅の資材）。家計はその場で食べる。"""
+        return party.kind != HOUSEHOLD or party.layer == "housing"
+
+    @staticmethod
+    def _late(order: Order, party: Party) -> bool:
+        """持ち越せずに指値なしで出した売り（このターンの終わりに捨てられる分）か。"""
+        return party.facility is not None and order.limit is None
+
+    @classmethod
+    def _late_to_eaters(cls, book: Book, result: auction.Result) -> None:
+        """このターンの終わりに捨てられる分の売りが、その場で食べる家計の買った量より多く売れたら、
+        多い分を、約定価格で売れ残っていたほかの売りに回す（約定の量と値段は変わらない）。
+
+        板寄せでは指値なしの売りが先に約定するので、家計の買う量より多く売りに出ていると、
+        残りを工場が買い、使う前に捨てられていた（同じ値段で次のターンまで持つ物が売れ残って
+        いても）。ほかの売りもなければそのまま工場が買い、捨てられた分は買えなかった量に数える
+        （_record_shortages）。
+        """
+        late = [i for i, (o, p) in enumerate(book.sells) if cls._late(o, p) and result.sold[i]]
+        if not late:
+            return
+        eaten = sum(result.bought[i] for i, (_, p) in enumerate(book.buys) if not cls._stores(p))
+        excess = sum(result.sold[i] for i in late) - eaten
+        spare = [
+            (i, o.quantity - result.sold[i])
+            for i, (o, p) in enumerate(book.sells)
+            if not cls._late(o, p)
+            and auction.sell_limit(o) <= result.price
+            and o.quantity > result.sold[i]
+        ]
+        if excess <= 0 or not spare:
+            return
+        moved = proportional(min(excess, sum(q for _, q in spare)), spare)
+        for i, qty in moved.items():
+            result.sold[i] += qty
+        total = sum(result.sold[i] for i in late)
+        left = proportional(total - sum(moved.values()), [(i, result.sold[i]) for i in late])
+        for i in late:
+            result.sold[i] = left[i]
 
     @staticmethod
     def _transport_entity(island: IslandState, ctx: StageContext) -> tuple[str, int | None]:
@@ -962,12 +1033,17 @@ class Market(IslandStage):
         transport: tuple[str, int | None],
         bought: dict[str, int],
         routes: freight_rates.Routes,
-    ) -> None:
+    ) -> dict[int, int]:
+        """約定を買い手と売り手の組ごとに払い、物を移す。在庫に置く買い手が今夜捨てられる分を
+        買った量を、買い注文の番号ごとに返す（ほかに売りがなく、それしか買えなかったとき）。"""
         price = result.price
         carrier, carrier_id = transport
+        life = ctx.defs.goods[good].get("shelf_life")
+        expiry = None if life is None else ctx.turn - life  # この組まで、このターンの終わりに捨てる
+        stale: dict[int, int] = {}
         for b, s, qty in self._pairs(island, book, result, routes):
             _, buyer = book.buys[b]
-            _, seller = book.sells[s]
+            sell, seller = book.sells[s]
             amount = money_of(price, qty)
             buyer_freight = part(amount, buyer.freight)
             seller_freight = part(amount, seller.freight)
@@ -984,7 +1060,18 @@ class Market(IslandStage):
             island.economy.freight["paid"] = (
                 island.economy.freight.get("paid", 0) + buyer_freight + seller_freight
             )
-            batches = self._take_from_seller(island, good, seller, qty)
+            # 施設の売りは、注文ごとの組を渡す: 指値なしの売りは今夜捨てられる組（古い順）、
+            # 指値のある売りはそれ以外の組。国の倉庫の売りは、在庫に置く買い手（施設・工事・倉庫）
+            # には今夜捨てられる組を最後に回して渡す（家計はその場で食べるので古い順のまま）
+            if seller.facility is not None:
+                last = None if self._late(sell, seller) else expiry
+            else:
+                last = expiry if self._stores(buyer) else None
+            batches = self._take_from_seller(island, good, seller, qty, last)
+            if expiry is not None and self._stores(buyer):
+                spoiling = sum(q for made, q in batches if made <= expiry)
+                if spoiling:
+                    stale[b] = stale.get(b, 0) + spoiling
             self._give_to_buyer(island, good, buyer, batches, amount, buyer_freight, tax, bought)
             if seller.facility is not None:
                 books.add(island, seller.facility.id, books.SALES, amount)
@@ -992,6 +1079,7 @@ class Market(IslandStage):
             else:
                 books.add_sector(island, books.WAREHOUSE, "sales", amount)
             island.trades.append(TradeRecord(good, buyer.name, seller.name, qty, amount))
+        return stale
 
     @staticmethod
     def _pairs(
@@ -999,8 +1087,13 @@ class Market(IslandStage):
     ) -> list[tuple[int, int, int]]:
         """約定を、道のりの近い買い手と売り手の組から順に割り当てる（運賃の率は注文のときに
         決めた見込みのままなので、払う額は変わらない。どこからどこへ運んだかの記録が変わる）。
-        国の倉庫は首都にあり、家計には一番近い住んでいるマスへ運ぶ。"""
+        国の倉庫は首都にあり、家計には一番近い住んでいるマスへ運ぶ。
+
+        持ち越せずに指値なしで出した売り（このターンの終わりに捨てられる分）は、その場で食べる
+        家計に先に回し、在庫に置く買い手（施設・工事・倉庫）には、ほかの売りが尽きてから回す。
+        在庫に置く買い手が買うと、使う前に捨てられるため。"""
         far = 10**6
+        tier = 10**7  # 道のりより大きい。組の順を先に分ける
 
         def where(party: Party) -> tuple[int, int] | str | None:
             if party.facility is not None:
@@ -1010,22 +1103,31 @@ class Market(IslandStage):
         buyers = [where(p) for _, p in book.buys]
         sellers = [where(p) for _, p in book.sells]
 
+        stores = [Market._stores(p) for _, p in book.buys]
+        late = [Market._late(o, p) for o, p in book.sells]
+
         def distance(b: int, s: int) -> int:
             origin, goal = sellers[s], buyers[b]
+            if stores[b]:
+                rank = 2 if late[s] else 0
+            else:
+                rank = 0 if late[s] else 1
             if not isinstance(origin, tuple) or goal is None:
-                return far
+                return rank * tier + far
             d = routes.to_homes(origin) if goal == "homes" else routes.between(origin, goal)
-            return far if d is None else d
+            return rank * tier + (far if d is None else d)
 
         return auction.match_nearest(result.bought, result.sold, distance)
 
     @staticmethod
-    def _take_from_seller(island: IslandState, good: str, seller: Party, qty: int) -> list:
+    def _take_from_seller(
+        island: IslandState, good: str, seller: Party, qty: int, last_until: int | None = None
+    ) -> list:
         if seller.facility is not None:
-            batches = stock.take_batches(seller.facility.stock, good, qty)
+            batches = stock.take_batches(seller.facility.stock, good, qty, last_until)
             books.stock_moved(island, seller.facility.id, good, -qty)
             return batches
-        return stock.take_batches(island.warehouse, good, qty)
+        return stock.take_batches(island.warehouse, good, qty, last_until)
 
     @staticmethod
     def _give_to_buyer(

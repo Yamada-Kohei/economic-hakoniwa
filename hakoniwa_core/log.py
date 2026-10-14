@@ -22,6 +22,7 @@ _ARG_KINDS = {
     "term": "finance",
     "entry": "messages",
     "unsold": "messages",
+    "unsold_before": "messages",
     "method": "messages",
     "subsidy": "messages",
     "infra": "infrastructure",
@@ -40,9 +41,10 @@ def format_log(defs: Defs, kind: str, args: dict[str, Any], lang: str = "ja") ->
         shown.setdefault("unit", defs.unit_name(args["good"], lang))
     if isinstance(args.get("goods"), list):
         shown["goods"] = "・".join(defs.name("goods", g, lang) for g in args["goods"])
-    if isinstance(args.get("terms"), list):  # 国債の期間と割合 [[期間, %], ...]
-        names = [f"{defs.name('finance', t, lang)} {p}%" for t, p in args["terms"]]
-        shown["terms"] = "・".join(names)
+    for key in ("terms", "terms_before"):  # 国債の期間と割合 [[期間, %], ...]
+        if isinstance(args.get(key), list):
+            names = [f"{defs.name('finance', t, lang)} {p}%" for t, p in args[key]]
+            shown[key] = "・".join(names)
     if isinstance(args.get("reason"), str):
         shown["reason"] = format_log(defs, args["reason"], args.get("reason_args") or {}, lang)
     try:

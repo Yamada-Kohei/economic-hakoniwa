@@ -314,6 +314,21 @@ def bailout(island: IslandState, ctx: StageContext, bank: str) -> None:
         island.log.append(LogEntry("bank_bailed_in", {"x": f.x, "y": f.y, "cut": cut}))
 
 
+def _insured(paid: int, deposits: int) -> int:
+    """政府が損失の穴埋めに出した paid のうち、預金を守った分（預金保護）。
+
+    銀行の資産は、先に預金のほかの借り入れ（中央銀行からなど）に充てると見て、政府のお金は
+    残った預金 deposits（保護されない分を削った後）までを預金保護に数える。穴が預金より大きく、
+    政府がほかの借り入れまで肩代わりした分は、bank_debts_covered の文で別に出す（預金 0 の銀行を
+    清算すると、画面の預金と合わない「預金保護」が出ていた）。"""
+    return min(paid, deposits)
+
+
+def _log_debts_covered(island: IslandState, f: Facility, amount: int) -> None:
+    if amount > 0:
+        island.log.append(LogEntry("bank_debts_covered", {"x": f.x, "y": f.y, "amount": amount}))
+
+
 def resolve_in_place(island: IslandState, ctx: StageContext, bank: str) -> None:
     """引き継ぐ銀行のない島の引き継ぎ・清算: 政府が銀行を引き取り、出資を消して、損失を保護され
     ない預金と銀行間の貸し手、預金保護（国庫）、保護される預金の順に負わせて立て直す。資金繰りの
@@ -328,6 +343,7 @@ def resolve_in_place(island: IslandState, ctx: StageContext, bank: str) -> None:
     cut = _cut_uninsured(island, bank, loss)
     cover = loss - cut
     paid = _government_pays(island, ctx, bank, cover, "deposit_insurance")
+    deposits = banks.deposits_of(island, bank)
     cut += _cut_all(island, bank, cover - paid)
     liquidity = max(0, -banks.excess_reserves(island, config, bank))
     injected = _government_pays(island, ctx, bank, liquidity, "bank_bailout")
@@ -336,12 +352,14 @@ def resolve_in_place(island: IslandState, ctx: StageContext, bank: str) -> None:
     f.owner = OWNER_STATE
     f.economy.pop("failed", None)
     f.economy.pop("liquidity_failure", None)
+    insured = _insured(paid, deposits)
     island.log.append(
         LogEntry(
             "bank_resolved_in_place",
-            {"x": f.x, "y": f.y, "cut": cut, "insurance": paid + injected},
+            {"x": f.x, "y": f.y, "cut": cut, "insurance": insured + injected},
         )
     )
+    _log_debts_covered(island, f, paid - insured)
 
 
 def transfer(
@@ -362,6 +380,7 @@ def transfer(
     cut_total = _cut_uninsured(island, bank, loss)
     cover = max(0, loss - cut_total)
     paid = _government_pays(island, ctx, bank, cover, "deposit_insurance")
+    deposits = banks.deposits_of(island, bank)
     _cut_all(island, bank, cover - paid)  # 政府も払えない分は、残りの預金から比例で削る
     _cancel_equity(island, bank)
     _move_everything(island, bank, target)
@@ -376,6 +395,7 @@ def transfer(
         book[target] = book.get(target, 0) + book.pop(bank)
     kind = "bank_liquidated" if liquidation else "bank_transferred"
     t = banks.facility_of(island, target)
+    insured = _insured(paid, deposits)
     island.log.append(
         LogEntry(
             kind,
@@ -385,10 +405,11 @@ def transfer(
                 "to_x": t.x if t else -1,
                 "to_y": t.y if t else -1,
                 "cut": cut_total,
-                "insurance": paid,
+                "insurance": insured,
             },
         )
     )
+    _log_debts_covered(island, f, paid - insured)
 
 
 def _move_everything(island: IslandState, bank: str, target: str) -> None:
