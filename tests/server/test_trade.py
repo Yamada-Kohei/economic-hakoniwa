@@ -301,6 +301,8 @@ def test_help_explains_trade_and_fx(client, world):
 
 # --- 命令の説明と統計の表示名 ---------------------------------------------------------------
 
+ISLAND_KEYS = ("currency", "approve", "to", "partner")  # 命令の中身のうち、島の番号を持つ項目
+
 
 @pytest.mark.parametrize(
     ("kind", "payload", "text"),
@@ -335,6 +337,12 @@ def test_help_explains_trade_and_fx(client, world):
     ],
 )
 def test_describe_trade_orders(world, kind, payload, text):
+    # 島の番号は「サンプル島n」の n で書き、本当の番号に置き換える
+    # （PostgreSQL では、テストごとに番号が 1 から始まるとは限らない）
+    payload = {
+        key: m.Island.objects.get(name=f"サンプル島{value}").id if key in ISLAND_KEYS else value
+        for key, value in payload.items()
+    }
     assert display.describe_order(kind, payload) == text
 
 
