@@ -9,18 +9,19 @@
 標準のモジュールは `hakoniwa_core/modules/` に、パックのモジュールは `packs/<パック>/modules/` にあります。
 どちらも `register(registry)` 関数を持つ Python のパッケージです。
 
-## 標準のモジュール（フェーズ2-2）
+## 標準のモジュール（フェーズ2-3）
 
 1ターンは `game.yaml` の `stages:` の順に、次の段を実行します。フェーズ2から、物はお金で売り買いし、
 お金はすべて帳簿（`ledger.py`）の仕訳で動きます。
 
 | 段 | モジュール | すること |
 |---|---|---|
+| `upgrade` | `upgrade` | 前のフェーズから続く島に、フェーズ2-3 の基盤（インフラの整備度・学校・技術者・教育水準）を1度だけ置く（`economy/groundwork.py`） |
 | `execute_orders` | `planning` | 行政力の範囲で、並んだ命令を上から実行する（足りない分は次のターンへ）。税率・予算などの政策もここで変わる |
 | `budget` | `fiscal` | 国庫のお金を、支出の項目ごとに支払いの順番で取り置く |
-| `employment` | `employment` | 町から通勤圏の施設へ、賃金の高い施設（並べば優先度の高い施設）から労働者を割り当てる |
+| `employment` | `employment` | 技術者を席に割り当て、町から通勤圏の施設へ、賃金の高い施設（並べば優先度の高い施設）から労働者を割り当てる。余った技術者は島のどこの一般の席にも就く。公共事業の作業員を雇う |
 | `production` | `production` | 送電網ごとに電力を板寄せして電気代を払い、労働者・投入財・電力の足りた割合で生産する。産出は施設の在庫に入る |
-| `construction` | `construction` | 資材と人手のそろった工事を進め、終わった施設を動かし始める |
+| `construction` | `construction` | 資材と人手のそろった工事を進め、終わった施設を動かし始める。インフラの維持と工事を進める |
 | `payroll` | `labor` | 賃金・所得税・失業手当を払い、施設ごとの賃金を見直す |
 | `market` | `market` | 財ごとの板寄せ（施設・家計・工事・国の倉庫）、代金・運賃・消費税の支払い、傷んだ物を捨てる、希望価格と操業目標の見直し |
 | `banking` | `banking` | 銀行間と中央銀行への返済、融資の利払いと返済、預金の利子、運転資金の融資（審査・大口融資の規制）、預金の乗り換えと取り付け |
@@ -30,7 +31,9 @@
 | `failures` | `failures` | 返済の遅れが続いた施設の倒産と差し押さえ、銀行の破綻と破綻処理 |
 | `entry_exit` | `firms` | 民営工場と民間銀行の参入、民営工場の撤退、差し押さえた施設の売却 |
 | `population` | `population` | 食べる、増える・減る、幸福度、島を出て行く人 |
-| `housing` | `population` | 働き口の近くに町を作り、人が増えた町を育てる（資材は市場で買う） |
+| `housing` | `population` | 働き口の近くに町を作り、人が増えた町を育てる（資材は市場で買う。都市と大都市は上下水道が要る） |
+| `infrastructure` | `infrastructure` | インフラの整備度を傷みの分だけ下げ、統計を残す |
+| `education` | `education` | 教育水準を学校の定員に向けて動かし、大学で技術者を育て、技術者の引退を進める |
 | `events` | `events` | まれな災害で施設をしばらく止める |
 | `records` | `records` | 物価指数・GDP などの統計を残し、帳簿の確かめ（合わなければその場で止める） |
 
@@ -40,7 +43,8 @@
 |---|---|
 | `basics` | `rename_island`・`rename_place`・`rename_facility`（名前の変更） |
 | `construction` | `build`・`demolish`（建設・取り壊し） |
-| `land` | `build_power_line`・`set_no_development`（送電線・開発禁止） |
+| `land` | `build_power_line`・`set_no_development`（送電網の工事・開発禁止） |
+| `infrastructure` | `build_infrastructure`（インフラの工事を列に並べる） |
 | `fiscal` | `set_taxes`（税率）・`set_budget`（年の予算） |
 | `labor` | `set_labor_policy`（失業手当・最低賃金） |
 | `accounts` | `set_accounting`（国営施設の会計の形） |
@@ -68,6 +72,8 @@
 | `loan_rate` | `banking` | 融資の金利 |
 | `policy_rate` | `central_bank` | 独立した中央銀行の政策金利 |
 | `entry_return` | `firms` | 民営工場の見込みの年の利益率 |
+| `engineer_wage_update` | `labor` | 技術者の賃金の見直し（技術者の席の埋まり方と技術者の失業率で動く） |
+| `education_level` | `education` | 次のターンの教育水準 |
 
 モジュールが共通で使う道具はコアの直下にあります。
 
@@ -75,7 +81,8 @@
 |---|---|
 | `ledger.py` | お金の帳簿。お金はここの `post` と `pay` を通してだけ動く。毎ターンの4つの確かめ |
 | `market/auction.py` | 板寄せ（値幅の中で約定する量が最も多い値段を決め、有利な注文から配る） |
-| `economy/` | お金の経済の部品: 初めの値段と変動費（`prices.py`）、払えるお金の取り置き（`funds.py`）、国債（`debt.py`）、銀行と融資（`banks.py`）、運賃の率（`freight.py`）、家計の層（`households.py`）、収支の記録（`books.py`）、物価指数（`stats.py`）、経済の始まりと移し替え（`start.py`） |
+| `economy/` | お金の経済の部品: 初めの値段と変動費（`prices.py`）、払えるお金の取り置き（`funds.py`）、国債（`debt.py`）、銀行と融資（`banks.py`）、運賃の率（`freight.py`）、家計の層（`households.py`）、収支の記録（`books.py`）、物価指数（`stats.py`）、経済の始まりと移し替え（`start.py`）、生産の基盤の初めの値（`groundwork.py`）、施設の生産性（`productivity.py`） |
+| `infra.py` | マスのインフラの整備度と工事の列の読み書き |
 | `units.py` | 量・お金・率の単位と丸め（丸めはここの関数だけで行う） |
 | `allocation.py` | 限りのある物を優先順位の順に配る `by_priority` |
 | `stock.py` | 在庫（作られたターンごとの束で持ち、古い物から使う。傷む財の計算） |

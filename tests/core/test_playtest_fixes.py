@@ -35,14 +35,16 @@ from tests.core.test_finance import warmed as warmed  # noqa: F401
 
 
 def _break(game, world, island, bank):
-    """bank の融資を貸し倒れにして債務超過にする。"""
+    """bank の融資を貸し倒れにして債務超過にする（自己資本は、処理するターン world.turn + 1 の
+    国債の時価で見る）。"""
+    turn = world.turn + 1
     for loan in banks.loans_by_lender(island, bank):
         banks.write_off(island, loan, banks.outstanding(island, loan))
     banks.drop_settled(island)
-    worth = banks.net_worth(island, game.config, bank, world.turn)
+    worth = banks.net_worth(island, game.config, bank, turn)
     if worth >= 0:
         ledger.pay(island, bank, household("owners"), worth + 1000, "dividend")
-    assert banks.net_worth(island, game.config, bank, world.turn) < 0
+    assert banks.net_worth(island, game.config, bank, turn) < 0
 
 
 def _empty_treasury(island):
@@ -159,6 +161,7 @@ def test_entry_block_is_recorded_and_logged_once(game, warmed):
         if tile.zone == ZONE_INDUSTRIAL:
             tile.zone = ZONE_NONE
     island.economy.finance.pop("entry_block", None)  # 前のターンまでのわけは消しておく
+    island.log.clear()  # 前のターンのログも
     ctx = context(game, world)
     entry = EntryExit()
     blocks = []

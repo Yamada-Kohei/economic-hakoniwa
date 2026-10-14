@@ -100,6 +100,7 @@ market:
   target_step: 0.1      # 売り切れたときに多めに見る量（全力の産出に対する割合）。発電所の余裕
   expand_margin: 0.2    # 売り切れて、値段が変動費よりこの割合以上高いときに増産する
   max_target_change: 0.2  # 操業目標を1ターンに変える幅の上限（全力に対する割合）
+  public_stock_turns: 3 # 公務の施設（学校と大学）が持っておく投入財（教材）のターン数
   initial_prices:       # 初めの値段は定義のレシピから「原価＋上乗せ」で解く
     markup: 0.1         # 原価に上乗せする割合
     capital_rate: 0.05  # 設備の利子（年率）。減価償却は firms.depreciation_turns
@@ -267,6 +268,7 @@ education:
   start_budget_years: 1.2   # 建国と移し替えのときの教育費の年の予算（学校1つを動かす費用の何年分）
   engineer_share: 0.02  # 建国と移し替えのときの技術者の数（一般の労働者に対する割合）
   retire_rate: 0.005    # 技術者が1ターンに引退して一般の層に戻る割合
+  intake_unemployment: 0.3  # 技術者の失業率がこれに近づくほど大学に入る人が減る（この値以上で 0）
 
 power:
   good: electricity     # 電力の財

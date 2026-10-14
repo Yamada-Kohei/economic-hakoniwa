@@ -8,17 +8,21 @@
 1. 食料の生産が食べる量に届かなければ、農場か漁港
 2. 発電の余裕が少なければ、発電所（石炭があれば火力、なければ水力）
 3. 工事の資材が国の倉庫になく、島に作る施設もなければ、それを作る施設（工事が止まらないように、
-   同時に進める工事の数を超えても建てる）
+   同時に進める工事の数を超えても建てる）。作る施設がどれも原料を待って止まっていれば、その原料を
+   作る施設
 4. 投入財の作る量が使う量に届かなければ、それを作る施設
 5. 消費財の生産が住民1人あたりの目安に届かないか、前のターンの市場で売りに出た量が買いたい量に
    届かなければ、消費財工場（加工食品も、売りに出た量が買いたい量に届かなければ食品工場）
 6. 生産の連鎖（鉄鉱石 → 鋼鉄 → 機械 → 新しい工場）を太くする: 製鉄所と機械工場を増やす（失業率が
    ふつうより高く、人手の足りない施設が少ない間だけ）
-教育（フェーズ2-3）: 学校の定員が子どもの数の SCHOOL_TARGET に届かなければ、食料と発電の次に学校を
-建てます。建っている施設（工事中を含む）が要る技術者が、島の技術者の ENGINEER_TARGET 倍を超え、
-大学がなければ大学を建てます。
+教育（フェーズ2-3）: 学校の定員が子どもの数の SCHOOL_TARGET に届かなければ、食料・発電・工事の資材の
+次に学校を建てます。建っている施設（工事中を含む）が要る技術者が、島の技術者の ENGINEER_TARGET 倍を
+超え、大学がなければ大学を建てます。どちらも、資材が倉庫にあるか島で作っているときだけで、同じ資材を
+待っている工事があるあいだは建てません（大学は、民営工場の工事に要る分の資材を倉庫に残します）。
 4〜6 では、投入財に余裕のない施設は建てません（鉱山を増やせないのに製鉄所を増やすと、鉄鉱石の
 取り合いで値段が跳ね上がるだけなので）。
+ほかの工事が待っている資材を建った施設がどれも作っていなければ、それを使う施設は、その資材を作る
+施設でない限り建てません（初めの倉庫の機械を発電所に使うと、製鉄所と機械工場が互いを待って止まる）。
 失業率が高い間は、同時に進める工事を1つ増やします（工事の賃金と資材の買い物が働き口になる）。
 お金の経済の島では、国の倉庫にある財のうち島の施設が仕入れに困っている物（建国のときの石炭など）を、
 毎ターン市場に売ります（建てる命令と一緒に出します）。
@@ -26,7 +30,8 @@
 て、民営の工事が待っている量か1つの工事に要る量まで売りに出します（国の倉庫の物は、売りに出さなけれ
 ば民間は買えないので）。民営の工事が待っていなければ、OFFER_TURNS + 1 ターンに一度にします。
 建てた施設は、陸地を通る一番短い送電線で送電網につなぎ、施設のマスと周りの陸のマスのうち交通の
-整備度が ROAD_LEVEL に届かないマスに道路を引きます（フェーズ2-3。インフラの係数を 1 以上にする）。
+整備度が ROAD_LEVEL に届かないマスに道路を引きます（フェーズ2-3。インフラの係数を 1 以上にする。
+同じ資材を待っている工事があるあいだは引きません）。
 上下水道が足りずに育たない町があれば、そのマスに上下水道を引きます。
 
 お金の経済の島では、初めに失業手当を平均賃金の BENEFIT % にし、BUDGET_TURNS ターンごとに
@@ -209,14 +214,10 @@ def _private_materials(island: IslandState, defs: Defs) -> dict[str, int]:
     量と、民間が建てられる施設の1つの工事に要る量の大きい方）。民営の工事が待っていない資材は、直近
     OFFER_TURNS ターンに売りに出ていなければ出す（売りに出ていることが民間に見えれば足りるので、行政
     力を毎ターンは使わない）。"""
-    if not any(private_allowed(defs, island, kind) for kind in defs.facilities):
+    amounts = _private_needs(island, defs)
+    if not amounts:
         return {}
     made = {g for f in island.facilities if f.built for g in fac.recipe_of(defs, f)["outputs"]}
-    amounts: dict[str, int] = {}
-    for kind, fdef in sorted(defs.facilities.items()):
-        if private_allowed(defs, island, kind):
-            for good, qty in fdef["construction"].get("materials", {}).items():
-                amounts[good] = max(amounts.get(good, 0), qty)
     waiting = _reserved_materials(island, defs, OWNER_PRIVATE)
     for good, qty in waiting.items():
         amounts[good] = max(amounts.get(good, 0), qty)
@@ -226,6 +227,17 @@ def _private_materials(island: IslandState, defs: Defs) -> dict[str, int]:
         for g, q in amounts.items()
         if g not in made and (waiting.get(g, 0) > 0 or not any(offered.get(g, [])[-OFFER_TURNS:]))
     }
+
+
+def _private_needs(island: IslandState, defs: Defs) -> dict[str, int]:
+    """民営工場が建てられる島で、民間が建てられる施設の1つの工事に要る資材の量（資材ごとに一番
+    多い施設の量）。民営工場が建てられなければ空。"""
+    amounts: dict[str, int] = {}
+    for kind, fdef in sorted(defs.facilities.items()):
+        if private_allowed(defs, island, kind):
+            for good, qty in fdef["construction"].get("materials", {}).items():
+                amounts[good] = max(amounts.get(good, 0), qty)
+    return amounts
 
 
 # --- 公共事業費 -------------------------------------------------------------------
@@ -409,21 +421,55 @@ def _reserved_materials(
 def _material_producers(
     island: IslandState, defs: Defs, config: GameConfig
 ) -> Iterator[tuple[str, str]]:
-    """工事の資材のうち、国の倉庫に足りず、島に作る施設（工事中も含む）もない物を作る施設。"""
+    """工事の資材のうち、国の倉庫に足りず、島に作る施設（工事中も含む）もない物を作る施設。
+
+    作る施設があっても、どれも原料が手に入らずに止まっていて、その原料を作る施設がなければ、原料を
+    作る施設（建材工場が石材を待っているのに採石場が閉まった島の採石場）。工事が資材を待って
+    同時に進める工事の数がいっぱいでも、これは建てる（資材が出てこないまま工事が詰まるので）。
+    """
     made = {good for f in island.facilities for good in fac.recipe_of(defs, f)["outputs"]}
     for good, qty in sorted(_reserved_materials(island, defs).items()):
-        if good not in made and stock.total(island.warehouse, good) < qty:
+        if stock.total(island.warehouse, good) >= qty:
+            continue
+        if good not in made:
             yield from _producers(defs, config, island, good)
+            continue
+        makers = [
+            f for f in island.facilities if f.built and good in fac.recipe_of(defs, f)["outputs"]
+        ]
+        if makers and all(fac.short_of_inputs(f.status) for f in makers):
+            short = {f.status.split(":", 1)[1] for f in makers}
+            for need in sorted(short - made):
+                yield from _producers(defs, config, island, need)
 
 
 def _materials_ok(island: IslandState, defs: Defs, kind: str) -> bool:
-    """工事の資材が、倉庫にあるか（ほかの工事の残りの分を除いて）、島の中で作れるか。"""
+    """工事の資材が、倉庫にあるか（ほかの工事の残りの分を除いて）、島の中で作れるか。
+
+    ほかの工事が待っている資材を建った施設がどれも作っていなければ、島で作れるはずでも、その資材を
+    作る施設（を建てる工事）でない限り建てない。製鉄所と機械工場の工事は互いの鋼鉄と機械を待つので、
+    初めの倉庫の分をほかの工事に使うと、連鎖がいつまでも始まらない。
+    """
     reserved = _reserved_materials(island, defs)
+    made = _made(island, defs)
+    short = {g for g, qty in reserved.items() if stock.total(island.warehouse, g) < qty}
+    helps = any(g in short for r in defs.facilities[kind]["recipes"].values() for g in r["outputs"])
     for good, qty in defs.facilities[kind]["construction"].get("materials", {}).items():
         have = stock.total(island.warehouse, good) - reserved.get(good, 0)
-        if have < qty and not _makeable(defs, island, good, frozenset()):
+        if have >= qty or good in made:
+            continue
+        if reserved.get(good, 0) > 0 and not helps:
+            return False
+        if not _makeable(defs, island, good, frozenset()):
             return False
     return True
+
+
+def _made(island: IslandState, defs: Defs) -> set[str]:
+    """建った施設が作っている財。"""
+    return {
+        good for f in island.facilities if f.built for good in fac.recipe_of(defs, f)["outputs"]
+    }
 
 
 def _candidates(
@@ -448,9 +494,9 @@ def _candidates(
     if supply.get(power, 0) < demand.get(power, 0) * POWER_MARGIN:
         yield from _producers(defs, config, island, power)
 
-    yield from _education(island, defs, config)
-
     yield from _material_producers(island, defs, config)
+
+    yield from _education(island, defs, config)
 
     def spare(kind: str, rname: str) -> bool:
         """投入財に余裕がある（作る量が、今使う量とこの施設の使う量に届く）か。
@@ -496,30 +542,82 @@ def _candidates(
 
 
 def _education(island: IslandState, defs: Defs, config: GameConfig) -> Iterator[tuple[str, str]]:
-    """学校の定員が足りなければ学校、技術者が足りなくて大学がなければ大学（お金の経済の島だけ）。"""
+    """学校の定員が足りなければ学校、技術者が足りなくて大学がなければ大学（お金の経済の島だけ）。
+
+    同じ資材を待っている工事があるあいだは建てない（学校と大学が建材を使い、原料や資材の工場の工事が
+    後回しになって、消費財と木材が足りなくなったため）。
+    """
     if not island.has_economy:
         return
-    if SCHOOL in defs.facilities:
+    if SCHOOL in defs.facilities and not _materials_waited(island, _materials_of(defs, SCHOOL)):
         seats = sum(
             defs.facilities[f.kind].get("education", {}).get("capacity", 0)
             for f in island.facilities
         )
         children = population_of(island) * config.get("education.children")
-        if seats < children * SCHOOL_TARGET:
+        if seats < children * SCHOOL_TARGET and _in_hand(island, defs, SCHOOL):
             yield (SCHOOL, "default")
-    if UNIVERSITY in defs.facilities and _count(island, UNIVERSITY) == 0:
+    if (
+        UNIVERSITY in defs.facilities
+        and _count(island, UNIVERSITY) == 0
+        and not _materials_waited(island, _materials_of(defs, UNIVERSITY))
+    ):
         needed = sum(fac.engineers_needed(defs, f.kind) for f in island.facilities)
-        if needed > island.economy.workers.get(fac.ENGINEER, 0) * ENGINEER_TARGET:
+        if needed > island.economy.workers.get(fac.ENGINEER, 0) * ENGINEER_TARGET and _in_hand(
+            island, defs, UNIVERSITY, _private_needs(island, defs)
+        ):
             yield (UNIVERSITY, "default")
+
+
+def _materials_waited(island: IslandState, goods: set[str]) -> bool:
+    """goods のどれかを待っている施設の工事か、資材を待っているインフラの工事があるか。"""
+    if any(not f.built and goods & set(f.ext.get("waiting", ())) for f in island.facilities):
+        return True
+    works = island.economy.infra
+    return works.get("why") == "materials" and works.get("stalled", 0) > 0
+
+
+def _materials_of(defs: Defs, kind: str) -> set[str]:
+    return set(defs.facilities[kind]["construction"].get("materials", {}))
+
+
+def _in_hand(
+    island: IslandState, defs: Defs, kind: str, keep: dict[str, int] | None = None
+) -> bool:
+    """工事の資材が、国の倉庫にある（ほかの工事の残りの分と keep を除いて）か、建った施設が島で
+    作っているか。
+
+    島で作れるだけで建てると、初めの倉庫の資材を学校や大学が使い、資材を作る施設や、島で作れない
+    資材（機械など）を待つ民営工場の工事が止まる。
+    """
+    reserved = _reserved_materials(island, defs)
+    made = _made(island, defs)
+    keep = keep or {}
+    for good, qty in defs.facilities[kind]["construction"].get("materials", {}).items():
+        have = stock.total(island.warehouse, good) - reserved.get(good, 0) - keep.get(good, 0)
+        if have < qty and good not in made:
+            return False
+    return True
 
 
 # --- インフラ ---------------------------------------------------------------------
 
 
 def _road_order(island: IslandState, defs: Defs, pos: tuple[int, int]) -> tuple[str, dict] | None:
-    """pos とその周りの陸のマスのうち、交通の整備度が ROAD_LEVEL に届かないマスに道路を引く。"""
+    """pos とその周りの陸のマスのうち、交通の整備度が ROAD_LEVEL に届かないマスに道路を引く。
+
+    同じ資材を待っている工事があるあいだは引かない（道路の石材と建材を、施設の工事に回す）。
+    """
     kinds = defs.infra_kinds("transport")
     if not kinds or not island.has_economy:
+        return None
+    goods = {
+        good
+        for kind in kinds
+        for key in ("materials", "fallback")
+        for good in defs.infrastructure[kind].get(key, {})
+    }
+    if _materials_waited(island, goods):
         return None
     level = round(ROAD_LEVEL * infra.FULL)
     tiles = []

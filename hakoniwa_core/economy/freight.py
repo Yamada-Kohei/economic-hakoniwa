@@ -45,11 +45,20 @@ _PATHS: dict[bytes, dict[Pos, array]] = {}
 _PATHS_MAX = 256
 
 
+WEIGHTS = "freight_weights"  # island.scratch: マスごとの重さ（整備度が変わったら捨てる）
+
+
 def _weights(island: IslandState, defs: Defs) -> bytes:
-    """マスごとの重さ（0 は海。陸は 1〜10 で、10 が道のない陸のマス）。"""
-    return bytes(
-        infra.path_weight(defs, t) if fac.is_land(defs, t.terrain) else 0 for t in island.tiles
-    )
+    """マスごとの重さ（0 は海。陸は 1〜10 で、10 が道のない陸のマス）。
+
+    ターンの中では、整備度が変わるまで island.scratch に置いて使い回す（forget と forget_paths）。
+    """
+    cached = island.scratch.get(WEIGHTS)
+    if cached is None:
+        cached = island.scratch[WEIGHTS] = bytes(
+            infra.path_weight(defs, t) if fac.is_land(defs, t.terrain) else 0 for t in island.tiles
+        )
+    return cached
 
 
 def _search(size: int, weights: bytes, starts: list[int]) -> array:
@@ -368,3 +377,9 @@ def forget(island: IslandState) -> None:
     """このターンに計算した率を捨てる（次に使うときに計算し直す）。"""
     island.scratch.pop("freight_rates", None)
     island.scratch.pop("freight_household", None)
+    forget_paths(island)
+
+
+def forget_paths(island: IslandState) -> None:
+    """マスの重さだけを捨てる（インフラの段の傷み。率はそのターンのものを使い続ける）。"""
+    island.scratch.pop(WEIGHTS, None)

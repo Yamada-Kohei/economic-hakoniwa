@@ -210,7 +210,7 @@ university:
   terrain: [plain]
   public_service: true
   budget: education
-  construction: {turns: 6, labor: 800, materials: {building_materials: 40, steel: 5, machinery: 2}}
+  construction: {turns: 6, labor: 800, materials: {building_materials: 40, wood: 10}}  # 鋼鉄と機械の連鎖がない島にも建てられるように
   workers: 500
   priority: 8
   education: {engineers: 10}       # 引退（1ターン 0.5%）と釣り合うのは 2,000 人

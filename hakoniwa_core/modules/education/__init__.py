@@ -4,9 +4,11 @@
   だけ動きます（式 education_level）。E_goal = min(1, Σ(学校の定員 × 稼働率) ÷ 子どもの数)、
   子どもの数は住民の education.children です。教育費を削っても E はすぐには下がらず、数年かけて
   効いてきます。E は施設の生産性（economy/productivity.py）と幸福度に効きます。
-- 大学は1ターンに「育てる数 × 稼働率」を一般の労働者から技術者にし、技術者は1ターンに
+- 大学は1ターンに「育てる数 × 稼働率 × 入学の割合」を一般の労働者から技術者にし、技術者は1ターンに
   education.retire_rate が引退して一般の層に戻ります（端数は次のターンに持ち越す）。育った人と
   引退した人の預金は、層を移る人と一緒に動きます（economy/households.py の set_workers）。
+  入学の割合は 1 − 技術者の失業率 ÷ education.intake_unemployment（0 未満は 0）です。席に就けない
+  技術者が多いと、技術者を目指す人が減ります（育ちすぎて失業する技術者が増え続けないように）。
 
 学校と大学の稼働率は、教員の人手と教材（投入の消費財）の足りている割合の小さい方で、生産の段で
 決まります。教員の賃金と教材の代金は教育費（予算の項目 education）から払います。
@@ -16,6 +18,7 @@ from __future__ import annotations
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.economy.households import set_workers
+from hakoniwa_core.modules.labor import engineer_unemployment
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import IslandState
 from hakoniwa_core.turn.context import StageContext
@@ -54,6 +57,8 @@ class Education(IslandStage):
         population = sum(t.population for t in island.tiles)
         children = population * settings["children"]
         seats, trained = school_seats(island, ctx)
+        if settings.get("intake_unemployment"):
+            trained *= max(0.0, 1 - engineer_unemployment(island) / settings["intake_unemployment"])
         goal = economy.education
         if children > 0:
             goal = min(FULL, round(seats * FULL / children))

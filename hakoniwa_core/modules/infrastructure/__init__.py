@@ -38,6 +38,8 @@ from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import from_milli
 
 WORKS = "works"  # island.scratch: このターンの公共事業の計画と雇えた人手
+UPKEEP = "works_upkeep"  # island.scratch: 維持の仕事の一覧（整備度か工事の列が変わったら捨てる）
+MATERIALS = "works_materials"  # island.scratch: 種類ごとに、決まった資材（True）か代わりの資材か
 PAYER = Payer(GOV, CONSTRUCTION)
 # 新しい工事が進まないまま、このターン数続いたらわけをログで知らせる（その後は進むまで出さない）
 STALL_TURNS = 2
@@ -70,19 +72,35 @@ class Works:
 
     def __init__(self, island: IslandState, ctx: StageContext) -> None:
         self.island, self.ctx, self.defs = island, ctx, ctx.defs
-        self._made: set[str] | None = None
 
     # --- 1マス分の費用 -------------------------------------------------------------
 
     def materials(self, kind: str) -> dict[str, int]:
-        """1マスを 0% から 100% にする資材。島で作れない財があれば fallback を使う。"""
+        """1マスを 0% から 100% にする資材。手に入らない財があれば fallback を使う。
+
+        手に入るのは、島で作れて（地下資源）、建った施設が作っているか、国の倉庫か工事の資材に
+        ある財です（製鉄所が閉まって鋼鉄がなくなった島は、送電網を木の柱で直す）。ターンの途中で
+        変わらないように、ターンの初めに使うときに決めて island.scratch に置きます。
+        """
         spec = self.defs.infrastructure[kind]
-        if "fallback" in spec:
-            if self._made is None:
-                self._made = producible_goods(self.defs, self.island.resources)
-            if not set(spec["materials"]) <= self._made:
-                return dict(spec["fallback"])
-        return dict(spec["materials"])
+        if "fallback" not in spec:
+            return dict(spec["materials"])
+        chosen = self.island.scratch.setdefault(MATERIALS, {})
+        if kind not in chosen:
+            chosen[kind] = set(spec["materials"]) <= self._available()
+        return dict(spec["materials"] if chosen[kind] else spec["fallback"])
+
+    def _available(self) -> set[str]:
+        island = self.island
+        made = {
+            good
+            for f in island.facilities
+            if f.built
+            for good in fac.recipe_of(self.defs, f)["outputs"]
+        }
+        held = {g for g, q in stock.totals(island.warehouse).items() if q > 0}
+        held |= {g for g, q in stock.totals(works_stock(island)).items() if q > 0}
+        return producible_goods(self.defs, island.resources) & (made | held)
 
     def step(self, kind: str) -> int:
         """1マスを1ターンに上げられる整備度の上限（100% ÷ 工期）。"""
@@ -105,9 +123,13 @@ class Works:
         """維持の仕事（整備度が目標より低いマス）。施設と町のマスとその隣から先に、y, x の順。
 
         ahead なら、次のターンの分（このターンの終わりの傷みを足した分）を見積もる。工事の列に
-        並んでいるマスと種類は、新しい工事の方で上げるので数えない。
+        並んでいるマスと種類は、新しい工事の方で上げるので数えない。整備度か工事の列が変わるまでは
+        同じなので、island.scratch に置いて使い回す（forget_upkeep で捨てる）。
         """
         island = self.island
+        cache = island.scratch.setdefault(UPKEEP, {})
+        if ahead in cache:
+            return cache[ahead]
         near: set[tuple[int, int]] = set()
         for f in island.facilities:
             if fac.on_map(f):
@@ -127,7 +149,8 @@ class Works:
                     amount = min(target - now, self.step(kind))
                     items.append(Item(kind, tile.x, tile.y, amount, True))
         items.sort(key=lambda i: ((i.x, i.y) not in near, i.y, i.x, i.kind))
-        return [self.cost(i) for i in items]
+        cache[ahead] = [self.cost(i) for i in items]
+        return cache[ahead]
 
     def build(self, ahead: bool = False) -> list[Item]:
         """新しい工事の仕事（工事の列の順）。
@@ -146,6 +169,11 @@ class Works:
                 amount = min(infra.FULL - now, self.step(kind))
                 items.append(self.cost(Item(kind, x, y, amount, False)))
         return items
+
+
+def forget_upkeep(island: IslandState) -> None:
+    """使い回している維持の仕事の一覧を捨てる（整備度か工事の列を変えたとき）。"""
+    island.scratch.pop(UPKEEP, None)
 
 
 def _fit(item: Item, have: dict[str, int]) -> int:
@@ -333,6 +361,7 @@ def progress(island: IslandState, ctx: StageContext) -> None:
         for k, x, y in queue
         if k in ctx.defs.infrastructure and infra.level(island.tile(x, y), k) < infra.FULL
     ]
+    forget_upkeep(island)
     _watch(island, state, bool(queue), built > 0)
     if done_any:
         from hakoniwa_core.economy import freight
@@ -408,6 +437,10 @@ class Infrastructure(IslandStage):
 
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
         defs = ctx.defs
+        from hakoniwa_core.economy import freight
+
+        forget_upkeep(island)
+        freight.forget_paths(island)
         wear = {k: round(v["wear"] * infra.FULL) for k, v in defs.infrastructure.items()}
         totals = dict.fromkeys(defs.infrastructure, 0)
         land = 0
@@ -464,7 +497,11 @@ def build_infrastructure(island: IslandState, payload: dict[str, Any], ctx: Stag
 
 def lay(island: IslandState, defs: Defs, kind: str, tiles: list[tuple[int, int]]) -> int:
     """命令 build_infrastructure と build_power_line の中身。並べた（引いた）マスの数を返す。"""
+    from hakoniwa_core.economy import freight
+
     land = [(x, y) for x, y in tiles if is_land(defs, island.tile(x, y).terrain)]
+    forget_upkeep(island)
+    freight.forget_paths(island)
     if island.has_economy:
         count = infra.enqueue(island, kind, land)
         island.log.append(LogEntry("infrastructure_ordered", {"infra": kind, "count": count}))

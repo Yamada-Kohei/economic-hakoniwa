@@ -308,6 +308,9 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
     見込みに全力の target_step 分を足して増産する（儲かる物は多く作られ、値段が費用に近づく）。
     希望価格が約定価格より高くて売れなかった分は、市場に買えなかった人がいれば売れたと見る（値上げ
     して売れなかったターンに減産すると、品不足なのに作る量が上下して、値段が上がり続けたため）。
+    前のターンの売れ残りを持ち越せずに指値なしで出して売れた分も、売れた量に数える（数えないと、
+    売れ残りが翌ターンに捨て値で売れて新しく作った分が売れないように見え、魚の余った島でどの漁港も
+    同時に減産し、売れ残りが尽きたところで食料が足りなくなった）。
     投入財が手に入らずに（品不足・割高・資金不足）か、電力が足りずに止まった施設は、動けた割合に
     target_step を足した分までにする（動けないのに仕入れを増やし続けない）。1ターンに変えるのは
     全力の market.max_target_change まで（人の出入りと仕入れを急に変えない）。
@@ -329,6 +332,8 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
     plan = 0
     for good, full in sorted(outputs.items()):
         offered, sold, priced_out = f.economy.get("sales", {}).get(good, [0, 0, 0])
+        late_offered, late_sold = f.economy.get("late_sales", {}).get(good, [0, 0])
+        offered, sold = offered + late_offered, sold + late_sold
         record = records.get(good)
         unmet = record.demand - record.volume if record is not None else 0
         before = expected.get(good, fac.scale(full, target))
@@ -575,7 +580,8 @@ class Market(IslandStage):
         操業目標はこの段の終わりに見直すので、上がる分（market.max_target_change まで）も先に
         買っておく（目標を上げた次のターンに原料が足りず、人を雇えないまま目標を下げ直して、
         のこぎりの歯のように増えたり減ったりしないように）。雇いたいだけ雇えなかった施設は、
-        今の人手より少し多い分（market.target_step）まで。
+        今の人手より少し多い分（market.target_step）まで。学校と大学は market.public_stock_turns
+        ターン分。
         """
         settings = ctx.config.get("market")
         target = f.economy.get("target", fac.FULL)
@@ -589,6 +595,10 @@ class Market(IslandStage):
         else:
             change = round_money(settings["max_target_change"] * fac.FULL + 0.5)
             expected = min(fac.FULL, target + change)
+        if is_public_service(ctx.defs, f):
+            # 学校と大学は教材を数ターン分持っておく（消費財が1、2ターン買えないだけで休校に
+            # ならないように）
+            expected *= settings["public_stock_turns"]
         needs = []
         for good, qty in sorted(fac.recipe_of(ctx.defs, f)["inputs"].items()):
             if good == power:
@@ -1121,17 +1131,28 @@ class Market(IslandStage):
             ceiling = max(unfilled) if unfilled else None
             low, high = auction.band(island.economy.prices.get(good, 1), width)
             # 売りに出した量、売れた量、希望価格が約定価格より高くて売れなかった量。持ち越せずに
-            # 指値なしで出した分は、どれにも数えない（捨て値で売れるのを当てにして作り続けず、傷み
-            # かけの物を捨て値で出したことで希望価格も下げない。傷みかけの物しかなかった施設は、
-            # 売る物がなかったのと同じに扱う）
+            # 指値なしで出した分は、どれにも数えない（傷みかけの物を捨て値で出したことで希望価格を
+            # 下げない。傷みかけの物しかなかった施設は、売る物がなかったのと同じに扱う）。その分の
+            # 出した量と売れた量は late_sales に別に残し、操業目標の見込みにだけ足す
             sold: dict[int, list[int]] = {}
+            late: dict[int, list[int]] = {}
             for i, (order, party) in enumerate(book.sells):
-                if party.facility is not None and order.limit is not None:
-                    entry = sold.setdefault(party.facility.id, [0, 0, 0])
+                if party.facility is None:
+                    continue
+                if order.limit is None:
+                    entry = late.setdefault(party.facility.id, [0, 0])
                     entry[0] += order.quantity
                     entry[1] += result.sold[i]
-                    if order.limit > result.price:
-                        entry[2] += order.quantity - result.sold[i]
+                    continue
+                entry = sold.setdefault(party.facility.id, [0, 0, 0])
+                entry[0] += order.quantity
+                entry[1] += result.sold[i]
+                if order.limit > result.price:
+                    entry[2] += order.quantity - result.sold[i]
+            for fid, entry in sorted(late.items()):
+                f = island.facility(fid)
+                assert f is not None
+                f.economy.setdefault("late_sales", {})[good] = entry
             for fid, entry in sorted(sold.items()):
                 offered, done, _ = entry
                 f = island.facility(fid)

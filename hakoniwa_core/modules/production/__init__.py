@@ -108,6 +108,7 @@ class Production(IslandStage):
         power = config.get("power.good")
         for f in island.facilities:  # このターンに売りに出した量と売れた量（電力とこの後の市場）
             f.economy.pop("sales", None)
+            f.economy.pop("late_sales", None)
             productivity.update(island, defs, config, f)
         runs = [self._prepare(f, ctx, power) for f in island.facilities if self._operates(f, ctx)]
         served = self._power_market(island, runs, ctx, power)

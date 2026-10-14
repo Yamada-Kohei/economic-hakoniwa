@@ -16,7 +16,7 @@ import pytest
 
 from hakoniwa_core import ledger
 from hakoniwa_core.autoplan import plan_turn, queue_orders
-from hakoniwa_core.economy import OWNERS, banks, household
+from hakoniwa_core.economy import OWNERS, banks, groundwork, household
 from hakoniwa_core.game import load_game
 from hakoniwa_core.state import OrderState, WorldState
 from hakoniwa_core.state.generate import generate_world
@@ -312,3 +312,9 @@ def test_upgrade_from_phase2_1_keeps_production(game):
         assert made[island_id] >= 0.85 * sum(expected), island_id
     for island in world.islands.values():
         assert island.economy.finance["version"] == banks.FINANCE_VERSION
+        # フェーズ2-3 の基盤（送電線は送電網の整備度の形に、学校・技術者・教育水準）
+        assert island.economy.ext["version"] == groundwork.VERSION
+        assert all(not isinstance(v, int) for t in island.tiles for v in t.infra.values())
+        assert any(f.kind == "school" for f in island.facilities)
+        assert island.economy.workers.get("engineer", 0) > 0
+        assert island.economy.education > 0
