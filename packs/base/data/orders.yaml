@@ -321,3 +321,98 @@ resolve_bank:
       x: {type: integer, minimum: 0}
       y: {type: integer, minimum: 0}
       method: {enum: [bailout, transfer, liquidation]}  # 救済・引き継ぎ・清算
+
+# 貿易（フェーズ3-1）。中身は命令の段で申し送りとして積み、貿易の段（世界の段）で島の番号の順に決める。
+# 決められなかったときは、そのわけをターンログに書く。
+create_bloc:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [name]
+    additionalProperties: false
+    properties:
+      name: {type: string, minLength: 1, maxLength: 32}
+      open: {type: boolean}                 # true（既定）は誰でも入れる、false は代表の承認が要る
+
+join_bloc:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [bloc]
+    additionalProperties: false
+    properties:
+      bloc: {type: integer, minimum: 1}
+
+leave_bloc:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [bloc]
+    additionalProperties: false
+    properties:
+      bloc: {type: integer, minimum: 1}
+
+bloc_settings:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [bloc]
+    minProperties: 2
+    additionalProperties: false
+    properties:
+      bloc: {type: integer, minimum: 1}
+      open: {type: boolean}                 # 加盟の承認（true は誰でも入れる）
+      currency: {type: integer, minimum: 1} # 決済通貨（加盟国の島の番号）
+      approve: {type: integer, minimum: 1}  # 加盟を承認する島の番号
+
+transfer_bloc:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [bloc, to]
+    additionalProperties: false
+    properties:
+      bloc: {type: integer, minimum: 1}
+      to: {type: integer, minimum: 1}       # 代表を譲る加盟国の島の番号
+
+take_over_bloc:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [bloc]
+    additionalProperties: false
+    properties:
+      bloc: {type: integer, minimum: 1}     # 代表の島が休止中のときだけ
+
+propose_contract:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [partner, side, good, quantity, price, turns]
+    additionalProperties: false
+    properties:
+      partner: {type: integer, minimum: 1}  # 相手の島の番号
+      side: {enum: [sell, buy]}             # こちらが売るか買うか
+      good: {type: string}
+      quantity: {type: number, exclusiveMinimum: 0}  # 1ターンの量
+      price: {type: integer, minimum: 0}    # 1 単位の値段（契約の通貨）
+      currency: {type: integer, minimum: 1} # 契約の通貨（どちらかの島の番号。省くとこちらの通貨）
+      turns: {type: integer, minimum: 1, maximum: 600}
+
+accept_contract:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [contract]
+    additionalProperties: false
+    properties:
+      contract: {type: integer, minimum: 1}
+
+cancel_contract:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [contract]
+    additionalProperties: false
+    properties:
+      contract: {type: integer, minimum: 1}

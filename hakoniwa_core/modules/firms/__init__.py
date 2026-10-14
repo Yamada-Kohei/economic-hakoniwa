@@ -41,6 +41,11 @@ firms.abandon_turns ターン進まなければ、工事をやめる（建設資
 差し押さえた施設は firms.foreclosure_turns ターン売れなければ取り壊す（在庫は国の倉庫へ、預金は差し
 押さえた銀行の回収）。
 
+商社（フェーズ3-1）: 民営の商社が入れる島（計画経済でない島）では、島の商社の扱った重さが直近
+trade.entry_turns ターンの平均で上限の trade.entry_threshold を超え、空いたオフィス街のマスがあり、
+資産を持つ層が出資できれば、商社を1つ開く（hakoniwa_core/trade/setup.py の entry）。商社の撤退
+（在庫・外貨・運ぶ途中の荷の始末が要る）は 3-1 では入れていない。
+
 民間銀行の参入: 参入の政策（policy.bank_entry。決めていなければ経済体制の既定）が「自由」なら、参入
 した後の銀行1つあたりの島の預金 D が banking.entry_deposits を超え、預金 D を集めたときの利益の見込
 み（今ある銀行の「賃金を払う前の利益 ÷ 預金」× D − 職員の賃金）の年率が、資本金に対して「政策金利 +
@@ -55,7 +60,7 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger, stock
+from hakoniwa_core import ledger, stock, trade
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     OWNERS,
@@ -95,6 +100,9 @@ from hakoniwa_core.state import (
     IslandState,
     LogEntry,
 )
+from hakoniwa_core.trade import merchant
+from hakoniwa_core.trade import setup as trade_setup
+from hakoniwa_core.trade import traders as trade_traders
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, money_of, part, round_money, to_basis
 
@@ -176,6 +184,7 @@ class EntryExit(IslandStage):
                 if not self._enter(island, ctx):
                     break
         self._bank_entry(island, ctx)
+        trade_setup.entry(island, ctx.defs, ctx.config, is_planned(ctx.defs, island), ctx.turn)
         private = [
             f
             for f in island.facilities
@@ -217,6 +226,7 @@ class EntryExit(IslandStage):
                 or f.accounting != ACCOUNTING_SELF
                 or is_bank(ctx.config, f)
                 or is_transport(ctx.config, f)
+                or trade.is_trade_facility(ctx.config, f)
                 or "foreclosed" in f.economy
             ):
                 continue
@@ -533,11 +543,13 @@ class EntryExit(IslandStage):
     @staticmethod
     def _supplied(island: IslandState, ctx: StageContext) -> set[str]:
         """島で手に入る財: 動いている施設が作っている財（国の倉庫の物は、政府が売りに出さなければ
-        市場に出ないので数えない）。"""
+        市場に出ないので数えない）と、商社が輸入している財・海外の商人が売っている財（フェーズ3-1）。"""
         goods: set[str] = set()
         for f in island.facilities:
             if f.built and not is_stopped(f):
                 goods |= set(ctx.defs.facilities[f.kind]["recipes"][f.recipe].get("outputs", {}))
+        goods |= trade_traders.imported(island, ctx.config)
+        goods |= {g for g, _, _ in merchant.offers(island, ctx.defs, ctx.config, ctx.turn)}
         return goods
 
     @staticmethod

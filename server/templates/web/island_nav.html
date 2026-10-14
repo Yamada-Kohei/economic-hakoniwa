@@ -5,5 +5,7 @@
   <a href="{% url 'island_facilities' island.id %}"{% if page == "facilities" %} aria-current="page"{% endif %}>{% translate "施設" %}</a>
   <a href="{% url 'island_fiscal' island.id %}"{% if page == "fiscal" %} aria-current="page"{% endif %}>{% translate "財政" %}</a>
   <a href="{% url 'island_finance' island.id %}"{% if page == "finance" %} aria-current="page"{% endif %}>{% translate "金融" %}</a>
+  <a href="{% url 'island_trade' island.id %}"{% if page == "trade" %} aria-current="page"{% endif %}>{% translate "貿易" %}</a>
+  <a href="{% url 'island_fx' island.id %}"{% if page == "fx" %} aria-current="page"{% endif %}>{% translate "為替" %}</a>
   <a href="{% url 'turn_log' island.id %}"{% if page == "log" %} aria-current="page"{% endif %}>{% translate "ターンログ" %}</a>
 </nav>

@@ -5,7 +5,8 @@
 {% if world %}
   <p class="muted">{% blocktranslate with turn=world.turn %}ターン {{ turn }}。島の形と町・施設を1マス1点で描いています。区画を押すとその島の画面へ移ります。{% endblocktranslate %}</p>
   <div id="world-grid" class="world-grid" style="--grid: {{ rows|length }}"
-       data-defs="{% url 'api_defs' %}" data-shapes="{% url 'api_world_shapes' %}">
+       data-defs="{% url 'api_defs' %}" data-shapes="{% url 'api_world_shapes' %}"
+       data-trade="{% url 'api_world_trade' %}">
     {% for row in rows %}{% for island in row %}
       {% if island %}
         <a class="cell island{% if island.id == own_id %} mine{% endif %}" href="{% url 'island' island.id %}"
@@ -18,6 +19,15 @@
       {% endif %}
     {% endfor %}{% endfor %}
   </div>
+  <section id="world-trade" class="panel" aria-labelledby="world-trade-title" hidden>
+    <h2 id="world-trade-title">{% translate "貿易圏と航路" %}</h2>
+    <p class="hint">{% translate "島の区画の縁の色が加盟している貿易圏です（2つ以上の圏に入っている島は縁が重なります）。白い丸は港のある島、線は船で運ぶ途中の荷のある航路で、太いほど船が多く、矢じりが荷の向かう先です。荷の中身は自国の荷だけ表示します。" %}</p>
+    <div data-slot="blocs"></div>
+    <details>
+      <summary>{% translate "航路の一覧" %}</summary>
+      <div data-slot="routes"></div>
+    </details>
+  </section>
   <script type="module" src="{% static 'js/world/main.js' %}"></script>
 {% else %}
   <p class="muted">{% translate "世界がまだありません。" %}</p>

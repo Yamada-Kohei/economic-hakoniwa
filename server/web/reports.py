@@ -99,6 +99,18 @@ _EXTRA_STATS = [
     ("fiscal.revenue", "財政の収入（国債の発行を除く）", "money"),
     ("fiscal.spending", "財政の支出（国債の償還を除く）", "money"),
     ("fiscal.balance", "財政の収支", "money"),
+    # 貿易と為替（フェーズ3-1）
+    ("trade.exports", "輸出（このターン）", "money"),
+    ("trade.imports", "輸入（このターン。海外の商人を含む）", "money"),
+    ("trade.balance", "貿易収支（輸出 − 輸入）", "money"),
+    ("trade.merchant", "海外の商人から買った額（このターン）", "money"),
+    ("trade.unpaid", "お金が足りず払えなかった運賃と港の使用料", "money"),
+    ("ships", "輸送船", " 隻"),
+    ("ships.busy", "航海に出ている輸送船", " 隻"),
+    ("freight.ship_rate", "船の運賃（荷 1 トン・1 区画あたり）", "money"),
+    ("port.handled", "港で積み下ろした荷（このターン）", " トン"),
+    ("fx.holdings", "外貨の持ち高（今のレートで自国通貨に直した額）", "money"),
+    ("money.nonresident", "外国が持つ自国通貨（非居住者の預金）", "money"),
 ]
 _STATS = {key: (label, unit) for key, label, unit in [*display.SUMMARY_STATS, *_EXTRA_STATS]}
 # 名前の頭が財のもの（後ろに財の名前が続く）
@@ -147,7 +159,28 @@ def stat_label(name: str) -> tuple[str, str]:
         if field in BANK_FIELDS:
             label, unit = BANK_FIELDS[field]
             return f"銀行（{number} 番）の{label}", unit
+    if head == "fx":
+        return _fx_label(rest) or (name, "")
     return name, ""
+
+
+# 為替の統計（fx.<種類>.<通貨>）の表示名。通貨の番号は島の番号
+FX_KINDS = {
+    "volume": "為替の売買量（{currency}の額）",
+    "dealt": "中央銀行が買った外貨（{currency}の額。売りはマイナス）",
+}
+
+
+def _fx_label(rest: str) -> tuple[str, str] | None:
+    """為替の統計（fx. の後ろ）の表示名と単位。レート（fx.<通貨>）は「その通貨 1 が自国通貨で
+    いくらか」で、単位は fx（小数第4位まで）。"""
+    kind, _, key = rest.rpartition(".")
+    if not key.isdigit() or kind not in ("", *FX_KINDS):
+        return None
+    currency = display.currency_name(int(key))
+    if not kind:
+        return f"為替レート（{currency} 1 が自国通貨でいくらか）", "fx"
+    return FX_KINDS[kind].format(currency=currency), ""
 
 
 def flow_name(side: str, kind: str) -> str:

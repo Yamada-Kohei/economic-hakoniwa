@@ -6,9 +6,10 @@ from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, render
 
 from hakoniwa_core import facilities as fac
+from hakoniwa_core.trade import contracts, tradable_goods
 from server.game import get_game
 from server.turns.models import TurnLog
-from server.web import display, reports
+from server.web import display, reports, trade
 from server.world.models import Island, World
 from server.world.services import grid_size
 
@@ -60,9 +61,10 @@ def island_page(request, island_id: int):
     return render(request, "web/island.html", context)
 
 
-# --- 島の統計の画面（経済・市場・施設・財政・金融） ----------------------------------------
-# グラフは JavaScript（static/js/reports/）が統計の API を読んで描く。施設と金融の中身は島の持ち主
-# だけに出し、ほかの人には国全体の統計だけを出す。財政と金融の命令は、今の命令の列に足す。
+# --- 島の統計の画面（経済・市場・施設・財政・金融・貿易・為替） ----------------------------
+# グラフは JavaScript（static/js/reports/）が統計の API を読んで描く。施設・金融・貿易・為替の中身は
+# 島の持ち主だけに出し、ほかの人には国全体の統計だけを出す。財政・金融・貿易の命令は、今の命令の列に
+# 足す。
 
 
 def _report(request, island_id: int, page: str, title: str) -> tuple[Island, dict, dict]:
@@ -166,6 +168,37 @@ def finance_page(request, island_id: int):
     return render(request, "web/finance.html", context)
 
 
+def trade_page(request, island_id: int):
+    """貿易: 貿易圏・二国間契約・商社・船団と港・運ぶ途中の荷・海外の商人。持ち主には貿易の命令も。
+    他国は国全体の数（輸出・輸入・貿易収支・船の数）と貿易圏の加盟だけ。"""
+    island, context, stats = _report(request, island_id, "trade", "貿易")
+    data = trade.trade_data(island, context["mine"], context["currency"], stats)
+    names = trade.TRADE_STATS if context["mine"] else trade.PUBLIC_TRADE_STATS
+    context.update(trade=data, stats=reports.stat_rows(stats, names, context["currency"]))
+    if not context["mine"]:
+        context["note"] = (
+            "他国の島のため、国全体の数と貿易圏の加盟だけを表示しています"
+            "（契約・商社・船団・荷の中身は島の持ち主だけが見られます）。"
+        )
+    return render(request, "web/trade.html", context)
+
+
+def fx_page(request, island_id: int):
+    """為替と国際収支: 使っている通貨のレートと推移、貿易収支。持ち主には外貨の持ち高と、自国通貨を
+    持つ外国の主体（非居住者の預金）の内訳も。"""
+    island, context, stats = _report(request, island_id, "fx", "為替と国際収支")
+    data = trade.fx_data(island, context["mine"], context["currency"], history=False)
+    context.update(
+        fx=data,
+        stats=reports.stat_rows(stats, trade.FX_STATS, context["currency"]),
+        rate_names=",".join(trade.rate_names(island)),
+        band=f"{data['band'] * 100:g}",
+    )
+    if not context["mine"]:
+        context["note"] = OTHERS_NOTE
+    return render(request, "web/fx.html", context)
+
+
 def turn_log(request, island_id: int):
     """ターンログ。ターンごとに区切り、新しいターンから並べる。"""
     island = get_object_or_404(Island, pk=island_id)
@@ -264,8 +297,35 @@ def help_page(request):
                 for g in defs.goods
                 if defs.unit_name(g)
             ],
+            "trade": _trade_help(game),
         },
     )
+
+
+def _trade_help(game) -> dict:
+    """手引きの「貿易と為替」に出す数（game.yaml の trade・fx・foreign_merchant と定義データ）。"""
+    config, defs = game.config, game.defs
+    settings = config.get("foreign_merchant")
+    return {
+        "ship_speed": config.get("trade.ship_speed"),
+        "ship_capacity": config.get("trade.ship_capacity"),
+        "ship_life": config.get("trade.ship_life"),
+        "start_ships": config.get("trade.start_ships"),
+        "fuel": "・".join(defs.name("goods", g) for g in config.get("trade.ship_fuel")),
+        "port_capacity": config.get("trade.port_capacity"),
+        "trader_cut": f"{config.get('trade.trader_cut') * 100:g}",
+        "trader_max": defs.facilities[config.get("trade.trader_facility")].get("max_per_island"),
+        "bloc_band": f"{config.get('trade.bloc_band') * 100:g}",
+        "cancel_turns": config.get("trade.contract_cancel_turns"),
+        "proposal_turns": contracts.KEEP_ENDED,
+        "fx_band": f"{config.get('fx.band') * 100:g}",
+        "merchant_turns": settings["turns"],
+        "merchant_last": settings["last_turns"],
+        "merchant_multiplier": f"{settings['multiplier']:g}",
+        "merchant_last_multiplier": f"{settings['last_multiplier']:g}",
+        "merchant_goods": "・".join(defs.name("goods", g) for g in settings["goods"]),
+        "tradable": "・".join(defs.name("goods", g) for g in tradable_goods(defs)),
+    }
 
 
 def _admin_people(defs) -> int | None:

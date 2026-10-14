@@ -24,6 +24,7 @@ from hakoniwa_core.units import from_milli, to_basis
 from server.game import get_game
 from server.orders.models import Order
 from server.web import display, reports
+from server.web import trade as trade_views
 from server.world import models as m
 from server.world.repository import load_island
 from server.world.services import grid_size
@@ -350,6 +351,32 @@ def finance(request, island_id: int):
     return _json(reports.finance_data(island, _mine(request, island), _currency(island)))
 
 
+# --- 貿易と為替（フェーズ3-1） --------------------------------------------------------
+
+
+@require_GET
+def trade(request, island_id: int):
+    """島の貿易。だれにでも輸出・輸入・貿易収支・船の数と貿易圏の加盟を、持ち主には貿易圏の値段・
+    契約・商社・船団と港・運ぶ途中の荷・海外の商人も（server/web/trade.py）。"""
+    island = get_object_or_404(m.Island.objects.select_related("world"), pk=island_id)
+    return _json(trade_views.trade_data(island, _mine(request, island), _currency(island)))
+
+
+@require_GET
+def fx(request, island_id: int):
+    """為替と国際収支。だれにでもレート・国全体の数・推移（?from=&to=）を、持ち主には外貨の
+    持ち高と非居住者の預金の内訳も。"""
+    island = get_object_or_404(m.Island.objects.select_related("world"), pk=island_id)
+    data = trade_views.fx_data(
+        island,
+        _mine(request, island),
+        _currency(island),
+        request.GET.get("from"),
+        request.GET.get("to"),
+    )
+    return _json(data)
+
+
 # --- 命令 -------------------------------------------------------------------
 
 
@@ -512,6 +539,21 @@ def world_shapes(request):
             ],
         }
     )
+
+
+@require_GET
+def world_trade(request):
+    """世界マップの貿易（フェーズ3-1）: 貿易圏、島ごとの加盟と港、運ぶ途中の荷のある航路。
+
+    航路は誰にでも見せ、荷の中身（財と量）は見ている人の島が積み出したか受け取る荷だけ返す。
+    """
+    w = m.World.objects.order_by("id").first()
+    if w is None:
+        return _json({"turn": 0, "blocs": [], "islands": [], "routes": []})
+    own: set[int] = set()
+    if request.user.is_authenticated:
+        own = set(m.Island.objects.filter(owner=request.user).values_list("id", flat=True))
+    return _json(trade_views.world_trade(w, own))
 
 
 @require_GET

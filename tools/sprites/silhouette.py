@@ -50,6 +50,8 @@ GLASS = "#9db6c7"
 GLASS2 = "#b7c4cc"
 COPPER = "#6fa98f"
 WATER = "#3d7ea6"
+PAVEMENT = "#d9d4c8"  # 岸壁・屋上などの床
+CONTAINER_BLUE = "#4f8fb8"
 
 # 基の色と、面ごとの明るさ（上面・屋根の左向き・左の側面・屋根の右向き・右の側面）。
 # color は部品の色を使い、base は色のない部品にだけ使う
@@ -289,6 +291,80 @@ def house(
     return [box(u0, v0, u1, v1, 0, h, wall), gable(u0, v0, u1, v1, h, r, along, roof, wall)]
 
 
+def hull(
+    u0: float,
+    v0: float,
+    u1: float,
+    v1: float,
+    z0: float,
+    h: float,
+    bow: float,
+    c: str = METAL,
+    top: str | None = None,
+) -> Prim:
+    """船体（の一段）。u の向きに長く、u1 の側がとがった船首（長さ bow）。
+
+    見えるのは左の側面・船首の左の面・上面だけ（右の面は船首にさえぎられる）。
+    """
+    zt = z0 + h
+    vm = (v0 + v1) / 2
+    ub = u1 - bow
+    side = [iso(u0, v1, z0), iso(ub, v1, z0), iso(ub, v1, zt), iso(u0, v1, zt)]
+    bow_l = [iso(ub, v1, z0), iso(u1, vm, z0), iso(u1, vm, zt), iso(ub, v1, zt)]
+    deck = [iso(u0, v0, zt), iso(ub, v0, zt), iso(u1, vm, zt), iso(ub, v1, zt), iso(u0, v1, zt)]
+    return Prim(
+        (u0, v0, u1, v1),
+        z0,
+        [Face("left", c, side), Face("slope_r", c, bow_l), Face("top", top or c, deck)],
+    )
+
+
+def _band(cx: float, cy: float, rx: float, ry: float, w: float, vertical: bool) -> str:
+    """球の表面の線（手前の半分の楕円の弧を、幅 w の帯にしたもの）。"""
+    if vertical:  # 経線: 上の端から右を回って下の端へ
+        return (
+            _d("M", cx, cy - ry, "A", rx, ry, 0, 0, 1, cx, cy + ry)
+            + " "
+            + _d("A", max(rx - w, 0.1), ry, 0, 0, 0, cx, cy - ry, "Z")
+        )
+    # 赤道: 左の端から下を回って右の端へ
+    return (
+        _d("M", cx - rx, cy, "A", rx, ry, 0, 0, 0, cx + rx, cy)
+        + " "
+        + _d("A", rx, max(ry - w, 0.1), 0, 0, 1, cx - rx, cy, "Z")
+    )
+
+
+def globe(uc: float, vc: float, z0: float, r: float, c: str = "#4f8fb8", line: str = WHITE) -> Prim:
+    """地球儀の球（半径 r ピクセル）。下の端が (uc, vc, z0)。赤道と経線を 1 本ずつ描く。"""
+    x, yb = iso(uc, vc, z0)
+    cy = yb - r
+    faces = []
+    for shade, sweep in (("slope_l", 0), ("slope_r", 1)):  # 左の半分・右の半分
+        d = _d("M", x, cy - r, "A", r, r, 0, 0, sweep, x, cy + r, "Z")
+        faces.append(Face(shade, c, path=d, ymin=cy - r))
+    w = r * 0.18
+    faces.append(Face("top", line, path=_band(x, cy, r, r / 2, w, False), ymin=cy))
+    faces.append(Face("top", line, path=_band(x, cy, r * 0.45, r, w, True), ymin=cy - r))
+    ru = r / (TILE_W / 2 * math.sqrt(2))
+    return Prim((uc - ru, vc - ru, uc + ru, vc + ru), z0, faces)
+
+
+def strut(
+    a: tuple[float, float, float], b: tuple[float, float, float], w: float = 1.2, c: str = RED
+) -> Prim:
+    """斜めの細い部材（クレーンの控えなど）。
+
+    a, b は両端の (u, v, z)、w は絵の上の太さ（ピクセル）。
+    """
+    (xa, ya), (xb, yb) = iso(*a), iso(*b)
+    n = math.hypot(xb - xa, yb - ya) or 1.0
+    dx, dy = -(yb - ya) / n * w / 2, (xb - xa) / n * w / 2
+    pts = [(xa + dx, ya + dy), (xb + dx, yb + dy), (xb - dx, yb - dy), (xa - dx, ya - dy)]
+    bounds = (min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1]))
+    return Prim(bounds, min(a[2], b[2]), [Face("left", c, pts)])
+
+
 # --- 形の一覧 ----------------------------------------------------------------
 
 SHAPES: dict[str, list[Prim]] = {
@@ -410,6 +486,77 @@ SHAPES: dict[str, list[Prim]] = {
         *[box(u, 0.72, u + 0.06, 0.78, 0, 16, WHITE) for u in (0.22, 0.37, 0.52, 0.67)],
         box(0.17, 0.65, 0.88, 0.82, 16, 4, "#e6d9ae"),
         box(0.14, 0.65, 0.91, 0.88, 0, 2, CONCRETE),
+    ],
+    # フェーズ3-1 の港・造船所・商社。港と造船所は、右手前の縁を海側の水面にする
+    "facility/port": [
+        # 岸壁（コンクリートの床）と水面、赤いコンテナクレーン、積んだコンテナ、倉庫、係船柱
+        box(0.06, 0.06, 0.76, 0.94, 0, 4, CONCRETE, PAVEMENT),
+        box(0.76, 0.04, 0.98, 0.96, 0, 0.5, WATER),
+        box(0.1, 0.1, 0.36, 0.38, 4, 9, WALL),
+        gable(0.1, 0.1, 0.36, 0.38, 13, 5, "u", ROOF_STEEL, WALL),
+        *[
+            box(u, v, u + 0.22, v + 0.08, 4 + 4 * k, 4, col)
+            for u, v, k, col in (
+                (0.1, 0.56, 0, RED),
+                (0.1, 0.56, 1, CONTAINER_BLUE),
+                (0.1, 0.66, 0, YELLOW),
+                (0.1, 0.76, 0, CONTAINER_BLUE),
+                (0.1, 0.76, 1, COPPER),
+                (0.1, 0.86, 0, RED),
+                (0.42, 0.72, 0, COPPER),
+                (0.42, 0.82, 0, YELLOW),
+            )
+        ],
+        # クレーン: 4 本の脚の上に、海の上まで張り出す腕。腕の根元に機械室、柱から腕の両端へ控え
+        *[box(u, v, u + 0.04, v + 0.04, 4, 30, RED) for u in (0.48, 0.66) for v in (0.34, 0.5)],
+        box(0.28, 0.36, 1.0, 0.52, 34, 3, RED),
+        box(0.3, 0.38, 0.44, 0.5, 37, 6, WHITE),
+        box(0.57, 0.42, 0.61, 0.46, 37, 14, RED),
+        strut((0.59, 0.44, 51), (0.98, 0.44, 37)),
+        strut((0.59, 0.44, 51), (0.44, 0.44, 43)),
+        *[cylinder(0.72, v, 0.022, 4, 2.5, c=IRON) for v in (0.14, 0.42, 0.66, 0.88)],
+    ],
+    "facility/shipyard": [
+        # 乾ドックで組み立て中の船体（赤い船底・とがった船首）と、それをまたぐ黄色い門形クレーンが
+        # 吊った船体の部品、奥に加工の建屋、手前に鋼材
+        box(0.06, 0.06, 0.82, 0.36, 0, 3, CONCRETE, PAVEMENT),
+        box(0.06, 0.64, 0.82, 0.94, 0, 3, CONCRETE, PAVEMENT),
+        box(0.06, 0.36, 0.14, 0.64, 0, 3, CONCRETE, PAVEMENT),
+        box(0.14, 0.36, 0.82, 0.64, 0, 0.5, "#8d8a84"),
+        box(0.82, 0.04, 0.98, 0.96, 0, 0.5, WATER),
+        box(0.08, 0.08, 0.38, 0.32, 3, 10, WALL),
+        gable(0.08, 0.08, 0.38, 0.32, 13, 5, "u", ROOF_STEEL, WALL),
+        hull(0.2, 0.4, 0.78, 0.6, 0.5, 7, 0.16, RED),
+        hull(0.2, 0.4, 0.78, 0.6, 7.5, 5.5, 0.16, METAL, "#c3c8cc"),
+        box(0.22, 0.43, 0.34, 0.57, 13, 6, WHITE),
+        *[box(u, 0.12, u + 0.1, 0.3, 3, 2 + k, ROOF_STEEL) for k, u in enumerate((0.6, 0.7))],
+        *[box(0.5, v, 0.56, v + 0.06, 3, 39, YELLOW) for v in (0.12, 0.82)],
+        strut((0.53, 0.5, 42), (0.53, 0.5, 25), 0.6, IRON),
+        box(0.47, 0.44, 0.59, 0.56, 19, 6, METAL, "#c3c8cc"),
+        box(0.48, 0.08, 0.58, 0.92, 42, 6, YELLOW),
+        box(0.47, 0.44, 0.59, 0.56, 48, 4, WHITE),
+    ],
+    "facility/trading": [
+        # 白い事務所の塔に横長の窓の帯、屋上の地球儀、正面に旗を 3 本
+        box(0.12, 0.64, 0.9, 0.9, 0, 1, CONCRETE, PAVEMENT),
+        box(0.14, 0.12, 0.86, 0.62, 0, 6, GLASS),
+        box(0.14, 0.12, 0.86, 0.62, 6, 3, WHITE, PAVEMENT),
+        *[
+            prim
+            for k in range(4)
+            for prim in (
+                box(0.22, 0.16, 0.62, 0.54, 9 + 6 * k, 3.5, GLASS),
+                box(0.22, 0.16, 0.62, 0.54, 12.5 + 6 * k, 2.5, WHITE),
+            )
+        ],
+        box(0.2, 0.14, 0.64, 0.56, 33, 2, WHITE, PAVEMENT),
+        cylinder(0.42, 0.35, 0.03, 35, 3, c=METAL),
+        globe(0.42, 0.35, 38, 5),
+        *[box(u, 0.76, u + 0.014, 0.774, 1, 22, METAL) for u in (0.3, 0.5, 0.7)],
+        *[
+            box(u + 0.014, 0.762, u + 0.14, 0.772, 16.5, 6, col)
+            for u, col in ((0.3, RED), (0.5, CONTAINER_BLUE), (0.7, YELLOW))
+        ],
     ],
     "housing/village": [
         *house(0.15, 0.15, 0.42, 0.4, 7, 6, "u"),

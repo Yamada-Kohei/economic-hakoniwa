@@ -11,7 +11,10 @@ GDP（支出の側）= 家計の消費（食料・消費財・電気・運賃）
                ＋ 工事（資材・運賃・作業員の賃金）＋ 施設の在庫の増減
                ＋ 国の倉庫の買い入れ − 売り渡し ＋ 公務員の賃金
                ＋ 学校と大学の教材（代金・運賃。フェーズ2-3）
+               ＋ 輸出 − 輸入（貿易圏の市場・二国間契約・海外の商人。フェーズ3-1）
 売り買いの代金と運賃は払う側と受け取る側の両方に同じ額を足すので、2つは一致します。
+輸出と輸入は、商社の売上・仕入れ（圏の市場の代金を、そのターンの為替で自国通貨に直した額）と同じ額を
+TRADE の部門に足します。
 銀行の利ざやはフェーズ2では入れません（銀行の職員の賃金は、家計への移転として扱う）。
 """
 
@@ -48,6 +51,8 @@ GOVERNMENT = "government"  # 項目: wages（公務員）、goods・freight（�
 # 項目: interest（受け取った利子 − 払った利子）、bond_realized（国債の実現損益）、
 # valuation（国債のまだ売っていない評価損益の増減）
 CENTRAL_BANK = "central_bank"
+TRADE = "trade"  # 項目: exports（輸出）、imports（輸入）。フェーズ3-1
+FX_REALIZED = "fx_realized"  # 施設の外貨を売った損益（為替の実現損益。フェーズ3-1）
 
 
 def _flows(island: IslandState) -> dict:
@@ -114,6 +119,7 @@ def gdp(island: IslandState, inventory: Mapping[int, int]) -> tuple[int, int]:
     site = sector(island, CONSTRUCTION)
     store = sector(island, WAREHOUSE)
     gov = sector(island, GOVERNMENT)
+    trade = sector(island, TRADE)
     production += site.get("wages", 0) + gov.get("wages", 0)
     spending = (
         hh.get("goods", 0)
@@ -129,5 +135,7 @@ def gdp(island: IslandState, inventory: Mapping[int, int]) -> tuple[int, int]:
         + gov.get("wages", 0)
         + gov.get("goods", 0)
         + gov.get("freight", 0)
+        + trade.get("exports", 0)
+        - trade.get("imports", 0)
     )
     return production, spending

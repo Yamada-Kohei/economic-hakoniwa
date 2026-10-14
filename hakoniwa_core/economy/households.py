@@ -22,6 +22,7 @@ from hakoniwa_core import ledger
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import GENERAL, household, layers
+from hakoniwa_core.facilities import ENGINEER
 from hakoniwa_core.state import OWNER_PRIVATE, IslandState
 from hakoniwa_core.units import BASIS, round_money
 
@@ -75,8 +76,11 @@ def split_persons(island: IslandState, defs: Defs, population: int) -> dict[str,
             kind = h["workers"]
             count = island.economy.workers.get(kind, 0)
             if 0 <= population < before and count > 0:
-                count = count * population // before
-                island.economy.workers[kind] = count
+                shrunk = count * population // before
+                island.economy.workers[kind] = shrunk
+                if kind == ENGINEER:
+                    recount_engineers(island, count, 0, count - shrunk)
+                count = shrunk
             persons = min(max(0, population - fixed), family_of(defs, kind, count))
             h["share"] = persons / population if population > 0 else 0.0
         elif "share" in h:
@@ -98,6 +102,20 @@ def set_workers(island: IslandState, defs: Defs, kind: str, count: int) -> None:
     island.economy.workers[kind] = max(0, count)
     population = sum(h["persons"] for h in island.economy.households.values())
     move_people(island, split_persons(island, defs, population))
+
+
+def recount_engineers(island: IslandState, pool: int, grown: int, retired: int) -> None:
+    """育成・引退と住民の減少で変わった技術者の数を、雇用の段で数えた「働いている技術者」と
+    「仕事のない技術者」（このターンの記録に出す）に映す。減った人は両方から人数の割合で抜け、
+    育った人は仕事のない側に入る（映さないと、働いている人が総数を超えるターンが出る）。"""
+    scratch = island.scratch
+    if "engineers_employed" not in scratch:
+        return
+    employed = scratch["engineers_employed"]
+    left = scratch.get("engineers_left", 0)
+    out = min(employed, retired * employed // pool) if pool > 0 else 0
+    scratch["engineers_employed"] = employed - out
+    scratch["engineers_left"] = max(0, left - (retired - out)) + grown
 
 
 def move_people(island: IslandState, changes: dict[str, int]) -> None:

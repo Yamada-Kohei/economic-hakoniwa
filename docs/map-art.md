@@ -50,6 +50,9 @@ sprites:
 | `facility/bank` | 銀行 | 2.5 段・平地 |
 | `facility/school` | 学校 | 2 段・平地 |
 | `facility/university` | 大学 | 3 段・平地 |
+| `facility/port` | 港（フェーズ3-1） | 2.5 段・平地・海沿い（クレーンの先は 5 段ほど） |
+| `facility/shipyard` | 造船所（フェーズ3-1） | 3 段・平地・海沿い（クレーンの先は 5 段ほど） |
+| `facility/trading` | 商社（フェーズ3-1） | 3 段・平地・オフィス街（屋上の地球儀まで 5 段ほど） |
 | `housing/village` | 村 | 1 段 |
 | `housing/town` | 町 | 2 段 |
 | `housing/city` | 都市 | 4 段 |

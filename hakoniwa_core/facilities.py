@@ -87,7 +87,7 @@ def is_housing(config: GameConfig, f: Facility) -> bool:
 
 
 def on_map(f: Facility) -> bool:
-    """マスを持つ施設か（運送業のようなマスを持たない施設は x, y が -1）。"""
+    """マスを持つ施設か（運送業・海運業のようなマスを持たない施設は x, y が負）。"""
     return f.x >= 0 and f.y >= 0
 
 

@@ -222,7 +222,16 @@ class WorldRepository:
 
 
 def island_from_row(row: m.Island) -> IslandState:
-    """島の行から、マス・施設・在庫・お金を除いた島の状態を作る（それぞれ別に読む）。"""
+    """島の行から、マス・施設・在庫・お金を除いた島の状態を作る（それぞれ別に読む）。
+
+    休止中の印（管理画面で付ける）は ext["inactive"] に写す（貿易圏の代表の引き継ぎで使う。
+    フェーズ3-1）。
+    """
+    ext = dict(row.ext or {})
+    if row.inactive:
+        ext["inactive"] = True
+    else:
+        ext.pop("inactive", None)
     return IslandState(
         id=row.id,
         name=row.name,
@@ -237,7 +246,7 @@ def island_from_row(row: m.Island) -> IslandState:
         names=dict(row.names),
         economy=build(EconomyState, row.economy or {}),
         policy=build(Policy, row.policy or {}),
-        ext=row.ext,
+        ext=ext,
     )
 
 

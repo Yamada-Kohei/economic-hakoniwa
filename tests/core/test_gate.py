@@ -9,7 +9,8 @@
 - 帳簿が毎ターン合う（記録の段が確かめ、合わなければその場で止まる）
 - 生産の側と支出の側の GDP が合う、売り買いのあった財の値段が初めの値段の 1/4〜4 倍に収まる、
   金利が 0〜20% に収まる
-- 同じ種なら同じ結果になり、島の並び順や、途中で保存して読み直すことで結果が変わらない
+- 同じ種なら同じ結果になり、島の並び順や、途中で保存して読み直すことで結果が変わらない（フェーズ3-1
+  から、標準の計画の貿易圏で島どうしが売り買いする世界で確かめる）
 
 物価上昇率・失業率・物価指数の振れ幅を含むすべての目安は、50 島 × 300 ターンの一括シミュレーション
 （python -m hakoniwa_core.simulate --islands 50 --turns 300 --autoplan --gate）で確かめる。
@@ -25,7 +26,7 @@ import random
 import pytest
 
 from hakoniwa_core import gate
-from hakoniwa_core.autoplan import plan_turn, queue_orders
+from hakoniwa_core.autoplan import plan_trade, plan_turn, queue_orders
 from hakoniwa_core.founding import found_island
 from hakoniwa_core.game import load_game
 from hakoniwa_core.simulate import world_digest
@@ -59,6 +60,8 @@ def run_with_plan(game, world: WorldState, turns: int, each_turn=None) -> None:
         for island_id in world.island_ids():
             island = world.islands[island_id]
             queue_orders(island, plan_turn(island, game.defs, game.config, world.turn + 1))
+        for island_id, orders in plan_trade(world, game.defs, game.config).items():
+            queue_orders(world.islands[island_id], orders)  # 貿易圏（フェーズ3-1）
         game.engine.run_turn(world)
         if each_turn is not None:
             each_turn(world.islands[min(world.islands)])

@@ -242,6 +242,61 @@ transport:
   recipes:
     default: {}
 
+# 港（フェーズ3-1）。島の外との物の出入りはすべて港を通ります。国が建て（民営では建たない）、島に1つ。
+# 荷の積み下ろしは 1 ターンに game.yaml の trade.port_capacity トンまで。働く人は扱った荷の量に合わせて
+# 雇い（trade.port_labor）、荷 1 トンごとに使用料を受け取ります。
+port:
+  category: transport
+  terrain: [plain]
+  coastal: true
+  max_per_island: 1
+  construction: {turns: 6, labor: 500, materials: {building_materials: 30, steel: 10, machinery: 1}}
+  workers: 300
+  priority: 7
+  recipes:
+    default: {}
+  sprite: port
+
+# 海運業（フェーズ3-1）。運送業と同じく島に1つ、マスを持たずに置きます。輸送船を設備として持ち、
+# 航海に出ている船の数に合わせて船員を雇い（trade.ship_crew）、輸入の荷を運んで運賃を受け取ります。
+shipping:
+  category: transport
+  terrain: [plain]
+  tileless: true
+  buildable: false
+  construction: {turns: 1}
+  workers: 0
+  recipes:
+    default: {}
+
+# 造船所（フェーズ3-1）。鋼鉄と機械から輸送船を作ります（4 ターンで 1 隻。1 ターンに 1/4 隻ずつ進む）。
+shipyard:
+  category: industry
+  terrain: [plain]
+  coastal: true
+  construction: {turns: 5, labor: 600, materials: {building_materials: 25, steel: 10, machinery: 3}}
+  workers: {general: 380, engineer: 20}
+  pollution: {amount: 2, radius: 1}
+  factors: {infra: 0.5, education: 0.5}
+  recipes:
+    default:
+      inputs: {steel: 1.5, machinery: 0.25, electricity: 1.25}
+      outputs: {transport_ship: 0.25}
+  sprite: shipyard
+
+# 商社（フェーズ3-1）。銀行と同じくオフィス街のマスに入り、島にいくつも置けます。島の市場で輸出する物を
+# 買って貿易圏の市場で売り、圏で買った物を輸入して島の市場で売ります（hakoniwa_core/trade/traders.py）。
+trading:
+  category: trade
+  terrain: [plain]
+  zone: office
+  max_per_island: 10
+  construction: {turns: 3, labor: 300, materials: {building_materials: 15, machinery: 1}}
+  workers: 50
+  recipes:
+    default: {}
+  sprite: trading
+
 # 町（住宅地）は自動で建ちます（命令では建てられません）。住める人数・見た目・育つのに要る資源は
 # settlements.yaml で決まります。
 housing:

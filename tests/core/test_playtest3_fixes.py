@@ -192,6 +192,9 @@ def test_rescue_refills_the_treasury_for_next_turn(game, warmed):
     for loan in banks.loans_by_lender(island, bank):
         banks.write_off(island, loan, banks.outstanding(island, loan))
     banks.drop_settled(island)
+    worth = banks.net_worth(island, game.config, bank, world.turn)
+    if worth >= 0:  # 貸し倒れだけで債務超過にならないときは、配当で自己資本を減らして債務超過にする
+        ledger.pay(island, bank, household(OWNERS), worth + 1_000_000, "dividend")
     open_books(island)
     spending = sum(v for k, v in funds.spent(island).items() if k != BONDS)
     buffer = game.config.get("bonds.buffer_turns")
