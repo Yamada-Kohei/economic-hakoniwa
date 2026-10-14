@@ -34,7 +34,7 @@ from hakoniwa_core.economy import (
 )
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.banks import FINANCE_VERSION
-from hakoniwa_core.economy.debt import underwrite
+from hakoniwa_core.economy.debt import traded, underwrite
 from hakoniwa_core.economy.households import init_layers
 from hakoniwa_core.economy.prices import construction_cost, initial_prices
 from hakoniwa_core.economy.stats import BASE_CPI
@@ -297,6 +297,7 @@ def _open_money(
             island, household(GENERAL), bank_names[0], bank, amount, "deposit_switch"
         )
     for bank, amount in zip(bank_names, bank_bonds, strict=True):
+        traded(island, bond.id, ledger.CB, bank, amount, amount)
         ledger.transfer(island, item, ledger.GOV, ledger.CB, bank, amount, "bond_purchase")
         ledger.pay(island, bank, ledger.CB, amount, "bond_purchase")
 

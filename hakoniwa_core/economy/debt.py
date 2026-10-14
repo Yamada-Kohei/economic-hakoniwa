@@ -7,6 +7,11 @@
 時価（フェーズ2-2）: 銘柄の値段は、残りの利払いと償還を、残りの期間の利回りで割り引いた額です。
 利回りは残りの期間で分けた4つの区分（game.yaml の bonds.buckets）ごとに economy.finance["yields"]
 に持ち、区分の間は区分を代表する残りのターン数（bonds.bucket_terms）の利回りを直線でつなぎます。
+
+取得原価と実現損益: 持ち手ごとに、銘柄の取得原価（買った代金）を economy.finance["bond_cost"] に
+持ちます。売る・償還される・債務不履行で切り下げられると、手放した額面の割合の取得原価と、受け取った
+額との差を実現損益として economy.finance["bond_realized"] に足します（決算の段が損益に入れる）。
+まだ売っていない値上がり益と値下がり損（時価 − 取得原価）は損益に入れず、自己資本にだけ数えます。
 """
 
 from __future__ import annotations
@@ -20,6 +25,8 @@ from hakoniwa_core.units import BASIS
 
 YEAR = 12
 VALUED = "bonds_valued"  # island.scratch の印: 決算の段がこのターンの国債の時価を評価した
+COST = "bond_cost"  # economy.finance: 持ち手 → {銘柄の番号（文字列）→ 取得原価}
+REALIZED = "bond_realized"  # economy.finance: 持ち手 → 決算の段にまだ入れていない実現損益
 
 
 def outstanding(island: IslandState, bond: Bond) -> int:
@@ -80,6 +87,7 @@ def underwrite(island: IslandState, face: int, term: int, rate: int, turn: int) 
     item = ledger.bond_item(bond.id)
     ledger.create(island, ledger.CB, item, ledger.GOV, face, "bond_issue")
     ledger.pay(island, ledger.CB, ledger.GOV, face, "bond_issue")
+    bought(island, ledger.CB, bond.id, face)
     return bond
 
 
@@ -179,3 +187,83 @@ def market_value(island: IslandState, holder: str, turn: int, terms: Sequence[in
         bond = by_id.get(number)
         total += face * (bond_price(island, bond, turn, terms) if bond is not None else 1.0)
     return int(total)
+
+
+# --- 取得原価と実現損益 -------------------------------------------------------------
+
+
+def start_costs(island: IslandState, turn: int, terms: Sequence[int]) -> None:
+    """取得原価の記録がなければ、持っている銘柄をターン turn の時価で記録して始める（前の版の
+    世界。前の版で損益に入れた評価損益を、売ったときにもう一度数えないように）。"""
+    finance = island.economy.finance
+    if COST in finance:
+        return
+    table: dict[str, dict[str, int]] = {}
+    for bond in island.bonds:
+        value = bond_price(island, bond, turn, terms)
+        for holder, face in holders(island, bond).items():
+            if face > 0:
+                table.setdefault(holder, {})[str(bond.id)] = int(face * value)
+    finance[COST] = table
+
+
+def cost_of(island: IslandState, holder: str) -> int:
+    """持ち手の国債の取得原価の合計。"""
+    return sum(island.economy.finance.get(COST, {}).get(holder, {}).values())
+
+
+def bought(island: IslandState, holder: str, number: int, amount: int) -> None:
+    """持ち手が銘柄を代金 amount で手に入れた（取得原価に足す）。"""
+    if amount <= 0:
+        return
+    costs = island.economy.finance.setdefault(COST, {}).setdefault(holder, {})
+    costs[str(number)] = costs.get(str(number), 0) + amount
+
+
+def released(
+    island: IslandState, holder: str, number: int, face: int, held: int, received: int
+) -> int:
+    """持ち手が、持っていた額面 held のうち face を手放して received を受け取った（売った・償還
+    された・切り下げられた）。手放した割合の取得原価との差を実現損益に足して返す。"""
+    if face <= 0 or held <= 0:
+        return 0
+    table = island.economy.finance.setdefault(COST, {})
+    costs = table.setdefault(holder, {})
+    key = str(number)
+    cost = costs.get(key, held)  # 記録がなければ額面で買ったとみなす
+    gone = cost if face >= held else cost * face // held
+    if face >= held:
+        costs.pop(key, None)
+    else:
+        costs[key] = cost - gone
+    if not costs:
+        table.pop(holder, None)
+    gain = received - gone
+    if gain:
+        realized = island.economy.finance.setdefault(REALIZED, {})
+        realized[holder] = realized.get(holder, 0) + gain
+    return gain
+
+
+def traded(
+    island: IslandState, number: int, seller: str, buyer: str, face: int, amount: int
+) -> None:
+    """売り手が銘柄の額面 face を代金 amount で買い手に渡す（勘定を動かす前に呼ぶ）。"""
+    item = ledger.bond_item(number)
+    held = ledger.balance(island, ledger.account(seller, item, ledger.GOV))
+    released(island, seller, number, face, held, amount)
+    bought(island, buyer, number, amount)
+
+
+def move_costs(island: IslandState, source: str, target: str) -> None:
+    """持ち手 source の取得原価と、まだ決算に入れていない実現損益を target に移す（銀行の
+    破綻処理）。"""
+    finance = island.economy.finance
+    costs = finance.get(COST, {}).pop(source, None)
+    if costs:
+        mine = finance[COST].setdefault(target, {})
+        for key, cost in costs.items():
+            mine[key] = mine.get(key, 0) + cost
+    gain = finance.get(REALIZED, {}).pop(source, 0)
+    if gain:
+        finance[REALIZED][target] = finance[REALIZED].get(target, 0) + gain

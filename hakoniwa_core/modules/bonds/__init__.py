@@ -30,9 +30,10 @@
 （policy.cb_bond_trade）の額を指値なしで買う・売ります。約定した区分の利回りは約定した利回りになりま
 す。銘柄の代金は、約定した利回りで割り引いた値段です（hakoniwa_core/economy/debt.py の price）。
 
-決算の段より前に置くのは、受け取った利子と時価の評価を、同じターンの損益に入れるためです。
-国債の持ち手ごとの「時価の評価の元になる額」の出入り（買った代金・売った代金・償還）は
-island.scratch["bond_flows"] に残します（決算の段の評価に使う）。
+決算の段より前に置くのは、受け取った利子と、売った・償還された国債の損益を、同じターンの損益に
+入れるためです。国債の持ち手ごとの「時価の評価の元になる額」の出入り（買った代金・売った代金・償還）は
+island.scratch["bond_flows"] に残します（決算の段の評価に使う）。取得原価と実現損益の記録は
+hakoniwa_core/economy/debt.py の bought・released・traded です。
 """
 
 from __future__ import annotations
@@ -125,6 +126,7 @@ class Bonds(IslandStage):
         if not island.has_economy:
             return
         finance = island.economy.finance
+        debt.start_costs(island, ctx.turn - 1, ctx.config.get("bonds.bucket_terms"))
         self._shift_yields(island, ctx)
         if debt.reopen_turn(island, ctx.config) == ctx.turn:
             island.log.append(LogEntry("bonds_market_reopened", {}))
@@ -206,6 +208,7 @@ class Bonds(IslandStage):
             item = ledger.bond_item(bond.id)
             for holder, face in sorted(debt.holders(island, bond).items()):
                 funds.pay(island, payer, holder, face, "bond_redemption")
+                debt.released(island, holder, bond.id, face, face, face)
                 ledger.cancel(island, holder, item, ledger.GOV, face, "bond_redemption")
                 _add_flow(island, holder, -face)
                 redeemed[bond.term] = redeemed.get(bond.term, 0) + face
@@ -234,6 +237,7 @@ class Bonds(IslandStage):
             item = ledger.bond_item(bond.id)
             for holder, face in sorted(debt.holders(island, bond).items()):
                 cut = part(face, haircut)
+                debt.released(island, holder, bond.id, cut, face, 0)
                 ledger.cancel(island, holder, item, ledger.GOV, cut, "bond_default")
                 lost += cut
                 if cut > 0 and ledger.is_bank(holder):
@@ -309,10 +313,12 @@ class Bonds(IslandStage):
         for bank, amount in sorted(filled.items()):
             ledger.create(island, bank, item, ledger.GOV, amount, "bond_issue")
             ledger.pay(island, bank, ledger.GOV, amount, "bond_issue")
+            debt.bought(island, bank, bond.id, amount)
             _add_flow(island, bank, amount)
         if underwrite:
             ledger.create(island, ledger.CB, item, ledger.GOV, underwrite, "bond_issue")
             ledger.pay(island, ledger.CB, ledger.GOV, underwrite, "bond_issue")
+            debt.bought(island, ledger.CB, bond.id, underwrite)
             _add_flow(island, ledger.CB, underwrite)
             stats = island.scratch.setdefault("bond_stats", {})
             stats["underwritten"] = stats.get("underwritten", 0) + underwrite
@@ -541,6 +547,7 @@ class Bonds(IslandStage):
             take = min(face, left)
             left -= take
             amount = int(take * debt.price(by_id[number], ctx.turn, rate))
+            debt.traded(island, number, seller, buyer, take, amount)
             ledger.transfer(
                 island, ledger.bond_item(number), ledger.GOV, seller, buyer, take, "bond_trade"
             )

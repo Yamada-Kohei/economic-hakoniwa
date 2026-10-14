@@ -422,3 +422,22 @@ def test_bond_holders_show_the_bank_position(client, world):
     config = get_game().config
     bank = island.facilities.filter(kind=config.get("banking.facility")).order_by("number")[0]
     assert f'<small class="muted">({bank.x}, {bank.y})</small>' in html
+
+
+def test_bank_books_separate_realized_and_unrealized_bond_gains(client, world):
+    """銀行の収支には、国債の売却・償還の損益（損益に入る）と、まだ売っていない評価損益（損益に
+    入れない）を分けて出す。"""
+    from hakoniwa_core.economy import books
+    from server.economy.models import FacilityBook
+
+    island = _own_island(client)
+    config = get_game().config
+    bank = island.facilities.filter(kind=config.get("banking.facility")).order_by("number")[0]
+    items = {books.INTEREST: 500, books.REALIZED: 200, books.PROFIT: 700, books.VALUATION: 9000}
+    FacilityBook.objects.create(island=island, turn=1, facility=bank.number, items=items)
+    url = f"/api/islands/{island.id}/tiles/{bank.x},{bank.y}"
+    rows = client.get(url).json()["facility"]["books"]["rows"]
+    labels = [r["label"] for r in rows]
+    assert labels.index("国債の売却・償還の損益") < labels.index("損益")
+    assert labels[-1].startswith("国債の評価損益（売るまで損益に入れず")
+    assert rows[-1]["text"].endswith("9,000")
