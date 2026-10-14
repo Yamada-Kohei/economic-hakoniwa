@@ -43,7 +43,7 @@ from typing import Any
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import Payer, banks, books, facility_entity, funds, owner_entity
+from hakoniwa_core.economy import Payer, banks, books, debt, facility_entity, funds, owner_entity
 from hakoniwa_core.modules.banking import is_planned
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import OWNER_STATE, Facility, IslandState, LogEntry
@@ -393,6 +393,7 @@ def transfer(
     book = island.economy.finance.get("bond_book", {})
     if bank in book:
         book[target] = book.get(target, 0) + book.pop(bank)
+    debt.move_costs(island, bank, target)
     kind = "bank_liquidated" if liquidation else "bank_transferred"
     t = banks.facility_of(island, target)
     insured = _insured(paid, deposits)

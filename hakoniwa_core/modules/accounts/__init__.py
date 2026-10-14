@@ -3,13 +3,16 @@
 損益（税の前）= 付加価値（売上 − 仕入れ − 電気代 − 運賃 + 在庫の増減）− 賃金 + 利子（受け取った利子
                − 払った利子）+ 補助金 − 減価償却
 銀行の損益 = 利子（融資・国債・準備預金・銀行間の受け取り − 預金・銀行間・中央銀行への支払い）
-             − 職員の賃金 − 貸し倒れ ＋ 国債の時価の評価損益
+             − 職員の賃金 − 貸し倒れ ＋ 国債の実現損益
 在庫の増減は、そのターンの値段で数えます（hakoniwa_core/economy/books.py）。減価償却は、工事で
 実際に払った額（設備の額）を firms.depreciation_turns ターンで均等に費用にします。
 
 国債の時価の評価: 持ち手（銀行と中央銀行）ごとに「今の時価 − 前のターンの時価 − このターンに
-買った代金 ＋ 売った代金と償還の額」を評価損益にします（国債の段の bond_flows）。金利が上がると
-国債を多く持つ銀行の自己資本が減ります。
+買った代金 ＋ 売った代金と償還の額」が時価の変化です（国債の段の bond_flows）。そのうち、売った・
+償還された・債務不履行で切り下げられた分の「受け取った額 − 取得原価」（実現損益。economy/debt.py の
+released）だけを損益に入れ、残り（まだ売っていない評価損益の増減）は損益に入れません。法人税・配当・
+中央銀行の納付には、売るまで回りません。銀行の自己資本は国債を時価で数えるので、金利が上がると
+国債を多く持つ銀行の自己資本が減り、マイナスになれば破綻します。
 
 補助金（命令 set_subsidy、予算の項目 subsidies から払う。足りなければ比例で減らす）:
 - 生産補助: 品目か工業団地のマスを指定し、独立採算の施設の売上の決めた割合を払う。
@@ -26,7 +29,7 @@ banking.risk_buffer）」と「預金 × banking.capital_floor」の大きい方
 firms.loss_notice_turns ターン続けて赤字なら、ログで知らせます（補助金・縮小・閉鎖はプレイヤーが選
 ぶ）。
 
-中央銀行の利益（国債と貸し出しの利子 − 準備預金の利子 ＋ 国債の評価損益）は全額を国庫に納めます。
+中央銀行の利益（国債と貸し出しの利子 − 準備預金の利子 ＋ 国債の実現損益）は全額を国庫に納めます。
 損失は繰り越して、後の利益で埋めてから納めます。
 
 ここで施設ごとの帳簿（FacilityBook）を作り、融資の審査に使う「利払い前の利益 ＋ 減価償却」の記録
@@ -84,7 +87,7 @@ class Accounts(IslandStage):
         inventory = books.inventory_changes(island, prices)
         island.scratch["inventory_changes"] = inventory
         flows = books.facility_items(island)
-        valuation = self._valuation(island, ctx)
+        valuation, realized = self._valuation(island, ctx)
         rows: list[tuple[Facility, dict[str, int]]] = []
         for f in sorted(island.facilities, key=lambda f: f.id):
             if not f.built or fac.is_housing(config, f):
@@ -93,7 +96,10 @@ class Accounts(IslandStage):
             items[books.INVENTORY] = inventory.get(f.id, 0)
             items[books.DEPRECIATION] = self._depreciate(f, config)
             if is_bank(config, f):
-                items[books.VALUATION] = valuation.get(ledger.bank_entity(f.id), 0)
+                bank = ledger.bank_entity(f.id)
+                items[books.REALIZED] = realized.get(bank, 0)
+                if bank in valuation:
+                    items[books.VALUATION] = valuation[bank] - items[books.REALIZED]
             rows.append((f, items))
         self._subsidies(island, ctx, rows)
         settings = config.get("firms")
@@ -104,7 +110,7 @@ class Accounts(IslandStage):
             profit = (
                 ebitda
                 + items.get(books.INTEREST, 0)
-                + items.get(books.VALUATION, 0)
+                + items.get(books.REALIZED, 0)
                 - items.get(books.WRITE_OFF, 0)
                 - items[books.DEPRECIATION]
             )
@@ -132,11 +138,14 @@ class Accounts(IslandStage):
                     ),
                 )
             )
-        self._central_bank(island, valuation.get(ledger.CB, 0))
+        cb_realized = realized.get(ledger.CB, 0)
+        cb_valuation = valuation[ledger.CB] - cb_realized if ledger.CB in valuation else 0
+        self._central_bank(island, cb_realized, cb_valuation)
 
     @staticmethod
-    def _valuation(island: IslandState, ctx: StageContext) -> dict[str, int]:
-        """国債の持ち手ごとの時価の評価損益（前のターンの時価からの変化 − 売買と償還の出入り）。"""
+    def _valuation(island: IslandState, ctx: StageContext) -> tuple[dict[str, int], dict[str, int]]:
+        """国債の持ち手ごとの (時価の変化（前のターンの時価からの変化 − 売買と償還の出入り）,
+        実現損益（このターンに売った・償還された・切り下げられた分）)。"""
         finance = island.economy.finance
         first = "bond_book" not in finance  # 初めのターンは今の時価を帳簿の値にする（評価損益なし）
         book = finance.setdefault("bond_book", {})
@@ -152,7 +161,7 @@ class Accounts(IslandStage):
             else:
                 book.pop(holder, None)
         island.scratch[debt.VALUED] = True  # この後の国債の出入りは帳簿の値に直接足す
-        return out
+        return out, finance.pop(debt.REALIZED, {})
 
     @staticmethod
     def _subsidies(
@@ -272,9 +281,12 @@ class Accounts(IslandStage):
         return taxable
 
     @staticmethod
-    def _central_bank(island: IslandState, valuation: int) -> None:
-        books.add_sector(island, books.CENTRAL_BANK, "valuation", valuation)
-        income = books.sector(island, books.CENTRAL_BANK).get("interest", 0) + valuation
+    def _central_bank(island: IslandState, realized: int, valuation: int) -> None:
+        """中央銀行の利益（利子 ＋ 国債の実現損益）を、繰り越した損失を埋めてから国庫に納める。
+        まだ売っていない国債の評価損益（valuation）は記録だけで、納めない。"""
+        books.add_sector(island, books.CENTRAL_BANK, books.REALIZED, realized)
+        books.add_sector(island, books.CENTRAL_BANK, books.VALUATION, valuation)
+        income = books.sector(island, books.CENTRAL_BANK).get("interest", 0) + realized
         total = income - island.economy.cb_loss
         if total > 0:
             ledger.pay(island, ledger.CB, ledger.GOV, total, "cb_payment")

@@ -415,12 +415,13 @@ BOOK_ITEMS = [
     (books.WAGES, "賃金", -1),
     (books.SUBSIDY, "補助金", 1),
     (books.INTEREST, "利子（受け取り − 支払い）", 1),
-    (books.VALUATION, "国債の評価損益", 1),
+    (books.REALIZED, "国債の売却・償還の損益", 1),
     (books.WRITE_OFF, "貸し倒れ", -1),
     (books.DEPRECIATION, "減価償却", -1),
     (books.PROFIT, "損益", 1),
     (books.TAX, "法人税", -1),
     (books.DIVIDEND, "配当・国庫への納付", -1),
+    (books.VALUATION, "国債の評価損益（売るまで損益に入れず、自己資本にだけ数える）", 1),
 ]
 BOOK_TURNS = 10  # 損益の合計を出すターン数
 
