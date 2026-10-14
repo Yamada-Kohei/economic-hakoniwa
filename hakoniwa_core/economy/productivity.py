@@ -11,7 +11,10 @@ w はレシピの factors（infra・education）で、L は次のとおりです
 農場と漁港には汚染の効き目も掛け、施設のマスの汚染1あたり産出を w（factors の pollution）だけ
 下げます（最低で infrastructure.pollution_floor）。
 
-3つの係数を掛けた値を施設の生産性として economy["productivity"]（1000 分の 1）に残し、生産の段の
+フェーズ3-2 から、自然条件の係数も掛けます（hakoniwa_core/nature.py）。factors の climate は島の
+気候帯の産出の倍率、fertility は施設のマスの肥沃度で、どちらも 1 + w ×（値 − 1）です。
+
+係数を掛けた値を施設の生産性として economy["productivity"]（1000 分の 1）に残し、生産の段の
 産出の量、発電所の能力、変動費の利益の見込み（economy/prices.py）、操業目標に掛けます。
 """
 
@@ -21,7 +24,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra
+from hakoniwa_core import infra, nature
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.geo import NEIGHBORS8
@@ -74,6 +77,13 @@ def productivity(
     if weights.get("pollution") and island.in_bounds(x, y):
         floor = config.get("infrastructure.pollution_floor")
         value *= max(floor, 1 - weights["pollution"] * island.tile(x, y).pollution)
+    if weights.get("climate"):
+        value *= 1 + weights["climate"] * (
+            nature.recipe_multiplier(defs, config, island, recipe) - 1
+        )
+    if weights.get("fertility") and island.in_bounds(x, y):
+        rich = nature.fertility(island.tile(x, y)) / FULL
+        value *= 1 + weights["fertility"] * (rich - 1)
     return max(1, round(value * FULL))
 
 

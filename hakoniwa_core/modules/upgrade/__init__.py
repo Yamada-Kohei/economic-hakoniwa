@@ -7,12 +7,17 @@
 フェーズ3-1 からは、お金の経済のある島にまだ貿易の仕組みがなければ、港・海運業・輸送船・商社を置き、
 海外の商人を来させます（hakoniwa_core/trade/setup.py。建国したばかりの島も、最初の更新でここを通る）。
 
+フェーズ3-2 からは、自然条件のない島に気候帯を置き（hakoniwa_core/nature.py の migrate）、気候の
+倍率と幸福度の重み（happiness_phase3_1 から）を 12 ターンかけて移します。家計の自動車は 0 台から
+始めます。
+
 移し替えをターンの中で行うのは、サーバーを通さずにコアだけで世界を回すとき（一括シミュレーションや
 テスト）にも同じに動くようにするためです。
 """
 
 from __future__ import annotations
 
+from hakoniwa_core import nature
 from hakoniwa_core.economy import groundwork
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import IslandState
@@ -35,6 +40,12 @@ class Upgrade(IslandStage):
                 economy.ext["happiness_from"] = "happiness_phase2"
         if not trade_started(island):
             trade_setup.prepare(island, ctx.defs, ctx.config, ctx.turn)
+        if economy.ext.get("nature", 0) < nature.VERSION:
+            nature.migrate(island, ctx.config)
+            economy.happiness_blend = ctx.config.get("population.blend_turns")
+            economy.ext["happiness_from"] = "happiness_phase3_1"
+        elif island.ext.get(nature.BLEND):
+            nature.step_blend(island)
 
 
 def register(registry: Registry) -> None:

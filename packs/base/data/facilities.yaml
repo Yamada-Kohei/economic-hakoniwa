@@ -6,26 +6,46 @@
 # tileless: マスを持たない施設（運送業）。
 # factors: 生産性の係数の重み（フェーズ2-3）。infra は施設の周りの交通、education は島の教育水準、
 #   pollution は施設のマスの汚染1あたりに産出を下げる割合。作り方（recipes）ごとにも書けます。
+#   フェーズ3-2 から climate（島の気候帯の産出の倍率。climate.yaml）と fertility（施設のマスの肥沃度）。
+#   気候の倍率が 0 の作り方は、その気候の島では使えません。
+# industry: 産業の分類（フェーズ3-2。表示名は locale の industries.yaml）。経験・集積・称号（3-3）と
+#   計画経済の重点産業（3-4）で使います。
 
 farm:
   category: primary
+  industry: agriculture
   terrain: [plain]
   construction: {turns: 2, labor: 200, materials: {wood: 5}}
   workers: 500
   priority: 7
-  factors: {infra: 0.3, education: 0.2, pollution: 0.02}
+  factors: {infra: 0.3, education: 0.2, pollution: 0.02, climate: 1, fertility: 1}
+  # 作る物を穀物・綿・嗜好品から選ぶ（フェーズ3-2）。化学品を肥料に入れると産出が 3 割増える
   recipes:
     default:
       outputs: {grain: 20}
+    fertilized:
+      inputs: {chemicals: 1}
+      outputs: {grain: 26}
+    cotton:
+      outputs: {cotton: 12}
+    cotton_fertilized:
+      inputs: {chemicals: 1}
+      outputs: {cotton: 15.6}
+    luxury_crop:
+      outputs: {luxury_crop: 8}
+    luxury_crop_fertilized:
+      inputs: {chemicals: 1}
+      outputs: {luxury_crop: 10.4}
   sprite: farm
 
 lumber_camp:
   category: primary
+  industry: agriculture
   terrain: [forest]
   construction: {turns: 2, labor: 200, materials: {wood: 2}}
   workers: 400
   priority: 5
-  factors: {infra: 0.5, education: 0.1}
+  factors: {infra: 0.5, education: 0.1, climate: 1}
   recipes:
     default:
       outputs: {wood: 10}
@@ -33,6 +53,7 @@ lumber_camp:
 
 quarry:
   category: primary
+  industry: mining
   terrain: [mountain]
   construction: {turns: 3, labor: 300, materials: {wood: 5}}
   workers: 600
@@ -47,6 +68,7 @@ quarry:
 
 mine:
   category: primary
+  industry: mining
   terrain: [mountain]
   max_per_island: 2       # 1つの国が持てる数（工事中も数える）
   construction: {turns: 4, labor: 400, materials: {wood: 10, building_materials: 5}}
@@ -63,16 +85,39 @@ mine:
       requires_resource: coal
       inputs: {electricity: 2}
       outputs: {coal: 12}
+    bauxite:              # フェーズ3-2
+      requires_resource: bauxite
+      inputs: {electricity: 2}
+      outputs: {bauxite: 12}
   sprite: mine
+
+# 油井（フェーズ3-2）。原油を選んだ島の平地か山に建ちます。鉱山と同じく1つの国が2つまで。
+oil_well:
+  category: primary
+  industry: mining
+  terrain: [plain, mountain]
+  max_per_island: 2
+  construction: {turns: 4, labor: 400, materials: {wood: 10, building_materials: 5}}
+  workers: 300
+  priority: 5
+  pollution: {amount: 2, radius: 1}
+  factors: {infra: 0.6, education: 0.2}
+  recipes:
+    default:
+      requires_resource: crude_oil
+      inputs: {electricity: 2}
+      outputs: {crude_oil: 12}
+  sprite: oil_well
 
 fishing_port:
   category: primary
+  industry: agriculture
   terrain: [plain]
   coastal: true
   construction: {turns: 3, labor: 300, materials: {wood: 15}}
   workers: 600
   priority: 7
-  factors: {infra: 0.3, education: 0.1, pollution: 0.02}
+  factors: {infra: 0.3, education: 0.1, pollution: 0.02, climate: 1}
   recipes:
     default:
       outputs: {fish: 24}
@@ -80,6 +125,7 @@ fishing_port:
 
 steel_mill:
   category: industry
+  industry: steel
   terrain: [plain]
   construction: {turns: 6, labor: 800, materials: {building_materials: 30, machinery: 5}}
   workers: {general: 1900, engineer: 100}
@@ -93,6 +139,7 @@ steel_mill:
 
 building_materials_plant:
   category: industry
+  industry: mining
   terrain: [plain]
   construction: {turns: 4, labor: 500, materials: {wood: 25}}
   workers: 1000
@@ -109,6 +156,7 @@ building_materials_plant:
 
 machinery_plant:
   category: industry
+  industry: machinery
   terrain: [plain]
   construction: {turns: 6, labor: 800, materials: {building_materials: 30, steel: 10}}
   workers: {general: 1350, engineer: 150}
@@ -122,6 +170,7 @@ machinery_plant:
 
 food_factory:
   category: industry
+  industry: food
   terrain: [plain]
   construction: {turns: 3, labor: 400, materials: {building_materials: 10}}
   workers: 800
@@ -135,6 +184,7 @@ food_factory:
 
 thermal_power_plant:
   category: power
+  industry: energy
   terrain: [plain]
   construction: {turns: 5, labor: 600, materials: {building_materials: 25, steel: 10, machinery: 5}}
   workers: {general: 550, engineer: 50}
@@ -145,10 +195,14 @@ thermal_power_plant:
     default:
       inputs: {coal: 4}
       outputs: {electricity: 30}
+    fuel:                 # 石炭の代わりに燃料で動く（フェーズ3-2）
+      inputs: {fuel: 3}
+      outputs: {electricity: 30}
   sprite: thermal_power_plant
 
 hydro_power_plant:
   category: power
+  industry: energy
   terrain: [mountain]
   construction: {turns: 8, labor: 1000, materials: {building_materials: 60, steel: 10, machinery: 5}}
   workers: {general: 270, engineer: 30}
@@ -161,6 +215,7 @@ hydro_power_plant:
 
 consumer_goods_factory:
   category: industry
+  industry: consumer_goods
   terrain: [plain]
   construction: {turns: 4, labor: 500, materials: {building_materials: 20, machinery: 5}}
   workers: {general: 950, engineer: 50}
@@ -173,7 +228,90 @@ consumer_goods_factory:
     wood:                 # 鋼鉄を作れない島でも作れるが、手間がかかる
       inputs: {wood: 8, electricity: 2}
       outputs: {consumer_goods: 4}
+    chemicals:            # 化学品（樹脂など）から作る（フェーズ3-2）。原料の費用が初めの値段で
+      # 鋼鉄の作り方とそろうように 4（設計の 2 では、どの民営工場もこの作り方に替えて化学品の値段が
+      # 初めの十数倍まで上がった）
+      inputs: {chemicals: 4, electricity: 2}
+      outputs: {consumer_goods: 6}
   sprite: consumer_goods_factory
+
+# 製油所（フェーズ3-2）。原油から燃料と化学品を作ります。
+refinery:
+  category: industry
+  industry: petroleum
+  terrain: [plain]
+  construction: {turns: 6, labor: 700, materials: {building_materials: 30, steel: 10, machinery: 3}}
+  workers: {general: 700, engineer: 100}
+  pollution: {amount: 6, radius: 2}
+  factors: {infra: 0.6, education: 0.5}
+  recipes:
+    default:
+      inputs: {crude_oil: 10, electricity: 3}
+      outputs: {fuel: 6, chemicals: 2}
+  sprite: refinery
+
+# アルミ精錬所（フェーズ3-2）。電力を多く使うので、水力発電の多い島が強い。
+aluminium_smelter:
+  category: industry
+  industry: nonferrous
+  terrain: [plain]
+  construction: {turns: 6, labor: 600, materials: {building_materials: 30, steel: 10, machinery: 3}}
+  workers: {general: 450, engineer: 50}
+  pollution: {amount: 4, radius: 1}
+  factors: {infra: 0.6, education: 0.5}
+  recipes:
+    default:
+      inputs: {bauxite: 8, electricity: 20}
+      outputs: {aluminium: 3}
+  sprite: aluminium_smelter
+
+# 繊維工場（フェーズ3-2）。綿から衣料を作ります。人手は多く、技術者は要りません。
+textile_mill:
+  category: industry
+  industry: textile
+  terrain: [plain]
+  construction: {turns: 3, labor: 400, materials: {building_materials: 15, machinery: 1}}
+  workers: 1500
+  pollution: {amount: 1, radius: 1}
+  factors: {infra: 0.5, education: 0.2}
+  recipes:
+    default:
+      inputs: {cotton: 8, electricity: 1}
+      outputs: {clothing: 6}
+  sprite: textile_mill
+
+# 牧場（フェーズ3-2）。穀物を飼料にして肉を作ります（放牧なので気候と肥沃度が効く）。
+ranch:
+  category: primary
+  industry: agriculture
+  terrain: [plain]
+  construction: {turns: 2, labor: 200, materials: {wood: 8}}
+  workers: 250
+  priority: 7
+  factors: {infra: 0.3, education: 0.1, pollution: 0.02, climate: 1, fertility: 1}
+  recipes:
+    default:
+      inputs: {grain: 4}
+      outputs: {meat: 5}
+  sprite: ranch
+
+# 自動車工場（フェーズ3-2）。人手も技術者も多く要ります。量は台（1 ターン全力で 200 台）。
+automobile_plant:
+  category: industry
+  industry: automobile
+  terrain: [plain]
+  construction: {turns: 8, labor: 1000, materials: {building_materials: 40, steel: 20, machinery: 10}}
+  workers: {general: 1800, engineer: 200}
+  pollution: {amount: 3, radius: 1}
+  factors: {infra: 0.8, education: 0.8}
+  recipes:
+    default:
+      inputs: {steel: 4, chemicals: 1, electricity: 3}
+      outputs: {automobile: 200}
+    aluminium:            # 鋼鉄の半分をアルミに替える
+      inputs: {steel: 2, aluminium: 1, chemicals: 1, electricity: 3}
+      outputs: {automobile: 200}
+  sprite: automobile_plant
 
 government_office:
   category: admin
@@ -272,6 +410,7 @@ shipping:
 # 造船所（フェーズ3-1）。鋼鉄と機械から輸送船を作ります（4 ターンで 1 隻。1 ターンに 1/4 隻ずつ進む）。
 shipyard:
   category: industry
+  industry: shipbuilding
   terrain: [plain]
   coastal: true
   construction: {turns: 5, labor: 600, materials: {building_materials: 25, steel: 10, machinery: 3}}
@@ -281,6 +420,9 @@ shipyard:
   recipes:
     default:
       inputs: {steel: 1.5, machinery: 0.25, electricity: 1.25}
+      outputs: {transport_ship: 0.25}
+    aluminium:            # 鋼鉄の 3 割をアルミに替える（フェーズ3-2）
+      inputs: {steel: 1.05, aluminium: 0.225, machinery: 0.25, electricity: 1.25}
       outputs: {transport_ship: 0.25}
   sprite: shipyard
 

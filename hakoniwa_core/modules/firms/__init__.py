@@ -46,6 +46,10 @@ trade.entry_turns ターンの平均で上限の trade.entry_threshold を超え
 資産を持つ層が出資できれば、商社を1つ開く（hakoniwa_core/trade/setup.py の entry）。商社の撤退
 （在庫・外貨・運ぶ途中の荷の始末が要る）は 3-1 では入れていない。
 
+作り方の見直し（フェーズ3-2）: 作り方が複数ある民営の施設は、firms.recipe_turns ターンごとに変動費
+の利益が一番大きい作り方を選び、今より firms.recipe_margin の割合以上大きければ替える
+（_review_recipes）。鉱山の掘る物（鉱業資源の違う作り方）は替えない（facilities.switch_problem）。
+
 民間銀行の参入: 参入の政策（policy.bank_entry。決めていなければ経済体制の既定）が「自由」なら、参入
 した後の銀行1つあたりの島の預金 D が banking.entry_deposits を超え、預金 D を集めたときの利益の見込
 み（今ある銀行の「賃金を払う前の利益 ÷ 預金」× D − 職員の賃金）の年率が、資本金に対して「政策金利 +
@@ -177,6 +181,7 @@ class EntryExit(IslandStage):
         if not island.has_economy:
             return
         self._record_shortages(island, ctx)
+        self._review_recipes(island, ctx)
         self._exits(island, ctx)
         self._foreclosures(island, ctx)
         if not is_planned(ctx.defs, island):
@@ -216,6 +221,76 @@ class EntryExit(IslandStage):
                     history[good] = [*history[good], 0][-keep:]
 
     # --- 撤退 -------------------------------------------------------------------------
+
+    # --- 作り方の見直し（フェーズ3-2） ---------------------------------------------------
+
+    def _review_recipes(self, island: IslandState, ctx: StageContext) -> None:
+        """民営の施設は firms.recipe_turns ターンごとに、変動費の利益（直近の値段の平均で、全力
+        で動いたとき）が一番大きい作り方を選び、今の作り方より firms.recipe_margin の割合以上
+        大きければ替える（次の市場の段で替える。facilities.RECIPE_NEXT）。"""
+        defs, config = ctx.defs, ctx.config
+        settings = config.get("firms")
+        margin = to_basis(settings["recipe_margin"])
+        prices: dict[str, int] | None = None
+        supplied: set[str] = set()
+        rates: dict[int, int] = {}
+        for f in sorted(island.facilities, key=lambda f: f.id):
+            if (
+                len(defs.facilities[f.kind]["recipes"]) < 2
+                or f.owner != OWNER_PRIVATE
+                or not f.built
+                or not fac.on_map(f)
+                or "closing" in f.economy
+                or "foreclosed" in f.economy
+                or fac.RECIPE_NEXT in f.ext
+                or (ctx.turn + f.id) % settings["recipe_turns"]
+            ):
+                continue
+            if prices is None:
+                prices = average_prices(island, settings["price_turns"])
+                supplied = self._supplied(island, ctx)
+                rates = freight_rates.facility_rates(island, defs, config)
+            profits = self._recipe_profits(island, ctx, f, prices, supplied, rates.get(f.id, 0))
+            now = profits.get(f.recipe, 0)
+            choice = max(sorted(profits), key=lambda name: profits[name])
+            if choice != f.recipe and profits[choice] - now > part(abs(now), margin):
+                f.ext[fac.RECIPE_NEXT] = choice
+
+    @staticmethod
+    def _recipe_profits(
+        island: IslandState,
+        ctx: StageContext,
+        f: Facility,
+        prices: dict[str, int],
+        supplied: set[str],
+        rate: int,
+    ) -> dict[str, int]:
+        """施設 f が選べる作り方ごとの変動費の利益（今の作り方を含む）。選べるのは、島で使える
+        作り方（鉱業資源と気候）のうち、原料がどれも島で手に入り、今より多く使う原料は直近に
+        売りに出た量が買いたい量より増える分以上多く、産出物に買い手のいる（直近に買いたい量が
+        あった）作り方（今と同じ原料を倍使う作り方に替えて、その原料が品切れになったため）。"""
+        defs, config = ctx.defs, ctx.config
+        power = config.get("power.good")
+        finance = island.economy.finance
+        demand = finance.get("demand", {})
+        now = fac.recipe_of(defs, f)["inputs"]
+        wage = f.economy.get("wage", 0)
+        out = {}
+        for name, recipe in sorted(defs.facilities[f.kind]["recipes"].items()):
+            if name != f.recipe and (
+                fac.switch_problem(defs, island, f, name)
+                or set(recipe["inputs"]) - supplied
+                or not all(g == power or any(demand.get(g, [])) for g in recipe["outputs"])
+                or any(
+                    _spare(finance, g) < qty - now.get(g, 0)
+                    for g, qty in recipe["inputs"].items()
+                    if g != power and qty > now.get(g, 0)
+                )
+            ):
+                continue
+            probe = productivity.probe(island, defs, config, f.kind, name, (f.x, f.y))
+            out[name] = variable_profit(defs, config, probe, prices, wage, rate)
+        return out
 
     def _exits(self, island: IslandState, ctx: StageContext) -> None:
         settings = ctx.config.get("firms")
@@ -360,9 +435,8 @@ class EntryExit(IslandStage):
             if not private_allowed(defs, island, kind):
                 continue
             for rname, recipe in sorted(fdef["recipes"].items()):
-                resource = recipe.get("requires_resource")
-                if resource is not None and resource not in island.resources:
-                    continue
+                if fac.recipe_problem(defs, island, kind, rname) is not None:
+                    continue  # 鉱業資源がないか、気候で使えない（フェーズ3-2）
                 if not recipe["outputs"] or busy & set(recipe["outputs"]):
                     continue
                 cost = unit_cost(defs, config, kind, recipe, prices, wage)
@@ -854,6 +928,14 @@ class EntryExit(IslandStage):
         kind = ctx.config.get("banking.facility")
         payroll = fac.workers_needed(ctx.defs, kind) * island.economy.average_wage
         return share * earned / deposits - payroll
+
+
+def _spare(finance: dict[str, Any], good: str) -> float:
+    """直近の、島の市場に売りに出た量の平均 − 買いたい量の平均（1000 分の 1）。"""
+    supply = finance.get("supply", {}).get(good, [])
+    demand = finance.get("demand", {}).get(good, [])
+    average = sum(supply) / len(supply) if supply else 0.0
+    return average - (sum(demand) / len(demand) if demand else 0.0)
 
 
 def open_bank(island: IslandState, ctx: StageContext, pos: tuple[int, int], owner: str) -> Facility:

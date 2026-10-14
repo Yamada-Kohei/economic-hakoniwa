@@ -5,16 +5,29 @@
 # consumer: 家計が買う財（物価指数に入れる）
 # freight_weight: 船で運ぶときの 1 単位の重さ（トン。フェーズ3-1）。書かない財は島の外へ運べない（電力）。
 #   0 は自分で航海して届く物（輸送船）
-grain:              {tier: 1, unit: ton, shelf_life: 8, consumer: true, food: {nutrition: 1, quality: 0.2}, freight_weight: 1}
-fish:               {tier: 1, unit: ton, shelf_life: 2, consumer: true, food: {nutrition: 1, quality: 0.4}, freight_weight: 1}
+# need: 家計にとっての種類（フェーズ3-2）。necessity 必需品（食べ物・電力・衣料）、luxury ぜいたく品、
+#   durable 耐久消費財（ぜいたく品の種類にも数える）。家計の買い方と幸福度は game.yaml の household
+grain:              {tier: 1, unit: ton, shelf_life: 8, consumer: true, food: {nutrition: 1, quality: 0.2}, freight_weight: 1, need: necessity}
+fish:               {tier: 1, unit: ton, shelf_life: 2, consumer: true, food: {nutrition: 1, quality: 0.4}, freight_weight: 1, need: necessity}
 wood:               {tier: 1, unit: cubic_meter, freight_weight: 0.7}
 stone:              {tier: 1, unit: ton, mining: true, freight_weight: 1}
 iron_ore:           {tier: 1, unit: ton, mining: true, freight_weight: 1}
 coal:               {tier: 1, unit: ton, mining: true, freight_weight: 1}
 steel:              {tier: 2, unit: ton, freight_weight: 1}
 building_materials: {tier: 2, unit: ton, freight_weight: 1}
-food:               {tier: 3, unit: ton, shelf_life: 6, consumer: true, food: {nutrition: 1.5, quality: 1}, freight_weight: 1}
+food:               {tier: 3, unit: ton, shelf_life: 6, consumer: true, food: {nutrition: 1.5, quality: 1}, freight_weight: 1, need: necessity}
 machinery:          {tier: 3, unit: piece, freight_weight: 5}
-consumer_goods:     {tier: 3, unit: item, consumer: true, freight_weight: 0.05}
-electricity:        {tier: 2, unit: megawatt_hour, shelf_life: 0, consumer: true}
+consumer_goods:     {tier: 3, unit: item, consumer: true, freight_weight: 0.05, need: luxury}
+electricity:        {tier: 2, unit: megawatt_hour, shelf_life: 0, consumer: true, need: necessity}
 transport_ship:     {tier: 3, unit: ship, freight_weight: 0}   # 輸送船（フェーズ3-1）。海運業が設備として使う
+# フェーズ3-2: 鉱業資源の原油・ボーキサイト、中間財の燃料・化学品・アルミ、作物の綿・嗜好品、肉、衣料・自動車
+crude_oil:          {tier: 1, unit: ton, mining: true, freight_weight: 1}
+bauxite:            {tier: 1, unit: ton, mining: true, freight_weight: 1}
+cotton:             {tier: 1, unit: ton, freight_weight: 1}
+luxury_crop:        {tier: 1, unit: ton, consumer: true, freight_weight: 1, need: luxury}   # 嗜好品（コーヒー・茶・たばこなど）
+fuel:               {tier: 2, unit: ton, consumer: true, freight_weight: 1}   # 家計は自動車を動かすのに買う
+chemicals:          {tier: 2, unit: ton, freight_weight: 1}
+aluminium:          {tier: 2, unit: ton, freight_weight: 1}
+meat:               {tier: 3, unit: ton, shelf_life: 3, consumer: true, food: {nutrition: 1.2, quality: 0.8}, freight_weight: 1, need: necessity}
+clothing:           {tier: 3, unit: ton, consumer: true, freight_weight: 1, need: necessity}
+automobile:         {tier: 3, unit: piece, consumer: true, freight_weight: 1.5, need: durable}

@@ -122,6 +122,14 @@ def facility_info(row: m.Facility, island: IslandState) -> dict[str, Any]:
     info.update(engineers_info(f, fdef))
     if fdef.get("education"):
         info["education"] = education_text(fdef["education"])
+    if f.built and len(recipes) > 1:
+        # 生産方式の切り替え（フェーズ3-2。国営の施設だけ。次の市場の段で切り替わる）
+        choices = recipe_choices(island, f)
+        if choices:
+            info["recipe_choices"] = choices
+        pending = f.ext.get(fac.RECIPE_NEXT)
+        if pending in recipes:
+            info["recipe_next_name"] = defs.recipe_name(f.kind, pending)
     if f.built:
         info["workers_needed"] = fdef["workers"]
         recipe = recipes.get(f.recipe, {})
@@ -250,6 +258,27 @@ def accounting_target(island: IslandState, f: Facility) -> str | None:
     if not order_ok(island, f, "set_accounting", {"x": f.x, "y": f.y, "accounting": target}):
         return None
     return target
+
+
+def recipe_choices(island: IslandState, f: Facility) -> list[dict[str, Any]]:
+    """生産方式の変更の命令（change_recipe）で切り替えられる先（今の方式と、切り替えを待っている
+    方式を除く）。命令が通らない施設（民営・気候や地下資源で使えないなど）は空。"""
+    defs = get_game().defs
+    out = []
+    for name, recipe in defs.facilities[f.kind]["recipes"].items():
+        if name in (f.recipe, f.ext.get(fac.RECIPE_NEXT)):
+            continue
+        if not order_ok(island, f, "change_recipe", {"x": f.x, "y": f.y, "recipe": name}):
+            continue
+        out.append(
+            {
+                "recipe": name,
+                "name": defs.recipe_name(f.kind, name),
+                "inputs": goods_list(recipe.get("inputs", {})),
+                "outputs": goods_list(recipe.get("outputs", {})),
+            }
+        )
+    return out
 
 
 def ownership_target(island: IslandState, f: Facility) -> str | None:
@@ -520,6 +549,12 @@ def describe_order(kind: str, payload: dict[str, Any]) -> str:
         return f"{name}: {where} → {payload.get('priority')}"
     if kind == "set_accounting":
         return f"{name}: {where} → {message('accounting_' + payload.get('accounting', ''))}"
+    if kind == "change_recipe":
+        # 命令には施設の種類がないので、その名前の生産方式を持つ施設から表示名を引く
+        recipe = payload.get("recipe", "")
+        owner = next((k for k, d in defs.facilities.items() if recipe in d["recipes"]), None)
+        shown = defs.recipe_name(owner, recipe) if owner else recipe
+        return f"{name}: {where} → {shown}"
     if kind in ("rename_island", "rename_facility", "rename_place"):
         new = payload.get("name", "")
         return f"{name}: {where} 「{new}」" if where else f"{name}: 「{new}」"

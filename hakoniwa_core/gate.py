@@ -8,6 +8,10 @@
 フェーズ3-1 から、為替の年の動き（FX_YEAR ターン前のレートからの変わり方の絶対値の平均）と、
 石炭の出ない島の失業率の平均（貿易で機械を買えるようになって下がるかを 2-3 と比べる）も見ます。
 
+フェーズ3-2 から、世界全体で、どの財も目安を見始めるターンからどこかの島で作られ、売り買いされて
+いるかを見ます（設計書の 3-2 の関門「新しい品目がどれもどこかで作られ売買される」）。財ごとの、
+作った島と売り買いのあった島の数の平均は Recorder.goods で出します。
+
 目安はゲームのルールではなく確かめの基準なので、game.yaml ではなくこのファイルに置いています。
 """
 
@@ -78,8 +82,13 @@ class Recorder:
             )
             for i in world.islands.values()
         }
+        self.goods_list = list(defs.goods)
+        self.turns: list[int] = []  # 記録したターン（世界全体）
+        self.made: dict[str, dict[int, int]] = {}  # 財 → ターン → 作った島の数
+        self.traded: dict[str, dict[int, int]] = {}  # 財 → ターン → 売り買いのあった島の数
 
     def record(self, world: WorldState) -> None:
+        self.turns.append(world.turn)
         for island in world.islands.values():
             rec = self.islands.get(island.id)
             if rec is None or not island.has_economy:
@@ -108,8 +117,16 @@ class Recorder:
                 currency = key.removeprefix("fx.")
                 if currency != key and currency.isdigit() and value > 0:
                     rec.fx.setdefault(currency, {})[world.turn] = value
+            for key, value in s.items():
+                good = key.removeprefix("production.")
+                if good != key and value > 0:
+                    made = self.made.setdefault(good, {})
+                    made[world.turn] = made.get(world.turn, 0) + 1
             initial = self.initial.get(island.id, {})
             for m in island.markets:
+                if m.volume > 0:
+                    traded = self.traded.setdefault(m.good, {})
+                    traded[world.turn] = traded.get(world.turn, 0) + 1
                 if m.volume > 0 and initial.get(m.good):
                     ratio = m.price / initial[m.good]
                     rec.price_ratio.setdefault(m.good, []).append(ratio)
@@ -117,9 +134,31 @@ class Recorder:
     def failures(self, start: int = START) -> list[str]:
         """目安から外れたところ（島ごと・目安ごとに1行）。"""
         out: list[str] = []
+        for good, (made, traded) in self.goods(start).items():
+            if made <= 0:
+                out.append(f"世界: {good} がどの島でも作られていない")
+            if traded <= 0:
+                out.append(f"世界: {good} がどの島でも売り買いされていない")
         for iid, rec in sorted(self.islands.items()):
             out.extend(f"島 {iid}（{rec.regime}）: {m}" for m in _island_failures(rec, start))
         return out
+
+    def goods(self, start: int = START) -> dict[str, tuple[float, float]]:
+        """財ごとの、作った島の数と売り買いのあった島の数の、start からの1ターンあたりの平均。
+
+        start から後のターンを記録していなければ空。
+        """
+        window = [t for t in self.turns if t >= start]
+        if not window:
+            return {}
+
+        def mean(by_turn: dict[int, int]) -> float:
+            return sum(n for t, n in by_turn.items() if t >= start) / len(window)
+
+        return {
+            good: (mean(self.made.get(good, {})), mean(self.traded.get(good, {})))
+            for good in self.goods_list
+        }
 
     def summary(self, start: int = START) -> dict[str, float]:
         """全部の島をまとめた値（目安と見比べるため）。"""

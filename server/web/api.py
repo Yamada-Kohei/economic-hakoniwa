@@ -272,6 +272,8 @@ def tile(request, island_id: int, x: int, y: int):
         "power": ext.get("power"),
         "capital": island.capital == (row.x, row.y),
     }
+    if "fertility" in ext:  # 平地の肥沃度（フェーズ3-2。1000 分の 1）
+        data["fertility"] = ext["fertility"] / 1000
     # インフラの整備度と並んでいる工事（フェーズ2-3）。送電線の表示は送電網の整備度で決まる
     economy = row.island.economy or {}
     data.update(display.infra_view(row.infra, economy.get("infra", {}).get("queue", []), x, y))
@@ -574,6 +576,7 @@ def world(request):
                     "wy": i.wy,
                     "owner": i.owner.username if i.owner else "",
                     "mine": request.user.is_authenticated and i.owner_id == request.user.id,
+                    "climate": (i.ext or {}).get("climate", ""),  # フェーズ3-2
                 }
                 for i in islands
             ],

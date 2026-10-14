@@ -309,8 +309,11 @@ def test_contract_in_a_currency_nobody_holds_is_paid_through_its_issuer(game, tr
     """買い手の島で誰も持っていない通貨の契約も、政府が発行した島の中央銀行から買って払う。市場の厚み
     より多くは買えず足りないときは、お金ではなく外貨を買えなかったことを不足のわけに書く。"""
     world = copy.deepcopy(traded[0])
-    seller, buyer = world.islands[1], world.islands[2]
-    assert blocs.currencies_of(world, buyer.id) == set()  # 島2は自分の通貨の圏にだけ入っている
+    # 買い手は自分の通貨の圏にだけ入っている島（ほかの通貨を誰も持っていない）
+    buyer = next(
+        world.islands[i] for i in world.island_ids() if blocs.currencies_of(world, i) == set()
+    )
+    seller = next(world.islands[i] for i in world.island_ids() if i != buyer.id)
     good = "building_materials"
     stock.add(seller.warehouse, good, 50 * QUANTITY_SCALE, world.turn, game.defs.goods)
     payload = {

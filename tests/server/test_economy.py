@@ -138,11 +138,11 @@ def test_warehouse_sale_check_reads_the_warehouse(client, world):
 def test_accounting_order_from_the_island_page(client, world):
     """国営施設のマスには会計方式の変更を出し（今と違う方だけ）、その命令を並べて実行できる。"""
     user = _login(client)
-    island = Island.objects.order_by("id")[1]  # 混合経済の島: 鉱山と発電所が国営・独立採算
+    island = Island.objects.order_by("id")[1]  # 混合経済の島: 発電所が国営・独立採算
     island.owner = user
     island.save()
-    mine = island.facilities.get(kind="mine", owner="state")
-    tile_url = f"/api/islands/{island.id}/tiles/{mine.x},{mine.y}"
+    plant = island.facilities.get(kind="thermal_power_plant", owner="state")
+    tile_url = f"/api/islands/{island.id}/tiles/{plant.x},{plant.y}"
     info = client.get(tile_url).json()["facility"]
     assert info["accounting_name"] == "独立採算"
     assert info["accounting_target"] == "treasury"
@@ -161,19 +161,19 @@ def test_accounting_order_from_the_island_page(client, world):
         assert "accounting_target" not in data, f.kind
 
     url = f"/api/islands/{island.id}/orders"
-    payload = {"x": mine.x, "y": mine.y, "accounting": "treasury"}
+    payload = {"x": plant.x, "y": plant.y, "accounting": "treasury"}
     body = {"orders": [{"kind": "set_accounting", "payload": payload}]}
     res = client.put(url, body, content_type="application/json")
     assert res.status_code == 200, res.content.decode()
     assert res.json()["warnings"] == []
     text = res.json()["orders"][0]["text"]
-    assert text == f"国営施設の会計方式の変更: ({mine.x}, {mine.y}) → 国庫直轄"
+    assert text == f"国営施設の会計方式の変更: ({plant.x}, {plant.y}) → 国庫直轄"
     order = Order.objects.get(island=island)
     assert (order.kind, order.payload) == ("set_accounting", payload)
 
     run_turn(force=True)
-    mine.refresh_from_db()
-    assert mine.accounting == "treasury"
+    plant.refresh_from_db()
+    assert plant.accounting == "treasury"
     # 変えた後は、元に戻す向きを出す
     assert client.get(tile_url).json()["facility"]["accounting_target"] == "self_supporting"
 
@@ -181,6 +181,6 @@ def test_accounting_order_from_the_island_page(client, world):
 def test_accounting_order_is_not_offered_before_the_money_economy(client, world):
     island = Island.objects.order_by("id")[1]
     _make_phase1(island)
-    mine = island.facilities.get(kind="mine", owner="state")
-    info = client.get(f"/api/islands/{island.id}/tiles/{mine.x},{mine.y}").json()["facility"]
+    plant = island.facilities.get(kind="thermal_power_plant", owner="state")
+    info = client.get(f"/api/islands/{island.id}/tiles/{plant.x},{plant.y}").json()["facility"]
     assert "accounting_target" not in info

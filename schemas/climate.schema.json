@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "気候帯 climate.yaml の1項目（フェーズ3-2）",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "outputs": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {"type": "number", "minimum": 0},
+      "description": "作る物ごとの産出の倍率（書かない物は 1）。0 はその気候では作れない"
+    },
+    "household_power": {"type": "number", "exclusiveMinimum": 0, "description": "家計の電力の要る量の倍率（書かなければ 1）"},
+    "override": {"const": true}
+  }
+}

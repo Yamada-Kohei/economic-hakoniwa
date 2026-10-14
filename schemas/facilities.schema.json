@@ -17,12 +17,15 @@
       "properties": {
         "infra": {"type": "number", "minimum": 0, "description": "施設の周りの交通の整備度の効き目の重み"},
         "education": {"type": "number", "minimum": 0, "description": "島の教育水準の効き目の重み"},
-        "pollution": {"type": "number", "minimum": 0, "maximum": 1, "description": "施設のマスの汚染1あたりに産出を下げる割合"}
+        "pollution": {"type": "number", "minimum": 0, "maximum": 1, "description": "施設のマスの汚染1あたりに産出を下げる割合"},
+        "climate": {"type": "number", "minimum": 0, "maximum": 1, "description": "島の気候帯の産出の倍率（climate.yaml）の効き目の重み（フェーズ3-2）"},
+        "fertility": {"type": "number", "minimum": 0, "maximum": 1, "description": "施設のマスの肥沃度の効き目の重み（フェーズ3-2）"}
       }
     }
   },
   "properties": {
     "category": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "分類。primary, industry, power, admin, housing など"},
+    "industry": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "産業の分類（フェーズ3-2。表示名は locale の industries.yaml）。経験・集積・称号と計画経済の重点産業で使う"},
     "terrain": {
       "type": "array",
       "items": {"type": "string"},

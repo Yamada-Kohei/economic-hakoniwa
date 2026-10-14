@@ -12,6 +12,7 @@ import random
 from typing import TYPE_CHECKING
 
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.nature import zone_of
 from hakoniwa_core.state.model import IslandState, Tile, WorldState
 
 if TYPE_CHECKING:
@@ -45,15 +46,17 @@ def generate_island(
     config: GameConfig,
     defs: Defs | None = None,
     regime: dict[str, str] | None = None,
+    climate: str | None = None,
 ) -> IslandState:
     """ランダムな形の島。defs を渡すと、建国の処理で首都や初めの施設も置く。
 
-    regime を渡すと、その軸だけはランダムに選ばずにその体制にする。
+    regime を渡すと、その軸だけはランダムに選ばずにその体制にする。climate は区画の気候帯
+    （フェーズ3-2。hakoniwa_core/nature.py の zone_of）。
     """
     size = config.get("island.size")
     land = generate_land(rng, size, config.get("island.land_min"), config.get("island.land_max"))
     if defs is not None:
-        return _found_random(rng, island_id, name, wx, wy, config, defs, land, regime)
+        return _found_random(rng, island_id, name, wx, wy, config, defs, land, regime, climate)
     tiles = []
     for y in range(size):
         for x in range(size):
@@ -91,6 +94,8 @@ def random_plan(
         edits = {}
     resources = defs.mining_resources()
     count = min(len(resources), config.get("founding.max_resources"))
+    weights = config.get("world.sample_resources")
+    chosen = _weighted_sample(rng, resources, [weights.get(r, 1) for r in resources], count)
     return founding.FoundingPlan(
         land=land,
         capital=capital,
@@ -102,17 +107,34 @@ def random_plan(
             "currency_symbol": "¤",
             "leader": f"{name}の元首",
         },
-        resources=sorted(rng.sample(resources, count)),
+        resources=sorted(chosen),
         terrain_edits=edits,
         seed=seed,
     )
 
 
-def _found_random(rng, island_id, name, wx, wy, config, defs, land, regime) -> IslandState:
+def _weighted_sample(rng, items: list[str], weights: list[float], count: int) -> list[str]:
+    """items から重み weights で count 個を、同じ物を選ばずに選ぶ。"""
+    items, weights = list(items), list(weights)
+    chosen = []
+    for _ in range(min(count, len(items))):
+        point = rng.random() * sum(weights)
+        for i, w in enumerate(weights):
+            point -= w
+            if point < 0 or i == len(items) - 1:
+                chosen.append(items.pop(i))
+                weights.pop(i)
+                break
+    return chosen
+
+
+def _found_random(
+    rng, island_id, name, wx, wy, config, defs, land, regime, climate=None
+) -> IslandState:
     from hakoniwa_core.founding import found_island
 
     plan = random_plan(rng, name, config, defs, land, regime)
-    return found_island(defs, config, plan, island_id, wx, wy)
+    return found_island(defs, config, plan, island_id, wx, wy, climate=climate)
 
 
 def world_grid_size(n_islands: int, config: GameConfig) -> int:
@@ -135,5 +157,6 @@ def generate_world(
     islands = {}
     for i, (wx, wy) in enumerate(cells, start=1):
         regime = {"economy": economies[(i - 1) % len(economies)]} if economies else None
-        islands[i] = generate_island(rng, i, f"島{i}", wx, wy, config, defs, regime)
+        climate = zone_of(wy, grid, config) if defs is not None else None
+        islands[i] = generate_island(rng, i, f"島{i}", wx, wy, config, defs, regime, climate)
     return WorldState(turn=0, seed=seed, islands=islands)

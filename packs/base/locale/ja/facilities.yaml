@@ -19,4 +19,10 @@ port: 港
 shipping: 海運会社
 shipyard: 造船所
 trading: 商社
+oil_well: 油井
+refinery: 製油所
+aluminium_smelter: アルミ精錬所
+textile_mill: 繊維工場
+ranch: 牧場
+automobile_plant: 自動車工場
 housing: 町

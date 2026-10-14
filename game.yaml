@@ -47,6 +47,20 @@ orders:
 world:
   cells_per_island: 2   # 世界マップの区画数は島数のおよそこの倍
   default_islands: 50   # 規模の目安（区画数の計算に使う）
+  # 一括シミュレーションとサンプルの島が鉱業資源を選ぶ重み（フェーズ3-2。プレイヤーの建国には
+  # 効かない）。石炭と鉄鉱石はどこにでもあり、原油とボーキサイトは限られた島にある
+  sample_resources: {coal: 3, iron_ore: 3, stone: 2, crude_oil: 1, bauxite: 1}
+
+# 気候帯と肥沃度（フェーズ3-2。hakoniwa_core/nature.py）。気候帯ごとの倍率は climate.yaml
+climate:
+  zones: [cold, temperate, tropical]   # 世界マップの行を上からこの順に分ける
+  shares: [0.34, 0.33, 0.33]           # 分ける割合（合わせて 1）
+  blend_turns: 12       # 移し替えた島は、気候の倍率をこのターン数かけて効かせる
+  fertility: [0.7, 1.3] # 平地のマスの肥沃度の幅（島を作るときにまとまりで配る）
+  fertility_cell: 5     # まとまりの大きさの目安（マス）
+  fertility_terrain: plain
+  fertility_loss: 0.02  # 汚染のあったターンが1年分たまるごとに下がる量
+  fertility_floor: 0.5
 
 island:
   size: 32              # 島は size × size のマスの中に描く
@@ -116,6 +130,17 @@ freight:
   hub_level: city       # 拠点になる町の段階（首都のマスはいつも拠点）。取引の相手が足りない分は拠点まで運ぶ
   labor_share: 0.6      # 雇う人数 = 前のターンの運賃 × これ ÷ 賃金
   max_surcharge: 2.0    # 人手が足りないときの運賃の割り増しの上限（倍）
+  # トラック（フェーズ3-2。hakoniwa_core/economy/trucks.py）。運送業は自動車を買ってトラックにし、
+  # 運転手の代わりに使う。1台を1ターン使う費用（値段 ×（設備の利子 + wear）÷ 12 + 燃料）が
+  # drivers 人の賃金より安ければ買う
+  trucks:
+    good: automobile
+    drivers: 3          # トラック1台を、運転手何人分の働きとして数えるか
+    fuel: {fuel: 0.005} # 1台が1ターンに使う燃料
+    wear: 0.1           # 1年に傷んで使えなくなる割合
+    max_share: 0.5      # 雇いたい運転手のうち、トラックで替えられる割合の上限
+    catch_up: 0.1       # 欲しい台数に足りない分のうち、1ターンに買う割合
+    fuel_turns: 3       # 持っておく燃料（持っているトラックの何ターン分）
 
 # 貿易（フェーズ3-1）。量は財の重さ（goods.yaml の freight_weight。トン）で数えます。
 trade:
@@ -127,11 +152,11 @@ trade:
   ship_capacity: 40     # 輸送船1隻が1航海で運べる重さ（トン）
   ship_crew: 30         # 輸送船1隻の船員（航海に出ている船の数に合わせて雇う）
   idle_crew: 0.0        # 港につないでいる船を守る船員（船団の何隻分か。0 は船員を置かない）
-  ship_fuel: {coal: 0.05}  # 航海中の船1隻が1ターンに使う燃料
+  ship_fuel: {fuel: 0.025, coal: 0.05}  # 航海中の船1隻が1ターンに使う燃料（どれか1つ。安い方から使い、買う）
   ship_life: 300        # 船が使えるターン数（年 4% 傷む。過ぎたら解体する）
   fuel_turns: 6         # 海運業が持っておく燃料（船を全部出したときの何ターン分）
   start_ships: 2        # 建国と移し替えのときに海運業に持たせる輸送船
-  start_fuel: 2         # 建国と移し替えのときに海運業に持たせる燃料（石炭）
+  start_fuel: {coal: 2} # 建国と移し替えのときに海運業に持たせる燃料
   port_capacity: 100    # 港で1ターンに積み下ろしできる重さ（トン。積む量と下ろす量の合計）
   port_labor: 2         # 港で荷 1 トンを扱うのに要る働き手（直近の扱った量の平均に合わせて雇う）
   cost_turns: 12        # 船の運賃と港の使用料を決める、費用と運んだ量を数えるターン数
@@ -163,7 +188,7 @@ foreign_merchant:
   multiplier: 1.5       # 値段 = 初めの値段（原価 + 1 割）× これ
   last_turns: 24        # 最後のこのターン数で、値段の倍率を last_multiplier まで上げていく
   last_multiplier: 3.0
-  goods: [coal, iron_ore, steel, machinery, building_materials]  # 1ターンの上限は、その財を作る標準の施設1つの全力の産出
+  goods: [coal, iron_ore, steel, machinery, building_materials, crude_oil, fuel]  # 1ターンの上限は、その財を作る標準の施設1つの全力の産出
 
 household:
   layers:               # 家計の層。share を書いた層は住民のその割合で、働かない（資産を持つ層）
@@ -174,15 +199,35 @@ household:
   income_turns: 3       # 可処分所得を平均するターン数
   c1_rate_effect: 0.02  # 預金の実質金利が1%高いごとに c1 を下げる量
   c1_range: 0.1         # c1 を既定の値から動かす幅の上限
-  consumer_goods_share: 1.0     # 電気代と食費の残りのうち、消費財に使う割合
+  consumer_goods_share: 1.0     # 必需品（電気代・食費・衣料）の残りのうち、ぜいたく品と自動車に使う割合
   food_elasticity: 4    # 食料の割り振りで、値段の差をどれだけ効かせるか（質を足した栄養あたりの値段の比の乗数）
-  food_share: 0.25      # 食費の上限（使う額に対する割合）。安い食料の費用との差の分だけ、質の高い食料に替える
+  # 必需品（食べ物・電力・衣料。goods.yaml の need）に使う額の上限（使う額に対する割合。フェーズ3-2）。
+  # 実質の使う額（1人あたり、物価指数で割る）が base_income のとき share で、倍になるごとに fall の割合
+  # だけ下がる（下限 floor）。安い食料の費用との差の分だけ、この上限まで質の高い食料に替える
+  necessity: {share: 0.4, fall: 0.1, floor: 0.3}
+  base_income: 250      # 1人1ターンの実質の使う額の基準（建国のときの一般の層くらい）
   # 消費財の注文の指値（いつもの値段に対する倍率）。高い段から「その値段で使い切る量」まで足していく
   consumer_goods_tiers: [0.95, 1.0, 1.05]
   # 今の値段がいつもの値段の一番下の段より安いときに足す段（今の値段に対する倍率。値下がりした分だけ多く買う）
   consumer_goods_low_tiers: [0.9, 0.95, 1.0]
   usual_price_turns: 12 # いつもの値段 = 直近このターン数の値段の平均
-  consumer_goods_target: 0.0005 # 1人1ターンあたりの消費財の目安（幸福度）
+  # 1人1ターンあたりの目安（幸福度。フェーズ3-2）。衣料はこの量を必需品として買う
+  targets: {clothing: 0.00004, consumer_goods: 0.0005, luxury_crop: 0.0002}
+  # ぜいたく品の予算を、売りに出ている物の間で割り振る重み（書かない物は 1）。売りに出ていない物は
+  # 買いたい量だけ記録する（作る施設や商社が動く合図になる）
+  luxury_weights: {consumer_goods: 3, luxury_crop: 1}
+  cars:                 # 自動車（耐久消費財。フェーズ3-2）
+    good: automobile
+    fuel: {fuel: 0.001} # 1台が1ターンに使う燃料
+    wear: 0.1           # 1年に傷んで使えなくなる割合
+    catch_up: 0.1       # 欲しい台数に足りない分のうち、1ターンに買う割合
+    share: 0.5          # ぜいたく品の予算のうち、自動車に使う上限
+    # 層ごとの欲しい台数（1人あたり）。実質の使う額が base_income の from 倍から full 倍のあいだで、
+    # 0 から per_person まで増える
+    layers:
+      owners: {per_person: 0.5, from: 0, full: 1}
+      engineers: {per_person: 0.2, from: 0.5, full: 2}
+      general: {per_person: 0.2, from: 1.5, full: 3}
   housing_share: 0.02   # 町の資材に使う預金の割合の上限
 
 firms:
@@ -203,6 +248,10 @@ firms:
   entry_gap: 0.5        # 品切れと見る足りない量（新しい工場の全力の産出に対する割合）
   cost_ratio: 1.2
   # 撤退と倒産
+  # 作り方の見直し（フェーズ3-2）。作り方が複数ある民営の施設は、このターン数ごとに変動費の利益が一番大きい
+  # 作り方を選び、今より recipe_margin の割合以上大きければ替える（替えた次のターンは稼働率が半分）
+  recipe_turns: 12
+  recipe_margin: 0.1
   exit_idle_turns: 12   # 動かない（稼働率0）ままこのターン数続いたら閉鎖する
   exit_loss_turns: 12   # 変動費の利益がこのターン数続けてマイナスなら閉鎖する
   exit_loss_margin: 0.01  # マイナスと見るのは、全力の売上のこの割合を超える損のとき（端数で閉鎖しない）
@@ -348,7 +397,8 @@ population:
     jobs: 15
     power: 10
     food_quality: 10
-    consumer_goods: 15
+    clothing: 5          # 衣料（フェーズ3-2）
+    luxury: 10           # ぜいたく品（種類が多いほど満足が上がる。フェーズ3-2）
     water: 5
     education: 5
     pollution_per_point: 1
@@ -358,9 +408,11 @@ population:
     inflation_per_point: 1
     inflation_max: 15
   # 前のフェーズの世界を移し替えた島は、幸福度の重みを blend_turns ターンかけて、その時の重みから移す
-  # （フェーズ1の島は happiness_phase1、フェーズ2-2 までの島は happiness_phase2 から）
+  # （フェーズ1の島は happiness_phase1、フェーズ2-2 までの島は happiness_phase2、フェーズ3-1 までの島は
+  # happiness_phase3_1 から）。consumer_goods は 3-1 までの消費財（目安は household.targets）
   happiness_phase1: {base: 20, food: 30, jobs: 20, power: 10, food_quality: 20, consumer_goods: 0, water: 0, education: 0}
   happiness_phase2: {base: 25, food: 25, jobs: 15, power: 10, food_quality: 10, consumer_goods: 15, water: 0, education: 0}
+  happiness_phase3_1: {base: 15, food: 25, jobs: 15, power: 10, food_quality: 10, consumer_goods: 15, water: 5, education: 5}
   blend_turns: 12
 
 housing:
@@ -387,6 +439,9 @@ records:
   journal_turns: 24     # 仕訳を残すターン数
   trades_turns: 24      # 約定を残すターン数
   books_turns: 2400     # 施設の帳簿を残すターン数（200年）
+  # 品不足の知らせ（産業の鎖の画面。フェーズ3-2）: 市場で買いたい量の share 以上が買えないターンが
+  # turns ターン続いたら、ターンログで知らせる
+  shortage: {share: 0.1, turns: 3}
 
 backups:
   keep: 24              # 残すバックアップの数

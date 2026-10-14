@@ -155,6 +155,7 @@ export class TilePanel {
     if (t.happiness != null && t.population) rows.push(["幸福度", Math.round(t.happiness)]);
     if (t.power != null && t.population) rows.push(["電力充足率", `${Math.round(t.power / 10)}%`]);
     if (t.pollution) rows.push(["汚染度", t.pollution]);
+    if (t.fertility != null) rows.push(["肥沃度", t.fertility.toFixed(2)]);
     for (const i of t.infra || []) {
       const keep = i.keep > i.level ? `（維持の目標 ${i.keep}%）` : "";
       const grid = this.defs.infrastructure?.[i.kind]?.role === "power" ? (t.power_line ? "・電力を通します" : "・電力を通すには整備度が足りません") : "";
@@ -292,6 +293,24 @@ export class TilePanel {
           <p class="hint">${escapeHtml(ACCOUNTING_HINTS[f.accounting_target] || "")}</p>
           <input type="hidden" name="accounting" value="${escapeHtml(f.accounting_target)}">
           <button type="submit">${escapeHtml(f.accounting_target_name)}に変更（命令に追加）</button>
+        </form>`);
+    }
+    if (f.recipe_choices?.length || f.recipe_next_name) {
+      // 生産方式の切り替え（国営の施設だけ。次のターンの市場の段で切り替わり、そのターンは稼働率が半分）
+      const amounts = (list) => list.map((g) => `${escapeHtml(g.name)} ${g.amount}`).join("・") || "なし";
+      const options = (f.recipe_choices || [])
+        .map((r) => `<option value="${escapeHtml(r.recipe)}">${escapeHtml(r.name)}（${amounts(r.inputs)} → ${amounts(r.outputs)}）</option>`)
+        .join("");
+      const pending = f.recipe_next_name
+        ? `<p class="hint">次のターンに「${escapeHtml(f.recipe_next_name)}」に切り替えます。</p>` : "";
+      const form = options ? `
+          <select name="recipe">${options}</select>
+          <p class="hint">次のターンの市場で切り替わり、そのターンは稼働率が半分になります。</p>
+          <button type="submit">命令に追加</button>` : "";
+      parts.push(`
+        <form class="actions" data-form="recipe">
+          <h4>生産方式の切り替え（現在: ${escapeHtml(f.recipe_name || "")}）</h4>
+          ${pending}${form}
         </form>`);
     }
     if (f.ownership_target) {
@@ -540,6 +559,8 @@ export class TilePanel {
       this.addOrder("set_priority", { x, y, priority: Number(data.get("priority")) });
     } else if (form.dataset.form === "accounting") {
       this.addOrder("set_accounting", { x, y, accounting: data.get("accounting") });
+    } else if (form.dataset.form === "recipe") {
+      this.addOrder("change_recipe", { x, y, recipe: data.get("recipe") });
     } else if (form.dataset.form === "ownership") {
       this.addOrder(data.get("kind"), { x, y });
     } else if (form.dataset.form === "subsidy") {

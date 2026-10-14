@@ -22,7 +22,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import GENERAL
+from hakoniwa_core.economy import GENERAL, needs
 from hakoniwa_core.economy.households import move_people, split_persons
 from hakoniwa_core.economy.stats import inflation, real_wage_change
 from hakoniwa_core.geo import within
@@ -32,6 +32,20 @@ from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import QUANTITY_SCALE, to_milli
 
 Pos = tuple[int, int]
+# 幸福度の重みの名前（前のフェーズの重みから移すときに、今の重みにない名前も 0 として移す）
+HAPPINESS_FACTS = (
+    "base",
+    "food",
+    "jobs",
+    "power",
+    "food_quality",
+    "consumer_goods",
+    "clothing",
+    "luxury",
+    "water",
+    "education",
+)
+OLD_CONSUMER_GOOD = "consumer_goods"  # フェーズ3-1 までの幸福度の「消費財」で数える財
 
 
 def _rand_round(value: float, rng: random.Random) -> int:
@@ -86,8 +100,8 @@ def happiness_weights(island: IslandState, ctx: StageContext) -> dict[str, float
         source = island.economy.ext.get("happiness_from", "happiness_phase1")
         old = ctx.config.get(f"population.{source}")
         t = left / turns
-        for key, value in old.items():
-            weights[key] = weights[key] * (1 - t) + value * t
+        for key in set(old) | {k for k in weights if k in HAPPINESS_FACTS}:
+            weights[key] = weights.get(key, 0) * (1 - t) + old.get(key, 0) * t
     return weights
 
 
@@ -113,8 +127,10 @@ def _blend_notice(island: IslandState, ctx: StageContext) -> None:
 def happiness(island: IslandState, facts: dict[str, Any], ctx: StageContext) -> int:
     """幸福度（0〜100）。
 
-    facts: food・jobs・power・consumer_goods・water・education（1000 分の 1）、quality（0〜1）、
-    pollution（汚染）。water はそのマスの上下水道の整備度、education は島の教育水準。
+    facts: food・jobs・power・consumer_goods・clothing・luxury・water・education（1000 分の 1）、
+    quality（0〜1）、pollution（汚染）。water はそのマスの上下水道の整備度、education は島の教育
+    水準。clothing と luxury はフェーズ3-2 の衣料とぜいたく品（economy/needs.py）、consumer_goods は
+    フェーズ3-1 までの消費財（移し替えの間だけ重みが残る）。
     実質賃金が1年前より下がった分と、物価上昇率が目安を超えた分を減点する。
     """
     w = happiness_weights(island, ctx)
@@ -124,7 +140,9 @@ def happiness(island: IslandState, facts: dict[str, Any], ctx: StageContext) -> 
         + w["jobs"] * facts["jobs"] / fac.FULL
         + w["power"] * facts["power"] / fac.FULL
         + w["food_quality"] * facts["quality"]
-        + w["consumer_goods"] * facts["consumer_goods"] / fac.FULL
+        + w.get("consumer_goods", 0) * facts.get("consumer_goods", 0) / fac.FULL
+        + w.get("clothing", 0) * facts.get("clothing", 0) / fac.FULL
+        + w.get("luxury", 0) * facts.get("luxury", 0) / fac.FULL
         + w.get("water", 0) * facts.get("water", 0) / fac.FULL
         + w.get("education", 0) * facts.get("education", 0) / fac.FULL
         - w["pollution_per_point"] * facts["pollution"]
@@ -164,31 +182,29 @@ def _vacancies(defs: Defs, island: IslandState, turn: int) -> list[tuple[Facilit
 
 
 def _layer_facts(island: IslandState, ctx: StageContext) -> dict[str, dict[str, Any]]:
-    """層ごとの、食べられた割合・食事の質・消費財を買えた割合（1000 分の 1）。"""
+    """層ごとの、食べられた割合・食事の質・消費財と衣料とぜいたく品の満足（1000 分の 1）。"""
     defs, config = ctx.defs, ctx.config
     bought = island.scratch.get("household_goods", {})
-    needs = layer_food_needs(island, ctx)
-    target = config.get("household.consumer_goods_target")
-    power = config.get("power.good")
+    food_needs = layer_food_needs(island, ctx)
+    old_good = OLD_CONSUMER_GOOD
+    target = needs.target_of(config, old_good)
     facts = {}
     for layer, h in sorted(island.economy.households.items()):
         goods = bought.get(layer, {})
         eaten = 0
         quality = 0.0
-        consumer = 0
         for good, qty in sorted(goods.items()):
             spec = defs.goods[good]
             if "food" in spec:
                 amount = qty * to_milli(spec["food"]["nutrition"]) // QUANTITY_SCALE
                 eaten += amount
                 quality += amount * spec["food"].get("quality", 0)
-            elif spec.get("consumer") and good != power:
-                consumer += qty
-        need = needs.get(layer, 0)
+        need = food_needs.get(layer, 0)
         facts[layer] = {
             "food": fac.ratio(eaten, need),
             "quality": quality / eaten if eaten else 0.0,
-            "consumer_goods": fac.ratio(consumer, to_milli(h["persons"] * target)),
+            "consumer_goods": fac.ratio(goods.get(old_good, 0), to_milli(h["persons"] * target)),
+            **needs.satisfaction(island, config, defs, layer, h["persons"]),
             "eaten": eaten,
             "need": need,
         }
@@ -202,7 +218,13 @@ class Population(IslandStage):
         defs, config = ctx.defs, ctx.config
         rng = ctx.rng(island.id)
         layers = _layer_facts(island, ctx)
-        general = layers.get(GENERAL) or {"food": fac.FULL, "quality": 0.0, "consumer_goods": 0}
+        general = layers.get(GENERAL) or {
+            "food": fac.FULL,
+            "quality": 0.0,
+            "consumer_goods": 0,
+            "clothing": 0,
+            "luxury": 0,
+        }
         island.scratch["food"] = {
             "need": sum(f["need"] for f in layers.values()),
             "supplied": sum(f["eaten"] for f in layers.values()),
@@ -227,6 +249,8 @@ class Population(IslandStage):
                 "power": tile.ext.get("power", 0),
                 "quality": general["quality"],
                 "consumer_goods": general["consumer_goods"],
+                "clothing": general["clothing"],
+                "luxury": general["luxury"],
                 "pollution": tile.pollution,
                 "water": infra.water(defs, tile),
                 "education": education,
@@ -267,6 +291,8 @@ class Population(IslandStage):
                 "power": power_sum // people,
                 "quality": f["quality"],
                 "consumer_goods": f["consumer_goods"],
+                "clothing": f["clothing"],
+                "luxury": f["luxury"],
                 "pollution": pollution_sum / people,
                 "water": water_sum // people,
                 "education": education,
