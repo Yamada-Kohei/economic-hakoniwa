@@ -733,8 +733,11 @@ def bond_rows(island: m.Island, currency: str, mine: bool) -> list[dict[str, Any
     load_money({island.id: state}, Account.objects.filter(island=island))
     state.bonds = [bond_from_row(b) for b in island.bonds.order_by("number")]
     terms = {spec["turns"]: name for name, spec in defs.bond_terms().items()}
-    banks = {
-        f"bank:{f.number}": facility_name(defs, get_game().config, state, facility_from_row(f))
+    banks = {  # 銀行の名前と位置（同じ名前の国営銀行が2つあっても見分けられるように）
+        f"bank:{f.number}": (
+            facility_name(defs, get_game().config, state, facility_from_row(f)),
+            f"({f.x}, {f.y})",
+        )
         for f in island.facilities.filter(kind=get_game().config.get("banking.facility"))
     }
     rows = []
@@ -753,7 +756,8 @@ def bond_rows(island: m.Island, currency: str, mine: bool) -> list[dict[str, Any
         if mine:
             row["holders"] = [
                 {
-                    "name": banks.get(h, ENTITY_NAMES.get(h, h)),
+                    "name": banks.get(h, (ENTITY_NAMES.get(h, h), ""))[0],
+                    "where": banks.get(h, ("", ""))[1],
                     "amount": display.money_text(v, currency),
                 }
                 for h, v in held.items()

@@ -74,7 +74,7 @@
               <td>{{ b.number }}</td><td>{{ b.term }}</td><td>{% blocktranslate with t=b.issued %}ターン {{ t }}{% endblocktranslate %}</td>
               <td>{% blocktranslate with t=b.maturity %}ターン {{ t }}{% endblocktranslate %}</td><td>{{ b.rate }}</td>
               <td>{{ b.face }}</td><td>{{ b.outstanding }}</td><td>{{ b.central_bank }}</td>
-              {% if mine %}<td>{% for h in b.holders %}{{ h.name }} {{ h.amount }}{% if not forloop.last %}<br>{% endif %}{% endfor %}</td>{% endif %}
+              {% if mine %}<td>{% for h in b.holders %}{{ h.name }}{% if h.where %} <small class="muted">{{ h.where }}</small>{% endif %} {{ h.amount }}{% if not forloop.last %}<br>{% endif %}{% endfor %}</td>{% endif %}
             </tr>
             {% endfor %}
           </tbody>

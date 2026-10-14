@@ -413,3 +413,12 @@ def test_help_describes_default_penalties(client, world):
     html = client.get("/help/").content.decode()
     exclusion = get_game().config.get("bonds.default_exclusion_turns")
     assert f"{exclusion} ターンのあいだは銀行が国債を買わず" in html
+
+
+def test_bond_holders_show_the_bank_position(client, world):
+    """国債の一覧の持ち手に、銀行のマスの位置も出す（同じ名前の国営銀行を見分けられるように）。"""
+    island = _own_island(client)
+    html = client.get(f"/islands/{island.id}/fiscal/").content.decode()
+    config = get_game().config
+    bank = island.facilities.filter(kind=config.get("banking.facility")).order_by("number")[0]
+    assert f'<small class="muted">({bank.x}, {bank.y})</small>' in html

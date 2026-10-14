@@ -54,14 +54,20 @@ def take(stock: Stock, good: str, qty: int) -> int:
     return sum(q for _, q in take_batches(stock, good, qty))
 
 
-def take_batches(stock: Stock, good: str, qty: int) -> list[list[int]]:
+def take_batches(
+    stock: Stock, good: str, qty: int, last_until: int | None = None
+) -> list[list[int]]:
     """古い組から qty だけ取り出し、取り出した組（[作られたターン, 量]）を返す。
 
     市場で売り手から買い手へ移すときのように、作られたターンを保ったまま移すのに使う。
+    last_until を渡すと、作られたターンがそれ以前の組（このターンの終わりに捨てられる組）は、
+    ほかの組が尽きてから取り出す。
     """
     batches = stock.get(good)
     if not batches or qty <= 0:
         return []
+    if last_until is not None:  # 捨てられる組を後ろに回す（ほかは古い順のまま）
+        batches.sort(key=lambda b: (b[0] <= last_until, b[0]))
     taken: list[list[int]] = []
     left = qty
     while batches and left > 0:
@@ -71,6 +77,7 @@ def take_batches(stock: Stock, good: str, qty: int) -> list[list[int]]:
         left -= use
         if batches[0][1] == 0:
             batches.pop(0)
+    batches.sort(key=lambda b: b[0])
     if not batches:
         del stock[good]
     return taken
