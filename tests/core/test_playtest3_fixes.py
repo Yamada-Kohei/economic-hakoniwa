@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.economy import (
+    BONDS,
     CONSTRUCTION,
     OWNERS,
     Payer,
@@ -176,18 +177,12 @@ def test_bonds_issued_after_valuation_are_not_counted_as_gains(game, warmed):
 # --- 救済の後の国庫（ターン333の2） ---------------------------------------------------
 
 
-def test_rescue_refills_the_treasury_for_next_turn(game, warmed, monkeypatch):
-    """救済で国庫から出したターンは、処理の後に次のターンの支出の分まで国債を出して戻す。"""
+def test_rescue_refills_the_treasury_for_next_turn(game, warmed):
+    """救済で国庫から出したターンは、処理の後に次のターンの支出の分まで国債を出して戻す（1度きりの
+    救済の額は、次のターンの支出の見込みに数えない）。"""
     world = copy.deepcopy(warmed)
     island = island_of(world, "market")
-    calls = []
-    original = Bonds.top_up
-
-    def spy(self, island, ctx):
-        calls.append(ledger.money(island, ledger.GOV))
-        original(self, island, ctx)
-
-    monkeypatch.setattr(Bonds, "top_up", spy)
+    ctx = context(game, world)
     bank = banks.active_banks(island)[0]
     f = banks.facility_of(island, bank)
     f.economy["failed"] = world.turn
@@ -196,11 +191,16 @@ def test_rescue_refills_the_treasury_for_next_turn(game, warmed, monkeypatch):
         banks.write_off(island, loan, banks.outstanding(island, loan))
     banks.drop_settled(island)
     open_books(island)
-    ctx = context(game, world)
-    before = ledger.money(island, ledger.GOV)
+    spending = sum(v for k, v in funds.spent(island).items() if k != BONDS)
+    buffer = game.config.get("bonds.buffer_turns")
+    target = spending * (1 + buffer) + debt.due(island, ctx.turn + 1, redemptions=False)
+    debt_before = debt.total_debt(island)
     failures.Failures().run_island(island, ctx)
-    assert any(e.kind == "bank_bailed_out" for e in island.log)
-    assert calls and calls[0] < before
+    log = next(e for e in island.log if e.kind == "bank_bailed_out")
+    assert log.args["amount"] > 0
+    money = ledger.money(island, ledger.GOV)
+    assert target * 0.99 <= money <= target * 1.01 + 1000
+    assert debt.total_debt(island) > debt_before
     books_ok(game, island)
 
 

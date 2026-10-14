@@ -143,14 +143,20 @@ class Bonds(IslandStage):
         finance["last_policy_rate"] = island.policy.policy_rate
         self._stats(island, ctx)
 
-    def top_up(self, island: IslandState, ctx: StageContext) -> None:
+    def top_up(
+        self, island: IslandState, ctx: StageContext, spent: dict[str, int] | None = None
+    ) -> None:
         """国庫が「このターンの国債以外の政府の支出（次のターンの見込み）×（1 + bonds.buffer_turns）
-        ＋ 次のターンの利払い」に足りなければ、足りない分を入札で発行する。
+        ＋ 次のターンの利払い」に足りなければ、足りない分を入札で発行する。spent は支出の項目ごとの
+        額（既定はこのターンに使った額）。
 
         破綻の段も、銀行の救済と預金保護で国庫から出した後に呼ぶ（次のターンの教育費などが、救済の
-        ために払えなくならないように）。
+        ために払えなくならないように）。そのときの spent は救済の前の額にする（1度きりの救済を、次の
+        ターンにも出す支出に数えない）。
         """
-        spending = sum(v for k, v in funds.spent(island).items() if k != BONDS)
+        if spent is None:
+            spent = funds.spent(island)
+        spending = sum(v for k, v in spent.items() if k != BONDS)
         buffer = ctx.config.get("bonds.buffer_turns")
         need = spending * (1 + buffer) + debt.due(island, ctx.turn + 1, redemptions=False)
         need -= ledger.money(island, ledger.GOV)
