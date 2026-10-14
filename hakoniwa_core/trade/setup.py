@@ -3,7 +3,7 @@
 移し替えの段（modules/upgrade）が、お金の経済のある島にまだ置いていなければ呼びます。
 
 - 海運業（マスを持たない。島に1つ）。持ち主は経済体制の既定（混合経済は基幹産業として国営）。
-  輸送船 trade.start_ships 隻と、燃料の石炭 trade.start_fuel を持たせる。
+  輸送船 trade.start_ships 隻と、燃料 trade.start_fuel（石炭）を持たせる。
 - 港: 首都に一番近い、海か浅瀬に接する空いた平地に、工事の済んだ港を1つ置く（国営。会計は体制の
   既定）。置けるマスがなければ置かずにログに書く。
 - 商社: 首都の近くの空いたオフィス街のマスに1つ（空いたオフィス街がなければ、首都の近くの空いた平地
@@ -128,13 +128,15 @@ def place_shipping(island: IslandState, defs: Defs, config: GameConfig, turn: in
     count = to_milli(settings["start_ships"])
     ships.add_ships(f, count, turn)
     f.economy["capital"] = money_of(prices.get(good, 0), count)
-    fuel = {g: to_milli(settings["start_fuel"]) for g in settings["ship_fuel"]}
-    for g, qty in fuel.items():
-        stock.add(f.stock, g, qty, turn, defs.goods)
+    for g, qty in sorted(settings["start_fuel"].items()):
+        stock.add(f.stock, g, to_milli(qty), turn, defs.goods)
     per_turn = ships.crew_wanted(config, f) * wage
-    per_turn += sum(
-        money_of(prices.get(g, 0), q) * settings["fuel_turns"]
-        for g, q in ships.fuel_per_turn(config, ships.capacity(config, f)).items()
+    per_turn += min(  # 燃料はどれか1つで動くので、安い方の費用で見る
+        (
+            money_of(prices.get(g, 0), q) * settings["fuel_turns"]
+            for g, q in ships.fuel_per_turn(config, ships.capacity(config, f)).items()
+        ),
+        default=0,
     )
     _fund(island, f, per_turn * config.get("firms.operating_turns"))
     return f

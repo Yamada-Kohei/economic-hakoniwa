@@ -2,6 +2,7 @@
   <a href="{% url 'island' island.id %}"{% if page == "island" %} aria-current="page"{% endif %}>{% translate "地図" %}</a>
   <a href="{% url 'island_economy' island.id %}"{% if page == "economy" %} aria-current="page"{% endif %}>{% translate "経済" %}</a>
   <a href="{% url 'island_market' island.id %}"{% if page == "market" %} aria-current="page"{% endif %}>{% translate "市場" %}</a>
+  <a href="{% url 'island_chain' island.id %}"{% if page == "chain" %} aria-current="page"{% endif %}>{% translate "産業の鎖" %}</a>
   <a href="{% url 'island_facilities' island.id %}"{% if page == "facilities" %} aria-current="page"{% endif %}>{% translate "施設" %}</a>
   <a href="{% url 'island_fiscal' island.id %}"{% if page == "fiscal" %} aria-current="page"{% endif %}>{% translate "財政" %}</a>
   <a href="{% url 'island_finance' island.id %}"{% if page == "finance" %} aria-current="page"{% endif %}>{% translate "金融" %}</a>

@@ -15,16 +15,27 @@ import math
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import GENERAL, OWNERS, banks, books, funds, household
+from hakoniwa_core.economy import (
+    GENERAL,
+    OWNERS,
+    banks,
+    books,
+    funds,
+    household,
+    is_transport,
+    trucks,
+)
 from hakoniwa_core.economy.debt import annual_gdp, total_debt
 from hakoniwa_core.economy.households import close_income
 from hakoniwa_core.economy.stats import inflation, update_cpi
 from hakoniwa_core.modules.labor import engineer_unemployment, has_own_wage
 from hakoniwa_core.modules.population import subsistence_persons
 from hakoniwa_core.registry import IslandStage, Registry
-from hakoniwa_core.state import IslandState
+from hakoniwa_core.state import IslandState, LogEntry
 from hakoniwa_core.turn.context import StageContext
-from hakoniwa_core.units import BASIS, from_milli
+from hakoniwa_core.units import BASIS, QUANTITY_SCALE, from_milli, to_basis
+
+SHORTAGE = "shortage"  # economy.ext: 品不足の続いている財 → ターン数（フェーズ3-2）
 
 
 class LedgerCheckFailed(Exception):
@@ -97,6 +108,7 @@ class Records(IslandStage):
             stats[f"price.{good}"] = price
         for record in island.markets:
             stats[f"volume.{record.good}"] = from_milli(record.volume)
+        _shortages(island, config)
         # GDP（生産の側と支出の側。同じ流れから作るので一致する）
         inventory = island.scratch.get("inventory_changes")
         if inventory is None:
@@ -154,6 +166,11 @@ class Records(IslandStage):
         # 施設の利益
         stats["profit"] = sum(b.items.get(books.PROFIT, 0) for b in island.books)
         stats["freight.surcharge"] = economy.freight.get("surcharge", BASIS) / BASIS
+        for f in island.facilities:  # 運送業のトラック（フェーズ3-2）
+            if is_transport(config, f) and trucks.owned(f):
+                stats["freight.trucks"] = trucks.owned(f) / QUANTITY_SCALE
+                stats["freight.trucks_working"] = f.economy.get(trucks.WORKING, 0) / QUANTITY_SCALE
+                stats["freight.drivers_replaced"] = f.economy.get("drivers_replaced", 0)
         # 次のターンのための履歴
         close_income(island, config.get("household.income_turns"))
         economy.spending = funds.spent(island)
@@ -275,3 +292,26 @@ def _banking(island: IslandState, ctx: StageContext) -> dict[str, float]:
 
 def register(registry: Registry) -> None:
     registry.add_stage(Records())
+
+
+def _shortages(island: IslandState, config) -> None:
+    """市場で買いたい量の records.shortage.share 以上を買えなかった財を数え、records.shortage.turns
+    ターン続いたらターンログで知らせる（続いている間は1度だけ。産業の鎖の画面。フェーズ3-2）。"""
+    settings = config.get("records.shortage")
+    share = to_basis(settings["share"])
+    before = island.economy.ext.get(SHORTAGE, {})
+    now = {}
+    for record in sorted(island.markets, key=lambda r: r.good):
+        unmet = record.demand - record.volume
+        if record.demand <= 0 or unmet * BASIS < record.demand * share:
+            continue
+        turns = before.get(record.good, 0) + 1
+        now[record.good] = turns
+        if turns == settings["turns"]:
+            got = record.volume * 100 // record.demand
+            args = {"good": record.good, "turns": turns, "share": got}
+            island.log.append(LogEntry("shortage_continued", args))
+    if now:
+        island.economy.ext[SHORTAGE] = now
+    else:
+        island.economy.ext.pop(SHORTAGE, None)

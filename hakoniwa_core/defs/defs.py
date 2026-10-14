@@ -84,6 +84,11 @@ class Defs:
     def finance(self) -> Mapping[str, Mapping[str, Any]]:
         return self.tables["finance"]
 
+    @property
+    def climate(self) -> Mapping[str, Mapping[str, Any]]:
+        """気候帯（フェーズ3-2。climate.yaml）。"""
+        return self.tables["climate"]
+
     def journal_kinds(self) -> list[str]:
         """仕訳の種類（finance.yaml の type: journal）。"""
         return [k for k, v in self.finance.items() if v["type"] == "journal"]

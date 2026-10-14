@@ -188,7 +188,9 @@ def unit_floor(
 
     希望価格は運賃を払った後に手元に残る額なので、売るときの運賃はここでは足さない（板寄せに
     出すときに足す。hakoniwa_core/modules/market の seller_limit）。作る物が複数なら、変動費を
-    値段で割り振る。
+    初めの値段（地下資源によらない世界の値段）で割り振る（今の値段で割り振ると、余った物の値段が
+    下がるほどその物の取り分が減って値段が 0 に向かい、もう一方の値段は上がり続けた。フェーズ3-2
+    の製油所の燃料と化学品）。
     """
     power = config.get("power.good")
     recipe = fac.recipe_of(defs, f)
@@ -199,6 +201,10 @@ def unit_floor(
     for g, qty in recipe["inputs"].items():
         amount = money_of(prices.get(g, 0), qty)
         cost += amount if g == power else amount + part(amount, freight)
-    worth = {g: max(1, prices.get(g, 0)) * q for g, q in outputs.items()}
-    share = cost * worth[good] / sum(worth.values())
+    if len(outputs) > 1:
+        reference = initial_prices(defs, config)
+        worth = {g: max(1, reference.get(g, 0)) * q for g, q in outputs.items()}
+        share = cost * worth[good] / sum(worth.values())
+    else:
+        share = cost
     return round_money(share * QUANTITY_SCALE / outputs[good])

@@ -9,6 +9,8 @@ trade.ship_life ターン使ったら解体します。市場で買った船（�
 荷は買う側の島の船で運びます。船は空で売り手の港へ行き、積んで戻るので、往復の間（片道の 2 倍）は
 ほかに使えません（``economy["busy"]``: 荷の番号 → 使っている重さ）。船出のときに、往復の分の燃料
 （trade.ship_fuel。1隻1ターンあたり）を使います。燃料が足りなければ、その分だけ運べる重さが減ります。
+trade.ship_fuel に財が複数あれば、どれか1つで動きます（フェーズ3-2 から燃料と石炭）。使うときも買う
+ときも、今の値段で1隻1ターンあたりの費用が安い財から先にします。
 
 運賃は「荷 1 トン × 区画 1 つ」あたりで、直近 trade.cost_turns ターンの費用（船員の賃金・燃料・船の
 傷み）÷ 運んだ量（トン × 区画）×（1 + trade.cost_markup）です。運んだ量は、船を半分使ったときの量を
@@ -128,7 +130,8 @@ def scrap(island: IslandState, config: GameConfig, turn: int) -> int:
 
 
 def fuel_per_turn(config: GameConfig, load: int) -> dict[str, int]:
-    """重さ load の荷を運ぶ船が1ターンに使う燃料（1000 分の 1 単位）。"""
+    """重さ load の荷を運ぶ船が1ターンに使う燃料（1000 分の 1 単位）。財が複数あれば、どれか1つ
+    の量。"""
     ships = load / (config.get("trade.ship_capacity") * MILLI)
     return {
         g: round_money(to_milli(q) * ships + 0.999)
@@ -136,38 +139,60 @@ def fuel_per_turn(config: GameConfig, load: int) -> dict[str, int]:
     }
 
 
+def fuel_order(config: GameConfig, prices: dict[str, int]) -> list[str]:
+    """燃料の財を、1隻1ターンあたりの費用が安い順に（同じなら定義の順）。"""
+    settings = config.get("trade.ship_fuel")
+    names = list(settings)
+    return sorted(names, key=lambda g: (prices.get(g, 0) * settings[g], names.index(g)))
+
+
+def _ship_turns(config: GameConfig, f: Facility) -> float:
+    """手元の燃料で動ける「船 1 隻 × 1 ターン」の数。"""
+    total = 0.0
+    for good, per_ship in config.get("trade.ship_fuel").items():
+        need = to_milli(per_ship)
+        if need > 0:
+            total += stock.total(f.stock, good) / need
+    return total
+
+
 def fuel_room(config: GameConfig, f: Facility, turns: int) -> int:
     """手元の燃料で、turns ターンの航海に出せる重さ（1000 分の 1 トン）。"""
-    room = None
-    for good, per_ship in config.get("trade.ship_fuel").items():
-        need = to_milli(per_ship) * turns
-        if need <= 0:
-            continue
-        have = stock.total(f.stock, good)
-        load = have * config.get("trade.ship_capacity") * MILLI // need
-        room = load if room is None else min(room, load)
-    return capacity(config, f) if room is None else room
+    if not any(to_milli(q) > 0 for q in config.get("trade.ship_fuel").values()) or turns <= 0:
+        return capacity(config, f)
+    return int(_ship_turns(config, f) / turns * config.get("trade.ship_capacity") * MILLI)
 
 
 def burn(island: IslandState, config: GameConfig, f: Facility, load: int, turns: int) -> int:
-    """船出のときに往復の燃料を使う。使った燃料の値打ち（今の値段）を返す。"""
+    """船出のときに往復の燃料を使う（安い財から）。使った燃料の値打ち（今の値段）を返す。"""
+    prices = island.economy.prices
+    per_load = fuel_per_turn(config, load)
+    left = 1.0  # まだ燃料を使っていない割合
     value = 0
-    for good, qty in fuel_per_turn(config, load).items():
-        used = stock.take(f.stock, good, qty * turns)
+    for good in fuel_order(config, prices):
+        need = per_load[good] * turns
+        if need <= 0 or left <= 0:
+            continue
+        want = round_money(need * left + 0.999)
+        used = stock.take(f.stock, good, want)
         books.stock_moved(island, f.id, good, -used)
-        value += money_of(island.economy.prices.get(good, 0), used)
+        value += money_of(prices.get(good, 0), used)
+        left -= used / need
     return value
 
 
-def fuel_wanted(config: GameConfig, f: Facility) -> dict[str, int]:
-    """海運業が市場で買う燃料: 船を全部出したときの trade.fuel_turns ターン分に足りない量。"""
+def fuel_wanted(island: IslandState, config: GameConfig, f: Facility) -> dict[str, int]:
+    """海運業が市場で買う燃料: 船を全部出したときの trade.fuel_turns ターン分に足りない分を、今の
+    値段で一番安い燃料で。"""
     turns = config.get("trade.fuel_turns")
-    out = {}
-    for good, qty in fuel_per_turn(config, capacity(config, f)).items():
-        want = qty * turns - stock.total(f.stock, good)
-        if want > 0:
-            out[good] = want
-    return out
+    settings = config.get("trade.ship_fuel")
+    ships = fleet(f) / MILLI
+    short = ships * turns - _ship_turns(config, f)
+    if short <= 0:
+        return {}
+    good = fuel_order(config, island.economy.prices)[0]
+    want = round_money(to_milli(settings[good]) * short + 0.999)
+    return {good: want} if want > 0 else {}
 
 
 # --- 運賃と使用料 --------------------------------------------------------------------
@@ -194,7 +219,8 @@ def _ship_turn_cost(island: IslandState, config: GameConfig) -> float:
     """船 1 隻を1ターン使う費用（船員の賃金・燃料・船の傷み）。"""
     wage = island.economy.average_wage or config.get("labor.initial_wage")
     prices = island.economy.prices
-    fuel = sum(prices.get(g, 0) * q for g, q in config.get("trade.ship_fuel").items())
+    settings = config.get("trade.ship_fuel")
+    fuel = min((prices.get(g, 0) * q for g, q in settings.items()), default=0)
     wear = prices.get(config.get("trade.ship_good"), 0) / config.get("trade.ship_life")
     return config.get("trade.ship_crew") * wage + fuel + wear
 

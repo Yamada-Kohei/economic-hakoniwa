@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, stock
+from hakoniwa_core import infra, nature, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import default_accounting
@@ -291,8 +291,12 @@ def found_island(
     wx: int,
     wy: int,
     turn: int = 0,
+    climate: str | None = None,
 ) -> IslandState:
-    """建国する。問題があれば FoundingError。"""
+    """建国する。問題があれば FoundingError。
+
+    climate は区画で決まる気候帯（フェーズ3-2。nature.zone_of）。平地のマスには肥沃度を配る。
+    """
     problems = plan_problems(plan, defs, config)
     if problems:
         raise FoundingError(problems)
@@ -313,6 +317,9 @@ def found_island(
         regime={axis: plan.regime[axis] for axis in defs.regime_axes()},
         names=names,
     )
+    if climate is not None:
+        island.ext[nature.CLIMATE] = climate
+    nature.spread_fertility(island, config, plan.seed)
     rng = random.Random(f"start:{plan.seed}")
     style = plan.place_style or default_place_style(defs, config)
     island.ext["place_style"] = style
@@ -322,6 +329,7 @@ def found_island(
     place_start(island, defs, config, rng, turn)
     island.log.append(LogEntry("island_founded", {"name": island.name}))
     start_economy(island, defs, config, turn)
+    island.economy.ext["nature"] = nature.VERSION  # 自然条件は建国のときに置いた（移し替えない）
     return island
 
 

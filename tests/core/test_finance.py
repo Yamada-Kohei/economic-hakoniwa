@@ -435,7 +435,17 @@ def test_construction_loan_is_split_across_banks_within_the_limit(game, warmed):
     config = game.config
     active = banks.active_banks(island)
     assert len(active) >= 2
-    limits = {b: banks.exposure_limit(island, config, b, ctx.turn) for b in active}
+    # 銀行が貸せる上限は、大口融資の規制の残りと自己資本の余裕の小さい方
+    limits = {
+        b: min(
+            banks.exposure_limit(island, config, b, ctx.turn),
+            banks.capital_room(island, config, b, ctx.turn),
+        )
+        for b in active
+    }
+    # 資産を持つ層が、銀行が貸せる上限の合計まで出資できるようにしておく（政府の補助で）
+    short = sum(limits.values()) - funds.available(island, Payer(household(OWNERS)))
+    ledger.pay(island, ledger.GOV, household(OWNERS), max(0, short), "grant")
     owners = funds.available(island, Payer(household(OWNERS)))
     # 銀行が貸せる上限の合計を超え、資産を持つ層が残りを出せる額
     amount = sum(limits.values()) + min(sum(limits.values()), owners)

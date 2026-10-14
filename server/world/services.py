@@ -7,6 +7,7 @@ import random
 from django.db import transaction
 
 from hakoniwa_core.founding import FoundingError, FoundingPlan, found_island
+from hakoniwa_core.nature import zone_of
 from hakoniwa_core.state.generate import generate_island, world_grid_size
 from server.game import get_game
 from server.world import models as m
@@ -44,7 +45,8 @@ def create_sample_island(world: m.World, name: str, rng: random.Random, owner=No
     if not cells:
         raise ValueError("世界マップに空いている区画がありません")
     wx, wy = rng.choice(cells)
-    island = generate_island(rng, 0, name, wx, wy, game.config, game.defs)
+    climate = zone_of(wy, grid_size(world), game.config)
+    island = generate_island(rng, 0, name, wx, wy, game.config, game.defs, climate=climate)
     island.ext["founded_turn"] = world.turn
     return create_island(world, island, owner=owner)
 
@@ -59,7 +61,8 @@ def found_for_user(world: m.World, user, plan: FoundingPlan, wx: int, wy: int) -
     # 問題はまとめて返す（区画の問題と、形や名前の問題を一度に直せるように）
     problems = [] if (wx, wy) in free_cells(world) else [("founding_no_cell", {})]
     try:
-        island = found_island(game.defs, game.config, plan, 0, wx, wy, turn=world.turn)
+        climate = zone_of(wy, grid_size(world), game.config)
+        island = found_island(game.defs, game.config, plan, 0, wx, wy, world.turn, climate)
     except FoundingError as e:
         raise FoundingError(problems + list(e.problems)) from e
     if problems:

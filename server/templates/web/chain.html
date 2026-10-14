@@ -1,0 +1,77 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+{% include "web/report_header.html" %}
+
+{% if chain %}
+<section class="panel">
+  <h2>{% if chain.turn is not None %}{% blocktranslate with turn=chain.turn %}品目ごとの鎖（ターン {{ turn }}）{% endblocktranslate %}{% else %}{% translate "品目ごとの鎖" %}{% endif %}</h2>
+  <p class="hint">{% blocktranslate with share=chain.share %}原料から中間財、最終財へと並べています。市場で買いたい量の {{ share }}% 以上が買えなかった品目は赤く出し、続いたターン数を付けます（3 ターン続くとターンログでも知らせます）。輸入は商社と海外の商人が島の市場で売った量、輸出は商社が買った量です。値段の動きは 12 ターン前との比べです。{% endblocktranslate %}</p>
+  {% if chain.short %}
+  <p class="chain-alert">{% translate "品不足" %}:
+    {% for g in chain.short %}<a href="{% url 'island_market' island.id %}?good={{ g.good }}">{{ g.name }}</a>{% blocktranslate count turns=g.streak %}（{{ turns }} ターン）{% plural %}（{{ turns }} ターン）{% endblocktranslate %}{% if not forloop.last %}、{% endif %}{% endfor %}
+  </p>
+  {% endif %}
+  <div class="chain-tiers">
+    {% for tier in chain.tiers %}
+    <div class="chain-tier">
+      <h3>{{ tier.name }}</h3>
+      {% for g in tier.goods %}
+      <article class="chain-good{% if g.short %} short{% endif %}" id="good-{{ g.good }}">
+        <header>
+          <a href="{% url 'island_market' island.id %}?good={{ g.good }}"><strong>{{ g.name }}</strong></a>
+          {% if g.price %}<span class="muted">{{ g.price }}{% if g.change %}（{{ g.change }}）{% endif %}</span>{% endif %}
+          {% if g.short %}<span class="chain-badge">{% blocktranslate count turns=g.streak %}不足 {{ turns }} ターン{% plural %}不足 {{ turns }} ターン{% endblocktranslate %}</span>{% endif %}
+        </header>
+        <dl>
+          <dt>{% translate "作った" %}</dt><dd>{{ g.made }}</dd>
+          <dt>{% translate "使った" %}</dt><dd>{{ g.used }}</dd>
+          {% if g.volume is not None %}<dt>{% translate "売買" %}</dt><dd>{{ g.volume }}{% if g.bought is not None and g.bought < 100 %} <small class="muted">{% blocktranslate with p=g.bought %}（買いたい量の {{ p }}%）{% endblocktranslate %}</small>{% endif %}</dd>{% endif %}
+          {% if g.imported or g.exported %}<dt>{% translate "輸入・輸出" %}</dt><dd>{{ g.imported }}・{{ g.exported }}</dd>{% endif %}
+        </dl>
+        <small class="muted">{% blocktranslate with unit=g.unit %}単位: {{ unit }}（1ターン）{% endblocktranslate %}</small>
+        {% if g.makers %}
+        <p class="chain-line">{% translate "作る" %}:
+          {% for k in g.makers %}{{ k.name }}×{{ k.built }}{% if k.stopped %}<span class="warning-cell">{% blocktranslate with n=k.stopped %}（止まり {{ n }}）{% endblocktranslate %}</span>{% endif %}{% if k.building %}<span class="muted">{% blocktranslate with n=k.building %}（工事中 {{ n }}）{% endblocktranslate %}</span>{% endif %}{% if not forloop.last %}、{% endif %}{% endfor %}
+          {% if g.inputs %}<br><small class="muted">{% translate "材料" %}: {{ g.inputs|join:"・" }}</small>{% endif %}
+        </p>
+        {% elif not g.imported %}
+        <p class="chain-line muted">{% translate "島では作っていません。" %}</p>
+        {% endif %}
+        {% if g.users %}
+        <p class="chain-line">{% translate "使う" %}:
+          {% for k in g.users %}{{ k.name }}×{{ k.built }}{% if k.building %}<span class="muted">{% blocktranslate with n=k.building %}（工事中 {{ n }}）{% endblocktranslate %}</span>{% endif %}{% if not forloop.last %}、{% endif %}{% endfor %}
+        </p>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  <p class="hint">{% blocktranslate with map=island.id %}足りない物を作る施設は<a href="/islands/{{ map }}/">地図</a>から建て、輸入は<a href="/islands/{{ map }}/trade/">貿易</a>の画面（商社・貿易圏の市場・海外の商人）で見られます。{% endblocktranslate %}</p>
+</section>
+
+<section class="panel">
+  <h2>{% translate "止まっている工場と待っているもの" %}</h2>
+  {% for group in chain.stalled %}
+  <h3>{{ group.name }}{% blocktranslate count n=group.rows|length %}（{{ n }}）{% plural %}（{{ n }}）{% endblocktranslate %}</h3>
+  <div class="table-scroll">
+    <table class="report-table">
+      <thead><tr><th>{% translate "施設" %}</th><th>{% translate "状態" %}</th><th>{% translate "稼働率" %}</th></tr></thead>
+      <tbody>
+        {% for f in group.rows %}
+        <tr>
+          <td>{% if f.on_map %}<a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a>{% else %}{{ f.name }}{% endif %}<br><small class="muted">{{ f.kind_name }}</small></td>
+          <td>{{ f.status_text }}{% if f.good %} <a href="{% url 'island_market' island.id %}?good={{ f.good }}">{% translate "市場" %}</a>{% endif %}</td>
+          <td class="num">{% if f.rate is not None %}{{ f.rate }}%{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% empty %}
+  <p class="muted">{% translate "止まっている工場はありません。" %}</p>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}

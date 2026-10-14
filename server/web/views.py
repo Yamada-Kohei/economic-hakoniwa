@@ -9,7 +9,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core.trade import contracts, tradable_goods
 from server.game import get_game
 from server.turns.models import TurnLog
-from server.web import display, reports, trade
+from server.web import chain, display, founding, reports, trade
 from server.world.models import Island, World
 from server.world.services import grid_size
 
@@ -49,6 +49,7 @@ def island_page(request, island_id: int):
         "goods": display.goods_table(stats, display.latest_markets(island, turn), currency),
         "regime": regime,
         "resources": [defs.name("goods", g) for g in island.resources or []],
+        "climate": _climate_name(island),
         # 建設の欄で、この島で使えない施設や生産方式を見分けるため
         "resource_ids": island.resources or [],
         "producible": sorted(fac.producible_goods(defs, island.resources or [])),
@@ -59,6 +60,12 @@ def island_page(request, island_id: int):
         "page": "island",
     }
     return render(request, "web/island.html", context)
+
+
+def _climate_name(island: Island) -> str:
+    """島の気候帯の表示名（フェーズ3-2。気候のない島は空）。"""
+    zone = (island.ext or {}).get("climate")
+    return get_game().defs.name("climate", zone) if zone else ""
 
 
 # --- 島の統計の画面（経済・市場・施設・財政・金融・貿易・為替） ----------------------------
@@ -112,6 +119,17 @@ def market_page(request, island_id: int):
     else:
         context["note"] = "約定の相手と、原料を買えずに止まった施設は、島の持ち主だけが見られます。"
     return render(request, "web/market.html", context)
+
+
+def chain_page(request, island_id: int):
+    """産業の鎖（フェーズ3-2）: 品目ごとの作った量・使った量・輸出入・値段の動きと、作る施設と使う
+    施設、止まっている工場が待っているもの。自国だけ。"""
+    island, context, stats = _report(request, island_id, "chain", "産業の鎖")
+    if context["mine"]:
+        context["chain"] = chain.chain_view(island, stats, context["currency"])
+    else:
+        context["note"] = "産業の鎖は、島の持ち主だけが見られます。"
+    return render(request, "web/chain.html", context)
 
 
 OTHERS_NOTE = "他国の島のため、国全体の統計だけを表示しています。"
@@ -298,8 +316,36 @@ def help_page(request):
                 if defs.unit_name(g)
             ],
             "trade": _trade_help(game),
+            **_goods_help(game),
         },
     )
+
+
+def _goods_help(game) -> dict:
+    """手引きの「品目と自然条件」（フェーズ3-2）に出す数。"""
+    config, defs = game.config, game.defs
+    percent = lambda v: f"{v * 100:g}"  # noqa: E731
+    necessity = config.get("household.necessity")
+    return {
+        "climates": [
+            {"name": defs.name("climate", z), "text": founding.climate_text(z)}
+            for z in config.get("climate.zones")
+        ],
+        "fertility": [f"{v:g}" for v in config.get("climate.fertility")],
+        "necessity": {"share": percent(necessity["share"]), "floor": percent(necessity["floor"])},
+        "cars": {
+            "wear": percent(config.get("household.cars.wear")),
+            "share": percent(config.get("household.cars.share")),
+        },
+        "trucks": {
+            "drivers": config.get("freight.trucks.drivers"),
+            "share": percent(config.get("freight.trucks.max_share")),
+        },
+        "shortage": {
+            "share": percent(config.get("records.shortage.share")),
+            "turns": config.get("records.shortage.turns"),
+        },
+    }
 
 
 def _trade_help(game) -> dict:

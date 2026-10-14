@@ -1,0 +1,11 @@
+# 気候帯（フェーズ3-2）。世界マップの行を上から game.yaml の climate.zones の順に分けます（寒冷・温帯・熱帯）。
+# outputs: 産出の倍率（作る物ごと。書かない物は 1）。施設の作り方の factors に climate があるときに効きます。
+#   0 はその気候では作れない（その作り方は使えない）。
+# household_power: 家計の電力の要る量の倍率（書かなければ 1）
+cold:
+  outputs: {grain: 0.7, meat: 1.0, cotton: 0, luxury_crop: 0, wood: 1.2, fish: 1.3}
+  household_power: 1.3
+temperate:
+  outputs: {grain: 1.0, meat: 1.0, cotton: 0.6, luxury_crop: 0, wood: 1.0, fish: 1.0}
+tropical:
+  outputs: {grain: 0.8, meat: 0.6, cotton: 1.0, luxury_crop: 1.0, wood: 1.1, fish: 0.8}

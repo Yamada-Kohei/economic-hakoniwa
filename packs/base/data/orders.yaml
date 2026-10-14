@@ -119,6 +119,17 @@ set_priority:
       y: {type: integer, minimum: 0}
       priority: {type: integer, minimum: 0, maximum: 9}
 
+change_recipe:                            # 国営施設の作り方の変更（フェーズ3-2）
+  admin_cost: 1
+  payload:
+    type: object
+    required: [x, y, recipe]
+    additionalProperties: false
+    properties:
+      x: {type: integer, minimum: 0}
+      y: {type: integer, minimum: 0}
+      recipe: {type: string, pattern: "^[a-z][a-z0-9_]*$"}
+
 # --- お金の経済（フェーズ2） ---
 
 set_taxes:

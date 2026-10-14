@@ -24,6 +24,7 @@ urlpatterns = [
     path("islands/<int:island_id>/log/", views.turn_log, name="turn_log"),
     path("islands/<int:island_id>/economy/", views.economy_page, name="island_economy"),
     path("islands/<int:island_id>/market/", views.market_page, name="island_market"),
+    path("islands/<int:island_id>/chain/", views.chain_page, name="island_chain"),
     path("islands/<int:island_id>/facilities/", views.facilities_page, name="island_facilities"),
     path("islands/<int:island_id>/fiscal/", views.fiscal_page, name="island_fiscal"),
     path("islands/<int:island_id>/finance/", views.finance_page, name="island_finance"),

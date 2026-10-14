@@ -444,7 +444,8 @@ def test_initial_prices_use_recipes_the_island_can_run(game):
     everywhere = initial_prices(defs, config)
     no_stone = initial_prices(defs, config, ["coal", "iron_ore"])
     assert no_stone["building_materials"] > everywhere["building_materials"]
-    assert initial_prices(defs, config, ["coal", "iron_ore", "stone"]) == everywhere
+    every_resource = ["bauxite", "coal", "crude_oil", "iron_ore", "stone"]
+    assert initial_prices(defs, config, every_resource) == everywhere
     plant = Facility(id=1, kind="building_materials_plant", x=0, y=0, recipe="wood")
     wage = config.get("labor.initial_wage")
     assert variable_profit(defs, config, plant, everywhere, wage, 0) < 0

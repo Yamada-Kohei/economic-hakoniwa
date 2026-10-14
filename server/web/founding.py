@@ -25,11 +25,12 @@ from hakoniwa_core.founding import (
     start_of,
     suggest_capital,
 )
+from hakoniwa_core.nature import zone_of
 from hakoniwa_core.state.generate import generate_land
 from server.game import get_game
 from server.web import display
 from server.world import models as m
-from server.world.services import found_for_user, free_cells, get_or_create_world
+from server.world.services import found_for_user, free_cells, get_or_create_world, grid_size
 
 JSON = {"json_dumps_params": {"ensure_ascii": False}}
 
@@ -140,6 +141,35 @@ def found(request):
 
 
 def world_cells(request):
-    """建国で選べる区画（空いている区画）。"""
+    """建国で選べる区画（空いている区画）と、行ごとの気候帯（フェーズ3-2）。"""
     world = get_or_create_world()
-    return JsonResponse({"free": [list(c) for c in free_cells(world)]})
+    game = get_game()
+    grid = grid_size(world)
+    rows = [zone_of(y, grid, game.config) for y in range(grid)]
+    zones = [
+        {
+            "zone": zone,
+            "name": game.defs.name("climate", zone),
+            "rows": [rows.index(zone), len(rows) - 1 - rows[::-1].index(zone)],
+            "text": climate_text(zone),
+        }
+        for zone in game.config.get("climate.zones")
+        if zone in rows
+    ]
+    return JsonResponse(
+        {"free": [list(c) for c in free_cells(world)], "rows": rows, "zones": zones}, **JSON
+    )
+
+
+def climate_text(zone: str) -> str:
+    """気候帯の効き目の短い説明（産出の倍率と、家計の電力）。"""
+    defs = get_game().defs
+    spec = defs.climate.get(zone, {})
+    parts = []
+    for good, rate in spec.get("outputs", {}).items():
+        name = defs.name("goods", good)
+        parts.append(f"{name}は作れない" if rate == 0 else f"{name} {rate:g} 倍")
+    power = spec.get("household_power", 1)
+    if power != 1:
+        parts.append(f"家庭の電力 {power:g} 倍")
+    return "・".join(parts)

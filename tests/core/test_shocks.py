@@ -234,9 +234,10 @@ def test_bond_default_raises_yields_and_hits_holders(game, base):
     # 命令は行政力の順番待ちで遅れることがあるので、不履行になったターンを探す（yields と worth は
     # 回す前の値の分だけ1つずれる）
     i = next(i for i, kinds in enumerate(logs) if "bond_default_ordered" in kinds) + 1
-    # 利回りが跳ね上がり、国債を持っていた銀行の自己資本が減る
+    # 利回りが跳ね上がり（上限 bonds.max_yield まで）、国債を持っていた銀行の自己資本が減る
     premium = game.config.get("bonds.default_premium") * 10000
-    assert yields[i] >= yields[i - 1] + 0.5 * premium
+    cap = game.config.get("bonds.max_yield") * 10000
+    assert yields[i] >= min(cap, yields[i - 1] + 0.5 * premium)
     assert worth[i] < worth[i - 1]
     # 不履行から bonds.default_exclusion_turns ターンは銀行が国債を買わず、中央銀行が引き受ける
     # （借り換えは止まらない）。期間が終われば、また入札で売れる。利回りは上限の中に収まる

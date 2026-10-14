@@ -304,6 +304,15 @@ class _Loader:
                     origin.file.line_of([gid]),
                     f"単位 {unit} の表示名が locale/{lang}/units.yaml にありません",
                 )
+        for fid, fdef in tables["facilities"].items():
+            industry = fdef.get("industry")
+            if industry is not None and industry not in names.get("industries", {}):
+                origin = origins[("facilities", fid)]
+                self._issue(
+                    origin.file,
+                    origin.file.line_of([fid, "industry"]),
+                    f"産業 {industry} の表示名が locale/{lang}/industries.yaml にありません",
+                )
         for kind, entries in tables.items():
             if not KINDS[kind].needs_locale:
                 continue

@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from hakoniwa_core import stock
+from hakoniwa_core import nature, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.geo import distance, is_coastal, within
@@ -17,6 +17,10 @@ from hakoniwa_core.state import OWNER_STATE, ZONE_OFFICE, Facility, IslandState,
 FULL = 1000  # 割合の 100%
 ENGINEER = "engineer"  # 技術者（島全体の人数として持つ働き手。フェーズ2-3）
 STATUS_STARTING = "starting"  # 工事が済んで、まだ動いたことがない（施設の status）
+# 作り方の変更（フェーズ3-2）。命令と民営の見直しで ext["recipe_next"] に置き、次の市場の段で
+# 替える（新しい原料はその市場で買う）。替えた次のターン（ext["recipe_changed"]）は稼働率が半分
+RECIPE_NEXT = "recipe_next"
+RECIPE_CHANGED = "recipe_changed"
 # 原料が手に入らずに動けない理由（施設の status の「:」の前）。input は品不足、input_price は
 # 原料が高くて採算が合わない、funds は原料を買うお金が足りない
 INPUT_SHORT = ("input", "input_price", "funds")
@@ -261,14 +265,24 @@ def placement_problem(
             return ("reason_far_from_capital", {"facility": kind, "distance": near})
     recipes = fdef["recipes"]
     if recipe is None:
-        if len(recipes) > 1:
+        recipe = default_recipe(defs, kind)
+        if recipe is None:
             return ("reason_recipe_required", {"facility": kind})
-        recipe = next(iter(recipes))
     if recipe not in recipes:
         return ("reason_unknown_recipe", {"facility": kind})
-    resource = recipes[recipe].get("requires_resource")
+    return recipe_problem(defs, island, kind, recipe)
+
+
+def recipe_problem(
+    defs: Defs, island: IslandState, kind: str, recipe: str
+) -> tuple[str, dict[str, Any]] | None:
+    """作り方 recipe がこの島で使えないときは (理由, 引数)。鉱業資源と気候（フェーズ3-2）を見る。"""
+    spec = defs.facilities[kind]["recipes"][recipe]
+    resource = spec.get("requires_resource")
     if resource is not None and resource not in island.resources:
         return ("reason_missing_resource", {"good": resource})
+    if not nature.usable(defs, island, spec):
+        return ("reason_climate", {"facility": kind, "climate": nature.climate_of(island) or ""})
     return None
 
 
@@ -296,10 +310,43 @@ def producible_goods(defs: Defs, resources: Iterable[str]) -> set[str]:
         made |= more
 
 
+def switch_problem(
+    defs: Defs, island: IslandState, f: Facility, recipe: str
+) -> tuple[str, dict[str, Any]] | None:
+    """施設 f の作り方を recipe に替えられないときは (理由, 引数)。島で使える作り方
+    （recipe_problem）で、掘る鉱業資源が今と同じこと（鉱山は掘る鉱床のマスに建つので、石炭の鉱山を
+    鉄鉱石の鉱山には替えられない。替えられると、値段の高い方へ掘る物を替え合って、品不足が行ったり
+    来たりした）。"""
+    recipes = defs.facilities[f.kind]["recipes"]
+    if recipe not in recipes:
+        return ("reason_unknown_recipe", {"facility": f.kind})
+    now = recipes.get(f.recipe, {}).get("requires_resource")
+    if recipes[recipe].get("requires_resource") != now:
+        return ("reason_recipe_other_resource", {"facility": f.kind})
+    return recipe_problem(defs, island, f.kind, recipe)
+
+
+def switch_recipe(defs: Defs, f: Facility, recipe: str, turn: int) -> None:
+    """施設 f の作り方を recipe に替え、turn のターンの稼働率を半分にする。前の作り方だけの売り値と
+    売れ行きの見込みは捨てる（手元に残った物は市場の段で売る）。"""
+    f.recipe = recipe
+    f.ext[RECIPE_CHANGED] = turn
+    outputs = defs.facilities[f.kind]["recipes"][recipe]["outputs"]
+    for key in ("ask", "expected"):
+        table = f.economy.get(key)
+        if table:
+            for good in [g for g in table if g not in outputs]:
+                del table[good]
+
+
 def default_recipe(defs: Defs, kind: str) -> str | None:
-    """作り方が1つだけならその名前、複数なら None。"""
+    """作り方が1つだけならその名前。複数あれば default（フェーズ3-2 で作り方を足した農場・
+    火力発電所・造船所の元の作り方。前と同じ命令で建つように）、それもなければ None（建てるときに
+    選ぶ）。"""
     recipes = defs.facilities[kind]["recipes"]
-    return next(iter(recipes)) if len(recipes) == 1 else None
+    if len(recipes) == 1:
+        return next(iter(recipes))
+    return "default" if "default" in recipes else None
 
 
 def settlement_of(defs: Defs, population: int) -> str:

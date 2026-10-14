@@ -38,6 +38,7 @@ function drawCells() {
   let size = world.grid;
   for (const key of free) size = Math.max(size, ...key.split(",").map((v) => Number(v) + 1));
   grid.style.setProperty("--grid", size);
+  const rows = cells.rows || [];
   const parts = [];
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
@@ -51,7 +52,9 @@ function drawCells() {
         );
       } else if (free.has(key)) {
         const chosen = state.cell === key ? " chosen" : "";
-        parts.push(`<button type="button" class="cell free${chosen}" data-cell="${key}" aria-label="区画 (${x}, ${y})"></button>`);
+        const zone = rows[Math.min(y, rows.length - 1)] || "";
+        const name = zoneOf(zone)?.name || "";
+        parts.push(`<button type="button" class="cell free zone-${escapeHtml(zone)}${chosen}" data-cell="${key}" aria-label="区画 (${x}, ${y}) ${escapeHtml(name)}"></button>`);
       } else {
         parts.push(`<span class="cell sea"></span>`);
       }
@@ -59,7 +62,21 @@ function drawCells() {
   }
   grid.innerHTML = parts.join("");
   drawAllIslands(grid, shapes, defs);
-  document.getElementById("cell-text").textContent = state.cell ? `選んだ区画: (${state.cell})` : "";
+  let text = "";
+  if (state.cell) {
+    const y = Number(state.cell.split(",")[1]);
+    const zone = zoneOf(rows[Math.min(y, rows.length - 1)]);
+    text = `選んだ区画: (${state.cell})` + (zone ? ` ・ 気候: ${zone.name}（${zone.text}）` : "");
+  }
+  document.getElementById("cell-text").textContent = text;
+  document.getElementById("cell-zones").innerHTML = (cells.zones || [])
+    .map((z) => `<li><span class="zone-swatch zone-${escapeHtml(z.zone)}"></span>${escapeHtml(z.name)}: ${escapeHtml(z.text)}</li>`)
+    .join("");
+}
+
+/** 気候帯（フェーズ3-2）の名前と説明。 */
+function zoneOf(zone) {
+  return (cells.zones || []).find((z) => z.zone === zone);
 }
 
 document.getElementById("cell-grid").addEventListener("click", (e) => {

@@ -180,6 +180,10 @@ def _check_naming(nid: str, entry: Mapping[str, Any], tables: Tables) -> Iterato
                 yield ("naming", nid, path, message)
 
 
+def _check_climate(cid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator[Problem]:
+    yield from _goods("climate", cid, ("outputs",), entry.get("outputs", {}), tables)
+
+
 KINDS: dict[str, KindSpec] = {
     spec.name: spec
     for spec in [
@@ -214,9 +218,11 @@ KINDS: dict[str, KindSpec] = {
         ),
         KindSpec("naming", "naming.schema.json", check=_check_naming, needs_locale=False),
         KindSpec("finance", "finance.schema.json"),
+        KindSpec("climate", "climate.schema.json", check=_check_climate),
     ]
 }
 
 # 表示名のファイルで使える種類。messages はターンログなどの文面、recipes は作り方の表示名、
-# units は量の単位（goods.yaml の unit）の表示名。
-LOCALE_KINDS = (*KINDS, "messages", "recipes", "units")
+# units は量の単位（goods.yaml の unit）の表示名、industries は産業の分類（facilities.yaml の
+# industry）。
+LOCALE_KINDS = (*KINDS, "messages", "recipes", "units", "industries")

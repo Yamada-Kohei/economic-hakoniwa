@@ -34,7 +34,8 @@ PUSH_MARGIN より上回るときは、島の市場の買いたい量より多�
 原価のほうへ下げる）。
 
 島で買い手がいるのに売りに出ていない物は、島で作る施設の変動費と同じように、輸入が引き合う値段
-（Prospect.import_floor）まで島の値段を1ターンに値幅ずつ上げます。反対に、売りに出ているのに買い手の
+（Prospect.import_floor。前のターンに圏の市場に売りがあった財だけ）まで島の値段を1ターンに値幅
+ずつ上げます。反対に、売りに出ているのに買い手の
 いない物は、輸出が引き合う値段（Prospect.export_limit）が売りの一番安い指値以上なら、島の値段がそれを
 下回るまで1ターンに値幅ずつ下げます（どちらも市場の段の値段の記録。hakoniwa_core/modules/market）。
 """
@@ -154,7 +155,10 @@ def prospects(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, 
                 )
             freight_unit = freight * unit * view.get("cells", 1) // QUANTITY_SCALE
             landed = (value + freight_unit + fee_unit) * BASIS // max(1, BASIS - cut) + 1
-            if not p.import_floor or landed < p.import_floor:
+            # 輸入が引き合う値段は、前のターンに圏の市場に売りがあった財だけ（フェーズ3-2。誰も
+            # 作っていない自動車で、島の値段と圏の買いの指値が互いを追いかけて上がり続けたため）
+            on_sale = good in view.get("supply", ())
+            if on_sale and (not p.import_floor or landed < p.import_floor):
                 p.import_floor = landed
             own = home - part(home, cut) - freight_unit - fee_unit
             bid = own * BASIS // max(1, e)

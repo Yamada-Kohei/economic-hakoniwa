@@ -9,6 +9,7 @@
     {% if capital_name %} ・ {% translate "首都" %}: {{ capital_name }}{% endif %}
     {% for r in regime %} ・ {{ r.axis }}: {{ r.name }}{% endfor %}
     {% if resources %} ・ {% translate "地下資源" %}: {{ resources|join:"、" }}{% endif %}
+    {% if climate %} ・ {% translate "気候" %}: {{ climate }}{% endif %}
     {% if stats_turn is not None %} ・ {% blocktranslate with turn=stats_turn %}ターン {{ turn }} の時点{% endblocktranslate %}{% endif %}
   </p>
   {% include "web/island_nav.html" %}

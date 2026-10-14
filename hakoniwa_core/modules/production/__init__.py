@@ -5,6 +5,12 @@
 economy/productivity.py。式は output_rate で差し替えられます）。技術者で決まる上限は
 facilities.engineer_cap です。産出物は施設の在庫に入り、市場の段で売られます。
 
+作り方を替えた次のターン（フェーズ3-2。ext["recipe_changed"]）は、稼働率が半分になります。作り方は
+国営なら命令「作り方の変更」（change_recipe）で、民営は 12 ターンごとの見直し（modules/firms）で
+決め、市場の段で替えます（modules/market の _switch_recipes）。
+寒冷の島の家計は、電力を climate.yaml の household_power 倍使います。マスの汚染で肥沃度が下がる
+のもこの段です（hakoniwa_core/nature.py）。
+
 電力はためておけないので、送電網ごとにその場で板寄せします（hakoniwa_core/market/auction.py）。
 施設や住宅のあるマスと、送電網の整備度が定義の grid（既定 30%）以上のマスが送電網で、上下左右に
 つながったまとまりが1つの送電網です。
@@ -22,7 +28,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, ledger, stock
+from hakoniwa_core import infra, ledger, nature, stock
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     Payer,
@@ -42,8 +48,15 @@ from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.geo import components, distance, within
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
-from hakoniwa_core.registry import IslandStage, Registry
-from hakoniwa_core.state import Facility, IslandState, LogEntry, MarketRecord, TradeRecord
+from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
+from hakoniwa_core.state import (
+    OWNER_STATE,
+    Facility,
+    IslandState,
+    LogEntry,
+    MarketRecord,
+    TradeRecord,
+)
 from hakoniwa_core.trade import staff
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import (
@@ -116,6 +129,8 @@ class Production(IslandStage):
         served = self._power_market(island, runs, ctx, power)
         unplugged: set[int] | None = None
         produced: dict[str, int] = {}
+        # 施設が使った投入財（電力を除く。産業の鎖の画面。フェーズ3-2）
+        used_up: dict[str, int] = {}
         for run in runs:
             f, rate, cause = run.f, run.rate, run.cause
             if f.id in served and served[f.id] < rate:
@@ -130,6 +145,7 @@ class Production(IslandStage):
             for good, need in sorted(run.recipe["inputs"].items()):
                 if good != power:
                     used = stock.take(f.stock, good, fac.scale(need, rate))
+                    used_up[good] = used_up.get(good, 0) + used
                     if not public:
                         books.stock_moved(island, f.id, good, -used)
             out_rate = ctx.formula("output_rate")(island, f, rate, ctx)
@@ -142,7 +158,11 @@ class Production(IslandStage):
             self._update_status(island, f, rate, cause)
         for good, amount in sorted(produced.items()):
             island.stats[f"production.{good}"] = from_milli(amount)
+        for good, amount in sorted(used_up.items()):
+            if amount > 0:
+                island.stats[f"use.{good}"] = from_milli(amount)
         self._spread_pollution(island, ctx)
+        nature.wear_fertility(island, config)
 
     @staticmethod
     def _operates(f: Facility, ctx: StageContext) -> bool:
@@ -179,6 +199,10 @@ class Production(IslandStage):
         cap = fac.engineer_cap(ctx.config, f)  # 技術者が足りなければ、稼働率の上限が下がる
         if cap < rate:
             rate, cause = cap, "engineers"
+        if f.ext.get(fac.RECIPE_CHANGED) == ctx.turn:  # 作り方を替えたターンは半分（フェーズ3-2）
+            half = fac.scale(rate, fac.FULL // 2)
+            if half < rate:
+                rate, cause = half, "recipe_change"
         return _Run(f, recipe, rate, cause if rate < fac.FULL else "")
 
     @staticmethod
@@ -200,6 +224,7 @@ class Production(IslandStage):
         defs, config = ctx.defs, ctx.config
         grid_of = self._grids(island, defs)
         household_use = config.get("power.household_use")
+        climate_power = nature.household_power(defs, island)  # 寒冷の島は多く要る（フェーズ3-2）
         housing = fac.housing_kind(config)
         economy = island.economy
         has_money = island.has_economy
@@ -234,7 +259,7 @@ class Production(IslandStage):
                 payer = payer_of(defs, config, run.f)
                 buyers.append(_Buyer(f"fac:{run.f.id}", payer, need, run=run))
             home_people = sum(island.tile(x, y).population for x, y in homes.get(grid, ()))
-            home_need = to_milli(home_people * household_use)
+            home_need = to_milli(home_people * household_use * climate_power)
             if home_need and population:
                 for layer in sorted(persons):
                     need = home_need * persons[layer] // population
@@ -462,7 +487,41 @@ class Production(IslandStage):
             tile.pollution = round(from_milli(totals.get((tile.x, tile.y), 0)))
 
 
+# --- 命令 -------------------------------------------------------------------------
+
+
+def check_change_recipe(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    """作り方の変更（フェーズ3-2）は国営の施設だけ。民営は 12 ターンごとに自分で見直す。"""
+    f = island.facility_at(payload["x"], payload["y"])
+    if f is None or defs.facilities[f.kind].get("buildable") is False:
+        raise OrderFailed("reason_no_facility")
+    if f.owner != OWNER_STATE:
+        raise OrderFailed("reason_not_state_owned", facility=f.kind)
+    recipe = payload["recipe"]
+    if recipe not in defs.facilities[f.kind]["recipes"]:
+        raise OrderFailed("reason_unknown_recipe", facility=f.kind)
+    if recipe == f.ext.get(fac.RECIPE_NEXT, f.recipe):
+        raise OrderFailed("reason_recipe_unchanged", facility=f.kind)
+    problem = fac.switch_problem(defs, island, f, recipe)
+    if problem is not None:
+        raise OrderFailed(problem[0], **problem[1])
+
+
+def change_recipe(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
+    """このターンの市場の段で作り方を替える（その市場で新しい原料を買い、前の作り方の物を売る）。
+    次のターンは稼働率が半分。"""
+    f = island.facility_at(payload["x"], payload["y"])
+    assert f is not None
+    if payload["recipe"] == f.recipe:  # 替える前に取り消した
+        f.ext.pop(fac.RECIPE_NEXT, None)
+    else:
+        f.ext[fac.RECIPE_NEXT] = payload["recipe"]
+
+
 def register(registry: Registry) -> None:
     registry.add_stage(Production())
+    registry.add_order(
+        OrderHandler("change_recipe", execute=change_recipe, check=check_change_recipe)
+    )
     registry.add_formula("output_rate", output_rate)
     registry.add_formula("power_target", power_target)

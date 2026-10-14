@@ -1,0 +1,13 @@
+# 産業の分類の表示名（facilities.yaml の industry。フェーズ3-2）
+agriculture: 農業
+mining: 鉱業
+steel: 鉄鋼
+nonferrous: 非鉄
+machinery: 機械
+automobile: 自動車
+textile: 繊維
+petroleum: 石油
+food: 食品
+consumer_goods: 消費財
+shipbuilding: 造船
+energy: エネルギー

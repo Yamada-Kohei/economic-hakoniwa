@@ -23,7 +23,8 @@ facilities.engineer_cap）。3 の後に余った技術者は、まだ埋まら�
 工事の作業員と公務員は前のターンの島の平均賃金で雇います。工事は、作業員の賃金に続けて、この
 ターンの市場で買う資材の代金の見込みも取り置きます（公共事業費は、賃金と資材の両方に優先度の高い
 工事から充てる。hakoniwa_core/modules/market の SiteFunds）。運送業は通勤圏を見ず島のどこからでも、
-前のターンの運賃 × freight.labor_share ÷ 賃金 の人数を雇い、足りない割合だけ運賃を割り増します。
+前のターンの運賃 × freight.labor_share ÷ 賃金 の人数を雇い、足りない割合だけ運賃を割り増します
+（フェーズ3-2 から、燃料のあるトラックで替えた運転手の分は雇わない。economy/trucks.py）。
 港・海運業・商社（フェーズ3-1）は、扱った荷の量と船の数に合わせて雇います（hakoniwa_core/trade）。
 施設ごと・マスごとに雇った人数は、施設の economy["staff"] に残します。雇われなかった人は失業し、
 村の住民は自給の農業に戻ります（人口の段で扱う）。
@@ -39,6 +40,7 @@ from hakoniwa_core.economy import (
     is_stopped,
     is_transport,
     payer_of,
+    trucks,
 )
 from hakoniwa_core.geo import distance, within
 from hakoniwa_core.modules import infrastructure
@@ -331,7 +333,17 @@ class Employment(IslandStage):
     def _wanted(island: IslandState, ctx: StageContext, f: Facility, wage: int) -> int:
         config = ctx.config
         if is_transport(config, f):
-            return freight.payroll(island, config) // max(1, wage)
+            # トラック（フェーズ3-2）で替えた運転手の分は雇わない
+            drivers = freight.payroll(island, config) // max(1, wage)
+            if not f.built:
+                return drivers
+            trucks.commission(island, config, f)
+            replaced = trucks.drive(island, config, f, drivers)
+            if replaced:
+                f.economy["drivers_replaced"] = replaced
+            else:
+                f.economy.pop("drivers_replaced", None)
+            return drivers - replaced
         cargo = staff.wanted(config, ctx.defs, f)  # 港・海運業・商社は扱う荷に合わせて（3-1）
         if cargo is not None:
             return cargo

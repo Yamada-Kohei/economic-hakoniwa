@@ -5,3 +5,17 @@ building_materials_plant_stone: 石材から製造
 building_materials_plant_wood: 木材から製造
 consumer_goods_factory_default: 鋼鉄と木材から製造
 consumer_goods_factory_wood: 木材から製造
+mine_bauxite: ボーキサイト採掘
+consumer_goods_factory_chemicals: 化学品から製造
+farm_default: 穀物
+farm_fertilized: 穀物（肥料あり）
+farm_cotton: 綿
+farm_cotton_fertilized: 綿（肥料あり）
+farm_luxury_crop: 嗜好品
+farm_luxury_crop_fertilized: 嗜好品（肥料あり）
+thermal_power_plant_default: 石炭で発電
+thermal_power_plant_fuel: 燃料で発電
+automobile_plant_default: 鋼鉄から製造
+automobile_plant_aluminium: 鋼鉄とアルミから製造
+shipyard_default: 鋼鉄から建造
+shipyard_aluminium: 鋼鉄とアルミから建造
