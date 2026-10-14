@@ -212,6 +212,13 @@ def test_report_pages_for_owner_and_others(client, world, page):
         assert 'id="orders"' in res.content.decode()
 
 
+def test_economy_page_with_a_layer_of_nobody(client, world):
+    # 誰もいない層（1人あたりの所得が出せない）があっても、経済の画面が開く
+    island = m.Island.objects.order_by("id").first()
+    _stats(island, 1, {"gdp": 1.0, "layer.general.income": 0.0, "layer.general.persons": 0.0})
+    assert client.get(f"/islands/{island.id}/economy/").status_code == 200
+
+
 def test_owner_only_sections(client, world):
     island = m.Island.objects.order_by("id").first()
     _stats(island, 1, {"gdp": 1.0})

@@ -349,7 +349,8 @@ def with_fiscal(stats: dict[str, float]) -> dict[str, float]:
     """直近のターンの統計に、財政の収入・支出・収支を足したもの。"""
     table = {name: {0: value} for name, value in stats.items()}
     _derive(table)
-    return {name: values[0] for name, values in table.items()}
+    # 誰もいない層の1人あたりの所得は、値のない系列になる
+    return {name: values[0] for name, values in table.items() if 0 in values}
 
 
 # --- 市場 -----------------------------------------------------------------------------
