@@ -23,7 +23,7 @@ class Upgrade(IslandStage):
         economy = island.economy
         if not island.has_economy or economy.ext.get("version", 0) >= groundwork.VERSION:
             return
-        groundwork.prepare(island, ctx.defs, ctx.config)
+        groundwork.prepare(island, ctx.defs, ctx.config, ctx.turn)
         if economy.happiness_blend <= 0:
             economy.happiness_blend = ctx.config.get("population.blend_turns")
             economy.ext["happiness_from"] = "happiness_phase2"

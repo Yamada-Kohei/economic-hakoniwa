@@ -91,6 +91,25 @@ def happiness_weights(island: IslandState, ctx: StageContext) -> dict[str, float
     return weights
 
 
+def _blend_notice(island: IslandState, ctx: StageContext) -> None:
+    """幸福度の重みを移し始めたターンに、重みが変わることを知らせる（知らせないと、何もしていないのに
+    幸福度が下がり続けるように見える）。"""
+    turns = ctx.config.get("population.blend_turns")
+    if island.economy.happiness_blend != turns:
+        return
+    source = island.economy.ext.get("happiness_from", "happiness_phase1")
+    old = ctx.config.get(f"population.{source}")
+    now = ctx.config.get("population.happiness")
+    args = {
+        "turns": turns,
+        "water": now["water"],
+        "education": now["education"],
+        "base_from": old["base"],
+        "base": now["base"],
+    }
+    island.log.append(LogEntry("happiness_weights_changed", args))
+
+
 def happiness(island: IslandState, facts: dict[str, Any], ctx: StageContext) -> int:
     """幸福度（0〜100）。
 
@@ -190,7 +209,6 @@ class Population(IslandStage):
             "ratio": general["food"],
         }
         homes = _homes(island, config)
-        before = {(t.x, t.y): fac.settlement_of(defs, t.population) for t in island.tiles}
         p = config.get("population")
         moods: dict[str, list[float]] = {}
         power_sum = pollution_sum = water_sum = people = 0
@@ -257,18 +275,11 @@ class Population(IslandStage):
         island.scratch["layer_happiness"] = moods_by_layer
         island.scratch["layer_facts"] = layers
         self._migrate(island, ctx, rng, homes)
-        for tile in island.tiles:
-            level = fac.settlement_of(defs, tile.population)
-            if (tile.x, tile.y) in homes and level != before[(tile.x, tile.y)]:
-                levels = defs.settlement_levels()
-                if levels.index(level) > levels.index(before[(tile.x, tile.y)]):
-                    island.log.append(
-                        LogEntry("settlement_grew", {"x": tile.x, "y": tile.y, "level": level})
-                    )
         if island.has_economy:
             changes = split_persons(island, defs, sum(t.population for t in island.tiles))
             move_people(island, changes)
             if island.economy.happiness_blend > 0:
+                _blend_notice(island, ctx)
                 island.economy.happiness_blend -= 1
 
     def _migrate(
@@ -395,6 +406,10 @@ class Housing(IslandStage):
                     if not missing:
                         home.ext["level"] = target
                         upgraded += 1
+                        # 住める上限が上がって見た目も変わるこのターンに知らせる
+                        island.log.append(
+                            LogEntry("settlement_grew", {"x": pos[0], "y": pos[1], "level": target})
+                        )
                         continue
                     short.update(missing)
             if built < h["max_new_per_turn"]:

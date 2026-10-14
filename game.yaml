@@ -191,6 +191,8 @@ banking:
   auction_share: 0.5    # 国債の入札に回す準備預金の余りの割合
   auction_tiers: [0.0, 0.005, 0.01]  # 入札の3段（求める利回りへの上乗せ）
   sell_premium: 0.005   # 国債を売るときに受け入れる利回りの上乗せ（求める利回りより高くても売る幅）
+  default_crunch_turns: 36  # 国債の債務不履行で損をした銀行は、このターン数のあいだ新しく貸さない
+                            # （返す元金の借り換えだけ。計画経済の島は除く）
 
 loans:
   working_turns: 6      # 運転資金を返す期間
@@ -224,8 +226,10 @@ bonds:
   kappa: 0.5            # 物価上昇率が目標を超えた分の上乗せの係数 κ
   max_yield: 0.2        # 利回りの上限
   buffer_turns: 1       # 国庫に残す額（支出のターン数分）
-  default_premium: 0.05 # 債務不履行の上乗せ δ（不履行の直後。default_decay_turns ターンかけて 0 に減る）
+  default_premium: 0.15 # 債務不履行の上乗せ δ（不履行の直後。default_decay_turns ターンかけて 0 に減る）
   default_decay_turns: 120
+  default_exclusion_turns: 36  # 債務不履行からこのターン数は、銀行が国債を買わない（入札で売れず、
+                               # 売れ残りは政策どおり中央銀行が引き受けるか支出を減らす）
   haircut: 0.5          # 不履行になった銘柄の額面を切り下げる割合
   independence_discount: 0.005  # 中央銀行が独立しているときの利回りの割り引き β
   buckets: [12, 36, 84] # 国債の売買の区分（残りのターン数の境目: 1年未満・1〜3年・3〜7年・7年以上）

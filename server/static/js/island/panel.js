@@ -608,6 +608,9 @@ function bankHtml(b) {
     const why = b.failed_reason === "liquidity" ? "資金繰りに行き詰まり" : "債務超過で";
     rows.push(["破綻", `ターン ${b.failed} に${why}破綻しました（新しい融資と預金の受け入れを止めています）`]);
   }
+  if (b.crunch_until != null) {
+    rows.push(["融資の停止", `国債の債務不履行で損をしたため、ターン ${b.crunch_until} まで新しい融資を止めています（返す元金の借り換えだけ）`]);
+  }
   if (b.deposits != null) rows.push(["預金", b.deposits]);
   if (b.loans != null) rows.push(["融資", b.loans]);
   if (b.net_worth != null) rows.push(["自己資本", b.net_worth]);

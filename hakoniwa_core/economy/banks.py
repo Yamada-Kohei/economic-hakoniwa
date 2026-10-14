@@ -15,6 +15,8 @@
 融資は IslandState.loans の1件ごとに、残高を勘定 ``<銀行>/loan:<番号>/<借り手>`` に持ちます。
 貸すと借り手の預金が生まれ、返すと消えます。金利は毎ターン計算し直す変動金利です（式 loan_rate）。
 破綻した銀行は施設の economy["failed"] に破綻したターンを持ち、貸し出しと預金の受け入れを止めます。
+国債の債務不履行で損をした銀行は、economy["crunch_until"] のターンまで新しい融資を止めます
+（返す元金の借り換えだけ続ける。banking.default_crunch_turns）。
 """
 
 from __future__ import annotations
@@ -141,6 +143,13 @@ def healthy_banks(island: IslandState, config: GameConfig, turn: int) -> list[st
         if capital_ratio(island, config, b, turn) >= regulatory(config)
     ]
     return sorted(found, key=lambda b: (-deposits_of(island, b), b))
+
+
+def lending_stopped(island: IslandState, bank: str, turn: int) -> bool:
+    """国債の債務不履行で損をした銀行が、新しい融資を止めているターンか（施設の
+    economy["crunch_until"] のターンの前まで。返す元金の借り換えは続ける）。"""
+    f = facility_of(island, bank)
+    return f is not None and turn < f.economy.get("crunch_until", turn)
 
 
 def labor_ratio(island: IslandState, defs: Any, bank: str) -> float:

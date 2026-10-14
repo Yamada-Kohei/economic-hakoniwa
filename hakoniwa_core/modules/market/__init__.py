@@ -541,6 +541,8 @@ class Market(IslandStage):
                     self._add(books_by_good, good, "sell", order, seller)
             needs = self._input_needs(ctx, f, power)
             f.economy.pop("short", None)
+            if recipe["inputs"]:  # 次のターンにどれだけ動くつもりで原料を買ったか（生産の段で使う）
+                f.economy["input_plan"] = self._input_plan(ctx, f)
             if not needs:
                 continue
             plan = {
@@ -577,6 +579,21 @@ class Market(IslandStage):
         return min(high + part(high, rate), limit)
 
     @staticmethod
+    def _input_plan(ctx: StageContext, f: Facility) -> int:
+        """次のターンに動くつもりの稼働率（1000 分の 1）。原料はこの分を買う（_input_needs）。"""
+        settings = ctx.config.get("market")
+        target = f.economy.get("target", fac.FULL)
+        if fac.is_halted(f, ctx.turn + 1):
+            return 0
+        if f.status == fac.STATUS_STARTING:
+            return target
+        if f.workers < f.economy.get("wanted", 0):
+            headroom = round_money(settings["target_step"] * fac.FULL + 0.5)
+            return min(target, fac.labor_ratio(ctx.defs, f) + headroom)
+        change = round_money(settings["max_target_change"] * fac.FULL + 0.5)
+        return min(fac.FULL, target + change)
+
+    @staticmethod
     def _input_needs(ctx: StageContext, f: Facility, power: str) -> list[tuple[str, int]]:
         """次のターンに要る投入財のうち手元にない分。
 
@@ -587,17 +604,7 @@ class Market(IslandStage):
         ターン分。
         """
         settings = ctx.config.get("market")
-        target = f.economy.get("target", fac.FULL)
-        if fac.is_halted(f, ctx.turn + 1):
-            expected = 0
-        elif f.status == fac.STATUS_STARTING:
-            expected = target
-        elif f.workers < f.economy.get("wanted", 0):
-            headroom = round_money(settings["target_step"] * fac.FULL + 0.5)
-            expected = min(target, fac.labor_ratio(ctx.defs, f) + headroom)
-        else:
-            change = round_money(settings["max_target_change"] * fac.FULL + 0.5)
-            expected = min(fac.FULL, target + change)
+        expected = Market._input_plan(ctx, f)
         if is_public_service(ctx.defs, f):
             # 学校と大学は教材を数ターン分持っておく（消費財が1、2ターン買えないだけで休校に
             # ならないように）
@@ -650,6 +657,11 @@ class Market(IslandStage):
 
         お金が足りずに要る分を注文できなかった工事は、ext["short_funds"] に残す（施設の状態に、
         資材を待っているわけとして出す）。
+
+        同じ払い手（公共事業費など）の注文は、合わせて売りに出ている量までにする（工事ごとに売りに
+        出ている量まで注文すると、買えない分にまでお金を取り置き、後の工事が「お金が足りない」に
+        なる）。そのために注文しなかった分は scratch["unplaced"] に残して、値段の見直しでは買えな
+        かった量に数える。
         """
         defs, config = ctx.defs, ctx.config
         for payer, amount in island.scratch.pop(SITE_HOLDS, []):
@@ -658,7 +670,8 @@ class Market(IslandStage):
             funds.release(island, infrastructure.PAYER, amount)
         width = to_basis(config.get("market.band"))
         wanted = island.scratch.setdefault("wanted", {})  # 売りに出ていなくて買えなかった量
-        self._works_orders(island, ctx, books_by_good, offered, hh_rate, upkeep=True)
+        claimed: dict[tuple[Payer, str], int] = {}  # 払い手ごとの注文した量
+        self._works_orders(island, ctx, books_by_good, offered, hh_rate, claimed, upkeep=True)
         for f in self._sites(island, ctx):
             f.ext.pop("short_funds", None)
             rate = rates.get(f.id, 0)
@@ -668,7 +681,7 @@ class Market(IslandStage):
                 want = qty - stock.total(f.stock, good)
                 if want > 0 and offered.get(good, 0) <= 0:
                     wanted[good] = wanted.get(good, 0) + want
-                want = min(want, offered.get(good, 0))
+                want = self._room(island, offered, claimed, payer, good, want)
                 if want > 0:
                     _, high = auction.band(island.economy.prices.get(good, 1), width)
                     plan[good] = (want, high)
@@ -681,7 +694,29 @@ class Market(IslandStage):
                 party.reserved = gross_cost(limit, qty, rate, 0)
                 funds.commit(island, payer, party.reserved)
                 self._add(books_by_good, good, "buy", Order(qty, limit, priority), party)
-        self._works_orders(island, ctx, books_by_good, offered, hh_rate, upkeep=False)
+                claimed[(payer, good)] = claimed.get((payer, good), 0) + qty
+        self._works_orders(island, ctx, books_by_good, offered, hh_rate, claimed, upkeep=False)
+
+    @staticmethod
+    def _room(
+        island: IslandState,
+        offered: dict[str, int],
+        claimed: dict[tuple[Payer, str], int],
+        payer: Payer,
+        good: str,
+        want: int,
+    ) -> int:
+        """payer が good をあといくら注文するか: 売りに出ている量から、同じ払い手がもう注文した量を
+        引いた分まで。売りに出ている量までなら注文していたのに、同じ払い手の注文で売りに出ている量
+        に届いたために注文しなかった分は scratch["unplaced"] に足す（値段の見直しの合図を、払い手
+        ごとに分けなかったときと同じにする。売りに出ていない分は呼ぶ側が wanted に足す）。"""
+        on_sale = offered.get(good, 0)
+        room = max(0, on_sale - claimed.get((payer, good), 0))
+        extra = min(want, on_sale) - min(want, room)
+        if extra > 0:
+            unplaced = island.scratch.setdefault("unplaced", {})
+            unplaced[good] = unplaced.get(good, 0) + extra
+        return min(want, room)
 
     def _works_orders(
         self,
@@ -690,24 +725,25 @@ class Market(IslandStage):
         books_by_good: dict[str, Book],
         offered: dict[str, int],
         rate: int,
+        claimed: dict[tuple[Payer, str], int],
         upkeep: bool,
     ) -> None:
         """インフラの維持（upkeep）か新しい工事の、次のターンの資材の注文（指値は値幅の上端、
-        運賃の率は家計と同じ）。"""
+        運賃の率は家計と同じ）。公共事業費の注文は、施設の工事と合わせて売りに出ている量まで。"""
         want = infrastructure.wants(island, ctx, upkeep)
         if not want:
             return
         width = to_basis(ctx.config.get("market.band"))
         wanted = island.scratch.setdefault("wanted", {})
+        payer = infrastructure.PAYER
         plan = {}
         for good, qty in sorted(want.items()):
             if offered.get(good, 0) <= 0:
                 wanted[good] = wanted.get(good, 0) + qty
-            qty = min(qty, offered.get(good, 0))
+            qty = self._room(island, offered, claimed, payer, good, qty)
             if qty > 0:
                 _, high = auction.band(island.economy.prices.get(good, 1), width)
                 plan[good] = (qty, high)
-        payer = infrastructure.PAYER
         key = "infrastructure.upkeep_priority" if upkeep else "infrastructure.build_priority"
         priority = ctx.config.get(key)
         for good, (qty, limit) in sorted(self._afford(island, payer, plan, rate, 0).items()):
@@ -715,6 +751,7 @@ class Market(IslandStage):
             party.reserved = gross_cost(limit, qty, rate, 0)
             funds.commit(island, payer, party.reserved)
             self._add(books_by_good, good, "buy", Order(qty, limit, priority), party)
+            claimed[(payer, good)] = claimed.get((payer, good), 0) + qty
 
     def _household_orders(
         self,
@@ -1074,6 +1111,7 @@ class Market(IslandStage):
                 island.markets.append(MarketRecord(good, prices.get(good, 1), 0, wanted[good], 0))
                 continue
             demand = result.demand + (wanted.get(good, 0) if result.supply <= 0 else 0)
+            demand += island.scratch.get("unplaced", {}).get(good, 0)
             island.markets.append(
                 MarketRecord(good, result.price, result.volume, demand, result.supply)
             )
@@ -1122,10 +1160,13 @@ class Market(IslandStage):
         update = ctx.formula("price_update")
         width = to_basis(ctx.config.get("market.band"))
         rates = freight_rates.facility_rates(island, ctx.defs, ctx.config)
+        unplaced = island.scratch.get("unplaced", {})  # 売りに出ている量を超えて注文しなかった量
         for good in sorted(results):
             result = results[good]
             book = books_by_good[good]
-            shortage = result.unfilled_demand / result.demand if result.demand else 0.0
+            extra = unplaced.get(good, 0)
+            demand = result.demand + extra
+            shortage = (result.unfilled_demand + extra) / demand if demand else 0.0
             unfilled = [
                 auction.buy_limit(order, result.high)
                 for i, (order, _) in enumerate(book.buys)

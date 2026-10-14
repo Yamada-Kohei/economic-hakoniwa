@@ -21,6 +21,8 @@
    ない）。①を満たさなくても、運転資金の残高が在庫の値打ちの loans.inventory_ratio 倍以内なら貸す
    （在庫の担保）。借りきれない分は、国営施設なら政府が出資する（フェーズ2-1 と同じ）。民営施設な
    ら、変動費の利益が出ている間だけ、資産を持つ層が出資する（出ていなければ縮み、続けば撤退する）。
+   国債の債務不履行で損をした銀行は、banking.default_crunch_turns ターンのあいだ新しく貸さず、返す元
+   金の借り換えだけを貸す（計画経済の島を除く。止める期間が終わったらログで知らせる）。
 5. 家計の層は、預金の banking.switch_share までを「預金金利 − 危なさ」の高い銀行へ移す。自己資本比率
    が規制を下回った銀行と、中央銀行から借りている銀行からは banking.run_share が流れ出す（取り付
    け）。
@@ -83,6 +85,7 @@ class Banking(IslandStage):
         if not island.has_economy:
             return
         upgrade(island, ctx)
+        self._crunch_over(island, ctx)
         self._repay_overnight(island, ctx)
         lent: dict[str, list[int]] = {b: [0, 0] for b in banks.bank_list(island)}
         self._service_loans(island, ctx, lent)
@@ -94,6 +97,18 @@ class Banking(IslandStage):
         self._switch_deposits(island, ctx)
         self._update_rates(island, ctx, lent)
         banks.drop_settled(island)
+
+    @staticmethod
+    def _crunch_over(island: IslandState, ctx: StageContext) -> None:
+        """国債の債務不履行の後に新しい融資を止めていた銀行が、止める期間を終えたら知らせる。"""
+        for bank in banks.bank_list(island):
+            f = banks.facility_of(island, bank)
+            until = f.economy.get("crunch_until") if f is not None else None
+            if f is None or until is None or ctx.turn < until:
+                continue
+            del f.economy["crunch_until"]
+            if f.economy.get("failed") is None:
+                island.log.append(LogEntry("bank_lending_resumed", {"x": f.x, "y": f.y}))
 
     # --- 1. 銀行間と中央銀行への返済 -------------------------------------------------
 
@@ -345,9 +360,15 @@ class Banking(IslandStage):
         due: int,
     ) -> int:
         """bank が f に貸せる額（amount まで）。大口融資の規制は民営施設だけにかける（国営施設は政府
-        が後ろにいるので対象外）。自己資本比率の規制で断った分は lent に足す（利ざやを上げる）。"""
+        が後ろにいるので対象外）。自己資本比率の規制で断った分は lent に足す（利ざやを上げる）。
+
+        国債の債務不履行で損をした銀行は、新しい融資を止めて、このターンに返す元金 due の借り換え
+        だけを貸す（止めて断った分も lent に足す）。"""
         config = ctx.config
         want = amount
+        if banks.lending_stopped(island, bank, ctx.turn):
+            want = min(want, due)
+            lent[bank][1] += amount - want
         if f.owner == OWNER_PRIVATE:
             entity = facility_entity(f.id)
             room = banks.exposure_room(island, config, bank, entity, ctx.turn, due)

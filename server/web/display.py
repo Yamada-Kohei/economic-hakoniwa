@@ -49,8 +49,14 @@ def amount(milli: int) -> float:
 
 
 def island_for_naming(row: m.Island) -> IslandState:
-    """自動の施設名を作るのに要るところだけを持った島の状態（マスは読まない）。"""
-    return island_from_row(row)
+    """自動の施設名を作るのに要るところだけを持った島の状態（マスは読まない）。
+
+    同じ種類の施設が同じ名前になるときは地名に番号を付ける（「オーパス第二銀行公社」）ので、施設の
+    並びは読む（読まないと、どの施設も番号のない同じ名前になる）。
+    """
+    island = island_from_row(row)
+    island.facilities = [facility_from_row(f) for f in row.facilities.order_by("number")]
+    return island
 
 
 def facility_info(row: m.Facility, island: IslandState) -> dict[str, Any]:
@@ -369,6 +375,10 @@ def bank_view(row: m.Facility, f: Facility, island: IslandState, currency: str =
     emergency = island.economy.finance.get("emergency", {}).get(ledger.bank_entity(f.id))
     if emergency:
         out["emergency"] = money_text(emergency, currency)
+    # 国債の債務不履行で損をして、新しい融資を止めている最後のターン（次のターンもそうなら）
+    until = f.economy.get("crunch_until")
+    if until is not None and failed is None and until - 1 > row.island.world.turn:
+        out["crunch_until"] = until - 1
     return out
 
 
@@ -654,6 +664,9 @@ def finance_policy_view(island) -> dict[str, Any]:
     lock = game.config.get("central_bank.switch_lock_turns")
     switched = finance.get("cb_switched")
     unlock = switched + lock if switched is not None else None
+    since = finance.get("default_turn")
+    exclusion = game.config.get("bonds.default_exclusion_turns")
+    closed_until = since + exclusion - 1 if since is not None else -1
     return {
         "has_economy": economy.get("started") is not None,
         "planned": regime.get("owner") == OWNER_STATE,  # 計画経済（倒産も民間の参入もない）
@@ -675,6 +688,13 @@ def finance_policy_view(island) -> dict[str, Any]:
         },
         "bonds": island.bonds.count(),  # 国債の銘柄の数
         "default_turn": finance.get("default_turn"),  # 最後に債務不履行になったターン
+        # 債務不履行の後、銀行が国債を買わない最後のターン（次のターンもそうなら）
+        "bonds_closed_until": closed_until if closed_until > island.world.turn else None,
+        # 債務不履行の罰（利払いと償還を止める命令の説明に出す）
+        "default_premium": round(game.config.get("bonds.default_premium") * 100, 2),
+        "default_decay": game.config.get("bonds.default_decay_turns"),
+        "default_exclusion": game.config.get("bonds.default_exclusion_turns"),
+        "default_crunch": game.config.get("banking.default_crunch_turns"),
         "bank_entry": p.bank_entry,
         "bank_entry_default": entry_default,
         "bank_entry_choices": {k: message(f"bank_entry_{k}") for k in BANK_ENTRY},

@@ -47,6 +47,7 @@ from hakoniwa_core.economy import (
     Payer,
     banks,
     books,
+    debt,
     entity_of,
     facility_entity,
     funds,
@@ -150,6 +151,7 @@ class Accounts(IslandStage):
                 book[holder] = value
             else:
                 book.pop(holder, None)
+        island.scratch[debt.VALUED] = True  # この後の国債の出入りは帳簿の値に直接足す
         return out
 
     @staticmethod

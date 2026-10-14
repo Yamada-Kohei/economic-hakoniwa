@@ -341,3 +341,75 @@ def test_loans_round_trip_and_show_on_tile(client, world):
     assert len(shown) == 1
     assert shown[0]["purpose"] == "運転資金" and shown[0]["arrears"] == 1
     assert shown[0]["balance"].endswith("50,000") and shown[0]["rate"] == "5.50%"
+
+
+def test_banks_of_the_same_kind_have_distinct_names_and_positions(client, world):
+    """国が建てた銀行が2つあっても名前が分かれ（地名に番号）、金融の画面にマスの位置が出る。
+    債務不履行で新しい融資を止めている銀行と、銀行が国債を買わない期間も出す。"""
+    island = _own_island(client)
+    config = get_game().config
+    first = island.facilities.filter(kind=config.get("banking.facility")).order_by("number")[0]
+    second = m.Facility.objects.get(pk=first.pk)
+    second.pk = None
+    second.number = island.facilities.order_by("-number")[0].number + 1
+    block = config.get("naming.place_block")
+    used = set(island.facilities.values_list("x", "y"))
+    x0, y0 = first.x // block * block, first.y // block * block
+    second.x, second.y = next(  # 同じ地名の区画の空いたマス
+        (x, y) for y in range(y0, y0 + block) for x in range(x0, x0 + block) if (x, y) not in used
+    )
+    second.ext = {**(first.ext or {}), "serial": (first.ext or {}).get("serial", 1) + 1}
+    turn = island.world.turn
+    second.economy = {**(first.economy or {}), "crunch_until": turn + 10}
+    second.save()
+    data = client.get(f"/api/islands/{island.id}/finance").json()
+    rows = {(b["x"], b["y"]): b for b in data["banks"]}
+    a, b = rows[(first.x, first.y)], rows[(second.x, second.y)]
+    assert a["name"] != b["name"] and "第二" in b["name"]
+    assert "crunch_until" not in a and b["crunch_until"] == turn + 9
+    html = client.get(f"/islands/{island.id}/finance/").content.decode()
+    assert f"({second.x}, {second.y})" in html
+    assert f"ターン {turn + 9} まで新しい融資を止めています" in html
+
+    economy = island.economy
+    economy.setdefault("finance", {})["default_turn"] = turn
+    m.Island.objects.filter(pk=island.pk).update(economy=economy)
+    policy = client.get(f"/api/islands/{island.id}/orders").json()["policy"]
+    exclusion = config.get("bonds.default_exclusion_turns")
+    assert policy["default_turn"] == turn
+    assert policy["bonds_closed_until"] == turn + exclusion - 1
+    assert policy["default_premium"] == 15 and policy["default_crunch"] == 36
+
+
+def test_private_banks_in_the_same_place_have_distinct_names(client, world):
+    """民間の銀行が同じ地名の区画にいくつあっても、2つ目から地名に番号が付く（Codex の報告）。"""
+    island = _own_island(client)
+    config = get_game().config
+    first = island.facilities.filter(kind=config.get("banking.facility")).order_by("number")[0]
+    assert first.owner == "private"
+    block = config.get("naming.place_block")
+    used = set(island.facilities.values_list("x", "y"))
+    x0, y0 = first.x // block * block, first.y // block * block
+    free = [(x, y) for y in range(y0, y0 + block) for x in range(x0, x0 + block)]
+    free = [p for p in free if p not in used]
+    number = island.facilities.order_by("-number")[0].number
+    added = []
+    for i, (x, y) in enumerate(free[:3], start=1):
+        bank = m.Facility.objects.get(pk=first.pk)
+        bank.pk, bank.number, bank.x, bank.y = None, number + i, x, y
+        bank.owner = "private"
+        bank.ext = {**(first.ext or {}), "serial": 10 + i}
+        bank.economy = {}
+        bank.save()
+        added.append((x, y))
+    data = client.get(f"/api/islands/{island.id}/finance").json()
+    names = {(b["x"], b["y"]): b["name"] for b in data["banks"]}
+    shown = [names[(first.x, first.y)], *(names[p] for p in added)]
+    assert len(set(shown)) == 4  # 「首都銀行」が4つ並ばない
+    assert all(n in name for n, name in zip(("第二", "第三", "第四"), shown[1:], strict=True))
+
+
+def test_help_describes_default_penalties(client, world):
+    html = client.get("/help/").content.decode()
+    exclusion = get_game().config.get("bonds.default_exclusion_turns")
+    assert f"{exclusion} ターンのあいだは銀行が国債を買わず" in html

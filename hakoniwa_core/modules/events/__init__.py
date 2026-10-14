@@ -27,9 +27,12 @@ class Events(IslandStage):
         low, high = settings["kinds"][kind]["halt_turns"]
         turns = rng.randint(low, high)
         f.ext["halted_until"] = ctx.turn + turns
-        island.log.append(
-            LogEntry(f"disaster_{kind}", {"facility": f.kind, "x": f.x, "y": f.y, "turns": turns})
-        )
+        if fac.on_map(f):
+            args = {"facility": f.kind, "x": f.x, "y": f.y, "turns": turns}
+            island.log.append(LogEntry(f"disaster_{kind}", args))
+        else:  # 運送業のようなマスを持たない施設は、島全体の施設として知らせる
+            args = {"facility": f.kind, "turns": turns}
+            island.log.append(LogEntry(f"disaster_{kind}_island", args))
 
 
 def register(registry: Registry) -> None:

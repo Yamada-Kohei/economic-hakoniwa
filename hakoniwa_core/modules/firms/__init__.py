@@ -588,15 +588,20 @@ class EntryExit(IslandStage):
         self, island: IslandState, ctx: StageContext, amount: int, earnings: int
     ) -> list[tuple[str, int, int]] | tuple[str, dict[str, Any]]:
         """出資と建設資金の融資の組み立て: [(銀行, 借りる額, 金利)]（出資は amount − 借りる額の合
-        計）。資産を持つ層が出資しきれないか、審査に通らなければ、そのわけ（わけと引数の組）。"""
+        計）。資産を持つ層が出資しきれないか、審査に通らなければ、そのわけ（わけと引数の組）。
+        国債の債務不履行で損をして新しい融資を止めている銀行からは借りない。"""
         config = ctx.config
         want = amount - round_money(amount * config.get("firms.equity_share"))
         owners = Payer(household(OWNERS))
         if OWNERS not in island.economy.households:
             return ("no_owners", {})
         offers = []
+        stopped = []  # 新しい融資を止めている銀行が、止めるのをやめるターン
         for bank in banks.active_banks(island):
             if banks.labor_ratio(island, ctx.defs, bank) <= 0:
+                continue
+            if banks.lending_stopped(island, bank, ctx.turn):
+                stopped.append(banks.facility_of(island, bank).economy["crunch_until"])
                 continue
             offers.append((banks.margin_of(island, config, bank), bank))
         pieces = []
@@ -613,6 +618,8 @@ class EntryExit(IslandStage):
         loan = want - left
         have = funds.available(island, owners)
         if have < amount - loan:
+            if stopped and loan == 0:
+                return ("credit_crunch", {"turn": min(stopped) - 1})
             return ("owners_short", {"need": amount - loan, "have": have, "loan": loan})
         turns = config.get("loans.construction_turns")
         leverage = to_basis(config.get("banking.rho")) * loan // max(1, amount)

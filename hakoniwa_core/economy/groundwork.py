@@ -9,6 +9,8 @@
   infrastructure.start_water にする（育った町が縮まないように）。
 - 教育: 教育水準を education.start にし、首都の近くの空いたマスに学校（education.start_school）を
   建てた状態で1つ置き、教育費の年の予算を「学校を動かす費用 × education.start_budget_years」にする。
+  学校には最初のターンに全力で動ける分の教材を持たせる（国の倉庫にあればそこから、なければ新しく。
+  置いたターンの生産の段は市場より前なので、持たせないと最初のターンに教材不足で止まる）。
 - 技術者: 一般の労働者の education.engineer_share か、建っている施設が全力で要る人数の多い方を
   技術者にする（技術者の層を作り、預金を人数の割合で一般の層から移す）。
 """
@@ -16,7 +18,7 @@
 from __future__ import annotations
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra
+from hakoniwa_core import infra, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import EDUCATION, ENGINEERS, is_public_service, layers
@@ -37,15 +39,16 @@ YEAR = 12
 VERSION = 3  # economy.ext["version"]: 3 はフェーズ2-3 の基盤を置いた島
 
 
-def prepare(island: IslandState, defs: Defs, config: GameConfig) -> None:
-    """島に生産の基盤の初めの値を置く（1度だけ）。"""
+def prepare(island: IslandState, defs: Defs, config: GameConfig, turn: int = 0) -> None:
+    """島に生産の基盤の初めの値を置く（1度だけ）。turn は置くターン（学校の教材の作られた
+    ターンにする）。"""
     economy = island.economy
     if economy.ext.get("version", 0) >= VERSION:
         return
     economy.ext["version"] = VERSION
     for tile in island.tiles:
         infra.normalize(tile)
-    school = _school(island, defs, config)
+    school = _school(island, defs, config, turn)
     _roads(island, defs, config)
     _water(island, defs, config)
     if economy.education <= 0:
@@ -55,7 +58,7 @@ def prepare(island: IslandState, defs: Defs, config: GameConfig) -> None:
     _engineers(island, defs, config)
 
 
-def _school(island: IslandState, defs: Defs, config: GameConfig) -> Facility | None:
+def _school(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> Facility | None:
     """首都の近くの空いたマスに、学校を建てた状態で置く（もう学校があれば置かない）。"""
     from hakoniwa_core.economy.start import init_facility  # start.py がこのモジュールを読むため
 
@@ -88,8 +91,22 @@ def _school(island: IslandState, defs: Defs, config: GameConfig) -> Facility | N
         island.facilities.append(f)
         wage = island.economy.average_wage or config.get("labor.initial_wage")
         init_facility(island, defs, config, f, island.economy.prices, wage)
+        _first_materials(island, defs, config, f, turn)
         return f
     return None
+
+
+def _first_materials(
+    island: IslandState, defs: Defs, config: GameConfig, f: Facility, turn: int
+) -> None:
+    """学校に、最初のターンに全力で動ける分の教材を持たせる（国の倉庫にある分はそこから）。"""
+    power = config.get("power.good")
+    for good, qty in sorted(fac.recipe_of(defs, f)["inputs"].items()):
+        if good == power:
+            continue
+        moved = stock.take_batches(island.warehouse, good, qty)
+        stock.put_batches(f.stock, good, moved)
+        stock.add(f.stock, good, qty - sum(q for _, q in moved), turn, defs.goods)
 
 
 def _school_budget(island: IslandState, defs: Defs, config: GameConfig, f: Facility) -> int:

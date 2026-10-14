@@ -246,6 +246,11 @@ def help_page(request):
             "arrears_limit": game.config.get("loans.arrears_limit"),
             "foreclosure_turns": game.config.get("firms.foreclosure_turns"),
             "cb_lock_turns": game.config.get("central_bank.switch_lock_turns"),
+            # 国債の債務不履行の罰
+            "default_premium": f"{game.config.get('bonds.default_premium') * 100:g}",
+            "default_decay": game.config.get("bonds.default_decay_turns"),
+            "default_exclusion": game.config.get("bonds.default_exclusion_turns"),
+            "default_crunch": game.config.get("banking.default_crunch_turns"),
             "settlements": [
                 {
                     "name": defs.name("settlements", sid),

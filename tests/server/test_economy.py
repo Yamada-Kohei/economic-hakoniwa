@@ -8,7 +8,7 @@ from server.economy.models import FacilityBook, JournalEntry, MarketRecord
 from server.game import get_game
 from server.orders.models import Order
 from server.turns.services import rollback, run_turn
-from server.world.models import Facility, Island, Tile
+from server.world.models import Facility, Island, Stock, Tile
 from tests.server.test_phase1 import _login, _own_island
 
 pytestmark = pytest.mark.django_db
@@ -116,6 +116,23 @@ def test_policy_orders_from_the_island_page(client, world):
     run_turn(force=True)
     island.refresh_from_db()
     assert island.policy["income_tax"] == 1500 and island.policy["consumption_tax"] == 800
+
+
+def test_warehouse_sale_check_reads_the_warehouse(client, world):
+    """倉庫の財を売る命令の確認は、国の倉庫の在庫を読んで判断する（Codex の試し遊び、ターン50）。"""
+    island = Island.objects.order_by("id").first()
+    Stock.objects.filter(island=island, facility__isnull=True).delete()
+    Stock.objects.create(island=island, facility=None, good="wood", made_turn=0, quantity=5_000)
+    url = f"/api/islands/{island.id}/orders/check"
+
+    def sell(good):
+        payload = {"good": good, "side": "sell", "quantity": 1}
+        body = {"kind": "warehouse_trade", "payload": payload}
+        return client.post(url, body, content_type="application/json").json()
+
+    assert sell("wood")["ok"] is True
+    data = sell("steel")
+    assert data["ok"] is False and "倉庫" in data["text"]
 
 
 def test_accounting_order_from_the_island_page(client, world):

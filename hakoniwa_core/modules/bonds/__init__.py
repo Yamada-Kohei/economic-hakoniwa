@@ -7,7 +7,10 @@
 4. 銘柄ごとに利子を払い、満期の銘柄は額面を返して消す。国庫が足りずに払えない銘柄は不履行にする:
    額面を bonds.haircut だけ切り下げ（持ち手の損）、残りを同じ期間で出し直す。不履行の記録は
    利回りに δ を上乗せし（bonds.default_premium。bonds.default_decay_turns ターンかけて 0 に減る）、
-   区分の利回りも同じだけ跳ね上がる。
+   区分の利回りも同じだけ跳ね上がる。不履行から bonds.default_exclusion_turns ターンは、銀行が国債
+   を買わない（入札で売れず、売れ残りは政策どおり中央銀行が引き受けるか支出を減らす。売買の市場でも
+   買わない）。損をした銀行は banking.default_crunch_turns ターン新しい融資を止める
+   （economy/banks.py の lending_stopped。計画経済の島を除く）。
 5. 命令で決めた中央銀行の直接引き受けと追加の発行。
 6. 国債の売買の市場（区分ごとの板寄せ）。
 7. 「このターンの国債以外の政府の支出（次のターンの見込み）× (1 + bonds.buffer_turns) ＋ 次のターン
@@ -43,6 +46,7 @@ from hakoniwa_core.economy import BONDS, Payer, banks, books, debt, funds
 from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
+from hakoniwa_core.modules.banking import is_planned
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import Bond, IslandState, LogEntry
 from hakoniwa_core.turn.context import StageContext
@@ -104,6 +108,12 @@ def flows(island: IslandState) -> dict[str, int]:
 
 
 def _add_flow(island: IslandState, holder: str, amount: int) -> None:
+    if island.scratch.get(debt.VALUED):
+        # 決算の段で時価を評価した後（破綻の段の救済のための発行など）の出入りは、帳簿の値に
+        # 直接足す（次のターンの評価損益に、買った額面が益として入らないように）
+        book = island.economy.finance.setdefault("bond_book", {})
+        book[holder] = book.get(holder, 0) + amount
+        return
     table = flows(island)
     table[holder] = table.get(holder, 0) + amount
 
@@ -116,6 +126,8 @@ class Bonds(IslandStage):
             return
         finance = island.economy.finance
         self._shift_yields(island, ctx)
+        if debt.reopen_turn(island, ctx.config) == ctx.turn:
+            island.log.append(LogEntry("bonds_market_reopened", {}))
         if finance.pop("default_order", False) and island.bonds:
             self._default(
                 island, ctx, sorted(island.bonds, key=lambda b: b.id), "bond_default_ordered"
@@ -127,14 +139,29 @@ class Bonds(IslandStage):
         self._pay(island, ctx, payer)
         self._ordered(island, ctx)
         self._secondary(island, ctx)
-        spending = sum(v for k, v in funds.spent(island).items() if k != BONDS)
+        self.top_up(island, ctx)
+        finance["last_policy_rate"] = island.policy.policy_rate
+        self._stats(island, ctx)
+
+    def top_up(
+        self, island: IslandState, ctx: StageContext, spent: dict[str, int] | None = None
+    ) -> None:
+        """国庫が「このターンの国債以外の政府の支出（次のターンの見込み）×（1 + bonds.buffer_turns）
+        ＋ 次のターンの利払い」に足りなければ、足りない分を入札で発行する。spent は支出の項目ごとの
+        額（既定はこのターンに使った額）。
+
+        破綻の段も、銀行の救済と預金保護で国庫から出した後に呼ぶ（次のターンの教育費などが、救済の
+        ために払えなくならないように）。そのときの spent は救済の前の額にする（1度きりの救済を、次の
+        ターンにも出す支出に数えない）。
+        """
+        if spent is None:
+            spent = funds.spent(island)
+        spending = sum(v for k, v in spent.items() if k != BONDS)
         buffer = ctx.config.get("bonds.buffer_turns")
         need = spending * (1 + buffer) + debt.due(island, ctx.turn + 1, redemptions=False)
         need -= ledger.money(island, ledger.GOV)
         if need > 0:
             self.raise_funds(island, ctx, need)
-        finance["last_policy_rate"] = island.policy.policy_rate
-        self._stats(island, ctx)
 
     # --- 利回り -----------------------------------------------------------------------
 
@@ -194,23 +221,46 @@ class Bonds(IslandStage):
 
     @staticmethod
     def _default(island: IslandState, ctx: StageContext, bonds: Sequence[Bond], kind: str) -> None:
-        """銘柄を不履行にする: 額面を切り下げ（持ち手の損）、残りを同じ期間で出し直す。"""
-        haircut = to_basis(ctx.config.get("bonds.haircut"))
+        """銘柄を不履行にする: 額面を切り下げ（持ち手の損）、残りを同じ期間で出し直す。
+
+        罰として、銀行はしばらく国債を買わなくなり（market_closed）、損をした銀行は新しい融資を
+        止める（economy["crunch_until"]）。どちらもログで知らせる。
+        """
+        config = ctx.config
+        haircut = to_basis(config.get("bonds.haircut"))
         lost = 0
+        hit: set[str] = set()  # 損をした銀行
         for bond in bonds:
             item = ledger.bond_item(bond.id)
             for holder, face in sorted(debt.holders(island, bond).items()):
                 cut = part(face, haircut)
                 ledger.cancel(island, holder, item, ledger.GOV, cut, "bond_default")
                 lost += cut
+                if cut > 0 and ledger.is_bank(holder):
+                    hit.add(holder)
             bond.issued = ctx.turn
             bond.face = debt.outstanding(island, bond)
         finance = island.economy.finance
         finance["default_turn"] = ctx.turn
-        top = to_basis(ctx.config.get("bonds.max_yield"))
-        jump = to_basis(ctx.config.get("bonds.default_premium"))
+        top = to_basis(config.get("bonds.max_yield"))
+        jump = to_basis(config.get("bonds.default_premium"))
         finance["yields"] = [min(top, y + jump) for y in finance.get("yields") or []]
         island.log.append(LogEntry(kind, {"amount": lost, "count": len(bonds)}))
+        crunch = ctx.turn + config.get("banking.default_crunch_turns")
+        if is_planned(ctx.defs, island):
+            hit = set()  # 計画経済の国営銀行は政府の決めたとおりに貸す
+        for bank in sorted(hit):
+            f = banks.facility_of(island, bank)
+            if f is not None:
+                f.economy["crunch_until"] = max(crunch, f.economy.get("crunch_until", 0))
+        args: dict[str, Any] = {  # 文面のターンは、まだ罰の続く最後のターン
+            "turn": ctx.turn + config.get("bonds.default_exclusion_turns") - 1,
+            "premium": round(config.get("bonds.default_premium") * 100, 2),
+            "decay": config.get("bonds.default_decay_turns"),
+        }
+        if hit:
+            args.update({"banks": len(hit), "crunch": crunch - 1})
+        island.log.append(LogEntry("bond_default_penalty" + ("" if hit else "_no_banks"), args))
 
     # --- 発行 -------------------------------------------------------------------------
 
@@ -237,14 +287,22 @@ class Bonds(IslandStage):
             return 0
         turns = ctx.defs.bond_terms()[term]["turns"]
         wanted = ctx.formula("bond_yield")(island, turns, ctx)
-        filled, rate = self._auction(island, ctx, face, wanted)
+        closed = debt.market_closed(island, ctx.config, ctx.turn)
+        if closed:  # 債務不履行の後: 銀行は入札に来ない（利回りは入札のいちばん高い段）
+            top = to_basis(ctx.config.get("bonds.max_yield"))
+            tiers = ctx.config.get("banking.auction_tiers")
+            filled, rate = {}, min(top, wanted + max(to_basis(t) for t in tiers))
+        else:
+            filled, rate = self._auction(island, ctx, face, wanted)
         sold = sum(filled.values())
         policy = island.policy
         underwrite = 0
         if sold < face and policy.bond_unsold == UNDERWRITE and not policy.cb_independent:
             underwrite = face - sold
+        unsold_kind = "bonds_unsold_closed" if closed else "bonds_unsold"
+        unsold_args = {"turn": (debt.reopen_turn(island, ctx.config) or 0) - 1} if closed else {}
         if sold + underwrite <= 0:
-            island.log.append(LogEntry("bonds_unsold", {"amount": face, "term": term}))
+            island.log.append(LogEntry(unsold_kind, {"amount": face, "term": term, **unsold_args}))
             return 0
         bond = debt.issue_bond(island, sold + underwrite, turns, rate, ctx.turn)
         item = ledger.bond_item(bond.id)
@@ -262,7 +320,7 @@ class Bonds(IslandStage):
             self._set_yield(island, ctx, turns, rate)
         island.log.append(
             LogEntry(
-                kind,
+                f"{kind}_closed" if closed else kind,
                 {
                     "amount": sold + underwrite,
                     "term": term,
@@ -274,7 +332,9 @@ class Bonds(IslandStage):
         )
         if sold + underwrite < face:
             island.log.append(
-                LogEntry("bonds_unsold", {"amount": face - sold - underwrite, "term": term})
+                LogEntry(
+                    unsold_kind, {"amount": face - sold - underwrite, "term": term, **unsold_args}
+                )
             )
         return sold + underwrite
 
@@ -365,6 +425,7 @@ class Bonds(IslandStage):
         }
         wanted = [ctx.formula("bond_yield")(island, t, ctx) for t in terms]
         premium = to_basis(config.get("banking.sell_premium"))
+        closed = debt.market_closed(island, config, ctx.turn)  # 不履行の後は、銀行は買わない
         for bank in banks.active_banks(island):
             held = holdings[bank]
             total = sum(held)
@@ -384,7 +445,7 @@ class Bonds(IslandStage):
                     qty = min(held[k], over * held[k] // total)
                     if qty > 0:
                         sellers[k].append((Order(qty, wanted[k] + premium), bank))
-            elif value < target * 9 // 10:
+            elif value < target * 9 // 10 and not closed:
                 room = part(max(0, banks.excess_reserves(island, config, bank)), BASIS // 2)
                 qty = min(target - value, room) // count
                 if qty > 0:

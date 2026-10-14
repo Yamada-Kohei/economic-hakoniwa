@@ -158,9 +158,16 @@ class Production(IslandStage):
         )
         have, short = fac.input_ratio(ctx.defs, f, power)
         if f.workers >= fac.labor_demand(ctx.defs, f, ctx.turn, power):  # 雇いたい分は雇えた
-            # 原料のある分しか雇わなかったなら原料、そうでなければ売れ行きに合わせた
+            # 原料のある分しか雇わなかったなら原料、そうでなければ売れ行きに合わせた。前のターン
+            # に買うつもりだった原料（economy["input_plan"] の稼働率の分）はそろっているなら、
+            # 原料が少ないのは売れ行きに合わせて少なく買ったため
             target = f.economy.get("target", fac.FULL)
-            cause = "target" if short is None or have >= target else Production._short(f, short)
+            planned = have >= f.economy.get("input_plan", fac.FULL + 1)
+            cause = (
+                "target"
+                if short is None or have >= target or planned
+                else Production._short(f, short)
+            )
         if short is not None and have < rate:
             rate, cause = have, Production._short(f, short)
         cap = fac.engineer_cap(ctx.config, f)  # 技術者が足りなければ、稼働率の上限が下がる
@@ -408,15 +415,26 @@ class Production(IslandStage):
 
     @staticmethod
     def _update_status(island: IslandState, f: Facility, rate: int, cause: str) -> None:
+        """稼働率と理由を書き、止まったとき・動き出したときにログを出す。
+
+        止まっている間に理由が変わったとき（災害から売れ行きへ、など）も、止まっている間に1度
+        だけその理由を知らせる（知らせた理由は ext["stop_causes"]。動き出したら消す）。
+        """
         before_rate, before_status = f.operating_rate, f.status
         f.operating_rate = rate
         f.status = cause if rate < fac.FULL else ""
         where = {"facility": f.kind, "x": f.x, "y": f.y}
-        if rate == 0 and (before_rate > 0 or before_status == fac.STATUS_STARTING):
+        stopped = rate == 0 and (before_rate > 0 or before_status == fac.STATUS_STARTING)
+        if stopped:
+            f.ext["stop_causes"] = []
+        told = f.ext.get("stop_causes")
+        if rate == 0 and (stopped or (cause != before_status and cause not in (told or []))):
             kind, _, good = cause.partition(":")
             args = {**where, "good": good} if good else where
             island.log.append(LogEntry(f"facility_stopped_{kind}", args))
+            f.ext["stop_causes"] = [*(told or []), cause]
         elif rate > 0 and before_rate == 0:
+            f.ext.pop("stop_causes", None)
             started = before_status == fac.STATUS_STARTING
             kind = "facility_started" if started else "facility_restarted"
             island.log.append(LogEntry(kind, where))
