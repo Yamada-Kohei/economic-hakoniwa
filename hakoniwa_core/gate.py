@@ -17,6 +17,13 @@
 が限りなく増え続けないか（年の GDP に対する割合が RESERVE_CAP を超えない。最後の RESERVE_WINDOW
 ターンで、割合が RESERVE_RISE より多く増えない）を見ます。
 
+バランス調整の回2（測り方）から、値段の比をターンと結び付けて記録し、目安を見る期間（start から
+end まで）の値段だけで判定します（Codex のレビュー B02。前は売り買いのあったターンの末尾の N 個を
+切り出していたので、期間の外の値段が混ざることがあった）。目安から外れたところには種類（KINDS）を
+付け、場面ごとにどの種類を関門に数えるかを選べるようにしました（hakoniwa_core/measure.py）。
+最初の1年の縮み（EARLY_TURN ターン目の雇用と実質の生産の、1ターン目との比）と、貿易が1年続けて
+途絶えた島も見ます。
+
 目安はゲームのルールではなく確かめの基準なので、game.yaml ではなくこのファイルに置いています。
 """
 
@@ -24,6 +31,7 @@ from __future__ import annotations
 
 import statistics
 from collections import Counter
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
 from hakoniwa_core.config import GameConfig
@@ -54,6 +62,31 @@ TITLE_SHARE = 1 / 3  # 1つの島が持つ称号（産業ごとの経験の1位�
 RESERVE_CAP = 2.0  # 外国の資産 ÷ 年の GDP の上限
 RESERVE_WINDOW = 120  # 外国の資産の増え方を見るターン数（最後から）
 RESERVE_RISE = 0.5  # その間に外国の資産 ÷ 年の GDP が増えてよい幅
+EARLY_TURN = 12  # 最初の1年の縮みを見るターン（1ターン目との比。回2）
+TRADE_GAP = 12  # 貿易（輸出と輸入）がこのターン数続けて 0 なら、途絶えたと見る（回2。Codex B03）
+
+# 目安から外れたところの種類（failures の kinds で選ぶ。場面ごとの関門は hakoniwa_core/measure.py）
+KINDS = (
+    "goods_made",  # 世界: どの島でも作られていない財
+    "goods_traded",  # 世界: どの島でも売り買いされていない財
+    "titles",  # 世界: 称号が1つの島に集まる
+    "unemployment",
+    "inflation",
+    "rate_high",
+    "rate_low",
+    "price",
+    "cpi_spread",
+    "gdp_gap",
+    "population_floor",
+    "population_cap",
+    "population_jump",
+    "firms",
+    "bank_cascade",
+    "fx",
+    "reserves",
+    "reserves_rise",
+    "trade_stopped",
+)
 
 
 @dataclass
@@ -68,14 +101,16 @@ class IslandRecord:
     gdp_gap: list[float] = field(default_factory=list)
     rates: list[float] = field(default_factory=list)  # 政策金利と国債の利回りの高い方
     low_rates: list[float] = field(default_factory=list)  # 政策金利と国債の利回りの低い方
-    price_ratio: dict[str, list[float]] = field(
-        default_factory=dict
-    )  # 財 → 売り買いのあったターンの比
+    # 財 → 売り買いのあったターン → 値段 ÷ 初めの値段（回2 からターンと結び付ける。Codex B02）
+    price_ratio: dict[str, dict[int, float]] = field(default_factory=dict)
     private_firms: list[int] = field(default_factory=list)  # 動いている民営工場の数
     bank_failures: list[int] = field(default_factory=list)  # 銀行が破綻したターン（1行1件）
     resources: list[str] = field(default_factory=list)  # 島の鉱業資源
     fx: dict[str, dict[int, float]] = field(default_factory=dict)  # 相手の通貨 → ターン → レート
     reserves: list[float] = field(default_factory=list)  # 外国の資産 ÷ 年の GDP（フェーズ3-3）
+    employed: list[int] = field(default_factory=list)  # 就業者（回2。最初の1年の縮み）
+    output: list[float] = field(default_factory=list)  # 実質の生産（初めの値段で数えた産出。回2）
+    trade: list[float] = field(default_factory=list)  # 輸出 ＋ 輸入（回2。貿易が途絶えたか）
 
 
 class Recorder:
@@ -130,6 +165,10 @@ class Recorder:
             gdp = debt.annual_gdp(island.economy)
             foreign = s.get("fx.reserves", 0) + s.get("foreign_bonds.banks", 0)
             rec.reserves.append(foreign / gdp if gdp > 0 else 0.0)
+            initial = self.initial.get(island.id, {})
+            rec.employed.append(s.get("employed", 0))
+            rec.output.append(real_output(s, initial))
+            rec.trade.append(s.get("trade.exports", 0) + s.get("trade.imports", 0))
             for key, value in s.items():
                 currency = key.removeprefix("fx.")
                 if currency != key and currency.isdigit() and value > 0:
@@ -139,79 +178,96 @@ class Recorder:
                 if good != key and value > 0:
                     made = self.made.setdefault(good, {})
                     made[world.turn] = made.get(world.turn, 0) + 1
-            initial = self.initial.get(island.id, {})
             for m in island.markets:
                 if m.volume > 0:
                     traded = self.traded.setdefault(m.good, {})
                     traded[world.turn] = traded.get(world.turn, 0) + 1
                 if m.volume > 0 and initial.get(m.good):
                     ratio = m.price / initial[m.good]
-                    rec.price_ratio.setdefault(m.good, []).append(ratio)
+                    rec.price_ratio.setdefault(m.good, {})[world.turn] = ratio
 
-    def failures(self, start: int = START) -> list[str]:
-        """目安から外れたところ（島ごと・目安ごとに1行）。"""
-        out: list[str] = []
-        for good, (made, traded) in self.goods(start).items():
+    def failures(
+        self, start: int = START, end: int | None = None, kinds: Iterable[str] | None = None
+    ) -> list[str]:
+        """目安から外れたところ（島ごと・目安ごとに1行）。start から end（なければ最後）の
+        ターンで見る。kinds を渡すと、その種類（KINDS）だけを並べる。
+        """
+        found = self.findings(start, end)
+        return [line for kind, line in found if kinds is None or kind in set(kinds)]
+
+    def findings(self, start: int = START, end: int | None = None) -> list[tuple[str, str]]:
+        """目安から外れたところの (種類, 1行)。"""
+        out: list[tuple[str, str]] = []
+        for good, (made, traded) in self.goods(start, end).items():
             if made <= 0:
-                out.append(f"世界: {good} がどの島でも作られていない")
+                out.append(("goods_made", f"世界: {good} がどの島でも作られていない"))
             if traded <= 0:
-                out.append(f"世界: {good} がどの島でも売り買いされていない")
+                out.append(("goods_traded", f"世界: {good} がどの島でも売り買いされていない"))
         if self.titles:
             held = Counter(self.titles.values())
             island_id, count = min(held.items(), key=lambda kv: (-kv[1], kv[0]))
             if count > len(self.titles) * TITLE_SHARE:
-                out.append(
+                line = (
                     f"世界: 島 {island_id} が称号を {count} 個持っている"
                     f"（称号のある産業 {len(self.titles)}）"
                 )
+                out.append(("titles", line))
         for iid, rec in sorted(self.islands.items()):
-            out.extend(f"島 {iid}（{rec.regime}）: {m}" for m in _island_failures(rec, start))
+            out.extend(
+                (kind, f"島 {iid}（{rec.regime}）: {m}")
+                for kind, m in _island_failures(rec, start, end)
+            )
         return out
 
-    def goods(self, start: int = START) -> dict[str, tuple[float, float]]:
-        """財ごとの、作った島の数と売り買いのあった島の数の、start からの1ターンあたりの平均。
+    def counts(self, start: int = START, end: int | None = None) -> dict[str, int]:
+        """目安の種類ごとの、外れた行の数（島ごとの目安は外れた島の数）。"""
+        found = Counter(kind for kind, _ in self.findings(start, end))
+        return {kind: found.get(kind, 0) for kind in KINDS}
 
-        start から後のターンを記録していなければ空。
+    def goods(self, start: int = START, end: int | None = None) -> dict[str, tuple[float, float]]:
+        """財ごとの、作った島の数と売り買いのあった島の数の、start から end までの1ターン
+        あたりの平均。その間のターンを記録していなければ空。
         """
-        window = [t for t in self.turns if t >= start]
+        window = [t for t in self.turns if _inside(t, start, end)]
         if not window:
             return {}
 
         def mean(by_turn: dict[int, int]) -> float:
-            return sum(n for t, n in by_turn.items() if t >= start) / len(window)
+            return sum(n for t, n in by_turn.items() if _inside(t, start, end)) / len(window)
 
         return {
             good: (mean(self.made.get(good, {})), mean(self.traded.get(good, {})))
             for good in self.goods_list
         }
 
-    def summary(self, start: int = START) -> dict[str, float]:
+    def summary(self, start: int = START, end: int | None = None) -> dict[str, float]:
         """全部の島をまとめた値（目安と見比べるため）。"""
         unemployment, inflation, spreads, ratios = [], [], [], []
         for rec in self.islands.values():
-            window = _window(rec, start)
+            window = _window(rec, start, end)
             unemployment += [rec.unemployment[i] for i in window]
             inflation += [rec.inflation[i] for i in window]
-            spreads.append(_cpi_spread(rec))
-            for values in rec.price_ratio.values():
-                ratios += values[-len(window) :]
+            spreads.append(_cpi_spread(rec, end))
+            for by_turn in rec.price_ratio.values():
+                ratios += [r for t, r in by_turn.items() if _inside(t, start, end)]
         if not unemployment:
             return {}
         no_coal = [
             rec.unemployment[i]
             for rec in self.islands.values()
             if NO_COAL not in rec.resources
-            for i in _window(rec, start)
+            for i in _window(rec, start, end)
         ]
-        moves = [m for rec in self.islands.values() for m in _fx_moves(rec, start).values()]
+        moves = [m for rec in self.islands.values() for m in _fx_moves(rec, start, end).values()]
         firm_spreads = [
             max(abs(n - statistics.mean(tail)) for n in tail) / statistics.mean(tail)
             for rec in self.islands.values()
             if rec.regime == "market"
-            and (tail := rec.private_firms[-FIRMS_WINDOW:])
+            and (tail := _cut(rec.private_firms, rec, end)[-FIRMS_WINDOW:])
             and statistics.mean(tail) > 0
         ]
-        return {
+        failed = [t for rec in self.islands.values() for t in rec.bank_failures]
+        out = {
             "unemployment.min": min(unemployment),
             "unemployment.max": max(unemployment),
             "unemployment.mean": statistics.mean(unemployment),
@@ -223,8 +279,9 @@ class Recorder:
             "cpi.spread.max": max(spreads),
             "price.ratio.min": min(ratios) if ratios else 1.0,
             "price.ratio.max": max(ratios) if ratios else 1.0,
+            "price.inside": _inside_share(ratios, *PRICE_RANGE),
             "firms.spread.max": max(firm_spreads, default=0.0),
-            "banks.failed": float(sum(len(rec.bank_failures) for rec in self.islands.values())),
+            "banks.failed": float(sum(1 for t in failed if end is None or t <= end)),
             "unemployment.no_coal.mean": statistics.mean(no_coal) if no_coal else 0.0,
             "fx.move.mean": statistics.mean(moves) if moves else 0.0,
             "fx.move.max": max(moves, default=0.0),
@@ -232,24 +289,48 @@ class Recorder:
             "titles.max": float(max(Counter(self.titles.values()).values(), default=0)),
             "reserves.max": max(
                 (
-                    max(rec.reserves[i] for i in _window(rec, start))
+                    max(rec.reserves[i] for i in _window(rec, start, end))
                     for rec in self.islands.values()
-                    if _window(rec, start)
+                    if _window(rec, start, end)
                 ),
                 default=0.0,
             ),
         }
+        out.update(self.early())
+        return out
 
-    def prices(self, start: int = START) -> dict[str, tuple[float, float, float]]:
+    def early(self) -> dict[str, float]:
+        """最初の1年の縮み: EARLY_TURN ターン目の就業者と実質の生産の、1ターン目との比（島ごと）の
+        中央値と最小。1ターン目は建国の施設が初めて動いたターン（建国したときの統計には就業者がない）。
+        記録していなければ空。"""
+        employment, output = [], []
+        for rec in self.islands.values():
+            if 1 not in rec.turns or EARLY_TURN not in rec.turns:
+                continue
+            first, year = rec.turns.index(1), rec.turns.index(EARLY_TURN)
+            if rec.employed[first] > 0:
+                employment.append(rec.employed[year] / rec.employed[first])
+            if rec.output[first] > 0:
+                output.append(rec.output[year] / rec.output[first])
+        out = {}
+        for name, values in (("employment", employment), ("output", output)):
+            if values:
+                out[f"early.{name}.median"] = statistics.median(values)
+                out[f"early.{name}.min"] = min(values)
+        return out
+
+    def prices(
+        self, start: int = START, end: int | None = None
+    ) -> dict[str, tuple[float, float, float]]:
         """財ごとの「値段 ÷ 初めの値段」の最小・中央・最大。
 
-        全部の島の、売り買いのあったターンで見る。
+        全部の島の、start から end までの売り買いのあったターンで見る。
         """
         ratios: dict[str, list[float]] = {}
         for rec in self.islands.values():
-            count = len(_window(rec, start))
-            for good, values in rec.price_ratio.items():
-                ratios.setdefault(good, []).extend(values[-count:] if count else [])
+            for good, by_turn in rec.price_ratio.items():
+                values = [r for t, r in by_turn.items() if _inside(t, start, end)]
+                ratios.setdefault(good, []).extend(values)
         return {
             good: (min(values), statistics.median(values), max(values))
             for good, values in sorted(ratios.items())
@@ -257,29 +338,50 @@ class Recorder:
         }
 
 
+def real_output(stats: Mapping[str, float], prices: Mapping[str, int]) -> float:
+    """実質の生産: このターンに作った量を島の初めの値段で数えた額（物価の動きを除いた産出。中間財も
+    含む総産出で、付加価値ではない。Codex のレビュー E32）。"""
+    return sum(
+        value * prices.get(key.removeprefix("production."), 0)
+        for key, value in stats.items()
+        if key.startswith("production.")
+    )
+
+
+def _inside(turn: int, start: int, end: int | None) -> bool:
+    return turn >= start and (end is None or turn <= end)
+
+
 def _inside_share(values: list[float], low: float, high: float) -> float:
     return sum(1 for v in values if low <= v <= high) / len(values) if values else 1.0
 
 
-def _window(rec: IslandRecord, start: int) -> list[int]:
-    return [i for i, t in enumerate(rec.turns) if t >= start]
+def _window(rec: IslandRecord, start: int, end: int | None = None) -> list[int]:
+    return [i for i, t in enumerate(rec.turns) if _inside(t, start, end)]
 
 
-def _cpi_spread(rec: IslandRecord) -> float:
-    tail = rec.cpi[-CPI_WINDOW:]
+def _cut(values: list, rec: IslandRecord, end: int | None) -> list:
+    """ターンごとの値の並びのうち、end までのターンの分（end がなければ全部）。"""
+    if end is None:
+        return values
+    return values[: sum(1 for t in rec.turns if t <= end)]
+
+
+def _cpi_spread(rec: IslandRecord, end: int | None = None) -> float:
+    tail = _cut(rec.cpi, rec, end)[-CPI_WINDOW:]
     if len(tail) < 2 or statistics.mean(tail) <= 0:
         return 0.0
     return statistics.pstdev(tail) / statistics.mean(tail)
 
 
-def _fx_moves(rec: IslandRecord, start: int) -> dict[str, float]:
+def _fx_moves(rec: IslandRecord, start: int, end: int | None = None) -> dict[str, float]:
     """相手の通貨ごとの、為替の年の動き（FX_YEAR ターン前のレートからの変わり方の絶対値）の平均。"""
     out = {}
     for currency, by_turn in rec.fx.items():
         moves = [
             abs(rate / by_turn[turn - FX_YEAR] - 1)
             for turn, rate in by_turn.items()
-            if turn >= start and by_turn.get(turn - FX_YEAR, 0) > 0
+            if _inside(turn, start, end) and by_turn.get(turn - FX_YEAR, 0) > 0
         ]
         if moves:
             out[currency] = statistics.mean(moves)
@@ -291,58 +393,87 @@ def _outside(values: list[float], low: float, high: float) -> tuple[int, float, 
     return len(bad), min(values, default=0.0), max(values, default=0.0)
 
 
-def _island_failures(rec: IslandRecord, start: int) -> list[str]:
-    out = []
-    window = _window(rec, start)
+def _trade_gap(rec: IslandRecord, start: int, end: int | None) -> tuple[int, int, int]:
+    """start から end までで、貿易（輸出と輸入）が 0 のまま続いた一番長いターン数と、その初めと
+    終わりのターン。それより前に一度も貿易していなければ数えない（貿易を始めていない島）。"""
+    longest, first, last = 0, 0, 0
+    run, traded = 0, False
+    for t, value in zip(rec.turns, rec.trade, strict=False):
+        if end is not None and t > end:
+            break
+        if value > 0:
+            traded, run = True, 0
+            continue
+        if not traded:
+            continue
+        run += 1
+        if t >= start and run > longest:
+            longest, first, last = run, t - run + 1, t
+    return longest, first, last
+
+
+def _island_failures(
+    rec: IslandRecord, start: int, end: int | None = None
+) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    window = _window(rec, start, end)
     if not window:
         return out
     checks = [
-        ("失業率", [rec.unemployment[i] for i in window], UNEMPLOYMENT_RANGE),
-        ("物価上昇率", [rec.inflation[i] for i in window], INFLATION_RANGE),
-        ("金利の上限", [rec.rates[i] for i in window], RATE_RANGE),
-        ("金利の下限", [rec.low_rates[i] for i in window], RATE_RANGE),
+        ("unemployment", "失業率", [rec.unemployment[i] for i in window], UNEMPLOYMENT_RANGE),
+        ("inflation", "物価上昇率", [rec.inflation[i] for i in window], INFLATION_RANGE),
+        ("rate_high", "金利の上限", [rec.rates[i] for i in window], RATE_RANGE),
+        ("rate_low", "金利の下限", [rec.low_rates[i] for i in window], RATE_RANGE),
     ]
-    for name, values, (low, high) in checks:
+    for kind, name, values, (low, high) in checks:
         count, lo, hi = _outside(values, low, high)
         if count:
-            out.append(f"{name}が {count} ターン外れた（{lo:.3f}〜{hi:.3f}）")
-    for good, values in sorted(rec.price_ratio.items()):
-        count, lo, hi = _outside(values[-len(window) :], *PRICE_RANGE)
+            out.append((kind, f"{name}が {count} ターン外れた（{lo:.3f}〜{hi:.3f}）"))
+    for good, by_turn in sorted(rec.price_ratio.items()):
+        values = [r for t, r in sorted(by_turn.items()) if _inside(t, start, end)]
+        count, lo, hi = _outside(values, *PRICE_RANGE)
         if count:
-            out.append(f"{good} の値段が {count} ターン外れた（初めの {lo:.2f}〜{hi:.2f} 倍）")
-    spread = _cpi_spread(rec)
+            line = f"{good} の値段が {count} ターン外れた（初めの {lo:.2f}〜{hi:.2f} 倍）"
+            out.append(("price", line))
+    spread = _cpi_spread(rec, end)
     if spread > CPI_SPREAD:
-        out.append(f"物価指数の振れ幅 {spread:.3f}")
+        out.append(("cpi_spread", f"物価指数の振れ幅 {spread:.3f}"))
     gap = max(rec.gdp_gap[i] for i in window)
     if gap > GDP_GAP:
-        out.append(f"GDP の差 {gap:.4f}")
-    people = rec.population
+        out.append(("gdp_gap", f"GDP の差 {gap:.4f}"))
+    people = _cut(rec.population, rec, end)
     if min(people) < rec.start_population * POPULATION_FLOOR:
-        out.append(f"人口が {min(people)} まで減った（初め {rec.start_population}）")
+        line = f"人口が {min(people)} まで減った（初め {rec.start_population}）"
+        out.append(("population_floor", line))
     if people[-1] > rec.start_population * POPULATION_CAP:
-        out.append(f"人口が {people[-1]} まで増えた（初め {rec.start_population}）")
+        line = f"人口が {people[-1]} まで増えた（初め {rec.start_population}）"
+        out.append(("population_cap", line))
     jumps = [abs(b - a) / a for a, b in zip(people, people[1:], strict=False) if a]
     if jumps and max(jumps) >= POPULATION_JUMP:
-        out.append(f"人口が1ターンで {max(jumps):.1%} 変わった")
-    firms = rec.private_firms[-FIRMS_WINDOW:]
+        out.append(("population_jump", f"人口が1ターンで {max(jumps):.1%} 変わった"))
+    firms = _cut(rec.private_firms, rec, end)[-FIRMS_WINDOW:]
     if rec.regime == "market" and firms:
         mean = statistics.mean(firms)
         low, high = (1 - FIRMS_SPREAD) * mean, (1 + FIRMS_SPREAD) * mean
         if min(firms) < low or max(firms) > high:
-            out.append(f"民営工場の数が {min(firms)}〜{max(firms)}（平均 {mean:.1f}）")
-    failures = rec.bank_failures
+            out.append(("firms", f"民営工場の数が {min(firms)}〜{max(firms)}（平均 {mean:.1f}）"))
+    failures = [t for t in rec.bank_failures if end is None or t <= end]
     chained = sum(1 for a, b in zip(failures, failures[1:], strict=False) if b - a <= CASCADE_TURNS)
     if chained:
-        out.append(f"銀行の破綻が {CASCADE_TURNS} ターンのうちに続いた（{chained} 回）")
-    for currency, move in sorted(_fx_moves(rec, start).items(), key=lambda kv: int(kv[0])):
+        line = f"銀行の破綻が {CASCADE_TURNS} ターンのうちに続いた（{chained} 回）"
+        out.append(("bank_cascade", line))
+    for currency, move in sorted(_fx_moves(rec, start, end).items(), key=lambda kv: int(kv[0])):
         if move > FX_MOVE:
-            out.append(f"島 {currency} の通貨との為替の年の動きが平均 {move:.1%}")
+            out.append(("fx", f"島 {currency} の通貨との為替の年の動きが平均 {move:.1%}"))
     reserves = [rec.reserves[i] for i in window]
     if max(reserves) > RESERVE_CAP:
-        out.append(f"外国の資産が年の GDP の {max(reserves):.2f} 倍まで増えた")
-    tail = rec.reserves[-RESERVE_WINDOW:]
+        out.append(("reserves", f"外国の資産が年の GDP の {max(reserves):.2f} 倍まで増えた"))
+    tail = _cut(rec.reserves, rec, end)[-RESERVE_WINDOW:]
     if len(tail) == RESERVE_WINDOW and tail[-1] - tail[0] > RESERVE_RISE:
-        out.append(
-            f"外国の資産が増え続けている（年の GDP の {tail[0]:.2f} 倍 → {tail[-1]:.2f} 倍）"
-        )
+        line = f"外国の資産が増え続けている（年の GDP の {tail[0]:.2f} 倍 → {tail[-1]:.2f} 倍）"
+        out.append(("reserves_rise", line))
+    gap_turns, first, last = _trade_gap(rec, start, end)
+    if gap_turns >= TRADE_GAP:
+        line = f"貿易が {gap_turns} ターン続けて途絶えた（ターン {first}〜{last}）"
+        out.append(("trade_stopped", line))
     return out

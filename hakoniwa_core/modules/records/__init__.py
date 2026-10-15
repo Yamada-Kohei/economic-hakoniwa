@@ -117,7 +117,8 @@ class Records(IslandStage):
         production, spending = books.gdp(island, inventory)
         stats["gdp"] = production
         stats["gdp.spending"] = spending
-        stats["gdp.gap"] = abs(production - spending) / production if production else 0.0
+        floor = economy.average_wage or config.get("labor.initial_wage")  # 1人の1ターンの賃金
+        stats["gdp.gap"] = books.gdp_gap(production, spending, floor)
         keep = config.get("records.history_turns")
         economy.gdp_history = [*economy.gdp_history, production][-keep:]
         # 賃金

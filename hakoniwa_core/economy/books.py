@@ -107,6 +107,15 @@ def value_added(items: Mapping[str, int]) -> int:
     )
 
 
+def gdp_gap(production: int, spending: int, floor: int) -> float:
+    """生産の側と支出の側の GDP の差の割合（関門で見る。Codex のレビュー A08）。
+
+    分母は2つの絶対値の大きい方で、floor（1人の1ターンの賃金など、小さすぎる額）より小さくしない。
+    片方だけが 0 のときや、両方が負のとき、符号が違うときも、差を見逃さない（0 なら一致）。
+    """
+    return abs(production - spending) / max(abs(production), abs(spending), floor, 1)
+
+
 def gdp(island: IslandState, inventory: Mapping[int, int]) -> tuple[int, int]:
     """このターンの GDP（生産の側, 支出の側）。inventory は inventory_changes の結果。"""
     facilities = facility_items(island)
