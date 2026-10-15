@@ -81,6 +81,8 @@ def send_letter(user, sender: Island, to: int, subject: str, body: str) -> Lette
     recipient = Island.objects.filter(pk=to, world=sender.world).first()
     if recipient is None:
         raise LetterError(f"番号 {to} の島はありません")
+    if recipient.owner_id is None:  # 読む人がいない（見本の島など）
+        raise LetterError("この島には持ち主がいません")
     if not subject:
         raise LetterError("題名を書いてください")
     if len(subject) > SUBJECT_MAX:

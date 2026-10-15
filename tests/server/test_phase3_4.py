@@ -70,10 +70,20 @@ def test_plan_page_for_a_planned_economy(client, world):
     data = client.get(f"/api/islands/{island.id}/plan").json()
     assert data["planned"] and data["rows"]
     row = data["rows"][0]
-    assert {"good", "price", "goal", "achieved", "queue", "manual"} <= set(row)
+    assert {"good", "price", "goal", "achieved", "queue", "manual", "cost", "gap", "held"} <= set(
+        row
+    )
     assert data["max_priority"] == get_game().config.get("planning.max_priority")
+    config = get_game().config
+    assert data["band"] == round(config.get("planning.review_band") * 100)
+    assert [g["id"] for g in data["held"]] == [
+        g for g in get_game().defs.goods if g in config.get("planning.held_goods")
+    ]
+    assert any(r["cost"] for r in data["rows"])  # 原価は市場の段で解いてある
     html = client.get(f"/islands/{island.id}/plan/").content.decode()
     assert 'data-order="set_official_price"' in html
+    assert 'data-order="review_official_prices"' in html
+    assert 'data-order="set_official_price_rules"' in html
     assert 'data-order="set_priority_industries"' in html
     assert 'data-order="set_price_floor"' not in html
     client.logout()
@@ -134,7 +144,11 @@ def test_describe_orders_for_phase3_4(world):
     cases = [
         ("change_economy", {"economy": "mixed"}, "混合経済"),
         ("mobilize_labor", {"on": False}, "やめる"),
-        ("set_official_price", {"good": "food", "price": 0}, "自動に戻す"),
+        ("set_official_price", {"good": "food", "price": 0}, "上書きをやめる"),
+        ("review_official_prices", {"goods": ["coal"]}, "石炭"),
+        ("review_official_prices", {}, "すべて"),
+        ("set_official_price_rules", {"band": 15, "held": ["grain"]}, "±15%"),
+        ("set_official_price_rules", {"held": []}, "据え置く財 なし"),
         ("set_price_floor", {"good": "grain", "price": 0}, "なくす"),
         ("set_priority_industries", {"industries": []}, "なし"),
         ("dissolve_parliament", {}, "議会の解散"),
@@ -152,9 +166,48 @@ def test_stat_labels_for_phase3_4(world):
         "labor.mobilized",
         "plan.queue",
         "plan.forced_saving",
+        "plan.subsidy",
+        "plan.subsidy_unpaid",
+        "trade.merchant_gap",
+        "cars.households",
+        "use.coal",
+        "use.grain",
     ):
         label, _ = reports.stat_label(name)
         assert label != name, name
+
+
+def test_politics_page_shows_the_rebuild_materials(client, world):
+    island = _own(client, "market", politics="democracy", head_of_state="republic")
+    ext = dict(island.ext)
+    ext["politics"] = {**ext.get("politics", {}), "rebuild": {"building_materials": 5300}}
+    m.Island.objects.filter(pk=island.pk).update(ext=ext)
+    data = client.get(f"/api/islands/{island.id}/politics").json()
+    assert data["rebuilding"] and data["rebuild"][0]["quantity"] == 5.3
+    html = client.get(f"/islands/{island.id}/politics/").content.decode()
+    assert "残りの資材" in html and "建材 5.3" in html
+
+
+def test_plan_orders_for_official_price_rules_are_accepted(client, world):
+    island = _own(client, "planned")
+    orders = [
+        ("set_official_price_rules", {"band": 10, "held": ["grain", "electricity"]}),
+        ("review_official_prices", {"goods": ["coal"]}),  # 行政力 2（足りなければ次のターン）
+    ]
+    body = {"orders": [{"kind": k, "payload": p} for k, p in orders]}
+    res = client.put(f"/api/islands/{island.id}/orders", body, content_type="application/json")
+    assert res.status_code == 200, res.content.decode()
+    texts = [o["text"] for o in res.json()["orders"]]
+    assert "±10%" in texts[0] and "石炭" in texts[1]
+    run_turn(force=True)
+    run_turn(force=True)
+    island.refresh_from_db()
+    state = island.ext["plan"]
+    assert state["band"] == 0.1 and state["held"] == ["electricity", "grain"]
+    assert state["prices"]["coal"] == state["costs"]["coal"]
+    bad = {"orders": [{"kind": "set_official_price_rules", "payload": {"band": 150}}]}
+    res = client.put(f"/api/islands/{island.id}/orders", bad, content_type="application/json")
+    assert res.status_code == 400
 
 
 def test_police_station_can_be_built(client, world):

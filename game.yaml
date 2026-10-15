@@ -524,7 +524,12 @@ politics:
 
 # 計画経済（フェーズ3-4。hakoniwa_core/economy/plan.py）
 planning:
-  review_turns: 12      # 公定価格を自動で見直す間隔（原価＋1割を今の平均賃金で解き直す）
+  # 公定価格は原則据え置き。review_turns ごとに原価（原価＋1割を今の平均賃金で解く）を確かめ、
+  # 公定価格との差が review_band（割合）を超えた財だけ原価に改める。held_goods（食料）は原価を
+  # 下回っても据え置き、差を補助金で埋める（ソ連の小売価格の据え置きに寄せた既定。命令で変えられる）
+  review_turns: 12      # 原価との差を確かめる間隔
+  review_band: 0.2      # 見直す幅（±20%）
+  held_goods: [grain, fish, meat, food]  # 原価を下回っても据え置く財
   demand_turns: 12      # 生産目標に使う需要の履歴のターン数
   target_markup: 0.1    # 生産目標 = 需要の平均 ×（1 + これ）
   max_priority: 3       # 重点産業の数の上限

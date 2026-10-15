@@ -705,8 +705,21 @@ def _describe_politics(kind: str, payload: dict[str, Any], name: str) -> str:
         good = defs.name("goods", payload.get("good", ""))
         price = payload.get("price", 0)
         if not price:
-            return f"{name}: {good}を{'自動に戻す' if kind == 'set_official_price' else 'なくす'}"
+            return (
+                f"{name}: {good}を{'上書きをやめる' if kind == 'set_official_price' else 'なくす'}"
+            )
         return f"{name}: {good} {price:,}"
+    if kind == "review_official_prices":
+        goods = [defs.name("goods", g) for g in payload.get("goods", [])]
+        return f"{name}: " + ("・".join(goods) or "命令で決めた値段のない財すべて")
+    if kind == "set_official_price_rules":
+        parts = []
+        if "band" in payload:
+            parts.append(f"見直す幅 ±{payload['band']}%")
+        if "held" in payload:
+            held = "・".join(defs.name("goods", g) for g in payload["held"]) or "なし"
+            parts.append(f"据え置く財 {held}")
+        return f"{name}: " + "、".join(parts)
     if kind == "set_priority_industries":
         names = [defs.name("industries", i) for i in payload.get("industries", [])]
         return f"{name}: " + ("・".join(names) or "なし")

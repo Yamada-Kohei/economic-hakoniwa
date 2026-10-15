@@ -107,6 +107,19 @@ def test_cannot_send_to_self_or_missing_island(client, world):
     assert not Letter.objects.exists()
 
 
+def test_cannot_send_to_an_island_without_an_owner(client, world):
+    (alice, _, _), (a, b, c) = _players(world)
+    Island.objects.filter(pk=c.pk).update(owner=None)
+    client.force_login(alice)
+    res = _send(client, c.id)
+    assert res.status_code == 400 and "持ち主がいません" in res.json()["error"]
+    assert not Letter.objects.exists()
+    page = client.get(f"/letters/new/?to={b.id}").content.decode()
+    assert f'<option value="{b.id}" selected>' in page
+    assert f'<option value="{c.id}"' not in page  # 持ち主のいない島は宛先に出さない
+    assert "/letters/new/?to=" not in client.get(f"/islands/{c.id}/").content.decode()
+
+
 def test_only_island_owners_can_send(client, world):
     _, (_, b, _) = _players(world)
     assert _send(client, b.id).status_code == 403  # ログインしていない

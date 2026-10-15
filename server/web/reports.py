@@ -152,6 +152,10 @@ _EXTRA_STATS = [
     ("labor.mobilized", "労働の動員で働く人", "人"),
     ("plan.queue", "行列（家計が配給で買えなかった割合。公定価格の額で）", "%"),
     ("plan.forced_saving", "強制貯蓄（配給で買えずに残ったお金。このターン）", "money"),
+    ("plan.subsidy", "据え置いた財の補助金（国庫直轄の施設の分も。このターン）", "money"),
+    ("plan.subsidy_unpaid", "国庫が足りず払えなかった据え置きの補助金", "money"),
+    ("trade.merchant_gap", "海外の商人に政府が払った、公定価格との差（このターン）", "money"),
+    ("cars.households", "家計が持つ自動車", " 台"),
 ]
 _STATS = {key: (label, unit) for key, label, unit in [*display.SUMMARY_STATS, *_EXTRA_STATS]}
 # 名前の頭が財のもの（後ろに財の名前が続く）
@@ -159,6 +163,7 @@ _GOODS_STATS = {
     "price.": ("{good}の値段（1{unit}）", "money"),
     "volume.": ("{good}の売買量", "good"),
     "production.": ("{good}の生産量", "good"),
+    "use.": ("{good}の使った量（施設の原料）", "good"),
     "stock.": ("{good}の国の倉庫の在庫", "good"),
     "works.stock.": ("公共事業の資材の在庫（{good}）", "good"),
 }

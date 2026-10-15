@@ -607,7 +607,32 @@ set_official_price:                       # 公定価格の上書き（計画経
     additionalProperties: false
     properties:
       good: {type: string}
-      price: {type: integer, minimum: 0}  # 0 で自動（原価＋1割の見直し）に戻す
+      price: {type: integer, minimum: 0}  # 0 で上書きをやめる（決まりどおりの見直しに戻す）
+
+review_official_prices:                   # 公定価格の改定（計画経済だけ。政治の決断）
+  admin_cost: 2
+  parliament: majority
+  payload:
+    type: object
+    additionalProperties: false
+    properties:
+      goods:                              # 改める財。空か省くと、命令で上書きしていない財すべて
+        type: array
+        uniqueItems: true
+        items: {type: string}
+
+set_official_price_rules:                 # 公定価格の決まり（計画経済だけ）
+  admin_cost: 1
+  payload:
+    type: object
+    minProperties: 1
+    additionalProperties: false
+    properties:
+      band: {type: integer, minimum: 0, maximum: 100}  # 原価との差がこの % を超えたら見直す
+      held:                               # 原価を下回っても据え置き、差を補助金で埋める財
+        type: array
+        uniqueItems: true
+        items: {type: string}
 
 set_priority_industries:                  # 重点産業（計画経済だけ。planning.max_priority まで）
   admin_cost: 1

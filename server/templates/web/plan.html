@@ -32,14 +32,16 @@
   <div class="table-scroll">
     <table class="goods plan-table">
       <thead><tr>
-        <th>{% translate "財" %}</th><th>{% translate "公定価格（1単位）" %}</th><th>{% translate "生産目標（1ターン）" %}</th>
-        <th>{% translate "作った量" %}</th><th>{% translate "達成率" %}</th><th>{% translate "行列" %}</th>
+        <th>{% translate "財" %}</th><th>{% translate "公定価格（1単位）" %}</th><th>{% translate "原価（原価＋1割）" %}</th><th>{% translate "原価との差" %}</th>
+        <th>{% translate "生産目標（1ターン）" %}</th><th>{% translate "作った量" %}</th><th>{% translate "達成率" %}</th><th>{% translate "行列" %}</th>
       </tr></thead>
       <tbody>
         {% for r in p.rows %}
         <tr>
-          <td><a href="{% url 'island_market' island.id %}?good={{ r.good }}">{{ r.name }}</a></td>
+          <td><a href="{% url 'island_market' island.id %}?good={{ r.good }}">{{ r.name }}</a>{% if r.held %} <small class="muted">{% translate "（据え置く財）" %}</small>{% endif %}</td>
           <td>{{ currency }}{{ r.price|floatformat:"0g" }}{% if r.manual %} <small class="muted">{% translate "（命令で決めた値段）" %}</small>{% endif %}</td>
+          <td>{% if r.cost %}{{ currency }}{{ r.cost|floatformat:"0g" }}{% endif %}</td>
+          <td>{% if r.gap is not None %}{% if r.outside %}<span class="warning">{% endif %}{% if r.gap > 0 %}+{% endif %}{{ r.gap }}%{% if r.outside %}</span>{% endif %}{% endif %}</td>
           <td>{% if r.goal is not None %}{{ r.goal|floatformat:"1g" }} {{ r.unit }}{% endif %}</td>
           <td>{% if r.made %}{{ r.made|floatformat:"1g" }} {{ r.unit }}{% endif %}</td>
           <td>{% if r.achieved is not None %}{{ r.achieved }}%{% endif %}</td>
@@ -52,11 +54,24 @@
   {% else %}
   <p class="muted">{% translate "公定価格は次のターンの更新で決まります。" %}</p>
   {% endif %}
-  <p class="hint">{% blocktranslate with t=p.review %}公定価格は、作る費用（今の平均賃金での原価）に建国のときの値段と同じ利幅を足した値段で、定期的に自動で見直します（次はターン {{ t }}）。命令で財ごとに決めた値段は、自動の見直しで変えません（0 を決めると自動に戻ります）。行列は、家計が配給で買えなかった割合です。公定価格を作る費用より安くすると、国営の工場の赤字は国庫が埋め、行列が長くなります。{% endblocktranslate %}</p>
+  <p class="hint">{% blocktranslate with t=p.review band=p.band %}公定価格は原則として据え置きます。原価（今の平均賃金で作る費用に、建国のときの値段と同じ利幅を足した値段）を定期的に確かめ（次はターン {{ t }}）、公定価格との差が ±{{ band }}% を超えた財だけ原価に改めます。据え置く財は、原価を下回っていても据え置き、原価との差を国庫が補助金で埋めます（国庫直轄の工場は国庫がそのまま負います）。命令で財ごとに決めた値段は見直しません（0 を決めると上書きをやめます）。行列は、家計が配給で買えなかった割合です。公定価格を原価より安くすると、行列が長くなります。{% endblocktranslate %}</p>
+  <p>{% translate "据え置く財" %}: {% for g in p.held %}{{ g.name }}{% if not forloop.last %}・{% endif %}{% empty %}<span class="muted">{% translate "なし" %}</span>{% endfor %}</p>
   <form class="actions" data-order="set_official_price">
     <strong>{% translate "公定価格を決める" %}</strong>
     <label>{% translate "財" %} <select name="good" required>{% for r in p.rows %}<option value="{{ r.good }}">{{ r.name }}（{{ r.unit }}）</option>{% endfor %}</select></label>
-    <label>{% translate "値段（1単位。0 で自動に戻す）" %} <input name="price" type="number" min="0" step="1" required></label>
+    <label>{% translate "値段（1単位。0 で上書きをやめる）" %} <input name="price" type="number" min="0" step="1" required></label>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  <form class="actions" data-order="review_official_prices" data-list="goods" data-confirm="{% translate '選んだ財（選ばなければ、命令で決めた値段のない財すべて）の公定価格を今の原価に改めます。値上げは支持率と政情に響きます。よろしいですか。' %}">
+    <strong>{% translate "公定価格を改定する（政治の決断。行政力 2、議会のある国は採決）" %}</strong>
+    {% for r in p.rows %}<label><input type="checkbox" name="goods" value="{{ r.good }}"> {{ r.name }}</label>{% endfor %}
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  <form class="actions" data-order="set_official_price_rules" data-list="held">
+    <strong>{% translate "公定価格の決まり" %}</strong>
+    <label>{% translate "見直す幅（±%）" %} <input name="band" type="number" min="0" max="100" step="1" value="{{ p.band }}"></label>
+    <span>{% translate "据え置く財" %}:</span>
+    {% for r in p.rows %}<label><input type="checkbox" name="held" value="{{ r.good }}"{% if r.held %} checked{% endif %}> {{ r.name }}</label>{% endfor %}
     <button type="submit">{% translate "命令に追加" %}</button>
   </form>
   <p class="order-notice" aria-live="polite"></p>
@@ -116,6 +131,7 @@
        data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
     <figure class="chart" data-names="plan.queue"><figcaption>{% translate "行列（家計が配給で買えなかった割合）" %}</figcaption></figure>
     <figure class="chart" data-names="plan.forced_saving"><figcaption>{% translate "強制貯蓄（1ターン）" %}</figcaption></figure>
+    <figure class="chart" data-names="plan.subsidy"><figcaption>{% translate "据え置いた財の補助金（1ターン）" %}</figcaption></figure>
   </div>
 </section>
 {% endif %}

@@ -12,9 +12,12 @@
 始めます。値段のない財（新しい品目）には、初めの値段に今の物価指数の倍率を掛けた値段を置きます
 （economy/prices.py の add_missing_prices。定義に財を足したときも同じ）。
 
-フェーズ3-4 で足したものは、ここでは置きません。政治の状態のない島は、政情の段の最初のターンに
-政情を目標から始めます（いきなり暴動にしない）。計画経済の島は、市場の段の初めに公定価格を今の平均
-賃金で解きます（economy/plan.py の prepare）。
+フェーズ3-4 で足したものは、ここではほとんど置きません。政治の状態のない島は、政情の段の最初の
+ターンに政情を目標から始めます（いきなり暴動にしない）。計画経済の島は、市場の段の初めに原価を
+解きます（economy/plan.py の prepare）。ただし、フェーズ3-4 より前に建てた見本の島のように政治の
+体制（政治体制と国家元首）が決まっていない島には、軸ごとに定義の初めの選択（民主主義・君主制）を
+置き、政情を目標から始め直します（体制がないと政情の目標が低いまま暴動が続くため）。経済体制の軸は
+置きません（空のままでも経済体制の既定で動いていて、置くと施設の持ち主や会計の扱いが変わるため）。
 
 移し替えをターンの中で行うのは、サーバーを通さずにコアだけで世界を回すとき（一括シミュレーションや
 テスト）にも同じに動くようにするためです。
@@ -22,11 +25,12 @@
 
 from __future__ import annotations
 
-from hakoniwa_core import nature
+from hakoniwa_core import nature, politics
+from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import groundwork
 from hakoniwa_core.economy.prices import add_missing_prices
 from hakoniwa_core.registry import IslandStage, Registry
-from hakoniwa_core.state import IslandState
+from hakoniwa_core.state import IslandState, LogEntry
 from hakoniwa_core.trade import setup as trade_setup
 from hakoniwa_core.trade import started as trade_started
 from hakoniwa_core.turn.context import StageContext
@@ -53,6 +57,27 @@ class Upgrade(IslandStage):
             economy.ext["happiness_from"] = "happiness_phase3_1"
         elif island.ext.get(nature.BLEND):
             nature.step_blend(island)
+        fill_regime(island, ctx.defs)
+
+
+KEEP_AXES = ("economy",)  # 欠けていても置かない軸
+
+
+def fill_regime(island: IslandState, defs: Defs) -> None:
+    """政治の体制の軸が欠けた島に、軸ごとに定義の初めの選択を置き、政情を目標から始め直す。"""
+    missing = {
+        axis: choices[0]
+        for axis, choices in defs.regime_axes().items()
+        if axis not in KEEP_AXES and choices and island.regime.get(axis) not in defs.regimes
+    }
+    if not missing:
+        return
+    island.regime.update(missing)
+    politics.state_of(island).pop("stability", None)
+    shown = {
+        axis: island.regime[axis] for axis in ("politics", "head_of_state") if axis in island.regime
+    }
+    island.log.append(LogEntry("regime_filled", shown))
 
 
 def register(registry: Registry) -> None:

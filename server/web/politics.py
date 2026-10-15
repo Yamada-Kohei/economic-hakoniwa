@@ -154,7 +154,12 @@ def politics_data(island: m.Island, mine: bool) -> dict[str, Any]:
         police=round(state.get("police", 0.0) * 100),
         mobilized=bool(state.get("mobilized")),
         rebuild=[
-            {"good": g, "name": defs.name("goods", g), "quantity": display.amount(q)}
+            {
+                "good": g,
+                "name": defs.name("goods", g),
+                "quantity": display.amount(q),
+                "unit": defs.unit_name(g),
+            }
             for g, q in (state.get("rebuild") or {}).items()
         ],
         can_press=_allowed(politics_orders.check_press, core, {"mode": politics.CONTROLLED}),
@@ -229,13 +234,16 @@ def plan_data(island: m.Island, mine: bool, stats: dict[str, float]) -> dict[str
     state = (island.ext or {}).get(planning.KEY, {})
     prices = state.get("prices", {})
     manual = state.get("manual", {})
+    costs = state.get("costs", {})
     goals = state.get("goals", {})
     achieved = state.get("achieved", {})
     queues = state.get("queues", {})
+    band, held = planning.rules(core, config)
     rows = []
     for good in defs.goods:
         if good not in prices:
             continue
+        cost = costs.get(good)
         rows.append(
             {
                 "good": good,
@@ -243,6 +251,11 @@ def plan_data(island: m.Island, mine: bool, stats: dict[str, float]) -> dict[str
                 "unit": defs.unit_name(good),
                 "price": prices[good],
                 "manual": good in manual,
+                "cost": cost,
+                # 公定価格と原価の差（原価に対する %。+ は原価より高い）
+                "gap": round((prices[good] - cost) * 100 / cost) if cost else None,
+                "outside": bool(cost) and planning.outside(prices[good], cost, band),
+                "held": good in held,
                 "goal": round(from_milli(goals[good]), 1) if good in goals else None,
                 "made": round(stats.get(f"production.{good}", 0), 1),
                 "achieved": round(achieved[good] * 100) if good in achieved else None,
@@ -253,6 +266,8 @@ def plan_data(island: m.Island, mine: bool, stats: dict[str, float]) -> dict[str
     data.update(
         rows=rows,
         review=state.get("review"),
+        band=round(band * 100),
+        held=[{"id": g, "name": defs.name("goods", g)} for g in defs.goods if g in held],
         priority=[{"id": i, "name": defs.name("industries", i)} for i in priority],
         industries=[{"id": i, "name": defs.name("industries", i)} for i in defs.industries()],
         max_priority=config.get("planning.max_priority"),

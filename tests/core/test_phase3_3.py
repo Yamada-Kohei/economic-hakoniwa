@@ -227,8 +227,10 @@ def test_tariffs_are_paid_on_bloc_imports_and_lower_the_bids(game, base):
 
     run_checked(game, world, 8, keep)
     assert sum(totals.values()) > 0
-    island = world.islands[max(totals, key=totals.get)]
-    # 商社の見込みの輸入の指値は、関税の分だけ下がる
+    # 商社の見込みの輸入の指値は、関税の分だけ下がる（計画経済の国営の商社は、関税によらず圏の
+    # 値幅の上端で輸入するので除く）
+    market = [i for i in totals if not traders.is_planned(world.islands[i])]
+    island = world.islands[max(market, key=totals.get)]
     plain = copy.deepcopy(island)
     plain.policy.tariffs = {}
     taxed = traders.prospects(island, game.defs, game.config)
@@ -383,6 +385,16 @@ def test_policy_orders_check_and_log(game, base):
         text = format_log(defs, e.kind, e.args)
         assert "{" not in text, (e.kind, text)
     assert world.islands[2].name in format_log(defs, "embargo_set", island.log[-1].args)
+    # 禁輸された側の国にも知らせる（相手は禁輸した国の名前）
+    told = [e for e in world.islands[2].log if e.kind.startswith("embargo")]
+    assert [e.kind for e in told] == [
+        "embargoed_good",
+        "embargoed_good",
+        "embargo_lifted_by_good",
+        "embargoed",
+    ]
+    text = format_log(defs, told[-1].kind, told[-1].args)
+    assert island.name in text and "{" not in text
 
 
 # --- 援助 ---------------------------------------------------------------------------

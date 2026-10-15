@@ -34,6 +34,13 @@ from hakoniwa_core.units import BASIS, QUANTITY_SCALE, to_basis
 
 NOTES = "trade_notes"  # island.scratch: 国の名前を入れてから貿易の段がログに書く知らせ
 NAMED = ("partner", "issuer")  # 島の番号を国の名前にする引数（currency は通貨の名前にする）
+# 相手の国にも出す知らせ（禁輸）: 自分の国のログの種類 → 相手の国のログの種類
+TOLD = {
+    "embargo_set": "embargoed",
+    "embargo_set_good": "embargoed_good",
+    "embargo_lifted": "embargo_lifted_by",
+    "embargo_lifted_good": "embargo_lifted_by_good",
+}
 FREE = "free"
 OFFICIAL = "official"
 CLOSED = "closed"
@@ -109,7 +116,11 @@ def note(island: IslandState, kind: str, args: dict[str, Any]) -> None:
 
 
 def write_notes(world: WorldState, island: IslandState) -> None:
+    """知らせを国の名前を入れてログに書く。禁輸は相手の国のログにも書く。"""
     for kind, args in island.scratch.pop(NOTES, []):
+        partner = world.islands.get(args["partner"]) if kind in TOLD else None
+        if partner is not None:
+            partner.log.append(LogEntry(TOLD[kind], {**args, "partner": island.name}))
         shown = dict(args)
         for key in NAMED:
             if isinstance(shown.get(key), int):

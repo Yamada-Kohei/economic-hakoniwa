@@ -188,7 +188,9 @@ def set_independence(island: IslandState, payload: dict[str, Any], ctx: StageCon
     """中央銀行を独立させる・戻す。切り替えた後 central_bank.switch_lock_turns ターンは戻せない。
 
     独立した中央銀行は国債を引き受けないので、売れ残りの扱いが「中央銀行が引き受ける」なら
-    「支出を減らす」に変え、独立をやめたら元に戻す（その間に命令で変えていなければ）。
+    「支出を減らす」に変え、独立をやめたら元に戻す（その間に命令で変えていなければ）。どちらも
+    ターンログで知らせる（知らせずに替えていたので、入札の売れ残りで支出が減り続け、債務不履行に
+    なるまで理由が見えなかった）。
     """
     finance = island.economy.finance
     lock = ctx.config.get("central_bank.switch_lock_turns")
@@ -198,12 +200,15 @@ def set_independence(island: IslandState, payload: dict[str, Any], ctx: StageCon
     policy = island.policy
     policy.cb_independent = bool(payload["independent"])
     finance["cb_switched"] = ctx.turn
+    kind = "cb_independent" if policy.cb_independent else "cb_dependent"
+    island.log.append(LogEntry(kind, {}))
     if policy.cb_independent:
         policy.cb_bond_trade = 0
         finance.pop("emergency", None)
         if policy.bond_unsold == "underwrite":
             policy.bond_unsold = "cut"
             finance["unsold_before"] = "underwrite"
+            island.log.append(LogEntry("cb_independent_unsold", {}))
         # 為替の介入・固定相場・中央銀行の外国の国債の売り買いは、政府が決めるものなのでやめる
         # （フェーズ3-3。持っている外貨と外国の国債はそのまま）
         if policy.fx_intervention or policy.fx_peg or policy.foreign_bonds.get("cb"):
@@ -214,8 +219,7 @@ def set_independence(island: IslandState, payload: dict[str, Any], ctx: StageCon
     elif finance.pop("unsold_before", None) and policy.bond_unsold == "cut":
         # 独立のときに「支出を減らす」に変えた売れ残りの扱いを、独立をやめたら元に戻す
         policy.bond_unsold = "underwrite"
-    kind = "cb_independent" if policy.cb_independent else "cb_dependent"
-    island.log.append(LogEntry(kind, {}))
+        island.log.append(LogEntry("cb_dependent_unsold", {}))
 
 
 def check_emergency_loan(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:

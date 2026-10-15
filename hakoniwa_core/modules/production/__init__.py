@@ -466,6 +466,7 @@ class Production(IslandStage):
             funds.pay(island, buyer.payer, ledger.GOV, tax, "tax_consumption", committed=True)
             buyer.reserved -= amount + tax
             books.add(island, plant.id, books.SALES, amount)
+            planning.note_sale(island, config, power, plant, qty, result.price)
             if buyer.run is not None:
                 books.add(island, buyer.run.f.id, books.ELECTRICITY, amount)
             else:
