@@ -628,6 +628,9 @@ def test_maturing_bonds_are_refinanced_in_their_turn(game):
     base = debt.total_debt(island)  # 建国のときの国債
     face = 50_000_000
     bond = debt.underwrite(island, face, 2, 0, 0)  # ターン 2 に満期（利子なし）
+    # 市場（銀行）が持つ国債にする（中央銀行が持つ分は借り換えずに乗り換える）
+    bank = ledger.bank_entity(island.economy.banks[0])
+    ledger.transfer(island, ledger.bond_item(bond.id), ledger.GOV, ledger.CB, bank, face, "test")
     ledger.pay(island, ledger.GOV, household(GENERAL), face, "test")  # 借りた分は使った
     run(game, island, ["budget", "bonds"])  # ターン 1
     assert debt.total_debt(island) == base + face
@@ -642,6 +645,27 @@ def test_maturing_bonds_are_refinanced_in_their_turn(game):
     refinanced = [e.args["amount"] for e in island.log if e.kind == "bonds_refinanced"]
     assert refinanced == [face + interest - usable]
     assert bond not in island.bonds
+
+
+def test_central_bank_rolls_over_its_maturing_bonds(game):
+    """中央銀行は、自分が持つ満期の国債を同じ期間の国債に乗り換える（入札に出さないので、中央銀行が
+    独立していても、満期で売れ残って不履行にならない）。"""
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    with_economy(game, island)
+    island.policy.cb_independent = True
+    face = 50_000_000
+    bond = debt.underwrite(island, face, 1, 0, 0)  # ターン 1 に満期（利子なし）
+    ledger.pay(island, ledger.GOV, household(GENERAL), face, "test")  # 借りた分は使った
+    before = debt.total_debt(island)
+    run(game, island, ["budget", "bonds"])  # ターン 1
+    assert bond not in island.bonds
+    rolled = [e.args["amount"] for e in island.log if e.kind.startswith("bonds_rolled")]
+    assert rolled == [face]
+    assert not [e for e in island.log if e.kind == "bonds_refinanced" or "default" in e.kind]
+    new = [b for b in island.bonds if b.issued == 1 and b.term == 1]
+    assert [debt.holders(island, b) for b in new] == [{ledger.CB: face}]
+    assert debt.total_debt(island) == before
 
 
 def test_seller_raises_only_up_to_the_best_unfilled_bid(game):
