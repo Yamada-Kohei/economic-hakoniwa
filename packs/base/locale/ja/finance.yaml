@@ -52,6 +52,8 @@ tariff: 関税
 export_subsidy: 輸出補助金
 fx_intervention: 為替の介入
 aid: 援助
+fx_swap: 中央銀行どうしの融通
+swap_interest: 中央銀行どうしの融通の利子
 bond_1y: 1年国債
 bond_5y: 5年国債
 bond_10y: 10年国債

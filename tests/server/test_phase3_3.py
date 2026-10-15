@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 
 from hakoniwa_core import ledger
-from hakoniwa_core.trade import abroad
+from hakoniwa_core.trade import abroad, swap
 from server.economy.models import Account
 from server.game import get_game
 from server.orders.models import Order
@@ -160,6 +160,40 @@ def test_fx_page_shows_policy_and_foreign_bonds_to_the_owner(client, world):
     _set_policy(own, cb_independent=True)
     html = client.get(f"/islands/{own.id}/fx/").content.decode()
     assert 'data-order="set_fx_peg"' not in html and 'data-order="set_foreign_bonds"' in html
+
+
+def test_fx_page_shows_swaps_to_the_owner(client, world):
+    """中央銀行どうしの融通: 借りた国と、決済通貨を作って貸した国（圏の代表）の画面。"""
+    own, second, _ = _trading_world(client)
+    for island, table, other in ((own, swap.OWED, second), (second, swap.LENT, own)):
+        ext = island.ext
+        ext["trade"][table] = {str(second.id): {str(other.id): 1200}}
+        m.Island.objects.filter(pk=island.pk).update(ext=ext)
+    data = client.get(f"/api/islands/{own.id}/fx").json()
+    assert {"fx.swap.borrowed", "fx.swap.lent"} <= set(data["stats"])
+    assert {"bop.assets.swaps", "bop.liabilities.swaps"} <= set(data["bop"]["stats"])
+    view = data["swaps"]
+    [row] = view["owed"]
+    assert row["lender"] == second.id and row["other_name"] == second.name
+    assert row["amount"] == 1200 and row["issued"] is True and row["rate"] >= 1.0
+    assert view["lent"] == [] and view["issuer_room"] is None
+    assert view["borrowed"] == row["own"] > 0
+    assert view["quota"] == pytest.approx(get_game().config.get("fx.swap_quota") * 100)
+    html = client.get(f"/islands/{own.id}/fx/").content.decode()
+    assert 'id="swaps"' in html and "発行した国が作って貸した分" in html
+    # 貸した側（決済通貨を発行した国）
+    second.owner = _login(client, "rep")
+    second.save()
+    view = client.get(f"/api/islands/{second.id}/fx").json()["swaps"]
+    [row] = view["lent"]
+    assert row["borrower"] == own.id and row["issued"] is True and row["own"] == 1200
+    assert view["issued"] == 1200 and view["owed"] == []
+    html = client.get(f"/islands/{second.id}/fx/").content.decode()
+    assert "自国の通貨を作って貸した分" in html and "自国の通貨を作って貸している額" in html
+    client.logout()
+    html = client.get(f"/islands/{second.id}/fx/").content.decode()
+    assert 'id="swaps"' not in html
+    assert "swaps" not in client.get(f"/api/islands/{second.id}/fx").json()
 
 
 def test_bond_list_shows_foreign_holders(client, world):
@@ -341,6 +375,10 @@ def test_stat_labels_for_phase3_3(world):
         "bop.current",
         "bop.liabilities.bonds",
         "fx.reserves",
+        "fx.swap.borrowed",
+        "fx.swap.lent",
+        "bop.assets.swaps",
+        "bop.liabilities.swaps",
         "foreign_bonds.banks",
         "bonds.foreign",
         "titles",

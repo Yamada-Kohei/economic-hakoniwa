@@ -37,6 +37,7 @@ from hakoniwa_core.trade import (
     shipping_of,
     ships,
     started,
+    swap,
     tradable_goods,
     traders,
 )
@@ -78,6 +79,8 @@ FX_STATS = [
     "fx.holdings",
     "money.nonresident",
     "fx.reserves",
+    "fx.swap.borrowed",
+    "fx.swap.lent",
     "bonds.foreign",
 ]
 # 国際収支の内訳（フェーズ3-3。誰にでも。hakoniwa_core/trade/balance.py）
@@ -782,7 +785,12 @@ def fx_data(
         if before:
             row["change"] = _percent(e / BASIS, before, 2)
         rates.append(row)
-    world_view = WorldState(turn=world.turn, seed=world.seed, islands={**trading, island.id: here})
+    world_view = WorldState(
+        turn=world.turn,
+        seed=world.seed,
+        islands={**trading, island.id: here},
+        ext={KEY: {"blocs": state["blocs"]}},
+    )
     cross = []
     for other in sorted(trading):
         if other == island.id or fxrates.has_rate(here, other):
@@ -818,6 +826,7 @@ def fx_data(
         data["nonresident"] = nonresident_rows(island, here, islands)
         data["policy"] = fx_policy_view(here, islands, trading)
         data["foreign_bonds"] = foreign_bond_rows(here, islands)
+        data["swaps"] = swap_view(world_view, here, islands)
     return data
 
 
@@ -912,6 +921,29 @@ def foreign_bond_rows(
             slot[k] += r[k]
     order = {ledger.GOV: 0, ledger.CB: 1, abroad.BANKS: 2}
     return sorted(merged.values(), key=lambda r: (order[r["holder"]], r["issuer"]))
+
+
+def swap_view(
+    world_view: WorldState, here: IslandState, islands: dict[int, dict[str, Any]]
+) -> dict[str, Any]:
+    """中央銀行どうしの融通（フェーズ3-3 の続き。hakoniwa_core/trade/swap.py）: 借りている相手と
+    貸している相手ごとの額（その通貨と、自国通貨に直した額）と金利（年率 %）、まだ借りられる額と、
+    決済通貨を発行した国なら、まだ新しく作って貸せる額。上限の割合は %。"""
+    config = get_game().config
+    view = swap.view(world_view, here, config)
+    for field, rows in (("lender", view["owed"]), ("borrower", view["lent"])):
+        for row in rows:
+            other = row[field]
+            row["name"] = _currency(islands, row["currency"])
+            row["symbol"] = islands.get(row["currency"], {}).get("symbol", "")
+            row["other_name"] = _name(islands, other)
+            # 発行した国が新しく作って貸した分（借りた側では貸し手が、貸した側では通貨が自国）
+            maker = other if field == "lender" else here.id
+            row["issued"] = row["currency"] == maker
+            row["rate"] = row["rate"] * 100 / BASIS
+    view["quota"] = config.get("fx.swap_quota") * 100
+    view["issuer_share"] = config.get("fx.swap_issuer_share") * 100
+    return view
 
 
 def holding_rows(here: IslandState, islands: dict[int, dict[str, Any]]) -> list[dict[str, Any]]:

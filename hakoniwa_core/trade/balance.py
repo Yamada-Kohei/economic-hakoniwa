@@ -11,14 +11,17 @@
 - サービス収支 services: 他国の船の運賃と港の使用料（shipping_freight・port_fee）。今の仕組みでは、
   運賃は買い手が自国の海運業に、使用料は積む国と下ろす国がそれぞれ自国の港に払うので、島をまたが
   ず 0 になります
-- 所得収支 income: 外国の国債の利子（bond_interest）
+- 所得収支 income: 外国の国債の利子（bond_interest）と、中央銀行どうしの融通の利子（swap_interest。
+  払えずに借りた額に足した分も）
 - 移転 transfers: お金の援助（aid）と物の援助
 
 金融収支（資産の増加 − 負債の増加）:
-- 資産 assets.fx: 外貨の持ち高の増減。assets.bonds: 外国の国債を買った・売った・償還された額
+- 資産 assets.fx: 外貨の持ち高の増減。assets.bonds: 外国の国債を買った・売った・償還された額。
+  assets.swaps: 中央銀行どうしの融通で貸した・返された額（swap.py）
 - 負債 liabilities.deposits: 外国の主体が持つ自国通貨（非居住者の預金）の増減。liabilities.bonds:
-  外国が持つ自国の国債の増減。liabilities.merchant: 海外の商人に払ったお金（島の外で消えるので、
-  負債が増えて消えたものとして入れ、経常収支と釣り合わせる）
+  外国が持つ自国の国債の増減。liabilities.swaps: 融通で借りた・返した額。liabilities.merchant:
+  海外の商人に払ったお金（島の外で消えるので、負債が増えて消えたものとして入れ、経常収支と釣り
+  合わせる）
 
 どの流れも経常収支の側と金融収支の側に同じ額を入れるので、経常収支 = 金融収支 になります（テストで
 確かめる）。非居住者の預金の増減と、外貨の持ち高の量の増減は、帳簿と外貨の持ち高の残高の増減とも
@@ -43,11 +46,17 @@ CURRENT = {
     "shipping_freight": "services",
     "port_fee": "services",
     "bond_interest": "income",
+    "swap_interest": "income",
     "aid": "transfers",
 }
 CURRENT_ITEMS = ("goods", "services", "income", "transfers")
-ASSET_ITEMS = ("assets.fx", "assets.bonds")
-LIABILITY_ITEMS = ("liabilities.deposits", "liabilities.bonds", "liabilities.merchant")
+ASSET_ITEMS = ("assets.fx", "assets.bonds", "assets.swaps")
+LIABILITY_ITEMS = (
+    "liabilities.deposits",
+    "liabilities.bonds",
+    "liabilities.swaps",
+    "liabilities.merchant",
+)
 
 
 def flows(island: IslandState) -> dict[str, int]:

@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import copy
+from functools import partial
 
 import pytest
 
@@ -35,6 +36,7 @@ from hakoniwa_core.trade import (
     ships,
     staff,
     started,
+    swap,
     to_market,
     traders,
     traders_of,
@@ -234,9 +236,9 @@ def test_rate_moves_toward_buyers_without_sellers(game, traded):
     assert price == before + (high - before) * depth // (depth + depth)
 
 
-def test_issuer_sells_a_currency_nobody_on_the_island_holds(game, traded):
-    """島の誰も持っていない通貨も、発行した島の中央銀行が前のレートより高い側で売る。受け取った
-    この島の通貨は、発行した島の中央銀行の外貨準備になる。"""
+def test_central_bank_borrows_a_currency_nobody_on_the_island_holds(game, traded):
+    """島の誰も持っていない通貨も、島の中央銀行が融通で借りて、前のレートより高い側で売る（3-3 の
+    続き。前は発行した島の中央銀行が売り、受け取ったこの島の通貨をため込んでいた）。"""
     world, island, currency, buyer = _pair(game, traded)
     issuer = world.islands[currency]
     # 島の主体の持ち高を発行した島の中央銀行へ戻し、誰も持っていない形にする
@@ -246,17 +248,25 @@ def test_issuer_sells_a_currency_nobody_on_the_island_holds(game, traded):
             back = (currency, ledger.CB)
             fxmoney.transfer(world, currency, (island.id, entity), back, have, "trade")
     reserve = fxmoney.holding(issuer, ledger.CB, island.id)
+    owed = swap.debt_in(island, currency)
     ledger.pay(island, ledger.CB, buyer, 10**9, "trade")
     width = fxrates.band_width(game.config)
     before = fxrates.rate(island, currency)
-    book = fxrates.Book(depth=10_000)
+    book = fxrates.Book(
+        depth=10_000,
+        borrow_room=swap.available(world, game.config, island.id, currency),
+        borrow=partial(swap.draw, world, game.config, island.id, currency),
+    )
     fxrates.add_buy(island, book, buyer, Payer(buyer), 5_000, before, width)
     price, volume, _, _ = fxrates.clear(world, island, currency, book, width)
     assert volume > 0
     assert before < price <= before + before * width // BASIS  # 高い側でだけ売る
     assert fxmoney.holding(island, buyer, currency) == volume
-    assert fxmoney.holding(issuer, ledger.CB, island.id) > reserve
-    assert fxmoney.reconcile(world) == []
+    assert swap.debt_in(island, currency) == owed + volume  # 売った分を借りた
+    assert fxmoney.holding(issuer, ledger.CB, island.id) == reserve  # 発行した国はため込まない
+    fxrates.ensure(world, issuer, island.id)  # 同じ組のレートは1つ（使い始めるときも逆数）
+    assert fxrates.rate(issuer, island.id) == fxrates.inverse(price)
+    assert fxmoney.reconcile(world) == [] and swap.reconcile(world) == []
 
 
 # --- 二国間契約 -----------------------------------------------------------------------------

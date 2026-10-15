@@ -8,7 +8,9 @@
    市場の段が売りに出す
 2. 海運業の船: 使えるターン数を過ぎた船を解体し、市場で買った船を船団に入れる
 3. 圏の作成・加盟・設定、契約の申し込み・受け入れ・やめる（命令の段の申し送りを、島の番号の順に）
-4. 為替の板寄せ（島の通貨と、その島が使う決済通貨の組ごと。hakoniwa_core/trade/fx.py）
+4. 為替の板寄せ（島の通貨と、その島が使う決済通貨の組ごと。hakoniwa_core/trade/fx.py）。中央銀行
+   の受け身の売りに足りない外貨は中央銀行どうしの融通で借り、全部の板の後に融通の利払いと返済を
+   する（hakoniwa_core/trade/swap.py）
 5. 二国間契約の履行（船と港の余裕は契約が先に使う）
 6. 圏×財の板寄せ（値幅 trade.bloc_band）。約定は近い島の組から割り当て、代金はその場で決済通貨の
    島の帳簿の上で払う。荷は買い手の島の船で運び、往復の間（片道の 2 倍）船はほかに使えない
@@ -17,7 +19,7 @@
    値段とレートを島に書く（``island.ext["trade"]["blocs"]``）
 
 お金: 圏の市場の代金は仕訳の種類 trade、契約は contract、運賃は shipping_freight、港の使用料は
-port_fee、為替は fx_exchange（hakoniwa_core/trade/money.py）。
+port_fee、為替は fx_exchange、融通は fx_swap と swap_interest（hakoniwa_core/trade/money.py）。
 
 GDP: 輸出は売り手の島の商社の売上（契約は国の倉庫の売り渡し）、輸入は買い手の島の商社の仕入れ（契約
 は国の倉庫の買い入れ）と同じ額を、貿易の部門の exports・imports に足します。運ぶ途中の荷は、買った
@@ -30,6 +32,7 @@ GDP: 輸出は売り手の島の商社の売上（契約は国の倉庫の売り
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any
 
 from hakoniwa_core import ledger, stock
@@ -57,6 +60,7 @@ from hakoniwa_core.trade import (
     shipping_of,
     ships,
     started,
+    swap,
     tradable,
     tradable_goods,
     traders,
@@ -524,7 +528,9 @@ class _Round:
                     depth=fxrates.depth(island, currency, self.config, scheduled),
                     peg_band=fxrates.peg_band(self.config),
                     reserve_room=room,
-                    issuer_room=abroad.reserve_room(self.world.islands[currency], self.config),
+                    # 受け身の売りに足りない分は、中央銀行どうしの融通で借りる（swap.py）
+                    borrow_room=swap.available(self.world, self.config, i, currency),
+                    borrow=partial(swap.draw, self.world, self.config, i, currency),
                 )
                 reference = fxrates.rate(island, currency)
                 for entity in sorted(payers):
@@ -548,6 +554,7 @@ class _Round:
                     continue
                 price, volume, _, _ = fxrates.clear(self.world, island, currency, book, width)
                 island.stats[f"fx.volume.{currency}"] = volume
+        swap.service(self.world, self.config)  # 融通の利払いと返済
 
     def _capital_needs(
         self,
@@ -1235,6 +1242,8 @@ class _Round:
             stats.setdefault(f"fx.volume.{key}", 0)
             stats.setdefault(f"fx.dealt.{key}", 0)
         stats["fx.holdings"] = fxmoney.total_value(island, fxrates.rates(island))
+        stats["fx.swap.borrowed"] = swap.debt_value(island)  # 融通で借りている額（自国通貨）
+        stats["fx.swap.lent"] = swap.claims_value(island, foreign_only=False)
         stats.setdefault("trade.merchant", 0)
         abroad.keep_rates(island)  # 外国の国債の求める利回りに使う値下がりの率（フェーズ3-3）
 
@@ -1286,8 +1295,9 @@ class TradeCheck(WorldStage):
 
 
 def check(world: WorldState) -> list[str]:
-    """世界の確かめ: 外貨の持ち高と非居住者の預金、運ぶ途中の荷（積んだ量 − 下ろした量）。"""
-    problems = fxmoney.reconcile(world) + abroad.reconcile(world)
+    """世界の確かめ: 外貨の持ち高と非居住者の預金、外国の国債、融通の貸し借り、運ぶ途中の荷（積んだ
+    量 − 下ろした量）。"""
+    problems = fxmoney.reconcile(world) + abroad.reconcile(world) + swap.reconcile(world)
     state = world.ext.get("trade")
     if not state:
         return problems
