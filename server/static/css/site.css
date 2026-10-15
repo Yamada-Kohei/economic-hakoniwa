@@ -111,6 +111,12 @@ table.goods td:nth-child(n+2), table.goods th:nth-child(n+2) { text-align: right
 .post-body { overflow-wrap: anywhere; }
 textarea { width: 100%; }
 
+/* 手紙 */
+table.letters { border-collapse: collapse; width: 100%; }
+table.letters th, table.letters td { text-align: left; padding: 3px 6px; border-bottom: 1px solid #eee; vertical-align: top; }
+table.letters tr.unread td { font-weight: bold; }
+.badge { display: inline-block; padding: 0 6px; border-radius: 10px; background: #c62828; color: #fff; font-size: 0.8em; }
+
 /* 手引き */
 .rules dt { font-weight: bold; margin-top: 8px; }
 .rules dd { margin: 2px 0 0 1em; }

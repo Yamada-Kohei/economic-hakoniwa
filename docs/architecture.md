@@ -57,6 +57,7 @@ Django（server/）……保存・アカウント・命令の受付・ターン�
 | `turns` | ターン更新、バックアップと巻き戻し、ターンログ |
 | `web` | 画面と JSON API。表示の文面づくりは `display.py`（ルールの計算はしない） |
 | `board` | 掲示板（読むのは誰でも、書くのは登録した人だけ。管理画面で書き込みを非表示にできる） |
+| `letters` | 国どうしの手紙（非公開。読めるのは差出人と宛先の島の持ち主だけ。送るとすぐ届く。1 つの島が 24 時間に送れる数は設定 `HAKONIWA_LETTERS_PER_DAY`。管理画面で非表示にできる） |
 
 DB の表は、マス（`Tile`）・施設（`Facility`）・在庫（`Stock`、国の倉庫は施設なし。作られたターンごとの行）・
 統計（`StatRecord`、ターンごとの人口・生産量・GDP・物価など。島・指標・ターンの索引で、指標ごとの系列を引く）です。島と施設の経済の状態と政策は、それぞれの
@@ -88,6 +89,7 @@ DB の表は、マス（`Tile`）・施設（`Facility`）・在庫（`Stock`、
 | `/islands/<id>/log/` | ターンログ（ターンごと） |
 | `/world/` | 世界マップ（貿易圏の色の縁取り・港・運ぶ途中の荷のある航路を重ねる。`js/world/trade.js`） |
 | `/board/` | 掲示板 |
+| `/letters/` | 手紙: 受信箱・送った手紙（`sent/`）・1通（`<番号>/`）・書く（`new/`。`?to=島の番号`、返事は `?re=手紙の番号`）。島を持つ人だけ |
 | `/help/` | 手引き（施設と命令の表は定義データから作る） |
 
 画面の JavaScript は `server/static/js/` にあり、ビルドなしの ES モジュールです。
@@ -120,5 +122,11 @@ DB の表は、マス（`Tile`）・施設（`Facility`）・在庫（`Stock`、
 | `POST /api/founding/random-shape` | ランダムな島の形 |
 | `POST /api/founding/terrain` | 描いた形から配った地形、形の問題、首都の候補 |
 | `POST /api/founding` | 建国する（1人1島） |
+| `GET /api/letters` | 自分の島の手紙の一覧（`?box=inbox`・`?box=sent` と `&page=`。新しい順）と未読の数。ログインして島を持つ人だけ（ほかは 403） |
+| `POST /api/letters` | 手紙を送る（`{"to": 島の番号, "subject", "body"}`）。自分宛てと存在しない島は 400、送りすぎは 429 |
+| `GET /api/letters/<番号>` | 手紙1通（本文つき）。差出人と宛先の島の持ち主だけ（ほかは 404）。宛先の持ち主が読むと既読になる |
+| `GET /api/board/threads` | 掲示板のスレッドの一覧（`?page=`）。`POST` で立てる（`{"title", "body"}`。ログインした人だけ） |
+| `GET /api/board/threads/<番号>` | スレッドの書き込み（`?page=`、`page=last` で最後のページ）。書いた人の名前と、その人の島の番号と国名つき |
+| `POST /api/board/threads/<番号>/posts` | スレッドに書き込む（`{"body"}`。ログインした人だけ） |
 
 書き込み（PUT・POST）には Django の CSRF の印が要ります。

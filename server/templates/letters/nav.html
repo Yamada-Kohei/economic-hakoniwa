@@ -1,0 +1,5 @@
+{% load i18n %}<nav class="island-nav" aria-label="{% translate '手紙の画面' %}">
+  <a href="{% url 'letters' %}"{% if box == "inbox" %} aria-current="page"{% endif %}>{% translate "受信箱" %}{% if letters_unread %} ({{ letters_unread }}){% endif %}</a>
+  <a href="{% url 'letters_sent' %}"{% if box == "sent" %} aria-current="page"{% endif %}>{% translate "送った手紙" %}</a>
+  <a href="{% url 'letter_new' %}"{% if box == "new" %} aria-current="page"{% endif %}>{% translate "手紙を書く" %}</a>
+</nav>

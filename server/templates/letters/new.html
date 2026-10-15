@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% load i18n %}
+{% block title %}{% translate "手紙を書く" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+<h1>{% translate "手紙を書く" %} <span class="page-title">{{ island.name }}</span></h1>
+{% include "letters/nav.html" with box="new" %}
+<form method="post" class="panel">{% csrf_token %}{{ form.as_p }}<button type="submit" class="primary">{% translate "送る" %}</button></form>
+<p class="hint">{% blocktranslate %}送るとすぐに相手の国に届きます（ターンを待ちません）。1つの島から送れるのは 24 時間に {{ limit }} 通までです。{% endblocktranslate %}</p>
+{% endblock %}

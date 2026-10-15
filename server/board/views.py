@@ -5,11 +5,13 @@ from __future__ import annotations
 from django import forms
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
-from django.utils import timezone
 
-from server.board.models import Post, Thread
+from server.board.models import Thread
+from server.board.services import add_post, start_thread
+
+THREADS_PER_PAGE = 30
+POSTS_PER_PAGE = 50
 
 
 class ThreadForm(forms.Form):
@@ -23,7 +25,7 @@ class PostForm(forms.Form):
 
 def thread_list(request):
     threads = Thread.objects.filter(hidden=False).select_related("author")
-    page = Paginator(threads, 30).get_page(request.GET.get("page"))
+    page = Paginator(threads, THREADS_PER_PAGE).get_page(request.GET.get("page"))
     form = ThreadForm() if request.user.is_authenticated else None
     return render(request, "board/list.html", {"page": page, "form": form})
 
@@ -32,9 +34,7 @@ def thread_list(request):
 def new_thread(request):
     form = ThreadForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
-        with transaction.atomic():
-            thread = Thread.objects.create(title=form.cleaned_data["title"], author=request.user)
-            Post.objects.create(thread=thread, author=request.user, body=form.cleaned_data["body"])
+        thread = start_thread(request.user, form.cleaned_data["title"], form.cleaned_data["body"])
         return redirect("board_thread", thread_id=thread.id)
     return render(request, "board/new.html", {"form": form})
 
@@ -46,9 +46,8 @@ def thread_page(request, thread_id: int):
         if form is None:
             return redirect("login")
         if form.is_valid():
-            Post.objects.create(thread=thread, author=request.user, body=form.cleaned_data["body"])
-            Thread.objects.filter(pk=thread.pk).update(updated_at=timezone.now())
+            add_post(thread, request.user, form.cleaned_data["body"])
             return redirect("board_thread", thread_id=thread.id)
     posts = thread.posts.filter(hidden=False).select_related("author")
-    page = Paginator(posts, 50).get_page(request.GET.get("page"))
+    page = Paginator(posts, POSTS_PER_PAGE).get_page(request.GET.get("page"))
     return render(request, "board/thread.html", {"thread": thread, "page": page, "form": form})

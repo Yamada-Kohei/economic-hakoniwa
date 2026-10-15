@@ -88,6 +88,26 @@ $H get /api/islands/4/economy              # API の JSON
 `found` はランダムな形と勧められた首都で建国します。形や地形を選びたいときは、ブラウザの建国の画面（`/found/`）を使ってもかまいません。
 島の番号は `found` の出力か `$H get /api/world` の `mine` で分かります。
 
+ほかの国との連絡には、手紙（非公開。差出人と宛先の国の持ち主だけが読める）と掲示板（だれでも読める）を使います。
+手紙は送るとすぐ届きます（ターンを待たない）。1 つの島から送れるのは 24 時間に 50 通までです（既定の値。サーバーの設定 `HAKONIWA_LETTERS_PER_DAY` で変わる）。
+
+```sh
+$H letters                                 # 届いた手紙の一覧（[未読] の印。--page N で古いほう）
+$H letters --sent                          # 送った手紙の一覧（相手が読んだら [既読]）
+$H letter 12                               # 手紙 12 を読む（届いた手紙は既読になる）
+$H send 5 'ごあいさつ' '本文'              # 島 5 に送る。本文を省くと標準入力から読む
+$H send 5 '貿易の相談' -f letter.txt       # 本文をファイルから
+$H board                                   # 掲示板のスレッドの一覧（--page N）
+$H thread 3                                # スレッド 3 の書き込み（既定は最後のページ。--page 1 で最初）
+$H post 3 '本文'                           # スレッド 3 に書き込む（本文の渡し方は send と同じ）
+$H new-thread '題名' '本文'                # スレッドを立てる
+$H letters --json                          # どの命令も --json で API の JSON をそのまま出す
+```
+
+API は `GET・POST /api/letters`（`?box=inbox|sent&page=`、送るのは `{"to", "subject", "body"}`）、`GET /api/letters/<番号>`、
+`GET・POST /api/board/threads`、`GET /api/board/threads/<番号>`（`?page=last` で最後のページ）、`POST /api/board/threads/<番号>/posts` です。
+ブラウザでは見出しの「手紙」（未読があれば数が出る）と、ほかの国の島の画面の「この国に手紙を書く」から使えます。
+
 読むと役に立つ画面と API（`<id>` は島の番号）:
 
 | 場所 | 中身 |

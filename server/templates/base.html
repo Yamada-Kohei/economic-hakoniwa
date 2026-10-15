@@ -12,6 +12,7 @@
     <nav>
       {% if own_island %}
         <a href="{% url 'island' own_island.id %}">{% translate "自国" %}</a>
+        <a href="{% url 'letters' %}">{% translate "手紙" %}{% if letters_unread %} <span class="badge">{% blocktranslate with n=letters_unread %}未読 {{ n }}{% endblocktranslate %}</span>{% endif %}</a>
       {% else %}
         <a href="{% url 'found' %}">{% translate "建国" %}</a>
       {% endif %}
