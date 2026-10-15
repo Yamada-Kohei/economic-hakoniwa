@@ -14,7 +14,8 @@ from typing import Any
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.state import Facility
+from hakoniwa_core.market import auction
+from hakoniwa_core.state import Facility, IslandState
 from hakoniwa_core.units import QUANTITY_SCALE, money_of, part, round_money, scale_price
 
 Prices = Mapping[str, int]
@@ -208,3 +209,41 @@ def unit_floor(
     else:
         share = cost
     return round_money(share * QUANTITY_SCALE / outputs[good])
+
+
+def usual_price(island: IslandState, good: str, turns: int) -> int:
+    """家計が見る「いつもの値段」: 直近 turns ターンの値段の平均（記録がなければ今の値段）。"""
+    history = island.economy.price_history.get(good, [])[-turns:]
+    if not history:
+        return island.economy.prices.get(good, 1)
+    return max(1, round_money(sum(history) / len(history)))
+
+
+def material_limit(island: IslandState, config: GameConfig, good: str, width: int) -> int:
+    """工事とインフラの資材の買いの指値: 値幅の上端と、いつもの値段の一番上の段
+    （household.consumer_goods_tiers）の安い方（フェーズ3-2。値幅の上端で買い続けると、品薄の
+    島で機械と鋼鉄の値段が初めの数十〜数百倍まで上がった。高ければ工事が待つ）。"""
+    settings = config.get("household")
+    usual = usual_price(island, good, settings["usual_price_turns"])
+    _, high = auction.band(island.economy.prices.get(good, 1), width)
+    return min(high, scale_price(usual, max(settings["consumer_goods_tiers"])))
+
+
+def add_missing_prices(island: IslandState, defs: Defs, config: GameConfig) -> list[str]:
+    """定義にあって島の値段のない財（前のフェーズから続く島の、新しい品目）に値段を置き、置いた財を
+    返す。値段は島の初めの値段に、今の物価指数の倍率を掛けたもの（フェーズ3-2。値段がないと 1 と
+    見て、値幅が 1 のまま動かず、作っても売っても値段が 1 のままだった）。"""
+    from hakoniwa_core.economy.stats import BASE_CPI
+
+    prices = island.economy.prices
+    missing = sorted(set(defs.goods) - set(prices))
+    if not missing:
+        return []
+    base = initial_prices(defs, config, island.resources)
+    history = island.economy.cpi_history
+    level = history[-1] / BASE_CPI if history and history[-1] > 0 else 1.0
+    for good in missing:
+        price = max(1, round_money(base.get(good, 1) * level))
+        prices[good] = price
+        island.economy.price_history[good] = [price]
+    return missing

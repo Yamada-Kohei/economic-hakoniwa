@@ -15,7 +15,7 @@
    建てる（工事の資材の使う量は作る量と使う量の流れに数えないため。フェーズ3-2）
 5. 消費財（衣料・消費財・嗜好品）の生産が住民1人あたりの目安（household.targets）に届かないか、
    前のターンの市場で売りに出た量が買いたい量に届かなければ、それを作る施設（加工食品・肉・自動車・
-   燃料も、売りに出た量が買いたい量に届かなければ作る施設）
+   燃料も、売りに出た量が買いたい量に届かなければ作る施設）。必需品、ぜいたく品、自動車、燃料の順
 6. 島の鉱業資源のうち、島のどの施設も使っていない物（ボーキサイト・原油など）は、それを使う施設を
    1つ建てる（輸出向け。フェーズ3-2。採る鉱山は、4 で足りない投入財として後から建つ）
 7. 入っている貿易圏の前のターンの市場で、買いたい量の一部しか買えなかった物を、島の中だけで作れる
@@ -694,8 +694,9 @@ def _candidates(
             and record.price > initial.get(good, 0) * PRICE_HIGH
         ):
             yield from (c for c in _producers(defs, config, island, good) if spare(*c))
-    for good, gdef in sorted(defs.goods.items()):
-        if gdef.get("consumer") and good != power:
+    traded = _traded(island, config)
+    for good in _consumer_order(defs, config):
+        if good != power:
             record = markets.get(good)
             short = record is not None and record.supply < record.demand * MARKET_SHORT
             # 1人あたりの目安（衣料・消費財・嗜好品。household.targets。フェーズ3-2）
@@ -705,7 +706,16 @@ def _candidates(
                 # 島でまだ作っていない物は、投入財に余裕がなくても1つ目を建てる（投入財の工場は、
                 # 足りない投入財として後から候補に挙がる。フェーズ3-2 の自動車と衣料）
                 first = good not in making
-                yield from (c for c in _producers(defs, config, island, good) if first or spare(*c))
+                # 自動車は、投入財（鋼鉄など）を島で作っているか貿易で手に入る島だけ（鋼鉄のない島に
+                # 建てると、工事の鋼鉄と機械を作る施設まで国が建て始め、公共事業費が足りずにどの
+                # 工事も止まった。フェーズ3-2）
+                durable = defs.goods[good].get("need") == needs.DURABLE
+                yield from (
+                    c
+                    for c in _producers(defs, config, island, good)
+                    if (first or spare(*c))
+                    and (not durable or _inputs_at_hand(defs, config, *c, making | traded))
+                )
 
     # 人手の足りない施設が多いか、失業者が少ないうちは増やさない
     # （住宅が育って人が移ってくるのを待つ）
@@ -732,6 +742,28 @@ def _candidates(
             if _feasible(defs, island, kind, rname) and spare(kind, rname):
                 yield (kind, rname)
                 break
+
+
+def _inputs_at_hand(
+    defs: Defs, config: GameConfig, kind: str, rname: str, goods: set[str] | frozenset[str]
+) -> bool:
+    """作り方の投入財（電力を除く）が、どれも goods（島で作っている物と、貿易で手に入る物）に
+    あるか。"""
+    power = config.get("power.good")
+    inputs = defs.facilities[kind]["recipes"][rname]["inputs"]
+    return all(g in goods for g in inputs if g != power)
+
+
+def _consumer_order(defs: Defs, config: GameConfig) -> list[str]:
+    """家計の買う物を、作る施設を建てたい順に: 必需品、ぜいたく品（household.luxury_weights の重い
+    順）、自動車、ほか（燃料）。名前の順だと自動車工場が消費財工場より先に建ち、鋼鉄と機械を
+    待つ高い工事に公共事業費が回って、消費財が足りないままになった（フェーズ3-2）。"""
+    rank = {needs.NECESSITY: 0, needs.LUXURY: 1, needs.DURABLE: 2}
+    goods = [g for g, d in defs.goods.items() if d.get("consumer")]
+    return sorted(
+        goods,
+        key=lambda g: (rank.get(defs.goods[g].get("need"), 3), -needs.luxury_weight(config, g), g),
+    )
 
 
 def _education(island: IslandState, defs: Defs, config: GameConfig) -> Iterator[tuple[str, str]]:

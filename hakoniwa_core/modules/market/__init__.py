@@ -62,7 +62,13 @@ from hakoniwa_core.economy import (
 )
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.households import consumption
-from hakoniwa_core.economy.prices import input_limit, unit_floor, variable_profit
+from hakoniwa_core.economy.prices import (
+    input_limit,
+    material_limit,
+    unit_floor,
+    usual_price,
+    variable_profit,
+)
 from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
@@ -147,14 +153,6 @@ def seller_limit(ask: int, freight: int, high: int) -> int:
     よりよい。値段は1ターンに値幅ずつ費用まで上がっていく）。
     """
     return min(high, -(-ask * BASIS // max(1, BASIS - freight)))
-
-
-def usual_price(island: IslandState, good: str, turns: int) -> int:
-    """家計が見る「いつもの値段」: 直近 turns ターンの値段の平均（記録がなければ今の値段）。"""
-    history = island.economy.price_history.get(good, [])[-turns:]
-    if not history:
-        return island.economy.prices.get(good, 1)
-    return max(1, round_money(sum(history) / len(history)))
 
 
 def consumer_tiers(
@@ -448,8 +446,8 @@ class SiteFunds:
             if self.rates is None:
                 sites = [s for s in self.island.facilities if not s.built]
                 self.rates = freight_rates.rates_of(self.island, defs, config, sites)
-            _, high = auction.band(self.island.economy.prices.get(good, 1), width)
-            amount += gross_cost(high, buy, self.rates.get(f.id, 0), 0)
+            limit = material_limit(self.island, config, good, width)
+            amount += gross_cost(limit, buy, self.rates.get(f.id, 0), 0)
         return amount
 
 
@@ -760,8 +758,7 @@ class Market(IslandStage):
                     wanted[good] = wanted.get(good, 0) + want
                 want = self._room(island, offered, claimed, payer, good, want)
                 if want > 0:
-                    _, high = auction.band(island.economy.prices.get(good, 1), width)
-                    plan[good] = (want, high)
+                    plan[good] = (want, material_limit(island, config, good, width))
             priority = fac.priority_of(defs, config, f)
             afforded = self._afford(island, payer, plan, rate, 0)
             if any(afforded.get(g, (0, 0))[0] < q for g, (q, _) in plan.items()):
@@ -819,8 +816,7 @@ class Market(IslandStage):
                 wanted[good] = wanted.get(good, 0) + qty
             qty = self._room(island, offered, claimed, payer, good, qty)
             if qty > 0:
-                _, high = auction.band(island.economy.prices.get(good, 1), width)
-                plan[good] = (qty, high)
+                plan[good] = (qty, material_limit(island, ctx.config, good, width))
         key = "infrastructure.upkeep_priority" if upkeep else "infrastructure.build_priority"
         priority = ctx.config.get(key)
         for good, (qty, limit) in sorted(self._afford(island, payer, plan, rate, 0).items()):

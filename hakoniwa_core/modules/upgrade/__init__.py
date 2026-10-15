@@ -9,7 +9,8 @@
 
 フェーズ3-2 からは、自然条件のない島に気候帯を置き（hakoniwa_core/nature.py の migrate）、気候の
 倍率と幸福度の重み（happiness_phase3_1 から）を 12 ターンかけて移します。家計の自動車は 0 台から
-始めます。
+始めます。値段のない財（新しい品目）には、初めの値段に今の物価指数の倍率を掛けた値段を置きます
+（economy/prices.py の add_missing_prices。定義に財を足したときも同じ）。
 
 移し替えをターンの中で行うのは、サーバーを通さずにコアだけで世界を回すとき（一括シミュレーションや
 テスト）にも同じに動くようにするためです。
@@ -19,6 +20,7 @@ from __future__ import annotations
 
 from hakoniwa_core import nature
 from hakoniwa_core.economy import groundwork
+from hakoniwa_core.economy.prices import add_missing_prices
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import IslandState
 from hakoniwa_core.trade import setup as trade_setup
@@ -38,6 +40,7 @@ class Upgrade(IslandStage):
             if economy.happiness_blend <= 0:
                 economy.happiness_blend = ctx.config.get("population.blend_turns")
                 economy.ext["happiness_from"] = "happiness_phase2"
+        add_missing_prices(island, ctx.defs, ctx.config)
         if not trade_started(island):
             trade_setup.prepare(island, ctx.defs, ctx.config, ctx.turn)
         if economy.ext.get("nature", 0) < nature.VERSION:

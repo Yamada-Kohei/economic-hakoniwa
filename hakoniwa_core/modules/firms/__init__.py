@@ -268,12 +268,17 @@ class EntryExit(IslandStage):
         """施設 f が選べる作り方ごとの変動費の利益（今の作り方を含む）。選べるのは、島で使える
         作り方（鉱業資源と気候）のうち、原料がどれも島で手に入り、今より多く使う原料は直近に
         売りに出た量が買いたい量より増える分以上多く、産出物に買い手のいる（直近に買いたい量が
-        あった）作り方（今と同じ原料を倍使う作り方に替えて、その原料が品切れになったため）。"""
+        あった）作り方（今と同じ原料を倍使う作り方に替えて、その原料が品切れになったため）。
+        今作っていない産出物は、直近の買いたい量が売りに出た量を、新しい作り方の全力の産出の
+        firms.entry_gap 倍以上上回っていなければ選ばない（綿の値段が高いターンに民営の農場が
+        そろって綿に替え、綿が余って値段が初めの 0.1 倍まで下がった）。"""
         defs, config = ctx.defs, ctx.config
         power = config.get("power.good")
+        gap = config.get("firms.entry_gap")
         finance = island.economy.finance
         demand = finance.get("demand", {})
         now = fac.recipe_of(defs, f)["inputs"]
+        made = fac.recipe_of(defs, f)["outputs"]
         wage = f.economy.get("wage", 0)
         out = {}
         for name, recipe in sorted(defs.facilities[f.kind]["recipes"].items()):
@@ -285,6 +290,11 @@ class EntryExit(IslandStage):
                     _spare(finance, g) < qty - now.get(g, 0)
                     for g, qty in recipe["inputs"].items()
                     if g != power and qty > now.get(g, 0)
+                )
+                or any(
+                    -_spare(finance, g) < qty * gap
+                    for g, qty in recipe["outputs"].items()
+                    if g != power and g not in made
                 )
             ):
                 continue

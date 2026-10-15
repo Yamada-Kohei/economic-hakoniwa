@@ -14,7 +14,7 @@ from hakoniwa_core import ledger, stock
 from hakoniwa_core.allocation import by_priority, proportional
 from hakoniwa_core.economy import BONDS, GENERAL, Payer, debt, freight, funds, household
 from hakoniwa_core.economy.households import set_workers
-from hakoniwa_core.economy.prices import initial_prices, variable_profit
+from hakoniwa_core.economy.prices import initial_prices, material_limit, variable_profit
 from hakoniwa_core.economy.start import init_facility, start_economy
 from hakoniwa_core.game import load_game
 from hakoniwa_core.log import format_log
@@ -560,9 +560,10 @@ def test_sites_are_funded_by_priority_and_show_why_they_wait(game):
     urgent = add(island, "food_factory", 7, 6, built=False, priority=9)
     with_economy(game, island)
     without_roads(island)  # 道路の維持の資材が、先に公共事業費を使わないように
-    # 国庫には、優先度の高い工事の1ターン分の建材を、指値（値幅の上端）と運賃で買えるだけ残す
+    # 国庫には、優先度の高い工事の1ターン分の建材を、指値（値幅の上端といつもの値段の段の安い方）と
+    # 運賃で買えるだけ残す
     step = fac.step_materials(game.defs, urgent)["building_materials"]
-    limit = auction.band(island.economy.prices["building_materials"], 1000)[1]
+    limit = material_limit(island, game.config, "building_materials", 1000)
     rate = freight.compute(island, game.defs, game.config)[0][urgent.id]
     gov = ledger.money(island, ledger.GOV)
     ledger.pay(
@@ -598,7 +599,7 @@ def test_urgent_site_materials_come_before_other_sites_wages(game):
     seller.economy["sales"] = {"building_materials": [20_000, 0, 0]}  # 前のターンに売りに出た量
     # 国庫には、急ぎの工事の1ターン分の建材の代金と、もう一方の工事の作業員の半分の賃金だけ残す
     step = fac.step_materials(game.defs, urgent)["building_materials"]
-    limit = auction.band(island.economy.prices["building_materials"], 1000)[1]
+    limit = material_limit(island, game.config, "building_materials", 1000)
     rate = freight.compute(island, game.defs, game.config)[0][urgent.id]
     labor = game.defs.facilities["food_factory"]["construction"]["labor"]
     wage = island.economy.average_wage or game.config.get("labor.initial_wage")
