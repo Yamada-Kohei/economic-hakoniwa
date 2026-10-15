@@ -9,6 +9,9 @@
 - currency: 決済通貨（加盟国のどれかの通貨。通貨の番号は島の番号）
 - prices: 財ごとの圏の値段（決済通貨）。history: 財ごとの直近 trade.history_turns ターンの値段
 - volume・demand・supply: 財ごとの前のターンの約定した量・買い・売り
+- no_tariff: 圏内の関税をなくす決まり（フェーズ3-3。true なら圏の市場で買った荷に関税がかからない）
+- fixed: 財ごとの圏内の固定価格（フェーズ3-3。決済通貨。値幅 0 で板寄せし、余った側を量に比例して
+  分ける）
 
 命令（作る・入る・抜ける・設定・代表を譲る・引き継ぐ）は、命令の段で島の申し送りに積み、貿易の段の
 初めに島の番号の順に決めます（requests）。決められなかったわけはその島のログに書きます。決済通貨・
@@ -177,6 +180,8 @@ def change_currency(world: WorldState, bloc: dict[str, Any], currency: int) -> N
     fxrates.ensure(world, holder, old)
     e = fxrates.rate(holder, old)  # 古い通貨 1 単位が新しい通貨でいくらか
     bloc["prices"] = {g: max(1, p * e // BASIS) for g, p in bloc["prices"].items()}
+    if bloc.get("fixed"):
+        bloc["fixed"] = {g: max(1, p * e // BASIS) for g, p in bloc["fixed"].items()}
     bloc["history"] = {}
     bloc["currency"] = currency
     for member in bloc["members"]:
@@ -195,6 +200,43 @@ def settings(
         bloc["open"] = open_
         _tell(world, bloc, "bloc_opened" if open_ else "bloc_closed", {})
     return None
+
+
+def no_tariff(bloc: dict[str, Any]) -> bool:
+    """圏内の関税をなくす決まりがあるか（フェーズ3-3）。"""
+    return bool(bloc.get("no_tariff"))
+
+
+def fixed_price(bloc: dict[str, Any], good: str) -> int | None:
+    """財の圏内の固定価格（決済通貨。決めていなければ None）。"""
+    return bloc.get("fixed", {}).get(good)
+
+
+def set_no_tariff(world: WorldState, bloc: dict[str, Any], value: bool) -> None:
+    if bool(bloc.get("no_tariff")) == value:
+        return
+    if value:
+        bloc["no_tariff"] = True
+    else:
+        bloc.pop("no_tariff", None)
+    _tell(world, bloc, "bloc_no_tariff" if value else "bloc_tariff_allowed", {})
+
+
+def set_fixed(world: WorldState, bloc: dict[str, Any], good: str, price: int) -> None:
+    """財の圏内の固定価格を決める（price 0 でやめる）。"""
+    fixed = bloc.setdefault("fixed", {})
+    if price > 0:
+        fixed[good] = int(price)
+        args = {
+            "good": good,
+            "price": int(price),
+            "currency": currency_label(world, bloc["currency"]),
+        }
+        _tell(world, bloc, "bloc_price_fixed", args)
+    elif fixed.pop(good, None) is not None:
+        _tell(world, bloc, "bloc_price_unfixed", {"good": good})
+    if not fixed:
+        bloc.pop("fixed", None)
 
 
 def transfer(world: WorldState, bloc: dict[str, Any], to: int) -> str | None:
@@ -257,6 +299,9 @@ def view_of(world: WorldState, bloc: dict[str, Any], island_id: int) -> dict[str
         "short": sorted(
             g for g, q in bloc.get("demand", {}).items() if q > bloc.get("volume", {}).get(g, 0)
         ),
+        # 圏内の関税をなくす決まりと、固定価格（フェーズ3-3。商社の見込みと画面に使う）
+        "no_tariff": no_tariff(bloc),
+        "fixed": dict(bloc.get("fixed", {})),
     }
 
 

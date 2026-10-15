@@ -32,6 +32,7 @@ from hakoniwa_core.modules.labor import engineer_unemployment, has_own_wage
 from hakoniwa_core.modules.population import subsistence_persons
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import IslandState, LogEntry
+from hakoniwa_core.trade import balance
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE, from_milli, to_basis
 
@@ -138,6 +139,7 @@ class Records(IslandStage):
         stats["trade.exports"] = trade.get("exports", 0)
         stats["trade.imports"] = trade.get("imports", 0)
         stats["trade.balance"] = trade.get("exports", 0) - trade.get("imports", 0)
+        balance.write_stats(island)  # 経常収支と金融収支（フェーズ3-3）
         stats.update(_finances(island))
         stats.update(_banking(island, ctx))
         economy.finance["unemployment"] = stats["unemployment"]

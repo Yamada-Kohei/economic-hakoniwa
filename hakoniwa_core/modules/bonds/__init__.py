@@ -48,8 +48,9 @@ from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
 from hakoniwa_core.modules.banking import is_planned
-from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
-from hakoniwa_core.state import Bond, IslandState, LogEntry
+from hakoniwa_core.registry import OrderFailed, OrderHandler, Registry, WorldStage
+from hakoniwa_core.state import Bond, IslandState, LogEntry, WorldState
+from hakoniwa_core.trade import abroad, currency_label
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, part, to_basis
 
@@ -119,8 +120,44 @@ def _add_flow(island: IslandState, holder: str, amount: int) -> None:
     table[holder] = table.get(holder, 0) + amount
 
 
-class Bonds(IslandStage):
+class Bonds(WorldStage):
+    """国債の段。フェーズ3-3 から世界の段で、島ごとの処理（run_island）を島の番号の順に行い、外国の
+    持ち手と買い手（hakoniwa_core/trade/abroad.py）をその島の通貨で加える。外国の持ち手の注文は段の
+    初めに全部の島の分を決め、ある島の処理がほかの島の処理の読む値を変えないので、島の順番によらない。
+
+    破綻の段（島ごとの段）が救済のために呼ぶ top_up・raise_funds では、外国の買い手は加わらない。
+    """
+
     name = "bonds"
+
+    def __init__(self) -> None:
+        self.world: WorldState | None = None
+        self.bids: dict[str, abroad.Bid] = {}  # 外国の持ち手の名前 → この島への注文
+
+    def collect(self, island: IslandState, ctx: StageContext) -> Any:
+        return None
+
+    def resolve(self, requests: dict[int, Any], ctx: StageContext) -> dict[int, Any]:
+        assert ctx.before is not None
+        world = ctx.before
+        foreign = abroad.orders(world, ctx)
+        self.world = world
+        try:
+            for island_id in world.island_ids():
+                self.bids = {bid.name: bid for bid in foreign.get(island_id, [])}
+                self.run_island(world.islands[island_id], ctx)
+        finally:
+            self.world, self.bids = None, {}
+        abroad.revalue(world, ctx.config, ctx.turn)
+        _log_foreign(world, foreign)
+        return {}
+
+    def apply(self, island: IslandState, result: Any, ctx: StageContext) -> None:
+        return None
+
+    def _world(self) -> WorldState:
+        assert self.world is not None, "外国の持ち手の処理は国債の段の中だけ"
+        return self.world
 
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
         if not island.has_economy:
@@ -201,17 +238,23 @@ class Bonds(IslandStage):
                 unpaid.append(bond)
                 continue
             for holder, amount in sorted(interest.items()):
+                if abroad.parse_holder(holder) is not None:  # 外国の持ち手（フェーズ3-3）
+                    abroad.pay_interest(self._world(), island, payer, holder, amount)
+                    continue
                 funds.pay(island, payer, holder, amount, "bond_interest")
                 _book_interest(island, holder, amount)
             if not mature:
                 continue
             item = ledger.bond_item(bond.id)
             for holder, face in sorted(debt.holders(island, bond).items()):
+                redeemed[bond.term] = redeemed.get(bond.term, 0) + face
+                if abroad.parse_holder(holder) is not None:
+                    abroad.redeem(self._world(), island, payer, holder, bond.id, face)
+                    continue
                 funds.pay(island, payer, holder, face, "bond_redemption")
                 debt.released(island, holder, bond.id, face, face, face)
                 ledger.cancel(island, holder, item, ledger.GOV, face, "bond_redemption")
                 _add_flow(island, holder, -face)
-                redeemed[bond.term] = redeemed.get(bond.term, 0) + face
         for turns, amount in sorted(redeemed.items()):
             term = _term_name(ctx.defs, turns)
             args: dict[str, Any] = {"amount": amount}
@@ -222,9 +265,11 @@ class Bonds(IslandStage):
             self._default(island, ctx, unpaid, "bond_default")
         island.bonds = [b for b in island.bonds if debt.outstanding(island, b) > 0]
 
-    @staticmethod
-    def _default(island: IslandState, ctx: StageContext, bonds: Sequence[Bond], kind: str) -> None:
-        """銘柄を不履行にする: 額面を切り下げ（持ち手の損）、残りを同じ期間で出し直す。
+    def _default(
+        self, island: IslandState, ctx: StageContext, bonds: Sequence[Bond], kind: str
+    ) -> None:
+        """銘柄を不履行にする: 額面を切り下げ（持ち手の損。外国の持ち手も同じ）、残りを同じ期間で
+        出し直す。
 
         罰として、銀行はしばらく国債を買わなくなり（market_closed）、損をした銀行は新しい融資を
         止める（economy["crunch_until"]）。どちらもログで知らせる。
@@ -237,7 +282,10 @@ class Bonds(IslandStage):
             item = ledger.bond_item(bond.id)
             for holder, face in sorted(debt.holders(island, bond).items()):
                 cut = part(face, haircut)
-                debt.released(island, holder, bond.id, cut, face, 0)
+                if abroad.parse_holder(holder) is not None:
+                    abroad.write_down(self._world(), island, holder, cut)
+                else:
+                    debt.released(island, holder, bond.id, cut, face, 0)
                 ledger.cancel(island, holder, item, ledger.GOV, cut, "bond_default")
                 lost += cut
                 if cut > 0 and ledger.is_bank(holder):
@@ -297,7 +345,7 @@ class Bonds(IslandStage):
             tiers = ctx.config.get("banking.auction_tiers")
             filled, rate = {}, min(top, wanted + max(to_basis(t) for t in tiers))
         else:
-            filled, rate = self._auction(island, ctx, face, wanted)
+            filled, rate = self._auction(island, ctx, face, wanted, self._foreign_bids())
         sold = sum(filled.values())
         policy = island.policy
         underwrite = 0
@@ -310,7 +358,14 @@ class Bonds(IslandStage):
             return 0
         bond = debt.issue_bond(island, sold + underwrite, turns, rate, ctx.turn)
         item = ledger.bond_item(bond.id)
+        abroad_bought = 0
         for bank, amount in sorted(filled.items()):
+            if bank in self.bids:  # 外国の買い手（フェーズ3-3）
+                abroad.buy_new(self._world(), island, bank, bond.id, amount)
+                self.bids[bank].budget -= amount
+                self.bids[bank].done += amount
+                abroad_bought += amount
+                continue
             ledger.create(island, bank, item, ledger.GOV, amount, "bond_issue")
             ledger.pay(island, bank, ledger.GOV, amount, "bond_issue")
             debt.bought(island, bank, bond.id, amount)
@@ -336,6 +391,12 @@ class Bonds(IslandStage):
                 },
             )
         )
+        if abroad_bought:
+            island.log.append(
+                LogEntry("bonds_bought_abroad", {"amount": abroad_bought, "term": term})
+            )
+            stats = island.scratch.setdefault("bond_stats", {})
+            stats["abroad"] = stats.get("abroad", 0) + abroad_bought
         if sold + underwrite < face:
             island.log.append(
                 LogEntry(
@@ -344,11 +405,27 @@ class Bonds(IslandStage):
             )
         return sold + underwrite
 
+    def _foreign_bids(self) -> list[tuple[int, str, int]]:
+        """入札に加わる外国の買い手の (上乗せ, 名前, 額)。政府と中央銀行は指値なし（上乗せ -1。一番
+        低い段）、市中銀行は値下がりの率を上乗せした利回り（発行した島の bond_yield ＋ 上乗せ）。"""
+        return [
+            (-1 if bid.premium is None else bid.premium, name, bid.budget)
+            for name, bid in sorted(self.bids.items())
+            if bid.budget > 0
+        ]
+
     @staticmethod
     def _auction(
-        island: IslandState, ctx: StageContext, face: int, wanted: int
+        island: IslandState,
+        ctx: StageContext,
+        face: int,
+        wanted: int,
+        foreign: Sequence[tuple[int, str, int]] = (),
     ) -> tuple[dict[str, int], int]:
-        """入札: 銀行ごとの落札額と、落札の利回り（売れなければ一番高い段の利回り）。"""
+        """入札: 買い手ごとの落札額と、落札の利回り（売れなければ一番高い段の利回り）。
+
+        foreign は外国の買い手の (求める利回りの上乗せ, 名前, 額)。上乗せが負なら指値なしで、一番
+        低い段（wanted）に入れる（フェーズ3-3）。"""
         config = ctx.config
         tiers = [to_basis(t) for t in config.get("banking.auction_tiers")]
         share = to_basis(config.get("banking.auction_share"))
@@ -362,6 +439,11 @@ class Bonds(IslandStage):
                 if amount > 0:
                     by_bank = bids.setdefault(level, {})
                     by_bank[bank] = by_bank.get(bank, 0) + amount
+        for premium, name, amount in foreign:
+            level = wanted if premium < 0 else min(top, wanted + premium)
+            if amount > 0:
+                by_name = bids.setdefault(level, {})
+                by_name[name] = by_name.get(name, 0) + amount
         filled: dict[str, int] = {}
         left = face
         rate = min(top, wanted + max(tiers))
@@ -469,6 +551,7 @@ class Bonds(IslandStage):
                     qty = min(held[k], -trade * held[k] // total)
                     if qty > 0:
                         sellers[k].append((Order(qty), ledger.CB))
+        self._foreign_orders(island, ctx, sellers, buyers, wanted, closed, by_id)
         band = to_basis(config.get("bonds.trade_band"))
         top = to_basis(config.get("bonds.max_yield"))
         cb_done = 0  # 中央銀行が売り買いした額面
@@ -487,9 +570,9 @@ class Bonds(IslandStage):
             yields[k] = result.price
             for s, b, qty in auction.match(result.bought, result.sold):
                 seller, buyer = sellers[k][s][1], buyers[k][b][1]
-                self._deliver(island, ctx, seller, buyer, qty, k, result.price, by_id)
+                done = self._deliver(island, ctx, seller, buyer, qty, k, result.price, by_id)
                 if ledger.CB in (seller, buyer):
-                    cb_done += qty
+                    cb_done += done
             stats = island.scratch.setdefault("bond_stats", {})
             stats["traded"] = stats.get("traded", 0) + result.volume
         if trade and not island.policy.cb_independent:
@@ -519,8 +602,40 @@ class Bonds(IslandStage):
                 out[debt.bucket_of(debt.remaining(bond, turn), edges)] += face
         return out
 
-    @staticmethod
+    def _foreign_orders(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        sellers: list[list[tuple[Order, str]]],
+        buyers: list[list[tuple[Order, str]]],
+        wanted: list[int],
+        closed: bool,
+        by_id: dict[int, Bond],
+    ) -> None:
+        """外国の持ち手の売り買い（フェーズ3-3）。政府と中央銀行の売りは、持っている区分の割合で
+        指値なし。買いは区分に等しく分けて、政府と中央銀行は指値なし、市中銀行は求める利回り
+        （bond_yield ＋ 値下がりの率）を指値にする。債務不履行の後（closed）は買わない。"""
+        edges = ctx.config.get("bonds.buckets")
+        count = len(edges) + 1
+        top = to_basis(ctx.config.get("bonds.max_yield"))
+        for name, bid in sorted(self.bids.items()):
+            if bid.sell > 0:
+                held = self._by_bucket(island, name, ctx.turn, edges, by_id)
+                total = sum(held)
+                for k in range(count):
+                    qty = min(held[k], bid.sell * held[k] // total) if total else 0
+                    if qty > 0:
+                        sellers[k].append((Order(qty), name))
+            elif bid.budget > 0 and not closed:
+                qty = bid.budget // count
+                for k in range(count):
+                    if qty <= 0:
+                        break
+                    limit = None if bid.premium is None else min(top, wanted[k] + bid.premium)
+                    buyers[k].append((Order(qty, limit), name))
+
     def _deliver(
+        self,
         island: IslandState,
         ctx: StageContext,
         seller: str,
@@ -529,8 +644,9 @@ class Bonds(IslandStage):
         bucket: int,
         rate: int,
         by_id: dict[int, Bond],
-    ) -> None:
-        """売り手が区分 bucket の銘柄を満期の近い順に額面 qty だけ渡し、買い手が時価で払う。"""
+    ) -> int:
+        """売り手が区分 bucket の銘柄を満期の近い順に額面 qty だけ渡し、買い手が時価で払う。渡した
+        額面を返す（外国の買い手は、持っている外貨で払える分まで）。"""
         edges = ctx.config.get("bonds.buckets")
         left = qty
         held = sorted(
@@ -541,19 +657,46 @@ class Bonds(IslandStage):
                 and debt.bucket_of(debt.remaining(by_id[n], ctx.turn), edges) == bucket
             )
         )
+        paying = self.bids.get(buyer)
         for _, number, face in held:
             if left <= 0:
                 break
+            price = debt.price(by_id[number], ctx.turn, rate)
             take = min(face, left)
+            if paying is not None:
+                take = min(take, int(paying.budget / price) if price > 0 else take)
+                if take <= 0:
+                    break
             left -= take
-            amount = int(take * debt.price(by_id[number], ctx.turn, rate))
-            debt.traded(island, number, seller, buyer, take, amount)
-            ledger.transfer(
-                island, ledger.bond_item(number), ledger.GOV, seller, buyer, take, "bond_trade"
-            )
-            ledger.pay(island, buyer, seller, amount, "bond_trade")
-            _add_flow(island, buyer, amount)
+            amount = int(take * price)
+            self._move(island, number, seller, buyer, take, amount)
+            if paying is not None:
+                paying.budget -= amount
+                paying.done += take
+            if seller in self.bids:
+                self.bids[seller].done += take
+        return qty - left
+
+    def _move(
+        self, island: IslandState, number: int, seller: str, buyer: str, face: int, amount: int
+    ) -> None:
+        """銘柄 number の額面 face を売り手から買い手へ移し、代金 amount を払う。外国の持ち手が
+        いれば、代金はその島の外貨の持ち高から・へ動く（hakoniwa_core/trade/abroad.py）。"""
+        item = ledger.bond_item(number)
+        abroad_seller = abroad.parse_holder(seller) is not None
+        abroad_buyer = abroad.parse_holder(buyer) is not None
+        if not abroad_seller:
+            held = ledger.balance(island, ledger.account(seller, item, ledger.GOV))
+            debt.released(island, seller, number, face, held, amount)
             _add_flow(island, seller, -amount)
+        if not abroad_buyer:
+            debt.bought(island, buyer, number, amount)
+            _add_flow(island, buyer, amount)
+        ledger.transfer(island, item, ledger.GOV, seller, buyer, face, "bond_trade")
+        if abroad_seller or abroad_buyer:
+            abroad.trade_payment(self._world(), island, seller, buyer, face, amount)
+        else:
+            ledger.pay(island, buyer, seller, amount, "bond_trade")
 
     # --- 記録 -------------------------------------------------------------------------
 
@@ -570,6 +713,28 @@ class Bonds(IslandStage):
         stats["bonds.cb_bought"] = extra.get("cb_bought", 0)
         stats["bonds.cb_sold"] = extra.get("cb_sold", 0)
         stats["bonds.central_bank"] = sum(debt.holdings_of(island, ledger.CB).values())
+        stats["bonds.bought_abroad"] = extra.get("abroad", 0)
+
+
+def _log_foreign(world: WorldState, foreign: dict[int, list[abroad.Bid]]) -> None:
+    """政府と中央銀行の外国の国債の売り買い（命令 set_foreign_bonds）の結果を、持ち手の島のログに
+    出す（決めた額に届かなかったら、そのことも）。"""
+    for issuer_id in sorted(foreign):
+        for bid in foreign[issuer_id]:
+            if not bid.target or ledger.is_bank(bid.entity):
+                continue
+            holder = world.islands[bid.holder]
+            kind = "foreign_bonds_sold" if bid.sell else "foreign_bonds_bought"
+            if bid.done < bid.target:
+                kind += "_short"
+            args = {
+                "holder": f"bond_holder_{bid.entity}",
+                "issuer": world.islands[issuer_id].name,
+                "currency": currency_label(world, issuer_id),
+                "amount": bid.done,
+                "target": bid.target,
+            }
+            holder.log.append(LogEntry(kind, args))
 
 
 def _term_name(defs: Defs, turns: int) -> str | None:

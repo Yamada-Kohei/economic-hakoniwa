@@ -7,8 +7,9 @@
 ``economy["freight_goods"]``。hakoniwa_core/economy/freight.py）。
 
 島の市場（市場の段。前のターンの圏の値段とレートを見る）:
-- 輸出: 圏の前の値段を為替で自国通貨に直し、取り分（trade.trader_cut）と港の使用料を引いた値段まで
-  買う（運賃は買い手の指値の中で払う）。量は「狙う量 − 手元の輸出の荷」。
+- 輸出: 圏の前の値段を為替で自国通貨に直し、取り分（trade.trader_cut）と港の使用料を引いて、輸出補助
+  （フェーズ3-3）を足した値段まで買う（運賃は買い手の指値の中で払う）。
+  量は「狙う量 − 手元の輸出の荷」。
 - 輸入した物: 仕入れ値（圏の代金・船の運賃・港の使用料）を下限に売る。trade.clearance_turns ターン
   続けて1つも売れなかったら、値幅の下端まで下げて売る（仕入れ値の CLEARANCE_FLOOR の割合まで）。
 - 輸出の荷が、指値を外しても圏で trade.clearance_turns の 2 倍のターン売れ残ったら、島の市場に戻して
@@ -17,8 +18,9 @@
 貿易圏の市場（貿易の段。hakoniwa_core/modules/trade）:
 - 輸出の荷を、仕入れ値に取り分と積む港の使用料を足した値段（決済通貨に直す）を指値に売る。
   trade.clearance_turns ターン売れ残ったら、指値を外す。
-- 輸入: 島の市場の前の値段から、取り分・船の運賃・下ろす港の使用料を引き、決済通貨に直した値段を
-  指値に買う。量は「狙う量 − 手元と運ぶ途中の輸入の荷」で、空いている船、持っている決済通貨、
+- 輸入: 島の市場の前の値段から、取り分・船の運賃・下ろす港の使用料を引き、関税（フェーズ3-3。圏内の
+  関税をなくした圏ではかからない）の分を割り引いて決済通貨に直した値段を指値に買う。
+  量は「狙う量 − 手元と運ぶ途中の輸入の荷」で、空いている船、持っている決済通貨、
   商社の扱える重さ（trade.trader_capacity）で頭打ちになる。運賃の見込みは、圏の加盟国のうち近い
   半分までの平均の距離で見る。
 
@@ -53,6 +55,7 @@ from hakoniwa_core.state import Facility, IslandState
 from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.trade import (
     island_state,
+    policy,
     port_of,
     ships,
     tradable_goods,
@@ -139,6 +142,8 @@ def prospects(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, 
         unit = unit_weight(defs, good)
         fee_unit = fee * unit // QUANTITY_SCALE
         home = prices.get(good, 0)
+        subsidy = policy.export_subsidy(island, good)  # 輸出補助（フェーズ3-3）
+        tariff = policy.tariff_rate(island, good)  # 関税（フェーズ3-3）
         best_gap = None
         for key, view in sorted(views(island).items(), key=lambda kv: int(kv[0])):
             price = view.get("prices", {}).get(good)
@@ -147,27 +152,32 @@ def prospects(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, 
             currency = view["currency"]
             e = fxrates.rate(island, currency)
             value = price * e // BASIS
-            limit = value - part(value, cut) - fee_unit
+            limit = value - part(value, cut) - fee_unit + subsidy
             if limit > p.export_limit:
                 p.export_bloc, p.export_currency, p.export_limit = int(key), currency, limit
                 p.export_rate = -(
-                    -(home + fee_unit) * BASIS * BASIS // max(1, price * (BASIS - cut))
+                    -max(0, home + fee_unit - subsidy)
+                    * BASIS
+                    * BASIS
+                    // max(1, price * (BASIS - cut))
                 )
             freight_unit = freight * unit * view.get("cells", 1) // QUANTITY_SCALE
-            landed = (value + freight_unit + fee_unit) * BASIS // max(1, BASIS - cut) + 1
+            rate = 0 if view.get("no_tariff") else tariff
+            duty = policy.with_tariff(value, rate)  # 圏の値段に関税を足した値
+            landed = (duty + freight_unit + fee_unit) * BASIS // max(1, BASIS - cut) + 1
             # 輸入が引き合う値段は、前のターンに圏の市場に売りがあった財だけ（フェーズ3-2。誰も
             # 作っていない自動車で、島の値段と圏の買いの指値が互いを追いかけて上がり続けたため）
             on_sale = good in view.get("supply", ())
             if on_sale and (not p.import_floor or landed < p.import_floor):
                 p.import_floor = landed
             own = home - part(home, cut) - freight_unit - fee_unit
-            bid = own * BASIS // max(1, e)
+            bid = own * BASIS // max(1, policy.with_tariff(e, rate))
             gap = (bid - price) / price
             if bid > 0 and (best_gap is None or gap > best_gap):
                 best_gap = gap
                 p.import_bloc, p.import_currency = int(key), currency
                 p.import_price, p.import_limit = price, bid
-                p.import_rate = own * BASIS // price
+                p.import_rate = own * BASIS // max(1, policy.with_tariff(price, rate))
         out[good] = p
     return out
 

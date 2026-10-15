@@ -35,19 +35,23 @@ from typing import Any
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import Payer, books, entity_of, funds
+from hakoniwa_core.economy import SUBSIDIES, Payer, books, entity_of, funds
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
 from hakoniwa_core.modules.records import LedgerCheckFailed
 from hakoniwa_core.registry import OrderFailed, OrderHandler, Registry, WorldStage
 from hakoniwa_core.state import Facility, IslandState, LogEntry, WorldState
 from hakoniwa_core.trade import (
+    abroad,
+    balance,
     blocs,
     contracts,
+    currency_label,
     is_trader,
     island_state,
     next_id,
     one_way_turns,
+    policy,
     port_of,
     send_to_market,
     shipping_of,
@@ -87,6 +91,7 @@ WHY_SHIPS = "ships"  # 空いている輸送船が足りない
 WHY_CAPACITY = "capacity"  # 商社の1ターンに扱える重さの上限
 WHY_MONEY = "money"  # 払う決済通貨（外貨）が足りない
 WHY_SELLERS = "sellers"  # 圏の売りが足りないか、売りの指値が高い
+WHY_QUOTA = "quota"  # 輸入の割り当て（フェーズ3-3）の上限まで買った
 
 
 def gov_payer() -> Payer:
@@ -161,6 +166,7 @@ class _Round:
             if world.islands[i].has_economy and started(world.islands[i])
         ]
         self.islands = {i: _IslandTurn() for i in self.ids}
+        self.quota_left: dict[tuple[int, str], int] = {}  # (島, 財) → 輸入の割り当ての残り
         self.cargo = self.state.setdefault("cargo", {"loaded": {}, "unloaded": {}})
 
     def run(self) -> None:
@@ -216,6 +222,7 @@ class _Round:
             item["transit"] = max(0, item["transit"] - qty)
             paid = self._pay_fee(island, Payer(entity_of(self.config, f)), port, fee, f)
             traders.add_cost(f, good, paid)
+            traders.add_cost(f, good, self._tariff(island, s, f, qty))
         else:
             stock.put_batches(island.warehouse, good, batches)
             if s.get("facility") is not None:  # 買った商社がなくなった（倒産など）: 国の倉庫へ
@@ -239,6 +246,32 @@ class _Round:
         unloaded = self.cargo["unloaded"]
         unloaded[good] = unloaded.get(good, 0) + qty
         island.log.append(LogEntry("cargo_arrived", {"good": good, "amount": qty / QUANTITY_SCALE}))
+
+    def _tariff(self, island: IslandState, s: dict[str, Any], f: Facility, qty: int) -> int:
+        """関税（フェーズ3-3）: 商社が圏の市場で買った荷を下ろすとき、約定の値段 × 為替 × 率を国庫に
+        払う（払えるだけ）。圏の代表が圏内の関税をなくしている圏の荷にはかからない。払った額を返す
+        （仕入れ値に足す）。"""
+        rate = policy.tariff_rate(island, s["good"])
+        if rate <= 0 or s.get("kind") != "bloc" or s.get("price") is None:
+            return 0
+        bloc = blocs.find(self.world, s.get("ref", -1))
+        if bloc is not None and blocs.no_tariff(bloc):
+            return 0
+        value = money_of(s["price"], qty)
+        if s["currency"] != island.id:
+            value = fxrates.to_own(island, s["currency"], value)
+        amount = part(value, rate)
+        entity = entity_of(self.config, f)
+        if entity != ledger.GOV:
+            have = funds.available(island, Payer(entity))
+            if have < amount:
+                stats = island.stats
+                stats["trade.tariff_unpaid"] = stats.get("trade.tariff_unpaid", 0) + amount - have
+                amount = have
+            funds.pay(island, Payer(entity), ledger.GOV, amount, "tariff")
+        books.add(island, f.id, books.TARIFF, amount)
+        island.stats["trade.tariffs"] = island.stats.get("trade.tariffs", 0) + amount
+        return amount
 
     def _lost(self, s: dict[str, Any]) -> None:
         """届け先の島がなくなった荷（記録の上で、下ろしたことにして消す）。"""
@@ -306,11 +339,14 @@ class _Round:
         cancel_wait = self.config.get("trade.contract_cancel_turns")
         for i in self.world.island_ids():
             island = self.world.islands[i]
+            policy.write_notes(self.world, island)
             for req in island.scratch.pop(REQUESTS, []):
                 kind = req["kind"]
                 reason = None
                 if i not in self.islands:
                     reason = "reason_trade_not_ready"
+                elif kind == "send_aid":
+                    reason = self._aid(island, req)
                 elif kind == "create_bloc":
                     blocs.create(self.world, island, req["name"], req.get("open", True), self.turn)
                 elif kind in ("propose_contract",):
@@ -352,10 +388,64 @@ class _Round:
         if kind == "bloc_settings":
             if req.get("approve") is not None:
                 return blocs.approve(self.world, bloc, req["approve"])
+            if req.get("no_tariff") is not None:
+                blocs.set_no_tariff(self.world, bloc, req["no_tariff"])
+            if req.get("fixed_good") is not None:
+                good = req["fixed_good"]
+                if not tradable(self.defs, good):
+                    return "reason_not_tradable"
+                blocs.set_fixed(self.world, bloc, good, req.get("fixed_price", 0))
             return blocs.settings(self.world, bloc, req.get("open"), req.get("currency"))
         if kind == "transfer_bloc":
             return blocs.transfer(self.world, bloc, req["to"])
         return "reason_invalid_payload"
+
+    def _aid(self, island: IslandState, req: dict[str, Any]) -> str | None:
+        """援助（フェーズ3-3）。お金の援助は政府から相手の政府へ、どちらかの国の通貨でその場で送る
+        （仕訳の種類 aid。経常収支の移転）。物の援助は、値段 0 で相手の承諾の要らない片道の契約に
+        して、次のターンから船で運ぶ（contracts.aid）。"""
+        partner = req.get("partner")
+        if partner not in self.islands or partner == island.id:
+            return "reason_contract_partner"
+        if policy.blocked(self.world, island.id, partner, req.get("good") or ""):
+            return "reason_embargo"
+        other = self.world.islands[partner]
+        if req.get("good") is not None:
+            if not tradable(self.defs, req["good"]):
+                return "reason_not_tradable"
+            contracts.aid(self.world, island, req, self.turn)
+            return None
+        currency = req.get("currency", island.id)
+        if currency not in (island.id, partner):
+            return "reason_contract_currency"
+        amount = int(req["amount"])
+        fxrates.ensure(self.world, other, currency)
+        if currency == island.id:
+            if funds.available(island, gov_payer()) < amount:
+                return "reason_aid_money"
+            value = amount
+        else:
+            if fxmoney.holding(island, ledger.GOV, currency) < amount:
+                return "reason_aid_money"
+            value = fxrates.to_own(island, currency, amount)
+        received = amount if currency == partner else fxrates.to_own(other, currency, amount)
+        fxmoney.transfer(
+            self.world,
+            currency,
+            (island.id, ledger.GOV),
+            (partner, ledger.GOV),
+            amount,
+            "aid",
+            received,
+            payer=gov_payer(),
+            values={island.id: value, partner: received},
+        )
+        args = {"amount": amount, "currency": currency_label(self.world, currency)}
+        island.log.append(LogEntry("aid_sent", {**args, "country": other.name}))
+        other.log.append(LogEntry("aid_received", {**args, "country": island.name}))
+        island.stats["aid.sent"] = island.stats.get("aid.sent", 0) + value
+        other.stats["aid.received"] = other.stats.get("aid.received", 0) + received
+        return None
 
     # --- 3. 為替 --------------------------------------------------------------------------
 
@@ -405,6 +495,7 @@ class _Round:
                     gov_need.setdefault(c["currency"], []).append((amount * (keep - 1), None))
             needs[ledger.GOV] = gov_need
             payers[ledger.GOV] = gov_payer()
+            self._capital_needs(island, needs, floors, payers, width)
             currencies = set(blocs.currencies_of(self.world, i))
             for entity_needs in needs.values():
                 currencies |= set(entity_needs)
@@ -412,6 +503,11 @@ class _Round:
                 currencies |= {int(k) for k, (amount, _) in held.items() if amount > 0}
                 if entity != ledger.CB:  # 中央銀行の注文は fxrates.dealer_orders が出す
                     payers.setdefault(entity, Payer(entity))
+            # 中央銀行の介入と固定相場の通貨（フェーズ3-3。注文は intervention_orders が出す）
+            steered = {int(k) for k in island.policy.fx_intervention} | {
+                int(k) for k in island.policy.fx_peg
+            }
+            currencies |= steered
             for currency in sorted(currencies - {i}):
                 if currency not in self.world.islands:
                     continue
@@ -421,7 +517,10 @@ class _Round:
                     for c in active
                     if c["currency"] == currency and i in (c["buyer"], c["seller"])
                 )
-                book = fxrates.Book(depth=fxrates.depth(island, currency, self.config, scheduled))
+                book = fxrates.Book(
+                    depth=fxrates.depth(island, currency, self.config, scheduled),
+                    peg_band=fxrates.peg_band(self.config),
+                )
                 reference = fxrates.rate(island, currency)
                 for entity in sorted(payers):
                     self._fx_orders(
@@ -440,10 +539,42 @@ class _Round:
                     if short.get(entity, 0) > 0:  # 売る分は、次の通貨の分から引く
                         have = fxmoney.holding(island, entity, currency)
                         short[entity] = max(0, short[entity] - have * reference // BASIS)
-                if not book.buys and not book.sells:
+                if not book.buys and not book.sells and currency not in steered:
                     continue
                 price, volume, _, _ = fxrates.clear(self.world, island, currency, book, width)
                 island.stats[f"fx.volume.{currency}"] = volume
+
+    def _capital_needs(
+        self,
+        island: IslandState,
+        needs: dict[str, dict[int, list[tuple[int, int | None]]]],
+        floors: dict[str, dict[int, int]],
+        payers: dict[str, Payer],
+        width: int,
+    ) -> None:
+        """外国の国債を買うための外貨（フェーズ3-3。hakoniwa_core/trade/abroad.py）。政府は命令
+        set_foreign_bonds で毎ターン買う額面の分を値幅の上端まで買う。市中銀行は abroad.bank_needs
+        の分を値幅の上側の半ばまでで買い、当てのない外貨は下側の半ばより安くは売らない。"""
+        gov_need = needs.setdefault(ledger.GOV, {})
+        for key, amount in sorted(island.policy.foreign_bonds.get(ledger.GOV, {}).items()):
+            other = self.world.islands.get(int(key))
+            if amount > 0 and other is not None:
+                if abroad.may_buy(self.world, self.defs, island, ledger.GOV, other):
+                    gov_need.setdefault(other.id, []).append((amount, None))
+        wanted = abroad.bank_needs(self.world, self.defs, self.config, island, self.turn)
+        for bank in sorted(set(wanted) | set(fxmoney.holdings(island))):
+            if not ledger.is_bank(bank):
+                continue
+            payers[bank] = Payer(bank)
+            mine = needs.setdefault(bank, {})
+            for currency, amount in sorted(wanted.get(bank, {}).items()):
+                e = fxrates.rate(island, currency)
+                low, high = auction.band(e, width)
+                mine.setdefault(currency, []).append((amount, e + (high - e) // 2))
+            for key in fxmoney.holdings(island).get(bank, {}):
+                e = fxrates.rate(island, int(key))
+                low, _ = auction.band(e, width)
+                floors.setdefault(bank, {})[int(key)] = e - (e - low) // 2
 
     @staticmethod
     def _fx_orders(
@@ -493,6 +624,16 @@ class _Round:
                 continue
             if c["buyer"] not in self.islands:
                 continue
+            if policy.blocked(self.world, seller.id, buyer.id, c["good"]):
+                # 禁輸（フェーズ3-3）: その国との契約は届けない（止まったターンに1度だけ知らせる）
+                c["short"] = c["qty"]
+                if not c.get("embargoed"):
+                    c["embargoed"] = True
+                    args = contracts.short_args(self.world, c, c["qty"], "embargo")
+                    seller.log.append(LogEntry("contract_embargoed", args))
+                    buyer.log.append(LogEntry("contract_embargoed", args))
+                continue
+            c.pop("embargoed", None)
             self._fulfil(c, seller, buyer)
 
     def _fulfil(self, c: dict[str, Any], seller: IslandState, buyer: IslandState) -> None:
@@ -544,6 +685,10 @@ class _Round:
         self.islands[buyer.id].settled(currency, amount)
         c["delivered"] += qty
         c["paid"] += amount
+        if c.get("aid"):  # 物の援助: 送った国の島の値段で、経常収支の貿易と移転に入れる
+            donor_value = money_of(seller.economy.prices.get(good, 0), qty)
+            value = balance.value_of(self.world, buyer, seller.id, donor_value)
+            balance.goods_aid(seller, buyer, donor_value, value)
         self._ship(
             seller,
             buyer,
@@ -597,6 +742,8 @@ class _Round:
         seller_payer: Payer | None = None,
         seller_facility: Facility | None = None,
         delivery: str | None = None,
+        price: int | None = None,
+        currency: int | None = None,
     ) -> None:
         """荷を買い手の島の船に積んで出す。積む港の使用料（売り手が払う）、船の運賃（買い手が自国の
         海運業に払う）、燃料を払い、運ぶ途中の荷を記録する（契約の荷は届いた物の行き先も）。"""
@@ -642,6 +789,8 @@ class _Round:
                 "loaded": self.turn,
                 "arrive": arrive,
                 **({"delivery": delivery} if delivery is not None else {}),
+                # 圏の市場の約定の値段と決済通貨（荷を下ろすときの関税。フェーズ3-3）
+                **({"price": price, "currency": currency} if price is not None else {}),
             }
         )
         loaded = self.cargo["loaded"]
@@ -664,28 +813,62 @@ class _Round:
                 buys, sells, bids, asks = self._bloc_orders(
                     bloc, members, good, budgets, money_left
                 )
-                reference = blocs.reference(self.world, bloc, good)
+                fixed = blocs.fixed_price(bloc, good)
+                reference = fixed or blocs.reference(self.world, bloc, good)
                 if reference is None:
                     continue
-                result = auction.clear(buys, sells, reference, width)
+                buys, sells, bids, asks = self._drop_blocked(good, buys, sells, bids, asks)
+                # 圏内の固定価格（フェーズ3-3）: 値幅 0 で板寄せし、余った側を量に比例して分ける
+                result = auction.clear(buys, sells, reference, 0 if fixed else width)
                 price = result.price
-                if result.demand > 0 and result.supply <= 0:
+                if fixed:
+                    price = fixed
+                elif result.demand > 0 and result.supply <= 0:
                     price = min(result.high, max(reference, max(o.limit or 0 for o in buys)))
                 elif result.supply > 0 and result.demand <= 0:
                     price = max(result.low, min(o.limit or result.low for o in sells))
                 elif result.demand <= 0 and result.supply <= 0:
                     price = blocs.home_average(self.world, bloc, good) or reference
                     price = min(result.high, max(result.low, price))
-                self._record_bloc(bloc, good, price, result)
                 for order, bid, got in zip(buys, bids, result.bought, strict=True):
                     item = traders.entry(bid.facility, good)
                     if got < order.quantity and "why" not in item:
                         item["why"] = WHY_SELLERS
+                volume = 0
                 if result.volume > 0:
-                    self._settle_bloc(bloc, good, result.price, result, bids, asks)
-                unmet[key] = result.demand - result.volume
+                    volume = self._settle_bloc(bloc, good, result.price, result, bids, asks)
+                self._record_bloc(bloc, good, price, result, volume)
+                unmet[key] = result.demand - volume
                 sellers[key] = len({id(a.facility) for a in asks})
         return unmet, sellers
+
+    def _drop_blocked(
+        self,
+        good: str,
+        buys: list[Order],
+        sells: list[Order],
+        bids: list[_Bid],
+        asks: list[_Bid],
+    ) -> tuple[list[Order], list[Order], list[_Bid], list[_Bid]]:
+        """禁輸（フェーズ3-3）で、どの相手とも組めない注文を外す（値段を決める板に入れない）。"""
+        if not any(
+            self.world.islands[i].policy.embargoes for i in {b.island for b in [*bids, *asks]}
+        ):
+            return buys, sells, bids, asks
+        sellers = {a.island for a in asks}
+        buyers = {b.island for b in bids}
+
+        def open_to(island_id: int, others: set[int]) -> bool:
+            return any(not policy.blocked(self.world, island_id, o, good) for o in others)
+
+        keep_b = [i for i, b in enumerate(bids) if open_to(b.island, sellers)]
+        keep_s = [i for i, a in enumerate(asks) if open_to(a.island, buyers)]
+        return (
+            [buys[i] for i in keep_b],
+            [sells[i] for i in keep_s],
+            [bids[i] for i in keep_b],
+            [asks[i] for i in keep_s],
+        )
 
     def _plan_imports(self) -> None:
         """島ごとに、輸入の注文に回せる船の割合（空いている船 ÷ 商社の輸入したい重さ）と、往復の
@@ -739,6 +922,10 @@ class _Round:
             island = self.world.islands[m]
             e = fxrates.rate(island, currency)
             fee_unit = ships.port_fee(island, self.config) * unit // QUANTITY_SCALE
+            subsidy = policy.export_subsidy(island, good)
+            cap_q = policy.quota(island, good)
+            if cap_q is not None:
+                self.quota_left.setdefault((m, good), cap_q)
             for f in traders_of(island, self.config):
                 item = traders.goods_of(f).get(good)
                 if item is None:
@@ -754,7 +941,7 @@ class _Round:
                     limit = None
                     if item["age"] < clearance:
                         own = traders.unit_cost(f, good)
-                        own = own + part(own, cut) + fee_unit
+                        own = max(1, own + part(own, cut) + fee_unit - subsidy)  # 輸出補助を見込む
                         limit = max(1, -(-own * BASIS // max(1, e)))
                     sells.append(Order(qty, limit))
                     asks.append(_Bid(m, f, entity, good))
@@ -766,6 +953,8 @@ class _Round:
                     )
                     if order is None:
                         continue
+                    if (m, good) in self.quota_left:
+                        self.quota_left[(m, good)] -= order.quantity
                     buys.append(order)
                     bids.append(_Bid(m, f, entity, good))
                     budgets[f.id + m * 10**6] = left - weight(self.defs, good, order.quantity)
@@ -785,7 +974,8 @@ class _Round:
         left: int,
         money_left: dict[tuple[int, str, int], int],
     ) -> Order | None:
-        """輸入の買い注文（量は狙う量の残り、船、扱える重さ、持っている決済通貨で頭打ち）。
+        """輸入の買い注文（量は狙う量の残り、船、扱える重さ、持っている決済通貨、輸入の割り当ての
+        残り self.quota_left で頭打ち。関税は、荷を下ろすときに払う分を見込んで指値を下げる）。
 
         指値は島で売って引き合う一番高い値段を、圏の値幅の上端までにする（それより高くは約定しない
         ので、決済通貨をその分だけ取り置けばよい。島の値段が圏よりずっと高い財で、指値のぶん取り
@@ -809,11 +999,14 @@ class _Round:
         )
         fee_unit = ships.port_fee(island, self.config) * unit // QUANTITY_SCALE
         own = home - part(home, cut) - freight_unit - fee_unit
-        limit = own * BASIS // max(1, e)
+        tariff = 0 if blocs.no_tariff(bloc) else policy.tariff_rate(island, good)
+        limit = own * BASIS // max(1, policy.with_tariff(e, tariff))
         if limit <= 0:
             item["why"] = WHY_PRICE
             return None
-        reference = blocs.reference(self.world, bloc, good) or price
+        reference = (
+            blocs.fixed_price(bloc, good) or blocs.reference(self.world, bloc, good) or price
+        )
         _, high = auction.band(reference, to_basis(self.config.get("trade.bloc_band")))
         limit = min(limit, high)
         want = item["m"] - item["held"][0]
@@ -827,6 +1020,9 @@ class _Round:
             room = left * QUANTITY_SCALE // unit
             if room < want:
                 want, why = room, WHY_CAPACITY
+        quota = self.quota_left.get((island.id, good))
+        if quota is not None and quota < want:
+            want, why = max(0, quota), WHY_QUOTA
         key = (island.id, entity, currency)
         if key not in money_left:
             if island.id == currency:
@@ -846,15 +1042,16 @@ class _Round:
         return Order(want, limit)
 
     def _record_bloc(
-        self, bloc: dict[str, Any], good: str, price: int, result: auction.Result
+        self, bloc: dict[str, Any], good: str, price: int, result: auction.Result, volume: int
     ) -> None:
+        """圏の値段と、約定した量（禁輸で相手がいなかった分を除く）・買い・売りを残す。"""
         bloc["prices"][good] = price
         keep = self.config.get("trade.history_turns")
         history = bloc["history"].setdefault(good, [])
         history.append(price)
         del history[:-keep]
         for name, value in (
-            ("volume", result.volume),
+            ("volume", volume),
             ("demand", result.demand),
             ("supply", result.supply),
         ):
@@ -871,15 +1068,20 @@ class _Round:
         result: auction.Result,
         bids: list[_Bid],
         asks: list[_Bid],
-    ) -> None:
+    ) -> int:
+        """約定を、近い島の組から割り当てて払う（禁輸の組は割り当てない）。割り当てた量を返す。"""
         currency = bloc["currency"]
+        matched = 0
 
         def distance(b: int, s: int) -> int:
             here = self.world.islands[bids[b].island]
             there = self.world.islands[asks[s].island]
             return route_cells(here, there) if here.id != there.id else 0
 
-        for b, s, qty in auction.match_nearest(result.bought, result.sold, distance):
+        def allowed(b: int, s: int) -> bool:
+            return not policy.blocked(self.world, bids[b].island, asks[s].island, good)
+
+        for b, s, qty in auction.match_nearest(result.bought, result.sold, distance, allowed):
             bid, ask = bids[b], asks[s]
             buyer = self.world.islands[bid.island]
             seller = self.world.islands[ask.island]
@@ -914,6 +1116,8 @@ class _Round:
             traders.add_volume(sf, weight(self.defs, good, moved))
             self.islands[seller.id].exports += value
             self.islands[seller.id].settled(currency, amount)
+            self._export_subsidy(seller, sf, ask.entity, good, moved)
+            matched += moved
             # 買い手: 仕入れと輸入に数え、運ぶ途中の荷も在庫に数える
             books.add(buyer, bf.id, books.PURCHASES, cost)
             books.add_sector(buyer, books.TRADE, "imports", cost)
@@ -937,7 +1141,32 @@ class _Round:
                 bloc["id"],
                 seller_payer=Payer(ask.entity),
                 seller_facility=sf,
+                price=price,
+                currency=currency,
             )
+        return matched
+
+    def _export_subsidy(
+        self, island: IslandState, f: Facility, entity: str, good: str, qty: int
+    ) -> None:
+        """輸出補助（フェーズ3-3）: 圏の市場で売れた量 × 1 単位あたりの額を、国庫の補助金の予算から
+        商社に払う（予算が足りなければ払える分だけ）。国庫直轄の商社は帳簿にだけ残す。"""
+        rate = policy.export_subsidy(island, good)
+        if rate <= 0 or qty <= 0:
+            return
+        amount = money_of(rate, qty)
+        if entity != ledger.GOV:
+            payer = Payer(ledger.GOV, SUBSIDIES)
+            paid = min(amount, funds.available(island, payer))
+            funds.pay(island, payer, entity, paid, "export_subsidy")
+            if paid < amount:
+                stats = island.stats
+                stats["trade.subsidy_unpaid"] = stats.get("trade.subsidy_unpaid", 0) + amount - paid
+            amount = paid
+        books.add(island, f.id, books.SUBSIDY, amount)
+        island.stats["trade.export_subsidies"] = (
+            island.stats.get("trade.export_subsidies", 0) + amount
+        )
 
     # --- 6. 記録 ------------------------------------------------------------------------------
 
@@ -1002,6 +1231,7 @@ class _Round:
             stats.setdefault(f"fx.dealt.{key}", 0)
         stats["fx.holdings"] = fxmoney.total_value(island, fxrates.rates(island))
         stats.setdefault("trade.merchant", 0)
+        abroad.keep_rates(island)  # 外国の国債の求める利回りに使う値下がりの率（フェーズ3-3）
 
 
 def contract_view(c: dict[str, Any], island_id: int, turn: int) -> dict[str, Any]:
@@ -1052,7 +1282,7 @@ class TradeCheck(WorldStage):
 
 def check(world: WorldState) -> list[str]:
     """世界の確かめ: 外貨の持ち高と非居住者の預金、運ぶ途中の荷（積んだ量 − 下ろした量）。"""
-    problems = fxmoney.reconcile(world)
+    problems = fxmoney.reconcile(world) + abroad.reconcile(world)
     state = world.ext.get("trade")
     if not state:
         return problems
@@ -1123,6 +1353,24 @@ def check_contract_ref(island: IslandState, payload: dict[str, Any], defs: Defs)
         raise OrderFailed("reason_invalid_payload")
 
 
+def check_aid(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    """援助（フェーズ3-3）: お金（amount と通貨）か物（good・quantity・turns）のどちらか。"""
+    _check_started(island)
+    if payload.get("partner") == island.id:
+        raise OrderFailed("reason_contract_partner")
+    goods = payload.get("good") is not None
+    if goods == (payload.get("amount") is not None):
+        raise OrderFailed("reason_invalid_payload")
+    if goods:
+        good = payload["good"]
+        if good not in defs.goods or "freight_weight" not in defs.goods[good]:
+            raise OrderFailed("reason_not_tradable")
+        if payload.get("quantity", 0) <= 0 or payload.get("turns", 0) <= 0:
+            raise OrderFailed("reason_invalid_payload")
+    elif payload["amount"] <= 0:
+        raise OrderFailed("reason_invalid_payload")
+
+
 def _forward(kind: str):
     def execute(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
         request(island, kind, dict(payload))
@@ -1141,6 +1389,7 @@ ORDERS = {
     "propose_contract": check_contract,
     "accept_contract": check_contract_ref,
     "cancel_contract": check_contract_ref,
+    "send_aid": check_aid,
 }
 
 
@@ -1149,3 +1398,5 @@ def register(registry: Registry) -> None:
     registry.add_stage(TradeCheck())
     for kind, checker in ORDERS.items():
         registry.add_order(OrderHandler(kind, execute=_forward(kind), check=checker))
+    for kind, (execute, checker) in policy.ORDERS.items():
+        registry.add_order(OrderHandler(kind, execute=execute, check=checker))

@@ -213,12 +213,16 @@ def match(bought: Sequence[int], sold: Sequence[int]) -> list[tuple[int, int, in
 
 
 def match_nearest(
-    bought: Sequence[int], sold: Sequence[int], distance: Callable[[int, int], int]
+    bought: Sequence[int],
+    sold: Sequence[int],
+    distance: Callable[[int, int], int],
+    allowed: Callable[[int, int], bool] | None = None,
 ) -> list[tuple[int, int, int]]:
     """約定量を、道のり distance(買いの番号, 売りの番号) の近い組から順に突き合わせる。
 
     同じ道のりの組は、買い注文、売り注文の並びの順。買いと売りの約定量の合計は同じなので、
-    どちらも残らない。
+    どちらも残らない。allowed（買いの番号, 売りの番号）が False の組は突き合わせない（禁輸。
+    フェーズ3-3）。そのときは、相手のいない約定量が残ることがある。
     """
     left_b, left_s = list(bought), list(sold)
     candidates = sorted(
@@ -226,7 +230,7 @@ def match_nearest(
         for b in range(len(bought))
         if bought[b] > 0
         for s in range(len(sold))
-        if sold[s] > 0
+        if sold[s] > 0 and (allowed is None or allowed(b, s))
     )
     pairs = []
     for _, b, s in candidates:

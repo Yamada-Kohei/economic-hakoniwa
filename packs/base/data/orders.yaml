@@ -375,6 +375,10 @@ bloc_settings:
       open: {type: boolean}                 # 加盟の承認（true は誰でも入れる）
       currency: {type: integer, minimum: 1} # 決済通貨（加盟国の島の番号）
       approve: {type: integer, minimum: 1}  # 加盟を承認する島の番号
+      # フェーズ3-3: 圏内の関税をなくす決まり（true でなくす）と、圏内の固定価格（決済通貨。0 でやめる）
+      no_tariff: {type: boolean}
+      fixed_good: {type: string}
+      fixed_price: {type: integer, minimum: 0}
 
 transfer_bloc:
   admin_cost: 1
@@ -431,3 +435,101 @@ cancel_contract:
     additionalProperties: false
     properties:
       contract: {type: integer, minimum: 1}
+
+# --- 産業政策と国際金融（フェーズ3-3） ---------------------------------------------------
+set_tariff:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [good, rate]
+    additionalProperties: false
+    properties:
+      good: {type: string}
+      rate: {type: number, minimum: 0, maximum: 100}  # 関税率（%。0 でやめる）
+
+set_export_subsidy:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [good, amount]
+    additionalProperties: false
+    properties:
+      good: {type: string}
+      amount: {type: integer, minimum: 0}  # 1 単位あたりの輸出補助（0 でやめる）
+
+set_import_quota:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [good]
+    additionalProperties: false
+    properties:
+      good: {type: string}
+      quantity: {type: number, minimum: 0}  # 1ターンの輸入の上限（省くとやめる）
+
+set_embargo:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [partner]
+    additionalProperties: false
+    properties:
+      partner: {type: integer, minimum: 1}  # 相手の島の番号
+      good: {type: string}                  # 省くとすべての財
+      lift: {type: boolean}                 # true でやめる（省くと始める）
+
+send_aid:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [partner]
+    additionalProperties: false
+    properties:
+      partner: {type: integer, minimum: 1}
+      # お金の援助: amount と通貨（どちらかの国の通貨。省くとこちらの通貨）
+      amount: {type: integer, minimum: 1}
+      currency: {type: integer, minimum: 1}
+      # 物の援助: 財・1ターンの量・期間（値段 0 の片道の契約）
+      good: {type: string}
+      quantity: {type: number, exclusiveMinimum: 0}
+      turns: {type: integer, minimum: 1, maximum: 600}
+
+set_capital_controls:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [mode]
+    additionalProperties: false
+    properties:
+      mode: {enum: [free, official, closed]}  # 自由・政府と中央銀行だけ・禁止
+
+set_fx_intervention:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [currency, amount]
+    additionalProperties: false
+    properties:
+      currency: {type: integer, minimum: 1}  # 相手の通貨（島の番号）
+      amount: {type: integer}                # 毎ターン買う額（その通貨。マイナスは売る。0 でやめる）
+
+set_fx_peg:
+  admin_cost: 2
+  payload:
+    type: object
+    required: [currency, rate]
+    additionalProperties: false
+    properties:
+      currency: {type: integer, minimum: 1}
+      rate: {type: number, minimum: 0}  # 相手の通貨 1 が自国通貨でいくらか（0 でやめる）
+
+set_foreign_bonds:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [issuer, holder, amount]
+    additionalProperties: false
+    properties:
+      issuer: {type: integer, minimum: 1}  # 国債を出した国（島の番号）
+      holder: {enum: [gov, cb]}            # 政府か中央銀行
+      amount: {type: integer}              # 毎ターン買う額面（その国の通貨。マイナスは売る。0 でやめる）

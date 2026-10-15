@@ -24,6 +24,7 @@
     },
     "private_entry": {"enum": ["any", "non_core", "none"], "description": "経済体制: 民営工場の参入（どれでも・state_owned を除く・なし。フェーズ2-2）"},
     "bank_entry": {"enum": ["free", "license", "closed"], "description": "経済体制: 民間銀行の参入の既定（自由・許可制・禁止。フェーズ2-2）"},
+    "capital_controls": {"enum": ["free", "official", "closed"], "description": "経済体制: 資本取引の既定（自由・政府と中央銀行だけ・禁止。フェーズ3-3）"},
     "policy_loans": {"type": "boolean", "description": "経済体制: 国営銀行が state_owned の施設に利ざやなしで貸すか（政策融資。フェーズ2-2）"},
     "start": {"type": "string", "description": "経済体制: 建国直後の島の中身（start_island.yaml の名前）"},
     "override": {"const": true}

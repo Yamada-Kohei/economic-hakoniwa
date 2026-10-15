@@ -101,7 +101,7 @@ def test_selling_a_bond_realizes_the_gain(game, warmed):
     _fresh(island)
     cost = debt.cost_of(island, bank)
     money = banks.reserves_of(island, bank)
-    Bonds._deliver(island, ctx, bank, ledger.CB, held[bucket] // 2, bucket, rate, by_id)
+    Bonds()._deliver(island, ctx, bank, ledger.CB, held[bucket] // 2, bucket, rate, by_id)
     received = banks.reserves_of(island, bank) - money
     gain = received - (cost - debt.cost_of(island, bank))
     assert received > 0 and gain > 0

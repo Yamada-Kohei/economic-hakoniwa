@@ -35,3 +35,12 @@ take_over_bloc: 貿易圏の代表を引き継ぐ
 propose_contract: 二国間契約の申し込み
 accept_contract: 二国間契約を受ける
 cancel_contract: 二国間契約をやめる
+set_tariff: 関税
+set_export_subsidy: 輸出補助
+set_import_quota: 輸入の割り当て
+set_embargo: 禁輸
+send_aid: 援助
+set_capital_controls: 資本取引の制限
+set_fx_intervention: 為替の介入
+set_fx_peg: 固定相場
+set_foreign_bonds: 外国の国債の売り買い

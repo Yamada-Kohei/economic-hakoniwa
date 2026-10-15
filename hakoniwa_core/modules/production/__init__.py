@@ -8,6 +8,10 @@ facilities.engineer_cap です。産出物は施設の在庫に入り、市場�
 作り方を替えた次のターン（フェーズ3-2。ext["recipe_changed"]）は、稼働率が半分になります。作り方は
 国営なら命令「作り方の変更」（change_recipe）で、民営は 12 ターンごとの見直し（modules/firms）で
 決め、市場の段で替えます（modules/market の _switch_recipes）。
+産業のある施設の産出の倍率（稼働率 × 生産性）は、島×産業の経験の累積に足します（フェーズ3-3。
+economy/experience.py）。年の終わり（12 ターンごと）に、
+その年にあまり動かさなかった産業の累積を減らし、
+経験の目立つ産業が薄れたらログで知らせます。
 寒冷の島の家計は、電力を climate.yaml の household_power 倍使います。マスの汚染で肥沃度が下がる
 のもこの段です（hakoniwa_core/nature.py）。
 
@@ -35,6 +39,7 @@ from hakoniwa_core.economy import (
     banks,
     books,
     entity_of,
+    experience,
     freight,
     funds,
     household,
@@ -162,6 +167,9 @@ class Production(IslandStage):
                     if not public:
                         books.stock_moved(island, f.id, good, -used)
             out_rate = ctx.formula("output_rate")(island, f, rate, ctx)
+            industry = run.recipe.get("industry")
+            if industry:
+                experience.add(island, industry, out_rate)
             for good, qty in sorted(run.recipe["outputs"].items()):
                 amount = fac.scale(qty, out_rate)
                 produced[good] = produced.get(good, 0) + amount
@@ -176,6 +184,19 @@ class Production(IslandStage):
                 island.stats[f"use.{good}"] = from_milli(amount)
         self._spread_pollution(island, ctx)
         nature.wear_fertility(island, config)
+        self._experience(island, ctx)
+
+    @staticmethod
+    def _experience(island: IslandState, ctx: StageContext) -> None:
+        """経験の統計（産業ごとの累積。標準の施設が全力で動いたターン数）と、年の終わりの見直し。"""
+        if ctx.turn % experience.YEAR == 0:
+            notable = ctx.config.get("experience.base_turns") * experience.FULL
+            before = {k: v[0] for k, v in experience.table(island).items()}
+            for industry in experience.close_year(island, ctx.config):
+                if before.get(industry, 0) >= notable:
+                    island.log.append(LogEntry("experience_faded", {"industry": industry}))
+        for industry, (amount, _) in sorted(experience.table(island).items()):
+            island.stats[f"experience.{industry}"] = from_milli(amount)
 
     @staticmethod
     def _operates(f: Facility, ctx: StageContext) -> bool:

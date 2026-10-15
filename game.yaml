@@ -29,6 +29,7 @@ stages:
   - education        # 教育水準と、大学の技術者の育成・引退
   - events           # 災害
   - records          # 記録（統計と、帳簿の確かめ）
+  - rankings         # 世界の段（フェーズ3-3）: 各産業の経験の累積が世界で1位の国の称号と、産業ごとの順位
   - trade_check      # 世界の段（フェーズ3-1）: 島をまたぐお金と運ぶ途中の荷の突き合わせ
 
 # 名前付きの式の差し替え。例: admin_power: "my_pack_module:admin_power"
@@ -61,6 +62,22 @@ climate:
   fertility_terrain: plain
   fertility_loss: 0.02  # 汚染のあったターンが1年分たまるごとに下がる量
   fertility_floor: 0.5
+
+# 経験と集積（フェーズ3-3。hakoniwa_core/economy/experience.py）。経験は島×産業ごとの累積の産出を
+# 「標準の施設が全力で動いたターン数」で数え、係数 min(上限, 1 + slope × log2(1 + 累積 ÷ base_turns)) を
+# その産業の施設の生産性に掛ける。
+experience:
+  base_turns: 24        # 係数の式の 24（標準の施設が2年動いた分で 1 + slope）
+  slope: 0.1
+  cap: 1.5              # 係数の上限
+  assembly: [automobile, shipbuilding]  # 組み立て産業（上限が assembly_cap）
+  assembly_cap: 1.7
+  dormant_share: 0.1    # その年に動かした量が base_turns のこの割合に満たない産業は、
+  decay: 0.05           # 年の終わりに累積がこの割合だけ減る
+  cluster_radius: 3     # 集積: この半径のマスの中の、同じ産業のほかの施設1つごとに
+  cluster_step: 0.03    # 生産性をこれだけ上げる（上限 cluster_cap）
+  cluster_cap: 0.15
+  cluster_categories: [industry]  # 集積が効く施設の分類（facilities.yaml の category。工場だけ）
 
 island:
   size: 32              # 島は size × size のマスの中に描く
@@ -179,6 +196,7 @@ fx:
   keep_turns: 2         # 商社が持っておく決済通貨（次のこのターン数分の輸入の代金）
   depth_turns: 12       # 市場の厚み（片側だけの注文で動く割合を決める）を数えるターン数
   min_depth: 1000       # 市場の厚みの下限（平均賃金の何倍か）
+  peg_band: 0.01        # 固定相場（フェーズ3-3）: 中央銀行が決めたレートのこの幅の端で、限りなく売り買いする
 
 # 海外の商人（フェーズ3-1）。島の市場で、決まった値段と1ターンの上限で売る（買わない）。港も船も
 # 為替も要らない。代金は島の外に出て消える（仕訳の種類 merchant）。
@@ -294,6 +312,10 @@ banking:
   sell_premium: 0.005   # 国債を売るときに受け入れる利回りの上乗せ（求める利回りより高くても売る幅）
   default_crunch_turns: 36  # 国債の債務不履行で損をした銀行は、このターン数のあいだ新しく貸さない
                             # （返す元金の借り換えだけ。計画経済の島は除く）
+  # 外国の国債（フェーズ3-3。資本取引が自由な島の市中銀行。hakoniwa_core/trade/abroad.py）
+  foreign_share: 0.1    # 外国の資産（外貨と外国の国債）の上限（預金に対する割合）
+  foreign_step: 0.01    # 1ターンに外貨を買い足す上限（預金に対する割合。準備預金の余りの半分まで）
+  foreign_margin: 0.01  # 外国の利回り − 値下がりの率が、自国の利回りよりこれ以上高い通貨だけ買う
 
 loans:
   working_turns: 6      # 運転資金を返す期間

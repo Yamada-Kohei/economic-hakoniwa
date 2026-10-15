@@ -108,6 +108,18 @@ class Defs:
         """建国時に選べる鉱業資源（定義した順）。"""
         return [gid for gid, good in self.goods.items() if good.get("mining")]
 
+    def industries(self) -> list[str]:
+        """施設の産業の分類（facilities.yaml の industry。定義に出てくる順。フェーズ3-3）。"""
+        return list(self._industries)
+
+    @cached_property
+    def _industries(self) -> tuple[str, ...]:
+        found: dict[str, None] = {}
+        for spec in self.facilities.values():
+            if spec.get("industry"):
+                found[spec["industry"]] = None
+        return tuple(found)
+
     def settlement_levels(self) -> list[str]:
         """町（住宅地）の段階を、小さい順に。"""
         return list(self._settlement_levels)
