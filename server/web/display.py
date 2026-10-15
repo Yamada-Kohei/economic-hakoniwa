@@ -595,7 +595,7 @@ def _describe_trade(kind: str, payload: dict[str, Any], name: str) -> str:
         if "currency" in payload:
             parts.append(f"決済通貨を{currency_name(payload['currency'])}に")
         if "approve" in payload:
-            parts.append(f"{_island_name(payload['approve'])}の加盟を承認")
+            parts.append(f"{island_name(payload['approve'])}の加盟を承認")
         if "no_tariff" in payload:
             parts.append("圏内の関税をなくす" if payload["no_tariff"] else "圏内の関税を認める")
         if "fixed_good" in payload:
@@ -605,7 +605,7 @@ def _describe_trade(kind: str, payload: dict[str, Any], name: str) -> str:
             parts.append(f"{defs.name('goods', good)}の値段を{fixed}")
         return f"{name}: {bloc} " + "・".join(parts)
     if kind == "transfer_bloc":
-        return f"{name}: {bloc} → {_island_name(payload.get('to'))}"
+        return f"{name}: {bloc} → {island_name(payload.get('to'))}"
     if kind == "propose_contract":
         good = payload.get("good", "")
         unit = defs.unit_name(good) if good in defs.goods else ""
@@ -613,7 +613,7 @@ def _describe_trade(kind: str, payload: dict[str, Any], name: str) -> str:
         currency = currency_name(payload["currency"]) if "currency" in payload else "自国通貨"
         delivery = DELIVERIES.get(payload.get("delivery", ""), "")
         return (
-            f"{name}: {_island_name(payload.get('partner'))}に{defs.name('goods', good)}を"
+            f"{name}: {island_name(payload.get('partner'))}に{defs.name('goods', good)}を"
             f"毎ターン {payload.get('quantity', 0):g} {unit}{side}"
             f"（1{unit} {payload.get('price', 0):,}・{currency}・{payload.get('turns', 0)} ターン"
             f"{'・' + delivery if delivery else ''}）"
@@ -646,9 +646,9 @@ def _describe_policy(kind: str, payload: dict[str, Any], name: str) -> str:
     if kind == "set_embargo":
         what = good_name or "すべての財"
         verb = "やめる" if payload.get("lift") else "始める"
-        return f"{name}を{verb}: {_island_name(payload.get('partner'))}（{what}）"
+        return f"{name}を{verb}: {island_name(payload.get('partner'))}（{what}）"
     if kind == "send_aid":
-        partner = _island_name(payload.get("partner"))
+        partner = island_name(payload.get("partner"))
         if good:
             return (
                 f"{name}: {partner}に{good_name}を毎ターン {payload.get('quantity', 0):g} {unit}"
@@ -664,7 +664,7 @@ def _describe_policy(kind: str, payload: dict[str, Any], name: str) -> str:
             target = currency_name(payload.get("currency"))
         else:
             holder = HOLDERS.get(payload.get("holder", ""), "")
-            target = f"{holder}が{_island_name(payload.get('issuer'))}の国債"
+            target = f"{holder}が{island_name(payload.get('issuer'))}の国債"
         if not amount:
             return f"{name}をやめる: {target}"
         side = "買う" if amount > 0 else "売る"
@@ -701,7 +701,7 @@ def _bloc_name(bloc_id: Any) -> str:
     return f"貿易圏 {bloc_id} 番"
 
 
-def _island_name(island_id: Any) -> str:
+def island_name(island_id: Any) -> str:
     row = m.Island.objects.filter(pk=island_id).values_list("name", flat=True).first()
     return row if row is not None else f"島 {island_id}"
 

@@ -3,21 +3,18 @@
 
 経験: 島×産業（facilities.yaml の industry）ごとに、累積の産出を「標準の施設が全力で動いたターン数」
 で数えて持ちます（``island.ext["experience"]``: 産業 → [累積, その年の量]。どちらも 1000 分の 1
-ターン）。施設が1ターンに足す量は、産出の倍率（稼働率 × 生産性）
-です（品目の単位が違っても比べられる）。
-係数は min(上限, 1 + experience.slope × log2(1 + 累積 ÷ experience.base_turns)) で、上限は
-experience.cap、組み立て産業（experience.assembly）は experience.assembly_cap です。
-その年（12 ターン）
-に動かした量が base_turns の experience.dormant_share に満たない産業は、年の終わりに累積が
-experience.decay だけ減ります。貿易で経験が少し移る形（技術の移転）は、
-add で足せるようにしてあります。
+ターン）。施設が1ターンに足す量は、産出の倍率（稼働率 × 生産性）です（品目の単位が違っても比べ
+られる）。係数は min(上限, 1 + experience.slope × log2(1 + 累積 ÷ experience.base_turns)) で、上限は
+experience.cap、組み立て産業（experience.assembly）は experience.assembly_cap です。その年（12
+ターン）に動かした量が base_turns の experience.dormant_share に満たない産業は、年の終わりに累積が
+experience.decay だけ減ります。貿易で経験が少し移る形（技術の移転）は、add で足せるようにして
+あります。
 
 集積: 半径 experience.cluster_radius マス以内に、同じ産業のほかの施設（建ったもの）が1つあるごとに
 experience.cluster_step（上限 experience.cluster_cap）だけ生産性を上げます。効くのは
-experience.cluster_categories の分類の施設（既定は工場の industry だけ。
-農場や鉱山は島じゅうに並べるのが
-ふつうで、どの島も同じだけ上がり得意産業の違いにならないため）。汚染も重なるので、周りの幸福度と
-肥沃度は下がります（汚染の仕組みはそのまま）。
+experience.cluster_categories の分類の施設（既定は工場の industry だけ。農場や鉱山は島じゅうに
+並べるのがふつうで、どの島も同じだけ上がり得意産業の違いにならないため）。汚染も重なるので、
+周りの幸福度と肥沃度は下がります（汚染の仕組みはそのまま）。
 
 称号: 各産業の累積が世界で1位の国に「鉄鋼の国」などの称号を付けます（``world.ext["rankings"]``。
 modules/experience の世界の段 rankings が毎ターン書く。他国からも見える）。

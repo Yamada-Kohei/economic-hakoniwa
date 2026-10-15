@@ -18,6 +18,7 @@ from hakoniwa_core.economy import ENGINEERS, GENERAL, OWNERS, books, debt, entit
 from hakoniwa_core.modules.failures import METHODS as RESOLUTION_METHODS
 from hakoniwa_core.naming import facility_name
 from hakoniwa_core.state import IslandState
+from hakoniwa_core.trade import abroad
 from hakoniwa_core.units import from_milli
 from server.economy.models import Account, FacilityBook, MarketRecord, Trade
 from server.game import get_game
@@ -111,6 +112,32 @@ _EXTRA_STATS = [
     ("port.handled", "港で積み下ろした荷（このターン）", " トン"),
     ("fx.holdings", "外貨の持ち高（今のレートで自国通貨に直した額）", "money"),
     ("money.nonresident", "外国が持つ自国通貨（非居住者の預金）", "money"),
+    # 産業政策と国際金融（フェーズ3-3）
+    ("trade.tariffs", "関税の収入（このターン）", "money"),
+    ("trade.tariff_unpaid", "お金が足りず払えなかった関税", "money"),
+    ("trade.export_subsidies", "輸出補助（このターン）", "money"),
+    ("trade.subsidy_unpaid", "予算が足りず払えなかった輸出補助", "money"),
+    ("aid.sent", "送ったお金の援助（このターン）", "money"),
+    ("aid.received", "受け取ったお金の援助（このターン）", "money"),
+    ("bop.current", "経常収支（このターン）", "money"),
+    ("bop.goods", "経常収支・貿易収支", "money"),
+    ("bop.services", "経常収支・サービス収支", "money"),
+    ("bop.income", "経常収支・所得収支（外国の国債の利子）", "money"),
+    ("bop.transfers", "経常収支・移転（援助）", "money"),
+    ("bop.financial", "金融収支（資産の増加 − 負債の増加）", "money"),
+    ("bop.assets.fx", "金融収支・外貨の持ち高の増加", "money"),
+    ("bop.assets.bonds", "金融収支・外国の国債の増加", "money"),
+    ("bop.liabilities.deposits", "金融収支・外国が持つ自国通貨の増加（負債）", "money"),
+    ("bop.liabilities.bonds", "金融収支・外国が持つ自国の国債の増加（負債）", "money"),
+    ("bop.liabilities.merchant", "金融収支・海外の商人に払った額（負債）", "money"),
+    ("fx.reserves", "外貨準備（政府と中央銀行の外貨と外国の国債）", "money"),
+    ("foreign_bonds.gov", "政府が持つ外国の国債（時価）", "money"),
+    ("foreign_bonds.cb", "中央銀行が持つ外国の国債（時価）", "money"),
+    ("foreign_bonds.banks", "市中銀行が持つ外国の国債（時価）", "money"),
+    ("bonds.foreign", "外国が持つ自国の国債（額面）", "money"),
+    ("bonds.bought_abroad", "入札で外国が買った国債（このターン）", "money"),
+    ("fx.peg_broken", "固定相場が外れた通貨の数（このターン）", ""),
+    ("titles", "持っている称号の数", ""),
 ]
 _STATS = {key: (label, unit) for key, label, unit in [*display.SUMMARY_STATS, *_EXTRA_STATS]}
 # 名前の頭が財のもの（後ろに財の名前が続く）
@@ -161,6 +188,11 @@ def stat_label(name: str) -> tuple[str, str]:
             return f"銀行（{number} 番）の{label}", unit
     if head == "fx":
         return _fx_label(rest) or (name, "")
+    if head in ("experience", "experience_rank") and rest in defs.industries():
+        industry = defs.name("industries", rest)
+        if head == "experience":
+            return f"{industry}の経験（標準の施設が全力で動いたターン数）", ""
+        return f"{industry}の経験の世界の順位", " 位"
     return name, ""
 
 
@@ -168,6 +200,7 @@ def stat_label(name: str) -> tuple[str, str]:
 FX_KINDS = {
     "volume": "為替の売買量（{currency}の額）",
     "dealt": "中央銀行が買った外貨（{currency}の額。売りはマイナス）",
+    "intervened": "介入と固定相場で中央銀行が買った外貨（{currency}の額。売りはマイナス）",
 }
 
 
@@ -785,11 +818,15 @@ def bond_rows(island: m.Island, currency: str, mine: bool) -> list[dict[str, Any
             "face": display.money_text(b.face, currency),
             "outstanding": display.money_text(debt.outstanding(state, b), currency),
             "central_bank": display.money_text(held.get("cb", 0), currency),
+            # 外国の持ち分（フェーズ3-3。非居住者の持ち手 nr:<島>:<主体> の合計）
+            "foreign": display.money_text(
+                sum(v for h, v in held.items() if abroad.parse_holder(h) is not None), currency
+            ),
         }
         if mine:
             row["holders"] = [
                 {
-                    "name": banks.get(h, (ENTITY_NAMES.get(h, h), ""))[0],
+                    "name": _holder_name(h, banks),
                     "where": banks.get(h, ("", ""))[1],
                     "amount": display.money_text(v, currency),
                 }
@@ -798,6 +835,16 @@ def bond_rows(island: m.Island, currency: str, mine: bool) -> list[dict[str, Any
             ]
         rows.append(row)
     return rows
+
+
+def _holder_name(holder: str, banks: dict[str, tuple[str, str]]) -> str:
+    """国債の持ち手の表示名（自国の銀行・中央銀行と、外国の政府・中央銀行・銀行）。"""
+    foreign = abroad.parse_holder(holder)
+    if foreign is not None:
+        island_id, entity = foreign
+        who = ENTITY_NAMES.get(entity) or ("銀行" if entity.startswith("bank:") else entity)
+        return f"{display.island_name(island_id)}の{who}"
+    return banks.get(holder, (ENTITY_NAMES.get(holder, holder), ""))[0]
 
 
 # --- 金融 -----------------------------------------------------------------------------

@@ -8,10 +8,11 @@ facilities.engineer_cap です。産出物は施設の在庫に入り、市場�
 作り方を替えた次のターン（フェーズ3-2。ext["recipe_changed"]）は、稼働率が半分になります。作り方は
 国営なら命令「作り方の変更」（change_recipe）で、民営は 12 ターンごとの見直し（modules/firms）で
 決め、市場の段で替えます（modules/market の _switch_recipes）。
+
 産業のある施設の産出の倍率（稼働率 × 生産性）は、島×産業の経験の累積に足します（フェーズ3-3。
-economy/experience.py）。年の終わり（12 ターンごと）に、
-その年にあまり動かさなかった産業の累積を減らし、
-経験の目立つ産業が薄れたらログで知らせます。
+economy/experience.py）。年の終わり（12 ターンごと）に、その年にあまり動かさなかった産業の累積を
+減らし、経験の目立つ産業が薄れたらログで知らせます。
+
 寒冷の島の家計は、電力を climate.yaml の household_power 倍使います。マスの汚染で肥沃度が下がる
 のもこの段です（hakoniwa_core/nature.py）。
 

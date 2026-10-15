@@ -6,9 +6,8 @@
 します（write_stats）。
 
 経常収支（仕訳の種類で分ける。CURRENT）:
-- 貿易収支 goods: 圏の市場の代金（trade）・二国間契約（contract）・海外の商人（merchant）。
-  物の援助は、
-  送った国の島の値段で、輸出（受け取った国は輸入）と移転の両方に同じ額を入れる
+- 貿易収支 goods: 圏の市場の代金（trade）・二国間契約（contract）・海外の商人（merchant）。物の
+  援助は、送った国の島の値段で、輸出（受け取った国は輸入）と移転の両方に同じ額を入れる
 - サービス収支 services: 他国の船の運賃と港の使用料（shipping_freight・port_fee）。今の仕組みでは、
   運賃は買い手が自国の海運業に、使用料は積む国と下ろす国がそれぞれ自国の港に払うので、島をまたが
   ず 0 になります
@@ -62,9 +61,8 @@ def add(island: IslandState, item: str, amount: int) -> None:
 
 
 def value_of(world: WorldState, island: IslandState, currency: int, amount: int) -> int:
-    """通貨 currency の amount を、島の通貨に直した値（そのターンのレート。組がなければ、
-    共通の通貨を
-    通した目安）。"""
+    """通貨 currency の amount を、島の通貨に直した値（そのターンのレート。組がなければ、共通の
+    通貨を通した目安）。"""
     from hakoniwa_core.trade import fx as fxrates
 
     if currency == island.id:
@@ -84,10 +82,9 @@ def record(
     kind: str,
     values: dict[int, int] | None = None,
 ) -> None:
-    """通貨 currency で source（島, 主体）から target へ amount 払った流れを、両方の島に足す。
-    同じ島の
-    中の支払いは足さない。values は島ごとの、
-    その島の通貨に直した値（省くとそのターンのレートで直す）。"""
+    """通貨 currency で source（島, 主体）から target へ amount 払った流れを、両方の島に足す。同じ
+    島の中の支払いは足さない。values は島ごとの、その島の通貨に直した値（省くとそのターンのレート
+    で直す）。"""
     if amount <= 0 or source[0] == target[0]:
         return
     item = CURRENT.get(kind)
@@ -112,9 +109,8 @@ def record(
 
 
 def bonds(world: WorldState, issuer: int, holder: int, values: dict[int, int], sign: int) -> None:
-    """外国の国債を買った（sign 1）・売った・償還された（sign -1）額面の値打ちを、
-    持ち手の島の資産と、
-    発行した島の負債に足す（values は島ごとの、その島の通貨の値）。"""
+    """外国の国債を買った（sign 1）・売った・償還された（sign -1）額面の値打ちを、持ち手の島の
+    資産と、発行した島の負債に足す（values は島ごとの、その島の通貨の値）。"""
     if issuer == holder:
         return
     if holder in world.islands:

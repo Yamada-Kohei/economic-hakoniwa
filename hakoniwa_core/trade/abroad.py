@@ -492,7 +492,7 @@ def reconcile(world: WorldState) -> list[str]:
     return problems
 
 
-def view(world: WorldState, island: IslandState) -> list[dict[str, Any]]:
+def view(island: IslandState) -> list[dict[str, Any]]:
     """画面向け: 島の主体が持つ外国の国債（発行した島・持ち手・額面・時価・自国通貨の値打ち）。"""
     rows = []
     for entity, issuers in sorted(table(island).items()):

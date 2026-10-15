@@ -211,9 +211,8 @@ class Policy:
     # 文字列のキー
     tariffs: dict[str, int] = field(default_factory=dict)  # 財 → 関税率（1万分の1）
     export_subsidies: dict[str, int] = field(default_factory=dict)  # 財 → 1 単位あたりの輸出補助
-    import_quotas: dict[str, int] = field(
-        default_factory=dict
-    )  # 財 → 1ターンの輸入の上限（1000分の1）
+    # 財 → 1ターンの輸入の上限（1000分の1）
+    import_quotas: dict[str, int] = field(default_factory=dict)
     embargoes: dict[str, list[str]] = field(default_factory=dict)  # 相手の島 → 財（空はすべての財）
     capital_controls: str = ""  # 資本取引: free・official・closed（"" は経済体制の既定）
     fx_intervention: dict[str, int] = field(default_factory=dict)  # 通貨 → 中央銀行が毎ターン買う額
