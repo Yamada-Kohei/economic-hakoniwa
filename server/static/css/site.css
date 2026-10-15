@@ -176,6 +176,11 @@ table.budget-table td:first-child { min-width: 7em; }
 table.bloc-table th, table.bloc-table td, table.traders-table th, table.traders-table td { white-space: nowrap; }
 table.bonds-table td:nth-child(9), table.bonds-table th:nth-child(9) { text-align: left; }
 table.banks-table td:nth-child(7), table.banks-table th:nth-child(7) { text-align: left; }
+/* 順位・称号・外国の国債の表の、国や持ち手の名前の欄は左に寄せる（フェーズ3-3） */
+table.ranking-table td:nth-child(2), table.ranking-table th:nth-child(2),
+table.titles-table td:nth-child(-n+4), table.titles-table th:nth-child(-n+4),
+table.foreign-bonds-table td:nth-child(2), table.foreign-bonds-table th:nth-child(2) { text-align: left; }
+table.ranking-table td:nth-child(3), table.titles-table th, table.titles-table td { white-space: nowrap; }
 .plain-list { padding-left: 1.2em; margin: 4px 0; }
 .report-layout.with-orders { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; align-items: start; }
 .report-orders { margin-top: 12px; }
