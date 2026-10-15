@@ -5,6 +5,10 @@
 更新にかかる時間の測定や、自動テストでの確認に使います。--autoplan を付けると、
 どの島にも標準の計画（hakoniwa_core/autoplan.py）で命令を並べます。--gate を付けると、
 フェーズ2の関門の目安（hakoniwa_core/gate.py）から外れたところを最後に並べます。
+
+バランス調整の回2 から、--scenario で場面（標準の計画・命令なし・中央銀行を独立させた国・少ない島の
+世界。hakoniwa_core/measure.py）を選べます。--out で結果のまとめを JSON に（measure compare で
+比べる）、--series で島×ターンの時系列（失業の内わけなど）を JSON Lines に書きます。
 """
 
 from __future__ import annotations
@@ -15,10 +19,11 @@ import json
 import statistics
 import sys
 import time
+from contextlib import ExitStack
 
-from hakoniwa_core.autoplan import plan_trade, plan_turn, queue_orders
+from hakoniwa_core import measure
 from hakoniwa_core.game import load_game
-from hakoniwa_core.gate import Recorder
+from hakoniwa_core.gate import START, Recorder
 from hakoniwa_core.state import WorldState
 from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.state.serialize import world_to_dict
@@ -32,32 +37,51 @@ def world_digest(world: WorldState) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--islands", type=int, default=50)
+    parser.add_argument("--islands", type=int, default=None, help="島の数（既定は場面の数、50）")
     parser.add_argument("--turns", type=int, default=10)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--config", default=None, help="game.yaml の場所")
     parser.add_argument("--autoplan", action="store_true", help="標準の計画で命令を並べる")
+    parser.add_argument(
+        "--scenario",
+        choices=sorted(measure.SCENARIOS),
+        default=None,
+        help="場面（既定は --autoplan なら plan、なければ none）",
+    )
     parser.add_argument("--gate", action="store_true", help="関門の目安から外れたところを並べる")
+    parser.add_argument("--out", default=None, help="結果のまとめを書く JSON のファイル")
+    parser.add_argument(
+        "--series", default=None, help="島×ターンの時系列を書く JSON Lines のファイル"
+    )
+    parser.add_argument(
+        "--zones-every", type=int, default=12, help="時系列に町と村ごとの内わけを書く間隔（ターン）"
+    )
     args = parser.parse_args(argv)
 
+    scenario = measure.SCENARIOS[args.scenario or ("plan" if args.autoplan else "none")]
+    islands = args.islands or scenario.islands
     game = load_game(args.config)
     started = time.perf_counter()
-    world = generate_world(args.seed, args.islands, game.config, game.defs)
-    print(f"世界を作りました: {args.islands} 島（{time.perf_counter() - started:.2f} 秒）")
+    world = generate_world(args.seed, islands, game.config, game.defs)
+    print(f"世界を作りました: {islands} 島（{time.perf_counter() - started:.2f} 秒）")
+    print(f"場面: {scenario.title}")
 
-    recorder = Recorder(world, game.defs, game.config) if args.gate else None
-    per_turn = []
-    for _ in range(args.turns):
-        if args.autoplan:
-            for island in world.islands.values():
-                orders = plan_turn(island, game.defs, game.config, world.turn + 1)
-                queue_orders(island, orders)
-            for island_id, orders in plan_trade(world, game.defs, game.config).items():
-                queue_orders(world.islands[island_id], orders)
-        report = game.engine.run_turn(world)
-        per_turn.append(report.total_seconds)
-        if recorder is not None:
-            recorder.record(world)
+    recorder = Recorder(world, game.defs, game.config) if args.gate or args.out else None
+    with ExitStack() as stack:
+        series = stack.enter_context(open(args.series, "w")) if args.series else None
+        meter = None
+        if args.out or series is not None:
+            meter = measure.Measure(world, game.defs, game.config, series, args.zones_every)
+        per_turn = []
+        for _ in range(args.turns):
+            measure.queue_scenario_orders(world, scenario, game.defs, game.config)
+            report = game.engine.run_turn(world)
+            per_turn.append(report.total_seconds)
+            if recorder is not None:
+                recorder.record(world)
+            if meter is not None:
+                meter.record(world)
+    seconds = time.perf_counter() - started
     print(
         f"{args.turns} ターン: 1ターンの平均 {statistics.mean(per_turn) * 1000:.1f} ms、"
         f"最大 {max(per_turn) * 1000:.1f} ms"
@@ -67,8 +91,15 @@ def main(argv: list[str] | None = None) -> int:
     print(f"人口の合計 {population}、施設の数 {facilities}")
     slowest = max(report.seconds, key=report.seconds.get) if report.seconds else "-"
     print(f"最後のターンで一番時間のかかった段: {slowest}")
-    print(f"ターン {world.turn} の状態の指紋: {world_digest(world)}")
-    if recorder is not None:
+    digest = world_digest(world)
+    print(f"ターン {world.turn} の状態の指紋: {digest}")
+    if args.out and recorder is not None and meter is not None:
+        data = measure.result(
+            scenario, args.seed, args.turns, islands, recorder, meter, seconds, digest, world
+        )
+        with open(args.out, "w") as f:
+            json.dump(data, f, ensure_ascii=False, indent=1)
+    if args.gate and recorder is not None:
         summary = recorder.summary()
         print("関門の目安で見る値: " + "、".join(f"{k} {v:.3f}" for k, v in summary.items()))
         print("値段 ÷ 初めの値段（最小・中央・最大）:")
@@ -77,10 +108,14 @@ def main(argv: list[str] | None = None) -> int:
         print("財ごとの、作った島と売り買いのあった島の数（1ターンあたりの平均）:")
         for good, (made, traded) in recorder.goods().items():
             print(f"  {good}: {made:.1f}・{traded:.1f}")
-        failures = recorder.failures()
-        print(f"目安から外れたところ: {len(failures)} 件")
+        failures = recorder.failures(START, kinds=scenario.kinds)
+        counted = "全部" if scenario.kinds is None else "、".join(scenario.kinds)
+        print(f"目安から外れたところ（この場面で数える目安: {counted}）: {len(failures)} 件")
         for line in failures:
             print("  " + line)
+        others = len(recorder.failures(START)) - len(failures)
+        if others:
+            print(f"（この場面で数えない目安から外れたところ: {others} 件）")
         return 1 if failures else 0
     return 0
 

@@ -106,6 +106,7 @@
 | `founding.py` | 建国（形と地形の検査、自動の地形、最初の中身の配置） |
 | `autoplan.py` | 試験用の「標準の計画」（ゲームのルールではない） |
 | `gate.py` | フェーズ2・3の関門の目安（ゲームのルールではない） |
+| `measure.py` | バランス調整の測り方（場面ごとの一括シミュレーションと失業の内わけ。ゲームのルールではない） |
 
 ## 例: 毎ターン少し人が増える段
 
@@ -214,6 +215,30 @@ python -m hakoniwa_core.simulate --islands 50 --turns 300             # 命令�
 python -m hakoniwa_core.simulate --islands 50 --turns 300 --autoplan  # 標準の計画で命令を並べる
 python -m hakoniwa_core.simulate --islands 50 --turns 300 --autoplan --gate  # 関門の目安も見る（フェーズ2・3）
 ```
+
+バランス調整では、場面を選んで回し、結果を同じ物差しで比べます（`hakoniwa_core/measure.py`）。
+
+```sh
+# 場面: plan（標準の計画）・none（命令なし）・independent（中央銀行を独立させた国）・small（4島の世界）
+python -m hakoniwa_core.simulate --scenario plan --seed 1 --turns 300 --gate \
+    --out runs/plan-s1.json --series runs/plan-s1.jsonl
+python -m hakoniwa_core.measure batch --set quick --out-dir runs/new   # 回ごとの比べ（種1・2、300ターン）
+python -m hakoniwa_core.measure batch --set full --out-dir runs/full   # 回の終わりに一度（種1〜4、500ターン）
+python -m hakoniwa_core.measure compare runs/base runs/new            # 2つの結果を表に並べる
+python -m hakoniwa_core.measure show runs/new                         # 要点（失業の内わけなど）
+```
+
+- 場面ごとに、関門に数える目安の種類（`gate.KINDS`）が決まっています。命令なしの場面は「崩れないか」
+  （GDP の差・値段・金利・人口・銀行の連鎖）だけを数え、失業率や物価は見るだけにします。目安の値は
+  どの場面でも同じです。
+- `--out` の JSON には、目安を見る期間（120〜300ターン目と、最後まで）ごとの関門の結果と、働き手の
+  行き先（仕事・村の自給・失業）、埋まらなかった席とそのうち場所のずれの分、施設が全力で動かなかった
+  理由（売れ行き・原料・電力・資金・働き手・技術者・止まっている）、GDP の支出の内わけ、民営が参入
+  しなかった理由、機械や鋼材を誰が買ったか、施設の種類ごとの稼働、最初の1年の縮み、300ターン目の
+  輸送船が入ります。
+- `--series` の JSON Lines は島×ターンの1行ずつで、`--zones-every` ターンごとに町と村ごとの内わけも
+  付きます（50島×500ターンで 60MB ほど）。
+- 測りは状態を読むだけで、同じ種なら `--out` を付けても付けなくても「状態の指紋」は同じです。
 
 最後に出る「状態の指紋」は、同じ種なら何度回しても同じになります。
 `tests/core/test_gate.py` は標準の計画で 300 ターン回し、鉄鉱石 → 鋼材 → 機械 → 新しい工場の連鎖が
