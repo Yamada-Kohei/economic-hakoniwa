@@ -517,11 +517,14 @@ class _Round:
                     for c in active
                     if c["currency"] == currency and i in (c["buyer"], c["seller"])
                 )
-                depth = fxrates.depth(island, currency, self.config, scheduled)
+                room = abroad.reserve_room(island, self.config)  # 受け身の注文の上限まで
+                if room is not None:
+                    room = fxrates.to_foreign(island, currency, room)
                 book = fxrates.Book(
-                    depth=depth,
+                    depth=fxrates.depth(island, currency, self.config, scheduled),
                     peg_band=fxrates.peg_band(self.config),
-                    reserve_cap=fxrates.reserve_cap(self.config, depth),
+                    reserve_room=room,
+                    issuer_room=abroad.reserve_room(self.world.islands[currency], self.config),
                 )
                 reference = fxrates.rate(island, currency)
                 for entity in sorted(payers):

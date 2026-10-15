@@ -519,10 +519,15 @@ def test_peg_far_from_the_rate_moves_it_by_the_band(game, base):
         assert after <= before * (BASIS - width) // BASIS + 1
 
 
-def _passive(world, island, other, depth, cap, reference, width):
+def _passive(game, world, island, other, depth, reference, width):
     """受け身の注文だけの板を作り、(島の中央銀行の買い, 発行した島の中央銀行の売り, 島の中央銀行の
-    売り, 発行した島の中央銀行の買い) の量を返す。"""
-    book = fxrates.Book(depth=depth, reserve_cap=cap)
+    売り, 発行した島の中央銀行の買い) の量を返す。上限は貿易の段と同じく abroad.reserve_room で。"""
+    room = abroad.reserve_room(island, game.config)
+    book = fxrates.Book(
+        depth=depth,
+        reserve_room=None if room is None else fxrates.to_foreign(island, other.id, room),
+        issuer_room=abroad.reserve_room(other, game.config),
+    )
     fxrates.dealer_orders(island, other.id, book, reference, width)
     fxrates.issuer_orders(world, island, other.id, book, reference, width)
     return (
@@ -534,31 +539,50 @@ def _passive(world, island, other, depth, cap, reference, width):
 
 
 def test_passive_orders_stop_at_the_reserve_cap(game, base):
-    """受け身の注文で持つ外貨は市場の厚みの fx.reserve_turns ターン分まで。上限に届くと、島の
-    中央銀行は買わず、発行した島の中央銀行は売らない（関門で、決済通貨を発行した島の外貨準備が
-    年の GDP の何倍にも増え続けた直し）。反対の向きの注文は出す。"""
+    """受け身の注文で中央銀行が持つ外国の資産は、年の GDP の fx.reserve_share まで。上限に届くと、
+    島の中央銀行は買わず、発行した島の中央銀行は売らない（関門で、決済通貨を発行した島の外貨準備が
+    年の GDP の何倍にも増え続けた直し）。反対の向きの注文は出す。GDP の記録がなければ上限なし。"""
     world = copy.deepcopy(base)
     island, other = _pair(world)
     reference = fxrates.rate(island, other.id)
     width = to_basis(game.config.get("fx.band"))
-    have = fxmoney.holding(island, ledger.CB, other.id)
-    reserve = fxmoney.holding(other, ledger.CB, island.id)  # 発行した島の持つこの島の通貨
-    depth = 5 * (max(have, reserve * BASIS // reference, 10_000) // 5 + 1)
-    cap = fxrates.reserve_cap(game.config, depth)
-    assert cap == depth * game.config.get("fx.reserve_turns")
-    cb_buy, issuer_sell, _, _ = _passive(world, island, other, depth, cap, reference, width)
-    assert cb_buy == depth and issuer_sell == depth  # 上限まで遠ければ厚みの分
-    _give_fx(world, island, ledger.CB, other.id, cap - depth // 2 - have)
-    _give_fx(world, other, ledger.CB, island.id, (cap - depth // 2) * reference // BASIS - reserve)
-    cb_buy, issuer_sell, _, _ = _passive(world, island, other, depth, cap, reference, width)
-    assert 0 < cb_buy <= depth // 2 and 0 < issuer_sell <= depth // 2 + 1  # 上限までの分だけ
+    depth = 10_000
     _give_fx(world, island, ledger.CB, other.id, depth)
-    _give_fx(world, other, ledger.CB, island.id, depth * reference // BASIS)
+    _give_fx(world, other, ledger.CB, island.id, depth)
+    share = to_basis(game.config.get("fx.reserve_share"))
+    for here in (island, other):
+        here.economy.gdp_history = [10**12] * 12  # 上限まで遠い
+        cap = 10**12 * 12 * share // BASIS
+        have = abroad.foreign_assets(here, ledger.CB)
+        assert abroad.reserve_room(here, game.config) == cap - have
+    cb_buy, issuer_sell, _, _ = _passive(game, world, island, other, depth, reference, width)
+    assert cb_buy == depth and issuer_sell == depth
+    for here in (island, other):
+        here.economy.gdp_history = [1] * 12  # 上限を超えている
+        assert abroad.reserve_room(here, game.config) == 0
     cb_buy, issuer_sell, cb_sell, issuer_buy = _passive(
-        world, island, other, depth, cap, reference, width
+        game, world, island, other, depth, reference, width
     )
     assert cb_buy == 0 and issuer_sell == 0
     assert cb_sell > 0 and issuer_buy > 0
+    for here in (island, other):
+        here.economy.gdp_history = []  # 建国の最初のターン
+        assert abroad.reserve_room(here, game.config) is None
+    cb_buy, issuer_sell, _, _ = _passive(game, world, island, other, depth, reference, width)
+    assert cb_buy == depth and issuer_sell == depth
+
+
+def test_gate_flags_foreign_assets_that_keep_growing(game, base):
+    recorder = Recorder(base, game.defs, game.config)
+    world = copy.deepcopy(base)
+    recorder.record(world)
+    rec = next(iter(recorder.islands.values()))
+    rec.reserves = [0.1] * 150
+    assert not any("外国の資産" in line for line in recorder.failures(start=0))
+    rec.reserves = [0.1] * 30 + [0.1 + 0.01 * t for t in range(120)]  # 120 ターンで 1.19 増える
+    assert any("増え続けている" in line for line in recorder.failures(start=0))
+    rec.reserves = [2.5] * 150
+    assert any("まで増えた" in line for line in recorder.failures(start=0))
 
 
 def _busiest(world):

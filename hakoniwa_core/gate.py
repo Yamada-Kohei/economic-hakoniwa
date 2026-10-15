@@ -15,8 +15,7 @@
 フェーズ3-3 から、得意産業が島ごとに分かれるか（最後のターンの称号＝各産業の経験の累積の1位を、1つの
 島が TITLE_SHARE より多く持たない）と、外国の資産（外貨準備と外国の国債。政府・中央銀行・市中銀行）
 が限りなく増え続けないか（年の GDP に対する割合が RESERVE_CAP を超えない。最後の RESERVE_WINDOW
-ターンで RESERVE_GROWTH 倍より多く増えない。割合が RESERVE_FLOOR より小さい島は増え方を見ない）を
-見ます。
+ターンで、割合が RESERVE_RISE より多く増えない）を見ます。
 
 目安はゲームのルールではなく確かめの基準なので、game.yaml ではなくこのファイルに置いています。
 """
@@ -54,8 +53,7 @@ NO_COAL = "coal"  # この資源の出ない島の失業率を別に出す
 TITLE_SHARE = 1 / 3  # 1つの島が持つ称号（産業ごとの経験の1位）の、称号のある産業に対する割合の上限
 RESERVE_CAP = 2.0  # 外国の資産 ÷ 年の GDP の上限
 RESERVE_WINDOW = 120  # 外国の資産の増え方を見るターン数（最後から）
-RESERVE_GROWTH = 2.0  # その間に外国の資産 ÷ 年の GDP が増えてよい倍率
-RESERVE_FLOOR = 0.2  # 外国の資産 ÷ 年の GDP がこれより小さければ、増え方は見ない
+RESERVE_RISE = 0.5  # その間に外国の資産 ÷ 年の GDP が増えてよい幅
 
 
 @dataclass
@@ -343,11 +341,7 @@ def _island_failures(rec: IslandRecord, start: int) -> list[str]:
     if max(reserves) > RESERVE_CAP:
         out.append(f"外国の資産が年の GDP の {max(reserves):.2f} 倍まで増えた")
     tail = rec.reserves[-RESERVE_WINDOW:]
-    if (
-        len(tail) == RESERVE_WINDOW
-        and tail[-1] > RESERVE_FLOOR
-        and tail[-1] > tail[0] * RESERVE_GROWTH
-    ):
+    if len(tail) == RESERVE_WINDOW and tail[-1] - tail[0] > RESERVE_RISE:
         out.append(
             f"外国の資産が増え続けている（年の GDP の {tail[0]:.2f} 倍 → {tail[-1]:.2f} 倍）"
         )

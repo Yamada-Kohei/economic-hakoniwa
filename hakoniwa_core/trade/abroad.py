@@ -125,6 +125,17 @@ def foreign_assets(island: IslandState, entity: str) -> int:
     return total
 
 
+def reserve_room(island: IslandState, config: GameConfig) -> int | None:
+    """受け身の為替の注文で、中央銀行がまだ持てる外国の資産（自国通貨。フェーズ3-3）: 年の GDP の
+    fx.reserve_share から、今の外国の資産を引いた額（0 より小さくしない）。GDP の記録がなければ
+    None（上限なし。建国の最初のターン）。"""
+    gdp = debt.annual_gdp(island.economy)
+    if gdp <= 0:
+        return None
+    cap = part(gdp, to_basis(config.get("fx.reserve_share")))
+    return max(0, cap - foreign_assets(island, ledger.CB))
+
+
 # --- レートの記録と求める利回り -----------------------------------------------------------
 
 
