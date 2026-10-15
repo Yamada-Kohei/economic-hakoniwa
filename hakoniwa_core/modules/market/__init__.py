@@ -661,6 +661,7 @@ class Market(IslandStage):
                 # 家計が買いたかったのに売りに出ていなかった分も、需要に数える
                 demand[good] = max(demand.get(good, 0), want)
         planning.record(island, ctx.config, demand, household_)
+        planning.pay_subsidies(island, ctx.config)  # 据え置いた財の補助金（電力の分も）
 
     # --- 注文 ---------------------------------------------------------------------
 
@@ -1671,6 +1672,7 @@ class Market(IslandStage):
             if seller.facility is not None:
                 books.add(island, seller.facility.id, books.SALES, amount)
                 books.add(island, seller.facility.id, books.FREIGHT, seller_freight)
+                planning.note_sale(island, ctx.config, good, seller.facility, qty, price)
             elif seller.kind == MERCHANT:  # 海外の商人の代金は島の外に出る（輸入）
                 # 計画経済の島で公定価格との差を政府が払った分は、商人に払った額と国際収支に
                 # 入れる（GDP の輸入は、島の買い手が払った額のまま。生産の側と合わせる）

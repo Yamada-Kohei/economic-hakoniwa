@@ -383,6 +383,16 @@ def test_policy_orders_check_and_log(game, base):
         text = format_log(defs, e.kind, e.args)
         assert "{" not in text, (e.kind, text)
     assert world.islands[2].name in format_log(defs, "embargo_set", island.log[-1].args)
+    # 禁輸された側の国にも知らせる（相手は禁輸した国の名前）
+    told = [e for e in world.islands[2].log if e.kind.startswith("embargo")]
+    assert [e.kind for e in told] == [
+        "embargoed_good",
+        "embargoed_good",
+        "embargo_lifted_by_good",
+        "embargoed",
+    ]
+    text = format_log(defs, told[-1].kind, told[-1].args)
+    assert island.name in text and "{" not in text
 
 
 # --- 援助 ---------------------------------------------------------------------------

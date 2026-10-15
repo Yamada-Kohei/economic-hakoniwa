@@ -13,14 +13,22 @@ import pytest
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, politics
 from hakoniwa_core.economy import OWNERS
+from hakoniwa_core.economy import books as econ_books
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.log import format_log
 from hakoniwa_core.market import auction
+from hakoniwa_core.modules import accounts as accounts_stage
 from hakoniwa_core.modules import plan as plan_orders
 from hakoniwa_core.modules import politics as politics_stage
 from hakoniwa_core.modules.politics import Politics, parliament_gate
 from hakoniwa_core.registry import OrderFailed
-from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE, MarketRecord, OrderState
+from hakoniwa_core.state import (
+    ACCOUNTING_SELF,
+    OWNER_PRIVATE,
+    OWNER_STATE,
+    MarketRecord,
+    OrderState,
+)
 from hakoniwa_core.state.generate import generate_world
 from tests.core.test_finance import books_ok, context, open_books
 from tests.core.test_trade import run
@@ -84,6 +92,27 @@ def test_every_island_has_politics_and_it_started_at_the_target(game):
             assert state["election"] == world.turn + game.config.get("politics.election_turns")
             assert state["seats"] == pytest.approx(state["support"] / 100, abs=1e-3)
         assert "politics.stability" in island.stats
+
+
+def test_islands_without_a_political_regime_get_the_first_choices(game, base):
+    """フェーズ3-4 より前の見本の島のように政治の体制が空の島は、移し替えで初めの選択（民主主義・
+    君主制）を置き、政情を目標から始め直す。経済体制の軸はそのまま。"""
+    world = copy.deepcopy(base)
+    island = world.islands[1]
+    economy = island.regime.get("economy")
+    island.regime = {"economy": economy} if economy else {}
+    politics.state_of(island)["stability"] = 20.0
+    run(game, world, 1)
+    axes = game.defs.regime_axes()
+    assert island.regime["politics"] == axes["politics"][0]
+    assert island.regime["head_of_state"] == axes["head_of_state"][0]
+    assert island.regime.get("economy") == economy
+    state = politics.state_of(island)
+    assert state["stability"] == pytest.approx(state["target"], abs=0.5)  # 初めのターンは目標から
+    assert "regime_filled" in {e.kind for e in island.log}
+    logs_ok(game, island)
+    run(game, world, 1)
+    assert "regime_filled" not in {e.kind for e in island.log}  # 1度だけ
 
 
 def test_stability_moves_toward_the_target_by_the_regime_speed(game, base):
@@ -470,13 +499,15 @@ def test_plan_orders_check_and_log(game, base):
         plan_orders.check_official_price(market, {"good": "food", "price": 10}, defs)
     assert failed.value.reason == "reason_not_planned"
     plan_orders.check_official_price(planned, {"good": "food", "price": 10}, defs)
-    plan_orders.set_official_price(planned, {"good": "food", "price": 12345}, ctx)
-    assert planning.official(planned)["food"] == 12345
+    cost = planning.solve_costs(planned, defs, game.config)["food"]
+    plan_orders.set_official_price(planned, {"good": "food", "price": cost * 3}, ctx)
+    assert planning.official(planned)["food"] == cost * 3
     planning.review(planned, defs, game.config, ctx.turn)
-    assert planning.official(planned)["food"] == 12345  # 命令で決めた値段は見直しで変えない
+    assert planning.official(planned)["food"] == cost * 3  # 命令で決めた値段は見直しで変えない
     plan_orders.set_official_price(planned, {"good": "food", "price": 0}, ctx)
+    assert planning.official(planned)["food"] == cost * 3  # 上書きをやめても次の確かめまで据え置き
     planning.review(planned, defs, game.config, ctx.turn)
-    assert planning.official(planned)["food"] != 12345
+    assert planning.official(planned)["food"] == cost  # 幅を超えて原価より高いので改める
     with pytest.raises(OrderFailed) as unknown:
         plan_orders.check_priority(planned, {"industries": ["magic"]}, defs)
     assert unknown.value.reason == "reason_unknown_industry"
@@ -495,6 +526,111 @@ def test_plan_orders_check_and_log(game, base):
     assert mixed.policy.price_floor == {}
     for island in (planned, mixed):
         logs_ok(game, island)
+
+
+def test_official_prices_stay_unless_the_gap_passes_the_band(game, base):
+    """公定価格は原則据え置き: 原価との差が幅の中なら確かめで変えず、幅を超えた財だけ原価に改める。
+    据え置く財（既定は食料）は原価を下回っていても据え置く。"""
+    world = copy.deepcopy(base)
+    island = island_of(world, "planned")
+    defs, config = game.defs, game.config
+    band, held = planning.rules(island, config)
+    assert band == config.get("planning.review_band") and "grain" in held and "coal" not in held
+    costs = planning.solve_costs(island, defs, config)
+    state = planning.state_of(island)
+    inside = round(costs["coal"] * (1 + band / 2))  # 幅の中
+    state["prices"].update(
+        coal=inside,
+        steel=round(costs["steel"] * (1 + band * 2)),  # 幅を超えて高い
+        wood=round(costs["wood"] * (1 - band * 2)),  # 幅を超えて安い
+        grain=round(costs["grain"] * (1 - band * 2)),  # 据え置く財は安くても据え置く
+        fish=round(costs["fish"] * (1 + band * 2)),  # 据え置く財でも高すぎれば改める
+    )
+    grain = state["prices"]["grain"]
+    revised = planning.review(island, defs, config, world.turn)
+    costs = state["costs"]
+    prices = planning.official(island)
+    assert prices["coal"] == inside
+    assert prices["steel"] == costs["steel"] and prices["wood"] == costs["wood"]
+    assert prices["grain"] == grain and prices["fish"] == costs["fish"]
+    assert {"steel", "wood", "fish"} <= set(revised) and not {"coal", "grain"} & set(revised)
+    assert state["review"] == world.turn + config.get("planning.review_turns")
+    assert island.log[-1].kind == "official_prices_revised"
+    logs_ok(game, island)
+
+
+def test_official_price_reform_and_rules_orders(game, base):
+    world = copy.deepcopy(base)
+    planned = island_of(world, "planned")
+    market = island_of(world, "market")
+    defs, config = game.defs, game.config
+    ctx = context(game, world)
+    with pytest.raises(OrderFailed) as failed:
+        plan_orders.check_goods(market, {"goods": []}, defs)
+    assert failed.value.reason == "reason_not_planned"
+    with pytest.raises(OrderFailed) as unknown:
+        plan_orders.check_goods(planned, {"held": ["magic"]}, defs)
+    assert unknown.value.reason == "reason_unknown_good"
+    # 決まり: 幅と据え置く財
+    plan_orders.set_rules(planned, {"band": 5, "held": ["electricity", "grain"]}, ctx)
+    assert planning.rules(planned, config) == (0.05, ["electricity", "grain"])
+    plan_orders.set_rules(planned, {"band": 30}, ctx)
+    assert planning.rules(planned, config) == (0.3, ["electricity", "grain"])
+    # 改定: 名指しした財を今の原価に改め、上書きもやめる。空なら上書きしていない財すべて
+    costs = planning.solve_costs(planned, defs, config)
+    state = planning.state_of(planned)
+    state["prices"]["coal"] = costs["coal"] * 2
+    plan_orders.set_official_price(planned, {"good": "steel", "price": costs["steel"] * 2}, ctx)
+    plan_orders.review_official_prices(planned, {"goods": ["steel"]}, ctx)
+    assert planning.official(planned)["steel"] == state["costs"]["steel"]
+    assert (
+        "steel" not in state["manual"]
+        and planned.economy.prices["steel"] == state["costs"]["steel"]
+    )
+    assert planning.official(planned)["coal"] == costs["coal"] * 2  # 名指ししていない
+    plan_orders.set_official_price(planned, {"good": "food", "price": 7}, ctx)
+    plan_orders.review_official_prices(planned, {}, ctx)
+    assert planning.official(planned)["coal"] == state["costs"]["coal"]
+    assert planning.official(planned)["food"] == 7  # 上書きした財は、名指ししなければそのまま
+    assert planned.log[-1].kind == "official_prices_reformed"
+    assert defs.orders["review_official_prices"].get("parliament") == "majority"
+    logs_ok(game, planned)
+
+
+def test_held_goods_below_cost_are_subsidized(game, base):
+    """据え置く財を原価より安く売ると、差を補助金で埋める: 独立採算の施設には国庫から払い、国庫
+    直轄の施設は帳簿にだけ残す。帳簿は崩れない。"""
+    world = copy.deepcopy(base)
+    island = island_of(world, "planned")
+    defs, config = game.defs, game.config
+    costs = planning.solve_costs(island, defs, config)
+    state = planning.state_of(island)
+    state["prices"]["grain"] = max(1, costs["grain"] // 2)
+    farms = [
+        f
+        for f in island.facilities
+        if f.built and "grain" in fac.outputs_of(defs, f) and f.owner == OWNER_STATE
+    ]
+    assert farms
+    farm = farms[0]  # 1つは独立採算にして、国庫から払うのを確かめる
+    open_books(island)
+    where = {"x": farm.x, "y": farm.y, "accounting": ACCOUNTING_SELF}
+    accounts_stage.set_accounting(island, where, context(game, world))
+    books_ok(game, island)
+    seen, paid = [], []
+
+    def each(w):
+        seen.append(dict(island.stats))
+        paid.extend(
+            b.items.get(econ_books.SUBSIDY, 0) for b in island.books if b.facility == farm.id
+        )
+
+    run(game, world, 3, each)
+    assert planning.official(island)["grain"] == max(1, costs["grain"] // 2)
+    assert any(r.get("plan.subsidy", 0) > 0 for r in seen)
+    assert all(r.get("plan.subsidy_unpaid", 0) == 0 for r in seen)
+    assert any(p > 0 for p in paid)
+    logs_ok(game, island)
 
 
 def test_price_floor_keeps_the_market_price_up(game, base):

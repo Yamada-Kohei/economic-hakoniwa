@@ -23,7 +23,7 @@
     {% endif %}
     <tr><th>{% translate "報道と集会" %}</th><td>{{ p.press_name }}</td></tr>
     {% if p.transition %}<tr><th>{% translate "混乱期間" %}</th><td>{% blocktranslate with u=p.transition.until %}ターン {{ u }} まで{% endblocktranslate %}{% if p.productivity %} <small class="muted">{% blocktranslate with v=p.productivity|floatformat:3 %}（生産性 {{ v }} 倍）{% endblocktranslate %}</small>{% endif %}</td></tr>{% endif %}
-    {% if p.rebuilding %}<tr><th>{% translate "首都の建物" %}</th><td>{% translate "新しい体制の建物に建て替えています（資材がそろうと替わります）" %}</td></tr>{% endif %}
+    {% if p.rebuilding %}<tr><th>{% translate "首都の建物" %}</th><td>{% translate "新しい体制の建物に建て替えています（資材がそろうと替わります）" %}{% if p.rebuild %}<br><small class="muted">{% translate "残りの資材" %}: {% for r in p.rebuild %}{{ r.name }} {{ r.quantity|floatformat:"1g" }} {{ r.unit }}{% if not forloop.last %}・{% endif %}{% endfor %}</small>{% endif %}</td></tr>{% endif %}
   </table>
   <p class="hint">{% blocktranslate with demo=p.levels.demo riot=p.levels.riot rebellion=p.levels.rebellion %}政情は 0〜100 で、毎ターン目標に少しずつ近づきます。{{ demo }} を下回るとデモ（行政力が減る）、{{ riot }} を下回ると暴動（行政力が半分になり、町より大きな住宅地の近くの施設が止まり、まれに国営の施設が壊される）、{{ rebellion }} を下回ると反乱の前触れ（暴動の 2 倍。反乱はフェーズ4）になります。警察の人手が足りていると、止まる施設と壊される施設が減ります。{% endblocktranslate %}</p>
 </section>

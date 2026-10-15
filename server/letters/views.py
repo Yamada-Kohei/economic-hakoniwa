@@ -22,10 +22,15 @@ class LetterForm(forms.Form):
 
     def __init__(self, *args, sender: Island, **kwargs):
         super().__init__(*args, **kwargs)
-        islands = Island.objects.exclude(pk=sender.pk).select_related("owner").order_by("id")
+        # 宛先は同じ世界の、持ち主のいるほかの島（持ち主のいない島は読む人がいない）
+        islands = (
+            Island.objects.filter(world=sender.world, owner__isnull=False)
+            .exclude(pk=sender.pk)
+            .select_related("owner")
+            .order_by("id")
+        )
         self.fields["to"].choices = [("", "（宛先の島を選んでください）")] + [
-            (i.id, f"{i.name}（{i.id}・{i.owner.username if i.owner else '持ち主なし'}）")
-            for i in islands
+            (i.id, f"{i.name}（{i.id}・{i.owner.username}）") for i in islands
         ]
 
 

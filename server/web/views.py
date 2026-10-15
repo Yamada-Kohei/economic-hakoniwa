@@ -224,7 +224,14 @@ def fx_page(request, island_id: int):
 
 
 # 政治の画面に出す統計
-PLAN_STATS = ["plan.queue", "plan.forced_saving", "labor.mobilized"]
+PLAN_STATS = [
+    "plan.queue",
+    "plan.forced_saving",
+    "plan.subsidy",
+    "plan.subsidy_unpaid",
+    "trade.merchant_gap",
+    "labor.mobilized",
+]
 
 
 def politics_page(request, island_id: int):

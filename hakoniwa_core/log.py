@@ -60,7 +60,8 @@ def format_log(defs: Defs, kind: str, args: dict[str, Any], lang: str = "ja") ->
     if isinstance(args.get("good"), str):
         shown.setdefault("unit", defs.unit_name(args["good"], lang))
     if isinstance(args.get("goods"), list):
-        shown["goods"] = "・".join(defs.name("goods", g, lang) for g in args["goods"])
+        names = [defs.name("goods", g, lang) for g in args["goods"]]
+        shown["goods"] = "・".join(names) or defs.name("messages", "none", lang)
     if isinstance(args.get("industries"), list):  # 重点産業（フェーズ3-4）
         names = [defs.name("industries", g, lang) for g in args["industries"]]
         shown["industries"] = "・".join(names) or defs.name("messages", "none", lang)

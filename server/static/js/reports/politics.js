@@ -1,13 +1,13 @@
 // 政治と計画の画面（フェーズ3-4）: 推移のグラフと、持ち主には政治の命令（報道と集会・労働の動員・
-// 議会の解散・国家元首の名前・憲法改正・経済体制の変更）と計画の命令（公定価格・重点産業・値段の
-// 上限と下限）。表の下の小さな入力欄（form[data-order]）から、命令の列（右の欄。島の画面と同じ列）の
+// 議会の解散・国家元首の名前・憲法改正・経済体制の変更）と計画の命令（公定価格・公定価格の改定と
+// 決まり・重点産業・値段の上限と下限）。表の下の小さな入力欄（form[data-order]）から、命令の列（右の欄。島の画面と同じ列）の
 // 後ろに足す。
 
 import { mountCharts } from "./common.js";
 import { mountOrders } from "./orders.js";
 
 // 入力欄の名前ごとの値の形（ほかは文字）
-const INT_FIELDS = new Set(["price"]);
+const INT_FIELDS = new Set(["price", "band"]);
 const BOOL_FIELDS = new Set(["on"]);
 
 mountCharts();

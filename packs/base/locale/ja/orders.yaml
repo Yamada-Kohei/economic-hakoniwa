@@ -51,5 +51,7 @@ change_economy: 経済体制の変更
 mobilize_labor: 労働の動員
 rename_leader: 国家元首の名前
 set_official_price: 公定価格の変更
+review_official_prices: 公定価格の改定
+set_official_price_rules: 公定価格の決まりの変更
 set_priority_industries: 重点産業の変更
 set_price_floor: 値段の下限の変更

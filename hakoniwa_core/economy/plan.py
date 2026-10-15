@@ -2,11 +2,22 @@
 
 経済体制の特色 official_prices を持つ体制（計画経済）の島だけで効きます。
 
-- 公定価格: 財ごとに国が決める値段。既定は自動で、建国の初めの値段と同じ解き方（原価＋1割。
-  economy/prices.py）を今の島の平均賃金で planning.review_turns ターンごとに解き直す。島で作れない
-  財は、前の公定価格に平均賃金の伸びを掛ける。命令 set_official_price で財ごとに上書きでき、上書き
-  した財は自動の見直しで変えない。市場の段の初めに公定価格を基準の値段にし（apply_prices）、島の市場は
-  公定価格で値幅 0 の板寄せになる（modules/market）。電力も生産の段で同じにする。
+- 公定価格: 財ごとに国が決める値段。原則は据え置き（ソ連の小売価格のように、決めた値段を長く
+  変えない）。見直すのは次のときだけ。
+  - 命令 review_official_prices（公定価格の改定。政治の決断なので行政力が重く、議会のある体制では
+    採決が要る）: 名指しした財（空ならすべて）を今の原価に改める。
+  - planning.review_turns ターンごとの確かめで、公定価格と原価の差が幅（planning.review_band。
+    命令 set_official_price_rules で変えられる）を超えた財。ただし据え置く財（planning.held_goods。
+    既定は食料。同じ命令で変えられる）は、原価を下回っていても据え置き、差を補助金で埋める。
+  原価は、建国の初めの値段と同じ解き方（原価＋1割。economy/prices.py）を今の島の平均賃金で解いた
+  値段。島で作れない財は、前の原価に平均賃金の伸びを掛ける。命令 set_official_price で財ごとに
+  上書きでき、上書きした財は確かめで変えない。市場の段の初めに公定価格を基準の値段にし
+  （apply_prices）、島の市場は公定価格で値幅 0 の板寄せになる（modules/market）。電力も生産の段で
+  同じにする。
+- 据え置きの補助金（subsidies）: 据え置く財を原価より安い公定価格で売った施設に、1単位あたり
+  「原価 − 公定価格」を国庫（国営施設の項目）から払う。国庫直轄の施設は売上も費用も国庫なので、
+  お金は動かさず帳簿にだけ残す。国庫が足りなければ払える分だけ（量に比例）払い、足りない分は
+  独立採算の施設の赤字になる。
 - 割当ルール（allocator）: 足りないときは、重点産業の施設 → ほかの国営施設と国の工事（インフラ・
   海運業・運送業・国の倉庫）→ 家計（配給）→ 輸出（商社と二国間契約の買い）の順に配る。同じ順位の
   中は量に比例。家計の中は、お金の多さでなく1人あたり同じ量まで（ration）。
@@ -20,7 +31,11 @@
 
 島の状態は ``island.ext["plan"]``:
 - prices: 公定価格（財 → 値段）、manual: 命令で上書きした財 → 値段
-- review: 次に自動で見直すターン、wage: 前に見直したときの平均賃金
+- costs: 前に解いた原価（原価＋1割。財 → 値段）、wage: そのときの平均賃金
+- review: 次に確かめるターン
+- band: 見直す幅（割合。命令で決めたときだけ。ないときは planning.review_band）
+- held: 据え置く財（命令で決めたときだけ。ないときは planning.held_goods）
+- subsidy_short: 据え置きの補助金を払いきれていない（知らせは続いている間に1度だけ）
 - priority: 重点産業（産業の分類。planning.max_priority まで）
 - demand: 財ごとの直近の需要の履歴、goals: 次のターンの財ごとの生産目標（量）
 - achieved: このターンの財ごとの達成率（作った量 ÷ 目標）、queues: 財ごとの行列（0〜1）
@@ -32,10 +47,11 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import politics
+from hakoniwa_core import ledger, politics
 from hakoniwa_core.allocation import proportional
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
+from hakoniwa_core.economy import STATE_FACILITIES, Payer, books, entity_of, funds
 from hakoniwa_core.economy.prices import cost_prices
 from hakoniwa_core.state import OWNER_STATE, Facility, IslandState, LogEntry
 from hakoniwa_core.units import money_of, round_money
@@ -51,6 +67,7 @@ EXPORTS = 0  # 輸出（商社・二国間契約）
 UNMET = "plan_unmet"  # island.scratch: 財 → 家計が買えなかった量（このターン）
 FORCED = "plan_forced"  # island.scratch: 家計が買えずに使わなかったお金（このターン）
 DESIRE = "plan_desire"  # island.scratch: 財 → 家計が買いたかった量（売りに出ている分を超えた分も）
+SUBSIDY = "plan_subsidy"  # island.scratch: 施設の番号 → このターンの据え置きの補助金（払う前の額）
 
 
 def is_planned(island: IslandState, defs: Defs) -> bool:
@@ -108,11 +125,12 @@ def experience_factor(island: IslandState, defs: Defs, industry: str) -> float:
 
 
 def start(island: IslandState, config: GameConfig, turn: int) -> None:
-    """公定価格を今の値段から始める（計画経済に移ったときと、移し替え）。自動の見直しは
-    planning.review_turns ターン後から。"""
+    """公定価格を今の値段から始める（計画経済に移ったときと、移し替え）。原価は市場の段の初めに
+    解き、見直しの確かめは planning.review_turns ターン後から。"""
     state = state_of(island)
     state["prices"] = {g: p for g, p in sorted(island.economy.prices.items()) if p > 0}
     state.setdefault("manual", {})
+    state.pop("costs", None)
     state["review"] = turn + config.get("planning.review_turns")
     state["wage"] = island.economy.average_wage
     state.setdefault("priority", [])
@@ -124,35 +142,99 @@ def stop(island: IslandState) -> None:
     island.ext.pop(KEY, None)
 
 
-def review(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> None:
-    """公定価格を自動で見直す（原価＋1割を今の平均賃金で解く。上書きした財はそのまま）。"""
+def rules(island: IslandState, config: GameConfig) -> tuple[float, list[str]]:
+    """(見直す幅（割合）, 据え置く財)。命令で決めていなければ game.yaml の planning の既定。"""
+    state = island.ext.get(KEY, {})
+    band = state.get("band")
+    held = state.get("held")
+    if band is None:
+        band = config.get("planning.review_band")
+    if held is None:
+        held = config.get("planning.held_goods")
+    return float(band), list(held)
+
+
+def solve_costs(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, int]:
+    """原価（原価＋1割）を今の平均賃金で解き直して残す。島で作れない財は、前の原価（まだなければ
+    公定価格）に平均賃金の伸びを掛ける。"""
     state = state_of(island)
     wage = island.economy.average_wage or config.get("labor.initial_wage")
     before = state.get("wage") or wage
-    old = state.get("prices", {})
+    old = state.get("costs") or state.get("prices", {})
     fixed = {g: max(1, round_money(p * wage / before)) for g, p in old.items()}
     solved = cost_prices(defs, config, island.resources, wage, fixed)
+    state["costs"] = {g: int(solved[g]) for g in sorted(defs.goods) if solved.get(g)}
+    state["wage"] = wage
+    return state["costs"]
+
+
+def outside(price: int, cost: int, band: float) -> bool:
+    """公定価格 price と原価 cost の差が幅 band（割合）を超えたか。"""
+    return abs(price - cost) > band * cost
+
+
+def review(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> list[str]:
+    """planning.review_turns ターンごとの確かめ: 原価を解き直し、原価との差が幅を超えた財だけ公定
+    価格を原価に改める。据え置く財は、原価を下回っていれば据え置く（差は補助金）。命令で上書き
+    した財はそのまま。新しく出てきた財は原価から始める。改めた財を返す。"""
+    state = state_of(island)
+    costs = solve_costs(island, defs, config)
+    band, held = rules(island, config)
     manual = state.get("manual", {})
-    prices = {}
+    prices = dict(state.get("prices", {}))
+    revised = []
     for good in sorted(defs.goods):
-        price = manual.get(good) or solved.get(good) or old.get(good)
-        if price:
-            prices[good] = int(price)
+        cost = costs.get(good)
+        price = manual.get(good) or prices.get(good)
+        if good in manual or not cost:
+            if price:
+                prices[good] = price
+            continue
+        if price is None:
+            prices[good] = cost
+        elif outside(price, cost, band) and not (good in held and price < cost):
+            prices[good] = cost
+            revised.append(good)
     state["prices"] = prices
     state["review"] = turn + config.get("planning.review_turns")
-    state["wage"] = wage
-    island.log.append(LogEntry("official_prices_reviewed", {"count": len(prices)}))
+    if revised:
+        args = {"goods": revised, "band": round(band * 100)}
+        island.log.append(LogEntry("official_prices_revised", args))
+    return revised
+
+
+def revise(island: IslandState, defs: Defs, config: GameConfig, goods: Sequence[str]) -> list[str]:
+    """公定価格の改定（命令）: goods（空なら命令で上書きしていない財すべて）を今の原価に改める。
+    上書きしていた財を名指ししたら、上書きもやめる。値段が変わった財を返す。"""
+    state = state_of(island)
+    costs = solve_costs(island, defs, config)
+    manual = state.setdefault("manual", {})
+    prices = state.setdefault("prices", {})
+    chosen = list(goods) or [g for g in sorted(defs.goods) if g not in manual]
+    changed = []
+    for good in chosen:
+        cost = costs.get(good)
+        if not cost:
+            continue
+        manual.pop(good, None)
+        if prices.get(good) != cost:
+            changed.append(good)
+        prices[good] = cost
+    return changed
 
 
 def prepare(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> dict[str, int]:
-    """市場の段の初め: 見直しのターンなら公定価格を解き直し、公定価格を基準の値段にする。"""
+    """市場の段の初め: 確かめのターンなら原価を解き直して幅を超えた財を改め、公定価格を基準の
+    値段にする。原価をまだ解いていなければ（計画経済に移ったターンと、前の版の島）解く。"""
     if not is_planned(island, defs):
         return {}
     state = state_of(island)
     if "prices" not in state:
         start(island, config, turn)
-    elif turn >= state.get("review", 0):
+    if turn >= state.get("review", 0):
         review(island, defs, config, turn)
+    elif "costs" not in state:
+        solve_costs(island, defs, config)
     apply_prices(island)
     return official(island)
 
@@ -161,6 +243,59 @@ def apply_prices(island: IslandState) -> None:
     """公定価格を島の値段（基準の値段）にする。"""
     for good, price in official(island).items():
         island.economy.prices[good] = price
+
+
+# --- 据え置きの補助金 ---------------------------------------------------------------
+
+
+def subsidy_rate(island: IslandState, config: GameConfig, good: str, price: int) -> int:
+    """据え置く財 good を公定価格 price で売ったときの、1単位あたりの補助金（原価を下回る分。
+    据え置く財でないか、原価以上なら 0）。"""
+    state = island.ext.get(KEY)
+    if not state or "costs" not in state:
+        return 0
+    _, held = rules(island, config)
+    if good not in held:
+        return 0
+    return max(0, state["costs"].get(good, 0) - price)
+
+
+def note_sale(
+    island: IslandState, config: GameConfig, good: str, f: Facility, qty: int, price: int
+) -> None:
+    """施設 f が据え置く財を公定価格で売った: 補助金の額を数えておく（払うのは pay_subsidies）。"""
+    rate = subsidy_rate(island, config, good, price)
+    if rate > 0 and qty > 0:
+        owed = island.scratch.setdefault(SUBSIDY, {})
+        owed[f.id] = owed.get(f.id, 0) + money_of(rate, qty)
+
+
+def pay_subsidies(island: IslandState, config: GameConfig) -> None:
+    """市場の段の終わり: このターンの据え置きの補助金を払う。独立採算の施設には国庫の国営施設の
+    項目から払い（足りなければ払える分を額に比例して分ける）、国庫直轄の施設は帳簿にだけ残す。"""
+    owed = island.scratch.pop(SUBSIDY, {})
+    found = {f.id: f for f in island.facilities}
+    payer = Payer(ledger.GOV, STATE_FACILITIES)
+    paying = {i: a for i, a in sorted(owed.items()) if entity_of(config, found[i]) != ledger.GOV}
+    wanted = sum(paying.values())
+    money = funds.available(island, payer)
+    unpaid = 0
+    for number, amount in sorted(owed.items()):
+        if number in paying:
+            paid = amount if wanted <= money else amount * money // wanted
+            funds.pay(island, payer, entity_of(config, found[number]), paid, "subsidy")
+            unpaid += amount - paid
+            amount = paid
+        books.add(island, number, books.SUBSIDY, amount)
+    island.stats["plan.subsidy"] = sum(owed.values()) - unpaid
+    island.stats["plan.subsidy_unpaid"] = unpaid
+    state = state_of(island)
+    if unpaid and not state.get("subsidy_short"):
+        island.log.append(LogEntry("plan_subsidy_short", {"amount": unpaid}))
+    if unpaid:
+        state["subsidy_short"] = True
+    else:
+        state.pop("subsidy_short", None)
 
 
 # --- 割当ルール -------------------------------------------------------------------
