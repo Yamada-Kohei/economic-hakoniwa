@@ -161,6 +161,8 @@ def test_trade_api_for_owner(client, world):
     assert contract["proposed_by_me"] is False and contract["can_accept"] is True
     assert contract["quantity"] == 2.0 and contract["price"] == 500
     assert contract["currency_name"] == second.names["currency"]
+    # 届いた物の行き先は買う側が決める（決める前は市場に出す）
+    assert contract["delivery"] == "market" and contract["delivery_name"] == "市場に出す"
 
     assert data["traders"] and {"number", "name", "goods"} <= set(data["traders"][0])
     fleet = data["fleet"]
@@ -185,6 +187,7 @@ def test_trade_api_for_owner(client, world):
     [contract] = client.get(f"/api/islands/{second.id}/trade").json()["contracts"]
     assert contract["side"] == "sell" and contract["proposed_by_me"] is True
     assert contract["can_accept"] is False and contract["can_cancel"] is True
+    assert contract["delivery"] == "" and contract["delivery_name"] == ""
     # 代表の島の持ち主には、自分の圏の設定（代表）の欄が出る
     html = client.get(f"/islands/{second.id}/trade/").content.decode()
     assert 'data-order="bloc_settings"' in html and 'data-order="transfer_bloc"' in html
@@ -268,6 +271,8 @@ def test_trade_pages_for_owner_and_others(client, world, page):
         for kind in ("leave_bloc", "accept_contract", "cancel_contract", "create_bloc"):
             assert f'data-order="{kind}"' in html
         assert "propose_contract" in html and 'id="merchant"' in html
+        # 買う側として受ける契約には、届いた物の行き先を選ぶ欄が付く
+        assert '<select name="delivery"' in html and "届いた物は国の倉庫に置く" in html
     else:
         assert 'id="holdings"' in html and f'data-names="fx.{own.id + 1}' in html
     client.logout()
@@ -276,6 +281,14 @@ def test_trade_pages_for_owner_and_others(client, world, page):
     html = res.content.decode()
     assert "他国の島のため" in html and 'id="orders"' not in html
     assert "data-order=" not in html and 'id="holdings"' not in html
+
+
+def test_every_import_shortfall_reason_has_a_name():
+    """商社が輸入の狙う量を買えなかったわけ（貿易の段の WHY_*）は、どれも貿易の画面に名前がある。"""
+    from hakoniwa_core.modules import trade as trade_stage
+
+    reasons = {v for k, v in vars(trade_stage).items() if k.startswith("WHY_")}
+    assert reasons and reasons == set(trade_views.WHY_NAMES)
 
 
 def test_island_pages_link_to_trade_and_fx(client, world):
@@ -333,7 +346,26 @@ ISLAND_KEYS = ("currency", "approve", "to", "partner")  # 命令の中身のう�
             "二国間契約の申し込み: サンプル島2に石炭を毎ターン 2.5 トン買う"
             "（1トン 900・自国通貨・6 ターン）",
         ),
+        (
+            "propose_contract",
+            {
+                "partner": 2,
+                "side": "buy",
+                "good": "coal",
+                "quantity": 1,
+                "price": 900,
+                "turns": 6,
+                "delivery": "warehouse",
+            },
+            "二国間契約の申し込み: サンプル島2に石炭を毎ターン 1 トン買う"
+            "（1トン 900・自国通貨・6 ターン・届いた物は国の倉庫に置く）",
+        ),
         ("accept_contract", {"contract": 4}, "二国間契約を受ける: 契約 4 番"),
+        (
+            "accept_contract",
+            {"contract": 4, "delivery": "market"},
+            "二国間契約を受ける: 契約 4 番（届いた物は市場に出す）",
+        ),
         ("cancel_contract", {"contract": 4}, "二国間契約をやめる: 契約 4 番"),
     ],
 )

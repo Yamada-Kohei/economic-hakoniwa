@@ -34,8 +34,10 @@ from __future__ import annotations
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.economy import (
+    banks,
     freight,
     funds,
+    is_bank,
     is_public_service,
     is_stopped,
     is_transport,
@@ -347,6 +349,8 @@ class Employment(IslandStage):
         cargo = staff.wanted(config, ctx.defs, f)  # 港・海運業・商社は扱う荷に合わせて（3-1）
         if cargo is not None:
             return cargo
+        if f.built and is_bank(config, f):  # 銀行は預金と融資の大きさに合わせて
+            return banks.staff_wanted(island, config, ctx.defs, f)
         return fac.labor_demand(ctx.defs, f, ctx.turn, config.get("power.good"))
 
     @staticmethod

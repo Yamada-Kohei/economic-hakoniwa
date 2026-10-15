@@ -219,6 +219,8 @@ def _place_banks(island: IslandState, defs: Defs, config: GameConfig) -> list[Fa
             owner=owner,
             accounting=ACCOUNTING_SELF,
             built=True,
+            # 初めての稼働を「開始」と知らせる（「再開」と出ていた。建国の次のターン）
+            status=fac.STATUS_STARTING if x >= 0 else "",
         )
         assign_serial(island, bank)
         island.facilities.append(bank)

@@ -409,6 +409,9 @@ propose_contract:
       price: {type: integer, minimum: 0}    # 1 単位の値段（契約の通貨）
       currency: {type: integer, minimum: 1} # 契約の通貨（どちらかの島の番号。省くとこちらの通貨）
       turns: {type: integer, minimum: 1, maximum: 600}
+      # 届いた物の行き先（こちらが買うときだけ。省くと market）: market は売り切れるまで島の市場の
+      # 値段で売りに出す、warehouse は国の倉庫に置いておく。傷みやすい物はどちらでもすぐ市場に出す
+      delivery: {enum: [market, warehouse]}
 
 accept_contract:
   admin_cost: 1
@@ -418,6 +421,7 @@ accept_contract:
     additionalProperties: false
     properties:
       contract: {type: integer, minimum: 1}
+      delivery: {enum: [market, warehouse]}  # 買い手として受けるとき、届いた物の行き先（省くと market）
 
 cancel_contract:
   admin_cost: 1

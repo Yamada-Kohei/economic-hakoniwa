@@ -319,9 +319,9 @@ def test_input_bought_for_the_plan_is_not_a_shortage(game):
     ctx = SimpleNamespace(defs=game.defs, config=game.config, turn=1)
     power = game.config.get("power.good")
     f.economy["input_plan"] = 0
-    assert Production._prepare(f, ctx, power).cause == "target"
+    assert Production._prepare(island, f, ctx, power).cause == "target"
     f.economy["input_plan"] = 300  # 300 の分を買うつもりで、買えなかった
-    assert Production._prepare(f, ctx, power).cause == "input:grain"
+    assert Production._prepare(island, f, ctx, power).cause == "input:grain"
 
 
 # --- 置いた学校の教材（ターン283の5） -------------------------------------------------

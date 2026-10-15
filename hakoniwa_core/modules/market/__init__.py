@@ -6,6 +6,7 @@
   0になる値段まで。品切れが続いても、払えない値段まで買い上がらない）。
 - 国の倉庫: 命令 warehouse_trade で決めた量を、指値で売る・買う。船で国の倉庫に届いた腐る物（契約で
   買った食品など。trade.to_market）は、売り切れるか傷んで捨てられるまで、毎ターン指値なしで売る。
+  契約で「市場に出す」と決めた腐らない物は、売り切れるまで毎ターン島の値段（基準の値段）を指値に売る。
 - 工事中の施設（国の工事）: 次の1ターン分の資材のうち、国の倉庫にもない分を、いま売りに
   出ている量まで買う（指値は値幅の上端）。
 - インフラの公共事業（フェーズ2-3。modules/infrastructure）: 次のターンの維持と工事に要る資材の
@@ -558,9 +559,12 @@ class Market(IslandStage):
                 continue
             fac.switch_recipe(defs, f, recipe, ctx.turn + 1)
             productivity.update(island, defs, ctx.config, f)
+            # 民営の施設は自分の見直しで替える（命令で替えられるのは国営だけ）。命令していない
+            # 切り替えだと分かるように、民営と書く
+            kind = "recipe_changed_private" if f.owner == OWNER_PRIVATE else "recipe_changed"
             island.log.append(
                 LogEntry(
-                    "recipe_changed",
+                    kind,
                     {"facility": f.kind, "x": f.x, "y": f.y, "recipe": f"{f.kind}_{recipe}"},
                 )
             )
@@ -1145,8 +1149,9 @@ class Market(IslandStage):
     def _warehouse_orders(
         self, island: IslandState, ctx: StageContext, books_by_good: dict[str, Book]
     ) -> None:
-        """命令 warehouse_trade で並べた国の倉庫の売り買い（このターンだけ）と、船で届いた腐る物の
-        売り（売り切れるまで毎ターン）。売りは合わせて倉庫にある量まで。"""
+        """命令 warehouse_trade で並べた国の倉庫の売り買い（このターンだけ）と、船で届いた腐る物と
+        契約で「市場に出す」と決めた物の売り（売り切れるまで毎ターン）。売りは合わせて倉庫にある量
+        まで。"""
         orders = island.economy.ext.pop("warehouse_orders", [])
         payer = Payer(ledger.GOV, WAREHOUSE)
         offered: dict[str, int] = {}
@@ -1159,7 +1164,10 @@ class Market(IslandStage):
                 self._add(books_by_good, good, "sell", Order(qty, limit), party)
 
         for good, qty in sorted(trade.to_market(island).items()):
-            sell(good, qty, None, IMPORTED)
+            # 傷みやすい物は値段を問わず、契約で「市場に出す」と決めた物は島の値段で売りに出す
+            # （値崩れさせずに、売れるだけ毎ターン出す）
+            perishable = ctx.defs.goods[good].get("shelf_life")
+            sell(good, qty, None if perishable else island.economy.prices.get(good), IMPORTED)
         for item in orders:
             good, qty, limit = item["good"], item["quantity"], item["limit"]
             if item["side"] == "sell":

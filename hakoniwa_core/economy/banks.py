@@ -152,12 +152,27 @@ def lending_stopped(island: IslandState, bank: str, turn: int) -> bool:
     return f is not None and turn < f.economy.get("crunch_until", turn)
 
 
-def labor_ratio(island: IslandState, defs: Any, bank: str) -> float:
-    """銀行の職員が足りている割合（足りない割合だけ新しい融資を絞る）。"""
+def staff_wanted(island: IslandState, config: GameConfig, defs: Any, f: Facility) -> int:
+    """銀行が雇いたい職員の数: 預金と融資の合計が「平均賃金 × banking.staff_volume」に届けば定義の
+    人数、それより小さい銀行はその割合（下限は定義の人数の banking.staff_floor）。預金の集まらない
+    銀行が、定義の人数の賃金を払い続けて赤字で破綻していた（試し遊び4回目）。"""
+    need = fac.workers_needed(defs, f.kind)
+    if need <= 0:
+        return 0
+    bank = ledger.bank_entity(f.id)
+    wage = island.economy.average_wage or config.get("labor.initial_wage")
+    full = config.get("banking.staff_volume") * wage
+    volume = deposits_of(island, bank) + loans_of(island, bank)
+    share = max(config.get("banking.staff_floor"), min(1.0, volume / max(1, full)))
+    return max(1, min(need, math.ceil(need * share)))
+
+
+def labor_ratio(island: IslandState, config: GameConfig, defs: Any, bank: str) -> float:
+    """銀行の職員が足りている割合（雇いたい人数に対して。0 の銀行は新しく貸さない）。"""
     f = facility_of(island, bank)
     if f is None:
         return 0.0
-    need = fac.workers_needed(defs, f.kind)
+    need = staff_wanted(island, config, defs, f)
     return 1.0 if need <= 0 else min(1.0, f.workers / need)
 
 

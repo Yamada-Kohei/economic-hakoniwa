@@ -114,6 +114,17 @@ def _blend_notice(island: IslandState, ctx: StageContext) -> None:
     source = island.economy.ext.get("happiness_from", "happiness_phase1")
     old = ctx.config.get(f"population.{source}")
     now = ctx.config.get("population.happiness")
+    if old.get("water", 0) > 0:
+        # フェーズ3-1 から続く島: 上下水道と教育はもうあり、消費財が衣料とぜいたく品に替わる
+        # （基礎の点は変わらないのに「15 点から 15 点に下がります」と出ていた）
+        args = {
+            "turns": turns,
+            "consumer_goods": old.get("consumer_goods", 0),
+            "clothing": now.get("clothing", 0),
+            "luxury": now.get("luxury", 0),
+        }
+        island.log.append(LogEntry("happiness_weights_changed_goods", args))
+        return
     args = {
         "turns": turns,
         "water": now["water"],
@@ -234,6 +245,7 @@ class Population(IslandStage):
         p = config.get("population")
         moods: dict[str, list[float]] = {}
         power_sum = pollution_sum = water_sum = people = 0
+        starved = emigrated = 0  # 食料が足りずに減った人数と、幸福度が低くて島を出た人数
         education = island.economy.education
         for tile in island.tiles:
             if tile.population <= 0:
@@ -275,9 +287,13 @@ class Population(IslandStage):
                 pop += min(births, max(0, capacity - pop))
             else:
                 hunger = (fac.FULL - general["food"]) / fac.FULL
-                pop -= _rand_round(pop * p["starvation_rate"] * hunger, rng)
+                lost = min(pop, _rand_round(pop * p["starvation_rate"] * hunger, rng))
+                pop -= lost
+                starved += lost
             if mood < p["emigration_happiness"]:
-                pop -= _rand_round(pop * p["emigration_rate"], rng)
+                left = min(max(0, pop), _rand_round(pop * p["emigration_rate"], rng))
+                pop -= left
+                emigrated += left
             tile.population = max(0, pop)
         moods_by_layer = (
             {GENERAL: moods[GENERAL][0] / moods[GENERAL][1]} if GENERAL in moods else {}
@@ -298,6 +314,13 @@ class Population(IslandStage):
                 "education": education,
             }
             moods_by_layer[layer] = ctx.formula("happiness")(island, facts, ctx)
+        # 人口の減りを知らせる（毎ターン数百人ずつ減っても、出来事にもログにも出ていなかった）
+        if starved > 0:
+            ratio = round(general["food"] * 100 / fac.FULL)
+            island.log.append(LogEntry("population_starved", {"count": starved, "ratio": ratio}))
+        if emigrated > 0:
+            args = {"count": emigrated, "line": p["emigration_happiness"]}
+            island.log.append(LogEntry("population_emigrated", args))
         island.scratch["layer_happiness"] = moods_by_layer
         island.scratch["layer_facts"] = layers
         self._migrate(island, ctx, rng, homes)

@@ -286,7 +286,7 @@ class Banking(IslandStage):
         rate_of = ctx.formula("loan_rate")
         offers = []
         for bank in banks.active_banks(island):
-            share = banks.labor_ratio(island, ctx.defs, bank)
+            share = banks.labor_ratio(island, ctx.config, ctx.defs, bank)
             if share <= 0:
                 continue
             rate = rate_of(island, ctx, bank, entity, amount)

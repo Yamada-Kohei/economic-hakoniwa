@@ -53,7 +53,8 @@ trade.entry_turns ターンの平均で上限の trade.entry_threshold を超え
 民間銀行の参入: 参入の政策（policy.bank_entry。決めていなければ経済体制の既定）が「自由」なら、参入
 した後の銀行1つあたりの島の預金 D が banking.entry_deposits を超え、預金 D を集めたときの利益の見込
 み（今ある銀行の「賃金を払う前の利益 ÷ 預金」× D − 職員の賃金）の年率が、資本金に対して「政策金利 +
-banking.entry_roe_margin」を超え、銀行の数が banking.max_banks 未満で、空いたオフィス街のマスがあれ
+banking.entry_roe_margin」を超え、政策金利が今の銀行の預金金利より高く（開業した銀行が預金金利を上げ
+て預金を集められる）、銀行の数が banking.max_banks 未満で、空いたオフィス街のマスがあれ
 ば、島の預金の banking.entry_capital を資産を持つ層が出資して開業する。「許可制」なら免許の命令
 （grant_bank_license）を出したときだけ開業する。開業した銀行は、預金が D に届くまで預金金利を政策金
 利まで上げて預金を集める（銀行の段）。
@@ -250,11 +251,32 @@ class EntryExit(IslandStage):
                 prices = average_prices(island, settings["price_turns"])
                 supplied = self._supplied(island, ctx)
                 rates = freight_rates.facility_rates(island, defs, config)
-            profits = self._recipe_profits(island, ctx, f, prices, supplied, rates.get(f.id, 0))
+            busy = self._switched_into(island, ctx)
+            profits = self._recipe_profits(
+                island, ctx, f, prices, supplied, rates.get(f.id, 0), busy
+            )
             now = profits.get(f.recipe, 0)
             choice = max(sorted(profits), key=lambda name: profits[name])
             if choice != f.recipe and profits[choice] - now > part(abs(now), margin):
                 f.ext[fac.RECIPE_NEXT] = choice
+
+    @staticmethod
+    def _switched_into(island: IslandState, ctx: StageContext) -> set[str]:
+        """作り方を替えて作り始めてから firms.price_turns ターンたたない財と、替えると決めて
+        まだ替えていない作り方の財（命令と民営の見直しの両方）。新しい民営工場の参入
+        （_pipeline）と同じく、その施設が売り出した後の値段と売れ行きを見てから次を決める。"""
+        defs = ctx.defs
+        recent = ctx.turn - ctx.config.get("firms.price_turns")
+        goods: set[str] = set()
+        for f in island.facilities:
+            if not f.built:
+                continue
+            pending = f.ext.get(fac.RECIPE_NEXT)
+            if pending in defs.facilities[f.kind]["recipes"]:
+                goods |= set(defs.facilities[f.kind]["recipes"][pending]["outputs"])
+            if f.ext.get(fac.RECIPE_CHANGED, -(10**9)) > recent:
+                goods |= set(fac.recipe_of(defs, f)["outputs"])
+        return goods
 
     @staticmethod
     def _recipe_profits(
@@ -264,6 +286,7 @@ class EntryExit(IslandStage):
         prices: dict[str, int],
         supplied: set[str],
         rate: int,
+        busy: set[str] | None = None,
     ) -> dict[str, int]:
         """施設 f が選べる作り方ごとの変動費の利益（今の作り方を含む）。選べるのは、島で使える
         作り方（鉱業資源と気候）のうち、原料がどれも島で手に入り、今より多く使う原料は直近に
@@ -271,7 +294,10 @@ class EntryExit(IslandStage):
         あった）作り方（今と同じ原料を倍使う作り方に替えて、その原料が品切れになったため）。
         今作っていない産出物は、直近の買いたい量が売りに出た量を、新しい作り方の全力の産出の
         firms.entry_gap 倍以上上回っていなければ選ばない（綿の値段が高いターンに民営の農場が
-        そろって綿に替え、綿が余って値段が初めの 0.1 倍まで下がった）。"""
+        そろって綿に替え、綿が余って値段が初めの 0.1 倍まで下がった）。ほかの施設が作り方を
+        替えて作り始めたばかりの財（busy。_switched_into）も選ばない（嗜好品の値段が高いうちに、
+        民営の農場が1ターンずつずれて3つとも嗜好品に替え、島の穀物がなくなった。替えた農場の
+        売り出しが直近の平均に効く前に、次の農場が替えていた）。"""
         defs, config = ctx.defs, ctx.config
         power = config.get("power.good")
         gap = config.get("firms.entry_gap")
@@ -296,6 +322,7 @@ class EntryExit(IslandStage):
                     for g, qty in recipe["outputs"].items()
                     if g != power and g not in made
                 )
+                or any(g in (busy or ()) for g in recipe["outputs"] if g != power and g not in made)
             ):
                 continue
             probe = productivity.probe(island, defs, config, f.kind, name, (f.x, f.y))
@@ -694,7 +721,7 @@ class EntryExit(IslandStage):
         offers = []
         stopped = []  # 新しい融資を止めている銀行が、止めるのをやめるターン
         for bank in banks.active_banks(island):
-            if banks.labor_ratio(island, ctx.defs, bank) <= 0:
+            if banks.labor_ratio(island, config, ctx.defs, bank) <= 0:
                 continue
             if banks.lending_stopped(island, bank, ctx.turn):
                 stopped.append(banks.facility_of(island, bank).economy["crunch_until"])
@@ -893,6 +920,12 @@ class EntryExit(IslandStage):
             if not current or share <= config.get("banking.entry_deposits"):
                 need = config.get("banking.entry_deposits")
                 return ("deposits_low", {"share": share, "need": need})
+            # 開業した銀行は預金金利を政策金利まで上げて預金を集める。今の銀行がもう政策金利を
+            # 付けていれば（政策金利 0% など）、預金は移ってこない（預金のない銀行が赤字で破綻した）
+            best = max(banks.deposit_rate_of(island, b) for b in current)
+            if island.policy.policy_rate <= best:
+                rate = round(island.policy.policy_rate * 100 / BASIS, 2)
+                return ("no_rate_room", {"rate": rate})
             line = island.policy.policy_rate / BASIS + config.get("banking.entry_roe_margin")
             if self._entry_profit(island, ctx, current, share) * 12 <= line * max(1, capital):
                 return ("unprofitable", {})

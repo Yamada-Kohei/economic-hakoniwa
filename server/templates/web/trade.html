@@ -166,7 +166,7 @@
           <thead><tr>
             <th>{% translate "番号" %}</th><th>{% translate "状態" %}</th><th>{% translate "相手" %}</th><th>{% translate "こちらが" %}</th>
             <th>{% translate "資源" %}</th><th>{% translate "1ターンの量" %}</th><th>{% translate "値段（1単位）" %}</th><th>{% translate "期間" %}</th>
-            <th>{% translate "届いた量" %}</th><th>{% translate "直近の不足" %}</th><th></th>
+            <th>{% translate "届いた量" %}</th><th>{% translate "届いた物" %}</th><th>{% translate "直近の不足" %}</th><th></th>
           </tr></thead>
           <tbody>
             {% for c in trade.contracts %}
@@ -180,9 +180,10 @@
               <td>{{ c.currency_symbol }}{{ c.price|floatformat:"0g" }}<br><small class="muted">{{ c.currency_name }}</small></td>
               <td>{% if c.start %}{% blocktranslate with s=c.start e=c.end|add:"-1" %}ターン {{ s }}〜{{ e }}{% endblocktranslate %}{% else %}{% blocktranslate with n=c.turns %}{{ n }} ターン{% endblocktranslate %}{% endif %}</td>
               <td>{{ c.delivered }}</td>
+              <td>{{ c.delivery_name|default:"-" }}</td>
               <td{% if c.short %} class="warning-cell"{% endif %}>{% if c.short %}{{ c.short }}{% endif %}</td>
               <td>
-                {% if c.can_accept %}<form class="inline" data-order="accept_contract"><input type="hidden" name="contract" value="{{ c.id }}"><button type="submit">{% translate "受ける" %}</button></form>{% endif %}
+                {% if c.can_accept %}<form class="inline" data-order="accept_contract"><input type="hidden" name="contract" value="{{ c.id }}">{% if c.side == "buy" %}<select name="delivery" aria-label="{% translate "届いた物の行き先" %}"><option value="market">{% translate "届いた物は市場に出す" %}</option><option value="warehouse">{% translate "届いた物は国の倉庫に置く" %}</option></select> {% endif %}<button type="submit">{% translate "受ける" %}</button></form>{% endif %}
                 {% if c.can_cancel %}<form class="inline" data-order="cancel_contract" data-confirm="{% blocktranslate with n=c.id t=trade.cancel_turns %}契約（{{ n }} 番）をやめる命令を追加しますか？（有効な契約は {{ t }} ターン後に終わります）{% endblocktranslate %}"><input type="hidden" name="contract" value="{{ c.id }}"><button type="submit">{% if c.state == "proposed" %}{% translate "取り下げる・断る" %}{% else %}{% translate "やめる" %}{% endif %}</button></form>{% endif %}
               </td>
             </tr>
@@ -190,7 +191,7 @@
           </tbody>
         </table>
       </div>
-      <p class="hint">{% blocktranslate with t=trade.cancel_turns %}売る国は国の倉庫から出し（足りなければ島の市場で優先して買い）、買う国は国庫から払って国の倉庫に受け取ります。物・お金・船・港が足りないターンは届けられるだけ届け、不足をログに残します。やめる命令から {{ t }} ターン後に終わります。{% endblocktranslate %}</p>
+      <p class="hint">{% blocktranslate with t=trade.cancel_turns %}売る国は国の倉庫から出し（足りなければ島の市場で優先して買い）、買う国は国庫から払って国の倉庫に受け取ります。届いた物は、買う国が決めたとおり、売り切れるまで島の市場の値段で売りに出すか、国の倉庫に置いておきます（傷みやすい物はどちらでもすぐ市場に出します）。物・お金・船・港が足りないターンは届けられるだけ届け、不足をログに残します。やめる命令から {{ t }} ターン後に終わります。{% endblocktranslate %}</p>
       {% else %}
       <p class="muted">{% translate "契約はありません。" %}</p>
       {% endif %}
@@ -208,7 +209,8 @@
         <label>{% translate "値段（1単位、契約の通貨）" %} <input name="price" type="number" min="0" step="1" required></label>
         <label>{% translate "契約の通貨" %} <select name="currency_of"><option value="self">{% translate "自国の通貨" %}</option><option value="partner">{% translate "相手の国の通貨" %}</option></select></label>
         <label>{% translate "期間（ターン）" %} <input name="turns" type="number" min="1" max="600" step="1" value="12" required></label>
-        <p class="hint">{% translate "相手が受ける命令を出すと、その次のターンから効きます。" %}</p>
+        <label>{% translate "届いた物（買うとき）" %} <select name="delivery"><option value="market">{% translate "市場に出す" %}</option><option value="warehouse">{% translate "国の倉庫に置く" %}</option></select></label>
+        <p class="hint">{% translate "相手が受ける命令を出すと、その次のターンから効きます。買うときは、届いた物を島の市場の値段で売りに出すか、国の倉庫に置いておくかを選べます（傷みやすい物はどちらでもすぐ市場に出します）。" %}</p>
         <button type="submit">{% translate "命令に追加" %}</button>
       </form>
       {% endif %}
@@ -225,7 +227,7 @@
         <table class="goods traders-table">
           <thead><tr>
             <th>{% translate "資源" %}</th><th>{% translate "向き" %}</th><th>{% translate "使う圏" %}</th><th>{% translate "1ターンに狙う量" %}</th>
-            <th>{% translate "港の倉庫" %}</th><th>{% translate "運ぶ途中" %}</th><th>{% translate "仕入れ値（1単位）" %}</th><th>{% translate "売れ残り" %}</th><th>{% translate "単位" %}</th>
+            <th>{% translate "港の倉庫" %}</th><th>{% translate "運ぶ途中" %}</th><th>{% translate "仕入れ値（1単位）" %}</th><th>{% translate "売れ残り" %}</th><th>{% translate "単位" %}</th><th>{% translate "狙う量を買えなかったわけ" %}</th>
           </tr></thead>
           <tbody>
             {% for g in f.goods %}
@@ -234,6 +236,7 @@
               <td>{{ g.held }}</td><td>{{ g.transit }}</td>
               <td>{% if g.unit_cost is not None %}{{ currency }}{{ g.unit_cost|floatformat:"0g" }}{% else %}-{% endif %}</td>
               <td>{% if g.age %}{% blocktranslate with n=g.age %}{{ n }} ターン{% endblocktranslate %}{% endif %}</td><td>{{ g.unit }}</td>
+              <td>{% if g.why %}<small class="warning">{{ g.why }}</small>{% endif %}</td>
             </tr>
             {% endfor %}
           </tbody>

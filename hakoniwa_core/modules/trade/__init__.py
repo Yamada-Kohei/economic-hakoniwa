@@ -4,7 +4,8 @@
 （島の順番は結果に効かない）。中身の部品は hakoniwa_core/trade/ にあります。
 
 1. 届いた荷を買い手の港で下ろす（下ろす港の使用料。港の積み下ろしの余裕を超えた荷は次のターンへ）。
-   国の倉庫に入る腐る物（契約で買った食品など）は、次のターンからの市場の段が売りに出す
+   国の倉庫に入る腐る物（契約で買った食品など）と、契約で「市場に出す」と決めた物は、次のターンからの
+   市場の段が売りに出す
 2. 海運業の船: 使えるターン数を過ぎた船を解体し、市場で買った船を船団に入れる
 3. 圏の作成・加盟・設定、契約の申し込み・受け入れ・やめる（命令の段の申し送りを、島の番号の順に）
 4. 為替の板寄せ（島の通貨と、その島が使う決済通貨の組ごと。hakoniwa_core/trade/fx.py）
@@ -78,6 +79,14 @@ GOV_ITEM = (
     "trade"  # 政府が貿易（契約・運賃・使用料）に払うお金の項目（どの項目にも取り置いていない国庫）
 )
 REQUESTS = "trade_requests"  # island.scratch: 命令の段が積んだ申し送り
+
+# 商社が輸入の狙う量を圏で買えなかったわけ（商社の財の状態の why。貿易の画面に出す）
+WHY_NO_PRICE = "no_price"  # 圏にまだ値段がない
+WHY_PRICE = "price"  # 運賃と港の使用料を引くと、島の値段では引き合わない
+WHY_SHIPS = "ships"  # 空いている輸送船が足りない
+WHY_CAPACITY = "capacity"  # 商社の1ターンに扱える重さの上限
+WHY_MONEY = "money"  # 払う決済通貨（外貨）が足りない
+WHY_SELLERS = "sellers"  # 圏の売りが足りないか、売りの指値が高い
 
 
 def gov_payer() -> Payer:
@@ -211,10 +220,16 @@ class _Round:
             stock.put_batches(island.warehouse, good, batches)
             if s.get("facility") is not None:  # 買った商社がなくなった（倒産など）: 国の倉庫へ
                 island.log.append(LogEntry("cargo_to_warehouse", {"good": good}))
+            amount = qty / QUANTITY_SCALE
             if self.defs.goods[good].get("shelf_life"):  # 腐る物は、住民に回るよう市場に出す
                 send_to_market(island, good, qty)
-                amount = qty / QUANTITY_SCALE
                 island.log.append(LogEntry("cargo_to_market", {"good": good, "amount": amount}))
+            elif s.get("kind") == "contract" and s.get("delivery", contracts.MARKET) == (
+                contracts.MARKET
+            ):  # 契約で「市場に出す」と決めた物は、島の市場の値段で売りに出す
+                send_to_market(island, good, qty)
+                args = {"good": good, "amount": amount}
+                island.log.append(LogEntry("cargo_to_market_contract", args))
             self._pay_fee(island, gov_payer(), port, fee, None)
         here.port_used += s["load"]
         here.handled += s["load"]
@@ -310,7 +325,9 @@ class _Round:
                     if c is None:
                         reason = "reason_contract_unknown"
                     elif kind == "accept_contract":
-                        reason = contracts.accept(self.world, island, c, self.turn)
+                        reason = contracts.accept(
+                            self.world, island, c, self.turn, req.get("delivery")
+                        )
                     else:
                         reason = contracts.cancel(self.world, island, c, self.turn, cancel_wait)
                 else:
@@ -346,7 +363,9 @@ class _Round:
         """島ごと・決済通貨ごとに、商社と政府の為替の注文を板寄せする。商社は、次の fx.keep_turns
         ターンの輸入に要る分を、輸入が引き合う一番高いレートまで買い、余った分を、輸出が引き合う
         一番低いレートより安くは売らない（賃金を払う自国通貨が足りないときは、その分は値幅の下端まで
-        売る）。政府は契約の支払いに要る分を値幅の上端まで買い、受け取った分を下端まで売る。"""
+        売る）。政府は契約の支払いに要る分を値幅の上端まで買い（このターンに払う分は、段に分けずに
+        ほかの買いより先に）、受け取った分を下端まで売る。市場の厚みには、このターンに効く契約の
+        代金を足す（fxrates.depth）。"""
         width = fxrates.band_width(self.config)
         keep = self.config.get("fx.keep_turns")
         active = contracts.active(self.world, self.turn)
@@ -378,10 +397,12 @@ class _Round:
                 wages = traders.workers_wanted(self.config, self.defs, f) * wage * keep
                 short[entity] = max(0, wages - funds.available(island, payers[entity]))
             gov_need: dict[int, list[tuple[int, int | None]]] = {}
+            due: dict[int, int] = {}  # 通貨 → このターンに契約で払う額（政府）
             for c in active:
                 if c["buyer"] == i and c["currency"] != i:
-                    amount = money_of(c["price"], c["qty"]) * keep
-                    gov_need.setdefault(c["currency"], []).append((amount, None))
+                    amount = money_of(c["price"], c["qty"])
+                    due[c["currency"]] = due.get(c["currency"], 0) + amount
+                    gov_need.setdefault(c["currency"], []).append((amount * (keep - 1), None))
             needs[ledger.GOV] = gov_need
             payers[ledger.GOV] = gov_payer()
             currencies = set(blocs.currencies_of(self.world, i))
@@ -395,7 +416,12 @@ class _Round:
                 if currency not in self.world.islands:
                     continue
                 fxrates.ensure(self.world, island, currency)
-                book = fxrates.Book(depth=fxrates.depth(island, currency, self.config))
+                scheduled = sum(  # このターンに効く契約で、この通貨で払い・受け取る額
+                    money_of(c["price"], c["qty"])
+                    for c in active
+                    if c["currency"] == currency and i in (c["buyer"], c["seller"])
+                )
+                book = fxrates.Book(depth=fxrates.depth(island, currency, self.config, scheduled))
                 reference = fxrates.rate(island, currency)
                 for entity in sorted(payers):
                     self._fx_orders(
@@ -409,6 +435,7 @@ class _Round:
                         short.get(entity, 0),
                         reference,
                         width,
+                        due.get(currency, 0) if entity == ledger.GOV else 0,
                     )
                     if short.get(entity, 0) > 0:  # 売る分は、次の通貨の分から引く
                         have = fxmoney.holding(island, entity, currency)
@@ -430,20 +457,24 @@ class _Round:
         short: int,
         reference: int,
         width: int,
+        due: int = 0,
     ) -> None:
-        """1つの主体の、1つの通貨の注文。持ち高を引き合う輸入から順に当て、足りない分を買い、
-        余った分を売る。"""
+        """1つの主体の、1つの通貨の注文。持ち高をこのターンに払う代金 due（政府の契約）と引き合う
+        輸入から順に当て、足りない分を買い、余った分を売る。due の足りない分は、値幅の上端の1つの
+        指値で、ほかの買いより先に買う（fxrates.add_buy）。"""
         have = fxmoney.holding(island, entity, currency)
         if short > 0 and have > 0:  # 賃金を払う自国通貨が足りない: 足りない分は値を選ばず売る
             urgent = min(have, -(-short * BASIS // max(1, reference)))
             fxrates.add_sell(book, entity, payer, urgent, reference, width)
             have -= urgent
             needs = []
-        total = sum(amount for amount, _ in needs)
+        total = due + sum(amount for amount, _ in needs)
         if have > total:
             fxrates.add_sell(book, entity, payer, have - total, reference, width, floor)
             return
-        left = have
+        left = have - min(have, due)
+        if due > have:
+            fxrates.add_buy(island, book, entity, payer, due - have, reference, width, due=True)
         for amount, limit in sorted(needs, key=lambda n: -(n[1] or 10**18)):
             cover = min(left, amount)
             left -= cover
@@ -513,7 +544,17 @@ class _Round:
         self.islands[buyer.id].settled(currency, amount)
         c["delivered"] += qty
         c["paid"] += amount
-        self._ship(seller, buyer, good, batches, None, ledger.GOV, "contract", c["id"])
+        self._ship(
+            seller,
+            buyer,
+            good,
+            batches,
+            None,
+            ledger.GOV,
+            "contract",
+            c["id"],
+            delivery=contracts.delivery_of(c),
+        )
 
     # --- 船と港の余裕 -------------------------------------------------------------------
 
@@ -555,9 +596,10 @@ class _Round:
         ref: int,
         seller_payer: Payer | None = None,
         seller_facility: Facility | None = None,
+        delivery: str | None = None,
     ) -> None:
         """荷を買い手の島の船に積んで出す。積む港の使用料（売り手が払う）、船の運賃（買い手が自国の
-        海運業に払う）、燃料を払い、運ぶ途中の荷を記録する。"""
+        海運業に払う）、燃料を払い、運ぶ途中の荷を記録する（契約の荷は届いた物の行き先も）。"""
         qty = sum(q for _, q in batches)
         load = weight(self.defs, good, qty)
         oneway = one_way_turns(self.config, buyer, seller)
@@ -599,6 +641,7 @@ class _Round:
                 "load": load,
                 "loaded": self.turn,
                 "arrive": arrive,
+                **({"delivery": delivery} if delivery is not None else {}),
             }
         )
         loaded = self.cargo["loaded"]
@@ -634,6 +677,10 @@ class _Round:
                     price = blocs.home_average(self.world, bloc, good) or reference
                     price = min(result.high, max(result.low, price))
                 self._record_bloc(bloc, good, price, result)
+                for order, bid, got in zip(buys, bids, result.bought, strict=True):
+                    item = traders.entry(bid.facility, good)
+                    if got < order.quantity and "why" not in item:
+                        item["why"] = WHY_SELLERS
                 if result.volume > 0:
                     self._settle_bloc(bloc, good, result.price, result, bids, asks)
                 unmet[key] = result.demand - result.volume
@@ -738,13 +785,20 @@ class _Round:
         left: int,
         money_left: dict[tuple[int, str, int], int],
     ) -> Order | None:
-        """輸入の買い注文（量は狙う量の残り、船、扱える重さ、持っている決済通貨で頭打ち）。"""
+        """輸入の買い注文（量は狙う量の残り、船、扱える重さ、持っている決済通貨で頭打ち）。
+
+        指値は島で売って引き合う一番高い値段を、圏の値幅の上端までにする（それより高くは約定しない
+        ので、決済通貨をその分だけ取り置けばよい。島の値段が圏よりずっと高い財で、指値のぶん取り
+        置いて外貨を使い切り、ほかの財の注文が出なくなっていた）。狙う量に届かなかったわけを
+        item["why"] に書く（貿易の画面。届いたら消す）。"""
+        item.pop("why", None)
         view = traders.views(island).get(str(bloc["id"]))
         if view is None:
             return None
         currency = bloc["currency"]
         price = bloc["prices"].get(good) or view.get("prices", {}).get(good)
         if not price:
+            item["why"] = WHY_NO_PRICE
             return None
         cut = to_basis(self.config.get("trade.trader_cut"))
         unit = unit_weight(self.defs, good)
@@ -757,11 +811,22 @@ class _Round:
         own = home - part(home, cut) - freight_unit - fee_unit
         limit = own * BASIS // max(1, e)
         if limit <= 0:
+            item["why"] = WHY_PRICE
             return None
+        reference = blocs.reference(self.world, bloc, good) or price
+        _, high = auction.band(reference, to_basis(self.config.get("trade.bloc_band")))
+        limit = min(limit, high)
         want = item["m"] - item["held"][0]
+        if want <= 0:
+            return None
+        why = None
         if unit > 0:
             share = self.islands[island.id].import_share
-            want = min(want, int(want * share), left * QUANTITY_SCALE // unit)
+            if int(want * share) < want:
+                want, why = int(want * share), WHY_SHIPS
+            room = left * QUANTITY_SCALE // unit
+            if room < want:
+                want, why = room, WHY_CAPACITY
         key = (island.id, entity, currency)
         if key not in money_left:
             if island.id == currency:
@@ -771,7 +836,10 @@ class _Round:
         money = money_left[key]
         if island.id == currency:  # 運賃と使用料も同じお金から払う
             money = money * BASIS // (BASIS + (freight_unit + fee_unit) * BASIS // max(1, limit))
-        want = min(want, money * QUANTITY_SCALE // limit)
+        if money * QUANTITY_SCALE // limit < want:
+            want, why = money * QUANTITY_SCALE // limit, WHY_MONEY
+        if why is not None:
+            item["why"] = why
         if want <= 0:
             return None
         money_left[key] -= money_of(limit, want)
@@ -954,6 +1022,7 @@ def contract_view(c: dict[str, Any], island_id: int, turn: int) -> dict[str, Any
         "active": c["state"] == contracts.ACTIVE and c["start"] <= turn + 1 < c["end"],
         "delivered": c["delivered"],
         "short": c["short"],
+        "delivery": contracts.delivery_of(c),
     }
 
 
@@ -1038,11 +1107,19 @@ def check_contract(island: IslandState, payload: dict[str, Any], defs: Defs) -> 
         raise OrderFailed("reason_invalid_payload")
     if payload.get("price", -1) < 0:
         raise OrderFailed("reason_invalid_payload")
+    delivery = payload.get("delivery")
+    if delivery is not None and delivery not in contracts.DELIVERIES:
+        raise OrderFailed("reason_invalid_payload")
+    if delivery is not None and payload.get("side") == "sell":
+        raise OrderFailed("reason_contract_delivery")
 
 
 def check_contract_ref(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
     _check_started(island)
     if not isinstance(payload.get("contract"), int):
+        raise OrderFailed("reason_invalid_payload")
+    delivery = payload.get("delivery")
+    if delivery is not None and delivery not in contracts.DELIVERIES:
         raise OrderFailed("reason_invalid_payload")
 
 
