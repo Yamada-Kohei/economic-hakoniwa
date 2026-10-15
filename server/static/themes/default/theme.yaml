@@ -1,4 +1,4 @@
-# 既定のテーマ。絵はまだなく、色付きのひし形と立方体で描きます。
+# 既定のテーマ。下の sprites に絵があるものは絵で、ないものは色付きのひし形と立方体で描きます。
 name: default
 tile_width: 64        # マスの幅（ピクセル）
 tile_height: 32       # マスの高さ（ピクセル）
@@ -53,6 +53,11 @@ industrial: "rgba(230, 140, 40, 0.45)"       # 工業団地のマス
 #     facility/bank: {file: sprites/facility/bank.png, scale: 0.5}   # 2倍の大きさで描いた PNG
 sprite_scale: 1         # 画像の 1 ピクセルを何ピクセルとして描くか（項目の scale がなければこれ）
 sprites:
+  terrain/sea: sprites/terrain/sea.svg
+  terrain/shallows: sprites/terrain/shallows.svg
+  terrain/plain: sprites/terrain/plain.svg
+  terrain/forest: sprites/terrain/forest.svg
+  terrain/mountain: sprites/terrain/mountain.svg
   facility/aluminium_smelter: sprites/facility/aluminium_smelter.svg
   facility/automobile_plant: sprites/facility/automobile_plant.svg
   facility/bank: sprites/facility/bank.svg

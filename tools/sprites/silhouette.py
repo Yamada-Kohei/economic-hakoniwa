@@ -1,4 +1,4 @@
-"""施設と住宅のシルエットの絵（SVG）を、箱・円柱・屋根などの形の組み合わせから作る。
+"""地形・施設・住宅のシルエットの絵（SVG）を、箱・円柱・屋根などの形の組み合わせから作る。
 
 使い方: python tools/sprites/silhouette.py <出力フォルダ> [--style color|clay|flat]
   例: python tools/sprites/silhouette.py server/static/themes/default/sprites
@@ -84,6 +84,10 @@ class Face:
     points: list[tuple[float, float]] = field(default_factory=list)
     path: str | None = None  # 曲線を含む面（円柱など）
     ymin: float = 0.0  # path の面のいちばん上の y
+    bleed: float = 0.0  # 縁を外へにじませる幅（地形の継ぎ目を目立たせないため）
+    k: float | None = (
+        None  # 明るさ（なければ shade で決まる。岩山の面のように向きが自由な面に使う）
+    )
 
 
 @dataclass
@@ -481,9 +485,305 @@ def fence(u0: float, v0: float, u1: float, v1: float, z0: float = 1, c: str = WH
     return prims
 
 
+def ground(c: str) -> Prim:
+    """地形の上面: マスのひし形いっぱいの平らな面。縁は隣のマスへ少しにじませる。"""
+    pts = [iso(0, 0, 0), iso(1, 0, 0), iso(1, 1, 0), iso(0, 1, 0)]
+    return Prim((0, 0, 1, 1), -2, [Face("top", c, pts, bleed=0.6)])
+
+
+def patch(points: list[tuple[float, float]], c: str, z: float = 0) -> Prim:
+    """地面の上の模様（草むら・砂・波など）や、高さ z の水面。points はマスの中の (u, v) の並び。"""
+    us, vs = [u for u, _ in points], [v for _, v in points]
+    pts = [iso(u, v, z) for u, v in points]
+    return Prim((min(us), min(vs), max(us), max(vs)), -1 if z == 0 else 0, [Face("top", c, pts)])
+
+
+def wave(u: float, v: float, length: float, c: str, w: float = 0.022) -> Prim:
+    """波の筋: u の向きの細い帯で、両端を細くする。"""
+    return patch(
+        [(u, v), (u + length * 0.3, v - w / 2), (u + length, v), (u + length * 0.7, v + w / 2)], c
+    )
+
+
+def crown(uc: float, vc: float, z0: float, r: float, c: str = "#4f9a42") -> Prim:
+    """広葉樹の丸い葉のかたまり（半径 r ピクセルの円を左右で塗り分ける）。下の端が (uc, vc, z0)。"""
+    x, yb = iso(uc, vc, z0)
+    cy = yb - r
+    faces = []
+    for shade, sweep in (("slope_l", 0), ("slope_r", 1)):
+        d = _d("M", x, cy - r, "A", r, r, 0, 0, sweep, x, cy + r, "Z")
+        faces.append(Face(shade, c, path=d, ymin=cy - r))
+    ru = r / (TILE_W / 2 * math.sqrt(2))
+    return Prim((uc - ru, vc - ru, uc + ru, vc + ru), z0 + 0.3, faces)
+
+
+def broadleaf(uc: float, vc: float, r: float, h: float) -> list[Prim]:
+    """広葉樹: 短い幹と丸い葉。r は葉の半径（ピクセル）、h は木の高さ（ピクセル）。"""
+    return [cylinder(uc, vc, 0.015, 0, h - 2 * r + 1, c=TRUNK), crown(uc, vc, h - 2 * r, r)]
+
+
+# 山の帯の色（足元から上へ）。雪をかぶるのは高い峰だけ
+MOUNTAIN_ROCK = ["#a29279", "#aa9c88", "#b0a493"]
+# 緑の山: 裾は森、中ほどは草地、頂の近くだけ岩
+MOUNTAIN_GREEN = ["#4f8c3e", "#5d9a4a", "#86a062", "#a89e88"]
+GREEN_PROFILE = [(1.0, 0.0), (0.76, 0.24), (0.5, 0.54), (0.22, 0.83)]
+
+# 岩山の面の明るさ: 0.6 + 0.47 × (光の向き・面の向き)。光は左上から来るので、
+# 左を向いた斜面が明るく、右を向いた斜面が暗い（平らな面 1.0、急な斜面で左 0.94・右 0.67 ほど）
+LIGHT = (-0.45, 0.25, 0.86)
+VIEW = (0.612, 0.612, 0.5)  # 見る人のほうの向き（u, v, z）
+
+
+def _world(u: float, v: float, z: float) -> tuple[float, float, float]:
+    """マスの中の位置と高さ → 長さをそろえた3次元の位置（マスの一辺がおよそ 45 ピクセル）。"""
+    return u * 45.25, v * 45.25, z / 0.866
+
+
+def _normal(pts: list[tuple[float, float, float]]) -> tuple[float, float, float]:
+    a, b, c = (_world(*p) for p in pts[:3])
+    ux, uy, uz = b[0] - a[0], b[1] - a[1], b[2] - a[2]
+    vx, vy, vz = c[0] - a[0], c[1] - a[1], c[2] - a[2]
+    n = (uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx)
+    length = math.sqrt(sum(x * x for x in n)) or 1.0
+    return n[0] / length, n[1] / length, n[2] / length
+
+
+def massif(
+    rings: list[list[tuple[float, float, float]]],
+    apex: tuple[float, float, float],
+    bands: list[str],
+) -> Prim:
+    """岩山: 足元から上へ重ねた輪と頂をつないだ多面体。
+
+    rings は下から順の輪で、どれも同じ数の点 (u, v, z) を、上から見て同じ向きに並べる
+    （ring で作る）。bands は輪と輪のあいだの帯の色で、最後は頂までの色（雪など）。
+    面ごとに向きで明るさを変え、見えない向きの面は描かない。
+    """
+    tris = []
+    n = len(rings[0])
+    for k, color in enumerate(bands):
+        lo = rings[k]
+        for i in range(n):
+            j = (i + 1) % n
+            if k + 1 < len(rings):
+                hi = rings[k + 1]
+                tris += [((lo[i], lo[j], hi[j]), color), ((lo[i], hi[j], hi[i]), color)]
+            else:
+                tris.append(((lo[i], lo[j], apex), color))
+    cu = sum(p[0] for p in rings[0]) / n
+    cv = sum(p[1] for p in rings[0]) / n
+    faces = []
+    for pts, color in tris:
+        nu, nv, nz = _normal(list(pts))
+        mu = sum(p[0] for p in pts) / 3 - cu
+        mv = sum(p[1] for p in pts) / 3 - cv
+        if nu * mu + nv * mv + nz * 0.3 < 0:  # 外を向くようにそろえる
+            nu, nv, nz = -nu, -nv, -nz
+        if nu * VIEW[0] + nv * VIEW[1] + nz * VIEW[2] <= 0:
+            continue
+        k = min(1.0, 0.6 + 0.47 * max(0.0, nu * LIGHT[0] + nv * LIGHT[1] + nz * LIGHT[2]))
+        depth = sum(sum(a * b for a, b in zip(_world(*p), VIEW, strict=True)) for p in pts)
+        faces.append((depth, Face("top", color, [iso(*p) for p in pts], k=round(k, 3))))
+    faces.sort(key=lambda f: f[0])
+    us, vs = [p[0] for p in rings[0]], [p[1] for p in rings[0]]
+    z0 = min(p[2] for p in rings[0])
+    return Prim((min(us), min(vs), max(us), max(vs)), z0, [f for _, f in faces])
+
+
+# 峰の輪の大きさと高さ（足元を 1 とした割合）。裾は広くゆるく、頂に近いほど急にする
+PEAK_PROFILE = [(1.0, 0.0), (0.58, 0.4), (0.25, 0.76)]
+
+
+def peak(
+    uc: float,
+    vc: float,
+    h: float,
+    r: float,
+    shape: list[float],
+    bands: list[str],
+    lean: tuple[float, float] = (0.0, 0.0),
+    turn: float = 0.0,
+    z0: float = 0.0,
+    profile: list[tuple[float, float]] | None = None,
+) -> Prim:
+    """山の峰 1 つ: 足元の半径 r（マスの一辺に対する割合）、高さ h ピクセル。
+
+    shape は角ごとの出っ張り（1 がふつう）で、その数が輪の角の数になる。bands は下から順の帯の色で、
+    数は PEAK_PROFILE の輪の数まで（少なければ下の輪だけ使う）。頂は lean の向きへ寄せる。
+    z0 は足元の高さ（水面から出る岩など）。profile は輪の大きさと高さ（なければ PEAK_PROFILE）。
+    """
+    rings = []
+    for k, (rk, zk) in enumerate((profile or PEAK_PROFILE)[: len(bands)]):
+        t = 1 - rk
+        rr = [r * rk * s for s in shape]
+        zs = [z0 + h * zk * (0.85 + 0.15 * s) for s in shape]
+        rings.append(ring(uc + lean[0] * t, vc + lean[1] * t, rr, zs, turn + 0.3 * k))
+    return massif(rings, (uc + lean[0], vc + lean[1], z0 + h), bands)
+
+
+def ring(
+    uc: float, vc: float, radii: list[float], z: float | list[float] = 0.0, turn: float = 0.0
+) -> list[tuple[float, float, float]]:
+    """(uc, vc) のまわりに、上から見て時計回りに並べた点 (u, v, z)。radii の数だけ点を置く。"""
+    n = len(radii)
+    zs = z if isinstance(z, list) else [z] * n
+    pts = []
+    for i, r in enumerate(radii):
+        a = turn + 2 * math.pi * i / n
+        pts.append((uc + r * math.cos(a), vc + r * math.sin(a), zs[i]))
+    return pts
+
+
+def arch_dam(
+    cu: float, cv: float, r: float, a0: float, a1: float, h: float, n: int = 10
+) -> list[Prim]:
+    """アーチダム: 手前（下流）の (cu, cv) を中心に半径 r の弧を、角度 a0〜a1（度。0 が u の向き、
+    90 が v の向き）で描く高さ h の壁と、天端の道、真ん中の放流の白い筋。
+    壁は奥の湖のほうへふくらむ。
+    """
+
+    def at(a: float, rr: float, z: float) -> tuple[float, float]:
+        t = math.radians(a)
+        return iso(cu + rr * math.cos(t), cv + rr * math.sin(t), z)
+
+    step = (a1 - a0) / n
+    faces = []
+    for i in range(n):
+        b0, b1 = a0 + i * step, a0 + (i + 1) * step
+        # 壁は中心を向く。明るさは u の向き（右の側面）0.66 から v の向き（左の側面）0.82 へ
+        k = 0.66 + 0.16 * min(1.0, max(0.0, ((b0 + b1) / 2 - 180) / 90))
+        wall = [at(b0, r, 0), at(b1, r, 0), at(b1, r, h), at(b0, r, h)]
+        faces.append(Face("top", CONCRETE, wall, k=round(k, 3)))
+    crest = [at(a0 + i * step, r, h) for i in range(n + 1)]
+    crest += [at(a1 - i * step, r + 0.04, h) for i in range(n + 1)]
+    faces.append(Face("top", PAVEMENT, crest))
+    mid = (a0 + a1) / 2
+    spill = [at(mid - 3, r - 0.004, 0), at(mid + 3, r - 0.004, 0)]
+    spill += [at(mid + 3, r - 0.004, h - 1), at(mid - 3, r - 0.004, h - 1)]
+    faces.append(Face("top", "#dbe9f1", spill, k=0.95))
+    us = [
+        cu + rr * math.cos(math.radians(a0 + i * step))
+        for i in range(n + 1)
+        for rr in (r, r + 0.04)
+    ]
+    vs = [
+        cv + rr * math.sin(math.radians(a0 + i * step))
+        for i in range(n + 1)
+        for rr in (r, r + 0.04)
+    ]
+    return [Prim((min(us), min(vs), max(us), max(vs)), 0, faces)]
+
+
+def cliff(a: tuple[float, float], b: tuple[float, float], h: float, c: str = ROCK) -> Prim:
+    """a から b への線に立つ高さ h の崖（手前を向く面）。左の側面ほど明るく、右の側面ほど暗い。"""
+    du, dv = b[0] - a[0], b[1] - a[1]
+    nu, nv = dv, -du  # 線の右手（手前）の向き
+    length = math.hypot(nu, nv) or 1.0
+    k = 0.66 + 0.16 * max(0.0, nv / length) if nu >= 0 else 0.82
+    pts = [iso(*a, 0), iso(*b, 0), iso(*b, h), iso(*a, h)]
+    us, vs = (a[0], b[0]), (a[1], b[1])
+    return Prim((min(us), min(vs), max(us), max(vs)), 0, [Face("top", c, pts, k=round(k, 3))])
+
+
+def crag(u0: float, v0: float, u1: float, v1: float, h: float, c: str = ROCK) -> Prim:
+    """岩山の峰: 四角すい（手前の 2 面だけ見える）。"""
+    return hip(u0, v0, u1, v1, 0, h, c)
+
+
+# 水力発電所のアーチダム（手前の (0.96, 0.96) を中心に半径 0.58 の弧）と、その奥のダム湖
+DAM = (0.96, 0.96, 0.58, 186, 264)
+LAKE = [
+    *[
+        (0.96 + 0.6 * math.cos(math.radians(a)), 0.96 + 0.6 * math.sin(math.radians(a)))
+        for a in range(186, 265, 13)
+    ],
+    (0.86, 0.0),
+    (0.0, 0.0),
+    (0.0, 0.86),
+]
+
 # --- 形の一覧 ----------------------------------------------------------------
 
 SHAPES: dict[str, list[Prim]] = {
+    # 地形。上面のひし形と、そこから上に出る木や岩だけを描く（側面の崖はコードが色で描く）。
+    # 地の色は theme.yaml の terrain の top と同じにして、小さな地図や隣のマスとそろえる
+    "terrain/sea": [
+        ground("#2f6db5"),
+        wave(0.18, 0.3, 0.2, "#4580c2"),
+        wave(0.55, 0.22, 0.16, "#4580c2"),
+        wave(0.42, 0.58, 0.22, "#4580c2"),
+        wave(0.2, 0.78, 0.14, "#4580c2"),
+        wave(0.7, 0.72, 0.16, "#4580c2"),
+    ],
+    "terrain/shallows": [
+        # 透けて見える砂の底（明るい斑）と、さざ波
+        ground("#5b9bd5"),
+        patch([(0.24, 0.3), (0.42, 0.2), (0.58, 0.26), (0.5, 0.38), (0.3, 0.42)], "#63a2d9"),
+        patch([(0.52, 0.66), (0.7, 0.58), (0.82, 0.66), (0.7, 0.78), (0.56, 0.76)], "#63a2d9"),
+        wave(0.16, 0.62, 0.18, "#7ab3e1"),
+        wave(0.62, 0.38, 0.16, "#7ab3e1"),
+        wave(0.36, 0.84, 0.12, "#7ab3e1"),
+    ],
+    "terrain/plain": [
+        ground("#8cc163"),
+        patch([(0.2, 0.3), (0.34, 0.24), (0.44, 0.34), (0.32, 0.42)], "#93c76b"),
+        patch([(0.58, 0.62), (0.72, 0.56), (0.8, 0.68), (0.66, 0.74)], "#93c76b"),
+        patch([(0.62, 0.22), (0.7, 0.2), (0.74, 0.28), (0.66, 0.3)], "#84b85c"),
+        patch([(0.24, 0.7), (0.32, 0.66), (0.36, 0.74), (0.28, 0.78)], "#84b85c"),
+    ],
+    "terrain/forest": [
+        ground("#3f8a3a"),
+        patch([(0.3, 0.4), (0.5, 0.32), (0.66, 0.5), (0.46, 0.62)], "#38803a"),
+        *tree(0.22, 0.24, 0.09, 18),
+        *broadleaf(0.55, 0.18, 4.5, 13),
+        *tree(0.42, 0.42, 0.1, 20),
+        *broadleaf(0.2, 0.56, 4.5, 13),
+        *tree(0.75, 0.42, 0.09, 17),
+        *broadleaf(0.58, 0.66, 5, 14),
+        *tree(0.36, 0.76, 0.09, 17),
+        *tree(0.8, 0.78, 0.08, 15),
+    ],
+    "terrain/mountain": [
+        # 裾が森の緑の山。高い峰と、右手前へ下る低い峰。頂の近くだけ岩が出る。
+        # 地面は平地と同じ高さで、隣の平地とつながる草の色
+        ground("#8cc163"),
+        patch([(0.62, 0.84), (0.8, 0.78), (0.9, 0.9), (0.74, 0.96)], "#84b85c"),
+        peak(
+            0.44,
+            0.42,
+            36,
+            0.44,
+            [1, 0.9, 1, 0.86, 1.04, 0.9, 1, 0.88, 1.02, 0.92],
+            MOUNTAIN_GREEN,
+            (-0.02, -0.03),
+            0.2,
+            profile=GREEN_PROFILE,
+        ),
+        peak(
+            0.74,
+            0.66,
+            19,
+            0.24,
+            [1, 0.88, 1.04, 0.9, 1, 0.92, 0.96, 0.9],
+            MOUNTAIN_GREEN[:3],
+            (0.0, -0.01),
+            0.5,
+            profile=GREEN_PROFILE,
+        ),
+        peak(
+            0.24,
+            0.78,
+            12,
+            0.18,
+            [1, 0.9, 1.04, 0.88, 1, 0.92, 0.96],
+            MOUNTAIN_GREEN[:3],
+            (0.0, 0.0),
+            0.1,
+            profile=GREEN_PROFILE,
+        ),
+        *tree(0.9, 0.42, 0.06, 11),
+        *tree(0.56, 0.9, 0.06, 10),
+    ],
     "facility/farm": [
         box(0.08, 0.08, 0.92, 0.54, 0, 1, SOIL),
         *[box(0.1, v, 0.9, v + 0.06, 1, 2, CROP) for v in (0.1, 0.22, 0.34, 0.46)],
@@ -509,6 +809,10 @@ SHAPES: dict[str, list[Prim]] = {
         box(0.66, 0.76, 0.9, 0.9, 0, 3, CONCRETE),
     ],
     "facility/mine": [
+        # 岩山のふもとの立て坑のやぐら、選鉱の建屋、ぼた山
+        peak(
+            0.74, 0.24, 15, 0.22, [1, 0.7, 1.05, 0.75, 1, 0.8, 0.95], MOUNTAIN_ROCK, (0.02, -0.02)
+        ),
         *[box(u, v, u + 0.06, v + 0.06, 0, 34, IRON) for u in (0.18, 0.36) for v in (0.18, 0.36)],
         box(0.15, 0.15, 0.45, 0.45, 34, 4, RUST),
         *house(0.5, 0.45, 0.88, 0.85, 12, 7, "u", WALL, ROOF_SLATE),
@@ -568,11 +872,41 @@ SHAPES: dict[str, list[Prim]] = {
         *[box(u, 0.6, u + 0.05, 0.65, 0, 8, METAL) for u in (0.48, 0.56)],
     ],
     "facility/hydro_power_plant": [
-        box(0.1, 0.08, 0.9, 0.2, 0, 26, CONCRETE, WATER),
-        box(0.1, 0.2, 0.9, 0.42, 0, 28, CONCRETE),
-        box(0.1, 0.42, 0.9, 0.48, 0, 24, CONCRETE),
-        *[box(u, 0.48, u + 0.08, 0.68, 0, 10, METAL) for u in (0.25, 0.45, 0.65)],
-        box(0.2, 0.68, 0.8, 0.9, 0, 9, WALL, WATER),
+        # 岩山の谷をせき止めたアーチダム。奥に崖に囲まれたダム湖、ダムの正面に放流の白い筋、
+        # 足元に発電所と川
+        patch(LAKE, WATER, 17),
+        cliff((0.0, 0.86), LAKE[0], 17, "#8e7f6a"),
+        cliff(LAKE[len(LAKE) - 4], (0.86, 0.0), 17, "#8e7f6a"),
+        peak(
+            0.2, 0.2, 9, 0.2, [1, 0.7, 1.05, 0.75, 1, 0.8, 0.9], MOUNTAIN_ROCK, (0.0, 0.0), 0.2, 17
+        ),
+        *arch_dam(*DAM, 20),
+        peak(
+            0.88,
+            0.36,
+            22,
+            0.16,
+            [1, 0.7, 1.05, 0.75, 1, 0.8, 0.95],
+            MOUNTAIN_ROCK,
+            (0.03, -0.04),
+            0.5,
+            0.5,
+        ),
+        peak(
+            0.36,
+            0.88,
+            20,
+            0.16,
+            [1, 0.75, 1.05, 0.7, 1, 0.8],
+            MOUNTAIN_ROCK,
+            (-0.04, 0.03),
+            0.1,
+            0.5,
+        ),
+        patch([(0.58, 0.62), (0.62, 0.58), (1.0, 0.94), (0.94, 1.0)], WATER),
+        box(0.8, 0.62, 0.94, 0.76, 0, 8, WALL, ROOF_SLATE),
+        *[box(u, 0.86, u + 0.025, 0.885, 0, 8, METAL) for u in (0.62, 0.72)],
+        box(0.61, 0.86, 0.755, 0.885, 8, 1, METAL),
     ],
     "facility/government_office": [
         box(0.1, 0.25, 0.9, 0.75, 0, 18, WHITE, "#d9d4c8"),
@@ -765,6 +1099,7 @@ SHAPES: dict[str, list[Prim]] = {
             for prim in car(u, v, CAR_COLORS[(i * 2 + j) % len(CAR_COLORS)], 1)
         ],
     ],
+    # フェーズ3-4 の警察署
     "housing/village": [
         *house(0.15, 0.15, 0.42, 0.4, 7, 6, "u"),
         *house(0.55, 0.2, 0.8, 0.45, 7, 6, "v", roof=ROOF_BROWN),
@@ -809,17 +1144,18 @@ def render(prims: list[Prim], style: dict) -> str:
     ]
     for f in faces:
         color = _color(style, f)
+        width = f' stroke-width="{2 * f.bleed:g}"' if f.bleed else ""
         if f.path:
-            out.append(f'<path d="{f.path}" fill="{color}" stroke="{color}"/>')
+            out.append(f'<path d="{f.path}" fill="{color}" stroke="{color}"{width}/>')
         else:
             pts = " ".join(f"{x:.2f},{y:.2f}" for x, y in f.points)
-            out.append(f'<polygon points="{pts}" fill="{color}" stroke="{color}"/>')
+            out.append(f'<polygon points="{pts}" fill="{color}" stroke="{color}"{width}/>')
     out += ["</g>", "</svg>"]
     return "\n".join(out) + "\n"
 
 
 def _color(style: dict, face: Face) -> str:
-    k = style[face.shade]
+    k = style[face.shade] if face.k is None or style is STYLES["flat"] else face.k
     base = style["base"]
     if style is STYLES["color"]:
         base = tuple(int(face.color[i : i + 2], 16) for i in (1, 3, 5))
