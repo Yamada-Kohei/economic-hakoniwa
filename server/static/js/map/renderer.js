@@ -30,7 +30,9 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       const h = lift(defs.terrain[terrain]?.height ?? 0, theme);
       const { px, py } = tileToWorld(x, y, theme);
       const top = py - h;
-      drawBlock(ctx, px, py, h, colors, theme, sprites.get(`terrain/${terrain}`));
+      const f = facilityAt.get(i);
+      // 施設のあるマスは地形の絵（木や山）を描かず、上面の色だけにする。施設の絵と重ならないように
+      drawBlock(ctx, px, py, h, colors, theme, f ? null : sprites.get(`terrain/${terrain}`));
       if (options.overlay) {
         const color = options.overlay.color(map, i, defs);
         if (color) {
@@ -41,7 +43,6 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       }
       if (map.zone?.[i] === "no_development") drawHatch(ctx, px, top, theme);
       if (map.power_line?.[i] && !facilityAt.has(i)) drawPowerLine(ctx, map, x, y, px, top, theme, facilityAt);
-      const f = facilityAt.get(i);
       if (f) drawFacility(ctx, f, map, defs, px, top, theme, sprites);
       if (options.marked?.has(`${x},${y}`)) outlineTop(ctx, px, top, theme, "#ff5722");
       if (options.selected && options.selected.x === x && options.selected.y === y) {

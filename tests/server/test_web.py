@@ -82,7 +82,7 @@ def test_tile_api_facility_books(client, world):
 
 def test_defs_api(client, db):
     data = client.get("/api/defs").json()
-    assert data["terrain"]["mountain"] == {"name": "山", "height": 2, "land": True}
+    assert data["terrain"]["mountain"] == {"name": "山", "height": 1, "land": True}
     assert data["facilities"]["farm"]["buildable"] is True
     assert data["founding"]["land_terrains"] == ["plain", "mountain", "forest"]
     assert data["theme"]["tile_width"] == 64

@@ -3,4 +3,4 @@ sea:      {land: false}
 shallows: {land: false, reclaimable: true}
 plain:    {land: true, height: 1}
 forest:   {land: true, height: 1}
-mountain: {land: true, height: 2}
+mountain: {land: true, height: 1}
