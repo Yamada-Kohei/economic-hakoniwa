@@ -52,6 +52,7 @@ COPPER = "#6fa98f"
 WATER = "#3d7ea6"
 PAVEMENT = "#d9d4c8"  # 岸壁・屋上などの床
 CONTAINER_BLUE = "#4f8fb8"
+CAR_COLORS = (RED, WHITE, CONTAINER_BLUE, METAL, YELLOW, COAL)
 
 # 基の色と、面ごとの明るさ（上面・屋根の左向き・左の側面・屋根の右向き・右の側面）。
 # color は部品の色を使い、base は色のない部品にだけ使う
@@ -350,6 +351,50 @@ def globe(uc: float, vc: float, z0: float, r: float, c: str = "#4f8fb8", line: s
     return Prim((uc - ru, vc - ru, uc + ru, vc + ru), z0, faces)
 
 
+def sawtooth(
+    u0: float,
+    v0: float,
+    u1: float,
+    v1: float,
+    z0: float,
+    r: float,
+    along: str = "u",
+    c: str = ROOF_SLATE,
+    glass: str = GLASS,
+    wall: str = WALL,
+) -> list[Prim]:
+    """のこぎり屋根の歯 1 つ。along の向きに棟が通り、奥の側の縁が高い。
+
+    手前を向いた斜面と、端の三角の壁が見える。縦の窓は奥を向くので、棟の近くの明かり取り
+    （斜面の上の 3 割）を glass の色で描く。
+    """
+    zt = z0 + r
+    zg = z0 + r * 0.65
+    if along == "u":  # 歯は v の向きに並ぶ。斜面は手前左を向く
+        vg = v0 + (v1 - v0) * 0.35
+        roof = [iso(u0, v1, z0), iso(u1, v1, z0), iso(u1, vg, zg), iso(u0, vg, zg)]
+        sky = [iso(u0, vg, zg), iso(u1, vg, zg), iso(u1, v0, zt), iso(u0, v0, zt)]
+        end = Face("right", wall, [iso(u1, v0, z0), iso(u1, v1, z0), iso(u1, v0, zt)])
+        slope = "slope_l"
+    else:  # 歯は u の向きに並ぶ。斜面は手前右を向く
+        ug = u0 + (u1 - u0) * 0.35
+        roof = [iso(u1, v0, z0), iso(u1, v1, z0), iso(ug, v1, zg), iso(ug, v0, zg)]
+        sky = [iso(ug, v0, zg), iso(ug, v1, zg), iso(u0, v1, zt), iso(u0, v0, zt)]
+        end = Face("left", wall, [iso(u0, v1, z0), iso(u1, v1, z0), iso(u0, v1, zt)])
+        slope = "slope_r"
+    return [Prim((u0, v0, u1, v1), z0 + 0.1, [Face(slope, c, roof), Face(slope, glass, sky), end])]
+
+
+def car(u: float, v: float, c: str, z0: float = 0, along: str = "u") -> list[Prim]:
+    """乗用車: 車体と、一回り小さい客室。(u, v) は足元の奥の角。"""
+    du, dv = (0.09, 0.045) if along == "u" else (0.045, 0.09)
+    cu, cv = (0.025, 0.006) if along == "u" else (0.006, 0.025)
+    return [
+        box(u, v, u + du, v + dv, z0, 2.2, c),
+        box(u + cu, v + cv, u + du - cu, v + dv - cv, z0 + 2.2, 1.6, GLASS2, c),
+    ]
+
+
 def strut(
     a: tuple[float, float, float], b: tuple[float, float, float], w: float = 1.2, c: str = RED
 ) -> Prim:
@@ -363,6 +408,77 @@ def strut(
     pts = [(xa + dx, ya + dy), (xb + dx, yb + dy), (xb - dx, yb - dy), (xa - dx, ya - dy)]
     bounds = (min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1]))
     return Prim(bounds, min(a[2], b[2]), [Face("left", c, pts)])
+
+
+def derrick(uc: float, vc: float, half: float, h: float, c: str = IRON) -> list[Prim]:
+    """油井のやぐら: 4 本の脚が上ですぼまる鉄骨の塔と、途中の横の梁。"""
+
+    def leg(su: int, sv: int, t: float) -> tuple[float, float, float]:
+        k = half * (1 - 0.8 * t)
+        return (uc + su * k, vc + sv * k, 1 + (h - 1) * t)
+
+    corners = ((-1, -1), (1, -1), (1, 1), (-1, 1))
+    prims = [strut(leg(su, sv, 0), leg(su, sv, 1), 1.0, c) for su, sv in corners]
+    for t in (0.3, 0.6):
+        for (su, sv), (tu, tv) in zip(corners, corners[1:] + corners[:1], strict=True):
+            prims.append(strut(leg(su, sv, t), leg(tu, tv, t), 0.7, c))
+    prims.append(box(uc - half * 0.3, vc - half * 0.3, uc + half * 0.3, vc + half * 0.3, h, 2, c))
+    return prims
+
+
+def pumpjack(u: float, v: float, c: str = COAL, weight: str = RED) -> list[Prim]:
+    """首を振るポンプ（ポンプジャック）。u の向きに長く、u の大きい側に馬の頭の形の先。"""
+    vm = v + 0.035
+    return [
+        box(u, v, u + 0.36, v + 0.07, 1, 1.5, IRON),
+        box(u + 0.01, v + 0.01, u + 0.07, v + 0.06, 2.5, 7, weight),
+        strut((u + 0.16, v + 0.005, 2.5), (u + 0.17, vm, 15), 1.0, c),
+        strut((u + 0.16, v + 0.065, 2.5), (u + 0.17, vm, 15), 1.0, c),
+        strut((u + 0.27, vm, 2.5), (u + 0.18, vm, 14), 0.8, c),
+        strut((u + 0.02, vm, 13), (u + 0.32, vm, 16.5), 2.0, c),
+        box(u + 0.3, v + 0.015, u + 0.36, v + 0.055, 10.5, 8, c),
+        cylinder(u + 0.34, vm, 0.012, 2.5, 8, c=METAL),
+    ]
+
+
+def column(uc: float, vc: float, r: float, h: float, c: str = METAL) -> list[Prim]:
+    """製油所の蒸留塔: 細長い円柱と、途中の足場の輪。"""
+    rings = [cylinder(uc, vc, r * 1.45, 1 + h * t, 1.2, c=YELLOW) for t in (0.35, 0.7)]
+    return [cylinder(uc, vc, r, 1, h, cap="dome", c=c), *rings]
+
+
+def flame(uc: float, vc: float, z0: float, h: float, c: str = "#f08a24") -> Prim:
+    """フレアスタックの先の炎（しずくの形）。"""
+    x, y = iso(uc, vc, z0)
+    pts = [(x, y), (x - 1.6, y - h * 0.35), (x - 0.3, y - h), (x + 1.6, y - h * 0.4)]
+    return Prim((uc - 0.01, vc - 0.01, uc + 0.01, vc + 0.01), z0, [Face("top", c, pts)])
+
+
+def cow(u: float, v: float, c: str, top: str | None = None) -> list[Prim]:
+    """牛: 胴と頭の箱（u の向きを向く）。"""
+    return [
+        box(u, v, u + 0.09, v + 0.045, 1, 3, c, top),
+        box(u + 0.09, v + 0.008, u + 0.12, v + 0.037, 2.5, 2.5, c, top),
+    ]
+
+
+def fence(u0: float, v0: float, u1: float, v1: float, z0: float = 1, c: str = WHITE) -> list[Prim]:
+    """四角い囲いの柵: 角と途中の杭、横木 1 本。"""
+    prims = []
+    n = 6
+    for i in range(n + 1):
+        t = i / n
+        u, v = u0 + (u1 - u0) * t, v0 + (v1 - v0) * t
+        for pu, pv in ((u, v0), (u, v1), (u0, v), (u1, v)):
+            prims.append(box(pu - 0.01, pv - 0.01, pu + 0.01, pv + 0.01, z0, 4, c))
+    for a, b in (
+        ((u0, v0), (u1, v0)),
+        ((u0, v1), (u1, v1)),
+        ((u0, v0), (u0, v1)),
+        ((u1, v0), (u1, v1)),
+    ):
+        prims.append(strut((*a, z0 + 3), (*b, z0 + 3), 0.8, c))
+    return prims
 
 
 # --- 形の一覧 ----------------------------------------------------------------
@@ -556,6 +672,97 @@ SHAPES: dict[str, list[Prim]] = {
         *[
             box(u + 0.014, 0.762, u + 0.14, 0.772, 16.5, 6, col)
             for u, col in ((0.3, RED), (0.5, CONTAINER_BLUE), (0.7, YELLOW))
+        ],
+    ],
+    # フェーズ3-2 の油井・製油所・アルミ精錬所・繊維工場・牧場・自動車工場
+    "facility/oil_well": [
+        # 砂利の敷地、鉄骨のやぐら、首を振るポンプ、原油のタンク 2 基
+        box(0.08, 0.08, 0.92, 0.92, 0, 1, "#a99d84"),
+        *derrick(0.3, 0.3, 0.15, 46),
+        box(0.18, 0.18, 0.42, 0.42, 1, 3, IRON, "#6b655e"),
+        *pumpjack(0.5, 0.56),
+        *[cylinder(u, v, 0.09, 1, 10, c="#d7d2c6") for u, v in ((0.2, 0.62), (0.22, 0.82))],
+    ],
+    "facility/refinery": [
+        # 蒸留塔 3 本、加工の装置とそこへの配管、先に炎の出るフレアスタック、浮き屋根のタンク 3 基
+        box(0.06, 0.06, 0.94, 0.94, 0, 1, CONCRETE, PAVEMENT),
+        *column(0.2, 0.24, 0.05, 50),
+        *column(0.36, 0.15, 0.04, 40),
+        *column(0.15, 0.44, 0.035, 32),
+        box(0.46, 0.12, 0.72, 0.4, 1, 16, "#8c8f6a", DARK),
+        box(0.5, 0.16, 0.68, 0.36, 17, 6, "#8c8f6a", DARK),
+        box(0.24, 0.42, 0.5, 0.46, 9, 2, "#8c8f6a"),
+        cylinder(0.86, 0.12, 0.018, 1, 48, c=METAL),
+        cylinder(0.86, 0.12, 0.022, 49, 4, c=RED),
+        flame(0.86, 0.12, 53, 9),
+        *[
+            cylinder(u, v, 0.12, 1, 11, c=WHITE, cap_c="#cfcac0")
+            for u, v in ((0.3, 0.76), (0.62, 0.78), (0.8, 0.52))
+        ],
+    ],
+    "facility/aluminium_smelter": [
+        # 電解炉の長い建屋 2 棟（屋根に換気の越屋根）、アルミナのサイロ 2 基、変電所、地金の山
+        box(0.06, 0.06, 0.94, 0.94, 0, 1, CONCRETE, PAVEMENT),
+        *[
+            prim
+            for v in (0.1, 0.34)
+            for prim in (
+                box(0.08, v, 0.92, v + 0.18, 1, 14, "#cfd5da", ROOF_STEEL),
+                box(0.08, v + 0.06, 0.92, v + 0.12, 15, 4, "#e4e8eb", "#8f9aa4"),
+            )
+        ],
+        *[cylinder(u, 0.74, 0.075, 1, 28, c="#e2e5e8") for u in (0.18, 0.36)],
+        *[box(u, 0.64, u + 0.08, 0.72, 1, 6, DARK) for u in (0.58, 0.74)],
+        *[box(u, 0.84, u + 0.02, 0.86, 1, 22, METAL) for u in (0.56, 0.86)],
+        box(0.56, 0.84, 0.88, 0.86, 21, 2, METAL),
+        *[
+            box(u, 0.84, u + 0.1, 0.92, z, 2, "#e8ecef", WHITE)
+            for u in (0.12, 0.26)
+            for z in (1, 3)
+        ],
+    ],
+    "facility/textile_mill": [
+        # のこぎり屋根の織物の建屋（左の妻壁がぎざぎざで、棟の近くに明かり取り）、レンガの煙突と
+        # ボイラー室、綿の俵
+        cylinder(0.16, 0.16, 0.04, 0, 42, c=BRICK),
+        box(0.3, 0.08, 0.62, 0.26, 0, 14, BRICK, ROOF_SLATE),
+        *[box(u, 0.12, u + 0.08, 0.22, 0, 4, WHITE) for u in (0.7, 0.8)],
+        box(0.75, 0.12, 0.83, 0.22, 4, 4, WHITE),
+        box(0.1, 0.32, 0.9, 0.9, 0, 11, "#d8aab5"),
+        *[
+            prim
+            for u in (0.1, 0.3, 0.5, 0.7)
+            for prim in sawtooth(
+                u, 0.32, u + 0.2, 0.9, 11, 8, "v", ROOF_SLATE, "#d4e4ee", "#d8aab5"
+            )
+        ],
+    ],
+    "facility/ranch": [
+        # 柵で囲った牧草地、赤い牛舎、干し草のロール、牛
+        box(0.06, 0.06, 0.94, 0.94, 0, 1, "#a8c46a"),
+        *house(0.12, 0.12, 0.42, 0.4, 10, 7, "v", "#b4483a", ROOF_SLATE),
+        *[
+            cylinder(u, v, 0.035, 1, 3.5, c=CROP)
+            for u, v in ((0.56, 0.16), (0.64, 0.16), (0.6, 0.24))
+        ],
+        *cow(0.5, 0.42, "#7a4a2b"),
+        *cow(0.24, 0.58, WHITE, "#2d2b29"),
+        *cow(0.6, 0.66, "#2d2b29"),
+        *cow(0.36, 0.76, "#7a4a2b"),
+        *fence(0.08, 0.08, 0.92, 0.92),
+    ],
+    "facility/automobile_plant": [
+        # 組立の大きな建屋（屋根に明かり取りの帯）、塗装の建屋、事務所、出来上がった車の列
+        box(0.06, 0.06, 0.94, 0.94, 0, 1, CONCRETE, PAVEMENT),
+        box(0.08, 0.08, 0.92, 0.54, 1, 18, WALL, "#4a6fa5"),
+        *[box(0.3, v, 0.9, v + 0.04, 19, 1.5, GLASS) for v in (0.14, 0.26, 0.38)],
+        box(0.08, 0.08, 0.28, 0.3, 19, 9, WALL, "#4a6fa5"),
+        box(0.1, 0.62, 0.3, 0.9, 1, 12, GLASS, WHITE),
+        *[
+            prim
+            for i, u in enumerate((0.4, 0.52, 0.64, 0.76))
+            for j, v in enumerate((0.62, 0.72, 0.82))
+            for prim in car(u, v, CAR_COLORS[(i * 2 + j) % len(CAR_COLORS)], 1)
         ],
     ],
     "housing/village": [

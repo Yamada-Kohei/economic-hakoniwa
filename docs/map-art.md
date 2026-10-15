@@ -53,6 +53,12 @@ sprites:
 | `facility/port` | 港（フェーズ3-1） | 2.5 段・平地・海沿い（クレーンの先は 5 段ほど） |
 | `facility/shipyard` | 造船所（フェーズ3-1） | 3 段・平地・海沿い（クレーンの先は 5 段ほど） |
 | `facility/trading` | 商社（フェーズ3-1） | 3 段・平地・オフィス街（屋上の地球儀まで 5 段ほど） |
+| `facility/oil_well` | 油井（フェーズ3-2） | 2 段・平地か山（やぐらの先は 5 段ほど） |
+| `facility/refinery` | 製油所（フェーズ3-2） | 3 段・平地（蒸留塔とフレアスタックは 5 段ほど） |
+| `facility/aluminium_smelter` | アルミ精錬所（フェーズ3-2） | 3 段・平地 |
+| `facility/textile_mill` | 繊維工場（フェーズ3-2） | 2 段・平地（煙突は 4 段ほど） |
+| `facility/ranch` | 牧場（フェーズ3-2） | 0.5 段・平地 |
+| `facility/automobile_plant` | 自動車工場（フェーズ3-2） | 2.5 段・平地 |
 | `housing/village` | 村 | 1 段 |
 | `housing/town` | 町 | 2 段 |
 | `housing/city` | 都市 | 4 段 |
