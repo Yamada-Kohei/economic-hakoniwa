@@ -219,3 +219,19 @@ def test_secret_orders_are_hidden_from_others_until_they_run(client, world):
     assert len([r for r in mine if r["status"] == "failed"]) == 1
     # 残っているのは公表する税の命令だけ（行政力が足りなければ次のターンに回る）
     assert len(others["orders"]) == Order.objects.filter(status="pending").count()
+
+
+def test_reserve_releases_are_public_and_purchases_are_hidden(client, world):
+    """国の倉庫の売り（備蓄の放出）は出した時点で誰にでも見え、買い入れは実行まで持ち主だけ
+    （10-15 のカード「売りだけ見せる」）。"""
+    island = m.Island.objects.order_by("id").first()
+    url = f"/api/islands/{island.id}/orders"
+    for seq, side in enumerate(["sell", "buy"], start=1):
+        payload = {"good": "wood", "side": side, "quantity": 1, "limit": 1}
+        Order.objects.create(island=island, seq=seq, kind="warehouse_trade", payload=payload)
+
+    others = client.get(url).json()["orders"]
+    assert [o["payload"]["side"] for o in others] == ["sell"]
+    island.owner = _login(client, "owner")
+    island.save()
+    assert [o["payload"]["side"] for o in client.get(url).json()["orders"]] == ["sell", "buy"]

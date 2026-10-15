@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.http import Http404, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.templatetags.static import static
@@ -479,21 +480,36 @@ def check(request, island_id: int):
     return _json(data)
 
 
+def _secret_orders() -> Q:
+    """実行するまで伏せる命令の条件。
+
+    定義の secret が true ならその種類の命令すべて、{項目: 値} なら中身のその項目がその値の命令。
+    """
+    secret = Q(pk__in=[])
+    for kind, spec in get_game().defs.orders.items():
+        when = spec.get("secret")
+        if when is True:
+            secret |= Q(kind=kind)
+        elif when:
+            secret |= Q(kind=kind, **{f"payload__{key}": value for key, value in when.items()})
+    return secret
+
+
 def _orders_view(island: m.Island, mine: bool = True) -> dict[str, Any]:
     """命令の列・行政力・今の政策と、最近実行した命令。
 
     ほかの国の人（mine でない）には、実行するまで伏せる命令（定義の secret。為替介入・利下げ・
-    不履行など、現実の国が前もって公表しないもの）を待っている列から除き、最近の結果からは、
-    伏せる命令のうち失敗したもの（実行されなかったもの）を除く。前もって公表する命令（予算・税・
-    関税など）と、実行した命令は誰にでも見える。
+    不履行・国の倉庫の買い入れなど、現実の国が前もって公表しないもの）を待っている列から除き、
+    最近の結果からは、伏せる命令のうち失敗したもの（実行されなかったもの）を除く。前もって公表する
+    命令（予算・税・関税・備蓄の放出など）と、実行した命令は誰にでも見える。
     """
     d = get_game().defs
     pending = island.orders.filter(status="pending")
     recent = island.orders.exclude(status="pending")
     if not mine:
-        secret = [kind for kind, spec in d.orders.items() if spec.get("secret")]
-        pending = pending.exclude(kind__in=secret)
-        recent = recent.exclude(status="failed", kind__in=secret)
+        secret = _secret_orders()
+        pending = pending.exclude(secret)
+        recent = recent.exclude(Q(status="failed") & secret)
     pending = pending.order_by("seq", "id")
     turn, stats = display.latest_stats(island)
     admin_power = stats.get("admin_power")
