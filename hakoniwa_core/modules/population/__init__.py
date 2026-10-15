@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import math
 import random
 from typing import Any
 
@@ -318,7 +319,9 @@ class Population(IslandStage):
             moods_by_layer[layer] = ctx.formula("happiness")(island, facts, ctx)
         # 人口の減りを知らせる（毎ターン数百人ずつ減っても、出来事にもログにも出ていなかった）
         if starved > 0:
-            ratio = round(general["food"] * 100 / fac.FULL)
+            # 足りている割合は小数1桁で切り捨てる（四捨五入すると 99.5% 以上が 100% になり、
+            # 「足りている割合 100%」で人口が減ると出ていた）
+            ratio = math.floor(general["food"] * 1000 / fac.FULL) / 10
             island.log.append(LogEntry("population_starved", {"count": starved, "ratio": ratio}))
         if emigrated > 0:
             args = {"count": emigrated, "line": p["emigration_happiness"]}

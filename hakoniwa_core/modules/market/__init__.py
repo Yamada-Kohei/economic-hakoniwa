@@ -118,6 +118,7 @@ MERCHANT = "merchant"  # 海外の商人（フェーズ3-1）
 TRADER_PRIORITY = 0  # 商社の輸出の買い注文の優先順位（値幅の端で止まったときは島の買い手が先）
 CONTRACT_PRIORITY = 9  # 契約で売る分を政府が買う注文の優先順位
 GOV_TRADE = "trade"  # 政府が貿易に払う項目（どの項目にも取り置いていない国庫から）
+MERCHANT_GAP = Payer(ledger.GOV, GOV_TRADE)  # 計画経済の島で、海外の商人の値段と公定価格の差を払う
 IMPORTED = "imported"  # 国の倉庫に届いた腐る物の売り（Party.layer）
 
 
@@ -135,6 +136,7 @@ class Party:
     reserved: int = 0  # 取り置いたお金（買い注文）
     public: bool = False  # 公務の施設（学校と大学）の買い注文（政府の消費に数える）
     site: tuple[int, int] | None = None  # 物の出入りのマス（商社と海運業は港。運ぶ道のりに使う）
+    gap: int = 0  # 海外の商人の売り: 計画経済の島で、政府が1単位ごとに払う公定価格との差
 
 
 @dataclass
@@ -291,6 +293,40 @@ def upgrade_food(
         g: round_money(cheap.get(g, 0) + mix * (best.get(g, 0) - cheap.get(g, 0))) for g in goods
     }
     return {g: q for g, q in out.items() if q > 0}
+
+
+@dataclass
+class FoodMenu:
+    """食料の注文を組むのに使う、財ごとの数（島で1ターンに1つ。家計の層によらない）。"""
+
+    values: dict[str, float]  # 質を足した栄養あたりの値段
+    nutritions: dict[str, int]  # 1単位の栄養（1000 分の 1）
+    qualities: dict[str, float]
+    unit: dict[str, int]  # 1単位の見込みの値段（運賃と税を含む）
+    limits: dict[str, int]  # 指値（値幅の上端）
+    rate: int  # 運賃の率
+    tax: int  # 消費税の率
+    elasticity: float
+
+
+def food_orders(
+    need: int, caps: dict[str, int], menu: FoodMenu, food_budget: int, budget: int
+) -> dict[str, tuple[int, int]]:
+    """食料の要る量 need（栄養）を、いま売りに出ている量 caps で財ごとに割り振った注文
+    （量, 指値）。
+
+    安い組み合わせ（food_split）から、必需品の上限 food_budget に収まる分だけ質の高い組み合わせ
+    （food_by_quality）へ寄せ（upgrade_food）、使う額 budget を超える分は、どの財も同じ割合で
+    減らす。
+    """
+    cheap = food_split(need, menu.values, menu.nutritions, caps, menu.elasticity)
+    best = food_by_quality(need, menu.qualities, menu.values, menu.nutritions, caps)
+    amounts = upgrade_food(cheap, best, menu.unit, food_budget)
+    plan = {g: (q, menu.limits[g]) for g, q in sorted(amounts.items())}
+    cost = sum(gross_cost(lim, q, menu.rate, menu.tax) for q, lim in plan.values())
+    if cost > budget and cost > 0:
+        plan = {g: (q * budget // cost, lim) for g, (q, lim) in plan.items()}
+    return plan
 
 
 # --- 名前付きの式 -----------------------------------------------------------------
@@ -516,6 +552,9 @@ class Market(IslandStage):
         for _, book in sorted(books_by_good.items()):
             for _, party in book.buys:
                 funds.release(island, party.payer, party.reserved)
+                party.reserved = 0
+            for _, party in book.sells:  # 海外の商人の売れ残りの分の、政府が払う差
+                funds.release(island, MERCHANT_GAP, party.reserved)
                 party.reserved = 0
         needs.close_cars(island, config)
         sold = self._imports_sold(books_by_good, results)
@@ -1021,10 +1060,21 @@ class Market(IslandStage):
         luxuries = needs.goods_of(defs, needs.LUXURY)
         wanted = island.scratch.setdefault("wanted", {})
         plans = island.scratch.setdefault(needs.PLAN, {})
-        # 計画経済（フェーズ3-4）: 売りに出ている量によらず、家計が買いたかった量を残す（行列）
+        # 計画経済（フェーズ3-4）: 売りに出ていない物を、売りに出ていれば買った量（行列と生産
+        # 目標に使う）。売りに出ている物は、出した注文で数える（_plan_record）
         desire: dict[str, int] | None = None
         if planning.is_planned(island, defs):
             desire = island.scratch.setdefault(planning.DESIRE, {})
+        menu = FoodMenu(
+            values=values,
+            nutritions=nutritions,
+            qualities=qualities,
+            unit={g: prices.get(g, 1) * (BASIS + rate + tax) // BASIS for g in foods},
+            limits={g: auction.band(prices.get(g, 1), width)[1] for g in foods},
+            rate=rate,
+            tax=tax,
+            elasticity=settings["food_elasticity"],
+        )
         planned_of = {
             layer: ctx.formula("consumption")(island, layer, config, pi)
             for layer in sorted(island.economy.households)
@@ -1045,10 +1095,10 @@ class Market(IslandStage):
                 qty = to_milli(persons[layer] * needs.target_of(config, good))
                 if qty <= 0:
                     continue
-                if desire is not None:
-                    desire[good] = desire.get(good, 0) + qty
                 if offered.get(good, 0) <= 0:
                     wanted[good] = wanted.get(good, 0) + qty
+                    if desire is not None:
+                        desire[good] = desire.get(good, 0) + qty
                     continue
                 usual = usual_price(island, good, settings["usual_price_turns"])
                 top = scale_price(usual, max(settings["consumer_goods_tiers"]))
@@ -1058,34 +1108,34 @@ class Market(IslandStage):
             #    高い物に替える。値幅の上端を指値にする
             need = needs_by_layer.get(layer, 0)
             caps = {g: int(offered.get(g, 0) * share) for g in foods}
-            cheap = food_split(need, values, nutritions, caps, settings["food_elasticity"])
-            best = food_by_quality(need, qualities, values, nutritions, caps)
-            unit = {g: prices.get(g, 1) * (BASIS + rate + tax) // BASIS for g in foods}
             cap = round_money(planned * needs.necessity_share(config, income))
             food_budget = max(0, cap - paid - wear_cost)
-            amounts = upgrade_food(cheap, best, unit, food_budget)
+            plan = food_orders(need, caps, menu, food_budget, budget)
             # 売りに出ていない食料も、あれば買いたい量を記録する（作る施設があれば、採算の合う
             # 値段まで値段が上がって作り始める。_record）
             plenty = dict.fromkeys(foods, need * QUANTITY_SCALE)
             ideal = upgrade_food(
                 food_split(need, values, nutritions, plenty, settings["food_elasticity"]),
                 food_by_quality(need, qualities, values, nutritions, plenty),
-                unit,
+                menu.unit,
                 food_budget,
             )
             for good, qty in sorted(ideal.items()):
                 if offered.get(good, 0) <= 0:
                     wanted[good] = wanted.get(good, 0) + qty
-                if desire is not None:
-                    desire[good] = desire.get(good, 0) + qty
-            plan: dict[str, tuple[int, int]] = {}
-            for good, qty in sorted(amounts.items()):
-                _, high = auction.band(prices.get(good, 1), width)
-                plan[good] = (qty, high)
+            if desire is not None and need > 0:
+                # 計画経済: 売りに出ていない食料は、それだけで足りるほど売りに出ていたら（ほかは
+                # 今のまま）買った量を数える。どれも売りに出ていたとした理想の献立で数えると、
+                # 質の高い魚で足りていて買わない穀物まで行列と生産目標に入り、作った分が腐った
+                for good in foods:
+                    if offered.get(good, 0) > 0:
+                        continue
+                    enough = -(-need * QUANTITY_SCALE // nutritions[good])
+                    maybe = food_orders(need, {**caps, good: enough}, menu, food_budget, budget)
+                    qty = maybe.get(good, (0, 0))[0]
+                    if qty > 0:
+                        desire[good] = desire.get(good, 0) + qty
             food_cost = sum(gross_cost(lim, q, rate, tax) for q, lim in plan.values())
-            if food_cost > budget and food_cost > 0:
-                plan = {g: (q * budget // food_cost, lim) for g, (q, lim) in plan.items()}
-                food_cost = sum(gross_cost(lim, q, rate, tax) for q, lim in plan.values())
             left = budget - food_cost
             if wear_cost > left and wear_cost > 0:
                 wear = {g: (q * max(0, left) // wear_cost, lim) for g, (q, lim) in wear.items()}
@@ -1361,9 +1411,20 @@ class Market(IslandStage):
         width = to_basis(config.get("market.band"))
         prices = island.economy.prices
         site = trade.site_of(island, config)
-        # 海外の商人（決まった値段の売り）
+        # 海外の商人（決まった値段の売り）。計画経済の島では、商人の値段が公定価格より高ければ、
+        # 差を政府（貿易の項目）が払って公定価格で売る（国の貿易の独占。払える量まで）
+        official = planning.official(island) if planning.is_planned(island, defs) else {}
         for good, qty, price in merchant.offers(island, defs, config, ctx.turn):
             party = Party(MERCHANT, MERCHANT, Payer(ledger.CB), site=site)
+            fixed = official.get(good)
+            if fixed and price > fixed:
+                party.gap = price - fixed
+                qty = min(qty, qty_for(funds.available(island, MERCHANT_GAP), party.gap))
+                if qty <= 0:
+                    continue
+                party.reserved = money_of(party.gap, qty)
+                funds.commit(island, MERCHANT_GAP, party.reserved)
+                price = fixed
             self._add(books_by_good, good, "sell", Order(qty, price), party)
         # 商社
         for order in traders.home_orders(island, defs, config, ctx.turn):
@@ -1611,9 +1672,18 @@ class Market(IslandStage):
                 books.add(island, seller.facility.id, books.SALES, amount)
                 books.add(island, seller.facility.id, books.FREIGHT, seller_freight)
             elif seller.kind == MERCHANT:  # 海外の商人の代金は島の外に出る（輸入）
+                # 計画経済の島で公定価格との差を政府が払った分は、商人に払った額と国際収支に
+                # 入れる（GDP の輸入は、島の買い手が払った額のまま。生産の側と合わせる）
+                gap = money_of(seller.gap, qty)
+                funds.pay(island, MERCHANT_GAP, seller.payer.entity, gap, kind, committed=True)
+                seller.reserved -= gap
                 books.add_sector(island, books.TRADE, "imports", amount)
-                island.stats["trade.merchant"] = island.stats.get("trade.merchant", 0) + amount
-                balance.merchant(island, amount)  # 国際収支（フェーズ3-3）
+                paid_out = amount + gap
+                island.stats["trade.merchant"] = island.stats.get("trade.merchant", 0) + paid_out
+                if gap:
+                    total = island.stats.get("trade.merchant_gap", 0) + gap
+                    island.stats["trade.merchant_gap"] = total
+                balance.merchant(island, paid_out)  # 国際収支（フェーズ3-3）
             else:
                 books.add_sector(island, books.WAREHOUSE, "sales", amount)
             island.trades.append(TradeRecord(good, buyer.name, seller.name, qty, amount))
@@ -1982,12 +2052,14 @@ def set_price_cap(island: IslandState, payload: dict[str, Any], ctx: StageContex
     """値段の上限。電気料金はどの体制でも（公共料金）、ほかの財は混合経済だけ（フェーズ3-4。
     下限は modules/plan の set_price_floor）。0 で上限をなくす。"""
     good, price = payload["good"], payload["price"]
+    # ログの文: 電気料金は「公共料金の上限」、ほかの財は「値段の上限」
+    head = "price_cap" if ctx.defs.goods[good].get("shelf_life") == 0 else "goods_price_cap"
     if price > 0:
         island.policy.price_cap[good] = price
-        island.log.append(LogEntry("price_cap_set", {"good": good, "price": price}))
+        island.log.append(LogEntry(f"{head}_set", {"good": good, "price": price}))
     else:
         island.policy.price_cap.pop(good, None)
-        island.log.append(LogEntry("price_cap_cleared", {"good": good}))
+        island.log.append(LogEntry(f"{head}_cleared", {"good": good}))
 
 
 def register(registry: Registry) -> None:
