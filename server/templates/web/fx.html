@@ -60,7 +60,7 @@
   <table class="info">
     {% for row in stats %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
   </table>
-  <p class="hint">{% translate "貿易収支は、そのターンの輸出（商社が貿易圏で売った額と、国が契約で売った額）から輸入（商社が貿易圏で買った額、国が契約で買った額、海外の商人に払った額）を引いたものです（自国通貨）。輸出が多いと外貨が入り、中央銀行が買い取って外貨準備が増え、通貨が高くなりやすくなります。輸入が多いと外貨が出ていき、中央銀行の外貨が尽きると通貨が安くなります。" %}</p>
+  <p class="hint">{% translate "貿易収支は、そのターンの輸出（商社が貿易圏で売った額と、国が契約で売った額）から輸入（商社が貿易圏で買った額、国が契約で買った額、海外の商人に払った額）を引いたものです（自国通貨）。輸出が多いと外貨が入り、中央銀行が買い取って外貨準備が増え、通貨が高くなりやすくなります。輸入が多いと外貨が出ていき、中央銀行の外貨が尽きると、同じ圏の国の中央銀行や決済通貨を発行した国から借ります（中央銀行どうしの融通）。借りられる上限に届くと通貨が安くなります。" %}</p>
   {% else %}
   <p class="muted">{% translate "未集計です。" %}</p>
   {% endif %}
@@ -69,7 +69,7 @@
   <table class="info bop-table">
     {% for row in bop %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
   </table>
-  <p class="hint">{% translate "経常収支（貿易・サービス・所得・移転）は、金融収支（外貨と外国の国債の増加から、外国が持つ自国通貨と自国の国債の増加を引いたもの）と必ず同じ額になります。外国の国債の利子は所得収支、援助は移転に入ります。為替の評価損益（持っている外貨の値打ちがレートで変わる分）は入りません。" %}</p>
+  <p class="hint">{% translate "経常収支（貿易・サービス・所得・移転）は、金融収支（外貨と外国の国債の増加から、外国が持つ自国通貨と自国の国債の増加を引いたもの）と必ず同じ額になります。外国の国債と融通の利子は所得収支、援助は移転に入ります。為替の評価損益（持っている外貨の値打ちがレートで変わる分）は入りません。" %}</p>
   {% endif %}
 </section>
 
@@ -151,6 +151,43 @@
   {% endif %}
   {% endwith %}
   <p class="fx-notice" aria-live="polite"></p>
+</section>
+
+<section class="panel" id="swaps">
+  <h2>{% translate "中央銀行どうしの融通" %}</h2>
+  {% with s=fx.swaps %}
+  {% if s.owed or s.lent %}
+  <div class="table-scroll">
+    <table class="goods swaps-table">
+      <thead><tr><th>{% translate "向き" %}</th><th>{% translate "相手" %}</th><th>{% translate "額（その通貨）" %}</th><th>{% translate "自国通貨に直すと" %}</th><th>{% translate "金利（年）" %}</th></tr></thead>
+      <tbody>
+        {% for r in s.owed %}
+        <tr>
+          <td>{% translate "借りている" %}</td>
+          <td><a href="{% url 'island_fx' r.lender %}">{{ r.other_name }}</a>{% if r.issued %} <small class="muted">{% translate "（発行した国が作って貸した分）" %}</small>{% endif %}</td>
+          <td>{{ r.symbol }}{{ r.amount|floatformat:"0g" }}</td><td>{{ currency }}{{ r.own|floatformat:"0g" }}</td><td>{{ r.rate|floatformat:2 }}%</td>
+        </tr>
+        {% endfor %}
+        {% for r in s.lent %}
+        <tr>
+          <td>{% translate "貸している" %}</td>
+          <td><a href="{% url 'island_fx' r.borrower %}">{{ r.other_name }}</a>{% if r.issued %} <small class="muted">{% translate "（自国の通貨を作って貸した分）" %}</small>{% endif %}</td>
+          <td>{{ r.symbol }}{{ r.amount|floatformat:"0g" }}</td><td>{{ currency }}{{ r.own|floatformat:"0g" }}</td><td>{{ r.rate|floatformat:2 }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">{% translate "融通の貸し借りはありません。" %}</p>
+  {% endif %}
+  <table class="info">
+    <tr><th>{% translate "借りている額の合計" %}</th><td>{{ currency }}{{ s.borrowed|floatformat:"0g" }}</td></tr>
+    <tr><th>{% translate "まだ借りられる額" %}</th><td>{% if s.room is not None %}{{ currency }}{{ s.room|floatformat:"0g" }}{% else %}<span class="muted">{% translate "まだ GDP の記録がなく、上限はありません" %}</span>{% endif %} <small class="muted">{% blocktranslate with q=s.quota|floatformat:"0" %}（年の GDP の {{ q }}% まで）{% endblocktranslate %}</small></td></tr>
+    {% if s.issuer_room is not None %}<tr><th>{% translate "自国の通貨を作って貸している額" %}</th><td>{{ currency }}{{ s.issued|floatformat:"0g" }} <small class="muted">{% blocktranslate with r=s.issuer_room|floatformat:"0g" c=currency q=s.issuer_share|floatformat:"0" %}（まだ {{ c }}{{ r }}。年の GDP の {{ q }}% まで）{% endblocktranslate %}</small></td></tr>{% endif %}
+  </table>
+  {% endwith %}
+  <p class="hint">{% translate "為替で受け身の売りに要る外貨が中央銀行の手元に足りないと、中央銀行はその外貨を借ります。まず同じ貿易圏でその外貨を決済通貨にしている国のうち、手元に置く分より多く持つ国の中央銀行から、余りに比例して借り、足りなければ通貨を発行した国の中央銀行が新しく作って貸します。利子は発行した国の政策金利に少し上乗せした年率で毎ターン払い、手元の外貨が増えたら、発行した国から先に返します。借りられる上限に届くと受け身の売りが止まり、通貨が安くなります。貸している外貨は外貨準備に入ります。" %}</p>
 </section>
 
 <section class="panel" id="holdings">

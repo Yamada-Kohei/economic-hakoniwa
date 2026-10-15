@@ -47,7 +47,7 @@ from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import Payer, banks, books, debt
 from hakoniwa_core.state import IslandState, WorldState
-from hakoniwa_core.trade import balance, island_state, policy
+from hakoniwa_core.trade import balance, island_state, policy, swap
 from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.trade import money as fxmoney
 from hakoniwa_core.turn.context import StageContext
@@ -118,22 +118,25 @@ def value_of(island: IslandState, entity: str | None = None) -> int:
 
 
 def foreign_assets(island: IslandState, entity: str) -> int:
-    """主体 entity の外国の資産（外貨と外国の国債の、今のレートでの自国通貨の値打ち）。"""
+    """主体 entity の外国の資産（外貨と外国の国債の、今のレートでの自国通貨の値打ち。中央銀行は
+    融通で外貨を貸している額も。swap.py）。"""
     total = value_of(island, entity)
     for key, (amount, _) in fxmoney.holdings(island).get(entity, {}).items():
         total += fxrates.to_own(island, int(key), amount)
+    if entity == ledger.CB:
+        total += swap.claims_value(island)
     return total
 
 
 def reserve_room(island: IslandState, config: GameConfig) -> int | None:
     """受け身の為替の注文で、中央銀行がまだ持てる外国の資産（自国通貨。フェーズ3-3）: 年の GDP の
-    fx.reserve_share から、今の外国の資産を引いた額（0 より小さくしない）。GDP の記録がなければ
-    None（上限なし。建国の最初のターン）。"""
+    fx.reserve_share から、今の外国の資産から融通で借りている額を引いた正味を引いた額（0 より小さく
+    しない）。GDP の記録がなければ None（上限なし。建国の最初のターン）。"""
     gdp = debt.annual_gdp(island.economy)
     if gdp <= 0:
         return None
     cap = part(gdp, to_basis(config.get("fx.reserve_share")))
-    return max(0, cap - foreign_assets(island, ledger.CB))
+    return max(0, cap - foreign_assets(island, ledger.CB) + swap.debt_value(island))
 
 
 # --- レートの記録と求める利回り -----------------------------------------------------------
