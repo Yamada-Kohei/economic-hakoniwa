@@ -326,6 +326,22 @@ government_office:
     default: {}
   sprite: government_office
 
+# 警察（フェーズ3-4）。中央省庁と同じ作りの公務の施設で、警察官の賃金は予算の項目「治安費」
+# （security。建国のときは 0）から払います。police: 暴動で止まる施設と壊れる施設を、警察官の足りて
+# いる割合（住民 × game.yaml の politics.riot.police_per_person に対して）だけ減らす。政情そのものは
+# 上げません。
+police:
+  category: security
+  terrain: [plain]
+  public_service: true
+  budget: security
+  police: true
+  construction: {turns: 2, labor: 200, materials: {building_materials: 6, wood: 2}}
+  workers: 200
+  priority: 9
+  recipes:
+    default: {}
+
 # 学校と大学（フェーズ2-3）。国庫直轄の公務の施設で、教員の賃金と教材（投入の消費財）は教育費から
 # 払います。education の capacity は学校の子どもの定員、engineers は大学が1ターンに育てる技術者の数で、
 # どちらも稼働率（教員と教材の足りている割合の小さい方）の分だけ効きます。

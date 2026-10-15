@@ -22,7 +22,9 @@ economy/experience.py）。年の終わり（12 ターンごと）に、その�
 売りは発電所（動ける分、指値は希望価格）、買いは施設と家計（指値は払える電気料金まで。優先順位は
 施設の優先順位と、家計は power.household_priority）で、基準の値段は島の前のターンの電気料金です。
 値幅の上端でも足りなければ、優先順位の低い所から停電します。
-公共料金の上限（命令 set_price_cap）があれば、値幅の上端はそこで止まります。
+公共料金の上限（命令 set_price_cap）があれば、値幅の上端はそこで止まります。計画経済の島
+（フェーズ3-4）は公定価格で値幅 0 にし、発電所は費用に届かなくても売り、足りなければ割当の順位
+（重点産業 → ほかの国営施設 → 家計の配給）で分けます（hakoniwa_core/economy/plan.py）。
 電気代はその場で払い、家計は消費税も払います。
 発電所の操業目標（雇う人数と買う燃料）は、送電網の買いたい量で決めます（式 power_target）。
 """
@@ -51,6 +53,7 @@ from hakoniwa_core.economy import (
     payer_of,
     productivity,
 )
+from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy.prices import input_limit, unit_floor
 from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.geo import components, distance, within
@@ -169,8 +172,9 @@ class Production(IslandStage):
                         books.stock_moved(island, f.id, good, -used)
             out_rate = ctx.formula("output_rate")(island, f, rate, ctx)
             industry = run.recipe.get("industry")
-            if industry:
-                experience.add(island, industry, out_rate)
+            if industry:  # 計画経済の重点産業は経験の伸びが大きい（フェーズ3-4）
+                factor = planning.experience_factor(island, defs, industry)
+                experience.add(island, industry, round(out_rate * factor))
             for good, qty in sorted(run.recipe["outputs"].items()):
                 amount = fac.scale(qty, out_rate)
                 produced[good] = produced.get(good, 0) + amount
@@ -206,8 +210,8 @@ class Production(IslandStage):
     @staticmethod
     def _prepare(island: IslandState, f: Facility, ctx: StageContext, power: str) -> _Run:
         recipe = fac.recipe_of(ctx.defs, f)
-        if fac.is_halted(f, ctx.turn):
-            return _Run(f, recipe, 0, "halted")
+        if fac.is_halted(f, ctx.turn):  # 災害か暴動（フェーズ3-4）で止まっている
+            return _Run(f, recipe, 0, "riot" if f.ext.get("halt_reason") == "riot" else "halted")
         # 雇いたい分を雇えなかった: 賃金を払うお金が足りなかったか、人がいなかったか
         rate, cause = (
             fac.labor_ratio(ctx.defs, f),
@@ -280,7 +284,14 @@ class Production(IslandStage):
         reference = economy.prices.get(power, 1)
         width = to_basis(config.get("market.band"))
         cap = island.policy.price_cap.get(power) if has_money else None
-        _, high = auction.band(reference, width, cap)
+        # 計画経済は公定価格で値幅 0 にし、足りなければ割当の順位と配給で分ける（フェーズ3-4）
+        fixed = planning.official(island).get(power) if has_money else None
+        if fixed and not planning.is_planned(island, defs):
+            fixed = None
+        if fixed:
+            reference, cap = fixed, None
+        bounds = (fixed, fixed) if fixed else None
+        _, high = bounds or auction.band(reference, width, cap)
         rates_of = freight.facility_rates(island, defs, config) if has_money else {}
 
         plants: dict[int, list[tuple[_Run, int]]] = {}
@@ -319,6 +330,9 @@ class Production(IslandStage):
             sell_orders = []
             for run, out in sellers:
                 capacity = fac.scale(out, run.rate)
+                if fixed:  # 公定価格で売る（費用に届かなくても）
+                    sell_orders.append(Order(capacity))
+                    continue
                 ask = run.f.economy.get("ask", {}).get(power, reference)
                 if has_money:  # 1単位の変動費（燃料の運賃を含む）より安くは売らない（国庫直轄も）
                     wage = run.f.economy.get("wage", 0)
@@ -327,10 +341,20 @@ class Production(IslandStage):
                     ask = max(ask, floor)
                 sell_orders.append(Order(capacity, min(ask, high)))  # 上端より高くては売れない
             buy_orders = []
+            tiers: list[int] = []
             for b in buyers:
                 qty, limit = b.need, None
-                if has_money:
+                if fixed:
+                    limit = fixed
+                    if b.layer:
+                        tiers.append(planning.HOUSEHOLDS)
+                    else:
+                        f = b.run.f  # type: ignore[union-attr]
+                        prior = planning.is_priority(island, defs, f)
+                        tiers.append(planning.PRIORITY if prior else planning.STATE)
+                elif has_money:
                     limit = min(high, self._power_limit(island, ctx, b, reference, power))
+                if has_money:
                     per_unit = limit + part(limit, b.tax)
                     qty = min(qty, qty_for(funds.available(island, b.payer), per_unit))
                     b.reserved = money_of(limit, qty) + part(money_of(limit, qty), b.tax)
@@ -341,7 +365,19 @@ class Production(IslandStage):
                     else fac.priority_of(defs, config, b.run.f)  # type: ignore[union-attr]
                 )
                 buy_orders.append(Order(qty, limit, priority))
-            result = auction.clear(buy_orders, sell_orders, reference, width, cap)
+            allocate = None
+            if fixed:
+                layers = [b.layer for b in buyers]
+                allocate = planning.allocator(tiers, layers, persons)
+            result = auction.clear(
+                buy_orders,
+                sell_orders,
+                reference,
+                width,
+                cap,
+                bounds=bounds,
+                allocate_buys=allocate,
+            )
             if has_money:
                 self._settle(island, ctx, result, buyers, sellers, power)
             for b, got in zip(buyers, result.bought, strict=True):
@@ -376,7 +412,7 @@ class Production(IslandStage):
         for key, amount in totals.items():
             island.stats[f"power.{key}"] = from_milli(amount)
         if has_money:
-            price = unit_price(value, volume) if volume else reference
+            price = fixed or (unit_price(value, volume) if volume else reference)
             island.markets.append(
                 MarketRecord(power, price, volume, totals["demand"], totals["capacity"])
             )

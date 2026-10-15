@@ -469,6 +469,7 @@ class _Round:
             needs: dict[str, dict[int, list[tuple[int, int | None]]]] = {}
             floors: dict[str, dict[int, int]] = {}  # 主体 → 通貨 → 受け取ってよい一番低いレート
             short: dict[str, int] = {}  # 主体 → 賃金に足りない自国通貨
+            keep_all: set[str] = set()  # 余った外貨を売らない主体（計画経済の商社。フェーズ3-4）
             views = traders.views(island)
             payers: dict[str, Payer] = {}
             found = traders.prospects(island, self.defs, self.config)
@@ -488,6 +489,8 @@ class _Round:
                     for c, items in traders.import_needs(f, views, found, keep, probe).items()
                 }
                 floors[entity] = traders.export_floors(f, found)
+                if traders.is_planned(island):  # 計画経済は外貨を売らず、買わない
+                    keep_all.add(entity)
                 wages = traders.workers_wanted(self.config, self.defs, f) * wage * keep
                 short[entity] = max(0, wages - funds.available(island, payers[entity]))
             gov_need: dict[int, list[tuple[int, int | None]]] = {}
@@ -546,6 +549,7 @@ class _Round:
                         reference,
                         width,
                         due.get(currency, 0) if entity == ledger.GOV else 0,
+                        entity in keep_all,
                     )
                     if short.get(entity, 0) > 0:  # 売る分は、次の通貨の分から引く
                         have = fxmoney.holding(island, entity, currency)
@@ -601,10 +605,12 @@ class _Round:
         reference: int,
         width: int,
         due: int = 0,
+        keep: bool = False,
     ) -> None:
         """1つの主体の、1つの通貨の注文。持ち高をこのターンに払う代金 due（政府の契約）と引き合う
         輸入から順に当て、足りない分を買い、余った分を売る。due の足りない分は、値幅の上端の1つの
-        指値で、ほかの買いより先に買う（fxrates.add_buy）。"""
+        指値で、ほかの買いより先に買う（fxrates.add_buy）。keep（計画経済の商社）なら、余った分を
+        売らず、輸入のための外貨も買わない（輸入は持っている外貨の範囲。設計「計画経済（3-4）」）。"""
         have = fxmoney.holding(island, entity, currency)
         if short > 0 and have > 0:  # 賃金を払う自国通貨が足りない: 足りない分は値を選ばず売る
             urgent = min(have, -(-short * BASIS // max(1, reference)))
@@ -613,11 +619,14 @@ class _Round:
             needs = []
         total = due + sum(amount for amount, _ in needs)
         if have > total:
-            fxrates.add_sell(book, entity, payer, have - total, reference, width, floor)
+            if not keep:
+                fxrates.add_sell(book, entity, payer, have - total, reference, width, floor)
             return
         left = have - min(have, due)
         if due > have:
             fxrates.add_buy(island, book, entity, payer, due - have, reference, width, due=True)
+        if keep:
+            return
         for amount, limit in sorted(needs, key=lambda n: -(n[1] or 10**18)):
             cover = min(left, amount)
             left -= cover
@@ -951,7 +960,8 @@ class _Round:
                     if qty <= 0:
                         continue
                     limit = None
-                    if item["age"] < clearance:
+                    # 計画経済（フェーズ3-4）の輸出は、売れ残った物を値段によらず売る
+                    if item["age"] < clearance and not traders.is_planned(island):
                         own = traders.unit_cost(f, good)
                         own = max(1, own + part(own, cut) + fee_unit - subsidy)  # 輸出補助を見込む
                         limit = max(1, -(-own * BASIS // max(1, e)))
@@ -1013,6 +1023,8 @@ class _Round:
         own = home - part(home, cut) - freight_unit - fee_unit
         tariff = 0 if blocs.no_tariff(bloc) else policy.tariff_rate(island, good)
         limit = own * BASIS // max(1, policy.with_tariff(e, tariff))
+        if traders.is_planned(island):  # 計画経済は、行列のある物を圏の値幅の上端まで買う
+            limit = 10**15
         if limit <= 0:
             item["why"] = WHY_PRICE
             return None

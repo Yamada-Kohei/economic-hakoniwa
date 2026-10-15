@@ -26,6 +26,7 @@ facilities:
   thermal_power_plant:      {color: "#555b63", height: 3.5}
   hydro_power_plant:        {color: "#3d7ea6", height: 2.5}
   government_office:        {color: "#f2efe6", height: 3}
+  police:                   {color: "#3b5ba5", height: 2}     # フェーズ3-4
   bank:                     {color: "#d8c27a", height: 2.5}
   port:                     {color: "#c8473a", height: 2.5}   # フェーズ3-1
   shipyard:                 {color: "#d9a62a", height: 3}

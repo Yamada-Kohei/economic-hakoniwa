@@ -27,6 +27,7 @@ class Events(IslandStage):
         low, high = settings["kinds"][kind]["halt_turns"]
         turns = rng.randint(low, high)
         f.ext["halted_until"] = ctx.turn + turns
+        f.ext.pop("halt_reason", None)  # 暴動で止まっていた（フェーズ3-4）のを災害に変える
         if fac.on_map(f):
             args = {"facility": f.kind, "x": f.x, "y": f.y, "turns": turns}
             island.log.append(LogEntry(f"disaster_{kind}", args))

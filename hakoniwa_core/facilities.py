@@ -165,11 +165,12 @@ def labor_share(defs: Defs, island: IslandState) -> float:
     """住民のうち一般の労働者になる割合。
 
     島全体の人数として持つ家計の層（働かない資産を持つ層と、島のどこにでも通う技術者の層）の
-    分だけ減る。
+    分だけ減る。労働の動員（全体主義。フェーズ3-4）をしている間は、その分だけ増える。
     """
     share = defs.workers["general"].get("share", 1.0)
     idle = sum(h.get("share", 0.0) for h in island.economy.households.values())
-    return share * (1 - idle)
+    mobilized = island.ext.get("politics", {}).get("mobilized", 0.0)
+    return min(1.0, (share + mobilized) * (1 - idle))
 
 
 def labor_force(defs: Defs, island: IslandState, tile: Tile) -> int:
@@ -180,17 +181,26 @@ def labor_ratio(defs: Defs, f: Facility) -> int:
     return ratio(f.workers, workers_needed(defs, f.kind))
 
 
+def total_progress(defs: Defs, f: Facility) -> int:
+    """工事が済むまでの進みの合計（1ターンに最大 1000 進む）。定義の工期 × 1000 で、体制や重点産業で
+    工期を変えた国の工事は、建て始めたときに決めた ext["build_total"]（フェーズ3-4）。"""
+    found = f.ext.get("build_total")
+    if found:
+        return int(found)
+    return defs.facilities[f.kind]["construction"]["turns"] * FULL
+
+
 def step_materials(defs: Defs, f: Facility, progress: int | None = None) -> dict[str, int]:
     """工事を今（progress を渡せばその進みから）1ターン分（1000）進めるのに要る資材。
     全部の工事で合計がちょうど定義の量になる。"""
     construction = defs.facilities[f.kind]["construction"]
-    total_progress = construction["turns"] * FULL
+    whole = total_progress(defs, f)
     if progress is None:
         progress = f.progress
-    start = min(progress, total_progress)
-    end = min(progress + FULL, total_progress)
+    start = min(progress, whole)
+    end = min(progress + FULL, whole)
     return {
-        good: qty * end // total_progress - qty * start // total_progress
+        good: qty * end // whole - qty * start // whole
         for good, qty in sorted(construction.get("materials", {}).items())
     }
 

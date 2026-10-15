@@ -22,11 +22,12 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, stock
+from hakoniwa_core import infra, politics, stock
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import CONSTRUCTION, Payer, funds
 from hakoniwa_core.facilities import is_land, producible_goods
@@ -72,6 +73,8 @@ class Works:
 
     def __init__(self, island: IslandState, ctx: StageContext) -> None:
         self.island, self.ctx, self.defs = island, ctx, ctx.defs
+        # 体制の工期の倍率（権威主義は公共事業が速い。フェーズ3-4）
+        self.turns_factor = politics.trait(island, ctx.defs, "works_turns", 1.0)
 
     # --- 1マス分の費用 -------------------------------------------------------------
 
@@ -104,8 +107,9 @@ class Works:
         return held >= qty
 
     def step(self, kind: str) -> int:
-        """1マスを1ターンに上げられる整備度の上限（100% ÷ 工期）。"""
-        return -(-infra.FULL // self.defs.infrastructure[kind]["turns"])
+        """1マスを1ターンに上げられる整備度の上限（100% ÷ 工期。工期は体制の倍率を掛ける）。"""
+        turns = self.defs.infrastructure[kind]["turns"] * self.turns_factor
+        return math.ceil(infra.FULL / max(0.1, turns))
 
     def wear(self, kind: str) -> int:
         return round(self.defs.infrastructure[kind]["wear"] * infra.FULL)

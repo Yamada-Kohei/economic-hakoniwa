@@ -139,8 +139,11 @@ def facility_info(row: m.Facility, island: IslandState) -> dict[str, Any]:
         construction = fdef["construction"]
         info["workers_needed"] = construction.get("labor", 0)
         # 工事全体のうち進んだ割合（progress は 1000 で1ターン分）
-        info["progress"] = f.progress / (construction["turns"] * fac.FULL)
-        info["turns"] = construction["turns"]
+        total = fac.total_progress(defs, f)
+        info["progress"] = f.progress / total
+        info["turns"] = -(-total // fac.FULL)
+        if f.ext.get("repair"):
+            info["repair"] = True  # 暴動で壊れて直している（フェーズ3-4）
         info["materials"] = goods_list(construction.get("materials", {}))
     if f.ext.get("halted_until") is not None:
         info["halted_until"] = f.ext["halted_until"]
@@ -508,6 +511,8 @@ def status_text(f: Facility) -> str:
             return message(f"status_construction_wages{private}")
         if f.ext.get("no_workers_turns"):
             return message("status_construction_no_workers")
+        if f.ext.get("repair"):  # 暴動で壊れて直している（フェーズ3-4）
+            return message("status_repair")
         return message("status_construction")
     if not f.status:
         return ""
@@ -573,7 +578,11 @@ def describe_order(kind: str, payload: dict[str, Any]) -> str:
     if kind == "set_price_cap":
         good = payload.get("good", "")
         return f"{name}: {defs.name('goods', good)} {payload.get('price', 0):,}"
-    text = _describe_finance(kind, payload, name, where) or _describe_trade(kind, payload, name)
+    text = (
+        _describe_finance(kind, payload, name, where)
+        or _describe_trade(kind, payload, name)
+        or _describe_politics(kind, payload, name)
+    )
     if text:
         return text
     return f"{name} {where}".strip()
@@ -675,6 +684,32 @@ def _describe_policy(kind: str, payload: dict[str, Any], name: str) -> str:
         if not rate:
             return f"{name}をやめる: {currency}"
         return f"{name}: {currency} 1 = 自国通貨 {rate:g}"
+    return ""
+
+
+def _describe_politics(kind: str, payload: dict[str, Any], name: str) -> str:
+    """政治と計画の命令（フェーズ3-4）の説明。ほかの命令は ""。"""
+    defs = get_game().defs
+    if kind == "set_press":
+        return f"{name}: {message('press_' + payload.get('mode', ''))}"
+    if kind == "amend_constitution":
+        chosen = [payload[a] for a in ("politics", "head_of_state") if a in payload]
+        return f"{name}: " + "・".join(defs.name("regimes", r) for r in chosen)
+    if kind == "change_economy":
+        return f"{name}: {defs.name('regimes', payload.get('economy', ''))}"
+    if kind == "mobilize_labor":
+        return f"{name}を{'始める' if payload.get('on') else 'やめる'}"
+    if kind == "rename_leader":
+        return f"{name}: 「{payload.get('name', '')}」"
+    if kind in ("set_official_price", "set_price_floor"):
+        good = defs.name("goods", payload.get("good", ""))
+        price = payload.get("price", 0)
+        if not price:
+            return f"{name}: {good}を{'自動に戻す' if kind == 'set_official_price' else 'なくす'}"
+        return f"{name}: {good} {price:,}"
+    if kind == "set_priority_industries":
+        names = [defs.name("industries", i) for i in payload.get("industries", [])]
+        return f"{name}: " + ("・".join(names) or "なし")
     return ""
 
 

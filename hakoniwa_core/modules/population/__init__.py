@@ -19,7 +19,7 @@ import random
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, stock
+from hakoniwa_core import infra, politics, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import GENERAL, needs
@@ -142,7 +142,8 @@ def happiness(island: IslandState, facts: dict[str, Any], ctx: StageContext) -> 
     quality（0〜1）、pollution（汚染）。water はそのマスの上下水道の整備度、education は島の教育
     水準。clothing と luxury はフェーズ3-2 の衣料とぜいたく品（economy/needs.py）、consumer_goods は
     フェーズ3-1 までの消費財（移し替えの間だけ重みが残る）。
-    実質賃金が1年前より下がった分と、物価上昇率が目安を超えた分を減点する。
+    実質賃金が1年前より下がった分と、物価上昇率が目安を超えた分を減点する。上限は体制の
+    happiness_cap（全体主義 80。フェーズ3-4）。
     """
     w = happiness_weights(island, ctx)
     value = (
@@ -164,7 +165,8 @@ def happiness(island: IslandState, facts: dict[str, Any], ctx: StageContext) -> 
     over = (inflation(island.economy) - w["inflation_threshold"]) * 100
     if over > 0:
         value -= min(w["inflation_max"], w["inflation_per_point"] * over)
-    return max(0, min(100, round(value)))
+    # 体制の幸福度の上限（全体主義 80。フェーズ3-4）
+    return max(0, min(politics.happiness_cap(island, ctx.defs), round(value)))
 
 
 def _idle(defs: Defs, island: IslandState, tile: Tile) -> int:

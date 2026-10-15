@@ -129,10 +129,13 @@ class Payroll(IslandStage):
             wage = f.economy["wage"]
             skilled = f.economy.get("engineers", 0)
             spared = f.economy.get("engineers_general", 0)
-            amount = wage * (f.workers - skilled - spared)
+            # 労働の動員で割り当てた人（フェーズ3-4）は、動員の賃金で払う
+            drafted = f.economy.get("mobilized", 0)
+            drafted_pay = drafted * f.economy.get("mobilized_wage", 0)
+            amount = wage * (f.workers - skilled - spared - drafted) + drafted_pay
             funds.pay(island, payer, worker, amount, "wage", committed=True)
             self._withhold(island, amount)
-            paid += wage * (f.workers - skilled)
+            paid += wage * (f.workers - skilled - drafted) + drafted_pay
             workers += f.workers - skilled
             if skilled or spared:  # 技術者の層に払う
                 premium = fac.engineer_wage_of(config, f, wage) * skilled

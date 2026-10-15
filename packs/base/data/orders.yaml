@@ -1,5 +1,7 @@
 # 命令。admin_cost: 要る行政力（ふつうは 1。名前の変更は 0 で、ほかの命令の数に数えない）、
-# payload: 命令の中身の形（JSON Schema）。
+# payload: 命令の中身の形（JSON Schema）、parliament: 議会のある体制（民主主義）で、実行するときに
+# 議会の採決が要る命令（majority: 過半数・two_thirds: 3 分の 2。フェーズ3-4。税率は、どれかの税を
+# game.yaml の politics.parliament.tax_points ポイントより大きく変えるときだけ採決する）。
 # 処理する関数は hakoniwa_core/modules/ の各モジュールで登録します。
 rename_island:
   admin_cost: 0
@@ -134,6 +136,7 @@ change_recipe:                            # 国営施設の作り方の変更（
 
 set_taxes:
   admin_cost: 1
+  parliament: majority
   payload:
     type: object
     minProperties: 1
@@ -230,6 +233,7 @@ set_subsidy:
 
 nationalize:
   admin_cost: 2
+  parliament: majority
   payload:
     type: object
     required: [x, y]
@@ -240,6 +244,7 @@ nationalize:
 
 privatize:
   admin_cost: 2
+  parliament: majority
   payload:
     type: object
     required: [x, y]
@@ -260,6 +265,7 @@ set_monetary_policy:
 
 set_central_bank_independence:
   admin_cost: 2
+  parliament: majority
   payload:
     type: object
     required: [independent]
@@ -439,6 +445,7 @@ cancel_contract:
 # --- 産業政策と国際金融（フェーズ3-3） ---------------------------------------------------
 set_tariff:
   admin_cost: 1
+  parliament: majority
   payload:
     type: object
     required: [good, rate]
@@ -469,6 +476,7 @@ set_import_quota:
 
 set_embargo:
   admin_cost: 1
+  parliament: majority
   payload:
     type: object
     required: [partner]
@@ -496,6 +504,7 @@ send_aid:
 
 set_capital_controls:
   admin_cost: 1
+  parliament: majority
   payload:
     type: object
     required: [mode]
@@ -533,3 +542,91 @@ set_foreign_bonds:
       issuer: {type: integer, minimum: 1}  # 国債を出した国（島の番号）
       holder: {enum: [gov, cb]}            # 政府か中央銀行
       amount: {type: integer}              # 毎ターン買う額面（その国の通貨。マイナスは売る。0 でやめる）
+
+# --- 政治（フェーズ3-4。hakoniwa_core/modules/politics） ---------------------------------
+
+set_press:                                # 報道と集会の扱い（民主主義は自由だけ）
+  admin_cost: 1
+  payload:
+    type: object
+    required: [mode]
+    additionalProperties: false
+    properties:
+      mode: {enum: [free, limited, controlled]}
+
+dissolve_parliament:                      # 議会の解散（今の支持率で議席を選び直す。民主主義だけ）
+  admin_cost: 2
+  payload: {type: object, additionalProperties: false}
+
+amend_constitution:                       # 憲法改正（政治の仕組みと国家元首の形）
+  admin_cost: 3
+  parliament: two_thirds
+  payload:
+    type: object
+    minProperties: 1
+    additionalProperties: false
+    properties:
+      politics: {type: string}
+      head_of_state: {type: string}
+
+change_economy:                           # 経済体制の変更（計画経済に移ると民営の施設と民間銀行を国有化する）
+  admin_cost: 3
+  parliament: two_thirds
+  payload:
+    type: object
+    required: [economy]
+    additionalProperties: false
+    properties:
+      economy: {type: string}
+
+mobilize_labor:                           # 労働の動員（全体主義だけ）
+  admin_cost: 0
+  payload:
+    type: object
+    required: ["on"]
+    additionalProperties: false
+    properties:
+      "on": {type: boolean}
+
+rename_leader:                            # 共和制の元首の名前（RP）
+  admin_cost: 0
+  payload:
+    type: object
+    required: [name]
+    additionalProperties: false
+    properties:
+      name: {type: string, minLength: 1, maxLength: 32}
+
+# --- 計画経済と値段の規制（フェーズ3-4。hakoniwa_core/modules/plan） -----------------------
+
+set_official_price:                       # 公定価格の上書き（計画経済だけ）
+  admin_cost: 1
+  payload:
+    type: object
+    required: [good, price]
+    additionalProperties: false
+    properties:
+      good: {type: string}
+      price: {type: integer, minimum: 0}  # 0 で自動（原価＋1割の見直し）に戻す
+
+set_priority_industries:                  # 重点産業（計画経済だけ。planning.max_priority まで）
+  admin_cost: 1
+  payload:
+    type: object
+    required: [industries]
+    additionalProperties: false
+    properties:
+      industries:
+        type: array
+        uniqueItems: true
+        items: {type: string}
+
+set_price_floor:                          # 値段の下限（混合経済だけ。農産物の支えなど）
+  admin_cost: 1
+  payload:
+    type: object
+    required: [good, price]
+    additionalProperties: false
+    properties:
+      good: {type: string}
+      price: {type: integer, minimum: 0}  # 0 で下限をなくす

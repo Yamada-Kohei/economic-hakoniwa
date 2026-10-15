@@ -1,0 +1,133 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+{% include "web/report_header.html" %}
+
+<div class="report-layout{% if mine %} with-orders{% endif %}">
+  <div class="report-main">
+{% with p=plan %}
+{% if not p.planned and not p.price_controls %}
+<section class="panel">
+  <p class="muted">{% translate "この国の経済体制には、計画（公定価格・生産目標・配給）も、財ごとの値段の上限と下限もありません。電気料金の上限は財政の命令で決められます。" %}</p>
+</section>
+{% endif %}
+
+{% if p.planned %}
+<section class="panel" id="plan">
+  <h2>{% if stats_turn is not None %}{% blocktranslate with turn=stats_turn %}計画のようす（ターン {{ turn }}）{% endblocktranslate %}{% else %}{% translate "計画のようす" %}{% endif %}</h2>
+  {% if stats %}
+  <table class="info">
+    {% for row in stats %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">{% translate "未集計です。" %}</p>
+  {% endif %}
+  <p class="hint">{% translate "計画経済では、島の市場の値段は国が決める公定価格で動きません。足りない財は、重点産業の施設、ほかの国営施設と国の工事、家計（1人あたり同じ量までの配給）、輸出の順に配ります。家計が買えなかった分のお金は使われずに預金に残ります（強制貯蓄）。国営の工場は採算ではなく生産目標（前の需要に少し足した量）に合わせて動きます。貿易は国が独占し、足りない財を圏から買い、売れ残った財を圏に売ります。" %}</p>
+</section>
+
+{% if mine %}
+<section class="panel" id="official-prices">
+  <h2>{% translate "公定価格と生産目標" %}</h2>
+  {% if p.rows %}
+  <div class="table-scroll">
+    <table class="goods plan-table">
+      <thead><tr>
+        <th>{% translate "財" %}</th><th>{% translate "公定価格（1単位）" %}</th><th>{% translate "生産目標（1ターン）" %}</th>
+        <th>{% translate "作った量" %}</th><th>{% translate "達成率" %}</th><th>{% translate "行列" %}</th>
+      </tr></thead>
+      <tbody>
+        {% for r in p.rows %}
+        <tr>
+          <td><a href="{% url 'island_market' island.id %}?good={{ r.good }}">{{ r.name }}</a></td>
+          <td>{{ currency }}{{ r.price|floatformat:"0g" }}{% if r.manual %} <small class="muted">{% translate "（命令で決めた値段）" %}</small>{% endif %}</td>
+          <td>{% if r.goal is not None %}{{ r.goal|floatformat:"1g" }} {{ r.unit }}{% endif %}</td>
+          <td>{% if r.made %}{{ r.made|floatformat:"1g" }} {{ r.unit }}{% endif %}</td>
+          <td>{% if r.achieved is not None %}{{ r.achieved }}%{% endif %}</td>
+          <td>{% if r.queue %}<span class="warning">{{ r.queue }}%</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">{% translate "公定価格は次のターンの更新で決まります。" %}</p>
+  {% endif %}
+  <p class="hint">{% blocktranslate with t=p.review %}公定価格は、作る費用（今の平均賃金での原価）に建国のときの値段と同じ利幅を足した値段で、定期的に自動で見直します（次はターン {{ t }}）。命令で財ごとに決めた値段は、自動の見直しで変えません（0 を決めると自動に戻ります）。行列は、家計が配給で買えなかった割合です。公定価格を作る費用より安くすると、国営の工場の赤字は国庫が埋め、行列が長くなります。{% endblocktranslate %}</p>
+  <form class="actions" data-order="set_official_price">
+    <strong>{% translate "公定価格を決める" %}</strong>
+    <label>{% translate "財" %} <select name="good" required>{% for r in p.rows %}<option value="{{ r.good }}">{{ r.name }}（{{ r.unit }}）</option>{% endfor %}</select></label>
+    <label>{% translate "値段（1単位。0 で自動に戻す）" %} <input name="price" type="number" min="0" step="1" required></label>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  <p class="order-notice" aria-live="polite"></p>
+</section>
+
+<section class="panel" id="priority">
+  <h2>{% translate "重点産業" %}</h2>
+  <p>{% for i in p.priority %}{{ i.name }}{% if not forloop.last %}・{% endif %}{% empty %}<span class="muted">{% translate "決めていません。" %}</span>{% endfor %}</p>
+  <p class="hint">{% blocktranslate with n=p.max_priority %}重点産業の施設は、足りない財を先に受け取り、工期が短く、経験が速く積もります（{{ n }} つまで）。{% endblocktranslate %}</p>
+  <form class="actions" data-order="set_priority_industries" data-list="industries">
+    <strong>{% translate "重点産業を決める" %}</strong>
+    {% for i in p.industries %}<label><input type="checkbox" name="industries" value="{{ i.id }}"{% for c in p.priority %}{% if c.id == i.id %} checked{% endif %}{% endfor %}> {{ i.name }}</label>{% endfor %}
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  <p class="order-notice" aria-live="polite"></p>
+</section>
+{% endif %}
+{% endif %}
+
+{% if p.price_controls and mine %}
+<section class="panel" id="price-controls">
+  <h2>{% translate "値段の上限と下限" %}</h2>
+  <p class="hint">{% translate "混合経済では、どの財にも値段の上限と下限を決められます。島の市場の値幅はその中に収まります。上限を作る費用より低くすると作る工場が減って足りなくなり、下限を高くすると売れ残ります。" %}</p>
+  <div class="table-scroll">
+    <table class="goods">
+      <thead><tr><th>{% translate "財" %}</th><th>{% translate "上限" %}</th><th>{% translate "下限" %}</th><th>{% translate "今の値段" %}</th></tr></thead>
+      <tbody>
+        {% for r in p.caps %}<tr><td>{{ r.name }}</td><td>{{ currency }}{{ r.price|floatformat:"0g" }}</td><td></td><td>{% if r.market is not None %}{{ currency }}{{ r.market|floatformat:"0g" }}{% endif %}</td></tr>{% endfor %}
+        {% for r in p.floors %}<tr><td>{{ r.name }}</td><td></td><td>{{ currency }}{{ r.price|floatformat:"0g" }}</td><td>{% if r.market is not None %}{{ currency }}{{ r.market|floatformat:"0g" }}{% endif %}</td></tr>{% endfor %}
+        {% if not p.caps and not p.floors %}<tr><td colspan="4" class="muted">{% translate "決めていません。" %}</td></tr>{% endif %}
+      </tbody>
+    </table>
+  </div>
+  <form class="actions" data-order="set_price_cap">
+    <strong>{% translate "値段の上限" %}</strong>
+    <label>{% translate "財" %} <select name="good" required>{% for g in p.goods %}<option value="{{ g.id }}">{{ g.name }}（{{ g.unit }}）</option>{% endfor %}</select></label>
+    <label>{% translate "値段（1単位。0 でなくす）" %} <input name="price" type="number" min="0" step="1" required></label>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  <form class="actions" data-order="set_price_floor">
+    <strong>{% translate "値段の下限" %}</strong>
+    <label>{% translate "財" %} <select name="good" required>{% for g in p.goods %}<option value="{{ g.id }}">{{ g.name }}（{{ g.unit }}）</option>{% endfor %}</select></label>
+    <label>{% translate "値段（1単位。0 でなくす）" %} <input name="price" type="number" min="0" step="1" required></label>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  <p class="order-notice" aria-live="polite"></p>
+</section>
+{% endif %}
+
+{% if p.planned %}
+<section class="panel">
+  <div class="section-head">
+    <h2>{% translate "推移" %}</h2>
+    {% include "web/chart_range.html" %}
+  </div>
+  <div class="charts" id="charts" data-url="{% url 'api_island_economy' island.id %}"
+       data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
+    <figure class="chart" data-names="plan.queue"><figcaption>{% translate "行列（家計が配給で買えなかった割合）" %}</figcaption></figure>
+    <figure class="chart" data-names="plan.forced_saving"><figcaption>{% translate "強制貯蓄（1ターン）" %}</figcaption></figure>
+  </div>
+</section>
+{% endif %}
+{% endwith %}
+  </div>
+
+  {% if mine %}
+  <aside id="orders" class="panel report-orders" data-url="{% url 'api_orders' island.id %}" data-defs="{% url 'api_defs' %}"
+         data-forms="" data-heading="{% translate '計画の命令' %}"></aside>
+  {% endif %}
+</div>
+
+{% csrf_token %}
+<script type="module" src="{% static 'js/reports/politics.js' %}"></script>
+{% endblock %}

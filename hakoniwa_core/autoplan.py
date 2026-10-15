@@ -542,7 +542,7 @@ def _reserved_materials(
     for f in island.facilities:
         if not f.built and f.owner == owner:
             construction = defs.facilities[f.kind]["construction"]
-            done = f.progress / (construction["turns"] * fac.FULL)
+            done = f.progress / fac.total_progress(defs, f)
             for good, qty in construction.get("materials", {}).items():
                 left = qty - int(qty * done) - stock.total(f.stock, good)
                 reserved[good] = reserved.get(good, 0) + max(0, left)

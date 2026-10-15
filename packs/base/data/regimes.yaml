@@ -1,15 +1,49 @@
-# 体制の選択肢。建国時に軸ごとに1つずつ選びます。
-# 効くのは、首都に建つ建物の見た目と、施設と銀行の持ち主・国営施設の会計の形です。
-# 体制ごとの特色（政情や命令の手続きへの効き目）はフェーズ3で足します。
+# 体制の選択肢。建国時に軸ごとに1つずつ選び、命令（憲法改正・経済体制の変更。フェーズ3-4）で変えられます。
+# 効くのは、首都に建つ建物の見た目と、施設と銀行の持ち主・国営施設の会計の形と、traits の特色です。
+#
+# traits: 体制の特色（フェーズ3-4。hakoniwa_core/politics.py の traits で軸ごとに合わせる）
+#   stability_bonus: 政情の目標に足す補正 R（足し合わせる）
+#   stability_turns_up / stability_turns_down: 政情が目標に近づく速さ（差の 1/これ ずつ。既定は
+#     game.yaml の politics.stability_turns）
+#   parliament: 議会と選挙がある（orders.yaml の parliament のある命令は採決が要る）
+#   press_control: 報道と集会を統制できる（どれかの軸が false なら統制できない）
+#   admin_bonus: 行政力に足す（上限も同じだけ上がる。足し合わせる）
+#   works_turns: 命令で建てる国の工事とインフラの公共事業の工期の倍率（掛け合わせる）
+#   mobilization: 労働の動員の命令が使える
+#   happiness_cap: 幸福度の上限（小さいほう）
+#   monarch: 君主の年齢をデータで持つ（継承の出来事は後からモジュールで足す）
+#   election_bonus: 選挙で支持率が politics.republic.support を超えたら、次の politics.republic.turns
+#     ターンは政情の目標にこれを足す
+#   official_prices: 公定価格・生産目標・配給で動く（計画経済。hakoniwa_core/economy/plan.py）
+#   priority_build_turns・priority_experience: 重点産業の工期の倍率と経験の伸びの倍率
+#   luxury_variety: ぜいたく品の種類から来る満足の倍率
+#   entry_margin: 民営工場の参入の基準（見込みの利益率が金利 + これを超えたら建つ。既定は
+#     game.yaml の firms.entry_margin）
+#   price_controls: どの財にも値段の上限と下限を決められる（混合経済。ほかの体制は電気料金の上限だけ）
 
 # 政治の仕組み
-democracy:     {axis: politics, capital_building: parliament}
-authoritarian: {axis: politics, capital_building: official_residence}
-totalitarian:  {axis: politics, capital_building: party_headquarters}
+democracy:
+  axis: politics
+  capital_building: parliament
+  traits: {stability_bonus: 5, stability_turns_up: 6, stability_turns_down: 12, parliament: true, press_control: false}
+authoritarian:
+  axis: politics
+  capital_building: official_residence
+  traits: {stability_bonus: 0, stability_turns_up: 6, stability_turns_down: 6, admin_bonus: 1, works_turns: 0.75}
+totalitarian:
+  axis: politics
+  capital_building: party_headquarters
+  traits: {stability_bonus: -5, stability_turns_up: 4, stability_turns_down: 4, mobilization: true, happiness_cap: 80}
 
 # 国家元首の形
-monarchy: {axis: head_of_state, capital_building: palace}
-republic: {axis: head_of_state, capital_building: presidential_office}
+monarchy:
+  axis: head_of_state
+  capital_building: palace
+  traits: {stability_bonus: 5, monarch: true}
+republic:
+  axis: head_of_state
+  capital_building: presidential_office
+  traits: {election_bonus: 5}
 
 # 経済体制。owner: 建国直後の施設の持ち主の既定、state_owned: それでも国営にする施設（基幹産業など）
 # state_accounting: 国営施設の会計の既定、bank_owner: 建国のときに置く銀行の持ち主（並べると銀行を
@@ -27,6 +61,7 @@ market:
   bank_entry: free
   capital_controls: free
   start: default
+  traits: {entry_margin: 0.01}
 mixed:
   axis: economy
   owner: private
@@ -38,6 +73,7 @@ mixed:
   capital_controls: official
   policy_loans: true
   start: default
+  traits: {price_controls: true}
 planned:
   axis: economy
   owner: state
@@ -47,3 +83,4 @@ planned:
   bank_entry: closed
   capital_controls: official
   start: default
+  traits: {official_prices: true, priority_build_turns: 0.7, priority_experience: 1.2, luxury_variety: 0.7}

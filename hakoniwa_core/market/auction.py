@@ -91,11 +91,14 @@ def clear(
     cap: int | None = None,
     allocate: Allocate = by_priority,
     bounds: tuple[int, int] | None = None,
+    allocate_buys: Allocate | None = None,
 ) -> Result:
     """板寄せで約定価格と注文ごとの約定量を決める。
 
     bounds（下端, 上端）を渡すと、値幅を割合でなくその範囲にする（金利や利回りを値段にする市場。
-    例: 銀行間の金利は政策金利 ± 1%）。
+    例: 銀行間の金利は政策金利 ± 1%。計画経済の公定価格は下端と上端を同じにする）。
+    allocate_buys を渡すと、買いが余ったときの割当ルールをそれにする（計画経済の割当の順位と配給。
+    hakoniwa_core/economy/plan.py）。
     """
     low, high = bounds if bounds is not None else band(reference, width, cap)
     demand = sum(o.quantity for o in buys)
@@ -146,7 +149,9 @@ def clear(
     ]
     if d >= s:
         result.sold = _fill_all(len(sells), sell_side)
-        result.bought = _fill_long(len(buys), buy_side, volume, price == high, allocate)
+        result.bought = _fill_long(
+            len(buys), buy_side, volume, price == high, allocate_buys or allocate
+        )
     else:
         result.bought = _fill_all(len(buys), buy_side)
         result.sold = _fill_long(len(sells), sell_side, volume, price == low, allocate)

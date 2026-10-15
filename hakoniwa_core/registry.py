@@ -86,6 +86,7 @@ class Registry:
         self.orders: dict[str, OrderHandler] = {}
         self.formulas: dict[str, Callable[..., Any]] = {}
         self.checks: list[Callable[[Defs, GameConfig], list[str]]] = []
+        self.order_gates: list[Callable[..., None]] = []
 
     def add_stage(self, stage: Stage) -> None:
         if stage.name in self.stages:
@@ -102,6 +103,11 @@ class Registry:
         if name in self.formulas:
             raise RegistryError(f"式 {name} は登録済みです")
         self.formulas[name] = func
+
+    def add_order_gate(self, func: Callable[..., None]) -> None:
+        """命令の段の関所: 命令を実行する直前に func(island, order, ctx) を呼ぶ。OrderFailed を
+        投げると、その命令は実行せずに失敗にする（行政力は使う）。例: 議会の採決（フェーズ3-4）。"""
+        self.order_gates.append(func)
 
     def add_check(self, func: Callable[[Defs, GameConfig], list[str]]) -> None:
         """起動時の確認。モジュールが要る定義や設定がそろっているかを調べ、問題を文で返す関数。"""

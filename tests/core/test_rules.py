@@ -493,8 +493,11 @@ def test_inputs_are_bought_ahead_of_a_rising_target(game):
 
 
 def test_market_records_why_inputs_were_not_bought(game):
-    """原料を買えなかったわけ: 指値（採算の合う値段）より高いと price、売りがないと supply。"""
+    """原料を買えなかったわけ: 指値（採算の合う値段）より高いと price、売りがないと supply。
+
+    計画経済の島の市場は公定価格で動き、工場は値段で買い控えないので、混合経済の島で確かめる。"""
     island = make_island(game)
+    island.regime["economy"] = "mixed"
     home(game, island, 5, 6, 6000)
     plant = add(island, "building_materials_plant", 6, 6, recipe="wood")
     camp = add(island, "lumber_camp", 7, 7, stock={"wood": 20_000})

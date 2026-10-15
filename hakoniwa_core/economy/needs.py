@@ -25,6 +25,7 @@ import math
 from collections.abc import Mapping
 from typing import Any
 
+from hakoniwa_core import politics
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.state import IslandState
@@ -145,7 +146,9 @@ def satisfaction(
         owned = island.economy.households[layer].get(CARS, 0)
         have = min(QUANTITY_SCALE, owned * QUANTITY_SCALE // plan["desired"])
         kinds.append(min(have, plan.get("fuel_ratio", QUANTITY_SCALE)))
-    out["luxury"] = _average(kinds)
+    # 計画経済はぜいたく品の種類から来る満足が少ない（体制の特色 luxury_variety。フェーズ3-4）
+    variety = politics.trait(island, defs, "luxury_variety", 1.0)
+    out["luxury"] = round(_average(kinds) * variety)
     return out
 
 

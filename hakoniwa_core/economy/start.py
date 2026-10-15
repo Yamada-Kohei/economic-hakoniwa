@@ -120,7 +120,7 @@ def init_facility(
     recipe = fac.recipe_of(defs, f)
     cost = round_money(construction_cost(defs, f.kind, prices, wage))
     if not f.built:
-        total = defs.facilities[f.kind]["construction"]["turns"] * fac.FULL
+        total = fac.total_progress(defs, f)
         f.economy = {"capital": cost * min(f.progress, total) // total}
         return
     f.economy = {

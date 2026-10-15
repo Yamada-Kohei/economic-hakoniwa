@@ -78,7 +78,7 @@ def send_letter(user, sender: Island, to: int, subject: str, body: str) -> Lette
     subject, body = subject.strip(), body.strip()
     if to == sender.id:
         raise LetterError("自分の島には送れません")
-    recipient = Island.objects.filter(pk=to).first()
+    recipient = Island.objects.filter(pk=to, world=sender.world).first()
     if recipient is None:
         raise LetterError(f"番号 {to} の島はありません")
     if not subject:

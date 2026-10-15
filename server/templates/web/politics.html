@@ -1,0 +1,182 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+{% include "web/report_header.html" %}
+
+<div class="report-layout{% if mine %} with-orders{% endif %}">
+  <div class="report-main">
+{% with p=politics %}
+<section class="panel" id="regime">
+  <h2>{% if stats_turn is not None %}{% blocktranslate with turn=stats_turn %}体制と政情（ターン {{ turn }}）{% endblocktranslate %}{% else %}{% translate "体制と政情" %}{% endif %}</h2>
+  <table class="info">
+    {% for r in p.regime %}<tr><th>{{ r.axis_name }}</th><td>{{ r.name }}</td></tr>{% endfor %}
+    {% if p.leader %}<tr><th>{% translate "国家元首" %}</th><td>{{ p.leader }}{% if p.monarch_age is not None %} <small class="muted">{% blocktranslate with age=p.monarch_age %}（{{ age }} 歳）{% endblocktranslate %}</small>{% endif %}</td></tr>{% endif %}
+    {% if p.started %}
+    <tr><th>{% translate "政情" %}</th><td><strong class="politics-level politics-{{ p.level }}">{{ p.level_name }}</strong> {{ p.stability|floatformat:1 }} <small class="muted">{% blocktranslate with t=p.target|floatformat:1 %}（目標 {{ t }}）{% endblocktranslate %}</small></td></tr>
+    <tr><th>{% translate "支持率" %}</th><td>{{ p.support|floatformat:1 }}%</td></tr>
+    {% if p.parliament %}
+    <tr><th>{% translate "与党の議席" %}</th><td>{{ p.seats|floatformat:1 }}%</td></tr>
+    <tr><th>{% translate "次の選挙" %}</th><td>{% if p.next_election is not None %}{% blocktranslate with t=p.next_election %}ターン {{ t }}{% endblocktranslate %}{% endif %}</td></tr>
+    {% endif %}
+    {% else %}
+    <tr><th>{% translate "政情" %}</th><td class="muted">{% translate "次のターンの更新から出ます。" %}</td></tr>
+    {% endif %}
+    <tr><th>{% translate "報道と集会" %}</th><td>{{ p.press_name }}</td></tr>
+    {% if p.transition %}<tr><th>{% translate "混乱期間" %}</th><td>{% blocktranslate with u=p.transition.until %}ターン {{ u }} まで{% endblocktranslate %}{% if p.productivity %} <small class="muted">{% blocktranslate with v=p.productivity|floatformat:3 %}（生産性 {{ v }} 倍）{% endblocktranslate %}</small>{% endif %}</td></tr>{% endif %}
+    {% if p.rebuilding %}<tr><th>{% translate "首都の建物" %}</th><td>{% translate "新しい体制の建物に建て替えています（資材がそろうと替わります）" %}</td></tr>{% endif %}
+  </table>
+  <p class="hint">{% blocktranslate with demo=p.levels.demo riot=p.levels.riot rebellion=p.levels.rebellion %}政情は 0〜100 で、毎ターン目標に少しずつ近づきます。{{ demo }} を下回るとデモ（行政力が減る）、{{ riot }} を下回ると暴動（行政力が半分になり、町より大きな住宅地の近くの施設が止まり、まれに国営の施設が壊される）、{{ rebellion }} を下回ると反乱の前触れ（暴動の 2 倍。反乱はフェーズ4）になります。警察の人手が足りていると、止まる施設と壊される施設が減ります。{% endblocktranslate %}</p>
+  {% if stats %}
+  <table class="info">
+    {% for row in stats %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
+  </table>
+  {% endif %}
+</section>
+
+{% if mine and p.started %}
+<section class="panel" id="stability-parts">
+  <h2>{% translate "政情の目標の内訳" %}</h2>
+  <div class="table-scroll">
+    <table class="goods">
+      <thead><tr><th>{% translate "項目" %}</th><th>{% translate "目標への効き" %}</th></tr></thead>
+      <tbody>
+        {% for part in p.parts %}<tr><td>{{ part.name }}</td><td>{{ part.value|floatformat:1 }}</td></tr>{% endfor %}
+        <tr><th>{% translate "目標（0〜100 に収める）" %}</th><th>{{ p.target|floatformat:1 }}</th></tr>
+      </tbody>
+    </table>
+  </div>
+  {% if p.facts %}
+  <h3>{% translate "元にした数" %}</h3>
+  <table class="info">
+    {% for f in p.facts %}<tr><th>{{ f.name }}</th><td>{{ f.text }}</td></tr>{% endfor %}
+  </table>
+  {% endif %}
+  {% if p.events %}
+  <h3>{% translate "出来事" %}</h3>
+  <ul class="plain-list">
+    {% for e in p.events %}<li>{{ e.name }}: {{ e.value|floatformat:1 }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% with r=p.rules %}<p class="hint">{% blocktranslate with h=r.happiness_mid u=r.unemployment_free i=r.inflation_free g=r.inequality_free %}幸福度が {{ h }} より高いと上がり、低いと下がります。失業率が {{ u }}% を、物価上昇率が年 {{ i }}% を、格差（家計の層の1人あたりの所得のジニ係数）が {{ g }} を超えると、超えた分だけ下がります。体制の補正は体制ごとに決まっています（共和制では、選挙で支持率が高いとしばらく上がります）。{% endblocktranslate %}</p>{% endwith %}
+</section>
+{% endif %}
+
+{% if p.parliament %}
+<section class="panel" id="parliament">
+  <h2>{% translate "選挙と議会" %}</h2>
+  {% if p.elections %}
+  <h3>{% translate "選挙" %}</h3>
+  <ul class="plain-list">
+    {% for e in p.elections %}<li>{% blocktranslate with t=e.turn s=e.support %}ターン {{ t }}: 支持率 {{ s }}%（与党の議席も同じ割合）{% endblocktranslate %}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% if mine %}
+  <h3>{% translate "採決" %}</h3>
+  {% if p.votes %}
+  <div class="table-scroll">
+    <table class="goods">
+      <thead><tr><th>{% translate "ターン" %}</th><th>{% translate "命令" %}</th><th>{% translate "賛成" %}</th><th>{% translate "必要" %}</th><th>{% translate "結果" %}</th></tr></thead>
+      <tbody>
+        {% for v in p.votes %}<tr><td>{{ v.turn }}</td><td>{{ v.order_name }}</td><td>{{ v.yes|floatformat:1 }}%</td><td>{{ v.rule_name }}</td><td>{% if v.passed %}{% translate "可決" %}{% else %}<span class="warning">{% translate "否決" %}</span>{% endif %}</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">{% translate "まだ採決はありません。" %}</p>
+  {% endif %}
+  <p class="hint">{% blocktranslate with s=p.rules.swing %}次の命令は議会の採決が要ります。賛成の割合は、与党の議席の割合に、選挙のときからの支持率の伸び × {{ s }} を足したものです。税率の命令は、どれかの税を大きく変えるときだけ採決します。否決されても行政力は使います。{% endblocktranslate %}</p>
+  <ul class="plain-list">
+    {% for r in p.parliament_rules %}<li>{{ r.name }}: {{ r.rule }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if mine %}
+<section class="panel" id="politics-orders">
+  <h2>{% translate "治安と報道" %}</h2>
+  <table class="info">
+    <tr><th>{% translate "警察の人手" %}</th><td>{% blocktranslate with v=p.police %}足りている割合 {{ v }}%{% endblocktranslate %}</td></tr>
+    {% if p.grievance %}<tr><th>{% translate "たまった不満" %}</th><td>{{ p.grievance|floatformat:1 }}</td></tr>{% endif %}
+    {% if p.can_mobilize %}<tr><th>{% translate "労働の動員" %}</th><td>{% if p.mobilized %}{% translate "している" %}{% else %}{% translate "していない" %}{% endif %}</td></tr>{% endif %}
+  </table>
+  {% with r=p.rules %}<p class="hint">{% blocktranslate with n=r.police_per_1000 e=r.police_effect l=r.press_limited c=r.press_controlled %}警察署は政府の建物と同じ作りの施設で、建設の欄から建てられます。住民 1000 人あたり {{ n }} 人の警官がいれば、暴動の害の {{ e }}% を抑えます（人件費は予算の「治安」から）。報道と集会を制限・統制すると、政情がその分（+{{ l }}・+{{ c }}）上がりますが、不満がたまり、政情が暴動の境を切ると、たまった不満がまとめて噴き出します。議会のある体制（民主主義）では統制できません。{% endblocktranslate %}</p>{% endwith %}
+  {% if p.can_press %}
+  <form class="actions" data-order="set_press">
+    <strong>{% translate "報道と集会の扱い" %}</strong>
+    <label><select name="mode">{% for c in p.presses %}<option value="{{ c.id }}"{% if c.id == p.press %} selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></label>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  {% endif %}
+  {% if p.can_mobilize %}
+  <form class="actions" data-order="mobilize_labor">
+    <strong>{% translate "労働の動員" %}</strong>
+    <p class="hint">{% blocktranslate with s=p.rules.mobilization_share w=p.rules.mobilization_wage %}動員すると、住民のうち働く人が {{ s }}% 増え、残った失業者を国営の工場の空いた席に島のどこからでも割り当てます（賃金は最低賃金、決めていなければ平均賃金の {{ w }}%）。{% endblocktranslate %}{% if p.rules.happiness_cap is not None %}{% blocktranslate with cap=p.rules.happiness_cap %}この体制では幸福度の上限は {{ cap }} です。{% endblocktranslate %}{% endif %}</p>
+    <input type="hidden" name="on" value="{% if p.mobilized %}false{% else %}true{% endif %}">
+    <button type="submit">{% if p.mobilized %}{% translate "動員をやめる（命令に追加）" %}{% else %}{% translate "動員する（命令に追加）" %}{% endif %}</button>
+  </form>
+  {% endif %}
+  {% if p.parliament %}
+  <form class="actions" data-order="dissolve_parliament" data-confirm="{% translate '議会を解散して、今の支持率で選挙をします。よろしいですか。' %}">
+    <strong>{% translate "議会の解散" %}</strong>
+    <p class="hint">{% blocktranslate with t=p.rules.election_turns %}今の支持率で選挙をして、与党の議席を選び直します。次の選挙はその {{ t }} ターン後です。{% endblocktranslate %}</p>
+    <button type="submit">{% translate "解散する（命令に追加）" %}</button>
+  </form>
+  {% endif %}
+  {% if p.can_rename %}
+  <form class="actions" data-order="rename_leader">
+    <strong>{% translate "国家元首の名前" %}</strong>
+    <p class="hint">{% translate "共和制では、選挙で選ばれた元首の名前を決められます。" %}</p>
+    <label><input name="name" maxlength="32" required placeholder="{{ p.leader }}"></label>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  {% endif %}
+  <p class="order-notice" aria-live="polite"></p>
+</section>
+
+<section class="panel" id="regime-orders">
+  <h2>{% translate "体制を変える" %}</h2>
+  <p class="hint">{% blocktranslate with t=p.rules.transition_turns d=p.rules.transition_drop e=p.rules.transition_event %}憲法改正（政治体制・元首制度）と経済体制の変更は、議会のある体制では 3 分の 2 の賛成が要ります。変えると {{ t }} ターンの混乱期間に入り、生産性が最大 {{ d }}% 下がり（だんだん戻る）、政情の目標が {{ e }} 下がります。混乱期間の間は体制を変えられません。{% endblocktranslate %}{% translate "首都の建物は、資材を国の倉庫に買い集めて建て替えます。計画経済に変えると民営の施設と民間銀行をすべて国有化し（代金は中央銀行が引き受けた国債で払う）、計画経済から変えると施設はそのまま国営で残ります。" %}</p>
+  {% if p.transition %}
+  <p class="warning">{% blocktranslate with u=p.transition.until %}混乱期間の間（ターン {{ u }} まで）は体制を変えられません。{% endblocktranslate %}</p>
+  {% endif %}
+  <form class="actions" data-order="amend_constitution" data-confirm="{% translate '憲法を改正します。混乱期間に入りますが、よろしいですか。' %}">
+    <strong>{% translate "憲法改正" %}</strong>
+    <label>{% translate "政治体制" %} <select name="politics"><option value="">{% translate "変えない" %}</option>{% for c in p.choices.politics %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
+    <label>{% translate "元首制度" %} <select name="head_of_state"><option value="">{% translate "変えない" %}</option>{% for c in p.choices.head_of_state %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  <form class="actions" data-order="change_economy" data-confirm="{% translate '経済体制を変えます。混乱期間に入りますが、よろしいですか。' %}">
+    <strong>{% translate "経済体制の変更" %}</strong>
+    <label><select name="economy" required>{% for c in p.choices.economy %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  <p class="order-notice" aria-live="polite"></p>
+</section>
+{% endif %}
+{% endwith %}
+
+<section class="panel">
+  <div class="section-head">
+    <h2>{% translate "推移" %}</h2>
+    {% include "web/chart_range.html" %}
+  </div>
+  <div class="charts" id="charts" data-url="{% url 'api_island_economy' island.id %}"
+       data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
+    <figure class="chart" data-names="politics.stability,politics.target"><figcaption>{% translate "政情とその目標" %}</figcaption></figure>
+    <figure class="chart" data-names="politics.support{% if politics.parliament %},politics.seats{% endif %}"><figcaption>{% translate "支持率" %}{% if politics.parliament %}{% translate "と与党の議席" %}{% endif %}</figcaption></figure>
+    <figure class="chart" data-names="happiness,unemployment,inflation"><figcaption>{% translate "幸福度・失業率・物価上昇率" %}</figcaption></figure>
+    <figure class="chart" data-names="politics.halted,politics.destroyed"><figcaption>{% translate "暴動で止まった施設と壊された施設（1ターン）" %}</figcaption></figure>
+  </div>
+</section>
+  </div>
+
+  {% if mine %}
+  <aside id="orders" class="panel report-orders" data-url="{% url 'api_orders' island.id %}" data-defs="{% url 'api_defs' %}"
+         data-forms="" data-heading="{% translate '政治の命令' %}"></aside>
+  {% endif %}
+</div>
+
+{% csrf_token %}
+<script type="module" src="{% static 'js/reports/politics.js' %}"></script>
+{% endblock %}

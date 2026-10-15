@@ -65,7 +65,7 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger, stock, trade
+from hakoniwa_core import ledger, politics, stock, trade
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     OWNERS,
@@ -111,7 +111,7 @@ from hakoniwa_core.trade import traders as trade_traders
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, money_of, part, round_money, to_basis
 
-NOT_PRIVATE = ("admin", "finance", "housing", "transport")  # 民間が建てない施設の分類
+NOT_PRIVATE = ("admin", "finance", "housing", "security", "transport")  # 民間が建てない施設の分類
 
 
 def private_allowed(defs: Defs, island: IslandState, kind: str) -> bool:
@@ -665,7 +665,8 @@ class EntryExit(IslandStage):
 
     @staticmethod
     def _threshold(island: IslandState, ctx: StageContext) -> float:
-        """参入に要る利益率: 借りる金利（建設費の7割を借りたとき）+ firms.entry_margin。"""
+        """参入に要る利益率: 借りる金利（建設費の7割を借りたとき）+ firms.entry_margin（体制の特色
+        entry_margin があればそちら。市場経済。フェーズ3-4）。"""
         config = ctx.config
         active = banks.active_banks(island)
         if not active:
@@ -674,7 +675,8 @@ class EntryExit(IslandStage):
         debt_share = 1 - config.get("firms.equity_share")
         rate = island.policy.policy_rate / BASIS + margin / BASIS
         rate += config.get("banking.rho") * debt_share
-        return rate + config.get("firms.entry_margin")
+        found = politics.trait(island, ctx.defs, "entry_margin")
+        return rate + (config.get("firms.entry_margin") if found is None else found)
 
     def _site(
         self, island: IslandState, ctx: StageContext, kind: str, rname: str
