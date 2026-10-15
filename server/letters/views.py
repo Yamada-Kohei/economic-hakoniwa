@@ -1,4 +1,7 @@
-"""手紙の画面（受信箱・送った手紙・1通・書く）。ログインして自分の島を持つ人だけが使う。"""
+"""外交の画面（届いた公電・送った公電・1通・送る）。ログインして自分の島を持つ人だけが使う。
+
+画面では1通を「公電」と呼ぶ。内部の名前（letters・Letter）と API はそのまま。
+"""
 
 from __future__ import annotations
 
@@ -14,8 +17,8 @@ from server.world.models import Island
 
 
 class LetterForm(forms.Form):
-    to = forms.TypedChoiceField(label="宛先", coerce=int)
-    subject = forms.CharField(label="題名", max_length=services.SUBJECT_MAX)
+    to = forms.TypedChoiceField(label="宛先国", coerce=int)
+    subject = forms.CharField(label="件名", max_length=services.SUBJECT_MAX)
     body = forms.CharField(
         label="本文", max_length=services.BODY_MAX, widget=forms.Textarea(attrs={"rows": 10})
     )
@@ -29,7 +32,7 @@ class LetterForm(forms.Form):
             .select_related("owner")
             .order_by("id")
         )
-        self.fields["to"].choices = [("", "（宛先の島を選んでください）")] + [
+        self.fields["to"].choices = [("", "（宛先の国を選んでください）")] + [
             (i.id, f"{i.name}（{i.id}・{i.owner.username}）") for i in islands
         ]
 
@@ -69,7 +72,7 @@ def letter_page(request, letter_id: int):
 
 @login_required
 def new_letter(request):
-    """手紙を書く。?to=島の番号 で宛先を、?re=手紙の番号 で返事の宛先と題名を選んでおく。"""
+    """公電を送る。?to=島の番号 で宛先を、?re=公電の番号 で返電の宛先と件名を選んでおく。"""
     island = services.own_island(request.user)
     if island is None:
         return _no_island(request)
