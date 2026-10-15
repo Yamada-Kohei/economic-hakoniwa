@@ -47,7 +47,7 @@ sprites:
 | `facility/hydro_power_plant` | 水力発電所 | 2.5 段・山 |
 | `facility/consumer_goods_factory` | 消費財工場 | 2 段・平地 |
 | `facility/government_office` | 中央省庁 | 3 段・平地 |
-| `facility/bank` | 銀行 | 2.5 段・平地 |
+| `facility/bank` | 銀行 | 2.5 段・平地（破風の先は 3.5 段ほど） |
 | `facility/school` | 学校 | 2 段・平地 |
 | `facility/university` | 大学 | 3 段・平地 |
 | `facility/port` | 港（フェーズ3-1） | 2.5 段・平地・海沿い（クレーンの先は 5 段ほど） |
@@ -59,6 +59,7 @@ sprites:
 | `facility/textile_mill` | 繊維工場（フェーズ3-2） | 2 段・平地（煙突は 4 段ほど） |
 | `facility/ranch` | 牧場（フェーズ3-2） | 0.5 段・平地 |
 | `facility/automobile_plant` | 自動車工場（フェーズ3-2） | 2.5 段・平地 |
+| `facility/police` | 警察署（フェーズ3-4） | 2.5 段・平地（屋上のアンテナの先は 4 段ほど） |
 | `housing/village` | 村 | 1 段 |
 | `housing/town` | 町 | 2 段 |
 | `housing/city` | 都市 | 4 段 |
