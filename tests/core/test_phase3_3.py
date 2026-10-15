@@ -227,8 +227,10 @@ def test_tariffs_are_paid_on_bloc_imports_and_lower_the_bids(game, base):
 
     run_checked(game, world, 8, keep)
     assert sum(totals.values()) > 0
-    island = world.islands[max(totals, key=totals.get)]
-    # 商社の見込みの輸入の指値は、関税の分だけ下がる
+    # 商社の見込みの輸入の指値は、関税の分だけ下がる（計画経済の国営の商社は、関税によらず圏の
+    # 値幅の上端で輸入するので除く）
+    market = [i for i in totals if not traders.is_planned(world.islands[i])]
+    island = world.islands[max(market, key=totals.get)]
     plain = copy.deepcopy(island)
     plain.policy.tariffs = {}
     taxed = traders.prospects(island, game.defs, game.config)
