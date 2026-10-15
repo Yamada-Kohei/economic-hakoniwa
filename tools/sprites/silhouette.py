@@ -54,6 +54,17 @@ PAVEMENT = "#d9d4c8"  # 岸壁・屋上などの床
 CONTAINER_BLUE = "#4f8fb8"
 CAR_COLORS = (RED, WHITE, CONTAINER_BLUE, METAL, YELLOW, COAL)
 POLICE_BLUE = "#2f4f96"
+GOLD = "#d9a62a"
+GOTHIC_STONE = "#d6c08a"  # 議事堂の砂岩
+GOTHIC_ROOF = "#55646a"
+BAROQUE_YELLOW = "#e8c25c"  # 王宮の黄色い壁
+PALACE_ROOF = "#868c94"
+GRAVEL = "#e4ddcc"  # 王宮の前の砂利
+LEAD = "#5f6d78"  # 鉛ぶきの丸屋根
+KREMLIN_RED = "#a8483a"
+TOWER_GREEN = "#3d7a5c"
+PARTY_STONE = "#d4ccb8"
+PLAZA = "#d6d0c2"  # 広場の石畳
 
 # 基の色と、面ごとの明るさ（上面・屋根の左向き・左の側面・屋根の右向き・右の側面）。
 # color は部品の色を使い、base は色のない部品にだけ使う
@@ -204,6 +215,31 @@ def hip(
             Face("slope_r", c, [iso(u1, v0, z0), iso(u1, v1, z0), apex]),
         ],
     )
+
+
+def hipped(
+    u0: float, v0: float, u1: float, v1: float, z0: float, r: float, c: str = ROOF_SLATE
+) -> Prim:
+    """寄棟屋根: 長い向きに棟が通り、四方へ下がる。"""
+    if u1 - u0 >= v1 - v0:
+        d, vm = (v1 - v0) / 2, (v0 + v1) / 2
+        a, b = iso(u0 + d, vm, z0 + r), iso(u1 - d, vm, z0 + r)
+        faces = [
+            Face("slope_r", c, [iso(u0, v0, z0), iso(u1, v0, z0), b, a]),
+            Face("slope_l", c, [iso(u0, v0, z0), iso(u0, v1, z0), a]),
+            Face("slope_l", c, [iso(u0, v1, z0), iso(u1, v1, z0), b, a]),
+            Face("slope_r", c, [iso(u1, v0, z0), iso(u1, v1, z0), b]),
+        ]
+    else:
+        d, um = (u1 - u0) / 2, (u0 + u1) / 2
+        a, b = iso(um, v0 + d, z0 + r), iso(um, v1 - d, z0 + r)
+        faces = [
+            Face("slope_l", c, [iso(u0, v0, z0), iso(u0, v1, z0), b, a]),
+            Face("slope_r", c, [iso(u0, v0, z0), iso(u1, v0, z0), a]),
+            Face("slope_r", c, [iso(u1, v0, z0), iso(u1, v1, z0), b, a]),
+            Face("slope_l", c, [iso(u0, v1, z0), iso(u1, v1, z0), b]),
+        ]
+    return Prim((u0, v0, u1, v1), z0 + 0.1, faces)
 
 
 def _d(*items: object) -> str:
@@ -522,6 +558,76 @@ def fence(u0: float, v0: float, u1: float, v1: float, z0: float = 1, c: str = WH
     ):
         prims.append(strut((*a, z0 + 3), (*b, z0 + 3), 0.8, c))
     return prims
+
+
+def dome(
+    uc: float, vc: float, r: float, z0: float, h: float, c: str = COPPER, onion: bool = False
+) -> Prim:
+    """丸屋根: 足元の半径 r、高さ h ピクセル。
+
+    onion で玉ねぎ形（足元より太くふくらみ、先がとがる）。
+    """
+    cx, yb, rx, ry = _ellipse(uc, vc, r, z0)
+    top = yb - h
+    faces = []
+    for sign, shade, sweep in ((-1, "slope_l", 1), (1, "slope_r", 0)):
+        x = cx + sign * rx
+        if onion:
+            c1, c2 = (cx + sign * rx * 1.6, yb - h * 0.4), (cx + sign * rx * 0.5, yb - h * 0.7)
+        else:
+            c1, c2 = (x, yb - h * 0.55), (cx + sign * rx * 0.55, top)
+        d = _d("M", x, yb, "C", *c1, *c2, cx, top, "L", cx, yb + ry)
+        d += " " + _d("A", rx, ry, 0, 0, sweep, x, yb, "Z")
+        faces.append(Face(shade, c, path=d, ymin=top))
+    return Prim((uc - r, vc - r, uc + r, vc + r), z0 + 0.1, faces)
+
+
+def spire(uc: float, vc: float, r: float, z0: float, h: float, c: str = ROOF_SLATE) -> Prim:
+    """細くとがった塔の先（円すい）。"""
+    return cylinder(uc, vc, r, z0, h, r_top=0.002, c=c)
+
+
+def flag(u: float, v: float, z0: float, h: float, c: str = RED, length: float = 0.07) -> list[Prim]:
+    """旗: 細い旗ざおと、u の向きにはためく布（左の側面が見える）。"""
+    return [
+        cylinder(u, v, 0.005, z0, h, c=METAL),
+        box(u + 0.005, v - 0.003, u + 0.005 + length, v + 0.003, z0 + h - 4.5, 4, c),
+    ]
+
+
+def statue(u: float, v: float, z0: float, h: float, c: str = "#7a6640") -> list[Prim]:
+    """人の像: 胴（上が細い円柱）と頭、上げた右腕。h は像の高さ（台座は別）。"""
+    return [
+        cylinder(u, v, 0.03, z0, h * 0.84, r_top=0.021, c=c),
+        box(u + 0.016, v - 0.006, u + 0.032, v + 0.006, z0 + h * 0.55, h * 0.45, c),
+        crown(u, v, z0 + h * 0.82, h * 0.08, c),
+    ]
+
+
+def crenels(u0: float, v0: float, u1: float, v1: float, z0: float, c: str) -> list[Prim]:
+    """城壁の上の凸凹（狭間）。(u0, v0)〜(u1, v1) の細長い壁の上に、長い向きに並べる。"""
+    along_u = (u1 - u0) >= (v1 - v0)
+    a0, a1 = (u0, u1) if along_u else (v0, v1)
+    n = max(1, round((a1 - a0) / 0.06))
+    step = (a1 - a0) / n
+    prims = []
+    for i in range(n):
+        a = a0 + i * step + step * 0.2
+        if along_u:
+            prims.append(box(a, v0, a + step * 0.5, v1, z0, 1.6, c))
+        else:
+            prims.append(box(u0, a, u1, a + step * 0.5, z0, 1.6, c))
+    return prims
+
+
+def banners(
+    u0: float, u1: float, v: float, z0: float, h: float, n: int, c: str = RED
+) -> list[Prim]:
+    """建物の正面（左の側面、v の位置）に縦に垂らした布を n 枚。"""
+    step = (u1 - u0) / n
+    return [
+        box(u0 + (i + 0.3) * step, v, u0 + (i + 0.7) * step, v + 0.005, z0, h, c) for i in range(n)
+    ]
 
 
 def ground(c: str) -> Prim:
@@ -1167,6 +1273,153 @@ SHAPES: dict[str, list[Prim]] = {
         *patrol_car(0.72, 0.66, 0.6),
         *broadleaf(0.16, 0.8, 3.5, 10),
         *broadleaf(0.52, 0.84, 3.5, 10),
+    ],
+    # 首都の建物。政治の仕組みの建物（議事堂・首相官邸・党本部）と元首の建物（王宮・大統領府）の
+    # 組み合わせごとに 1 枚。実在の建物の雰囲気だけを借り、そっくりには描かない
+    "capital/parliament-palace": [
+        # 民主制 × 君主制: 縦の筋の多い石の議事堂、端に時計塔、反対の端に旗を立てた四角い塔
+        box(0.06, 0.06, 0.94, 0.94, 0, 0.6, CONCRETE, PAVEMENT),
+        box(0.1, 0.7, 0.62, 0.92, 0.6, 0.3, "#7fb35a"),
+        box(0.14, 0.28, 0.84, 0.6, 0.6, 14, GOTHIC_STONE, GOTHIC_STONE),
+        gable(0.14, 0.28, 0.84, 0.6, 14.6, 6, "u", GOTHIC_ROOF, GOTHIC_STONE),
+        *[
+            box(u, 0.6, u + 0.014, 0.606, 0.6, 15.5, "#c4a96c")
+            for u in (0.18, 0.26, 0.34, 0.42, 0.5, 0.58, 0.66)
+        ],
+        box(0.46, 0.41, 0.52, 0.47, 14.6, 9, GOTHIC_STONE),
+        spire(0.49, 0.44, 0.03, 23.6, 9, GOTHIC_ROOF),
+        box(0.08, 0.22, 0.24, 0.38, 0.6, 36, GOTHIC_STONE, "#c4a96c"),
+        *[spire(u, v, 0.014, 36.6, 6, GOTHIC_STONE) for u in (0.09, 0.23) for v in (0.23, 0.37)],
+        *flag(0.16, 0.3, 36.6, 10, RED),
+        box(0.72, 0.6, 0.84, 0.72, 0.6, 34, GOTHIC_STONE),
+        box(0.75, 0.72, 0.81, 0.725, 27, 5, "#f3ecd4"),
+        box(0.84, 0.63, 0.845, 0.69, 27, 5, "#f3ecd4"),
+        box(0.73, 0.61, 0.83, 0.71, 34.6, 3, GOTHIC_STONE),
+        hip(0.73, 0.61, 0.83, 0.71, 37.6, 12, GOTHIC_ROOF),
+        spire(0.78, 0.66, 0.008, 49.6, 4, YELLOW),
+    ],
+    "capital/parliament-presidential_office": [
+        # 民主制 × 共和制: 白い議事堂の真ん中に、列柱の胴の上の高い丸屋根。左右に翼、正面に芝生
+        box(0.06, 0.06, 0.94, 0.94, 0, 0.6, CONCRETE, PAVEMENT),
+        box(0.12, 0.72, 0.88, 0.94, 0.6, 0.3, "#7fb35a"),
+        box(0.08, 0.3, 0.36, 0.56, 0.6, 12, WHITE, "#dcd8ce"),
+        box(0.64, 0.3, 0.92, 0.56, 0.6, 12, WHITE, "#dcd8ce"),
+        box(0.36, 0.24, 0.64, 0.62, 0.6, 15, WHITE, "#dcd8ce"),
+        *[cylinder(u, 0.67, 0.013, 0.6, 12, c=WHITE) for u in (0.4, 0.455, 0.51, 0.565, 0.62)],
+        box(0.37, 0.62, 0.63, 0.7, 12.6, 2.4, WHITE),
+        gable(0.37, 0.62, 0.63, 0.7, 15, 3.5, "v", "#e3dfd6", WHITE),
+        cylinder(0.5, 0.42, 0.12, 15.6, 7, c=WHITE),
+        cylinder(0.5, 0.42, 0.124, 17.2, 3.6, c="#bcb9b1"),
+        cylinder(0.5, 0.42, 0.1, 22.6, 4, c=WHITE),
+        dome(0.5, 0.42, 0.1, 26.6, 10, WHITE),
+        cylinder(0.5, 0.42, 0.022, 36, 3.5, cap="dome", c=WHITE),
+        spire(0.5, 0.42, 0.008, 41, 3, "#7a6640"),
+    ],
+    "capital/official_residence-palace": [
+        # 権威主義 × 君主制: 黄色い壁の長い王宮。真ん中の張り出しに白い付け柱と三角の破風、
+        # 前に生け垣で区切った幾何学の庭と噴水
+        box(0.04, 0.04, 0.96, 0.96, 0, 0.6, GRAVEL, GRAVEL),
+        box(0.1, 0.52, 0.9, 0.94, 0.6, 0.3, "#7fb35a"),
+        *[
+            box(u0, v0, u0 + 0.32, v0 + 0.16, 0.9, 1.2, "#4f8a3c", "#5f9a48")
+            for u0 in (0.14, 0.54)
+            for v0 in (0.55, 0.75)
+        ],
+        box(0.47, 0.52, 0.53, 0.94, 0.9, 0.1, GRAVEL),
+        box(0.1, 0.71, 0.9, 0.75, 0.9, 0.1, GRAVEL),
+        cylinder(0.5, 0.73, 0.06, 1, 1.5, c=WHITE, cap_c=WATER),
+        box(0.06, 0.1, 0.94, 0.44, 0.6, 13, BAROQUE_YELLOW),
+        *windows(0.06, 0.1, 0.36, 0.44, [3, 8.5], 3.4, (5, 0), 0.024, "#5f7f73"),
+        *windows(0.64, 0.1, 0.94, 0.44, [3, 8.5], 3.4, (5, 5), 0.024, "#5f7f73"),
+        hipped(0.05, 0.09, 0.95, 0.45, 13.6, 5, PALACE_ROOF),
+        box(0.36, 0.08, 0.64, 0.48, 0.6, 16, BAROQUE_YELLOW),
+        *[box(u, 0.48, u + 0.012, 0.485, 0.6, 16, "#f6efd8") for u in (0.37, 0.43, 0.55, 0.62)],
+        *windows(0.36, 0.08, 0.64, 0.48, [3, 9.5], 4.2, (3, 0), 0.03, "#5f7f73"),
+        gable(0.36, 0.08, 0.64, 0.48, 16.6, 5, "v", PALACE_ROOF, "#f6efd8"),
+        box(0.42, 0.48, 0.58, 0.53, 0.6, 1.6, "#d8d2c4"),
+        *flag(0.5, 0.28, 21.6, 8, RED),
+    ],
+    "capital/official_residence-presidential_office": [
+        # 権威主義 × 共和制: 狭間のある赤れんがの城壁と緑のとがり屋根の塔、
+        # 正面の門の塔の先に赤い星、中に黄色い大統領府と、金の玉ねぎ形の丸屋根の聖堂
+        box(0.04, 0.04, 0.96, 0.96, 0, 0.6, CONCRETE, PAVEMENT),
+        box(0.08, 0.08, 0.92, 0.12, 0.6, 8, KREMLIN_RED),
+        box(0.08, 0.12, 0.12, 0.88, 0.6, 8, KREMLIN_RED),
+        box(0.2, 0.2, 0.58, 0.5, 0.6, 13, "#e3c76a", "#5f8f6a"),
+        box(0.2, 0.5, 0.58, 0.505, 3, 6, WHITE),
+        dome(0.39, 0.35, 0.07, 13.6, 6, "#5f8f6a"),
+        box(0.62, 0.22, 0.8, 0.42, 0.6, 12, WHITE, "#d8d4ca"),
+        cylinder(0.71, 0.32, 0.04, 12.6, 5, c=WHITE),
+        dome(0.71, 0.32, 0.045, 17.6, 9, GOLD, onion=True),
+        *[dome(u, v, 0.03, 12.6, 6, GOLD, onion=True) for u, v in ((0.65, 0.25), (0.77, 0.39))],
+        box(0.12, 0.88, 0.92, 0.92, 0.6, 8, KREMLIN_RED),
+        box(0.88, 0.12, 0.92, 0.88, 0.6, 8, KREMLIN_RED),
+        *crenels(0.12, 0.88, 0.92, 0.92, 8.6, KREMLIN_RED),
+        *crenels(0.88, 0.12, 0.92, 0.88, 8.6, KREMLIN_RED),
+        *[
+            prim
+            for u0, v0, h in (
+                (0.05, 0.05, 13),
+                (0.05, 0.83, 13),
+                (0.83, 0.05, 13),
+                (0.83, 0.83, 15),
+            )
+            for prim in (
+                box(u0, v0, u0 + 0.12, v0 + 0.12, 0.6, h, KREMLIN_RED),
+                hip(u0, v0, u0 + 0.12, v0 + 0.12, h + 0.6, 9, TOWER_GREEN),
+            )
+        ],
+        box(0.44, 0.85, 0.56, 0.95, 0.6, 20, KREMLIN_RED),
+        box(0.47, 0.95, 0.53, 0.955, 15, 4, "#f3ecd4"),
+        box(0.46, 0.865, 0.54, 0.935, 20.6, 6, KREMLIN_RED),
+        hip(0.46, 0.865, 0.54, 0.935, 26.6, 11, TOWER_GREEN),
+        box(0.493, 0.893, 0.507, 0.907, 37.4, 3, RED),
+    ],
+    "capital/party_headquarters-palace": [
+        # 全体主義 × 君主制: 奥に鉛ぶきの低い丸屋根と赤い旗、両端に寄棟の棟を持つ王宮、
+        # 正面に赤い垂れ幕、王宮へ続く赤い道と、広場の真ん中の大きな金の像、広場のまわりに赤い旗
+        box(0.04, 0.04, 0.96, 0.96, 0, 0.6, PLAZA, PLAZA),
+        box(0.46, 0.38, 0.56, 0.58, 0.6, 0.3, "#b03a2e"),
+        box(0.22, 0.12, 0.78, 0.38, 0.6, 14, "#e8dcc0"),
+        gable(0.22, 0.12, 0.78, 0.38, 14.6, 5, "u", ROOF_SLATE, "#e8dcc0"),
+        *banners(0.24, 0.76, 0.38, 3, 10, 5),
+        *[
+            prim
+            for u0 in (0.08, 0.78)
+            for prim in (
+                box(u0, 0.1, u0 + 0.14, 0.4, 0.6, 18, "#e8dcc0", ROOF_SLATE),
+                hipped(u0 - 0.005, 0.095, u0 + 0.145, 0.405, 18.6, 6, LEAD),
+            )
+        ],
+        box(0.4, 0.16, 0.6, 0.36, 14.6, 11, "#e8dcc0"),
+        cylinder(0.5, 0.26, 0.085, 25.6, 3, c="#e8dcc0"),
+        dome(0.5, 0.26, 0.085, 28.6, 7, LEAD),
+        cylinder(0.5, 0.26, 0.018, 34.6, 3, cap="dome", c="#e8dcc0", cap_c=LEAD),
+        *flag(0.5, 0.26, 38, 9, RED),
+        box(0.4, 0.58, 0.62, 0.78, 0.6, 6, "#bdb5a5", "#cfc8b9"),
+        *statue(0.51, 0.68, 6.6, 20, GOLD),
+        *[
+            prim
+            for u, v in ((0.1, 0.6), (0.14, 0.8), (0.86, 0.56), (0.9, 0.76))
+            for prim in flag(u, v, 0.6, 16)
+        ],
+    ],
+    "capital/party_headquarters-presidential_office": [
+        # 全体主義 × 共和制: 段々に細くなる高い党本部の塔の先に赤い星、正面に赤い垂れ幕、
+        # 広場に大きな像と赤い旗の列
+        box(0.04, 0.04, 0.96, 0.96, 0, 0.6, PLAZA, PLAZA),
+        box(0.62, 0.14, 0.9, 0.4, 0.6, 10, PARTY_STONE, "#bdb5a5"),
+        box(0.1, 0.1, 0.62, 0.44, 0.6, 14, PARTY_STONE, "#bdb5a5"),
+        *banners(0.12, 0.6, 0.44, 3, 10, 4),
+        box(0.2, 0.16, 0.52, 0.38, 14.6, 12, PARTY_STONE, "#bdb5a5"),
+        box(0.28, 0.2, 0.44, 0.34, 26.6, 10, PARTY_STONE, "#bdb5a5"),
+        box(0.32, 0.23, 0.4, 0.31, 36.6, 6, PARTY_STONE),
+        spire(0.36, 0.27, 0.03, 42.6, 12, GOLD),
+        box(0.35, 0.26, 0.37, 0.28, 54.4, 3, RED),
+        box(0.6, 0.6, 0.76, 0.76, 0.6, 5, "#bdb5a5", "#cfc8b9"),
+        *statue(0.68, 0.68, 5.6, 17, "#6f6a5e"),
+        *[prim for u in (0.12, 0.24, 0.36) for prim in flag(u, 0.86, 0.6, 15)],
+        *[prim for v in (0.5, 0.64) for prim in flag(0.9, v, 0.6, 15)],
     ],
     "housing/village": [
         *house(0.15, 0.15, 0.42, 0.4, 7, 6, "u"),

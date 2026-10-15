@@ -88,3 +88,10 @@ sprites:
   housing/metropolis: sprites/housing/metropolis.svg
   housing/town: sprites/housing/town.svg
   housing/village: sprites/housing/village.svg
+  # 首都の官庁は、体制で決まる建物（政治の仕組み-元首の形）の組み合わせの絵で描く
+  capital/parliament-palace: sprites/capital/parliament-palace.svg
+  capital/parliament-presidential_office: sprites/capital/parliament-presidential_office.svg
+  capital/official_residence-palace: sprites/capital/official_residence-palace.svg
+  capital/official_residence-presidential_office: sprites/capital/official_residence-presidential_office.svg
+  capital/party_headquarters-palace: sprites/capital/party_headquarters-palace.svg
+  capital/party_headquarters-presidential_office: sprites/capital/party_headquarters-presidential_office.svg

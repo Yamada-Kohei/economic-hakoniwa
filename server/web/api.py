@@ -17,6 +17,7 @@ from django.templatetags.static import static
 from django.views.decorators.http import require_GET, require_http_methods
 
 from hakoniwa_core import facilities as fac
+from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import freight
 from hakoniwa_core.founding import land_terrains
 from hakoniwa_core.naming import default_place_style, place_of, place_styles
@@ -171,6 +172,25 @@ def _theme(name: str) -> dict:
 # --- 島 ---------------------------------------------------------------------
 
 
+def _capital_buildings(regime: dict[str, str], ext: dict[str, Any], d: Defs) -> list[str]:
+    """体制で決まる首都の建物（議事堂・王宮など）を軸の順に。地図の絵とマスの欄が使う。
+
+    政治の仕組みを変えて建て替えている間は、前の体制の建物（フェーズ3-4）。
+    """
+    rebuilding = (ext or {}).get("politics", {}).get("building")
+    buildings = []
+    for axis in d.regime_axes():
+        rid = regime.get(axis)
+        if rid not in d.regimes:
+            continue
+        building = (rebuilding if axis == "politics" else None) or d.regimes[rid].get(
+            "capital_building"
+        )
+        if building:
+            buildings.append(building)
+    return buildings
+
+
 @require_GET
 def island_map(request, island_id: int):
     """島のマスと施設。マスの値は y * size + x の順に並べる。
@@ -231,6 +251,7 @@ def island_map(request, island_id: int):
             if island.capital_x is not None
             else None,
             "regime": island.regime,
+            "capital_buildings": _capital_buildings(island.regime, island.ext, get_game().defs),
             "mine": request.user.is_authenticated and island.owner_id == request.user.id,
             "facilities": facilities,
             **data,
@@ -284,17 +305,9 @@ def tile(request, island_id: int, x: int, y: int):
         data["works_why"] = display.works_why(economy)
     if data["capital"]:
         data["capital_name"] = island.names.get("capital", "")
-        # 体制で決まる首都の建物（議事堂・王宮など）。政治の仕組みを変えて建て替えている間は、
-        # 前の体制の建物（フェーズ3-4）
-        rebuilding = island.ext.get("politics", {}).get("building")
-        buildings = [
-            (rebuilding if axis == "politics" and rebuilding else None)
-            or d.regimes[r].get("capital_building")
-            for axis, r in island.regime.items()
-            if r in d.regimes
-        ]
         data["capital_buildings"] = [
-            display.message(f"capital_building_{b}") for b in buildings if b
+            display.message(f"capital_building_{b}")
+            for b in _capital_buildings(island.regime, island.ext, d)
         ]
     f = m.Facility.objects.filter(island_id=island_id, x=x, y=y).first()
     if f is not None:

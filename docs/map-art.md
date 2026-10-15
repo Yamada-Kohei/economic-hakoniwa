@@ -64,7 +64,8 @@ sprites:
 | `housing/town` | 町 | 2 段 |
 | `housing/city` | 都市 | 4 段 |
 | `housing/metropolis` | 大都市 | 6 段 |
-| `capital/<施設の sprite>` | 首都のマスにあるときの施設（任意） | 例 `capital/government_office` |
+| `capital/<政治の建物>-<元首の建物>` | 首都の官庁を、体制で決まる建物の組み合わせで描く（下の「首都の建物」） | 例 `capital/parliament-palace` |
+| `capital/<施設の sprite>` | 首都のマスにあるときの施設（任意。上の組み合わせの絵がないとき） | 例 `capital/government_office` |
 | `construction` | 工事中（任意。どの施設にも共通） | なければ白い点線の枠 |
 
 施設はこれからも増えます（フェーズ2-2 以降）。新しい施設の絵は、その施設が定義データに入ってから足します。
@@ -100,6 +101,29 @@ sprites:
 </svg>
 ```
 
+## 首都の建物
+
+首都のマスの官庁（`category: admin` の施設）は、島の体制で決まる首都の建物の組み合わせの絵で描きます。
+名前は `capital/<政治の仕組みの建物>-<元首の形の建物>` で、建物は `packs/base/data/regimes.yaml` の
+`capital_building` です（経済体制の軸には建物がありません）。地図の API の `capital_buildings` が、
+軸の順にこの建物を返します。
+
+| 名前 | 体制 | 絵 |
+|---|---|---|
+| `capital/parliament-palace` | 民主制 × 君主制 | 縦の筋の多い石の議事堂、端に時計塔 |
+| `capital/parliament-presidential_office` | 民主制 × 共和制 | 白い議事堂の真ん中に高い丸屋根 |
+| `capital/official_residence-palace` | 権威主義 × 君主制 | 黄色い壁の長い王宮と、前の幾何学の庭と噴水 |
+| `capital/official_residence-presidential_office` | 権威主義 × 共和制 | 赤れんがの城壁と塔に囲まれた大統領府 |
+| `capital/party_headquarters-palace` | 全体主義 × 君主制 | 鉛ぶきの屋根の王宮に赤い垂れ幕と赤い旗、広場の大きな金の像 |
+| `capital/party_headquarters-presidential_office` | 全体主義 × 共和制 | 段々に細くなる党本部の塔と、像と旗の広場 |
+
+- 実在の建物の雰囲気（時計塔・丸屋根・城壁・広場の像など）だけを借り、そっくりには描きません。
+- 政治の仕組みを変えると首都の建物を建て替えます。建て替えが済むまでは前の体制の建物の絵のままで、
+  マスの欄の「首都の建物」とそろいます。元首の形を変えたときは建て替えがないので、すぐ変わります。
+- 組み合わせの絵がなければ `capital/<施設の sprite>`、それもなければ `facility/<施設の sprite>` で描きます。
+- 見本ページの「首都」は、`?capital=party_headquarters-palace` のように組み合わせを選べます
+  （既定は軸ごとの最初の建物）。
+
 ## 絵の描き方
 
 - **形式は SVG を基本にします。** 拡大しても粗くならず、差分で中身が読めて、直しやすいからです。
@@ -133,6 +157,7 @@ sprites:
 2. **見本ページ** http://127.0.0.1:8000/static/map-preview.html を開きます。地形・施設・住宅の各段階・
    工事中・止まっている施設・首都・送電線・開発禁止を 1 つの島に並べ、島の画面と同じコードで描きます。
    `?sprites=0` で絵なし（色の箱）、`?scale=2` で拡大、`?overlay=population` で重ね表示と見比べられます。
+   `?capital=<政治の建物>-<元首の建物>` で首都の絵を選べます。
    ドラッグとホイールで動かせます。
 3. 実際の島 http://127.0.0.1:8000/islands/1/ でも、拡大・縮小して見ます。
 4. 自動テスト: `pytest tests/server/test_theme_sprites.py`（名前・ファイル・大きさ・危ない SVG・出典を調べる）と、
