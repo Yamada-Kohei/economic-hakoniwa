@@ -14,7 +14,8 @@ from typing import Any
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.state import Facility
+from hakoniwa_core.market import auction
+from hakoniwa_core.state import Facility, IslandState
 from hakoniwa_core.units import QUANTITY_SCALE, money_of, part, round_money, scale_price
 
 Prices = Mapping[str, int]
@@ -208,3 +209,21 @@ def unit_floor(
     else:
         share = cost
     return round_money(share * QUANTITY_SCALE / outputs[good])
+
+
+def usual_price(island: IslandState, good: str, turns: int) -> int:
+    """家計が見る「いつもの値段」: 直近 turns ターンの値段の平均（記録がなければ今の値段）。"""
+    history = island.economy.price_history.get(good, [])[-turns:]
+    if not history:
+        return island.economy.prices.get(good, 1)
+    return max(1, round_money(sum(history) / len(history)))
+
+
+def material_limit(island: IslandState, config: GameConfig, good: str, width: int) -> int:
+    """工事とインフラの資材の買いの指値: 値幅の上端と、いつもの値段の一番上の段
+    （household.consumer_goods_tiers）の安い方（フェーズ3-2。値幅の上端で買い続けると、品薄の
+    島で機械と鋼鉄の値段が初めの数十〜数百倍まで上がった。高ければ工事が待つ）。"""
+    settings = config.get("household")
+    usual = usual_price(island, good, settings["usual_price_turns"])
+    _, high = auction.band(island.economy.prices.get(good, 1), width)
+    return min(high, scale_price(usual, max(settings["consumer_goods_tiers"])))

@@ -246,11 +246,11 @@ def plan(island: IslandState, ctx: StageContext, upkeep: bool, wage: int) -> int
 def _material_cost(
     island: IslandState, ctx: StageContext, works: Works, upkeep: bool, have: dict[str, int]
 ) -> int:
-    """次のターンの仕事に市場で買う資材の代金の見込み（値幅の上端、家計の運賃の率で）。
+    """次のターンの仕事に市場で買う資材の代金の見込み（工事の資材の指値、家計の運賃の率で）。
 
     国の倉庫の在庫と、前のターンに売りに出ていた量までで見積もる（施設の工事の SiteFunds と同じ）。
     """
-    from hakoniwa_core.market import auction
+    from hakoniwa_core.economy.prices import material_limit
     from hakoniwa_core.units import money_of, part, to_basis
 
     have = {g: max(0, q) for g, q in have.items()}  # このターンの仕事に使った後に残る見込み
@@ -276,8 +276,7 @@ def _material_cost(
         buy = min(need, supply.get(good, 0))
         if buy <= 0:
             continue
-        _, high = auction.band(island.economy.prices.get(good, 1), width)
-        amount = money_of(high, buy)
+        amount = money_of(material_limit(island, ctx.config, good, width), buy)
         total += amount + part(amount, rate)
     return total
 
