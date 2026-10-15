@@ -1,14 +1,14 @@
 {% extends "base.html" %}{% load i18n %}
-{% block title %}{% if box == "inbox" %}{% translate "受信箱" %}{% else %}{% translate "送った手紙" %}{% endif %} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block title %}{% if box == "inbox" %}{% translate "届いた公電" %}{% else %}{% translate "送った公電" %}{% endif %} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
-<h1>{% translate "手紙" %} <span class="page-title">{{ island.name }}</span></h1>
+<h1>{% translate "外交" %} <span class="page-title">{{ island.name }}</span></h1>
 {% include "letters/nav.html" %}
-<p class="hint">{% translate "手紙は送るとすぐに届き、差出人と宛先の国の持ち主だけが読めます。" %}</p>
+<p class="hint">{% translate "公電は送るとすぐに届き、発信国と宛先国の持ち主だけが読めます。" %}</p>
 <div class="table-scroll">
 <table class="letters">
   <thead><tr>
-    <th>{% if box == "inbox" %}{% translate "差出人" %}{% else %}{% translate "宛先" %}{% endif %}</th>
-    <th>{% translate "題名" %}</th><th>{% translate "ターン" %}</th><th>{% translate "送った時刻" %}</th>
+    <th>{% if box == "inbox" %}{% translate "発信国" %}{% else %}{% translate "宛先国" %}{% endif %}</th>
+    <th>{% translate "件名" %}</th><th>{% translate "ターン" %}</th><th>{% translate "送った時刻" %}</th>
     <th>{% if box == "inbox" %}{% translate "状態" %}{% else %}{% translate "相手" %}{% endif %}</th>
   </tr></thead>
   <tbody>
@@ -21,7 +21,7 @@
       <td>{% if letter.read_at %}{% translate "既読" %}{% else %}{% translate "未読" %}{% endif %}</td>
     </tr>
   {% empty %}
-    <tr><td colspan="5" class="muted">{% if box == "inbox" %}{% translate "届いた手紙はありません。" %}{% else %}{% translate "送った手紙はありません。" %}{% endif %}</td></tr>
+    <tr><td colspan="5" class="muted">{% if box == "inbox" %}{% translate "届いた公電はありません。" %}{% else %}{% translate "送った公電はありません。" %}{% endif %}</td></tr>
   {% endfor %}
   </tbody>
 </table>

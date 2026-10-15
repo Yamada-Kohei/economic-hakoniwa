@@ -57,7 +57,7 @@ def test_send_receive_and_read(client, world):
     inbox = client.get("/api/letters").json()
     assert inbox["unread"] == 1 and inbox["count"] == 1
     assert inbox["letters"][0]["subject"] == "ごあいさつ" and "body" not in inbox["letters"][0]
-    assert "未読 1" in client.get("/").content.decode()  # 見出しの「手紙」
+    assert "未読の公電 1" in client.get("/").content.decode()  # 見出しの「外交」
     opened = client.get(f"/api/letters/{letter.id}").json()
     assert opened["read"] and opened["read_at"] and opened["body"] == "よろしくお願いします。"
     assert client.get("/api/letters").json()["unread"] == 0
@@ -187,21 +187,25 @@ def test_csrf_is_required_for_posting(world):
 def test_letter_pages(client, world):
     (alice, bob, _), (a, b, _) = _players(world)
     client.force_login(alice)
-    # 島の画面: ほかの島には手紙を書くリンク、自分の島にはなし
-    assert f"/letters/new/?to={b.id}" in client.get(f"/islands/{b.id}/").content.decode()
+    # 島の画面: ほかの島には公電を送るリンク、自分の島にはなし
+    island_page = client.get(f"/islands/{b.id}/").content.decode()
+    assert f"/letters/new/?to={b.id}" in island_page and "この国に公電を送る" in island_page
     assert "/letters/new/?to=" not in client.get(f"/islands/{a.id}/").content.decode()
     page = client.get(f"/letters/new/?to={b.id}").content.decode()
     assert f'<option value="{b.id}" selected>' in page
     assert f'<option value="{a.id}"' not in page  # 自分の島は宛先に出さない
+    assert "公電を送る" in page and "件名" in page and "手紙" not in page
     res = client.post("/letters/new/", {"to": b.id, "subject": "画面から", "body": "こんにちは"})
     letter = Letter.objects.get()
     assert res.status_code == 302 and res["Location"] == f"/letters/{letter.id}/"
     assert "画面から" in client.get("/letters/sent/").content.decode()
 
     client.force_login(bob)
-    assert "画面から" in client.get("/letters/").content.decode()
+    inbox = client.get("/letters/").content.decode()
+    assert "画面から" in inbox and "届いた公電" in inbox and "手紙" not in inbox
     page = client.get(f"/letters/{letter.id}/").content.decode()
     assert "こんにちは" in page and f"/letters/new/?re={letter.id}" in page
+    assert "発信国" in page and "返電を送る" in page and "手紙" not in page
     letter.refresh_from_db()
     assert letter.read_at is not None
     reply = client.get(f"/letters/new/?re={letter.id}").content.decode()

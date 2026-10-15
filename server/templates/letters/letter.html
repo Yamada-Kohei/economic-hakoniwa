@@ -1,12 +1,12 @@
 {% extends "base.html" %}{% load i18n %}
-{% block title %}{{ letter.subject }} - {% translate "手紙" %}{% endblock %}
+{% block title %}{{ letter.subject }} - {% translate "公電" %}{% endblock %}
 {% block content %}
 <h1>{{ letter.subject }}</h1>
 {% include "letters/nav.html" with box="" %}
 <article class="panel">
   <p class="muted">
-    {% translate "差出人" %}: <a href="{% url 'island' letter.sender.id %}">{{ letter.sender.name }}</a>{% if letter.author %}（{{ letter.author.username }}）{% endif %}
-    → {% translate "宛先" %}: <a href="{% url 'island' letter.recipient.id %}">{{ letter.recipient.name }}</a>
+    {% translate "発信国" %}: <a href="{% url 'island' letter.sender.id %}">{{ letter.sender.name }}</a>{% if letter.author %}（{{ letter.author.username }}）{% endif %}
+    → {% translate "宛先国" %}: <a href="{% url 'island' letter.recipient.id %}">{{ letter.recipient.name }}</a>
   </p>
   <p class="muted">
     {% blocktranslate with turn=letter.turn %}ターン {{ turn }}{% endblocktranslate %} ・ {{ letter.sent_at|date:"Y-m-d H:i" }}
@@ -15,8 +15,8 @@
   <div class="post-body">{{ letter.body|linebreaksbr }}</div>
 </article>
 {% if incoming %}
-  <p><a href="{% url 'letter_new' %}?re={{ letter.id }}">{% translate "返事を書く" %}</a></p>
+  <p><a href="{% url 'letter_new' %}?re={{ letter.id }}">{% translate "返電を送る" %}</a></p>
 {% else %}
-  <p><a href="{% url 'letter_new' %}?to={{ letter.recipient.id }}">{% translate "この国にもう1通書く" %}</a></p>
+  <p><a href="{% url 'letter_new' %}?to={{ letter.recipient.id }}">{% translate "この国にもう1通送る" %}</a></p>
 {% endif %}
 {% endblock %}

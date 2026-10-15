@@ -1,4 +1,4 @@
-"""手紙を送る・読む決まり。画面（views.py）と JSON API（api.py）の両方が使う。
+"""手紙（画面では「公電」）を送る・読む決まり。画面（views.py）と JSON API（api.py）の両方が使う。
 
 送れるのは自分の島を持つ人だけで、差出人は自分の島（1アカウント1島）。読めるのは差出人の島と
 宛先の島の持ち主だけ。送りすぎの歯止めに、1つの島が 24 時間に送れる数を設定
@@ -84,9 +84,9 @@ def send_letter(user, sender: Island, to: int, subject: str, body: str) -> Lette
     if recipient.owner_id is None:  # 読む人がいない（見本の島など）
         raise LetterError("この島には持ち主がいません")
     if not subject:
-        raise LetterError("題名を書いてください")
+        raise LetterError("件名を書いてください")
     if len(subject) > SUBJECT_MAX:
-        raise LetterError(f"題名は {SUBJECT_MAX} 字までです（いまは {len(subject)} 字）")
+        raise LetterError(f"件名は {SUBJECT_MAX} 字までです（いまは {len(subject)} 字）")
     if not body:
         raise LetterError("本文を書いてください")
     if len(body) > BODY_MAX:
@@ -95,7 +95,7 @@ def send_letter(user, sender: Island, to: int, subject: str, body: str) -> Lette
     since = timezone.now() - timedelta(days=1)
     if Letter.objects.filter(sender=sender, sent_at__gte=since).count() >= limit:
         raise LetterError(
-            f"1つの島から送れる手紙は 24 時間に {limit} 通までです。"
+            f"1つの島から送れる公電は 24 時間に {limit} 通までです。"
             "しばらく待ってから送ってください",
             status=429,
         )
@@ -110,7 +110,7 @@ def send_letter(user, sender: Island, to: int, subject: str, body: str) -> Lette
 
 
 def reply_subject(subject: str) -> str:
-    """返事の題名（「Re: 」を1つだけ付け、長さの上限に収める）。"""
+    """返電の件名（「Re: 」を1つだけ付け、長さの上限に収める）。"""
     if subject.startswith("Re: "):
         return subject
     return ("Re: " + subject)[:SUBJECT_MAX]
