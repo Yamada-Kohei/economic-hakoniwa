@@ -4,7 +4,8 @@
 # game.yaml の politics.parliament.tax_points ポイントより大きく変えるときだけ採決する）、
 # secret: 実行するまで持ち主だけに見せる命令（現実の国が前もって公表しないもの。為替介入・資本規制・
 # 利下げ・不履行・銀行の救済・解散・交渉中の契約など。実行した後は、ほかの命令と同じく誰にでも見える。
-# 書かない命令は、予算・税・関税のように前もって公表するもので、待っている間も誰にでも見える）。
+# 書かない命令は、予算・税・関税のように前もって公表するもので、待っている間も誰にでも見える。
+# {項目: 値} と書くと、payload のその項目がその値の命令だけを伏せる。例: 国の倉庫の買い入れ）。
 # 処理する関数は hakoniwa_core/modules/ の各モジュールで登録します。
 rename_island:
   admin_cost: 0
@@ -181,7 +182,8 @@ set_price_cap:
 
 warehouse_trade:
   admin_cost: 1
-  secret: true
+  # 備蓄の放出（売り）は前もって発表し、買い入れは実行まで伏せる（現実の備蓄米・石油備蓄と同じ）
+  secret: {side: buy}
   payload:
     type: object
     required: [good, side, quantity]

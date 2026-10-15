@@ -137,3 +137,22 @@ def test_pack_cycle(game_dir):
     write(path / "packs/p2/pack.yaml", "name: p2\nversion: 1\nrequires: [p1]\n")
     with pytest.raises(DefsError, match="循環"):
         load(path)
+
+
+@pytest.mark.parametrize(
+    ("secret", "message"),
+    [
+        ("{sid: buy}", "payload に sid がありません"),
+        ("{side: hold}", "'hold' は side の値になりません"),
+    ],
+)
+def test_order_secret_condition_must_match_the_payload(game_dir, secret, message):
+    """中身で伏せる命令の条件（secret: {項目: 値}）は、payload にある項目と、その形に合う値。"""
+    path = game_dir()
+    orders = path / "packs/base/data/orders.yaml"
+    text = orders.read_text(encoding="utf-8")
+    assert "  secret: {side: buy}\n" in text
+    orders.write_text(text.replace("  secret: {side: buy}\n", f"  secret: {secret}\n"), "utf-8")
+    with pytest.raises(DefsError) as e:
+        load(path)
+    assert any(message in str(i) for i in e.value.issues), e.value.issues

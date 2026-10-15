@@ -127,6 +127,17 @@ def _check_order(oid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator
         Draft202012Validator.check_schema(thaw(entry["payload"]))
     except SchemaError as e:
         yield ("orders", oid, ("payload",), f"payload のスキーマが正しくありません: {e.message}")
+        return
+    secret = entry.get("secret", True)
+    if secret is True:
+        return
+    # 中身で伏せる命令: 項目は payload にあり、値はその項目の形に合う
+    properties = entry["payload"].get("properties", {})
+    for key, value in secret.items():
+        if key not in properties:
+            yield ("orders", oid, ("secret", key), f"payload に {key} がありません")
+        elif not Draft202012Validator(thaw(properties[key])).is_valid(thaw(value)):
+            yield ("orders", oid, ("secret", key), f"{value!r} は {key} の値になりません")
 
 
 def _check_facility_zone(fid: str, entry: Mapping[str, Any]) -> Iterator[Problem]:
