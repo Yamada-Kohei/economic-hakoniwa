@@ -517,9 +517,11 @@ class _Round:
                     for c in active
                     if c["currency"] == currency and i in (c["buyer"], c["seller"])
                 )
+                depth = fxrates.depth(island, currency, self.config, scheduled)
                 book = fxrates.Book(
-                    depth=fxrates.depth(island, currency, self.config, scheduled),
+                    depth=depth,
                     peg_band=fxrates.peg_band(self.config),
+                    reserve_cap=fxrates.reserve_cap(self.config, depth),
                 )
                 reference = fxrates.rate(island, currency)
                 for entity in sorted(payers):

@@ -515,10 +515,50 @@ def test_peg_far_from_the_rate_moves_it_by_the_band(game, base):
     )
     assert island.policy.fx_peg  # 準備は十分にある
     width = to_basis(game.config.get("fx.band"))
-    expected = start
-    for r in rates:
-        expected = expected * (BASIS - width) // BASIS
-        assert r <= expected + 1
+    for before, after in zip([start, *rates], rates, strict=False):  # 毎ターン値幅だけ下がる
+        assert after <= before * (BASIS - width) // BASIS + 1
+
+
+def _passive(world, island, other, depth, cap, reference, width):
+    """受け身の注文だけの板を作り、(島の中央銀行の買い, 発行した島の中央銀行の売り, 島の中央銀行の
+    売り, 発行した島の中央銀行の買い) の量を返す。"""
+    book = fxrates.Book(depth=depth, reserve_cap=cap)
+    fxrates.dealer_orders(island, other.id, book, reference, width)
+    fxrates.issuer_orders(world, island, other.id, book, reference, width)
+    return (
+        sum(o.quantity for o, who, _ in book.buys if who == ledger.CB),
+        sum(o.quantity for o, who, _ in book.sells if who == fxrates.ISSUER),
+        sum(o.quantity for o, who, _ in book.sells if who == ledger.CB),
+        sum(o.quantity for o, who, _ in book.buys if who == fxrates.ISSUER),
+    )
+
+
+def test_passive_orders_stop_at_the_reserve_cap(game, base):
+    """受け身の注文で持つ外貨は市場の厚みの fx.reserve_turns ターン分まで。上限に届くと、島の
+    中央銀行は買わず、発行した島の中央銀行は売らない（関門で、決済通貨を発行した島の外貨準備が
+    年の GDP の何倍にも増え続けた直し）。反対の向きの注文は出す。"""
+    world = copy.deepcopy(base)
+    island, other = _pair(world)
+    reference = fxrates.rate(island, other.id)
+    width = to_basis(game.config.get("fx.band"))
+    have = fxmoney.holding(island, ledger.CB, other.id)
+    reserve = fxmoney.holding(other, ledger.CB, island.id)  # 発行した島の持つこの島の通貨
+    depth = 5 * (max(have, reserve * BASIS // reference, 10_000) // 5 + 1)
+    cap = fxrates.reserve_cap(game.config, depth)
+    assert cap == depth * game.config.get("fx.reserve_turns")
+    cb_buy, issuer_sell, _, _ = _passive(world, island, other, depth, cap, reference, width)
+    assert cb_buy == depth and issuer_sell == depth  # 上限まで遠ければ厚みの分
+    _give_fx(world, island, ledger.CB, other.id, cap - depth // 2 - have)
+    _give_fx(world, other, ledger.CB, island.id, (cap - depth // 2) * reference // BASIS - reserve)
+    cb_buy, issuer_sell, _, _ = _passive(world, island, other, depth, cap, reference, width)
+    assert 0 < cb_buy <= depth // 2 and 0 < issuer_sell <= depth // 2 + 1  # 上限までの分だけ
+    _give_fx(world, island, ledger.CB, other.id, depth)
+    _give_fx(world, other, ledger.CB, island.id, depth * reference // BASIS)
+    cb_buy, issuer_sell, cb_sell, issuer_buy = _passive(
+        world, island, other, depth, cap, reference, width
+    )
+    assert cb_buy == 0 and issuer_sell == 0
+    assert cb_sell > 0 and issuer_buy > 0
 
 
 def _busiest(world):

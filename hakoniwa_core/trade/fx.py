@@ -15,13 +15,21 @@
 中央銀行は受け身の注文を出します（dealer_orders。3-1 で足した。介入と固定は 3-3）。前のレートより
 安い側で、市場の厚み（その島の主体がこの通貨で払い・受け取った額の直近 fx.depth_turns ターンの平均。
 少なくとも平均賃金の fx.min_depth 倍と、このターンに効く契約で払い・受け取る額）の分を段に分けて
-買い、高い側で、持っている分を同じように売ります。島に商社が1つしかないと、売りと買いがそろわず両替ができないためです。輸出の稼ぎが多い島は
-中央銀行が買い取って通貨が高くなり、輸入が多い島は中央銀行の持ち高が尽きると通貨が安くなります。
+買い、高い側で、持っている分を同じように売ります。島に商社が1つしかないと、売りと買いがそろわず
+両替ができないためです。輸出の稼ぎが多い島は中央銀行が買い取って通貨が高くなり、輸入が多い島は
+中央銀行の持ち高が尽きると通貨が安くなります。
 
 通貨 C を発行した島の中央銀行も、同じように受け身の注文を出します（issuer_orders。試し遊びで、島の
 誰も持っていない通貨は売り手がなく買えず、その通貨の契約や貿易圏が止まったため）。前のレートより高い
-側で、市場の厚みの分の C を売り（自国通貨なので持ち高に頭打ちはない）、受け取ったこの島の通貨は発行
-した島の中央銀行の外貨準備になります。安い側では、その外貨準備の分だけ C を買い戻します。
+側で、市場の厚みの分の C を売り、受け取ったこの島の通貨は発行した島の中央銀行の外貨準備になります。
+安い側では、その外貨準備の分だけ C を買い戻します。
+
+受け身の注文で持つ外貨には上限があります（フェーズ3-3。reserve_cap）: 島の中央銀行が持つ C と、
+発行した島の中央銀行が持つこの島の通貨は、どちらも市場の厚みの fx.reserve_turns ターン分までです。
+上限に届くと、その向きの受け身の注文（島の中央銀行の買い、発行した島の中央銀行の売り）を出さない
+ので、片寄った売り買いでレートが動きます（関門で、決済通貨を発行した島の中央銀行が、赤字の国に
+決済通貨を売り続けて、外貨準備が年の GDP の 6〜12 倍まで増え続けたため）。それより多く持ちたい
+国は、介入の命令で買います。
 
 片側だけで買いしかないとき（どちらの中央銀行の注文も相手にならないほど偏ったとき）は、出ている一番
 高い買いの指値の方へ、「相手のない量 ÷（相手のない量 + 市場の厚み）」の割合だけ動きます（売りしか
@@ -123,6 +131,7 @@ class Book:
     sells: list[tuple[Order, str, Payer]] = field(default_factory=list)
     held: list[tuple[Payer, int]] = field(default_factory=list)  # 買い注文に取り置いた自国通貨
     depth: int = 0  # 市場の厚み（島の主体がこの通貨で払い・受け取った額の、直近の平均）
+    reserve_cap: int = 0  # 受け身の注文で持つ外貨の上限（この通貨の額。0 は上限なし。reserve_cap）
     peg_band: int = 100  # 固定相場の幅（1万分の1。fx.peg_band）
     intervening: bool = False  # 中央銀行が介入している（受け身の注文を出さない）
 
@@ -310,6 +319,11 @@ def peg_band(config) -> int:
     return to_basis(config.get("fx.peg_band"))
 
 
+def reserve_cap(config, depth: int) -> int:
+    """受け身の注文で持つ外貨の上限: 市場の厚みの fx.reserve_turns ターン分（フェーズ3-3）。"""
+    return depth * config.get("fx.reserve_turns")
+
+
 @dataclass
 class Peg:
     """このターンの固定相場の注文（固定が外れたかを確かめるため）。"""
@@ -397,11 +411,17 @@ def dealer_orders(
     low, high = auction.band(reference, width)
     payer = Payer(ledger.CB)
     have = fxmoney.holding(island, ledger.CB, currency)
+    room = book.reserve_cap - have if book.reserve_cap else None  # 上限まで買える量
     for j in range(1, TIERS + 1):
         qty = depth // TIERS
         if qty <= 0:
             break
-        book.buys.append((Order(qty, reference - (reference - low) * j // TIERS), ledger.CB, payer))
+        buy = qty if room is None else max(0, min(qty, room))
+        if buy > 0:
+            price = reference - (reference - low) * j // TIERS
+            book.buys.append((Order(buy, price), ledger.CB, payer))
+            if room is not None:
+                room -= buy
         sell = min(qty, have)
         if sell > 0:
             book.sells.append(
@@ -419,20 +439,27 @@ def issuer_orders(
     width: int,
 ) -> None:
     """通貨 currency を発行した島の中央銀行の受け身の注文。前のレートより高い側に、市場の厚みの分の
-    currency を TIERS 段に分けて売り（自国通貨なので持ち高に頭打ちはない）、安い側に、持っている
-    この島の通貨（外貨準備）で買える分だけ同じように買い戻す。発行した島にお金の経済がなければ
-    出さない。"""
+    currency を TIERS 段に分けて売り（受け取るこの島の通貨が book.reserve_cap を currency に直した額
+    に届くまで）、安い側に、持っているこの島の通貨（外貨準備）で買える分だけ同じように買い戻す。
+    発行した島にお金の経済がなければ出さない。"""
     issuer = world.islands.get(currency)
     if issuer is None or not issuer.has_economy or book.depth <= 0:
         return
     low, high = auction.band(reference, width)
     payer = Payer(ledger.CB)
     reserve = fxmoney.holding(issuer, ledger.CB, island.id)  # この島の通貨
+    # 上限まで受け取れるこの島の通貨（上限は currency の額なので、今のレートでこの島の通貨に直す）
+    room = book.reserve_cap * reference // BASIS - reserve if book.reserve_cap else None
     for j in range(1, TIERS + 1):
         qty = book.depth // TIERS
         if qty <= 0:
             break
-        book.sells.append((Order(qty, reference + (high - reference) * j // TIERS), ISSUER, payer))
+        ask = reference + (high - reference) * j // TIERS
+        sell = qty if room is None else max(0, min(qty, room * BASIS // max(1, ask)))
+        if sell > 0:
+            book.sells.append((Order(sell, ask), ISSUER, payer))
+            if room is not None:
+                room -= sell * ask // BASIS
         price = reference - (reference - low) * j // TIERS
         buy = min(qty, reserve * BASIS // max(1, price))
         if buy > 0:
