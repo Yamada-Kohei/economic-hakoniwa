@@ -227,3 +227,23 @@ def material_limit(island: IslandState, config: GameConfig, good: str, width: in
     usual = usual_price(island, good, settings["usual_price_turns"])
     _, high = auction.band(island.economy.prices.get(good, 1), width)
     return min(high, scale_price(usual, max(settings["consumer_goods_tiers"])))
+
+
+def add_missing_prices(island: IslandState, defs: Defs, config: GameConfig) -> list[str]:
+    """定義にあって島の値段のない財（前のフェーズから続く島の、新しい品目）に値段を置き、置いた財を
+    返す。値段は島の初めの値段に、今の物価指数の倍率を掛けたもの（フェーズ3-2。値段がないと 1 と
+    見て、値幅が 1 のまま動かず、作っても売っても値段が 1 のままだった）。"""
+    from hakoniwa_core.economy.stats import BASE_CPI
+
+    prices = island.economy.prices
+    missing = sorted(set(defs.goods) - set(prices))
+    if not missing:
+        return []
+    base = initial_prices(defs, config, island.resources)
+    history = island.economy.cpi_history
+    level = history[-1] / BASE_CPI if history and history[-1] > 0 else 1.0
+    for good in missing:
+        price = max(1, round_money(base.get(good, 1) * level))
+        prices[good] = price
+        island.economy.price_history[good] = [price]
+    return missing

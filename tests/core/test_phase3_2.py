@@ -11,12 +11,14 @@ import random
 
 import pytest
 
+from hakoniwa_core import autoplan, nature, stock
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import nature, stock
 from hakoniwa_core.economy import needs, trucks
-from hakoniwa_core.economy.prices import initial_prices, unit_floor
+from hakoniwa_core.economy.prices import initial_prices, material_limit, unit_floor
 from hakoniwa_core.gate import Recorder
+from hakoniwa_core.market import auction
 from hakoniwa_core.modules import records
+from hakoniwa_core.modules.firms import EntryExit
 from hakoniwa_core.modules.production import check_change_recipe
 from hakoniwa_core.modules.upgrade import Upgrade
 from hakoniwa_core.registry import OrderFailed
@@ -24,7 +26,7 @@ from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE, Facility, MarketReco
 from hakoniwa_core.state.generate import _weighted_sample, generate_island
 from hakoniwa_core.trade import blocs, island_state
 from hakoniwa_core.trade import traders as trade_traders
-from hakoniwa_core.units import QUANTITY_SCALE
+from hakoniwa_core.units import QUANTITY_SCALE, round_money, scale_price
 from tests.core.test_finance import context, island_of, order
 from tests.core.test_finance import game as game  # noqa: F401  （試験の部品を使い回す）
 from tests.core.test_finance import warmed as warmed  # noqa: F401
@@ -174,6 +176,27 @@ def test_upgrade_gives_old_islands_a_climate_and_blends_it_in(game, warmed):
     assert nature.recipe_multiplier(game.defs, game.config, island, farm) == pytest.approx(target)
     Upgrade().run_island(island, ctx)  # 2度は置かない
     assert sum(e.kind == "nature_started" for e in island.log) == 1
+
+
+def test_upgrade_prices_new_goods_at_the_island_price_level(game, warmed):
+    """前のフェーズから続く島には新しい品目の値段がない。値段がないと 1 と見て、値幅が 1 のまま
+    動かなかったので、島の初めの値段に今の物価指数の倍率を掛けた値段を置く。"""
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    ctx = context(game, world)
+    economy = island.economy
+    for good in NEW_GOODS:
+        economy.prices.pop(good)
+        economy.price_history.pop(good, None)
+    economy.cpi_history = [*economy.cpi_history, 80.0]
+    Upgrade().run_island(island, ctx)
+    base = initial_prices(game.defs, game.config, island.resources)
+    for good in NEW_GOODS:
+        assert economy.prices[good] == round_money(base[good] * 0.8)
+        assert economy.price_history[good] == [economy.prices[good]]
+    grain = economy.prices["grain"]
+    Upgrade().run_island(island, ctx)  # 値段のある財は変えない
+    assert economy.prices["grain"] == grain
 
 
 # --- 必需品とぜいたく品 --------------------------------------------------------------
@@ -328,6 +351,26 @@ def test_change_recipe_switches_at_the_market_and_halves_the_next_turn(game, war
         assert farm.status == "recipe_change"
 
 
+def test_private_farm_turns_to_a_new_crop_only_when_it_is_short(game, warmed):
+    """民営の作り方の見直しで、今作っていない物（綿）に替えるのは、綿の直近の買いたい量が売りに
+    出た量を、新しい作り方の全力の産出の firms.entry_gap 倍以上上回るときだけ（綿の値段が高い
+    ターンに民営の農場がそろって綿に替え、綿が余って値段が初めの 0.1 倍まで下がった）。"""
+    world = copy.deepcopy(warmed)
+    hot = next(i for i in world.islands.values() if nature.climate_of(i) == "tropical")
+    farm = next(f for f in hot.facilities if f.kind == "farm" and f.recipe == "default" and f.built)
+    ctx = context(game, world)
+    prices = dict(hot.economy.prices)
+    full = game.defs.facilities["farm"]["recipes"]["cotton"]["outputs"]["cotton"]
+    finance = hot.economy.finance
+    finance.setdefault("demand", {})["cotton"] = [3 * full] * 6
+    finance.setdefault("supply", {})["cotton"] = [3 * full] * 6  # 足りている
+    profits = EntryExit._recipe_profits(hot, ctx, farm, prices, set(), 0)
+    assert "default" in profits and "cotton" not in profits
+    finance["supply"]["cotton"] = [3 * full - full // 2] * 6  # 全力の産出の半分だけ足りない
+    profits = EntryExit._recipe_profits(hot, ctx, farm, prices, set(), 0)
+    assert "cotton" in profits
+
+
 # --- 品不足の知らせ -----------------------------------------------------------------
 
 
@@ -395,6 +438,37 @@ def test_import_floor_only_for_goods_on_sale_in_the_bloc(game, warmed):
 
 
 # --- 一括シミュレーションと関門 ------------------------------------------------------
+
+
+def test_standard_plan_builds_necessities_then_luxuries_then_cars(game):
+    """標準の計画は、家計の買う物の施設を必需品、ぜいたく品（重い順）、自動車、燃料の順に建てる
+    （名前の順では自動車工場が先に建ち、その工事で公共事業費が尽きて、どの工事も止まった）。"""
+    defs, config = game.defs, game.config
+    order = autoplan._consumer_order(defs, config)
+    rank = {g: i for i, g in enumerate(order)}
+    necessities = [g for g in order if defs.goods[g].get("need") == needs.NECESSITY]
+    assert max(rank[g] for g in necessities) < rank["consumer_goods"] < rank["luxury_crop"]
+    assert rank["luxury_crop"] < rank["automobile"] < rank["fuel"]
+    # 自動車工場は、投入財（電力を除く）がどれも島で作っているか貿易で手に入るときだけ
+    inputs = set(defs.facilities["automobile_plant"]["recipes"]["default"]["inputs"])
+    inputs.discard(config.get("power.good"))
+    assert autoplan._inputs_at_hand(defs, config, "automobile_plant", "default", inputs)
+    some = set(sorted(inputs)[1:])
+    assert not autoplan._inputs_at_hand(defs, config, "automobile_plant", "default", some)
+
+
+def test_construction_bids_stop_at_the_top_household_tier(game, warmed):
+    """工事とインフラの資材の指値は、値幅の上端と、いつもの値段（12 ターンの平均）の一番上の段の
+    安い方（値幅の上端で買い続けると、品薄の島で機械と鋼鉄が初めの数十〜数百倍になった）。"""
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    config = game.config
+    top = max(config.get("household.consumer_goods_tiers"))
+    island.economy.prices["steel"] = 2000
+    island.economy.price_history["steel"] = [1000] * 12
+    assert material_limit(island, config, "steel", 1000) == scale_price(1000, top)
+    island.economy.price_history["steel"] = [4000] * 12  # 値段が下がってきたときは値幅の上端
+    assert material_limit(island, config, "steel", 1000) == auction.band(2000, 1000)[1]
 
 
 def test_sample_resources_are_weighted_and_distinct():
