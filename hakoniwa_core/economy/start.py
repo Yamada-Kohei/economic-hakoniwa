@@ -265,7 +265,7 @@ def _open_money(
     population = sum(t.population for t in island.tiles)
     bank_names = [ledger.bank_entity(b.id) for b in bank_facilities]
     rates, _ = freight_rates.compute(island, defs, config)
-    turns = config.get("firms.operating_turns")
+    turns = settings["operating_turns"]
 
     funds: dict[int, int] = {}
     for f in island.facilities:

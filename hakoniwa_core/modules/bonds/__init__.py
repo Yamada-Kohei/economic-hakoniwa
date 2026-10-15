@@ -3,25 +3,31 @@
 
 1. 区分ごとの利回り（economy.finance["yields"]）を、前のターンからの政策金利の動きだけ動かす。
 2. 命令 set_bond_payment で支払いを止めていれば、すべての銘柄を不履行にする。
-3. 今のターンの利払いと償還に国庫が足りなければ、足りない分を入札で発行する（借り換え）。
-4. 銘柄ごとに利子を払い、満期の銘柄は額面を返して消す。国庫が足りずに払えない銘柄は不履行にする:
-   額面を bonds.haircut だけ切り下げ（持ち手の損）、残りを同じ期間で出し直す。不履行の記録は
+3. 満期の銘柄のうち中央銀行の持ち分は、同じ期間の新しい国債に乗り換える（現実の中央銀行と同じ。
+   独立していても乗り換える。持ち分を返すお金で世の中のお金が減り、借り換えの入札が一度に大きく
+   ならないように）。
+4. 今のターンの利払いと償還に国庫が足りなければ、足りない分を入札で発行する（借り換え）。借り換えで
+   売れ残った分は、独立した中央銀行も、売れ残りを引き受けない政策の国も、中央銀行が買い支える
+   （バランス調整。借り換えの売れ残りだけで不履行にしない）。
+5. 銘柄ごとに利子を払い、満期の銘柄は額面を返して消す。不履行は命令 set_bond_payment で選んだとき
+   だけ: 額面を bonds.haircut だけ切り下げ（持ち手の損）、残りを同じ期間で出し直す。不履行の記録は
    利回りに δ を上乗せし（bonds.default_premium。bonds.default_decay_turns ターンかけて 0 に減る）、
    区分の利回りも同じだけ跳ね上がる。不履行から bonds.default_exclusion_turns ターンは、銀行が国債
-   を買わない（入札で売れず、売れ残りは政策どおり中央銀行が引き受けるか支出を減らす。売買の市場でも
-   買わない）。損をした銀行は banking.default_crunch_turns ターン新しい融資を止める
+   を買わない（入札で売れず、新しい発行の売れ残りは政策どおり中央銀行が引き受けるか支出を減らす。
+   売買の市場でも買わない）。損をした銀行は banking.default_crunch_turns ターン新しい融資を止める
    （economy/banks.py の lending_stopped。計画経済の島を除く）。
-5. 命令で決めた中央銀行の直接引き受けと追加の発行。
-6. 国債の売買の市場（区分ごとの板寄せ）。
-7. 「このターンの国債以外の政府の支出（次のターンの見込み）× (1 + bonds.buffer_turns) ＋ 次のターン
+6. 命令で決めた中央銀行の直接引き受けと追加の発行。
+7. 国債の売買の市場（区分ごとの板寄せ）。
+8. 「このターンの国債以外の政府の支出（次のターンの見込み）× (1 + bonds.buffer_turns) ＋ 次のターン
    の利払い − 国庫の残高」がプラスなら、その額を入札で発行する。期間は政策の割合
    （policy.bond_terms）で分ける。
 
 入札: 買い手は市中銀行です。各銀行は準備預金の余りの banking.auction_share を、求める利回り
 （式 bond_yield）と、それに banking.auction_tiers を足した利回りの3段に分けて注文し、発行額が売れる
-いちばん低い利回りで全員が買います（その利回りが銘柄の利率）。売れ残りは、政策（policy.bond_unsold）が
-「引き受ける」で中央銀行が独立していなければ中央銀行が同じ利回りで引き受け、そうでなければ発行
-しません（足りない支出は支払いの順番で削られる）。
+いちばん低い利回りで全員が買います（その利回りが銘柄の利率）。新しい発行の売れ残りは、政策
+（policy.bond_unsold）が「引き受ける」で中央銀行が独立していなければ中央銀行が同じ利回りで引き受け、
+そうでなければ発行しません（足りない支出は支払いの順番で削られる）。借り換えの売れ残りは、いつも
+中央銀行が同じ利回りで買い支えます。
 
 国債の売買の市場: 残りの期間で分けた区分ごとに、利回りを値段にした板寄せで売り買いします（値幅は前の
 ターンの利回り ± bonds.trade_band）。市中銀行は国債の時価を目安（預金 × banking.bond_ratio）に近づけ
@@ -172,9 +178,11 @@ class Bonds(WorldStage):
                 island, ctx, sorted(island.bonds, key=lambda b: b.id), "bond_default_ordered"
             )
         payer = Payer(ledger.GOV, BONDS)
+        self._roll_central_bank(island, ctx)
         short = debt.due(island, ctx.turn) - funds.available(island, payer)
         if short > 0:
             self.raise_funds(island, ctx, short, "bonds_refinanced")
+        self._make_up(island, ctx, debt.due(island, ctx.turn) - funds.available(island, payer))
         self._pay(island, ctx, payer)
         self._ordered(island, ctx)
         self._secondary(island, ctx)
@@ -226,6 +234,44 @@ class Bonds(WorldStage):
         yields[debt.bucket_of(turns, edges)] = rate
 
     # --- 支払いと不履行 ---------------------------------------------------------------
+
+    def _roll_central_bank(self, island: IslandState, ctx: StageContext) -> None:
+        """今のターンに満期の銘柄のうち中央銀行の持ち分を、同じ期間の新しい国債（求める利回り）に
+        乗り換える。国庫に入った額は、同じターンの償還で中央銀行に返る。"""
+        rolled: dict[int, int] = {}  # 期間（ターン）→ 乗り換えた額面
+        for bond in sorted(island.bonds, key=lambda b: b.id):
+            if ctx.turn < bond.maturity:
+                continue
+            face = debt.holders(island, bond).get(ledger.CB, 0)
+            if face <= 0:
+                continue
+            rate = ctx.formula("bond_yield")(island, bond.term, ctx)
+            debt.underwrite(island, face, bond.term, rate, ctx.turn)
+            _add_flow(island, ledger.CB, face)
+            rolled[bond.term] = rolled.get(bond.term, 0) + face
+        for turns, amount in sorted(rolled.items()):
+            term = _term_name(ctx.defs, turns)
+            args: dict[str, Any] = {"amount": amount}
+            if term is not None:
+                args["term"] = term
+            island.log.append(LogEntry("bonds_rolled" if term else "bonds_rolled_any", args))
+
+    def _make_up(self, island: IslandState, ctx: StageContext, short: int) -> None:
+        """借り換えの後もまだ払う額に足りなければ（外国の持ち手が入札を外れたときなど）、足りない分を
+        中央銀行が自動の発行のいちばん短い期間で直接買い支える（不履行は命令で選んだときだけ）。"""
+        if short <= 0:
+            return
+        terms = ctx.defs.bond_terms()
+        names = island.policy.bond_terms or ctx.config.get("bonds.auto_terms")
+        term = min(names, key=lambda t: terms[t]["turns"])
+        turns = terms[term]["turns"]
+        rate = ctx.formula("bond_yield")(island, turns, ctx)
+        if debt.underwrite(island, short, turns, rate, ctx.turn) is None:
+            return
+        _add_flow(island, ledger.CB, short)
+        stats = island.scratch.setdefault("bond_stats", {})
+        stats["underwritten"] = stats.get("underwritten", 0) + short
+        island.log.append(LogEntry("bonds_backstop", {"amount": short, "term": term}))
 
     def _pay(self, island: IslandState, ctx: StageContext, payer: Payer) -> None:
         unpaid: list[Bond] = []
@@ -349,7 +395,10 @@ class Bonds(WorldStage):
         sold = sum(filled.values())
         policy = island.policy
         underwrite = 0
-        if sold < face and policy.bond_unsold == UNDERWRITE and not policy.cb_independent:
+        by_policy = policy.bond_unsold == UNDERWRITE and not policy.cb_independent
+        refinancing = kind == "bonds_refinanced"
+        if sold < face and (by_policy or refinancing):
+            # 借り換えの売れ残りは、政策によらず中央銀行が買い支える（借り換えだけで不履行にしない）
             underwrite = face - sold
         unsold_kind = "bonds_unsold_closed" if closed else "bonds_unsold"
         unsold_args = {"turn": (debt.reopen_turn(island, ctx.config) or 0) - 1} if closed else {}
@@ -391,6 +440,8 @@ class Bonds(WorldStage):
                 },
             )
         )
+        if underwrite and not by_policy:
+            island.log.append(LogEntry("bonds_backstop", {"amount": underwrite, "term": term}))
         if abroad_bought:
             island.log.append(
                 LogEntry("bonds_bought_abroad", {"amount": abroad_bought, "term": term})

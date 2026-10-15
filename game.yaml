@@ -99,6 +99,9 @@ founding:
     general_deposit: 1500   # 一般の層の預金（1人あたり）
     owner_deposit: 30000    # 資産を持つ層の預金（1人あたり、出資の後に残る額）
     treasury: 500           # 国庫（住民1人あたり）
+    # 建国のときに独立採算の施設に持たせる手元の資金（支払いのターン数分）。売れ出すまでの賃金を払えず
+    # 1年目に工場が止まらないように、建った後の施設の firms.operating_turns より多くする（バランス調整）
+    operating_turns: 6
     bond: bond_5y           # 建国の国債の期間（finance.yaml の bond_term）
   name_max:             # 名前の長さの上限（文字数）
     country: 32
@@ -371,7 +374,9 @@ fiscal:
   corporate_tax: 0.2    # 法人税（施設と銀行の利益）
   consumption_tax: 0.05 # 消費税（家計の食料・消費財・電気の買い物）
   minimum_wage: 0       # 最低賃金（0 は決めない）
-  unemployment_benefit: 0  # 失業手当（失業者1人に平均賃金の何割）
+  # 失業手当（失業者1人に平均賃金の何割）の建国のときの値。多くの国と同じく初めから払い、建国直後に
+  # 買い手が減って経済が縮むのを和らげる（バランス調整。命令 set_labor_policy で変えられる）
+  unemployment_benefit: 0.4
   # 国庫が足りないときの支払いの順番（前の項目から取り置く）
   payment_order: [bonds, civil_servants, unemployment, state_facilities, education, security, construction, subsidies, warehouse]
   # 銀行の救済と預金保護（支出の項目の外）は、この項目までの次のターンの支払いを国庫に残した額から出す
