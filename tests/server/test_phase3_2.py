@@ -94,6 +94,25 @@ def test_chain_view_marks_shortages_and_counts_imports(client, world):
     assert farm["built"] >= 1
 
 
+def test_chain_view_tells_goods_left_unsold_at_their_price(client, world):
+    """売りも買いもあるのに売れ残った品目（売りの値段が買い手の指値より高い）は、品不足と分けて
+    そう出す。"""
+    island = _own_island(client)
+    MarketRecord.objects.create(
+        island=island, turn=15, good="luxury_crop", price=900, volume=0, demand=5000, supply=3000
+    )
+    MarketRecord.objects.create(
+        island=island, turn=15, good="grain", price=100, volume=4000, demand=6000, supply=4000
+    )
+    view = chain.chain_view(island, {}, "¤")
+    goods = {g["good"]: g for tier in view["tiers"] for g in tier["goods"]}
+    assert goods["luxury_crop"]["unmatched"] is True and goods["luxury_crop"]["supply"] == 3.0
+    assert goods["grain"]["unmatched"] is False  # 売りに出た分は売れた（ただの品不足）
+    page = client.get(f"/islands/{island.id}/chain/").content.decode()
+    assert "売りの値段が買い手の指値より高く、売れ残りました" in page
+    assert "実物のおよそ 25 トン分" in page
+
+
 def test_recipe_choices_for_a_state_facility(client, world):
     island = _own_island(client)
     row = island.facilities.filter(kind="farm").order_by("number").first()

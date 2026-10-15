@@ -19,6 +19,7 @@ from django.db.models import Sum
 
 from hakoniwa_core import ledger
 from hakoniwa_core.economy import is_stopped
+from hakoniwa_core.modules import trade as trade_stage
 from hakoniwa_core.modules.trade import contract_view
 from hakoniwa_core.naming import facility_name
 from hakoniwa_core.state import IslandState, WorldState
@@ -71,12 +72,25 @@ FX_STATS = [
 FX_HISTORY = ["trade.exports", "trade.imports", "trade.balance", "fx.holdings", "money.nonresident"]
 
 SIDE_NAMES = {"sell": "売る", "buy": "買う"}
+DELIVERY_NAMES = {
+    contract_states.MARKET: "市場に出す",
+    contract_states.WAREHOUSE: "国の倉庫に置く",
+}
 STATE_NAMES = {
     contract_states.PROPOSED: "申し込み中",
     contract_states.ACTIVE: "有効",
     contract_states.ENDED: "終了",
 }
 DIRECTION_NAMES = {traders.EXPORT: "輸出", traders.IMPORT: "輸入"}
+# 輸入の狙う量を圏で買えなかったわけ（前のターン）
+WHY_NAMES = {
+    trade_stage.WHY_NO_PRICE: "圏にまだ値段がない",
+    trade_stage.WHY_PRICE: "運賃と港の使用料を引くと、島の値段では引き合わない",
+    trade_stage.WHY_SHIPS: "空いている輸送船が足りない",
+    trade_stage.WHY_CAPACITY: "商社の1ターンに扱える重さの上限に届いた",
+    trade_stage.WHY_MONEY: "払う決済通貨が足りない（為替で買えた外貨が足りない）",
+    trade_stage.WHY_SELLERS: "圏の売りが足りないか、売りの値段が高い",
+}
 SHIPMENT_KINDS = {"bloc": "貿易圏", "contract": "二国間契約"}
 # 外貨の持ち高と非居住者の預金の持ち手（施設はまとめて「商社など」）
 FACILITIES = "facilities"
@@ -410,6 +424,11 @@ def contract_rows(
                 "delivered": display.amount(view["delivered"]),
                 "paid": c.get("paid", 0),
                 "short": display.amount(view["short"]),
+                # 届いた物の行き先（買う側だけが決める。決める前は市場）
+                "delivery": view["delivery"] if view["side"] == "buy" else "",
+                "delivery_name": DELIVERY_NAMES.get(view["delivery"], "")
+                if view["side"] == "buy"
+                else "",
                 "can_accept": proposed and view["proposer"] != island_id,
                 # 有効な契約は、やめる命令を出してもまだ先に終わる予定のときだけ
                 "can_cancel": proposed
@@ -452,6 +471,9 @@ def trader_rows(
                     "age": item.get("age", 0),  # 売れ残ったターン数
                     "bloc": bloc,
                     "bloc_name": names.get(bloc, "") if bloc is not None else "",
+                    "why": WHY_NAMES.get(item.get("why"), "")
+                    if direction == traders.IMPORT
+                    else "",
                 }
             )
         out.append(

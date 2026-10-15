@@ -1,7 +1,8 @@
 """産業の鎖の画面（フェーズ3-2、自国だけ）の中身の組み立て。
 
 品目ごとに、作った量・施設が使った量・市場で売買された量・輸入と輸出の量・値段の動きと、島で作る
-施設と使う施設を並べ、品不足の品目を目立たせます。止まっている工場は、待っているもの（材料・電力・
+施設と使う施設を並べ、品不足の品目を目立たせます。売りに出ているのに買い手の指値と合わずに売れ残った
+品目は、品不足と分けてそう出します。止まっている工場は、待っているもの（材料・電力・
 働き手・技術者・売れない）ごとにまとめます。ルールの計算はせず、保存した統計（StatRecord）・市場の
 記録（MarketRecord）・約定（Trade）・施設の状態だけを使います。
 
@@ -32,6 +33,7 @@ CAUSES = {
     "input": "materials",
     "input_price": "materials",
     "funds": "materials",
+    "public_price": "materials",
     "power": "power",
     "no_grid": "power",
     "workers": "workers",
@@ -39,6 +41,7 @@ CAUSES = {
     "engineers": "engineers",
     "target": "unsold",
     "no_demand": "unsold",
+    "power_price": "unsold",
     "halted": "other",
     "recipe_change": "other",
 }
@@ -141,6 +144,9 @@ def chain_view(island: m.Island, stats: dict[str, float], currency: str) -> dict
                 volume=display.amount(now.volume),
                 demand=display.amount(now.demand),
                 bought=round(now.volume * 100 / now.demand) if now.demand else None,
+                # 売りも買いも残った: 売りの値段が買い手の指値より高くて約定しなかった
+                unmatched=now.demand > now.volume and now.supply > now.volume,
+                supply=display.amount(now.supply),
             )
             before = by_turn.get(turn - YEAR)
             if before is not None and before.price:

@@ -26,6 +26,9 @@ function payloadOf(kind, form) {
   if (kind === "propose_contract" && form.elements.currency_of?.value === "partner") {
     payload.currency = payload.partner; // 契約の通貨は、どちらかの国の通貨（省くとこちらの通貨）
   }
+  if (kind === "propose_contract" && payload.side !== "buy") {
+    delete payload.delivery; // 届いた物の行き先は、買う側が決める
+  }
   if (kind === "bloc_settings" && Object.keys(payload).length < 2) {
     return [null, "変える項目を選んでください。"];
   }

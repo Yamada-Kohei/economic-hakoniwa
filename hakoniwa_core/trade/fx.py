@@ -14,8 +14,8 @@
 
 中央銀行は受け身の注文を出します（dealer_orders。3-1 で足した。介入と固定は 3-3）。前のレートより
 安い側で、市場の厚み（その島の主体がこの通貨で払い・受け取った額の直近 fx.depth_turns ターンの平均。
-少なくとも平均賃金の fx.min_depth 倍）の分を段に分けて買い、高い側で、持っている分を同じように売り
-ます。島に商社が1つしかないと、売りと買いがそろわず両替ができないためです。輸出の稼ぎが多い島は
+少なくとも平均賃金の fx.min_depth 倍と、このターンに効く契約で払い・受け取る額）の分を段に分けて
+買い、高い側で、持っている分を同じように売ります。島に商社が1つしかないと、売りと買いがそろわず両替ができないためです。輸出の稼ぎが多い島は
 中央銀行が買い取って通貨が高くなり、輸入が多い島は中央銀行の持ち高が尽きると通貨が安くなります。
 
 通貨 C を発行した島の中央銀行も、同じように受け身の注文を出します（issuer_orders。試し遊びで、島の
@@ -120,9 +120,14 @@ def add_buy(
     reference: int,
     width: int,
     limit: int | None = None,
+    due: bool = False,
 ) -> int:
     """通貨を qty 買う注文を段に分けて足す。指値は前のレートから、値幅の上端か limit（払ってよい
-    一番高いレート）の低いほうまで。払える自国通貨までに減らし、その分を取り置く。足した量を返す。"""
+    一番高いレート）の低いほうまで。払える自国通貨までに減らし、その分を取り置く。足した量を返す。
+
+    due はこのターンに払う代金（政府の契約）の分: 段に分けず、値幅の上端の1つの指値にして、ほかの
+    買いより先に配る（段に分けると、低い段の指値が売りの段に届かず、厚みの分があっても6割ほどしか
+    買えなかった）。"""
     if qty <= 0:
         return 0
     high = auction.band(reference, width)[1]
@@ -136,6 +141,9 @@ def add_buy(
     hold = -(-qty * top // BASIS)
     funds.commit(island, payer, hold)
     book.held.append((payer, hold))
+    if due:
+        book.buys.append((Order(qty, top, priority=1), entity, payer))
+        return qty
     if top <= reference:
         book.buys.append((Order(qty, top), entity, payer))
         return qty
@@ -318,13 +326,17 @@ def _step(reference: int, target: int, unmatched: int, depth: int) -> int:
     return reference + (target - reference) * unmatched // (unmatched + depth)
 
 
-def depth(island: IslandState, currency: int, config) -> int:
+def depth(island: IslandState, currency: int, config, scheduled: int = 0) -> int:
     """市場の厚み: 島の主体が通貨 currency で払い・受け取った額の、直近 fx.depth_turns ターンの
-    平均（圏の市場と契約の代金）。少なくとも平均賃金の fx.min_depth 倍（通貨 currency に直す）。"""
+    平均（圏の市場と契約の代金）。少なくとも平均賃金の fx.min_depth 倍（通貨 currency に直す）と、
+    このターンに効く契約で払い・受け取る額 scheduled（2026-10-15 セビーリャさんの決定「上限を
+    上げる」。前は厚みが1ターンに払える額の上限になり、それを超える外貨建ての契約は毎ターン
+    2割ほど届かず、払えた額しか平均に入らないので厚みも増えなかった）。"""
     history = island_state(island).get("turnover", {}).get(str(currency), [])
     average = sum(history) // len(history) if history else 0
     wage = island.economy.average_wage or config.get("labor.initial_wage")
-    return max(average, to_foreign(island, currency, wage * config.get("fx.min_depth")))
+    floor = to_foreign(island, currency, wage * config.get("fx.min_depth"))
+    return max(average, floor, scheduled)
 
 
 def keep_turnover(island: IslandState, config, turnover: dict[int, int]) -> None:

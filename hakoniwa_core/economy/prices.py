@@ -212,10 +212,22 @@ def unit_floor(
 
 
 def usual_price(island: IslandState, good: str, turns: int) -> int:
-    """家計が見る「いつもの値段」: 直近 turns ターンの値段の平均（記録がなければ今の値段）。"""
-    history = island.economy.price_history.get(good, [])[-turns:]
+    """家計が見る「いつもの値段」: 直近 turns ターンの値段の平均（記録がなければ今の値段）。
+
+    家計が買った量の記録のある財（消費財）は、家計が買ったターンの値段だけで平均し、その間に1度も
+    買っていなければ今の値段にする。売り買いのなかったターンの値段（気配や、作る費用に向けて上げた
+    値段）は誰も払っていないので、いつもの値段に数えない（数えると、作り始めた財の指値が何ターンも
+    売りの値段に届かず、売れないまま作る施設が閉じた。試し遊び4回目）。"""
+    economy = island.economy
+    history = economy.price_history.get(good, [])[-turns:]
     if not history:
-        return island.economy.prices.get(good, 1)
+        return economy.prices.get(good, 1)
+    bought = economy.bought_history.get(good)
+    if bought is not None:
+        paid = [p for p, q in zip(reversed(history), reversed(bought), strict=False) if q > 0]
+        if not paid:
+            return economy.prices.get(good, 1)
+        history = paid
     return max(1, round_money(sum(history) / len(history)))
 
 

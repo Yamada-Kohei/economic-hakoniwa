@@ -32,11 +32,13 @@ from hakoniwa_core import infra, ledger, nature, stock
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     Payer,
+    banks,
     books,
     entity_of,
     freight,
     funds,
     household,
+    is_bank,
     is_public_service,
     is_self_supporting,
     is_stopped,
@@ -76,6 +78,8 @@ from hakoniwa_core.units import (
 # 指値（採算の合う値段）より高い、取り置けるお金が足りない
 SHORT_STATUS = {"supply": "input", "price": "input_price", "funds": "funds"}
 STATUS_CARGO = "cargo"  # 港・商社が扱う荷に合わせて少なく雇っている（フェーズ3-1）
+STATUS_BUSINESS = "business"  # 小さい銀行が、預金と融資の大きさに合わせて少なく雇っている
+PUBLIC_PRICE = "public_price"  # 学校と大学の教材が高くて買えない
 
 
 @dataclass
@@ -125,8 +129,13 @@ class Production(IslandStage):
             f.economy.pop("sales", None)
             f.economy.pop("late_sales", None)
             productivity.update(island, defs, config, f)
-        runs = [self._prepare(f, ctx, power) for f in island.facilities if self._operates(f, ctx)]
-        served = self._power_market(island, runs, ctx, power)
+        runs = [
+            self._prepare(island, f, ctx, power)
+            for f in island.facilities
+            if self._operates(f, ctx)
+        ]
+        unsold: dict[int, str] = {}  # 買い手がいたのに売れなかった発電所の番号 → 理由
+        served = self._power_market(island, runs, ctx, power, unsold)
         unplugged: set[int] | None = None
         produced: dict[str, int] = {}
         # 施設が使った投入財（電力を除く。産業の鎖の画面。フェーズ3-2）
@@ -139,8 +148,12 @@ class Production(IslandStage):
                     if unplugged is None:
                         unplugged = self._unplugged(island, ctx, power)
                     cause = "no_grid" if f.id in unplugged else "power"
-                else:  # 発電所は使われる分だけ動くのがふつうなので、止まったときだけ理由にする
-                    cause = "no_demand" if rate == 0 else ""
+                elif not fac.short_of_inputs(cause):
+                    # 発電所は使われる分だけ動くのがふつうなので、止まったときだけ理由にする。
+                    # 燃料が足りずに動ける分が少なかったなら、燃料の不足のまま（試し遊びで、石炭の
+                    # 切れた火力発電所が「電力需要なし」と出ていた）。電力の買い手がいたのに売れな
+                    # かったのは、電気料金が発電所の費用に届かなかったため
+                    cause = "" if rate > 0 else unsold.get(f.id, "no_demand")
             public = is_public_service(defs, f)  # 学校の教材は、買ったときに政府の消費に数える
             for good, need in sorted(run.recipe["inputs"].items()):
                 if good != power:
@@ -169,7 +182,7 @@ class Production(IslandStage):
         return f.built and not fac.is_housing(ctx.config, f) and fac.on_map(f)
 
     @staticmethod
-    def _prepare(f: Facility, ctx: StageContext, power: str) -> _Run:
+    def _prepare(island: IslandState, f: Facility, ctx: StageContext, power: str) -> _Run:
         recipe = fac.recipe_of(ctx.defs, f)
         if fac.is_halted(f, ctx.turn):
             return _Run(f, recipe, 0, "halted")
@@ -179,10 +192,13 @@ class Production(IslandStage):
             "wages" if f.ext.get("short_wages") else "workers",
         )
         have, short = fac.input_ratio(ctx.defs, f, power)
-        cargo = staff.wanted(ctx.config, ctx.defs, f)
+        cargo, few = staff.wanted(ctx.config, ctx.defs, f), STATUS_CARGO
+        if cargo is None and is_bank(ctx.config, f):
+            cargo, few = banks.staff_wanted(island, ctx.config, ctx.defs, f), STATUS_BUSINESS
         if cargo is not None and f.workers >= cargo:
-            # 港・商社は扱う荷に合わせて少なく雇う（定義の人数に足りなくても労働者不足ではない）
-            cause = STATUS_CARGO
+            # 港・商社は扱う荷に、小さい銀行は預金と融資に合わせて少なく雇う（定義の人数に足りなく
+            # ても労働者不足ではない）
+            cause = few
         elif f.workers >= fac.labor_demand(ctx.defs, f, ctx.turn, power):  # 雇いたい分は雇えた
             # 原料のある分しか雇わなかったなら原料、そうでなければ売れ行きに合わせた。前のターン
             # に買うつもりだった原料（economy["input_plan"] の稼働率の分）はそろっているなら、
@@ -192,10 +208,10 @@ class Production(IslandStage):
             cause = (
                 "target"
                 if short is None or have >= target or planned
-                else Production._short(f, short)
+                else Production._short(f, short, ctx.defs)
             )
         if short is not None and have < rate:
-            rate, cause = have, Production._short(f, short)
+            rate, cause = have, Production._short(f, short, ctx.defs)
         cap = fac.engineer_cap(ctx.config, f)  # 技術者が足りなければ、稼働率の上限が下がる
         if cap < rate:
             rate, cause = cap, "engineers"
@@ -206,20 +222,31 @@ class Production(IslandStage):
         return _Run(f, recipe, rate, cause if rate < fac.FULL else "")
 
     @staticmethod
-    def _short(f: Facility, good: str) -> str:
+    def _short(f: Facility, good: str, defs: Defs) -> str:
         """原料 good が足りない理由（施設の status）。前のターンの市場で買えなかったわけ
-        （economy["short"]。hakoniwa_core/modules/market の _record_shortages）で決める。"""
+        （economy["short"]。hakoniwa_core/modules/market の _record_shortages）で決める。
+        学校と大学には採算がないので、教材が高くて買えなかったときは public_price にする
+        （「採算が合わない」と出ていた）。"""
         reason = f.economy.get("short", {}).get(good, "supply")
+        if reason == "price" and is_public_service(defs, f):
+            return f"{PUBLIC_PRICE}:{good}"
         return f"{SHORT_STATUS.get(reason, 'input')}:{good}"
 
     # --- 電力 ----------------------------------------------------------------
 
     def _power_market(
-        self, island: IslandState, runs: list[_Run], ctx: StageContext, power: str
+        self,
+        island: IslandState,
+        runs: list[_Run],
+        ctx: StageContext,
+        power: str,
+        unsold: dict[int, str],
     ) -> dict[int, int]:
         """送電網ごとに電力を板寄せし、電力にかかわる施設の稼働率（施設の番号ごと）を返す。
 
-        住宅のマスには、住民が受け取れた電力の割合を ext["power"] に書く。
+        住宅のマスには、住民が受け取れた電力の割合を ext["power"] に書く。送電網に買えなかった
+        買い手がいるのに1つも売れなかった発電所は、unsold に理由 power_price（電気料金が発電の
+        費用に届かない）を書く。
         """
         defs, config = ctx.defs, ctx.config
         grid_of = self._grids(island, defs)
@@ -300,6 +327,8 @@ class Production(IslandStage):
                     rates[b.run.f.id] = fac.scale(b.run.rate, fac.ratio(got, b.need))
             for (run, out), sold in zip(sellers, result.sold, strict=True):
                 rates[run.f.id] = fac.ratio(sold, out)
+                if sold <= 0 < fac.scale(out, run.rate) and result.unfilled_demand > 0:
+                    unsold[run.f.id] = "power_price"
             home_got = sum(got for b, got in zip(buyers, result.bought, strict=True) if b.layer)
             home_rate = fac.ratio(home_got, home_need) if home_need else 0
             for x, y in homes.get(grid, ()):

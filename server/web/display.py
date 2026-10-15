@@ -400,7 +400,7 @@ def bank_view(row: m.Facility, f: Facility, island: IslandState, currency: str =
     failed = f.economy.get("failed")
     if failed is not None:
         out["failed"] = failed
-        out["failed_reason"] = (
+        out["failed_reason"] = f.economy.get("failed_reason") or (
             "liquidity" if f.economy.get("liquidity_failure") == failed else "capital"
         )
     emergency = island.economy.finance.get("emergency", {}).get(ledger.bank_entity(f.id))
@@ -604,17 +604,23 @@ def _describe_trade(kind: str, payload: dict[str, Any], name: str) -> str:
         unit = defs.unit_name(good) if good in defs.goods else ""
         side = SIDES.get(payload.get("side", ""), "")
         currency = currency_name(payload["currency"]) if "currency" in payload else "自国通貨"
+        delivery = DELIVERIES.get(payload.get("delivery", ""), "")
         return (
             f"{name}: {_island_name(payload.get('partner'))}に{defs.name('goods', good)}を"
             f"毎ターン {payload.get('quantity', 0):g} {unit}{side}"
-            f"（1{unit} {payload.get('price', 0):,}・{currency}・{payload.get('turns', 0)} ターン）"
+            f"（1{unit} {payload.get('price', 0):,}・{currency}・{payload.get('turns', 0)} ターン"
+            f"{'・' + delivery if delivery else ''}）"
         )
+    if kind == "accept_contract" and payload.get("delivery") in DELIVERIES:
+        return f"{name}: 契約 {payload.get('contract')} 番（{DELIVERIES[payload['delivery']]}）"
     if kind in ("accept_contract", "cancel_contract"):
         return f"{name}: 契約 {payload.get('contract')} 番"
     return ""
 
 
 SIDES = {"sell": "売る", "buy": "買う"}
+# 契約で届いた物の行き先（hakoniwa_core/trade/contracts.py）
+DELIVERIES = {"market": "届いた物は市場に出す", "warehouse": "届いた物は国の倉庫に置く"}
 
 
 def _bloc_name(bloc_id: Any) -> str:

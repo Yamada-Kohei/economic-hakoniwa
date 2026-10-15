@@ -2,7 +2,11 @@
 
 一方の政府が命令で「相手・財・1ターンの量・値段・通貨（どちらかの国の通貨）・期間」を示し、相手が
 命令で受けると、次のターンから効きます。売り手の国は国の倉庫から出し（足りなければ島の市場で優先して
-買う）、買い手の国は国庫から契約の通貨で払い、届いた物は国の倉庫に入ります。外貨が要るときは、政府
+買う）、買い手の国は国庫から契約の通貨で払い、届いた物は国の倉庫に入ります。届いた物の行き先は買い手
+が契約ごとに決めます（delivery。2026-10-15 セビーリャさんの決定「契約で選ぶ」）: market（既定）は
+売り切れるまで毎ターン島の市場の値段で売りに出し、warehouse は国の倉庫に置いたまま（命令
+warehouse_trade で売るか使う）にします。傷みやすい物はどちらでもすぐ市場に出します。買い手が申し込む
+ときは申し込みの命令で、売り手が申し込んだ契約は受ける命令で決めます。外貨が要るときは、政府
 が為替の市場で買います。物かお金が足りないターンは払える分だけ履行し、不足を両方のログと契約の
 記録に残します（罰はない）。どちらからでも命令でやめられ、やめるのは
 trade.contract_cancel_turns ターン後です。
@@ -10,7 +14,7 @@ trade.contract_cancel_turns ターン後です。
 契約は ``world.ext["trade"]["contracts"]`` に辞書で持ちます: id・seller・buyer（島）・proposer・
 good・qty（1ターンの量。1000 分の 1 単位）・price（1 単位の値段。契約の通貨）・currency・
 turns（期間）・state（proposed・active・ended）・start・end（このターンの前まで効く）・
-delivered・paid・short（直近の不足の量）。
+delivered・paid・short（直近の不足の量）・delivery（届いた物の行き先。ない契約は market）。
 """
 
 from __future__ import annotations
@@ -26,6 +30,14 @@ PROPOSED = "proposed"
 ACTIVE = "active"
 ENDED = "ended"
 KEEP_ENDED = 12  # 終わった契約を記録に残すターン数
+MARKET = "market"  # 届いた物を島の市場に売りに出す（既定）
+WAREHOUSE = "warehouse"  # 届いた物を国の倉庫に置いておく
+DELIVERIES = (MARKET, WAREHOUSE)
+
+
+def delivery_of(c: dict[str, Any]) -> str:
+    """契約で届いた物の行き先（決める前の契約は市場）。"""
+    return c.get("delivery") or MARKET
 
 
 def contracts(world: WorldState) -> list[dict[str, Any]]:
@@ -57,6 +69,8 @@ def propose(
     currency = payload.get("currency", island.id)
     if currency not in (island.id, partner):
         return "reason_contract_currency"
+    if payload.get("delivery") is not None and payload["side"] == "sell":
+        return "reason_contract_delivery"  # 行き先は買い手が決める
     seller, buyer = (island.id, partner) if payload["side"] == "sell" else (partner, island.id)
     contract = {
         "id": next_id(world_state(world), "contract"),
@@ -75,6 +89,7 @@ def propose(
         "delivered": 0,
         "paid": 0,
         "short": 0,
+        "delivery": payload.get("delivery") or MARKET,
     }
     contracts(world).append(contract)
     args = _args(world, contract)
@@ -84,8 +99,13 @@ def propose(
 
 
 def accept(
-    world: WorldState, island: IslandState, contract: dict[str, Any], turn: int
+    world: WorldState,
+    island: IslandState,
+    contract: dict[str, Any],
+    turn: int,
+    delivery: str | None = None,
 ) -> str | None:
+    """受ける。買い手として受けるなら、届いた物の行き先 delivery も決められる（省くと市場）。"""
     if contract["state"] != PROPOSED:
         return "reason_contract_state"
     if (
@@ -93,6 +113,10 @@ def accept(
         or island.id == contract["proposer"]
     ):
         return "reason_contract_party"
+    if delivery is not None:
+        if island.id != contract["buyer"]:
+            return "reason_contract_delivery"
+        contract["delivery"] = delivery
     contract["state"] = ACTIVE
     contract["start"] = turn + 1
     contract["end"] = turn + 1 + contract["turns"]

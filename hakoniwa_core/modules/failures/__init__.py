@@ -15,8 +15,9 @@ firms.foreclosure_turns ターンの間、帳簿の設備の値打ちの firms.f
 借り手が動いていない融資は額面の banking.liquidation_price）。
 
 - 救済: 政府が自己資本を「融資 ×（規制の値 + banking.risk_buffer）」と「預金 ×
-  banking.capital_floor」の大きい方まで（資金繰りの破綻なら足りない準備預金も）注入し、銀行は国営銀
-  行として残る（融資の少ない銀行が、次の貸し倒れですぐまた破綻しないように）。
+  banking.capital_floor」の大きい方まで（準備預金が、最低限と次のターンの職員の賃金に足りなければ、
+  その分も）注入し、銀行は国営銀行として残る（融資の少ない銀行が、次の貸し倒れですぐまた破綻しない
+  ように）。
 - 引き継ぎ: 預金・融資・国債・銀行間の貸し借りを、健全な銀行のうち預金の最も多い銀行（引き継いでも
   自己資本比率が規制の値を下回らない銀行があれば、そのうち預金の最も多い銀行）に移す。危ない融資を
   安く見た分は、預金保険から引き継ぐ銀行に渡る（後で貸し倒れても引き継いだ銀行が倒れないように）。
@@ -92,6 +93,7 @@ class Failures(IslandStage):
             if worth < 0 or f.economy.get("liquidity_failure") == ctx.turn:
                 reason = "capital" if worth < 0 else "liquidity"
                 f.economy["failed"] = ctx.turn
+                f.economy["failed_reason"] = reason  # 画面もログと同じわけを出す
                 island.log.append(
                     LogEntry(f"bank_failed_{reason}", {"x": f.x, "y": f.y, "facility": f.kind})
                 )
@@ -310,18 +312,28 @@ def bailout(island: IslandState, ctx: StageContext, bank: str) -> None:
     worth = banks.net_worth(island, config, bank, ctx.turn)
     worth -= banks.impaired_discount(island, config, bank)
     want = banks.capital_target(island, config, bank) - worth
-    want = max(0, want) + max(0, -banks.excess_reserves(island, config, bank))
+    want = max(0, want) + _liquidity_need(island, ctx, f)
     _cancel_equity(island, bank)
     paid = _government_pays(island, ctx, bank, want, "bank_bailout")
     if paid > 0:
         ledger.create(island, ledger.GOV, ledger.EQUITY, bank, paid, "bank_bailout")
     cut = _bail_in(island, bank, -(worth + paid))
     f.owner = OWNER_STATE
-    f.economy.pop("failed", None)
-    f.economy.pop("liquidity_failure", None)
+    for key in ("failed", "failed_reason", "liquidity_failure"):
+        f.economy.pop(key, None)
     island.log.append(LogEntry("bank_bailed_out", {"x": f.x, "y": f.y, "amount": paid}))
     if cut > 0:
         island.log.append(LogEntry("bank_bailed_in", {"x": f.x, "y": f.y, "cut": cut}))
+
+
+def _liquidity_need(island: IslandState, ctx: StageContext, f: Facility) -> int:
+    """立て直した銀行の準備預金に入れる額: 最低限に足りない分と、次のターンの職員の賃金の分。
+    預金のない銀行を救済しても、次のターンに賃金を払うと準備預金が足りなくなり、資金繰りでまた
+    破綻していた（試し遊び4回目）。"""
+    bank = ledger.bank_entity(f.id)
+    wage = f.economy.get("wage") or island.economy.average_wage
+    payroll = banks.staff_wanted(island, ctx.config, ctx.defs, f) * wage
+    return max(0, payroll - banks.excess_reserves(island, ctx.config, bank))
 
 
 def _insured(paid: int, deposits: int) -> int:
@@ -341,8 +353,9 @@ def _log_debts_covered(island: IslandState, f: Facility, amount: int) -> None:
 
 def resolve_in_place(island: IslandState, ctx: StageContext, bank: str) -> None:
     """引き継ぐ銀行のない島の引き継ぎ・清算: 政府が銀行を引き取り、出資を消して、損失を保護され
-    ない預金と銀行間の貸し手、預金保護（国庫）、保護される預金の順に負わせて立て直す。資金繰りの
-    破綻なら、足りない準備預金も政府が出資する。救済と違い、自己資本の目安までは入れない。"""
+    ない預金と銀行間の貸し手、預金保護（国庫）、保護される預金の順に負わせて立て直す。準備預金が
+    最低限と次のターンの職員の賃金に足りなければ、その分も政府が出資する。救済と違い、自己資本の
+    目安までは入れない。"""
     f = banks.facility_of(island, bank)
     assert f is not None
     config = ctx.config
@@ -355,13 +368,12 @@ def resolve_in_place(island: IslandState, ctx: StageContext, bank: str) -> None:
     paid = _government_pays(island, ctx, bank, cover, "deposit_insurance")
     deposits = banks.deposits_of(island, bank)
     cut += _cut_all(island, bank, cover - paid)
-    liquidity = max(0, -banks.excess_reserves(island, config, bank))
-    injected = _government_pays(island, ctx, bank, liquidity, "bank_bailout")
+    injected = _government_pays(island, ctx, bank, _liquidity_need(island, ctx, f), "bank_bailout")
     if injected > 0:
         ledger.create(island, ledger.GOV, ledger.EQUITY, bank, injected, "bank_bailout")
     f.owner = OWNER_STATE
-    f.economy.pop("failed", None)
-    f.economy.pop("liquidity_failure", None)
+    for key in ("failed", "failed_reason", "liquidity_failure"):
+        f.economy.pop(key, None)
     insured = _insured(paid, deposits)
     island.log.append(
         LogEntry(

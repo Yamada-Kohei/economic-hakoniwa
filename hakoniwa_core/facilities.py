@@ -22,8 +22,9 @@ STATUS_STARTING = "starting"  # 工事が済んで、まだ動いたことがな
 RECIPE_NEXT = "recipe_next"
 RECIPE_CHANGED = "recipe_changed"
 # 原料が手に入らずに動けない理由（施設の status の「:」の前）。input は品不足、input_price は
-# 原料が高くて採算が合わない、funds は原料を買うお金が足りない
-INPUT_SHORT = ("input", "input_price", "funds")
+# 原料が高くて採算が合わない、funds は原料を買うお金が足りない、public_price は学校と大学の教材が
+# 高くて買えない
+INPUT_SHORT = ("input", "input_price", "funds", "public_price")
 
 
 def short_of_inputs(status: str) -> bool:

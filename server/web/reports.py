@@ -389,7 +389,7 @@ def with_fiscal(stats: dict[str, float]) -> dict[str, float]:
 # --- 市場 -----------------------------------------------------------------------------
 
 # 原料を買えずに止まった施設の状態（status の「種類:財」の種類）
-SHORT_STATUSES = ("input", "input_price", "funds")
+SHORT_STATUSES = ("input", "input_price", "funds", "public_price")
 
 
 def market_turn(island: m.Island) -> int | None:
