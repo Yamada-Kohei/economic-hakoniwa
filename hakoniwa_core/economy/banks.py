@@ -109,12 +109,16 @@ def bond_value(island: IslandState, config: GameConfig, holder: str, turn: int) 
 
 
 def net_worth(island: IslandState, config: GameConfig, bank: str, turn: int) -> int:
-    """銀行の自己資本（資産 − 負債。国債は時価）。"""
+    """銀行の自己資本（資産 − 負債。国債は時価。外貨と外国の国債は今のレートで自国通貨に直す。
+    フェーズ3-3）。"""
+    from hakoniwa_core.trade import abroad
+
     assets = (
         reserves_of(island, bank)
         + loans_of(island, bank)
         + bond_value(island, config, bank, turn)
         + interbank_lent(island, bank)
+        + abroad.foreign_assets(island, bank)
     )
     liabilities = (
         deposits_of(island, bank) + interbank_borrowed(island, bank) + cb_borrowed(island, bank)

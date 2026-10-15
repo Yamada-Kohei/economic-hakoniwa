@@ -23,7 +23,7 @@ from typing import Any
 from hakoniwa_core import ledger
 from hakoniwa_core.economy import Payer, funds
 from hakoniwa_core.state import IslandState, WorldState
-from hakoniwa_core.trade import island_state
+from hakoniwa_core.trade import balance, island_state
 from hakoniwa_core.units import BASIS
 
 
@@ -75,6 +75,7 @@ def transfer(
     kind: str,
     value: int | None = None,
     payer: Payer | None = None,
+    values: dict[int, int] | None = None,
 ) -> int:
     """通貨 currency で source（島, 主体）から target（島, 主体）へ amount 払う。
 
@@ -83,6 +84,9 @@ def transfer(
     amount を返す。自国通貨で払うときに payer（政府なら支出の項目）を渡すと、funds を通して払う
     （国庫の取り置きの残りを正しく数えるため）。払えるかどうかは呼ぶ側が確かめる（記録の段の帳簿の
     確かめと、世界の確かめで見つかる）。
+
+    島をまたぐ支払いは、国際収支の流れにも足す（balance.record。values は島ごとの、その島の通貨に
+    直した値。省くとそのターンのレートで直す）。
     """
     if amount <= 0:
         return 0
@@ -99,6 +103,7 @@ def transfer(
         funds.pay(issuer, payer, payee_name, amount, kind)
     else:
         ledger.pay(issuer, payer_name, payee_name, amount, kind)
+    balance.record(world, currency, source, target, amount, kind, values)
     return spent
 
 

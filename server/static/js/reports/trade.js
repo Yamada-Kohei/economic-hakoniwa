@@ -1,14 +1,17 @@
 // 貿易の画面: 輸出・輸入と船のグラフと、貿易の命令（貿易圏を作る・入る・抜ける・設定・代表を譲る・
-// 引き継ぐ、二国間契約の申し込み・受ける・やめる）。表の中の小さな入力欄（form[data-order]）から、
-// 命令の列（右の欄。島の画面と同じ列）の後ろに足す。
+// 引き継ぐ、二国間契約の申し込み・受ける・やめる、フェーズ3-3 の関税・輸出補助・輸入の割り当て・
+// 禁輸・援助）。表の中の小さな入力欄（form[data-order]）から、命令の列（右の欄。島の画面と同じ列）の
+// 後ろに足す。
 
 import { mountCharts } from "./common.js";
 import { mountOrders } from "./orders.js";
 
 // 入力欄の名前ごとの値の形（ほかは文字）
-const INT_FIELDS = new Set(["bloc", "currency", "approve", "to", "contract", "partner", "price", "turns"]);
-const NUMBER_FIELDS = new Set(["quantity"]);
-const FLAG_FIELDS = new Set(["open"]); // "true" / "false"
+const INT_FIELDS = new Set([
+  "bloc", "currency", "approve", "to", "contract", "partner", "price", "turns", "amount", "fixed_price",
+]);
+const NUMBER_FIELDS = new Set(["quantity", "rate"]);
+const FLAG_FIELDS = new Set(["open", "no_tariff", "lift"]); // "true" / "false"
 
 mountCharts();
 const orders = await mountOrders();
@@ -23,8 +26,14 @@ function payloadOf(kind, form) {
     else if (FLAG_FIELDS.has(key)) payload[key] = value === "true";
     else if (key !== "currency_of") payload[key] = String(value).trim();
   }
-  if (kind === "propose_contract" && form.elements.currency_of?.value === "partner") {
-    payload.currency = payload.partner; // 契約の通貨は、どちらかの国の通貨（省くとこちらの通貨）
+  if (["propose_contract", "send_aid"].includes(kind) && form.elements.currency_of?.value === "partner") {
+    payload.currency = payload.partner; // 契約と援助の通貨は、どちらかの国の通貨（省くとこちらの通貨）
+  }
+  if (kind === "set_embargo" && !payload.lift) {
+    delete payload.lift; // 省くと始める
+  }
+  if (kind === "bloc_settings" && ("fixed_good" in payload) !== ("fixed_price" in payload)) {
+    return [null, "固定価格は、資源と値段の両方を入れてください。"];
   }
   if (kind === "propose_contract" && payload.side !== "buy") {
     delete payload.delivery; // 届いた物の行き先は、買う側が決める

@@ -15,7 +15,8 @@ republic: {axis: head_of_state, capital_building: presidential_office}
 # state_accounting: 国営施設の会計の既定、bank_owner: 建国のときに置く銀行の持ち主（並べると銀行を
 # その数だけ置き、家計の預金を等分する）、private_entry: 民営工場の参入（any: どれでも・non_core:
 # state_owned を除く・none: なし）、bank_entry: 民間銀行の参入の既定（free: 自由・license: 許可制・
-# closed: 禁止）、policy_loans: 国営銀行が state_owned の施設に利ざやなしで貸すか（政策融資）
+# closed: 禁止）、capital_controls: 資本取引の既定（free: 自由・official: 政府と中央銀行だけ・closed: 禁止。
+# フェーズ3-3）、policy_loans: 国営銀行が state_owned の施設に利ざやなしで貸すか（政策融資）
 market:
   axis: economy
   owner: private
@@ -24,6 +25,7 @@ market:
   bank_owner: private
   private_entry: any
   bank_entry: free
+  capital_controls: free
   start: default
 mixed:
   axis: economy
@@ -33,6 +35,7 @@ mixed:
   bank_owner: [state, private]
   private_entry: non_core
   bank_entry: license
+  capital_controls: official
   policy_loans: true
   start: default
 planned:
@@ -42,4 +45,5 @@ planned:
   bank_owner: state
   private_entry: none
   bank_entry: closed
+  capital_controls: official
   start: default

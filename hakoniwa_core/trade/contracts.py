@@ -14,7 +14,8 @@ trade.contract_cancel_turns ターン後です。
 契約は ``world.ext["trade"]["contracts"]`` に辞書で持ちます: id・seller・buyer（島）・proposer・
 good・qty（1ターンの量。1000 分の 1 単位）・price（1 単位の値段。契約の通貨）・currency・
 turns（期間）・state（proposed・active・ended）・start・end（このターンの前まで効く）・
-delivered・paid・short（直近の不足の量）・delivery（届いた物の行き先。ない契約は market）。
+delivered・paid・short（直近の不足の量）・delivery（届いた物の行き先。ない契約は market）・
+aid（物の援助。フェーズ3-3。値段 0 で、相手の承諾なしに次のターンから効く）。
 """
 
 from __future__ import annotations
@@ -96,6 +97,36 @@ def propose(
     island.log.append(LogEntry("contract_proposed", args))
     world.islands[partner].log.append(LogEntry("contract_offer", args))
     return None
+
+
+def aid(world: WorldState, island: IslandState, payload: dict[str, Any], turn: int) -> None:
+    """物の援助（フェーズ3-3）: 値段 0 の片道の契約。相手の承諾は要らず、次のターンから効く
+    （届いた物は相手の島の市場に出す。どちらからでも、やめる命令でやめられる）。"""
+    partner = payload["partner"]
+    contract = {
+        "id": next_id(world_state(world), "contract"),
+        "seller": island.id,
+        "buyer": partner,
+        "proposer": island.id,
+        "good": payload["good"],
+        "qty": round(payload["quantity"] * QUANTITY_SCALE),
+        "price": 0,
+        "currency": island.id,
+        "turns": payload["turns"],
+        "state": ACTIVE,
+        "created": turn,
+        "start": turn + 1,
+        "end": turn + 1 + payload["turns"],
+        "delivered": 0,
+        "paid": 0,
+        "short": 0,
+        "delivery": MARKET,
+        "aid": True,
+    }
+    contracts(world).append(contract)
+    args = {**_args(world, contract), "turns": payload["turns"]}
+    island.log.append(LogEntry("aid_goods_sent", args))
+    world.islands[partner].log.append(LogEntry("aid_goods_received", args))
 
 
 def accept(

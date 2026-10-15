@@ -11,6 +11,22 @@
 <p class="muted">{% translate "未集計です。最初のターンの更新後に表示されます。" %}</p>
 {% endif %}
 
+<section class="panel" id="strengths">
+  <h2>{% translate "得意産業と称号" %}</h2>
+  {% if strengths.titles %}
+  <p>{% blocktranslate with t=strengths.titles|join:"・" %}称号: <strong>{{ t }}</strong>{% endblocktranslate %}</p>
+  {% endif %}
+  {% if strengths.strengths %}
+  <table class="info">
+    {% for s in strengths.strengths %}<tr><th>{{ s.name }}</th><td>{% blocktranslate with n=s.turns|floatformat:"-1g" %}経験 {{ n }} ターン分{% endblocktranslate %}{% if s.rank %}・{% blocktranslate with r=s.rank %}世界 {{ r }} 位{% endblocktranslate %}{% endif %}</td></tr>{% endfor %}
+  </table>
+  {% url 'rankings' as rankings_url %}
+  <p class="hint">{% blocktranslate with u=rankings_url %}経験は、その産業の標準の施設が全力で動いたターン数に直した累積の産出です。長く多く作った産業ほど生産性が上がり、各産業の経験が世界で1位の国は「〜の国」の称号を得ます。ほかの国の順位は<a href="{{ u }}">順位の画面</a>で見られます。{% endblocktranslate %}</p>
+  {% else %}
+  <p class="muted">{% translate "まだ経験のある産業はありません。" %}</p>
+  {% endif %}
+</section>
+
 <section class="panel">
   <div class="section-head">
     <h2>{% translate "推移" %}</h2>

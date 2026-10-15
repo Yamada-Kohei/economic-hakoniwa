@@ -204,6 +204,13 @@ def set_independence(island: IslandState, payload: dict[str, Any], ctx: StageCon
         if policy.bond_unsold == "underwrite":
             policy.bond_unsold = "cut"
             finance["unsold_before"] = "underwrite"
+        # 為替の介入・固定相場・中央銀行の外国の国債の売り買いは、政府が決めるものなのでやめる
+        # （フェーズ3-3。持っている外貨と外国の国債はそのまま）
+        if policy.fx_intervention or policy.fx_peg or policy.foreign_bonds.get("cb"):
+            policy.fx_intervention.clear()
+            policy.fx_peg.clear()
+            policy.foreign_bonds.pop("cb", None)
+            island.log.append(LogEntry("cb_independent_fx", {}))
     elif finance.pop("unsold_before", None) and policy.bond_unsold == "cut":
         # 独立のときに「支出を減らす」に変えた売れ残りの扱いを、独立をやめたら元に戻す
         policy.bond_unsold = "underwrite"

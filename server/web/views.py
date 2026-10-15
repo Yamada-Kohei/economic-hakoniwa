@@ -9,7 +9,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core.trade import contracts, tradable_goods
 from server.game import get_game
 from server.turns.models import TurnLog
-from server.web import chain, display, founding, reports, trade
+from server.web import chain, display, founding, rankings, reports, trade
 from server.world.models import Island, World
 from server.world.services import grid_size
 
@@ -46,6 +46,7 @@ def island_page(request, island_id: int):
         "mine": request.user.is_authenticated and island.owner_id == request.user.id,
         "stats_turn": turn,
         "summary": display.summary(stats, currency),
+        "strengths": rankings.island_strengths(island, stats),
         "goods": display.goods_table(stats, display.latest_markets(island, turn), currency),
         "regime": regime,
         "resources": [defs.name("goods", g) for g in island.resources or []],
@@ -99,6 +100,7 @@ def economy_page(request, island_id: int):
         summary=display.summary(stats, currency),
         charts=charts,
         choices=reports.stat_choices(island, context["mine"]),
+        strengths=rankings.island_strengths(island, stats),
     )
     return render(request, "web/economy.html", context)
 
@@ -202,13 +204,14 @@ def trade_page(request, island_id: int):
 
 
 def fx_page(request, island_id: int):
-    """為替と国際収支: 使っている通貨のレートと推移、貿易収支。持ち主には外貨の持ち高と、自国通貨を
-    持つ外国の主体（非居住者の預金）の内訳も。"""
+    """為替と国際収支: 使っている通貨のレートと推移、貿易収支と国際収支の内訳。持ち主には外貨の
+    持ち高と、自国通貨を持つ外国の主体（非居住者の預金）の内訳、為替と資本取引の政策と外国の国債も。"""
     island, context, stats = _report(request, island_id, "fx", "為替と国際収支")
     data = trade.fx_data(island, context["mine"], context["currency"], history=False)
     context.update(
         fx=data,
         stats=reports.stat_rows(stats, trade.FX_STATS, context["currency"]),
+        bop=reports.stat_rows(stats, trade.BOP_STATS, context["currency"]),
         rate_names=",".join(trade.rate_names(island)),
         band=f"{data['band'] * 100:g}",
     )
@@ -238,6 +241,25 @@ def turn_log(request, island_id: int):
         "web/log.html",
         {"island": island, "page": page, "groups": sorted(groups.items(), reverse=True)},
     )
+
+
+def rankings_page(request):
+    """統計の順位（フェーズ3-3）: 部門ごとの順位と、産業ごとの称号と上位の国。お金の額は、選んだ
+    通貨（?base=島の番号。決めなければ見る人の国の通貨）に今のレートで直して比べる。"""
+    world = World.objects.order_by("id").first()
+    data = None
+    if world is not None:
+        own = None
+        if request.user.is_authenticated:
+            own = Island.objects.filter(owner=request.user, world=world).first()
+        try:
+            base = int(request.GET.get("base", ""))
+        except ValueError:
+            base = None
+        if base is None or not world.islands.filter(pk=base).exists():
+            base = rankings.default_base(world, own)
+        data = rankings.ranking_data(world, base)
+    return render(request, "web/rankings.html", {"world": world, "data": data})
 
 
 def world_map(request):

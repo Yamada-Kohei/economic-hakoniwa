@@ -1,7 +1,7 @@
 """決算の段: 施設と銀行の損益、減価償却、補助金、法人税、配当と国庫への納付、中央銀行の納付。
 
 損益（税の前）= 付加価値（売上 − 仕入れ − 電気代 − 運賃 + 在庫の増減）− 賃金 + 利子（受け取った利子
-               − 払った利子）+ 補助金 − 減価償却
+               − 払った利子）+ 補助金 − 関税（商社。フェーズ3-3）− 減価償却
 銀行の損益 = 利子（融資・国債・準備預金・銀行間の受け取り − 預金・銀行間・中央銀行への支払い）
              − 職員の賃金 − 貸し倒れ ＋ 国債の実現損益
 商社は、外貨を売ったときの為替の実現損益（受け取った自国通貨 − 外貨の帳簿の値打ち）も損益に入れ
@@ -107,7 +107,10 @@ class Accounts(IslandStage):
         settings = config.get("firms")
         for f, items in rows:
             ebitda = (
-                books.value_added(items) - items.get(books.WAGES, 0) + items.get(books.SUBSIDY, 0)
+                books.value_added(items)
+                - items.get(books.WAGES, 0)
+                + items.get(books.SUBSIDY, 0)
+                - items.get(books.TARIFF, 0)
             )
             profit = (
                 ebitda

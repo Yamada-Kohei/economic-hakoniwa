@@ -84,7 +84,7 @@ from hakoniwa_core.state import (
     MarketRecord,
     TradeRecord,
 )
-from hakoniwa_core.trade import merchant, ships, traders
+from hakoniwa_core.trade import balance, merchant, ships, traders
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import (
     BASIS,
@@ -1449,6 +1449,7 @@ class Market(IslandStage):
             elif seller.kind == MERCHANT:  # 海外の商人の代金は島の外に出る（輸入）
                 books.add_sector(island, books.TRADE, "imports", amount)
                 island.stats["trade.merchant"] = island.stats.get("trade.merchant", 0) + amount
+                balance.merchant(island, amount)  # 国際収支（フェーズ3-3）
             else:
                 books.add_sector(island, books.WAREHOUSE, "sales", amount)
             island.trades.append(TradeRecord(good, buyer.name, seller.name, qty, amount))

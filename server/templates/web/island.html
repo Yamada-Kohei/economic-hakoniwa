@@ -63,6 +63,8 @@
     {% if summary %}
       <table class="info">
         {% for row in summary %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
+        {% if strengths.strengths %}<tr><th>{% translate "得意産業" %}</th><td>{% for x in strengths.strengths %}{{ x.name }}{% if x.rank %} <small class="muted">{% blocktranslate with r=x.rank %}世界 {{ r }} 位{% endblocktranslate %}</small>{% endif %}{% if not forloop.last %}・{% endif %}{% endfor %}</td></tr>{% endif %}
+        {% if strengths.titles %}<tr><th>{% translate "称号" %}</th><td>{{ strengths.titles|join:"・" }}</td></tr>{% endif %}
       </table>
     {% else %}
       <p class="muted">{% translate "未集計です。最初のターンの更新後に表示されます。" %}</p>

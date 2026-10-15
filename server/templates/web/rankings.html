@@ -1,0 +1,58 @@
+{% extends "base.html" %}{% load i18n %}
+{% block title %}{% translate "順位" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+<h1>{% translate "統計の順位" %}</h1>
+{% if not data %}
+<p class="muted">{% translate "世界がまだありません。" %}</p>
+{% else %}
+<p>{% blocktranslate with t=data.turn %}ターン {{ t }} の統計です。{% endblocktranslate %}
+  {% if data.base_name %}{% blocktranslate with c=data.base_name %}お金の額は、今の為替レートで「{{ c }}」に直して比べています。{% endblocktranslate %}{% endif %}</p>
+{% if data.currencies|length > 1 %}
+<form method="get" class="actions">
+  <label>{% translate "比べる通貨" %} <select name="base">
+    {% for c in data.currencies %}<option value="{{ c.id }}"{% if c.id == data.base %} selected{% endif %}>{{ c.name }}</option>{% endfor %}
+  </select></label>
+  <button type="submit">{% translate "切り替える" %}</button>
+</form>
+{% endif %}
+
+<div class="rankings">
+  {% for c in data.categories %}
+  <section class="panel" id="rank-{{ c.name }}">
+    <h2>{{ c.label }}</h2>
+    {% if c.rows %}
+    <table class="goods ranking-table">
+      <thead><tr><th>{% translate "順位" %}</th><th>{% translate "国" %}</th><th>{% translate "値" %}</th></tr></thead>
+      <tbody>
+        {% for r in c.rows %}
+        <tr><td>{% if r.rank %}{{ r.rank }}{% else %}-{% endif %}</td><td><a href="{% url 'island_economy' r.island %}">{{ r.name }}</a></td><td>{% if r.rank %}{{ r.text }}{% else %}<span class="muted">{% translate "為替レートがなく直せない" %}</span>{% endif %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">{% translate "まだ集計がありません。" %}</p>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+
+<section class="panel" id="titles">
+  <h2>{% translate "得意産業と称号" %}</h2>
+  <p class="hint">{% translate "各産業の経験（その産業の標準の施設が全力で動いたターン数に直した累積の産出）が世界で1位の国が、その産業の称号を持ちます。経験は1年動かさないと少しずつ薄れます。" %}</p>
+  <div class="table-scroll">
+    <table class="goods titles-table">
+      <thead><tr><th>{% translate "産業" %}</th><th>{% translate "称号" %}</th><th>{% translate "持っている国" %}</th><th>{% translate "経験の上位" %}</th></tr></thead>
+      <tbody>
+        {% for i in data.industries %}
+        <tr>
+          <td>{{ i.name }}</td><td>{{ i.title }}</td>
+          <td>{% if i.holder %}<a href="{% url 'island_economy' i.holder %}">{{ i.holder_name }}</a>{% else %}<span class="muted">{% translate "まだいない" %}</span>{% endif %}</td>
+          <td>{% for t in i.top %}{{ t.rank }}. <a href="{% url 'island_economy' t.island %}">{{ t.name }}</a> <small class="muted">{% blocktranslate with n=t.turns|floatformat:"-1g" %}{{ n }} ターン分{% endblocktranslate %}</small>{% if not forloop.last %}<br>{% endif %}{% empty %}<span class="muted">-</span>{% endfor %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

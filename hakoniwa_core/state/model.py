@@ -207,6 +207,18 @@ class Policy:
     # 補助金: {"kind": production・capital・bailout, "good"/"x"/"y", "rate": 1万分の1,
     #          "until": ターン}
     subsidies: list[dict[str, Any]] = field(default_factory=list)
+    # 以下はフェーズ3-3（産業政策と国際金融。hakoniwa_core/trade/policy.py）。財と通貨と島の番号は
+    # 文字列のキー
+    tariffs: dict[str, int] = field(default_factory=dict)  # 財 → 関税率（1万分の1）
+    export_subsidies: dict[str, int] = field(default_factory=dict)  # 財 → 1 単位あたりの輸出補助
+    # 財 → 1ターンの輸入の上限（1000分の1）
+    import_quotas: dict[str, int] = field(default_factory=dict)
+    embargoes: dict[str, list[str]] = field(default_factory=dict)  # 相手の島 → 財（空はすべての財）
+    capital_controls: str = ""  # 資本取引: free・official・closed（"" は経済体制の既定）
+    fx_intervention: dict[str, int] = field(default_factory=dict)  # 通貨 → 中央銀行が毎ターン買う額
+    fx_peg: dict[str, int] = field(default_factory=dict)  # 通貨 → 固定したレート（× 1万分の1）
+    # 外国の国債の売り買い: 持ち手（gov・cb）→ 発行した島 → 毎ターン買う額面（マイナスは売る）
+    foreign_bonds: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 @dataclass

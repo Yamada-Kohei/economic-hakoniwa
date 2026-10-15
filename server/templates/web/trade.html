@@ -31,6 +31,8 @@
           <tr><th>{% translate "加盟国" %}</th><td>{% for x in b.members %}<a href="{% url 'island_trade' x.id %}">{{ x.name }}</a>{% if not forloop.last %}・{% endif %}{% endfor %}</td></tr>
           <tr><th>{% translate "加盟" %}</th><td>{% if b.open %}{% translate "誰でも入れる" %}{% else %}{% translate "代表の承認が要る" %}{% endif %}</td></tr>
           <tr><th>{% translate "決済通貨" %}</th><td>{{ b.currency_name }}{% if mine and b.currency != island.id %}<br><small>{% blocktranslate with c=b.currency_name r=b.rate|floatformat:4 %}今のレート: {{ c }} 1 = 自国通貨 {{ r }}{% endblocktranslate %}</small>{% endif %}</td></tr>
+          <tr><th>{% translate "圏内の関税" %}</th><td>{% if b.no_tariff %}{% translate "なし（圏の市場で買った荷に関税をかけない決まり）" %}{% else %}{% translate "加盟国が決める" %}{% endif %}</td></tr>
+          {% if b.fixed %}<tr><th>{% translate "圏内の固定価格" %}</th><td>{% for f in b.fixed %}{{ f.name }} {{ b.currency_symbol }}{{ f.price|floatformat:"0g" }}/{{ f.unit }}{% if not forloop.last %}・{% endif %}{% endfor %}</td></tr>{% endif %}
           {% if b.leaving %}<tr><th></th><td class="warning">{% translate "次のターンに抜けます（運ぶ途中の荷はそのまま届きます）。" %}</td></tr>{% endif %}
         </table>
 
@@ -76,7 +78,17 @@
             <option value="">{% translate "変えない" %}</option>
             {% for x in b.members %}<option value="{{ x.id }}">{{ x.name }}{% if x.id == b.currency %} {% translate "（今）" %}{% endif %}</option>{% endfor %}
           </select></label>
-          <p class="hint">{% translate "決済通貨を変えると、圏の値段は今のレートで新しい通貨に直されます。" %}</p>
+          <label>{% translate "圏内の関税" %} <select name="no_tariff">
+            <option value="">{% translate "変えない" %}</option>
+            <option value="true">{% translate "なくす" %}</option>
+            <option value="false">{% translate "加盟国に任せる" %}</option>
+          </select></label>
+          <label>{% translate "固定価格の資源" %} <select name="fixed_good">
+            <option value="">{% translate "変えない" %}</option>
+            {% for g in trade.goods %}<option value="{{ g.good }}">{{ g.name }}（{{ g.unit }}）</option>{% endfor %}
+          </select></label>
+          <label>{% translate "固定価格（決済通貨。0 でやめる）" %} <input name="fixed_price" type="number" min="0" step="1"></label>
+          <p class="hint">{% translate "決済通貨を変えると、圏の値段は今のレートで新しい通貨に直されます。固定価格を決めた資源は、圏の市場がその値段で売り買いし、買いと売りの多い側は割り当てで減らします。" %}</p>
           <button type="submit">{% translate "命令に追加" %}</button>
         </form>
         {% if b.applicants %}
@@ -172,7 +184,7 @@
             {% for c in trade.contracts %}
             <tr>
               <td>{{ c.id }}</td>
-              <td>{{ c.state_name }}{% if c.state == "proposed" %}<br><small class="muted">{% if c.proposed_by_me %}{% translate "相手の返事待ち" %}{% else %}{% translate "相手からの申し込み" %}{% endif %}</small>{% endif %}</td>
+              <td>{{ c.state_name }}{% if c.aid %}<br><small class="muted">{% translate "物の援助" %}</small>{% endif %}{% if c.state == "proposed" %}<br><small class="muted">{% if c.proposed_by_me %}{% translate "相手の返事待ち" %}{% else %}{% translate "相手からの申し込み" %}{% endif %}</small>{% endif %}</td>
               <td><a href="{% url 'island_trade' c.partner %}">{{ c.partner_name }}</a></td>
               <td>{{ c.side_name }}</td>
               <td>{{ c.good_name }}</td>
@@ -211,6 +223,81 @@
         <label>{% translate "期間（ターン）" %} <input name="turns" type="number" min="1" max="600" step="1" value="12" required></label>
         <label>{% translate "届いた物（買うとき）" %} <select name="delivery"><option value="market">{% translate "市場に出す" %}</option><option value="warehouse">{% translate "国の倉庫に置く" %}</option></select></label>
         <p class="hint">{% translate "相手が受ける命令を出すと、その次のターンから効きます。買うときは、届いた物を島の市場の値段で売りに出すか、国の倉庫に置いておくかを選べます（傷みやすい物はどちらでもすぐ市場に出します）。" %}</p>
+        <button type="submit">{% translate "命令に追加" %}</button>
+      </form>
+      {% endif %}
+      <p class="trade-notice" aria-live="polite"></p>
+    </section>
+
+    <section class="panel" id="trade-policy">
+      <h2>{% translate "産業政策と援助" %}</h2>
+      {% with p=trade.policy %}
+      {% if p.goods %}
+      <div class="table-scroll">
+        <table class="goods policy-table">
+          <thead><tr><th>{% translate "資源" %}</th><th>{% translate "関税率" %}</th><th>{% translate "輸出補助（1単位）" %}</th><th>{% translate "輸入の割り当て（1ターン）" %}</th></tr></thead>
+          <tbody>
+            {% for g in p.goods %}
+            <tr>
+              <td>{{ g.name }}</td>
+              <td>{% if g.tariff is not None %}{{ g.tariff|floatformat:"-2" }}%{% else %}-{% endif %}</td>
+              <td>{% if g.subsidy %}{{ currency }}{{ g.subsidy|floatformat:"0g" }}{% else %}-{% endif %}</td>
+              <td>{% if g.quota is not None %}{{ g.quota }} {{ g.unit }}{% else %}-{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="muted">{% translate "関税・輸出補助・輸入の割り当てはありません。" %}</p>
+      {% endif %}
+      <table class="info">
+        <tr><th>{% translate "禁輸している国" %}</th><td>{% for e in p.embargoes %}{{ e.partner_name }}（{% if e.goods %}{{ e.goods|join:"・" }}{% else %}{% translate "すべての資源" %}{% endif %}）{% if not forloop.last %}<br>{% endif %}{% empty %}<span class="muted">{% translate "なし" %}</span>{% endfor %}</td></tr>
+        <tr><th>{% translate "この国に禁輸している国" %}</th><td>{% for e in p.embargoed_by %}{{ e.partner_name }}（{% if e.goods %}{{ e.goods|join:"・" }}{% else %}{% translate "すべての資源" %}{% endif %}）{% if not forloop.last %}<br>{% endif %}{% empty %}<span class="muted">{% translate "なし" %}</span>{% endfor %}</td></tr>
+      </table>
+      {% endwith %}
+      <p class="hint">{% translate "関税は、商社が貿易圏の市場で買った荷を下ろすときに、約定の値段を自国通貨に直した額に率を掛けて国庫に払います（契約と海外の商人にはかからず、圏が関税をなくす決まりなら圏の市場でもかかりません）。輸出補助は、商社が圏の市場で売れた量に応じて国庫の補助金の予算から払います。輸入の割り当ては、商社が圏の市場で1ターンに買える量の上限です。禁輸は、どちらかの国が決めていれば、その国との圏の市場の売り買いと契約（援助を含む）が止まります。" %}</p>
+      <form class="actions" data-order="set_tariff">
+        <strong>{% translate "関税" %}</strong>
+        <label>{% translate "資源" %} <select name="good" required>{% for g in trade.goods %}<option value="{{ g.good }}">{{ g.name }}</option>{% endfor %}</select></label>
+        <label>{% translate "関税率（%。0 でやめる）" %} <input name="rate" type="number" min="0" max="100" step="0.1" required></label>
+        <button type="submit">{% translate "命令に追加" %}</button>
+      </form>
+      <form class="actions" data-order="set_export_subsidy">
+        <strong>{% translate "輸出補助" %}</strong>
+        <label>{% translate "資源" %} <select name="good" required>{% for g in trade.goods %}<option value="{{ g.good }}">{{ g.name }}（{{ g.unit }}）</option>{% endfor %}</select></label>
+        <label>{% translate "1単位あたり（自国通貨。0 でやめる）" %} <input name="amount" type="number" min="0" step="1" required></label>
+        <button type="submit">{% translate "命令に追加" %}</button>
+      </form>
+      <form class="actions" data-order="set_import_quota">
+        <strong>{% translate "輸入の割り当て" %}</strong>
+        <label>{% translate "資源" %} <select name="good" required>{% for g in trade.goods %}<option value="{{ g.good }}">{{ g.name }}（{{ g.unit }}）</option>{% endfor %}</select></label>
+        <label>{% translate "1ターンの上限（空にするとやめる）" %} <input name="quantity" type="number" min="0" step="0.1"></label>
+        <button type="submit">{% translate "命令に追加" %}</button>
+      </form>
+      {% if trade.partners %}
+      <form class="actions" data-order="set_embargo">
+        <strong>{% translate "禁輸" %}</strong>
+        <label>{% translate "相手の国" %} <select name="partner" required>{% for p in trade.partners %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select></label>
+        <label>{% translate "資源" %} <select name="good"><option value="">{% translate "すべての資源" %}</option>{% for g in trade.goods %}<option value="{{ g.good }}">{{ g.name }}</option>{% endfor %}</select></label>
+        <label>{% translate "禁輸を" %} <select name="lift"><option value="false">{% translate "始める" %}</option><option value="true">{% translate "やめる" %}</option></select></label>
+        <button type="submit">{% translate "命令に追加" %}</button>
+      </form>
+      <form class="actions" data-order="send_aid">
+        <strong>{% translate "お金の援助" %}</strong>
+        <label>{% translate "相手の国" %} <select name="partner" required>{% for p in trade.partners %}<option value="{{ p.id }}">{{ p.name }}（{{ p.currency_name }}）</option>{% endfor %}</select></label>
+        <label>{% translate "額" %} <input name="amount" type="number" min="1" step="1" required></label>
+        <label>{% translate "通貨" %} <select name="currency_of"><option value="self">{% translate "自国の通貨" %}</option><option value="partner">{% translate "相手の国の通貨（持っている外貨から）" %}</option></select></label>
+        <p class="hint">{% translate "国庫から一度だけ送ります。自国の通貨で送ると、相手の国の政府が自国の通貨（相手から見て外貨）を受け取ります。経常収支の移転に入ります。" %}</p>
+        <button type="submit">{% translate "命令に追加" %}</button>
+      </form>
+      <form class="actions" data-order="send_aid">
+        <strong>{% translate "物の援助" %}</strong>
+        <label>{% translate "相手の国" %} <select name="partner" required>{% for p in trade.partners %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select></label>
+        <label>{% translate "資源" %} <select name="good" required>{% for g in trade.goods %}<option value="{{ g.good }}">{{ g.name }}（{{ g.unit }}）</option>{% endfor %}</select></label>
+        <label>{% translate "1ターンの量" %} <input name="quantity" type="number" min="0.1" step="0.1" required></label>
+        <label>{% translate "期間（ターン）" %} <input name="turns" type="number" min="1" max="600" step="1" value="12" required></label>
+        <p class="hint">{% translate "値段 0 の片道の契約として、次のターンから国の倉庫の物（足りなければ島の市場で買った物）を、相手の国の船で届けます。相手の承諾は要りません。届いた物は相手の島の市場に出ます。送った国の島の値段で、輸出と移転に入ります。契約の一覧から、どちらの国もやめられます。" %}</p>
         <button type="submit">{% translate "命令に追加" %}</button>
       </form>
       {% endif %}

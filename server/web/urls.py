@@ -19,6 +19,7 @@ urlpatterns = [
     path("", views.top, name="top"),
     path("found/", founding.page, name="found"),
     path("world/", views.world_map, name="world"),
+    path("rankings/", views.rankings_page, name="rankings"),
     path("help/", views.help_page, name="help"),
     path("islands/<int:island_id>/", views.island_page, name="island"),
     path("islands/<int:island_id>/log/", views.turn_log, name="turn_log"),

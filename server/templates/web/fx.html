@@ -3,6 +3,8 @@
 {% block content %}
 {% include "web/report_header.html" %}
 
+<div class="report-layout{% if mine %} with-orders{% endif %}">
+  <div class="report-main">
 <section class="panel" id="rates">
   <h2>{% if stats_turn is not None %}{% blocktranslate with turn=stats_turn %}為替レート（ターン {{ turn }}）{% endblocktranslate %}{% else %}{% translate "為替レート" %}{% endif %}</h2>
   <p class="hint">{% blocktranslate with c=fx.currency_name b=band %}自国の通貨は「{{ c }}」です。変動相場で、自国通貨と相手の通貨の組ごとに、商社と政府の売り買いの板寄せで毎ターン決まり、1ターンに {{ b }}% までしか動きません。中央銀行は少しの偏りを受け身の売り買いで引き受けます（前のレートより安ければ外貨を買い、高ければ持っている外貨を売る）。相手の通貨を発行した国の中央銀行も同じように売り買いするので、島の誰も持っていない通貨も買えます。{% endblocktranslate %}</p>
@@ -62,9 +64,95 @@
   {% else %}
   <p class="muted">{% translate "未集計です。" %}</p>
   {% endif %}
+  {% if bop %}
+  <h3>{% translate "経常収支と金融収支の内訳" %}</h3>
+  <table class="info bop-table">
+    {% for row in bop %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
+  </table>
+  <p class="hint">{% translate "経常収支（貿易・サービス・所得・移転）は、金融収支（外貨と外国の国債の増加から、外国が持つ自国通貨と自国の国債の増加を引いたもの）と必ず同じ額になります。外国の国債の利子は所得収支、援助は移転に入ります。為替の評価損益（持っている外貨の値打ちがレートで変わる分）は入りません。" %}</p>
+  {% endif %}
 </section>
 
 {% if mine %}
+<section class="panel" id="fx-policy">
+  <h2>{% translate "為替と資本取引の政策" %}</h2>
+  {% with p=fx.policy %}
+  <table class="info">
+    <tr><th>{% translate "資本取引" %}</th><td>{{ p.capital_name }}{% if p.capital_default %} <small class="muted">{% blocktranslate with r=p.regime_name %}（{{ r }}の既定）{% endblocktranslate %}</small>{% endif %}</td></tr>
+    <tr><th>{% translate "中央銀行" %}</th><td>{% if p.cb_independent %}{% translate "独立（介入と固定相場は決められません。外国の国債は政府だけが売り買いできます）" %}{% else %}{% translate "政府の下（介入・固定相場・中央銀行の外国の国債を決められます）" %}{% endif %}</td></tr>
+    <tr><th>{% translate "介入" %}</th><td>{% for r in p.interventions %}{% blocktranslate with c=r.name a=r.amount|floatformat:"0g" side=r.side %}{{ c }}を毎ターン {{ a }} {{ side }}{% endblocktranslate %}{% if not forloop.last %}<br>{% endif %}{% empty %}<span class="muted">{% translate "していない" %}</span>{% endfor %}</td></tr>
+    <tr><th>{% translate "固定相場" %}</th><td>{% for r in p.pegs %}{% blocktranslate with c=r.name v=r.rate|floatformat:4 lo=r.low|floatformat:4 hi=r.high|floatformat:4 %}{{ c }} 1 = 自国通貨 {{ v }}（{{ lo }}〜{{ hi }} の間に保つ）{% endblocktranslate %}{% if not forloop.last %}<br>{% endif %}{% empty %}<span class="muted">{% translate "していない（変動相場）" %}</span>{% endfor %}</td></tr>
+  </table>
+  <p class="hint">{% blocktranslate with b=p.peg_band|floatformat:"-2" %}介入は、中央銀行が毎ターン決めた額の外貨を値幅の端の値段で買う（売る）命令です。買う代金は自国通貨を作って払います。固定相場は、決めたレートの ±{{ b }}% の間にレートを保つように、中央銀行が下の端で限りなく買い、上の端で持っている外貨を売ります。通貨安の圧力で外貨準備が尽きると固定は外れ、変動相場に戻ります。{% endblocktranslate %}</p>
+  {% if not p.cb_independent and p.currencies %}
+  <form class="actions" data-order="set_fx_intervention">
+    <strong>{% translate "為替の介入" %}</strong>
+    <label>{% translate "通貨" %} <select name="currency" required>{% for c in p.currencies %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
+    <label>{% translate "毎ターン" %} <select name="side"><option value="buy">{% translate "買う" %}</option><option value="sell">{% translate "売る" %}</option></select></label>
+    <label>{% translate "額（その通貨。0 でやめる）" %} <input name="amount" type="number" min="0" step="1" required></label>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  <form class="actions" data-order="set_fx_peg">
+    <strong>{% translate "固定相場" %}</strong>
+    <label>{% translate "通貨" %} <select name="currency" required>{% for c in p.currencies %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
+    <label>{% translate "その通貨 1 が自国通貨で（0 でやめる）" %} <input name="rate" type="number" min="0" step="0.0001" required></label>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  {% endif %}
+  <form class="actions" data-order="set_capital_controls">
+    <strong>{% translate "資本取引の制限" %}</strong>
+    <label>{% translate "外国の国債の売り買い" %} <select name="mode">
+      <option value="free">{% translate "自由（市中銀行も外国の国債を買い、外国の銀行も自国の国債を買える）" %}</option>
+      <option value="official">{% translate "政府と中央銀行だけ" %}</option>
+      <option value="closed">{% translate "禁止" %}</option>
+    </select></label>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  {% endwith %}
+  <p class="fx-notice" aria-live="polite"></p>
+</section>
+
+<section class="panel" id="foreign-bonds">
+  <h2>{% translate "外国の国債" %}</h2>
+  {% if fx.foreign_bonds %}
+  <div class="table-scroll">
+    <table class="goods foreign-bonds-table">
+      <thead><tr><th>{% translate "持ち手" %}</th><th>{% translate "出した国" %}</th><th>{% translate "額面" %}</th><th>{% translate "時価" %}</th><th>{% translate "自国通貨に直すと" %}</th></tr></thead>
+      <tbody>
+        {% for b in fx.foreign_bonds %}
+        <tr>
+          <td>{{ b.holder_name }}</td><td><a href="{% url 'island_fiscal' b.issuer %}">{{ b.issuer_name }}</a></td>
+          <td>{{ b.symbol }}{{ b.face|floatformat:"0g" }}</td><td>{{ b.symbol }}{{ b.value|floatformat:"0g" }}</td><td>{{ currency }}{{ b.own|floatformat:"0g" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">{% translate "外国の国債は持っていません。" %}</p>
+  {% endif %}
+  {% with p=fx.policy %}
+  {% if p.bond_orders %}
+  <h3>{% translate "売り買いの命令" %}</h3>
+  <ul class="plain-list">
+    {% for o in p.bond_orders %}<li>{% blocktranslate with h=o.holder_name i=o.issuer_name a=o.amount|floatformat:"0g" c=o.currency_name side=o.side %}{{ h }}が{{ i }}の国債を毎ターン額面 {{ a }}（{{ c }}）{{ side }}{% endblocktranslate %}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  <p class="hint">{% translate "外国の国債は、出した国の入札と流通市場に、その国の通貨で加わって買います（持っている外貨で払う）。利子と償還はその国の通貨で入り、所得収支になります。出した国が債務不履行になると、外国の持ち手も同じ割合で額面を失います。市中銀行は、資本取引が自由な国どうしで、外国の利回りが自国より高く通貨安の見込みを上回るとき、自分で外貨を買って運用します。" %}</p>
+  {% if p.issuers %}
+  <form class="actions" data-order="set_foreign_bonds">
+    <strong>{% translate "外国の国債を売り買いする" %}</strong>
+    <label>{% translate "持ち手" %} <select name="holder"><option value="gov">{% translate "政府" %}</option>{% if not p.cb_independent %}<option value="cb">{% translate "中央銀行" %}</option>{% endif %}</select></label>
+    <label>{% translate "出した国" %} <select name="issuer" required>{% for i in p.issuers %}<option value="{{ i.id }}">{{ i.name }}（{{ i.currency_name }}）</option>{% endfor %}</select></label>
+    <label>{% translate "毎ターン" %} <select name="side"><option value="buy">{% translate "買う" %}</option><option value="sell">{% translate "売る" %}</option></select></label>
+    <label>{% translate "額面（その国の通貨。0 でやめる）" %} <input name="amount" type="number" min="0" step="1" required></label>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  {% endif %}
+  {% endwith %}
+  <p class="fx-notice" aria-live="polite"></p>
+</section>
+
 <section class="panel" id="holdings">
   <h2>{% translate "外貨の持ち高" %}</h2>
   {% if fx.holdings %}
@@ -128,8 +216,19 @@
     <figure class="chart" data-names="fx.holdings,money.nonresident"><figcaption>{% translate "外貨の持ち高と、外国が持つ自国通貨" %}</figcaption></figure>
     <figure class="chart" data-names="fx.volume.*"><figcaption>{% translate "為替の売買量（1ターン）" %}</figcaption></figure>
     <figure class="chart" data-names="fx.dealt.*"><figcaption>{% translate "中央銀行が買った外貨（1ターン。売りはマイナス）" %}</figcaption></figure>
+    <figure class="chart" data-names="bop.current,bop.goods,bop.income,bop.transfers"><figcaption>{% translate "経常収支とその内訳（1ターン）" %}</figcaption></figure>
+    <figure class="chart" data-names="fx.reserves,bonds.foreign"><figcaption>{% translate "外貨準備と、外国が持つ自国の国債" %}</figcaption></figure>
+    {% if mine %}<figure class="chart" data-names="fx.intervened.*"><figcaption>{% translate "介入と固定相場で中央銀行が買った外貨（1ターン。売りはマイナス）" %}</figcaption></figure>{% endif %}
   </div>
 </section>
+  </div>
 
+  {% if mine %}
+  <aside id="orders" class="panel report-orders" data-url="{% url 'api_orders' island.id %}" data-defs="{% url 'api_defs' %}"
+         data-forms="" data-heading="{% translate '為替の命令' %}"></aside>
+  {% endif %}
+</div>
+
+{% csrf_token %}
 <script type="module" src="{% static 'js/reports/fx.js' %}"></script>
 {% endblock %}

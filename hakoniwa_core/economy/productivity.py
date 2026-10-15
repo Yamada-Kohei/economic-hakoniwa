@@ -14,6 +14,10 @@ w はレシピの factors（infra・education）で、L は次のとおりです
 フェーズ3-2 から、自然条件の係数も掛けます（hakoniwa_core/nature.py）。factors の climate は島の
 気候帯の産出の倍率、fertility は施設のマスの肥沃度で、どちらも 1 + w ×（値 − 1）です。
 
+フェーズ3-3 から、経験と集積の係数も掛けます（hakoniwa_core/economy/experience.py）。経験は作り方の
+施設の産業（industry）の島の累積で、集積は施設のマスの周りの同じ産業の施設の数で決まります。どちらも
+factors の重みは使わず、産業のある施設にいつも掛けます。
+
 係数を掛けた値を施設の生産性として economy["productivity"]（1000 分の 1）に残し、生産の段の
 産出の量、発電所の能力、変動費の利益の見込み（economy/prices.py）、操業目標に掛けます。
 """
@@ -27,6 +31,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, nature
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
+from hakoniwa_core.economy import experience
 from hakoniwa_core.geo import NEIGHBORS8
 from hakoniwa_core.state import Facility, IslandState
 
@@ -67,7 +72,8 @@ def productivity(
     (x, y) が島の外なら、場所で決まるインフラと汚染の係数は 1 と見ます（場所を決める前の見込み）。
     """
     weights = recipe.get("factors") or {}
-    if not weights or not island.has_economy:
+    industry = recipe.get("industry")
+    if (not weights and not industry) or not island.has_economy:
         return FULL
     value = 1.0
     if weights.get("infra") and island.in_bounds(x, y):
@@ -84,6 +90,9 @@ def productivity(
     if weights.get("fertility") and island.in_bounds(x, y):
         rich = nature.fertility(island.tile(x, y)) / FULL
         value *= 1 + weights["fertility"] * (rich - 1)
+    if industry:
+        value *= experience.factor(island, config, industry)
+        value *= experience.cluster_factor(island, defs, config, recipe, x, y)
     return max(1, round(value * FULL))
 
 

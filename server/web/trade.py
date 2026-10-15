@@ -25,10 +25,14 @@ from hakoniwa_core.naming import facility_name
 from hakoniwa_core.state import IslandState, WorldState
 from hakoniwa_core.trade import (
     KEY,
+    abroad,
+    balance,
+    blocs,
     currency_labels,
     is_port,
     is_trader,
     merchant,
+    policy,
     port_of,
     shipping_of,
     ships,
@@ -57,6 +61,12 @@ TRADE_STATS = [
     "freight.ship_rate",
     "port.handled",
     "trade.unpaid",
+    "trade.tariffs",
+    "trade.tariff_unpaid",
+    "trade.export_subsidies",
+    "trade.subsidy_unpaid",
+    "aid.sent",
+    "aid.received",
 ]
 PUBLIC_TRADE_STATS = ["trade.exports", "trade.imports", "trade.balance", "ships"]
 # 為替の画面と API に出す国全体の数（誰にでも）
@@ -67,9 +77,28 @@ FX_STATS = [
     "trade.merchant",
     "fx.holdings",
     "money.nonresident",
+    "fx.reserves",
+    "bonds.foreign",
+]
+# 国際収支の内訳（フェーズ3-3。誰にでも。hakoniwa_core/trade/balance.py）
+BOP_STATS = [
+    "bop.current",
+    *(f"bop.{item}" for item in balance.CURRENT_ITEMS),
+    "bop.financial",
+    *(f"bop.{item}" for item in balance.ASSET_ITEMS),
+    *(f"bop.{item}" for item in balance.LIABILITY_ITEMS),
 ]
 # 推移の API で返す、レート以外の系列
-FX_HISTORY = ["trade.exports", "trade.imports", "trade.balance", "fx.holdings", "money.nonresident"]
+FX_HISTORY = [
+    "trade.exports",
+    "trade.imports",
+    "trade.balance",
+    "fx.holdings",
+    "money.nonresident",
+    "fx.reserves",
+    "bop.current",
+    "bop.financial",
+]
 
 SIDE_NAMES = {"sell": "売る", "buy": "買う"}
 DELIVERY_NAMES = {
@@ -90,6 +119,7 @@ WHY_NAMES = {
     trade_stage.WHY_CAPACITY: "商社の1ターンに扱える重さの上限に届いた",
     trade_stage.WHY_MONEY: "払う決済通貨が足りない（為替で買えた外貨が足りない）",
     trade_stage.WHY_SELLERS: "圏の売りが足りないか、売りの値段が高い",
+    trade_stage.WHY_QUOTA: "輸入の割り当ての上限まで買った",
 }
 SHIPMENT_KINDS = {"bloc": "貿易圏", "contract": "二国間契約"}
 # 外貨の持ち高と非居住者の預金の持ち手（施設はまとめて「商社など」）
@@ -99,6 +129,14 @@ HOLDER_NAMES = {
     ledger.CB: "中央銀行（外貨準備）",
     FACILITIES: "商社など（合計）",
 }
+# 資本取引の制限（フェーズ3-3）
+CAPITAL_NAMES = {
+    policy.FREE: "自由（誰でも外国の国債を売り買いできる）",
+    policy.OFFICIAL: "政府と中央銀行だけ",
+    policy.CLOSED: "禁止（外国の国債を新しく買えず、外国にも自国の国債を売らない）",
+}
+# 外国の国債の持ち手
+BOND_HOLDER_NAMES = {ledger.GOV: "政府", ledger.CB: "中央銀行", abroad.BANKS: "市中銀行"}
 
 
 # --- 世界 ------------------------------------------------------------------------------
@@ -203,10 +241,21 @@ def bloc_view(
         "currency_name": _currency(islands, bloc["currency"]),
         "currency_symbol": islands.get(bloc["currency"], {}).get("symbol", ""),
         "created": bloc.get("created"),
+        # 圏の決まり（フェーズ3-3）: 圏内の関税をなくすか、財ごとの固定価格（決済通貨）
+        "no_tariff": blocs.no_tariff(bloc),
+        "fixed": _fixed_rows(bloc),
     }
     if goods:
         out["goods"] = bloc_goods(bloc)
     return out
+
+
+def _fixed_rows(bloc: dict[str, Any]) -> list[dict[str, Any]]:
+    defs = get_game().defs
+    return [
+        {"good": good, "name": defs.name("goods", good), "unit": defs.unit_name(good), "price": p}
+        for good, p in sorted(bloc.get("fixed", {}).items())
+    ]
 
 
 def routes(
@@ -357,7 +406,54 @@ def trade_data(
         for g in tradable_goods(defs)
     ]
     data["cancel_turns"] = config.get("trade.contract_cancel_turns")
+    data["policy"] = policy_view(world, here, islands)
     return data
+
+
+def policy_view(
+    world: m.World, here: IslandState, islands: dict[int, dict[str, Any]]
+) -> dict[str, Any]:
+    """産業政策（フェーズ3-3）: 財ごとの関税・輸出補助・輸入の割り当て、禁輸している国と、この国に
+    禁輸している国（持ち主向け）。"""
+    defs = get_game().defs
+    rules = here.policy
+    goods = []
+    for good in tradable_goods(defs):
+        tariff = policy.tariff_rate(here, good)
+        subsidy = policy.export_subsidy(here, good)
+        quota = policy.quota(here, good)
+        if not tariff and not subsidy and quota is None:
+            continue
+        goods.append(
+            {
+                "good": good,
+                "name": defs.name("goods", good),
+                "unit": defs.unit_name(good),
+                "tariff": tariff * 100 / BASIS if tariff else None,  # %
+                "subsidy": subsidy or None,  # 1 単位あたり
+                "quota": display.amount(quota) if quota is not None else None,
+            }
+        )
+    embargoes = [
+        {
+            "partner": int(key),
+            "partner_name": _name(islands, int(key)),
+            "goods": [defs.name("goods", g) for g in sorted(items)],
+        }
+        for key, items in sorted(rules.embargoes.items(), key=lambda kv: int(kv[0]))
+    ]
+    against = []
+    for row in world.islands.exclude(pk=here.id).order_by("id").values("id", "policy"):
+        items = ((row["policy"] or {}).get("embargoes") or {}).get(str(here.id))
+        if items is not None:
+            against.append(
+                {
+                    "partner": row["id"],
+                    "partner_name": _name(islands, row["id"]),
+                    "goods": [defs.name("goods", g) for g in sorted(items)],
+                }
+            )
+    return {"goods": goods, "embargoes": embargoes, "embargoed_by": against}
 
 
 def _member_bloc(
@@ -409,6 +505,7 @@ def contract_rows(
                 "partner": view["partner"],
                 "partner_name": _name(islands, view["partner"]),
                 "proposed_by_me": view["proposer"] == island_id,
+                "aid": bool(c.get("aid")),  # 物の援助（値段 0 の片道の契約。フェーズ3-3）
                 "good": view["good"],
                 "good_name": defs.name("goods", view["good"]),
                 "unit": defs.unit_name(view["good"]),
@@ -710,6 +807,7 @@ def fx_data(
         "rates": rates,
         "cross": cross,
         **_stats_part(stats, FX_STATS),
+        "bop": _stats_part(stats, BOP_STATS),
     }
     if history:
         first, last = reports.turn_range(island, start, end)
@@ -718,7 +816,102 @@ def fx_data(
     if mine:
         data["holdings"] = holding_rows(here, islands)
         data["nonresident"] = nonresident_rows(island, here, islands)
+        data["policy"] = fx_policy_view(here, islands, trading)
+        data["foreign_bonds"] = foreign_bond_rows(here, islands)
     return data
+
+
+def fx_policy_view(
+    here: IslandState, islands: dict[int, dict[str, Any]], trading: dict[int, IslandState]
+) -> dict[str, Any]:
+    """為替と資本取引の政策（フェーズ3-3）: 資本取引の制限、中央銀行の介入と固定相場、外国の国債の
+    売り買いの命令。命令の入力に使う一覧（相手の通貨と、国債を出している国）も返す。"""
+    defs = get_game().defs
+    config = get_game().config
+    rules = here.policy
+    regime = here.regime.get("economy", "")
+    mode = policy.capital_controls(here, defs)
+    peg_band = config.get("fx.peg_band")
+    return {
+        "capital_controls": mode,
+        "capital_name": CAPITAL_NAMES.get(mode, mode),
+        "capital_default": not rules.capital_controls,
+        "regime_name": defs.name("regimes", regime) if regime else "",
+        "cb_independent": rules.cb_independent,
+        "interventions": [
+            {
+                "currency": int(key),
+                "name": _currency(islands, int(key)),
+                "amount": abs(amount),
+                "side": "買う" if amount > 0 else "売る",
+            }
+            for key, amount in sorted(rules.fx_intervention.items(), key=lambda kv: int(kv[0]))
+        ],
+        "pegs": [
+            {
+                "currency": int(key),
+                "name": _currency(islands, int(key)),
+                "rate": rate / BASIS,
+                "low": rate * (1 - peg_band) / BASIS,
+                "high": rate * (1 + peg_band) / BASIS,
+            }
+            for key, rate in sorted(rules.fx_peg.items(), key=lambda kv: int(kv[0]))
+        ],
+        "peg_band": peg_band * 100,  # 固定相場の幅（%）
+        "bond_orders": [
+            {
+                "holder": holder,
+                "holder_name": BOND_HOLDER_NAMES.get(holder, holder),
+                "issuer": int(key),
+                "issuer_name": _name(islands, int(key)),
+                "currency_name": _currency(islands, int(key)),
+                "amount": abs(amount),
+                "side": "買う" if amount > 0 else "売る",
+            }
+            for holder, issuers in sorted(rules.foreign_bonds.items())
+            for key, amount in sorted(issuers.items(), key=lambda kv: int(kv[0]))
+        ],
+        "currencies": [
+            {"id": int(key), "name": _currency(islands, int(key))}
+            for key in sorted(fxrates.rates(here), key=int)
+            if int(key) != here.id
+        ],
+        "issuers": [
+            {"id": i, "name": _name(islands, i), "currency_name": _currency(islands, i)}
+            for i in sorted(trading)
+            if i != here.id
+        ],
+    }
+
+
+def foreign_bond_rows(
+    here: IslandState, islands: dict[int, dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """島の政府・中央銀行・市中銀行が持つ外国の国債（発行した国ごと。額面と時価はその国の通貨、
+    値打ちは今のレートで自国通貨に直した額）。"""
+    out = []
+    for row in abroad.view(here):
+        holder = row["holder"]
+        key = holder if holder in (ledger.GOV, ledger.CB) else abroad.BANKS
+        out.append(
+            {
+                "holder": key,
+                "holder_name": BOND_HOLDER_NAMES[key],
+                "issuer": row["issuer"],
+                "issuer_name": _name(islands, row["issuer"]),
+                "symbol": islands.get(row["issuer"], {}).get("symbol", ""),
+                "face": row["face"],
+                "value": row["value"],
+                "own": row["own"],
+            }
+        )
+    merged: dict[tuple[str, int], dict[str, Any]] = {}
+    for r in out:  # 市中銀行はまとめる
+        slot = merged.setdefault((r["holder"], r["issuer"]), {**r, "face": 0, "value": 0, "own": 0})
+        for k in ("face", "value", "own"):
+            slot[k] += r[k]
+    order = {ledger.GOV: 0, ledger.CB: 1, abroad.BANKS: 2}
+    return sorted(merged.values(), key=lambda r: (order[r["holder"]], r["issuer"]))
 
 
 def holding_rows(here: IslandState, islands: dict[int, dict[str, Any]]) -> list[dict[str, Any]]:
