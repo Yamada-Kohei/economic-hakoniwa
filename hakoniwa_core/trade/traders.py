@@ -35,6 +35,12 @@
 PUSH_MARGIN より上回るときは、島の市場の買いたい量より多めに狙います（売りを増やして値段を
 原価のほうへ下げる）。
 
+計画経済の島（フェーズ3-4。公定価格のある島）の商社は、値段の差ではなく、島の市場で買えなかった
+量（行列）のある財を、圏の値段で一番安い圏から輸入し、売れ残った財を輸出します（貿易の独占）。島では
+公定価格で売り買いし（輸入した物は仕入れ値によらず売り、輸出する物は公定価格で買う）、圏では輸出の
+荷を指値なしで売り、輸入は圏の値幅の上端まで買います。輸入に使えるのは商社が輸出で得て持っている
+外貨だけで（為替で外貨を買わない）、余った外貨は売りません（modules/trade の為替）。
+
 島で買い手がいるのに売りに出ていない物は、島で作る施設の変動費と同じように、輸入が引き合う値段
 （Prospect.import_floor。前のターンに圏の市場に売りがあった財だけ）まで島の値段を1ターンに値幅
 ずつ上げます。反対に、売りに出ているのに買い手の
@@ -74,6 +80,14 @@ PUSH_MARGIN = 0.2
 # 売れ残った輸入の荷を値幅の下端まで下げて売るときも、仕入れ値のこの割合より安くは売らない
 # （買い手の指値が島の値段と一緒に下がると、下端も毎ターン下がり、値段が 0 近くまで崩れるため）
 CLEARANCE_FLOOR = 0.5
+
+
+def is_planned(island: IslandState) -> bool:
+    """計画経済の島か（公定価格がある。フェーズ3-4。hakoniwa_core/economy/plan.py）。"""
+    return bool(island.ext.get("plan", {}).get("prices"))
+
+
+ANY_RATE = 10**15  # 計画経済の輸入: どのレートでも引き合う（外貨は持っている分だけ使い、買わない）
 
 
 @dataclass
@@ -136,6 +150,8 @@ def prospects(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, 
     fee = ships.port_fee(island, config)
     freight = ships.freight_rate(island, config)
     prices = island.economy.prices
+    planned = is_planned(island)
+    bloc_band = to_basis(config.get("trade.bloc_band"))
     out: dict[str, Prospect] = {}
     for good in tradable_goods(defs):
         p = Prospect(good)
@@ -170,6 +186,13 @@ def prospects(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, 
             on_sale = good in view.get("supply", ())
             if on_sale and (not p.import_floor or landed < p.import_floor):
                 p.import_floor = landed
+            if planned:  # 計画経済: 売りのある圏のうち、値段の一番安い圏から輸入する
+                if on_sale and (p.import_bloc is None or price < p.import_price):
+                    p.import_bloc, p.import_currency = int(key), currency
+                    p.import_price = price
+                    p.import_limit = auction.band(price, bloc_band)[1]
+                    p.import_rate = ANY_RATE
+                continue
             own = home - part(home, cut) - freight_unit - fee_unit
             bid = own * BASIS // max(1, policy.with_tariff(e, rate))
             gap = (bid - price) / price
@@ -214,6 +237,7 @@ def home_orders(island: IslandState, defs: Defs, config: GameConfig, turn: int) 
     width = to_basis(config.get("market.band"))
     prices = island.economy.prices
     clearance = config.get("trade.clearance_turns")
+    planned = is_planned(island)
     out: list[HomeOrder] = []
     for f in traders:
         budget = config.get("trade.trader_capacity") * QUANTITY_SCALE  # 扱える重さの残り
@@ -228,6 +252,9 @@ def home_orders(island: IslandState, defs: Defs, config: GameConfig, turn: int) 
                     out.append(HomeOrder(f, good, "sell", expiring, None))
                 if held - expiring > 0:
                     cost = unit_cost(f, good)
+                    if planned:  # 公定価格で売る（仕入れ値によらず）
+                        out.append(HomeOrder(f, good, "sell", held - expiring, 0))
+                        continue
                     if item["age"] >= clearance:
                         limit = max(low, round_money(cost * CLEARANCE_FLOOR))
                     else:
@@ -239,15 +266,25 @@ def home_orders(island: IslandState, defs: Defs, config: GameConfig, turn: int) 
                 out.append(HomeOrder(f, good, "sell", held, None))
                 continue
             p = found.get(good)
-            if item.get("dir") != EXPORT or not exportable(p, low):
+            if planned:  # 売れ残った物を公定価格で買って輸出する（値段の差によらず）
+                if item.get("dir") != EXPORT or p is None or p.export_bloc is None:
+                    continue
+            elif item.get("dir") != EXPORT or not exportable(p, low):
                 continue
+            assert p is not None
             unit = unit_weight(defs, good)
             want = min(item["x"], capacity_units(defs, config, good)) - item["held"][0]
             if unit > 0:
                 want = min(want, budget * QUANTITY_SCALE // unit)
             if want <= 0:
                 continue
-            out.append(HomeOrder(f, good, "buy", want, p.export_limit))
+            # 計画経済は値幅の上端（公定価格）に運賃の上限を足した額まで払う
+            limit = (
+                high + part(high, to_basis(config.get("freight.max_rate")))
+                if planned
+                else p.export_limit
+            )
+            out.append(HomeOrder(f, good, "buy", want, limit))
             budget -= want * unit // QUANTITY_SCALE
     return out
 
@@ -322,6 +359,12 @@ def update_targets(
             if item.get("dir") == IMPORT:
                 importers[good] = importers.get(good, 0) + 1
     prices = island.economy.prices
+    planned = is_planned(island)
+    exporters: dict[str, int] = {}
+    for f in traders:
+        for good, item in goods_of(f).items():
+            if item.get("dir") == EXPORT:
+                exporters[good] = exporters.get(good, 0) + 1
     for f in traders:
         turn = state_of(f).pop("turn", {})
         sold_bloc = turn.get("exported", {})
@@ -340,11 +383,24 @@ def update_targets(
             # 島で買い手のいない物は輸入せず、島で売りに出ていない物は輸出しない
             can_export = exportable(p, home) and record is not None and record.supply > 0
             can_import = importable(p) and record is not None and record.demand > 0
+            if planned:  # 計画経済: 行列のある物を輸入し、売れ残った物を輸出する
+                can_export = (
+                    p is not None
+                    and p.export_bloc is not None
+                    and record is not None
+                    and record.supply > record.volume
+                )
+                can_import = (
+                    p is not None
+                    and p.import_bloc is not None
+                    and record is not None
+                    and record.demand > record.volume
+                )
             direction = item.get("dir")
             if held <= 0:  # 荷が残っている間は向きを変えない（売り切ってから）
                 if can_import and can_export:
                     assert p is not None
-                    better = _import_margin(p) > _export_margin(p, home)
+                    better = planned or _import_margin(p) > _export_margin(p, home)
                     direction = IMPORT if better else EXPORT
                 elif can_import:
                     direction = IMPORT
@@ -365,6 +421,9 @@ def update_targets(
                     want_x = max(want_x, item["x"] + probe)
                 assert record is not None
                 want_x = min(want_x, record.supply)
+                if planned:  # 売れ残った量を、輸出する商社で分ける
+                    unsold = max(0, record.supply - record.volume)
+                    want_x = sold_bloc.get(good, 0) + unsold // max(1, exporters.get(good, 1))
             if direction == IMPORT and can_import:
                 assert record is not None
                 unmet = max(0, record.demand - record.volume)
@@ -374,7 +433,7 @@ def update_targets(
                 if _probing(item["m"], sold_home_.get(good, 0), left):
                     want_m = max(want_m, item["m"] + probe)
                 want_m = min(want_m, record.demand)
-                if _import_margin(p) > PUSH_MARGIN and left < record.demand:
+                if not planned and _import_margin(p) > PUSH_MARGIN and left < record.demand:
                     # 島の値段が輸入の原価よりずっと高い: 買い手の量より多めに入れて売り値を
                     # 下げる（その値段で買われている量だけを狙うと、売りが買いに届かず値段が
                     # 下がらないため）

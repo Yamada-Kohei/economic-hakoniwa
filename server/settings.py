@@ -8,6 +8,7 @@
 - HAKONIWA_GAME_CONFIG: game.yaml の場所（既定はリポジトリ直下）
 - HAKONIWA_CLIENT_IP_HEADER: 利用者の IP を読む場所（既定 REMOTE_ADDR。リバースプロキシの後ろでは
   HTTP_X_REAL_IP など、プロキシが書き込む場所にする）
+- HAKONIWA_LETTERS_PER_DAY: 1つの島が 24 時間に送れる手紙の数（既定 50。送りすぎの歯止め）
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ INSTALLED_APPS = [
     "server.orders",
     "server.turns",
     "server.board",
+    "server.letters",
     "server.web",
 ]
 
@@ -69,6 +71,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "server.web.context.own_island",
+                "server.letters.context.unread_letters",
             ],
         },
     },
@@ -122,3 +125,4 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 HAKONIWA_GAME_CONFIG = os.environ.get("HAKONIWA_GAME_CONFIG", str(BASE_DIR / "game.yaml"))
 HAKONIWA_CLIENT_IP_HEADER = os.environ.get("HAKONIWA_CLIENT_IP_HEADER", "REMOTE_ADDR")
+HAKONIWA_LETTERS_PER_DAY = int(os.environ.get("HAKONIWA_LETTERS_PER_DAY", "50"))

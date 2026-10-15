@@ -26,6 +26,8 @@ facilities.engineer_cap）。3 の後に余った技術者は、まだ埋まら�
 前のターンの運賃 × freight.labor_share ÷ 賃金 の人数を雇い、足りない割合だけ運賃を割り増します
 （フェーズ3-2 から、燃料のあるトラックで替えた運転手の分は雇わない。economy/trucks.py）。
 港・海運業・商社（フェーズ3-1）は、扱った荷の量と船の数に合わせて雇います（hakoniwa_core/trade）。
+労働の動員（全体主義。フェーズ3-4）をしている島では、最後に残った失業者を、物を作る国営の施設の
+空いた席に島のどこからでも、動員の賃金で割り当てます（_mobilize）。
 施設ごと・マスごとに雇った人数は、施設の economy["staff"] に残します。雇われなかった人は失業し、
 村の住民は自給の農業に戻ります（人口の段で扱う）。
 """
@@ -33,6 +35,7 @@ facilities.engineer_cap）。3 の後に余った技術者は、まだ埋まら�
 from __future__ import annotations
 
 from hakoniwa_core import facilities as fac
+from hakoniwa_core import politics
 from hakoniwa_core.economy import (
     banks,
     freight,
@@ -49,8 +52,9 @@ from hakoniwa_core.modules import infrastructure
 from hakoniwa_core.modules.market import SITE_HOLDS, SiteFunds
 from hakoniwa_core.modules.population import subsistence_persons
 from hakoniwa_core.registry import IslandStage, Registry
-from hakoniwa_core.state import Facility, IslandState
+from hakoniwa_core.state import OWNER_STATE, Facility, IslandState
 from hakoniwa_core.trade import staff
+from hakoniwa_core.trade import staff as staff_module
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, money_of, part, to_basis
 
@@ -198,12 +202,15 @@ class Employment(IslandStage):
         spare = self._spare_engineers(island, plans, general, staff, engineers)
         # 5. インフラの作業員を、残った失業者から島のどこからでも雇う
         employed: dict[Pos, int] = dict(infrastructure.hire(island, free, everywhere))
+        # 6. 労働の動員（全体主義）: 残った失業者を、国営の施設の空いた席に島のどこからでも
+        #    割り当てる
+        mobilized = self._mobilize(island, ctx, plans, staff, engineers, spare, free, employed)
         # 雇えなかった分の賃金の取り置きを戻し、結果を書く
         for f, wage in plans:
             mine = {p: n for p, n in staff[f.id].items() if n > 0}
             hired = sum(mine.values())
             skilled, spared = engineers.get(f.id, 0), spare.get(f.id, 0)
-            f.workers = hired + skilled + spared
+            f.workers = hired + skilled + spared + mobilized.get(f.id, 0)
             f.economy["staff"] = {_key(p): n for p, n in sorted(mine.items())}
             f.economy["wanted"] = wanted[f.id]
             f.economy["poached"] = poached.get(f.id, 0)
@@ -228,6 +235,81 @@ class Employment(IslandStage):
                 tile.ext["employed"] = count
             else:
                 tile.ext.pop("employed", None)
+
+    # --- 労働の動員（フェーズ3-4） -----------------------------------------------------
+
+    @staticmethod
+    def _mobilize(
+        island: IslandState,
+        ctx: StageContext,
+        plans: list[tuple[Facility, int]],
+        staff: dict[int, dict[Pos, int]],
+        engineers: dict[int, int],
+        spare: dict[int, int],
+        free: dict[Pos, int],
+        employed: dict[Pos, int],
+    ) -> dict[int, int]:
+        """動員している島で、残った失業者（村で自給の農業をしている人を除く）を、物を作る国営の
+        施設の空いた席（定義の人数 − 雇えた人数）に、優先順位の高い施設から島のどこからでも、
+        動員の賃金（最低賃金。決めていなければ平均賃金の politics.mobilization.wage）で割り当てる。
+        施設ごとの人数を返し、economy["mobilized"] と ["mobilized_wage"] に残す（賃金の段で
+        払う）。"""
+        defs, config = ctx.defs, ctx.config
+        for f, _ in plans:
+            f.economy.pop("mobilized", None)
+            f.economy.pop("mobilized_wage", None)
+        if not island.has_economy or politics.mobilized_share(island) <= 0:
+            return {}
+        share = fac.labor_share(defs, island)
+        idle = {}
+        for pos, count in free.items():
+            farming = int(subsistence_persons(defs, island, island.tile(*pos)) * share)
+            if count - farming > 0:
+                idle[pos] = count - farming
+        if not idle:
+            return {}
+        average = island.economy.average_wage or config.get("labor.initial_wage")
+        wage = island.policy.minimum_wage or round(
+            average * config.get("politics.mobilization.wage")
+        )
+        out: dict[int, int] = {}
+        chosen = [
+            f
+            for f, _ in plans
+            if f.built
+            and f.owner == OWNER_STATE
+            and fac.on_map(f)
+            and not is_public_service(defs, f)
+            and not is_bank(config, f)
+            and staff_module.wanted(config, defs, f) is None
+            and fac.recipe_of(defs, f).get("outputs")
+        ]
+        chosen.sort(key=lambda f: (-fac.priority_of(defs, config, f), f.id))
+        for f in chosen:
+            hired = sum(staff[f.id].values()) + engineers.get(f.id, 0) + spare.get(f.id, 0)
+            room = fac.workers_needed(defs, f.kind) - hired
+            if room <= 0:
+                continue
+            payer = payer_of(defs, config, f)
+            room = min(room, funds.available(island, payer) // max(1, wage))
+            taken = 0
+            for pos in sorted(idle, key=lambda p: (Employment._dist(f, p), p[1], p[0])):
+                take = min(idle[pos], room - taken)
+                if take <= 0:
+                    continue
+                idle[pos] -= take
+                free[pos] -= take
+                employed[pos] = employed.get(pos, 0) + take
+                taken += take
+                if taken >= room:
+                    break
+            if taken:
+                funds.commit(island, payer, taken * wage)
+                out[f.id] = taken
+                f.economy["mobilized"] = taken
+                f.economy["mobilized_wage"] = wage
+        island.stats["labor.mobilized"] = sum(out.values())
+        return out
 
     # --- 技術者 ----------------------------------------------------------------------
 

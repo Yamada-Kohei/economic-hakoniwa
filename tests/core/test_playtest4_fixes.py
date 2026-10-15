@@ -89,7 +89,9 @@ def test_grain_that_spoils_tonight_is_not_counted_as_bought(game):
     assert "grain" not in factory.stock  # 買えた分は今夜捨てられた
     assert factory.economy["short"] == {"grain": "supply"}
 
+    # 計画経済の島の市場は公定価格で動き、工場は値段で買い控えないので、混合経済の島で確かめる
     island = make_island(game)
+    island.regime["economy"] = "mixed"
     home(game, island, 5, 6, 6000)
     farm = add(island, "farm", 9, 8)
     factory = add(island, "food_factory", 8, 8)
@@ -97,7 +99,7 @@ def test_grain_that_spoils_tonight_is_not_counted_as_bought(game):
     farm.stock = {"grain": [[1 - life, 20_000], [1, 20_000]]}
     factory.stock = {}
     farm.economy["ask"] = {"grain": island.economy.prices["grain"] * 2}  # 値幅の上端で売りに出す
-    island.economy.prices["food"] = 1  # 食品は売れず、工場は今の値段までしか買わない（国庫直轄）
+    island.economy.prices["food"] = 1  # 食品は売れず、工場は採算の合う値段までしか買わない
     run(game, island, ["market"])
     assert stock.total(farm.stock, "grain") > 0  # 新しい穀物は売れ残った
     assert factory.economy["short"] == {"grain": "price"}

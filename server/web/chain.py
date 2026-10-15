@@ -43,6 +43,7 @@ CAUSES = {
     "no_demand": "unsold",
     "power_price": "unsold",
     "halted": "other",
+    "riot": "other",
     "recipe_change": "other",
 }
 CAUSE_NAMES = {

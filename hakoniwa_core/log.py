@@ -31,6 +31,11 @@ _ARG_KINDS = {
     "industry": "industries",
     "mode": "messages",
     "holder": "messages",
+    "politics": "regimes",
+    "head_of_state": "regimes",
+    "economy": "regimes",
+    "before": "regimes",
+    "building": "messages",
 }
 # マスを持たない施設（x, y が負）の場所の書き方: 文面のこの部分を、表示名 OFF_MAP_TO に置き換える
 OFF_MAP_FROM = "({x}, {y}) の"
@@ -56,6 +61,9 @@ def format_log(defs: Defs, kind: str, args: dict[str, Any], lang: str = "ja") ->
         shown.setdefault("unit", defs.unit_name(args["good"], lang))
     if isinstance(args.get("goods"), list):
         shown["goods"] = "・".join(defs.name("goods", g, lang) for g in args["goods"])
+    if isinstance(args.get("industries"), list):  # 重点産業（フェーズ3-4）
+        names = [defs.name("industries", g, lang) for g in args["industries"]]
+        shown["industries"] = "・".join(names) or defs.name("messages", "none", lang)
     for key in ("terms", "terms_before"):  # 国債の期間と割合 [[期間, %], ...]
         if isinstance(args.get(key), list):
             names = [f"{defs.name('finance', t, lang)} {p}%" for t, p in args[key]]

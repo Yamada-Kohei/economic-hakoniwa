@@ -142,6 +142,16 @@ _EXTRA_STATS = [
     ("bonds.bought_abroad", "入札で外国が買った国債（このターン）", "money"),
     ("fx.peg_broken", "固定相場が外れた通貨の数（このターン）", ""),
     ("titles", "持っている称号の数", ""),
+    # 政治と計画経済（フェーズ3-4）
+    ("politics.stability", "政情（0〜100）", ""),
+    ("politics.target", "政情の目標（いまの島の様子から）", ""),
+    ("politics.support", "支持率", "percent"),
+    ("politics.seats", "与党の議席", "percent"),
+    ("politics.halted", "暴動で止まった施設（このターン）", ""),
+    ("politics.destroyed", "暴動で壊された施設（このターン）", ""),
+    ("labor.mobilized", "労働の動員で働く人", "人"),
+    ("plan.queue", "行列（家計が配給で買えなかった割合。公定価格の額で）", "%"),
+    ("plan.forced_saving", "強制貯蓄（配給で買えずに残ったお金。このターン）", "money"),
 ]
 _STATS = {key: (label, unit) for key, label, unit in [*display.SUMMARY_STATS, *_EXTRA_STATS]}
 # 名前の頭が財のもの（後ろに財の名前が続く）

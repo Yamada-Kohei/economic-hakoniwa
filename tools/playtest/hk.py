@@ -6,6 +6,7 @@
     python tools/playtest/hk.py --base http://127.0.0.1:8000 login codex <パスワード>
     python tools/playtest/hk.py get /api/islands/4/economy
     python tools/playtest/hk.py map 4
+    python tools/playtest/hk.py send 5 'ごあいさつ' 'はじめまして'
 
 ログインの cookie は HK_COOKIES（既定はホームの .hk-cookies.txt）に置きます。
 リポジトリには置きません。
@@ -280,6 +281,166 @@ def cmd_advance(c: Client, a) -> int:
     return 0
 
 
+# --- 手紙と掲示板 --------------------------------------------------------------
+# 出力は人が読める短い形にする。--json を付けると API の JSON をそのまま出す。
+
+
+def fail(status: int, body: str) -> int:
+    """API の誤りを1行で出す。"""
+    try:
+        text = json.loads(body).get("error") or body
+    except (ValueError, AttributeError):
+        if status == 403 and "CSRF" in body:
+            text = "CSRF の印がありません（ログインしていないかもしれません。login し直す）"
+        else:
+            text = text_of(body)[:300]
+    print(f"エラー（{status}）: {text}")
+    return 1
+
+
+def when(stamp: str | None) -> str:
+    """ISO の時刻を「10-15 20:03」の形にする。"""
+    return stamp[5:16].replace("T", " ") if stamp else ""
+
+
+def island_label(island: dict | None) -> str:
+    return f"{island['name']}（島 {island['id']}）" if island else ""
+
+
+def who(item: dict) -> str:
+    """掲示板の書いた人（島があれば国名と島の番号も）。"""
+    name = item.get("author") or "退会した人"
+    island = item.get("island")
+    return f"{name}（{island['name']}・島 {island['id']}）" if island else name
+
+
+def read_text(arg: str | None, path: str | None) -> str:
+    """本文: 引数か、-f のファイル（- は標準入力）。どちらもなければ標準入力から読む。"""
+    if arg is not None and path:
+        sys.exit("本文は引数か -f のどちらかで渡してください。")
+    if path:
+        return sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")
+    if arg is not None:
+        return arg
+    if sys.stdin.isatty():
+        print("本文を入力し、最後に Ctrl-D を押してください。", file=sys.stderr)
+    return sys.stdin.read()
+
+
+def cmd_letters(c: Client, a) -> int:
+    box = "sent" if a.sent else "inbox"
+    status, body, _ = c.get(f"/api/letters?box={box}&page={a.page}")
+    if a.json:
+        return show(status, body)
+    if status >= 400:
+        return fail(status, body)
+    data = json.loads(body)
+    title = "送った手紙" if a.sent else "受信箱"
+    print(
+        f"{island_label(data['island'])}の{title}（{data['page']}/{data['pages']} ページ、"
+        f"{data['count']} 通、届いた手紙の未読 {data['unread']} 通）"
+    )
+    for x in data["letters"]:
+        mark = "既読" if x["read"] else "未読"
+        head = f"#{x['id']} [{mark}] ターン {x['turn']} {when(x['sent_at'])}"
+        if a.sent:
+            print(f"{head} → {island_label(x['to'])}: {x['subject']}")
+        else:
+            print(f"{head} {island_label(x['from'])}・{x['author']}: {x['subject']}")
+    if not data["letters"]:
+        print("（手紙はありません）")
+    return 0
+
+
+def cmd_letter(c: Client, a) -> int:
+    status, body, _ = c.get(f"/api/letters/{a.number}")
+    if a.json:
+        return show(status, body)
+    if status >= 400:
+        return fail(status, body)
+    x = json.loads(body)
+    read = f"既読（{when(x['read_at'])}）" if x["read"] else "未読"
+    print(f"#{x['id']} {x['subject']}")
+    print(f"差出人: {island_label(x['from'])}・{x['author']} → 宛先: {island_label(x['to'])}")
+    print(f"ターン {x['turn']}・{when(x['sent_at'])}・{read}")
+    print("----")
+    print(x["body"])
+    return 0
+
+
+def cmd_send(c: Client, a) -> int:
+    text = read_text(a.body, a.file)
+    c.get("/")  # csrf の cookie
+    value = {"to": a.island, "subject": a.subject, "body": text}
+    status, body = c.json("POST", "/api/letters", value)
+    if a.json:
+        return show(status, body)
+    if status >= 400:
+        return fail(status, body)
+    x = json.loads(body)
+    print(f"送りました: #{x['id']} → {island_label(x['to'])}: {x['subject']}（ターン {x['turn']}）")
+    return 0
+
+
+def cmd_board(c: Client, a) -> int:
+    status, body, _ = c.get(f"/api/board/threads?page={a.page}")
+    if a.json:
+        return show(status, body)
+    if status >= 400:
+        return fail(status, body)
+    data = json.loads(body)
+    print(f"掲示板（{data['page']}/{data['pages']} ページ、{data['count']} スレッド）")
+    for t in data["threads"]:
+        print(
+            f"#{t['id']} {t['title']}（{t['posts']} 件、最後 {when(t['updated_at'])}）"
+            f" 立てた人 {who(t)}"
+        )
+    if not data["threads"]:
+        print("（スレッドはありません）")
+    return 0
+
+
+def cmd_thread(c: Client, a) -> int:
+    status, body, _ = c.get(f"/api/board/threads/{a.number}?page={a.page}")
+    if a.json:
+        return show(status, body)
+    if status >= 400:
+        return fail(status, body)
+    data = json.loads(body)
+    t = data["thread"]
+    print(f"#{t['id']} {t['title']}（{data['page']}/{data['pages']} ページ、{data['count']} 件）")
+    for p in data["posts"]:
+        print(f"--- #{p['id']} {who(p)} {when(p['created_at'])}")
+        print(p["body"])
+    return 0
+
+
+def cmd_post(c: Client, a) -> int:
+    text = read_text(a.body, a.file)
+    c.get("/")  # csrf の cookie
+    status, body = c.json("POST", f"/api/board/threads/{a.thread}/posts", {"body": text})
+    if a.json:
+        return show(status, body)
+    if status >= 400:
+        return fail(status, body)
+    p = json.loads(body)
+    print(f"書き込みました: スレッド #{p['thread']} の #{p['id']}")
+    return 0
+
+
+def cmd_new_thread(c: Client, a) -> int:
+    text = read_text(a.body, a.file)
+    c.get("/")  # csrf の cookie
+    status, body = c.json("POST", "/api/board/threads", {"title": a.title, "body": text})
+    if a.json:
+        return show(status, body)
+    if status >= 400:
+        return fail(status, body)
+    t = json.loads(body)["thread"]
+    print(f"スレッドを立てました: #{t['id']} {t['title']}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="経済版箱庭諸国の試し遊びの道具")
     p.add_argument(
@@ -345,6 +506,47 @@ def main(argv: list[str] | None = None) -> int:
     )
     s.add_argument("turns", nargs="?", type=int, default=1)
     s.set_defaults(func=cmd_advance)
+
+    raw = argparse.ArgumentParser(add_help=False)
+    raw.add_argument("--json", action="store_true", help="API の JSON をそのまま出す")
+
+    def add_text(s: argparse.ArgumentParser) -> None:
+        s.add_argument("body", nargs="?", help="本文（省くと標準入力から読む）")
+        s.add_argument("-f", "--file", help="本文のファイル（- は標準入力）")
+
+    s = sub.add_parser("letters", parents=[raw], help="届いた手紙の一覧（--sent で送った手紙）")
+    s.add_argument("--sent", action="store_true")
+    s.add_argument("--page", type=int, default=1)
+    s.set_defaults(func=cmd_letters)
+
+    s = sub.add_parser("letter", parents=[raw], help="手紙を1通読む（届いた手紙は既読になる）")
+    s.add_argument("number", type=int)
+    s.set_defaults(func=cmd_letter)
+
+    s = sub.add_parser("send", parents=[raw], help="島に手紙を送る")
+    s.add_argument("island", type=int, help="宛先の島の番号")
+    s.add_argument("subject", help="題名")
+    add_text(s)
+    s.set_defaults(func=cmd_send)
+
+    s = sub.add_parser("board", parents=[raw], help="掲示板のスレッドの一覧")
+    s.add_argument("--page", type=int, default=1)
+    s.set_defaults(func=cmd_board)
+
+    s = sub.add_parser("thread", parents=[raw], help="スレッドの書き込みを読む")
+    s.add_argument("number", type=int)
+    s.add_argument("--page", default="last", help="ページ（既定は最後のページ）")
+    s.set_defaults(func=cmd_thread)
+
+    s = sub.add_parser("post", parents=[raw], help="スレッドに書き込む")
+    s.add_argument("thread", type=int)
+    add_text(s)
+    s.set_defaults(func=cmd_post)
+
+    s = sub.add_parser("new-thread", parents=[raw], help="スレッドを立てる")
+    s.add_argument("title", help="題名")
+    add_text(s)
+    s.set_defaults(func=cmd_new_thread)
 
     a = p.parse_args(argv)
     return a.func(Client(a.base), a)

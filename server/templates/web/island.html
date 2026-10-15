@@ -6,6 +6,7 @@
   <h1>{{ island.name }}</h1>
   <p class="muted">
     {% if island.owner %}{{ island.owner.username }}{% else %}{% translate "持ち主なし" %}{% endif %}
+    {% if own_island and not mine %} ・ <a href="{% url 'letter_new' %}?to={{ island.id }}">{% translate "この国に手紙を書く" %}</a>{% endif %}
     {% if capital_name %} ・ {% translate "首都" %}: {{ capital_name }}{% endif %}
     {% for r in regime %} ・ {{ r.axis }}: {{ r.name }}{% endfor %}
     {% if resources %} ・ {% translate "地下資源" %}: {{ resources|join:"、" }}{% endif %}

@@ -24,6 +24,7 @@ from hakoniwa_core.units import from_milli, to_basis
 from server.game import get_game
 from server.orders.models import Order
 from server.web import display, reports
+from server.web import politics as politics_views
 from server.web import trade as trade_views
 from server.world import models as m
 from server.world.repository import load_island
@@ -282,12 +283,17 @@ def tile(request, island_id: int, x: int, y: int):
         data["works_why"] = display.works_why(economy)
     if data["capital"]:
         data["capital_name"] = island.names.get("capital", "")
-        # 体制で決まる首都の建物（議事堂・王宮など）
-        regimes = [d.regimes[r] for r in island.regime.values() if r in d.regimes]
+        # 体制で決まる首都の建物（議事堂・王宮など）。政治の仕組みを変えて建て替えている間は、
+        # 前の体制の建物（フェーズ3-4）
+        rebuilding = island.ext.get("politics", {}).get("building")
+        buildings = [
+            (rebuilding if axis == "politics" and rebuilding else None)
+            or d.regimes[r].get("capital_building")
+            for axis, r in island.regime.items()
+            if r in d.regimes
+        ]
         data["capital_buildings"] = [
-            display.message(f"capital_building_{r['capital_building']}")
-            for r in regimes
-            if r.get("capital_building")
+            display.message(f"capital_building_{b}") for b in buildings if b
         ]
     f = m.Facility.objects.filter(island_id=island_id, x=x, y=y).first()
     if f is not None:
@@ -377,6 +383,26 @@ def fx(request, island_id: int):
         request.GET.get("to"),
     )
     return _json(data)
+
+
+# --- 政治と計画（フェーズ3-4） ----------------------------------------------------------
+
+
+@require_GET
+def island_politics(request, island_id: int):
+    """政治。だれにでも体制・政情とその段階・支持率・議席・選挙・混乱期間・報道と集会の扱いを、
+    持ち主には政情の内訳・出来事・採決の履歴・たまった不満・警察・動員も（server/web/politics.py）。"""
+    island = get_object_or_404(m.Island, pk=island_id)
+    return _json(politics_views.politics_data(island, _mine(request, island)))
+
+
+@require_GET
+def island_plan(request, island_id: int):
+    """計画経済の計画と値段の規制。だれにでも国全体の行列と強制貯蓄を、持ち主には公定価格・生産
+    目標と達成率・重点産業・財ごとの行列と、値段の上限と下限も。"""
+    island = get_object_or_404(m.Island, pk=island_id)
+    _, stats = display.latest_stats(island)
+    return _json(politics_views.plan_data(island, _mine(request, island), stats))
 
 
 # --- 命令 -------------------------------------------------------------------

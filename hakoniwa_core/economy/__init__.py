@@ -40,6 +40,7 @@ BONDS = "bonds"
 WAREHOUSE = "warehouse"
 SUBSIDIES = "subsidies"
 EDUCATION = "education"  # 教育費（学校と大学。フェーズ2-3）
+SECURITY = "security"  # 治安費（警察。フェーズ3-4）
 
 GENERAL = "general"  # 一般の労働者の層
 OWNERS = "owners"  # 資産を持つ層

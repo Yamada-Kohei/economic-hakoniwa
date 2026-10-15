@@ -93,6 +93,18 @@ def initial_prices(
     return dict(cached[2])
 
 
+def cost_prices(
+    defs: Defs,
+    config: GameConfig,
+    resources: Iterable[str],
+    wage: float,
+    fixed: Prices,
+) -> dict[str, int]:
+    """初めの値段と同じ解き方（原価＋1割）を、賃金 wage と島の地下資源 resources で解き直した値段
+    （計画経済の公定価格の自動の見直し。フェーズ3-4）。島で作れない財は fixed の値段のまま。"""
+    return _solve_prices(defs, config, set(resources), fixed, wage)
+
+
 def _usable(recipe: Mapping[str, Any], resources: set[str], made: set[str]) -> bool:
     resource = recipe.get("requires_resource")
     return (resource is None or resource in resources) and set(recipe["inputs"]) <= made
@@ -103,10 +115,13 @@ def _solve_prices(
     config: GameConfig,
     resources: set[str] | None = None,
     fixed: Prices | None = None,
+    wage: float | None = None,
 ) -> dict[str, int]:
-    """resources を渡すと、その島で使える作り方だけで解く。作る施設のない財は fixed の値段。"""
+    """resources を渡すと、その島で使える作り方だけで解く。作る施設のない財は fixed の値段。
+    wage を省くと初めの賃金（labor.initial_wage）。"""
     settings = config.get("market.initial_prices")
-    wage = config.get("labor.initial_wage")
+    if wage is None:
+        wage = config.get("labor.initial_wage")
     markup = 1 + settings["markup"]
     reference = settings.get("reference") or {}
     made = None if resources is None else fac.producible_goods(defs, resources)
@@ -219,6 +234,9 @@ def usual_price(island: IslandState, good: str, turns: int) -> int:
     値段）は誰も払っていないので、いつもの値段に数えない（数えると、作り始めた財の指値が何ターンも
     売りの値段に届かず、売れないまま作る施設が閉じた。試し遊び4回目）。"""
     economy = island.economy
+    fixed = island.ext.get("plan", {}).get("prices", {}).get(good)
+    if fixed:  # 計画経済の公定価格（フェーズ3-4。economy/plan.py）がいつもの値段
+        return fixed
     history = economy.price_history.get(good, [])[-turns:]
     if not history:
         return economy.prices.get(good, 1)

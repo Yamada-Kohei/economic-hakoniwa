@@ -75,6 +75,7 @@
     "commute_radius": {"type": "integer", "minimum": 0, "description": "通勤圏（マス）。書かなければサーバー設定の既定値"},
     "priority": {"type": "integer", "minimum": 0, "maximum": 9, "description": "雇用と配分の優先順位の既定値（0〜9、大きいほど先）。書かなければサーバー設定の既定値"},
     "admin_power": {"type": "number", "minimum": 0, "description": "働く人1人あたりに生む行政力（中央省庁など）"},
+    "police": {"type": "boolean", "description": "警察。働く人の足りている割合だけ、暴動で止まる施設と壊れる施設を減らす（フェーズ3-4）"},
     "pollution": {
       "type": "object",
       "required": ["amount", "radius"],

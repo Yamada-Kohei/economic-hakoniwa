@@ -27,6 +27,30 @@
     "capital_controls": {"enum": ["free", "official", "closed"], "description": "経済体制: 資本取引の既定（自由・政府と中央銀行だけ・禁止。フェーズ3-3）"},
     "policy_loans": {"type": "boolean", "description": "経済体制: 国営銀行が state_owned の施設に利ざやなしで貸すか（政策融資。フェーズ2-2）"},
     "start": {"type": "string", "description": "経済体制: 建国直後の島の中身（start_island.yaml の名前）"},
+    "traits": {
+      "type": "object",
+      "description": "体制の特色（フェーズ3-4。説明は regimes.yaml の先頭）",
+      "additionalProperties": false,
+      "properties": {
+        "stability_bonus": {"type": "number"},
+        "stability_turns_up": {"type": "number", "exclusiveMinimum": 0},
+        "stability_turns_down": {"type": "number", "exclusiveMinimum": 0},
+        "parliament": {"type": "boolean"},
+        "press_control": {"type": "boolean"},
+        "admin_bonus": {"type": "integer"},
+        "works_turns": {"type": "number", "exclusiveMinimum": 0},
+        "mobilization": {"type": "boolean"},
+        "happiness_cap": {"type": "number", "minimum": 0, "maximum": 100},
+        "monarch": {"type": "boolean"},
+        "election_bonus": {"type": "number"},
+        "official_prices": {"type": "boolean"},
+        "priority_build_turns": {"type": "number", "exclusiveMinimum": 0},
+        "priority_experience": {"type": "number", "minimum": 0},
+        "luxury_variety": {"type": "number", "minimum": 0},
+        "entry_margin": {"type": "number"},
+        "price_controls": {"type": "boolean"}
+      }
+    },
     "override": {"const": true}
   }
 }

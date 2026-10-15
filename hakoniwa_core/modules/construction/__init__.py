@@ -33,6 +33,7 @@ from hakoniwa_core.economy import (
     is_self_supporting,
     owner_entity,
 )
+from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy.start import fund_facility, init_facility
 from hakoniwa_core.modules import infrastructure
 from hakoniwa_core.naming import assign_serial
@@ -66,6 +67,11 @@ def build(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> No
         name=payload.get("name", "").strip(),
         economy={"capital": 0},
     )
+    # 体制（権威主義の公共事業）と計画経済の重点産業で工期を変える（フェーズ3-4）
+    factor = planning.build_factor(island, ctx.defs, kind, f.recipe)
+    if factor != 1.0:
+        turns = ctx.defs.facilities[kind]["construction"]["turns"]
+        f.ext["build_total"] = max(fac.FULL, round(turns * factor * fac.FULL))
     assign_serial(island, f)
     island.facilities.append(f)
     island.log.append(LogEntry("construction_started", {"facility": kind, "x": x, "y": y}))
@@ -150,7 +156,7 @@ class Construction(IslandStage):
                 f.ext["stalled_turns"] = f.ext.get("stalled_turns", 0) + 1
                 continue
             f.ext.pop("stalled_turns", None)
-            total = cdef["turns"] * fac.FULL
+            total = fac.total_progress(defs, f)
             before = f.progress
             f.progress = min(before + rate, total)
             # 進んだ分だけ資材を使う。引き算で決めるので、工事全体でちょうど定義の量になる
@@ -207,10 +213,16 @@ class Construction(IslandStage):
         f.built = True
         f.workers = 0
         f.status = fac.STATUS_STARTING
-        for key in ("waiting", "short_funds", "short_wages"):
+        for key in ("waiting", "short_funds", "short_wages", "build_total"):
             f.ext.pop(key, None)
         for key in ("no_materials_turns", "no_workers_turns", "stalled_turns"):
             f.ext.pop(key, None)
+        if f.ext.pop("repair", False):
+            # 暴動で壊れた施設を直し終えた（フェーズ3-4）。在庫と帳簿と設備の額はそのまま動き出す
+            island.log.append(
+                LogEntry("facility_repaired", {"facility": f.kind, "x": f.x, "y": f.y})
+            )
+            return
         stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
         island.log.append(LogEntry("construction_done", {"facility": f.kind, "x": f.x, "y": f.y}))
         if not island.has_economy:

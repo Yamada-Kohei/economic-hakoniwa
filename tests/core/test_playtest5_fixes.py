@@ -271,12 +271,16 @@ def test_importer_without_settlement_money_says_so(game, traded, monkeypatch):
     def import_order(self, island, f, entity, item, good, bloc, left, money_left):
         if island.id != bloc["currency"]:
             money_left[(island.id, entity, bloc["currency"])] = 0  # 決済通貨を持っていない
-            broke.append(item)
+            wanted = item["m"] > item["held"][0]  # 呼ばれたときに狙う量に届いていない
+            result = original(self, island, f, entity, item, good, bloc, left, money_left)
+            if wanted:
+                broke.append(item.get("why"))
+            return result
         return original(self, island, f, entity, item, good, bloc, left, money_left)
 
     monkeypatch.setattr(trade_stage._Round, "_import_order", import_order)
     run_world(game, world, 1)
-    whys = [item.get("why") for item in broke if item["m"] > item["held"][0]]
+    whys = broke
     assert trade_stage.WHY_MONEY in whys
     # お金のほかに先に当たったわけ（船・扱える重さ・値段）でなければ、決済通貨が足りないと書く
     others = {trade_stage.WHY_SHIPS, trade_stage.WHY_CAPACITY, trade_stage.WHY_PRICE}
@@ -308,8 +312,16 @@ def _contract(world, seller, buyer, good, qty, turns, delivery=None, currency=No
     return c
 
 
-def test_contract_goods_go_to_the_market_by_default(game, traded):
+def _no_warehouse_sales(monkeypatch):
+    """標準の計画が国の倉庫の物を売らないようにする（契約で届いた物の売りだけを数えるため）。"""
+    from hakoniwa_core import autoplan
+
+    monkeypatch.setattr(autoplan, "_warehouse_sales", lambda *args: [])
+
+
+def test_contract_goods_go_to_the_market_by_default(game, traded, monkeypatch):
     """腐らない物も、決めていなければ売り切れるまで島の市場の値段で売りに出す。"""
+    _no_warehouse_sales(monkeypatch)
     world = copy.deepcopy(traded[0])
     seller, buyer = world.islands[1], world.islands[2]
     good = "steel"
@@ -330,7 +342,8 @@ def test_contract_goods_go_to_the_market_by_default(game, traded):
     assert check(world) == []
 
 
-def test_contract_goods_can_stay_in_the_warehouse(game, traded):
+def test_contract_goods_can_stay_in_the_warehouse(game, traded, monkeypatch):
+    _no_warehouse_sales(monkeypatch)
     world = copy.deepcopy(traded[0])
     seller, buyer = world.islands[1], world.islands[2]
     good = "steel"

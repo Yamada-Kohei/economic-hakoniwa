@@ -219,6 +219,8 @@ class Policy:
     fx_peg: dict[str, int] = field(default_factory=dict)  # 通貨 → 固定したレート（× 1万分の1）
     # 外国の国債の売り買い: 持ち手（gov・cb）→ 発行した島 → 毎ターン買う額面（マイナスは売る）
     foreign_bonds: dict[str, dict[str, int]] = field(default_factory=dict)
+    # 以下はフェーズ3-4。値段の下限（財 → 値段。混合経済だけ。上限は price_cap）
+    price_floor: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass

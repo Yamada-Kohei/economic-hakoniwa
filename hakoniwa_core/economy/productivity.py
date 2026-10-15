@@ -18,6 +18,9 @@ w はレシピの factors（infra・education）で、L は次のとおりです
 施設の産業（industry）の島の累積で、集積は施設のマスの周りの同じ産業の施設の数で決まります。どちらも
 factors の重みは使わず、産業のある施設にいつも掛けます。
 
+フェーズ3-4 から、体制を変えた後の混乱期間の倍率（hakoniwa_core/politics.py の
+productivity_factor）をどの施設にも掛けます。
+
 係数を掛けた値を施設の生産性として economy["productivity"]（1000 分の 1）に残し、生産の段の
 産出の量、発電所の能力、変動費の利益の見込み（economy/prices.py）、操業目標に掛けます。
 """
@@ -28,7 +31,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, nature
+from hakoniwa_core import infra, nature, politics
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import experience
@@ -73,9 +76,12 @@ def productivity(
     """
     weights = recipe.get("factors") or {}
     industry = recipe.get("industry")
-    if (not weights and not industry) or not island.has_economy:
+    if not island.has_economy:
         return FULL
-    value = 1.0
+    # 体制を変えた後の混乱期間（フェーズ3-4）は、どの施設にも掛ける
+    value = politics.productivity_factor(island)
+    if not weights and not industry:
+        return max(1, round(value * FULL))
     if weights.get("infra") and island.in_bounds(x, y):
         value *= factor(weights["infra"], infra_level(island, defs, x, y), config)
     if weights.get("education"):
