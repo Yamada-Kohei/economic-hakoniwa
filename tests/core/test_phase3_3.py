@@ -527,8 +527,12 @@ def test_peg_far_from_the_rate_moves_it_by_the_band(game, base):
     )
     assert island.policy.fx_peg  # 準備は十分にある
     width = to_basis(game.config.get("fx.band"))
-    for before, after in zip([start, *rates], rates, strict=False):  # 毎ターン値幅だけ下がる
-        assert after <= before * (BASIS - width) // BASIS + 1
+    # 毎ターンほぼ値幅だけ下がる。片側だけの注文では、相手のない量 ÷（相手のない量 + 市場の厚み）の
+    # 割合だけ動く（fx._step）ので、準備が厚みよりずっと多くても、値幅の端にわずかに届かないことが
+    # ある（自分どうしで当たる不具合では、レートがほとんど動かなかった）
+    for before, after in zip([start, *rates], rates, strict=False):
+        low = before * (BASIS - width) // BASIS
+        assert after <= low + (before - low) // 100 + 1
 
 
 def _passive(game, island, other, depth, reference, width):

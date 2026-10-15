@@ -20,7 +20,7 @@ from hakoniwa_core.modules import plan as plan_orders
 from hakoniwa_core.modules import politics as politics_stage
 from hakoniwa_core.modules.politics import Politics, parliament_gate
 from hakoniwa_core.registry import OrderFailed
-from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE, OrderState
+from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE, MarketRecord, OrderState
 from hakoniwa_core.state.generate import generate_world
 from tests.core.test_finance import books_ok, context, open_books
 from tests.core.test_trade import run
@@ -548,3 +548,31 @@ def test_planned_trade_is_a_state_monopoly(game, base):
 
     traders = [f for f in island.facilities if is_trader(game.config, f)]
     assert traders and all(f.owner == OWNER_STATE for f in traders)
+
+
+def test_planned_traders_export_unsold_goods_whatever_the_price(game, base):
+    from hakoniwa_core.trade import traders as trade_traders
+    from hakoniwa_core.trade import traders_of
+
+    world = copy.deepcopy(base)
+    island = island_of(world, "planned")
+    found = trade_traders.prospects(island, game.defs, game.config)
+    prices = island.economy.prices
+    # 公定価格が圏で売れる値段より高く、値段で見ると輸出しない物
+    good = next(
+        g
+        for g, p in sorted(found.items())
+        if p.export_bloc is not None and not trade_traders.exportable(p, prices.get(g, 0))
+    )
+    sellers = traders_of(island, game.config)
+    assert sellers
+    for f in sellers:
+        trade_traders.goods_of(f).pop(good, None)
+    island.markets = [m for m in island.markets if m.good != good]
+    island.markets.append(
+        MarketRecord(good=good, price=prices[good], volume=0, demand=0, supply=5000)
+    )
+    trade_traders.update_targets(island, game.defs, game.config, {}, {})
+    # 国内で売れ残った物は、値段によらず輸出の向きにする（ボーキサイトの島の製錬所が動くように）
+    items = [trade_traders.goods_of(f).get(good) for f in sellers]
+    assert any(item and item.get("dir") == trade_traders.EXPORT for item in items), good

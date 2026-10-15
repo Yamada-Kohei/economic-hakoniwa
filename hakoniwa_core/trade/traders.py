@@ -373,23 +373,33 @@ def update_targets(
         for good in tradable_goods(defs):
             p = found.get(good)
             home = prices.get(good, 0)
-            if good not in goods_of(f) and not exportable(p, home) and not importable(p):
+            record = records.get(good)
+            # 計画経済の島は、売れ残った物を値段によらず輸出する。公定価格は圏の値段より高いことが
+            # 多く、値段で見ると初めて扱う物を輸出できず、国内に買い手のない物（ボーキサイトと
+            # アルミ）を作る施設が動かなかった（フェーズ3-4）
+            unsold = (
+                planned
+                and p is not None
+                and p.export_bloc is not None
+                and record is not None
+                and record.supply > record.volume
+            )
+            if (
+                good not in goods_of(f)
+                and not unsold
+                and not exportable(p, home)
+                and not importable(p)
+            ):
                 continue
             item = entry(f, good)
             cap = capacity_units(defs, config, good)
             probe = round_money(cap * PROBE)
             held = item["held"][0]
-            record = records.get(good)
             # 島で買い手のいない物は輸入せず、島で売りに出ていない物は輸出しない
             can_export = exportable(p, home) and record is not None and record.supply > 0
             can_import = importable(p) and record is not None and record.demand > 0
             if planned:  # 計画経済: 行列のある物を輸入し、売れ残った物を輸出する
-                can_export = (
-                    p is not None
-                    and p.export_bloc is not None
-                    and record is not None
-                    and record.supply > record.volume
-                )
+                can_export = unsold
                 can_import = (
                     p is not None
                     and p.import_bloc is not None
