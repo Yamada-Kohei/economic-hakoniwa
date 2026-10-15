@@ -53,6 +53,7 @@ WATER = "#3d7ea6"
 PAVEMENT = "#d9d4c8"  # 岸壁・屋上などの床
 CONTAINER_BLUE = "#4f8fb8"
 CAR_COLORS = (RED, WHITE, CONTAINER_BLUE, METAL, YELLOW, COAL)
+POLICE_BLUE = "#2f4f96"
 
 # 基の色と、面ごとの明るさ（上面・屋根の左向き・左の側面・屋根の右向き・右の側面）。
 # color は部品の色を使い、base は色のない部品にだけ使う
@@ -397,6 +398,44 @@ def car(u: float, v: float, c: str, z0: float = 0, along: str = "u") -> list[Pri
         box(u, v, u + du, v + dv, z0, 2.2, c),
         box(u + cu, v + cv, u + du - cu, v + dv - cv, z0 + 2.2, 1.6, GLASS2, c),
     ]
+
+
+def patrol_car(u: float, v: float, z0: float = 0) -> list[Prim]:
+    """パトロールカー: 下が黒・上が白の車体、客室、屋根の赤い灯（u の向きに長い）。"""
+    return [
+        box(u, v, u + 0.13, v + 0.06, z0, 1.4, COAL),
+        box(u, v, u + 0.13, v + 0.06, z0 + 1.4, 1.2, WHITE),
+        box(u + 0.035, v + 0.008, u + 0.095, v + 0.052, z0 + 2.6, 1.8, GLASS2, WHITE),
+        box(u + 0.055, v + 0.012, u + 0.075, v + 0.048, z0 + 4.4, 0.9, RED),
+    ]
+
+
+def windows(
+    u0: float,
+    v0: float,
+    u1: float,
+    v1: float,
+    zs: list[float],
+    h: float,
+    counts: tuple[int, int],
+    w: float = 0.045,
+    c: str = "#6f8aa3",
+) -> list[Prim]:
+    """建物 (u0, v0)〜(u1, v1) の見える 2 面（左の側面と右の側面）に並べた窓。
+
+    zs は窓の下の端の高さ（階ごと）、h は窓の高さ、
+    counts は左の側面と右の側面の 1 階あたりの窓の数。
+    """
+    prims = []
+    n_left, n_right = counts
+    for z in zs:
+        for i in range(n_left):
+            uc = u0 + (i + 0.5) * (u1 - u0) / n_left
+            prims.append(box(uc - w / 2, v1, uc + w / 2, v1 + 0.005, z, h, c))
+        for i in range(n_right):
+            vc = v0 + (i + 0.5) * (v1 - v0) / n_right
+            prims.append(box(u1, vc - w / 2, u1 + 0.005, vc + w / 2, z, h, c))
+    return prims
 
 
 def strut(
@@ -929,13 +968,18 @@ SHAPES: dict[str, list[Prim]] = {
         box(0.65, 0.55, 0.9, 0.88, 0, 12, BRICK, CONCRETE),
     ],
     "facility/bank": [
-        # 平らな屋根に軒の出（コーニス）、正面に列柱
-        box(0.2, 0.12, 0.85, 0.62, 0, 22, SAND, "#c9b680"),
-        box(0.17, 0.09, 0.88, 0.65, 22, 2, "#e6d9ae"),
-        box(0.32, 0.22, 0.73, 0.52, 24, 4, SAND, "#c9b680"),
-        *[box(u, 0.72, u + 0.06, 0.78, 0, 16, WHITE) for u in (0.22, 0.37, 0.52, 0.67)],
-        box(0.17, 0.65, 0.88, 0.82, 16, 4, "#e6d9ae"),
-        box(0.14, 0.65, 0.91, 0.88, 0, 2, CONCRETE),
+        # 石の基壇と正面の石段、正面に同じ間隔で並ぶ 6 本の円柱と、それが支える梁
+        # （エンタブラチュア）、正面に三角の破風を見せる切妻の屋根（ギリシャの神殿風）。
+        # 柱のあいだに扉
+        box(0.14, 0.12, 0.88, 0.8, 0, 3, STONE, "#ddd5c3"),
+        box(0.18, 0.8, 0.84, 0.86, 0, 2, STONE, "#ddd5c3"),
+        box(0.18, 0.86, 0.84, 0.9, 0, 1, STONE, "#ddd5c3"),
+        box(0.18, 0.14, 0.84, 0.6, 3, 20, SAND, "#c9b680"),
+        box(0.42, 0.6, 0.58, 0.605, 3, 10, "#5c4a36"),
+        *[cylinder(0.22 + i * 0.116, 0.72, 0.022, 3, 16, c=WHITE) for i in range(6)],
+        box(0.17, 0.6, 0.85, 0.765, 19, 4, "#e6d9ae"),
+        box(0.15, 0.12, 0.87, 0.785, 23, 1.5, "#efe6c4"),
+        gable(0.15, 0.12, 0.87, 0.785, 24.5, 9, "v", "#b9a676", "#efe6c4"),
     ],
     # フェーズ3-1 の港・造船所・商社。港と造船所は、右手前の縁を海側の水面にする
     "facility/port": [
@@ -1100,6 +1144,30 @@ SHAPES: dict[str, list[Prim]] = {
         ],
     ],
     # フェーズ3-4 の警察署
+    "facility/police": [
+        # 3 階建ての白い庁舎に青い帯と金の記章、入口のひさしに赤い灯、屋上の無線のアンテナ、
+        # 右の駐車場にパトロールカー 3 台、前の広場に木
+        box(0.08, 0.08, 0.62, 0.92, 0, 0.6, CONCRETE, PAVEMENT),
+        box(0.62, 0.08, 0.92, 0.92, 0, 0.6, "#6d7177"),
+        box(0.14, 0.12, 0.58, 0.56, 0.6, 1.6, POLICE_BLUE),
+        box(0.14, 0.12, 0.58, 0.56, 2.2, 19.8, "#eceae4", "#cfd3d8"),
+        *windows(0.14, 0.12, 0.58, 0.56, [4, 10.5, 17], 3.2, (5, 5)),
+        box(0.135, 0.115, 0.585, 0.565, 21.5, 3, POLICE_BLUE, "#cfd3d8"),
+        box(0.35, 0.565, 0.38, 0.57, 22, 2, YELLOW),
+        box(0.36, 0.16, 0.52, 0.3, 24.5, 4, "#eceae4", "#cfd3d8"),
+        cylinder(0.22, 0.22, 0.01, 24.5, 12, c=METAL),
+        box(0.18, 0.215, 0.26, 0.225, 32, 0.8, METAL),
+        cylinder(0.22, 0.22, 0.013, 36.5, 1.4, c=RED),
+        box(0.3, 0.56, 0.42, 0.565, 0.6, 5, "#4a5866"),
+        *[cylinder(u, 0.66, 0.008, 0.6, 6, c=WHITE) for u in (0.28, 0.44)],
+        box(0.26, 0.56, 0.46, 0.68, 6.6, 1.2, POLICE_BLUE, WHITE),
+        cylinder(0.36, 0.675, 0.016, 7.8, 2, cap="dome", c=RED),
+        *patrol_car(0.72, 0.34, 0.6),
+        *patrol_car(0.72, 0.5, 0.6),
+        *patrol_car(0.72, 0.66, 0.6),
+        *broadleaf(0.16, 0.8, 3.5, 10),
+        *broadleaf(0.52, 0.84, 3.5, 10),
+    ],
     "housing/village": [
         *house(0.15, 0.15, 0.42, 0.4, 7, 6, "u"),
         *house(0.55, 0.2, 0.8, 0.45, 7, 6, "v", roof=ROOF_BROWN),

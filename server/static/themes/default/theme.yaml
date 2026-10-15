@@ -72,6 +72,7 @@ sprites:
   facility/machinery_plant: sprites/facility/machinery_plant.svg
   facility/mine: sprites/facility/mine.svg
   facility/oil_well: sprites/facility/oil_well.svg
+  facility/police: sprites/facility/police.svg
   facility/port: sprites/facility/port.svg
   facility/quarry: sprites/facility/quarry.svg
   facility/ranch: sprites/facility/ranch.svg
