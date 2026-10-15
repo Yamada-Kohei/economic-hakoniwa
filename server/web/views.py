@@ -224,7 +224,6 @@ def fx_page(request, island_id: int):
 
 
 # 政治の画面に出す統計
-POLITICS_STATS = ["politics.stability", "politics.target", "politics.support", "politics.seats"]
 PLAN_STATS = ["plan.queue", "plan.forced_saving", "labor.mobilized"]
 
 
@@ -232,11 +231,8 @@ def politics_page(request, island_id: int):
     """政治（フェーズ3-4）: 体制・政情とその内訳・支持率・議席・次の選挙・採決の履歴・報道と集会の
     扱い・混乱期間。持ち主には政治の命令（報道と集会・議会の解散・憲法改正・経済体制の変更・労働の
     動員・国家元首の名前）の入力欄も。"""
-    island, context, stats = _report(request, island_id, "politics", "政治")
-    context.update(
-        politics=politics_views.politics_data(island, context["mine"]),
-        stats=reports.stat_rows(stats, POLITICS_STATS, context["currency"]),
-    )
+    island, context, _ = _report(request, island_id, "politics", "政治")
+    context["politics"] = politics_views.politics_data(island, context["mine"])
     if not context["mine"]:
         context["note"] = OTHERS_NOTE
     return render(request, "web/politics.html", context)

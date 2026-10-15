@@ -444,16 +444,17 @@ def test_aid_to_an_embargoed_country_is_refused(game, base):
 
 
 def test_intervention_buys_foreign_currency_with_new_money(game, base):
-    """介入の買いは、島の売り手（ここでは外貨を受け取った政府）から買う。"""
+    """介入の買いは、島の売り手（ここでは外貨を受け取った政府）から買う。買った外貨は、中央銀行どうしの
+    融通で借りている分の利子と返済にも回るので、中央銀行の持ち高ではなく、介入で買った量と政府が売った
+    量で確かめる。"""
     world = copy.deepcopy(base)
     island, other = _pair(world)
     amount = 20_000
     island.policy.fx_intervention = {str(other.id): amount}
     _give_fx(world, island, ledger.GOV, other.id, amount)
-    before = fxmoney.holding(island, ledger.CB, other.id)
+    before = fxmoney.holding(island, ledger.GOV, other.id)
     run_checked(game, world, 1)
-    after = fxmoney.holding(island, ledger.CB, other.id)
-    assert after > before
+    assert fxmoney.holding(island, ledger.GOV, other.id) < before
     assert island.stats.get(f"fx.intervened.{other.id}", 0) > 0
     assert any(e.kind == "fx_intervention" for e in island.journal)
 

@@ -233,7 +233,8 @@ class Politics(IslandStage):
         island.stats["politics.target"] = state["target"]
         island.stats["politics.support"] = state.get("support", 0.0)
         if politics.has_parliament(island, defs):
-            island.stats["politics.seats"] = state.get("seats", 0.0)
+            # 統計は支持率と同じ 0〜100 で残す（同じグラフに描く）
+            island.stats["politics.seats"] = round(state.get("seats", 0.0) * 100, 2)
 
     # --- 統制とたまった不満 --------------------------------------------------------
 

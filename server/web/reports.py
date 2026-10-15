@@ -146,7 +146,7 @@ _EXTRA_STATS = [
     ("politics.stability", "政情（0〜100）", ""),
     ("politics.target", "政情の目標（いまの島の様子から）", ""),
     ("politics.support", "支持率", "percent"),
-    ("politics.seats", "与党の議席", "%"),
+    ("politics.seats", "与党の議席", "percent"),
     ("politics.halted", "暴動で止まった施設（このターン）", ""),
     ("politics.destroyed", "暴動で壊された施設（このターン）", ""),
     ("labor.mobilized", "労働の動員で働く人", "人"),

@@ -26,11 +26,6 @@
     {% if p.rebuilding %}<tr><th>{% translate "首都の建物" %}</th><td>{% translate "新しい体制の建物に建て替えています（資材がそろうと替わります）" %}</td></tr>{% endif %}
   </table>
   <p class="hint">{% blocktranslate with demo=p.levels.demo riot=p.levels.riot rebellion=p.levels.rebellion %}政情は 0〜100 で、毎ターン目標に少しずつ近づきます。{{ demo }} を下回るとデモ（行政力が減る）、{{ riot }} を下回ると暴動（行政力が半分になり、町より大きな住宅地の近くの施設が止まり、まれに国営の施設が壊される）、{{ rebellion }} を下回ると反乱の前触れ（暴動の 2 倍。反乱はフェーズ4）になります。警察の人手が足りていると、止まる施設と壊される施設が減ります。{% endblocktranslate %}</p>
-  {% if stats %}
-  <table class="info">
-    {% for row in stats %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
-  </table>
-  {% endif %}
 </section>
 
 {% if mine and p.started %}
@@ -165,7 +160,8 @@
        data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
     <figure class="chart" data-names="politics.stability,politics.target"><figcaption>{% translate "政情とその目標" %}</figcaption></figure>
     <figure class="chart" data-names="politics.support{% if politics.parliament %},politics.seats{% endif %}"><figcaption>{% translate "支持率" %}{% if politics.parliament %}{% translate "と与党の議席" %}{% endif %}</figcaption></figure>
-    <figure class="chart" data-names="happiness,unemployment,inflation"><figcaption>{% translate "幸福度・失業率・物価上昇率" %}</figcaption></figure>
+    <figure class="chart" data-names="happiness"><figcaption>{% translate "幸福度" %}</figcaption></figure>
+    <figure class="chart" data-names="unemployment,inflation"><figcaption>{% translate "失業率と物価上昇率（年率）" %}</figcaption></figure>
     <figure class="chart" data-names="politics.halted,politics.destroyed"><figcaption>{% translate "暴動で止まった施設と壊された施設（1ターン）" %}</figcaption></figure>
   </div>
 </section>

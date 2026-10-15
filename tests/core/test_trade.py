@@ -316,8 +316,9 @@ def test_contract_delivers_goods_and_money(game, traded):
 
 
 def test_contract_in_a_currency_nobody_holds_is_paid_through_its_issuer(game, traded):
-    """買い手の島で誰も持っていない通貨の契約も、政府が発行した島の中央銀行から買って払う。市場の厚み
-    より多くは買えず足りないときは、お金ではなく外貨を買えなかったことを不足のわけに書く。"""
+    """買い手の島で誰も持っていない通貨の契約も、政府が発行した島の中央銀行から買って払う（発行した島の
+    中央銀行が買い手の通貨を受け取るか、買い手の島の中央銀行に融通で貸して、そこから買う。フェーズ3-3）。
+    市場の厚みより多くは買えず足りないときは、お金ではなく外貨を買えなかったことを不足のわけに書く。"""
     world = copy.deepcopy(traded[0])
     # 買い手は自分の通貨の圏にだけ入っている島（ほかの通貨を誰も持っていない）
     buyer = next(
@@ -337,9 +338,12 @@ def test_contract_in_a_currency_nobody_holds_is_paid_through_its_issuer(game, tr
     assert contracts.propose(world, seller, payload, world.turn) is None
     c = contracts.contracts(world)[-1]
     assert contracts.accept(world, buyer, c, world.turn) is None
+    lent_before = swap.lent(seller).get(str(seller.id), {}).get(str(buyer.id), 0)
     run(game, world, 2)
     assert c["delivered"] >= c["qty"]  # 止まらずに届く
-    assert fxmoney.holding(seller, ledger.CB, buyer.id) > 0  # 島1の中央銀行の外貨準備
+    lent_after = swap.lent(seller).get(str(seller.id), {}).get(str(buyer.id), 0)
+    # 発行した島の中央銀行の外貨準備か、買い手の島の中央銀行に貸した自国の通貨
+    assert fxmoney.holding(seller, ledger.CB, buyer.id) > 0 or lent_after > lent_before
     for island in (seller, buyer):
         reasons = {e.args["reason"] for e in island.log if e.kind == "contract_short"}
         assert reasons <= {"contract_short_fx"}
