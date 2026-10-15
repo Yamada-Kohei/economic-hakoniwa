@@ -220,7 +220,7 @@ def test_orders_reject_bad_input(client, world):
 
 
 def test_order_check(client, world):
-    island = m.Island.objects.order_by("id").first()
+    island = _own_island(client)
     url = f"/api/islands/{island.id}/orders/check"
     sea = {"kind": "build", "payload": {"facility": "farm", "x": 0, "y": 0}}
     data = client.post(url, sea, content_type="application/json").json()

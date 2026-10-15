@@ -12,8 +12,11 @@ from django.core.mail import mail_admins
 from django.db import transaction
 from django.utils import timezone
 
+from hakoniwa_core import ledger
 from hakoniwa_core.economy.start import start_economy
-from hakoniwa_core.state import WorldState
+from hakoniwa_core.founding import refound
+from hakoniwa_core.modules.trade import check as trade_check
+from hakoniwa_core.state import IslandState, WorldState
 from hakoniwa_core.state.serialize import world_from_dict, world_to_dict
 from server.game import get_game
 from server.orders.models import Order
@@ -163,7 +166,11 @@ def load_backup(backup: Backup) -> WorldState:
 def rollback(to_turn: int) -> WorldState:
     """ターン to_turn の更新前の状態に戻す。
 
-    バックアップの後に作られた島と、後から届いた命令はそのまま残す。
+    世界全体を同じ時点にそろえる。バックアップの後に建国した島は消さずに、建国したときの姿に戻して
+    ターン to_turn に建国したことにする（ほかの島とのお金や荷のやり取りは、相手の島が戻ると消える
+    ので、その島にだけ残すと帳簿が合わなくなる）。戻した先より後の更新で実行した命令は待ちに戻し、
+    後から届いた命令も残す。書く前に帳簿と島をまたぐお金・荷を確かめ、合わなければ何も変えずに
+    TurnError。
     """
     world = m.World.objects.select_for_update().get(pk=get_world().pk)
     if world.updating_since is not None:
@@ -175,14 +182,35 @@ def rollback(to_turn: int) -> WorldState:
     state = load_backup(backup)
 
     existing = set(m.Island.objects.filter(world=world).values_list("id", flat=True))
-    islands = [i for i in state.islands.values() if i.id in existing]
-    replace_island_contents(islands)
+    islands = {i.id: i for i in state.islands.values() if i.id in existing}
+    later = _founding_states(world, backup, sorted(existing - set(islands)))
+    founded: dict[int, int] = {}  # 後から建国した島 → 建国のログと統計を書いたターン
+    for island in later.values():
+        refound(island, to_turn)
+        founded[island.id] = island.ext.get("founded_turn", to_turn)
+        island.ext["founded_turn"] = min(founded[island.id], to_turn)
+    state.islands = {**islands, **later}
+    problems = _world_problems(state)
+    if problems:
+        shown = " / ".join(problems[:5])
+        more = f"（ほかに {len(problems) - 5} 件）" if len(problems) > 5 else ""
+        raise TurnError(f"戻した世界の帳簿が合わないので、巻き戻しませんでした: {shown}{more}")
+
+    replace_island_contents([state.islands[i] for i in state.island_ids()])
     order_ids = set(Order.objects.filter(island__world=world).values_list("id", flat=True))
     update_rows(
         Order,
-        [order_row(o) for i in islands for o in i.orders if o.id in order_ids],
+        [order_row(o) for i in state.islands.values() for o in i.orders if o.id in order_ids],
         ORDER_FIELDS,
     )
+    Order.objects.filter(island__world=world, executed_turn__gt=to_turn).update(
+        status="pending", reason="", reason_args={}, executed_turn=None
+    )
+    for island_id, turn in founded.items():
+        # 建国のときのログと統計を、建国したことにしたターンに移す（後の記録は下で消える）
+        if turn > to_turn:
+            TurnLog.objects.filter(island_id=island_id, turn=turn).update(turn=to_turn)
+            m.StatRecord.objects.filter(island_id=island_id, turn=turn).update(turn=to_turn)
     TurnLog.objects.filter(island__world=world, turn__gt=to_turn).delete()
     m.StatRecord.objects.filter(island__world=world, turn__gt=to_turn).delete()
     delete_records_after(world, to_turn)
@@ -191,3 +219,44 @@ def rollback(to_turn: int) -> WorldState:
     world.ext = state.ext
     world.save(update_fields=["turn", "ext"])
     return state
+
+
+def _founding_states(world: m.World, backup: Backup, ids: list[int]) -> dict[int, IslandState]:
+    """バックアップ backup の後に建国した島の、建国したときの姿（島の番号 → 状態）。
+
+    その島が入ったいちばん古いバックアップ（建国の後の最初の更新の前）から取る。まだ一度も更新して
+    いない島は、今の姿が建国したときの姿。
+    """
+    found: dict[int, IslandState] = {}
+    if not ids:
+        return found
+    # 建国したターンより前のバックアップには入っていないので読まない
+    founded = [
+        (ext or {}).get("founded_turn", 0)
+        for ext in m.Island.objects.filter(id__in=ids).values_list("ext", flat=True)
+    ]
+    first = max(backup.turn, min(founded))
+    later = Backup.objects.filter(world=world, turn__gte=first).exclude(pk=backup.pk)
+    for b in later.order_by("turn", "id"):
+        state = load_backup(b)
+        for island_id in ids:
+            if island_id not in found and island_id in state.islands:
+                found[island_id] = state.islands[island_id]
+        if len(found) == len(ids):
+            return found
+    current = WorldRepository(world).load()
+    for island_id in ids:
+        if island_id not in found:
+            found[island_id] = current.islands[island_id]
+    return found
+
+
+def _world_problems(state: WorldState) -> list[str]:
+    """世界の確かめ: 島ごとの帳簿（持ち物ごとの合計が 0、預金と国庫がマイナスでない）と、島をまたぐ
+    お金（外貨・外国の国債・融通）と運ぶ途中の荷。"""
+    kinds = get_game().defs.journal_kinds()
+    problems = []
+    for island_id in state.island_ids():
+        island = state.islands[island_id]
+        problems += [f"島 {island_id}: {p}" for p in ledger.check(island, island.accounts, kinds)]
+    return problems + trade_check(state)

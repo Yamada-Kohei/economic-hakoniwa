@@ -333,6 +333,27 @@ def found_island(
     return island
 
 
+def refound(island: IslandState, turn: int) -> None:
+    """建国したばかりの島（まだ一度も更新していない島）を、ターン turn に建国したことにする。
+
+    巻き戻しで、戻した先より後に建国した島に使う（島は残し、世界と同じ時点にそろえる）。建国の
+    ときに書いたターン（経済を始めたターン・国債を出したターン・在庫の財が作られたターン）を、
+    turn より後なら同じだけ前にずらす。
+    """
+    started = island.economy.started
+    if started is None or started <= turn:
+        return
+    shift = turn - started
+    island.economy.started = turn
+    for bond in island.bonds:
+        bond.issued += shift
+    for held in [island.warehouse, *(f.stock for f in island.facilities)]:
+        for batches in held.values():
+            for batch in batches:
+                if batch[0] > turn:
+                    batch[0] += shift
+
+
 def place_start(
     island: IslandState, defs: Defs, config: GameConfig, rng: random.Random, turn: int = 0
 ) -> None:

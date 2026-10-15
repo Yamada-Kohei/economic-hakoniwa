@@ -297,7 +297,7 @@ def tile(request, island_id: int, x: int, y: int):
         ]
     f = m.Facility.objects.filter(island_id=island_id, x=x, y=y).first()
     if f is not None:
-        data["facility"] = display.facility_info(f, island)
+        data["facility"] = display.facility_info(f, island, _mine(request, row.island))
     return _json(data)
 
 
@@ -413,7 +413,7 @@ def orders(request, island_id: int):
     """GET: 待っている命令の列と行政力。PUT: 列を丸ごと置き換える（島の持ち主だけ）。"""
     island = get_object_or_404(m.Island, pk=island_id)
     if request.method == "GET":
-        return _json(_orders_view(island))
+        return _json(_orders_view(island, _mine(request, island)))
     if not request.user.is_authenticated or island.owner_id != request.user.id:
         return _json({"error": "この島の命令は持ち主だけが変えられます"}, status=403)
     try:
@@ -454,8 +454,11 @@ def orders(request, island_id: int):
 
 @require_http_methods(["POST"])
 def check(request, island_id: int):
-    """命令を1つ、今の島の状態で確かめる（並べる前の確認用）。"""
+    """命令を1つ、今の島の状態で確かめる（並べる前の確認用。島の持ち主だけ。ほかの人に返すと、
+    倉庫の中身など持ち主だけの値を確かめの結果から読めてしまう）。"""
     island = get_object_or_404(m.Island, pk=island_id)
+    if not _mine(request, island):
+        return _json({"error": "この島の命令は持ち主だけが確かめられます"}, status=403)
     try:
         body = json.loads(request.body or b"{}")
     except ValueError:
@@ -476,14 +479,27 @@ def check(request, island_id: int):
     return _json(data)
 
 
-def _orders_view(island: m.Island) -> dict[str, Any]:
+def _orders_view(island: m.Island, mine: bool = True) -> dict[str, Any]:
+    """命令の列・行政力・今の政策と、最近実行した命令。
+
+    ほかの国の人（mine でない）には、実行するまで伏せる命令（定義の secret。為替介入・利下げ・
+    不履行など、現実の国が前もって公表しないもの）を待っている列から除き、最近の結果からは、
+    伏せる命令のうち失敗したもの（実行されなかったもの）を除く。前もって公表する命令（予算・税・
+    関税など）と、実行した命令は誰にでも見える。
+    """
     d = get_game().defs
-    pending = list(island.orders.filter(status="pending").order_by("seq", "id"))
+    pending = island.orders.filter(status="pending")
+    recent = island.orders.exclude(status="pending")
+    if not mine:
+        secret = [kind for kind, spec in d.orders.items() if spec.get("secret")]
+        pending = pending.exclude(kind__in=secret)
+        recent = recent.exclude(status="failed", kind__in=secret)
+    pending = pending.order_by("seq", "id")
     turn, stats = display.latest_stats(island)
     admin_power = stats.get("admin_power")
     if admin_power is None:
         admin_power = get_game().config.get("orders.base_admin_power")
-    recent = island.orders.exclude(status="pending").order_by("-executed_turn", "-seq")[:20]
+    recent = recent.order_by("-executed_turn", "-seq")[:20]
     return {
         "admin_power": int(admin_power),
         "policy": display.policy_view(island),

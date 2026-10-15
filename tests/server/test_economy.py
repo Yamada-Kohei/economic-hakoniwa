@@ -120,7 +120,7 @@ def test_policy_orders_from_the_island_page(client, world):
 
 def test_warehouse_sale_check_reads_the_warehouse(client, world):
     """倉庫の財を売る命令の確認は、国の倉庫の在庫を読んで判断する（Codex の試し遊び、ターン50）。"""
-    island = Island.objects.order_by("id").first()
+    island = _own_island(client)
     Stock.objects.filter(island=island, facility__isnull=True).delete()
     Stock.objects.create(island=island, facility=None, good="wood", made_turn=0, quantity=5_000)
     url = f"/api/islands/{island.id}/orders/check"

@@ -61,7 +61,9 @@ def island_for_naming(row: m.Island) -> IslandState:
     return island
 
 
-def facility_info(row: m.Facility, island: IslandState) -> dict[str, Any]:
+def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> dict[str, Any]:
+    """マスの欄の施設。だれにでも見える姿（種類・人手・稼働率・状態・在庫・補助金・閉鎖と差し押さえ）
+    と、持ち主にだけ帳簿・借入・銀行の帳簿と、命令の入力に使う値（mine のとき）。"""
     game = get_game()
     defs, config = game.defs, game.config
     f: Facility = facility_from_row(row)
@@ -113,7 +115,7 @@ def facility_info(row: m.Facility, island: IslandState) -> dict[str, Any]:
             info["next_materials"] = goods_list(defs.settlements[following].get("materials", {}))
         return info
     # 会計方式の変更の命令を出せる施設には、変えた先を添える（マスの欄はそのときだけ入力欄を出す）
-    target = accounting_target(island, f)
+    target = accounting_target(island, f) if mine else None
     if target is not None:
         info["accounting_target"] = target
         info["accounting_target_name"] = message(f"accounting_{target}")
@@ -122,7 +124,7 @@ def facility_info(row: m.Facility, island: IslandState) -> dict[str, Any]:
     info.update(engineers_info(f, fdef))
     if fdef.get("education"):
         info["education"] = education_text(fdef["education"])
-    if f.built and len(recipes) > 1:
+    if mine and f.built and len(recipes) > 1:
         # 生産方式の切り替え（フェーズ3-2。国営の施設だけ。次の市場の段で切り替わる）
         choices = recipe_choices(island, f)
         if choices:
@@ -151,9 +153,10 @@ def facility_info(row: m.Facility, island: IslandState) -> dict[str, Any]:
         info["private_site"] = True  # 民間の資本が自分のお金で建てている
     if f.built:
         currency = (island.names or {}).get("currency_symbol", "")
-        info["books"] = facility_books(row, f, currency)
+        if mine:  # 施設の帳簿は持ち主だけ（帳簿の API と施設の画面と同じ）
+            info["books"] = facility_books(row, f, currency)
         if island.has_economy:
-            info.update(facility_finance(row, f, island, currency))
+            info.update(facility_finance(row, f, island, currency, mine))
     return info
 
 
@@ -295,9 +298,10 @@ def ownership_target(island: IslandState, f: Facility) -> str | None:
 
 
 def facility_finance(
-    row: m.Facility, f: Facility, island: IslandState, currency: str = ""
+    row: m.Facility, f: Facility, island: IslandState, currency: str = "", mine: bool = False
 ) -> dict[str, Any]:
-    """施設の借入・閉鎖・差し押さえ・補助金と、出せる命令（フェーズ2-2）。銀行なら銀行の帳簿も。"""
+    """施設の閉鎖・差し押さえ・補助金（だれにでも）と、借入・銀行の帳簿・出せる命令（フェーズ2-2。
+    持ち主だけ。mine のとき）。"""
     game = get_game()
     config = game.config
     out: dict[str, Any] = {}
@@ -312,6 +316,20 @@ def facility_finance(
             "until": until,
             "price": money_text(seized.get("price", 0), currency),
         }
+    if is_self_supporting(f) and not is_bank(config, f):
+        # 補助金は独立採算の施設にだけ出る（銀行を除く）。出ている補助金は公表された政策
+        recipe = game.defs.facilities[f.kind]["recipes"].get(f.recipe, {})
+        outputs = recipe.get("outputs", {})
+        out["subsidies"] = [
+            subsidy_text(s)
+            for s in island.policy.subsidies
+            if (s.get("x"), s.get("y")) == (f.x, f.y)
+            or (s["kind"] == "production" and s.get("good") in outputs)
+        ]
+        if mine:
+            out["subsidy_target"] = True
+    if not mine:
+        return out
     loans = facility_loans(row, island, currency)
     if loans:
         out["loans"] = loans
@@ -328,17 +346,6 @@ def facility_finance(
             out["resolve_methods"] = {
                 method: message(f"resolution_{method}") for method in RESOLUTION_METHODS
             }
-    elif is_self_supporting(f):
-        # 補助金は独立採算の施設にだけ出る（銀行を除く）
-        out["subsidy_target"] = True
-        recipe = game.defs.facilities[f.kind]["recipes"].get(f.recipe, {})
-        outputs = recipe.get("outputs", {})
-        out["subsidies"] = [
-            subsidy_text(s)
-            for s in island.policy.subsidies
-            if (s.get("x"), s.get("y")) == (f.x, f.y)
-            or (s["kind"] == "production" and s.get("good") in outputs)
-        ]
     return out
 
 
