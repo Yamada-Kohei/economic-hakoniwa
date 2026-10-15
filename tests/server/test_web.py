@@ -7,6 +7,7 @@ from server.turns.models import Backup
 from server.turns.services import run_turn
 from server.world import admin as world_admin
 from server.world.models import Island, World
+from tests.server.test_phase1 import _own_island
 
 pytestmark = pytest.mark.django_db
 
@@ -66,8 +67,8 @@ def test_tile_api_construction_progress(client, world):
 
 
 def test_tile_api_facility_books(client, world):
-    """施設のマスには、直近のターンの収支と損益の合計を出す（決算の前はない）。"""
-    island = Island.objects.first()
+    """施設のマスには、直近のターンの収支と損益の合計を出す（決算の前はない。持ち主だけ）。"""
+    island = _own_island(client)
     farm = island.facilities.filter(kind="farm", built=True).first()
     url = f"/api/islands/{island.id}/tiles/{farm.x},{farm.y}"
     assert client.get(url).json()["facility"]["books"] is None

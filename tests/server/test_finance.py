@@ -254,8 +254,8 @@ def test_zone_order_runs_and_shows_on_tile(client, world):
 
 
 def test_tile_api_bank_and_actions(client, world):
-    """銀行のマスには帳簿と緊急の貸し出しを、破綻したら処理の選び方を出す。"""
-    island = m.Island.objects.order_by("id").first()
+    """銀行のマスには帳簿と緊急の貸し出しを、破綻したら処理の選び方を出す（持ち主に）。"""
+    island = _own_island(client)
     sites = _market_island_sites(island)
     bank, private = sites["bank"], sites["private"]
     run_turn(force=True)
@@ -288,8 +288,8 @@ def test_tile_api_bank_and_actions(client, world):
 
 
 def test_tile_api_ownership_and_seizure(client, world):
-    """民営化できる国営施設には民営化を出し、差し押さえ・閉鎖の途中ならそれを出す。"""
-    island = m.Island.objects.order_by("id").first()
+    """民営化できる国営施設には民営化を出し、差し押さえ・閉鎖の途中ならそれを出す（持ち主に）。"""
+    island = _own_island(client)
     farm = island.facilities.filter(kind="farm", owner="private", built=True).first()
     url = f"/api/islands/{island.id}/tiles/{farm.x},{farm.y}"
     farm.owner = "state"
@@ -336,6 +336,7 @@ def test_loans_round_trip_and_show_on_tile(client, world):
     assert banks.outstanding(loaded, loaded.loans[0]) == 50_000
     assert loaded.accounts == island.accounts
 
+    _own_island(client)  # 借入は持ち主にだけ出す
     data = client.get(f"/api/islands/{island.id}/tiles/{f.x},{f.y}").json()
     shown = data["facility"]["loans"]
     assert len(shown) == 1

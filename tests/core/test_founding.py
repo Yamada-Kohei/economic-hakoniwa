@@ -12,6 +12,7 @@ from hakoniwa_core.founding import (
     auto_terrain,
     found_island,
     plan_problems,
+    refound,
     shape_problems,
 )
 from hakoniwa_core.game import load_game
@@ -19,6 +20,7 @@ from hakoniwa_core.geo import components
 from hakoniwa_core.naming import facility_name
 from hakoniwa_core.state import ACCOUNTING_SELF, ACCOUNTING_TREASURY, OWNER_PRIVATE, OWNER_STATE
 from hakoniwa_core.state.generate import generate_land, random_plan
+from hakoniwa_core.state.serialize import island_to_dict
 
 
 @pytest.fixture(scope="module")
@@ -202,3 +204,19 @@ def test_housing_has_no_name_and_admin_has_no_place(game):
     )
     office = island.facility_at(*island.capital)
     assert facility_name(game.defs, game.config, island, office) == "中央省庁"
+
+
+@pytest.mark.parametrize("economy", ["market", "mixed", "planned"])
+def test_refound_moves_the_founding_turn(game, economy):
+    """巻き戻し（A01）: 後のターンに建国した島をずらすと、そのターンに建国した島と同じになる。
+
+    建国のときにターンを書く欄が増えたら、refound でもずらす（ずらし忘れるとここで落ちる）。
+    """
+    plan = plan_for(game, economy)
+    early = found_island(game.defs, game.config, plan, 1, 0, 0, turn=3)
+    late = found_island(game.defs, game.config, plan, 1, 0, 0, turn=9)
+    assert island_to_dict(late) != island_to_dict(early)
+    refound(late, 3)
+    assert island_to_dict(late) == island_to_dict(early)
+    refound(late, 5)  # 戻した先より前に建国した島は変えない
+    assert island_to_dict(late) == island_to_dict(early)

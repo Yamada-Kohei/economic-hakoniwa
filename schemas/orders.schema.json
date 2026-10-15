@@ -8,6 +8,7 @@
     "admin_cost": {"type": "integer", "minimum": 0, "description": "実行に要る行政力"},
     "payload": {"type": "object", "description": "命令の中身の形（JSON Schema で書く）"},
     "parliament": {"enum": ["majority", "two_thirds"], "description": "議会のある体制で採決が要る命令（過半数・3 分の 2。フェーズ3-4）"},
+    "secret": {"const": true, "description": "実行するまで持ち主だけに見せる命令（前もって公表しないもの）"},
     "override": {"const": true}
   }
 }
