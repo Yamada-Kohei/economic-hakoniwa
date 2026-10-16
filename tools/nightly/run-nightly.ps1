@@ -1,9 +1,12 @@
 ﻿# 夜の点検（docs/nightly.md）。タスク スケジューラから毎晩呼ばれます。
 # main の最新を <置き場所>\src に出し、python -m hakoniwa_core.nightly run を回して、
 # 結果を <置き場所>\<日付> に置きます。置き場所は、既定ではこのファイルの3つ上（runs\nightly）です。
+# -Until の時刻（既定は朝 6 時 30 分）になったら残りの組を止め、そこまでの分でまとめを書きます
+# （朝 7 時前の確かめに間に合わせるため）。
 param(
     [int]$Jobs = 14,
-    [string]$Root = ""
+    [string]$Root = "",
+    [string]$Until = "06:30"
 )
 
 # 外の命令（git・python）の標準エラーで止まらないように。終わりの番号で確かめる
@@ -28,7 +31,7 @@ function Finish([string]$Message, [int]$Code) {
     exit $Code
 }
 
-Write-Log "始めます（jobs $Jobs）"
+Write-Log "始めます（jobs $Jobs、$Until まで）"
 
 # ほかの測りが走っている夜は休む（X870 で重い処理は1度に1つ）
 $busy = @(Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
@@ -59,7 +62,8 @@ $Known = Join-Path $Root "known.json"
 $Arguments = @(
     "-m", "hakoniwa_core.nightly", "run",
     "--out-dir", "`"$Out`"", "--jobs", $Jobs, "--seed-base", $Date,
-    "--known", "`"$Known`"", "--label", "`"main $Commit`""
+    "--known", "`"$Known`"", "--label", "`"main $Commit`"",
+    "--until", $Until
 )
 $run = Start-Process -FilePath $Python -ArgumentList $Arguments -WorkingDirectory $Src `
     -NoNewWindow -Wait -PassThru `

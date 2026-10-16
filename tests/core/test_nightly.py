@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 import random
 
@@ -138,3 +139,64 @@ def test_the_night_starts_with_the_long_big_worlds():
     assert [r[0] for r in runs] == ["long"] * 6 + ["random"] * 3
     assert {r[1] for r in runs[:4]} == {"plan", "none"}
     assert len({nightly.run_name(*r) for r in runs}) == len(runs)  # 結果のファイルは重ならない
+
+
+def test_a_run_saves_what_it_has_on_the_way(game, monkeypatch):
+    monkeypatch.setattr(nightly, "SAVE_EVERY", 2)
+    saved = []
+    result = nightly.run_one("long", "small", 7, 6, game, save=saved.append)
+    assert [s["turns_done"] for s in saved] == [2, 4]
+    assert all(s["unfinished"] for s in saved)
+    assert "unfinished" not in result
+    assert result["turns_done"] == 6
+
+
+def test_the_night_stops_at_its_hours_and_still_writes_the_summary(tmp_path):
+    out = tmp_path / "20261017"
+    runs = [("long", "plan", 1, 1200), ("random", "plan", 2, 300)]
+    nightly.batch(runs, out, jobs=1, hours=1.5 / 3600)
+    assert nightly.CUT in (out / "long-plan-s1-t1200.log").read_text(encoding="utf-8")
+    assert json.loads((out / "not_started.json").read_text(encoding="utf-8")) == [
+        "random-plan-s2-t300"
+    ]
+    summary = nightly.summarize(out, tmp_path / "known.json")
+    assert [(f["type"], f["signature"]) for f in summary["findings"]] == [
+        ("timeout", "timeout long-plan")
+    ]
+    assert summary["findings"][0]["turns_done"] == 0
+    text = (out / "summary.md").read_text(encoding="utf-8")
+    assert "【新】時間内に終わらなかった: timeout long-plan" in text
+    assert "時間切れで始めなかった組: 1" in text
+
+
+def test_a_cut_run_is_still_read_up_to_where_it_got(tmp_path):
+    out = tmp_path / "20261017"
+    out.mkdir()
+    windows = [
+        {"start": 120, "end": 500, "counts": {"price": 0}},
+        {"start": 500, "end": 700, "counts": {"price": 2}},
+    ]
+    run = {"kind": "long", "scenario": "none", "seed": 5, "turns": 1200, "turns_done": 700}
+    run |= {"seconds": 9000.0, "stopped": None, "windows": windows, "late": ["price"]}
+    (out / "long-none-s5-t1200.json").write_text(
+        json.dumps(run | {"unfinished": True}), encoding="utf-8"
+    )
+    (out / "long-none-s5-t1200.log").write_text(f"ターン 700\n{nightly.CUT}\n", encoding="utf-8")
+    done = {"kind": "random", "scenario": "plan", "seed": 3, "turns": 300, "turns_done": 300}
+    (out / "random-plan-s3-t300.json").write_text(
+        json.dumps(done | {"seconds": 1200.0, "stopped": None}), encoding="utf-8"
+    )
+    (out / "random-plan-s3-t300.log").write_text("", encoding="utf-8")
+    summary = nightly.summarize(out, None)
+    assert [f["type"] for f in summary["findings"]] == ["timeout", "late"]
+    assert summary["slowest"] == {"run": "random-plan-s3-t300", "seconds": 1200.0}
+    text = (out / "summary.md").read_text(encoding="utf-8")
+    assert "止めたとき: 150 分で 700 ターンまで" in text
+    assert "いちばん長くかかった組: random-plan-s3-t300（20 分）" in text
+
+
+def test_the_stop_time_is_the_next_time_the_clock_shows_it():
+    night = datetime.datetime(2026, 10, 17, 2, 0)
+    assert nightly.hours_until("06:30", night) == 4.5
+    day = datetime.datetime(2026, 10, 16, 17, 0)
+    assert nightly.hours_until("06:30", day) == 13.5
