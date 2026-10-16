@@ -1,15 +1,21 @@
 """試し遊びのための小さな道具（標準ライブラリだけで動きます）。
 
 ブラウザを使わずに、登録・ログイン・建国・画面や API の読み取り・命令の確かめと並べ替えをします。
-使い方は docs/playtest.md の「道具」を見てください。
+使い方は docs/playtest.md の「道具」と「AI 用の入り口」を見てください。
 
-    python tools/playtest/hk.py --base http://127.0.0.1:8000 login codex <パスワード>
-    python tools/playtest/hk.py get /api/islands/4/economy
+    python tools/playtest/hk.py --base http://127.0.0.1:8000 key   # AI 用の鍵を覚えさせる
+    python tools/playtest/hk.py summary                            # 自分の国の要約
+    python tools/playtest/hk.py changes                            # 前に読んだターンからの差分
+    python tools/playtest/hk.py get api/islands/4/economy
     python tools/playtest/hk.py map 4
     python tools/playtest/hk.py send 5 'ごあいさつ' 'はじめまして'
+    python tools/playtest/hk.py mcp                                       # MCP の stdio のつなぎ
 
-ログインの cookie は HK_COOKIES（既定はホームの .hk-cookies.txt）に置きます。
-リポジトリには置きません。
+AI 用の鍵（アカウントの画面 /accounts/keys/ で作る）は HK_KEY か、`key` で覚えさせたファイル
+（HK_KEY_FILE。既定はホームの .hk-key）から読み、/api/ と /mcp の呼び出しに付けます。鍵があれば
+ログインは要りません。鍵がなければ、ログインの cookie（HK_COOKIES。既定はホームの
+.hk-cookies.txt）を使います。前に読んだターンは HK_STATE（既定はホームの .hk-state.json）に
+置きます。どれもリポジトリには置きません。
 """
 
 from __future__ import annotations
@@ -29,11 +35,35 @@ from pathlib import Path
 
 DEFAULT_BASE = os.environ.get("HK_BASE", "http://127.0.0.1:8000")
 COOKIES = Path(os.environ.get("HK_COOKIES", Path.home() / ".hk-cookies.txt"))
+KEY_FILE = Path(os.environ.get("HK_KEY_FILE", Path.home() / ".hk-key"))
+STATE = Path(os.environ.get("HK_STATE", Path.home() / ".hk-state.json"))
+KEY_PATHS = ("/api/", "/mcp")  # 鍵が効く場所（サーバーの server/accounts/keys.py と同じ）
+
+
+def load_key() -> str:
+    """AI 用の鍵（HK_KEY か、key で覚えさせたファイル）。なければ空。"""
+    key = os.environ.get("HK_KEY", "").strip()
+    if not key and KEY_FILE.exists():
+        key = KEY_FILE.read_text(encoding="utf-8").strip()
+    return key
+
+
+def fix_path(path: str) -> str:
+    """先頭の / を補う。Windows の Git Bash が /api/... を C:/Program Files/Git/api/... に書き換えた
+    ものは、/api/ や /islands/ から後ろを使う。"""
+    if re.match(r"^[A-Za-z]:[/\\]", path):
+        found = re.search(
+            r"/(api|islands|letters|board|accounts|help)(/|$)", path.replace("\\", "/")
+        )
+        if found:
+            return path.replace("\\", "/")[found.start() :]
+    return path if path.startswith("/") else "/" + path
 
 
 class Client:
     def __init__(self, base: str):
         self.base = base.rstrip("/")
+        self.key = load_key()
         self.jar = http.cookiejar.MozillaCookieJar(str(COOKIES))
         if COOKIES.exists():
             self.jar.load(ignore_discard=True, ignore_expires=True)
@@ -51,9 +81,12 @@ class Client:
         return ""
 
     def request(self, method: str, path: str, data: bytes | None = None, ctype: str = ""):
+        path = fix_path(path)
         url = self.base + path
         req = urllib.request.Request(url, data=data, method=method)
-        if method != "GET":
+        if self.key and path.startswith(KEY_PATHS):
+            req.add_header("Authorization", f"Bearer {self.key}")
+        elif method != "GET":
             req.add_header("X-CSRFToken", self.csrf())
             req.add_header("Referer", url)
         if ctype:
@@ -441,6 +474,302 @@ def cmd_new_thread(c: Client, a) -> int:
     return 0
 
 
+# --- AI 用の入り口（鍵・自分・国の要約・差分・ターンログ・MCP） ----------------------------
+
+
+def cmd_key(c: Client, a) -> int:
+    """AI 用の鍵を HK_KEY_FILE に覚えさせる（引数か標準入力から）。--forget で消す。"""
+    if a.forget:
+        KEY_FILE.unlink(missing_ok=True)
+        print(f"鍵を消しました（{KEY_FILE}）。")
+        return 0
+    key = (a.value or "").strip()
+    if not key:
+        if sys.stdin.isatty():
+            print("鍵（hk_ で始まる）を貼り付けて Enter を押してください。", file=sys.stderr)
+        key = sys.stdin.readline().strip()
+    if not key.startswith("hk_"):
+        print("鍵は hk_ で始まります（アカウントの画面 /accounts/keys/ で作ります）。")
+        return 1
+    c.key = key
+    status, body, _ = c.get("/api/me")
+    if status >= 400:
+        return fail(status, body)
+    KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    KEY_FILE.write_text(key + "\n", encoding="utf-8")
+    KEY_FILE.chmod(0o600)
+    me = json.loads(body)
+    island = me["island"]
+    where = f"島 {island['id']} {island['name']}" if island else "島はまだありません"
+    print(f"鍵を覚えました（{KEY_FILE}）。アカウント {me['user']}、{where}。")
+    return 0
+
+
+def cmd_new_key(c: Client, a) -> int:
+    """ログインした状態（login か signup の後）で AI 用の鍵を作り、HK_KEY_FILE に覚えさせる。
+
+    ブラウザのアカウントの画面（/accounts/keys/）で「作る」を押すのと同じ。
+    """
+    _, body, final = c.form("/accounts/keys/", {"action": "create", "name": a.name})
+    if "/accounts/login" in final:
+        print("ログインしていません。先に login してください。")
+        return 1
+    found = re.search(r'<code id="new-key">(hk_[^<]+)</code>', body)
+    if not found:
+        errors = re.findall(r'<p class="error">(.*?)</p>', body)
+        print(
+            "鍵を作れませんでした:", " / ".join(map(html.unescape, errors)) or text_of(body)[:300]
+        )
+        return 1
+    a.value, a.forget = found.group(1), False
+    return cmd_key(c, a)
+
+
+def own_island(c: Client) -> int:
+    status, body, _ = c.get("/api/me")
+    if status >= 400:
+        sys.exit(f"自分が分かりません（{status}）。key で鍵を覚えさせるか、login してください。")
+    island = json.loads(body).get("island")
+    if not island:
+        sys.exit("まだ島がありません。found で建国してください。")
+    return island["id"]
+
+
+def load_state() -> dict:
+    try:
+        return json.loads(STATE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def remember_turn(c: Client, island: int, turn: int) -> None:
+    """summary と changes で読んだターンを覚える（次の changes の since の既定）。"""
+    state = load_state()
+    state[f"{c.base}|{island}"] = turn
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    STATE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+
+
+def cmd_me(c: Client, a) -> int:
+    status, body, _ = c.get("/api/me")
+    if a.json or status >= 400:
+        return show(status, body) if a.json else fail(status, body)
+    me = json.loads(body)
+    print(f"アカウント {me['user'] or '（ログインしていない）'}・{me['date']}")
+    if me["key"]:
+        k = me["key"]
+        print(f"AI 用の鍵 {k['prefix']}… {k['name']}（1 分に {k['calls_per_minute']} 回まで）")
+    if me["island"]:
+        i = me["island"]
+        mark = "・AI の印あり" if i["ai"] else ""
+        print(f"島 {i['id']} {i['name']}{mark}・未読の公電 {me.get('unread_letters', 0)} 通")
+    return 0
+
+
+def _rows(items: list[dict], fmt) -> str:
+    return " / ".join(fmt(x) for x in items)
+
+
+def _good(g: dict) -> str:
+    change = f"({g['change']})" if g.get("change") else ""
+    return (
+        f"{g['name']} {g.get('price', '-')}{change} 売買 {g.get('volume', 0)}"
+        f" 買えず {g.get('unmet', 0)} 生産 {g['production']} 在庫 {g['stock']}"
+    )
+
+
+def _bond(b: dict) -> str:
+    return f"#{b['number']} {b['term']} 満期 {b['maturity']} 残高 {b['outstanding']} {b['rate']}"
+
+
+def _result(x: dict) -> str:
+    done = "実行" if x["status"] == "done" else "失敗"
+    why = f"（{x['reason']}）" if x["reason"] else ""
+    return f"ターン {x['turn']} {done}: {x['text']}{why}"
+
+
+def _indicator(r: dict) -> str:
+    before = f"（前 {r['before']}）" if "before" in r else ""
+    return f"{r['label']} {r['now']}{before}"
+
+
+def print_summary(d: dict) -> None:
+    i, p, f = d["island"], d["politics"], d["facilities"]
+    mark = "・AI" if i["ai"] else ""
+    owner = i["owner"] or "持ち主なし"
+    print(f"{i['name']}（島 {i['id']}・{owner}{mark}）{d['date']}・統計はターン {d['stats_turn']}")
+    resources = "・".join(i["resources"]) or "なし"
+    regime = "・".join(i["regime"].values())
+    print(f"体制: {regime} / 地下資源: {resources} / 気候: {i['climate'] or '-'}")
+    print("[指標] " + _rows(d["indicators"], _indicator))
+    election = f" 次の選挙 ターン {p['next_election']}" if p.get("next_election") else ""
+    numbers = f" 政情 {p['stability']} 支持率 {p['support']}" if p["stability"] is not None else ""
+    print(f"[政情] {p['level_name']}{numbers}{election}")
+    for text in d["alerts"]:
+        print(f"[注意] {text}")
+    why = f"（{f['infra_why']}）" if f["infra_why"] else ""
+    print(
+        f"[施設] {f['facilities']} か所、止まった施設 {f['stopped_count']}、"
+        f"工事中 {f['construction_count']}、インフラの工事の列 {f['infra_works']}{why}"
+    )
+    for x in f["stopped"]:
+        print(f"  止まった ({x['x']},{x['y']}) #{x['number']} {x['name']} {x['status_text']}")
+    if f["partial"]:
+        partial = _rows(f["partial"], lambda r: f"{r['status_text']} {r['count']}")
+        print(f"  満たない稼働のわけ: {partial}")
+    for x in f["construction"]:
+        print(
+            f"  工事 ({x['x']},{x['y']}) {x['kind_name']} {x['progress']}/{x['turns']} ターン"
+            f" {x['status_text']}"
+        )
+    print("[財] " + _rows(d["goods"], _good))
+    if d["bonds_due"]:
+        print("[満期の近い国債] " + _rows(d["bonds_due"], _bond))
+    for x in d.get("losing", []):
+        print(f"[赤字の施設] ({x['x']},{x['y']}) #{x['number']} {x['name']} {x['profit_total']}")
+    o = d.get("orders")
+    if o:
+        print(f"[命令] 行政力 {o['admin_power']}、列 {len(o['pending'])} 件")
+        for x in o["pending"]:
+            print(f"  待ち: {x['text']}")
+        for x in o["last_results"]:
+            print(f"  {_result(x)}")
+    if "letters" in d:
+        print(f"[公電] 未読 {d['letters']['unread']} 通")
+        for x in d["letters"]["latest_unread"]:
+            print(f"  #{x['id']} ターン {x['turn']} {x['from']}: {x['subject']}")
+    print(f"[出来事 ターン {d['events_turn']}]")
+    for e in d["events"]:
+        print(f"  {e['text']}")
+
+
+def cmd_summary(c: Client, a) -> int:
+    island = a.island or own_island(c)
+    status, body, _ = c.get(f"/api/islands/{island}/summary")
+    if a.json or status >= 400:
+        return show(status, body) if a.json else fail(status, body)
+    d = json.loads(body)
+    remember_turn(c, island, d["turn"])
+    print_summary(d)
+    return 0
+
+
+def cmd_changes(c: Client, a) -> int:
+    island = a.island or own_island(c)
+    since = a.since
+    if since is None:
+        since = load_state().get(f"{c.base}|{island}")
+    query = f"?since={since}" if since is not None else ""
+    status, body, _ = c.get(f"/api/islands/{island}/changes{query}")
+    if a.json or status >= 400:
+        return show(status, body) if a.json else fail(status, body)
+    d = json.loads(body)
+    remember_turn(c, island, d["turn"])
+    print(f"島 {d['island']}: ターン {d['since']} より後（いま {d['date']}）")
+    if d["truncated"]:
+        print(f"（ターンログはターン {d['log_from']} から。前は log --from で読む）")
+    turn = None
+    for e in d["log"]:
+        if e["turn"] != turn:
+            turn = e["turn"]
+            print(f"[ターン {turn}]")
+        print(f"  {e['text']}")
+    if d["indicators"]:
+        print(
+            "[指標] " + _rows(d["indicators"], lambda r: f"{r['label']} {r['before']} → {r['now']}")
+        )
+    for x in d["orders"]:
+        print(f"[命令] {_result(x)}")
+    for x in d.get("letters", []):
+        mark = "既読" if x["read"] else "未読"
+        print(f"[公電] #{x['id']} [{mark}] ターン {x['turn']} {x['from']['name']}: {x['subject']}")
+    if not (d["log"] or d["indicators"] or d["orders"] or d.get("letters")):
+        print("（新しいことはありません）")
+    return 0
+
+
+def cmd_log(c: Client, a) -> int:
+    island = a.island or own_island(c)
+    query = "&".join(f"{k}={v}" for k, v in (("from", a.start), ("to", a.end)) if v is not None)
+    status, body, _ = c.get(f"/api/islands/{island}/log" + (f"?{query}" if query else ""))
+    if a.json or status >= 400:
+        return show(status, body) if a.json else fail(status, body)
+    d = json.loads(body)
+    turn = None
+    for e in d["entries"]:
+        if e["turn"] != turn:
+            turn = e["turn"]
+            print(f"[ターン {turn}]")
+        print(f"  {e['text']}")
+    if not d["entries"]:
+        print("（ターンログはありません）")
+    return 0
+
+
+def cmd_mcp(c: Client, a) -> int:
+    """MCP の stdio のつなぎ: 標準入力の JSON-RPC を1行ずつ POST /mcp に送り、答えを標準出力に書く。
+
+    MCP の道具を stdio でしか使えない AI（や、鍵を設定のファイルに書きたくないとき）のため。
+    鍵は HK_KEY か key で覚えさせたファイルから読む。
+    """
+    if not c.key:
+        print(
+            "AI 用の鍵がありません（key で覚えさせるか、HK_KEY に入れてください）", file=sys.stderr
+        )
+        return 1
+    version = None
+    out = sys.stdout.buffer
+    for raw in sys.stdin.buffer:
+        line = raw.decode("utf-8").strip()
+        if not line:
+            continue
+        try:
+            message = json.loads(line)
+        except ValueError:
+            message = None
+        req = urllib.request.Request(c.base + "/mcp", data=line.encode("utf-8"), method="POST")
+        req.add_header("Authorization", f"Bearer {c.key}")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("Accept", "application/json, text/event-stream")
+        if version:
+            req.add_header("MCP-Protocol-Version", version)
+        try:
+            with urllib.request.urlopen(req) as res:
+                status, body = res.status, res.read().decode("utf-8")
+        except urllib.error.HTTPError as e:
+            status, body = e.code, e.read().decode("utf-8", "replace")
+        except urllib.error.URLError as e:
+            status, body = 0, f"サーバーにつながりません: {e.reason}"
+        if status == 202 or not body:
+            continue
+        try:
+            answer = json.loads(body)
+        except ValueError:
+            answer = None
+        if not isinstance(message, dict) or "id" not in message:
+            if status >= 400:
+                print(f"MCP: {status} {body[:300]}", file=sys.stderr)
+                continue
+        elif (
+            status >= 400
+            or not isinstance(answer, (dict, list))
+            or (isinstance(answer, dict) and "jsonrpc" not in answer)
+        ):
+            text = answer.get("error") if isinstance(answer, dict) else body[:300]
+            answer = {
+                "jsonrpc": "2.0",
+                "id": message["id"],
+                "error": {"code": -32000, "message": f"{status}: {text}"},
+            }
+        if isinstance(answer, dict):
+            result = answer.get("result") or {}
+            if isinstance(result, dict) and result.get("protocolVersion"):
+                version = result["protocolVersion"]
+        out.write(json.dumps(answer, ensure_ascii=False).encode("utf-8") + b"\n")
+        out.flush()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="経済版箱庭諸国の試し遊びの道具")
     p.add_argument(
@@ -547,6 +876,40 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("title", help="題名")
     add_text(s)
     s.set_defaults(func=cmd_new_thread)
+
+    s = sub.add_parser("key", help="AI 用の鍵を覚えさせる（引数か標準入力。--forget で消す）")
+    s.add_argument("value", nargs="?", help="鍵（省くと標準入力から読む）")
+    s.add_argument("--forget", action="store_true")
+    s.set_defaults(func=cmd_key)
+
+    s = sub.add_parser("new-key", help="ログインした状態で AI 用の鍵を作り、覚えさせる")
+    s.add_argument("name", nargs="?", default="hk.py", help="鍵の名前（何の AI に渡すかのメモ）")
+    s.set_defaults(func=cmd_new_key)
+
+    s = sub.add_parser("me", parents=[raw], help="自分（アカウント・鍵・島・ターン）")
+    s.set_defaults(func=cmd_me)
+
+    s = sub.add_parser("summary", parents=[raw], help="国の要約（島を省くと自分の島）")
+    s.add_argument("island", nargs="?", type=int)
+    s.set_defaults(func=cmd_summary)
+
+    s = sub.add_parser(
+        "changes",
+        parents=[raw],
+        help="ターン since より後に起きたこと（省くと前に読んだターンから）",
+    )
+    s.add_argument("since", nargs="?", type=int)
+    s.add_argument("--island", type=int)
+    s.set_defaults(func=cmd_changes)
+
+    s = sub.add_parser("log", parents=[raw], help="ターンログ（省くと最後のターン。24 ターンまで）")
+    s.add_argument("island", nargs="?", type=int)
+    s.add_argument("--from", dest="start", type=int)
+    s.add_argument("--to", dest="end", type=int)
+    s.set_defaults(func=cmd_log)
+
+    s = sub.add_parser("mcp", help="MCP の stdio のつなぎ（AI の MCP の設定から起動する）")
+    s.set_defaults(func=cmd_mcp)
 
     a = p.parse_args(argv)
     return a.func(Client(a.base), a)

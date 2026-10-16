@@ -19,6 +19,7 @@
   <ul class="island-list">
     {% for island in islands %}
       <li><a href="{% url 'island' island.id %}">{{ island.name }}</a>
+        {% if island.owner_id in ai_owners %}{% include "web/ai_mark.html" %}{% endif %}
         <small>{% if island.owner %}{{ island.owner.username }}{% else %}{% translate "持ち主なし" %}{% endif %}</small></li>
     {% empty %}
       <li>{% translate "まだ島がありません。" %}</li>
