@@ -50,6 +50,7 @@ from hakoniwa_core.economy import (
     STATE_FACILITIES,
     SUBSIDIES,
     Payer,
+    arrears,
     banks,
     books,
     debt,
@@ -242,9 +243,12 @@ class Accounts(IslandStage):
         payer = Payer(entity_of(ctx.config, f))
         profit = items[books.PROFIT]
         taxable = self._carry_losses(f, profit, ctx.turn, settings["loss_carry_turns"])
-        tax = min(part(taxable, island.policy.corporate_tax), funds.available(island, payer))
+        owed = part(taxable, island.policy.corporate_tax)
+        tax = min(owed, funds.available(island, payer))
         funds.pay(island, payer, ledger.GOV, tax, "tax_corporate")
-        dividend = part(max(0, profit - tax), to_basis(settings["payout"]))
+        # 払えなかった分は未払いの税として残し、お金が入れば払う（回3）
+        arrears.add_tax(island, payer.entity, owed - tax)
+        dividend = part(max(0, profit - owed), to_basis(settings["payout"]))
         if ledger.is_bank(payer.entity):
             bank = payer.entity
             # 自己資本の目安（規制の値に上乗せした分）を超える分からだけ払う
@@ -260,6 +264,10 @@ class Accounts(IslandStage):
             if cash > settings["cash_turns"] * cost and profit - tax > 0:
                 dividend = max(dividend, cash - settings["cash_turns"] * cost)
             dividend = min(dividend, max(0, cash - keep))
+        if arrears.total(island, payer.entity) or arrears.total(
+            island, payer.entity, arrears.TAX_ARREARS
+        ):
+            dividend = 0  # 賃金や税を払えていない間は配当しない
         owner = owner_entity(f)
         funds.pay(island, payer, owner, dividend, "dividend")
         if owner.startswith("hh:"):

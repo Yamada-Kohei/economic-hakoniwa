@@ -122,6 +122,10 @@ labor:
   max_cut: 0            # 1ターンに賃金が下がる上限（0 で下げない。失業の多い島で賃金と物価が下がり続けないように）
   poach_gap: 0.05       # 賃金がこの割合以上安い施設から働き手を引き抜く
   poach_limit: 0.1      # 1つの施設から1ターンに引き抜かれる働き手の割合の上限
+  # 賃金の遅配（回3）: 払えない分の働き手は払われないまま働き続け、未払いが続いた月数 m に応じて、毎ターン
+  # そのうち arrears_quit × (m + 1) の割合が辞める（半年続くと半分ほど、1年で9割ほどが辞める。1990年代の
+  # ロシアでは遅配が数か月続いても多くの人が働き続けた）
+  arrears_quit: 0.03
   # 技術者（フェーズ2-3）
   engineer_wage_ratio: 2   # 施設の技術者の初めの賃金（一般の賃金に対する倍率）
   engineer_floor: 0.6      # 技術者がいなくても動ける稼働率（上限 = floor + (1 − floor) × 技術者の充足率）
@@ -234,10 +238,10 @@ household:
   food_elasticity: 4    # 食料の割り振りで、値段の差をどれだけ効かせるか（質を足した栄養あたりの値段の比の乗数）
   # 飢えている家計（回3。前のターンに食べた割合が threshold より少なかったか、飢えの蓄えが残って
   # いる）は、使う額に預金の savings を足した額を食費の限りにし、ほかの層の分にも手を伸ばして、
-  # 要る量の累積の割合 steps の段ごとに、そこまで食べるのに食費の限りの累積の割合 spend までなら
-  # 払う指値で買う（要る量の半分までは8割まで払う。現実の飢饉で貧しい家計は所得の7〜8割を食料に
-  # 使う）。値段の上がり方は家計の予算で決まり、お金のない家計から買えなくなる
-  hungry: {threshold: 0.99, savings: 0.1, steps: [0.5, 0.7, 0.85, 1.0], spend: [0.8, 0.9, 0.95, 1.0]}
+  # 要る量の累積の割合 steps の段ごとに、飢える前の値段の「割合 ^ (−1/elasticity)」倍まで買い上がる
+  # （食費の限りでその段まで買える値段まで）。食料の需要の値段への反応（現実の目安は −0.3〜−0.5）で、
+  # 品不足が2〜3割なら値段は2〜3倍、半分なら5倍ほどになり、お金のない家計から買えなくなる
+  hungry: {threshold: 0.99, savings: 0.1, steps: [0.5, 0.7, 0.85, 1.0], elasticity: 0.4}
   # 必需品（食べ物・電力・衣料。goods.yaml の need）に使う額の上限（使う額に対する割合。フェーズ3-2）。
   # 実質の使う額（1人あたり、物価指数で割る）が base_income のとき share で、倍になるごとに fall の割合
   # だけ下がる（下限 floor）。安い食料の費用との差の分だけ、この上限まで質の高い食料に替える
@@ -387,7 +391,8 @@ fiscal:
   # 買い手が減って経済が縮むのを和らげる（バランス調整。命令 set_labor_policy で変えられる）
   unemployment_benefit: 0.4
   # 国庫が足りないときの支払いの順番（前の項目から取り置く）
-  payment_order: [bonds, civil_servants, unemployment, state_facilities, education, security, construction, subsidies, warehouse]
+  # arrears は前のターンまでの未払い賃金（回3。お金が入れば先に払う）
+  payment_order: [bonds, arrears, civil_servants, unemployment, state_facilities, education, security, construction, subsidies, warehouse]
   # 銀行の救済と預金保護（支出の項目の外）は、この項目までの次のターンの支払いを国庫に残した額から出す
   rescue_after: civil_servants
   # 年の予算を命令で決める項目（毎ターン予算の12分の1まで使う）。construction は公共事業費

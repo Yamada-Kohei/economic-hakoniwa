@@ -256,6 +256,8 @@ def _layer_facts(island: IslandState, ctx: StageContext) -> dict[str, dict[str, 
             "eaten": eaten,
             "need": need,
         }
+        if layer == GENERAL:  # 賃金が払われないまま働いている人の割合（雇用の段。回3）
+            facts[layer]["arrears"] = island.scratch.get("arrears_share", 0.0)
     return facts
 
 

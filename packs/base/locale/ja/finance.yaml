@@ -42,6 +42,12 @@ bond_redemption: 国債の償還
 bond_trade: 国債の売買
 bond_default: 国債の不履行
 layer_transfer: 層の移動
+wage_arrears: 賃金の未払い
+wage_arrears_paid: 未払い賃金の支払い
+wage_arrears_lost: 未払い賃金の切り捨て
+tax_arrears: 税の未払い
+tax_arrears_paid: 未払いの税の支払い
+tax_arrears_lost: 未払いの税の切り捨て
 trade: 貿易圏の市場の代金
 fx_exchange: 為替の売り買い
 contract: 二国間契約の代金

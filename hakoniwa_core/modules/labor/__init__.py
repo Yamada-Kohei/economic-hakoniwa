@@ -9,6 +9,10 @@
 
 最後に、施設ごとに次のターンの賃金を見直します（式 wage_update。技術者の賃金は
 engineer_wage_update）。
+
+払い手のお金が足りずに払えないまま働いた人（雇用の段の economy["unpaid"]。バランス調整の回3）の
+分は、払わずに未払い賃金（economy/arrears.py）として残します。施設の帳簿の賃金には、払えなかった分も
+入れます。
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ from hakoniwa_core.economy import (
     GENERAL,
     UNEMPLOYMENT,
     Payer,
+    arrears,
     books,
     freight,
     funds,
@@ -135,8 +140,11 @@ class Payroll(IslandStage):
             drafted = f.economy.get("mobilized", 0)
             drafted_pay = drafted * f.economy.get("mobilized_wage", 0)
             amount = wage * (f.workers - skilled - spared - drafted) + drafted_pay
-            funds.pay(island, payer, worker, amount, "wage", committed=True)
-            self._withhold(island, amount)
+            # 払えないまま働いた人の分（雇用の段の economy["unpaid"]）は未払い賃金にする（回3）
+            owed = min(amount, wage * f.economy.get("unpaid", 0))
+            funds.pay(island, payer, worker, amount - owed, "wage", committed=True)
+            self._withhold(island, amount - owed)
+            arrears.add_wages(island, payer.entity, worker, owed)
             paid += wage * (f.workers - skilled - drafted) + drafted_pay
             workers += f.workers - skilled
             if skilled or spared:  # 技術者の層に払う

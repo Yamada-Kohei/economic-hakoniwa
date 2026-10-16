@@ -107,6 +107,8 @@ from hakoniwa_core.units import (
     to_milli,
 )
 
+ANCHOR = "anchor"  # 家計の層の状態: 飢える前の食料の値段（値幅の上端。回3）
+
 # 注文を出す者の種類
 FACILITY = "facility"
 SITE = "site"
@@ -339,20 +341,24 @@ def hungry_food_orders(
     shares: dict[str, int],
     offered: dict[str, int],
     menu: FoodMenu,
+    anchors: dict[str, int],
+    usual: int,
     budget: int,
     steps: list[float],
-    spend: list[float],
+    elasticity: float,
 ) -> list[tuple[str, int, int]]:
     """飢えている家計の食料の注文（財, 量, 指値）の並び（回3）。急ぐ段から並べる。
 
     まず要る量 need を、ふだんと同じく人数の割合の分（shares）で一番安い組み合わせ（food_split）
-    にし、足りない分は、売りに出ている量（offered）の残りから同じく割り振る（ほかの層の分にも手を
-    伸ばす）。それを要る量の累積の割合 steps の段に分け、段 j（要る量の F_j まで食べられる）には、
-    食費の限り budget の累積の割合 spend の差（S_j − S_{j−1}）までを払う指値を付ける（今の値段の
-    値幅の上端より安くはしない）。少ししか食べられない段ほど高くても買い、指値は家計の予算で決まる
-    （いつもの値段に合わせて決めると、上がった値段がいつもの値段になって上がり続ける）。どの段も、
-    前の段までの取り置きと合わせて budget に収まる分までにする（お金のない家計から買えなくなり、
-    値段は買える人の分まで上がって止まる）。
+    にし、足りない分は、売りに出ている量（offered）の残りの多い財から足す（ほかの層の分にも手を
+    伸ばす。足す先を主な食料に絞り、売りに出た量の少ない財の値段だけが跳ね上がらないように）。
+    それを要る量の累積の割合 steps の段に分け、段 j（要る量の F_j まで食べられる）の指値を、飢える
+    前の値段（anchors。飢えていないターンの値幅の上端）の F_j ^ (−1/elasticity) 倍にする（食料の
+    需要は値段にあまり反応しないので、少ししか食べられない段ほど高くても買う。基準を今の値段に
+    すると、上がった値段が基準になって上がり続ける）。ふだんの食費 usual で今の値段の値幅の上端
+    まで買える段は、飢えていないときと同じく上端より安くはしない。どの段も、前の段までの取り置きと
+    合わせて食費の限り budget（預金を崩す分を含む）に収まる分までにする（お金のない家計から買えなく
+    なり、値段は買える人の分まで上がって止まる）。
     """
     if need <= 0 or budget <= 0:
         return []
@@ -361,28 +367,32 @@ def hungry_food_orders(
         return sum(q * menu.nutritions[g] // QUANTITY_SCALE for g, q in basket.items())
 
     split = food_split(need, menu.values, menu.nutritions, shares, menu.elasticity)
-    base = {g: min(q, shares.get(g, 0)) for g, q in split.items()}
-    short = need - nutrition(base)
-    basket = dict(base)
-    if short > 0:
-        room = {g: max(0, offered.get(g, 0) - base.get(g, 0)) for g in menu.values}
-        extra = food_split(short, menu.values, menu.nutritions, room, menu.elasticity)
-        for g, q in extra.items():
-            basket[g] = basket.get(g, 0) + min(q, room.get(g, 0))
+    basket = {g: min(q, shares.get(g, 0)) for g, q in split.items()}
+    short = need - nutrition(basket)
+    room = {g: max(0, offered.get(g, 0) - basket.get(g, 0)) for g in menu.values}
+    for good in sorted(room, key=lambda g: (-room[g] * menu.nutritions[g], g)):
+        if short <= 0 or room[good] <= 0:
+            break
+        qty = min(room[good], -(-short * QUANTITY_SCALE // menu.nutritions[good]))
+        basket[good] = basket.get(good, 0) + qty
+        short -= qty * menu.nutritions[good] // QUANTITY_SCALE
     basket = {g: q for g, q in sorted(basket.items()) if q > 0}
     whole = sum(gross_cost(menu.limits[g], q, menu.rate, menu.tax) for g, q in basket.items())
     if nutrition(basket) <= 0 or whole <= 0:
         return []
     orders: list[tuple[str, int, int]] = []
-    done, paid, reserved = 0.0, 0.0, 0
-    for upto, share in zip(steps, spend, strict=True):
-        portion, money = upto - done, (share - paid) * budget
-        done, paid = upto, share
+    done, reserved = 0.0, 0
+    for upto in steps:
+        portion = upto - done
+        done = upto
         if portion <= 0:
             continue
-        # 値幅の上端の何倍まで払うか（この段の量を、この段に回せる額で買える値段）
-        times = max(1.0, money / (portion * whole))
-        limits = {g: scale_price(menu.limits[g], times) for g in basket}
+        scale = upto ** (-1 / elasticity)
+        floor = upto * whole <= usual  # ふだんの食費で今の値幅の上端まで買える段
+        limits = {}
+        for g in basket:
+            limit = scale_price(anchors.get(g, menu.limits[g]), scale)
+            limits[g] = max(limit, menu.limits[g]) if floor else limit
         cost = sum(gross_cost(limits[g], q, menu.rate, menu.tax) for g, q in basket.items())
         fit = min(portion, (budget - reserved) / cost) if cost > 0 else 0.0
         if fit <= 0:
@@ -1201,20 +1211,25 @@ class Market(IslandStage):
             cap = round_money(planned * needs.necessity_share(config, income))
             food_budget = max(0, cap - paid - wear_cost)
             if hungry:
-                food_budget = budget
+                # 飢える前の値段（飢えていないターンに残した値幅の上端）を基準に買い上がる
+                anchors = {**menu.limits, **state.get(ANCHOR, {})}
                 tiers = hungry_food_orders(
                     need,
                     caps,
                     offered,
                     menu,
+                    anchors,
+                    food_budget,
                     budget,
                     hungry_settings["steps"],
-                    hungry_settings["spend"],
+                    hungry_settings["elasticity"],
                 )
+                food_budget = budget
                 plan = {}
             else:
                 tiers = []
                 plan = food_orders(need, caps, menu, food_budget, budget)
+                state[ANCHOR] = {g: menu.limits[g] for g in foods if offered.get(g, 0) > 0}
             # 売りに出ていない食料も、あれば買いたい量を記録する（作る施設があれば、採算の合う
             # 値段まで値段が上がって作り始める。_record）
             plenty = dict.fromkeys(foods, need * QUANTITY_SCALE)

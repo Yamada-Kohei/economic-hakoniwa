@@ -695,10 +695,9 @@ def _nationalize_all(island: IslandState, ctx: StageContext) -> None:
     for f, entity, price in prices:
         seized = f.economy.get("foreclosed")
         if seized:
-            seller = seized.get("bank")
             close_foreclosure(island, f)
             funds.pay(island, payer, entity, price, "nationalization")
-            pay_seller(island, entity, seller, price)
+            pay_seller(island, entity, seized, price)
             restart(island, ctx, f, OWNER_STATE, price)
         else:
             funds.pay(island, payer, owners, price, "nationalization")

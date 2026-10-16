@@ -54,6 +54,13 @@ bond_trade:           {type: journal}   # 国債の売買（買い手 → 売り
 bond_default:         {type: journal}   # 国債の不履行（額面の切り下げ）
 # 家計の層
 layer_transfer:       {type: journal}   # 層を移った人の預金の付け替え
+# 賃金と税の未払い（バランス調整の回3。hakoniwa_core/economy/arrears.py）
+wage_arrears:         {type: journal}   # 払えなかった賃金を未払い賃金として残す（払い手が家計の層に負う）
+wage_arrears_paid:    {type: journal}   # 未払い賃金の支払い（払い手 → 家計。倒産の後の分配も）
+wage_arrears_lost:    {type: journal}   # 倒産した施設の払いきれなかった未払い賃金の取り消し
+tax_arrears:          {type: journal}   # 払えなかった法人税を未払いの税として残す（施設が政府に負う）
+tax_arrears_paid:     {type: journal}   # 未払いの税の支払い（施設 → 政府。倒産の後の分配も）
+tax_arrears_lost:     {type: journal}   # 倒産した施設の払いきれなかった未払いの税の取り消し
 # 貿易と為替（フェーズ3-1）
 trade:                {type: journal}   # 貿易圏の市場の代金（買い手の商社 → 売り手の商社。決済通貨の島の帳簿）
 fx_exchange:          {type: journal}   # 為替の売り買い（自国通貨と、発行した島の帳簿の非居住者の預金）

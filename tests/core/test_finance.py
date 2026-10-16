@@ -12,7 +12,7 @@ import pytest
 
 from hakoniwa_core import ledger
 from hakoniwa_core.autoplan import plan_turn, queue_orders
-from hakoniwa_core.economy import OWNERS, Payer, banks, facility_entity, funds, household
+from hakoniwa_core.economy import GENERAL, OWNERS, Payer, banks, facility_entity, funds, household
 from hakoniwa_core.economy.start import invest
 from hakoniwa_core.game import load_game
 from hakoniwa_core.modules import failures
@@ -572,6 +572,13 @@ def test_nationalize_then_privatize(game, warmed):
     state = order(game, world, island, "nationalize", {"x": f.x, "y": f.y})
     assert state.status == ORDER_DONE, state.reason
     assert f.owner == OWNER_STATE
+    # 資産を持つ層は、国有化の代金を同じターンの参入の出資に使い切ることがある。買い戻せるだけの
+    # お金を一般の層から移しておく（試したいのは売り買いの手続き）
+    price = banks.net_assets(island, f, facility_entity(f.id))
+    owners = household(OWNERS)
+    short = 2 * price - ledger.money(island, owners)
+    if short > 0:
+        ledger.pay(island, household(GENERAL), owners, short, "layer_transfer")
     state = order(game, world, island, "privatize", {"x": f.x, "y": f.y})
     assert state.status == ORDER_DONE, state.reason
     assert f.owner == OWNER_PRIVATE

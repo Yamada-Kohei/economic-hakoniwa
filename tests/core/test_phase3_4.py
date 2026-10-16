@@ -183,7 +183,9 @@ def test_riot_halts_urban_facilities_and_police_hold_it_down(game, base):
     Politics()._riot(guarded, ctx, politics.RIOT)
     held = [f for f in guarded.facilities if f.ext.get("halt_reason") == "riot"]
     assert len(held) <= max(1, len(stopped))
-    assert guarded.log[-1].kind == "riot_halted_police"
+    if held:  # 止まる数は乱数で端数を丸めるので、警察が抑えて 0 になることもある（ログは出ない）
+        assert guarded.log[-1].kind == "riot_halted_police"
+    assert guarded.log[-1].kind != "riot_halted"
     logs_ok(game, guarded)
 
 

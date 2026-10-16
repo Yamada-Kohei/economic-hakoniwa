@@ -30,13 +30,23 @@ facilities.engineer_cap）。3 の後に余った技術者は、まだ埋まら�
 空いた席に島のどこからでも、動員の賃金で割り当てます（_mobilize）。
 施設ごと・マスごとに雇った人数は、施設の economy["staff"] に残します。雇われなかった人は失業し、
 村の住民は自給の農業に戻ります（人口の段で扱う）。
+
+賃金の遅配（バランス調整の回3。economy/arrears.py）: 雇う前に、前のターンまでの未払い賃金と未払いの
+税を、使えるお金の分だけ先に払います。そのうえで払える賃金の分より雇いたい人数が多い動いている施設
+では、前のターンに働いていた人のうち払えない分も、払われないまま働き続けます（economy["unpaid"]。
+賃金の段で未払い賃金になる）。未払いが続いた月数 m（economy["arrears_months"]）に応じて、そのうち
+labor.arrears_quit × (m + 1) の割合が毎ターン辞めます（すぐ全員は辞めない）。
 """
 
 from __future__ import annotations
 
+import math
+
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import politics
+from hakoniwa_core import ledger, politics
 from hakoniwa_core.economy import (
+    Payer,
+    arrears,
     banks,
     freight,
     funds,
@@ -79,6 +89,8 @@ class Employment(IslandStage):
 
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
         defs, config = ctx.defs, ctx.config
+        if island.has_economy:
+            settle_arrears(island)
         labor = {(t.x, t.y): fac.labor_force(defs, island, t) for t in island.tiles if t.population}
         free = dict(labor)
         everywhere = within(island, island.capital or (0, 0), island.size)
@@ -100,16 +112,28 @@ class Employment(IslandStage):
         # インフラの維持は施設より先に取り置く（施設の工事の賃金で公共事業費を使い切らないように）
         infrastructure.plan(island, ctx, upkeep=True, wage=works_wage)
         # 雇いたい人数を決め、その賃金を取り置く（高い賃金の施設から）
+        unpaid: dict[int, int] = {}  # 払えないまま働き続ける人（賃金の遅配。回3）
+        quit_rate = config.get("labor.arrears_quit")
         for f, wage in plans:
             demand = self._wanted(island, ctx, f, wage)
             payer = payer_of(defs, config, f)
             engineers, extra = self._engineer_terms(island, ctx, f, wage)
             per_worker = wage + self._power_per_worker(island, ctx, f) + extra
             want = demand
+            money = funds.available(island, payer)
             if per_worker > 0:
-                want = min(want, funds.available(island, payer) // per_worker)
+                want = min(want, money // per_worker)
             want = max(0, want)
-            wanted[f.id] = want
+            unpaid[f.id] = 0
+            # 年の予算の月割りで止まっている（お金はある）ときは遅配にしない
+            short = money >= funds.available(island, payer, capped=False)
+            if want < demand and short and f.built and island.has_economy:
+                # 前のターンに働いていた人は、払えない分もすぐには辞めない（未払いが続いた月数に
+                # 応じて辞める）
+                stay = max(0, min(demand, sum(staff_of(f).values())) - want)
+                share = min(1.0, quit_rate * (f.economy.get("arrears_months", 0) + 1))
+                unpaid[f.id] = stay - min(stay, math.ceil(stay * share))
+            wanted[f.id] = want + unpaid[f.id]
             seats[f.id] = 0
             if engineers:
                 need = fac.workers_needed(defs, f.kind)
@@ -206,6 +230,7 @@ class Employment(IslandStage):
         #    割り当てる
         mobilized = self._mobilize(island, ctx, plans, staff, engineers, spare, free, employed)
         # 雇えなかった分の賃金の取り置きを戻し、結果を書く
+        unpaid_total = employed_total = 0
         for f, wage in plans:
             mine = {p: n for p, n in staff[f.id].items() if n > 0}
             hired = sum(mine.values())
@@ -223,8 +248,19 @@ class Employment(IslandStage):
                     f.economy[key] = value
                 else:
                     f.economy.pop(key, None)
-            unhired = general[f.id] - hired - spared
+            # 払えないまま働く人（遅配）は、雇えた人のうち賃金を取り置いた席を超えた分
+            paid_seats = general[f.id] - unpaid[f.id]
+            unhired = max(0, paid_seats - hired - spared)
             funds.release(island, payer_of(defs, config, f), unhired * wage)
+            owed = max(0, hired + spared - paid_seats)
+            if owed:
+                f.economy["unpaid"] = owed
+                f.economy["arrears_months"] = f.economy.get("arrears_months", 0) + 1
+                unpaid_total += owed
+            else:
+                f.economy.pop("unpaid", None)
+                f.economy.pop("arrears_months", None)
+            employed_total += f.workers
             for pos, n in mine.items():
                 employed[pos] = employed.get(pos, 0) + n
             if is_transport(config, f):
@@ -235,6 +271,10 @@ class Employment(IslandStage):
                 tile.ext["employed"] = count
             else:
                 tile.ext.pop("employed", None)
+        # 賃金が払われないまま働いている人の割合（幸福度の減点。人口の段）
+        island.scratch["arrears_share"] = unpaid_total / employed_total if employed_total else 0.0
+        if unpaid_total:
+            island.stats["arrears.workers"] = unpaid_total
 
     # --- 労働の動員（フェーズ3-4） -----------------------------------------------------
 
@@ -467,6 +507,22 @@ class Employment(IslandStage):
         top = to_basis(ctx.config.get("freight.max_surcharge"))
         short = (wanted - hired) * BASIS // wanted if wanted > 0 else 0
         island.economy.freight["surcharge"] = min(top, BASIS + short)
+
+
+def settle_arrears(island: IslandState) -> None:
+    """未払い賃金と未払いの税を、払い手ごとに使えるお金の分だけ払う（雇う前に先に払う。回3）。
+    政府は支出の項目 arrears から（予算の段で先に取り置く）。"""
+    issuers = sorted(
+        {
+            holder
+            for name in island.accounts
+            for holder, item, kind in [ledger.parse(name)]
+            if item == ledger.ISSUED and kind in (arrears.WAGE_ARREARS, arrears.TAX_ARREARS)
+        }
+    )
+    for issuer in issuers:
+        payer = Payer(ledger.GOV, arrears.ARREARS) if issuer == ledger.GOV else Payer(issuer)
+        arrears.settle(island, payer)
 
 
 def unemployment_rate(island: IslandState, ctx: StageContext, f: Facility) -> float:
