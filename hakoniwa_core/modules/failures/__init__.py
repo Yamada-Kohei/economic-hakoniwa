@@ -53,6 +53,7 @@ from hakoniwa_core.economy import (
     facility_entity,
     funds,
     owner_entity,
+    services,
 )
 from hakoniwa_core.modules.banking import is_planned
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
@@ -74,7 +75,8 @@ class Failures(IslandStage):
             return
         if not is_planned(ctx.defs, island):
             for f in sorted(island.facilities, key=lambda f: f.id):
-                if "foreclosed" in f.economy:
+                # 商業・サービス業は小さな店の集まりなので、まとめて倒産させない（バランス調整）
+                if "foreclosed" in f.economy or services.is_services(ctx.config, f):
                     continue
                 entity = facility_entity(f.id)
                 limit = ctx.config.get("loans.arrears_limit")

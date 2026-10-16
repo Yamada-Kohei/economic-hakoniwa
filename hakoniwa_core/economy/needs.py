@@ -14,9 +14,13 @@
   欲しい台数との差の household.cars.catch_up の割合と、傷んで使えなくなる分（年 wear）を買います。
   車は1台1ターンに cars.fuel の燃料を使い、燃料が買えないと、その分だけ車の満足が下がります。
 
+- サービス（service。バランス調整）: 商店・飲食・理美容など。必需品の残りのうち所得に応じた割合を
+  使います（economy/services.py の budget_share。注文は modules/market の _service_buys）。
+
 幸福度（modules/population）: 衣料は目安に対して買えた割合、ぜいたく品は種類ごとに「目安に対して
 買えた割合（自動車は欲しい台数に対して持っている台数と、燃料の買えた割合の小さい方）」を1で
-頭打ちにして、種類の数で平均します（種類が多いほど満足が上がる）。
+頭打ちにして、種類の数で平均します（種類が多いほど満足が上がる）。サービスもぜいたく品の種類に数え
+ます（目安は household.targets）。
 """
 
 from __future__ import annotations
@@ -35,6 +39,7 @@ from hakoniwa_core.units import QUANTITY_SCALE, round_money, to_milli
 NECESSITY = "necessity"
 LUXURY = "luxury"
 DURABLE = "durable"
+SERVICE = "service"  # サービス（バランス調整。economy/services.py）
 CARS = "cars"  # households[層] の、持っている自動車（1000 分の 1 台）
 PLAN = "cars_plan"  # island.scratch: 層ごとの、このターンの欲しい台数と燃料の要る量
 
@@ -139,7 +144,8 @@ def satisfaction(
         [_ratio(goods.get(g, 0), persons * target_of(config, g)) for g in clothing]
     )
     kinds = [
-        _ratio(goods.get(g, 0), persons * target_of(config, g)) for g in goods_of(defs, LUXURY)
+        _ratio(goods.get(g, 0), persons * target_of(config, g))
+        for g in goods_of(defs, LUXURY) + goods_of(defs, SERVICE)
     ]
     plan = island.scratch.get(PLAN, {}).get(layer)
     if plan is not None and plan.get("desired", 0) > 0:

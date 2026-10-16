@@ -15,9 +15,9 @@ from django.db.models import Max, Q
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger
 from hakoniwa_core.dates import TURNS_PER_YEAR
-from hakoniwa_core.economy import ENGINEERS, GENERAL, OWNERS, books, debt, entity_of
+from hakoniwa_core.economy import ENGINEERS, GENERAL, OWNERS, books, debt, entity_of, services
 from hakoniwa_core.modules.failures import METHODS as RESOLUTION_METHODS
-from hakoniwa_core.naming import facility_name
+from hakoniwa_core.naming import facility_name, place_of
 from hakoniwa_core.state import IslandState
 from hakoniwa_core.trade import abroad
 from hakoniwa_core.units import from_milli
@@ -169,6 +169,14 @@ _EXTRA_STATS = [
     ("plan.subsidy_unpaid", "国庫が足りず払えなかった据え置きの補助金", "money"),
     ("trade.merchant_gap", "海外の商人に政府が払った、公定価格との差（このターン）", "money"),
     ("cars.households", "家計が持つ自動車", " 台"),
+    # サービスの仕事と人口の増え方（バランス調整の回4）
+    ("services.workers", "商業・サービス業で働く人", "人"),
+    ("services.sales", "サービスの売上（このターン）", "money"),
+    ("services.sold", "売れたサービス（このターン）", "good:services"),
+    ("population.births", "生まれた人（このターン）", "人"),
+    ("population.deaths", "亡くなった人（飢えのほか。このターン）", "人"),
+    ("population.starved", "飢えで亡くなった人（このターン）", "人"),
+    ("population.births_unhoused", "住む所がなく生まれなかった人（このターン）", "人"),
 ]
 _STATS = {key: (label, unit) for key, label, unit in [*display.SUMMARY_STATS, *_EXTRA_STATS]}
 # 名前の頭が財のもの（後ろに財の名前が続く）
@@ -404,7 +412,11 @@ def economy_charts() -> list[dict[str, Any]]:
             "names": [f"infra.{kind}" for kind in defs.infrastructure],
         },
         {"title": "電力の不足率", "names": ["power.shortage"]},
-        {"title": "人口と就業者", "names": ["population", "labor", "employed"]},
+        {"title": "人口と就業者", "names": ["population", "labor", "employed", "services.workers"]},
+        {
+            "title": "生まれた人と亡くなった人（1ターン）",
+            "names": ["population.births", "population.deaths", "population.starved"],
+        },
         {
             "title": "国をまたぐ移民（1ターン）",
             "names": ["migration.left", "migration.arrived", "migration.returned"],
@@ -655,6 +667,7 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
             recent[b.facility].append(b)
     rows = []
     total = 0
+    shops: list[dict[str, Any]] = []
     for row in island.facilities.exclude(kind=housing).order_by("number"):
         f = facility_from_row(row)
         fdef = defs.facilities.get(f.kind, {})
@@ -679,6 +692,9 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
             "has_books": bool(books_of),
         }
         item.update(display.engineers_info(f, fdef) if fdef else {})
+        if services.is_services(config, f):  # 雇う人数の目安と、店の場所ごとの人数（回4）
+            item["workers_needed"] = f.economy.get(services.SEATS, 0)
+            shops = shop_rows(island, state, f)
         if latest is not None:
             profit = latest.items.get(books.PROFIT, 0)
             total += profit
@@ -697,7 +713,34 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
         "book_turns": display.BOOK_TURNS,
         "rows": rows,
         "profit": display.money_text(total, currency),
+        "shops": shops,
     }
+
+
+def shop_rows(island: m.Island, state: IslandState, f: Any) -> list[dict[str, Any]]:
+    """商業・サービス業の店の場所（集落）ごとの、割り振った人数と雇えた人数（人の多い順）。"""
+    game = get_game()
+    defs, config = game.defs, game.config
+    housing = fac.housing_kind(config)
+    levels = {
+        (r.x, r.y): (r.ext or {}).get("level")
+        for r in island.facilities.filter(kind=housing).only("x", "y", "ext")
+    }
+    out = []
+    for key, (planned, hired) in f.economy.get(services.QUOTAS, {}).items():
+        x, y = (int(v) for v in key.split(","))
+        level = levels.get((x, y))
+        out.append(
+            {
+                "x": x,
+                "y": y,
+                "place": place_of(state, x, y, config),
+                "level": defs.name("settlements", level) if level else "",
+                "planned": planned,
+                "hired": hired,
+            }
+        )
+    return sorted(out, key=lambda r: (-r["planned"], r["y"], r["x"]))
 
 
 def facility_book(

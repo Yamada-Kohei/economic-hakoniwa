@@ -32,6 +32,7 @@ from hakoniwa_core.state import (
 )
 from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.turn.context import StageContext
+from hakoniwa_core.units import to_basis
 
 WARMUP = 40  # 融資と民営工場がそろうまで回すターン数
 
@@ -314,7 +315,8 @@ def test_bond_default_raises_yields_and_hits_bank_capital(game, warmed):
     premium = game.config.get("bonds.default_premium")
     assert default_premium(island, context(game, world)) > premium * 0.9
     after = island.economy.finance["yields"]
-    assert all(a > b for a, b in zip(after, yields_before, strict=True))
+    top = to_basis(game.config.get("bonds.max_yield"))  # 前から上限に付いていた区分は上がれない
+    assert all(a > b or a == top for a, b in zip(after, yields_before, strict=True))
     rise = (sum(after) - sum(yields_before)) / len(after)
     assert rise >= premium * 10000 * 0.5
     after = banks.net_worth(island, game.config, bank, world.turn)

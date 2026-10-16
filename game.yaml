@@ -133,6 +133,9 @@ labor:
   # そのうち arrears_quit × (m + 1) の割合が辞める（半年続くと半分ほど、1年で9割ほどが辞める。1990年代の
   # ロシアでは遅配が数か月続いても多くの人が働き続けた）
   arrears_quit: 0.03
+  # 食べ物が買えずに畑に戻った村の働き手（回4。modules/employment の back_to_fields）は、食べ物が買える
+  # ようになっても、1ターンにこの割合ずつ仕事に戻る（蒔いた畑を収穫するまで。穀物は4〜6か月で実る）
+  back_to_work: 0.2
   # 技術者（フェーズ2-3）
   engineer_wage_ratio: 2   # 施設の技術者の初めの賃金（一般の賃金に対する倍率）
   engineer_floor: 0.6      # 技術者がいなくても動ける稼働率（上限 = floor + (1 − floor) × 技術者の充足率）
@@ -260,7 +263,11 @@ household:
   consumer_goods_low_tiers: [0.9, 0.95, 1.0]
   usual_price_turns: 12 # いつもの値段 = 直近このターン数の値段の平均
   # 1人1ターンあたりの目安（幸福度。フェーズ3-2）。衣料はこの量を必需品として買う
-  targets: {clothing: 0.00004, consumer_goods: 0.0005, luxury_crop: 0.0002}
+  targets: {clothing: 0.00004, consumer_goods: 0.0005, luxury_crop: 0.0002, services: 0.05}
+  # サービス（商店・飲食・理美容・娯楽・修理など。hakoniwa_core/economy/services.py）に使う割合。必需品
+  # （食料・衣料）を買った残りのうち、実質の使う額が base_income のとき share、倍になるごとに rise ずつ
+  # 増え、半分になるごとに減る（floor〜max）。所得が上がるほどサービスに多く使う（バランス調整）
+  services: {share: 0.4, rise: 0.05, floor: 0.25, max: 0.6}
   # ぜいたく品の予算を、売りに出ている物の間で割り振る重み（書かない物は 1）。売りに出ていない物は
   # 買いたい量だけ記録する（作る施設や商社が動く合図になる）
   luxury_weights: {consumer_goods: 3, luxury_crop: 1}
@@ -277,6 +284,14 @@ household:
       engineers: {per_person: 0.2, from: 0.5, full: 2}
       general: {per_person: 0.2, from: 1.5, full: 3}
   housing_share: 0.02   # 町の資材に使う預金の割合の上限
+
+# 商業・サービス業（バランス調整。hakoniwa_core/economy/services.py）。島に1つ、マスを持たない施設で、
+# 住民がサービスを買いに行く集落（通勤圏でいちばん人の多い集落）ごとに、そこで人を雇って出す
+services:
+  facility: services    # 商業・サービス業の施設
+  good: services        # サービス（持ち越せず、島の外へ運べない）
+  per_worker: 1         # 働く人1人が1ターンに出すサービスの量
+  labor_share: 0.9      # 雇う人数の目安 = 直近の売上 × これ ÷ 賃金（残りは店の利益）
 
 firms:
   operating_turns: 2    # 独立採算の施設に、出資で初めに持たせる手元の資金（支払いのターン数分）
@@ -442,10 +457,19 @@ power:
 
 population:
   food_per_person: 0.002 # 1人1ターンあたりの食料
-  growth_rate: 0.04     # 食料が足りて幸福度 100 で、労働者がみな働いているときの、1ターンの増え方
-  # 労働者のうち仕事のある人の割合がこれを下回るマスでは増えない。これから1まで上がるにつれて
-  # 増え方が0から growth_rate まで上がる（0 なら仕事のある人の割合に比例して増える）
-  growth_min_jobs: 0.7
+  # 生まれる人と亡くなる人（バランス調整の回4。現実の人口転換。1年あたりの割合で、1ターンはその 12 分の 1）。
+  # 生まれる割合（粗出生率）= low + (high − low) × (1 − E)^education × y^(−income)。E は教育水準（働き手の
+  # うち学んだ人の割合）、y は層の実質の可処分所得の household.base_income に対する倍率（income_floor 以上）。
+  # 値の目安: 学校に通えた人が3割台の最も貧しい国で年 4〜5%（ニジェール）、6割ほどで 3% 前後（1970年代の
+  # ブラジル・インド）、9割を超える中所得の国で 1.5〜2%、豊かな国で 1% ほど（日本・欧州）
+  births: {high: 0.045, low: 0.008, education: 0.5, income: 0.3, income_floor: 0.25}
+  # 亡くなる割合（粗死亡率。飢えで亡くなる人は別）= base + food ×（1 − 食事の質）+ water ×（1 − 上下水道の
+  # 整備度）× 混み具合。混み具合はマスの人数 ÷ crowd（1 まで）で、人が密に住むほど汚れた水から病気が広がる
+  # （19世紀の「都市の墓場」。村は井戸と川で、町ほどは死なない）。目安: 上下水道がなく穀物ばかりの暮らしの
+  # 農村で年 1.8〜2% ほど、同じ暮らしの大きな町で 3% ほど（1840年代のイングランドの農村とリバプール・
+  # マンチェスター）、水道と下水が行き渡り食事に肉や魚があると 1% を切る（若い人の多い今の中所得の国）。
+  # 年齢の層は持たない（Codex E04 は後回し）
+  deaths: {base: 0.007, food: 0.012, water: 0.016, crowd: 8000}
   # 飢えの蓄え（回3）: 家計の層ごとに、栄養の不足が何か月分たまったか S を持つ。毎ターン
   # S ← S + 足りなかった割合 − tolerance − recovery × S（0 未満は 0）。体の余力（何か月分の不足に
   # 耐えられるか）は人によって違い、平均 reserve・ばらつき reserve_spread の正規分布に従う（いちばん
@@ -453,8 +477,11 @@ population:
   # かに分かれて亡くなる。現実の目安（設計書の回3）: オランダの飢餓の冬（必要の半分ほどが半年）で
   # 半年に 0.5% ほど、レニングラードの最悪の冬（必要の3割前後）で4〜5か月目に1か月 3〜8%、何も
   # 食べられなければ3か月目から多く亡くなり、4か月で3分の2ほど（ハンガーストライキで亡くなるのは
-  # 45〜75 日ほど）
-  hunger: {tolerance: 0.1, recovery: 0.2, reserve: 2.5, reserve_spread: 0.4, reserve_min: 1.3}
+  # 45〜75 日ほど）。町の人は、蓄えが flee（何か月分の不足）を超えると、空きのある村へ移り始める
+  # （回4。現実の飢饉でも、家の蓄えと持ち物を食べ尽くしてから村へ逃れる。いちばん弱い人が亡くなり
+  # 始める reserve_min より前。1か月足りないだけでは移らない）
+  hunger: {tolerance: 0.1, recovery: 0.2, reserve: 2.5, reserve_spread: 0.4, reserve_min: 1.3,
+           flee: 0.5}
   migration_rate: 0.1   # 仕事のない人のうち、1ターンに働き口の近くへ移る割合
   # 幸福度 = base + 各項目（足りている割合 × 重み） − 汚染 × pollution_per_point − 実質賃金と物価の減点
   # 上下水道はそのマスの整備度、教育は島の教育水準（フェーズ2-3）
@@ -547,9 +574,9 @@ politics:
   # 政情の目標 T* = base + happiness ×（H − happiness_mid）− unemployment ×（U − unemployment_free）+
   # − inflation ×（π − inflation_free）+ − inequality ×（G − inequality_free）+ + R + E（式 stability）。
   # H は幸福度、U は失業率（%）、π は年の物価上昇率（%）、G は家計の層の所得の格差（ジニ係数）
-  # 失業率の重みは、設計の値（unemployment 1.5・unemployment_free 5）より弱めてある。いまの失業率
-  # （2割台）では設計の値だと国の半分近くがデモ以上になるため。バランス調整の段で設計の値に戻す
-  weights: {base: 50, happiness: 0.6, happiness_mid: 50, unemployment: 1.0, unemployment_free: 15,
+  # 失業率の重みは設計の値（5% を超えた分 × 1.5）。フェーズ3-4 では失業率が2割台で、国の半分近くが
+  # デモ以上になるため弱めてあった（1.0・15%）。回4 でサービスの仕事が入って失業が下がったので戻した
+  weights: {base: 50, happiness: 0.6, happiness_mid: 50, unemployment: 1.5, unemployment_free: 5,
             inflation: 1.0, inflation_free: 5, inequality: 60, inequality_free: 0.35}
   levels: {demo: 40, riot: 25, rebellion: 10}   # この値を下回るとデモ・暴動・反乱の前触れ
   stability_turns: 6    # 政情が目標に近づく速さ（差の 1/これ ずつ）の既定。体制の特色で変わる

@@ -45,7 +45,7 @@ def _private(island, workers=True):
         and (f.workers > 0 or not workers)
         and "foreclosed" not in f.economy
         and "closing" not in f.economy
-        and f.kind != "bank"
+        and f.kind not in ("bank", "services")  # 商業・サービス業は倒産しない（回4）
     )
 
 

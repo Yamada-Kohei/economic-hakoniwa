@@ -13,7 +13,7 @@ import dataclasses
 import pytest
 
 from hakoniwa_core import ledger
-from hakoniwa_core.economy import GENERAL, household
+from hakoniwa_core.economy import GENERAL, household, services
 from hakoniwa_core.modules import migration
 from hakoniwa_core.modules.politics import amend, events_bonus
 from hakoniwa_core.registry import OrderFailed
@@ -100,6 +100,8 @@ def test_jobs_mode_admits_only_as_many_as_the_vacancies(game, base):
     for f in rich.facilities:
         f.economy.pop("wanted", None)
         f.economy["wanted"] = f.workers  # 人手の足りない施設がない
+        for entry in f.economy.get(services.QUOTAS, {}).values():
+            entry[1] = entry[0]  # 商業・サービス業の店も、どの場所でも雇えている（回4）
     migration.run(world, _ctx(game, world))
     assert poor.stats["migration.left"] == 0
 

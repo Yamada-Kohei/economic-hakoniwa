@@ -75,7 +75,7 @@ from hakoniwa_core import infra, nature, stock, trade
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import needs
+from hakoniwa_core.economy import needs, services
 from hakoniwa_core.economy.prices import initial_prices, unit_cost
 from hakoniwa_core.geo import components, distance, shortest_path, within
 from hakoniwa_core.modules.firms import private_allowed
@@ -110,6 +110,7 @@ NATURAL_UNEMPLOYMENT = 0.05
 DEBT_LIMIT = 1.0  # 政府の借金の対年GDP比がこれを超えたら、公共事業費を減らす
 DEBT_RESPONSE = 0.5  # 対年GDP比が DEBT_LIMIT より 0.1 高いごとに、基本のこの × 10 % だけ減らす
 WORKS_RANGE = (0.2, 2.0)  # 基本に対する倍率の下限と上限
+STARVED_RAISE = 0.25  # 国の工事が公共事業費を待って止まっている間、見直しのたびに増やす割合
 UNDERUSED = 0.7  # 同じ物を作る施設の稼働率がこれより低い間は、増やさない
 POWER_CAP = 2.0  # 電気料金が初めの値段のこの倍を超えたら、そこを公共料金の上限にする
 BENEFIT = 40  # 失業手当（平均賃金に対する %）
@@ -158,16 +159,13 @@ def _plan_rest(
         for f in island.facilities
         if not f.built and (f.owner == OWNER_STATE or not f.ext.get("waiting"))
     ]
-    limit = MAX_SITES + (1 if island.stats.get("unemployment", 0) > BUSY_UNEMPLOYMENT else 0)
+    limit = MAX_SITES + (1 if _hireable(island, config) > BUSY_UNEMPLOYMENT else 0)
     if len(sites) >= limit + 1:
         return []
     # 公共事業費が足りずに資材か作業員を待っている国の工事があるあいだも、新しい工事は資材を作る施設
     # だけにする（始めると、どの工事も公共事業費を分け合って進まず、インフラの維持まで止まった。
     # フェーズ3-2）
-    starved = any(
-        f.owner == OWNER_STATE and (f.ext.get("short_funds") or f.ext.get("short_wages"))
-        for f in sites
-    )
+    starved = _starved(island)
     if len(sites) >= limit or starved:  # 資材が手に入らずに止まっている工事のためだけに建てる
         candidates: Iterator[tuple[str, str]] = _material_producers(island, defs, config)
     else:
@@ -193,6 +191,27 @@ def _plan_rest(
     if road is not None:
         orders.append(road)
     return orders
+
+
+def _starved(island: IslandState) -> bool:
+    """公共事業費が足りずに資材か作業員を待っている国の工事があるか。"""
+    return any(
+        not f.built
+        and f.owner == OWNER_STATE
+        and (f.ext.get("short_funds") or f.ext.get("short_wages"))
+        for f in island.facilities
+    )
+
+
+def _hireable(island: IslandState, config: GameConfig) -> float:
+    """新しい施設が雇える人の、働き手に対する割合: 失業率に、商業・サービス業の店で働く人の割合を
+    足す（ほかの施設は賃金にかかわらず店から引き抜ける。回4。店ができる前は、仕事のない人が
+    失業者として数えられていた）。"""
+    stats = island.stats
+    labor = stats.get("labor", 0)
+    shop = services.facility_of(island, config)
+    share = shop.workers / labor if shop is not None and labor > 0 else 0.0
+    return stats.get("unemployment", 0) + share
 
 
 def queue_orders(island: IslandState, orders: list[tuple[str, dict]]) -> None:
@@ -308,8 +327,19 @@ def _budget_order(
     scale -= INFLATION_RESPONSE * max(0.0, stats.get("inflation", 0) - INFLATION_LIMIT)
     scale -= DEBT_RESPONSE * max(0.0, stats.get("debt_ratio", 0) - DEBT_LIMIT)
     scale = min(WORKS_RANGE[1], max(WORKS_RANGE[0], scale))
+    construction = int(population_of(island) * PUBLIC_WORKS * scale)
+    # 始めた国の工事があるあいだは減らさず、公共事業費を待って止まっていて国庫にお金があれば、
+    # 見直しのたびに増やす（始めた工事は終わらせる。上限は倍率の上限の額。回4 で人口の急な増え方が
+    # なくなると、借金の対年GDP比が上がって公共事業費が下限まで下がり、国の工事が200ターン止まった
+    # まま国庫にお金がたまった）
+    current = island.policy.budget.get("construction", 0)
+    if current and any(not f.built and f.owner == OWNER_STATE for f in island.facilities):
+        top = int(population_of(island) * PUBLIC_WORKS * WORKS_RANGE[1])
+        construction = max(construction, min(current, top))
+        if _starved(island) and stats.get("treasury", 0) > current // TURNS_PER_YEAR:
+            construction = max(construction, min(top, int(current * (1 + STARVED_RAISE))))
     targets = {
-        "construction": int(population_of(island) * PUBLIC_WORKS * scale),
+        "construction": construction,
         "education": _education_cost(island, defs, config),
     }
     payload = {}
@@ -718,13 +748,15 @@ def _candidates(
                     and (not durable or _inputs_at_hand(defs, config, *c, making | traded))
                 )
 
-    # 人手の足りない施設が多いか、失業者が少ないうちは増やさない
+    # 人手の足りない施設が多いか、雇える人（失業者と店で働く人）が少ないうちは増やさない
     # （住宅が育って人が移ってくるのを待つ）
     power = config.get("power.good")
     missing = sum(
-        max(0, fac.labor_demand(defs, f, turn, power) - f.workers) for f in island.facilities
+        max(0, fac.labor_demand(defs, f, turn, power) - f.workers)
+        for f in island.facilities
+        if not services.is_services(config, f)
     )
-    if missing > MAX_MISSING_WORKERS or stats.get("unemployment", 0) < NATURAL_UNEMPLOYMENT:
+    if missing > MAX_MISSING_WORKERS or _hireable(island, config) < NATURAL_UNEMPLOYMENT:
         return
     # 島の鉱業資源を、島のどの施設（工事中を含む）も使っていなければ、使う施設を1つ（輸出向け）
     used = {g for f in island.facilities for g in fac.recipe_of(defs, f)["inputs"]}
@@ -880,18 +912,26 @@ def _road_order(island: IslandState, defs: Defs, pos: tuple[int, int]) -> tuple[
 
 
 def _water_order(island: IslandState, defs: Defs, config: GameConfig) -> tuple[str, dict] | None:
-    """上下水道が足りずに育たない町（印 water_short）のマスに、上下水道を引く。"""
+    """上下水道が足りずに育たない町（印 water_short）のマスと、人が密に住むのに上下水道が半分に
+    届かない町（人数が population.deaths.crowd の半分以上。汚れた水から病気が広がり、亡くなる人が
+    増える。回4）のマスに、上下水道を引く。"""
     kinds = defs.infra_kinds("water")
     if not kinds or not island.has_economy:
         return None
     housing = fac.housing_kind(config)
+    crowded = config.get("population.deaths")["crowd"] // 2
+
+    def wanted(f) -> bool:
+        tile = island.tile(f.x, f.y)
+        water = infra.water(defs, tile)
+        if f.ext.get("water_short"):
+            return water < infra.FULL
+        return tile.population >= crowded and water < infra.FULL // 2
+
     tiles = [
         [f.x, f.y]
         for f in sorted(island.facilities, key=lambda f: (f.y, f.x))
-        if f.kind == housing
-        and f.ext.get("water_short")
-        and not infra.queued(island, kinds[0], f.x, f.y)
-        and infra.water(defs, island.tile(f.x, f.y)) < infra.FULL
+        if f.kind == housing and not infra.queued(island, kinds[0], f.x, f.y) and wanted(f)
     ]
     if not tiles:
         return None

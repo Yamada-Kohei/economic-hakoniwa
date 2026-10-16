@@ -890,7 +890,9 @@ def test_banks_plan_foreign_currency_only_when_it_pays_and_capital_is_free(game,
     holder, issuer = _pair(world)
     holder.policy.capital_controls = policy.FREE
     issuer.policy.capital_controls = policy.FREE
-    issuer.economy.finance["yields"] = [y + 500 for y in issuer.economy.finance["yields"]]
+    # 相手の通貨の値下がりの率を引いても引き合うだけ上乗せする（値下がりの率は世界の流れで変わる）
+    falling = max(0, to_basis(abroad.depreciation(holder, issuer.id)))
+    issuer.economy.finance["yields"] = [y + 500 + falling for y in issuer.economy.finance["yields"]]
     holder.economy.finance["yields"] = list(holder.economy.finance["yields"])
     assert abroad.bank_pick(world, game.defs, game.config, holder, world.turn) == issuer.id
     needs = abroad.bank_needs(world, game.defs, game.config, holder, world.turn)
@@ -907,9 +909,18 @@ def test_central_bank_order_buys_foreign_bonds_over_turns(game, base):
     holder, issuer = _pair(world)
     _give_fx(world, holder, ledger.CB, issuer.id, 200_000)
     holder.policy.foreign_bonds = {"cb": {str(issuer.id): 20_000}}
-    kinds = []
-    run_checked(game, world, 12, lambda w: kinds.extend(e.kind for e in holder.log))
-    assert "foreign_bonds_bought" in kinds
+    bought = []
+    run_checked(
+        game,
+        world,
+        12,
+        lambda w: bought.extend(
+            e.args["amount"] for e in holder.log if e.kind.startswith("foreign_bonds_bought")
+        ),
+    )
+    # 売りに出た額面が決めた額に届かないターンは foreign_bonds_bought_short と出る（どちらも
+    # 買っている）
+    assert bought and sum(bought) > 0
     stats = holder.stats
     assert stats["foreign_bonds.cb"] > 0
     assert stats["fx.reserves"] >= stats["foreign_bonds.cb"]

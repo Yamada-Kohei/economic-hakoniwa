@@ -6,8 +6,9 @@
 1. 前のターンに雇っていた人を雇い続ける。雇いたい人数より多ければ、遠いマスの人から減らす。
 2. 賃金の高い施設から順に（同じ賃金なら優先順位の高い順、番号の小さい順）、足りない人数を
    通勤圏（既定3マス）の失業者から、近いマスの順に雇う。
-3. それでも足りなければ、通勤圏の中で賃金が labor.poach_gap 以上安い施設の働き手を、安い施設から
-   引き抜く。1つの施設から引き抜かれるのは1ターンに働き手の labor.poach_limit まで。
+3. それでも足りなければ、通勤圏の中で賃金が labor.poach_gap 以上安い施設と商業・サービス業の店の
+   働き手を、安い施設から引き抜く。1つの施設から引き抜かれるのは1ターンに働き手の labor.poach_limit
+   まで。
 
 技術者（フェーズ2-3）は島全体の人数として持ち、通勤圏を見ずに島のどこの施設にも通います。施設の
 定義の技術者の数（workers の engineer）に、雇いたい人数の割合を掛けた分を技術者の席とし、2 の前に、
@@ -26,6 +27,10 @@ facilities.engineer_cap）。3 の後に余った技術者は、まだ埋まら�
 前のターンの運賃 × freight.labor_share ÷ 賃金 の人数を雇い、足りない割合だけ運賃を割り増します
 （フェーズ3-2 から、燃料のあるトラックで替えた運転手の分は雇わない。economy/trucks.py）。
 港・海運業・商社（フェーズ3-1）は、扱った荷の量と船の数に合わせて雇います（hakoniwa_core/trade）。
+商業・サービス業（バランス調整）は、売上で決めた人数を、住民がサービスを買いに行く集落（中心）ごとに
+割り振り、1 で中心の通勤圏の人を雇い続け、ほかの施設が 2 と 3 で雇った後に、中心の通勤圏に残った
+失業者を雇います。店は引き抜かず、ほかの施設は賃金にかかわらず店から引き抜けます（多くの小さな店は、
+ほかに仕事のない人の受け皿になる。economy/services.py）。
 労働の動員（全体主義。フェーズ3-4）をしている島では、最後に残った失業者を、物を作る国営の施設の
 空いた席に島のどこからでも、動員の賃金で割り当てます（_mobilize）。
 施設ごと・マスごとに雇った人数は、施設の economy["staff"] に残します。雇われなかった人は失業し、
@@ -45,6 +50,7 @@ import math
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, politics
 from hakoniwa_core.economy import (
+    GENERAL,
     Payer,
     arrears,
     banks,
@@ -55,12 +61,13 @@ from hakoniwa_core.economy import (
     is_stopped,
     is_transport,
     payer_of,
+    services,
     trucks,
 )
 from hakoniwa_core.geo import distance, within
 from hakoniwa_core.modules import infrastructure
 from hakoniwa_core.modules.market import SITE_HOLDS, SiteFunds
-from hakoniwa_core.modules.population import subsistence_persons
+from hakoniwa_core.modules.population import FED, subsistence_persons
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import OWNER_STATE, Facility, IslandState
 from hakoniwa_core.trade import staff
@@ -69,10 +76,65 @@ from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, money_of, part, to_basis
 
 Pos = tuple[int, int]
+FIELDS_KEY = "back_to_fields"  # island.ext: 畑に戻った村の働き手の割合（回4）
 
 
 def _key(pos: Pos) -> str:
     return f"{pos[0]},{pos[1]}"
+
+
+def _take(free: dict[Pos, int], fields: dict[Pos, int], pos: Pos, want: int) -> int:
+    """マス pos の働き手を want 人まで雇う（free から、足りなければ畑に戻った人 fields から。
+    食べ物を作る施設だけが fields を渡す）。雇えた人数を返す。"""
+    take = min(want, free.get(pos, 0) + fields.get(pos, 0))
+    if take <= 0:
+        return 0
+    used = min(take, free.get(pos, 0))
+    free[pos] = free.get(pos, 0) - used
+    if take > used:
+        fields[pos] -= take - used
+    return take
+
+
+def back_to_fields(island: IslandState, ctx: StageContext, labor: dict[Pos, int]) -> dict[Pos, int]:
+    """食べ物が買えずに、仕事を休んで自分の畑で食べる分を作る村の働き手（マスごと。回4）。
+
+    働いても買える食べ物がなければ、村の人は畑に戻ります（現実の飢饉でも、土地のある農家は自分の
+    畑と蓄えで食いつなぎ、亡くなるのは多くが食べ物を買って暮らす人でした）。前のターンに一般の家計が
+    食べられなかった割合の人が、村（自給の農業ができる集落）で畑に戻ります（体が耐えられる少しの
+    不足（population.hunger.tolerance）までなら戻りません）。食べ物が買えるようになっても、畑に戻った人は1ターンに
+    labor.back_to_work の割合ずつ仕事に戻ります（蒔いた畑を収穫するまで）。畑に戻った人は、食べ物を
+    作れる施設（農場・漁港・牧場・食品工場。facilities.food_maker）のほかには勤めません。勤めなかった人は
+    村で自給の農業をし、市場で食料を買いません（modules/population の subsistence_persons）。
+    市場に食べ物が1つも出ていない間は、仕事に戻りません。
+    """
+    defs, config = ctx.defs, ctx.config
+    state = island.ext.get(FIELDS_KEY, 0.0)
+    fed = island.economy.households.get(GENERAL, {}).get(FED, fac.FULL)
+    short = max(0.0, 1 - fed / fac.FULL)
+    if short <= config.get("population.hunger.tolerance"):
+        short = 0.0
+    # 市場に食べ物が1つも出ていなければ、畑に戻った人は仕事に戻らない（みなが畑に戻って市場で買う
+    # 人がいないと、食べられなかった人もいないように見えるため）
+    supply = island.economy.finance.get("supply", {})  # 財ごとの売りに出た量（前のターンまで）
+    offered = any(h and h[-1] > 0 for g, h in supply.items() if "food" in defs.goods.get(g, {}))
+    back = config.get("labor.back_to_work") if offered else 0.0
+    share = max(short, state * (1 - back))
+    if share < 0.001:
+        island.ext.pop(FIELDS_KEY, None)
+        return {}
+    island.ext[FIELDS_KEY] = round(share, 4)
+    out = {}
+    for pos, force in labor.items():
+        tile = island.tile(*pos)
+        if not defs.settlements[fac.settlement_of(defs, tile.population)].get("subsistence"):
+            continue
+        count = int(force * share)
+        if count > 0:
+            out[pos] = count
+    if out:
+        island.stats["labor.back_to_fields"] = sum(out.values())
+    return out
 
 
 def _pos(key: str) -> Pos:
@@ -93,6 +155,10 @@ class Employment(IslandStage):
             settle_arrears(island)
         labor = {(t.x, t.y): fac.labor_force(defs, island, t) for t in island.tiles if t.population}
         free = dict(labor)
+        # 食べ物が買えずに畑に戻った村の働き手（食べ物を作る施設のほかには勤めない。回4）
+        fields = back_to_fields(island, ctx, labor)
+        for pos, count in fields.items():
+            free[pos] -= count
         everywhere = within(island, island.capital or (0, 0), island.size)
         plans = []
         for f in island.facilities:
@@ -160,16 +226,22 @@ class Employment(IslandStage):
         engineers = self._assign_engineers(island, ctx, plans, seats)
         general = {fid: wanted[fid] - engineers.get(fid, 0) for fid in wanted}
         # 1. 雇い続ける（遠いマスの人から減らす）
+        shops: dict[int, dict[Pos, int]] = {}  # 商業・サービス業の中心ごとの人数
         for f, _ in plans:
+            if services.is_services(config, f):
+                shops[f.id] = services.quotas(island, config, general[f.id])
+                f.economy[services.QUOTAS] = {}
+                staff[f.id] = services.keep(island, config, f, shops[f.id], staff_of(f), free)
+                continue
             keep: dict[Pos, int] = {}
             left = general[f.id]
+            feeds = fac.food_maker(defs, f.kind)
             for pos, count in sorted(
                 staff_of(f).items(), key=lambda kv: (self._dist(f, kv[0]), kv[0][1], kv[0][0])
             ):
-                take = min(count, left, free.get(pos, 0))
+                take = _take(free, fields if feeds else {}, pos, min(count, left))
                 if take > 0:
                     keep[pos] = take
-                    free[pos] -= take
                     left -= take
             staff[f.id] = keep
         start = {fid: sum(s.values()) for fid, s in staff.items()}
@@ -177,19 +249,21 @@ class Employment(IslandStage):
         limit = config.get("labor.poach_limit")
         gap = config.get("labor.poach_gap")
         by_id = {f.id: (f, wage) for f, wage in plans}
-        # 2. 失業者を雇う 3. 安い施設から引き抜く
+        # 2. 失業者を雇う 3. 安い施設と店から引き抜く（店は最後に雇う）
         for f, wage in plans:
+            if f.id in shops:
+                continue
             missing = general[f.id] - sum(staff[f.id].values())
             if missing <= 0:
                 continue
             area = everywhere if self._island_wide(ctx, f) else self._area(island, ctx, f)
+            feeds = fac.food_maker(defs, f.kind)
             for pos in area:
                 if missing <= 0:
                     break
-                take = min(free.get(pos, 0), missing)
+                take = _take(free, fields if feeds else {}, pos, missing)
                 if take > 0:
                     staff[f.id][pos] = staff[f.id].get(pos, 0) + take
-                    free[pos] -= take
                     missing -= take
             if missing <= 0:
                 continue
@@ -198,7 +272,7 @@ class Employment(IslandStage):
                 (
                     (other_wage, other.id)
                     for other, other_wage in plans
-                    if other.id != f.id and other_wage <= wage * (1 - gap)
+                    if other.id != f.id and (other.id in shops or other_wage <= wage * (1 - gap))
                 ),
             )
             for _, vid in victims:
@@ -222,6 +296,12 @@ class Employment(IslandStage):
                     room -= take
                     if missing <= 0 or room <= 0:
                         break
+        # 店は、ほかの施設が雇った後に残った失業者を雇う（引き抜かれた分を数え直してから）
+        for fid, plan in shops.items():
+            shop, _ = by_id[fid]
+            if poached.get(fid):
+                services.recount(island, config, shop, plan, staff[fid])
+            services.hire(island, config, shop, plan, staff[fid], free)
         # 4. 余った技術者を、まだ埋まらない一般の席に島のどこからでも就かせる
         spare = self._spare_engineers(island, plans, general, staff, engineers)
         # 5. インフラの作業員を、残った失業者から島のどこからでも雇う
@@ -468,6 +548,8 @@ class Employment(IslandStage):
             else:
                 f.economy.pop("drivers_replaced", None)
             return drivers - replaced
+        if services.is_services(config, f):  # 商業・サービス業は売上に合わせて（バランス調整）
+            return f.economy.get(services.SEATS, 0)
         cargo = staff.wanted(config, ctx.defs, f)  # 港・海運業・商社は扱う荷に合わせて（3-1）
         if cargo is not None:
             return cargo

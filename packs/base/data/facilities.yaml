@@ -464,6 +464,19 @@ trading:
     default: {}
   sprite: trading
 
+# 商業・サービス業（バランス調整）。運送業と同じく島に1つ、マスを持たずに置きます（移し替えの段で
+# 置く）。商店・飲食・理美容・娯楽・修理などの小さな店の集まりで、住民がサービスを買いに行く集落
+# ごとに、そこで人を雇います。雇う人数は売上で決まります（hakoniwa_core/economy/services.py）。
+services:
+  category: commerce
+  terrain: [plain]
+  tileless: true
+  buildable: false
+  construction: {turns: 1}
+  workers: 0
+  recipes:
+    default: {}
+
 # 町（住宅地）は自動で建ちます（命令では建てられません）。住める人数・見た目・育つのに要る資源は
 # settlements.yaml で決まります。
 housing:

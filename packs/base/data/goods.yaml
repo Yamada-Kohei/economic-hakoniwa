@@ -8,7 +8,8 @@
 # freight_weight: 船で運ぶときの 1 単位の重さ（トン。フェーズ3-1）。書かない財は島の外へ運べない（電力）。
 #   0 は自分で航海して届く物（輸送船）
 # need: 家計にとっての種類（フェーズ3-2）。necessity 必需品（食べ物・電力・衣料）、luxury ぜいたく品、
-#   durable 耐久消費財（ぜいたく品の種類にも数える）。家計の買い方と幸福度は game.yaml の household
+#   durable 耐久消費財（ぜいたく品の種類にも数える）、service サービス（ぜいたく品の種類にも数える。
+#   バランス調整）。家計の買い方と幸福度は game.yaml の household
 grain:              {tier: 1, unit: ton, shelf_life: 8, consumer: true, food: {nutrition: 1, quality: 0.2}, freight_weight: 1, need: necessity}
 fish:               {tier: 1, unit: ton, shelf_life: 2, consumer: true, food: {nutrition: 1, quality: 0.4}, freight_weight: 1, need: necessity}
 wood:               {tier: 1, unit: cubic_meter, freight_weight: 0.7}
@@ -33,3 +34,6 @@ aluminium:          {tier: 2, unit: ton, freight_weight: 1}
 meat:               {tier: 3, unit: ton, shelf_life: 3, consumer: true, food: {nutrition: 1.2, quality: 0.8}, freight_weight: 1, need: necessity}
 clothing:           {tier: 3, unit: ton, consumer: true, freight_weight: 1, need: necessity}
 automobile:         {tier: 3, unit: piece, consumer: true, freight_weight: 1.5, need: durable}
+# サービス（バランス調整）: 商店・飲食・理美容・娯楽・修理など。商業・サービス業が町で人を雇って出し、
+# その場で使う（持ち越せず、島の外へ運べない）。量は働く人1人の1ターンの働き（人月）
+services:           {tier: 3, unit: person_month, shelf_life: 0, consumer: true, need: service}

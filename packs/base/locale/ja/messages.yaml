@@ -219,7 +219,7 @@ entry_block_unprofitable: "見込みの利益率 {rate:.1f}% が、借りる金�
 entry_block_unprofitable_site: "建てられるマスでは運賃がかさみ、見込みの利益率 {rate:.1f}% が {need:.1f}% に届きません"
 entry_block_materials: "工事の資材の{goods}が島で作られておらず、売りにも出ていません"
 entry_block_no_zone: "地形の合う空いた工業団地のマスがありません"
-entry_block_no_workers: "空いた工業団地のマスの通勤圏に、失業者が要る人数の半分もいません"
+entry_block_no_workers: "空いた工業団地のマスの通勤圏に、失業者と商業・サービス業の店で働く人を合わせても、要る人数の半分もいません"
 entry_block_no_owners: "資産を持つ層がいません"
 entry_block_owners_short: "資産を持つ層の預金 {have:,} が、出資に要る {need:,} に足りません（銀行から借りられるのは {loan:,}）"
 entry_block_loan_refused: "見込みの利益（1ターン {earnings:,}）では、建設資金の返済（1ターン {service:,}）の審査に通りません"
@@ -326,6 +326,7 @@ happiness_weights_changed_goods: "幸福度の決め方が変わります。こ�
 settlement_needs_water: "({x}, {y}) の町は、上下水道の整備度が {water:g}% で、育つのに要る {need:g}% に届きません"
 housing_short: "資源（{goods}）が不足し、町の形成・発展が止まっています"
 residents_left: "居住地が不足し、{count} 人が国外へ移住しました"
+famine_flight: "食べ物が買えず、町の {count} 人が村へ移りました（村で自分の食べる分を作ります）"
 # 国をまたぐ移民（バランス調整の回3）
 migration_left: "{count} 人がほかの国へ移り住みました（いちばん多い行き先は{country}）"
 migration_arrived: "{count} 人がほかの国から移り住んできました（いちばん多いのは{country}から）"
