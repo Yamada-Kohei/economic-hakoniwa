@@ -19,12 +19,15 @@ docs/nightly.md）。ゲームの状態は読むだけで、数字を寄せる�
 run は組をまとめて別の処理で回し、終わったら summary.json と summary.md を書きます。--known に前の夜
 までに見つけたものの一覧（known.json）を渡すと、新しく見つけたものだけに「新」を付けて一覧を更新し
 ます。止まった組は、summary.md の「同じことを起こす命令」で1つだけ回し直せます（同じ版・同じ種なら
-同じ結果）。
+同じ結果）。--until の時刻（既定は朝 6 時 30 分、PC の時計）になったら残りの組を止めてまとめを書き
+ます（朝 7 時前の確かめに間に合わせるため。--hours で時間の長さでも決められます）。組は SAVE_EVERY
+ターンごとに途中の結果を書くので、止めた組もそこまでの分を見ます。
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import os
 import random
@@ -33,7 +36,7 @@ import sys
 import time
 import traceback
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import IO, Any
 
@@ -58,6 +61,8 @@ RANDOM_ISLANDS = 10  # でたらめな命令を出す島の数（残りは標準
 RANDOM_PENDING = 4  # 実行を待つ命令がこれだけあれば、そのターンは足さない（行政力が足りない国）
 RANDOM_COUNTS = (0, 0, 1, 1, 1, 2, 3)  # 1ターンに足す命令の数（ここから選ぶ）
 TRACEBACK_LINES = 12
+SAVE_EVERY = 100  # 途中の結果を書くターンの間隔（時間で止めた組もそこまでの分を見る）
+CUT = "時間切れで止めた"  # 時間で止めた組の記録の最後の行
 
 # 名前の命令に入れる文字（長すぎるものは maxLength で切る）
 NAMES = ("新しい名前", "A", "ｱｲｳｴｵ", "名前 空白", "島🙂", "<b>名</b>", "x" * 40, "　")
@@ -260,8 +265,18 @@ class OrderMaker:
 # --- 1つの組を回す ------------------------------------------------------------------
 
 
-def run_one(kind: str, scenario_name: str, seed: int, turns: int, game: Game | None = None) -> dict:
-    """1つの組を回して結果を返す。ターンの処理が例外で止まったら、そこで終える。"""
+def run_one(
+    kind: str,
+    scenario_name: str,
+    seed: int,
+    turns: int,
+    game: Game | None = None,
+    save: Callable[[dict], None] | None = None,
+) -> dict:
+    """1つの組を回して結果を返す。ターンの処理が例外で止まったら、そこで終える。
+
+    save があれば、SAVE_EVERY ターンごとに途中の結果（unfinished が真）を渡す。
+    """
     game = game or load_game(None)
     scenario = measure.SCENARIOS[scenario_name]
     started = time.perf_counter()
@@ -278,6 +293,35 @@ def run_one(kind: str, scenario_name: str, seed: int, turns: int, game: Game | N
     ours: set[tuple[int, int]] = set()  # でたらめに並べた命令（島, 命令の番号）
     accept_errors: list[dict] = []
     stopped = None
+
+    def result() -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "kind": kind,
+            "scenario": scenario_name,
+            "seed": seed,
+            "islands": scenario.islands,
+            "turns": turns,
+            "turns_done": world.turn,
+            "seconds": round(time.perf_counter() - started, 1),
+            "stopped": stopped,
+        }
+        if kind == "random":
+            statuses = Counter(
+                o.status for i in chosen for o in world.islands[i].orders if (i, o.id) in ours
+            )
+            out["random_islands"] = chosen
+            out["orders"] = {
+                "queued": sum(queued.values()),
+                "done": statuses.get(ORDER_DONE, 0),
+                "failed": statuses.get(ORDER_FAILED, 0),
+                "kinds": dict(sorted(queued.items())),
+            }
+            out["accept_errors"] = accept_errors[:20]
+        if recorder is not None:
+            out["windows"] = windows(recorder, scenario.kinds, world.turn)
+            out["late"] = late_kinds(out["windows"])
+        return out
+
     for _ in range(turns):
         measure.queue_scenario_orders(world, scenario, game.defs, game.config)
         this_turn = []
@@ -303,32 +347,11 @@ def run_one(kind: str, scenario_name: str, seed: int, turns: int, game: Game | N
             break
         if recorder is not None:
             recorder.record(world)
-    result: dict[str, Any] = {
-        "kind": kind,
-        "scenario": scenario_name,
-        "seed": seed,
-        "islands": scenario.islands,
-        "turns": turns,
-        "turns_done": world.turn,
-        "seconds": round(time.perf_counter() - started, 1),
-        "stopped": stopped,
-    }
-    if kind == "random":
-        statuses = Counter(
-            o.status for i in chosen for o in world.islands[i].orders if (i, o.id) in ours
-        )
-        result["random_islands"] = chosen
-        result["orders"] = {
-            "queued": sum(queued.values()),
-            "done": statuses.get(ORDER_DONE, 0),
-            "failed": statuses.get(ORDER_FAILED, 0),
-            "kinds": dict(sorted(queued.items())),
-        }
-        result["accept_errors"] = accept_errors[:20]
-    if recorder is not None:
-        result["windows"] = windows(recorder, scenario.kinds, world.turn)
-        result["late"] = late_kinds(result["windows"])
-    return result
+        if world.turn % SAVE_EVERY == 0 and world.turn < turns:
+            print(f"ターン {world.turn}（{time.perf_counter() - started:.0f} 秒）", flush=True)
+            if save is not None:
+                save(result() | {"unfinished": True})
+    return result()
 
 
 def windows(recorder: Recorder, kinds: Iterable[str] | None, last: int) -> list[dict[str, Any]]:
@@ -395,12 +418,40 @@ def run_name(kind: str, scenario: str, seed: int, turns: int) -> str:
     return f"{kind}-{scenario}-s{seed}-t{turns}"
 
 
-def batch(runs: list[tuple[str, str, int, int]], out_dir: Path, jobs: int) -> None:
-    """組を jobs 本ずつ別の処理で回す。結果は out_dir/<名前>.json。"""
+def hours_until(clock: str, now: datetime.datetime | None = None) -> float:
+    """次に時計が clock（"06:30"）になるまでの時間。"""
+    now = now or datetime.datetime.now()
+    hour, minute = (int(x) for x in clock.split(":"))
+    end = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if end <= now:
+        end += datetime.timedelta(days=1)
+    return (end - now).total_seconds() / 3600
+
+
+def batch(
+    runs: list[tuple[str, str, int, int]], out_dir: Path, jobs: int, hours: float | None = None
+) -> None:
+    """組を jobs 本ずつ別の処理で回す。結果は out_dir/<名前>.json。
+
+    hours がたったら、走っている組を止め（記録の最後に CUT を書く）、残りは始めない。始めなかった
+    組は out_dir/not_started.json に書く。
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + hours * 3600 if hours is not None else None
     waiting = list(runs)
     running: list[tuple[str, subprocess.Popen, IO[str]]] = []
     while waiting or running:
+        if deadline is not None and time.monotonic() >= deadline:
+            for name, process, log in running:
+                process.kill()
+                process.wait()
+                log.write(f"\n{CUT}\n")
+                log.close()
+                print(f"時間切れで止めた: {name}", flush=True)
+            names = [run_name(*r) for r in waiting]
+            text = json.dumps(names, ensure_ascii=False, indent=1)
+            (out_dir / "not_started.json").write_text(text, encoding="utf-8")
+            return
         while waiting and len(running) < jobs:
             kind, scenario, seed, turns = waiting.pop(0)
             name = run_name(kind, scenario, seed, turns)
@@ -430,18 +481,31 @@ def summarize(out_dir: Path, known_path: Path | None, label: str = "") -> dict[s
     """
     findings = []
     runs = 0
+    times = []  # 終わった組の (秒, 名前)
     for log in sorted(out_dir.glob("*.log")):
         name = log.stem
         if not name.startswith(("long-", "random-")):  # 夜の予定や pip の記録
             continue
         runs += 1
         path = out_dir / f"{name}.json"
-        if not path.exists():  # 処理そのものが落ちた（メモリが足りない など）
-            tail = log.read_text(encoding="utf-8", errors="replace").splitlines()[-5:]
+        tail = log.read_text(encoding="utf-8", errors="replace").splitlines()[-5:]
+        cut = CUT in tail
+        if not path.exists() and not cut:  # 処理そのものが落ちた（メモリが足りない など）
             signature = f"crash @ {name}"
             findings.append({"type": "crash", "signature": signature, "run": name, "log": tail})
             continue
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        if cut or data.get("unfinished"):
+            # 時間内に終わらなかった（止めたところまでの結果は下で見る）
+            kind, scenario = name.split("-")[:2]
+            findings.append(
+                {"type": "timeout", "signature": f"timeout {kind}-{scenario}", "run": name}
+                | {"turns_done": data.get("turns_done", 0), "seconds": data.get("seconds")}
+            )
+            if not data:
+                continue
+        elif data.get("seconds") is not None:
+            times.append((data["seconds"], name))
         command = (
             f"python -m hakoniwa_core.nightly one --kind {data['kind']} --scenario "
             f"{data['scenario']} --seed {data['seed']} --turns {data['turns']} --out {name}.json"
@@ -473,12 +537,19 @@ def summarize(out_dir: Path, known_path: Path | None, label: str = "") -> dict[s
         for f in findings:
             known.setdefault(f["signature"], today)
         known_path.write_text(json.dumps(known, ensure_ascii=False, indent=1), encoding="utf-8")
+    not_started_path = out_dir / "not_started.json"
+    not_started = []
+    if not_started_path.exists():
+        not_started = json.loads(not_started_path.read_text(encoding="utf-8"))
+    slowest = max(times, default=None)
     summary = {
         "label": label,
         "date": today,
         "runs": runs,
         "findings": findings,
         "new": sum(f["new"] for f in findings),
+        "slowest": {"run": slowest[1], "seconds": slowest[0]} if slowest else None,
+        "not_started": not_started,
     }
     (out_dir / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8"
@@ -492,6 +563,7 @@ TYPE_TITLES = {
     "accept": "命令の受け付けで例外",
     "crash": "処理が落ちた",
     "late": "40 年より後に出た崩れ",
+    "timeout": "時間内に終わらなかった",
 }
 
 
@@ -502,6 +574,11 @@ def show(summary: dict[str, Any]) -> str:
         f"回した組 {summary['runs']}、見つけたもの {len(summary['findings'])}"
         f"（新しいもの {summary['new']}）",
     ]
+    if summary.get("slowest"):
+        slow = summary["slowest"]
+        lines.append(f"いちばん長くかかった組: {slow['run']}（{slow['seconds'] / 60:.0f} 分）")
+    if summary.get("not_started"):
+        lines.append(f"時間切れで始めなかった組: {len(summary['not_started'])}")
     seen = set()
     for f in summary["findings"]:
         if f["signature"] in seen:  # 同じものは最初の1つだけ
@@ -511,6 +588,9 @@ def show(summary: dict[str, Any]) -> str:
         lines += ["", f"## {mark}{TYPE_TITLES[f['type']]}: {f['signature']}", f"- 組: {f['run']}"]
         if "turn" in f:
             lines.append(f"- ターン: {f['turn']}")
+        if "turns_done" in f:
+            took = f" {f['seconds'] / 60:.0f} 分で" if f.get("seconds") else ""
+            lines.append(f"- 止めたとき:{took} {f['turns_done']} ターンまで")
         if "error" in f:
             lines.append(f"- 例外: {f['error']}")
         if "order" in f:
@@ -540,6 +620,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--random-seeds", type=int, default=RANDOM_SEEDS)
     run.add_argument("--known", help="前の夜までに見つけたものの一覧（known.json）")
     run.add_argument("--label", default="", help="まとめの見出しに付ける（版など）")
+    run.add_argument("--until", default="06:30", help="この時刻に残りの組を止めてまとめを書く")
+    run.add_argument("--hours", type=float, help="時刻の代わりに、この時間で止める")
     one = sub.add_parser("one", help="1つの組を回す")
     one.add_argument("--kind", choices=("long", "random"), required=True)
     one.add_argument("--scenario", choices=sorted(measure.SCENARIOS), default="plan")
@@ -552,15 +634,23 @@ def main(argv: list[str] | None = None) -> int:
     again.add_argument("--label", default="")
     args = parser.parse_args(argv)
     if args.command == "one":
-        result = run_one(args.kind, args.scenario, args.seed, args.turns)
-        text = json.dumps(result, ensure_ascii=False, indent=1)
-        Path(args.out).write_text(text, encoding="utf-8")
+
+        def save(result: dict) -> None:
+            # 書いている途中で止められても壊れないよう、別の名前に書いてから置き換える
+            out = Path(args.out)
+            temp = out.with_name(out.name + ".tmp")
+            temp.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+            temp.replace(out)
+
+        result = run_one(args.kind, args.scenario, args.seed, args.turns, save=save)
+        save(result)
         return 1 if result["stopped"] else 0
     out_dir = Path(args.out_dir)
     known = Path(args.known) if args.known else None
     if args.command == "run":
         runs = plan(args.seed_base, args.long_turns, args.random_turns, args.random_seeds)
-        batch(runs, out_dir, args.jobs)
+        hours = args.hours if args.hours is not None else hours_until(args.until)
+        batch(runs, out_dir, args.jobs, hours)
     summary = summarize(out_dir, known, args.label)
     print(show(summary))
     return 0

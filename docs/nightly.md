@@ -26,38 +26,44 @@ python -m hakoniwa_core.nightly summary --out-dir runs/nightly/test   # まと�
 ```
 
 `run` は組を `--jobs` 本ずつ別の処理で回し、`summary.md`（人が読む）と `summary.json` を書きます。
+`--until` の時刻（既定は朝 6 時 30 分、PC の時計）になったら、走っている組を止め、残りは始めずにまとめを書きます
+（`--hours 2` のように時間の長さでも決められます）。組は 100 ターンごとに途中の結果を書くので、止めた組も
+そこまでの分を見て、「時間内に終わらなかった」として届いたターンを書きます。
 `--known known.json` を渡すと、前の夜までに見つけたものと同じものには「新」を付けず、一覧に足します。
 種は `--seed-base`（既定はその日の日付）から作るので、夜ごとに違う世界を回します。
 止まった組は `summary.md` の「同じことを起こす命令」を同じ版で回せば、同じターンで同じように止まります。
 
-1 組（50 島）のメモリは 0.1〜0.3GB です。50 島×1,200 ターンの組がいちばん長く、頭 4 つのクラウドの計算機で
-3 時間ほどかかります。
+1 組（50 島）のメモリは 0.1〜0.3GB です。後のターンほど 1 ターンが遅くなります。2026-10-16 の main では、
+国債の銘柄が年とともに増え、利払いの計算が銘柄ごとに島の勘定を全部見るためです（少ない島の世界で、100 ターン
+ごとにかかる時間が 400 ターン目から 1.5 倍ずつ増えた）。この版では 50 島×1,200 ターンの組は一晩で終わらず、
+朝 6 時 30 分に止めた所までを見ます。「いちばん長くかかった組」は `summary.md` の初めに書きます。
 
 ## X870 で毎晩回す
 
-セビーリャさんの PC（X870）で、毎晩 2 時（日本時間）に回します。置き場所はリポジトリのフォルダの `runs\nightly\`
-（`runs/` は git の外）で、フォルダそのものの作業ツリー（LAN への反映に使う）は変えません。
+セビーリャさんの PC（X870）で、毎晩 2 時（日本時間）に回します。置き場所は作業用のフォルダ
+（`C:\claude\経済版箱庭諸国`）の `runs\nightly\` で、ほかのスレッドが使う `runs\` の下の場所には触りません。
 
 ```
 runs\nightly\
-  src\           main の作業ツリー（毎晩 origin/main に合わせる）
+  src\           リポジトリの clone（毎晩 origin/main に合わせる）
   venv\          python の環境（pyproject.toml が変わったときだけ入れ直す）
   20261017\      その夜の結果（summary.md・summary.json・組ごとの JSON と記録・nightly.log）
   known.json     これまでに見つけたもの（初めて見た日）
   latest.txt     いちばん新しい夜の名前
 ```
 
-入れ方（一度だけ。PowerShell で、リポジトリのフォルダから）:
+入れ方（一度だけ。PowerShell で、作業用のフォルダから）:
 
 ```powershell
-git fetch origin main
-git worktree add --detach runs\nightly\src origin/main
+git clone https://github.com/Yamada-Kohei/economic-hakoniwa.git runs\nightly\src
 powershell -NoProfile -ExecutionPolicy Bypass -File runs\nightly\src\tools\nightly\install-task.ps1
 ```
 
 `install-task.ps1` はタスク スケジューラに `HakoniwaNightly`（毎日 2 時、優先度は「通常より低い」、8 時間で打ち切り）を
 入れます。時刻は `-At "03:00"`、同時に回す数は `-Jobs 12` で変えられます。取り消すときは
 `Unregister-ScheduledTask -TaskName HakoniwaNightly -Confirm:$false` です。
+タスクは PC にサインインしている間だけ動きます（画面のロックはかまいません。サインアウトした夜やスリープの夜は
+回りません）。
 手で 1 回回すときは `powershell -NoProfile -ExecutionPolicy Bypass -File runs\nightly\src\tools\nightly\run-nightly.ps1` です。
 
 決まり:
@@ -69,6 +75,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File runs\nightly\src\tools\night
 
 ## 朝の確かめ
 
-朝 7 時に Claude が `latest.txt` の夜の `summary.md` を読み、「新」の付いたものがあったときだけ、プロジェクトの
-スレッド「X870 の計算資源の生かし方」で知らせます。何もなければ知らせません。
+朝 6 時 30 分にまとめが書かれ、7 時前に Claude が `latest.txt` の夜の `summary.md` を読み、「新」の付いたものが
+あったときだけ、プロジェクトのスレッド「X870 の計算資源の生かし方」で知らせます。何もなければ知らせません。
 「40 年より後に出た崩れ」は、不具合ではなく直すべき仕組みの抜けのこともあります。直すか残すかはバランス調整の回で決めます。
