@@ -1,5 +1,6 @@
 """世界の状態。"""
 
+from hakoniwa_core.state.accounts import Accounts
 from hakoniwa_core.state.model import (
     ACCOUNTING_SELF,
     ACCOUNTING_TREASURY,
@@ -41,6 +42,7 @@ __all__ = [
     "ZONE_NONE",
     "ZONE_NO_DEVELOPMENT",
     "ZONE_OFFICE",
+    "Accounts",
     "Bond",
     "EconomyState",
     "Facility",

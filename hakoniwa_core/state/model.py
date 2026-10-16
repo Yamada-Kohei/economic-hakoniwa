@@ -13,6 +13,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from hakoniwa_core.state.accounts import Accounts
+
 ORDER_PENDING = "pending"
 ORDER_DONE = "done"
 ORDER_FAILED = "failed"
@@ -280,8 +282,9 @@ class IslandState:
     warehouse: Stock = field(default_factory=dict)
     orders: list[OrderState] = field(default_factory=list)
     log: list[LogEntry] = field(default_factory=list)
-    # お金: 勘定の名前（主体/持ち物/相手）→ 残高。hakoniwa_core/ledger.py を通してだけ動かす
-    accounts: dict[str, int] = field(default_factory=dict)
+    # お金: 勘定の名前（主体/持ち物/相手）→ 残高。hakoniwa_core/ledger.py を通してだけ動かす。
+    # 名前の索引を持つ dict（hakoniwa_core/state/accounts.py）。ふつうの dict を渡しても写して持つ
+    accounts: dict[str, int] = field(default_factory=Accounts)
     bonds: list[Bond] = field(default_factory=list)
     loans: list[Loan] = field(default_factory=list)  # 融資（番号の小さい順）
     economy: EconomyState = field(default_factory=EconomyState)
@@ -296,6 +299,10 @@ class IslandState:
     books: list[FacilityBook] = field(default_factory=list)
     # 段から段へ渡す、このターンだけの値。保存しない
     scratch: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.accounts, Accounts):
+            self.accounts = Accounts(self.accounts)
 
     def tile(self, x: int, y: int) -> Tile:
         return self.tiles[y * self.size + x]
