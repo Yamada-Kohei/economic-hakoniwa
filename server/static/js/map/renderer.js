@@ -67,21 +67,27 @@ function drawBlock(ctx, px, py, h, colors, theme, sprite) {
   ctx.fill();
 }
 
-/** 施設の絵の名前。住宅は住宅地の段階ごと、首都の建物は capital/ の絵があればそれ。 */
-function facilitySprite(f, defs, isCapital, sprites) {
+/**
+ * 施設の絵の名前。住宅は住宅地の段階ごと。首都の官庁は、体制で決まる建物の組み合わせの絵
+ * （capital/議事堂-王宮 など。map.capital_buildings を軸の順に "-" でつなぐ）、なければ capital/ の絵。
+ */
+function facilitySprite(f, defs, map, isCapital, sprites) {
   if (!f.built) return sprites.get("construction");
   if (f.kind === defs.housing) {
     const level = defs.settlements[f.level] ? f.level : Object.keys(defs.settlements)[0];
     return sprites.get(`housing/${level}`);
   }
   const name = defs.facilities[f.kind]?.sprite || f.kind;
-  return (isCapital && sprites.get(`capital/${name}`)) || sprites.get(`facility/${name}`);
+  if (!isCapital) return sprites.get(`facility/${name}`);
+  const buildings = defs.facilities[f.kind]?.category === "admin" ? map.capital_buildings || [] : [];
+  const regime = buildings.length ? sprites.get(`capital/${buildings.join("-")}`) : null;
+  return regime || sprites.get(`capital/${name}`) || sprites.get(`facility/${name}`);
 }
 
 /** 施設: 絵があれば絵、なければ色付きの箱。住宅の高さは住宅地の段階、工事中は枠だけ。 */
 function drawFacility(ctx, f, map, defs, px, ground, theme, sprites) {
   const isCapital = map.capital && map.capital[0] === f.x && map.capital[1] === f.y;
-  const sprite = facilitySprite(f, defs, isCapital, sprites);
+  const sprite = facilitySprite(f, defs, map, isCapital, sprites);
   if (sprite) {
     drawSprite(ctx, sprite, px, ground + theme.tile_height);
     if (f.built) drawStopped(ctx, f, defs, px, ground, theme.tile_height / 2);

@@ -48,6 +48,8 @@ function buildMap(defs) {
     size: n, terrain: Array(size).fill(sea), population: Array(size).fill(0), zone: Array(size).fill(""),
     power_line: Array(size).fill(0), pollution: Array(size).fill(0), happiness: Array(size).fill(null),
     power: Array(size).fill(null), facilities: [], capital: null,
+    // 首都の建物の組み合わせ。?capital=議事堂-王宮 のように選べる（既定は軸ごとの最初の建物）
+    capital_buildings: (params.get("capital") || capitalCombos(defs)[0] || "").split("-").filter(Boolean),
   };
   // 陸地の台を敷いてから並べる
   for (let y = 1; y < n - 1; y++) for (let x = 1; x < n - 1; x++) map.terrain[y * n + x] = "plain";
@@ -70,6 +72,22 @@ function buildMap(defs) {
   return { map, labels };
 }
 
+/** 首都の建物の組み合わせ（軸ごとに体制の建物を 1 つずつ選び、軸の順に "-" でつなぐ）。 */
+function capitalCombos(defs) {
+  let combos = [[]];
+  for (const axis of Object.keys(defs.axes || {})) {
+    const buildings = [
+      ...new Set(
+        Object.values(defs.regimes || {})
+          .filter((r) => r.axis === axis && r.capital_building)
+          .map((r) => r.capital_building),
+      ),
+    ];
+    if (buildings.length) combos = combos.flatMap((c) => buildings.map((b) => [...c, b]));
+  }
+  return combos.filter((c) => c.length).map((c) => c.join("-"));
+}
+
 function missingText(defs, sprites) {
   const want = [
     ...Object.keys(defs.terrain).map((t) => `terrain/${t}`),
@@ -77,6 +95,7 @@ function missingText(defs, sprites) {
       .filter(([fid, f]) => !f.tileless && fid !== defs.housing)
       .map(([, f]) => `facility/${f.sprite}`),
     ...Object.keys(defs.settlements).map((s) => `housing/${s}`),
+    ...capitalCombos(defs).map((c) => `capital/${c}`),
   ];
   const missing = want.filter((k) => !sprites.has(k));
   return missing.length ? `絵がないもの（色の箱で描いています）: ${missing.join(", ")}` : "すべて絵があります";

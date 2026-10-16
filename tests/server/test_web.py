@@ -32,6 +32,28 @@ def test_island_page_and_map_api(client, world):
     assert set(data["terrain"]) <= {"sea", "shallows", "plain", "forest", "mountain"}
 
 
+def test_map_api_capital_buildings(client, world):
+    """地図は首都の建物（体制で決まる議事堂・王宮など）を軸の順に返し、首都の絵をそれで選ぶ。
+    政治の仕組みを変えて建て替えている間は、前の体制の建物のまま（フェーズ3-4）。"""
+    island = Island.objects.first()
+    island.regime = {**island.regime, "politics": "democracy", "head_of_state": "monarchy"}
+    island.save()
+    data = client.get(f"/api/islands/{island.id}/map").json()
+    assert data["capital_buildings"] == ["parliament", "palace"]
+    island.regime = {**island.regime, "politics": "totalitarian"}
+    island.ext = {
+        **island.ext,
+        "politics": {**island.ext.get("politics", {}), "building": "parliament"},
+    }
+    island.save()
+    data = client.get(f"/api/islands/{island.id}/map").json()
+    assert data["capital_buildings"] == ["parliament", "palace"]
+    island.ext["politics"].pop("building")
+    island.save()
+    data = client.get(f"/api/islands/{island.id}/map").json()
+    assert data["capital_buildings"] == ["party_headquarters", "palace"]
+
+
 def test_tile_api(client, world):
     island = Island.objects.first()
     data = client.get(f"/api/islands/{island.id}/tiles/0,0").json()
