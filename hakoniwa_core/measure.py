@@ -38,12 +38,12 @@ from pathlib import Path
 from typing import IO, Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import gate
+from hakoniwa_core import gate, politics
 from hakoniwa_core.autoplan import plan_trade, plan_turn, queue_orders
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import books, is_stopped, is_transport
+from hakoniwa_core.economy import books, is_stopped, is_transport, services
 from hakoniwa_core.economy.prices import initial_prices
 from hakoniwa_core.geo import distance
 from hakoniwa_core.modules.population import subsistence_persons
@@ -226,11 +226,15 @@ def island_row(
     row["output.real.services"] = s.get(f"production.{good}", 0) * prices.get(good, 0)
     row.update(jobs(island, defs, config))
     row.update(reach(island, defs, config))
-    row.update(demand(island))
+    row.update(demand(island, config))
     row.update(buyers(island, config))
     block = island.economy.finance.get("entry_block")
     if block:
         row["entry_block"] = f"{block['reason']}:{block['facility']}"
+    # 政情がデモ以上・暴動以上の島（島×ターンで数える。回4 で失業率の重みを設計の値に戻した）
+    level = island.ext.get(politics.KEY, {}).get("level", politics.CALM)
+    row["politics.demo"] = int(level != politics.CALM)
+    row["politics.riot"] = int(level in (politics.RIOT, politics.REBELLION))
     row["cb_independent"] = int(island.policy.cb_independent)
     return row
 
@@ -321,8 +325,11 @@ def _reaches(pos: tuple[int, int], at: tuple[int, int], radius: int | None) -> b
     return radius is None or distance(pos, at) <= radius
 
 
-def demand(island: IslandState) -> dict[str, float]:
-    """このターンの GDP の支出の側の内わけ（hakoniwa_core/economy/books.py の gdp と同じ流れ）。"""
+def demand(island: IslandState, config: GameConfig) -> dict[str, float]:
+    """このターンの GDP の支出の側の内わけ（hakoniwa_core/economy/books.py の gdp と同じ流れ）。
+
+    家計の消費の実質は、サービスを含む分と、サービスを除く財だけの分（回3 までと比べる）。
+    """
     hh = books.sector(island, books.HOUSEHOLDS)
     site = books.sector(island, books.CONSTRUCTION)
     gov = books.sector(island, books.GOVERNMENT)
@@ -342,6 +349,10 @@ def demand(island: IslandState) -> dict[str, float]:
     cpi = island.stats.get("cpi", 0)
     if cpi:
         out["demand.households.real"] = out["demand.households"] * 100 / cpi
+        # サービスを買うのは家計だけなので、商業・サービス業の売上が家計のサービスの支出
+        shop = services.facility_of(island, config)
+        spent = books.facility_items(island).get(shop.id, {}).get(books.SALES, 0) if shop else 0
+        out["demand.households.goods.real"] = (out["demand.households"] - spent) * 100 / cpi
     return out
 
 
@@ -477,6 +488,8 @@ class Measure:
             out[f"gdp.{key}"] = share(key, spending)
         people = s["population"]
         out["households.real_per_person"] = s["demand.households.real"] / people if people else 0
+        goods_bought = s["demand.households.goods.real"]
+        out["households.real_goods_per_person"] = goods_bought / people if people else 0
         island_turns = s["islands"]
         for key in sorted(k for k in s if k.startswith("entry_block.")):
             out[key] = s[key] / island_turns
@@ -504,9 +517,13 @@ class Measure:
         # 働く人のうちサービスで働く人の割合（回4）と、1人あたりのサービスの量（人月、1年あたり）
         out["labor.services"] = share("services.workers", s["employed"])
         out["services.per_person_year"] = s["services.sold"] / people * YEAR if people else 0.0
+        # 政情がデモ以上・暴動以上だった島×ターンの割合（回4）
+        out["politics.demo"] = s["politics.demo"] / island_turns if island_turns else 0.0
+        out["politics.riot"] = s["politics.riot"] / island_turns if island_turns else 0.0
         # 人口の増え方（1年あたり。窓の初めと終わりのターンの人口から）
         first, last = min(turns), max(turns)
         start_pop, end_pop = self.totals[first]["population"], self.totals[last]["population"]
+        out["population.start"], out["population.end"] = start_pop, end_pop
         if start_pop > 0 and last > first:
             out["population.growth"] = (end_pop / start_pop) ** (YEAR / (last - first)) - 1
         return out
@@ -707,6 +724,7 @@ COMPARED = (
     ("measure.idle.workers", 0),
     ("measure.idle.engineers", 0),
     ("measure.households.real_per_person", 1),
+    ("measure.households.real_goods_per_person", 1),
     ("measure.output.real.per_person", 1),
     ("measure.output.real.goods_per_person", 1),
     ("measure.starved.per_1000_year", -1),
@@ -716,8 +734,16 @@ COMPARED = (
     ("measure.births.per_1000_year", 0),
     ("measure.deaths.per_1000_year", -1),
     ("measure.population.growth", 0),
+    ("measure.population.end", 0),
+    ("measure.politics.demo", -1),
+    ("measure.politics.riot", -1),
     ("measure.buy.automobile.per_turn", 1),
 )
+# 前の回の結果にない値を、同じ意味の値で読む（回3 まではサービスがなく、家計の消費と生産は全部が財）
+FALLBACK = {
+    "households.real_goods_per_person": "households.real_per_person",
+    "output.real.goods_per_person": "output.real.per_person",
+}
 EARLY = (
     ("early.employment.median", 1),
     ("early.employment.min", 1),
@@ -734,7 +760,11 @@ def _pick(data: Mapping[str, Any], window: Mapping[str, Any] | None, key: str) -
     if key == "gate":
         return window["gate"]["failures"]
     part, _, name = key.partition(".")
-    return window.get(part, {}).get(name)
+    values = window.get(part, {})
+    # サービスで働く人の割合（labor.services）があれば、サービスのある回の結果
+    if name in FALLBACK and name not in values and "labor.services" not in values:
+        return values.get(FALLBACK[name])
+    return values.get(name)
 
 
 def compare(base: Path, new: Path) -> str:
@@ -768,10 +798,13 @@ def compare(base: Path, new: Path) -> str:
                     continue
             else:
                 x, y = _pick(a[key], wa, metric), _pick(b[key], wb, metric)
-            if x is None or y is None:
+            if y is None:
+                continue
+            label = f"{metric}（〜{end}）" if end else metric
+            if x is None:  # 前の回にはない値（回4 で足した測りなど）
+                lines.append(f"| {label} | — | {y:.4g} | |")
                 continue
             worse = direction and (y - x) * direction < -1e-9
-            label = f"{metric}（〜{end}）" if end else metric
             lines.append(
                 f"| {label} | {x:.4g} | {y:.4g} | {y - x:+.4g}{' 悪化' if worse else ''} |"
             )
@@ -807,6 +840,20 @@ def show(path: Path) -> str:
                 f"そのうち場所のずれ {m.get('jobless.mismatch', 0):.1%}）。全力で動かなかった席: "
                 + "・".join(f"{g} {m.get(f'idle.{g}', 0):.1%}" for g in CAUSE_GROUPS)
             )
+            if "labor.services" in m:
+                lines.append(
+                    f"  - 人口 {m.get('population.start', 0):.0f} → "
+                    f"{m.get('population.end', 0):.0f}"
+                    f"（年 {m.get('population.growth', 0):+.2%}、1000 人あたり1年に生まれる人 "
+                    f"{m.get('births.per_1000_year', 0):.1f}・亡くなる人 "
+                    f"{m.get('deaths.per_1000_year', 0):.1f}・飢え "
+                    f"{m.get('starved.per_1000_year', 0):.2f}）。働く人のうちサービス "
+                    f"{m.get('labor.services', 0):.1%}。1人あたりの家計の消費（実質）"
+                    f" {m.get('households.real_per_person', 0):.0f}、うち財"
+                    f" {m.get('households.real_goods_per_person', 0):.0f}。デモ以上の島×ターン "
+                    f"{m.get('politics.demo', 0):.1%}・暴動以上 {m.get('politics.riot', 0):.1%}。"
+                    f"自動車 {m.get('buy.automobile.per_turn', 0):.0f}/ターン"
+                )
         if data.get("ships"):
             sh = data["ships"]
             lines.append(

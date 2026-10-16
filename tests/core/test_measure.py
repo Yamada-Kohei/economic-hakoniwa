@@ -176,6 +176,10 @@ def test_unemployment_breakdown_matches_the_statistics(game):
             assert row["jobless"] == s["labor"] - s["employed"] - s["subsistence"]
             assert 0 <= row["mismatch"] <= min(row["unreached.unemployed"], row["jobless"])
             assert row["jobs.vacant"] >= 0
+            # 家計の消費のうち財だけの分は、サービスを含む分を超えない（回4）
+            goods = row.get("demand.households.goods.real", 0)
+            assert 0 <= goods <= row.get("demand.households.real", 0) + 1e-6
+            assert row["politics.demo"] >= row["politics.riot"] >= 0
             idle = sum(v for k, v in row.items() if k.startswith("idle."))
             assert idle <= row["jobs.capacity"] + 1e-6
             zones = measure.zones(island, game.defs, game.config)
@@ -229,3 +233,41 @@ def test_result_has_windows_after_the_start_turn(game):
     labor = window["measure"]
     shares = labor["labor.employed"] + labor["labor.subsistence"] + labor["labor.jobless"]
     assert shares == pytest.approx(1.0)
+
+
+def test_compare_reads_goods_only_values_from_rounds_without_services(tmp_path):
+    """回3 までの結果（サービスがない）は、家計の消費と生産の全部を財として比べる。前の回にない値は
+    「—」で並べる。"""
+
+    def write(name, measured):
+        data = {
+            "scenario": "plan",
+            "seed": 1,
+            "turns": 300,
+            "title": "標準の計画",
+            "windows": {"300": {"gate": {"failures": 0}, "counts": {}, "measure": measured}},
+        }
+        path = tmp_path / name
+        path.mkdir()
+        (path / "plan-s1-t300.json").write_text(json.dumps(data))
+        return path
+
+    old = write("old", {"households.real_per_person": 400.0, "output.real.per_person": 450.0})
+    new = write(
+        "new",
+        {
+            "households.real_per_person": 560.0,
+            "households.real_goods_per_person": 420.0,
+            "output.real.per_person": 620.0,
+            "output.real.goods_per_person": 470.0,
+            "labor.services": 0.3,
+            "politics.demo": 0.1,
+        },
+    )
+    table = measure.compare(old, new)
+    assert "| measure.households.real_goods_per_person（〜300） | 400 | 420 | +20 |" in table
+    assert "| measure.output.real.goods_per_person（〜300） | 450 | 470 | +20 |" in table
+    assert "| measure.politics.demo（〜300） | — | 0.1 | |" in table
+    # サービスのある回どうしでは、財だけの値がない結果を全部の値で読まない
+    newer = write("newer", {"households.real_per_person": 560.0, "labor.services": 0.3})
+    assert "real_goods_per_person" not in measure.compare(newer, newer)
