@@ -264,7 +264,7 @@ class EntryExit(IslandStage):
     @staticmethod
     def _switched_into(island: IslandState, ctx: StageContext) -> set[str]:
         """作り方を替えて作り始めてから firms.price_turns ターンたたない財と、替えると決めて
-        まだ替えていない作り方の財（命令と民営の見直しの両方）。新しい民営工場の参入
+        まだ替えていない作り方の財（命令と民営の見直しの両方）、畑を蒔き直している途中の作物。新しい民営工場の参入
         （_pipeline）と同じく、その施設が売り出した後の値段と売れ行きを見てから次を決める。"""
         defs = ctx.defs
         recent = ctx.turn - ctx.config.get("firms.price_turns")
@@ -277,6 +277,9 @@ class EntryExit(IslandStage):
                 goods |= set(defs.facilities[f.kind]["recipes"][pending]["outputs"])
             if f.ext.get(fac.RECIPE_CHANGED, -(10**9)) > recent:
                 goods |= set(fac.recipe_of(defs, f)["outputs"])
+            if fac.FIELDS in f.economy or f.ext.get(fac.CROP_READY, -(10**9)) > recent:
+                # 畑を蒔き直している途中か、蒔き直し終えたばかりの作物（回3）
+                goods |= set(defs.facilities[f.kind]["recipes"][f.recipe]["outputs"])
         return goods
 
     @staticmethod
@@ -305,7 +308,7 @@ class EntryExit(IslandStage):
         finance = island.economy.finance
         demand = finance.get("demand", {})
         now = fac.recipe_of(defs, f)["inputs"]
-        made = fac.recipe_of(defs, f)["outputs"]
+        made = fac.field_goods(defs, f)  # 畑を作り替えている途中の前の作物も、作っている物と見る
         wage = f.economy.get("wage", 0)
         out = {}
         for name, recipe in sorted(defs.facilities[f.kind]["recipes"].items()):
@@ -354,7 +357,7 @@ class EntryExit(IslandStage):
             wage = f.economy.get("wage", 0)
             prices = island.economy.prices
             profit = variable_profit(ctx.defs, ctx.config, f, prices, wage, rates.get(f.id, 0))
-            outputs = fac.recipe_of(ctx.defs, f)["outputs"]
+            outputs = fac.recipe_of(ctx.defs, fac.steady(f))["outputs"]
             sales = sum(money_of(prices.get(g, 0), q) for g, q in outputs.items())
             # 値段が変動費ちょうどの売り手は、端数でマイナスになることがあるので少し見逃す
             margin = part(sales, to_basis(settings["exit_loss_margin"]))

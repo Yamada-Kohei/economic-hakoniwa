@@ -417,7 +417,10 @@ infrastructure:
 education:
   start: 0.6            # 建国と移し替えのときの教育水準（インフラと教育の係数が 1 になる値）
   children: 0.15        # 住民のうち子どもの割合（学校の定員と比べる）
-  speed: 12             # 教育水準が1ターンに目標との差の 1/speed だけ動く
+  # 教育水準は働き手のうち学んだ人の割合（回3）。子どもたちの学んだ割合は通う年数 school_years で、
+  # 働き手は働く年数 working_years で入れ替わる（上がるのも下がるのも同じ速さ。カードで決定）
+  school_years: 9
+  working_years: 40
   start_school: school  # 建国と移し替えのときに首都の近くに建てた状態で置く学校
   start_budget_years: 1.2   # 建国と移し替えのときの教育費の年の予算（学校1つを動かす費用の何年分）
   engineer_share: 0.02  # 建国と移し替えのときの技術者の数（一般の労働者に対する割合）

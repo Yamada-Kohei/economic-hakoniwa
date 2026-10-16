@@ -86,7 +86,8 @@ _EXTRA_STATS = [
     ("power.used", "届いた電力", "good:electricity"),
     ("food.need", "食料の必要量", "good:food"),
     ("food.supplied", "届いた食料", "good:food"),
-    ("education.goal", "教育水準の目標（動いている学校の定員から）", "percent"),
+    ("education.goal", "学校に通えている子どもの割合（動いている学校の定員から）", "percent"),
+    ("education.schooled", "働き手に加わる若い人のうち学んだ人の割合", "percent"),
     ("education.seats", "動いている学校の定員", "人"),
     ("engineers.employed", "働いている技術者", "人"),
     ("engineers.seated", "技術者の席に就いた技術者", "人"),
@@ -384,7 +385,7 @@ def economy_charts() -> list[dict[str, Any]]:
             "names": [f"layer.{layer}{PER_PERSON}" for layer in LAYER_NAMES],
         },
         {"title": "格差（1人あたりの所得の比）", "names": ["inequality"]},
-        {"title": "教育水準", "names": ["education.level", "education.goal"]},
+        {"title": "教育水準", "names": ["education.level", "education.schooled", "education.goal"]},
         {"title": "技術者", "names": ["engineers", "engineers.employed"]},
         {
             "title": "インフラの平均の整備度（陸のマス）",

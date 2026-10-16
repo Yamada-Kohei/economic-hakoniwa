@@ -335,6 +335,35 @@ def test_a_mine_cannot_switch_to_another_deposit(game, warmed):
 
 
 def test_change_recipe_switches_at_the_market_and_halves_the_next_turn(game, warmed):
+    """畑でない施設（火力発電所）は、次の市場の段で一度に替え、次のターンは稼働率が半分。"""
+    KIND = "thermal_power_plant"
+    world = copy.deepcopy(warmed)
+    island = next(
+        i for i in world.islands.values() if any(f.kind == KIND and f.built for f in i.facilities)
+    )
+    plant = next(f for f in island.facilities if f.kind == KIND and f.built)
+    plant.owner = OWNER_STATE
+    other = next(
+        name
+        for name in game.defs.facilities[plant.kind]["recipes"]
+        if name != plant.recipe and fac.switch_problem(game.defs, island, plant, name) is None
+    )
+    payload = {"x": plant.x, "y": plant.y, "recipe": other}
+    state = order(game, world, island, "change_recipe", payload)
+    assert state.status == "done", state.reason
+    assert plant.recipe == other
+    assert plant.ext[fac.RECIPE_CHANGED] == world.turn + 1
+    assert any(e.kind == "recipe_changed" for e in island.log)
+    island.orders = []
+    game.engine.run_turn(world)
+    assert plant.operating_rate <= fac.FULL // 2
+    if plant.operating_rate == fac.FULL // 2:
+        assert plant.status == "recipe_change"
+
+
+def test_change_recipe_of_a_farm_resows_the_fields_little_by_little(game, warmed):
+    """農場の作物を替えると、1ターンに畑の 1/育つ期間 ずつ蒔き直し、蒔いた畑は育つまで何も出さない
+    （回3。Codex E17）。稼働率は半分にしない。"""
     world = copy.deepcopy(warmed)
     hot = next(i for i in world.islands.values() if nature.climate_of(i) == "tropical")
     farm = next(f for f in hot.facilities if f.kind == "farm" and f.recipe == "default" and f.built)
@@ -342,13 +371,20 @@ def test_change_recipe_switches_at_the_market_and_halves_the_next_turn(game, war
     state = order(game, world, hot, "change_recipe", {"x": farm.x, "y": farm.y, "recipe": "cotton"})
     assert state.status == "done", state.reason
     assert farm.recipe == "cotton"
-    assert farm.ext[fac.RECIPE_CHANGED] == world.turn + 1
+    assert fac.RECIPE_CHANGED not in farm.ext
+    assert farm.economy[fac.FIELDS] == {"default": fac.FULL}
     assert any(e.kind == "recipe_changed" for e in hot.log)
     hot.orders = []
     game.engine.run_turn(world)
-    assert farm.operating_rate <= fac.FULL // 2
-    if farm.operating_rate == fac.FULL // 2:
-        assert farm.status == "recipe_change"
+    grain = fac.grow_turns(game.defs, "farm", "default")
+    cotton = fac.grow_turns(game.defs, "farm", "cotton")
+    step = -(-fac.FULL // grain)
+    assert farm.economy[fac.FIELDS] == {"default": fac.FULL - step}
+    assert farm.economy[fac.SOWN] == [["cotton", step, world.turn + cotton]]
+    outputs = fac.recipe_of(game.defs, farm)["outputs"]
+    full = game.defs.facilities["farm"]["recipes"]["default"]["outputs"]["grain"]
+    assert outputs == {"grain": full * (fac.FULL - step) // fac.FULL}
+    assert farm.status != "recipe_change"
 
 
 def test_private_farm_turns_to_a_new_crop_only_when_it_is_short(game, warmed):

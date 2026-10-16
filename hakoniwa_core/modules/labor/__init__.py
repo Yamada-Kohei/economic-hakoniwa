@@ -79,7 +79,7 @@ def wage_update(island: IslandState, f: Facility, ctx: StageContext) -> int:
         rate = freight.facility_rates(island, ctx.defs, ctx.config).get(f.id, 0)
         prices = island.economy.prices
         workers -= fac.engineers_needed(ctx.defs, f.kind)  # 技術者の賃金は利益の側で引く
-        if workers > 0 and fac.recipe_of(ctx.defs, f)["outputs"]:
+        if workers > 0 and fac.recipe_of(ctx.defs, fac.steady(f))["outputs"]:
             cap = variable_profit(ctx.defs, ctx.config, f, prices, 0, rate) // workers
             new = min(new, max(wage, cap))
     return max(new, island.policy.minimum_wage, 1)

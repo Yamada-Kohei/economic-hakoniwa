@@ -101,7 +101,14 @@ def test_goods_another_facility_just_switched_into_are_busy(game):
     first.ext.pop(fac.RECIPE_NEXT)
     fac.switch_recipe(game.defs, second, "cotton", ctx.turn - 1)
     assert "cotton" in EntryExit._switched_into(island, ctx)
-    late = ctx.turn + game.config.get("firms.price_turns")
+    # 畑を蒔き直している間も、蒔き直し終えて firms.price_turns ターンたつまでも、綿は選ばない
+    turn = ctx.turn
+    while fac.FIELDS in second.economy:
+        turn += 1
+        fac.step_fields(game.defs, second, turn)
+    done = context(game, SimpleNamespace(turn=turn, seed=1))
+    assert "cotton" in EntryExit._switched_into(island, done)
+    late = turn + game.config.get("firms.price_turns")
     later = context(game, SimpleNamespace(turn=late, seed=1))
     assert "cotton" not in EntryExit._switched_into(island, later)
 

@@ -822,7 +822,7 @@ class Market(IslandStage):
             if not f.built or fac.is_housing(config, f) or not fac.on_map(f):
                 continue
             recipe = fac.recipe_of(defs, f)
-            if not recipe["outputs"] and not recipe["inputs"]:
+            if not recipe["outputs"] and not recipe["inputs"] and not f.stock:
                 continue
             rate = rates.get(f.id, 0)
             payer = payer_of(defs, config, f)

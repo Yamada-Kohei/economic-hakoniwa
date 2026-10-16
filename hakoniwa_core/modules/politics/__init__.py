@@ -400,7 +400,9 @@ def elect(island: IslandState, ctx: StageContext, announce: bool = True) -> None
 
 def urban_facilities(island: IslandState, ctx: StageContext) -> list[Facility]:
     """暴動で止まりうる施設: 町（politics.riot.urban）以上の住宅地から politics.riot.radius マス
-    の中の、建っていてマスを持つ住宅でない施設。"""
+    の中の、建っていてマスを持つ住宅でない施設。農林水産業（産業 agriculture）の施設は止めない
+    （回3。暴動は町の店・役所・工場で起き、畑や漁船は動き続ける。島で1つの漁港が暴動で止まり、
+    食べ物が尽きて島じゅうが飢える流れが出た）。"""
     defs, config = ctx.defs, ctx.config
     settings = config.get("politics.riot")
     floor = defs.settlements[settings["urban"]]["min_population"]
@@ -411,7 +413,11 @@ def urban_facilities(island: IslandState, ctx: StageContext) -> list[Facility]:
     return [
         f
         for f in sorted(island.facilities, key=lambda f: f.id)
-        if f.built and fac.on_map(f) and not fac.is_housing(config, f) and (f.x, f.y) in urban
+        if f.built
+        and fac.on_map(f)
+        and not fac.is_housing(config, f)
+        and (f.x, f.y) in urban
+        and defs.facilities[f.kind].get("industry") != "agriculture"
     ]
 
 

@@ -162,6 +162,7 @@ def variable_profit(
     生産性（インフラ・教育・汚染の係数）を掛けた量で見る。
     """
     power = config.get("power.good")
+    f = fac.steady(f)  # 畑を作り替えている途中なら、今の作物で見る（回3）
     recipe = fac.recipe_of(defs, f)
     value = 0
     for good, qty in fac.outputs_of(defs, f).items():
@@ -183,6 +184,7 @@ def input_limit(
     売る値段に回せるので、値段が費用ぎりぎりの施設も仕入れを止めない）。ほかの投入財は今の値段。
     電力は運賃がかからないので、電力のときは freight を見ない。
     """
+    f = fac.steady(f)  # 畑を作り替えている途中なら、今の作物で見る（回3）
     recipe = fac.recipe_of(defs, f)
     qty = recipe["inputs"].get(good, 0)
     if qty <= 0:
@@ -209,6 +211,7 @@ def unit_floor(
     の製油所の燃料と化学品）。
     """
     power = config.get("power.good")
+    f = fac.steady(f)  # 畑を作り替えている途中なら、今の作物で見る（回3）
     recipe = fac.recipe_of(defs, f)
     outputs = fac.outputs_of(defs, f)
     if good not in outputs or outputs[good] <= 0:

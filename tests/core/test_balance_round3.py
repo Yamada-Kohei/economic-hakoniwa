@@ -243,6 +243,7 @@ def test_bankruptcy_pays_unpaid_wages_before_the_lenders(game, warmed):
     )
     entity = facility_entity(f.id)
     general = household(GENERAL)
+    ledger.pay(island, household(OWNERS), entity, 100_000, "capital_injection")
     money = ledger.money(island, entity)
     arrears.add_wages(island, entity, general, money + 5_000)
     before = ledger.money(island, general)
@@ -290,3 +291,36 @@ def test_unpaid_wages_lower_the_value_of_a_facility(game, warmed):
     ledger.pay(island, household(OWNERS), entity, 10_000, "capital_injection")
     assert arrears.settle(island, payer) == 1_500
     assert arrears.total(island, entity) == 0
+
+
+# --- 畑の作付け ---------------------------------------------------------------------------
+
+
+def test_farm_moves_its_fields_to_a_new_crop_little_by_little(game):
+    """作物を替えた農場の穀物は一度に消えず、1ターンに畑の 1/育つ期間 ずつ減る。蒔いた綿は育つ
+    期間のあいだ何も出さず、みな綿になったら元の1つの作り方に戻る（Codex E17）。"""
+    from hakoniwa_core import facilities as fac
+    from tests.core.test_rules import add, make_island
+
+    defs = game.defs
+    island = make_island(game)
+    farm = add(island, "farm", 8, 8)
+    fac.switch_recipe(defs, farm, "cotton", 1)
+    grain_full = defs.facilities["farm"]["recipes"]["default"]["outputs"]["grain"]
+    cotton_full = defs.facilities["farm"]["recipes"]["cotton"]["outputs"]["cotton"]
+    grow = fac.grow_turns(defs, "farm", "cotton")
+    grain, cotton = [], []
+    for turn in range(1, 20):
+        fac.step_fields(defs, farm, turn)
+        outputs = fac.recipe_of(defs, farm)["outputs"]
+        grain.append(outputs.get("grain", 0))
+        cotton.append(outputs.get("cotton", 0))
+    assert grain[0] == grain_full * 4 // 5  # 穀物は5か月で育つので、1か月に 1/5 ずつ蒔き直す
+    assert grain == sorted(grain, reverse=True) and grain[4] == 0
+    assert cotton[:grow] == [0] * grow  # 綿は6か月たつまで何も出さない
+    assert cotton[grow] > 0 and cotton[-1] == cotton_full
+    assert fac.FIELDS not in farm.economy and farm.ext[fac.CROP_READY] <= 19
+    assert fac.recipe_of(defs, farm) is defs.facilities["farm"]["recipes"]["cotton"]
+    # 肥料の有無だけの替え方はすぐ
+    fac.switch_recipe(defs, farm, "cotton_fertilized", 20)
+    assert fac.FIELDS not in farm.economy and farm.recipe == "cotton_fertilized"
