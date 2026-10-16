@@ -221,6 +221,11 @@ class Policy:
     foreign_bonds: dict[str, dict[str, int]] = field(default_factory=dict)
     # 以下はフェーズ3-4。値段の下限（財 → 値段。混合経済だけ。上限は price_cap）
     price_floor: dict[str, int] = field(default_factory=dict)
+    # 以下はバランス調整の回3（国をまたぐ移民。hakoniwa_core/modules/migration）
+    immigration: str = ""  # 受け入れ: open・jobs・engineers・refugees・closed（"" は受け入れない）
+    immigration_cap: int = 0  # 受け入れの1年の上限（住民の1万分の1。0 は game.yaml の既定）
+    emigration: str = ""  # 出国: free・permit・ban（"" は自由）
+    emigration_quota: int = 0  # 許可制の1年の枠（住民の1万分の1）
 
 
 @dataclass

@@ -54,6 +54,13 @@ bond_trade:           {type: journal}   # 国債の売買（買い手 → 売り
 bond_default:         {type: journal}   # 国債の不履行（額面の切り下げ）
 # 家計の層
 layer_transfer:       {type: journal}   # 層を移った人の預金の付け替え
+# 賃金と税の未払い（バランス調整の回3。hakoniwa_core/economy/arrears.py）
+wage_arrears:         {type: journal}   # 払えなかった賃金を未払い賃金として残す（払い手が家計の層に負う）
+wage_arrears_paid:    {type: journal}   # 未払い賃金の支払い（払い手 → 家計。倒産の後の分配も）
+wage_arrears_lost:    {type: journal}   # 倒産した施設の払いきれなかった未払い賃金の取り消し
+tax_arrears:          {type: journal}   # 払えなかった法人税を未払いの税として残す（施設が政府に負う）
+tax_arrears_paid:     {type: journal}   # 未払いの税の支払い（施設 → 政府。倒産の後の分配も）
+tax_arrears_lost:     {type: journal}   # 倒産した施設の払いきれなかった未払いの税の取り消し
 # 貿易と為替（フェーズ3-1）
 trade:                {type: journal}   # 貿易圏の市場の代金（買い手の商社 → 売り手の商社。決済通貨の島の帳簿）
 fx_exchange:          {type: journal}   # 為替の売り買い（自国通貨と、発行した島の帳簿の非居住者の預金）
@@ -66,6 +73,10 @@ tariff:               {type: journal}   # 関税（輸入した商社 → 政府
 export_subsidy:       {type: journal}   # 輸出補助金（政府 → 輸出した商社）
 fx_intervention:      {type: journal}   # 為替の介入（中央銀行の外貨の売り買い）
 aid:                  {type: journal}   # お金の援助（送る国の政府 → 受け取る国の政府）
+# 国をまたぐ移民（バランス調整の回3。hakoniwa_core/modules/migration）
+remittance:           {type: journal}   # 移った人の仕送り（住んでいる島の一般の家計 → 元の島の一般の家計。住んでいる島の通貨）
+migrant_deposits:     {type: journal}   # 移る人が持ち出す預金（元の島の家計 → 行き先の家計。元の島の通貨）
+emigrant_seized:      {type: journal}   # 国を出た人が持ち出せなかった預金（家計 → 政府）
 fx_swap:              {type: journal}   # 中央銀行どうしの融通の貸し借りと返済（貸す国の中央銀行 → 借りる国の中央銀行）
 swap_interest:        {type: journal}   # 中央銀行どうしの融通の利子（借りた国の中央銀行 → 貸した国の中央銀行）
 

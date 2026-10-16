@@ -21,10 +21,11 @@ from typing import Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, politics, stock
+from hakoniwa_core.allocation import proportional
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import GENERAL, needs
-from hakoniwa_core.economy.households import move_people, split_persons
+from hakoniwa_core.economy import GENERAL, JOBLESS, needs
+from hakoniwa_core.economy.households import move_people, recount_engineers, split_persons
 from hakoniwa_core.economy.stats import inflation, real_wage_change
 from hakoniwa_core.geo import within
 from hakoniwa_core.registry import IslandStage, Registry
@@ -47,6 +48,11 @@ HAPPINESS_FACTS = (
     "education",
 )
 OLD_CONSUMER_GOOD = "consumer_goods"  # フェーズ3-1 までの幸福度の「消費財」で数える財
+HUNGER = "hunger"  # 層の飢えの蓄え（economy.households[層]。栄養の不足が何か月分たまったか）
+# 層の生き残った人が、この飢えのあいだに耐えたいちばん大きい蓄え（余力のそれより小さい人はもう
+# 亡くなっている。蓄えが 0 に戻ると消す）
+ENDURED = "hunger_endured"
+FED = "fed"  # 層が前のターンに食べられた割合（1000 分の 1）
 
 
 def _rand_round(value: float, rng: random.Random) -> int:
@@ -63,6 +69,31 @@ def subsistence_persons(defs: Defs, island: IslandState, tile: Tile) -> int:
         return 0
     unemployed = fac.labor_force(defs, island, tile) - tile.ext.get("employed", 0)
     return min(tile.population, int(max(0, unemployed) / share))
+
+
+def tile_jobless(defs: Defs, island: IslandState, tile: Tile) -> int:
+    """マスの、仕事のない一般の労働者の数（村で自給の農業をしている人を除く。失業率と同じ数え方）。"""
+    share = fac.labor_share(defs, island)
+    idle = max(0, fac.labor_force(defs, island, tile) - tile.ext.get("employed", 0))
+    return max(0, idle - int(subsistence_persons(defs, island, tile) * share))
+
+
+def jobless_family(defs: Defs, island: IslandState) -> float:
+    """一般の労働者1人あたりの家族の人数（住民のうち一般の労働者になる割合の逆数。資産を持つ層と
+    技術者の層の分は除く）。"""
+    share = defs.workers["general"].get("share", 1.0)
+    share += island.ext.get("politics", {}).get("mobilized", 0.0)
+    return 1 / share if share > 0 else 1.0
+
+
+def jobless_persons(defs: Defs, island: IslandState) -> int:
+    """失業している家計の人数（仕事のない一般の労働者とその家族）。"""
+    family = jobless_family(defs, island)
+    total = 0
+    for tile in island.tiles:
+        if tile.population > 0:
+            total += min(tile.population, int(tile_jobless(defs, island, tile) * family))
+    return total
 
 
 def food_need(island: IslandState, ctx: StageContext) -> int:
@@ -140,10 +171,12 @@ def happiness(island: IslandState, facts: dict[str, Any], ctx: StageContext) -> 
     """幸福度（0〜100）。
 
     facts: food・jobs・power・consumer_goods・clothing・luxury・water・education（1000 分の 1）、
-    quality（0〜1）、pollution（汚染）。water はそのマスの上下水道の整備度、education は島の教育
+    quality（0〜1）、pollution（汚染）、hunger（飢えの蓄え。か月）、arrears（賃金が払われなかった
+    働き手の割合。0〜1）。water はそのマスの上下水道の整備度、education は島の教育
     水準。clothing と luxury はフェーズ3-2 の衣料とぜいたく品（economy/needs.py）、consumer_goods は
     フェーズ3-1 までの消費財（移し替えの間だけ重みが残る）。
-    実質賃金が1年前より下がった分と、物価上昇率が目安を超えた分を減点する。上限は体制の
+    実質賃金が1年前より下がった分と、物価上昇率が目安を超えた分、飢えの蓄えと賃金の遅配（回3）を
+    減点する。上限は体制の
     happiness_cap（全体主義 80。フェーズ3-4）。
     """
     w = happiness_weights(island, ctx)
@@ -166,6 +199,10 @@ def happiness(island: IslandState, facts: dict[str, Any], ctx: StageContext) -> 
     over = (inflation(island.economy) - w["inflation_threshold"]) * 100
     if over > 0:
         value -= min(w["inflation_max"], w["inflation_per_point"] * over)
+    # 飢えの蓄え（回3）: 食べられるようになっても、体が戻るまで暮らしは苦しい
+    value -= min(w.get("hunger_max", 0), w.get("hunger", 0) * facts.get(HUNGER, 0.0))
+    # 賃金の遅配（回3）: 働いても払われない人の割合
+    value -= w.get("arrears", 0) * facts.get("arrears", 0.0)
     # 体制の幸福度の上限（全体主義 80。フェーズ3-4）
     return max(0, min(politics.happiness_cap(island, ctx.defs), round(value)))
 
@@ -174,12 +211,12 @@ def _idle(defs: Defs, island: IslandState, tile: Tile) -> int:
     return max(0, fac.labor_force(defs, island, tile) - tile.ext.get("employed", 0))
 
 
-def _homes(island: IslandState, config: GameConfig) -> dict[Pos, Facility]:
+def homes_of(island: IslandState, config: GameConfig) -> dict[Pos, Facility]:
     kind = fac.housing_kind(config)
     return {(f.x, f.y): f for f in island.facilities if f.kind == kind}
 
 
-def _vacancies(defs: Defs, island: IslandState, turn: int) -> list[tuple[Facility, int]]:
+def vacancies_of(defs: Defs, island: IslandState, turn: int) -> list[tuple[Facility, int]]:
     """人手の足りない施設（工事中も含む。マスを持たない施設は除く）と、足りない人数。
 
     雇いたい人数は、雇用の段で払える賃金の分に抑えた人数（economy["wanted"]）。
@@ -222,7 +259,116 @@ def _layer_facts(island: IslandState, ctx: StageContext) -> dict[str, dict[str, 
             "eaten": eaten,
             "need": need,
         }
+        if layer == GENERAL:  # 賃金が払われないまま働いている人の割合（雇用の段。回3）
+            facts[layer]["arrears"] = island.scratch.get("arrears_share", 0.0)
     return facts
+
+
+def hunger_step(stock: float, shortfall: float, settings: dict[str, float]) -> float:
+    """飢えの蓄えの次の値: S + d − tolerance − recovery × S（0 未満は 0）。
+
+    d はこのターンに足りなかった食料の割合（0〜1）。体は少しの不足を代謝を落として耐え
+    （tolerance）、やせるほど使う量が減り、食べられれば少しずつ戻る（recovery）。半分しか食べ
+    られない月が続くと、蓄えは (d − tolerance) ÷ recovery に近づく。
+    """
+    value = stock + shortfall - settings["tolerance"] - settings["recovery"] * stock
+    return max(0.0, value)
+
+
+def starved_share(stock: float, settings: dict[str, float]) -> float:
+    """飢えの蓄えが stock になるまでに亡くなる人の割合（同じだけ食べられなかった人たちのうち）。
+
+    体の余力（何か月分の不足に耐えられるか）は、年齢・体格・病気で人によって違う。余力は平均
+    reserve・ばらつき reserve_spread の正規分布に従い、いちばん弱い人でも reserve_min はある
+    （その下を切った分布）。蓄えが自分の余力を超えた人が亡くなる。
+    """
+    low = settings["reserve_min"]
+    if stock <= low:
+        return 0.0
+
+    def below(x: float) -> float:
+        z = (x - settings["reserve"]) / (settings["reserve_spread"] * math.sqrt(2))
+        return 0.5 * math.erfc(-z)
+
+    floor = below(low)
+    return (below(stock) - floor) / (1 - floor)
+
+
+def hunger_deaths(stock: float, endured: float, ctx: StageContext) -> float:
+    """飢えの蓄え stock の層で、このターンに亡くなる人の割合（名前付きの式 hunger_deaths）。
+
+    層の生き残った人は、この飢えのあいだに蓄え endured まで耐えた人（余力のそれより小さい人は
+    もう亡くなっている）。亡くなるのは、余力が endured から stock までの間にある人で、生き残って
+    いる人のうち (F(stock) − F(endured)) ÷ (1 − F(endured))（F は starved_share）。弱った人から
+    先に亡くなり、同じだけ食べられない層でも、何か月かに分かれて亡くなる（設計書の回3。オランダの
+    飢餓の冬・ベンガル・レニングラードの最悪の冬・何も食べられないときの幅に入るかで確かめた値）。
+    """
+    if stock <= endured:
+        return 0.0
+    settings = ctx.config.get("population.hunger")
+    before = starved_share(endured, settings)
+    if before >= 1.0:
+        return 1.0
+    return min(1.0, (starved_share(stock, settings) - before) / (1 - before))
+
+
+def layer_tiles(
+    defs: Defs, island: IslandState, households: dict[str, dict[str, Any]]
+) -> dict[str, dict[Pos, int]]:
+    """層ごとの、マスに住む人数の見込み（層の人数をマスに割り振る）。
+
+    失業している家計はマスの仕事のない人の家族、資産を持つ層と技術者の層は住民の数に比例、一般の
+    層は残り。島全体の人数として持つ層をマスに置くのは、亡くなる人と生まれる人をマスに割り振る
+    ためだけ。"""
+    tiles = [t for t in island.tiles if t.population > 0]
+    population = sum(t.population for t in tiles)
+    if population <= 0 or not households:
+        return {}
+    spread = sum(h["persons"] for h in households.values() if "share" in h or "workers" in h)
+    family = jobless_family(defs, island)
+    raw: dict[str, dict[Pos, float]] = {name: {} for name in households}
+    for t in tiles:
+        pos = (t.x, t.y)
+        idle = min(t.population, tile_jobless(defs, island, t) * family)
+        rest = max(0.0, t.population * (1 - spread / population) - idle)
+        for name, h in households.items():
+            if h.get("jobless"):
+                raw[name][pos] = idle
+            elif "share" in h or "workers" in h:
+                raw[name][pos] = float(t.population)
+            else:
+                raw[name][pos] = rest
+    out: dict[str, dict[Pos, int]] = {}
+    for name, h in households.items():
+        weights = raw[name]
+        total = sum(weights.values())
+        if total <= 0:
+            # 重みがなければ住民の数で（失業している家計の数え直しの前など）
+            weights = {(t.x, t.y): float(t.population) for t in tiles}
+            total = float(population)
+        out[name] = {pos: int(h["persons"] * w / total) for pos, w in weights.items()}
+    return out
+
+
+def _exposed(
+    defs: Defs, island: IslandState, placed: dict[str, dict[Pos, int]]
+) -> dict[str, dict[Pos, int]]:
+    """層ごとの、市場で食料を買って食べている人のマスごとの数（layer_tiles の数から、一般の層の
+    村で自給の農業をしている人を除く）。"""
+    out = dict(placed)
+    general = placed.get(GENERAL)
+    if general:
+        own = {
+            (t.x, t.y): subsistence_persons(defs, island, t) for t in island.tiles if t.population
+        }
+        out[GENERAL] = {pos: max(0, n - own.get(pos, 0)) for pos, n in general.items()}
+    return out
+
+
+def spread_over(amount: int, places: dict[Pos, int]) -> dict[Pos, int]:
+    """amount 人を、マスごとの人数 places に比例して割り振る（足りない分は多いマスから）。"""
+    order = sorted(places.items(), key=lambda kv: (-kv[1], kv[0][1], kv[0][0]))
+    return proportional(min(amount, sum(places.values())), order)
 
 
 class Population(IslandStage):
@@ -232,109 +378,182 @@ class Population(IslandStage):
         defs, config = ctx.defs, ctx.config
         rng = ctx.rng(island.id)
         layers = _layer_facts(island, ctx)
-        general = layers.get(GENERAL) or {
+        households = island.economy.households
+        fed = {
             "food": fac.FULL,
             "quality": 0.0,
             "consumer_goods": 0,
             "clothing": 0,
             "luxury": 0,
+            HUNGER: 0.0,
         }
-        island.scratch["food"] = {
-            "need": sum(f["need"] for f in layers.values()),
-            "supplied": sum(f["eaten"] for f in layers.values()),
-            "ratio": general["food"],
-        }
-        homes = _homes(island, config)
         p = config.get("population")
+        placed = layer_tiles(defs, island, households)
+        exposed = _exposed(defs, island, placed)
+        stocks = self._hunger(island, ctx, layers, exposed, rng)
+        general = layers.get(GENERAL) or fed
+        jobless = layers.get(JOBLESS)
+        need = sum(f["need"] for f in layers.values())
+        supplied = sum(f["eaten"] for f in layers.values())
+        island.scratch["food"] = {
+            "need": need,
+            "supplied": supplied,
+            "ratio": fac.ratio(supplied, need) if layers else fac.FULL,
+        }
+        homes = homes_of(island, config)
+        hungry = {n for n, f in layers.items() if f["food"] < fac.FULL or f[HUNGER] > 0}
         moods: dict[str, list[float]] = {}
         power_sum = pollution_sum = water_sum = people = 0
-        starved = emigrated = 0  # 食料が足りずに減った人数と、幸福度が低くて島を出た人数
         education = island.economy.education
+        # 亡くなる人を、層ごとにその層の住むマスへ割り振る（村で自給の農業をしている人は除く）
+        lost_by_tile: dict[Pos, int] = {}
+        deaths: dict[str, int] = {}
+        for name, count in sorted(stocks.items()):
+            applied = 0
+            for pos, n in spread_over(count, exposed.get(name, {})).items():
+                n = min(n, island.tile(*pos).population - lost_by_tile.get(pos, 0))
+                if n > 0:
+                    lost_by_tile[pos] = lost_by_tile.get(pos, 0) + n
+                    applied += n
+            if applied > 0:
+                deaths[name] = applied
+        self._log_deaths(island, deaths, layers)
         for tile in island.tiles:
             if tile.population <= 0:
                 tile.ext.pop("happiness", None)
                 continue
+            pos = (tile.x, tile.y)
             labor = fac.labor_force(defs, island, tile)
             working = tile.ext.get("employed", 0)
             if subsistence_persons(defs, island, tile):
                 working = labor  # 村で自給の農業をしている人は、仕事がないとは数えない
-            facts = {
-                "food": general["food"],
+            local = {
                 "jobs": fac.ratio(working, labor) if labor else fac.FULL,
                 "power": tile.ext.get("power", 0),
-                "quality": general["quality"],
-                "consumer_goods": general["consumer_goods"],
-                "clothing": general["clothing"],
-                "luxury": general["luxury"],
                 "pollution": tile.pollution,
                 "water": infra.water(defs, tile),
                 "education": education,
             }
-            mood = ctx.formula("happiness")(island, facts, ctx)
+            idle = placed.get(JOBLESS, {}).get(pos, 0) if jobless else 0
+            workers = max(0, placed.get(GENERAL, {}).get(pos, tile.population))
+            # マスの幸福度（地図・町の育ち・人の移り先）: 一般の労働者の、仕事のある家計と失業して
+            # いる家計を、マスに住む人数で混ぜる
+            mood = ctx.formula("happiness")(
+                island, {**local, **_mix(general, jobless, workers, idle)}, ctx
+            )
             tile.ext["happiness"] = mood
-            power_sum += facts["power"] * tile.population
+            if jobless is not None:
+                # 層の幸福度: 仕事のある家計は仕事が満点、失業している家計は 0
+                for name, facts, weight, jobs in (
+                    (GENERAL, general, workers, fac.FULL),
+                    (JOBLESS, jobless, idle, 0),
+                ):
+                    if weight <= 0:
+                        continue
+                    value = ctx.formula("happiness")(
+                        island, {**local, **_facts(facts), "jobs": jobs}, ctx
+                    )
+                    entry = moods.setdefault(name, [0, 0])
+                    entry[0] += value * weight
+                    entry[1] += weight
+            else:
+                entry = moods.setdefault(GENERAL, [0, 0])
+                entry[0] += mood * tile.population
+                entry[1] += tile.population
+            power_sum += local["power"] * tile.population
             pollution_sum += tile.pollution * tile.population
-            water_sum += facts["water"] * tile.population
+            water_sum += local["water"] * tile.population
             people += tile.population
-            moods.setdefault(GENERAL, [0, 0])
-            moods[GENERAL][0] += mood * tile.population
-            moods[GENERAL][1] += tile.population
-            home = homes.get((tile.x, tile.y))
+            home = homes.get(pos)
             capacity = fac.housing_capacity(defs, home) if home else 0
-            pop = tile.population
-            if general["food"] >= fac.FULL:
+            pop = tile.population - min(tile.population, lost_by_tile.get(pos, 0))
+            # 生まれるのは食べられている層の人から（飢えている間は生まれない。自給の農業で食べている
+            # 人は、市場の食料が足りなくても食べられている）
+            fed_here = tile.population - sum(exposed.get(name, {}).get(pos, 0) for name in hungry)
+            if fed_here > 0:
                 # 仕事のある人の割合が growth_min_jobs を下回るマスでは増えず、1に近いほどよく増える
                 low = p["growth_min_jobs"]
-                jobs = max(0.0, min(1.0, (facts["jobs"] / fac.FULL - low) / (1 - low)))
-                births = _rand_round(pop * p["growth_rate"] * mood / 100 * jobs, rng)
+                jobs = max(0.0, min(1.0, (local["jobs"] / fac.FULL - low) / (1 - low)))
+                births = _rand_round(fed_here * p["growth_rate"] * mood / 100 * jobs, rng)
                 pop += min(births, max(0, capacity - pop))
-            else:
-                hunger = (fac.FULL - general["food"]) / fac.FULL
-                lost = min(pop, _rand_round(pop * p["starvation_rate"] * hunger, rng))
-                pop -= lost
-                starved += lost
-            if mood < p["emigration_happiness"]:
-                left = min(max(0, pop), _rand_round(pop * p["emigration_rate"], rng))
-                pop -= left
-                emigrated += left
             tile.population = max(0, pop)
-        moods_by_layer = (
-            {GENERAL: moods[GENERAL][0] / moods[GENERAL][1]} if GENERAL in moods else {}
-        )
+        moods_by_layer = {n: v / w for n, (v, w) in moods.items() if w > 0}
         for layer, f in sorted(layers.items()):
-            if layer == GENERAL or not people:
+            if layer in (GENERAL, JOBLESS) or not people:
                 continue
             facts = {
-                "food": f["food"],
+                **_facts(f),
                 "jobs": fac.FULL,
                 "power": power_sum // people,
-                "quality": f["quality"],
-                "consumer_goods": f["consumer_goods"],
-                "clothing": f["clothing"],
-                "luxury": f["luxury"],
                 "pollution": pollution_sum / people,
                 "water": water_sum // people,
                 "education": education,
             }
             moods_by_layer[layer] = ctx.formula("happiness")(island, facts, ctx)
-        # 人口の減りを知らせる（毎ターン数百人ずつ減っても、出来事にもログにも出ていなかった）
-        if starved > 0:
-            # 足りている割合は小数1桁で切り捨てる（四捨五入すると 99.5% 以上が 100% になり、
-            # 「足りている割合 100%」で人口が減ると出ていた）
-            ratio = math.floor(general["food"] * 1000 / fac.FULL) / 10
-            island.log.append(LogEntry("population_starved", {"count": starved, "ratio": ratio}))
-        if emigrated > 0:
-            args = {"count": emigrated, "line": p["emigration_happiness"]}
-            island.log.append(LogEntry("population_emigrated", args))
         island.scratch["layer_happiness"] = moods_by_layer
         island.scratch["layer_facts"] = layers
         self._migrate(island, ctx, rng, homes)
         if island.has_economy:
+            remove_dead(island, defs, deaths)
             changes = split_persons(island, defs, sum(t.population for t in island.tiles))
             move_people(island, changes)
             if island.economy.happiness_blend > 0:
                 _blend_notice(island, ctx)
                 island.economy.happiness_blend -= 1
+
+    @staticmethod
+    def _hunger(
+        island: IslandState,
+        ctx: StageContext,
+        layers: dict[str, dict[str, Any]],
+        exposed: dict[str, dict[Pos, int]],
+        rng: random.Random,
+    ) -> dict[str, int]:
+        """層ごとに飢えの蓄えを進め、亡くなる人数を返す（層の状態に蓄えと食べた割合を書く）。
+
+        亡くなりうるのは、市場で食料を買って食べている人（exposed。村で自給の農業をしている人は、
+        一般の層でも、市場の食料が足りないことでは飢えない）。
+        """
+        settings = ctx.config.get("population.hunger")
+        households = island.economy.households
+        deaths: dict[str, int] = {}
+        for name, f in sorted(layers.items()):
+            h = households[name]
+            shortfall = max(0.0, 1 - f["food"] / fac.FULL)
+            stock = hunger_step(h.get(HUNGER, 0.0), shortfall, settings)
+            endured = h.get(ENDURED, 0.0)
+            if stock > 0:
+                h[HUNGER] = round(stock, 4)
+                h[ENDURED] = round(max(endured, stock), 4)
+            else:  # 体が戻った
+                h.pop(HUNGER, None)
+                h.pop(ENDURED, None)
+            h[FED] = f["food"]
+            f[HUNGER] = stock
+            rate = ctx.formula("hunger_deaths")(stock, endured, ctx)
+            persons = h["persons"]
+            if name == GENERAL and name in exposed:
+                persons = min(persons, sum(exposed[name].values()))
+            count = min(persons, _rand_round(persons * rate, rng)) if rate > 0 else 0
+            if count > 0:
+                deaths[name] = count
+        return deaths
+
+    @staticmethod
+    def _log_deaths(
+        island: IslandState, deaths: dict[str, int], layers: dict[str, dict[str, Any]]
+    ) -> None:
+        """飢えで亡くなった人を統計とターンログに残す（毎ターン減っても気づけるように）。"""
+        total = sum(deaths.values())
+        if total <= 0:
+            return
+        stats = island.stats
+        stats["population.starved"] = total
+        for name, count in deaths.items():
+            stats[f"layer.{name}.starved"] = count
+        worst = max(layers[name][HUNGER] for name in deaths)
+        args = {"count": total, "months": math.floor(worst * 10) / 10}
+        island.log.append(LogEntry("population_hunger_deaths", args))
 
     def _migrate(
         self,
@@ -354,7 +573,7 @@ class Population(IslandStage):
         }
         pull: dict[Pos, int] = {}
         needed = 0
-        for f, missing in _vacancies(defs, island, ctx.turn):
+        for f, missing in vacancies_of(defs, island, ctx.turn):
             persons = int(missing / share)
             needed += persons
             for pos in within(island, (f.x, f.y), fac.commute_radius(defs, config, f.kind)):
@@ -414,6 +633,57 @@ class Population(IslandStage):
             island.log.append(LogEntry("residents_left", {"count": left_island}))
 
 
+def _facts(f: dict[str, Any]) -> dict[str, Any]:
+    """層の食べた割合などを、幸福度の式の facts の形にする。"""
+    return {
+        "food": f["food"],
+        "quality": f["quality"],
+        "consumer_goods": f["consumer_goods"],
+        "clothing": f["clothing"],
+        "luxury": f["luxury"],
+        HUNGER: f.get(HUNGER, 0.0),
+        "arrears": f.get("arrears", 0.0),
+    }
+
+
+def _mix(
+    general: dict[str, Any], jobless: dict[str, Any] | None, workers: int, idle: int
+) -> dict[str, Any]:
+    """仕事のある家計と失業している家計の facts を、マスに住む人数で混ぜる。"""
+    a = _facts(general)
+    if jobless is None or idle <= 0:
+        return a
+    b = _facts(jobless)
+    total = workers + idle
+    if total <= 0:
+        return a
+    out: dict[str, Any] = {}
+    for key, value in a.items():
+        mixed = (value * workers + b[key] * idle) / total
+        out[key] = round(mixed) if isinstance(value, int) else mixed
+    return out
+
+
+def remove_dead(island: IslandState, defs: Defs, deaths: dict[str, int]) -> None:
+    """亡くなった人を層の人数から引く（技術者は働き手の数も。預金は残った家族が持つ）。
+    層の人数を決め直す（split_persons）前に呼ぶ。"""
+    households = island.economy.households
+    for name, count in sorted(deaths.items()):
+        h = households.get(name)
+        if h is None or count <= 0:
+            continue
+        persons = h["persons"]
+        kind = h.get("workers")
+        if kind:
+            pool = island.economy.workers.get(kind, 0)
+            gone = min(pool, pool * count // persons) if persons > 0 else 0
+            if gone > 0:
+                island.economy.workers[kind] = pool - gone
+                if kind == fac.ENGINEER:
+                    recount_engineers(island, pool, 0, gone)
+        h["persons"] = max(0, persons - count)
+
+
 class Housing(IslandStage):
     """都市の発展: 人手の足りない施設の通勤圏で住む所が足りなければ、町を育てるか新しく作る。
 
@@ -431,13 +701,13 @@ class Housing(IslandStage):
         housing = island.economy.housing
         housing.setdefault("stock", {})
         housing["want"] = {}
-        homes = _homes(island, config)
+        homes = homes_of(island, config)
         kind = fac.housing_kind(config)
         levels = defs.settlement_levels()
         built = upgraded = 0
         short: set[str] = set()  # 足りなくて町が育たなかった資源
         dry: set[Pos] = set()  # 上下水道が足りなくて育たなかった町のマス
-        vacancies = sorted(_vacancies(defs, island, ctx.turn), key=lambda v: (-v[1], v[0].id))
+        vacancies = sorted(vacancies_of(defs, island, ctx.turn), key=lambda v: (-v[1], v[0].id))
         for f, missing in vacancies:
             if built >= h["max_new_per_turn"] and upgraded >= h["max_upgrades_per_turn"]:
                 break
@@ -581,4 +851,5 @@ def register(registry: Registry) -> None:
     registry.add_stage(Housing())
     registry.add_formula("food_need", food_need)
     registry.add_formula("happiness", happiness)
+    registry.add_formula("hunger_deaths", hunger_deaths)
     registry.add_check(check_population_defs)

@@ -56,8 +56,9 @@ def open_treasury(
     state["caps"] = dict(caps)
 
 
-def available(island: IslandState, payer: Payer) -> int:
-    """payer がいま使えるお金（取り置いた分を除く）。"""
+def available(island: IslandState, payer: Payer, capped: bool = True) -> int:
+    """payer がいま使えるお金（取り置いた分を除く）。capped が偽なら、年の予算の月割りで止めない
+    （お金が足りないのか、予算で止まっているのかを分ける。賃金の遅配）。"""
     entity = payer.entity
     if entity == ledger.CB or ledger.is_bank(entity):
         return UNLIMITED
@@ -72,7 +73,7 @@ def available(island: IslandState, payer: Payer) -> int:
     held = sum(max(0, r - used.get(i, 0)) for i, r in reserved.items())
     free = max(0, unclaimed - held)
     amount = min(unclaimed, own + free)
-    if item in state["caps"]:
+    if capped and item in state["caps"]:
         amount = min(amount, state["caps"][item] - used.get(item, 0))
     return max(0, amount)
 

@@ -1,9 +1,14 @@
-"""教育の段（フェーズ2-3）: 教育水準と、大学の技術者の育成・引退。
+"""教育の段（フェーズ2-3。回3 で人の蓄えにした）: 教育水準と、大学の技術者の育成・引退。
 
-- 教育水準 E（economy.education、1000 分の 1）は、毎ターン目標 E_goal との差の 1/education.speed
-  だけ動きます（式 education_level）。E_goal = min(1, Σ(学校の定員 × 稼働率) ÷ 子どもの数)、
-  子どもの数は住民の education.children です。教育費を削っても E はすぐには下がらず、数年かけて
-  効いてきます。E は施設の生産性（economy/productivity.py）と幸福度に効きます。
+- 教育水準 E（economy.education、1000 分の 1）は「働き手のうち学校で学んだ人の割合」という人の
+  蓄えです（回3）。毎ターン、働き手に加わる若い人と、引退や死亡で抜ける人の分だけ入れ替わり、
+  入れ替わりの速さは働く期間（education.working_years 年）から出します（式 education_level）。
+  働き手に加わる若い人の学んだ割合は、子どもたちが学校に通えた割合で、これも通う年数
+  （education.school_years 年）をかけて入れ替わります（economy.ext["schooled"]）。今のターンに
+  通えている割合 = min(1, Σ(学校の定員 × 稼働率) ÷ 子どもの数)、子どもの数は住民の
+  education.children です。学校が止まっても、すでに学んだ人の分は残り、学校を建てても、学んだ
+  人が働き手に入るまで時間がかかります（現実の韓国は教育の水準を大きく上げるのに30年ほど）。
+  E は施設の生産性（economy/productivity.py）と幸福度に効きます。
 - 大学は1ターンに「育てる数 × 稼働率 × 入学の割合」を一般の労働者から技術者にし、技術者は1ターンに
   education.retire_rate が引退して一般の層に戻ります（端数は次のターンに持ち越す）。育った人と
   引退した人の預金は、層を移る人と一緒に動きます（economy/households.py の set_workers）。
@@ -17,6 +22,7 @@
 from __future__ import annotations
 
 from hakoniwa_core import facilities as fac
+from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.economy.households import recount_engineers as _recount
 from hakoniwa_core.economy.households import set_workers
 from hakoniwa_core.modules.labor import engineer_unemployment
@@ -25,13 +31,28 @@ from hakoniwa_core.state import IslandState
 from hakoniwa_core.turn.context import StageContext
 
 FULL = 1000
+STOCK = "education_stock"  # 働き手の学んだ割合（0〜1 の小数。economy.education はこれを丸めた値）
+SCHOOLED = "schooled"  # 働き手に加わる若い人の学んだ割合（0〜1）
 
 
-def education_level(island: IslandState, goal: int, ctx: StageContext) -> int:
-    """次のターンの教育水準: E + (E_goal − E) ÷ education.speed（名前付きの式 education_level）。"""
-    now = island.economy.education
-    step = (goal - now) / ctx.config.get("education.speed")
-    return max(0, min(FULL, now + round(step)))
+def education_level(island: IslandState, attending: float, ctx: StageContext) -> float:
+    """次のターンの教育水準（0〜1。名前付きの式 education_level）。
+
+    子どもたちの学んだ割合 C は、今通えている割合 attending へ 1 ÷ (通う年数 × 12) ずつ
+    入れ替わり、働き手の学んだ割合 E は C へ 1 ÷ (働く年数 × 12) ずつ入れ替わる（1ターンに。
+    働き手に加わる若い人と、引退して抜ける人の入れ替わり）。端数を丸めないよう、蓄えは
+    economy.ext に小数で持つ。
+    """
+    settings = ctx.config.get("education")
+    ext = island.economy.ext
+    now = ext.get(STOCK, 0.0)
+    if round(now * FULL) != island.economy.education:  # 建国や移し替えで水準が置き直された
+        now = island.economy.education / FULL
+    schooled = ext.get(SCHOOLED, now)
+    schooled += (attending - schooled) / (settings["school_years"] * YEAR)
+    now += (schooled - now) / (settings["working_years"] * YEAR)
+    ext[SCHOOLED] = round(schooled, 6)
+    return max(0.0, min(1.0, now))
 
 
 def school_seats(island: IslandState, ctx: StageContext) -> tuple[float, float]:
@@ -60,12 +81,15 @@ class Education(IslandStage):
         seats, trained = school_seats(island, ctx)
         if settings.get("intake_unemployment"):
             trained *= max(0.0, 1 - engineer_unemployment(island) / settings["intake_unemployment"])
-        goal = economy.education
+        attending = economy.ext.get(SCHOOLED, economy.education / FULL)
         if children > 0:
-            goal = min(FULL, round(seats * FULL / children))
-        economy.education = ctx.formula("education_level")(island, goal, ctx)
+            attending = min(1.0, seats / children)
+        level = ctx.formula("education_level")(island, attending, ctx)
+        economy.ext[STOCK] = round(level, 6)
+        economy.education = round(level * FULL)
         island.stats["education.level"] = economy.education / 10
-        island.stats["education.goal"] = goal / 10
+        island.stats["education.goal"] = round(attending * 100, 1)
+        island.stats["education.schooled"] = round(economy.ext[SCHOOLED] * 100, 1)
         island.stats["education.seats"] = round(seats)
         # 技術者の育成と引退（端数は持ち越す）
         carry = economy.ext.setdefault("engineer_carry", [0.0, 0.0])

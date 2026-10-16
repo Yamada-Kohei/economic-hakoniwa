@@ -17,6 +17,7 @@ from typing import Any
 
 from hakoniwa_core import politics
 from hakoniwa_core.economy import plan as planning
+from hakoniwa_core.modules import migration
 from hakoniwa_core.modules import politics as politics_orders
 from hakoniwa_core.registry import OrderFailed
 from hakoniwa_core.state import IslandState
@@ -42,6 +43,7 @@ EVENT_NAMES = {
     "default": "債務不履行",
     "transition": "体制を変えた後の混乱期間",
     "office": "首都の政府の建物が壊れている",
+    "trapped": "出国を止められて出られない人",
 }
 # 政情の元にした数の表示名と単位（display.stat_text の単位）
 FACT_NAMES = {
@@ -174,6 +176,7 @@ def politics_data(island: m.Island, mine: bool) -> dict[str, Any]:
             for axis in AXES
         },
         presses=[{"id": p, "name": display.message(PRESS_NAMES[p])} for p in politics.PRESS],
+        migration=_migration(core, defs, config),
         parliament_rules=[
             {"name": defs.name("orders", kind), "rule": RULE_NAMES.get(spec["parliament"], "")}
             for kind, spec in defs.orders.items()
@@ -181,6 +184,33 @@ def politics_data(island: m.Island, mine: bool) -> dict[str, Any]:
         ],
     )
     return data
+
+
+def _migration(core: IslandState, defs: Any, config: Any) -> dict[str, Any]:
+    """移民の受け入れと出国の扱い（バランス調整の回3。hakoniwa_core/modules/migration）。出国の
+    選択肢は、政治の仕組みが許す強さまで。"""
+    immigration, emigration = migration.immigration(core), migration.emigration(core)
+    limit = migration.EMIGRATION.index(migration.exit_limit(core, defs))
+    default_cap = config.get("migration.default_cap")
+    return {
+        "immigration": immigration,
+        "immigration_name": display.message(f"immigration_{immigration}"),
+        "cap": f"{(core.policy.immigration_cap or default_cap) / 100:g}",
+        "default_cap": f"{default_cap / 100:g}",
+        "emigration": emigration,
+        "emigration_name": display.message(f"emigration_{emigration}"),
+        "quota": f"{core.policy.emigration_quota / 100:g}",
+        "immigrations": [
+            {"id": mode, "name": display.message(f"immigration_{mode}")}
+            for mode in migration.IMMIGRATION
+        ],
+        "emigrations": [
+            {"id": mode, "name": display.message(f"emigration_{mode}")}
+            for mode in migration.EMIGRATION[: limit + 1]
+        ],
+        "trapped": config.get("migration.trapped"),
+        "trapped_max": config.get("migration.trapped_max"),
+    }
 
 
 def _rules(config: Any, found: dict[str, Any]) -> dict[str, Any]:

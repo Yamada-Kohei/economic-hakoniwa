@@ -129,6 +129,32 @@
   <p class="order-notice" aria-live="polite"></p>
 </section>
 
+{% with g=p.migration %}
+<section class="panel" id="migration-orders">
+  <h2>{% translate "移民と出国" %}</h2>
+  <table class="info">
+    <tr><th>{% translate "移民の受け入れ" %}</th><td>{{ g.immigration_name }}{% if g.immigration != "closed" %}{% blocktranslate with c=g.cap %}（1年に住民の {{ c }}% まで）{% endblocktranslate %}{% endif %}</td></tr>
+    <tr><th>{% translate "出国の扱い" %}</th><td>{{ g.emigration_name }}{% if g.emigration == "permit" %}{% blocktranslate with q=g.quota %}（1年に住民の {{ q }}% まで）{% endblocktranslate %}{% endif %}</td></tr>
+  </table>
+  <p class="hint">{% blocktranslate with t=g.trapped m=g.trapped_max d=g.default_cap %}移民は、港と商社のある国のあいだを動きます。人は、実質賃金と仕事の見つかりやすさ（飢えている人は食べられた割合も）がほかの国の方がはっきり良いと、少しずつ移り、預金を持っていきます（資本取引を禁止している国からは持ち出せず、国のものになります）。移った人は元の国へ仕送りをし、元の国の方が良くなると帰ります。受け入れは、決めていなければ「受け入れない」で、受け入れても1年の上限（決めていなければ住民の {{ d }}%）と町の空きまでです。出国を止めると、出たいのに出られない人の不満が政情を下げます（1年に住民の 1% あたり {{ t }}、最大 {{ m }}）。民主主義では出国を制限できず、権威主義は許可制まで、全体主義は禁止までできます。{% endblocktranslate %}</p>
+  <form class="actions" data-order="set_immigration">
+    <strong>{% translate "移民の受け入れ" %}</strong>
+    <label><select name="mode">{% for c in g.immigrations %}<option value="{{ c.id }}"{% if c.id == g.immigration %} selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></label>
+    <label>{% translate "1年の上限（住民の %）" %} <input name="cap" type="number" min="0" max="100" step="0.01" placeholder="{{ g.default_cap }}"></label>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  {% if g.emigrations|length > 1 %}
+  <form class="actions" data-order="set_emigration">
+    <strong>{% translate "出国の扱い" %}</strong>
+    <label><select name="mode">{% for c in g.emigrations %}<option value="{{ c.id }}"{% if c.id == g.emigration %} selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></label>
+    <label>{% translate "許可制の1年の枠（住民の %）" %} <input name="quota" type="number" min="0" max="100" step="0.01"></label>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  {% endif %}
+  <p class="order-notice" aria-live="polite"></p>
+</section>
+{% endwith %}
+
 <section class="panel" id="regime-orders">
   <h2>{% translate "体制を変える" %}</h2>
   <p class="hint">{% blocktranslate with t=p.rules.transition_turns d=p.rules.transition_drop e=p.rules.transition_event %}憲法改正（政治体制・元首制度）と経済体制の変更は、議会のある体制では 3 分の 2 の賛成が要ります。変えると {{ t }} ターンの混乱期間に入り、生産性が最大 {{ d }}% 下がり（だんだん戻る）、政情の目標が {{ e }} 下がります。混乱期間の間は体制を変えられません。{% endblocktranslate %}{% translate "首都の建物は、資材を国の倉庫に買い集めて建て替えます。計画経済に変えると民営の施設と民間銀行をすべて国有化し（代金は中央銀行が引き受けた国債で払う）、計画経済から変えると施設はそのまま国営で残ります。" %}</p>

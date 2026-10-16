@@ -82,7 +82,7 @@ from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
 from hakoniwa_core.modules import infrastructure
-from hakoniwa_core.modules.population import layer_food_needs
+from hakoniwa_core.modules.population import FED, HUNGER, layer_food_needs
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import (
     OWNER_PRIVATE,
@@ -106,6 +106,8 @@ from hakoniwa_core.units import (
     to_basis,
     to_milli,
 )
+
+ANCHOR = "anchor"  # 家計の層の状態: 飢える前の食料の値段（値幅の上端。回3）
 
 # 注文を出す者の種類
 FACILITY = "facility"
@@ -137,6 +139,9 @@ class Party:
     public: bool = False  # 公務の施設（学校と大学）の買い注文（政府の消費に数える）
     site: tuple[int, int] | None = None  # 物の出入りのマス（商社と海運業は港。運ぶ道のりに使う）
     gap: int = 0  # 海外の商人の売り: 計画経済の島で、政府が1単位ごとに払う公定価格との差
+    hungry: bool = (
+        False  # 前のターンに食べきれなかった家計の食料の買い（値幅の上を買い上がる。回3）
+    )
 
 
 @dataclass
@@ -250,7 +255,8 @@ def food_by_quality(
     詰めた注文の量。
 
     詰めきれない分は、質を足した栄養あたりの値段（values）が安い順に、それでも足りなければ
-    一番安い財に足す。
+    売りに出ている財のうち一番安い財に足す（売りに出ていない財の値段は前のままで、ほかの食料が
+    値上がりすると一番安く見え、ない物を注文して食べられなくなる。回3）。
     """
     if need <= 0 or not qualities:
         return {}
@@ -266,7 +272,8 @@ def food_by_quality(
             got[g] += take
             left -= take
     if left > 0:
-        got[min(qualities, key=lambda g: (values[g], g))] += left
+        open_goods = [g for g in qualities if caps.get(g, 0) > 0] or list(qualities)
+        got[min(open_goods, key=lambda g: (values[g], g))] += left
     return {g: -(-n * QUANTITY_SCALE // nutritions[g]) for g, n in got.items() if n > 0}
 
 
@@ -327,6 +334,77 @@ def food_orders(
     if cost > budget and cost > 0:
         plan = {g: (q * budget // cost, lim) for g, (q, lim) in plan.items()}
     return plan
+
+
+def hungry_food_orders(
+    need: int,
+    shares: dict[str, int],
+    offered: dict[str, int],
+    menu: FoodMenu,
+    anchors: dict[str, int],
+    usual: int,
+    budget: int,
+    steps: list[float],
+    elasticity: float,
+) -> list[tuple[str, int, int]]:
+    """飢えている家計の食料の注文（財, 量, 指値）の並び（回3）。急ぐ段から並べる。
+
+    まず要る量 need を、ふだんと同じく人数の割合の分（shares）で一番安い組み合わせ（food_split）
+    にし、足りない分は、売りに出ている量（offered）の残りの多い財から足す（ほかの層の分にも手を
+    伸ばす。足す先を主な食料に絞り、売りに出た量の少ない財の値段だけが跳ね上がらないように）。
+    それを要る量の累積の割合 steps の段に分け、段 j（要る量の F_j まで食べられる）の指値を、飢える
+    前の値段（anchors。飢えていないターンの値幅の上端）の F_j ^ (−1/elasticity) 倍にする（食料の
+    需要は値段にあまり反応しないので、少ししか食べられない段ほど高くても買う。基準を今の値段に
+    すると、上がった値段が基準になって上がり続ける）。ふだんの食費 usual で今の値段の値幅の上端
+    まで買える段は、飢えていないときと同じく上端より安くはしない。どの段も、前の段までの取り置きと
+    合わせて食費の限り budget（預金を崩す分を含む）に収まる分までにする（お金のない家計から買えなく
+    なり、値段は買える人の分まで上がって止まる）。
+    """
+    if need <= 0 or budget <= 0:
+        return []
+
+    def nutrition(basket: dict[str, int]) -> int:
+        return sum(q * menu.nutritions[g] // QUANTITY_SCALE for g, q in basket.items())
+
+    split = food_split(need, menu.values, menu.nutritions, shares, menu.elasticity)
+    basket = {g: min(q, shares.get(g, 0)) for g, q in split.items()}
+    short = need - nutrition(basket)
+    room = {g: max(0, offered.get(g, 0) - basket.get(g, 0)) for g in menu.values}
+    for good in sorted(room, key=lambda g: (-room[g] * menu.nutritions[g], g)):
+        if short <= 0 or room[good] <= 0:
+            break
+        qty = min(room[good], -(-short * QUANTITY_SCALE // menu.nutritions[good]))
+        basket[good] = basket.get(good, 0) + qty
+        short -= qty * menu.nutritions[good] // QUANTITY_SCALE
+    basket = {g: q for g, q in sorted(basket.items()) if q > 0}
+    whole = sum(gross_cost(menu.limits[g], q, menu.rate, menu.tax) for g, q in basket.items())
+    if nutrition(basket) <= 0 or whole <= 0:
+        return []
+    orders: list[tuple[str, int, int]] = []
+    done, reserved = 0.0, 0
+    for upto in steps:
+        portion = upto - done
+        done = upto
+        if portion <= 0:
+            continue
+        scale = upto ** (-1 / elasticity)
+        floor = upto * whole <= usual  # ふだんの食費で今の値幅の上端まで買える段
+        limits = {}
+        for g in basket:
+            limit = scale_price(anchors.get(g, menu.limits[g]), scale)
+            limits[g] = max(limit, menu.limits[g]) if floor else limit
+        cost = sum(gross_cost(limits[g], q, menu.rate, menu.tax) for g, q in basket.items())
+        fit = min(portion, (budget - reserved) / cost) if cost > 0 else 0.0
+        if fit <= 0:
+            break
+        for good, qty in basket.items():
+            amount = round_money(qty * fit)
+            if amount > 0:
+                orders.append((good, amount, limits[good]))
+                reserved += gross_cost(limits[good], amount, menu.rate, menu.tax)
+        if fit < portion:
+            break
+    return orders
 
 
 # --- 名前付きの式 -----------------------------------------------------------------
@@ -588,7 +666,8 @@ class Market(IslandStage):
     ) -> tuple[tuple[int, int] | None, auction.Allocate | None]:
         """板寄せの値幅と、買いの割当ルール。計画経済の財は公定価格で値幅 0 にし、割当の順位と
         配給で分ける。混合経済で上限（price_cap）か下限（price_floor）を決めた財は、値幅をそこで
-        止める。ほかは今のまま（None, None）。"""
+        止める。前のターンに食べきれなかった家計が値幅の上端より高く買う食料は、上端をその指値まで
+        広げる（回3。上限を決めた財は広げない）。ほかは今のまま（None, None）。"""
         price = official.get(good)
         if price:
             tiers: list[int] = []
@@ -610,13 +689,20 @@ class Market(IslandStage):
             return (price, price), planning.allocator(tiers, layers, persons)
         policy = island.policy
         cap, floor = policy.price_cap.get(good), policy.price_floor.get(good)
-        if not (cap or floor) or not politics.trait(island, ctx.defs, "price_controls", False):
-            return None, None
+        controlled = politics.trait(island, ctx.defs, "price_controls", False)
         width = to_basis(ctx.config.get("market.band"))
         low, high = auction.band(island.economy.prices.get(good, 1), width)
+        # 前のターンに食べきれなかった家計の買いは、値幅の上端を超えて買い上がる（回3。上限を
+        # 決めた財は上限で止まる）
+        bids = [order.limit for order, party in book.buys if party.hungry and order.limit]
+        top = max(bids) if bids else 0
+        if not ((cap or floor) and controlled):
+            return ((low, top), None) if top > high else (None, None)
         if cap:
             high = max(1, min(high, cap))
             low = min(low, high)
+        else:
+            high = max(high, top)
         if floor:
             low = max(low, floor)
             high = max(high, low)
@@ -736,7 +822,9 @@ class Market(IslandStage):
             if not f.built or fac.is_housing(config, f) or not fac.on_map(f):
                 continue
             recipe = fac.recipe_of(defs, f)
-            if not recipe["outputs"] and not recipe["inputs"]:
+            # 作り方のない施設は飛ばす。ただし畑をみな蒔き直している途中の農場は、前の作物の在庫を
+            # 売る（回3）。商社の輸出と輸入の荷は商社が自分で売り買いするので、ここでは売らない
+            if not recipe["outputs"] and not recipe["inputs"] and fac.FIELDS not in f.economy:
                 continue
             rate = rates.get(f.id, 0)
             payer = payer_of(defs, config, f)
@@ -1081,11 +1169,24 @@ class Market(IslandStage):
             for layer in sorted(island.economy.households)
         }
         all_planned = sum(planned_of.values()) or 1
+        hungry_settings = settings["hungry"]
         for layer in sorted(island.economy.households):
             payer = Payer(household(layer))
             planned = planned_of[layer]
             paid = power_paid.get(layer, 0)
-            budget = max(0, min(planned - paid, funds.available(island, payer)))
+            available = funds.available(island, payer)
+            budget = max(0, min(planned - paid, available))
+            # 飢えている家計（回3。前のターンに食べきれなかったか、飢えの蓄えが残っている）: 預金を
+            # 崩してでも食料を先に買い、ほかの層の分にも手を伸ばして、値幅の上端を超えて買い上がる
+            # （お金のない家計から買えなくなる）
+            state = island.economy.households[layer]
+            hungry = state.get(FED, fac.FULL) < to_milli(hungry_settings["threshold"])
+            hungry = hungry or state.get(HUNGER, 0) > 0
+            if hungry:
+                extra = part(
+                    ledger.money(island, household(layer)), to_basis(hungry_settings["savings"])
+                )
+                budget = max(0, min(available, budget + extra))
             island.scratch.setdefault("household_budget", {})[layer] = budget
             share = persons[layer] / total_persons
             income = needs.real_income(island, config, planned, persons[layer])
@@ -1111,7 +1212,26 @@ class Market(IslandStage):
             caps = {g: int(offered.get(g, 0) * share) for g in foods}
             cap = round_money(planned * needs.necessity_share(config, income))
             food_budget = max(0, cap - paid - wear_cost)
-            plan = food_orders(need, caps, menu, food_budget, budget)
+            if hungry:
+                # 飢える前の値段（飢えていないターンに残した値幅の上端）を基準に買い上がる
+                anchors = {**menu.limits, **state.get(ANCHOR, {})}
+                tiers = hungry_food_orders(
+                    need,
+                    caps,
+                    offered,
+                    menu,
+                    anchors,
+                    food_budget,
+                    budget,
+                    hungry_settings["steps"],
+                    hungry_settings["elasticity"],
+                )
+                food_budget = budget
+                plan = {}
+            else:
+                tiers = []
+                plan = food_orders(need, caps, menu, food_budget, budget)
+                state[ANCHOR] = {g: menu.limits[g] for g in foods if offered.get(g, 0) > 0}
             # 売りに出ていない食料も、あれば買いたい量を記録する（作る施設があれば、採算の合う
             # 値段まで値段が上がって作り始める。_record）
             plenty = dict.fromkeys(foods, need * QUANTITY_SCALE)
@@ -1137,6 +1257,12 @@ class Market(IslandStage):
                     if qty > 0:
                         desire[good] = desire.get(good, 0) + qty
             food_cost = sum(gross_cost(lim, q, rate, tax) for q, lim in plan.values())
+            if tiers:  # 飢えた家計は食費を先に取る（食料に使い切らなかった分は預金に残る）
+                food_cost = min(budget, sum(gross_cost(lim, q, rate, tax) for _, q, lim in tiers))
+                for good, qty, limit in tiers:
+                    self._household_buy(
+                        island, books_by_good, good, qty, limit, rate, tax, layer, priority, True
+                    )
             left = budget - food_cost
             if wear_cost > left and wear_cost > 0:
                 wear = {g: (q * max(0, left) // wear_cost, lim) for g, (q, lim) in wear.items()}
@@ -1312,6 +1438,7 @@ class Market(IslandStage):
         tax: int,
         layer: str,
         priority: int,
+        hungry: bool = False,
     ) -> None:
         if qty <= 0:
             return
@@ -1323,7 +1450,7 @@ class Market(IslandStage):
             cost = gross_cost(limit, qty, rate, tax)
         if qty <= 0:
             return
-        party = Party(HOUSEHOLD, household(layer), payer, rate, tax, layer=layer)
+        party = Party(HOUSEHOLD, household(layer), payer, rate, tax, layer=layer, hungry=hungry)
         party.reserved = cost
         funds.commit(island, payer, cost)
         self._add(books_by_good, good, "buy", Order(qty, limit, priority), party)

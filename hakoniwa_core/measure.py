@@ -41,6 +41,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import gate
 from hakoniwa_core.autoplan import plan_trade, plan_turn, queue_orders
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import books, is_stopped, is_transport
 from hakoniwa_core.economy.prices import initial_prices
@@ -72,6 +73,8 @@ class Scenario:
     # 同じ。民主主義の島は、建国した最初のターンは賛成がちょうど半分で否決される）
     independent: bool = False
     kinds: tuple[str, ...] | None = None  # 関門に数える目安の種類（None なら全部）
+    # 初めのターンに、どの島も移民の受け入れをこれにする（回3。"" は命令を出さない）
+    immigration: str = ""
 
 
 SCENARIOS = {
@@ -83,6 +86,9 @@ SCENARIOS = {
         ),
         Scenario("independent", "中央銀行を独立させた国（標準の計画）", 50, "plan", True),
         Scenario("small", "少ない島の世界（海外の商人が去った後）", 4, "plan"),
+        Scenario(
+            "open", "どの島も移民を受け入れる世界（標準の計画）", 50, "plan", immigration="open"
+        ),
     )
 }
 
@@ -94,6 +100,7 @@ SETS = {
         ("none", 1, 300),
         ("independent", 1, 300),
         *[("small", seed, 300) for seed in (1, 2, 3, 4)],
+        ("open", 1, 300),
     ],
     "full": [
         *[("plan", seed, 500) for seed in (1, 2, 3, 4)],
@@ -102,6 +109,8 @@ SETS = {
         ("independent", 1, 300),
         ("independent", 2, 300),
         *[("small", seed, 500) for seed in (1, 2, 3, 4)],
+        ("open", 1, 500),
+        ("open", 2, 500),
     ],
 }
 
@@ -163,6 +172,13 @@ SERIES_STATS = (
     "loans.arrears",
     "money.deposits",
     "power.shortage",
+    "population.starved",
+    "migration.left",
+    "migration.arrived",
+    "migration.returned",
+    "migration.trapped",
+    "migration.remittance_in",
+    "migration.abroad",
 )
 
 
@@ -172,6 +188,8 @@ def queue_scenario_orders(world: WorldState, scenario: Scenario, defs: Defs, con
         orders = []
         if scenario.independent and not island.policy.cb_independent:
             orders.append(("set_central_bank_independence", {"independent": True}))
+        if scenario.immigration and island.policy.immigration != scenario.immigration:
+            orders.append(("set_immigration", {"mode": scenario.immigration}))
         if scenario.orders == "plan":
             orders += plan_turn(island, defs, config, world.turn + 1)
         queue_orders(island, orders)
@@ -466,6 +484,9 @@ class Measure:
             kind = key.removeprefix("kind.").removesuffix(".capacity")
             out[f"use.{kind}"] = s[f"kind.{kind}.working"] / s[key] if s[key] else 0.0
         out["output.real.per_person"] = s["output.real"] / people if people else 0.0
+        # 飢えで亡くなった人と、ほかの国へ移った人（1年に住民 1000 人あたり。回3）
+        for key, name in (("population.starved", "starved"), ("migration.left", "emigrated")):
+            out[f"{name}.per_1000_year"] = s[key] / people * YEAR * 1000 if people else 0.0
         return out
 
     def ships(self, turn: int = 300, span: int = 24) -> dict[str, float]:
@@ -665,6 +686,8 @@ COMPARED = (
     ("measure.idle.engineers", 0),
     ("measure.households.real_per_person", 1),
     ("measure.output.real.per_person", 1),
+    ("measure.starved.per_1000_year", -1),
+    ("measure.emigrated.per_1000_year", 0),
 )
 EARLY = (
     ("early.employment.median", 1),

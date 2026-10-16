@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from dataclasses import replace
+from types import MappingProxyType
 from typing import Any
 
 from hakoniwa_core import nature, stock
@@ -21,6 +23,13 @@ STATUS_STARTING = "starting"  # 工事が済んで、まだ動いたことがな
 # 替える（新しい原料はその市場で買う）。替えた次のターン（ext["recipe_changed"]）は稼働率が半分
 RECIPE_NEXT = "recipe_next"
 RECIPE_CHANGED = "recipe_changed"
+# 畑の作付け（回3。Codex E17）: 育つ期間（作り方の grow_turns）のある作り方は、畑を作り方ごとの割合
+# で持つ（economy["fields"] {作り方: 1000 分の 1}）。作物を替えると、1ターンに今の作物の収穫の分
+# （1000 ÷ 育つ期間）ずつ新しい作物を蒔き、蒔いた畑は育つ期間のあいだ何も出さない
+# （economy["sown"] [[作り方, 割合, 収穫の始まるターン]]）。同じ作物（肥料の有無）はすぐ替わる
+FIELDS = "fields"
+SOWN = "sown"
+CROP_READY = "crop_ready"  # 畑をみな新しい作物にし終えたターン（ext。民営の見直しが売れ行きを待つ）
 # 原料が手に入らずに動けない理由（施設の status の「:」の前）。input は品不足、input_price は
 # 原料が高くて採算が合わない、funds は原料を買うお金が足りない、public_price は学校と大学の教材が
 # 高くて買えない
@@ -60,7 +69,126 @@ def facility_def(defs: Defs, f: Facility) -> Mapping[str, Any]:
 
 
 def recipe_of(defs: Defs, f: Facility) -> Mapping[str, Any]:
-    return defs.facilities[f.kind]["recipes"][f.recipe]
+    """施設の今の作り方。畑を作り替えている途中の施設（economy["fields"]）は、収穫している畑の
+    作り方を割合で混ぜた作り方（蒔いて育っている畑は何も出さず、何も使わない）。"""
+    fields = f.economy.get(FIELDS)
+    if fields is None:
+        return defs.facilities[f.kind]["recipes"][f.recipe]
+    return _blend(defs, f.kind, f.recipe, tuple(sorted(fields.items())))
+
+
+_BLENDS: dict[tuple[int, str, str, tuple[tuple[str, int], ...]], Mapping[str, Any]] = {}
+
+
+def _blend(
+    defs: Defs, kind: str, target: str, fields: tuple[tuple[str, int], ...]
+) -> Mapping[str, Any]:
+    key = (id(defs), kind, target, fields)
+    found = _BLENDS.get(key)
+    if found is not None:
+        return found
+    if len(_BLENDS) > 4096:
+        _BLENDS.clear()
+    recipes = defs.facilities[kind]["recipes"]
+    inputs: dict[str, int] = {}
+    outputs: dict[str, int] = {}
+    for name, share in fields:
+        recipe = recipes[name]
+        for table, amounts in ((inputs, recipe["inputs"]), (outputs, recipe["outputs"])):
+            for good, qty in amounts.items():
+                table[good] = table.get(good, 0) + qty * share // FULL
+    blended = MappingProxyType(
+        {
+            **recipes[target],
+            "inputs": MappingProxyType({g: q for g, q in sorted(inputs.items()) if q > 0}),
+            "outputs": MappingProxyType({g: q for g, q in sorted(outputs.items()) if q > 0}),
+        }
+    )
+    _BLENDS[key] = blended
+    return blended
+
+
+def steady(f: Facility) -> Facility:
+    """畑を作り替えている途中の施設を、畑がみな今の作り方（f.recipe）で収穫できるとみた写し。
+    採算の見込み（変動費の利益・売り値の下限・原料に払える値段）に使う。農家は、蒔き直した作物が
+    育つまでの間も、その作物の採算で働き手を雇い続け、撤退するかを決める（育つ間の赤字で閉じない）。"""
+    if FIELDS not in f.economy:
+        return f
+    economy = {k: v for k, v in f.economy.items() if k not in (FIELDS, SOWN)}
+    return replace(f, economy=economy)
+
+
+def grow_turns(defs: Defs, kind: str, recipe: str) -> int:
+    """作り方 recipe の作物が蒔いてから収穫まで育つターン数（育つ期間のない作り方は 0）。"""
+    return int(defs.facilities[kind]["recipes"][recipe].get("grow_turns", 0))
+
+
+def crop_of(defs: Defs, kind: str, recipe: str) -> tuple[str, ...]:
+    """作り方の作物（作る物の組。肥料の有無だけが違う作り方は同じ作物）。"""
+    return tuple(sorted(defs.facilities[kind]["recipes"][recipe]["outputs"]))
+
+
+def has_fields(defs: Defs, f: Facility) -> bool:
+    """畑を割合で持って少しずつ作り替える施設か（今の作り方に育つ期間がある）。"""
+    return grow_turns(defs, f.kind, f.recipe) > 0
+
+
+def step_fields(defs: Defs, f: Facility, turn: int) -> None:
+    """畑の作付けを1ターン進める（生産の段の初め）。育ちきった畑を収穫の畑に入れ、今の作り方
+    （f.recipe）と違う作物の畑を、1ターンに収穫の分（1000 ÷ その作物の育つ期間）ずつ今の作り方で
+    蒔き直す。同じ作物で作り方だけ違う畑（肥料の有無）はすぐ今の作り方にする。みな今の作り方で
+    収穫できるようになったら、畑の割合を消して元の1つの作り方に戻す。"""
+    fields: dict[str, int] | None = f.economy.get(FIELDS)
+    if fields is None:
+        return
+    sown: list[list[Any]] = f.economy.setdefault(SOWN, [])
+    crop = crop_of(defs, f.kind, f.recipe)
+    for row in sown:
+        if crop_of(defs, f.kind, row[0]) == crop:
+            row[0] = f.recipe
+    ready = [row for row in sown if row[2] <= turn]
+    sown[:] = [row for row in sown if row[2] > turn]
+    for name, share, _ in ready:
+        fields[name] = fields.get(name, 0) + share
+    for name in sorted(fields):
+        if name != f.recipe and crop_of(defs, f.kind, name) == crop:
+            fields[f.recipe] = fields.get(f.recipe, 0) + fields.pop(name)
+    grow = max(1, grow_turns(defs, f.kind, f.recipe))
+    for name in sorted(fields):
+        if name == f.recipe:
+            continue
+        cycle = max(1, grow_turns(defs, f.kind, name))
+        amount = min(fields[name], -(-FULL // cycle))
+        fields[name] -= amount  # 0 になっても、作り替えが済むまで前の作物として残す（field_goods）
+        if amount > 0:
+            sown.append([f.recipe, amount, turn + grow])
+    if not sown and not any(v for name, v in fields.items() if name != f.recipe):
+        f.economy.pop(FIELDS, None)
+        f.economy.pop(SOWN, None)
+        f.ext[CROP_READY] = turn
+        _forget_other_outputs(defs, f)
+    elif not sown:
+        f.economy.pop(SOWN, None)
+
+
+def field_goods(defs: Defs, f: Facility) -> set[str]:
+    """施設が作っている物と、畑を作り替えている途中なら前の作物と蒔いた作物の物（すぐ作り戻せる
+    物。民営の見直しで、今作っていない物として扱わない）。"""
+    recipes = defs.facilities[f.kind]["recipes"]
+    names = {f.recipe, *f.economy.get(FIELDS, {}), *(row[0] for row in f.economy.get(SOWN, []))}
+    if FIELDS not in f.economy:
+        names = {f.recipe}
+    return {g for name in names for g in recipes[name]["outputs"]}
+
+
+def _forget_other_outputs(defs: Defs, f: Facility) -> None:
+    """今の作り方で作らない物の売り値と売れ行きの見込みを捨てる（手元に残った物は市場の段で売る）。"""
+    outputs = defs.facilities[f.kind]["recipes"][f.recipe]["outputs"]
+    for key in ("ask", "expected"):
+        table = f.economy.get(key)
+        if table:
+            for good in [g for g in table if g not in outputs]:
+                del table[good]
 
 
 def priority_of(defs: Defs, config: GameConfig, f: Facility) -> int:
@@ -339,15 +467,24 @@ def switch_problem(
 
 def switch_recipe(defs: Defs, f: Facility, recipe: str, turn: int) -> None:
     """施設 f の作り方を recipe に替え、turn のターンの稼働率を半分にする。前の作り方だけの売り値と
-    売れ行きの見込みは捨てる（手元に残った物は市場の段で売る）。"""
+    売れ行きの見込みは捨てる（手元に残った物は市場の段で売る）。
+
+    育つ期間のある作り方（畑）は一度に替えず、今の畑を割合で持って、生産の段で少しずつ蒔き直す
+    （step_fields。回3）。稼働率は半分にしない（蒔き直した畑が育つまで何も出さない分で表す）。
+    """
+    if grow_turns(defs, f.kind, recipe) > 0 and grow_turns(defs, f.kind, f.recipe) > 0:
+        if crop_of(defs, f.kind, recipe) != crop_of(defs, f.kind, f.recipe):
+            f.economy.setdefault(FIELDS, {f.recipe: FULL})
+        elif FIELDS in f.economy:
+            fields = f.economy[FIELDS]
+            fields[recipe] = fields.get(recipe, 0) + fields.pop(f.recipe, 0)
+        f.recipe = recipe
+        if FIELDS not in f.economy:
+            _forget_other_outputs(defs, f)
+        return
     f.recipe = recipe
     f.ext[RECIPE_CHANGED] = turn
-    outputs = defs.facilities[f.kind]["recipes"][recipe]["outputs"]
-    for key in ("ask", "expected"):
-        table = f.economy.get(key)
-        if table:
-            for good in [g for g in table if g not in outputs]:
-                del table[good]
+    _forget_other_outputs(defs, f)
 
 
 def default_recipe(defs: Defs, kind: str) -> str | None:

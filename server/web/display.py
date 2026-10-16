@@ -726,6 +726,16 @@ def _describe_politics(kind: str, payload: dict[str, Any], name: str) -> str:
     defs = get_game().defs
     if kind == "set_press":
         return f"{name}: {message('press_' + payload.get('mode', ''))}"
+    if kind == "set_immigration":
+        text = f"{name}: {message('immigration_' + payload.get('mode', ''))}"
+        if payload.get("cap"):
+            text += f"（1年に住民の {payload['cap'] / 100:g}% まで）"
+        return text
+    if kind == "set_emigration":
+        text = f"{name}: {message('emigration_' + payload.get('mode', ''))}"
+        if payload.get("mode") == "permit":
+            text += f"（1年に住民の {payload.get('quota', 0) / 100:g}% まで）"
+        return text
     if kind == "amend_constitution":
         chosen = [payload[a] for a in ("politics", "head_of_state") if a in payload]
         return f"{name}: " + "・".join(defs.name("regimes", r) for r in chosen)

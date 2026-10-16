@@ -87,7 +87,8 @@ _EXTRA_STATS = [
     ("power.used", "届いた電力", "good:electricity"),
     ("food.need", "食料の必要量", "good:food"),
     ("food.supplied", "届いた食料", "good:food"),
-    ("education.goal", "教育水準の目標（動いている学校の定員から）", "percent"),
+    ("education.goal", "学校に通えている子どもの割合（動いている学校の定員から）", "percent"),
+    ("education.schooled", "働き手に加わる若い人のうち学んだ人の割合", "percent"),
     ("education.seats", "動いている学校の定員", "人"),
     ("engineers.employed", "働いている技術者", "人"),
     ("engineers.seated", "技術者の席に就いた技術者", "人"),
@@ -124,7 +125,7 @@ _EXTRA_STATS = [
     ("bop.goods", "経常収支・貿易収支", "money"),
     ("bop.services", "経常収支・サービス収支", "money"),
     ("bop.income", "経常収支・所得収支（外国の国債と融通の利子）", "money"),
-    ("bop.transfers", "経常収支・移転（援助）", "money"),
+    ("bop.transfers", "経常収支・移転（援助・仕送り・移る人の持ち出す預金）", "money"),
     ("bop.financial", "金融収支（資産の増加 − 負債の増加）", "money"),
     ("bop.assets.fx", "金融収支・外貨の持ち高の増加", "money"),
     ("bop.assets.bonds", "金融収支・外国の国債の増加", "money"),
@@ -143,6 +144,17 @@ _EXTRA_STATS = [
     ("bonds.bought_abroad", "入札で外国が買った国債（このターン）", "money"),
     ("fx.peg_broken", "固定相場が外れた通貨の数（このターン）", ""),
     ("titles", "持っている称号の数", ""),
+    # 国をまたぐ移民（バランス調整の回3）
+    ("migration.left", "ほかの国へ移り住んだ人（このターン）", "人"),
+    ("migration.arrived", "ほかの国から移り住んできた人（帰ってきた人も。このターン）", "人"),
+    ("migration.returned", "国外から帰ってきた人（このターン）", "人"),
+    ("migration.escaped", "出国を止められたのに国境を越えた人（このターン）", "人"),
+    ("migration.trapped", "出たいのに出国を止められている人（1年あたり）", "人"),
+    ("migration.seized", "国を出た人から国が引き取った預金（このターン）", "money"),
+    ("migration.remittance_in", "国外に住む人からの仕送り（このターン）", "money"),
+    ("migration.remittance_out", "国外への仕送り（このターン）", "money"),
+    ("migration.abroad", "国外に住む、この国から移った人", "人"),
+    ("migration.foreign_born", "ほかの国から移ってきて住んでいる人", "人"),
     # 政治と計画経済（フェーズ3-4）
     ("politics.stability", "政情（0〜100）", ""),
     ("politics.target", "政情の目標（いまの島の様子から）", ""),
@@ -385,7 +397,7 @@ def economy_charts() -> list[dict[str, Any]]:
             "names": [f"layer.{layer}{PER_PERSON}" for layer in LAYER_NAMES],
         },
         {"title": "格差（1人あたりの所得の比）", "names": ["inequality"]},
-        {"title": "教育水準", "names": ["education.level", "education.goal"]},
+        {"title": "教育水準", "names": ["education.level", "education.schooled", "education.goal"]},
         {"title": "技術者", "names": ["engineers", "engineers.employed"]},
         {
             "title": "インフラの平均の整備度（陸のマス）",
@@ -393,6 +405,14 @@ def economy_charts() -> list[dict[str, Any]]:
         },
         {"title": "電力の不足率", "names": ["power.shortage"]},
         {"title": "人口と就業者", "names": ["population", "labor", "employed"]},
+        {
+            "title": "国をまたぐ移民（1ターン）",
+            "names": ["migration.left", "migration.arrived", "migration.returned"],
+        },
+        {
+            "title": "国外に住む出身者と、ほかの国から来た人",
+            "names": ["migration.abroad", "migration.foreign_born"],
+        },
     ]
 
 

@@ -73,6 +73,7 @@ from hakoniwa_core.economy import (
     STATE_FACILITIES,
     SUBSIDIES,
     Payer,
+    arrears,
     banks,
     default_accounting,
     facility_entity,
@@ -91,7 +92,7 @@ from hakoniwa_core.economy.prices import construction_cost, unit_cost, variable_
 from hakoniwa_core.economy.start import fund_facility, init_facility, invest, operating_cost
 from hakoniwa_core.geo import within
 from hakoniwa_core.modules.banking import entry_policy, is_planned
-from hakoniwa_core.modules.failures import bankrupt, close_foreclosure
+from hakoniwa_core.modules.failures import bankrupt, close_foreclosure, distribute
 from hakoniwa_core.naming import assign_serial
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import (
@@ -264,7 +265,7 @@ class EntryExit(IslandStage):
     @staticmethod
     def _switched_into(island: IslandState, ctx: StageContext) -> set[str]:
         """作り方を替えて作り始めてから firms.price_turns ターンたたない財と、替えると決めて
-        まだ替えていない作り方の財（命令と民営の見直しの両方）。新しい民営工場の参入
+        まだ替えていない作り方の財（命令と民営の見直しの両方）、畑を蒔き直している途中の作物。新しい民営工場の参入
         （_pipeline）と同じく、その施設が売り出した後の値段と売れ行きを見てから次を決める。"""
         defs = ctx.defs
         recent = ctx.turn - ctx.config.get("firms.price_turns")
@@ -277,6 +278,9 @@ class EntryExit(IslandStage):
                 goods |= set(defs.facilities[f.kind]["recipes"][pending]["outputs"])
             if f.ext.get(fac.RECIPE_CHANGED, -(10**9)) > recent:
                 goods |= set(fac.recipe_of(defs, f)["outputs"])
+            if fac.FIELDS in f.economy or f.ext.get(fac.CROP_READY, -(10**9)) > recent:
+                # 畑を蒔き直している途中か、蒔き直し終えたばかりの作物（回3）
+                goods |= set(defs.facilities[f.kind]["recipes"][f.recipe]["outputs"])
         return goods
 
     @staticmethod
@@ -305,7 +309,7 @@ class EntryExit(IslandStage):
         finance = island.economy.finance
         demand = finance.get("demand", {})
         now = fac.recipe_of(defs, f)["inputs"]
-        made = fac.recipe_of(defs, f)["outputs"]
+        made = fac.field_goods(defs, f)  # 畑を作り替えている途中の前の作物も、作っている物と見る
         wage = f.economy.get("wage", 0)
         out = {}
         for name, recipe in sorted(defs.facilities[f.kind]["recipes"].items()):
@@ -354,7 +358,7 @@ class EntryExit(IslandStage):
             wage = f.economy.get("wage", 0)
             prices = island.economy.prices
             profit = variable_profit(ctx.defs, ctx.config, f, prices, wage, rates.get(f.id, 0))
-            outputs = fac.recipe_of(ctx.defs, f)["outputs"]
+            outputs = fac.recipe_of(ctx.defs, fac.steady(f))["outputs"]
             sales = sum(money_of(prices.get(g, 0), q) for g, q in outputs.items())
             # 値段が変動費ちょうどの売り手は、端数でマイナスになることがあるので少し見逃す
             margin = part(sales, to_basis(settings["exit_loss_margin"]))
@@ -412,6 +416,8 @@ class EntryExit(IslandStage):
         for f in sorted(island.facilities, key=lambda f: f.id):
             seized = f.economy.get("foreclosed")
             if seized and ctx.turn - seized["since"] >= turns:
+                # 残った在庫は国が市場の値段で引き取り、その代金も同じ順で分ける（回3。E25）
+                arrears.sell_stock_to_state(island, facility_entity(f.id), f.stock)
                 close_foreclosure(island, f)
                 stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
                 fac.vacate(island, f)
@@ -861,7 +867,6 @@ class EntryExit(IslandStage):
             plan = self._finance(island, ctx, amount, earnings)
             if isinstance(plan, tuple):
                 continue
-            seller = seized.get("bank")
             close_foreclosure(island, f)
             entity = facility_entity(f.id)
             invest(island, household(OWNERS), entity, amount - sum(p for _, p, _ in plan))
@@ -870,7 +875,7 @@ class EntryExit(IslandStage):
             for bank, loan, loan_rate in plan:
                 purpose = banks.CONSTRUCTION
                 banks.lend(island, bank, entity, loan, purpose, turns, ctx.turn, loan_rate, grace)
-            pay_seller(island, entity, seller, price)
+            pay_seller(island, entity, seized, price)
             restart(island, ctx, f, OWNER_PRIVATE, price)
             f.economy["entered"] = ctx.turn
             island.log.append(
@@ -1013,24 +1018,21 @@ def open_bank(island: IslandState, ctx: StageContext, pos: tuple[int, int], owne
 
 
 def remove_facility(island: IslandState, ctx: StageContext, f: Facility) -> None:
-    """閉鎖した民営施設の預金を出資者に返して出資を消し、在庫を国の倉庫に移して取り除く。"""
-    from hakoniwa_core.modules.construction import close_accounts
+    """閉鎖した民営施設の在庫を国が市場の値段で引き取り、預金を未払い賃金 → 未払いの税 → 借入の
+    順に払って残りを出資者に返し、出資を消して、在庫を国の倉庫に移して取り除く。"""
+    from hakoniwa_core.modules.construction import close_accounts, sell_leftover_stock
 
+    sell_leftover_stock(island, f)
     close_accounts(island, f)
     stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
     fac.vacate(island, f)
     freight_rates.forget(island)
 
 
-def pay_seller(island: IslandState, payer: str, bank: str | None, price: int) -> None:
-    """差し押さえた施設の代金を、差し押さえた銀行に回収として払う（銀行がなければ国庫）。"""
-    if bank and not banks.is_failed(island, bank):
-        ledger.pay(island, payer, bank, price, "foreclosure_sale")
-        from hakoniwa_core.economy import books
-
-        books.add(island, banks.bank_number(bank), books.WRITE_OFF, -price)
-    else:
-        ledger.pay(island, payer, ledger.GOV, price, "foreclosure_sale")
+def pay_seller(island: IslandState, payer: str, seized: dict[str, Any], price: int) -> None:
+    """差し押さえた施設の代金を、差し押さえの記録 seized の請求の順（未払い賃金 → 未払いの税 →
+    貸し手の割合）に払い、余りを元の持ち主に返す（回3。Codex E24）。"""
+    distribute(island, payer, price, seized, "foreclosure_sale")
 
 
 def restart(island: IslandState, ctx: StageContext, f: Facility, owner: str, price: int) -> None:
@@ -1111,10 +1113,9 @@ def nationalize(island: IslandState, payload: dict[str, Any], ctx: StageContext)
     if funds.available(island, payer) < price:
         raise OrderFailed("reason_treasury_short", amount=price)
     if seized:
-        seller = seized.get("bank")
         close_foreclosure(island, f)
         funds.pay(island, payer, entity, price, "nationalization")
-        pay_seller(island, entity, seller, price)
+        pay_seller(island, entity, seized, price)
         restart(island, ctx, f, OWNER_STATE, price)
         if is_self_supporting(f):
             fund_facility(island, ctx.defs, ctx.config, f, Payer(ledger.GOV, STATE_FACILITIES))

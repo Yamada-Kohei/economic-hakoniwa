@@ -22,6 +22,7 @@ from hakoniwa_core.economy import (
     CONSTRUCTION,
     SUBSIDIES,
     Payer,
+    arrears,
     banks,
     books,
     default_accounting,
@@ -105,6 +106,7 @@ def demolish(island: IslandState, payload: dict[str, Any], ctx: StageContext) ->
         freight.forget(island)
         island.log.append(LogEntry("infrastructure_removed", {"x": x, "y": y}))
         return
+    sell_leftover_stock(island, f)
     close_accounts(island, f)
     stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
     island.facilities.remove(f)
@@ -112,22 +114,35 @@ def demolish(island: IslandState, payload: dict[str, Any], ctx: StageContext) ->
 
 
 def close_accounts(island: IslandState, f: Facility) -> None:
-    """独立採算の施設と民営の工事の借入を預金で返し（返しきれない分は貸し倒れ）、残りの預金を持ち主
-    に返して、出資を消す。"""
+    """独立採算の施設と民営の工事の預金を、未払い賃金 → 未払いの税 → 借入の順に払い（返しきれない
+    借入は貸し倒れ。回3 の倒産と撤退の後の分け方）、残りの預金を持ち主に返して、出資を消す。
+    払いきれなかった未払い賃金は、国営の施設なら政府が引き継ぎ、民営なら消える。"""
     if not island.has_economy or not (is_self_supporting(f) or is_private_site(f)):
         return
     entity = facility_entity(f.id)
     owner = owner_entity(f)
+    arrears.settle(island, Payer(entity))
     for loan in sorted(banks.loans_by_borrower(island, entity), key=lambda x: x.id):
         banks.repay(
             island, loan, min(banks.outstanding(island, loan), ledger.money(island, entity))
         )
         banks.write_off(island, loan, banks.outstanding(island, loan))
     banks.drop_settled(island)
+    left = arrears.write_off(island, entity)
+    if owner == ledger.GOV:
+        for holder, value in sorted(left[arrears.WAGES].items()):
+            arrears.add_wages(island, ledger.GOV, holder, value)
     ledger.pay(island, entity, owner, ledger.money(island, entity), "equity_return")
     for name, value in sorted(ledger.holdings(island, owner, ledger.EQUITY).items()):
         if name.endswith(f"/{entity}"):
             ledger.cancel(island, owner, ledger.EQUITY, entity, value, "equity_return")
+
+
+def sell_leftover_stock(island: IslandState, f: Facility) -> None:
+    """取り除く独立採算の施設と民営の工事の在庫を、国が市場の値段で引き取る（代金は施設に入り、
+    close_accounts で未払い賃金から順に分ける。回3。Codex E25）。在庫は呼ぶ側が国の倉庫に移す。"""
+    if island.has_economy and (is_self_supporting(f) or is_private_site(f)):
+        arrears.sell_stock_to_state(island, facility_entity(f.id), f.stock)
 
 
 # 資材があるのに人手が0のまま、このターン数続いた工事をログで知らせる（その後は進むまで出さない）

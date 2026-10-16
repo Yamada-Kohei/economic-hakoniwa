@@ -138,6 +138,7 @@ class Production(IslandStage):
         for f in island.facilities:  # このターンに売りに出した量と売れた量（電力とこの後の市場）
             f.economy.pop("sales", None)
             f.economy.pop("late_sales", None)
+            fac.step_fields(defs, f, ctx.turn)  # 畑の作付けを進める（回3）
             productivity.update(island, defs, config, f)
         runs = [
             self._prepare(island, f, ctx, power)

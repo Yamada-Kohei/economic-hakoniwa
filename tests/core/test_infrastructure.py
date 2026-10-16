@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from hakoniwa_core import autoplan, infra, stock
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.economy import EDUCATION, freight, groundwork, productivity
@@ -143,18 +145,37 @@ def test_roads_shorten_freight(game):
 
 
 def test_school_moves_education_toward_its_goal(game):
+    """教育水準は働き手のうち学んだ人の割合（回3）。子どもたちの学んだ割合が通う年数で、働き手が
+    働く年数で入れ替わるので、学校を建てても止めても数十年かけて動く（上がるのも下がるのも同じ
+    速さ）。"""
+    settings = game.config.get("education")
+    school_turns = settings["school_years"] * 12
+    work_turns = settings["working_years"] * 12
     island = make_island(game)
     home(game, island, 5, 6, 20_000)  # 子ども 3,000 人（学校1つの定員）
     with_economy(game, island, groundwork=True)
     school = next(f for f in island.facilities if f.kind == "school")
     school.operating_rate = fac.FULL
     run(game, island, ["education"])
-    assert island.economy.education == 600 + round(400 / 12)
+    schooled = 0.6 + 0.4 / school_turns
+    assert island.economy.ext["schooled"] == pytest.approx(schooled, abs=1e-6)
+    assert island.economy.ext["education_stock"] == pytest.approx(
+        0.6 + (schooled - 0.6) / work_turns, abs=1e-6
+    )
+    assert island.economy.education == 600
     assert island.stats["education.goal"] == 100
-    school.operating_rate = 0  # 休校: 目標 0 に向かって 1/12 ずつ下がる
-    level = island.economy.education
-    run(game, island, ["education"])
-    assert island.economy.education == level - round(level / 12)
+    for _ in range(12 * 10):  # 10年たつと、学んだ子どもが働き手に入って上がり始める
+        run(game, island, ["education"])
+    risen = island.economy.education
+    assert 600 < risen < 700
+    schooled = island.economy.ext["schooled"]
+    school.operating_rate = (
+        0  # 休校: 子どもの学んだ割合は下がり始めるが、働き手はすぐには下がらない
+    )
+    for _ in range(12):
+        run(game, island, ["education"])
+    assert island.economy.ext["schooled"] < schooled
+    assert risen <= island.economy.education < risen + 20  # 前に学んだ若い人がまだ入ってくる
 
 
 def test_university_trains_engineers_and_some_retire(game):

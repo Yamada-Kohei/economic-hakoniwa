@@ -645,16 +645,19 @@ def test_central_bank_borrows_from_a_bloc_surplus_before_the_issuer(game, base):
     have = fxmoney.holding(lender, ledger.CB, c)
     _give_fx(world, lender, ledger.CB, c, keep - have + 30_000)  # 余りは 30,000
     lender.scratch.pop(balance.KEY, None)
-    assert dict(swap.lenders(world, game.config, borrower.id, c))[lender.id] == 30_000
+    spares = dict(swap.lenders(world, game.config, borrower.id, c))
+    assert spares[lender.id] == 30_000
+    spare = sum(spares.values())  # ほかの加盟国にも余りがあれば、その分も
+    want = spare + 20_000
     before = fxmoney.holding(borrower, ledger.CB, c)
-    got = swap.draw(world, game.config, borrower.id, c, 50_000)
-    assert got == 50_000
+    got = swap.draw(world, game.config, borrower.id, c, want)
+    assert got == want
     pool = sum(v for k, v in swap.owed(borrower)[str(c)].items() if int(k) != c)
-    assert pool == 30_000  # 加盟国の余りを先に（ほかの加盟国にも余りがあれば比例して）
+    assert pool == spare  # 加盟国の余りを先に（ほかの加盟国にも余りがあれば比例して）
     assert swap.owed(borrower)[str(c)][str(c)] == 20_000  # 残りは発行した国から
     assert swap.lent(lender)[str(c)][str(borrower.id)] <= 30_000
     assert swap.issued(issuer) == 20_000
-    assert fxmoney.holding(borrower, ledger.CB, c) == before + 50_000
+    assert fxmoney.holding(borrower, ledger.CB, c) == before + want
     assert swap.reconcile(world) == [] and check(world) == []
     for island in (borrower, lender):
         current, financial = balance.totals(island.scratch[balance.KEY])
@@ -677,7 +680,7 @@ def test_swap_borrowing_stops_at_the_quota(game, base):
     _clean_swaps(world, borrower)
     borrower.economy.gdp_history = [10**12] * 12
     assert swap.available(world, game.config, borrower.id, c) > 0
-    borrower.economy.gdp_history = [1] * 12  # 上限は 0
+    borrower.economy.gdp_history = [0] * 11 + [1]  # 上限は 0
     assert swap.available(world, game.config, borrower.id, c) == 0
     assert swap.draw(world, game.config, borrower.id, c, 10_000) == 0
     issuer.economy.gdp_history = [1] * 12  # 発行した国も新しく作れない

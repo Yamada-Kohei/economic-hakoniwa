@@ -28,7 +28,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
-from hakoniwa_core.economy import books, debt, household
+from hakoniwa_core.economy import arrears, books, debt, household
 from hakoniwa_core.economy.households import layer_of
 from hakoniwa_core.state import OWNER_STATE, Facility, IslandState, Loan
 from hakoniwa_core.units import BASIS, money_of, part, to_basis
@@ -333,8 +333,9 @@ def assets_of(island: IslandState, f: Facility, entity: str) -> int:
 
 
 def net_assets(island: IslandState, f: Facility, entity: str) -> int:
-    """施設の純資産（資産 − 借入。0 未満なら 0）。国有化・民営化の値段に使う。"""
-    return max(0, assets_of(island, f, entity) - debt_of(island, entity))
+    """施設の純資産（資産 − 借入 − 未払いの賃金と税。0 未満なら 0）。国有化・民営化の値段に使う。"""
+    unpaid = arrears.total(island, entity) + arrears.total(island, entity, arrears.TAX_ARREARS)
+    return max(0, assets_of(island, f, entity) - debt_of(island, entity) - unpaid)
 
 
 def lend(

@@ -48,7 +48,8 @@
         "priority_experience": {"type": "number", "minimum": 0},
         "luxury_variety": {"type": "number", "minimum": 0},
         "entry_margin": {"type": "number"},
-        "price_controls": {"type": "boolean"}
+        "price_controls": {"type": "boolean"},
+        "exit_control": {"enum": ["free", "permit", "ban"]}
       }
     },
     "override": {"const": true}

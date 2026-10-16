@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from hakoniwa_core import ledger
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import BONDS, funds
+from hakoniwa_core.economy import BONDS, arrears, funds
 from hakoniwa_core.economy.debt import due
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import IslandState, LogEntry
@@ -36,6 +37,8 @@ class Budget(IslandStage):
         # 国債は利払いの分だけ取り置く。満期の償還は国債の段で、足りない分を借り換えて払う
         # （償還の額面を先に取り置くと、ほかの支出の取り置きが国庫に残らない）
         estimates[BONDS] = due(island, ctx.turn, redemptions=False)
+        # 前のターンまでの未払い賃金は、お金が入れば先に払う（回3。雇用の段の初めに払う）
+        estimates[arrears.ARREARS] = arrears.total(island, ledger.GOV)
         caps = {item: island.policy.budget.get(item, 0) // YEAR for item in fiscal["budget_items"]}
         funds.open_treasury(island, estimates, list(fiscal["payment_order"]), caps)
 

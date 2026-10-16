@@ -97,6 +97,7 @@
           "inputs": {"$ref": "#/$defs/amounts", "description": "全力で動いたときの1ターンの投入"},
           "outputs": {"$ref": "#/$defs/amounts", "description": "全力で動いたときの1ターンの産出"},
           "requires_resource": {"type": "string", "description": "島で選んだ鉱業資源がこれのときだけ使える"},
+          "grow_turns": {"type": "integer", "minimum": 1, "description": "作物が蒔いてから収穫まで育つターン数（書けば畑を少しずつ作り替える）"},
           "factors": {"$ref": "#/$defs/factors", "description": "この作り方の生産性の係数の重み（書かなければ施設の factors）"}
         }
       },

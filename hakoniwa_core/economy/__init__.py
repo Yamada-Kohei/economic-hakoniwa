@@ -42,9 +42,10 @@ SUBSIDIES = "subsidies"
 EDUCATION = "education"  # 教育費（学校と大学。フェーズ2-3）
 SECURITY = "security"  # 治安費（警察。フェーズ3-4）
 
-GENERAL = "general"  # 一般の労働者の層
+GENERAL = "general"  # 一般の労働者の層（仕事のある家計と、村で自給の農業をしている家計）
 OWNERS = "owners"  # 資産を持つ層
 ENGINEERS = "engineers"  # 技術者の層（フェーズ2-3）
+JOBLESS = "jobless"  # 失業している一般の労働者の家計（バランス調整の回3。Codex E03）
 
 
 @dataclass(frozen=True)

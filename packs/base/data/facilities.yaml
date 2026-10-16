@@ -19,23 +19,32 @@ farm:
   workers: 500
   priority: 7
   factors: {infra: 0.3, education: 0.2, pollution: 0.02, climate: 1, fertility: 1}
-  # 作る物を穀物・綿・嗜好品から選ぶ（フェーズ3-2）。化学品を肥料に入れると産出が 3 割増える
+  # 作る物を穀物・綿・嗜好品から選ぶ（フェーズ3-2）。化学品を肥料に入れると産出が 3 割増える。
+  # grow_turns は蒔いてから収穫までのターン数（回3）。作物を替えると、1ターンに畑の 1/grow_turns
+  # ずつ蒔き直し、蒔いた畑はその作物の grow_turns のあいだ何も出さない。穀物（麦・米）は4〜6か月、
+  # 綿は半年ほど。嗜好品は、たばこなら4か月ほど、コーヒーや茶は実るまで数年かかるので、間をとって1年
   recipes:
     default:
       outputs: {grain: 20}
+      grow_turns: 5
     fertilized:
       inputs: {chemicals: 1}
       outputs: {grain: 26}
+      grow_turns: 5
     cotton:
       outputs: {cotton: 12}
+      grow_turns: 6
     cotton_fertilized:
       inputs: {chemicals: 1}
       outputs: {cotton: 15.6}
+      grow_turns: 6
     luxury_crop:
       outputs: {luxury_crop: 8}
+      grow_turns: 12
     luxury_crop_fertilized:
       inputs: {chemicals: 1}
       outputs: {luxury_crop: 10.4}
+      grow_turns: 12
   sprite: farm
 
 lumber_camp:

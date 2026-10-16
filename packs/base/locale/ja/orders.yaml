@@ -45,6 +45,8 @@ set_fx_intervention: 為替の介入
 set_fx_peg: 固定相場
 set_foreign_bonds: 外国の国債の売り買い
 set_press: 報道と集会の扱い
+set_immigration: 移民の受け入れ
+set_emigration: 出国の扱い
 dissolve_parliament: 議会の解散
 amend_constitution: 憲法改正
 change_economy: 経済体制の変更

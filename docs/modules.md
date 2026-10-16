@@ -37,9 +37,10 @@
 | `entry_exit` | `firms` | 民営工場と民間銀行と商社の参入（商社がなくなった島には開き直す）、民営工場の撤退、差し押さえた施設の売却 |
 | `population` | `population` | 食べる、増える・減る、幸福度、島を出て行く人 |
 | `housing` | `population` | 働き口の近くに町を作り、人が増えた町を育てる（資材は市場で買う。都市と大都市は上下水道が要る） |
+| `migration` | `migration`（全島の段。バランス調整の回3） | 国をまたぐ移民。暮らしの見込み（実質賃金 × 仕事の見つかる割合 × 食べられた割合）の差から移りたい人を出し、行き先の受け入れの政策と上限・町の空き、元の島の出国の政策と国境の見張りで絞って、預金を持たせて移す（資本取引を禁止した島からは持ち出せない）。良くなった元の島へ帰る人、移った人の仕送り（国際収支の移転）、出たいのに出られない人（政情の出来事の補正）も受け持つ |
 | `politics` | `politics`（フェーズ3-4） | 政情を目標（式 `stability`）に近づけ、段階（落ち着き・デモ・暴動・反乱の前触れ）を決める。暴動で都市の施設を止め・まれに壊す（警察で減る）。支持率と選挙、報道の統制でたまった不満、体制を変えた後の混乱期間と首都の建物の建て替え（`hakoniwa_core/politics.py`） |
 | `infrastructure` | `infrastructure` | インフラの整備度を傷みの分だけ下げ、統計を残す |
-| `education` | `education` | 教育水準を学校の定員に向けて動かし、大学で技術者を育て、技術者の引退を進める |
+| `education` | `education` | 教育水準（働き手のうち学校で学んだ人の割合）を、学校に通えた子どもが働き手に加わる分と引退する分だけ入れ替え（回3。上がるのも下がるのも同じ速さ）、大学で技術者を育て、技術者の引退を進める |
 | `events` | `events` | まれな災害で施設をしばらく止める |
 | `records` | `records` | 物価指数・GDP・貿易収支・国際収支などの統計を残し、帳簿の確かめ（合わなければその場で止める） |
 | `rankings` | `experience`（全島の段。フェーズ3-3） | 各産業の経験の累積が世界で1位の国に称号を付け（得た国と失った国のログに知らせる）、島ごとに称号の数と産業ごとの世界の順位を統計に残す |
@@ -58,6 +59,7 @@
 | `accounts` | `set_accounting`（国営施設の会計の形） |
 | `market` | `set_priority`（優先度）・`warehouse_trade`（国の倉庫の売り買い）・`set_price_cap`（値段の上限。市場経済は電気料金だけ、混合経済はどの財も） |
 | `politics` | `set_press`（報道と集会の統制）・`dissolve_parliament`（議会の解散）・`rename_leader`（元首の名前。共和制）・`mobilize_labor`（労働の動員。全体主義）・`amend_constitution`（憲法改正）・`change_economy`（経済体制の変更）。議会の要る命令（`orders.yaml` の `parliament`）は、実行の前に命令の関門（`add_order_gate`）で採決する |
+| `migration` | `set_immigration`（移民の受け入れ: だれでも・人手の足りない分まで・技術者だけ・難民だけ・受け入れない、と1年の上限）・`set_emigration`（出国の扱い: 自由・許可制・禁止。政治の仕組みの `exit_control` まで）。バランス調整の回3 |
 | `plan` | `set_official_price`（公定価格の上書き。計画経済）・`review_official_prices`（公定価格の改定。計画経済。行政力 2、議会のある体制は採決）・`set_official_price_rules`（公定価格の決まり: 見直す幅と、原価を下回っても据え置いて補助金で埋める財。計画経済）・`set_priority_industries`（重点産業。計画経済）・`set_price_floor`（値段の下限。混合経済） |
 | `banking` | `set_bank_policy`（民間銀行の参入・預金保護）・`grant_bank_license`（銀行の免許） |
 | `bonds` | `set_bond_policy`（期間の割合・売れ残りの扱い・追加の発行・直接の引き受け）・`set_bond_payment`（国債の利払いを止める） |
@@ -84,7 +86,7 @@
 | `policy_rate` | `central_bank` | 独立した中央銀行の政策金利 |
 | `entry_return` | `firms` | 民営工場の見込みの年の利益率 |
 | `engineer_wage_update` | `labor` | 技術者の賃金の見直し（技術者の席の埋まり方と技術者の失業率で動く） |
-| `education_level` | `education` | 次のターンの教育水準 |
+| `education_level` | `education` | 次のターンの教育水準（子どもたちの学んだ割合を通う年数で、働き手の学んだ割合を働く年数で入れ替える2つの蓄え。回3） |
 | `stability` | `politics` | 政情の目標とその内訳（フェーズ3-4） |
 
 モジュールが共通で使う道具はコアの直下にあります。
@@ -219,7 +221,8 @@ python -m hakoniwa_core.simulate --islands 50 --turns 300 --autoplan --gate  # �
 バランス調整では、場面を選んで回し、結果を同じ物差しで比べます（`hakoniwa_core/measure.py`）。
 
 ```sh
-# 場面: plan（標準の計画）・none（命令なし）・independent（中央銀行を独立させた国）・small（4島の世界）
+# 場面: plan（標準の計画）・none（命令なし）・independent（中央銀行を独立させた国）・small（4島の世界）・
+#       open（どの島も移民を受け入れる世界。回3）
 python -m hakoniwa_core.simulate --scenario plan --seed 1 --turns 300 --gate \
     --out runs/plan-s1.json --series runs/plan-s1.jsonl
 python -m hakoniwa_core.measure batch --set quick --out-dir runs/new   # 回ごとの比べ（種1・2、300ターン）

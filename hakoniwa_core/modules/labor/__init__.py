@@ -9,6 +9,10 @@
 
 最後に、施設ごとに次のターンの賃金を見直します（式 wage_update。技術者の賃金は
 engineer_wage_update）。
+
+払い手のお金が足りずに払えないまま働いた人（雇用の段の economy["unpaid"]。バランス調整の回3）の
+分は、払わずに未払い賃金（economy/arrears.py）として残します。施設の帳簿の賃金には、払えなかった分も
+入れます。
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from hakoniwa_core.economy import (
     GENERAL,
     UNEMPLOYMENT,
     Payer,
+    arrears,
     books,
     freight,
     funds,
@@ -33,12 +38,12 @@ from hakoniwa_core.economy import (
     is_transport,
     payer_of,
 )
-from hakoniwa_core.economy.households import add_income
+from hakoniwa_core.economy.households import add_income, jobless_layer, set_jobless
 from hakoniwa_core.economy.prices import variable_profit
 from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.modules import infrastructure
 from hakoniwa_core.modules.employment import unemployment_rate
-from hakoniwa_core.modules.population import subsistence_persons
+from hakoniwa_core.modules.population import jobless_persons, tile_jobless
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import Facility, IslandState, LogEntry
 from hakoniwa_core.turn.context import StageContext
@@ -75,7 +80,7 @@ def wage_update(island: IslandState, f: Facility, ctx: StageContext) -> int:
         rate = freight.facility_rates(island, ctx.defs, ctx.config).get(f.id, 0)
         prices = island.economy.prices
         workers -= fac.engineers_needed(ctx.defs, f.kind)  # 技術者の賃金は利益の側で引く
-        if workers > 0 and fac.recipe_of(ctx.defs, f)["outputs"]:
+        if workers > 0 and fac.recipe_of(ctx.defs, fac.steady(f))["outputs"]:
             cap = variable_profit(ctx.defs, ctx.config, f, prices, 0, rate) // workers
             new = min(new, max(wage, cap))
     return max(new, island.policy.minimum_wage, 1)
@@ -120,6 +125,8 @@ class Payroll(IslandStage):
         if not island.has_economy:
             return
         defs, config = ctx.defs, ctx.config
+        # 雇用の段の結果で、失業している家計の人数を数え直す（仕事を失った人は預金を持って移る）
+        set_jobless(island, jobless_persons(defs, island))
         worker = household(GENERAL)
         paid = workers = 0  # 一般の賃金（島の平均賃金）
         skilled_paid = skilled_workers = 0  # 技術者の席の賃金
@@ -134,8 +141,11 @@ class Payroll(IslandStage):
             drafted = f.economy.get("mobilized", 0)
             drafted_pay = drafted * f.economy.get("mobilized_wage", 0)
             amount = wage * (f.workers - skilled - spared - drafted) + drafted_pay
-            funds.pay(island, payer, worker, amount, "wage", committed=True)
-            self._withhold(island, amount)
+            # 払えないまま働いた人の分（雇用の段の economy["unpaid"]）は未払い賃金にする（回3）
+            owed = min(amount, wage * f.economy.get("unpaid", 0))
+            funds.pay(island, payer, worker, amount - owed, "wage", committed=True)
+            self._withhold(island, amount - owed)
+            arrears.add_wages(island, payer.entity, worker, owed)
             paid += wage * (f.workers - skilled - drafted) + drafted_pay
             workers += f.workers - skilled
             if skilled or spared:  # 技術者の層に払う
@@ -184,23 +194,17 @@ class Payroll(IslandStage):
 
     @staticmethod
     def _benefits(island: IslandState, ctx: StageContext) -> None:
-        """失業手当: 失業者（自給の農業をしている村の人を除く）1人に平均賃金の決めた割合。"""
+        """失業手当: 失業者（自給の農業をしている村の人を除く）1人に平均賃金の決めた割合。
+        失業している家計の層（回3）に払う。"""
         rate = island.policy.unemployment_benefit
         if rate <= 0:
             return
         defs = ctx.defs
-        share = fac.labor_share(defs, island)
-        unemployed = 0
-        for tile in island.tiles:
-            if tile.population <= 0:
-                continue
-            idle = max(0, fac.labor_force(defs, island, tile) - tile.ext.get("employed", 0))
-            farming = int(subsistence_persons(defs, island, tile) * share)
-            unemployed += max(0, idle - farming)
+        unemployed = sum(tile_jobless(defs, island, t) for t in island.tiles if t.population > 0)
         payer = Payer(ledger.GOV, UNEMPLOYMENT)
         benefit = part(island.economy.average_wage, rate)
         idle = island.scratch.get("engineers_left", 0)  # 席に就けなかった技術者
-        for layer, count in ((GENERAL, unemployed), (ENGINEERS, idle)):
+        for layer, count in ((jobless_layer(island), unemployed), (ENGINEERS, idle)):
             if layer not in island.economy.households:
                 continue
             amount = min(count * benefit, funds.available(island, payer))
