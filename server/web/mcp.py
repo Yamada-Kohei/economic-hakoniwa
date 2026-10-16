@@ -175,6 +175,7 @@ TURN = {"type": "integer", "description": "ターン"}
 PAGE = {"type": "integer", "minimum": 1, "description": "ページ（1 から）"}
 
 REPORTS = {
+    "economy": "経済（主な指標と国勢の今の値・得意産業と称号・stats で読める統計の名前 choices）",
     "market": "市場（財ごとの値段・売買量・買えなかった量。good を決めるとその財の推移と約定）",
     "facilities": "施設（持ち主には施設ごとの状態・人手・損益・預金・借入）",
     "fiscal": "財政（国庫の収入と支出・予算・税率・国債の一覧）",
@@ -237,6 +238,8 @@ def _report(request, args):
     island = _island_id(request, args)
     if page == "market" and args.get("good"):
         return call_ok(request, "GET", f"/api/islands/{island}/market/{args['good']}")
+    if page == "economy":
+        return call_ok(request, "GET", f"/api/islands/{island}/economy/overview")
     return call_ok(request, "GET", f"/api/islands/{island}/{page}")
 
 
@@ -344,9 +347,120 @@ def _guide(request, args):
     return head + "]\n" + text[start:end]
 
 
+# 地図の重ね表示（画面の「重ねて表示」と同じ。static/js/map/overlays/）。ほかに infra:<種類>。
+OVERLAYS = {
+    "population": "人口",
+    "happiness": "幸福度",
+    "power": "電力充足率",
+    "pollution": "汚染度",
+    "zone": "工業団地・オフィス街",
+    "freight": "運賃の率",
+    "works": "工事中",
+}
+# 人口の重ね表示の段（この人数以上で数字が1つ上がる。画面の色と同じく桁で濃くなる）
+POPULATION_STEPS = (1, 3, 10, 30, 100, 300, 1000, 3000, 10000, 30000)
+
+
+def _overlay_ids() -> list[str]:
+    return [*OVERLAYS, *(f"infra:{kind}" for kind in get_game().defs.infrastructure)]
+
+
+def _digit(value: float, top: float) -> str:
+    """0〜top を 0〜9 の10段に（top 以上は 9）。"""
+    return str(min(9, max(0, int(value * 10 / top)))) if top > 0 else "0"
+
+
+def _overlay(data: dict[str, Any], overlay: str) -> tuple[list[list[str]], list[str]]:
+    """重ね表示の文字の地図と凡例。海と浅瀬は地形の印のまま、値のない陸のマスは「.」。"""
+    size = data["size"]
+    marks = {"sea": "~", "shallows": "-"}
+    terrain = data["terrain"]
+    grid = [[marks.get(terrain[y * size + x], ".") for x in range(size)] for y in range(size)]
+
+    def put(i: int, mark: str) -> None:
+        grid[i // size][i % size] = mark
+
+    if overlay == "population":
+        for i, p in enumerate(data["population"]):
+            if p:
+                put(i, str(sum(1 for step in POPULATION_STEPS[1:] if p >= step)))
+        steps = POPULATION_STEPS
+        ranges = [f"{d}: {steps[d]:,}〜{steps[d + 1] - 1:,} 人" for d in range(9)]
+        return grid, ["人口の段（" + "、".join(ranges) + f"、9: {steps[9]:,} 人以上）"]
+    if overlay == "happiness":
+        for i, h in enumerate(data["happiness"]):
+            if h is not None:
+                put(i, _digit(h, 100))
+        return grid, ["幸福度を 10 で割った数（0〜9。9 は 90 以上）"]
+    if overlay == "power":
+        for i, p in enumerate(data["population"]):
+            if p:
+                power = data["power"][i] or 0
+                put(i, "*" if power >= 1000 else _digit(power, 1000))
+            elif data["power_line"][i]:
+                put(i, "=")
+        return grid, [
+            "住民のいるマスが受け取れた電力の割合（0〜9 は 10% 刻み、* は足りている）。"
+            "= は送電線のマス"
+        ]
+    if overlay == "pollution":
+        for i, p in enumerate(data["pollution"]):
+            if p:
+                put(i, str(min(9, p)))
+        return grid, ["汚染度（1〜9。9 は 9 以上）"]
+    if overlay == "zone":
+        for i, zone in enumerate(data["zone"]):
+            if zone in ("industrial", "office"):
+                put(i, "I" if zone == "industrial" else "O")
+        return grid, ["I 工業団地  O オフィス街"]
+    if overlay == "freight":
+        rates, limit = data["freight"], data["freight_max"]
+        reach = [r for r in rates if r is not None and r < limit]
+        top = max(reach, default=1) or 1
+        for i, rate in enumerate(rates):
+            if rate is not None:
+                put(i, "x" if rate >= limit else _digit(rate, top))
+        return grid, [
+            "拠点（首都と大きな町）まで運ぶときの運賃の率。この島でいちばん高いマス"
+            f"（{top / 100:g}%）を 9 とした10段。x は上限（{limit / 100:g}%）に届くマス"
+        ]
+    if overlay == "works":
+        for _, x, y in data.get("infra_queue") or []:
+            grid[y][x] = "Q"
+        for f in data["facilities"]:
+            if not f["built"]:
+                grid[f["y"]][f["x"]] = "C"
+        return grid, ["Q インフラの工事の列に並んだマス  C 建設中の施設のマス"]
+    kind = overlay.removeprefix("infra:")
+    for i, level in enumerate(data["infra"][kind]):
+        if level:
+            put(i, _digit(level, 100))
+    defs = get_game().defs
+    infra = defs.infrastructure[kind]
+    legend = [f"{defs.name('infrastructure', kind)}の整備度を 10 で割った数（9 は 90% 以上）"]
+    if infra.get("role") == "power":
+        legend.append(f"整備度 {round(infra.get('grid', 0) * 100)}% 以上のマスが電力を通す")
+    return grid, legend
+
+
 def _map(request, args):
-    """島の文字の地図と、施設の一覧（状態のわけは画面と同じ文）。"""
+    """島の文字の地図と、施設の一覧（状態のわけは画面と同じ文）。overlay を決めると重ね表示。"""
     island_id = _island_id(request, args)
+    overlay = args.get("overlay")
+    if overlay:
+        if overlay not in _overlay_ids():
+            raise ToolError(f"overlay は {'・'.join(_overlay_ids())} のどれかです")
+        query = {"freight": 1} if overlay == "freight" else None
+        data = call_ok(request, "GET", f"/api/islands/{island_id}/map", query=query)
+        grid, legend = _overlay(data, overlay)
+        size = data["size"]
+        kind = overlay.removeprefix("infra:")
+        name = OVERLAYS.get(overlay) or get_game().defs.name("infrastructure", kind) + "の整備度"
+        out = [f"{data['name']}（島 {island_id}）ターン {data['turn']} 重ね表示: {name}", ""]
+        out.append("    " + "".join(str(x % 10) for x in range(size)))
+        out += [f"{y:>3} " + "".join(row) for y, row in enumerate(grid)]
+        out.append("~ 海  - 浅瀬  . 値のない陸")
+        return "\n".join(out + legend)
     data = call_ok(request, "GET", f"/api/islands/{island_id}/map")
     island = m.Island.objects.get(pk=island_id)
     game = get_game()
@@ -498,9 +612,15 @@ TOOLS = [
     Tool(
         "map",
         "地図",
-        "島の文字の地図（地形・町・施設・首都）と、施設ごとの番号・名前・稼働率・状態のわけ。",
+        "島の文字の地図（地形・町・施設・首都）と、施設ごとの番号・名前・稼働率・状態のわけ。"
+        "overlay で画面の「重ねて表示」と同じ地図: "
+        + "・".join(OVERLAYS)
+        + "・infra:<インフラの種類>（例 infra:road）。",
         _map,
-        {"island": ISLAND},
+        {
+            "island": ISLAND,
+            "overlay": {"type": "string", "description": "重ね表示（population・infra:road など）"},
+        },
     ),
     Tool(
         "tile",
@@ -515,7 +635,8 @@ TOOLS = [
         "stats",
         "統計の推移",
         "統計の系列。names はカンマ区切り（例 gdp,cpi,unemployment,price.*。末尾の * はその頭の"
-        "統計すべて）。範囲を省くと直近の 120 ターン。",
+        "統計すべて）。使える名前は report page=economy の choices。範囲を省くと直近の 120 "
+        "ターン。",
         _stats,
         {"names": {"type": "string"}, "from": TURN, "to": TURN, "island": ISLAND},
         ("names",),
@@ -691,6 +812,38 @@ TOOLS = [
     ),
 ]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
+
+# 人が見る画面（URL の名前）と、同じ中身を読み・同じことをする道具。画面を足したら、ここと道具を
+# 合わせる（tests/server/test_ai_parity.py が、画面がすべて載っているか・道具があるか・画面の中身が
+# 道具の答えにあるかを確かめる）。島の統計の画面（island_<page>）は report の page=<page>。
+SCREENS: dict[str, tuple[str, ...]] = {
+    "top": ("world",),
+    "found": ("found",),
+    "world": ("world", "api_get"),  # 世界の貿易は api_get /api/world/trade
+    "rankings": ("rankings",),
+    "help": ("guide",),
+    "island": ("summary", "map", "tile"),  # 地図の重ね表示は map の overlay
+    "turn_log": ("turn_log", "changes"),
+    "island_economy": ("report", "stats"),
+    "island_market": ("report",),
+    "island_chain": ("report",),
+    "island_facilities": ("report", "api_get"),  # 施設の帳簿の推移は api_get
+    "island_fiscal": ("report",),
+    "island_finance": ("report",),
+    "island_trade": ("report",),
+    "island_fx": ("report",),
+    "island_politics": ("report",),
+    "island_plan": ("report",),
+    "board": ("board",),
+    "board_new": ("board_new_thread",),
+    "board_thread": ("board_thread", "board_post"),
+    "letters": ("letters",),
+    "letters_sent": ("letters",),
+    "letter_new": ("send_letter",),
+    "letter": ("read_letter",),
+}
+# AI の入り口が要らない画面（アカウントの画面。鍵は人が画面で作って AI に渡す）
+NOT_FOR_AI = {"signup", "login", "logout", "api_keys"}
 
 
 # --- 文にする ---------------------------------------------------------------------------

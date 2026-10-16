@@ -43,6 +43,11 @@ urlpatterns = [
     path("api/islands/<int:island_id>/map", api.island_map, name="api_island_map"),
     path("api/islands/<int:island_id>/tiles/<sint:x>,<sint:y>", api.tile, name="api_tile"),
     path("api/islands/<int:island_id>/economy", api.economy, name="api_island_economy"),
+    path(
+        "api/islands/<int:island_id>/economy/overview",
+        api.economy_overview,
+        name="api_island_economy_overview",
+    ),
     path("api/islands/<int:island_id>/market/<str:good>", api.market, name="api_island_market"),
     path(
         "api/islands/<int:island_id>/facilities/<int:number>/book",

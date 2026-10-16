@@ -604,7 +604,17 @@ def print_summary(d: dict) -> None:
     print("[指標] " + _rows(d["indicators"], _indicator))
     election = f" 次の選挙 ターン {p['next_election']}" if p.get("next_election") else ""
     numbers = f" 政情 {p['stability']} 支持率 {p['support']}" if p["stability"] is not None else ""
-    print(f"[政情] {p['level_name']}{numbers}{election}")
+    migration = p.get("migration")
+    moves = f" 移民 {migration['immigration']}・出国 {migration['emigration']}" if migration else ""
+    print(f"[政情] {p['level_name']}{numbers}{election}{moves}")
+    s = d.get("strengths") or {}
+    if s.get("strengths") or s.get("titles"):
+        ranks = [
+            f"{x['name']}" + (f"（世界 {x['rank']} 位）" if x.get("rank") else "")
+            for x in s.get("strengths", [])
+        ]
+        titles = f" 称号: {'・'.join(s['titles'])}" if s.get("titles") else ""
+        print(f"[得意産業] {'・'.join(ranks) or 'なし'}{titles}")
     for text in d["alerts"]:
         print(f"[注意] {text}")
     why = f"（{f['infra_why']}）" if f["infra_why"] else ""

@@ -463,6 +463,16 @@ def stat_rows(
     return out
 
 
+def stats_part(stats: dict[str, float], names: list[str]) -> dict[str, Any]:
+    """統計のうち names にあるものと、その表示名と単位（API の形。画面の stat_rows と同じ統計）。"""
+    shown = [n for n in names if n in stats]
+    return {
+        "stats": {n: stats[n] for n in shown},
+        "labels": {n: stat_label(n)[0] for n in shown},
+        "units": {n: unit_of(stat_label(n)[1]) for n in shown},
+    }
+
+
 def with_fiscal(stats: dict[str, float]) -> dict[str, float]:
     """直近のターンの統計に、財政の収入・支出・収支を足したもの。"""
     table = {name: {0: value} for name, value in stats.items()}
