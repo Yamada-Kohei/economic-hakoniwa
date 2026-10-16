@@ -110,6 +110,7 @@ NATURAL_UNEMPLOYMENT = 0.05
 DEBT_LIMIT = 1.0  # 政府の借金の対年GDP比がこれを超えたら、公共事業費を減らす
 DEBT_RESPONSE = 0.5  # 対年GDP比が DEBT_LIMIT より 0.1 高いごとに、基本のこの × 10 % だけ減らす
 WORKS_RANGE = (0.2, 2.0)  # 基本に対する倍率の下限と上限
+STARVED_RAISE = 0.25  # 国の工事が公共事業費を待って止まっている間、見直しのたびに増やす割合
 UNDERUSED = 0.7  # 同じ物を作る施設の稼働率がこれより低い間は、増やさない
 POWER_CAP = 2.0  # 電気料金が初めの値段のこの倍を超えたら、そこを公共料金の上限にする
 BENEFIT = 40  # 失業手当（平均賃金に対する %）
@@ -164,10 +165,7 @@ def _plan_rest(
     # 公共事業費が足りずに資材か作業員を待っている国の工事があるあいだも、新しい工事は資材を作る施設
     # だけにする（始めると、どの工事も公共事業費を分け合って進まず、インフラの維持まで止まった。
     # フェーズ3-2）
-    starved = any(
-        f.owner == OWNER_STATE and (f.ext.get("short_funds") or f.ext.get("short_wages"))
-        for f in sites
-    )
+    starved = _starved(island)
     if len(sites) >= limit or starved:  # 資材が手に入らずに止まっている工事のためだけに建てる
         candidates: Iterator[tuple[str, str]] = _material_producers(island, defs, config)
     else:
@@ -193,6 +191,16 @@ def _plan_rest(
     if road is not None:
         orders.append(road)
     return orders
+
+
+def _starved(island: IslandState) -> bool:
+    """公共事業費が足りずに資材か作業員を待っている国の工事があるか。"""
+    return any(
+        not f.built
+        and f.owner == OWNER_STATE
+        and (f.ext.get("short_funds") or f.ext.get("short_wages"))
+        for f in island.facilities
+    )
 
 
 def _hireable(island: IslandState, config: GameConfig) -> float:
@@ -319,8 +327,19 @@ def _budget_order(
     scale -= INFLATION_RESPONSE * max(0.0, stats.get("inflation", 0) - INFLATION_LIMIT)
     scale -= DEBT_RESPONSE * max(0.0, stats.get("debt_ratio", 0) - DEBT_LIMIT)
     scale = min(WORKS_RANGE[1], max(WORKS_RANGE[0], scale))
+    construction = int(population_of(island) * PUBLIC_WORKS * scale)
+    # 始めた国の工事があるあいだは減らさず、公共事業費を待って止まっていて国庫にお金があれば、
+    # 見直しのたびに増やす（始めた工事は終わらせる。上限は倍率の上限の額。回4 で人口の急な増え方が
+    # なくなると、借金の対年GDP比が上がって公共事業費が下限まで下がり、国の工事が200ターン止まった
+    # まま国庫にお金がたまった）
+    current = island.policy.budget.get("construction", 0)
+    if current and any(not f.built and f.owner == OWNER_STATE for f in island.facilities):
+        top = int(population_of(island) * PUBLIC_WORKS * WORKS_RANGE[1])
+        construction = max(construction, min(current, top))
+        if _starved(island) and stats.get("treasury", 0) > current // TURNS_PER_YEAR:
+            construction = max(construction, min(top, int(current * (1 + STARVED_RAISE))))
     targets = {
-        "construction": int(population_of(island) * PUBLIC_WORKS * scale),
+        "construction": construction,
         "education": _education_cost(island, defs, config),
     }
     payload = {}
