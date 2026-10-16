@@ -1,9 +1,9 @@
-{% extends "base.html" %}{% load i18n static %}
+{% extends "base.html" %}{% load i18n static calendar_tags %}
 {% block title %}{% translate "世界マップ" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 <h1>{% translate "世界マップ" %}</h1>
 {% if world %}
-  <p class="muted">{% blocktranslate with turn=world.turn %}ターン {{ turn }}。島の形と町・施設を1マス1点で描いています。区画を押すとその島の画面へ移ります。{% endblocktranslate %}</p>
+  <p class="muted">{% blocktranslate with turn=world.turn|turn_date %}{{ turn }}。島の形と町・施設を1マス1点で描いています。区画を押すとその島の画面へ移ります。{% endblocktranslate %}</p>
   <div id="world-grid" class="world-grid" style="--grid: {{ rows|length }}"
        data-defs="{% url 'api_defs' %}" data-shapes="{% url 'api_world_shapes' %}"
        data-trade="{% url 'api_world_trade' %}">

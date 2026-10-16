@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% load i18n static %}
+{% extends "base.html" %}{% load i18n static calendar_tags %}
 {% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 {% include "web/report_header.html" %}
@@ -7,7 +7,7 @@
   <div class="report-main">
 {% with p=politics %}
 <section class="panel" id="regime">
-  <h2>{% if stats_turn is not None %}{% blocktranslate with turn=stats_turn %}体制と政情（ターン {{ turn }}）{% endblocktranslate %}{% else %}{% translate "体制と政情" %}{% endif %}</h2>
+  <h2>{% if stats_turn is not None %}{% translate "体制と政情" %} <small class="heading-date">{{ stats_turn|turn_date }}</small>{% else %}{% translate "体制と政情" %}{% endif %}</h2>
   <table class="info">
     {% for r in p.regime %}<tr><th>{{ r.axis_name }}</th><td>{{ r.name }}</td></tr>{% endfor %}
     {% if p.leader %}<tr><th>{% translate "国家元首" %}</th><td>{{ p.leader }}{% if p.monarch_age is not None %} <small class="muted">{% blocktranslate with age=p.monarch_age %}（{{ age }} 歳）{% endblocktranslate %}</small>{% endif %}</td></tr>{% endif %}
@@ -16,13 +16,13 @@
     <tr><th>{% translate "支持率" %}</th><td>{{ p.support|floatformat:1 }}%</td></tr>
     {% if p.parliament %}
     <tr><th>{% translate "与党の議席" %}</th><td>{{ p.seats|floatformat:1 }}%</td></tr>
-    <tr><th>{% translate "次の選挙" %}</th><td>{% if p.next_election is not None %}{% blocktranslate with t=p.next_election %}ターン {{ t }}{% endblocktranslate %}{% endif %}</td></tr>
+    <tr><th>{% translate "次の選挙" %}</th><td>{% if p.next_election is not None %}{{ p.next_election|turn_date }}{% endif %}</td></tr>
     {% endif %}
     {% else %}
     <tr><th>{% translate "政情" %}</th><td class="muted">{% translate "次のターンの更新から出ます。" %}</td></tr>
     {% endif %}
     <tr><th>{% translate "報道と集会" %}</th><td>{{ p.press_name }}</td></tr>
-    {% if p.transition %}<tr><th>{% translate "混乱期間" %}</th><td>{% blocktranslate with u=p.transition.until %}ターン {{ u }} まで{% endblocktranslate %}{% if p.productivity %} <small class="muted">{% blocktranslate with v=p.productivity|floatformat:3 %}（生産性 {{ v }} 倍）{% endblocktranslate %}</small>{% endif %}</td></tr>{% endif %}
+    {% if p.transition %}<tr><th>{% translate "混乱期間" %}</th><td>{% blocktranslate with u=p.transition.until|turn_date %}{{ u }}まで{% endblocktranslate %}{% if p.productivity %} <small class="muted">{% blocktranslate with v=p.productivity|floatformat:3 %}（生産性 {{ v }} 倍）{% endblocktranslate %}</small>{% endif %}</td></tr>{% endif %}
     {% if p.rebuilding %}<tr><th>{% translate "首都の建物" %}</th><td>{% translate "新しい体制の建物に建て替えています（資材がそろうと替わります）" %}{% if p.rebuild %}<br><small class="muted">{% translate "残りの資材" %}: {% for r in p.rebuild %}{{ r.name }} {{ r.quantity|floatformat:"1g" }} {{ r.unit }}{% if not forloop.last %}・{% endif %}{% endfor %}</small>{% endif %}</td></tr>{% endif %}
   </table>
   <p class="hint">{% blocktranslate with demo=p.levels.demo riot=p.levels.riot rebellion=p.levels.rebellion %}政情は 0〜100 で、毎ターン目標に少しずつ近づきます。{{ demo }} を下回るとデモ（行政力が減る）、{{ riot }} を下回ると暴動（行政力が半分になり、町より大きな住宅地の近くの施設が止まり、まれに国営の施設が壊される）、{{ rebellion }} を下回ると反乱の前触れ（暴動の 2 倍。反乱はフェーズ4）になります。警察の人手が足りていると、止まる施設と壊される施設が減ります。{% endblocktranslate %}</p>
@@ -62,7 +62,7 @@
   {% if p.elections %}
   <h3>{% translate "選挙" %}</h3>
   <ul class="plain-list">
-    {% for e in p.elections %}<li>{% blocktranslate with t=e.turn s=e.support %}ターン {{ t }}: 支持率 {{ s }}%（与党の議席も同じ割合）{% endblocktranslate %}</li>{% endfor %}
+    {% for e in p.elections %}<li>{% blocktranslate with t=e.turn|turn_date s=e.support %}{{ t }}: 支持率 {{ s }}%（与党の議席も同じ割合）{% endblocktranslate %}</li>{% endfor %}
   </ul>
   {% endif %}
   {% if mine %}
@@ -70,9 +70,9 @@
   {% if p.votes %}
   <div class="table-scroll">
     <table class="goods">
-      <thead><tr><th>{% translate "ターン" %}</th><th>{% translate "命令" %}</th><th>{% translate "賛成" %}</th><th>{% translate "必要" %}</th><th>{% translate "結果" %}</th></tr></thead>
+      <thead><tr><th>{% translate "時期" %}</th><th>{% translate "命令" %}</th><th>{% translate "賛成" %}</th><th>{% translate "必要" %}</th><th>{% translate "結果" %}</th></tr></thead>
       <tbody>
-        {% for v in p.votes %}<tr><td>{{ v.turn }}</td><td>{{ v.order_name }}</td><td>{{ v.yes|floatformat:1 }}%</td><td>{{ v.rule_name }}</td><td>{% if v.passed %}{% translate "可決" %}{% else %}<span class="warning">{% translate "否決" %}</span>{% endif %}</td></tr>{% endfor %}
+        {% for v in p.votes %}<tr><td>{{ v.turn|turn_date }}</td><td>{{ v.order_name }}</td><td>{{ v.yes|floatformat:1 }}%</td><td>{{ v.rule_name }}</td><td>{% if v.passed %}{% translate "可決" %}{% else %}<span class="warning">{% translate "否決" %}</span>{% endif %}</td></tr>{% endfor %}
       </tbody>
     </table>
   </div>
@@ -133,7 +133,7 @@
   <h2>{% translate "体制を変える" %}</h2>
   <p class="hint">{% blocktranslate with t=p.rules.transition_turns d=p.rules.transition_drop e=p.rules.transition_event %}憲法改正（政治体制・元首制度）と経済体制の変更は、議会のある体制では 3 分の 2 の賛成が要ります。変えると {{ t }} ターンの混乱期間に入り、生産性が最大 {{ d }}% 下がり（だんだん戻る）、政情の目標が {{ e }} 下がります。混乱期間の間は体制を変えられません。{% endblocktranslate %}{% translate "首都の建物は、資材を国の倉庫に買い集めて建て替えます。計画経済に変えると民営の施設と民間銀行をすべて国有化し（代金は中央銀行が引き受けた国債で払う）、計画経済から変えると施設はそのまま国営で残ります。" %}</p>
   {% if p.transition %}
-  <p class="warning">{% blocktranslate with u=p.transition.until %}混乱期間の間（ターン {{ u }} まで）は体制を変えられません。{% endblocktranslate %}</p>
+  <p class="warning">{% blocktranslate with u=p.transition.until|turn_date %}混乱期間の間は、{{ u }}まで体制を変えられません。{% endblocktranslate %}</p>
   {% endif %}
   <form class="actions" data-order="amend_constitution" data-confirm="{% translate '憲法を改正します。混乱期間に入りますが、よろしいですか。' %}">
     <strong>{% translate "憲法改正" %}</strong>

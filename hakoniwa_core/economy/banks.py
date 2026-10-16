@@ -27,6 +27,7 @@ from typing import Any
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.economy import arrears, books, debt, household
 from hakoniwa_core.economy.households import layer_of
 from hakoniwa_core.state import OWNER_STATE, Facility, IslandState, Loan
@@ -201,7 +202,7 @@ def roe(island: IslandState, config: GameConfig, bank: str, turn: int) -> float:
     worth = net_worth(island, config, bank, turn)
     if not profits or worth <= 0:
         return 0.0
-    return sum(profits) * 12 / len(profits) / worth
+    return sum(profits) * TURNS_PER_YEAR / len(profits) / worth
 
 
 # --- 預金の保護 -----------------------------------------------------------------

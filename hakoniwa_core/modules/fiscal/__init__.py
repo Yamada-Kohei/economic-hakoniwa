@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core import ledger
+from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import BONDS, arrears, funds
 from hakoniwa_core.economy.debt import due
@@ -19,7 +20,6 @@ from hakoniwa_core.state import IslandState, LogEntry
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, part, to_basis
 
-YEAR = 12
 TAXES = ("income_tax", "corporate_tax", "consumption_tax")
 
 

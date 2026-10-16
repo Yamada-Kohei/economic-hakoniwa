@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% load i18n static %}
+{% extends "base.html" %}{% load i18n static calendar_tags %}
 {% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 {% include "web/report_header.html" %}
@@ -14,7 +14,7 @@
 
 {% if p.planned %}
 <section class="panel" id="plan">
-  <h2>{% if stats_turn is not None %}{% blocktranslate with turn=stats_turn %}計画のようす（ターン {{ turn }}）{% endblocktranslate %}{% else %}{% translate "計画のようす" %}{% endif %}</h2>
+  <h2>{% if stats_turn is not None %}{% translate "計画のようす" %} <small class="heading-date">{{ stats_turn|turn_date }}</small>{% else %}{% translate "計画のようす" %}{% endif %}</h2>
   {% if stats %}
   <table class="info">
     {% for row in stats %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
@@ -54,7 +54,7 @@
   {% else %}
   <p class="muted">{% translate "公定価格は次のターンの更新で決まります。" %}</p>
   {% endif %}
-  <p class="hint">{% blocktranslate with t=p.review band=p.band %}公定価格は原則として据え置きます。原価（今の平均賃金で作る費用に、建国のときの値段と同じ利幅を足した値段）を定期的に確かめ（次はターン {{ t }}）、公定価格との差が ±{{ band }}% を超えた財だけ原価に改めます。据え置く財は、原価を下回っていても据え置き、原価との差を国庫が補助金で埋めます（国庫直轄の工場は国庫がそのまま負います）。命令で財ごとに決めた値段は見直しません（0 を決めると上書きをやめます）。行列は、家計が配給で買えなかった割合です。公定価格を原価より安くすると、行列が長くなります。{% endblocktranslate %}</p>
+  <p class="hint">{% blocktranslate with t=p.review|turn_date band=p.band %}公定価格は原則として据え置きます。原価（今の平均賃金で作る費用に、建国のときの値段と同じ利幅を足した値段）を定期的に確かめ（次は{{ t }}）、公定価格との差が ±{{ band }}% を超えた財だけ原価に改めます。据え置く財は、原価を下回っていても据え置き、原価との差を国庫が補助金で埋めます（国庫直轄の工場は国庫がそのまま負います）。命令で財ごとに決めた値段は見直しません（0 を決めると上書きをやめます）。行列は、家計が配給で買えなかった割合です。公定価格を原価より安くすると、行列が長くなります。{% endblocktranslate %}</p>
   <p>{% translate "据え置く財" %}: {% for g in p.held %}{{ g.name }}{% if not forloop.last %}・{% endif %}{% empty %}<span class="muted">{% translate "なし" %}</span>{% endfor %}</p>
   <form class="actions" data-order="set_official_price">
     <strong>{% translate "公定価格を決める" %}</strong>

@@ -1,11 +1,11 @@
-{% extends "base.html" %}{% load i18n static %}
+{% extends "base.html" %}{% load i18n static calendar_tags %}
 {% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 {% include "web/report_header.html" %}
 
 {% if table %}
 <section class="panel">
-  <h2>{% if table.turn is not None %}{% blocktranslate with turn=table.turn %}施設の一覧と収支（ターン {{ turn }} の決算）{% endblocktranslate %}{% else %}{% translate "施設の一覧と収支" %}{% endif %}</h2>
+  <h2>{% if table.turn is not None %}{% translate "施設の一覧と収支" %} <small class="heading-date">{% blocktranslate with turn=table.turn|turn_date %}{{ turn }}の決算{% endblocktranslate %}</small>{% else %}{% translate "施設の一覧と収支" %}{% endif %}</h2>
   <p class="hint">{% blocktranslate with turns=table.book_turns %}町を除く全施設（民営・建設中を含む）です。損益は直近のターン、合計は直近 {{ turns }} ターンの合計です。国庫直轄の施設は自分の預金を持ちません（お金は国庫が出し入れします）。{% endblocktranslate %}</p>
   <div class="table-scroll">
     <table class="facilities report-table">

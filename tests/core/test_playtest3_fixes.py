@@ -22,7 +22,7 @@ from hakoniwa_core.economy import (
     household,
 )
 from hakoniwa_core.economy.groundwork import prepare
-from hakoniwa_core.log import format_log
+from hakoniwa_core.log import format_log, format_turn
 from hakoniwa_core.modules import failures
 from hakoniwa_core.modules.banking import Banking
 from hakoniwa_core.modules.bonds import Bonds
@@ -78,8 +78,9 @@ def test_default_closes_the_bond_market_and_stops_lending(game, warmed):
     log = next(e for e in island.log if e.kind == "bond_default_penalty")
     assert log.args["banks"] == len(hit)
     assert log.args["turn"] == world.turn + exclusion - 1
-    text = format_log(game.defs, log.kind, log.args)
-    assert f"ターン {world.turn + exclusion - 1} まで" in text and "15%" in text
+    text = format_log(game.defs, log.kind, log.args, calendar=game.calendar)
+    until = format_turn(game.defs, world.turn + exclusion - 1, game.calendar)
+    assert f"{until}までは" in text and "15%" in text and "箱庭暦" in until
 
 
 def test_closed_auction_is_underwritten_or_cut(game, warmed):
@@ -150,8 +151,8 @@ def test_private_entry_waits_for_lending(game, warmed):
     owners = funds.available(island, Payer(household(OWNERS)))
     reason, args = EntryExit()._finance(island, ctx, owners * 2 + 1000, 10**12)
     assert reason == "credit_crunch" and args["turn"] == ctx.turn + 4
-    text = format_log(game.defs, "entry_block_credit_crunch", args)
-    assert f"ターン {ctx.turn + 4} まで" in text
+    text = format_log(game.defs, "entry_block_credit_crunch", args, calendar=game.calendar)
+    assert f"{format_turn(game.defs, ctx.turn + 4, game.calendar)}まで" in text
 
 
 def test_planned_island_banks_keep_lending_after_default(game, warmed):

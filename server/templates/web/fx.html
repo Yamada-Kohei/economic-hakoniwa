@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% load i18n static %}
+{% extends "base.html" %}{% load i18n static calendar_tags %}
 {% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 {% include "web/report_header.html" %}
@@ -6,7 +6,7 @@
 <div class="report-layout{% if mine %} with-orders{% endif %}">
   <div class="report-main">
 <section class="panel" id="rates">
-  <h2>{% if stats_turn is not None %}{% blocktranslate with turn=stats_turn %}為替レート（ターン {{ turn }}）{% endblocktranslate %}{% else %}{% translate "為替レート" %}{% endif %}</h2>
+  <h2>{% if stats_turn is not None %}{% translate "為替レート" %} <small class="heading-date">{{ stats_turn|turn_date }}</small>{% else %}{% translate "為替レート" %}{% endif %}</h2>
   <p class="hint">{% blocktranslate with c=fx.currency_name b=band %}自国の通貨は「{{ c }}」です。変動相場で、自国通貨と相手の通貨の組ごとに、商社と政府の売り買いの板寄せで毎ターン決まり、1ターンに {{ b }}% までしか動きません。中央銀行は少しの偏りを受け身の売り買いで引き受けます（前のレートより安ければ外貨を買い、高ければ持っている外貨を売る）。相手の通貨を発行した国の中央銀行も同じように売り買いするので、島の誰も持っていない通貨も買えます。{% endblocktranslate %}</p>
   {% if fx.rates %}
   <div class="table-scroll">
@@ -55,7 +55,7 @@
 {% endif %}
 
 <section class="panel">
-  <h2>{% if stats_turn is not None %}{% blocktranslate with turn=stats_turn %}国際収支（ターン {{ turn }}）{% endblocktranslate %}{% else %}{% translate "国際収支" %}{% endif %}</h2>
+  <h2>{% if stats_turn is not None %}{% translate "国際収支" %} <small class="heading-date">{{ stats_turn|turn_date }}</small>{% else %}{% translate "国際収支" %}{% endif %}</h2>
   {% if stats %}
   <table class="info">
     {% for row in stats %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}

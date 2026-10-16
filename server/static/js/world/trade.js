@@ -3,6 +3,7 @@
 // 多く、矢じりは荷の向かう先。自国の航路は黄色）。区画の上に SVG を重ね、押すのは下の区画のまま。
 // 荷の中身は API が自国の荷の分だけ返すので、航路の一覧にだけ出す。
 
+import { turnDate } from "../calendar.js";
 import { COLORS } from "../chart/line.js";
 import { escapeHtml } from "../island/api.js";
 
@@ -128,8 +129,8 @@ function writeLegend(section, data, colors) {
     : `<p class="muted">貿易圏はまだありません。</p>`;
   const routes = data.routes.map((r) => {
     const cargo = (r.cargo || [])
-      .map((c) => `${escapeHtml(c.name)} ${c.amount} ${escapeHtml(c.unit)}（ターン ${c.arrive} に着く）`)
-      .join("・");
+      .map((c) => `${escapeHtml(c.name)} ${c.amount} ${escapeHtml(c.unit)}: ${escapeHtml(turnDate(c.arrive))}に着く`)
+      .join("<br>");
     const ships = r.ships > 0 ? `船 ${r.ships} 隻分（${r.load} トン）` : `荷 ${r.shipments} 件`;
     return `<li>${escapeHtml(r.from_name)} → ${escapeHtml(r.to_name)}: ${ships}${cargo ? `<br><small>${cargo}</small>` : ""}</li>`;
   });

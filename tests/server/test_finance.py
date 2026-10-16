@@ -161,7 +161,7 @@ def test_policy_view_has_finance_policy(client, world):
     assert policy["cb_independent"] is True
     assert policy["subsidies"] == [
         {
-            "text": "生産補助・鋼鉄 10%（ターン 12 まで）",
+            "text": "生産補助・鋼鉄 10%、箱庭暦1年12月（ターン 12）まで",
             "stop": {"kind": "production", "good": "steel", "rate": 0, "turns": 1},
         }
     ]
@@ -370,7 +370,7 @@ def test_banks_of_the_same_kind_have_distinct_names_and_positions(client, world)
     assert "crunch_until" not in a and b["crunch_until"] == turn + 9
     html = client.get(f"/islands/{island.id}/finance/").content.decode()
     assert f"({second.x}, {second.y})" in html
-    assert f"ターン {turn + 9} まで新しい融資を止めています" in html
+    assert f"{display.turn_text(turn + 9)}まで新しい融資を止めています" in html
 
     economy = island.economy
     economy.setdefault("finance", {})["default_turn"] = turn

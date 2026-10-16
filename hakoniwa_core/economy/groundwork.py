@@ -20,6 +20,7 @@ from __future__ import annotations
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, stock
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import EDUCATION, ENGINEERS, is_public_service, layers
 from hakoniwa_core.economy.households import family_of, new_worker_layer, set_workers
@@ -33,8 +34,6 @@ from hakoniwa_core.state import (
     IslandState,
 )
 from hakoniwa_core.units import money_of, round_money
-
-YEAR = 12
 
 VERSION = 3  # economy.ext["version"]: 3 はフェーズ2-3 の基盤を置いた島
 

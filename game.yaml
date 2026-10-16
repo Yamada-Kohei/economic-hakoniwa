@@ -39,6 +39,12 @@ formulas: {}
 turn:
   interval_minutes: 60  # 更新の間隔
 
+# 世界の暦（hakoniwa_core/dates.py）。1ターンが1か月で、ターン1 が first_year 年の1月。ターンが 12 の倍数の
+# ときが12月（年の終わり）で、年に1度の処理はそのターンに動く。画面では「箱庭暦32年11月（ターン 383）」と書く
+calendar:
+  name: 箱庭暦          # 暦の名前
+  first_year: 1         # ターン1 の年（1 以上）
+
 orders:
   # 行政力 = 1ターンに実行できる命令の数。中央省庁で働く公務員の数で決まり（施設の定義の admin_power）、
   # 最低 base_admin_power、最大 max_admin_power。命令ごとの消費は orders.yaml の admin_cost。

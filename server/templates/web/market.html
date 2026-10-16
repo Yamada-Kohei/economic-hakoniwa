@@ -1,10 +1,10 @@
-{% extends "base.html" %}{% load i18n static %}
+{% extends "base.html" %}{% load i18n static calendar_tags %}
 {% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 {% include "web/report_header.html" %}
 
 <section class="panel">
-  <h2>{% if market_turn is not None %}{% blocktranslate with turn=market_turn %}財ごとの市場（ターン {{ turn }}）{% endblocktranslate %}{% else %}{% translate "財ごとの市場" %}{% endif %}</h2>
+  <h2>{% if market_turn is not None %}{% translate "財ごとの市場" %} <small class="heading-date">{{ market_turn|turn_date }}</small>{% else %}{% translate "財ごとの市場" %}{% endif %}</h2>
   {% if rows %}
   <div class="table-scroll">
     <table class="goods market-table">

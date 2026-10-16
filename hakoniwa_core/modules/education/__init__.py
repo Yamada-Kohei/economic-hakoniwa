@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 from hakoniwa_core import facilities as fac
+from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.economy.households import recount_engineers as _recount
 from hakoniwa_core.economy.households import set_workers
 from hakoniwa_core.modules.labor import engineer_unemployment
@@ -37,9 +38,10 @@ SCHOOLED = "schooled"  # 働き手に加わる若い人の学んだ割合（0〜
 def education_level(island: IslandState, attending: float, ctx: StageContext) -> float:
     """次のターンの教育水準（0〜1。名前付きの式 education_level）。
 
-    子どもたちの学んだ割合 C は、今通えている割合 attending へ 1 ÷ (通う年数 × 12) ずつ入れ替わり、
-    働き手の学んだ割合 E は C へ 1 ÷ (働く年数 × 12) ずつ入れ替わる（働き手に加わる若い人と、
-    引退して抜ける人の入れ替わり）。端数を丸めないよう、蓄えは economy.ext に小数で持つ。
+    子どもたちの学んだ割合 C は、今通えている割合 attending へ 1 ÷ (通う年数 × 12) ずつ
+    入れ替わり、働き手の学んだ割合 E は C へ 1 ÷ (働く年数 × 12) ずつ入れ替わる（1ターンに。
+    働き手に加わる若い人と、引退して抜ける人の入れ替わり）。端数を丸めないよう、蓄えは
+    economy.ext に小数で持つ。
     """
     settings = ctx.config.get("education")
     ext = island.economy.ext
@@ -47,8 +49,8 @@ def education_level(island: IslandState, attending: float, ctx: StageContext) ->
     if round(now * FULL) != island.economy.education:  # 建国や移し替えで水準が置き直された
         now = island.economy.education / FULL
     schooled = ext.get(SCHOOLED, now)
-    schooled += (attending - schooled) / (settings["school_years"] * 12)
-    now += (schooled - now) / (settings["working_years"] * 12)
+    schooled += (attending - schooled) / (settings["school_years"] * YEAR)
+    now += (schooled - now) / (settings["working_years"] * YEAR)
     ext[SCHOOLED] = round(schooled, 6)
     return max(0.0, min(1.0, now))
 

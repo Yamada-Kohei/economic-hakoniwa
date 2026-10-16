@@ -23,6 +23,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.state import IslandState, LogEntry, Tile
 
@@ -32,7 +33,6 @@ BLEND = "climate_blend"  # island.ext: 倍率を効かせ終わるまでの残�
 FERTILITY = "fertility"  # tile.ext: 肥沃度（1000 分の 1）
 POLLUTED = "polluted_turns"  # tile.ext: 肥沃度が下がるまでにたまった、汚染のあったターン数
 FULL = 1000
-YEAR = 12
 STRETCH = 1.5  # 肥沃度の点の間をならすと幅が狭まるので、真ん中から広げる倍率
 
 

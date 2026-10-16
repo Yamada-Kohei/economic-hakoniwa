@@ -13,6 +13,7 @@ from typing import Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.market import auction
 from hakoniwa_core.state import Facility, IslandState
@@ -33,7 +34,7 @@ def construction_cost(defs: Defs, kind: str, prices: Prices, wage: float) -> flo
 def capital_rate(config: GameConfig) -> float:
     """1ターンの設備の費用の割合（利子と減価償却）。"""
     rate = config.get("market.initial_prices.capital_rate")
-    return rate / 12 + 1 / config.get("firms.depreciation_turns")
+    return rate / TURNS_PER_YEAR + 1 / config.get("firms.depreciation_turns")
 
 
 def _recipe_cost(

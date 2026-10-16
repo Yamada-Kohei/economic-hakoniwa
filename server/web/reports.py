@@ -14,6 +14,7 @@ from django.db.models import Max, Q
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger
+from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.economy import ENGINEERS, GENERAL, OWNERS, books, debt, entity_of
 from hakoniwa_core.modules.failures import METHODS as RESOLUTION_METHODS
 from hakoniwa_core.naming import facility_name
@@ -243,7 +244,7 @@ def flow_name(side: str, kind: str) -> str:
 
 def bucket_name(k: int) -> str:
     """国債の売買の区分 k（残りの期間。game.yaml の bonds.buckets）の表示名。"""
-    years = [edge / 12 for edge in get_game().config.get("bonds.buckets")]
+    years = [edge / TURNS_PER_YEAR for edge in get_game().config.get("bonds.buckets")]
     if k <= 0:
         return f"残り{years[0]:g}年未満"
     if k >= len(years):
@@ -758,7 +759,7 @@ def fiscal_view(island: m.Island, stats: dict[str, float], currency: str) -> dic
             "item": item,
             "name": budget_name(item),
             "annual": money(budget.get(item, 0)),
-            "per_turn": money(budget.get(item, 0) // 12),
+            "per_turn": money(budget.get(item, 0) // TURNS_PER_YEAR),
             "spent": money(stats.get(f"spent.{item}", 0)),
         }
         for item in items

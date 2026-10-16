@@ -27,6 +27,7 @@ from typing import Any
 
 from hakoniwa_core import politics
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.state import IslandState
 from hakoniwa_core.units import QUANTITY_SCALE, round_money, to_milli
@@ -36,7 +37,6 @@ LUXURY = "luxury"
 DURABLE = "durable"
 CARS = "cars"  # households[層] の、持っている自動車（1000 分の 1 台）
 PLAN = "cars_plan"  # island.scratch: 層ごとの、このターンの欲しい台数と燃料の要る量
-YEAR = 12
 
 
 def goods_of(defs: Defs, need: str) -> list[str]:

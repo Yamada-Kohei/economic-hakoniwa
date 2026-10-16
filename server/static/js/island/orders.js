@@ -5,6 +5,7 @@
 // 島の画面では政策と金融の命令の入力欄をすべて出し、財政・金融の画面では options.forms で選んだ
 // 入力欄だけを出す。
 
+import { turnDate } from "../calendar.js";
 import { escapeHtml, getJson, sendJson } from "./api.js";
 
 // 政策の命令の入力欄の値の形（ほかの欄は数）
@@ -144,7 +145,8 @@ export class OrderQueue {
     const recent = this.recent.map((o) => {
       const mark = o.status === "done" ? "実行" : "失敗";
       const reason = o.reason ? `: ${escapeHtml(o.reason)}` : "";
-      return `<li class="${o.status}">ターン ${o.turn ?? "-"} ${mark} ${escapeHtml(o.text)}${reason}</li>`;
+      const when = o.turn != null ? escapeHtml(turnDate(o.turn)) : "-";
+      return `<li class="${o.status}">${when} ${mark} ${escapeHtml(o.text)}${reason}</li>`;
     });
     const total = this.items.reduce((s, o) => s + o.cost, 0);
     const empty = this.forms ? "命令はありません。" : "命令はありません。地図でマスを選択して命令を追加してください。";
@@ -291,7 +293,7 @@ export class OrderQueue {
           <button type="submit">命令に追加</button>
         </form>`;
     }
-    const lock = p.cb_unlock_turn != null ? `ターン ${p.cb_unlock_turn} までは切り替えられません。` : `切り替えた後 ${p.cb_lock_turns} ターンは戻せません。`;
+    const lock = p.cb_unlock_turn != null ? `${escapeHtml(turnDate(p.cb_unlock_turn))}までは切り替えられません。` : `切り替えた後 ${p.cb_lock_turns} ターンは戻せません。`;
     forms.set_central_bank_independence = `<form class="actions" data-form="set_central_bank_independence">
         <strong>中央銀行の独立（今: ${independent ? "独立" : "政府の下"}）</strong>
         <p class="hint">${independent ? "政府の下に戻すと、政策金利と国債の売買を命令で決められます。" : "独立させると、中央銀行が物価と失業率を見て政策金利を決め、国債の売買と売れ残りの引き受けをやめます。"}${lock}</p>
@@ -317,7 +319,7 @@ export class OrderQueue {
       </form>`;
     forms.set_bond_payment = `<form class="actions" data-form="set_bond_payment">
         <strong>国債の利払いと償還</strong>
-        ${p.default_turn != null ? `<p class="warning">ターン ${p.default_turn} に債務不履行になりました。${p.bonds_closed_until != null ? `ターン ${p.bonds_closed_until} までは銀行が国債を買わず、入札では売れません。` : ""}</p>` : ""}
+        ${p.default_turn != null ? `<p class="warning">${escapeHtml(turnDate(p.default_turn))}に債務不履行になりました。${p.bonds_closed_until != null ? `${escapeHtml(turnDate(p.bonds_closed_until))}までは銀行が国債を買わず、入札では売れません。` : ""}</p>` : ""}
         <p class="hint">止めると、そのターンにすべての国債が債務不履行になります。額面が切り下がって持っている銀行が損をし、国債の利回りに ${p.default_premium}% が上乗せされます（${p.default_decay} ターンかけて減ります）。${p.default_exclusion} ターンは銀行が国債を買わず、入札では売れません（売れ残りは中央銀行が引き受けるか、その分の支出を減らします）。損をした銀行は ${p.default_crunch} ターン新しい融資を止めるので、民営工場の参入と新しい運転資金の借り入れが止まります。</p>
         <label><select name="stop"><option value="true">止める（債務不履行）</option><option value="false">止める命令を取り消す</option></select></label>
         <button type="submit">命令に追加</button>

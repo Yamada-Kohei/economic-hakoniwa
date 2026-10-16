@@ -1,8 +1,8 @@
-{% load i18n %}<div class="island-header">
+{% load i18n calendar_tags %}<div class="island-header">
   <h1>{{ island.name }} <span class="page-title">{{ title }}</span></h1>
   <p class="muted">
     {% if island.owner %}{{ island.owner.username }}{% else %}{% translate "持ち主なし" %}{% endif %}
-    {% if stats_turn is not None %} ・ {% blocktranslate with turn=stats_turn %}ターン {{ turn }} の時点{% endblocktranslate %}{% endif %}
+    {% if stats_turn is not None %} ・ {% blocktranslate with turn=stats_turn|turn_date %}{{ turn }}の時点{% endblocktranslate %}{% endif %}
   </p>
   {% include "web/island_nav.html" %}
   {% if note %}<p class="hint">{{ note }}</p>{% endif %}

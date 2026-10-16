@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% load i18n static %}
+{% extends "base.html" %}{% load i18n static calendar_tags %}
 {% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 {% include "web/report_header.html" %}
@@ -6,7 +6,7 @@
 <div class="report-layout{% if mine %} with-orders{% endif %}">
   <div class="report-main">
     <section class="panel">
-      <h2>{% if stats_turn is not None %}{% blocktranslate with turn=stats_turn %}貿易のようす（ターン {{ turn }}）{% endblocktranslate %}{% else %}{% translate "貿易のようす" %}{% endif %}</h2>
+      <h2>{% if stats_turn is not None %}{% translate "貿易のようす" %} <small class="heading-date">{{ stats_turn|turn_date }}</small>{% else %}{% translate "貿易のようす" %}{% endif %}</h2>
       {% if not trade.started %}
       <p class="hint">{% translate "まだ港と海運業がありません。お金の経済が始まった島には、次の更新で港・海運業・商社が置かれ、海外の商人が来始めます。" %}</p>
       {% elif not trade.port %}
@@ -190,7 +190,7 @@
               <td>{{ c.good_name }}</td>
               <td>{{ c.quantity|floatformat:"-1g" }} {{ c.unit }}</td>
               <td>{{ c.currency_symbol }}{{ c.price|floatformat:"0g" }}<br><small class="muted">{{ c.currency_name }}</small></td>
-              <td>{% if c.start %}{% blocktranslate with s=c.start e=c.end|add:"-1" %}ターン {{ s }}〜{{ e }}{% endblocktranslate %}{% else %}{% blocktranslate with n=c.turns %}{{ n }} ターン{% endblocktranslate %}{% endif %}</td>
+              <td>{% if c.start %}{% blocktranslate with s=c.start|turn_date e=c.end|add:"-1"|turn_date %}{{ s }}〜{{ e }}{% endblocktranslate %}{% else %}{% blocktranslate with n=c.turns %}{{ n }} ターン{% endblocktranslate %}{% endif %}</td>
               <td>{{ c.delivered }}</td>
               <td>{{ c.delivery_name|default:"-" }}</td>
               <td{% if c.short %} class="warning-cell"{% endif %}>{% if c.short %}{{ c.short }}{% endif %}</td>
@@ -371,7 +371,7 @@
             <tr>
               <td>{{ s.direction_name }}</td><td>{{ s.partner_name }}</td><td>{{ s.name }}</td><td>{{ s.amount }} {{ s.unit }}</td>
               <td>{% blocktranslate with t=s.load %}{{ t }} トン{% endblocktranslate %}</td>
-              <td>{% blocktranslate with t=s.loaded %}ターン {{ t }}{% endblocktranslate %}</td><td>{% blocktranslate with t=s.arrive %}ターン {{ t }}{% endblocktranslate %}</td>
+              <td>{{ s.loaded|turn_date }}</td><td>{{ s.arrive|turn_date }}</td>
               <td>{{ s.kind_name }}</td>
             </tr>
             {% endfor %}
@@ -390,7 +390,7 @@
       {% if not mc.enabled %}
       <p class="muted">{% translate "海外の商人は来ません。" %}</p>
       {% elif mc.active %}
-      <p>{% blocktranslate with n=mc.turns_left t=mc.until %}あと <strong>{{ n }}</strong> ターン（ターン {{ t }} まで）来ます。{% endblocktranslate %}
+      <p>{% blocktranslate with n=mc.turns_left t=mc.until|turn_date %}{{ t }}まで、あと <strong>{{ n }}</strong> ターン来ます。{% endblocktranslate %}
         {% if mc.rising %}<span class="warning">{% blocktranslate with x=mc.multiplier y=mc.last_multiplier %}最後の時期に入ったため、値段が上がっています（今は初めの値段の {{ x }} 倍。最後は {{ y }} 倍）。{% endblocktranslate %}</span>
         {% else %}{% blocktranslate with x=mc.multiplier n=mc.last_turns y=mc.last_multiplier %}値段は初めの値段の {{ x }} 倍で、最後の {{ n }} ターンは少しずつ上がり、最後は {{ y }} 倍になります。{% endblocktranslate %}{% endif %}</p>
       <div class="table-scroll">
@@ -405,7 +405,7 @@
       </div>
       <p class="hint">{% translate "島の市場で、決まった値段と1ターンの上限で売ります（買いはしません）。港も船も外貨も要りません。代金は島の外に出て、輸入に数えます。" %}</p>
       {% elif mc.until is not None %}
-      <p class="muted">{% blocktranslate with t=mc.until %}海外の商人はもう来ません（ターン {{ t }} まで来ていました）。{% endblocktranslate %}</p>
+      <p class="muted">{% blocktranslate with t=mc.until|turn_date %}海外の商人はもう来ません。{{ t }}まで来ていました。{% endblocktranslate %}</p>
       {% else %}
       <p class="muted">{% blocktranslate with n=mc.turns %}貿易が始まったターンから {{ n }} ターンのあいだ来ます。{% endblocktranslate %}</p>
       {% endif %}

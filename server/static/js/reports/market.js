@@ -1,6 +1,7 @@
 // 市場の画面: 選んだ資源の値段と量の推移（市場の API）と、直近のターンの約定・買えずに止まった施設
 // （島の持ち主だけ）。表の資源名を押すと、画面を読み直さずに資源を切り替える。
 
+import { turnDate } from "../calendar.js";
 import { getJson } from "../island/api.js";
 import { attachRange, escapeHtml, formatValue, makeChart, rangeQuery } from "./common.js";
 
@@ -46,7 +47,7 @@ if (detail) {
     ]);
     const l = data.latest;
     slot("latest").innerHTML = l
-      ? `<p>ターン ${l.turn}: 値段 ${escapeHtml(formatValue(l.price, "money", currency, true))}・売買量 ${escapeHtml(formatValue(l.volume, unit, "", true))}（買い注文 ${escapeHtml(formatValue(l.demand, unit, "", true))}・売り注文 ${escapeHtml(formatValue(l.supply, unit, "", true))}）</p>`
+      ? `<p>${escapeHtml(turnDate(l.turn))}: 値段 ${escapeHtml(formatValue(l.price, "money", currency, true))}・売買量 ${escapeHtml(formatValue(l.volume, unit, "", true))}（買い注文 ${escapeHtml(formatValue(l.demand, unit, "", true))}・売り注文 ${escapeHtml(formatValue(l.supply, unit, "", true))}）</p>`
       : `<p class="muted">この資源の市場の記録はありません。</p>`;
     if (mine) {
       slot("trades").innerHTML = tradesHtml(data, unit);
