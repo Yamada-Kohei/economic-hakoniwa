@@ -370,6 +370,7 @@ def update_targets(
         sold_bloc = turn.get("exported", {})
         sold_home_ = turn.get("sold", {})
         _keep_history(config, f, turn)
+        _forget_lost(f)
         for good in tradable_goods(defs):
             p = found.get(good)
             home = prices.get(good, 0)
@@ -459,6 +460,15 @@ def update_targets(
                 item["age"] = 0
             if not item["x"] and not item["m"] and held <= 0 and item["transit"] <= 0:
                 goods_of(f).pop(good, None)
+
+
+def _forget_lost(f: Facility) -> None:
+    """持っているつもりの量（held。運ぶ途中を含む）が、手元と運ぶ途中の荷より多ければ、無くなった
+    分を仕入れ値ごと外す（回4。傷んだ荷を外していなかった前の版の世界の分）。"""
+    for good, item in goods_of(f).items():
+        actual = stock.total(f.stock, good) + item.get("transit", 0)
+        if item["held"][0] > actual:
+            take_cost(item, item["held"][0] - actual)
 
 
 def _probing(target: int, sold: int, left: int) -> bool:

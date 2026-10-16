@@ -2102,13 +2102,17 @@ class Market(IslandStage):
 
     @staticmethod
     def _spoil(island: IslandState, ctx: StageContext) -> None:
-        """持ち越せる期間を過ぎた在庫を、施設・国の倉庫から捨てる。"""
+        """持ち越せる期間を過ぎた在庫を、施設・国の倉庫から捨てる。商社の荷は、持っている量と
+        仕入れ値からも外す（回4。外さずにいて、傷んで無くなった食べ物を持っているつもりで輸入の
+        注文を出さず、向きも替えられないまま飢饉になった島があった）。"""
         spoiled: dict[str, int] = {}
         for f in sorted(island.facilities, key=lambda f: f.id):
             for good, qty in stock.spoil(f.stock, ctx.turn, ctx.defs.goods).items():
                 spoiled[good] = spoiled.get(good, 0) + qty
                 if f.built and not is_public_service(ctx.defs, f):
                     books.stock_moved(island, f.id, good, -qty)
+                if trade.is_trader(ctx.config, f) and good in traders.goods_of(f):
+                    traders.take_cost(traders.goods_of(f)[good], qty)
         for good, qty in stock.spoil(island.warehouse, ctx.turn, ctx.defs.goods).items():
             spoiled[good] = spoiled.get(good, 0) + qty
         unused = services.good_of(ctx.config)  # 売れ残ったサービスは傷んだのでなく、使われなかった

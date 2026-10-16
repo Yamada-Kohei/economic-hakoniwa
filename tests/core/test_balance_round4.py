@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from hakoniwa_core import autoplan, infra, measure
+from hakoniwa_core import autoplan, infra, measure, stock
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.economy import GENERAL, productivity, services
 from hakoniwa_core.economy.prices import variable_profit
@@ -21,6 +21,7 @@ from hakoniwa_core.modules.market import Market
 from hakoniwa_core.modules.population import FED, HUNGER, Population, birth_rate, death_rate
 from hakoniwa_core.state import ACCOUNTING_SELF, OWNER_PRIVATE, WorldState
 from hakoniwa_core.state.generate import generate_world
+from hakoniwa_core.trade import traders
 from hakoniwa_core.units import to_basis
 from tests.core.test_finance import context, island_of, run
 from tests.core.test_finance import game as game  # noqa: F401  （試験の部品を使い回す）
@@ -333,3 +334,24 @@ def test_farms_review_their_crop_at_once_when_grain_is_missing(game):
     assert firms._missing(finance) == set()
     EntryExit()._review_recipes(island, _ctx_of(game, island, turn - 1))
     assert fac.RECIPE_NEXT not in farm.ext
+
+
+def test_spoiled_cargo_leaves_the_trading_company_books(game):
+    """商社の荷が傷んで捨てられたら、持っているつもりの量（held）と仕入れ値からも外す。前の版で
+    外し忘れた分は、貿易の段の終わりに手元と運ぶ途中の荷に合わせる（持っているつもりの荷が残って
+    いて、食べ物の輸入の注文が出ず、向きも替えられなかった）。"""
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    with_economy(game, island)
+    trading = add(island, game.config.get("trade.trader_facility"), 8, 8)
+    life = game.defs.goods["grain"]["shelf_life"]
+    trading.stock = {"grain": [[0, 4000], [life, 1000]]}  # 古い 4000 が傷む
+    item = traders.entry(trading, "grain")
+    item["dir"], item["held"] = traders.IMPORT, [5000, 50000]
+    Market._spoil(island, SimpleNamespace(turn=life, defs=game.defs, config=game.config))
+    assert stock.total(trading.stock, "grain") == 1000
+    assert item["held"] == [1000, 10000]
+    # 前の版の世界: 傷んだ荷が held に残っている（運ぶ途中の 500 は残す）
+    item["held"], item["transit"] = [9000, 90000], 500
+    traders.update_targets(island, game.defs, game.config, {}, {})
+    assert traders.goods_of(trading)["grain"]["held"] == [1500, 15000]
