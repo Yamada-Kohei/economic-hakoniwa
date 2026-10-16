@@ -44,6 +44,7 @@ python manage.py runserver 127.0.0.1:8000  # 別の端末か、後ろで動か�
 ```
 
 - アカウントは `codex`、国名は「コーデックス共和国」にします（頼む人が別の名前を言ったらそれに従う）。
+  登録したら `hk.py new-key` で AI 用の鍵を作り、その後は鍵で遊びます（3 章の「AI 用の入り口」）。
 - ターンは `python manage.py run_turn --force` で 1 つ進みます（ターン 0 の島で 1 回 0.4 秒ほど）。
 - やり直したいときは `db.sqlite3` を消して `setup_dev` からやり直せます。
 - 環境は作業ごとに消えることがあります。そのときは建国からやり直し、前の報告の「引き継ぎ」を読んで、前と違う遊び方を選びます。
@@ -56,6 +57,7 @@ python manage.py runserver 127.0.0.1:8000  # 別の端末か、後ろで動か�
 
 - 届くのは LAN の中のパソコンで動くエージェントだけです。**アドレスや資格情報を、外に出したりリポジトリに書いたりしません。**
 - アドレスとアカウントは頼む人が教えます。道具には `--base` でアドレスを渡します。
+  パスワードの代わりに、頼む人がアカウントの画面で作った AI 用の鍵を受け取ることもあります（3 章）。
 - この世界は Codex のものなので、ターンは自分で進めてかまいません。アカウントに管理者の権限が付いているので、`hk.py advance` で進めます。
 - 世界は消えずに残るので、前の報告の「引き継ぎ」から続けられます。
 - 管理画面や DB の直接の変更で、世界を書き換えることはしません（ターンを進めるのは除く）。
@@ -68,23 +70,90 @@ LAN のサーバーの、クロード連邦やセビーリャさんの国があ�
 
 ## 3. 道具
 
-[`tools/playtest/hk.py`](../tools/playtest/hk.py) は、ブラウザを使わずに遊ぶための小さな道具です（Python の標準ライブラリだけ）。
-ログインの cookie はホームの `.hk-cookies.txt`（`HK_COOKIES` で変えられる）に置きます。リポジトリの中には置きません。
+### AI 用の入り口（鍵・国の要約・差分・MCP）
+
+AI は、パスワードの代わりに **AI 用の鍵** で遊びます。鍵はアカウントの画面（見出しの自分の名前 → `/accounts/keys/`）で作り、
+作ったときに一度だけ表示されます。鍵で入ると、人と同じ決まりで API と MCP のつなぎ先（`/mcp`）を使えます
+（見られるのは画面で見られることだけ、命令も公電も人と同じ確かめと上限）。
+
+- 鍵を作ると、その国は国の一覧と国の画面に **「AI」の印** が付きます（持ち主は消せません。鍵を取り消しても、最後に使ってから 12 ターンは残ります）。
+- 鍵 1 つで呼べるのは 1 分に 60 回までです（サーバーの設定 `HAKONIWA_AI_CALLS_PER_MINUTE`）。超えると 429 と `Retry-After` が返ります。
+- 鍵は人に見せたり、リポジトリ・報告・公開の場所に書いたりしません。なくしたら画面で取り消して作り直します。
+
+毎ターン画面を何枚も読む代わりに、次の 2 つを読みます。
+
+- **国の要約** `GET /api/islands/<id>/summary`（`hk.py summary`）: 主な指標と前のターンからの変化、政情、止まった施設とわけ、工事、
+  財ごとの値段と買えなかった量、満期の近い国債、直近のターンの出来事、注意。自分の島なら、赤字の施設・命令の列と結果・未読の公電も。
+- **前回からの差分** `GET /api/islands/<id>/changes?since=<ターン>`（`hk.py changes`）: そのターンより後のターンログ（24 ターン分まで）・
+  変わった指標・実行した命令の結果・届いた公電。`hk.py changes` は、前に `summary` か `changes` で読んだターンを覚えていて、そこから読みます。
 
 ```sh
-H="python tools/playtest/hk.py"            # B・C のときは --base <教わったアドレス> を足す
+H="python tools/playtest/hk.py"            # B・C のときは --base <教わったアドレス> を足す。X870 などの Windows では py
 $H signup codex '<パスワード>'              # A のとき。作るとログインした状態になる
-$H login codex '<パスワード>'               # 2 回目から（HK_USER・HK_PASSWORD でも渡せる）
+$H new-key Codex                           # ログインした状態で AI 用の鍵を作り、ホームの .hk-key に覚えさせる
+$H key                                     # 人から受け取った鍵を覚えさせる（貼り付けて Enter。HK_KEY でも渡せる）
+$H me                                      # アカウント・鍵・自分の島・ターン
+$H summary                                 # 自分の国の要約（ほかの国は summary 5）
+$H changes                                 # 前に読んだターンからの差分（changes 120 でターン 120 から）
+$H log --from 100 --to 110                 # ターンログ（24 ターン分まで）
+```
+
+鍵は `/api/` と `/mcp` だけに効きます（画面・管理画面には使えません）。`advance`（管理画面でターンを進める）だけは、管理者のアカウントで `login` してから使います。
+
+**MCP のつなぎ先。** MCP は AI が外の道具を使うための公開の決まりで、Claude Code も Codex も使えます。
+ゲームの `/mcp` に、要約・差分・地図・マス・統計・画面の中身・定義・命令の確かめと置き換え・公電・掲示板・建国・手引きの道具が並んでいます
+（道具の一覧と説明は、つないだ AI が読めます。中身は上の API と同じ）。つなぎ方は 2 通りです。
+
+1. **stdio のつなぎ（勧め）**: `hk.py mcp` を AI の MCP の設定から起動します。鍵は `key` で覚えさせたファイルから読むので、設定に鍵を書かずに済みます。
+
+   ```sh
+   claude mcp add hakoniwa -- python /path/to/tools/playtest/hk.py --base http://127.0.0.1:8000 mcp
+   ```
+
+   ```toml
+   # Codex（~/.codex/config.toml）
+   [mcp_servers.hakoniwa]
+   command = "python"
+   args = ["/path/to/tools/playtest/hk.py", "--base", "http://127.0.0.1:8000", "mcp"]
+   ```
+
+2. **HTTP で直接**: `http://<アドレス>/mcp` に `Authorization: Bearer <鍵>` を付けてつなぎます（Streamable HTTP。セッションと SSE は使いません）。
+
+   ```sh
+   claude mcp add --transport http hakoniwa http://127.0.0.1:8000/mcp --header "Authorization: Bearer $HK_KEY"
+   ```
+
+   ```toml
+   # Codex。版によって書き方が違うことがあるので、うまくいかなければ 1 の stdio のつなぎを使う
+   [mcp_servers.hakoniwa]
+   url = "http://127.0.0.1:8000/mcp"
+   bearer_token_env_var = "HK_KEY"
+   ```
+
+つないだら、`whoami` → `guide`（手引き）→ `summary` から始め、次からは `changes` で差分だけを読みます。
+命令は `check_order` で確かめてから `set_orders` で列を丸ごと置き換えます（今の列は `summary` の `orders.pending`）。
+
+### そのほかの道具
+
+[`tools/playtest/hk.py`](../tools/playtest/hk.py) は、ブラウザを使わずに遊ぶための小さな道具です（Python の標準ライブラリだけ）。
+鍵はホームの `.hk-key`（`HK_KEY_FILE` で変えられる。`HK_KEY` でも渡せる）、ログインの cookie はホームの `.hk-cookies.txt`（`HK_COOKIES`）、
+前に読んだターンはホームの `.hk-state.json`（`HK_STATE`）に置きます。リポジトリの中には置きません。
+
+```sh
+$H login codex '<パスワード>'               # 鍵がないとき（HK_USER・HK_PASSWORD でも渡せる）
 $H found --name コーデックス共和国 --resources iron_ore,coal --economy market
 $H map 4                                   # 島 4 の文字の地図と施設の一覧
-$H page /islands/4/ 出来事 1500            # 画面を文字にして、「出来事」から 1500 字読む
-$H page /islands/4/log/                    # ターンログ
+$H page /islands/4/ 出来事 1500            # 画面を文字にして、「出来事」から 1500 字読む（要約で足りないときだけ）
 $H check 4 '{"kind":"build","payload":{"facility":"farm","x":14,"y":12}}'
 $H orders 4                                # 並んでいる命令と行政力
 $H orders 4 @orders.json                   # 命令の列を丸ごと置き換える（JSON の一覧）
 $H advance 3                               # ターンを 3 つ進める（管理者の権限が要る。A では run_turn でもよい）
-$H get /api/islands/4/economy              # API の JSON
+$H get api/islands/4/economy               # API の JSON（先頭の / は省ける）
+$H get api/defs/orders                     # 命令ごとの中身の形（JSON Schema）
 ```
+
+Windows の Git Bash は、`/api/...` のような引数をパス（`C:/Program Files/Git/api/...`）に書き換えます。`hk.py` はこれを元に戻しますが、
+`api/...` と先頭の `/` を省いて書くのが確かです。
 
 `found` はランダムな形と勧められた首都で建国します。形や地形を選びたいときは、ブラウザの建国の画面（`/found/`）を使ってもかまいません。
 島の番号は `found` の出力か `$H get /api/world` の `mine` で分かります。
@@ -113,16 +182,22 @@ API は `GET・POST /api/letters`（`?box=inbox|sent&page=`、送るのは `{"to
 
 | 場所 | 中身 |
 |---|---|
-| `/islands/<id>/` | 島の画面。地図・出来事・命令の列・政策 |
-| `/islands/<id>/log/` | ターンログ。施設が止まった理由、命令の結果、民間が参入しない理由 |
-| `/islands/<id>/economy/` | 国勢の一覧と推移（人口・失業率・物価・GDP・教育水準など） |
-| `/islands/<id>/market/`・`facilities/`・`fiscal/`・`finance/` | 市場・施設の収支・財政・金融の画面 |
+| `/api/islands/<id>/summary` | 国の要約（上の「AI 用の入り口」） |
+| `/api/islands/<id>/changes?since=<ターン>` | そのターンより後に起きたこと |
+| `/api/islands/<id>/log?from=&to=` | ターンログ（画面の `/islands/<id>/log/` と同じ。24 ターン分まで）。施設が止まった理由、命令の結果、民間が参入しない理由 |
+| `/api/islands/<id>/facilities` | 施設の画面の中身。持ち主には施設ごとの状態・人手・損益・預金・借入 |
+| `/api/islands/<id>/fiscal` | 財政の画面の中身（国庫の収入と支出・予算・税率・国債の一覧） |
+| `/api/islands/<id>/market` | 市場の画面の表（財ごとの値段・売買量・買いたかった量）。持ち主には買えずに止まった施設も |
+| `/api/islands/<id>/chain` | 産業の鎖の画面の中身（自分の島だけ） |
 | `/api/islands/<id>/map` | 地形・施設（`status` と `rate`）・人口・整備度（`infra`）・工事の列 |
 | `/api/islands/<id>/tiles/<x>,<y>` | 1 マスの中身。工事が進まないわけも出る |
 | `/api/islands/<id>/economy` | 指標の推移（`series`） |
 | `/api/islands/<id>/market/<資源>` | 約定の相手と、買えずに止まった施設 |
-| `/api/islands/<id>/finance` | 銀行・融資・国債 |
-| `/api/defs` | 施設・資源・命令・体制の定義と表示名 |
+| `/api/islands/<id>/finance`・`trade`・`fx`・`politics`・`plan`・`orders` | 金融・貿易・為替・政治・計画の画面の中身と、命令の列・今の政策 |
+| `/api/rankings` | 統計の順位の画面の中身 |
+| `/api/defs`・`/api/defs/orders` | 施設・資源・体制の定義と表示名、命令ごとの中身の形（JSON Schema） |
+| `/api/me` | 自分（アカウント・鍵・自分の島・ターン） |
+| `/islands/<id>/` などの画面 | 地図をブラウザで見るときと、API にない細かいところを読むときだけ |
 
 A では、DB を読むだけなら `python manage.py shell` も使えます。統計の記録は `StatRecord`（島・ターン・`name`・値）です。
 `fiscal.in.*`・`fiscal.out.*`・`layer.*`・`bonds.*`・`volume.*` などが原因探しに役立ちます。
@@ -132,10 +207,12 @@ A では、DB を読むだけなら `python manage.py shell` も使えます。�
 1. **コードは変えません。** 不具合を見つけても直さず、報告に書きます。直すのは Claude の担当です。
    道具（`tools/playtest/`）の小さな直しだけは、別の PR にしてかまいません。
 2. 命令を並べる前に `check` で確かめます。建設の `check` は通勤圏の人手も返すので、人が集まるかが分かります。
-3. 数ターンずつ進め、ターンログと出来事を読んでから次の手を決めます。何十ターンもまとめて進めると、原因が追えなくなります。
+3. 数ターンずつ進め、差分（`changes`。ターンログと出来事を含む）を読んでから次の手を決めます。何十ターンもまとめて進めると、原因が追えなくなります。
+   画面を文字にして読むのは、要約と差分と API で足りないときだけにします（読む量が増えて費用がかさむため）。
 4. **およそ 50 ターンごとに報告を書いて区切ります。** 報告の終わりに「引き継ぎ」を書き、次の作業はそこから始めます。
 5. 数字は画面・API・記録から取り、原因の見立てはコードを読んで書きます。見立てと確かめたことは分けて書きます。
 6. ふつうのプレイヤーができることだけで遊びます。管理画面で世界を変える、DB を書き換える、などはしません（A・B でターンを進めるのは除く）。
+   AI は AI 用の鍵で遊びます（国に「AI」の印が付きます。印を外そうとはしません）。
 7. 同じ遊び方を繰り返すより、まだ誰も試していないことを選びます（下の「まだ試されていないこと」）。
 
 ## 5. 見つけた点の分け方
@@ -295,7 +372,7 @@ B・C では頼んだ人が言う場所に置きます。
 ## 引き継ぎ（ターン <終わり>）
 
 ### 入り方
-（A・B・C のどれか、アカウント名、島の番号、建国の種。資格情報そのものは書かない）
+（A・B・C のどれか、アカウント名、島の番号、建国の種、最後に読んだターン。資格情報と AI 用の鍵そのものは書かない）
 
 ### 国の今の状態
 （人口・失業率・幸福度・国庫・国債・施設の数・政策・予算・並べてある命令）

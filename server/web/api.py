@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 import string
+from collections.abc import Mapping
 from functools import cache
 from typing import Any
 
 import yaml
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Max, Q
 from django.http import Http404, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.templatetags.static import static
@@ -23,11 +24,15 @@ from hakoniwa_core.founding import land_terrains
 from hakoniwa_core.naming import default_place_style, place_of, place_styles
 from hakoniwa_core.orders import check_order
 from hakoniwa_core.units import from_milli, to_basis
+from server.accounts import keys
 from server.game import get_game
+from server.letters import services as letter_services
 from server.orders.models import Order
-from server.web import display, reports
+from server.web import chain as chain_views
+from server.web import display, overview, rankings, reports
 from server.web import politics as politics_views
 from server.web import trade as trade_views
+from server.web import views as pages
 from server.world import models as m
 from server.world.repository import load_island
 from server.world.services import grid_size
@@ -107,6 +112,39 @@ def defs(request):
             "theme": _theme(game.config.raw.get("theme", "default")),
         }
     )
+
+
+@require_GET
+def order_defs(request):
+    """命令の定義: 表示名・要る行政力・中身の形（JSON Schema）・議会の採決・実行まで伏せるか。
+
+    中身の形は packs/base/data/orders.yaml の payload そのまま。命令の列（PUT .../orders）と確かめ
+    （POST .../orders/check）に送る {"kind": 種類, "payload": 中身} の中身がこの形になる。
+    """
+    d = get_game().defs
+    return _json(
+        {
+            "orders": {
+                oid: {
+                    "name": d.name("orders", oid),
+                    "admin_cost": o["admin_cost"],
+                    "payload": _plain(o["payload"]),
+                    **({"parliament": o["parliament"]} if o.get("parliament") else {}),
+                    **({"secret": _plain(o["secret"])} if o.get("secret") else {}),
+                }
+                for oid, o in d.orders.items()
+            }
+        }
+    )
+
+
+def _plain(value: Any) -> Any:
+    """書き換えられない定義データ（Defs）を、JSON にできる dict と list に直す。"""
+    if isinstance(value, Mapping):
+        return {k: _plain(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_plain(v) for v in value]
+    return value
 
 
 def _terrain_def(tid: str, t: Any) -> dict[str, Any]:
@@ -419,6 +457,163 @@ def island_plan(request, island_id: int):
     return _json(politics_views.plan_data(island, _mine(request, island), stats))
 
 
+# --- 画面だけにあった中身（施設・財政・市場の表・産業の鎖・ターンログ・順位） ---------------
+# 画面と同じ値を、同じ見せる範囲で JSON にしたもの。
+
+
+@require_GET
+def facilities(request, island_id: int):
+    """施設の画面: 国全体の施設の統計と、持ち主には施設ごとの状態・人手・損益・預金・借入。"""
+    island = get_object_or_404(m.Island, pk=island_id)
+    mine = _mine(request, island)
+    turn, stats = display.latest_stats(island)
+    data: dict[str, Any] = {
+        "island": island.id,
+        "mine": mine,
+        "stats_turn": turn,
+        "stats": reports.stat_rows(stats, pages.FACILITY_STATS, _currency(island)),
+    }
+    if mine:
+        data["table"] = reports.facility_rows(island, _currency(island))
+    return _json(data)
+
+
+@require_GET
+def fiscal(request, island_id: int):
+    """財政の画面: 国庫の収入と支出、予算と使った額、税率、国債の一覧（持ち主には持ち手も）。"""
+    island = get_object_or_404(m.Island, pk=island_id)
+    mine = _mine(request, island)
+    turn, stats = display.latest_stats(island)
+    return _json(
+        {
+            "island": island.id,
+            "mine": mine,
+            "stats_turn": turn,
+            "fiscal": reports.fiscal_view(island, stats, _currency(island)),
+            "bonds": reports.bond_rows(island, _currency(island), mine),
+        }
+    )
+
+
+@require_GET
+def market_table(request, island_id: int):
+    """市場の画面の表: 財ごとの値段・変わり方・売買量・買いたかった量と売りたかった量・生産量・
+    在庫。持ち主には、原料を買えずに止まった施設も。"""
+    island = get_object_or_404(m.Island, pk=island_id)
+    mine = _mine(request, island)
+    turn, stats = display.latest_stats(island)
+    data: dict[str, Any] = {
+        "island": island.id,
+        "mine": mine,
+        "turn": reports.market_turn(island),
+        "rows": reports.market_table(island, stats, _currency(island)),
+    }
+    if mine:
+        data["short"] = reports.short_facilities(island, display.island_for_naming(island))
+    return _json(data)
+
+
+@require_GET
+def chain(request, island_id: int):
+    """産業の鎖の画面（島の持ち主だけ。ほかは 403）。"""
+    island = get_object_or_404(m.Island, pk=island_id)
+    if not _mine(request, island):
+        return _json({"error": "産業の鎖は島の持ち主だけが見られます"}, status=403)
+    _, stats = display.latest_stats(island)
+    return _json(chain_views.chain_view(island, stats, _currency(island)))
+
+
+@require_GET
+def turn_log(request, island_id: int):
+    """ターンログ（誰にでも。画面と同じ）。?from=&to=（ターン）。決めなければ、記録のある最後の
+    ターンだけ。1回に返すのは LOG_TURNS_MAX ターン分まで（新しいほうを残す）。"""
+    island = get_object_or_404(m.Island, pk=island_id)
+    last = island.logs.aggregate(t=Max("turn"))["t"]
+    if last is None:
+        return _json({"island": island.id, "from": None, "to": None, "entries": []})
+    end = _turn_arg(request.GET.get("to"), last)
+    start = _turn_arg(request.GET.get("from"), end)
+    start = max(start, end - overview.LOG_TURNS_MAX + 1)
+    return _json(
+        {
+            "island": island.id,
+            "from": start,
+            "to": end,
+            "entries": overview.log_range(island, start, end),
+        }
+    )
+
+
+def _turn_arg(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+@require_GET
+def rankings_data(request):
+    """統計の順位の画面（?base=島の番号 で、お金の額を直す通貨。決めなければ見る人の国の通貨）。"""
+    w = m.World.objects.order_by("id").first()
+    if w is None:
+        return _json({"turn": 0, "categories": [], "industries": []})
+    own = None
+    if request.user.is_authenticated:
+        own = m.Island.objects.filter(owner=request.user, world=w).first()
+    base = _turn_arg(request.GET.get("base"), -1)
+    if not w.islands.filter(pk=base).exists():
+        base = rankings.default_base(w, own)
+    return _json(rankings.ranking_data(w, base))
+
+
+# --- AI が遊ぶための入り口（国の要約・差分・自分） -------------------------------------
+# 中身は server/web/overview.py。鍵（server/accounts/keys.py）でも、ログインした画面からでも読める。
+
+
+@require_GET
+def me(request):
+    """自分: アカウント・使っている AI 用の鍵・自分の島・世界のターン・届いた公電の未読の数。"""
+    w = m.World.objects.order_by("id").first()
+    turn = w.turn if w else 0
+    data: dict[str, Any] = {
+        "user": request.user.username if request.user.is_authenticated else None,
+        "key": None,
+        "island": None,
+        "turn": turn,
+        "date": display.turn_text(turn),
+        "next_turn_at": w.next_turn_at.isoformat() if w and w.next_turn_at else None,
+    }
+    key = getattr(request, "api_key", None)
+    if key is not None:
+        data["key"] = {
+            "name": key.name,
+            "prefix": key.prefix,
+            "calls_per_minute": settings.HAKONIWA_AI_CALLS_PER_MINUTE,
+        }
+    island = letter_services.own_island(request.user)
+    if island is not None:
+        data["island"] = {"id": island.id, "name": island.name, "ai": keys.is_ai_island(island)}
+        data["unread_letters"] = letter_services.unread_count(island)
+    return _json(data)
+
+
+@require_GET
+def summary(request, island_id: int):
+    """国の要約: 主な指標と前のターンからの変化、政情、止まった施設と工事、財の値段と品切れ、
+    満期の近い国債、直近のターンの出来事、注意。持ち主には赤字の施設・命令の列と結果・公電も。"""
+    island = get_object_or_404(m.Island.objects.select_related("owner", "world"), pk=island_id)
+    return _json(overview.summary(island, _mine(request, island)))
+
+
+@require_GET
+def changes(request, island_id: int):
+    """ターン since より後に起きたこと（?since=ターン。決めなければ前のターンから）。"""
+    island = get_object_or_404(m.Island.objects.select_related("world"), pk=island_id)
+    since = _turn_arg(request.GET.get("since"), island.world.turn - 1)
+    mine = _mine(request, island)
+    return _json(overview.changes(island, since, mine, _secret_orders()))
+
+
 # --- 命令 -------------------------------------------------------------------
 
 
@@ -443,6 +638,12 @@ def orders(request, island_id: int):
     state = load_island(island)
     errors, warnings = [], []
     for i, item in enumerate(items):
+        if not isinstance(item, dict):
+            text = display.message("reason_invalid_payload")
+            errors.append(
+                {"index": i, "text": text, "details": ["{kind, payload} の形で送ってください"]}
+            )
+            continue
         kind, payload = item.get("kind"), item.get("payload")
         result = check_order(get_game().defs, get_game().registry, state, kind, payload)
         if result.ok:
@@ -635,6 +836,7 @@ def world(request):
     if w is None:
         return _json({"grid": 0, "turn": 0, "islands": []})
     islands = w.islands.select_related("owner").order_by("id")
+    ai_owners = keys.ai_owner_ids(w.turn)
     return _json(
         {
             "grid": grid_size(w),
@@ -647,6 +849,7 @@ def world(request):
                     "wy": i.wy,
                     "owner": i.owner.username if i.owner else "",
                     "mine": request.user.is_authenticated and i.owner_id == request.user.id,
+                    "ai": i.owner_id is not None and i.owner_id in ai_owners,  # AI の国の印
                     "climate": (i.ext or {}).get("climate", ""),  # フェーズ3-2
                 }
                 for i in islands
