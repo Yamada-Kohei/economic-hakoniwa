@@ -36,6 +36,7 @@ from typing import Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, ledger, nature, stock
+from hakoniwa_core.dates import is_year_end
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     Payer,
@@ -194,7 +195,7 @@ class Production(IslandStage):
     @staticmethod
     def _experience(island: IslandState, ctx: StageContext) -> None:
         """経験の統計（産業ごとの累積。標準の施設が全力で動いたターン数）と、年の終わりの見直し。"""
-        if ctx.turn % experience.YEAR == 0:
+        if is_year_end(ctx.turn):
             notable = ctx.config.get("experience.base_turns") * experience.FULL
             before = {k: v[0] for k, v in experience.table(island).items()}
             for industry in experience.close_year(island, ctx.config):

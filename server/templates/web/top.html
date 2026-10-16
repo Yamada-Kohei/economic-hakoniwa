@@ -1,7 +1,7 @@
-{% extends "base.html" %}{% load i18n %}
+{% extends "base.html" %}{% load i18n calendar_tags %}
 {% block content %}
 {% if world %}
-  <p>{% blocktranslate with turn=world.turn %}ターン {{ turn }}{% endblocktranslate %}
+  <p>{{ world.turn|turn_date }}
     {% if world.next_turn_at %} ・ {% translate "次の更新" %}: {{ world.next_turn_at|date:"Y-m-d H:i" }}{% endif %}
     {% if world.paused %} ・ {% translate "更新は一時停止中" %}{% endif %}
   </p>

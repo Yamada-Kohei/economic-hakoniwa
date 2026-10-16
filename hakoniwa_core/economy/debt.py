@@ -20,10 +20,10 @@ from collections.abc import Sequence
 
 from hakoniwa_core import ledger
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.state import Bond, EconomyState, IslandState
 from hakoniwa_core.units import BASIS
 
-YEAR = 12
 VALUED = "bonds_valued"  # island.scratch の印: 決算の段がこのターンの国債の時価を評価した
 COST = "bond_cost"  # economy.finance: 持ち手 → {銘柄の番号（文字列）→ 取得原価}
 REALIZED = "bond_realized"  # economy.finance: 持ち手 → 決算の段にまだ入れていない実現損益

@@ -73,6 +73,7 @@ from typing import Any
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, nature, stock, trade
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import needs
 from hakoniwa_core.economy.prices import initial_prices, unit_cost
@@ -330,7 +331,7 @@ def _education_cost(island: IslandState, defs: Defs, config: GameConfig) -> int:
         per_turn += fac.workers_needed(defs, f.kind) * wage
         for good, qty in fac.recipe_of(defs, f)["inputs"].items():
             per_turn += money_of(int(island.economy.prices.get(good, 0) * band), qty)
-    return int(per_turn * 12 * EDUCATION_MARGIN)
+    return int(per_turn * TURNS_PER_YEAR * EDUCATION_MARGIN)
 
 
 def _price_cap_order(

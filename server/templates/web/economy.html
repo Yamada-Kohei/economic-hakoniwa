@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% load i18n static %}
+{% extends "base.html" %}{% load i18n static calendar_tags %}
 {% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 {% include "web/report_header.html" %}
@@ -48,12 +48,12 @@
       </figcaption>
     </figure>
   </div>
-  <p class="hint">{% translate "横軸はターン（12ターンで1年）です。グラフに指やマウスを乗せると、そのターンの値を表示します。凡例を押すと線を隠せます。" %}</p>
+  <p class="hint">{% translate "横軸は暦の年と月です（1ターンが1か月）。グラフに指やマウスを乗せると、そのターンの年月と値を表示します。凡例を押すと線を隠せます。" %}</p>
 </section>
 
 {% if summary %}
 <details class="panel">
-  <summary>{% blocktranslate with turn=stats_turn %}国勢の一覧（ターン {{ turn }}）{% endblocktranslate %}</summary>
+  <summary>{% translate "国勢の一覧" %} <small class="heading-date">{{ stats_turn|turn_date }}</small></summary>
   <table class="info">
     {% for row in summary %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
   </table>

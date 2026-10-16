@@ -1,6 +1,8 @@
 // 小さな折れ線グラフ: 横軸をターンにして、1つ以上の系列を Canvas に描く（外部のライブラリは使わない）。
-// 凡例は HTML で作り（狭い画面で折り返せるように）、押すとその線を隠す。グラフに指やマウスを乗せると、
-// いちばん近いターンの値を出す。値のない所（null）は線を切る。
+// 横軸の目盛りは暦の年と月（calendar.js）。凡例は HTML で作り（狭い画面で折り返せるように）、押すとその線を
+// 隠す。グラフに指やマウスを乗せると、いちばん近いターンの日付と値を出す。値のない所（null）は線を切る。
+
+import { axisLabel, turnDate, turnsPerYear } from "../calendar.js";
 
 // 系列の色（並べた順に使う）
 export const COLORS = ["#2f6db5", "#d1495b", "#2e8b57", "#e08a00", "#7d5ba6", "#00838f", "#8d6e63", "#607d8b"];
@@ -190,11 +192,14 @@ export class LineChart {
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     const span = t1 - t0;
-    const every = span > 0 ? niceTurnStep(span / Math.max(1, Math.floor((plot.x1 - plot.x0) / 60))) : 1;
-    for (let t = Math.ceil(t0 / every) * every; t <= t1; t += every) {
-      ctx.fillText(String(t), xOf(t), plot.y1 + 5);
+    const year = turnsPerYear();
+    const every = span > 0 ? niceTurnStep(span / Math.max(1, Math.floor((plot.x1 - plot.x0) / 60)), year) : 1;
+    // 暦があれば月の初めのそろう所（1月から every ごと）に目盛りを置き、最初の目盛りには年も書く
+    const first = year ? 1 + Math.ceil((t0 - 1) / every) * every : Math.ceil(t0 / every) * every;
+    for (let t = first; t <= t1; t += every) {
+      ctx.fillText(year ? axisLabel(t, t === first) : String(t), xOf(t), plot.y1 + 5);
     }
-    if (span === 0) ctx.fillText(String(t0), xOf(t0), plot.y1 + 5);
+    if (span === 0) ctx.fillText(year ? axisLabel(t0, true) : String(t0), xOf(t0), plot.y1 + 5);
 
     // 線
     for (const s of this.visible()) {
@@ -266,7 +271,7 @@ export class LineChart {
         return `<li><span class="swatch" style="background:${s.color}"></span>${escape(s.label)}: <strong>${escape(this.detail(v))}</strong></li>`;
       })
       .join("");
-    this.tip.innerHTML = `<div>ターン ${this.turns[i]}</div><ul>${rows}</ul>`;
+    this.tip.innerHTML = `<div>${escape(turnDate(this.turns[i]))}</div><ul>${rows}</ul>`;
     this.tip.hidden = false;
     // 吹き出しは指の反対側に出し、グラフの外にはみ出さないようにする
     const box = this.box.getBoundingClientRect();
@@ -290,10 +295,14 @@ function niceStep(step) {
   return 10 * p;
 }
 
-/** ターンの目盛りの幅（1年 = 12 ターンの区切りを好む）。 */
-function niceTurnStep(step) {
-  for (const k of [1, 2, 3, 6, 12, 24, 60, 120, 240, 600, 1200]) if (k >= step) return k;
-  return niceStep(step);
+/**
+ * ターンの目盛りの幅。暦があれば（year は1年のターン数）、1年を割り切る月数か、年の 1・2・5・10… 倍を
+ * 選ぶ。暦がなければ 1・2・5 × 10 の累乗。
+ */
+function niceTurnStep(step, year) {
+  if (!year) return niceStep(step);
+  for (const k of [1, 2, 3, 6]) if (year % k === 0 && k < year && k >= step) return k;
+  return year * niceStep(step / year);
 }
 
 /** 目盛りの値の端数（0.1 + 0.2 のような）を落とす。 */

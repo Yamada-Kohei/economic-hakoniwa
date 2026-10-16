@@ -42,6 +42,8 @@ from typing import Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, politics, stock
+from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
+from hakoniwa_core.dates import is_year_end
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     GENERAL,
@@ -74,7 +76,6 @@ from hakoniwa_core.state import (
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, money_of
 
-YEAR = 12
 TAXES = ("income_tax", "corporate_tax", "consumption_tax")
 
 
@@ -228,7 +229,7 @@ class Politics(IslandStage):
         self._rebuild(island, ctx)
         if politics.trait(island, defs, "monarch", False):
             state.setdefault("monarch_age", config.get("politics.monarch_age"))
-            if ctx.turn % YEAR == 0:
+            if is_year_end(ctx.turn):
                 state["monarch_age"] += 1
         island.stats["politics.stability"] = state["stability"]
         island.stats["politics.target"] = state["target"]

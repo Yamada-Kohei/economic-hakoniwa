@@ -1,10 +1,11 @@
-{% load i18n static %}<!doctype html>
+{% load i18n static calendar_tags %}<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{% translate "経済版箱庭諸国" %}{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'css/site.css' %}">
+  {% calendar_script %}
 </head>
 <body>
   <header class="site-header">

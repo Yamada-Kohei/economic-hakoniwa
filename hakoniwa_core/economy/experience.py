@@ -33,7 +33,6 @@ from hakoniwa_core.state import IslandState, WorldState
 KEY = "experience"  # island.ext: 産業 → [累積, その年の量]（1000 分の 1 ターン）
 RANKINGS = "rankings"  # world.ext: 称号と順位（modules/experience）
 FULL = 1000
-YEAR = 12
 
 
 def table(island: IslandState) -> dict[str, list[int]]:

@@ -44,6 +44,7 @@ from typing import Any
 
 from hakoniwa_core import ledger
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import Payer, banks, books, debt
 from hakoniwa_core.state import IslandState, WorldState
@@ -55,7 +56,6 @@ from hakoniwa_core.units import BASIS, part, to_basis
 
 KEY = "fx_bonds"  # island.ext["trade"]: 主体 → 発行した島 → [額面, 帳簿の値打ち, 時価]
 HISTORY = "rate_history"  # island.ext["trade"]: 通貨 → 直近 13 ターンのレート
-YEAR = 12
 BANKS = "banks"  # 統計の持ち手の分け方（市中銀行の合計）
 
 
