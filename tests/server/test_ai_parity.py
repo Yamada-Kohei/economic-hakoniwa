@@ -1,7 +1,8 @@
 """人が画面でできること・見られるものが、AI の入り口（MCP の道具）でもできるかを確かめる。
 
-画面・命令・地図の重ね表示を足したり変えたりしたのに MCP を合わせ忘れると、ここが落ちる。落ちたら、
-足りない中身を JSON API と MCP の道具（server/web/mcp.py）に足す（CONTRIBUTING.md の「AI の入り口」）。
+画面・命令・地図の重ね表示を足したり変えたりしたのに MCP を合わせ忘れると、ここが落ちる。
+落ちたら、足りない中身を JSON API と MCP の道具（server/web/mcp.py）に足す
+（CONTRIBUTING.md の「AI の入り口も人と同じにそろえる」）。
 
 画面の中身の比べは、サンプルの世界を数ターン回した島で、画面に渡す値（テンプレートの文脈）が道具の
 答えのどこかに同じ値であるかを見る。空の値（その島に無いもの）は比べない。
@@ -110,14 +111,17 @@ def _empty(value: Any) -> bool:
 
 
 def _within(small: Any, big: Any) -> bool:
-    """small が big に含まれるか（辞書は small の項目が全部 big に同じ値である。並びは同じ長さ）。"""
+    """small が big に含まれるか（辞書は small の項目が全部 big に同じ値。並びは同じ長さで、
+    要素の順は問わない。DB によって同じ値の行の並びが変わるため）。"""
     if isinstance(small, dict):
-        return isinstance(big, dict) and all(k in big and _within(v, big[k]) for k, v in small.items())
+        return isinstance(big, dict) and all(
+            k in big and _within(v, big[k]) for k, v in small.items()
+        )
     if isinstance(small, list):
         return (
             isinstance(big, list)
             and len(small) == len(big)
-            and all(_within(a, b) for a, b in zip(small, big, strict=True))
+            and all(any(_within(a, b) for b in big) for a in small)
         )
     return small == big
 
@@ -308,7 +312,8 @@ def test_every_map_overlay_has_a_text_map(played):
     # 人口の段と電力の印が、マスの値のとおりであること
     tile = own.tiles.filter(population__gte=30).order_by("-population").first()
     assert tile is not None
-    rows = [r for r in _tool(ai, "map", overlay="population").splitlines() if r[:3].strip().isdigit()]
+    text = _tool(ai, "map", overlay="population")
+    rows = [r for r in text.splitlines() if r[:3].strip().isdigit()]
     step = sum(1 for s in mcp.POPULATION_STEPS[1:] if tile.population >= s)
     assert rows[tile.y][4 + tile.x] == str(step)
     power = (tile.ext or {}).get("power") or 0
