@@ -41,4 +41,8 @@ PostgreSQL でも確かめるときは `DATABASE_URL=postgres://... pytest`。CI
 
 - 1つの PR では1つのことをします。
 - 定義データの形（`schemas/`）を変えるときは、`docs/defs.md` も一緒に直します。
+- 段を足す・並べ替えるときは、`docs/modules.md` の段の表も一緒に直します（`tests/core/test_docs_match.py` が
+  `game.yaml` の `stages:` と比べます）。
+- 設定や定義データの数字を変えたら、`python tools/spec/settings.py diff origin/main` の出力を PR の本文に
+  貼ります。今の数字の一覧は `python tools/spec/settings.py markdown` で読み物の形にできます。
 - DB のモデルを変えたら `python manage.py makemigrations` で移行ファイルを作って含めます。
