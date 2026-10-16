@@ -822,7 +822,9 @@ class Market(IslandStage):
             if not f.built or fac.is_housing(config, f) or not fac.on_map(f):
                 continue
             recipe = fac.recipe_of(defs, f)
-            if not recipe["outputs"] and not recipe["inputs"] and not f.stock:
+            # 作り方のない施設は飛ばす。ただし畑をみな蒔き直している途中の農場は、前の作物の在庫を
+            # 売る（回3）。商社の輸出と輸入の荷は商社が自分で売り買いするので、ここでは売らない
+            if not recipe["outputs"] and not recipe["inputs"] and fac.FIELDS not in f.economy:
                 continue
             rate = rates.get(f.id, 0)
             payer = payer_of(defs, config, f)

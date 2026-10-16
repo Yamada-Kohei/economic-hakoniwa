@@ -377,3 +377,34 @@ def test_farm_moves_its_fields_to_a_new_crop_little_by_little(game):
     # 肥料の有無だけの替え方はすぐ
     fac.switch_recipe(defs, farm, "cotton_fertilized", 20)
     assert fac.FIELDS not in farm.economy and farm.recipe == "cotton_fertilized"
+
+
+def test_market_sells_old_crops_of_a_resown_farm_but_not_the_traders_cargo(game, warmed):
+    """畑をみな蒔き直している途中の農場（作り方の産出も投入もない）は、前の作物の在庫を売りに出す。
+    作り方を持たない商社の輸出と輸入の荷は、市場の段が施設の在庫として売りに出さない（商社が自分で
+    売り買いする。売りに出すと、輸出のために買った荷を毎ターン値幅の下端で売り戻してしまう）。"""
+    from hakoniwa_core import facilities as fac
+    from hakoniwa_core.modules.market import Market
+    from hakoniwa_core.trade import traders_of
+
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    defs = game.defs
+    trader = traders_of(island, game.config)[0]
+    stock.add(trader.stock, "clothing", 5 * QUANTITY_SCALE, world.turn, defs.goods)
+    farm = next(f for f in island.facilities if f.kind == "farm" and f.built and fac.on_map(f))
+    farm.recipe = "cotton"
+    farm.economy[fac.FIELDS] = {"default": 0}
+    farm.economy[fac.SOWN] = [["cotton", 1000, world.turn + 6]]
+    assert not fac.recipe_of(defs, farm)["outputs"] and not fac.recipe_of(defs, farm)["inputs"]
+    stock.add(farm.stock, "grain", 5 * QUANTITY_SCALE, world.turn, defs.goods)
+    books = {}
+    Market()._facility_orders(island, context(game, world), books, {})
+    sellers = {
+        (good, party.facility.id)
+        for good, book in books.items()
+        for _, party in book.sells
+        if party.facility is not None
+    }
+    assert ("grain", farm.id) in sellers
+    assert not any(fid == trader.id for _, fid in sellers)
