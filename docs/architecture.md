@@ -16,7 +16,7 @@ Django（server/）……保存・アカウント・命令の受付・ターン�
 |---|---|
 | `config.py` | `game.yaml` の読み込み |
 | `defs/` | パックの読み込みと検証。結果は書き換えられない `Defs` |
-| `state/` | 世界・島・マス・命令の状態（`WorldState` など）と、JSON との変換 |
+| `state/` | 世界・島・マス・命令の状態（`WorldState` など）と、JSON との変換。島の帳簿は持ち手・持ち物ごとの名前の索引を持つ `Accounts`（`accounts.py`） |
 | `registry.py` | モジュールが登録する段・命令・式の形 |
 | `modules/` | 標準のモジュール（段・命令・式）。一覧は [modules.md](modules.md) |
 | `ledger.py` | お金の帳簿（複式の仕訳）。お金はここを通してだけ動き、毎ターン4つの確かめをする |
