@@ -14,6 +14,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core.economy import (
     ENGINEERS,
     GENERAL,
+    JOBLESS,
     Payer,
     arrears,
     funds,
@@ -27,7 +28,20 @@ from hakoniwa_core.modules import firms
 from hakoniwa_core.modules.employment import FIELDS_KEY, _take, back_to_fields
 from hakoniwa_core.modules.firms import EntryExit
 from hakoniwa_core.modules.market import Market, gross_cost
-from hakoniwa_core.modules.population import FED, HUNGER, Population, birth_rate, death_rate
+from hakoniwa_core.modules.population import (
+    ENDURED,
+    FED,
+    FIELDS,
+    HUNGER,
+    Population,
+    _move_to_fields,
+    birth_rate,
+    death_rate,
+    hunger_step,
+    jobless_family,
+    tile_jobless,
+    village_size,
+)
 from hakoniwa_core.state import ACCOUNTING_SELF, OWNER_PRIVATE, WorldState
 from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.trade import traders
@@ -144,6 +158,9 @@ def test_population_grows_by_births_without_jobs_and_hunger_holds_births(game, w
     始める量に届いた層からは、市場で食料を買う人は生まれない。"""
     world = copy.deepcopy(warmed)
     island = island_of(world, "market")
+    # 温めた島はそのときどきで少し飢えていることがあるので、飢えの蓄えだけを違えて比べる
+    for h in island.economy.households.values():
+        h[HUNGER] = 0.0
     hungry = copy.deepcopy(world)
     reserve = game.config.get("population.hunger")["reserve_min"]
     for h in island_of(hungry, "market").economy.households.values():
@@ -303,6 +320,32 @@ def test_hungry_villagers_feed_themselves_instead_of_working(game, warmed):
     )
 
 
+def test_people_back_from_their_fields_do_not_carry_the_market_hunger(game):
+    """畑で食べていた人が市場で買う暮らしに戻っても、市場で飢えていた人の飢えの蓄えをそのまま
+    負わない（人数で混ぜる）。市場から畑へ移った人は蓄えを連れて移り、畑で食べている間に戻る。"""
+    settings = game.config.get("population.hunger")
+    h = {"persons": 4000, HUNGER: 2.4, ENDURED: 2.4, FIELDS: {"market": 1000}}
+    _move_to_fields(h, 3000, settings)  # 畑で食べていた 2000 人が仕事に戻った
+    assert h[HUNGER] == pytest.approx(2.4 * 1000 / 3000, abs=1e-3)
+    assert h[FIELDS] == {"market": 3000}
+    h = {"persons": 4000, HUNGER: 2.4, ENDURED: 2.4, FIELDS: {"market": 3000}}
+    _move_to_fields(h, 1000, settings)  # 市場で飢えていた 2000 人が畑に戻った
+    assert h[HUNGER] == 2.4
+    carried = 2.4 * 2000 / 3000  # 畑にいた 1000 人と混ぜる
+    assert h[FIELDS][HUNGER] == pytest.approx(hunger_step(carried, 0.0, settings), abs=1e-3)
+    assert h[FIELDS]["market"] == 1000
+    h = {"persons": 4000, HUNGER: 2.4, ENDURED: 2.4}  # 前のターンの数がなければ混ぜない
+    _move_to_fields(h, 1000, settings)
+    assert h[HUNGER] == 2.4 and h[FIELDS] == {"market": 1000}
+
+
+def _employ(game, island, *places):
+    """町のマスの働き手をみな勤めさせる（そのマスの人を一般の家計にする）。"""
+    for x, y in places:
+        tile = island.tile(x, y)
+        tile.ext["employed"] = fac.labor_force(game.defs, island, tile)
+
+
 def test_town_people_flee_to_villages_after_months_of_hunger(game):
     """飢えの蓄えが population.hunger.flee を超えると、食べられなかった割合の町の人が、空きの
     ある近い村へ移る（家の蓄えがあるうちは移らない）。"""
@@ -311,6 +354,7 @@ def test_town_people_flee_to_villages_after_months_of_hunger(game):
     home(game, island, 4, 4, 1000, "village")
     home(game, island, 12, 12, 1000, "village")
     with_economy(game, island)
+    _employ(game, island, (9, 9))
     ctx = SimpleNamespace(defs=game.defs, config=game.config)
     general = island.economy.households[GENERAL]
     general[FED] = 500
@@ -324,6 +368,55 @@ def test_town_people_flee_to_villages_after_months_of_hunger(game):
     assert free[(4, 4)] + free[(12, 12)] == 800
     assert island.stats["population.fled_to_villages"] == 2000
     assert island.log[-1].kind == "famine_flight" and island.log[-1].args == {"count": 2000}
+
+
+def test_town_people_flee_only_as_far_as_the_villages_stay_villages(game):
+    """町から逃れた人は、移った先が村のままでいられる人数までしか入らない（人の減った町の住宅地は
+    人数では村に数えるが、人が増えるとまた町に戻り、逃れた人が市場で食べ物を買うことになるため）。"""
+    island = make_island(game)
+    home(game, island, 9, 9, 6000)
+    home(game, island, 4, 4, 1000)  # 人の減った町の住宅地（住めるのは町の大きさまで）
+    home(game, island, 12, 12, 1000, "village")
+    with_economy(game, island)
+    _employ(game, island, (9, 9), (4, 4))
+    ctx = SimpleNamespace(defs=game.defs, config=game.config)
+    general = island.economy.households[GENERAL]
+    general[FED] = 500
+    general[HUNGER] = game.config.get("population.hunger")["flee"]
+    size = village_size(game.defs)
+    free = {(4, 4): 5000, (12, 12): 1400}
+    moved = Population._flee_famine(island, ctx, random.Random(1), free)
+    assert moved == (size - 1000) + 1400
+    assert island.tile(4, 4).population == size
+    assert island.tile(9, 9).population == 6000 - moved
+    for pos in free:
+        assert game.defs.settlements[fac.settlement_of(game.defs, island.tile(*pos).population)][
+            "subsistence"
+        ]
+
+
+def test_jobless_town_households_flee_while_others_still_eat(game):
+    """仕事のない家計が飢えれば、一般の家計が食べられていても、町の仕事のない人とその家族が村へ
+    逃れる（先に飢えるのは仕事のない家計のため）。"""
+    island = make_island(game)
+    home(game, island, 9, 9, 4000)
+    home(game, island, 4, 4, 1000, "village")
+    home(game, island, 12, 12, 1000, "village")
+    with_economy(game, island)
+    town = island.tile(9, 9)
+    town.ext["employed"] = fac.labor_force(game.defs, island, town) // 2
+    ctx = SimpleNamespace(defs=game.defs, config=game.config)
+    flee = game.config.get("population.hunger")["flee"]
+    households = island.economy.households
+    households[GENERAL].update({FED: fac.FULL})
+    households[JOBLESS].update({FED: 0, HUNGER: flee})
+    family = jobless_family(game.defs, island)
+    idle = min(town.population, tile_jobless(game.defs, island, town) * family)
+    free = {(4, 4): 1400, (12, 12): 1400}
+    moved = Population._flee_famine(island, ctx, random.Random(1), free)
+    assert 0 < moved == round(idle) < 4000
+    households[JOBLESS].update({FED: fac.FULL, HUNGER: 0.0})
+    assert Population._flee_famine(island, ctx, random.Random(1), free) == 0
 
 
 def test_farms_review_their_crop_at_once_when_grain_is_missing(game):

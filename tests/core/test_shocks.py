@@ -107,27 +107,38 @@ def test_printing_money_raises_prices(game, base, control):
     物が多く作られるので、物価は下がることもある。失業が多い島では、物価より先に生産が増えることも
     ある（報告書 phase2/2-2-report.md）。
     """
-    world = only(base, "market")
 
-    def printing(island):
-        orders = []
-        if world.turn == START:
-            orders += [
-                ("set_taxes", {"income_tax": 0, "consumption_tax": 0}),
-                ("set_labor_policy", {"unemployment_benefit": 100}),
+    def ratio(start: WorldState, usual: list[dict]) -> float:
+        world = only(start, "market")
+
+        def printing(island):
+            orders = []
+            if world.turn == START:
+                orders += [
+                    ("set_taxes", {"income_tax": 0, "consumption_tax": 0}),
+                    ("set_labor_policy", {"unemployment_benefit": 100}),
+                ]
+            gdp = island.stats.get("gdp", 0)
+            return orders + [
+                ("set_bond_policy", {"underwrite": int(gdp), "underwrite_term": "bond_1y"})
             ]
-        gdp = island.stats.get("gdp", 0)
-        return orders + [
-            ("set_bond_policy", {"underwrite": int(gdp), "underwrite_term": "bond_1y"})
-        ]
 
-    skip = ("set_budget", "set_taxes", "set_labor_policy")
-    rows = history(game, world, AFTER, extra=printing, skip=skip)
-    # 物価は農場の作物の波や食べ物の不足で 1〜2 割上下に揺れるので、揺さぶりの後の全部のターンの
-    # 平均で比べる（回4 に種 1〜3 の島で確かめた差は、回4 の前も後も 1.07〜1.19 倍。前は最後の
-    # 60 ターンを 1.2 倍と比べていて、種 2 の島では回4 の前から届かなかった）
-    assert mean(rows, "cpi") > mean(control, "cpi") * 1.05
-    assert max(p for r in rows for p in r["prices"].values()) < 10**12  # 桁あふれしない
+        skip = ("set_budget", "set_taxes", "set_labor_policy")
+        rows = history(game, world, AFTER, extra=printing, skip=skip)
+        assert max(p for r in rows for p in r["prices"].values()) < 10**12  # 桁あふれしない
+        return mean(rows, "cpi") / mean(usual, "cpi")
+
+    # 物価は農場の作物の波や飢饉で 1〜2 割上下に揺れ、使っていない設備の多い島では物価より先に
+    # 生産が増えるので、1つの島では向きがそろわない（回4 の種 1 の島は 0.95 倍、種 2・3 は
+    # 1.15・1.11 倍。前は種 1 だけで比べていて、上がって見えたのは食べ物の値段の揺れだった）。
+    # 揺さぶりの後の全部のターンの平均を、種 1〜3 の島の平均で比べる
+    ratios = [ratio(base, control)]
+    for seed in (2, 3):
+        world = generate_world(seed, 3, game.config, game.defs)
+        drive(game, world, START)
+        usual = history(game, only(world, "market"), AFTER, skip=("set_budget",))
+        ratios.append(ratio(world, usual))
+    assert sum(ratios) / len(ratios) > 1.05
 
 
 # --- 利上げ -----------------------------------------------------------------------

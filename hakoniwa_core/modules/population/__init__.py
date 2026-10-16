@@ -10,7 +10,8 @@
   （住む所がないと子を持たない）。
   村の住民のうち仕事のない人は、自給の農業で自分の食べる分をまかなう（市場で買わない）。食べ物が
   買えないときは、村の働き手が畑に戻る（modules/employment の back_to_fields）。町の人は、食べ物が
-  買えなければ空きのある村へ移る（_flee_famine。どちらも回4）。
+  買えなければ空きのある村へ移る（_flee_famine。どちらも回4）。一般の層の飢えの蓄えは、市場で
+  食料を買う人と、村で自給の農業をしている人とで分けて持つ（_move_to_fields）。
 - 人は仕事のないマスから、人手の足りない施設（と商業・サービス業が雇いきれなかった集落）の通勤圏に
   ある町へ少しずつ移る。町が育つのは、この移り住みから。
 - 最後に、住民の数から家計の層の人数を決め直す（層を移った人の預金も一緒に移す）。
@@ -34,7 +35,12 @@ from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import GENERAL, JOBLESS, needs, services
-from hakoniwa_core.economy.households import move_people, recount_engineers, split_persons
+from hakoniwa_core.economy.households import (
+    blend_hunger,
+    move_people,
+    recount_engineers,
+    split_persons,
+)
 from hakoniwa_core.economy.stats import inflation, real_wage_change
 from hakoniwa_core.geo import distance, within
 from hakoniwa_core.registry import IslandStage, Registry
@@ -62,6 +68,9 @@ HUNGER = "hunger"  # 層の飢えの蓄え（economy.households[層]。栄養の
 # 亡くなっている。蓄えが 0 に戻ると消す）
 ENDURED = "hunger_endured"
 FED = "fed"  # 層が前のターンに食べられた割合（1000 分の 1）
+# 一般の層のうち、村で自給の農業をしている人の飢えの蓄え（HUNGER・ENDURED）と、前のターンに
+# 市場で食料を買っていた人の数（market）。一般の層の HUNGER は、市場で食料を買う人の蓄え（回4）
+FIELDS = "fields"
 
 
 def _rand_round(value: float, rng: random.Random) -> int:
@@ -70,11 +79,23 @@ def _rand_round(value: float, rng: random.Random) -> int:
     return whole + (1 if rng.random() < value - whole else 0)
 
 
+def _farming(defs: Defs, tile: Tile) -> bool:
+    """自給の農業ができる集落（村）か。"""
+    level = fac.settlement_of(defs, tile.population)
+    return bool(defs.settlements[level].get("subsistence"))
+
+
+def village_size(defs: Defs) -> int:
+    """村のままでいられる人数（自給の農業ができない段階のうち、いちばん小さい段階の人数の手前まで）。"""
+    levels = defs.settlements.values()
+    sizes = [d["min_population"] - 1 for d in levels if not d.get("subsistence")]
+    return min(sizes, default=max(d["capacity"] for d in levels))
+
+
 def subsistence_persons(defs: Defs, island: IslandState, tile: Tile) -> int:
     """自給の農業で食べている人の数（村の、仕事のない働き手とその家族）。"""
-    level = fac.settlement_of(defs, tile.population)
     share = fac.labor_share(defs, island)
-    if not defs.settlements[level].get("subsistence") or share <= 0:
+    if not _farming(defs, tile) or share <= 0:
         return 0
     unemployed = fac.labor_force(defs, island, tile) - tile.ext.get("employed", 0)
     return min(tile.population, int(max(0, unemployed) / share))
@@ -335,6 +356,39 @@ def hunger_step(stock: float, shortfall: float, settings: dict[str, float]) -> f
     """
     value = stock + shortfall - settings["tolerance"] - settings["recovery"] * stock
     return max(0.0, value)
+
+
+def _move_to_fields(h: dict[str, Any], market: int, settings: dict[str, float]) -> None:
+    """一般の層の、市場で食料を買う人と村で自給の農業をしている人の間を移った人の飢えの蓄えを、
+    移った先の蓄えに人数で混ぜ、畑で食べている人の蓄えを1ターン進める（回4）。
+
+    飢えの蓄えは人の体のことなので、畑に戻って食べている間は戻り、市場で買う暮らしに戻っても、
+    市場で飢えていた人の蓄えをそのまま負わない（層で1つの蓄えにしていたころは、畑で食べていた人が
+    仕事に戻ったとたんに、市場で飢えていた人と同じ蓄えで亡くなった）。market はこのターンに市場で
+    食料を買う人の数。前のターンより増えた分は畑から、減った分は畑へ移った人として混ぜる。
+    """
+    persons = h["persons"]
+    market = max(0, min(market, persons))
+    fields = persons - market
+    group = h.get(FIELDS, {"market": market})
+    buyers = {"persons": market, HUNGER: h.get(HUNGER, 0.0), ENDURED: h.get(ENDURED, 0.0)}
+    farmers = {"persons": fields, HUNGER: group.get(HUNGER, 0.0), ENDURED: group.get(ENDURED, 0.0)}
+    moved = market - group["market"]
+    if moved > 0:  # 畑から市場へ
+        blend_hunger(farmers, buyers, min(moved, market))
+    elif moved < 0:  # 市場から畑へ
+        blend_hunger(buyers, farmers, min(-moved, fields))
+    for key in (HUNGER, ENDURED):
+        if buyers[key] > 0:
+            h[key] = buyers[key]
+        else:
+            h.pop(key, None)
+    # 畑で食べている人は、食べられた人として蓄えが戻る
+    stock = hunger_step(farmers[HUNGER], 0.0, settings) if fields > 0 else 0.0
+    h[FIELDS] = {"market": market}
+    if stock > 0:
+        h[FIELDS][HUNGER] = round(stock, 4)
+        h[FIELDS][ENDURED] = round(max(farmers[ENDURED], stock), 4)
 
 
 def starved_share(stock: float, settings: dict[str, float]) -> float:
@@ -626,6 +680,8 @@ class Population(IslandStage):
         deaths: dict[str, int] = {}
         for name, f in sorted(layers.items()):
             h = households[name]
+            if name == GENERAL and name in exposed:
+                _move_to_fields(h, sum(exposed[name].values()), settings)
             shortfall = max(0.0, 1 - f["food"] / fac.FULL)
             stock = hunger_step(h.get(HUNGER, 0.0), shortfall, settings)
             endured = h.get(ENDURED, 0.0)
@@ -644,6 +700,8 @@ class Population(IslandStage):
             count = min(persons, _rand_round(persons * rate, rng)) if rate > 0 else 0
             if count > 0:
                 deaths[name] = count
+            if name == GENERAL and FIELDS in h:
+                h[FIELDS]["market"] = max(0, h[FIELDS]["market"] - count)
         return deaths
 
     @staticmethod
@@ -764,35 +822,53 @@ class Population(IslandStage):
     ) -> int:
         """食べ物が買えない町の人が、空きのある村へ移る（回4）。移った人数を返す。
 
-        一般の家計の飢えの蓄えが population.hunger.flee を超えている間（家の蓄えを食べ尽くすまでは
-        移らない）、このターンに食べられなかった割合（体が耐えられる少しの不足
-        population.hunger.tolerance までなら移らない）の町の人が、近い村（自給の農業ができる集落）
-        から、住む所の空き（free）の分まで移る。移った人は村で自給の農業をする（現実の飢饉でも、
-        町の人は食べ物のある農村へ逃れた。ロシアの内戦期の飢えでは、ペトログラードの人口が3年で
-        3分の1ほどになった）。
+        失業している家計と一般の家計のそれぞれで、飢えの蓄えが population.hunger.flee を超えている間
+        （家の蓄えを食べ尽くすまでは移らない）、このターンに食べられなかった割合（体が耐えられる少しの
+        不足 population.hunger.tolerance までなら移らない）の町の人（失業している家計はマスの仕事の
+        ない人の家族、一般の家計は残りの人）が、近い村（自給の農業ができる集落）から、住む所の空き
+        （free）と、移った先が村のままでいられる人数（village_size）の分まで移る。移った人は村で自給の
+        農業をする（現実の飢饉でも、町の人は食べ物のある農村へ逃れた。ロシアの内戦期の飢えでは、
+        ペトログラードの人口が3年で3分の1ほどになった）。家計ごとに見るのは、先に飢えるのは仕事の
+        ない家計で、一般の家計が食べられているうちに逃れるため（一般の家計だけで見ていたころは、国営の
+        農場が賃金を払えずに失業した人が、町にとどまって飢えた）。
         """
         defs, config = ctx.defs, ctx.config
         settings = config.get("population.hunger")
-        general = island.economy.households.get(GENERAL, {})
-        short = 1 - general.get(FED, fac.FULL) / fac.FULL
-        if short <= settings["tolerance"] or general.get(HUNGER, 0.0) < settings["flee"]:
+        households = island.economy.households
+        hungry = {}  # 家計 → 食べられなかった割合（逃れる家計だけ）
+        for name, h in households.items():
+            short = 1 - h.get(FED, fac.FULL) / fac.FULL
+            if short > settings["tolerance"] and h.get(HUNGER, 0.0) >= settings["flee"]:
+                hungry[name] = short
+        if not hungry:
             return 0
 
         def farming(pos: Pos) -> bool:
-            level = fac.settlement_of(defs, island.tile(*pos).population)
-            return bool(defs.settlements[level].get("subsistence"))
+            return _farming(defs, island.tile(*pos))
 
-        villages = [pos for pos in sorted(free) if free[pos] > 0 and farming(pos)]
+        family = jobless_family(defs, island)
+
+        # 移った先が村のままでいられる人数まで（回4。人の減った町の住宅地も人数では村に数えるので、
+        # そこへ逃れると人が増えてまた町に戻り、市場で食べ物を買うことになって、逃れた人が飢えた）
+        size = village_size(defs)
+
+        def room(pos: Pos) -> int:
+            return min(free[pos], size - island.tile(*pos).population)
+
+        villages = [pos for pos in sorted(free) if farming(pos) and room(pos) > 0]
         moved = 0
         for tile in sorted(island.tiles, key=lambda t: (t.y, t.x)):
             pos = (tile.x, tile.y)
             if tile.population <= 0 or farming(pos) or not villages:
                 continue
-            count = min(tile.population, _rand_round(tile.population * short, rng))
+            idle = min(tile.population, tile_jobless(defs, island, tile) * family)
+            leaving = idle * hungry.get(JOBLESS, 0.0)
+            leaving += (tile.population - idle) * hungry.get(GENERAL, 0.0)
+            count = min(tile.population, _rand_round(leaving, rng))
             for target in sorted(villages, key=lambda v: (distance(pos, v), v[1], v[0])):
                 if count <= 0:
                     break
-                move = min(count, free[target])
+                move = min(count, room(target))
                 if move <= 0:
                     continue
                 tile.population -= move
@@ -800,7 +876,7 @@ class Population(IslandStage):
                 free[target] -= move
                 count -= move
                 moved += move
-            villages = [v for v in villages if free[v] > 0]
+            villages = [v for v in villages if room(v) > 0]
         if moved:
             island.stats["population.fled_to_villages"] = moved
             island.log.append(LogEntry("famine_flight", {"count": moved}))
