@@ -3,7 +3,7 @@
 {% block content %}
 {% csrf_token %}
 <div class="island-header">
-  <h1>{{ island.name }}</h1>
+  <h1>{{ island.name }}{% if ai %} {% include "web/ai_mark.html" %}{% endif %}</h1>
   <p class="muted">
     {% if island.owner %}{{ island.owner.username }}{% else %}{% translate "持ち主なし" %}{% endif %}
     {% if own_island and not mine and island.owner %} ・ <a href="{% url 'letter_new' %}?to={{ island.id }}">{% translate "この国に公電を送る" %}</a>{% endif %}

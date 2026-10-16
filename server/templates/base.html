@@ -22,7 +22,7 @@
       <a href="{% url 'board' %}">{% translate "掲示板" %}</a>
       <a href="{% url 'help' %}">{% translate "手引き" %}</a>
       {% if user.is_authenticated %}
-        <span class="muted">{{ user.username }}</span>
+        <a class="muted" href="{% url 'api_keys' %}" title="{% translate 'AI 用の鍵' %}">{{ user.username }}</a>
         <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}<button type="submit">{% translate "ログアウト" %}</button></form>
       {% else %}
         <a href="{% url 'login' %}">{% translate "ログイン" %}</a>

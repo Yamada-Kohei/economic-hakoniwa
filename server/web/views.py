@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404, render
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.trade import contracts, tradable_goods
+from server.accounts import keys
 from server.game import get_game
 from server.turns.models import TurnLog
 from server.web import chain, display, founding, rankings, reports, trade
@@ -23,7 +24,9 @@ def top(request):
     own = None
     if request.user.is_authenticated:
         own = Island.objects.filter(owner=request.user).first()
-    return render(request, "web/top.html", {"world": world, "islands": islands, "own": own})
+    ai_owners = keys.ai_owner_ids(world.turn) if world else set()
+    context = {"world": world, "islands": islands, "own": own, "ai_owners": ai_owners}
+    return render(request, "web/top.html", context)
 
 
 def island_page(request, island_id: int):
@@ -45,6 +48,7 @@ def island_page(request, island_id: int):
     context = {
         "island": island,
         "mine": request.user.is_authenticated and island.owner_id == request.user.id,
+        "ai": keys.is_ai_island(island),
         "stats_turn": turn,
         "summary": display.summary(stats, currency),
         "strengths": rankings.island_strengths(island, stats),
