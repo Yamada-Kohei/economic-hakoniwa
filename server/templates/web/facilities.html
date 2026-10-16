@@ -38,6 +38,27 @@
   <p>{% blocktranslate with total=table.profit %}直近のターンの損益の合計: {{ total }}{% endblocktranslate %}</p>
 </section>
 
+{% if table.shops %}
+<section class="panel">
+  <h2>{% translate "商業・サービス業の店の場所" %}</h2>
+  <p class="hint">{% translate "住民は、通勤圏の中でいちばん人の多い集落でサービスを買います。雇う人数は、店の場所ごとに買いに来る住民の数で割り振り、その通勤圏から雇います。雇いきれなかった分は、人を呼んで町を育てます。" %}</p>
+  <div class="table-scroll">
+    <table class="report-table">
+      <thead><tr><th>{% translate "店の場所" %}</th><th>{% translate "割り振った人数" %}</th><th>{% translate "雇えた人数" %}</th></tr></thead>
+      <tbody>
+        {% for s in table.shops %}
+        <tr>
+          <td><a href="{% url 'island' island.id %}?x={{ s.x }}&amp;y={{ s.y }}">{{ s.place }}{% if s.level %}の{{ s.level }}{% endif %}</a> <small class="muted">({{ s.x }}, {{ s.y }})</small></td>
+          <td class="num">{{ s.planned }}</td>
+          <td class="num">{{ s.hired }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
 <section class="panel" id="book-detail" hidden data-url="{% url 'api_facility_book' island.id 0 %}"
          data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
   <div class="section-head">

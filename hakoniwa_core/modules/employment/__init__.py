@@ -26,6 +26,9 @@ facilities.engineer_cap）。3 の後に余った技術者は、まだ埋まら�
 前のターンの運賃 × freight.labor_share ÷ 賃金 の人数を雇い、足りない割合だけ運賃を割り増します
 （フェーズ3-2 から、燃料のあるトラックで替えた運転手の分は雇わない。economy/trucks.py）。
 港・海運業・商社（フェーズ3-1）は、扱った荷の量と船の数に合わせて雇います（hakoniwa_core/trade）。
+商業・サービス業（バランス調整）は、売上で決めた人数を、住民がサービスを買いに行く集落（中心）ごとに
+割り振り、1 で中心の通勤圏の人を雇い続け、2 で中心の通勤圏の失業者を雇います。引き抜きはしません
+（economy/services.py）。
 労働の動員（全体主義。フェーズ3-4）をしている島では、最後に残った失業者を、物を作る国営の施設の
 空いた席に島のどこからでも、動員の賃金で割り当てます（_mobilize）。
 施設ごと・マスごとに雇った人数は、施設の economy["staff"] に残します。雇われなかった人は失業し、
@@ -55,6 +58,7 @@ from hakoniwa_core.economy import (
     is_stopped,
     is_transport,
     payer_of,
+    services,
     trucks,
 )
 from hakoniwa_core.geo import distance, within
@@ -160,7 +164,13 @@ class Employment(IslandStage):
         engineers = self._assign_engineers(island, ctx, plans, seats)
         general = {fid: wanted[fid] - engineers.get(fid, 0) for fid in wanted}
         # 1. 雇い続ける（遠いマスの人から減らす）
+        shops: dict[int, dict[Pos, int]] = {}  # 商業・サービス業の中心ごとの人数
         for f, _ in plans:
+            if services.is_services(config, f):
+                shops[f.id] = services.quotas(island, config, general[f.id])
+                f.economy[services.QUOTAS] = {}
+                staff[f.id] = services.keep(island, config, f, shops[f.id], staff_of(f), free)
+                continue
             keep: dict[Pos, int] = {}
             left = general[f.id]
             for pos, count in sorted(
@@ -179,6 +189,9 @@ class Employment(IslandStage):
         by_id = {f.id: (f, wage) for f, wage in plans}
         # 2. 失業者を雇う 3. 安い施設から引き抜く
         for f, wage in plans:
+            if f.id in shops:
+                services.hire(island, config, f, shops[f.id], staff[f.id], free)
+                continue
             missing = general[f.id] - sum(staff[f.id].values())
             if missing <= 0:
                 continue
@@ -468,6 +481,8 @@ class Employment(IslandStage):
             else:
                 f.economy.pop("drivers_replaced", None)
             return drivers - replaced
+        if services.is_services(config, f):  # 商業・サービス業は売上に合わせて（バランス調整）
+            return f.economy.get(services.SEATS, 0)
         cargo = staff.wanted(config, ctx.defs, f)  # 港・海運業・商社は扱う荷に合わせて（3-1）
         if cargo is not None:
             return cargo

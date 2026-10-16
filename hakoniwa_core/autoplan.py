@@ -880,18 +880,26 @@ def _road_order(island: IslandState, defs: Defs, pos: tuple[int, int]) -> tuple[
 
 
 def _water_order(island: IslandState, defs: Defs, config: GameConfig) -> tuple[str, dict] | None:
-    """上下水道が足りずに育たない町（印 water_short）のマスに、上下水道を引く。"""
+    """上下水道が足りずに育たない町（印 water_short）のマスと、人が密に住むのに上下水道が半分に
+    届かない町（人数が population.deaths.crowd の半分以上。汚れた水から病気が広がり、亡くなる人が
+    増える。回4）のマスに、上下水道を引く。"""
     kinds = defs.infra_kinds("water")
     if not kinds or not island.has_economy:
         return None
     housing = fac.housing_kind(config)
+    crowded = config.get("population.deaths")["crowd"] // 2
+
+    def wanted(f) -> bool:
+        tile = island.tile(f.x, f.y)
+        water = infra.water(defs, tile)
+        if f.ext.get("water_short"):
+            return water < infra.FULL
+        return tile.population >= crowded and water < infra.FULL // 2
+
     tiles = [
         [f.x, f.y]
         for f in sorted(island.facilities, key=lambda f: (f.y, f.x))
-        if f.kind == housing
-        and f.ext.get("water_short")
-        and not infra.queued(island, kinds[0], f.x, f.y)
-        and infra.water(defs, island.tile(f.x, f.y)) < infra.FULL
+        if f.kind == housing and not infra.queued(island, kinds[0], f.x, f.y) and wanted(f)
     ]
     if not tiles:
         return None

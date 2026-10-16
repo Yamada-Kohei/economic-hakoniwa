@@ -86,6 +86,7 @@ from hakoniwa_core.economy import (
     is_stopped,
     is_transport,
     productivity,
+    services,
 )
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.prices import construction_cost, unit_cost, variable_profit
@@ -343,6 +344,7 @@ class EntryExit(IslandStage):
                 or f.accounting != ACCOUNTING_SELF
                 or is_bank(ctx.config, f)
                 or is_transport(ctx.config, f)
+                or services.is_services(ctx.config, f)
                 or trade.is_trade_facility(ctx.config, f)
                 or "foreclosed" in f.economy
             ):

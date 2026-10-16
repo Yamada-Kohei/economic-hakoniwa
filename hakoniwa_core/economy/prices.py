@@ -4,6 +4,8 @@
 の合計です。建設費は、工事の資材と、工事の人手（1ターンあたりの人数 × ターン数）の賃金です。
 作り方が複数あれば安い方を使い、game.yaml の market.initial_prices.reference で施設を決めた財
 （電力は火力発電所）はその施設の原価で決めます。追加パックで財を足しても同じ計算で値段が付きます。
+人手だけで出すサービス（game.yaml の services。バランス調整）は「賃金 ÷ 働く人1人の量」に
+上乗せします。
 """
 
 from __future__ import annotations
@@ -150,6 +152,10 @@ def _solve_prices(
             prices[good] = new
         if changed < 1e-12:
             break
+    # 人手だけで出す物（サービス。game.yaml の services）は、賃金 ÷ 1人の量に上乗せ
+    services = config.raw.get("services")
+    if services and services["good"] in prices:
+        prices[services["good"]] = wage / services["per_worker"] * markup
     return {g: max(1, round_money(p + 0.5)) for g, p in prices.items()}
 
 
@@ -161,7 +167,14 @@ def variable_profit(
 
     freight は施設の運賃の率（1万分の1）。電力は送電網で送るので運賃がかからない。産出は
     生産性（インフラ・教育・汚染の係数）を掛けた量で見る。
+
+    商業・サービス業（game.yaml の services）はレシピを持たないので、雇う人数の目安の分だけ
+    人を雇ったときの売上 − 賃金で見る（銀行の審査と持ち主の出資の判断に使う）。
     """
+    services = config.raw.get("services")
+    if services and f.kind == services["facility"]:
+        per_seat = prices.get(services["good"], 0) * services["per_worker"] - wage
+        return round_money(f.economy.get("seats", 0) * per_seat)
     power = config.get("power.good")
     f = fac.steady(f)  # 畑を作り替えている途中なら、今の作物で見る（回3）
     recipe = fac.recipe_of(defs, f)

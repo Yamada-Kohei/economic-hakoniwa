@@ -37,6 +37,7 @@ from hakoniwa_core.economy import (
     is_self_supporting,
     is_transport,
     payer_of,
+    services,
 )
 from hakoniwa_core.economy.households import add_income, jobless_layer, set_jobless
 from hakoniwa_core.economy.prices import variable_profit
@@ -61,7 +62,8 @@ def wage_update(island: IslandState, f: Facility, ctx: StageContext) -> int:
     labor.wage_speed）、全員を雇えたら「(u* − u) ÷ u*」を 0 以下に切った値（u は通勤圏の失業率、
     u* はふつうの失業率。k_w は labor.slack_speed）。
     1ターンの変化は labor.max_raise と labor.max_cut まで、最低賃金より下がらない。
-    独立採算の施設は、今の値段で変動費の利益が 0 になる賃金より上げない。
+    独立採算の施設は、今の値段で変動費の利益が 0 になる賃金より上げない（商業・サービス業は、
+    サービスの値段 × 1人の量まで。バランス調整）。
     """
     settings = ctx.config.get("labor")
     wage = f.economy["wage"]
@@ -75,7 +77,11 @@ def wage_update(island: IslandState, f: Facility, ctx: StageContext) -> int:
     change = settings["indexation"] * max(0.0, inflation(island.economy)) / YEAR + speed * gap
     change = max(-settings["max_cut"], min(settings["max_raise"], change))
     new = scale_price(wage, 1 + change)
-    if new > wage and is_self_supporting(f) and not is_transport(ctx.config, f):
+    if new > wage and is_self_supporting(f) and services.is_services(ctx.config, f):
+        price = island.economy.prices.get(services.good_of(ctx.config), 0)
+        cap = int(price * services.settings(ctx.config)["per_worker"])
+        new = min(new, max(wage, cap))
+    elif new > wage and is_self_supporting(f) and not is_transport(ctx.config, f):
         workers = fac.workers_needed(ctx.defs, f.kind)
         rate = freight.facility_rates(island, ctx.defs, ctx.config).get(f.id, 0)
         prices = island.economy.prices

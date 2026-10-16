@@ -154,6 +154,8 @@ FACILITY_STATS = [
     "firms.bankrupt",
     "firms.closed",
     "firms.abandoned",
+    "services.workers",
+    "services.sales",
 ]
 
 

@@ -359,7 +359,7 @@ def _admit(
         limit = min(room, views[d].population * cap / 10000 / YEAR)
         if immigration(island) == JOBS:
             share = fac.labor_share(defs, island)
-            missing = sum(n for _, n in vacancies_of(defs, island, ctx.turn))
+            missing = sum(v[2] for v in vacancies_of(defs, island, ctx.config, ctx.turn))
             limit = min(limit, missing / share if share > 0 else 0.0)
         _scale(new, limit)
 

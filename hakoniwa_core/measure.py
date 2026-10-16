@@ -173,6 +173,10 @@ SERIES_STATS = (
     "money.deposits",
     "power.shortage",
     "population.starved",
+    "population.births",
+    "population.deaths",
+    "services.workers",
+    "services.sold",
     "migration.left",
     "migration.arrived",
     "migration.returned",
@@ -218,6 +222,8 @@ def island_row(
             if f"{kind}.{good}" in s:
                 row[f"{kind}.{good}"] = s[f"{kind}.{good}"]
     row["output.real"] = gate.real_output(s, prices)
+    good = config.get("services")["good"]  # うちサービス（回4）
+    row["output.real.services"] = s.get(f"production.{good}", 0) * prices.get(good, 0)
     row.update(jobs(island, defs, config))
     row.update(reach(island, defs, config))
     row.update(demand(island))
@@ -484,9 +490,25 @@ class Measure:
             kind = key.removeprefix("kind.").removesuffix(".capacity")
             out[f"use.{kind}"] = s[f"kind.{kind}.working"] / s[key] if s[key] else 0.0
         out["output.real.per_person"] = s["output.real"] / people if people else 0.0
-        # 飢えで亡くなった人と、ほかの国へ移った人（1年に住民 1000 人あたり。回3）
-        for key, name in (("population.starved", "starved"), ("migration.left", "emigrated")):
+        goods = s["output.real"] - s["output.real.services"]  # サービスを除く（回3 までと比べる）
+        out["output.real.goods_per_person"] = goods / people if people else 0.0
+        # 飢えで亡くなった人と、ほかの国へ移った人（1年に住民 1000 人あたり。回3）、生まれた人と
+        # 飢えのほかで亡くなった人（回4）
+        for key, name in (
+            ("population.starved", "starved"),
+            ("migration.left", "emigrated"),
+            ("population.births", "births"),
+            ("population.deaths", "deaths"),
+        ):
             out[f"{name}.per_1000_year"] = s[key] / people * YEAR * 1000 if people else 0.0
+        # 働く人のうちサービスで働く人の割合（回4）と、1人あたりのサービスの量（人月、1年あたり）
+        out["labor.services"] = share("services.workers", s["employed"])
+        out["services.per_person_year"] = s["services.sold"] / people * YEAR if people else 0.0
+        # 人口の増え方（1年あたり。窓の初めと終わりのターンの人口から）
+        first, last = min(turns), max(turns)
+        start_pop, end_pop = self.totals[first]["population"], self.totals[last]["population"]
+        if start_pop > 0 and last > first:
+            out["population.growth"] = (end_pop / start_pop) ** (YEAR / (last - first)) - 1
         return out
 
     def ships(self, turn: int = 300, span: int = 24) -> dict[str, float]:
@@ -686,8 +708,15 @@ COMPARED = (
     ("measure.idle.engineers", 0),
     ("measure.households.real_per_person", 1),
     ("measure.output.real.per_person", 1),
+    ("measure.output.real.goods_per_person", 1),
     ("measure.starved.per_1000_year", -1),
     ("measure.emigrated.per_1000_year", 0),
+    ("measure.labor.services", 0),
+    ("measure.services.per_person_year", 1),
+    ("measure.births.per_1000_year", 0),
+    ("measure.deaths.per_1000_year", -1),
+    ("measure.population.growth", 0),
+    ("measure.buy.automobile.per_turn", 1),
 )
 EARLY = (
     ("early.employment.median", 1),

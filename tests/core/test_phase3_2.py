@@ -13,7 +13,7 @@ import pytest
 
 from hakoniwa_core import autoplan, nature, stock
 from hakoniwa_core import facilities as fac
-from hakoniwa_core.economy import needs, trucks
+from hakoniwa_core.economy import needs, services, trucks
 from hakoniwa_core.economy.prices import initial_prices, material_limit, unit_floor
 from hakoniwa_core.gate import Recorder
 from hakoniwa_core.market import auction
@@ -47,9 +47,9 @@ NEW_GOODS = [
 # --- 品目と作り方 -------------------------------------------------------------------
 
 
-def test_there_are_23_goods_and_every_good_has_a_maker(game):
+def test_there_are_24_goods_and_every_good_has_a_maker(game):
     defs = game.defs
-    assert len(defs.goods) == 23
+    assert len(defs.goods) == 24  # 回4 でサービスが増えた
     assert set(NEW_GOODS) <= set(defs.goods)
     made = {
         g
@@ -57,19 +57,21 @@ def test_there_are_23_goods_and_every_good_has_a_maker(game):
         for recipe in fdef["recipes"].values()
         for g in recipe["outputs"]
     }
+    made.add(services.good_of(game.config))  # 商業・サービス業が働く人の数だけ出す（作り方はない）
     assert set(defs.goods) <= made  # どの財も、どこかの施設の作り方で作れる
 
 
 def test_every_household_good_has_a_need(game):
-    """家計が買う財（consumer）はどれも、必需品・ぜいたく品・耐久消費財のどれかに分けてある
-    （燃料は車を動かすのに買うので、種類を持たない）。"""
+    """家計が買う財（consumer）はどれも、必需品・ぜいたく品・耐久消費財・サービスのどれかに分けて
+    ある（燃料は車を動かすのに買うので、種類を持たない）。"""
     defs = game.defs
-    kinds = {needs.NECESSITY, needs.LUXURY, needs.DURABLE}
+    kinds = {needs.NECESSITY, needs.LUXURY, needs.DURABLE, needs.SERVICE}
     for good, gdef in defs.goods.items():
         if gdef.get("consumer") and good != "fuel":
             assert gdef.get("need") in kinds, good
     assert needs.goods_of(defs, needs.DURABLE) == ["automobile"]
     assert set(needs.goods_of(defs, needs.LUXURY)) == {"consumer_goods", "luxury_crop"}
+    assert needs.goods_of(defs, needs.SERVICE) == ["services"]
 
 
 def test_joint_products_split_their_cost_by_the_world_prices(game):

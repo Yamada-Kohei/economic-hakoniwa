@@ -3,11 +3,17 @@
 - 家計の層ごとに、市場の段で買えた食料・消費財と、届いた電力から幸福度を出す（式 happiness）。
   一般の層はマスごと（働き口・電力・汚染はマスの値）、ほかの層は島全体で出し、島の幸福度は
   人数で平均する。資産を持つ層の働き口はいつも満点。
-- 住民は一般の層が食べられた割合で、足りていて町に空きがあれば少しずつ増え、足りなければ減る。
+- 人が生まれ、亡くなる（バランス調整の回4。現実の人口転換）。生まれる割合は学んだ人の割合と所得が
+  上がるほど下がり、亡くなる割合は上下水道と食事の質で下がる（式 birth_rate・death_rate）。仕事が
+  なくても増える。飢えている層からは生まれず、飢えで亡くなる人は別に数える（回3 の飢えの蓄え）。
+  マスに住む所がなければ、生まれた家族は島の空いた町へ移り、どこにも空きがなければ生まれない
+  （住む所がないと子を持たない）。
   村の住民のうち仕事のない人は、自給の農業で自分の食べる分をまかなう（市場で買わない）。
-- 人は仕事のないマスから、人手の足りない施設の通勤圏にある町へ少しずつ移る。
+- 人は仕事のないマスから、人手の足りない施設（と商業・サービス業が雇いきれなかった集落）の通勤圏に
+  ある町へ少しずつ移る。町が育つのは、この移り住みから。
 - 最後に、住民の数から家計の層の人数を決め直す（層を移った人の預金も一緒に移す）。
-- 人手の足りない施設の通勤圏で住む所が足りなければ、町を上の段階へ育てるか、空いた平地に
+- 人手の足りない施設の通勤圏（と、商業・サービス業が雇いきれなかった集落の通勤圏。バランス調整）で
+  住む所が足りなければ、町を上の段階へ育てるか、空いた平地に
   新しい町（村）を作る。どちらも資材（settlements.yaml の materials）が要り、一般の層が
   市場で買う（買った資材は economy.housing["stock"] に入る）。足りなければ、要る資材を
   economy.housing["want"] に書いて、次のターンの市場で買う。開発を止めたマスには作らない。
@@ -23,8 +29,9 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, politics, stock
 from hakoniwa_core.allocation import proportional
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import GENERAL, JOBLESS, needs
+from hakoniwa_core.economy import GENERAL, JOBLESS, needs, services
 from hakoniwa_core.economy.households import move_people, recount_engineers, split_persons
 from hakoniwa_core.economy.stats import inflation, real_wage_change
 from hakoniwa_core.geo import within
@@ -119,6 +126,50 @@ def layer_food_needs(island: IslandState, ctx: StageContext) -> dict[str, int]:
             others += needs[layer]
     needs[GENERAL] = max(0, total - others)
     return needs
+
+
+def layer_income(island: IslandState, config: GameConfig, name: str) -> float:
+    """層の1人あたりの実質の可処分所得の、household.base_income に対する倍率（直近の
+    household.income_turns ターンの平均を物価指数で割る）。記録がなければ 1。"""
+    h = island.economy.households.get(name)
+    if not h or h["persons"] <= 0 or not h.get("income"):
+        return 1.0
+    history = h["income"][-config.get("household.income_turns") :]
+    cpi_history = island.economy.cpi_history
+    cpi = cpi_history[-1] / 100 if cpi_history and cpi_history[-1] > 0 else 1.0
+    per_person = sum(history) / len(history) / h["persons"]
+    return max(0.0, per_person / cpi / config.get("household.base_income"))
+
+
+def birth_rate(island: IslandState, income: float, ctx: StageContext) -> float:
+    """1年に生まれる人の割合（粗出生率。名前付きの式 birth_rate の既定）。
+
+    low + (high − low) × (1 − E)^education × y^(−income)。E は島の教育水準（働き手のうち学んだ
+    人の割合）、y は層の実質の所得（layer_income。下限 population.births.income_floor）。学んだ人が
+    増え、暮らしが豊かになるほど、子を持つ数が減る（現実の人口転換。女性の教育と、子にかかる費用と
+    老後の支え）。high を超えない。
+    """
+    spec = ctx.config.get("population.births")
+    education = max(0.0, min(1.0, island.economy.education / fac.FULL))
+    y = max(spec["income_floor"], income)
+    rate = spec["low"] + (spec["high"] - spec["low"]) * (1 - education) ** spec[
+        "education"
+    ] * y ** (-spec["income"])
+    return min(spec["high"], rate)
+
+
+def death_rate(water: int, quality: float, people: int, ctx: StageContext) -> float:
+    """1年に亡くなる人の割合（粗死亡率。飢えで亡くなる人は別。名前付きの式 death_rate の既定）。
+
+    base + food ×（1 − 食事の質）+ water ×（1 − 上下水道の整備度）×（マスの人数 people ÷ crowd、
+    1 まで）。肉や魚の多い食事が子どもの病気を、きれいな水と下水が感染症を減らす（19世紀からの
+    死亡率の下がり方）。汚れた水からの病気は、人が密に住むほど広がる（村より町で多く亡くなる）。
+    """
+    spec = ctx.config.get("population.deaths")
+    clean = max(0.0, min(1.0, water / fac.FULL))
+    fed = max(0.0, min(1.0, quality))
+    crowding = max(0.0, min(1.0, people / spec["crowd"]))
+    return spec["base"] + spec["food"] * (1 - fed) + spec["water"] * (1 - clean) * crowding
 
 
 def happiness_weights(island: IslandState, ctx: StageContext) -> dict[str, float]:
@@ -216,10 +267,14 @@ def homes_of(island: IslandState, config: GameConfig) -> dict[Pos, Facility]:
     return {(f.x, f.y): f for f in island.facilities if f.kind == kind}
 
 
-def vacancies_of(defs: Defs, island: IslandState, turn: int) -> list[tuple[Facility, int]]:
-    """人手の足りない施設（工事中も含む。マスを持たない施設は除く）と、足りない人数。
+def vacancies_of(
+    defs: Defs, island: IslandState, config: GameConfig, turn: int
+) -> list[tuple[Pos, int, int, int]]:
+    """人手の足りない所: (マス, 通勤圏, 足りない人数, 並べる番号) の並び。
 
-    雇いたい人数は、雇用の段で払える賃金の分に抑えた人数（economy["wanted"]）。
+    人手の足りない施設（工事中も含む。マスを持たない施設は除く）は、雇いたい人数（雇用の段で払える
+    賃金の分に抑えた人数。economy["wanted"]）に足りない人数。商業・サービス業（バランス調整）は、
+    店の場所（集落）ごとに雇いきれなかった人数（economy/services.py の vacancies）。
     """
     found = []
     for f in island.facilities:
@@ -228,7 +283,12 @@ def vacancies_of(defs: Defs, island: IslandState, turn: int) -> list[tuple[Facil
         want = f.economy.get("wanted", fac.labor_demand(defs, f, turn))
         missing = want - f.workers
         if missing > 0:
-            found.append((f, missing))
+            found.append(((f.x, f.y), fac.commute_radius(defs, config, f.kind), missing, f.id))
+    shop = services.facility_of(island, config)
+    if shop is not None:
+        radius = config.get("labor.commute_radius")
+        for pos, missing in services.vacancies(island, config):
+            found.append((pos, radius, missing, shop.id))
     return found
 
 
@@ -387,7 +447,6 @@ class Population(IslandStage):
             "luxury": 0,
             HUNGER: 0.0,
         }
-        p = config.get("population")
         placed = layer_tiles(defs, island, households)
         exposed = _exposed(defs, island, placed)
         stocks = self._hunger(island, ctx, layers, exposed, rng)
@@ -401,7 +460,11 @@ class Population(IslandStage):
             "ratio": fac.ratio(supplied, need) if layers else fac.FULL,
         }
         homes = homes_of(island, config)
-        hungry = {n for n, f in layers.items() if f["food"] < fac.FULL or f[HUNGER] > 0}
+        # 飢えている層は子を持つ人が減る（回4）: 飢えの蓄えが、いちばん弱い人が亡くなり始める量
+        # （population.hunger.reserve_min）に近づくほど減り、そこで生まれなくなる。体が耐えられる
+        # 少しの不足（蓄えが増えない不足）では減らない
+        reserve = config.get("population.hunger")["reserve_min"]
+        fertile = {n: max(0.0, 1 - f[HUNGER] / reserve) for n, f in layers.items()}
         moods: dict[str, list[float]] = {}
         power_sum = pollution_sum = water_sum = people = 0
         education = island.economy.education
@@ -418,6 +481,13 @@ class Population(IslandStage):
             if applied > 0:
                 deaths[name] = applied
         self._log_deaths(island, deaths, layers)
+        # 層ごとの、1年に生まれる人の割合（回4。学んだ人の割合と層の実質の所得で）
+        birth_of = ctx.formula("birth_rate")
+        rates = {n: birth_of(island, layer_income(island, config, n), ctx) for n in households}
+        default_rate = birth_of(island, 1.0, ctx)
+        died_by_layer: dict[str, float] = {}  # 層ごとの、飢えのほかで亡くなった人（回4）
+        natural = born = 0
+        unhoused: dict[Pos, int] = {}  # 住む所がなくて生まれたマスに入れなかった人
         for tile in island.tiles:
             if tile.population <= 0:
                 tile.ext.pop("happiness", None)
@@ -467,15 +537,42 @@ class Population(IslandStage):
             home = homes.get(pos)
             capacity = fac.housing_capacity(defs, home) if home else 0
             pop = tile.population - min(tile.population, lost_by_tile.get(pos, 0))
-            # 生まれるのは食べられている層の人から（飢えている間は生まれない。自給の農業で食べている
-            # 人は、市場の食料が足りなくても食べられている）
-            fed_here = tile.population - sum(exposed.get(name, {}).get(pos, 0) for name in hungry)
-            if fed_here > 0:
-                # 仕事のある人の割合が growth_min_jobs を下回るマスでは増えず、1に近いほどよく増える
-                low = p["growth_min_jobs"]
-                jobs = max(0.0, min(1.0, (local["jobs"] / fac.FULL - low) / (1 - low)))
-                births = _rand_round(fed_here * p["growth_rate"] * mood / 100 * jobs, rng)
-                pop += min(births, max(0, capacity - pop))
+            # 生まれる人と亡くなる人（回4）: 層ごとの割合を、マスに住む層の人数で混ぜる
+            here = {n: placed.get(n, {}).get(pos, 0) for n in placed}
+            weight = sum(here.values())
+            quality = (
+                sum(layers[n]["quality"] * c for n, c in here.items() if n in layers) / weight
+                if weight
+                else general["quality"]
+            )
+            dying = ctx.formula("death_rate")(local["water"], quality, tile.population, ctx)
+            dead = min(pop, _rand_round(pop * dying / YEAR, rng))
+            if dead > 0:
+                pop -= dead
+                natural += dead
+                for name, count in here.items():
+                    if weight:
+                        died_by_layer[name] = died_by_layer.get(name, 0.0) + dead * count / weight
+            # 生まれるのは、層の割合で、飢えている層は市場で食料を買う人のうち飢えで減った分を除いて
+            # （自給の農業で食べている人は、市場の食料が足りなくても食べられている）
+            if weight:
+                rate = (
+                    sum(
+                        rates.get(n, default_rate)
+                        * (c - exposed.get(n, {}).get(pos, 0) * (1 - fertile.get(n, 1.0)))
+                        for n, c in here.items()
+                    )
+                    / weight
+                )
+            else:
+                rate = default_rate
+            if rate > 0:
+                births = _rand_round(pop * rate / YEAR, rng)
+                room = max(0, capacity - pop)
+                pop += min(births, room)
+                born += min(births, room)
+                if births > room:
+                    unhoused[pos] = births - room
             tile.population = max(0, pop)
         moods_by_layer = {n: v / w for n, (v, w) in moods.items() if w > 0}
         for layer, f in sorted(layers.items()):
@@ -492,8 +589,16 @@ class Population(IslandStage):
             moods_by_layer[layer] = ctx.formula("happiness")(island, facts, ctx)
         island.scratch["layer_happiness"] = moods_by_layer
         island.scratch["layer_facts"] = layers
-        self._migrate(island, ctx, rng, homes)
+        housed = self._migrate(island, ctx, rng, homes, unhoused)
+        born += housed
+        stats = island.stats
+        stats["population.births"] = born
+        stats["population.deaths"] = natural
+        if sum(unhoused.values()) > housed:
+            stats["population.births_unhoused"] = sum(unhoused.values()) - housed
         if island.has_economy:
+            for name, count in _round_shares(natural, died_by_layer).items():
+                deaths[name] = deaths.get(name, 0) + count
             remove_dead(island, defs, deaths)
             changes = split_persons(island, defs, sum(t.population for t in island.tiles))
             move_people(island, changes)
@@ -561,22 +666,27 @@ class Population(IslandStage):
         ctx: StageContext,
         rng: random.Random,
         homes: dict[Pos, Facility],
-    ) -> None:
-        """住む所のない人と仕事のない人を、人手の足りない施設の近くの空いた町へ移す。"""
+        unhoused: dict[Pos, int] | None = None,
+    ) -> int:
+        """住む所のない人と仕事のない人を、人手の足りない施設の近くの空いた町へ移す。
+
+        unhoused は、生まれたマスに住む所がなかった人（回4）。ほかの人を移した後に、まだ空いている
+        町へ入れ（人手の足りない所に近い町から）、入れた人数を返す。入れなかった人は生まれない。
+        """
         defs, config = ctx.defs, ctx.config
         share = fac.labor_share(defs, island)
         if share <= 0:
-            return
+            return 0
         free = {
             pos: fac.housing_capacity(defs, f) - island.tile(*pos).population
             for pos, f in homes.items()
         }
         pull: dict[Pos, int] = {}
         needed = 0
-        for f, missing in vacancies_of(defs, island, ctx.turn):
+        for site, radius, missing, _ in vacancies_of(defs, island, config, ctx.turn):
             persons = int(missing / share)
             needed += persons
-            for pos in within(island, (f.x, f.y), fac.commute_radius(defs, config, f.kind)):
+            for pos in within(island, site, radius):
                 if pos in homes:
                     pull[pos] = pull.get(pos, 0) + persons
         rate = config.get("population.migration_rate")
@@ -631,6 +741,28 @@ class Population(IslandStage):
                     island.tile(*source).population += count  # 移る先がなければ元のマスに残る
         if left_island:
             island.log.append(LogEntry("residents_left", {"count": left_island}))
+        housed = 0
+        for _, count in sorted((unhoused or {}).items(), key=lambda kv: (kv[0][1], kv[0][0])):
+            for pos in targets:
+                if count <= 0:
+                    break
+                move = min(count, free[pos])
+                if move <= 0:
+                    continue
+                island.tile(*pos).population += move
+                free[pos] -= move
+                count -= move
+                housed += move
+        return housed
+
+
+def _round_shares(total: int, shares: dict[str, float]) -> dict[str, int]:
+    """total 人を、層ごとの小数の人数 shares の比で整数に分ける（端数は大きい順）。"""
+    order = sorted(shares.items(), key=lambda kv: (-kv[1], kv[0]))
+    weights = [(name, round(value * 1000)) for name, value in order if value > 0]
+    if total <= 0 or not weights:
+        return {}
+    return {n: c for n, c in proportional(total, weights).items() if c > 0}
 
 
 def _facts(f: dict[str, Any]) -> dict[str, Any]:
@@ -707,11 +839,14 @@ class Housing(IslandStage):
         built = upgraded = 0
         short: set[str] = set()  # 足りなくて町が育たなかった資源
         dry: set[Pos] = set()  # 上下水道が足りなくて育たなかった町のマス
-        vacancies = sorted(vacancies_of(defs, island, ctx.turn), key=lambda v: (-v[1], v[0].id))
-        for f, missing in vacancies:
+        vacancies = sorted(
+            vacancies_of(defs, island, config, ctx.turn),
+            key=lambda v: (-v[2], v[3], v[0][1], v[0][0]),
+        )
+        for site, radius, missing, _ in vacancies:
             if built >= h["max_new_per_turn"] and upgraded >= h["max_upgrades_per_turn"]:
                 break
-            area = within(island, (f.x, f.y), fac.commute_radius(defs, config, f.kind))
+            area = within(island, site, radius)
             near = [pos for pos in area if pos in homes]
             # 空いている町に入れる人と、もう近くに住んでいて仕事のない人で足りれば育てない
             room = sum(
@@ -852,4 +987,6 @@ def register(registry: Registry) -> None:
     registry.add_formula("food_need", food_need)
     registry.add_formula("happiness", happiness)
     registry.add_formula("hunger_deaths", hunger_deaths)
+    registry.add_formula("birth_rate", birth_rate)
+    registry.add_formula("death_rate", death_rate)
     registry.add_check(check_population_defs)
