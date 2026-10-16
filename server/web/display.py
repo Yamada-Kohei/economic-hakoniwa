@@ -9,6 +9,7 @@ from django.db.models import Sum
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, ledger
+from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.economy import (
     books,
     entity_of,
@@ -17,7 +18,7 @@ from hakoniwa_core.economy import (
     is_private_site,
     is_self_supporting,
 )
-from hakoniwa_core.log import format_log
+from hakoniwa_core.log import format_log, format_turn
 from hakoniwa_core.modules.banking import ENTRY as BANK_ENTRY
 from hakoniwa_core.modules.bonds import CUT, UNDERWRITE
 from hakoniwa_core.modules.failures import METHODS as RESOLUTION_METHODS
@@ -42,7 +43,28 @@ from server.world.repository import facility_from_row, island_from_row
 
 
 def message(key: str, **args: Any) -> str:
-    return format_log(get_game().defs, key, args)
+    game = get_game()
+    return format_log(game.defs, key, args, calendar=game.calendar)
+
+
+def turn_text(turn: int) -> str:
+    """ある時点のターンを、世界の暦の日付で書く（「箱庭暦32年11月（ターン 383）」）。"""
+    game = get_game()
+    return format_turn(game.defs, turn, game.calendar)
+
+
+def calendar_settings() -> dict[str, Any]:
+    """画面の JavaScript が日付を書くのに使う、世界の暦（hakoniwa_core/dates.py）とその文面。"""
+    game = get_game()
+    defs, calendar = game.defs, game.calendar
+    return {
+        "name": calendar.name,
+        "first_year": calendar.first_year,
+        "turns_per_year": TURNS_PER_YEAR,
+        "date": defs.name("messages", "calendar_date"),
+        "before": defs.name("messages", "calendar_before"),
+        "with_turn": defs.name("messages", "calendar_turn"),
+    }
 
 
 def amount(milli: int) -> float:
@@ -432,8 +454,13 @@ def subsidy_text(s: dict[str, Any]) -> str:
     """補助金の1件（policy.subsidies）の文。"""
     return (
         f"{message('subsidy_' + s['kind'])}・{_subsidy_target(s)} "
-        f"{s.get('rate', 0) * 100 / BASIS:g}%（ターン {s.get('until')} まで）"
+        f"{s.get('rate', 0) * 100 / BASIS:g}%、{_until(s.get('until'))}"
     )
+
+
+def _until(turn: Any) -> str:
+    """「〜まで」の文。ターンの数がなければ「ターン None まで」のように崩さない。"""
+    return f"{turn_text(turn)}まで" if isinstance(turn, int) else f"ターン {turn} まで"
 
 
 def _subsidy_target(s: dict[str, Any]) -> str:
@@ -956,11 +983,12 @@ def finance_policy_view(island) -> dict[str, Any]:
 
 def log_entries(logs) -> list[dict[str, Any]]:
     """ターンログの行を、文面とリンク先のマス付きで。"""
-    defs = get_game().defs
+    game = get_game()
     out = []
     for log in logs:
         args = log.args or {}
-        entry = {"turn": log.turn, "kind": log.kind, "text": format_log(defs, log.kind, args)}
+        text = format_log(game.defs, log.kind, args, calendar=game.calendar)
+        entry = {"turn": log.turn, "kind": log.kind, "text": text}
         if "x" in args and "y" in args:
             entry["tile"] = (args["x"], args["y"])
         out.append(entry)

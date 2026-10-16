@@ -11,11 +11,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.state import EconomyState
 
 BASE_CPI = 100.0
-YEAR = 12  # 1年のターン数
 
 
 def basket(defs: Defs) -> list[str]:

@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% load i18n static %}
+{% extends "base.html" %}{% load i18n static calendar_tags %}
 {% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 {% include "web/report_header.html" %}
@@ -9,13 +9,13 @@
       <h2>{% translate "中央銀行" %}</h2>
       <table class="info">
         <tr><th>{% translate "政策金利" %}</th><td>{{ central_bank.policy_rate|floatformat:2 }}%</td></tr>
-        <tr><th>{% translate "独立" %}</th><td>{% if central_bank.independent %}{% translate "独立（政策金利は中央銀行が物価と失業率を見て決めます）" %}{% else %}{% translate "政府の下（政策金利と国債の売買を政府が決めます）" %}{% endif %}{% if central_bank.unlock_turn %}<br><small>{% blocktranslate with t=central_bank.unlock_turn %}ターン {{ t }} までは切り替えられません{% endblocktranslate %}</small>{% endif %}</td></tr>
+        <tr><th>{% translate "独立" %}</th><td>{% if central_bank.independent %}{% translate "独立（政策金利は中央銀行が物価と失業率を見て決めます）" %}{% else %}{% translate "政府の下（政策金利と国債の売買を政府が決めます）" %}{% endif %}{% if central_bank.unlock_turn %}<br><small>{% blocktranslate with t=central_bank.unlock_turn|turn_date %}{{ t }}までは切り替えられません{% endblocktranslate %}</small>{% endif %}</td></tr>
         <tr><th>{% translate "国債の売買の方針" %}</th><td>{{ central_bank.bond_trade_text }}</td></tr>
       </table>
     </section>
 
     <section class="panel">
-      <h2>{% if stats_turn is not None %}{% blocktranslate with turn=stats_turn %}金利・お金・融資（ターン {{ turn }}）{% endblocktranslate %}{% else %}{% translate "金利・お金・融資" %}{% endif %}</h2>
+      <h2>{% if stats_turn is not None %}{% translate "金利・お金・融資" %} <small class="heading-date">{{ stats_turn|turn_date }}</small>{% else %}{% translate "金利・お金・融資" %}{% endif %}</h2>
       {% if stats %}
       <table class="info">
         {% for row in stats %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
@@ -42,7 +42,7 @@
               <td>{{ b.deposits|default:"-" }}</td><td>{{ b.loans|default:"-" }}</td><td>{{ b.net_worth|default:"-" }}</td>
               <td>{{ b.capital_ratio|default:"融資なし" }}<br><small class="muted">{% blocktranslate with r=b.regulatory_ratio %}規制 {{ r }} 以上{% endblocktranslate %}</small></td>
               <td>{{ b.deposit_rate }}</td>
-              <td>{% if b.failed is not None %}<span class="error">{% blocktranslate with t=b.failed %}ターン {{ t }} に破綻{% endblocktranslate %}</span>{% elif not b.built %}{% translate "建設中" %}{% else %}{% translate "営業中" %}{% endif %}{% if b.crunch_until %}<small class="warning">{% blocktranslate with t=b.crunch_until %}国債の債務不履行で損をしたため、ターン {{ t }} まで新しい融資を止めています{% endblocktranslate %}</small>{% endif %}{% if b.emergency %}<br><small>{% blocktranslate with a=b.emergency %}緊急の貸し出しの上限 {{ a }}{% endblocktranslate %}</small>{% endif %}</td>
+              <td>{% if b.failed is not None %}<span class="error">{% blocktranslate with t=b.failed|turn_date %}{{ t }}に破綻{% endblocktranslate %}</span>{% elif not b.built %}{% translate "建設中" %}{% else %}{% translate "営業中" %}{% endif %}{% if b.crunch_until %}<small class="warning">{% blocktranslate with t=b.crunch_until|turn_date %}国債の債務不履行で損をしたため、{{ t }}まで新しい融資を止めています{% endblocktranslate %}</small>{% endif %}{% if b.emergency %}<br><small>{% blocktranslate with a=b.emergency %}緊急の貸し出しの上限 {{ a }}{% endblocktranslate %}</small>{% endif %}</td>
             </tr>
             {% endfor %}
           </tbody>

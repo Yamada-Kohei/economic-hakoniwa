@@ -1,11 +1,11 @@
-{% extends "base.html" %}{% load i18n %}
+{% extends "base.html" %}{% load i18n calendar_tags %}
 {% block title %}{% translate "順位" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 <h1>{% translate "統計の順位" %}</h1>
 {% if not data %}
 <p class="muted">{% translate "世界がまだありません。" %}</p>
 {% else %}
-<p>{% blocktranslate with t=data.turn %}ターン {{ t }} の統計です。{% endblocktranslate %}
+<p>{% blocktranslate with t=data.turn|turn_date %}{{ t }}の統計です。{% endblocktranslate %}
   {% if data.base_name %}{% blocktranslate with c=data.base_name %}お金の額は、今の為替レートで「{{ c }}」に直して比べています。{% endblocktranslate %}{% endif %}</p>
 {% if data.currencies|length > 1 %}
 <form method="get" class="actions">

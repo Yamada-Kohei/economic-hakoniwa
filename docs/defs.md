@@ -110,6 +110,7 @@ steel_mill: 製鉄所
 
 | 節 | 中身 |
 |---|---|
+| `calendar` | 世界の暦の名前（`name`、既定「箱庭暦」）と、ターン1 の年（`first_year`、既定 1）。1ターンが1か月で、1年のターン数（12）は `hakoniwa_core/dates.py` の `TURNS_PER_YEAR` だけに書く |
 | `orders` | 行政力（1ターンに実行できる命令の数）の最低（`base_admin_power`）と最大（`max_admin_power`）、並べられる命令の数（`max_queue`） |
 | `founding` | 選べる資源の数、描き直せる地形のマス数、自動で配る地形の割合、名前の長さの上限 |
 | `labor` | 町から通える距離（`commute_radius`）、優先度の既定、初めの賃金と賃金の動き方（フェーズ2） |

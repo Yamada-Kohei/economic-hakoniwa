@@ -37,6 +37,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.state import IslandState, JournalEntry
 from hakoniwa_core.units import BASIS
 
@@ -317,7 +318,7 @@ def interest(balance_: int, rate: int) -> int:
     """1ターンの利子: 残高 × 年利（1万分の1）÷ 12 の切り捨て。利子の丸めはここだけで行う。"""
     if balance_ <= 0 or rate <= 0:
         return 0
-    return balance_ * rate // (BASIS * 12)
+    return balance_ * rate // (BASIS * TURNS_PER_YEAR)
 
 
 # --- 毎ターンの確かめ ---------------------------------------------------------

@@ -6,6 +6,7 @@
 // 狭い画面では地図を画面の上に留め、その下でこの欄を読み進める（site.css）。命令を足しても
 // 地図はそのまま押せ、結果は地図のそばに出す。
 
+import { turnDate } from "../calendar.js";
 import { escapeHtml, getJson, sendJson } from "./api.js";
 
 const MAX_TILES = 64; // 1つの命令で選べるマスの数（orders.yaml の maxItems と同じ）
@@ -208,11 +209,11 @@ export class TilePanel {
     }
     if (f.priority != null) rows.push(["優先度", `${f.priority}${f.priority_changed ? "（変更済み）" : ""}`]);
     if (f.status_text) rows.push(["状態", f.status_text]);
-    if (f.halted_until != null) rows.push(["停止期間", `ターン ${f.halted_until} まで`]);
-    if (f.closing != null) rows.push(["閉鎖", `ターン ${f.closing} から閉鎖中（在庫を売り切ったら借入を返してマスを空けます）`]);
+    if (f.halted_until != null) rows.push(["停止期間", `${turnDate(f.halted_until)}まで`]);
+    if (f.closing != null) rows.push(["閉鎖", `${turnDate(f.closing)}から閉鎖中（在庫を売り切ったら借入を返してマスを空けます）`]);
     if (f.foreclosed) {
       const s = f.foreclosed;
-      rows.push(["差し押さえ", `${s.bank}が差し押さえ中。売り値 ${s.price}（ターン ${s.until} までに売れなければ取り壊します）`]);
+      rows.push(["差し押さえ", `${s.bank}が差し押さえ中。売り値 ${s.price}。${turnDate(s.until)}までに売れなければ取り壊します`]);
     }
     if (f.stock.length) rows.push(["施設在庫", goodsText(f.stock)]);
     const parts = [`<h3>${escapeHtml(f.name)}</h3>${table(rows)}`];
@@ -230,7 +231,7 @@ export class TilePanel {
     if (b.deposit != null) rows.push([b.deposit_label || "預金", b.deposit]);
     if (b.debt) rows.push(["借入", b.debt]);
     const result = b.profit < 0 ? "（赤字）" : "";
-    return `<h4>収支（ターン ${b.turn}）${result}</h4>${table(rows)}`;
+    return `<h4>収支${result} <small class="heading-date">${escapeHtml(turnDate(b.turn))}</small></h4>${table(rows)}`;
   }
 
   actionsHtml(t) {
@@ -627,10 +628,10 @@ function bankHtml(b) {
   const rows = [];
   if (b.failed != null) {
     const why = b.failed_reason === "liquidity" ? "資金繰りに行き詰まり" : "債務超過で";
-    rows.push(["破綻", `ターン ${b.failed} に${why}破綻しました（新しい融資と預金の受け入れを止めています）`]);
+    rows.push(["破綻", `${turnDate(b.failed)}に${why}破綻しました（新しい融資と預金の受け入れを止めています）`]);
   }
   if (b.crunch_until != null) {
-    rows.push(["融資の停止", `国債の債務不履行で損をしたため、ターン ${b.crunch_until} まで新しい融資を止めています（返す元金の借り換えだけ）`]);
+    rows.push(["融資の停止", `国債の債務不履行で損をしたため、${turnDate(b.crunch_until)}まで新しい融資を止めています（返す元金の借り換えだけ）`]);
   }
   if (b.deposits != null) rows.push(["預金", b.deposits]);
   if (b.loans != null) rows.push(["融資", b.loans]);
@@ -640,7 +641,7 @@ function bankHtml(b) {
   }
   rows.push(["預金金利（年）", b.deposit_rate]);
   if (b.emergency) rows.push(["緊急の貸し出しの上限", b.emergency]);
-  const turn = b.turn != null ? `（ターン ${b.turn}）` : "";
+  const turn = b.turn != null ? ` <small class="heading-date">${escapeHtml(turnDate(b.turn))}</small>` : "";
   return `<h4>銀行の帳簿${turn}</h4>${table(rows)}`;
 }
 

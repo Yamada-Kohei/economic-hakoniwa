@@ -1,5 +1,6 @@
 // 施設の画面: 国全体の施設の統計のグラフと、自国の施設ごとの帳簿の推移（施設の帳簿の API）。
 
+import { turnDate } from "../calendar.js";
 import { getJson } from "../island/api.js";
 import { attachRange, escapeHtml, formatValue, makeChart, mountCharts, rangeQuery } from "./common.js";
 
@@ -72,11 +73,11 @@ if (detail) {
     for (let i = data.turns.length - 1; i >= 0 && rows.length < TABLE_TURNS; i--) {
       const cells = keys.map((k) => `<td>${money(data.signs[k] * data.items[k][i])}</td>`).join("");
       const more = extra.map(([, values]) => `<td>${money(values[i])}</td>`).join("");
-      rows.push(`<tr><td>${data.turns[i]}</td>${cells}${more}</tr>`);
+      rows.push(`<tr><td>${escapeHtml(turnDate(data.turns[i]))}</td>${cells}${more}</tr>`);
     }
     const moreHead = extra.map(([label]) => `<th>${label}</th>`).join("");
     return `<table class="goods book-table">
-      <thead><tr><th>ターン</th>${head}${moreHead}</tr></thead>
+      <thead><tr><th>時期</th>${head}${moreHead}</tr></thead>
       <tbody>${rows.join("")}</tbody></table>`;
   }
 

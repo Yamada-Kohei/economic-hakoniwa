@@ -2,7 +2,14 @@
 # 引数 facility・good・terrain・order・level・reason は、その種類の表示名に置き換わります。
 # good のある文では {unit} がその資源の単位に、goods（資源の並び）は表示名を「・」でつないだものになります。
 # マスを持たない施設（運送業・海運業）の文では、「({x}, {y}) の」が off_map_place に置き換わります。
+# {turn:date} のように書いた引数（ターンの数）は、その時点の暦の日付（calendar_turn）になります。
 off_map_place: "島の"
+
+# 暦（hakoniwa_core/dates.py）。ある時点のターンの書き方
+calendar_date: "{calendar}{year}年{month}月"
+calendar_before: "{calendar}の始まる前"
+calendar_turn: "{date}（ターン {turn}）"
+turn_point: "ターン {turn}"
 
 # 命令
 order_done: "命令「{order}」を実行しました"
@@ -171,10 +178,10 @@ bonds_unsold: "{term} {amount:,} が入札で売れ残りました（その分�
 bonds_underwritten: "中央銀行が{term}を {amount:,} 直接引き受けました（利回り {rate:.2f}%）"
 bond_default: "国債 {count} 銘柄の利払いと償還ができず、債務不履行になりました（持ち手の損 {amount:,}）"
 bond_default_ordered: "国債 {count} 銘柄の利払いと償還を止め、債務不履行にしました（持ち手の損 {amount:,}）"
-bond_default_penalty: "債務不履行のため、ターン {turn} までは銀行が国債を買わず、入札では売れません（売れ残りは政策どおり中央銀行が引き受けるか、その分の支出を減らします）。国債で損をした銀行（{banks} つ）は、ターン {crunch} まで新しい融資を止めます（返す元金の借り換えだけ）。国債の利回りには {premium:g}% が上乗せされ、{decay} ターンかけて減ります"
-bond_default_penalty_no_banks: "債務不履行のため、ターン {turn} までは銀行が国債を買わず、入札では売れません（売れ残りは政策どおり中央銀行が引き受けるか、その分の支出を減らします）。国債の利回りには {premium:g}% が上乗せされ、{decay} ターンかけて減ります"
+bond_default_penalty: "債務不履行のため、{turn:date}までは銀行が国債を買わず、入札では売れません（売れ残りは政策どおり中央銀行が引き受けるか、その分の支出を減らします）。国債で損をした銀行（{banks} つ）は、{crunch:date}まで新しい融資を止めます（返す元金の借り換えだけ）。国債の利回りには {premium:g}% が上乗せされ、{decay} ターンかけて減ります"
+bond_default_penalty_no_banks: "債務不履行のため、{turn:date}までは銀行が国債を買わず、入札では売れません（売れ残りは政策どおり中央銀行が引き受けるか、その分の支出を減らします）。国債の利回りには {premium:g}% が上乗せされ、{decay} ターンかけて減ります"
 bonds_market_reopened: "債務不履行から時間がたち、銀行がまた国債を入札で買うようになりました"
-bonds_unsold_closed: "{term} {amount:,} は、債務不履行の後で銀行が買わず売れませんでした（ターン {turn} まで。その分の支出を減らします）"
+bonds_unsold_closed: "{term} {amount:,} は、債務不履行の後で銀行が買わず売れませんでした。銀行は{turn:date}まで国債を買わないので、その分の支出を減らします"
 bank_lending_resumed: "({x}, {y}) の銀行が、国債の債務不履行の後に止めていた新しい融資を再開しました"
 policy_rate_moved: "中央銀行が政策金利を {before:.2f}% から {after:.2f}% に変えました"
 bank_failed_capital: "({x}, {y}) の銀行が債務超過で破綻しました。次のターンまでに処理（救済・引き継ぎ・清算）を選べます"
@@ -216,7 +223,7 @@ entry_block_no_workers: "空いた工業団地のマスの通勤圏に、失業�
 entry_block_no_owners: "資産を持つ層がいません"
 entry_block_owners_short: "資産を持つ層の預金 {have:,} が、出資に要る {need:,} に足りません（銀行から借りられるのは {loan:,}）"
 entry_block_loan_refused: "見込みの利益（1ターン {earnings:,}）では、建設資金の返済（1ターン {service:,}）の審査に通りません"
-entry_block_credit_crunch: "国債の債務不履行で損をした銀行が、ターン {turn} まで新しく貸しません"
+entry_block_credit_crunch: "国債の債務不履行で損をした銀行が、{turn:date}まで新しく貸しません"
 state_facility_losses: "({x}, {y}) の国営の{facility}は赤字が続いています（国が運転資金を出し続けています）"
 
 # 貿易と為替（フェーズ3-1）
@@ -476,7 +483,7 @@ economy_changed: "経済体制を{before}から{economy}に変えました。混
 nationalized_all: "民営の施設と民間銀行 {count} を、合わせて {price:,} で国有化しました（中央銀行が引き受けた国債で払いました）"
 transition_ended: "体制を変えた後の混乱期間が終わりました"
 capital_rebuilt: "首都の建物が{building}に建て替わりました"
-reason_in_transition: "体制を変えた後の混乱期間の間（ターン {until} まで）は、体制を変えられません"
+reason_in_transition: "体制を変えた後の混乱期間の間は、{until:date}まで体制を変えられません"
 reason_unknown_regime: "その体制は選べません"
 reason_same_regime: "今と同じ体制です"
 reason_no_parliament: "議会のない体制です"

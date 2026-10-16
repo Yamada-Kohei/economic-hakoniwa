@@ -66,6 +66,7 @@ from typing import Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, politics, stock, trade
+from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     OWNERS,
@@ -163,7 +164,7 @@ def entry_return(
         if s["kind"] == "production" and s.get("good") in outputs
     )
     tax = island.policy.corporate_tax / BASIS
-    return 12 * (profit + subsidy) * (1 - tax) / capital
+    return YEAR * (profit + subsidy) * (1 - tax) / capital
 
 
 def capital_subsidy(island: IslandState, kind: str, recipe: dict[str, Any]) -> int:
@@ -929,7 +930,7 @@ class EntryExit(IslandStage):
                 rate = round(island.policy.policy_rate * 100 / BASIS, 2)
                 return ("no_rate_room", {"rate": rate})
             line = island.policy.policy_rate / BASIS + config.get("banking.entry_roe_margin")
-            if self._entry_profit(island, ctx, current, share) * 12 <= line * max(1, capital):
+            if self._entry_profit(island, ctx, current, share) * YEAR <= line * max(1, capital):
                 return ("unprofitable", {})
         kind = config.get("banking.facility")
         spot = None

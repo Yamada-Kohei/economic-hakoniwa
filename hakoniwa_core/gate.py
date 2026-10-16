@@ -35,6 +35,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import debt, experience
 from hakoniwa_core.economy.prices import initial_prices
@@ -55,15 +56,15 @@ GDP_GAP = 0.001  # 生産の側と支出の側の差
 FIRMS_WINDOW = 100  # 民営工場の数を見るターン数（最後から。市場経済の島）
 FIRMS_SPREAD = 0.5  # 民営工場の数の、その間の平均からの振れ幅の上限
 CASCADE_TURNS = 24  # 同じ島で銀行の破綻がこのターン数のうちに続いたら連鎖と見る
-FX_YEAR = 12  # 為替の年の動きを見るターン数
+FX_YEAR = TURNS_PER_YEAR  # 為替の年の動きを見るターン数
 FX_MOVE = 0.30  # 為替の年の動きの平均の上限（島ごと、相手の通貨ごと）
 NO_COAL = "coal"  # この資源の出ない島の失業率を別に出す
 TITLE_SHARE = 1 / 3  # 1つの島が持つ称号（産業ごとの経験の1位）の、称号のある産業に対する割合の上限
 RESERVE_CAP = 2.0  # 外国の資産 ÷ 年の GDP の上限
 RESERVE_WINDOW = 120  # 外国の資産の増え方を見るターン数（最後から）
 RESERVE_RISE = 0.5  # その間に外国の資産 ÷ 年の GDP が増えてよい幅
-EARLY_TURN = 12  # 最初の1年の縮みを見るターン（1ターン目との比。回2）
-TRADE_GAP = 12  # 貿易（輸出と輸入）がこのターン数続けて 0 なら、途絶えたと見る（回2。Codex B03）
+EARLY_TURN = TURNS_PER_YEAR  # 最初の1年の縮みを見るターン（1ターン目との比。回2）
+TRADE_GAP = TURNS_PER_YEAR  # 貿易（輸出と輸入）がこれだけ続けて 0 なら途絶えた（回2。Codex B03）
 
 # 目安から外れたところの種類（failures の kinds で選ぶ。場面ごとの関門は hakoniwa_core/measure.py）
 KINDS = (

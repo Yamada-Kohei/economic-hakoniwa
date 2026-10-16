@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% load i18n static %}
+{% extends "base.html" %}{% load i18n static calendar_tags %}
 {% block title %}{{ island.name }} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 {% csrf_token %}
@@ -11,7 +11,7 @@
     {% for r in regime %} ・ {{ r.axis }}: {{ r.name }}{% endfor %}
     {% if resources %} ・ {% translate "地下資源" %}: {{ resources|join:"、" }}{% endif %}
     {% if climate %} ・ {% translate "気候" %}: {{ climate }}{% endif %}
-    {% if stats_turn is not None %} ・ {% blocktranslate with turn=stats_turn %}ターン {{ turn }} の時点{% endblocktranslate %}{% endif %}
+    {% if stats_turn is not None %} ・ {% blocktranslate with turn=stats_turn|turn_date %}{{ turn }}の時点{% endblocktranslate %}{% endif %}
   </p>
   {% include "web/island_nav.html" %}
 </div>
@@ -87,7 +87,7 @@
 </div>
 
 <section class="panel">
-  <h2>{% if log_turn is not None %}{% blocktranslate with turn=log_turn %}ターン {{ turn }} の出来事{% endblocktranslate %}{% else %}{% translate "出来事" %}{% endif %}</h2>
+  <h2>{% if log_turn is not None %}{% blocktranslate with turn=log_turn|turn_date %}{{ turn }}の出来事{% endblocktranslate %}{% else %}{% translate "出来事" %}{% endif %}</h2>
   {% include "web/log_entries.html" with entries=logs island=island %}
   <p><a href="{% url 'turn_log' island.id %}">{% translate "ターンログをすべて見る" %}</a></p>
 </section>

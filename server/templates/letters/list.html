@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% load i18n %}
+{% extends "base.html" %}{% load i18n calendar_tags %}
 {% block title %}{% if box == "inbox" %}{% translate "届いた公電" %}{% else %}{% translate "送った公電" %}{% endif %} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 <h1>{% translate "外交" %} <span class="page-title">{{ island.name }}</span></h1>
@@ -8,7 +8,7 @@
 <table class="letters">
   <thead><tr>
     <th>{% if box == "inbox" %}{% translate "発信国" %}{% else %}{% translate "宛先国" %}{% endif %}</th>
-    <th>{% translate "件名" %}</th><th>{% translate "ターン" %}</th><th>{% translate "送った時刻" %}</th>
+    <th>{% translate "件名" %}</th><th>{% translate "時期" %}</th><th>{% translate "送った時刻" %}</th>
     <th>{% if box == "inbox" %}{% translate "状態" %}{% else %}{% translate "相手" %}{% endif %}</th>
   </tr></thead>
   <tbody>
@@ -16,7 +16,7 @@
     <tr{% if box == "inbox" and not letter.read_at %} class="unread"{% endif %}>
       <td>{% if box == "inbox" %}<a href="{% url 'island' letter.sender.id %}">{{ letter.sender.name }}</a>{% else %}<a href="{% url 'island' letter.recipient.id %}">{{ letter.recipient.name }}</a>{% endif %}</td>
       <td><a href="{% url 'letter' letter.id %}">{{ letter.subject }}</a></td>
-      <td>{{ letter.turn }}</td>
+      <td>{{ letter.turn|turn_date }}</td>
       <td>{{ letter.sent_at|date:"Y-m-d H:i" }}</td>
       <td>{% if letter.read_at %}{% translate "既読" %}{% else %}{% translate "未読" %}{% endif %}</td>
     </tr>

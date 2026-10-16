@@ -16,6 +16,7 @@ from collections import defaultdict
 from typing import Any
 
 from hakoniwa_core import facilities as fac
+from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.naming import facility_name
 from server.economy.models import MarketRecord, Trade
 from server.game import get_game
@@ -23,7 +24,7 @@ from server.web import display
 from server.world import models as m
 from server.world.repository import facility_from_row
 
-YEAR = 12  # 値段の動きを比べるターン数
+YEAR = TURNS_PER_YEAR  # 値段の動きを比べるターン数（1年）
 STREAK_TURNS = 12  # 品不足の続いたターン数を数える上限
 TIERS = [(1, "原料"), (2, "中間財"), (3, "最終財")]
 MERCHANT = "merchant"  # 海外の商人（約定の記録の売り手）

@@ -25,6 +25,7 @@ Django（server/）……保存・アカウント・命令の受付・ターン�
 | `trade/` | 貿易と為替の部品（フェーズ3-1）: 貿易圏・二国間契約・為替・島をまたぐお金・海外の商人・港と船・商社・移し替え。フェーズ3-3 の産業政策（`policy.py`）・国際収支（`balance.py`）・外国の国債（`abroad.py`） |
 | `politics.py` | 政治の状態（フェーズ3-4）: 政情とその段階、体制の特色（`regimes.yaml` の `traits`）、報道と集会の扱い、首都の建物、建て替えの資材。段と命令は `modules/politics`（政情・選挙と議会の採決・デモと暴動・混乱期間・体制の変更）と `modules/plan`（公定価格・重点産業） |
 | `units.py` | 量・お金・率の単位と丸め |
+| `dates.py` | 暦: 1年のターン数（1ターン＝1か月）、ターンの年と月、年の終わり（年に1度の処理はターンが12の倍数の12月）。世界の暦は `game.yaml` の `calendar`。文面は `log.py` の `format_turn` |
 | `turn/` | 段の進行役（`Engine`）、段に渡すもの（`StageContext`）、乱数 |
 | `founding.py` | 建国: 形と地形の検査、描いた形からの自動の地形、首都と最初の施設・町・村の配置 |
 | `facilities.py`・`stock.py`・`allocation.py`・`geo.py`・`naming.py` | モジュールが共通で使う道具（施設の定義、倉庫、優先順位での配分、距離と道、名前） |
@@ -107,6 +108,9 @@ DB の表は、マス（`Tile`）・施設（`Facility`）・在庫（`Stock`、
 足す）。他国の人にもこれらの画面は見せますが、施設の帳簿・約定の相手・銀行ごとの中身・契約・商社・船団・外貨の持ち高・
 命令の欄は島の持ち主だけです。貿易と為替の画面のデータは `server/web/trade.py` が島と世界の `ext["trade"]` から、政治と計画の画面のデータは
 `server/web/politics.py` が島の `ext["politics"]`・`ext["plan"]` から組み立てます。
+
+ある時点のターンは、テンプレートでは `{{ turn|turn_date }}`（`server/web/templatetags/calendar_tags.py`）、JavaScript では `calendar.js` の `turnDate` で「箱庭暦32年11月（ターン 383）」と書きます（暦の設定は `base.html` が
+ページに埋め込む）。
 
 ## JSON API
 

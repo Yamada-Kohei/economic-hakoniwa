@@ -19,12 +19,12 @@ from __future__ import annotations
 
 from hakoniwa_core import stock
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.economy import books
 from hakoniwa_core.state import Facility, IslandState
 from hakoniwa_core.units import QUANTITY_SCALE, money_of, round_money, to_milli
 
 MILLI = QUANTITY_SCALE
-YEAR = 12
 TRUCKS = "trucks"  # 運送業の economy: 持っているトラック（1000 分の 1 台）
 WORKING = "trucks_working"  # 運送業の economy: このターンに動いたトラック（1000 分の 1 台）
 

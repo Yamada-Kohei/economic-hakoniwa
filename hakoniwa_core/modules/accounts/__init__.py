@@ -44,6 +44,7 @@ from typing import Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
+from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     OWNERS,
@@ -129,7 +130,7 @@ class Accounts(IslandStage):
                 keep = settings["ebitda_turns"]
                 f.economy["ebitda"] = [*f.economy.get("ebitda", []), cash][-keep:]
             if bank:
-                f.economy["profits"] = [*f.economy.get("profits", []), profit][-12:]
+                f.economy["profits"] = [*f.economy.get("profits", []), profit][-YEAR:]
             elif is_self_supporting(f):
                 self._watch_losses(island, ctx, f, profit)
             entity = entity_of(config, f)

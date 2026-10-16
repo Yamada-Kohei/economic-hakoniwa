@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% load i18n %}
+{% extends "base.html" %}{% load i18n calendar_tags %}
 {% block title %}{{ letter.subject }} - {% translate "公電" %}{% endblock %}
 {% block content %}
 <h1>{{ letter.subject }}</h1>
@@ -9,7 +9,7 @@
     → {% translate "宛先国" %}: <a href="{% url 'island' letter.recipient.id %}">{{ letter.recipient.name }}</a>
   </p>
   <p class="muted">
-    {% blocktranslate with turn=letter.turn %}ターン {{ turn }}{% endblocktranslate %} ・ {{ letter.sent_at|date:"Y-m-d H:i" }}
+    {{ letter.turn|turn_date }} ・ {{ letter.sent_at|date:"Y-m-d H:i" }}
     ・ {% if letter.read_at %}{% blocktranslate with at=letter.read_at|date:"Y-m-d H:i" %}{{ at }} に既読{% endblocktranslate %}{% else %}{% translate "未読" %}{% endif %}
   </p>
   <div class="post-body">{{ letter.body|linebreaksbr }}</div>

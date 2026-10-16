@@ -17,6 +17,7 @@ from typing import Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger
+from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     ENGINEERS,
@@ -66,7 +67,7 @@ def wage_update(island: IslandState, f: Facility, ctx: StageContext) -> int:
         natural = settings["natural_unemployment"]
         gap = min(0.0, (natural - unemployment_rate(island, ctx, f)) / natural)
     speed = settings["wage_speed"] if gap > 0 else settings["slack_speed"]
-    change = settings["indexation"] * max(0.0, inflation(island.economy)) / 12 + speed * gap
+    change = settings["indexation"] * max(0.0, inflation(island.economy)) / YEAR + speed * gap
     change = max(-settings["max_cut"], min(settings["max_raise"], change))
     new = scale_price(wage, 1 + change)
     if new > wage and is_self_supporting(f) and not is_transport(ctx.config, f):
@@ -102,7 +103,7 @@ def engineer_wage_update(island: IslandState, f: Facility, ctx: StageContext) ->
         natural = settings["natural_unemployment"]
         gap = min(0.0, (natural - engineer_unemployment(island)) / natural)
     speed = settings["wage_speed"] if gap > 0 else settings["slack_speed"]
-    change = settings["indexation"] * max(0.0, inflation(island.economy)) / 12 + speed * gap
+    change = settings["indexation"] * max(0.0, inflation(island.economy)) / YEAR + speed * gap
     change = max(-settings["max_cut"], min(settings["max_raise"], change))
     return max(scale_price(wage, 1 + change), f.economy["wage"])
 
