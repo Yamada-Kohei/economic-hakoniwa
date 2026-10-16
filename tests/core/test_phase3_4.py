@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import copy
+import dataclasses
 
 import pytest
 
@@ -166,12 +167,17 @@ def test_riot_halts_urban_facilities_and_police_hold_it_down(game, base):
     world = copy.deepcopy(base)
     island = max(world.islands.values(), key=lambda i: len(i.facilities))
     ctx = context(game, world, "politics")
+    # 止まる数の端数は乱数で丸めるので、都市の施設が 1 / halt_share に満たない島では、乱数しだいで
+    # 1つも止まらない。候補が全部止まる強さにして確かめる
+    raw = copy.deepcopy(game.config.raw)
+    raw["politics"]["riot"]["halt_share"] = 1.0
+    ctx.config = dataclasses.replace(game.config, raw=raw)
     candidates = politics_stage.urban_facilities(island, ctx)
     assert candidates
     plain = copy.deepcopy(island)
     Politics()._riot(plain, ctx, politics.RIOT)
     stopped = [f for f in plain.facilities if f.ext.get("halt_reason") == "riot"]
-    assert all(f.ext["halted_until"] > world.turn for f in stopped)
+    assert stopped and all(f.ext["halted_until"] > world.turn for f in stopped)
     assert plain.log[-1].kind == "riot_halted"
     # 警察の人手が足りていれば、止まる施設は (1 − police_effect) に減る
     guarded = copy.deepcopy(island)
@@ -182,7 +188,7 @@ def test_riot_halts_urban_facilities_and_police_hold_it_down(game, base):
     assert politics_stage.police_coverage(guarded, ctx) == 1.0
     Politics()._riot(guarded, ctx, politics.RIOT)
     held = [f for f in guarded.facilities if f.ext.get("halt_reason") == "riot"]
-    assert len(held) <= max(1, len(stopped))
+    assert len(held) < len(stopped)
     if held:  # 止まる数は乱数で端数を丸めるので、警察が抑えて 0 になることもある（ログは出ない）
         assert guarded.log[-1].kind == "riot_halted_police"
     assert guarded.log[-1].kind != "riot_halted"

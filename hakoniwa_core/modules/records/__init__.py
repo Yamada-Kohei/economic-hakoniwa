@@ -65,11 +65,11 @@ class Records(IslandStage):
             population += tile.population
             force = fac.labor_force(defs, island, tile)
             labor += force
-            employed += tile.ext.get("employed", 0)
-            farming += min(
-                force - tile.ext.get("employed", 0),
-                int(subsistence_persons(defs, island, tile) * share),
-            )
+            # 雇用の段の後に飢えなどで亡くなった人は、雇われた人から数えない（回4。数えると、飢饉の
+            # ターンに働く人が働き手を超え、自給の農業の人数がマイナスになった）
+            working = min(force, tile.ext.get("employed", 0))
+            employed += working
+            farming += min(force - working, int(subsistence_persons(defs, island, tile) * share))
         stats["population"] = population
         stats["labor"] = labor
         stats["employed"] = employed

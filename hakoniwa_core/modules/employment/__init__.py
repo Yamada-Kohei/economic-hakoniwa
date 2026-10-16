@@ -50,6 +50,7 @@ import math
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, politics
 from hakoniwa_core.economy import (
+    GENERAL,
     Payer,
     arrears,
     banks,
@@ -66,7 +67,7 @@ from hakoniwa_core.economy import (
 from hakoniwa_core.geo import distance, within
 from hakoniwa_core.modules import infrastructure
 from hakoniwa_core.modules.market import SITE_HOLDS, SiteFunds
-from hakoniwa_core.modules.population import subsistence_persons
+from hakoniwa_core.modules.population import FED, subsistence_persons
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import OWNER_STATE, Facility, IslandState
 from hakoniwa_core.trade import staff
@@ -75,10 +76,65 @@ from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, money_of, part, to_basis
 
 Pos = tuple[int, int]
+FIELDS_KEY = "back_to_fields"  # island.ext: 畑に戻った村の働き手の割合（回4）
 
 
 def _key(pos: Pos) -> str:
     return f"{pos[0]},{pos[1]}"
+
+
+def _take(free: dict[Pos, int], fields: dict[Pos, int], pos: Pos, want: int) -> int:
+    """マス pos の働き手を want 人まで雇う（free から、足りなければ畑に戻った人 fields から。
+    食べ物を作る施設だけが fields を渡す）。雇えた人数を返す。"""
+    take = min(want, free.get(pos, 0) + fields.get(pos, 0))
+    if take <= 0:
+        return 0
+    used = min(take, free.get(pos, 0))
+    free[pos] = free.get(pos, 0) - used
+    if take > used:
+        fields[pos] -= take - used
+    return take
+
+
+def back_to_fields(island: IslandState, ctx: StageContext, labor: dict[Pos, int]) -> dict[Pos, int]:
+    """食べ物が買えずに、仕事を休んで自分の畑で食べる分を作る村の働き手（マスごと。回4）。
+
+    働いても買える食べ物がなければ、村の人は畑に戻ります（現実の飢饉でも、土地のある農家は自分の
+    畑と蓄えで食いつなぎ、亡くなるのは多くが食べ物を買って暮らす人でした）。前のターンに一般の家計が
+    食べられなかった割合の人が、村（自給の農業ができる集落）で畑に戻ります（体が耐えられる少しの
+    不足（population.hunger.tolerance）までなら戻りません）。食べ物が買えるようになっても、畑に戻った人は1ターンに
+    labor.back_to_work の割合ずつ仕事に戻ります（蒔いた畑を収穫するまで）。畑に戻った人は、食べ物を
+    作れる施設（農場・漁港・牧場・食品工場。facilities.food_maker）のほかには勤めません。勤めなかった人は
+    村で自給の農業をし、市場で食料を買いません（modules/population の subsistence_persons）。
+    市場に食べ物が1つも出ていない間は、仕事に戻りません。
+    """
+    defs, config = ctx.defs, ctx.config
+    state = island.ext.get(FIELDS_KEY, 0.0)
+    fed = island.economy.households.get(GENERAL, {}).get(FED, fac.FULL)
+    short = max(0.0, 1 - fed / fac.FULL)
+    if short <= config.get("population.hunger.tolerance"):
+        short = 0.0
+    # 市場に食べ物が1つも出ていなければ、畑に戻った人は仕事に戻らない（みなが畑に戻って市場で買う
+    # 人がいないと、食べられなかった人もいないように見えるため）
+    supply = island.economy.finance.get("supply", {})  # 財ごとの売りに出た量（前のターンまで）
+    offered = any(h and h[-1] > 0 for g, h in supply.items() if "food" in defs.goods.get(g, {}))
+    back = config.get("labor.back_to_work") if offered else 0.0
+    share = max(short, state * (1 - back))
+    if share < 0.001:
+        island.ext.pop(FIELDS_KEY, None)
+        return {}
+    island.ext[FIELDS_KEY] = round(share, 4)
+    out = {}
+    for pos, force in labor.items():
+        tile = island.tile(*pos)
+        if not defs.settlements[fac.settlement_of(defs, tile.population)].get("subsistence"):
+            continue
+        count = int(force * share)
+        if count > 0:
+            out[pos] = count
+    if out:
+        island.stats["labor.back_to_fields"] = sum(out.values())
+    return out
 
 
 def _pos(key: str) -> Pos:
@@ -99,6 +155,10 @@ class Employment(IslandStage):
             settle_arrears(island)
         labor = {(t.x, t.y): fac.labor_force(defs, island, t) for t in island.tiles if t.population}
         free = dict(labor)
+        # 食べ物が買えずに畑に戻った村の働き手（食べ物を作る施設のほかには勤めない。回4）
+        fields = back_to_fields(island, ctx, labor)
+        for pos, count in fields.items():
+            free[pos] -= count
         everywhere = within(island, island.capital or (0, 0), island.size)
         plans = []
         for f in island.facilities:
@@ -175,13 +235,13 @@ class Employment(IslandStage):
                 continue
             keep: dict[Pos, int] = {}
             left = general[f.id]
+            feeds = fac.food_maker(defs, f.kind)
             for pos, count in sorted(
                 staff_of(f).items(), key=lambda kv: (self._dist(f, kv[0]), kv[0][1], kv[0][0])
             ):
-                take = min(count, left, free.get(pos, 0))
+                take = _take(free, fields if feeds else {}, pos, min(count, left))
                 if take > 0:
                     keep[pos] = take
-                    free[pos] -= take
                     left -= take
             staff[f.id] = keep
         start = {fid: sum(s.values()) for fid, s in staff.items()}
@@ -197,13 +257,13 @@ class Employment(IslandStage):
             if missing <= 0:
                 continue
             area = everywhere if self._island_wide(ctx, f) else self._area(island, ctx, f)
+            feeds = fac.food_maker(defs, f.kind)
             for pos in area:
                 if missing <= 0:
                     break
-                take = min(free.get(pos, 0), missing)
+                take = _take(free, fields if feeds else {}, pos, missing)
                 if take > 0:
                     staff[f.id][pos] = staff[f.id].get(pos, 0) + take
-                    free[pos] -= take
                     missing -= take
             if missing <= 0:
                 continue

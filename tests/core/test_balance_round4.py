@@ -1,20 +1,31 @@
-"""バランス調整 回4: サービスの仕事（商業・サービス業）と人口の増え方（生まれる人と亡くなる人）。"""
+"""バランス調整 回4: サービスの仕事（商業・サービス業）と人口の増え方（生まれる人と亡くなる人）、
+飢饉で島から人がいなくならないこと（品切れの値段・村の畑・町から村への移り住み）。"""
 
 from __future__ import annotations
 
 import copy
+import random
 from types import SimpleNamespace
 
 import pytest
 
 from hakoniwa_core import autoplan, infra, measure
-from hakoniwa_core.economy import GENERAL, services
-from hakoniwa_core.modules.population import HUNGER, birth_rate, death_rate
+from hakoniwa_core import facilities as fac
+from hakoniwa_core.economy import GENERAL, productivity, services
+from hakoniwa_core.economy.prices import variable_profit
+from hakoniwa_core.market import auction
+from hakoniwa_core.modules import firms
+from hakoniwa_core.modules.employment import FIELDS_KEY, _take, back_to_fields
+from hakoniwa_core.modules.firms import EntryExit
+from hakoniwa_core.modules.market import Market
+from hakoniwa_core.modules.population import FED, HUNGER, Population, birth_rate, death_rate
+from hakoniwa_core.state import ACCOUNTING_SELF, OWNER_PRIVATE, WorldState
 from hakoniwa_core.state.generate import generate_world
+from hakoniwa_core.units import to_basis
+from tests.core.test_finance import context, island_of, run
 from tests.core.test_finance import game as game  # noqa: F401  （試験の部品を使い回す）
-from tests.core.test_finance import island_of, run
 from tests.core.test_finance import warmed as warmed  # noqa: F401
-from tests.core.test_rules import home, make_island, with_economy
+from tests.core.test_rules import add, home, make_island, with_economy
 
 
 def _ctx(game):
@@ -162,3 +173,163 @@ def test_measure_counts_services_workers_and_births(game):
     assert 0 < window["labor.services"] < 1
     assert window["births.per_1000_year"] > 0 and window["deaths.per_1000_year"] > 0
     assert "population.growth" in window and "services.per_person_year" in window
+
+
+# --- 飢饉 -----------------------------------------------------------------------------------
+
+
+def _farm_island(game, recipe="cotton"):
+    """村が1つ、町が1つ、民営の農場が1つの島（農場は作り方 recipe で動いている）。"""
+    island = make_island(game)
+    home(game, island, 4, 4, 1000, "village")
+    home(game, island, 9, 9, 4000)
+    with_economy(game, island)
+    farm = add(island, "farm", 6, 6, recipe=recipe, owner=OWNER_PRIVATE)
+    farm.accounting = ACCOUNTING_SELF  # 民営の施設は自分の売上で払う
+    return island, farm
+
+
+def _ctx_of(game, island, turn=0):
+    return context(game, WorldState(turn=turn, seed=1, islands={island.id: island}), "test")
+
+
+def test_missing_grain_price_rises_while_a_farm_could_switch_back(game):
+    """島で最後の穀物の農場が綿に替えても、買いたい人がいるのに売りに出ない穀物の値段は、
+    作り方を替えれば穀物を作れる農場の変動費（民営なら、綿より利益が大きくなる値段）に届くまで
+    上がる（回4。前は今の作り方で作る施設しか見ず、値段が上がらないまま島が飢えた）。"""
+    island, farm = _farm_island(game)
+    ctx = _ctx_of(game, island)
+    prices = island.economy.prices
+    prices["grain"] = low = 1000
+    floors = Market._supply_floors(island, ctx, "grain", prices, {})
+    assert floors and min(floors) > low
+    island.scratch["wanted"] = {"grain": 5000}
+    Market._record(island, ctx, {}, {}, {})
+    assert prices["grain"] == auction.band(low, to_basis(game.config.get("market.band")))[1] > low
+    # 閉じようとしている農場は作り方を替えないので、値段の当てにしない
+    farm.economy["closing"] = 1
+    assert Market._supply_floors(island, ctx, "grain", prices, {}) == []
+
+
+def test_private_farm_switch_price_beats_its_current_crop(game):
+    """民営の農場が穀物に戻る値段は、穀物の変動費の利益が今の作物（綿）より firms.recipe_margin
+    の割合だけ大きくなる値段（作り方の見直しと同じ物差し）。"""
+    island, farm = _farm_island(game)
+    ctx = _ctx_of(game, island)
+    prices = dict(island.economy.prices)
+    prices["cotton"] *= 4  # 綿がよく売れている
+    floor = min(Market._supply_floors(island, ctx, "grain", prices, {}))
+    defs, config = game.defs, game.config
+    wage = farm.economy.get("wage", 0)
+
+    def grain_profit(price):  # 穀物の作り方（肥料あり・なし）の、変動費の利益の大きいほう
+        return max(
+            variable_profit(
+                defs,
+                config,
+                productivity.probe(island, defs, config, "farm", name, (farm.x, farm.y)),
+                {**prices, "grain": price},
+                wage,
+                0,
+            )
+            for name in ("default", "fertilized")
+        )
+
+    now = variable_profit(defs, config, farm, prices, wage, 0)
+    goal = now * (1 + config.get("firms.recipe_margin"))
+    assert grain_profit(floor) >= goal - 1 and now > 0
+    assert grain_profit(floor - 2) < goal
+
+
+def test_villagers_go_back_to_their_fields_when_food_cannot_be_bought(game):
+    """前のターンに一般の家計が食べられなかった割合の、村の働き手が畑に戻る。食べ物が買えるように
+    なっても、市場に食べ物が出るまでは戻らず、出たら1ターンに labor.back_to_work ずつ戻る。"""
+    island, _ = _farm_island(game)
+    ctx = SimpleNamespace(defs=game.defs, config=game.config)
+    labor = {(4, 4): 500, (9, 9): 2000}
+    general = island.economy.households[GENERAL]
+    finance = island.economy.finance
+    tolerance = game.config.get("population.hunger.tolerance")
+    general[FED] = round(fac.FULL * (1 - tolerance))  # 体が耐えられる少しの不足
+    assert back_to_fields(island, ctx, labor) == {}
+    general[FED] = 600  # 4割が食べられなかった
+    finance["supply"] = {"grain": [0] * 6, "food": [0] * 6}
+    assert back_to_fields(island, ctx, labor) == {(4, 4): 200}  # 町の働き手は畑を持たない
+    assert island.stats["labor.back_to_fields"] == 200
+    general[FED] = fac.FULL
+    assert back_to_fields(island, ctx, labor) == {(4, 4): 200}  # 食べ物が売りに出ていない
+    finance["supply"]["grain"][-1] = 5000
+    back = game.config.get("labor.back_to_work")
+    assert back_to_fields(island, ctx, labor) == {(4, 4): int(500 * 0.4 * (1 - back))}
+    for _ in range(40):
+        back_to_fields(island, ctx, labor)
+    assert back_to_fields(island, ctx, labor) == {} and FIELDS_KEY not in island.ext
+
+
+def test_food_makers_hire_people_back_from_their_fields():
+    free, fields = {(1, 1): 3}, {(1, 1): 5}
+    assert _take(free, fields, (1, 1), 6) == 6
+    assert free == {(1, 1): 0} and fields == {(1, 1): 2}
+    assert _take(free, {}, (1, 1), 6) == 0  # 食べ物を作らない施設は、畑に戻った人を雇わない
+
+
+def test_hungry_villagers_feed_themselves_instead_of_working(game, warmed):
+    """食べられなかった次のターンには、村の働き手が畑に戻り、自給の農業の人が増える（農場などの
+    食べ物を作る施設は、畑に戻った人も雇える）。"""
+    world = copy.deepcopy(warmed)
+    calm = copy.deepcopy(world)
+    island = island_of(world, "market")
+    island.economy.households[GENERAL][FED] = 500
+    run(game, world, 1)
+    run(game, calm, 1)
+    usual = island_of(calm, "market").stats
+    assert island.stats["labor.back_to_fields"] > 0
+    assert island.stats["subsistence"] > usual["subsistence"]
+    assert island.stats["employed"] < usual["employed"]
+    farms = sum(f.workers for f in island.facilities if f.kind == "farm")
+    assert farms >= 0.9 * sum(
+        f.workers for f in island_of(calm, "market").facilities if f.kind == "farm"
+    )
+
+
+def test_town_people_flee_to_villages_after_months_of_hunger(game):
+    """飢えの蓄えが population.hunger.flee を超えると、食べられなかった割合の町の人が、空きの
+    ある近い村へ移る（家の蓄えがあるうちは移らない）。"""
+    island = make_island(game)
+    home(game, island, 9, 9, 4000)
+    home(game, island, 4, 4, 1000, "village")
+    home(game, island, 12, 12, 1000, "village")
+    with_economy(game, island)
+    ctx = SimpleNamespace(defs=game.defs, config=game.config)
+    general = island.economy.households[GENERAL]
+    general[FED] = 500
+    general[HUNGER] = 0.3
+    free = {(4, 4): 1400, (12, 12): 1400}
+    assert Population._flee_famine(island, ctx, random.Random(1), dict(free)) == 0
+    general[HUNGER] = game.config.get("population.hunger")["flee"]
+    assert Population._flee_famine(island, ctx, random.Random(1), free) == 2000
+    assert island.tile(9, 9).population == 2000
+    assert island.tile(4, 4).population + island.tile(12, 12).population == 4000
+    assert free[(4, 4)] + free[(12, 12)] == 800
+    assert island.stats["population.fled_to_villages"] == 2000
+    assert island.log[-1].kind == "famine_flight" and island.log[-1].args == {"count": 2000}
+
+
+def test_farms_review_their_crop_at_once_when_grain_is_missing(game):
+    """島で品切れの財（直近に売りに出ず、買いたい人のいた財）を作れる民営の施設は、見直しの順番を
+    待たずに作り方を見直す（作り始めの買いたい量が少なくても、余る心配で避けない）。"""
+    island, farm = _farm_island(game)
+    finance = island.economy.finance
+    finance["supply"] = {"grain": [0] * 6, "cotton": [9000] * 6}
+    finance["demand"] = {"grain": [0, 0, 0, 0, 0, 300], "cotton": [9000] * 6}
+    assert firms._missing(finance) == {"grain"}
+    island.economy.price_history["grain"] = [island.economy.prices["grain"] * 3]
+    turn = next(t for t in range(1, 13) if (t + farm.id) % game.config.get("firms.recipe_turns"))
+    EntryExit()._review_recipes(island, _ctx_of(game, island, turn - 1))
+    assert farm.ext.get(fac.RECIPE_NEXT) in ("default", "fertilized")
+    # 穀物が売りに出ていれば、順番まで待つ
+    del farm.ext[fac.RECIPE_NEXT]
+    finance["supply"]["grain"][-1] = 300
+    assert firms._missing(finance) == set()
+    EntryExit()._review_recipes(island, _ctx_of(game, island, turn - 1))
+    assert fac.RECIPE_NEXT not in farm.ext

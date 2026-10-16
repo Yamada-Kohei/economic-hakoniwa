@@ -68,7 +68,9 @@ def main(argv: list[str] | None = None) -> int:
 
     recorder = Recorder(world, game.defs, game.config) if args.gate or args.out else None
     with ExitStack() as stack:
-        series = stack.enter_context(open(args.series, "w")) if args.series else None
+        series = None
+        if args.series:
+            series = stack.enter_context(open(args.series, "w", encoding="utf-8"))
         meter = None
         if args.out or series is not None:
             meter = measure.Measure(world, game.defs, game.config, series, args.zones_every)
@@ -97,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
         data = measure.result(
             scenario, args.seed, args.turns, islands, recorder, meter, seconds, digest, world
         )
-        with open(args.out, "w") as f:
+        with open(args.out, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=1)
     if args.gate and recorder is not None:
         summary = recorder.summary()

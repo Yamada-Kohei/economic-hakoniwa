@@ -125,7 +125,7 @@ def unemployment_of(island: IslandState, defs: Defs) -> float:
         if tile.population <= 0:
             continue
         force = fac.labor_force(defs, island, tile)
-        employed = tile.ext.get("employed", 0)
+        employed = min(force, tile.ext.get("employed", 0))
         farming = min(force - employed, int(subsistence_persons(defs, island, tile) * share))
         labor += force
         idle += force - employed - farming

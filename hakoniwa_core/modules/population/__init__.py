@@ -8,7 +8,9 @@
   なくても増える。飢えている層からは生まれず、飢えで亡くなる人は別に数える（回3 の飢えの蓄え）。
   マスに住む所がなければ、生まれた家族は島の空いた町へ移り、どこにも空きがなければ生まれない
   （住む所がないと子を持たない）。
-  村の住民のうち仕事のない人は、自給の農業で自分の食べる分をまかなう（市場で買わない）。
+  村の住民のうち仕事のない人は、自給の農業で自分の食べる分をまかなう（市場で買わない）。食べ物が
+  買えないときは、村の働き手が畑に戻る（modules/employment の back_to_fields）。町の人は、食べ物が
+  買えなければ空きのある村へ移る（_flee_famine。どちらも回4）。
 - 人は仕事のないマスから、人手の足りない施設（と商業・サービス業が雇いきれなかった集落）の通勤圏に
   ある町へ少しずつ移る。町が育つのは、この移り住みから。
 - 最後に、住民の数から家計の層の人数を決め直す（層を移った人の預金も一緒に移す）。
@@ -34,7 +36,7 @@ from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import GENERAL, JOBLESS, needs, services
 from hakoniwa_core.economy.households import move_people, recount_engineers, split_persons
 from hakoniwa_core.economy.stats import inflation, real_wage_change
-from hakoniwa_core.geo import within
+from hakoniwa_core.geo import distance, within
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import ZONE_NONE, Facility, IslandState, LogEntry, Tile
 from hakoniwa_core.turn.context import StageContext
@@ -741,6 +743,7 @@ class Population(IslandStage):
                     island.tile(*source).population += count  # 移る先がなければ元のマスに残る
         if left_island:
             island.log.append(LogEntry("residents_left", {"count": left_island}))
+        self._flee_famine(island, ctx, rng, free)
         housed = 0
         for _, count in sorted((unhoused or {}).items(), key=lambda kv: (kv[0][1], kv[0][0])):
             for pos in targets:
@@ -754,6 +757,54 @@ class Population(IslandStage):
                 count -= move
                 housed += move
         return housed
+
+    @staticmethod
+    def _flee_famine(
+        island: IslandState, ctx: StageContext, rng: random.Random, free: dict[Pos, int]
+    ) -> int:
+        """食べ物が買えない町の人が、空きのある村へ移る（回4）。移った人数を返す。
+
+        一般の家計の飢えの蓄えが population.hunger.flee を超えている間（家の蓄えを食べ尽くすまでは
+        移らない）、このターンに食べられなかった割合（体が耐えられる少しの不足
+        population.hunger.tolerance までなら移らない）の町の人が、近い村（自給の農業ができる集落）
+        から、住む所の空き（free）の分まで移る。移った人は村で自給の農業をする（現実の飢饉でも、
+        町の人は食べ物のある農村へ逃れた。ロシアの内戦期の飢えでは、ペトログラードの人口が3年で
+        3分の1ほどになった）。
+        """
+        defs, config = ctx.defs, ctx.config
+        settings = config.get("population.hunger")
+        general = island.economy.households.get(GENERAL, {})
+        short = 1 - general.get(FED, fac.FULL) / fac.FULL
+        if short <= settings["tolerance"] or general.get(HUNGER, 0.0) < settings["flee"]:
+            return 0
+
+        def farming(pos: Pos) -> bool:
+            level = fac.settlement_of(defs, island.tile(*pos).population)
+            return bool(defs.settlements[level].get("subsistence"))
+
+        villages = [pos for pos in sorted(free) if free[pos] > 0 and farming(pos)]
+        moved = 0
+        for tile in sorted(island.tiles, key=lambda t: (t.y, t.x)):
+            pos = (tile.x, tile.y)
+            if tile.population <= 0 or farming(pos) or not villages:
+                continue
+            count = min(tile.population, _rand_round(tile.population * short, rng))
+            for target in sorted(villages, key=lambda v: (distance(pos, v), v[1], v[0])):
+                if count <= 0:
+                    break
+                move = min(count, free[target])
+                if move <= 0:
+                    continue
+                tile.population -= move
+                island.tile(*target).population += move
+                free[target] -= move
+                count -= move
+                moved += move
+            villages = [v for v in villages if free[v] > 0]
+        if moved:
+            island.stats["population.fled_to_villages"] = moved
+            island.log.append(LogEntry("famine_flight", {"count": moved}))
+        return moved
 
 
 def _round_shares(total: int, shares: dict[str, float]) -> dict[str, int]:

@@ -677,7 +677,7 @@ def batch(names: Iterable[tuple[str, int, int]], out_dir: Path, jobs: int, serie
             ]
             if series:
                 command += ["--series", str(out_dir / f"{name}.jsonl")]
-            log = open(out_dir / f"{name}.log", "w")  # 処理が終わったら閉じる
+            log = open(out_dir / f"{name}.log", "w", encoding="utf-8")  # 処理が終わったら閉じる
             process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
             running.append((name, process, log))
             print(f"始めた: {name}", flush=True)
@@ -699,7 +699,7 @@ def load(path: Path) -> dict[tuple[str, int, int], dict[str, Any]]:
     files = sorted(path.glob("*.json")) if path.is_dir() else [path]
     out = {}
     for f in files:
-        data = json.loads(f.read_text())
+        data = json.loads(f.read_text(encoding="utf-8"))
         out[(data["scenario"], data["seed"], data["turns"])] = data
     return out
 

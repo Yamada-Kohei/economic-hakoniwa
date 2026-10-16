@@ -181,6 +181,14 @@ def field_goods(defs: Defs, f: Facility) -> set[str]:
     return {g for name in names for g in recipes[name]["outputs"]}
 
 
+def food_maker(defs: Defs, kind: str) -> bool:
+    """作り方のどれかで食料（goods.yaml の food のある財）を作れる施設の種類か（農場・牧場・漁港・
+    食品工場）。食べ物が買えずに畑に戻った村の人も、こういう仕事には勤める（収穫から食べられ、
+    作物を食べ物に戻せる。modules/employment。回4）。"""
+    recipes = defs.facilities[kind].get("recipes", {})
+    return any("food" in defs.goods[g] for r in recipes.values() for g in r.get("outputs", {}))
+
+
 def _forget_other_outputs(defs: Defs, f: Facility) -> None:
     """今の作り方で作らない物の売り値と売れ行きの見込みを捨てる（手元に残った物は市場の段で売る）。"""
     outputs = defs.facilities[f.kind]["recipes"][f.recipe]["outputs"]

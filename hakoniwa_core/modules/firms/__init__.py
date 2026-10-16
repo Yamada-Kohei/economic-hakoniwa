@@ -231,23 +231,30 @@ class EntryExit(IslandStage):
     def _review_recipes(self, island: IslandState, ctx: StageContext) -> None:
         """民営の施設は firms.recipe_turns ターンごとに、変動費の利益（直近の値段の平均で、全力
         で動いたとき）が一番大きい作り方を選び、今の作り方より firms.recipe_margin の割合以上
-        大きければ替える（次の市場の段で替える。facilities.RECIPE_NEXT）。"""
+        大きければ替える（次の市場の段で替える。facilities.RECIPE_NEXT）。
+
+        島で品切れの財（_missing。直近 firms.price_turns ターン1つも売りに出ず、買いたい人のいた
+        財）を作れる作り方のある施設は、順番を待たずに毎ターン見直す（回4。穀物が島から消えても、
+        綿に替えた農場が1年後の見直しまで穀物に戻らず、そのあいだに町が飢えた）。"""
         defs, config = ctx.defs, ctx.config
         settings = config.get("firms")
         margin = to_basis(settings["recipe_margin"])
         prices: dict[str, int] | None = None
         supplied: set[str] = set()
         rates: dict[int, int] = {}
+        missing = _missing(island.economy.finance)
         for f in sorted(island.facilities, key=lambda f: f.id):
+            recipes = defs.facilities[f.kind]["recipes"]
+            urgent = any(g in missing for r in recipes.values() for g in r["outputs"])
             if (
-                len(defs.facilities[f.kind]["recipes"]) < 2
+                len(recipes) < 2
                 or f.owner != OWNER_PRIVATE
                 or not f.built
                 or not fac.on_map(f)
                 or "closing" in f.economy
                 or "foreclosed" in f.economy
                 or fac.RECIPE_NEXT in f.ext
-                or (ctx.turn + f.id) % settings["recipe_turns"]
+                or ((ctx.turn + f.id) % settings["recipe_turns"] and not urgent)
             ):
                 continue
             if prices is None:
@@ -256,7 +263,7 @@ class EntryExit(IslandStage):
                 rates = freight_rates.facility_rates(island, defs, config)
             busy = self._switched_into(island, ctx)
             profits = self._recipe_profits(
-                island, ctx, f, prices, supplied, rates.get(f.id, 0), busy
+                island, ctx, f, prices, supplied, rates.get(f.id, 0), busy, missing
             )
             now = profits.get(f.recipe, 0)
             choice = max(sorted(profits), key=lambda name: profits[name])
@@ -293,6 +300,7 @@ class EntryExit(IslandStage):
         supplied: set[str],
         rate: int,
         busy: set[str] | None = None,
+        missing: set[str] | None = None,
     ) -> dict[str, int]:
         """施設 f が選べる作り方ごとの変動費の利益（今の作り方を含む）。選べるのは、島で使える
         作り方（鉱業資源と気候）のうち、原料がどれも島で手に入り、今より多く使う原料は直近に
@@ -303,7 +311,10 @@ class EntryExit(IslandStage):
         そろって綿に替え、綿が余って値段が初めの 0.1 倍まで下がった）。ほかの施設が作り方を
         替えて作り始めたばかりの財（busy。_switched_into）も選ばない（嗜好品の値段が高いうちに、
         民営の農場が1ターンずつずれて3つとも嗜好品に替え、島の穀物がなくなった。替えた農場の
-        売り出しが直近の平均に効く前に、次の農場が替えていた）。"""
+        売り出しが直近の平均に効く前に、次の農場が替えていた）。島で品切れの財（missing）は、
+        買いたい量によらず選べる（作る量は操業目標が買えなかった量に合わせるので余らない。回4。
+        飢饉で村の人が畑に戻ると、市場で買いたい量が農場1つの産出の半分に届かず、穀物に戻らな
+        かった）。"""
         defs, config = ctx.defs, ctx.config
         power = config.get("power.good")
         gap = config.get("firms.entry_gap")
@@ -326,7 +337,7 @@ class EntryExit(IslandStage):
                 or any(
                     -_spare(finance, g) < qty * gap
                     for g, qty in recipe["outputs"].items()
-                    if g != power and g not in made
+                    if g != power and g not in made and g not in (missing or ())
                 )
                 or any(g in (busy or ()) for g in recipe["outputs"] if g != power and g not in made)
             ):
@@ -984,6 +995,17 @@ class EntryExit(IslandStage):
         kind = ctx.config.get("banking.facility")
         payroll = fac.workers_needed(ctx.defs, kind) * island.economy.average_wage
         return share * earned / deposits - payroll
+
+
+def _missing(finance: dict[str, Any]) -> set[str]:
+    """島で品切れの財: 直近 firms.price_turns ターン（記録の長さ）に1つも売りに出ず、買いたい人の
+    いた財（回4）。"""
+    supply = finance.get("supply", {})
+    return {
+        g
+        for g, wanted in finance.get("demand", {}).items()
+        if any(wanted) and not any(supply.get(g, []))
+    }
 
 
 def _spare(finance: dict[str, Any], good: str) -> float:

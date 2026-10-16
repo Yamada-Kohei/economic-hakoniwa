@@ -2144,9 +2144,10 @@ class Market(IslandStage):
                 prices[good] = result.price
             elif result.demand > 0:
                 wanted[good] = wanted.get(good, 0) + result.demand
-        # 買いたい人がいるのに売りに出なかった財は、島の作る施設の1単位の変動費が今の値段以上なら、
-        # 値幅の上端まで上げる（作って採算が合う値段まで1ターンに値幅ずつ上がり、作り始める）。
-        # 商社がいれば、輸入が引き合う値段も作る施設の変動費と同じに見る（フェーズ3-1）
+        # 買いたい人がいるのに売りに出なかった財は、島で作り始められる一番安い値段
+        # （_supply_floors）が今の値段以上なら、値幅の上端まで上げる（作って採算が合う値段まで
+        # 1ターンに値幅ずつ上がり、作り始める）。商社がいれば、輸入が引き合う値段も作る施設の
+        # 変動費と同じに見る（フェーズ3-1）
         width = to_basis(ctx.config.get("market.band"))
         rates = freight_rates.facility_rates(island, ctx.defs, ctx.config)
         # 売りに出ているのに買い手のいなかった財（指値のある売りの一番安い指値。今夜捨てられる分の
@@ -2173,24 +2174,78 @@ class Market(IslandStage):
         for good in sorted(wanted):
             if supply.get(good, 0) > 0:
                 continue
-            floors = [
-                unit_floor(
-                    ctx.defs,
-                    ctx.config,
-                    f,
-                    good,
-                    prices,
-                    f.economy.get("wage", 0),
-                    rates.get(f.id, 0),
-                )
-                for f in island.facilities
-                if f.built and fac.recipe_of(ctx.defs, f)["outputs"].get(good)
-            ]
+            floors = Market._supply_floors(island, ctx, good, prices, rates)
             if good in found and found[good].import_floor > 0:
                 floors.append(found[good].import_floor)
             price = prices.get(good, 1)
             if floors and min(floors) >= price:
                 prices[good] = auction.band(price, width)[1]
+
+    @staticmethod
+    def _supply_floors(
+        island: IslandState,
+        ctx: StageContext,
+        good: str,
+        prices: dict[str, int],
+        rates: dict[int, int],
+    ) -> list[int]:
+        """島の施設が財 good を作り始める値段の候補（_record。買いたい人がいるのに売りに出なかった
+        財）。
+
+        今の作り方で good を作る施設は、1単位の変動費。作り方を替えれば作れる施設（綿を作っている
+        農場の穀物など）は、その作り方の1単位の変動費。民営の施設は、さらに作り方の見直し
+        （modules/firms）で替える値段（その作り方の変動費の利益が、今の作り方より
+        firms.recipe_margin の割合だけ大きくなる値段）を下回らない（回4。前は今の作り方で作る
+        施設だけを見たので、島で最後の穀物の農場が綿に替えると、穀物を作る施設がなくなって値段が
+        上がらず、どの農場も穀物に戻らないまま島が飢えた）。
+        """
+        defs, config = ctx.defs, ctx.config
+        margin = to_basis(config.get("firms.recipe_margin"))
+        floors = []
+        for f in island.facilities:
+            if not f.built or not fac.on_map(f):
+                continue
+            wage = f.economy.get("wage", 0)
+            rate = rates.get(f.id, 0)
+            if fac.recipe_of(defs, f)["outputs"].get(good):
+                floors.append(unit_floor(defs, config, f, good, prices, wage, rate))
+                continue
+            if "closing" in f.economy or "foreclosed" in f.economy:
+                continue
+            now: int | None = None
+            for name, recipe in sorted(defs.facilities[f.kind]["recipes"].items()):
+                if not recipe["outputs"].get(good) or fac.switch_problem(defs, island, f, name):
+                    continue
+                probe = productivity.probe(island, defs, config, f.kind, name, (f.x, f.y))
+                floor = unit_floor(defs, config, probe, good, prices, wage, rate)
+                if f.owner == OWNER_PRIVATE and is_self_supporting(f):
+                    if now is None:
+                        now = variable_profit(defs, config, f, prices, wage, rate)
+                    goal = now + part(abs(now), margin)
+                    price = Market._price_for(defs, config, probe, good, prices, wage, rate, goal)
+                    floor = max(floor, price)
+                floors.append(floor)
+        return floors
+
+    @staticmethod
+    def _price_for(
+        defs: Defs,
+        config: GameConfig,
+        probe: Facility,
+        good: str,
+        prices: dict[str, int],
+        wage: int,
+        rate: int,
+        goal: int,
+    ) -> int:
+        """仮の施設 probe（作り方を替えた後）の変動費の利益が goal になる、財 good の値段（利益は
+        good の値段について1次なので、今の値段と倍の値段の2点から解く）。"""
+        price = max(1, prices.get(good, 1))
+        low = variable_profit(defs, config, probe, prices, wage, rate)
+        high = variable_profit(defs, config, probe, {**prices, good: price * 2}, wage, rate)
+        if low >= goal or high <= low:
+            return price
+        return price + -(-(goal - low) * price // (high - low))
 
     def _update_prices(
         self,

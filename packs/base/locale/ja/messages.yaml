@@ -326,6 +326,7 @@ happiness_weights_changed_goods: "幸福度の決め方が変わります。こ�
 settlement_needs_water: "({x}, {y}) の町は、上下水道の整備度が {water:g}% で、育つのに要る {need:g}% に届きません"
 housing_short: "資源（{goods}）が不足し、町の形成・発展が止まっています"
 residents_left: "居住地が不足し、{count} 人が国外へ移住しました"
+famine_flight: "食べ物が買えず、町の {count} 人が村へ移りました（村で自分の食べる分を作ります）"
 # 国をまたぐ移民（バランス調整の回3）
 migration_left: "{count} 人がほかの国へ移り住みました（いちばん多い行き先は{country}）"
 migration_arrived: "{count} 人がほかの国から移り住んできました（いちばん多いのは{country}から）"
