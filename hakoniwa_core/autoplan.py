@@ -75,7 +75,7 @@ from hakoniwa_core import infra, nature, stock, trade
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import needs
+from hakoniwa_core.economy import needs, services
 from hakoniwa_core.economy.prices import initial_prices, unit_cost
 from hakoniwa_core.geo import components, distance, shortest_path, within
 from hakoniwa_core.modules.firms import private_allowed
@@ -158,7 +158,7 @@ def _plan_rest(
         for f in island.facilities
         if not f.built and (f.owner == OWNER_STATE or not f.ext.get("waiting"))
     ]
-    limit = MAX_SITES + (1 if island.stats.get("unemployment", 0) > BUSY_UNEMPLOYMENT else 0)
+    limit = MAX_SITES + (1 if _hireable(island, config) > BUSY_UNEMPLOYMENT else 0)
     if len(sites) >= limit + 1:
         return []
     # 公共事業費が足りずに資材か作業員を待っている国の工事があるあいだも、新しい工事は資材を作る施設
@@ -193,6 +193,17 @@ def _plan_rest(
     if road is not None:
         orders.append(road)
     return orders
+
+
+def _hireable(island: IslandState, config: GameConfig) -> float:
+    """新しい施設が雇える人の、働き手に対する割合: 失業率に、商業・サービス業の店で働く人の割合を
+    足す（ほかの施設は賃金にかかわらず店から引き抜ける。回4。店ができる前は、仕事のない人が
+    失業者として数えられていた）。"""
+    stats = island.stats
+    labor = stats.get("labor", 0)
+    shop = services.facility_of(island, config)
+    share = shop.workers / labor if shop is not None and labor > 0 else 0.0
+    return stats.get("unemployment", 0) + share
 
 
 def queue_orders(island: IslandState, orders: list[tuple[str, dict]]) -> None:
@@ -718,13 +729,15 @@ def _candidates(
                     and (not durable or _inputs_at_hand(defs, config, *c, making | traded))
                 )
 
-    # 人手の足りない施設が多いか、失業者が少ないうちは増やさない
+    # 人手の足りない施設が多いか、雇える人（失業者と店で働く人）が少ないうちは増やさない
     # （住宅が育って人が移ってくるのを待つ）
     power = config.get("power.good")
     missing = sum(
-        max(0, fac.labor_demand(defs, f, turn, power) - f.workers) for f in island.facilities
+        max(0, fac.labor_demand(defs, f, turn, power) - f.workers)
+        for f in island.facilities
+        if not services.is_services(config, f)
     )
-    if missing > MAX_MISSING_WORKERS or stats.get("unemployment", 0) < NATURAL_UNEMPLOYMENT:
+    if missing > MAX_MISSING_WORKERS or _hireable(island, config) < NATURAL_UNEMPLOYMENT:
         return
     # 島の鉱業資源を、島のどの施設（工事中を含む）も使っていなければ、使う施設を1つ（輸出向け）
     used = {g for f in island.facilities for g in fac.recipe_of(defs, f)["inputs"]}

@@ -12,7 +12,9 @@
 - 店の場所: 住民は、通勤圏（labor.commute_radius）の中でいちばん人の多い集落（同じなら近い方）で
   サービスを買います。その集落が店の場所（中心）で、雇う人数は中心ごとに、買いに来る住民の数で
   割り振ります。村の人は近くの町へ買いに行くので、町に店が集まります。人は中心の通勤圏から、前の
-  ターンの人を雇い続けてから、失業者を近いマスの順に雇います（ほかの施設から引き抜きはしません）。
+  ターンの人を雇い続けてから、ほかの施設が雇った後に残った失業者を近いマスの順に雇います。店は
+  ほかの施設から引き抜かず、ほかの施設は賃金にかかわらず店から引き抜けます（多くの小さな店は、ほかに
+  仕事のない人の受け皿になる。設計の「ほかの施設は店から引き抜けます」）。
 - 量と値段: 働く人1人が1ターンに services.per_worker のサービスを出します。市場の段で家計に売り、
   値段は板寄せで決まります（売れ残りはそのターンのうちに消えます）。初めの値段は「賃金 ÷ 1人の量」
   に上乗せ（原価＋1割。economy/prices.py）です。
@@ -190,6 +192,31 @@ def keep(
     return staff
 
 
+def recount(
+    island: IslandState,
+    config: GameConfig,
+    f: Facility,
+    plan: dict[Pos, int],
+    staff: dict[Pos, int],
+) -> None:
+    """ほかの施設に引き抜かれた後の、中心ごとの雇えた人数を数え直す（keep と同じ順に、残った人を
+    中心に近いマスから割り当てる）。"""
+    radius = config.get("labor.commute_radius")
+    record = f.economy.setdefault(QUOTAS, {})
+    left = dict(staff)
+    for center in _order(plan):
+        entry = record.setdefault(_key(center), [plan[center], 0])
+        need = entry[1]
+        for pos in within(island, center, radius):
+            if need <= 0:
+                break
+            take = min(left.get(pos, 0), need)
+            if take > 0:
+                left[pos] -= take
+                need -= take
+        entry[1] -= need
+
+
 def hire(
     island: IslandState,
     config: GameConfig,
@@ -213,6 +240,20 @@ def hire(
                 staff[pos] = staff.get(pos, 0) + take
                 need -= take
         entry[1] = entry[0] - need
+
+
+def staff_by_tile(island: IslandState, config: GameConfig) -> dict[Pos, int]:
+    """店で働く人の、住んでいるマスごとの人数（雇用の段の結果）。ほかの施設は賃金にかかわらず
+    店から引き抜けるので、民営工場の参入と自動の計画は、この人たちも雇える人に数える。"""
+    f = facility_of(island, config)
+    out: dict[Pos, int] = {}
+    if f is None:
+        return out
+    for key, count in f.economy.get("staff", {}).items():
+        if count > 0:
+            x, y = key.split(",")
+            out[(int(x), int(y))] = count
+    return out
 
 
 def vacancies(island: IslandState, config: GameConfig) -> list[tuple[Pos, int]]:

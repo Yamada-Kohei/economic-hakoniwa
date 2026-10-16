@@ -690,12 +690,14 @@ class EntryExit(IslandStage):
     def _site(
         self, island: IslandState, ctx: StageContext, kind: str, rname: str
     ) -> tuple[tuple[int, int], int] | str:
-        """建てる場所: 空いた工業団地のマスのうち、通勤圏の失業者が要る人数の半分以上いて、
-        運賃の率が最も低いマス。なければ、そのわけ（no_zone: 地形の合う空いた工業団地のマスが
-        ない、no_workers: あるが通勤圏に失業者が足りない）。"""
+        """建てる場所: 空いた工業団地のマスのうち、通勤圏の失業者と商業・サービス業の店で働く人
+        （ほかの施設は店から引き抜ける。回4）が要る人数の半分以上いて、運賃の率が最も低いマス。
+        なければ、そのわけ（no_zone: 地形の合う空いた工業団地のマスがない、no_workers: あるが
+        通勤圏に雇える人が足りない）。"""
         defs, config = ctx.defs, ctx.config
         need = fac.workers_needed(defs, kind)
         radius = fac.commute_radius(defs, config, kind)
+        shop = services.staff_by_tile(island, config)
         occupied = island.facilities_by_tile()
         spots = []
         fitting = 0
@@ -710,6 +712,7 @@ class EntryExit(IslandStage):
                 t = island.tile(x, y)
                 if t.population:
                     idle += max(0, fac.labor_force(defs, island, t) - t.ext.get("employed", 0))
+                    idle += shop.get((x, y), 0)
             if idle * 2 >= need:
                 spots.append((tile.x, tile.y))
         if not spots:
