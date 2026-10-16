@@ -24,7 +24,7 @@ from server.game import get_game
 from server.letters import services as letters
 from server.orders.models import Order
 from server.turns.models import TurnLog
-from server.web import display, reports
+from server.web import display, rankings, reports
 from server.web import politics as politics_views
 from server.world import models as m
 from server.world.repository import facility_from_row
@@ -87,6 +87,9 @@ def island_head(island: m.Island) -> dict[str, Any]:
             if r in defs.regimes
         },
         "resources": [defs.name("goods", g) for g in island.resources or []],
+        "resource_ids": list(island.resources or []),
+        # 地下資源から作れる財（島の画面の建設の欄で、作れない施設を見分けるのと同じ）
+        "producible": sorted(fac.producible_goods(defs, island.resources or [])),
         "climate": defs.name("climate", zone) if zone else "",
         "founded_turn": (island.ext or {}).get("founded_turn", 0),
     }
@@ -191,8 +194,9 @@ def _bonds_due(island: m.Island, turn: int, currency: str) -> list[dict[str, Any
     ]
 
 
-def _politics(island: m.Island) -> dict[str, Any]:
-    data = politics_views.politics_data(island, mine=False)
+def _politics(island: m.Island, mine: bool) -> dict[str, Any]:
+    """政情の要約。持ち主には移民の受け入れと出国の扱いも（政治の画面と同じく持ち主だけ）。"""
+    data = politics_views.politics_data(island, mine)
     keep = (
         "leader",
         "level",
@@ -204,7 +208,14 @@ def _politics(island: m.Island) -> dict[str, Any]:
         "transition",
         "press",
     )
-    return {k: data.get(k) for k in keep}
+    out = {k: data.get(k) for k in keep}
+    if mine:
+        migration = data["migration"]
+        out["migration"] = {
+            "immigration": migration["immigration_name"],
+            "emigration": migration["emigration_name"],
+        }
+    return out
 
 
 def _goods(island: m.Island, stats: dict[str, float], currency: str) -> list[dict[str, Any]]:
@@ -256,7 +267,7 @@ def summary(island: m.Island, mine: bool) -> dict[str, Any]:
     facilities = facility_state(island)
     goods = _goods(island, latest, currency)
     bonds = _bonds_due(island, world.turn, currency)
-    politics = _politics(island)
+    politics = _politics(island, mine)
     logs = TurnLog.objects.filter(island=island)
     log_turn = logs.aggregate(t=Max("turn"))["t"]
     data: dict[str, Any] = {
@@ -268,6 +279,7 @@ def summary(island: m.Island, mine: bool) -> dict[str, Any]:
         "stats_turn": stats_turn,
         "indicators": indicators(stats, before, currency),
         "politics": politics,
+        "strengths": rankings.island_strengths(island, latest),
         "facilities": facilities,
         "goods": goods,
         "bonds_due": bonds,

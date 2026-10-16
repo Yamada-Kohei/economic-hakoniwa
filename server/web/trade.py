@@ -337,16 +337,6 @@ def world_trade(world: m.World, own: set[int]) -> dict[str, Any]:
 # --- 島の貿易 --------------------------------------------------------------------------
 
 
-def _stats_part(stats: dict[str, float], names: list[str]) -> dict[str, Any]:
-    """統計のうち names にあるものと、その表示名と単位（API の形）。"""
-    shown = [n for n in names if n in stats]
-    return {
-        "stats": {n: stats[n] for n in shown},
-        "labels": {n: reports.stat_label(n)[0] for n in shown},
-        "units": {n: reports.unit_of(reports.stat_label(n)[1]) for n in shown},
-    }
-
-
 def trade_data(
     island: m.Island, mine: bool, currency: str, stats: dict[str, float] | None = None
 ) -> dict[str, Any]:
@@ -369,7 +359,7 @@ def trade_data(
         "currency_name": _currency(islands, island.id),
         "started": started(here),
         "port": port_of(here, config) is not None,
-        **_stats_part(stats, TRADE_STATS if mine else PUBLIC_TRADE_STATS),
+        **reports.stats_part(stats, TRADE_STATS if mine else PUBLIC_TRADE_STATS),
         "blocs": [bloc_view(b, islands, goods=False) for b in member],
     }
     if not mine:
@@ -814,8 +804,8 @@ def fx_data(
         "band": config.get("fx.band"),  # 1ターンに動ける幅（割合）
         "rates": rates,
         "cross": cross,
-        **_stats_part(stats, FX_STATS),
-        "bop": _stats_part(stats, BOP_STATS),
+        **reports.stats_part(stats, FX_STATS),
+        "bop": reports.stats_part(stats, BOP_STATS),
     }
     if history:
         first, last = reports.turn_range(island, start, end)

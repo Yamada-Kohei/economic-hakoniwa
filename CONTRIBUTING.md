@@ -25,6 +25,10 @@ PostgreSQL でも確かめるときは `DATABASE_URL=postgres://... pytest`。CI
 - **DB 固有の書き方をしない。** Django の ORM（どうしても要るときは標準の SQL だけ）を使い、SQLite でも PostgreSQL でも動くようにします。
 - **島の処理順に結果が左右されないようにする。** 島ごとの段は自分の島だけを書き換え、乱数は `ctx.rng(island.id)` から取ります。
   詳しくは [docs/modules.md](docs/modules.md)。
+- **AI の入り口も人と同じにそろえる。** 命令・画面・画面に出す値・地図の重ね表示を足したり変えたりしたら、同じ PR で
+  JSON API と MCP の道具（`server/web/mcp.py`）と国の要約・差分（`server/web/overview.py`）も合わせます。
+  AI が人と同じことをできるようにするためで、合わせ漏れは `tests/server/test_ai_parity.py` が見つけます
+  （[docs/architecture.md](docs/architecture.md) の「AI 用の入り口」）。
 
 ## 外部のものを足すとき
 

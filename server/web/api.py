@@ -380,6 +380,28 @@ def economy(request, island_id: int):
 
 
 @require_GET
+def economy_overview(request, island_id: int):
+    """経済の画面の中身: 主な指標と国勢（直近のターンの値）・得意産業と称号・系列を読める統計の
+    名前の一覧（choices。画面の「統計を選ぶ」欄と同じ）。"""
+    island = get_object_or_404(m.Island.objects.select_related("world"), pk=island_id)
+    mine = _mine(request, island)
+    turn, stats = display.latest_stats(island)
+    summary_names = [key for key, _, _ in display.SUMMARY_STATS]
+    return _json(
+        {
+            "island": island.id,
+            "mine": mine,
+            "stats_turn": turn,
+            "currency": _currency(island),
+            "tiles": reports.stats_part(reports.with_fiscal(stats), reports.ECONOMY_TILES),
+            "summary": reports.stats_part(stats, summary_names),
+            "strengths": rankings.island_strengths(island, stats),
+            "choices": reports.stat_choices(island, mine),
+        }
+    )
+
+
+@require_GET
 def market(request, island_id: int, good: str):
     """財の値段と量の推移と直近のターンの市場。約定の相手と買えなかった施設は持ち主だけ。"""
     island = get_object_or_404(m.Island, pk=island_id)
@@ -453,8 +475,10 @@ def island_plan(request, island_id: int):
     """計画経済の計画と値段の規制。だれにでも国全体の行列と強制貯蓄を、持ち主には公定価格・生産
     目標と達成率・重点産業・財ごとの行列と、値段の上限と下限も。"""
     island = get_object_or_404(m.Island, pk=island_id)
+    mine = _mine(request, island)
     _, stats = display.latest_stats(island)
-    return _json(politics_views.plan_data(island, _mine(request, island), stats))
+    data = politics_views.plan_data(island, mine, stats)
+    return _json({**data, "mine": mine, **reports.stats_part(stats, pages.PLAN_STATS)})
 
 
 # --- 画面だけにあった中身（施設・財政・市場の表・産業の鎖・ターンログ・順位） ---------------
