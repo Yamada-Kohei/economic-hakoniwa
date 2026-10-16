@@ -226,7 +226,7 @@ python -m hakoniwa_core.simulate --islands 50 --turns 300 --autoplan --gate  # �
 python -m hakoniwa_core.simulate --scenario plan --seed 1 --turns 300 --gate \
     --out runs/plan-s1.json --series runs/plan-s1.jsonl
 python -m hakoniwa_core.measure batch --set quick --out-dir runs/new   # 回ごとの比べ（種1・2、300ターン）
-python -m hakoniwa_core.measure batch --set full --out-dir runs/full   # 回の終わりに一度（種1〜4、500ターン）
+python -m hakoniwa_core.measure batch --set full --out-dir runs/full   # 回の終わりに一度（30組、500ターン）
 python -m hakoniwa_core.measure compare runs/base runs/new            # 2つの結果を表に並べる
 python -m hakoniwa_core.measure show runs/new                         # 要点（失業の内わけなど）
 ```

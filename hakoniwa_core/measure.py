@@ -18,7 +18,8 @@
     python -m hakoniwa_core.measure batch --set full --out-dir runs/r2-full
     python -m hakoniwa_core.measure compare runs/main runs/r2
 
-quick は比べるための組（種1・2、300ターン）、full は回の終わりに1回だけ回す組（種1〜4、500ターン）。
+quick は比べるための組（種1・2、300ターン）、full は回の終わりに1回だけ回す30組（標準の計画は
+種1〜10、ほかは種1〜4 か 1〜8。500ターン、命令なしと中央銀行を独立させた国は300ターン）。
 compare は2つの結果を並べます。
 """
 
@@ -102,15 +103,14 @@ SETS = {
         *[("small", seed, 300) for seed in (1, 2, 3, 4)],
         ("open", 1, 300),
     ],
+    # full は30組（2026-10-16 に14組から増やした。論理コアが32ある計算機で一度に回せる数）。前の回の
+    # 結果と比べるのは、同じ場面・種・ターン数の組どうし（回2 の full の14組は、この30組に含まれる）
     "full": [
-        *[("plan", seed, 500) for seed in (1, 2, 3, 4)],
-        ("none", 1, 300),
-        ("none", 2, 300),
-        ("independent", 1, 300),
-        ("independent", 2, 300),
-        *[("small", seed, 500) for seed in (1, 2, 3, 4)],
-        ("open", 1, 500),
-        ("open", 2, 500),
+        *[("plan", seed, 500) for seed in range(1, 11)],
+        *[("none", seed, 300) for seed in range(1, 5)],
+        *[("independent", seed, 300) for seed in range(1, 5)],
+        *[("small", seed, 500) for seed in range(1, 9)],
+        *[("open", seed, 500) for seed in range(1, 5)],
     ],
 }
 
