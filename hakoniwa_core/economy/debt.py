@@ -36,14 +36,18 @@ def outstanding(island: IslandState, bond: Bond) -> int:
 
 def total_debt(island: IslandState) -> int:
     """政府の借金（国債の額面の合計。中央銀行が持つ分も含む）。"""
-    return sum(outstanding(island, b) for b in island.bonds)
+    # 銘柄ごとに outstanding を呼ぶのと同じ値。国債の利回りの式から1ターンに何十回も呼ばれ、銘柄も
+    # 多いので、出し手の勘定の名前（ledger.issued(GOV, bond_item(番号))）をここで作って引く
+    accounts, prefix = island.accounts, f"{ledger.GOV}/{ledger.ISSUED}/bond:"
+    return -sum(accounts.get(f"{prefix}{b.id}", 0) for b in island.bonds)
 
 
 def holders(island: IslandState, bond: Bond) -> dict[str, int]:
     """銘柄の持ち手と額面（持ち手の名前の順）。"""
-    suffix = f"/{ledger.bond_item(bond.id)}/{ledger.GOV}"
+    item = ledger.bond_item(bond.id)
+    suffix = f"/{item}/{ledger.GOV}"
     found = {}
-    for name in sorted(island.accounts):
+    for name in sorted(ledger.names_with(island, item)):
         if name.endswith(suffix) and not ledger.is_issued(name):
             found[ledger.parse(name)[0]] = island.accounts[name]
     return found

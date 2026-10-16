@@ -38,7 +38,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from hakoniwa_core.dates import TURNS_PER_YEAR
-from hakoniwa_core.state import IslandState, JournalEntry
+from hakoniwa_core.state import Accounts, IslandState, JournalEntry
 from hakoniwa_core.units import BASIS
 
 GOV = "gov"
@@ -150,6 +150,38 @@ def reserve(bank: str) -> str:
 TREASURY_ACCOUNT = account(GOV, TREASURY, CB)
 
 
+# --- 勘定の名前を引く -------------------------------------------------------------
+#
+# 帳簿（Accounts）の索引で、勘定を全部なめずに候補の名前を絞る。候補は条件に合う名前を
+# すべて含み、帳簿の並びのままなので、呼ぶ側がいままでと同じ条件で選べば、結果も並びも
+# 全部なめたときと同じになる。索引のない帳簿（ふつうの dict）や、名前に「/」を含む主体
+# では、全部の名前を返す。
+
+
+def names_of(island: IslandState, holder: str) -> Iterable[str]:
+    """持ち手 holder の勘定の名前の候補（帳簿の並び）。"""
+    accounts = island.accounts
+    if isinstance(accounts, Accounts) and "/" not in holder:
+        return accounts.of_holder(holder)
+    return accounts.keys()
+
+
+def names_with(island: IslandState, item: str) -> Iterable[str]:
+    """持ち物 item を持つ側の勘定の名前の候補（帳簿の並び）。"""
+    accounts = island.accounts
+    if isinstance(accounts, Accounts) and "/" not in item:
+        return accounts.of_item(item)
+    return accounts.keys()
+
+
+def names_of_item(island: IslandState, holder: str, item: str) -> Iterable[str]:
+    """持ち手 holder の持ち物 item の勘定の名前の候補（帳簿の並び）。"""
+    accounts = island.accounts
+    if isinstance(accounts, Accounts) and "/" not in holder and "/" not in item:
+        return accounts.of_pair(holder, item)
+    return accounts.keys()
+
+
 # --- 残高 ---------------------------------------------------------------------
 
 
@@ -167,13 +199,14 @@ def money(island: IslandState, entity: str) -> int:
         return balance(island, nonresident_account(entity))
     if entity == CB:
         raise LedgerError("中央銀行はお金を作れるので、残高はありません")
-    return sum(v for k, v in island.accounts.items() if k.startswith(f"{entity}/{DEPOSIT}/"))
+    accounts, prefix = island.accounts, f"{entity}/{DEPOSIT}/"
+    return sum(accounts[k] for k in names_of_item(island, entity, DEPOSIT) if k.startswith(prefix))
 
 
 def holdings(island: IslandState, holder: str, item_prefix: str) -> dict[str, int]:
     """持ち手 holder の、名前が item_prefix で始まる持ち物の勘定と残高。"""
-    start = f"{holder}/{item_prefix}"
-    return {k: v for k, v in island.accounts.items() if k.startswith(start) and v}
+    accounts, start = island.accounts, f"{holder}/{item_prefix}"
+    return {k: accounts[k] for k in names_of(island, holder) if k.startswith(start) and accounts[k]}
 
 
 # --- 仕訳 ---------------------------------------------------------------------
@@ -254,7 +287,8 @@ def _draw(island: IslandState, entity: str, amount: int) -> list[tuple[str, int]
     out = [(main, have)] if have > 0 else []
     left = amount - max(0, have)
     prefix = f"{entity}/{DEPOSIT}/"
-    for name in sorted(k for k in island.accounts if k.startswith(prefix) and k != main):
+    candidates = names_of_item(island, entity, DEPOSIT)
+    for name in sorted(k for k in candidates if k.startswith(prefix) and k != main):
         value = island.accounts[name]
         if value <= 0:
             continue
@@ -269,9 +303,11 @@ def _draw(island: IslandState, entity: str, amount: int) -> list[tuple[str, int]
 
 def deposits_by_bank(island: IslandState, entity: str) -> dict[str, int]:
     """主体が銀行ごとに持つ預金（銀行の主体 → 額）。"""
-    prefix = f"{entity}/{DEPOSIT}/"
+    accounts, prefix = island.accounts, f"{entity}/{DEPOSIT}/"
     return {
-        parse(k)[2]: v for k, v in sorted(island.accounts.items()) if k.startswith(prefix) and v
+        parse(k)[2]: accounts[k]
+        for k in sorted(names_of_item(island, entity, DEPOSIT))
+        if k.startswith(prefix) and accounts[k]
     }
 
 
