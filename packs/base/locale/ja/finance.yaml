@@ -58,6 +58,9 @@ tariff: 関税
 export_subsidy: 輸出補助金
 fx_intervention: 為替の介入
 aid: 援助
+remittance: 仕送り
+migrant_deposits: 移民の持ち出した預金
+emigrant_seized: 出国した人の預金の引き取り
 fx_swap: 中央銀行どうしの融通
 swap_interest: 中央銀行どうしの融通の利子
 bond_1y: 1年国債

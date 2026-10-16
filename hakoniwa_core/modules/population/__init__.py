@@ -208,12 +208,12 @@ def _idle(defs: Defs, island: IslandState, tile: Tile) -> int:
     return max(0, fac.labor_force(defs, island, tile) - tile.ext.get("employed", 0))
 
 
-def _homes(island: IslandState, config: GameConfig) -> dict[Pos, Facility]:
+def homes_of(island: IslandState, config: GameConfig) -> dict[Pos, Facility]:
     kind = fac.housing_kind(config)
     return {(f.x, f.y): f for f in island.facilities if f.kind == kind}
 
 
-def _vacancies(defs: Defs, island: IslandState, turn: int) -> list[tuple[Facility, int]]:
+def vacancies_of(defs: Defs, island: IslandState, turn: int) -> list[tuple[Facility, int]]:
     """人手の足りない施設（工事中も含む。マスを持たない施設は除く）と、足りない人数。
 
     雇いたい人数は、雇用の段で払える賃金の分に抑えた人数（economy["wanted"]）。
@@ -289,7 +289,7 @@ def hunger_deaths(stock: float, ctx: StageContext) -> float:
     return min(1.0, base * math.expm1(k * over))
 
 
-def _layer_tiles(
+def layer_tiles(
     defs: Defs, island: IslandState, households: dict[str, dict[str, Any]]
 ) -> dict[str, dict[Pos, int]]:
     """層ごとの、マスに住む人数の見込み（層の人数をマスに割り振る）。
@@ -327,7 +327,7 @@ def _layer_tiles(
     return out
 
 
-def _spread(amount: int, places: dict[Pos, int]) -> dict[Pos, int]:
+def spread_over(amount: int, places: dict[Pos, int]) -> dict[Pos, int]:
     """amount 人を、マスごとの人数 places に比例して割り振る（足りない分は多いマスから）。"""
     order = sorted(places.items(), key=lambda kv: (-kv[1], kv[0][1], kv[0][0]))
     return proportional(min(amount, sum(places.values())), order)
@@ -360,8 +360,8 @@ class Population(IslandStage):
             "supplied": supplied,
             "ratio": fac.ratio(supplied, need) if layers else fac.FULL,
         }
-        homes = _homes(island, config)
-        placed = _layer_tiles(defs, island, households)
+        homes = homes_of(island, config)
+        placed = layer_tiles(defs, island, households)
         hungry = {n for n, f in layers.items() if f["food"] < fac.FULL or f[HUNGER] > 0}
         moods: dict[str, list[float]] = {}
         power_sum = pollution_sum = water_sum = people = 0
@@ -371,7 +371,7 @@ class Population(IslandStage):
         deaths: dict[str, int] = {}
         for name, count in sorted(stocks.items()):
             applied = 0
-            for pos, n in _spread(count, placed.get(name, {})).items():
+            for pos, n in spread_over(count, placed.get(name, {})).items():
                 n = min(n, island.tile(*pos).population - lost_by_tile.get(pos, 0))
                 if n > 0:
                     lost_by_tile[pos] = lost_by_tile.get(pos, 0) + n
@@ -522,7 +522,7 @@ class Population(IslandStage):
         }
         pull: dict[Pos, int] = {}
         needed = 0
-        for f, missing in _vacancies(defs, island, ctx.turn):
+        for f, missing in vacancies_of(defs, island, ctx.turn):
             persons = int(missing / share)
             needed += persons
             for pos in within(island, (f.x, f.y), fac.commute_radius(defs, config, f.kind)):
@@ -650,13 +650,13 @@ class Housing(IslandStage):
         housing = island.economy.housing
         housing.setdefault("stock", {})
         housing["want"] = {}
-        homes = _homes(island, config)
+        homes = homes_of(island, config)
         kind = fac.housing_kind(config)
         levels = defs.settlement_levels()
         built = upgraded = 0
         short: set[str] = set()  # 足りなくて町が育たなかった資源
         dry: set[Pos] = set()  # 上下水道が足りなくて育たなかった町のマス
-        vacancies = sorted(_vacancies(defs, island, ctx.turn), key=lambda v: (-v[1], v[0].id))
+        vacancies = sorted(vacancies_of(defs, island, ctx.turn), key=lambda v: (-v[1], v[0].id))
         for f, missing in vacancies:
             if built >= h["max_new_per_turn"] and upgraded >= h["max_upgrades_per_turn"]:
                 break

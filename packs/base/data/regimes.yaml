@@ -20,20 +20,22 @@
 #   entry_margin: 民営工場の参入の基準（見込みの利益率が金利 + これを超えたら建つ。既定は
 #     game.yaml の firms.entry_margin）
 #   price_controls: どの財にも値段の上限と下限を決められる（混合経済。ほかの体制は電気料金の上限だけ）
+#   exit_control: 出国をどこまで制限できるか（free: 制限できない・permit: 許可制まで・ban: 禁止まで。
+#     書いていなければ禁止まで。バランス調整の回3。hakoniwa_core/modules/migration）
 
 # 政治の仕組み
 democracy:
   axis: politics
   capital_building: parliament
-  traits: {stability_bonus: 5, stability_turns_up: 6, stability_turns_down: 12, parliament: true, press_control: false}
+  traits: {stability_bonus: 5, stability_turns_up: 6, stability_turns_down: 12, parliament: true, press_control: false, exit_control: free}
 authoritarian:
   axis: politics
   capital_building: official_residence
-  traits: {stability_bonus: 0, stability_turns_up: 6, stability_turns_down: 6, admin_bonus: 1, works_turns: 0.75}
+  traits: {stability_bonus: 0, stability_turns_up: 6, stability_turns_down: 6, admin_bonus: 1, works_turns: 0.75, exit_control: permit}
 totalitarian:
   axis: politics
   capital_building: party_headquarters
-  traits: {stability_bonus: -5, stability_turns_up: 4, stability_turns_down: 4, mobilization: true, happiness_cap: 80}
+  traits: {stability_bonus: -5, stability_turns_up: 4, stability_turns_down: 4, mobilization: true, happiness_cap: 80, exit_control: ban}
 
 # 国家元首の形
 monarchy:

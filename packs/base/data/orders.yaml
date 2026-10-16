@@ -574,6 +574,29 @@ set_press:                                # 報道と集会の扱い（民主主
     properties:
       mode: {enum: [free, limited, controlled]}
 
+set_immigration:                          # 移民の受け入れ（バランス調整の回3）
+  admin_cost: 1
+  parliament: majority
+  payload:
+    type: object
+    required: [mode]
+    additionalProperties: false
+    properties:
+      # だれでも・人手の足りない分まで・技術者だけ・飢えている人だけ（難民）・受け入れない
+      mode: {enum: [open, jobs, engineers, refugees, closed]}
+      cap: {type: integer, minimum: 0, maximum: 10000}  # 1年の上限（住民の1万分の1。0 は既定）
+
+set_emigration:                           # 出国の扱い（民主主義は自由だけ、権威主義は許可制まで）
+  admin_cost: 1
+  parliament: majority
+  payload:
+    type: object
+    required: [mode]
+    additionalProperties: false
+    properties:
+      mode: {enum: [free, permit, ban]}   # 自由・許可制・禁止
+      quota: {type: integer, minimum: 0, maximum: 10000}  # 許可制の1年の枠（住民の1万分の1）
+
 dissolve_parliament:                      # 議会の解散（今の支持率で議席を選び直す。民主主義だけ）
   admin_cost: 2
   secret: true

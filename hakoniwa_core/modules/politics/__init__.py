@@ -10,8 +10,9 @@
    家計の層の1人あたりの所得から出した格差の指数（ジニ係数）、R は体制の補正（共和制の選挙の補正を
    含む）、
    E は出来事の補正（債務不履行は −15 から 36 ターンかけて戻る、体制を変えた後の混乱期間は −10、
-   首都の政府の建物が壊れている間は −10）。報道と集会を統制していれば、その分（制限 +5・統制
-   +10）も足す。
+   首都の政府の建物が壊れている間は −10、出国を止められて出られない人がいれば、1年に住民の
+   1% あたり −2・最大 −20。回3 の移民の段 modules/migration）。報道と集会を統制していれば、
+   その分（制限 +5・統制 +10）も足す。
 2. 政情を「目標との差 × 動きやすさ」だけ動かす（動きやすさは体制の stability_turns_up・
    stability_turns_down の逆数）。初めてのターン（建国と移し替え）は目標から始める（いきなり暴動に
    しない）。
@@ -142,7 +143,7 @@ def regime_bonus(island: IslandState, defs: Defs, turn: int) -> float:
 
 
 def events_bonus(island: IslandState, ctx: StageContext) -> dict[str, float]:
-    """出来事の補正 E の内訳（債務不履行・混乱期間・政府の建物）。"""
+    """出来事の補正 E の内訳（債務不履行・混乱期間・政府の建物・出られない人）。"""
     e = ctx.config.get("politics.events")
     out: dict[str, float] = {}
     since = island.economy.finance.get("default_turn")
@@ -155,6 +156,12 @@ def events_bonus(island: IslandState, ctx: StageContext) -> dict[str, float]:
     office = capital_office(island, ctx.defs)
     if office is not None and not office.built and office.ext.get("repair"):
         out["office"] = e["office"]
+    from hakoniwa_core.modules.migration import trapped_share  # 移民の段がこの段を読むので
+
+    trapped = trapped_share(island)
+    if trapped > 0:
+        m = ctx.config.get("migration")
+        out["trapped"] = -min(m["trapped_max"], m["trapped"] * trapped * 100)
     return out
 
 
@@ -623,6 +630,9 @@ def amend(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> No
         set_press(island, {"mode": politics.FREE}, ctx)
     if not politics.trait(island, defs, "mobilization", False):
         state.pop("mobilized", None)
+    from hakoniwa_core.modules.migration import fit_exit_policy  # 移民の段がこの段を読むので
+
+    fit_exit_policy(island, defs)
     if politics.has_parliament(island, defs):
         elect(island, ctx)
     if politics.trait(island, defs, "monarch", False):

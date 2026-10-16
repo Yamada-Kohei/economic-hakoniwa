@@ -190,7 +190,7 @@ def move_people(island: IslandState, changes: dict[str, int]) -> None:
             continue
         moved = changes[name]
         source, target = (GENERAL, name) if moved > 0 else (name, GENERAL)
-        _blend_hunger(households[source], households[target], abs(moved))
+        blend_hunger(households[source], households[target], abs(moved))
         persons = households[source]["persons"] + abs(moved)
         if persons <= 0:
             continue
@@ -199,7 +199,7 @@ def move_people(island: IslandState, changes: dict[str, int]) -> None:
         ledger.pay(island, payer, household(target), amount, "layer_transfer")
 
 
-def _blend_hunger(source: dict[str, Any], target: dict[str, Any], moved: int) -> None:
+def blend_hunger(source: dict[str, Any], target: dict[str, Any], moved: int) -> None:
     """層を移った moved 人の飢えの蓄えを、移った先の層の蓄えに人数で混ぜる（人数は移した後）。"""
     carried = source.get("hunger", 0.0)
     held = target.get("hunger", 0.0)

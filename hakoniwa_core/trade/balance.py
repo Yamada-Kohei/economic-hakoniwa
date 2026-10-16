@@ -13,7 +13,8 @@
   ず 0 になります
 - 所得収支 income: 外国の国債の利子（bond_interest）と、中央銀行どうしの融通の利子（swap_interest。
   払えずに借りた額に足した分も）
-- 移転 transfers: お金の援助（aid）と物の援助
+- 移転 transfers: お金の援助（aid）と物の援助、移った人の仕送り（remittance）と、移る人が
+  持ち出す預金（migrant_deposits。バランス調整の回3）
 
 金融収支（資産の増加 − 負債の増加）:
 - 資産 assets.fx: 外貨の持ち高の増減。assets.bonds: 外国の国債を買った・売った・償還された額。
@@ -48,6 +49,8 @@ CURRENT = {
     "bond_interest": "income",
     "swap_interest": "income",
     "aid": "transfers",
+    "remittance": "transfers",
+    "migrant_deposits": "transfers",
 }
 CURRENT_ITEMS = ("goods", "services", "income", "transfers")
 ASSET_ITEMS = ("assets.fx", "assets.bonds", "assets.swaps")
