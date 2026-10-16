@@ -19,6 +19,9 @@
 置き、政情を目標から始め直します（体制がないと政情の目標が低いまま暴動が続くため）。経済体制の軸は
 置きません（空のままでも経済体制の既定で動いていて、置くと施設の持ち主や会計の扱いが変わるため）。
 
+バランス調整の回3 からは、失業している家計の層（economy/households.py）のない島に層を置きます
+（人数は同じターンの賃金の段で、雇用の結果から数えます）。
+
 移し替えをターンの中で行うのは、サーバーを通さずにコアだけで世界を回すとき（一括シミュレーションや
 テスト）にも同じに動くようにするためです。
 """
@@ -28,6 +31,7 @@ from __future__ import annotations
 from hakoniwa_core import nature, politics
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import groundwork
+from hakoniwa_core.economy.households import ensure_jobless
 from hakoniwa_core.economy.prices import add_missing_prices
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import IslandState, LogEntry
@@ -49,6 +53,7 @@ class Upgrade(IslandStage):
                 economy.happiness_blend = ctx.config.get("population.blend_turns")
                 economy.ext["happiness_from"] = "happiness_phase2"
         add_missing_prices(island, ctx.defs, ctx.config)
+        ensure_jobless(island, ctx.config)
         if not trade_started(island):
             trade_setup.prepare(island, ctx.defs, ctx.config, ctx.turn)
         if economy.ext.get("nature", 0) < nature.VERSION:

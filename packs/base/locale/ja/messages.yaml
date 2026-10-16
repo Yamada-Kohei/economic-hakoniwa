@@ -321,6 +321,7 @@ housing_short: "資源（{goods}）が不足し、町の形成・発展が止ま
 residents_left: "居住地が不足し、{count} 人が国外へ移住しました"
 population_starved: "食料が足りず（足りている割合 {ratio:.1f}%）、人口が {count} 人減りました"
 population_emigrated: "幸福度が {line} を下回る町から、{count} 人が島の外へ出ていきました"
+population_hunger_deaths: "飢えが続き（栄養の不足は {months:.1f} か月分）、{count} 人が亡くなりました"
 
 # 災害
 disaster_earthquake: "地震により ({x}, {y}) の{facility}が {turns} ターン停止します"
