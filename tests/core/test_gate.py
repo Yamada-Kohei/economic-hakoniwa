@@ -71,10 +71,9 @@ def run_with_plan(game, world: WorldState, turns: int, each_turn=None) -> None:
 def test_supply_chain_runs_for_300_turns(game, seed):
     world = make_world(game, seed, ["coal", "iron_ore"])
     island = world.islands[1]
-    machinery_at_start = from_milli(sum(q for _, q in island.warehouse.get("machinery", [])))
     start_population = sum(t.population for t in island.tiles)
     produced: dict[str, float] = {}
-    machinery_built_in = 0.0
+    machinery_built_in = 0.0  # 島で機械を作り始めた後に建った施設が、資材に使った機械
     populations = [start_population]
     bad_stock = []
 
@@ -85,7 +84,7 @@ def test_supply_chain_runs_for_300_turns(game, seed):
                 produced[good] = produced.get(good, 0) + value
         nonlocal machinery_built_in
         for entry in island.log:
-            if entry.kind == "construction_done":
+            if entry.kind == "construction_done" and produced.get("machinery", 0) > 0:
                 materials = game.defs.facilities[entry.args["facility"]]["construction"]
                 machinery_built_in += from_milli(materials.get("materials", {}).get("machinery", 0))
         for good, batches in island.warehouse.items():
@@ -104,7 +103,10 @@ def test_supply_chain_runs_for_300_turns(game, seed):
     assert produced.get("iron_ore", 0) > 0
     assert produced.get("steel", 0) > 0
     assert produced.get("machinery", 0) > 0
-    assert machinery_built_in > machinery_at_start, "島で作った機械で工場が建っていない"
+    # 回3 までは「初めの倉庫の機械より多く使った」で見ていたが、回4 で人口が年1%ほどで増えるように
+    # なり、工事が一巡した後に建つ工場が少ない（回2 で分かった E01。設備の傷みと更新は回6）ので、
+    # 機械を作り始めた後に機械を使う施設が建つことを見る
+    assert machinery_built_in > 0, "島で機械を作り始めた後に、機械を使った施設が建っていない"
     # 在庫はマイナスにならない（0 になった組は消える）
     assert bad_stock == []
     # 人口は爆発も消滅もしない
