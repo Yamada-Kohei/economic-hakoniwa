@@ -33,7 +33,7 @@ sprites:
 | `terrain/shallows` | 浅瀬 | 地面の高さ 0 段 |
 | `terrain/plain` | 平地 | 地面の高さ 1 段 |
 | `terrain/forest` | 森 | 地面の高さ 1 段 |
-| `terrain/mountain` | 山 | 地面の高さ 2 段 |
+| `terrain/mountain` | 山 | 地面の高さ 1 段（平地と同じ。山の形は絵で描く） |
 | `facility/farm` | 農場 | 0.3 段・平地 |
 | `facility/lumber_camp` | 林業場 | 1 段・森 |
 | `facility/quarry` | 採石場 | 1 段・山 |
@@ -47,7 +47,7 @@ sprites:
 | `facility/hydro_power_plant` | 水力発電所 | 2.5 段・山 |
 | `facility/consumer_goods_factory` | 消費財工場 | 2 段・平地 |
 | `facility/government_office` | 中央省庁 | 3 段・平地 |
-| `facility/bank` | 銀行 | 2.5 段・平地 |
+| `facility/bank` | 銀行 | 2.5 段・平地（破風の先は 3.5 段ほど） |
 | `facility/school` | 学校 | 2 段・平地 |
 | `facility/university` | 大学 | 3 段・平地 |
 | `facility/port` | 港（フェーズ3-1） | 2.5 段・平地・海沿い（クレーンの先は 5 段ほど） |
@@ -59,11 +59,13 @@ sprites:
 | `facility/textile_mill` | 繊維工場（フェーズ3-2） | 2 段・平地（煙突は 4 段ほど） |
 | `facility/ranch` | 牧場（フェーズ3-2） | 0.5 段・平地 |
 | `facility/automobile_plant` | 自動車工場（フェーズ3-2） | 2.5 段・平地 |
+| `facility/police` | 警察署（フェーズ3-4） | 2.5 段・平地（屋上のアンテナの先は 4 段ほど） |
 | `housing/village` | 村 | 1 段 |
 | `housing/town` | 町 | 2 段 |
 | `housing/city` | 都市 | 4 段 |
 | `housing/metropolis` | 大都市 | 6 段 |
-| `capital/<施設の sprite>` | 首都のマスにあるときの施設（任意） | 例 `capital/government_office` |
+| `capital/<政治の建物>-<元首の建物>` | 首都の官庁を、体制で決まる建物の組み合わせで描く（下の「首都の建物」） | 例 `capital/parliament-palace` |
+| `capital/<施設の sprite>` | 首都のマスにあるときの施設（任意。上の組み合わせの絵がないとき） | 例 `capital/government_office` |
 | `construction` | 工事中（任意。どの施設にも共通） | なければ白い点線の枠 |
 
 施設はこれからも増えます（フェーズ2-2 以降）。新しい施設の絵は、その施設が定義データに入ってから足します。
@@ -81,9 +83,10 @@ sprites:
 | 高さ | 自由。上に伸びたぶんは奥のマスに重なって描かれる（奥から手前へ描くので、それで正しい） |
 | 光 | 左上から。左の側面を明るく、右の側面を暗く（いまの箱は上面の色の 0.78 倍と 0.62 倍） |
 
-地形の絵は、そのマスの上面（ひし形）と、そこから上に出る木や岩だけを描きます。隣のマスとつながって
+地形の絵は、そのマスの上面（ひし形）と、そこから上に出る木や山だけを描きます。隣のマスとつながって
 見えるよう、ひし形の縁ぎりぎりまで塗り、縁取りの線は付けないか、ごく薄くします。
-海と浅瀬は平らなひし形です。
+海と浅瀬は平らなひし形です。施設のあるマスでは地形の絵は描かず、上面の色（`theme.yaml` の `terrain` の
+`top`）だけを塗ります（施設の絵と木や山が重ならないように）。山に建つ施設は、岩や崖を施設の絵の中に描きます。
 
 施設の絵の大きさの例（製鉄所、3 段）: 幅 64、高さ = 足元のひし形 32 + 壁 30 + 煙突などの飛び出し。
 基準点を変えないなら、絵の一番下の行がマスの下の頂点に来ます。
@@ -97,6 +100,29 @@ sprites:
   <rect x="40" y="8" width="6" height="40" fill="#444"/>
 </svg>
 ```
+
+## 首都の建物
+
+首都のマスの官庁（`category: admin` の施設）は、島の体制で決まる首都の建物の組み合わせの絵で描きます。
+名前は `capital/<政治の仕組みの建物>-<元首の形の建物>` で、建物は `packs/base/data/regimes.yaml` の
+`capital_building` です（経済体制の軸には建物がありません）。地図の API の `capital_buildings` が、
+軸の順にこの建物を返します。
+
+| 名前 | 体制 | 絵 |
+|---|---|---|
+| `capital/parliament-palace` | 民主制 × 君主制 | 縦の筋の多い石の議事堂、端に時計塔 |
+| `capital/parliament-presidential_office` | 民主制 × 共和制 | 白い議事堂の真ん中に高い丸屋根 |
+| `capital/official_residence-palace` | 権威主義 × 君主制 | 黄色い壁の長い王宮と、前の幾何学の庭と噴水 |
+| `capital/official_residence-presidential_office` | 権威主義 × 共和制 | 赤れんがの城壁と塔に囲まれた大統領府 |
+| `capital/party_headquarters-palace` | 全体主義 × 君主制 | 鉛ぶきの屋根の王宮に赤い垂れ幕と赤い旗、広場の大きな金の像 |
+| `capital/party_headquarters-presidential_office` | 全体主義 × 共和制 | 段々に細くなる党本部の塔と、像と旗の広場 |
+
+- 実在の建物の雰囲気（時計塔・丸屋根・城壁・広場の像など）だけを借り、そっくりには描きません。
+- 政治の仕組みを変えると首都の建物を建て替えます。建て替えが済むまでは前の体制の建物の絵のままで、
+  マスの欄の「首都の建物」とそろいます。元首の形を変えたときは建て替えがないので、すぐ変わります。
+- 組み合わせの絵がなければ `capital/<施設の sprite>`、それもなければ `facility/<施設の sprite>` で描きます。
+- 見本ページの「首都」は、`?capital=party_headquarters-palace` のように組み合わせを選べます
+  （既定は軸ごとの最初の建物）。
 
 ## 絵の描き方
 
@@ -131,6 +157,7 @@ sprites:
 2. **見本ページ** http://127.0.0.1:8000/static/map-preview.html を開きます。地形・施設・住宅の各段階・
    工事中・止まっている施設・首都・送電線・開発禁止を 1 つの島に並べ、島の画面と同じコードで描きます。
    `?sprites=0` で絵なし（色の箱）、`?scale=2` で拡大、`?overlay=population` で重ね表示と見比べられます。
+   `?capital=<政治の建物>-<元首の建物>` で首都の絵を選べます。
    ドラッグとホイールで動かせます。
 3. 実際の島 http://127.0.0.1:8000/islands/1/ でも、拡大・縮小して見ます。
 4. 自動テスト: `pytest tests/server/test_theme_sprites.py`（名前・ファイル・大きさ・危ない SVG・出典を調べる）と、

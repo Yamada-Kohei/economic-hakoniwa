@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import itertools
 import re
 import struct
 import xml.etree.ElementTree as ET
@@ -40,6 +41,22 @@ def _entries(theme: dict) -> dict[str, dict]:
     }
 
 
+def _capital_combos() -> set[str]:
+    """首都の建物の組み合わせ（軸ごとに体制の建物を 1 つずつ、軸の順に "-" でつなぐ）。"""
+    d = get_game().defs
+    per_axis = [
+        sorted(
+            {
+                r["capital_building"]
+                for r in d.regimes.values()
+                if r["axis"] == axis and r.get("capital_building")
+            }
+        )
+        for axis in d.regime_axes()
+    ]
+    return {"-".join(combo) for combo in itertools.product(*[b for b in per_axis if b])}
+
+
 def _allowed_keys() -> set[str]:
     d = get_game().defs
     sprites = {f.get("sprite", fid) for fid, f in d.facilities.items() if not f.get("tileless")}
@@ -47,6 +64,7 @@ def _allowed_keys() -> set[str]:
         {f"terrain/{t}" for t in d.terrain}
         | {f"facility/{s}" for s in sprites}
         | {f"capital/{s}" for s in sprites}
+        | {f"capital/{c}" for c in _capital_combos()}
         | {f"housing/{s}" for s in d.settlements}
         | {"construction"}
     )
