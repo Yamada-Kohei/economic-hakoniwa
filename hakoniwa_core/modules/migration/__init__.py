@@ -63,6 +63,7 @@ from hakoniwa_core.modules.education import STOCK as EDUCATION_STOCK
 from hakoniwa_core.modules.labor import engineer_unemployment
 from hakoniwa_core.modules.politics import police_coverage, unemployment_of
 from hakoniwa_core.modules.population import (
+    ENDURED,
     HUNGER,
     homes_of,
     layer_tiles,
@@ -453,7 +454,8 @@ def _move(world: WorldState, ctx: StageContext, flows: list[Flow], tally: dict[i
                 if f.leaked or controls == trade_policy.CLOSED:
                     seized += carried
                     carried = 0
-                arrivals.append((f, carried, h.get(HUNGER, 0.0), education))
+                body = {k: h[k] for k in (HUNGER, ENDURED) if k in h}  # 飢えの蓄えも連れて移る
+                arrivals.append((f, carried, body, education))
             if seized > 0:
                 ledger.pay(island, entity, ledger.GOV, seized, "emigrant_seized")
                 tally[o].seized += seized
@@ -486,7 +488,7 @@ def _arrive(
     ctx: StageContext,
     f: Flow,
     carried: int,
-    hunger: float,
+    hunger: dict[str, float],
     education: float,
     tally: dict[int, Tally],
 ) -> None:
@@ -511,7 +513,7 @@ def _arrive(
         dest.tile(*pos).population += rest
     h = households[layer]
     h["persons"] += f.count
-    blend_hunger({HUNGER: hunger}, h, f.count)
+    blend_hunger(hunger, h, f.count)
     if layer == ENGINEERS:
         pool = dest.economy.workers.get(fac.ENGINEER, 0)
         workers = round(f.count * defs.workers[fac.ENGINEER].get("share", 1.0))

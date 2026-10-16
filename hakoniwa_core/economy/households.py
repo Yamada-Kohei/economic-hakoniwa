@@ -200,15 +200,19 @@ def move_people(island: IslandState, changes: dict[str, int]) -> None:
 
 
 def blend_hunger(source: dict[str, Any], target: dict[str, Any], moved: int) -> None:
-    """層を移った moved 人の飢えの蓄えを、移った先の層の蓄えに人数で混ぜる（人数は移した後）。"""
-    carried = source.get("hunger", 0.0)
-    held = target.get("hunger", 0.0)
-    if not carried and not held:
-        return
+    """層を移った moved 人の飢えの蓄えを、移った先の層の蓄えに人数で混ぜる（人数は移した後）。
+
+    これまでに耐えたいちばん大きい蓄え（hunger_endured）も同じく混ぜる。
+    """
     stayed = max(0, target["persons"] - moved)
     total = stayed + moved
-    if total > 0:
-        target["hunger"] = round((held * stayed + carried * moved) / total, 4)
+    if total <= 0:
+        return
+    for key in ("hunger", "hunger_endured"):
+        carried = source.get(key, 0.0)
+        held = target.get(key, 0.0)
+        if carried or held:
+            target[key] = round((held * stayed + carried * moved) / total, 4)
 
 
 def add_income(island: IslandState, layer: str, amount: int) -> None:

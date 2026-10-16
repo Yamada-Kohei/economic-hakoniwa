@@ -21,7 +21,13 @@ from hakoniwa_core.economy import (
 from hakoniwa_core.modules import failures
 from hakoniwa_core.modules.firms import remove_facility
 from hakoniwa_core.modules.market import FoodMenu, gross_cost, hungry_food_orders
-from hakoniwa_core.modules.population import hunger_deaths, hunger_step
+from hakoniwa_core.modules.population import (
+    HUNGER,
+    Population,
+    hunger_deaths,
+    hunger_step,
+    subsistence_persons,
+)
 from hakoniwa_core.state import OWNER_PRIVATE
 from hakoniwa_core.units import QUANTITY_SCALE, part
 from tests.core.test_finance import context, island_of
@@ -47,27 +53,74 @@ def _private(island, workers=True):
 
 
 def test_hunger_stock_builds_up_slowly_and_recovers(game):
-    """半分しか食べられない月が続くと、飢えの蓄えは (d − tolerance) ÷ recovery に近づく。体の余力を
-    超えるまでは亡くならず、超えるほど急に増える。食べられれば戻る。"""
+    """半分しか食べられない月が続くと、飢えの蓄えは (d − tolerance) ÷ recovery に近づく。
+    食べられれば戻る。"""
     settings = game.config.get("population.hunger")
-    ctx = SimpleNamespace(config=game.config)
     s = 0.0
     months = []
     for _ in range(36):
         s = hunger_step(s, 0.5, settings)
         months.append(s)
     limit = (0.5 - settings["tolerance"]) / settings["recovery"]
-    assert months[0] < settings["reserve"]  # 1か月では亡くならない
     assert months[-1] == pytest.approx(limit, rel=0.01)
-    assert hunger_deaths(settings["reserve"] - 0.01, ctx) == 0
-    worst = settings["reserve"] + settings["death_excess"]
-    assert hunger_deaths(worst, ctx) == pytest.approx(settings["death_rate"])
-    assert hunger_deaths(worst + 0.25, ctx) > 2 * hunger_deaths(worst - 0.25, ctx)
     for _ in range(24):
         s = hunger_step(s, 0.0, settings)
     assert s == 0
     # 少しの不足（1割まで）は体が耐える
     assert hunger_step(0.0, settings["tolerance"], settings) == 0
+
+
+def _starve(game, food, months):
+    """食べられる割合 food の月が months 続いたときの、月ごとに亡くなる割合と、亡くなった人の
+    割合。"""
+    settings = game.config.get("population.hunger")
+    ctx = SimpleNamespace(config=game.config)
+    stock = endured = 0.0
+    alive = 1.0
+    rates = []
+    for _ in range(months):
+        stock = hunger_step(stock, 1 - food, settings)
+        rate = hunger_deaths(stock, endured, ctx)
+        endured = max(endured, stock)
+        alive *= 1 - rate
+        rates.append(rate)
+    return rates, 1 - alive
+
+
+def test_hunger_deaths_spread_over_months_weakest_first(game):
+    """体の余力は人によって違うので、何も食べられなくても1か月で全員は亡くならず、弱った人から何か月
+    かに分かれて亡くなる。半分食べられる半年ではほとんど亡くならない（オランダの飢餓の冬）。"""
+    ctx = SimpleNamespace(config=game.config)
+    rates, dead = _starve(game, 0.0, 4)
+    assert rates[0] == 0  # 1か月では亡くならない（いちばん弱い人の余力 reserve_min）
+    assert max(rates) < 0.8
+    assert 0.5 < dead < 0.95  # 何も食べられなければ4か月で半分を超える
+    rates, dead = _starve(game, 0.3, 6)
+    assert 0.02 < rates[3] < 0.1  # 必要の3割（レニングラードの最悪の冬）の4か月目
+    _, dead = _starve(game, 0.5, 6)
+    assert dead < 0.01
+    # 耐えた蓄えのままなら、新しく亡くなる人はいない（弱った人はもう亡くなっている）
+    assert hunger_deaths(2.5, 2.5, ctx) == 0
+    assert hunger_deaths(2.5, 0.0, ctx) > hunger_deaths(2.5, 2.0, ctx) > 0
+
+
+def test_subsistence_farmers_do_not_starve_when_the_market_has_no_food(game, warmed):
+    """村で自給の農業をしている人は、一般の層でも、市場の食料が足りないことでは飢えない。亡くなるのは
+    市場で食料を買って食べている人から。"""
+    world = copy.deepcopy(warmed)
+    island = max(
+        world.islands.values(),
+        key=lambda i: sum(subsistence_persons(game.defs, i, t) for t in i.tiles if t.population),
+    )
+    own = sum(subsistence_persons(game.defs, island, t) for t in island.tiles if t.population)
+    assert own > 0
+    general = island.economy.households[GENERAL]
+    general[HUNGER] = 3.5  # 何も食べられない月が何か月も続いた
+    island.scratch["household_goods"] = {}  # このターンも市場で何も買えなかった
+    persons = general["persons"]
+    Population().run_island(island, context(game, world, "population"))
+    starved = island.stats["layer.general.starved"]
+    assert 0 < starved <= (persons - own) * 1.01  # マスに割り振るときの端数の分だけずれる
 
 
 # --- 飢えた家計の買い上がり ------------------------------------------------------------------

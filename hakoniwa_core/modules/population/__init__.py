@@ -49,6 +49,9 @@ HAPPINESS_FACTS = (
 )
 OLD_CONSUMER_GOOD = "consumer_goods"  # フェーズ3-1 までの幸福度の「消費財」で数える財
 HUNGER = "hunger"  # 層の飢えの蓄え（economy.households[層]。栄養の不足が何か月分たまったか）
+# 層の生き残った人が、この飢えのあいだに耐えたいちばん大きい蓄え（余力のそれより小さい人はもう
+# 亡くなっている。蓄えが 0 に戻ると消す）
+ENDURED = "hunger_endured"
 FED = "fed"  # 層が前のターンに食べられた割合（1000 分の 1）
 
 
@@ -272,21 +275,41 @@ def hunger_step(stock: float, shortfall: float, settings: dict[str, float]) -> f
     return max(0.0, value)
 
 
-def hunger_deaths(stock: float, ctx: StageContext) -> float:
-    """飢えの蓄え stock の層で、1ターンに亡くなる人の割合（名前付きの式 hunger_deaths）。
+def starved_share(stock: float, settings: dict[str, float]) -> float:
+    """飢えの蓄えが stock になるまでに亡くなる人の割合（同じだけ食べられなかった人たちのうち）。
 
-    蓄えが体の余力 reserve を超えた分に応じて増える: base × (exp(k × (S − reserve)) − 1)。
-    k は steepness、base は「余力を death_excess 超えたとき death_rate」になる値。弱った人から
-    病気で亡くなるので、蓄えが余力を超えるほど急に増える（設計書の回3。オランダの飢餓の冬・
-    ベンガル・レニングラードの最悪の冬の幅に入るかで確かめた値）。
+    体の余力（何か月分の不足に耐えられるか）は、年齢・体格・病気で人によって違う。余力は平均
+    reserve・ばらつき reserve_spread の正規分布に従い、いちばん弱い人でも reserve_min はある
+    （その下を切った分布）。蓄えが自分の余力を超えた人が亡くなる。
     """
-    settings = ctx.config.get("population.hunger")
-    over = stock - settings["reserve"]
-    if over <= 0:
+    low = settings["reserve_min"]
+    if stock <= low:
         return 0.0
-    k = settings["steepness"]
-    base = settings["death_rate"] / math.expm1(k * settings["death_excess"])
-    return min(1.0, base * math.expm1(k * over))
+
+    def below(x: float) -> float:
+        z = (x - settings["reserve"]) / (settings["reserve_spread"] * math.sqrt(2))
+        return 0.5 * math.erfc(-z)
+
+    floor = below(low)
+    return (below(stock) - floor) / (1 - floor)
+
+
+def hunger_deaths(stock: float, endured: float, ctx: StageContext) -> float:
+    """飢えの蓄え stock の層で、このターンに亡くなる人の割合（名前付きの式 hunger_deaths）。
+
+    層の生き残った人は、この飢えのあいだに蓄え endured まで耐えた人（余力のそれより小さい人は
+    もう亡くなっている）。亡くなるのは、余力が endured から stock までの間にある人で、生き残って
+    いる人のうち (F(stock) − F(endured)) ÷ (1 − F(endured))（F は starved_share）。弱った人から
+    先に亡くなり、同じだけ食べられない層でも、何か月かに分かれて亡くなる（設計書の回3。オランダの
+    飢餓の冬・ベンガル・レニングラードの最悪の冬・何も食べられないときの幅に入るかで確かめた値）。
+    """
+    if stock <= endured:
+        return 0.0
+    settings = ctx.config.get("population.hunger")
+    before = starved_share(endured, settings)
+    if before >= 1.0:
+        return 1.0
+    return min(1.0, (starved_share(stock, settings) - before) / (1 - before))
 
 
 def layer_tiles(
@@ -327,6 +350,21 @@ def layer_tiles(
     return out
 
 
+def _exposed(
+    defs: Defs, island: IslandState, placed: dict[str, dict[Pos, int]]
+) -> dict[str, dict[Pos, int]]:
+    """層ごとの、市場で食料を買って食べている人のマスごとの数（layer_tiles の数から、一般の層の
+    村で自給の農業をしている人を除く）。"""
+    out = dict(placed)
+    general = placed.get(GENERAL)
+    if general:
+        own = {
+            (t.x, t.y): subsistence_persons(defs, island, t) for t in island.tiles if t.population
+        }
+        out[GENERAL] = {pos: max(0, n - own.get(pos, 0)) for pos, n in general.items()}
+    return out
+
+
 def spread_over(amount: int, places: dict[Pos, int]) -> dict[Pos, int]:
     """amount 人を、マスごとの人数 places に比例して割り振る（足りない分は多いマスから）。"""
     order = sorted(places.items(), key=lambda kv: (-kv[1], kv[0][1], kv[0][0]))
@@ -350,7 +388,9 @@ class Population(IslandStage):
             HUNGER: 0.0,
         }
         p = config.get("population")
-        stocks = self._hunger(island, ctx, layers, rng)
+        placed = layer_tiles(defs, island, households)
+        exposed = _exposed(defs, island, placed)
+        stocks = self._hunger(island, ctx, layers, exposed, rng)
         general = layers.get(GENERAL) or fed
         jobless = layers.get(JOBLESS)
         need = sum(f["need"] for f in layers.values())
@@ -361,17 +401,16 @@ class Population(IslandStage):
             "ratio": fac.ratio(supplied, need) if layers else fac.FULL,
         }
         homes = homes_of(island, config)
-        placed = layer_tiles(defs, island, households)
         hungry = {n for n, f in layers.items() if f["food"] < fac.FULL or f[HUNGER] > 0}
         moods: dict[str, list[float]] = {}
         power_sum = pollution_sum = water_sum = people = 0
         education = island.economy.education
-        # 亡くなる人を、層ごとにその層の住むマスへ割り振る
+        # 亡くなる人を、層ごとにその層の住むマスへ割り振る（村で自給の農業をしている人は除く）
         lost_by_tile: dict[Pos, int] = {}
         deaths: dict[str, int] = {}
         for name, count in sorted(stocks.items()):
             applied = 0
-            for pos, n in spread_over(count, placed.get(name, {})).items():
+            for pos, n in spread_over(count, exposed.get(name, {})).items():
                 n = min(n, island.tile(*pos).population - lost_by_tile.get(pos, 0))
                 if n > 0:
                     lost_by_tile[pos] = lost_by_tile.get(pos, 0) + n
@@ -428,8 +467,9 @@ class Population(IslandStage):
             home = homes.get(pos)
             capacity = fac.housing_capacity(defs, home) if home else 0
             pop = tile.population - min(tile.population, lost_by_tile.get(pos, 0))
-            # 生まれるのは食べられている層の人から（飢えている間は生まれない）
-            fed_here = tile.population - sum(placed.get(name, {}).get(pos, 0) for name in hungry)
+            # 生まれるのは食べられている層の人から（飢えている間は生まれない。自給の農業で食べている
+            # 人は、市場の食料が足りなくても食べられている）
+            fed_here = tile.population - sum(exposed.get(name, {}).get(pos, 0) for name in hungry)
             if fed_here > 0:
                 # 仕事のある人の割合が growth_min_jobs を下回るマスでは増えず、1に近いほどよく増える
                 low = p["growth_min_jobs"]
@@ -466,9 +506,14 @@ class Population(IslandStage):
         island: IslandState,
         ctx: StageContext,
         layers: dict[str, dict[str, Any]],
+        exposed: dict[str, dict[Pos, int]],
         rng: random.Random,
     ) -> dict[str, int]:
-        """層ごとに飢えの蓄えを進め、亡くなる人数を返す（層の状態に蓄えと食べた割合を書く）。"""
+        """層ごとに飢えの蓄えを進め、亡くなる人数を返す（層の状態に蓄えと食べた割合を書く）。
+
+        亡くなりうるのは、市場で食料を買って食べている人（exposed。村で自給の農業をしている人は、
+        一般の層でも、市場の食料が足りないことでは飢えない）。
+        """
         settings = ctx.config.get("population.hunger")
         households = island.economy.households
         deaths: dict[str, int] = {}
@@ -476,14 +521,20 @@ class Population(IslandStage):
             h = households[name]
             shortfall = max(0.0, 1 - f["food"] / fac.FULL)
             stock = hunger_step(h.get(HUNGER, 0.0), shortfall, settings)
+            endured = h.get(ENDURED, 0.0)
             if stock > 0:
                 h[HUNGER] = round(stock, 4)
-            else:
+                h[ENDURED] = round(max(endured, stock), 4)
+            else:  # 体が戻った
                 h.pop(HUNGER, None)
+                h.pop(ENDURED, None)
             h[FED] = f["food"]
             f[HUNGER] = stock
-            rate = ctx.formula("hunger_deaths")(stock, ctx)
-            count = min(h["persons"], _rand_round(h["persons"] * rate, rng)) if rate > 0 else 0
+            rate = ctx.formula("hunger_deaths")(stock, endured, ctx)
+            persons = h["persons"]
+            if name == GENERAL and name in exposed:
+                persons = min(persons, sum(exposed[name].values()))
+            count = min(persons, _rand_round(persons * rate, rng)) if rate > 0 else 0
             if count > 0:
                 deaths[name] = count
         return deaths
