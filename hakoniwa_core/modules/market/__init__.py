@@ -1588,6 +1588,11 @@ class Market(IslandStage):
         if cost > money:
             qty = qty * money // cost
             cost = gross_cost(limit, qty, rate, tax)
+            if cost > money:
+                # 切り捨ての誤差で取り置けるお金を超えたら、お金で買える量までにする（回4。
+                # 失業者の層の買い物が、わずかに足りずにターンごと止まった）
+                qty = min(qty, qty_for(money * BASIS // (BASIS + rate + tax), limit))
+                cost = gross_cost(limit, qty, rate, tax)
         if qty <= 0:
             return
         party = Party(HOUSEHOLD, household(layer), payer, rate, tax, layer=layer, hungry=hungry)

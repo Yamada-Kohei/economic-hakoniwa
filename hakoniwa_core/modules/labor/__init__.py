@@ -156,9 +156,15 @@ class Payroll(IslandStage):
             workers += f.workers - skilled
             if skilled or spared:  # 技術者の層に払う
                 premium = fac.engineer_wage_of(config, f, wage) * skilled
-                pay = premium + wage * spared
+                # 払えない席（遅配）に就いた余った技術者の分も未払い賃金にする（回4。一般の人の
+                # 分だけを遅配にし、技術者には取り置いていない賃金を払って預金がマイナスになった）
+                left = max(0, wage * f.economy.get("unpaid", 0) - owed)
+                spared_owed = min(wage * spared, left)
+                pay = premium + wage * spared - spared_owed
                 funds.pay(island, payer, household(ENGINEERS), pay, "wage", committed=True)
                 self._withhold(island, pay, ENGINEERS)
+                arrears.add_wages(island, payer.entity, household(ENGINEERS), spared_owed)
+                pay += spared_owed
                 amount += pay
                 skilled_paid += premium
                 skilled_workers += skilled

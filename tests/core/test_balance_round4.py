@@ -9,15 +9,24 @@ from types import SimpleNamespace
 
 import pytest
 
-from hakoniwa_core import autoplan, infra, measure, stock
+from hakoniwa_core import autoplan, infra, ledger, measure, stock
 from hakoniwa_core import facilities as fac
-from hakoniwa_core.economy import GENERAL, productivity, services
+from hakoniwa_core.economy import (
+    ENGINEERS,
+    GENERAL,
+    Payer,
+    arrears,
+    funds,
+    household,
+    productivity,
+    services,
+)
 from hakoniwa_core.economy.prices import variable_profit
 from hakoniwa_core.market import auction
 from hakoniwa_core.modules import firms
 from hakoniwa_core.modules.employment import FIELDS_KEY, _take, back_to_fields
 from hakoniwa_core.modules.firms import EntryExit
-from hakoniwa_core.modules.market import Market
+from hakoniwa_core.modules.market import Market, gross_cost
 from hakoniwa_core.modules.population import FED, HUNGER, Population, birth_rate, death_rate
 from hakoniwa_core.state import ACCOUNTING_SELF, OWNER_PRIVATE, WorldState
 from hakoniwa_core.state.generate import generate_world
@@ -27,6 +36,7 @@ from tests.core.test_finance import context, island_of, run
 from tests.core.test_finance import game as game  # noqa: F401  （試験の部品を使い回す）
 from tests.core.test_finance import warmed as warmed  # noqa: F401
 from tests.core.test_rules import add, home, make_island, with_economy
+from tests.core.test_rules import run as run_stages
 
 
 def _ctx(game):
@@ -355,3 +365,39 @@ def test_spoiled_cargo_leaves_the_trading_company_books(game):
     item["held"], item["transit"] = [9000, 90000], 500
     traders.update_targets(island, game.defs, game.config, {}, {})
     assert traders.goods_of(trading)["grain"]["held"] == [1500, 15000]
+
+
+def test_household_buying_within_a_few_coins_does_not_overdraw(game):
+    """家計がお金より少し多い注文を出すとき、量を割合で減らしても切り捨ての誤差で取り置けるお金を
+    超えることがある（値段 31、運賃 16.16%: 1474 円に 1475 円）。そのときはお金で買える量までにする
+    （失業者の層の買い物がターンごと止まった）。"""
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    with_economy(game, island)
+    payer = Payer(household(GENERAL))
+    funds.commit(island, payer, funds.available(island, payer) - 1474)
+    assert funds.available(island, payer) == 1474
+    books = {}
+    Market()._household_buy(island, books, "grain", 46738, 31, 1616, 0, GENERAL, 0)
+    ((order, party),) = books["grain"].buys
+    assert gross_cost(31, 46738 * 1474 // 1681, 1616, 0) == 1475  # 割合で減らしただけの量
+    assert 0 < order.quantity < 46738 * 1474 // 1681
+    assert 0 < party.reserved <= 1474
+
+
+def test_spare_engineers_in_unpaid_seats_get_wage_arrears(game):
+    """払えない席（遅配）に余った技術者が就いたときは、一般の人と同じく未払い賃金にする（取り置いて
+    いない賃金を払って、民営の発電所の預金がマイナスになった）。"""
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    with_economy(game, island)
+    plant = add(island, "farm", 8, 8, owner=OWNER_PRIVATE)
+    plant.accounting = ACCOUNTING_SELF
+    entity = f"fac:{plant.id}"
+    ledger.pay(island, entity, household(GENERAL), ledger.money(island, entity), "test")
+    plant.workers = 3
+    plant.economy.update(wage=100, engineers_general=3, unpaid=3)
+    run_stages(game, island, ["payroll"])
+    assert ledger.money(island, entity) == 0
+    owed = ledger.account(household(ENGINEERS), arrears.WAGE_ARREARS, entity)
+    assert island.accounts.get(owed, 0) == 300
