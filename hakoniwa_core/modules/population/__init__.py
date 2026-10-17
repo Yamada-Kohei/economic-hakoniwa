@@ -70,7 +70,8 @@ ENDURED = "hunger_endured"
 FED = "fed"  # 層が前のターンに食べられた割合（1000 分の 1）
 # 飢えの知らせ（Codex の試し遊び、ターン 250〜300。10-17 のカード「知らせて回7」）: 食べられなかった
 # 層の買えなかったわけ（money: 食費が使えるお金を使い切った、goods: 売りに出ていた物が足りない）、
-# 市場で食料を買う人の数、いまの飢えの蓄えで亡くなる人の割合（starved_share）。
+# 市場で食料を買う人の数（このターンに亡くなった人を除く）、いまの飢えの蓄えで亡くなる人の割合
+# （starved_share）。
 # economy.households[層] に置く
 FOOD_SHORT = "food_short"
 FOOD_BUYERS = "food_buyers"
@@ -721,7 +722,6 @@ class Population(IslandStage):
                 h[FOOD_SHORT] = food_short_reason(island.scratch.get(FOOD_ORDERS, {}).get(name))
             else:
                 h.pop(FOOD_SHORT, None)
-            h[FOOD_BUYERS] = persons
             if stock > 0:
                 h[HUNGER_RISK] = round(starved_share(stock, settings), 4)
             else:
@@ -732,6 +732,7 @@ class Population(IslandStage):
             count = min(persons, _rand_round(persons * rate, rng)) if rate > 0 else 0
             if count > 0:
                 deaths[name] = count
+            h[FOOD_BUYERS] = persons - count  # このターンを生き延びて、市場で食料を買う人
             if name == GENERAL and FIELDS in h:
                 h[FIELDS]["market"] = max(0, h[FIELDS]["market"] - count)
         return deaths
