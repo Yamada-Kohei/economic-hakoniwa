@@ -15,7 +15,7 @@ AI 用の鍵（アカウントの画面 /accounts/keys/ で作る）は HK_KEY �
 （HK_KEY_FILE。既定はホームの .hk-key）から読み、/api/ と /mcp の呼び出しに付けます。鍵があれば
 ログインは要りません。鍵がなければ、ログインの cookie（HK_COOKIES。既定はホームの
 .hk-cookies.txt）を使います。前に読んだターンは HK_STATE（既定はホームの .hk-state.json）に
-置きます。どれもリポジトリには置きません。
+置きます（summary と changes が覚える。--json のときも同じ）。どれもリポジトリには置きません。
 """
 
 from __future__ import annotations
@@ -633,6 +633,16 @@ def print_summary(d: dict) -> None:
             f" {x['status_text']}"
         )
     print("[財] " + _rows(d["goods"], _good))
+    pc = d.get("population_changes")
+    if pc:
+        labels = pc["labels"]
+        print("[人口の増減] " + "、".join(f"{labels[k]} {pc[k]:,}" for k in labels))
+    sv = d.get("services")
+    if sv:
+        names = {"workers": "働く人", "seats": "次に雇う目安", "price": "値段", "sales": "売上"}
+        names |= {"sold": "売れた量", "unused": "売れ残り"}
+        parts = [f"{label} {sv[f'{k}_text']}" for k, label in names.items() if k in sv]
+        print("[商業・サービス業] " + "、".join(parts))
     if d["bonds_due"]:
         print("[満期の近い国債] " + _rows(d["bonds_due"], _bond))
     for x in d.get("losing", []):
@@ -656,10 +666,12 @@ def print_summary(d: dict) -> None:
 def cmd_summary(c: Client, a) -> int:
     island = a.island or own_island(c)
     status, body, _ = c.get(f"/api/islands/{island}/summary")
-    if a.json or status >= 400:
+    if status >= 400:
         return show(status, body) if a.json else fail(status, body)
     d = json.loads(body)
-    remember_turn(c, island, d["turn"])
+    remember_turn(c, island, d["turn"])  # --json でも覚える（Codex の試し遊び）
+    if a.json:
+        return show(status, body)
     print_summary(d)
     return 0
 
@@ -671,10 +683,12 @@ def cmd_changes(c: Client, a) -> int:
         since = load_state().get(f"{c.base}|{island}")
     query = f"?since={since}" if since is not None else ""
     status, body, _ = c.get(f"/api/islands/{island}/changes{query}")
-    if a.json or status >= 400:
+    if status >= 400:
         return show(status, body) if a.json else fail(status, body)
     d = json.loads(body)
-    remember_turn(c, island, d["turn"])
+    remember_turn(c, island, d["turn"])  # --json でも覚える（Codex の試し遊び）
+    if a.json:
+        return show(status, body)
     print(f"島 {d['island']}: ターン {d['since']} より後（いま {d['date']}）")
     if d["truncated"]:
         print(f"（ターンログはターン {d['log_from']} から。前は log --from で読む）")

@@ -10,7 +10,7 @@ from hakoniwa_core.trade import contracts, tradable_goods
 from server.accounts import keys
 from server.game import get_game
 from server.turns.models import TurnLog
-from server.web import chain, display, founding, rankings, reports, trade
+from server.web import chain, display, founding, overview, rankings, reports, trade
 from server.web import politics as politics_views
 from server.world.models import Island, World
 from server.world.services import grid_size
@@ -45,12 +45,15 @@ def island_page(request, island_id: int):
         for r in (island.regime or {}).values()
         if r in defs.regimes
     ]
+    mine = request.user.is_authenticated and island.owner_id == request.user.id
     context = {
         "island": island,
-        "mine": request.user.is_authenticated and island.owner_id == request.user.id,
+        "mine": mine,
         "ai": keys.is_ai_island(island),
         "stats_turn": turn,
         "summary": display.summary(stats, currency),
+        # 気をつけたほうがよいこと（国の要約の alerts と同じ文。飢えている層とそのわけも）
+        "alerts": overview.island_alerts(island, mine),
         "strengths": rankings.island_strengths(island, stats),
         "goods": display.goods_table(stats, display.latest_markets(island, turn), currency),
         "regime": regime,
@@ -164,6 +167,7 @@ def facilities_page(request, island_id: int):
     island, context, stats = _report(request, island_id, "facilities", "施設")
     context["stats"] = reports.stat_rows(stats, FACILITY_STATS, context["currency"])
     context["chart_names"] = "facilities,construction,firms.private"
+    context["towns"] = reports.town_rows(island)  # 町ごとの働く人（誰にでも。地図と同じ中身）
     if context["mine"]:
         context["table"] = reports.facility_rows(island, context["currency"])
     else:

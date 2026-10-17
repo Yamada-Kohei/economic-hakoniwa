@@ -419,7 +419,9 @@ def dealer_orders(
     have = fxmoney.holding(island, ledger.CB, currency) + book.borrow_room  # 借りて売れる分も
     room = book.reserve_room  # 上限まで買える量（None は上限なし）
     for j in range(1, TIERS + 1):
-        qty = depth // TIERS
+        # 段に分けた余り（TIERS 未満）は、いちばん遠い段に足す（余りを出さずにいると、厚みちょうどの
+        # 額を両替する契約の支払いが数円足りず、0.001 トン届かなかった。Codex の試し遊び）
+        qty = depth // TIERS + (depth % TIERS if j == TIERS else 0)
         if qty <= 0:
             break
         buy = qty if room is None else max(0, min(qty, room))

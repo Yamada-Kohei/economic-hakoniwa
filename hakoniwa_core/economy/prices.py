@@ -175,8 +175,16 @@ def variable_profit(
     if services and f.kind == services["facility"]:
         per_seat = prices.get(services["good"], 0) * services["per_worker"] - wage
         return round_money(f.economy.get("seats", 0) * per_seat)
-    power = config.get("power.good")
     f = fac.steady(f)  # 畑を作り替えている途中なら、今の作物で見る（回3）
+    return _variable_profit_as_is(defs, config, f, prices, wage, freight)
+
+
+def _variable_profit_as_is(
+    defs: Defs, config: GameConfig, f: Facility, prices: Prices, wage: int, freight: int
+) -> int:
+    """variable_profit の中身。f をそのまま（畑を作り替えている途中なら、今の畑を混ぜた作り方で）
+    見る。"""
+    power = config.get("power.good")
     recipe = fac.recipe_of(defs, f)
     value = 0
     for good, qty in fac.outputs_of(defs, f).items():
@@ -198,9 +206,17 @@ def input_limit(
     売る値段に回せるので、値段が費用ぎりぎりの施設も仕入れを止めない）。ほかの投入財は今の値段。
     電力は運賃がかからないので、電力のときは freight を見ない。
     """
-    f = fac.steady(f)  # 畑を作り替えている途中なら、今の作物で見る（回3）
-    recipe = fac.recipe_of(defs, f)
+    steady = fac.steady(f)  # 畑を作り替えている途中なら、今の作物で見る（回3）
+    recipe = fac.recipe_of(defs, steady)
     qty = recipe["inputs"].get(good, 0)
+    if qty <= 0 and steady is not f:
+        # 前の作物の畑にだけ要る原料（綿の肥料の化学品を使う畑を、肥料のいらない穀物に替えている
+        # 途中など）は、今の畑を混ぜた作り方（前の畑の産出と原料。蒔いた畑は何も出さない）の採算で
+        # 払える値段を出す（Codex の試し遊び、ターン 250〜300。新しい作物で見ると上限が 0 になり、
+        # 前の畑が「原料が割高」で止まった）
+        steady = f
+        recipe = fac.recipe_of(defs, f)
+        qty = recipe["inputs"].get(good, 0)
     if qty <= 0:
         return 0
     amount = money_of(prices.get(good, 0), qty)
@@ -209,7 +225,7 @@ def input_limit(
     raised = dict(prices)
     for g in recipe["outputs"]:
         raised[g] = scale_price(prices.get(g, 0), 1 + config.get("market.band"))
-    room = variable_profit(defs, config, f, raised, wage, freight) + amount
+    room = _variable_profit_as_is(defs, config, steady, raised, wage, freight) + amount
     return max(0, room * QUANTITY_SCALE // qty)
 
 

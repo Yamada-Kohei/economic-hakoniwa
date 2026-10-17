@@ -8,6 +8,7 @@ changes）。
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from typing import Any
 
@@ -226,12 +227,82 @@ def _goods(island: m.Island, stats: dict[str, float], currency: str) -> list[dic
     ]
 
 
+FOOD_SHORT_TEXTS = {
+    "money": "お金が足りず買えません",
+    "goods": "市場の売りが足りず買えません",
+}
+
+
+def hunger(island: m.Island, stats: dict[str, float], currency: str) -> list[dict[str, Any]]:
+    """飢えている家計の層（食べられた割合が 1 未満か、飢えの蓄えが残っている層）。層の名前、市場で
+    食料を買う人の数、食べられた割合、買えなかったわけ（お金がないのか、売りが足りないのか）、
+    1人あたりの所得、飢えの蓄え（栄養の不足の月数）、亡くなる人が出始める蓄え、いまの蓄えで亡くなる
+    割合、このターンに飢えで亡くなった人。値は人口の段が層の状態と統計に残したもの
+    （modules/population）。10-17 のカード「知らせて回7」。家族や村の支え合いは回7 で入れる。"""
+    config = get_game().config
+    settings = config.get("population.hunger")
+    out = []
+    for name, h in sorted((island.economy or {}).get("households", {}).items()):
+        fed = h.get("fed")
+        months = h.get("hunger", 0.0)
+        if fed is None or (fed >= fac.FULL and months <= 0):
+            continue
+        persons = h.get("food_buyers", h.get("persons", 0))
+        if persons <= 0:
+            continue
+        income = stats.get(f"layer.{name}.income", 0.0)
+        count = stats.get(f"layer.{name}.persons", 0) or h.get("persons", 0)
+        reason = h.get("food_short", "")
+        out.append(
+            {
+                "layer": name,
+                "layer_name": reports.LAYER_NAMES.get(name, name),
+                "persons": persons,
+                "fed": fed / fac.FULL,
+                "reason": reason,
+                "reason_text": FOOD_SHORT_TEXTS.get(reason, ""),
+                "income_per_person": display.money_text(round(income / count), currency)
+                if count
+                else "",
+                "months": months,
+                "deaths_from": settings["reserve_min"],
+                "at_risk": h.get("hunger_risk", 0.0),
+                "starved": int(stats.get(f"layer.{name}.starved", 0)),
+            }
+        )
+    return out
+
+
+def hunger_text(row: dict[str, Any]) -> str:
+    """飢えている層の注意の文（島の画面と国の要約で同じ）。"""
+    text = f"{row['layer_name']}の家計（{row['persons']:,} 人）が飢えています: "
+    if row["fed"] < 1:
+        text += f"食べられたのは要る量の {row['fed'] * 100:.0f}%"
+        if row["reason_text"]:
+            text += f"、{row['reason_text']}"
+        if row["income_per_person"]:
+            text += f"（1人あたりの所得 {row['income_per_person']}）"
+    else:
+        text += "いまは食べられていますが、体はまだ戻っていません"
+    if row["months"] > 0:
+        text += (
+            f"。栄養の不足は {row['months']:.1f} か月分で、{row['deaths_from']:g} か月分から"
+            "亡くなる人が出始めます"
+        )
+        if row["at_risk"] > 0:
+            text += f"（いまの不足では {row['at_risk'] * 100:.1f}% が持ちこたえられません）"
+    if row["starved"]:
+        text += f"。このターンに {row['starved']:,} 人が亡くなりました"
+    return text
+
+
 def _alerts(
     stats: dict[str, float],
     politics: dict[str, Any],
     facilities: dict[str, Any],
     goods: list[dict[str, Any]],
     bonds: list[dict[str, Any]],
+    hungry: list[dict[str, Any]],
     turn: int,
 ) -> list[str]:
     """気をつけたほうがよいこと（画面の値を言葉にしただけ。先の見込みは入れない）。"""
@@ -240,10 +311,12 @@ def _alerts(
         out.append(f"政情は「{politics['level_name']}」です")
     food = stats.get("food.ratio")
     if food is not None and food < 1:
-        out.append(f"食料が足りていません（充足率 {food * 100:.0f}%）")
+        # 99.9% を 100% と出さない（切り捨て。Codex の試し遊び）
+        out.append(f"食料が足りていません（充足率 {math.floor(food * 1000) / 10:.1f}%）")
+    out += [hunger_text(row) for row in hungry]
     shortage = stats.get("power.shortage")
     if shortage:
-        out.append(f"電力が足りていません（不足率 {shortage * 100:.0f}%）")
+        out.append(f"電力が足りていません（不足率 {math.ceil(shortage * 1000) / 10:.1f}%）")
     if facilities["stopped_count"]:
         out.append(f"止まっている施設が {facilities['stopped_count']} か所あります")
     unmet = [g["name"] for g in goods if g.get("unmet")]
@@ -254,6 +327,79 @@ def _alerts(
         out.append(f"次のターンに満期になる国債が {len(due)} 本あります")
     if politics.get("transition"):
         out.append(f"体制を変えた後の混乱期間です（ターン {politics['transition']['until']} まで）")
+    return out
+
+
+def _mine_alerts(island: m.Island, losing: list[dict[str, Any]], unread: int) -> list[str]:
+    """持ち主にだけ出す注意（赤字の施設・未読の公電）。"""
+    out = []
+    if losing:
+        turns = display.BOOK_TURNS
+        out.append(f"直近 {turns} ターンの損益が赤字の施設が {len(losing)} か所あります")
+    if unread:
+        out.append(f"読んでいない公電が {unread} 通あります")
+    return out
+
+
+def island_alerts(island: m.Island, mine: bool) -> list[str]:
+    """島の画面の「注意」（国の要約の alerts と同じ文）。"""
+    world = island.world
+    currency = _currency(island)
+    _, latest = display.latest_stats(island)
+    stats = reports.with_fiscal(latest)
+    out = _alerts(
+        stats,
+        _politics(island, mine),
+        facility_state(island),
+        _goods(island, latest, currency),
+        _bonds_due(island, world.turn, currency),
+        hunger(island, latest, currency),
+        world.turn,
+    )
+    if mine:
+        unread = letters.inbox(island).filter(read_at__isnull=True).count()
+        out += _mine_alerts(island, losing_facilities(island, currency), unread)
+    return out
+
+
+POPULATION_CHANGES = [
+    ("births", "population.births", "生まれた人"),
+    ("deaths", "population.deaths", "亡くなった人（飢えのほか）"),
+    ("starved", "population.starved", "飢えで亡くなった人"),
+    ("arrived", "migration.arrived", "ほかの国から移り住んできた人（帰ってきた人も）"),
+    ("left", "migration.left", "ほかの国へ移り住んだ人"),
+    ("fled_to_villages", "population.fled_to_villages", "食べ物を買えず町から村へ移った人"),
+]
+
+
+def population_changes(stats: dict[str, float]) -> dict[str, Any]:
+    """このターンの人口の増減のわけ（人数。記録のないものは 0。経済の画面のグラフと同じ統計）。"""
+    out: dict[str, Any] = {key: int(stats.get(name, 0)) for key, name, _ in POPULATION_CHANGES}
+    out["labels"] = {key: label for key, _, label in POPULATION_CHANGES}
+    return out
+
+
+SERVICES_STATS = [
+    ("workers", "services.workers"),
+    ("seats", "services.seats"),
+    ("price", "services.price"),
+    ("sales", "services.sales"),
+    ("sold", "services.sold"),
+    ("unused", "services.unused"),
+]
+
+
+def services_brief(stats: dict[str, float], currency: str) -> dict[str, Any] | None:
+    """商業・サービス業の店（働く人・次のターンに雇う人数の目安・値段・売上・売れた量・売れ残り）。
+    統計がなければ None（お金の経済の前の島）。"""
+    if "services.workers" not in stats:
+        return None
+    out: dict[str, Any] = {}
+    for key, name in SERVICES_STATS:
+        if name in stats:
+            label, unit = reports.stat_label(name)
+            out[key] = stats[name]
+            out[f"{key}_text"] = display.stat_text(name, stats[name], unit, currency)
     return out
 
 
@@ -268,6 +414,7 @@ def summary(island: m.Island, mine: bool) -> dict[str, Any]:
     goods = _goods(island, latest, currency)
     bonds = _bonds_due(island, world.turn, currency)
     politics = _politics(island, mine)
+    hungry = hunger(island, latest, currency)
     logs = TurnLog.objects.filter(island=island)
     log_turn = logs.aggregate(t=Max("turn"))["t"]
     data: dict[str, Any] = {
@@ -282,6 +429,9 @@ def summary(island: m.Island, mine: bool) -> dict[str, Any]:
         "strengths": rankings.island_strengths(island, latest),
         "facilities": facilities,
         "goods": goods,
+        "services": services_brief(latest, currency),
+        "population_changes": population_changes(latest),
+        "hunger": hungry,
         "bonds_due": bonds,
         "events_turn": log_turn,
         "events": [
@@ -290,15 +440,11 @@ def summary(island: m.Island, mine: bool) -> dict[str, Any]:
         ]
         if log_turn is not None
         else [],
-        "alerts": _alerts(stats, politics, facilities, goods, bonds, world.turn),
+        "alerts": _alerts(stats, politics, facilities, goods, bonds, hungry, world.turn),
     }
     if mine:
         losing = losing_facilities(island, currency)
         data["losing"] = losing[:LIST_MAX]
-        if losing:
-            data["alerts"].append(
-                f"直近 {display.BOOK_TURNS} ターンの損益が赤字の施設が {len(losing)} か所あります"
-            )
         data["orders"] = orders_brief(island)
         unread = letters.inbox(island).filter(read_at__isnull=True)
         data["letters"] = {
@@ -308,8 +454,7 @@ def summary(island: m.Island, mine: bool) -> dict[str, Any]:
                 for x in unread[:5]
             ],
         }
-        if data["letters"]["unread"]:
-            data["alerts"].append(f"読んでいない公電が {data['letters']['unread']} 通あります")
+        data["alerts"] += _mine_alerts(island, losing, data["letters"]["unread"])
     return data
 
 

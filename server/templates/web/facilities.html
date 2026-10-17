@@ -19,7 +19,7 @@
         <tr>
           <td>{% if f.on_map %}<a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a>{% else %}{{ f.name }}{% endif %}<br><small class="muted">{{ f.kind_name }}</small></td>
           <td>{{ f.owner_name }}<br><small class="muted">{{ f.accounting_name }}</small></td>
-          <td>{% if not f.built %}{% translate "建設中" %}{% if f.status_text and f.status_text != "建設中" %}<br><small>{{ f.status_text }}</small>{% endif %}{% else %}{{ f.status_text|default:"稼働中" }}{% endif %}</td>
+          <td>{% if not f.built %}{% translate "建設中" %}{% if f.status_text and f.status_text != "建設中" %}<br><small>{{ f.status_text }}</small>{% endif %}{% else %}{{ f.status_text|default:"稼働中" }}{% if f.transition %}<br><small>{{ f.transition }}</small>{% endif %}{% endif %}</td>
           <td class="num">{{ f.workers }}{% if f.workers_needed %} / {{ f.workers_needed }}{% endif %}</td>
           <td class="num">{% if f.engineers_needed %}{{ f.engineers }} / {{ f.engineers_needed }}{% elif f.engineers_general %}{{ f.engineers_general }}{% endif %}</td>
           <td class="num">{% if f.operating_rate is not None %}{{ f.operating_rate }}%{% endif %}</td>
@@ -70,6 +70,37 @@
     <figure class="chart" data-chart="balance"><figcaption>{% translate "預金・借入・在庫の値打ち" %}</figcaption></figure>
   </div>
   <div data-slot="table" class="table-scroll"></div>
+</section>
+{% endif %}
+
+{% if towns %}
+<section class="panel">
+  <h2>{% translate "町ごとの働く人" %}</h2>
+  <p class="hint">{% translate "人の住むマスごとの、働ける人・仕事のある人・村で自給の農業をしている人・失業している人です（自給の農業の人は失業に数えません）。商業・サービス業で働く人は住んでいるマスで数えます。買いに行く店の場所は、通勤圏の中でいちばん人の多い集落です。" %}</p>
+  <div class="table-scroll">
+    <table class="report-table">
+      <thead><tr>
+        <th>{% translate "町" %}</th><th>{% translate "住民" %}</th><th>{% translate "働ける人" %}</th><th>{% translate "仕事のある人" %}</th>
+        <th>{% translate "自給の農業" %}</th><th>{% translate "失業" %}</th><th>{% translate "失業率" %}</th>
+        <th>{% translate "商業・サービス業で働く人" %}</th><th>{% translate "買いに行く店の場所" %}</th>
+      </tr></thead>
+      <tbody>
+        {% for t in towns %}
+        <tr>
+          <td><a href="{% url 'island' island.id %}?x={{ t.x }}&amp;y={{ t.y }}">{{ t.place }}{% if t.level %}の{{ t.level }}{% endif %}</a> <small class="muted">({{ t.x }}, {{ t.y }})</small></td>
+          <td class="num">{{ t.population }}</td>
+          <td class="num">{{ t.labor }}</td>
+          <td class="num">{{ t.employed }}</td>
+          <td class="num">{{ t.subsistence }}</td>
+          <td class="num">{{ t.jobless }}</td>
+          <td class="num">{{ t.unemployment_text }}</td>
+          <td class="num">{{ t.services_staff }}</td>
+          <td>{% if t.center.x == t.x and t.center.y == t.y %}{% translate "ここ" %}{% if t.shop_planned is not None %} <small class="muted">{% blocktranslate with planned=t.shop_planned hired=t.shop_hired %}割り振り {{ planned }} 人・雇えた {{ hired }} 人{% endblocktranslate %}</small>{% endif %}{% else %}{{ t.center_place }} <small class="muted">({{ t.center.x }}, {{ t.center.y }})</small>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </section>
 {% endif %}
 

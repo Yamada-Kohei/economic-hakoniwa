@@ -15,10 +15,20 @@ from django.db.models import Max, Q
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger
 from hakoniwa_core.dates import TURNS_PER_YEAR
-from hakoniwa_core.economy import ENGINEERS, GENERAL, OWNERS, books, debt, entity_of, services
+from hakoniwa_core.economy import (
+    ENGINEERS,
+    GENERAL,
+    JOBLESS,
+    OWNERS,
+    books,
+    debt,
+    entity_of,
+    services,
+)
 from hakoniwa_core.modules.failures import METHODS as RESOLUTION_METHODS
+from hakoniwa_core.modules.population import subsistence_persons, tile_jobless
 from hakoniwa_core.naming import facility_name, place_of
-from hakoniwa_core.state import IslandState
+from hakoniwa_core.state import IslandState, Tile
 from hakoniwa_core.trade import abroad
 from hakoniwa_core.units import from_milli
 from server.economy.models import Account, FacilityBook, MarketRecord, Trade
@@ -34,13 +44,22 @@ MAX_SERIES = 80  # 1回に返せる系列の数（名前の頭で選んだ分を
 
 # --- 統計の表示名と単位 ---------------------------------------------------------------
 
-LAYER_NAMES = {GENERAL: "一般の労働者", OWNERS: "資産を持つ層", ENGINEERS: "技術者"}
+LAYER_NAMES = {
+    GENERAL: "一般の労働者",
+    OWNERS: "資産を持つ層",
+    ENGINEERS: "技術者",
+    JOBLESS: "失業している労働者",
+}
 LAYER_FIELDS = {
     "persons": ("の人数", "人"),
     "income": ("の所得（このターン）", "money"),
     "income_per_person": ("の1人あたりの所得", "money"),
     "deposits": ("の預金", "money"),
     "happiness": ("の幸福度", ""),
+    # 飢えの知らせ（Codex の試し遊び、ターン 250〜300）
+    "food": ("の食べられた割合（要る量に対して）", "%"),
+    "hunger": ("の飢えの蓄え（栄養の不足の月数）", " か月分"),
+    "starved": ("の飢えで亡くなった人（このターン）", "人"),
 }
 BANK_FIELDS = {
     "deposits": ("預金", "money"),
@@ -62,6 +81,7 @@ FLOW_NAMES = {
     ("in", "sale"): "物の売り渡しの代金（国の倉庫など）",
     ("out", "sale"): "物の買い入れの代金（資材・教材など）",
     ("out", "wage"): "賃金（公務員・作業員・教員など）",
+    ("out", "subsidy"): "据え置きの補助金で国庫から出た現金（独立採算の施設の分）",
 }
 
 # 名前で決まる統計（display.SUMMARY_STATS に足す分）。単位は display.stat_text と同じ
@@ -165,7 +185,9 @@ _EXTRA_STATS = [
     ("labor.mobilized", "労働の動員で働く人", "人"),
     ("plan.queue", "行列（家計が配給で買えなかった割合。公定価格の額で）", "%"),
     ("plan.forced_saving", "強制貯蓄（配給で買えずに残ったお金。このターン）", "money"),
-    ("plan.subsidy", "据え置いた財の補助金（国庫直轄の施設の分も。このターン）", "money"),
+    # 据え置きの補助金は帳簿の上の額（独立採算の施設への補助に加え、国庫直轄の施設の分も含む。
+    # 国庫直轄の分は国庫の中で付け替えるだけ）。国庫から出た現金は fiscal.out.subsidy
+    ("plan.subsidy", "据え置きの補助金（帳簿の上の額。国庫直轄の分も。このターン）", "money"),
     ("plan.subsidy_unpaid", "国庫が足りず払えなかった据え置きの補助金", "money"),
     ("trade.merchant_gap", "海外の商人に政府が払った、公定価格との差（このターン）", "money"),
     ("cars.households", "家計が持つ自動車", " 台"),
@@ -173,6 +195,7 @@ _EXTRA_STATS = [
     ("services.workers", "商業・サービス業で働く人", "人"),
     ("services.sales", "サービスの売上（このターン）", "money"),
     ("services.sold", "売れたサービス（このターン）", "good:services"),
+    ("services.unused", "売れ残って消えたサービス（このターン）", "good:services"),
     ("population.births", "生まれた人（このターン）", "人"),
     ("population.deaths", "亡くなった人（飢えのほか。このターン）", "人"),
     ("population.starved", "飢えで亡くなった人（このターン）", "人"),
@@ -329,9 +352,14 @@ def series(island: m.Island, names: list[str], start: int, end: int, mine: bool)
     """統計の系列。names は名前か、名前の頭に * を付けたもの（例: price.*）。
 
     返す形: turns（ターンの並び）、series（名前 → turns と同じ長さの値の並び。ない所は None）、
-    labels と units（名前 → 表示名・単位）。他国の島では銀行ごとの統計を返さない。
+    labels と units（名前 → 表示名・単位）、limits（1回に選べる名前の数と返せる系列の数）、
+    asked（頼んだ名前の数）、found（見つかった系列の数。返せなかった分も含む）、dropped（系列の
+    数の上限で返せなかった系列の名前。名前の頭で選んだ分を含む）、not_read（選べる名前の数を
+    超えて読まなかった名前）。
+    他国の島では銀行ごとの統計を返さない。
     """
-    names = [n for n in names[:MAX_NAMES] if n]
+    asked = [n for n in names if n]
+    names = asked[:MAX_NAMES]
     exact = {n for n in names if not n.endswith("*")}
     prefixes = [n[:-1] for n in names if n.endswith("*")]
     wanted = set(exact)
@@ -354,6 +382,9 @@ def series(island: m.Island, names: list[str], start: int, end: int, mine: bool)
     found = [n for n in names if not n.endswith("*") and n in table and visible(n, mine)]
     for p in [n[:-1] for n in names if n.endswith("*")]:
         found += sorted(n for n in table if n.startswith(p) and n not in found)
+    # 上限で返せなかった分は、黙って切らずに名前を返す（Codex の試し遊び: 80 系列で後ろが落ち、
+    # 値がないのか切られたのか分からなかった）。選べる数を超えた名前も同じ
+    dropped = found[MAX_SERIES:]
     found = found[:MAX_SERIES]
     turns = sorted({t for n in found for t in table[n]})
     labels = {n: stat_label(n) for n in found}
@@ -365,6 +396,11 @@ def series(island: m.Island, names: list[str], start: int, end: int, mine: bool)
         "series": {n: [table[n].get(t) for t in turns] for n in found},
         "labels": {n: label for n, (label, _) in labels.items()},
         "units": {n: unit_of(unit) for n, (_, unit) in labels.items()},
+        "limits": {"names": MAX_NAMES, "series": MAX_SERIES},
+        "asked": len(asked),
+        "found": len(found) + len(dropped),
+        "dropped": dropped,
+        "not_read": asked[MAX_NAMES:],
     }
 
 
@@ -702,6 +738,8 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
             "has_books": bool(books_of),
         }
         item.update(display.engineers_info(f, fdef) if fdef else {})
+        if f.built and fac.FIELDS in f.economy:  # 畑を作り替えている途中の内訳
+            item["transition"] = display.crop_transition(f)["text"]
         if services.is_services(config, f):  # 雇う人数の目安と、店の場所ごとの人数（回4）
             item["workers_needed"] = f.economy.get(services.SEATS, 0)
             shops = shop_rows(island, state, f)
@@ -725,6 +763,69 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
         "profit": display.money_text(total, currency),
         "shops": shops,
     }
+
+
+def town_rows(island: m.Island) -> list[dict[str, Any]]:
+    """町（住宅地）ごとの働く人。
+
+    住民・働ける人・仕事のある人・自給の農業で食べている人・失業している人と失業率
+    （統計と同じ数え方。村で自給の農業をしている人は失業に数えない）、商業・サービス業の
+    店で働く人（住んでいる町ごと）、買いに行く店の場所（中心）と、そこが中心なら店が
+    割り振った人数と雇えた人数（人の多い順。誰にでも）。Codex の試し遊び（ターン 250〜300）
+    で、町ごとの失業と通勤がマスを1つずつ読まないと分からなかった。"""
+    game = get_game()
+    defs, config = game.defs, game.config
+    state = display.island_for_naming(island)
+    for row in island.tiles.all():
+        state.tiles[row.y * state.size + row.x] = Tile(
+            row.x,
+            row.y,
+            terrain=row.terrain,
+            population=row.population,
+            zone=row.zone,
+            infra=row.infra,
+            pollution=row.pollution,
+            ext=row.ext or {},
+        )
+    housing = fac.housing_kind(config)
+    levels = {
+        (f.x, f.y): f.ext.get("level") for f in state.facilities if f.kind == housing and f.built
+    }
+    staff = services.staff_by_tile(state, config)
+    centers = services.centers(state, config)
+    shop = services.facility_of(state, config)
+    quotas = shop.economy.get(services.QUOTAS, {}) if shop is not None else {}
+    out = []
+    for tile in state.tiles:
+        if tile is None or tile.population <= 0:
+            continue
+        pos = (tile.x, tile.y)
+        labor = fac.labor_force(defs, state, tile)
+        jobless = tile_jobless(defs, state, tile)
+        center = centers.get(pos, pos)
+        quota = quotas.get(f"{center[0]},{center[1]}")
+        level = levels.get(pos)
+        out.append(
+            {
+                "x": tile.x,
+                "y": tile.y,
+                "place": place_of(state, tile.x, tile.y, config),
+                "level": defs.name("settlements", level) if level else "",
+                "population": tile.population,
+                "labor": labor,
+                "employed": min(labor, tile.ext.get("employed", 0)),
+                "subsistence": subsistence_persons(defs, state, tile),
+                "jobless": jobless,
+                "unemployment": jobless / labor if labor else 0.0,
+                "unemployment_text": f"{jobless * 100 / labor:.1f}%" if labor else "",
+                "services_staff": staff.get(pos, 0),
+                "center": {"x": center[0], "y": center[1]},
+                "center_place": place_of(state, center[0], center[1], config),
+                "shop_planned": quota[0] if quota and center == pos else None,
+                "shop_hired": quota[1] if quota and center == pos else None,
+            }
+        )
+    return sorted(out, key=lambda r: (-r["population"], r["y"], r["x"]))
 
 
 def shop_rows(island: m.Island, state: IslandState, f: Any) -> list[dict[str, Any]]:
