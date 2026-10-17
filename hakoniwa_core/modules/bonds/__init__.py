@@ -847,8 +847,10 @@ def set_bond_policy(island: IslandState, payload: dict[str, Any], ctx: StageCont
     if payload.get("terms"):
         before = shares()
         total = sum(payload["terms"].values())
+        # 割合は整数にする（33.3 のような小数が入ると、発行額から国庫・工事・配給まで小数が広がって
+        # 数ターン後に止まった。X870 の夜の点検 2026-10-17）
         policy.bond_terms = {
-            name: share * BASIS // total
+            name: round(share * BASIS / total)
             for name, share in sorted(payload["terms"].items())
             if share
         }

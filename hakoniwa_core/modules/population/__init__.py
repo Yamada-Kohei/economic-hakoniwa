@@ -68,6 +68,14 @@ HUNGER = "hunger"  # 層の飢えの蓄え（economy.households[層]。栄養の
 # 亡くなっている。蓄えが 0 に戻ると消す）
 ENDURED = "hunger_endured"
 FED = "fed"  # 層が前のターンに食べられた割合（1000 分の 1）
+# 飢えの知らせ（Codex の試し遊び、ターン 250〜300。10-17 のカード「知らせて回7」）: 食べられなかった
+# 層の買えなかったわけ（money: 食費が使えるお金を使い切った、goods: 売りに出ていた物が足りない）、
+# 市場で食料を買う人の数、いまの飢えの蓄えで亡くなる人の割合（starved_share）。
+# economy.households[層] に置く
+FOOD_SHORT = "food_short"
+FOOD_BUYERS = "food_buyers"
+HUNGER_RISK = "hunger_risk"
+FOOD_ORDERS = "household_food"  # island.scratch: 層ごとの食料の注文の要点（市場の段が書く）
 # 一般の層のうち、村で自給の農業をしている人の飢えの蓄え（HUNGER・ENDURED）と、前のターンに
 # 市場で食料を買っていた人の数（market）。一般の層の HUNGER は、市場で食料を買う人の蓄え（回4）
 FIELDS = "fields"
@@ -391,6 +399,17 @@ def _move_to_fields(h: dict[str, Any], market: int, settings: dict[str, float]) 
         h[FIELDS][ENDURED] = round(max(farmers[ENDURED], stock), 4)
 
 
+def food_short_reason(orders: dict[str, int] | None) -> str:
+    """食べられなかった層の買えなかったわけ。市場の段が残した注文の要点（FOOD_ORDERS）で、食費が使える
+    お金を使い切っていれば money（お金がない）、そうでなければ goods（売りに出ていた物が足りないか、
+    約定で買い負けた）。要点がなければ goods。"""
+    if not orders:
+        return "goods"
+    if orders["budget"] <= 0 or orders["cost"] >= orders["budget"] * 0.98:
+        return "money"
+    return "goods"
+
+
 def starved_share(stock: float, settings: dict[str, float]) -> float:
     """飢えの蓄えが stock になるまでに亡くなる人の割合（同じだけ食べられなかった人たちのうち）。
 
@@ -697,6 +716,19 @@ class Population(IslandStage):
             persons = h["persons"]
             if name == GENERAL and name in exposed:
                 persons = min(persons, sum(exposed[name].values()))
+            # 飢えの知らせ: 買えなかったわけ・市場で買う人の数・いまの蓄えで亡くなる割合
+            if f["food"] < fac.FULL and f["need"] > 0:
+                h[FOOD_SHORT] = food_short_reason(island.scratch.get(FOOD_ORDERS, {}).get(name))
+            else:
+                h.pop(FOOD_SHORT, None)
+            h[FOOD_BUYERS] = persons
+            if stock > 0:
+                h[HUNGER_RISK] = round(starved_share(stock, settings), 4)
+            else:
+                h.pop(HUNGER_RISK, None)
+            island.stats[f"layer.{name}.food"] = f["food"] / fac.FULL
+            if stock > 0:
+                island.stats[f"layer.{name}.hunger"] = round(stock, 4)
             count = min(persons, _rand_round(persons * rate, rng)) if rate > 0 else 0
             if count > 0:
                 deaths[name] = count

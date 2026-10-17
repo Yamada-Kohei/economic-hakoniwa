@@ -23,6 +23,8 @@ form.inline { display: inline; }
 .muted { color: #666; }
 .error { color: #c62828; }
 .warning { color: #b26a00; display: block; font-size: 0.9em; }
+.alerts h2 { color: #b26a00; }
+.alerts ul { margin: 0; padding-left: 1.2em; }
 .lead { font-size: 1.1em; }
 h1 { margin: 16px 0 8px; }
 h2 { font-size: 1.15em; margin: 0 0 8px; }

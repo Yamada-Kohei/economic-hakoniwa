@@ -87,7 +87,7 @@ from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
 from hakoniwa_core.modules import infrastructure
-from hakoniwa_core.modules.population import FED, HUNGER, layer_food_needs
+from hakoniwa_core.modules.population import FED, FOOD_ORDERS, HUNGER, layer_food_needs
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import (
     OWNER_PRIVATE,
@@ -1297,6 +1297,15 @@ class Market(IslandStage):
                 basket[good] = basket.get(good, 0) + qty
             basket = basket if tiers else {g: q for g, (q, _) in plan.items()}
             fed = sum(q * nutritions[g] // QUANTITY_SCALE for g, q in basket.items())
+            # 飢えの知らせ（人口の段が「お金がないのか、物がないのか」を見分けるのに使う）:
+            # 要る栄養、注文した栄養、売りに出ていた栄養（この層の取り分）、食費、使えるお金
+            island.scratch.setdefault(FOOD_ORDERS, {})[layer] = {
+                "need": need,
+                "ordered": fed,
+                "offered": sum(caps[g] * nutritions[g] // QUANTITY_SCALE for g in foods),
+                "cost": food_cost,
+                "budget": budget,
+            }
             short = fac.FULL - min(fac.ratio(fed, need), state.get(FED, fac.FULL))
             food_usual = sum(gross_cost(menu.limits[g], q, rate, tax) for g, q in basket.items())
             usual_food_budget = max(0, cap - paid - wear_cost)

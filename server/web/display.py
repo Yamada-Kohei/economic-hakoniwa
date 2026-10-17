@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 from typing import Any
 
@@ -156,9 +157,13 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
             info["recipe_next_name"] = defs.recipe_name(f.kind, pending)
     if f.built:
         info["workers_needed"] = fdef["workers"]
-        recipe = recipes.get(f.recipe, {})
+        # 投入と産出は今の作り方で。畑を作り替えている途中なら、収穫している畑を混ぜた作り方（前の
+        # 作物の畑の分も含む。蒔いて育っている畑は何も出さない）と、畑の内訳（Codex の試し遊び）
+        recipe = fac.recipe_of(defs, f) if f.recipe in recipes else {}
         info["inputs"] = goods_list(recipe.get("inputs", {}))
         info["outputs"] = goods_list(recipe.get("outputs", {}))
+        if fac.FIELDS in f.economy:
+            info["transition"] = crop_transition(f)
     else:
         construction = fdef["construction"]
         info["workers_needed"] = construction.get("labor", 0)
@@ -180,6 +185,49 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         if island.has_economy:
             info.update(facility_finance(row, f, island, currency, mine))
     return info
+
+
+def crop_transition(f: Facility) -> dict[str, Any]:
+    """畑を作り替えている途中の農場の畑の内訳: 前の作物の畑（割合・要る原料・取れる物）、蒔いて
+    育てている畑（割合・収穫の始まるターン）と、作り替えが済む見込みのターン（蒔いた畑の最後の収穫。
+    これから蒔く分は含まない）。"""
+    defs = get_game().defs
+    recipes = defs.facilities[f.kind]["recipes"]
+    fields = [
+        {
+            "recipe": name,
+            "recipe_name": defs.recipe_name(f.kind, name),
+            "share": share / fac.FULL,
+            "inputs": goods_list(recipes[name].get("inputs", {})),
+            "outputs": goods_list(recipes[name].get("outputs", {})),
+        }
+        for name, share in sorted(f.economy[fac.FIELDS].items())
+        if name != f.recipe and share > 0
+    ]
+    sown = [
+        {
+            "recipe_name": defs.recipe_name(f.kind, name),
+            "share": share / fac.FULL,
+            "ready_turn": turn,
+            "ready_date": turn_text(turn),
+        }
+        for name, share, turn in sorted(f.economy.get(fac.SOWN, []), key=lambda row: row[2])
+    ]
+    parts = [
+        f"{x['recipe_name']}の畑 {x['share'] * 100:.0f}%"
+        + (f"（{'・'.join(g['name'] for g in x['inputs'])}が要る）" if x["inputs"] else "")
+        for x in fields
+    ]
+    parts += [
+        f"蒔いた{x['recipe_name']} {x['share'] * 100:.0f}%（{x['ready_date']}から収穫）"
+        for x in sown
+    ]
+    return {
+        "fields": fields,
+        "sown": sown,
+        "ready_turn": max((x["ready_turn"] for x in sown), default=None),
+        "text": "作り替えの途中: " + "、".join(parts) if parts else "作り替えの途中",
+    }
 
 
 def engineers_info(f: Facility, fdef: Any) -> dict[str, Any]:
@@ -1040,6 +1088,16 @@ SUMMARY_STATS = [
     ("engineers", "技術者", "人"),
     ("engineers.unemployment", "技術者の失業率", "%"),
     ("power.shortage", "電力の不足率", "%"),
+    # 商業・サービス業の店と人口の増減のわけ（Codex の試し遊び、ターン 250〜300）
+    ("services.workers", "商業・サービス業で働く人", "人"),
+    ("services.seats", "商業・サービス業が次のターンに雇う人数の目安", "人"),
+    ("services.price", "サービスの値段（1単位）", "money"),
+    ("services.sales", "サービスの売上（このターン）", "money"),
+    ("population.births", "生まれた人（このターン）", "人"),
+    ("population.deaths", "亡くなった人（飢えのほか。このターン）", "人"),
+    ("population.starved", "飢えで亡くなった人（このターン）", "人"),
+    ("migration.arrived", "ほかの国から移り住んできた人（帰ってきた人も。このターン）", "人"),
+    ("migration.left", "ほかの国へ移り住んだ人（このターン）", "人"),
 ]
 
 
@@ -1084,7 +1142,10 @@ def stat_text(key: str, value: float, unit: str, currency: str = "") -> str:
     if key == "inflation":
         return f"{value * 100:+.1f}%"
     if unit == "%":
-        return f"{value * 100:.0f}%"
+        text = f"{value * 100:.0f}%"
+        if value < 1 and text == "100%":  # 99.9% を 100% と出さない（食料充足率。Codex の試し遊び）
+            return f"{math.floor(value * 1000) / 10:.1f}%"
+        return text
     if isinstance(value, float) and not value.is_integer():
         return f"{value:,.1f}{unit}"
     return f"{int(value):,}{unit}"
