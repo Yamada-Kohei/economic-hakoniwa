@@ -230,6 +230,7 @@ def _goods(island: m.Island, stats: dict[str, float], currency: str) -> list[dic
 FOOD_SHORT_TEXTS = {
     "money": "お金が足りず買えません",
     "goods": "市場の売りが足りず買えません",
+    "outbid": "売りはありましたが、ほかの買い手に買い負けたか値段が合わず買えません",
 }
 
 
@@ -245,7 +246,8 @@ def hunger(island: m.Island, stats: dict[str, float], currency: str) -> list[dic
     for name, h in sorted((island.economy or {}).get("households", {}).items()):
         fed = h.get("fed")
         months = h.get("hunger", 0.0)
-        if fed is None or (fed >= fac.FULL and months <= 0):
+        # 飢えの蓄えがなく、不足が体の持ちこたえる分（tolerance）までなら飢えていない
+        if fed is None or (months <= 0 and 1 - fed / fac.FULL <= settings["tolerance"]):
             continue
         persons = h.get("food_buyers", h.get("persons", 0))
         if persons <= 0:
@@ -277,7 +279,7 @@ def hunger_text(row: dict[str, Any]) -> str:
     """飢えている層の注意の文（島の画面と国の要約で同じ）。"""
     text = f"{row['layer_name']}の家計（{row['persons']:,} 人）が飢えています: "
     if row["fed"] < 1:
-        text += f"食べられたのは要る量の {row['fed'] * 100:.0f}%"
+        text += f"食べられたのは要る量の {math.floor(row['fed'] * 1000) / 10:g}%"
         if row["reason_text"]:
             text += f"、{row['reason_text']}"
         if row["income_per_person"]:
@@ -290,7 +292,7 @@ def hunger_text(row: dict[str, Any]) -> str:
             "亡くなる人が出始めます"
         )
         if row["at_risk"] > 0:
-            text += f"（いまの不足では {row['at_risk'] * 100:.1f}% が持ちこたえられません）"
+            text += f"（この不足までに、累計で {row['at_risk'] * 100:.1f}% が持ちこたえられません）"
     if row["starved"]:
         text += f"。このターンに {row['starved']:,} 人が亡くなりました"
     return text

@@ -101,6 +101,30 @@ def test_bond_terms_given_with_fractions_become_whole_shares(game, warmed):
     assert all(type(v) is int for v in island.accounts.values())
 
 
+def test_bond_terms_refuse_values_that_cannot_be_shares(game, warmed):
+    """NaN・無限大と、足すと無限大になる割合は命令で断る（JSON の API は NaN と Infinity も通し、
+    割合にできずターンの処理が止まった）。大きいだけの数は割合にする。前の命令で小数の割合が入った
+    島は、移し替えの段で整数に直す。"""
+    from hakoniwa_core.state import ORDER_DONE, ORDER_FAILED
+
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    for terms in (
+        {"bond_5y": float("nan")},
+        {"bond_5y": float("inf")},
+        {"bond_5y": 1e308, "bond_10y": 1e308},
+    ):
+        assert (
+            order(game, world, island, "set_bond_policy", {"terms": terms}).status == ORDER_FAILED
+        )
+    terms = {"bond_5y": 1e305, "bond_10y": 1.0}
+    assert order(game, world, island, "set_bond_policy", {"terms": terms}).status == ORDER_DONE
+    assert island.policy.bond_terms == {"bond_5y": BASIS}  # 0 に丸まった期間は持たない
+    island.policy.bond_terms = {"bond_5y": 3333.3, "bond_10y": 6666.7}
+    game.engine.run_turn(world)
+    assert island.policy.bond_terms == {"bond_5y": 3333, "bond_10y": 6667}
+
+
 # --- 飢えの知らせ -------------------------------------------------------------------------------
 
 
@@ -114,6 +138,8 @@ def test_food_short_reason_tells_money_from_goods():
     assert food_short_reason(orders) == "money"
     orders = {"need": 10, "ordered": 4, "offered": 4, "cost": 300, "budget": 1_000}
     assert food_short_reason(orders) == "goods"
+    orders = {"need": 10, "ordered": 10, "offered": 50, "cost": 300, "budget": 1_000}
+    assert food_short_reason(orders) == "outbid"  # 売りはあったのに買い負けた
     assert food_short_reason(None) == "goods"
 
 
@@ -143,6 +169,11 @@ def test_population_stage_records_who_is_hungry_and_why(game, warmed):
     island.scratch["household_goods"] = {}
     Population().run_island(island, context(game, world, "population"))
     assert general[FOOD_SHORT] == "goods"
+    # これまでに耐えた蓄えより浅いあいだは、新しく亡くなる人がいないので割合を出さない
+    general[HUNGER], general["hunger_endured"] = 3.0, 5.0
+    island.scratch["household_goods"] = {}
+    Population().run_island(island, context(game, world, "population"))
+    assert general[HUNGER] < 5.0 and HUNGER_RISK not in general
 
     # 食べられて蓄えも消えた層は、わけと割合を消す
     general[HUNGER] = 0.0

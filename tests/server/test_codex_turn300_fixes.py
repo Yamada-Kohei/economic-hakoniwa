@@ -54,6 +54,13 @@ def test_summary_and_island_screen_tell_who_is_hungry_and_why(client, played):
     assert not error and json.loads(text)["hunger"] == data["hunger"]
     page = client.get(f"/islands/{a.id}/").content.decode()
     assert "注意" in page and "お金が足りず買えません" in page
+    # 体の持ちこたえる分（population.hunger.tolerance）までの不足で、蓄えもなければ飢えていない
+    economy = a.economy
+    economy["households"][GENERAL].update({"fed": 999, "hunger": 0.0})
+    a.economy = economy
+    a.save(update_fields=["economy"])
+    data = _keyed(token).get(f"/api/islands/{a.id}/summary").json()
+    assert not any(r["layer"] == GENERAL for r in data["hunger"])
 
 
 def test_food_ratio_and_jobless_layer_names():

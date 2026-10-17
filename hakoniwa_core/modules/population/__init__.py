@@ -69,9 +69,10 @@ HUNGER = "hunger"  # 層の飢えの蓄え（economy.households[層]。栄養の
 ENDURED = "hunger_endured"
 FED = "fed"  # 層が前のターンに食べられた割合（1000 分の 1）
 # 飢えの知らせ（Codex の試し遊び、ターン 250〜300。10-17 のカード「知らせて回7」）: 食べられなかった
-# 層の買えなかったわけ（money: 食費が使えるお金を使い切った、goods: 売りに出ていた物が足りない）、
-# 市場で食料を買う人の数（このターンに亡くなった人を除く）、いまの飢えの蓄えで亡くなる人の割合
-# （starved_share）。
+# 層の買えなかったわけ（money: 食費が使えるお金を使い切った、goods: 売りに出ていた物が足りない、
+# outbid: 売りはあったが買い負けた）、市場で食料を買う人の数（このターンに亡くなった人を除く）、
+# いまの飢えの蓄えで亡くなる人の割合（starved_share。すでに亡くなった人も含めた累計。不足が深まって
+# いるターンだけ）。
 # economy.households[層] に置く
 FOOD_SHORT = "food_short"
 FOOD_BUYERS = "food_buyers"
@@ -402,12 +403,15 @@ def _move_to_fields(h: dict[str, Any], market: int, settings: dict[str, float]) 
 
 def food_short_reason(orders: dict[str, int] | None) -> str:
     """食べられなかった層の買えなかったわけ。市場の段が残した注文の要点（FOOD_ORDERS）で、食費が使える
-    お金を使い切っていれば money（お金がない）、そうでなければ goods（売りに出ていた物が足りないか、
-    約定で買い負けた）。要点がなければ goods。"""
+    お金を使い切っていれば money（お金がない）。そうでなく、要る量の分の売りが出ていなければ goods
+    （物がない）、出ていたのに買えなければ outbid（ほかの買い手に買い負けたか、売りの値段が指値より
+    高かった）。要点がなければ goods。"""
     if not orders:
         return "goods"
     if orders["budget"] <= 0 or orders["cost"] >= orders["budget"] * 0.98:
         return "money"
+    if orders["offered"] >= orders["need"] and orders["ordered"] >= orders["need"]:
+        return "outbid"
     return "goods"
 
 
@@ -722,7 +726,7 @@ class Population(IslandStage):
                 h[FOOD_SHORT] = food_short_reason(island.scratch.get(FOOD_ORDERS, {}).get(name))
             else:
                 h.pop(FOOD_SHORT, None)
-            if stock > 0:
+            if stock > endured:  # 不足が深まっている（戻りかけなら新しく亡くなる人はいない）
                 h[HUNGER_RISK] = round(starved_share(stock, settings), 4)
             else:
                 h.pop(HUNGER_RISK, None)

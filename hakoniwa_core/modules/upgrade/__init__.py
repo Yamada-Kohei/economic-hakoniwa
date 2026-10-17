@@ -23,6 +23,8 @@
 （人数は同じターンの賃金の段で、雇用の結果から数えます）。
 回4 からは、お金の経済のある島にまだ商業・サービス業がなければ置き、サービスの値段を今の平均賃金から
 決めます（economy/services.py の prepare。建国したばかりの島も、最初の更新でここを通る）。
+国債の期間の割合に小数が入った島は、割合を整数に直します（modules/bonds の whole_terms。夜の点検
+2026-10-17 で、小数の割合から国庫や工事に小数が広がってターンが止まった）。
 
 移し替えをターンの中で行うのは、サーバーを通さずにコアだけで世界を回すとき（一括シミュレーションや
 テスト）にも同じに動くようにするためです。
@@ -35,6 +37,7 @@ from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import groundwork, services
 from hakoniwa_core.economy.households import ensure_jobless
 from hakoniwa_core.economy.prices import add_missing_prices
+from hakoniwa_core.modules.bonds import whole_terms
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import IslandState, LogEntry
 from hakoniwa_core.trade import setup as trade_setup
@@ -57,6 +60,7 @@ class Upgrade(IslandStage):
         add_missing_prices(island, ctx.defs, ctx.config)
         ensure_jobless(island, ctx.config)
         services.prepare(island, ctx.defs, ctx.config)
+        whole_terms(island)
         if not trade_started(island):
             trade_setup.prepare(island, ctx.defs, ctx.config, ctx.turn)
         if economy.ext.get("nature", 0) < nature.VERSION:
