@@ -13,6 +13,8 @@
 | psycopg（任意） | PostgreSQL への接続 | LGPL-3.0 | https://www.psycopg.org/ |
 | pytest（開発用） | 自動テスト | MIT | https://pytest.org/ |
 | pytest-django（開発用） | 自動テスト | BSD-3-Clause | https://github.com/pytest-dev/pytest-django |
+| pytest-xdist（開発用） | 自動テストを同時にいくつも回す | MIT | https://github.com/pytest-dev/pytest-xdist |
+| execnet（開発用、pytest-xdist が使う） | 自動テストを同時にいくつも回す | MIT | https://github.com/pytest-dev/execnet |
 | Ruff（開発用） | 書式と誤りの検査 | MIT | https://github.com/astral-sh/ruff |
 
 psycopg は LGPL ですが、ライブラリとして import して使うだけで、コードを取り込んだり改変したりはしないため、

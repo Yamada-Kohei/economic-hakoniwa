@@ -96,7 +96,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev,postgres]"
+      # 試験を頭の数（GitHub の入れ物は4つ）だけ同時に回す（pytest-xdist）。
+      # PostgreSQL の組は、pytest-django が回し手ごとに別の DB（名前に gw0 などが付く）を作る。
       - name: 自動テスト
-        run: pytest
+        run: pytest -n auto --durations=15
       - name: 一括シミュレーション（50島）
         run: python -m hakoniwa_core.simulate --islands 50 --turns 30

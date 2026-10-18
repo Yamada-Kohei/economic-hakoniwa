@@ -102,20 +102,25 @@ def village_size(defs: Defs) -> int:
     return min(sizes, default=max(d["capacity"] for d in levels))
 
 
-def subsistence_persons(defs: Defs, island: IslandState, tile: Tile) -> int:
-    """自給の農業で食べている人の数（村の、仕事のない働き手とその家族）。"""
-    share = fac.labor_share(defs, island)
+def subsistence_persons(
+    defs: Defs, island: IslandState, tile: Tile, share: float | None = None
+) -> int:
+    """自給の農業で食べている人の数（村の、仕事のない働き手とその家族）。share は labor_share。"""
+    if share is None:
+        share = fac.labor_share(defs, island)
     if not _farming(defs, tile) or share <= 0:
         return 0
-    unemployed = fac.labor_force(defs, island, tile) - tile.ext.get("employed", 0)
+    unemployed = fac.labor_force(defs, island, tile, share) - tile.ext.get("employed", 0)
     return min(tile.population, int(max(0, unemployed) / share))
 
 
-def tile_jobless(defs: Defs, island: IslandState, tile: Tile) -> int:
-    """マスの、仕事のない一般の労働者の数（村で自給の農業をしている人を除く。失業率と同じ数え方）。"""
-    share = fac.labor_share(defs, island)
-    idle = max(0, fac.labor_force(defs, island, tile) - tile.ext.get("employed", 0))
-    return max(0, idle - int(subsistence_persons(defs, island, tile) * share))
+def tile_jobless(defs: Defs, island: IslandState, tile: Tile, share: float | None = None) -> int:
+    """マスの、仕事のない一般の労働者の数（村で自給の農業をしている人を除く。失業率と同じ数え方）。
+    share は labor_share。"""
+    if share is None:
+        share = fac.labor_share(defs, island)
+    idle = max(0, fac.labor_force(defs, island, tile, share) - tile.ext.get("employed", 0))
+    return max(0, idle - int(subsistence_persons(defs, island, tile, share) * share))
 
 
 def jobless_family(defs: Defs, island: IslandState) -> float:
@@ -129,17 +134,19 @@ def jobless_family(defs: Defs, island: IslandState) -> float:
 def jobless_persons(defs: Defs, island: IslandState) -> int:
     """失業している家計の人数（仕事のない一般の労働者とその家族）。"""
     family = jobless_family(defs, island)
+    share = fac.labor_share(defs, island)
     total = 0
     for tile in island.tiles:
         if tile.population > 0:
-            total += min(tile.population, int(tile_jobless(defs, island, tile) * family))
+            total += min(tile.population, int(tile_jobless(defs, island, tile, share) * family))
     return total
 
 
 def food_need(island: IslandState, ctx: StageContext) -> int:
     """家計が市場で買う食料の量（栄養、1000 分の 1 単位）。自給の農業で食べている人の分は除く。"""
+    share = fac.labor_share(ctx.defs, island)
     persons = sum(
-        t.population - subsistence_persons(ctx.defs, island, t)
+        t.population - subsistence_persons(ctx.defs, island, t, share)
         for t in island.tiles
         if t.population
     )
@@ -498,8 +505,11 @@ def _exposed(
     out = dict(placed)
     general = placed.get(GENERAL)
     if general:
+        share = fac.labor_share(defs, island)
         own = {
-            (t.x, t.y): subsistence_persons(defs, island, t) for t in island.tiles if t.population
+            (t.x, t.y): subsistence_persons(defs, island, t, share)
+            for t in island.tiles
+            if t.population
         }
         out[GENERAL] = {pos: max(0, n - own.get(pos, 0)) for pos, n in general.items()}
     return out

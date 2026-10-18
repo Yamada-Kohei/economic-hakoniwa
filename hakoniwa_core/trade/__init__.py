@@ -139,8 +139,9 @@ def shipping_of(island: IslandState, config: GameConfig) -> Facility | None:
 
 def traders_of(island: IslandState, config: GameConfig) -> list[Facility]:
     """動いている商社（番号の順）。"""
+    kind = config.get("trade.trader_facility")
     return sorted(
-        (f for f in island.facilities if is_trader(config, f) and f.built and not is_stopped(f)),
+        (f for f in island.facilities if f.kind == kind and f.built and not is_stopped(f)),
         key=lambda f: f.id,
     )
 

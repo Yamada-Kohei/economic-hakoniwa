@@ -525,7 +525,7 @@ class Production(IslandStage):
     def _grids(island: IslandState, defs: Defs) -> dict[tuple[int, int], int]:
         """送電網: 施設や住宅のマスと、電力を通す送電網のマスの、上下左右につながったまとまり。"""
         nodes = {(f.x, f.y) for f in island.facilities if fac.on_map(f)}
-        nodes |= {(t.x, t.y) for t in island.tiles if infra.carries_power(defs, t)}
+        nodes |= {(t.x, t.y) for t in island.tiles if t.infra and infra.carries_power(defs, t)}
         grid_of = {}
         for i, group in enumerate(components(island, nodes)):
             for pos in group:

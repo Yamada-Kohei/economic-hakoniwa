@@ -143,6 +143,8 @@ class Works:
         queued = {(k, x, y) for k, x, y in infra.queue(island)}
         items = []
         for tile in island.tiles:
+            if not tile.infra:
+                continue
             for kind in sorted(tile.infra):
                 if kind not in self.defs.infrastructure or (kind, tile.x, tile.y) in queued:
                     continue

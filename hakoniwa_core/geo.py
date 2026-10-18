@@ -20,14 +20,25 @@ def distance(a: Pos, b: Pos) -> int:
 
 def within(island: IslandState, center: Pos, radius: int) -> list[Pos]:
     """center から radius マス以内のマスを、近い順（同じ距離なら y, x の順）に並べる。"""
-    cx, cy = center
-    found = [
-        (x, y)
-        for y in range(max(0, cy - radius), min(island.size, cy + radius + 1))
-        for x in range(max(0, cx - radius), min(island.size, cx + radius + 1))
-    ]
-    found.sort(key=lambda p: (distance(p, center), p[1], p[0]))
-    return found
+    key = (island.size, center[0], center[1], radius)  # center は保存から戻すと list のことがある
+    found = _WITHIN.get(key)
+    if found is None:
+        cx, cy = center
+        found = [
+            (x, y)
+            for y in range(max(0, cy - radius), min(island.size, cy + radius + 1))
+            for x in range(max(0, cx - radius), min(island.size, cx + radius + 1))
+        ]
+        found.sort(key=lambda p: (distance(p, center), p[1], p[0]))
+        if len(_WITHIN) >= _WITHIN_MAX:
+            _WITHIN.clear()
+        _WITHIN[key] = found
+    return list(found)
+
+
+# within の並べた結果（島の大きさ・中心・半径だけで決まるので、島やターンをまたいで使い回す）
+_WITHIN: dict[tuple[int, int, int, int], list[Pos]] = {}
+_WITHIN_MAX = 1 << 12  # 半径が島の大きさの並べ方は1件が大きいので、多くは持たない
 
 
 def neighbors4(island: IslandState, pos: Pos) -> Iterator[Pos]:

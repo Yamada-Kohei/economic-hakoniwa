@@ -153,7 +153,12 @@ class Employment(IslandStage):
         defs, config = ctx.defs, ctx.config
         if island.has_economy:
             settle_arrears(island)
-        labor = {(t.x, t.y): fac.labor_force(defs, island, t) for t in island.tiles if t.population}
+        share = fac.labor_share(defs, island)
+        labor = {
+            (t.x, t.y): fac.labor_force(defs, island, t, share)
+            for t in island.tiles
+            if t.population
+        }
         free = dict(labor)
         # 食べ物が買えずに畑に戻った村の働き手（食べ物を作る施設のほかには勤めない。回4）
         fields = back_to_fields(island, ctx, labor)
@@ -621,10 +626,10 @@ def unemployment_rate(island: IslandState, ctx: StageContext, f: Facility) -> fl
     share = fac.labor_share(defs, island)
     labor = idle = 0
     for t in tiles:
-        force = fac.labor_force(defs, island, t)
+        force = fac.labor_force(defs, island, t, share)
         free = max(0, force - t.ext.get("employed", 0))
         labor += force
-        idle += max(0, free - int(subsistence_persons(defs, island, t) * share))
+        idle += max(0, free - int(subsistence_persons(defs, island, t, share) * share))
     return idle / labor if labor else 0.0
 
 

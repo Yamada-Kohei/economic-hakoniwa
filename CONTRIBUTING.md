@@ -12,6 +12,7 @@ pytest
 ```
 
 PostgreSQL でも確かめるときは `DATABASE_URL=postgres://... pytest`。CI は SQLite と PostgreSQL の両方で回ります。
+`pytest -n auto` で、試験を頭の数だけ同時に回せます（pytest-xdist。CI はこの形で4つ同時に回します）。
 変えたファイルが `docs/` の下だけの PR では、CI は lint とゲームの試験を飛ばし、文書の確かめ（`tools/spec/design_index.py check` と docs/ を読む試験）だけを回します。
 
 ## コードの決まり
