@@ -323,11 +323,14 @@ def _wanted(
 
 
 def _room(island: IslandState, ctx: StageContext) -> float:
-    """町の空き（住める人数）。"""
+    """町の空き（住める人数）。上限を超えて詰めて住む町（過密。回5）の分は空きから引く。"""
     return float(
-        sum(
-            max(0, fac.housing_capacity(ctx.defs, f) - island.tile(*pos).population)
-            for pos, f in homes_of(island, ctx.config).items()
+        max(
+            0,
+            sum(
+                fac.housing_capacity(ctx.defs, f) - island.tile(*pos).population
+                for pos, f in homes_of(island, ctx.config).items()
+            ),
         )
     )
 
