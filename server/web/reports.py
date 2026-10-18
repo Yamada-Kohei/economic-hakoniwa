@@ -39,7 +39,7 @@ from server.world.repository import bond_from_row, facility_from_row, load_money
 
 DEFAULT_TURNS = 120  # 範囲を決めないときに返すターン数（10年）
 MAX_TURNS = 2400  # 1回に返せるターン数
-MAX_NAMES = 40  # 1回に選べる名前の数
+MAX_NAMES = 60  # 1回に選べる名前の数（経済の画面のグラフの名前と、選んで見る1つが入る数）
 MAX_SERIES = 80  # 1回に返せる系列の数（名前の頭で選んだ分を含む）
 
 # --- 統計の表示名と単位 ---------------------------------------------------------------

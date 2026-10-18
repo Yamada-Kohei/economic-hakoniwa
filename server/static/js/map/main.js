@@ -192,7 +192,8 @@ if (minimap) {
 
 popover.querySelector("[data-close]").addEventListener("click", () => select(null));
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && state.selected) select(null);
+  // 入力欄で書いている途中は閉じない（書きかけを消さないように）
+  if (e.key === "Escape" && state.selected && !e.target.closest?.("input, select, textarea")) select(null);
 });
 // 窓の中身を読み込んだり書き換えたりして大きさが変わったら、置き直す
 new ResizeObserver(() => placePopover()).observe(popover);

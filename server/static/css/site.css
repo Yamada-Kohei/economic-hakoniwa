@@ -64,7 +64,7 @@ table.goods td:nth-child(n+2), table.goods th:nth-child(n+2) { text-align: right
 .island-stats .panel { margin: 0; }
 .map-tools { margin: 4px 0; }
 /* マスの欄から足した命令の結果。地図の左上に重ねて出し、下のマスはそのまま押せるようにする */
-.map-notice { position: absolute; left: 8px; right: 56px; top: 8px; margin: 0; padding: 4px 8px; font-size: 0.9em;
+.map-notice { position: absolute; z-index: 4; left: 8px; right: 56px; top: 8px; margin: 0; padding: 4px 8px; font-size: 0.9em;
   background: rgba(255, 255, 255, 0.92); border-radius: 4px; pointer-events: none; }
 .map-notice:empty { display: none; }
 #minimap { position: absolute; left: 8px; bottom: 8px; width: 96px; height: 96px; border: 1px solid rgba(255,255,255,0.6);

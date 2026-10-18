@@ -91,10 +91,8 @@ export class TilePanel {
     this.info = null;
     if (this.notice) this.notice.textContent = "";
     this.el.scrollTop = 0; // 新しいマスは窓の上の端から見せる
-    if (!tile) {
-      this.render();
-      return;
-    }
+    this.render(); // 読み込む間は「読み込み中…」（前のマスの中身や命令の欄を残さない）
+    if (!tile) return;
     const request = ++this.request;
     this.el.setAttribute("aria-busy", "true");
     try {
@@ -121,7 +119,11 @@ export class TilePanel {
   // --- 表示 -----------------------------------------------------------------
 
   render() {
-    if (this.tools) this.tools.innerHTML = this.orders ? (this.mode ? this.markingHtml() : this.markButtonsHtml()) : "";
+    if (this.tools) {
+      // 中身が変わったときだけ書き換える（押したボタンのフォーカスと読み上げを保つ）
+      const tools = this.orders ? (this.mode ? this.markingHtml() : this.markButtonsHtml()) : "";
+      if (tools !== this.toolsHtml) this.tools.innerHTML = this.toolsHtml = tools;
+    }
     const parts = [];
     if (!this.tile) {
       parts.push(`<p class="muted">マスを選択すると、ここに詳細が表示されます。</p>`);
