@@ -472,7 +472,7 @@
 | UI-31 | 管理は Django の管理サイトで行う: 更新の一時停止、巻き戻し、何ターンかまとめて進める、… | 決定 | tests/server/test_letters.py、tests/server/test_turns.py、tests/server/test_web.py |
 | UI-32 | 同じ接続元からの登録は管理者が設定で数を決める（家族・学校・携帯回線で 1 つの接続元を分け合う… | 決定 | tests/server/test_phase1.py |
 | UI-33 | 量の表示の単位を実物に近づけるのは、バランス調整の最後に表示だけで行う（計算は変えない） | 決定（バランス調整の最後で） |  |
-| UI-34 | トップ画面は島の順位の表（列の頭で並べ替え、既定は GDP の順）と、アクセスカウンタ・キリ番・… | 決定 | tests/server/test_top_page.py |
+| UI-34 | トップ画面は島の順位の表（列の頭で並べ替え、既定は GDP の順 | 決定 | tests/server/test_top_page.py |
 
 ## [12 確かめ方](12-checks.md)
 

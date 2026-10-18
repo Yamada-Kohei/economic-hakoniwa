@@ -70,3 +70,19 @@ body:has(.retro) { background: #e6f0ff; }
 .retro-hr { border: 0; border-top: 3px double var(--blue); margin: 20px 0 8px; }
 .retro-footer { text-align: center; font-size: 0.8em; color: var(--blue); }
 .retro-footer p { margin: 2px 0; }
+
+/* 前回比（上がった・下がった）と NEW! の印（当時のように点滅。動きを減らす設定なら止める） */
+.retro .up { color: #c00000; font-weight: bold; }
+.retro .down { color: #0050c0; font-weight: bold; }
+.island-table .move { text-align: center; white-space: nowrap; font-size: 0.9em; }
+.new-mark { color: #ff0000; font-weight: bold; font-size: 0.8em; font-family: Verdana, sans-serif;
+  animation: blink 1s steps(1, end) infinite; }
+@keyframes blink { 50% { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) {
+  .new-mark { animation: none; }
+}
+.fx-table { font-size: 0.9em; }
+.getters { margin: 0; padding-left: 1.2em; font-size: 0.9em; }
+.getter-number { font-family: "Courier New", monospace; font-weight: bold; color: #c00000; }
+.banner { margin: 4px 0; }
+.banner-html { width: 100%; box-sizing: border-box; font-family: monospace; font-size: 0.8em; }

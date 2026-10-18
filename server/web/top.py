@@ -12,6 +12,7 @@ from typing import Any
 
 import yaml
 from django.db.models import Q
+from django.templatetags.static import static
 from django.utils import timezone
 
 from server.turns.models import TurnLog
@@ -88,12 +89,23 @@ def recent_events(world: m.World, limit: int = RECENT) -> list[dict[str, Any]]:
 # （git の記録より前の分）。画面には新しい順に UPDATES 件まで。
 UPDATE_MARKS = ("更新履歴:", "更新履歴：")  # 半角と全角のコロン
 UPDATES = 30
+UPDATE_NEW_DAYS = 7  # この日数のうちの更新履歴に NEW! の印を付ける
 
 
 @cache
 def _yaml() -> dict[str, Any]:
     path = Path(__file__).with_name("top.yaml")
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+
+BANNER = "img/banner-88x31.svg"  # 当サイトのバナー（88×31。server/static/img/）
+
+
+def banner_html(request) -> str:
+    """ほかのサイトに貼ってもらう、当サイトのバナーの HTML（このサイトの住所で書く）。"""
+    home = request.build_absolute_uri("/")
+    image = request.build_absolute_uri(static(BANNER))
+    return f'<a href="{home}"><img src="{image}" width="88" height="31" alt="経済版箱庭諸国"></a>'
 
 
 def site_notes() -> dict[str, Any]:
@@ -106,9 +118,17 @@ def site_notes() -> dict[str, Any]:
     }
 
 
-def updates() -> list[dict[str, str]]:
+def updates() -> list[dict[str, Any]]:
+    today = timezone.localdate()
     rows = SiteUpdate.objects.filter(hidden=False).order_by("-date", "-id")[:UPDATES]
-    return [{"date": row.date.isoformat(), "text": row.text} for row in rows]
+    return [
+        {
+            "date": row.date.isoformat(),
+            "text": row.text,
+            "new": (today - row.date).days < UPDATE_NEW_DAYS,
+        }
+        for row in rows
+    ]
 
 
 def sync_updates() -> int:

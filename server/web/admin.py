@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from server.web.models import AccessCounter, SiteUpdate
+from server.web.models import AccessCounter, KiribanGetter, SiteUpdate
 
 
 @admin.register(AccessCounter)
@@ -8,6 +8,15 @@ class AccessCounterAdmin(admin.ModelAdmin):
     """カウンタの数を直す（引っ越しで前の数から続けるときなど）。"""
 
     list_display = ["name", "total", "since"]
+
+
+@admin.register(KiribanGetter)
+class KiribanGetterAdmin(admin.ModelAdmin):
+    """キリ番ゲッター様の一覧。載せたくない行は消す。"""
+
+    list_display = ["number", "name", "island_name", "at"]
+    search_fields = ["name", "island_name"]
+    readonly_fields = ["user", "at"]
 
 
 @admin.register(SiteUpdate)

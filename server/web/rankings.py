@@ -16,12 +16,13 @@ from typing import Any
 from hakoniwa_core import dates
 from hakoniwa_core.economy import experience
 from hakoniwa_core.state import WorldState
+from hakoniwa_core.trade import contracts as contract_states
 from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.units import BASIS, from_milli
 from server.accounts import keys
 from server.game import get_game
 from server.web import display
-from server.web.trade import directory, trading_islands
+from server.web.trade import directory, trading_islands, world_state
 from server.world import models as m
 from server.world.repository import island_from_row
 
@@ -34,6 +35,13 @@ CATEGORIES = [
     ("trade.exports", "輸出額（1ターン）", "money"),
 ]
 MONEY = {name for name, _, unit in CATEGORIES if unit == "money"}
+# 世界の様子の合計: 統計の名前・表示名・単位（お金は基準の通貨に直して足す）
+WORLD_TOTALS = [
+    ("population", "世界の人口", "人"),
+    ("gdp", "世界の GDP（1ターン）", "money"),
+    ("trade.exports", "世界の輸出額（1ターン）", "money"),
+]
+MONEY_TOTALS = {name for name, _, unit in WORLD_TOTALS if unit == "money"}
 SOURCES = ("gdp", "population", "happiness", "trade.exports", "unemployment", "inflation")
 TOP = 3  # 産業ごとに見せる順位の数
 
@@ -48,6 +56,7 @@ TABLE_COLUMNS = [
     ("happiness", "幸福度", ""),
 ]
 TABLE_NOTE = "GDP と1人あたり GDP は1ターン（1か月）の額、物価上昇率は年率"
+NEW_TURNS = dates.TURNS_PER_YEAR  # 建国からこのターン数のうちは、島の一覧で NEW! の印を付ける
 # 歴代の記録: 統計の名前・表示名・単位（どの国の通貨でも同じ物差しで比べられるものだけ）
 RECORDS = [
     ("population", "最大の人口", "人"),
@@ -56,11 +65,11 @@ RECORDS = [
 ]
 
 
-def _latest(world: m.World) -> dict[int, dict[str, float]]:
-    """島ごとの、直近のターンの部門の統計。"""
+def _latest(world: m.World, turn: int | None = None) -> dict[int, dict[str, float]]:
+    """島ごとの、直近のターン（turn を決めればそのターン）の部門の統計。"""
     out: dict[int, dict[str, float]] = {}
     rows = m.StatRecord.objects.filter(
-        island__world=world, turn=world.turn, name__in=SOURCES
+        island__world=world, turn=world.turn if turn is None else turn, name__in=SOURCES
     ).values_list("island_id", "name", "value")
     for island_id, name, value in rows:
         out.setdefault(island_id, {})[name] = value
@@ -138,6 +147,21 @@ def ranking_data(world: m.World, base: int | None) -> dict[str, Any]:
         "industries": industry_rows(world, islands),
         "table": island_table(world, base, islands, stats, factors),
         "records": records(world, islands),
+        "world_summary": world_summary(world, base, islands, stats, factors),
+        "fx": fx_table(world, base, islands, factors),
+    }
+
+
+def top_data(
+    world: m.World, base: int | None, islands: dict[int, dict[str, Any]]
+) -> dict[str, Any]:
+    """トップの画面の、島の一覧の表・世界の様子・為替の相場表（/api/rankings の同じ名前の中身）。"""
+    stats = _latest(world)
+    factors = _factors(world, base)
+    return {
+        "table": island_table(world, base, islands, stats, factors),
+        "world_summary": world_summary(world, base, islands, stats, factors),
+        "fx": fx_table(world, base, islands, factors),
     }
 
 
@@ -245,7 +269,9 @@ def island_table(
             held.setdefault(titles[industry], []).append(title_name(industry))
     ai_owners = keys.ai_owner_ids(world.turn)
     rows = []
+    founded: dict[int, int] = {}
     for island in world.islands.select_related("owner").order_by("id"):
+        founded[island.id] = (island.ext or {}).get("founded_turn", 0)
         values = stats.get(island.id, {})
         columns = {}
         for name, label, unit in TABLE_COLUMNS:
@@ -274,18 +300,41 @@ def island_table(
                 "titles": held.get(island.id, []),
             }
         )
-    # GDP（基準の通貨に直した額）の多い順。直せない島と統計のまだない島は後ろに、人口の順で
     rows.sort(
-        key=lambda r: (
-            r["columns"]["gdp"]["value"] is None,
-            -(r["columns"]["gdp"]["value"] or 0),
-            -(r["columns"]["population"]["value"] or 0),
-            r["island"],
+        key=lambda r: _order(
+            r["columns"]["gdp"]["value"], r["columns"]["population"]["value"], r["island"]
         )
     )
+    before = _previous_ranks(world, factors)
     for rank, row in enumerate(rows, start=1):
         row["rank"] = rank
+        # 前のターンからの順位の上下（上がれば正）。前のターンに統計のなかった島は None
+        row["previous_rank"] = before.get(row["island"])
+        row["move"] = None if row["previous_rank"] is None else row["previous_rank"] - rank
+        row["new"] = world.turn - founded[row["island"]] < NEW_TURNS  # 建国したばかり（NEW!）
     return rows
+
+
+def _order(gdp: float | None, population: float | None, island_id: int) -> tuple:
+    """島の一覧の並び: GDP（基準の通貨に直した額）の多い順。直せない島と統計のまだない島は後ろに、
+    人口の順で。"""
+    return (gdp is None, -(gdp or 0), -(population or 0), island_id)
+
+
+def _previous_ranks(world: m.World, factors: dict[int, float]) -> dict[int, int]:
+    """前のターンの島の一覧の順位（島の番号 → 順位）。前のターンの GDP も今のレートで直して比べる
+    （昔のレートは直接の相場の分しか残っていないので、全部の国を同じ物差しにするため）。"""
+    if world.turn <= 0:
+        return {}
+    previous = _latest(world, world.turn - 1)
+    order = []
+    for island_id, values in previous.items():
+        gdp = values.get("gdp")
+        factor = factors.get(island_id)
+        gdp = None if gdp is None or factor is None else gdp * factor
+        order.append(_order(gdp, values.get("population"), island_id))
+    order.sort()
+    return {key[-1]: rank for rank, key in enumerate(order, start=1)}
 
 
 def records(
@@ -333,6 +382,99 @@ def records(
                 "name": islands.get(island_id, {}).get("name", f"島 {island_id}"),
                 "turn": turn,
                 "date": display.turn_text(turn),
+            }
+        )
+    return out
+
+
+def world_summary(
+    world: m.World,
+    base: int | None,
+    islands: dict[int, dict[str, Any]] | None = None,
+    stats: dict[int, dict[str, float]] | None = None,
+    factors: dict[int, float] | None = None,
+) -> dict[str, Any]:
+    """世界の様子: 国の数・世界の人口・世界の GDP と輸出額（基準の通貨に直した合計）と、前のターン
+    からの増え方（% 。GDP と輸出額は前のターンの分も今のレートで直して比べる）、貿易圏・二国間の
+    契約・運んでいる船荷の数。直せない国は合計に入れず、その数を unconverted に返す。"""
+    islands = islands if islands is not None else directory(world)
+    stats = stats if stats is not None else _latest(world)
+    factors = factors if factors is not None else _factors(world, base)
+    previous = _latest(world, world.turn - 1) if world.turn > 0 else {}
+    symbol = islands.get(base, {}).get("symbol", "") if base is not None else ""
+
+    def total(source: dict[int, dict[str, float]], name: str) -> float:
+        out = 0.0
+        for island_id, values in source.items():
+            value = values.get(name, 0.0)
+            if name in MONEY_TOTALS:
+                factor = factors.get(island_id)
+                value = 0.0 if factor is None else value * factor
+            out += value
+        return out
+
+    unconverted = sum(1 for i in stats if stats[i].get("gdp") and i not in factors)
+    out: dict[str, Any] = {
+        "islands": sum(1 for e in islands.values() if not e["inactive"]),
+        "inactive": sum(1 for e in islands.values() if e["inactive"]),
+        "unconverted": unconverted,
+        "totals": [],
+    }
+    for name, label, unit in WORLD_TOTALS:
+        now, before = total(stats, name), total(previous, name)
+        out["totals"].append(
+            {
+                "name": name,
+                "label": label,
+                "value": now,
+                "text": display.stat_text(name, now, unit, symbol),
+                "change": round((now / before - 1) * 100, 2) if before > 0 else None,
+            }
+        )
+    state = world_state(world)
+    out["blocs"] = len(state["blocs"])
+    out["contracts"] = sum(1 for c in state["contracts"] if c["state"] != contract_states.ENDED)
+    out["shipments"] = len(state["shipments"])
+    return out
+
+
+def fx_table(
+    world: m.World,
+    base: int | None,
+    islands: dict[int, dict[str, Any]] | None = None,
+    factors: dict[int, float] | None = None,
+) -> list[dict[str, Any]]:
+    """為替の相場表: 貿易を始めた国の通貨 1 が、基準の通貨でいくらか（今のレート）と、前のターン
+    からの上下（% 。基準の国が直接の相場を持つ通貨だけ。ほかの通貨を通した目安は前の値がない）。"""
+    if base is None:
+        return []
+    islands = islands if islands is not None else directory(world)
+    factors = factors if factors is not None else _factors(world, base)
+    symbol = islands.get(base, {}).get("symbol", "")
+    previous: dict[str, float] = {}
+    if world.turn > 0:
+        rows = m.StatRecord.objects.filter(
+            island_id=base, turn=world.turn - 1, name__startswith="fx."
+        ).values_list("name", "value")
+        previous = {name: value for name, value in rows if name.removeprefix("fx.").isdigit()}
+    here = trading_islands(world).get(base)
+    out = []
+    for other in sorted(factors):
+        if other == base or other not in islands:
+            continue
+        rate = factors[other]
+        direct = here is not None and fxrates.has_rate(here, other)
+        before = previous.get(f"fx.{other}") if direct else None
+        out.append(
+            {
+                "currency": other,
+                "name": islands[other]["currency"],
+                "symbol": islands[other]["symbol"],
+                "island_name": islands[other]["name"],
+                "rate": rate,  # この通貨 1 が基準の通貨でいくらか
+                "text": f"{rate:,.4f} {symbol}".strip(),  # 為替の画面と同じ小数4桁
+                "direct": direct,  # 直接の相場か（偽ならほかの通貨を通した目安）
+                "change": round((rate / before - 1) * 100, 2) if before else None,
             }
         )
     return out

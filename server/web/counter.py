@@ -8,6 +8,9 @@
 - 数えるのはブラウザ（User-Agent に Mozilla とあるもの）だけ。試し遊びの道具（tools/playtest/hk.py）
   が cookie を取りに開くときや、curl などは数えない（今の数を見せるだけ）。
 - 数字は 7 セグメントの表示器の絵（SVG）で出す。絵はここで作る（外の素材は使わない）。
+- 閲覧中の人数は、ONLINE_MINUTES 分のうちにトップの画面を開いた人の数（当時の「現在の閲覧者数」）。
+- キリ番を踏んだ人は、ログインしていればアカウントの名前と国名を KiribanGetter に残す（ログインして
+  いない人は誰か分からないので残さない）。
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ import hashlib
 import hmac
 from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import Any
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
@@ -24,10 +28,13 @@ from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 
 from server.accounts.views import client_ip
-from server.web.models import AccessCounter, Visit
+from server.web.models import AccessCounter, KiribanGetter, Visit
+from server.world.models import Island
 
 NAME = "top"
 DIGITS = 6  # カウンタの桁（足りなくなったら桁を増やして出す）
+ONLINE_MINUTES = 5  # 閲覧中と数える時間
+GETTERS = 10  # キリ番ゲッター様の一覧に出す人数
 
 
 @dataclass(frozen=True)
@@ -39,6 +46,8 @@ class Count:
     new: bool  # 今日はじめて数えたか
     since: date | None
     visitor: bool = True  # 数える相手（ブラウザ）か
+    online: int = 0  # 閲覧中の人数（ONLINE_MINUTES 分のうちに開いた人）
+    getter: bool = False  # キリ番ゲッター様の一覧に名前を残したか
 
     @property
     def kiriban(self) -> bool:
@@ -57,6 +66,7 @@ def _digest(request, day: date) -> str:
 
 def count_visit(request) -> Count:
     """トップの画面を開いた人を数える（その日に2回目なら数えない）。"""
+    now = timezone.now()
     day = timezone.localdate()
     Visit.objects.filter(day__lt=day - timedelta(days=1)).delete()
     if "Mozilla" not in request.META.get("HTTP_USER_AGENT", ""):
@@ -69,6 +79,7 @@ def count_visit(request) -> Count:
             new=False,
             since=counter.since,
             visitor=False,
+            online=online(now),
         )
     digest = _digest(request, day)
     visit = Visit.objects.filter(day=day, digest=digest).first()
@@ -79,10 +90,13 @@ def count_visit(request) -> Count:
                 counter, _ = AccessCounter.objects.get_or_create(name=NAME)
                 AccessCounter.objects.filter(pk=counter.pk).update(total=F("total") + 1)
                 number = AccessCounter.objects.values_list("total", flat=True).get(pk=NAME)
-                visit = Visit.objects.create(day=day, digest=digest, number=number)
+                visit = Visit.objects.create(day=day, digest=digest, number=number, seen=now)
             new = True
         except IntegrityError:  # 同じ人の同時の2回目（先に数えたほうの番号を見せる）
             visit = Visit.objects.get(day=day, digest=digest)
+    if not new:
+        Visit.objects.filter(pk=visit.pk).update(seen=now)
+    getter = new and is_kiriban(visit.number) and _record_getter(request, visit.number)
     counter = AccessCounter.objects.get(pk=NAME)
     return Count(
         number=visit.number,
@@ -91,7 +105,40 @@ def count_visit(request) -> Count:
         yesterday=Visit.objects.filter(day=day - timedelta(days=1)).count(),
         new=new,
         since=counter.since,
+        online=online(now),
+        getter=getter,
     )
+
+
+def online(now) -> int:
+    """閲覧中の人数（ONLINE_MINUTES 分のうちにトップの画面を開いた人）。"""
+    return Visit.objects.filter(seen__gte=now - timedelta(minutes=ONLINE_MINUTES)).count()
+
+
+def _record_getter(request, number: int) -> bool:
+    """キリ番を踏んだのがログインしている人なら、名前と国名を残す。"""
+    user = request.user
+    if not user.is_authenticated:
+        return False
+    island = Island.objects.filter(owner=user).values_list("name", flat=True).first()
+    _, created = KiribanGetter.objects.get_or_create(
+        number=number, defaults={"user": user, "name": user.username, "island_name": island or ""}
+    )
+    return created
+
+
+def getters() -> list[dict[str, Any]]:
+    """キリ番ゲッター様の一覧（新しい番号から GETTERS 人）。"""
+    rows = KiribanGetter.objects.order_by("-number")[:GETTERS]
+    return [
+        {
+            "number": r.number,
+            "name": r.name,
+            "island_name": r.island_name,
+            "date": timezone.localdate(r.at).isoformat(),
+        }
+        for r in rows
+    ]
 
 
 def is_kiriban(n: int) -> bool:

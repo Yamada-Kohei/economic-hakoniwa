@@ -2,11 +2,13 @@
 
 数えるのはトップの画面を開いた人だけ。同じ人がその日のうちに開き直しても数えない。接続元は
 そのまま残さず、日付とサーバーの秘密鍵で混ぜたハッシュにして、今日と昨日の分だけ持つ
-（server/web/counter.py）。ゲームの計算には関わらない。
+（server/web/counter.py）。キリ番を踏んだ人（ログインしている人だけ）と、トップの画面の
+更新履歴も持つ。ゲームの計算には関わらない。
 """
 
 from __future__ import annotations
 
+from django.conf import settings
 from django.db import models
 
 
@@ -30,6 +32,7 @@ class Visit(models.Model):
     day = models.DateField("日")
     digest = models.CharField("見分け（接続元のハッシュ）", max_length=64)
     number = models.BigIntegerField("何人目のお客様か")
+    seen = models.DateTimeField("最後に開いた時刻", null=True)  # 閲覧中の人数を数えるため
 
     class Meta:
         verbose_name = verbose_name_plural = "その日のお客様"
@@ -40,6 +43,25 @@ class Visit(models.Model):
 
     def __str__(self) -> str:
         return f"{self.day} {self.number} 人目"
+
+
+class KiribanGetter(models.Model):
+    """キリ番を踏んだ人（ログインしている人だけ。名前と国名は踏んだときのもの）。管理画面で消せる。"""
+
+    number = models.BigIntegerField("番号", unique=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name="アカウント", null=True, on_delete=models.SET_NULL
+    )
+    name = models.CharField("名前", max_length=150)
+    island_name = models.CharField("国名", max_length=100, blank=True)
+    at = models.DateTimeField("踏んだ時刻", auto_now_add=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = "キリ番ゲッター様"
+        ordering = ["-number"]
+
+    def __str__(self) -> str:
+        return f"{self.number} {self.name}"
 
 
 class SiteUpdate(models.Model):

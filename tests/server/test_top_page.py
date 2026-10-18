@@ -5,17 +5,20 @@ from __future__ import annotations
 
 import json
 from datetime import date, timedelta
+from pathlib import Path
 
 import pytest
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import Client
 from django.utils import timezone
 
+from hakoniwa_core.units import BASIS
 from server.accounts import keys
 from server.turns.models import TurnLog
 from server.turns.services import run_turn
 from server.web import counter, mcp, rankings, top
-from server.web.models import AccessCounter, SiteUpdate, Visit
+from server.web.models import AccessCounter, KiribanGetter, SiteUpdate, Visit
 from server.world import models as m
 
 pytestmark = pytest.mark.django_db
@@ -139,7 +142,7 @@ def test_kiriban_message(world):
     AccessCounter.objects.create(name=counter.NAME, total=999)
     html = _browser().get("/").content.decode()
     assert "キリ番 1000 です" in html and 'href="/board/"' in html
-    assert "キリ番" not in _browser("10.0.0.9").get("/").content.decode()  # 1001
+    assert "おめでとう" not in _browser("10.0.0.9").get("/").content.decode()  # 1001
 
 
 @pytest.mark.parametrize(
@@ -168,6 +171,127 @@ def test_seven_segment_draws_six_digits():
     assert 'aria-label="000042"' in svg
     assert svg.count("<polygon") == 6 * 7
     assert counter.seven_segment(1234567).count("<polygon") == 7 * 7  # 桁が足りなければ増やす
+
+
+def test_kiriban_getter_is_recorded_for_logged_in_visitor(world):
+    """ログインしている人がキリ番を踏むと、名前と国名を一覧に残す。ログインしていない人は残さない。"""
+    a = m.Island.objects.order_by("id").first()
+    user = User.objects.create_user("carol", password="a-long-pass-123")
+    a.owner = user
+    a.save(update_fields=["owner"])
+    AccessCounter.objects.create(name=counter.NAME, total=99)
+    visitor = _browser("10.0.0.20")
+    visitor.force_login(user)
+    res = visitor.get("/")
+    assert res.context["counter"].getter
+    assert "一覧にお名前を載せました" in res.content.decode()
+    getter = KiribanGetter.objects.get()
+    assert (getter.number, getter.name, getter.island_name) == (100, "carol", a.name)
+    assert visitor.get("/").context["counter"].getter is False  # 開き直しで二重に残さない
+    AccessCounter.objects.filter(pk=counter.NAME).update(total=199)
+    html = _browser("10.0.0.21").get("/").content.decode()  # 200 はログインしていない人
+    assert "ログインして踏むと" in html
+    assert KiribanGetter.objects.count() == 1
+    assert [g["number"] for g in _browser("10.0.0.22").get("/").context["getters"]] == [100]
+
+
+def test_online_counts_recent_viewers(world):
+    _browser("10.0.0.30").get("/")
+    _browser("10.0.0.31").get("/")
+    assert _browser("10.0.0.32").get("/").context["counter"].online == 3
+    Visit.objects.filter(number=1).update(seen=timezone.now() - timedelta(minutes=10))
+    count = _browser("10.0.0.31").get("/").context["counter"]  # 開き直すと時刻が新しくなる
+    assert count.online == 2
+    assert "現在 2 人が見ています" in _browser("10.0.0.31").get("/").content.decode()
+
+
+def test_banner_and_its_html(world):
+    res = _browser().get("/")
+    html = res.content.decode()
+    assert "当サイトのバナー" in html
+    assert res.context["banner_html"].startswith('<a href="http://testserver/"><img src="http')
+    assert "img/banner-88x31.svg" in res.context["banner_html"]
+    svg = (Path(settings.BASE_DIR) / "server/static/img/banner-88x31.svg").read_text()
+    assert 'width="88" height="31"' in svg and "<script" not in svg
+
+
+# --- 順位の上下・世界の様子・為替の相場表・NEW! -------------------------------------------
+
+
+def test_rank_move_from_previous_turn(client, world):
+    """前回比は、前のターンの GDP（今のレートで直す）の順位からの上下。"""
+    run_turn(force=True)
+    run_turn(force=True)
+    w = m.World.objects.get()
+    a, b, c = m.Island.objects.order_by("id")
+    factors = {a.id: 1.0, b.id: 1.0, c.id: 1.0}
+    gdp = {a.id: (100.0, 300.0), b.id: (200.0, 200.0), c.id: (300.0, 100.0)}
+    for island_id, (before, now) in gdp.items():
+        m.StatRecord.objects.filter(island_id=island_id, name="gdp", turn=w.turn - 1).update(
+            value=before
+        )
+        m.StatRecord.objects.filter(island_id=island_id, name="gdp", turn=w.turn).update(value=now)
+    rows = {r["island"]: r for r in rankings.island_table(w, a.id, factors=factors)}
+    assert (rows[a.id]["rank"], rows[a.id]["previous_rank"], rows[a.id]["move"]) == (1, 3, 2)
+    assert rows[b.id]["move"] == 0 and rows[c.id]["move"] == -2
+    html = client.get("/").content.decode()
+    assert ">前回比<" in html
+
+
+def test_new_mark_for_young_islands_and_updates(client, world):
+    w = m.World.objects.get()
+    a, b, _ = m.Island.objects.order_by("id")
+    w.turn = rankings.NEW_TURNS + 5
+    w.save(update_fields=["turn"])
+    m.Island.objects.filter(pk=b.id).update(ext={**b.ext, "founded_turn": w.turn - 1})
+    rows = {r["island"]: r for r in client.get("/").context["table"]}
+    assert rows[b.id]["new"] and not rows[a.id]["new"]
+    SiteUpdate.objects.all().delete()
+    today = timezone.localdate()
+    SiteUpdate.objects.create(date=today, text="新しい")
+    SiteUpdate.objects.create(date=today - timedelta(days=30), text="古い")
+    marks = {u["text"]: u["new"] for u in client.get("/").context["updates"]}
+    assert marks == {"新しい": True, "古い": False}
+    assert "NEW!" in client.get("/").content.decode()
+
+
+def test_world_summary_totals(client, world):
+    run_turn(force=True)
+    run_turn(force=True)
+    w = m.World.objects.get()
+    summary = client.get("/").context["world_summary"]
+    population = sum(
+        m.StatRecord.objects.filter(island__world=w, turn=w.turn, name="population").values_list(
+            "value", flat=True
+        )
+    )
+    totals = {t["name"]: t for t in summary["totals"]}
+    assert totals["population"]["value"] == population
+    assert totals["population"]["change"] is not None
+    assert summary["islands"] == 3 and summary["inactive"] == 0
+    # 直せない国（為替レートのない国）はお金の合計に入れず、数を返す
+    table = client.get("/").context["table"]
+    assert summary["unconverted"] == sum(1 for r in table if r["columns"]["gdp"]["value"] is None)
+    assert totals["gdp"]["value"] == sum(r["columns"]["gdp"]["value"] or 0 for r in table)
+    assert "世界の様子" in client.get("/").content.decode()
+
+
+def test_fx_table_rates_and_change(client, world):
+    """相場表は、通貨 1 が基準の通貨でいくらか。直接の相場は前のターンの統計からの上下も出す。"""
+    run_turn(force=True)
+    run_turn(force=True)
+    w = m.World.objects.get()
+    a, b, c = m.Island.objects.order_by("id")
+    ext = a.ext
+    ext["trade"]["rates"] = {str(b.id): 2 * BASIS}
+    m.Island.objects.filter(pk=a.id).update(ext=ext)
+    m.StatRecord.objects.create(island=a, turn=w.turn - 1, name=f"fx.{b.id}", value=1.6)
+    rows = client.get("/").context["fx"]
+    assert [r["currency"] for r in rows] == [b.id]  # c は直せない
+    assert rows[0]["rate"] == 2.0 and rows[0]["direct"] and rows[0]["change"] == 25.0
+    assert rows[0]["text"].startswith("2.0000")
+    html = client.get("/").content.decode()
+    assert "為替の相場表" in html and "+25.00%" in html
 
 
 # --- 最近の出来事と歴代の記録 -------------------------------------------------------------
@@ -217,9 +341,15 @@ def test_ai_reads_what_the_top_shows(client, world):
     TurnLog.objects.create(island=m.Island.objects.first(), turn=1, kind="island_founded", args={})
     context = client.get("/").context
     data = client.get("/api/rankings").json()
-    plain = json.loads(json.dumps({"t": context["table"], "r": context["records"]}, default=str))
-    assert data["table"] == plain["t"]
-    assert data["records"] == plain["r"]
+    shown = {
+        "table": context["table"],
+        "records": context["records"],
+        "world_summary": context["world_summary"],
+        "fx": context["fx"],
+    }
+    plain = json.loads(json.dumps(shown, default=str))
+    for name, value in plain.items():
+        assert data[name] == value, name
     world_data = client.get("/api/world").json()
     assert world_data["recent"] == json.loads(json.dumps(context["recent"]))
     assert [u["text"] for u in world_data["updates"]] == [u["text"] for u in context["updates"]]

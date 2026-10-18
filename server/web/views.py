@@ -20,20 +20,23 @@ GUIDE_TURNS = 12  # 建国からこのターン数の間、島の画面に「は
 
 
 def top(request):
-    """島の一覧（トップ）: 元の箱庭と同じ人口の順の表に、個人サイトの品（アクセスカウンタ・キリ番・
-    最近の出来事・歴代の記録・更新履歴・管理人より・リンク集）を添える。"""
+    """島の一覧（トップ）: GDP の順の表（前のターンからの順位の上下つき）と世界の様子・為替の
+    相場表に、個人サイトの品（アクセスカウンタ・キリ番とキリ番ゲッター様・閲覧中の人数・最近の
+    出来事・歴代の記録・更新履歴・管理人より・リンク集・当サイトのバナー）を添える。"""
     world = World.objects.order_by("id").first()
     own = None
     if request.user.is_authenticated:
         own = Island.objects.filter(owner=request.user).first()
     context: dict = {"world": world, "own": own, "counter": counter.count_visit(request)}
     context["counter_svg"] = counter.seven_segment(context["counter"].number)
+    context["getters"] = counter.getters()
+    context["banner_html"] = top_page.banner_html(request)
     context.update(top_page.site_notes())
     if world is not None:
         base = rankings.default_base(world, own)
         islands = trade.directory(world)
         context.update(
-            table=rankings.island_table(world, base, islands),
+            rankings.top_data(world, base, islands),
             columns=rankings.TABLE_COLUMNS,
             table_note=rankings.TABLE_NOTE,
             base_name=islands.get(base, {}).get("currency", "") if base is not None else "",
