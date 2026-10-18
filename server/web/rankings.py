@@ -13,10 +13,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from hakoniwa_core import dates
 from hakoniwa_core.economy import experience
 from hakoniwa_core.state import WorldState
 from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.units import BASIS, from_milli
+from server.accounts import keys
 from server.game import get_game
 from server.web import display
 from server.web.trade import directory, trading_islands
@@ -32,8 +34,26 @@ CATEGORIES = [
     ("trade.exports", "輸出額（1ターン）", "money"),
 ]
 MONEY = {name for name, _, unit in CATEGORIES if unit == "money"}
-SOURCES = ("gdp", "population", "happiness", "trade.exports")
+SOURCES = ("gdp", "population", "happiness", "trade.exports", "unemployment", "inflation")
 TOP = 3  # 産業ごとに見せる順位の数
+
+# 島の一覧の表（トップの画面）の列: 統計の名前・表示名・単位
+# （お金はほかの順位と同じく基準の通貨に直す）
+TABLE_COLUMNS = [
+    ("population", "人口", "人"),
+    ("gdp", "GDP", "money"),
+    ("gdp_per_person", "1人あたり GDP", "money"),
+    ("unemployment", "失業率", "%"),
+    ("inflation", "物価上昇率", "%"),
+    ("happiness", "幸福度", ""),
+]
+TABLE_NOTE = "GDP と1人あたり GDP は1ターン（1か月）の額、物価上昇率は年率"
+# 歴代の記録: 統計の名前・表示名・単位（どの国の通貨でも同じ物差しで比べられるものだけ）
+RECORDS = [
+    ("population", "最大の人口", "人"),
+    ("facilities", "最多の施設", "か所"),
+    ("happiness", "最高の幸福度", ""),
+]
 
 
 def _latest(world: m.World) -> dict[int, dict[str, float]]:
@@ -116,6 +136,8 @@ def ranking_data(world: m.World, base: int | None) -> dict[str, Any]:
         ],
         "categories": categories,
         "industries": industry_rows(world, islands),
+        "table": island_table(world, base, islands, stats, factors),
+        "records": records(world, islands),
     }
 
 
@@ -153,7 +175,7 @@ def industry_rows(
             {
                 "industry": industry,
                 "name": defs.name("industries", industry),
-                "title": f"{defs.name('industries', industry)}の国",
+                "title": title_name(industry),
                 "holder": holder,
                 "holder_name": islands.get(holder, {}).get("name", "") if holder else "",
                 "top": [
@@ -191,5 +213,118 @@ def island_strengths(island: m.Island, stats: dict[str, float]) -> dict[str, Any
     held = sorted(industry for industry, holder in titles.items() if holder == island.id)
     return {
         "strengths": strengths,
-        "titles": [f"{defs.name('industries', industry)}の国" for industry in held],
+        "titles": [title_name(industry) for industry in held],
     }
+
+
+def title_name(industry: str) -> str:
+    """産業の称号の表示名（順位の画面・島の画面・島の一覧で同じ）。"""
+    return f"{get_game().defs.name('industries', industry)}の国"
+
+
+def island_table(
+    world: m.World,
+    base: int | None,
+    islands: dict[int, dict[str, Any]] | None = None,
+    stats: dict[int, dict[str, float]] | None = None,
+    factors: dict[int, float] | None = None,
+) -> list[dict[str, Any]]:
+    """島の一覧の表（元の箱庭のトップと同じく人口の順）。1行に島の名前・体制・直近の統計・称号。
+
+    お金の額は基準の通貨に直す（直せない島は値を None にして、文を「直せない」にする）。統計の
+    まだない島（建国したばかり）も最後に並べる。"""
+    defs = get_game().defs
+    islands = islands if islands is not None else directory(world)
+    stats = stats if stats is not None else _latest(world)
+    factors = factors if factors is not None else _factors(world, base)
+    symbol = islands.get(base, {}).get("symbol", "") if base is not None else ""
+    titles = ((world.ext or {}).get(experience.RANKINGS) or {}).get("titles", {})
+    held: dict[int, list[str]] = {}
+    for industry in defs.industries():
+        if titles.get(industry) is not None:
+            held.setdefault(titles[industry], []).append(title_name(industry))
+    ai_owners = keys.ai_owner_ids(world.turn)
+    rows = []
+    for island in world.islands.select_related("owner").order_by("id"):
+        values = stats.get(island.id, {})
+        columns = {}
+        for name, label, unit in TABLE_COLUMNS:
+            value = values.get(name)
+            if value is not None and name in MONEY:
+                factor = factors.get(island.id)
+                value = None if factor is None else value * factor
+                text = "直せない" if value is None else display.stat_text(name, value, unit, symbol)
+            else:
+                text = "" if value is None else display.stat_text(name, value, unit, symbol)
+            columns[name] = {"label": label, "value": value, "text": text}
+        regime = island.regime or {}
+        rows.append(
+            {
+                "island": island.id,
+                "name": island.name,
+                "owner": island.owner.username if island.owner else "",
+                "ai": island.owner_id is not None and island.owner_id in ai_owners,  # AI の国の印
+                "inactive": island.inactive,
+                "regime": "・".join(
+                    defs.name("regimes", regime[axis])
+                    for axis in ("politics", "economy")
+                    if regime.get(axis) in defs.regimes
+                ),
+                "columns": columns,
+                "titles": held.get(island.id, []),
+            }
+        )
+    rows.sort(key=lambda r: (-(r["columns"]["population"]["value"] or -1), r["island"]))
+    for rank, row in enumerate(rows, start=1):
+        row["rank"] = rank
+    return rows
+
+
+def records(
+    world: m.World, islands: dict[int, dict[str, Any]] | None = None
+) -> list[dict[str, Any]]:
+    """歴代の記録: ターンの統計の履歴の中で一番の値と、その国とターン。それに、建国から一番長く
+    続いている国。お金の額は通貨が国ごとで、昔のレートも残っていないので入れない。"""
+    islands = islands if islands is not None else directory(world)
+    out = []
+    for name, label, unit in RECORDS:
+        best = (
+            m.StatRecord.objects.filter(island__world=world, name=name)
+            .order_by("-value", "turn", "island_id")
+            .values_list("value", "turn", "island_id")
+            .first()
+        )
+        if best is None or best[0] <= 0:
+            continue
+        value, turn, island_id = best
+        out.append(
+            {
+                "key": name,
+                "label": label,
+                "text": display.stat_text(name, value, unit),
+                "island": island_id,
+                "name": islands.get(island_id, {}).get("name", f"島 {island_id}"),
+                "turn": turn,
+                "date": display.turn_text(turn),
+            }
+        )
+    founded = [
+        ((ext or {}).get("founded_turn", 0), island_id)
+        for island_id, ext, inactive in world.islands.values_list("id", "ext", "inactive")
+        if not inactive
+    ]
+    if founded:
+        turn, island_id = min(founded)
+        years = (world.turn - turn) / dates.TURNS_PER_YEAR
+        out.append(
+            {
+                "key": "longest",
+                "label": "最も長く続く国",
+                "text": f"建国から {years:.1f} 年",
+                "island": island_id,
+                "name": islands.get(island_id, {}).get("name", f"島 {island_id}"),
+                "turn": turn,
+                "date": display.turn_text(turn),
+            }
+        )
+    return out

@@ -10,8 +10,9 @@ from hakoniwa_core.trade import contracts, tradable_goods
 from server.accounts import keys
 from server.game import get_game
 from server.turns.models import TurnLog
-from server.web import chain, display, founding, overview, rankings, reports, trade
+from server.web import chain, counter, display, founding, overview, rankings, reports, trade
 from server.web import politics as politics_views
+from server.web import top as top_page
 from server.world.models import Island, World
 from server.world.services import grid_size
 
@@ -19,13 +20,26 @@ GUIDE_TURNS = 12  # 建国からこのターン数の間、島の画面に「は
 
 
 def top(request):
+    """島の一覧（トップ）: 元の箱庭と同じ人口の順の表に、個人サイトの品（アクセスカウンタ・キリ番・
+    最近の出来事・歴代の記録・更新履歴・管理人より・リンク集）を添える。"""
     world = World.objects.order_by("id").first()
-    islands = world.islands.select_related("owner").order_by("id") if world else []
     own = None
     if request.user.is_authenticated:
         own = Island.objects.filter(owner=request.user).first()
-    ai_owners = keys.ai_owner_ids(world.turn) if world else set()
-    context = {"world": world, "islands": islands, "own": own, "ai_owners": ai_owners}
+    context: dict = {"world": world, "own": own, "counter": counter.count_visit(request)}
+    context["counter_svg"] = counter.seven_segment(context["counter"].number)
+    context.update(top_page.site_notes())
+    if world is not None:
+        base = rankings.default_base(world, own)
+        islands = trade.directory(world)
+        context.update(
+            table=rankings.island_table(world, base, islands),
+            columns=rankings.TABLE_COLUMNS,
+            table_note=rankings.TABLE_NOTE,
+            base_name=islands.get(base, {}).get("currency", "") if base is not None else "",
+            records=rankings.records(world, islands),
+            recent=top_page.recent_events(world),
+        )
     return render(request, "web/top.html", context)
 
 

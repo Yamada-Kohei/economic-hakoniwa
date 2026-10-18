@@ -31,6 +31,7 @@ from server.orders.models import Order
 from server.web import chain as chain_views
 from server.web import display, overview, rankings, reports
 from server.web import politics as politics_views
+from server.web import top as top_page
 from server.web import trade as trade_views
 from server.web import views as pages
 from server.world import models as m
@@ -859,7 +860,7 @@ def world_trade(request):
 def world(request):
     w = m.World.objects.order_by("id").first()
     if w is None:
-        return _json({"grid": 0, "turn": 0, "islands": []})
+        return _json({"grid": 0, "turn": 0, "islands": [], "recent": [], **_site_notes()})
     islands = w.islands.select_related("owner").order_by("id")
     ai_owners = keys.ai_owner_ids(w.turn)
     return _json(
@@ -879,5 +880,15 @@ def world(request):
                 }
                 for i in islands
             ],
+            # トップの画面の「最近の出来事」と、管理人の書く欄（カウンタとキリ番は AI に要らない）
+            "recent": top_page.recent_events(w),
+            **_site_notes(),
         }
     )
+
+
+def _site_notes() -> dict[str, Any]:
+    """更新履歴・管理人より・リンク集（server/web/top.yaml）。"""
+    notes = top_page.site_notes()
+    updates = [{"date": str(u["date"]), "text": u["text"]} for u in notes["updates"]]
+    return {"updates": updates, "message": notes["message"], "links": notes["links"]}

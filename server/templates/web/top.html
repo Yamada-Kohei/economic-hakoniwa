@@ -1,31 +1,116 @@
-{% extends "base.html" %}{% load i18n calendar_tags %}
+{% extends "base.html" %}{% load i18n static calendar_tags %}
 {% block content %}
-{% if world %}
-  <p>{{ world.turn|turn_date }}
-    {% if world.next_turn_at %} ・ {% translate "次の更新" %}: {{ world.next_turn_at|date:"Y-m-d H:i" }}{% endif %}
-    {% if world.paused %} ・ {% translate "更新は一時停止中" %}{% endif %}
+<link rel="stylesheet" href="{% static 'css/top.css' %}">
+<div class="retro">
+
+<div class="retro-title">
+  <h1>{% translate "経済版箱庭諸国" %}</h1>
+  <p class="retro-sub">{% translate "～ 島国の産業と人口を育てる、経済の箱庭 ～" %}</p>
+  {% if world %}
+  <p class="retro-date">{{ world.turn|turn_date }}
+    {% if world.next_turn_at %} ／ {% translate "次の更新" %}: {{ world.next_turn_at|date:"Y-m-d H:i" }}{% endif %}
+    {% if world.paused %} ／ <strong>{% translate "更新は一時停止中" %}</strong>{% endif %}
   </p>
-{% endif %}
+  {% endif %}
+</div>
+
+<div class="counter" id="counter">
+  {% blocktranslate with n=counter_svg %}あなたは {{ n }} 人目のお客様です。{% endblocktranslate %}
+  <div class="counter-days">{% blocktranslate with t=counter.today y=counter.yesterday %}今日 {{ t }} ／ 昨日 {{ y }}{% endblocktranslate %}</div>
+  {% if counter.kiriban %}{% url 'board' as board_url %}
+  <p class="kiriban">{% blocktranslate with n=counter.number url=board_url %}★ おめでとうございます！ キリ番 {{ n }} です。よろしければ<a href="{{ url }}">掲示板</a>でご報告ください。★{% endblocktranslate %}</p>
+  {% endif %}
+</div>
+
 {% if own %}
-  <p class="lead"><a href="{% url 'island' own.id %}">{% blocktranslate with name=own.name %}{{ name }} を見る{% endblocktranslate %}</a></p>
+  <p class="retro-lead"><a href="{% url 'island' own.id %}">{% blocktranslate with name=own.name %}{{ name }} を見る{% endblocktranslate %}</a></p>
 {% elif user.is_authenticated %}
-  <p class="lead"><a href="{% url 'found' %}">{% translate "建国する" %}</a></p>
+  <p class="retro-lead"><a href="{% url 'found' %}">{% translate "建国する" %}</a></p>
 {% else %}
-  <p class="lead">{% translate "島国を建国し、産業と人口を育てるゲームです。" %}
+  <p class="retro-lead">{% translate "島国を建国し、産業と人口を育てるゲームです。" %}
     <a href="{% url 'signup' %}">{% translate "登録して建国する" %}</a> ・ <a href="{% url 'login' %}">{% translate "ログイン" %}</a></p>
 {% endif %}
+
 {% if world %}
-  <h2>{% translate "島の一覧" %}</h2>
-  <ul class="island-list">
-    {% for island in islands %}
-      <li><a href="{% url 'island' island.id %}">{{ island.name }}</a>
-        {% if island.owner_id in ai_owners %}{% include "web/ai_mark.html" %}{% endif %}
-        <small>{% if island.owner %}{{ island.owner.username }}{% else %}{% translate "持ち主なし" %}{% endif %}</small></li>
-    {% empty %}
-      <li>{% translate "まだ島がありません。" %}</li>
-    {% endfor %}
-  </ul>
-{% else %}
-  <p>{% translate "世界がまだありません。python manage.py setup_dev で作れます。最初の建国でも作られます。" %}</p>
+{% if recent %}
+<div class="ticker" aria-hidden="true"><div class="ticker-line">{% for e in recent|slice:":3" %}【{{ e.name }}】{{ e.text }}　　{% endfor %}</div></div>
 {% endif %}
+
+<h2 class="retro-h" id="islands">{% translate "島の一覧" %}</h2>
+<p class="retro-note">{% translate "人口の多い順です。列の名前を押すと並べ替えます。" %}{{ table_note }}。
+  {% if base_name %}{% blocktranslate with c=base_name %}お金の額は、今の為替レートで「{{ c }}」に直しています。{% endblocktranslate %}{% endif %}
+  <a href="{% url 'rankings' %}">{% translate "部門別の順位と称号" %}</a></p>
+<div class="table-scroll">
+<table class="retro-table island-table" id="island-table">
+  <thead><tr>
+    <th data-sort="rank" aria-sort="ascending"><button type="button">{% translate "順位" %}</button></th>
+    <th data-sort="name"><button type="button">{% translate "島" %}</button></th>
+    <th>{% translate "体制" %}</th>
+    {% for name, label, unit in columns %}<th data-sort="{{ name }}" class="num"><button type="button">{{ label }}</button></th>{% endfor %}
+    <th>{% translate "称号" %}</th>
+  </tr></thead>
+  <tbody>
+    {% for r in table %}
+    <tr data-rank="{{ r.rank }}" data-name="{{ r.name }}"{% for name, c in r.columns.items %} data-{{ name|cut:"_" }}="{{ c.value|default_if_none:'' }}"{% endfor %}{% if r.inactive %} class="inactive"{% endif %}>
+      <td class="rank">{{ r.rank }}</td>
+      <td class="island-name"><a href="{% url 'island' r.island %}">{{ r.name }}</a>{% if r.ai %} {% include "web/ai_mark.html" %}{% endif %}
+        <br><small>{% if r.owner %}{{ r.owner }}{% else %}{% translate "持ち主なし" %}{% endif %}{% if r.inactive %} ・ {% translate "休止中" %}{% endif %}</small></td>
+      <td class="regime">{{ r.regime|default:"-" }}</td>
+      {% for name, c in r.columns.items %}<td class="num">{% if c.value is None and c.text %}<span class="muted">{{ c.text }}</span>{% elif c.text %}{{ c.text }}{% else %}<span class="muted">-</span>{% endif %}</td>{% endfor %}
+      <td class="titles">{% for t in r.titles %}<span class="title-badge">{{ t }}</span>{% empty %}<span class="muted">-</span>{% endfor %}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="{{ columns|length|add:4 }}">{% translate "まだ島がありません。" %}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<div class="retro-columns">
+  <section class="retro-box">
+    <h2 class="retro-h">{% translate "最近の出来事" %}</h2>
+    {% if recent %}
+    <ul class="recent-events">
+      {% for e in recent %}<li><span class="when">{{ e.turn|turn_date }}</span> <a href="{% url 'turn_log' e.island %}">{{ e.name }}</a>: {{ e.text }}</li>{% endfor %}
+    </ul>
+    {% else %}<p class="muted">{% translate "まだ出来事はありません。" %}</p>{% endif %}
+  </section>
+  <section class="retro-box">
+    <h2 class="retro-h">{% translate "歴代の記録" %}</h2>
+    {% if records %}
+    <table class="retro-table records">
+      {% for r in records %}<tr><th>{{ r.label }}</th><td class="num">{{ r.text }}</td><td><a href="{% url 'island' r.island %}">{{ r.name }}</a><br><small>{% if r.key == "longest" %}{% if r.turn %}{% blocktranslate with d=r.date %}{{ d }}に建国{% endblocktranslate %}{% else %}{% translate "世界のはじめから" %}{% endif %}{% else %}{{ r.date }}{% endif %}</small></td></tr>{% endfor %}
+    </table>
+    {% else %}<p class="muted">{% translate "まだ記録はありません。" %}</p>{% endif %}
+  </section>
+</div>
+{% else %}
+<p>{% translate "世界がまだありません。python manage.py setup_dev で作れます。最初の建国でも作られます。" %}</p>
+{% endif %}
+
+<div class="retro-columns">
+  <section class="retro-box">
+    <h2 class="retro-h">{% translate "更新履歴" %}</h2>
+    <dl class="updates">
+      {% for u in updates|slice:":8" %}<dt>{{ u.date|date:"Y/m/d" }}</dt><dd>{{ u.text }}</dd>{% endfor %}
+    </dl>
+  </section>
+  <section class="retro-box">
+    <h2 class="retro-h">{% translate "管理人より" %}</h2>
+    <p class="message">{{ message|linebreaksbr }}</p>
+    <h2 class="retro-h">{% translate "リンク集" %}</h2>
+    <ul class="links">
+      {% for l in links %}<li><a href="{{ l.url }}">{{ l.title }}</a>{% if l.note %} <small>…{{ l.note }}</small>{% endif %}</li>{% endfor %}
+    </ul>
+  </section>
+</div>
+
+<hr class="retro-hr">
+<footer class="retro-footer">
+  <p>{% if counter.since %}Since {{ counter.since|date:"Y.m.d" }} ／ {% endif %}{% translate "このページはリンクフリーです。" %}</p>
+  <p>{% translate "推奨: 1024×768 以上・文字の大きさ「中」" %}</p>
+  <p>{% translate "経済版箱庭諸国 ・ MIT ライセンス" %}</p>
+</footer>
+</div>
+<script src="{% static 'js/top-table.js' %}" defer></script>
 {% endblock %}

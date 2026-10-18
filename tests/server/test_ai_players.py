@@ -160,7 +160,7 @@ def test_key_calls_per_minute(world, settings):
 def _marked(client: Client, island: Island) -> tuple[bool, bool, bool]:
     """国の一覧・国の画面・世界の API に印が出ているか。"""
     top = client.get("/").content.decode()
-    row = top.split(f'href="/islands/{island.id}/"')[1].split("</li>")[0]
+    row = top.split(f'href="/islands/{island.id}/"')[1].split("</tr>")[0]
     page = client.get(f"/islands/{island.id}/").content.decode()
     header = page.split("<h1>")[1].split("</h1>")[0]
     world = {i["id"]: i for i in client.get("/api/world").json()["islands"]}

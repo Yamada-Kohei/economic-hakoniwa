@@ -703,14 +703,17 @@ TOOLS = [
     Tool(
         "world",
         "世界",
-        "世界の島の一覧（番号・国名・持ち主・自分の島か・AI の印・気候・世界マップの位置）。",
+        "世界の島の一覧（番号・国名・持ち主・自分の島か・AI の印・気候・世界マップの位置）と、"
+        "全部の島の最近の出来事（recent）・ゲームの更新履歴（updates）・管理人より（message）・"
+        "リンク集（links）。",
         _world,
     ),
     Tool(
         "rankings",
         "順位",
-        "統計の順位（GDP・1人あたり GDP・人口・幸福度・輸出額）と産業ごとの称号。"
-        "base はお金の額を直す通貨の島の番号。",
+        "統計の順位（GDP・1人あたり GDP・人口・幸福度・輸出額）と産業ごとの称号、"
+        "トップの画面の島の一覧の表（table: 人口の順に体制・人口・GDP・1人あたり GDP・失業率・"
+        "物価上昇率・幸福度・称号）と歴代の記録（records）。base はお金の額を直す通貨の島の番号。",
         _rankings,
         {"base": {"type": "integer"}},
     ),
@@ -819,7 +822,7 @@ TOOLS_BY_NAME = {t.name: t for t in TOOLS}
 # 合わせる（tests/server/test_ai_parity.py が、画面がすべて載っているか・道具があるか・画面の中身が
 # 道具の答えにあるかを確かめる）。島の統計の画面（island_<page>）は report の page=<page>。
 SCREENS: dict[str, tuple[str, ...]] = {
-    "top": ("world",),
+    "top": ("world", "rankings"),  # 島の一覧の表と歴代の記録は rankings
     "found": ("found",),
     "world": ("world", "api_get"),  # 世界の貿易は api_get /api/world/trade
     "rankings": ("rankings",),
