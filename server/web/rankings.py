@@ -229,7 +229,7 @@ def island_table(
     stats: dict[int, dict[str, float]] | None = None,
     factors: dict[int, float] | None = None,
 ) -> list[dict[str, Any]]:
-    """島の一覧の表（元の箱庭のトップと同じく人口の順）。1行に島の名前・体制・直近の統計・称号。
+    """島の一覧の表（GDP の多い順）。1行に島の名前・体制・直近の統計・称号。
 
     お金の額は基準の通貨に直す（直せない島は値を None にして、文を「直せない」にする）。統計の
     まだない島（建国したばかり）も最後に並べる。"""
@@ -274,7 +274,15 @@ def island_table(
                 "titles": held.get(island.id, []),
             }
         )
-    rows.sort(key=lambda r: (-(r["columns"]["population"]["value"] or -1), r["island"]))
+    # GDP（基準の通貨に直した額）の多い順。直せない島と統計のまだない島は後ろに、人口の順で
+    rows.sort(
+        key=lambda r: (
+            r["columns"]["gdp"]["value"] is None,
+            -(r["columns"]["gdp"]["value"] or 0),
+            -(r["columns"]["population"]["value"] or 0),
+            r["island"],
+        )
+    )
     for rank, row in enumerate(rows, start=1):
         row["rank"] = rank
     return rows

@@ -37,7 +37,7 @@
 {% endif %}
 
 <h2 class="retro-h" id="islands">{% translate "島の一覧" %}</h2>
-<p class="retro-note">{% translate "人口の多い順です。列の名前を押すと並べ替えます。" %}{{ table_note }}。
+<p class="retro-note">{% translate "GDP の多い順です（為替レートがなく直せない国は後ろ）。列の名前を押すと並べ替えます。" %}{{ table_note }}。
   {% if base_name %}{% blocktranslate with c=base_name %}お金の額は、今の為替レートで「{{ c }}」に直しています。{% endblocktranslate %}{% endif %}
   <a href="{% url 'rankings' %}">{% translate "部門別の順位と称号" %}</a></p>
 <div class="table-scroll">

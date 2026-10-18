@@ -14,7 +14,7 @@ from django.utils import timezone
 from server.accounts import keys
 from server.turns.models import TurnLog
 from server.turns.services import run_turn
-from server.web import counter, mcp, top
+from server.web import counter, mcp, rankings, top
 from server.web.models import AccessCounter, Visit
 from server.world import models as m
 
@@ -28,16 +28,20 @@ def _browser(ip: str = "10.0.0.1", agent: str = "Mozilla/5.0 test") -> Client:
 # --- 島の一覧の表 -------------------------------------------------------------------------
 
 
-def test_table_lists_islands_by_population_with_columns(client, world):
+def test_table_lists_islands_by_gdp_with_columns(client, world):
+    """既定の並びは GDP（見る人の通貨に直した額）の多い順。直せない国は後ろに人口の順で。"""
     run_turn(force=True)
-    islands = list(m.Island.objects.order_by("id"))
-    stats = m.StatRecord.objects.filter(turn=1, name="population")
-    pop = {i.id: stats.get(island=i).value for i in islands}
     res = client.get("/")
     assert res.status_code == 200
     table = res.context["table"]
-    assert [r["island"] for r in table] == sorted(pop, key=lambda i: (-pop[i], i))
     assert [r["rank"] for r in table] == [1, 2, 3]
+
+    def key(r):
+        gdp, pop = r["columns"]["gdp"]["value"], r["columns"]["population"]["value"]
+        return (gdp is None, -(gdp or 0), -(pop or 0), r["island"])
+
+    assert table == sorted(table, key=key)
+    assert table[0]["columns"]["gdp"]["value"]  # 見る人の通貨の国は直せる
     html = res.content.decode()
     labels = ("順位", "体制", "人口", "GDP", "1人あたり GDP", "失業率", "物価上昇率", "幸福度")
     labels += ("称号",)
@@ -46,6 +50,16 @@ def test_table_lists_islands_by_population_with_columns(client, world):
     first = table[0]
     assert first["regime"]  # 政治と経済の体制の名前
     assert first["columns"]["population"]["text"].endswith("人")
+
+
+def test_table_gdp_order_uses_converted_money(world):
+    """GDP は通貨が国ごとなので、直した額で比べる（元の額の大きさでは並べない）。"""
+    run_turn(force=True)
+    w = m.World.objects.get()
+    islands = list(m.Island.objects.order_by("id"))
+    factors = {islands[0].id: 1.0, islands[1].id: 1000.0, islands[2].id: 0.001}
+    rows = rankings.island_table(w, islands[0].id, factors=factors)
+    assert [r["island"] for r in rows] == [islands[1].id, islands[0].id, islands[2].id]
 
 
 def test_table_shows_titles_and_ai_mark(client, world):
