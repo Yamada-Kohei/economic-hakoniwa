@@ -513,6 +513,8 @@ population:
     hunger: 10           # 飢えの蓄え1か月分ごとの減点（回3。食べられるようになっても体が戻るまで残る）
     hunger_max: 30
     arrears: 20          # 賃金が払われなかった働き手の割合 1 あたりの減点（回3。賃金の遅配）
+    crowding: 15         # 過密の度合い 1（住める上限の倍が住む）あたりの減点（回5。詰め込み住まい）
+    crowding_max: 30
   # 前のフェーズの世界を移し替えた島は、幸福度の重みを blend_turns ターンかけて、その時の重みから移す
   # （フェーズ1の島は happiness_phase1、フェーズ2-2 までの島は happiness_phase2、フェーズ3-1 までの島は
   # happiness_phase3_1 から）。consumer_goods は 3-1 までの消費財（目安は household.targets）
@@ -520,12 +522,20 @@ population:
   happiness_phase2: {base: 25, food: 25, jobs: 15, power: 10, food_quality: 10, consumer_goods: 15, water: 0, education: 0}
   happiness_phase3_1: {base: 15, food: 25, jobs: 15, power: 10, food_quality: 10, consumer_goods: 15, water: 5, education: 5}
   blend_turns: 12
+  # 過密（回5、10-19 のカード「分家と開拓」）: 住む所の上限を超えた人は、消えずにそのマスに詰めて住む。
+  # 過密の度合い c = 人数 ÷ 住める上限 − 1（上限の倍で 1。頭打ちにしない）。亡くなる割合（1年）に deaths × c を
+  # 足し、生まれる割合を max(0, 1 − births × c) 倍にする（詰めるほど強く効き、どこかで釣り合う）。目安: 19世紀の町の裏長屋の死亡率は同じ国の農村の 1.5 倍ほど（年 2% → 3%）、
+  # 土地の足りない農村は結婚が遅れて生まれる数が減った（マルサスの予防的な抑制。18世紀の日本や西欧の農村）
+  overcrowding: {deaths: 0.01, births: 0.3}
 
 housing:
   facility: housing     # 自動で建つ町の施設（育つのに要る資源は settlements.yaml の materials）
   max_new_per_turn: 2   # 1ターンに新しくできる町の数
   max_upgrades_per_turn: 2  # 1ターンに上の段階へ育つ町の数
   fill_ratio: 0.8       # 町が上の段階へ育つのは、住む人が上限のこの割合を超えてから
+  # 分家と開拓（回5、10-19 のカード）: 島の上限を超えて住む人が島の空きより多ければ、いちばん過密なマスから
+  # これだけのマスの内の空いた平地に、家計が木材を使って村を開く（江戸の新田開発・分家。施設の通勤圏でなくてよい）
+  settle_radius: 3
 
 # 国をまたぐ移民（バランス調整の回3。hakoniwa_core/modules/migration）。暮らしの見込み V =
 # 実質賃金 × 仕事の見つかる割合 × 食べられた割合 が、行き先で ln(V行き先 ÷ V今) − cost −

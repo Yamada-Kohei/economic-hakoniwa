@@ -51,7 +51,7 @@
 | PO-29 | 家計の飢えの蓄えが `population.hunger.flee` を超えている間、そのターンに食べられなかった割合の町の人が、空きのある近い村へ移って自給する（村のままでいられる人数まで） | 決定 | `population.hunger.flee` | tests/core/test_balance_round4.py::test_town_people_flee_to_villages_after_months_of_hunger, ::test_town_people_flee_only_as_far_as_the_villages_stay_villages, ::test_jobless_town_households_flee_while_others_still_eat |
 | PO-30 | 生まれる割合は式 `birth_rate`（`population.births`）で、学んだ人の割合と層の実質の所得が上がるほど下がる。仕事がなくても増える | 決定 | `population.births.high`, `population.births.low`, `population.births.education`, `population.births.income`, `population.births.income_floor` | tests/core/test_balance_round4.py::test_births_fall_with_education_and_income |
 | PO-31 | 亡くなる割合は式 `death_rate`（`population.deaths`）で、食事の質と上下水道で下がり、人が密に住むマスほど上がる。飢えで亡くなる人は別 | 決定 | `population.deaths.base`, `population.deaths.food`, `population.deaths.water`, `population.deaths.crowd` | tests/core/test_balance_round4.py::test_deaths_fall_with_food_and_water_and_crowding_raises_them |
-| PO-32 | 生まれたマスに住む所がなければ島の空いた町へ移り、どこにも空きがなければ生まれない。年齢の層は持たない | 決定 |  | tests/core/test_balance_round4.py::test_population_grows_by_births_without_jobs_and_hunger_holds_births |
+| PO-32 | 生まれたマスに住む所がなければ島の空いた町へ移り、どこにも空きがなければ消えずに詰めて住む（過密）。過密の度合いで亡くなる割合が上がり、生まれる割合と幸福度が下がる。自給の村があふれた分は近い町へ出る。年齢の層は持たない | 決定 | `population.overcrowding.deaths`, `population.overcrowding.births`, `population.happiness.crowding`, `population.happiness.crowding_max` | tests/core/test_round5_village.py::test_births_are_kept_when_every_home_is_full, ::test_overflow_beyond_a_village_goes_to_the_nearest_town, ::test_crowding_lowers_happiness_and_immigration_room |
 | PO-33 | 人口の増減は家計の層の人数に比例して割り振り、資産を持つ層は割合を保つ。層を移る人は 1 人あたりの預金を一緒に持つ（層の決まりはタブ 4） | 決定 |  | （未確認） |
 | PO-34 | 幸福度は式 `happiness`（`population.happiness`）で層ごとに出し、人数で平均する。食料・働き口・電力・食事の質・衣料・ぜいたく品・上下水道・教育の項目と、汚染・実質賃金・物価・飢え・遅配の減点 | 決定 | `population.happiness.base`, `population.happiness.food`, `population.happiness.jobs`, `population.happiness.power`, `population.happiness.food_quality`, `population.happiness.clothing`, `population.happiness.luxury`, `population.happiness.water`, `population.happiness.education`, `population.happiness.pollution_per_point`, `population.happiness.real_wage_per_point`, `population.happiness.real_wage_max`, `population.happiness.inflation_threshold`, `population.happiness.inflation_per_point`, `population.happiness.inflation_max`, `population.happiness.arrears` | tests/core/test_phase3_4.py（幸福度の上限）, tests/core/test_playtest3_fixes.py::test_happiness_weight_change_is_announced_once |
 | PO-35 | 前のフェーズから移し替えた島は、幸福度の重みをその時の重みから `population.blend_turns` かけて移し、移し始めのターンに 1 度知らせる | 決定 | `population.blend_turns`, `population.happiness_phase1`, `population.happiness_phase2`, `population.happiness_phase3_1` | tests/core/test_playtest3_fixes.py::test_happiness_weight_change_is_announced_once |
@@ -119,7 +119,9 @@
 
 町は自動で建つ施設 `housing.facility` で、プレイヤーは建てられません。段階は `settlements.yaml` の村・町・都市・大都市で、段階ごとに住める上限（capacity）・見た目の人数（min_population）・建物の高さ・育つときに使う資材（materials）・育つのに要る上下水道の整備度（water。都市と大都市）・自給の農業ができるか（subsistence。村だけ）を持ちます。段階（住める上限と見た目）が上がるのは育ったときで、「都市に発展しました」はそのターンに出します。
 
-町ができる・育つのは都市の発展の段で、人手の足りない施設（工事中を含む。店が集落ごとに雇いきれなかった人数も含む）の通勤圏（`labor.commute_radius`）で住む所が足りないときです。足りない人数の多い所から見て、通勤圏の空いている町に入れる人と、もう近くに住んでいて仕事のない人で足りれば育てません。足りなければ、通勤圏の中で人数が上限の `housing.fill_ratio` を超えた町を 1 つ上の段階へ育て、育てる町がなければ空いた平地に村を新しく作ります。1 ターンに育つ数は `housing.max_upgrades_per_turn`、新しくできる数は `housing.max_new_per_turn` までです。開発を止めたマスと、工業団地・オフィス街に指定したマスには建ちません。
+町ができる・育つのは都市の発展の段で、人手の足りない施設（工事中を含む。店が集落ごとに雇いきれなかった人数も含む）の通勤圏（`labor.commute_radius`）で住む所が足りないときです。足りない人数の多い所から見て、通勤圏の空いている町に入れる人と、もう近くに住んでいて仕事のない人で足りれば育てません。足りなければ、通勤圏の中で人数が上限の `housing.fill_ratio` を超えた町を 1 つ上の段階へ育て、育てる町がなければ空いた平地に村を新しく作ります。
+
+人手の足りない所がなくても、島の住む所の上限を超えて住む人（過密）が島の空きより多ければ、家計がいちばん過密なマスから `housing.settle_radius` マスの内の空いた平地に新しい村を開きます（分家と開拓。江戸の新田開発や分家に当たる。施設の通勤圏でなくてよい）。資材は村の materials（木材）で、町が育つときと同じく家計が買います。平地も木材もなければ開けず、過密が続きます。1 ターンに育つ数は `housing.max_upgrades_per_turn`、新しくできる数は人手の足りない所の分と開拓の分を合わせて `housing.max_new_per_turn` までです（人手の足りない所が先）。開発を止めたマスと、工業団地・オフィス街に指定したマスには建ちません。
 
 育つ・できるときの資材は、一般の層が市場で買います（預金の `household.housing_share` まで。住宅への投資として数える）。買えた資材がそろえば次のターンに育ち、足りなければ要る資材を次のターンの市場で買い、2 ターン続けて足りなければ「町が育たない」と資材の名前を知らせます。都市と大都市に育つには、そのマスの上下水道が `settlements.yaml` の water 以上要り、足りずに育たない町はマスごとに 1 度知らせます（整備度が足りたら印を外す）。道路や送電網が人口に追いつかないときの混雑は入れません。人口がゼロになった町の扱いと、町の中に入る店（回7）はタブ 4 と 5 にあります。
 
@@ -127,7 +129,7 @@
 
 村（`settlements.yaml` で subsistence の段階）の仕事のない住民は、自給の農業で自分の食べる分をまかない、市場で食料を買いません。失業率にも数えません。村のままでいられる人数は、自給できない段階のうちいちばん小さい人数の手前までです。町以上の集落の人は市場で買って暮らします。都市化で村の自給農業が細るのはこの仕組みから出ます。
 
-人は毎ターン少しずつ島の中を移ります。仕事のない人のうち `population.migration_rate` の割合が、人手の足りない施設の通勤圏にある空いた町へ移ります。行き先は、人手の足りない所に近い町から、同じなら幸福度の高い町です。住む所のない人（生まれたマスに空きがなかった人）も、ほかの人を移した後にまだ空いている町へ入れ、入れなければ生まれません。町が育つのは、この移り住みで町の人数が上限に近づくからです。
+人は毎ターン少しずつ島の中を移ります。仕事のない人のうち `population.migration_rate` の割合が、人手の足りない施設の通勤圏にある空いた町へ移ります。行き先は、人手の足りない所に近い町から、同じなら幸福度の高い町です。住む所の上限を超えた人（生まれたマスに空きがなかった人も）は、空いている町へ入れ、入れなければ消えずに元のマスに詰めて住みます（過密）。ただし自給の村が村のままでいられる人数を超える分は、いちばん近い町（人数でも町と見られる住宅地。なければ建った段階が町の住宅地）へ出ます（土地の足りない農村からあふれた人が町へ出る。村が人数で町と見られて村じゅうが一度に自給をやめないように）。住む所のないマスの人はいちばん近い住宅地へ移り、島に住宅地が 1 つもなければ国を出ます。町が育つのは、この移り住みで町の人数が上限に近づくからです。
 
 ### 食料と飢えの蓄え
 
@@ -153,7 +155,7 @@
 
 - 生まれる割合は式 `birth_rate`（`population.births`）で、島の教育水準（働き手のうち学んだ人の割合）と層の実質の可処分所得（`household.base_income` に対する倍率、下限 `population.births.income_floor`）が上がるほど下がります（現実の人口転換。女性の教育と、子にかかる費用）。飢えの蓄えが `population.hunger.reserve_min` に近づくほど減り、そこで市場で食料を買う人は生まれなくなります。
 - 亡くなる割合は式 `death_rate`（`population.deaths`）で、食事の質で下がり、そのマスの上下水道の整備度で下がり、人が密に住むマスほど（マスの人数 ÷ `population.deaths.crowd`、1 まで）汚れた水から病気が広がって上がります（19 世紀の「都市の墓場」。村は町ほど死なない）。飢えで亡くなる人は別に数えます。
-- 生まれたマスに住む所がなければ島の空いた町へ移り、どこにも空きがなければ生まれません（住む所がないと子を持たない）。年齢の層は入れません（Codex E04）。
+- 生まれたマスに住む所がなければ島の空いた町へ移り、どこにも空きがなければ詰めて住みます（過密。回5、10-19 のカード「分家と開拓」）。過密の度合い c = 人数 ÷ 住める上限 − 1（上限の倍で 1。頭打ちにしない）で、亡くなる割合に `population.overcrowding.deaths` × c を足し（19 世紀の町の裏長屋の死亡率は農村の 1.5 倍ほど）、生まれる割合を (1 − `population.overcrowding.births` × c) 倍にし（土地の足りない農村は結婚が遅れた。マルサスの予防的な抑制）、幸福度を `population.happiness.crowding` × c 点（`crowding_max` まで）下げます。詰めるほど強く効くので、平地の尽きた島の人口は上限の少し上で釣り合います。年齢の層は入れません（Codex E04）。
 - 人口の増減は家計の層の人数に比例して割り振り、資産を持つ層は住民の割合を保ちます。層を移る人は元の層の 1 人あたりの預金を一緒に持ちます（タブ 4）。住民が減れば技術者も同じ割合で減ります（タブ 8）。
 - 経済の画面に、生まれた人と亡くなった人のグラフを出します（タブ 11）。標準の計画は、人が密に住むのに上下水道が足りない町に上下水道を引きます（タブ 12）。
 
@@ -186,12 +188,12 @@
 
 | 場面 | 誰が・何を | どれくらいの間に | 元に戻る道 | 現実の例 | 設定の名前 |
 | --- | --- | --- | --- | --- | --- |
-| 足りない | 食料が足りない: 家計の層ごとに飢えの蓄えがたまり（遅らせる役: 体の蓄え・村の自給）、買い上がり（タブ 3）・村の人は畑へ・町の人は村へ・受け入れる島があれば移民・子が減る・幸福度と政情が下がる（ずらす役）。住む所が足りない: 町が育つか新しくでき（資材がそろえば）、空きがなければ生まれない | 蓄えが体の余力を超えるまで数か月。弱い人から何か月かに分かれて亡くなる。畑へ戻るのは翌ターン、村へ逃れるのは蓄えが flee を超えてから | 食べ物が市場に戻れば蓄えは recovery で戻り、畑の人は back_to_work ずつ仕事に戻る。村へ逃れた人が町へ戻る道は弱い（回7 で見る） | オランダの飢餓の冬は半年で人口の 0.5% ほど、ベンガルは 1 年で 5% ほど、レニングラードの最悪の冬は 1 か月に 4% ほど。飢饉の国からの出国は年に数%、アイルランドの大飢饉は 10 年で 2 割 | `population.hunger.*`, `labor.back_to_work`, `migration.*`, `housing.*` |
+| 足りない | 食料が足りない: 家計の層ごとに飢えの蓄えがたまり（遅らせる役: 体の蓄え・村の自給）、買い上がり（タブ 3）・村の人は畑へ・町の人は村へ・受け入れる島があれば移民・子が減る・幸福度と政情が下がる（ずらす役）。住む所が足りない: 町が育つか新しくでき（資材がそろえば）、空きがなければ詰めて住み（過密）、島の空きより過密の人が多ければ近くの平地に村を開く（分家と開拓）。開けるまで過密で亡くなる人が増え、生まれる人と幸福度が下がる | 蓄えが体の余力を超えるまで数か月。弱い人から何か月かに分かれて亡くなる。畑へ戻るのは翌ターン、村へ逃れるのは蓄えが flee を超えてから | 食べ物が市場に戻れば蓄えは recovery で戻り、畑の人は back_to_work ずつ仕事に戻る。村へ逃れた人が町へ戻る道は弱い（回7 で見る） | オランダの飢餓の冬は半年で人口の 0.5% ほど、ベンガルは 1 年で 5% ほど、レニングラードの最悪の冬は 1 か月に 4% ほど。飢饉の国からの出国は年に数%、アイルランドの大飢饉は 10 年で 2 割 | `population.hunger.*`, `labor.back_to_work`, `migration.*`, `housing.*` |
 | 余る | 食料が余る: 農場が操業目標を下げ、売れ残りは傷んで捨てられる（タブ 3・5）。国の備蓄は命令と予算（`fiscal.budget.warehouse`）がなければ 0 で、遅らせる役がない（rework-design.md 2.2。備蓄の案は未実施）。人が余る（仕事がない）: 失業のまま。村なら自給、町なら店が最後に雇う（回4 の仮。タブ 4）、人手の足りない施設の近くへ移る、受け入れる島があれば移民 | 農場の減産は操業目標の見直しの速さで（タブ 5） | 品切れになれば値段が上がって作り方が戻る（タブ 3） | 現実の政府は穀物を買い上げて備蓄する（独立後のインド）。回5 の「標準の計画の飢饉の手」で入れる | `fiscal.budget.warehouse`, `population.migration_rate` |
-| 0 になる | 食料が 0: まったく食べられないと数か月で多くが亡くなる（遅らせる役: 蓄えと村の自給。ずらす役: 買い上がり・輸入・村へ逃れる・移民）。人口が 0: 島が空になり、戻る道は受け入れを開いた移民だけ。関門は初めの人口に対する下限と上限、1 ターンの変化の上限で見る（gate.py の固定値。設定にない。タブ 12）。住む所の空きが 0: 生まれない | 何も食べられなければ 3 か月目から多く亡くなり、4 か月で 3 分の 2 ほど | 食べ物が戻れば蓄えは戻る。空になった島に人が戻るのは移民の受け入れが要る | 飢えで島じゅうが亡くなる流れは回3・回4 で消えた（10 島で漁港が暴動で止まり島が 3 か月で空になった件は、暴動から農林水産業を外して直した。タブ 10） | `population.hunger.reserve`, `population.hunger.reserve_min` |
+| 0 になる | 食料が 0: まったく食べられないと数か月で多くが亡くなる（遅らせる役: 蓄えと村の自給。ずらす役: 買い上がり・輸入・村へ逃れる・移民）。人口が 0: 島が空になり、戻る道は受け入れを開いた移民だけ。関門は初めの人口に対する下限と上限、1 ターンの変化の上限で見る（gate.py の固定値。設定にない。タブ 12）。住む所の空きが 0: 詰めて住み、平地と木材があれば村を開く。平地がなければ過密が続き、亡くなる割合が上がり生まれる割合が下がって、上限の少し上で釣り合う | 何も食べられなければ 3 か月目から多く亡くなり、4 か月で 3 分の 2 ほど | 食べ物が戻れば蓄えは戻る。空になった島に人が戻るのは移民の受け入れが要る | 飢えで島じゅうが亡くなる流れは回3・回4 で消えた（10 島で漁港が暴動で止まり島が 3 か月で空になった件は、暴動から農林水産業を外して直した。タブ 10） | `population.hunger.reserve`, `population.hunger.reserve_min` |
 | 一部だけ | 層の一部が飢える: 家計を分けて失業している家計から飢える。少しの人が飢えても層の全員が買い物をやめない（タブ 4）。島の 1 か所: 上下水道のない密な町はそのマスの亡くなる割合が上がる（標準の計画が上下水道を引く）、汚染の重なるマスは幸福度と肥沃度が下がる、離れ小島は自前の発電所が要り港が入るまで運賃が高い（タブ 8・3） | 密な町の死亡率はその場で。肥沃度は 1 年分たまるごと | 上下水道を引けば下がる。汚染が消えても肥沃度は戻らない（下限まで下がったまま） | 19 世紀の農村とリバプール・マンチェスターの死亡率の差 | `population.deaths.crowd`, `population.deaths.water`, `climate.fertility_loss` |
 | 持ち主・相手がいない | 移民の行き先がない（どの島も閉じている。既定は閉じる）: 出られず留まり、出たい人の不満が政情に効く。町を育てる資材を作る施設が島にない: 育たず「町が育たない」と知らせ続ける。通勤圏に人を雇う施設がない: 町はできず、人は移らない | 2 ターン続けて資材が足りなければ知らせ | 資材を作る施設を建てる・輸入する。移民は受け入れを開く国が出るまで | ベルリンの壁の前の東ドイツは年に 1〜2% を失った | `migration.trapped`, `migration.trapped_max` |
-| 時間がたつ | 育ちきった町（大都市の上限）: それ以上育たず、空きがなければ人は他の町へ、どこにも空きがなければ生まれない。教育と所得が上がると生まれる割合は豊かな国の水準まで下がる（人口転換）。同郷のつながりは年に薄れて送金も減る。汚染の続くマスの肥沃度は下限まで下がる | 人口転換は教育の蓄えの速さ（働く期間。タブ 8）で数十年 | 人口が増えると国の借金が膨らむ件は回5 で見る（タブ 7） | 学校に通えた人が 3 割台の国で年 4〜5%、9 割を超える中所得の国で 1.5〜2%、豊かな国で 1% ほど | `population.births.*`, `migration.ties_decay`, `climate.fertility_floor` |
+| 時間がたつ | 育ちきった町（大都市の上限）: それ以上育たず、空きがなければ人は他の町へ、どこにも空きがなければ詰めて住む（過密）。教育と所得が上がると生まれる割合は豊かな国の水準まで下がる（人口転換）。同郷のつながりは年に薄れて送金も減る。汚染の続くマスの肥沃度は下限まで下がる | 人口転換は教育の蓄えの速さ（働く期間。タブ 8）で数十年 | 人口が増えると国の借金が膨らむ件は回5 で見る（タブ 7） | 学校に通えた人が 3 割台の国で年 4〜5%、9 割を超える中所得の国で 1.5〜2%、豊かな国で 1% ほど | `population.births.*`, `migration.ties_decay`, `climate.fertility_floor` |
 
 ## 前提と依存
 
