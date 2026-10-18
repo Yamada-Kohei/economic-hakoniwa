@@ -1,0 +1,6 @@
+[Unit]
+Description=経済版箱庭諸国 main の自動の反映（写しで試してから、止めて控え、反映して再起動）
+
+[Service]
+Type=oneshot
+ExecStart=%h/apps/hakoniwa-deploy/autodeploy.sh
