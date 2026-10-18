@@ -38,7 +38,7 @@ def within(island: IslandState, center: Pos, radius: int) -> list[Pos]:
 
 # within の並べた結果（島の大きさ・中心・半径だけで決まるので、島やターンをまたいで使い回す）
 _WITHIN: dict[tuple[int, int, int, int], list[Pos]] = {}
-_WITHIN_MAX = 1 << 16
+_WITHIN_MAX = 1 << 12  # 半径が島の大きさの並べ方は1件が大きいので、多くは持たない
 
 
 def neighbors4(island: IslandState, pos: Pos) -> Iterator[Pos]:

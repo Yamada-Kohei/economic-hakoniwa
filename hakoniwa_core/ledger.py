@@ -88,7 +88,7 @@ def parse(name: str) -> tuple[str, str, str]:
 
 # 勘定の名前を分けた結果（ターンの中で何百万回も分けるので覚えておく。名前は変わらない）
 _PARSED: dict[str, tuple[str, str, str]] = {}
-_PARSED_MAX = 1 << 20
+_PARSED_MAX = 1 << 16  # 返し終わった貸付などの名前が残り続けないよう、ここで全部捨てる
 
 
 def instrument(name: str) -> tuple[str, str]:

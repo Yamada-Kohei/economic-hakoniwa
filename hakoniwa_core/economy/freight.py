@@ -126,7 +126,9 @@ class Routes:
         return dist
 
     def from_many(self, origins: list[Pos]) -> array:
-        """origins のどれかから各マスまでの一番短い道のり（拠点からの道のりなど）。"""
+        """origins のどれかから各マスまでの一番短い道のり（拠点からの道のりなど）。
+
+        from_ と同じく、返す array はほかの島やターンと使い回すので書き換えないこと。"""
         key = tuple(origins)
         found = self._many.get(key)
         if found is None:
