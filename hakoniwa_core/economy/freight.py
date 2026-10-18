@@ -47,6 +47,8 @@ STEP = 20
 # ので、ターンをまたいで使い回せる）
 _PATHS: dict[bytes, dict[Pos, array]] = {}
 _PATHS_MAX = 256
+# 同じく、いくつかの出発のマス（拠点など）のどれかから各マスまでの道のり
+_MANY: dict[bytes, dict[tuple[Pos, ...], array]] = {}
 
 
 WEIGHTS = "freight_weights"  # island.scratch: マスごとの重さ（整備度が変わったら捨てる）
@@ -59,8 +61,11 @@ def _weights(island: IslandState, defs: Defs) -> bytes:
     """
     cached = island.scratch.get(WEIGHTS)
     if cached is None:
+        land = {name for name in defs.terrain if fac.is_land(defs, name)}
+        # インフラのない陸のマスは path_weight を呼ばずに 10（道のない陸のマス）
         cached = island.scratch[WEIGHTS] = bytes(
-            infra.path_weight(defs, t) if fac.is_land(defs, t.terrain) else 0 for t in island.tiles
+            (infra.path_weight(defs, t) if t.infra else 10) if t.terrain in land else 0
+            for t in island.tiles
         )
     return cached
 
@@ -104,9 +109,11 @@ class Routes:
         if table is None:
             if len(_PATHS) >= _PATHS_MAX:
                 _PATHS.clear()
+                _MANY.clear()
             table = _PATHS[key] = {}
         self._weights = weights
         self._table = table
+        self._many = _MANY.setdefault(key, {})
         self.homes = [(t.x, t.y) for t in island.tiles if t.population > 0]
 
     def from_(self, origin: Pos) -> array:
@@ -120,7 +127,12 @@ class Routes:
 
     def from_many(self, origins: list[Pos]) -> array:
         """origins のどれかから各マスまでの一番短い道のり（拠点からの道のりなど）。"""
-        return _search(self.size, self._weights, [y * self.size + x for x, y in origins])
+        key = tuple(origins)
+        found = self._many.get(key)
+        if found is None:
+            found = _search(self.size, self._weights, [y * self.size + x for x, y in origins])
+            self._many[key] = found
+        return found
 
     def between(self, a: Pos, b: Pos) -> int | None:
         """a から b までの道のり。陸でつながらなければ None。"""

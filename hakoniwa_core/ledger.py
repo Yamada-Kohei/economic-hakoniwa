@@ -77,8 +77,18 @@ def issued(issuer: str, item: str) -> str:
 
 
 def parse(name: str) -> tuple[str, str, str]:
-    holder, item, issuer = name.split("/")
-    return holder, item, issuer
+    found = _PARSED.get(name)
+    if found is None:
+        holder, item, issuer = name.split("/")
+        if len(_PARSED) >= _PARSED_MAX:
+            _PARSED.clear()
+        found = _PARSED[name] = (holder, item, issuer)
+    return found
+
+
+# 勘定の名前を分けた結果（ターンの中で何百万回も分けるので覚えておく。名前は変わらない）
+_PARSED: dict[str, tuple[str, str, str]] = {}
+_PARSED_MAX = 1 << 20
 
 
 def instrument(name: str) -> tuple[str, str]:
@@ -416,7 +426,10 @@ def check(
     if debit_total != credit_total:
         problems.append(f"借り方 {debit_total} と貸し方 {credit_total} が一致しません")
     closing = island.accounts
-    for name in sorted(set(replay) | set(closing)):
+    # 全部の勘定を並べると重いので、合わない勘定だけを名前の順に並べる
+    wrong = [name for name in replay if replay[name] != closing.get(name, 0)]
+    wrong += [name for name in closing if name not in replay and closing[name] != 0]
+    for name in sorted(wrong):
         if replay.get(name, 0) != closing.get(name, 0):
             problems.append(
                 f"勘定 {name} の残高 {closing.get(name, 0)} が、前の残高と仕訳から求めた"

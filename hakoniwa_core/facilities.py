@@ -215,8 +215,12 @@ def commute_labor(
     """施設 kind を (x, y) に置いたときの通勤圏の (労働者, そのうち前のターンの就業者) の数。"""
     tiles = [island.tile(*p) for p in within(island, (x, y), commute_radius(defs, config, kind))]
     tiles = [t for t in tiles if t.population > 0]
-    labor = sum(labor_force(defs, island, t) for t in tiles)
-    return labor, sum(min(t.ext.get("employed", 0), labor_force(defs, island, t)) for t in tiles)
+    share = labor_share(defs, island)
+    labor = sum(labor_force(defs, island, t, share) for t in tiles)
+    employed = sum(
+        min(t.ext.get("employed", 0), labor_force(defs, island, t, share)) for t in tiles
+    )
+    return labor, employed
 
 
 def housing_kind(config: GameConfig) -> str:
@@ -309,8 +313,11 @@ def labor_share(defs: Defs, island: IslandState) -> float:
     return min(1.0, (share + mobilized) * (1 - idle))
 
 
-def labor_force(defs: Defs, island: IslandState, tile: Tile) -> int:
-    return int(tile.population * labor_share(defs, island))
+def labor_force(defs: Defs, island: IslandState, tile: Tile, share: float | None = None) -> int:
+    """マスの一般の労働者の数。share は labor_share（多くのマスを数えるときに1回だけ出す）。"""
+    if share is None:
+        share = labor_share(defs, island)
+    return int(tile.population * share)
 
 
 def labor_ratio(defs: Defs, f: Facility) -> int:

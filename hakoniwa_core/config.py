@@ -22,13 +22,25 @@ class GameConfig:
     raw: dict[str, Any] = field(default_factory=dict)
 
     def get(self, dotted: str) -> Any:
-        """ "orders.base_admin_power" のような名前で数値を取り出す。"""
+        """ "orders.base_admin_power" のような名前で数値を取り出す。
+
+        ターンの中で何十万回も呼ばれるので、名前の区切りだけを覚えておく（値は毎回 raw から引く
+        ので、raw を書き換えても古い値は返さない）。
+        """
+        parts = _PARTS.get(dotted)
+        if parts is None:
+            parts = _PARTS[dotted] = tuple(dotted.split("."))
         value: Any = self.raw
-        for part in dotted.split("."):
-            if not isinstance(value, dict) or part not in value:
-                raise KeyError(f"game.yaml に {dotted} がありません")
-            value = value[part]
+        try:
+            for part in parts:
+                value = value[part]
+        except (KeyError, TypeError, IndexError):  # 名前がない・途中が表でない
+            raise KeyError(f"game.yaml に {dotted} がありません") from None
         return value
+
+
+# 設定の名前ごとの区切り（GameConfig.get）
+_PARTS: dict[str, tuple[str, ...]] = {}
 
 
 def load_config(path: str | Path) -> GameConfig:

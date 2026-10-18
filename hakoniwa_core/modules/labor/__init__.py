@@ -212,7 +212,10 @@ class Payroll(IslandStage):
         if rate <= 0:
             return
         defs = ctx.defs
-        unemployed = sum(tile_jobless(defs, island, t) for t in island.tiles if t.population > 0)
+        share = fac.labor_share(defs, island)
+        unemployed = sum(
+            tile_jobless(defs, island, t, share) for t in island.tiles if t.population > 0
+        )
         payer = Payer(ledger.GOV, UNEMPLOYMENT)
         benefit = part(island.economy.average_wage, rate)
         idle = island.scratch.get("engineers_left", 0)  # 席に就けなかった技術者

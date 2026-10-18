@@ -214,9 +214,12 @@ def opening_stats(island: IslandState, defs: Defs) -> dict[str, float]:
 
     就業者・幸福度・値段などは最初の更新で決まるので入れない。
     """
+    share = fac.labor_share(defs, island)
     stats: dict[str, float] = {
         "population": sum(t.population for t in island.tiles if t.population > 0),
-        "labor": sum(fac.labor_force(defs, island, t) for t in island.tiles if t.population > 0),
+        "labor": sum(
+            fac.labor_force(defs, island, t, share) for t in island.tiles if t.population > 0
+        ),
     }
     stats.update(_holdings(island))
     if island.has_economy:
