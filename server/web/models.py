@@ -40,3 +40,24 @@ class Visit(models.Model):
 
     def __str__(self) -> str:
         return f"{self.day} {self.number} 人目"
+
+
+class SiteUpdate(models.Model):
+    """トップの画面の更新履歴の1行。管理画面で足す・直す・隠すができる。
+
+    遊ぶ人に見える変更のコミットに書いた「更新履歴: 〜」の行は、反映（migrate）のたびに
+    ここへ写す（key で見分け、一度写した行は管理画面で直しても上書きしない）。"""
+
+    date = models.DateField("日付")
+    text = models.CharField("内容", max_length=200)
+    hidden = models.BooleanField("隠す", default=False)
+    key = models.CharField(
+        "写した元", max_length=64, unique=True, null=True, blank=True, editable=False
+    )
+
+    class Meta:
+        verbose_name = verbose_name_plural = "更新履歴"
+        ordering = ["-date", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.date} {self.text}"

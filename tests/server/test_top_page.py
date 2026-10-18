@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 from django.contrib.auth.models import User
@@ -15,7 +15,7 @@ from server.accounts import keys
 from server.turns.models import TurnLog
 from server.turns.services import run_turn
 from server.web import counter, mcp, rankings, top
-from server.web.models import AccessCounter, Visit
+from server.web.models import AccessCounter, SiteUpdate, Visit
 from server.world import models as m
 
 pytestmark = pytest.mark.django_db
@@ -238,29 +238,40 @@ def test_api_and_tools_do_not_count_visits(client, world):
     assert not Visit.objects.exists()
 
 
-# --- 更新履歴（git の記録から） -----------------------------------------------------------
+# --- 更新履歴（管理画面と、コミットの「更新履歴:」の行） ---------------------------------
 
 
 def test_updates_come_from_commit_lines():
     log = (
-        "\x1e2026-10-19T02:30:00+09:00\x1f島の一覧を作り直す\n\n"
+        "\x1eaaa\x1f2026-10-19T02:30:00+09:00\x1f島の一覧を作り直す\n\n"
         "更新履歴: トップを島の一覧の表にしました。\n"
         "- 更新履歴・管理人より（箇条書きの中の言葉は拾わない）\n"
-        "\x1e2026-10-18T16:00:00+00:00\x1f地図\n\n更新履歴：地図を大きくしました。\n"
-        "\x1e2026-10-17T12:00:00+09:00\x1f試験だけ\n\n更新履歴:\n"
+        "\x1ebbb\x1f2026-10-18T16:00:00+00:00\x1f地図\n\n更新履歴：地図を大きくしました。\n"
+        "\x1eccc\x1f2026-10-17T12:00:00+09:00\x1f試験だけ\n\n更新履歴:\n"
     )
     rows = top.parse_git_updates(log)
     assert rows == [
-        {"date": "2026-10-19", "text": "トップを島の一覧の表にしました。"},
-        {"date": "2026-10-19", "text": "地図を大きくしました。"},  # UTC の 16 時は JST の翌日
+        {"key": "git:aaa:2", "date": "2026-10-19", "text": "トップを島の一覧の表にしました。"},
+        # UTC の 16 時は JST の翌日
+        {"key": "git:bbb:2", "date": "2026-10-19", "text": "地図を大きくしました。"},
     ]
 
 
-def test_updates_merge_written_and_git_newest_first():
-    git = [{"date": "2026-10-19", "text": "A"}, {"date": "2026-10-17", "text": "B"}]
-    written = [{"date": "2026-10-18", "text": "C"}, {"date": "2026-10-17", "text": "B"}]
-    merged = top.merge_updates(git, written)
-    assert [r["text"] for r in merged] == ["A", "C", "B"]
+def test_sync_copies_once_and_keeps_admin_edits(client, world, monkeypatch):
+    SiteUpdate.objects.all().delete()
+    found = [{"key": "git:aaa:2", "date": "2026-10-19", "text": "表にしました。"}]
+    monkeypatch.setattr(top, "git_updates", lambda: list(found))
+    assert top.sync_updates() > 0  # コミットの行と top.yaml の昔の分
+    row = SiteUpdate.objects.get(key="git:aaa:2")
+    row.text = "トップを表にしました。"  # 管理画面で直す
+    row.save()
+    assert top.sync_updates() == 0  # 直した行を作り直さない
+    SiteUpdate.objects.create(date=date(2026, 10, 20), text="管理画面で足したお知らせ")
+    SiteUpdate.objects.create(date=date(2026, 10, 21), text="隠した行", hidden=True)
+    texts = [u["text"] for u in client.get("/").context["updates"]]
+    assert texts[:2] == ["管理画面で足したお知らせ", "トップを表にしました。"]
+    assert "隠した行" not in texts and "表にしました。" not in texts
+    assert [u["text"] for u in client.get("/api/world").json()["updates"]] == texts
 
 
 def test_updates_without_git(monkeypatch):

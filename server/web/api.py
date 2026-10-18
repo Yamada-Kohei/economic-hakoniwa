@@ -888,6 +888,6 @@ def world(request):
 
 
 def _site_notes() -> dict[str, Any]:
-    """更新履歴・管理人より・リンク集（server/web/top.yaml）。"""
+    """更新履歴（管理画面）・管理人より・リンク集（server/web/top.yaml）。"""
     notes = top_page.site_notes()
     return {"updates": notes["updates"], "message": notes["message"], "links": notes["links"]}

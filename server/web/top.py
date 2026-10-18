@@ -3,8 +3,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import subprocess
-from datetime import datetime
+from datetime import date, datetime
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from django.utils import timezone
 
 from server.turns.models import TurnLog
 from server.web import display
+from server.web.models import SiteUpdate
 from server.world import models as m
 
 RECENT = 15  # 最近の出来事に出す行の数
@@ -81,24 +83,54 @@ def recent_events(world: m.World, limit: int = RECENT) -> list[dict[str, Any]]:
     return out
 
 
-# 更新履歴は、コミットの文に「更新履歴: 〜」の行を書くと、そのコミットが反映されたときに載る
-# （git の記録から読む。手で書く分は top.yaml の updates）。新しい順に UPDATES 件まで。
+# 更新履歴は SiteUpdate（管理画面で足す・直す・隠す）。コミットの文に「更新履歴: 〜」の行を
+# 書くと、反映（migrate）のたびに sync_updates がその行を写す。top.yaml の updates も同じく写す
+# （git の記録より前の分）。画面には新しい順に UPDATES 件まで。
 UPDATE_MARKS = ("更新履歴:", "更新履歴：")  # 半角と全角のコロン
 UPDATES = 30
 
 
 @cache
-def site_notes() -> dict[str, Any]:
-    """管理人の書く欄（更新履歴・管理人より・リンク集）。更新履歴は git の記録と top.yaml を
-    合わせる。サーバーは反映のたびに起動し直すので、読むのは起動して最初の1回だけ。"""
+def _yaml() -> dict[str, Any]:
     path = Path(__file__).with_name("top.yaml")
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    written = [{"date": str(u["date"]), "text": str(u["text"])} for u in data.get("updates") or []]
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+
+def site_notes() -> dict[str, Any]:
+    """管理人の書く欄: 更新履歴（管理画面）・管理人より・リンク集（top.yaml）。"""
+    data = _yaml()
     return {
-        "updates": merge_updates(git_updates(), written),
+        "updates": updates(),
         "message": str(data.get("message") or ""),
         "links": list(data.get("links") or []),
     }
+
+
+def updates() -> list[dict[str, str]]:
+    rows = SiteUpdate.objects.filter(hidden=False).order_by("-date", "-id")[:UPDATES]
+    return [{"date": row.date.isoformat(), "text": row.text} for row in rows]
+
+
+def sync_updates() -> int:
+    """git の記録の「更新履歴:」の行と top.yaml の updates を、まだ写していなければ写す。
+    写した数を返す。管理画面で直した・隠した行はそのまま（key で見分ける）。"""
+    found = git_updates()
+    for row in _yaml().get("updates") or []:
+        text = str(row["text"])
+        digest = hashlib.sha1(f"{row['date']}|{text}".encode()).hexdigest()
+        found.append({"key": f"yaml:{digest}", "date": str(row["date"]), "text": text})
+    known = set(SiteUpdate.objects.filter(key__isnull=False).values_list("key", flat=True))
+    texts = set(SiteUpdate.objects.values_list("text", flat=True))
+    new = []
+    for r in found:
+        if r["key"] in known or r["text"] in texts:
+            continue
+        texts.add(r["text"])
+        new.append(
+            SiteUpdate(key=r["key"], date=date.fromisoformat(r["date"]), text=r["text"][:200])
+        )
+    SiteUpdate.objects.bulk_create(new, ignore_conflicts=True)
+    return len(new)
 
 
 def git_updates() -> list[dict[str, str]]:
@@ -106,7 +138,7 @@ def git_updates() -> list[dict[str, str]]:
     root = Path(__file__).resolve().parents[2]
     try:
         out = subprocess.run(
-            ["git", "log", "--fixed-strings", "--grep=更新履歴", "--format=%x1e%cI%x1f%B"],
+            ["git", "log", "--fixed-strings", "--grep=更新履歴", "--format=%x1e%H%x1f%cI%x1f%B"],
             cwd=root,
             capture_output=True,
             text=True,
@@ -119,33 +151,23 @@ def git_updates() -> list[dict[str, str]]:
 
 
 def parse_git_updates(log: str) -> list[dict[str, str]]:
-    """git log（%x1e%cI%x1f%B）の出力から、日付（JST の日）と「更新履歴:」の行の文を取り出す。"""
+    """git log（%x1e%H%x1f%cI%x1f%B）の出力から、コミットと行の番号（key）・日付（JST の日）・
+    「更新履歴:」の行の文を取り出す。"""
     out = []
     for record in log.split("\x1e"):
-        if "\x1f" not in record:
+        parts = record.split("\x1f", 2)
+        if len(parts) != 3:
             continue
-        when, body = record.split("\x1f", 1)
+        sha, when, body = parts
         try:
             day = datetime.fromisoformat(when.strip()).astimezone(timezone.get_current_timezone())
         except ValueError:
             continue
-        for line in body.splitlines():
-            line = line.strip()
+        lines = [line.strip() for line in body.splitlines()]
+        for i, line in enumerate(lines):
             mark = next((m for m in UPDATE_MARKS if line.startswith(m)), None)
             text = line[len(mark) :].strip() if mark else ""
             if text:
-                out.append({"date": day.date().isoformat(), "text": text})
+                key = f"git:{sha.strip()}:{i}"
+                out.append({"key": key, "date": day.date().isoformat(), "text": text})
     return out
-
-
-def merge_updates(*groups: list[dict[str, str]]) -> list[dict[str, str]]:
-    """更新履歴を新しい日の順に（同じ日の中は渡した順）。同じ文は1つにする。"""
-    seen: set[str] = set()
-    rows = []
-    for group in groups:
-        for row in group:
-            if row["text"] not in seen:
-                seen.add(row["text"])
-                rows.append(row)
-    rows.sort(key=lambda r: r["date"], reverse=True)  # 安定な並べ替え
-    return rows[:UPDATES]
