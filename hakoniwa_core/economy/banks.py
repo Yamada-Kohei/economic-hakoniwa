@@ -101,6 +101,11 @@ def interbank_borrowed(island: IslandState, bank: str) -> int:
 OVERNIGHT = "overnight_repaid"
 
 
+def bonds_held(island: IslandState, bank: str) -> int:
+    """bank が持つ自国の国債の額面の合計。"""
+    return sum(ledger.holdings(island, bank, "bond:").values())
+
+
 def overnight_repaid(island: IslandState, bank: str) -> int:
     """bank がこのターンの銀行の段で、銀行間と中央銀行に返した額（前のターンに借りた額）。"""
     return island.scratch.get(OVERNIGHT, {}).get(bank, 0)

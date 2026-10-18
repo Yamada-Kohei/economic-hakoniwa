@@ -265,7 +265,7 @@
 | BK-06 | 市中銀行はオフィス街のマスに入る施設で職員を雇う | 決定 | tests/core/test_playtest5_fixes.py |
 | BK-07 | 国営銀行はプレイヤーが建設の命令で建てる | 決定 | tests/core/test_finance.py、tests/core/test_playtest5_fixes.py、tests/core/test_playtest_fixes.py |
 | BK-08 | 家計の層は毎ターン預金の一部を「預金金利−危なさ」の高い銀行へ移す | 決定 | （未確認） |
-| BK-09 | 預金金利は「政策金利−差」へ少しずつ近づけ、準備預金が足りない銀行と開業して預金を集めている銀行… | 決定 | tests/core/test_shocks.py |
+| BK-09 | 預金金利は「政策金利−差」へ少しずつ近づけ、手元の流動性（準備預金の余りと国債の額面）が足りない… | 決定 | tests/core/test_shocks.py |
 | BK-10 | 融資は建設資金（据え置きの後に均等に返す）と運転資金（短く返し、貸し手と借り手ごとに1本で回す） | 決定 | tests/core/test_finance.py |
 | BK-11 | 審査は、現金で見た営業の利益が返済の決めた倍以上で、借入が資産の決めた割合以下 | 決定 | （未確認） |
 | BK-12 | 銀行が貸せるのは、貸した後も自己資本比率が規制以上で、1つの民営施設への残高が大口融資の規制以内… | 決定 | tests/core/test_finance.py |

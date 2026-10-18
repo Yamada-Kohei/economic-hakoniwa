@@ -453,9 +453,11 @@ class Banking(IslandStage):
             if f is None:
                 continue
             deposits = banks.deposits_of(island, bank)
-            # 預金金利: 目安（政策金利 − deposit_spread）へ近づけ、準備預金が足りなければ上げる
+            # 預金金利: 目安（政策金利 − deposit_spread）へ近づけ、手元の流動性が足りなければ
+            # 上げる。流動性は準備預金の余りと国債の額面（流通市場ですぐ売れる。回5 から）
             target = max(0, policy - to_basis(settings["deposit_spread"]))
-            liquidity = banks.excess_reserves(island, config, bank) / deposits if deposits else 1.0
+            liquid = banks.excess_reserves(island, config, bank) + banks.bonds_held(island, bank)
+            liquidity = liquid / deposits if deposits else 1.0
             if liquidity < settings["liquidity_target"]:
                 target = policy
             if deposits < f.economy.get("deposit_goal", 0):
