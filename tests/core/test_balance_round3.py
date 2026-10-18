@@ -220,10 +220,21 @@ def test_unpaid_wages_stay_owed_and_are_paid_first_when_money_comes(game, warmed
 
 
 def test_workers_quit_little_by_little_while_wages_go_unpaid(game, warmed):
-    """未払いが続く月数に応じて、少しずつ辞める（labor.arrears_quit × 月数）。"""
+    """未払いが続く月数に応じて、少しずつ辞める（labor.arrears_quit × 月数）。
+
+    赤字が続く施設は赤字のために人を減らす（未払いとは別の仕組み）ので、黒字の施設で見る。"""
     world = copy.deepcopy(warmed)
     island = island_of(world, "market")
-    f = _private(island)
+    f = next(
+        f
+        for f in sorted(island.facilities, key=lambda f: f.id)
+        if f.owner == OWNER_PRIVATE
+        and f.built
+        and f.workers > 0
+        and "foreclosed" not in f.economy
+        and f.economy.get("loss_streak", 0) == 0
+        and f.economy.get("ebitda", [0])[-1] > 0
+    )
     entity = facility_entity(f.id)
     staff = []
     for _ in range(4):

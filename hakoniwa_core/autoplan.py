@@ -60,8 +60,9 @@
 返す力の比（中央銀行以外に払う利子 ÷ 国の収入）が FISCAL_LIMIT を超えた分に応じても減らします
 （利回りが上がって利払いが膨らみ続けないように。回5 で借金の対年GDP比から替えた）。
 財政の手（回5）: BUDGET_TURNS ターンごとに（公共事業費の見直しと別のターン）、国が賃金を払いきれて
-いないか、失業率がふつうの2倍以下で返す力の比が FISCAL_LIMIT を超えていれば、所得税と消費税を
-TAX_STEP ずつ上げます（TAX_MAX まで）。賃金を払えていて、比が FISCAL_LIMIT の半分より低く、国庫に
+いなければ、所得税と消費税を TAX_STEP ずつ上げます（TAX_MAX まで）。返す力の比が高いだけでは上げず、
+公共事業費を減らします（比で税を上げると、1島の試験で消費が落ちて工場が建たなくなった。借金の重さは
+回5 の後半で測り直す）。賃金を払えていて、比が FISCAL_LIMIT の半分より低く、国庫に
 支出の SURPLUS_TURNS ターン分があれば、建国のときの税率まで TAX_STEP ずつ戻します。
 飢饉の手（回5。設計書 12 確かめ方 GT-29）: 食べ物の充足が FAMINE_RATIO を下回った月は、国営の
 農場のうち穀物以外を作っているものを穀物に替え、国の倉庫の食べ物をすべて市場に出し、足りない分の
@@ -117,12 +118,9 @@ UNEMPLOYMENT_RESPONSE = 5.0  # 失業率がふつうより 1% 高いごとに、
 INFLATION_RESPONSE = 5.0  # 物価上昇率が INFLATION_LIMIT より 1% 高いごとに、基本のこの % だけ減らす
 INFLATION_LIMIT = 0.05
 NATURAL_UNEMPLOYMENT = 0.05
-FISCAL_LIMIT = (
-    0.2  # 返す力の比（中央銀行以外への利払い ÷ 国の収入）がこれを超えたら歳出を削り増税する
-)
-BURDEN_RESPONSE = (
-    2.0  # 比が FISCAL_LIMIT より 0.1 高いごとに、公共事業費を基本のこの × 10 % だけ減らす
-)
+# 返す力の比（中央銀行以外への利払い ÷ 国の収入）がこれを超えたら、歳出を削り増税する
+FISCAL_LIMIT = 0.3
+BURDEN_RESPONSE = 2.0  # 比が FISCAL_LIMIT より 0.1 高いごとに、公共事業費を基本の 20% 減らす
 TAX_TURN = 3  # BUDGET_TURNS の周期のうち税を見直すターン（公共事業費の見直しと重ならないように）
 TAX_STEP = 2  # 一度に上げ下げする税率（ポイント）
 TAX_MAX = {"income_tax": 30, "consumption_tax": 20}  # 上げる上限（%）
@@ -387,9 +385,7 @@ def _tax_order(island: IslandState, config: GameConfig, turn: int) -> tuple[str,
     unpaid = arrears.total(island, ledger.GOV) > 0
     policy = island.policy
     current = {key: getattr(policy, key) * 100 // BASIS for key in TAX_MAX}
-    if unpaid or (
-        burden > FISCAL_LIMIT and stats.get("unemployment", 0) <= 2 * NATURAL_UNEMPLOYMENT
-    ):
+    if unpaid:
         target = {key: min(top, current[key] + TAX_STEP) for key, top in TAX_MAX.items()}
     else:
         spending = sum(v for k, v in island.economy.spending.items() if k != "bonds")
