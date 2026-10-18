@@ -206,6 +206,8 @@ export class TilePanel {
       if (f.education) rows.push(["教育", f.education]);
       if (f.inputs?.length) rows.push(["投入（1ターン）", goodsText(f.inputs)]);
       if (f.outputs?.length) rows.push(["産出（1ターン）", goodsText(f.outputs)]);
+      // 畑を作り替えている途中: 前の作物の畑（要る原料）と、蒔いて育てている畑（収穫の始まる月）
+      if (f.transition) rows.push(["作付けの切り替え", f.transition.text.replace(/^作り替えの途中: /, "")]);
     }
     if (f.priority != null) rows.push(["優先度", `${f.priority}${f.priority_changed ? "（変更済み）" : ""}`]);
     if (f.status_text) rows.push(["状態", f.status_text]);

@@ -191,9 +191,9 @@
               <td>{{ c.quantity|floatformat:"-1g" }} {{ c.unit }}</td>
               <td>{{ c.currency_symbol }}{{ c.price|floatformat:"0g" }}<br><small class="muted">{{ c.currency_name }}</small></td>
               <td>{% if c.start %}{% blocktranslate with s=c.start|turn_date e=c.end|add:"-1"|turn_date %}{{ s }}〜{{ e }}{% endblocktranslate %}{% else %}{% blocktranslate with n=c.turns %}{{ n }} ターン{% endblocktranslate %}{% endif %}</td>
-              <td>{{ c.delivered }}</td>
+              <td>{{ c.delivered|floatformat:"-3g" }}</td>
               <td>{{ c.delivery_name|default:"-" }}</td>
-              <td{% if c.short %} class="warning-cell"{% endif %}>{% if c.short %}{{ c.short }}{% endif %}</td>
+              <td{% if c.short %} class="warning-cell"{% endif %}>{% if c.short %}{{ c.short|floatformat:"-3g" }}{% endif %}</td>
               <td>
                 {% if c.can_accept %}<form class="inline" data-order="accept_contract"><input type="hidden" name="contract" value="{{ c.id }}">{% if c.side == "buy" %}<select name="delivery" aria-label="{% translate "届いた物の行き先" %}"><option value="market">{% translate "届いた物は市場に出す" %}</option><option value="warehouse">{% translate "届いた物は国の倉庫に置く" %}</option></select> {% endif %}<button type="submit">{% translate "受ける" %}</button></form>{% endif %}
                 {% if c.can_cancel %}<form class="inline" data-order="cancel_contract" data-confirm="{% blocktranslate with n=c.id t=trade.cancel_turns %}契約（{{ n }} 番）をやめる命令を追加しますか？（有効な契約は {{ t }} ターン後に終わります）{% endblocktranslate %}"><input type="hidden" name="contract" value="{{ c.id }}"><button type="submit">{% if c.state == "proposed" %}{% translate "取り下げる・断る" %}{% else %}{% translate "やめる" %}{% endif %}</button></form>{% endif %}

@@ -44,6 +44,7 @@ hakoniwa_core/economy/debt.py の bought・released・traded です。
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from typing import Any
 
@@ -807,12 +808,23 @@ def _book_interest(island: IslandState, holder: str, amount: int) -> None:
 # --- 命令 -------------------------------------------------------------------------
 
 
+def whole_terms(island: IslandState) -> None:
+    """期間の割合に小数が入っている島（夜の点検 2026-10-17 の前の set_bond_policy の命令）の割合を
+    整数に直す（小数のままだと、発行額から国庫・工事・配給まで小数が広がって止まる）。"""
+    terms = island.policy.bond_terms
+    if any(type(share) is not int for share in terms.values()):
+        island.policy.bond_terms = {name: round(share) for name, share in sorted(terms.items())}
+
+
 def check_bond_policy(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
     terms = defs.bond_terms()
     shares = payload.get("terms")
     if shares is not None and (not shares or any(t not in terms for t in shares)):
         raise OrderFailed("reason_invalid_payload")
-    if shares is not None and sum(shares.values()) <= 0:
+    # NaN・無限大と、足すと無限大になる大きさも断る（JSON の API は NaN と Infinity も通す。割合に
+    # できず、ターンの処理が止まる）
+    total = sum(shares.values()) if shares is not None else 1
+    if not (math.isfinite(total) and total > 0):
         raise OrderFailed("reason_invalid_payload")
     for key in ("issue_term", "underwrite_term"):
         if payload.get(key) is not None and payload[key] not in terms:
@@ -847,11 +859,10 @@ def set_bond_policy(island: IslandState, payload: dict[str, Any], ctx: StageCont
     if payload.get("terms"):
         before = shares()
         total = sum(payload["terms"].values())
-        policy.bond_terms = {
-            name: share * BASIS // total
-            for name, share in sorted(payload["terms"].items())
-            if share
-        }
+        # 割合は整数にする（33.3 のような小数が入ると、発行額から国庫・工事・配給まで小数が広がって
+        # 数ターン後に止まった。X870 の夜の点検 2026-10-17）
+        rounded = {name: round(share / total * BASIS) for name, share in payload["terms"].items()}
+        policy.bond_terms = {name: share for name, share in sorted(rounded.items()) if share > 0}
         island.log.append(LogEntry("bond_terms_set", {"terms_before": before, "terms": shares()}))
     if payload.get("unsold") in (UNDERWRITE, CUT):
         before = policy.bond_unsold

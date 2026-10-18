@@ -58,6 +58,13 @@
 <section id="orders" class="panel" data-url="{% url 'api_orders' island.id %}"></section>
 {% endif %}
 
+{% if alerts %}
+<section class="panel alerts">
+  <h2>{% translate "注意" %}</h2>
+  <ul>{% for a in alerts %}<li>{{ a }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+
 <div class="island-stats">
   <section class="panel">
     <h2>{% translate "国勢" %}</h2>

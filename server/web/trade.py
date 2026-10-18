@@ -511,9 +511,11 @@ def contract_rows(
                 "start": view["start"] or None,
                 "end": view["end"] or None,
                 "active": view["active"],
-                "delivered": display.amount(view["delivered"]),
+                # 届いた量と不足は丸めない（0.001 トンの未達が「不足なし」に見えた。Codex の報告）
+                "delivered": from_milli(view["delivered"]),
                 "paid": c.get("paid", 0),
-                "short": display.amount(view["short"]),
+                "short": from_milli(view["short"]),
+                "short_any": view["short"] > 0,
                 # 届いた物の行き先（買う側だけが決める。決める前は市場）
                 "delivery": view["delivery"] if view["side"] == "buy" else "",
                 "delivery_name": DELIVERY_NAMES.get(view["delivery"], "")

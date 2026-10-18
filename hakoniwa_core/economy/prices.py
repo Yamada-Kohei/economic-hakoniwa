@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from dataclasses import replace
 from typing import Any
 
 from hakoniwa_core import facilities as fac
@@ -198,8 +199,25 @@ def input_limit(
     売る値段に回せるので、値段が費用ぎりぎりの施設も仕入れを止めない）。ほかの投入財は今の値段。
     電力は運賃がかからないので、電力のときは freight を見ない。
     """
-    f = fac.steady(f)  # 畑を作り替えている途中なら、今の作物で見る（回3）
-    recipe = fac.recipe_of(defs, f)
+    steady = fac.steady(f)  # 畑を作り替えている途中なら、今の作物で見る（回3）
+    recipe = fac.recipe_of(defs, steady)
+    if recipe["inputs"].get(good, 0) <= 0 and steady is not f:
+        # 前の作物の畑にだけ要る原料（肥料に化学品を使う綿の畑を、肥料のいらない穀物に替えている
+        # 途中など）は、その畑の作り方で払える値段で買う（畑がみなその作り方とみた写しで見る）。
+        # 原料あたりの採算は畑の割合によらない（産出・原料・その畑の働き手の賃金が、みな割合に
+        # 比べて決まる）。
+        # 新しい作物で見ると上限が 0 になり、前の畑が「原料が割高」で止まった（Codex の試し遊び、
+        # ターン 250〜300）。今の畑を混ぜた作り方で見ても、蒔いて育っている畑の分の賃金まで前の畑に
+        # 負わせるので、作り替えの半ばから上限が 0 になる
+        recipes = defs.facilities[f.kind]["recipes"]
+        old = [
+            (share, name)
+            for name, share in f.economy[fac.FIELDS].items()
+            if share > 0 and recipes[name].get("inputs", {}).get(good, 0) > 0
+        ]
+        if old:
+            steady = fac.steady(replace(f, recipe=max(old)[1]))
+            recipe = fac.recipe_of(defs, steady)
     qty = recipe["inputs"].get(good, 0)
     if qty <= 0:
         return 0
@@ -209,7 +227,7 @@ def input_limit(
     raised = dict(prices)
     for g in recipe["outputs"]:
         raised[g] = scale_price(prices.get(g, 0), 1 + config.get("market.band"))
-    room = variable_profit(defs, config, f, raised, wage, freight) + amount
+    room = variable_profit(defs, config, steady, raised, wage, freight) + amount
     return max(0, room * QUANTITY_SCALE // qty)
 
 
