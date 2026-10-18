@@ -332,3 +332,101 @@
 | IN-24 | 技術者は島全体の人数で、通勤圏を見ずに島のどこへでも通う | 決定 | tests/core/test_infrastructure.py、tests/core/test_playtest3_fixes.py |
 | IN-25 | 島の地図の重ね表示に、インフラの整備度（種類ごと）・運賃の率・工事中の印を出す | 決定 | tests/server/test_reports.py |
 
+## [9 貿易と為替](09-trade.md)
+
+決まり 45 個、うち仮の決まりの表にあるもの 3 個。
+
+| 番号 | 決まり（頭） | 状態 | 試験 |
+| --- | --- | --- | --- |
+| FX-01 | 島をまたぐ処理は全島の段（`collect` → `resolve` → `apply`）で書き… | 決定 | tests/core/test_phase3_3.py |
+| FX-02 | 通貨は島ごとに1つで、番号は島の番号 | 決定 | tests/server/test_trade.py |
+| FX-03 | 外国の主体が持つ自国通貨は、発行した島の帳簿の非居住者の預金（持ち手 `nr:<島>:<主体>`… | 決定 | tests/core/test_trade.py |
+| FX-04 | 外貨の持ち高は量と帳簿の値打ち（手に入れたときの自国通貨の額）を持ち、売ったときの差を為替の実現… | 決定 | （未確認） |
+| FX-05 | 世界の確かめ（`trade_check`）: どの組でも「Y が持つ X の外貨 = X の帳簿… | 決定 | tests/core/test_phase3_3.py |
+| FX-06 | 島の外との物の出入りはすべて港を通り輸送船で運ぶ（海外の商人だけは要らない） | 決定 | tests/core/test_trade.py |
+| FX-07 | 海運業は島に1つでマスを持たず、輸送船を設備として持つ | 決定 | tests/core/test_trade.py |
+| FX-08 | 荷は買う側の島の船で運ぶ | 決定 | tests/core/test_trade.py |
+| FX-09 | 船は燃料か石炭の、今の値段で安い方で動き、船出のときに往復の分を使う | 決定 | tests/core/test_trade.py |
+| FX-10 | 運賃は「荷1トン×区画1つ」あたりで、直近の費用（船員の賃金・燃料・船の傷み）÷ 運んだ量 ×（… | 決定 | tests/core/test_trade.py |
+| FX-11 | 船は決めたターン数使ったら解体する | 決定 | tests/core/test_trade.py |
+| FX-12 | 国は命令で貿易圏を作り、作った国が代表 | 決定 | tests/core/test_trade.py、tests/server/test_phase3_3.py |
+| FX-13 | 代表は別の加盟国に譲れ、代表の島が休止中ならほかの加盟国が引き継げる | 決定 | tests/core/test_trade.py |
+| FX-14 | 圏の市場は圏×財ごとに貿易の段で板寄せ（値段は決済通貨） | 決定 | tests/core/test_trade.py |
+| FX-15 | 圏内の固定価格のある財は値幅0で板寄せし、余った側を量に比例して分ける | 決定 | tests/core/test_phase3_3.py |
+| FX-16 | 商社はオフィス街のマスに建ち島にいくつも置ける独立採算の施設 | 決定 | tests/core/test_trade.py |
+| FX-17 | 商社の指値: 輸出は圏の前の値段を自国通貨に直して取り分と港の使用料を引き輸出補助を足した値段ま… | 決定 | tests/core/test_phase3_3.py |
+| FX-18 | 商社の狙う量は財ごとに、売れた量と足りない量の分け前へ毎ターン少しずつ近づける | 決定 | tests/core/test_playtest5_fixes.py |
+| FX-19 | 輸入の指値は圏の値幅の上端まで | 決定 | tests/core/test_playtest5_fixes.py、tests/server/test_trade.py |
+| FX-20 | 売れ残った荷は決めたターン数の後に指値を外して売る | 決定 | （未確認） |
+| FX-21 | 島で買い手がいるのに売りに出ていない物は、前のターンに圏の市場に売りがあった財だけ、輸入が引き合… | 決定 | tests/core/test_phase3_2.py、tests/core/test_trade.py |
+| FX-22 | 民営の商社は、島の商社の扱った重さの平均が上限の決めた割合を超え、空いたオフィス街があり、資産を… | 決定 | tests/core/test_trade.py |
+| FX-23 | 二国間契約は一方の政府が「相手・財・1ターンの量・値段・通貨（どちらかの国）・期間」を示し、相手… | 決定 | tests/core/test_trade.py |
+| FX-24 | 売り手の国は国の倉庫から出し、足りなければ島の市場で優先して買う | 決定 | tests/core/test_trade.py |
+| FX-25 | 契約で届いた物の行き先は買い手が契約ごとに選ぶ: 市場に出す（既定 | 決定 | tests/core/test_playtest5_fixes.py、tests/core/test_trade.py |
+| FX-26 | 物の援助は値段0で相手の承諾の要らない片道の契約として船で運び、お金の援助は国庫から一度だけ送る | 決定 | tests/core/test_phase3_3.py |
+| FX-27 | 海外の商人は、貿易の仕組みを置いたターン（建国か移し替え）から決めたターン数だけ、決まった値段と… | 仮（仮の決まりの表あり） | tests/core/test_trade.py |
+| FX-28 | レートは「決済通貨1単位が自国通貨でいくらか」 | 決定 | tests/core/test_trade.py |
+| FX-29 | 注文を出すのはその島の主体: 商社（次の数ターンの輸入の分を残して売り買い）・政府（契約の支払い… | 決定 | tests/core/test_trade.py |
+| FX-30 | 中央銀行は受け身の注文を出す: 前のレートより安い側で市場の厚みの分を買い、高い側で持っている分… | 決定 | tests/core/test_codex_turn300_fixes.py、tests/core/test_playtest5_fixes.py、tests/core/test_trade.py |
+| FX-31 | 政府は契約のそのターンに払う分を、値幅の上端の買い注文で先に買う（外貨建ての契約の代金はほぼ全部… | 決定 | tests/core/test_playtest5_fixes.py |
+| FX-32 | 片側だけの注文は、相手のない量 ÷（相手のない量＋市場の厚み）の割合だけ、出ている一番よい指値へ… | 決定 | tests/core/test_trade.py |
+| FX-33 | 同じ通貨の組のレートは1つ（島 A の板で決まったレートの逆数を島 B の板にも入れる） | 決定 | （未確認） |
+| FX-34 | 受け身の買いは、中央銀行の外国の資産から融通で借りている額を引いた正味が年の GDP の決めた割… | 仮（仮の決まりの表あり） | tests/core/test_phase3_3.py |
+| FX-35 | 中央銀行どうしの融通: 受け身の売りに要る外貨が足りない中央銀行は、同じ圏で余っている加盟国の中… | 決定 | tests/core/test_phase3_3.py、tests/core/test_trade.py |
+| FX-36 | 融通で借りられるのは年の GDP の決めた割合まで、発行国が作って貸すのはその国の年の GDP … | 仮（仮の決まりの表あり） | tests/core/test_phase3_3.py |
+| FX-37 | 介入: 中央銀行は命令で通貨ごとに毎ターン買う・売る額を決め、買いは値幅の上端・売りは下端の指値 | 決定 | tests/core/test_phase3_3.py |
+| FX-38 | 固定相場: 決めたレートの幅の端で、下に量の限りのない買い、上に持っている外貨の全部の売りを出す | 決定 | tests/core/test_phase3_3.py |
+| FX-39 | 中央銀行が独立しているときは、介入・固定相場・中央銀行の外国の国債の命令をやめる | 決定 | tests/core/test_phase3_3.py |
+| FX-40 | 資本取引は自由・政府と中央銀行だけ・禁止の3つ（既定は経済体制の `capital_contro`… | 決定 | tests/core/test_phase3_3.py |
+| FX-41 | 外国の国債は発行国の通貨で、入札と売買の市場に外国の買い手が加わる | 決定 | tests/core/test_phase3_3.py |
+| FX-42 | 資本取引が自由な国の市中銀行は、利回り − 値下がりの率が自国より決めた差以上高い通貨の外貨と国… | 決定 | tests/core/test_phase3_3.py |
+| FX-43 | 国際収支は、島をまたぐお金がすべて通る `money.transfer` で仕訳の種類ごとに集め… | 決定 | tests/core/test_phase3_3.py、tests/server/test_phase3_3.py |
+| FX-44 | 建国と移し替えで、海運業（輸送船と燃料つき）・首都に一番近い海沿いの港・首都の近くのオフィス街の… | 決定 | tests/core/test_trade.py |
+| FX-45 | 貿易の画面・為替の画面・世界マップは、自国には全部を、他国には国の番号と公表するものだけを出す | 決定 | tests/server/test_trade.py |
+
+## [10 政治と体制](10-politics.md)
+
+決まり 39 個、うち仮の決まりの表にあるもの 2 個。
+
+| 番号 | 決まり（頭） | 状態 | 試験 |
+| --- | --- | --- | --- |
+| PL-01 | 政治体制は「政治の仕組み（民主主義・権威主義・全体主義）」と「国家元首の形（君主制・共和制）」の… | 決定 | tests/core/test_phase3_4.py |
+| PL-02 | 体制の特色は `regimes.yaml` の `traits` に書き、軸ごとに選んだ体制の特… | 決定 | tests/server/test_phase3_4.py |
+| PL-03 | 政情は島ごとの 0〜100 の数で、名前付きの式 `stability` の目標 T* に、毎タ… | 決定 | tests/core/test_phase3_4.py |
+| PL-04 | 目標は 50 ＋ 幸福度 − 失業率 − 物価上昇率 − 格差（それぞれ決めた境を超えた分に重み… | 決定 | tests/core/test_phase3_4.py |
+| PL-05 | 出来事の補正: 債務不履行（だんだん戻る）、体制の変更の混乱期間、首都の政府の建物が壊れている間… | 決定 | tests/core/test_migration.py |
+| PL-06 | 段階は落ち着いている・デモ・暴動・反乱の前触れの4つ | 決定 | tests/core/test_phase3_4.py |
+| PL-07 | 暴動と反乱の前触れでは、町以上の住宅地の近くの施設を乱数で選んで次のターンから数ターン止め（農林… | 決定 | tests/core/test_log_messages.py、tests/core/test_phase3_4.py |
+| PL-08 | 壊れた施設は、建てるときの資材と人手の決めた割合を国の工事として使って直す | 決定 | tests/core/test_phase3_4.py |
+| PL-09 | 警察署（公務の施設）の警官は治安費から払い、住民あたりの決めた人数がいれば、止まる施設と壊れる見… | 決定 | tests/core/test_phase3_4.py、tests/server/test_phase3_4.py |
+| PL-10 | 報道と集会は自由・制限・統制の3段（命令） | 決定 | tests/core/test_phase3_4.py |
+| PL-11 | 支持率は政情に実質賃金の1年の伸びを足し、失業率の1年の伸びを引いたもの | 決定 | tests/core/test_phase3_4.py |
+| PL-12 | 民主主義の島は決めたターンごとに選挙を自動で行い、支持率を与党の議席の割合にする | 決定 | tests/core/test_phase3_4.py |
+| PL-13 | 議会の要る命令（`orders.yaml` の `parliament`）は実行するときに採決す… | 決定 | tests/core/test_phase3_4.py |
+| PL-14 | 議会が要る命令は、税率の大きな変更・国有化・民営化・中央銀行の独立の切り替え・関税・禁輸・資本取… | 決定 | tests/core/test_phase3_4.py |
+| PL-15 | 否決された命令も行政力を使い、何も変えず、わけをターンログに書く | 決定 | tests/core/test_phase3_4.py |
+| PL-16 | 共和制は選挙で支持率が決めた値を超えると、次の決めたターン数だけ R を足す | 決定 | tests/core/test_phase3_4.py |
+| PL-17 | 君主制は R を足し、君主の年齢をデータで持つ | 決定（出来事は後から） | （未確認） |
+| PL-18 | 憲法改正と経済体制の変更は重い命令（民主主義では議会の3分の2） | 決定 | tests/core/test_phase3_4.py |
+| PL-19 | 政治体制を変えると首都の建物を建て替える | 決定 | tests/core/test_phase3_4.py、tests/server/test_phase3_4.py |
+| PL-20 | 計画経済に移ると、民営の施設と民間銀行は帳簿の純資産を国債で払って国有化する | 決定 | tests/core/test_phase3_4.py |
+| PL-21 | 体制の特色: 民主主義は政情が下がる動きが遅く R が正、権威主義は行政力 ＋1 と国の工事の工… | 仮（仮の決まりの表あり） | tests/core/test_phase3_4.py |
+| PL-22 | 経済体制の特色: 計画経済は重点産業の工期と経験の伸びが良く、ぜいたく品の種類の満足が少ない | 仮（仮の決まりの表あり） | （未確認） |
+| PL-23 | 労働の動員（全体主義の命令）: 失業者を国営施設に最低賃金（なければ平均賃金の決めた割合）で割り… | 決定 | tests/core/test_phase3_4.py |
+| PL-24 | 計画経済の島は公定価格で値幅0の板寄せ（電力も） | 決定 | tests/core/test_phase3_4.py |
+| PL-25 | 据え置く財（既定は食料）は原価を下回っても据え置き、差を国庫から補助金で埋める（払えなければ量に… | 決定 | tests/core/test_phase3_4.py |
+| PL-26 | 命令: 公定価格の改定（名指しした財を今の原価に | 決定 | tests/core/test_phase3_4.py |
+| PL-27 | 割当ルール: 足りないときは、重点産業の施設 → ほかの国営施設と国の工事 → 家計（配給）→ … | 決定 | tests/core/test_phase3_4.py |
+| PL-28 | 配給: 家計の中はお金の多さでなく1人あたり同じ量まで | 決定 | tests/core/test_phase3_4.py |
+| PL-29 | 生産目標: 国営施設ごとに、直近の公定価格での需要（買えなかった分も含む）に上乗せした量を、同じ… | 決定 | tests/core/test_phase3_4.py |
+| PL-30 | 重点産業は命令で産業の分類を決めた数まで選ぶ | 決定 | tests/core/test_phase3_4.py |
+| PL-31 | 計画経済の貿易は国営の商社の独占: 行列のある財を輸入し、売れ残った財を値段によらず輸出する | 決定 | tests/core/test_phase3_4.py |
+| PL-32 | 混合経済はどの財にも値段の上限と下限を決められる | 決定 | tests/core/test_phase3_4.py、tests/server/test_phase3_4.py |
+| PL-33 | 闇市は入れない | 決定（後から） | （未確認） |
+| PL-34 | 移民の出国の政策は政治の仕組みで上限がある: 民主主義は自由だけ、権威主義は許可制まで、全体主義… | 決定 | tests/core/test_migration.py |
+| PL-35 | 国どうしのやりとりは、非公開の公電（送るとすぐ届き、発信国と宛先国の持ち主だけが読める）と公開の… | 決定 | tests/server/test_letters.py |
+| PL-36 | 公電は1つの島が24時間に送れる数に上限があり（サーバーの設定）、管理画面で非表示にできる | 決定 | tests/server/test_letters.py |
+| PL-37 | 外交の決まりは遊ぶ人に任せる | 決定（フェーズ4 で作る） |  |
+| PL-38 | 反乱と内戦はフェーズ4 | 決定（フェーズ4 で作る） |  |
+| PL-39 | 政治の画面に政情・目標の内訳・段階・支持率・議席・採決の履歴・混乱期間・建て替えの資材を出す | 決定 | tests/server/test_phase3_4.py |
+
