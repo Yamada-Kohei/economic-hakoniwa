@@ -276,9 +276,9 @@ title_lost: "「{title}」の称号を失いました（{industry}の経験で{c
 title_lost_any: "「{title}」の称号を失いました（{industry}）"
 # 称号の名前（産業ごとの史実のあだ名。付くのは経験が世界一の国だけ）
 title_name_agriculture: "世界の穀倉"
-title_name_mining: "黒いダイヤの国"
+title_name_mining: "アイアン・レンジ"
 title_name_steel: "鋼都"
-title_name_nonferrous: "電気の缶詰の国"
+title_name_nonferrous: "アルミの都"
 title_name_machinery: "世界の工場"
 title_name_automobile: "自動車王国"
 title_name_textile: "綿の都"
