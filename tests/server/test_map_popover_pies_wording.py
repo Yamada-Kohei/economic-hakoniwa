@@ -2,13 +2,14 @@
 
 - マスの情報は、押したマスのそばの小さな窓（ポップオーバー）に出し、右上の × で閉じる（UI-34）。
 - 全体を分けた割合を見る統計は円グラフでも出す（UI-35）。
-- 表示の言葉は統計の正式な言い方にそろえる（UI-36）。
+- 表示の言葉は統計の正式な言い方にそろえる（UI-36）。称号は産業ごとの史実のあだ名にする。
 """
 
 from __future__ import annotations
 
 import json
 import re
+from types import SimpleNamespace
 
 from hakoniwa_core import facilities as fac
 from server.accounts import keys
@@ -79,3 +80,18 @@ def test_labels_use_formal_statistical_terms():
     labels = [label for _, label, _ in [*display.SUMMARY_STATS, *reports._EXTRA_STATS]]
     labels += [suffix for suffix, _ in reports.LAYER_FIELDS.values()]
     assert not [label for label in labels if "このターン" in label]
+
+
+def test_titles_use_historical_nicknames(db):
+    """称号は産業ごとの史実のあだ名（どの産業にも別の名前がある）。ターンログの文にもその名前が入る。"""
+    defs = get_game().defs
+    names = {i: display.title_name(i) for i in defs.industries()}
+    assert names["machinery"] == "世界の工場" and names["agriculture"] == "世界の穀倉"
+    assert len(set(names.values())) == len(names)
+    assert all(f"{defs.name('industries', i)}の国" != n for i, n in names.items())
+    log = SimpleNamespace(turn=1, kind="title_gained", args={"industry": "machinery"})
+    gained = "「世界の工場」の称号を得ました（機械の経験が世界一）"
+    assert display.log_entries([log])[0]["text"] == gained
+    args = {"industry": "food", "country": "東の国"}
+    lost = SimpleNamespace(turn=1, kind="title_lost", args=args)
+    assert "「天下の台所」の称号を失いました" in display.log_entries([lost])[0]["text"]

@@ -270,9 +270,23 @@ trade_request_failed: "命令「{order}」を貿易の段で行えませんで�
 
 # 経験・集積と称号（フェーズ3-3）
 experience_faded: "{industry}の生産がこの1年ほとんどなく、経験が薄れはじめています"
-title_gained: "{industry}の経験が世界一になり、「{industry}の国」の称号を得ました"
-title_lost: "{industry}の経験で{country}に抜かれ、「{industry}の国」の称号を失いました"
-title_lost_any: "「{industry}の国」の称号を失いました"
+# 称号の文の {title} は、表示のときにサーバーが下の title_name_<産業> から足す（2026-10-19、史実のあだ名）
+title_gained: "「{title}」の称号を得ました（{industry}の経験が世界一）"
+title_lost: "「{title}」の称号を失いました（{industry}の経験で{country}に抜かれました）"
+title_lost_any: "「{title}」の称号を失いました（{industry}）"
+# 称号の名前（産業ごとの史実のあだ名。付くのは経験が世界一の国だけ）
+title_name_agriculture: "世界の穀倉"
+title_name_mining: "黒いダイヤの国"
+title_name_steel: "鋼の国"
+title_name_nonferrous: "電気の缶詰の国"
+title_name_machinery: "世界の工場"
+title_name_automobile: "自動車王国"
+title_name_textile: "綿の都"
+title_name_petroleum: "黒い黄金の国"
+title_name_food: "天下の台所"
+title_name_consumer_goods: "万国の雑貨屋"
+title_name_shipbuilding: "海の運び屋"
+title_name_energy: "世界の発電所"
 
 # 産業政策（フェーズ3-3）
 tariff_set: "{good}の関税を {rate:g}% にしました（圏の市場で輸入した荷を下ろすときにかかります）"

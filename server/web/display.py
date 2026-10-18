@@ -48,6 +48,17 @@ def message(key: str, **args: Any) -> str:
     return format_log(game.defs, key, args, calendar=game.calendar)
 
 
+# 称号の文（ターンログ）。文に称号の名前 {title} を足して書く
+TITLE_LOGS = {"title_gained", "title_lost", "title_lost_any"}
+
+
+def title_name(industry: str) -> str:
+    """産業の称号の名前（史実のあだ名。messages.yaml の title_name_<産業>）。なければ「〜の国」。"""
+    key = f"title_name_{industry}"
+    name = get_game().defs.name("messages", key)
+    return f"{get_game().defs.name('industries', industry)}の国" if name == key else name
+
+
 def turn_text(turn: int) -> str:
     """ある時点のターンを、世界の暦の日付で書く（「箱庭暦32年11月（ターン 383）」）。"""
     game = get_game()
@@ -1045,6 +1056,8 @@ def log_entries(logs) -> list[dict[str, Any]]:
     out = []
     for log in logs:
         args = log.args or {}
+        if log.kind in TITLE_LOGS and isinstance(args.get("industry"), str):
+            args = {**args, "title": title_name(args["industry"])}
         text = format_log(game.defs, log.kind, args, calendar=game.calendar)
         entry = {"turn": log.turn, "kind": log.kind, "text": text}
         if "x" in args and "y" in args:

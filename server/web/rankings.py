@@ -153,7 +153,7 @@ def industry_rows(
             {
                 "industry": industry,
                 "name": defs.name("industries", industry),
-                "title": f"{defs.name('industries', industry)}の国",
+                "title": display.title_name(industry),
                 "holder": holder,
                 "holder_name": islands.get(holder, {}).get("name", "") if holder else "",
                 "top": [
@@ -191,5 +191,5 @@ def island_strengths(island: m.Island, stats: dict[str, float]) -> dict[str, Any
     held = sorted(industry for industry, holder in titles.items() if holder == island.id)
     return {
         "strengths": strengths,
-        "titles": [f"{defs.name('industries', industry)}の国" for industry in held],
+        "titles": [display.title_name(industry) for industry in held],
     }
