@@ -53,7 +53,7 @@
 | FM-30 | 施設の定義に産業の分類 `industry`（農業・鉱業・鉄鋼・非鉄・機械・自動車・繊維・石油・食品・消費財・造船・エネルギー）を持ち、経験・集積・称号・計画経済の重点産業がこれを使う | 決定 |  | （未確認） |
 | FM-31 | 経験: 島×産業ごとに施設が出した産出の倍率（稼働率×生産性）を足して数え、係数を累積の対数で上げる（上限あり、組み立て産業は上限が高い）。その年に動かした量が少ない産業は、年の終わりに累積が減る | 決定 | `experience.base_turns`, `experience.slope`, `experience.cap`, `experience.assembly`, `experience.assembly_cap`, `experience.dormant_share`, `experience.decay` | tests/core/test_phase3_3.py::test_experience_factor_follows_the_formula_and_its_caps, ::test_experience_grows_with_output_and_raises_productivity, ::test_an_industry_left_idle_for_a_year_fades |
 | FM-32 | 集積: 工場（分類が industry の施設）だけに、半径の中の同じ産業のほかの施設1つごとに生産性を上げる（上限あり）。汚染も重なる | 決定 | `experience.cluster_radius`, `experience.cluster_step`, `experience.cluster_cap`, `experience.cluster_categories` | tests/core/test_phase3_3.py::test_cluster_counts_same_industry_factories_nearby |
-| FM-33 | 各産業の累積が世界1位の国に「鉄鋼の国」などの称号を付け、統計の画面に得意産業と世界の順位を出す（他国からも見える） | 決定 |  | （未確認） |
+| FM-33 | 各産業の累積が世界1位の国に「鋼都」（鉄鋼）などの称号を付け、統計の画面に得意産業と世界の順位を出す（他国からも見える） | 決定 |  | （未確認） |
 | FM-34 | 暴動で止まるのは都市のマスの近くの施設で、農林水産業（農場・漁港・牧場・製材所）は止まらない（暴動の起き方はタブ 10） | 決定 |  | tests/core/test_phase3_4.py::test_riot_halts_urban_facilities_and_police_hold_it_down |
 | FM-35 | 商業・サービス業（島に1つの店）は倒産と撤退をせず、持ち主は経済体制の既定（細部はタブ 4 LB-29） | 作り直し予定（回7） | `services.facility` | tests/core/test_balance_round4.py::test_every_money_island_has_one_services_firm_owned_by_regime |
 | FM-36 | 施設の束としての企業を主体にする。企業は預金・借入・株主を持ち、産業をまたいで何でも持てる（財閥も許す）。投資・閉鎖を企業が選ぶ。国の工場は国営企業の下にまとめ、国有化と民営化は企業ごとでも工場ごとでもできる | 決定（回7 で作る） |  | （未確認） |
@@ -147,7 +147,7 @@ R = \frac{12 \times \left(P_{\mathrm{out}} Q - \sum P_{\mathrm{in}} q_{\mathrm{i
 - 経験: 島×産業ごとに、施設が1ターンに出した産出の倍率（稼働率×生産性）を足して、累積を「標準の施設が全力で動いたターン数」で数える（品目の単位が違っても比べられる）。係数は累積の対数で上がり（`experience.base_turns`・`experience.slope`）、上限は `experience.cap`、組み立て産業（`experience.assembly`）は `experience.assembly_cap`。
 - その年に動かした量が `experience.dormant_share` に満たない産業は、年の終わりに累積が `experience.decay` 減る。移し替えた島の経験は 0 から。
 - 集積: 半径 `experience.cluster_radius` 以内の同じ産業のほかの施設 1 つごとに `experience.cluster_step` 上げる（上限 `experience.cluster_cap`）。工場（`experience.cluster_categories`）だけに効く。農場や鉱山は島じゅうに並べるのがふつうで、どの島も同じだけ上がり、得意産業の違いにならないため。汚染も重なるので、周りの幸福度と肥沃度が下がる。
-- 称号: 統計の画面に得意産業と世界の順位を出し、各産業の累積が1位の国に「鉄鋼の国」などの称号を付ける（他国からも見える）。
+- 称号: 統計の画面に得意産業と世界の順位を出し、各産業の累積が1位の国に「鋼都」（鉄鋼）などの称号を付ける（他国からも見える）。
 - 経験の強さは、失業と値崩れが増えるのを見たうえで設計の強さのままにした（2026-10-15）。作るほど人手が要らなくなるが、食料と電気は1人あたりの量が決まっているので、浮いた人の行き先がない。直しの案（施設1つあたりで数える、参入を速める、計画経済の作りすぎは生産目標で扱う）はタブ 14。
 
 ### 企業の仕組み（回7）

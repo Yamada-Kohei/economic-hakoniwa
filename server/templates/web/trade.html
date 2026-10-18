@@ -355,7 +355,7 @@
         {% if p %}
         <tr><th>{% translate "港" %}</th><td><a href="{% url 'island' island.id %}?x={{ p.x }}&amp;y={{ p.y }}">{{ p.name }}</a> <small class="muted">({{ p.x }}, {{ p.y }})</small></td></tr>
         <tr><th>{% translate "港の使用料" %}</th><td>{% blocktranslate with f=p.fee|floatformat:"0g" %}荷 1 トンあたり {{ currency }}{{ f }}{% endblocktranslate %}</td></tr>
-        <tr><th>{% translate "積み下ろした荷（このターン）" %}</th><td>{% blocktranslate with h=p.handled|default:0|floatformat:"-1g" c=p.capacity %}{{ h }} トン（1ターンに {{ c }} トンまで）{% endblocktranslate %}</td></tr>
+        <tr><th>{% translate "積み下ろした荷（1ターン）" %}</th><td>{% blocktranslate with h=p.handled|default:0|floatformat:"-1g" c=p.capacity %}{{ h }} トン（1ターンに {{ c }} トンまで）{% endblocktranslate %}</td></tr>
         {% else %}
         <tr><th>{% translate "港" %}</th><td class="warning">{% if trade.fleet.port_stopped %}{% translate "港が工事中か止まっています" %}{% else %}{% translate "港がありません" %}{% endif %}</td></tr>
         {% endif %}

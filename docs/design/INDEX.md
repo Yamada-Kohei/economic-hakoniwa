@@ -75,7 +75,7 @@
 | PO-29 | 家計の飢えの蓄えが `population.hunger.flee` を超えている間、そのターン… | 決定 | tests/core/test_balance_round4.py |
 | PO-30 | 生まれる割合は式 `birth_rate`（`population.births`）で、学んだ人… | 決定 | tests/core/test_balance_round4.py |
 | PO-31 | 亡くなる割合は式 `death_rate`（`population.deaths`）で、食事の質… | 決定 | tests/core/test_balance_round4.py |
-| PO-32 | 生まれたマスに住む所がなければ島の空いた町へ移り、どこにも空きがなければ生まれない | 決定 | tests/core/test_balance_round4.py |
+| PO-32 | 生まれたマスに住む所がなければ島の空いた町へ移り、どこにも空きがなければ消えずに詰めて住む（過密… | 決定 | tests/core/test_round5_village.py |
 | PO-33 | 人口の増減は家計の層の人数に比例して割り振り、資本家階級は割合を保つ | 決定 | （未確認） |
 | PO-34 | 幸福度は式 `happiness`（`population.happiness`）で層ごとに出し… | 決定 | tests/core/test_phase3_4.py、tests/core/test_playtest3_fixes.py |
 | PO-35 | 前のフェーズから移し替えた島は、幸福度の重みをその時の重みから `population.blen`… | 決定 | tests/core/test_playtest3_fixes.py |
@@ -215,7 +215,7 @@
 | FM-30 | 施設の定義に産業の分類 `industry`（農業・鉱業・鉄鋼・非鉄・機械・自動車・繊維・石油・… | 決定 | （未確認） |
 | FM-31 | 経験: 島×産業ごとに施設が出した産出の倍率（稼働率×生産性）を足して数え、係数を累積の対数で上… | 決定 | tests/core/test_phase3_3.py |
 | FM-32 | 集積: 工場（分類が industry の施設）だけに、半径の中の同じ産業のほかの施設1つごとに… | 決定 | tests/core/test_phase3_3.py |
-| FM-33 | 各産業の累積が世界1位の国に「鉄鋼の国」などの称号を付け、統計の画面に得意産業と世界の順位を出す… | 決定 | （未確認） |
+| FM-33 | 各産業の累積が世界1位の国に「鋼都」（鉄鋼）などの称号を付け、統計の画面に得意産業と世界の順位を… | 決定 | （未確認） |
 | FM-34 | 暴動で止まるのは都市のマスの近くの施設で、農林水産業（農場・漁港・牧場・製材所）は止まらない（暴… | 決定 | tests/core/test_phase3_4.py |
 | FM-35 | 商業・サービス業（島に1つの店）は倒産と撤退をせず、持ち主は経済体制の既定（細部はタブ 4 LB… | 作り直し予定（回7） | tests/core/test_balance_round4.py |
 | FM-36 | 施設の束としての企業を主体にする | 決定（回7 で作る） | （未確認） |
@@ -435,7 +435,7 @@
 
 ## [11 画面と統計](11-ui.md)
 
-決まり 36 個、うち仮の決まりの表にあるもの 0 個。
+決まり 37 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -472,9 +472,10 @@
 | UI-31 | 管理は Django の管理サイトで行う: 更新の一時停止、巻き戻し、何ターンかまとめて進める、… | 決定 | tests/server/test_letters.py、tests/server/test_turns.py、tests/server/test_web.py |
 | UI-32 | 同じ接続元からの登録は管理者が設定で数を決める（家族・学校・携帯回線で 1 つの接続元を分け合う… | 決定 | tests/server/test_phase1.py |
 | UI-33 | 量の表示の単位を実物に近づけるのは、バランス調整の最後に表示だけで行う（計算は変えない） | 決定（バランス調整の最後で） |  |
-| UI-34 | 島の画面のマスの情報は、押したマスのそばの小さな窓（ポップオーバー）に出す | 決定 | tests/server/test_map_popover_pies_wording.py |
-| UI-35 | 全体を分けた割合を見る統計（人口の階級ごとの内訳・歳入と歳出の内訳・産業ごとの従業者数）は円グラ… | 決定 | tests/server/test_map_popover_pies_wording.py |
-| UI-36 | 表示名は統計の正式な言い方にそろえる（労働力人口・就業者・完全失業率・自給農家・従業者、労働者階… | 決定 | tests/server/test_map_popover_pies_wording.py |
+| UI-34 | トップ画面は島の順位の表（列の頭で並べ替え、既定は人口順）と、アクセスカウンタ・キリ番・最近の出… | 決定 |  |
+| UI-35 | 島の画面のマスの情報は、押したマスのそばの小さな窓（ポップオーバー）に出す | 決定 | tests/server/test_map_popover_pies_wording.py |
+| UI-36 | 全体を分けた割合を見る統計（人口の階級ごとの内訳・歳入と歳出の内訳・産業ごとの従業者数）は円グラ… | 決定 | tests/server/test_map_popover_pies_wording.py |
+| UI-37 | 表示名は統計の正式な言い方にそろえる（労働力人口・就業者・完全失業率・自給農家・従業者、労働者階… | 決定 | tests/server/test_map_popover_pies_wording.py |
 
 ## [12 確かめ方](12-checks.md)
 

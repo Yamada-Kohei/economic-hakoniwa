@@ -199,7 +199,7 @@ _EXTRA_STATS = [
     ("population.births", "出生数（1ターン）", "人"),
     ("population.deaths", "死亡数（餓死を除く。1ターン）", "人"),
     ("population.starved", "餓死者数（1ターン）", "人"),
-    ("population.births_unhoused", "住宅不足による出生の減少（1ターン）", "人"),
+    ("population.overcrowded", "過密居住者数（住宅の上限を超えて住む人）", "人"),
 ]
 _STATS = {key: (label, unit) for key, label, unit in [*display.SUMMARY_STATS, *_EXTRA_STATS]}
 # 名前の頭が財のもの（後ろに財の名前が続く）

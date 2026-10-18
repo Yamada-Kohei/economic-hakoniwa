@@ -514,6 +514,10 @@ def test_peg_breaks_when_reserves_run_out(game, base):
     island, other, volume = _busiest(world)
     have = fxmoney.holding(island, ledger.CB, other.id)
     _take_fx(world, island, ledger.CB, other.id, have - volume // 50)  # 準備を少しだけ残す
+    # 商社などの手持ちの外貨も取り上げる（手持ちで輸入を払えると、外貨を買う人が来ず準備が減らない）
+    for entity in fxmoney.entities_holding(island, other.id):
+        if entity != ledger.CB:
+            _take_fx(world, island, entity, other.id, fxmoney.holding(island, entity, other.id))
     island.policy.fx_peg = {str(other.id): fxrates.rate(island, other.id) * 95 // 100}
     broken = []
     run_checked(
