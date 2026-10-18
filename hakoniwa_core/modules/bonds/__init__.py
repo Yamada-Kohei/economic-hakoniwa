@@ -156,7 +156,9 @@ def target_holding(assets: int, market: int, base: int, free: float, premium: fl
 
 def auction_budget(island: IslandState, ctx: StageContext, bank: str) -> int:
     """銀行が国債の入札に回すお金: 準備預金のうち、最低限 ＋ 預金 × banking.liquidity_share と、
-    中央銀行と銀行間から借りている額を超えた分（決算の支払いと預金の出入りの分を手元に残す）。
+    中央銀行と銀行間から借りている額と、政府の預金を超えた分（決算の支払いと預金の出入りの分を
+    手元に残す）。政府の預金は国がいつでも引き出すので、全額を準備のまま持つ（回5。国債に替えると、
+    預けた分だけ入札の買いが増えて利回りが下がり、引き出されたときに売る相手のない島で詰まる）。
 
     中央銀行と銀行間からの借り入れは翌ターンの銀行の段で返すので、国債の段では借りている額が 0
     になっている。前のターンに借りた額（このターンに返した額）も残し、満期で戻ったお金で国債を
@@ -165,6 +167,7 @@ def auction_budget(island: IslandState, ctx: StageContext, bank: str) -> int:
     keep = part(banks.deposits_of(island, bank), to_basis(config.get("banking.liquidity_share")))
     keep += banks.cb_borrowed(island, bank) + banks.interbank_borrowed(island, bank)
     keep += banks.overnight_repaid(island, bank)
+    keep += banks.government_deposit(island, bank)
     return max(0, banks.excess_reserves(island, config, bank) - keep)
 
 

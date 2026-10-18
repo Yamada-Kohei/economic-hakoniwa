@@ -191,6 +191,7 @@ def test_treasury_surplus_is_deposited_at_banks_and_drawn_back(game, warmed):
     """国庫の余りは市中銀行に政府の預金として預け（準備預金が増える）、要るときに引き出す。政府の
     預金は国のお金に数え、銀行の預金（準備の最低限・預金者・お金の量）と銀行の純資産は変えない。"""
     from hakoniwa_core.economy import banks
+    from hakoniwa_core.modules.bonds import auction_budget
 
     world = copy.deepcopy(warmed)
     island = island_of(world, "market")
@@ -200,7 +201,10 @@ def test_treasury_surplus_is_deposited_at_banks_and_drawn_back(game, warmed):
     deposits = banks.deposits_of(island, bank)
     worth = banks.net_worth(island, game.config, bank, world.turn)
     money = ledger.aggregates(island.accounts)
+    ctx = context(game, world)
+    budget = auction_budget(island, ctx, bank)
     assert funds.deposit_surplus(island, 4_000_000, {bank: 1}) == 6_000_000
+    assert auction_budget(island, ctx, bank) == budget  # 預かった分は国債に替えずに持つ
     assert ledger.money(island, ledger.GOV) == 4_000_000
     assert banks.reserves_of(island, bank) == reserves + 6_000_000
     assert funds.government_money(island) == funds.spendable(island) == 10_000_000

@@ -44,7 +44,7 @@
 | FS-21 | 民主主義の国では関税と禁輸に議会の賛成が要る（タブ 10）。報復関税などの外交は遊ぶ人どうしに任せる | 決定 |  | tests/core/test_phase3_4.py::test_parliament_votes_by_seats_and_support |
 | FS-22 | 国庫が払えないとき、国債の利払いは先頭のまま払い、支払いを止めるかはプレイヤーの命令 `set_bond_payment` で選ぶ（自動では止めない）。今月の人件費と運営費は同じ割合で遅配にし、国営の農場だけが押し出されないようにする | 決定 | `fiscal.payment_order` | tests/core/test_balance_round5.py::test_payroll_group_is_cut_in_proportion_and_old_arrears_wait |
 | FS-23 | 国営の施設の設備は国が予算から直す（回6。タブ 5 FM-12） | 決定（回6 で作る） |  | （未確認） |
-| FS-24 | 国庫のうち「支出の `bonds.buffer_turns`+1 ターン分と次の利払い」を超えた分は、国債の段の終わりに自己資本比率が規制の値以上の市中銀行へ政府の預金として預ける（民間の預金の割合で分ける）。国庫と同じく取り置きと支払いに使え、国庫で足りない分は払うときと国債を出す前に引き出す（破綻した銀行からは引き出さず、準備預金をマイナスにしない分まで）。担保付きの預金として、準備の最低限・利子・預金保護・切り捨て・お金の量の外に置く | 決定（回5） | `bonds.buffer_turns` | tests/core/test_balance_round5.py::test_treasury_surplus_is_deposited_at_banks_and_drawn_back |
+| FS-24 | 国庫のうち「支出の `bonds.buffer_turns`+1 ターン分と次の利払い」を超えた分は、国債の段の終わりに自己資本比率が規制の値以上の市中銀行へ政府の預金として預ける（民間の預金の割合で分ける）。国庫と同じく取り置きと支払いに使え、国庫で足りない分は払うときと国債を出す前に引き出す（破綻した銀行からは引き出さず、準備預金をマイナスにしない分まで）。担保付きの預金として、準備の最低限・利子・預金保護・切り捨て・お金の量の外に置く。国がいつでも引き出すので、銀行は預かった分を全額準備預金のまま持ち、国債の入札に回さない | 決定（回5） | `bonds.buffer_turns` | tests/core/test_balance_round5.py::test_treasury_surplus_is_deposited_at_banks_and_drawn_back |
 
 ## 仕組み
 
