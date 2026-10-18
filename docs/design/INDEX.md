@@ -430,3 +430,82 @@
 | PL-38 | 反乱と内戦はフェーズ4 | 決定（フェーズ4 で作る） |  |
 | PL-39 | 政治の画面に政情・目標の内訳・段階・支持率・議席・採決の履歴・混乱期間・建て替えの資材を出す | 決定 | tests/server/test_phase3_4.py |
 
+## [11 画面と統計](11-ui.md)
+
+決まり 33 個、うち仮の決まりの表にあるもの 0 個。
+
+| 番号 | 決まり（頭） | 状態 | 試験 |
+| --- | --- | --- | --- |
+| UI-01 | 画面はサーバーが Django のテンプレートで HTML を作り、島の俯瞰図・建国・グラフ・命… | 決定 | tests/server/test_phase1.py、tests/server/test_trade.py |
+| UI-02 | 画面と API はルールの計算をしない | 決定 | （未確認） |
+| UI-03 | ほかの国の画面も開けるが、見せるのは国全体の統計と公開の数だけ | 決定 | tests/server/test_phase3_2.py、tests/server/test_reports.py、tests/server/test_trade.py |
+| UI-04 | 待っている命令はほかの国の人にも見せるが、現実の国が前もって公表しない命令（`orders.ya`… | 決定 | tests/server/test_ai_players.py、tests/server/test_review_fixes.py |
+| UI-05 | 命令の確かめ（`orders/check`）と1マスの命令の入力に使う値は島の持ち主だけ（ほかの… | 決定 | tests/server/test_phase1.py、tests/server/test_web.py |
+| UI-06 | 統計は記録の段がそのターンの仕訳・約定・市場と、段が残したお金と物の流れから島ごとに作り、名前（… | 決定 | tests/server/test_reports.py |
+| UI-07 | GDP は生産の側（施設の付加価値、工事と公務員と教員の賃金）と支出の側（家計の消費・投資・在庫… | 決定 | tests/core/test_measure.py |
+| UI-08 | 物価指数は家計が買う品目の値段を、直近に買った量で重みづけしたもの | 決定 | tests/core/test_shocks.py |
+| UI-09 | 格差は資産を持つ層と一般の労働者の層の 1 人あたり可処分所得の比 | 決定 | tests/server/test_reports.py |
+| UI-10 | 財政の収入・支出・収支と層ごとの 1 人あたりの所得は保存せず、統計の系列を返すときに計算して足… | 決定 | tests/server/test_reports.py |
+| UI-11 | 記録を残す期間: 仕訳と約定は短く、施設の帳簿は 200 年分、市場の記録と統計とターンログはず… | 決定 | （未確認） |
+| UI-12 | 巻き戻しでは、戻すターンより後の統計・ターンログ・記録を消し、勘定・融資・国債はバックアップの写… | 決定 | tests/server/test_economy.py、tests/server/test_phase1.py |
+| UI-13 | 画面のある時点は「箱庭暦32年11月（ターン 383）」のように日付を主にしてターンを添える | 決定 | tests/server/test_calendar.py |
+| UI-14 | グラフは自前の小さな折れ線（`static/js/chart/`）で、横軸は暦の年と月 | 決定 | （未確認） |
+| UI-15 | 島の俯瞰図はマスをひし形に並べ、奥から手前へ描く | 決定 | tests/server/test_web.py |
+| UI-16 | 地図の重ね表示は 1 種類 1 ファイル（`map/overlays/`）で足せる | 決定 | tests/server/test_ai_parity.py |
+| UI-17 | 絵はテーマごとに置き、ないものは色付きのひし形と箱で描く | 決定 | tests/server/test_theme_sprites.py |
+| UI-18 | 世界マップは区画ごとに島の形を 1 マス 1 ピクセルで描き、気候帯・貿易圏の縁取り・港・荷のあ… | 決定 | tests/server/test_phase3_2.py、tests/server/test_trade.py |
+| UI-19 | 統計の順位は部門ごと（GDP・1 人あたり GDP・人口・幸福度・輸出額）で誰にでも見せる | 決定 | tests/server/test_phase3_3.py |
+| UI-20 | 得意産業と称号（各産業の経験の累積の世界 1 位）は誰にでも見せる | 決定 | tests/server/test_phase3_3.py |
+| UI-21 | 産業の鎖の画面（持ち主だけ）は品目ごとに作った量・使った量・売買・輸出入・値段と作る施設と使う施… | 決定 | tests/server/test_phase3_2.py |
+| UI-22 | ターンログは文の種類と引数（名前）だけを保存し、文面は表示のときに作る | 決定 | tests/core/test_log_messages.py |
+| UI-23 | 島の画面と国の要約の「注意」は同じ文で、画面の値を言葉にしただけ（先の見込みは入れない） | 決定 | tests/server/test_codex_turn300_fixes.py |
+| UI-24 | 手引き（`/help/`）の施設と命令の表は定義データから作る | 決定 | tests/server/test_phase3_2.py、tests/server/test_trade.py |
+| UI-25 | スマートフォンでは CSS だけで縦画面に合わせ、地図は指で動かし拡大縮小する | 決定 | （未確認） |
+| UI-26 | AI は AI 用の鍵で入る | 決定 | tests/server/test_ai_players.py |
+| UI-27 | AI の鍵を持つ国と、鍵を最後に使ってから 1 年の間の国には、国の一覧と国の画面に「AI」の印… | 決定 | tests/server/test_ai_players.py |
+| UI-28 | 国の要約と前のターンからの差分は、画面と同じ値を集めて短くしたもの | 決定 | tests/server/test_ai_players.py |
+| UI-29 | MCP のつなぎ先は状態を持たず、道具はサーバーの中で JSON API を同じアカウントで呼ぶ… | 決定 | tests/server/test_ai_players.py |
+| UI-30 | 命令・画面・画面に出す値・地図の重ね表示を足したり変えたりしたら、同じ PR で JSON AP… | 決定 | tests/server/test_ai_parity.py |
+| UI-31 | 管理は Django の管理サイトで行う: 更新の一時停止、巻き戻し、何ターンかまとめて進める、… | 決定 | tests/server/test_letters.py、tests/server/test_turns.py、tests/server/test_web.py |
+| UI-32 | 同じ接続元からの登録は管理者が設定で数を決める（家族・学校・携帯回線で 1 つの接続元を分け合う… | 決定 | tests/server/test_phase1.py |
+| UI-33 | 量の表示の単位を実物に近づけるのは、バランス調整の最後に表示だけで行う（計算は変えない） | 決定（バランス調整の最後で） |  |
+
+## [12 確かめ方](12-checks.md)
+
+決まり 32 個、うち仮の決まりの表にあるもの 0 個。
+
+| 番号 | 決まり（頭） | 状態 | 試験 |
+| --- | --- | --- | --- |
+| GT-01 | 同じ種なら同じ結果になる | 決定 | tests/core/test_engine.py、tests/core/test_gate.py |
+| GT-02 | 帳簿の確かめは毎ターン記録の段の最後に行い、崩れていればそのターンを失敗にして、サーバーは何も保… | 決定 | tests/core/test_economy.py、tests/server/test_turns.py |
+| GT-03 | 島をまたぐお金（外貨の持ち高と非居住者の預金、融通、外国の国債）と運ぶ途中の荷の突き合わせは、毎… | 決定 | tests/core/test_phase3_3.py |
+| GT-04 | DB を通して回したターンと、メモリだけで回したターンは同じ結果になる | 決定 | tests/server/test_phase1.py |
+| GT-05 | 部品の試験: 板寄せは乱数の注文で「約定量が最大・値幅を守る・指値より不利な約定がない・取り置い… | 決定 | tests/core/test_economy.py |
+| GT-06 | 一括シミュレーションは画面も DB もなしで同じ段を回す | 決定 | tests/core/test_measure.py |
+| GT-07 | 関門は 50 島 × 300 ターンを標準の計画で回し、目安を見始めるターンから後の記録で目安に… | 決定 | tests/core/test_gate.py |
+| GT-08 | GDP の生産の側と支出の側の差は、2 つの絶対値の大きい方（小さすぎる額より小さくしない）で割… | 決定 | tests/core/test_measure.py |
+| GT-09 | 値段の目安は、値段にターンを付けて記録し、目安を見る期間の値段だけで判定する | 決定 | tests/core/test_measure.py |
+| GT-10 | 目安の種類: 値段・物価上昇率・物価の振れ・失業率・金利の上下・人口の下限と上限と急な変化・GD… | 決定 | tests/core/test_measure.py、tests/core/test_phase3_2.py、tests/core/test_phase3_3.py |
+| GT-11 | 目安から外れたら、目安をゆるめて合格にせず、仕組みから直す（数字を式・上限・倍率で寄せない） | 決定 |  |
+| GT-12 | 場面は、標準の計画・命令なし・中央銀行を独立させた国・少ない島の世界・どの島も移民を受け入れる世… | 決定 | tests/core/test_measure.py、tests/core/test_nightly.py |
+| GT-13 | 組は 2 つ | 決定 | tests/core/test_measure.py |
+| GT-14 | 測りと点検はゲームの状態を読むだけで変えない（同じ種で状態の指紋が同じ） | 決定 | tests/core/test_measure.py |
+| GT-15 | 最初の 1 年の縮みは、12 ターン目の雇用と実質の生産の 1 ターン目との比で記録だけする（合… | 決定 | tests/core/test_measure.py |
+| GT-16 | 失業の内わけ: 島×ターンごとに働き手の行き先、施設が人を雇わなかった理由、通勤圏で求人と失業者… | 決定 | tests/core/test_measure.py |
+| GT-17 | 揺さぶりの試験（フェーズ2）: 刷りすぎ・利上げ・銀行の破綻・国債の不履行・発電所の停止・計画経… | 決定 | tests/core/test_shocks.py |
+| GT-18 | 揺さぶりの試験（フェーズ3）: 全部の国から禁輸された島・外貨準備の少ない国の固定相場・中央銀行… | 決定 | tests/core/test_phase3_3.py、tests/core/test_phase3_4.py |
+| GT-19 | 揺さぶりの試験（フェーズ3 の残り）: 決済通貨の島の生産を止める、船を全部失った島 | 決定（試験はまだない） | （未確認） |
+| GT-20 | 夜の点検の長い年月: 標準の計画・命令なし・少ない島の世界を 100 年回し、測りの範囲より後に… | 決定 | tests/core/test_nightly.py |
+| GT-21 | 夜の点検のでたらめな国: 一部の島が毎ターン、画面と同じ確かめを通ったでたらめな命令を出す | 決定 | tests/core/test_nightly.py |
+| GT-22 | 夜の点検は前の夜までに見つけたものと比べ、新しいものだけに印を付ける | 決定 | tests/core/test_nightly.py |
+| GT-23 | 重い計算（長い試し回し・全部の試験・測り・夜の点検）は X870 で回す | 決定 |  |
+| GT-24 | 長い試し回し（測り・関門・夜の点検）で崩れが main より増えたら、増えた分を直してからマージ… | 決定 |  |
+| GT-25 | 規模の目標: 既定の 50 島で 1 回のターン更新を 5 分以内にする | 決定 | （未確認） |
+| GT-26 | 標準の計画は測りと自動の試験と開発用のサンプルの島だけで使い、サーバーの世界の国は動かさない（命… | 決定 | tests/core/test_gate.py |
+| GT-27 | 標準の計画は毎ターン上から見て最初に足りないもの（食料・発電・工事の資材・投入財・消費財・使って… | 決定 | tests/core/test_gate.py |
+| GT-28 | 標準の計画の世界の側: 北と南に 1 つずつ誰でも入れる貿易圏を作り、真ん中の行の島は両方に入れ… | 決定 | tests/core/test_trade.py |
+| GT-29 | 標準の計画に飢饉の手（国営の農場を穀物に替える・急ぎの輸入・配給・穀物の蓄え）を入れる | 決定（回5 で作る） |  |
+| GT-30 | 設計書の決まりの一覧と索引がずれていない、番号の頭・試験のパス・設定の名前が正しい、段の表が g… | 決定 | tests/core/test_docs_match.py、tests/core/test_spec_design.py、tests/core/test_spec_settings.py |
+| GT-31 | 試し遊びは AI 用の鍵で入り、国の要約と差分か MCP で遊ぶ | 決定 |  |
+| GT-32 | 崩れの見張りと関門の分け方（やり直しの報告の I1〜I5） | 後回し（タブ 14 W-34） |  |
+
