@@ -189,8 +189,8 @@ def test_titles_go_to_the_leader_and_the_loser_is_told(game, base):
     lost = next(e for e in a.log if e.kind == "title_lost")
     assert lost.args["country"] == b.name
     # 称号の名前（史実のあだ名）は、表示のときに画面の側が title として足す（display.title_name）
-    text = format_log(game.defs, lost.kind, {**lost.args, "title": "海の運び屋"})
-    assert b.name in text and "海の運び屋" in text and "{" not in text
+    text = format_log(game.defs, lost.kind, {**lost.args, "title": "海の馬車屋"})
+    assert b.name in text and "海の馬車屋" in text and "{" not in text
     assert b.stats["experience_rank.shipbuilding"] == 1.0
     assert a.stats["experience_rank.shipbuilding"] == 2.0
 
