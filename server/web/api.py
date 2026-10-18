@@ -890,5 +890,4 @@ def world(request):
 def _site_notes() -> dict[str, Any]:
     """更新履歴・管理人より・リンク集（server/web/top.yaml）。"""
     notes = top_page.site_notes()
-    updates = [{"date": str(u["date"]), "text": u["text"]} for u in notes["updates"]]
-    return {"updates": updates, "message": notes["message"], "links": notes["links"]}
+    return {"updates": notes["updates"], "message": notes["message"], "links": notes["links"]}

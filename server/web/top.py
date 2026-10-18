@@ -3,12 +3,15 @@
 
 from __future__ import annotations
 
+import subprocess
+from datetime import datetime
 from functools import cache
 from pathlib import Path
 from typing import Any
 
 import yaml
 from django.db.models import Q
+from django.utils import timezone
 
 from server.turns.models import TurnLog
 from server.web import display
@@ -78,13 +81,71 @@ def recent_events(world: m.World, limit: int = RECENT) -> list[dict[str, Any]]:
     return out
 
 
+# 更新履歴は、コミットの文に「更新履歴: 〜」の行を書くと、そのコミットが反映されたときに載る
+# （git の記録から読む。手で書く分は top.yaml の updates）。新しい順に UPDATES 件まで。
+UPDATE_MARKS = ("更新履歴:", "更新履歴：")  # 半角と全角のコロン
+UPDATES = 30
+
+
 @cache
 def site_notes() -> dict[str, Any]:
-    """管理人の書く欄（更新履歴・管理人より・リンク集）。server/web/top.yaml を直して書き換える。"""
+    """管理人の書く欄（更新履歴・管理人より・リンク集）。更新履歴は git の記録と top.yaml を
+    合わせる。サーバーは反映のたびに起動し直すので、読むのは起動して最初の1回だけ。"""
     path = Path(__file__).with_name("top.yaml")
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    written = [{"date": str(u["date"]), "text": str(u["text"])} for u in data.get("updates") or []]
     return {
-        "updates": list(data.get("updates") or []),
+        "updates": merge_updates(git_updates(), written),
         "message": str(data.get("message") or ""),
         "links": list(data.get("links") or []),
     }
+
+
+def git_updates() -> list[dict[str, str]]:
+    """git の記録から、「更新履歴:」の行を持つコミットを読む（git がない・記録がないときは空）。"""
+    root = Path(__file__).resolve().parents[2]
+    try:
+        out = subprocess.run(
+            ["git", "log", "--fixed-strings", "--grep=更新履歴", "--format=%x1e%cI%x1f%B"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return parse_git_updates(out)
+
+
+def parse_git_updates(log: str) -> list[dict[str, str]]:
+    """git log（%x1e%cI%x1f%B）の出力から、日付（JST の日）と「更新履歴:」の行の文を取り出す。"""
+    out = []
+    for record in log.split("\x1e"):
+        if "\x1f" not in record:
+            continue
+        when, body = record.split("\x1f", 1)
+        try:
+            day = datetime.fromisoformat(when.strip()).astimezone(timezone.get_current_timezone())
+        except ValueError:
+            continue
+        for line in body.splitlines():
+            line = line.strip()
+            mark = next((m for m in UPDATE_MARKS if line.startswith(m)), None)
+            text = line[len(mark) :].strip() if mark else ""
+            if text:
+                out.append({"date": day.date().isoformat(), "text": text})
+    return out
+
+
+def merge_updates(*groups: list[dict[str, str]]) -> list[dict[str, str]]:
+    """更新履歴を新しい日の順に（同じ日の中は渡した順）。同じ文は1つにする。"""
+    seen: set[str] = set()
+    rows = []
+    for group in groups:
+        for row in group:
+            if row["text"] not in seen:
+                seen.add(row["text"])
+                rows.append(row)
+    rows.sort(key=lambda r: r["date"], reverse=True)  # 安定な並べ替え
+    return rows[:UPDATES]

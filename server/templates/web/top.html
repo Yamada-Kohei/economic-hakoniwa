@@ -92,7 +92,7 @@
   <section class="retro-box">
     <h2 class="retro-h">{% translate "更新履歴" %}</h2>
     <dl class="updates">
-      {% for u in updates|slice:":8" %}<dt>{{ u.date|date:"Y/m/d" }}</dt><dd>{{ u.text }}</dd>{% endfor %}
+      {% for u in updates|slice:":10" %}{% ifchanged u.date %}<dt>{{ u.date }}</dt>{% endifchanged %}<dd>{{ u.text }}</dd>{% empty %}<dd class="muted">{% translate "まだありません。" %}</dd>{% endfor %}
     </dl>
   </section>
   <section class="retro-box">

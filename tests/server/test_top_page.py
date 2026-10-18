@@ -236,3 +236,36 @@ def test_api_and_tools_do_not_count_visits(client, world):
     tool = Client(HTTP_USER_AGENT="Python-urllib/3.12").get("/").context["counter"]
     assert (tool.total, tool.visitor, tool.kiriban) == (0, False, False)
     assert not Visit.objects.exists()
+
+
+# --- 更新履歴（git の記録から） -----------------------------------------------------------
+
+
+def test_updates_come_from_commit_lines():
+    log = (
+        "\x1e2026-10-19T02:30:00+09:00\x1f島の一覧を作り直す\n\n"
+        "更新履歴: トップを島の一覧の表にしました。\n"
+        "- 更新履歴・管理人より（箇条書きの中の言葉は拾わない）\n"
+        "\x1e2026-10-18T16:00:00+00:00\x1f地図\n\n更新履歴：地図を大きくしました。\n"
+        "\x1e2026-10-17T12:00:00+09:00\x1f試験だけ\n\n更新履歴:\n"
+    )
+    rows = top.parse_git_updates(log)
+    assert rows == [
+        {"date": "2026-10-19", "text": "トップを島の一覧の表にしました。"},
+        {"date": "2026-10-19", "text": "地図を大きくしました。"},  # UTC の 16 時は JST の翌日
+    ]
+
+
+def test_updates_merge_written_and_git_newest_first():
+    git = [{"date": "2026-10-19", "text": "A"}, {"date": "2026-10-17", "text": "B"}]
+    written = [{"date": "2026-10-18", "text": "C"}, {"date": "2026-10-17", "text": "B"}]
+    merged = top.merge_updates(git, written)
+    assert [r["text"] for r in merged] == ["A", "C", "B"]
+
+
+def test_updates_without_git(monkeypatch):
+    def broken(*args, **kwargs):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(top.subprocess, "run", broken)
+    assert top.git_updates() == []
