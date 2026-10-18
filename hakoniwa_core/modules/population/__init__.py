@@ -612,6 +612,7 @@ class Population(IslandStage):
         died_by_layer: dict[str, float] = {}  # 層ごとの、飢えのほかで亡くなった人（回4）
         natural = born = 0
         overcrowding = config.get("population.overcrowding")
+        unhoused: dict[Pos, int] = {}  # 生まれたマスに入れなかった家族（_migrate で移す）
         for tile in island.tiles:
             if tile.population <= 0:
                 tile.ext.pop("happiness", None)
@@ -695,10 +696,14 @@ class Population(IslandStage):
                 rate = default_rate
             rate *= max(0.0, 1 - overcrowding["births"] * crowd)  # 土地と家が足りない（回5）
             if rate > 0:
-                # 住む所がなくても生まれる（詰めて住み、移り住みで空いた町か開いた村へ移る。回5）
+                # 住む所がなくても生まれる。入れない家族は、ほかの人が移った後に空いた町へ移り、
+                # なければ詰めて住む（_migrate。回5）
                 births = _rand_round(pop * rate / YEAR, rng)
-                pop += births
+                room = max(0, capacity - pop)
+                pop += min(births, room)
                 born += births
+                if births > room:
+                    unhoused[pos] = births - room
             tile.population = max(0, pop)
         moods_by_layer = {n: v / w for n, (v, w) in moods.items() if w > 0}
         for layer, f in sorted(layers.items()):
@@ -715,7 +720,7 @@ class Population(IslandStage):
             moods_by_layer[layer] = ctx.formula("happiness")(island, facts, ctx)
         island.scratch["layer_happiness"] = moods_by_layer
         island.scratch["layer_facts"] = layers
-        self._migrate(island, ctx, rng, homes)
+        self._migrate(island, ctx, rng, homes, unhoused)
         stats = island.stats
         stats["population.births"] = born
         stats["population.deaths"] = natural
@@ -809,15 +814,19 @@ class Population(IslandStage):
         ctx: StageContext,
         rng: random.Random,
         homes: dict[Pos, Facility],
+        unhoused: dict[Pos, int] | None = None,
     ) -> None:
         """住む所の上限を超えた人と仕事のない人を、人手の足りない施設の近くの空いた町へ移す。
 
-        上限を超えた人（生まれた家族も）は、空いた町がなければ消えずに詰めて住む（過密。_crowd_in。
-        回5）。
+        unhoused は、生まれたマスに住む所がなかった家族（回4）。ほかの人を移した後に、まだ空いている
+        町へ入れる（人手の足りない所に近い町から）。上限を超えた人と入れなかった家族は、空いた町が
+        なければ消えずに詰めて住む（過密。_crowd_in。回5）。
         """
         defs, config = ctx.defs, ctx.config
         share = fac.labor_share(defs, island)
         if share <= 0:
+            for pos, count in (unhoused or {}).items():
+                island.tile(*pos).population += count  # 働く場のない島: 生まれたマスに詰めて住む
             return
         free = {
             pos: fac.housing_capacity(defs, f) - island.tile(*pos).population
@@ -881,6 +890,18 @@ class Population(IslandStage):
                     left_island += self._crowd_in(defs, island, homes, free, source, count)
                 else:
                     island.tile(*source).population += count  # 移る先がなければ元のマスに残る
+        for source, count in sorted((unhoused or {}).items(), key=lambda kv: (kv[0][1], kv[0][0])):
+            for pos in targets:
+                if count <= 0:
+                    break
+                move = min(count, free[pos])
+                if move <= 0:
+                    continue
+                island.tile(*pos).population += move
+                free[pos] -= move
+                count -= move
+            if count > 0:
+                left_island += self._crowd_in(defs, island, homes, free, source, count)
         if left_island:
             island.log.append(LogEntry("residents_left", {"count": left_island}))
         self._flee_famine(island, ctx, rng, free)
