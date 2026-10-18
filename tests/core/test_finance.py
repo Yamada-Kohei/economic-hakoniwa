@@ -464,9 +464,10 @@ def test_construction_loan_is_split_across_banks_within_the_limit(game, warmed):
 
 
 def test_private_entry_happens_only_where_allowed(game, warmed):
+    """民営の参入は市場経済と混合経済の島だけで起きる（参入は数年に1件ほどなので、80ターン見る）。"""
     entered = {i.regime["economy"]: 0 for i in warmed.islands.values()}
     world = copy.deepcopy(warmed)
-    for _ in range(40):
+    for _ in range(80):
         run(game, world, 1)
         for island in world.islands.values():
             entered[island.regime["economy"]] += sum(

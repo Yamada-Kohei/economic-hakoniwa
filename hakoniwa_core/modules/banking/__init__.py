@@ -114,7 +114,10 @@ class Banking(IslandStage):
 
     @staticmethod
     def _repay_overnight(island: IslandState, ctx: StageContext) -> None:
+        """銀行間と中央銀行から前のターンに借りた分を返す。返した額は銀行ごとに island.scratch の
+        banks.OVERNIGHT に残す（国債の段の入札で、返したばかりの分を手元に残すため。回5）。"""
         finance = island.economy.finance
+        repaid = island.scratch.setdefault(banks.OVERNIGHT, {})
         rate = finance.get("interbank_rate", island.policy.policy_rate)
         for name, amount in sorted(island.accounts.items()):
             lender, item, borrower = ledger.parse(name)
@@ -123,6 +126,7 @@ class Banking(IslandStage):
             interest = ledger.interest(amount, rate)
             ledger.pay(island, borrower, lender, amount, "interbank")
             ledger.cancel(island, lender, ledger.INTERBANK, borrower, amount, "interbank")
+            repaid[borrower] = repaid.get(borrower, 0) + amount
             ledger.pay(island, borrower, lender, interest, "interest_interbank")
             books.add(island, banks.bank_number(borrower), books.INTEREST, -interest)
             books.add(island, banks.bank_number(lender), books.INTEREST, interest)
@@ -134,6 +138,7 @@ class Banking(IslandStage):
             interest = ledger.interest(amount, cb_rate)
             ledger.pay(island, borrower, ledger.CB, amount, "cb_loan")
             ledger.cancel(island, ledger.CB, ledger.CB_LOAN, borrower, amount, "cb_loan")
+            repaid[borrower] = repaid.get(borrower, 0) + amount
             ledger.pay(island, borrower, ledger.CB, interest, "interest_cb_loan")
             books.add(island, banks.bank_number(borrower), books.INTEREST, -interest)
             books.add_sector(island, books.CENTRAL_BANK, "interest", interest)
@@ -448,9 +453,11 @@ class Banking(IslandStage):
             if f is None:
                 continue
             deposits = banks.deposits_of(island, bank)
-            # 預金金利: 目安（政策金利 − deposit_spread）へ近づけ、準備預金が足りなければ上げる
+            # 預金金利: 目安（政策金利 − deposit_spread）へ近づけ、手元の流動性が足りなければ
+            # 上げる。流動性は準備預金の余りと国債の額面（流通市場ですぐ売れる。回5 から）
             target = max(0, policy - to_basis(settings["deposit_spread"]))
-            liquidity = banks.excess_reserves(island, config, bank) / deposits if deposits else 1.0
+            liquid = banks.excess_reserves(island, config, bank) + banks.bonds_held(island, bank)
+            liquidity = liquid / deposits if deposits else 1.0
             if liquidity < settings["liquidity_target"]:
                 target = policy
             if deposits < f.economy.get("deposit_goal", 0):

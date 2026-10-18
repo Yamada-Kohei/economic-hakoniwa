@@ -82,10 +82,10 @@ class Failures(IslandStage):
                 limit = ctx.config.get("loans.arrears_limit")
                 if any(x.arrears >= limit for x in banks.loans_by_borrower(island, entity)):
                     bankrupt(island, ctx, f)
-        before = ledger.money(island, ledger.GOV)
+        before = funds.government_money(island)  # 政府の預金からの引き出しは使った額に数えない
         spent = dict(funds.spent(island))  # 救済の前の支出（救済の額は次のターンの見込みでない）
         resolved = self._resolve(island, ctx)
-        if ledger.money(island, ledger.GOV) < before:
+        if funds.government_money(island) < before:
             # 救済と預金保護で国庫から出したら、国債の段と同じく次のターンの支出の分を発行で戻す
             # （戻さないと、次のターンの教育費などが払えず、学校が止まる）
             from hakoniwa_core.modules.bonds import Bonds
@@ -254,17 +254,18 @@ def rescue_room(island: IslandState, ctx: StageContext) -> int:
     """国庫から銀行の救済と預金保護に出せる額。
 
     救済は支出の項目の外なので、次のターンの優先度の高い支払い（fiscal.payment_order で
-    fiscal.rescue_after までの項目の、このターンに使った額と、次のターンの国債の利払い）を国庫に
-    残す。残さないと、国債の不履行の後のように、救済が毎ターン国庫を空にして公務員を雇えず、
+    fiscal.rescue_after の入った組までの項目の、このターンに使った額と、次のターンの国債の利払い）を
+    国庫に残す。残さないと、国債の不履行の後のように、救済が毎ターン国庫を空にして公務員を雇えず、
     利払いもできずに不履行が続く。
     """
     from hakoniwa_core.economy import BONDS
     from hakoniwa_core.economy.debt import due
 
     fiscal = ctx.config.get("fiscal")
-    order = list(fiscal["payment_order"])
+    order = funds.groups(fiscal["payment_order"])
     last = fiscal.get("rescue_after")
-    items = order[: order.index(last) + 1] if last in order else []
+    ends = [i for i, group in enumerate(order) if last in group]
+    items = [item for group in order[: ends[0] + 1] for item in group] if ends else []
     spent = funds.spent(island)
     keep = sum(spent.get(item, 0) for item in items if item != BONDS)
     if BONDS in items:

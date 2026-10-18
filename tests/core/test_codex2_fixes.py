@@ -22,7 +22,7 @@ def test_transfer_logs_deposits_cut_when_the_government_cannot_pay(game, warmed,
     island = island_of(world, "mixed")  # 銀行が2つある島
     ctx = context(game, world)
     bank, other = banks.active_banks(island)[:2]
-    worth = banks.net_worth(island, game.config, bank, world.turn)
+    worth = banks.net_worth(island, game.config, bank, ctx.turn)  # 引き継ぎと同じターンの時価
     ledger.pay(island, bank, household(OWNERS), worth + 5_000_000, "dividend")
     monkeypatch.setattr(failures, "_government_pays", lambda *args, **kwargs: 0)  # 国庫も国債も
     monkeypatch.setattr(

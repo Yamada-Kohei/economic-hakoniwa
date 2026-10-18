@@ -321,6 +321,22 @@ def deposits_by_bank(island: IslandState, entity: str) -> dict[str, int]:
     }
 
 
+def treasury_to_bank(island: IslandState, bank: str, amount: int, kind: str) -> None:
+    """国庫のお金 amount を、銀行 bank の政府の預金にする（国庫が減り、銀行の準備預金が増える）。"""
+    if amount <= 0:
+        return
+    post(island, account(GOV, DEPOSIT, bank), issued(bank, DEPOSIT), amount, kind)
+    _settle(island, GOV, bank, amount, kind)
+
+
+def bank_to_treasury(island: IslandState, bank: str, amount: int, kind: str) -> None:
+    """銀行 bank の政府の預金 amount を国庫に戻す（銀行の準備預金が減り、国庫が増える）。"""
+    if amount <= 0:
+        return
+    post(island, issued(bank, DEPOSIT), account(GOV, DEPOSIT, bank), amount, kind)
+    _settle(island, bank, GOV, amount, kind)
+
+
 def move_deposit(
     island: IslandState, entity: str, source: str, target: str, amount: int, kind: str
 ) -> None:
@@ -375,6 +391,8 @@ def aggregates(accounts: dict[str, int]) -> dict[str, int]:
     totals = dict.fromkeys(MONEY_ITEMS, 0)
     for name, value in accounts.items():
         holder, item, _ = parse(name)
+        if holder == GOV and item == DEPOSIT:  # 政府の預金はお金の量に数えない（国庫と同じ）
+            continue
         for key, items in MONEY_ITEMS.items():
             if item in items:
                 totals[key] += value
@@ -390,7 +408,7 @@ def created_by_kind(journal: Iterable[JournalEntry]) -> dict[str, dict[str, int]
     for e in journal:
         for name, sign in ((e.debit, 1), (e.credit, -1)):
             holder, item, _ = parse(name)
-            if item == ISSUED:
+            if item == ISSUED or (holder == GOV and item == DEPOSIT):
                 continue
             for key, items in MONEY_ITEMS.items():
                 if item in items and is_issued(e.credit if sign == 1 else e.debit):

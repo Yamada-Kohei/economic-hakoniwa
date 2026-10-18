@@ -21,6 +21,8 @@ interest_deposit:     {type: journal}   # 預金の利子（銀行 → 預金者
 interest_reserve:     {type: journal}   # 準備預金の利子（中央銀行 → 銀行）
 cb_payment:           {type: journal}   # 中央銀行の利益の納付（中央銀行 → 政府）
 deposit_switch:       {type: journal}   # 預金の預け替え（銀行 → 銀行）
+treasury_deposit:     {type: journal}   # 国庫の余りを市中銀行の政府の預金にする（政府 → 銀行。回5）
+treasury_recall:      {type: journal}   # 市中銀行の政府の預金を国庫に戻す（銀行 → 政府。回5）
 # 融資と銀行間の貸し借り
 loan:                 {type: journal}   # 融資の実行（銀行 → 借り手）
 interest_loan:        {type: journal}   # 融資の利子（借り手 → 銀行。払えない分は貸し付けに足す）

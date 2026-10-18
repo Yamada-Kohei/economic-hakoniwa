@@ -14,12 +14,14 @@ import math
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
+from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     GENERAL,
     OWNERS,
     banks,
     books,
+    debt,
     funds,
     household,
     is_transport,
@@ -146,8 +148,16 @@ class Records(IslandStage):
         economy.finance["unemployment"] = stats["unemployment"]
         year = annual_gdp(economy)
         stats["debt_ratio"] = stats["debt"] / year if year else 0.0
-        for kind, amount in sorted(self._fiscal(island).items()):
+        fiscal = self._fiscal(island)
+        for kind, amount in sorted(fiscal.items()):
             stats[f"fiscal.{kind}"] = amount
+        # 国債の利回りの返す力の分母（国債と中央銀行からのお金を除く国の収入。回5）
+        revenue = sum(
+            v for k, v in fiscal.items() if k.startswith("in.") and debt.revenue_kind(k[3:])
+        )
+        history = economy.finance.get(debt.REVENUE, [])
+        economy.finance[debt.REVENUE] = [*history, revenue][-TURNS_PER_YEAR:]
+        stats["bonds.burden"] = debt.burden(island)
         # 予算の項目ごとにこのターンに使った額（公共事業費・教育費など）
         for item, amount in sorted(funds.spent(island).items()):
             stats[f"spent.{item}"] = amount
@@ -183,9 +193,12 @@ class Records(IslandStage):
 
     @staticmethod
     def _fiscal(island: IslandState) -> dict[str, int]:
-        """国庫の出入り（仕訳の種類ごと）。in.<種類> が収入、out.<種類> が支出。"""
+        """国庫の出入り（仕訳の種類ごと）。in.<種類> が収入、out.<種類> が支出。市中銀行の政府の
+        預金との出し入れ（funds.TREASURY_MOVES）は、国のお金の置き場所が変わるだけなので数えない。"""
         out: dict[str, int] = {}
         for e in island.journal:
+            if e.kind in funds.TREASURY_MOVES:
+                continue
             if e.debit == ledger.TREASURY_ACCOUNT:
                 key = f"in.{e.kind}"
             elif e.credit == ledger.TREASURY_ACCOUNT:
@@ -240,7 +253,8 @@ def _holdings(island: IslandState) -> dict[str, float]:
 def _finances(island: IslandState) -> dict[str, float]:
     """国庫・国債の残高・政策金利。"""
     return {
-        "treasury": ledger.money(island, ledger.GOV),
+        "treasury": funds.government_money(island),  # 市中銀行に預けた政府の預金も数える（回5）
+        "treasury.deposited": sum(funds.deposited(island).values()),
         "debt": total_debt(island),
         "policy_rate": island.policy.policy_rate * 100 / BASIS,
     }

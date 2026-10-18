@@ -22,16 +22,19 @@
    の利払い − 国庫の残高」がプラスなら、その額を入札で発行する。期間は政策の割合
    （policy.bond_terms）で分ける。
 
-入札: 買い手は市中銀行です。各銀行は準備預金の余りの banking.auction_share を、求める利回り
-（式 bond_yield）と、それに banking.auction_tiers を足した利回りの3段に分けて注文し、発行額が売れる
-いちばん低い利回りで全員が買います（その利回りが銘柄の利率）。新しい発行の売れ残りは、政策
+入札: 買い手は市中銀行です。各銀行は準備預金のうち「最低限 + 預金 × banking.liquidity_share」と
+中央銀行・銀行間から借りている額を超えた分を、banking.auction_steps の段に分けて注文します。段の指値
+は、その段まで買ったときに銀行が求める利回り（市場の利回り（式 bond_yield）+ 国債への偏りの上乗せ。
+bank_yield）で、発行額が売れるいちばん低い利回りで全員が買います（その利回りが銘柄の利率。回5、
+カード「市場の分だけ」）。新しい発行の売れ残りは、政策
 （policy.bond_unsold）が「引き受ける」で中央銀行が独立していなければ中央銀行が同じ利回りで引き受け、
 そうでなければ発行しません（足りない支出は支払いの順番で削られる）。借り換えの売れ残りは、いつも
 中央銀行が同じ利回りで買い支えます。
 
 国債の売買の市場: 残りの期間で分けた区分ごとに、利回りを値段にした板寄せで売り買いします（値幅は前の
-ターンの利回り ± bonds.trade_band）。市中銀行は国債の時価を目安（預金 × banking.bond_ratio）に近づけ
-るように注文し（売りは求める利回り ＋ banking.sell_premium まで受け入れ、買いは求める利回り以上）、
+ターンの利回り ± bonds.trade_band）。市中銀行は国債の額面を目安（偏りの上乗せで求める利回りが区分の
+今の利回りと等しくなる持ち高。target_holding）に近づけるように注文し（売りは自分の求める利回り ＋
+banking.sell_premium まで受け入れ、買いは自分の求める利回り以上）、
 準備預金が最低限に足りない銀行は足りない分を指値なしで売ります。独立していない中央銀行は、政策
 （policy.cb_bond_trade）の額を指値なしで買う・売ります。約定した区分の利回りは約定した利回りになりま
 す。銘柄の代金は、約定した利回りで割り引いた値段です（hakoniwa_core/economy/debt.py の price）。
@@ -89,21 +92,83 @@ def default_premium(island: IslandState, ctx: StageContext) -> float:
 
 
 def bond_yield(island: IslandState, turns: int, ctx: StageContext) -> int:
-    """買い手が求める国債の利回り（1万分の1）:
-    r_P + λ_T + σ max(0, B/Y − 閾値) + κ max(0, π − π*) + δ − β。
+    """市場の利回り（1万分の1）: r_P + λ_T + σ max(0, I/R − 閾値) + κ max(0, π − π*) + δ − β。
 
-    λ_T は期間 turns の上乗せ、B/Y は政府の借金の対年GDP比、δ は過去の債務不履行の上乗せ、β は
-    中央銀行が独立していれば bonds.independence_discount。0 から bonds.max_yield の間に収める。
+    λ_T は期間 turns の上乗せ、I/R は返す力の比（中央銀行以外に払う利子 ÷ 国の収入。年。
+    hakoniwa_core/economy/debt.py の burden。中央銀行の持ち分は市場の外。回5）、σ と閾値は
+    bonds.burden_sigma と bonds.burden_threshold、δ は過去の債務不履行の上乗せ、β は中央銀行が
+    独立していれば bonds.independence_discount。0 から bonds.max_yield の間に収める。銀行ごとに
+    求める利回りは、これに国債への偏りの上乗せを足す（bank_yield）。
     """
     settings = ctx.config.get("bonds")
     rate = island.policy.policy_rate / BASIS + term_premium(ctx.defs, turns)
-    rate += settings["sigma"] * max(0.0, debt.debt_ratio(island) - settings["debt_threshold"])
+    rate += settings["burden_sigma"] * max(0.0, _burden(island, ctx) - settings["burden_threshold"])
     target = ctx.config.get("central_bank.inflation_target")
     rate += settings["kappa"] * max(0.0, inflation(island.economy) - target)
     rate += default_premium(island, ctx)
     if island.policy.cb_independent:
         rate -= settings["independence_discount"]
     return to_basis(max(0.0, min(settings["max_yield"], rate)))
+
+
+def _burden(island: IslandState, ctx: StageContext) -> float:
+    """返す力の比（ターンの初めに一度だけ数える。利回りの式は1ターンに何十回も呼ばれ、銘柄も多いので）。"""
+    cached = island.scratch.get("bond_burden")
+    if cached is None or cached[0] != ctx.turn:
+        cached = (ctx.turn, debt.burden(island))
+        island.scratch["bond_burden"] = cached
+    return cached[1]
+
+
+def bond_assets(island: IslandState, bank: str) -> int:
+    """銀行の資産（準備預金・融資・国債の額面・銀行間の貸し）。国債への偏りの分母。"""
+    held = sum(debt.holdings_of(island, bank).values())
+    return (
+        max(0, banks.reserves_of(island, bank))
+        + banks.loans_of(island, bank)
+        + held
+        + banks.interbank_lent(island, bank)
+    )
+
+
+def concentration(ctx: StageContext, island: IslandState) -> tuple[float, float]:
+    """国債への偏りの上乗せの (上乗せのない割合, 係数)。計画経済の国営銀行は預金を国に貸すのが
+    仕事なので上乗せしない（ソ連の貯蓄銀行の預金は国の借り入れに回った）。"""
+    settings = ctx.config.get("banking.bond_concentration")
+    if is_planned(ctx.defs, island):
+        return 1.0, 0.0
+    return settings["free"], settings["premium"]
+
+
+def bank_yield(base: int, share: float, free: float, premium: float, top: int) -> int:
+    """国債を資産の share だけ持つ銀行が求める利回り（市場の利回り base ＋ 偏りの上乗せ）。"""
+    return min(top, base + to_basis(premium * max(0.0, share - free)))
+
+
+def target_holding(assets: int, market: int, base: int, free: float, premium: float) -> int:
+    """区分の今の利回り market で銀行が持ちたい国債の額面（偏りで求める利回りが market と等しく
+    なる割合 × 資産。0 から資産まで）。"""
+    if premium <= 0:
+        return assets
+    share = free + max(0, market - base) / BASIS / premium
+    return int(assets * max(0.0, min(1.0, share)))
+
+
+def auction_budget(island: IslandState, ctx: StageContext, bank: str) -> int:
+    """銀行が国債の入札に回すお金: 準備預金のうち、最低限 ＋ 預金 × banking.liquidity_share と、
+    中央銀行と銀行間から借りている額と、政府の預金を超えた分（決算の支払いと預金の出入りの分を
+    手元に残す）。政府の預金は国がいつでも引き出すので、全額を準備のまま持つ（回5。国債に替えると、
+    預けた分だけ入札の買いが増えて利回りが下がり、引き出されたときに売る相手のない島で詰まる）。
+
+    中央銀行と銀行間からの借り入れは翌ターンの銀行の段で返すので、国債の段では借りている額が 0
+    になっている。前のターンに借りた額（このターンに返した額）も残し、満期で戻ったお金で国債を
+    買い直してはまた中央銀行から借りる、を繰り返さないようにする。"""
+    config = ctx.config
+    keep = part(banks.deposits_of(island, bank), to_basis(config.get("banking.liquidity_share")))
+    keep += banks.cb_borrowed(island, bank) + banks.interbank_borrowed(island, bank)
+    keep += banks.overnight_repaid(island, bank)
+    keep += banks.government_deposit(island, bank)
+    return max(0, banks.excess_reserves(island, config, bank) - keep)
 
 
 def init_yields(island: IslandState, ctx: StageContext) -> list[int]:
@@ -188,6 +253,16 @@ class Bonds(WorldStage):
         self._ordered(island, ctx)
         self._secondary(island, ctx)
         self.top_up(island, ctx)
+        # 国庫に残す額を超えた分は、市中銀行に政府の預金として預ける（政府の黒字で準備預金が国庫へ
+        # 吸い上げられたままにならないように。回5）。まだ支出のない月（建国の月）は、残す額が
+        # 分からないので預けない
+        if any(v for k, v in funds.spent(island).items() if k != BONDS):
+            # 預け先は、自己資本比率が規制の値以上の銀行だけ（預金の額の割合で分ける）
+            weights = {
+                b: banks.deposits_of(island, b)
+                for b in banks.healthy_banks(island, ctx.config, ctx.turn)
+            }
+            funds.deposit_surplus(island, self.treasury_need(island, ctx), weights)
         finance["last_policy_rate"] = island.policy.policy_rate
         self.record_stats(island)
 
@@ -202,14 +277,22 @@ class Bonds(WorldStage):
         ために払えなくならないように）。そのときの spent は救済の前の額にする（1度きりの救済を、次の
         ターンにも出す支出に数えない）。
         """
+        need = self.treasury_need(island, ctx, spent) - ledger.money(island, ledger.GOV)
+        if need > 0:
+            self.raise_funds(island, ctx, need)
+
+    @staticmethod
+    def treasury_need(
+        island: IslandState, ctx: StageContext, spent: dict[str, int] | None = None
+    ) -> int:
+        """国庫に残す額: このターンの国債以外の政府の支出（次のターンの見込み）×（1 +
+        bonds.buffer_turns）＋ 次のターンの利払い。spent は支出の項目ごとの額（既定はこのターンに
+        使った額）。"""
         if spent is None:
             spent = funds.spent(island)
         spending = sum(v for k, v in spent.items() if k != BONDS)
         buffer = ctx.config.get("bonds.buffer_turns")
-        need = spending * (1 + buffer) + debt.due(island, ctx.turn + 1, redemptions=False)
-        need -= ledger.money(island, ledger.GOV)
-        if need > 0:
-            self.raise_funds(island, ctx, need)
+        return spending * (1 + buffer) + debt.due(island, ctx.turn + 1, redemptions=False)
 
     # --- 利回り -----------------------------------------------------------------------
 
@@ -367,7 +450,13 @@ class Bonds(WorldStage):
         self, island: IslandState, ctx: StageContext, amount: int, kind: str = "bonds_issued"
     ) -> int:
         """amount を、自動の発行の期間の割合で分けて入札で発行する（端数は最後の期間に足す）。
-        集まった額を返す。kind はログの種類（借り換えは bonds_refinanced）。"""
+        集まった額を返す。kind はログの種類（借り換えは bonds_refinanced）。
+
+        市中銀行に政府の預金があれば、発行する前に先に引き出す（回5）。"""
+        recalled = funds.recall(island, amount)
+        amount -= recalled
+        if amount <= 0:
+            return recalled
         shares = sorted(island.policy.bond_terms.items()) or [
             (name, to_basis(share)) for name, share in ctx.config.get("bonds.auto_terms").items()
         ]
@@ -378,7 +467,7 @@ class Bonds(WorldStage):
             face = left if i == len(shares) - 1 else amount * share // total
             left -= face
             raised += self.issue(island, ctx, face, name, kind)
-        return raised
+        return recalled + raised
 
     def issue(self, island: IslandState, ctx: StageContext, face: int, term: str, kind: str) -> int:
         """期間 term の国債 face を入札で出す。売れた額（中央銀行の引き受けを含む）を返す。"""
@@ -387,10 +476,10 @@ class Bonds(WorldStage):
         turns = ctx.defs.bond_terms()[term]["turns"]
         wanted = ctx.formula("bond_yield")(island, turns, ctx)
         closed = debt.market_closed(island, ctx.config, ctx.turn)
-        if closed:  # 債務不履行の後: 銀行は入札に来ない（利回りは入札のいちばん高い段）
-            top = to_basis(ctx.config.get("bonds.max_yield"))
-            tiers = ctx.config.get("banking.auction_tiers")
-            filled, rate = {}, min(top, wanted + max(to_basis(t) for t in tiers))
+        if (
+            closed
+        ):  # 債務不履行の後: 銀行は入札に来ない（利回りは不履行の上乗せの入った市場の利回り）
+            filled, rate = {}, wanted
         else:
             filled, rate = self._auction(island, ctx, face, wanted, self._foreign_bids())
         sold = sum(filled.values())
@@ -479,18 +568,24 @@ class Bonds(WorldStage):
         foreign は外国の買い手の (求める利回りの上乗せ, 名前, 額)。上乗せが負なら指値なしで、一番
         低い段（wanted）に入れる（フェーズ3-3）。"""
         config = ctx.config
-        tiers = [to_basis(t) for t in config.get("banking.auction_tiers")]
-        share = to_basis(config.get("banking.auction_share"))
+        steps = config.get("banking.auction_steps")
         top = to_basis(config.get("bonds.max_yield"))
+        free, premium = concentration(ctx, island)
         bids: dict[int, dict[str, int]] = {}
         for bank in banks.active_banks(island):
-            budget = part(max(0, banks.excess_reserves(island, config, bank)), share)
-            for tier in tiers:
-                level = min(top, wanted + tier)
-                amount = budget // len(tiers)
-                if amount > 0:
-                    by_bank = bids.setdefault(level, {})
-                    by_bank[bank] = by_bank.get(bank, 0) + amount
+            budget = auction_budget(island, ctx, bank)
+            assets = bond_assets(island, bank)
+            if budget <= 0 or assets <= 0:
+                continue
+            held = sum(debt.holdings_of(island, bank).values())
+            amount = budget // steps
+            for step in range(1, steps + 1):
+                if amount <= 0:
+                    break
+                # 段の終わりまで買ったときの偏りで求める利回り
+                level = bank_yield(wanted, (held + amount * step) / assets, free, premium, top)
+                by_bank = bids.setdefault(level, {})
+                by_bank[bank] = by_bank.get(bank, 0) + amount
         for premium, name, amount in foreign:
             level = wanted if premium < 0 else min(top, wanted + premium)
             if amount > 0:
@@ -498,7 +593,7 @@ class Bonds(WorldStage):
                 by_name[name] = by_name.get(name, 0) + amount
         filled: dict[str, int] = {}
         left = face
-        rate = min(top, wanted + max(tiers))
+        rate = max(bids) if bids else wanted
         for level in sorted(bids):
             if left <= 0:
                 break
@@ -565,32 +660,41 @@ class Bonds(WorldStage):
         }
         wanted = [ctx.formula("bond_yield")(island, t, ctx) for t in terms]
         premium = to_basis(config.get("banking.sell_premium"))
+        top = to_basis(config.get("bonds.max_yield"))
+        free, slope = concentration(ctx, island)
         closed = debt.market_closed(island, config, ctx.turn)  # 不履行の後は、銀行は買わない
+        shortfall = [0] * count  # 準備預金が足りずに指値なしで売りに出た額面（区分ごと）
         for bank in banks.active_banks(island):
             held = holdings[bank]
             total = sum(held)
             short = -banks.excess_reserves(island, config, bank)
-            target = part(
-                banks.deposits_of(island, bank), to_basis(config.get("banking.bond_ratio"))
+            assets = bond_assets(island, bank)
+            share = total / assets if assets > 0 else 0.0
+            # 区分ごとに、自分の偏りで求める利回りと、今の利回りで持ちたい額面
+            asks = [bank_yield(wanted[k], share, free, slope, top) for k in range(count)]
+            target = (
+                sum(target_holding(assets, yields[k], wanted[k], free, slope) for k in range(count))
+                // count
             )
-            value = banks.bond_value(island, config, bank, ctx.turn)
             if short > 0 and total > 0:  # 準備預金が足りない: 指値なしで売る
                 for k in range(count):
                     qty = min(held[k], -(-short * held[k] // total))
                     if qty > 0:
-                        sellers[k].append((Order(qty), bank))
-            elif value > target * 11 // 10 and total > 0:
-                over = value - target
+                        # 独立した中央銀行の買いオペが、外国の持ち手の売りより先にこれを買う
+                        sellers[k].append((Order(qty, priority=1), bank))
+                        shortfall[k] += qty
+            elif total > target * 11 // 10 and total > 0:
+                over = total - target
                 for k in range(count):
                     qty = min(held[k], over * held[k] // total)
                     if qty > 0:
-                        sellers[k].append((Order(qty, wanted[k] + premium), bank))
-            elif value < target * 9 // 10 and not closed:
-                room = part(max(0, banks.excess_reserves(island, config, bank)), BASIS // 2)
-                qty = min(target - value, room) // count
+                        sellers[k].append((Order(qty, min(top, asks[k] + premium)), bank))
+            elif total < target * 9 // 10 and not closed:
+                room = auction_budget(island, ctx, bank)
+                qty = min(target - total, room) // count
                 if qty > 0:
                     for k in range(count):
-                        buyers[k].append((Order(qty, wanted[k]), bank))
+                        buyers[k].append((Order(qty, asks[k]), bank))
         trade = island.policy.cb_bond_trade
         if trade and not island.policy.cb_independent:
             held = holdings[ledger.CB]
@@ -603,10 +707,14 @@ class Bonds(WorldStage):
                     qty = min(held[k], -trade * held[k] // total)
                     if qty > 0:
                         sellers[k].append((Order(qty), ledger.CB))
+        if island.policy.cb_independent:
+            omo = island.economy.finance.get("cb_open_market", 0)
+            self._open_market(holdings[ledger.CB], omo, shortfall, sellers, buyers, wanted, yields)
         self._foreign_orders(island, ctx, sellers, buyers, wanted, closed, by_id)
         band = to_basis(config.get("bonds.trade_band"))
         top = to_basis(config.get("bonds.max_yield"))
         cb_done = 0  # 中央銀行が売り買いした額面
+        cb_moved = {"bought": 0, "sold": 0}
         for k in range(count):
             if not sellers[k] or not buyers[k]:
                 continue
@@ -625,10 +733,58 @@ class Bonds(WorldStage):
                 done = self._deliver(island, ctx, seller, buyer, qty, k, result.price, by_id)
                 if ledger.CB in (seller, buyer):
                     cb_done += done
+                    cb_moved["bought" if buyer == ledger.CB else "sold"] += done
             stats = island.scratch.setdefault("bond_stats", {})
             stats["traded"] = stats.get("traded", 0) + result.volume
         if trade and not island.policy.cb_independent:
             self._log_cb_trade(island, trade, cb_done)
+        if island.policy.cb_independent:
+            finance = island.economy.finance
+            left = finance.get("cb_open_market", 0) + cb_moved["bought"] - cb_moved["sold"]
+            if left > 0:
+                finance["cb_open_market"] = left
+            else:
+                finance.pop("cb_open_market", None)
+            stats = island.scratch.setdefault("bond_stats", {})
+            for side, amount in cb_moved.items():
+                if amount > 0:
+                    stats[f"cb_{side}"] = amount
+                    island.log.append(LogEntry(f"cb_open_market_{side}", {"amount": amount}))
+
+    @staticmethod
+    def _open_market(
+        held: list[int],
+        omo: int,
+        shortfall: list[int],
+        sellers: list[list[tuple[Order, str]]],
+        buyers: list[list[tuple[Order, str]]],
+        wanted: list[int],
+        yields: list[int],
+    ) -> None:
+        """独立した中央銀行の売り買い（買いオペと売りオペ。回5 のカード「両方」）。
+
+        準備預金の足りない銀行が売りに出した国債は、指値なしで同じ額だけ買う（銀行が1つの島や、
+        どの銀行も足りない月でも、準備を市場の値段で足せる。独立して禁じられるのは国が出す国債を
+        直接買うことだけで、市場での売り買いはふつうの仕事。ユーロ圏や日本の中央銀行と同じ）。
+        足りない銀行がなければ、買いオペで買って残っている額 omo（finance["cb_open_market"]）まで
+        を、今の利回りか市場が求める利回りの高いほうまでで売りに出す（利回りをそれより押し上げて
+        までは売らない。独立する前に引き受けた国債は売らず、満期の乗り換えで持ち続ける）。買うのは
+        持ち高が目標より少なく、手元に余りのある銀行だけなので、銀行の準備を最低限より下げずに国債
+        を市場へ戻していく。買い手がいなければ持ち続ける（満期は中央銀行の持ち分と同じく乗り換える。
+        国の黒字が準備を吸い上げ続ける島では、中央銀行が国債を持って準備を出し続ける形になる）。"""
+        if any(shortfall):
+            for k, qty in enumerate(shortfall):
+                if qty > 0:
+                    # 指値は今の利回り（それ以上なら買う）。指値なしどうしだと値幅の端で約定し、
+                    # 中央銀行が買うだけで利回りが毎ターン値幅の分だけ動いてしまう
+                    buyers[k].append((Order(qty, yields[k]), ledger.CB))
+            return
+        total = sum(held)
+        offer = min(omo, total)
+        for k, face in enumerate(held):
+            qty = offer * face // total if total > 0 else 0
+            if qty > 0:
+                sellers[k].append((Order(qty, max(wanted[k], yields[k])), ledger.CB))
 
     @staticmethod
     def _log_cb_trade(island: IslandState, trade: int, done: int) -> None:

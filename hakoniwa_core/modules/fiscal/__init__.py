@@ -37,10 +37,11 @@ class Budget(IslandStage):
         # 国債は利払いの分だけ取り置く。満期の償還は国債の段で、足りない分を借り換えて払う
         # （償還の額面を先に取り置くと、ほかの支出の取り置きが国庫に残らない）
         estimates[BONDS] = due(island, ctx.turn, redemptions=False)
-        # 前のターンまでの未払い賃金は、お金が入れば先に払う（回3。雇用の段の初めに払う）
+        # 前のターンまでの未払い賃金は、今月の人件費と失業手当の後に残ったお金で払う（回5。雇用の
+        # 段の初めに払う。今月の分を止めてまで先に返さない）
         estimates[arrears.ARREARS] = arrears.total(island, ledger.GOV)
         caps = {item: island.policy.budget.get(item, 0) // YEAR for item in fiscal["budget_items"]}
-        funds.open_treasury(island, estimates, list(fiscal["payment_order"]), caps)
+        funds.open_treasury(island, estimates, fiscal["payment_order"], caps)
 
 
 # --- 命令 -------------------------------------------------------------------------

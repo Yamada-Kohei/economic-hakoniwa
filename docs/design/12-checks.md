@@ -35,7 +35,7 @@
 | GT-09 | 値段の目安は、値段にターンを付けて記録し、目安を見る期間の値段だけで判定する | 決定 |  | tests/core/test_measure.py::test_price_check_looks_only_at_turns_in_the_window, ::test_window_end_leaves_out_later_turns |
 | GT-10 | 目安の種類: 値段・物価上昇率・物価の振れ・失業率・金利の上下・人口の下限と上限と急な変化・GDP の差・民営工場の数の振れ・銀行の破綻の連鎖・為替の年の動き・外国の資産の大きさと増え方・称号の集中・作られない財・売買されない財・1 年続く貿易の途絶 | 決定 |  | tests/core/test_phase3_3.py::test_gate_flags_titles_held_by_one_island, ::test_gate_flags_foreign_assets_that_keep_growing, tests/core/test_phase3_2.py::test_gate_counts_islands_making_and_trading_each_good, tests/core/test_measure.py::test_trade_that_stops_for_a_year_is_flagged |
 | GT-11 | 目安から外れたら、目安をゆるめて合格にせず、仕組みから直す（数字を式・上限・倍率で寄せない） | 決定 |  |  |
-| GT-12 | 場面は、標準の計画・命令なし・中央銀行を独立させた国・少ない島の世界・どの島も移民を受け入れる世界。場面ごとに関門に数える目安の種類を決める（命令なしは崩れないかの目安だけ） | 決定 |  | tests/core/test_measure.py::test_failures_can_be_limited_to_kinds, ::test_independent_scenario_retries_until_parliament_agrees, tests/core/test_nightly.py::test_scenario_kinds_limit_what_is_counted |
+| GT-12 | 場面は、標準の計画・命令なし・中央銀行を独立させた国（計画経済の国は独立させられないので除く）・少ない島の世界・どの島も移民を受け入れる世界。場面ごとに関門に数える目安の種類を決める（命令なしは崩れないかの目安だけ） | 決定 |  | tests/core/test_measure.py::test_failures_can_be_limited_to_kinds, ::test_independent_scenario_retries_until_parliament_agrees, tests/core/test_nightly.py::test_scenario_kinds_limit_what_is_counted |
 | GT-13 | 組は 2 つ。quick（種 1・2 の 300 ターンが中心）で回ごとに比べ、full（種 1〜4 の 500 ターンが中心）を回の終わりに一度回す。2 つの結果は `measure compare` で並べる | 決定 |  | tests/core/test_measure.py::test_result_has_windows_after_the_start_turn, ::test_compare_reads_goods_only_values_from_rounds_without_services |
 | GT-14 | 測りと点検はゲームの状態を読むだけで変えない（同じ種で状態の指紋が同じ）。計算を速くする直しも同じ指紋で確かめる | 決定 |  | tests/core/test_measure.py::test_measuring_does_not_change_the_world |
 | GT-15 | 最初の 1 年の縮みは、12 ターン目の雇用と実質の生産の 1 ターン目との比で記録だけする（合否には使わない） | 決定 |  | tests/core/test_measure.py::test_early_year_compares_turn_12_with_turn_1 |
@@ -52,7 +52,8 @@
 | GT-26 | 標準の計画は測りと自動の試験と開発用のサンプルの島だけで使い、サーバーの世界の国は動かさない（命令のない国は何もしない）。ゲームのルールではないので数値は `autoplan.py` に置く | 決定 |  | tests/core/test_gate.py::test_supply_chain_runs_for_300_turns |
 | GT-27 | 標準の計画は毎ターン上から見て最初に足りないもの（食料・発電・工事の資材・投入財・消費財・使っていない資源・圏で足りない物・生産の連鎖）を 1 つ建て、学校と大学・道路と送電線・上下水道・失業手当と予算・公共料金の上限・工業団地を決める | 決定 |  | tests/core/test_gate.py::test_supply_chain_runs_for_300_turns |
 | GT-28 | 標準の計画の世界の側: 北と南に 1 つずつ誰でも入れる貿易圏を作り、真ん中の行の島は両方に入れる（決済通貨は人口の一番多い加盟国）。政治の命令は出さない | 決定 |  | tests/core/test_trade.py::test_blocs_form_and_goods_are_shipped |
-| GT-29 | 標準の計画に飢饉の手（国営の農場を穀物に替える・急ぎの輸入・配給・穀物の蓄え）を入れる | 決定（回5 で作る） |  |  |
+| GT-29 | 標準の計画の飢饉の手: 食べ物の充足が下がった月は国営の農場を穀物に替え、国の倉庫の食べ物を出し、足りない穀物を高めの指値で買い入れる（輸入を呼ぶ）。ふだんの月は穀物を蓄えて傷む前に入れ替える。配給は計画経済の割当ルールのまま | 決定 |  | tests/core/test_balance_round5.py::test_plan_turns_state_farms_to_grain_and_opens_the_warehouse_in_a_famine |
+| GT-37 | 標準の計画の財政の手: 国が賃金を払いきれなければ所得税と消費税を少しずつ上げ、ゆとりが戻れば建国の税率まで戻す。返す力の比（中央銀行以外への利払い÷国の収入）が高いときは公共事業費を減らす | 決定 |  | tests/core/test_balance_round5.py::test_plan_raises_taxes_when_the_state_cannot_pay_wages |
 | GT-30 | 設計書の決まりの一覧と索引がずれていない、番号の頭・試験のパス・設定の名前が正しい、段の表が game.yaml と合う、設定の説明の名前が game.yaml にあることを試験で確かめる | 決定 |  | tests/core/test_spec_design.py::test_design_docs_match_index_and_have_no_errors, tests/core/test_docs_match.py::test_stage_table_follows_game_yaml, tests/core/test_spec_settings.py::test_comment_names_exist_in_game_yaml |
 | GT-31 | 試し遊びは AI 用の鍵で入り、国の要約と差分か MCP で遊ぶ。見つけた点は「直したほうがよいもの」「決めていただきたいもの」「難しさのうち」に分け、コードは変えない | 決定 |  |  |
 | GT-32 | 崩れの見張り: 測りと夜の点検（長い年月）は、1 ターン目から島ごとに飢饉・国の出入りを除いた人口の大きな減り・作ったことのある財の品切れ・取引が成り立たない・作り方の群れ・国の賃金の未払いが続く・銀行が中央銀行から借りたままが続く・理由の出ない停止を数え、目安の外れとは別に並べる。基準の値は `gate.py`（`COLLAPSE_KINDS` と同じ所） | 決定 |  | tests/core/test_collapse.py::test_famine_and_population_drop_need_a_year, ::test_people_who_moved_abroad_are_not_a_population_drop, ::test_stockout_counts_only_goods_the_island_made, ::test_no_trade_needs_a_year_in_a_row_on_a_good_that_traded_before, ::test_many_facilities_switching_at_once_is_herding, ::test_unpaid_wages_for_half_a_year_and_a_silent_stop |
@@ -93,7 +94,7 @@
 
 | 目安の種類 | 見るもの |
 | --- | --- |
-| 値段（`price`） | 売り買いのあった財の値段が初めの値段の決めた倍率の間に収まる（目安を見る期間の値段だけで判定） |
+| 値段（`price`） | 売り買いのあった財の値段を初めの値段と比べ、物価指数の伸びで割った倍率（ほかの財と比べた値段）が決めた幅に収まる（目安を見る期間の値段だけで判定）。物価全体の上がり方は物価の目安で見るので、ここでは数えない（回5。年に6%ずつ物価が上がる島では、24年で値段が4倍になる） |
 | 物価（`inflation`・`cpi_spread`） | 物価上昇率が決めた幅に収まる。後半の物価指数の振れ幅（標準偏差 ÷ 平均）が上限より小さい |
 | 雇用（`unemployment`） | 失業率が決めた幅に収まる |
 | 金利（`rate_high`・`rate_low`） | 政策金利と国債の利回りが決めた幅に収まる |
@@ -190,9 +191,9 @@
 
 - 一括シミュレーション（関門と測り）と開発用のサンプルの島で、プレイヤーの代わりに命令を並べる決め方です。サーバーの世界の国は動かしません（命令のない国は何もしない）。ゲームのルールではないので、数値は `autoplan.py` に置きます。
 - 毎ターン、工事中の施設が少なければ、上から見て最初に足りないものを 1 つ建てます: 食料 → 発電 → 工事の資材 → 投入財 → 消費財 → 島で使っていない鉱業資源を使う施設（輸出向け）→ 入っている貿易圏で足りない物（輸出向け）→ 生産の連鎖（鉄鉱石 → 鋼鉄 → 機械）。投入財に余裕のない施設は建てません。
-- ほかに、学校と大学、建てた施設の送電線と道路、育たない町の上下水道、失業手当、公共事業費の見直し（住民 1 人あたりを基本に、失業率が高ければ増やし、物価上昇率と借金の対年 GDP 比が高ければ減らす）、教育費（学校と大学を全力で動かす年の費用に余裕を見た額）、電気料金の上限、工業団地の指定、国の倉庫の物を市場に売ることを決めます。
+- ほかに、学校と大学、建てた施設の送電線と道路、育たない町の上下水道、失業手当、公共事業費の見直し（住民 1 人あたりを基本に、失業率が高ければ増やし、物価上昇率と返す力の比が高ければ減らす）、税の上げ下げ（GT-37）、飢饉の手と穀物の蓄え（GT-29）、教育費（学校と大学を全力で動かす年の費用に余裕を見た額）、電気料金の上限、工業団地の指定、国の倉庫の物を市場に売ることを決めます。
 - 世界の側では、北と南に 1 つずつ誰でも入れる貿易圏を作り、貿易の始まった島をそれぞれに加盟させます（真ん中の行の島は両方。決済通貨は人口の一番多い加盟国）。商社は自動なので、貿易そのものは標準の計画に要りません。政治の命令は出しません。
-- 回5 で、飢饉のときの手（国営の農場を穀物に替える・急ぎの輸入・配給・穀物の蓄え）を入れます（2026-10-17 のカード）。利払いが税収の決めた割合を超えたら増税と歳出の見直しをするか（W-03）、借金の歯止めで教育費も減らすか（W-63）、造船所を建てないこと（W-66）はタブ 14 にあります。
+- 飢饉のときの手（2026-10-17 のカード。GT-29）と財政の手（GT-37）は回5 で入れました。借金の歯止めで教育費も減らすか（W-63）、造船所を建てないこと（W-66）はタブ 14 にあります。
 
 ### 試し遊び
 

@@ -44,6 +44,7 @@ from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import books, is_stopped, is_transport, services
+from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy.prices import initial_prices
 from hakoniwa_core.geo import distance
 from hakoniwa_core.modules.population import subsistence_persons
@@ -190,7 +191,12 @@ def queue_scenario_orders(world: WorldState, scenario: Scenario, defs: Defs, con
     """次のターンの前に、場面の命令を並べる。"""
     for island in world.islands.values():
         orders = []
-        if scenario.independent and not island.policy.cb_independent:
+        # 計画経済の国は中央銀行を独立させられない（回5 のカード「両方」）
+        if (
+            scenario.independent
+            and not island.policy.cb_independent
+            and not planning.is_planned(island, defs)
+        ):
             orders.append(("set_central_bank_independence", {"independent": True}))
         if scenario.immigration and island.policy.immigration != scenario.immigration:
             orders.append(("set_immigration", {"mode": scenario.immigration}))

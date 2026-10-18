@@ -21,6 +21,7 @@ from typing import Any
 from hakoniwa_core import ledger
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import banks
+from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
@@ -182,6 +183,10 @@ def set_monetary_policy(island: IslandState, payload: dict[str, Any], ctx: Stage
 def check_independence(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
     if bool(payload["independent"]) == island.policy.cb_independent:
         raise OrderFailed("reason_already_done")
+    if payload["independent"] and planning.is_planned(island, defs):
+        # 計画経済の国立銀行は政府の一部で、お金を国の計画どおりに出す窓口（ソ連のゴスバンク、
+        # 中国の人民銀行）。独立させる例は現実にほぼないので選べない（回5 のカード「両方」）
+        raise OrderFailed("reason_cb_independence_planned")
 
 
 def set_independence(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
@@ -197,10 +202,32 @@ def set_independence(island: IslandState, payload: dict[str, Any], ctx: StageCon
     switched = finance.get("cb_switched")
     if switched is not None and ctx.turn - switched < lock:
         raise OrderFailed("reason_cb_switch_locked", turns=lock - (ctx.turn - switched))
+    switch_independence(island, ctx, bool(payload["independent"]))
+
+
+def end_for_planned(island: IslandState, ctx: StageContext) -> None:
+    """計画経済の国の中央銀行が独立していれば、政府の一部に戻す（計画経済に移ったときと、独立を
+    選べなかった前の版の世界。更新の段で呼ぶ）。プレイヤーの切り替えではないので、切り替えの後の
+    戻せないターン数は見ず、数え始めもしない。"""
+    if island.policy.cb_independent and planning.is_planned(island, ctx.defs):
+        switched = island.economy.finance.get("cb_switched")
+        switch_independence(island, ctx, False, kind="cb_dependent_planned")
+        if switched is None:
+            island.economy.finance.pop("cb_switched", None)
+        else:
+            island.economy.finance["cb_switched"] = switched
+
+
+def switch_independence(
+    island: IslandState, ctx: StageContext, independent: bool, kind: str = ""
+) -> None:
+    """中央銀行の独立を切り替え、それに伴う政策を合わせる（命令 set_independence の中身）。kind は
+    知らせるログの種類（既定は cb_independent か cb_dependent）。"""
+    finance = island.economy.finance
     policy = island.policy
-    policy.cb_independent = bool(payload["independent"])
+    policy.cb_independent = independent
     finance["cb_switched"] = ctx.turn
-    kind = "cb_independent" if policy.cb_independent else "cb_dependent"
+    kind = kind or ("cb_independent" if policy.cb_independent else "cb_dependent")
     island.log.append(LogEntry(kind, {}))
     if policy.cb_independent:
         policy.cb_bond_trade = 0

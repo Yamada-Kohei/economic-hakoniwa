@@ -29,7 +29,7 @@
 | BK-06 | 市中銀行はオフィス街のマスに入る施設で職員を雇う。預金と融資が少ない銀行は少なく雇う。職員が足りない割合だけ新しい融資を絞る | 決定 | `banking.facility`, `banking.staff_volume`, `banking.staff_floor` | tests/core/test_playtest5_fixes.py::test_small_bank_hires_for_its_business |
 | BK-07 | 国営銀行はプレイヤーが建設の命令で建てる。民間銀行は参入の政策（自由・許可制・禁止）に従い、預金と利益の見込みが立てば資産を持つ層の出資で開業する。計画経済は国営銀行だけ | 決定 | `banking.max_banks`, `banking.entry_capital`, `banking.entry_deposits`, `banking.entry_roe_margin` | tests/core/test_finance.py::test_planned_economy_cannot_privatize_or_license_banks, tests/core/test_playtest5_fixes.py::test_bank_does_not_open_when_it_cannot_raise_its_deposit_rate, tests/core/test_playtest_fixes.py::test_bank_entry_block_names_missing_office |
 | BK-08 | 家計の層は毎ターン預金の一部を「預金金利−危なさ」の高い銀行へ移す。規制を下回った銀行と中央銀行に頼る銀行からは取り付けで流れ出す | 決定 | `banking.switch_share`, `banking.run_share`, `banking.risk_buffer`, `banking.risk_weight` | （未確認） |
-| BK-09 | 預金金利は「政策金利−差」へ少しずつ近づけ、準備預金が足りない銀行と開業して預金を集めている銀行は政策金利へ近づける | 決定 | `banking.deposit_rate`, `banking.deposit_spread`, `banking.liquidity_target`, `banking.rate_step` | tests/core/test_shocks.py::test_rate_hike_raises_deposit_and_lending_rates |
+| BK-09 | 預金金利は「政策金利−差」へ少しずつ近づけ、手元の流動性（準備預金の余りと国債の額面）が足りない銀行と開業して預金を集めている銀行は政策金利へ近づける | 決定 | `banking.deposit_rate`, `banking.deposit_spread`, `banking.liquidity_target`, `banking.rate_step` | tests/core/test_shocks.py::test_rate_hike_raises_deposit_and_lending_rates |
 | BK-10 | 融資は建設資金（据え置きの後に均等に返す）と運転資金（短く返し、貸し手と借り手ごとに1本で回す）。金利は毎ターン式 `loan_rate` で計算し直す変動金利 | 決定 | `loans.construction_turns`, `loans.grace_turns`, `loans.working_turns`, `banking.margin`, `banking.margin_range`, `banking.rho` | tests/core/test_finance.py::test_working_loans_merge_per_lender_and_borrower, ::test_construction_loans_wait_for_grace |
 | BK-11 | 審査は、現金で見た営業の利益が返済の決めた倍以上で、借入が資産の決めた割合以下。利益で返せなくても在庫の担保の分は運転資金を貸す | 決定 | `loans.coverage`, `loans.max_leverage`, `loans.inventory_ratio` | （未確認） |
 | BK-12 | 銀行が貸せるのは、貸した後も自己資本比率が規制以上で、1つの民営施設への残高が大口融資の規制以内の分。借り手は金利の低い銀行から順に借りる | 決定 | `banking.regulatory_ratio`, `banking.large_exposure` | tests/core/test_finance.py::test_construction_loan_is_split_across_banks_within_the_limit, ::test_large_exposure_applies_to_private_facilities_only, ::test_large_exposure_keeps_but_does_not_grow_a_loan_over_the_limit |
@@ -45,12 +45,12 @@
 | BK-22 | 借りきれない銀行には中央銀行が担保を取って上端の金利で貸す。担保も足りなければ資金繰りが破綻する。担保のない緊急の貸し出しは命令（独立なら自己資本がプラスの銀行に自動） | 決定 | `central_bank.collateral_ratio` | （未確認） |
 | BK-23 | 中央銀行の利益は決算で全額を国庫に納める。損失は繰り越して後の利益で埋め、自己資本がマイナスでも破綻しない | 決定 |  | （未確認） |
 | BK-24 | 国債の期間は3つ（1・5・10年）。自動の発行の期間の割合・売れ残りの扱い・追加の発行・直接の引き受けは命令 `set_bond_policy` で決める | 決定 | `bonds.auto_terms` | tests/core/test_codex_turn300_fixes.py::test_bond_terms_given_with_fractions_become_whole_shares, ::test_bond_terms_refuse_values_that_cannot_be_shares, tests/core/test_playtest4_fixes.py::test_bond_policy_log_names_only_what_changed |
-| BK-25 | 発行はすべて市中銀行の入札に出す。各銀行は準備預金の余りの一部を3段の利回りで注文し、発行額が売れるいちばん低い利回りで全員が買う | 決定 | `banking.auction_share`, `banking.auction_tiers` | （未確認） |
-| BK-26 | 買い手の求める利回りは式 `bond_yield`（政策金利＋期間・借金・物価・不履行の上乗せ−独立の割引）で、全部の銀行が同じ値を求める | 作り直し予定（回5） | `bonds.debt_threshold`, `bonds.sigma`, `bonds.kappa`, `bonds.independence_discount` | tests/core/test_finance.py::test_bond_default_raises_yields_and_hits_bank_capital |
+| BK-25 | 発行はすべて市中銀行の入札に出す。各銀行は準備預金のうち、最低限と手元に残す分と借りている額を超えた分を何段かに分け、段ごとにその段まで買ったときの偏りで求める利回りで注文し、発行額が売れるいちばん低い利回りで全員が買う | 決定 | `banking.liquidity_share`, `banking.auction_steps` | tests/core/test_balance_round5.py::test_bank_bids_all_spare_reserves_at_rising_yields |
+| BK-26 | 市場の利回りは式 `bond_yield`（政策金利＋期間・返す力・物価・不履行の上乗せ−独立の割引）。返す力は「中央銀行以外に払う利子÷国債と中央銀行からのお金を除く国の収入」（年）で、中央銀行の持ち分は市場の外 | 決定 | `bonds.burden_threshold`, `bonds.burden_sigma`, `bonds.kappa`, `bonds.independence_discount` | tests/core/test_finance.py::test_bond_default_raises_yields_and_hits_bank_capital, tests/core/test_balance_round5.py::test_yield_counts_only_interest_paid_outside_the_central_bank |
 | BK-27 | 利回りには上限があり、張り付いても何も起きない | 仮 | `bonds.max_yield` | （未確認） |
 | BK-28 | 新しい発行の売れ残りは、「引き受ける」の政策で中央銀行が独立していなければ中央銀行が同じ利回りで引き受け、そうでなければ発行せず支出が削られる | 決定 |  | tests/core/test_finance.py::test_unsold_bonds_cut_spending_instead_of_underwriting, tests/core/test_playtest3_fixes.py::test_closed_auction_is_underwritten_or_cut |
 | BK-29 | 満期の国債の中央銀行の持ち分は同じ期間の国債に乗り換え、借り換えの売れ残りは独立していても中央銀行が買い支える | 決定 |  | tests/core/test_rules.py::test_central_bank_rolls_over_its_maturing_bonds, ::test_maturing_bonds_are_refinanced_in_their_turn |
-| BK-30 | 国債の売買の市場は残りの期間の4区分ごとの、利回りを値段にした板寄せ。銀行は持ち高を目安に近づけ、準備預金の足りない銀行は指値なしで売る。独立していない中央銀行は命令の額を指値なしで出す | 決定 | `bonds.buckets`, `bonds.bucket_terms`, `bonds.trade_band`, `banking.bond_ratio`, `banking.sell_premium` | tests/core/test_playtest_fixes.py::test_central_bank_bond_trade_result_is_logged |
+| BK-30 | 国債の売買の市場は残りの期間の4区分ごとの、利回りを値段にした板寄せ。銀行は持ち高を、偏りで求める利回りが今の利回りと等しくなる額に近づけ、準備預金の足りない銀行は指値なしで売る。独立していない中央銀行は命令の額を指値なしで出す | 決定 | `bonds.buckets`, `bonds.bucket_terms`, `bonds.trade_band`, `banking.bond_concentration`, `banking.sell_premium` | tests/core/test_playtest_fixes.py::test_central_bank_bond_trade_result_is_logged |
 | BK-31 | 国債は時価で持つ。損益に入れるのは売った・償還された・切り下げられた分の実現損益だけで、評価損益は自己資本にだけ数える。評価損で自己資本がマイナスになった銀行は破綻する | 決定 |  | tests/core/test_bond_gains.py::test_selling_a_bond_realizes_the_gain, ::test_unrealized_losses_still_fail_a_bank, tests/core/test_playtest3_fixes.py::test_bonds_issued_after_valuation_are_not_counted_as_gains |
 | BK-32 | 資本取引を認めた国の銀行は、外国の利回りが値下がりの見込みを超えて高い通貨の外貨と国債を、預金の決めた割合まで持つ（タブ 9） | 決定 | `banking.foreign_share`, `banking.foreign_step`, `banking.foreign_margin` | tests/core/test_phase3_3.py::test_banks_plan_foreign_currency_only_when_it_pays_and_capital_is_free |
 | BK-33 | 債務不履行は命令 `set_bond_payment` で支払いを止めたときだけ、すべての銘柄を一度に。額面を決めた割合だけ切り下げ、残りを同じ期間で出し直す | 決定 | `bonds.haircut` | tests/core/test_shocks.py::test_bond_default_raises_yields_and_hits_holders, tests/core/test_phase3_3.py::test_default_cuts_foreign_holders_too, tests/server/test_finance.py::test_bond_payment_needs_bonds |
@@ -61,8 +61,10 @@
 | BK-38 | 預金は1人あたり（施設と銀行は1つあたり）上限額まで全額を守る。上限額は命令 `set_bank_policy` で決め、無制限にもできる | 決定 | `banking.deposit_insurance` | （未確認） |
 | BK-39 | 引き継ぐ健全な銀行のない島で引き継ぎか清算を選ぶと、政府が銀行を引き取り、出資を消して損失を同じ順番で負わせて立て直す | 決定 |  | tests/core/test_playtest_fixes.py::test_single_bank_transfer_resolves_in_place |
 | BK-40 | 救済と預金保護に国庫から出すのは、次のターンの優先の支払いを残した額まで。足りない分は預金の切り捨てで埋め、出したターンは国債で国庫を戻す（タブ 6 FS-13） | 決定 | `fiscal.rescue_after`, `banking.capital_floor` | tests/core/test_playtest_fixes.py::test_bailout_without_money_bails_in_and_leaves_bank_solvent, tests/core/test_codex2_fixes.py::test_bond_stats_include_bonds_issued_to_rescue_a_bank |
-| BK-41 | 回5 で、利回りを銀行ごとに自分の帳簿（国債の偏り・政府の返す力）から決め、中央銀行の持つ国債は市場の外に置く | 決定（回5 で作る） |  | （未確認） |
+| BK-41 | 銀行ごとに求める利回りは、市場の利回りに国債への偏り（国債の額面÷資産が決めた割合を超えた分）の上乗せを足す。計画経済の国営銀行は上乗せしない | 決定 | `banking.bond_concentration` | tests/core/test_balance_round5.py::test_bank_bids_all_spare_reserves_at_rising_yields |
 | BK-42 | 回5 で、刷ったお金が物価に効く経路を入れる（預金から使う割合を物価と実質金利で動かす・指値に物価の見通しを足す・物価の分は賃金に追わせる。タブ 3・4） | 決定（回5 で作る） |  | tests/core/test_shocks.py::test_printing_money_raises_prices |
+| BK-43 | 計画経済の国は中央銀行を独立させられない（命令は通らない）。独立したまま計画経済に移った国（その命令のとき）と、前の版の世界で独立している計画経済の国（更新の段）は、政府の一部に戻る（プレイヤーの切り替えではないので、切り替えの後の戻せないターン数は見ず、数え始めもしない） | 決定（回5） |  | tests/core/test_balance_round5.py::test_planned_economy_cannot_make_its_central_bank_independent |
+| BK-44 | 独立した中央銀行は国債の売買の市場で売り買いする。準備預金の足りない銀行が指値なしで売りに出した国債は、同じ額だけ指値なしで買う（買いオペ）。足りない銀行がなければ、買いオペで買って残っている額まで（独立する前に引き受けた国債は売らない）を、今の利回りか市場が求める利回りの高いほうまでで売りに出し、持ち高の少ない銀行が余りのお金で買う分だけ売れる（売りオペ。買い手がいなければ持ち続け、満期は中央銀行の持ち分と同じく乗り換える）。中央銀行の買いの指値は今の利回りで、買うだけで利回りを動かさない。準備の足りない銀行の売りは、外国の持ち手の売りより先に中央銀行が買う。国が出す国債を入札で買うことはしない | 決定（回5） |  | tests/core/test_balance_round5.py::test_independent_central_bank_buys_from_short_banks_and_sells_back |
 
 ### 仮の決まり
 
@@ -109,7 +111,7 @@
 - 家計の各層は預金を銀行ごとに分けて持ち、毎ターン預金の `banking.switch_share` までを「預金金利−危なさ」が高い銀行へ移す。危なさは、自己資本比率が「規制＋`banking.risk_buffer`」を下回った分に `banking.risk_weight` を掛けた値。
 - 取り付け: 自己資本比率が規制を下回った銀行と、中央銀行から借りている銀行からは、毎ターン預金の `banking.run_share` がほかの銀行へ流れ出す。
 - 施設の預金は取引銀行（借りている銀行、なければ島でいちばん大きい銀行）に置く。払うときは取引銀行の預金から先に使う。
-- 預金金利は銀行ごとに、毎ターン `banking.rate_step` ずつ「政策金利−`banking.deposit_spread`」へ近づける。準備預金の余りが `banking.liquidity_target` を下回る銀行と、開業して預金を集めている銀行は政策金利へ近づける。初めの値は `banking.deposit_rate`。島の預金金利は銀行の平均。
+- 預金金利は銀行ごとに、毎ターン `banking.rate_step` ずつ「政策金利−`banking.deposit_spread`」へ近づける。準備預金の余りと国債の額面（流通市場ですぐ売れるので流動性に数える。回5 から）が `banking.liquidity_target` を下回る銀行と、開業して預金を集めている銀行は政策金利へ近づける。初めの値は `banking.deposit_rate`。島の預金金利は銀行の平均。
 - 預金を使う割合と消費の式はタブ 4。
 
 ### 融資
@@ -154,6 +156,8 @@ r_P = r^{*} + \pi + a\,(\pi - \pi^{*}) - b\,(u - u^{*})
 ```
 
 - 独立させる・戻すのは命令 `set_independence`（行政力2）で、切り替えた後 `central_bank.switch_lock_turns` は戻せない。「独立」は政府が中央銀行に命令できないことを指し、政策の手段とは分ける。独立をやめたら国債の売れ残りの扱いを独立の前に戻す。
+- 計画経済の国は独立させられない（BK-43。回5 のカード「両方」）。ソ連の国立銀行（ゴスバンク）や中国の人民銀行のように、計画経済の国立銀行は政府の一部で、お金を国の計画どおりに出す窓口だから。独立したまま計画経済に移ると、国有化の代金を引き受けるため政府の一部に戻る。
+- 独立した中央銀行も、市場では国債を売り買いする（BK-44）。独立して禁じられるのは国が出す国債を直接買うことで、市場での売り買いで銀行の準備を整えるのはふつうの仕事（ユーロ圏・日本・アメリカ）。準備預金の足りない銀行が売りに出した国債を買い、足りない銀行がなければ買った国債を売り戻す。入れる前は、銀行が1つの島で国の黒字が準備を吸い上げると、国債を売る相手がなく、銀行が中央銀行から半年以上借り続けた。
 - 銀行間の貸し借り: 中央銀行の段で、準備預金が最低限より多い銀行が貸し手、少ない銀行が借り手になり、次のターンの銀行の段で返すお金を、金利を値段にした板寄せで貸し借りする。値幅は「政策金利±`central_bank.corridor`」で、下端は準備預金の余りに付く金利、上端は中央銀行から借りる金利。貸し手は余りを3段に分けて出し、借り手は上端まで借りる。破綻した銀行には誰も貸さない。
 - 中央銀行の貸し出し: それでも最低限に足りない銀行に、国債の時価と延滞のない融資を担保に（担保の値打ちの `central_bank.collateral_ratio` まで）上端の金利で貸す。担保も足りず最低限を満たせない銀行は資金繰りが破綻し、破綻の段で破綻する。準備預金がマイナスのままでは払えないので、マイナスの分はいつも貸す。
 - 中央銀行の利益（国債と貸し出しの利子と国債の実現損益−準備預金の余りの利子）は、決算の段で全額を国庫に納める。損失は繰り越して後の利益で埋めてから納め、自己資本がマイナスになっても破綻しない。国庫の預金には利子を付けない。
@@ -164,11 +168,12 @@ r_P = r^{*} + \pi + a\,(\pi - \pi^{*}) - b\,(u - u^{*})
 
 - 期間は3つ（1・5・10年。`packs/base/data/finance.yaml` の `bond_term`。期間の上乗せもそこにある）。額面で発行し、利率は入札で決まった利回り。利払いは発行の次のターンから毎ターン「額面×利率÷12」、満期に額面を返す。建国の国債の期間は `founding.money.bond`。
 - 発行の額は国債の段が決める: 今のターンの利払いと償還に国庫が足りない分（借り換え）と、「次のターンの国債以外の支出の見込み×（1＋`bonds.buffer_turns`）＋次のターンの利払い−国庫の残高」（タブ 6 FS-12）。期間は政策の割合（`bonds.auto_terms` が既定）で分ける。命令 `set_bond_policy` で、期間の割合・売れ残りの扱い・追加の発行・中央銀行の直接の引き受け（額はそのターンだけ）を決める。
-- 入札: 買い手は市中銀行（資本取引を認めた国では外国の買い手も。タブ 9）。各銀行は準備預金の余りの `banking.auction_share` を、求める利回りと、それに `banking.auction_tiers` を足した利回りの3段に分けて注文し、発行額が売れるいちばん低い利回りで全員が買う。
-- 買い手が求める利回り（名前付きの式 `bond_yield`）。λ\_T は期間の上乗せ、B/Y は政府の借金（中央銀行の持ち分を含む）の対年GDP比で、θ（`bonds.debt_threshold`）を超えた分に `bonds.sigma` を掛ける。κ は `bonds.kappa`、δ は不履行の上乗せ、β は中央銀行が独立していれば `bonds.independence_discount`。上限は `bonds.max_yield`（仮。BK-27）。
+- 入札: 買い手は市中銀行（資本取引を認めた国では外国の買い手も。タブ 9）。各銀行は準備預金のうち「最低限＋預金×`banking.liquidity_share`（決算の支払いと預金の出入りの分。足りなくなれば国債を売るので小さくてよい）」と、中央銀行と銀行間から借りている額（前のターンに借りてこのターンの初めに返した額を含む。返したばかりの分を満期のお金で国債に戻すと、またターンの終わりに中央銀行から借りることになる）と、政府の預金（国がいつでも引き出すので全額を準備のまま持つ。FS-24）を超えた分を `banking.auction_steps` の段に分けて注文し、発行額が売れるいちばん低い利回りで全員が買う。段の指値は、その段まで買ったときに銀行が求める利回り。満期で戻ったお金と増えた預金は、次の入札で国債に戻る（日本の銀行が預金の余りを国債で持つのと同じ）。
+- 銀行ごとに求める利回り: 市場の利回りに、国債への偏りの上乗せを足す。偏りは国債の額面÷資産（準備預金・融資・国債・銀行間の貸し）で、`banking.bond_concentration` の `free` を超えた分に `premium` を掛ける（1つの借り手に偏る危うさ）。中央銀行の持ち分は入らない。計画経済の国営銀行は預金を国に貸すのが仕事なので上乗せしない（ソ連の貯蓄銀行の預金は国の借り入れに回った）。
+- 市場の利回り（名前付きの式 `bond_yield`）。λ\_T は期間の上乗せ、I/R は返す力の比（中央銀行以外の持ち手に払う利子÷国債と中央銀行からのお金を除く国の収入。どちらも年。収入の記録が12ターンに足りなければ平均の12倍）で、θ（`bonds.burden_threshold`）を超えた分に `bonds.burden_sigma` を掛ける。中央銀行に払う利子は納付で国庫に戻るので数えない（カード「市場の分だけ」、2026-10-15）。σ×（市場の持つ借金÷年の収入）が 1 を超えると、利回りの上がった分の利払いがさらに利回りを上げる雪だるまになり、上限まで上がる（2010年のギリシャ）。外国の持ち手・中央銀行の乗り換えと引き受け・初めの利回りはこの値を使う。κ は `bonds.kappa`、δ は不履行の上乗せ、β は中央銀行が独立していれば `bonds.independence_discount`。上限は `bonds.max_yield`（仮。BK-27）。
 
 ```latex
-y = r_P + \lambda_T + \sigma \cdot \max\left(0, \frac{B}{Y} - \theta\right) + \kappa \cdot \max(0, \pi - \pi^{*}) + \delta - \beta
+y = r_P + \lambda_T + \sigma \cdot \max\left(0, \frac{I}{R} - \theta\right) + \kappa \cdot \max(0, \pi - \pi^{*}) + \delta - \beta
 ```
 
 - 新しい発行の売れ残り: 政策（`policy.bond_unsold`）が「引き受ける」で中央銀行が独立していなければ、中央銀行が同じ利回りで引き受ける。「支出を減らす」か独立していれば発行せず、足りない支出は支払いの順番で削られる（タブ 6）。引き受けた額は統計に残す。
@@ -178,7 +183,7 @@ y = r_P + \lambda_T + \sigma \cdot \max\left(0, \frac{B}{Y} - \theta\right) + \k
 ### 国債の売買の市場と時価
 
 - 国債の段で発行の入札の後に、残りの期間で分けた4つの区分（境目は `bonds.buckets`）ごとに、利回りを値段にした板寄せで売り買いする（同じ板寄せの関数。値幅は前のターンの利回り±`bonds.trade_band`）。約定した区分の利回りは約定した利回りになり、売買のなかった区分は政策金利の動きだけ動かす。家計は国債を持たない。
-- 市中銀行は、国債の時価を目安（預金×`banking.bond_ratio`）に近づけるように注文する（売りは求める利回り＋`banking.sell_premium` まで受け入れ、買いは求める利回り以上）。準備預金が最低限に足りない銀行は、銀行間で借りる前に足りない分を指値なしで売る。独立していない中央銀行は、命令の額を指値なしで出す。
+- 市中銀行は、国債の額面を目安（偏りで求める利回りが区分の今の利回りと等しくなる持ち高。0 から資産まで）に近づけるように注文する（売りは自分の求める利回り＋`banking.sell_premium` まで受け入れ、買いは自分の求める利回り以上）。準備預金が最低限に足りない銀行は、銀行間で借りる前に足りない分を指値なしで売る。独立していない中央銀行は、命令の額を指値なしで出す。
 - 時価: 銘柄の値段は、残りの利払いと償還を、残りの期間の利回りで割り引いた額。区分の間は、区分を代表する残りのターン数（`bonds.bucket_terms`）の利回りを直線でつなぐ。
 - 評価: 決算の段で銀行と中央銀行の持つ国債を時価に直し、自己資本は時価で数える。損益に入れるのは、売った・償還された・切り下げられた分の「受け取った額−取得原価」（実現損益）だけで、まだ売っていない評価損益は法人税・配当・国庫への納付に回さない（取得原価は持ち手ごと・銘柄ごと）。破綻の段で出した国債は時価の帳簿に直接足し、次のターンの評価益に数えない。
 - 金利が上がると国債を多く持つ銀行の自己資本が減り、規制を下回れば貸し渋りと取り付けが起き、マイナスになれば破綻する（2023年の米国の銀行の破綻と同じ筋道。現実に近いので残す）。
@@ -212,7 +217,7 @@ y = r_P + \lambda_T + \sigma \cdot \max\left(0, \frac{B}{Y} - \theta\right) + \k
 
 ### 回5 で作り直すこと
 
-- 利回り（カード「市場の分だけ」、2026-10-15）: 銀行ごとに自分の帳簿から求める利回りを決める。土台は準備預金に付く金利と期間の上乗せ。資産のうち国債の割合が大きいほど高く求め（1つの借り手に偏る危うさ）、政府の返す力として「中央銀行以外に払う利払い÷税の収入」が大きいほど上乗せを求める（中央銀行に払う利子は納付で国庫に戻るので数えない）。物価と不履行の上乗せは今のまま。中央銀行の持つ国債は市場に出回らないので、市場が吸収する量にも銀行の偏りにも入れない。日本の形（借金が年GDPの2.5倍でも、日本銀行が半分を持ち残りを国内の貯蓄が持つので利回りが低い）がこの流れから出るかを見る。上限は今のまま（BK-27）。
+- 利回り（カード「市場の分だけ」、2026-10-15）は回5 の前半で入れた（上の「国債の発行と入札」）。日本の形（借金が年GDPの2.5倍でも、日本銀行が半分を持ち残りを国内の貯蓄が持つので利回りが低い）がこの流れから出るかは、回5 の後半の測りで見る。上限は今のまま（BK-27）。
 - 使われないお金と物価（「両方入れる」、2026-10-15）: 家計が預金から使う割合を物価上昇率と預金の実質金利で動かす、消費財の指値に直近の物価上昇率を足す、失業が多い島でも物価の上がった分は賃金に追わせる（中身はタブ 3・4）。作られていない物は、お金が増えても商社の輸入か品不足のせり上げでしか値段が付かない。ハイパーインフレ（外貨や物への逃避・為替の暴落・買いだめ）はフェーズ4かベータ版の後。
 - 島の国債の銘柄が増え続けるのが、借金の膨らみか経済の動きとして正しいかを確かめる（タブ 14 W-07・W-08）。
 - 関門で見ること: 利回りが上限に張り付く島の数、借金／年GDP、利払い／GDP、物価上昇率が目安に入る割合、国債のうち中央銀行の持ち分の割合。揺さぶりの試験（中央銀行が毎ターン GDP と同額を引き受ける）で物価が上がるか（タブ 12）。

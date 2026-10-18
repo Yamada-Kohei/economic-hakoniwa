@@ -144,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.gate and recorder is not None:
         summary = recorder.summary()
         print("関門の目安で見る値: " + "、".join(f"{k} {v:.3f}" for k, v in summary.items()))
-        print("値段 ÷ 初めの値段（最小・中央・最大）:")
+        print("値段 ÷ 初めの値段 ÷ 物価指数の伸び（最小・中央・最大）:")
         for good, (low, mid, high) in recorder.prices().items():
             print(f"  {good}: {low:.2f}・{mid:.2f}・{high:.2f}")
         print("財ごとの、作った島と売り買いのあった島の数（1ターンあたりの平均）:")

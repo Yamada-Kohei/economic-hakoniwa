@@ -14,6 +14,8 @@ interest_deposit: 預金の利子
 interest_reserve: 準備預金の利子
 cb_payment: 中央銀行の納付
 deposit_switch: 預金の預け替え
+treasury_deposit: 政府の預金への預け入れ
+treasury_recall: 政府の預金の引き出し
 loan: 融資
 interest_loan: 融資の利子
 loan_repayment: 融資の返済

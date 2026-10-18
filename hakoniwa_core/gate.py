@@ -45,7 +45,9 @@ from hakoniwa_core.state import OWNER_PRIVATE, IslandState, WorldState
 from hakoniwa_core.units import BASIS
 
 START = 120  # 目安を見始めるターン
-PRICE_RANGE = (0.25, 4.0)  # 売り買いのあった財の値段 ÷ 初めの値段
+# 売り買いのあった財の値段 ÷ 初めの値段 を、物価指数の伸びで割ったもの（ほかの財と比べた値段。
+# 物価全体の上がり方は物価上昇率の目安で見る。回5）
+PRICE_RANGE = (0.25, 4.0)
 INFLATION_RANGE = (-0.05, 0.15)  # 物価上昇率（年率）
 CPI_WINDOW = 100  # 物価指数の振れ幅を見るターン数（最後から）
 CPI_SPREAD = 0.15  # 物価指数の標準偏差 ÷ 平均の上限
@@ -187,7 +189,8 @@ class IslandRecord:
     gdp_gap: list[float] = field(default_factory=list)
     rates: list[float] = field(default_factory=list)  # 政策金利と国債の利回りの高い方
     low_rates: list[float] = field(default_factory=list)  # 政策金利と国債の利回りの低い方
-    # 財 → 売り買いのあったターン → 値段 ÷ 初めの値段（回2 からターンと結び付ける。Codex B02）
+    # 財 → 売り買いのあったターン → 値段 ÷ 初めの値段 ÷ 物価指数の伸び（回2 からターンと結び付ける。
+    # Codex B02。物価指数で割るのは回5 から）
     price_ratio: dict[str, dict[int, float]] = field(default_factory=dict)
     private_firms: list[int] = field(default_factory=list)  # 動いている民営工場の数
     bank_failures: list[int] = field(default_factory=list)  # 銀行が破綻したターン（1行1件）
@@ -253,6 +256,8 @@ class Recorder:
             foreign = s.get("fx.reserves", 0) + s.get("foreign_bonds.banks", 0)
             rec.reserves.append(foreign / gdp if gdp > 0 else 0.0)
             initial = self.initial.get(island.id, {})
+            start_cpi = next((c for c in rec.cpi if c > 0), 0.0)
+            cpi = rec.cpi[-1] / start_cpi if start_cpi > 0 and rec.cpi[-1] > 0 else 0.0
             rec.employed.append(s.get("employed", 0))
             rec.output.append(real_output(s, initial))
             rec.trade.append(s.get("trade.exports", 0) + s.get("trade.imports", 0))
@@ -269,8 +274,8 @@ class Recorder:
                 if m.volume > 0:
                     traded = self.traded.setdefault(m.good, {})
                     traded[world.turn] = traded.get(world.turn, 0) + 1
-                if m.volume > 0 and initial.get(m.good):
-                    ratio = m.price / initial[m.good]
+                if m.volume > 0 and initial.get(m.good) and cpi > 0:
+                    ratio = m.price / initial[m.good] / cpi
                     rec.price_ratio.setdefault(m.good, {})[world.turn] = ratio
             self._watch(island, world.turn, rec, self.watch[island.id])
 
@@ -505,7 +510,7 @@ class Recorder:
     def prices(
         self, start: int = START, end: int | None = None
     ) -> dict[str, tuple[float, float, float]]:
-        """財ごとの「値段 ÷ 初めの値段」の最小・中央・最大。
+        """財ごとの「値段 ÷ 初めの値段 ÷ 物価指数の伸び」の最小・中央・最大。
 
         全部の島の、start から end までの売り買いのあったターンで見る。
         """

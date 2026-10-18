@@ -38,6 +38,7 @@ from hakoniwa_core.economy import groundwork, services
 from hakoniwa_core.economy.households import ensure_jobless
 from hakoniwa_core.economy.prices import add_missing_prices
 from hakoniwa_core.modules.bonds import whole_terms
+from hakoniwa_core.modules.central_bank import end_for_planned
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import IslandState, LogEntry
 from hakoniwa_core.trade import setup as trade_setup
@@ -70,6 +71,7 @@ class Upgrade(IslandStage):
         elif island.ext.get(nature.BLEND):
             nature.step_blend(island)
         fill_regime(island, ctx.defs)
+        end_for_planned(island, ctx)  # 計画経済の国は中央銀行を独立させられない（BK-43）
 
 
 KEEP_AXES = ("economy",)  # 欠けていても置かない軸

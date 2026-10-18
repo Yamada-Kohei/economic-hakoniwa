@@ -14,6 +14,7 @@ import pytest
 
 from hakoniwa_core import gate, measure
 from hakoniwa_core.economy import books
+from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.game import load_game
 from hakoniwa_core.simulate import main as simulate_main
 from hakoniwa_core.simulate import world_digest
@@ -190,7 +191,10 @@ def test_unemployment_breakdown_matches_the_statistics(game):
 def test_independent_scenario_retries_until_parliament_agrees(game):
     world = generate_world(1, 4, game.config, game.defs)
     run(game, world, measure.SCENARIOS["independent"], 10)
-    assert all(i.policy.cb_independent for i in world.islands.values())
+    # 計画経済の国は独立させられないので除く（回5 のカード「両方」）
+    for island in world.islands.values():
+        assert island.policy.cb_independent == (not planning.is_planned(island, game.defs))
+    assert any(i.policy.cb_independent for i in world.islands.values())
 
 
 def test_simulate_writes_a_result_and_a_series(game, tmp_path):
