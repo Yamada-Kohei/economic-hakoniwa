@@ -86,16 +86,19 @@ def test_stockout_counts_only_goods_the_island_made(scene):
     assert [(c["kind"], c["what"], c["first"]) for c in found] == [("stockout", ["food"], 3)]
 
 
-def test_no_trade_needs_half_a_year_in_a_row(scene):
+def test_no_trade_needs_a_year_in_a_row_on_a_good_that_traded_before(scene):
     _, _, recorder, step = scene
-    for _ in range(gate.LONG_TURNS - 1):
+    for _ in range(gate.NO_TRADE_TURNS):
+        step([MarketRecord("coal", 100, 0, 10, 10)])  # 一度も約定していない財は数えない
+    step([MarketRecord("fuel", 100, 5, 10, 10)])
+    for _ in range(gate.NO_TRADE_TURNS - 1):
         step([MarketRecord("fuel", 100, 0, 10, 10)])
     step([MarketRecord("fuel", 100, 5, 10, 10)])  # 1ターン約定したら数え直す
-    for _ in range(gate.LONG_TURNS - 1):
+    for _ in range(gate.NO_TRADE_TURNS - 1):
         step([MarketRecord("fuel", 100, 0, 10, 10)])
     assert kinds(recorder) == []
     step([MarketRecord("fuel", 100, 0, 10, 10)])
-    assert kinds(recorder) == ["no_trade"]
+    assert [(c["kind"], c["what"]) for c in recorder.collapses()] == [("no_trade", ["fuel"])]
 
 
 def test_many_facilities_switching_at_once_is_herding(scene, game):
@@ -124,11 +127,14 @@ def test_unpaid_wages_for_half_a_year_and_a_silent_stop(scene):
     farm = next(f for f in island.facilities if f.kind == "farm" and f.built)
     farm.operating_rate, farm.status = 0, ""
     step()
+    assert kinds(recorder) == ["unpaid_wages"]  # 理由の出ない停止は2ターン続いてから
+    step()
     assert kinds(recorder) == ["unpaid_wages", "silent_stop"]
     farm.status = "workers"  # 理由があれば数えない
     del island.accounts[owed]
     step()
-    assert [(c["first"], c["turns"]) for c in recorder.collapses()] == [(2, 1), (7, 1)]
+    found = [(c["first"], c["turns"], c["what"]) for c in recorder.collapses()]
+    assert found == [(2, 2, []), (7, 1, ["farm"])]
 
 
 def test_compare_marks_more_collapses_and_gives_the_snapshot_command(tmp_path):

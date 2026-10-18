@@ -55,7 +55,7 @@
 | GT-29 | 標準の計画に飢饉の手（国営の農場を穀物に替える・急ぎの輸入・配給・穀物の蓄え）を入れる | 決定（回5 で作る） |  |  |
 | GT-30 | 設計書の決まりの一覧と索引がずれていない、番号の頭・試験のパス・設定の名前が正しい、段の表が game.yaml と合う、設定の説明の名前が game.yaml にあることを試験で確かめる | 決定 |  | tests/core/test_spec_design.py::test_design_docs_match_index_and_have_no_errors, tests/core/test_docs_match.py::test_stage_table_follows_game_yaml, tests/core/test_spec_settings.py::test_comment_names_exist_in_game_yaml |
 | GT-31 | 試し遊びは AI 用の鍵で入り、国の要約と差分か MCP で遊ぶ。見つけた点は「直したほうがよいもの」「決めていただきたいもの」「難しさのうち」に分け、コードは変えない | 決定 |  |  |
-| GT-32 | 崩れの見張り: 測りと夜の点検（長い年月）は、1 ターン目から島ごとに飢饉・国の出入りを除いた人口の大きな減り・作ったことのある財の品切れ・取引が成り立たない・作り方の群れ・国の賃金の未払いが続く・銀行が中央銀行から借りたままが続く・理由の出ない停止を数え、目安の外れとは別に並べる。基準の値は `gate.py`（`COLLAPSE_KINDS` と同じ所） | 決定 |  | tests/core/test_collapse.py::test_famine_and_population_drop_need_a_year, ::test_people_who_moved_abroad_are_not_a_population_drop, ::test_stockout_counts_only_goods_the_island_made, ::test_no_trade_needs_half_a_year_in_a_row, ::test_many_facilities_switching_at_once_is_herding, ::test_unpaid_wages_for_half_a_year_and_a_silent_stop |
+| GT-32 | 崩れの見張り: 測りと夜の点検（長い年月）は、1 ターン目から島ごとに飢饉・国の出入りを除いた人口の大きな減り・作ったことのある財の品切れ・取引が成り立たない・作り方の群れ・国の賃金の未払いが続く・銀行が中央銀行から借りたままが続く・理由の出ない停止を数え、目安の外れとは別に並べる。基準の値は `gate.py`（`COLLAPSE_KINDS` と同じ所） | 決定 |  | tests/core/test_collapse.py::test_famine_and_population_drop_need_a_year, ::test_people_who_moved_abroad_are_not_a_population_drop, ::test_stockout_counts_only_goods_the_island_made, ::test_no_trade_needs_a_year_in_a_row_on_a_good_that_traded_before, ::test_many_facilities_switching_at_once_is_herding, ::test_unpaid_wages_for_half_a_year_and_a_silent_stop |
 | GT-33 | 関門の分け方: マージの判断には崩れ（GT-32）とターンの停止を使い、main より増えたかを組ごとに見る。現実の目安の外れは合否に使わず、場面とターン数ごとに種の平均で main と比べて PR に書く。`measure compare` が両方の表を出す | 決定 |  | tests/core/test_collapse.py::test_compare_marks_more_collapses_and_gives_the_snapshot_command |
 | GT-34 | 崩れた世界の写し: 崩れごとに、崩れが始まったターンの少し前（`gate.py` の `SNAPSHOT_BEFORE`）まで回して世界を写す命令を出す。写しには世界の状態と前のターンの統計・市場の記録を入れ、読み直して続けても続けて回したのと同じ指紋になる。夜の点検は崩れた島の数の段が上がったら新しいものとして印を付ける | 決定 |  | tests/core/test_collapse.py::test_a_snapshot_continues_the_same_world, ::test_nightly_summary_lists_collapses |
 | GT-35 | 試験の書き方: 仕組みの試験は、その仕組みを作った場面（足りない・0・一部だけなど）を組み立てて確かめる。世界を回す試験は、止まらない・お金が合う・崩れない、だけを見る | 決定 |  |  |
@@ -115,10 +115,11 @@
   - 飢饉: 1 年に飢えで亡くなった人が、その初めの人口の `FAMINE_SHARE` 以上。ひどい飢饉でも亡くなるのは 1 年以上かけて 1〜2 割なので、その下の端を兆しにします。
   - 人口の大きな減り: 1 年で、国を出入りした人を除いて人口が `DROP_SHARE` より減る（出国は政策の結果なので除く）。
   - 品切れ: 島で作ったことのある財が、買いたい人がいるのに直近 `STOCKOUT_TURNS` ターンのうち `STOCKOUT_MISSING` ターン以上売りに出ない。初めの在庫で売っただけの作れない財は数えません（作られない財は目安の goods_made で見る）。
-  - 取引が成り立たない: 売りも買いもあるのに `LONG_TURNS` ターン続けて約定 0。
+  - 取引が成り立たない: 前は取引のあった財が、売りも買いもあるのに `NO_TRADE_TURNS` ターン続けて約定 0。
+  - 品切れと取引が成り立たないのは 1 年で見ます。半年では、main の 50 島の世界で 7〜9 割の島が当たり、増えたかを読み取れなかったためです（2026-10-18 の quick）。
   - 作り方の群れ: 1 ターンに同じ種類の施設の `HERD_SHARE` 以上（`HERD_MIN` 以上）が作り方を替える。
   - 国の賃金の未払いが `LONG_TURNS` ターン続く、銀行が中央銀行から借りたままなのが `LONG_TURNS` ターン続く。国庫は国債と支出の削りで 0 にならず、銀行は準備が足りなければ同じターンに借りるか破綻するので、手元が 0 になるかではなく、この形で詰まりを見ます。
-  - 理由の出ない停止: 地図の上の人の働く施設が、稼働率 0 なのに動けない理由を出していない。
+  - 理由の出ない停止: 地図の上の人の働く施設が、稼働率 0 なのに動けない理由を出さないのが `SILENT_TURNS` ターン続く。
 - 測りの結果には目安の窓とは別に崩れの一覧を書き、`measure compare` の頭に、組・種類ごとの崩れの島の数の前と後（増えたら「増えた」）と、新しく崩れた島を並べます。その次に目安の外れの数を、場面とターン数ごとに種の平均で並べます。崩れの増えはマージの判断に使い、目安は合否に使わず PR に書きます。
 - 崩れごとに、崩れが始まったターンの `SNAPSHOT_BEFORE` ターン前まで回して世界を写す命令（`simulate --save`）を付けます。同じ種・同じ版なら同じ世界になるので、毎ターン写さず、見つけてから作り直します。写しから続ける（`simulate --load`）と、そこから崩れが育つ様子を調べられます。崩れの見張りは写しのターンから数え直すので、1 年を見る種類は 1 年たってから出ます。
 - でたらめな国の組には崩れの見張りを付けません（遊ぶ人の命令で崩れたのか、仕組みの崩れか区別できないため）。

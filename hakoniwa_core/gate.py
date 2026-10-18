@@ -101,17 +101,17 @@ COLLAPSE_KINDS = (
     "population_drop",  # COLLAPSE_SPAN ターンで国の出入りを除いて人口が DROP_SHARE より減った
     "stockout",  # 島で作ったことのある財が、買いたい人がいるのに直近 STOCKOUT_TURNS ターンのうち
     #              STOCKOUT_MISSING ターン以上売りに出ない
-    "no_trade",  # 売りも買いもあるのに LONG_TURNS ターン続けて約定 0
+    "no_trade",  # 前は取引のあった財が、売りも買いもあるのに NO_TRADE_TURNS ターン続けて約定 0
     "herding",  # 1ターンに同じ種類の施設の HERD_SHARE 以上（HERD_MIN 以上）が作り方を替えた
     "unpaid_wages",  # 国が賃金を払えない（未払い賃金が残る）のが LONG_TURNS ターン続く
     "bank_rescue",  # 銀行が中央銀行から借りたままなのが LONG_TURNS ターン続く
-    "silent_stop",  # 地図の上の人の働く施設が、稼働率 0 なのに動けない理由を出していない
+    "silent_stop",  # 地図の上の人の働く施設が、稼働率 0 なのに理由を出さないのが2ターン続く
 )
 COLLAPSE_TITLES = {
     "famine": "飢饉（1年で人口の1%以上が飢えで亡くなる）",
     "population_drop": "国の出入りを除いて人口が1年で1割より多く減った",
-    "stockout": "島で作ったことのある財が、買いたい人がいるのに半年ほど売りに出ない",
-    "no_trade": "売りも買いもあるのに半年取引が成り立たない",
+    "stockout": "島で作ったことのある財が、買いたい人がいるのに1年ほど売りに出ない",
+    "no_trade": "前は取引のあった財が、売りも買いもあるのに1年取引が成り立たない",
     "herding": "同じ種類の施設の多くが同じターンに作り方を替えた",
     "unpaid_wages": "国が半年続けて賃金を払いきれていない",
     "bank_rescue": "銀行が半年続けて中央銀行から借りている",
@@ -120,9 +120,13 @@ COLLAPSE_TITLES = {
 COLLAPSE_SPAN = TURNS_PER_YEAR
 FAMINE_SHARE = 0.01
 DROP_SHARE = 0.10
-STOCKOUT_TURNS = 6  # 半年
-STOCKOUT_MISSING = 5  # 1ターンだけ少し売りに出ても続いていると見る
-LONG_TURNS = 6  # 半年
+# 品切れと取引が成り立たないのは1年（半年では 50 島の世界の 7〜9 割の島が当たり、見張りに
+# ならなかった。2026-10-18 の main の quick）
+STOCKOUT_TURNS = TURNS_PER_YEAR
+STOCKOUT_MISSING = TURNS_PER_YEAR - 2  # 1〜2ターン少し売りに出ても続いていると見る
+NO_TRADE_TURNS = TURNS_PER_YEAR
+LONG_TURNS = 6  # 半年（国の賃金の未払い・中央銀行からの借り）
+SILENT_TURNS = 2  # 理由の出ない停止（建った直後の1ターンは数えない）
 HERD_SHARE = 0.25
 HERD_MIN = 3
 SNAPSHOT_BEFORE = 3  # 崩れを調べる写しは、崩れが始まったターンのこれだけ前（I5）
@@ -145,6 +149,7 @@ class Watch:
 
     starved: list[float] = field(default_factory=list)
     made: set[str] = field(default_factory=set)  # 島で作ったことのある財
+    traded: set[str] = field(default_factory=set)  # 島で取引のあったことのある財
     moved: list[float] = field(default_factory=list)  # 国を出た人 − 来た人・戻った人
     missing: dict[str, list[bool]] = field(default_factory=dict)  # 財 → 直近の「売りに出ない」
     streak: dict[tuple[str, str], int] = field(default_factory=dict)  # (種類, 中身) → 続いた数
@@ -159,12 +164,15 @@ class Watch:
         if what:
             h.what[what] += 1
 
-    def held(self, kind: str, what: str, on: bool, turn: int, need: int = LONG_TURNS) -> None:
-        """続いて当たる種類: on が need ターン続いたら、続き始めたターンから当たりにする。"""
-        n = self.streak.get((kind, what), 0) + 1 if on else 0
-        self.streak[(kind, what)] = n
+    def held(
+        self, kind: str, key: str, on: bool, turn: int, need: int = LONG_TURNS, what: str = ""
+    ) -> None:
+        """続いて当たる種類: key ごとに on が need ターン続いたら、続き始めたターンから当たりに
+        する。中身は what（なければ key）。"""
+        n = self.streak.get((kind, key), 0) + 1 if on else 0
+        self.streak[(kind, key)] = n
         if n >= need:
-            self.hit(kind, turn, what, since=turn - n + 1)
+            self.hit(kind, turn, what or key, since=turn - n + 1)
 
 
 @dataclass
@@ -297,8 +305,12 @@ class Recorder:
                 del recent[:-STOCKOUT_TURNS]
                 # 島で作ったことのある財だけ（初めの在庫で売っただけの、作れない財は数えない）
                 if gone and good in w.made and sum(recent) >= STOCKOUT_MISSING:
-                    w.hit("stockout", turn, good, since=turn - len(recent) + 1)
-            w.held("no_trade", good, m.demand > 0 and m.supply > 0 and m.volume <= 0, turn)
+                    since = turn - len(recent) + 1 + recent.index(True)
+                    w.hit("stockout", turn, good, since=since)
+            if m.volume > 0:
+                w.traded.add(good)
+            stuck = good in w.traded and m.demand > 0 and m.supply > 0 and m.volume <= 0
+            w.held("no_trade", good, stuck, turn, NO_TRADE_TURNS)
         unpaid = any(
             k.endswith(f"/{ledger.GOV}") and f"/{arrears.WAGE_ARREARS}/" in k and v > 0
             for k, v in island.accounts.items()
@@ -322,8 +334,9 @@ class Recorder:
                     switched[f.kind] += 1
                 recipes[f.id] = f.recipe
             working = d.get("workers", 0) > 0 and d.get("category") != "housing" and on_map(f)
-            if working and not is_stopped(f) and f.operating_rate <= 0 and not f.status:
-                w.hit("silent_stop", turn, f.kind)
+            silent = not is_stopped(f) and f.operating_rate <= 0 and not f.status
+            if working:
+                w.held("silent_stop", str(f.id), silent, turn, SILENT_TURNS, f.kind)
         w.recipes = recipes
         for kind, n in switched.items():
             if n >= HERD_MIN and n >= able[kind] * HERD_SHARE:
