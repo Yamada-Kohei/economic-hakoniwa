@@ -34,12 +34,14 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
+from hakoniwa_core import ledger
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import debt, experience
+from hakoniwa_core.economy import arrears, debt, experience, is_stopped
 from hakoniwa_core.economy.prices import initial_prices
-from hakoniwa_core.state import OWNER_PRIVATE, WorldState
+from hakoniwa_core.facilities import on_map
+from hakoniwa_core.state import OWNER_PRIVATE, IslandState, WorldState
 from hakoniwa_core.units import BASIS
 
 START = 120  # 目安を見始めるターン
@@ -90,6 +92,81 @@ KINDS = (
 )
 
 
+# 崩れの見張り（やり直しの報告の I1。2026-10-18）: 目安（現実の平年並みか）とは別に、1ターン目
+# から島が壊れていく兆しを数える。マージの前に main より増えていないかを見る（設計書 12 GT-32）。
+# 値は確かめの基準で、ゲームのルールではない。現実の大きさ（ひどい飢饉でも亡くなるのは1年以上
+# かけて1〜2割）から置いた
+COLLAPSE_KINDS = (
+    "famine",  # COLLAPSE_SPAN ターンに飢えで亡くなった人が、その初めの人口の FAMINE_SHARE 以上
+    "population_drop",  # COLLAPSE_SPAN ターンで国の出入りを除いて人口が DROP_SHARE より減った
+    "stockout",  # 島で作ったことのある財が、買いたい人がいるのに直近 STOCKOUT_TURNS ターンのうち
+    #              STOCKOUT_MISSING ターン以上売りに出ない
+    "no_trade",  # 売りも買いもあるのに LONG_TURNS ターン続けて約定 0
+    "herding",  # 1ターンに同じ種類の施設の HERD_SHARE 以上（HERD_MIN 以上）が作り方を替えた
+    "unpaid_wages",  # 国が賃金を払えない（未払い賃金が残る）のが LONG_TURNS ターン続く
+    "bank_rescue",  # 銀行が中央銀行から借りたままなのが LONG_TURNS ターン続く
+    "silent_stop",  # 地図の上の人の働く施設が、稼働率 0 なのに動けない理由を出していない
+)
+COLLAPSE_TITLES = {
+    "famine": "飢饉（1年で人口の1%以上が飢えで亡くなる）",
+    "population_drop": "国の出入りを除いて人口が1年で1割より多く減った",
+    "stockout": "島で作ったことのある財が、買いたい人がいるのに半年ほど売りに出ない",
+    "no_trade": "売りも買いもあるのに半年取引が成り立たない",
+    "herding": "同じ種類の施設の多くが同じターンに作り方を替えた",
+    "unpaid_wages": "国が半年続けて賃金を払いきれていない",
+    "bank_rescue": "銀行が半年続けて中央銀行から借りている",
+    "silent_stop": "動いていないのに理由の出ない施設",
+}
+COLLAPSE_SPAN = TURNS_PER_YEAR
+FAMINE_SHARE = 0.01
+DROP_SHARE = 0.10
+STOCKOUT_TURNS = 6  # 半年
+STOCKOUT_MISSING = 5  # 1ターンだけ少し売りに出ても続いていると見る
+LONG_TURNS = 6  # 半年
+HERD_SHARE = 0.25
+HERD_MIN = 3
+SNAPSHOT_BEFORE = 3  # 崩れを調べる写しは、崩れが始まったターンのこれだけ前（I5）
+
+
+@dataclass
+class Hit:
+    """1つの島の、1つの崩れの種類の当たり。first は崩れが始まったターン（続いて当たる種類は続き
+    始めたターン、1年を見る種類は1年の初め）、turns は当たったターンの数、what は中身の数。"""
+
+    first: int
+    last: int = 0
+    turns: int = 0
+    what: Counter = field(default_factory=Counter)
+
+
+@dataclass
+class Watch:
+    """島ごとの、崩れの見張りの途中の値と当たり。"""
+
+    starved: list[float] = field(default_factory=list)
+    made: set[str] = field(default_factory=set)  # 島で作ったことのある財
+    moved: list[float] = field(default_factory=list)  # 国を出た人 − 来た人・戻った人
+    missing: dict[str, list[bool]] = field(default_factory=dict)  # 財 → 直近の「売りに出ない」
+    streak: dict[tuple[str, str], int] = field(default_factory=dict)  # (種類, 中身) → 続いた数
+    recipes: dict[int, str] = field(default_factory=dict)  # 施設の番号 → 前のターンの作り方
+    hits: dict[str, Hit] = field(default_factory=dict)
+
+    def hit(self, kind: str, turn: int, what: str = "", since: int | None = None) -> None:
+        h = self.hits.setdefault(kind, Hit(first=turn if since is None else since))
+        if h.last != turn:
+            h.turns += 1
+            h.last = turn
+        if what:
+            h.what[what] += 1
+
+    def held(self, kind: str, what: str, on: bool, turn: int, need: int = LONG_TURNS) -> None:
+        """続いて当たる種類: on が need ターン続いたら、続き始めたターンから当たりにする。"""
+        n = self.streak.get((kind, what), 0) + 1 if on else 0
+        self.streak[(kind, what)] = n
+        if n >= need:
+            self.hit(kind, turn, what, since=turn - n + 1)
+
+
 @dataclass
 class IslandRecord:
     regime: str
@@ -135,6 +212,7 @@ class Recorder:
         self.made: dict[str, dict[int, int]] = {}  # 財 → ターン → 作った島の数
         self.traded: dict[str, dict[int, int]] = {}  # 財 → ターン → 売り買いのあった島の数
         self.titles: dict[str, int] = {}  # 最後に記録したターンの称号（産業 → 島。フェーズ3-3）
+        self.watch = {iid: Watch() for iid in self.islands}
 
     def record(self, world: WorldState) -> None:
         self.turns.append(world.turn)
@@ -186,6 +264,97 @@ class Recorder:
                 if m.volume > 0 and initial.get(m.good):
                     ratio = m.price / initial[m.good]
                     rec.price_ratio.setdefault(m.good, {})[world.turn] = ratio
+            self._watch(island, world.turn, rec, self.watch[island.id])
+
+    def _watch(self, island: IslandState, turn: int, rec: IslandRecord, w: Watch) -> None:
+        """崩れの見張り（COLLAPSE_KINDS）。record が島ごとに呼ぶ。状態は読むだけ。"""
+        s = island.stats
+        w.starved.append(s.get("population.starved", 0))
+        w.moved.append(
+            s.get("migration.left", 0)
+            - s.get("migration.arrived", 0)
+            - s.get("migration.returned", 0)
+        )
+        if len(rec.population) > COLLAPSE_SPAN:
+            before = rec.population[-1 - COLLAPSE_SPAN]
+            since = rec.turns[-1 - COLLAPSE_SPAN]
+            if before > 0 and sum(w.starved[-COLLAPSE_SPAN:]) >= before * FAMINE_SHARE:
+                w.hit("famine", turn, since=since)
+            stayed = rec.population[-1] + sum(w.moved[-COLLAPSE_SPAN:])
+            if before > 0 and stayed < before * (1 - DROP_SHARE):
+                w.hit("population_drop", turn, since=since)
+        w.made.update(
+            k.removeprefix("production.")
+            for k, v in s.items()
+            if k.startswith("production.") and v > 0
+        )
+        for m in island.markets:
+            good = m.good
+            if m.supply > 0 or good in w.missing:
+                gone = m.demand > 0 and m.supply <= 0
+                recent = w.missing.setdefault(good, [])
+                recent.append(gone)
+                del recent[:-STOCKOUT_TURNS]
+                # 島で作ったことのある財だけ（初めの在庫で売っただけの、作れない財は数えない）
+                if gone and good in w.made and sum(recent) >= STOCKOUT_MISSING:
+                    w.hit("stockout", turn, good, since=turn - len(recent) + 1)
+            w.held("no_trade", good, m.demand > 0 and m.supply > 0 and m.volume <= 0, turn)
+        unpaid = any(
+            k.endswith(f"/{ledger.GOV}") and f"/{arrears.WAGE_ARREARS}/" in k and v > 0
+            for k, v in island.accounts.items()
+        )
+        w.held("unpaid_wages", "", unpaid, turn)
+        able: Counter = Counter()  # 作り方を替えられる種類の、建った施設の数
+        switched: Counter = Counter()
+        recipes = {}
+        for f in island.facilities:
+            d = self.defs.facilities[f.kind]
+            if not f.built:
+                continue
+            if d.get("category") == "finance":
+                bank = ledger.bank_entity(f.id)
+                cb = ledger.balance(island, ledger.account(ledger.CB, ledger.CB_LOAN, bank))
+                alive = f.economy.get("failed") is None
+                w.held("bank_rescue", bank, cb > 0 and alive, turn)
+            if len(d.get("recipes", {})) > 1:
+                able[f.kind] += 1
+                if w.recipes.get(f.id, f.recipe) != f.recipe:
+                    switched[f.kind] += 1
+                recipes[f.id] = f.recipe
+            working = d.get("workers", 0) > 0 and d.get("category") != "housing" and on_map(f)
+            if working and not is_stopped(f) and f.operating_rate <= 0 and not f.status:
+                w.hit("silent_stop", turn, f.kind)
+        w.recipes = recipes
+        for kind, n in switched.items():
+            if n >= HERD_MIN and n >= able[kind] * HERD_SHARE:
+                w.hit("herding", turn, f"{kind} {n}/{able[kind]}")
+
+    def collapses(self) -> list[dict]:
+        """崩れの見張りに当たったところ（島ごと・種類ごとに1つ。1ターン目から最後まで）。
+
+        first は崩れが始まったターン、turns は当たったターンの数、what は中身（財や施設の種類）の
+        多い順。
+        """
+        out = []
+        for iid, w in sorted(self.watch.items()):
+            rec = self.islands[iid]
+            for kind in COLLAPSE_KINDS:
+                h = w.hits.get(kind)
+                if h is None:
+                    continue
+                what = [k for k, _ in h.what.most_common(5)]
+                line = f"島 {iid}（{rec.regime}）: {COLLAPSE_TITLES[kind]}（{h.first} ターン目から"
+                line += f" {h.turns} ターン{'、' + '・'.join(what) if what else ''}）"
+                out.append(
+                    {"kind": kind, "island": iid, "first": h.first, "turns": h.turns}
+                    | {"what": what, "line": line}
+                )
+        return out
+
+    def collapse_counts(self) -> dict[str, int]:
+        """崩れの種類ごとの、当たった島の数。"""
+        found = Counter(kind for w in self.watch.values() for kind in w.hits)
+        return {kind: found.get(kind, 0) for kind in COLLAPSE_KINDS}
 
     def failures(
         self, start: int = START, end: int | None = None, kinds: Iterable[str] | None = None
