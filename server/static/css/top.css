@@ -86,3 +86,4 @@ body:has(.retro) { background: #e6f0ff; }
 .getter-number { font-family: "Courier New", monospace; font-weight: bold; color: #c00000; }
 .banner { margin: 4px 0; }
 .banner-html { width: 100%; box-sizing: border-box; font-family: monospace; font-size: 0.8em; }
+#world-summary .records th { white-space: normal; }
