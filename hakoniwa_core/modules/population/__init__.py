@@ -6,8 +6,8 @@
 - 人が生まれ、亡くなる（バランス調整の回4。現実の人口転換）。生まれる割合は学んだ人の割合と所得が
   上がるほど下がり、亡くなる割合は上下水道と食事の質で下がる（式 birth_rate・death_rate）。仕事が
   なくても増える。飢えている層からは生まれず、飢えで亡くなる人は別に数える（回3 の飢えの蓄え）。
-  マスに住む所がなければ、生まれた家族は島の空いた町へ移り、どこにも空きがなければ生まれない
-  （住む所がないと子を持たない）。
+  マスに住む所がなければ、生まれた家族は島の空いた町へ移り、どこにも空きがなければそのマスに詰めて
+  住む（過密。回5）。過密のマスは亡くなる人が増え、生まれる人が減り、幸福度が下がる。
   村の住民のうち仕事のない人は、自給の農業で自分の食べる分をまかなう（市場で買わない）。食べ物が
   買えないときは、村の働き手が畑に戻る（modules/employment の back_to_fields）。町の人は、食べ物が
   買えなければ空きのある村へ移る（_flee_famine。どちらも回4）。一般の層の飢えの蓄えは、市場で
@@ -20,6 +20,8 @@
   新しい町（村）を作る。どちらも資材（settlements.yaml の materials）が要り、一般の層が
   市場で買う（買った資材は economy.housing["stock"] に入る）。足りなければ、要る資材を
   economy.housing["want"] に書いて、次のターンの市場で買う。開発を止めたマスには作らない。
+- 島の住む所の上限を超えて住む人が島の空きより多ければ、いちばん過密なマスの近くの空いた平地に、
+  家計が新しい村を開く（分家と開拓。回5）。施設の通勤圏でなくてよい。
 """
 
 from __future__ import annotations
@@ -93,6 +95,24 @@ def _farming(defs: Defs, tile: Tile) -> bool:
     """自給の農業ができる集落（村）か。"""
     level = fac.settlement_of(defs, tile.population)
     return bool(defs.settlements[level].get("subsistence"))
+
+
+def _built_farming(defs: Defs, home: Facility) -> bool:
+    """建った段階が自給の農業をする集落（村）の住宅地か。"""
+    level = home.ext.get("level") or defs.settlement_levels()[0]
+    return bool(defs.settlements[level].get("subsistence"))
+
+
+def overcrowded(defs: Defs, island: IslandState, homes: dict[Pos, Facility]) -> int:
+    """住む所の上限を超えて住む人の数（回5。住む所のないマスの人も数える）。"""
+    total = 0
+    for tile in island.tiles:
+        if tile.population <= 0:
+            continue
+        home = homes.get((tile.x, tile.y))
+        capacity = fac.housing_capacity(defs, home) if home else 0
+        total += max(0, tile.population - capacity)
+    return total
 
 
 def village_size(defs: Defs) -> int:
@@ -263,9 +283,10 @@ def happiness(island: IslandState, facts: dict[str, Any], ctx: StageContext) -> 
 
     facts: food・jobs・power・consumer_goods・clothing・luxury・water・education（1000 分の 1）、
     quality（0〜1）、pollution（汚染）、hunger（飢えの蓄え。か月）、arrears（賃金が払われなかった
-    働き手の割合。0〜1）。water はそのマスの上下水道の整備度、education は島の教育
-    水準。clothing と luxury はフェーズ3-2 の衣料とぜいたく品（economy/needs.py）、consumer_goods は
-    フェーズ3-1 までの消費財（移し替えの間だけ重みが残る）。
+    働き手の割合。0〜1）、crowding（マスの過密の度合い。0 から）。water はそのマスの上下水道の
+    整備度、education は島の教育水準。clothing と luxury はフェーズ3-2 の衣料とぜいたく品
+    （economy/needs.py）、consumer_goods はフェーズ3-1 までの消費財（移し替えの間だけ重みが
+    残る）。
     実質賃金が1年前より下がった分と、物価上昇率が目安を超えた分、飢えの蓄えと賃金の遅配（回3）を
     減点する。上限は体制の
     happiness_cap（全体主義 80。フェーズ3-4）。
@@ -294,6 +315,8 @@ def happiness(island: IslandState, facts: dict[str, Any], ctx: StageContext) -> 
     value -= min(w.get("hunger_max", 0), w.get("hunger", 0) * facts.get(HUNGER, 0.0))
     # 賃金の遅配（回3）: 働いても払われない人の割合
     value -= w.get("arrears", 0) * facts.get("arrears", 0.0)
+    # 過密（回5）: 住む所の上限を超えて詰めて住むマス
+    value -= min(w.get("crowding_max", 0), w.get("crowding", 0) * facts.get("crowding", 0.0))
     # 体制の幸福度の上限（全体主義 80。フェーズ3-4）
     return max(0, min(politics.happiness_cap(island, ctx.defs), round(value)))
 
@@ -521,6 +544,17 @@ def spread_over(amount: int, places: dict[Pos, int]) -> dict[Pos, int]:
     return proportional(min(amount, sum(places.values())), order)
 
 
+def crowding(population: int, capacity: int) -> float:
+    """過密の度合い（回5）: 住める上限を超えた分の割合（上限の倍で 1、3倍で 2）。家のないマスは 1。
+
+    頭打ちにしない（詰めるほど亡くなる人が増え、生まれる人が減って、どこかで釣り合う）。"""
+    if population <= capacity:
+        return 0.0
+    if capacity <= 0:
+        return 1.0
+    return population / capacity - 1
+
+
 class Population(IslandStage):
     name = "population"
 
@@ -577,12 +611,15 @@ class Population(IslandStage):
         default_rate = birth_of(island, 1.0, ctx)
         died_by_layer: dict[str, float] = {}  # 層ごとの、飢えのほかで亡くなった人（回4）
         natural = born = 0
-        unhoused: dict[Pos, int] = {}  # 住む所がなくて生まれたマスに入れなかった人
+        overcrowding = config.get("population.overcrowding")
         for tile in island.tiles:
             if tile.population <= 0:
                 tile.ext.pop("happiness", None)
                 continue
             pos = (tile.x, tile.y)
+            home = homes.get(pos)
+            capacity = fac.housing_capacity(defs, home) if home else 0
+            crowd = crowding(tile.population, capacity)
             labor = fac.labor_force(defs, island, tile)
             working = tile.ext.get("employed", 0)
             if subsistence_persons(defs, island, tile):
@@ -593,6 +630,7 @@ class Population(IslandStage):
                 "pollution": tile.pollution,
                 "water": infra.water(defs, tile),
                 "education": education,
+                "crowding": crowd,
             }
             idle = placed.get(JOBLESS, {}).get(pos, 0) if jobless else 0
             workers = max(0, placed.get(GENERAL, {}).get(pos, tile.population))
@@ -624,8 +662,6 @@ class Population(IslandStage):
             pollution_sum += tile.pollution * tile.population
             water_sum += local["water"] * tile.population
             people += tile.population
-            home = homes.get(pos)
-            capacity = fac.housing_capacity(defs, home) if home else 0
             pop = tile.population - min(tile.population, lost_by_tile.get(pos, 0))
             # 生まれる人と亡くなる人（回4）: 層ごとの割合を、マスに住む層の人数で混ぜる
             here = {n: placed.get(n, {}).get(pos, 0) for n in placed}
@@ -636,6 +672,7 @@ class Population(IslandStage):
                 else general["quality"]
             )
             dying = ctx.formula("death_rate")(local["water"], quality, tile.population, ctx)
+            dying += overcrowding["deaths"] * crowd  # 詰め込み住まいの病気（回5）
             dead = min(pop, _rand_round(pop * dying / YEAR, rng))
             if dead > 0:
                 pop -= dead
@@ -656,13 +693,12 @@ class Population(IslandStage):
                 )
             else:
                 rate = default_rate
+            rate *= max(0.0, 1 - overcrowding["births"] * crowd)  # 土地と家が足りない（回5）
             if rate > 0:
+                # 住む所がなくても生まれる（詰めて住み、移り住みで空いた町か開いた村へ移る。回5）
                 births = _rand_round(pop * rate / YEAR, rng)
-                room = max(0, capacity - pop)
-                pop += min(births, room)
-                born += min(births, room)
-                if births > room:
-                    unhoused[pos] = births - room
+                pop += births
+                born += births
             tile.population = max(0, pop)
         moods_by_layer = {n: v / w for n, (v, w) in moods.items() if w > 0}
         for layer, f in sorted(layers.items()):
@@ -679,13 +715,13 @@ class Population(IslandStage):
             moods_by_layer[layer] = ctx.formula("happiness")(island, facts, ctx)
         island.scratch["layer_happiness"] = moods_by_layer
         island.scratch["layer_facts"] = layers
-        housed = self._migrate(island, ctx, rng, homes, unhoused)
-        born += housed
+        self._migrate(island, ctx, rng, homes)
         stats = island.stats
         stats["population.births"] = born
         stats["population.deaths"] = natural
-        if sum(unhoused.values()) > housed:
-            stats["population.births_unhoused"] = sum(unhoused.values()) - housed
+        crowded = overcrowded(defs, island, homes)
+        if crowded > 0:
+            stats["population.overcrowded"] = crowded
         if island.has_economy:
             for name, count in _round_shares(natural, died_by_layer).items():
                 deaths[name] = deaths.get(name, 0) + count
@@ -773,17 +809,16 @@ class Population(IslandStage):
         ctx: StageContext,
         rng: random.Random,
         homes: dict[Pos, Facility],
-        unhoused: dict[Pos, int] | None = None,
-    ) -> int:
-        """住む所のない人と仕事のない人を、人手の足りない施設の近くの空いた町へ移す。
+    ) -> None:
+        """住む所の上限を超えた人と仕事のない人を、人手の足りない施設の近くの空いた町へ移す。
 
-        unhoused は、生まれたマスに住む所がなかった人（回4）。ほかの人を移した後に、まだ空いている
-        町へ入れ（人手の足りない所に近い町から）、入れた人数を返す。入れなかった人は生まれない。
+        上限を超えた人（生まれた家族も）は、空いた町がなければ消えずに詰めて住む（過密。_crowd_in。
+        回5）。
         """
         defs, config = ctx.defs, ctx.config
         share = fac.labor_share(defs, island)
         if share <= 0:
-            return 0
+            return
         free = {
             pos: fac.housing_capacity(defs, f) - island.tile(*pos).population
             for pos, f in homes.items()
@@ -843,25 +878,57 @@ class Population(IslandStage):
                     needed -= move
             if count > 0:
                 if homeless:
-                    left_island += count
+                    left_island += self._crowd_in(defs, island, homes, free, source, count)
                 else:
                     island.tile(*source).population += count  # 移る先がなければ元のマスに残る
         if left_island:
             island.log.append(LogEntry("residents_left", {"count": left_island}))
         self._flee_famine(island, ctx, rng, free)
-        housed = 0
-        for _, count in sorted((unhoused or {}).items(), key=lambda kv: (kv[0][1], kv[0][0])):
-            for pos in targets:
-                if count <= 0:
-                    break
-                move = min(count, free[pos])
-                if move <= 0:
-                    continue
-                island.tile(*pos).population += move
-                free[pos] -= move
-                count -= move
-                housed += move
-        return housed
+
+    @staticmethod
+    def _crowd_in(
+        defs: Defs,
+        island: IslandState,
+        homes: dict[Pos, Facility],
+        free: dict[Pos, int],
+        source: Pos,
+        count: int,
+    ) -> int:
+        """空いた町のない、住む所の上限を超えた count 人を詰めて住ませ（過密。回5）、住ませられな
+        かった人数（島に住宅地が1つもない）を返す。
+
+        住宅地のマスの人は元のマスに残る。ただし自給の農業をする村が、村のままでいられる人数
+        （village_size）を超える分は、いちばん近い自給でない住宅地（町）へ移る（土地の足りない農村から
+        あふれた人が町へ出る。19世紀の都市への流入。村が人数で町と見られて自給をやめる崖を避ける）。
+        住む所のないマス（住宅地が壊れたなど）の人は、いちばん近い住宅地へ移る。
+        """
+        if not homes:
+            return count
+        tile = island.tile(*source)
+        if source in homes:
+            stay = count
+            if _built_farming(defs, homes[source]):
+                stay = min(count, max(0, village_size(defs) - tile.population))
+            tile.population += stay
+            free[source] -= stay
+            count -= stay
+            if count <= 0:
+                return 0
+            # 行き先は人数でも町と見られる（自給をしていない）町。なければ建った段階が町の住宅地
+            # （人数が少なく自給をしている町へ押し出して、そこの人が一度に自給をやめないように）
+            towns = [p for p in homes if p != source and not _farming(defs, island.tile(*p))]
+            towns = towns or [p for p, f in homes.items() if not _built_farming(defs, f)]
+            if not towns:
+                tile.population += count  # 町のない島: 村に残る
+                free[source] -= count
+                return 0
+            places = towns
+        else:
+            places = list(homes)
+        target = min(places, key=lambda p: (distance(source, p), p[1], p[0]))
+        island.tile(*target).population += count
+        free[target] -= count
+        return 0
 
     @staticmethod
     def _flee_famine(
@@ -1024,7 +1091,7 @@ class Housing(IslandStage):
             near = [pos for pos in area if pos in homes]
             # 空いている町に入れる人と、もう近くに住んでいて仕事のない人で足りれば育てない
             room = sum(
-                fac.housing_capacity(defs, homes[pos]) - island.tile(*pos).population
+                max(0, fac.housing_capacity(defs, homes[pos]) - island.tile(*pos).population)
                 for pos in near
             )
             idle = sum(_idle(defs, island, island.tile(*pos)) for pos in near)
@@ -1053,6 +1120,9 @@ class Housing(IslandStage):
                         homes[pos] = fac.new_housing(island, kind, pos, levels[0])
                         built += 1
                     short.update(missing)
+        if built < h["max_new_per_turn"]:
+            left = h["max_new_per_turn"] - built
+            self._settle(island, defs, h, homes, kind, levels[0], left, short)
         self._watch_water(island, defs, homes, dry)
         # 2ターン続けて資材を買えなかったときだけ知らせる
         # （足りない間は毎ターン同じ知らせを出さない）
@@ -1065,6 +1135,50 @@ class Housing(IslandStage):
         else:
             island.ext.pop("housing_short", None)
             island.ext.pop("housing_short_turns", None)
+
+    def _settle(
+        self,
+        island: IslandState,
+        defs: Defs,
+        h: dict[str, Any],
+        homes: dict[Pos, Facility],
+        kind: str,
+        level: str,
+        limit: int,
+        short: set[str],
+    ) -> None:
+        """分家と開拓（回5、10-19 のカード「分家と開拓」）: 島の上限を超えて住む人が島の空きより
+        多ければ、いちばん過密なマスから housing.settle_radius マスの内の空いた平地に、新しい村を
+        開く（資材は村の段階の materials。家計が買った資材から。足りなければ次のターンに買う）。
+        施設の通勤圏でなくてよい。開いた村には、次のターンの移り住みで上限を超えた人が入る。
+        """
+        over: dict[Pos, int] = {}
+        room = 0
+        for tile in island.tiles:
+            if tile.population <= 0 and (tile.x, tile.y) not in homes:
+                continue
+            pos = (tile.x, tile.y)
+            capacity = fac.housing_capacity(defs, homes[pos]) if pos in homes else 0
+            if tile.population > capacity:
+                over[pos] = tile.population - capacity
+            else:
+                room += capacity - tile.population
+        excess = sum(over.values()) - room
+        size = defs.settlements[level]["capacity"]
+        for pos in sorted(over, key=lambda p: (-over[p], p[1], p[0])):
+            if excess <= 0 or limit <= 0:
+                return
+            site = self._empty_site(island, defs, kind, within(island, pos, h["settle_radius"]))
+            if site is None:
+                continue
+            missing = self._pay(island, defs, level)
+            if missing:
+                short.update(missing)
+                return
+            homes[site] = fac.new_housing(island, kind, site, level)
+            island.log.append(LogEntry("village_founded", {"x": site[0], "y": site[1]}))
+            excess -= size
+            limit -= 1
 
     @staticmethod
     def _pay(island: IslandState, defs: Defs, level: str) -> list[str]:

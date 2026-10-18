@@ -75,7 +75,7 @@
 | PO-29 | 家計の飢えの蓄えが `population.hunger.flee` を超えている間、そのターン… | 決定 | tests/core/test_balance_round4.py |
 | PO-30 | 生まれる割合は式 `birth_rate`（`population.births`）で、学んだ人… | 決定 | tests/core/test_balance_round4.py |
 | PO-31 | 亡くなる割合は式 `death_rate`（`population.deaths`）で、食事の質… | 決定 | tests/core/test_balance_round4.py |
-| PO-32 | 生まれたマスに住む所がなければ島の空いた町へ移り、どこにも空きがなければ生まれない | 決定 | tests/core/test_balance_round4.py |
+| PO-32 | 生まれたマスに住む所がなければ島の空いた町へ移り、どこにも空きがなければ消えずに詰めて住む（過密… | 決定 | tests/core/test_round5_village.py |
 | PO-33 | 人口の増減は家計の層の人数に比例して割り振り、資産を持つ層は割合を保つ | 決定 | （未確認） |
 | PO-34 | 幸福度は式 `happiness`（`population.happiness`）で層ごとに出し… | 決定 | tests/core/test_phase3_4.py、tests/core/test_playtest3_fixes.py |
 | PO-35 | 前のフェーズから移し替えた島は、幸福度の重みをその時の重みから `population.blen`… | 決定 | tests/core/test_playtest3_fixes.py |
