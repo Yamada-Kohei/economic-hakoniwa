@@ -660,6 +660,9 @@ def change_economy(island: IslandState, payload: dict[str, Any], ctx: StageConte
     island.regime["economy"] = payload["economy"]
     _start_transition(island, ctx, "economy")
     if planning.is_planned(island, defs):
+        from hakoniwa_core.modules.central_bank import end_for_planned
+
+        end_for_planned(island, ctx)  # 国立銀行は政府の一部に戻る（国有化の代金を引き受ける）
         _nationalize_all(island, ctx)
         _merge_owners(island, ctx)
         planning.start(island, ctx.config, ctx.turn)

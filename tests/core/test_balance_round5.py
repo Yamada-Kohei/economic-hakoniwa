@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import copy
 
+import pytest
+
 from hakoniwa_core import ledger
 from hakoniwa_core.economy import Payer, funds
 from tests.core.test_finance import context, island_of
@@ -220,3 +222,59 @@ def test_treasury_surplus_is_deposited_at_banks_and_drawn_back(game, warmed):
     # 国庫が残す額に足りなければ、預け入れのかわりに引き出す
     assert funds.deposit_surplus(island, 5_000_000, {bank: 1}) == -5_000_000
     assert ledger.money(island, ledger.GOV) == 5_000_000
+
+
+# --- 中央銀行の独立（回5 のカード「両方」） ---------------------------------------------------
+
+
+def test_planned_economy_cannot_make_its_central_bank_independent(game, warmed):
+    """計画経済の国立銀行は政府の一部なので、独立させる命令は通らない。独立したまま計画経済に
+    移った国（前の版の世界も）は、中央銀行の段で政府の一部に戻る。"""
+    from hakoniwa_core.modules.central_bank import check_independence, end_for_planned
+    from hakoniwa_core.registry import OrderFailed
+
+    world = copy.deepcopy(warmed)
+    planned = island_of(world, "planned")
+    with pytest.raises(OrderFailed) as failed:
+        check_independence(planned, {"independent": True}, game.defs)
+    assert failed.value.reason == "reason_cb_independence_planned"
+    check_independence(island_of(world, "market"), {"independent": True}, game.defs)
+    planned.policy.cb_independent = True
+    end_for_planned(planned, context(game, world))
+    assert not planned.policy.cb_independent
+    assert planned.log[-1].kind == "cb_dependent_planned"
+
+
+def test_independent_central_bank_buys_from_short_banks_and_sells_back(game, warmed):
+    """独立した中央銀行は、準備預金の足りない銀行が売りに出した国債を市場の値段で買い（買いオペ）、
+    足りない銀行がなければ持っている国債を、持ち高の少ない銀行へ市場の利回りで売り戻す（売りオペ）。
+    国が出す国債を直接買うことはしない。"""
+    from hakoniwa_core.economy import banks, debt
+    from hakoniwa_core.modules.bonds import Bonds
+
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    island.policy.cb_independent = True
+    ctx = context(game, world)
+    bank = banks.active_banks(island)[0]
+    held = sum(debt.holdings_of(island, bank).values())
+    assert held > 0
+    cb_before = sum(debt.holdings_of(island, ledger.CB).values())
+    # 準備預金を最低限より大きく下げる（預金の流出の代わり。持ち高の多くを売らせる）
+    short = banks.excess_reserves(island, game.config, bank) + held * 2 // 3
+    ledger.pay(island, bank, ledger.GOV, short, "tax_income")
+    assert banks.excess_reserves(island, game.config, bank) < 0
+    Bonds()._secondary(island, ctx)
+    bought = sum(debt.holdings_of(island, ledger.CB).values()) - cb_before
+    assert bought > 0
+    assert sum(debt.holdings_of(island, bank).values()) == held - bought
+    assert island.log[-1].kind == "cb_open_market_bought"
+    assert banks.excess_reserves(island, game.config, bank) >= -held // 100  # 売った代金で戻った
+    # 足りない銀行がなければ、持ち高の減った銀行が余りのお金で買う分を売り戻す
+    ledger.pay(island, ledger.CB, bank, held, "cb_loan")
+    island.scratch.pop("bond_stats", None)
+    Bonds()._secondary(island, ctx)
+    sold = island.scratch["bond_stats"]["cb_sold"]
+    assert 0 < sold <= bought  # 売り戻すのは買いオペで買った分まで（独立の前の持ち分は売らない）
+    assert sum(debt.holdings_of(island, ledger.CB).values()) == cb_before + bought - sold
+    assert island.economy.finance.get("cb_open_market", 0) == bought - sold

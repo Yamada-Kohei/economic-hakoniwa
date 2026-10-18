@@ -254,7 +254,7 @@
 
 ## [7 お金と銀行](07-banking.md)
 
-決まり 42 個、うち仮の決まりの表にあるもの 1 個。
+決まり 44 個、うち仮の決まりの表にあるもの 1 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -300,6 +300,8 @@
 | BK-40 | 救済と預金保護に国庫から出すのは、次のターンの優先の支払いを残した額まで | 決定 | tests/core/test_codex2_fixes.py、tests/core/test_playtest_fixes.py |
 | BK-41 | 銀行ごとに求める利回りは、市場の利回りに国債への偏り（国債の額面÷資産が決めた割合を超えた分）の… | 決定 | tests/core/test_balance_round5.py |
 | BK-42 | 回5 で、刷ったお金が物価に効く経路を入れる（預金から使う割合を物価と実質金利で動かす・指値に物… | 決定（回5 で作る） | tests/core/test_shocks.py |
+| BK-43 | 計画経済の国は中央銀行を独立させられない（命令は通らない） | 決定（回5） | tests/core/test_balance_round5.py |
+| BK-44 | 独立した中央銀行は国債の売買の市場で売り買いする | 決定（回5） | tests/core/test_balance_round5.py |
 
 ## [8 インフラと教育](08-infrastructure.md)
 
@@ -488,7 +490,7 @@
 | GT-09 | 値段の目安は、値段にターンを付けて記録し、目安を見る期間の値段だけで判定する | 決定 | tests/core/test_measure.py |
 | GT-10 | 目安の種類: 値段・物価上昇率・物価の振れ・失業率・金利の上下・人口の下限と上限と急な変化・GD… | 決定 | tests/core/test_measure.py、tests/core/test_phase3_2.py、tests/core/test_phase3_3.py |
 | GT-11 | 目安から外れたら、目安をゆるめて合格にせず、仕組みから直す（数字を式・上限・倍率で寄せない） | 決定 |  |
-| GT-12 | 場面は、標準の計画・命令なし・中央銀行を独立させた国・少ない島の世界・どの島も移民を受け入れる世… | 決定 | tests/core/test_measure.py、tests/core/test_nightly.py |
+| GT-12 | 場面は、標準の計画・命令なし・中央銀行を独立させた国（計画経済の国は独立させられないので除く）・… | 決定 | tests/core/test_measure.py、tests/core/test_nightly.py |
 | GT-13 | 組は 2 つ | 決定 | tests/core/test_measure.py |
 | GT-14 | 測りと点検はゲームの状態を読むだけで変えない（同じ種で状態の指紋が同じ） | 決定 | tests/core/test_measure.py |
 | GT-15 | 最初の 1 年の縮みは、12 ターン目の雇用と実質の生産の 1 ターン目との比で記録だけする（合… | 決定 | tests/core/test_measure.py |

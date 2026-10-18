@@ -663,6 +663,7 @@ class Bonds(WorldStage):
         top = to_basis(config.get("bonds.max_yield"))
         free, slope = concentration(ctx, island)
         closed = debt.market_closed(island, config, ctx.turn)  # 不履行の後は、銀行は買わない
+        shortfall = [0] * count  # 準備預金が足りずに指値なしで売りに出た額面（区分ごと）
         for bank in banks.active_banks(island):
             held = holdings[bank]
             total = sum(held)
@@ -680,6 +681,7 @@ class Bonds(WorldStage):
                     qty = min(held[k], -(-short * held[k] // total))
                     if qty > 0:
                         sellers[k].append((Order(qty), bank))
+                        shortfall[k] += qty
             elif total > target * 11 // 10 and total > 0:
                 over = total - target
                 for k in range(count):
@@ -704,10 +706,14 @@ class Bonds(WorldStage):
                     qty = min(held[k], -trade * held[k] // total)
                     if qty > 0:
                         sellers[k].append((Order(qty), ledger.CB))
+        if island.policy.cb_independent:
+            omo = island.economy.finance.get("cb_open_market", 0)
+            self._open_market(holdings[ledger.CB], omo, shortfall, sellers, buyers, wanted, yields)
         self._foreign_orders(island, ctx, sellers, buyers, wanted, closed, by_id)
         band = to_basis(config.get("bonds.trade_band"))
         top = to_basis(config.get("bonds.max_yield"))
         cb_done = 0  # 中央銀行が売り買いした額面
+        cb_moved = {"bought": 0, "sold": 0}
         for k in range(count):
             if not sellers[k] or not buyers[k]:
                 continue
@@ -726,10 +732,55 @@ class Bonds(WorldStage):
                 done = self._deliver(island, ctx, seller, buyer, qty, k, result.price, by_id)
                 if ledger.CB in (seller, buyer):
                     cb_done += done
+                    cb_moved["bought" if buyer == ledger.CB else "sold"] += done
             stats = island.scratch.setdefault("bond_stats", {})
             stats["traded"] = stats.get("traded", 0) + result.volume
         if trade and not island.policy.cb_independent:
             self._log_cb_trade(island, trade, cb_done)
+        if island.policy.cb_independent:
+            finance = island.economy.finance
+            left = finance.get("cb_open_market", 0) + cb_moved["bought"] - cb_moved["sold"]
+            if left > 0:
+                finance["cb_open_market"] = left
+            else:
+                finance.pop("cb_open_market", None)
+            stats = island.scratch.setdefault("bond_stats", {})
+            for side, amount in cb_moved.items():
+                if amount > 0:
+                    stats[f"cb_{side}"] = amount
+                    island.log.append(LogEntry(f"cb_open_market_{side}", {"amount": amount}))
+
+    @staticmethod
+    def _open_market(
+        held: list[int],
+        omo: int,
+        shortfall: list[int],
+        sellers: list[list[tuple[Order, str]]],
+        buyers: list[list[tuple[Order, str]]],
+        wanted: list[int],
+        yields: list[int],
+    ) -> None:
+        """独立した中央銀行の売り買い（買いオペと売りオペ。回5 のカード「両方」）。
+
+        準備預金の足りない銀行が売りに出した国債は、指値なしで同じ額だけ買う（銀行が1つの島や、
+        どの銀行も足りない月でも、準備を市場の値段で足せる。独立して禁じられるのは国が出す国債を
+        直接買うことだけで、市場での売り買いはふつうの仕事。ユーロ圏や日本の中央銀行と同じ）。
+        足りない銀行がなければ、買いオペで買って残っている額 omo（finance["cb_open_market"]）まで
+        を、今の利回りか市場が求める利回りの高いほうまでで売りに出す（利回りをそれより押し上げて
+        までは売らない。独立する前に引き受けた国債は売らず、満期の乗り換えで持ち続ける）。買うのは
+        持ち高が目標より少なく、手元に余りのある銀行だけなので、銀行の準備を最低限より下げずに国債
+        を市場へ戻していく。買い手がいなければ満期まで持つ。"""
+        if any(shortfall):
+            for k, qty in enumerate(shortfall):
+                if qty > 0:
+                    buyers[k].append((Order(qty), ledger.CB))
+            return
+        total = sum(held)
+        offer = min(omo, total)
+        for k, face in enumerate(held):
+            qty = offer * face // total if total > 0 else 0
+            if qty > 0:
+                sellers[k].append((Order(qty, max(wanted[k], yields[k])), ledger.CB))
 
     @staticmethod
     def _log_cb_trade(island: IslandState, trade: int, done: int) -> None:
