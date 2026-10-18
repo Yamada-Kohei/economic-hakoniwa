@@ -6,7 +6,9 @@
 政府のお金（国庫）は、ターンの初めに支出の項目ごとに取り置きます（予算の段 budget）。
 各項目は「自分の項目に取り置いた残り」と「どの項目にも取り置いていない国庫の残り」まで使えます。
 年の予算を決める項目（国の倉庫の買い入れなど）は、予算の月割りを超えて使えません。
-国庫が足りないときは、game.yaml の fiscal.payment_order の後ろの項目から削られます。
+国庫が足りないときは、game.yaml の fiscal.payment_order の後ろの項目から削られます。順番には
+項目の組（リスト）も書け、組の中の項目は、見積もりの合計に足りなければ見積もりに同じ割合を掛けて
+取り置きます（今月の人件費と運営費を、1つの項目だけ押し出さずに同じ割合で遅配にする。回5）。
 
 このターンの取り置きは状態の写しに入れず（island.scratch）、使った額だけを次のターンの
 見積もりのために残します（economy.spending）。
@@ -15,7 +17,7 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from hakoniwa_core import ledger
@@ -38,21 +40,49 @@ def fiscal_state(island: IslandState) -> dict[str, Any]:
     return island.scratch.setdefault("fiscal", {"reserved": {}, "used": {}, "caps": {}})
 
 
+def groups(order: Sequence[str | Sequence[str]]) -> list[list[str]]:
+    """支払いの順番（fiscal.payment_order）を組の並びにする。項目1つは1つだけの組。"""
+    return [[entry] if isinstance(entry, str) else list(entry) for entry in order]
+
+
+def items(order: Sequence[str | Sequence[str]]) -> list[str]:
+    """支払いの順番の項目を、組を開いて順に並べる。"""
+    return [item for group in groups(order) for item in group]
+
+
 def open_treasury(
-    island: IslandState, estimates: Mapping[str, int], order: list[str], caps: Mapping[str, int]
+    island: IslandState,
+    estimates: Mapping[str, int],
+    order: Sequence[str | Sequence[str]],
+    caps: Mapping[str, int],
 ) -> None:
-    """ターンの初めに、国庫を支出の項目の順（order）に見積もり（estimates）だけ取り置く。"""
+    """ターンの初めに、国庫を支出の項目の順（order）に見積もり（estimates）だけ取り置く。
+
+    組の中の項目は、残りが見積もりの合計に足りなければ、見積もりに同じ割合を掛けて取り置く
+    （端数は組の最後の項目に）。"""
     state = fiscal_state(island)
-    left = ledger.money(island, ledger.GOV)
+    left = max(0, ledger.money(island, ledger.GOV))
     state["reserved"] = {}
-    for item in order:
-        want = estimates.get(item, 0)
-        if item in caps:
-            want = min(want, caps[item])
-        give = max(0, min(want, left))
-        state["reserved"][item] = give
-        left -= give
-    state["used"] = {item: 0 for item in order}
+    for group in groups(order):
+        wants = {}
+        for item in group:
+            want = max(0, estimates.get(item, 0))
+            if item in caps:
+                want = min(want, max(0, caps[item]))
+            wants[item] = want
+        whole = sum(wants.values())
+        if whole <= left:
+            state["reserved"].update(wants)
+            left -= whole
+            continue
+        given = 0
+        for i, item in enumerate(group):
+            share = left - given if i == len(group) - 1 else wants[item] * left // whole
+            share = min(share, wants[item])
+            state["reserved"][item] = share
+            given += share
+        left -= given
+    state["used"] = {item: 0 for item in items(order)}
     state["caps"] = dict(caps)
 
 

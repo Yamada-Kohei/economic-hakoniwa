@@ -328,7 +328,12 @@ banking:
   facility: bank        # 市中銀行の施設
   office_tiles: 2       # 建国のときに首都の近くでオフィス街に指定するマスの数
   capital_ratio: 0.1    # 建国のときの銀行の自己資本（預金に対する割合）。債務超過の銀行の立て直しもこの割合まで
-  bond_ratio: 0.2       # 建国のときに銀行が持つ国債（預金に対する割合）。銀行の国債の持ち高の目安も同じ
+  bond_ratio: 0.2       # 建国のときに銀行が持つ国債（預金に対する割合）
+  # 国債への偏りの上乗せ: 国債の額面 ÷ 資産が free を超えた分 × premium だけ、銀行は高い利回りを求める
+  # （1つの借り手に偏る危うさ。計画経済の国営銀行は上乗せしない。回5）
+  bond_concentration: {free: 0.25, premium: 0.04}
+  liquidity_share: 0.08 # 国債の入札では、準備預金を最低限 + 預金 × これだけ手元に残す（liquidity_target 以上に）
+  auction_steps: 4      # 国債の入札の注文を分ける段の数（段ごとに、その段まで買ったときの偏りで求める利回り）
   reserve_ratio: 0.02   # 最低限の準備預金（預金に対する割合）
   deposit_rate: 0.01    # 初めの預金金利
   deposit_spread: 0.02  # 預金金利の目安 = 政策金利 − これ（準備預金が足りない銀行はさらに上げる）
@@ -352,8 +357,6 @@ banking:
   entry_roe_margin: 0.02  # 今ある銀行の自己資本利益率の平均が「政策金利 + これ」を超えたら
   liquidation_price: 0.7  # 清算で融資を売る値段（額面に対する割合）
   deposit_insurance: 30000  # 預金保護の上限額の既定（1人あたり、施設は1つあたり）
-  auction_share: 0.5    # 国債の入札に回す準備預金の余りの割合
-  auction_tiers: [0.0, 0.005, 0.01]  # 入札の3段（求める利回りへの上乗せ）
   sell_premium: 0.005   # 国債を売るときに受け入れる利回りの上乗せ（求める利回りより高くても売る幅）
   default_crunch_turns: 36  # 国債の債務不履行で損をした銀行は、このターン数のあいだ新しく貸さない
                             # （返す元金の借り換えだけ。計画経済の島は除く）
@@ -389,8 +392,10 @@ central_bank:
 
 bonds:
   auto_terms: {bond_1y: 1.0}  # 自動の発行の期間（finance.yaml の bond_term）と割合
-  debt_threshold: 0.6   # 政府の借金の対年GDP比がこれを超えた分に、利回りを上乗せする
-  sigma: 0.05           # その上乗せの係数 σ
+  # 返す力の比（中央銀行以外の持ち手に払う利子 ÷ 国債と中央銀行からのお金を除く国の収入。年）がこれを
+  # 超えた分に、利回りを上乗せする（回5。中央銀行の持ち分は市場の外）
+  burden_threshold: 0.1
+  burden_sigma: 0.1     # その上乗せの係数 σ（σ × 市場の持つ借金 ÷ 収入 が 1 を超えると利払いが雪だるまになる）
   kappa: 0.5            # 物価上昇率が目標を超えた分の上乗せの係数 κ
   max_yield: 0.2        # 利回りの上限
   buffer_turns: 1       # 国庫に残す額（支出のターン数分）
@@ -414,8 +419,10 @@ fiscal:
   unemployment_benefit: 0.4
   # 国庫が足りないときの支払いの順番（前の項目から取り置く）
   # arrears は前のターンまでの未払い賃金（回3。お金が入れば先に払う）
-  payment_order: [bonds, arrears, civil_servants, unemployment, state_facilities, education, security, construction, subsidies, warehouse]
-  # 銀行の救済と預金保護（支出の項目の外）は、この項目までの次のターンの支払いを国庫に残した額から出す
+  # 支払いの順番。[ ] の組の中は、国庫が足りなければ見積もりに同じ割合を掛けて取り置く（今月の人件費と
+  # 運営費。回5）。昔の未払い賃金（arrears）は失業手当の後に残ったお金で払う
+  payment_order: [bonds, [civil_servants, state_facilities, education, security], unemployment, arrears, construction, subsidies, warehouse]
+  # 銀行の救済と預金保護（支出の項目の外）は、この項目の入った組までの次のターンの支払いを国庫に残した額から出す
   rescue_after: civil_servants
   # 年の予算を命令で決める項目（毎ターン予算の12分の1まで使う）。construction は公共事業費
   # （国の工事とインフラの工事・維持の資材と作業員の賃金）、education は教育費（学校と大学の教員の

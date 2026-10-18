@@ -109,6 +109,47 @@ def debt_ratio(island: IslandState) -> float:
     return total_debt(island) / gdp if gdp > 0 else 0.0
 
 
+REVENUE = "revenue_history"  # economy.finance: 国債と中央銀行からのお金を除く国の収入（ターンごと）
+
+
+def revenue_kind(kind: str) -> bool:
+    """国庫に入るお金のうち、返す力の分母に数える仕訳の種類か（国債の発行と中央銀行からの納付・
+    貸し借りは借りたお金か、国が中央銀行に払った利子が戻ってきたものなので数えない）。"""
+    return not (kind.startswith("bond") or kind.startswith("cb_"))
+
+
+def market_interest(island: IslandState) -> int:
+    """中央銀行以外の持ち手（市中銀行・外国の持ち手）に1ターンに払う利子（今の持ち手のまま）。
+
+    中央銀行に払う利子は納付で国庫に戻るので数えない（回5、市場の分だけ）。"""
+    accounts = island.accounts
+    issued = f"{ledger.GOV}/{ledger.ISSUED}/bond:"
+    total = 0
+    for b in island.bonds:
+        face = -accounts.get(f"{issued}{b.id}", 0)
+        face -= accounts.get(f"{ledger.CB}/{ledger.bond_item(b.id)}/{ledger.GOV}", 0)
+        total += ledger.interest(face, b.rate)
+    return total
+
+
+def annual_revenue(economy: EconomyState) -> int:
+    """年の国の収入（直近12ターンの合計。12ターンに足りなければ平均の12倍。記録がなければ 0）。"""
+    history = economy.finance.get(REVENUE, [])[-YEAR:]
+    if not history:
+        return 0
+    return sum(history) * YEAR // len(history)
+
+
+def burden(island: IslandState) -> float:
+    """返す力の比: 中央銀行以外に払う利子（年）÷ 国の収入（年）。収入の記録がなければ 0、収入が
+    0 で利子があれば無限大（利回りは上限に届く）。"""
+    interest = market_interest(island) * YEAR
+    if interest <= 0 or not island.economy.finance.get(REVENUE):
+        return 0.0
+    revenue = annual_revenue(island.economy)
+    return interest / revenue if revenue > 0 else float("inf")
+
+
 def reopen_turn(island: IslandState, config: GameConfig) -> int | None:
     """債務不履行の後、銀行がまた国債を買うようになるターン（不履行のターン ＋
     bonds.default_exclusion_turns）。不履行の記録がなければ None。"""

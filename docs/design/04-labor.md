@@ -31,7 +31,7 @@
 | LB-09 | 賃金の段で賃金を払い、所得税を差し引いて政府に払う。市場の段より先に払うので、家計はそのターンの賃金で食料を買える | 決定 | `fiscal.income_tax` | tests/core/test_rules.py::test_market_sells_food_to_households |
 | LB-10 | 失業手当は「失業者1人に平均賃金の決めた割合」を国庫から失業している家計の層に払う（失業した技術者にも）。建国のときから払い、命令 `set_labor_policy` で変える | 決定 | `fiscal.unemployment_benefit` | tests/server/test_economy.py::test_policy_orders_from_the_island_page |
 | LB-11 | 最低賃金は命令 `set_labor_policy` で決める（決めなければなし）。労働の動員（全体主義。タブ 10）の賃金は最低賃金、なければ平均賃金の決めた割合 | 決定 | `fiscal.minimum_wage`, `politics.mobilization.wage` | tests/core/test_phase3_4.py::test_mobilization_puts_the_unemployed_to_work_in_state_factories |
-| LB-12 | 払えなかった賃金は「未払い賃金」として払い手（政府・独立採算の施設）の負債に残し、お金が入れば新しく雇う前に先に払う（政府は支払いの順番の `arrears`）。働く人はすぐには辞めず、未払いが続く月数に応じて少しずつ辞める。未払いの間は幸福度が下がる | 決定 | `fiscal.payment_order`, `labor.arrears_quit`, `population.happiness.arrears` | tests/core/test_balance_round3.py::test_unpaid_wages_stay_owed_and_are_paid_first_when_money_comes, ::test_workers_quit_little_by_little_while_wages_go_unpaid |
+| LB-12 | 払えなかった賃金は「未払い賃金」として払い手（政府・独立採算の施設）の負債に残し、お金が入れば新しく雇う前に払う（政府は支払いの順番の `arrears`。今月の人件費と失業手当の後）。働く人はすぐには辞めず、未払いが続く月数に応じて少しずつ辞める。未払いの間は幸福度が下がる | 決定 | `fiscal.payment_order`, `labor.arrears_quit`, `population.happiness.arrears` | tests/core/test_balance_round3.py::test_unpaid_wages_stay_owed_and_are_paid_first_when_money_comes, ::test_workers_quit_little_by_little_while_wages_go_unpaid |
 | LB-13 | 倒産と撤退のとき、未払い賃金は未払いの税と貸し手より先に払われる（分け方の全体はタブ 5） | 決定 |  | tests/core/test_balance_round3.py::test_bankruptcy_pays_unpaid_wages_before_the_lenders |
 | LB-14 | 家計の層は、一般の労働者（家族と村の住民を含む）・失業している家計・技術者（家族を含む）・資産を持つ層の4つ。資産を持つ層は住民の決めた割合で、働かずに配当と預金の利子で暮らす。計画経済の島には置かない | 決定 | `household.layers.owners.share`, `household.layers.engineers.workers`, `household.layers.jobless.jobless` | tests/core/test_balance_round4.py::test_every_money_island_has_one_services_firm_owned_by_regime |
 | LB-15 | 失業している家計の人数は賃金の段の初めに雇用の結果から数え直し（村で自給する人は除く）、仕事を失った人・見つけた人の預金を1人あたりの額で一緒に動かす。所得・預金・食べた量を仕事のある家計と別に持ち、お金のない家計から飢える | 決定 |  | tests/core/test_balance_round4.py::test_jobless_town_households_flee_while_others_still_eat |
@@ -103,7 +103,7 @@
 
 ### 賃金の遅配
 
-払い手（政府・独立採算の施設）が賃金を払えなかった分は、払えなかったターンに施設や省庁を止めるのではなく、「未払い賃金」として払い手の負債に残します（持ち手は家計の層）。お金が入れば、新しく雇う前に未払いを先に払います。政府は予算の段で支払いの順番 `fiscal.payment_order` の `arrears` に先に取り置きます。払えない分の働き手は払われないまま働き続け、未払いが続いた月数に応じて毎ターン `labor.arrears_quit` ×（月数 + 1）の割合が辞めます（すぐ全員は辞めない）。未払いの間は幸福度が `population.happiness.arrears` の分だけ下がり、政情にも効きます。施設の帳簿の賃金には払えなかった分も入れ、未払い賃金は施設の値打ちを下げます。現実の例は 1990 年代のロシアで、公務員や工場の賃金の遅配が数か月続き、多くの人は働き続けました。
+払い手（政府・独立採算の施設）が賃金を払えなかった分は、払えなかったターンに施設や省庁を止めるのではなく、「未払い賃金」として払い手の負債に残します（持ち手は家計の層）。お金が入れば、新しく雇う前に未払いを先に払います。政府は予算の段で、支払いの順番 `fiscal.payment_order` の `arrears`（今月の人件費と失業手当の後）に取り置きます。払えない分の働き手は払われないまま働き続け、未払いが続いた月数に応じて毎ターン `labor.arrears_quit` ×（月数 + 1）の割合が辞めます（すぐ全員は辞めない）。未払いの間は幸福度が `population.happiness.arrears` の分だけ下がり、政情にも効きます。施設の帳簿の賃金には払えなかった分も入れ、未払い賃金は施設の値打ちを下げます。現実の例は 1990 年代のロシアで、公務員や工場の賃金の遅配が数か月続き、多くの人は働き続けました。
 
 倒産と撤退のとき、お金と設備・在庫を売った代金は、先に未払い賃金、次に未払いの税、残りを貸し手の割合で分けます（タブ 5）。取引先への支払いの遅れ（企業どうしの掛け）は入れていません。
 

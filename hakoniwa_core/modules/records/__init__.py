@@ -14,12 +14,14 @@ import math
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
+from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     GENERAL,
     OWNERS,
     banks,
     books,
+    debt,
     funds,
     household,
     is_transport,
@@ -146,8 +148,16 @@ class Records(IslandStage):
         economy.finance["unemployment"] = stats["unemployment"]
         year = annual_gdp(economy)
         stats["debt_ratio"] = stats["debt"] / year if year else 0.0
-        for kind, amount in sorted(self._fiscal(island).items()):
+        fiscal = self._fiscal(island)
+        for kind, amount in sorted(fiscal.items()):
             stats[f"fiscal.{kind}"] = amount
+        # 国債の利回りの返す力の分母（国債と中央銀行からのお金を除く国の収入。回5）
+        revenue = sum(
+            v for k, v in fiscal.items() if k.startswith("in.") and debt.revenue_kind(k[3:])
+        )
+        history = economy.finance.get(debt.REVENUE, [])
+        economy.finance[debt.REVENUE] = [*history, revenue][-TURNS_PER_YEAR:]
+        stats["bonds.burden"] = debt.burden(island)
         # 予算の項目ごとにこのターンに使った額（公共事業費・教育費など）
         for item, amount in sorted(funds.spent(island).items()):
             stats[f"spent.{item}"] = amount

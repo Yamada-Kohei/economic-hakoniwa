@@ -57,8 +57,18 @@
 動かす年の費用（今の賃金と、値幅の上端の教材の値段で）の EDUCATION_MARGIN 倍です。
 住民1人あたり PUBLIC_WORKS を基本に、失業率がふつう（5%）より高ければ増やし、物価上昇率が高ければ
 減らします（額を物価や GDP に合わせて動かさないので、物価が下がり続けたり上がり続けたりしにくい）。
-政府の借金の対年GDP比が DEBT_LIMIT を超えた分に応じても減らします（利回りが上がって利払いが
-膨らみ続けないように）。
+返す力の比（中央銀行以外に払う利子 ÷ 国の収入）が FISCAL_LIMIT を超えた分に応じても減らします
+（利回りが上がって利払いが膨らみ続けないように。回5 で借金の対年GDP比から替えた）。
+財政の手（回5）: BUDGET_TURNS ターンごとに（公共事業費の見直しと別のターン）、国が賃金を払いきれて
+いないか、失業率がふつうの2倍以下で返す力の比が FISCAL_LIMIT を超えていれば、所得税と消費税を
+TAX_STEP ずつ上げます（TAX_MAX まで）。賃金を払えていて、比が FISCAL_LIMIT の半分より低く、国庫に
+支出の SURPLUS_TURNS ターン分があれば、建国のときの税率まで TAX_STEP ずつ戻します。
+飢饉の手（回5。設計書 12 確かめ方 GT-29）: 食べ物の充足が FAMINE_RATIO を下回った月は、国営の
+農場のうち穀物以外を作っているものを穀物に替え、国の倉庫の食べ物をすべて市場に出し、足りない分の
+穀物を今の値段の EMERGENCY_PRICE 倍の指値で国の倉庫に買い入れます（値段が上がれば商社が輸入する）。
+ふだんの月は、島の食べる量の STORE_TURNS ターン分まで穀物を今の値段で買って蓄え、傷む
+ROTATE_TURNS ターン前になった古い分を市場に出して入れ替えます（インドの国の穀物の買い上げと備蓄と
+同じ形）。国の倉庫の年の予算は、その買い入れに足りるまで上げます。
 電気料金が初めの値段の POWER_CAP 倍を超えたら、そこを公共料金の上限にします。
 民営工場が建てられる島（市場経済と混合経済）では、空いた工業団地のマスが ZONE_SPARE より少なければ、
 町の通勤圏の空いた平地と、地下資源のある島では山を ZONE_BATCH マスまで工業団地に指定します（町の
@@ -71,11 +81,11 @@ from collections.abc import Iterator
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, nature, stock, trade
+from hakoniwa_core import infra, ledger, nature, stock, trade
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import needs, services
+from hakoniwa_core.economy import arrears, needs, services
 from hakoniwa_core.economy.prices import initial_prices, unit_cost
 from hakoniwa_core.geo import components, distance, shortest_path, within
 from hakoniwa_core.modules.firms import private_allowed
@@ -91,7 +101,7 @@ from hakoniwa_core.state import (
 )
 from hakoniwa_core.trade import blocs as trade_blocs
 from hakoniwa_core.trade import traders as trade_traders
-from hakoniwa_core.units import QUANTITY_SCALE, money_of, to_milli
+from hakoniwa_core.units import BASIS, QUANTITY_SCALE, money_of, to_milli
 
 MAX_SITES = 2  # 同時に進める工事の数（資材を待って止まっている民営の工事は数えない）
 POWER_MARGIN = 1.25  # 発電の能力を、使う量のこの倍に保つ
@@ -107,8 +117,21 @@ UNEMPLOYMENT_RESPONSE = 5.0  # 失業率がふつうより 1% 高いごとに、
 INFLATION_RESPONSE = 5.0  # 物価上昇率が INFLATION_LIMIT より 1% 高いごとに、基本のこの % だけ減らす
 INFLATION_LIMIT = 0.05
 NATURAL_UNEMPLOYMENT = 0.05
-DEBT_LIMIT = 1.0  # 政府の借金の対年GDP比がこれを超えたら、公共事業費を減らす
-DEBT_RESPONSE = 0.5  # 対年GDP比が DEBT_LIMIT より 0.1 高いごとに、基本のこの × 10 % だけ減らす
+FISCAL_LIMIT = (
+    0.2  # 返す力の比（中央銀行以外への利払い ÷ 国の収入）がこれを超えたら歳出を削り増税する
+)
+BURDEN_RESPONSE = (
+    2.0  # 比が FISCAL_LIMIT より 0.1 高いごとに、公共事業費を基本のこの × 10 % だけ減らす
+)
+TAX_TURN = 3  # BUDGET_TURNS の周期のうち税を見直すターン（公共事業費の見直しと重ならないように）
+TAX_STEP = 2  # 一度に上げ下げする税率（ポイント）
+TAX_MAX = {"income_tax": 30, "consumption_tax": 20}  # 上げる上限（%）
+SURPLUS_TURNS = 6  # 国庫に支出のこのターン数分があれば、税を戻してよい
+FAMINE_RATIO = 0.95  # 食べ物の充足がこれを下回った月は飢饉の手を打つ
+EMERGENCY_PRICE = 1.5  # 飢饉の月の穀物の買い入れの指値（今の値段のこの倍）
+STORE_TURNS = 2  # ふだんの月に国の倉庫に蓄える穀物（島の食べる量の何ターン分か）
+ROTATE_TURNS = 2  # 傷むこのターン数前になった蓄えは、市場に出して入れ替える
+GRAIN = "grain"
 WORKS_RANGE = (0.2, 2.0)  # 基本に対する倍率の下限と上限
 STARVED_RAISE = 0.25  # 国の工事が公共事業費を待って止まっている間、見直しのたびに増やす割合
 UNDERUSED = 0.7  # 同じ物を作る施設の稼働率がこれより低い間は、増やさない
@@ -135,7 +158,11 @@ def plan_turn(
     """ターン turn の処理の前に足す命令（種類, 中身）の並び。"""
     if any(o.status == ORDER_PENDING for o in island.orders):
         return []
-    return _warehouse_sales(island, defs, config) + _plan_rest(island, defs, config, turn)
+    return (
+        _warehouse_sales(island, defs, config)
+        + _food_orders(island, defs, config, turn)
+        + _plan_rest(island, defs, config, turn)
+    )
 
 
 def _plan_rest(
@@ -144,6 +171,7 @@ def _plan_rest(
     policies = (
         _labor_policy_order(island),
         _budget_order(island, defs, config, turn),
+        _tax_order(island, config, turn),
         _price_cap_order(island, defs, config),
         _zone_order(island, defs, config),
         _water_order(island, defs, config),
@@ -325,7 +353,7 @@ def _budget_order(
     scale = 1.0
     scale += UNEMPLOYMENT_RESPONSE * (stats.get("unemployment", 0) - NATURAL_UNEMPLOYMENT)
     scale -= INFLATION_RESPONSE * max(0.0, stats.get("inflation", 0) - INFLATION_LIMIT)
-    scale -= DEBT_RESPONSE * max(0.0, stats.get("debt_ratio", 0) - DEBT_LIMIT)
+    scale -= BURDEN_RESPONSE * max(0.0, stats.get("bonds.burden", 0) - FISCAL_LIMIT)
     scale = min(WORKS_RANGE[1], max(WORKS_RANGE[0], scale))
     construction = int(population_of(island) * PUBLIC_WORKS * scale)
     # 始めた国の工事があるあいだは減らさず、公共事業費を待って止まっていて国庫にお金があれば、
@@ -348,6 +376,105 @@ def _budget_order(
         if not current or abs(target - current) > current // 10:
             payload[item] = target
     return ("set_budget", payload) if payload else None
+
+
+def _tax_order(island: IslandState, config: GameConfig, turn: int) -> tuple[str, dict] | None:
+    """所得税と消費税を上げ下げする命令（変えなければ None）。"""
+    if not island.has_economy or turn % BUDGET_TURNS != TAX_TURN:
+        return None
+    stats = island.stats
+    burden = stats.get("bonds.burden", 0.0)
+    unpaid = arrears.total(island, ledger.GOV) > 0
+    policy = island.policy
+    current = {key: getattr(policy, key) * 100 // BASIS for key in TAX_MAX}
+    if unpaid or (
+        burden > FISCAL_LIMIT and stats.get("unemployment", 0) <= 2 * NATURAL_UNEMPLOYMENT
+    ):
+        target = {key: min(top, current[key] + TAX_STEP) for key, top in TAX_MAX.items()}
+    else:
+        spending = sum(v for k, v in island.economy.spending.items() if k != "bonds")
+        if burden >= FISCAL_LIMIT / 2 or stats.get("treasury", 0) < spending * SURPLUS_TURNS:
+            return None
+        start = {key: int(config.get(f"fiscal.{key}") * 100) for key in TAX_MAX}
+        target = {key: max(start[key], current[key] - TAX_STEP) for key in TAX_MAX}
+    payload = {key: value for key, value in target.items() if value != current[key]}
+    return ("set_taxes", payload) if payload else None
+
+
+def _food_orders(
+    island: IslandState, defs: Defs, config: GameConfig, turn: int
+) -> list[tuple[str, dict]]:
+    """飢饉の手と、ふだんの月の穀物の蓄えと入れ替えの命令。"""
+    ratio = island.stats.get("food.ratio")
+    if not island.has_economy or ratio is None or GRAIN not in island.economy.prices:
+        return []
+    need = to_milli(island.stats.get("food.need", 0))  # 1ターンに食べる量（穀物に直さない）
+    price = island.economy.prices[GRAIN]
+    held = stock.total(island.warehouse, GRAIN)
+    orders: list[tuple[str, dict]] = []
+    if ratio < FAMINE_RATIO:
+        for f in island.facilities:
+            recipe = _grain_recipe(defs, island, f)
+            if recipe is not None:
+                orders.append(("change_recipe", {"x": f.x, "y": f.y, "recipe": recipe}))
+        for good in sorted(island.warehouse):
+            qty = stock.total(island.warehouse, good)
+            if qty > 0 and "food" in defs.goods.get(good, {}):
+                orders.append(
+                    (
+                        "warehouse_trade",
+                        {"good": good, "side": "sell", "quantity": qty / QUANTITY_SCALE},
+                    )
+                )
+        buy = round(need * (1 - ratio))
+        limit = int(price * EMERGENCY_PRICE)
+    else:
+        shelf = defs.goods[GRAIN].get("shelf_life")
+        old = sum(
+            q
+            for made, q in island.warehouse.get(GRAIN, ())
+            if shelf and turn - made >= shelf - ROTATE_TURNS
+        )
+        if old > 0:
+            orders.append(
+                (
+                    "warehouse_trade",
+                    {"good": GRAIN, "side": "sell", "quantity": old / QUANTITY_SCALE},
+                )
+            )
+        # 蓄えるのは食べ物が足りていて、国が賃金を払えていて国庫にゆとりのある月だけ
+        spending = sum(v for k, v in island.economy.spending.items() if k != "bonds")
+        spare = (
+            ratio >= 1
+            and arrears.total(island, ledger.GOV) <= 0
+            and island.stats.get("treasury", 0) >= spending * SURPLUS_TURNS
+        )
+        buy = need * STORE_TURNS - (held - old) if spare else 0
+        limit = price
+    if buy > 0 and limit > 0:
+        budget = money_of(limit, buy) * TURNS_PER_YEAR
+        if island.policy.budget.get("warehouse", 0) < budget:
+            orders.append(("set_budget", {"warehouse": budget}))
+        payload = {"good": GRAIN, "side": "buy", "quantity": buy / QUANTITY_SCALE, "limit": limit}
+        orders.append(("warehouse_trade", payload))
+    return orders
+
+
+def _grain_recipe(defs: Defs, island: IslandState, f: Any) -> str | None:
+    """国営の農場で穀物以外を作っていれば、替える穀物の作り方（肥料を使っていれば肥料を使う方）。"""
+    if not f.built or f.owner != OWNER_STATE:
+        return None
+    recipes = defs.facilities[f.kind]["recipes"]
+    current = recipes.get(f.recipe, {})
+    if GRAIN in current.get("outputs", {}) or not current.get("grow_turns"):
+        return None
+    grain = [
+        name
+        for name, r in recipes.items()
+        if GRAIN in r["outputs"] and _recipe_ok(defs, island, r, frozenset())
+    ]
+    same = [name for name in grain if recipes[name]["inputs"] == current["inputs"]]
+    return (same or grain or [None])[0]
 
 
 def _education_cost(island: IslandState, defs: Defs, config: GameConfig) -> int:
