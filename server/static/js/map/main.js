@@ -1,4 +1,6 @@
 // 島の画面: 定義データと島のマスを読み込み、俯瞰図・小さな地図・マスの情報・命令の列を動かす。
+// マスの情報は、押したマスのそばに出す小さな窓（ポップオーバー）に出す。右上の × と Esc で閉じ、
+// ほかのマスを押すとそのマスの情報だけに替わる。地図を動かすと窓もマスに付いて動く。
 
 import { attachControls } from "./controls.js";
 import { drawMinimap, minimapTile } from "./minimap.js";
@@ -14,6 +16,10 @@ const ctx = canvas.getContext("2d");
 const minimap = document.getElementById("minimap");
 const overlaySelect = document.getElementById("overlay");
 const overlayLegend = document.getElementById("overlay-legend");
+const popover = document.getElementById("tile-popover");
+const narrow = window.matchMedia("(max-width: 760px)"); // 狭い画面では窓を下から出す板にする（site.css）
+const POPOVER_GAP = 12; // マスと窓の間（ピクセル）
+const MAP_EDGE = 8; // 窓を地図の端からこれだけ離す（右は拡大縮小のボタンを避ける）
 
 const [defs, map] = await Promise.all([
   fetch(canvas.dataset.defs).then((r) => r.json()),
@@ -35,7 +41,46 @@ function redraw() {
     pending = false;
     drawIsland(ctx, map, defs, view, state);
     if (minimap) drawMinimap(minimap, map, defs, state.selected);
+    placePopover();
   });
+}
+
+/** マスの中ほどの、地図の上の位置（CSS ピクセル）。 */
+function screenOf({ x, y }) {
+  const p = tileToWorld(x + 0.5, y + 0.5, theme);
+  return { sx: p.px * view.scale + view.offsetX, sy: (p.py - lift(heightOf(x, y), theme)) * view.scale + view.offsetY };
+}
+
+/** 狭い画面で、下から出した板に隠れないように、選んだマスを画面の上のほうまで送る。 */
+function revealAboveSheet(tile) {
+  const top = canvas.getBoundingClientRect().top + screenOf(tile).sy;
+  const limit = window.innerHeight - popover.offsetHeight - 24;
+  if (top < 8 || top > limit) window.scrollBy({ top: top - Math.min(limit, window.innerHeight / 4), behavior: "smooth" });
+}
+
+/**
+ * マスの情報の窓を、選んだマスのそばに置く。マスの右に入らなければ左に、どちらにも入らなければ広い方に
+ * 寄せ、上下は地図の中に収める。狭い画面では CSS が下に留めるので位置を決めない。
+ */
+function placePopover() {
+  popover.hidden = !state.selected;
+  if (!state.selected || narrow.matches) {
+    popover.style.left = popover.style.top = "";
+    return;
+  }
+  const r = canvas.getBoundingClientRect();
+  const { sx, sy } = screenOf(state.selected);
+  const w = popover.offsetWidth;
+  const h = popover.offsetHeight;
+  const gap = (theme.tile_width / 2) * view.scale + POPOVER_GAP;
+  const right = r.width - MAP_EDGE - 48; // 拡大縮小のボタンの幅を空ける
+  let left = sx + gap;
+  if (left + w > right) {
+    const leftSide = sx - gap - w;
+    left = leftSide >= MAP_EDGE ? leftSide : sx > r.width / 2 ? MAP_EDGE : right - w;
+  }
+  popover.style.left = `${Math.max(MAP_EDGE, Math.min(left, right - w))}px`;
+  popover.style.top = `${Math.max(MAP_EDGE, Math.min(sy - h / 2, r.height - MAP_EDGE - h))}px`;
 }
 
 function resize() {
@@ -76,16 +121,17 @@ const panel = new TilePanel(document.getElementById("tile-panel"), defs, map, {
   orders,
   marked: state.marked,
   onMarkedChange: redraw,
-  mapArea: canvas.closest(".map-column"),
+  tools: document.getElementById("mark-tools"),
   notice: document.getElementById("order-notice"),
   // インフラの工事のマスを選ぶ間は、その種類の整備度を重ねて見せる
   onInfraKind: (kind) => showOverlay(`infra:${kind}`),
 });
 
-function select(tile) {
+async function select(tile) {
   state.selected = tile;
   redraw();
-  panel.show(tile);
+  await panel.show(tile);
+  if (tile && narrow.matches && state.selected === tile) revealAboveSheet(tile);
 }
 
 const controls = attachControls(canvas, view, {
@@ -143,6 +189,14 @@ if (minimap) {
     select(tile);
   });
 }
+
+popover.querySelector("[data-close]").addEventListener("click", () => select(null));
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && state.selected) select(null);
+});
+// 窓の中身を読み込んだり書き換えたりして大きさが変わったら、置き直す
+new ResizeObserver(() => placePopover()).observe(popover);
+narrow.addEventListener("change", () => placePopover());
 
 window.addEventListener("resize", resize);
 fit();

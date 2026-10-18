@@ -73,6 +73,16 @@
 </section>
 {% endif %}
 
+{% if industry_workers %}
+<section class="panel">
+  <h2>{% translate "産業ごとの従業者数" %} <small class="heading-date">{% translate "今" %}</small></h2>
+  <div class="charts">
+    <figure class="chart" data-slices="industry-workers" data-unit=" 人"><figcaption>{% translate "産業ごとの従業者数（技術者を含む）" %}</figcaption></figure>
+  </div>
+  {{ industry_workers|json_script:"industry-workers" }}
+</section>
+{% endif %}
+
 {% if towns %}
 <section class="panel">
   <h2>{% translate "町ごとの働く人" %}</h2>

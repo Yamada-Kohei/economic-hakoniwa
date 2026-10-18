@@ -17,7 +17,7 @@ form.inline { display: inline; }
 .island-list li { margin: 4px 0; }
 .island-list small { margin-left: 8px; color: #666; }
 .map-wrap { position: relative; border: 1px solid var(--border); background: #1d3f66; }
-#island-map { display: block; width: 100%; height: min(70vh, 640px); touch-action: none; cursor: grab; }
+#island-map { display: block; width: 100%; height: min(82vh, 900px); touch-action: none; cursor: grab; }
 .map-buttons { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 4px; }
 .map-buttons button { width: 40px; height: 40px; font-size: 20px; }
 .muted { color: #666; }
@@ -44,8 +44,22 @@ table.goods td:nth-child(n+2), table.goods th:nth-child(n+2) { text-align: right
 /* 島の画面 */
 .island-header h1 { margin-bottom: 0; }
 .island-header p { margin-top: 4px; }
-.island-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; align-items: start; }
-.island-layout #tile-panel { margin: 0; max-height: min(78vh, 700px); overflow-y: auto; }
+/* 地図は横の欄をなくした分、本文の幅（1100px）より広い画面では左右に 1400px まで広げる */
+.island-layout { margin-inline: calc((100% - max(100%, min(100vw - 48px, 1400px))) / 2); }
+/* マスの情報の窓。位置は map/main.js が選んだマスのそばに決める */
+.tile-popover { position: absolute; z-index: 3; width: min(360px, calc(100% - 16px)); max-height: calc(100% - 16px);
+  display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); }
+.tile-popover[hidden] { display: none; }
+.tile-popover #tile-panel { overflow-y: auto; padding: 8px 12px 12px; min-height: 0; }
+.tile-popover #tile-panel h3:first-child { margin-top: 0; padding-right: 32px; }
+.popover-close { position: absolute; top: 4px; right: 4px; width: 32px; height: 32px; padding: 0; border: 0;
+  background: none; font-size: 20px; line-height: 1; color: #555; border-radius: 4px; z-index: 1; }
+.popover-close:hover, .popover-close:focus-visible { background: #eee; color: var(--fg); }
+.mark-tools:empty { display: none; }
+.mark-tools { margin: 4px 0 6px; }
+.mark-buttons { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.mark-buttons button { margin: 0; }
 .island-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
 .island-stats .panel { margin: 0; }
 .map-tools { margin: 4px 0; }
@@ -157,6 +171,13 @@ figure.chart select { max-width: 100%; }
 .chart-legend { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 0.85em; margin-top: 2px; }
 .chart-legend button { border: 0; background: none; padding: 2px 0; min-height: 24px; text-align: left; }
 .chart-legend button[aria-pressed="false"] { opacity: 0.4; text-decoration: line-through; }
+/* 円グラフ: ターンを選ぶつまみと、名前・値・割合の凡例 */
+.pie-turn { display: flex; align-items: center; gap: 8px; font-size: 0.85em; color: #555; margin-bottom: 2px; }
+.pie-turn span { white-space: nowrap; min-width: 6.5em; }
+.pie-turn input { flex: 1; min-width: 0; }
+.pie-legend { list-style: none; margin: 4px 0 0; padding: 0; font-size: 0.85em; }
+.pie-legend li { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; border-bottom: 1px solid #f0ede6; }
+.pie-legend .pie-value { white-space: nowrap; text-align: right; }
 .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
 td.num, th.num { text-align: right; white-space: nowrap; }
 .loss { color: #c62828; }
@@ -204,11 +225,10 @@ table.ranking-table td:nth-child(3), table.titles-table th, table.titles-table t
 }
 
 @media (max-width: 760px) {
-  /* 地図を画面の上に留め、その下でマスの欄を読み進める。命令を足した後も地図まで戻らずに次のマスを押せる */
-  .island-layout { display: block; }
-  .island-layout .map-column { position: sticky; top: 0; z-index: 1; background: var(--bg); padding-bottom: 8px; }
-  .island-layout #tile-panel { max-height: none; }
-  #island-map { height: 50vh; }
+  /* マスの情報の窓は、画面の下から出す板にする（狭くて横に出せないため）。上半分で地図を押せる */
+  .tile-popover { position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; max-height: 45vh;
+    border-radius: 12px 12px 0 0; box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.3); }
+  #island-map { height: 60vh; }
   .site-header nav { gap: 8px; flex-wrap: wrap; }
   table.facilities { display: block; overflow-x: auto; }
 }

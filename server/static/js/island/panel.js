@@ -3,8 +3,9 @@
 // 島の持ち主には、そのマスへの命令（建設・撤去・名称・地名・優先度・会計方式・国有化と民営化・
 // 補助金・銀行への緊急の貸し出しと破綻処理）と、地図でマスを選んで出す命令（インフラの工事・送電線・
 // 開発禁止区域・工業団地とオフィス街）の入口も出す。
-// 狭い画面では地図を画面の上に留め、その下でこの欄を読み進める（site.css）。命令を足しても
-// 地図はそのまま押せ、結果は地図のそばに出す。
+// 欄は押したマスのそばに出す小さな窓の中にある（狭い画面では下から出す板。窓の開け閉めと位置は
+// map/main.js）。地図でマスを選んで出す命令の入口と選んでいる途中の欄は、窓の外の地図の上（tools）に
+// 出し、窓を閉じても続けられるようにする。命令を足した結果は地図のそばに出す。
 
 import { turnDate } from "../calendar.js";
 import { escapeHtml, getJson, sendJson } from "./api.js";
@@ -52,7 +53,8 @@ export class TilePanel {
    * el: 欄の要素（data-tile-url に「…/tiles/0,0」、data-check-url に命令の確認の URL、
    *     data-resources に島の地下資源、data-producible に島で生産できる資源。どちらもカンマ区切り）
    * options: orders（命令の列。持ち主でなければ null）、marked（印を付けたマスの Set）、onMarkedChange、
-   *          mapArea（地図の列の要素）、notice（命令を足した結果を出す、地図のそばの要素）、
+   *          tools（地図でマスを選んで出す命令の入口を出す、窓の外の要素）、
+   *          notice（命令を足した結果を出す、地図のそばの要素）、
    *          onInfraKind（インフラの工事のマスを選び始めたときと、種類を変えたときに種類を渡す）
    */
   constructor(el, defs, map, options = {}) {
@@ -64,7 +66,7 @@ export class TilePanel {
     this.orders = options.orders || null;
     this.marked = options.marked || new Set();
     this.onMarkedChange = options.onMarkedChange || (() => {});
-    this.mapArea = options.mapArea || null;
+    this.tools = options.tools || null;
     this.notice = options.notice || null;
     this.onInfraKind = options.onInfraKind || (() => {});
     this.infraKind = Object.keys(defs.infrastructure || {})[0] || null;
@@ -72,8 +74,10 @@ export class TilePanel {
     this.tile = null;
     this.info = null;
     this.request = 0;
-    el.addEventListener("click", (e) => this.handleClick(e));
-    el.addEventListener("change", (e) => this.handleChange(e));
+    for (const target of [el, this.tools]) {
+      target?.addEventListener("click", (e) => this.handleClick(e));
+      target?.addEventListener("change", (e) => this.handleChange(e));
+    }
     this.render();
   }
 
@@ -86,7 +90,7 @@ export class TilePanel {
     this.tile = tile;
     this.info = null;
     if (this.notice) this.notice.textContent = "";
-    this.revealTop();
+    this.el.scrollTop = 0; // 新しいマスは窓の上の端から見せる
     if (!tile) {
       this.render();
       return;
@@ -106,18 +110,6 @@ export class TilePanel {
     this.render();
   }
 
-  /**
-   * 欄を上の端から見せる（新しいマスを選んだときと、地図でマスを選び始めたとき）。
-   * 欄の上の端が画面の上に（狭い画面では、上に留めた地図の下に）隠れていれば、見える所まで戻す。
-   */
-  revealTop() {
-    this.el.scrollTop = 0;
-    const pinned = this.mapArea && getComputedStyle(this.mapArea).position === "sticky";
-    const limit = pinned ? this.mapArea.getBoundingClientRect().bottom : 0;
-    const hidden = limit - this.el.getBoundingClientRect().top;
-    if (hidden > 0) window.scrollBy(0, -hidden);
-  }
-
   toggleMark(tile) {
     const key = `${tile.x},${tile.y}`;
     if (this.marked.has(key)) this.marked.delete(key);
@@ -129,8 +121,8 @@ export class TilePanel {
   // --- 表示 -----------------------------------------------------------------
 
   render() {
+    if (this.tools) this.tools.innerHTML = this.orders ? (this.mode ? this.markingHtml() : this.markButtonsHtml()) : "";
     const parts = [];
-    if (this.mode) parts.push(this.markingHtml());
     if (!this.tile) {
       parts.push(`<p class="muted">マスを選択すると、ここに詳細が表示されます。</p>`);
     } else if (!this.info) {
@@ -142,7 +134,6 @@ export class TilePanel {
       if (this.info.facility) parts.push(this.facilityHtml(this.info.facility));
       if (this.orders) parts.push(this.actionsHtml(this.info));
     }
-    if (this.orders && !this.mode) parts.push(this.markButtonsHtml());
     this.el.innerHTML = parts.join("");
     if (this.orders && this.info && !this.info.facility) this.checkBuild();
   }
@@ -457,7 +448,7 @@ export class TilePanel {
     const buttons = Object.entries(MARK_MODES)
       .map(([id, m]) => `<button type="button" data-mark="${id}">${m.label}</button>`)
       .join("");
-    return `<div class="actions"><h4>地図でマスを選択して出す命令</h4>${buttons}</div>`;
+    return `<div class="mark-buttons"><span class="hint">地図でマスを選択して出す命令:</span> ${buttons}</div>`;
   }
 
   markingHtml() {
@@ -493,7 +484,7 @@ export class TilePanel {
 
   handleClick(e) {
     const button = e.target.closest("button");
-    if (!button || !this.el.contains(button)) return;
+    if (!button || !(this.el.contains(button) || this.tools?.contains(button))) return;
     if (button.type === "submit") {
       e.preventDefault();
       this.submit(button.form);
@@ -505,7 +496,6 @@ export class TilePanel {
       this.onMarkedChange();
       if (this.mode === "infrastructure" && this.infraKind) this.onInfraKind(this.infraKind);
       this.render();
-      this.revealTop();
     } else if (button.dataset.action === "mark-cancel") {
       this.endMarking();
     } else if (button.dataset.action === "mark-done") {

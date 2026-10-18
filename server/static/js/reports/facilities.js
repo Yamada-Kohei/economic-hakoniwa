@@ -2,9 +2,10 @@
 
 import { turnDate } from "../calendar.js";
 import { getJson } from "../island/api.js";
-import { attachRange, escapeHtml, formatValue, makeChart, mountCharts, rangeQuery } from "./common.js";
+import { attachRange, escapeHtml, formatValue, makeChart, mountCharts, mountStaticPies, rangeQuery } from "./common.js";
 
 mountCharts();
+mountStaticPies();
 
 // 帳簿の推移のグラフに描く収支の項目（帳簿の額は支出も正の数）
 const FLOW_ITEMS = ["sales", "purchases", "wages", "electricity", "freight", "depreciation", "profit"];

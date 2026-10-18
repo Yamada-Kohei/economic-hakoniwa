@@ -35,7 +35,7 @@
   <div class="charts" id="charts" data-url="{% url 'api_island_economy' island.id %}"
        data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
     {% for c in charts %}
-    <figure class="chart" data-names="{{ c.names }}"><figcaption>{{ c.title }}</figcaption></figure>
+    <figure class="chart" {% if c.pie %}data-pie{% else %}data-names{% endif %}="{{ c.names }}"><figcaption>{{ c.title }}</figcaption></figure>
     {% endfor %}
     <figure class="chart" id="free-chart" hidden>
       <figcaption>
@@ -48,7 +48,7 @@
       </figcaption>
     </figure>
   </div>
-  <p class="hint">{% translate "横軸は暦の年と月です（1ターンが1か月）。グラフに指やマウスを乗せると、そのターンの年月と値を表示します。凡例を押すと線を隠せます。" %}</p>
+  <p class="hint">{% translate "横軸は暦の年と月です（1ターンが1か月）。グラフに指やマウスを乗せると、そのターンの年月と値を表示します。凡例を押すと線を隠せます。円グラフは選んだ1つのターンの内訳で、下のつまみでターンを替えられます。" %}</p>
 </section>
 
 {% if summary %}

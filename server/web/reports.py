@@ -428,7 +428,8 @@ def _derive(table: dict[str, dict[int, float]]) -> None:
 
 
 def economy_charts() -> list[dict[str, Any]]:
-    """経済の画面のグラフ: 見出しと、描く統計の名前（末尾の * は、その頭の統計すべて）。"""
+    """経済の画面のグラフ: 見出しと、描く統計の名前（末尾の * は、その頭の統計すべて）。pie は
+    円グラフ（選んだ1つのターンの内訳）。"""
     defs = get_game().defs
     return [
         {"title": "GDP（1ターン）", "names": ["gdp"]},
@@ -449,6 +450,11 @@ def economy_charts() -> list[dict[str, Any]]:
         },
         {"title": "電力の不足率", "names": ["power.shortage"]},
         {"title": "人口と就業者", "names": ["population", "labor", "employed", "services.workers"]},
+        {
+            "title": "人口の内訳（階級ごと）",
+            "names": [f"layer.{layer}.persons" for layer in LAYER_NAMES],
+            "pie": True,
+        },
         {
             "title": "生まれた人と亡くなった人（1ターン）",
             "names": ["population.births", "population.deaths", "population.starved"],
@@ -763,6 +769,47 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
         "profit": display.money_text(total, currency),
         "shops": shops,
     }
+
+
+# 産業の分類（定義の industry）を持たない施設の、産業ごとの働く人の円グラフでの分け方
+SECTOR_NAMES = {
+    "government_office": "公務",
+    "police": "公務",
+    "school": "教育",
+    "university": "教育",
+    "bank": "金融",
+    "transport": "運輸",
+    "port": "運輸",
+    "shipping": "運輸",
+    "trading": "商社",
+    "services": "商業・サービス業",
+}
+
+
+def industry_workers(island: m.Island) -> list[dict[str, Any]]:
+    """産業ごとの、いま施設で働いている人（技術者を含む。町と工事中の施設を除く）。
+    施設の画面の円グラフに使う（誰にでも。国全体の数だけ）。多い順。"""
+    game = get_game()
+    defs, config = game.defs, game.config
+    housing = fac.housing_kind(config)
+    totals: dict[str, int] = defaultdict(int)
+    names: dict[str, str] = {}
+    for row in island.facilities.exclude(kind=housing).filter(built=True):
+        f = facility_from_row(row)
+        fdef = defs.facilities.get(f.kind, {})
+        workers = f.workers  # 技術者を含む
+        if workers <= 0:
+            continue
+        industry = fdef.get("industry")
+        if industry:
+            key, name = industry, defs.name("industries", industry)
+        else:
+            name = SECTOR_NAMES.get(f.kind) or defs.name("facilities", f.kind)
+            key = f"sector:{name}"
+        totals[key] += workers
+        names[key] = name
+    rows = [{"key": k, "label": names[k], "value": v} for k, v in totals.items()]
+    return sorted(rows, key=lambda r: -r["value"])
 
 
 def town_rows(island: m.Island) -> list[dict[str, Any]]:
