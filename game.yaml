@@ -38,7 +38,7 @@ stages:
 formulas: {}
 
 turn:
-  interval_minutes: 60  # 更新の間隔
+  interval_minutes: 240  # 更新の間隔（ベータ版も4時間おき。設計書の台帳 2026-10-18）
 
 # 世界の暦（hakoniwa_core/dates.py）。1ターンが1か月で、ターン1 が first_year 年の1月。ターンが 12 の倍数の
 # ときが12月（年の終わり）で、年に1度の処理はそのターンに動く。画面では「箱庭暦32年11月（ターン 383）」と書く

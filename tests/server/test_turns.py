@@ -27,6 +27,12 @@ def test_run_turn_advances_once_per_interval(world):
     assert run_turn().ran
     world.refresh_from_db()
     assert world.turn == 1 and world.next_turn_at > timezone.now()
+    # 次の更新は設定の間隔だけ先。値はベータ版の決まり（4時間おき、台帳 2026-10-18）の見張りで、
+    # 変えるときは設計書の台帳に行を足してからここも直す
+    interval = timedelta(minutes=get_game().config.get("turn.interval_minutes"))
+    assert interval == timedelta(hours=4)
+    assert timezone.now() + interval - timedelta(minutes=1) < world.next_turn_at
+    assert world.next_turn_at <= timezone.now() + interval
     assert world.packs == {"base": "0.0.1"}
     # 次の更新時刻の前に呼んでも進まない
     assert not run_turn().ran
