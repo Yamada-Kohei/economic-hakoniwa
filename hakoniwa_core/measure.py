@@ -603,6 +603,24 @@ RATES = frozenset(
 )
 
 
+def snapshot_command(scenario: str, seed: int, turn: int) -> str:
+    """崩れの初めのターン turn を調べる写しを作る命令（gate.SNAPSHOT_BEFORE ターン前まで回して
+    書く。同じ種・同じ版なら同じ世界になる。やり直しの報告の I5）。"""
+    at = max(1, turn - gate.SNAPSHOT_BEFORE)
+    return (
+        f"python -m hakoniwa_core.simulate --scenario {scenario} --seed {seed} --turns {at}"
+        f" --save {scenario}-s{seed}-t{at}.json"
+    )
+
+
+def collapse(scenario: str, seed: int, recorder: gate.Recorder) -> dict[str, Any]:
+    """崩れの見張り（1ターン目から最後まで）。目安の窓（windows）とは別に持つ。"""
+    found = [
+        c | {"snapshot": snapshot_command(scenario, seed, c["first"])} for c in recorder.collapses()
+    ]
+    return {"start": 1, "counts": recorder.collapse_counts(), "found": found}
+
+
 def result(
     scenario: Scenario,
     seed: int,
@@ -643,6 +661,7 @@ def result(
         "digest": digest,
         "independent": sum(1 for i in world.islands.values() if i.policy.cb_independent),
         "independent_since": sorted(measure.independent_since.values()),
+        "collapse": collapse(scenario.name, seed, recorder),
         "early": recorder.early(),
         "first_year": measure.window(1, gate.EARLY_TURN),
         "ships": measure.ships(),
@@ -767,13 +786,75 @@ def _pick(data: Mapping[str, Any], window: Mapping[str, Any] | None, key: str) -
     return values.get(name)
 
 
+def _compare_collapse(a: Mapping, b: Mapping) -> list[str]:
+    """崩れ（1ターン目から）を組・種類ごとに並べ、新しく崩れた島と写しの命令を出す。
+
+    前の結果に崩れの見張りがなければ（2026-10-18 より前の版）、前は「—」。
+    """
+    lines = [
+        "## 崩れ（1ターン目から。main より増えたら、増えた分を直してからマージ）",
+        "",
+        "| 組 | 種類 | 前 | 後 | 差 |",
+        "|---|---|---|---|---|",
+    ]
+    added = []
+    for key in sorted(set(a) & set(b)):
+        ca, cb = a[key].get("collapse"), b[key].get("collapse")
+        if cb is None:
+            continue
+        before = {(c["kind"], c["island"]) for c in ca["found"]} if ca else set()
+        for kind in gate.COLLAPSE_KINDS:
+            x = ca["counts"].get(kind, 0) if ca else None
+            y = cb["counts"].get(kind, 0)
+            if not x and not y:
+                continue
+            if x is None:
+                lines.append(f"| {run_name(*key)} | {kind} | — | {y} | |")
+                continue
+            mark = " 増えた" if y > x else ""
+            lines.append(f"| {run_name(*key)} | {kind} | {x} | {y} | {y - x:+d}{mark} |")
+        if ca:
+            added += [(key, c) for c in cb["found"] if (c["kind"], c["island"]) not in before]
+    if len(lines) == 4:
+        lines.append("| （どちらにも崩れなし） | | | | |")
+    if added:
+        lines += ["", "新しく崩れた島（前の結果にはなかった）:"]
+        for key, c in added:
+            lines.append(f"- {run_name(*key)} {c['line']}。写し: `{c['snapshot']}`")
+    return lines
+
+
+def _compare_means(a: Mapping, b: Mapping) -> list[str]:
+    """目安の外れの数を、場面・ターン数ごとに種の平均で並べる（やり直しの報告の I2。目安は合否に
+    使わず、平均で main と比べて PR に書く）。"""
+    groups: dict[tuple[str, int], list[tuple[str, int, int]]] = {}
+    for key in sorted(set(a) & set(b)):
+        groups.setdefault((key[0], key[2]), []).append(key)
+    lines = [
+        "## 目安から外れた数（種の平均。合否には使わない）",
+        "",
+        "| 場面 | ターン | 種の数 | 窓 | 前 | 後 | 差 |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for (scenario, turns), keys in sorted(groups.items()):
+        ends = set.intersection(*(set(a[k]["windows"]) & set(b[k]["windows"]) for k in keys))
+        for end in sorted(ends, key=int):
+            x = statistics.mean(a[k]["windows"][end]["gate"]["failures"] for k in keys)
+            y = statistics.mean(b[k]["windows"][end]["gate"]["failures"] for k in keys)
+            lines.append(
+                f"| {scenario} | {turns} | {len(keys)} | {gate.START}〜{end} "
+                f"| {x:.1f} | {y:.1f} | {y - x:+.1f} |"
+            )
+    return lines
+
+
 def compare(base: Path, new: Path) -> str:
     """2つの結果（ディレクトリかファイル）を、同じ場面・種・ターン数どうしで Markdown の表に並べる。
 
     悪くなった値に「悪化」と書く（向きのある値だけ）。
     """
     a, b = load(base), load(new)
-    lines = []
+    lines = [*_compare_collapse(a, b), "", *_compare_means(a, b), "", "## 組ごと"]
     for key in sorted(set(a) & set(b)):
         name = run_name(*key)
         lines += [
@@ -819,6 +900,10 @@ def show(path: Path) -> str:
     lines = []
     for key, data in sorted(load(path).items()):
         lines += ["", f"### {run_name(*key)}（{data['title']}、{data['islands']} 島）", ""]
+        if "collapse" in data:
+            counts = data["collapse"]["counts"]
+            found = "、".join(f"{k} {v} 島" for k, v in counts.items() if v) or "なし"
+            lines.append(f"崩れ（1ターン目から）: {found}")
         early = data.get("early", {})
         if early:
             e = {k.removeprefix("early."): v for k, v in early.items()}

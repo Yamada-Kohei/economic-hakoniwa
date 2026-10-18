@@ -6,6 +6,9 @@ docs/nightly.md）。ゲームの状態は読むだけで、数字を寄せる�
 - 長い年月（long）: 標準の計画・命令なし・少ない島の世界を LONG_TURNS ターン（100 年）回し、関門の
   目安（hakoniwa_core/gate.py）から外れたところを、バランスの測りが見る範囲（START〜MEASURED_TURNS）と
   その後の期間に分けて数えます。後の期間にだけ出た種類は「40 年より後に出た崩れ」です。
+- 崩れ（collapse）: 長い年月の組で、1ターン目から崩れの見張り（gate.COLLAPSE_KINDS。飢饉・人口の
+  大きな減り・品切れ・取引が成り立たない・作り方の群れ・国庫や銀行の手元が 0・理由の出ない停止）に
+  当たったところを、種類ごとに並べます。崩れの数ターン前の世界の写しを作る命令も付けます。
 - でたらめな国（random）: 標準の計画で動く世界のうち RANDOM_ISLANDS 島が、毎ターン決まりの中で
   でたらめな命令を出します。命令は画面と同じ確かめ（hakoniwa_core/orders.check_order）を通った
   ものだけを並べます。ターンの処理が例外で止まったら、そのターンと並べた命令を書き残します（サーバー
@@ -62,6 +65,7 @@ RANDOM_PENDING = 4  # 実行を待つ命令がこれだけあれば、そのタ�
 RANDOM_COUNTS = (0, 0, 1, 1, 1, 2, 3)  # 1ターンに足す命令の数（ここから選ぶ）
 TRACEBACK_LINES = 12
 SAVE_EVERY = 100  # 途中の結果を書くターンの間隔（時間で止めた組もそこまでの分を見る）
+COLLAPSE_STEPS = (1, 2, 5, 10, 20)  # 崩れた島の数の段（増えたら夜の点検の「新」）
 CUT = "時間切れで止めた"  # 時間で止めた組の記録の最後の行
 
 # 名前の命令に入れる文字（長すぎるものは maxLength で切る）
@@ -320,6 +324,7 @@ def run_one(
         if recorder is not None:
             out["windows"] = windows(recorder, scenario.kinds, world.turn)
             out["late"] = late_kinds(out["windows"])
+            out["collapse"] = measure.collapse(scenario_name, seed, recorder)
         return out
 
     for _ in range(turns):
@@ -521,6 +526,17 @@ def summarize(out_dir: Path, known_path: Path | None, label: str = "") -> dict[s
                 {"type": "accept", "signature": a["signature"], "run": name, "turn": a["turn"]}
                 | {"error": a["error"], "order": {"kind": a["kind"], "payload": a["payload"]}}
             )
+        found = data.get("collapse", {}).get("found", [])
+        for kind in dict.fromkeys(c["kind"] for c in found):
+            # 島の数の段（1・2・5・10・20 島以上）を名前に入れ、増えたら新しいものとして印を付ける
+            these = [c for c in found if c["kind"] == kind]
+            step = max(n for n in COLLAPSE_STEPS if len(these) >= n)
+            first = min(these, key=lambda c: c["first"])
+            findings.append(
+                {"type": "collapse", "signature": f"collapse {data['scenario']} {kind} {step}+"}
+                | {"run": name, "turn": first["first"], "islands": len(these)}
+                | {"line": first["line"], "snapshot": first["snapshot"]}
+            )
         for kind in data.get("late", []):
             counts = [w["counts"][kind] for w in data["windows"]]
             findings.append(
@@ -563,6 +579,7 @@ TYPE_TITLES = {
     "accept": "命令の受け付けで例外",
     "crash": "処理が落ちた",
     "late": "40 年より後に出た崩れ",
+    "collapse": "崩れ（1ターン目から）",
     "timeout": "時間内に終わらなかった",
 }
 
@@ -599,6 +616,10 @@ def show(summary: dict[str, Any]) -> str:
             pairs = zip(f["windows"], f["counts"], strict=True)
             spans = "、".join(f"{a}〜{b} ターン {c} 島" for (a, b), c in pairs)
             lines.append(f"- 目安から外れた島の数: {spans}")
+        if "line" in f:
+            lines.append(f"- 島の数: {f['islands']}。いちばん早いもの: {f['line']}")
+        if "snapshot" in f:
+            lines.append(f"- 調べる写しを作る命令: `{f['snapshot']}`")
         if "log" in f:
             lines += ["- 記録の最後:", *(f"    {line}" for line in f["log"])]
         if "reproduce" in f:
