@@ -365,12 +365,12 @@ def island_alerts(island: m.Island, mine: bool) -> list[str]:
 
 
 POPULATION_CHANGES = [
-    ("births", "population.births", "生まれた人"),
-    ("deaths", "population.deaths", "亡くなった人（飢えのほか）"),
-    ("starved", "population.starved", "飢えで亡くなった人"),
-    ("arrived", "migration.arrived", "ほかの国から移り住んできた人（帰ってきた人も）"),
-    ("left", "migration.left", "ほかの国へ移り住んだ人"),
-    ("fled_to_villages", "population.fled_to_villages", "食べ物を買えず町から村へ移った人"),
+    ("births", "population.births", "出生数"),
+    ("deaths", "population.deaths", "死亡数（餓死を除く）"),
+    ("starved", "population.starved", "餓死者数"),
+    ("arrived", "migration.arrived", "入国者数（移住。帰国者を含む）"),
+    ("left", "migration.left", "出国者数（移住）"),
+    ("fled_to_villages", "population.fled_to_villages", "食料難による都市から農村への移住者数"),
 ]
 
 

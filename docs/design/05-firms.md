@@ -25,7 +25,7 @@
 | FM-02 | プレイヤーは命令で施設を建て、取り壊す。工事は工期の間に資材と作業員で進め（タブ 8）、取り壊すと在庫は国の倉庫に戻り、送電線も外れる | 決定 |  | tests/core/test_rules.py::test_build_order_checks, ::test_demolish_returns_stock_and_removes_power_line |
 | FM-03 | 稼働率は人手・投入財・電力の充足率の一番低いものと操業目標で決まる。産出は基本の産出量×稼働率×生産性で、生産性はインフラ・教育・汚染・自然条件・経験・集積の係数の積。どれが効くかはレシピの `factors` で決める | 決定 | `infrastructure.factor`, `infrastructure.pollution_floor` | tests/core/test_infrastructure.py::test_infrastructure_and_education_change_productivity |
 | FM-04 | 施設の会計は、民営（独立採算）・国営の独立採算・国営の国庫直轄の3つ。国営の形は建てるときに経済体制の既定（regimes.yaml の `state_accounting`）で決まり、命令で変えられる | 決定 |  | （未確認） |
-| FM-05 | 施設1つがお金の主体1つで、民営の持ち主は資産を持つ層1つ（企業という単位がない） | 仮 |  | （未確認） |
+| FM-05 | 施設1つがお金の主体1つで、民営の持ち主は資本家階級1つ（企業という単位がない） | 仮 |  | （未確認） |
 | FM-06 | 独立採算の施設は自分の預金と借入を持ち、税引き後の利益の決めた割合を配当（民営）か国庫への納付（国営）に回す。手元の資金が決めたターン数分の支払いを超えた分も回す。赤字のターンは配当せず、赤字は決めたターン数まで繰り越す | 決定 | `firms.payout`, `firms.cash_turns`, `firms.loss_carry_turns` | tests/core/test_rules.py::test_no_dividend_in_a_loss_turn |
 | FM-07 | 国庫直轄の施設は口座を持たず、売上は国庫へ、費用は国庫から予算の範囲で払う。倒産しない。国庫が足りなければ仕入れが削られて止まる。全力で動き、在庫が目安を超えたら下げる | 決定 |  | tests/core/test_shocks.py::test_planned_economy_never_bankrupts_or_stops |
 | FM-08 | 国営の独立採算の施設は民営と同じく操業目標を決めるが、自分で閉鎖せず倒産しない（返済が足りなければ政府が出資して埋める）。決めたターン数続けて赤字なら、補助金・縮小・閉鎖を選ぶようプレイヤーに知らせる | 決定 | `firms.loss_notice_turns` | （未確認） |
@@ -37,7 +37,7 @@
 | FM-14 | 参入の合図は、その財が品切れ続き（足りない量が新しい工場の全力の決めた割合以上のターンが、直近の決めたターンのうち決めた数以上）か、値段が原価の決めた倍率を超えていること | 決定 | `firms.entry_gap`, `firms.shortage_turns`, `firms.price_turns`, `firms.cost_ratio` | tests/core/test_finance.py::test_entry_fill_follows_shortage_size |
 | FM-15 | 原料のどれかが島で作られていない作り方、工事の資材が島で作られず売りにも出ていない、原料が品切れ続き、原料を作る施設が上限で原料の空きが足りない、のどれかなら建たない | 決定 | `firms.price_turns`, `firms.entry_gap` | tests/core/test_finance.py::test_private_entry_needs_inputs_on_the_island, ::test_entry_waits_while_inputs_are_short, ::test_entry_needs_spare_input_when_its_source_is_capped |
 | FM-16 | 民営工場が建つのは空いた工業団地のマスだけ。地形と資源が合い、通勤圏の失業者が要る人数に見合うマスのうち、運賃の率が一番低いマスに、1つの島で1ターンに決めた数まで建つ。混合経済の基幹産業と計画経済の島では建たない | 決定 | `firms.entries_per_turn` | tests/core/test_finance.py::test_private_entry_happens_only_where_allowed |
-| FM-17 | 建設費（1割増しと動き出しの支払い分を足す）の決めた割合を資産を持つ層が出資し、残りを銀行の建設資金で借りる。借りきれなければ多く出資し、出資しきれなければ建たない | 決定 | `firms.equity_share`, `firms.operating_turns` | tests/core/test_playtest3_fixes.py::test_private_entry_waits_for_lending |
+| FM-17 | 建設費（1割増しと動き出しの支払い分を足す）の決めた割合を資本家階級が出資し、残りを銀行の建設資金で借りる。借りきれなければ多く出資し、出資しきれなければ建たない | 決定 | `firms.equity_share`, `firms.operating_turns` | tests/core/test_playtest3_fixes.py::test_private_entry_waits_for_lending |
 | FM-18 | 設備投資補助のある参入では、補助を参入のときに補助金の予算から先に出す。差し押さえ中の施設があれば、その買い取り値を建設費として新しく建てる案と比べる | 決定 | `firms.foreclosure_price` | tests/core/test_playtest_fixes.py::test_capital_subsidy_is_paid_at_entry |
 | FM-19 | 民営工場と民間銀行が建たないわけ（工業団地がない・働き手がいない・出資が足りない・融資が断られた・儲からない・オフィス街がない）を島に残し、変わったときにログで知らせる | 決定 |  | tests/core/test_playtest_fixes.py::test_entry_block_is_recorded_and_logged_once |
 | FM-20 | 撤退: 動かないターンが決めた数続くか、変動費の利益が決めたターン数続けて決めた幅を超えてマイナスなら閉鎖する。借入を預金で返し、残りを出資者に返してマスを空ける（工業団地の指定と送電線は残す） | 作り直し予定（回7） | `firms.exit_idle_turns`, `firms.exit_loss_turns`, `firms.exit_loss_margin` | tests/core/test_finance.py::test_closed_facility_leaves_power_line |
@@ -45,15 +45,15 @@
 | FM-22 | 倒産と撤退の後、設備と在庫を売った代金は、未払い賃金 → 未払いの税 → 貸し手（貸した額の割合で）の順に分け、余れば持ち主に返す。撤退した施設の残りの在庫は国が市場の値段で引き取る | 決定 |  | tests/core/test_balance_round3.py::test_foreclosure_money_goes_to_wages_then_taxes_then_lenders_by_share, ::test_leftover_stock_is_bought_by_the_state_at_market_price, ::test_bankruptcy_pays_unpaid_wages_before_the_lenders |
 | FM-23 | 民営の工事が決めたターン数進まなければ工事をやめる。建設資金は預金で返し、返しきれない分は貸し倒れ、買ってあった資材は国の倉庫に入る | 決定 | `firms.abandon_turns` | tests/core/test_finance.py::test_stalled_private_site_is_abandoned |
 | FM-24 | 民営の施設はプレイヤーが取り壊せない（国有化すれば取り壊せる） | 決定 |  | （未確認） |
-| FM-25 | 国有化（命令）: 民営の施設を純資産（0未満なら0）で政府が買い取り、代金を国庫から資産を持つ層に払い、借入は引き継ぐ。差し押さえ中の施設は銀行から売り値で買う | 決定 |  | tests/core/test_finance.py::test_nationalize_then_privatize |
-| FM-26 | 民営化（命令）: 国営の施設を純資産で資産を持つ層に売る。国庫直轄の施設は運転資金を出資して独立採算に移してから売る。計画経済の島と混合経済の基幹産業ではできない | 決定 | `firms.operating_turns` | tests/core/test_finance.py::test_nationalize_then_privatize, ::test_planned_economy_cannot_privatize_or_license_banks |
+| FM-25 | 国有化（命令）: 民営の施設を純資産（0未満なら0）で政府が買い取り、代金を国庫から資本家階級に払い、借入は引き継ぐ。差し押さえ中の施設は銀行から売り値で買う | 決定 |  | tests/core/test_finance.py::test_nationalize_then_privatize |
+| FM-26 | 民営化（命令）: 国営の施設を純資産で資本家階級に売る。国庫直轄の施設は運転資金を出資して独立採算に移してから売る。計画経済の島と混合経済の基幹産業ではできない | 決定 | `firms.operating_turns` | tests/core/test_finance.py::test_nationalize_then_privatize, ::test_planned_economy_cannot_privatize_or_license_banks |
 | FM-27 | 補助金（命令。補助金の予算から払い、足りなければ比例で減らす）は、生産補助（品目か工業団地のマスに売上の割合）・設備投資補助（品目に建設費の割合）・救済補助（施設の赤字を決めたターン数埋める）の3つ。民間は参入の判断で見込む | 決定 | `fiscal.budget.subsidies` | tests/core/test_finance.py::test_subsidy_is_set_and_cleared |
 | FM-28 | 命令 `set_zone` で陸のマスを工業団地かオフィス街に指定・解除する（首都と町のマスは指定できず、マスの数に上限がある）。指定したマスには町が建たない。解除しても建っている施設は残る | 決定 |  | tests/core/test_finance.py::test_set_zone_marks_tiles, tests/server/test_finance.py::test_zone_order_runs_and_shows_on_tile |
 | FM-29 | 鉱山は鉱業資源ごとの作り方を持ち、島に決めた数まで（工事中も数え、民営も数える。採石場は含まない）。掘る物は替えられない | 決定 |  | tests/core/test_phase3_2.py::test_a_mine_cannot_switch_to_another_deposit |
 | FM-30 | 施設の定義に産業の分類 `industry`（農業・鉱業・鉄鋼・非鉄・機械・自動車・繊維・石油・食品・消費財・造船・エネルギー）を持ち、経験・集積・称号・計画経済の重点産業がこれを使う | 決定 |  | （未確認） |
 | FM-31 | 経験: 島×産業ごとに施設が出した産出の倍率（稼働率×生産性）を足して数え、係数を累積の対数で上げる（上限あり、組み立て産業は上限が高い）。その年に動かした量が少ない産業は、年の終わりに累積が減る | 決定 | `experience.base_turns`, `experience.slope`, `experience.cap`, `experience.assembly`, `experience.assembly_cap`, `experience.dormant_share`, `experience.decay` | tests/core/test_phase3_3.py::test_experience_factor_follows_the_formula_and_its_caps, ::test_experience_grows_with_output_and_raises_productivity, ::test_an_industry_left_idle_for_a_year_fades |
 | FM-32 | 集積: 工場（分類が industry の施設）だけに、半径の中の同じ産業のほかの施設1つごとに生産性を上げる（上限あり）。汚染も重なる | 決定 | `experience.cluster_radius`, `experience.cluster_step`, `experience.cluster_cap`, `experience.cluster_categories` | tests/core/test_phase3_3.py::test_cluster_counts_same_industry_factories_nearby |
-| FM-33 | 各産業の累積が世界1位の国に「鉄鋼の国」などの称号を付け、統計の画面に得意産業と世界の順位を出す（他国からも見える） | 決定 |  | （未確認） |
+| FM-33 | 各産業の累積が世界1位の国に「鋼都」（鉄鋼）などの称号を付け、統計の画面に得意産業と世界の順位を出す（他国からも見える） | 決定 |  | （未確認） |
 | FM-34 | 暴動で止まるのは都市のマスの近くの施設で、農林水産業（農場・漁港・牧場・製材所）は止まらない（暴動の起き方はタブ 10） | 決定 |  | tests/core/test_phase3_4.py::test_riot_halts_urban_facilities_and_police_hold_it_down |
 | FM-35 | 商業・サービス業（島に1つの店）は倒産と撤退をせず、持ち主は経済体制の既定（細部はタブ 4 LB-29） | 作り直し予定（回7） | `services.facility` | tests/core/test_balance_round4.py::test_every_money_island_has_one_services_firm_owned_by_regime |
 | FM-36 | 施設の束としての企業を主体にする。企業は預金・借入・株主を持ち、産業をまたいで何でも持てる（財閥も許す）。投資・閉鎖を企業が選ぶ。国の工場は国営企業の下にまとめ、国有化と民営化は企業ごとでも工場ごとでもできる | 決定（回7 で作る） |  | （未確認） |
@@ -88,7 +88,7 @@ Q = Q_0 \times u \times f_{\mathrm{infra}} \times f_{\mathrm{edu}} \times f_{\ma
 
 | 形 | お金の持ち方 | 利益の行き先 | 赤字が続いたとき | 生産量 |
 | --- | --- | --- | --- | --- |
-| 民営（独立採算） | 自分の預金、銀行からの借入、資産を持つ層の出資 | 法人税の後、決めた割合を配当として資産を持つ層へ。残りは手元 | 操業を縮め、続けば閉鎖。返済が遅れ続ければ倒産 | 操業目標を自分で決める |
+| 民営（独立採算） | 自分の預金、銀行からの借入、資本家階級の出資 | 法人税の後、決めた割合を配当として資本家階級へ。残りは手元 | 操業を縮め、続けば閉鎖。返済が遅れ続ければ倒産 | 操業目標を自分で決める |
 | 国営の独立採算 | 同じ（出資は政府） | 法人税の後、決めた割合を国庫へ納付 | プレイヤーに知らせ、補助金・縮小・閉鎖を選んでもらう。倒産しない | 民営と同じ決め方（自分で閉鎖はしない） |
 | 国営の国庫直轄 | 口座を持たない。売上は国庫へ、費用は国庫から | すべて国庫 | 倒産しない。国庫が足りなければ仕入れが削られて止まる | 全力。在庫が目安を超えたら下げる |
 
@@ -115,7 +115,7 @@ R = \frac{12 \times \left(P_{\mathrm{out}} Q - \sum P_{\mathrm{in}} q_{\mathrm{i
 - 合図: その財が品切れ続き（`firms.entry_gap` 以上足りないターンが直近 `firms.price_turns` のうち `firms.shortage_turns` 以上）か、値段が原価の `firms.cost_ratio` 倍を超えていること。
 - 建たないとき: 原料のどれかが島で作られていない、工事の資材が島で作られず売りにも出ていない、原料が品切れ続き、原料を作る施設を島にこれ以上建てられず原料の空きが足りない。国の倉庫の物は、政府が売りに出さなければ民間は買えない。ほかの施設が替えたばかり・替えると決めた財は選ばない。
 - 場所: 空いた工業団地のマスのうち、地形と資源が合い、通勤圏に要る人数に見合う失業者がいて、運賃の率が一番低いマス。人のいない所に建てて雇えずに倒産しないようにする。1つの島で1ターンに `firms.entries_per_turn` 件まで、R の大きい順に建つ。
-- 資金: 建設費の1割増しと動き出しの支払い分を合わせ、`firms.equity_share` を資産を持つ層の預金から出資し、残りを銀行の建設資金で借りる。借りきれなければ多く出資し、出資しきれなければ建たない。金利が高いほど参入が減るのは、この条件から。
+- 資金: 建設費の1割増しと動き出しの支払い分を合わせ、`firms.equity_share` を資本家階級の預金から出資し、残りを銀行の建設資金で借りる。借りきれなければ多く出資し、出資しきれなければ建たない。金利が高いほど参入が減るのは、この条件から。
 - 建たない島: 混合経済の基幹産業、計画経済の島。中央省庁・銀行・運送業・町は民間の参入で建たない（銀行の参入はタブ 7）。
 - 建たないわけを島に残し、変わったときにログで知らせ、金融の画面に出す。
 
@@ -129,8 +129,8 @@ R = \frac{12 \times \left(P_{\mathrm{out}} Q - \sum P_{\mathrm{in}} q_{\mathrm{i
 
 ### 国有化と民営化
 
-- 国有化（命令）: 民営の施設を純資産（設備の値打ち＋預金＋在庫−借入、0 未満なら 0）で政府が買い取り、代金を国庫から資産を持つ層に払う。借入はそのまま引き継ぐ。差し押さえ中の施設は銀行からその売り値で買う。
-- 民営化（命令）: 国営の施設を純資産で資産を持つ層に売る。国庫直轄の施設は、政府が運転資金を出資して独立採算に移してから売る。計画経済の島と混合経済の基幹産業ではできない。
+- 国有化（命令）: 民営の施設を純資産（設備の値打ち＋預金＋在庫−借入、0 未満なら 0）で政府が買い取り、代金を国庫から資本家階級に払う。借入はそのまま引き継ぐ。差し押さえ中の施設は銀行からその売り値で買う。
+- 民営化（命令）: 国営の施設を純資産で資本家階級に売る。国庫直轄の施設は、政府が運転資金を出資して独立採算に移してから売る。計画経済の島と混合経済の基幹産業ではできない。
 - 経済体制を計画経済に替えるとすべて国有化され、計画経済から替えると国営の施設は残って民間が入れるようになる（タブ 10）。回7 で、国有化と民営化は企業ごとでも工場ごとでもできるようにする。
 
 ### 補助金と工業団地
@@ -147,7 +147,7 @@ R = \frac{12 \times \left(P_{\mathrm{out}} Q - \sum P_{\mathrm{in}} q_{\mathrm{i
 - 経験: 島×産業ごとに、施設が1ターンに出した産出の倍率（稼働率×生産性）を足して、累積を「標準の施設が全力で動いたターン数」で数える（品目の単位が違っても比べられる）。係数は累積の対数で上がり（`experience.base_turns`・`experience.slope`）、上限は `experience.cap`、組み立て産業（`experience.assembly`）は `experience.assembly_cap`。
 - その年に動かした量が `experience.dormant_share` に満たない産業は、年の終わりに累積が `experience.decay` 減る。移し替えた島の経験は 0 から。
 - 集積: 半径 `experience.cluster_radius` 以内の同じ産業のほかの施設 1 つごとに `experience.cluster_step` 上げる（上限 `experience.cluster_cap`）。工場（`experience.cluster_categories`）だけに効く。農場や鉱山は島じゅうに並べるのがふつうで、どの島も同じだけ上がり、得意産業の違いにならないため。汚染も重なるので、周りの幸福度と肥沃度が下がる。
-- 称号: 統計の画面に得意産業と世界の順位を出し、各産業の累積が1位の国に「鉄鋼の国」などの称号を付ける（他国からも見える）。
+- 称号: 統計の画面に得意産業と世界の順位を出し、各産業の累積が1位の国に「鋼都」（鉄鋼）などの称号を付ける（他国からも見える）。
 - 経験の強さは、失業と値崩れが増えるのを見たうえで設計の強さのままにした（2026-10-15）。作るほど人手が要らなくなるが、食料と電気は1人あたりの量が決まっているので、浮いた人の行き先がない。直しの案（施設1つあたりで数える、参入を速める、計画経済の作りすぎは生産目標で扱う）はタブ 14。
 
 ### 企業の仕組み（回7）
@@ -165,9 +165,9 @@ R = \frac{12 \times \left(P_{\mathrm{out}} Q - \sum P_{\mathrm{in}} q_{\mathrm{i
 | --- | --- | --- | --- | --- | --- |
 | 足りない | お金: 運転資金を借りる（在庫を担保に貸す分もある）。返済が遅れ、続けば倒産して差し押さえ。人手・原料・電力: 稼働率が下がり、止まった理由を残す。遅らせる役は運転資金と建設資金の据え置き、ずらす役は作り方の替えと参入 | 倒産は返済の遅れが数ターン続いてから。差し押さえは決めたターン数売りに出す | 差し押さえた施設を民間か政府が買い取る。救済補助 | 現実の倒産の手続きは数か月〜数年 | `loans.arrears_limit`, `firms.foreclosure_turns` |
 | 余る | 売れない: 操業目標を下げ、在庫を持つ（タブ 3）。赤字が続けば閉鎖。作りすぎを避けるため、売れる見込みの割合を参入の利益率に掛ける | 閉鎖は1年ほど動かないか赤字が続いてから | 値段が戻れば操業目標を上げる | 不況の操業短縮と工場の閉鎖 | `firms.exit_idle_turns`, `firms.exit_loss_turns` |
-| 0 になる | 稼働率 0 が続けば閉鎖。島の作り手が 0 の財は品切れの値段（タブ 3）と参入の合図になる。国庫が 0 だと国庫直轄の施設の仕入れが削られて止まる（遅配はタブ 6）。資産を持つ層の預金が 0 だと出資できず民営工場が建たない |  | 輸入（タブ 9）、国営で建てる |  | `firms.equity_share` |
+| 0 になる | 稼働率 0 が続けば閉鎖。島の作り手が 0 の財は品切れの値段（タブ 3）と参入の合図になる。国庫が 0 だと国庫直轄の施設の仕入れが削られて止まる（遅配はタブ 6）。資本家階級の預金が 0 だと出資できず民営工場が建たない |  | 輸入（タブ 9）、国営で建てる |  | `firms.equity_share` |
 | 一部だけ（層の中の少しの人、島の中の 1 か所） | 島に1つの施設（漁港・穀物の農場）が止まると島じゅうが困る。暴動は農林水産業を止めない。鉱山が上限の島では原料の空きが足りず下流の工場が建たない | 暴動は数ターン | 国営で建てる・輸入 | 1つの工場の事故で部品が途切れる |  |
-| 持ち主・相手がいない | 差し押さえた施設に買い手がなければ取り壊す。計画経済の島には民営がない。出資する資産を持つ層がいなければ建たない。撤退した施設の残りの在庫は国が市場の値段で引き取る | 決めたターン数 |  |  | `firms.foreclosure_turns`, `firms.foreclosure_price` |
+| 持ち主・相手がいない | 差し押さえた施設に買い手がなければ取り壊す。計画経済の島には民営がない。出資する資本家階級がいなければ建たない。撤退した施設の残りの在庫は国が市場の値段で引き取る | 決めたターン数 |  |  | `firms.foreclosure_turns`, `firms.foreclosure_price` |
 | 時間がたつ（満期・寿命・一巡・育ちきった後） | 設備は帳簿の上で減価償却するが物は傷まない（回6 で傷む形にする）。建てる工事が一巡すると機械と鋼材の買い手が細る（回6 の置き換えで戻す）。使わない産業の経験は年に減る。民営の工事は進まなければやめる | 減価償却は20年。回2 の測りでは工事が一巡した 301〜500 ターンに機械の売れ行きが大きく下がった | 回6 の置き換えの投資 | 現実の工業国では設備の傷みが GDP の 15〜20% ほどで、投資の多くは置き換え | `firms.depreciation_turns`, `experience.decay`, `firms.abandon_turns` |
 
 ## 前提と依存

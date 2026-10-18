@@ -39,27 +39,27 @@ from server.world.repository import bond_from_row, facility_from_row, load_money
 
 DEFAULT_TURNS = 120  # 範囲を決めないときに返すターン数（10年）
 MAX_TURNS = 2400  # 1回に返せるターン数
-MAX_NAMES = 40  # 1回に選べる名前の数
+MAX_NAMES = 60  # 1回に選べる名前の数（経済の画面のグラフの名前と、選んで見る1つが入る数）
 MAX_SERIES = 80  # 1回に返せる系列の数（名前の頭で選んだ分を含む）
 
 # --- 統計の表示名と単位 ---------------------------------------------------------------
 
 LAYER_NAMES = {
-    GENERAL: "一般の労働者",
-    OWNERS: "資産を持つ層",
+    GENERAL: "労働者階級",
+    OWNERS: "資本家階級",
     ENGINEERS: "技術者",
-    JOBLESS: "失業している労働者",
+    JOBLESS: "失業者",
 }
 LAYER_FIELDS = {
     "persons": ("の人数", "人"),
-    "income": ("の所得（このターン）", "money"),
+    "income": ("の所得（1ターン）", "money"),
     "income_per_person": ("の1人あたりの所得", "money"),
     "deposits": ("の預金", "money"),
     "happiness": ("の幸福度", ""),
     # 飢えの知らせ（Codex の試し遊び、ターン 250〜300）
-    "food": ("の食べられた割合（要る量に対して）", "%"),
-    "hunger": ("の飢えの蓄え（栄養の不足の月数）", " か月分"),
-    "starved": ("の飢えで亡くなった人（このターン）", "人"),
+    "food": ("の食料充足率", "%"),
+    "hunger": ("の栄養不足の累積月数", " か月分"),
+    "starved": ("の餓死者数（1ターン）", "人"),
 }
 BANK_FIELDS = {
     "deposits": ("預金", "money"),
@@ -95,53 +95,53 @@ _EXTRA_STATS = [
     ("money.deposits", "預金の総額", "money"),
     ("money.central_bank", "中央銀行のお金（準備預金と国庫）", "money"),
     ("cb_lending", "中央銀行の銀行への貸し出し", "money"),
-    ("bonds.underwritten", "中央銀行の国債の直接の引き受け（このターン）", "money"),
-    ("bonds.traded", "国債の売買（このターン）", "money"),
-    ("bonds.cb_bought", "中央銀行が買った国債（このターン）", "money"),
-    ("bonds.cb_sold", "中央銀行が売った国債（このターン）", "money"),
+    ("bonds.underwritten", "中央銀行の国債の直接の引き受け（1ターン）", "money"),
+    ("bonds.traded", "国債の売買（1ターン）", "money"),
+    ("bonds.cb_bought", "中央銀行が買った国債（1ターン）", "money"),
+    ("bonds.cb_sold", "中央銀行が売った国債（1ターン）", "money"),
     ("bonds.central_bank", "中央銀行が持つ国債", "money"),
-    ("inequality", "格差（資産を持つ層と一般の労働者の1人あたりの所得の比）", "ratio"),
-    ("profit", "施設の損益の合計（このターン）", "money"),
+    ("inequality", "格差（資本家階級と労働者階級の1人あたりの所得の比）", "ratio"),
+    ("profit", "事業所の損益合計（1ターン）", "money"),
     ("freight.surcharge", "運賃の割り増し（運送業の人手不足）", "ratio"),
-    ("loans.write_off", "貸し倒れ（このターン）", "money"),
-    ("power.used", "届いた電力", "good:electricity"),
-    ("food.need", "食料の必要量", "good:food"),
-    ("food.supplied", "届いた食料", "good:food"),
-    ("education.goal", "学校に通えている子どもの割合（動いている学校の定員から）", "percent"),
-    ("education.schooled", "働き手に加わる若い人のうち学んだ人の割合", "percent"),
-    ("education.seats", "動いている学校の定員", "人"),
-    ("engineers.employed", "働いている技術者", "人"),
-    ("engineers.seated", "技術者の席に就いた技術者", "人"),
+    ("loans.write_off", "貸倒損失（1ターン）", "money"),
+    ("power.used", "電力供給量", "good:electricity"),
+    ("food.need", "食料需要量", "good:food"),
+    ("food.supplied", "食料供給量", "good:food"),
+    ("education.goal", "就学率（稼働している学校の収容定員から）", "percent"),
+    ("education.schooled", "新規労働力の修学率", "percent"),
+    ("education.seats", "学校の収容定員", "人"),
+    ("engineers.employed", "技術者の就業者数", "人"),
+    ("engineers.seated", "技術職に就いた技術者数", "人"),
     ("engineers.wage", "技術者の平均賃金", "money"),
-    ("engineers.trained", "大学が育てた技術者（このターン）", "人"),
-    ("engineers.retired", "引退した技術者（このターン）", "人"),
+    ("engineers.trained", "技術者の新規養成数（1ターン）", "人"),
+    ("engineers.retired", "技術者の退職者数（1ターン）", "人"),
     ("infra.queued", "インフラの工事の列のマス", " マス"),
-    ("works.workers", "公共事業の作業員", "人"),
-    ("firms.private_sites", "民営の工事中の施設", ""),
-    ("firms.abandoned", "建設をやめた民営の工事（このターン）", ""),
+    ("works.workers", "公共事業の従事者数", "人"),
+    ("firms.private_sites", "民間の建設中の事業所数", ""),
+    ("firms.abandoned", "民間の建設中止件数（1ターン）", ""),
     ("fiscal.revenue", "財政の収入（国債の発行を除く）", "money"),
     ("fiscal.spending", "財政の支出（国債の償還を除く）", "money"),
     ("fiscal.balance", "財政の収支", "money"),
     # 貿易と為替（フェーズ3-1）
-    ("trade.exports", "輸出（このターン）", "money"),
-    ("trade.imports", "輸入（このターン。海外の商人を含む）", "money"),
+    ("trade.exports", "輸出（1ターン）", "money"),
+    ("trade.imports", "輸入（海外の商人を含む。1ターン）", "money"),
     ("trade.balance", "貿易収支（輸出 − 輸入）", "money"),
-    ("trade.merchant", "海外の商人から買った額（このターン）", "money"),
+    ("trade.merchant", "海外の商人から買った額（1ターン）", "money"),
     ("trade.unpaid", "お金が足りず払えなかった運賃と港の使用料", "money"),
     ("ships", "輸送船", " 隻"),
     ("ships.busy", "航海に出ている輸送船", " 隻"),
     ("freight.ship_rate", "船の運賃（荷 1 トン・1 区画あたり）", "money"),
-    ("port.handled", "港で積み下ろした荷（このターン）", " トン"),
+    ("port.handled", "港で積み下ろした荷（1ターン）", " トン"),
     ("fx.holdings", "外貨の持ち高（今のレートで自国通貨に直した額）", "money"),
     ("money.nonresident", "外国が持つ自国通貨（非居住者の預金）", "money"),
     # 産業政策と国際金融（フェーズ3-3）
-    ("trade.tariffs", "関税の収入（このターン）", "money"),
+    ("trade.tariffs", "関税の収入（1ターン）", "money"),
     ("trade.tariff_unpaid", "お金が足りず払えなかった関税", "money"),
-    ("trade.export_subsidies", "輸出補助（このターン）", "money"),
+    ("trade.export_subsidies", "輸出補助（1ターン）", "money"),
     ("trade.subsidy_unpaid", "予算が足りず払えなかった輸出補助", "money"),
-    ("aid.sent", "送ったお金の援助（このターン）", "money"),
-    ("aid.received", "受け取ったお金の援助（このターン）", "money"),
-    ("bop.current", "経常収支（このターン）", "money"),
+    ("aid.sent", "資金援助の供与（1ターン）", "money"),
+    ("aid.received", "資金援助の受入（1ターン）", "money"),
+    ("bop.current", "経常収支（1ターン）", "money"),
     ("bop.goods", "経常収支・貿易収支", "money"),
     ("bop.services", "経常収支・サービス収支", "money"),
     ("bop.income", "経常収支・所得収支（外国の国債と融通の利子）", "money"),
@@ -161,45 +161,45 @@ _EXTRA_STATS = [
     ("foreign_bonds.cb", "中央銀行が持つ外国の国債（時価）", "money"),
     ("foreign_bonds.banks", "市中銀行が持つ外国の国債（時価）", "money"),
     ("bonds.foreign", "外国が持つ自国の国債（額面）", "money"),
-    ("bonds.bought_abroad", "入札で外国が買った国債（このターン）", "money"),
-    ("fx.peg_broken", "固定相場が外れた通貨の数（このターン）", ""),
+    ("bonds.bought_abroad", "入札で外国が買った国債（1ターン）", "money"),
+    ("fx.peg_broken", "固定相場が外れた通貨の数（1ターン）", ""),
     ("titles", "持っている称号の数", ""),
     # 国をまたぐ移民（バランス調整の回3）
-    ("migration.left", "ほかの国へ移り住んだ人（このターン）", "人"),
-    ("migration.arrived", "ほかの国から移り住んできた人（帰ってきた人も。このターン）", "人"),
-    ("migration.returned", "国外から帰ってきた人（このターン）", "人"),
-    ("migration.escaped", "出国を止められたのに国境を越えた人（このターン）", "人"),
-    ("migration.trapped", "出たいのに出国を止められている人（1年あたり）", "人"),
-    ("migration.seized", "国を出た人から国が引き取った預金（このターン）", "money"),
-    ("migration.remittance_in", "国外に住む人からの仕送り（このターン）", "money"),
-    ("migration.remittance_out", "国外への仕送り（このターン）", "money"),
-    ("migration.abroad", "国外に住む、この国から移った人", "人"),
-    ("migration.foreign_born", "ほかの国から移ってきて住んでいる人", "人"),
+    ("migration.left", "出国者数（移住。1ターン）", "人"),
+    ("migration.arrived", "入国者数（移住。帰国者を含む。1ターン）", "人"),
+    ("migration.returned", "帰国者数（1ターン）", "人"),
+    ("migration.escaped", "不法出国者数（1ターン）", "人"),
+    ("migration.trapped", "出国制限下の出国希望者数（1年あたり）", "人"),
+    ("migration.seized", "出国者資産の接収額（1ターン）", "money"),
+    ("migration.remittance_in", "個人送金の受取（1ターン）", "money"),
+    ("migration.remittance_out", "個人送金の支払（1ターン）", "money"),
+    ("migration.abroad", "在外自国民", "人"),
+    ("migration.foreign_born", "在留外国人", "人"),
     # 政治と計画経済（フェーズ3-4）
     ("politics.stability", "政情（0〜100）", ""),
     ("politics.target", "政情の目標（いまの島の様子から）", ""),
     ("politics.support", "支持率", "percent"),
     ("politics.seats", "与党の議席", "percent"),
-    ("politics.halted", "暴動で止まった施設（このターン）", ""),
-    ("politics.destroyed", "暴動で壊された施設（このターン）", ""),
-    ("labor.mobilized", "労働の動員で働く人", "人"),
+    ("politics.halted", "暴動による操業停止（1ターン）", ""),
+    ("politics.destroyed", "暴動による損壊（1ターン）", ""),
+    ("labor.mobilized", "労働動員の従事者数", "人"),
     ("plan.queue", "行列（家計が配給で買えなかった割合。公定価格の額で）", "%"),
-    ("plan.forced_saving", "強制貯蓄（配給で買えずに残ったお金。このターン）", "money"),
+    ("plan.forced_saving", "強制貯蓄（配給で買えずに残ったお金。1ターン）", "money"),
     # 据え置きの補助金は帳簿の上の額（独立採算の施設への補助に加え、国庫直轄の施設の分も含む。
     # 国庫直轄の分は国庫の中で付け替えるだけ）。国庫から出た現金は fiscal.out.subsidy
-    ("plan.subsidy", "据え置きの補助金（帳簿の上の額。国庫直轄の分も。このターン）", "money"),
+    ("plan.subsidy", "据え置きの補助金（帳簿の上の額。国庫直轄の分も。1ターン）", "money"),
     ("plan.subsidy_unpaid", "国庫が足りず払えなかった据え置きの補助金", "money"),
-    ("trade.merchant_gap", "海外の商人に政府が払った、公定価格との差（このターン）", "money"),
+    ("trade.merchant_gap", "海外の商人に政府が払った、公定価格との差（1ターン）", "money"),
     ("cars.households", "家計が持つ自動車", " 台"),
     # サービスの仕事と人口の増え方（バランス調整の回4）
-    ("services.workers", "商業・サービス業で働く人", "人"),
-    ("services.sales", "サービスの売上（このターン）", "money"),
-    ("services.sold", "売れたサービス（このターン）", "good:services"),
-    ("services.unused", "売れ残って消えたサービス（このターン）", "good:services"),
-    ("population.births", "生まれた人（このターン）", "人"),
-    ("population.deaths", "亡くなった人（飢えのほか。このターン）", "人"),
-    ("population.starved", "飢えで亡くなった人（このターン）", "人"),
-    ("population.overcrowded", "住む所の上限を超えて詰めて住む人", "人"),
+    ("services.workers", "商業・サービス業就業者数", "人"),
+    ("services.sales", "サービスの売上高（1ターン）", "money"),
+    ("services.sold", "サービスの販売量（1ターン）", "good:services"),
+    ("services.unused", "サービスの売れ残り（1ターン）", "good:services"),
+    ("population.births", "出生数（1ターン）", "人"),
+    ("population.deaths", "死亡数（餓死を除く。1ターン）", "人"),
+    ("population.starved", "餓死者数（1ターン）", "人"),
+    ("population.overcrowded", "過密居住者数（住宅の上限を超えて住む人）", "人"),
 ]
 _STATS = {key: (label, unit) for key, label, unit in [*display.SUMMARY_STATS, *_EXTRA_STATS]}
 # 名前の頭が財のもの（後ろに財の名前が続く）
@@ -428,7 +428,8 @@ def _derive(table: dict[str, dict[int, float]]) -> None:
 
 
 def economy_charts() -> list[dict[str, Any]]:
-    """経済の画面のグラフ: 見出しと、描く統計の名前（末尾の * は、その頭の統計すべて）。"""
+    """経済の画面のグラフ: 見出しと、描く統計の名前（末尾の * は、その頭の統計すべて）。pie は
+    円グラフ（選んだ1つのターンの内訳）。"""
     defs = get_game().defs
     return [
         {"title": "GDP（1ターン）", "names": ["gdp"]},
@@ -437,7 +438,7 @@ def economy_charts() -> list[dict[str, Any]]:
         {"title": "政策金利と国債の利回り", "names": ["policy_rate", "yield.*"]},
         {"title": "財政の収支（1ターン）", "names": list(DERIVED)},
         {
-            "title": "層ごとの1人あたりの所得（1ターン）",
+            "title": "階級ごとの1人あたりの所得（1ターン）",
             "names": [f"layer.{layer}{PER_PERSON}" for layer in LAYER_NAMES],
         },
         {"title": "格差（1人あたりの所得の比）", "names": ["inequality"]},
@@ -450,15 +451,20 @@ def economy_charts() -> list[dict[str, Any]]:
         {"title": "電力の不足率", "names": ["power.shortage"]},
         {"title": "人口と就業者", "names": ["population", "labor", "employed", "services.workers"]},
         {
-            "title": "生まれた人と亡くなった人（1ターン）",
+            "title": "人口の内訳（階級ごと）",
+            "names": [f"layer.{layer}.persons" for layer in LAYER_NAMES],
+            "pie": True,
+        },
+        {
+            "title": "出生数と死亡数（1ターン）",
             "names": ["population.births", "population.deaths", "population.starved"],
         },
         {
-            "title": "国をまたぐ移民（1ターン）",
+            "title": "国際人口移動（1ターン）",
             "names": ["migration.left", "migration.arrived", "migration.returned"],
         },
         {
-            "title": "国外に住む出身者と、ほかの国から来た人",
+            "title": "在外自国民と在留外国人",
             "names": ["migration.abroad", "migration.foreign_born"],
         },
     ]
@@ -763,6 +769,47 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
         "profit": display.money_text(total, currency),
         "shops": shops,
     }
+
+
+# 産業の分類（定義の industry）を持たない施設の、産業ごとの働く人の円グラフでの分け方
+SECTOR_NAMES = {
+    "government_office": "公務",
+    "police": "公務",
+    "school": "教育",
+    "university": "教育",
+    "bank": "金融",
+    "transport": "運輸",
+    "port": "運輸",
+    "shipping": "運輸",
+    "trading": "商社",
+    "services": "商業・サービス業",
+}
+
+
+def industry_workers(island: m.Island) -> list[dict[str, Any]]:
+    """産業ごとの、いま施設で働いている人（技術者を含む。町と工事中の施設を除く）。
+    施設の画面の円グラフに使う（誰にでも。国全体の数だけ）。多い順。"""
+    game = get_game()
+    defs, config = game.defs, game.config
+    housing = fac.housing_kind(config)
+    totals: dict[str, int] = defaultdict(int)
+    names: dict[str, str] = {}
+    for row in island.facilities.exclude(kind=housing).filter(built=True):
+        f = facility_from_row(row)
+        fdef = defs.facilities.get(f.kind, {})
+        workers = f.workers  # 技術者を含む
+        if workers <= 0:
+            continue
+        industry = fdef.get("industry")
+        if industry:
+            key, name = industry, defs.name("industries", industry)
+        else:
+            name = SECTOR_NAMES.get(f.kind) or defs.name("facilities", f.kind)
+            key = f"sector:{name}"
+        totals[key] += workers
+        names[key] = name
+    rows = [{"key": k, "label": names[k], "value": v} for k, v in totals.items()]
+    return sorted(rows, key=lambda r: -r["value"])
 
 
 def town_rows(island: m.Island) -> list[dict[str, Any]]:

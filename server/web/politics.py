@@ -31,7 +31,7 @@ from server.world.repository import island_from_row
 PART_NAMES = {
     "base": "基準",
     "happiness": "幸福度",
-    "unemployment": "失業率",
+    "unemployment": "完全失業率",
     "inflation": "物価上昇率",
     "inequality": "格差",
     "regime": "体制",
@@ -48,7 +48,7 @@ EVENT_NAMES = {
 # 政情の元にした数の表示名と単位（display.stat_text の単位）
 FACT_NAMES = {
     "happiness": ("幸福度", ""),
-    "unemployment": ("失業率", "percent"),
+    "unemployment": ("完全失業率", "percent"),
     "inflation": ("物価上昇率（年率）", "percent"),
     "inequality": ("格差（ジニ係数）", "fx"),
 }

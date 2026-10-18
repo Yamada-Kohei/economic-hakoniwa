@@ -128,7 +128,7 @@ def test_market_api_shows_trades_only_to_owner(client, world):
     island.save()
     data = client.get(url).json()
     [trade] = data["trades"]
-    assert trade["buyer_name"] == "家計（一般の労働者）"
+    assert trade["buyer_name"] == "家計（労働者階級）"
     assert trade["seller"] == f"fac:{seller.number}" and trade["seller_name"]
     assert trade["quantity"] == 2.0 and trade["price"] == 110
     assert client.get(f"/api/islands/{island.id}/market/unknown_good").status_code == 404

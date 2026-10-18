@@ -17,7 +17,7 @@ from hakoniwa_core.units import BASIS
 from server.accounts import keys
 from server.turns.models import TurnLog
 from server.turns.services import run_turn
-from server.web import counter, mcp, rankings, top
+from server.web import counter, display, mcp, rankings, top
 from server.web.models import AccessCounter, KiribanGetter, SiteUpdate, Visit
 from server.world import models as m
 
@@ -74,7 +74,7 @@ def test_table_shows_titles_and_ai_mark(client, world):
     a.save(update_fields=["owner"])
     keys.issue(user)
     rows = {r["island"]: r for r in client.get("/").context["table"]}
-    assert rows[b.id]["titles"] == ["鉄鋼の国"]
+    assert rows[b.id]["titles"] == [display.title_name("steel")]
     assert rows[a.id]["ai"] and not rows[b.id]["ai"]
     html = client.get("/").content.decode()
     row = html.split(f'href="/islands/{a.id}/"')[1].split("</tr>")[0]

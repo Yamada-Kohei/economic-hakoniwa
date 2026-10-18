@@ -41,7 +41,7 @@
 | FX-19 | 輸入の指値は圏の値幅の上端まで。狙う量を買えなかったわけ（値段・船・積める量・お金・売り手）を貿易の画面に出す | 決定 |  | tests/core/test_playtest5_fixes.py::test_import_bids_stop_at_the_band_top_and_say_why_they_fall_short, tests/server/test_trade.py::test_every_import_shortfall_reason_has_a_name |
 | FX-20 | 売れ残った荷は決めたターン数の後に指値を外して売る。輸入した物は仕入れ値の決めた割合より安くは売らず、輸出の荷は圏で長く売れ残ったら島の市場に戻す | 決定 | `trade.clearance_turns` | （未確認） |
 | FX-21 | 島で買い手がいるのに売りに出ていない物は、前のターンに圏の市場に売りがあった財だけ、輸入が引き合う値段まで値幅ずつ上げる。売りに出ているのに買い手のいない物は、輸出が引き合う値段まで下げる | 決定 |  | tests/core/test_phase3_2.py::test_import_floor_only_for_goods_on_sale_in_the_bloc, tests/core/test_trade.py::test_goods_nobody_buys_fall_toward_the_export_price |
-| FX-22 | 民営の商社は、島の商社の扱った重さの平均が上限の決めた割合を超え、空いたオフィス街があり、資産を持つ層が出資できれば開く（計画経済は開かない）。島に商社がなくなったら、決めたターン数の後に体制の既定の持ち主で開き直す | 決定 | `trade.entry_threshold`, `trade.entry_turns`, `trade.trader_capital` | tests/core/test_trade.py::test_new_port_and_trading_company_start_rather_than_restart |
+| FX-22 | 民営の商社は、島の商社の扱った重さの平均が上限の決めた割合を超え、空いたオフィス街があり、資本家階級が出資できれば開く（計画経済は開かない）。島に商社がなくなったら、決めたターン数の後に体制の既定の持ち主で開き直す | 決定 | `trade.entry_threshold`, `trade.entry_turns`, `trade.trader_capital` | tests/core/test_trade.py::test_new_port_and_trading_company_start_rather_than_restart |
 | FX-23 | 二国間契約は一方の政府が「相手・財・1ターンの量・値段・通貨（どちらかの国）・期間」を示し、相手が受けると次のターンから効く。申し込んだ国は自分で受けられない | 決定 |  | tests/core/test_trade.py::test_contract_delivers_goods_and_money, tests/core/test_trade.py::test_contract_cannot_be_accepted_by_the_proposer |
 | FX-24 | 売り手の国は国の倉庫から出し、足りなければ島の市場で優先して買う。足りないターンは払える分だけ履行し、不足を両方のログと契約の画面に残す（罰はない）。やめるのは命令の決めたターン数の後 | 決定 | `trade.contract_cancel_turns` | tests/core/test_trade.py::test_contract_delivers_goods_and_money |
 | FX-25 | 契約で届いた物の行き先は買い手が契約ごとに選ぶ: 市場に出す（既定。売り切れるまで島の今の値段で売る）か国の倉庫に入れるか。腐る物はどちらでもすぐ市場に出す | 決定 |  | tests/core/test_playtest5_fixes.py::test_contract_goods_go_to_the_market_by_default, tests/core/test_playtest5_fixes.py::test_contract_goods_can_stay_in_the_warehouse, tests/core/test_playtest5_fixes.py::test_only_the_buyer_chooses_where_contract_goods_go, tests/core/test_trade.py::test_perishables_arriving_in_the_warehouse_go_to_the_market |
@@ -128,7 +128,7 @@
 - 狙う量は財ごとに、毎ターン「売れた量 ＋ 足りない量の分け前」へ `trade.target_speed` の割合だけ近づける（荷が島と圏の間で行ったり来たりしないように）。足りない量は同じ財を扱う商社の数で分ける。値段の差があって手元の荷を売り切ったときは全力の1割ずつ多めに狙い、島の値段が輸入の原価を決めた割合より上回るときは島の買いたい量より多めに狙う（売りを増やして値段を原価のほうへ下げる）。
 - 島の値段の合図: 島で買い手がいるのに売りに出ていない物は、作る施設の変動費と同じく、輸入が引き合う値段まで1ターンに値幅ずつ島の値段を上げる。前のターンに圏の市場に売りがあった財だけにする（誰も作っていない自動車で、島の値段と圏の買いの指値が互いを追いかけて上がり続けたため）。売りに出ているのに買い手のいない物は、輸出が引き合う値段まで下げる（タブ 3 MK-13）。
 - 空いた船と港の積み下ろしの余裕は、契約の分を先に取り、残りを各社の扱える重さに比べて分ける。商社どうしは島でも圏でもそれぞれ注文を出して競うので、増えるほど取り分が薄くなる。
-- 開業と撤退: 民営の商社は、島の商社の扱った重さが直近 `trade.entry_turns` ターンの平均で上限の `trade.entry_threshold` を超え、商社の数が上限に届いておらず、空いたオフィス街のマスがあり、資産を持つ層が `trade.trader_capital` の出資をできれば、もう1つ開く。民営が入れるかは経済体制による（計画経済は開かない）。撤退の決まりはなく、ふつうの倒産だけ。島に商社がなくなったら `trade.entry_turns` ターン後に体制の既定の持ち主で開き直す。政府は建設の命令で国営の商社を建てられる。
+- 開業と撤退: 民営の商社は、島の商社の扱った重さが直近 `trade.entry_turns` ターンの平均で上限の `trade.entry_threshold` を超え、商社の数が上限に届いておらず、空いたオフィス街のマスがあり、資本家階級が `trade.trader_capital` の出資をできれば、もう1つ開く。民営が入れるかは経済体制による（計画経済は開かない）。撤退の決まりはなく、ふつうの倒産だけ。島に商社がなくなったら `trade.entry_turns` ターン後に体制の既定の持ち主で開き直す。政府は建設の命令で国営の商社を建てられる。
 - 国が貿易の施設1つに出す運転資金は、国庫の使えるお金の1割まで（`setup.py` の `GOV_SHARE`）。
 - 計画経済の島（公定価格のある島）の商社は、値段の差でなく貿易の独占として動く（タブ 10）: 島の市場で買えなかった量（行列）のある財を圏の値段の一番安い圏から輸入し、売れ残った財を輸出する。島では公定価格で売り買いし、圏では輸出の荷を指値なしで売り、輸入は値幅の上端まで買う。輸入に使えるのは商社が輸出で得た外貨だけ（為替で外貨を買わず、余った外貨も売らない）。何社あっても計画の量を扱える重さに比べて分ける。
 

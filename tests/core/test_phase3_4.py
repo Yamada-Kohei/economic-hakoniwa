@@ -62,7 +62,10 @@ def order(kind, payload):
 
 def logs_ok(game, island):
     for e in island.log:
-        text = format_log(game.defs, e.kind, e.args)
+        args = dict(e.args)
+        if e.kind.startswith("title_"):  # 称号の名前は、画面に出すときにサーバーが足す
+            args["title"] = game.defs.name("messages", f"title_name_{args['industry']}")
+        text = format_log(game.defs, e.kind, args)
         assert "{" not in text, (e.kind, text)
 
 

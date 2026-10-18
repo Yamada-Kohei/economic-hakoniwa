@@ -199,7 +199,7 @@ def industry_rows(
             {
                 "industry": industry,
                 "name": defs.name("industries", industry),
-                "title": title_name(industry),
+                "title": display.title_name(industry),
                 "holder": holder,
                 "holder_name": islands.get(holder, {}).get("name", "") if holder else "",
                 "top": [
@@ -237,13 +237,8 @@ def island_strengths(island: m.Island, stats: dict[str, float]) -> dict[str, Any
     held = sorted(industry for industry, holder in titles.items() if holder == island.id)
     return {
         "strengths": strengths,
-        "titles": [title_name(industry) for industry in held],
+        "titles": [display.title_name(industry) for industry in held],
     }
-
-
-def title_name(industry: str) -> str:
-    """産業の称号の表示名（順位の画面・島の画面・島の一覧で同じ）。"""
-    return f"{get_game().defs.name('industries', industry)}の国"
 
 
 def island_table(
@@ -266,7 +261,7 @@ def island_table(
     held: dict[int, list[str]] = {}
     for industry in defs.industries():
         if titles.get(industry) is not None:
-            held.setdefault(titles[industry], []).append(title_name(industry))
+            held.setdefault(titles[industry], []).append(display.title_name(industry))
     ai_owners = keys.ai_owner_ids(world.turn)
     rows = []
     founded: dict[int, int] = {}
