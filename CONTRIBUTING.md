@@ -12,6 +12,7 @@ pytest
 ```
 
 PostgreSQL でも確かめるときは `DATABASE_URL=postgres://... pytest`。CI は SQLite と PostgreSQL の両方で回ります。
+変えたファイルが `docs/` の下だけの PR では、CI は lint とゲームの試験を飛ばし、文書の確かめ（`tools/spec/design_index.py check` と docs/ を読む試験）だけを回します。
 
 ## コードの決まり
 
