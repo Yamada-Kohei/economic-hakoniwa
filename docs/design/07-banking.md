@@ -63,8 +63,8 @@
 | BK-40 | 救済と預金保護に国庫から出すのは、次のターンの優先の支払いを残した額まで。足りない分は預金の切り捨てで埋め、出したターンは国債で国庫を戻す（タブ 6 FS-13） | 決定 | `fiscal.rescue_after`, `banking.capital_floor` | tests/core/test_playtest_fixes.py::test_bailout_without_money_bails_in_and_leaves_bank_solvent, tests/core/test_codex2_fixes.py::test_bond_stats_include_bonds_issued_to_rescue_a_bank |
 | BK-41 | 銀行ごとに求める利回りは、市場の利回りに国債への偏り（国債の額面÷資産が決めた割合を超えた分）の上乗せを足す。計画経済の国営銀行は上乗せしない | 決定 | `banking.bond_concentration` | tests/core/test_balance_round5.py::test_bank_bids_all_spare_reserves_at_rising_yields |
 | BK-42 | 回5 で、刷ったお金が物価に効く経路を入れる（預金から使う割合を物価と実質金利で動かす・指値に物価の見通しを足す・物価の分は賃金に追わせる。タブ 3・4） | 決定（回5 で作る） |  | tests/core/test_shocks.py::test_printing_money_raises_prices |
-| BK-43 | 計画経済の国は中央銀行を独立させられない（命令は通らない）。独立したまま計画経済に移った国と、前の版の世界で独立している計画経済の国は、中央銀行の段で政府の一部に戻る（切り替えの後の戻せないターン数は見ない） | 決定（回5） |  | tests/core/test_balance_round5.py::test_planned_economy_cannot_make_its_central_bank_independent |
-| BK-44 | 独立した中央銀行は国債の売買の市場で売り買いする。準備預金の足りない銀行が指値なしで売りに出した国債は、同じ額だけ指値なしで買う（買いオペ）。足りない銀行がなければ、買いオペで買って残っている額まで（独立する前に引き受けた国債は売らない）を、今の利回りか市場が求める利回りの高いほうまでで売りに出し、持ち高の少ない銀行が余りのお金で買う分だけ売れる（売りオペ。買い手がいなければ満期まで持つ）。国が出す国債を入札で買うことはしない | 決定（回5） |  | tests/core/test_balance_round5.py::test_independent_central_bank_buys_from_short_banks_and_sells_back |
+| BK-43 | 計画経済の国は中央銀行を独立させられない（命令は通らない）。独立したまま計画経済に移った国（その命令のとき）と、前の版の世界で独立している計画経済の国（更新の段）は、政府の一部に戻る（プレイヤーの切り替えではないので、切り替えの後の戻せないターン数は見ず、数え始めもしない） | 決定（回5） |  | tests/core/test_balance_round5.py::test_planned_economy_cannot_make_its_central_bank_independent |
+| BK-44 | 独立した中央銀行は国債の売買の市場で売り買いする。準備預金の足りない銀行が指値なしで売りに出した国債は、同じ額だけ指値なしで買う（買いオペ）。足りない銀行がなければ、買いオペで買って残っている額まで（独立する前に引き受けた国債は売らない）を、今の利回りか市場が求める利回りの高いほうまでで売りに出し、持ち高の少ない銀行が余りのお金で買う分だけ売れる（売りオペ。買い手がいなければ持ち続け、満期は中央銀行の持ち分と同じく乗り換える）。中央銀行の買いの指値は今の利回りで、買うだけで利回りを動かさない。準備の足りない銀行の売りは、外国の持ち手の売りより先に中央銀行が買う。国が出す国債を入札で買うことはしない | 決定（回5） |  | tests/core/test_balance_round5.py::test_independent_central_bank_buys_from_short_banks_and_sells_back |
 
 ### 仮の決まり
 

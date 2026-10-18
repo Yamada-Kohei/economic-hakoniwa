@@ -67,7 +67,6 @@ class CentralBank(IslandStage):
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
         if not island.has_economy:
             return
-        end_for_planned(island, ctx)
         policy = island.policy
         if policy.cb_independent:
             new = ctx.formula("policy_rate")(island, ctx)
@@ -208,19 +207,27 @@ def set_independence(island: IslandState, payload: dict[str, Any], ctx: StageCon
 
 def end_for_planned(island: IslandState, ctx: StageContext) -> None:
     """計画経済の国の中央銀行が独立していれば、政府の一部に戻す（計画経済に移ったときと、独立を
-    選べなかった前の版の世界。切り替えの後の戻せないターン数は見ない）。"""
+    選べなかった前の版の世界。更新の段で呼ぶ）。プレイヤーの切り替えではないので、切り替えの後の
+    戻せないターン数は見ず、数え始めもしない。"""
     if island.policy.cb_independent and planning.is_planned(island, ctx.defs):
-        switch_independence(island, ctx, False)
-        island.log.append(LogEntry("cb_dependent_planned", {}))
+        switched = island.economy.finance.get("cb_switched")
+        switch_independence(island, ctx, False, kind="cb_dependent_planned")
+        if switched is None:
+            island.economy.finance.pop("cb_switched", None)
+        else:
+            island.economy.finance["cb_switched"] = switched
 
 
-def switch_independence(island: IslandState, ctx: StageContext, independent: bool) -> None:
-    """中央銀行の独立を切り替え、それに伴う政策を合わせる（命令 set_independence の中身）。"""
+def switch_independence(
+    island: IslandState, ctx: StageContext, independent: bool, kind: str = ""
+) -> None:
+    """中央銀行の独立を切り替え、それに伴う政策を合わせる（命令 set_independence の中身）。kind は
+    知らせるログの種類（既定は cb_independent か cb_dependent）。"""
     finance = island.economy.finance
     policy = island.policy
     policy.cb_independent = independent
     finance["cb_switched"] = ctx.turn
-    kind = "cb_independent" if policy.cb_independent else "cb_dependent"
+    kind = kind or ("cb_independent" if policy.cb_independent else "cb_dependent")
     island.log.append(LogEntry(kind, {}))
     if policy.cb_independent:
         policy.cb_bond_trade = 0

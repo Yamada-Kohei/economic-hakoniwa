@@ -680,7 +680,8 @@ class Bonds(WorldStage):
                 for k in range(count):
                     qty = min(held[k], -(-short * held[k] // total))
                     if qty > 0:
-                        sellers[k].append((Order(qty), bank))
+                        # 独立した中央銀行の買いオペが、外国の持ち手の売りより先にこれを買う
+                        sellers[k].append((Order(qty, priority=1), bank))
                         shortfall[k] += qty
             elif total > target * 11 // 10 and total > 0:
                 over = total - target
@@ -769,11 +770,14 @@ class Bonds(WorldStage):
         を、今の利回りか市場が求める利回りの高いほうまでで売りに出す（利回りをそれより押し上げて
         までは売らない。独立する前に引き受けた国債は売らず、満期の乗り換えで持ち続ける）。買うのは
         持ち高が目標より少なく、手元に余りのある銀行だけなので、銀行の準備を最低限より下げずに国債
-        を市場へ戻していく。買い手がいなければ満期まで持つ。"""
+        を市場へ戻していく。買い手がいなければ持ち続ける（満期は中央銀行の持ち分と同じく乗り換える。
+        国の黒字が準備を吸い上げ続ける島では、中央銀行が国債を持って準備を出し続ける形になる）。"""
         if any(shortfall):
             for k, qty in enumerate(shortfall):
                 if qty > 0:
-                    buyers[k].append((Order(qty), ledger.CB))
+                    # 指値は今の利回り（それ以上なら買う）。指値なしどうしだと値幅の端で約定し、
+                    # 中央銀行が買うだけで利回りが毎ターン値幅の分だけ動いてしまう
+                    buyers[k].append((Order(qty, yields[k]), ledger.CB))
             return
         total = sum(held)
         offer = min(omo, total)

@@ -239,10 +239,21 @@ def test_planned_economy_cannot_make_its_central_bank_independent(game, warmed):
         check_independence(planned, {"independent": True}, game.defs)
     assert failed.value.reason == "reason_cb_independence_planned"
     check_independence(island_of(world, "market"), {"independent": True}, game.defs)
+    # 前の版の世界で独立している計画経済の国は、更新の段で戻る（売れ残りの扱いも独立の前に）
+    from hakoniwa_core.modules.upgrade import Upgrade
+
     planned.policy.cb_independent = True
-    end_for_planned(planned, context(game, world))
+    planned.policy.bond_unsold = "cut"
+    planned.economy.finance["unsold_before"] = "underwrite"
+    planned.economy.finance.pop("cb_switched", None)
+    Upgrade().run_island(planned, context(game, world, "upgrade"))
     assert not planned.policy.cb_independent
-    assert planned.log[-1].kind == "cb_dependent_planned"
+    assert planned.policy.bond_unsold == "underwrite"
+    kinds = [e.kind for e in planned.log]
+    assert "cb_dependent_planned" in kinds and "cb_dependent" not in kinds  # 知らせは1度
+    assert "cb_switched" not in planned.economy.finance  # 戻せないターン数を数え始めない
+    end_for_planned(planned, context(game, world))  # 2度目は何もしない
+    assert kinds == [e.kind for e in planned.log]
 
 
 def test_independent_central_bank_buys_from_short_banks_and_sells_back(game, warmed):
@@ -264,9 +275,12 @@ def test_independent_central_bank_buys_from_short_banks_and_sells_back(game, war
     short = banks.excess_reserves(island, game.config, bank) + held * 2 // 3
     ledger.pay(island, bank, ledger.GOV, short, "tax_income")
     assert banks.excess_reserves(island, game.config, bank) < 0
+    yields = list(island.economy.finance["yields"])
     Bonds()._secondary(island, ctx)
     bought = sum(debt.holdings_of(island, ledger.CB).values()) - cb_before
     assert bought > 0
+    # 買うだけでは利回りを動かさない（指値なしどうしで値幅の端に飛ばない）
+    assert island.economy.finance["yields"] == yields
     assert sum(debt.holdings_of(island, bank).values()) == held - bought
     assert island.log[-1].kind == "cb_open_market_bought"
     assert banks.excess_reserves(island, game.config, bank) >= -held // 100  # 売った代金で戻った
