@@ -33,10 +33,10 @@
 | LB-11 | 最低賃金は命令 `set_labor_policy` で決める（決めなければなし）。労働の動員（全体主義。タブ 10）の賃金は最低賃金、なければ平均賃金の決めた割合 | 決定 | `fiscal.minimum_wage`, `politics.mobilization.wage` | tests/core/test_phase3_4.py::test_mobilization_puts_the_unemployed_to_work_in_state_factories |
 | LB-12 | 払えなかった賃金は「未払い賃金」として払い手（政府・独立採算の施設）の負債に残し、お金が入れば新しく雇う前に払う（政府は支払いの順番の `arrears`。今月の人件費と失業手当の後）。働く人はすぐには辞めず、未払いが続く月数に応じて少しずつ辞める。未払いの間は幸福度が下がる | 決定 | `fiscal.payment_order`, `labor.arrears_quit`, `population.happiness.arrears` | tests/core/test_balance_round3.py::test_unpaid_wages_stay_owed_and_are_paid_first_when_money_comes, ::test_workers_quit_little_by_little_while_wages_go_unpaid |
 | LB-13 | 倒産と撤退のとき、未払い賃金は未払いの税と貸し手より先に払われる（分け方の全体はタブ 5） | 決定 |  | tests/core/test_balance_round3.py::test_bankruptcy_pays_unpaid_wages_before_the_lenders |
-| LB-14 | 家計の層は、一般の労働者（家族と村の住民を含む）・失業している家計・技術者（家族を含む）・資産を持つ層の4つ。資産を持つ層は住民の決めた割合で、働かずに配当と預金の利子で暮らす。計画経済の島には置かない | 決定 | `household.layers.owners.share`, `household.layers.engineers.workers`, `household.layers.jobless.jobless` | tests/core/test_balance_round4.py::test_every_money_island_has_one_services_firm_owned_by_regime |
+| LB-14 | 家計の層は、一般の労働者（家族と村の住民を含む）・失業している家計・技術者（家族を含む）・資本家階級の4つ。資本家階級は住民の決めた割合で、働かずに配当と預金の利子で暮らす。計画経済の島には置かない | 決定 | `household.layers.owners.share`, `household.layers.engineers.workers`, `household.layers.jobless.jobless` | tests/core/test_balance_round4.py::test_every_money_island_has_one_services_firm_owned_by_regime |
 | LB-15 | 失業している家計の人数は賃金の段の初めに雇用の結果から数え直し（村で自給する人は除く）、仕事を失った人・見つけた人の預金を1人あたりの額で一緒に動かす。所得・預金・食べた量を仕事のある家計と別に持ち、お金のない家計から飢える | 決定 |  | tests/core/test_balance_round4.py::test_jobless_town_households_flee_while_others_still_eat |
 | LB-16 | 層を移る人（育った技術者・引退・失業と再就職・人口の増減の割り振り）は、元の層の1人あたりの預金と飢えの蓄えを一緒に持って移る（仕訳で付け替える） | 決定 |  | tests/core/test_balance_round4.py::test_people_back_from_their_fields_do_not_carry_the_market_hunger |
-| LB-17 | 収入は、働く層が賃金・失業手当・預金の利子、資産を持つ層が配当と預金の利子。民営の施設と民間銀行への出資、配当と払い戻し、国有化の代金、民営化の買い取りは資産を持つ層の預金で行う | 決定 |  | （未確認） |
+| LB-17 | 収入は、働く層が賃金・失業手当・預金の利子、資本家階級が配当と預金の利子。民営の施設と民間銀行への出資、配当と払い戻し、国有化の代金、民営化の買い取りは資本家階級の預金で行う | 決定 |  | （未確認） |
 | LB-18 | 層が使う額（式 `consumption`）は、直近の可処分所得の平均に層ごとの割合を掛けた分と、預金の決めた割合の和。割合は預金の実質金利が高いほど下がる。残りは預金に残る | 決定 | `household.layers.general.c1`, `household.layers.engineers.c1`, `household.layers.owners.c1`, `household.layers.jobless.c1`, `household.c2`, `household.income_turns`, `household.c1_rate_effect`, `household.c1_range` | （未確認） |
 | LB-19 | 使う順は、電気代（生産の段で払った分を差し引く）→ 必需品（食料・衣料。所得が上がるほど割合が下がる上限の中で）→ サービス → ぜいたく品（消費財・嗜好品）と自動車 → 町の資材。売りに出ていない物は買いたい量だけ記録する | 決定 | `power.household_share`, `household.necessity.share`, `household.necessity.fall`, `household.necessity.floor`, `household.base_income`, `household.targets.clothing`, `household.consumer_goods_share`, `household.luxury_weights.consumer_goods`, `household.luxury_weights.luxury_crop`, `household.cars.share`, `household.housing_share` | tests/core/test_phase3_2.py::test_necessity_share_falls_as_real_income_grows, ::test_luxury_budget_moves_past_goods_that_are_not_on_sale, ::test_cars_are_wanted_by_income_and_bought_a_little_at_a_time |
 | LB-20 | 食料は必要な量を、質を足した栄養あたりの値段の安い順に財ごとに割り振り、前のターンに売りに出ていた量を上限に、値幅の上端を指値に注文する。予算が足りなければ量を減らし、所得が上がれば質の高い食料に替える | 決定 | `population.food_per_person`, `household.food_elasticity` | tests/core/test_economy.py::test_food_split_prefers_cheap_goods_within_offers, ::test_upgrade_food_mixes_within_budget |
@@ -46,8 +46,8 @@
 | LB-24 | 消費税は家計が市場で買う物（食料・衣料・ぜいたく品・サービス）と電気に、代金に上乗せして政府に払う。家計の指値は税込みの予算から税抜きに直して出す（運賃も同じ） | 決定 | `fiscal.consumption_tax` | （未確認） |
 | LB-25 | 町の資材は、都市の発展の段が「育てる」と決めた分を一般の層が預金の決めた割合まで市場で買う（住宅への投資。町の育ち方はタブ 2） | 決定 | `household.housing_share` | （未確認） |
 | LB-26 | 村の仕事のない住民は自給の農業で自分の食べる分をまかない、市場で買わない。食べ物が買えないと村の働き手は仕事を休んで畑に戻り（食べ物を作る施設には勤める）、買えるようになれば少しずつ仕事に戻る | 決定 | `population.hunger.tolerance`, `labor.back_to_work` | tests/core/test_balance_round4.py::test_villagers_go_back_to_their_fields_when_food_cannot_be_bought, ::test_food_makers_hire_people_back_from_their_fields |
-| LB-27 | 幸福度は家計の層ごとに出して人数で平均する。資産を持つ層の働き口はいつも満点。実質賃金が1年前より下がった分、物価上昇が目安を超えた分、未払い賃金、飢えの蓄えは減点（項目の重みはタブ 2） | 決定 | `population.happiness.real_wage_per_point`, `population.happiness.real_wage_max`, `population.happiness.inflation_threshold`, `population.happiness.inflation_per_point`, `population.happiness.inflation_max`, `population.happiness.arrears`, `population.happiness.hunger` | （未確認） |
-| LB-28 | 建国のとき、働く層と資産を持つ層に1人あたりの預金を置き、一般の労働者の決めた割合を技術者にする。初めの賃金が値段の基準になる | 決定 | `founding.money.general_deposit`, `founding.money.owner_deposit`, `labor.initial_wage`, `education.engineer_share` | tests/server/test_economy.py::test_sample_world_starts_with_money |
+| LB-27 | 幸福度は家計の層ごとに出して人数で平均する。資本家階級の働き口はいつも満点。実質賃金が1年前より下がった分、物価上昇が目安を超えた分、未払い賃金、飢えの蓄えは減点（項目の重みはタブ 2） | 決定 | `population.happiness.real_wage_per_point`, `population.happiness.real_wage_max`, `population.happiness.inflation_threshold`, `population.happiness.inflation_per_point`, `population.happiness.inflation_max`, `population.happiness.arrears`, `population.happiness.hunger` | （未確認） |
+| LB-28 | 建国のとき、働く層と資本家階級に1人あたりの預金を置き、一般の労働者の決めた割合を技術者にする。初めの賃金が値段の基準になる | 決定 | `founding.money.general_deposit`, `founding.money.owner_deposit`, `labor.initial_wage`, `education.engineer_share` | tests/server/test_economy.py::test_sample_world_starts_with_money |
 | LB-29 | 財「サービス」はその場で作ってその場で使い、持ち越せず島の外へ運べない。島に1つの商業・サービス業（マスを持たない施設）が出し、倒産と撤退はせず、持ち主は経済体制の既定 | 作り直し予定（回7） | `services.good`, `services.facility` | tests/core/test_balance_round4.py::test_every_money_island_has_one_services_firm_owned_by_regime |
 | LB-30 | 家計は必需品を買った残りのうち所得に応じた割合をサービスに使う。実質の使う額が倍になるごとに増え、半分になるごとに減る。消費税はかかり、運賃はかからない | 決定（回7 でも残す） | `household.services.share`, `household.services.rise`, `household.services.floor`, `household.services.max`, `household.targets.services` | tests/core/test_balance_round4.py::test_services_share_rises_with_income |
 | LB-31 | 店の場所は通勤圏でいちばん人の多い集落で、雇う人数は場所ごとに買いに来る住民で割り振る。店はほかの施設が雇った後に残った失業者を雇い、引き抜かず、ほかの施設は賃金にかかわらず店から引き抜ける | 仮 | `labor.commute_radius` | tests/core/test_balance_round4.py::test_shops_hire_and_the_price_covers_wages |
@@ -114,13 +114,13 @@
 - 一般の労働者: 仕事のある一般の労働者と家族、村の住民。
 - 失業している家計: 一般の労働者のうち仕事のない人（村で自給の農業をしている人を除く）と家族。人数は賃金の段の初めに雇用の結果から数え直し、仕事を失った人・見つけた人の預金を1人あたりの額で一緒に動かします。失業手当はこの層に入り、仕事のある家計とは所得・預金・食べた量を別に持つので、お金のない家計から飢えます（カードで「家計を分ける」に決定）。
 - 技術者: 技術者と家族。島全体の働き手の人数から家族を合わせた人数を持ちます（`household.layers.engineers.workers`）。
-- 資産を持つ層: 住民の `household.layers.owners.share` で、働かずに配当と預金の利子で暮らします。島全体の人数として持ち、その分だけ一般の労働者が減ります。計画経済の島は民営の施設がないので置きません。
+- 資本家階級: 住民の `household.layers.owners.share` で、働かずに配当と預金の利子で暮らします。島全体の人数として持ち、その分だけ一般の労働者が減ります。計画経済の島は民営の施設がないので置きません。
 
-収入は、働く層が賃金・失業手当・預金の利子、資産を持つ層が配当と預金の利子です。民営の施設と民間銀行への出資は資産を持つ層の預金から出し、配当と出資の払い戻し、国有化の代金もこの層に入り、民営化で施設を買うのもこの層です（タブ 5・7）。
+収入は、働く層が賃金・失業手当・預金の利子、資本家階級が配当と預金の利子です。民営の施設と民間銀行への出資は資本家階級の預金から出し、配当と出資の払い戻し、国有化の代金もこの層に入り、民営化で施設を買うのもこの層です（タブ 5・7）。
 
-人の移り変わり: 大学が育てた技術者は一般の層から技術者の層へ、引退した技術者は一般の層へ移ります。人口の増減と移動は層の人数に比例して割り振り、資産を持つ層は決めた割合に保ちます。人が層を移るときは、元の層の1人あたりの預金と飢えの蓄えを一緒に移します（仕訳で付け替える）。
+人の移り変わり: 大学が育てた技術者は一般の層から技術者の層へ、引退した技術者は一般の層へ移ります。人口の増減と移動は層の人数に比例して割り振り、資本家階級は決めた割合に保ちます。人が層を移るときは、元の層の1人あたりの預金と飢えの蓄えを一緒に移します（仕訳で付け替える）。
 
-格差は、統計に資産を持つ層と一般の労働者の層の1人あたり可処分所得の比を残し、政情には3層の所得から出したジニ係数が効きます（タブ 10）。
+格差は、統計に資本家階級と一般の労働者の層の1人あたり可処分所得の比を残し、政情には3層の所得から出したジニ係数が効きます（タブ 10）。
 
 ### 家計の使い方
 
@@ -170,7 +170,7 @@
 
 ### 幸福度と政情への効き目
 
-幸福度は家計の層ごとに出して人数で平均します。一般の層はマスごと（働き口・電力・汚染はマスの値）、ほかの層は島全体で出し、資産を持つ層の「働き口」はいつも満点です。項目の重みと配り直しはタブ 2 です。仕事と家計から来る減点は、実質賃金が1年前より下がった分（`population.happiness.real_wage_per_point`、最大 `population.happiness.real_wage_max`）、物価上昇率が `population.happiness.inflation_threshold` を超えた分（`population.happiness.inflation_per_point`、最大 `population.happiness.inflation_max`）、未払い賃金（`population.happiness.arrears`）、飢えの蓄え（`population.happiness.hunger`、最大 `population.happiness.hunger_max`）です。政情の目標には失業率（`politics.weights.unemployment`・`politics.weights.unemployment_free`）と格差が、支持率には実質賃金と失業率の1年の伸びが効きます（タブ 10）。
+幸福度は家計の層ごとに出して人数で平均します。一般の層はマスごと（働き口・電力・汚染はマスの値）、ほかの層は島全体で出し、資本家階級の「働き口」はいつも満点です。項目の重みと配り直しはタブ 2 です。仕事と家計から来る減点は、実質賃金が1年前より下がった分（`population.happiness.real_wage_per_point`、最大 `population.happiness.real_wage_max`）、物価上昇率が `population.happiness.inflation_threshold` を超えた分（`population.happiness.inflation_per_point`、最大 `population.happiness.inflation_max`）、未払い賃金（`population.happiness.arrears`）、飢えの蓄え（`population.happiness.hunger`、最大 `population.happiness.hunger_max`）です。政情の目標には失業率（`politics.weights.unemployment`・`politics.weights.unemployment_free`）と格差が、支持率には実質賃金と失業率の1年の伸びが効きます（タブ 10）。
 
 ### 統計
 
@@ -185,7 +185,7 @@
 | 余る（仕事がない） | 失業のまま手当をもらい、村の人は自給に戻る。店がほかの施設の後に残った人を雇う（仮）。預金が使われない分は銀行の貸し出しに回る。賃金は失業がふつうより多くても下がらない（仮） | 失業はその場で。店の人数は売上に合わせて少しずつ | 回7 で店が賃金で取り合い、自営の小商いが受け皿になる。回5 で賃金が物価に追う。国をまたぐ移民（タブ 2） | 途上国の露天商や家族経営が失業の受け皿になる。景気のよいときでも失業は数% 残る | `labor.max_cut`, `labor.slack_speed`, `labor.natural_unemployment`, `services.labor_share` |
 | 0 になる（国庫・施設のお金） | 払えない賃金は未払い賃金として残り、働く人は払われないまま働き続け、月数に応じて少しずつ辞める。未払いの税も残す。お金が入れば先に払う | 未払いが続く月数で辞める割合が増える（半年で半分ほど） | お金が入れば未払いから先に払う。遅らせる役は未払い（遅配）、ずらす役は辞めて別の施設へ移ること | 1990 年代のロシアの賃金の遅配（数か月続いても多くの人は働き続けた） | `labor.arrears_quit`, `fiscal.payment_order`, `population.happiness.arrears` |
 | 一部だけ（層の中の少しの人、島の中の 1 か所） | 失業している家計を分けて持つので、お金のない家計から先に飢え、仕事のある家計は食べる。少しの人が飢えても層の全員がサービスとぜいたく品を買わなくなることはない。通勤圏に仕事のないマスの人だけが失業し、人手の足りない施設の通勤圏へ移る | 人の移りは1ターンに仕事のない人の決めた割合 | 就職すれば仕事のある家計に戻り、預金も一緒に移る | 失業者から飢える飢饉の現実 | `household.layers.jobless.jobless`, `population.migration_rate` |
-| 持ち主・相手がいない | 通勤圏に雇う施設がなければ失業のまま（手当・自給・移り住み）。技術者の席がなければ一般の席に就く。売りに出ていない物は買いたい量だけ記録し、作る施設や商社の合図にする。資産を持つ層のない計画経済の島は出資と配当がない | その場で | 民営の参入（タブ 5）・商社の輸入（タブ 9）・店の場所の通勤圏に人を呼ぶ | | `labor.commute_radius` |
+| 持ち主・相手がいない | 通勤圏に雇う施設がなければ失業のまま（手当・自給・移り住み）。技術者の席がなければ一般の席に就く。売りに出ていない物は買いたい量だけ記録し、作る施設や商社の合図にする。資本家階級のない計画経済の島は出資と配当がない | その場で | 民営の参入（タブ 5）・商社の輸入（タブ 9）・店の場所の通勤圏に人を呼ぶ | | `labor.commute_radius` |
 | 時間がたつ（満期・寿命・一巡・育ちきった後） | 技術者は毎ターン決めた割合で引退して一般の層に戻る（タブ 8）。未払いが長く続くほど辞める人が増え、やがて施設が空になる。預金の多い層は少しずつ取り崩す。自動車は毎年傷んで買い替える | 引退は毎ターン、取り崩しは毎ターン預金の決めた割合 | 大学の育成・働き口の回復 | | `education.retire_rate`, `household.c2`, `household.cars.wear` |
 
 ## 前提と依存
@@ -207,7 +207,7 @@
 - 家計の注文 → 食料・消費財・サービス・自動車・電力の需要と値段（タブ 3）。売れ行きの見込み → 操業目標 → 雇う人数、の輪。
 - 食べた量と飢えの蓄え → 人の生まれ亡くなり・逃れ・移民（タブ 2）。失業している家計から飢える。
 - 所得税・消費税の収入と失業手当の支出 → 財政（タブ 6）。公共事業費は失業の多さで膨らみ、失業が減ると借金の比が表に出る。
-- 家計の預金 → 銀行の預金と貸し出し、資産を持つ層の出資（タブ 5・7）。
+- 家計の預金 → 銀行の預金と貸し出し、資本家階級の出資（タブ 5・7）。
 - 失業率・実質賃金・格差 → 幸福度（タブ 2）と政情・支持率（タブ 10）。政情の失業の重みは設計の値に戻してある。
 - 平均賃金 → 公務員・作業員の賃金、初めの値段と公定価格の原価、関門の測り（タブ 6・3・12）。
 - 標準の計画と民営の場所探しは、店で働く人を「いつでも雇える人」と数える（回7 で見直す）。

@@ -168,6 +168,7 @@ def facilities_page(request, island_id: int):
     context["stats"] = reports.stat_rows(stats, FACILITY_STATS, context["currency"])
     context["chart_names"] = "facilities,construction,firms.private"
     context["towns"] = reports.town_rows(island)  # 町ごとの働く人（誰にでも。地図と同じ中身）
+    context["industry_workers"] = reports.industry_workers(island)  # 円グラフ（誰にでも）
     if context["mine"]:
         context["table"] = reports.facility_rows(island, context["currency"])
     else:

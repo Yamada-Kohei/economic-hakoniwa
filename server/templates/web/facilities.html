@@ -11,7 +11,7 @@
     <table class="facilities report-table">
       <thead><tr>
         <th>{% translate "施設" %}</th><th>{% translate "所有・会計" %}</th><th>{% translate "状態" %}</th>
-        <th>{% translate "労働者" %}</th><th>{% translate "技術者" %}</th><th>{% translate "稼働率" %}</th>
+        <th>{% translate "従業者" %}</th><th>{% translate "技術者" %}</th><th>{% translate "稼働率" %}</th>
         <th>{% translate "損益" %}</th><th>{% translate "合計" %}</th><th>{% translate "預金" %}</th><th>{% translate "借入" %}</th><th></th>
       </tr></thead>
       <tbody>
@@ -73,16 +73,26 @@
 </section>
 {% endif %}
 
+{% if industry_workers %}
+<section class="panel">
+  <h2>{% translate "産業ごとの従業者数" %} <small class="heading-date">{% translate "今" %}</small></h2>
+  <div class="charts">
+    <figure class="chart" data-slices="industry-workers" data-unit=" 人"><figcaption>{% translate "産業ごとの従業者数（技術者を含む）" %}</figcaption></figure>
+  </div>
+  {{ industry_workers|json_script:"industry-workers" }}
+</section>
+{% endif %}
+
 {% if towns %}
 <section class="panel">
-  <h2>{% translate "町ごとの働く人" %}</h2>
-  <p class="hint">{% translate "人の住むマスごとの、働ける人・仕事のある人・村で自給の農業をしている人・失業している人です（自給の農業の人は失業に数えません）。商業・サービス業で働く人は住んでいるマスで数えます。買いに行く店の場所は、通勤圏の中でいちばん人の多い集落です。" %}</p>
+  <h2>{% translate "町ごとの労働力" %}</h2>
+  <p class="hint">{% translate "人の住むマスごとの、労働力人口（働ける人）・就業者（仕事のある人）・自給農家（村で自給の農業をしている人）・失業者です（自給農家は失業者に数えません）。商業・サービス業就業者は住んでいるマスで数えます。買いに行く店の場所は、通勤圏の中でいちばん人の多い集落です。" %}</p>
   <div class="table-scroll">
     <table class="report-table">
       <thead><tr>
-        <th>{% translate "町" %}</th><th>{% translate "住民" %}</th><th>{% translate "働ける人" %}</th><th>{% translate "仕事のある人" %}</th>
-        <th>{% translate "自給の農業" %}</th><th>{% translate "失業" %}</th><th>{% translate "失業率" %}</th>
-        <th>{% translate "商業・サービス業で働く人" %}</th><th>{% translate "買いに行く店の場所" %}</th>
+        <th>{% translate "町" %}</th><th>{% translate "住民" %}</th><th>{% translate "労働力人口" %}</th><th>{% translate "就業者" %}</th>
+        <th>{% translate "自給農家" %}</th><th>{% translate "失業者" %}</th><th>{% translate "完全失業率" %}</th>
+        <th>{% translate "商業・サービス業就業者" %}</th><th>{% translate "買いに行く店の場所" %}</th>
       </tr></thead>
       <tbody>
         {% for t in towns %}

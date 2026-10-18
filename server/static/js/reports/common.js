@@ -1,7 +1,9 @@
 // 島の統計の画面（経済・市場・施設・財政・金融）で共通に使う道具: 数の書き方、期間の切り替え、
 // 統計の系列の API（/api/islands/<id>/economy）を読んで複数のグラフをまとめて描くこと。
 
+import { turnDate } from "../calendar.js";
 import { LineChart } from "../chart/line.js";
+import { PieChart } from "../chart/pie.js";
 import { getJson } from "../island/api.js";
 
 const compact = new Intl.NumberFormat("ja-JP", { notation: "compact", maximumFractionDigits: 1 });
@@ -46,6 +48,25 @@ export function makeChart(container, unit, currency, label) {
   });
 }
 
+/** 単位 unit の円グラフ（値は細かく書く）。 */
+export function makePie(container, unit, currency, label) {
+  return new PieChart(container, { label, format: (v) => formatValue(v, unit, currency, true) });
+}
+
+/**
+ * figure[data-slices]（[{ key, label, value }] の JSON を入れた script 要素の id）の円グラフを描く。
+ * 今の値だけで、ターンを選ばない。
+ */
+export function mountStaticPies(root = document) {
+  for (const figure of root.querySelectorAll("figure[data-slices]")) {
+    const body = document.createElement("div");
+    body.className = "pie-chart";
+    figure.append(body);
+    const label = figure.querySelector("figcaption")?.textContent.trim() || "";
+    makePie(body, figure.dataset.unit || "", figure.dataset.currency || "", label).setData(JSON.parse(document.getElementById(figure.dataset.slices).textContent));
+  }
+}
+
 /**
  * 期間の切り替えのボタン（data-range に ターン数 か all）。押すと onChange(ターン数 か null) を呼ぶ。
  * 選んだ期間は、同じ画面の別のボタンの組にもそろえる。
@@ -68,7 +89,8 @@ export function rangeQuery(range, turn) {
 
 /**
  * 統計のグラフの組: figure[data-names]（カンマ区切りの統計の名前。末尾の * はその頭の統計すべて）
- * ごとにグラフを作り、名前をまとめて1回の API で読む。
+ * ごとに折れ線を、figure[data-pie]（同じ書き方）ごとに円グラフを作り、名前をまとめて1回の API で読む。
+ * 円グラフは、読んだ期間の中から選んだ1つのターン（初めは直近）の内訳を描き、つまみでターンを替える。
  * options: url（統計の系列の API）、turn（直近のターン）、currency（通貨記号）
  */
 export class ChartGroup {
@@ -91,7 +113,7 @@ export class ChartGroup {
   names() {
     const names = new Set();
     for (const { figure } of this.items) {
-      for (const n of (figure.dataset.names || "").split(",")) if (n) names.add(n);
+      for (const n of namesOf(figure)) names.add(n);
     }
     return [...names];
   }
@@ -105,11 +127,12 @@ export class ChartGroup {
       const q = `names=${encodeURIComponent(names.join(","))}&${rangeQuery(range, this.turn)}`;
       data = await getJson(`${this.url}?${q}`);
     } catch {
-      for (const item of this.items) this.chartOf(item, "").fail();
+      for (const item of this.items) (item.figure.dataset.pie ? this.pieOf(item, "") : this.chartOf(item, "")).fail();
       return;
     }
     for (const item of this.items) {
-      if (item.figure.dataset.names) this.draw(item, data);
+      if (item.figure.dataset.pie) this.drawPie(item, data);
+      else if (item.figure.dataset.names) this.draw(item, data);
     }
   }
 
@@ -127,13 +150,69 @@ export class ChartGroup {
     return item.chart;
   }
 
-  draw(item, data) {
-    const keys = [];
-    for (const n of (item.figure.dataset.names || "").split(",")) {
-      if (!n) continue;
-      if (n.endsWith("*")) keys.push(...Object.keys(data.series).filter((k) => k.startsWith(n.slice(0, -1))).sort());
-      else if (n in data.series) keys.push(n);
+  /** 円グラフ（と、ターンを選ぶつまみ）を作る。単位が変わったら作り直す。 */
+  pieOf(item, unit) {
+    if (!item.chart || item.unit !== unit) {
+      item.figure.querySelector(".pie-chart")?.remove();
+      const body = document.createElement("div");
+      body.className = "pie-chart";
+      const pick = document.createElement("label");
+      pick.className = "pie-turn";
+      const date = document.createElement("span");
+      const slider = document.createElement("input");
+      slider.type = "range";
+      slider.min = "0";
+      slider.step = "1";
+      slider.setAttribute("aria-label", "表示するターン");
+      pick.append(date, slider);
+      body.append(pick);
+      item.figure.append(body);
+      const label = item.figure.querySelector("figcaption")?.textContent.trim() || "";
+      item.chart = makePie(body, unit, this.currency, label);
+      item.unit = unit;
+      item.slider = slider;
+      item.date = date;
+      slider.addEventListener("input", () => this.showTurn(item, Number(slider.value)));
     }
+    return item.chart;
+  }
+
+  drawPie(item, data) {
+    const keys = keysOf(item.figure.dataset.pie, data);
+    const unit = keys.length ? data.units[keys[0]] : "";
+    this.pieOf(item, unit);
+    // 値のあるターンだけを選べるようにする
+    const used = data.turns.map((_, i) => keys.some((k) => data.series[k][i] != null));
+    item.pie = {
+      turns: data.turns.filter((_, i) => used[i]),
+      series: keys.map((k) => ({ key: k, label: data.labels[k] || k, values: data.series[k].filter((_, i) => used[i]) })),
+    };
+    // 「収入・所得税」「収入・消費税」や「労働者階級の人数」「技術者の人数」のように頭か後ろが
+    // そろっていれば、見出しで足りるので外す
+    const many = item.pie.series.length > 1;
+    const head = item.pie.series[0]?.label.match(/^[^・]+・/)?.[0];
+    if (many && head && item.pie.series.every((s) => s.label.startsWith(head))) {
+      for (const s of item.pie.series) s.label = s.label.slice(head.length);
+    }
+    const tail = item.pie.series[0]?.label.match(/の[^の]+$/)?.[0];
+    if (many && tail && item.pie.series.every((s) => s.label.endsWith(tail) && s.label.length > tail.length)) {
+      for (const s of item.pie.series) s.label = s.label.slice(0, -tail.length);
+    }
+    const last = Math.max(0, item.pie.turns.length - 1);
+    item.slider.max = String(last);
+    item.slider.value = String(last);
+    item.slider.disabled = item.pie.turns.length < 2;
+    this.showTurn(item, last);
+  }
+
+  showTurn(item, index) {
+    const { turns, series } = item.pie;
+    item.date.textContent = turns.length ? turnDate(turns[index]) : "";
+    item.chart.setData(series.map((s) => ({ key: s.key, label: s.label, value: s.values[index] })));
+  }
+
+  draw(item, data) {
+    const keys = keysOf(item.figure.dataset.names, data);
     const unit = keys.length ? data.units[keys[0]] : "";
     const series = keys.map((k) => ({ key: k, label: data.labels[k] || k, values: data.series[k] }));
     // 系列ごとに、値のあるターンだけに詰める（全部の系列で値のないターンは描かない）
@@ -144,10 +223,26 @@ export class ChartGroup {
   }
 }
 
+/** グラフの figure が読む統計の名前（折れ線は data-names、円グラフは data-pie）。 */
+function namesOf(figure) {
+  return (figure.dataset.names || figure.dataset.pie || "").split(",").filter(Boolean);
+}
+
+/** 名前の並び（末尾の * はその頭の統計すべて）を、API が返した系列の名前に開く。 */
+function keysOf(names, data) {
+  const keys = [];
+  for (const n of (names || "").split(",")) {
+    if (!n) continue;
+    if (n.endsWith("*")) keys.push(...Object.keys(data.series).filter((k) => k.startsWith(n.slice(0, -1))).sort());
+    else if (n in data.series) keys.push(n);
+  }
+  return keys;
+}
+
 /** 画面の #charts（data-url・data-turn・data-currency）のグラフを作って読み込む。 */
 export function mountCharts(root = document.getElementById("charts")) {
   if (!root) return null;
-  const group = new ChartGroup(root.querySelectorAll("figure[data-names]"), {
+  const group = new ChartGroup(root.querySelectorAll("figure[data-names], figure[data-pie]"), {
     url: root.dataset.url,
     turn: Number(root.dataset.turn || 0),
     currency: root.dataset.currency || "",

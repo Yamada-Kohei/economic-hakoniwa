@@ -70,7 +70,7 @@ def test_food_ratio_and_jobless_layer_names():
     assert display.stat_text("food.ratio", 1.0, "%") == "100%"
     assert display.stat_text("unemployment", 0.2504, "%") == "25%"
     label, _ = reports.stat_label("layer.jobless.persons")
-    assert label.startswith("失業している労働者") and "jobless" not in label
+    assert label.startswith("失業者") and "jobless" not in label
 
 
 def test_series_tells_what_it_could_not_return(played, monkeypatch):
@@ -102,7 +102,7 @@ def test_facilities_show_workers_by_town_to_everyone(client, played):
         tile.population for tile in a.tiles.all() if tile.population > 0
     )
     page = client.get(f"/islands/{a.id}/facilities/").content.decode()
-    assert "町ごとの働く人" in page and towns[0]["place"] in page
+    assert "町ごとの労働力" in page and towns[0]["place"] in page
 
 
 def test_farm_changing_crops_shows_its_fields():

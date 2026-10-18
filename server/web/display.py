@@ -48,6 +48,17 @@ def message(key: str, **args: Any) -> str:
     return format_log(game.defs, key, args, calendar=game.calendar)
 
 
+# 称号の文（ターンログ）。文に称号の名前 {title} を足して書く
+TITLE_LOGS = {"title_gained", "title_lost", "title_lost_any"}
+
+
+def title_name(industry: str) -> str:
+    """産業の称号の名前（史実のあだ名。messages.yaml の title_name_<産業>）。なければ「〜の国」。"""
+    key = f"title_name_{industry}"
+    name = get_game().defs.name("messages", key)
+    return f"{get_game().defs.name('industries', industry)}の国" if name == key else name
+
+
 def turn_text(turn: int) -> str:
     """ある時点のターンを、世界の暦の日付で書く（「箱庭暦32年11月（ターン 383）」）。"""
     game = get_game()
@@ -1045,6 +1056,8 @@ def log_entries(logs) -> list[dict[str, Any]]:
     out = []
     for log in logs:
         args = log.args or {}
+        if log.kind in TITLE_LOGS and isinstance(args.get("industry"), str):
+            args = {**args, "title": title_name(args["industry"])}
         text = format_log(game.defs, log.kind, args, calendar=game.calendar)
         entry = {"turn": log.turn, "kind": log.kind, "text": text}
         if "x" in args and "y" in args:
@@ -1056,10 +1069,10 @@ def log_entries(logs) -> list[dict[str, Any]]:
 # 島の画面に出す統計の名前と表示名（StatRecord の name）と単位。単位の good: は資源の単位
 SUMMARY_STATS = [
     ("population", "人口", "人"),
-    ("labor", "労働者", "人"),
+    ("labor", "労働力人口", "人"),
     ("employed", "就業者", "人"),
-    ("subsistence", "自給農業従事者", "人"),
-    ("unemployment", "失業率", "%"),
+    ("subsistence", "自給農家", "人"),
+    ("unemployment", "完全失業率", "%"),
     ("happiness", "幸福度", ""),
     ("food.ratio", "食料充足率", "%"),
     ("power.capacity", "発電量", "good:electricity"),
@@ -1079,25 +1092,25 @@ SUMMARY_STATS = [
     ("loans", "融資の残高", "money"),
     ("loans.arrears", "うち返済が遅れている融資", "money"),
     ("banks", "銀行の数", ""),
-    ("banks.failed", "破綻した銀行（このターン）", ""),
-    ("firms.private", "民営の施設の数", ""),
-    ("firms.entered", "参入した民営工場（このターン）", ""),
-    ("firms.bankrupt", "倒産した施設（このターン）", ""),
-    ("firms.closed", "閉鎖した施設（このターン）", ""),
+    ("banks.failed", "銀行の破綻件数（1ターン）", ""),
+    ("firms.private", "民間事業所数", ""),
+    ("firms.entered", "新規参入数（1ターン）", ""),
+    ("firms.bankrupt", "倒産件数（1ターン）", ""),
+    ("firms.closed", "閉鎖件数（1ターン）", ""),
     ("education.level", "教育水準", "percent"),
     ("engineers", "技術者", "人"),
     ("engineers.unemployment", "技術者の失業率", "%"),
     ("power.shortage", "電力の不足率", "%"),
     # 商業・サービス業の店と人口の増減のわけ（Codex の試し遊び、ターン 250〜300）
-    ("services.workers", "商業・サービス業で働く人", "人"),
-    ("services.seats", "商業・サービス業が次のターンに雇う人数の目安", "人"),
+    ("services.workers", "商業・サービス業就業者数", "人"),
+    ("services.seats", "商業・サービス業の求人数", "人"),
     ("services.price", "サービスの値段（1単位）", "money"),
-    ("services.sales", "サービスの売上（このターン）", "money"),
-    ("population.births", "生まれた人（このターン）", "人"),
-    ("population.deaths", "亡くなった人（飢えのほか。このターン）", "人"),
-    ("population.starved", "飢えで亡くなった人（このターン）", "人"),
-    ("migration.arrived", "ほかの国から移り住んできた人（帰ってきた人も。このターン）", "人"),
-    ("migration.left", "ほかの国へ移り住んだ人（このターン）", "人"),
+    ("services.sales", "サービスの売上高（1ターン）", "money"),
+    ("population.births", "出生数（1ターン）", "人"),
+    ("population.deaths", "死亡数（餓死を除く。1ターン）", "人"),
+    ("population.starved", "餓死者数（1ターン）", "人"),
+    ("migration.arrived", "入国者数（移住。帰国者を含む。1ターン）", "人"),
+    ("migration.left", "出国者数（移住。1ターン）", "人"),
 ]
 
 

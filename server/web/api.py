@@ -497,6 +497,7 @@ def facilities(request, island_id: int):
         "stats_turn": turn,
         "stats": reports.stat_rows(stats, pages.FACILITY_STATS, _currency(island)),
         "towns": reports.town_rows(island),
+        "industry_workers": reports.industry_workers(island),
     }
     if mine:
         data["table"] = reports.facility_rows(island, _currency(island))

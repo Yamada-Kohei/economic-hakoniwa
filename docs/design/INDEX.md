@@ -76,13 +76,13 @@
 | PO-30 | 生まれる割合は式 `birth_rate`（`population.births`）で、学んだ人… | 決定 | tests/core/test_balance_round4.py |
 | PO-31 | 亡くなる割合は式 `death_rate`（`population.deaths`）で、食事の質… | 決定 | tests/core/test_balance_round4.py |
 | PO-32 | 生まれたマスに住む所がなければ島の空いた町へ移り、どこにも空きがなければ消えずに詰めて住む（過密… | 決定 | tests/core/test_round5_village.py |
-| PO-33 | 人口の増減は家計の層の人数に比例して割り振り、資産を持つ層は割合を保つ | 決定 | （未確認） |
+| PO-33 | 人口の増減は家計の層の人数に比例して割り振り、資本家階級は割合を保つ | 決定 | （未確認） |
 | PO-34 | 幸福度は式 `happiness`（`population.happiness`）で層ごとに出し… | 決定 | tests/core/test_phase3_4.py、tests/core/test_playtest3_fixes.py |
 | PO-35 | 前のフェーズから移し替えた島は、幸福度の重みをその時の重みから `population.blen`… | 決定 | tests/core/test_playtest3_fixes.py |
 | PO-36 | 汚染は施設が稼働率に応じて `facilities.yaml` の pollution の量を … | 決定 | tests/core/test_phase3_2.py |
 | PO-37 | 災害は 1 島 1 ターンに `disasters.rate` の確率で起き、施設 1 つが種類… | 決定 | tests/core/test_playtest3_fixes.py、tests/core/test_rules.py |
 | PO-38 | 国をまたぐ移民は、暮らしの見込み V（実質賃金 × 仕事の見つかる割合 × 食べられた割合）の対… | 決定 | tests/core/test_migration.py |
-| PO-39 | 動く組は仕事のある一般の家計・失業している家計・技術者の家計で、資産を持つ層は動かない | 決定 | tests/core/test_migration.py |
+| PO-39 | 動く組は仕事のある一般の家計・失業している家計・技術者の家計で、資本家階級は動かない | 決定 | tests/core/test_migration.py |
 | PO-40 | 受け入れは 1 年に住民の上限（既定 `migration.default_cap`）と町の空き… | 決定 | tests/core/test_migration.py |
 | PO-41 | 出国を止められた人のうち国境（`migration.border` × 警察の充足）をすり抜けた… | 決定 | tests/core/test_migration.py |
 | PO-42 | 移った人は行き先の層と空いた町に入り、預金を元の島の通貨のまま持って行く（資本取引が禁止なら政府… | 決定 | tests/core/test_migration.py |
@@ -152,10 +152,10 @@
 | LB-11 | 最低賃金は命令 `set_labor_policy` で決める（決めなければなし） | 決定 | tests/core/test_phase3_4.py |
 | LB-12 | 払えなかった賃金は「未払い賃金」として払い手（政府・独立採算の施設）の負債に残し、お金が入れば新… | 決定 | tests/core/test_balance_round3.py |
 | LB-13 | 倒産と撤退のとき、未払い賃金は未払いの税と貸し手より先に払われる（分け方の全体はタブ 5） | 決定 | tests/core/test_balance_round3.py |
-| LB-14 | 家計の層は、一般の労働者（家族と村の住民を含む）・失業している家計・技術者（家族を含む）・資産を… | 決定 | tests/core/test_balance_round4.py |
+| LB-14 | 家計の層は、一般の労働者（家族と村の住民を含む）・失業している家計・技術者（家族を含む）・資本家… | 決定 | tests/core/test_balance_round4.py |
 | LB-15 | 失業している家計の人数は賃金の段の初めに雇用の結果から数え直し（村で自給する人は除く）、仕事を失… | 決定 | tests/core/test_balance_round4.py |
 | LB-16 | 層を移る人（育った技術者・引退・失業と再就職・人口の増減の割り振り）は、元の層の1人あたりの預金… | 決定 | tests/core/test_balance_round4.py |
-| LB-17 | 収入は、働く層が賃金・失業手当・預金の利子、資産を持つ層が配当と預金の利子 | 決定 | （未確認） |
+| LB-17 | 収入は、働く層が賃金・失業手当・預金の利子、資本家階級が配当と預金の利子 | 決定 | （未確認） |
 | LB-18 | 層が使う額（式 `consumption`）は、直近の可処分所得の平均に層ごとの割合を掛けた分と… | 決定 | （未確認） |
 | LB-19 | 使う順は、電気代（生産の段で払った分を差し引く）→ 必需品（食料・衣料 | 決定 | tests/core/test_phase3_2.py |
 | LB-20 | 食料は必要な量を、質を足した栄養あたりの値段の安い順に財ごとに割り振り、前のターンに売りに出てい… | 決定 | tests/core/test_economy.py |
@@ -166,7 +166,7 @@
 | LB-25 | 町の資材は、都市の発展の段が「育てる」と決めた分を一般の層が預金の決めた割合まで市場で買う（住宅… | 決定 | （未確認） |
 | LB-26 | 村の仕事のない住民は自給の農業で自分の食べる分をまかない、市場で買わない | 決定 | tests/core/test_balance_round4.py |
 | LB-27 | 幸福度は家計の層ごとに出して人数で平均する | 決定 | （未確認） |
-| LB-28 | 建国のとき、働く層と資産を持つ層に1人あたりの預金を置き、一般の労働者の決めた割合を技術者にする | 決定 | tests/server/test_economy.py |
+| LB-28 | 建国のとき、働く層と資本家階級に1人あたりの預金を置き、一般の労働者の決めた割合を技術者にする | 決定 | tests/server/test_economy.py |
 | LB-29 | 財「サービス」はその場で作ってその場で使い、持ち越せず島の外へ運べない | 作り直し予定（回7） | tests/core/test_balance_round4.py |
 | LB-30 | 家計は必需品を買った残りのうち所得に応じた割合をサービスに使う | 決定（回7 でも残す） | tests/core/test_balance_round4.py |
 | LB-31 | 店の場所は通勤圏でいちばん人の多い集落で、雇う人数は場所ごとに買いに来る住民で割り振る | 仮（仮の決まりの表あり） | tests/core/test_balance_round4.py |
@@ -187,7 +187,7 @@
 | FM-02 | プレイヤーは命令で施設を建て、取り壊す | 決定 | tests/core/test_rules.py |
 | FM-03 | 稼働率は人手・投入財・電力の充足率の一番低いものと操業目標で決まる | 決定 | tests/core/test_infrastructure.py |
 | FM-04 | 施設の会計は、民営（独立採算）・国営の独立採算・国営の国庫直轄の3つ | 決定 | （未確認） |
-| FM-05 | 施設1つがお金の主体1つで、民営の持ち主は資産を持つ層1つ（企業という単位がない） | 仮（仮の決まりの表あり） | （未確認） |
+| FM-05 | 施設1つがお金の主体1つで、民営の持ち主は資本家階級1つ（企業という単位がない） | 仮（仮の決まりの表あり） | （未確認） |
 | FM-06 | 独立採算の施設は自分の預金と借入を持ち、税引き後の利益の決めた割合を配当（民営）か国庫への納付（… | 決定 | tests/core/test_rules.py |
 | FM-07 | 国庫直轄の施設は口座を持たず、売上は国庫へ、費用は国庫から予算の範囲で払う | 決定 | tests/core/test_shocks.py |
 | FM-08 | 国営の独立採算の施設は民営と同じく操業目標を決めるが、自分で閉鎖せず倒産しない（返済が足りなけれ… | 決定 | （未確認） |
@@ -199,7 +199,7 @@
 | FM-14 | 参入の合図は、その財が品切れ続き（足りない量が新しい工場の全力の決めた割合以上のターンが、直近の… | 決定 | tests/core/test_finance.py |
 | FM-15 | 原料のどれかが島で作られていない作り方、工事の資材が島で作られず売りにも出ていない、原料が品切れ… | 決定 | tests/core/test_finance.py |
 | FM-16 | 民営工場が建つのは空いた工業団地のマスだけ | 決定 | tests/core/test_finance.py |
-| FM-17 | 建設費（1割増しと動き出しの支払い分を足す）の決めた割合を資産を持つ層が出資し、残りを銀行の建設… | 決定 | tests/core/test_playtest3_fixes.py |
+| FM-17 | 建設費（1割増しと動き出しの支払い分を足す）の決めた割合を資本家階級が出資し、残りを銀行の建設資… | 決定 | tests/core/test_playtest3_fixes.py |
 | FM-18 | 設備投資補助のある参入では、補助を参入のときに補助金の予算から先に出す | 決定 | tests/core/test_playtest_fixes.py |
 | FM-19 | 民営工場と民間銀行が建たないわけ（工業団地がない・働き手がいない・出資が足りない・融資が断られた… | 決定 | tests/core/test_playtest_fixes.py |
 | FM-20 | 撤退: 動かないターンが決めた数続くか、変動費の利益が決めたターン数続けて決めた幅を超えてマイナ… | 作り直し予定（回7） | tests/core/test_finance.py |
@@ -207,15 +207,15 @@
 | FM-22 | 倒産と撤退の後、設備と在庫を売った代金は、未払い賃金 → 未払いの税 → 貸し手（貸した額の割合… | 決定 | tests/core/test_balance_round3.py |
 | FM-23 | 民営の工事が決めたターン数進まなければ工事をやめる | 決定 | tests/core/test_finance.py |
 | FM-24 | 民営の施設はプレイヤーが取り壊せない（国有化すれば取り壊せる） | 決定 | （未確認） |
-| FM-25 | 国有化（命令）: 民営の施設を純資産（0未満なら0）で政府が買い取り、代金を国庫から資産を持つ層… | 決定 | tests/core/test_finance.py |
-| FM-26 | 民営化（命令）: 国営の施設を純資産で資産を持つ層に売る | 決定 | tests/core/test_finance.py |
+| FM-25 | 国有化（命令）: 民営の施設を純資産（0未満なら0）で政府が買い取り、代金を国庫から資本家階級に… | 決定 | tests/core/test_finance.py |
+| FM-26 | 民営化（命令）: 国営の施設を純資産で資本家階級に売る | 決定 | tests/core/test_finance.py |
 | FM-27 | 補助金（命令 | 決定 | tests/core/test_finance.py |
 | FM-28 | 命令 `set_zone` で陸のマスを工業団地かオフィス街に指定・解除する（首都と町のマスは指… | 決定 | tests/core/test_finance.py、tests/server/test_finance.py |
 | FM-29 | 鉱山は鉱業資源ごとの作り方を持ち、島に決めた数まで（工事中も数え、民営も数える | 決定 | tests/core/test_phase3_2.py |
 | FM-30 | 施設の定義に産業の分類 `industry`（農業・鉱業・鉄鋼・非鉄・機械・自動車・繊維・石油・… | 決定 | （未確認） |
 | FM-31 | 経験: 島×産業ごとに施設が出した産出の倍率（稼働率×生産性）を足して数え、係数を累積の対数で上… | 決定 | tests/core/test_phase3_3.py |
 | FM-32 | 集積: 工場（分類が industry の施設）だけに、半径の中の同じ産業のほかの施設1つごとに… | 決定 | tests/core/test_phase3_3.py |
-| FM-33 | 各産業の累積が世界1位の国に「鉄鋼の国」などの称号を付け、統計の画面に得意産業と世界の順位を出す… | 決定 | （未確認） |
+| FM-33 | 各産業の累積が世界1位の国に「鋼都」（鉄鋼）などの称号を付け、統計の画面に得意産業と世界の順位を… | 決定 | （未確認） |
 | FM-34 | 暴動で止まるのは都市のマスの近くの施設で、農林水産業（農場・漁港・牧場・製材所）は止まらない（暴… | 決定 | tests/core/test_phase3_4.py |
 | FM-35 | 商業・サービス業（島に1つの店）は倒産と撤退をせず、持ち主は経済体制の既定（細部はタブ 4 LB… | 作り直し予定（回7） | tests/core/test_balance_round4.py |
 | FM-36 | 施設の束としての企業を主体にする | 決定（回7 で作る） | （未確認） |
@@ -362,7 +362,7 @@
 | FX-19 | 輸入の指値は圏の値幅の上端まで | 決定 | tests/core/test_playtest5_fixes.py、tests/server/test_trade.py |
 | FX-20 | 売れ残った荷は決めたターン数の後に指値を外して売る | 決定 | （未確認） |
 | FX-21 | 島で買い手がいるのに売りに出ていない物は、前のターンに圏の市場に売りがあった財だけ、輸入が引き合… | 決定 | tests/core/test_phase3_2.py、tests/core/test_trade.py |
-| FX-22 | 民営の商社は、島の商社の扱った重さの平均が上限の決めた割合を超え、空いたオフィス街があり、資産を… | 決定 | tests/core/test_trade.py |
+| FX-22 | 民営の商社は、島の商社の扱った重さの平均が上限の決めた割合を超え、空いたオフィス街があり、資本家… | 決定 | tests/core/test_trade.py |
 | FX-23 | 二国間契約は一方の政府が「相手・財・1ターンの量・値段・通貨（どちらかの国）・期間」を示し、相手… | 決定 | tests/core/test_trade.py |
 | FX-24 | 売り手の国は国の倉庫から出し、足りなければ島の市場で優先して買う | 決定 | tests/core/test_trade.py |
 | FX-25 | 契約で届いた物の行き先は買い手が契約ごとに選ぶ: 市場に出す（既定 | 決定 | tests/core/test_playtest5_fixes.py、tests/core/test_trade.py |
@@ -435,7 +435,7 @@
 
 ## [11 画面と統計](11-ui.md)
 
-決まり 34 個、うち仮の決まりの表にあるもの 0 個。
+決まり 37 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -447,7 +447,7 @@
 | UI-06 | 統計は記録の段がそのターンの仕訳・約定・市場と、段が残したお金と物の流れから島ごとに作り、名前（… | 決定 | tests/server/test_reports.py |
 | UI-07 | GDP は生産の側（施設の付加価値、工事と公務員と教員の賃金）と支出の側（家計の消費・投資・在庫… | 決定 | tests/core/test_measure.py |
 | UI-08 | 物価指数は家計が買う品目の値段を、直近に買った量で重みづけしたもの | 決定 | tests/core/test_shocks.py |
-| UI-09 | 格差は資産を持つ層と一般の労働者の層の 1 人あたり可処分所得の比 | 決定 | tests/server/test_reports.py |
+| UI-09 | 格差は資本家階級と労働者階級の 1 人あたり可処分所得の比 | 決定 | tests/server/test_reports.py |
 | UI-10 | 財政の収入・支出・収支と層ごとの 1 人あたりの所得は保存せず、統計の系列を返すときに計算して足… | 決定 | tests/server/test_reports.py |
 | UI-11 | 記録を残す期間: 仕訳と約定は短く、施設の帳簿は 200 年分、市場の記録と統計とターンログはず… | 決定 | （未確認） |
 | UI-12 | 巻き戻しでは、戻すターンより後の統計・ターンログ・記録を消し、勘定・融資・国債はバックアップの写… | 決定 | tests/server/test_economy.py、tests/server/test_phase1.py |
@@ -473,6 +473,9 @@
 | UI-32 | 同じ接続元からの登録は管理者が設定で数を決める（家族・学校・携帯回線で 1 つの接続元を分け合う… | 決定 | tests/server/test_phase1.py |
 | UI-33 | 量の表示の単位を実物に近づけるのは、バランス調整の最後に表示だけで行う（計算は変えない） | 決定（バランス調整の最後で） |  |
 | UI-34 | トップ画面は島の順位の表（列の頭で並べ替え、既定は人口順）と、アクセスカウンタ・キリ番・最近の出… | 決定 |  |
+| UI-35 | 島の画面のマスの情報は、押したマスのそばの小さな窓（ポップオーバー）に出す | 決定 | tests/server/test_map_popover_pies_wording.py |
+| UI-36 | 全体を分けた割合を見る統計（人口の階級ごとの内訳・歳入と歳出の内訳・産業ごとの従業者数）は円グラ… | 決定 | tests/server/test_map_popover_pies_wording.py |
+| UI-37 | 表示名は統計の正式な言い方にそろえる（労働力人口・就業者・完全失業率・自給農家・従業者、労働者階… | 決定 | tests/server/test_map_popover_pies_wording.py |
 
 ## [12 確かめ方](12-checks.md)
 

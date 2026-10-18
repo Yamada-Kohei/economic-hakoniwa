@@ -21,7 +21,7 @@
     {% for s in strengths.strengths %}<tr><th>{{ s.name }}</th><td>{% blocktranslate with n=s.turns|floatformat:"-1g" %}経験 {{ n }} ターン分{% endblocktranslate %}{% if s.rank %}・{% blocktranslate with r=s.rank %}世界 {{ r }} 位{% endblocktranslate %}{% endif %}</td></tr>{% endfor %}
   </table>
   {% url 'rankings' as rankings_url %}
-  <p class="hint">{% blocktranslate with u=rankings_url %}経験は、その産業の標準の施設が全力で動いたターン数に直した累積の産出です。長く多く作った産業ほど生産性が上がり、各産業の経験が世界で1位の国は「〜の国」の称号を得ます。ほかの国の順位は<a href="{{ u }}">順位の画面</a>で見られます。{% endblocktranslate %}</p>
+  <p class="hint">{% blocktranslate with u=rankings_url %}経験は、その産業の標準の施設が全力で動いたターン数に直した累積の産出です。長く多く作った産業ほど生産性が上がり、各産業の経験が世界で1位の国は、その産業の史実のあだ名の称号（機械なら「世界の工場」）を得ます。ほかの国の順位は<a href="{{ u }}">順位の画面</a>で見られます。{% endblocktranslate %}</p>
   {% else %}
   <p class="muted">{% translate "まだ経験のある産業はありません。" %}</p>
   {% endif %}
@@ -35,7 +35,7 @@
   <div class="charts" id="charts" data-url="{% url 'api_island_economy' island.id %}"
        data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
     {% for c in charts %}
-    <figure class="chart" data-names="{{ c.names }}"><figcaption>{{ c.title }}</figcaption></figure>
+    <figure class="chart" {% if c.pie %}data-pie{% else %}data-names{% endif %}="{{ c.names }}"><figcaption>{{ c.title }}</figcaption></figure>
     {% endfor %}
     <figure class="chart" id="free-chart" hidden>
       <figcaption>
@@ -48,7 +48,7 @@
       </figcaption>
     </figure>
   </div>
-  <p class="hint">{% translate "横軸は暦の年と月です（1ターンが1か月）。グラフに指やマウスを乗せると、そのターンの年月と値を表示します。凡例を押すと線を隠せます。" %}</p>
+  <p class="hint">{% translate "横軸は暦の年と月です（1ターンが1か月）。グラフに指やマウスを乗せると、そのターンの年月と値を表示します。凡例を押すと線を隠せます。円グラフは選んだ1つのターンの内訳で、下のつまみでターンを替えられます。" %}</p>
 </section>
 
 {% if summary %}
