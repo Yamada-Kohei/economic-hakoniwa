@@ -187,10 +187,16 @@ export class ChartGroup {
       turns: data.turns.filter((_, i) => used[i]),
       series: keys.map((k) => ({ key: k, label: data.labels[k] || k, values: data.series[k].filter((_, i) => used[i]) })),
     };
-    // 「収入・所得税」「収入・消費税」のように頭がそろっていれば、見出しで足りるので外す
+    // 「収入・所得税」「収入・消費税」や「労働者階級の人数」「技術者の人数」のように頭か後ろが
+    // そろっていれば、見出しで足りるので外す
+    const many = item.pie.series.length > 1;
     const head = item.pie.series[0]?.label.match(/^[^・]+・/)?.[0];
-    if (head && item.pie.series.length > 1 && item.pie.series.every((s) => s.label.startsWith(head))) {
+    if (many && head && item.pie.series.every((s) => s.label.startsWith(head))) {
       for (const s of item.pie.series) s.label = s.label.slice(head.length);
+    }
+    const tail = item.pie.series[0]?.label.match(/の[^の]+$/)?.[0];
+    if (many && tail && item.pie.series.every((s) => s.label.endsWith(tail) && s.label.length > tail.length)) {
+      for (const s of item.pie.series) s.label = s.label.slice(0, -tail.length);
     }
     const last = Math.max(0, item.pie.turns.length - 1);
     item.slider.max = String(last);

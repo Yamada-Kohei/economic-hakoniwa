@@ -111,7 +111,7 @@ def test_fx_page_shows_balance_of_payments_to_everyone(client, world):
     client.logout()
     res = client.get(f"/islands/{own.id}/fx/")
     html = res.content.decode()
-    assert "経常収支と金融収支の内訳" in html and "経常収支（このターン）" in html
+    assert "経常収支と金融収支の内訳" in html and "経常収支（1ターン）" in html
     assert 'id="fx-policy"' not in html and 'id="foreign-bonds"' not in html
     assert "policy" not in client.get(f"/api/islands/{own.id}/fx").json()
 

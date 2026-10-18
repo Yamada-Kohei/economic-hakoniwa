@@ -21,7 +21,7 @@ const ACCOUNTING_HINTS = {
 // 国有化・民営化で起きること
 const OWNERSHIP_HINTS = {
   nationalize: "純資産（資産 − 借入）の額で政府が買い取り、借入も引き継ぎます。差し押さえ中の施設は、銀行から売り値で買います。国庫が足りなければ実行できません。",
-  privatize: "純資産の額で資産を持つ層に売ります。国庫直轄の施設は、先に運転資金を出資して独立採算にします。",
+  privatize: "純資産の額で資本家階級に売ります。国庫直轄の施設は、先に運転資金を出資して独立採算にします。",
 };
 
 // 施設ごとの補助金の種類
@@ -185,7 +185,7 @@ export class TilePanel {
       rows.push(["建設労働者", `${f.workers.toLocaleString()} / ${f.workers_needed.toLocaleString()} 人`]);
       if (f.materials.length) rows.push(["建設資材", goodsText(f.materials)]);
     } else if (f.workers_needed != null) {
-      rows.push(["労働者", `${f.workers.toLocaleString()} / ${f.workers_needed.toLocaleString()} 人`]);
+      rows.push(["従業者", `${f.workers.toLocaleString()} / ${f.workers_needed.toLocaleString()} 人`]);
       rows.push(["稼働率", `${Math.round(f.operating_rate * 100)}%`]);
       if (f.wage != null) rows.push(["賃金（1人1ターン）", f.wage.toLocaleString()]);
       if (f.engineers_needed) {
@@ -427,7 +427,7 @@ export class TilePanel {
     const c = d.construction;
     const bits = [`工期 ${c.turns} ターン`];
     if (c.labor) bits.push(`建設労働者 ${c.labor.toLocaleString()} 人`);
-    bits.push(`完成後の労働者 ${d.workers.toLocaleString()} 人`);
+    bits.push(`完成後の従業者 ${d.workers.toLocaleString()} 人`);
     const materials = Object.entries(c.materials);
     if (materials.length) bits.push(`建設資材 ${materials.map(([g, q]) => `${this.goodName(g)} ${q} ${this.unitName(g)}`).join("・")}`);
     if (d.coastal) bits.push("海に面したマスのみ");
