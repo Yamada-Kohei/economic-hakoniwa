@@ -251,3 +251,84 @@
 | FS-22 | 国庫の払う順番を見直し、払えないときに国債の支払いを止めるかを、借金の重さと一緒に決める（中央銀… | 決定（回5 で作る） | （未確認） |
 | FS-23 | 国営の施設の設備は国が予算から直す（回6 | 決定（回6 で作る） | （未確認） |
 
+## [7 お金と銀行](07-banking.md)
+
+決まり 42 個、うち仮の決まりの表にあるもの 1 個。
+
+| 番号 | 決まり（頭） | 状態 | 試験 |
+| --- | --- | --- | --- |
+| BK-01 | お金を持つ主体は、家計の3つの層・独立採算の施設・市中銀行・政府・中央銀行の5種類 | 決定 | tests/core/test_economy.py |
+| BK-02 | お金は `ledger.post` と `ledger.pay` だけで動かす | 決定 | tests/core/test_economy.py |
+| BK-03 | お金が生まれ・消えるのは、銀行の貸し出しと返済、中央銀行の国債の売買・引き受け・貸し出し・利子・… | 決定 | （未確認） |
+| BK-04 | 記録の段の最後に、貸し借りの一致・残高と仕訳の一致・お金の増減・預金と国庫がマイナスでないことを… | 決定 | tests/core/test_economy.py |
+| BK-05 | 金額は通貨の最小単位の整数、金利は年率の1万分の1で持つ | 決定 | （未確認） |
+| BK-06 | 市中銀行はオフィス街のマスに入る施設で職員を雇う | 決定 | tests/core/test_playtest5_fixes.py |
+| BK-07 | 国営銀行はプレイヤーが建設の命令で建てる | 決定 | tests/core/test_finance.py、tests/core/test_playtest5_fixes.py、tests/core/test_playtest_fixes.py |
+| BK-08 | 家計の層は毎ターン預金の一部を「預金金利−危なさ」の高い銀行へ移す | 決定 | （未確認） |
+| BK-09 | 預金金利は「政策金利−差」へ少しずつ近づけ、準備預金が足りない銀行と開業して預金を集めている銀行… | 決定 | tests/core/test_shocks.py |
+| BK-10 | 融資は建設資金（据え置きの後に均等に返す）と運転資金（短く返し、貸し手と借り手ごとに1本で回す） | 決定 | tests/core/test_finance.py |
+| BK-11 | 審査は、現金で見た営業の利益が返済の決めた倍以上で、借入が資産の決めた割合以下 | 決定 | （未確認） |
+| BK-12 | 銀行が貸せるのは、貸した後も自己資本比率が規制以上で、1つの民営施設への残高が大口融資の規制以内… | 決定 | tests/core/test_finance.py |
+| BK-13 | 運転資金を借りきれない分は、国営施設なら政府が出資し、民営施設なら変動費の利益が出ている間だけ資… | 決定 | （未確認） |
+| BK-14 | 返済日に預金が足りなければ払える分だけ払って遅れを数え、続けて決めた回数で倒産 | 決定 | tests/core/test_finance.py、tests/core/test_shocks.py |
+| BK-15 | 混合経済では国営銀行が基幹産業に利ざやなしで貸す（政策融資） | 決定 | （未確認） |
+| BK-16 | 自己資本比率は「自己資本÷融資の残高」 | 決定 | （未確認） |
+| BK-17 | 銀行の損益は利子の差−職員の賃金−貸し倒れ＋国債の実現損益 | 決定 | tests/server/test_finance.py |
+| BK-18 | 準備預金は預金の決めた割合を最低限として中央銀行に置き、余りには「政策金利−差」の利子が付く | 決定 | （未確認） |
+| BK-19 | 中央銀行は島に1つの帳簿だけの主体 | 決定 | tests/core/test_finance.py、tests/core/test_phase3_3.py |
+| BK-20 | 独立させる・戻すのは命令で、切り替えた後の決めたターン数は戻せない | 決定 | tests/core/test_playtest_fixes.py |
+| BK-21 | 銀行間の貸し借りは中央銀行の段で、金利を値段にした板寄せ（政策金利の上下の幅） | 決定 | （未確認） |
+| BK-22 | 借りきれない銀行には中央銀行が担保を取って上端の金利で貸す | 決定 | （未確認） |
+| BK-23 | 中央銀行の利益は決算で全額を国庫に納める | 決定 | （未確認） |
+| BK-24 | 国債の期間は3つ（1・5・10年） | 決定 | tests/core/test_codex_turn300_fixes.py、tests/core/test_playtest4_fixes.py |
+| BK-25 | 発行はすべて市中銀行の入札に出す | 決定 | （未確認） |
+| BK-26 | 買い手の求める利回りは式 `bond_yield`（政策金利＋期間・借金・物価・不履行の上乗せ−… | 作り直し予定（回5） | tests/core/test_finance.py |
+| BK-27 | 利回りには上限があり、張り付いても何も起きない | 仮（仮の決まりの表あり） | （未確認） |
+| BK-28 | 新しい発行の売れ残りは、「引き受ける」の政策で中央銀行が独立していなければ中央銀行が同じ利回りで… | 決定 | tests/core/test_finance.py、tests/core/test_playtest3_fixes.py |
+| BK-29 | 満期の国債の中央銀行の持ち分は同じ期間の国債に乗り換え、借り換えの売れ残りは独立していても中央銀… | 決定 | tests/core/test_rules.py |
+| BK-30 | 国債の売買の市場は残りの期間の4区分ごとの、利回りを値段にした板寄せ | 決定 | tests/core/test_playtest_fixes.py |
+| BK-31 | 国債は時価で持つ | 決定 | tests/core/test_bond_gains.py、tests/core/test_playtest3_fixes.py |
+| BK-32 | 資本取引を認めた国の銀行は、外国の利回りが値下がりの見込みを超えて高い通貨の外貨と国債を、預金の… | 決定 | tests/core/test_phase3_3.py |
+| BK-33 | 債務不履行は命令 `set_bond_payment` で支払いを止めたときだけ、すべての銘柄を… | 決定 | tests/core/test_phase3_3.py、tests/core/test_shocks.py、tests/server/test_finance.py |
+| BK-34 | 不履行の罰は3つ: 利回りの上乗せ（だんだん減る）、決めたターン数は銀行が国債を買わない、損をし… | 決定 | tests/core/test_playtest3_fixes.py、tests/server/test_finance.py |
+| BK-35 | 自己資本がマイナスか資金繰りが破綻した銀行は破綻し、新しい融資と預金の受け入れを止める | 決定 | tests/core/test_finance.py、tests/core/test_playtest5_fixes.py |
+| BK-36 | 次のターンまでに選ばなければ引き継ぎにし、引き継いでも規制を下回らない銀行がなければ救済にする | 決定 | tests/core/test_shocks.py |
+| BK-37 | 引き継ぎと清算の損失は、保護されない預金と銀行間の貸し手が同じ割合で負い、残りを預金保険（政府）… | 決定 | tests/core/test_codex2_fixes.py、tests/core/test_finance.py、tests/core/test_playtest4_fixes.py |
+| BK-38 | 預金は1人あたり（施設と銀行は1つあたり）上限額まで全額を守る | 決定 | （未確認） |
+| BK-39 | 引き継ぐ健全な銀行のない島で引き継ぎか清算を選ぶと、政府が銀行を引き取り、出資を消して損失を同じ… | 決定 | tests/core/test_playtest_fixes.py |
+| BK-40 | 救済と預金保護に国庫から出すのは、次のターンの優先の支払いを残した額まで | 決定 | tests/core/test_codex2_fixes.py、tests/core/test_playtest_fixes.py |
+| BK-41 | 回5 で、利回りを銀行ごとに自分の帳簿（国債の偏り・政府の返す力）から決め、中央銀行の持つ国債は… | 決定（回5 で作る） | （未確認） |
+| BK-42 | 回5 で、刷ったお金が物価に効く経路を入れる（預金から使う割合を物価と実質金利で動かす・指値に物… | 決定（回5 で作る） | tests/core/test_shocks.py |
+
+## [8 インフラと教育](08-infrastructure.md)
+
+決まり 25 個、うち仮の決まりの表にあるもの 0 個。
+
+| 番号 | 決まり（頭） | 状態 | 試験 |
+| --- | --- | --- | --- |
+| IN-01 | インフラは道路・鉄道・上下水道・送電網の4種で、マスごとに種類ごとの整備度と維持で戻す目標を持つ | 決定 | tests/server/test_reports.py |
+| IN-02 | 工事は命令 `build_infrastructure`（行政力1）で種類と決めた数までのマスを… | 決定 | tests/server/test_reports.py |
+| IN-03 | 公共事業は島に1つにまとめて動かす | 決定 | tests/core/test_infrastructure.py |
+| IN-04 | 作業員は施設が雇った後の失業者から、通勤圏を見ずに島のどこからでも島の平均賃金で雇う（引き抜かな… | 決定 | （未確認） |
+| IN-05 | 資材は国の倉庫の分を先に使い、足りない分を市場で買う | 決定 | tests/core/test_infrastructure.py |
+| IN-06 | 島で手に入らない資材を使う種類は、代わりの資材（`fallback`）で工事する | 決定 | tests/core/test_infrastructure.py |
+| IN-07 | 工事は雇えた人手とそろった資材の少ない方の割合だけ進む | 決定 | （未確認） |
+| IN-08 | 整備度は毎ターン種類ごとの傷みだけ下がり、公共事業費から目標まで戻す | 決定 | tests/core/test_infrastructure.py |
+| IN-09 | 工事の資材・運賃・作業員の賃金は工事の部門（GDP の投資）に数え、インフラは政府の資産として記… | 決定 | （未確認） |
+| IN-10 | 景気対策の特別な決まりは置かない | 決定 | （未確認） |
+| IN-11 | 生産性の係数は f = 1 + w ×（low + (high − low) × L − 1） | 決定 | tests/core/test_infrastructure.py |
+| IN-12 | インフラの L は交通（道路と鉄道の高い方）だけで、送電網は入れない | 決定 | tests/core/test_infrastructure.py |
+| IN-13 | 交通の整備度はマスを越える道のりを短くし（道路より鉄道が短い）、運賃の率の道のりはその最短の道で… | 決定 | tests/core/test_infrastructure.py |
+| IN-14 | 送電網の整備度が決めた値以上のマスと、施設と町のマスがつながって1つの送電網になる | 決定 | tests/core/test_rules.py |
+| IN-15 | 閉鎖・倒産・取り壊し・破綻処理で施設がなくなったマスには送電線を残す（施設のないマスの取り壊しは… | 決定 | tests/core/test_finance.py、tests/core/test_rules.py |
+| IN-16 | 上下水道は、町が都市・大都市に育つ条件（タブ 2 PO-20）、幸福度（PO-34）、亡くなる割… | 決定 | tests/core/test_balance_round4.py |
+| IN-17 | 建国と移し替えのとき、施設と町のマスとその周りに道路、送電線のマスに送電網、都市と大都市のマスに… | 決定 | tests/core/test_infrastructure.py、tests/core/test_playtest3_fixes.py |
+| IN-18 | 学校と大学は民間が建てない国庫直轄の施設 | 決定 | （未確認） |
+| IN-19 | 教育水準は「働き手のうち学校で学んだ人の割合」という人の蓄え | 決定 | tests/core/test_infrastructure.py |
+| IN-20 | 若い人の学んだ割合は、子どもたちが学校に通えた割合（定員×稼働率÷子どもの数）で、通う年数をかけ… | 決定 | tests/core/test_infrastructure.py |
+| IN-21 | 教育水準は施設の生産性（教育の係数）、幸福度、生まれる割合に効く | 決定 | tests/core/test_balance_round4.py、tests/core/test_infrastructure.py |
+| IN-22 | 大学は1ターンに「育てる数×稼働率×入学の割合」を一般の労働者から技術者にし、技術者は決めた割合… | 決定 | tests/core/test_infrastructure.py、tests/core/test_playtest3_fixes.py |
+| IN-23 | 入学の割合は技術者の失業率が上がるほど下がる（育ちすぎて失業する技術者が増え続けないように） | 決定 | tests/core/test_infrastructure.py |
+| IN-24 | 技術者は島全体の人数で、通勤圏を見ずに島のどこへでも通う | 決定 | tests/core/test_infrastructure.py、tests/core/test_playtest3_fixes.py |
+| IN-25 | 島の地図の重ね表示に、インフラの整備度（種類ごと）・運賃の率・工事中の印を出す | 決定 | tests/server/test_reports.py |
+
