@@ -21,6 +21,9 @@ def test_design_docs_match_index_and_have_no_errors():
     tabs = design_index.load_tabs()
     assert len(tabs) >= 6
     assert design_index.problems(tabs) == []
+    for tab in tabs:
+        assert tab.rules, tab.path.name
+        assert not tab.unparsed, tab.path.name
 
 
 SAMPLE = textwrap.dedent(
@@ -34,7 +37,9 @@ SAMPLE = textwrap.dedent(
     | 番号 | 決まり（一行） | 状態 | 設定の名前 | 試験 |
     | --- | --- | --- | --- | --- |
     | MK-01 | 板寄せで決める。続きの文 | 決定 | `market.band` | tests/core/test_spec_design.py |
-    | MK-02 | 値幅まで | 仮 | `market.no_such_name` | tests/core/test_spec_design.py::test_nothing |
+    | MK-02 | 値幅 | 仮 | `market.no_such`, `no_top` | tests/core/test_spec_design.py::nothing |
+    | MK-03 | 省略 | 決定 | `stages` | tests/core/test_rules.py::test_spoilage, ::test_gone |
+    | MK-04 | 列が足りない | 決定 |
     | OV-03 | 頭が違う | 決定 |  | tests/core/no_such_file.py |
     | MK-01 | 重なり | 決定 |  |  |
 
@@ -42,7 +47,7 @@ SAMPLE = textwrap.dedent(
 
     | 番号 | 何の代わりか | いつ外すか |
     | --- | --- | --- |
-    | MK-02 | 本来の仕組み | 回7 |
+    | MK-02 の `market.band`（説明つき） | 本来の仕組み | 回7 |
     | MK-09 | 一覧にない | 未定 |
 
     ## 仕組み
@@ -55,14 +60,19 @@ SAMPLE = textwrap.dedent(
 def test_problems_finds_each_kind_of_error(tmp_path):
     (tmp_path / "03-market.md").write_text(SAMPLE, encoding="utf-8")
     tabs = design_index.load_tabs(tmp_path)
-    assert [r.number for r in tabs[0].rules] == ["MK-01", "MK-02", "OV-03", "MK-01"]
+    assert [r.number for r in tabs[0].rules] == ["MK-01", "MK-02", "MK-03", "OV-03", "MK-01"]
     assert [row[0] for row in tabs[0].provisional] == ["MK-02", "MK-09"]
     found = "\n".join(design_index.problems(tabs, check_index=False))
     assert "OV-03 の頭が MK でない" in found
     assert "MK-01 が重なっている" in found
     assert "no_such_file.py がない" in found
-    assert "test_spec_design.py::test_nothing がない" in found
-    assert "market.no_such_name が game.yaml にない" in found
+    assert "test_spec_design.py::nothing がない" in found
+    assert "market.no_such が game.yaml にない" in found
+    assert "no_top が game.yaml にない" in found
+    assert "stages" not in found
+    assert "tests/core/test_rules.py::test_gone がない" in found
+    assert "test_spoilage がない" not in found
+    assert "読めない行: | MK-04 | 列が足りない" in found
     assert "market.band" not in found
     assert "仮の決まりの MK-09 が決まりの一覧にない" in found
     assert "MK-99" not in found
@@ -73,5 +83,5 @@ def test_index_shows_first_sentence_and_marks_provisional(tmp_path):
     text = design_index.render_index(design_index.load_tabs(tmp_path))
     assert "## [3 物と市場と値段](03-market.md)" in text
     assert "| MK-01 | 板寄せで決める | 決定 | tests/core/test_spec_design.py |" in text
-    assert "| MK-02 | 値幅まで | 仮（仮の決まりの表あり） |" in text
+    assert "| MK-02 | 値幅 | 仮（仮の決まりの表あり） |" in text
     assert "続きの文" not in text

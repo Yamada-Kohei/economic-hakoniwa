@@ -41,9 +41,12 @@ PREFIXES = {
     12: "GT",
 }
 
-_RULE_ROW = re.compile(r"^\|\s*([A-Z]{2}-\d{2,3})\s*\|")
-_SETTING = re.compile(r"`([a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_\[\]]*)+)`")
-_TEST = re.compile(r"(tests/[A-Za-z0-9_/]+\.py)(?:::(\w+))?")
+# 表の行の頭の番号。仮の決まりの表は「LB-05 の `labor.max_cut`（…）」のように番号の後に説明が続く
+_RULE_ROW = re.compile(r"^\|\s*([A-Z]{2}-\d{2,3})(?![\d-])")
+_SETTING = re.compile(r"`([a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_\[\]]*)*)`")
+# 「tests/a.py::x, ::y」の2つ目から先は、前のファイルを引き継ぐ
+_TEST = re.compile(r"(?<![\w/])(tests/[A-Za-z0-9_/]+\.py)((?:::\w+)*)|(?<![\w:])((?:::\w+)+)")
+RULES_HEADER = ["番号", "決まり（一行）", "状態", "設定の名前", "試験"]
 # 設定の名前に見えるが、コードやファイルを指しているもの
 _NOT_SETTING = re.compile(r"\.(py|yaml|md|json|html|js)$|^(hakoniwa_core|server|tools|ctx|state)\.")
 SUMMARY_CHARS = 48
@@ -65,7 +68,8 @@ class Tab:
     no: int
     title: str
     rules: list[Rule] = field(default_factory=list)
-    provisional: list[list[str]] = field(default_factory=list)
+    provisional: list[list[str]] = field(default_factory=list)  # 頭は番号だけにした行
+    unparsed: list[str] = field(default_factory=list)  # 節の中の、読めなかった表の行
 
 
 def _cells(line: str) -> list[str]:
@@ -73,17 +77,35 @@ def _cells(line: str) -> list[str]:
 
 
 def _sections(text: str) -> dict[str, list[str]]:
-    """「## 決まりの一覧」と「### 仮の決まり」の行を取り出す。"""
+    """「## 決まりの一覧」と「### 仮の決まり」の表の行を取り出す（見出しの行・区切りの行も）。"""
     out: dict[str, list[str]] = {"rules": [], "provisional": []}
     where = None
+    fenced = False
     for line in text.splitlines():
+        if line.startswith("```"):
+            fenced = not fenced
+        if fenced:
+            continue
         if line.startswith("## "):
             where = "rules" if line.strip() == "## 決まりの一覧" else None
         elif line.startswith("### ") and where in ("rules", "provisional"):
             where = "provisional" if line.strip() == "### 仮の決まり" else None
-        elif where and _RULE_ROW.match(line):
+        elif where and line.startswith("|"):
             out[where].append(line)
     return out
+
+
+def test_refs(cell: str) -> list[tuple[str, list[str]]]:
+    """試験の列から (ファイル, [関数やクラスの名前]) を取り出す。"""
+    refs: list[tuple[str, list[str]]] = []
+    for m in _TEST.finditer(cell):
+        if m.group(1):
+            refs.append((m.group(1), [n for n in m.group(2).split("::") if n]))
+        elif refs:
+            refs[-1][1].extend(n for n in m.group(3).split("::") if n)
+        else:
+            refs.append(("", [n for n in m.group(3).split("::") if n]))
+    return refs
 
 
 def load_tabs(design: Path = DESIGN) -> list[Tab]:
@@ -97,9 +119,18 @@ def load_tabs(design: Path = DESIGN) -> list[Tab]:
         tab = Tab(path=path, no=no, title=first.lstrip("# ").strip())
         parts = _sections(text)
         for line in parts["rules"]:
-            cells = _cells(line) + [""] * 5
-            tab.rules.append(Rule(*cells[:5], file=path.name))
-        tab.provisional = [_cells(line) for line in parts["provisional"]]
+            cells = _cells(line)
+            m = _RULE_ROW.match(line)
+            if m and len(cells) == 5:
+                tab.rules.append(Rule(m.group(1), *cells[1:], file=path.name))
+            elif cells != RULES_HEADER and not set(line) <= set("|- :"):
+                tab.unparsed.append(line)
+        for line in parts["provisional"]:
+            m = _RULE_ROW.match(line)
+            if m and len(_cells(line)) == 3:
+                tab.provisional.append([m.group(1), *_cells(line)[1:]])
+            elif not _cells(line)[0] == "番号" and not set(line) <= set("|- :"):
+                tab.unparsed.append(line)
         tabs.append(tab)
     return tabs
 
@@ -139,7 +170,7 @@ def render_index(tabs: list[Tab]) -> str:
         for r in tab.rules:
             mark = "（仮の決まりの表あり）" if r.number in provisional else ""
             status = _summary(r.status) + mark
-            tests = "、".join(sorted({m.group(1) for m in _TEST.finditer(r.tests)})) or r.tests
+            tests = "、".join(sorted({f for f, _ in test_refs(r.tests) if f})) or r.tests
             lines.append(f"| {r.number} | {_summary(r.text)} | {status} | {tests} |")
         lines.append("")
     return "\n".join(lines)
@@ -161,20 +192,28 @@ def problems(tabs: list[Tab], *, check_index: bool = True) -> list[str]:
         name_of = tab.path.name
         prefix = PREFIXES[tab.no]
         numbers = {r.number for r in tab.rules}
+        if not tab.rules:
+            out.append(f"{name_of}: 決まりの一覧に決まりが1つもない")
+        for line in tab.unparsed:
+            out.append(f"{name_of}: 決まりの一覧か仮の決まりの表の、読めない行: {line[:60]}")
         for r in tab.rules:
             if not r.number.startswith(prefix + "-"):
                 out.append(f"{name_of}: {r.number} の頭が {prefix} でない")
             if r.number in seen:
                 out.append(f"{name_of}: {r.number} が重なっている（{seen[r.number]} にもある）")
             seen.setdefault(r.number, tab.path.name)
-            for m in _TEST.finditer(r.tests):
-                test_file = REPO / m.group(1)
+            for test, funcs in test_refs(r.tests):
+                if not test:
+                    out.append(f"{name_of}: {r.number} の試験 ::{funcs[0]} のファイルがない")
+                    continue
+                test_file = REPO / test
                 if not test_file.exists():
-                    out.append(f"{name_of}: {r.number} の試験のファイル {m.group(1)} がない")
-                elif m.group(2) and not re.search(
-                    rf"^\s*def {m.group(2)}\b", test_file.read_text(encoding="utf-8"), re.M
-                ):
-                    out.append(f"{name_of}: {r.number} の試験 {m.group(0)} がない")
+                    out.append(f"{name_of}: {r.number} の試験のファイル {test} がない")
+                    continue
+                source = test_file.read_text(encoding="utf-8")
+                for func in funcs:
+                    if not re.search(rf"^\s*(?:async\s+def|def|class)\s+{func}\b", source, re.M):
+                        out.append(f"{name_of}: {r.number} の試験 {test}::{func} がない")
             for m in _SETTING.finditer(r.settings):
                 name = m.group(1)
                 if _NOT_SETTING.search(name):
