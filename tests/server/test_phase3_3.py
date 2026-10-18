@@ -239,10 +239,10 @@ def test_rankings_page_ranks_countries_in_one_currency(client, world):
     ]
     assert values == sorted(values, reverse=True) and population[0]["rank"] == 1
     steel = next(i for i in data["industries"] if i["industry"] == "steel")
-    assert steel["holder"] == second.id and steel["title"] == "鋼の国"
+    assert steel["holder"] == second.id and steel["title"] == "鋼都"
     assert steel["top"][0] == {"rank": 1, "island": second.id, "name": second.name, "turns": 24.0}
     html = res.content.decode()
-    assert "統計の順位" in html and "鋼の国" in html and 'href="/rankings/"' in html
+    assert "統計の順位" in html and "鋼都" in html and 'href="/rankings/"' in html
     # 通貨を選べる。知らない番号は既定に戻す
     assert client.get(f"/rankings/?base={second.id}").context["data"]["base"] == second.id
     assert client.get("/rankings/?base=999").context["data"]["base"] == own.id
@@ -267,9 +267,9 @@ def test_island_and_economy_pages_show_strengths_and_titles(client, world):
     w.ext["rankings"] = {"titles": {"steel": island.id}}
     w.save()
     html = client.get(f"/islands/{island.id}/economy/").content.decode()
-    assert "得意産業と称号" in html and "鋼の国" in html and "経験 36 ターン分" in html
+    assert "得意産業と称号" in html and "鋼都" in html and "経験 36 ターン分" in html
     html = client.get(f"/islands/{island.id}/").content.decode()
-    assert "得意産業" in html and "鉄鋼・繊維" in html and "鋼の国" in html
+    assert "得意産業" in html and "鉄鋼・繊維" in html and "鋼都" in html
 
 
 # --- 命令の説明と統計の表示名 -------------------------------------------------------------
