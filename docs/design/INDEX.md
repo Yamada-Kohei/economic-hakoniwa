@@ -508,7 +508,7 @@
 | GT-27 | 標準の計画は毎ターン上から見て最初に足りないもの（食料・発電・工事の資材・投入財・消費財・使って… | 決定 | tests/core/test_gate.py |
 | GT-28 | 標準の計画の世界の側: 北と南に 1 つずつ誰でも入れる貿易圏を作り、真ん中の行の島は両方に入れ… | 決定 | tests/core/test_trade.py |
 | GT-29 | 標準の計画の飢饉の手: 食べ物の充足が下がった月は国営の農場を穀物に替え、国の倉庫の食べ物を出し… | 決定 | tests/core/test_balance_round5.py |
-| GT-37 | 標準の計画の財政の手: 国が賃金を払いきれなければ所得税と消費税を少しずつ上げ、ゆとりが戻れば建… | 決定 | tests/core/test_balance_round5.py |
+| GT-37 | 標準の計画の財政の手: 国が賃金を払いきれないか、返す力の比（中央銀行以外への利払い÷国の収入）… | 決定 | tests/core/test_balance_round5.py |
 | GT-30 | 設計書の決まりの一覧と索引がずれていない、番号の頭・試験のパス・設定の名前が正しい、段の表が g… | 決定 | tests/core/test_docs_match.py、tests/core/test_spec_design.py、tests/core/test_spec_settings.py |
 | GT-31 | 試し遊びは AI 用の鍵で入り、国の要約と差分か MCP で遊ぶ | 決定 |  |
 | GT-32 | 崩れの見張り: 測りと夜の点検（長い年月）は、1 ターン目から島ごとに飢饉・国の出入りを除いた人… | 決定 | tests/core/test_collapse.py |

@@ -165,6 +165,22 @@ def test_plan_raises_taxes_when_the_state_cannot_pay_wages(game, warmed):
     assert "consumption_tax" not in payload  # 建国の税率より下げない
 
 
+def test_plan_raises_taxes_while_interest_eats_too_much_revenue(game, warmed):
+    """返す力の比（利払い ÷ 国の収入）が FISCAL_LIMIT を超えている間は、賃金を払えていても税を上げ
+    （回5 後半、W-06）、止まった国の工事のために公共事業費を増やさない。"""
+    from hakoniwa_core import autoplan
+
+    island = copy.deepcopy(island_of(warmed, "market"))
+    turn = autoplan.BUDGET_TURNS * 10 + autoplan.TAX_TURN
+    island.stats["bonds.burden"] = autoplan.FISCAL_LIMIT
+    kind, payload = autoplan._tax_order(island, game.config, turn)
+    assert kind == "set_taxes"
+    assert payload["income_tax"] == 10 + autoplan.TAX_STEP
+    island.stats["bonds.burden"] = autoplan.FISCAL_LIMIT * 0.9
+    island.stats["treasury"] = 0
+    assert autoplan._tax_order(island, game.config, turn) is None  # 間は据え置く
+
+
 def test_plan_turns_state_farms_to_grain_and_opens_the_warehouse_in_a_famine(game, warmed):
     """食べ物が足りない月、標準の計画は国営の農場を穀物に替え、国の倉庫の食べ物を出し、穀物を高めの
     指値で買い入れる。"""
