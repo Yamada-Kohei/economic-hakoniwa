@@ -193,9 +193,12 @@ class Records(IslandStage):
 
     @staticmethod
     def _fiscal(island: IslandState) -> dict[str, int]:
-        """国庫の出入り（仕訳の種類ごと）。in.<種類> が収入、out.<種類> が支出。"""
+        """国庫の出入り（仕訳の種類ごと）。in.<種類> が収入、out.<種類> が支出。市中銀行の政府の
+        預金との出し入れ（funds.TREASURY_MOVES）は、国のお金の置き場所が変わるだけなので数えない。"""
         out: dict[str, int] = {}
         for e in island.journal:
+            if e.kind in funds.TREASURY_MOVES:
+                continue
             if e.debit == ledger.TREASURY_ACCOUNT:
                 key = f"in.{e.kind}"
             elif e.credit == ledger.TREASURY_ACCOUNT:
@@ -250,7 +253,8 @@ def _holdings(island: IslandState) -> dict[str, float]:
 def _finances(island: IslandState) -> dict[str, float]:
     """国庫・国債の残高・政策金利。"""
     return {
-        "treasury": ledger.money(island, ledger.GOV),
+        "treasury": funds.government_money(island),  # 市中銀行に預けた政府の預金も数える（回5）
+        "treasury.deposited": sum(funds.deposited(island).values()),
         "debt": total_debt(island),
         "policy_rate": island.policy.policy_rate * 100 / BASIS,
     }

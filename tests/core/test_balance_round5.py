@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 
 from hakoniwa_core import ledger
-from hakoniwa_core.economy import funds
+from hakoniwa_core.economy import Payer, funds
 from tests.core.test_finance import context, island_of
 from tests.core.test_finance import game as game  # noqa: F401  （試験の部品を使い回す）
 from tests.core.test_finance import warmed as warmed  # noqa: F401
@@ -182,3 +182,37 @@ def test_plan_turns_state_farms_to_grain_and_opens_the_warehouse_in_a_famine(gam
     assert buy["good"] == "grain"
     assert buy["limit"] > island.economy.prices["grain"]
     assert buy["quantity"] == 20.0  # 足りない2割
+
+
+# --- 政府の預金 ---------------------------------------------------------------------------
+
+
+def test_treasury_surplus_is_deposited_at_banks_and_drawn_back(game, warmed):
+    """国庫の余りは市中銀行に政府の預金として預け（準備預金が増える）、要るときに引き出す。政府の
+    預金は国のお金に数え、銀行の預金（準備の最低限・預金者・お金の量）と銀行の純資産は変えない。"""
+    from hakoniwa_core.economy import banks
+
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    _treasury(island, 10_000_000)
+    bank = banks.active_banks(island)[0]
+    reserves = banks.reserves_of(island, bank)
+    deposits = banks.deposits_of(island, bank)
+    worth = banks.net_worth(island, game.config, bank, world.turn)
+    money = ledger.aggregates(island.accounts)
+    assert funds.deposit_surplus(island, 4_000_000, {bank: 1}) == 6_000_000
+    assert ledger.money(island, ledger.GOV) == 4_000_000
+    assert banks.reserves_of(island, bank) == reserves + 6_000_000
+    assert funds.government_money(island) == funds.spendable(island) == 10_000_000
+    assert banks.deposits_of(island, bank) == deposits
+    assert ledger.GOV not in banks.depositors_of(island, bank)
+    assert banks.net_worth(island, game.config, bank, world.turn) == worth
+    assert ledger.aggregates(island.accounts) == money
+    # 国庫で足りない分は、払うときに政府の預金から戻す
+    funds.open_treasury(island, {}, game.config.get("fiscal.payment_order"), {})
+    funds.pay(island, Payer(ledger.GOV), "hh:general", 5_000_000, "grant")
+    assert funds.government_money(island) == 5_000_000
+    assert funds.deposited(island)[bank] == 5_000_000
+    # 国庫が残す額に足りなければ、預け入れのかわりに引き出す
+    assert funds.deposit_surplus(island, 5_000_000, {bank: 1}) == -5_000_000
+    assert ledger.money(island, ledger.GOV) == 5_000_000

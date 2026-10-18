@@ -250,6 +250,16 @@ class Bonds(WorldStage):
         self._ordered(island, ctx)
         self._secondary(island, ctx)
         self.top_up(island, ctx)
+        # 国庫に残す額を超えた分は、市中銀行に政府の預金として預ける（政府の黒字で準備預金が国庫へ
+        # 吸い上げられたままにならないように。回5）。まだ支出のない月（建国の月）は、残す額が
+        # 分からないので預けない
+        if any(v for k, v in funds.spent(island).items() if k != BONDS):
+            # 預け先は、自己資本比率が規制の値以上の銀行だけ（預金の額の割合で分ける）
+            weights = {
+                b: banks.deposits_of(island, b)
+                for b in banks.healthy_banks(island, ctx.config, ctx.turn)
+            }
+            funds.deposit_surplus(island, self.treasury_need(island, ctx), weights)
         finance["last_policy_rate"] = island.policy.policy_rate
         self.record_stats(island)
 
@@ -264,14 +274,22 @@ class Bonds(WorldStage):
         ために払えなくならないように）。そのときの spent は救済の前の額にする（1度きりの救済を、次の
         ターンにも出す支出に数えない）。
         """
+        need = self.treasury_need(island, ctx, spent) - ledger.money(island, ledger.GOV)
+        if need > 0:
+            self.raise_funds(island, ctx, need)
+
+    @staticmethod
+    def treasury_need(
+        island: IslandState, ctx: StageContext, spent: dict[str, int] | None = None
+    ) -> int:
+        """国庫に残す額: このターンの国債以外の政府の支出（次のターンの見込み）×（1 +
+        bonds.buffer_turns）＋ 次のターンの利払い。spent は支出の項目ごとの額（既定はこのターンに
+        使った額）。"""
         if spent is None:
             spent = funds.spent(island)
         spending = sum(v for k, v in spent.items() if k != BONDS)
         buffer = ctx.config.get("bonds.buffer_turns")
-        need = spending * (1 + buffer) + debt.due(island, ctx.turn + 1, redemptions=False)
-        need -= ledger.money(island, ledger.GOV)
-        if need > 0:
-            self.raise_funds(island, ctx, need)
+        return spending * (1 + buffer) + debt.due(island, ctx.turn + 1, redemptions=False)
 
     # --- 利回り -----------------------------------------------------------------------
 
@@ -429,7 +447,13 @@ class Bonds(WorldStage):
         self, island: IslandState, ctx: StageContext, amount: int, kind: str = "bonds_issued"
     ) -> int:
         """amount を、自動の発行の期間の割合で分けて入札で発行する（端数は最後の期間に足す）。
-        集まった額を返す。kind はログの種類（借り換えは bonds_refinanced）。"""
+        集まった額を返す。kind はログの種類（借り換えは bonds_refinanced）。
+
+        市中銀行に政府の預金があれば、発行する前に先に引き出す（回5）。"""
+        recalled = funds.recall(island, amount)
+        amount -= recalled
+        if amount <= 0:
+            return recalled
         shares = sorted(island.policy.bond_terms.items()) or [
             (name, to_basis(share)) for name, share in ctx.config.get("bonds.auto_terms").items()
         ]
@@ -440,7 +464,7 @@ class Bonds(WorldStage):
             face = left if i == len(shares) - 1 else amount * share // total
             left -= face
             raised += self.issue(island, ctx, face, name, kind)
-        return raised
+        return recalled + raised
 
     def issue(self, island: IslandState, ctx: StageContext, face: int, term: str, kind: str) -> int:
         """期間 term の国債 face を入札で出す。売れた額（中央銀行の引き受けを含む）を返す。"""

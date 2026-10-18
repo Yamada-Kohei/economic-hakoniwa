@@ -66,8 +66,17 @@ def active_banks(island: IslandState) -> list[str]:
 
 
 def deposits_of(island: IslandState, bank: str) -> int:
-    """銀行が出している預金の合計。"""
-    return -ledger.balance(island, ledger.issued(bank, ledger.DEPOSIT))
+    """銀行が出している預金のうち、政府の預金を除いた合計（準備の最低限・銀行の大きさ・画面の預金に
+    使う）。政府の預金（回5）は担保付きの預金として扱い、準備の最低限・利子・保護・切り捨ての外に
+    置く（アメリカの国庫の税・借入勘定と同じ）。"""
+    return -ledger.balance(island, ledger.issued(bank, ledger.DEPOSIT)) - government_deposit(
+        island, bank
+    )
+
+
+def government_deposit(island: IslandState, bank: str) -> int:
+    """政府が bank に預けている額（国庫の余り。回5）。"""
+    return ledger.balance(island, ledger.account(ledger.GOV, ledger.DEPOSIT, bank))
 
 
 def reserves_of(island: IslandState, bank: str) -> int:
@@ -137,7 +146,10 @@ def net_worth(island: IslandState, config: GameConfig, bank: str, turn: int) -> 
         + abroad.foreign_assets(island, bank)
     )
     liabilities = (
-        deposits_of(island, bank) + interbank_borrowed(island, bank) + cb_borrowed(island, bank)
+        deposits_of(island, bank)
+        + government_deposit(island, bank)
+        + interbank_borrowed(island, bank)
+        + cb_borrowed(island, bank)
     )
     return assets - liabilities
 
@@ -470,11 +482,15 @@ def layer_deposit_insured(island: IslandState, entity: str, amount: int) -> int:
 
 
 def depositors_of(island: IslandState, bank: str) -> dict[str, int]:
-    """銀行の預金者と額（預金者の名前の順）。"""
+    """銀行の預金者と額（預金者の名前の順。政府の預金は除く）。"""
     suffix = f"/{ledger.DEPOSIT}/{bank}"
     found = {}
     for name in sorted(island.accounts):
-        if name.endswith(suffix) and not ledger.is_issued(name):
+        if (
+            name.endswith(suffix)
+            and not ledger.is_issued(name)
+            and not name.startswith(f"{ledger.GOV}/")
+        ):
             value = island.accounts[name]
             if value:
                 found[ledger.parse(name)[0]] = value

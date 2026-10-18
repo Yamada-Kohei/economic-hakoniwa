@@ -82,10 +82,10 @@ class Failures(IslandStage):
                 limit = ctx.config.get("loans.arrears_limit")
                 if any(x.arrears >= limit for x in banks.loans_by_borrower(island, entity)):
                     bankrupt(island, ctx, f)
-        before = ledger.money(island, ledger.GOV)
+        before = funds.government_money(island)  # 政府の預金からの引き出しは使った額に数えない
         spent = dict(funds.spent(island))  # 救済の前の支出（救済の額は次のターンの見込みでない）
         resolved = self._resolve(island, ctx)
-        if ledger.money(island, ledger.GOV) < before:
+        if funds.government_money(island) < before:
             # 救済と預金保護で国庫から出したら、国債の段と同じく次のターンの支出の分を発行で戻す
             # （戻さないと、次のターンの教育費などが払えず、学校が止まる）
             from hakoniwa_core.modules.bonds import Bonds
