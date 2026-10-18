@@ -96,6 +96,16 @@ def interbank_borrowed(island: IslandState, bank: str) -> int:
     return -ledger.balance(island, ledger.issued(bank, ledger.INTERBANK))
 
 
+# 銀行間と中央銀行から前のターンに借りて、このターンの銀行の段で返した額
+# （island.scratch。銀行 → 額）
+OVERNIGHT = "overnight_repaid"
+
+
+def overnight_repaid(island: IslandState, bank: str) -> int:
+    """bank がこのターンの銀行の段で、銀行間と中央銀行に返した額（前のターンに借りた額）。"""
+    return island.scratch.get(OVERNIGHT, {}).get(bank, 0)
+
+
 def cb_borrowed(island: IslandState, bank: str) -> int:
     return -ledger.balance(island, ledger.issued(bank, ledger.CB_LOAN))
 

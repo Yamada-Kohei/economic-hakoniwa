@@ -121,6 +121,12 @@ def test_bank_bids_all_spare_reserves_at_rising_yields(game, warmed):
     assert total >= spare - len(banks.active_banks(island)) * game.config.get(
         "banking.auction_steps"
     )
+    # 前のターンに中央銀行から借りて今ターン返した分は、手元に残す（満期のお金で買い直さない）
+    bank = banks.active_banks(island)[0]
+    before = auction_budget(island, ctx, bank)
+    island.scratch.setdefault(banks.OVERNIGHT, {})[bank] = before // 2
+    assert auction_budget(island, ctx, bank) == before - before // 2
+    island.scratch.pop(banks.OVERNIGHT)
     free, premium = concentration(ctx, island)
     assert premium > 0
     assert rate > 500  # 全部売れるまで買うと、偏りの上乗せが付く
