@@ -362,8 +362,7 @@ def _budget_order(
     if current and any(not f.built and f.owner == OWNER_STATE for f in island.facilities):
         top = int(population_of(island) * PUBLIC_WORKS * WORKS_RANGE[1])
         construction = max(construction, min(current, top))
-        starved = _starved(island) and stats.get("treasury", 0) > current // TURNS_PER_YEAR
-        if starved and stats.get("bonds.burden", 0) < FISCAL_LIMIT:
+        if _starved(island) and stats.get("treasury", 0) > current // TURNS_PER_YEAR:
             construction = max(construction, min(top, int(current * (1 + STARVED_RAISE))))
     targets = {
         "construction": construction,
@@ -386,10 +385,7 @@ def _tax_order(island: IslandState, config: GameConfig, turn: int) -> tuple[str,
     unpaid = arrears.total(island, ledger.GOV) > 0
     policy = island.policy
     current = {key: getattr(policy, key) * 100 // BASIS for key in TAX_MAX}
-    # 賃金を払いきれないか、返す力の比が FISCAL_LIMIT を超えたら少しずつ上げる（回5 後半。利払いが
-    # 収入の3割を超えるのは、現実なら市場が国債を買わなくなる所。ギリシャやイタリアの立て直しでも
-    # 付加価値税を上げた）
-    if unpaid or burden >= FISCAL_LIMIT:
+    if unpaid:
         target = {key: min(top, current[key] + TAX_STEP) for key, top in TAX_MAX.items()}
     else:
         spending = sum(v for k, v in island.economy.spending.items() if k != "bonds")
