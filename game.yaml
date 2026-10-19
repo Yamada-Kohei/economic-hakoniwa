@@ -22,6 +22,7 @@ stages:
   - accounts         # 決算: 損益（国債は売った・償還された分の損益だけ）、減価償却、補助金、法人税、配当と納付、中央銀行の納付
   - central_bank     # 政策金利（独立のとき）、銀行間の貸し借り、中央銀行の貸し出し
   - failures         # 返済の遅れが続いた施設の倒産、銀行の破綻と破綻処理
+  - firms_funds      # 企業の資金（回7）: 施設の余りを企業へ上げ、足りない施設に回す、連結の法人税と配当、立て直し
   - entry_exit       # 民営工場と民間銀行の参入・撤退、差し押さえた施設の売却
   - population       # 消費と人口
   - housing          # 都市の発展（町の自動建設と成長）
@@ -285,6 +286,9 @@ household:
       engineers: {per_person: 0.2, from: 0.5, full: 2}
       general: {per_person: 0.2, from: 1.5, full: 3}
   housing_share: 0.02   # 町の資材に使う預金の割合の上限
+  # 家計の支え合い（回7。家族・親せき・村の助け合い）: 失業している家計が食べ物を買いきれないとき、
+  # 一般の層と技術者の層が、このターンの可処分所得のこの割合までを上限に、足りない分を送る（賃金の段）
+  support: {share: 0.1}
 
 # 商業・サービス業（バランス調整。hakoniwa_core/economy/services.py）。島に1つ、マスを持たない施設で、
 # 住民がサービスを買いに行く集落（通勤圏でいちばん人の多い集落）ごとに、そこで人を雇って出す
@@ -293,6 +297,17 @@ services:
   good: services        # サービス（持ち越せず、島の外へ運べない）
   per_worker: 1         # 働く人1人が1ターンに出すサービスの量
   labor_share: 0.9      # 雇う人数の目安 = 直近の売上 × これ ÷ 賃金（残りは店の利益）
+
+# 小売り（回7。hakoniwa_core/economy/retail.py）。家計は品物（電力と町の資材を除く）を買うと、代金を物価指数で
+# 割った額 value_per_unit ごとに小売り1人月を商店・百貨店から買う（現実の小売りの粗利は売上の2〜3割、店員1人が
+# 月に売る額は賃金の6〜8倍ほど）。店で買いきれない分は、商業・サービス業（小さな店と屋台）から、小売りの値段の
+# (1 + direct_premium) 倍で買う（直売・屋台）
+retail:
+  good: retail
+  value_per_unit: 5000
+  direct_premium: 0.5
+  persons_per_car: 3      # 自動車1台で百貨店に行ける人数（家族）
+  permit_turns: 12        # 許可制の国で、百貨店の出店の申請を待つターン数
 
 equipment:
   # 設備の傷みと直し（バランス調整の回6。hakoniwa_core/economy/equipment.py）。物を作る施設は建てたときの資材を
@@ -308,6 +323,12 @@ firms:
   depreciation_turns: 240  # 設備の減価償却のターン数（20年）
   payout: 0.5           # 税引き後の利益のうち、配当（民営）・国庫への納付（国営）に回す割合
   cash_turns: 6         # 手元の資金がこのターン数分の支払いを超えたら、超えた分も配当・納付に回す
+  # 企業（回7。modules/companies）: 施設を建ても買いもせず idle_cash_years 年たち、手元が施設の支払いの
+  # firm_cash_turns ターン分を超えた企業は、超えた分も配当する。連結の現金収支が restructure_turns ターン
+  # 続けてマイナスで、預金が施設の次の支払いに足りなければ、変動費の利益が一番低い施設を閉める
+  idle_cash_years: 3
+  firm_cash_turns: 24
+  restructure_turns: 12
   loss_carry_turns: 60  # 赤字を繰り越せるターン数
   # 民営工場の参入（フェーズ2-2）。見込みの年の利益率 R（式 entry_return）が「借りる金利 + entry_margin」を
   # 超え、その財が直近 price_turns ターンのうち shortage_turns ターン以上品切れか、値段が原価の
@@ -501,8 +522,10 @@ population:
   # 45〜75 日ほど）。町の人は、蓄えが flee（何か月分の不足）を超えると、空きのある村へ移り始める
   # （回4。現実の飢饉でも、家の蓄えと持ち物を食べ尽くしてから村へ逃れる。いちばん弱い人が亡くなり
   # 始める reserve_min より前。1か月足りないだけでは移らない）
+  # 村へ逃れた人は、町で食べ物が買えるようになり、町に人手の足りない仕事があれば、1ターンに
+  # return_share の割合ずつ町へ戻る（回7。W-21。1割なら2年ほどでほとんど戻る）
   hunger: {tolerance: 0.1, recovery: 0.2, reserve: 2.5, reserve_spread: 0.4, reserve_min: 1.3,
-           flee: 0.5}
+           flee: 0.5, return_share: 0.1}
   migration_rate: 0.1   # 仕事のない人のうち、1ターンに働き口の近くへ移る割合
   # 幸福度 = base + 各項目（足りている割合 × 重み） − 汚染 × pollution_per_point − 実質賃金と物価の減点
   # 上下水道はそのマスの整備度、教育は島の教育水準（フェーズ2-3）

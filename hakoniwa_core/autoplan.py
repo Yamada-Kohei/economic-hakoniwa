@@ -97,6 +97,7 @@ from hakoniwa_core.state import (
     ORDER_PENDING,
     OWNER_PRIVATE,
     OWNER_STATE,
+    ZONE_COMMERCIAL,
     ZONE_INDUSTRIAL,
     ZONE_NONE,
     IslandState,
@@ -175,6 +176,7 @@ def _plan_rest(
         _tax_order(island, config, turn),
         _price_cap_order(island, defs, config),
         _zone_order(island, defs, config),
+        _commercial_order(island, defs, config),
         _water_order(island, defs, config),
     )
     for policy in policies:
@@ -1123,6 +1125,33 @@ def _zone_order(island: IslandState, defs: Defs, config: GameConfig) -> tuple[st
     if not tiles:
         return None
     return ("set_zone", {"zone": "industrial", "tiles": tiles})
+
+
+def _commercial_order(
+    island: IslandState, defs: Defs, config: GameConfig
+) -> tuple[str, dict] | None:
+    """都市（settlements.yaml の city）以上に育った町があり、空いた商業地のマスがなければ、いちばん
+    人の多い町の隣の空いた平地を1マス商業地に指定する（百貨店が建つ所。回7）。"""
+    if not island.has_economy or "department_store" not in defs.facilities:
+        return None
+    occupied = island.facilities_by_tile()
+    if any(t.zone == ZONE_COMMERCIAL and (t.x, t.y) not in occupied for t in island.tiles):
+        return None
+    housing = fac.housing_kind(config)
+    city = defs.settlements.get("city", {}).get("min_population", 0)
+    towns = sorted(
+        (f for f in island.facilities if f.kind == housing and fac.on_map(f)),
+        key=lambda f: (-island.tile(f.x, f.y).population, f.y, f.x),
+    )
+    if not towns or island.tile(towns[0].x, towns[0].y).population < city:
+        return None
+    big = (towns[0].x, towns[0].y)
+    for pos in within(island, big, 2):
+        t = island.tile(*pos)
+        empty = pos not in occupied and t.population == 0
+        if t.zone == ZONE_NONE and empty and t.terrain == "plain":
+            return ("set_zone", {"zone": "commercial", "tiles": [list(pos)]})
+    return None
 
 
 # --- どこに建てるか ---------------------------------------------------------------

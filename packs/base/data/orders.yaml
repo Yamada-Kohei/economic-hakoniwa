@@ -170,6 +170,17 @@ set_labor_policy:
       minimum_wage: {type: integer, minimum: 0}                     # 0 で決めない
       unemployment_benefit: {type: number, minimum: 0, maximum: 100} # 平均賃金に対する %
 
+set_retail_policy:        # 小売りの政策（回7）: 大きな店（百貨店）の出店の規制と、許可制の申請を許す
+  admin_cost: 1
+  parliament: majority
+  payload:
+    type: object
+    minProperties: 1
+    additionalProperties: false
+    properties:
+      large_store: {enum: [none, permit, ban]}   # 規制なし・許可制・禁止
+      approve: {const: true}                     # 許可制の国で、出ている申請を許す
+
 set_price_cap:
   admin_cost: 1
   payload:
@@ -214,7 +225,7 @@ set_zone:
     required: [zone, tiles]
     additionalProperties: false
     properties:
-      zone: {enum: [industrial, office, none]}   # 工業団地・オフィス街・解除
+      zone: {enum: [industrial, office, commercial, none]}   # 工業団地・オフィス街・商業地（回7）・解除
       tiles:
         type: array
         minItems: 1
@@ -261,6 +272,27 @@ privatize:
     properties:
       x: {type: integer, minimum: 0}
       y: {type: integer, minimum: 0}
+
+nationalize_firm:         # 民営の企業を丸ごと国有化（回7）
+  admin_cost: 3
+  secret: true
+  parliament: majority
+  payload:
+    type: object
+    required: [firm]
+    additionalProperties: false
+    properties:
+      firm: {type: integer, minimum: 1}   # 企業の番号（施設の画面の企業の表）
+
+privatize_firm:           # 国営企業を丸ごと民営化（回7）
+  admin_cost: 3
+  parliament: majority
+  payload:
+    type: object
+    required: [firm]
+    additionalProperties: false
+    properties:
+      firm: {type: integer, minimum: 1}
 
 set_monetary_policy:
   admin_cost: 1

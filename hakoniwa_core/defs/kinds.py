@@ -141,7 +141,9 @@ def _check_order(oid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator
 
 
 def _check_facility_zone(fid: str, entry: Mapping[str, Any]) -> Iterator[Problem]:
-    if entry.get("tileless") and entry.get("buildable") is not False:
+    # 町の中に置く店（site: town。回7）は、町のマスを決めて建てられる
+    town = entry.get("site") == "town"
+    if entry.get("tileless") and entry.get("buildable") is not False and not town:
         yield (
             "facilities",
             fid,

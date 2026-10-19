@@ -587,15 +587,15 @@ class Employment(IslandStage):
 
     @staticmethod
     def _island_wide(ctx: StageContext, f: Facility) -> bool:
-        return is_transport(ctx.config, f) or not fac.on_map(f)
+        return is_transport(ctx.config, f) or not fac.located(f)
 
     @staticmethod
     def _area(island: IslandState, ctx: StageContext, f: Facility) -> list[Pos]:
-        return within(island, (f.x, f.y), fac.commute_radius(ctx.defs, ctx.config, f.kind))
+        return within(island, fac.position(f), fac.commute_radius(ctx.defs, ctx.config, f.kind))
 
     @staticmethod
     def _dist(f: Facility, pos: Pos) -> int:
-        return distance((f.x, f.y), pos) if fac.on_map(f) else 0
+        return distance(fac.position(f), pos) if fac.located(f) else 0
 
     @staticmethod
     def _surcharge(island: IslandState, ctx: StageContext, wanted: int, hired: int) -> None:
@@ -627,10 +627,10 @@ def unemployment_rate(island: IslandState, ctx: StageContext, f: Facility) -> fl
     村で自給の農業をしている人は、統計と同じく失業者に数えない。
     """
     defs = ctx.defs
-    if not fac.on_map(f) or is_transport(ctx.config, f):
+    if not fac.located(f) or is_transport(ctx.config, f):
         tiles = [t for t in island.tiles if t.population]
     else:
-        area = within(island, (f.x, f.y), fac.commute_radius(defs, ctx.config, f.kind))
+        area = within(island, fac.position(f), fac.commute_radius(defs, ctx.config, f.kind))
         tiles = [island.tile(*p) for p in area if island.tile(*p).population]
     share = fac.labor_share(defs, island)
     labor = idle = 0

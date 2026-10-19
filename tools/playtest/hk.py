@@ -643,6 +643,42 @@ def print_summary(d: dict) -> None:
         names |= {"sold": "売れた量", "unused": "売れ残り"}
         parts = [f"{label} {sv[f'{k}_text']}" for k, label in names.items() if k in sv]
         print("[商業・サービス業] " + "、".join(parts))
+    fm = d.get("firms")
+    if fm:
+        print(
+            f"[企業] 民営 {fm['count']:g}、施設が2つ以上 {fm['groups']:g}、"
+            f"一番大きい企業の施設の割合 {fm['largest_share']}%"
+        )
+        for x in fm.get("list", []):
+            money = "、".join(
+                f"{label} {x[k]}"
+                for k, label in (("cash", "預金"), ("profit", "利益"), ("dividend", "配当"))
+                if k in x
+            )
+            print(f"  企業 #{x['firm']} {x['name']}（{x['owner_name']}）施設 {x['count']} {money}")
+    rt = d.get("retail")
+    if rt:
+        parts = [
+            f"{label} {rt[k + '_text']}"
+            for k, label in (
+                ("need", "要る量"),
+                ("sold", "商店と百貨店"),
+                ("direct", "小さな店と屋台"),
+                ("direct_sales", "その額"),
+            )
+            if k + "_text" in rt
+        ]
+        app = rt.get("store_application")
+        wait = ""
+        if app:
+            state = "許した" if app["approved"] else "許すのを待つ"
+            wait = f"、百貨店の出店の申請 ({app['x']},{app['y']}) {state}"
+        print(
+            f"[小売り] 商店 {rt['shops']}、百貨店 {rt['department_stores']}、"
+            f"出店の規制 {rt['large_store_text']}{wait}"
+        )
+        if parts:
+            print("  " + "、".join(parts))
     if d["bonds_due"]:
         print("[満期の近い国債] " + _rows(d["bonds_due"], _bond))
     for x in d.get("losing", []):

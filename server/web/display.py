@@ -13,12 +13,14 @@ from hakoniwa_core import infra, ledger
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.economy import (
     books,
+    companies,
     entity_of,
     equipment,
     facility_entity,
     is_bank,
     is_private_site,
     is_self_supporting,
+    retail,
 )
 from hakoniwa_core.log import format_log, format_turn
 from hakoniwa_core.modules.banking import ENTRY as BANK_ENTRY
@@ -96,6 +98,14 @@ def island_for_naming(row: m.Island) -> IslandState:
     return island
 
 
+def _firm_name(island: IslandState, defs: Any, f: Facility) -> str:
+    """施設の属する企業の名前（回7。なければ ""）。"""
+    number = f.economy.get(companies.FIRM)
+    if number is None or companies.record(island, int(number)) is None:
+        return ""
+    return companies.display_name(island, defs, int(number))
+
+
 def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> dict[str, Any]:
     """マスの欄の施設。だれにでも見える姿（種類・人手・稼働率・状態・在庫・補助金・閉鎖と差し押さえ）
     と、持ち主にだけ帳簿・借入・銀行の帳簿と、命令の入力に使う値（mine のとき）。"""
@@ -112,6 +122,7 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         "owner": f.owner,
         "owner_name": message(f"owner_{f.owner}"),
         "accounting_name": message(f"accounting_{f.accounting}"),
+        "firm_name": _firm_name(island, defs, f),
         "built": f.built,
         "workers": f.workers,
         "operating_rate": f.operating_rate / fac.FULL,
@@ -143,6 +154,9 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         info["level"] = level
         info["level_name"] = defs.name("settlements", level)
         info["capacity"] = defs.settlements[level]["capacity"]
+        # 町の商店（回7）: 入っている数と、町の段階で入る数
+        info["shops"] = fac.shops_at(island, fac.position(f))
+        info["shop_slots"] = fac.shop_slots(defs, f)
         levels = defs.settlement_levels()
         if levels.index(level) + 1 < len(levels):
             following = levels[levels.index(level) + 1]
@@ -677,6 +691,8 @@ def describe_order(kind: str, payload: dict[str, Any]) -> str:
         qty = f"{payload.get('quantity', 0):g} {defs.unit_name(good)}" if good in defs.goods else ""
         limit = f"（指値 {payload['limit']:,}）" if payload.get("limit") else ""
         return f"{name}: {defs.name('goods', good)}を{side} {qty}{limit}"
+    if kind in ("nationalize_firm", "privatize_firm"):
+        return f"{name}: 企業の番号 {payload.get('firm')}"
     if kind == "set_price_cap":
         good = payload.get("good", "")
         return f"{name}: {defs.name('goods', good)} {payload.get('price', 0):,}"
@@ -932,6 +948,13 @@ def _describe_finance(kind: str, payload: dict[str, Any], name: str, where: str)
         if "deposit_insurance" in payload:
             parts.append(f"預金保護の上限 {insurance_text(payload['deposit_insurance'])}")
         return f"{name}: " + "・".join(parts)
+    if kind == "set_retail_policy":
+        parts = []
+        if payload.get("large_store"):
+            parts.append(f"百貨店の出店 {message('large_store_' + payload['large_store'])}")
+        if payload.get("approve"):
+            parts.append("出店の申請を許す")
+        return f"{name}: " + "・".join(parts)
     if kind == "emergency_loan":
         amount = payload.get("amount", 0)
         return f"{name}: {where} " + (f"上限 {amount:,}" if amount else "取り消し")
@@ -1042,6 +1065,12 @@ def finance_policy_view(island) -> dict[str, Any]:
         "bank_license": bool(finance.get("bank_license")),  # 免許を出して開業を待っている
         "deposit_insurance": p.deposit_insurance,
         "deposit_insurance_text": insurance_text(p.deposit_insurance),
+        # 大きな店（百貨店）の出店の規制（回7）と、許すのを待っている申請
+        "large_store": p.large_store or retail.NONE,
+        "large_store_choices": {
+            k: message(f"large_store_{k}") for k in (retail.NONE, retail.PERMIT, retail.BAN)
+        },
+        "store_application": _store_application(defs, finance.get(retail.APPLICATION)),
         "subsidy_kinds": {k: message(f"subsidy_{k}") for k in ("production", "capital")},
         "subsidies": [
             {
@@ -1208,3 +1237,17 @@ def latest_markets(island: m.Island, turn: int | None) -> dict[str, Any]:
     if turn is None:
         return {}
     return {r.good: r for r in MarketRecord.objects.filter(island=island, turn=turn)}
+
+
+def _store_application(defs: Any, found: dict[str, Any] | None) -> dict[str, Any] | None:
+    """百貨店の出店の申請（許可制のとき）。許したものは approved。"""
+    if not found:
+        return None
+    return {
+        "turn": found["turn"],
+        "facility": found["facility"],
+        "name": defs.name("facilities", found["facility"]),
+        "x": found["x"],
+        "y": found["y"],
+        "approved": bool(found.get("approved")),
+    }

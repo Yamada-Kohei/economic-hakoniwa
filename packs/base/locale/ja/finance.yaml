@@ -6,6 +6,7 @@ electricity: 電気代
 freight: 運賃
 wage: 賃金
 unemployment_benefit: 失業手当
+family_support: 家計の支え合い
 tax_income: 所得税
 tax_consumption: 消費税
 tax_corporate: 法人税
@@ -68,3 +69,5 @@ swap_interest: 中央銀行どうしの融通の利子
 bond_1y: 1年国債
 bond_5y: 5年国債
 bond_10y: 10年国債
+firm_sweep: 企業への資金の吸い上げ
+firm_support: 企業からの資金の支え

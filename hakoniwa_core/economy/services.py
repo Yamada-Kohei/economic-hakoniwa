@@ -50,6 +50,10 @@ SERVICES_POS = (-3, -3)
 CENTERS = "services_centers"  # island.scratch: 住んでいるマス → 店の場所（中心）のマス
 SEATS = "seats"  # 施設の economy: 次のターンに雇う人数の目安
 QUOTAS = "centers"  # 施設の economy: 中心ごとの [割り振った人数, 雇えた人数]
+# 施設の economy: 雇う人数の目安のうち、直売・屋台で小売りを売る人数（回7）
+RETAIL_SEATS = "retail_seats"
+# island.scratch: 直売・屋台で売った小売りの量と代金（economy/retail.py の DIRECT と同じ）
+DIRECT = "retail_direct"
 
 
 def settings(config: GameConfig) -> dict[str, Any]:
@@ -283,8 +287,11 @@ def produce(island: IslandState, config: GameConfig, defs: Defs, turn: int) -> i
     if f is None or not f.built or "foreclosed" in f.economy:
         return 0
     good = good_of(config)
-    qty = to_milli(f.workers * settings(config)["per_worker"])
     seats = f.economy.get(SEATS, 0)
+    # 直売・屋台で小売りを売る人（回7。前のターンに店で買いきれなかった小売りの分）は
+    # サービスを出さない
+    selling = f.workers * f.economy.get(RETAIL_SEATS, 0) // seats if seats > 0 else 0
+    qty = to_milli((f.workers - min(f.workers, selling)) * settings(config)["per_worker"])
     f.operating_rate = fac.ratio(f.workers, seats) if seats > 0 else 0
     if qty > 0:
         stock.add(f.stock, good, qty, turn, defs.goods)
@@ -309,14 +316,23 @@ def plan(island: IslandState, config: GameConfig, planned: bool, unmet: int = 0)
     wage = f.economy.get("wage") or island.economy.average_wage
     wage = wage or config.get("labor.initial_wage")
     per = spec["per_worker"]
+    # 店で買いきれなかった小売りを直売・屋台で売った量と代金（回7。economy/retail.py）
+    direct_qty, direct_paid = island.scratch.get(DIRECT, (0, 0))
     if planned:
         markup = 1 + config.get("planning.target_markup")
         wanted = (sold + unmet) * markup / per / 1000
+        selling = direct_qty * markup / 1000
     else:
         wanted = money_of(price, sold + unmet) * spec["labor_share"] / wage
+        selling = direct_paid * spec["labor_share"] / wage
+    wanted += selling
     seats = f.economy.get(SEATS, 0)
     smoothing = config.get("market.sales_smoothing")
     f.economy[SEATS] = max(0, round_money(seats + (wanted - seats) * smoothing + 0.5))
+    share = selling / wanted if wanted > 0 else 0.0
+    f.economy[RETAIL_SEATS] = round_money(f.economy[SEATS] * share)
+    if not f.economy[RETAIL_SEATS]:
+        f.economy.pop(RETAIL_SEATS)
     stats = island.stats
     stats["services.workers"] = f.workers
     stats["services.sold"] = sold / 1000

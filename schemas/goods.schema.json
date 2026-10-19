@@ -21,7 +21,7 @@
     "mining": {"type": "boolean", "description": "建国時に選べる鉱業資源か（選んだ資源だけ鉱山などで採れる）"},
     "consumer": {"type": "boolean", "description": "家計が買う財か（物価指数に入れる）"},
     "freight_weight": {"type": "number", "minimum": 0, "description": "船で運ぶときの 1 単位の重さ（トン。フェーズ3-1）。書かない財は島の外へ運べない。0 は自分で航海して届く物（輸送船）"},
-    "need": {"enum": ["necessity", "luxury", "durable", "service"], "description": "家計にとっての種類（フェーズ3-2）。necessity 必需品、luxury ぜいたく品、durable 耐久消費財（ぜいたく品の種類にも数える）、service サービス（ぜいたく品の種類にも数える。バランス調整）"},
+    "need": {"enum": ["necessity", "luxury", "durable", "service", "retail"], "description": "家計にとっての種類（フェーズ3-2）。necessity 必需品、luxury ぜいたく品、durable 耐久消費財（ぜいたく品の種類にも数える）、service サービス（ぜいたく品の種類にも数える。バランス調整）、retail 小売り（品物を買うときに代金に見合う量を一緒に買う。回7）"},
     "override": {"const": true}
   }
 }

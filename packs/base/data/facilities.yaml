@@ -466,6 +466,39 @@ trading:
     default: {}
   sprite: trading
 
+# 商店（回7）。町の中の小さな店（八百屋・衣料品店・雑貨店・スーパーなど）で、マスを取らず町のマスに属します
+# （町の段階ごとに入れる数は settlements.yaml の shops）。売り場の働き（小売り）と少しのサービスを出し、電力と
+# 包装などの消費財を少し使います。企業が採算で開き、退きます。お客は通勤圏に住む人だけです。
+shop:
+  category: commerce
+  terrain: [plain]
+  tileless: true
+  site: town
+  construction: {turns: 2, labor: 40, materials: {building_materials: 2}}
+  workers: 40
+  priority: 3
+  recipes:
+    default:
+      inputs: {electricity: 0.4, consumer_goods: 0.01}
+      outputs: {retail: 48, services: 8}
+
+# 百貨店（回7）。商業地のマスに建つ大きな店で、衣料・消費財などの小売りとサービスを出します。働く人が多く、
+# 1人あたりの量も商店より多い（規模の経済）。電力を多く使います。企業が採算で建て、国は出店を規制できます
+# （命令 set_retail_policy）。お客は車を持つ家計なら島じゅうから、ない家計は通勤圏に住む人です。
+department_store:
+  category: commerce
+  terrain: [plain]
+  zone: commercial
+  construction: {turns: 6, labor: 400, materials: {building_materials: 30, steel: 5}}
+  workers: 300
+  priority: 3
+  factors: {infra: 0.3}
+  recipes:
+    default:
+      inputs: {electricity: 6, consumer_goods: 0.05}
+      outputs: {retail: 420, services: 60}
+  sprite: department_store
+
 # 商業・サービス業（バランス調整）。運送業と同じく島に1つ、マスを持たずに置きます（移し替えの段で
 # 置く）。商店・飲食・理美容・娯楽・修理などの小さな店の集まりで、住民がサービスを買いに行く集落
 # ごとに、そこで人を雇います。雇う人数は売上で決まります（hakoniwa_core/economy/services.py）。

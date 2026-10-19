@@ -3,9 +3,21 @@
 import { turnDate } from "../calendar.js";
 import { getJson } from "../island/api.js";
 import { attachRange, escapeHtml, formatValue, makeChart, mountCharts, mountStaticPies, rangeQuery } from "./common.js";
+import { mountOrders } from "./orders.js";
 
 mountCharts();
 mountStaticPies();
+
+// 企業の表の国有化・民営化（回7）: 押すと命令の列に足す
+const firmOrders = await mountOrders();
+const firmNotice = document.querySelector(".firm-notice");
+document.addEventListener("submit", async (e) => {
+  const form = e.target.closest("form.firm-action");
+  if (!form || !firmOrders) return;
+  e.preventDefault();
+  await firmOrders.add(form.dataset.order, { firm: Number(form.dataset.firm) });
+  if (firmNotice) firmNotice.textContent = firmOrders.message;
+});
 
 // 帳簿の推移のグラフに描く収支の項目（帳簿の額は支出も正の数）
 const FLOW_ITEMS = ["sales", "purchases", "wages", "electricity", "freight", "depreciation", "profit"];

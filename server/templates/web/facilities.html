@@ -18,7 +18,7 @@
         {% for f in table.rows %}
         <tr>
           <td>{% if f.on_map %}<a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a>{% else %}{{ f.name }}{% endif %}<br><small class="muted">{{ f.kind_name }}</small></td>
-          <td>{{ f.owner_name }}<br><small class="muted">{{ f.accounting_name }}</small></td>
+          <td>{{ f.owner_name }}<br><small class="muted">{{ f.accounting_name }}</small>{% if f.firm_name %}<br><small>{{ f.firm_name }}</small>{% endif %}</td>
           <td>{% if not f.built %}{% translate "建設中" %}{% if f.status_text and f.status_text != "建設中" %}<br><small>{{ f.status_text }}</small>{% endif %}{% else %}{{ f.status_text|default:"稼働中" }}{% if f.transition %}<br><small>{{ f.transition }}</small>{% endif %}{% endif %}</td>
           <td class="num">{{ f.workers }}{% if f.workers_needed %} / {{ f.workers_needed }}{% endif %}</td>
           <td class="num">{% if f.engineers_needed %}{{ f.engineers }} / {{ f.engineers_needed }}{% elif f.engineers_general %}{{ f.engineers_general }}{% endif %}</td>
@@ -38,6 +38,40 @@
   </div>
   <p>{% blocktranslate with total=table.profit %}直近のターンの損益の合計: {{ total }}{% endblocktranslate %}</p>
 </section>
+
+{% if table.firms %}
+<section class="panel">
+  <h2>{% translate "企業" %}</h2>
+  <p class="hint">{% translate "民営の施設は企業にまとまっています。企業は施設の余ったお金を集めて足りない施設に回し、法人税をまとめて払い、新しい施設への出資と、赤字の続くときに閉める施設を決めます。国の施設は業種ごとの国営企業にまとまります（お金は国庫が施設ごとに出し入れします）。" %}</p>
+  <div class="table-scroll">
+    <table class="report-table">
+      <thead><tr>
+        <th>{% translate "企業" %}</th><th>{% translate "所有" %}</th><th>{% translate "施設" %}</th>
+        <th>{% translate "預金" %}</th><th>{% translate "連結の利益" %}</th><th>{% translate "法人税" %}</th><th>{% translate "配当" %}</th><th>{% translate "繰り越した赤字" %}</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for c in table.firms %}
+        <tr>
+          <td>{{ c.name }} <small class="muted">{% blocktranslate with n=c.firm %}番号 {{ n }}{% endblocktranslate %}</small></td>
+          <td>{{ c.owner_name }}</td>
+          <td>{{ c.count }}<br><small class="muted">{{ c.kinds }}</small></td>
+          <td class="num">{{ c.cash|default:"" }}</td>
+          <td class="num">{{ c.profit|default:"" }}</td>
+          <td class="num">{{ c.tax|default:"" }}</td>
+          <td class="num">{{ c.dividend|default:"" }}</td>
+          <td class="num">{{ c.losses|default:"" }}</td>
+          <td>{% if c.count %}<form class="firm-action" data-order="{{ c.order }}" data-firm="{{ c.firm }}"><button type="submit">{% if c.order == "nationalize_firm" %}{% translate "国有化" %}{% else %}{% translate "民営化" %}{% endif %}</button></form>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="hint">{% translate "国有化は企業の預金と施設の純資産の和で資本家階級から買い取り、民営化は施設の純資産の和で資本家階級に売ります（どちらも議会の採決が要ります）。" %}</p>
+  <p class="firm-notice" aria-live="polite"></p>
+  <aside id="orders" class="report-orders" data-url="{% url 'api_orders' island.id %}" data-defs="{% url 'api_defs' %}"
+         data-forms="set_retail_policy" data-heading="{% translate '命令の列' %}"></aside>
+</section>
+{% endif %}
 
 {% if table.shops %}
 <section class="panel">
@@ -135,5 +169,6 @@
   </div>
 </section>
 
+{% csrf_token %}
 <script type="module" src="{% static 'js/reports/facilities.js' %}"></script>
 {% endblock %}

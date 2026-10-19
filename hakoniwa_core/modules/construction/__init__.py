@@ -33,6 +33,7 @@ from hakoniwa_core.economy import (
     is_private_site,
     is_self_supporting,
     owner_entity,
+    retail,
 )
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy.start import fund_facility, init_facility
@@ -57,11 +58,14 @@ def check_build(island: IslandState, payload: dict[str, Any], defs: Defs) -> Non
 
 def build(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
     kind, x, y = payload["facility"], payload["x"], payload["y"]
+    # 町の中の店（回7）は、マスを取らない負の位置に置き、町のマスを ext["site"] に持つ
+    shop = ctx.defs.facilities[kind].get("site") == "town"
+    at = retail.tileless_position(island) if shop else (x, y)
     f = Facility(
         id=island.next_facility_id(),
         kind=kind,
-        x=x,
-        y=y,
+        x=at[0],
+        y=at[1],
         recipe=payload.get("recipe") or fac.default_recipe(ctx.defs, kind) or "default",
         owner=OWNER_STATE,  # 命令で建てるのは国営（民営の工場が自分で建つのはフェーズ2-2から）
         accounting=default_accounting(ctx.defs, island, kind, OWNER_STATE),
@@ -73,6 +77,8 @@ def build(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> No
     if factor != 1.0:
         turns = ctx.defs.facilities[kind]["construction"]["turns"]
         f.ext["build_total"] = max(fac.FULL, round(turns * factor * fac.FULL))
+    if shop:
+        f.ext[fac.SITE] = [x, y]
     assign_serial(island, f)
     island.facilities.append(f)
     island.log.append(LogEntry("construction_started", {"facility": kind, "x": x, "y": y}))

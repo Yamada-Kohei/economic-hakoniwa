@@ -39,6 +39,7 @@
     "buildable": {"type": "boolean", "description": "命令で建てられるか。false は自動で建つもの（町など）。書かなければ true"},
     "zone": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "このマスの指定（office など）があるマスにだけ建つ"},
     "tileless": {"type": "boolean", "description": "マスを持たない施設（運送業など）"},
+    "site": {"enum": ["town"], "description": "town: 町の中に置く施設（マスを取らず、町のマスに属する。町の段階ごとの数の上限は game.yaml の retail.slots。回7 の商店）"},
     "public_service": {"type": "boolean", "description": "公務員の施設。賃金を国庫が払い、行政の仕事をする"},
     "construction": {
       "type": "object",

@@ -11,6 +11,7 @@ change_recipe: 生産方式の変更
 set_taxes: 税率の変更
 set_budget: 予算の変更
 set_labor_policy: 最低賃金・失業手当の変更
+set_retail_policy: 小売りの政策の変更
 set_price_cap: 値段の上限（公共料金など）の変更
 warehouse_trade: 国の倉庫の売買
 set_accounting: 国営施設の会計方式の変更
@@ -18,6 +19,8 @@ set_zone: 工業団地・オフィス街の指定
 set_subsidy: 補助金の変更
 nationalize: 国有化
 privatize: 民営化
+nationalize_firm: 企業の国有化
+privatize_firm: 国営企業の民営化
 set_monetary_policy: 金融政策の変更
 set_central_bank_independence: 中央銀行の独立
 set_bond_policy: 国債の政策の変更

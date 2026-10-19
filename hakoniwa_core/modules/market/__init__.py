@@ -59,6 +59,7 @@ from hakoniwa_core.economy import (
     WAREHOUSE,
     Payer,
     books,
+    companies,
     entity_of,
     equipment,
     facility_entity,
@@ -71,12 +72,13 @@ from hakoniwa_core.economy import (
     needs,
     payer_of,
     productivity,
+    retail,
     services,
     trucks,
 )
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy import plan as planning
-from hakoniwa_core.economy.households import consumption
+from hakoniwa_core.economy.households import SUPPORT, consumption
 from hakoniwa_core.economy.prices import (
     input_limit,
     material_limit,
@@ -129,6 +131,7 @@ TRADER_PRIORITY = 0  # 商社の輸出の買い注文の優先順位（値幅の
 CONTRACT_PRIORITY = 9  # 契約で売る分を政府が買う注文の優先順位
 GOV_TRADE = "trade"  # 政府が貿易に払う項目（どの項目にも取り置いていない国庫から）
 MERCHANT_GAP = Payer(ledger.GOV, GOV_TRADE)  # 計画経済の島で、海外の商人の値段と公定価格の差を払う
+CLEARING = "market_clearing"  # island.scratch: 板寄せの払いに使う（運送業, 道のり）
 IMPORTED = "imported"  # 国の倉庫に届いた腐る物の売り（Party.layer）
 
 
@@ -615,6 +618,8 @@ class Market(IslandStage):
         defs, config = ctx.defs, ctx.config
         # 計画経済の公定価格（フェーズ3-4）: 見直しのターンなら解き直し、基準の値段にする
         official = planning.prepare(island, defs, config, ctx.turn)
+        retail.prepare(island, config)
+        island.scratch[retail.UNRETAILED] = (services.good_of(config), retail.good_of(config))
         rates = freight_rates.facility_rates(island, defs, config)
         hh_rate = island.scratch["freight_household"]
         island.economy.freight["household"] = hh_rate  # 次のターンの公共事業の資材の見積もりに使う
@@ -634,26 +639,17 @@ class Market(IslandStage):
         self._household_orders(island, ctx, books_by_good, hh_rate, offered)
         transport = self._transport_entity(island, ctx)
         routes = freight_rates.Routes(island, defs)
+        island.scratch[CLEARING] = (transport, routes)
         bought: dict[str, int] = island.scratch.setdefault("household_bought", {})
         results: dict[str, auction.Result] = {}
         stale: dict[str, dict[int, int]] = {}  # 財 → 買い注文の番号 → 今夜捨てられる分を買った量
-        width = to_basis(config.get("market.band"))
         persons = {n: h["persons"] for n, h in island.economy.households.items()}
+        shop_good = retail.good_of(config)
         for good in sorted(books_by_good):
-            book = books_by_good[good]
-            reference = island.economy.prices.get(good, 1)
-            bounds, allocate = self._limits(island, ctx, good, book, official, persons)
-            result = auction.clear(
-                [o for o, _ in book.buys],
-                [o for o, _ in book.sells],
-                reference,
-                width,
-                bounds=bounds,
-                allocate_buys=allocate,
-            )
-            self._late_to_eaters(book, result)
-            results[good] = result
-            stale[good] = self._settle(island, ctx, good, book, result, transport, bought, routes)
+            if good == shop_good:  # 小売りは品物の市場の後に（回7）
+                continue
+            self._clear(island, ctx, good, books_by_good, official, persons, results, stale)
+        self._retail(island, ctx, books_by_good, official, persons, results, stale)
         self._record_shortages(books_by_good, results, stale)
         for f, good, qty, cost in island.scratch.pop(REPAIR, []):  # 直す資材を設備に入れる（回6）
             equipment.install(defs, f, good, qty, cost)
@@ -689,6 +685,185 @@ class Market(IslandStage):
             planning.is_planned(island, defs),
             self._services_unmet(island, config, books_by_good, results),
         )
+
+    def _clear(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        good: str,
+        books_by_good: dict[str, Book],
+        official: dict[str, int],
+        persons: dict[str, int],
+        results: dict[str, auction.Result],
+        stale: dict[str, dict[int, int]],
+    ) -> None:
+        """財 good の板寄せをして、約定を払い物を移す。"""
+        book = books_by_good[good]
+        reference = island.economy.prices.get(good, 1)
+        width = to_basis(ctx.config.get("market.band"))
+        bounds, allocate = self._limits(island, ctx, good, book, official, persons)
+        result = auction.clear(
+            [o for o, _ in book.buys],
+            [o for o, _ in book.sells],
+            reference,
+            width,
+            bounds=bounds,
+            allocate_buys=allocate,
+        )
+        self._late_to_eaters(book, result)
+        results[good] = result
+        transport, routes = island.scratch[CLEARING]
+        bought: dict[str, int] = island.scratch.setdefault("household_bought", {})
+        stale[good] = self._settle(island, ctx, good, book, result, transport, bought, routes)
+
+    # --- 小売り（回7。economy/retail.py） ------------------------------------------------------
+
+    @staticmethod
+    def _retail_keep(
+        island: IslandState, ctx: StageContext, layer: str, planned: int, tax: int
+    ) -> int:
+        """家計の層の使う額 planned のうち、品物に付く小売りの代金に取り分ける額。前のターンまでに
+        小売りに払った額の割合（層の状態 retail_share）で、なければ値段から見込む。"""
+        config = ctx.config
+        good = retail.good_of(config)
+        if good not in ctx.defs.goods:
+            return 0
+        island.scratch.setdefault(retail.PLANNED, {})[layer] = planned
+        share = island.economy.households[layer].get(retail.SHARE)
+        if share is not None:
+            return part(planned, share)
+        price = usual_price(island, good, config.get("household.usual_price_turns"))
+        rate = retail.margin(island, config, price or island.economy.prices.get(good, 0), tax)
+        return planned - planned * BASIS // (BASIS + rate) if rate > 0 else 0
+
+    def _retail(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        books_by_good: dict[str, Book],
+        official: dict[str, int],
+        persons: dict[str, int],
+        results: dict[str, auction.Result],
+        stale: dict[str, dict[int, int]],
+    ) -> None:
+        """品物の市場の後に、家計の層が買った品物の代金に見合う小売りを、商店と百貨店から買う。
+        店に届くお客の割合（retail.reach）で、店ごとに売れる量に上限を付ける。店で買いきれなかった
+        分は、商業・サービス業（小さな店と屋台）から小売りの値段の 1 + retail.direct_premium 倍で
+        買う（直売・屋台）。"""
+        defs, config = ctx.defs, ctx.config
+        good = retail.good_of(config)
+        if good not in defs.goods:
+            return
+        tax = island.policy.consumption_tax
+        width = to_basis(config.get("market.band"))
+        price = island.economy.prices.get(good, 1)
+        _, high = auction.band(price, width)
+        # 店には、直売・屋台より高くは払わない
+        high = min(high, self._direct_unit(island, config))
+        priority = config.get("market.household_priority")
+        spent = island.scratch.pop(retail.SPENT, {})
+        reserves = island.scratch.pop(retail.RESERVE, {})
+        wanted: dict[str, int] = {}
+        for layer in sorted(island.economy.households):
+            funds.release(island, Payer(household(layer)), reserves.get(layer, 0))
+            qty = retail.units_for(island, config, spent.get(layer, 0))
+            if qty > 0:
+                wanted[layer] = qty
+        total = sum(wanted.values())
+        island.economy.finance[retail.DEMAND] = total
+        island.scratch[retail.NEED] = wanted
+        book = books_by_good.get(good)
+        if book is not None and book.sells:
+            capped = []
+            for order, party in book.sells:
+                f = party.facility
+                if f is not None and not services.is_services(config, f):
+                    cap = int(total * retail.reach(island, defs, config, f))
+                    order = Order(min(order.quantity, cap), order.limit, order.priority)
+                capped.append((order, party))
+            book.sells[:] = [(o, p) for o, p in capped if o.quantity > 0]
+        if (book is None or not book.sells) and total > 0:
+            # 売りに出ていなければ、買いたい量を記録する（店が開く合図。_record）
+            record = island.scratch.setdefault("wanted", {})
+            record[good] = record.get(good, 0) + total
+        if book is not None and book.sells:
+            for layer, qty in sorted(wanted.items()):
+                self._household_buy(island, books_by_good, good, qty, high, 0, tax, layer, priority)
+            if book.buys:
+                self._clear(island, ctx, good, books_by_good, official, persons, results, stale)
+            for _, party in book.buys:  # 買えなかった分の取り置きは、直売・屋台に回す
+                funds.release(island, party.payer, party.reserved)
+                party.reserved = 0
+        got = island.scratch.get("household_goods", {})
+        island.stats["retail.need"] = total / QUANTITY_SCALE
+        sold = results[good].volume if good in results else 0
+        island.stats["retail.sold"] = sold / QUANTITY_SCALE
+        self._direct(island, ctx, wanted, got)
+        # 小売りに払った額の、使う額に対する割合を、次のターンの取り分けに使う（半分ずつ近づける）
+        paid = island.scratch.pop(retail.PAID, {})
+        for layer, planned in island.scratch.pop(retail.PLANNED, {}).items():
+            state = island.economy.households.get(layer)
+            if state is None or planned <= 0:
+                continue
+            target = min(BASIS // 2, paid.get(layer, 0) * BASIS // planned)
+            before = state.get(retail.SHARE, target)
+            state[retail.SHARE] = before + (target - before) // 2
+
+    @staticmethod
+    def _direct_unit(island: IslandState, config: GameConfig) -> int:
+        """直売・屋台の小売り1単位の値段: 小さな店と屋台の1人の1ターンの働き（サービスと同じ）の
+        値段の 1 + retail.direct_premium 倍。"""
+        price = island.economy.prices.get(services.good_of(config), 1)
+        premium = to_basis(retail.settings(config)["direct_premium"])
+        return max(1, price + part(price, premium))
+
+    @staticmethod
+    def _direct(
+        island: IslandState,
+        ctx: StageContext,
+        wanted: dict[str, int],
+        got: dict[str, dict[str, int]],
+    ) -> None:
+        """店で買いきれなかった小売りを、商業・サービス業から割高に買う（直売・屋台）。"""
+        config = ctx.config
+        good = retail.good_of(config)
+        shop = services.facility_of(island, config)
+        if shop is None or not shop.built or "foreclosed" in shop.economy:
+            return
+        unit = Market._direct_unit(island, config)
+        tax = island.policy.consumption_tax
+        seller = entity_of(config, shop)
+        qty_total = paid_total = 0
+        for layer, qty in sorted(wanted.items()):
+            short = qty - got.get(layer, {}).get(good, 0)
+            if short <= 0:
+                continue
+            payer = Payer(household(layer))
+            have = funds.available(island, payer)
+            amount = money_of(unit, short)
+            if gross_cost(unit, short, 0, tax) > have:
+                short = qty_for(have * BASIS // (BASIS + tax), unit)
+                amount = money_of(unit, short)
+            if short <= 0 or amount <= 0:
+                continue
+            levy = part(amount, tax)
+            paid = island.scratch.setdefault(retail.PAID, {})
+            paid[layer] = paid.get(layer, 0) + amount + levy
+            funds.pay(island, payer, seller, amount, "sale")
+            funds.pay(island, payer, ledger.GOV, levy, "tax_consumption")
+            books.add(island, shop.id, books.SALES, amount)
+            books.add_sector(island, books.HOUSEHOLDS, "goods", amount)
+            books.add_sector(island, books.HOUSEHOLDS, "tax", levy)
+            qty_total += short
+            paid_total += amount
+        island.scratch[retail.DIRECT] = (qty_total, paid_total)
+        stats = island.stats
+        stats["retail.direct"] = qty_total / QUANTITY_SCALE
+        stats["retail.direct_sales"] = paid_total
+        # 直売・屋台が売った小売りも作った量（実質の生産と、関門の「作った島」に数える）
+        if qty_total > 0:
+            key = f"production.{good}"
+            stats[key] = stats.get(key, 0) + qty_total / QUANTITY_SCALE
 
     # --- 公定価格と値段の規制（フェーズ3-4） ------------------------------------------------
 
@@ -895,7 +1070,11 @@ class Market(IslandStage):
                 if want > 0:
                     plan[good] = (want, limits[good])
             if not state:
-                # 民営は、次のターンの支払いの見込みを残したお金で直す（直して返済が遅れない）
+                # 民営は、次のターンの支払いの見込みを残したお金で直す（直して返済が遅れない）。
+                # 企業の施設は、足りない分を企業の預金から回す（回7）
+                cost = sum(gross_cost(lim, q, rate, 0) for q, lim in plan.values())
+                need = cost + next_payments(island, defs, config, f)
+                companies.draw(island, f, need - funds.available(island, payer))
                 spare = funds.available(island, payer) - next_payments(island, defs, config, f)
                 plan = self._afford_within(plan, max(0, spare), rate)
             if state:
@@ -992,7 +1171,7 @@ class Market(IslandStage):
         width = to_basis(config.get("market.band"))
         official = planning.official(island) if planning.is_planned(island, defs) else {}
         for f in sorted(island.facilities, key=lambda f: f.id):
-            if not f.built or fac.is_housing(config, f) or not fac.on_map(f):
+            if not f.built or fac.is_housing(config, f) or not fac.located(f):
                 continue
             recipe = fac.recipe_of(defs, f)
             # 作り方のない施設は飛ばす。ただし畑をみな蒔き直している途中の農場は、前の作物の在庫を
@@ -1347,12 +1526,24 @@ class Market(IslandStage):
         hungry_settings = settings["hungry"]
         for layer in sorted(island.economy.households):
             payer = Payer(household(layer))
-            planned = planned_of[layer]
+            # 品物に付く小売りの代金（回7）を先に取り分け、残りで品物とサービスを買う
+            keep = self._retail_keep(island, ctx, layer, planned_of[layer], tax)
+            planned = planned_of[layer] - keep
             paid = power_paid.get(layer, 0)
             available = funds.available(island, payer)
             budget = max(0, min(planned - paid, available))
+            reserve = min(keep, max(0, available - budget))
+            if reserve > 0:
+                funds.commit(island, payer, reserve)
+                island.scratch.setdefault(retail.RESERVE, {})[layer] = reserve
+                available -= reserve
             # 飢えて預金を崩す前の使う額（サービスとぜいたく品はこの中で使う）
             usual_budget = budget
+            # 家計の支え合いで受け取った額（回7。賃金の段）は食べ物だけに使う（サービスと
+            # ぜいたく品の使う額には足さない）
+            received = island.scratch.get(SUPPORT, {}).get(layer, 0)
+            if received > 0:
+                budget = min(available, budget + received)
             # 飢えている家計（回3。前のターンに食べきれなかったか、飢えの蓄えが残っている）: 預金を
             # 崩してでも食料を先に買い、ほかの層の分にも手を伸ばして、値幅の上端を超えて買い上がる
             # （お金のない家計から買えなくなる）
@@ -1388,7 +1579,7 @@ class Market(IslandStage):
             need = needs_by_layer.get(layer, 0)
             caps = {g: int(offered.get(g, 0) * share) for g in foods}
             cap = round_money(planned * needs.necessity_share(config, income))
-            food_budget = max(0, cap - paid - wear_cost)
+            food_budget = max(0, cap - paid - wear_cost) + received
             if hungry:
                 # 飢える前の値段（飢えていないターンに残した値幅の上端）を基準に買い上がる
                 anchors = {**menu.limits, **state.get(ANCHOR, {})}
@@ -1473,7 +1664,8 @@ class Market(IslandStage):
             food_usual = sum(gross_cost(menu.limits[g], q, rate, tax) for g, q in basket.items())
             usual_food_budget = max(0, cap - paid - wear_cost)
             hold = max(0, usual_food_budget - food_usual) * short // fac.FULL
-            rest = max(0, usual_budget - food_usual - wear_cost - hold)
+            # 支え合いで受け取った額で買った分は、ふだんの使う額から引かない
+            rest = max(0, usual_budget - max(0, food_usual - received) - wear_cost - hold)
             rest = min(rest, funds.available(island, payer))  # 食料の取り置きの残りまで
             rest -= self._service_buys(
                 island,
@@ -2160,8 +2352,8 @@ class Market(IslandStage):
         def where(party: Party) -> tuple[int, int] | str | None:
             if party.site is not None:
                 return party.site
-            if party.facility is not None and fac.on_map(party.facility):
-                return (party.facility.x, party.facility.y)
+            if party.facility is not None and fac.located(party.facility):
+                return fac.position(party.facility)
             return "homes" if party.kind == HOUSEHOLD else island.capital
 
         buyers = [where(p) for _, p in book.buys]
@@ -2202,6 +2394,11 @@ class Market(IslandStage):
             books.stock_moved(island, seller.facility.id, good, -qty)
             return batches
         return stock.take_batches(island.warehouse, good, qty, last_until)
+
+    @staticmethod
+    def _unretailed(island: IslandState) -> tuple[str, ...]:
+        """小売りを通さない物（サービスと、最後に小売りそのもの）。"""
+        return tuple(island.scratch.get(retail.UNRETAILED, ()))
 
     @staticmethod
     def _give_to_buyer(
@@ -2260,6 +2457,13 @@ class Market(IslandStage):
             layer_goods = eaten.setdefault(buyer.layer, {})
             layer_goods[good] = layer_goods.get(good, 0) + qty
             bought[good] = bought.get(good, 0) + qty
+            free = Market._unretailed(island)
+            if good not in free:  # 小売りを通す品物の代金（回7）
+                spent = island.scratch.setdefault(retail.SPENT, {})
+                spent[buyer.layer] = spent.get(buyer.layer, 0) + amount
+            elif free and good == free[-1]:  # 小売りに払った額
+                paid = island.scratch.setdefault(retail.PAID, {})
+                paid[buyer.layer] = paid.get(buyer.layer, 0) + amount + tax
             books.add_sector(island, books.HOUSEHOLDS, "goods", amount)
             books.add_sector(island, books.HOUSEHOLDS, "freight", freight)
             books.add_sector(island, books.HOUSEHOLDS, "tax", tax)

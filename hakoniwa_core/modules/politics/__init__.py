@@ -56,6 +56,7 @@ from hakoniwa_core.economy import (
     funds,
     household,
     layers,
+    owner_entity,
 )
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy.debt import underwrite
@@ -720,8 +721,10 @@ def _nationalize_all(island: IslandState, ctx: StageContext) -> None:
             pay_seller(island, entity, seized, price)
             restart(island, ctx, f, OWNER_STATE, price)
         else:
-            funds.pay(island, payer, owners, price, "nationalization")
-            _move_equity(island, entity, owners, ledger.GOV)
+            seller = owner_entity(f) if f.kind != config.get("banking.facility") else owners
+            funds.pay(island, payer, seller, price, "nationalization")
+            _move_equity(island, entity, seller, ledger.GOV)
+            f.economy.pop("firm", None)
             f.owner = OWNER_STATE
             for key in ("closing", "idle_turns", "loss_streak"):
                 f.economy.pop(key, None)
@@ -733,6 +736,11 @@ def _nationalize_all(island: IslandState, ctx: StageContext) -> None:
         if wanted == ACCOUNTING_TREASURY and f.accounting == ACCOUNTING_SELF:
             close_accounts(island, f)
             f.accounting = ACCOUNTING_TREASURY
+    # 施設がなくなった民営の企業は、預金を資本家階級に返して消す（回7。資本家階級を一般の層に
+    # まとめる前に）
+    from hakoniwa_core.modules.companies import dissolve
+
+    dissolve(island, ctx)
     island.log.append(LogEntry("nationalized_all", {"count": count, "price": total}))
 
 

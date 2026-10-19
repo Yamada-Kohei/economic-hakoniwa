@@ -172,6 +172,9 @@ def test_repairs_pay_the_import_price_when_only_the_merchant_sells(game, base):
     island, f = island_with(world, game, OWNER_STATE)
     good = sorted(equipment.kit(game.defs, f.kind))[0]
     width = 1000
+    # いつもの値段が今の値段より安かった（値段が上がってきた）ことにする
+    price = island.economy.prices.get(good, 1)
+    island.economy.price_history[good] = [price // 2] * 12
     usual = material_limit(island, game.config, good, width)
     _, high = auction.band(island.economy.prices.get(good, 1), width)
     assert high > usual
@@ -409,4 +412,8 @@ def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
     assert market.demand >= QUANTITY_SCALE // 2 and market.supply == 0
     turn = world.turn
     planned = list(autoplan._candidates(island, game.defs, game.config, turn))
-    assert any(kind == "shipyard" for kind, _ in planned)
+    # 標準の計画が造船所を候補に挙げるか、もう建て始めている（回7 の企業で流れが変わり、36 ターンの
+    # うちに工事が始まるようになった）
+    assert any(kind == "shipyard" for kind, _ in planned) or any(
+        x.kind == "shipyard" for x in island.facilities
+    )

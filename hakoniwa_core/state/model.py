@@ -25,6 +25,7 @@ OWNER_PRIVATE = "private"  # 民営
 ZONE_NONE = ""
 ZONE_NO_DEVELOPMENT = "no_development"  # 開発を止めるマス（住宅が自動で建たない）
 ZONE_OFFICE = "office"  # オフィス街（銀行が入る。フェーズ2）
+ZONE_COMMERCIAL = "commercial"  # 商業地（百貨店が入る。回7）
 ZONE_INDUSTRIAL = "industrial"  # 工業団地（民営の工場が採算を見て建つ。フェーズ2-2）
 
 ACCOUNTING_TREASURY = "treasury"  # 国庫直轄（国営だけ）
@@ -228,6 +229,9 @@ class Policy:
     immigration_cap: int = 0  # 受け入れの1年の上限（住民の1万分の1。0 は game.yaml の既定）
     emigration: str = ""  # 出国: free・permit・ban（"" は自由）
     emigration_quota: int = 0  # 許可制の1年の枠（住民の1万分の1）
+    # 以下は回7（hakoniwa_core/economy/retail.py）。大きな店（百貨店）の出店: none（規制なし）・
+    # permit（許可制。申請を1件ずつ命令で許す）・ban（禁止）
+    large_store: str = "none"
 
 
 @dataclass
@@ -261,6 +265,9 @@ class EconomyState:
     infra: dict[str, Any] = field(default_factory=dict)
     education: int = 0
     workers: dict[str, int] = field(default_factory=dict)
+    # 企業（回7。economy/companies.py）: 番号（文字列）→ 名前・持ち主・作ったターンなど
+    firms: dict[str, dict[str, Any]] = field(default_factory=dict)
+    firm_seq: int = 0
     ext: dict[str, Any] = field(default_factory=dict)
 
 

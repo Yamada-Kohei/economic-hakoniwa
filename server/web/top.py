@@ -49,6 +49,7 @@ HEADLINES = (
     "bank_liquidated",
     "bond_default",
     "facility_bankrupt",
+    "firm_bankrupt",
     "famine_flight",
     "population_starved",
     "population_hunger_deaths",

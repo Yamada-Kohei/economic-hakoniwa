@@ -52,6 +52,8 @@ pytestmark = pytest.mark.django_db
         ),
         ("nationalize", {"x": 1, "y": 2}, "国有化 (1, 2)"),
         ("privatize", {"x": 1, "y": 2}, "民営化 (1, 2)"),
+        ("nationalize_firm", {"firm": 3}, "企業の国有化: 企業の番号 3"),
+        ("privatize_firm", {"firm": 4}, "国営企業の民営化: 企業の番号 4"),
         (
             "set_monetary_policy",
             {"policy_rate": 2.5, "bond_trade": -1000},

@@ -9,8 +9,8 @@ import { turnDate } from "../calendar.js";
 import { escapeHtml, getJson, sendJson } from "./api.js";
 
 // 政策の命令の入力欄の値の形（ほかの欄は数）
-const TEXT_FIELDS = new Set(["good", "side", "kind", "unsold", "issue_term", "underwrite_term", "entry"]);
-const FLAG_FIELDS = new Set(["independent", "stop"]); // "true" / "false"
+const TEXT_FIELDS = new Set(["good", "side", "kind", "unsold", "issue_term", "underwrite_term", "entry", "large_store"]);
+const FLAG_FIELDS = new Set(["independent", "stop", "approve"]); // "true" / "false"
 const INT_FIELDS = ["minimum_wage", "limit", "price", "bond_trade", "issue", "underwrite", "deposit_insurance", "turns"];
 // 中身のない命令（項目を入れなくても足せる）
 const EMPTY_OK = new Set(["grant_bank_license"]);
@@ -341,6 +341,19 @@ export class OrderQueue {
           <button type="submit">免許を出す（命令に追加）</button>
         </form>`;
     }
+
+    // 小売りの政策（回7）: 百貨店の出店の規制と、許可制のときの申請を許す
+    const app = p.store_application;
+    const waiting = app && !app.approved
+      ? `<label><input type="checkbox" name="approve" value="true"> ${escapeHtml(turnDate(app.turn))}に出た申請（(${app.x}, ${app.y}) の${escapeHtml(app.name)}）を許す</label>`
+      : app?.approved ? `<p class="hint">(${app.x}, ${app.y}) の${escapeHtml(app.name)}の申請を許しました。企業が建てるのを待っています。</p>` : "";
+    forms.set_retail_policy = `<form class="actions" data-form="set_retail_policy">
+        <strong>小売り（大きな店の出店）</strong>
+        <p class="hint">百貨店は商業地のマスに企業が採算を見て建てます。許可制にすると企業が申請を出し、許すまで建ちません。禁止すると建ちません（町の商店はどれでも建ちます）。</p>
+        <label>百貨店の出店（今: ${escapeHtml(p.large_store_choices[p.large_store] || p.large_store)}） <select name="large_store">${options(p.large_store_choices, "変えない")}</select></label>
+        ${waiting}
+        <button type="submit">命令に追加</button>
+      </form>`;
 
     const goods = Object.entries(this.defs.goods)
       .map(([g, d]) => `<option value="${g}">${escapeHtml(d.name)}</option>`)

@@ -76,6 +76,7 @@ from hakoniwa_core.economy import (
     Payer,
     arrears,
     banks,
+    companies,
     default_accounting,
     equipment,
     facility_entity,
@@ -87,7 +88,9 @@ from hakoniwa_core.economy import (
     is_self_supporting,
     is_stopped,
     is_transport,
+    owner_entity,
     productivity,
+    retail,
     services,
 )
 from hakoniwa_core.economy import freight as freight_rates
@@ -103,6 +106,7 @@ from hakoniwa_core.state import (
     ACCOUNTING_TREASURY,
     OWNER_PRIVATE,
     OWNER_STATE,
+    ZONE_COMMERCIAL,
     ZONE_INDUSTRIAL,
     ZONE_NONE,
     ZONE_OFFICE,
@@ -201,7 +205,7 @@ class EntryExit(IslandStage):
         private = [
             f
             for f in island.facilities
-            if f.owner == OWNER_PRIVATE and not is_bank(ctx.config, f) and fac.on_map(f)
+            if f.owner == OWNER_PRIVATE and not is_bank(ctx.config, f) and fac.located(f)
         ]
         island.stats["firms.private"] = sum(1 for f in private if f.built)
         island.stats["firms.private_sites"] = sum(1 for f in private if not f.built)
@@ -334,10 +338,12 @@ class EntryExit(IslandStage):
         now = fac.recipe_of(defs, f)["inputs"]
         made = fac.field_goods(defs, f)  # 畑を作り替えている途中の前の作物も、作っている物と見る
         wage = f.economy.get("wage", 0)
+        sole = _sole_food(island, defs, f)
         out = {}
         for name, recipe in sorted(defs.facilities[f.kind]["recipes"].items()):
             if name != f.recipe and (
-                fac.switch_problem(defs, island, f, name)
+                sole - set(recipe["outputs"])
+                or fac.switch_problem(defs, island, f, name)
                 or set(recipe["inputs"]) - supplied
                 or not all(g == power or any(demand.get(g, [])) for g in recipe["outputs"])
                 or any(
@@ -382,8 +388,13 @@ class EntryExit(IslandStage):
             # 在庫を売っている間は、作るのを止めていても動かないとは数えない（回6。売れ行きの
             # 何十ターン分も作った機械工場が、在庫を売りながら 12 ターンで閉じ、島の機械が消えた）
             selling = any(stock.total(f.stock, g) > 0 for g in outputs)
+            # 蒔き直した畑が育っている間も数えない（回7。W-20。作りすぎの月に人を減らした農場が、
+            # 次の作物の収穫を待たずに閉じた）
+            growing = bool(f.economy.get(fac.SOWN))
             idle = (
-                f.economy.get("idle_turns", 0) + 1 if f.operating_rate <= 0 and not selling else 0
+                f.economy.get("idle_turns", 0) + 1
+                if f.operating_rate <= 0 and not selling and not growing
+                else 0
             )
             wage = f.economy.get("wage", 0)
             prices = island.economy.prices
@@ -575,6 +586,11 @@ class EntryExit(IslandStage):
                 args = {"rate": r * fill * 100, "need": threshold * 100}
                 blocks.append((estimate, kind, "unprofitable_site", args))
                 continue
+            # 大きな店の出店の規制（回7。禁止か、許可制で許されていない）
+            blocked = retail.entry_block(island, defs, config, kind, pos, ctx.turn)
+            if blocked is not None:
+                blocks.append((estimate, kind, blocked, {}))
+                continue
             failure = self._build(
                 island, ctx, kind, rname, pos, capital, prices, freight, (rate, subsidy)
             )
@@ -741,12 +757,19 @@ class EntryExit(IslandStage):
         shop = services.staff_by_tile(island, config)
         occupied = island.facilities_by_tile()
         open_land = kind in config.get("firms.open_land")
+        if retail.is_shop(defs, kind):  # 町の中の店（回7）: 枠の空いた町のマス
+            occupied = {}
+            towns = {pos for pos, _ in retail.free_towns(island, defs, config)}
+        zone = defs.facilities[kind].get("zone") or ZONE_INDUSTRIAL
         spots = []
         fitting = 0
         for tile in island.tiles:
-            if (tile.x, tile.y) in occupied:
+            if retail.is_shop(defs, kind):
+                if (tile.x, tile.y) not in towns:
+                    continue
+            elif (tile.x, tile.y) in occupied:
                 continue
-            if tile.zone != ZONE_INDUSTRIAL and not (
+            elif tile.zone != zone and not (
                 open_land and tile.zone == ZONE_NONE and tile.population == 0
             ):
                 continue
@@ -762,13 +785,20 @@ class EntryExit(IslandStage):
             if idle * 2 >= need:
                 spots.append((tile.x, tile.y))
         if not spots:
-            return "no_workers" if fitting else "no_zone"
+            if fitting:
+                return "no_workers"
+            if retail.is_shop(defs, kind):
+                return "no_town"  # 店の枠の空いた町がない（回7）
+            return "no_commercial" if zone == ZONE_COMMERCIAL else "no_zone"
+        if retail.is_shop(defs, kind):  # 運賃は見ない（マスを取らない）。人の多い町から
+            best = max(spots, key=lambda p: (island.tile(*p).population, -p[1], -p[0]))
+            return best, 0
         rates = freight_rates.candidate_rates(island, defs, config, kind, rname, spots)
         best = min(spots, key=lambda p: (rates[p], p[1], p[0]))
         return best, rates[best]
 
     def _finance(
-        self, island: IslandState, ctx: StageContext, amount: int, earnings: int
+        self, island: IslandState, ctx: StageContext, amount: int, earnings: int, kind: str = ""
     ) -> list[tuple[str, int, int]] | tuple[str, dict[str, Any]]:
         """出資と建設資金の融資の組み立て: [(銀行, 借りる額, 金利)]（出資は amount − 借りる額の合
         計）。資産を持つ層が出資しきれないか、審査に通らなければ、そのわけ（わけと引数の組）。
@@ -800,6 +830,13 @@ class EntryExit(IslandStage):
                 left -= piece
         loan = want - left
         have = funds.available(island, owners)
+        # 出資するのは、お金のある企業か、新しい企業を起こす資本家階級（回7。economy/companies.py）
+        investor = (
+            companies.choose_investor(island, ctx.defs, kind, amount - loan) if kind else None
+        )
+        island.scratch["entry_investor"] = investor
+        if investor is not None:
+            have = max(have, amount - loan)
         if have < amount - loan:
             if stopped and loan == 0:
                 return ("credit_crunch", {"turn": min(stopped) - 1})
@@ -841,24 +878,29 @@ class EntryExit(IslandStage):
         # ターン分）も合わせて調達する
         start = operating_cost(defs, config, probe, prices, wage, rate)
         amount = capital + capital // 10 + start * config.get("firms.operating_turns")
-        plan = self._finance(island, ctx, amount, earnings)
+        plan = self._finance(island, ctx, amount, earnings, kind)
         if isinstance(plan, tuple):
             return plan
+        payer, firm = island.scratch.pop("entry_investor", None) or (household(OWNERS), None)
+        at = retail.tileless_position(island) if retail.is_shop(defs, kind) else pos
         f = Facility(
             id=island.next_facility_id(),
             kind=kind,
-            x=pos[0],
-            y=pos[1],
+            x=at[0],
+            y=at[1],
             recipe=rname,
             owner=OWNER_PRIVATE,
             accounting=ACCOUNTING_SELF,
             economy={"capital": 0},
             ext={"private_entry": True},
         )
+        if retail.is_shop(defs, kind):
+            f.ext[fac.SITE] = [pos[0], pos[1]]
         assign_serial(island, f)
         island.facilities.append(f)
         entity = facility_entity(f.id)
-        invest(island, household(OWNERS), entity, amount - sum(p for _, p, _ in plan))
+        invest(island, payer, entity, amount - sum(p for _, p, _ in plan))
+        companies.invested(island, firm, f, ctx.turn)
         turns = config.get("loans.construction_turns")
         far = 10**9  # 元金は工事が済んでから返す（工事の段で返し始めるターンを決める）
         for bank, loan, loan_rate in plan:
@@ -918,12 +960,13 @@ class EntryExit(IslandStage):
             earnings = variable_profit(ctx.defs, config, f, prices, wage, rate)
             start = operating_cost(ctx.defs, config, f, prices, wage, rate)
             amount = price + start * config.get("firms.operating_turns")
-            plan = self._finance(island, ctx, amount, earnings)
+            plan = self._finance(island, ctx, amount, earnings, kind)
             if isinstance(plan, tuple):
                 continue
+            payer, firm = island.scratch.pop("entry_investor", None) or (household(OWNERS), None)
             close_foreclosure(island, f)
             entity = facility_entity(f.id)
-            invest(island, household(OWNERS), entity, amount - sum(p for _, p, _ in plan))
+            invest(island, payer, entity, amount - sum(p for _, p, _ in plan))
             turns = config.get("loans.construction_turns")
             grace = ctx.turn + 1 + config.get("loans.grace_turns")
             for bank, loan, loan_rate in plan:
@@ -931,6 +974,7 @@ class EntryExit(IslandStage):
                 banks.lend(island, bank, entity, loan, purpose, turns, ctx.turn, loan_rate, grace)
             pay_seller(island, entity, seized, price)
             restart(island, ctx, f, OWNER_PRIVATE, price)
+            companies.invested(island, firm, f, ctx.turn)
             f.economy["entered"] = ctx.turn
             island.log.append(
                 LogEntry(
@@ -1130,7 +1174,12 @@ def restart(island: IslandState, ctx: StageContext, f: Facility, owner: str, pri
 
 # --- 命令: 指定 ---------------------------------------------------------------------
 
-ZONES = {"industrial": ZONE_INDUSTRIAL, "office": ZONE_OFFICE, "none": ZONE_NONE}
+ZONES = {
+    "industrial": ZONE_INDUSTRIAL,
+    "office": ZONE_OFFICE,
+    "commercial": ZONE_COMMERCIAL,
+    "none": ZONE_NONE,
+}
 
 
 def check_set_zone(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
@@ -1197,8 +1246,11 @@ def nationalize(island: IslandState, payload: dict[str, Any], ctx: StageContext)
         if is_self_supporting(f):
             fund_facility(island, ctx.defs, ctx.config, f, Payer(ledger.GOV, STATE_FACILITIES))
     else:
-        funds.pay(island, payer, household(OWNERS), price, "nationalization")
-        _move_equity(island, entity, household(OWNERS), ledger.GOV)
+        # 売り手は施設の株を持つ者（企業の施設は企業。回7）
+        seller = owner_entity(f)
+        funds.pay(island, payer, seller, price, "nationalization")
+        _move_equity(island, entity, seller, ledger.GOV)
+        companies.leave(island, f)
         f.owner = OWNER_STATE
         for key in ("closing", "idle_turns", "loss_streak"):
             f.economy.pop(key, None)
@@ -1235,6 +1287,150 @@ def privatize(island: IslandState, payload: dict[str, Any], ctx: StageContext) -
     island.log.append(
         LogEntry("privatized", {"facility": f.kind, "x": f.x, "y": f.y, "price": price})
     )
+
+
+def _firm_of_order(island: IslandState, payload: dict[str, Any], owner: str) -> dict[str, Any]:
+    rec = companies.record(island, payload["firm"])
+    if rec is None:
+        raise OrderFailed("reason_no_firm")
+    if rec[companies.OWNER] != owner:
+        reason = "reason_firm_not_private" if owner == OWNER_PRIVATE else "reason_firm_not_state"
+        raise OrderFailed(reason)
+    return rec
+
+
+def _working_members(island: IslandState, number: int) -> list[Facility]:
+    return [
+        f for f in companies.members(island, number) if f.built and "foreclosed" not in f.economy
+    ]
+
+
+def check_nationalize_firm(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    _firm_of_order(island, payload, OWNER_PRIVATE)
+    if not _working_members(island, payload["firm"]):
+        raise OrderFailed("reason_firm_empty")
+
+
+def nationalize_firm(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
+    """民営の企業を丸ごと純資産で政府が買い取る（回7）。値段は企業の預金（未払いの税を引く）と、
+    動いている施設の純資産の和で、資本家階級に払う。施設は国営になって業種の国営企業に入り、企業の
+    預金は政府に入る。工事中の施設は資本家階級に返し、差し押さえ中の施設の残りの受け取りは政府に
+    移す。"""
+    number = payload["firm"]
+    name = companies.entity(number)
+    working = _working_members(island, number)
+    owed = arrears.total(island, name, arrears.TAX_ARREARS)
+    cash = ledger.money(island, name)
+    price = max(0, cash - owed) + sum(
+        banks.net_assets(island, f, facility_entity(f.id)) for f in working
+    )
+    payer = Payer(ledger.GOV)
+    if funds.available(island, payer) < price:
+        raise OrderFailed("reason_treasury_short", amount=price)
+    holder = companies.shareholder(island, number)
+    title = companies.display_name(island, ctx.defs, number)
+    funds.pay(island, payer, holder, price, "nationalization")
+    arrears.write_off(island, name)
+    ledger.pay(island, name, ledger.GOV, ledger.money(island, name), "nationalization")
+    value = ledger.balance(island, ledger.account(holder, ledger.EQUITY, name))
+    if value > 0:
+        ledger.cancel(island, holder, ledger.EQUITY, name, value, "equity_transfer")
+    for f in companies.members(island, number):
+        entity = facility_entity(f.id)
+        seized = f.economy.get("foreclosed")
+        if isinstance(seized, dict) and seized.get("owner") == name:
+            seized["owner"] = ledger.GOV
+        if f.id in {w.id for w in working}:
+            _move_equity(island, entity, name, ledger.GOV)
+            companies.leave(island, f)
+            f.owner = OWNER_STATE
+            for key in ("closing", "idle_turns", "loss_streak"):
+                f.economy.pop(key, None)
+            f.economy[companies.FIRM] = companies.state_firm(island, ctx.defs, f.kind, ctx.turn)
+        else:
+            _move_equity(island, entity, name, holder)
+            companies.leave(island, f)
+    for f in island.facilities:  # 企業の外の施設の差し押さえの残り（倒産した施設）も政府へ
+        seized = f.economy.get("foreclosed")
+        if isinstance(seized, dict) and seized.get("owner") == name:
+            seized["owner"] = ledger.GOV
+    del island.economy.firms[str(number)]
+    island.log.append(
+        LogEntry(
+            "firm_nationalized",
+            {"firm": title, "count": len(working), "price": price},
+        )
+    )
+
+
+def check_privatize_firm(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    _firm_of_order(island, payload, OWNER_STATE)
+    if not [
+        f for f in _working_members(island, payload["firm"]) if _can_privatize(island, defs, f)
+    ]:
+        raise OrderFailed("reason_firm_cannot_privatize")
+
+
+def _can_privatize(island: IslandState, defs: Defs, f: Facility) -> bool:
+    if defs.facilities[f.kind].get("category") == "finance":
+        return False
+    return not is_public_service(defs, f) and private_allowed(defs, island, f.kind)
+
+
+def privatize_firm(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
+    """国営企業を丸ごと純資産で資本家階級に売る（回7）。売れる施設（公務員の施設と、体制が民営を
+    許さない施設を除く）がみな1つの新しい民営の企業に入る。国庫直轄の施設は、先に運転資金を出資して
+    独立採算にする。"""
+    number = payload["firm"]
+    title = companies.display_name(island, ctx.defs, number)
+    sold = [f for f in _working_members(island, number) if _can_privatize(island, ctx.defs, f)]
+    owners = Payer(household(OWNERS))
+    if OWNERS not in island.economy.households:
+        raise OrderFailed("reason_firm_cannot_privatize")
+    for f in sold:
+        if f.accounting == ACCOUNTING_TREASURY:
+            f.accounting = ACCOUNTING_SELF
+            fund_facility(island, ctx.defs, ctx.config, f, Payer(ledger.GOV, STATE_FACILITIES))
+    price = sum(banks.net_assets(island, f, facility_entity(f.id)) for f in sold)
+    if funds.available(island, owners) < price:
+        raise OrderFailed("reason_owners_short", amount=price)
+    funds.pay(island, owners, ledger.GOV, price, "privatization")
+    firm = companies.new_firm(island, OWNER_PRIVATE, ctx.turn)
+    for f in sold:
+        _move_equity(island, facility_entity(f.id), ledger.GOV, household(OWNERS))
+        f.owner = OWNER_PRIVATE
+        companies.leave(island, f)
+        companies.join(island, f, firm)
+    island.log.append(
+        LogEntry(
+            "firm_privatized",
+            {"firm": title, "count": len(sold), "price": price},
+        )
+    )
+
+
+# --- 命令: 小売りの政策（回7） -----------------------------------------------------------
+
+
+def check_retail_policy(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    if payload.get("approve") and retail.application(island) is None:
+        raise OrderFailed("reason_no_store_application")
+
+
+def set_retail_policy(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
+    """大きな店（百貨店）の出店の規制を決める。approve で、出ている申請を許す（次の参入で建つ）。"""
+    if "large_store" in payload:
+        island.policy.large_store = payload["large_store"]
+        policy = f"large_store_{payload['large_store']}"
+        island.log.append(LogEntry("retail_policy_set", {"policy": policy}))
+    found = retail.application(island)
+    if payload.get("approve"):
+        if found is None:
+            raise OrderFailed("reason_no_store_application")
+        found["approved"] = True
+        island.log.append(LogEntry("store_approved", {}))
+    elif found is not None and island.policy.large_store != retail.PERMIT:
+        island.economy.finance.pop(retail.APPLICATION)  # 許可制をやめたら申請は要らない
 
 
 def _move_equity(island: IslandState, entity: str, source: str, target: str) -> None:
@@ -1293,4 +1489,28 @@ def register(registry: Registry) -> None:
     registry.add_order(OrderHandler("set_zone", execute=set_zone, check=check_set_zone))
     registry.add_order(OrderHandler("nationalize", execute=nationalize, check=check_nationalize))
     registry.add_order(OrderHandler("privatize", execute=privatize, check=check_privatize))
+    registry.add_order(
+        OrderHandler("nationalize_firm", execute=nationalize_firm, check=check_nationalize_firm)
+    )
+    registry.add_order(
+        OrderHandler("privatize_firm", execute=privatize_firm, check=check_privatize_firm)
+    )
     registry.add_order(OrderHandler("set_subsidy", execute=set_subsidy, check=check_subsidy))
+    registry.add_order(
+        OrderHandler("set_retail_policy", execute=set_retail_policy, check=check_retail_policy)
+    )
+
+
+def _sole_food(island: IslandState, defs: Defs, f: Facility) -> set[str]:
+    """施設 f だけが島で作っている食べ物（回7。W-20）。島にただ1つの穀物の農場は、ほかの作物に
+    替えない（替えると島から穀物が消え、値段が上がっても次の見直しと畑が育つまで戻らない）。"""
+    made = {g for g in fac.recipe_of(defs, fac.steady(f))["outputs"] if "food" in defs.goods[g]}
+    if not made:
+        return set()
+    for other in island.facilities:
+        if other is f or not other.built or not fac.located(other):
+            continue
+        made -= set(fac.recipe_of(defs, other)["outputs"])
+        if not made:
+            break
+    return made

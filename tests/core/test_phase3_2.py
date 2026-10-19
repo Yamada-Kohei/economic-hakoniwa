@@ -49,7 +49,7 @@ NEW_GOODS = [
 
 def test_there_are_24_goods_and_every_good_has_a_maker(game):
     defs = game.defs
-    assert len(defs.goods) == 24  # 回4 でサービスが増えた
+    assert len(defs.goods) == 25  # 回4 でサービス、回7 で小売りが増えた
     assert set(NEW_GOODS) <= set(defs.goods)
     made = {
         g
@@ -62,16 +62,17 @@ def test_there_are_24_goods_and_every_good_has_a_maker(game):
 
 
 def test_every_household_good_has_a_need(game):
-    """家計が買う財（consumer）はどれも、必需品・ぜいたく品・耐久消費財・サービスのどれかに分けて
-    ある（燃料は車を動かすのに買うので、種類を持たない）。"""
+    """家計が買う財（consumer）はどれも、必需品・ぜいたく品・耐久消費財・サービス・小売りのどれかに
+    分けてある（燃料は車を動かすのに買うので、種類を持たない）。"""
     defs = game.defs
-    kinds = {needs.NECESSITY, needs.LUXURY, needs.DURABLE, needs.SERVICE}
+    kinds = {needs.NECESSITY, needs.LUXURY, needs.DURABLE, needs.SERVICE, needs.RETAIL}
     for good, gdef in defs.goods.items():
         if gdef.get("consumer") and good != "fuel":
             assert gdef.get("need") in kinds, good
     assert needs.goods_of(defs, needs.DURABLE) == ["automobile"]
     assert set(needs.goods_of(defs, needs.LUXURY)) == {"consumer_goods", "luxury_crop"}
     assert needs.goods_of(defs, needs.SERVICE) == ["services"]
+    assert needs.goods_of(defs, needs.RETAIL) == ["retail"]
 
 
 def test_joint_products_split_their_cost_by_the_world_prices(game):

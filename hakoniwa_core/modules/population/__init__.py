@@ -70,6 +70,7 @@ HUNGER = "hunger"  # 層の飢えの蓄え（economy.households[層]。栄養の
 # 亡くなっている。蓄えが 0 に戻ると消す）
 ENDURED = "hunger_endured"
 FED = "fed"  # 層が前のターンに食べられた割合（1000 分の 1）
+FLED = "fled"  # 村のマスの、飢饉で町から逃れてきた人数（tile.ext。町へ戻るとき。回7）
 # 飢えの知らせ（Codex の試し遊び、ターン 250〜300。10-17 のカード「知らせて回7」）: 食べられなかった
 # 層の買えなかったわけ（money: 食費が使えるお金を使い切った、goods: 売りに出ていた物が足りない、
 # outbid: 売りはあったが買い負けた）、市場で食料を買う人の数（このターンに亡くなった人を除く）、
@@ -341,12 +342,13 @@ def vacancies_of(
     """
     found = []
     for f in island.facilities:
-        if not fac.on_map(f) or (f.built and fac.workers_needed(defs, f.kind) <= 0):
+        if not fac.located(f) or (f.built and fac.workers_needed(defs, f.kind) <= 0):
             continue
         want = f.economy.get("wanted", fac.labor_demand(defs, f, turn))
         missing = want - f.workers
         if missing > 0:
-            found.append(((f.x, f.y), fac.commute_radius(defs, config, f.kind), missing, f.id))
+            radius = fac.commute_radius(defs, config, f.kind)
+            found.append((fac.position(f), radius, missing, f.id))
     shop = services.facility_of(island, config)
     if shop is not None:
         radius = config.get("labor.commute_radius")
@@ -904,6 +906,7 @@ class Population(IslandStage):
                 left_island += self._crowd_in(defs, island, homes, free, source, count)
         if left_island:
             island.log.append(LogEntry("residents_left", {"count": left_island}))
+        self._return_to_towns(island, ctx, rng, free, pull, needed)
         self._flee_famine(island, ctx, rng, free)
 
     @staticmethod
@@ -950,6 +953,69 @@ class Population(IslandStage):
         island.tile(*target).population += count
         free[target] -= count
         return 0
+
+    @staticmethod
+    def _return_to_towns(
+        island: IslandState,
+        ctx: StageContext,
+        rng: random.Random,
+        free: dict[Pos, int],
+        pull: dict[Pos, int],
+        needed: int,
+    ) -> int:
+        """飢饉で村へ逃れた人（tile.ext["fled"]）が、町で食べ物が買えるようになり、町に人手の足りない
+        仕事があれば、1ターンに population.hunger.return_share の割合ずつ、人手の足りない所に近い
+        空いた町へ戻る（回7。W-21。村の人は失業者に数えないので、仕事のない人の移り住みでは戻らな
+        かった）。戻った人数を返す。現実でも、飢饉や内戦が終わると、逃れた人は何年かかけて町へ戻る
+        （ペトログラードの人口は内戦の後の数年で戻り始めた）。"""
+        settings = ctx.config.get("population.hunger")
+        households = island.economy.households
+        if any(
+            1 - h.get(FED, fac.FULL) / fac.FULL > settings["tolerance"]
+            for h in households.values()
+            if h.get("persons", 0) > 0
+        ):
+            return 0
+        share = fac.labor_share(ctx.defs, island)
+        targets = sorted(
+            (
+                pos
+                for pos, n in pull.items()
+                if n > 0 and free.get(pos, 0) > 0 and not _farming(ctx.defs, island.tile(*pos))
+            ),
+            key=lambda pos: (-pull[pos], pos[1], pos[0]),
+        )
+        room = int(needed / share) if share > 0 else 0
+        moved = 0
+        for tile in sorted(island.tiles, key=lambda t: (t.y, t.x)):
+            fled = min(tile.ext.get(FLED, 0), tile.population)
+            if fled <= 0:
+                tile.ext.pop(FLED, None)
+                continue
+            count = min(fled, max(1, _rand_round(fled * settings["return_share"], rng)))
+            back = 0
+            for pos in targets:
+                if count <= 0 or room <= 0:
+                    break
+                move = min(count, free[pos], pull[pos], room)
+                if move <= 0:
+                    continue
+                island.tile(*pos).population += move
+                free[pos] -= move
+                pull[pos] -= move
+                room -= move
+                count -= move
+                back += move
+            tile.population -= back
+            moved += back
+            left = fled - back
+            if left > 0:
+                tile.ext[FLED] = left
+            else:
+                tile.ext.pop(FLED, None)
+        if moved:
+            island.stats["population.returned_to_towns"] = moved
+        return moved
 
     @staticmethod
     def _flee_famine(
@@ -1007,7 +1073,9 @@ class Population(IslandStage):
                 if move <= 0:
                     continue
                 tile.population -= move
-                island.tile(*target).population += move
+                village = island.tile(*target)
+                village.population += move
+                village.ext[FLED] = village.ext.get(FLED, 0) + move  # 町へ戻るとき（回7）
                 free[target] -= move
                 count -= move
                 moved += move

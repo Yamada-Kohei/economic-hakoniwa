@@ -45,6 +45,7 @@ const MARK_MODES = {
   no_dev_off: { label: "開発禁止区域の解除", kind: "set_no_development", payload: (tiles) => ({ tiles, value: false }) },
   zone_industrial: { label: "工業団地の指定", kind: "set_zone", payload: (tiles) => ({ zone: "industrial", tiles }) },
   zone_office: { label: "オフィス街の指定", kind: "set_zone", payload: (tiles) => ({ zone: "office", tiles }) },
+  zone_commercial: { label: "商業地の指定", kind: "set_zone", payload: (tiles) => ({ zone: "commercial", tiles }) },
   zone_none: { label: "区域の指定の解除", kind: "set_zone", payload: (tiles) => ({ zone: "none", tiles }) },
 };
 
@@ -164,6 +165,7 @@ export class TilePanel {
     if (t.zone === "no_development") rows.push(["開発", "禁止区域（町が形成されません）"]);
     if (t.zone === "industrial") rows.push(["区域", "工業団地（民営の工場が採算を見て建ちます）"]);
     if (t.zone === "office") rows.push(["区域", "オフィス街（銀行が建ちます）"]);
+    if (t.zone === "commercial") rows.push(["区域", "商業地（企業が採算を見て百貨店を建てます）"]);
     if (t.capital_buildings?.length) rows.push(["首都の建物", t.capital_buildings.join("・")]);
     const title = t.capital ? `首都 ${t.capital_name || ""}（${t.x}, ${t.y}）` : `(${t.x}, ${t.y})`;
     return `<h3>${escapeHtml(title)}</h3>${table(rows)}`;
@@ -173,6 +175,8 @@ export class TilePanel {
     if (f.level_name) {
       // 町（住宅地）には名前を付けない。段階と、次の段階に育つのに要る資源を出す
       const rows = [["段階", f.level_name], ["居住上限", `${f.capacity.toLocaleString()} 人`]];
+      // 町の商店（回7）: 町の段階ごとに建てられる数が決まる
+      if (f.shop_slots != null) rows.push(["商店", `${(f.shops || 0).toLocaleString()} / ${f.shop_slots.toLocaleString()} 軒`]);
       if (f.next_level_name) {
         const need = f.next_materials?.length ? goodsText(f.next_materials) : "なし";
         rows.push([`${f.next_level_name}への発展に必要な資源`, need]);
@@ -180,6 +184,7 @@ export class TilePanel {
       return `<h3>${escapeHtml(f.level_name)}</h3>${table(rows)}`;
     }
     const rows = [["種類", f.kind_name], ["所有", `${f.owner_name}・${f.accounting_name}`]];
+    if (f.firm_name) rows.push(["企業", f.firm_name]);
     if (f.recipe_name) rows.push(["生産方式", f.recipe_name]);
     if (!f.built) {
       if (f.private_site) rows.push(["建設", "民間の資本が自分の資金で建設中"]);
@@ -265,6 +270,17 @@ export class TilePanel {
     }
     const isHousing = f.kind === this.defs.housing;
     const parts = [];
+    if (isHousing && f.shop_slots) {
+      // 町の商店（回7）: 町のマスを選んで建てる。入る数は町の段階で決まる
+      const full = (f.shops || 0) >= f.shop_slots;
+      parts.push(`
+        <form class="actions" data-form="shop">
+          <h4>商店の建設（この町に ${(f.shops || 0).toLocaleString()} / ${f.shop_slots.toLocaleString()} 軒）</h4>
+          <label>名称（空欄なら自動） <input name="name" maxlength="32"></label>
+          ${full ? `<p class="warning">この町には、もう商店が入りません（町が育つと増えます）。</p>` : ""}
+          <button type="submit">命令に追加</button>
+        </form>`);
+    }
     if (!isHousing) {
       parts.push(`
         <form class="actions" data-form="rename">
@@ -373,7 +389,8 @@ export class TilePanel {
 
   /** この地形に建てられる施設。この島で使える生産方式があり、数の上限に達していない施設を先に並べる。 */
   buildChoices(terrain) {
-    const choices = Object.entries(this.defs.facilities).filter(([, d]) => d.buildable && d.terrain.includes(terrain));
+    // 町の中に入る店（site: town）は空きマスには建たない（町のマスの欄から建てる）
+    const choices = Object.entries(this.defs.facilities).filter(([, d]) => d.buildable && !d.site && d.terrain.includes(terrain));
     const usable = ([id, d]) => !this.facilityNote(id, d);
     return [...choices.filter(usable), ...choices.filter((c) => !usable(c))];
   }
@@ -546,6 +563,10 @@ export class TilePanel {
     if (form.dataset.form === "build") {
       const payload = { facility: data.get("facility"), x, y };
       if (data.get("recipe")) payload.recipe = data.get("recipe");
+      if (name) payload.name = name;
+      this.addOrder("build", payload);
+    } else if (form.dataset.form === "shop") {
+      const payload = { facility: "shop", x, y };
       if (name) payload.name = name;
       this.addOrder("build", payload);
     } else if (form.dataset.form === "rename") {

@@ -37,3 +37,7 @@ automobile:         {tier: 3, unit: piece, consumer: true, freight_weight: 1.5, 
 # サービス（バランス調整）: 商店・飲食・理美容・娯楽・修理など。商業・サービス業が町で人を雇って出し、
 # その場で使う（持ち越せず、島の外へ運べない）。量は働く人1人の1ターンの働き（人月）
 services:           {tier: 3, unit: person_month, shelf_life: 0, consumer: true, need: service}
+# 小売り（回7）: 店の売り場の働き。家計は品物（電力と町の資材を除く）を買うと、代金に見合う量（game.yaml の
+# retail.value_per_unit）の小売りも商店・百貨店から買う。持ち越せず、島の外へ運べない。量は売り場の人1人の
+# 1ターンの働き（人月）
+retail:             {tier: 3, unit: person_month, shelf_life: 0, consumer: true, need: retail}

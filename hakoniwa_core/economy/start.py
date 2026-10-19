@@ -120,18 +120,21 @@ def init_facility(
         return
     recipe = fac.recipe_of(defs, f)
     cost = round_money(construction_cost(defs, f.kind, prices, wage))
+    firm = f.economy.get("firm")  # 属する企業は持ち越す（回7）
     if not f.built:
         total = fac.total_progress(defs, f)
         f.economy = {"capital": cost * min(f.progress, total) // total}
-        return
-    f.economy = {
-        "wage": wage,
-        "target": fac.FULL,
-        "ask": {g: prices.get(g, 0) for g in sorted(recipe["outputs"])},
-        "capital": cost,
-        "depreciated": 0,
-        "staff": {},
-    }
+    else:
+        f.economy = {
+            "wage": wage,
+            "target": fac.FULL,
+            "ask": {g: prices.get(g, 0) for g in sorted(recipe["outputs"])},
+            "capital": cost,
+            "depreciated": 0,
+            "staff": {},
+        }
+    if firm is not None:
+        f.economy["firm"] = firm
 
 
 def operating_cost(

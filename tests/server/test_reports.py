@@ -324,3 +324,21 @@ def test_describe_build_infrastructure():
         "build_infrastructure", {"kind": "road", "tiles": [[1, 2], [3, 4]]}
     )
     assert text.endswith(": 道路 2 マス")
+
+
+def test_firm_table_and_summary_for_owner(client, world):
+    """回7: ターンが回ると施設は企業に入り、持ち主の施設の画面に企業の表（国有化・民営化の入力）、
+    国の要約に企業の数と一覧が出る。"""
+    from server.turns.services import run_turn
+
+    run_turn(world.id)
+    island = m.Island.objects.order_by("id").first()
+    island.owner = _login(client)
+    island.save()
+    res = client.get(f"/islands/{island.id}/facilities/")
+    firms = res.context["table"]["firms"]
+    assert firms and all(r["order"] in ("nationalize_firm", "privatize_firm") for r in firms)
+    html = res.content.decode()
+    assert 'class="firm-action"' in html and 'id="orders"' in html
+    summary = client.get(f"/api/islands/{island.id}/summary").json()
+    assert summary["firms"]["count"] >= 0 and "list" in summary["firms"]

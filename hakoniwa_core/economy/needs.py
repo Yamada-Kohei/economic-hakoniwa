@@ -40,6 +40,7 @@ NECESSITY = "necessity"
 LUXURY = "luxury"
 DURABLE = "durable"
 SERVICE = "service"  # サービス（バランス調整。economy/services.py）
+RETAIL = "retail"  # 小売り（回7。economy/retail.py。品物を買うときに一緒に買う）
 CARS = "cars"  # households[層] の、持っている自動車（1000 分の 1 台）
 PLAN = "cars_plan"  # island.scratch: 層ごとの、このターンの欲しい台数と燃料の要る量
 
