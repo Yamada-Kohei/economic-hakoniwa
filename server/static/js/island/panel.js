@@ -189,6 +189,8 @@ export class TilePanel {
     } else if (f.workers_needed != null) {
       rows.push(["従業者", `${f.workers.toLocaleString()} / ${f.workers_needed.toLocaleString()} 人`]);
       rows.push(["稼働率", `${Math.round(f.operating_rate * 100)}%`]);
+      // 設備の傷み（回6）: 傷んだ分は作れない
+      if (f.equipment != null) rows.push(["設備", `${Math.round(f.equipment * 100)}%${f.equipment < 1 ? "（傷んだ分は作れません）" : ""}`]);
       if (f.wage != null) rows.push(["賃金（1人1ターン）", f.wage.toLocaleString()]);
       if (f.engineers_needed) {
         const seats = f.engineers_wanted !== f.engineers_needed ? `（技術者の席 ${f.engineers_wanted.toLocaleString()}）` : "";

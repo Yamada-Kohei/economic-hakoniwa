@@ -18,6 +18,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
+from hakoniwa_core.economy import equipment
 from hakoniwa_core.market import auction
 from hakoniwa_core.state import Facility, IslandState
 from hakoniwa_core.units import QUANTITY_SCALE, money_of, part, round_money, scale_price
@@ -34,10 +35,15 @@ def construction_cost(defs: Defs, kind: str, prices: Prices, wage: float) -> flo
     return materials + construction.get("labor", 0) * construction["turns"] * wage
 
 
-def capital_rate(config: GameConfig) -> float:
-    """1ターンの設備の費用の割合（利子と減価償却）。"""
+def capital_cost(defs: Defs, config: GameConfig, kind: str, prices: Prices, wage: float) -> float:
+    """1ターンの設備の費用: 建設費の利子と、設備の傷み（回6。economy/equipment.py。設備を持たない
+    施設は建設費を firms.depreciation_turns ターンで割った分）。"""
     rate = config.get("market.initial_prices.capital_rate")
-    return rate / TURNS_PER_YEAR + 1 / config.get("firms.depreciation_turns")
+    cost = construction_cost(defs, kind, prices, wage)
+    worn = equipment.yearly_wear(defs, config, kind, prices) / TURNS_PER_YEAR
+    if worn <= 0:
+        worn = cost / config.get("firms.depreciation_turns")
+    return cost * rate / TURNS_PER_YEAR + worn
 
 
 def _recipe_cost(
@@ -51,7 +57,7 @@ def _recipe_cost(
     """全力で1ターン動いたときの原価。"""
     inputs = sum(prices.get(g, 0) * q / QUANTITY_SCALE for g, q in recipe["inputs"].items())
     labor = fac.labor_cost(defs, config, kind, wage)
-    capital = construction_cost(defs, kind, prices, wage) * capital_rate(config)
+    capital = capital_cost(defs, config, kind, prices, wage)
     return inputs + labor + capital
 
 

@@ -73,15 +73,27 @@ def release(f: Facility, shipment: int) -> None:
     f.economy.get("busy", {}).pop(str(shipment), None)
 
 
-def ships_wanted(config: GameConfig, f: Facility) -> int:
-    """海運業が市場で買う輸送船（1000 分の 1 隻）: 直近 trade.cost_turns ターンの半分以上で、船が
-    足りずに輸入を減らしていたら 1 隻（買って船団に入れる前の船があれば、その分を引く）。"""
+def ships_wanted(config: GameConfig, f: Facility, turn: int) -> int:
+    """海運業が市場で買う輸送船（1000 分の 1 隻。買って船団に入れる前の船があれば、その分を引く）。
+
+    - 直近 trade.cost_turns ターンの半分以上で、船が足りずに輸入を減らしていたら 1 隻。
+    - 先回りの買い替え（回6。Codex E31）: 寿命まで trade.ship_order_turns ターン以内の船があれば、
+      直近 trade.cost_turns ターンに一番多く航海に出ていた船の数から、寿命の来ない船の数を引いた
+      分を、寿命の来る船の数まで買う（使っていない船は替えない）。
+    """
+    want = 0
     history = f.economy.get("ships_short", [])
     turns = config.get("trade.cost_turns")
-    if len(history) < turns or sum(history) * 2 < len(history):
-        return 0
+    if len(history) >= turns and sum(history) * 2 >= len(history):
+        want = MILLI
+    life = config.get("trade.ship_life")
+    ahead = config.get("trade.ship_order_turns")
+    retiring = sum(q for since, q in f.economy.get("fleet", []) if turn + ahead - since >= life)
+    if retiring > 0:
+        used = ships_of_load(config, max(f.economy.get("used", []), default=0))
+        want = max(want, min(retiring, used - (fleet(f) - retiring)))
     have = stock.total(f.stock, config.get("trade.ship_good"))
-    return max(0, MILLI - have)
+    return max(0, want - have)
 
 
 def ships_of_load(config: GameConfig, load: int) -> int:

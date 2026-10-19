@@ -76,6 +76,7 @@ from hakoniwa_core.economy import (
     arrears,
     banks,
     default_accounting,
+    equipment,
     facility_entity,
     funds,
     household,
@@ -151,8 +152,9 @@ def entry_return(
     capital: int,
     pos: tuple[int, int] | None = None,
 ) -> float:
-    """見込みの年の利益率 R = 12 × (変動費の利益 + 生産補助) × (1 − 法人税率) ÷ 建設費
-    （名前付きの式 entry_return の既定）。pos は建てるマス（生産性の係数に使う）。"""
+    """見込みの年の利益率 R = (12 × (変動費の利益 + 生産補助) − 設備の年の傷み) × (1 − 法人税率)
+    ÷ 建設費（名前付きの式 entry_return の既定）。設備の年の傷みは、新品の設備が1年に傷む値打ち
+    （回6。直す費用）。pos は建てるマス（生産性の係数に使う）。"""
     if capital <= 0:
         return 0.0
     probe = productivity.probe(island, ctx.defs, ctx.config, kind, recipe, pos)
@@ -166,7 +168,8 @@ def entry_return(
         if s["kind"] == "production" and s.get("good") in outputs
     )
     tax = island.policy.corporate_tax / BASIS
-    return YEAR * (profit + subsidy) * (1 - tax) / capital
+    worn = equipment.yearly_wear(ctx.defs, ctx.config, kind, prices)
+    return (YEAR * (profit + subsidy) - worn) * (1 - tax) / capital
 
 
 def capital_subsidy(island: IslandState, kind: str, recipe: dict[str, Any]) -> int:
@@ -378,7 +381,16 @@ class EntryExit(IslandStage):
             losing = f.economy.get("loss_streak", 0) + 1 if profit < -margin else 0
             f.economy["idle_turns"] = idle
             f.economy["loss_streak"] = losing
-            if idle >= settings["exit_idle_turns"] or losing >= settings["exit_loss_turns"]:
+            # 直す採算が合わないまま設備が傷みきった（回6。economy/equipment.py）
+            scrap = round(ctx.config.get("equipment.scrap") * fac.FULL)
+            worn_out = equipment.condition(f) < scrap and not equipment.worthwhile(
+                ctx.defs, ctx.config, f, profit, prices
+            )
+            if (
+                idle >= settings["exit_idle_turns"]
+                or losing >= settings["exit_loss_turns"]
+                or worn_out
+            ):
                 f.economy["closing"] = ctx.turn
                 f.economy["target"] = 0
                 island.log.append(
@@ -591,13 +603,14 @@ class EntryExit(IslandStage):
     @staticmethod
     def _capacity(island: IslandState, ctx: StageContext, side: str = "outputs") -> dict[str, int]:
         """財ごとの、動いている施設（閉鎖中と差し押さえ中を除く）の全力の産出（side が "inputs" なら
-        使う量）の合計。"""
+        使う量）の合計。設備が傷んだ施設は、傷んだ分を除いて数える（回6）。"""
         total: dict[str, int] = {}
         for f in island.facilities:
             if not f.built or is_stopped(f):
                 continue
+            worn = fac.equipment_cap(f)
             for g, qty in fac.recipe_of(ctx.defs, f).get(side, {}).items():
-                total[g] = total.get(g, 0) + qty
+                total[g] = total.get(g, 0) + fac.scale(qty, worn)
         return total
 
     @staticmethod
@@ -874,7 +887,10 @@ class EntryExit(IslandStage):
                 continue
             price = max(1, seized["price"])
             rate = rates.get(f.id, 0)
-            r = ctx.formula("entry_return")(island, ctx, kind, rname, prices, rate, price) * fill
+            # 傷んだ設備を新品まで直す代金も、買う値段に入れて比べる（回6）
+            repair = equipment.value(equipment.shortfall(ctx.defs, f), prices)
+            capital = price + repair
+            r = ctx.formula("entry_return")(island, ctx, kind, rname, prices, rate, capital) * fill
             if r <= max(threshold, estimate):
                 continue
             earnings = variable_profit(ctx.defs, config, f, prices, wage, rate)
@@ -1068,9 +1084,11 @@ def restart(island: IslandState, ctx: StageContext, f: Facility, owner: str, pri
     f.accounting = default_accounting(ctx.defs, island, f.kind, owner)
     for key in ("closing", "idle_turns", "loss_streak", "loss_turns", "ebitda"):
         f.economy.pop(key, None)
+    worn = equipment.keep(f)  # 設備は傷んだまま引き継ぐ（回6）
     init_facility(
         island, ctx.defs, ctx.config, f, dict(island.economy.prices), island.economy.average_wage
     )
+    f.economy.update(worn)
     f.economy["capital"] = price
     step = round_money(ctx.config.get("market.target_step") * fac.FULL + 0.5)
     f.economy["target"] = step

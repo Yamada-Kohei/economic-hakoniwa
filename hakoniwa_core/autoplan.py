@@ -16,6 +16,8 @@
 5. 消費財（衣料・消費財・嗜好品）の生産が住民1人あたりの目安（household.targets）に届かないか、
    前のターンの市場で売りに出た量が買いたい量に届かなければ、それを作る施設（加工食品・肉・自動車・
    燃料も、売りに出た量が買いたい量に届かなければ作る施設）。必需品、ぜいたく品、自動車、燃料の順
+5'. 海運業が輸送船を買えずにいて島に造船所がなければ、造船所を1つ（回6。鋼鉄と機械が島で作られて
+   いるか貿易で手に入る島だけ）
 6. 島の鉱業資源のうち、島のどの施設も使っていない物（ボーキサイト・原油など）は、それを使う施設を
    1つ建てる（輸出向け。フェーズ3-2。採る鉱山は、4 で足りない投入財として後から建つ）
 7. 入っている貿易圏の前のターンの市場で、買いたい量の一部しか買えなかった物を、島の中だけで作れる
@@ -57,6 +59,7 @@
 動かす年の費用（今の賃金と、値幅の上端の教材の値段で）の EDUCATION_MARGIN 倍です。
 住民1人あたり PUBLIC_WORKS を基本に、失業率がふつう（5%）より高ければ増やし、物価上昇率が高ければ
 減らします（額を物価や GDP に合わせて動かさないので、物価が下がり続けたり上がり続けたりしにくい）。
+国営の施設の設備が1年に傷む値打ち（直す分。回6）は、その上に足します。
 返す力の比（中央銀行以外に払う利子 ÷ 国の収入）が FISCAL_LIMIT を超えた分に応じても減らします
 （利回りが上がって利払いが膨らみ続けないように。回5 で借金の対年GDP比から替えた）。
 財政の手（回5）: BUDGET_TURNS ターンごとに（公共事業費の見直しと別のターン）、国が賃金を払いきれて
@@ -86,7 +89,7 @@ from hakoniwa_core import infra, ledger, nature, stock, trade
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import arrears, needs, services
+from hakoniwa_core.economy import arrears, equipment, needs, services
 from hakoniwa_core.economy.prices import initial_prices, unit_cost
 from hakoniwa_core.geo import components, distance, shortest_path, within
 from hakoniwa_core.modules.firms import private_allowed
@@ -353,14 +356,24 @@ def _budget_order(
     scale -= INFLATION_RESPONSE * max(0.0, stats.get("inflation", 0) - INFLATION_LIMIT)
     scale -= BURDEN_RESPONSE * max(0.0, stats.get("bonds.burden", 0) - FISCAL_LIMIT)
     scale = min(WORKS_RANGE[1], max(WORKS_RANGE[0], scale))
-    construction = int(population_of(island) * PUBLIC_WORKS * scale)
+    # 国営の施設の設備を直す分（新品の設備が1年に傷む値打ち）を足す（回6。直す分は公共事業費から
+    # 払うので、足さないと新しい工事の分が減る）
+    prices = island.economy.prices
+    repairs = int(
+        sum(
+            equipment.yearly_wear(defs, config, f.kind, prices)
+            for f in island.facilities
+            if f.owner == OWNER_STATE and equipment.has_equipment(defs, config, f)
+        )
+    )
+    construction = int(population_of(island) * PUBLIC_WORKS * scale) + repairs
     # 始めた国の工事があるあいだは減らさず、公共事業費を待って止まっていて国庫にお金があれば、
     # 見直しのたびに増やす（始めた工事は終わらせる。上限は倍率の上限の額。回4 で人口の急な増え方が
     # なくなると、借金の対年GDP比が上がって公共事業費が下限まで下がり、国の工事が200ターン止まった
     # まま国庫にお金がたまった）
     current = island.policy.budget.get("construction", 0)
     if current and any(not f.built and f.owner == OWNER_STATE for f in island.facilities):
-        top = int(population_of(island) * PUBLIC_WORKS * WORKS_RANGE[1])
+        top = int(population_of(island) * PUBLIC_WORKS * WORKS_RANGE[1]) + repairs
         construction = max(construction, min(current, top))
         if _starved(island) and stats.get("treasury", 0) > current // TURNS_PER_YEAR:
             construction = max(construction, min(top, int(current * (1 + STARVED_RAISE))))
@@ -870,6 +883,17 @@ def _candidates(
                     if (first or spare(*c))
                     and (not durable or _inputs_at_hand(defs, config, *c, making | traded))
                 )
+
+    # 海運業が輸送船を買えずにいて、島に造船所がなければ、造船所を1つ（回6。どの世界も造船所を
+    # 建てず、初めに配った船が寿命になると貿易が止まった）
+    ship = config.get("trade.ship_good")
+    record = markets.get(ship)
+    if record is not None and record.supply < record.demand and _count(island, "shipyard") == 0:
+        yield from (
+            c
+            for c in _producers(defs, config, island, ship)
+            if _inputs_at_hand(defs, config, *c, making | traded)
+        )
 
     # 人手の足りない施設が多いか、雇える人（失業者と店で働く人）が少ないうちは増やさない
     # （住宅が育って人が移ってくるのを待つ）

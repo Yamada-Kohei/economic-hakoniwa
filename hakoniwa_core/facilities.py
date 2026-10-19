@@ -296,6 +296,11 @@ def engineer_cap(config: GameConfig, f: Facility) -> int:
     return floor + (FULL - floor) * ratio(f.economy.get("engineers", 0), seats) // FULL
 
 
+def equipment_cap(f: Facility) -> int:
+    """設備の傷みで決まる稼働率の上限（1000 分の 1。回6。決め方は economy/equipment.py）。"""
+    return f.economy.get("condition", FULL)
+
+
 def is_halted(f: Facility, turn: int) -> bool:
     """災害などで止まっているか。"""
     return f.ext.get("halted_until", 0) >= turn
@@ -371,7 +376,7 @@ def input_ratio(defs: Defs, f: Facility, power: str) -> tuple[int, str | None]:
 
 def labor_demand(defs: Defs, f: Facility, turn: int, power: str | None = None) -> int:
     """このターンに雇いたい人数。工事中は手元の資材で進められる分の人手、動いている施設は
-    操業目標（economy["target"]、1000 分の 1）の分だけ。
+    操業目標（economy["target"]、1000 分の 1）の分だけ（設備の割合まで。回6）。
 
     お金の経済の施設は、power（電力の財）を渡すと、手元の原料で動ける分までにする（原料が届く
     まで、動けない人を雇って賃金だけ払わない。工事中の資材と同じ）。
@@ -382,7 +387,8 @@ def labor_demand(defs: Defs, f: Facility, turn: int, power: str | None = None) -
         return -(-labor * material_ratio(defs, f) // FULL)  # 切り上げ
     if is_halted(f, turn):
         return 0
-    target = f.economy.get("target", FULL)
+    # 設備が傷んで作れない分の人は雇わない（回6）
+    target = min(f.economy.get("target", FULL), equipment_cap(f))
     if power is not None and "target" in f.economy:
         target = min(target, input_ratio(defs, f, power)[0])
     return scale(workers_needed(defs, f.kind), target)

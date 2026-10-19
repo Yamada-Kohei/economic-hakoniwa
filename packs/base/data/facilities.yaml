@@ -305,6 +305,8 @@ ranch:
   sprite: ranch
 
 # 自動車工場（フェーズ3-2）。人手も技術者も多く要ります。量は台（1 ターン全力で 200 台）。
+# 材料は実物の1台の割合に合わせる（回6。台帳 2026-10-19 W-75）: 鋼鉄を 1 として、アルミ 0.17、樹脂・ゴム・
+# 塗料（化学品）0.28、座席の布（衣料）0.03 ほど。エンジンなどの部品は機械。部品工場の段は回7（W-76）
 automobile_plant:
   category: industry
   industry: automobile
@@ -314,11 +316,11 @@ automobile_plant:
   pollution: {amount: 3, radius: 1}
   factors: {infra: 0.8, education: 0.8}
   recipes:
-    default:
-      inputs: {steel: 4, chemicals: 1, electricity: 3}
+    default:              # アルミのない島: アルミの分を鋼鉄で（アルミ 1 が鋼鉄 2 にあたる）
+      inputs: {steel: 5.4, chemicals: 1.1, clothing: 0.12, machinery: 0.2, electricity: 3}
       outputs: {automobile: 200}
-    aluminium:            # 鋼鉄の半分をアルミに替える
-      inputs: {steel: 2, aluminium: 1, chemicals: 1, electricity: 3}
+    aluminium:
+      inputs: {steel: 4, aluminium: 0.7, chemicals: 1.1, clothing: 0.12, machinery: 0.2, electricity: 3}
       outputs: {automobile: 200}
   sprite: automobile_plant
 

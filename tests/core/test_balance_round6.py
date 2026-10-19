@@ -1,0 +1,311 @@
+"""バランス調整の回6: 設備の傷みと直し（FM-11・FM-12）、船の先回りの買い替え（E31）、自動車の材料
+（W-75）、揺さぶりの試験2つ（GT-19: 決済通貨の島の生産を止める、船を全部失った島）。
+
+ターンを回す試験は、記録の段が毎ターン帳簿を確かめ、trade_check の段が島をまたぐお金と運ぶ途中の荷を
+確かめる（合わなければその場で止まる）。揺さぶりの試験では、さらに毎ターン国際収支の釣り合いを見る
+（tests/core/test_phase3_3.py の run_checked）。
+"""
+
+from __future__ import annotations
+
+import copy
+
+import pytest
+
+from hakoniwa_core import autoplan, ledger
+from hakoniwa_core import facilities as fac
+from hakoniwa_core.economy import equipment, facility_entity
+from hakoniwa_core.economy.prices import initial_prices
+from hakoniwa_core.modules.accounts import Accounts
+from hakoniwa_core.modules.firms import restart
+from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE
+from hakoniwa_core.state.generate import generate_world
+from hakoniwa_core.trade import blocs, shipping_of, ships
+from hakoniwa_core.units import QUANTITY_SCALE, money_of
+from tests.core.test_finance import context
+from tests.core.test_phase3_3 import run_checked
+
+BASE_TURNS = 30
+
+
+@pytest.fixture(scope="module")
+def game():
+    from hakoniwa_core.game import load_game
+
+    return load_game()
+
+
+@pytest.fixture(scope="module")
+def base(game):
+    """標準の計画で BASE_TURNS ターン回した6島（市場・混合・計画経済が2つずつ）。試験ごとに写す。"""
+    world = generate_world(1, 6, game.config, game.defs)
+    run_checked(game, world, BASE_TURNS)
+    return world
+
+
+def worn_facility(game, island, owner):
+    """持ち主が owner の、設備を持つ動いている施設（機械を設備に持つものを先に）。"""
+    found = [
+        f
+        for f in sorted(island.facilities, key=lambda f: f.id)
+        if f.owner == owner and equipment.has_equipment(game.defs, game.config, f)
+    ]
+    found.sort(key=lambda f: "machinery" not in equipment.kit(game.defs, f.kind))
+    return found[0] if found else None
+
+
+def island_with(world, game, owner):
+    for island in world.islands.values():
+        f = worn_facility(game, island, owner)
+        if f is not None:
+            return island, f
+    raise AssertionError(f"{owner} の施設がない")
+
+
+def wear_down(game, f, share):
+    """設備の資材をみな定義の share の割合にする。"""
+    kit = equipment.kit(game.defs, f.kind)
+    have = {g: fac.scale(q, round(share * fac.FULL)) for g, q in kit.items() if q > 0}
+    f.economy[equipment.EQUIPMENT] = have
+    f.economy[equipment.CONDITION] = equipment._ratio(game.defs, f.kind, have)
+
+
+# --- 設備の傷み ------------------------------------------------------------------------
+
+
+def test_equipment_wears_by_the_yearly_rates(game, base):
+    """傷みは資材ごとの年の割合の 12 分の 1。設備の割合は一番減った資材で決まる。"""
+    world = copy.deepcopy(base)
+    _, f = island_with(world, game, OWNER_STATE)
+    f.economy.pop(equipment.EQUIPMENT, None)
+    f.economy.pop(equipment.CONDITION, None)
+    prices = {g: 1000 for g in game.defs.goods}
+    worn, before = equipment.wear(game.defs, game.config, f, prices)
+    kit = equipment.kit(game.defs, f.kind)
+    assert before == sum(q for q in kit.values()) * 1000 // QUANTITY_SCALE
+    assert worn > 0
+    for good, qty in kit.items():
+        gone = qty - f.economy[equipment.EQUIPMENT][good]
+        assert abs(gone - qty * equipment.wear_rate(game.config, good) / 12) <= 1
+    fastest = max(kit, key=lambda g: equipment.wear_rate(game.config, g))
+    rate = equipment.wear_rate(game.config, fastest)
+    assert abs(equipment.condition(f) - fac.FULL * (1 - rate / 12)) <= 1
+
+
+def test_worn_equipment_caps_hiring_inputs_and_output(game, base):
+    """設備の割合が、雇う人数・原料を買う量・稼働率の上限になる（傷んだ分は作れない）。"""
+    world = copy.deepcopy(base)
+    island, f = island_with(world, game, OWNER_STATE)
+    wear_down(game, f, 0.4)
+    f.economy["target"] = fac.FULL
+    cap = equipment.condition(f)
+    assert cap == 400
+    assert fac.labor_demand(game.defs, f, world.turn + 1) <= fac.scale(
+        fac.workers_needed(game.defs, f.kind), cap
+    )
+    game.engine.run_turn(world)
+    assert f.operating_rate <= max(cap, equipment.condition(f))
+
+
+def test_state_facilities_are_repaired_from_the_construction_budget(game, base):
+    """国営の施設は、公共事業費（と国の倉庫の資材）で、動かすつもりの分まで直す。直した代金は設備の
+    額に足し、GDP では工事（投資）に数える。"""
+    world = copy.deepcopy(base)
+    island, f = island_with(world, game, OWNER_STATE)
+    wear_down(game, f, 0.5)
+    f.economy["target"] = fac.FULL
+    capital = f.economy.get("capital", 0)
+    before = equipment.condition(f)
+    run_checked(game, world, 3)
+    assert equipment.condition(f) > before
+    assert f.economy.get("capital", 0) > capital
+    assert any(i.stats.get("equipment.repair", 0) > 0 for i in world.islands.values())
+
+
+def test_private_owner_repairs_only_when_it_pays(game, base):
+    """民営の持ち主は、変動費の利益の1年分が、直して持ち続ける年の費用（傷みと直す代金の利子）以上の
+    ときだけ直す。国営は比べない。"""
+    world = copy.deepcopy(base)
+    _, f = island_with(world, game, OWNER_PRIVATE)
+    wear_down(game, f, 0.5)
+    prices = {g: 1000 for g in game.defs.goods}
+    cost = equipment.yearly_cost(game.defs, game.config, f, prices)
+    assert cost > 0
+    assert equipment.worthwhile(game.defs, game.config, f, int(cost / 12) + 1, prices)
+    assert not equipment.worthwhile(game.defs, game.config, f, int(cost / 12) - 1, prices)
+    f.owner = OWNER_STATE
+    assert equipment.worthwhile(game.defs, game.config, f, -1, prices)
+
+
+def test_repairs_stop_at_the_scarcest_material(game, base):
+    """一番足りない資材で届く割合までしか、ほかの資材を買わない（ほかだけ買っても直らない）。"""
+    world = copy.deepcopy(base)
+    _, f = island_with(world, game, OWNER_STATE)
+    wear_down(game, f, 0.5)
+    f.economy["target"] = fac.FULL
+    kit = equipment.kit(game.defs, f.kind)
+    scarce = next(iter(sorted(kit)))
+    room = {g: (0 if g == scarce else 10**9) for g in kit}
+    assert equipment.wants(game.defs, game.config, f, room) == {}
+    assert equipment.wants(game.defs, game.config, f)  # 手に入るなら直したい
+
+
+def test_depreciation_is_the_worn_share_of_the_book_value(game, base):
+    """設備を持つ施設の減価償却は、帳簿の設備の値打ち × 傷んだ値打ち ÷ 傷む前の値打ち。"""
+    world = copy.deepcopy(base)
+    _, f = island_with(world, game, OWNER_STATE)
+    f.economy["capital"] = 1_000_000
+    f.economy["depreciated"] = 200_000
+    amount = Accounts._wear_off(f, 30, 1000)
+    assert amount == 800_000 * 30 // 1000
+    assert f.economy["depreciated"] == 200_000 + amount
+    assert Accounts._wear_off(f, 30, 0) == 0  # 値打ちが 0 でも止まらない
+
+
+def test_a_foreclosed_plant_keeps_its_worn_equipment(game, base):
+    """差し押さえた施設を売っても、設備は傷んだまま新しい持ち主へ移る。"""
+    world = copy.deepcopy(base)
+    island, f = island_with(world, game, OWNER_PRIVATE)
+    wear_down(game, f, 0.6)
+    worn = dict(f.economy[equipment.EQUIPMENT])
+    restart(island, context(game, world), f, OWNER_PRIVATE, 12345)
+    assert f.economy[equipment.EQUIPMENT] == worn
+    assert equipment.condition(f) == 600
+    assert f.economy["capital"] == 12345
+
+
+def test_scrapped_private_plant_closes(game, base):
+    """直す採算が合わないまま設備が equipment.scrap を切った民営の施設は閉じる。"""
+    world = copy.deepcopy(base)
+    island, f = island_with(world, game, OWNER_PRIVATE)
+    wear_down(game, f, 0.1)
+    # 売り物の値段を 1 にして、直す採算が合わないようにする
+    for g in fac.recipe_of(game.defs, f)["outputs"]:
+        island.economy.prices[g] = 1
+        island.economy.price_history[g] = [1]
+    from hakoniwa_core.modules.firms import EntryExit
+
+    EntryExit()._exits(island, context(game, world, "entry_exit"))
+    assert "closing" in f.economy
+
+
+# --- 船の先回りの買い替え --------------------------------------------------------------
+
+
+def test_ships_are_replaced_before_they_retire(game, base):
+    """寿命まで trade.ship_order_turns ターン以内の船は、使っている分だけ前もって買う。"""
+    world = copy.deepcopy(base)
+    island = next(i for i in world.islands.values() if shipping_of(i, game.config))
+    f = shipping_of(island, game.config)
+    config = game.config
+    life = config.get("trade.ship_life")
+    turn = world.turn
+    f.stock.pop(config.get("trade.ship_good"), None)
+    f.economy["ships_short"] = []
+    f.economy["fleet"] = [[turn - life + 5, 2000], [turn, 1000]]  # 2隻が5ターン後に寿命
+    load = config.get("trade.ship_capacity") * 2500  # 2.5 隻分を使っている
+    f.economy["used"] = [load]
+    assert ships.ships_wanted(config, f, turn) == 1500  # 寿命の来ない1隻を除いた 1.5 隻
+    f.economy["used"] = [0]
+    assert ships.ships_wanted(config, f, turn) == 0  # 使っていない船は替えない
+    f.economy["fleet"] = [[turn, 3000]]
+    f.economy["used"] = [load]
+    assert ships.ships_wanted(config, f, turn) == 0  # 寿命はまだ先
+
+
+# --- 自動車の材料 -----------------------------------------------------------------------
+
+
+def test_automobile_needs_the_parts_of_a_real_car(game):
+    """自動車工場は鋼鉄・アルミ・化学品・衣料・機械・電力を使う（アルミのない作り方は鋼鉄で）。"""
+    recipes = game.defs.facilities["automobile_plant"]["recipes"]
+    assert set(recipes["aluminium"]["inputs"]) == {
+        "steel",
+        "aluminium",
+        "chemicals",
+        "clothing",
+        "machinery",
+        "electricity",
+    }
+    assert set(recipes["default"]["inputs"]) == {
+        "steel",
+        "chemicals",
+        "clothing",
+        "machinery",
+        "electricity",
+    }
+    prices = initial_prices(game.defs, game.config)
+    assert prices["automobile"] > 0
+
+
+# --- 揺さぶりの試験（GT-19） ------------------------------------------------------------
+
+
+def test_halting_the_settlement_currency_island_keeps_the_world_running(game, base):
+    """決済通貨の島の施設を全部止めても、帳簿と国際収支が合ったままターンが回る。止めている間は
+    その島の生産が止まって GDP が落ち、止めるのをやめると生産が戻る。ほかの島は回り続ける。"""
+    world = copy.deepcopy(base)
+    currencies = {b["currency"] for b in blocs.blocs(world) if len(b.get("members", [])) > 1}
+    target = min(currencies) if currencies else min(world.island_ids())
+    island = world.islands[target]
+    halt = 12
+    for f in island.facilities:
+        if f.built:
+            f.ext["halted_until"] = world.turn + halt
+    made, gdp = [], []
+
+    def goods_made(stats):
+        # 店のサービスは人が出すので数えない
+        return sum(
+            v
+            for k, v in stats.items()
+            if k.startswith("production.") and k != "production.services"
+        )
+
+    def each(w):
+        stats = w.islands[target].stats
+        made.append(goods_made(stats))
+        gdp.append(stats.get("gdp", 0))
+
+    before, usual = island.stats.get("gdp", 0), goods_made(island.stats)
+    run_checked(game, world, 36, each)
+    # 止めている間は物を作らない（後で建ち終わった施設の分を除く）。やめると、売れ行きを見ながら
+    # 1年ほどかけて作り戻す
+    assert max(made[1:5]) == 0
+    assert max(made[-6:]) > usual * 0.3
+    assert min(gdp[1 : halt - 1]) < before
+    for i in world.island_ids():
+        assert world.islands[i].stats.get("population", 0) > 0
+        if i != target:
+            assert world.islands[i].stats.get("gdp", 0) > 0
+
+
+def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
+    """船を全部失った島: 帳簿と国際収支が合ったままターンが回り、輸出は買い手の船で続く。船が
+    足りない月が続くと海運業が船を買いに出て、手元の資金で足りない代金は持ち主が出す（船は運賃で
+    稼ぐ前に買うので、変動費の利益を見ない）。どの島も船を作っていなければ、標準の計画が造船所を
+    建てる。"""
+    world = copy.deepcopy(base)
+    island = next(
+        i for i in world.islands.values() if shipping_of(i, game.config) and i.has_economy
+    )
+    f = shipping_of(island, game.config)
+    f.economy["fleet"] = []
+    good = game.config.get("trade.ship_good")
+    exports, wanted = [], []
+
+    def each(w):
+        exports.append(w.islands[island.id].stats.get("trade.exports", 0))
+        wanted.append(f.economy.get("ships_wanted", 0))
+
+    run_checked(game, world, 36, each)
+    assert ships.fleet(f) == 0  # どの島も造船所をまだ持っていない
+    assert sum(exports) > 0  # 輸出は買い手の島の船で運ぶ
+    assert wanted[0] == 0 and wanted[-1] == QUANTITY_SCALE  # 足りない月が続いてから1隻
+    price = island.economy.prices[good]
+    assert ledger.money(island, facility_entity(f.id)) >= money_of(price, wanted[-1])
+    market = next(m for m in island.markets if m.good == good)
+    assert market.demand >= QUANTITY_SCALE // 2 and market.supply == 0
+    turn = world.turn
+    planned = list(autoplan._candidates(island, game.defs, game.config, turn))
+    assert any(kind == "shipyard" for kind, _ in planned)

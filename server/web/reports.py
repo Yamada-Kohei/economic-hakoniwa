@@ -744,6 +744,10 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
             "has_books": bool(books_of),
         }
         item.update(display.engineers_info(f, fdef) if fdef else {})
+        if fdef and f.built:  # 設備の割合（回6。%）
+            worn = display.equipment_info(game.defs, game.config, f)
+            if worn:
+                item["equipment"] = round(worn["equipment"] * 100)
         if f.built and fac.FIELDS in f.economy:  # 畑を作り替えている途中の内訳
             item["transition"] = display.crop_transition(f)["text"]
         if services.is_services(config, f):  # 雇う人数の目安と、店の場所ごとの人数（回4）

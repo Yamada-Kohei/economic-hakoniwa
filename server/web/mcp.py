@@ -488,6 +488,9 @@ def _map(request, args):
         where = f"({row.x},{row.y})" if on_map else "(マスなし)"
         state_text = display.status_text(f)
         rate = f" 稼働 {round(row.operating_rate * 100 / fac.FULL)}%" if row.built else ""
+        worn = display.equipment_info(game.defs, game.config, f) if row.built else {}
+        if worn and worn["equipment"] < 1:  # 設備が傷んでいれば割合も（回6）
+            rate += f" 設備 {round(worn['equipment'] * 100)}%"
         name = facility_name(game.defs, game.config, state, f)
         kind = game.defs.name("facilities", row.kind)
         lines.append(f"{where} #{row.number} {name}（{kind}）{rate} {state_text}".rstrip())

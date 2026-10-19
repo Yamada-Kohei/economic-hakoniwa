@@ -1,6 +1,7 @@
 """生産と電力の段。
 
-稼働率 u = min(人手の充足率, 投入財の充足率, 電力の充足率, 技術者で決まる上限)。
+稼働率 u = min(人手の充足率, 投入財の充足率, 電力の充足率, 技術者で決まる上限, 設備の割合)。
+設備の割合（回6）は傷んだ設備で作れる量の上限です（economy/equipment.py）。
 産出量 = 基本の産出量 × u × 生産性です（生産性はインフラ・教育・汚染の係数。フェーズ2-3 から。
 economy/productivity.py。式は output_rate で差し替えられます）。技術者で決まる上限は
 facilities.engineer_cap です。産出物は施設の在庫に入り、市場の段で売られます。
@@ -243,6 +244,9 @@ class Production(IslandStage):
         cap = fac.engineer_cap(ctx.config, f)  # 技術者が足りなければ、稼働率の上限が下がる
         if cap < rate:
             rate, cause = cap, "engineers"
+        worn = fac.equipment_cap(f)  # 設備が傷んだ分は作れない（回6）
+        if worn < rate:
+            rate, cause = worn, "equipment"
         if f.ext.get(fac.RECIPE_CHANGED) == ctx.turn:  # 作り方を替えたターンは半分（フェーズ3-2）
             half = fac.scale(rate, fac.FULL // 2)
             if half < rate:
@@ -400,8 +404,13 @@ class Production(IslandStage):
             if has_money:
                 self._update_asks(island, ctx, sellers, result, power)
                 demand = sum(b.need for b in buyers)
-                # 燃料が手に入らずに止まっている発電所は数えない（ほかの発電所が多めに動く）
-                able = sum(o for run, o in sellers if not fac.short_of_inputs(run.cause))
+                # 燃料が手に入らずに止まっている発電所は数えない（ほかの発電所が多めに動く）。
+                # 設備が傷んだ発電所は、傷んだ分を除いて数える（回6）
+                able = sum(
+                    fac.scale(o, fac.equipment_cap(run.f))
+                    for run, o in sellers
+                    if not fac.short_of_inputs(run.cause)
+                )
                 target = ctx.formula("power_target")(demand, able, ctx)
                 for run, _ in sellers:
                     if "target" in run.f.economy and not is_stopped(run.f):

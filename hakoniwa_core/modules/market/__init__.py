@@ -60,6 +60,7 @@ from hakoniwa_core.economy import (
     Payer,
     books,
     entity_of,
+    equipment,
     facility_entity,
     funds,
     household,
@@ -83,6 +84,7 @@ from hakoniwa_core.economy.prices import (
     usual_price,
     variable_profit,
 )
+from hakoniwa_core.economy.start import next_payments
 from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
@@ -121,6 +123,7 @@ WORKS = "works"  # インフラの公共事業
 HOUSEHOLD = "household"
 STORE = "warehouse"
 REBUILD = "rebuild"  # 首都の建物の建て替えの資材（フェーズ3-4。modules/politics）
+REPAIR = "repair"  # 傷んだ設備を直す資材（回6。economy/equipment.py）
 MERCHANT = "merchant"  # 海外の商人（フェーズ3-1）
 TRADER_PRIORITY = 0  # 商社の輸出の買い注文の優先順位（値幅の端で止まったときは島の買い手が先）
 CONTRACT_PRIORITY = 9  # 契約で売る分を政府が買う注文の優先順位
@@ -579,6 +582,26 @@ class SiteFunds:
             amount += gross_cost(limit, buy, self.rates.get(f.id, 0), 0)
         return amount
 
+    def repairs(self) -> int:
+        """国営の施設の傷んだ設備を直す資材に、市場で払う額の見込み（回6。国の倉庫の分と、前の
+        ターンに売りに出ていた量を超える分は除く。運賃は見込まない）。"""
+        island, defs, config = self.island, self.ctx.defs, self.ctx.config
+        width = to_basis(config.get("market.band"))
+        amount = 0
+        for f in Market._repairs(island, self.ctx):
+            if f.owner == OWNER_PRIVATE:
+                continue
+            for good, want in equipment.wants(defs, config, f).items():
+                free = max(0, min(want, self.warehouse.get(good, 0)))
+                if free:
+                    self.warehouse[good] -= free
+                buy = min(want - free, self.supply.get(good, 0))
+                if buy <= 0:
+                    continue
+                self.supply[good] -= buy
+                amount += gross_cost(material_limit(island, config, good, width), buy, 0, 0)
+        return amount
+
 
 # --- 段 -------------------------------------------------------------------------
 
@@ -632,6 +655,8 @@ class Market(IslandStage):
             results[good] = result
             stale[good] = self._settle(island, ctx, good, book, result, transport, bought, routes)
         self._record_shortages(books_by_good, results, stale)
+        for f, good, qty, cost in island.scratch.pop(REPAIR, []):  # 直す資材を設備に入れる（回6）
+            equipment.install(defs, f, good, qty, cost)
         self._trade_settled(island, ctx, rates)
         for _, book in sorted(books_by_good.items()):
             for _, party in book.buys:
@@ -775,11 +800,107 @@ class Market(IslandStage):
         sites.sort(key=lambda f: (-fac.priority_of(ctx.defs, ctx.config, f), f.id))
         return sites
 
+    @staticmethod
+    def _repairs(island: IslandState, ctx: StageContext) -> list[Facility]:
+        """傷んだ設備を直す施設（回6）。国営は採算を比べず、民営は直す採算が合うときだけ（economy/
+        equipment.py の worthwhile）。差し押さえ中・閉鎖中は直さない。番号の順。"""
+        from hakoniwa_core.modules.firms import average_prices  # firms は market を読むので、ここで
+
+        defs, config = ctx.defs, ctx.config
+        prices: dict[str, int] | None = None
+        rates = freight_rates.facility_rates(island, defs, config)
+        found = []
+        for f in sorted(island.facilities, key=lambda f: f.id):
+            if not equipment.has_equipment(defs, config, f) or is_stopped(f):
+                continue
+            if equipment.condition(f) >= equipment.level(config, f):
+                continue
+            if f.owner == OWNER_PRIVATE:
+                if prices is None:  # 直近の値段の平均で比べる（一時の安値で直すのをやめない）
+                    prices = average_prices(island, config.get("firms.price_turns"))
+                wage = f.economy.get("wage", 0)
+                profit = variable_profit(defs, config, f, prices, wage, rates.get(f.id, 0))
+                if not equipment.worthwhile(defs, config, f, profit, prices):
+                    continue
+            found.append(f)
+        return found
+
+    def _repair_orders(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        books_by_good: dict[str, Book],
+        rates: dict[int, int],
+        offered: dict[str, int],
+        claimed: dict[tuple[Payer, str], int],
+    ) -> None:
+        """傷んだ設備を直す資材の注文（回6。指値は工事の資材と同じ値幅の上端）。国営の施設は公共事業費
+        から（インフラの維持の後、新しい工事の前に取り置く）、民営は施設の預金から。"""
+        defs, config = ctx.defs, ctx.config
+        width = to_basis(config.get("market.band"))
+        wanted = island.scratch.setdefault("wanted", {})
+        for f in self._repairs(island, ctx):
+            state = f.owner != OWNER_PRIVATE
+            payer = Payer(ledger.GOV, CONSTRUCTION) if state else payer_of(defs, config, f)
+            rate = rates.get(f.id, 0)
+            full = equipment.wants(defs, config, f)
+            for good, want in full.items():
+                if offered.get(good, 0) <= 0:
+                    wanted[good] = wanted.get(good, 0) + want
+            # 一番足りない資材で届く割合までにする（ほかの資材だけ買っても直らない）
+            room = {g: max(0, offered.get(g, 0) - claimed.get((payer, g), 0)) for g in full}
+            plan = {}
+            for good, want in equipment.wants(defs, config, f, room).items():
+                want = self._room(island, offered, claimed, payer, good, want)
+                if want > 0:
+                    plan[good] = (want, material_limit(island, config, good, width))
+            if not state:
+                # 民営は、次のターンの支払いの見込みを残したお金で直す（直して返済が遅れない）
+                spare = funds.available(island, payer) - next_payments(island, defs, config, f)
+                plan = self._afford_within(plan, max(0, spare), rate)
+            if state:
+                priority = config.get("equipment.state_priority")
+            else:
+                priority = fac.priority_of(defs, config, f)
+            for good, (qty, limit) in sorted(self._afford(island, payer, plan, rate, 0).items()):
+                party = Party(REPAIR, facility_entity(f.id), payer, rate, 0, f)
+                party.reserved = gross_cost(limit, qty, rate, 0)
+                funds.commit(island, payer, party.reserved)
+                self._add(books_by_good, good, "buy", Order(qty, limit, priority), party)
+                claimed[(payer, good)] = claimed.get((payer, good), 0) + qty
+
+    @staticmethod
+    def _afford_within(
+        plan: dict[str, tuple[int, int]], money: int, freight: int
+    ) -> dict[str, tuple[int, int]]:
+        """plan の注文を、どの財も同じ割合で減らして money に収める。"""
+        cost = sum(gross_cost(limit, qty, freight, 0) for qty, limit in plan.values())
+        if cost <= money:
+            return plan
+        out = {}
+        for good, (qty, limit) in plan.items():
+            scaled = qty * money // cost if cost > 0 else 0
+            if scaled > 0:
+                out[good] = (scaled, limit)
+        return out
+
     def _supply_sites_from_warehouse(self, island: IslandState, ctx: StageContext) -> None:
         """国の工事は、国の倉庫にある資材を先に使う（次の1ターン分まで）。民営の工事は市場で買う
         （国の倉庫の物は、政府が売りに出したときだけ買える）。インフラの維持は施設の工事より先に、
         新しいインフラの工事は後に使う。"""
         infrastructure.supply_from_warehouse(island, ctx, upkeep=True)
+        prices = island.economy.prices
+        for f in self._repairs(island, ctx):  # 国営の施設の設備を直す資材（回6）
+            if f.owner == OWNER_PRIVATE:
+                continue
+            for good, want in equipment.wants(ctx.defs, ctx.config, f).items():
+                batches = stock.take_batches(island.warehouse, good, want)
+                taken = sum(q for _, q in batches)
+                cost = money_of(prices.get(good, 0), taken)
+                equipment.install(ctx.defs, f, good, taken, cost)
+                if taken:  # 倉庫の物は買ったときに支出（GDP）に数えてある
+                    stats = island.stats
+                    stats["equipment.repair"] = stats.get("equipment.repair", 0) + cost
         for f in self._sites(island, ctx):
             if f.owner == OWNER_PRIVATE:
                 continue
@@ -923,13 +1044,14 @@ class Market(IslandStage):
         target = f.economy.get("target", fac.FULL)
         if fac.is_halted(f, ctx.turn + 1):
             return 0
+        worn = fac.equipment_cap(f)  # 設備が傷んで作れない分の原料は買わない（回6）
         if f.status == fac.STATUS_STARTING:
-            return target
+            return min(target, worn)
         if f.workers < f.economy.get("wanted", 0):
             headroom = round_money(settings["target_step"] * fac.FULL + 0.5)
-            return min(target, fac.labor_ratio(ctx.defs, f) + headroom)
+            return min(target, worn, fac.labor_ratio(ctx.defs, f) + headroom)
         change = round_money(settings["max_target_change"] * fac.FULL + 0.5)
-        return min(fac.FULL, target + change)
+        return min(fac.FULL, worn, target + change)
 
     @staticmethod
     def _input_needs(ctx: StageContext, f: Facility, power: str) -> list[tuple[str, int]]:
@@ -1045,6 +1167,7 @@ class Market(IslandStage):
         claimed: dict[tuple[Payer, str], int] = {}  # 払い手ごとの注文した量
         self._rebuild_orders(island, ctx, books_by_good, offered, claimed)
         self._works_orders(island, ctx, books_by_good, offered, hh_rate, claimed, upkeep=True)
+        self._repair_orders(island, ctx, books_by_good, rates, offered, claimed)
         for f in self._sites(island, ctx):
             f.ext.pop("short_funds", None)
             rate = rates.get(f.id, 0)
@@ -1734,19 +1857,27 @@ class Market(IslandStage):
         shipping = trade.shipping_of(island, config)
         if shipping is not None and shipping.built and not is_stopped(shipping):
             payer = payer_of(defs, config, shipping)
-            plan = {}
+            fuel = {}
             for good, qty in sorted(ships.fuel_wanted(island, config, shipping).items()):
-                plan[good] = (qty, auction.band(prices.get(good, 1), width)[1])
-            want = ships.ships_wanted(config, shipping)
+                fuel[good] = (qty, auction.band(prices.get(good, 1), width)[1])
+            vessels = {}
+            want = ships.ships_wanted(config, shipping, ctx.turn)
+            # 買いたい船の代金を次の支払いに数え、足りなければ運転資金か持ち主の出資で賄う（回6）
+            shipping.economy["ships_wanted"] = want
             if want > 0:
                 good = config.get("trade.ship_good")
-                plan[good] = (want, auction.band(prices.get(good, 1), width)[1])
+                vessels[good] = (want, auction.band(prices.get(good, 1), width)[1])
             name = facility_entity(shipping.id)
-            for good, (qty, limit) in sorted(self._afford(island, payer, plan, hh_rate, 0).items()):
-                party = Party(FACILITY, name, payer, hh_rate, 0, shipping, site=site)
-                party.reserved = gross_cost(limit, qty, hh_rate, 0)
-                funds.commit(island, payer, party.reserved)
-                self._add(books_by_good, good, "buy", Order(qty, limit), party)
+            # 燃料を先に取り置き、残りのお金で船を買う（船の買い替えで燃料が削られ、船が出せずに
+            # 「船が足りない」になって、また船を買う回り方にならないように。回6）
+            for plan in (fuel, vessels):
+                for good, (qty, limit) in sorted(
+                    self._afford(island, payer, plan, hh_rate, 0).items()
+                ):
+                    party = Party(FACILITY, name, payer, hh_rate, 0, shipping, site=site)
+                    party.reserved = gross_cost(limit, qty, hh_rate, 0)
+                    funds.commit(island, payer, party.reserved)
+                    self._add(books_by_good, good, "buy", Order(qty, limit), party)
         # 二国間契約で売る分のうち、国の倉庫に足りない分を政府が買う
         needs: dict[str, int] = {}
         for c in trade.island_state(island).get("contracts", []):
@@ -2063,6 +2194,15 @@ class Market(IslandStage):
             books.add_sector(island, CONSTRUCTION, "freight", freight)
             f = buyer.facility
             f.economy["capital"] = f.economy.get("capital", 0) + amount + freight
+        elif buyer.kind == REPAIR:
+            # 傷んだ設備を直す資材（回6）: そのまま設備に入れ、設備の額に足す（GDP では工事）
+            assert buyer.facility is not None
+            bought_repairs = island.scratch.setdefault(REPAIR, [])
+            bought_repairs.append((buyer.facility, good, qty, amount + freight))
+            books.add_sector(island, CONSTRUCTION, "materials", amount)
+            books.add_sector(island, CONSTRUCTION, "freight", freight)
+            stats = island.stats
+            stats["equipment.repair"] = stats.get("equipment.repair", 0) + amount + freight
         elif buyer.kind == WORKS:
             infrastructure.received(island, good, batches)
             books.add_sector(island, CONSTRUCTION, "materials", amount)
