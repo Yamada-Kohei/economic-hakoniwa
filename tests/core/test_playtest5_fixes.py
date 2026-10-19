@@ -20,7 +20,7 @@ from hakoniwa_core.modules.firms import EntryExit
 from hakoniwa_core.modules.trade import check
 from hakoniwa_core.registry import OrderFailed
 from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE
-from hakoniwa_core.trade import blocs, contracts, to_market, traders, world_state
+from hakoniwa_core.trade import blocs, contracts, swap, to_market, traders, world_state
 from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.units import QUANTITY_SCALE, money_of, to_basis
 from tests.core.test_finance import context, island_of
@@ -441,6 +441,13 @@ def test_foreign_currency_contract_larger_than_the_depth_is_delivered(game, trad
     price = seller.economy.prices[good]
     floor = fxrates.depth(buyer, seller.id, game.config)
     qty = max(1, round(floor * 1.6 / price))  # 1ターンの代金が厚みの下限の 1.6 倍ほど
+    # 島2の中央銀行が売る島1の通貨は、中央銀行どうしの融通で借りる。借りられる残り（島1の年の GDP
+    # の割合まで）が尽きれば外貨を買えずに届かないのが正しいので、ここでは厚みを見るため、残りの
+    # 3/4 に収まるターン数にする（ほかの買いの分も借りる。回6 で世界の道筋が変わり、島1の GDP が
+    # 下がって6ターン分に足りなくなった）
+    room = swap.available(world, game.config, buyer.id, seller.id)
+    turns = min(6, room * 3 // 4 // money_of(price, qty * QUANTITY_SCALE))
+    assert turns >= 3
     stock.add(seller.warehouse, good, (qty * 8 + 5) * QUANTITY_SCALE, world.turn, game.defs.goods)
     ledger.pay(buyer, ledger.CB, ledger.GOV, 10**12, "trade")  # 国庫の自国通貨は足りている
     payload = {
@@ -450,7 +457,7 @@ def test_foreign_currency_contract_larger_than_the_depth_is_delivered(game, trad
         "quantity": qty,
         "price": price,
         "currency": seller.id,
-        "turns": 6,
+        "turns": turns,
         "delivery": "warehouse",
     }
     assert contracts.propose(world, buyer, payload, world.turn) is None
@@ -459,8 +466,8 @@ def test_foreign_currency_contract_larger_than_the_depth_is_delivered(game, trad
     assert money_of(price, c["qty"]) > floor
     width = fxrates.band_width(game.config)
     rates = []
-    run_world(game, world, 7, lambda w: rates.append(fxrates.rate(w.islands[2], seller.id)))
-    assert c["delivered"] >= c["qty"] * 6 * 95 // 100
+    run_world(game, world, turns + 1, lambda w: rates.append(fxrates.rate(w.islands[2], seller.id)))
+    assert c["delivered"] >= c["qty"] * turns * 95 // 100
     for before, after in zip(rates, rates[1:], strict=False):
         assert abs(after - before) <= before * width // 10_000 + 1
     assert check(world) == []

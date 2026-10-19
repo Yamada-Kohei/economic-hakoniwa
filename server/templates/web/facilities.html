@@ -11,7 +11,7 @@
     <table class="facilities report-table">
       <thead><tr>
         <th>{% translate "施設" %}</th><th>{% translate "所有・会計" %}</th><th>{% translate "状態" %}</th>
-        <th>{% translate "従業者" %}</th><th>{% translate "技術者" %}</th><th>{% translate "稼働率" %}</th>
+        <th>{% translate "従業者" %}</th><th>{% translate "技術者" %}</th><th>{% translate "稼働率" %}</th><th>{% translate "設備" %}</th>
         <th>{% translate "損益" %}</th><th>{% translate "合計" %}</th><th>{% translate "預金" %}</th><th>{% translate "借入" %}</th><th></th>
       </tr></thead>
       <tbody>
@@ -23,6 +23,7 @@
           <td class="num">{{ f.workers }}{% if f.workers_needed %} / {{ f.workers_needed }}{% endif %}</td>
           <td class="num">{% if f.engineers_needed %}{{ f.engineers }} / {{ f.engineers_needed }}{% elif f.engineers_general %}{{ f.engineers_general }}{% endif %}</td>
           <td class="num">{% if f.operating_rate is not None %}{{ f.operating_rate }}%{% endif %}</td>
+          <td class="num">{% if f.equipment is not None %}{{ f.equipment }}%{% endif %}</td>
           <td class="num{% if f.loss %} loss{% endif %}">{{ f.profit|default:"" }}</td>
           <td class="num">{{ f.profit_total|default:"" }}</td>
           <td class="num">{{ f.deposit|default:"" }}</td>
@@ -30,7 +31,7 @@
           <td>{% if f.has_books %}<button type="button" data-book="{{ f.number }}">{% translate "推移" %}</button>{% endif %}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="11" class="muted">{% translate "施設がありません。" %}</td></tr>
+        <tr><td colspan="12" class="muted">{% translate "施設がありません。" %}</td></tr>
         {% endfor %}
       </tbody>
     </table>

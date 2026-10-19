@@ -6,8 +6,13 @@
              − 職員の賃金 − 貸し倒れ ＋ 国債の実現損益
 商社は、外貨を売ったときの為替の実現損益（受け取った自国通貨 − 外貨の帳簿の値打ち）も損益に入れ
 ます。まだ売っていない外貨の評価損益は入れません（フェーズ3-1。hakoniwa_core/trade/money.py）。
-在庫の増減は、そのターンの値段で数えます（hakoniwa_core/economy/books.py）。減価償却は、工事で
-実際に払った額（設備の額）を firms.depreciation_turns ターンで均等に費用にします。
+在庫の増減は、そのターンの値段で数えます（hakoniwa_core/economy/books.py）。
+
+設備の傷み（回6。hakoniwa_core/economy/equipment.py）: 物を作る施設の設備をこの段で1ターン分傷ませ、
+減価償却は「帳簿の設備の値打ち（設備の額 − 償却済み）× 傷んだ資材の値打ち ÷ 傷む前の設備の値打ち」
+（今の値段で）にします。設備の額は、工事で払った額と直した代金の合計です。国営の施設の設備の割合が
+equipment.notice を切ったら知らせます。設備を持たない施設（海運業の船・運送業のトラック・銀行など）
+は、設備の額を firms.depreciation_turns ターンで均等に費用にします。
 
 国債の時価の評価: 持ち手（銀行と中央銀行）ごとに「今の時価 − 前のターンの時価 − このターンに
 買った代金 ＋ 売った代金と償還の額」が時価の変化です（国債の段の bond_flows）。そのうち、売った・
@@ -56,6 +61,7 @@ from hakoniwa_core.economy import (
     books,
     debt,
     entity_of,
+    equipment,
     facility_entity,
     funds,
     is_bank,
@@ -93,18 +99,30 @@ class Accounts(IslandStage):
         flows = books.facility_items(island)
         valuation, realized = self._valuation(island, ctx)
         rows: list[tuple[Facility, dict[str, int]]] = []
+        worn_total = 0
+        conditions = []
         for f in sorted(island.facilities, key=lambda f: f.id):
             if not f.built or fac.is_housing(config, f):
                 continue
             items = dict(flows.get(f.id, {}))
             items[books.INVENTORY] = inventory.get(f.id, 0)
-            items[books.DEPRECIATION] = self._depreciate(f, config)
+            if equipment.has_equipment(ctx.defs, config, f):
+                worn, before = equipment.wear(ctx.defs, config, f, prices)
+                worn_total += worn
+                conditions.append(equipment.condition(f))
+                items[books.DEPRECIATION] = self._wear_off(f, worn, before)
+                self._watch_wear(island, ctx, f)
+            else:
+                items[books.DEPRECIATION] = self._depreciate(f, config)
             if is_bank(config, f):
                 bank = ledger.bank_entity(f.id)
                 items[books.REALIZED] = realized.get(bank, 0)
                 if bank in valuation:
                     items[books.VALUATION] = valuation[bank] - items[books.REALIZED]
             rows.append((f, items))
+        island.stats["equipment.wear"] = worn_total
+        if conditions:
+            island.stats["equipment.condition"] = sum(conditions) / len(conditions) / fac.FULL
         self._subsidies(island, ctx, rows)
         settings = config.get("firms")
         for f, items in rows:
@@ -226,6 +244,35 @@ class Accounts(IslandStage):
             island.log.append(
                 LogEntry("state_facility_losses", {"facility": f.kind, "x": f.x, "y": f.y})
             )
+
+    @staticmethod
+    def _wear_off(f: Facility, worn: int, before: int) -> int:
+        """設備を持つ施設の減価償却: 帳簿の設備の値打ちのうち、傷んだ値打ちの割合（回6）。"""
+        capital = f.economy.get("capital", 0)
+        done = f.economy.get("depreciated", 0)
+        book = max(0, capital - done)
+        if book <= 0 or worn <= 0 or before <= 0:
+            return 0
+        amount = min(book, book * worn // before)
+        f.economy["depreciated"] = done + amount
+        return amount
+
+    @staticmethod
+    def _watch_wear(island: IslandState, ctx: StageContext, f: Facility) -> None:
+        """国営の施設の設備の割合が equipment.notice を切ったら知らせる（戻るまで1度だけ。回6）。"""
+        if f.owner != OWNER_STATE:
+            return
+        low = equipment.condition(f) < round(ctx.config.get("equipment.notice") * fac.FULL)
+        if low and not f.ext.get(equipment.NOTICED):
+            f.ext[equipment.NOTICED] = True
+            share = round(equipment.condition(f) * 100 / fac.FULL)
+            island.log.append(
+                LogEntry(
+                    "equipment_worn", {"facility": f.kind, "x": f.x, "y": f.y, "condition": share}
+                )
+            )
+        elif not low:
+            f.ext.pop(equipment.NOTICED, None)
 
     @staticmethod
     def _depreciate(f: Facility, config: Any) -> int:

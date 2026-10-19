@@ -159,7 +159,7 @@ def next_payments(island: IslandState, defs: Defs, config: GameConfig, f: Facili
     """独立採算の施設が次のターンに払う見込み（操業目標の分の支払い。運送業は運賃の収入から
     充てる賃金。雇えた人数の賃金で見ると、初めに手元の資金がない運送業はずっと人を雇えない）。
     商社は、賃金に、島の市場で輸出する物を買う額と、圏の市場で輸入に払う外貨（今のレートで
-    自国通貨に直す）の直近の平均を足す（フェーズ3-1）。"""
+    自国通貨に直す）の直近の平均を足す（フェーズ3-1）。海運業は、買いたい輸送船の代金も足す（回6）。"""
     wage = f.economy.get("wage", 0)
     if is_transport(config, f):
         return max(f.economy.get("wanted", 0) * wage, freight_rates.payroll(island, config))
@@ -180,7 +180,20 @@ def next_payments(island: IslandState, defs: Defs, config: GameConfig, f: Facili
     cost = operating_cost(defs, config, f, island.economy.prices, wage, rate)
     return max(
         fac.scale(cost, f.economy.get("target", fac.FULL)), f.economy.get("wanted", 0) * wage
-    )
+    ) + _ships_to_buy(island, config, f)
+
+
+def _ships_to_buy(island: IslandState, config: GameConfig, f: Facility) -> int:
+    """海運業が買いたい輸送船（市場の段で決めた ``economy["ships_wanted"]``）の代金（今の値段で）。
+    次の支払いに足し、手元の資金で足りなければ運転資金を借りるか持ち主が出し、配当で外に出さない
+    （回6。船の傷みの分を運賃で集めても、手元の資金の目安を超えた分は配当で出ていき、寿命の船を
+    買い替えられなかった）。"""
+    want = f.economy.get("ships_wanted", 0)
+    if want <= 0 or f.kind != config.get("trade.shipping_facility"):
+        return 0
+    # 買い注文の指値（値幅の上端）で見る
+    price = island.economy.prices.get(config.get("trade.ship_good"), 0)
+    return money_of(price + part(price, to_basis(config.get("market.band"))), want)
 
 
 # --- 銀行と運送業 -----------------------------------------------------------------

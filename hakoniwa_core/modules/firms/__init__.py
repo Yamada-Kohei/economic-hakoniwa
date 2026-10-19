@@ -30,9 +30,10 @@
 - 差し押さえ中の同じ施設があれば、その売り値を建設費として新しく建てる案と比べ、良い方を選ぶ（買い取
   るときも、動き出すときの支払いを合わせて調達し、元金を据え置く）。
 
-撤退: 民営の独立採算の施設は、動かない（稼働率0）まま firms.exit_idle_turns ターン続くか、変動費の利
-益が firms.exit_loss_turns ターン続けてマイナス（全力の売上の firms.exit_loss_margin を超える損）な
-ら閉鎖に入る（economy["closing"]）。人を雇わず仕入れず、在庫を売る。在庫がなくなるか
+撤退: 民営の独立採算の施設は、動かない（稼働率0で、売る在庫もない）まま firms.exit_idle_turns
+ターン続くか、変動費の利益が firms.exit_loss_turns ターン続けてマイナス（全力の売上の
+firms.exit_loss_margin を超える損）なら閉鎖に入る（economy["closing"]）。人を雇わず仕入れず、
+在庫を売る。在庫がなくなるか
 firms.foreclosure_turns ターンたったら、借入を預金で返し、残りを出資者に返してマスを空ける（工業団地
 の指定は残る）。返しきれなければ倒産と同じ扱い（差し押さえ）にする。民営の工事が資材を買えずに
 firms.abandon_turns ターン進まなければ、工事をやめる（建設資金は預金で返し、返しきれない分は貸し倒
@@ -76,6 +77,7 @@ from hakoniwa_core.economy import (
     arrears,
     banks,
     default_accounting,
+    equipment,
     facility_entity,
     funds,
     household,
@@ -108,7 +110,7 @@ from hakoniwa_core.state import (
     IslandState,
     LogEntry,
 )
-from hakoniwa_core.trade import merchant
+from hakoniwa_core.trade import merchant, send_to_market
 from hakoniwa_core.trade import setup as trade_setup
 from hakoniwa_core.trade import traders as trade_traders
 from hakoniwa_core.turn.context import StageContext
@@ -151,8 +153,9 @@ def entry_return(
     capital: int,
     pos: tuple[int, int] | None = None,
 ) -> float:
-    """見込みの年の利益率 R = 12 × (変動費の利益 + 生産補助) × (1 − 法人税率) ÷ 建設費
-    （名前付きの式 entry_return の既定）。pos は建てるマス（生産性の係数に使う）。"""
+    """見込みの年の利益率 R = (12 × (変動費の利益 + 生産補助) − 設備の年の傷み) × (1 − 法人税率)
+    ÷ 建設費（名前付きの式 entry_return の既定）。設備の年の傷みは、新品の設備が1年に傷む値打ち
+    （回6。直す費用）。pos は建てるマス（生産性の係数に使う）。"""
     if capital <= 0:
         return 0.0
     probe = productivity.probe(island, ctx.defs, ctx.config, kind, recipe, pos)
@@ -166,7 +169,8 @@ def entry_return(
         if s["kind"] == "production" and s.get("good") in outputs
     )
     tax = island.policy.corporate_tax / BASIS
-    return YEAR * (profit + subsidy) * (1 - tax) / capital
+    worn = equipment.yearly_wear(ctx.defs, ctx.config, kind, prices)
+    return (YEAR * (profit + subsidy) - worn) * (1 - tax) / capital
 
 
 def capital_subsidy(island: IslandState, kind: str, recipe: dict[str, Any]) -> int:
@@ -273,18 +277,25 @@ class EntryExit(IslandStage):
     @staticmethod
     def _switched_into(island: IslandState, ctx: StageContext) -> set[str]:
         """作り方を替えて作り始めてから firms.price_turns ターンたたない財と、替えると決めて
-        まだ替えていない作り方の財（命令と民営の見直しの両方）、畑を蒔き直している途中の作物。新しい民営工場の参入
+        まだ替えていない作り方の財（命令と民営の見直しの両方）、畑を蒔き直している途中の作物、
+        工事中か工事が終わって firms.price_turns ターンたたない施設の作る物。新しい民営工場の参入
         （_pipeline）と同じく、その施設が売り出した後の値段と売れ行きを見てから次を決める。"""
         defs = ctx.defs
         recent = ctx.turn - ctx.config.get("firms.price_turns")
         goods: set[str] = set()
         for f in island.facilities:
             if not f.built:
+                # 工事中の施設（国の工事も）が作る物も、動き出した後の値段を見てから決める（回6。
+                # 国が綿の農場を建てている間に民営の農場が綿に替え、両方が動き出して綿が余り、値段が
+                # 初めの 1% まで落ちた）
+                if not fac.is_housing(ctx.config, f):
+                    goods |= set(fac.recipe_of(defs, f)["outputs"])
                 continue
             pending = f.ext.get(fac.RECIPE_NEXT)
             if pending in defs.facilities[f.kind]["recipes"]:
                 goods |= set(defs.facilities[f.kind]["recipes"][pending]["outputs"])
-            if f.ext.get(fac.RECIPE_CHANGED, -(10**9)) > recent:
+            never = -(10**9)
+            if max(f.ext.get(fac.RECIPE_CHANGED, never), f.ext.get(fac.FINISHED, never)) > recent:
                 goods |= set(fac.recipe_of(defs, f)["outputs"])
             if fac.FIELDS in f.economy or f.ext.get(fac.CROP_READY, -(10**9)) > recent:
                 # 畑を蒔き直している途中か、蒔き直し終えたばかりの作物（回3）
@@ -367,18 +378,32 @@ class EntryExit(IslandStage):
             if "closing" in f.economy:
                 self._finish_closing(island, ctx, f)
                 continue
-            idle = f.economy.get("idle_turns", 0) + 1 if f.operating_rate <= 0 else 0
+            outputs = fac.recipe_of(ctx.defs, fac.steady(f))["outputs"]
+            # 在庫を売っている間は、作るのを止めていても動かないとは数えない（回6。売れ行きの
+            # 何十ターン分も作った機械工場が、在庫を売りながら 12 ターンで閉じ、島の機械が消えた）
+            selling = any(stock.total(f.stock, g) > 0 for g in outputs)
+            idle = (
+                f.economy.get("idle_turns", 0) + 1 if f.operating_rate <= 0 and not selling else 0
+            )
             wage = f.economy.get("wage", 0)
             prices = island.economy.prices
             profit = variable_profit(ctx.defs, ctx.config, f, prices, wage, rates.get(f.id, 0))
-            outputs = fac.recipe_of(ctx.defs, fac.steady(f))["outputs"]
             sales = sum(money_of(prices.get(g, 0), q) for g, q in outputs.items())
             # 値段が変動費ちょうどの売り手は、端数でマイナスになることがあるので少し見逃す
             margin = part(sales, to_basis(settings["exit_loss_margin"]))
             losing = f.economy.get("loss_streak", 0) + 1 if profit < -margin else 0
             f.economy["idle_turns"] = idle
             f.economy["loss_streak"] = losing
-            if idle >= settings["exit_idle_turns"] or losing >= settings["exit_loss_turns"]:
+            # 直す採算が合わないまま設備が傷みきった（回6。economy/equipment.py）
+            scrap = round(ctx.config.get("equipment.scrap") * fac.FULL)
+            worn_out = equipment.condition(f) < scrap and not equipment.worthwhile(
+                ctx.defs, ctx.config, f, profit, prices
+            )
+            if (
+                idle >= settings["exit_idle_turns"]
+                or losing >= settings["exit_loss_turns"]
+                or worn_out
+            ):
                 f.economy["closing"] = ctx.turn
                 f.economy["target"] = 0
                 island.log.append(
@@ -432,7 +457,7 @@ class EntryExit(IslandStage):
                 # 残った在庫は国が市場の値段で引き取り、その代金も同じ順で分ける（回3。E25）
                 arrears.sell_stock_to_state(island, facility_entity(f.id), f.stock)
                 close_foreclosure(island, f)
-                stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
+                take_over_stock(island, ctx, f)
                 fac.vacate(island, f)
                 freight_rates.forget(island)
                 island.log.append(
@@ -591,13 +616,14 @@ class EntryExit(IslandStage):
     @staticmethod
     def _capacity(island: IslandState, ctx: StageContext, side: str = "outputs") -> dict[str, int]:
         """財ごとの、動いている施設（閉鎖中と差し押さえ中を除く）の全力の産出（side が "inputs" なら
-        使う量）の合計。"""
+        使う量）の合計。設備が傷んだ施設は、傷んだ分を除いて数える（回6）。"""
         total: dict[str, int] = {}
         for f in island.facilities:
             if not f.built or is_stopped(f):
                 continue
+            worn = fac.equipment_cap(f)
             for g, qty in fac.recipe_of(ctx.defs, f).get(side, {}).items():
-                total[g] = total.get(g, 0) + qty
+                total[g] = total.get(g, 0) + fac.scale(qty, worn)
         return total
 
     @staticmethod
@@ -704,16 +730,25 @@ class EntryExit(IslandStage):
         """建てる場所: 空いた工業団地のマスのうち、通勤圏の失業者と商業・サービス業の店で働く人
         （ほかの施設は店から引き抜ける。回4）が要る人数の半分以上いて、運賃の率が最も低いマス。
         なければ、そのわけ（no_zone: 地形の合う空いた工業団地のマスがない、no_workers: あるが
-        通勤圏に雇える人が足りない）。"""
+        通勤圏に雇える人が足りない）。
+
+        農場と漁港（firms.open_land）は、工業団地のほかに、指定のない人の住んでいないマスにも建つ
+        （回6。現実の開墾は国が土地の用途を決めるのを待たない。命令を出さない国では工業団地が
+        埋まると魚が何倍に値上がりしても漁港が建たず、人が増えて飢饉になった）。"""
         defs, config = ctx.defs, ctx.config
         need = fac.workers_needed(defs, kind)
         radius = fac.commute_radius(defs, config, kind)
         shop = services.staff_by_tile(island, config)
         occupied = island.facilities_by_tile()
+        open_land = kind in config.get("firms.open_land")
         spots = []
         fitting = 0
         for tile in island.tiles:
-            if tile.zone != ZONE_INDUSTRIAL or (tile.x, tile.y) in occupied:
+            if (tile.x, tile.y) in occupied:
+                continue
+            if tile.zone != ZONE_INDUSTRIAL and not (
+                open_land and tile.zone == ZONE_NONE and tile.population == 0
+            ):
                 continue
             if fac.placement_problem(defs, island, kind, tile.x, tile.y, rname) is not None:
                 continue
@@ -874,7 +909,10 @@ class EntryExit(IslandStage):
                 continue
             price = max(1, seized["price"])
             rate = rates.get(f.id, 0)
-            r = ctx.formula("entry_return")(island, ctx, kind, rname, prices, rate, price) * fill
+            # 傷んだ設備を新品まで直す代金も、買う値段に入れて比べる（回6）
+            repair = equipment.value(equipment.shortfall(ctx.defs, f), prices)
+            capital = price + repair
+            r = ctx.formula("entry_return")(island, ctx, kind, rname, prices, rate, capital) * fill
             if r <= max(threshold, estimate):
                 continue
             earnings = variable_profit(ctx.defs, config, f, prices, wage, rate)
@@ -1051,9 +1089,19 @@ def remove_facility(island: IslandState, ctx: StageContext, f: Facility) -> None
 
     sell_leftover_stock(island, f)
     close_accounts(island, f)
-    stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
+    take_over_stock(island, ctx, f)
     fac.vacate(island, f)
     freight_rates.forget(island)
+
+
+def take_over_stock(island: IslandState, ctx: StageContext, f: Facility) -> None:
+    """取り除く施設の在庫を国の倉庫に移し、売れるまで島の市場の値段で売りに出す（回6。閉じた製材所の
+    木材が国の倉庫に眠り、木材を作る人がいなくなった島で、漁港や農場が設備を直せずに飢饉になった。
+    国が引き取った在庫は、国が持つと決めた備蓄ではないので、市場に戻す）。"""
+    moved = stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
+    for good, qty in sorted(moved.items()):
+        if qty > 0:
+            send_to_market(island, good, qty)
 
 
 def pay_seller(island: IslandState, payer: str, seized: dict[str, Any], price: int) -> None:
@@ -1068,9 +1116,11 @@ def restart(island: IslandState, ctx: StageContext, f: Facility, owner: str, pri
     f.accounting = default_accounting(ctx.defs, island, f.kind, owner)
     for key in ("closing", "idle_turns", "loss_streak", "loss_turns", "ebitda"):
         f.economy.pop(key, None)
+    worn = equipment.keep(f)  # 設備は傷んだまま引き継ぐ（回6）
     init_facility(
         island, ctx.defs, ctx.config, f, dict(island.economy.prices), island.economy.average_wage
     )
+    f.economy.update(worn)
     f.economy["capital"] = price
     step = round_money(ctx.config.get("market.target_step") * fac.FULL + 0.5)
     f.economy["target"] = step

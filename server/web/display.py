@@ -14,6 +14,7 @@ from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.economy import (
     books,
     entity_of,
+    equipment,
     facility_entity,
     is_bank,
     is_private_site,
@@ -156,6 +157,7 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
     if f.economy.get("wage"):
         info["wage"] = f.economy["wage"]
     info.update(engineers_info(f, fdef))
+    info.update(equipment_info(defs, config, f))
     if fdef.get("education"):
         info["education"] = education_text(fdef["education"])
     if mine and f.built and len(recipes) > 1:
@@ -239,6 +241,13 @@ def crop_transition(f: Facility) -> dict[str, Any]:
         "ready_turn": max((x["ready_turn"] for x in sown), default=None),
         "text": "作り替えの途中: " + "、".join(parts) if parts else "作り替えの途中",
     }
+
+
+def equipment_info(defs: Any, config: Any, f: Facility) -> dict[str, Any]:
+    """施設の設備の割合（回6。傷んだ分は作れない。1 が新品）。設備を持たない施設は出さない。"""
+    if not equipment.has_equipment(defs, config, f):
+        return {}
+    return {"equipment": round(equipment.condition(f) / fac.FULL, 3)}
 
 
 def engineers_info(f: Facility, fdef: Any) -> dict[str, Any]:

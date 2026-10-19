@@ -50,6 +50,7 @@ import math
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, politics
 from hakoniwa_core.economy import (
+    CONSTRUCTION,
     GENERAL,
     Payer,
     arrears,
@@ -182,6 +183,14 @@ class Employment(IslandStage):
         works_wage = self._site_wage(island, ctx)
         # インフラの維持は施設より先に取り置く（施設の工事の賃金で公共事業費を使い切らないように）
         infrastructure.plan(island, ctx, upkeep=True, wage=works_wage)
+        if island.has_economy:
+            # 国営の施設の設備を直す資材の代金も、新しい工事の賃金より先に取り置く（回6）
+            sites = SiteFunds(island, ctx)
+            payer = Payer(ledger.GOV, CONSTRUCTION)
+            hold = min(sites.repairs(), funds.available(island, payer))
+            if hold > 0:
+                funds.commit(island, payer, hold)
+                island.scratch.setdefault(SITE_HOLDS, []).append((payer, hold))
         # 雇いたい人数を決め、その賃金を取り置く（高い賃金の施設から）
         unpaid: dict[int, int] = {}  # 払えないまま働き続ける人（賃金の遅配。回3）
         quit_rate = config.get("labor.arrears_quit")

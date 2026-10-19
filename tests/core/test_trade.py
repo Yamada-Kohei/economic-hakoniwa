@@ -144,7 +144,7 @@ def test_shipping_keeps_its_ship_shortages_apart(game, traded):
     f = shipping_of(island, game.config)
     turns = game.config.get("trade.cost_turns")
     f.economy["ships_short"] = [1] * turns  # 輸送船を1隻買いに出る
-    assert ships.ships_wanted(game.config, f) > 0
+    assert ships.ships_wanted(game.config, f, world.turn) > 0
     run(game, world, 1)
     f = shipping_of(island, game.config)
     assert isinstance(f.economy["ships_short"], list)

@@ -371,7 +371,8 @@ def allocator(tiers: Sequence[int], layers: Sequence[str | None], persons: Mappi
 
 
 def capacities(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, int]:
-    """財ごとの、動いている国営施設の全力の産出の合計（このターンの値を scratch に置く）。"""
+    """財ごとの、動いている国営施設の全力の産出の合計（このターンの値を scratch に置く）。設備が
+    傷んだ施設は、傷んだ分を除いて数える（回6。ほかの施設が多めに動く）。"""
     found = island.scratch.get("plan_capacity")
     if found is not None:
         return found
@@ -382,7 +383,7 @@ def capacities(island: IslandState, defs: Defs, config: GameConfig) -> dict[str,
             continue
         for good, qty in fac.outputs_of(defs, f).items():
             if good != power and qty > 0:
-                found[good] = found.get(good, 0) + qty
+                found[good] = found.get(good, 0) + fac.scale(qty, fac.equipment_cap(f))
     island.scratch["plan_capacity"] = found
     return found
 

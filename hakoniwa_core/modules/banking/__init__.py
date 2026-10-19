@@ -258,7 +258,9 @@ class Banking(IslandStage):
             owner = owner_entity(f)
             if owner == ledger.GOV:
                 payer = Payer(owner, STATE_FACILITIES)
-            elif self._viable(island, ctx, f):
+            elif self._viable(island, ctx, f) or f.economy.get("ships_wanted", 0) > 0:
+                # 船を買いたい海運業は、船がなければ稼げないので、変動費の利益を見ずに出資する
+                # （回6）
                 payer = Payer(owner)
             else:
                 continue
