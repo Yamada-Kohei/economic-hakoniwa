@@ -239,6 +239,7 @@ class Construction(IslandStage):
             )
             return
         stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
+        f.ext[fac.FINISHED] = ctx.turn  # 民営の作り方の見直しが、売り出した後の値段を待つ（回6）
         island.log.append(LogEntry("construction_done", {"facility": f.kind, "x": f.x, "y": f.y}))
         if not island.has_economy:
             return

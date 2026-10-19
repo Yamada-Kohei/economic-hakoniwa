@@ -30,6 +30,7 @@ RECIPE_CHANGED = "recipe_changed"
 FIELDS = "fields"
 SOWN = "sown"
 CROP_READY = "crop_ready"  # 畑をみな新しい作物にし終えたターン（ext。民営の見直しが売れ行きを待つ）
+FINISHED = "finished"  # 工事が終わったターン（ext。回6）
 # 原料が手に入らずに動けない理由（施設の status の「:」の前）。input は品不足、input_price は
 # 原料が高くて採算が合わない、funds は原料を買うお金が足りない、public_price は学校と大学の教材が
 # 高くて買えない

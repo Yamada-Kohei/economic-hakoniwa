@@ -249,10 +249,15 @@ def test_halting_the_settlement_currency_island_keeps_the_world_running(game, ba
     target = min(currencies) if currencies else min(world.island_ids())
     island = world.islands[target]
     halt = 12
-    for f in island.facilities:
-        if f.built:
-            f.ext["halted_until"] = world.turn + halt
-    made, gdp = [], []
+    # マスを持つ施設（生産の段で動く施設。店・海運業・運送業はマスを持たない）
+    halted = [
+        f
+        for f in island.facilities
+        if f.built and fac.on_map(f) and not fac.is_housing(game.config, f)
+    ]
+    for f in halted:
+        f.ext["halted_until"] = world.turn + halt
+    made, gdp, rates = [], [], []
 
     def goods_made(stats):
         # 店のサービスは人が出すので数えない
@@ -266,12 +271,13 @@ def test_halting_the_settlement_currency_island_keeps_the_world_running(game, ba
         stats = w.islands[target].stats
         made.append(goods_made(stats))
         gdp.append(stats.get("gdp", 0))
+        rates.append(max(f.operating_rate for f in halted))
 
     before, usual = island.stats.get("gdp", 0), goods_made(island.stats)
     run_checked(game, world, 36, each)
-    # 止めている間は物を作らない（後で建ち終わった施設の分を除く）。やめると、売れ行きを見ながら
-    # 1年ほどかけて作り戻す
-    assert max(made[1:5]) == 0
+    # 止めた施設は止めている間は動かない（止めた後に建ち終わった施設は動く）。やめると、売れ行きを
+    # 見ながら1年ほどかけて作り戻す
+    assert max(rates[: halt - 1]) == 0
     assert max(made[-6:]) > usual * 0.3
     assert min(gdp[1 : halt - 1]) < before
     for i in world.island_ids():

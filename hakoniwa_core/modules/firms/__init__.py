@@ -30,9 +30,10 @@
 - 差し押さえ中の同じ施設があれば、その売り値を建設費として新しく建てる案と比べ、良い方を選ぶ（買い取
   るときも、動き出すときの支払いを合わせて調達し、元金を据え置く）。
 
-撤退: 民営の独立採算の施設は、動かない（稼働率0）まま firms.exit_idle_turns ターン続くか、変動費の利
-益が firms.exit_loss_turns ターン続けてマイナス（全力の売上の firms.exit_loss_margin を超える損）な
-ら閉鎖に入る（economy["closing"]）。人を雇わず仕入れず、在庫を売る。在庫がなくなるか
+撤退: 民営の独立採算の施設は、動かない（稼働率0で、売る在庫もない）まま firms.exit_idle_turns
+ターン続くか、変動費の利益が firms.exit_loss_turns ターン続けてマイナス（全力の売上の
+firms.exit_loss_margin を超える損）なら閉鎖に入る（economy["closing"]）。人を雇わず仕入れず、
+在庫を売る。在庫がなくなるか
 firms.foreclosure_turns ターンたったら、借入を預金で返し、残りを出資者に返してマスを空ける（工業団地
 の指定は残る）。返しきれなければ倒産と同じ扱い（差し押さえ）にする。民営の工事が資材を買えずに
 firms.abandon_turns ターン進まなければ、工事をやめる（建設資金は預金で返し、返しきれない分は貸し倒
@@ -276,18 +277,25 @@ class EntryExit(IslandStage):
     @staticmethod
     def _switched_into(island: IslandState, ctx: StageContext) -> set[str]:
         """作り方を替えて作り始めてから firms.price_turns ターンたたない財と、替えると決めて
-        まだ替えていない作り方の財（命令と民営の見直しの両方）、畑を蒔き直している途中の作物。新しい民営工場の参入
+        まだ替えていない作り方の財（命令と民営の見直しの両方）、畑を蒔き直している途中の作物、
+        工事中か工事が終わって firms.price_turns ターンたたない施設の作る物。新しい民営工場の参入
         （_pipeline）と同じく、その施設が売り出した後の値段と売れ行きを見てから次を決める。"""
         defs = ctx.defs
         recent = ctx.turn - ctx.config.get("firms.price_turns")
         goods: set[str] = set()
         for f in island.facilities:
             if not f.built:
+                # 工事中の施設（国の工事も）が作る物も、動き出した後の値段を見てから決める（回6。
+                # 国が綿の農場を建てている間に民営の農場が綿に替え、両方が動き出して綿が余り、値段が
+                # 初めの 1% まで落ちた）
+                if not fac.is_housing(ctx.config, f):
+                    goods |= set(fac.recipe_of(defs, f)["outputs"])
                 continue
             pending = f.ext.get(fac.RECIPE_NEXT)
             if pending in defs.facilities[f.kind]["recipes"]:
                 goods |= set(defs.facilities[f.kind]["recipes"][pending]["outputs"])
-            if f.ext.get(fac.RECIPE_CHANGED, -(10**9)) > recent:
+            never = -(10**9)
+            if max(f.ext.get(fac.RECIPE_CHANGED, never), f.ext.get(fac.FINISHED, never)) > recent:
                 goods |= set(fac.recipe_of(defs, f)["outputs"])
             if fac.FIELDS in f.economy or f.ext.get(fac.CROP_READY, -(10**9)) > recent:
                 # 畑を蒔き直している途中か、蒔き直し終えたばかりの作物（回3）
@@ -370,11 +378,16 @@ class EntryExit(IslandStage):
             if "closing" in f.economy:
                 self._finish_closing(island, ctx, f)
                 continue
-            idle = f.economy.get("idle_turns", 0) + 1 if f.operating_rate <= 0 else 0
+            outputs = fac.recipe_of(ctx.defs, fac.steady(f))["outputs"]
+            # 在庫を売っている間は、作るのを止めていても動かないとは数えない（回6。売れ行きの
+            # 何十ターン分も作った機械工場が、在庫を売りながら 12 ターンで閉じ、島の機械が消えた）
+            selling = any(stock.total(f.stock, g) > 0 for g in outputs)
+            idle = (
+                f.economy.get("idle_turns", 0) + 1 if f.operating_rate <= 0 and not selling else 0
+            )
             wage = f.economy.get("wage", 0)
             prices = island.economy.prices
             profit = variable_profit(ctx.defs, ctx.config, f, prices, wage, rates.get(f.id, 0))
-            outputs = fac.recipe_of(ctx.defs, fac.steady(f))["outputs"]
             sales = sum(money_of(prices.get(g, 0), q) for g, q in outputs.items())
             # 値段が変動費ちょうどの売り手は、端数でマイナスになることがあるので少し見逃す
             margin = part(sales, to_basis(settings["exit_loss_margin"]))
