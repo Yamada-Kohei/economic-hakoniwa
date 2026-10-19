@@ -1,5 +1,5 @@
 /* トップの画面（島の一覧）: 青基調の昔の個人サイトの見た目。ほかの画面の色は site.css のまま */
-body:has(.retro) { background: #e6f0ff; }
+/* 地の色は site.css（全部の画面で同じ） */
 .retro { --navy: #102a6b; --blue: #1f4fa8; --line: #6f8fd0; --pale: #f4f8ff;
   max-width: 980px; margin: 0 auto; padding: 8px 0 16px; color: var(--navy);
   font-family: "MS PGothic", "ＭＳ Ｐゴシック", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; }
