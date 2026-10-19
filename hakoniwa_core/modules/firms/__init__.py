@@ -524,6 +524,18 @@ class EntryExit(IslandStage):
         expandable: dict[str, bool] = {}
         room = funds.available(island, Payer(ledger.GOV, SUBSIDIES))
         candidates = []
+        coming = self._coming(island, ctx)
+
+        def add(kind: str, rname: str, recipe: dict[str, Any], fill: float) -> None:
+            full = round_money(construction_cost(defs, kind, prices, wage))
+            rate = capital_subsidy(island, kind, recipe)
+            subsidy = min(part(full, rate), room)  # 先に払える分だけを補助として見る
+            capital = full - subsidy
+            estimate = ctx.formula("entry_return")(
+                island, ctx, kind, rname, prices, typical, capital
+            )
+            candidates.append((estimate * fill, kind, rname, capital, fill, rate, subsidy))
+
         for kind, fdef in sorted(defs.facilities.items()):
             if not private_allowed(defs, island, kind):
                 continue
@@ -536,9 +548,17 @@ class EntryExit(IslandStage):
                 fill = self._fill(recipe, shortages, demand, capacity, prices, cost, settings)
                 if fill <= 0:
                     continue  # 参入の合図（品切れか高い値段）がない
-                missing = sorted(set(recipe.get("inputs", {})) - supplied)
+                missing = sorted(set(recipe.get("inputs", {})) - supplied - coming)
                 if missing:  # 原料が島で作られていない
-                    blocks.append((0.0, kind, "inputs_missing", {"goods": missing}))
+                    # 島で作れる原料なら、先に原料の工場を建てる（組の参入。回7 後半）
+                    makers = self._makers(island, ctx, missing, supplied, busy)
+                    if makers is None:
+                        blocks.append((0.0, kind, "inputs_missing", {"goods": missing}))
+                        continue
+                    for good, (mkind, mname) in sorted(makers.items()):
+                        mrecipe = defs.facilities[mkind]["recipes"][mname]
+                        need = recipe["inputs"][good] / mrecipe["outputs"][good]
+                        add(mkind, mname, mrecipe, min(1.0, fill * need))
                     continue
                 short = self._inputs_short(recipe, shortages, settings)
                 if short:  # 原料が品切れ続きで、新しい工場は原料を買えない
@@ -550,14 +570,8 @@ class EntryExit(IslandStage):
                 if capped:  # 原料に空きがなく、作る施設もこれ以上建てられない
                     blocks.append((0.0, kind, "inputs_capped", {"good": capped}))
                     continue
-                full = round_money(construction_cost(defs, kind, prices, wage))
-                rate = capital_subsidy(island, kind, recipe)
-                subsidy = min(part(full, rate), room)  # 先に払える分だけを補助として見る
-                capital = full - subsidy
-                estimate = ctx.formula("entry_return")(
-                    island, ctx, kind, rname, prices, typical, capital
-                )
-                candidates.append((estimate * fill, kind, rname, capital, fill, rate, subsidy))
+                add(kind, rname, recipe, fill)
+        candidates = list({(c[1], c[2]): c for c in sorted(candidates)}.values())
         threshold = self._threshold(island, ctx)
         for estimate, kind, rname, capital, fill, rate, subsidy in sorted(candidates, reverse=True)[
             :3
@@ -712,6 +726,52 @@ class EntryExit(IslandStage):
                     if problem is None or problem[0] == "reason_zone_required":
                         return True
         return False
+
+    @staticmethod
+    def _coming(island: IslandState, ctx: StageContext) -> set[str]:
+        """工事中の施設（民営も国営も）が作る財。原料の工場が建っている途中なら、その原料を使う
+        工場も参入してよい（組の参入。回7 後半）。"""
+        goods: set[str] = set()
+        for f in island.facilities:
+            if not f.built and not fac.is_housing(ctx.config, f):
+                goods |= set(fac.recipe_of(ctx.defs, f)["outputs"])
+        return goods
+
+    @staticmethod
+    def _makers(
+        island: IslandState,
+        ctx: StageContext,
+        goods: list[str],
+        supplied: set[str],
+        busy: set[str],
+    ) -> dict[str, tuple[str, str]] | None:
+        """島で作られていない原料 goods のそれぞれを、島にある原料だけで作れる民営の施設と作り方
+        （組の参入。回7 後半）。1つでも作れない原料があれば None。
+
+        前は原料が島で作られていなければ参入しなかったので、部品工場のない島に自動車工場が建たず、
+        自動車工場のない島に部品工場も建たなかった（綿の農場のない島の衣料工場も同じ）。現実でも、
+        組み立ての会社が来るときに部品の会社がいっしょに来る（系列の進出）。作り方が複数あれば、
+        原料を島で多く作っている作り方（同じなら名前の順）にする。"""
+        defs = ctx.defs
+        found: dict[str, tuple[str, str]] = {}
+        for good in goods:
+            if good in busy:
+                return None  # 作る工場が建っている途中か、動き出したばかり
+            choices = []
+            for kind, fdef in sorted(defs.facilities.items()):
+                if not private_allowed(defs, island, kind):
+                    continue
+                for rname, recipe in sorted(fdef["recipes"].items()):
+                    if good not in recipe["outputs"] or not set(recipe["inputs"]) <= supplied:
+                        continue
+                    if fac.recipe_problem(defs, island, kind, rname) is not None:
+                        continue
+                    choices.append((-len(recipe["inputs"]), kind, rname))
+            if not choices:
+                return None
+            _, kind, rname = min(choices)
+            found[good] = (kind, rname)
+        return found
 
     @staticmethod
     def _supplied(island: IslandState, ctx: StageContext) -> set[str]:
@@ -1016,6 +1076,11 @@ class EntryExit(IslandStage):
         if rule == "closed" or (rule == "license" and not licensed):
             return None
         current = banks.bank_list(island)
+        # 銀行が合併した後 1 年は、同じ島へ新しい銀行が入らない（回7 後半。合併で減った分にすぐ
+        # 入り、また弱って合併するのを繰り返さないように）
+        merged = finance.get("bank_merged")
+        if merged is not None and ctx.turn - merged < YEAR:
+            return ("merged", {"turns": ctx.turn - merged})
         if len(current) >= config.get("banking.max_banks"):
             finance.pop("bank_license", None)
             return ("max_banks", {"count": len(current)})

@@ -15,7 +15,8 @@ farm_luxury_crop: 嗜好品
 farm_luxury_crop_fertilized: 嗜好品（肥料あり）
 thermal_power_plant_default: 石炭で発電
 thermal_power_plant_fuel: 燃料で発電
-automobile_plant_default: 鋼鉄から製造
-automobile_plant_aluminium: 鋼鉄とアルミから製造
+automobile_plant_default: 部品を組み立て
+auto_parts_plant_default: 鋼鉄から製造
+auto_parts_plant_aluminium: 鋼鉄とアルミから製造
 shipyard_default: 鋼鉄から建造
 shipyard_aluminium: 鋼鉄とアルミから建造

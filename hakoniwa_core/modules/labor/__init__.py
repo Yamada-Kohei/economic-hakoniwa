@@ -1,6 +1,8 @@
 """賃金の段（payroll）: 施設ごとの賃金を払い、所得税を差し引き、失業手当を払い、賃金を見直す。
 
-賃金は雇用の段で雇った人数分を払います（稼働率にかかわらず）。払うのは施設の会計の形で決まり
+賃金は雇用の段で雇った人数分を払います（稼働率にかかわらず）。ただし電気・送電網・原料が足りずに
+動けなかった分の働き手には、休業手当として賃金の labor.furlough_pay だけ払います（回7 後半。
+furlough_share）。払うのは施設の会計の形で決まり
 （economy/__init__.py の payer_of）、工事とインフラの作業員と公務員は国庫が払います。所得税は
 賃金から差し引いて政府に払います。失業手当は「失業者1人に平均賃金の決めた割合」を国庫から払います。
 
@@ -136,6 +138,28 @@ def engineer_wage_update(island: IslandState, f: Facility, ctx: StageContext) ->
     return max(scale_price(wage, 1 + change), f.economy["wage"])
 
 
+FURLOUGH = ("power", "no_grid", "input")  # 休業手当にする status（外から物が来ずに動けない）
+
+
+def furlough_share(defs: Defs, config: Any, f: Facility) -> int:
+    """このターンの賃金のうち払う割合（1万分の1。回7 後半）。
+
+    電気・送電網・原料が足りずに動けなかった分の働き手には休業手当（labor.furlough_pay。労働基準法
+    の休業手当は平均賃金の 6 割）だけ払い、ほかは満額。働き手は辞めずに残るので、物が戻ればすぐ
+    動ける。
+    原料が高い・買うお金がない（input_price・funds）のは施設の都合なので満額。操業目標を自分で
+    下げた分や、工事中の施設も満額（雇う人数を目標に合わせているので）。"""
+    if not f.built or f.status.partition(":")[0] not in FURLOUGH:
+        return BASIS
+    able = fac.labor_ratio(defs, f)
+    if able <= 0:
+        return BASIS
+    busy = min(fac.FULL, f.operating_rate * fac.FULL // able)
+    idle = fac.FULL - busy
+    pay = to_basis(config.get("labor.furlough_pay"))
+    return BASIS - (BASIS - pay) * idle // fac.FULL
+
+
 def has_own_wage(defs: Defs, f: Facility) -> bool:
     """賃金を自分で見直す施設か（工事中の施設と公務員の施設は島の平均賃金で雇う）。"""
     return f.built and not is_public_service(defs, f) and "wage" in f.economy
@@ -182,20 +206,37 @@ class Payroll(IslandStage):
             drafted = f.economy.get("mobilized", 0)
             drafted_pay = drafted * f.economy.get("mobilized_wage", 0)
             amount = wage * (f.workers - skilled - spared - drafted) + drafted_pay
+            # 電気や原料が足りずに動けなかった分の働き手は休ませ、その分の賃金は休業手当
+            # （labor.furlough_pay）だけ払う（回7 後半）
+            cut = BASIS - furlough_share(defs, config, f)
+            if cut > 0:  # 休んだ人数（休業手当で払った人）
+                rest = BASIS - to_basis(config.get("labor.furlough_pay"))
+                idle = (f.workers - drafted) * cut // max(1, rest)
+                stats = island.stats
+                stats["labor.furloughed"] = stats.get("labor.furloughed", 0) + idle
             # 払えないまま働いた人の分（雇用の段の economy["unpaid"]）は未払い賃金にする（回3）
             owed = min(amount, wage * f.economy.get("unpaid", 0))
-            funds.pay(island, payer, worker, amount - owed, "wage", committed=True)
-            self._withhold(island, amount - owed)
+            left = max(0, wage * f.economy.get("unpaid", 0) - owed)
+            due = amount - owed  # 雇用の段で取り置いた分
+            saved = part(due, cut)
+            owed -= part(owed, cut)
+            funds.pay(island, payer, worker, due - saved, "wage", committed=True)
+            funds.release(island, payer, saved)
+            self._withhold(island, due - saved)
             arrears.add_wages(island, payer.entity, worker, owed)
+            amount = due - saved + owed
             paid += wage * (f.workers - skilled - drafted) + drafted_pay
             workers += f.workers - skilled
             if skilled or spared:  # 技術者の層に払う
                 premium = fac.engineer_wage_of(config, f, wage) * skilled
                 # 払えない席（遅配）に就いた余った技術者の分も未払い賃金にする（回4。一般の人の
                 # 分だけを遅配にし、技術者には取り置いていない賃金を払って預金がマイナスになった）
-                left = max(0, wage * f.economy.get("unpaid", 0) - owed)
                 spared_owed = min(wage * spared, left)
                 pay = premium + wage * spared - spared_owed
+                saved = part(pay, cut)
+                pay -= saved
+                spared_owed -= part(spared_owed, cut)
+                funds.release(island, payer, saved)
                 funds.pay(island, payer, household(ENGINEERS), pay, "wage", committed=True)
                 self._withhold(island, pay, ENGINEERS)
                 arrears.add_wages(island, payer.entity, household(ENGINEERS), spared_owed)

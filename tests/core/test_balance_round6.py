@@ -314,9 +314,10 @@ def test_a_disaster_does_not_shorten_a_longer_halt(game, base):
 
 
 def test_automobile_needs_the_parts_of_a_real_car(game):
-    """自動車工場は鋼鉄・アルミ・化学品・衣料・機械・電力を使う（アルミのない作り方は鋼鉄で）。"""
-    recipes = game.defs.facilities["automobile_plant"]["recipes"]
-    assert set(recipes["aluminium"]["inputs"]) == {
+    """自動車は部品工場（鋼鉄・アルミ・化学品・衣料・機械・電力）の部品を組み立てて作る（回7 後半。
+    アルミのない作り方は鋼鉄で）。部品工場と合わせた材料は回6 の自動車工場と同じ。"""
+    parts = game.defs.facilities["auto_parts_plant"]["recipes"]
+    assert set(parts["aluminium"]["inputs"]) == {
         "steel",
         "aluminium",
         "chemicals",
@@ -324,15 +325,15 @@ def test_automobile_needs_the_parts_of_a_real_car(game):
         "machinery",
         "electricity",
     }
-    assert set(recipes["default"]["inputs"]) == {
-        "steel",
-        "chemicals",
-        "clothing",
-        "machinery",
-        "electricity",
-    }
+    assert set(parts["default"]["inputs"]) == set(parts["aluminium"]["inputs"]) - {"aluminium"}
+    cars = game.defs.facilities["automobile_plant"]["recipes"]
+    assert set(cars) == {"default"}
+    assert set(cars["default"]["inputs"]) == {"auto_parts", "steel", "chemicals", "electricity"}
+    steel = parts["default"]["inputs"]["steel"] + cars["default"]["inputs"]["steel"]
+    assert steel == 5400  # 回6 の1ターン全力の 5.4（1000 分の 1）
     prices = initial_prices(game.defs, game.config)
-    assert prices["automobile"] > 0
+    assert prices["auto_parts"] > 0
+    assert prices["automobile"] > prices["auto_parts"]
 
 
 # --- 揺さぶりの試験（GT-19） ------------------------------------------------------------

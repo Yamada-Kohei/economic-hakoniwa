@@ -141,11 +141,17 @@ def test_small_bank_hires_for_its_business(game, warmed):
     f = banks.facility_of(island, private)
     need = fac.workers_needed(game.defs, f.kind)
     wanted = banks.staff_wanted(island, game.config, game.defs, f)
-    floor = game.config.get("banking.staff_floor")
+    # 赤字の銀行は経費を切り詰めて下限を外す（回7 後半。banks.watch_costs）
+    floor = 0 if banks.LEAN in f.economy else game.config.get("banking.staff_floor")
     full = game.config.get("banking.staff_volume") * island.economy.average_wage
     volume = banks.deposits_of(island, private) + banks.loans_of(island, private)
     assert volume < full
-    assert round(need * floor) <= wanted < need
+    assert max(1, round(need * floor)) <= wanted < need
+    lean = f.economy.pop(banks.LEAN, None)
+    floor = game.config.get("banking.staff_floor")
+    assert round(need * floor) <= banks.staff_wanted(island, game.config, game.defs, f) < need
+    if lean is not None:
+        f.economy[banks.LEAN] = lean
     big = max(banks.bank_list(island), key=lambda b: banks.deposits_of(island, b))
     if banks.deposits_of(island, big) >= full:  # 大きい銀行は定義の人数のまま
         f_big = banks.facility_of(island, big)

@@ -30,6 +30,7 @@ equity_transfer: 出資の付け替え
 foreclosure_sale: 差し押さえ施設の売却
 foreclosure_recovery: 差し押さえ施設の残り
 bank_transfer: 銀行の引き継ぎ
+bank_merger: 銀行の合併の代金
 bank_bailout: 公的資金
 deposit_insurance: 預金保護
 deposit_cut: 預金の切り捨て

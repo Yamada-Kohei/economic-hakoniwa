@@ -165,7 +165,7 @@ class Banking(IslandStage):
             short = sum(i + p for _, i, p in rows) - funds.available(island, payer)
             f = island.facility(int(borrower.split(":")[1]))
             if short > 0 and f is not None:
-                short -= companies.draw(island, f, short)  # 企業の預金から先に回す（回7）
+                short -= companies.draw(island, f, short, ctx)  # 企業の中のお金から先に回す（回7）
             if short > 0 and f is not None and in_business(f):
                 if planned:
                     self._refinance(island, ctx, rows[0][0], short)

@@ -125,6 +125,13 @@ class OrderMaker:
         return self._value("", self.schemas[kind], island)
 
     def _spot(self, island: IslandState) -> tuple[int, int, str | None]:
+        if self.kind == "build" and self.rng.random() < 0.7:
+            # 建てる命令は、なるべく空いたマスに（施設のあるマスは埋まっていて通らない）
+            occupied = island.facilities_by_tile()
+            empty = [(t.x, t.y) for t in island.tiles if (t.x, t.y) not in occupied]
+            if empty:
+                x, y = self.rng.choice(empty)
+                return x, y, None
         if island.facilities and self.rng.random() < 0.7:
             f = self.rng.choice(island.facilities)
             return f.x, f.y, f.kind

@@ -39,7 +39,15 @@ from hakoniwa_core import ledger
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import arrears, companies, debt, experience, is_stopped, retail
+from hakoniwa_core.economy import (
+    arrears,
+    companies,
+    debt,
+    experience,
+    is_stopped,
+    retail,
+    services,
+)
 from hakoniwa_core.economy.prices import initial_prices
 from hakoniwa_core.facilities import located
 from hakoniwa_core.state import OWNER_PRIVATE, IslandState, WorldState
@@ -233,6 +241,10 @@ class Recorder:
     def __init__(self, world: WorldState, defs: Defs, config: GameConfig) -> None:
         self.defs = defs
         self.retail = retail.good_of(config)
+        # 人の手間が値段の財（サービスと小売り）は、物価でなく賃金に対する値段で見る（回7 後半。
+        # 賃金が物の値段より速く上がると、人の手間の値段は物価に対して上がる。現実のボーモル効果）
+        self.labor_goods = {services.good_of(config), self.retail}
+        self.initial_wage = config.get("labor.initial_wage")
         self.initial = {  # 島ごとの初めの値段（島で使える作り方で解いた値段）
             i.id: initial_prices(defs, config, i.resources) for i in world.islands.values()
         }
@@ -305,8 +317,11 @@ class Recorder:
                 if m.volume > 0:
                     traded = self.traded.setdefault(m.good, {})
                     traded[world.turn] = traded.get(world.turn, 0) + 1
-                if m.volume > 0 and initial.get(m.good) and cpi > 0:
-                    ratio = m.price / initial[m.good] / cpi
+                index = cpi
+                if m.good in self.labor_goods:
+                    index = island.economy.average_wage / max(1, self.initial_wage)
+                if m.volume > 0 and initial.get(m.good) and index > 0:
+                    ratio = m.price / initial[m.good] / index
                     rec.price_ratio.setdefault(m.good, {})[world.turn] = ratio
             self._watch(island, world.turn, rec, self.watch[island.id])
 
