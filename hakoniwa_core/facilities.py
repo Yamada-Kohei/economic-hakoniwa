@@ -14,7 +14,14 @@ from hakoniwa_core import nature, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.geo import distance, is_coastal, within
-from hakoniwa_core.state import OWNER_STATE, ZONE_OFFICE, Facility, IslandState, Tile
+from hakoniwa_core.state import (
+    OWNER_STATE,
+    ZONE_COMMERCIAL,
+    ZONE_OFFICE,
+    Facility,
+    IslandState,
+    Tile,
+)
 
 FULL = 1000  # 割合の 100%
 ENGINEER = "engineer"  # 技術者（島全体の人数として持つ働き手。フェーズ2-3）
@@ -237,6 +244,34 @@ def on_map(f: Facility) -> bool:
     return f.x >= 0 and f.y >= 0
 
 
+SITE = "site"  # 施設の ext: 町の中の店（回7）の属する町のマス [x, y]
+
+
+def position(f: Facility) -> tuple[int, int]:
+    """施設の働く場所（町の中の店は町のマス、ほかは施設のマス）。"""
+    site = f.ext.get(SITE)
+    if site:
+        return int(site[0]), int(site[1])
+    return f.x, f.y
+
+
+def located(f: Facility) -> bool:
+    """マスを持つか、町の中に置いた施設か（運送業のような島全体の施設でないか）。"""
+    return on_map(f) or bool(f.ext.get(SITE))
+
+
+def shops_at(island: IslandState, pos: tuple[int, int]) -> int:
+    """町のマス pos に入っている店の数。"""
+    key = [pos[0], pos[1]]
+    return sum(1 for f in island.facilities if f.ext.get(SITE) == key)
+
+
+def shop_slots(defs: Defs, town: Facility) -> int:
+    """町のマスに入る店の数（settlements.yaml の shops）。"""
+    level = town.ext.get("level") or defs.settlement_levels()[0]
+    return int(defs.settlements.get(level, {}).get("shops", 0))
+
+
 def vacate(island: IslandState, f: Facility) -> None:
     """閉鎖・倒産・破綻処理で施設を島から取り除く（プレイヤーの取り壊しの命令ではない）。
 
@@ -405,15 +440,22 @@ def placement_problem(
     if not island.in_bounds(x, y):
         return ("reason_out_of_bounds", {})
     tile = island.tile(x, y)
-    if tile.terrain not in fdef["terrain"]:
-        return ("reason_wrong_terrain", {"facility": kind, "terrain": tile.terrain})
-    if island.facility_at(x, y) is not None:
-        return ("reason_tile_occupied", {})
+    if fdef.get("site") == "town":  # 町の中の店（回7）: 町のマスの、空いた枠に入る
+        town = island.facility_at(x, y)
+        if town is None or defs.facilities[town.kind].get("category") != "housing":
+            return ("reason_shop_needs_town", {"facility": kind})
+        if shops_at(island, (x, y)) >= shop_slots(defs, town):
+            return ("reason_shop_slots", {"facility": kind, "max": shop_slots(defs, town)})
+    else:
+        if tile.terrain not in fdef["terrain"]:
+            return ("reason_wrong_terrain", {"facility": kind, "terrain": tile.terrain})
+        if island.facility_at(x, y) is not None:
+            return ("reason_tile_occupied", {})
     zone = fdef.get("zone")
     if zone is not None and tile.zone != zone:
         return ("reason_zone_required", {"facility": kind, "zone": f"zone_{zone}"})
-    if zone is None and tile.zone == ZONE_OFFICE:
-        return ("reason_office_zone", {})
+    if zone is None and tile.zone in (ZONE_OFFICE, ZONE_COMMERCIAL) and not fdef.get("site"):
+        return ("reason_office_zone" if tile.zone == ZONE_OFFICE else "reason_commercial_zone", {})
     if fdef.get("coastal") and not is_coastal(island, (x, y), lambda t: is_land(defs, t)):
         return ("reason_not_coastal", {"facility": kind})
     limit = fdef.get("max_per_island")

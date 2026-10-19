@@ -40,7 +40,7 @@ from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import arrears, debt, experience, is_stopped
 from hakoniwa_core.economy.prices import initial_prices
-from hakoniwa_core.facilities import on_map
+from hakoniwa_core.facilities import located
 from hakoniwa_core.state import OWNER_PRIVATE, IslandState, WorldState
 from hakoniwa_core.units import BASIS
 
@@ -338,7 +338,7 @@ class Recorder:
                 if w.recipes.get(f.id, f.recipe) != f.recipe:
                     switched[f.kind] += 1
                 recipes[f.id] = f.recipe
-            working = d.get("workers", 0) > 0 and d.get("category") != "housing" and on_map(f)
+            working = d.get("workers", 0) > 0 and d.get("category") != "housing" and located(f)
             silent = not is_stopped(f) and f.operating_rate <= 0 and not f.status
             if working:
                 w.held("silent_stop", str(f.id), silent, turn, SILENT_TURNS, f.kind)

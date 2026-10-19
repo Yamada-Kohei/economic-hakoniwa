@@ -172,6 +172,9 @@ def test_repairs_pay_the_import_price_when_only_the_merchant_sells(game, base):
     island, f = island_with(world, game, OWNER_STATE)
     good = sorted(equipment.kit(game.defs, f.kind))[0]
     width = 1000
+    # いつもの値段が今の値段より安かった（値段が上がってきた）ことにする
+    price = island.economy.prices.get(good, 1)
+    island.economy.price_history[good] = [price // 2] * 12
     usual = material_limit(island, game.config, good, width)
     _, high = auction.band(island.economy.prices.get(good, 1), width)
     assert high > usual

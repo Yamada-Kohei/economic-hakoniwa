@@ -122,9 +122,10 @@ def probe(
 
 def update(island: IslandState, defs: Defs, config: GameConfig, f: Facility) -> int:
     """施設 f の生産性を計算し直して economy["productivity"] に残す。"""
-    if not f.built or not fac.on_map(f) or fac.is_housing(config, f):
+    if not f.built or not fac.located(f) or fac.is_housing(config, f):
         return FULL
-    value = productivity(island, defs, config, fac.recipe_of(defs, f), f.x, f.y)
+    x, y = fac.position(f)  # 町の中の店（回7）は町のマス
+    value = productivity(island, defs, config, fac.recipe_of(defs, f), x, y)
     if value == FULL:
         f.economy.pop("productivity", None)
     else:

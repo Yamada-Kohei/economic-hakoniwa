@@ -263,7 +263,7 @@ def jobs(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, float
             out["jobs.sites"] += f.workers
             continue
         need = fac.workers_needed(defs, f.kind)
-        if need <= 0 or not fac.on_map(f):
+        if need <= 0 or not fac.located(f):
             continue
         out["jobs.capacity"] += need
         if is_stopped(f) or f.status in (fac.STATUS_STARTING, "halted", "riot", "recipe_change"):
@@ -321,9 +321,9 @@ def _seats(island: IslandState, defs: Defs, config: GameConfig) -> list:
         vacant = max(0, f.economy.get("wanted", 0) - f.workers)
         if vacant <= 0:
             continue
-        everywhere = is_transport(config, f) or not fac.on_map(f)
+        everywhere = is_transport(config, f) or not fac.located(f)
         radius = None if everywhere else fac.commute_radius(defs, config, f.kind)
-        out.append(((f.x, f.y), radius, vacant))
+        out.append((fac.position(f), radius, vacant))
     return out
 
 

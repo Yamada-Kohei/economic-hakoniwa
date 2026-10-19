@@ -90,6 +90,7 @@ from hakoniwa_core.economy import (
     is_transport,
     owner_entity,
     productivity,
+    retail,
     services,
 )
 from hakoniwa_core.economy import freight as freight_rates
@@ -105,6 +106,7 @@ from hakoniwa_core.state import (
     ACCOUNTING_TREASURY,
     OWNER_PRIVATE,
     OWNER_STATE,
+    ZONE_COMMERCIAL,
     ZONE_INDUSTRIAL,
     ZONE_NONE,
     ZONE_OFFICE,
@@ -203,7 +205,7 @@ class EntryExit(IslandStage):
         private = [
             f
             for f in island.facilities
-            if f.owner == OWNER_PRIVATE and not is_bank(ctx.config, f) and fac.on_map(f)
+            if f.owner == OWNER_PRIVATE and not is_bank(ctx.config, f) and fac.located(f)
         ]
         island.stats["firms.private"] = sum(1 for f in private if f.built)
         island.stats["firms.private_sites"] = sum(1 for f in private if not f.built)
@@ -577,6 +579,11 @@ class EntryExit(IslandStage):
                 args = {"rate": r * fill * 100, "need": threshold * 100}
                 blocks.append((estimate, kind, "unprofitable_site", args))
                 continue
+            # 大きな店の出店の規制（回7。禁止か、許可制で許されていない）
+            blocked = retail.entry_block(island, defs, config, kind, pos, ctx.turn)
+            if blocked is not None:
+                blocks.append((estimate, kind, blocked, {}))
+                continue
             failure = self._build(
                 island, ctx, kind, rname, pos, capital, prices, freight, (rate, subsidy)
             )
@@ -743,12 +750,19 @@ class EntryExit(IslandStage):
         shop = services.staff_by_tile(island, config)
         occupied = island.facilities_by_tile()
         open_land = kind in config.get("firms.open_land")
+        if retail.is_shop(defs, kind):  # 町の中の店（回7）: 枠の空いた町のマス
+            occupied = {}
+            towns = {pos for pos, _ in retail.free_towns(island, defs, config)}
+        zone = defs.facilities[kind].get("zone") or ZONE_INDUSTRIAL
         spots = []
         fitting = 0
         for tile in island.tiles:
-            if (tile.x, tile.y) in occupied:
+            if retail.is_shop(defs, kind):
+                if (tile.x, tile.y) not in towns:
+                    continue
+            elif (tile.x, tile.y) in occupied:
                 continue
-            if tile.zone != ZONE_INDUSTRIAL and not (
+            elif tile.zone != zone and not (
                 open_land and tile.zone == ZONE_NONE and tile.population == 0
             ):
                 continue
@@ -764,7 +778,14 @@ class EntryExit(IslandStage):
             if idle * 2 >= need:
                 spots.append((tile.x, tile.y))
         if not spots:
-            return "no_workers" if fitting else "no_zone"
+            if fitting:
+                return "no_workers"
+            if retail.is_shop(defs, kind):
+                return "no_town"  # 店の枠の空いた町がない（回7）
+            return "no_commercial" if zone == ZONE_COMMERCIAL else "no_zone"
+        if retail.is_shop(defs, kind):  # 運賃は見ない（マスを取らない）。人の多い町から
+            best = max(spots, key=lambda p: (island.tile(*p).population, -p[1], -p[0]))
+            return best, 0
         rates = freight_rates.candidate_rates(island, defs, config, kind, rname, spots)
         best = min(spots, key=lambda p: (rates[p], p[1], p[0]))
         return best, rates[best]
@@ -854,17 +875,20 @@ class EntryExit(IslandStage):
         if isinstance(plan, tuple):
             return plan
         payer, firm = island.scratch.pop("entry_investor", None) or (household(OWNERS), None)
+        at = retail.tileless_position(island) if retail.is_shop(defs, kind) else pos
         f = Facility(
             id=island.next_facility_id(),
             kind=kind,
-            x=pos[0],
-            y=pos[1],
+            x=at[0],
+            y=at[1],
             recipe=rname,
             owner=OWNER_PRIVATE,
             accounting=ACCOUNTING_SELF,
             economy={"capital": 0},
             ext={"private_entry": True},
         )
+        if retail.is_shop(defs, kind):
+            f.ext[fac.SITE] = [pos[0], pos[1]]
         assign_serial(island, f)
         island.facilities.append(f)
         entity = facility_entity(f.id)
@@ -1143,7 +1167,12 @@ def restart(island: IslandState, ctx: StageContext, f: Facility, owner: str, pri
 
 # --- 命令: 指定 ---------------------------------------------------------------------
 
-ZONES = {"industrial": ZONE_INDUSTRIAL, "office": ZONE_OFFICE, "none": ZONE_NONE}
+ZONES = {
+    "industrial": ZONE_INDUSTRIAL,
+    "office": ZONE_OFFICE,
+    "commercial": ZONE_COMMERCIAL,
+    "none": ZONE_NONE,
+}
 
 
 def check_set_zone(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
@@ -1373,6 +1402,30 @@ def privatize_firm(island: IslandState, payload: dict[str, Any], ctx: StageConte
     )
 
 
+# --- 命令: 小売りの政策（回7） -----------------------------------------------------------
+
+
+def check_retail_policy(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    if payload.get("approve") and retail.application(island) is None:
+        raise OrderFailed("reason_no_store_application")
+
+
+def set_retail_policy(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
+    """大きな店（百貨店）の出店の規制を決める。approve で、出ている申請を許す（次の参入で建つ）。"""
+    if "large_store" in payload:
+        island.policy.large_store = payload["large_store"]
+        policy = f"large_store_{payload['large_store']}"
+        island.log.append(LogEntry("retail_policy_set", {"policy": policy}))
+    found = retail.application(island)
+    if payload.get("approve"):
+        if found is None:
+            raise OrderFailed("reason_no_store_application")
+        found["approved"] = True
+        island.log.append(LogEntry("store_approved", {}))
+    elif found is not None and island.policy.large_store != retail.PERMIT:
+        island.economy.finance.pop(retail.APPLICATION)  # 許可制をやめたら申請は要らない
+
+
 def _move_equity(island: IslandState, entity: str, source: str, target: str) -> None:
     value = ledger.balance(island, ledger.account(source, ledger.EQUITY, entity))
     if value > 0:
@@ -1436,3 +1489,6 @@ def register(registry: Registry) -> None:
         OrderHandler("privatize_firm", execute=privatize_firm, check=check_privatize_firm)
     )
     registry.add_order(OrderHandler("set_subsidy", execute=set_subsidy, check=check_subsidy))
+    registry.add_order(
+        OrderHandler("set_retail_policy", execute=set_retail_policy, check=check_retail_policy)
+    )

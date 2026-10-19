@@ -4,8 +4,9 @@
 # materials: この段階に育つとき（いちばん下の段階は新しく建つとき）に使う資源。住民（一般の層）が
 #            市場で買います。足りなければ、そろうまで育ちません。
 # water: この段階に育つのに要る、そのマスの上下水道の整備度（フェーズ2-3。書かなければ要らない）
+# shops: この段階の町のマスに入る商店の数（回7。書かなければ 0）
 # min_population は1つ下の段階の capacity より大きくします（育たないと見た目も変わらない）。
 village:    {min_population: 0,     capacity: 2400,  height: 1, subsistence: true, materials: {wood: 5}}
-town:       {min_population: 2500,  capacity: 6000,  height: 2, materials: {wood: 10, building_materials: 10}}
-city:       {min_population: 8000,  capacity: 15000, height: 4, water: 0.5, materials: {building_materials: 30, steel: 5}}
-metropolis: {min_population: 20000, capacity: 30000, height: 6, water: 0.8, materials: {building_materials: 60, steel: 15, machinery: 2}}
+town:       {min_population: 2500,  capacity: 6000,  height: 2, shops: 2, materials: {wood: 10, building_materials: 10}}
+city:       {min_population: 8000,  capacity: 15000, height: 4, shops: 5, water: 0.5, materials: {building_materials: 30, steel: 5}}
+metropolis: {min_population: 20000, capacity: 30000, height: 6, shops: 10, water: 0.8, materials: {building_materials: 60, steel: 15, machinery: 2}}

@@ -341,12 +341,13 @@ def vacancies_of(
     """
     found = []
     for f in island.facilities:
-        if not fac.on_map(f) or (f.built and fac.workers_needed(defs, f.kind) <= 0):
+        if not fac.located(f) or (f.built and fac.workers_needed(defs, f.kind) <= 0):
             continue
         want = f.economy.get("wanted", fac.labor_demand(defs, f, turn))
         missing = want - f.workers
         if missing > 0:
-            found.append(((f.x, f.y), fac.commute_radius(defs, config, f.kind), missing, f.id))
+            radius = fac.commute_radius(defs, config, f.kind)
+            found.append((fac.position(f), radius, missing, f.id))
     shop = services.facility_of(island, config)
     if shop is not None:
         radius = config.get("labor.commute_radius")

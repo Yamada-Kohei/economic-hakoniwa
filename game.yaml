@@ -298,6 +298,17 @@ services:
   per_worker: 1         # 働く人1人が1ターンに出すサービスの量
   labor_share: 0.9      # 雇う人数の目安 = 直近の売上 × これ ÷ 賃金（残りは店の利益）
 
+# 小売り（回7。hakoniwa_core/economy/retail.py）。家計は品物（電力と町の資材を除く）を買うと、代金を物価指数で
+# 割った額 value_per_unit ごとに小売り1人月を商店・百貨店から買う（現実の小売りの粗利は売上の2〜3割、店員1人が
+# 月に売る額は賃金の6〜8倍ほど）。店で買いきれない分は、商業・サービス業（小さな店と屋台）から、小売りの値段の
+# (1 + direct_premium) 倍で買う（直売・屋台）
+retail:
+  good: retail
+  value_per_unit: 5000
+  direct_premium: 0.5
+  persons_per_car: 3      # 自動車1台で百貨店に行ける人数（家族）
+  permit_turns: 12        # 許可制の国で、百貨店の出店の申請を待つターン数
+
 equipment:
   # 設備の傷みと直し（バランス調整の回6。hakoniwa_core/economy/equipment.py）。物を作る施設は建てたときの資材を
   # 設備として持ち、資材ごとに年にこの割合が傷む（現実の工業国の目安: 機械は年 7〜10%、建物は年 2〜3%）

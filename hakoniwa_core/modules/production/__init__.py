@@ -208,7 +208,7 @@ class Production(IslandStage):
 
     @staticmethod
     def _operates(f: Facility, ctx: StageContext) -> bool:
-        return f.built and not fac.is_housing(ctx.config, f) and fac.on_map(f)
+        return f.built and not fac.is_housing(ctx.config, f) and fac.located(f)
 
     @staticmethod
     def _prepare(island: IslandState, f: Facility, ctx: StageContext, power: str) -> _Run:
@@ -303,7 +303,7 @@ class Production(IslandStage):
         plants: dict[int, list[tuple[_Run, int]]] = {}
         users: dict[int, list[_Run]] = {}
         for run in runs:
-            grid = grid_of[(run.f.x, run.f.y)]
+            grid = grid_of[fac.position(run.f)]
             if run.recipe["outputs"].get(power, 0):  # 発電所の能力は生産性を掛けた量
                 out = fac.scale(run.recipe["outputs"][power], fac.productivity_of(run.f))
                 plants.setdefault(grid, []).append((run, out))
@@ -521,14 +521,15 @@ class Production(IslandStage):
         powered = set()
         users = []
         for f in island.facilities:
-            if not f.built or not fac.on_map(f):
+            if not f.built or not fac.located(f):
                 continue
             recipe = fac.recipe_of(ctx.defs, f)
             if recipe["outputs"].get(power):
                 powered.add(grid_of[(f.x, f.y)])
             elif recipe["inputs"].get(power):
                 users.append(f)
-        return {f.id for f in users if grid_of[(f.x, f.y)] not in powered}
+        # 町の中の店（回7）は、町のマスの送電網で見る
+        return {f.id for f in users if grid_of.get(fac.position(f)) not in powered}
 
     @staticmethod
     def _grids(island: IslandState, defs: Defs) -> dict[tuple[int, int], int]:
