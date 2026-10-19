@@ -713,13 +713,14 @@ def short_facilities(
     for row in island.facilities.filter(query).order_by("number"):
         f = facility_from_row(row)
         wanted = row.status.partition(":")[2]
+        x, y = fac.position(f)  # 町の中の店は町のマス
         out.append(
             {
                 "number": row.number,
                 "name": facility_name(game.defs, game.config, state, f),
                 "kind_name": game.defs.name("facilities", row.kind),
-                "x": row.x,
-                "y": row.y,
+                "x": x,
+                "y": y,
                 "good": wanted,
                 "good_name": game.defs.name("goods", wanted),
                 "status_text": display.status_text(f),

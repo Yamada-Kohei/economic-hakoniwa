@@ -474,6 +474,11 @@ def placement_problem(
     if not island.in_bounds(x, y):
         return ("reason_out_of_bounds", {})
     tile = island.tile(x, y)
+    zone = fdef.get("zone")
+    # 用途地域の決まりを先に見る（百貨店を町のマスに置こうとしたとき、「施設がある」ではなく
+    # 「商業地にだけ建てられる」と分かるように）
+    if zone is not None and tile.zone != zone:
+        return ("reason_zone_required", {"facility": kind, "zone": f"zone_{zone}"})
     if fdef.get("site") == "town":  # 町の中の店（回7）: 町のマスの、空いた枠に入る
         town = island.facility_at(x, y)
         if town is None or defs.facilities[town.kind].get("category") != "housing":
@@ -485,9 +490,6 @@ def placement_problem(
             return ("reason_wrong_terrain", {"facility": kind, "terrain": tile.terrain})
         if island.facility_at(x, y) is not None:
             return ("reason_tile_occupied", {})
-    zone = fdef.get("zone")
-    if zone is not None and tile.zone != zone:
-        return ("reason_zone_required", {"facility": kind, "zone": f"zone_{zone}"})
     if zone is None and tile.zone in (ZONE_OFFICE, ZONE_COMMERCIAL) and not fdef.get("site"):
         return ("reason_office_zone" if tile.zone == ZONE_OFFICE else "reason_commercial_zone", {})
     if fdef.get("coastal") and not is_coastal(island, (x, y), lambda t: is_land(defs, t)):

@@ -41,6 +41,7 @@ from hakoniwa_core.economy.households import (
     blend_hunger,
     move_people,
     recount_engineers,
+    set_jobless,
     split_persons,
 )
 from hakoniwa_core.economy.stats import inflation, real_wage_change
@@ -81,6 +82,7 @@ FOOD_SHORT = "food_short"
 FOOD_BUYERS = "food_buyers"
 HUNGER_RISK = "hunger_risk"
 FOOD_ORDERS = "household_food"  # island.scratch: 層ごとの食料の注文の要点（市場の段が書く）
+FLED_JOBLESS = "fled_jobless"  # island.scratch: 飢えて村へ移った人のうち、仕事のない人とその家族
 # 一般の層のうち、村で自給の農業をしている人の飢えの蓄え（HUNGER・ENDURED）と、前のターンに
 # 市場で食料を買っていた人の数（market）。一般の層の HUNGER は、市場で食料を買う人の蓄え（回4）
 FIELDS = "fields"
@@ -735,6 +737,10 @@ class Population(IslandStage):
             remove_dead(island, defs, deaths)
             changes = split_persons(island, defs, sum(t.population for t in island.tiles))
             move_people(island, changes)
+            if island.scratch.get(FLED_JOBLESS):
+                # 飢えて村へ移った仕事のない人は、村で自給の農業をするので失業している家計から外す
+                # （次の賃金の段を待つと、移った人の分まで飢えている家計に数えたままになる）
+                set_jobless(island, jobless_persons(defs, island))
             if island.economy.happiness_blend > 0:
                 _blend_notice(island, ctx)
                 island.economy.happiness_blend -= 1
@@ -1058,14 +1064,16 @@ class Population(IslandStage):
 
         villages = [pos for pos in sorted(free) if farming(pos) and room(pos) > 0]
         moved = 0
+        moved_jobless = 0.0  # 移った人のうち、仕事のない人とその家族（ログに出す）
         for tile in sorted(island.tiles, key=lambda t: (t.y, t.x)):
             pos = (tile.x, tile.y)
             if tile.population <= 0 or farming(pos) or not villages:
                 continue
             idle = min(tile.population, tile_jobless(defs, island, tile) * family)
-            leaving = idle * hungry.get(JOBLESS, 0.0)
-            leaving += (tile.population - idle) * hungry.get(GENERAL, 0.0)
+            idle_leaving = idle * hungry.get(JOBLESS, 0.0)
+            leaving = idle_leaving + (tile.population - idle) * hungry.get(GENERAL, 0.0)
             count = min(tile.population, _rand_round(leaving, rng))
+            idle_part = idle_leaving / leaving if leaving > 0 else 0.0
             for target in sorted(villages, key=lambda v: (distance(pos, v), v[1], v[0])):
                 if count <= 0:
                     break
@@ -1079,10 +1087,18 @@ class Population(IslandStage):
                 free[target] -= move
                 count -= move
                 moved += move
+                moved_jobless += move * idle_part
             villages = [v for v in villages if room(v) > 0]
         if moved:
             island.stats["population.fled_to_villages"] = moved
-            island.log.append(LogEntry("famine_flight", {"count": moved}))
+            jobless = min(moved, round(moved_jobless))
+            if jobless > 0:  # 仕事のない人の家族がいれば、その人数も書く（失業率から外れるため）
+                island.scratch[FLED_JOBLESS] = jobless
+                island.log.append(
+                    LogEntry("famine_flight_jobless", {"count": moved, "jobless": jobless})
+                )
+            else:
+                island.log.append(LogEntry("famine_flight", {"count": moved}))
         return moved
 
 

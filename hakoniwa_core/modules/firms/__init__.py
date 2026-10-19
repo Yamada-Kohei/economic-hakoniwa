@@ -95,7 +95,13 @@ from hakoniwa_core.economy import (
 )
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.prices import construction_cost, unit_cost, variable_profit
-from hakoniwa_core.economy.start import fund_facility, init_facility, invest, operating_cost
+from hakoniwa_core.economy.start import (
+    fund_facility,
+    init_facility,
+    invest,
+    operating_capital,
+    operating_cost,
+)
 from hakoniwa_core.geo import within
 from hakoniwa_core.modules.banking import entry_policy, is_planned
 from hakoniwa_core.modules.failures import bankrupt, close_foreclosure, distribute
@@ -1291,6 +1297,16 @@ def check_nationalize(island: IslandState, payload: dict[str, Any], defs: Defs) 
     f = _owned_facility(island, payload, defs)
     if f.owner != OWNER_PRIVATE and "foreclosed" not in f.economy:
         raise OrderFailed("reason_not_private", facility=f.kind)
+    # 議会にかける前に、今の国庫で買い取れるかを見る（実行のときにも見直す）
+    price = _nationalize_price(island, f)
+    if funds.available(island, Payer(ledger.GOV)) < price:
+        raise OrderFailed("reason_treasury_short", amount=price)
+
+
+def _nationalize_price(island: IslandState, f: Facility) -> int:
+    """国有化の値段: 純資産（差し押さえ中なら銀行の売り値）。"""
+    seized = f.economy.get("foreclosed")
+    return seized["price"] if seized else banks.net_assets(island, f, facility_entity(f.id))
 
 
 def nationalize(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
@@ -1299,7 +1315,7 @@ def nationalize(island: IslandState, payload: dict[str, Any], ctx: StageContext)
     assert f is not None
     entity = facility_entity(f.id)
     seized = f.economy.get("foreclosed")
-    price = seized["price"] if seized else banks.net_assets(island, f, entity)
+    price = _nationalize_price(island, f)
     payer = Payer(ledger.GOV)
     if funds.available(island, payer) < price:
         raise OrderFailed("reason_treasury_short", amount=price)
@@ -1330,6 +1346,13 @@ def check_privatize(island: IslandState, payload: dict[str, Any], defs: Defs) ->
         raise OrderFailed("reason_not_state_owned", facility=f.kind)
     if is_public_service(defs, f) or not private_allowed(defs, island, f.kind):
         raise OrderFailed("reason_cannot_privatize", facility=f.kind)
+    if OWNERS not in island.economy.households:
+        raise OrderFailed("reason_cannot_privatize", facility=f.kind)
+    # 議会にかける前に、資本家の預金で今の純資産を払えるかを見る（国庫直轄の施設は実行のときに
+    # 運転資金を出資するので、値段はそのぶん高くなる。実行のときに見直す）
+    price = banks.net_assets(island, f, facility_entity(f.id))
+    if funds.available(island, Payer(household(OWNERS))) < price:
+        raise OrderFailed("reason_owners_short", amount=price)
 
 
 def privatize(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
@@ -1340,9 +1363,16 @@ def privatize(island: IslandState, payload: dict[str, Any], ctx: StageContext) -
     owners = Payer(household(OWNERS))
     if OWNERS not in island.economy.households:
         raise OrderFailed("reason_cannot_privatize", facility=f.kind)
-    if f.accounting == ACCOUNTING_TREASURY:
+    treasury = f.accounting == ACCOUNTING_TREASURY
+    capital = Payer(ledger.GOV, STATE_FACILITIES)
+    # 払えないときは、会計を変えて出資する前に断る（断った後に独立採算のまま残さない）
+    extra = operating_capital(island, ctx.defs, ctx.config, f, capital) if treasury else 0
+    price = banks.net_assets(island, f, entity) + extra
+    if funds.available(island, owners) < price:
+        raise OrderFailed("reason_owners_short", amount=price)
+    if treasury:
         f.accounting = ACCOUNTING_SELF
-        fund_facility(island, ctx.defs, ctx.config, f, Payer(ledger.GOV, STATE_FACILITIES))
+        fund_facility(island, ctx.defs, ctx.config, f, capital)
     price = banks.net_assets(island, f, entity)
     if funds.available(island, owners) < price:
         raise OrderFailed("reason_owners_short", amount=price)
@@ -1372,8 +1402,22 @@ def _working_members(island: IslandState, number: int) -> list[Facility]:
 
 def check_nationalize_firm(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
     _firm_of_order(island, payload, OWNER_PRIVATE)
-    if not _working_members(island, payload["firm"]):
+    working = _working_members(island, payload["firm"])
+    if not working:
         raise OrderFailed("reason_firm_empty")
+    price = _firm_price(island, payload["firm"], working)
+    if funds.available(island, Payer(ledger.GOV)) < price:
+        raise OrderFailed("reason_treasury_short", amount=price)
+
+
+def _firm_price(island: IslandState, number: int, working: list[Facility]) -> int:
+    """企業の国有化の値段: 企業の預金（未払いの税を引く）と、動いている施設の純資産の和。"""
+    name = companies.entity(number)
+    owed = arrears.total(island, name, arrears.TAX_ARREARS)
+    cash = ledger.money(island, name)
+    return max(0, cash - owed) + sum(
+        banks.net_assets(island, f, facility_entity(f.id)) for f in working
+    )
 
 
 def nationalize_firm(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
@@ -1384,11 +1428,7 @@ def nationalize_firm(island: IslandState, payload: dict[str, Any], ctx: StageCon
     number = payload["firm"]
     name = companies.entity(number)
     working = _working_members(island, number)
-    owed = arrears.total(island, name, arrears.TAX_ARREARS)
-    cash = ledger.money(island, name)
-    price = max(0, cash - owed) + sum(
-        banks.net_assets(island, f, facility_entity(f.id)) for f in working
-    )
+    price = _firm_price(island, number, working)
     payer = Payer(ledger.GOV)
     if funds.available(island, payer) < price:
         raise OrderFailed("reason_treasury_short", amount=price)
@@ -1430,10 +1470,13 @@ def nationalize_firm(island: IslandState, payload: dict[str, Any], ctx: StageCon
 
 def check_privatize_firm(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
     _firm_of_order(island, payload, OWNER_STATE)
-    if not [
-        f for f in _working_members(island, payload["firm"]) if _can_privatize(island, defs, f)
-    ]:
+    sold = [f for f in _working_members(island, payload["firm"]) if _can_privatize(island, defs, f)]
+    if not sold or OWNERS not in island.economy.households:
         raise OrderFailed("reason_firm_cannot_privatize")
+    # 議会にかける前に、資本家の預金で今の純資産を払えるかを見る（実行のときに見直す）
+    price = sum(banks.net_assets(island, f, facility_entity(f.id)) for f in sold)
+    if funds.available(island, Payer(household(OWNERS))) < price:
+        raise OrderFailed("reason_owners_short", amount=price)
 
 
 def _can_privatize(island: IslandState, defs: Defs, f: Facility) -> bool:
@@ -1452,10 +1495,19 @@ def privatize_firm(island: IslandState, payload: dict[str, Any], ctx: StageConte
     owners = Payer(household(OWNERS))
     if OWNERS not in island.economy.households:
         raise OrderFailed("reason_firm_cannot_privatize")
-    for f in sold:
-        if f.accounting == ACCOUNTING_TREASURY:
-            f.accounting = ACCOUNTING_SELF
-            fund_facility(island, ctx.defs, ctx.config, f, Payer(ledger.GOV, STATE_FACILITIES))
+    capital = Payer(ledger.GOV, STATE_FACILITIES)
+    treasury = [f for f in sold if f.accounting == ACCOUNTING_TREASURY]
+    # 払えないときは、会計を変えて出資する前に断る（出資する額は手元の残りに合わせて順に見積もる）
+    extra, left = 0, funds.available(island, capital)
+    for f in treasury:
+        amount = min(left, operating_capital(island, ctx.defs, ctx.config, f, capital))
+        extra, left = extra + amount, left - amount
+    price = sum(banks.net_assets(island, f, facility_entity(f.id)) for f in sold) + extra
+    if funds.available(island, owners) < price:
+        raise OrderFailed("reason_owners_short", amount=price)
+    for f in treasury:
+        f.accounting = ACCOUNTING_SELF
+        fund_facility(island, ctx.defs, ctx.config, f, capital)
     price = sum(banks.net_assets(island, f, facility_entity(f.id)) for f in sold)
     if funds.available(island, owners) < price:
         raise OrderFailed("reason_owners_short", amount=price)

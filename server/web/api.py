@@ -735,11 +735,15 @@ def check(request, island_id: int):
         body = json.loads(request.body or b"{}")
     except ValueError:
         return HttpResponseBadRequest("JSON で送ってください")
+    if not isinstance(body, dict) or not isinstance(body.get("payload", {}), dict):
+        return HttpResponseBadRequest("命令は1つずつ {kind, payload} の形で送ってください")
     state = load_island(island)
     payload = display.order_payload(body.get("kind"), body.get("payload"), to_game=True)
     result = check_order(get_game().defs, get_game().registry, state, body.get("kind"), payload)
     text = "" if result.ok else display.message(result.reason or "", **result.args)
     data = {"ok": result.ok, "text": text, "details": list(result.details)}
+    if result.ok:  # どう読んだか（率の % や量の単位）を見られるように、命令の列と同じ説明を添える
+        data["summary"] = display.describe_order(body["kind"], body.get("payload") or {})
     if result.ok and body.get("kind") == "build":
         # 建てても人手が集まるかを見られるように、通勤圏の労働者の数を添える
         payload = body["payload"]

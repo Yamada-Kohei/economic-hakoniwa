@@ -125,6 +125,9 @@ SITE = "site"
 WORKS = "works"  # インフラの公共事業
 HOUSEHOLD = "household"
 STORE = "warehouse"
+# 命令で出した国の倉庫の注文（財, 売り買い, 命令の量, 出した注文）。板寄せの後に結果をログに出す
+WAREHOUSE_PLACED = "warehouse_placed"
+WAREHOUSE_BUDGET = "warehouse"  # 年の予算の項目（国の倉庫の買い入れ費）
 REBUILD = "rebuild"  # 首都の建物の建て替えの資材（フェーズ3-4。modules/politics）
 REPAIR = "repair"  # 傷んだ設備を直す資材（回6。economy/equipment.py）
 MERCHANT = "merchant"  # 海外の商人（フェーズ3-1）
@@ -652,6 +655,8 @@ class Market(IslandStage):
             self._clear(island, ctx, good, books_by_good, official, persons, results, stale)
         self._retail(island, ctx, books_by_good, official, persons, results, stale)
         self._record_shortages(books_by_good, results, stale)
+        self._warehouse_results(island, books_by_good, results)
+        self._refresh_waiting(island, ctx)
         for f, good, qty, cost in island.scratch.pop(REPAIR, []):  # 直す資材を設備に入れる（回6）
             equipment.install(defs, f, good, qty, cost)
         self._trade_settled(island, ctx, rates)
@@ -1105,6 +1110,21 @@ class Market(IslandStage):
             if scaled > 0:
                 out[good] = (scaled, limit)
         return out
+
+    @staticmethod
+    def _refresh_waiting(island: IslandState, ctx: StageContext) -> None:
+        """倉庫や市場から資材が届いた工事は、次の1段分がそろえば「資材待ち」を消す（工事の段は市場の
+        段より前なので、消さないと届いた後も1ターン資材待ちと出る）。"""
+        for f in island.facilities:
+            waiting = f.ext.get("waiting")
+            if f.built or not waiting:
+                continue
+            need = fac.step_materials(ctx.defs, f)
+            left = [g for g in waiting if stock.total(f.stock, g) < need.get(g, 0)]
+            if left:
+                f.ext["waiting"] = left
+            else:
+                f.ext.pop("waiting", None)
 
     def _supply_sites_from_warehouse(self, island: IslandState, ctx: StageContext) -> None:
         """国の工事は、国の倉庫にある資材を先に使う（次の1ターン分まで）。民営の工事は市場で買う
@@ -2015,13 +2035,17 @@ class Market(IslandStage):
         まで。"""
         orders = island.economy.ext.pop("warehouse_orders", [])
         offered: dict[str, int] = {}
+        placed: list[tuple[str, str, int, Order | None]] = []  # 命令の注文（結果をログに出す）
 
-        def sell(good: str, qty: int, limit: int | None, layer: str | None = None) -> None:
+        def sell(good: str, qty: int, limit: int | None, layer: str | None = None) -> Order | None:
             qty = min(qty, stock.total(island.warehouse, good) - offered.get(good, 0))
-            if qty > 0:
-                offered[good] = offered.get(good, 0) + qty
-                party = Party(STORE, ledger.GOV, Payer(ledger.GOV, WAREHOUSE), layer=layer)
-                self._add(books_by_good, good, "sell", Order(qty, limit), party)
+            if qty <= 0:
+                return None
+            offered[good] = offered.get(good, 0) + qty
+            party = Party(STORE, ledger.GOV, Payer(ledger.GOV, WAREHOUSE), layer=layer)
+            order = Order(qty, limit)
+            self._add(books_by_good, good, "sell", order, party)
+            return order
 
         for good, qty in sorted(trade.to_market(island).items()):
             # 傷みやすい物は値段を問わず、契約で「市場に出す」と決めた物と閉じた施設から引き取った
@@ -2031,15 +2055,58 @@ class Market(IslandStage):
         for item in orders:
             good, qty, limit = item["good"], item["quantity"], item["limit"]
             if item["side"] == "sell":
-                sell(good, qty, limit or None)
+                placed.append((good, "sell", qty, sell(good, qty, limit or None)))
                 continue
             buyer = Payer(ledger.GOV, WAREHOUSE)
             plan = self._afford(island, buyer, {good: (qty, limit)}, 0, 0)
+            order = None
             for g, (q, lim) in plan.items():
                 party = Party(STORE, ledger.GOV, buyer)
                 party.reserved = gross_cost(lim, q, 0, 0)
                 funds.commit(island, buyer, party.reserved)
-                self._add(books_by_good, g, "buy", Order(q, lim), party)
+                order = Order(q, lim)
+                self._add(books_by_good, g, "buy", order, party)
+            placed.append((good, "buy", qty, order))
+        island.scratch[WAREHOUSE_PLACED] = placed
+
+    @staticmethod
+    def _warehouse_results(
+        island: IslandState, books_by_good: dict[str, Book], results: dict[str, auction.Result]
+    ) -> None:
+        """命令で出した国の倉庫の売り買いの結果（約定した量と、足りなかったわけ）をログに出す。"""
+        for good, side, wanted, order in island.scratch.pop(WAREHOUSE_PLACED, []):
+            book, result = books_by_good.get(good), results.get(good)
+            filled = 0
+            if order is not None and book is not None and result is not None:
+                rows = book.buys if side == "buy" else book.sells
+                done = result.bought if side == "buy" else result.sold
+                for i, (o, _) in enumerate(rows):
+                    if o is order and i < len(done):
+                        filled = done[i]
+                        break
+            args: dict[str, Any] = {
+                "good": good,
+                "amount": wanted / QUANTITY_SCALE,
+                "filled": filled / QUANTITY_SCALE,
+            }
+            if filled >= wanted:
+                island.log.append(LogEntry(f"warehouse_{side}_result", args))
+                continue
+            placed_qty = order.quantity if order is not None else 0
+            if placed_qty < wanted:  # 注文の前に削った（予算・倉庫の残り）
+                why = "budget" if side == "buy" else "stock"
+            elif result is None or (result.supply if side == "buy" else result.demand) <= 0:
+                why = "no_sellers" if side == "buy" else "no_buyers"
+            elif (
+                order is not None
+                and order.limit
+                and (order.limit < result.price if side == "buy" else order.limit > result.price)
+            ):
+                why = "limit"
+            else:
+                why = "few_sellers" if side == "buy" else "few_buyers"
+            args["reason"] = f"warehouse_why_{why}"
+            island.log.append(LogEntry(f"warehouse_{side}_short", args))
 
     # --- 貿易（フェーズ3-1） -----------------------------------------------------------
 
@@ -2771,6 +2838,10 @@ def check_warehouse_trade(island: IslandState, payload: dict[str, Any], defs: De
         raise OrderFailed("reason_not_in_warehouse", good=payload["good"])
     if payload["side"] == "buy" and payload.get("limit", 0) <= 0:
         raise OrderFailed("reason_limit_required")
+    # 買い入れの予算が 0 なら1つも買えない（建国のときは 0。同じターンの予算の命令が先なら、実行の
+    # ときには通る）
+    if payload["side"] == "buy" and island.policy.budget.get(WAREHOUSE_BUDGET, 0) <= 0:
+        raise OrderFailed("reason_warehouse_no_budget")
 
 
 def warehouse_trade(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:

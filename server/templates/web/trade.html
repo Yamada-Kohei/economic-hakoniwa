@@ -372,7 +372,7 @@
               <td>{{ s.direction_name }}</td><td>{{ s.partner_name }}</td><td>{{ s.name }}</td><td>{{ s.amount }} {{ s.unit }}</td>
               <td>{% blocktranslate with t=s.load %}{{ t }} トン{% endblocktranslate %}</td>
               <td>{{ s.loaded|turn_date }}</td><td>{{ s.arrive|turn_date }}</td>
-              <td>{{ s.kind_name }}</td>
+              <td>{{ s.kind_name }}{% if s.bloc_name %}（{{ s.bloc_name }}）{% endif %}</td>
             </tr>
             {% endfor %}
           </tbody>

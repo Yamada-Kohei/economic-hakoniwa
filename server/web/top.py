@@ -51,6 +51,7 @@ HEADLINES = (
     "facility_bankrupt",
     "firm_bankrupt",
     "famine_flight",
+    "famine_flight_jobless",
     "population_starved",
     "population_hunger_deaths",
     "trade_started",

@@ -771,3 +771,30 @@ def test_transport_keeps_freight_income_to_hire_drivers(game):
     assert ledger.money(island, entity) >= payroll
     run(game, island, stages)
     assert carrier.workers == payroll // carrier.economy["wage"] > 0
+
+
+# --- 試し遊び1回目（2026-10-20）の直し: 国の倉庫の売り買いの結果をログに出す ------------------
+
+
+def test_warehouse_orders_log_what_was_filled_and_why_not(game):
+    """国の倉庫の売り買いは、約定した量と、足りなかったわけをログに出す（予算 0 の買いは、注文を
+    出せなかったわけを「予算」と書く）。"""
+    island = make_island(game)
+    home(game, island, 5, 5, 3000, level="town")
+    home(game, island, 2, 13, 20000, level="metropolis")
+    with_economy(game, island)
+    island.policy.budget["warehouse"] = 12  # 1ターンに 1 まで（少しも買えない）
+    stock.add(island.warehouse, "wood", 20_000, 0, game.defs.goods)
+    sell = {"good": "wood", "side": "sell", "quantity": 20}
+    buy = {"good": "coal", "side": "buy", "quantity": 5, "limit": 10**6}
+    stages = ["execute_orders", "budget", "employment", "market"]
+    run(game, island, stages, orders=[("warehouse_trade", sell)])
+    kinds = {e.kind: e for e in island.log}
+    run(game, island, stages, orders=[("warehouse_trade", buy)])  # 行政力は1ターンに1つ分
+    kinds.update({e.kind: e for e in island.log})
+    bought = kinds["warehouse_buy_short"]
+    assert bought.args["reason"] == "warehouse_why_budget" and bought.args["filled"] == 0
+    sold = kinds.get("warehouse_sell_result") or kinds["warehouse_sell_short"]
+    assert sold.args["amount"] == 20
+    text = format_log(game.defs, "warehouse_buy_short", bought.args)
+    assert "予算" in text and "トン" in text

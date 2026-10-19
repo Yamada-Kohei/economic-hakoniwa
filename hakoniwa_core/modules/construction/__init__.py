@@ -157,6 +157,12 @@ NO_WORKERS_TURNS = 2
 NO_MATERIALS_TURNS = 2
 
 
+def _where(f: Facility) -> dict[str, int]:
+    """ログに書く施設の場所。町の中の店は町のマス（施設の位置は負で、本当のマスは ext にある）。"""
+    x, y = fac.position(f)
+    return {"x": x, "y": y}
+
+
 class Construction(IslandStage):
     """工事中の施設とインフラの公共事業を、手元の資材と雇えた人手の分だけ進める。"""
 
@@ -197,7 +203,7 @@ class Construction(IslandStage):
         turns = f.ext.get("no_workers_turns", 0) + 1
         f.ext["no_workers_turns"] = turns
         if turns == NO_WORKERS_TURNS:
-            args = {"facility": f.kind, "x": f.x, "y": f.y}
+            args = {"facility": f.kind, **_where(f)}
             why = "wages" if f.ext.get("short_wages") else "workers"
             if why == "wages" and is_private_site(f):  # 足りないのは会社のお金
                 why += "_private"
@@ -223,7 +229,7 @@ class Construction(IslandStage):
         turns = f.ext.get("no_materials_turns", 0) + 1
         f.ext["no_materials_turns"] = turns
         if turns == NO_MATERIALS_TURNS:
-            args = {"facility": f.kind, "x": f.x, "y": f.y, "goods": f.ext["waiting"]}
+            args = {"facility": f.kind, **_where(f), "goods": f.ext["waiting"]}
             why = "funds" if f.ext.get("short_funds") else "materials"
             if why == "funds" and is_private_site(f):
                 why += "_private"
@@ -240,13 +246,11 @@ class Construction(IslandStage):
             f.ext.pop(key, None)
         if f.ext.pop("repair", False):
             # 暴動で壊れた施設を直し終えた（フェーズ3-4）。在庫と帳簿と設備の額はそのまま動き出す
-            island.log.append(
-                LogEntry("facility_repaired", {"facility": f.kind, "x": f.x, "y": f.y})
-            )
+            island.log.append(LogEntry("facility_repaired", {"facility": f.kind, **_where(f)}))
             return
         stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
         f.ext[fac.FINISHED] = ctx.turn  # 民営の作り方の見直しが、売り出した後の値段を待つ（回6）
-        island.log.append(LogEntry("construction_done", {"facility": f.kind, "x": f.x, "y": f.y}))
+        island.log.append(LogEntry("construction_done", {"facility": f.kind, **_where(f)}))
         if not island.has_economy:
             return
         freight.forget(island)  # 取引の相手が変わるので、運賃の率を計算し直す

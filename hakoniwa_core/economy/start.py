@@ -336,6 +336,17 @@ def _open_money(
         ledger.pay(island, bank, ledger.CB, amount, "bond_purchase")
 
 
+def operating_capital(
+    island: IslandState, defs: Defs, config: GameConfig, f: Facility, payer: Payer
+) -> int:
+    """fund_facility で出資する額（firms.operating_turns ターン分の支払い。payer の手元まで）。"""
+    rate = freight_rates.rate_of(island, defs, config, f)
+    prices = dict(island.economy.prices)
+    wage = f.economy.get("wage") or island.economy.average_wage
+    want = config.get("firms.operating_turns") * operating_cost(defs, config, f, prices, wage, rate)
+    return min(want, funds.available(island, payer))
+
+
 def fund_facility(
     island: IslandState, defs: Defs, config: GameConfig, f: Facility, payer: Payer
 ) -> int:
@@ -343,11 +354,7 @@ def fund_facility(
 
     工事が済んだときと、会計の形を国庫直轄から独立採算に変えたときに使う。出資した額を返す。
     """
-    rate = freight_rates.rate_of(island, defs, config, f)
-    prices = dict(island.economy.prices)
-    wage = f.economy.get("wage") or island.economy.average_wage
-    want = config.get("firms.operating_turns") * operating_cost(defs, config, f, prices, wage, rate)
-    amount = min(want, funds.available(island, payer))
+    amount = operating_capital(island, defs, config, f, payer)
     if amount > 0:
         funds.pay(island, payer, facility_entity(f.id), amount, "capital_injection")
         ledger.create(

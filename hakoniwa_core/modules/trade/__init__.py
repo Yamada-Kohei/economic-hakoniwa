@@ -95,6 +95,8 @@ WHY_SHIPS = "ships"  # 空いている輸送船が足りない
 WHY_CAPACITY = "capacity"  # 商社の1ターンに扱える重さの上限
 WHY_MONEY = "money"  # 払う決済通貨（外貨）が足りない
 WHY_SELLERS = "sellers"  # 圏の売りが足りないか、売りの指値が高い
+WHY_BUYERS = "buyers"  # 圏の買いが足りないか、買いの指値が安い（輸出）
+WHY_FUNDS = "funds"  # 払うお金（商社の預金）が足りない（決済通貨が自国の通貨のとき）
 WHY_QUOTA = "quota"  # 輸入の割り当て（フェーズ3-3）の上限まで買った
 
 
@@ -855,6 +857,10 @@ class _Round:
                     item = traders.entry(bid.facility, good)
                     if got < order.quantity and "why" not in item:
                         item["why"] = WHY_SELLERS
+                for order, ask, got in zip(sells, asks, result.sold, strict=True):
+                    item = traders.entry(ask.facility, good)
+                    if got < order.quantity and "why" not in item:
+                        item["why"] = WHY_BUYERS
                 volume = 0
                 if result.volume > 0:
                     volume = self._settle_bloc(bloc, good, result.price, result, bids, asks)
@@ -954,6 +960,7 @@ class _Round:
                 entity = entity_of(self.config, f)
                 left = budgets.setdefault(f.id + m * 10**6, cap)
                 if item.get("dir") == traders.EXPORT and item.get("bx") == bloc["id"]:
+                    item.pop("why", None)
                     qty = min(stock.total(f.stock, good), self._port_room(island, good))
                     if unit > 0:
                         qty = min(qty, left * QUANTITY_SCALE // unit)
@@ -1057,7 +1064,8 @@ class _Round:
         if island.id == currency:  # 運賃と使用料も同じお金から払う
             money = money * BASIS // (BASIS + (freight_unit + fee_unit) * BASIS // max(1, limit))
         if money * QUANTITY_SCALE // limit < want:
-            want, why = money * QUANTITY_SCALE // limit, WHY_MONEY
+            short = WHY_FUNDS if island.id == currency else WHY_MONEY
+            want, why = money * QUANTITY_SCALE // limit, short
         if why is not None:
             item["why"] = why
         if want <= 0:

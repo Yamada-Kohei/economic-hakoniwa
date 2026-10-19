@@ -160,7 +160,7 @@ def prospects(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, 
         home = prices.get(good, 0)
         subsidy = policy.export_subsidy(island, good)  # 輸出補助（フェーズ3-3）
         tariff = policy.tariff_rate(island, good)  # 関税（フェーズ3-3）
-        best_gap = None
+        best: tuple[bool, float] | None = None  # 輸入の圏の選び方（売りがあったか, 指値との開き）
         for key, view in sorted(views(island).items(), key=lambda kv: int(kv[0])):
             price = view.get("prices", {}).get(good)
             if not price or view.get("members", 0) < 2:
@@ -195,9 +195,12 @@ def prospects(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, 
                 continue
             own = home - part(home, cut) - freight_unit - fee_unit
             bid = own * BASIS // max(1, policy.with_tariff(e, rate))
-            gap = (bid - price) / price
-            if bid > 0 and (best_gap is None or gap > best_gap):
-                best_gap = gap
+            # 前のターンに売りのあった圏を先に選ぶ（商社は取引の成り立つ市場に注文を出す。2 つの圏に
+            # 入った国どうしで、売りと買いが別の圏に分かれ、どちらも約定しないままになっていた。試し
+            # 遊び1回目）。どの圏にも売りがなければ、開きの一番大きい圏で買い注文を出して売りを待つ
+            rank = (on_sale, (bid - price) / price)
+            if bid > 0 and (best is None or rank > best):
+                best = rank
                 p.import_bloc, p.import_currency = int(key), currency
                 p.import_price, p.import_limit = price, bid
                 p.import_rate = own * BASIS // max(1, policy.with_tariff(price, rate))

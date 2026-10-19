@@ -486,7 +486,8 @@ def _map(request, args):
         if on_map:
             grid[row.y][row.x] = "F" if row.built else "f"
         f = facility_from_row(row)
-        where = f"({row.x},{row.y})" if on_map else "(マスなし)"
+        x, y = fac.position(f)  # 町の中の店は町のマス
+        where = f"({x},{y})" if x >= 0 and y >= 0 else "(マスなし)"
         state_text = display.status_text(f)
         rate = f" 稼働 {round(row.operating_rate * 100 / fac.FULL)}%" if row.built else ""
         worn = display.equipment_info(game.defs, game.config, f) if row.built else {}

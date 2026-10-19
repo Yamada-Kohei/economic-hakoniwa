@@ -39,6 +39,7 @@ _ARG_KINDS = {
     "economy": "regimes",
     "before": "regimes",
     "building": "messages",
+    "policy": "messages",
 }
 # マスを持たない施設（x, y が負）の場所の書き方: 文面のこの部分を、表示名 OFF_MAP_TO に置き換える
 OFF_MAP_FROM = "({x}, {y}) の"

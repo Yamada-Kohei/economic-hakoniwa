@@ -122,6 +122,8 @@ WHY_NAMES = {
     trade_stage.WHY_CAPACITY: "商社の1ターンに扱える重さの上限に届いた",
     trade_stage.WHY_MONEY: "払う決済通貨が足りない（為替で買えた外貨が足りない）",
     trade_stage.WHY_SELLERS: "圏の売りが足りないか、売りの値段が高い",
+    trade_stage.WHY_BUYERS: "圏の買いが足りないか、買いの値段が安い",
+    trade_stage.WHY_FUNDS: "払うお金（商社の預金）が足りない",
     trade_stage.WHY_QUOTA: "輸入の割り当ての上限まで買った",
 }
 SHIPMENT_KINDS = {"bloc": "貿易圏", "contract": "二国間契約"}
@@ -386,7 +388,7 @@ def trade_data(
     data["contracts"] = contract_rows(state["contracts"], island.id, world.turn, islands)
     data["traders"] = trader_rows(here, islands, state["blocs"])
     data["fleet"] = fleet_view(island, here, stats)
-    data["shipments"] = shipment_rows(state["shipments"], island.id, islands)
+    data["shipments"] = shipment_rows(state["shipments"], island.id, islands, state["blocs"])
     data["merchant"] = merchant_view(here, world.turn)
     data["partners"] = [
         {"id": i, "name": _name(islands, i), "currency_name": _currency(islands, i)}
@@ -580,9 +582,7 @@ def trader_rows(
                     "age": item.get("age", 0),  # 売れ残ったターン数
                     "bloc": bloc,
                     "bloc_name": names.get(bloc, "") if bloc is not None else "",
-                    "why": WHY_NAMES.get(item.get("why"), "")
-                    if direction == traders.IMPORT
-                    else "",
+                    "why": WHY_NAMES.get(item.get("why"), "") if direction else "",
                 }
             )
         out.append(
@@ -660,10 +660,14 @@ def fleet_view(island: m.Island, here: IslandState, stats: dict[str, float]) -> 
 
 
 def shipment_rows(
-    shipments: list[dict[str, Any]], island_id: int, islands: dict[int, dict[str, Any]]
+    shipments: list[dict[str, Any]],
+    island_id: int,
+    islands: dict[int, dict[str, Any]],
+    blocs: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """島が積み出したか受け取る、運ぶ途中の荷（着く順）。"""
+    """島が積み出したか受け取る、運ぶ途中の荷（着く順）。圏の荷は、どの圏で約定したかも出す。"""
     defs = get_game().defs
+    names = {b["id"]: b["name"] for b in blocs or []}
     rows = []
     for s in shipments:
         if island_id not in (s["from"], s["to"]):
@@ -679,6 +683,7 @@ def shipment_rows(
                 "partner_name": _name(islands, partner),
                 "kind": s["kind"],
                 "kind_name": SHIPMENT_KINDS.get(s["kind"], s["kind"]),
+                "bloc_name": names.get(s.get("ref"), "") if s["kind"] == "bloc" else "",
                 "good": s["good"],
                 "name": defs.name("goods", s["good"]),
                 "unit": defs.unit_name(s["good"]),
