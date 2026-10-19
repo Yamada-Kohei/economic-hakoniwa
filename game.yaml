@@ -315,6 +315,8 @@ firms:
   # 建ってから price_turns ターンたっていなければ待つ
   entry_margin: 0.03    # 体制の特色 entry_margin があればそちら（市場経済は 0.01。regimes.yaml）
   entries_per_turn: 1   # 1つの島で1ターンに建つ数
+  # 工業団地のほかに、指定のない人の住んでいないマスにも建つ施設（回6。開墾は国の用途の指定を待たない）
+  open_land: [farm, fishing_port]
   equity_share: 0.3     # 建設費のうち資産を持つ層が出資する割合（残りは建設資金の融資）
   price_turns: 6        # 参入の計算で値段を平均するターン数
   shortage_turns: 3

@@ -36,7 +36,7 @@
 | FM-13 | 民営工場の参入は参入と撤退の段で決める。見込みの年の利益率（式 `entry_return`）に売れる見込みの割合を掛け、借りるときの金利＋上乗せを上回れば建つ | 決定 | `firms.entry_margin`, `firms.price_turns` | tests/core/test_finance.py::test_entry_fill_follows_shortage_size |
 | FM-14 | 参入の合図は、その財が品切れ続き（足りない量が新しい工場の全力の決めた割合以上のターンが、直近の決めたターンのうち決めた数以上）か、値段が原価の決めた倍率を超えていること | 決定 | `firms.entry_gap`, `firms.shortage_turns`, `firms.price_turns`, `firms.cost_ratio` | tests/core/test_finance.py::test_entry_fill_follows_shortage_size |
 | FM-15 | 原料のどれかが島で作られていない作り方、工事の資材が島で作られず売りにも出ていない、原料が品切れ続き、原料を作る施設が上限で原料の空きが足りない、のどれかなら建たない | 決定 | `firms.price_turns`, `firms.entry_gap` | tests/core/test_finance.py::test_private_entry_needs_inputs_on_the_island, ::test_entry_waits_while_inputs_are_short, ::test_entry_needs_spare_input_when_its_source_is_capped |
-| FM-16 | 民営工場が建つのは空いた工業団地のマスだけ。地形と資源が合い、通勤圏の失業者が要る人数に見合うマスのうち、運賃の率が一番低いマスに、1つの島で1ターンに決めた数まで建つ。混合経済の基幹産業と計画経済の島では建たない | 決定 | `firms.entries_per_turn` | tests/core/test_finance.py::test_private_entry_happens_only_where_allowed |
+| FM-16 | 民営工場が建つのは空いた工業団地のマスだけ（農場と漁港は、指定のない人の住んでいないマスにも建つ。回6）。地形と資源が合い、通勤圏の失業者が要る人数に見合うマスのうち、運賃の率が一番低いマスに、1つの島で1ターンに決めた数まで建つ。混合経済の基幹産業と計画経済の島では建たない | 決定 | `firms.entries_per_turn`, `firms.open_land` | tests/core/test_finance.py::test_private_entry_happens_only_where_allowed, tests/core/test_balance_round6.py::test_farms_and_fishing_ports_open_on_land_with_no_use_set |
 | FM-17 | 建設費（1割増しと動き出しの支払い分を足す）の決めた割合を資本家階級が出資し、残りを銀行の建設資金で借りる。借りきれなければ多く出資し、出資しきれなければ建たない | 決定 | `firms.equity_share`, `firms.operating_turns` | tests/core/test_playtest3_fixes.py::test_private_entry_waits_for_lending |
 | FM-18 | 設備投資補助のある参入では、補助を参入のときに補助金の予算から先に出す。差し押さえ中の施設があれば、その買い取り値を建設費として新しく建てる案と比べる | 決定 | `firms.foreclosure_price` | tests/core/test_playtest_fixes.py::test_capital_subsidy_is_paid_at_entry |
 | FM-19 | 民営工場と民間銀行が建たないわけ（工業団地がない・働き手がいない・出資が足りない・融資が断られた・儲からない・オフィス街がない）を島に残し、変わったときにログで知らせる | 決定 |  | tests/core/test_playtest_fixes.py::test_entry_block_is_recorded_and_logged_once |
@@ -122,7 +122,7 @@ R = \frac{12 \times \left(P_{\mathrm{out}} Q - \sum P_{\mathrm{in}} q_{\mathrm{i
 - R に売れる見込みの割合を掛け、「借りるときの金利＋`firms.entry_margin`」（体制の特色があればそちら）と比べる。割合は、値段が合図なら直近の買いたい量÷（今ある施設と新しい工場の全力の産出）、品切れが合図なら足りない量÷新しい工場の全力（どちらも1まで）。売買のない財で値段だけ見て建て、売れずに倒れるのを防ぐ。
 - 合図: その財が品切れ続き（`firms.entry_gap` 以上足りないターンが直近 `firms.price_turns` のうち `firms.shortage_turns` 以上）か、値段が原価の `firms.cost_ratio` 倍を超えていること。
 - 建たないとき: 原料のどれかが島で作られていない、工事の資材が島で作られず売りにも出ていない、原料が品切れ続き、原料を作る施設を島にこれ以上建てられず原料の空きが足りない。国の倉庫の物は、政府が売りに出さなければ民間は買えない。ほかの施設が替えたばかり・替えると決めた財は選ばない。
-- 場所: 空いた工業団地のマスのうち、地形と資源が合い、通勤圏に要る人数に見合う失業者がいて、運賃の率が一番低いマス。人のいない所に建てて雇えずに倒産しないようにする。1つの島で1ターンに `firms.entries_per_turn` 件まで、R の大きい順に建つ。
+- 場所: 空いた工業団地のマスのうち、地形と資源が合い、通勤圏に要る人数に見合う失業者がいて、運賃の率が一番低いマス。人のいない所に建てて雇えずに倒産しないようにする。農場と漁港（`firms.open_land`）は、工業団地のほかに、指定のない人の住んでいないマスも候補にする（回6。現実の開墾は国が土地の用途を決めるのを待たない。命令を出さない国では工業団地が埋まると、魚が何倍に値上がりしても漁港が建たず、人が増えて飢饉になっていた。開発を止めるマスには建たない）。1つの島で1ターンに `firms.entries_per_turn` 件まで、R の大きい順に建つ。
 - 資金: 建設費の1割増しと動き出しの支払い分を合わせ、`firms.equity_share` を資本家階級の預金から出資し、残りを銀行の建設資金で借りる。借りきれなければ多く出資し、出資しきれなければ建たない。金利が高いほど参入が減るのは、この条件から。
 - 建たない島: 混合経済の基幹産業、計画経済の島。中央省庁・銀行・運送業・町は民間の参入で建たない（銀行の参入はタブ 7）。
 - 建たないわけを島に残し、変わったときにログで知らせ、金融の画面に出す。

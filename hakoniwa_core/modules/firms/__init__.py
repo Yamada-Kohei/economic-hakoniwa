@@ -730,16 +730,25 @@ class EntryExit(IslandStage):
         """建てる場所: 空いた工業団地のマスのうち、通勤圏の失業者と商業・サービス業の店で働く人
         （ほかの施設は店から引き抜ける。回4）が要る人数の半分以上いて、運賃の率が最も低いマス。
         なければ、そのわけ（no_zone: 地形の合う空いた工業団地のマスがない、no_workers: あるが
-        通勤圏に雇える人が足りない）。"""
+        通勤圏に雇える人が足りない）。
+
+        農場と漁港（firms.open_land）は、工業団地のほかに、指定のない人の住んでいないマスにも建つ
+        （回6。現実の開墾は国が土地の用途を決めるのを待たない。命令を出さない国では工業団地が
+        埋まると魚が何倍に値上がりしても漁港が建たず、人が増えて飢饉になった）。"""
         defs, config = ctx.defs, ctx.config
         need = fac.workers_needed(defs, kind)
         radius = fac.commute_radius(defs, config, kind)
         shop = services.staff_by_tile(island, config)
         occupied = island.facilities_by_tile()
+        open_land = kind in config.get("firms.open_land")
         spots = []
         fitting = 0
         for tile in island.tiles:
-            if tile.zone != ZONE_INDUSTRIAL or (tile.x, tile.y) in occupied:
+            if (tile.x, tile.y) in occupied:
+                continue
+            if tile.zone != ZONE_INDUSTRIAL and not (
+                open_land and tile.zone == ZONE_NONE and tile.population == 0
+            ):
                 continue
             if fac.placement_problem(defs, island, kind, tile.x, tile.y, rname) is not None:
                 continue

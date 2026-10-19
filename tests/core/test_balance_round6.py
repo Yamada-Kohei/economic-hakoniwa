@@ -9,6 +9,8 @@
 from __future__ import annotations
 
 import copy
+import random
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,8 +19,15 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core.economy import equipment, facility_entity
 from hakoniwa_core.economy.prices import initial_prices
 from hakoniwa_core.modules.accounts import Accounts
-from hakoniwa_core.modules.firms import remove_facility, restart
-from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE
+from hakoniwa_core.modules.events import Events
+from hakoniwa_core.modules.firms import EntryExit, remove_facility, restart
+from hakoniwa_core.state import (
+    OWNER_PRIVATE,
+    OWNER_STATE,
+    ZONE_INDUSTRIAL,
+    ZONE_NO_DEVELOPMENT,
+    ZONE_NONE,
+)
 from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.trade import blocs, shipping_of, ships
 from hakoniwa_core.units import QUANTITY_SCALE, money_of
@@ -258,6 +267,49 @@ def test_ships_are_replaced_before_they_retire(game, base):
 # --- 自動車の材料 -----------------------------------------------------------------------
 
 
+def test_farms_and_fishing_ports_open_on_land_with_no_use_set(game, base):
+    """工業団地がなくても、民営の農場と漁港は指定のない人の住んでいないマスに建つ（開墾は国の用途の
+    指定を待たない）。ほかの工場は工業団地にしか建たず、開発を止めるマスにはどれも建たない。"""
+    world = copy.deepcopy(base)
+    island = next(i for i in world.islands.values() if i.has_economy)
+    for tile in island.tiles:
+        if tile.zone == ZONE_INDUSTRIAL:
+            tile.zone = ZONE_NONE
+    ctx = context(game, world)
+    site = EntryExit()._site(island, ctx, "farm", "default")
+    assert not isinstance(site, str)
+    tile = island.tile(*site[0])
+    assert tile.zone == ZONE_NONE and tile.population == 0
+    assert EntryExit()._site(island, ctx, "steel_mill", "default") == "no_zone"
+    for t in island.tiles:
+        if t.zone == ZONE_NONE and t.population == 0:
+            t.zone = ZONE_NO_DEVELOPMENT
+    assert EntryExit()._site(island, ctx, "farm", "default") == "no_zone"
+
+
+def test_a_disaster_does_not_shorten_a_longer_halt(game, base):
+    """暴動などでもっと長く止まっている施設は、災害に遭っても早く動き出さない。"""
+    world = copy.deepcopy(base)
+    island = next(i for i in world.islands.values() if i.has_economy)
+    for f in island.facilities:
+        if f.built and not fac.is_housing(game.config, f):
+            f.ext["halted_until"] = world.turn + 100
+    settings = {**game.config.get("disasters"), "rate": 1.0}
+    config = SimpleNamespace(
+        get=lambda key: settings if key == "disasters" else game.config.get(key)
+    )
+    ctx = SimpleNamespace(
+        defs=game.defs, config=config, turn=world.turn + 1, rng=lambda _: random.Random(1)
+    )
+    Events().run_island(island, ctx)
+    assert any(e.kind.startswith("disaster_") for e in island.log)
+    assert all(
+        f.ext["halted_until"] == world.turn + 100
+        for f in island.facilities
+        if f.built and not fac.is_housing(game.config, f)
+    )
+
+
 def test_automobile_needs_the_parts_of_a_real_car(game):
     """自動車工場は鋼鉄・アルミ・化学品・衣料・機械・電力を使う（アルミのない作り方は鋼鉄で）。"""
     recipes = game.defs.facilities["automobile_plant"]["recipes"]
@@ -313,7 +365,8 @@ def test_halting_the_settlement_currency_island_keeps_the_world_running(game, ba
         stats = w.islands[target].stats
         made.append(goods_made(stats))
         gdp.append(stats.get("gdp", 0))
-        rates.append(max(f.operating_rate for f in halted))
+        # 止めている間に暴動で壊れた施設は、止めた印が消えて国が建て直し、動き出す（数えない）
+        rates.append(max((f.operating_rate for f in halted if "halted_until" in f.ext), default=0))
 
     before, usual = island.stats.get("gdp", 0), goods_made(island.stats)
     run_checked(game, world, 36, each)

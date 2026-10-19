@@ -80,7 +80,7 @@
 | PO-34 | 幸福度は式 `happiness`（`population.happiness`）で層ごとに出し… | 決定 | tests/core/test_phase3_4.py、tests/core/test_playtest3_fixes.py |
 | PO-35 | 前のフェーズから移し替えた島は、幸福度の重みをその時の重みから `population.blen`… | 決定 | tests/core/test_playtest3_fixes.py |
 | PO-36 | 汚染は施設が稼働率に応じて `facilities.yaml` の pollution の量を … | 決定 | tests/core/test_phase3_2.py |
-| PO-37 | 災害は 1 島 1 ターンに `disasters.rate` の確率で起き、施設 1 つが種類… | 決定 | tests/core/test_playtest3_fixes.py、tests/core/test_rules.py |
+| PO-37 | 災害は 1 島 1 ターンに `disasters.rate` の確率で起き、施設 1 つが種類… | 決定 | tests/core/test_balance_round6.py、tests/core/test_playtest3_fixes.py、tests/core/test_rules.py |
 | PO-38 | 国をまたぐ移民は、暮らしの見込み V（実質賃金 × 仕事の見つかる割合 × 食べられた割合）の対… | 決定 | tests/core/test_migration.py |
 | PO-39 | 動く組は仕事のある一般の家計・失業している家計・技術者の家計で、資本家階級は動かない | 決定 | tests/core/test_migration.py |
 | PO-40 | 受け入れは 1 年に住民の上限（既定 `migration.default_cap`）と町の空き… | 決定 | tests/core/test_migration.py |
@@ -198,7 +198,7 @@
 | FM-13 | 民営工場の参入は参入と撤退の段で決める | 決定 | tests/core/test_finance.py |
 | FM-14 | 参入の合図は、その財が品切れ続き（足りない量が新しい工場の全力の決めた割合以上のターンが、直近の… | 決定 | tests/core/test_finance.py |
 | FM-15 | 原料のどれかが島で作られていない作り方、工事の資材が島で作られず売りにも出ていない、原料が品切れ… | 決定 | tests/core/test_finance.py |
-| FM-16 | 民営工場が建つのは空いた工業団地のマスだけ | 決定 | tests/core/test_finance.py |
+| FM-16 | 民営工場が建つのは空いた工業団地のマスだけ（農場と漁港は、指定のない人の住んでいないマスにも建つ | 決定 | tests/core/test_balance_round6.py、tests/core/test_finance.py |
 | FM-17 | 建設費（1割増しと動き出しの支払い分を足す）の決めた割合を資本家階級が出資し、残りを銀行の建設資… | 決定 | tests/core/test_playtest3_fixes.py |
 | FM-18 | 設備投資補助のある参入では、補助を参入のときに補助金の予算から先に出す | 決定 | tests/core/test_playtest_fixes.py |
 | FM-19 | 民営工場と民間銀行が建たないわけ（工業団地がない・働き手がいない・出資が足りない・融資が断られた… | 決定 | tests/core/test_playtest_fixes.py |

@@ -26,8 +26,11 @@ class Events(IslandStage):
         kind = rng.choice(sorted(settings["kinds"]))
         low, high = settings["kinds"][kind]["halt_turns"]
         turns = rng.randint(low, high)
-        f.ext["halted_until"] = ctx.turn + turns
-        f.ext.pop("halt_reason", None)  # 暴動で止まっていた（フェーズ3-4）のを災害に変える
+        # 止まっている施設は、止まる期間を短くしない（暴動でもっと長く止まっている施設が、災害で
+        # 早く動き出していた。回6 の揺さぶりの試験で見つけた）
+        if ctx.turn + turns >= f.ext.get("halted_until", 0):
+            f.ext["halted_until"] = ctx.turn + turns
+            f.ext.pop("halt_reason", None)  # 暴動で止まっていた（フェーズ3-4）のを災害に変える
         if fac.on_map(f):
             args = {"facility": f.kind, "x": f.x, "y": f.y, "turns": turns}
             island.log.append(LogEntry(f"disaster_{kind}", args))
