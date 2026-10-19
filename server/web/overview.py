@@ -16,7 +16,7 @@ from django.db.models import Max, Q
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import politics as core_politics
-from hakoniwa_core.economy import books
+from hakoniwa_core.economy import books, retail
 from hakoniwa_core.naming import facility_name
 from hakoniwa_core.state import ACCOUNTING_SELF
 from server.accounts import keys
@@ -405,6 +405,42 @@ def services_brief(stats: dict[str, float], currency: str) -> dict[str, Any] | N
     return out
 
 
+RETAIL_STATS = [
+    ("need", "retail.need"),
+    ("sold", "retail.sold"),
+    ("direct", "retail.direct"),
+    ("direct_sales", "retail.direct_sales"),
+]
+
+
+def retail_brief(island: m.Island, stats: dict[str, float], currency: str) -> dict[str, Any] | None:
+    """小売り（回7）: 家計が品物と一緒に買う売り場の働きの要る量・商店と百貨店が売った量・小さな店と
+    屋台から割高に買った量と額、店の数と、百貨店の出店の規制と申請。統計がなければ None。"""
+    if "retail.need" not in stats:
+        return None
+    out: dict[str, Any] = {}
+    for key, name in RETAIL_STATS:
+        if name in stats:
+            _, unit = reports.stat_label(name)
+            out[key] = stats[name]
+            out[f"{key}_text"] = display.stat_text(name, stats[name], unit, currency)
+    kinds = island.facilities.filter(kind__in=("shop", "department_store"), built=True)
+    out["shops"] = kinds.filter(kind="shop").count()
+    out["department_stores"] = kinds.filter(kind="department_store").count()
+    policy = (island.policy or {}).get("large_store") or retail.NONE
+    out["large_store"] = policy
+    out["large_store_text"] = display.message(f"large_store_{policy}")
+    found = (island.economy or {}).get("finance", {}).get(retail.APPLICATION)
+    if found:
+        out["store_application"] = {
+            "turn": found["turn"],
+            "x": found["x"],
+            "y": found["y"],
+            "approved": bool(found.get("approved")),
+        }
+    return out
+
+
 def firms_brief(island: m.Island, stats: dict[str, float], mine: bool) -> dict[str, Any] | None:
     """企業（回7）: 民営の企業の数・施設が2つ以上の企業の数・一番大きい企業の施設の割合
     （誰にでも）。持ち主には、施設の多い順の企業の一覧（施設の画面の企業の表と同じ中身）も。"""
@@ -450,6 +486,7 @@ def summary(island: m.Island, mine: bool) -> dict[str, Any]:
         "goods": goods,
         "services": services_brief(latest, currency),
         "firms": firms_brief(island, latest, mine),
+        "retail": retail_brief(island, latest, currency),
         "population_changes": population_changes(latest),
         "hunger": hungry,
         "bonds_due": bonds,

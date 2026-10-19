@@ -412,9 +412,10 @@ def _overlay(data: dict[str, Any], overlay: str) -> tuple[list[list[str]], list[
         return grid, ["汚染度（1〜9。9 は 9 以上）"]
     if overlay == "zone":
         for i, zone in enumerate(data["zone"]):
-            if zone in ("industrial", "office"):
-                put(i, "I" if zone == "industrial" else "O")
-        return grid, ["I 工業団地  O オフィス街"]
+            mark = {"industrial": "I", "office": "O", "commercial": "S"}.get(zone)
+            if mark:
+                put(i, mark)
+        return grid, ["I 工業団地  O オフィス街  S 商業地"]
     if overlay == "freight":
         rates, limit = data["freight"], data["freight_max"]
         reach = [r for r in rates if r is not None and r < limit]

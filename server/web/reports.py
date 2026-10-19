@@ -200,6 +200,19 @@ _EXTRA_STATS = [
     ("population.births", "出生数（1ターン）", "人"),
     ("population.deaths", "死亡数（餓死を除く。1ターン）", "人"),
     ("population.starved", "餓死者数（1ターン）", "人"),
+    # 企業・店と小売り・家計の支え合い（バランス調整の回7）
+    ("firms.count", "民営の企業の数", ""),
+    ("firms.groups", "施設が2つ以上の民営の企業の数", ""),
+    ("firms.largest_share", "一番大きい企業の施設の割合", "percent"),
+    ("firms.support", "企業の中で施設に回したお金（1ターン）", "money"),
+    ("firms.cash", "民営の企業の預金の合計", "money"),
+    ("firms.cascade", "企業ごとの倒産で差し押さえた施設（1ターン）", ""),
+    ("firms.restructured", "企業の立て直しで閉めた施設（1ターン）", ""),
+    ("households.support", "家計の支え合いで送ったお金（1ターン）", "money"),
+    ("retail.need", "家計の小売りの要る量（1ターン）", "good:retail"),
+    ("retail.sold", "店の小売りの販売量（1ターン）", "good:retail"),
+    ("retail.direct", "店で買いきれず直売・屋台で買った小売り（1ターン）", "good:retail"),
+    ("retail.direct_sales", "直売・屋台の小売りの売上（1ターン）", "money"),
     ("population.overcrowded", "過密居住者数（住宅の上限を超えて住む人）", "人"),
 ]
 _STATS = {key: (label, unit) for key, label, unit in [*display.SUMMARY_STATS, *_EXTRA_STATS]}
@@ -833,6 +846,8 @@ SECTOR_NAMES = {
     "shipping": "運輸",
     "trading": "商社",
     "services": "商業・サービス業",
+    "shop": "商業・サービス業",
+    "department_store": "商業・サービス業",
 }
 
 

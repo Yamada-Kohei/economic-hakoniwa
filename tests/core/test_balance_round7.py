@@ -289,3 +289,115 @@ def test_nationalize_and_privatize_whole_firm(game, base):
     )
     assert held > 0
     books_ok(game, island)
+
+
+# --- 店と小売り（W-15・W-22） --------------------------------------------------------------
+
+
+def test_households_buy_retail_from_shops_then_direct(base):
+    """家計の要る小売りは、商店・百貨店で買えた分と、小さな店・屋台から割高に買った分を足したもの。"""
+    sold_somewhere = False
+    for i in base.island_ids():
+        stats = base.islands[i].stats
+        need, sold, direct = stats["retail.need"], stats["retail.sold"], stats["retail.direct"]
+        assert need > 0
+        assert sold + direct == pytest.approx(need, abs=1)
+        assert stats["retail.direct_sales"] > 0
+        sold_somewhere = sold_somewhere or sold > 0
+    assert sold_somewhere, "どの島でも店が売れていない"
+
+
+def town_of(game, island):
+    from hakoniwa_core import facilities as fac
+
+    housing = fac.housing_kind(game.config)
+    return next(f for f in island.facilities if f.kind == housing and f.built)
+
+
+def test_shop_goes_into_town_slots_only(game, base):
+    from hakoniwa_core import facilities as fac
+
+    island = copy.deepcopy(market_island(base))
+    town = town_of(game, island)
+    x, y = fac.position(town)
+    empty = next(
+        (t.x, t.y)
+        for t in island.tiles
+        if island.facility_at(t.x, t.y) is None and game.defs.terrain[t.terrain].get("land")
+    )
+    assert fac.placement_problem(game.defs, island, "shop", *empty)[0] == "reason_shop_needs_town"
+    slots = fac.shop_slots(game.defs, town)
+    for f in [f for f in island.facilities if f.ext.get(fac.SITE) == [x, y]]:
+        island.facilities.remove(f)
+    assert fac.placement_problem(game.defs, island, "shop", x, y) is None
+    for _ in range(slots):
+        shop = copy.deepcopy(next(f for f in market_island(base).facilities if f.kind == "shop"))
+        shop.ext[fac.SITE] = [x, y]
+        island.facilities.append(shop)
+    assert fac.placement_problem(game.defs, island, "shop", x, y)[0] == "reason_shop_slots"
+
+
+def test_department_store_needs_commercial_zone(game, base):
+    from hakoniwa_core import facilities as fac
+    from hakoniwa_core.state import ZONE_COMMERCIAL
+
+    island = copy.deepcopy(market_island(base))
+    tile = next(
+        t for t in island.tiles if t.terrain == "plain" and island.facility_at(t.x, t.y) is None
+    )
+    problem = fac.placement_problem(game.defs, island, "department_store", tile.x, tile.y)
+    assert problem[0] == "reason_zone_required"
+    tile.zone = ZONE_COMMERCIAL
+    assert fac.placement_problem(game.defs, island, "department_store", tile.x, tile.y) is None
+    # 商業地には工場は建たない
+    assert fac.placement_problem(game.defs, island, "farm", tile.x, tile.y)[0] in (
+        "reason_commercial_zone",
+        "reason_wrong_terrain",
+    )
+
+
+def test_large_store_ban_and_permit(game, base):
+    from hakoniwa_core.economy import retail
+    from hakoniwa_core.modules.firms import set_retail_policy
+
+    island = copy.deepcopy(market_island(base))
+    defs, config = game.defs, game.config
+    pos, turn = (3, 3), base.turn
+    assert retail.entry_block(island, defs, config, "shop", pos, turn) is None
+    assert retail.entry_block(island, defs, config, "department_store", pos, turn) is None
+    island.policy.large_store = retail.BAN
+    assert retail.entry_block(island, defs, config, "department_store", pos, turn) == (
+        "large_store_banned"
+    )
+    island.policy.large_store = retail.PERMIT
+    # 許可制: 企業が申請を出し、許すまで（申請の期限のあいだ）は建たない
+    assert retail.entry_block(island, defs, config, "department_store", pos, turn) == (
+        "large_store_waiting"
+    )
+    assert retail.application(island)["facility"] == "department_store"
+    assert any(e.kind == "store_application" for e in island.log)
+    assert retail.entry_block(island, defs, config, "department_store", pos, turn + 1) == (
+        "large_store_waiting"
+    )
+    set_retail_policy(island, {"approve": True}, context(game, base))
+    assert retail.entry_block(island, defs, config, "department_store", pos, turn + 2) is None
+    assert retail.application(island) is None  # 許した申請は使った
+    # 許可制をやめると、出ている申請は消える
+    retail.entry_block(island, defs, config, "department_store", pos, turn + 3)
+    set_retail_policy(island, {"large_store": retail.NONE}, context(game, base))
+    assert retail.application(island) is None
+
+
+def test_department_store_reaches_car_owners_island_wide(game, base):
+    from hakoniwa_core.economy import retail
+
+    island = market_island(base)
+    shop = next(f for f in island.facilities if f.kind == "shop")
+    store = copy.deepcopy(shop)
+    store.kind = "department_store"
+    near = retail.near_share(island, game.config, retail.position(shop))
+    assert retail.reach(island, game.defs, game.config, shop) == pytest.approx(near)
+    cars = retail.car_share(island, game.config)
+    assert retail.reach(island, game.defs, game.config, store) == pytest.approx(
+        min(1.0, cars + (1 - cars) * near)
+    )

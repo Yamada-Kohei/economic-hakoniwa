@@ -656,6 +656,29 @@ def print_summary(d: dict) -> None:
                 if k in x
             )
             print(f"  企業 #{x['firm']} {x['name']}（{x['owner_name']}）施設 {x['count']} {money}")
+    rt = d.get("retail")
+    if rt:
+        parts = [
+            f"{label} {rt[k + '_text']}"
+            for k, label in (
+                ("need", "要る量"),
+                ("sold", "商店と百貨店"),
+                ("direct", "小さな店と屋台"),
+                ("direct_sales", "その額"),
+            )
+            if k + "_text" in rt
+        ]
+        app = rt.get("store_application")
+        wait = ""
+        if app:
+            state = "許した" if app["approved"] else "許すのを待つ"
+            wait = f"、百貨店の出店の申請 ({app['x']},{app['y']}) {state}"
+        print(
+            f"[小売り] 商店 {rt['shops']}、百貨店 {rt['department_stores']}、"
+            f"出店の規制 {rt['large_store_text']}{wait}"
+        )
+        if parts:
+            print("  " + "、".join(parts))
     if d["bonds_due"]:
         print("[満期の近い国債] " + _rows(d["bonds_due"], _bond))
     for x in d.get("losing", []):

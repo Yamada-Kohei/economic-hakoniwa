@@ -20,6 +20,7 @@ from hakoniwa_core.economy import (
     is_bank,
     is_private_site,
     is_self_supporting,
+    retail,
 )
 from hakoniwa_core.log import format_log, format_turn
 from hakoniwa_core.modules.banking import ENTRY as BANK_ENTRY
@@ -153,6 +154,9 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         info["level"] = level
         info["level_name"] = defs.name("settlements", level)
         info["capacity"] = defs.settlements[level]["capacity"]
+        # 町の商店（回7）: 入っている数と、町の段階で入る数
+        info["shops"] = fac.shops_at(island, fac.position(f))
+        info["shop_slots"] = fac.shop_slots(defs, f)
         levels = defs.settlement_levels()
         if levels.index(level) + 1 < len(levels):
             following = levels[levels.index(level) + 1]
@@ -944,6 +948,13 @@ def _describe_finance(kind: str, payload: dict[str, Any], name: str, where: str)
         if "deposit_insurance" in payload:
             parts.append(f"預金保護の上限 {insurance_text(payload['deposit_insurance'])}")
         return f"{name}: " + "・".join(parts)
+    if kind == "set_retail_policy":
+        parts = []
+        if payload.get("large_store"):
+            parts.append(f"百貨店の出店 {message('large_store_' + payload['large_store'])}")
+        if payload.get("approve"):
+            parts.append("出店の申請を許す")
+        return f"{name}: " + "・".join(parts)
     if kind == "emergency_loan":
         amount = payload.get("amount", 0)
         return f"{name}: {where} " + (f"上限 {amount:,}" if amount else "取り消し")
@@ -1054,6 +1065,12 @@ def finance_policy_view(island) -> dict[str, Any]:
         "bank_license": bool(finance.get("bank_license")),  # 免許を出して開業を待っている
         "deposit_insurance": p.deposit_insurance,
         "deposit_insurance_text": insurance_text(p.deposit_insurance),
+        # 大きな店（百貨店）の出店の規制（回7）と、許すのを待っている申請
+        "large_store": p.large_store or retail.NONE,
+        "large_store_choices": {
+            k: message(f"large_store_{k}") for k in (retail.NONE, retail.PERMIT, retail.BAN)
+        },
+        "store_application": _store_application(defs, finance.get(retail.APPLICATION)),
         "subsidy_kinds": {k: message(f"subsidy_{k}") for k in ("production", "capital")},
         "subsidies": [
             {
@@ -1220,3 +1237,17 @@ def latest_markets(island: m.Island, turn: int | None) -> dict[str, Any]:
     if turn is None:
         return {}
     return {r.good: r for r in MarketRecord.objects.filter(island=island, turn=turn)}
+
+
+def _store_application(defs: Any, found: dict[str, Any] | None) -> dict[str, Any] | None:
+    """百貨店の出店の申請（許可制のとき）。許したものは approved。"""
+    if not found:
+        return None
+    return {
+        "turn": found["turn"],
+        "facility": found["facility"],
+        "name": defs.name("facilities", found["facility"]),
+        "x": found["x"],
+        "y": found["y"],
+        "approved": bool(found.get("approved")),
+    }

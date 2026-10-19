@@ -795,6 +795,9 @@ class Market(IslandStage):
                 funds.release(island, party.payer, party.reserved)
                 party.reserved = 0
         got = island.scratch.get("household_goods", {})
+        island.stats["retail.need"] = total / QUANTITY_SCALE
+        sold = results[good].volume if good in results else 0
+        island.stats["retail.sold"] = sold / QUANTITY_SCALE
         self._direct(island, ctx, wanted, got)
         # 小売りに払った額の、使う額に対する割合を、次のターンの取り分けに使う（半分ずつ近づける）
         paid = island.scratch.pop(retail.PAID, {})

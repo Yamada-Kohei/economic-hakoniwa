@@ -69,7 +69,7 @@
   <p class="hint">{% translate "国有化は企業の預金と施設の純資産の和で資本家階級から買い取り、民営化は施設の純資産の和で資本家階級に売ります（どちらも議会の採決が要ります）。" %}</p>
   <p class="firm-notice" aria-live="polite"></p>
   <aside id="orders" class="report-orders" data-url="{% url 'api_orders' island.id %}" data-defs="{% url 'api_defs' %}"
-         data-forms="" data-heading="{% translate '命令の列' %}"></aside>
+         data-forms="set_retail_policy" data-heading="{% translate '命令の列' %}"></aside>
 </section>
 {% endif %}
 
