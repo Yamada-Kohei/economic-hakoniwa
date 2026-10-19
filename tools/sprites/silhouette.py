@@ -65,6 +65,11 @@ KREMLIN_RED = "#a8483a"
 TOWER_GREEN = "#3d7a5c"
 PARTY_STONE = "#d4ccb8"
 PLAZA = "#d6d0c2"  # 広場の石畳
+STORE_PINK = "#d9668f"  # 百貨店の日よけと看板（小さな地図の色）
+STORE_STONE = "#e6dac0"  # 百貨店の石張りの壁
+PARTS_BLUE = "#5b7fb0"  # 部品工場の屋根（小さな地図の色）
+TIRE = "#2b2c2f"
+STRIPES = (STORE_PINK, WHITE)  # 縞の日よけ
 
 # 基の色と、面ごとの明るさ（上面・屋根の左向き・左の側面・屋根の右向き・右の側面）。
 # color は部品の色を使い、base は色のない部品にだけ使う
@@ -1249,6 +1254,27 @@ SHAPES: dict[str, list[Prim]] = {
             for prim in car(u, v, CAR_COLORS[(i * 2 + j) % len(CAR_COLORS)], 1)
         ],
     ],
+    # 回7 後半の自動車部品工場
+    "facility/auto_parts_plant": [
+        # のこぎり屋根の部品の建屋、荷積みの台と箱の荷台のトラック、積んだタイヤの山、部品の箱
+        box(0.06, 0.06, 0.94, 0.94, 0, 1, CONCRETE, PAVEMENT),
+        box(0.1, 0.1, 0.62, 0.9, 1, 12, WALL),
+        *[
+            prim
+            for v in (0.1, 0.3, 0.5, 0.7)
+            for prim in sawtooth(0.1, v, 0.62, v + 0.2, 13, 7, "u", PARTS_BLUE, GLASS, WALL)
+        ],
+        box(0.62, 0.14, 0.7, 0.5, 1, 3, CONCRETE, PAVEMENT),
+        box(0.72, 0.16, 0.86, 0.4, 1, 9, WHITE, "#dfe3e8"),
+        box(0.86, 0.2, 0.92, 0.36, 1, 6, PARTS_BLUE, GLASS2),
+        *[
+            cylinder(u, v, 0.04, 1 + 1.8 * k, 1.5, c=TIRE)
+            for u, v, n in ((0.72, 0.58, 4), (0.82, 0.58, 3), (0.72, 0.7, 3), (0.82, 0.7, 2))
+            for k in range(n)
+        ],
+        *[box(u, 0.8, u + 0.08, 0.88, 1, 4, WOOD) for u in (0.68, 0.78)],
+        box(0.68, 0.8, 0.76, 0.88, 5, 4, WOOD),
+    ],
     # フェーズ3-4 の警察署
     "facility/police": [
         # 3 階建ての白い庁舎に青い帯と金の記章、入口のひさしに赤い灯、屋上の無線のアンテナ、
@@ -1273,6 +1299,30 @@ SHAPES: dict[str, list[Prim]] = {
         *patrol_car(0.72, 0.66, 0.6),
         *broadleaf(0.16, 0.8, 3.5, 10),
         *broadleaf(0.52, 0.84, 3.5, 10),
+    ],
+    # 回7 の百貨店
+    "facility/department_store": [
+        # 石張りの 5 階建ての大きな店、1 階のショーウィンドウと縞の日よけ、上の階の窓の列、
+        # 屋上の塔屋と、文字のない看板の枠、前の歩道の植え込み
+        box(0.06, 0.06, 0.94, 0.94, 0, 0.6, CONCRETE, PAVEMENT),
+        box(0.12, 0.12, 0.78, 0.78, 0.6, 30, STORE_STONE, "#cfc8b8"),
+        box(0.12, 0.78, 0.78, 0.785, 1.2, 5.5, GLASS),
+        box(0.78, 0.12, 0.785, 0.78, 1.2, 5.5, GLASS),
+        *[
+            box(0.12 + i * 0.066, 0.785, 0.186 + i * 0.066, 0.84, 7, 1.4, STRIPES[i % 2])
+            for i in range(10)
+        ],
+        *[
+            box(0.785, 0.12 + i * 0.066, 0.84, 0.186 + i * 0.066, 7, 1.4, STRIPES[i % 2])
+            for i in range(10)
+        ],
+        *windows(0.12, 0.12, 0.78, 0.78, [11, 16, 21, 26], 2.6, (6, 6), c="#7f9bb3"),
+        box(0.115, 0.115, 0.785, 0.785, 30.6, 1.6, "#f1e9d6", "#cfc8b8"),
+        box(0.18, 0.18, 0.4, 0.4, 32.2, 5, STORE_STONE, "#cfc8b8"),
+        *[box(u, 0.6, u + 0.014, 0.614, 32.2, 4, METAL) for u in (0.44, 0.6, 0.72)],
+        box(0.42, 0.6, 0.74, 0.62, 36.2, 7, STORE_PINK),
+        *broadleaf(0.88, 0.3, 2.8, 8),
+        *broadleaf(0.3, 0.9, 2.8, 8),
     ],
     # 首都の建物。政治の仕組みの建物（議事堂・首相官邸・党本部）と元首の建物（王宮・大統領府）の
     # 組み合わせごとに 1 枚。実在の建物の雰囲気だけを借り、そっくりには描かない

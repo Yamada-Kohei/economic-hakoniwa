@@ -62,11 +62,13 @@ sprites:
   terrain/forest: sprites/terrain/forest.svg
   terrain/mountain: sprites/terrain/mountain.svg
   facility/aluminium_smelter: sprites/facility/aluminium_smelter.svg
+  facility/auto_parts_plant: sprites/facility/auto_parts_plant.svg
   facility/automobile_plant: sprites/facility/automobile_plant.svg
   facility/bank: sprites/facility/bank.svg
   facility/building_materials_plant: sprites/facility/building_materials_plant.svg
   facility/consumer_goods_factory: sprites/facility/consumer_goods_factory.svg
   facility/farm: sprites/facility/farm.svg
+  facility/department_store: sprites/facility/department_store.svg
   facility/fishing_port: sprites/facility/fishing_port.svg
   facility/food_factory: sprites/facility/food_factory.svg
   facility/government_office: sprites/facility/government_office.svg

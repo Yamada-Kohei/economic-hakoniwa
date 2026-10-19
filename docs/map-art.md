@@ -59,6 +59,7 @@ sprites:
 | `facility/textile_mill` | 繊維工場（フェーズ3-2） | 2 段・平地（煙突は 4 段ほど） |
 | `facility/ranch` | 牧場（フェーズ3-2） | 0.5 段・平地 |
 | `facility/automobile_plant` | 自動車工場（フェーズ3-2） | 2.5 段・平地 |
+| `facility/auto_parts_plant` | 自動車部品工場（回7 後半） | 2 段・平地 |
 | `facility/police` | 警察署（フェーズ3-4） | 2.5 段・平地（屋上のアンテナの先は 4 段ほど） |
 | `facility/department_store` | 百貨店（回7） | 3 段・平地・商業地（屋上の看板まで 4 段ほど）。町の中の商店はマスを取らないので絵は要りません |
 | `housing/village` | 村 | 1 段 |
