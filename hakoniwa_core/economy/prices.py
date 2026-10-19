@@ -240,7 +240,8 @@ def input_limit(
 def unit_floor(
     defs: Defs, config: GameConfig, f: Facility, good: str, prices: Prices, wage: int, freight: int
 ) -> int:
-    """独立採算の売り手が出せる一番安い希望価格: 1単位あたりの変動費（投入財の運賃を含む）。
+    """独立採算の売り手が出せる一番安い希望価格: 1単位あたりの変動費（投入財の運賃を含む）と、
+    全力で動いたときの1単位あたりの設備の傷み（回6）。
 
     希望価格は運賃を払った後に手元に残る額なので、売るときの運賃はここでは足さない（板寄せに
     出すときに足す。hakoniwa_core/modules/market の seller_limit）。作る物が複数なら、変動費を
@@ -258,6 +259,9 @@ def unit_floor(
     for g, qty in recipe["inputs"].items():
         amount = money_of(prices.get(g, 0), qty)
         cost += amount if g == power else amount + part(amount, freight)
+    # 設備が1か月に傷む値打ち（回6）。使わなくても傷むが、売り値で取り戻さなければ直せない（国の
+    # 水力発電所が賃金だけの値段で売り、電気料金が初めの 0.3 倍まで下がって火力発電所が閉じた）
+    cost += round_money(equipment.yearly_wear(defs, config, f.kind, prices) / TURNS_PER_YEAR)
     if len(outputs) > 1:
         reference = initial_prices(defs, config)
         worth = {g: max(1, reference.get(g, 0)) * q for g, q in outputs.items()}
