@@ -179,6 +179,40 @@ def step_fields(defs: Defs, f: Facility, turn: int) -> None:
         f.economy.pop(SOWN, None)
 
 
+def fit_fields(defs: Defs, f: Facility, power: str) -> None:
+    """作物を替えている途中の施設で、前の作物の畑に要る原料（肥料の化学品）が手元に足りなければ、
+    その畑を同じ作物の、原料の手元にある作り方（肥料なし）に替える（生産の段の初め。回7）。
+    肥料の届かない畑は収量が下がるだけで、新しい作物の畑まで止まらない（台帳 2026-10-18 06:33）。"""
+    fields: dict[str, int] | None = f.economy.get(FIELDS)
+    if not fields:
+        return
+    recipes = defs.facilities[f.kind]["recipes"]
+
+    def short() -> set[str]:
+        need = recipe_of(defs, f)["inputs"]
+        return {g for g, q in need.items() if g != power and stock.total(f.stock, g) < q}
+
+    for name in sorted(fields):
+        lacking = short()
+        if not lacking:
+            return
+        uses = set(recipes[name]["inputs"]) & lacking
+        if name == f.recipe or fields[name] <= 0 or not uses:
+            continue
+        crop = crop_of(defs, f.kind, name)
+        fallback = [
+            other
+            for other, r in sorted(recipes.items())
+            if other != name
+            and crop_of(defs, f.kind, other) == crop
+            and not set(r["inputs"]) & lacking
+        ]
+        if not fallback:
+            continue
+        best = max(fallback, key=lambda other: sum(recipes[other]["outputs"].values()))
+        fields[best] = fields.get(best, 0) + fields.pop(name)
+
+
 def field_goods(defs: Defs, f: Facility) -> set[str]:
     """施設が作っている物と、畑を作り替えている途中なら前の作物と蒔いた作物の物（すぐ作り戻せる
     物。民営の見直しで、今作っていない物として扱わない）。"""

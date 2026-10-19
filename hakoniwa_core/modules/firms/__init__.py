@@ -338,10 +338,12 @@ class EntryExit(IslandStage):
         now = fac.recipe_of(defs, f)["inputs"]
         made = fac.field_goods(defs, f)  # 畑を作り替えている途中の前の作物も、作っている物と見る
         wage = f.economy.get("wage", 0)
+        sole = _sole_food(island, defs, f)
         out = {}
         for name, recipe in sorted(defs.facilities[f.kind]["recipes"].items()):
             if name != f.recipe and (
-                fac.switch_problem(defs, island, f, name)
+                sole - set(recipe["outputs"])
+                or fac.switch_problem(defs, island, f, name)
                 or set(recipe["inputs"]) - supplied
                 or not all(g == power or any(demand.get(g, [])) for g in recipe["outputs"])
                 or any(
@@ -386,8 +388,13 @@ class EntryExit(IslandStage):
             # 在庫を売っている間は、作るのを止めていても動かないとは数えない（回6。売れ行きの
             # 何十ターン分も作った機械工場が、在庫を売りながら 12 ターンで閉じ、島の機械が消えた）
             selling = any(stock.total(f.stock, g) > 0 for g in outputs)
+            # 蒔き直した畑が育っている間も数えない（回7。W-20。作りすぎの月に人を減らした農場が、
+            # 次の作物の収穫を待たずに閉じた）
+            growing = bool(f.economy.get(fac.SOWN))
             idle = (
-                f.economy.get("idle_turns", 0) + 1 if f.operating_rate <= 0 and not selling else 0
+                f.economy.get("idle_turns", 0) + 1
+                if f.operating_rate <= 0 and not selling and not growing
+                else 0
             )
             wage = f.economy.get("wage", 0)
             prices = island.economy.prices
@@ -1492,3 +1499,18 @@ def register(registry: Registry) -> None:
     registry.add_order(
         OrderHandler("set_retail_policy", execute=set_retail_policy, check=check_retail_policy)
     )
+
+
+def _sole_food(island: IslandState, defs: Defs, f: Facility) -> set[str]:
+    """施設 f だけが島で作っている食べ物（回7。W-20）。島にただ1つの穀物の農場は、ほかの作物に
+    替えない（替えると島から穀物が消え、値段が上がっても次の見直しと畑が育つまで戻らない）。"""
+    made = {g for g in fac.recipe_of(defs, fac.steady(f))["outputs"] if "food" in defs.goods[g]}
+    if not made:
+        return set()
+    for other in island.facilities:
+        if other is f or not other.built or not fac.located(other):
+            continue
+        made -= set(fac.recipe_of(defs, other)["outputs"])
+        if not made:
+            break
+    return made

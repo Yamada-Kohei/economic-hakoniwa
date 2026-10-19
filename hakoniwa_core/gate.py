@@ -29,6 +29,7 @@ end まで）の値段だけで判定します（Codex のレビュー B02。前
 
 from __future__ import annotations
 
+import math
 import statistics
 from collections import Counter
 from collections.abc import Iterable, Mapping
@@ -38,7 +39,7 @@ from hakoniwa_core import ledger
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import arrears, debt, experience, is_stopped
+from hakoniwa_core.economy import arrears, companies, debt, experience, is_stopped
 from hakoniwa_core.economy.prices import initial_prices
 from hakoniwa_core.facilities import located
 from hakoniwa_core.state import OWNER_PRIVATE, IslandState, WorldState
@@ -63,6 +64,14 @@ CASCADE_TURNS = 24  # 同じ島で銀行の破綻がこのターン数のうち�
 FX_YEAR = TURNS_PER_YEAR  # 為替の年の動きを見るターン数
 FX_MOVE = 0.30  # 為替の年の動きの平均の上限（島ごと、相手の通貨ごと）
 NO_COAL = "coal"  # この資源の出ない島の失業率を別に出す
+# 働く人のうちサービス（商業・金融・運輸・商社・公務・教育・治安）で働く割合（回7。W-23）の目安。
+# 1人あたりの実質の GDP が household.base_income の 1 倍の島で SERVICES_POOR、RICH_INCOME 倍
+# 以上の島で SERVICES_RICH、その間は倍率の対数で結ぶ（現実の目安: 貧しい国は3〜4割、豊かな国は
+# 6〜7割）
+SERVICES_POOR = (0.3, 0.4)
+SERVICES_RICH = (0.6, 0.7)
+RICH_INCOME = 8.0
+SERVICE_CATEGORIES = ("commerce", "finance", "transport", "trade", "admin", "education", "security")
 TITLE_SHARE = 1 / 3  # 1つの島が持つ称号（産業ごとの経験の1位）の、称号のある産業に対する割合の上限
 RESERVE_CAP = 2.0  # 外国の資産 ÷ 年の GDP の上限
 RESERVE_WINDOW = 120  # 外国の資産の増え方を見るターン数（最後から）
@@ -91,6 +100,7 @@ KINDS = (
     "reserves",
     "reserves_rise",
     "trade_stopped",
+    "services_share",
 )
 
 
@@ -108,6 +118,10 @@ COLLAPSE_KINDS = (
     "unpaid_wages",  # 国が賃金を払えない（未払い賃金が残る）のが LONG_TURNS ターン続く
     "bank_rescue",  # 銀行が中央銀行から借りたままなのが LONG_TURNS ターン続く
     "silent_stop",  # 地図の上の人の働く施設が、稼働率 0 なのに理由を出さないのが2ターン続く
+    "firm_cascade",  # 1つの企業の施設が COLLAPSE_SPAN ターンに CASCADE_MIN 以上、差し押さえか閉鎖に
+    #                  なった（企業ごとの倒産の連鎖。回7）
+    "starved_without_benefit",  # 失業手当 0 の島で、COLLAPSE_SPAN ターンに飢えで亡くなった人が
+    #                             初めの人口の FAMINE_SHARE 以上（手当のない国の飢え。回7）
 )
 COLLAPSE_TITLES = {
     "famine": "飢饉（1年で人口の1%以上が飢えで亡くなる）",
@@ -118,10 +132,13 @@ COLLAPSE_TITLES = {
     "unpaid_wages": "国が半年続けて賃金を払いきれていない",
     "bank_rescue": "銀行が半年続けて中央銀行から借りている",
     "silent_stop": "動いていないのに理由の出ない施設",
+    "firm_cascade": "1つの企業の施設が1年に3つ以上、差し押さえか閉鎖になった",
+    "starved_without_benefit": "失業手当のない国で、1年で人口の1%以上が飢えで亡くなる",
 }
 COLLAPSE_SPAN = TURNS_PER_YEAR
 FAMINE_SHARE = 0.01
 DROP_SHARE = 0.10
+CASCADE_MIN = 3
 # 品切れと取引が成り立たないのは1年（半年では 50 島の世界の 7〜9 割の島が当たり、見張りに
 # ならなかった。2026-10-18 の main の quick）
 STOCKOUT_TURNS = TURNS_PER_YEAR
@@ -156,6 +173,9 @@ class Watch:
     missing: dict[str, list[bool]] = field(default_factory=dict)  # 財 → 直近の「売りに出ない」
     streak: dict[tuple[str, str], int] = field(default_factory=dict)  # (種類, 中身) → 続いた数
     recipes: dict[int, str] = field(default_factory=dict)  # 施設の番号 → 前のターンの作り方
+    firms: dict[int, int] = field(default_factory=dict)  # 動いている民営の施設 → 企業の番号
+    falls: list[tuple[int, int]] = field(default_factory=list)  # (ターン, 企業) 差し押さえか閉鎖
+    unaided: list[float] = field(default_factory=list)  # 失業手当 0 のターンの飢えで亡くなった人
     hits: dict[str, Hit] = field(default_factory=dict)
 
     def hit(self, kind: str, turn: int, what: str = "", since: int | None = None) -> None:
@@ -200,6 +220,8 @@ class IslandRecord:
     employed: list[int] = field(default_factory=list)  # 就業者（回2。最初の1年の縮み）
     output: list[float] = field(default_factory=list)  # 実質の生産（初めの値段で数えた産出。回2）
     trade: list[float] = field(default_factory=list)  # 輸出 ＋ 輸入（回2。貿易が途絶えたか）
+    services: list[float] = field(default_factory=list)  # 働く人のうちサービスの割合（回7）
+    income: list[float] = field(default_factory=list)  # 1人あたりの実質の GDP ÷ base_income（回7）
 
 
 class Recorder:
@@ -224,6 +246,7 @@ class Recorder:
         self.traded: dict[str, dict[int, int]] = {}  # 財 → ターン → 売り買いのあった島の数
         self.titles: dict[str, int] = {}  # 最後に記録したターンの称号（産業 → 島。フェーズ3-3）
         self.watch = {iid: Watch() for iid in self.islands}
+        self.base_income = config.get("household.base_income")
 
     def record(self, world: WorldState) -> None:
         self.turns.append(world.turn)
@@ -261,6 +284,10 @@ class Recorder:
             rec.employed.append(s.get("employed", 0))
             rec.output.append(real_output(s, initial))
             rec.trade.append(s.get("trade.exports", 0) + s.get("trade.imports", 0))
+            rec.services.append(self._services_share(island))
+            people = s.get("population", 0)
+            real = s.get("gdp", 0) / (rec.cpi[-1] / 100) if rec.cpi[-1] > 0 else 0.0
+            rec.income.append(real / people / self.base_income if people > 0 else 0.0)
             for key, value in s.items():
                 currency = key.removeprefix("fx.")
                 if currency != key and currency.isdigit() and value > 0:
@@ -279,10 +306,23 @@ class Recorder:
                     rec.price_ratio.setdefault(m.good, {})[world.turn] = ratio
             self._watch(island, world.turn, rec, self.watch[island.id])
 
+    def _services_share(self, island: IslandState) -> float:
+        """働く人（施設で働く人。町の自給の農業を除く）のうち、サービスの施設で働く割合。"""
+        total = served = 0
+        for f in island.facilities:
+            if not f.built or f.workers <= 0:
+                continue
+            total += f.workers
+            if self.defs.facilities[f.kind].get("category") in SERVICE_CATEGORIES:
+                served += f.workers
+        return served / total if total else 0.0
+
     def _watch(self, island: IslandState, turn: int, rec: IslandRecord, w: Watch) -> None:
         """崩れの見張り（COLLAPSE_KINDS）。record が島ごとに呼ぶ。状態は読むだけ。"""
         s = island.stats
         w.starved.append(s.get("population.starved", 0))
+        no_benefit = island.policy.unemployment_benefit <= 0
+        w.unaided.append(s.get("population.starved", 0) if no_benefit else 0.0)
         w.moved.append(
             s.get("migration.left", 0)
             - s.get("migration.arrived", 0)
@@ -296,6 +336,10 @@ class Recorder:
             stayed = rec.population[-1] + sum(w.moved[-COLLAPSE_SPAN:])
             if before > 0 and stayed < before * (1 - DROP_SHARE):
                 w.hit("population_drop", turn, since=since)
+            unaided = sum(w.unaided[-COLLAPSE_SPAN:])
+            if before > 0 and unaided >= before * FAMINE_SHARE:
+                w.hit("starved_without_benefit", turn, since=since)
+        self._watch_firms(island, turn, w)
         w.made.update(
             k.removeprefix("production.")
             for k, v in s.items()
@@ -346,6 +390,27 @@ class Recorder:
         for kind, n in switched.items():
             if n >= HERD_MIN and n >= able[kind] * HERD_SHARE:
                 w.hit("herding", turn, f"{kind} {n}/{able[kind]}")
+
+    @staticmethod
+    def _watch_firms(island: IslandState, turn: int, w: Watch) -> None:
+        """前のターンに動いていた民営の企業の施設のうち、島から消えたか、差し押さえか閉鎖に
+        なったものを企業ごとに数え、1年に CASCADE_MIN 以上なら企業ごとの倒産の連鎖とみる。"""
+        now: dict[int, int] = {}
+        alive: set[int] = set()
+        for f in island.facilities:
+            alive.add(f.id)
+            firm = companies.private_firm_of(island, f)
+            down = "foreclosed" in f.economy or "closing" in f.economy
+            if firm is not None and f.built and not down:
+                now[f.id] = firm
+            elif f.id in w.firms and down:
+                w.falls.append((turn, w.firms[f.id]))
+        w.falls += [(turn, firm) for fid, firm in w.firms.items() if fid not in alive]
+        w.firms = now
+        w.falls = [(t, firm) for t, firm in w.falls if t > turn - COLLAPSE_SPAN]
+        for firm, n in Counter(firm for _, firm in w.falls).items():
+            if n >= CASCADE_MIN:
+                w.hit("firm_cascade", turn, f"企業 {firm}")
 
     def collapses(self) -> list[dict]:
         """崩れの見張りに当たったところ（島ごと・種類ごとに1つ。1ターン目から最後まで）。
@@ -660,8 +725,33 @@ def _island_failures(
     if len(tail) == RESERVE_WINDOW and tail[-1] - tail[0] > RESERVE_RISE:
         line = f"外国の資産が増え続けている（年の GDP の {tail[0]:.2f} 倍 → {tail[-1]:.2f} 倍）"
         out.append(("reserves_rise", line))
+    count, lo, hi = _services_outside(rec, window)
+    if count:
+        line = f"サービスで働く人の割合が {count} ターン目安を外れた（{lo:.2f}〜{hi:.2f}）"
+        out.append(("services_share", line))
     gap_turns, first, last = _trade_gap(rec, start, end)
     if gap_turns >= TRADE_GAP:
         line = f"貿易が {gap_turns} ターン続けて途絶えた（ターン {first}〜{last}）"
         out.append(("trade_stopped", line))
     return out
+
+
+def services_band(income: float) -> tuple[float, float]:
+    """1人あたりの実質の GDP（base_income の倍率）に見合う、サービスで働く人の割合の幅。"""
+    t = min(1.0, max(0.0, math.log(max(income, 1.0)) / math.log(RICH_INCOME)))
+    low = SERVICES_POOR[0] + (SERVICES_RICH[0] - SERVICES_POOR[0]) * t
+    high = SERVICES_POOR[1] + (SERVICES_RICH[1] - SERVICES_POOR[1]) * t
+    return low, high
+
+
+def _services_outside(rec: IslandRecord, window: list[int]) -> tuple[int, float, float]:
+    """目安の幅を外れたターンの数と、その間の割合の最小と最大（記録のない古い記録は 0）。"""
+    if len(rec.services) < len(rec.turns):
+        return 0, 0.0, 0.0
+    values = [rec.services[i] for i in window]
+    count = sum(
+        1
+        for i in window
+        if not services_band(rec.income[i])[0] <= rec.services[i] <= services_band(rec.income[i])[1]
+    )
+    return count, min(values, default=0.0), max(values, default=0.0)

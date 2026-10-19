@@ -401,3 +401,122 @@ def test_department_store_reaches_car_owners_island_wide(game, base):
     assert retail.reach(island, game.defs, game.config, store) == pytest.approx(
         min(1.0, cars + (1 - cars) * near)
     )
+
+
+# --- 畑と村（W-20・W-21・台帳 2026-10-18 06:33） -------------------------------------------
+
+
+def a_farm(world):
+    for i in world.island_ids():
+        for f in world.islands[i].facilities:
+            if f.kind == "farm" and f.built:
+                return world.islands[i], f
+    raise AssertionError("農場がない")
+
+
+def test_fields_without_fertilizer_fall_back_instead_of_stopping_the_farm(game, base):
+    from hakoniwa_core import facilities as fac
+
+    _, farm = a_farm(base)
+    f = copy.deepcopy(farm)
+    power = game.config.get("power.good")
+    f.recipe = "cotton"
+    f.economy[fac.FIELDS] = {"fertilized": 600, "cotton": 400}
+    f.stock = {}
+    assert fac.input_ratio(game.defs, f, power)[0] == 0  # 前は農場ごと止まっていた
+    fac.fit_fields(game.defs, f, power)
+    assert f.economy[fac.FIELDS] == {"default": 600, "cotton": 400}
+    assert fac.input_ratio(game.defs, f, power)[0] == fac.FULL
+    # 化学品が手元にあれば、肥料の畑のまま
+    g = copy.deepcopy(farm)
+    g.recipe = "cotton"
+    g.economy[fac.FIELDS] = {"fertilized": 600, "cotton": 400}
+    g.stock = {"chemicals": [[0, 10_000]]}
+    fac.fit_fields(game.defs, g, power)
+    assert g.economy[fac.FIELDS] == {"fertilized": 600, "cotton": 400}
+
+
+def test_only_grain_farm_does_not_switch_crops(game, base):
+    from hakoniwa_core.modules.firms import _sole_food
+
+    island, farm = a_farm(base)
+    island = copy.deepcopy(island)
+    farm = next(f for f in island.facilities if f.id == farm.id)
+    farm.recipe = "default"
+    farm.economy.pop("fields", None)
+    others = [
+        f
+        for f in island.facilities
+        if f is not farm
+        and "grain" in game.defs.facilities[f.kind]["recipes"].get(f.recipe, {}).get("outputs", {})
+    ]
+    for f in others:
+        island.facilities.remove(f)
+    assert _sole_food(island, game.defs, farm) == {"grain"}
+    if others:
+        island.facilities.append(others[0])
+        assert _sole_food(island, game.defs, farm) == set()
+
+
+def test_people_who_fled_to_villages_return_when_towns_need_workers(game, base):
+    import random
+
+    from hakoniwa_core.modules.population import FED, FLED, Population, _farming
+
+    island = copy.deepcopy(market_island(base))
+    people = [t for t in island.tiles if t.population > 0]
+    village = next(t for t in people if _farming(game.defs, t))
+    town = next(t for t in people if not _farming(game.defs, t))
+    fled = village.population // 2
+    village.ext[FLED] = fled
+    for h in island.economy.households.values():
+        h[FED] = 1000
+    pos = (town.x, town.y)
+
+    def run():
+        free, pull = {pos: 10_000}, {pos: 10_000}
+        return Population._return_to_towns(
+            island, context(game, base), random.Random(1), free, pull, 10_000
+        )
+
+    before = town.population
+    back = run()
+    # 1ターンに逃れた人の return_share の割合ずつ戻る
+    share = game.config.get("population.hunger")["return_share"]
+    assert back == pytest.approx(fled * share, abs=1)
+    assert town.population == before + back
+    assert village.ext[FLED] == fled - back
+    # 町で食べ物が買えなければ戻らない
+    for h in island.economy.households.values():
+        h[FED] = 0
+    assert run() == 0
+
+
+def test_services_band_widens_with_income():
+    from hakoniwa_core import gate
+
+    assert gate.services_band(1.0) == pytest.approx(gate.SERVICES_POOR)
+    assert gate.services_band(gate.RICH_INCOME * 2) == pytest.approx(gate.SERVICES_RICH)
+    low, high = gate.services_band(2.0)
+    assert gate.SERVICES_POOR[0] < low < gate.SERVICES_RICH[0]
+    assert gate.SERVICES_POOR[1] < high < gate.SERVICES_RICH[1]
+
+
+def test_firm_cascade_watch_counts_falls_per_firm(game, base):
+    from hakoniwa_core import gate
+
+    island = copy.deepcopy(market_island(base))
+    members = [
+        f for f in island.facilities if co.private_firm_of(island, f) is not None and f.built
+    ]
+    if len(members) < gate.CASCADE_MIN:
+        pytest.skip("民営の企業の施設が少ない")
+    firm = co.private_firm_of(island, members[0])
+    for f in members:
+        f.economy[co.FIRM] = firm
+    w = gate.Watch()
+    gate.Recorder._watch_firms(island, 10, w)
+    for f in members[: gate.CASCADE_MIN]:
+        f.economy["foreclosed"] = 10
+    gate.Recorder._watch_firms(island, 11, w)
+    assert "firm_cascade" in w.hits

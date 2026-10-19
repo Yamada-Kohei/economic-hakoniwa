@@ -200,6 +200,8 @@ _EXTRA_STATS = [
     ("population.births", "出生数（1ターン）", "人"),
     ("population.deaths", "死亡数（餓死を除く。1ターン）", "人"),
     ("population.starved", "餓死者数（1ターン）", "人"),
+    ("population.fled_to_villages", "食料難で農村へ移った人数（1ターン）", "人"),
+    ("population.returned_to_towns", "食料難の後に農村から都市へ戻った人数（1ターン）", "人"),
     # 企業・店と小売り・家計の支え合い（バランス調整の回7）
     ("firms.count", "民営の企業の数", ""),
     ("firms.groups", "施設が2つ以上の民営の企業の数", ""),

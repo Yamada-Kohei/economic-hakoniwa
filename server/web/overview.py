@@ -371,6 +371,7 @@ POPULATION_CHANGES = [
     ("arrived", "migration.arrived", "入国者数（移住。帰国者を含む）"),
     ("left", "migration.left", "出国者数（移住）"),
     ("fled_to_villages", "population.fled_to_villages", "食料難による都市から農村への移住者数"),
+    ("returned_to_towns", "population.returned_to_towns", "食料難の後に農村から都市へ戻った人数"),
 ]
 
 

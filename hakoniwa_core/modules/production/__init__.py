@@ -140,6 +140,7 @@ class Production(IslandStage):
             f.economy.pop("sales", None)
             f.economy.pop("late_sales", None)
             fac.step_fields(defs, f, ctx.turn)  # 畑の作付けを進める（回3）
+            fac.fit_fields(defs, f, power)  # 肥料の届かない前の作物の畑は肥料なしで（回7）
             productivity.update(island, defs, config, f)
         runs = [
             self._prepare(island, f, ctx, power)
