@@ -63,6 +63,7 @@
 | GT-36 | 同じ形を 1 か所で作る（止まった理由の表、名前と座標の文、お金の取り置き、島の種類ごとに全画面を開く試験。やり直しの報告の I3） | 後回し（タブ 14 W-34） |  |  |
 | GT-38 | 回7 の目安と見張り: 働く人のうちサービス（商業・金融・運輸・商社・公務・教育・治安）で働く割合が、1人あたりの実質の GDP に見合う幅（貧しい島 3〜4 割、豊かな島 6〜7 割）か。崩れの見張りに、企業ごとの倒産の連鎖と手当のない国の飢えを足す | 決定 | `gate.py` の `SERVICES_POOR`・`SERVICES_RICH`・`RICH_INCOME`・`CASCADE_MIN`・`FIRM_CASCADE_TURNS` | tests/core/test_balance_round7.py::test_services_band_widens_with_income, ::test_firm_cascade_watch_counts_falls_per_firm, ::test_firm_cascade_watch_skips_own_closings |
 | GT-39 | 関門の値段の幅は、サービスと小売りだけ物価指数でなく平均賃金の伸びで割って見る（賃金が物の値段より速く上がると人の手間の値段は物価に対して上がる。ボーモル効果）。幅の値（初めの 0.25〜4 倍）は変えない | 決定（回7 後半） |  | tests/core/test_gate.py::test_supply_chain_runs_for_300_turns |
+| GT-40 | 標準の計画は、島で作っていない投入財でも、作る施設の投入財が手元にあれば手に入ると見て使う施設（自動車の組み立て工場）を建て、島のどこでも作っていない投入財の工場は、余裕がなくても1つ目を建てる（組で建てる）。回7 後半の測りで、自動車工場と部品工場が互いを待ってどちらも建たず、自動車の売り買いが main の 1〜3 割になったため | 決定（回7 後半） |  | tests/core/test_balance_round7b.py::test_standard_plan_builds_assembly_and_parts_plants_together |
 
 ### 仮の決まり
 
