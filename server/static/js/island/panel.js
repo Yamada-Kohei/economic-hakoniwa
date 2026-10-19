@@ -180,6 +180,7 @@ export class TilePanel {
       return `<h3>${escapeHtml(f.level_name)}</h3>${table(rows)}`;
     }
     const rows = [["種類", f.kind_name], ["所有", `${f.owner_name}・${f.accounting_name}`]];
+    if (f.firm_name) rows.push(["企業", f.firm_name]);
     if (f.recipe_name) rows.push(["生産方式", f.recipe_name]);
     if (!f.built) {
       if (f.private_site) rows.push(["建設", "民間の資本が自分の資金で建設中"]);

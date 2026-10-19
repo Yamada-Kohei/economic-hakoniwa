@@ -643,6 +643,19 @@ def print_summary(d: dict) -> None:
         names |= {"sold": "売れた量", "unused": "売れ残り"}
         parts = [f"{label} {sv[f'{k}_text']}" for k, label in names.items() if k in sv]
         print("[商業・サービス業] " + "、".join(parts))
+    fm = d.get("firms")
+    if fm:
+        print(
+            f"[企業] 民営 {fm['count']:g}、施設が2つ以上 {fm['groups']:g}、"
+            f"一番大きい企業の施設の割合 {fm['largest_share']}%"
+        )
+        for x in fm.get("list", []):
+            money = "、".join(
+                f"{label} {x[k]}"
+                for k, label in (("cash", "預金"), ("profit", "利益"), ("dividend", "配当"))
+                if k in x
+            )
+            print(f"  企業 #{x['firm']} {x['name']}（{x['owner_name']}）施設 {x['count']} {money}")
     if d["bonds_due"]:
         print("[満期の近い国債] " + _rows(d["bonds_due"], _bond))
     for x in d.get("losing", []):

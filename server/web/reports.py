@@ -21,6 +21,7 @@ from hakoniwa_core.economy import (
     JOBLESS,
     OWNERS,
     books,
+    companies,
     debt,
     entity_of,
     services,
@@ -28,7 +29,7 @@ from hakoniwa_core.economy import (
 from hakoniwa_core.modules.failures import METHODS as RESOLUTION_METHODS
 from hakoniwa_core.modules.population import subsistence_persons, tile_jobless
 from hakoniwa_core.naming import facility_name, place_of
-from hakoniwa_core.state import IslandState, Tile
+from hakoniwa_core.state import OWNER_PRIVATE, IslandState, Tile
 from hakoniwa_core.trade import abroad
 from hakoniwa_core.units import from_milli
 from server.economy.models import Account, FacilityBook, MarketRecord, Trade
@@ -753,6 +754,10 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
         if services.is_services(config, f):  # 雇う人数の目安と、店の場所ごとの人数（回4）
             item["workers_needed"] = f.economy.get(services.SEATS, 0)
             shops = shop_rows(island, state, f)
+        number = f.economy.get(companies.FIRM)
+        if number is not None and companies.record(state, int(number)) is not None:
+            item["firm"] = int(number)
+            item["firm_name"] = companies.display_name(state, defs, int(number))
         if latest is not None:
             profit = latest.items.get(books.PROFIT, 0)
             total += profit
@@ -772,7 +777,48 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
         "rows": rows,
         "profit": display.money_text(total, currency),
         "shops": shops,
+        "firms": firm_rows(island, state, currency),
     }
+
+
+def firm_rows(island: m.Island, state: IslandState, currency: str) -> list[dict[str, Any]]:
+    """自国の企業（回7）: 名前・民営か国営か・動いている施設の数と種類。民営の企業は、企業の預金と
+    直近のターンの連結の利益・法人税・配当、繰り越した赤字も。企業ごとの国有化・民営化の命令に使う
+    番号（firm）と命令の種類（order）も持つ。"""
+    defs = get_game().defs
+    load_money({island.id: state}, Account.objects.filter(island=island))
+    rows = []
+    for key, rec in sorted(state.economy.firms.items(), key=lambda kv: int(kv[0])):
+        number = int(key)
+        members = [f for f in companies.members(state, number) if f.built]
+        kinds: dict[str, int] = {}
+        for f in members:
+            kinds[f.kind] = kinds.get(f.kind, 0) + 1
+        private = rec[companies.OWNER] == OWNER_PRIVATE
+        row: dict[str, Any] = {
+            "firm": number,
+            "name": companies.display_name(state, defs, number),
+            "owner_name": display.message(f"owner_{rec[companies.OWNER]}"),
+            "count": len(members),
+            "kinds": "・".join(
+                f"{defs.name('facilities', k)}{f' {n}' if n > 1 else ''}"
+                for k, n in sorted(kinds.items())
+            ),
+            "founded": rec.get(companies.FOUNDED),
+            "order": "nationalize_firm" if private else "privatize_firm",
+        }
+        if private:
+            row["cash"] = display.money_text(
+                ledger.money(state, companies.entity(number)), currency
+            )
+            for item in ("profit", "tax", "dividend"):
+                if item in rec:
+                    row[item] = display.money_text(rec[item], currency)
+            losses = sum(a for _, a in rec.get(companies.LOSSES, []))
+            if losses:
+                row["losses"] = display.money_text(losses, currency)
+        rows.append(row)
+    return rows
 
 
 # 産業の分類（定義の industry）を持たない施設の、産業ごとの働く人の円グラフでの分け方

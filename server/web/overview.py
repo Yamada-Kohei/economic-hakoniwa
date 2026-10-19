@@ -405,6 +405,23 @@ def services_brief(stats: dict[str, float], currency: str) -> dict[str, Any] | N
     return out
 
 
+def firms_brief(island: m.Island, stats: dict[str, float], mine: bool) -> dict[str, Any] | None:
+    """企業（回7）: 民営の企業の数・施設が2つ以上の企業の数・一番大きい企業の施設の割合
+    （誰にでも）。持ち主には、施設の多い順の企業の一覧（施設の画面の企業の表と同じ中身）も。"""
+    if "firms.count" not in stats:
+        return None
+    out: dict[str, Any] = {
+        "count": stats["firms.count"],
+        "groups": stats.get("firms.groups", 0),
+        "largest_share": round(stats.get("firms.largest_share", 0) * 100, 1),
+    }
+    if mine:
+        rows = reports.firm_rows(island, display.island_for_naming(island), _currency(island))
+        rows.sort(key=lambda r: (-r["count"], r["firm"]))
+        out["list"] = rows[:LIST_MAX]
+    return out
+
+
 def summary(island: m.Island, mine: bool) -> dict[str, Any]:
     """国の要約（GET /api/islands/<id>/summary）。"""
     world = island.world
@@ -432,6 +449,7 @@ def summary(island: m.Island, mine: bool) -> dict[str, Any]:
         "facilities": facilities,
         "goods": goods,
         "services": services_brief(latest, currency),
+        "firms": firms_brief(island, latest, mine),
         "population_changes": population_changes(latest),
         "hunger": hungry,
         "bonds_due": bonds,

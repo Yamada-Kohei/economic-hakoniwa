@@ -18,6 +18,8 @@ set_zone: 工業団地・オフィス街の指定
 set_subsidy: 補助金の変更
 nationalize: 国有化
 privatize: 民営化
+nationalize_firm: 企業の国有化
+privatize_firm: 国営企業の民営化
 set_monetary_policy: 金融政策の変更
 set_central_bank_independence: 中央銀行の独立
 set_bond_policy: 国債の政策の変更

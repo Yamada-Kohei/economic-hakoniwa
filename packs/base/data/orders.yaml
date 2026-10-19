@@ -262,6 +262,27 @@ privatize:
       x: {type: integer, minimum: 0}
       y: {type: integer, minimum: 0}
 
+nationalize_firm:         # 民営の企業を丸ごと国有化（回7）
+  admin_cost: 3
+  secret: true
+  parliament: majority
+  payload:
+    type: object
+    required: [firm]
+    additionalProperties: false
+    properties:
+      firm: {type: integer, minimum: 1}   # 企業の番号（施設の画面の企業の表）
+
+privatize_firm:           # 国営企業を丸ごと民営化（回7）
+  admin_cost: 3
+  parliament: majority
+  payload:
+    type: object
+    required: [firm]
+    additionalProperties: false
+    properties:
+      firm: {type: integer, minimum: 1}
+
 set_monetary_policy:
   admin_cost: 1
   secret: true

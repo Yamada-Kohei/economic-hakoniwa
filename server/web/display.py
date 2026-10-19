@@ -13,6 +13,7 @@ from hakoniwa_core import infra, ledger
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.economy import (
     books,
+    companies,
     entity_of,
     equipment,
     facility_entity,
@@ -96,6 +97,14 @@ def island_for_naming(row: m.Island) -> IslandState:
     return island
 
 
+def _firm_name(island: IslandState, defs: Any, f: Facility) -> str:
+    """施設の属する企業の名前（回7。なければ ""）。"""
+    number = f.economy.get(companies.FIRM)
+    if number is None or companies.record(island, int(number)) is None:
+        return ""
+    return companies.display_name(island, defs, int(number))
+
+
 def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> dict[str, Any]:
     """マスの欄の施設。だれにでも見える姿（種類・人手・稼働率・状態・在庫・補助金・閉鎖と差し押さえ）
     と、持ち主にだけ帳簿・借入・銀行の帳簿と、命令の入力に使う値（mine のとき）。"""
@@ -112,6 +121,7 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         "owner": f.owner,
         "owner_name": message(f"owner_{f.owner}"),
         "accounting_name": message(f"accounting_{f.accounting}"),
+        "firm_name": _firm_name(island, defs, f),
         "built": f.built,
         "workers": f.workers,
         "operating_rate": f.operating_rate / fac.FULL,
@@ -677,6 +687,8 @@ def describe_order(kind: str, payload: dict[str, Any]) -> str:
         qty = f"{payload.get('quantity', 0):g} {defs.unit_name(good)}" if good in defs.goods else ""
         limit = f"（指値 {payload['limit']:,}）" if payload.get("limit") else ""
         return f"{name}: {defs.name('goods', good)}を{side} {qty}{limit}"
+    if kind in ("nationalize_firm", "privatize_firm"):
+        return f"{name}: 企業の番号 {payload.get('firm')}"
     if kind == "set_price_cap":
         good = payload.get("good", "")
         return f"{name}: {defs.name('goods', good)} {payload.get('price', 0):,}"

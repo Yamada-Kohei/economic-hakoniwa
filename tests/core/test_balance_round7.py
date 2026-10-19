@@ -248,3 +248,44 @@ def test_default_of_one_plant_bankrupts_the_firms_borrowers(game, base):
     assert any(e.kind == "firm_bankrupt" for e in island.log)
     assert island.stats["firms.cascade"] == 2
     books_ok(game, island)
+
+
+def test_nationalize_and_privatize_whole_firm(game, base):
+    """企業の国有化: 政府が企業の預金と施設の純資産の和を資本家階級に払い、施設は国営企業に入る。
+    国営企業の民営化: 資本家階級が純資産を払い、施設は1つの新しい民営の企業に入る。帳簿は合う。"""
+    from hakoniwa_core.modules.firms import (
+        check_nationalize_firm,
+        check_privatize_firm,
+        nationalize_firm,
+        privatize_firm,
+    )
+
+    world = copy.deepcopy(base)
+    island = market_island(world)
+    f = private_members(game, island)[0]
+    number = co.firm_of(f)
+    ctx = context(game, world)
+    open_books(island)
+    check_nationalize_firm(island, {"firm": number}, game.defs)
+    owners_before = ledger.money(island, household(OWNERS))
+    nationalize_firm(island, {"firm": number}, ctx)
+    assert str(number) not in island.economy.firms
+    assert f.owner == "state"
+    state = co.firm_of(f)
+    assert co.record(island, state)[co.OWNER] == "state"
+    assert ledger.money(island, household(OWNERS)) >= owners_before
+    assert ledger.money(island, co.entity(number)) == 0
+    assert any(e.kind == "firm_nationalized" for e in island.log)
+    books_ok(game, island)
+
+    open_books(island)
+    check_privatize_firm(island, {"firm": state}, game.defs)
+    privatize_firm(island, {"firm": state}, ctx)
+    assert f.owner == OWNER_PRIVATE
+    new = co.private_firm_of(island, f)
+    assert new is not None and new != number
+    held = ledger.balance(
+        island, ledger.account(co.entity(new), ledger.EQUITY, facility_entity(f.id))
+    )
+    assert held > 0
+    books_ok(game, island)

@@ -66,7 +66,7 @@
 | `bonds` | `set_bond_policy`（期間の割合・売れ残りの扱い・追加の発行・直接の引き受け）・`set_bond_payment`（国債の利払いを止める） |
 | `central_bank` | `set_monetary_policy`（政策金利・国債の売買）・`set_central_bank_independence`（中央銀行の独立。独立すると介入・固定相場・中央銀行の外国の国債の命令をやめる）・`emergency_loan`（銀行への緊急の貸し出し） |
 | `failures` | `resolve_bank`（破綻した銀行の処理） |
-| `firms` | `set_zone`（工業団地・オフィス街）・`nationalize`・`privatize`（国有化・民営化）・`set_subsidy`（補助金） |
+| `firms` | `set_zone`（工業団地・オフィス街）・`nationalize`・`privatize`（国有化・民営化）・`nationalize_firm`・`privatize_firm`（企業を丸ごと国有化・国営企業を丸ごと民営化。回7）・`set_subsidy`（補助金） |
 | `trade` | `create_bloc`・`join_bloc`・`leave_bloc`・`bloc_settings`・`transfer_bloc`・`take_over_bloc`（貿易圏）・`propose_contract`・`accept_contract`・`cancel_contract`（二国間契約）・`send_aid`（お金と物の援助）。命令の段では申し送りに積むだけで、貿易の段で島の番号の順に決める。フェーズ3-3 の政策（`trade/policy.py`）: `set_tariff`（関税）・`set_export_subsidy`（輸出補助）・`set_import_quota`（輸入の割り当て）・`set_embargo`（禁輸）・`set_capital_controls`（資本取引の制限）・`set_fx_intervention`（為替の介入）・`set_fx_peg`（固定相場）・`set_foreign_bonds`（外国の国債の売り買い）。命令の段で政策を変え、同じターンの貿易の段と国債の段から効く |
 
 差し替えられる式は次のとおりです。

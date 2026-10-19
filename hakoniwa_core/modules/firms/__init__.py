@@ -1253,6 +1253,126 @@ def privatize(island: IslandState, payload: dict[str, Any], ctx: StageContext) -
     )
 
 
+def _firm_of_order(island: IslandState, payload: dict[str, Any], owner: str) -> dict[str, Any]:
+    rec = companies.record(island, payload["firm"])
+    if rec is None:
+        raise OrderFailed("reason_no_firm")
+    if rec[companies.OWNER] != owner:
+        reason = "reason_firm_not_private" if owner == OWNER_PRIVATE else "reason_firm_not_state"
+        raise OrderFailed(reason)
+    return rec
+
+
+def _working_members(island: IslandState, number: int) -> list[Facility]:
+    return [
+        f for f in companies.members(island, number) if f.built and "foreclosed" not in f.economy
+    ]
+
+
+def check_nationalize_firm(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    _firm_of_order(island, payload, OWNER_PRIVATE)
+    if not _working_members(island, payload["firm"]):
+        raise OrderFailed("reason_firm_empty")
+
+
+def nationalize_firm(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
+    """民営の企業を丸ごと純資産で政府が買い取る（回7）。値段は企業の預金（未払いの税を引く）と、
+    動いている施設の純資産の和で、資本家階級に払う。施設は国営になって業種の国営企業に入り、企業の
+    預金は政府に入る。工事中の施設は資本家階級に返し、差し押さえ中の施設の残りの受け取りは政府に
+    移す。"""
+    number = payload["firm"]
+    name = companies.entity(number)
+    working = _working_members(island, number)
+    owed = arrears.total(island, name, arrears.TAX_ARREARS)
+    cash = ledger.money(island, name)
+    price = max(0, cash - owed) + sum(
+        banks.net_assets(island, f, facility_entity(f.id)) for f in working
+    )
+    payer = Payer(ledger.GOV)
+    if funds.available(island, payer) < price:
+        raise OrderFailed("reason_treasury_short", amount=price)
+    holder = companies.shareholder(island, number)
+    title = companies.display_name(island, ctx.defs, number)
+    funds.pay(island, payer, holder, price, "nationalization")
+    arrears.write_off(island, name)
+    ledger.pay(island, name, ledger.GOV, ledger.money(island, name), "nationalization")
+    value = ledger.balance(island, ledger.account(holder, ledger.EQUITY, name))
+    if value > 0:
+        ledger.cancel(island, holder, ledger.EQUITY, name, value, "equity_transfer")
+    for f in companies.members(island, number):
+        entity = facility_entity(f.id)
+        seized = f.economy.get("foreclosed")
+        if isinstance(seized, dict) and seized.get("owner") == name:
+            seized["owner"] = ledger.GOV
+        if f.id in {w.id for w in working}:
+            _move_equity(island, entity, name, ledger.GOV)
+            companies.leave(island, f)
+            f.owner = OWNER_STATE
+            for key in ("closing", "idle_turns", "loss_streak"):
+                f.economy.pop(key, None)
+            f.economy[companies.FIRM] = companies.state_firm(island, ctx.defs, f.kind, ctx.turn)
+        else:
+            _move_equity(island, entity, name, holder)
+            companies.leave(island, f)
+    for f in island.facilities:  # 企業の外の施設の差し押さえの残り（倒産した施設）も政府へ
+        seized = f.economy.get("foreclosed")
+        if isinstance(seized, dict) and seized.get("owner") == name:
+            seized["owner"] = ledger.GOV
+    del island.economy.firms[str(number)]
+    island.log.append(
+        LogEntry(
+            "firm_nationalized",
+            {"firm": title, "count": len(working), "price": price},
+        )
+    )
+
+
+def check_privatize_firm(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    _firm_of_order(island, payload, OWNER_STATE)
+    if not [
+        f for f in _working_members(island, payload["firm"]) if _can_privatize(island, defs, f)
+    ]:
+        raise OrderFailed("reason_firm_cannot_privatize")
+
+
+def _can_privatize(island: IslandState, defs: Defs, f: Facility) -> bool:
+    if defs.facilities[f.kind].get("category") == "finance":
+        return False
+    return not is_public_service(defs, f) and private_allowed(defs, island, f.kind)
+
+
+def privatize_firm(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
+    """国営企業を丸ごと純資産で資本家階級に売る（回7）。売れる施設（公務員の施設と、体制が民営を
+    許さない施設を除く）がみな1つの新しい民営の企業に入る。国庫直轄の施設は、先に運転資金を出資して
+    独立採算にする。"""
+    number = payload["firm"]
+    title = companies.display_name(island, ctx.defs, number)
+    sold = [f for f in _working_members(island, number) if _can_privatize(island, ctx.defs, f)]
+    owners = Payer(household(OWNERS))
+    if OWNERS not in island.economy.households:
+        raise OrderFailed("reason_firm_cannot_privatize")
+    for f in sold:
+        if f.accounting == ACCOUNTING_TREASURY:
+            f.accounting = ACCOUNTING_SELF
+            fund_facility(island, ctx.defs, ctx.config, f, Payer(ledger.GOV, STATE_FACILITIES))
+    price = sum(banks.net_assets(island, f, facility_entity(f.id)) for f in sold)
+    if funds.available(island, owners) < price:
+        raise OrderFailed("reason_owners_short", amount=price)
+    funds.pay(island, owners, ledger.GOV, price, "privatization")
+    firm = companies.new_firm(island, OWNER_PRIVATE, ctx.turn)
+    for f in sold:
+        _move_equity(island, facility_entity(f.id), ledger.GOV, household(OWNERS))
+        f.owner = OWNER_PRIVATE
+        companies.leave(island, f)
+        companies.join(island, f, firm)
+    island.log.append(
+        LogEntry(
+            "firm_privatized",
+            {"firm": title, "count": len(sold), "price": price},
+        )
+    )
+
+
 def _move_equity(island: IslandState, entity: str, source: str, target: str) -> None:
     value = ledger.balance(island, ledger.account(source, ledger.EQUITY, entity))
     if value > 0:
@@ -1309,4 +1429,10 @@ def register(registry: Registry) -> None:
     registry.add_order(OrderHandler("set_zone", execute=set_zone, check=check_set_zone))
     registry.add_order(OrderHandler("nationalize", execute=nationalize, check=check_nationalize))
     registry.add_order(OrderHandler("privatize", execute=privatize, check=check_privatize))
+    registry.add_order(
+        OrderHandler("nationalize_firm", execute=nationalize_firm, check=check_nationalize_firm)
+    )
+    registry.add_order(
+        OrderHandler("privatize_firm", execute=privatize_firm, check=check_privatize_firm)
+    )
     registry.add_order(OrderHandler("set_subsidy", execute=set_subsidy, check=check_subsidy))
