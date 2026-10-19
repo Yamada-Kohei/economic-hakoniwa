@@ -147,6 +147,7 @@
 
 <section class="panel">
   <h2>{% translate "資源の単位" %}</h2>
+  <p>{% blocktranslate with food=food_per_person power=power_per_person %}量は実物に近い単位で出します。1人が1か月に食べる食料は {{ food }} トン、家庭で使う電力は1人1か月 {{ power }} MWh です。自動車・自動車部品・輸送船は1つずつ、サービスと小売りは働く人1人の1か月の働き（人月）で数えます。{% endblocktranslate %}</p>
   <table class="info">
     {% for u in units %}<tr><th>{{ u.name }}</th><td>{{ u.unit }}</td></tr>{% endfor %}
   </table>

@@ -1,7 +1,10 @@
 # 資源（財）。tier: 1 原料、2 中間財、3 最終財。shelf_life: 持ち越せるターン数（書かなければ無期限）
 # unit: 量の単位（表示名は locale/<言語>/units.yaml）。量は島の大きさに合わせて縮めてあり、重さの 1 トンは
-#   実物のおよそ 25 トン分（1人1ターンの食料 0.002 トン ≒ 実物の 50kg/月。2026-10-15 の決定で今のまま。
-#   実物に近づけるのはバランス調整の段で、消費・産出・値段をまとめて合わせ直す）
+#   実物のおよそ 25 トン分（1人1ターンの食料 0.002 トン ≒ 実物の 50kg/月）
+# display_scale: 画面・API・ログで見せるときに量に掛ける倍率（バランス調整の締め。W-30）。計算は縮めた量の
+#   まま、見せる量はこの倍、1 単位あたりの値段はこの分の 1 にする（お金の額は変わらない）。打ち込まれた量と
+#   値段は中で元に戻す。重さ・体積の財と、同じ縮め方の電力・消費財・機械は 25。1 つずつ数える自動車・部品の
+#   組・輸送船と、人月で数えるサービス・小売りは書かない（1）
 # food: 住民が食べられる資源（nutrition: 1 単位で何人前か、quality: 食事の質 0〜1）
 # mining: 建国時に選べる鉱業資源
 # consumer: 家計が買う財（物価指数に入れる）
@@ -10,29 +13,29 @@
 # need: 家計にとっての種類（フェーズ3-2）。necessity 必需品（食べ物・電力・衣料）、luxury ぜいたく品、
 #   durable 耐久消費財（ぜいたく品の種類にも数える）、service サービス（ぜいたく品の種類にも数える。
 #   バランス調整）。家計の買い方と幸福度は game.yaml の household
-grain:              {tier: 1, unit: ton, shelf_life: 8, consumer: true, food: {nutrition: 1, quality: 0.2}, freight_weight: 1, need: necessity}
-fish:               {tier: 1, unit: ton, shelf_life: 2, consumer: true, food: {nutrition: 1, quality: 0.4}, freight_weight: 1, need: necessity}
-wood:               {tier: 1, unit: cubic_meter, freight_weight: 0.7}
-stone:              {tier: 1, unit: ton, mining: true, freight_weight: 1}
-iron_ore:           {tier: 1, unit: ton, mining: true, freight_weight: 1}
-coal:               {tier: 1, unit: ton, mining: true, freight_weight: 1}
-steel:              {tier: 2, unit: ton, freight_weight: 1}
-building_materials: {tier: 2, unit: ton, freight_weight: 1}
-food:               {tier: 3, unit: ton, shelf_life: 6, consumer: true, food: {nutrition: 1.5, quality: 1}, freight_weight: 1, need: necessity}
-machinery:          {tier: 3, unit: piece, freight_weight: 5}
-consumer_goods:     {tier: 3, unit: item, consumer: true, freight_weight: 0.05, need: luxury}
-electricity:        {tier: 2, unit: megawatt_hour, shelf_life: 0, consumer: true, need: necessity}
+grain:              {tier: 1, unit: ton, display_scale: 25, shelf_life: 8, consumer: true, food: {nutrition: 1, quality: 0.2}, freight_weight: 1, need: necessity}
+fish:               {tier: 1, unit: ton, display_scale: 25, shelf_life: 2, consumer: true, food: {nutrition: 1, quality: 0.4}, freight_weight: 1, need: necessity}
+wood:               {tier: 1, unit: cubic_meter, display_scale: 25, freight_weight: 0.7}
+stone:              {tier: 1, unit: ton, display_scale: 25, mining: true, freight_weight: 1}
+iron_ore:           {tier: 1, unit: ton, display_scale: 25, mining: true, freight_weight: 1}
+coal:               {tier: 1, unit: ton, display_scale: 25, mining: true, freight_weight: 1}
+steel:              {tier: 2, unit: ton, display_scale: 25, freight_weight: 1}
+building_materials: {tier: 2, unit: ton, display_scale: 25, freight_weight: 1}
+food:               {tier: 3, unit: ton, display_scale: 25, shelf_life: 6, consumer: true, food: {nutrition: 1.5, quality: 1}, freight_weight: 1, need: necessity}
+machinery:          {tier: 3, unit: piece, display_scale: 25, freight_weight: 5}
+consumer_goods:     {tier: 3, unit: item, display_scale: 25, consumer: true, freight_weight: 0.05, need: luxury}
+electricity:        {tier: 2, unit: megawatt_hour, display_scale: 25, shelf_life: 0, consumer: true, need: necessity}
 transport_ship:     {tier: 3, unit: ship, freight_weight: 0}   # 輸送船（フェーズ3-1）。海運業が設備として使う
 # フェーズ3-2: 鉱業資源の原油・ボーキサイト、中間財の燃料・化学品・アルミ、作物の綿・嗜好品、肉、衣料・自動車
-crude_oil:          {tier: 1, unit: ton, mining: true, freight_weight: 1}
-bauxite:            {tier: 1, unit: ton, mining: true, freight_weight: 1}
-cotton:             {tier: 1, unit: ton, freight_weight: 1}
-luxury_crop:        {tier: 1, unit: ton, consumer: true, freight_weight: 1, need: luxury}   # 嗜好品（コーヒー・茶・たばこなど）
-fuel:               {tier: 2, unit: ton, consumer: true, freight_weight: 1}   # 家計は自動車を動かすのに買う
-chemicals:          {tier: 2, unit: ton, freight_weight: 1}
-aluminium:          {tier: 2, unit: ton, freight_weight: 1}
-meat:               {tier: 3, unit: ton, shelf_life: 3, consumer: true, food: {nutrition: 1.2, quality: 0.8}, freight_weight: 1, need: necessity}
-clothing:           {tier: 3, unit: ton, consumer: true, freight_weight: 1, need: necessity}
+crude_oil:          {tier: 1, unit: ton, display_scale: 25, mining: true, freight_weight: 1}
+bauxite:            {tier: 1, unit: ton, display_scale: 25, mining: true, freight_weight: 1}
+cotton:             {tier: 1, unit: ton, display_scale: 25, freight_weight: 1}
+luxury_crop:        {tier: 1, unit: ton, display_scale: 25, consumer: true, freight_weight: 1, need: luxury}   # 嗜好品（コーヒー・茶・たばこなど）
+fuel:               {tier: 2, unit: ton, display_scale: 25, consumer: true, freight_weight: 1}   # 家計は自動車を動かすのに買う
+chemicals:          {tier: 2, unit: ton, display_scale: 25, freight_weight: 1}
+aluminium:          {tier: 2, unit: ton, display_scale: 25, freight_weight: 1}
+meat:               {tier: 3, unit: ton, display_scale: 25, shelf_life: 3, consumer: true, food: {nutrition: 1.2, quality: 0.8}, freight_weight: 1, need: necessity}
+clothing:           {tier: 3, unit: ton, display_scale: 25, consumer: true, freight_weight: 1, need: necessity}
 automobile:         {tier: 3, unit: piece, consumer: true, freight_weight: 1.5, need: durable}
 auto_parts:         {tier: 2, unit: set, freight_weight: 1}   # 自動車部品（回7 後半）。1 組が自動車 1 台分
 # サービス（バランス調整）: 商店・飲食・理美容・娯楽・修理など。商業・サービス業が町で人を雇って出し、

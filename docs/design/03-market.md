@@ -51,7 +51,7 @@
 | MK-29 | 初めの値段は、建国と移し替えのときに定義データのレシピから「原価＋上乗せ」で解く。原価は投入財・賃金・設備の利子と減価償却。作り方が複数なら島で使える安い方、電力は決めた発電所の原価 | 決定 | `market.initial_prices.markup`, `market.initial_prices.capital_rate`, `market.initial_prices.reference.electricity`, `market.initial_prices.default`, `labor.initial_wage`, `firms.depreciation_turns` | tests/core/test_rules.py::test_initial_prices_use_recipes_the_island_can_run |
 | MK-30 | 前のフェーズから移し替えた島で値段のない新しい財には、島の初めの値段に今の物価指数の倍率を掛けた値段を置く | 決定 |  | tests/core/test_phase3_2.py::test_upgrade_prices_new_goods_at_the_island_price_level |
 | MK-31 | 財は 24 品目（23 品目とサービス）。原料・中間財・最終財の段、家計にとっての種類、持ち越せる期間、栄養と質、船で運ぶ重さを `packs/base/data/goods.yaml` に持つ | 決定 |  | （未確認） |
-| MK-32 | 量は島の大きさに合わせて縮め、重さの1トンは実物のおよそ 25 トン分とする | 仮 |  | （未確認） |
+| MK-32 | 計算の量は島の大きさに合わせて縮め、重さの1トンは実物のおよそ 25 トン分とする。見せるときは実物に近い単位に直す（タブ 11 UI-33） | 仮 |  | tests/server/test_display_units.py |
 | MK-33 | 市場の記録に財ごとの値段・売買の量・買いたかった量・売りたかった量と、施設ごとに買えなかったわけを残す。品不足が続いたら産業の鎖の画面とターンログで知らせる | 決定 | `records.shortage.share`, `records.shortage.turns` | tests/core/test_rules.py::test_market_records_why_inputs_were_not_bought, tests/core/test_phase3_2.py::test_shortage_is_logged_once_after_three_turns |
 | MK-34 | 計画経済の島は公定価格（値幅なし）で、混合経済の島は財ごとの値段の規制で、同じ板寄せを使う（決め方はタブ 10） | 決定 | `planning.review_turns`, `planning.review_band`, `planning.held_goods` | tests/core/test_phase3_4.py::test_planned_market_clears_at_the_official_prices, ::test_price_floor_keeps_the_market_price_up |
 | MK-35 | 消費財の原価が家計の注文の一番上の段を超えると売れない件は「難しさとして残す」（注文の段はタブ 4 LB-23） | 決定 | `household.consumer_goods_tiers`, `household.consumer_goods_low_tiers`, `household.usual_price_turns` | tests/core/test_economy.py::test_consumer_tiers_spend_about_the_budget |
@@ -63,7 +63,7 @@
 | 番号 | 何の代わりか | いつ外すか |
 | --- | --- | --- |
 | MK-16 | 買い手が値段を見て買う量と時期を変える仕組み（工事の先送り、燃料の節約、代わりの物）。値幅の上端で買い続けると品薄の島で燃料が初めの千倍、機械と鋼鉄が数十〜数百倍になったため、いつもの値段で止めた | 未定。工事が値段で先送りされる形を入れるとき。海運業の燃料・国庫直轄の施設・二国間契約の不足分は、まだ上端で買い続ける（候補） |
-| MK-32 | 実物の量（島の人口と施設の大きさに合った消費・産出・値段） | 未定。バランス調整で消費・産出・値段をまとめて合わせ直すとき（2026-10-15 に今のままと決定） |
+| MK-32 | 実物の量（島の人口と施設の大きさに合った消費・産出・値段） | 外さない。計算はこの単位のままで、見せるときだけ実物に近づける（2026-10-15、2026-10-20 の W-30） |
 
 ## 仕組み
 
@@ -74,7 +74,7 @@
 - 持ち越せる期間（`shelf_life`）のある財は、期間を過ぎると捨てる。電力とサービスは持ち越せない。船で運ぶ重さ（`freight_weight`）のない財は島の外へ運べない（電力・サービス）。
 - 輸送船は貿易と援助の荷を運ぶ設備でもある（タブ 9）。自動車と燃料は、フェーズ4で軍用車両と軍の維持にも使う。銅鉱石と電子機器はフェーズ4、観光業はベータ版の後（タブ 14）。
 - 入れないもの: 季節、資源の埋蔵量・枯渇・探鉱・品位、1 つの工場にしか行かない中間財。
-- 量の単位: 量は島の大きさに合わせて縮めてあり、重さの 1 トンは実物のおよそ 25 トン分（1 人 1 ターンの食料が実物の月 50kg ほど）。自動車は 1 台ずつ数える。市場と産業の鎖の画面と goods.yaml にこの単位を書く。
+- 量の単位: 計算の量は島の大きさに合わせて縮めてあり、重さの 1 トンは実物のおよそ 25 トン分（1 人 1 ターンの食料 0.002 トンが実物の月 50kg ほど）。見せるときは財ごとの `display_scale` を掛けて実物に近い単位にする（タブ 11 UI-33）。重さ・体積の財と、同じ縮め方の電力・消費財・機械は 25 倍、1 つずつ数える自動車・部品の組・輸送船と、人月で数えるサービス・小売りはそのまま。電力は実物の使い方（家庭・アルミ・発電所）で縮め方がばらばらなので、1 つの倍率では寄せきれない（家庭の電気は 1 人 1 か月 12.5kWh と少なめに見える）。
 - 品目と作り方の一覧は `packs/base/data/goods.yaml` と `packs/base/data/facilities.yaml`、施設とレシピの決まりはタブ 5、気候帯と肥沃度はタブ 2 を見る。
 
 ### 板寄せ

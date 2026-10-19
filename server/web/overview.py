@@ -531,7 +531,7 @@ def orders_brief(island: m.Island) -> dict[str, Any]:
         "pending": [
             {
                 "kind": o.kind,
-                "payload": o.payload,
+                "payload": display.order_payload(o.kind, o.payload, to_game=False),
                 "cost": d.orders[o.kind]["admin_cost"] if o.kind in d.orders else 0,
                 "text": display.describe_order(o.kind, o.payload),
             }

@@ -82,9 +82,27 @@ def calendar_settings() -> dict[str, Any]:
     }
 
 
-def amount(milli: int) -> float:
-    """1000 分の 1 単位の量を、表示用の数に（小数第1位まで）。"""
-    return round(from_milli(milli), 1)
+def amount(milli: int, good: str) -> float:
+    """財 good の 1000 分の 1 単位の量を、見せる量に（display_scale を掛け、小数第1位まで）。"""
+    return round(get_game().defs.shown_amount(good, from_milli(milli)), 1)
+
+
+def shown(good: str, value: float) -> float:
+    """財 good の量（1 単位で数えた数。統計の値など）を、見せる量に（小数第1位まで）。"""
+    return round(get_game().defs.shown_amount(good, value), 1)
+
+
+def price(good: str, value: float) -> float:
+    """財 good の 1 単位あたりの値段を、見せる単位 1 つあたりの値段に。"""
+    return get_game().defs.shown_price(good, value)
+
+
+def price_text(good: str, value: float, currency: str = "") -> str:
+    """財 good の 1 単位あたりの値段を、見せる単位 1 つあたりの値段の文に（安ければ小数も）。"""
+    shown_price = price(good, value)
+    if isinstance(shown_price, float) and not shown_price.is_integer():
+        return f"{'-' if shown_price < 0 else ''}{currency}{abs(shown_price):,.1f}"
+    return money_text(int(shown_price), currency)
 
 
 def island_for_naming(row: m.Island) -> IslandState:
@@ -134,7 +152,7 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
             {
                 "good": good,
                 "name": defs.name("goods", good),
-                "amount": amount(qty),
+                "amount": amount(qty, good),
                 "unit": defs.unit_name(good),
             }
             for good, qty in row.stocks.values("good")
@@ -642,14 +660,74 @@ def status_text(f: Facility) -> str:
 def goods_list(amounts: dict[str, int]) -> list[dict[str, Any]]:
     defs = get_game().defs
     return [
-        {"good": g, "name": defs.name("goods", g), "amount": amount(q), "unit": defs.unit_name(g)}
+        {
+            "good": g,
+            "name": defs.name("goods", g),
+            "amount": amount(q, g),
+            "unit": defs.unit_name(g),
+        }
         for g, q in sorted(amounts.items())
     ]
 
 
-def describe_order(kind: str, payload: dict[str, Any]) -> str:
-    """命令の列に出す、命令の中身の短い説明。"""
+# 命令の中身のうち、財の量と 1 単位あたりの値段の項目（W-30）。
+# 種類 → (財の項目, 量の項目, 値段の項目)
+ORDER_UNITS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = {
+    "set_price_cap": ("good", (), ("price",)),
+    "warehouse_trade": ("good", ("quantity",), ("limit",)),
+    "propose_contract": ("good", ("quantity",), ("price",)),
+    "set_export_subsidy": ("good", (), ("amount",)),
+    "set_import_quota": ("good", ("quantity",), ()),
+    "send_aid": ("good", ("quantity",), ()),
+    "bloc_settings": ("fixed_good", (), ("fixed_price",)),
+    "set_official_price": ("good", (), ("price",)),
+    "set_price_floor": ("good", (), ("price",)),
+}
+
+
+def _plain_number(value: float) -> float:
+    return int(value) if float(value).is_integer() else value
+
+
+def order_payload(kind: Any, payload: Any, to_game: bool) -> Any:
+    """命令の中身の量と値段を、見せる単位と計算の単位のあいだで直す（API の出入り口で。W-30）。
+
+    to_game なら打ち込まれた中身（見せる単位）を計算の単位に、そうでなければ計算の単位の中身を見せる
+    単位に。丸めないので、命令の列を読んでそのまま送り返しても同じ命令になる（値段は計算の単位の
+    整数に丸めて受け取る。倍率 1 の財でも）。形の違う中身はそのまま返し、確かめ（check_order）に
+    任せる。
+    """
+    spec = ORDER_UNITS.get(kind) if isinstance(kind, str) else None
+    if spec is None or not isinstance(payload, dict):
+        return payload
     defs = get_game().defs
+    good_key, qty_keys, price_keys = spec
+    good = payload.get(good_key)
+    if not isinstance(good, str) or good not in defs.goods:
+        return payload
+    scale = defs.display_scale(good)
+    out = dict(payload)
+    for key in qty_keys + price_keys:
+        value = out.get(key)
+        if (
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not math.isfinite(value)
+        ):
+            continue
+        if key in price_keys:
+            out[key] = round(value * scale) if to_game else _plain_number(round(value / scale, 6))
+        else:
+            out[key] = (
+                round(value / scale, 9) if to_game else _plain_number(round(value * scale, 6))
+            )
+    return out
+
+
+def describe_order(kind: str, payload: dict[str, Any]) -> str:
+    """命令の列に出す、命令の中身の短い説明（量と値段は見せる単位で）。"""
+    defs = get_game().defs
+    payload = order_payload(kind, payload, to_game=False)
     name = defs.name("orders", kind)
     where = f"({payload['x']}, {payload['y']})" if "x" in payload and "y" in payload else ""
     if kind == "build":
@@ -728,7 +806,8 @@ def _describe_trade(kind: str, payload: dict[str, Any], name: str) -> str:
         if "fixed_good" in payload:
             good = payload["fixed_good"]
             price = payload.get("fixed_price", 0)
-            fixed = f"{price:,} に固定" if price else "の固定をやめる"
+            unit = defs.unit_name(good) if good in defs.goods else ""
+            fixed = f"1{unit}あたり {price:,} に固定" if price else "の固定をやめる"
             parts.append(f"{defs.name('goods', good)}の値段を{fixed}")
         return f"{name}: {bloc} " + "・".join(parts)
     if kind == "transfer_bloc":
@@ -1003,7 +1082,8 @@ def policy_view(island) -> dict[str, Any]:
             item: {"name": message(f"budget_{item}"), "amount": budget.get(item, 0)}
             for item in budget_items
         },
-        "price_cap": policy.get("price_cap", {}),
+        # 公共料金の上限は見せる単位 1 つあたり（W-30）
+        "price_cap": {g: price(g, p) for g, p in policy.get("price_cap", {}).items()},
         **finance_policy_view(island),
     }
 
@@ -1169,6 +1249,45 @@ def summary(stats: dict[str, float], currency: str = "") -> list[dict[str, Any]]
     ]
 
 
+# 船の荷の重さ（freight_weight のトン）の統計の単位と、荷 1 トンあたりのお金の統計（W-30）
+WEIGHT_UNIT = " トン"
+WEIGHT_PRICE_STATS = ("freight.ship_rate",)
+
+
+def tons(milli: int) -> float:
+    """1000 分の 1 トンの船の荷の重さを、見せるトンに（小数第1位まで）。"""
+    return round(from_milli(milli) * get_game().defs.weight_scale(), 1)
+
+
+def weight_price(value: float) -> float:
+    """荷 1 トンあたりのお金（運賃・港の使用料）を、見せる 1 トンあたりに。"""
+    shown_value = value / get_game().defs.weight_scale()
+    return round(shown_value) if abs(shown_value) >= 100 else round(shown_value, 1)
+
+
+def stat_value(key: str, value: float | None, unit: str) -> float | None:
+    """統計の値を見せる単位に: 財の量（単位 good:<財>）は display_scale を掛け、財の値段
+    （price.<財>）は見せる単位 1 つあたりに割る（W-30。統計は計算の単位のまま記録してある）。"""
+    if value is None:
+        return None
+    defs = get_game().defs
+    if unit.startswith("good:"):
+        return defs.shown_amount(unit.removeprefix("good:"), value)
+    if unit == WEIGHT_UNIT:  # 船の荷の重さ
+        return value * defs.weight_scale()
+    if key in WEIGHT_PRICE_STATS:  # 荷 1 トンあたりのお金
+        return weight_price(value)
+    good = key.removeprefix("price.")
+    if key.startswith("price.") and good in defs.goods:
+        return defs.shown_price(good, value)
+    return value
+
+
+def _per_unit(key: str) -> bool:
+    """1 単位あたりのお金の統計か（財の値段と、荷 1 トンあたりの運賃）。"""
+    return key.startswith("price.") or key in WEIGHT_PRICE_STATS
+
+
 def stat_text(key: str, value: float, unit: str, currency: str = "") -> str:
     """統計の値の文。
 
@@ -1176,9 +1295,12 @@ def stat_text(key: str, value: float, unit: str, currency: str = "") -> str:
     割合）・%（0〜1 の割合）・ratio（倍）・fx（為替レート）・good:<財>（その単位）か、数の後ろに
     付ける文字。
     """
+    value = stat_value(key, value, unit)
     if unit.startswith("good:"):
         unit = " " + get_game().defs.unit_name(unit.removeprefix("good:"))
     if unit == "money":
+        if abs(value) < 100 and not float(value).is_integer() and _per_unit(key):
+            return f"{'-' if value < 0 else ''}{currency}{abs(value):,.1f}"  # 安い 1 単位の値段
         return money_text(round(value), currency)
     if unit == "fx":
         return f"{value:.4f}"
@@ -1223,10 +1345,10 @@ def goods_table(
                     "name": defs.name("goods", good),
                     "unit": defs.unit_name(good),
                     "tier": gdef.get("tier"),
-                    "stock": round(stock, 1),
-                    "production": round(made, 1),
-                    "price": f"{currency}{record.price:,}" if record is not None else "",
-                    "volume": amount(record.volume) if record is not None else "",
+                    "stock": shown(good, stock),
+                    "production": shown(good, made),
+                    "price": price_text(good, record.price, currency) if record is not None else "",
+                    "volume": amount(record.volume, good) if record is not None else "",
                 }
             )
     return rows

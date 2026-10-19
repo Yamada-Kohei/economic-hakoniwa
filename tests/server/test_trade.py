@@ -94,12 +94,12 @@ def test_world_trade_shows_blocs_ports_and_routes(client, world):
     mine = routes[(second.id, own.id)]
     assert mine["mine"] is True
     assert mine["cargo"] == [
-        {"good": "coal", "name": "石炭", "unit": "トン", "amount": 5.0, "arrive": w.turn + 2}
+        {"good": "coal", "name": "石炭", "unit": "トン", "amount": 125.0, "arrive": w.turn + 2}
     ]
     others = routes[(second.id, third.id)]
     assert "cargo" not in others and "mine" not in others
     capacity = get_game().config.get("trade.ship_capacity")
-    assert others["shipments"] == 2 and others["load"] == 40.0
+    assert others["shipments"] == 2 and others["load"] == 1000.0
     assert others["ships"] == round(40 / capacity, 2)
 
     client.logout()  # ログインしていない人には、どの荷の中身も見せない
@@ -159,7 +159,7 @@ def test_trade_api_for_owner(client, world):
     assert contract["state"] == "proposed" and contract["state_name"] == "申し込み中"
     assert contract["side"] == "buy" and contract["partner"] == second.id
     assert contract["proposed_by_me"] is False and contract["can_accept"] is True
-    assert contract["quantity"] == 2.0 and contract["price"] == 500
+    assert contract["quantity"] == 50.0 and contract["price"] == 20
     assert contract["currency_name"] == second.names["currency"]
     # 届いた物の行き先は買う側が決める（決める前は市場に出す）
     assert contract["delivery"] == "market" and contract["delivery_name"] == "市場に出す"
@@ -168,7 +168,7 @@ def test_trade_api_for_owner(client, world):
     fleet = data["fleet"]
     assert fleet["shipping"]["ships"] == config.get("trade.start_ships")
     assert fleet["shipping"]["fuel"][0]["good"] == "coal"
-    assert fleet["port"]["capacity"] == config.get("trade.port_capacity")
+    assert fleet["port"]["capacity"] == config.get("trade.port_capacity") * 25  # 見せるトン
     assert fleet["port"]["fee"] > 0
 
     merchant = data["merchant"]
@@ -343,8 +343,8 @@ ISLAND_KEYS = ("currency", "approve", "to", "partner")  # 命令の中身のう�
                 "price": 900,
                 "turns": 6,
             },
-            "二国間契約の申し込み: サンプル島2に石炭を毎ターン 2.5 トン買う"
-            "（1トン 900・自国通貨・6 ターン）",
+            "二国間契約の申し込み: サンプル島2に石炭を毎ターン 62.5 トン買う"
+            "（1トン 36・自国通貨・6 ターン）",
         ),
         (
             "propose_contract",
@@ -357,8 +357,8 @@ ISLAND_KEYS = ("currency", "approve", "to", "partner")  # 命令の中身のう�
                 "turns": 6,
                 "delivery": "warehouse",
             },
-            "二国間契約の申し込み: サンプル島2に石炭を毎ターン 1 トン買う"
-            "（1トン 900・自国通貨・6 ターン・届いた物は国の倉庫に置く）",
+            "二国間契約の申し込み: サンプル島2に石炭を毎ターン 25 トン買う"
+            "（1トン 36・自国通貨・6 ターン・届いた物は国の倉庫に置く）",
         ),
         ("accept_contract", {"contract": 4}, "二国間契約を受ける: 契約 4 番"),
         (

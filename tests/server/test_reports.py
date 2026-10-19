@@ -59,7 +59,7 @@ def test_economy_series_with_derived_and_wildcard(client, world):
     assert data["mine"] is True
     assert data["turns"] == [1, 2, 3]
     assert data["series"]["gdp"] == [100.0, 120.0, 130.0]
-    assert data["series"]["price.food"] == [10.0, 12.0, 13.0]
+    assert data["series"]["price.food"] == [0.4, 0.5, 0.5]
     assert data["series"]["fiscal.balance"] == [None, None, 70.0]
     assert data["series"]["fiscal.revenue"][-1] == 100.0
     assert data["series"]["layer.general.income_per_person"] == [None, None, 100.0]
@@ -121,8 +121,8 @@ def test_market_api_shows_trades_only_to_owner(client, world):
     seller = _market(island)
     url = f"/api/islands/{island.id}/market/food"
     data = client.get(url).json()
-    assert data["turns"] == [3, 4] and data["price"] == [100, 110]
-    assert data["volume"] == [2.0, 2.0] and data["latest"]["demand"] == 3.0
+    assert data["turns"] == [3, 4] and data["price"] == [4.0, 4.4]
+    assert data["volume"] == [50.0, 50.0] and data["latest"]["demand"] == 75.0
     assert "trades" not in data and "short" not in data
     island.owner = _login(client)
     island.save()
@@ -130,7 +130,7 @@ def test_market_api_shows_trades_only_to_owner(client, world):
     [trade] = data["trades"]
     assert trade["buyer_name"] == "家計（労働者階級）"
     assert trade["seller"] == f"fac:{seller.number}" and trade["seller_name"]
-    assert trade["quantity"] == 2.0 and trade["price"] == 110
+    assert trade["quantity"] == 50.0 and trade["price"] == 4.4
     assert client.get(f"/api/islands/{island.id}/market/unknown_good").status_code == 404
 
 

@@ -413,7 +413,9 @@ def series(island: m.Island, names: list[str], start: int, end: int, mine: bool)
         "from": start,
         "to": end,
         "turns": turns,
-        "series": {n: [table[n].get(t) for t in turns] for n in found},
+        "series": {
+            n: [display.stat_value(n, table[n].get(t), labels[n][1]) for t in turns] for n in found
+        },
         "labels": {n: label for n, (label, _) in labels.items()},
         "units": {n: unit_of(unit) for n, (_, unit) in labels.items()},
         "limits": {"names": MAX_NAMES, "series": MAX_SERIES},
@@ -529,7 +531,7 @@ def stats_part(stats: dict[str, float], names: list[str]) -> dict[str, Any]:
     """統計のうち names にあるものと、その表示名と単位（API の形。画面の stat_rows と同じ統計）。"""
     shown = [n for n in names if n in stats]
     return {
-        "stats": {n: stats[n] for n in shown},
+        "stats": {n: display.stat_value(n, stats[n], stat_label(n)[1]) for n in shown},
         "labels": {n: stat_label(n)[0] for n in shown},
         "units": {n: unit_of(stat_label(n)[1]) for n in shown},
     }
@@ -574,16 +576,16 @@ def market_table(island: m.Island, stats: dict[str, float], currency: str) -> li
             "good": good,
             "name": defs.name("goods", good),
             "unit": defs.unit_name(good),
-            "production": round(made, 1),
-            "stock": round(stock, 1),
+            "production": display.shown(good, made),
+            "stock": display.shown(good, stock),
         }
         if record is not None:
             row.update(
-                price=display.money_text(record.price, currency),
-                volume=display.amount(record.volume),
-                demand=display.amount(record.demand),
-                supply=display.amount(record.supply),
-                unmet=display.amount(max(0, record.demand - record.volume)),
+                price=display.price_text(good, record.price, currency),
+                volume=display.amount(record.volume, good),
+                demand=display.amount(record.demand, good),
+                supply=display.amount(record.supply, good),
+                unmet=display.amount(max(0, record.demand - record.volume), good),
             )
             previous = before.get(good)
             if previous is not None and previous.price:
@@ -598,7 +600,8 @@ def market_series(
 ) -> dict[str, Any]:
     """財 good の値段と量の推移と、直近のターンの市場。持ち主には約定と、買えずに止まった施設も。
 
-    量は表示の単位（1000 分の 1 単位を直したもの）。
+    量と値段は見せる単位（1000 分の 1 単位を直し、財の display_scale で量を掛け、値段を割った
+    もの。W-30）。
     """
     defs = get_game().defs
     records = list(
@@ -616,19 +619,19 @@ def market_series(
         "from": start,
         "to": end,
         "turns": [r.turn for r in records],
-        "price": [r.price for r in records],
-        "volume": [from_milli(r.volume) for r in records],
-        "demand": [from_milli(r.demand) for r in records],
-        "supply": [from_milli(r.supply) for r in records],
+        "price": [display.price(good, r.price) for r in records],
+        "volume": [_qty(good, r.volume) for r in records],
+        "demand": [_qty(good, r.demand) for r in records],
+        "supply": [_qty(good, r.supply) for r in records],
     }
     latest = MarketRecord.objects.filter(island=island, good=good).order_by("-turn").first()
     if latest is not None:
         data["latest"] = {
             "turn": latest.turn,
-            "price": latest.price,
-            "volume": from_milli(latest.volume),
-            "demand": from_milli(latest.demand),
-            "supply": from_milli(latest.supply),
+            "price": display.price(good, latest.price),
+            "volume": _qty(good, latest.volume),
+            "demand": _qty(good, latest.demand),
+            "supply": _qty(good, latest.supply),
         }
     if mine:
         state = display.island_for_naming(island)
@@ -636,6 +639,11 @@ def market_series(
         data["trades"] = trades(island, state, good, turn) if turn is not None else []
         data["short"] = short_facilities(island, state, good)
     return data
+
+
+def _qty(good: str, milli: int) -> float:
+    """1000 分の 1 単位の量を、見せる量に（丸めない。グラフと API 用）。"""
+    return round(get_game().defs.shown_amount(good, from_milli(milli)), 3)
 
 
 def trades(island: m.Island, state: IslandState, good: str, turn: int) -> list[dict]:
@@ -654,9 +662,9 @@ def trades(island: m.Island, state: IslandState, good: str, turn: int) -> list[d
             "buyer_name": names[buyer],
             "seller": seller,
             "seller_name": names[seller],
-            "quantity": from_milli(qty),
+            "quantity": _qty(good, qty),
             "amount": amount,
-            "price": round(amount / from_milli(qty)) if qty else None,
+            "price": display.price(good, round(amount / from_milli(qty))) if qty else None,
         }
         for (buyer, seller), (qty, amount) in pairs.items()
     ]

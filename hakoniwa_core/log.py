@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import string
 from typing import Any
 
@@ -69,6 +70,25 @@ def format_turn(defs: Defs, turn: int, calendar: Calendar | None = None, lang: s
     return defs.name("messages", "calendar_turn", lang).format(date=shown, turn=turn)
 
 
+# 文面の中で量と値段を見分ける形（W-30）: 「{amount:g} {unit}」の amount は量、
+# 「1{unit}あたり {price:,}」の price は 1 単位あたりの値段。見せるときに財の display_scale で
+# 量を掛け、値段を割る
+_AMOUNT_BEFORE_UNIT = re.compile(r"\{(\w+)(?::[^}]*)?\} ?\{unit\}")
+_PRICE_PER_UNIT = re.compile(r"1\{unit\}あたり ?\{(\w+)")
+
+
+def _scale_goods_args(
+    defs: Defs, good: str, template: str, args: dict[str, Any], shown: dict[str, Any]
+) -> None:
+    """財の文の量と値段を、見せる単位に直す（記録は計算の単位のまま、文にするときだけ）。"""
+    for key in _AMOUNT_BEFORE_UNIT.findall(template):
+        if isinstance(args.get(key), (int, float)):
+            shown[key] = round(defs.shown_amount(good, args[key]), 3)
+    for key in _PRICE_PER_UNIT.findall(template):
+        if isinstance(args.get(key), (int, float)):
+            shown[key] = defs.shown_price(good, args[key])
+
+
 def format_log(
     defs: Defs,
     kind: str,
@@ -90,6 +110,7 @@ def format_log(
     }
     if isinstance(args.get("good"), str):
         shown.setdefault("unit", defs.unit_name(args["good"], lang))
+        _scale_goods_args(defs, args["good"], template, args, shown)
     if isinstance(args.get("goods"), list):
         names = [defs.name("goods", g, lang) for g in args["goods"]]
         shown["goods"] = "・".join(names) or defs.name("messages", "none", lang)

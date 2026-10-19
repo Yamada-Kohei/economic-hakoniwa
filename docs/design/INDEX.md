@@ -128,7 +128,7 @@
 | MK-29 | 初めの値段は、建国と移し替えのときに定義データのレシピから「原価＋上乗せ」で解く | 決定 | tests/core/test_rules.py |
 | MK-30 | 前のフェーズから移し替えた島で値段のない新しい財には、島の初めの値段に今の物価指数の倍率を掛けた… | 決定 | tests/core/test_phase3_2.py |
 | MK-31 | 財は 24 品目（23 品目とサービス） | 決定 | （未確認） |
-| MK-32 | 量は島の大きさに合わせて縮め、重さの1トンは実物のおよそ 25 トン分とする | 仮（仮の決まりの表あり） | （未確認） |
+| MK-32 | 計算の量は島の大きさに合わせて縮め、重さの1トンは実物のおよそ 25 トン分とする | 仮（仮の決まりの表あり） | tests/server/test_display_units.py |
 | MK-33 | 市場の記録に財ごとの値段・売買の量・買いたかった量・売りたかった量と、施設ごとに買えなかったわけ… | 決定 | tests/core/test_phase3_2.py、tests/core/test_rules.py |
 | MK-34 | 計画経済の島は公定価格（値幅なし）で、混合経済の島は財ごとの値段の規制で、同じ板寄せを使う（決め… | 決定 | tests/core/test_phase3_4.py |
 | MK-35 | 消費財の原価が家計の注文の一番上の段を超えると売れない件は「難しさとして残す」（注文の段はタブ … | 決定 | tests/core/test_economy.py |
@@ -484,7 +484,7 @@
 | UI-30 | 命令・画面・画面に出す値・地図の重ね表示を足したり変えたりしたら、同じ PR で JSON AP… | 決定 | tests/server/test_ai_parity.py |
 | UI-31 | 管理は Django の管理サイトで行う: 更新の一時停止、巻き戻し、何ターンかまとめて進める、… | 決定 | tests/server/test_letters.py、tests/server/test_turns.py、tests/server/test_web.py |
 | UI-32 | 同じ接続元からの登録は管理者が設定で数を決める（家族・学校・携帯回線で 1 つの接続元を分け合う… | 決定 | tests/server/test_phase1.py |
-| UI-33 | 量の表示の単位を実物に近づけるのは、バランス調整の最後に表示だけで行う（計算は変えない） | 決定（バランス調整の最後で） |  |
+| UI-33 | 量は実物に近い単位で見せる（計算は変えない） | 決定 | tests/server/test_display_units.py |
 | UI-34 | トップ画面は島の順位の表（列の頭で並べ替え、既定は GDP の順 | 決定 | tests/server/test_top_page.py |
 | UI-35 | 島の画面のマスの情報は、押したマスのそばの小さな窓（ポップオーバー）に出す | 決定 | tests/server/test_map_popover_pies_wording.py |
 | UI-36 | 全体を分けた割合を見る統計（人口の階級ごとの内訳・歳入と歳出の内訳・産業ごとの従業者数）は円グラ… | 決定 | tests/server/test_map_popover_pies_wording.py |

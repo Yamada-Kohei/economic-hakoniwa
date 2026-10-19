@@ -6,7 +6,7 @@
 {% if chain %}
 <section class="panel">
   <h2>{% if chain.turn is not None %}{% translate "品目ごとの鎖" %} <small class="heading-date">{{ chain.turn|turn_date }}</small>{% else %}{% translate "品目ごとの鎖" %}{% endif %}</h2>
-  <p class="hint">{% blocktranslate with share=chain.share %}原料から中間財、最終財へと並べています。市場で買いたい量の {{ share }}% 以上が買えなかった品目は赤く出し、続いたターン数を付けます（3 ターン続くとターンログでも知らせます）。輸入は商社と海外の商人が島の市場で売った量、輸出は商社が買った量です。値段の動きは 12 ターン前との比べです。重さの 1 トンは、実物のおよそ 25 トン分にあたります。{% endblocktranslate %}</p>
+  <p class="hint">{% blocktranslate with share=chain.share %}原料から中間財、最終財へと並べています。市場で買いたい量の {{ share }}% 以上が買えなかった品目は赤く出し、続いたターン数を付けます（3 ターン続くとターンログでも知らせます）。輸入は商社と海外の商人が島の市場で売った量、輸出は商社が買った量です。値段の動きは 12 ターン前との比べです。量は実物に近い単位です。{% endblocktranslate %}</p>
   {% if chain.short %}
   <p class="chain-alert">{% translate "品不足" %}:
     {% for g in chain.short %}<a href="{% url 'island_market' island.id %}?good={{ g.good }}">{{ g.name }}</a>{% blocktranslate count turns=g.streak %}（{{ turns }} ターン）{% plural %}（{{ turns }} ターン）{% endblocktranslate %}{% if not forloop.last %}、{% endif %}{% endfor %}

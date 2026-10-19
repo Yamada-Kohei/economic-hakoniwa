@@ -130,10 +130,10 @@ def chain_view(island: m.Island, stats: dict[str, float], currency: str) -> dict
             "name": defs.name("goods", good),
             "unit": defs.unit_name(good),
             "tier": gdef.get("tier", 3),
-            "made": round(made, 1),
-            "used": round(used, 1),
-            "imported": display.amount(imported.get(good, 0)),
-            "exported": display.amount(exported.get(good, 0)),
+            "made": display.shown(good, made),
+            "used": display.shown(good, used),
+            "imported": display.amount(imported.get(good, 0), good),
+            "exported": display.amount(exported.get(good, 0), good),
             "short": streak > 0,
             "streak": streak,
             "makers": _kinds(defs, makers.get(good, {})),
@@ -142,13 +142,13 @@ def chain_view(island: m.Island, stats: dict[str, float], currency: str) -> dict
         }
         if now is not None:
             row.update(
-                price=display.money_text(now.price, currency),
-                volume=display.amount(now.volume),
-                demand=display.amount(now.demand),
+                price=display.price_text(good, now.price, currency),
+                volume=display.amount(now.volume, good),
+                demand=display.amount(now.demand, good),
                 bought=round(now.volume * 100 / now.demand) if now.demand else None,
                 # 売りも買いも残った: 売りの値段が買い手の指値より高くて約定しなかった
                 unmatched=now.demand > now.volume and now.supply > now.volume,
-                supply=display.amount(now.supply),
+                supply=display.amount(now.supply, good),
             )
             before = by_turn.get(turn - YEAR)
             if before is not None and before.price:

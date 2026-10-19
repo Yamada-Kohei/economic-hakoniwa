@@ -7,7 +7,9 @@ import { mountCharts } from "./common.js";
 import { mountOrders } from "./orders.js";
 
 // 入力欄の名前ごとの値の形（ほかは文字）。PERCENT_FIELDS は % で入れ、命令には1万分の1で渡す
-const INT_FIELDS = new Set(["price", "band"]);
+const INT_FIELDS = new Set(["band"]);
+// 値段は見せる単位で小数も書ける（W-30。サーバーが計算の単位に直して丸める）
+const NUMBER_FIELDS = new Set(["price"]);
 const PERCENT_FIELDS = new Set(["cap", "quota"]);
 const BOOL_FIELDS = new Set(["on"]);
 
@@ -26,6 +28,7 @@ function payloadOf(form) {
     if (key === list) payload[key].push(String(value));
     else if (value === "") continue;
     else if (INT_FIELDS.has(key)) payload[key] = Math.round(Number(value));
+    else if (NUMBER_FIELDS.has(key)) payload[key] = Number(value);
     else if (PERCENT_FIELDS.has(key)) payload[key] = Math.round(Number(value) * 100);
     else if (BOOL_FIELDS.has(key)) payload[key] = value === "true";
     else payload[key] = String(value).trim();
