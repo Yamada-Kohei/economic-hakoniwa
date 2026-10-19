@@ -40,7 +40,7 @@
 | FM-17 | 建設費（1割増しと動き出しの支払い分を足す）の決めた割合を資本家階級が出資し、残りを銀行の建設資金で借りる。借りきれなければ多く出資し、出資しきれなければ建たない | 決定 | `firms.equity_share`, `firms.operating_turns` | tests/core/test_playtest3_fixes.py::test_private_entry_waits_for_lending |
 | FM-18 | 設備投資補助のある参入では、補助を参入のときに補助金の予算から先に出す。差し押さえ中の施設があれば、その買い取り値を建設費として新しく建てる案と比べる | 決定 | `firms.foreclosure_price` | tests/core/test_playtest_fixes.py::test_capital_subsidy_is_paid_at_entry |
 | FM-19 | 民営工場と民間銀行が建たないわけ（工業団地がない・働き手がいない・出資が足りない・融資が断られた・儲からない・オフィス街がない）を島に残し、変わったときにログで知らせる | 決定 |  | tests/core/test_playtest_fixes.py::test_entry_block_is_recorded_and_logged_once |
-| FM-20 | 撤退: 動かないターンが決めた数続くか、変動費の利益が決めたターン数続けて決めた幅を超えてマイナスなら閉鎖する。借入を預金で返し、残りを出資者に返してマスを空ける（工業団地の指定と送電線は残す） | 作り直し予定（回7） | `firms.exit_idle_turns`, `firms.exit_loss_turns`, `firms.exit_loss_margin` | tests/core/test_finance.py::test_closed_facility_leaves_power_line |
+| FM-20 | 撤退: 動かない（売る在庫もない）ターンが決めた数続くか、変動費の利益が決めたターン数続けて決めた幅を超えてマイナスなら閉鎖する。借入を預金で返し、残りを出資者に返してマスを空ける（工業団地の指定と送電線は残す）。国が引き取った残りの在庫は、売れるまで市場に出す | 作り直し予定（回7） | `firms.exit_idle_turns`, `firms.exit_loss_turns`, `firms.exit_loss_margin` | tests/core/test_finance.py::test_closed_facility_leaves_power_line, tests/core/test_balance_round6.py::test_stock_of_a_closed_plant_goes_back_on_the_market |
 | FM-21 | 倒産: 返済が決めたターン数続けて遅れると倒産し、施設は止まり働き手は失業する。銀行が差し押さえ、決めたターン数、帳簿の設備の値打ちの決めた割合で売りに出す。買うのは参入する民間か国有化する政府で、売れなければ取り壊す | 決定 | `loans.arrears_limit`, `firms.foreclosure_turns`, `firms.foreclosure_price` | tests/core/test_finance.py::test_arrears_bankrupt_private_facility |
 | FM-22 | 倒産と撤退の後、設備と在庫を売った代金は、未払い賃金 → 未払いの税 → 貸し手（貸した額の割合で）の順に分け、余れば持ち主に返す。撤退した施設の残りの在庫は国が市場の値段で引き取る | 決定 |  | tests/core/test_balance_round3.py::test_foreclosure_money_goes_to_wages_then_taxes_then_lenders_by_share, ::test_leftover_stock_is_bought_by_the_state_at_market_price, ::test_bankruptcy_pays_unpaid_wages_before_the_lenders |
 | FM-23 | 民営の工事が決めたターン数進まなければ工事をやめる。建設資金は預金で返し、返しきれない分は貸し倒れ、買ってあった資材は国の倉庫に入る | 決定 | `firms.abandon_turns` | tests/core/test_finance.py::test_stalled_private_site_is_abandoned |
@@ -128,9 +128,9 @@ R = \frac{12 \times \left(P_{\mathrm{out}} Q - \sum P_{\mathrm{in}} q_{\mathrm{i
 
 ### 撤退と倒産
 
-- 撤退: 動かない（稼働率 0）ターンが `firms.exit_idle_turns` 続くか、変動費の利益が `firms.exit_loss_turns` 続けてマイナス（全力の売上の `firms.exit_loss_margin` を超える損）なら閉鎖する。借入を預金で返し、残りを出資者に返してマスを空ける。工業団地の指定と送電線は残す（施設のマスは送電網の一部なので、残さないと島全体が停電することがあった）。
+- 撤退: 動かない（稼働率 0 で、売る在庫もない）ターンが `firms.exit_idle_turns` 続くか、変動費の利益が `firms.exit_loss_turns` 続けてマイナス（全力の売上の `firms.exit_loss_margin` を超える損）なら閉鎖する。借入を預金で返し、残りを出資者に返してマスを空ける。工業団地の指定と送電線は残す（施設のマスは送電網の一部なので、残さないと島全体が停電することがあった）。
 - 倒産: 返済が `loans.arrears_limit` 続けて遅れると倒産し、施設は止まり、働き手は失業する。銀行が差し押さえ、`firms.foreclosure_turns` の間、帳簿の設備の値打ちの `firms.foreclosure_price` で売りに出す。買うのは参入する民間か国有化する政府で、売れなければ取り壊す。
-- 分け方: 現実の倒産の手続きと同じく、設備と在庫を売った代金を、未払い賃金（多くの国で優先される）→ 未払いの税 → 貸し手（貸した額の割合で）の順に分け、余れば持ち主に返す。出資は残りがなければ 0。撤退した施設の残りの在庫は国が市場の値段で引き取り、代金も同じ順で分ける。
+- 分け方: 現実の倒産の手続きと同じく、設備と在庫を売った代金を、未払い賃金（多くの国で優先される）→ 未払いの税 → 貸し手（貸した額の割合で）の順に分け、余れば持ち主に返す。出資は残りがなければ 0。撤退した施設の残りの在庫は国が市場の値段で引き取り、代金も同じ順で分ける。国が引き取った在庫（取り壊した差し押さえの施設の分も）は、国が持つと決めた備蓄ではないので、売れるまで毎ターン島の市場の値段で売りに出す（回6。閉じた製材所の木材が国の倉庫に眠り、木材を作る人がいなくなった島で漁港や農場が設備を直せずに飢饉になった）。
 - 工事の中止: 民営の工事が `firms.abandon_turns` 進まなければやめる。建設資金は預金で返し、返しきれない分は貸し倒れ、買ってあった資材は国の倉庫に入る。
 - 回7 で、閉めるかどうかは企業が選ぶ形に替える（今の「赤字が続けば自動で閉鎖」は仮の形から出ている）。
 

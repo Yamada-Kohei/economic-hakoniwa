@@ -202,7 +202,7 @@
 | FM-17 | 建設費（1割増しと動き出しの支払い分を足す）の決めた割合を資本家階級が出資し、残りを銀行の建設資… | 決定 | tests/core/test_playtest3_fixes.py |
 | FM-18 | 設備投資補助のある参入では、補助を参入のときに補助金の予算から先に出す | 決定 | tests/core/test_playtest_fixes.py |
 | FM-19 | 民営工場と民間銀行が建たないわけ（工業団地がない・働き手がいない・出資が足りない・融資が断られた… | 決定 | tests/core/test_playtest_fixes.py |
-| FM-20 | 撤退: 動かないターンが決めた数続くか、変動費の利益が決めたターン数続けて決めた幅を超えてマイナ… | 作り直し予定（回7） | tests/core/test_finance.py |
+| FM-20 | 撤退: 動かない（売る在庫もない）ターンが決めた数続くか、変動費の利益が決めたターン数続けて決め… | 作り直し予定（回7） | tests/core/test_balance_round6.py、tests/core/test_finance.py |
 | FM-21 | 倒産: 返済が決めたターン数続けて遅れると倒産し、施設は止まり働き手は失業する | 決定 | tests/core/test_finance.py |
 | FM-22 | 倒産と撤退の後、設備と在庫を売った代金は、未払い賃金 → 未払いの税 → 貸し手（貸した額の割合… | 決定 | tests/core/test_balance_round3.py |
 | FM-23 | 民営の工事が決めたターン数進まなければ工事をやめる | 決定 | tests/core/test_finance.py |
