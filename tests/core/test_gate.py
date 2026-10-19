@@ -25,6 +25,7 @@ import random
 
 import pytest
 
+from hakoniwa_core import facilities as fac
 from hakoniwa_core import gate
 from hakoniwa_core.autoplan import plan_trade, plan_turn, queue_orders
 from hakoniwa_core.founding import found_island
@@ -74,6 +75,7 @@ def test_supply_chain_runs_for_300_turns(game, seed):
     start_population = sum(t.population for t in island.tiles)
     produced: dict[str, float] = {}
     machinery_built_in = 0.0  # 島で機械を作り始めた後に建った施設が、資材に使った機械
+    machinery_repaired = 0.0  # 島で機械を作り始めた後に、建っている施設が設備を直すのに買った機械
     populations = [start_population]
     bad_stock = []
     short = []  # 食べ物が足りなかったターン
@@ -84,11 +86,20 @@ def test_supply_chain_runs_for_300_turns(game, seed):
             if key.startswith("production."):
                 good = key.removeprefix("production.")
                 produced[good] = produced.get(good, 0) + value
-        nonlocal machinery_built_in
+        nonlocal machinery_built_in, machinery_repaired
         for entry in island.log:
             if entry.kind == "construction_done" and produced.get("machinery", 0) > 0:
                 materials = game.defs.facilities[entry.args["facility"]]["construction"]
                 machinery_built_in += from_milli(materials.get("materials", {}).get("machinery", 0))
+        by_id = {f.id: f for f in island.facilities}
+        for t in island.trades:
+            if t.good != "machinery" or not t.buyer.startswith("fac:"):
+                continue
+            f = by_id.get(int(t.buyer.removeprefix("fac:")))
+            # 建っていて、機械を原料に使わない施設が買った機械は、設備を直す分（回6）
+            if f is not None and f.built and produced.get("machinery", 0) > 0:
+                if "machinery" not in fac.recipe_of(game.defs, f).get("inputs", {}):
+                    machinery_repaired += from_milli(t.quantity)
         for good, batches in island.warehouse.items():
             bad_stock.extend((good, q) for _, q in batches if q <= 0)
         for f in island.facilities:
@@ -110,9 +121,12 @@ def test_supply_chain_runs_for_300_turns(game, seed):
     assert produced.get("steel", 0) > 0
     assert produced.get("machinery", 0) > 0
     # 回3 までは「初めの倉庫の機械より多く使った」で見ていたが、回4 で人口が年1%ほどで増えるように
-    # なり、工事が一巡した後に建つ工場が少ない（回2 で分かった E01。設備の傷みと更新は回6）ので、
-    # 機械を作り始めた後に機械を使う施設が建つことを見る
-    assert machinery_built_in > 0, "島で機械を作り始めた後に、機械を使った施設が建っていない"
+    # なり、工事が一巡した後に建つ工場が少ない（回2 で分かった E01）ので、機械を作り始めた後に機械を
+    # 使う施設が建つことを見ていた。回6 で設備が傷むようになり、工事が一巡した後の機械の買い手は
+    # 設備を直す施設なので、建つ施設か直す施設のどちらかが島の機械を使うことを見る
+    assert machinery_built_in + machinery_repaired > 0, (
+        "島で機械を作り始めた後に、機械を使って建った施設も、設備を直した施設もない"
+    )
     # 在庫はマイナスにならない（0 になった組は消える）
     assert bad_stock == []
     # 人口は爆発も消滅もしない
