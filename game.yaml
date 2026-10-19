@@ -22,6 +22,7 @@ stages:
   - accounts         # 決算: 損益（国債は売った・償還された分の損益だけ）、減価償却、補助金、法人税、配当と納付、中央銀行の納付
   - central_bank     # 政策金利（独立のとき）、銀行間の貸し借り、中央銀行の貸し出し
   - failures         # 返済の遅れが続いた施設の倒産、銀行の破綻と破綻処理
+  - firms_funds      # 企業の資金（回7）: 施設の余りを企業へ上げ、足りない施設に回す、連結の法人税と配当、立て直し
   - entry_exit       # 民営工場と民間銀行の参入・撤退、差し押さえた施設の売却
   - population       # 消費と人口
   - housing          # 都市の発展（町の自動建設と成長）
@@ -311,6 +312,12 @@ firms:
   depreciation_turns: 240  # 設備の減価償却のターン数（20年）
   payout: 0.5           # 税引き後の利益のうち、配当（民営）・国庫への納付（国営）に回す割合
   cash_turns: 6         # 手元の資金がこのターン数分の支払いを超えたら、超えた分も配当・納付に回す
+  # 企業（回7。modules/companies）: 施設を建ても買いもせず idle_cash_years 年たち、手元が施設の支払いの
+  # firm_cash_turns ターン分を超えた企業は、超えた分も配当する。連結の現金収支が restructure_turns ターン
+  # 続けてマイナスで、預金が施設の次の支払いに足りなければ、変動費の利益が一番低い施設を閉める
+  idle_cash_years: 3
+  firm_cash_turns: 24
+  restructure_turns: 12
   loss_carry_turns: 60  # 赤字を繰り越せるターン数
   # 民営工場の参入（フェーズ2-2）。見込みの年の利益率 R（式 entry_return）が「借りる金利 + entry_margin」を
   # 超え、その財が直近 price_turns ターンのうち shortage_turns ターン以上品切れか、値段が原価の

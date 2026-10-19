@@ -76,6 +76,7 @@ from hakoniwa_core.economy import (
     Payer,
     arrears,
     banks,
+    companies,
     default_accounting,
     equipment,
     facility_entity,
@@ -87,6 +88,7 @@ from hakoniwa_core.economy import (
     is_self_supporting,
     is_stopped,
     is_transport,
+    owner_entity,
     productivity,
     services,
 )
@@ -768,7 +770,7 @@ class EntryExit(IslandStage):
         return best, rates[best]
 
     def _finance(
-        self, island: IslandState, ctx: StageContext, amount: int, earnings: int
+        self, island: IslandState, ctx: StageContext, amount: int, earnings: int, kind: str = ""
     ) -> list[tuple[str, int, int]] | tuple[str, dict[str, Any]]:
         """出資と建設資金の融資の組み立て: [(銀行, 借りる額, 金利)]（出資は amount − 借りる額の合
         計）。資産を持つ層が出資しきれないか、審査に通らなければ、そのわけ（わけと引数の組）。
@@ -800,6 +802,13 @@ class EntryExit(IslandStage):
                 left -= piece
         loan = want - left
         have = funds.available(island, owners)
+        # 出資するのは、お金のある企業か、新しい企業を起こす資本家階級（回7。economy/companies.py）
+        investor = (
+            companies.choose_investor(island, ctx.defs, kind, amount - loan) if kind else None
+        )
+        island.scratch["entry_investor"] = investor
+        if investor is not None:
+            have = max(have, amount - loan)
         if have < amount - loan:
             if stopped and loan == 0:
                 return ("credit_crunch", {"turn": min(stopped) - 1})
@@ -841,9 +850,10 @@ class EntryExit(IslandStage):
         # ターン分）も合わせて調達する
         start = operating_cost(defs, config, probe, prices, wage, rate)
         amount = capital + capital // 10 + start * config.get("firms.operating_turns")
-        plan = self._finance(island, ctx, amount, earnings)
+        plan = self._finance(island, ctx, amount, earnings, kind)
         if isinstance(plan, tuple):
             return plan
+        payer, firm = island.scratch.pop("entry_investor", None) or (household(OWNERS), None)
         f = Facility(
             id=island.next_facility_id(),
             kind=kind,
@@ -858,7 +868,8 @@ class EntryExit(IslandStage):
         assign_serial(island, f)
         island.facilities.append(f)
         entity = facility_entity(f.id)
-        invest(island, household(OWNERS), entity, amount - sum(p for _, p, _ in plan))
+        invest(island, payer, entity, amount - sum(p for _, p, _ in plan))
+        companies.invested(island, firm, f, ctx.turn)
         turns = config.get("loans.construction_turns")
         far = 10**9  # 元金は工事が済んでから返す（工事の段で返し始めるターンを決める）
         for bank, loan, loan_rate in plan:
@@ -918,12 +929,13 @@ class EntryExit(IslandStage):
             earnings = variable_profit(ctx.defs, config, f, prices, wage, rate)
             start = operating_cost(ctx.defs, config, f, prices, wage, rate)
             amount = price + start * config.get("firms.operating_turns")
-            plan = self._finance(island, ctx, amount, earnings)
+            plan = self._finance(island, ctx, amount, earnings, kind)
             if isinstance(plan, tuple):
                 continue
+            payer, firm = island.scratch.pop("entry_investor", None) or (household(OWNERS), None)
             close_foreclosure(island, f)
             entity = facility_entity(f.id)
-            invest(island, household(OWNERS), entity, amount - sum(p for _, p, _ in plan))
+            invest(island, payer, entity, amount - sum(p for _, p, _ in plan))
             turns = config.get("loans.construction_turns")
             grace = ctx.turn + 1 + config.get("loans.grace_turns")
             for bank, loan, loan_rate in plan:
@@ -931,6 +943,7 @@ class EntryExit(IslandStage):
                 banks.lend(island, bank, entity, loan, purpose, turns, ctx.turn, loan_rate, grace)
             pay_seller(island, entity, seized, price)
             restart(island, ctx, f, OWNER_PRIVATE, price)
+            companies.invested(island, firm, f, ctx.turn)
             f.economy["entered"] = ctx.turn
             island.log.append(
                 LogEntry(
@@ -1197,8 +1210,11 @@ def nationalize(island: IslandState, payload: dict[str, Any], ctx: StageContext)
         if is_self_supporting(f):
             fund_facility(island, ctx.defs, ctx.config, f, Payer(ledger.GOV, STATE_FACILITIES))
     else:
-        funds.pay(island, payer, household(OWNERS), price, "nationalization")
-        _move_equity(island, entity, household(OWNERS), ledger.GOV)
+        # 売り手は施設の株を持つ者（企業の施設は企業。回7）
+        seller = owner_entity(f)
+        funds.pay(island, payer, seller, price, "nationalization")
+        _move_equity(island, entity, seller, ledger.GOV)
+        companies.leave(island, f)
         f.owner = OWNER_STATE
         for key in ("closing", "idle_turns", "loss_streak"):
             f.economy.pop(key, None)

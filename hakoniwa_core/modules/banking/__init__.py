@@ -45,6 +45,7 @@ from hakoniwa_core.economy import (
     Payer,
     banks,
     books,
+    companies,
     facility_entity,
     funds,
     household,
@@ -163,6 +164,8 @@ class Banking(IslandStage):
             payer = Payer(borrower)
             short = sum(i + p for _, i, p in rows) - funds.available(island, payer)
             f = island.facility(int(borrower.split(":")[1]))
+            if short > 0 and f is not None:
+                short -= companies.draw(island, f, short)  # 企業の預金から先に回す（回7）
             if short > 0 and f is not None and in_business(f):
                 if planned:
                     self._refinance(island, ctx, rows[0][0], short)
@@ -250,6 +253,10 @@ class Banking(IslandStage):
                 continue
             entity = facility_entity(f.id)
             short = next_payments(island, ctx.defs, ctx.config, f) - ledger.money(island, entity)
+            if short <= 0:
+                continue
+            # 民営の企業の施設は、借りる前に企業の預金から回す（回7）
+            short -= companies.draw(island, f, short)
             if short <= 0:
                 continue
             short = self._borrow(island, ctx, f, short, lent, planned)

@@ -59,6 +59,7 @@ from hakoniwa_core.economy import (
     arrears,
     banks,
     books,
+    companies,
     debt,
     entity_of,
     equipment,
@@ -286,9 +287,12 @@ class Accounts(IslandStage):
     def _settle(
         self, island: IslandState, ctx: StageContext, f: Facility, items: dict[str, int]
     ) -> tuple[int, int]:
-        """法人税と、配当（国営は国庫への納付）を払い、(税, 配当) を返す。"""
+        """法人税と、配当（国営は国庫への納付）を払い、(税, 配当) を返す。民営の企業の施設は、法人税
+        と配当を企業の資金の段でまとめて払う（回7。modules/companies）ので、ここでは払わない。"""
         settings = ctx.config.get("firms")
         payer = Payer(entity_of(ctx.config, f))
+        if not is_bank(ctx.config, f) and companies.private_firm_of(island, f) is not None:
+            return 0, 0
         profit = items[books.PROFIT]
         taxable = self._carry_losses(f, profit, ctx.turn, settings["loss_carry_turns"])
         owed = part(taxable, island.policy.corporate_tax)

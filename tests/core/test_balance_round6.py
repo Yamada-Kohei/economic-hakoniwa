@@ -409,4 +409,8 @@ def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
     assert market.demand >= QUANTITY_SCALE // 2 and market.supply == 0
     turn = world.turn
     planned = list(autoplan._candidates(island, game.defs, game.config, turn))
-    assert any(kind == "shipyard" for kind, _ in planned)
+    # 標準の計画が造船所を候補に挙げるか、もう建て始めている（回7 の企業で流れが変わり、36 ターンの
+    # うちに工事が始まるようになった）
+    assert any(kind == "shipyard" for kind, _ in planned) or any(
+        x.kind == "shipyard" for x in island.facilities
+    )

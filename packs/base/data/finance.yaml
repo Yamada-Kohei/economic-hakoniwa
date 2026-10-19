@@ -35,7 +35,9 @@ cb_loan:              {type: journal}   # 中央銀行の貸し出しと返済�
 interest_cb_loan:     {type: journal}   # 中央銀行への利子（銀行 → 中央銀行）
 # 倒産と破綻処理
 equity_loss:          {type: journal}   # 倒産した施設の出資の取り消し
-equity_transfer:      {type: journal}   # 差し押さえた施設の出資の付け替え（銀行 → 買い手）
+equity_transfer:      {type: journal}   # 差し押さえた施設の出資の付け替え（銀行 → 買い手）、企業との株の交換（回7）
+firm_sweep:           {type: journal}   # 施設の手元の余りを企業へ上げる（回7）
+firm_support:         {type: journal}   # 企業の預金から施設へ回す（回7。内部補助）
 foreclosure_sale:     {type: journal}   # 差し押さえた施設の売却の代金（買い手 → 銀行）
 foreclosure_recovery: {type: journal}   # 差し押さえた施設を取り壊したときの残りのお金（施設 → 銀行）
 bank_transfer:        {type: journal}   # 破綻した銀行の預金・融資・国債の引き継ぎ（銀行 → 銀行）

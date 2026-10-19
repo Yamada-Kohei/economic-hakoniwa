@@ -59,6 +59,7 @@ from hakoniwa_core.economy import (
     WAREHOUSE,
     Payer,
     books,
+    companies,
     entity_of,
     equipment,
     facility_entity,
@@ -895,7 +896,11 @@ class Market(IslandStage):
                 if want > 0:
                     plan[good] = (want, limits[good])
             if not state:
-                # 民営は、次のターンの支払いの見込みを残したお金で直す（直して返済が遅れない）
+                # 民営は、次のターンの支払いの見込みを残したお金で直す（直して返済が遅れない）。
+                # 企業の施設は、足りない分を企業の預金から回す（回7）
+                cost = sum(gross_cost(lim, q, rate, 0) for q, lim in plan.values())
+                need = cost + next_payments(island, defs, config, f)
+                companies.draw(island, f, need - funds.available(island, payer))
                 spare = funds.available(island, payer) - next_payments(island, defs, config, f)
                 plan = self._afford_within(plan, max(0, spare), rate)
             if state:

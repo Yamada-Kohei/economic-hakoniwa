@@ -261,6 +261,9 @@ class EconomyState:
     infra: dict[str, Any] = field(default_factory=dict)
     education: int = 0
     workers: dict[str, int] = field(default_factory=dict)
+    # 企業（回7。economy/companies.py）: 番号（文字列）→ 名前・持ち主・作ったターンなど
+    firms: dict[str, dict[str, Any]] = field(default_factory=dict)
+    firm_seq: int = 0
     ext: dict[str, Any] = field(default_factory=dict)
 
 

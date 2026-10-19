@@ -128,8 +128,14 @@ def payer_of(defs: Defs, config: GameConfig, f: Facility) -> Payer:
 
 
 def owner_entity(f: Facility) -> str:
-    """施設の持ち主（出資と配当の相手）。民営は資産を持つ層、国営は政府。"""
-    return household(OWNERS) if f.owner == OWNER_PRIVATE else ledger.GOV
+    """施設の持ち主（出資と配当の相手）。民営の企業の施設は企業（回7）、ほかの民営は資産を持つ層、
+    国営は政府。"""
+    if f.owner != OWNER_PRIVATE:
+        return ledger.GOV
+    number = f.economy.get("firm")
+    if number is not None:
+        return f"firm:{number}"
+    return household(OWNERS)
 
 
 def layers(config: GameConfig) -> dict[str, dict]:

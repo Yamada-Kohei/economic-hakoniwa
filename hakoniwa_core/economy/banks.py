@@ -311,9 +311,13 @@ def capital_target(island: IslandState, config: GameConfig, bank: str) -> int:
 
 
 def exposure(island: IslandState, bank: str, borrower: str) -> int:
-    """銀行 bank から borrower への融資の残高の合計。"""
+    """銀行 bank から borrower への融資の残高の合計。民営の企業の施設は、同じ企業の施設への残高も
+    足す（大口融資の規制は企業ごとに見る。回7）。"""
+    from hakoniwa_core.economy.companies import group_borrowers
+
+    group = group_borrowers(island, borrower)
     return sum(
-        outstanding(island, x) for x in island.loans if x.lender == bank and x.borrower == borrower
+        outstanding(island, x) for x in island.loans if x.lender == bank and x.borrower in group
     )
 
 
