@@ -588,7 +588,7 @@ class SiteFunds:
         island, defs, config = self.island, self.ctx.defs, self.ctx.config
         width = to_basis(config.get("market.band"))
         amount = 0
-        for f in Market._repairs(island, self.ctx):
+        for f, _, _ in Market._repairs(island, self.ctx):
             if f.owner == OWNER_PRIVATE:
                 continue
             for good, want in equipment.wants(defs, config, f).items():
@@ -801,29 +801,66 @@ class Market(IslandStage):
         return sites
 
     @staticmethod
-    def _repairs(island: IslandState, ctx: StageContext) -> list[Facility]:
-        """傷んだ設備を直す施設（回6）。国営は採算を比べず、民営は直す採算が合うときだけ（economy/
-        equipment.py の worthwhile）。差し押さえ中・閉鎖中は直さない。番号の順。"""
+    def _repairs(
+        island: IslandState, ctx: StageContext
+    ) -> list[tuple[Facility, int | None, dict[str, int]]]:
+        """傷んだ設備を直す施設（回6）と、民営なら全力の変動費の利益と比べに使った値段。国営は採算を
+        比べず、民営は直す採算が合うときだけ（economy/equipment.py の worthwhile）。差し押さえ中・
+        閉鎖中は直さない。番号の順。"""
         from hakoniwa_core.modules.firms import average_prices  # firms は market を読むので、ここで
 
         defs, config = ctx.defs, ctx.config
-        prices: dict[str, int] | None = None
+        prices: dict[str, int] = {}
         rates = freight_rates.facility_rates(island, defs, config)
-        found = []
+        found: list[tuple[Facility, int | None, dict[str, int]]] = []
         for f in sorted(island.facilities, key=lambda f: f.id):
             if not equipment.has_equipment(defs, config, f) or is_stopped(f):
                 continue
             if equipment.condition(f) >= equipment.level(config, f):
                 continue
+            profit = None
             if f.owner == OWNER_PRIVATE:
-                if prices is None:  # 直近の値段の平均で比べる（一時の安値で直すのをやめない）
+                if not prices:  # 直近の値段の平均で比べる（一時の安値で直すのをやめない）
                     prices = average_prices(island, config.get("firms.price_turns"))
                 wage = f.economy.get("wage", 0)
                 profit = variable_profit(defs, config, f, prices, wage, rates.get(f.id, 0))
                 if not equipment.worthwhile(defs, config, f, profit, prices):
                     continue
-            found.append(f)
+            found.append((f, profit, prices))
         return found
+
+    @staticmethod
+    def _repair_limit(
+        island: IslandState,
+        ctx: StageContext,
+        f: Facility,
+        goods: list[str],
+        profit: int | None,
+        prices: dict[str, int],
+        width: int,
+        books_by_good: dict[str, Book],
+    ) -> dict[str, int]:
+        """直す資材の指値（回6）。ふだんは工事の資材と同じ（material_limit。高ければ待つ）。島の
+        売り手がいなく海外の商人しか売っていない資材は、待っても安くならない（去る前に値上げし、
+        去れば買えなくなる）ので、値幅の上端まで払う（「いつもの値段」の指値のまま1年以上直せず、
+        売り手も買い手もいるのに取引が止まった）。民営は、その値段でも直す採算が合うときだけ。"""
+        config = ctx.config
+        limits = {g: material_limit(island, config, g, width) for g in goods}
+        imported = [
+            g
+            for g in goods
+            if g in books_by_good
+            and books_by_good[g].sells
+            and all(party.kind == MERCHANT for _, party in books_by_good[g].sells)
+        ]
+        if not imported:
+            return limits
+        high = {g: auction.band(island.economy.prices.get(g, 1), width)[1] for g in imported}
+        if profit is not None:
+            dear = dict(prices) | high
+            if not equipment.worthwhile(ctx.defs, config, f, profit, dear):
+                return limits
+        return limits | high
 
     def _repair_orders(
         self,
@@ -834,12 +871,12 @@ class Market(IslandStage):
         offered: dict[str, int],
         claimed: dict[tuple[Payer, str], int],
     ) -> None:
-        """傷んだ設備を直す資材の注文（回6。指値は工事の資材と同じ値幅の上端）。国営の施設は公共事業費
+        """傷んだ設備を直す資材の注文（回6。指値は _repair_limit）。国営の施設は公共事業費
         から（インフラの維持の後、新しい工事の前に取り置く）、民営は施設の預金から。"""
         defs, config = ctx.defs, ctx.config
         width = to_basis(config.get("market.band"))
         wanted = island.scratch.setdefault("wanted", {})
-        for f in self._repairs(island, ctx):
+        for f, profit, prices in self._repairs(island, ctx):
             state = f.owner != OWNER_PRIVATE
             payer = Payer(ledger.GOV, CONSTRUCTION) if state else payer_of(defs, config, f)
             rate = rates.get(f.id, 0)
@@ -850,10 +887,13 @@ class Market(IslandStage):
             # 一番足りない資材で届く割合までにする（ほかの資材だけ買っても直らない）
             room = {g: max(0, offered.get(g, 0) - claimed.get((payer, g), 0)) for g in full}
             plan = {}
+            limits = self._repair_limit(
+                island, ctx, f, sorted(full), profit, prices, width, books_by_good
+            )
             for good, want in equipment.wants(defs, config, f, room).items():
                 want = self._room(island, offered, claimed, payer, good, want)
                 if want > 0:
-                    plan[good] = (want, material_limit(island, config, good, width))
+                    plan[good] = (want, limits[good])
             if not state:
                 # 民営は、次のターンの支払いの見込みを残したお金で直す（直して返済が遅れない）
                 spare = funds.available(island, payer) - next_payments(island, defs, config, f)
@@ -890,7 +930,7 @@ class Market(IslandStage):
         新しいインフラの工事は後に使う。"""
         infrastructure.supply_from_warehouse(island, ctx, upkeep=True)
         prices = island.economy.prices
-        for f in self._repairs(island, ctx):  # 国営の施設の設備を直す資材（回6）
+        for f, _, _ in self._repairs(island, ctx):  # 国営の施設の設備を直す資材（回6）
             if f.owner == OWNER_PRIVATE:
                 continue
             for good, want in equipment.wants(ctx.defs, ctx.config, f).items():

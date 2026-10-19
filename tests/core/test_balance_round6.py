@@ -150,6 +150,32 @@ def test_repairs_stop_at_the_scarcest_material(game, base):
     assert equipment.wants(game.defs, game.config, f)  # 手に入るなら直したい
 
 
+def test_repairs_pay_the_import_price_when_only_the_merchant_sells(game, base):
+    """直す資材は、島の売り手がいれば工事の資材と同じ指値（高ければ待つ）。海外の商人しか売って
+    いなければ、待っても安くならないので値幅の上端まで払う。"""
+    from hakoniwa_core.economy import Payer
+    from hakoniwa_core.economy.prices import material_limit
+    from hakoniwa_core.market import auction
+    from hakoniwa_core.market.auction import Order
+    from hakoniwa_core.modules.market import FACILITY, MERCHANT, Book, Market, Party
+
+    world = copy.deepcopy(base)
+    island, f = island_with(world, game, OWNER_STATE)
+    good = sorted(equipment.kit(game.defs, f.kind))[0]
+    width = 1000
+    usual = material_limit(island, game.config, good, width)
+    _, high = auction.band(island.economy.prices.get(good, 1), width)
+    assert high > usual
+
+    def limit(kind):
+        book = Book(sells=[(Order(5000, high), Party(kind, kind, Payer(ledger.GOV, "x")))])
+        ctx = context(game, world, "market")
+        return Market._repair_limit(island, ctx, f, [good], None, {}, width, {good: book})[good]
+
+    assert limit(MERCHANT) == high
+    assert limit(FACILITY) == usual
+
+
 def test_depreciation_is_the_worn_share_of_the_book_value(game, base):
     """設備を持つ施設の減価償却は、帳簿の設備の値打ち × 傷んだ値打ち ÷ 傷む前の値打ち。"""
     world = copy.deepcopy(base)
