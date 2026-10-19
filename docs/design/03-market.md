@@ -56,6 +56,7 @@
 | MK-34 | 計画経済の島は公定価格（値幅なし）で、混合経済の島は財ごとの値段の規制で、同じ板寄せを使う（決め方はタブ 10） | 決定 | `planning.review_turns`, `planning.review_band`, `planning.held_goods` | tests/core/test_phase3_4.py::test_planned_market_clears_at_the_official_prices, ::test_price_floor_keeps_the_market_price_up |
 | MK-35 | 消費財の原価が家計の注文の一番上の段を超えると売れない件は「難しさとして残す」（注文の段はタブ 4 LB-23） | 決定 | `household.consumer_goods_tiers`, `household.consumer_goods_low_tiers`, `household.usual_price_turns` | tests/core/test_economy.py::test_consumer_tiers_spend_about_the_budget |
 | MK-36 | 消費財の指値に物価の見通しを足す。作られていない物の値段は、商社の輸入か品切れの値段のせり上げで出る（家計の側はタブ 4 LB-36、お金の側はタブ 7） | 決定（回5 で作る） |  | （未確認） |
+| MK-37 | 家計は電気と町の資材を除く品物に、代金に見合う小売りを店から一緒に買う。店で買いきれない分は小さな店と屋台から割高に買う（タブ 5 FM-38） | 決定 | `retail.*` | tests/core/test_balance_round7.py::test_households_buy_retail_from_shops_then_direct |
 
 ### 仮の決まり
 
@@ -113,6 +114,11 @@
 - 民営がそろって同じ物に替えて値崩れしないよう、今作っていない物に替えるのは買いたい量が売りに出た量を大きく上回るときだけにする。島で品切れの財を作れる民営の施設は、順番を待たずに見直す。
 - 農場は畑を作り方ごとの割合で持ち、1 ターンに畑の一部（作付けの時期の分）ずつ蒔き直す。蒔いた畑は作物の育つ期間（`grow_turns`）何も出さないので、一度に穀物が消えない。民営の見直しと国営の命令の両方に効く。
 - 2 つの物を作る施設の原価は初めの値段の比で分ける（今の値段で分けると、余った物の値段が 0 に向かい、もう一方が上がり続けたため）。
+
+### 小売り（回7）
+
+- 家計は、電気と町を育てる資材を除く品物を買うとき、代金に見合う財「小売り」を店（商店・百貨店）から一緒に買う。小売りは持ち越せない。品物の市場が決まった後に、店ごとの届くお客の割合までを買い、買いきれない分は商業・サービス業の小さな店と屋台から割高に買う（タブ 5「店と小売り」）。
+- 家計が品物の予算から取り分ける小売りの分は、前のターンに払った割合（`retail_share`）で、初めは値段から見積もる。
 
 ### 電力の市場
 
