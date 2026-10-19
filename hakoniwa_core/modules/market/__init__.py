@@ -860,6 +860,10 @@ class Market(IslandStage):
         stats = island.stats
         stats["retail.direct"] = qty_total / QUANTITY_SCALE
         stats["retail.direct_sales"] = paid_total
+        # 直売・屋台が売った小売りも作った量（実質の生産と、関門の「作った島」に数える）
+        if qty_total > 0:
+            key = f"production.{good}"
+            stats[key] = stats.get(key, 0) + qty_total / QUANTITY_SCALE
 
     # --- 公定価格と値段の規制（フェーズ3-4） ------------------------------------------------
 

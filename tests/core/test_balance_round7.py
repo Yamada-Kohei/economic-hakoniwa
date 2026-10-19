@@ -520,3 +520,24 @@ def test_firm_cascade_watch_counts_falls_per_firm(game, base):
         f.economy["foreclosed"] = 10
     gate.Recorder._watch_firms(island, 11, w)
     assert "firm_cascade" in w.hits
+
+
+def test_firm_cascade_watch_skips_own_closings(game, base):
+    """企業が自分で閉じた施設は、倒産の連鎖に数えない。"""
+    from hakoniwa_core import gate
+
+    island = copy.deepcopy(market_island(base))
+    members = [
+        f for f in island.facilities if co.private_firm_of(island, f) is not None and f.built
+    ]
+    if len(members) < gate.CASCADE_MIN:
+        pytest.skip("民営の企業の施設が少ない")
+    firm = co.private_firm_of(island, members[0])
+    for f in members:
+        f.economy[co.FIRM] = firm
+    w = gate.Watch()
+    gate.Recorder._watch_firms(island, 10, w)
+    for f in members[: gate.CASCADE_MIN]:
+        f.economy["closing"] = 10
+    gate.Recorder._watch_firms(island, 11, w)
+    assert "firm_cascade" not in w.hits

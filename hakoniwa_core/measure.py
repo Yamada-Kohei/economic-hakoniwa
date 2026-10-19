@@ -178,6 +178,8 @@ SERIES_STATS = (
     "population.deaths",
     "services.workers",
     "services.sold",
+    "retail.sold",
+    "retail.direct",
     "migration.left",
     "migration.arrived",
     "migration.returned",
@@ -523,6 +525,9 @@ class Measure:
         # 働く人のうちサービスで働く人の割合（回4）と、1人あたりのサービスの量（人月、1年あたり）
         out["labor.services"] = share("services.workers", s["employed"])
         out["services.per_person_year"] = s["services.sold"] / people * YEAR if people else 0.0
+        # 1人あたりの小売り（店と直売・屋台。回7 でサービスの一部が小売りに分かれた）
+        bought = s["retail.sold"] + s["retail.direct"]
+        out["retail.per_person_year"] = bought / people * YEAR if people else 0.0
         # 政情がデモ以上・暴動以上だった島×ターンの割合（回4）
         out["politics.demo"] = s["politics.demo"] / island_turns if island_turns else 0.0
         out["politics.riot"] = s["politics.riot"] / island_turns if island_turns else 0.0
@@ -756,6 +761,7 @@ COMPARED = (
     ("measure.emigrated.per_1000_year", 0),
     ("measure.labor.services", 0),
     ("measure.services.per_person_year", 1),
+    ("measure.retail.per_person_year", 1),
     ("measure.births.per_1000_year", 0),
     ("measure.deaths.per_1000_year", -1),
     ("measure.population.growth", 0),

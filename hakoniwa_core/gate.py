@@ -39,7 +39,7 @@ from hakoniwa_core import ledger
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import arrears, companies, debt, experience, is_stopped
+from hakoniwa_core.economy import arrears, companies, debt, experience, is_stopped, retail
 from hakoniwa_core.economy.prices import initial_prices
 from hakoniwa_core.facilities import located
 from hakoniwa_core.state import OWNER_PRIVATE, IslandState, WorldState
@@ -118,8 +118,8 @@ COLLAPSE_KINDS = (
     "unpaid_wages",  # 国が賃金を払えない（未払い賃金が残る）のが LONG_TURNS ターン続く
     "bank_rescue",  # 銀行が中央銀行から借りたままなのが LONG_TURNS ターン続く
     "silent_stop",  # 地図の上の人の働く施設が、稼働率 0 なのに理由を出さないのが2ターン続く
-    "firm_cascade",  # 1つの企業の施設が COLLAPSE_SPAN ターンに CASCADE_MIN 以上、差し押さえか閉鎖に
-    #                  なった（企業ごとの倒産の連鎖。回7）
+    "firm_cascade",  # 1つの企業の施設が FIRM_CASCADE_TURNS ターンのうちに CASCADE_MIN 以上
+    #                  差し押さえになった（企業ごとの倒産の連鎖。回7。自分で閉じたのは数えない）
     "starved_without_benefit",  # 失業手当 0 の島で、COLLAPSE_SPAN ターンに飢えで亡くなった人が
     #                             初めの人口の FAMINE_SHARE 以上（手当のない国の飢え。回7）
 )
@@ -132,13 +132,16 @@ COLLAPSE_TITLES = {
     "unpaid_wages": "国が半年続けて賃金を払いきれていない",
     "bank_rescue": "銀行が半年続けて中央銀行から借りている",
     "silent_stop": "動いていないのに理由の出ない施設",
-    "firm_cascade": "1つの企業の施設が1年に3つ以上、差し押さえか閉鎖になった",
+    "firm_cascade": "1つの企業の施設が3か月のうちに3つ以上、差し押さえになった",
     "starved_without_benefit": "失業手当のない国で、1年で人口の1%以上が飢えで亡くなる",
 }
 COLLAPSE_SPAN = TURNS_PER_YEAR
 FAMINE_SHARE = 0.01
 DROP_SHARE = 0.10
 CASCADE_MIN = 3
+# 倒産が施設から施設へ移るのは、同じ企業の貸し借り（連帯の保証）でほぼ同じターン。1年で数えると、
+# 品目の入れ替えで畑や店を自分で閉じたものまで重なり、どの島でも当たった（2026-10-19 の quick）
+FIRM_CASCADE_TURNS = 3
 # 品切れと取引が成り立たないのは1年（半年では 50 島の世界の 7〜9 割の島が当たり、見張りに
 # ならなかった。2026-10-18 の main の quick）
 STOCKOUT_TURNS = TURNS_PER_YEAR
@@ -229,6 +232,7 @@ class Recorder:
 
     def __init__(self, world: WorldState, defs: Defs, config: GameConfig) -> None:
         self.defs = defs
+        self.retail = retail.good_of(config)
         self.initial = {  # 島ごとの初めの値段（島で使える作り方で解いた値段）
             i.id: initial_prices(defs, config, i.resources) for i in world.islands.values()
         }
@@ -345,10 +349,12 @@ class Recorder:
             for k, v in s.items()
             if k.startswith("production.") and v > 0
         )
+        # 店が売りに出ていなくても、直売・屋台が売った小売りは品切れでない（回7）
+        stalls = s.get("retail.direct", 0) > 0
         for m in island.markets:
             good = m.good
             if m.supply > 0 or good in w.missing:
-                gone = m.demand > 0 and m.supply <= 0
+                gone = m.demand > 0 and m.supply <= 0 and not (good == self.retail and stalls)
                 recent = w.missing.setdefault(good, [])
                 recent.append(gone)
                 del recent[:-STOCKOUT_TURNS]
@@ -393,21 +399,19 @@ class Recorder:
 
     @staticmethod
     def _watch_firms(island: IslandState, turn: int, w: Watch) -> None:
-        """前のターンに動いていた民営の企業の施設のうち、島から消えたか、差し押さえか閉鎖に
-        なったものを企業ごとに数え、1年に CASCADE_MIN 以上なら企業ごとの倒産の連鎖とみる。"""
+        """前のターンに動いていた民営の企業の施設のうち、差し押さえになったものを企業ごとに数え、
+        FIRM_CASCADE_TURNS ターンのうちに CASCADE_MIN 以上なら企業ごとの倒産の連鎖とみる。
+        自分で閉じたもの（閉鎖・取り壊し）は企業の判断なので数えない。"""
         now: dict[int, int] = {}
-        alive: set[int] = set()
         for f in island.facilities:
-            alive.add(f.id)
             firm = companies.private_firm_of(island, f)
-            down = "foreclosed" in f.economy or "closing" in f.economy
-            if firm is not None and f.built and not down:
+            if "foreclosed" in f.economy:
+                if f.id in w.firms:
+                    w.falls.append((turn, w.firms[f.id]))
+            elif firm is not None and f.built and "closing" not in f.economy:
                 now[f.id] = firm
-            elif f.id in w.firms and down:
-                w.falls.append((turn, w.firms[f.id]))
-        w.falls += [(turn, firm) for fid, firm in w.firms.items() if fid not in alive]
         w.firms = now
-        w.falls = [(t, firm) for t, firm in w.falls if t > turn - COLLAPSE_SPAN]
+        w.falls = [(t, firm) for t, firm in w.falls if t > turn - FIRM_CASCADE_TURNS]
         for firm, n in Counter(firm for _, firm in w.falls).items():
             if n >= CASCADE_MIN:
                 w.hit("firm_cascade", turn, f"企業 {firm}")
