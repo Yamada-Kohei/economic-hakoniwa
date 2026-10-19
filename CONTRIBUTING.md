@@ -52,3 +52,7 @@ PostgreSQL でも確かめるときは `DATABASE_URL=postgres://... pytest`。CI
 - 設定や定義データの数字を変えたら、`python tools/spec/settings.py diff origin/main` の出力を PR の本文に
   貼ります。今の数字の一覧は `python tools/spec/settings.py markdown` で読み物の形にできます。
 - DB のモデルを変えたら `python manage.py makemigrations` で移行ファイルを作って含めます。
+- 遊ぶ人に見える変更（画面・命令・ゲームの決まり）をしたら、コミットの文に `更新履歴: 〜しました。` の行を
+  1つ書きます。反映（migrate）のとき、トップの画面の「更新履歴」にコミットの日付で写ります（`server/web/top.py`）。
+  載った文は管理画面の「更新履歴」で直す・隠すができ、コードを変えないお知らせもそこで足せます。
+  中の直し・試験・道具だけの変更には書きません。
