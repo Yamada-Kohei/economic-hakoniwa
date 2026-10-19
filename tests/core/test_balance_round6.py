@@ -12,12 +12,12 @@ import copy
 
 import pytest
 
-from hakoniwa_core import autoplan, ledger
+from hakoniwa_core import autoplan, ledger, stock, trade
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.economy import equipment, facility_entity
 from hakoniwa_core.economy.prices import initial_prices
 from hakoniwa_core.modules.accounts import Accounts
-from hakoniwa_core.modules.firms import restart
+from hakoniwa_core.modules.firms import remove_facility, restart
 from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE
 from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.trade import blocs, shipping_of, ships
@@ -187,6 +187,22 @@ def test_scrapped_private_plant_closes(game, base):
 
     EntryExit()._exits(island, context(game, world, "entry_exit"))
     assert "closing" in f.economy
+
+
+def test_stock_of_a_closed_plant_goes_back_on_the_market(game, base):
+    """閉じた施設の在庫は国が引き取り、売れるまで島の市場の値段で売りに出す（国の倉庫に眠らせない。
+    閉じた製材所の木材が倉庫に眠り、漁港が設備を直せなかった）。"""
+    world = copy.deepcopy(base)
+    island, f = island_with(world, game, OWNER_PRIVATE)
+    stock.add(f.stock, "wood", 7000, world.turn, game.defs.goods)
+    held = stock.total(f.stock, "wood")
+    before = stock.total(island.warehouse, "wood")
+    remove_facility(island, context(game, world), f)
+    assert stock.total(island.warehouse, "wood") == before + held
+    assert trade.to_market(island)["wood"] == held
+    run_checked(game, world, 1)
+    record = next(m for m in island.markets if m.good == "wood")
+    assert record.supply >= held  # 国が引き取った木材が売りに出ている
 
 
 # --- 船の先回りの買い替え --------------------------------------------------------------

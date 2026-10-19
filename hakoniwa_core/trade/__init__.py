@@ -69,7 +69,8 @@ TO_MARKET = "to_market"
 def to_market(island: IslandState) -> dict[str, int]:
     """国の倉庫に船で届いた腐る物（契約で買った食品など）のうち、まだ島の市場で売れていない量
     （財 → 量）。市場の段が、売り切れるか傷んで捨てられるまで、毎ターン指値なしで売りに出す
-    （試し遊びで、契約で輸入した食品が倉庫で腐り、住民に回らなかったため）。"""
+    （試し遊びで、契約で輸入した食品が倉庫で腐り、住民に回らなかったため）。閉じた施設から国が
+    引き取った在庫も、ここに足して売りに出す（回6。modules/firms の take_over_stock）。"""
     return island.ext.get(KEY, {}).get(TO_MARKET, {})
 
 

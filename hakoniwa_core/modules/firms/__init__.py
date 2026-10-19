@@ -110,7 +110,7 @@ from hakoniwa_core.state import (
     IslandState,
     LogEntry,
 )
-from hakoniwa_core.trade import merchant
+from hakoniwa_core.trade import merchant, send_to_market
 from hakoniwa_core.trade import setup as trade_setup
 from hakoniwa_core.trade import traders as trade_traders
 from hakoniwa_core.turn.context import StageContext
@@ -457,7 +457,7 @@ class EntryExit(IslandStage):
                 # 残った在庫は国が市場の値段で引き取り、その代金も同じ順で分ける（回3。E25）
                 arrears.sell_stock_to_state(island, facility_entity(f.id), f.stock)
                 close_foreclosure(island, f)
-                stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
+                take_over_stock(island, ctx, f)
                 fac.vacate(island, f)
                 freight_rates.forget(island)
                 island.log.append(
@@ -1080,9 +1080,19 @@ def remove_facility(island: IslandState, ctx: StageContext, f: Facility) -> None
 
     sell_leftover_stock(island, f)
     close_accounts(island, f)
-    stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
+    take_over_stock(island, ctx, f)
     fac.vacate(island, f)
     freight_rates.forget(island)
+
+
+def take_over_stock(island: IslandState, ctx: StageContext, f: Facility) -> None:
+    """取り除く施設の在庫を国の倉庫に移し、売れるまで島の市場の値段で売りに出す（回6。閉じた製材所の
+    木材が国の倉庫に眠り、木材を作る人がいなくなった島で、漁港や農場が設備を直せずに飢饉になった。
+    国が引き取った在庫は、国が持つと決めた備蓄ではないので、市場に戻す）。"""
+    moved = stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
+    for good, qty in sorted(moved.items()):
+        if qty > 0:
+            send_to_market(island, good, qty)
 
 
 def pay_seller(island: IslandState, payer: str, seized: dict[str, Any], price: int) -> None:

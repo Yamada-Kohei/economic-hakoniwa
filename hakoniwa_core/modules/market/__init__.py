@@ -1782,8 +1782,8 @@ class Market(IslandStage):
                 self._add(books_by_good, good, "sell", Order(qty, limit), party)
 
         for good, qty in sorted(trade.to_market(island).items()):
-            # 傷みやすい物は値段を問わず、契約で「市場に出す」と決めた物は島の値段で売りに出す
-            # （値崩れさせずに、売れるだけ毎ターン出す）
+            # 傷みやすい物は値段を問わず、契約で「市場に出す」と決めた物と閉じた施設から引き取った
+            # 物は島の値段で売りに出す（値崩れさせずに、売れるだけ毎ターン出す）
             perishable = ctx.defs.goods[good].get("shelf_life")
             sell(good, qty, None if perishable else island.economy.prices.get(good), IMPORTED)
         for item in orders:
