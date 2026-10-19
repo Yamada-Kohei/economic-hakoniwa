@@ -76,7 +76,7 @@ from hakoniwa_core.economy import (
 )
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy import plan as planning
-from hakoniwa_core.economy.households import consumption
+from hakoniwa_core.economy.households import SUPPORT, consumption
 from hakoniwa_core.economy.prices import (
     input_limit,
     material_limit,
@@ -1353,6 +1353,11 @@ class Market(IslandStage):
             budget = max(0, min(planned - paid, available))
             # 飢えて預金を崩す前の使う額（サービスとぜいたく品はこの中で使う）
             usual_budget = budget
+            # 家計の支え合いで受け取った額（回7。賃金の段）は食べ物だけに使う（サービスと
+            # ぜいたく品の使う額には足さない）
+            received = island.scratch.get(SUPPORT, {}).get(layer, 0)
+            if received > 0:
+                budget = min(available, budget + received)
             # 飢えている家計（回3。前のターンに食べきれなかったか、飢えの蓄えが残っている）: 預金を
             # 崩してでも食料を先に買い、ほかの層の分にも手を伸ばして、値幅の上端を超えて買い上がる
             # （お金のない家計から買えなくなる）
@@ -1388,7 +1393,7 @@ class Market(IslandStage):
             need = needs_by_layer.get(layer, 0)
             caps = {g: int(offered.get(g, 0) * share) for g in foods}
             cap = round_money(planned * needs.necessity_share(config, income))
-            food_budget = max(0, cap - paid - wear_cost)
+            food_budget = max(0, cap - paid - wear_cost) + received
             if hungry:
                 # 飢える前の値段（飢えていないターンに残した値幅の上端）を基準に買い上がる
                 anchors = {**menu.limits, **state.get(ANCHOR, {})}
@@ -1473,7 +1478,8 @@ class Market(IslandStage):
             food_usual = sum(gross_cost(menu.limits[g], q, rate, tax) for g, q in basket.items())
             usual_food_budget = max(0, cap - paid - wear_cost)
             hold = max(0, usual_food_budget - food_usual) * short // fac.FULL
-            rest = max(0, usual_budget - food_usual - wear_cost - hold)
+            # 支え合いで受け取った額で買った分は、ふだんの使う額から引かない
+            rest = max(0, usual_budget - max(0, food_usual - received) - wear_cost - hold)
             rest = min(rest, funds.available(island, payer))  # 食料の取り置きの残りまで
             rest -= self._service_buys(
                 island,

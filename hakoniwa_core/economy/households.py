@@ -35,6 +35,8 @@ from hakoniwa_core.facilities import ENGINEER
 from hakoniwa_core.state import OWNER_PRIVATE, IslandState
 from hakoniwa_core.units import BASIS, round_money
 
+SUPPORT = "family_support"  # island.scratch: 層 → 支え合いで受け取り、食べ物に先に使う額（回7）
+
 
 def has_private_owners(defs: Defs, island: IslandState) -> bool:
     """民営の施設がありうる経済体制か（資産を持つ層を置くか）。"""

@@ -12,6 +12,7 @@ freight:              {type: journal}   # 運賃（売り手と買い手 → 運
 # 賃金と税
 wage:                 {type: journal}   # 賃金（施設・政府・銀行 → 家計）
 unemployment_benefit: {type: journal}   # 失業手当（政府 → 家計）
+family_support: {type: journal}         # 家計の支え合い（働く家計 → 失業している家計。回7）
 tax_income:           {type: journal}   # 所得税（家計 → 政府）
 tax_consumption:      {type: journal}   # 消費税（家計 → 政府）
 tax_corporate:        {type: journal}   # 法人税（施設・銀行 → 政府）

@@ -7,6 +7,9 @@
 技術者（フェーズ2-3）は技術者の層に払います。技術者の席の人には施設の技術者の賃金を、一般の席に
 就いた人には一般の賃金を払います。失業した技術者にも失業手当を払います。
 
+失業手当の後に、家計の支え合い（回7）として、働いている家計（一般の層と技術者の層）が、仕事も手当も
+足りない家族（失業している家計の層）の食べ物の足りない分を、稼ぎの一部から送ります（_support）。
+
 最後に、施設ごとに次のターンの賃金を見直します（式 wage_update。技術者の賃金は
 engineer_wage_update）。
 
@@ -39,7 +42,13 @@ from hakoniwa_core.economy import (
     payer_of,
     services,
 )
-from hakoniwa_core.economy.households import add_income, jobless_layer, set_jobless
+from hakoniwa_core.economy.households import (
+    SUPPORT,
+    add_income,
+    consumption,
+    jobless_layer,
+    set_jobless,
+)
 from hakoniwa_core.economy.prices import variable_profit
 from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.modules import infrastructure
@@ -48,7 +57,15 @@ from hakoniwa_core.modules.population import jobless_persons, tile_jobless
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import Facility, IslandState, LogEntry
 from hakoniwa_core.turn.context import StageContext
-from hakoniwa_core.units import part, scale_price, to_basis
+from hakoniwa_core.units import (
+    BASIS,
+    QUANTITY_SCALE,
+    money_of,
+    part,
+    scale_price,
+    to_basis,
+    to_milli,
+)
 
 
 def wage_update(island: IslandState, f: Facility, ctx: StageContext) -> int:
@@ -124,6 +141,24 @@ def has_own_wage(defs: Defs, f: Facility) -> bool:
     return f.built and not is_public_service(defs, f) and "wage" in f.economy
 
 
+def food_cost(island: IslandState, ctx: StageContext, persons: int) -> int:
+    """persons 人の1ターンの食べ物を、前のターンの値段でいちばん安く買う額（消費税と家計の運賃を
+    含む）。値段のない島では 0。"""
+    defs = ctx.defs
+    need = to_milli(persons * ctx.config.get("population.food_per_person"))
+    prices = island.economy.prices
+    best = 0
+    for good, gdef in sorted(defs.goods.items()):
+        if "food" not in gdef or prices.get(good, 0) <= 0:
+            continue
+        qty = -(-need * QUANTITY_SCALE // to_milli(gdef["food"]["nutrition"]))
+        amount = money_of(prices[good], qty)
+        if best == 0 or amount < best:
+            best = amount
+    rate = island.economy.freight.get("household", 0)
+    return best * (BASIS + rate + island.policy.consumption_tax) // BASIS
+
+
 class Payroll(IslandStage):
     name = "payroll"
 
@@ -186,6 +221,7 @@ class Payroll(IslandStage):
             paid += amount
             workers += hired
         self._benefits(island, ctx)
+        self._support(island, ctx)
         for f in island.facilities:
             if has_own_wage(defs, f):
                 f.economy["wage"] = ctx.formula("wage_update")(island, f, ctx)
@@ -226,6 +262,58 @@ class Payroll(IslandStage):
             if amount > 0:
                 funds.pay(island, payer, household(layer), amount, "unemployment_benefit")
                 add_income(island, layer, amount)
+
+    @staticmethod
+    def _support(island: IslandState, ctx: StageContext) -> None:
+        """家計の支え合い（回7。家族・親せき・村の助け合い）。
+
+        失業している家計の層が、このターンに使える見込みの額（式 consumption）で食べ物を買いきれない
+        とき、足りない額（層の人数分の食べ物を、前のターンの値段でいちばん安く買う額。消費税と運賃を
+        含む）を、一般の層と技術者の層が、このターンの可処分所得の household.support.share を
+        上限に、所得の割合で分けて送る。送った額は送った側の所得から引き、受けた側の所得に足し、受けた側は
+        その額を市場の段で食べ物に先に使う（island.scratch の SUPPORT）。働く家計の買い物はその分
+        減る。手当が厚い国ほど送らなくて済む（現実の途上国では、親せきへの仕送りが世帯の所得の数%〜
+        1割ほど）。資本家階級は別の家族として送らない。
+        """
+        layer = jobless_layer(island)
+        households = island.economy.households
+        state = households.get(layer)
+        if state is None or state["persons"] <= 0:
+            return
+        config = ctx.config
+        cost = food_cost(island, ctx, state["persons"])
+        if cost <= 0:
+            return
+        planned = consumption(island, layer, config, inflation(island.economy))
+        planned = min(planned, ledger.money(island, household(layer)))
+        short = cost - planned
+        if short <= 0:
+            return
+        income = island.scratch.get("income", {})
+        share = to_basis(config.get("household.support.share"))
+        room = {}
+        for donor in (GENERAL, ENGINEERS):
+            if donor not in households or donor == layer:
+                continue
+            cap = part(max(0, income.get(donor, 0)), share)
+            cap = min(cap, ledger.money(island, household(donor)))
+            if cap > 0:
+                room[donor] = cap
+        total = sum(room.values())
+        if total <= 0:
+            return
+        sent = min(short, total)
+        given = 0
+        for donor, cap in sorted(room.items()):
+            amount = min(cap, sent * cap // total)
+            if amount > 0:
+                ledger.pay(island, household(donor), household(layer), amount, "family_support")
+                add_income(island, donor, -amount)
+                given += amount
+        if given > 0:
+            add_income(island, layer, given)
+            island.scratch[SUPPORT] = {layer: given}
+            island.stats["households.support"] = given
 
 
 # --- 命令 -------------------------------------------------------------------------
