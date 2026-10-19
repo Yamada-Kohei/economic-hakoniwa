@@ -841,13 +841,23 @@ def _candidates(
             if good != power
         )
 
+    making = {g for f in island.facilities for g in fac.recipe_of(defs, f)["outputs"]}
+    traded = _traded(island, config)
+    at_hand = making | traded
     for good in sorted(demand, key=lambda g: (defs.goods[g].get("tier", 9), g)):
         if good != power and supply.get(good, 0) < demand[good]:
-            yield from (c for c in _producers(defs, config, island, good) if spare(*c))
+            # 島のどこでも作っておらず貿易でも手に入らない投入財（組み立て工場の部品など）は、作る
+            # 施設の投入財が手元にあれば、余裕がなくても1つ目を建てる（使う施設だけ建って止まらない
+            # ように。回7 後半）
+            first = good not in at_hand
+            yield from (
+                c
+                for c in _producers(defs, config, island, good)
+                if spare(*c) or (first and _inputs_at_hand(defs, config, *c, at_hand))
+            )
 
     markets = {m.good: m for m in island.markets}
     people = population_of(island)
-    making = {g for f in island.facilities for g in fac.recipe_of(defs, f)["outputs"]}
     # 島で作っている投入財と工事の資材も、前のターンの市場で売りに出た量が買いたい量に届かず、値段が
     # 初めの PRICE_HIGH 倍を超えていれば、作る施設を増やす（工事の資材の使う量は上の流れに数えない
     # ため。フェーズ3-2: 消費財工場が鋼鉄を使う作り方に替わって木材の施設が増えず、工事の木材で
@@ -863,7 +873,25 @@ def _candidates(
             and record.price > initial.get(good, 0) * PRICE_HIGH
         ):
             yield from (c for c in _producers(defs, config, island, good) if spare(*c))
-    traded = _traded(island, config)
+
+    # 作り方の投入財が手元にあるか。部品のように島で作っていなくても、作る施設の投入財が手元にある
+    # 物は手に入ると見る（組み立て工場と部品工場を組で建てる。回7 後半: 自動車工場が部品工場を待ち、
+    # 部品工場が自動車工場を待って、どちらも建たなかった）
+    def ready(kind: str, rname: str) -> bool:
+        inputs = defs.facilities[kind]["recipes"][rname]["inputs"]
+        return all(
+            good in at_hand
+            or (
+                not defs.goods[good].get("consumer")
+                and any(
+                    _inputs_at_hand(defs, config, *c, at_hand)
+                    for c in _producers(defs, config, island, good)
+                )
+            )
+            for good in inputs
+            if good != power
+        )
+
     for good in _consumer_order(defs, config):
         if good != power:
             record = markets.get(good)
@@ -882,8 +910,7 @@ def _candidates(
                 yield from (
                     c
                     for c in _producers(defs, config, island, good)
-                    if (first or spare(*c))
-                    and (not durable or _inputs_at_hand(defs, config, *c, making | traded))
+                    if (first or spare(*c)) and (not durable or ready(*c))
                 )
 
     # 海運業が輸送船を買えずにいて、島に造船所がなければ、造船所を1つ（回6。どの世界も造船所を
@@ -894,7 +921,7 @@ def _candidates(
         yield from (
             c
             for c in _producers(defs, config, island, ship)
-            if _inputs_at_hand(defs, config, *c, making | traded)
+            if _inputs_at_hand(defs, config, *c, at_hand)
         )
 
     # 人手の足りない施設が多いか、雇える人（失業者と店で働く人）が少ないうちは増やさない
