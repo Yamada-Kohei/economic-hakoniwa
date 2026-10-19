@@ -10,8 +10,8 @@ import copy
 
 import pytest
 
+from hakoniwa_core import autoplan, ledger
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger
 from hakoniwa_core.economy import OWNERS, banks, facility_entity, household
 from hakoniwa_core.economy import companies as co
 from hakoniwa_core.economy.prices import USUAL, adapt_usual, usual_price
@@ -21,7 +21,7 @@ from hakoniwa_core.modules.failures import merge
 from hakoniwa_core.modules.firms import EntryExit, open_bank
 from hakoniwa_core.modules.labor import furlough_share
 from hakoniwa_core.modules.upgrade import fix_recipes
-from hakoniwa_core.state import OWNER_PRIVATE
+from hakoniwa_core.state import OWNER_PRIVATE, Facility, MarketRecord
 from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.units import BASIS
 from tests.core.test_balance_round7 import market_island, private_members
@@ -235,6 +235,35 @@ def test_old_aluminium_recipe_moves_to_assembly(game, base):
     fix_recipes(island, game.defs)
     assert f.recipe == "default" and fac.RECIPE_NEXT not in f.ext
     f.kind, f.recipe = kind, recipe
+
+
+def test_standard_plan_builds_assembly_and_parts_plants_together(game, base):
+    """標準の計画は、部品を島で作っていなくても、部品の材料が手元にあれば自動車工場を建て、次に部品
+    工場を余裕がなくても1つ目だけ建てる（どちらも相手を待って建たなかった。回7 後半の測り）。"""
+    world = copy.deepcopy(base)
+    defs, config = game.defs, game.config
+    island = next(
+        i
+        for i in world.islands.values()
+        if i.has_economy and any(autoplan._producers(defs, config, i, "automobile"))
+    )
+    island.facilities = [
+        f for f in island.facilities if f.kind not in ("automobile_plant", "auto_parts_plant")
+    ]
+    made = {g for f in island.facilities for g in fac.recipe_of(defs, f)["outputs"]}
+    inputs = defs.facilities["auto_parts_plant"]["recipes"]["default"]["inputs"]
+    for good in sorted(set(inputs) - made - {config.get("power.good")}):
+        kind = next(k for k, _ in autoplan._producers(defs, config, island, good))
+        island.facilities.append(Facility(id=900 + len(island.facilities), kind=kind, x=0, y=0))
+    island.markets = [m for m in island.markets if m.good != "automobile"]
+    island.markets.append(MarketRecord("automobile", 1, 0, 100_000, 0))
+    turn = world.turn
+    planned = list(autoplan._candidates(island, defs, config, turn))
+    assert ("automobile_plant", "default") in planned
+    assert not any(k == "auto_parts_plant" for k, _ in planned)  # 部品はまだ誰も使わない
+    island.facilities.append(Facility(id=999, kind="automobile_plant", x=0, y=0))
+    planned = list(autoplan._candidates(island, defs, config, turn))
+    assert any(k == "auto_parts_plant" for k, _ in planned)
 
 
 # --- 銀行の経費の切り詰めと合併 -------------------------------------------------------------
