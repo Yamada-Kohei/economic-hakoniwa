@@ -34,6 +34,7 @@ aluminium:          {tier: 2, unit: ton, freight_weight: 1}
 meat:               {tier: 3, unit: ton, shelf_life: 3, consumer: true, food: {nutrition: 1.2, quality: 0.8}, freight_weight: 1, need: necessity}
 clothing:           {tier: 3, unit: ton, consumer: true, freight_weight: 1, need: necessity}
 automobile:         {tier: 3, unit: piece, consumer: true, freight_weight: 1.5, need: durable}
+auto_parts:         {tier: 2, unit: set, freight_weight: 1}   # 自動車部品（回7 後半）。1 組が自動車 1 台分
 # サービス（バランス調整）: 商店・飲食・理美容・娯楽・修理など。商業・サービス業が町で人を雇って出し、
 # その場で使う（持ち越せず、島の外へ運べない）。量は働く人1人の1ターンの働き（人月）
 services:           {tier: 3, unit: person_month, shelf_life: 0, consumer: true, need: service}

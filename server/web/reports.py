@@ -210,6 +210,10 @@ _EXTRA_STATS = [
     ("firms.cash", "民営の企業の預金の合計", "money"),
     ("firms.cascade", "企業ごとの倒産で差し押さえた施設（1ターン）", ""),
     ("firms.restructured", "企業の立て直しで閉めた施設（1ターン）", ""),
+    # 回7 後半: 企業の中のお金の融通・休業・銀行の合併
+    ("firms.pooled", "企業の中でほかの施設の手元から回したお金（1ターン）", "money"),
+    ("labor.furloughed", "電気や原料が足りず休業した人（1ターン）", "人"),
+    ("banks.merged", "銀行の合併（1ターン）", ""),
     ("households.support", "家計の支え合いで送ったお金（1ターン）", "money"),
     ("retail.need", "家計の小売りの要る量（1ターン）", "good:retail"),
     ("retail.sold", "店の小売りの販売量（1ターン）", "good:retail"),

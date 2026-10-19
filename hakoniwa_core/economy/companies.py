@@ -41,6 +41,9 @@ LOSSES = "losses"  # 繰り越した赤字 [[ターン, 額], ...]
 INVESTED = "invested"  # 最後に施設を建てた・買ったターン
 RED = "red_turns"  # 連結の現金収支がマイナスの続いたターン数
 SUPPORTED = "supported"  # このターンに施設へ回した額
+# 施設の economy: ほかの施設の手元から回してもらったターンの続いた数（回7 後半）
+POOLED = "pooled_turns"
+POOLED_AT = "pooled_at"  # 施設の economy: 最後にほかの施設の手元から回してもらったターン
 
 
 def entity(number: int) -> str:
@@ -170,19 +173,67 @@ def spare(island: IslandState, number: int) -> int:
     return max(0, ledger.money(island, name) - owed)
 
 
-def draw(island: IslandState, f: Facility, amount: int) -> int:
-    """民営の企業の預金から施設 f へ amount まで回す（内部補助）。回した額を返す。"""
+def draw(island: IslandState, f: Facility, amount: int, ctx: Any = None) -> int:
+    """民営の企業の預金から施設 f へ amount まで回す（内部補助）。回した額を返す。
+
+    ctx（段の文脈）を渡すと（返済と未払いの賃金・税の分だけ。運転資金と設備の直しには渡さない）、
+    企業の預金で足りない分を、同じ企業のほかの施設の手元のうち次の支払いの
+    firms.pool_floor_turns ターン分と返済の見込みを超えた分から、多く持つ施設の順に回す
+    （資金の一本化。現実の会社のキャッシュ・マネジメント。回7 後半）。施設の手元は次の支払いの
+    firms.operating_turns ターン分を残して企業に上げるので、企業の預金が 0 でも、儲かる工場が
+    手元を持ったまま兄弟の施設が返済に遅れ、企業ごと倒れていた。"""
     from hakoniwa_core.economy import facility_entity
 
     number = private_firm_of(island, f)
     if number is None or amount <= 0:
         return 0
+    target = facility_entity(f.id)
     moved = min(amount, spare(island, number))
     if moved > 0:
-        ledger.pay(island, entity(number), facility_entity(f.id), moved, "firm_support")
+        ledger.pay(island, entity(number), target, moved, "firm_support")
+    if ctx is not None and moved < amount:
+        moved += _pool(island, ctx, number, f, amount - moved)
+    if moved > 0:
         rec = record(island, number)
         assert rec is not None
         rec[SUPPORTED] = rec.get(SUPPORTED, 0) + moved
+    return moved
+
+
+def _pool(island: IslandState, ctx: Any, number: int, f: Facility, amount: int) -> int:
+    """同じ企業のほかの施設の手元の余り（次の支払いの firms.pool_floor_turns ターン分と、この
+    ターンの返済の見込みを超えた分）から、施設 f へ amount まで回す。賃金・税・返済が遅れている
+    施設と閉鎖の途中の施設からは回さない。回した額を返す。"""
+    from hakoniwa_core.economy import Payer, arrears, banks, facility_entity, funds
+    from hakoniwa_core.economy.start import next_payments
+
+    floor_turns = ctx.config.get("firms.pool_floor_turns")
+    target = facility_entity(f.id)
+    rows = []
+    for m in members(island, number):
+        if m.id == f.id or not m.built or "foreclosed" in m.economy or "closing" in m.economy:
+            continue
+        name = facility_entity(m.id)
+        if arrears.total(island, name) or arrears.total(island, name, arrears.TAX_ARREARS):
+            continue
+        if any(x.arrears > 0 for x in banks.loans_by_borrower(island, name)):
+            continue
+        keep = next_payments(island, ctx.defs, ctx.config, m) * floor_turns
+        keep += banks.debt_service(island, name, ctx.turn)
+        extra = funds.available(island, Payer(name)) - keep  # 取り置いた分は回さない
+        if extra > 0:
+            rows.append((-extra, m.id, name, extra))
+    moved = 0
+    for _, _, name, extra in sorted(rows):
+        if moved >= amount:
+            break
+        give = min(extra, amount - moved)
+        ledger.pay(island, name, target, give, "firm_support")
+        moved += give
+    if moved > 0 and f.economy.get(POOLED_AT) != ctx.turn:
+        f.economy[POOLED] = f.economy.get(POOLED, 0) + 1
+        f.economy[POOLED_AT] = ctx.turn
+        island.stats["firms.pooled"] = island.stats.get("firms.pooled", 0) + moved
     return moved
 
 
@@ -213,25 +264,30 @@ def display_name(island: IslandState, defs: Any, number: int) -> str:
     return f"{island.name}企業{number}"
 
 
-def _related(defs: Defs, kinds: set[str], kind: str) -> bool:
-    """kinds の施設のどれかが、kind の原料を作るか、kind の作る物を原料に使うか（垂直統合）。"""
+def _relation(defs: Defs, kinds: set[str], kind: str) -> int:
+    """kinds の施設と kind のつながり: 1 は kind の作る物を原料に使う（売り先。系列の下請けに
+    出資する組み立ての会社）、2 は kind の原料を作る（垂直統合）、3 はつながりなし。"""
     new_in: set[str] = set()
     new_out: set[str] = set()
     for recipe in defs.facilities[kind]["recipes"].values():
         new_in |= set(recipe["inputs"])
         new_out |= set(recipe["outputs"])
+    rank = 3
     for other in kinds:
         for recipe in defs.facilities[other]["recipes"].values():
-            if set(recipe["outputs"]) & new_in or set(recipe["inputs"]) & new_out:
-                return True
-    return False
+            if set(recipe["inputs"]) & new_out:
+                return 1
+            if set(recipe["outputs"]) & new_in:
+                rank = 2
+    return rank
 
 
 def choose_investor(
     island: IslandState, defs: Defs, kind: str, equity: int
 ) -> tuple[str, int | None] | None:
     """新しい施設（kind）の出資 equity を出す者: 企業の預金で出せる民営の企業のうち、同じ種類の
-    施設を持つ企業 → 原料か売り先の施設を持つ企業（垂直統合）→ ほかの企業（産業をまたぐ財閥）の順、
+    施設を持つ企業 → 売り先の施設を持つ企業（系列。回7 後半）→ 原料の施設を持つ企業（垂直統合）→
+    ほかの企業（産業をまたぐ財閥）の順、
     同じなら預金の多い順・番号の順。どこも出せなければ資本家階級が新しい企業を起こす（その預金で
     出せるとき）。(払う主体, 企業の番号か None) を返し、誰も出せなければ None。"""
     from hakoniwa_core.economy import OWNERS, Payer, funds, household
@@ -247,7 +303,7 @@ def choose_investor(
         kinds = {f.kind for f in members(island, number)}
         if not kinds:
             continue
-        rank = 0 if kind in kinds else 1 if _related(defs, kinds, kind) else 2
+        rank = 0 if kind in kinds else _relation(defs, kinds, kind)
         score = (rank, -cash, number)
         if best is None or score < best[0]:
             best = (score, number)

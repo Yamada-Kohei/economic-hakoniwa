@@ -250,7 +250,7 @@ refinery:
   industry: petroleum
   terrain: [plain]
   construction: {turns: 6, labor: 700, materials: {building_materials: 30, steel: 10, machinery: 3}}
-  workers: {general: 700, engineer: 100}
+  workers: {general: 550, engineer: 70}
   pollution: {amount: 6, radius: 2}
   factors: {infra: 0.6, education: 0.5}
   recipes:
@@ -304,23 +304,43 @@ ranch:
       outputs: {meat: 5}
   sprite: ranch
 
-# 自動車工場（フェーズ3-2）。人手も技術者も多く要ります。量は台（1 ターン全力で 200 台）。
+# 自動車部品工場（回7 後半。W-76）。エンジン・足回り・座席・電装などの部品を作り、自動車工場へ売ります。
+# 現実の自動車の製造は、組み立てより部品の会社（下請け）のほうが人が多い（日本では数倍）ので、人も技術者も
+# 組み立て工場より多く要ります。部品 1 組が自動車 1 台分です。組み立て工場の近くほど運賃が安く、出資は
+# 同じ産業の企業（自動車の会社）が先に出します（系列。economy/companies.py の choose_investor）。
+auto_parts_plant:
+  category: industry
+  industry: automobile
+  experience_share: 0.5   # 組み立て工場と合わせて自動車 1 台分の経験
+  terrain: [plain]
+  construction: {turns: 5, labor: 600, materials: {building_materials: 25, steel: 10, machinery: 6}}
+  workers: {general: 1250, engineer: 130}
+  pollution: {amount: 2, radius: 1}
+  factors: {infra: 0.7, education: 0.7}
+  recipes:
+    default:              # アルミのない島: エンジンと足回りの分も鋼鉄で
+      inputs: {steel: 3.2, chemicals: 0.8, clothing: 0.12, machinery: 0.2, electricity: 1.5}
+      outputs: {auto_parts: 200}
+    aluminium:
+      inputs: {steel: 1.8, aluminium: 0.7, chemicals: 0.8, clothing: 0.12, machinery: 0.2, electricity: 1.5}
+      outputs: {auto_parts: 200}
+
+# 自動車工場（フェーズ3-2）。部品を組み立て、車体を作って塗ります。量は台（1 ターン全力で 200 台）。
 # 材料は実物の1台の割合に合わせる（回6。台帳 2026-10-19 W-75）: 鋼鉄を 1 として、アルミ 0.17、樹脂・ゴム・
-# 塗料（化学品）0.28、座席の布（衣料）0.03 ほど。エンジンなどの部品は機械。部品工場の段は回7（W-76）
+# 塗料（化学品）0.28、座席の布（衣料）0.03 ほど。回7 後半（W-76）から、車体の鋼鉄と塗料のほかは部品工場の
+# 部品（1 台に 1 組）で、部品工場と合わせた材料は回6 の自動車工場と同じです
 automobile_plant:
   category: industry
   industry: automobile
+  experience_share: 0.5
   terrain: [plain]
   construction: {turns: 8, labor: 1000, materials: {building_materials: 40, steel: 20, machinery: 10}}
-  workers: {general: 1800, engineer: 200}
+  workers: {general: 550, engineer: 70}
   pollution: {amount: 3, radius: 1}
   factors: {infra: 0.8, education: 0.8}
   recipes:
-    default:              # アルミのない島: アルミの分を鋼鉄で（アルミ 1 が鋼鉄 2 にあたる）
-      inputs: {steel: 5.4, chemicals: 1.1, clothing: 0.12, machinery: 0.2, electricity: 3}
-      outputs: {automobile: 200}
-    aluminium:
-      inputs: {steel: 4, aluminium: 0.7, chemicals: 1.1, clothing: 0.12, machinery: 0.2, electricity: 3}
+    default:
+      inputs: {auto_parts: 200, steel: 2.2, chemicals: 0.3, electricity: 1.5}
       outputs: {automobile: 200}
   sprite: automobile_plant
 

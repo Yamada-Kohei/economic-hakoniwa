@@ -43,6 +43,7 @@ from typing import Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
+from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     Payer,
@@ -98,6 +99,8 @@ class Failures(IslandStage):
             from hakoniwa_core.modules.bonds import Bonds
 
             Bonds.record_stats(island)
+        if not is_planned(ctx.defs, island):
+            mergers(island, ctx)
         for bank in banks.active_banks(island):
             f = banks.facility_of(island, bank)
             assert f is not None
@@ -494,17 +497,7 @@ def transfer(
     deposits = banks.deposits_of(island, bank)
     cut_total += _cut_all(island, bank, cover - paid)  # 政府も払えない分は、残りの預金から削る
     _cancel_equity(island, bank)
-    _move_everything(island, bank, target)
-    fac.vacate(island, f)
-    island.economy.banks.remove(f.id)
-    for entity, number in list(island.economy.deposit_bank.items()):
-        if number == f.id:
-            island.economy.deposit_bank[entity] = banks.bank_number(target)
-    stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
-    book = island.economy.finance.get("bond_book", {})
-    if bank in book:
-        book[target] = book.get(target, 0) + book.pop(bank)
-    debt.move_costs(island, bank, target)
+    _absorb(island, ctx, f, bank, target)
     kind = "bank_liquidated" if liquidation else "bank_transferred"
     t = banks.facility_of(island, target)
     insured = _insured(paid, deposits)
@@ -522,6 +515,108 @@ def transfer(
         )
     )
     _log_debts_covered(island, f, paid - insured)
+
+
+def _absorb(island: IslandState, ctx: StageContext, f: Facility, bank: str, target: str) -> None:
+    """bank（施設 f）のすべてを target に移し、bank の施設をなくす（引き継ぎ・清算・合併）。"""
+    _move_everything(island, bank, target)
+    fac.vacate(island, f)
+    island.economy.banks.remove(f.id)
+    for entity, number in list(island.economy.deposit_bank.items()):
+        if number == f.id:
+            island.economy.deposit_bank[entity] = banks.bank_number(target)
+    stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
+    book = island.economy.finance.get("bond_book", {})
+    if bank in book:
+        book[target] = book.get(target, 0) + book.pop(bank)
+    debt.move_costs(island, bank, target)
+
+
+# --- 銀行の合併（回7 後半） -----------------------------------------------------------
+
+MERGED = "bank_merged"  # economy.finance: 最後に銀行が合併したターン
+
+
+def _year_profit(f: Facility) -> int | None:
+    """銀行の直近 1 年の利益（記録が 1 年に満たなければ None）。"""
+    profits = f.economy.get("profits") or []
+    return sum(profits) if len(profits) >= YEAR else None
+
+
+def mergers(island: IslandState, ctx: StageContext) -> None:
+    """弱った銀行を、健全な銀行が破綻の前に引き取る（救済合併。回7 後半）。
+
+    中央銀行を独立させた島で、金利 0 に近い間に小さな銀行が利ざやの赤字を重ね、そこへ取り付けが
+    来て破綻していた（測り。シリコンバレー銀行の型）。現実には、弱った銀行は破綻の前にほかの銀行に
+    引き取られることが多い（日本の地方銀行の再編、米国の当局の仲介する合併）。
+
+    弱った銀行: 直近 1 年の利益がマイナスで、自己資本比率が「規制 + banking.risk_buffer」を下回り、
+    危ない融資を安く見た後の自己資本（株主に払う値段）がまだプラス。引き取る銀行: 同じ持ち主の
+    区分（民営どうし・国営どうし）で、直近 1 年の利益がプラスで、引き取った後も自己資本比率が
+    「規制 + banking.risk_buffer」以上で、株主に払った後の準備預金が合わせた預金の最低限に足りる
+    銀行（預金の多い順）。引き取る銀行は値段を株主に払い、預金・融資・国債などすべてを引き継ぐ。
+    1 ターンに 1 つまで。引き取る銀行がなければ今のまま（破綻すれば破綻処理の道）。"""
+    config = ctx.config
+    line = banks.regulatory(config) + config.get("banking.risk_buffer")
+    for bank in banks.active_banks(island):
+        f = banks.facility_of(island, bank)
+        assert f is not None
+        profit = _year_profit(f)
+        if profit is None or profit >= 0:
+            continue
+        if banks.capital_ratio(island, config, bank, ctx.turn) >= line:
+            continue
+        price = banks.net_worth(island, config, bank, ctx.turn)
+        price -= banks.impaired_discount(island, config, bank)
+        if price <= 0:
+            continue  # 引き取れば損をする: 破綻処理の道
+        for target in banks.healthy_banks(island, config, ctx.turn):
+            t = banks.facility_of(island, target)
+            if target == bank or t is None or t.owner != f.owner:
+                continue
+            gain = _year_profit(t)
+            if gain is None or gain <= 0:
+                continue
+            loans = banks.loans_of(island, target) + banks.loans_of(island, bank)
+            if banks.net_worth(island, config, target, ctx.turn) < line * loans:
+                continue
+            reserves = banks.reserves_of(island, target) + banks.reserves_of(island, bank) - price
+            need = banks.required_reserves(island, config, target)
+            need += banks.required_reserves(island, config, bank)
+            if reserves < need:
+                continue
+            merge(island, ctx, bank, target, price)
+            return
+
+
+def merge(island: IslandState, ctx: StageContext, bank: str, target: str, price: int) -> None:
+    """target が bank を引き取る: 株主に price を払い（持ち分の割合で。株を売ったお金なので所得に
+    数えない）、出資を消して、すべてを移す。"""
+    f = banks.facility_of(island, bank)
+    t = banks.facility_of(island, target)
+    assert f is not None and t is not None
+    suffix = f"/{ledger.EQUITY}/{bank}"
+    holders = {
+        ledger.parse(name)[0]: value
+        for name, value in sorted(island.accounts.items())
+        if name.endswith(suffix) and not ledger.is_issued(name) and value > 0
+    }
+    total = sum(holders.values())
+    paid = 0
+    for i, (holder, value) in enumerate(sorted(holders.items())):
+        amount = price - paid if i == len(holders) - 1 else price * value // max(1, total)
+        funds.pay(island, Payer(target), holder, amount, "bank_merger")
+        paid += amount
+    _cancel_equity(island, bank)
+    _absorb(island, ctx, f, bank, target)
+    island.economy.finance[MERGED] = ctx.turn
+    island.log.append(
+        LogEntry(
+            "bank_merged",
+            {"x": f.x, "y": f.y, "to_x": t.x, "to_y": t.y, "price": paid},
+        )
+    )
+    island.stats["banks.merged"] = island.stats.get("banks.merged", 0) + 1
 
 
 def _move_everything(island: IslandState, bank: str, target: str) -> None:

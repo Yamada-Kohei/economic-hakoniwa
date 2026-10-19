@@ -184,10 +184,31 @@ def lending_stopped(island: IslandState, bank: str, turn: int) -> bool:
     return f is not None and turn < f.economy.get("crunch_until", turn)
 
 
+# 銀行の施設の economy: 経費を切り詰めている間、直近 1 年の利益がプラスの続いたターン数
+LEAN = "lean"
+
+
+def watch_costs(config: GameConfig, f: Facility) -> None:
+    """銀行の経費の切り詰め（回7 後半）: 直近 1 年の利益がマイナスになった銀行は、職員の下限
+    （banking.staff_floor）を外して預金と融資の量に見合う人数まで減らす（支店と人を減らす。地方銀行
+    の店舗の統合）。直近 1 年の利益がプラスのまま banking.lean_turns ターン続いたら元に戻す（すぐ
+    戻してまた赤字にならないように）。会計の段で利益を記録した後に呼ぶ。"""
+    profits = f.economy.get("profits") or []
+    if len(profits) < TURNS_PER_YEAR:
+        return
+    if sum(profits) < 0:
+        f.economy[LEAN] = 0
+    elif LEAN in f.economy:
+        f.economy[LEAN] += 1
+        if f.economy[LEAN] >= config.get("banking.lean_turns"):
+            del f.economy[LEAN]
+
+
 def staff_wanted(island: IslandState, config: GameConfig, defs: Any, f: Facility) -> int:
     """銀行が雇いたい職員の数: 預金と融資の合計が「平均賃金 × banking.staff_volume」に届けば定義の
     人数、それより小さい銀行はその割合（下限は定義の人数の banking.staff_floor）。預金の集まらない
-    銀行が、定義の人数の賃金を払い続けて赤字で破綻していた（試し遊び4回目）。"""
+    銀行が、定義の人数の賃金を払い続けて赤字で破綻していた（試し遊び4回目）。経費を切り詰めている
+    銀行（watch_costs）は下限なし。"""
     need = fac.workers_needed(defs, f.kind)
     if need <= 0:
         return 0
@@ -195,7 +216,8 @@ def staff_wanted(island: IslandState, config: GameConfig, defs: Any, f: Facility
     wage = island.economy.average_wage or config.get("labor.initial_wage")
     full = config.get("banking.staff_volume") * wage
     volume = deposits_of(island, bank) + loans_of(island, bank)
-    share = max(config.get("banking.staff_floor"), min(1.0, volume / max(1, full)))
+    floor = 0.0 if LEAN in f.economy else config.get("banking.staff_floor")
+    share = max(floor, min(1.0, volume / max(1, full)))
     return max(1, min(need, math.ceil(need * share)))
 
 

@@ -7,7 +7,9 @@
 2. 民営の企業の未払いの税を払う。
 3. 施設の手元: 施設は次の支払いの firms.operating_turns ターン分と借入の返済の見込みを手元に残し、
    超えた分を企業へ上げる（firm_sweep）。足りない施設には企業の預金から回す（firm_support。工場どうし
-   の内部補助）。賃金や税が未払いの施設と、閉鎖の途中の施設からは上げない。
+   の内部補助）。賃金や税が未払いの施設と、閉鎖の途中の施設からは上げない。企業の預金で足りなければ、
+   返済と未払いの分を、ほかの施設の手元のうち次の支払いの firms.pool_floor_turns ターン分と返済の
+   見込みを超えた分から回す（資金の一本化。回7 後半）。
 4. 法人税: 施設の利益を足した連結の利益に、企業で繰り越した赤字を引いて掛ける（工場どうしの損益の
    通算）。
 5. 配当: 連結の税引き後の利益の firms.payout。返済の遅れか未払いのある施設を持つ企業と、連結の
@@ -17,7 +19,8 @@
    残りは内部留保で、新しい施設の出資に使う（modules/firms の参入）。
 6. 立て直し: 施設が2つ以上の企業で、連結の現金収支が firms.restructure_turns ターン続けて
    マイナスで、企業の預金が施設の次の支払いに足りなければ、変動費の利益が一番低い施設を1つ閉める。島でただ1つの
-   作り手の施設と、同じ企業の施設に原料を出している施設は後に回す。
+   作り手の施設と、同じ企業の施設に原料を出している施設は後に回す。ほかの施設の手元から
+   firms.restructure_turns ターン続けて回してもらった施設も閉める（回7 後半）。
 7. 施設がなくなった企業は、差し押さえの残りがなければ、預金を株主に返して消す。
 
 国営企業は名簿で、お金は施設ごと（政府が直接支える）なので、3〜7 をしない。
@@ -117,6 +120,14 @@ class FirmsFunds(IslandStage):
             short = keep[f.id] + owed - ledger.money(island, entity)
             if short > 0:
                 co.draw(island, f, short)
+            # 企業の預金で足りなければ、返済と未払いの分をほかの施設の手元の余りから回す
+            # （資金の一本化。回7 後半）
+            service = banks.debt_service(island, entity, ctx.turn)
+            short = service + owed - ledger.money(island, entity)
+            if short > 0:
+                co.draw(island, f, short, ctx)
+            if f.economy.get(co.POOLED_AT) != ctx.turn:
+                f.economy.pop(co.POOLED, None)
         # 4. 連結の法人税
         profit = sum(profits.get(f.id, {}).get("profit", 0) for f in built)
         depreciation = sum(profits.get(f.id, {}).get("depreciation", 0) for f in built)
@@ -152,6 +163,16 @@ class FirmsFunds(IslandStage):
             if co.spare(island, number) < payments:
                 self._close_worst(island, ctx, number, built)
                 rec[co.RED] = 0
+        # ほかの施設の手元で firms.restructure_turns ターン続けて支えた施設は閉める（回7 後半。
+        # 儲かる施設の手元を食いつぶし続けないように）
+        drains = [
+            f
+            for f in built
+            if f.economy.get(co.POOLED, 0) >= settings["restructure_turns"]
+            and "closing" not in f.economy
+        ]
+        if len(built) >= 2 and drains:
+            _close(island, ctx, number, max(drains, key=lambda f: (f.economy[co.POOLED], -f.id)))
 
     @staticmethod
     def _close_worst(
@@ -182,22 +203,27 @@ class FirmsFunds(IslandStage):
         if not candidates:
             return
         candidates.sort(key=lambda c: c[:3])
-        f = candidates[0][3]
-        f.economy["closing"] = ctx.turn
-        f.economy["target"] = 0
-        island.log.append(
-            LogEntry(
-                "firm_restructured",
-                {
-                    "facility": f.kind,
-                    "x": f.x,
-                    "y": f.y,
-                    "firm": co.display_name(island, defs, number),
-                },
-            )
+        _close(island, ctx, number, candidates[0][3])
+
+
+def _close(island: IslandState, ctx: StageContext, number: int, f: Facility) -> None:
+    """企業の立て直しで施設 f を閉める（閉鎖の途中にする）。"""
+    defs = ctx.defs
+    f.economy["closing"] = ctx.turn
+    f.economy["target"] = 0
+    island.log.append(
+        LogEntry(
+            "firm_restructured",
+            {
+                "facility": f.kind,
+                "x": f.x,
+                "y": f.y,
+                "firm": co.display_name(island, defs, number),
+            },
         )
-        stats = island.stats
-        stats["firms.restructured"] = stats.get("firms.restructured", 0) + 1
+    )
+    stats = island.stats
+    stats["firms.restructured"] = stats.get("firms.restructured", 0) + 1
 
 
 def _carry_losses(rec: dict[str, Any], profit: int, turn: int, carry: int) -> int:

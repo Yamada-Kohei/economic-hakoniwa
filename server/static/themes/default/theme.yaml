@@ -37,6 +37,7 @@ facilities:
   textile_mill:             {color: "#c98fa0", height: 2}
   ranch:                    {color: "#a8c46a", height: 0.5}
   automobile_plant:         {color: "#4a6fa5", height: 2.5}
+  auto_parts_plant:         {color: "#5b7fb0", height: 2}       # 回7 後半
   department_store:         {color: "#d9668f", height: 3}     # 回7
   housing:                  {color: "#d9826b", height: 1}   # 高さは住宅地の段階（settlements の height）
 facility_fallback: {color: "#bbbbbb", height: 1.5}

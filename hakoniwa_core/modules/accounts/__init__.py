@@ -151,6 +151,7 @@ class Accounts(IslandStage):
                 f.economy["ebitda"] = [*f.economy.get("ebitda", []), cash][-keep:]
             if bank:
                 f.economy["profits"] = [*f.economy.get("profits", []), profit][-YEAR:]
+                banks.watch_costs(config, f)
             elif is_self_supporting(f):
                 self._watch_losses(island, ctx, f, profit)
             entity = entity_of(config, f)

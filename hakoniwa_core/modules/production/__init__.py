@@ -178,6 +178,8 @@ class Production(IslandStage):
             industry = run.recipe.get("industry")
             if industry:  # 計画経済の重点産業は経験の伸びが大きい（フェーズ3-4）
                 factor = planning.experience_factor(island, defs, industry)
+                # 部品と組み立てに分かれた産業は、施設ごとの割合を足して 1 台分（回7 後半）
+                factor *= run.recipe.get("experience_share", 1)
                 experience.add(island, industry, round(out_rate * factor))
             for good, qty in sorted(run.recipe["outputs"].items()):
                 amount = fac.scale(qty, out_rate)

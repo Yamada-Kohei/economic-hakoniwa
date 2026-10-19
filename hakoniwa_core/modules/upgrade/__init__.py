@@ -26,12 +26,16 @@
 国債の期間の割合に小数が入った島は、割合を整数に直します（modules/bonds の whole_terms。夜の点検
 2026-10-17 で、小数の割合から国庫や工事に小数が広がってターンが止まった）。
 
+回7 後半からは、定義から消えた作り方を指す施設（自動車工場の「アルミ」）を既定の作り方に移します
+（fix_recipes。サーバーの世界は移行ファイル server/world/migrations/0006 で同じことをする）。
+
 移し替えをターンの中で行うのは、サーバーを通さずにコアだけで世界を回すとき（一括シミュレーションや
 テスト）にも同じに動くようにするためです。
 """
 
 from __future__ import annotations
 
+from hakoniwa_core import facilities as fac
 from hakoniwa_core import nature, politics
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import groundwork, services
@@ -71,7 +75,18 @@ class Upgrade(IslandStage):
         elif island.ext.get(nature.BLEND):
             nature.step_blend(island)
         fill_regime(island, ctx.defs)
+        fix_recipes(island, ctx.defs)
         end_for_planned(island, ctx)  # 計画経済の国は中央銀行を独立させられない（BK-43）
+
+
+def fix_recipes(island: IslandState, defs: Defs) -> None:
+    """定義から消えた作り方を指す施設を、既定の作り方（default）に移す（回7 後半）。"""
+    for f in island.facilities:
+        recipes = defs.facilities[f.kind]["recipes"]
+        if f.recipe not in recipes and "default" in recipes:
+            f.recipe = "default"
+        if f.ext.get(fac.RECIPE_NEXT, f.recipe) not in recipes:
+            f.ext.pop(fac.RECIPE_NEXT)
 
 
 KEEP_AXES = ("economy",)  # 欠けていても置かない軸

@@ -26,6 +26,7 @@
   "properties": {
     "category": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "分類。primary, industry, power, admin, housing など"},
     "industry": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "産業の分類（フェーズ3-2。表示名は locale の industries.yaml）。経験・集積・称号と計画経済の重点産業で使う"},
+    "experience_share": {"type": "number", "exclusiveMinimum": 0, "maximum": 1, "description": "全力で1ターン動いたときに産業の経験に数える割合（書かなければ 1）。部品と組み立てのように1つの品を2つの施設で作る産業で、合わせて 1 にする（回7 後半）"},
     "terrain": {
       "type": "array",
       "items": {"type": "string"},

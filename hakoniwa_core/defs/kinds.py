@@ -53,6 +53,7 @@ def _normalize_facility(entry: dict[str, Any]) -> dict[str, Any]:
             "factors": dict(recipe.get("factors", entry.get("factors", {}))),
             # 経験と集積（フェーズ3-3）で、作り方から施設の産業と分類を引けるようにする
             "industry": entry.get("industry"),
+            "experience_share": entry.get("experience_share", 1),
             "category": entry.get("category"),
         }
         for name, recipe in entry["recipes"].items()

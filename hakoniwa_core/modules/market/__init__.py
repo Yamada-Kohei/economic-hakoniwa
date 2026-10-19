@@ -80,6 +80,7 @@ from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy.households import SUPPORT, consumption
 from hakoniwa_core.economy.prices import (
+    adapt_usual,
     input_limit,
     material_limit,
     unit_floor,
@@ -666,6 +667,7 @@ class Market(IslandStage):
         self._spoil(island, ctx)
         self._imports_left(island, sold)
         self._record(island, ctx, books_by_good, results, bought)
+        self._adapt_usual(island, ctx, books_by_good)
         self._update_prices(island, ctx, books_by_good, results)
         power = config.get("power.good")
         if official:
@@ -732,7 +734,8 @@ class Market(IslandStage):
         share = island.economy.households[layer].get(retail.SHARE)
         if share is not None:
             return part(planned, share)
-        price = usual_price(island, good, config.get("household.usual_price_turns"))
+        settings = config.get("household")
+        price = usual_price(island, good, settings["usual_price_turns"], settings["reprice_turns"])
         rate = retail.margin(island, config, price or island.economy.prices.get(good, 0), tax)
         return planned - planned * BASIS // (BASIS + rate) if rate > 0 else 0
 
@@ -1570,7 +1573,9 @@ class Market(IslandStage):
                     if desire is not None:
                         desire[good] = desire.get(good, 0) + qty
                     continue
-                usual = usual_price(island, good, settings["usual_price_turns"])
+                usual = usual_price(
+                    island, good, settings["usual_price_turns"], settings["reprice_turns"]
+                )
                 top = scale_price(usual, max(settings["consumer_goods_tiers"]))
                 wear[good] = (qty, min(top, auction.band(prices.get(good, 1), width)[1]))
             wear_cost = sum(gross_cost(lim, q, rate, tax) for q, lim in wear.values())
@@ -1707,7 +1712,10 @@ class Market(IslandStage):
             # 売りに出ている量で買える額（使う額の割合の分）を超える分は、ほかの物に回す
             tiers = settings["consumer_goods_tiers"]
             low = settings["consumer_goods_low_tiers"]
-            usual = {g: usual_price(island, g, settings["usual_price_turns"]) for g in open_goods}
+            usual = {
+                g: usual_price(island, g, settings["usual_price_turns"], settings["reprice_turns"])
+                for g in open_goods
+            }
             caps = {
                 g: gross_cost(
                     scale_price(usual[g], max(tiers)),
@@ -1763,7 +1771,7 @@ class Market(IslandStage):
         amount = round_money(rest * services.budget_share(config, income))
         if amount <= 0 or good not in ctx.defs.goods:
             return 0
-        usual = usual_price(island, good, settings["usual_price_turns"])
+        usual = usual_price(island, good, settings["usual_price_turns"], settings["reprice_turns"])
         tiers = settings["consumer_goods_tiers"]
         top = scale_price(usual, max(tiers))
         if offered.get(good, 0) <= 0:
@@ -1880,7 +1888,9 @@ class Market(IslandStage):
             if offered.get(good, 0) <= 0:
                 wanted[good] = wanted.get(good, 0) + qty
                 continue
-            usual = usual_price(island, good, settings["usual_price_turns"])
+            usual = usual_price(
+                island, good, settings["usual_price_turns"], settings["reprice_turns"]
+            )
             limit = min(
                 auction.band(prices.get(good, 1), width)[1],
                 scale_price(usual, max(settings["consumer_goods_tiers"])),
@@ -1909,7 +1919,7 @@ class Market(IslandStage):
         want = min(want, mine)
         if want <= 0:
             return used
-        price = usual_price(island, car, settings["usual_price_turns"])
+        price = usual_price(island, car, settings["usual_price_turns"], settings["reprice_turns"])
         room = min(round_money((spend - used) * settings["cars"]["share"]), spend - used)
         top = scale_price(price, max(settings["consumer_goods_tiers"]))
         room = min(room, gross_cost(top, want, rate, tax))
@@ -2582,6 +2592,19 @@ class Market(IslandStage):
             price = prices.get(good, 1)
             if floors and min(floors) >= price:
                 prices[good] = auction.band(price, width)[1]
+
+    @staticmethod
+    def _adapt_usual(
+        island: IslandState, ctx: StageContext, books_by_good: dict[str, Book]
+    ) -> None:
+        """家計が買う財の、売りの一番安い指値（店に並んだ値段）で、いつもの値段を値上がりに慣らす
+        （economy/prices.py の adapt_usual。回7 後半）。指値なしの売りは見ない。"""
+        asks = {}
+        for good in island.economy.bought_history:
+            book = books_by_good.get(good)
+            limits = [o.limit for o, _ in book.sells if o.limit is not None] if book else []
+            asks[good] = min(limits) if limits else 0
+        adapt_usual(island, ctx.config, asks)
 
     @staticmethod
     def _supply_floors(

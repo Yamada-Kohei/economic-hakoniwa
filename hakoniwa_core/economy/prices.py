@@ -271,13 +271,21 @@ def unit_floor(
     return round_money(share * QUANTITY_SCALE / outputs[good])
 
 
-def usual_price(island: IslandState, good: str, turns: int) -> int:
+# economy.ext: 財 → {"stall": 売りに出ていて買われなかったターン数, "low": その間の一番安い指値,
+# "ref": 慣れた値段}
+USUAL = "usual"
+
+
+def usual_price(island: IslandState, good: str, turns: int, reprice: int = 0) -> int:
     """家計が見る「いつもの値段」: 直近 turns ターンの値段の平均（記録がなければ今の値段）。
 
     家計が買った量の記録のある財（消費財）は、家計が買ったターンの値段だけで平均し、その間に1度も
     買っていなければ今の値段にする。売り買いのなかったターンの値段（気配や、作る費用に向けて上げた
     値段）は誰も払っていないので、いつもの値段に数えない（数えると、作り始めた財の指値が何ターンも
-    売りの値段に届かず、売れないまま作る施設が閉じた。試し遊び4回目）。"""
+    売りの値段に届かず、売れないまま作る施設が閉じた。試し遊び4回目）。
+
+    reprice（household.reprice_turns）が 1 以上なら、値上がりに慣れた値段（adapt_usual）を下限に
+    する（回7 後半。W-77）。"""
     economy = island.economy
     fixed = island.ext.get("plan", {}).get("prices", {}).get(good)
     if fixed:  # 計画経済の公定価格（フェーズ3-4。economy/plan.py）がいつもの値段
@@ -288,10 +296,48 @@ def usual_price(island: IslandState, good: str, turns: int) -> int:
     bought = economy.bought_history.get(good)
     if bought is not None:
         paid = [p for p, q in zip(reversed(history), reversed(bought), strict=False) if q > 0]
-        if not paid:
-            return economy.prices.get(good, 1)
-        history = paid
+        usual = max(1, round_money(sum(paid) / len(paid))) if paid else economy.prices.get(good, 1)
+        if reprice > 0:
+            usual = max(usual, economy.ext.get(USUAL, {}).get(good, {}).get("ref", 0))
+        return usual
     return max(1, round_money(sum(history) / len(history)))
+
+
+def adapt_usual(island: IslandState, config: GameConfig, asks: dict[str, int]) -> None:
+    """値上がりに慣れる（市場の段の終わり。回7 後半。W-77）。
+
+    前は、いつもの値段が買った月の古い値段のままなので、費用が上がって値上がりした自動車や燃料を
+    1年近く買わず、売り手も買い手もいるのに取引が止まった。売りに出ていたのに家計が1つも買わなかった
+    ターンが household.reprice_turns 続いたら、いつもの値段をその間の売りの一番安い指値（asks。
+    店に並んだ値段）との半ばまで上げる（慣れた値段 ref。人は値上がりに少しずつ慣れる）。売りの
+    なかったターンは数えない。家計が買えば数え直し、買った値段の平均が慣れた値段に届いたら
+    慣れた値段は要らなくなる。"""
+    turns = config.get("household.reprice_turns")
+    if turns <= 0:
+        return
+    economy = island.economy
+    table = economy.ext.setdefault(USUAL, {})
+    for good in sorted(asks):
+        ask = asks[good]
+        bought = economy.bought_history.get(good, [])
+        entry = table.get(good, {})
+        if bought and bought[-1] > 0:
+            entry["stall"] = 0
+            plain = usual_price(island, good, config.get("household.usual_price_turns"))
+            if plain >= entry.get("ref", 0):
+                entry.pop("ref", None)
+        elif ask > 0:
+            entry["stall"] = entry.get("stall", 0) + 1
+            entry["low"] = min(ask, entry.get("low", ask)) if entry["stall"] > 1 else ask
+            if entry["stall"] >= turns:
+                usual = usual_price(island, good, config.get("household.usual_price_turns"), 1)
+                if entry["low"] > usual:
+                    entry["ref"] = usual + (entry["low"] - usual + 1) // 2
+                entry["stall"] = 0
+        if entry.get("stall") or "ref" in entry:
+            table[good] = entry
+        else:
+            table.pop(good, None)
 
 
 def material_limit(island: IslandState, config: GameConfig, good: str, width: int) -> int:
@@ -299,7 +345,7 @@ def material_limit(island: IslandState, config: GameConfig, good: str, width: in
     （household.consumer_goods_tiers）の安い方（フェーズ3-2。値幅の上端で買い続けると、品薄の
     島で機械と鋼鉄の値段が初めの数十〜数百倍まで上がった。高ければ工事が待つ）。"""
     settings = config.get("household")
-    usual = usual_price(island, good, settings["usual_price_turns"])
+    usual = usual_price(island, good, settings["usual_price_turns"], settings["reprice_turns"])
     _, high = auction.band(island.economy.prices.get(good, 1), width)
     return min(high, scale_price(usual, max(settings["consumer_goods_tiers"])))
 
