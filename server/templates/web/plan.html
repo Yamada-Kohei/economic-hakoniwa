@@ -39,8 +39,8 @@
         {% for r in p.rows %}
         <tr>
           <td><a href="{% url 'island_market' island.id %}?good={{ r.good }}">{{ r.name }}</a>{% if r.held %} <small class="muted">{% translate "（据え置く財）" %}</small>{% endif %}</td>
-          <td>{{ currency }}{{ r.price|floatformat:"0g" }}{% if r.manual %} <small class="muted">{% translate "（命令で決めた値段）" %}</small>{% endif %}</td>
-          <td>{% if r.cost %}{{ currency }}{{ r.cost|floatformat:"0g" }}{% endif %}</td>
+          <td>{{ currency }}{{ r.price|floatformat:"-1g" }}{% if r.manual %} <small class="muted">{% translate "（命令で決めた値段）" %}</small>{% endif %}</td>
+          <td>{% if r.cost %}{{ currency }}{{ r.cost|floatformat:"-1g" }}{% endif %}</td>
           <td>{% if r.gap is not None %}{% if r.outside %}<span class="warning">{% endif %}{% if r.gap > 0 %}+{% endif %}{{ r.gap }}%{% if r.outside %}</span>{% endif %}{% endif %}</td>
           <td>{% if r.goal is not None %}{{ r.goal|floatformat:"1g" }} {{ r.unit }}{% endif %}</td>
           <td>{% if r.made %}{{ r.made|floatformat:"1g" }} {{ r.unit }}{% endif %}</td>
@@ -59,7 +59,7 @@
   <form class="actions" data-order="set_official_price">
     <strong>{% translate "公定価格を決める" %}</strong>
     <label>{% translate "財" %} <select name="good" required>{% for r in p.rows %}<option value="{{ r.good }}">{{ r.name }}（{{ r.unit }}）</option>{% endfor %}</select></label>
-    <label>{% translate "値段（1単位。0 で上書きをやめる）" %} <input name="price" type="number" min="0" step="1" required></label>
+    <label>{% translate "値段（1単位。0 で上書きをやめる）" %} <input name="price" type="number" min="0" step="any" required></label>
     <button type="submit">{% translate "命令に追加" %}</button>
   </form>
   <form class="actions" data-order="review_official_prices" data-list="goods" data-confirm="{% translate '選んだ財（選ばなければ、命令で決めた値段のない財すべて）の公定価格を今の原価に改めます。値上げは支持率と政情に響きます。よろしいですか。' %}">
@@ -99,8 +99,8 @@
     <table class="goods">
       <thead><tr><th>{% translate "財" %}</th><th>{% translate "上限" %}</th><th>{% translate "下限" %}</th><th>{% translate "今の値段" %}</th></tr></thead>
       <tbody>
-        {% for r in p.caps %}<tr><td>{{ r.name }}</td><td>{{ currency }}{{ r.price|floatformat:"0g" }}</td><td></td><td>{% if r.market is not None %}{{ currency }}{{ r.market|floatformat:"0g" }}{% endif %}</td></tr>{% endfor %}
-        {% for r in p.floors %}<tr><td>{{ r.name }}</td><td></td><td>{{ currency }}{{ r.price|floatformat:"0g" }}</td><td>{% if r.market is not None %}{{ currency }}{{ r.market|floatformat:"0g" }}{% endif %}</td></tr>{% endfor %}
+        {% for r in p.caps %}<tr><td>{{ r.name }}</td><td>{{ currency }}{{ r.price|floatformat:"-1g" }}</td><td></td><td>{% if r.market is not None %}{{ currency }}{{ r.market|floatformat:"-1g" }}{% endif %}</td></tr>{% endfor %}
+        {% for r in p.floors %}<tr><td>{{ r.name }}</td><td></td><td>{{ currency }}{{ r.price|floatformat:"-1g" }}</td><td>{% if r.market is not None %}{{ currency }}{{ r.market|floatformat:"-1g" }}{% endif %}</td></tr>{% endfor %}
         {% if not p.caps and not p.floors %}<tr><td colspan="4" class="muted">{% translate "決めていません。" %}</td></tr>{% endif %}
       </tbody>
     </table>
@@ -108,13 +108,13 @@
   <form class="actions" data-order="set_price_cap">
     <strong>{% translate "値段の上限" %}</strong>
     <label>{% translate "財" %} <select name="good" required>{% for g in p.goods %}<option value="{{ g.id }}">{{ g.name }}（{{ g.unit }}）</option>{% endfor %}</select></label>
-    <label>{% translate "値段（1単位。0 でなくす）" %} <input name="price" type="number" min="0" step="1" required></label>
+    <label>{% translate "値段（1単位。0 でなくす）" %} <input name="price" type="number" min="0" step="any" required></label>
     <button type="submit">{% translate "命令に追加" %}</button>
   </form>
   <form class="actions" data-order="set_price_floor">
     <strong>{% translate "値段の下限" %}</strong>
     <label>{% translate "財" %} <select name="good" required>{% for g in p.goods %}<option value="{{ g.id }}">{{ g.name }}（{{ g.unit }}）</option>{% endfor %}</select></label>
-    <label>{% translate "値段（1単位。0 でなくす）" %} <input name="price" type="number" min="0" step="1" required></label>
+    <label>{% translate "値段（1単位。0 でなくす）" %} <input name="price" type="number" min="0" step="any" required></label>
     <button type="submit">{% translate "命令に追加" %}</button>
   </form>
   <p class="order-notice" aria-live="polite"></p>

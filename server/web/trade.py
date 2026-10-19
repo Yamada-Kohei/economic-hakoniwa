@@ -217,10 +217,10 @@ def bloc_goods(bloc: dict[str, Any]) -> list[dict[str, Any]]:
             "good": good,
             "name": defs.name("goods", good),
             "unit": defs.unit_name(good),
-            "price": price,
-            "volume": display.amount(bloc.get("volume", {}).get(good, 0)),
-            "demand": display.amount(bloc.get("demand", {}).get(good, 0)),
-            "supply": display.amount(bloc.get("supply", {}).get(good, 0)),
+            "price": display.price(good, price),
+            "volume": display.amount(bloc.get("volume", {}).get(good, 0), good),
+            "demand": display.amount(bloc.get("demand", {}).get(good, 0), good),
+            "supply": display.amount(bloc.get("supply", {}).get(good, 0), good),
         }
         history = bloc.get("history", {}).get(good, [])
         if len(history) >= 2 and history[-2]:
@@ -256,7 +256,12 @@ def bloc_view(
 def _fixed_rows(bloc: dict[str, Any]) -> list[dict[str, Any]]:
     defs = get_game().defs
     return [
-        {"good": good, "name": defs.name("goods", good), "unit": defs.unit_name(good), "price": p}
+        {
+            "good": good,
+            "name": defs.name("goods", good),
+            "unit": defs.unit_name(good),
+            "price": display.price(good, p),
+        }
         for good, p in sorted(bloc.get("fixed", {}).items())
     ]
 
@@ -288,7 +293,7 @@ def routes(
             "to": target,
             "to_name": _name(islands, target),
             "shipments": group["count"],
-            "load": round(from_milli(group["load"]), 1),  # トン
+            "load": display.tons(group["load"]),  # 見せるトン
             "ships": round(from_milli(ships.ships_of_load(config, group["load"])), 2),
         }
         if source in own or target in own:
@@ -298,7 +303,7 @@ def routes(
                     "good": good,
                     "name": defs.name("goods", good),
                     "unit": defs.unit_name(good),
-                    "amount": display.amount(c["qty"]),
+                    "amount": display.amount(c["qty"], good),
                     "arrive": c["arrive"],
                 }
                 for good, c in sorted(group["cargo"].items())
@@ -394,13 +399,22 @@ def trade_data(
             "good": g,
             "name": defs.name("goods", g),
             "unit": defs.unit_name(g),
-            "home_price": here.economy.prices.get(g),
+            "home_price": _price_or_none(g, here.economy.prices.get(g)),
         }
         for g in tradable_goods(defs)
     ]
     data["cancel_turns"] = config.get("trade.contract_cancel_turns")
     data["policy"] = policy_view(world, here, islands)
     return data
+
+
+def _amount(good: str, milli: int) -> float:
+    """量を見せる量に（丸めない。0.001 トンの未達が「不足なし」に見えないように）。"""
+    return round(get_game().defs.shown_amount(good, from_milli(milli)), 3)
+
+
+def _price_or_none(good: str, price: int | None) -> float | None:
+    return None if price is None else display.price(good, price)
 
 
 def policy_view(
@@ -423,8 +437,8 @@ def policy_view(
                 "name": defs.name("goods", good),
                 "unit": defs.unit_name(good),
                 "tariff": tariff * 100 / BASIS if tariff else None,  # %
-                "subsidy": subsidy or None,  # 1 単位あたり
-                "quota": display.amount(quota) if quota is not None else None,
+                "subsidy": display.price(good, subsidy) if subsidy else None,  # 見せる1単位あたり
+                "quota": display.amount(quota, good) if quota is not None else None,
             }
         )
     embargoes = [
@@ -458,10 +472,11 @@ def _member_bloc(
     e = fxrates.rate(here, bloc["currency"])
     prices = here.economy.prices
     for row in view["goods"]:
-        own = row["price"] * e // BASIS
-        home = prices.get(row["good"])
-        row["price_own"] = own
-        row["home_price"] = home
+        good = row["good"]
+        own = bloc["prices"][good] * e // BASIS
+        home = prices.get(good)
+        row["price_own"] = display.price(good, own)
+        row["home_price"] = _price_or_none(good, home)
         if home:
             row["gap"] = _percent(own, home, 1)  # 圏が島より何 % 高いか
     rep = islands.get(bloc["rep"], {})
@@ -502,8 +517,8 @@ def contract_rows(
                 "good": view["good"],
                 "good_name": defs.name("goods", view["good"]),
                 "unit": defs.unit_name(view["good"]),
-                "quantity": from_milli(view["qty"]),  # 1ターンの量
-                "price": view["price"],
+                "quantity": _amount(view["good"], view["qty"]),  # 1ターンの量
+                "price": display.price(view["good"], view["price"]),
                 "currency": view["currency"],
                 "currency_name": _currency(islands, view["currency"]),
                 "currency_symbol": islands.get(view["currency"], {}).get("symbol", ""),
@@ -512,9 +527,9 @@ def contract_rows(
                 "end": view["end"] or None,
                 "active": view["active"],
                 # 届いた量と不足は丸めない（0.001 トンの未達が「不足なし」に見えた。Codex の報告）
-                "delivered": from_milli(view["delivered"]),
+                "delivered": _amount(view["good"], view["delivered"]),
                 "paid": c.get("paid", 0),
-                "short": from_milli(view["short"]),
+                "short": _amount(view["good"], view["short"]),
                 "short_any": view["short"] > 0,
                 # 届いた物の行き先（買う側だけが決める。決める前は市場）
                 "delivery": view["delivery"] if view["side"] == "buy" else "",
@@ -556,10 +571,12 @@ def trader_rows(
                     "unit": defs.unit_name(good),
                     "direction": direction or "",
                     "direction_name": DIRECTION_NAMES.get(direction, "休み"),
-                    "target": display.amount(target if direction else 0),  # 1ターンに狙う量
-                    "held": display.amount(max(0, held - transit)),  # 港の倉庫にある荷
-                    "transit": display.amount(transit),  # 船で運ぶ途中の荷
-                    "unit_cost": cost * QUANTITY_SCALE // held if held > 0 else None,
+                    "target": display.amount(target if direction else 0, good),  # 1ターンに狙う量
+                    "held": display.amount(max(0, held - transit), good),  # 港の倉庫にある荷
+                    "transit": display.amount(transit, good),  # 船で運ぶ途中の荷
+                    "unit_cost": display.price(good, cost * QUANTITY_SCALE // held)
+                    if held > 0
+                    else None,
                     "age": item.get("age", 0),  # 売れ残ったターン数
                     "bloc": bloc,
                     "bloc_name": names.get(bloc, "") if bloc is not None else "",
@@ -590,7 +607,8 @@ def fleet_view(island: m.Island, here: IslandState, stats: dict[str, float]) -> 
     game = get_game()
     defs, config = game.defs, game.config
     capacity = config.get("trade.ship_capacity")
-    out: dict[str, Any] = {"ship_capacity": capacity, "shipping": None, "port": None}
+    weight = defs.weight_scale()  # 荷の重さは見せるトンで（W-30）
+    out: dict[str, Any] = {"ship_capacity": capacity * weight, "shipping": None, "port": None}
     f = shipping_of(here, config)
     if f is not None:
         need = ships.fuel_per_turn(config, ships.capacity(config, f))
@@ -606,8 +624,8 @@ def fleet_view(island: m.Island, here: IslandState, stats: dict[str, float]) -> 
             "ships": from_milli(ships.fleet(f)),
             "busy": round(ships.busy(f) / QUANTITY_SCALE / capacity, 2),
             "free": round(ships.free(config, f) / QUANTITY_SCALE / capacity, 2),
-            "capacity": from_milli(ships.capacity(config, f)),  # 全部の船で1航海に運べるトン
-            "freight_rate": ships.freight_rate(here, config, f),
+            "capacity": display.tons(ships.capacity(config, f)),  # 全部の船で1航海に運べるトン
+            "freight_rate": display.weight_price(ships.freight_rate(here, config, f)),
             "workers": f.workers,
             # 直近の、船が足りずに輸入を減らしたターンの数（数えたターンのうち）
             "short_turns": sum(f.economy.get("ships_short", [])),
@@ -617,7 +635,7 @@ def fleet_view(island: m.Island, here: IslandState, stats: dict[str, float]) -> 
                     "good": good,
                     "name": defs.name("goods", good),
                     "unit": defs.unit_name(good),
-                    "amount": display.amount(have.get(good, 0)),
+                    "amount": display.amount(have.get(good, 0), good),
                     # 船を全部出したときに何ターン持つか
                     "turns": have.get(good, 0) // per_turn if per_turn > 0 else None,
                 }
@@ -631,9 +649,9 @@ def fleet_view(island: m.Island, here: IslandState, stats: dict[str, float]) -> 
             "name": facility_name(defs, config, here, port),
             "x": port.x,
             "y": port.y,
-            "fee": ships.port_fee(here, config),  # 荷 1 トンあたり
-            "capacity": config.get("trade.port_capacity"),  # 1ターンに積み下ろせるトン
-            "handled": stats.get("port.handled"),
+            "fee": display.weight_price(ships.port_fee(here, config)),  # 荷 1 トンあたり
+            "capacity": config.get("trade.port_capacity") * weight,  # 1ターンに積み下ろせるトン
+            "handled": display.stat_value("port.handled", stats.get("port.handled"), " トン"),
             "workers": port.workers,
         }
     elif any(is_port(config, p) for p in here.facilities):
@@ -664,8 +682,8 @@ def shipment_rows(
                 "good": s["good"],
                 "name": defs.name("goods", s["good"]),
                 "unit": defs.unit_name(s["good"]),
-                "amount": display.amount(sum(q for _, q in s["batches"])),
-                "load": round(from_milli(s["load"]), 1),
+                "amount": display.amount(sum(q for _, q in s["batches"]), s["good"]),
+                "load": display.tons(s["load"]),
                 "loaded": s["loaded"],
                 "arrive": s["arrive"],
             }
@@ -699,9 +717,9 @@ def merchant_view(here: IslandState, turn: int) -> dict[str, Any]:
                 "good": good,
                 "name": defs.name("goods", good),
                 "unit": defs.unit_name(good),
-                "quantity": from_milli(qty),  # 1ターンの上限
-                "price": price,
-                "home_price": prices.get(good),
+                "quantity": _amount(good, qty),  # 1ターンの上限
+                "price": display.price(good, price),
+                "home_price": _price_or_none(good, prices.get(good)),
             }
             for good, qty, price in merchant.offers(here, defs, config, coming)
         ],

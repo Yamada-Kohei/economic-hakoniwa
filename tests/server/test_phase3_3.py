@@ -43,8 +43,8 @@ def test_trade_page_shows_policy_and_aid_forms_to_the_owner(client, world):
     data = client.get(f"/api/islands/{own.id}/trade").json()
     rules = data["policy"]
     goods = {g["good"]: g for g in rules["goods"]}
-    assert goods["coal"]["tariff"] == 12.5 and goods["coal"]["quota"] == 2.5
-    assert goods["steel"]["subsidy"] == 7 and goods["steel"]["tariff"] is None
+    assert goods["coal"]["tariff"] == 12.5 and goods["coal"]["quota"] == 62.5
+    assert goods["steel"]["subsidy"] == 0.3 and goods["steel"]["tariff"] is None
     assert rules["embargoes"] == [
         {"partner": third.id, "partner_name": third.name, "goods": ["石炭"]}
     ]
@@ -72,7 +72,7 @@ def test_bloc_rules_show_to_members_and_the_representative_sets_them(client, wor
     w.save()
     view = client.get("/api/world/trade").json()["blocs"][0]
     assert view["no_tariff"] is True
-    assert view["fixed"] == [{"good": "coal", "name": "石炭", "unit": "トン", "price": 640}]
+    assert view["fixed"] == [{"good": "coal", "name": "石炭", "unit": "トン", "price": 25.6}]
     html = client.get(f"/islands/{own.id}/trade/").content.decode()
     assert "圏の市場で買った荷に関税をかけない決まり" in html and "石炭" in html
     # 代表は、圏内の関税と固定価格を決める欄を持つ
@@ -280,11 +280,11 @@ def test_island_and_economy_pages_show_strengths_and_titles(client, world):
     [
         ("set_tariff", {"good": "coal", "rate": 12.5}, "関税: 石炭 12.5%"),
         ("set_tariff", {"good": "coal", "rate": 0}, "関税をやめる: 石炭"),
-        ("set_export_subsidy", {"good": "coal", "amount": 30}, "輸出補助: 石炭 1トンあたり 30"),
+        ("set_export_subsidy", {"good": "coal", "amount": 750}, "輸出補助: 石炭 1トンあたり 30"),
         (
             "set_import_quota",
             {"good": "coal", "quantity": 2.5},
-            "輸入の割り当て: 石炭 1ターン 2.5 トンまで",
+            "輸入の割り当て: 石炭 1ターン 62.5 トンまで",
         ),
         ("set_import_quota", {"good": "coal"}, "輸入の割り当てをやめる: 石炭"),
         ("set_capital_controls", {"mode": "official"}, "資本取引の制限: 政府と中央銀行だけ"),
@@ -313,7 +313,7 @@ def test_describe_policy_orders_with_countries(world):
         (
             "send_aid",
             {"partner": second.id, "good": "coal", "quantity": 2, "turns": 6},
-            f"援助: {second.name}に石炭を毎ターン 2 トン（6 ターン）",
+            f"援助: {second.name}に石炭を毎ターン 50 トン（6 ターン）",
         ),
         (
             "set_fx_intervention",
@@ -333,7 +333,7 @@ def test_describe_policy_orders_with_countries(world):
         (
             "bloc_settings",
             {"bloc": 9, "no_tariff": True, "fixed_good": "coal", "fixed_price": 500},
-            "圏内の関税をなくす・石炭の値段を500 に固定",
+            "圏内の関税をなくす・石炭の値段を1トンあたり 20 に固定",
         ),
     ]
     for kind, payload, text in cases:

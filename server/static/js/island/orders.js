@@ -11,7 +11,8 @@ import { escapeHtml, getJson, sendJson } from "./api.js";
 // 政策の命令の入力欄の値の形（ほかの欄は数）
 const TEXT_FIELDS = new Set(["good", "side", "kind", "unsold", "issue_term", "underwrite_term", "entry", "large_store"]);
 const FLAG_FIELDS = new Set(["independent", "stop", "approve"]); // "true" / "false"
-const INT_FIELDS = ["minimum_wage", "limit", "price", "bond_trade", "issue", "underwrite", "deposit_insurance", "turns"];
+// 指値と値段は見せる単位で小数も書ける（W-30。サーバーが計算の単位に直して丸める）
+const INT_FIELDS = ["minimum_wage", "bond_trade", "issue", "underwrite", "deposit_insurance", "turns"];
 // 中身のない命令（項目を入れなくても足せる）
 const EMPTY_OK = new Set(["grant_bank_license"]);
 
@@ -255,14 +256,14 @@ export class OrderQueue {
           <label>資源 <select name="good">${goods}</select></label>
           <label><select name="side"><option value="sell">売る</option><option value="buy">買う</option></select></label>
           <label>量 <input name="quantity" type="number" min="0.1" step="0.1" required></label>
-          <label>指値（1単位、買いは必須） <input name="limit" type="number" min="0" step="1"></label>
+          <label>指値（1単位、買いは必須） <input name="limit" type="number" min="0" step="any"></label>
           <button type="submit">命令に追加</button>
         </form>`,
       set_price_cap: power ? `
         <form class="actions" data-form="set_price_cap">
           <strong>公共料金の上限</strong>
           <label>${escapeHtml(power.name)}（1${escapeHtml(power.unit)}あたり、0 で上限なし）
-            <input name="price" type="number" min="0" step="1" placeholder="${cap}" required></label>
+            <input name="price" type="number" min="0" step="any" placeholder="${cap}" required></label>
           <button type="submit">命令に追加</button>
         </form>` : "",
     };

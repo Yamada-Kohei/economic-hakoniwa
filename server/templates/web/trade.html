@@ -32,7 +32,7 @@
           <tr><th>{% translate "加盟" %}</th><td>{% if b.open %}{% translate "誰でも入れる" %}{% else %}{% translate "代表の承認が要る" %}{% endif %}</td></tr>
           <tr><th>{% translate "決済通貨" %}</th><td>{{ b.currency_name }}{% if mine and b.currency != island.id %}<br><small>{% blocktranslate with c=b.currency_name r=b.rate|floatformat:4 %}今のレート: {{ c }} 1 = 自国通貨 {{ r }}{% endblocktranslate %}</small>{% endif %}</td></tr>
           <tr><th>{% translate "圏内の関税" %}</th><td>{% if b.no_tariff %}{% translate "なし（圏の市場で買った荷に関税をかけない決まり）" %}{% else %}{% translate "加盟国が決める" %}{% endif %}</td></tr>
-          {% if b.fixed %}<tr><th>{% translate "圏内の固定価格" %}</th><td>{% for f in b.fixed %}{{ f.name }} {{ b.currency_symbol }}{{ f.price|floatformat:"0g" }}/{{ f.unit }}{% if not forloop.last %}・{% endif %}{% endfor %}</td></tr>{% endif %}
+          {% if b.fixed %}<tr><th>{% translate "圏内の固定価格" %}</th><td>{% for f in b.fixed %}{{ f.name }} {{ b.currency_symbol }}{{ f.price|floatformat:"-1g" }}/{{ f.unit }}{% if not forloop.last %}・{% endif %}{% endfor %}</td></tr>{% endif %}
           {% if b.leaving %}<tr><th></th><td class="warning">{% translate "次のターンに抜けます（運ぶ途中の荷はそのまま届きます）。" %}</td></tr>{% endif %}
         </table>
 
@@ -49,10 +49,10 @@
               {% for g in b.goods %}
               <tr>
                 <td><a href="{% url 'island_market' island.id %}?good={{ g.good }}">{{ g.name }}</a></td>
-                <td>{{ b.currency_symbol }}{{ g.price|floatformat:"0g" }}</td>
+                <td>{{ b.currency_symbol }}{{ g.price|floatformat:"-1g" }}</td>
                 <td>{% if g.change is not None %}{{ g.change|floatformat:1 }}%{% endif %}</td>
-                <td>{{ currency }}{{ g.price_own|floatformat:"0g" }}</td>
-                <td>{% if g.home_price %}{{ currency }}{{ g.home_price|floatformat:"0g" }}{% else %}-{% endif %}</td>
+                <td>{{ currency }}{{ g.price_own|floatformat:"-1g" }}</td>
+                <td>{% if g.home_price %}{{ currency }}{{ g.home_price|floatformat:"-1g" }}{% else %}-{% endif %}</td>
                 <td>{% if g.gap is not None %}{{ g.gap|floatformat:1 }}%{% endif %}</td>
                 <td>{{ g.volume }}</td><td>{{ g.demand }}</td><td>{{ g.supply }}</td><td>{{ g.unit }}</td>
               </tr>
@@ -87,7 +87,7 @@
             <option value="">{% translate "変えない" %}</option>
             {% for g in trade.goods %}<option value="{{ g.good }}">{{ g.name }}（{{ g.unit }}）</option>{% endfor %}
           </select></label>
-          <label>{% translate "固定価格（決済通貨。0 でやめる）" %} <input name="fixed_price" type="number" min="0" step="1"></label>
+          <label>{% translate "固定価格（決済通貨。0 でやめる）" %} <input name="fixed_price" type="number" min="0" step="any"></label>
           <p class="hint">{% translate "決済通貨を変えると、圏の値段は今のレートで新しい通貨に直されます。固定価格を決めた資源は、圏の市場がその値段で売り買いし、買いと売りの多い側は割り当てで減らします。" %}</p>
           <button type="submit">{% translate "命令に追加" %}</button>
         </form>
@@ -189,7 +189,7 @@
               <td>{{ c.side_name }}</td>
               <td>{{ c.good_name }}</td>
               <td>{{ c.quantity|floatformat:"-1g" }} {{ c.unit }}</td>
-              <td>{{ c.currency_symbol }}{{ c.price|floatformat:"0g" }}<br><small class="muted">{{ c.currency_name }}</small></td>
+              <td>{{ c.currency_symbol }}{{ c.price|floatformat:"-1g" }}<br><small class="muted">{{ c.currency_name }}</small></td>
               <td>{% if c.start %}{% blocktranslate with s=c.start|turn_date e=c.end|add:"-1"|turn_date %}{{ s }}〜{{ e }}{% endblocktranslate %}{% else %}{% blocktranslate with n=c.turns %}{{ n }} ターン{% endblocktranslate %}{% endif %}</td>
               <td>{{ c.delivered|floatformat:"-3g" }}</td>
               <td>{{ c.delivery_name|default:"-" }}</td>
@@ -215,10 +215,10 @@
         </select></label>
         <label>{% translate "こちらが" %} <select name="side"><option value="sell">{% translate "売る" %}</option><option value="buy">{% translate "買う" %}</option></select></label>
         <label>{% translate "資源" %} <select name="good" required>
-          {% for g in trade.goods %}<option value="{{ g.good }}">{{ g.name }}（{{ g.unit }}{% if g.home_price %}・{% blocktranslate with p=g.home_price|floatformat:"0g" %}島の値段 {{ currency }}{{ p }}{% endblocktranslate %}{% endif %}）</option>{% endfor %}
+          {% for g in trade.goods %}<option value="{{ g.good }}">{{ g.name }}（{{ g.unit }}{% if g.home_price %}・{% blocktranslate with p=g.home_price|floatformat:"-1g" %}島の値段 {{ currency }}{{ p }}{% endblocktranslate %}{% endif %}）</option>{% endfor %}
         </select></label>
         <label>{% translate "1ターンの量" %} <input name="quantity" type="number" min="0.1" step="0.1" required></label>
-        <label>{% translate "値段（1単位、契約の通貨）" %} <input name="price" type="number" min="0" step="1" required></label>
+        <label>{% translate "値段（1単位、契約の通貨）" %} <input name="price" type="number" min="0" step="any" required></label>
         <label>{% translate "契約の通貨" %} <select name="currency_of"><option value="self">{% translate "自国の通貨" %}</option><option value="partner">{% translate "相手の国の通貨" %}</option></select></label>
         <label>{% translate "期間（ターン）" %} <input name="turns" type="number" min="1" max="600" step="1" value="12" required></label>
         <label>{% translate "届いた物（買うとき）" %} <select name="delivery"><option value="market">{% translate "市場に出す" %}</option><option value="warehouse">{% translate "国の倉庫に置く" %}</option></select></label>
@@ -241,7 +241,7 @@
             <tr>
               <td>{{ g.name }}</td>
               <td>{% if g.tariff is not None %}{{ g.tariff|floatformat:"-2" }}%{% else %}-{% endif %}</td>
-              <td>{% if g.subsidy %}{{ currency }}{{ g.subsidy|floatformat:"0g" }}{% else %}-{% endif %}</td>
+              <td>{% if g.subsidy %}{{ currency }}{{ g.subsidy|floatformat:"-1g" }}{% else %}-{% endif %}</td>
               <td>{% if g.quota is not None %}{{ g.quota }} {{ g.unit }}{% else %}-{% endif %}</td>
             </tr>
             {% endfor %}
@@ -266,7 +266,7 @@
       <form class="actions" data-order="set_export_subsidy">
         <strong>{% translate "輸出補助" %}</strong>
         <label>{% translate "資源" %} <select name="good" required>{% for g in trade.goods %}<option value="{{ g.good }}">{{ g.name }}（{{ g.unit }}）</option>{% endfor %}</select></label>
-        <label>{% translate "1単位あたり（自国通貨。0 でやめる）" %} <input name="amount" type="number" min="0" step="1" required></label>
+        <label>{% translate "1単位あたり（自国通貨。0 でやめる）" %} <input name="amount" type="number" min="0" step="any" required></label>
         <button type="submit">{% translate "命令に追加" %}</button>
       </form>
       <form class="actions" data-order="set_import_quota">
@@ -321,7 +321,7 @@
             <tr>
               <td>{{ g.name }}</td><td>{{ g.direction_name }}</td><td>{{ g.bloc_name|default:"-" }}</td><td>{{ g.target }}</td>
               <td>{{ g.held }}</td><td>{{ g.transit }}</td>
-              <td>{% if g.unit_cost is not None %}{{ currency }}{{ g.unit_cost|floatformat:"0g" }}{% else %}-{% endif %}</td>
+              <td>{% if g.unit_cost is not None %}{{ currency }}{{ g.unit_cost|floatformat:"-1g" }}{% else %}-{% endif %}</td>
               <td>{% if g.age %}{% blocktranslate with n=g.age %}{{ n }} ターン{% endblocktranslate %}{% endif %}</td><td>{{ g.unit }}</td>
               <td>{% if g.why %}<small class="warning">{{ g.why }}</small>{% endif %}</td>
             </tr>
@@ -345,7 +345,7 @@
         <tr><th>{% translate "輸送船" %}</th><td>{% blocktranslate with n=s.ships|floatformat:"-2" c=trade.fleet.ship_capacity %}{{ n }} 隻（1隻で1航海 {{ c }} トン）{% endblocktranslate %}</td></tr>
         <tr><th>{% translate "航海に出ている船" %}</th><td>{% blocktranslate with n=s.busy|floatformat:"-2" %}{{ n }} 隻分{% endblocktranslate %}</td></tr>
         <tr><th>{% translate "空いている船" %}</th><td>{% blocktranslate with n=s.free|floatformat:"-2" %}{{ n }} 隻分{% endblocktranslate %}{% if s.short_turns %}<small class="warning">{% blocktranslate with n=s.short_turns m=s.short_of %}直近 {{ m }} ターンのうち {{ n }} ターンは、船が足りずに輸入を減らしました。{% endblocktranslate %}</small>{% endif %}</td></tr>
-        <tr><th>{% translate "船の運賃" %}</th><td>{% blocktranslate with r=s.freight_rate|floatformat:"0g" %}荷 1 トン・1 区画あたり {{ currency }}{{ r }}{% endblocktranslate %}</td></tr>
+        <tr><th>{% translate "船の運賃" %}</th><td>{% blocktranslate with r=s.freight_rate|floatformat:"-1g" %}荷 1 トン・1 区画あたり {{ currency }}{{ r }}{% endblocktranslate %}</td></tr>
         {% for g in s.fuel %}<tr><th>{% blocktranslate with name=g.name %}燃料（{{ name }}）{% endblocktranslate %}</th><td>{{ g.amount }} {{ g.unit }}{% if g.turns is not None %} <small class="muted">{% blocktranslate with n=g.turns %}船を全部出して {{ n }} ターン分{% endblocktranslate %}</small>{% endif %}</td></tr>{% endfor %}
         {% else %}
         <tr><th>{% translate "輸送船" %}</th><td class="muted">{% translate "海運業がありません" %}</td></tr>
@@ -354,7 +354,7 @@
         {% with p=trade.fleet.port %}
         {% if p %}
         <tr><th>{% translate "港" %}</th><td><a href="{% url 'island' island.id %}?x={{ p.x }}&amp;y={{ p.y }}">{{ p.name }}</a> <small class="muted">({{ p.x }}, {{ p.y }})</small></td></tr>
-        <tr><th>{% translate "港の使用料" %}</th><td>{% blocktranslate with f=p.fee|floatformat:"0g" %}荷 1 トンあたり {{ currency }}{{ f }}{% endblocktranslate %}</td></tr>
+        <tr><th>{% translate "港の使用料" %}</th><td>{% blocktranslate with f=p.fee|floatformat:"-1g" %}荷 1 トンあたり {{ currency }}{{ f }}{% endblocktranslate %}</td></tr>
         <tr><th>{% translate "積み下ろした荷（1ターン）" %}</th><td>{% blocktranslate with h=p.handled|default:0|floatformat:"-1g" c=p.capacity %}{{ h }} トン（1ターンに {{ c }} トンまで）{% endblocktranslate %}</td></tr>
         {% else %}
         <tr><th>{% translate "港" %}</th><td class="warning">{% if trade.fleet.port_stopped %}{% translate "港が工事中か止まっています" %}{% else %}{% translate "港がありません" %}{% endif %}</td></tr>
@@ -398,7 +398,7 @@
           <thead><tr><th>{% translate "資源" %}</th><th>{% translate "値段（1単位）" %}</th><th>{% translate "島の値段" %}</th><th>{% translate "1ターンの上限" %}</th><th>{% translate "単位" %}</th></tr></thead>
           <tbody>
             {% for g in mc.goods %}
-            <tr><td>{{ g.name }}</td><td>{{ currency }}{{ g.price|floatformat:"0g" }}</td><td>{% if g.home_price %}{{ currency }}{{ g.home_price|floatformat:"0g" }}{% else %}-{% endif %}</td><td>{{ g.quantity|floatformat:"-2g" }}</td><td>{{ g.unit }}</td></tr>
+            <tr><td>{{ g.name }}</td><td>{{ currency }}{{ g.price|floatformat:"-1g" }}</td><td>{% if g.home_price %}{{ currency }}{{ g.home_price|floatformat:"-1g" }}{% else %}-{% endif %}</td><td>{{ g.quantity|floatformat:"-2g" }}</td><td>{{ g.unit }}</td></tr>
             {% endfor %}
           </tbody>
         </table>

@@ -67,7 +67,7 @@ def defs(request):
                 sid: {
                     "name": d.name("settlements", sid),
                     **{k: v for k, v in s.items() if k != "materials"},
-                    "materials": {g: from_milli(q) for g, q in s.get("materials", {}).items()},
+                    "materials": _shown_amounts(s.get("materials", {})),
                 }
                 for sid, s in d.settlements.items()
             },
@@ -120,7 +120,8 @@ def order_defs(request):
     """命令の定義: 表示名・要る行政力・中身の形（JSON Schema）・議会の採決・実行まで伏せるか。
 
     中身の形は packs/base/data/orders.yaml の payload そのまま。命令の列（PUT .../orders）と確かめ
-    （POST .../orders/check）に送る {"kind": 種類, "payload": 中身} の中身がこの形になる。
+    （POST .../orders/check）に送る {"kind": 種類, "payload": 中身} の中身がこの形になる。ただし財の
+    量と 1 単位あたりの値段は画面と同じ見せる単位で送る（W-30。値段は小数も受け付ける）。
     """
     d = get_game().defs
     return _json(
@@ -129,7 +130,8 @@ def order_defs(request):
                 oid: {
                     "name": d.name("orders", oid),
                     "admin_cost": o["admin_cost"],
-                    "payload": _plain(o["payload"]),
+                    "payload": _order_schema(oid, _plain(o["payload"])),
+                    **({"units": ORDER_UNITS_NOTE} if oid in display.ORDER_UNITS else {}),
                     **({"parliament": o["parliament"]} if o.get("parliament") else {}),
                     **({"secret": _plain(o["secret"])} if o.get("secret") else {}),
                 }
@@ -137,6 +139,30 @@ def order_defs(request):
             }
         }
     )
+
+
+ORDER_UNITS_NOTE = (
+    "財の量と 1 単位あたりの値段は、画面・国の要約と同じ見せる単位"
+    "（重さの財は実物のトン）で書きます"
+)
+
+
+def _order_schema(kind: str, schema: Any) -> Any:
+    """命令の中身の形。値段の項目は見せる単位で小数も書けるので number にする（W-30）。"""
+    spec = display.ORDER_UNITS.get(kind)
+    if spec is None or not isinstance(schema, dict):
+        return schema
+    properties = dict(schema.get("properties", {}))
+    for key in spec[2]:
+        if isinstance(properties.get(key), dict):
+            properties[key] = {**properties[key], "type": "number"}
+    return {**schema, "properties": properties}
+
+
+def _shown_amounts(amounts: dict[str, int]) -> dict[str, float]:
+    """財 → 1000 分の 1 単位の量を、財 → 見せる量に（display_scale を掛ける。W-30）。"""
+    d = get_game().defs
+    return {g: round(d.shown_amount(g, from_milli(q)), 3) for g, q in amounts.items()}
 
 
 def _plain(value: Any) -> Any:
@@ -162,7 +188,7 @@ def _infra_def(kid: str, k: Any) -> dict[str, Any]:
         "grid": k.get("grid"),
         "turns": k.get("turns", 1),
         "labor": k.get("labor", 0),
-        "materials": {g: from_milli(q) for g, q in k.get("materials", {}).items()},
+        "materials": _shown_amounts(k.get("materials", {})),
     }
 
 
@@ -187,13 +213,13 @@ def _facility_def(fid: str, f: Any) -> dict[str, Any]:
         "construction": {
             "turns": construction["turns"],
             "labor": construction.get("labor", 0),
-            "materials": {g: from_milli(q) for g, q in construction.get("materials", {}).items()},
+            "materials": _shown_amounts(construction.get("materials", {})),
         },
         "recipes": {
             rid: {
                 "name": d.recipe_name(fid, rid),
-                "inputs": {g: from_milli(q) for g, q in r["inputs"].items()},
-                "outputs": {g: from_milli(q) for g, q in r["outputs"].items()},
+                "inputs": _shown_amounts(r["inputs"]),
+                "outputs": _shown_amounts(r["outputs"]),
                 "requires_resource": r.get("requires_resource"),
             }
             for rid, r in f["recipes"].items()
@@ -673,7 +699,9 @@ def orders(request, island_id: int):
                 {"index": i, "text": text, "details": ["{kind, payload} の形で送ってください"]}
             )
             continue
-        kind, payload = item.get("kind"), item.get("payload")
+        # 量と値段は見せる単位で受け取り、計算の単位に直して確かめ、並べる（W-30）
+        kind = item.get("kind")
+        payload = item["payload"] = display.order_payload(kind, item.get("payload"), to_game=True)
         result = check_order(get_game().defs, get_game().registry, state, kind, payload)
         if result.ok:
             continue
@@ -708,9 +736,8 @@ def check(request, island_id: int):
     except ValueError:
         return HttpResponseBadRequest("JSON で送ってください")
     state = load_island(island)
-    result = check_order(
-        get_game().defs, get_game().registry, state, body.get("kind"), body.get("payload")
-    )
+    payload = display.order_payload(body.get("kind"), body.get("payload"), to_game=True)
+    result = check_order(get_game().defs, get_game().registry, state, body.get("kind"), payload)
     text = "" if result.ok else display.message(result.reason or "", **result.args)
     data = {"ok": result.ok, "text": text, "details": list(result.details)}
     if result.ok and body.get("kind") == "build":
@@ -766,7 +793,7 @@ def _orders_view(island: m.Island, mine: bool = True) -> dict[str, Any]:
         "orders": [
             {
                 "kind": o.kind,
-                "payload": o.payload,
+                "payload": display.order_payload(o.kind, o.payload, to_game=False),
                 "cost": d.orders[o.kind]["admin_cost"] if o.kind in d.orders else 0,
                 "text": display.describe_order(o.kind, o.payload),
             }

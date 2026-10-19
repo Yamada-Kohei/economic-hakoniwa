@@ -82,12 +82,12 @@ def test_chain_view_marks_shortages_and_counts_imports(client, world):
     assert view["turn"] == 15
     goods = {g["good"]: g for tier in view["tiers"] for g in tier["goods"]}
     grain, clothing = goods["grain"], goods["clothing"]
-    assert grain["made"] == 40.0 and grain["used"] == 12.0 and not grain["short"]
+    assert grain["made"] == 1000.0 and grain["used"] == 300.0 and not grain["short"]
     assert grain["change"] == "+20%"  # 12 ターン前との比べ
     assert clothing["short"] and clothing["streak"] == 3 and clothing["bought"] == 50
-    assert clothing["imported"] == 0.5  # 商社と海外の商人が売った量
+    assert clothing["imported"] == 12.5  # 商社と海外の商人が売った量
     assert [g["good"] for g in view["short"]] == ["clothing"]
-    assert goods["electricity"]["used"] == 30.0  # 電力は使った量を送電の統計から
+    assert goods["electricity"]["used"] == 750.0  # 電力は使った量を送電の統計から
     tiers = [t["name"] for t in view["tiers"]]
     assert tiers == sorted(tiers, key=["原料", "中間財", "最終財"].index)
     farm = next(k for k in grain["makers"] if k["kind"] == "farm")
@@ -106,11 +106,11 @@ def test_chain_view_tells_goods_left_unsold_at_their_price(client, world):
     )
     view = chain.chain_view(island, {}, "¤")
     goods = {g["good"]: g for tier in view["tiers"] for g in tier["goods"]}
-    assert goods["luxury_crop"]["unmatched"] is True and goods["luxury_crop"]["supply"] == 3.0
+    assert goods["luxury_crop"]["unmatched"] is True and goods["luxury_crop"]["supply"] == 75.0
     assert goods["grain"]["unmatched"] is False  # 売りに出た分は売れた（ただの品不足）
     page = client.get(f"/islands/{island.id}/chain/").content.decode()
     assert "売りの値段が買い手の指値より高く、売れ残りました" in page
-    assert "実物のおよそ 25 トン分" in page
+    assert "量は実物に近い単位です" in page
 
 
 def test_recipe_choices_for_a_state_facility(client, world):

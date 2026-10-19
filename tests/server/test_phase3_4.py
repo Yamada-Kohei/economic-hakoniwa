@@ -183,9 +183,9 @@ def test_politics_page_shows_the_rebuild_materials(client, world):
     ext["politics"] = {**ext.get("politics", {}), "rebuild": {"building_materials": 5300}}
     m.Island.objects.filter(pk=island.pk).update(ext=ext)
     data = client.get(f"/api/islands/{island.id}/politics").json()
-    assert data["rebuilding"] and data["rebuild"][0]["quantity"] == 5.3
+    assert data["rebuilding"] and data["rebuild"][0]["quantity"] == 132.5
     html = client.get(f"/islands/{island.id}/politics/").content.decode()
-    assert "残りの資材" in html and "建材 5.3" in html
+    assert "残りの資材" in html and "建材 132.5" in html
 
 
 def test_plan_orders_for_official_price_rules_are_accepted(client, world):

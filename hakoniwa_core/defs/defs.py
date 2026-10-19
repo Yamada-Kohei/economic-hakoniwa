@@ -142,6 +142,36 @@ class Defs:
         unit = self.goods.get(good, {}).get("unit")
         return self.name("units", unit, lang) if unit else ""
 
+    def display_scale(self, good: str) -> float:
+        """見せるときに量に掛ける倍率（goods.yaml の display_scale。書かなければ 1。W-30）。"""
+        return self.goods.get(good, {}).get("display_scale", 1)
+
+    def weight_scale(self) -> float:
+        """船の荷の重さ（トン。freight_weight）を見せるときの倍率（トンで数える財と同じ）。"""
+        return next(
+            (g.get("display_scale", 1) for g in self.goods.values() if g.get("unit") == "ton"), 1
+        )
+
+    def shown_amount(self, good: str, value: float) -> float:
+        """縮めた量（1 単位で数えた数）を、見せる量に。"""
+        return value * self.display_scale(good)
+
+    def shown_price(self, good: str, price: float) -> float:
+        """1 単位あたりの値段を、見せる単位 1 つあたりの値段に（100 より安ければ小数第1位まで）。"""
+        scale = self.display_scale(good)
+        if scale == 1:
+            return price
+        value = price / scale
+        return round(value) if abs(value) >= 100 else round(value, 1)
+
+    def game_amount(self, good: str, value: float) -> float:
+        """見せる量で打ち込まれた量を、縮めた量に戻す。"""
+        return value / self.display_scale(good)
+
+    def game_price(self, good: str, value: float) -> int:
+        """見せる単位 1 つあたりで打ち込まれた値段を、1 単位あたりの値段（整数）に戻す。"""
+        return round(value * self.display_scale(good))
+
     def name(self, kind: str, entry_id: str, lang: str = "ja") -> str:
         """表示名。見つからなければ名前そのものを返す。"""
         return self.locales.get(lang, {}).get(kind, {}).get(entry_id, entry_id)

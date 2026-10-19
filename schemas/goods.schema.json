@@ -7,6 +7,7 @@
   "properties": {
     "tier": {"type": "integer", "minimum": 1, "maximum": 3, "description": "階層。1 原料、2 中間財、3 最終財"},
     "unit": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "量の単位の名前（ton など）。表示名は locale/<言語>/units.yaml"},
+    "display_scale": {"type": "number", "exclusiveMinimum": 0, "description": "画面・API・ログで見せるときに量に掛ける倍率（値段はこの分の 1）。計算は変えない。書かなければ 1"},
     "shelf_life": {"type": "integer", "minimum": 0, "description": "持ち越せるターン数。0 は持ち越せない（電力など）。書かなければ無期限"},
     "food": {
       "type": "object",

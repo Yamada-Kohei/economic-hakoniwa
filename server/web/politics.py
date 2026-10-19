@@ -21,7 +21,6 @@ from hakoniwa_core.modules import migration
 from hakoniwa_core.modules import politics as politics_orders
 from hakoniwa_core.registry import OrderFailed
 from hakoniwa_core.state import IslandState
-from hakoniwa_core.units import from_milli
 from server.game import get_game
 from server.web import display
 from server.world import models as m
@@ -159,7 +158,7 @@ def politics_data(island: m.Island, mine: bool) -> dict[str, Any]:
             {
                 "good": g,
                 "name": defs.name("goods", g),
-                "quantity": display.amount(q),
+                "quantity": display.amount(q, g),
                 "unit": defs.unit_name(g),
             }
             for g, q in (state.get("rebuild") or {}).items()
@@ -279,15 +278,15 @@ def plan_data(island: m.Island, mine: bool, stats: dict[str, float]) -> dict[str
                 "good": good,
                 "name": defs.name("goods", good),
                 "unit": defs.unit_name(good),
-                "price": prices[good],
+                "price": display.price(good, prices[good]),
                 "manual": good in manual,
-                "cost": cost,
+                "cost": display.price(good, cost) if cost is not None else None,
                 # 公定価格と原価の差（原価に対する %。+ は原価より高い）
                 "gap": round((prices[good] - cost) * 100 / cost) if cost else None,
                 "outside": bool(cost) and planning.outside(prices[good], cost, band),
                 "held": good in held,
-                "goal": round(from_milli(goals[good]), 1) if good in goals else None,
-                "made": round(stats.get(f"production.{good}", 0), 1),
+                "goal": display.amount(goals[good], good) if good in goals else None,
+                "made": display.shown(good, stats.get(f"production.{good}", 0)),
                 "achieved": round(achieved[good] * 100) if good in achieved else None,
                 "queue": round(queues.get(good, 0) * 100),
             }
@@ -312,8 +311,8 @@ def _price_limits(limits: dict[str, int], stats: dict[str, float]) -> list[dict[
             "good": g,
             "name": defs.name("goods", g),
             "unit": defs.unit_name(g),
-            "price": p,
-            "market": stats.get(f"price.{g}"),
+            "price": display.price(g, p),
+            "market": display.stat_value(f"price.{g}", stats.get(f"price.{g}"), "money"),
         }
         for g, p in sorted(limits.items())
         if p and g in defs.goods

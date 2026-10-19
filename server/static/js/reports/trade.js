@@ -7,10 +7,9 @@ import { mountCharts } from "./common.js";
 import { mountOrders } from "./orders.js";
 
 // 入力欄の名前ごとの値の形（ほかは文字）
-const INT_FIELDS = new Set([
-  "bloc", "currency", "approve", "to", "contract", "partner", "price", "turns", "amount", "fixed_price",
-]);
-const NUMBER_FIELDS = new Set(["quantity", "rate"]);
+const INT_FIELDS = new Set(["bloc", "currency", "approve", "to", "contract", "partner", "turns"]);
+// 値段と輸出補助は見せる単位で小数も書ける（W-30。サーバーが計算の単位に直して丸める）
+const NUMBER_FIELDS = new Set(["quantity", "rate", "price", "amount", "fixed_price"]);
 const FLAG_FIELDS = new Set(["open", "no_tariff", "lift"]); // "true" / "false"
 
 mountCharts();

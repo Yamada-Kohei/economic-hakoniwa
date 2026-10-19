@@ -82,5 +82,10 @@ def test_log_formatting():
         defs, "order_failed", {"order": "rename_island", "reason": "reason_same_name"}
     )
     assert text == "命令「国名の変更」を実行できませんでした（現在と同じ名称です）"
+    # 量と 1 単位あたりの値段は見せる単位で（W-30。穀物は 25 倍）
     spoiled = format_log(defs, "goods_spoiled", {"good": "grain", "amount": 2.5})
-    assert spoiled == "穀物 2.5 トンが劣化により廃棄されました"
+    assert spoiled == "穀物 62.5 トンが劣化により廃棄されました"
+    floor = format_log(defs, "price_floor_set", {"good": "grain", "price": 25000})
+    assert floor == "穀物の値段の下限を 1トンあたり 1,000 にしました"
+    cars = format_log(defs, "cargo_arrived", {"good": "automobile", "amount": 3})
+    assert cars == "自動車 3 台が船で港に着きました"

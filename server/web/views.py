@@ -405,9 +405,18 @@ def help_page(request):
                 if defs.unit_name(g)
             ],
             "trade": _trade_help(game),
+            **_per_person_help(game),
             **_goods_help(game),
         },
     )
+
+
+def _per_person_help(game) -> dict:
+    """手引きの「資源の単位」に出す、1人1ターンの食料と家庭の電力（見せる単位。W-30）。"""
+    config, defs = game.config, game.defs
+    food = config.get("population.food_per_person") * defs.weight_scale()
+    power = defs.shown_amount(config.get("power.good"), config.get("power.household_use"))
+    return {"food_per_person": f"{food:g}", "power_per_person": f"{power:g}"}
 
 
 def _goods_help(game) -> dict:
@@ -443,11 +452,11 @@ def _trade_help(game) -> dict:
     settings = config.get("foreign_merchant")
     return {
         "ship_speed": config.get("trade.ship_speed"),
-        "ship_capacity": config.get("trade.ship_capacity"),
+        "ship_capacity": config.get("trade.ship_capacity") * defs.weight_scale(),
         "ship_life": config.get("trade.ship_life"),
         "start_ships": config.get("trade.start_ships"),
         "fuel": "・".join(defs.name("goods", g) for g in config.get("trade.ship_fuel")),
-        "port_capacity": config.get("trade.port_capacity"),
+        "port_capacity": config.get("trade.port_capacity") * defs.weight_scale(),
         "trader_cut": f"{config.get('trade.trader_cut') * 100:g}",
         "trader_max": defs.facilities[config.get("trade.trader_facility")].get("max_per_island"),
         "bloc_band": f"{config.get('trade.bloc_band') * 100:g}",
