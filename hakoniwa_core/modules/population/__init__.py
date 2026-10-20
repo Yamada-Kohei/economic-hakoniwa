@@ -41,7 +41,6 @@ from hakoniwa_core.economy.households import (
     blend_hunger,
     move_people,
     recount_engineers,
-    set_jobless,
     split_persons,
 )
 from hakoniwa_core.economy.stats import inflation, real_wage_change
@@ -82,7 +81,6 @@ FOOD_SHORT = "food_short"
 FOOD_BUYERS = "food_buyers"
 HUNGER_RISK = "hunger_risk"
 FOOD_ORDERS = "household_food"  # island.scratch: 層ごとの食料の注文の要点（市場の段が書く）
-FLED_JOBLESS = "fled_jobless"  # island.scratch: 飢えて村へ移った人のうち、仕事のない人とその家族
 # 一般の層のうち、村で自給の農業をしている人の飢えの蓄え（HUNGER・ENDURED）と、前のターンに
 # 市場で食料を買っていた人の数（market）。一般の層の HUNGER は、市場で食料を買う人の蓄え（回4）
 FIELDS = "fields"
@@ -737,10 +735,6 @@ class Population(IslandStage):
             remove_dead(island, defs, deaths)
             changes = split_persons(island, defs, sum(t.population for t in island.tiles))
             move_people(island, changes)
-            if island.scratch.get(FLED_JOBLESS):
-                # 飢えて村へ移った仕事のない人は、村で自給の農業をするので失業している家計から外す
-                # （次の賃金の段を待つと、移った人の分まで飢えている家計に数えたままになる）
-                set_jobless(island, jobless_persons(defs, island))
             if island.economy.happiness_blend > 0:
                 _blend_notice(island, ctx)
                 island.economy.happiness_blend -= 1
@@ -1093,7 +1087,6 @@ class Population(IslandStage):
             island.stats["population.fled_to_villages"] = moved
             jobless = min(moved, round(moved_jobless))
             if jobless > 0:  # 仕事のない人の家族がいれば、その人数も書く（失業率から外れるため）
-                island.scratch[FLED_JOBLESS] = jobless
                 island.log.append(
                     LogEntry("famine_flight_jobless", {"count": moved, "jobless": jobless})
                 )

@@ -22,7 +22,7 @@ from hakoniwa_core.economy import (
 from hakoniwa_core.log import format_log
 from hakoniwa_core.modules.firms import privatize
 from hakoniwa_core.modules.market import Market
-from hakoniwa_core.modules.population import FED, FLED_JOBLESS, HUNGER, Population
+from hakoniwa_core.modules.population import FED, HUNGER, Population
 from hakoniwa_core.registry import OrderFailed
 from hakoniwa_core.state import ACCOUNTING_TREASURY, OWNER_PRIVATE, OWNER_STATE, Facility
 from hakoniwa_core.trade import island_state
@@ -145,7 +145,6 @@ def test_jobless_who_flee_hunger_are_counted_in_the_log(game):
     assert entry.args["count"] == moved and 0 < entry.args["jobless"] <= moved
     text = format_log(game.defs, entry.kind, entry.args)
     assert str(entry.args["jobless"]) in text and "失業者には数えません" in text
-    assert island.scratch[FLED_JOBLESS] == entry.args["jobless"]  # 人口の段の後で数え直す印
 
 
 def test_warehouse_buy_with_no_budget_is_refused_at_the_check(game):

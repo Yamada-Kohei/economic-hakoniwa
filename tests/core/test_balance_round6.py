@@ -385,6 +385,10 @@ def test_halting_the_settlement_currency_island_keeps_the_world_running(game, ba
             assert world.islands[i].stats.get("gdp", 0) > 0
 
 
+def _all_facilities(world):
+    return [x for i in world.islands.values() for x in i.facilities]
+
+
 def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
     """船を全部失った島: 帳簿と国際収支が合ったままターンが回り、輸出は買い手の船で続く。船が
     足りない月が続くと海運業が船を買いに出て、手元の資金で足りない代金は持ち主が出す（船は運賃で
@@ -403,7 +407,12 @@ def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
         exports.append(w.islands[island.id].stats.get("trade.exports", 0))
         wanted.append(f.economy.get("ships_wanted", 0))
 
-    run_checked(game, world, 36, each)
+    # 船の作り手がいない間を見る（造船所ができると、その船を買って船団が戻る。試し遊び1回目の直しで
+    # 流れが変わり、36 ターンのうちに標準の計画の造船所が動き出すようになった）
+    for _ in range(36):
+        if any(x.kind == "shipyard" and x.built for x in _all_facilities(world)):
+            break
+        run_checked(game, world, 1, each)
     assert ships.fleet(f) == 0  # どの島も造船所をまだ持っていない
     assert sum(exports) > 0  # 輸出は買い手の島の船で運ぶ
     assert wanted[0] == 0 and wanted[-1] == QUANTITY_SCALE  # 足りない月が続いてから1隻
