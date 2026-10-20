@@ -682,6 +682,8 @@ class Market(IslandStage):
                 funds.release(island, MERCHANT_GAP, party.reserved)
                 party.reserved = 0
         needs.close_cars(island, config)
+        foreign = self._foreign_supply(config, books_by_good, results)
+        island.scratch[traders.FOREIGN_SUPPLY] = foreign
         sold = self._imports_sold(books_by_good, results)
         self._spoil(island, ctx)
         self._imports_left(island, sold)
@@ -2743,6 +2745,26 @@ class Market(IslandStage):
                 if party.kind == STORE and party.layer == IMPORTED:
                     sold[good] = sold.get(good, 0) + results[good].sold[i]
         return sold
+
+    @staticmethod
+    def _foreign_supply(
+        config: GameConfig, books_by_good: dict[str, Book], results: dict[str, auction.Result]
+    ) -> dict[str, list[int]]:
+        """財 → [島の外から来た売りの量, そのうち売れた量]。島の外から来た売りは、海外の商人の売りと
+        商社の売り（輸入した物と、圏で売れ残って島に戻した輸出の荷）。商社が輸出の向きと狙う量を
+        決めるとき、島の売りから除く（traders.FOREIGN_SUPPLY。試し遊び1回目）。"""
+        out: dict[str, list[int]] = {}
+        for good, book in sorted(books_by_good.items()):
+            result = results.get(good)
+            if result is None:
+                continue
+            for i, (order, party) in enumerate(book.sells):
+                f = party.facility
+                if party.kind == MERCHANT or (f is not None and trade.is_trader(config, f)):
+                    entry = out.setdefault(good, [0, 0])
+                    entry[0] += order.quantity
+                    entry[1] += result.sold[i]
+        return out
 
     @staticmethod
     def _imports_left(island: IslandState, sold: dict[str, int]) -> None:

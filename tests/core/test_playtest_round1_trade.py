@@ -1,5 +1,6 @@
 """試し遊び1回目（5 か国、ターン 1〜50）の報告のうち、貿易の直し: 国の契約の外貨は中央銀行の外貨から
-先に払う（2026-10-20 の決定「国の契約だけ」）、海外の商人から買った額と輸入の数え方。"""
+先に払う（2026-10-20 の決定「国の契約だけ」）、海外の商人から買った額と輸入の数え方、海外の商人の
+売れ残りを商社が輸出しようとしていたこと。"""
 
 from __future__ import annotations
 
@@ -8,10 +9,12 @@ import copy
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.log import format_log
 from hakoniwa_core.modules.trade import check
-from hakoniwa_core.trade import contracts, traders
+from hakoniwa_core.state import MarketRecord
+from hakoniwa_core.trade import contracts, traders, traders_of
 from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.trade import money as fxmoney
 from hakoniwa_core.units import QUANTITY_SCALE, money_of
+from tests.core.test_rules import make_island
 from tests.core.test_trade import game as game  # noqa: F401
 from tests.core.test_trade import run as run_world
 from tests.core.test_trade import traded as traded  # noqa: F401
@@ -131,3 +134,42 @@ def test_planned_merchant_purchases_count_the_gap_outside_imports(game, traded):
 
     run_world(game, world, 3, keep)
     assert any(gaps)
+
+
+# --- 海外の商人の売れ残りを輸出しない --------------------------------------------------------
+
+
+def test_home_supply_leaves_out_merchant_and_trader_sells(game):
+    """島の売り手の売り（輸出の向きと狙う量に使う）は、市場の売りから海外の商人と商社の売りを除いた
+    量で、売れ残りも島の売り手の分だけ。"""
+    island = make_island(game)
+    record = MarketRecord(good="steel", price=100, volume=1000, demand=1000, supply=5000)
+    assert traders.home_supply(island, record) == (5000, 4000)
+    island.scratch[traders.FOREIGN_SUPPLY] = {"steel": [3000, 500]}
+    # 島の売り手: 2000 を売りに出し、500 が売れて 1500 が売れ残った
+    assert traders.home_supply(island, record) == (2000, 1500)
+    island.scratch[traders.FOREIGN_SUPPLY] = {"steel": [5000, 1000]}
+    assert traders.home_supply(island, record) == (0, 0)
+    assert traders.home_supply(island, None) == (0, 0)
+
+
+def test_traders_do_not_export_what_only_the_merchant_sells(game, traded):
+    """島で作っておらず国の倉庫にもない物を、海外の商人が売れ残しても、商社は輸出の向きにしない。
+    計画経済の島の商社が、油井も製油所もないのに原油と燃料を海外の商人の上限ほど輸出しようとして
+    いた（試し遊び1回目）。"""
+    world = traded[0]
+    merchant_only = {}
+    for island in world.islands.values():
+        foreign = island.scratch[traders.FOREIGN_SUPPLY]
+        records = {r.good: r for r in island.markets}
+        merchant_only[island.id] = {
+            good
+            for good, (offered, sold) in foreign.items()
+            if good in records and records[good].supply == offered and sold < offered
+        }
+        for f in traders_of(island, game.config):
+            for good in merchant_only[island.id]:
+                item = traders.goods_of(f).get(good, {})
+                assert not (item.get("dir") == traders.EXPORT and item.get("x")), (island.id, good)
+    planned = next(i for i in world.islands.values() if traders.is_planned(i))
+    assert {"crude_oil", "fuel"} <= merchant_only[planned.id]
