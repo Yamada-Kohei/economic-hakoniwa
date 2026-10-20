@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.urls import reverse
+
 from hakoniwa_core import dates
 from hakoniwa_core.economy import experience
 from hakoniwa_core.state import WorldState
@@ -21,7 +23,7 @@ from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.units import BASIS, from_milli
 from server.accounts import keys
 from server.game import get_game
-from server.web import display
+from server.web import awards, display
 from server.web.trade import directory, trading_islands, world_state
 from server.world import models as m
 from server.world.repository import island_from_row
@@ -263,6 +265,7 @@ def island_table(
         if titles.get(industry) is not None:
             held.setdefault(titles[industry], []).append(display.title_name(industry))
     ai_owners = keys.ai_owner_ids(world.turn)
+    prizes = awards.holders(world)
     rows = []
     founded: dict[int, int] = {}
     for island in world.islands.select_related("owner").order_by("id"):
@@ -293,6 +296,8 @@ def island_table(
                 ),
                 "columns": columns,
                 "titles": held.get(island.id, []),
+                "flag": reverse("island_flag", args=[island.id]),
+                "awards": [a["name"] for a in prizes.get(island.id, [])],
             }
         )
     rows.sort(

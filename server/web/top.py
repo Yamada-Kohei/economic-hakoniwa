@@ -65,9 +65,9 @@ HEADLINES = (
 )
 
 
-def headline_filter() -> Q:
+def headline_filter(kinds: tuple[str, ...] = HEADLINES) -> Q:
     q = Q()
-    for kind in HEADLINES:
+    for kind in kinds:
         q |= Q(kind__startswith=kind) if kind.endswith("_") else Q(kind=kind)
     return q
 

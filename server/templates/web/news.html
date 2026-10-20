@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% load i18n %}
+{% block title %}{% translate "世界の近況" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+<h1>{% translate "世界の近況" %}</h1>
+<p class="hint">{% translate "全部の国の主な出来事です（建国・選挙・憲法の改正・災害・倒産・称号・条約・戦争など）。国の名前から、その国の年表と紹介のページへ行けます。" %}</p>
+
+<section class="panel" id="news">
+  <div class="table-scroll">
+  <table class="goods news-table">
+    <thead><tr><th>{% translate "日付" %}</th><th>{% translate "国" %}</th><th>{% translate "出来事" %}</th></tr></thead>
+    <tbody>
+    {% for e in entries %}
+      <tr>
+        <td>{{ e.date }}{% if e.country_date %}<br><small class="muted">{{ e.country_date }}</small>{% endif %}</td>
+        <td><img class="table-flag" src="{{ e.island.flag }}" alt="" width="24" height="16" loading="lazy"> <a href="{% url 'island_country' e.island.id %}">{{ e.island.name }}</a></td>
+        <td>{{ e.text }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="3" class="muted">{% translate "まだ出来事がありません。" %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% include "board/pager.html" %}
+</section>
+{% endblock %}
