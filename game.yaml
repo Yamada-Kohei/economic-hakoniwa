@@ -704,3 +704,8 @@ diplomacy:
   violation_premium: 0.03
   violation_premium_max: 0.1
   violation_decay_turns: 60
+  # 経済の取り決めの条項（回4-1 の②）
+  violation_repeat_turns: 12  # 契約の不足の違反を、同じ条項で重ねて記録しない間（ターン数）
+  max_contract_turns: 600     # 契約の条項の期間の上限（trade の契約と同じ）
+  max_aid_period_turns: 12    # 援助の約束の、送る間隔の上限
+  max_aid_count: 24           # 援助の約束の、送る回数の上限

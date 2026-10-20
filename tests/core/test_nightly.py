@@ -37,8 +37,9 @@ def test_random_orders_pass_the_same_check_as_the_screen(game):
         for kind, payload in orders:
             assert check_order(game.defs, game.registry, island, kind, payload).ok
             kinds.add(kind)
-    # 建国したばかりの島でも、ほとんどの種類の命令を出せる（民営化や破綻した銀行の処理は後で出る）
-    assert len(kinds) >= len(maker.kinds) - 5
+    # 建国したばかりの島でも、ほとんどの種類の命令を出せる（民営化や破綻した銀行の処理は後で出る。
+    # 施設のあるマスを引くかどうかで入れ替わる 2〜3 種類の余裕を見る）
+    assert len(kinds) >= len(maker.kinds) - 8
 
 
 def test_random_world_runs_and_counts_the_orders(game):

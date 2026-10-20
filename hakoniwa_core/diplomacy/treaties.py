@@ -24,7 +24,7 @@ from typing import Any
 
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.diplomacy import clauses as cl
-from hakoniwa_core.diplomacy import credit, is_inactive, next_id, war, world_state
+from hakoniwa_core.diplomacy import credit, economic, is_inactive, next_id, war, world_state
 from hakoniwa_core.state import IslandState, LogEntry, WorldState
 
 PROPOSED = "proposed"
@@ -182,6 +182,13 @@ def _default_title(clauses: list[dict[str, Any]]) -> str:
         cl.PEACE: "講和条約",
         cl.NON_AGGRESSION: "不可侵条約",
         cl.ALLIANCE: "同盟条約",
+        cl.BLOC: "貿易圏の協定",
+        cl.CONTRACT: "貿易の契約",
+        cl.PEG: "固定相場の協定",
+        cl.SWAP: "通貨融通の協定",
+        cl.AID: "援助の約束",
+        cl.FREE_MOVEMENT: "移民の協定",
+        cl.REFUGEES: "難民の受け入れ",
     }
     return "・".join(names.get(c["type"], c["type"]) for c in clauses)
 
@@ -290,6 +297,8 @@ def _force(world: WorldState, config: GameConfig, treaty: dict[str, Any], turn: 
                         },
                     )
                 )
+        if kind in cl.ECONOMIC:
+            economic.on_force(world, config, treaty, clause, turn)
     # 国際会議場に載せる出来事は 1 つだけ（講和・停戦・ふつうの条約の順で、いちばん大きなもの）
     if cl.PEACE in have:
         _log(
@@ -342,7 +351,10 @@ def denounce(
 
 
 def _settled(clause: dict[str, Any]) -> bool:
-    """講和の条項の賠償が済んだ（払い終えた・期日を過ぎて違反として記録した）か。"""
+    """済む条項が済んだか（講和は賠償を払い終えた・期日を過ぎて違反として記録した、契約は期間が
+    終わった、援助は回数を終えた）。済まない条項（破棄できるもの）は True。"""
+    if clause["type"] in (cl.CONTRACT, cl.AID):
+        return economic.settled(clause)
     rep = clause.get("reparations")
     return rep is None or rep["state"] in ("paid", "defaulted")
 
@@ -360,10 +372,11 @@ def upkeep(world: WorldState, config: GameConfig, turn: int) -> None:
             _log(world, t, "treaty_lapsed")
         elif t["state"] == IN_FORCE:
             _reparations(world, config, t, turn)
+            economic.watch(world, config, t, turn)
             notice = t["notice"]
             if notice is not None and turn >= notice["until"]:
                 _end(world, t, turn, "notice")
-            elif all(c["type"] == cl.PEACE for c in t["clauses"]) and all(
+            elif all(c["type"] in cl.FINITE for c in t["clauses"]) and all(
                 _settled(c) for c in t["clauses"]
             ):
                 _end(world, t, turn, "fulfilled")
@@ -413,7 +426,9 @@ def _reparations(world: WorldState, config: GameConfig, treaty: dict[str, Any], 
 def note_payment(
     world: WorldState, payer: int, payee: int, currency: int, amount: int, turn: int
 ) -> None:
-    """payer から payee へ送ったお金の援助を、講和の賠償の払いに数える（trade の援助から呼ぶ）。"""
+    """payer から payee へ送ったお金の援助を、講和の賠償の払いと、援助の約束の払いに数える（trade の
+    援助から呼ぶ）。1 回の援助は、先に賠償の残りに数え、余りを援助の約束に数える。"""
+    left = amount
     for t in treaties(world):
         if t["state"] != IN_FORCE:
             continue
@@ -426,7 +441,20 @@ def note_payment(
                 and rep["payee"] == payee
                 and rep["currency"] == currency
             ):
-                rep["paid"] += amount
+                take = min(left, max(0, rep["amount"] - rep["paid"]))
+                rep["paid"] += take
+                left -= take
+    if left > 0:
+        economic.count_aid(treaties(world), payer, payee, currency, left)
+
+
+def partners_with(world: WorldState, island_id: int, kind: str) -> set[int]:
+    """島が、条項 kind のある効いている条約（予告の間も）を結んでいる相手の島。"""
+    return {
+        partner_of(t, island_id)
+        for t in of_island(world, island_id)
+        if t["state"] == IN_FORCE and kind in kinds(t)
+    }
 
 
 # --- 違反 -------------------------------------------------------------------------------------

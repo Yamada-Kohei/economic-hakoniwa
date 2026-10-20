@@ -767,7 +767,19 @@ propose_treaty:                           # 条約の提案（相手が署名す
           required: [type]
           additionalProperties: false
           properties:
-            type: {enum: [ceasefire, peace, non_aggression, alliance]}
+            type:
+              enum:
+                - ceasefire
+                - peace
+                - non_aggression
+                - alliance
+                - bloc            # 貿易圏: 圏をつくって相手を入れる（name）か、自分が代表の圏（bloc）に相手を入れる
+                - contract        # 二国間契約: 効くと契約が始まる（seller・good・quantity・price・turns）
+                - peg             # 固定相場: pegger の中央銀行が相手の通貨に固定する（rate）
+                - swap            # 中央銀行の融通: 相手の中央銀行も外貨の貸し手になる
+                - aid             # お金の援助の約束: payer が period ごとに amount を count 回送る
+                - free_movement   # 人の行き来の自由: 両国が移民の受け入れを open に保つ
+                - refugees        # 難民の受け入れ: host が難民を受け入れる政策を保つ
             notice_turns: {type: integer, minimum: 1, maximum: 24}  # 破棄の予告のターン数
             withdraw_turns: {type: integer, minimum: 0, maximum: 12}  # 講和: 部隊の引き揚げの期限
             prisoners: {type: boolean}          # 講和: 捕虜を返す（既定 true）
@@ -780,6 +792,23 @@ propose_treaty:                           # 条約の提案（相手が署名す
                 amount: {type: integer, minimum: 1}
                 currency: {type: integer, minimum: 1}  # どちらかの島の番号（省くと払う国の通貨）
                 due_turns: {type: integer, minimum: 1, maximum: 60}  # 効いてから何ターンのうちに
+            name: {type: string, maxLength: 20}    # 貿易圏: つくる圏の名前（bloc を省くとき）
+            bloc: {type: integer, minimum: 1}      # 貿易圏: 提案する国が代表の圏の番号（相手を入れる）
+            open: {type: boolean}                  # 貿易圏: だれでも入れる圏にする（既定 true）
+            seller: {type: integer, minimum: 1}    # 契約: 売る国の島の番号
+            good: {type: string}                   # 契約: 財
+            quantity: {type: number, exclusiveMinimum: 0}  # 契約: 1 ターンの量
+            price: {type: integer, minimum: 0}     # 契約: 1 単位の値段（契約の通貨）
+            currency: {type: integer, minimum: 1}  # 契約・援助: 通貨（どちらかの島の番号。省くと売る国・払う国の通貨）
+            turns: {type: integer, minimum: 1, maximum: 600}  # 契約: 期間
+            delivery: {enum: [market, warehouse]}  # 契約: 届いた物の行き先（買う国の分。省くと market）
+            pegger: {type: integer, minimum: 1}    # 固定相場: 相手の通貨に固定する国の島の番号
+            rate: {type: number, exclusiveMinimum: 0}  # 固定相場: 相手の通貨 1 が pegger の通貨でいくらか
+            payer: {type: integer, minimum: 1}     # 援助: 送る国の島の番号
+            amount: {type: integer, minimum: 1}    # 援助: 1 回の額
+            period: {type: integer, minimum: 1, maximum: 12}   # 援助: 送る間隔（ターン。既定 1）
+            count: {type: integer, minimum: 1, maximum: 24}    # 援助: 送る回数（既定 1）
+            host: {type: integer, minimum: 1}      # 難民: 受け入れる国の島の番号
 
 sign_treaty:                              # 相手の出した条約に署名する
   admin_cost: 1

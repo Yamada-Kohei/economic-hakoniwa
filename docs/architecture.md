@@ -24,7 +24,7 @@ Django（server/）……保存・アカウント・命令の受付・ターン�
 | `economy/` | お金の経済の部品（初めの値段と変動費、払えるお金の取り置き、国債、運賃、家計の層、収支の記録、物価指数、経済の始まりと移し替え）。フェーズ3-4 の計画経済（`plan.py`: 公定価格・生産目標・割当と配給・行列と強制貯蓄） |
 | `trade/` | 貿易と為替の部品（フェーズ3-1）: 貿易圏・二国間契約・為替・島をまたぐお金・海外の商人・港と船・商社・移し替え。フェーズ3-3 の産業政策（`policy.py`）・国際収支（`balance.py`）・外国の国債（`abroad.py`） |
 | `politics.py` | 政治の状態（フェーズ3-4）: 政情とその段階、体制の特色（`regimes.yaml` の `traits`）、報道と集会の扱い、首都の建物、建て替えの資材。段と命令は `modules/politics`（政情・選挙と議会の採決・デモと暴動・混乱期間・体制の変更）と `modules/plan`（公定価格・重点産業） |
-| `diplomacy/` | 宣戦・条約・戦争の状態（フェーズ4-1）: 戦争（`war.py`）・条約（`treaties.py`）・条項の種類（`clauses.py`）・違反が残す信用の傷（`credit.py`）。世界の状態は `world.ext["diplomacy"]`、島の違反の記録は `island.ext["diplomacy"]`。段と命令は `modules/diplomacy` |
+| `diplomacy/` | 宣戦・条約・戦争の状態（フェーズ4-1）: 戦争（`war.py`）・条約（`treaties.py`）・条項の種類（`clauses.py`）・経済の条項（貿易圏・契約・固定相場・融通・援助・移民。`economic.py`）・違反が残す信用の傷（`credit.py`）。世界の状態は `world.ext["diplomacy"]`、島の違反の記録は `island.ext["diplomacy"]`。段と命令は `modules/diplomacy` |
 | `units.py` | 量・お金・率の単位と丸め |
 | `dates.py` | 暦: 1年のターン数（1ターン＝1か月）、ターンの年と月、年の終わり（年に1度の処理はターンが12の倍数の12月）。世界の暦は `game.yaml` の `calendar`。文面は `log.py` の `format_turn` |
 | `turn/` | 段の進行役（`Engine`）、段に渡すもの（`StageContext`）、乱数 |

@@ -759,6 +759,7 @@ class _Round:
             args = contracts.short_args(self.world, c, missing, why, fx)
             seller.log.append(LogEntry("contract_short", args))
             buyer.log.append(LogEntry("contract_short", args))
+            c["short_why"], c["short_turn"] = why, self.turn  # 条約の契約の条項の見張りが読む
         c["short"] = want - qty
         if qty <= 0:
             return

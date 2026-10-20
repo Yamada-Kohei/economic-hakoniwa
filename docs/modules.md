@@ -22,7 +22,7 @@
 |---|---|---|
 | `upgrade` | `upgrade` | 前のフェーズから続く島に、フェーズ2-3 の基盤（インフラの整備度・学校・技術者・教育水準）と、フェーズ3-1 の貿易の仕組み（港・海運業と輸送船・商社。海外の商人の来る期間の始まり）を1度だけ置く（`economy/groundwork.py`・`trade/setup.py`） |
 | `execute_orders` | `planning` | 行政力の範囲で、並んだ命令を上から実行する（足りない分は次のターンへ）。税率・予算などの政策もここで変わる |
-| `diplomacy` | `diplomacy`（全島の段。フェーズ4-1） | 宣戦布告と条約（提案・署名・断り・取り下げ・予告つきの破棄）の命令を島の番号の順に決め、流れた提案・予告のターンがたった破棄・講和の賠償の期日を見張る。戦争の状態（平時・戦争・停戦）と条約を世界の状態に持つ。条約の違反は当事国のログと信用の傷（国債の利回りの上乗せ）に残す（`hakoniwa_core/diplomacy/`） |
+| `diplomacy` | `diplomacy`（全島の段。フェーズ4-1） | 宣戦布告と条約（提案・署名・断り・取り下げ・予告つきの破棄）の命令を島の番号の順に決め、流れた提案・予告のターンがたった破棄・講和の賠償の期日・経済の条項（貿易圏・契約・固定相場・援助・移民の受け入れ）の約束を見張る。戦争の状態（平時・戦争・停戦）と条約を世界の状態に持つ。条約の違反は当事国のログと信用の傷（国債の利回りの上乗せ）に残す（`hakoniwa_core/diplomacy/`） |
 | `budget` | `fiscal` | 国庫のお金を、支出の項目ごとに支払いの順番で取り置く |
 | `employment` | `employment` | 技術者を席に割り当て、町から通勤圏の施設へ、賃金の高い施設（並べば優先度の高い施設）から労働者を割り当てる。余った技術者は島のどこの一般の席にも就く。公共事業の作業員を雇う |
 | `production` | `production` | 送電網ごとに電力を板寄せして電気代を払い、労働者・投入財・電力の足りた割合で生産する（生産性に、産業の経験と同じ産業の工場の集積の係数が掛かる。フェーズ3-3）。産出は施設の在庫に入り、産業の経験に足す（年の終わりに、動かさなかった産業の経験を減らす。`economy/experience.py`） |
@@ -68,7 +68,7 @@
 | `central_bank` | `set_monetary_policy`（政策金利・国債の売買）・`set_central_bank_independence`（中央銀行の独立。独立すると介入・固定相場・中央銀行の外国の国債の命令をやめる）・`emergency_loan`（銀行への緊急の貸し出し） |
 | `failures` | `resolve_bank`（破綻した銀行の処理） |
 | `firms` | `set_zone`（工業団地・オフィス街・商業地）・`nationalize`・`privatize`（国有化・民営化）・`nationalize_firm`・`privatize_firm`（企業を丸ごと国有化・国営企業を丸ごと民営化。回7）・`set_subsidy`（補助金）・`set_retail_policy`（百貨店の出店の規制と申請の許可。回7） |
-| `diplomacy` | `declare_war`（宣戦布告。戦争は次のターンから。民主主義は議会の採決）・`propose_treaty`（条約の提案。条項は停戦・講和・不可侵・同盟）・`sign_treaty`（相手の出した条約に署名。署名がそろうと効く。民主主義は議会の採決）・`refuse_treaty`・`withdraw_treaty`・`denounce_treaty`（予告つきの破棄。民主主義は議会の採決）。命令の段では申し送りに積むだけで、外交の段で島の番号の順に決める。フェーズ4-1 |
+| `diplomacy` | `declare_war`（宣戦布告。戦争は次のターンから。民主主義は議会の採決）・`propose_treaty`（条約の提案。条項は停戦・講和・不可侵・同盟と、貿易圏・契約・固定相場・通貨の融通・援助・人の行き来・難民）・`sign_treaty`（相手の出した条約に署名。署名がそろうと効く。民主主義は議会の採決）・`refuse_treaty`・`withdraw_treaty`・`denounce_treaty`（予告つきの破棄。民主主義は議会の採決）。命令の段では申し送りに積むだけで、外交の段で島の番号の順に決める。フェーズ4-1 |
 | `trade` | `create_bloc`・`join_bloc`・`leave_bloc`・`bloc_settings`・`transfer_bloc`・`take_over_bloc`（貿易圏）・`propose_contract`・`accept_contract`・`cancel_contract`（二国間契約）・`send_aid`（お金と物の援助）。命令の段では申し送りに積むだけで、貿易の段で島の番号の順に決める。フェーズ3-3 の政策（`trade/policy.py`）: `set_tariff`（関税）・`set_export_subsidy`（輸出補助）・`set_import_quota`（輸入の割り当て）・`set_embargo`（禁輸）・`set_capital_controls`（資本取引の制限）・`set_fx_intervention`（為替の介入）・`set_fx_peg`（固定相場）・`set_foreign_bonds`（外国の国債の売り買い）。命令の段で政策を変え、同じターンの貿易の段と国債の段から効く |
 
 差し替えられる式は次のとおりです。
