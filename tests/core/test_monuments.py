@@ -237,3 +237,12 @@ def test_monuments_stay_out_of_firms_and_cost_nothing_to_run(game, world):
     assert f is not None and f.built and f.workers == 0
     assert f.owner == "state" and f.accounting == "treasury"  # 売り上げがないので国庫の直轄
     assert not any(e.kind.endswith("bankrupt") for e in island.log)
+
+
+def test_kills_accumulate_in_the_history_for_the_peace_award(game, world):
+    island = world.islands[1]
+    monuments.add_kills(island, 0)
+    assert monuments.history(island).get(monuments.KILLS, 0) == 0
+    monuments.add_kills(island, 4_000)
+    monuments.add_kills(island, 6_500)
+    assert island.ext["history"]["kills"] == 10_500

@@ -38,6 +38,7 @@ UNREST = (
 )
 WAR_STARTED = ("war_declared", "war_declared_on")
 WAR_DEAD = "war"  # 亡くなった人の原因（戦死者は 4-3 の戦闘が add_dead で足す）
+KILLS = "kills"  # 戦争で殺した相手の数の累計（平和賞。4-3 の戦闘が add_kills で足す）
 HUNGER_DEAD = "hunger"
 FREE_POLITICS = "democracy"
 
@@ -59,6 +60,13 @@ def add_dead(island: IslandState, cause: str, count: int) -> None:
     if count > 0:
         dead = history(island).setdefault("dead", {})
         dead[cause] = int(dead.get(cause, 0)) + int(count)
+
+
+def add_kills(island: IslandState, count: int) -> None:
+    """戦争で相手を殺した数を足す（平和賞。元の箱庭諸島と同じ、戦争で殺した人数に贈る皮肉の賞）。"""
+    if count > 0:
+        h = history(island)
+        h[KILLS] = int(h.get(KILLS, 0)) + int(count)
 
 
 def age(island: IslandState) -> int:
