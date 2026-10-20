@@ -270,18 +270,19 @@ def test_inputs_only_merchants_sell_are_priced_at_the_merchant_price(game, warme
     """作り方の見直しでは、原料のうち島で作られておらず海外の商人からしか買えない財を、
     商人の売り値で見る（島の値段は、だれも買っていなければ初めの値段のままで安く見え、鋼鉄を作って
     いない国で民営の工場が鋼鉄から作る方式に替えて、翌ターン採算が合わずに止まった。報告の決め 1）。
-    島で作っている財と、作る物の値段は島の値段のまま。"""
+    島で作っている財と、商社が貿易圏から輸入している財と、作る物の値段は島の値段のまま。"""
     from hakoniwa_core.modules.firms import EntryExit
-    from hakoniwa_core.trade import merchant
+    from hakoniwa_core.trade import merchant, traders
 
     world = copy.deepcopy(warmed)
     island = island_of(world, "market")
     made = EntryExit._made(island, context(game, world))
-    absent = next(g for g in sorted(game.defs.goods) if g not in made)
+    absent, imported = [g for g in sorted(game.defs.goods) if g not in made][:2]
     present = next(g for g in sorted(made) if g in game.defs.goods)
     prices = {absent: 100, present: 100}
-    offers = [(absent, 1000, 5_000), (present, 1000, 5_000)]
+    offers = [(absent, 1000, 5_000), (present, 1000, 5_000), (imported, 1000, 5_000)]
     monkeypatch.setattr(merchant, "offers", lambda *args: offers)
+    monkeypatch.setattr(traders, "imported", lambda *args: {imported})
     imports = EntryExit._import_prices(island, context(game, world))
     assert imports == {absent: 5_000}
     seen = EntryExit._costed(prices, imports, {"inputs": {absent: 1, present: 1}})

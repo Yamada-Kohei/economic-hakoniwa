@@ -793,10 +793,18 @@ class EntryExit(IslandStage):
 
         参入の採算は島の値段のまま見る（建つまでに島で作り始めることが多い。参入にも商人の値段を
         使うと、鋼鉄を作っていない島で機械工場が建たず、海外の商人が来なくなった後に機械が何十
-        ターンも島から消え、値段が初めの4倍を超えた。1つの島の 300 ターンの試験）。"""
+        ターンも島から消え、値段が初めの4倍を超えた。1つの島の 300 ターンの試験）。
+
+        商社が貿易圏から輸入している財は、商人だけから買う財ではないので島の値段で見る。
+
+        この見方で、鋼鉄を作っておらず輸入もしていない島の民営の工場は、鋼鉄を使わない作り方を選ぶ
+        （消費財工場なら木材だけの作り方）。標準の計画は鋼鉄を欲しがる施設を見て製鉄所を建てるので、
+        その世界では製鉄所と自動車の工場が前より少なく建ち、quick の 300 ターンで自動車の買い物が
+        3 分の 1 ほどになった（この見方をやめると戻る。2026-10-20 の測り）。"""
         made = EntryExit._made(island, ctx)
+        bought = trade_traders.imported(island, ctx.config)
         offers = merchant.offers(island, ctx.defs, ctx.config, ctx.turn)
-        return {good: price for good, _, price in offers if good not in made}
+        return {good: price for good, _, price in offers if good not in made | bought}
 
     @staticmethod
     def _costed(
