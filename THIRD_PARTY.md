@@ -44,7 +44,8 @@ AI で作った絵は、作った道具の名前と、依頼した人を書き�
 | server/static/themes/default/sprites/facility/radar.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
 | server/static/themes/default/sprites/unit/infantry.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
 | server/static/themes/default/sprites/fleet/frigate.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
-| server/static/themes/default/sprites/overlay/trench.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/overlay/trench_back.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/overlay/trench_front.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
 
 ## GitHub Actions
 

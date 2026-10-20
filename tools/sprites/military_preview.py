@@ -21,12 +21,17 @@ SAMPLES = [
     ("facility/naval_base@ne", "軍港・海が右上"),
     ("facility/naval_base@nw", "軍港・海が左上"),
     ("facility/radar", "レーダー"),
-    ("unit/infantry", "歩兵の印"),
+    ("unit/infantry", "歩兵の印・単体"),
+    ("unit/infantry", "歩兵・町", "housing/town"),
+    ("unit/infantry", "歩兵・農場", "facility/farm"),
+    ("unit/infantry", "歩兵・兵舎", "facility/barracks"),
     ("fleet/frigate", "フリゲート"),
-    ("overlay/trench", "陣地・平地"),
-    ("overlay/trench", "陣地・町", "housing/town"),
-    ("overlay/trench", "陣地・農場", "facility/farm"),
-    ("overlay/trench", "陣地・兵舎", "facility/barracks"),
+    ("overlay/trench_back", "陣地・奥側のみ"),
+    ("overlay/trench_front", "陣地・手前側のみ"),
+    ("trench", "陣地・平地（2枚を合成）"),
+    ("trench", "陣地・町", "housing/town"),
+    ("trench", "陣地・農場", "facility/farm"),
+    ("trench", "陣地・兵舎", "facility/barracks"),
     ("facility/police", "既存・警察署"),
     ("facility/port", "既存・港"),
     ("facility/shipyard", "既存・造船所"),
@@ -71,10 +76,13 @@ def scene(name: str, under: str | None = None) -> str:
         content = content + water if "@ne" not in name and "@nw" not in name else water + content
     if name.startswith("fleet/"):
         content = '<polygon points="64,56 96,72 64,88 32,72" fill="#2f6db5"/>'
+    if name == "trench":
+        content += image("overlay/trench_back", 64, 88)
     if under:
         content += image(under, 64, 88)
-    if name.startswith("unit/"):
-        content += image("housing/town", 64, 88)
+    if name == "trench":
+        content += image("overlay/trench_front", 64, 88)
+    elif name.startswith("unit/"):
         content += image(name, 64, 76)
     elif name.startswith("fleet/"):
         content += image(name, 64, 78)
@@ -94,7 +102,8 @@ def main() -> None:
         ".s025 svg{width:32px;height:30px}.s1 svg{width:128px;height:120px}",
         ".s4 svg{width:512px;height:480px}</style>",
         "<h1>軍事の絵 第1部・雰囲気確認</h1>",
-        "<p>幾何の形だけで制作。6種類・9 SVG。ゲームへの登録前の独立した比較ページです。</p>",
+        "<p>幾何の形だけで制作。6種類・10 SVG。ゲームへの登録前の独立した比較ページです。"
+        "陣地は奥側→建物→手前側の順に重ねています。</p>",
         '<nav><a href="#s1">等倍</a><a href="#s025">0.25倍</a><a href="#s4">4倍</a></nav>',
     ]
     for key, label in (("s1", "等倍"), ("s025", "0.25倍"), ("s4", "4倍")):

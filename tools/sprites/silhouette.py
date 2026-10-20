@@ -1895,18 +1895,36 @@ def radar() -> list[Prim]:
     ]
 
 
-def trench() -> list[Prim]:
-    """縁に沿った折れ曲がる溝と土嚢。中央の約 6 割四方には何も描かない。"""
+def infantry_soldier(u: float, v: float, step: float) -> list[Prim]:
+    """斜め上から見た全身。足の前後をずらし、顔の細部は描かない。"""
+    rifle = box(u + 0.02, v + 0.045, u + 0.17, v + 0.063, 4.8, 0.65, DARK)
+    # 細い箱を持ち上げる向きに傾け、胴の手前に斜めの小銃を置く。
+    x0, _ = iso(u, v, 0)
+    for face in rifle.faces:
+        face.points = [(x, y - (x - x0) * 0.9) for x, y in face.points]
+    rifle.tier = 2
+    return [
+        box(u - 0.035 + step, v - 0.03, u + 0.005 + step, v + 0.025, 0, 4, DARK),
+        box(u + 0.025 - step, v - 0.03, u + 0.065 - step, v + 0.025, 0, 4, DARK),
+        box(u - 0.045, v - 0.04, u + 0.075, v + 0.045, 4, 4.1, MILITARY),
+        box(u - 0.018, v - 0.028, u + 0.05, v + 0.035, 8.1, 1.9, SAND),
+        box(u - 0.035, v - 0.045, u + 0.065, v + 0.055, 10, 1, MILITARY_DARK),
+        rifle,
+    ]
+
+
+def trench(sides: tuple[str, str]) -> list[Prim]:
+    """奥か手前の2辺。角で続く溝と、高さ1.4pxの低い土嚢を置く。"""
     prims = []
-    for side in SIDES:
+    for side in sides:
         s = Side(side)
-        # 溝の外縁と内縁。ひと続きの細い帯で、ひし形の中を塗りつぶさない。
-        outer = [(0.91 if i % 2 == 0 else 0.85, 0.12 + i * 0.095) for i in range(9)]
-        inner = [(u - 0.055, v) for u, v in reversed(outer)]
-        prims.append(patch([s.pt(u, v) for u, v in outer + inner], COAL))
-        for i in range(5):
-            v = 0.14 + i * 0.16
-            prims.append(s.box(0.91, v, 0.96, v + 0.105, 0, 2.8, SOIL, STONE))
+        # 各辺の端を同じ内周の角に合わせ、2枚を重ねても継ぎ目を空けない。
+        outer = [(0.94, 0.06), (0.94, 0.94)]
+        inner = [(0.885, 0.885), (0.885, 0.115)]
+        prims.extend(tiered(0, patch([s.pt(u, v) for u, v in outer + inner], COAL)))
+        for i in range(8):
+            v = 0.065 + i * 0.11
+            prims.append(s.box(0.94, v, 0.975, v + 0.095, 0, 1.4, SOIL, STONE))
     return prims
 
 
@@ -1928,7 +1946,13 @@ SHAPES.update(
             box(0.15, 0.73, 0.85, 0.88, 0.4, 0.2, CONCRETE),
         ],
         "facility/radar": radar(),
-        "overlay/trench": trench(),
+        "overlay/trench_back": trench(("nw", "ne")),
+        "overlay/trench_front": trench(("sw", "se")),
+        "unit/infantry": [
+            *infantry_soldier(0.609, 0.828, 0.012),
+            *infantry_soldier(0.828, 0.609, -0.012),
+            *infantry_soldier(0.9375, 0.9375, 0.008),
+        ],
     }
 )
 
@@ -2078,7 +2102,10 @@ SHAPES.update(
 )
 
 
-def render(prims: list[Prim], style: dict) -> str:
+def render(
+    prims: list[Prim], style: dict, *, canvas: tuple[int, int, int, int] | None = None
+) -> str:
+    """面の陰影を付けて描く。小さな印の canvas は幅・高さ・x移動・y移動。"""
     prims = order(prims)
     faces = [f for p in prims for f in p.faces]
     # 縦の大きさ: いちばん上の点が絵の上の端に来るよう、全体を下へずらす
@@ -2090,11 +2117,22 @@ def render(prims: list[Prim], style: dict) -> str:
     # そのときは theme.yaml の anchor を [32, TILE_H + off] にする（main が書き出す）
     below = max(ys) - TILE_H
     height = TILE_H + off + (math.ceil(below) if below > 0.01 else 0)
+    width, dx = TILE_W, 0
+    if canvas:
+        width, height, dx, off = canvas
     out = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{TILE_W}" height="{height}" '
-        f'viewBox="0 0 {TILE_W} {height}">',
-        f'<g transform="translate(0 {off})" stroke-linejoin="round" stroke-width="0.4">',
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+        f'viewBox="0 0 {width} {height}">',
+        f'<g transform="translate({dx} {off})" stroke-linejoin="round" stroke-width="0.4">',
     ]
+    if canvas:
+        # 面を塗る前に各部品の外縁だけを暗く広げる。内側の面の境界は塗り戻す。
+        # 離れた兵をまとめる枠は作らない。
+        for f in faces:
+            pts = " ".join(f"{x:.2f},{y:.2f}" for x, y in f.points)
+            out.append(
+                f'<polygon points="{pts}" fill="{COAL}" stroke="{COAL}" stroke-width="1.1"/>'
+            )
     for f in faces:
         color = _color(style, f)
         width = f' stroke-width="{2 * f.bleed:g}"' if f.bleed else ""
@@ -2124,8 +2162,11 @@ def main() -> None:
     for name, prims in SHAPES.items():
         path = args.out / f"{name}.svg"
         path.parent.mkdir(parents=True, exist_ok=True)
-        svg = render(prims, STYLES[args.style])
+        canvas = (28, 28, -18, -4) if name == "unit/infantry" else None
+        svg = render(prims, STYLES[args.style], canvas=canvas)
         path.write_text(svg, encoding="utf-8")
+        if canvas:
+            continue
         height = int(svg.split('height="', 1)[1].split('"', 1)[0])
         off = int(svg.split("translate(0 ", 1)[1].split(")", 1)[0])
         if height > TILE_H + off:

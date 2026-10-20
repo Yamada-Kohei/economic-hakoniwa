@@ -145,6 +145,7 @@ pending_sprites:
   facility/naval_base@ne: sprites/facility/naval_base@ne.svg
   facility/naval_base@nw: sprites/facility/naval_base@nw.svg
   facility/radar: sprites/facility/radar.svg
-  overlay/trench: sprites/overlay/trench.svg
+  overlay/trench_back: sprites/overlay/trench_back.svg
+  overlay/trench_front: sprites/overlay/trench_front.svg
   unit/infantry: {file: sprites/unit/infantry.svg, anchor: [14, 28]}
-  fleet/frigate: {file: sprites/fleet/frigate.svg, anchor: [8, 12]}
+  fleet/frigate: {file: sprites/fleet/frigate.svg, anchor: [12, 10]}
