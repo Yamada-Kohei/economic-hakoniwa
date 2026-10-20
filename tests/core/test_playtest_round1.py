@@ -304,10 +304,9 @@ def test_factories_raise_bids_step_by_step_only_after_being_outbid():
     assert Market._step_up(1, 10, 1, width) == 2  # 値段が小さくても上がれる
 
 
-def test_producers_do_not_sell_below_cost_after_a_price_crash():
-    """作った物の売りの指値は前の値段の値幅の上端までだが、作る費用より安くはしない（値幅を
-    なくした後、だれかの投げ売りで前の値段が一度に下がると、ほかの作り手まで費用を割って売り
-    続けた。見直し役が挙げた場面）。費用のない物（公定価格で売る物）は今までどおり。"""
+def test_leftover_limit_is_capped_by_the_band_but_not_below_cost():
+    """作り方を替えて残った物の売りの指値は前の値段の値幅の上端までだが、その施設で作る費用より
+    安くはしない。費用のない物は seller_limit と同じ。"""
     from hakoniwa_core.modules.market import floored_limit, seller_limit
 
     assert floored_limit(100, 150, 0, 110) == 150
@@ -315,6 +314,19 @@ def test_producers_do_not_sell_below_cost_after_a_price_crash():
     assert floored_limit(200, 50, 0, 110) == 110  # 希望価格は上端まで
     assert floored_limit(100, 0, 500, 2) == seller_limit(100, 500, 2)
     assert floored_limit(100, 150, 500, 2) == seller_limit(150, 500, 10**9)  # 運賃の分も足す
+
+
+def test_households_split_small_offers_rounding_up():
+    """売りに出ている量を層の使う額の割合で分けるときは切り上げる。商社の輸入の残りのような
+    1000 分の 1 単位の端数でも、どれかの層が買いに出せる（切り捨てると、どの層も 0 しか注文
+    できず、売りと買いたい量があるのに市場が1年以上止まった）。"""
+    from hakoniwa_core.modules.market import layer_share
+
+    assert layer_share(1, 9, 10) == 1
+    assert layer_share(10, 9, 10) == 9
+    assert layer_share(1000, 1, 3) == 334
+    assert layer_share(0, 9, 10) == 0
+    assert layer_share(5, 0, 10) == 0
 
 
 def test_leftover_crops_are_not_sold_below_what_they_cost_to_grow(game, warmed):

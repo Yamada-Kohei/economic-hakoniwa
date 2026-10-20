@@ -190,15 +190,27 @@ def seller_limit(ask: int, freight: int, high: int) -> int:
 
 
 def floored_limit(ask: int, floor: int, freight: int, high: int) -> int:
-    """作った物の売りの指値: seller_limit で値幅の上端まで抑えるが、作る費用 floor（運賃を払った
-    後に残る額）より安くはしない。
+    """作り方を替えて残った物の売りの指値: seller_limit で値幅の上端まで抑えるが、その施設で作る
+    費用 floor（運賃を払った後に残る額）より安くはしない（Market._leftover_floor）。
 
-    値幅のあった間は、上端より高い指値は売れないので費用より安くても上端で売ったが、値幅をなくした
-    後は、だれかが安く投げ売りして前の値段が一度に下がると、ほかの作り手まで費用を割って売り続ける
-    ことになる（見直し役が挙げた場面。2026-10-20）。腐る分は指値なしで別に売る。"""
+    今の作り方で作った物には使わない（seller_limit のまま、前の値段の値幅の上端まで下げて売る）。
+    作った物まで費用より安く出さないようにすると、買い手の付け値が費用に届かない財（嗜好品・石材・
+    自動車）の取引が1年止まる島が、標準の計画の 300 ターンで main より増えた（2026-10-20）。
+    """
     if floor <= 0:
         return seller_limit(ask, freight, high)
     return max(seller_limit(ask, freight, high), -(-floor * BASIS // max(1, BASIS - freight)))
+
+
+def layer_share(offered: int, planned: int, all_planned: int) -> int:
+    """売りに出ている量 offered のうち、使う額 planned の層が買いに出せる量（使う額の割合で分け、
+    切り上げる）。切り捨てると、売り手に 1 単位の 1000 分の 1 ほどの端数（商社の輸入の残りなど）が
+    残ったとき、どの層も 0 しか注文できず、売りと買いたい量があるのに1年以上約定しない市場ができた
+    （嗜好品。2026-10-20 の測り）。層ごとの切り上げで合計が売りに出ている量を少し超えても、
+    板寄せが分ける。"""
+    if offered <= 0 or planned <= 0:
+        return 0
+    return -(-offered * planned // max(1, all_planned))
 
 
 def consumer_tiers(
@@ -1253,13 +1265,13 @@ class Market(IslandStage):
                 floor = unit_floor(defs, config, f, good, prices, f.economy.get("wage", 0), rate)
                 ask = max(ask, floor)
                 if good in official:  # 計画経済: 費用に届かなくても公定価格で売る（フェーズ3-4）
-                    ask = floor = 0
+                    ask = 0
                 expiring = stock.expiring(f.stock, good, ctx.turn, defs.goods)
                 if expiring:
                     self._add(books_by_good, good, "sell", Order(expiring), seller)
                 if total - expiring > 0:
                     _, high = auction.band(prices.get(good, 1), width)
-                    order = Order(total - expiring, floored_limit(ask, floor, rate, high))
+                    order = Order(total - expiring, seller_limit(ask, rate, high))
                     self._add(books_by_good, good, "sell", order, seller)
             # 作り方を替えて使わなくなった物（フェーズ3-2）は、値幅の下端を指値に売る。ただし同じ
             # 施設のほかの作り方で作れる物は、作る費用より安くは売らない（_leftover_floor）
@@ -1899,7 +1911,7 @@ class Market(IslandStage):
             caps = {
                 g: gross_cost(
                     scale_price(usual[g], max(tiers)),
-                    offered[g] * planned // all_planned,
+                    layer_share(offered[g], planned, all_planned),
                     rate,
                     tax,
                 )
