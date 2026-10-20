@@ -1,8 +1,9 @@
 import random
 
 from django.contrib import admin, messages
-from django.db.models import Max
+from django.db.models import OuterRef, Subquery
 
+from server.orders.models import Order
 from server.turns.services import TurnError, run_turn
 from server.world import models as m
 from server.world.services import create_sample_island, get_or_create_world
@@ -94,7 +95,13 @@ class IslandAdmin(admin.ModelAdmin):
             super()
             .get_queryset(request)
             .select_related("owner", "world")
-            .annotate(last_order_turn=Max("orders__executed_turn"))
+            .annotate(
+                last_order_turn=Subquery(
+                    Order.objects.filter(island=OuterRef("pk"), executed_turn__isnull=False)
+                    .order_by("-executed_turn")
+                    .values("executed_turn")[:1]
+                )
+            )
         )
 
     @admin.display(description="命令が途絶えたターン数", ordering="last_order_turn")
@@ -107,10 +114,35 @@ class IslandAdmin(admin.ModelAdmin):
     def last_login(self, obj):
         return obj.owner.last_login if obj.owner else None
 
-    @admin.action(description="選んだ島を休止中にする（条約や戦争はそのまま残る）")
+    @admin.action(
+        description="選んだ島を休止中にする（条約や戦争は残り、休止中の島とは停戦も講和も結べない）"
+    )
     def make_inactive(self, request, queryset):
+        at_war = self._at_war(queryset)
         n = queryset.update(inactive=True)
         self.message_user(request, f"{n} 島を休止中にしました")
+        if at_war:
+            self.message_user(
+                request,
+                f"戦争中・停戦中の島が含まれています（{'・'.join(at_war)}）。休止中の島とは"
+                "停戦も講和も結べないので、戦争が終わらなくなります。休止を解くと結べます",
+                messages.WARNING,
+            )
+
+    @staticmethod
+    def _at_war(queryset) -> list[str]:
+        """戦争中・停戦中の島の名前（休止にする前の確かめ）。"""
+        names = []
+        for island in queryset.select_related("world"):
+            wars = ((island.world.ext or {}).get("diplomacy") or {}).get("wars", [])
+            for w in wars:
+                if w.get("state") in ("war", "ceasefire") and island.id in (
+                    w.get("attacker"),
+                    w.get("defender"),
+                ):
+                    names.append(island.name)
+                    break
+        return names
 
     @admin.action(description="選んだ島の休止を解く")
     def make_active(self, request, queryset):

@@ -72,29 +72,41 @@ def clean(data: bytes, max_bytes: int, max_side: int) -> tuple[bytes, int, int]:
         raise PngError("PNG の形式が正しくありません")
     if color == 3 and b"PLTE" not in names:
         raise PngError("パレットのある PNG に色の表がありません")
+    palettes = [body for kind, body in chunks if kind == b"PLTE"]
+    if len(palettes) > 1 or any(len(p) % 3 or not p or len(p) > 768 for p in palettes):
+        raise PngError("PNG の色の表が正しくありません")
+    if palettes and color in (0, 4):
+        raise PngError("PNG の色の形式に対応していません")
     _check_pixels(
         b"".join(body for kind, body in chunks if kind == b"IDAT"), width, height, depth, color
     )
+    # 決まった順（IHDR・補助・PLTE・tRNS・IDAT 1 つ・IEND）で作り直す。画像のデータは 1 つにまとめる
+    body_of = {kind: body for kind, body in chunks if kind in KEEP and kind != b"IDAT"}
+    idat = b"".join(body for kind, body in chunks if kind == b"IDAT")
+    order = [b"IHDR", b"gAMA", b"sRGB", b"cHRM", b"pHYs", b"sBIT", b"PLTE", b"tRNS", b"IDAT"]
     out = [SIGNATURE]
-    for kind, body in chunks:
-        if kind in KEEP:
-            head = struct.pack(">I", len(body)) + kind + body
-            out.append(head + struct.pack(">I", zlib.crc32(kind + body)))
+    for kind in [*order, b"IEND"]:
+        body = idat if kind == b"IDAT" else body_of.get(kind)
+        if body is not None:
+            out.append(struct.pack(">I", len(body)) + kind + body)
+            out.append(struct.pack(">I", zlib.crc32(kind + body)))
     return b"".join(out), width, height
 
 
 def _check_pixels(idat: bytes, width: int, height: int, depth: int, color: int) -> None:
-    """画像のデータが、大きさから決まる長さのとおりに開けること（開く長さには上限を付ける）。"""
+    """画像のデータが、大きさから決まる長さのとおりにちょうど開けること。開く長さには上限を付け
+    （残りの入力は開かない）、各行の頭のフィルタの印が 0〜4 であることも見る。"""
     row = (width * CHANNELS[color] * depth + 7) // 8 + 1
     expected = row * height
     inflater = zlib.decompressobj()
     try:
         raw = inflater.decompress(idat, expected + 1)
-        raw += inflater.flush()
     except zlib.error as e:
         raise PngError("PNG の画像のデータが壊れています") from e
-    if len(raw) != expected or inflater.unconsumed_tail:
+    if len(raw) != expected or not inflater.eof or inflater.unconsumed_tail or inflater.unused_data:
         raise PngError("PNG の画像のデータの長さが大きさと合いません")
+    if any(raw[i] > 4 for i in range(0, expected, row)):
+        raise PngError("PNG の画像のデータが壊れています")
 
 
 # --- 仮の旗 -----------------------------------------------------------------------------------

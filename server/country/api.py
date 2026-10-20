@@ -61,15 +61,7 @@ def edit(request, island_id: int):
         unknown = set(data) - {"intro", "era", "new_era"}
         if unknown or not data:
             raise services.CountryError("intro・era・new_era のどれかを送ってください")
-        if "intro" in data:
-            services.set_intro(island, data["intro"])
-        era = data.get("era")
-        if "era" in data:
-            if not isinstance(era, dict):
-                raise services.CountryError('era は {"kind": …, "name": …} で送ってください')
-            services.set_era(island, str(era.get("kind", "")), era.get("name"))
-        if "new_era" in data:
-            services.new_era(island, data["new_era"])
+        services.edit(island, data)
     except services.CountryError as e:
         return _error(e.text, e.status)
     return _json(country_views.country_data(island, True, island))
@@ -103,6 +95,16 @@ def _png_of(request) -> bytes:
         return base64.b64decode(text, validate=True)
     except (binascii.Error, ValueError) as e:
         raise services.CountryError("png_base64 が base64 ではありません") from e
+
+
+@require_http_methods(["DELETE"])
+def note_hide(request, island_id: int, note_id: int):
+    """自分の国のページの一言を隠す（持ち主だけ）。"""
+    try:
+        services.hide_note(_owned(request, island_id), note_id)
+    except services.CountryError as e:
+        return _error(e.text, e.status)
+    return _json({"hidden": note_id})
 
 
 @require_http_methods(["POST"])

@@ -260,3 +260,5 @@ table.ranking-table td:nth-child(3), table.titles-table th, table.titles-table t
 .country-flag { max-width: 180px; height: auto; border: 1px solid #0002; background: #fff; }
 .country-head h2 { margin-top: 0; }
 .country-timeline td:nth-child(n+2), .country-timeline th:nth-child(n+2) { text-align: left; }
+.inline-form { display: inline; }
+.link-button { background: none; border: 0; padding: 0 4px; color: #4f62a0; text-decoration: underline; cursor: pointer; font-size: 0.85em; }

@@ -337,13 +337,15 @@ def _country_post(request, island: Island, viewer: Island | None, mine: bool) ->
         )
     elif action == "flag_clear":
         country_services.clear_flag(island)
+    elif action == "note_hide":
+        country_services.hide_note(island, request.POST.get("note"))
     else:
         raise country_services.CountryError("何をするのか分かりません")
 
 
 def island_flag(request, island_id: int):
     """国旗の画像。上げた PNG。上げていない（管理者が隠した）国は、国から決まる仮の旗（SVG）。"""
-    island = get_object_or_404(Island, pk=island_id)
+    island = get_object_or_404(Island.objects.only("id", "name"), pk=island_id)
     flag = Flag.objects.filter(island=island, hidden=False).first()
     if flag is not None:
         body, kind = bytes(flag.png), "image/png"

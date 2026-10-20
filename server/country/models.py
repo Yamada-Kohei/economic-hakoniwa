@@ -25,6 +25,7 @@ class Flag(models.Model):
         Island, verbose_name="国", on_delete=models.CASCADE, related_name="flag"
     )
     png = models.BinaryField("PNG")
+    digest = models.CharField("PNG の指紋", max_length=64, blank=True, default="")
     width = models.IntegerField("幅")
     height = models.IntegerField("高さ")
     hidden = models.BooleanField("非表示", default=False)

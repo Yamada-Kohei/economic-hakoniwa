@@ -14,7 +14,6 @@ from django.urls import reverse
 
 from server.country import services
 from server.country.models import Flag, Note, Profile
-from server.hall import services as hall_services
 from server.turns.models import TurnLog
 from server.web import display, overview, top
 from server.world import models as m
@@ -60,25 +59,35 @@ def era_info(island: m.Island, profile: Profile | None, mine: bool) -> dict[str,
     return info
 
 
+# 年表に載せる外交の出来事（この国のログの文。宣戦した側・された側・条約の当事国のどちらにも載る）
+DIPLOMACY_KINDS = (
+    "war_declared",
+    "war_declared_on",
+    "war_resumed",
+    "war_ended",
+    "ceasefire_started",
+    "treaty_in_force",
+    "treaty_denounced",
+    "treaty_ended",
+    "treaty_fulfilled",
+    "treaty_violated",
+)
+
+
 def timeline(island: m.Island, profile: Profile | None) -> list[dict[str, Any]]:
-    """この国の年表（古い順）: ターンログの主な出来事と、国際会議場の出来事（宣戦・条約など）。"""
-    logs = list(
-        TurnLog.objects.filter(top.headline_filter() | Q(args__hall=True), island=island).order_by(
-            "-turn", "-id"
-        )[:TIMELINE]
-    )
+    """この国の年表（古い順）: ターンログの主な出来事（建国・選挙・憲法の改正など）と、外交の出来事
+    （宣戦・停戦・講和・条約）。"""
+    kinds = TurnLog.objects.filter(top.headline_filter() | Q(kind__in=DIPLOMACY_KINDS))
+    logs = list(kinds.filter(island=island).order_by("-turn", "-id")[:TIMELINE])
     logs.reverse()
-    out = []
-    for log, entry in zip(logs, display.log_entries(logs), strict=True):
-        hall = (log.args or {}).get("hall")
-        out.append(
-            {
-                "turn": log.turn,
-                "date": services.date_text(island, profile, log.turn),
-                "text": hall_services.event_text(log) if hall else entry["text"],
-            }
-        )
-    return out
+    return [
+        {
+            "turn": log.turn,
+            "date": services.date_text(island, profile, log.turn),
+            "text": entry["text"],
+        }
+        for log, entry in zip(logs, display.log_entries(logs), strict=True)
+    ]
 
 
 def timeline_text(rows: list[dict[str, Any]]) -> str:

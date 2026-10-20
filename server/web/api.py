@@ -515,7 +515,7 @@ def island_country(request, island_id: int):
     """国の公開ページ。だれにでも国旗・名前・元首・体制・通貨・人口・紹介文・年表（国ごとの紀年の
     日付）・来訪者の一言を、持ち主には紀年の選択肢と紹介文の元の文も。書き込みは
     server/country/api.py。"""
-    island = get_object_or_404(m.Island.objects.select_related("world"), pk=island_id)
+    island = get_object_or_404(m.Island.objects.select_related("world", "owner"), pk=island_id)
     viewer = letter_services.own_island(request.user)
     return _json(country_views.country_data(island, _mine(request, island), viewer))
 

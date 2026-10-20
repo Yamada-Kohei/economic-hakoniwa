@@ -56,7 +56,8 @@
 <section class="panel" id="notes">
   <h2>{% translate "来訪者の一言" %}</h2>
   <ul class="plain-list">
-    {% for n in c.notes %}<li>{{ n.text }} <small class="muted">— <a href="{% url 'island_country' n.from.id %}">{{ n.from.name }}</a>（{{ n.date }}）</small></li>
+    {% for n in c.notes %}<li>{{ n.text }} <small class="muted">— <a href="{% url 'island_country' n.from.id %}">{{ n.from.name }}</a>（{{ n.date }}）</small>
+      {% if mine %}<form method="post" class="inline-form">{% csrf_token %}<input type="hidden" name="action" value="note_hide"><input type="hidden" name="note" value="{{ n.id }}"><button type="submit" class="link-button">{% translate "隠す" %}</button></form>{% endif %}</li>
     {% empty %}<li class="muted">{% translate "まだ一言はありません。" %}</li>{% endfor %}
   </ul>
   {% if c.can_note %}

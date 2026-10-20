@@ -410,3 +410,168 @@ def test_admin_handles_abandoned_countries(admin_client, players, world):
 class _Request:
     user = None
     GET: dict = {}
+
+
+# --- 見直しで足した場面 ---------------------------------------------------------------------
+
+
+def test_png_bomb_is_refused_without_inflating_it():
+    import tracemalloc
+
+    ihdr = struct.pack(">IIBBBBB", 16, 16, 8, 2, 0, 0, 0)
+    bomb = zlib.compress(b"\x00" * 60_000_000)
+    data = (
+        png.SIGNATURE + chunk_of(b"IHDR", ihdr) + chunk_of(b"IDAT", bomb) + chunk_of(b"IEND", b"")
+    )
+    tracemalloc.start()
+    with pytest.raises(png.PngError):
+        png.clean(data, 200 * 1024, 512)
+    peak = tracemalloc.get_traced_memory()[1]
+    tracemalloc.stop()
+    assert peak < 5_000_000  # 宣言した大きさ（16×16 の数 KB）を超えては開かない
+
+
+def test_png_is_rebuilt_in_a_fixed_order_with_one_idat():
+    base = make_png(24, 24)
+    idat_body = zlib.compress((b"\x00" + b"\x10" * (24 * 3)) * 24)
+    half = len(idat_body) // 2
+    ihdr = struct.pack(">IIBBBBB", 24, 24, 8, 2, 0, 0, 0)
+    split = (
+        png.SIGNATURE
+        + chunk_of(b"IHDR", ihdr)
+        + chunk_of(b"IDAT", idat_body[:half])
+        + chunk_of(b"tEXt", b"a\x00b")
+        + chunk_of(b"IDAT", idat_body[half:])
+        + chunk_of(b"IEND", b"")
+    )
+    cleaned, _, _ = png.clean(split, 100 * 1024, 512)
+    assert cleaned.count(b"IDAT") == 1 and b"tEXt" not in cleaned
+    assert png.clean(cleaned, 100 * 1024, 512)[0] == cleaned  # 作り直したものは、また通る
+    assert base.startswith(png.SIGNATURE)
+
+
+def test_png_rejects_trailing_data_bad_filters_and_bad_palettes():
+    ihdr = struct.pack(">IIBBBBB", 16, 16, 8, 2, 0, 0, 0)
+    rows = (b"\x00" + b"\x7f" * 48) * 16
+
+    def build(idat: bytes, *extra: bytes) -> bytes:
+        parts = [chunk_of(b"IHDR", ihdr), *extra, chunk_of(b"IDAT", idat), chunk_of(b"IEND", b"")]
+        return png.SIGNATURE + b"".join(parts)
+
+    with pytest.raises(png.PngError, match="長さ"):
+        png.clean(build(zlib.compress(rows) + b"garbage"), 100 * 1024, 512)
+    bad_filter = (b"\x09" + b"\x7f" * 48) + rows[49:]
+    with pytest.raises(png.PngError, match="壊れて"):
+        png.clean(build(zlib.compress(bad_filter)), 100 * 1024, 512)
+    with pytest.raises(png.PngError, match="色の表"):
+        png.clean(build(zlib.compress(rows), chunk_of(b"PLTE", b"\x00\x00")), 100 * 1024, 512)
+
+
+def test_edit_is_all_or_nothing(players):
+    (ca, a), _ = players
+    services.set_era(a, "regnal", "天明")
+    services.set_intro(a, "元の文")
+    body = {"intro": "新しい文", "new_era": "天明"}  # 同じ元号なので断られる
+    res = ca.put(
+        f"/api/islands/{a.id}/country/edit", json.dumps(body), content_type="application/json"
+    )
+    assert res.status_code == 400
+    assert Profile.objects.get(island=a).intro == "元の文"
+
+
+def test_hidden_stays_hidden_until_the_content_changes(players):
+    (_, a), _ = players
+    data = make_png()
+    services.set_flag(a, data)
+    services.set_intro(a, "不適切な文")
+    Flag.objects.filter(island=a).update(hidden=True)
+    Profile.objects.filter(island=a).update(intro_hidden=True)
+    assert services.set_flag(a, data).hidden  # 同じ画像を上げ直しても隠したまま
+    assert services.set_intro(a, "不適切な文").intro_hidden
+    assert not services.set_flag(a, make_png(40, 40)).hidden  # 変えれば、また見てもらえる
+    assert not services.set_intro(a, "直した文").intro_hidden
+
+
+def test_text_rules(players):
+    (_, a), (_, b) = players
+    long_lines = "\r\n".join(["あ" * 50] * 11)  # CRLF のまま数えると 610 字、LF なら 599 字
+    assert services.set_intro(a, long_lines).intro.count("\r") == 0
+    for bad in ("\x00x", "a‮b", "a\x1bb", "\ud800"):
+        with pytest.raises(services.CountryError, match="使えない文字"):
+            services.set_intro(a, bad)
+        with pytest.raises(services.CountryError, match="使えない文字"):
+            services.post_note(b.owner, a, bad)
+    with pytest.raises(services.CountryError, match="空白"):
+        services.set_era(a, "regnal", "天 明")
+    with pytest.raises(services.CountryError, match="使えない文字"):
+        services.set_era(a, "regnal", "天\n明")
+
+
+def test_new_era_without_an_era_starts_from_the_founding(players):
+    (_, a), _ = players
+    a.ext = {**a.ext, "founded_turn": 5}
+    a.save(update_fields=["ext"])
+    profile = services.new_era(a, "天明")
+    assert profile.eras == [{"name": "天明", "start_turn": 5}]
+    assert services.date_text(a, profile, 5) == "天明元年5月"
+    services.new_era(a, "大正")
+    assert len(Profile.objects.get(island=a).eras) == 2
+
+
+def test_notes_per_target_limit_and_owner_can_hide(players):
+    (ca, a), (cb, b) = players
+    for i in range(services.NOTES_PER_TARGET):
+        services.post_note(b.owner, a, f"一言{i}")
+    with pytest.raises(services.CountryError) as e:
+        services.post_note(b.owner, a, "連投")
+    assert e.value.status == 429
+    note = Note.objects.filter(island=a).first()
+    res = cb.delete(f"/api/islands/{a.id}/country/notes/{note.id}")
+    assert res.status_code == 403  # 持ち主でない人は隠せない
+    assert ca.delete(f"/api/islands/{a.id}/country/notes/{note.id}").status_code == 200
+    note.refresh_from_db()
+    assert note.hidden
+    assert ca.delete(f"/api/islands/{a.id}/country/notes/{note.id}9").status_code == 404
+    res = ca.post(
+        f"/islands/{a.id}/country/", {"action": "note_hide", "note": Note.objects.first().id}
+    )
+    assert res.status_code == 302
+
+
+def test_timeline_shows_diplomacy_for_both_sides(players):
+    (_, a), (_, b) = players
+    TurnLog.objects.create(
+        island=a, turn=3, kind="war_declared", args={"country": b.name, "turn": 4}
+    )
+    TurnLog.objects.create(
+        island=b, turn=3, kind="war_declared_on", args={"country": a.name, "turn": 4}
+    )
+    for island, word in ((a, "宣戦を布告しました"), (b, "宣戦を布告されました")):
+        data = Client().get(f"/api/islands/{island.id}/country").json()
+        assert any(word in row["text"] for row in data["timeline"])
+
+
+def test_admin_warns_when_pausing_a_country_at_war(admin_client, players, world):
+    (_, a), (_, b) = players
+    world.ext = {
+        **world.ext,
+        "diplomacy": {"wars": [{"id": 1, "attacker": a.id, "defender": b.id, "state": "war"}]},
+    }
+    world.save(update_fields=["ext"])
+    res = admin_client.post(
+        "/admin/world/island/",
+        {"action": "make_inactive", "_selected_action": [a.id]},
+        follow=True,
+    )
+    assert "戦争中・停戦中の島" in res.content.decode()
+
+
+def test_admin_flag_preview_shows_hidden_flags_and_can_unhide(admin_client, players):
+    (_, a), _ = players
+    flag = services.set_flag(a, make_png())
+    Flag.objects.filter(pk=flag.pk).update(hidden=True)
+    page = admin_client.get(f"/admin/country/flag/{flag.pk}/change/").content.decode()
+    assert "data:image/png;base64," in page
+    admin_client.post("/admin/country/flag/", {"action": "show", "_selected_action": [flag.pk]})
+    flag.refresh_from_db()
+    assert not flag.hidden
