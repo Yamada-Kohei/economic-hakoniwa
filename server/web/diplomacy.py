@@ -46,6 +46,10 @@ RULES = (
     "violation_premium",
     "violation_premium_max",
     "violation_decay_turns",
+    "violation_repeat_turns",
+    "max_contract_turns",
+    "max_aid_period_turns",
+    "max_aid_count",
 )
 
 
@@ -88,6 +92,9 @@ def _clause_row(c: dict[str, Any], names: dict[int, str]) -> dict[str, Any]:
     for key in ("notice_turns", "withdraw_turns", "prisoners"):
         if key in c:
             row[key] = c[key]
+    if c["type"] in cl.ECONOMIC:
+        row["detail"] = display.clause_summary(c)
+        row["terms"] = _terms(c, names)
     rep = c.get("reparations")
     if rep:
         row["reparations"] = {
@@ -101,6 +108,37 @@ def _clause_row(c: dict[str, Any], names: dict[int, str]) -> dict[str, Any]:
             "state": rep["state"],
         }
     return row
+
+
+TERM_KEYS = (
+    "name",
+    "open",
+    "bloc_id",
+    "good",
+    "quantity",
+    "price",
+    "turns",
+    "delivery",
+    "contract",
+    "done",
+    "rate",
+    "amount",
+    "period",
+    "count",
+    "paid",
+    "done_count",
+    "start",
+)
+TERM_ISLANDS = ("seller", "buyer", "pegger", "payer", "payee", "host", "currency")
+
+
+def _terms(c: dict[str, Any], names: dict[int, str]) -> dict[str, Any]:
+    """経済の条項の中身（保存された条項から、島の番号を名前つきにして取り出す）。"""
+    terms: dict[str, Any] = {k: c[k] for k in TERM_KEYS if k in c}
+    for key in TERM_ISLANDS:
+        if c.get(key) is not None:
+            terms[key] = _ref(names, c[key])
+    return terms
 
 
 def _treaty_row(t: dict[str, Any], names: dict[int, str]) -> dict[str, Any]:
@@ -217,7 +255,7 @@ def brief(island: m.Island, mine: bool) -> dict[str, Any]:
                 "id": t["id"],
                 "title": t["title"],
                 "with": next(p for p in t["parties"] if p["id"] != island.id),
-                "clauses": [c["name"] for c in t["clauses"]],
+                "clauses": [c.get("detail") or c["name"] for c in t["clauses"]],
                 "notice": t["notice"],
             }
             for t in data["treaties"]

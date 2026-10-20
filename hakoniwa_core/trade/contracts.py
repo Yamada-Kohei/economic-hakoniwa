@@ -17,7 +17,11 @@ trade.contract_cancel_turns ターン後です。
 good・qty（1ターンの量。1000 分の 1 単位）・price（1 単位の値段。契約の通貨）・currency・
 turns（期間）・state（proposed・active・ended）・start・end（このターンの前まで効く）・
 delivered・paid・short（直近の不足の量）・delivery（届いた物の行き先。ない契約は market）・
-aid（物の援助。フェーズ3-3。値段 0 で、相手の承諾なしに次のターンから効く）・fx（直近のターンに
+aid（物の援助。フェーズ3-3。値段 0 で、相手の承諾なしに次のターンから効く）・
+treaty（条約の契約の条項から始まった契約の、条約の番号。フェーズ4-1 の②。条約が効いたターンの次の
+ターンから効く）・
+cancelled_by（解約を申し入れた島）・short_why・short_turn（直近の不足のわけと、不足したターン。
+条約の見張りが読む）・fx（直近のターンに
 外貨が足りず届かなかったとき、買い手の政府がその通貨をどこからいくら用意できたか。turn・need・
 had・reserve・market・short。どれも買い手の島で、このターンにその通貨で払う契約の分の合計）。
 """
@@ -175,11 +179,45 @@ def cancel(
         contract["end"] = min(contract["end"], turn + 1 + wait)
     else:
         return "reason_contract_state"
+    contract["cancelled_by"] = island.id
     for side in ("seller", "buyer"):
         world.islands[contract[side]].log.append(
             LogEntry("contract_cancelled", {**_args(world, contract), "turns": wait})
         )
     return None
+
+
+def start_from_treaty(
+    world: WorldState, treaty: dict[str, Any], clause: dict[str, Any], turn: int
+) -> dict[str, Any]:
+    """条約の契約の条項で、契約を始める（相手の承諾は条約の署名で済んでいる。次のターンから効く）。"""
+    contract = {
+        "id": next_id(world_state(world), "contract"),
+        "seller": clause["seller"],
+        "buyer": clause["buyer"],
+        "proposer": treaty["proposer"],
+        "good": clause["good"],
+        "qty": round(clause["quantity"] * QUANTITY_SCALE),
+        "price": clause["price"],
+        "currency": clause["currency"],
+        "turns": clause["turns"],
+        "state": ACTIVE,
+        "created": turn,
+        "start": turn + 1,
+        "end": turn + 1 + clause["turns"],
+        "delivered": 0,
+        "paid": 0,
+        "short": 0,
+        "delivery": clause["delivery"],
+        "treaty": treaty["id"],
+    }
+    contracts(world).append(contract)
+    for side in ("seller", "buyer"):
+        island = world.islands[contract[side]]
+        if island.id != contract["currency"]:
+            fxrates.ensure(world, island, contract["currency"])
+        island.log.append(LogEntry("contract_started", _args(world, contract)))
+    return contract
 
 
 def close(world: WorldState, turn: int) -> None:

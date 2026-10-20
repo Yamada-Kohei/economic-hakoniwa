@@ -210,7 +210,18 @@ class OrderMaker:
     def _integer(self, name: str, schema: dict[str, Any]) -> int:
         if name in ("x", "y"):
             return self.spot[0] if name == "x" else self.spot[1]
-        if name in ("partner", "issuer", "to", "approve", "currency", "target", "payer"):
+        if name in (
+            "partner",
+            "issuer",
+            "to",
+            "approve",
+            "currency",
+            "target",
+            "payer",
+            "seller",
+            "pegger",
+            "host",
+        ):
             return self.rng.choice(self.world.island_ids())
         if name == "bloc":
             ids = [b["id"] for b in trade_blocs.blocs(self.world)]

@@ -132,6 +132,11 @@ def approve(world: WorldState, bloc: dict[str, Any], applicant: int) -> str | No
     return None
 
 
+def admit(world: WorldState, bloc: dict[str, Any], island: IslandState) -> None:
+    """承認を待たずに加盟させる（条約の貿易圏の条項。フェーズ4-1 の②）。"""
+    _add_member(world, bloc, island)
+
+
 def _add_member(world: WorldState, bloc: dict[str, Any], island: IslandState) -> None:
     bloc["members"] = sorted({*bloc["members"], island.id})
     fxrates.ensure(world, island, bloc["currency"])

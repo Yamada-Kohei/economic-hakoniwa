@@ -48,7 +48,7 @@
         <td>{{ t.id }}</td>
         <td>{{ t.title }}{% if t.text %}<br><small class="muted">{{ t.text }}</small>{% endif %}{% if t.notice %}<br><small class="warning">{% blocktranslate with by=t.notice.by.name u=t.notice.until|turn_date %}{{ by }}が破棄を予告（{{ u }}に終わります）{% endblocktranslate %}</small>{% endif %}</td>
         <td>{% for p in t.parties %}<a href="{% url 'island_diplomacy' p.id %}">{{ p.name }}</a>{% if not forloop.last %}・{% endif %}{% endfor %}</td>
-        <td>{% for c in t.clauses %}{{ c.name }}{% if c.reparations %}（{% blocktranslate with p=c.reparations.payer.name a=c.reparations.amount|floatformat:"0g" paid=c.reparations.paid|floatformat:"0g" %}{{ p }}が賠償 {{ a }}、払った分 {{ paid }}{% endblocktranslate %}）{% endif %}{% if not forloop.last %}・{% endif %}{% endfor %}</td>
+        <td>{% for c in t.clauses %}{% firstof c.detail c.name %}{% if c.reparations %}（{% blocktranslate with p=c.reparations.payer.name a=c.reparations.amount|floatformat:"0g" paid=c.reparations.paid|floatformat:"0g" %}{{ p }}が賠償 {{ a }}、払った分 {{ paid }}{% endblocktranslate %}）{% endif %}{% if not forloop.last %}・{% endif %}{% endfor %}</td>
         <td>{{ t.start|turn_date }}</td>
         {% if mine %}<td>{% if not t.notice %}<form class="actions" data-order="denounce_treaty" data-confirm="{% translate '予告のうえで条約を破棄します。よろしいですか。' %}"><input type="hidden" name="treaty" value="{{ t.id }}"><button type="submit">{% translate "破棄を予告（命令に追加）" %}</button></form>{% endif %}</td>{% endif %}
       </tr>
@@ -74,7 +74,7 @@
       <tr>
         <td>{{ t.id }}</td><td>{{ t.title }}{% if t.text %}<br><small class="muted">{{ t.text }}</small>{% endif %}</td>
         <td><a href="{% url 'island_diplomacy' t.proposer.id %}">{{ t.proposer.name }}</a></td>
-        <td>{% for c in t.clauses %}{{ c.name }}{% if not forloop.last %}・{% endif %}{% endfor %}</td>
+        <td>{% for c in t.clauses %}{% firstof c.detail c.name %}{% if not forloop.last %}・{% endif %}{% endfor %}</td>
         <td>
           <form class="actions" data-order="sign_treaty"><input type="hidden" name="treaty" value="{{ t.id }}"><button type="submit">{% translate "署名（命令に追加）" %}</button></form>
           <form class="actions" data-order="refuse_treaty"><input type="hidden" name="treaty" value="{{ t.id }}"><button type="submit">{% translate "断る（命令に追加）" %}</button></form>
@@ -95,7 +95,7 @@
       <tr>
         <td>{{ t.id }}</td><td>{{ t.title }}</td>
         <td>{% for p in t.parties %}{% if p.id != island.id %}<a href="{% url 'island_diplomacy' p.id %}">{{ p.name }}</a>{% endif %}{% endfor %}</td>
-        <td>{% for c in t.clauses %}{{ c.name }}{% if not forloop.last %}・{% endif %}{% endfor %}</td>
+        <td>{% for c in t.clauses %}{% firstof c.detail c.name %}{% if not forloop.last %}・{% endif %}{% endfor %}</td>
         <td><form class="actions" data-order="withdraw_treaty"><input type="hidden" name="treaty" value="{{ t.id }}"><button type="submit">{% translate "取り下げ（命令に追加）" %}</button></form></td>
       </tr>
     {% empty %}
@@ -127,8 +127,37 @@
       <label>{% translate "額" %} <input name="amount" type="number" min="1"></label>
       <label>{% translate "期日（効いてからのターン数）" %} <input name="due_turns" type="number" min="1" max="{{ d.rules.max_reparation_turns }}"></label>
     </fieldset>
+    <fieldset>
+      <legend>{% translate "貿易圏（書かなければ使いません）" %}</legend>
+      <label>{% translate "つくる圏の名前" %} <input name="bloc_name" maxlength="20"></label>
+      <label>{% translate "自分が代表の圏の番号（相手を入れる）" %} <input name="bloc_id" type="number" min="1"></label>
+    </fieldset>
+    <fieldset>
+      <legend>{% translate "契約（財・量・値段・期間）" %}</legend>
+      <label>{% translate "売る国" %} <select name="contract_seller"><option value="">{% translate "（なし）" %}</option>{% for p in d.choices.partners %}<option value="{{ p.id }}">{{ p.name }}（{{ p.id }}）</option>{% endfor %}<option value="{{ island.id }}">{{ island.name }}（{% translate "自国" %}）</option></select></label>
+      <label>{% translate "財" %} <input name="contract_good"></label>
+      <label>{% translate "1ターンの量" %} <input name="contract_quantity" type="number" min="0" step="any"></label>
+      <label>{% translate "1単位の値段" %} <input name="contract_price" type="number" min="0"></label>
+      <label>{% translate "通貨（国の番号。省くと売る国）" %} <input name="contract_currency" type="number" min="1"></label>
+      <label>{% translate "期間（ターン）" %} <input name="contract_turns" type="number" min="1" max="{{ d.rules.max_contract_turns }}"></label>
+    </fieldset>
+    <fieldset>
+      <legend>{% translate "固定相場" %}</legend>
+      <label>{% translate "固定する国" %} <select name="peg_pegger"><option value="">{% translate "（なし）" %}</option>{% for p in d.choices.partners %}<option value="{{ p.id }}">{{ p.name }}（{{ p.id }}）</option>{% endfor %}<option value="{{ island.id }}">{{ island.name }}（{% translate "自国" %}）</option></select></label>
+      <label>{% translate "相手の通貨 1 あたりのレート" %} <input name="peg_rate" type="number" min="0" step="any"></label>
+    </fieldset>
+    <fieldset>
+      <legend>{% translate "援助の約束" %}</legend>
+      <label>{% translate "送る国" %} <select name="aid_payer"><option value="">{% translate "（なし）" %}</option>{% for p in d.choices.partners %}<option value="{{ p.id }}">{{ p.name }}（{{ p.id }}）</option>{% endfor %}<option value="{{ island.id }}">{{ island.name }}（{% translate "自国" %}）</option></select></label>
+      <label>{% translate "1回の額" %} <input name="aid_amount" type="number" min="1"></label>
+      <label>{% translate "通貨（国の番号。省くと送る国）" %} <input name="aid_currency" type="number" min="1"></label>
+      <label>{% translate "送る間隔（ターン）" %} <input name="aid_period" type="number" min="1" max="{{ d.rules.max_aid_period_turns }}"></label>
+      <label>{% translate "送る回数" %} <input name="aid_count" type="number" min="1" max="{{ d.rules.max_aid_count }}"></label>
+    </fieldset>
+    <label>{% translate "難民を受け入れる国（難民の受け入れ）" %} <select name="refugee_host"><option value="">{% translate "（なし）" %}</option>{% for p in d.choices.partners %}<option value="{{ p.id }}">{{ p.name }}（{{ p.id }}）</option>{% endfor %}<option value="{{ island.id }}">{{ island.name }}（{% translate "自国" %}）</option></select></label>
     <button type="submit">{% translate "命令に追加" %}</button>
   </form>
+  <p class="hint">{% translate "経済の条項は、効くと貿易圏・契約・固定相場・移民の受け入れがその約束どおりになります。守らないと違反として記録します（通貨の融通と人の行き来の自由は、条項を選ぶだけです）。" %}</p>
   <p class="hint">{% translate "戦争のあいだに結べるのは停戦と講和だけです。賠償は、払う国が援助の命令で送ります（ゲームは自動で払わせません）。期日までに届かないと違反として記録します。" %}</p>
   <p class="order-notice" aria-live="polite"></p>
 </section>

@@ -799,12 +799,48 @@ def _describe_diplomacy(kind: str, payload: dict[str, Any], name: str) -> str:
         text = f"{name}: {island_name(payload.get('target'))}"
         return f"{text}（{payload['reason']}）" if payload.get("reason") else text
     if kind == "propose_treaty":
-        kinds = "・".join(message(f"clause_{c.get('type')}") for c in payload.get("clauses", []))
+        kinds = "・".join(clause_summary(c) for c in payload.get("clauses", []))
         title = f"「{payload['title']}」" if payload.get("title") else ""
         return f"{name}: {island_name(payload.get('partner'))} {title}{kinds}"
     if kind in ("sign_treaty", "refuse_treaty", "withdraw_treaty", "denounce_treaty"):
         return f"{name}: 条約 {payload.get('treaty')} 番"
     return ""
+
+
+def clause_summary(c: dict[str, Any]) -> str:
+    """条約の条項（命令の中身か、保存された条項）を 1 つの文にする。経済の条項（フェーズ4-1 の②）は
+    中身（誰が・何を・いくら）まで書く。島と通貨は番号から名前にする。"""
+    kind = c.get("type")
+    label = message(f"clause_{kind}")
+    if kind == "bloc":
+        if c.get("bloc") is not None:
+            return f"{label}（{_bloc_name(c['bloc'])}に相手を入れる）"
+        return f"{label}（「{c.get('name', '')}」をつくる）"
+    if kind == "contract":
+        defs = get_game().defs
+        good = c.get("good", "")
+        unit = defs.unit_name(good) if good in defs.goods else ""
+        goods_name = defs.name("goods", good) if good in defs.goods else good
+        currency = currency_name(c["currency"]) if "currency" in c else "売る国の通貨"
+        return (
+            f"{label}（{island_name(c.get('seller'))}が{goods_name}を毎ターン "
+            f"{c.get('quantity', 0):g} {unit}、1{unit} {c.get('price', 0):,}（{currency}）で"
+            f" {c.get('turns', 0)} ターン）"
+        )
+    if kind == "peg":
+        return (
+            f"{label}（{island_name(c.get('pegger'))}が相手の通貨 1 を"
+            f" {c.get('rate', 0):g} に固定）"
+        )
+    if kind == "aid":
+        currency = currency_name(c["currency"]) if "currency" in c else "払う国の通貨"
+        return (
+            f"{label}（{island_name(c.get('payer'))}が{currency} {c.get('amount', 0):,} を"
+            f" {c.get('period', 1)} ターンごとに {c.get('count', 1)} 回）"
+        )
+    if kind == "refugees":
+        return f"{label}（{island_name(c.get('host'))}が受け入れる）"
+    return label
 
 
 def _describe_trade(kind: str, payload: dict[str, Any], name: str) -> str:

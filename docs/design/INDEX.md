@@ -404,7 +404,7 @@
 
 ## [10 政治と体制](10-politics.md)
 
-決まり 44 個、うち仮の決まりの表にあるもの 2 個。
+決まり 50 個、うち仮の決まりの表にあるもの 2 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -444,7 +444,7 @@
 | PL-34 | 移民の出国の政策は政治の仕組みで上限がある: 民主主義は自由だけ、権威主義は許可制まで、全体主義… | 決定 | tests/core/test_migration.py |
 | PL-35 | 国どうしのやりとりは、非公開の公電（送るとすぐ届き、発信国と宛先国の持ち主だけが読める）と公開の… | 決定 | tests/server/test_letters.py |
 | PL-36 | 公電は1つの島が24時間に送れる数に上限があり（サーバーの設定）、管理画面で非表示にできる | 決定 | tests/server/test_letters.py |
-| PL-37 | 外交の決まりは遊ぶ人に任せる | 決定（①で作った | tests/core/test_diplomacy.py |
+| PL-37 | 外交の決まりは遊ぶ人に任せる | 決定（①と②で作った） | tests/core/test_diplomacy.py |
 | PL-38 | 反乱と内戦はフェーズ4 | 決定（フェーズ4 で作る） |  |
 | PL-39 | 政治の画面に政情・目標の内訳・段階・支持率・議席・採決の履歴・混乱期間・建て替えの資材を出す | 決定 | tests/server/test_phase3_4.py |
 | PL-40 | 宣戦布告は重い命令（行政力 2、民主主義は議会の過半数、伏せない） | 決定 | tests/core/test_diplomacy.py |
@@ -452,6 +452,12 @@
 | PL-42 | 停戦は戦っている相手と両国の署名で効き、予告のターンがたつと戦争に戻る | 決定（引き揚げと捕虜は期限と印を記録するだけ | tests/core/test_diplomacy.py |
 | PL-43 | 条約の違反（結んでいる不可侵・同盟を破って宣戦する・賠償を期日までに送らない）は島に記録され、国… | 決定 | tests/core/test_diplomacy.py |
 | PL-44 | 国際会議場は公開の声明の場 | 決定 | tests/server/test_diplomacy.py |
+| PL-45 | 経済の取り決め（貿易圏・二国間契約・固定相場・中央銀行の融通・援助・移民の受け入れ）は、条約の条… | 決定 | tests/core/test_diplomacy_economic.py |
+| PL-46 | 貿易圏の条項: 提案した国が代表になる圏をつくって相手を入れるか、提案した国が代表の圏（承認制で… | 決定 | tests/core/test_diplomacy_economic.py |
+| PL-47 | 契約の条項: 効くと、売る国・買う国・財・1 ターンの量・値段・通貨・期間・届いた物の行き先で、… | 決定 | tests/core/test_diplomacy_economic.py |
+| PL-48 | 固定相場と融通の条項: 固定相場は、固定する国の中央銀行が相手の通貨を決めたレートに固定する（独… | 決定 | tests/core/test_diplomacy_economic.py |
+| PL-49 | 援助の条項: 送る国が、決めた間隔（1〜`max_aid_period_turns` ターン）で… | 決定 | tests/core/test_diplomacy_economic.py |
+| PL-50 | 移民の条項: 人の行き来の自由は、両国が移民の受け入れ（政策）を open に保つ約束、難民の受… | 決定（現実との違い: 相手を限った受け入れは持たない） | tests/core/test_diplomacy_economic.py |
 
 ## [11 画面と統計](11-ui.md)
 
