@@ -136,7 +136,7 @@ def country_data(island: m.Island, mine: bool, viewer: m.Island | None = None) -
             "inactive": island.inactive,
         },
         "era": era_info(island, profile, mine),
-        "awards": awards.holders(island.world).get(island.id, []),
+        "awards": awards.holders(island.world, only=island.id).get(island.id, []),
         "titles": rankings.island_strengths(island, stats)["titles"],
         "intro": "" if (intro_hidden or not profile) else profile.intro,
         "timeline": rows,

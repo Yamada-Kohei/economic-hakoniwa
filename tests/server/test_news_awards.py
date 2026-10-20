@@ -62,6 +62,21 @@ def test_peace_award_counts_quiet_turns_since_the_last_unrest_or_founding(world,
     assert "平和賞" not in _names(world, b)
 
 
+def test_peace_award_waits_while_a_war_is_open_and_restarts_when_it_ends(world, islands):
+    a, b, _ = islands
+    for island in islands:
+        island.ext = {**island.ext, "founded_turn": 100}
+        island.save(update_fields=["ext"])
+    war = {"attacker": a.id, "defender": b.id, "state": "war", "start": 150}
+    world.ext = {**(world.ext or {}), "diplomacy": {"wars": [war]}}
+    world.save(update_fields=["ext"])
+    assert "平和賞" not in _names(world, a) and "平和賞" not in _names(world, b)
+    assert "平和賞" in _names(world, islands[2])
+    world.ext["diplomacy"]["wars"][0]["state"] = "ended"
+    TurnLog.objects.create(island=a, turn=290, kind="war_ended", args={})
+    assert "平和賞" not in _names(world, a)
+
+
 def test_calamity_award_counts_disasters_and_failures(world, islands):
     a, *_ = islands
     for turn in range(23):
@@ -148,6 +163,9 @@ def test_news_pages(world, islands):
     data = Client().get("/api/news?page=2").json()
     assert data["pages"] == 2 and data["page"] == 2 and len(data["entries"]) == data["count"] - 30
     assert Client().get("/news/?page=2").status_code == 200
+    # 0 や負の値は 1 ページ目
+    assert Client().get("/api/news?page=0").json()["page"] == 1
+    assert Client().get("/api/news?page=-3").json()["page"] == 1
 
 
 def test_mcp_news_tool(world, islands, settings):

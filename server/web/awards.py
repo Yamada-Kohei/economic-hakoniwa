@@ -5,7 +5,8 @@ game.yaml の ``awards``。元の箱庭諸島の賞の名前を使う（繁栄�
 災難賞・ターン杯）。
 
 - 繁栄賞・超繁栄賞・究極繁栄賞: 人口がしきい値に届いたことがある（いちばん高い段だけ出す）
-- 平和賞: 災害・暴動・反乱・戦争が、建国から数えて続けて ``peace_turns`` ターンない（いま）
+- 平和賞: 災害・暴動・反乱・戦争の始まりと終わりが、建国から数えて続けて ``peace_turns`` ターン
+  なく、いま戦争中でもない
 - 災難賞: 災害・暴動・反乱・飢え・倒産・債務不履行・銀行の破綻の出来事が ``calamity_count`` 件以上
 - ターン杯: 休止中でない国のうち建国がいちばん古い 1 国（``cup_turns`` ターン以上続いたとき）
 """
@@ -40,10 +41,12 @@ UNREST = (
     "disaster_",
     "politics_riot",
     "politics_rebellion",
+    "politics_rebellion_warning",
     "riot_destroyed",
     "war_declared",
     "war_declared_on",
     "war_resumed",
+    "war_ended",
 )
 
 
@@ -64,51 +67,62 @@ def settings() -> dict[str, Any]:
     }
 
 
-def holders(world: m.World) -> dict[int, list[dict[str, Any]]]:
-    """島の番号 → その島の賞の一覧（{"id", "name", "detail"}）。賞のない島は載らない。"""
+def holders(world: m.World, only: int | None = None) -> dict[int, list[dict[str, Any]]]:
+    """島の番号 → その島の賞の一覧（{"id", "name", "detail"}）。賞のない島は載らない。
+    only に島の番号を渡すと、その島の賞だけ数える（ターン杯は世界の中でいちばん古い国の 1 つなので、
+    どの島かだけを調べる）。"""
     rule = settings()
-    islands = list(world.islands.values("id", "ext", "inactive"))
+    islands = list(world.islands.values("id", "inactive", "ext__founded_turn"))
+    island_ids = [i["id"] for i in islands] if only is None else [only]
+    levels = sorted(rule["prosperity"])
+    fighting = {
+        side
+        for w in ((world.ext or {}).get("diplomacy") or {}).get("wars", [])
+        if w["state"] != "ended"
+        for side in (w["attacker"], w["defender"])
+    }
     peak = dict(
-        m.StatRecord.objects.filter(island__world=world, name="population")
+        m.StatRecord.objects.filter(island__in=island_ids, name="population")
         .values("island")
         .annotate(top=Max("value"))
         .values_list("island", "top")
     )
     calamities = dict(
-        TurnLog.objects.filter(_kinds(CALAMITIES), island__world=world)
+        TurnLog.objects.filter(_kinds(CALAMITIES), island__in=island_ids)
         .values("island")
         .annotate(n=Count("id"))
         .values_list("island", "n")
     )
     unrest = dict(
-        TurnLog.objects.filter(_kinds(UNREST), island__world=world)
+        TurnLog.objects.filter(_kinds(UNREST), island__in=island_ids)
         .values("island")
         .annotate(last=Max("turn"))
         .values_list("island", "last")
     )
-    founded = {i["id"]: int((i["ext"] or {}).get("founded_turn") or 0) for i in islands}
+    founded = {i["id"]: max(1, int(i["ext__founded_turn"] or 1)) for i in islands}
     out: dict[int, list[dict[str, Any]]] = {}
 
     def give(island: int, award: str, name: str, detail: str) -> None:
         out.setdefault(island, []).append({"id": award, "name": name, "detail": detail})
 
-    for island in islands:
-        i = island["id"]
-        level = sum(1 for n in rule["prosperity"] if peak.get(i, 0) >= n)
+    for i in island_ids:
+        level = min(sum(1 for n in levels if peak.get(i, 0) >= n), len(PROSPERITY))
         if level:
-            need = rule["prosperity"][level - 1]
-            give(i, f"prosperity_{level}", PROSPERITY[level - 1], f"人口が {need:,} 人に届きました")
+            give(
+                i,
+                f"prosperity_{level}",
+                PROSPERITY[level - 1],
+                f"人口が {levels[level - 1]:,} 人に届きました",
+            )
         quiet = world.turn - max(unrest.get(i, 0), founded[i])
-        if quiet >= rule["peace_turns"]:
+        if quiet >= rule["peace_turns"] and i not in fighting:
             give(i, "peace", "平和賞", f"{quiet} ターンのあいだ、災害も暴動も戦争もありません")
         if calamities.get(i, 0) >= rule["calamity_count"]:
             give(i, "calamity", "災難賞", f"災難の出来事が {calamities[i]} 件ありました")
     alive = [i for i in islands if not i["inactive"]]
     if alive:
-        oldest = min(alive, key=lambda i: (founded[i["id"]], i["id"]))
-        age = world.turn - founded[oldest["id"]]
-        if age >= rule["cup_turns"]:
-            give(
-                oldest["id"], "cup", "ターン杯", f"建国から {age} ターン、いちばん長く続いています"
-            )
+        oldest = min(alive, key=lambda i: (founded[i["id"]], i["id"]))["id"]
+        age = world.turn - founded[oldest]
+        if age >= rule["cup_turns"] and oldest in island_ids:
+            give(oldest, "cup", "ターン杯", f"建国から {age} ターン、いちばん長く続いています")
     return out
