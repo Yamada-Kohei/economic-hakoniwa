@@ -24,7 +24,7 @@ from typing import Any
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.diplomacy import clauses as cl
 from hakoniwa_core.state import LogEntry, WorldState
-from hakoniwa_core.units import BASIS
+from hakoniwa_core.units import BASIS, QUANTITY_SCALE
 
 # 移民の受け入れの政策が約束を満たす値（island.policy.immigration。"" は受け入れない）
 ACCEPTS = {cl.FREE_MOVEMENT: ("open",), cl.REFUGEES: ("open", "refugees")}
@@ -32,7 +32,7 @@ OPEN_TO = {cl.FREE_MOVEMENT: "open", cl.REFUGEES: "refugees"}
 DELIVERIES = ("market", "warehouse")
 # 契約の不足のうち、違反にするもの（輸送や港や禁輸は約束した国のせいとは言えない）
 SHORT_BY_SELLER = ("goods",)
-SHORT_BY_BUYER = ("money", "fx")
+SHORT_BY_BUYER = ("money",)  # 外貨が買えなかった（為替の市場の厚み）のは買う国のせいにしない
 
 
 def clean(
@@ -54,7 +54,7 @@ def clean(
         turns = int(clause.get("turns", 0))
         if seller not in (a, b) or not isinstance(good, str) or not good:
             return None, "reason_clause_contract"
-        if not isinstance(quantity, int | float) or quantity <= 0:
+        if not isinstance(quantity, int | float) or round(quantity * QUANTITY_SCALE) < 1:
             return None, "reason_clause_contract"
         if not isinstance(price, int) or price < 0:
             return None, "reason_clause_contract"
@@ -105,6 +105,7 @@ def clean(
             count=count,
             start=None,
             paid=0,
+            forgiven=0,
             done_count=0,
             done=False,
         )
@@ -189,7 +190,9 @@ def _force_peg(world: WorldState, clause: dict[str, Any]) -> None:
     from hakoniwa_core.trade import currency_label
     from hakoniwa_core.trade import fx as fxrates
 
-    pegger = world.islands[clause["pegger"]]
+    pegger = world.islands.get(clause["pegger"])
+    if pegger is None:
+        return
     key = str(clause["currency"])
     fxrates.ensure(world, pegger, clause["currency"])
     pegger.policy.fx_peg[key] = clause["rate_basis"]
@@ -220,8 +223,10 @@ def watch(world: WorldState, config: GameConfig, treaty: dict[str, Any], turn: i
         elif kind == cl.CONTRACT:
             _watch_contract(world, config, treaty, clause, turn)
         elif kind == cl.PEG:
-            pegged = world.islands[clause["pegger"]].policy.fx_peg.get(str(clause["currency"]))
-            ok = pegged == clause["rate_basis"]
+            island = world.islands.get(clause["pegger"])
+            if island is None:
+                continue  # 島が世界からなくなった（管理画面で消した）。見張るものがない
+            ok = island.policy.fx_peg.get(str(clause["currency"])) == clause["rate_basis"]
             _state(
                 world, config, treaty, clause, turn, noticed, clause["pegger"], ok, "peg_dropped"
             )
@@ -230,10 +235,31 @@ def watch(world: WorldState, config: GameConfig, treaty: dict[str, Any], turn: i
         elif kind in ACCEPTS:
             hosts = treaty["parties"] if kind == cl.FREE_MOVEMENT else [clause["host"]]
             for i in hosts:
+                if i not in world.islands:
+                    continue
                 mode = world.islands[i].policy.immigration or "closed"
                 ok = mode in ACCEPTS[kind]
                 reason = "migration_closed"
                 _state(world, config, treaty, clause, turn, noticed, i, ok, reason)
+
+
+def _violate(
+    world: WorldState,
+    config: GameConfig,
+    treaty: dict[str, Any],
+    by: int,
+    kind: str,
+    reason: str,
+    turn: int,
+) -> None:
+    """違反を記録する。島が世界になく、休止中なら、動けない国のことなので記録しない。"""
+    from hakoniwa_core.diplomacy import is_inactive
+    from hakoniwa_core.diplomacy import treaties as tr
+
+    island = world.islands.get(by)
+    if island is None or is_inactive(island):
+        return
+    tr.violate(world, config, treaty, by, kind, reason, turn)
 
 
 def _state(
@@ -248,8 +274,6 @@ def _state(
     reason: str,
 ) -> None:
     """状態を見張る条項: 守れている状態から守れていない状態に変わったときに 1 回だけ違反にする。"""
-    from hakoniwa_core.diplomacy import treaties as tr
-
     if noticed:
         return
     flags = clause.setdefault("ok", {})
@@ -257,7 +281,7 @@ def _state(
         flags[str(by)] = True
     elif flags.get(str(by), True):
         flags[str(by)] = False
-        tr.violate(world, config, treaty, by, clause["type"], reason, turn)
+        _violate(world, config, treaty, by, clause["type"], reason, turn)
 
 
 def _watch_bloc(
@@ -283,18 +307,16 @@ def _watch_contract(
     clause: dict[str, Any],
     turn: int,
 ) -> None:
-    from hakoniwa_core.diplomacy import treaties as tr
     from hakoniwa_core.trade import contracts
 
     c = contracts.find(world, clause["contract"]) if clause["contract"] is not None else None
     if c is not None and c.get("cancelled_by") is not None and not clause["cancel_flagged"]:
         clause["cancel_flagged"] = True
-        tr.violate(
-            world, config, treaty, c["cancelled_by"], cl.CONTRACT, "contract_cancelled", turn
-        )
-    if c is None or c["state"] == contracts.ENDED:
+        _violate(world, config, treaty, c["cancelled_by"], cl.CONTRACT, "contract_cancelled", turn)
+    if c is None:
         clause["done"] = True
         return
+    # 契約の最後のターンの不足も見てから、済んだことにする
     why = c.get("short_why")
     if (
         c["short"] > 0
@@ -305,7 +327,9 @@ def _watch_contract(
         if last is None or turn - last >= config.get("diplomacy.violation_repeat_turns"):
             clause["last_violation"] = turn
             by = c["seller"] if why in SHORT_BY_SELLER else c["buyer"]
-            tr.violate(world, config, treaty, by, cl.CONTRACT, f"contract_short_{why}", turn)
+            _violate(world, config, treaty, by, cl.CONTRACT, f"contract_short_{why}", turn)
+    if c["state"] == contracts.ENDED:
+        clause["done"] = True
 
 
 def _watch_aid(
@@ -317,14 +341,15 @@ def _watch_aid(
 ) -> None:
     """援助の約束: n 回目の期日（効いてから period × n ターン）の次のターンに、n 回分の累計が届いて
     いなければ違反にする（先に多く送った分は次の回に数える）。"""
-    from hakoniwa_core.diplomacy import treaties as tr
-
     while not clause["done"]:
         nth = clause["done_count"] + 1
         if turn <= clause["start"] + clause["period"] * nth:
             return
-        if clause["paid"] < clause["amount"] * nth:
-            tr.violate(world, config, treaty, clause["payer"], cl.AID, "aid_missed", turn)
+        need = clause["amount"] * nth - clause["forgiven"]
+        if clause["paid"] < need:
+            # 1 回落としても、次の回からは、その遅れを数え直さない（遅れた分は赦す）
+            clause["forgiven"] += need - clause["paid"]
+            _violate(world, config, treaty, clause["payer"], cl.AID, "aid_missed", turn)
         clause["done_count"] = nth
         clause["done"] = nth >= clause["count"]
 
@@ -339,6 +364,7 @@ def count_aid(
 ) -> None:
     """payer から payee へ送ったお金の援助を、効いている援助の約束の払いに数える（amount は、講和の
     賠償に数えたあとの残り）。"""
+    left = amount
     for t in treaties:
         if t["state"] != "in_force":
             continue
@@ -350,7 +376,11 @@ def count_aid(
                 and clause["payee"] == payee
                 and clause["currency"] == currency
             ):
-                clause["paid"] += amount
+                # 約束の残り（全部の回の合計から、数えた分を引いた額）まで、番号の順に充てる
+                total = clause["amount"] * clause["count"] - clause["forgiven"]
+                take = min(left, max(0, total - clause["paid"]))
+                clause["paid"] += take
+                left -= take
 
 
 def _log_aid(world: WorldState, treaty: dict[str, Any], clause: dict[str, Any]) -> None:

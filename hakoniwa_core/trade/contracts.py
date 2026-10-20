@@ -176,10 +176,14 @@ def cancel(
         contract["state"] = ENDED
         contract["end"] = turn
     elif contract["state"] == ACTIVE:
-        contract["end"] = min(contract["end"], turn + 1 + wait)
+        new_end = turn + 1 + wait
+        if (
+            new_end < contract["end"]
+        ):  # 早く終わらせる解約だけ、解約した島を残す（条約の見張りが読む）
+            contract["end"] = new_end
+            contract.setdefault("cancelled_by", island.id)
     else:
         return "reason_contract_state"
-    contract["cancelled_by"] = island.id
     for side in ("seller", "buyer"):
         world.islands[contract[side]].log.append(
             LogEntry("contract_cancelled", {**_args(world, contract), "turns": wait})

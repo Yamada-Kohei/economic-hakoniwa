@@ -200,7 +200,7 @@ def diplomacy_data(island: m.Island, mine: bool) -> dict[str, Any]:
                     (t["title"] for t in raw.get("treaties", []) if t["id"] == v["treaty"]), ""
                 ),
                 "clause_name": display.message(f"clause_{v['clause']}"),
-                "reason_name": display.message(v["reason"]),
+                "reason_name": display.message(f"why_{v['reason']}"),
             }
             for v in violations
         ],

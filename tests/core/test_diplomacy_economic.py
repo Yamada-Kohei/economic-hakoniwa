@@ -339,3 +339,112 @@ def test_refugee_clause_only_asks_the_host(game, world):
 def test_clause_kinds_have_messages(game):
     for kind in cl.ECONOMIC:
         assert game.defs.name("messages", f"clause_{kind}", "ja")
+
+
+def test_a_missed_aid_instalment_is_forgiven_for_the_next_ones(game, world):
+    t = propose(
+        game,
+        world,
+        1,
+        2,
+        [{"type": "aid", "payer": 1, "amount": 1000, "currency": 1, "period": 2, "count": 3}],
+    )
+    sign(game, world, t["id"], 2)
+    pay = {1: [("send_aid", {"partner": 2, "amount": 1000})]}
+    for _ in range(3):
+        step(game, world)  # 1 回目の期日（効いて 2 ターン後）の次のターンに、届いていないのを見る
+    assert len(treaties.find(world, t["id"])["violations"]) == 1
+    step(game, world, pay)  # 2 回目の分
+    step(game, world)
+    step(game, world, pay)  # 3 回目の分
+    step(game, world)
+    t = treaties.find(world, t["id"])
+    assert violations(t) == [(1, "aid", "aid_missed")]  # 遅れを数え直さない
+    assert t["state"] == treaties.ENDED
+
+
+def test_one_payment_fills_aid_clauses_in_order(game, world):
+    aid = {"type": "aid", "payer": 1, "amount": 500, "currency": 1, "period": 5, "count": 1}
+    t = propose(game, world, 1, 2, [aid, aid])
+    sign(game, world, t["id"], 2)
+    step(game, world, {1: [("send_aid", {"partner": 2, "amount": 700})]})
+    first, second = treaties.find(world, t["id"])["clauses"]
+    assert (first["paid"], second["paid"]) == (500, 200)
+
+
+def test_tiny_contract_quantities_are_refused(game, world):
+    assert refused_why(game, world, 1, 2, [contract_clause(quantity=0.0001)]) == (
+        "reason_clause_contract"
+    )
+
+
+def test_contract_shortage_on_the_last_turn_is_still_seen(game, world):
+    t = propose(game, world, 1, 2, [contract_clause(turns=2)])
+    sign(game, world, t["id"], 2)
+    c = contracts.find(world, treaties.find(world, t["id"])["clauses"][0]["contract"])
+    step(game, world)
+    step(game, world)  # 契約の最後のターン
+    c.update(short=c["qty"], short_why="goods", short_turn=world.turn)
+    c["state"] = contracts.ENDED  # 履行のあと、その段の終わりに終わる
+    step(game, world)
+    assert violations(treaties.find(world, t["id"])) == [(1, "contract", "contract_short_goods")]
+
+
+def test_cancelling_inside_the_wait_does_not_end_it_earlier_so_it_is_not_a_violation(game, world):
+    stock_up(game, world, 1)
+    t = propose(game, world, 1, 2, [contract_clause(turns=3)])
+    sign(game, world, t["id"], 2)
+    c = contracts.find(world, treaties.find(world, t["id"])["clauses"][0]["contract"])
+    step(game, world, {2: [("cancel_contract", {"contract": c["id"]})]})
+    assert "cancelled_by" not in c  # 残りは解約の待ち（3 ターン）より短い
+    step(game, world)
+    assert violations(treaties.find(world, t["id"])) == []
+
+
+def test_both_cancelling_blames_the_first_canceller(game, world):
+    stock_up(game, world, 1)
+    t = propose(game, world, 1, 2, [contract_clause(turns=30)])
+    sign(game, world, t["id"], 2)
+    c = contracts.find(world, treaties.find(world, t["id"])["clauses"][0]["contract"])
+    step(
+        game,
+        world,
+        {
+            1: [("cancel_contract", {"contract": c["id"]})],
+            2: [("cancel_contract", {"contract": c["id"]})],
+        },
+    )
+    step(game, world)
+    assert violations(treaties.find(world, t["id"])) == [(1, "contract", "contract_cancelled")]
+
+
+def test_watching_survives_a_deleted_island_and_skips_inactive_payers(game, world):
+    pegger = world.islands[1]
+    pegger.policy.cb_independent = False
+    t = propose(game, world, 1, 2, [{"type": "peg", "pegger": 1, "rate": 1.25}])
+    sign(game, world, t["id"], 2)
+    aid = {"type": "aid", "payer": 3, "amount": 100, "currency": 3, "period": 1, "count": 1}
+    t2 = propose(game, world, 2, 3, [aid])
+    sign(game, world, t2["id"], 3)
+    world.islands[3].ext["inactive"] = True  # 払う国が休止中: 動けない国の違反にはしない
+    step(game, world)
+    step(game, world)
+    assert violations(treaties.find(world, t2["id"])) == []
+    del world.islands[1]  # 島が世界から消えても、外交の見張りは止まらない
+    treaties.upkeep(world, game.config, world.turn + 1)
+    assert treaties.find(world, t["id"])["state"] == treaties.IN_FORCE
+
+
+def test_violation_reasons_have_messages(game):
+    for reason in (
+        "war_declared",
+        "reparations",
+        "contract_cancelled",
+        "contract_short_goods",
+        "contract_short_money",
+        "aid_missed",
+        "bloc_left",
+        "peg_dropped",
+        "migration_closed",
+    ):
+        assert game.defs.name("messages", f"why_{reason}", "ja"), reason
