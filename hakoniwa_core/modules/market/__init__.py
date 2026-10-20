@@ -52,6 +52,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, politics, stock, trade
 from hakoniwa_core.allocation import proportional
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     CONSTRUCTION,
@@ -2035,7 +2036,8 @@ class Market(IslandStage):
         まで。"""
         orders = island.economy.ext.pop("warehouse_orders", [])
         offered: dict[str, int] = {}
-        placed: list[tuple[str, str, int, Order | None]] = []  # 命令の注文（結果をログに出す）
+        # 命令の注文（財, 売り買い, 命令の量, 出した注文, 量を削ったわけ）。結果をログに出す
+        placed: list[tuple[str, str, int, Order | None, str]] = []
 
         def sell(good: str, qty: int, limit: int | None, layer: str | None = None) -> Order | None:
             qty = min(qty, stock.total(island.warehouse, good) - offered.get(good, 0))
@@ -2055,10 +2057,12 @@ class Market(IslandStage):
         for item in orders:
             good, qty, limit = item["good"], item["quantity"], item["limit"]
             if item["side"] == "sell":
-                placed.append((good, "sell", qty, sell(good, qty, limit or None)))
+                placed.append((good, "sell", qty, sell(good, qty, limit or None), "stock"))
                 continue
             buyer = Payer(ledger.GOV, WAREHOUSE)
             plan = self._afford(island, buyer, {good: (qty, limit)}, 0, 0)
+            # 削ったわけ: 年の予算の月割りで止まったか、国庫のお金そのものが足りないか
+            capped = funds.available(island, buyer) < funds.available(island, buyer, capped=False)
             order = None
             for g, (q, lim) in plan.items():
                 party = Party(STORE, ledger.GOV, buyer)
@@ -2066,7 +2070,7 @@ class Market(IslandStage):
                 funds.commit(island, buyer, party.reserved)
                 order = Order(q, lim)
                 self._add(books_by_good, g, "buy", order, party)
-            placed.append((good, "buy", qty, order))
+            placed.append((good, "buy", qty, order, "budget" if capped else "treasury"))
         island.scratch[WAREHOUSE_PLACED] = placed
 
     @staticmethod
@@ -2074,7 +2078,7 @@ class Market(IslandStage):
         island: IslandState, books_by_good: dict[str, Book], results: dict[str, auction.Result]
     ) -> None:
         """命令で出した国の倉庫の売り買いの結果（約定した量と、足りなかったわけ）をログに出す。"""
-        for good, side, wanted, order in island.scratch.pop(WAREHOUSE_PLACED, []):
+        for good, side, wanted, order, cut in island.scratch.pop(WAREHOUSE_PLACED, []):
             book, result = books_by_good.get(good), results.get(good)
             filled = 0
             if order is not None and book is not None and result is not None:
@@ -2093,8 +2097,8 @@ class Market(IslandStage):
                 island.log.append(LogEntry(f"warehouse_{side}_result", args))
                 continue
             placed_qty = order.quantity if order is not None else 0
-            if placed_qty < wanted:  # 注文の前に削った（予算・倉庫の残り）
-                why = "budget" if side == "buy" else "stock"
+            if placed_qty < wanted:  # 注文の前に削った（予算・国庫・倉庫の残り）
+                why = cut
             elif result is None or (result.supply if side == "buy" else result.demand) <= 0:
                 why = "no_sellers" if side == "buy" else "no_buyers"
             elif (
@@ -2838,9 +2842,9 @@ def check_warehouse_trade(island: IslandState, payload: dict[str, Any], defs: De
         raise OrderFailed("reason_not_in_warehouse", good=payload["good"])
     if payload["side"] == "buy" and payload.get("limit", 0) <= 0:
         raise OrderFailed("reason_limit_required")
-    # 買い入れの予算が 0 なら1つも買えない（建国のときは 0。同じターンの予算の命令が先なら、実行の
-    # ときには通る）
-    if payload["side"] == "buy" and island.policy.budget.get(WAREHOUSE_BUDGET, 0) <= 0:
+    # 1 ターンに使えるのは年の予算の 12 分の 1 なので、それが 0 なら1つも買えない（建国のときは 0。
+    # 同じターンの予算の命令が先なら、実行のときには通る）
+    if payload["side"] == "buy" and island.policy.budget.get(WAREHOUSE_BUDGET, 0) // YEAR <= 0:
         raise OrderFailed("reason_warehouse_no_budget")
 
 

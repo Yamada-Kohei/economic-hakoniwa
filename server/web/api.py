@@ -743,7 +743,7 @@ def check(request, island_id: int):
     text = "" if result.ok else display.message(result.reason or "", **result.args)
     data = {"ok": result.ok, "text": text, "details": list(result.details)}
     if result.ok:  # どう読んだか（率の % や量の単位）を見られるように、命令の列と同じ説明を添える
-        data["summary"] = display.describe_order(body["kind"], body.get("payload") or {})
+        data["summary"] = display.describe_order(body["kind"], payload or {})  # 計算の単位で渡す
     if result.ok and body.get("kind") == "build":
         # 建てても人手が集まるかを見られるように、通勤圏の労働者の数を添える
         payload = body["payload"]

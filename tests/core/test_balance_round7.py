@@ -453,8 +453,9 @@ def test_only_grain_farm_does_not_switch_crops(game, base):
     for f in others:
         island.facilities.remove(f)
     assert _sole_food(island, game.defs, farm) == {"grain"}
-    if others:
-        island.facilities.append(others[0])
+    built = [f for f in others if f.built and f.x >= 0]  # 工事中の農場は数えない
+    if built:
+        island.facilities.append(built[0])
         assert _sole_food(island, game.defs, farm) == set()
 
 

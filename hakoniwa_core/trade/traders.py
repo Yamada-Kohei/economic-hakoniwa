@@ -152,9 +152,11 @@ def prospects(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, 
     prices = island.economy.prices
     planned = is_planned(island)
     bloc_band = to_basis(config.get("trade.bloc_band"))
+    listed = _listed_exports(island, config)
     out: dict[str, Prospect] = {}
     for good in tradable_goods(defs):
         p = Prospect(good)
+        export_rank: tuple[bool, int] | None = None  # 輸出の圏の選び方（荷を出した圏か, 指値）
         unit = unit_weight(defs, good)
         fee_unit = fee * unit // QUANTITY_SCALE
         home = prices.get(good, 0)
@@ -169,7 +171,12 @@ def prospects(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, 
             e = fxrates.rate(island, currency)
             value = price * e // BASIS
             limit = value - part(value, cut) - fee_unit + subsidy
-            if limit > p.export_limit:
+            # 輸出の荷が売れ残っている間は、その荷を売りに出した圏で売り続ける（買い手が荷のある圏
+            # へ来る。輸入は売りのあった圏を選ぶので、輸出も前のターンの相手の圏へ移ると、両方が
+            # 毎ターン入れ違い続ける。試し遊び1回目の見直し）。荷がなければ一番高く売れる圏
+            rank = (listed.get(good) == int(key), limit)
+            if limit > 0 and (export_rank is None or rank > export_rank):
+                export_rank = rank
                 p.export_bloc, p.export_currency, p.export_limit = int(key), currency, limit
                 p.export_rate = -(
                     -max(0, home + fee_unit - subsidy)
@@ -205,6 +212,17 @@ def prospects(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, 
                 p.import_price, p.import_limit = price, bid
                 p.import_rate = own * BASIS // max(1, policy.with_tariff(price, rate))
         out[good] = p
+    return out
+
+
+def _listed_exports(island: IslandState, config: GameConfig) -> dict[str, int]:
+    """財 → 島の商社が輸出の荷を売りに出している圏（売れ残った荷がある間）。"""
+    out: dict[str, int] = {}
+    for f in traders_of(island, config):
+        for good, item in goods_of(f).items():
+            held = item.get("held", [0, 0])[0]
+            if item.get("dir") == EXPORT and held > 0 and item.get("bx") is not None:
+                out.setdefault(good, item["bx"])
     return out
 
 

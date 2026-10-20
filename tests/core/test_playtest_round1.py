@@ -25,7 +25,7 @@ from hakoniwa_core.modules.market import Market
 from hakoniwa_core.modules.population import FED, HUNGER, Population
 from hakoniwa_core.registry import OrderFailed
 from hakoniwa_core.state import ACCOUNTING_TREASURY, OWNER_PRIVATE, OWNER_STATE, Facility
-from hakoniwa_core.trade import island_state
+from hakoniwa_core.trade import island_state, traders_of
 from hakoniwa_core.trade import traders as trade_traders
 from tests.core.test_finance import context, island_of, order
 from tests.core.test_finance import game as game  # noqa: F401  （試験の部品を使い回す）
@@ -59,6 +59,26 @@ def test_imports_go_to_the_bloc_that_had_sellers(game, warmed):
     assert trade_traders.prospects(island, game.defs, game.config)["steel"].import_bloc == 2
     blocs["2"]["supply"] = []
     assert trade_traders.prospects(island, game.defs, game.config)["steel"].import_bloc == 1
+
+
+def test_exports_stay_in_the_bloc_where_their_cargo_is_listed(game, warmed):
+    """売れ残った輸出の荷は、売りに出した圏で売り続ける（ほかの圏が高く見えても移らない）。輸入が
+    売りのあった圏へ来るので、両方が前のターンの相手の圏へ移って入れ違い続けることがない。荷が
+    なければ一番高く売れる圏。"""
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    price = island.economy.prices["steel"]
+    island_state(island)["blocs"] = {
+        "1": _bloc(island, price * 2, on_sale=True),
+        "2": _bloc(island, price * 3, on_sale=False),
+    }
+    assert trade_traders.prospects(island, game.defs, game.config)["steel"].export_bloc == 2
+    f = traders_of(island, game.config)[0]
+    item = trade_traders.entry(f, "steel")
+    item["dir"], item["bx"], item["held"] = trade_traders.EXPORT, 1, [5_000, 5_000 * price]
+    assert trade_traders.prospects(island, game.defs, game.config)["steel"].export_bloc == 1
+    item["held"] = [0, 0]  # 売り切ったら選び直す
+    assert trade_traders.prospects(island, game.defs, game.config)["steel"].export_bloc == 2
 
 
 def test_privatize_that_owners_cannot_pay_keeps_the_treasury_accounting(game, warmed):
@@ -156,8 +176,9 @@ def test_warehouse_buy_with_no_budget_is_refused_at_the_check(game):
     home(game, island, 5, 5, 3000)
     with_economy(game, island)
     buy = {"good": "coal", "side": "buy", "quantity": 5, "limit": 10**6}
-    island.policy.budget["warehouse"] = 0
-    result = check_order(game.defs, game.registry, island, "warehouse_trade", buy)
-    assert result.reason == "reason_warehouse_no_budget"
+    for budget in (0, 11):  # 1 ターンに使えるのは年の予算の 12 分の 1
+        island.policy.budget["warehouse"] = budget
+        result = check_order(game.defs, game.registry, island, "warehouse_trade", buy)
+        assert result.reason == "reason_warehouse_no_budget"
     island.policy.budget["warehouse"] = 10_000
     assert check_order(game.defs, game.registry, island, "warehouse_trade", buy).ok

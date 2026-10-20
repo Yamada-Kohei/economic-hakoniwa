@@ -30,6 +30,24 @@ def test_check_says_how_the_order_was_read(client, world):
     assert "0.15%" in data["summary"] and "12 ターン" in data["summary"]
 
 
+def test_check_summary_shows_amounts_in_the_units_sent(client, world):
+    """確かめの説明は、送った見せる単位のまま（命令の列と同じ文）。量を二度直さない。"""
+    from server.world.models import Stock
+
+    island = _own_island(client)
+    Stock.objects.create(island=island, facility=None, good="grain", made_turn=0, quantity=500_000)
+    url = f"/api/islands/{island.id}/orders"
+    payload = {"good": "grain", "side": "sell", "quantity": 5, "limit": 1000}
+    check = client.post(
+        f"{url}/check", {"kind": "warehouse_trade", "payload": payload}, "application/json"
+    ).json()
+    body = {"orders": [{"kind": "warehouse_trade", "payload": payload}]}
+    listed = client.put(url, body, content_type="application/json").json()["orders"][0]["text"]
+    assert check["ok"] is True, check
+    assert check["summary"] == listed, listed
+    assert "5 " in listed and "1,000" in listed, listed
+
+
 def test_budget_items_are_listed_and_unknown_items_fail(client, world):
     """予算の項目は game.yaml の fiscal.budget_items と同じ名前だけ。違う名前は確かめで落ちる。"""
     island = _own_island(client)

@@ -1367,7 +1367,7 @@ def privatize(island: IslandState, payload: dict[str, Any], ctx: StageContext) -
     capital = Payer(ledger.GOV, STATE_FACILITIES)
     # 払えないときは、会計を変えて出資する前に断る（断った後に独立採算のまま残さない）
     extra = operating_capital(island, ctx.defs, ctx.config, f, capital) if treasury else 0
-    price = banks.net_assets(island, f, entity) + extra
+    price = banks.net_assets(island, f, entity, extra)
     if funds.available(island, owners) < price:
         raise OrderFailed("reason_owners_short", amount=price)
     if treasury:
@@ -1498,11 +1498,14 @@ def privatize_firm(island: IslandState, payload: dict[str, Any], ctx: StageConte
     capital = Payer(ledger.GOV, STATE_FACILITIES)
     treasury = [f for f in sold if f.accounting == ACCOUNTING_TREASURY]
     # 払えないときは、会計を変えて出資する前に断る（出資する額は手元の残りに合わせて順に見積もる）
-    extra, left = 0, funds.available(island, capital)
+    extra: dict[int, int] = {}
+    left = funds.available(island, capital)
     for f in treasury:
-        amount = min(left, operating_capital(island, ctx.defs, ctx.config, f, capital))
-        extra, left = extra + amount, left - amount
-    price = sum(banks.net_assets(island, f, facility_entity(f.id)) for f in sold) + extra
+        extra[f.id] = min(left, operating_capital(island, ctx.defs, ctx.config, f, capital))
+        left -= extra[f.id]
+    price = sum(
+        banks.net_assets(island, f, facility_entity(f.id), extra.get(f.id, 0)) for f in sold
+    )
     if funds.available(island, owners) < price:
         raise OrderFailed("reason_owners_short", amount=price)
     for f in treasury:
