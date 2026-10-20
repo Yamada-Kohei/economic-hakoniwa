@@ -114,6 +114,7 @@ class Prim:
     bounds: tuple[float, float, float, float]
     z0: float
     faces: list[Face]
+    tier: int = 1  # 描く段: 0 は地面と水面、1 はふつうの形、2 はクレーンの腕のように上を渡るもの
 
 
 def _before(a: Prim, b: Prim) -> bool:
@@ -141,6 +142,23 @@ def _depth(p: Prim) -> tuple[float, float]:
 
 
 def order(prims: list[Prim]) -> list[Prim]:
+    """段（tier）ごとに、低い段から並べる。"""
+    return [
+        p
+        for t in sorted({p.tier for p in prims})
+        for p in _order([q for q in prims if q.tier == t])
+    ]
+
+
+def tiered(tier: int, *prims: Prim) -> list[Prim]:
+    """形を描く段に置く。足元が長い形（岸壁の床や、上を渡るクレーンの腕）が、ほかの形と
+    奥と手前の順を循環させて崩さないように、先か後にまとめて描く。"""
+    for p in prims:
+        p.tier = tier
+    return list(prims)
+
+
+def _order(prims: list[Prim]) -> list[Prim]:
     """奥から手前・下から上の順に並べる。決まらないものは足元の中心が奥のものから。"""
     rest = list(prims)
     out: list[Prim] = []
@@ -1603,9 +1621,10 @@ def basin(s: Side, w: float, a: float = 0.08, b: float = 0.92) -> list[Prim]:
         pts = [s.pt(u, v) for u, v in ((u0, 0), (1, 0), (1, 1), (u0, 1))]
         us, vs = [u for u, _ in pts], [v for _, v in pts]
         surface = [iso(u, v, 0.2) for u, v in pts]
-        return [
-            Prim((min(us), min(vs), max(us), max(vs)), 0.1, [Face("top", SEA_TOP, surface, k=1.0)])
-        ]
+        return tiered(
+            0,
+            Prim((min(us), min(vs), max(us), max(vs)), 0.1, [Face("top", SEA_TOP, surface, k=1.0)]),
+        )
 
     def edge_color(
         p: tuple[float, float], q: tuple[float, float], n: tuple[float, float]
@@ -1664,7 +1683,7 @@ def basin(s: Side, w: float, a: float = 0.08, b: float = 0.92) -> list[Prim]:
     ]
     for c in corners:
         c.faces[-1].k = 1.0
-    return [water, *waves, wall, *corners]
+    return [*tiered(0, water, *waves, wall), *corners]
 
 
 def fishing_port(s: Side) -> list[Prim]:
@@ -1673,7 +1692,7 @@ def fishing_port(s: Side) -> list[Prim]:
     wz = s.water_z
     return [
         *basin(s, 0.36),
-        s.box(0.06, 0.06, 0.64, 0.94, 0, 0.6, CONCRETE, PAVEMENT),
+        *tiered(0, s.box(0.06, 0.06, 0.64, 0.94, 0, 0.6, CONCRETE, PAVEMENT)),
         *s.house(0.1, 0.12, 0.4, 0.5, 10, 7, "v", WALL, "#4f8fb8"),
         s.box(0.12, 0.58, 0.4, 0.86, 0.6, 7, WALL, "#4fa3c7"),
         *[
@@ -1689,7 +1708,7 @@ def fishing_port(s: Side) -> list[Prim]:
         s.ship(0.68, 0.78, 0.9, 0.88, wz, 2.2, 0.06, "#c8473a", "#e8e2d6"),
         s.box(0.72, 0.8, 0.77, 0.86, wz + 2.2, 2.6, WHITE),
         s.box(0.58, 0.16, 0.62, 0.2, 0.6, 24, YELLOW),
-        s.box(0.58, 0.16, 0.82, 0.2, 24.6, 2, YELLOW),
+        *tiered(2, s.box(0.58, 0.16, 0.82, 0.2, 24.6, 2, YELLOW)),
     ]
 
 
@@ -1699,7 +1718,7 @@ def port(s: Side) -> list[Prim]:
     wz = s.water_z
     return [
         *basin(s, 0.26),
-        s.box(0.06, 0.06, 0.74, 0.94, 0, 4, CONCRETE, PAVEMENT),
+        *tiered(0, s.box(0.06, 0.06, 0.74, 0.94, 0, 4, CONCRETE, PAVEMENT)),
         s.box(0.1, 0.1, 0.36, 0.38, 4, 9, WALL),
         s.gable(0.1, 0.1, 0.36, 0.38, 13, 5, "u", ROOF_STEEL, WALL),
         *[
@@ -1736,11 +1755,14 @@ def port(s: Side) -> list[Prim]:
         ],
         # クレーン: 4 本の脚の上に、船の上まで張り出す腕。腕の根元に機械室、柱から腕の両端へ控え
         *[s.box(u, v, u + 0.04, v + 0.04, 4, 24, RED) for u in (0.48, 0.66) for v in (0.34, 0.5)],
-        s.box(0.28, 0.36, 1.0, 0.52, 28, 3, RED),
-        s.box(0.3, 0.38, 0.44, 0.5, 31, 6, WHITE),
-        s.box(0.57, 0.42, 0.61, 0.46, 31, 11, RED),
-        s.strut((0.59, 0.44, 42), (0.98, 0.44, 31)),
-        s.strut((0.59, 0.44, 42), (0.44, 0.44, 37)),
+        *tiered(
+            2,
+            s.box(0.28, 0.36, 1.0, 0.52, 28, 3, RED),
+            s.box(0.3, 0.38, 0.44, 0.5, 31, 6, WHITE),
+            s.box(0.57, 0.42, 0.61, 0.46, 31, 11, RED),
+            s.strut((0.59, 0.44, 42), (0.98, 0.44, 31)),
+            s.strut((0.59, 0.44, 42), (0.44, 0.44, 37)),
+        ),
         *[s.cylinder(0.71, v, 0.02, 4, 2.5, c=IRON) for v in (0.14, 0.42, 0.66, 0.88)],
     ]
 
@@ -1753,11 +1775,11 @@ def shipyard(s: Side) -> list[Prim]:
         s.box(0.06, 0.06, 0.82, 0.36, -6, 9, CONCRETE, PAVEMENT),
         s.box(0.06, 0.64, 0.82, 0.94, 0, 3, CONCRETE, PAVEMENT),
         s.box(0.06, 0.36, 0.14, 0.64, -6, 9, CONCRETE, PAVEMENT),
-        s.box(0.14, 0.36, 0.8, 0.64, -6, 0.3, "#8d8a84"),
+        s.box(0.14, 0.36, 0.79, 0.64, -6, 0.3, "#8d8a84"),
         s.box(
-            0.8,
+            0.79,
             0.36,
-            0.83,
+            0.82,
             0.64,
             SEA_Z if s.front else -6,
             (-SEA_Z if s.front else 6) + 2,
@@ -1772,8 +1794,11 @@ def shipyard(s: Side) -> list[Prim]:
         *[s.box(0.5, v, 0.56, v + 0.06, 3, 31, YELLOW) for v in (0.12, 0.82)],
         s.strut((0.53, 0.5, 34), (0.53, 0.5, 25), 0.6, IRON),
         s.box(0.47, 0.44, 0.59, 0.56, 19, 6, METAL, "#c3c8cc"),
-        s.box(0.48, 0.08, 0.58, 0.92, 34, 6, YELLOW),
-        s.box(0.47, 0.44, 0.59, 0.56, 40, 4, WHITE),
+        *tiered(
+            2,
+            s.box(0.48, 0.08, 0.58, 0.92, 34, 6, YELLOW),
+            s.box(0.47, 0.44, 0.59, 0.56, 40, 4, WHITE),
+        ),
     ]
 
 
