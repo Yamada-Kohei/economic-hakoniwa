@@ -2,7 +2,7 @@
 
 条約は条項の束で、両国が署名すると効きます（treaties.py）。条項の種類ごとに、中身の確かめ・効き始め・
 毎ターンの見張り・終わりの処理を持ちます。経済の取り決め（貿易圏・契約・固定相場・融通・援助・移民）の
-条項は、同じ形でここに足します（回 4-1 の②）。
+条項は、同じ形で economic.py に置きます（回 4-1 の②）。
 
 4-1 の条項:
 
@@ -15,6 +15,19 @@
 - non_aggression: 不可侵。破棄の予告から notice_turns ターンがたつ前に宣戦すると違反（MI-06）
 - alliance: 同盟。互いの見える範囲を分け合い、相手の軍港と港で補給できる（4-2 以降の段が
   読む）。同盟国が攻められても自動では参戦しない。同盟国に宣戦すると違反
+
+4-1 の②の条項（経済の取り決め。economic.py）:
+
+- bloc: 貿易圏。圏を作って相手を入れる（代表は提案した国）か、提案した国が代表の圏に相手を入れる。
+  どちらかが予告なしに圏を抜けると違反
+- contract: 二国間契約。効くと契約（trade の契約）が始まる。決めた期間の前に解約する・物かお金が
+  足りず届けられないと違反。期間が終わると済む
+- peg: 固定相場。pegger の中央銀行が相手の通貨に固定する。やめる・外れると違反
+- swap: 中央銀行の融通。相手の中央銀行が、手元の外貨の余りを貸せる相手に数える（違反はない）
+- aid: お金の援助の約束。payer が一定の間隔で amount を送る（お金の援助の命令で送る）。届かない
+  と違反。回数を終えると済む
+- free_movement: 人の行き来の自由。両国が移民の受け入れを open に保つ。変えると違反
+- refugees: 難民の受け入れ。host が難民を受け入れる政策（open か refugees）を保つ。変えると違反
 """
 
 from __future__ import annotations
@@ -30,13 +43,26 @@ PEACE = "peace"
 NON_AGGRESSION = "non_aggression"
 ALLIANCE = "alliance"
 
-TYPES = (CEASEFIRE, PEACE, NON_AGGRESSION, ALLIANCE)
+BLOC = "bloc"
+CONTRACT = "contract"
+PEG = "peg"
+SWAP = "swap"
+AID = "aid"
+FREE_MOVEMENT = "free_movement"
+REFUGEES = "refugees"
+
+MILITARY = (CEASEFIRE, PEACE, NON_AGGRESSION, ALLIANCE)
+ECONOMIC = (BLOC, CONTRACT, PEG, SWAP, AID, FREE_MOVEMENT, REFUGEES)
+TYPES = MILITARY + ECONOMIC
 # 戦争のあいだに結べる条項（それ以外は、戦争の相手と結ぶのは講和の条約の一部としてだけ）
 WARTIME = (CEASEFIRE, PEACE)
 # 破棄できる条項（予告つき）。講和は戦争を終えた事実で、賠償が残る間は破棄できない
-TERMINABLE = (CEASEFIRE, NON_AGGRESSION, ALLIANCE)
-# 同じ組で、効いている・返事待ちのものが 1 つだけの条項
-SINGLE = (CEASEFIRE, PEACE, NON_AGGRESSION, ALLIANCE)
+TERMINABLE = (CEASEFIRE, NON_AGGRESSION, ALLIANCE, BLOC, PEG, SWAP, FREE_MOVEMENT, REFUGEES)
+# 済む条項（賠償を払い終える・契約の期間が終わる・援助の回数を終える）。済むまで予告つきの破棄は
+# できず、条約の条項がすべて済んだものなら、条約が終わる
+FINITE = (PEACE, CONTRACT, AID)
+# 同じ組で、効いている・返事待ちのものが 1 つだけの条項（契約と援助は何本でも結べる）
+SINGLE = (CEASEFIRE, PEACE, NON_AGGRESSION, ALLIANCE, BLOC, PEG, SWAP, FREE_MOVEMENT, REFUGEES)
 # 効いている間、同じ組の戦争を止める（宣戦しても戦争にならない）わけではない。違反になる条項
 BREAKABLE_BY_WAR = (NON_AGGRESSION, ALLIANCE)
 
@@ -62,6 +88,10 @@ def clean(
         if not cfg["min_notice_turns"] <= n <= cfg["max_notice_turns"]:
             return None, "reason_clause_notice"
         out["notice_turns"] = n
+    if kind in ECONOMIC:
+        from hakoniwa_core.diplomacy import economic
+
+        return economic.clean(out, clause, a, b, config)
     if kind == PEACE:
         withdraw = int(clause.get("withdraw_turns", cfg["withdraw_turns"]))
         if not 0 <= withdraw <= cfg["max_withdraw_turns"]:
@@ -98,7 +128,8 @@ def check_set(
 ) -> str | None:
     """条項の組み合わせと、今の戦争の状態との突き合わせ。断るわけがあれば messages の名前。"""
     kinds = [c["type"] for c in clauses]
-    if len(set(kinds)) != len(kinds):
+    single = [k for k in kinds if k in SINGLE]
+    if len(set(single)) != len(single):
         return "reason_clause_duplicate"
     if CEASEFIRE in kinds and PEACE in kinds:
         return "reason_clause_ceasefire_peace"
@@ -114,4 +145,11 @@ def check_set(
                 return "reason_clause_wartime"
         elif PEACE not in kinds:
             return "reason_clause_wartime"
+    from hakoniwa_core.diplomacy import economic
+
+    for c in clauses:
+        if c["type"] in ECONOMIC:
+            reason = economic.check(world, c, a, b)
+            if reason is not None:
+                return reason
     return None

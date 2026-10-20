@@ -3,7 +3,8 @@
 為替の受け身の注文（fx.dealer_orders）を出すのは、その島の中央銀行だけです。中央銀行は、受け身の
 売りに要る外貨 Z が手元に足りないとき、Z を借ります。
 
-- 貸し手は、まず同じ貿易圏で Z を決済通貨にしている加盟国の中央銀行のうち、手元に置く分（自分の
+- 貸し手は、まず同じ貿易圏で Z を決済通貨にしている加盟国と、通貨融通の条約（外交の条項 swap。
+  フェーズ4-1 の②）を結んだ国の中央銀行のうち、手元に置く分（自分の
   島の主体が Z で払い・受け取った額の平均の fx.swap_keep_turns ターン分）より多く Z を持ち、Z を
   借りていない国で、余りに比例して貸します。足りなければ、Z を発行した国の中央銀行が Z を新しく
   作って貸します（最後の手）。黒字の国に入った決済通貨が、赤字の国の輸入に回ります。
@@ -29,6 +30,7 @@ from typing import Any
 
 from hakoniwa_core import ledger
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.diplomacy import treaties as diplomacy_treaties
 from hakoniwa_core.economy import debt
 from hakoniwa_core.state import IslandState, WorldState
 from hakoniwa_core.trade import balance, blocs, island_state
@@ -129,11 +131,14 @@ def lenders(
     world: WorldState, config: GameConfig, borrower: int, currency: int
 ) -> list[tuple[int, int]]:
     """通貨 currency を貸せる加盟国の中央銀行と、貸せる額（手元に置く分の余り）。同じ圏で currency
-    を決済通貨にしている国だけ（発行した国と借り手、currency を借りている国を除く。番号の順）。"""
+    を決済通貨にしている国と、通貨融通の条約を結んだ国だけ（発行した国と借り手、currency を借りて
+    いる国を除く。番号の順）。"""
     members: set[int] = set()
     for b in blocs.member_of(world, borrower):
         if b["currency"] == currency:
             members |= set(b["members"])
+    # 通貨融通の条約（フェーズ4-1 の②）を結んだ相手の中央銀行も、手元の余りを貸せる
+    members |= diplomacy_treaties.partners_with(world, borrower, "swap")
     turns = config.get("fx.swap_keep_turns")
     out = []
     for i in sorted(members - {borrower, currency}):

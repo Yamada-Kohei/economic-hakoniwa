@@ -4,6 +4,7 @@
   <li>
     <strong>{{ c.name }}</strong>
     {% if c.notice_turns %}<span class="hint">{% blocktranslate with n=c.notice_turns %}（破棄の予告から {{ n }} ターン）{% endblocktranslate %}</span>{% endif %}
+    {% if c.detail %}<p class="hint">{{ c.detail }}</p>{% endif %}
     {% if c.type == "peace" %}
     <p class="hint">{% blocktranslate with n=c.withdraw_turns %}引き揚げの期限: {{ n }} ターン{% endblocktranslate %} ・ {% if c.prisoners %}{% translate "捕虜を返す" %}{% else %}{% translate "捕虜を返さない" %}{% endif %}</p>
     {% endif %}

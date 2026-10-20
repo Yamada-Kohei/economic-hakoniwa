@@ -18,8 +18,30 @@ const INT_FIELDS = new Set([
   "currency",
   "amount",
   "due_turns",
+  "bloc_id",
+  "contract_seller",
+  "contract_price",
+  "contract_currency",
+  "contract_turns",
+  "peg_pegger",
+  "aid_payer",
+  "aid_amount",
+  "aid_currency",
+  "aid_period",
+  "aid_count",
+  "refugee_host",
 ]);
-const TERMINABLE = new Set(["ceasefire", "non_aggression", "alliance"]);
+const FLOAT_FIELDS = new Set(["contract_quantity", "peg_rate"]);
+const TERMINABLE = new Set([
+  "ceasefire",
+  "non_aggression",
+  "alliance",
+  "bloc",
+  "peg",
+  "swap",
+  "free_movement",
+  "refugees",
+]);
 
 /** 入力欄の値から命令の中身を作る。空の欄は入れない。 */
 export function payloadOf(form) {
@@ -30,6 +52,7 @@ export function payloadOf(form) {
     if (key === "clause") clauseTypes.push(String(value));
     else if (value === "") continue;
     else if (INT_FIELDS.has(key)) rest[key] = Math.round(Number(value));
+    else if (FLOAT_FIELDS.has(key)) rest[key] = Number(value);
     else rest[key] = String(value).trim();
   }
   if (form.dataset.order !== "propose_treaty") return rest;
@@ -49,6 +72,36 @@ export function payloadOf(form) {
         if (rest.currency) clause.reparations.currency = rest.currency;
       }
     }
+    if (type === "bloc") {
+      if (rest.bloc_id) clause.bloc = rest.bloc_id;
+      if (rest.bloc_name) clause.name = rest.bloc_name;
+    }
+    if (type === "contract") {
+      const fields = {
+        seller: rest.contract_seller,
+        good: rest.contract_good,
+        quantity: rest.contract_quantity,
+        price: rest.contract_price,
+        currency: rest.contract_currency,
+        turns: rest.contract_turns,
+      };
+      for (const [key, value] of Object.entries(fields)) if (value !== undefined) clause[key] = value;
+    }
+    if (type === "peg") {
+      if (rest.peg_pegger) clause.pegger = rest.peg_pegger;
+      if (rest.peg_rate) clause.rate = rest.peg_rate;
+    }
+    if (type === "aid") {
+      const fields = {
+        payer: rest.aid_payer,
+        amount: rest.aid_amount,
+        currency: rest.aid_currency,
+        period: rest.aid_period,
+        count: rest.aid_count,
+      };
+      for (const [key, value] of Object.entries(fields)) if (value !== undefined) clause[key] = value;
+    }
+    if (type === "refugees" && rest.refugee_host) clause.host = rest.refugee_host;
     return clause;
   });
   return payload;

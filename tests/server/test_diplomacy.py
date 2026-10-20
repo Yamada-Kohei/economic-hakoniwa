@@ -144,3 +144,24 @@ def test_order_descriptions(world):
     )
     assert "仲良し" in text and "同盟" in text and b.name in text
     assert "3 番" in display.describe_order("sign_treaty", {"treaty": 3})
+
+
+def test_economic_clauses_show_their_terms_on_screens_summary_and_orders(world):
+    (ca, a), (cb, b), _ = _players(world)
+    clauses = [
+        {"type": "swap"},
+        {"type": "aid", "payer": a.id, "amount": 500, "currency": a.id, "period": 2, "count": 3},
+        {"type": "peg", "pegger": b.id, "rate": 1.5},
+    ]
+    _orders(ca, a, ("propose_treaty", {"partner": b.id, "clauses": clauses}))
+    run_turn(force=True)
+    mine = cb.get(f"/api/islands/{b.id}/diplomacy").json()
+    [offer] = mine["incoming"]
+    by_type = {c["type"]: c for c in offer["clauses"]}
+    assert set(by_type) == {"swap", "aid", "peg"}
+    assert by_type["aid"]["terms"]["payer"]["id"] == a.id and by_type["aid"]["terms"]["count"] == 3
+    assert "3 回" in by_type["aid"]["detail"] and "1.5" in by_type["peg"]["detail"]
+    assert by_type["swap"]["terms"] == {}
+    assert "通貨の融通" in display.clause_summary({"type": "swap"})
+    html = cb.get(f"/islands/{b.id}/diplomacy/").content.decode()
+    assert 'name="aid_amount"' in html and 'name="contract_good"' in html

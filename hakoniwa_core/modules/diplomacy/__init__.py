@@ -122,6 +122,11 @@ def check_declare_war(island: IslandState, payload: dict[str, Any], defs: Defs) 
 def check_propose(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
     if payload.get("partner") == island.id:
         raise OrderFailed("reason_treaty_partner")
+    for clause in payload.get("clauses", ()):
+        if clause.get("type") == "contract":
+            good = clause.get("good")
+            if good not in defs.goods or "freight_weight" not in defs.goods[good]:
+                raise OrderFailed("reason_not_tradable")
 
 
 def _forward(kind: str):

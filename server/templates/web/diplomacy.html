@@ -102,8 +102,38 @@
         <p class="hint">{% blocktranslate with max=d.rules.max_reparation_turns %}期日は 1〜{{ max }} ターン。受け取るのは、払う国の相手です。払う国が「貿易」の援助の命令で送ります。自動では支払われず、期日までに届かない分は違反の記録になります。{% endblocktranslate %}</p>
       </fieldset>
     </fieldset>
+    <fieldset>
+      <legend>{% translate "貿易圏（書かなければ使いません）" %}</legend>
+      <label>{% translate "つくる圏の名前" %} <input name="bloc_name" maxlength="20"></label>
+      <label>{% translate "自分が代表の圏の番号（相手を入れる）" %} <input name="bloc_id" type="number" min="1"></label>
+    </fieldset>
+    <fieldset>
+      <legend>{% translate "契約（財・量・値段・期間）" %}</legend>
+      <label>{% translate "売る国" %} <select name="contract_seller"><option value="">{% translate "（なし）" %}</option>{% for p in d.choices.partners %}<option value="{{ p.id }}">{{ p.name }}（{{ p.id }}）</option>{% endfor %}<option value="{{ island.id }}">{{ island.name }}（{% translate "自国" %}）</option></select></label>
+      <label>{% translate "財" %} <input name="contract_good"></label>
+      <label>{% translate "1ターンの量" %} <input name="contract_quantity" type="number" min="0" step="any"></label>
+      <label>{% translate "1単位の値段" %} <input name="contract_price" type="number" min="0"></label>
+      <label>{% translate "通貨（国の番号。省くと売る国）" %} <input name="contract_currency" type="number" min="1"></label>
+      <label>{% translate "期間（ターン）" %} <input name="contract_turns" type="number" min="1" max="{{ d.rules.max_contract_turns }}"></label>
+    </fieldset>
+    <fieldset>
+      <legend>{% translate "固定相場" %}</legend>
+      <label>{% translate "固定する国" %} <select name="peg_pegger"><option value="">{% translate "（なし）" %}</option>{% for p in d.choices.partners %}<option value="{{ p.id }}">{{ p.name }}（{{ p.id }}）</option>{% endfor %}<option value="{{ island.id }}">{{ island.name }}（{% translate "自国" %}）</option></select></label>
+      <label>{% translate "相手の通貨 1 あたりのレート" %} <input name="peg_rate" type="number" min="0" step="any"></label>
+    </fieldset>
+    <fieldset>
+      <legend>{% translate "援助の約束" %}</legend>
+      <label>{% translate "送る国" %} <select name="aid_payer"><option value="">{% translate "（なし）" %}</option>{% for p in d.choices.partners %}<option value="{{ p.id }}">{{ p.name }}（{{ p.id }}）</option>{% endfor %}<option value="{{ island.id }}">{{ island.name }}（{% translate "自国" %}）</option></select></label>
+      <label>{% translate "1回の額" %} <input name="aid_amount" type="number" min="1"></label>
+      <label>{% translate "通貨（国の番号。省くと送る国）" %} <input name="aid_currency" type="number" min="1"></label>
+      <label>{% translate "送る間隔（ターン）" %} <input name="aid_period" type="number" min="1" max="{{ d.rules.max_aid_period_turns }}"></label>
+      <label>{% translate "送る回数" %} <input name="aid_count" type="number" min="1" max="{{ d.rules.max_aid_count }}"></label>
+    </fieldset>
+    <label>{% translate "難民を受け入れる国（難民の受け入れ）" %} <select name="refugee_host"><option value="">{% translate "（なし）" %}</option>{% for p in d.choices.partners %}<option value="{{ p.id }}">{{ p.name }}（{{ p.id }}）</option>{% endfor %}<option value="{{ island.id }}">{{ island.name }}（{% translate "自国" %}）</option></select></label>
     <button type="submit" class="primary">{% translate "提案を命令に追加" %}</button><p class="order-notice" role="status"></p>
   </form>
+  <p class="hint">{% translate "経済の条項は、効くと貿易圏・契約・固定相場・移民の受け入れがその約束どおりになります。守らないと違反として記録します（通貨の融通と人の行き来の自由は、条項を選ぶだけです）。" %}</p>
+  <p class="hint">{% translate "戦争のあいだに結べるのは停戦と講和だけです。賠償は、払う国が援助の命令で送ります（ゲームは自動で払わせません）。期日までに届かないと違反として記録します。" %}</p>
 </section>
 {% endif %}
 <section class="panel" id="violations">
