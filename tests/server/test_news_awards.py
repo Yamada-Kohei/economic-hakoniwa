@@ -47,7 +47,18 @@ def test_prosperity_awards_use_the_highest_level_reached(world, islands):
     assert _names(world, c) == ["究極繁栄賞"]
 
 
-def test_peace_award_counts_quiet_turns_since_the_last_unrest_or_founding(world, islands):
+def test_peace_award_goes_to_the_country_that_killed_the_most_in_wars(world, islands):
+    a, b, _ = islands
+    for island, kills in ((a, 9_999), (b, 10_000)):
+        island.ext = {**island.ext, "history": {"kills": kills}}
+        island.save(update_fields=["ext"])
+    assert "平和賞" not in _names(world, a)
+    assert "平和賞" in _names(world, b)
+    detail = next(x["detail"] for x in awards.holders(world)[b.id] if x["id"] == "peace")
+    assert "10,000" in detail
+
+
+def test_calm_award_counts_quiet_turns_since_the_last_unrest_or_founding(world, islands):
     a, b, _ = islands
     for island in islands:
         island.ext = {**island.ext, "founded_turn": 100}
@@ -55,14 +66,14 @@ def test_peace_award_counts_quiet_turns_since_the_last_unrest_or_founding(world,
     TurnLog.objects.create(island=a, turn=250, kind="disaster_flood", args={})
     TurnLog.objects.create(island=b, turn=150, kind="war_declared_on", args={})
     # ターン 300: a は 50 ターン、b は 150 ターン（120 以上）静か。c は建国から 200 ターン
-    assert "平和賞" not in _names(world, a)
-    assert "平和賞" in _names(world, b)
-    assert "平和賞" in _names(world, islands[2])
+    assert "平穏賞" not in _names(world, a)
+    assert "平穏賞" in _names(world, b)
+    assert "平穏賞" in _names(world, islands[2])
     TurnLog.objects.create(island=b, turn=299, kind="politics_riot", args={})
-    assert "平和賞" not in _names(world, b)
+    assert "平穏賞" not in _names(world, b)
 
 
-def test_peace_award_waits_while_a_war_is_open_and_restarts_when_it_ends(world, islands):
+def test_calm_award_waits_while_a_war_is_open_and_restarts_when_it_ends(world, islands):
     a, b, _ = islands
     for island in islands:
         island.ext = {**island.ext, "founded_turn": 100}
@@ -70,11 +81,11 @@ def test_peace_award_waits_while_a_war_is_open_and_restarts_when_it_ends(world, 
     war = {"attacker": a.id, "defender": b.id, "state": "war", "start": 150}
     world.ext = {**(world.ext or {}), "diplomacy": {"wars": [war]}}
     world.save(update_fields=["ext"])
-    assert "平和賞" not in _names(world, a) and "平和賞" not in _names(world, b)
-    assert "平和賞" in _names(world, islands[2])
+    assert "平穏賞" not in _names(world, a) and "平穏賞" not in _names(world, b)
+    assert "平穏賞" in _names(world, islands[2])
     world.ext["diplomacy"]["wars"][0]["state"] = "ended"
     TurnLog.objects.create(island=a, turn=290, kind="war_ended", args={})
-    assert "平和賞" not in _names(world, a)
+    assert "平穏賞" not in _names(world, a)
 
 
 def test_calamity_award_counts_disasters_and_failures(world, islands):
