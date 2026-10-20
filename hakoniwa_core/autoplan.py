@@ -13,6 +13,9 @@
 4. 投入財の作る量が使う量に届かなければ、それを作る施設。島で作っている投入財と工事の資材は、
    前のターンの市場で売りに出た量が買いたい量に届かず、値段が初めの PRICE_HIGH 倍を超えていても
    建てる（工事の資材の使う量は作る量と使う量の流れに数えないため。フェーズ3-2）
+4'. 海外の商人が値段を上げ始めたら（来なくなる foreign_merchant.last_turns ターン前から）、前の
+   ターンに商人から買った物のうち島で作っていない物を作る施設（投入財が島で作られている作り方だけ。
+   投入財も商人から買っていれば、その投入財を作る施設が先に建つ）
 5. 消費財（衣料・消費財・嗜好品）の生産が住民1人あたりの目安（household.targets）に届かないか、
    前のターンの市場で売りに出た量が買いたい量に届かなければ、それを作る施設（加工食品・肉・自動車・
    燃料も、売りに出た量が買いたい量に届かなければ作る施設）。必需品、ぜいたく品、自動車、燃料の順
@@ -70,7 +73,8 @@
 飢饉の手（回5。設計書 12 確かめ方 GT-29）: 食べ物の充足が FAMINE_RATIO を下回った月は、国営の
 農場のうち穀物以外を作っているものを穀物に替え、国の倉庫の食べ物をすべて市場に出し、足りない分の
 穀物を今の値段の EMERGENCY_PRICE 倍の指値で国の倉庫に買い入れます（値段が上がれば商社が輸入する）。
-ふだんの月は、島の食べる量の STORE_TURNS ターン分まで穀物を今の値段で買って蓄え、傷む
+ふだんの月は、島の食べる量の STORE_TURNS ターン分まで穀物をこの1年でいちばん安い値段の指値で
+買って蓄え（値段の下がった月の余りだけを買い、家計の貧しい層より高く買わない）、傷む
 ROTATE_TURNS ターン前になった古い分を市場に出して入れ替えます（インドの国の穀物の買い上げと備蓄と
 同じ形）。国の倉庫の年の予算は、その買い入れに足りるまで上げます。
 電気料金が初めの値段の POWER_CAP 倍を超えたら、そこを公共料金の上限にします。
@@ -93,6 +97,7 @@ from hakoniwa_core.economy import arrears, equipment, needs, services
 from hakoniwa_core.economy.prices import initial_prices, unit_cost
 from hakoniwa_core.geo import components, distance, shortest_path, within
 from hakoniwa_core.modules.firms import private_allowed
+from hakoniwa_core.modules.market import MERCHANT
 from hakoniwa_core.state import (
     ORDER_PENDING,
     OWNER_PRIVATE,
@@ -105,6 +110,7 @@ from hakoniwa_core.state import (
     WorldState,
 )
 from hakoniwa_core.trade import blocs as trade_blocs
+from hakoniwa_core.trade import merchant as trade_merchant
 from hakoniwa_core.trade import traders as trade_traders
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE, money_of, to_milli
 
@@ -461,7 +467,10 @@ def _food_orders(
             and island.stats.get("treasury", 0) >= spending * SURPLUS_TURNS
         )
         buy = need * STORE_TURNS - (held - old) if spare else 0
-        limit = price
+        # 指値はこの1年でいちばん安い値段まで。今の値段で買うと、値段の高い月に出した注文が行政力の
+        # 列で遅れて約定し、家計の貧しい層より高く買って食べ物を奪った（財の値幅をなくした後の関門
+        # seed 1 の 300 ターン目。2026-10-20）
+        limit = min([price, *island.economy.price_history.get(GRAIN, [])[-TURNS_PER_YEAR:]])
     if buy > 0 and limit > 0:
         budget = money_of(limit, buy) * TURNS_PER_YEAR
         if island.policy.budget.get("warehouse", 0) < budget:
@@ -873,6 +882,20 @@ def _candidates(
             and record.price > initial.get(good, 0) * PRICE_HIGH
         ):
             yield from (c for c in _producers(defs, config, island, good) if spare(*c))
+
+    # 海外の商人が値段を上げ始めたら（来なくなる foreign_merchant.last_turns ターン前から）、前の
+    # ターンに商人から買った物のうち島で作っていない物を作る施設を建てる。投入財も商人から買って
+    # いれば、その投入財を作る施設が先に建つ（1つの島の 300 ターンの試験: 商人が帰ってから機械を
+    # 作る施設が建つまで機械が島から消え、値段が初めの4倍を超えた）
+    left = trade_merchant.turns_left(island, config, turn)
+    if 0 < left <= config.get("foreign_merchant.last_turns"):
+        bought = {t.good for t in island.trades if t.seller == MERCHANT}
+        for good in sorted(bought - making, key=lambda g: (defs.goods[g].get("tier", 9), g)):
+            yield from (
+                c
+                for c in _producers(defs, config, island, good)
+                if _inputs_at_hand(defs, config, *c, making)
+            )
 
     # 作り方の投入財が手元にあるか。部品のように島で作っていなくても、作る施設の投入財が手元にある
     # 物は手に入ると見る（組み立て工場と部品工場を組で建てる。回7 後半: 自動車工場が部品工場を待ち、

@@ -111,12 +111,13 @@ def facility_state(island: m.Island) -> dict[str, Any]:
     for row in rows:
         f = facility_from_row(row)
         text = display.status_text(f)
+        x, y = fac.position(f)  # 町の中の店は町のマス（施設の行の位置は負）
         if not row.built:
             works.append(
                 {
                     "kind_name": game.defs.name("facilities", row.kind),
-                    "x": row.x,
-                    "y": row.y,
+                    "x": x,
+                    "y": y,
                     "progress": round(row.progress / 1000, 1),
                     "turns": game.defs.facilities.get(row.kind, {})
                     .get("construction", {})
@@ -131,8 +132,8 @@ def facility_state(island: m.Island) -> dict[str, Any]:
                     "number": row.number,
                     "name": facility_name(game.defs, game.config, state, f),
                     "kind_name": game.defs.name("facilities", row.kind),
-                    "x": row.x,
-                    "y": row.y,
+                    "x": x,
+                    "y": y,
                     "status_text": text,
                 }
             )
@@ -174,12 +175,13 @@ def losing_facilities(island: m.Island, currency: str) -> list[dict[str, Any]]:
         if row is None or row.accounting != ACCOUNTING_SELF:  # 取り壊した施設と国庫直轄
             continue
         f = facility_from_row(row)
+        x, y = fac.position(f)
         out.append(
             {
                 "number": number,
                 "name": facility_name(game.defs, game.config, state, f),
-                "x": row.x,
-                "y": row.y,
+                "x": x,
+                "y": y,
                 "profit_total": display.money_text(value, currency),
             }
         )

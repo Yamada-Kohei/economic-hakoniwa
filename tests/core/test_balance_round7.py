@@ -242,11 +242,18 @@ def test_default_of_one_plant_bankrupts_the_firms_borrowers(game, base):
     open_books(island)
     loan = banks.loans_by_borrower(island, facility_entity(a.id))[0]
     loan.arrears = game.config.get("loans.arrears_limit")
+    cascades = island.stats.get("firms.cascade", 0)  # 準備の世界のそのターンに数えた分
+    # a の企業に前から借入のある施設がほかにあれば、それも一緒に倒れる（世界の歩みしだい）
+    group = [
+        m
+        for m in co.members(island, co.firm_of(a))
+        if banks.loans_by_borrower(island, facility_entity(m.id))
+    ]
+    assert a in group and b in group
     cross_default(island, ctx, a)
-    assert "foreclosed" in a.economy and "foreclosed" in b.economy
-    assert co.firm_of(a) is None and co.firm_of(b) is None
+    assert all("foreclosed" in m.economy and co.firm_of(m) is None for m in group)
     assert any(e.kind == "firm_bankrupt" for e in island.log)
-    assert island.stats["firms.cascade"] == 2
+    assert island.stats["firms.cascade"] - cascades == len(group)
     books_ok(game, island)
 
 
@@ -275,7 +282,8 @@ def test_nationalize_and_privatize_whole_firm(game, base):
     assert co.record(island, state)[co.OWNER] == "state"
     assert ledger.money(island, household(OWNERS)) >= owners_before
     assert ledger.money(island, co.entity(number)) == 0
-    assert any(e.kind == "firm_nationalized" for e in island.log)
+    entry = next(e for e in island.log if e.kind == "firm_nationalized_into")
+    assert "国営" in entry.args["into"] and f"（企業 {state}）" in entry.args["into"], entry.args
     books_ok(game, island)
 
     open_books(island)
@@ -294,14 +302,45 @@ def test_nationalize_and_privatize_whole_firm(game, base):
 # --- 店と小売り（W-15・W-22） --------------------------------------------------------------
 
 
-def test_households_buy_retail_from_shops_then_direct(base):
-    """家計の要る小売りは、商店・百貨店で買えた分と、小さな店・屋台から割高に買った分を足したもの。"""
+def test_households_buy_retail_from_shops_then_direct(game, base, monkeypatch):
+    """家計の要る小売りは、商店・百貨店で買えた分と、小さな店・屋台から割高に買った分を足したもの。
+
+    屋台の分は払えるだけ買う。使う額をすべて品物に充てた層（失業者など）は小売りの代金が残らない
+    ことがあり、そのときは要る量に届かない（どの島でもそうならないかは、世界の歩みしだい）。"""
+    from hakoniwa_core.economy import funds, retail
+    from hakoniwa_core.modules import market as mk
+    from hakoniwa_core.units import QUANTITY_SCALE
+
+    world = copy.deepcopy(base)
+    seen = {}
+    direct_of = mk.Market._direct
+
+    def spy(island, ctx, wanted, got):
+        good = retail.good_of(ctx.config)
+        unit = mk.Market._direct_unit(island, ctx.config)
+        tax = island.policy.consumption_tax
+        short = {layer: qty - got.get(layer, {}).get(good, 0) for layer, qty in wanted.items()}
+        broke = any(
+            mk.gross_cost(unit, qty, 0, tax) > funds.available(island, mk.Payer(household(layer)))
+            for layer, qty in short.items()
+            if qty > 0
+        )
+        seen[island.id] = (sum(max(0, qty) for qty in short.values()) / QUANTITY_SCALE, broke)
+        direct_of(island, ctx, wanted, got)
+
+    monkeypatch.setattr(mk.Market, "_direct", staticmethod(spy))
+    run_checked(game, world, 1)
     sold_somewhere = False
-    for i in base.island_ids():
-        stats = base.islands[i].stats
+    for i in world.island_ids():
+        stats = world.islands[i].stats
         need, sold, direct = stats["retail.need"], stats["retail.sold"], stats["retail.direct"]
+        short, broke = seen[i]
         assert need > 0
-        assert sold + direct == pytest.approx(need, abs=1)
+        assert sold + short == pytest.approx(need, abs=1)  # 店が売った分を家計が受け取った
+        if broke:
+            assert direct <= short + 1
+        else:
+            assert direct == pytest.approx(short, abs=1)
         assert stats["retail.direct_sales"] > 0
         sold_somewhere = sold_somewhere or sold > 0
     assert sold_somewhere, "どの島でも店が売れていない"
@@ -453,8 +492,9 @@ def test_only_grain_farm_does_not_switch_crops(game, base):
     for f in others:
         island.facilities.remove(f)
     assert _sole_food(island, game.defs, farm) == {"grain"}
-    if others:
-        island.facilities.append(others[0])
+    built = [f for f in others if f.built and f.x >= 0]  # 工事中の農場は数えない
+    if built:
+        island.facilities.append(built[0])
         assert _sole_food(island, game.defs, farm) == set()
 
 

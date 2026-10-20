@@ -51,7 +51,7 @@
 | PL-26 | 命令: 公定価格の改定（名指しした財を今の原価に。議会のある体制は過半数）、公定価格の決まり（幅と据え置く財）、財ごとの上書き（確かめで変えない） | 決定 |  | tests/core/test_phase3_4.py::test_official_price_reform_and_rules_orders, tests/core/test_phase3_4.py::test_plan_orders_check_and_log |
 | PL-27 | 割当ルール: 足りないときは、重点産業の施設 → ほかの国営施設と国の工事 → 家計（配給）→ 輸出の順に配り、同じ順位の中は量に比例 | 決定 |  | tests/core/test_phase3_4.py::test_allocator_serves_priority_then_state_then_households_then_exports |
 | PL-28 | 配給: 家計の中はお金の多さでなく1人あたり同じ量まで。買えなかった割合を財ごとの「行列」として出し、使えなかったお金は預金に残る（強制貯蓄） | 決定 |  | tests/core/test_phase3_4.py::test_ration_gives_each_person_the_same_amount, tests/core/test_phase3_4.py::test_half_price_plan_queues_and_saves_but_keeps_producing |
-| PL-29 | 生産目標: 国営施設ごとに、直近の公定価格での需要（買えなかった分も含む）に上乗せした量を、同じ財を作る国営施設に設備の大きさで割り振る。施設は採算でなく目標に合わせて動く | 決定 | `planning.demand_turns`, `planning.target_markup` | tests/core/test_phase3_4.py::test_targets_follow_demand_and_capacity |
+| PL-29 | 生産目標: 国営施設ごとに、直近の公定価格での需要（買えなかった分と、国の工事とインフラの資材のうち公共事業費で買えなかった分も含む）に上乗せした量を、同じ財を作る国営施設に設備の大きさで割り振る。施設は採算でなく目標に合わせて動く | 決定 | `planning.demand_turns`, `planning.target_markup` | tests/core/test_phase3_4.py::test_targets_follow_demand_and_capacity |
 | PL-30 | 重点産業は命令で産業の分類を決めた数まで選ぶ。割当の先頭になり、体制の特色（工期と経験）が効く | 決定 | `planning.max_priority` | tests/core/test_phase3_4.py::test_plan_orders_check_and_log |
 | PL-31 | 計画経済の貿易は国営の商社の独占: 行列のある財を輸入し、売れ残った財を値段によらず輸出する。輸入は輸出で得た外貨の範囲（タブ 9） | 決定 |  | tests/core/test_phase3_4.py::test_planned_trade_is_a_state_monopoly, tests/core/test_phase3_4.py::test_planned_traders_export_unsold_goods_whatever_the_price |
 | PL-32 | 混合経済はどの財にも値段の上限と下限を決められる。市場経済は電気料金の上限だけ | 決定 |  | tests/core/test_phase3_4.py::test_price_floor_keeps_the_market_price_up, tests/server/test_phase3_4.py::test_plan_page_for_a_mixed_economy_shows_price_controls |
@@ -154,7 +154,7 @@ T^{*} = b + w_H\,(H - H_0) - w_U\,(U - U_0)^{+} - w_\pi\,(\pi - \pi_0)^{+} - w_G
   - 命令: 公定価格の改定 `review_official_prices`（名指しした財、空なら上書きしていない財すべてを今の原価に。政治の決断なので行政力が重く、議会のある体制では過半数）、公定価格の決まり `set_official_price_rules`（幅と据え置く財）、財ごとの上書き `set_official_price`（確かめで変えない。0 でやめる）。
   - 市場の段の初めに公定価格を基準の値段にし、島の市場は公定価格で値幅0の板寄せになる。電力も生産の段で同じにする。
 - 割当ルール: 足りないときは、重点産業の施設 → ほかの国営施設と国の工事（インフラ・海運業・運送業・国の倉庫）→ 家計（配給）→ 輸出（商社と二国間契約の買い）の順に配る。同じ順位の中は量に比例。
-- 生産目標: 国営施設ごとに、直近 `planning.demand_turns` ターンの公定価格での需要（買えなかった分も含む）に `planning.target_markup` を足した量を、同じ財を作る国営施設に設備の大きさ（全力の産出）で割り振る。施設は採算でなく目標に合わせて動く（操業目標の式の代わり。タブ 3）。過去の需要から決めるので、計画の誤りが品不足と売れ残りとして積み重なる。
+- 生産目標: 国営施設ごとに、直近 `planning.demand_turns` ターンの公定価格での需要（買えなかった分も含む。国の工事とインフラの資材は、公共事業費で買えずに注文しなかった分も建設計画の需要として数える。試し遊び1回目: 倉庫の建材が尽きた後、買えなかった分が需要に出ず、建材工場が減産して工事が何ターンも止まった）に `planning.target_markup` を足した量を、同じ財を作る国営施設に設備の大きさ（全力の産出）で割り振る。施設は採算でなく目標に合わせて動く（操業目標の式の代わり。タブ 3）。過去の需要から決めるので、計画の誤りが品不足と売れ残りとして積み重なる。
 - 重点産業: 命令 `set_priority_industries` で産業の分類を `planning.max_priority` まで選ぶ。割当の先頭になり、体制の特色（工期と経験）が効く。
 - 配給と行列: 家計が買う財が足りないときは、お金の多さではなく1人あたり同じ量まで配る。買えなかった割合を財ごとの「行列」として出し、幸福度では買えなかった分を足りないものとして数える。使えなかったお金は預金に残り（強制貯蓄）、お金だけが増える様子が統計に出る。
 - 貿易の独占: 計画経済の商社は国営で、値段の差ではなく、行列のある財を輸入し、売れ残った財を値段によらず輸出する。輸入は持っている外貨の範囲（タブ 9）。初めて扱う財も値段によらず輸出する（帳簿の値段で見ていたため、公定価格が圏の値段より高い物を輸出できず、ボーキサイトとアルミがどの島でも作られなくなった）。

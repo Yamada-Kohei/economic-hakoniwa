@@ -193,7 +193,7 @@
               <td>{% if c.start %}{% blocktranslate with s=c.start|turn_date e=c.end|add:"-1"|turn_date %}{{ s }}〜{{ e }}{% endblocktranslate %}{% else %}{% blocktranslate with n=c.turns %}{{ n }} ターン{% endblocktranslate %}{% endif %}</td>
               <td>{{ c.delivered|floatformat:"-3g" }}</td>
               <td>{{ c.delivery_name|default:"-" }}</td>
-              <td{% if c.short %} class="warning-cell"{% endif %}>{% if c.short %}{{ c.short|floatformat:"-3g" }}{% endif %}</td>
+              <td{% if c.short %} class="warning-cell"{% endif %}>{% if c.short %}{{ c.short|floatformat:"-3g" }}{% endif %}{% if c.fx %}<br><small class="muted">{% blocktranslate with t=c.fx.turn|turn_date s=c.currency_symbol need=c.fx.need|floatformat:"0g" had=c.fx.had|floatformat:"0g" reserve=c.fx.reserve|floatformat:"0g" market=c.fx.market|floatformat:"0g" short=c.fx.short|floatformat:"0g" %}{{ t }}の外貨の払い {{ s }}{{ need }}: 手持ち {{ s }}{{ had }}・中央銀行から {{ s }}{{ reserve }}・為替の市場で {{ s }}{{ market }}・不足 {{ s }}{{ short }}{% endblocktranslate %}</small>{% endif %}</td>
               <td>
                 {% if c.can_accept %}<form class="inline" data-order="accept_contract"><input type="hidden" name="contract" value="{{ c.id }}">{% if c.side == "buy" %}<select name="delivery" aria-label="{% translate "届いた物の行き先" %}"><option value="market">{% translate "届いた物は市場に出す" %}</option><option value="warehouse">{% translate "届いた物は国の倉庫に置く" %}</option></select> {% endif %}<button type="submit">{% translate "受ける" %}</button></form>{% endif %}
                 {% if c.can_cancel %}<form class="inline" data-order="cancel_contract" data-confirm="{% blocktranslate with n=c.id t=trade.cancel_turns %}契約（{{ n }} 番）をやめる命令を追加しますか？（有効な契約は {{ t }} ターン後に終わります）{% endblocktranslate %}"><input type="hidden" name="contract" value="{{ c.id }}"><button type="submit">{% if c.state == "proposed" %}{% translate "取り下げる・断る" %}{% else %}{% translate "やめる" %}{% endif %}</button></form>{% endif %}
@@ -203,7 +203,7 @@
           </tbody>
         </table>
       </div>
-      <p class="hint">{% blocktranslate with t=trade.cancel_turns %}売る国は国の倉庫から出し（足りなければ島の市場で優先して買い）、買う国は国庫から払って国の倉庫に受け取ります。届いた物は、買う国が決めたとおり、売り切れるまで島の市場の値段で売りに出すか、国の倉庫に置いておきます（傷みやすい物はどちらでもすぐ市場に出します）。物・お金・船・港が足りないターンは届けられるだけ届け、不足をログに残します。やめる命令から {{ t }} ターン後に終わります。{% endblocktranslate %}</p>
+      <p class="hint">{% blocktranslate with t=trade.cancel_turns %}売る国は国の倉庫から出し（足りなければ島の市場で優先して買い）、買う国は国庫から払って国の倉庫に受け取ります。届いた物は、買う国が決めたとおり、売り切れるまで島の市場の値段で売りに出すか、国の倉庫に置いておきます（傷みやすい物はどちらでもすぐ市場に出します）。相手の国の通貨で払う契約は、中央銀行が持っているその通貨から先に払い、足りない分を政府が為替の市場で買います（1ターンに買えるのは値幅の上端までに売りに出た分だけなので、為替介入で中央銀行に買わせておくと足ります）。物・お金・外貨・船・港が足りないターンは届けられるだけ届け、不足をログに残します。やめる命令から {{ t }} ターン後に終わります。{% endblocktranslate %}</p>
       {% else %}
       <p class="muted">{% translate "契約はありません。" %}</p>
       {% endif %}
@@ -372,7 +372,7 @@
               <td>{{ s.direction_name }}</td><td>{{ s.partner_name }}</td><td>{{ s.name }}</td><td>{{ s.amount }} {{ s.unit }}</td>
               <td>{% blocktranslate with t=s.load %}{{ t }} トン{% endblocktranslate %}</td>
               <td>{{ s.loaded|turn_date }}</td><td>{{ s.arrive|turn_date }}</td>
-              <td>{{ s.kind_name }}</td>
+              <td>{{ s.kind_name }}{% if s.bloc_name %}（{{ s.bloc_name }}）{% endif %}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -403,7 +403,7 @@
           </tbody>
         </table>
       </div>
-      <p class="hint">{% translate "島の市場で、決まった値段と1ターンの上限で売ります（買いはしません）。港も船も外貨も要りません。代金は島の外に出て、輸入に数えます。" %}</p>
+      <p class="hint">{% translate "島の市場で、決まった値段と1ターンの上限で売ります（買いはしません）。港も船も外貨も要りません。代金は島の外に出て、輸入に数えます。公定価格のある国（計画経済）では、島の買い手は公定価格で払い、商人の値段との差は政府が払います。輸入と貿易収支は島の買い手が払った額で数え、「海外の商人から買った額」と国際収支は政府が払った差も含めるので、海外の商人から買った額が輸入より大きくなることがあります。" %}</p>
       {% elif mc.until is not None %}
       <p class="muted">{% blocktranslate with t=mc.until|turn_date %}海外の商人はもう来ません。{{ t }}まで来ていました。{% endblocktranslate %}</p>
       {% else %}
@@ -423,7 +423,7 @@
         <figure class="chart" data-names="trade.exports,trade.imports,trade.balance"><figcaption>{% translate "輸出・輸入・貿易収支（1ターン）" %}</figcaption></figure>
         <figure class="chart" data-names="ships,ships.busy"><figcaption>{% translate "輸送船" %}</figcaption></figure>
         {% if mine %}
-        <figure class="chart" data-names="trade.merchant"><figcaption>{% translate "海外の商人から買った額（1ターン）" %}</figcaption></figure>
+        <figure class="chart" data-names="trade.merchant,trade.merchant_gap"><figcaption>{% translate "海外の商人から買った額（1ターン）" %}</figcaption></figure>
         <figure class="chart" data-names="port.handled"><figcaption>{% translate "港で積み下ろした荷" %}</figcaption></figure>
         <figure class="chart" data-names="freight.ship_rate"><figcaption>{% translate "船の運賃（荷 1 トン・1 区画あたり）" %}</figcaption></figure>
         {% endif %}

@@ -95,7 +95,13 @@ from hakoniwa_core.economy import (
 )
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.prices import construction_cost, unit_cost, variable_profit
-from hakoniwa_core.economy.start import fund_facility, init_facility, invest, operating_cost
+from hakoniwa_core.economy.start import (
+    fund_facility,
+    init_facility,
+    invest,
+    operating_capital,
+    operating_cost,
+)
 from hakoniwa_core.geo import within
 from hakoniwa_core.modules.banking import entry_policy, is_planned
 from hakoniwa_core.modules.failures import bankrupt, close_foreclosure, distribute
@@ -248,6 +254,7 @@ class EntryExit(IslandStage):
         settings = config.get("firms")
         margin = to_basis(settings["recipe_margin"])
         prices: dict[str, int] | None = None
+        imports: dict[str, int] = {}
         supplied: set[str] = set()
         rates: dict[int, int] = {}
         missing = _missing(island.economy.finance)
@@ -267,11 +274,12 @@ class EntryExit(IslandStage):
                 continue
             if prices is None:
                 prices = average_prices(island, settings["price_turns"])
+                imports = self._import_prices(island, ctx)
                 supplied = self._supplied(island, ctx)
                 rates = freight_rates.facility_rates(island, defs, config)
             busy = self._switched_into(island, ctx)
             profits = self._recipe_profits(
-                island, ctx, f, prices, supplied, rates.get(f.id, 0), busy, missing
+                island, ctx, f, prices, supplied, rates.get(f.id, 0), busy, missing, imports
             )
             now = profits.get(f.recipe, 0)
             choice = max(sorted(profits), key=lambda name: profits[name])
@@ -316,8 +324,10 @@ class EntryExit(IslandStage):
         rate: int,
         busy: set[str] | None = None,
         missing: set[str] | None = None,
+        imports: dict[str, int] | None = None,
     ) -> dict[str, int]:
-        """施設 f が選べる作り方ごとの変動費の利益（今の作り方を含む）。選べるのは、島で使える
+        """施設 f が選べる作り方ごとの変動費の利益（今の作り方を含む）。原料のうち海外の商人から
+        しか買えない財は、商人の売り値で見る（imports。_import_prices）。選べるのは、島で使える
         作り方（鉱業資源と気候）のうち、原料がどれも島で手に入り、今より多く使う原料は直近に
         売りに出た量が買いたい量より増える分以上多く、産出物に買い手のいる（直近に買いたい量が
         あった）作り方（今と同じ原料を倍使う作り方に替えて、その原料が品切れになったため）。
@@ -360,7 +370,8 @@ class EntryExit(IslandStage):
             ):
                 continue
             probe = productivity.probe(island, defs, config, f.kind, name, (f.x, f.y))
-            out[name] = variable_profit(defs, config, probe, prices, wage, rate)
+            costed = EntryExit._costed(prices, imports or {}, recipe)
+            out[name] = variable_profit(defs, config, probe, costed, wage, rate)
         return out
 
     def _exits(self, island: IslandState, ctx: StageContext) -> None:
@@ -774,13 +785,54 @@ class EntryExit(IslandStage):
         return found
 
     @staticmethod
-    def _supplied(island: IslandState, ctx: StageContext) -> set[str]:
-        """島で手に入る財: 動いている施設が作っている財（国の倉庫の物は、政府が売りに出さなければ
-        市場に出ないので数えない）と、商社が輸入している財・海外の商人が売っている財（フェーズ3-1）。"""
+    def _import_prices(island: IslandState, ctx: StageContext) -> dict[str, int]:
+        """島で作られておらず海外の商人からしか買えない財の、商人の売り値（財 → 値段）。作り方の
+        見直しで、原料をこの値段で見る（_costed）。島の値段は、だれも買っていなければ初めの値段の
+        ままで安く見えるため、鋼鉄を作っていない国で民営の工場が鋼鉄から作る方式に替え、翌ターン
+        「鋼鉄が高く採算が合わない」で止まっていた（試し遊び1回目の報告の決め 1）。
+
+        参入の採算は島の値段のまま見る（建つまでに島で作り始めることが多い。参入にも商人の値段を
+        使うと、鋼鉄を作っていない島で機械工場が建たず、海外の商人が来なくなった後に機械が何十
+        ターンも島から消え、値段が初めの4倍を超えた。1つの島の 300 ターンの試験）。
+
+        商社が貿易圏から輸入している財は、商人だけから買う財ではないので島の値段で見る。
+
+        この見方で、鋼鉄を作っておらず輸入もしていない島の民営の工場は、鋼鉄を使わない作り方を選ぶ
+        （消費財工場なら木材だけの作り方）。標準の計画は鋼鉄を欲しがる施設を見て製鉄所を建てるので、
+        その世界では製鉄所と自動車の工場が前より少なく建ち、quick の 300 ターンで自動車の買い物が
+        3 分の 1 ほどになった（この見方をやめると戻る。2026-10-20 の測り）。"""
+        made = EntryExit._made(island, ctx)
+        bought = trade_traders.imported(island, ctx.config)
+        offers = merchant.offers(island, ctx.defs, ctx.config, ctx.turn)
+        return {good: price for good, _, price in offers if good not in made | bought}
+
+    @staticmethod
+    def _costed(
+        prices: dict[str, int], imports: dict[str, int], recipe: dict[str, Any]
+    ) -> dict[str, int]:
+        """作り方 recipe の採算に使う値段: 原料のうち商人からしか買えない財だけ、商人の売り値まで
+        上げる。作る物の値段は上げない（作る物まで上げると、島で作っていない物がみな商人の値段で
+        売れると見え、綿の工場と農場が早く建って綿が余り、値段が初めの 0.1% まで下がった）。"""
+        out = dict(prices)
+        for good in recipe.get("inputs", {}):
+            if good in imports:
+                out[good] = max(out.get(good, 0), imports[good])
+        return out
+
+    @staticmethod
+    def _made(island: IslandState, ctx: StageContext) -> set[str]:
+        """動いている施設が作っている財。"""
         goods: set[str] = set()
         for f in island.facilities:
             if f.built and not is_stopped(f):
                 goods |= set(ctx.defs.facilities[f.kind]["recipes"][f.recipe].get("outputs", {}))
+        return goods
+
+    @staticmethod
+    def _supplied(island: IslandState, ctx: StageContext) -> set[str]:
+        """島で手に入る財: 動いている施設が作っている財（国の倉庫の物は、政府が売りに出さなければ
+        市場に出ないので数えない）と、商社が輸入している財・海外の商人が売っている財（フェーズ3-1）。"""
+        goods = EntryExit._made(island, ctx)
         goods |= trade_traders.imported(island, ctx.config)
         goods |= {g for g, _, _ in merchant.offers(island, ctx.defs, ctx.config, ctx.turn)}
         return goods
@@ -909,8 +961,10 @@ class EntryExit(IslandStage):
             rate = island.policy.policy_rate + banks.margin_of(island, config, bank) + leverage
             plan.append((bank, piece, rate))
             service += ledger.interest(piece, rate) + -(-piece // turns)
-        if earnings < config.get("loans.coverage") * service:
-            return ("loan_refused", {"earnings": earnings, "service": service})
+        coverage = config.get("loans.coverage")
+        if earnings < coverage * service:  # 何倍の余裕が要るかも書く（試し遊びで分からなかった）
+            args = {"earnings": earnings, "service": service, "coverage": coverage}
+            return ("loan_short_of_coverage", args)
         return plan
 
     def _build(
@@ -1291,6 +1345,16 @@ def check_nationalize(island: IslandState, payload: dict[str, Any], defs: Defs) 
     f = _owned_facility(island, payload, defs)
     if f.owner != OWNER_PRIVATE and "foreclosed" not in f.economy:
         raise OrderFailed("reason_not_private", facility=f.kind)
+    # 議会にかける前に、今の国庫で買い取れるかを見る（実行のときにも見直す）
+    price = _nationalize_price(island, f)
+    if funds.available(island, Payer(ledger.GOV)) < price:
+        raise OrderFailed("reason_treasury_short", amount=price)
+
+
+def _nationalize_price(island: IslandState, f: Facility) -> int:
+    """国有化の値段: 純資産（差し押さえ中なら銀行の売り値）。"""
+    seized = f.economy.get("foreclosed")
+    return seized["price"] if seized else banks.net_assets(island, f, facility_entity(f.id))
 
 
 def nationalize(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
@@ -1299,7 +1363,7 @@ def nationalize(island: IslandState, payload: dict[str, Any], ctx: StageContext)
     assert f is not None
     entity = facility_entity(f.id)
     seized = f.economy.get("foreclosed")
-    price = seized["price"] if seized else banks.net_assets(island, f, entity)
+    price = _nationalize_price(island, f)
     payer = Payer(ledger.GOV)
     if funds.available(island, payer) < price:
         raise OrderFailed("reason_treasury_short", amount=price)
@@ -1330,6 +1394,13 @@ def check_privatize(island: IslandState, payload: dict[str, Any], defs: Defs) ->
         raise OrderFailed("reason_not_state_owned", facility=f.kind)
     if is_public_service(defs, f) or not private_allowed(defs, island, f.kind):
         raise OrderFailed("reason_cannot_privatize", facility=f.kind)
+    if OWNERS not in island.economy.households:
+        raise OrderFailed("reason_cannot_privatize", facility=f.kind)
+    # 議会にかける前に、資本家の預金で今の純資産を払えるかを見る（国庫直轄の施設は実行のときに
+    # 運転資金を出資するので、値段はそのぶん高くなる。実行のときに見直す）
+    price = banks.net_assets(island, f, facility_entity(f.id))
+    if funds.available(island, Payer(household(OWNERS))) < price:
+        raise OrderFailed("reason_owners_short", amount=price)
 
 
 def privatize(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
@@ -1340,9 +1411,16 @@ def privatize(island: IslandState, payload: dict[str, Any], ctx: StageContext) -
     owners = Payer(household(OWNERS))
     if OWNERS not in island.economy.households:
         raise OrderFailed("reason_cannot_privatize", facility=f.kind)
-    if f.accounting == ACCOUNTING_TREASURY:
+    treasury = f.accounting == ACCOUNTING_TREASURY
+    capital = Payer(ledger.GOV, STATE_FACILITIES)
+    # 払えないときは、会計を変えて出資する前に断る（断った後に独立採算のまま残さない）
+    extra = operating_capital(island, ctx.defs, ctx.config, f, capital) if treasury else 0
+    price = banks.net_assets(island, f, entity, extra)
+    if funds.available(island, owners) < price:
+        raise OrderFailed("reason_owners_short", amount=price)
+    if treasury:
         f.accounting = ACCOUNTING_SELF
-        fund_facility(island, ctx.defs, ctx.config, f, Payer(ledger.GOV, STATE_FACILITIES))
+        fund_facility(island, ctx.defs, ctx.config, f, capital)
     price = banks.net_assets(island, f, entity)
     if funds.available(island, owners) < price:
         raise OrderFailed("reason_owners_short", amount=price)
@@ -1372,8 +1450,22 @@ def _working_members(island: IslandState, number: int) -> list[Facility]:
 
 def check_nationalize_firm(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
     _firm_of_order(island, payload, OWNER_PRIVATE)
-    if not _working_members(island, payload["firm"]):
+    working = _working_members(island, payload["firm"])
+    if not working:
         raise OrderFailed("reason_firm_empty")
+    price = _firm_price(island, payload["firm"], working)
+    if funds.available(island, Payer(ledger.GOV)) < price:
+        raise OrderFailed("reason_treasury_short", amount=price)
+
+
+def _firm_price(island: IslandState, number: int, working: list[Facility]) -> int:
+    """企業の国有化の値段: 企業の預金（未払いの税を引く）と、動いている施設の純資産の和。"""
+    name = companies.entity(number)
+    owed = arrears.total(island, name, arrears.TAX_ARREARS)
+    cash = ledger.money(island, name)
+    return max(0, cash - owed) + sum(
+        banks.net_assets(island, f, facility_entity(f.id)) for f in working
+    )
 
 
 def nationalize_firm(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
@@ -1384,11 +1476,7 @@ def nationalize_firm(island: IslandState, payload: dict[str, Any], ctx: StageCon
     number = payload["firm"]
     name = companies.entity(number)
     working = _working_members(island, number)
-    owed = arrears.total(island, name, arrears.TAX_ARREARS)
-    cash = ledger.money(island, name)
-    price = max(0, cash - owed) + sum(
-        banks.net_assets(island, f, facility_entity(f.id)) for f in working
-    )
+    price = _firm_price(island, number, working)
     payer = Payer(ledger.GOV)
     if funds.available(island, payer) < price:
         raise OrderFailed("reason_treasury_short", amount=price)
@@ -1420,20 +1508,27 @@ def nationalize_firm(island: IslandState, payload: dict[str, Any], ctx: StageCon
         if isinstance(seized, dict) and seized.get("owner") == name:
             seized["owner"] = ledger.GOV
     del island.economy.firms[str(number)]
+    # 企業の番号はなくなり、施設は業種の国営企業に入る。どこに入ったかを書く（試し遊びでは、前の
+    # 番号で民営化しようとして「その番号の企業はありません」となった）
+    joined = sorted({f.economy[companies.FIRM] for f in working})
+    into = "・".join(f"{companies.display_name(island, ctx.defs, n)}（企業 {n}）" for n in joined)
     island.log.append(
         LogEntry(
-            "firm_nationalized",
-            {"firm": title, "count": len(working), "price": price},
+            "firm_nationalized_into",
+            {"firm": title, "count": len(working), "price": price, "into": into},
         )
     )
 
 
 def check_privatize_firm(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
     _firm_of_order(island, payload, OWNER_STATE)
-    if not [
-        f for f in _working_members(island, payload["firm"]) if _can_privatize(island, defs, f)
-    ]:
+    sold = [f for f in _working_members(island, payload["firm"]) if _can_privatize(island, defs, f)]
+    if not sold or OWNERS not in island.economy.households:
         raise OrderFailed("reason_firm_cannot_privatize")
+    # 議会にかける前に、資本家の預金で今の純資産を払えるかを見る（実行のときに見直す）
+    price = sum(banks.net_assets(island, f, facility_entity(f.id)) for f in sold)
+    if funds.available(island, Payer(household(OWNERS))) < price:
+        raise OrderFailed("reason_owners_short", amount=price)
 
 
 def _can_privatize(island: IslandState, defs: Defs, f: Facility) -> bool:
@@ -1452,10 +1547,22 @@ def privatize_firm(island: IslandState, payload: dict[str, Any], ctx: StageConte
     owners = Payer(household(OWNERS))
     if OWNERS not in island.economy.households:
         raise OrderFailed("reason_firm_cannot_privatize")
-    for f in sold:
-        if f.accounting == ACCOUNTING_TREASURY:
-            f.accounting = ACCOUNTING_SELF
-            fund_facility(island, ctx.defs, ctx.config, f, Payer(ledger.GOV, STATE_FACILITIES))
+    capital = Payer(ledger.GOV, STATE_FACILITIES)
+    treasury = [f for f in sold if f.accounting == ACCOUNTING_TREASURY]
+    # 払えないときは、会計を変えて出資する前に断る（出資する額は手元の残りに合わせて順に見積もる）
+    extra: dict[int, int] = {}
+    left = funds.available(island, capital)
+    for f in treasury:
+        extra[f.id] = min(left, operating_capital(island, ctx.defs, ctx.config, f, capital))
+        left -= extra[f.id]
+    price = sum(
+        banks.net_assets(island, f, facility_entity(f.id), extra.get(f.id, 0)) for f in sold
+    )
+    if funds.available(island, owners) < price:
+        raise OrderFailed("reason_owners_short", amount=price)
+    for f in treasury:
+        f.accounting = ACCOUNTING_SELF
+        fund_facility(island, ctx.defs, ctx.config, f, capital)
     price = sum(banks.net_assets(island, f, facility_entity(f.id)) for f in sold)
     if funds.available(island, owners) < price:
         raise OrderFailed("reason_owners_short", amount=price)
@@ -1517,12 +1624,13 @@ def check_subsidy(island: IslandState, payload: dict[str, Any], defs: Defs) -> N
     has_tile = payload.get("x") is not None and payload.get("y") is not None
     if has_good and payload["good"] not in defs.goods:
         raise OrderFailed("reason_unknown_good")
+    # 何が足りないかを書く（試し遊びでは「命令の内容が不正です」だけで分からなかった）
     if kind == "capital" and not has_good:
-        raise OrderFailed("reason_invalid_payload")
+        raise OrderFailed("reason_subsidy_needs_good")
     if kind == "bailout" and not has_tile:
-        raise OrderFailed("reason_invalid_payload")
+        raise OrderFailed("reason_subsidy_needs_tile")
     if kind == "production" and not (has_good or has_tile):
-        raise OrderFailed("reason_invalid_payload")
+        raise OrderFailed("reason_subsidy_needs_good_or_tile")
     if has_tile and not island.in_bounds(payload["x"], payload["y"]):
         raise OrderFailed("reason_out_of_bounds")
 

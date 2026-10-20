@@ -385,10 +385,14 @@ def assets_of(island: IslandState, f: Facility, entity: str) -> int:
     return book_capital(f) + ledger.money(island, entity) + inventory_value(island, f)
 
 
-def net_assets(island: IslandState, f: Facility, entity: str) -> int:
-    """施設の純資産（資産 − 借入 − 未払いの賃金と税。0 未満なら 0）。国有化・民営化の値段に使う。"""
+def net_assets(island: IslandState, f: Facility, entity: str, extra: int = 0) -> int:
+    """施設の純資産（資産 − 借入 − 未払いの賃金と税。0 未満なら 0）。国有化・民営化の値段に使う。
+
+    extra は、これから施設に入れるお金（民営化の前に出資する運転資金の見積もり）。0 で止める前に
+    足す。
+    """
     unpaid = arrears.total(island, entity) + arrears.total(island, entity, arrears.TAX_ARREARS)
-    return max(0, assets_of(island, f, entity) - debt_of(island, entity) - unpaid)
+    return max(0, assets_of(island, f, entity) + extra - debt_of(island, entity) - unpaid)
 
 
 def lend(

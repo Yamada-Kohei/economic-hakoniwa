@@ -215,8 +215,13 @@ def test_finance_orders_are_accepted(client, world):
     assert res.status_code == 200, res.content.decode()
     data = res.json()
     assert [o["kind"] for o in data["orders"]] == [k for k, _ in orders]
-    # 破綻していない銀行の処理だけは、今の島では通らない
-    assert data["warnings"] == [{"index": 12, "text": "その銀行は破綻していません"}]
+    # 破綻していない銀行の処理は、今の島では通らない。国有化と民営化は、今の国庫と資本家の預金では
+    # 払えないと先に知らせる（試し遊び1回目。議会を通った後に失敗していた）
+    warnings = {w["index"]: w["text"] for w in data["warnings"]}
+    assert warnings[12] == "その銀行は破綻していません"
+    assert set(warnings) <= {3, 4, 12}
+    for index, start in ((3, "国庫が足りません"), (4, "資本家階級の預金が足りません")):
+        assert warnings.get(index, start).startswith(start)
     texts = [o["text"] for o in data["orders"]]
     assert texts[0] == "工業団地・オフィス街の指定: 工業団地 1 マス"
     assert texts[11] == f"銀行への緊急の貸し出し: ({bank.x}, {bank.y}) 上限 10,000"

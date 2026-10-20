@@ -364,14 +364,22 @@ def works_why(island_economy: dict[str, Any]) -> str:
     return message(f"infrastructure_stalled_{why}") if why else ""
 
 
-def order_ok(island: IslandState, f: Facility, kind: str, payload: dict[str, Any]) -> bool:
-    """施設 f への命令がコアの確かめ（check_order）を通るか。
+# お金が足りないだけの確かめの失敗（命令は出せて、出したときに「国庫が足りません」と知らせる）
+MONEY_SHORT = ("reason_treasury_short", "reason_owners_short")
+
+
+def order_ok(
+    island: IslandState, f: Facility, kind: str, payload: dict[str, Any], money: bool = True
+) -> bool:
+    """施設 f への命令がコアの確かめ（check_order）を通るか。money が False なら、お金が足りない
+    だけの失敗は通ったことにする（命令の欄を出し、出したときにわけを見せる）。
 
     確かめは島の施設の並びからマスの施設を探すので、この施設だけを持たせた島で聞く。
     """
     game = get_game()
     probe = replace(island, facilities=[f])
-    return check_order(game.defs, game.registry, probe, kind, payload).ok
+    result = check_order(game.defs, game.registry, probe, kind, payload)
+    return result.ok or (not money and result.reason in MONEY_SHORT)
 
 
 def accounting_target(island: IslandState, f: Facility) -> str | None:
@@ -414,7 +422,7 @@ def ownership_target(island: IslandState, f: Facility) -> str | None:
     if f.x < 0 or f.y < 0:
         return None
     for kind in ("nationalize", "privatize"):
-        if order_ok(island, f, kind, {"x": f.x, "y": f.y}):
+        if order_ok(island, f, kind, {"x": f.x, "y": f.y}, money=False):
             return kind
     return None
 

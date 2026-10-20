@@ -627,7 +627,11 @@ export class TilePanel {
     }
     if (res.ok && !res.data.ok) slot.textContent = `現状では建設できません: ${res.data.text}`;
     else if (commute && commute.labor === 0) slot.textContent = "通勤圏に住民がいないため、労働者を雇えず工事も操業も進みません。";
-    else slot.textContent = this.inputWarning(payload);
+    else {
+      // 建てられても、送電網や働き手で止まりそうなら知らせる（確かめの notes）
+      const notes = (res.ok && res.data.notes) || [];
+      slot.textContent = [...notes, this.inputWarning(payload)].filter(Boolean).join(" ");
+    }
   }
 }
 

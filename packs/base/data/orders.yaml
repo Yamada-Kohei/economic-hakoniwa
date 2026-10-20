@@ -148,17 +148,17 @@ set_taxes:
     minProperties: 1
     additionalProperties: false
     properties:                           # 税率（%）。書いた税だけ変わる
-      income_tax: {type: number, minimum: 0, maximum: 100}
-      corporate_tax: {type: number, minimum: 0, maximum: 100}
-      consumption_tax: {type: number, minimum: 0, maximum: 100}
+      income_tax: {type: number, minimum: 0, maximum: 100, description: "%"}
+      corporate_tax: {type: number, minimum: 0, maximum: 100, description: "%"}
+      consumption_tax: {type: number, minimum: 0, maximum: 100, description: "%"}
 
 set_budget:
   admin_cost: 1
   payload:
     type: object                          # 項目（game.yaml の fiscal.budget_items）ごとの年の予算
     minProperties: 1
-    propertyNames: {pattern: "^[a-z_]+$"}
-    additionalProperties: {type: integer, minimum: 0}
+    propertyNames: {enum: [construction, education, security, subsidies, warehouse]}
+    additionalProperties: {type: integer, minimum: 0, description: "年の予算の額（毎ターンその12分の1まで使う）"}
 
 set_labor_policy:
   admin_cost: 1
@@ -168,7 +168,7 @@ set_labor_policy:
     additionalProperties: false
     properties:
       minimum_wage: {type: integer, minimum: 0}                     # 0 で決めない
-      unemployment_benefit: {type: number, minimum: 0, maximum: 100} # 平均賃金に対する %
+      unemployment_benefit: {type: number, minimum: 0, maximum: 100, description: "平均賃金に対する %"}
 
 set_retail_policy:        # 小売りの政策（回7）: 大きな店（百貨店）の出店の規制と、許可制の申請を許す
   admin_cost: 1
@@ -247,7 +247,7 @@ set_subsidy:
       good: {type: string}                          # 対象の財（生産補助と設備投資補助）
       x: {type: integer, minimum: 0}                # 対象の施設のマス（生産補助と救済補助）
       y: {type: integer, minimum: 0}
-      rate: {type: number, minimum: 0, maximum: 100}  # 割合（%）。0 でやめる
+      rate: {type: number, minimum: 0, maximum: 100, description: "%。0 でやめる"}
       turns: {type: integer, minimum: 1, maximum: 1200}
 
 nationalize:
@@ -302,7 +302,7 @@ set_monetary_policy:
     minProperties: 1
     additionalProperties: false
     properties:
-      policy_rate: {type: number, minimum: 0, maximum: 20}  # 政策金利（%）
+      policy_rate: {type: number, minimum: 0, maximum: 20, description: "%"}  # 政策金利
       bond_trade: {type: integer}                           # 中央銀行が毎ターン国債を買う額（マイナスは売る）
 
 set_central_bank_independence:
@@ -500,7 +500,7 @@ set_tariff:
     additionalProperties: false
     properties:
       good: {type: string}
-      rate: {type: number, minimum: 0, maximum: 100}  # 関税率（%。0 でやめる）
+      rate: {type: number, minimum: 0, maximum: 100, description: "%。0 でやめる"}  # 関税率
 
 set_export_subsidy:
   admin_cost: 1
@@ -704,7 +704,7 @@ set_official_price_rules:                 # 公定価格の決まり（計画経
     minProperties: 1
     additionalProperties: false
     properties:
-      band: {type: integer, minimum: 0, maximum: 100}  # 原価との差がこの % を超えたら見直す
+      band: {type: integer, minimum: 0, maximum: 100, description: "%"}  # 原価との差がこの % を超えたら見直す
       held:                               # 原価を下回っても据え置き、差を補助金で埋める財
         type: array
         uniqueItems: true

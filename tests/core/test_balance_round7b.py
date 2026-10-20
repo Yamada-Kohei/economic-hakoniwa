@@ -70,11 +70,12 @@ def test_short_plant_draws_on_sibling_cash_when_the_firm_has_none(game, base):
     ea = facility_entity(a.id)
     ledger.pay(island, ledger.GOV, ea, ledger.money(island, ledger.GOV) // 2, "subsidy")
     before = ledger.money(island, ea)
+    pooled = island.stats.get("firms.pooled", 0)  # 準備の世界のそのターンに回した分
     moved = co.draw(island, b, 1000, ctx)
     assert moved == 1000
     assert ledger.money(island, ea) == before - 1000
     assert b.economy[co.POOLED] == 1
-    assert island.stats["firms.pooled"] == 1000
+    assert island.stats["firms.pooled"] - pooled == 1000
     # 運転資金の分（ctx なし）は企業の預金だけ
     assert co.draw(island, b, 1000) == 0
     books_ok(game, island)
@@ -242,17 +243,24 @@ def test_standard_plan_builds_assembly_and_parts_plants_together(game, base):
     工場を余裕がなくても1つ目だけ建てる（どちらも相手を待って建たなかった。回7 後半の測り）。"""
     world = copy.deepcopy(base)
     defs, config = game.defs, game.config
+    inputs = defs.facilities["auto_parts_plant"]["recipes"]["default"]["inputs"]
+
+    def missing(i):
+        made = {g for f in i.facilities for g in fac.recipe_of(defs, f)["outputs"]}
+        return sorted(set(inputs) - made - {config.get("power.good")})
+
+    # 部品の材料のうち作っていない物を、どれも島で作れる島（作れない材料が残る島もある）
     island = next(
         i
         for i in world.islands.values()
-        if i.has_economy and any(autoplan._producers(defs, config, i, "automobile"))
+        if i.has_economy
+        and any(autoplan._producers(defs, config, i, "automobile"))
+        and all(any(autoplan._producers(defs, config, i, g)) for g in missing(i))
     )
     island.facilities = [
         f for f in island.facilities if f.kind not in ("automobile_plant", "auto_parts_plant")
     ]
-    made = {g for f in island.facilities for g in fac.recipe_of(defs, f)["outputs"]}
-    inputs = defs.facilities["auto_parts_plant"]["recipes"]["default"]["inputs"]
-    for good in sorted(set(inputs) - made - {config.get("power.good")}):
+    for good in missing(island):
         kind = next(k for k, _ in autoplan._producers(defs, config, island, good))
         island.facilities.append(Facility(id=900 + len(island.facilities), kind=kind, x=0, y=0))
     island.markets = [m for m in island.markets if m.good != "automobile"]

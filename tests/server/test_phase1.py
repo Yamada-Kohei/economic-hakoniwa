@@ -238,6 +238,7 @@ def test_order_check(client, world):
     commute = data["commute"]
     assert commute["radius"] == 3 and commute["labor"] >= commute["employed"] >= 0
     assert commute["labor"] > 0
+    assert isinstance(data["notes"], list)  # 建てた後に止まりそうなわけ（なければ空）
 
 
 # --- 登録・掲示板・画面 -----------------------------------------------------------

@@ -383,6 +383,8 @@ def test_policy_orders_check_and_log(game, base):
     )
     assert "embargo_set_good" in kinds and "embargo_lifted_good" in kinds and "embargo_set" in kinds
     for e in island.log:
+        if e.kind.startswith("title_"):
+            continue  # 称号の名前 {title} は、表示のときにサーバーが足す（messages.yaml の注）
         text = format_log(defs, e.kind, e.args)
         assert "{" not in text, (e.kind, text)
     assert world.islands[2].name in format_log(defs, "embargo_set", island.log[-1].args)

@@ -460,7 +460,7 @@ def test_construction_loan_is_split_across_banks_within_the_limit(game, warmed):
     reason, args = EntryExit()._finance(island, ctx, (owners + loan) * 2, 10**12)
     assert reason == "owners_short" and args["have"] == owners
     # 利益で返せなければ審査に通らない
-    assert EntryExit()._finance(island, ctx, amount, 0)[0] == "loan_refused"
+    assert EntryExit()._finance(island, ctx, amount, 0)[0] == "loan_short_of_coverage"
 
 
 def test_private_entry_happens_only_where_allowed(game, warmed):

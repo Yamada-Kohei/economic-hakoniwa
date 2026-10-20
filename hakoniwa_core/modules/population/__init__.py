@@ -442,7 +442,10 @@ def food_short_reason(orders: dict[str, int] | None) -> str:
         return "goods"
     if orders["budget"] <= 0 or orders["cost"] >= orders["budget"] * 0.98:
         return "money"
-    if orders["offered"] >= orders["need"] and orders["ordered"] >= orders["need"]:
+    # 層の取り分（売りの量 × 人数の割合）と注文の量は切り捨てで数単位欠けるので、1% までは足りた
+    # とみなす（食べた割合 99.9% で「物がない」と出ていた。試し遊び1回目の報告の 2）
+    enough = orders["need"] * 0.99
+    if orders["offered"] >= enough and orders["ordered"] >= enough:
         return "outbid"
     return "goods"
 
@@ -1058,14 +1061,16 @@ class Population(IslandStage):
 
         villages = [pos for pos in sorted(free) if farming(pos) and room(pos) > 0]
         moved = 0
+        moved_jobless = 0.0  # 移った人のうち、仕事のない人とその家族（ログに出す）
         for tile in sorted(island.tiles, key=lambda t: (t.y, t.x)):
             pos = (tile.x, tile.y)
             if tile.population <= 0 or farming(pos) or not villages:
                 continue
             idle = min(tile.population, tile_jobless(defs, island, tile) * family)
-            leaving = idle * hungry.get(JOBLESS, 0.0)
-            leaving += (tile.population - idle) * hungry.get(GENERAL, 0.0)
+            idle_leaving = idle * hungry.get(JOBLESS, 0.0)
+            leaving = idle_leaving + (tile.population - idle) * hungry.get(GENERAL, 0.0)
             count = min(tile.population, _rand_round(leaving, rng))
+            idle_part = idle_leaving / leaving if leaving > 0 else 0.0
             for target in sorted(villages, key=lambda v: (distance(pos, v), v[1], v[0])):
                 if count <= 0:
                     break
@@ -1079,10 +1084,17 @@ class Population(IslandStage):
                 free[target] -= move
                 count -= move
                 moved += move
+                moved_jobless += move * idle_part
             villages = [v for v in villages if room(v) > 0]
         if moved:
             island.stats["population.fled_to_villages"] = moved
-            island.log.append(LogEntry("famine_flight", {"count": moved}))
+            jobless = min(moved, round(moved_jobless))
+            if jobless > 0:  # 仕事のない人の家族がいれば、その人数も書く（失業率から外れるため）
+                island.log.append(
+                    LogEntry("famine_flight_jobless", {"count": moved, "jobless": jobless})
+                )
+            else:
+                island.log.append(LogEntry("famine_flight", {"count": moved}))
         return moved
 
 

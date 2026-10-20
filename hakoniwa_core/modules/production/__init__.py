@@ -130,6 +130,26 @@ def power_target(demand: int, capacity: int, ctx: StageContext) -> int:
     return min(fac.FULL, fac.ratio(demand, capacity) + step)
 
 
+def reaches_power(
+    island: IslandState, defs: Defs, config: Any, kind: str, x: int, y: int
+) -> bool | None:
+    """(x, y) に建てる kind の施設が、発電所（建っているもの）のある送電網につながるか。電力を
+    使わない施設は None。建てる命令の確かめで知らせる（試し遊びでは、造船所が完成の翌ターンに
+    「送電網につながっていない」で止まった）。送電網の数え方は Production._grids と同じ。"""
+    power = config.get("power.good")
+    if not any(r["inputs"].get(power) for r in defs.facilities[kind]["recipes"].values()):
+        return None
+    nodes = {(f.x, f.y) for f in island.facilities if fac.on_map(f)} | {(x, y)}
+    nodes |= {(t.x, t.y) for t in island.tiles if t.infra and infra.carries_power(defs, t)}
+    plants = {
+        (f.x, f.y)
+        for f in island.facilities
+        if f.built and fac.located(f) and fac.recipe_of(defs, f)["outputs"].get(power)
+    }
+    group = next(g for g in components(island, nodes) if (x, y) in g)
+    return bool(plants & set(group))
+
+
 class Production(IslandStage):
     name = "production"
 

@@ -271,7 +271,9 @@ def test_import_bids_stop_at_the_band_top_and_say_why_they_fall_short(game, trad
         trade_stage.WHY_SHIPS,
         trade_stage.WHY_CAPACITY,
         trade_stage.WHY_MONEY,
+        trade_stage.WHY_FUNDS,
         trade_stage.WHY_SELLERS,
+        trade_stage.WHY_BUYERS,  # 輸出の荷の売れ残り（試し遊び1回目）
     }
     assert check(world) == []
 

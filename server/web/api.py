@@ -21,6 +21,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import freight
 from hakoniwa_core.founding import land_terrains
+from hakoniwa_core.modules import production
 from hakoniwa_core.naming import default_place_style, place_of, place_styles
 from hakoniwa_core.orders import check_order
 from hakoniwa_core.units import from_milli, to_basis
@@ -735,11 +736,15 @@ def check(request, island_id: int):
         body = json.loads(request.body or b"{}")
     except ValueError:
         return HttpResponseBadRequest("JSON で送ってください")
+    if not isinstance(body, dict) or not isinstance(body.get("payload", {}), dict):
+        return HttpResponseBadRequest("命令は1つずつ {kind, payload} の形で送ってください")
     state = load_island(island)
     payload = display.order_payload(body.get("kind"), body.get("payload"), to_game=True)
     result = check_order(get_game().defs, get_game().registry, state, body.get("kind"), payload)
     text = "" if result.ok else display.message(result.reason or "", **result.args)
     data = {"ok": result.ok, "text": text, "details": list(result.details)}
+    if result.ok:  # どう読んだか（率の % や量の単位）を見られるように、命令の列と同じ説明を添える
+        data["summary"] = display.describe_order(body["kind"], payload or {})  # 計算の単位で渡す
     if result.ok and body.get("kind") == "build":
         # 建てても人手が集まるかを見られるように、通勤圏の労働者の数を添える
         payload = body["payload"]
@@ -747,7 +752,21 @@ def check(request, island_id: int):
         labor, employed = fac.commute_labor(get_game().defs, get_game().config, state, kind, x, y)
         radius = fac.commute_radius(get_game().defs, get_game().config, kind)
         data["commute"] = {"radius": radius, "labor": labor, "employed": employed}
+        data["notes"] = _build_notes(state, kind, x, y, labor - employed)
     return _json(data)
+
+
+def _build_notes(state, kind: str, x: int, y: int, free: int) -> list[str]:
+    """建てられるが、建てた後に止まりそうなわけ（試し遊びで、確かめの時点で分かっていたのに
+    言わなかったもの: 送電網につながらない・通勤圏に空いている働き手が足りない）。"""
+    game = get_game()
+    notes = []
+    if production.reaches_power(state, game.defs, game.config, kind, x, y) is False:
+        notes.append(display.message("check_note_no_grid"))
+    need = game.defs.facilities[kind].get("workers", 0)
+    if need > free:
+        notes.append(display.message("check_note_few_workers", free=max(0, free), need=need))
+    return notes
 
 
 def _secret_orders() -> Q:

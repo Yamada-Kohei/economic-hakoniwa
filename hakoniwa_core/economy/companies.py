@@ -259,8 +259,10 @@ def display_name(island: IslandState, defs: Any, number: int) -> str:
         return ""
     if rec.get(NAME):
         return rec[NAME]
-    if rec[OWNER] == OWNER_STATE:
-        return f"{island.name}国営{rec.get(SECTOR, '')}"
+    if rec[OWNER] == OWNER_STATE:  # 業種の名前は messages の state_firm_<業種>（なければ番号）
+        key = f"state_firm_{rec.get(SECTOR, '')}"
+        name = defs.name("messages", key)
+        return f"{island.name}国営企業{number}" if name == key else name.format(island=island.name)
     return f"{island.name}企業{number}"
 
 

@@ -39,6 +39,7 @@ _ARG_KINDS = {
     "economy": "regimes",
     "before": "regimes",
     "building": "messages",
+    "policy": "messages",
 }
 # マスを持たない施設（x, y が負）の場所の書き方: 文面のこの部分を、表示名 OFF_MAP_TO に置き換える
 OFF_MAP_FROM = "({x}, {y}) の"
@@ -50,6 +51,13 @@ DATE_SPEC = "date"
 def _off_map(args: dict[str, Any]) -> bool:
     x, y = args.get("x"), args.get("y")
     return isinstance(x, int) and isinstance(y, int) and (x < 0 or y < 0)
+
+
+def _recipe_names(defs: Defs, facility: str, lang: str) -> str:
+    """施設の生産方式の、命令に書く名前と表示名（「wood（木材から製造）」）。試し遊びでは、
+    違う名前を書くと「その生産方式はありません」だけで、使える名前が分からなかった。"""
+    recipes = defs.facilities.get(facility, {}).get("recipes", {})
+    return "・".join(f"{r}（{defs.name('recipes', f'{facility}_{r}', lang)}）" for r in recipes)
 
 
 def format_turn(defs: Defs, turn: int, calendar: Calendar | None = None, lang: str = "ja") -> str:
@@ -121,6 +129,8 @@ def format_log(
         if isinstance(args.get(key), list):
             names = [f"{defs.name('finance', t, lang)} {p}%" for t, p in args[key]]
             shown[key] = "・".join(names)
+    if "{recipes}" in template and isinstance(args.get("facility"), str):
+        shown["recipes"] = _recipe_names(defs, args["facility"], lang)
     if isinstance(args.get("reason"), str):
         shown["reason"] = format_log(
             defs, args["reason"], args.get("reason_args") or {}, lang, calendar

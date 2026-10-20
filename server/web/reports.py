@@ -94,6 +94,11 @@ _EXTRA_STATS = [
     ("wage.max", "最も高い賃金", "money"),
     ("wage.real", "実質賃金（建国時の物価で）", "money"),
     ("money.deposits", "預金の総額", "money"),
+    ("treasury.deposited", "政府が銀行に預けているお金", "money"),
+    ("bonds.burden", "国債の利払い（中央銀行の分を除く）の国の収入に対する割合", "%"),
+    ("equipment.wear", "施設の設備の傷み（1ターンの値打ちの減り）", "money"),
+    ("equipment.condition", "施設の設備の平均の残り", "%"),
+    ("equipment.repair", "施設の設備の直しに使った額（1ターン）", "money"),
     ("money.central_bank", "中央銀行のお金（準備預金と国庫）", "money"),
     ("cb_lending", "中央銀行の銀行への貸し出し", "money"),
     ("bonds.underwritten", "中央銀行の国債の直接の引き受け（1ターン）", "money"),
@@ -125,9 +130,18 @@ _EXTRA_STATS = [
     ("fiscal.balance", "財政の収支", "money"),
     # 貿易と為替（フェーズ3-1）
     ("trade.exports", "輸出（1ターン）", "money"),
-    ("trade.imports", "輸入（海外の商人を含む。1ターン）", "money"),
+    # 計画経済の国が海外の商人から買った分は、島の買い手が払った公定価格の額で数える（GDP の輸入）
+    (
+        "trade.imports",
+        "輸入（海外の商人を含む。公定価格のある国は公定価格の額で。1ターン）",
+        "money",
+    ),
     ("trade.balance", "貿易収支（輸出 − 輸入）", "money"),
-    ("trade.merchant", "海外の商人から買った額（1ターン）", "money"),
+    (
+        "trade.merchant",
+        "海外の商人から買った額（政府が払った公定価格との差を含む。1ターン）",
+        "money",
+    ),
     ("trade.unpaid", "お金が足りず払えなかった運賃と港の使用料", "money"),
     ("ships", "輸送船", " 隻"),
     ("ships.busy", "航海に出ている輸送船", " 隻"),
@@ -713,13 +727,14 @@ def short_facilities(
     for row in island.facilities.filter(query).order_by("number"):
         f = facility_from_row(row)
         wanted = row.status.partition(":")[2]
+        x, y = fac.position(f)  # 町の中の店は町のマス
         out.append(
             {
                 "number": row.number,
                 "name": facility_name(game.defs, game.config, state, f),
                 "kind_name": game.defs.name("facilities", row.kind),
-                "x": row.x,
-                "y": row.y,
+                "x": x,
+                "y": y,
                 "good": wanted,
                 "good_name": game.defs.name("goods", wanted),
                 "status_text": display.status_text(f),

@@ -486,7 +486,8 @@ def _map(request, args):
         if on_map:
             grid[row.y][row.x] = "F" if row.built else "f"
         f = facility_from_row(row)
-        where = f"({row.x},{row.y})" if on_map else "(マスなし)"
+        x, y = fac.position(f)  # 町の中の店は町のマス
+        where = f"({x},{y})" if x >= 0 and y >= 0 else "(マスなし)"
         state_text = display.status_text(f)
         rate = f" 稼働 {round(row.operating_rate * 100 / fac.FULL)}%" if row.built else ""
         worn = display.equipment_info(game.defs, game.config, f) if row.built else {}
@@ -594,9 +595,10 @@ TOOLS = [
         "summary",
         "国の要約",
         "国の今の状態を1回で: 主な指標と前のターンからの変化、政情、止まった施設と工事、財の値段と"
-        "買えなかった量、商業・サービス業の店（services）、人口の増減のわけ（population_changes）、"
+        "買えなかった量と国の倉庫の在庫（stock）、商業・サービス業の店（services）、人口の増減のわけ（population_changes）、"
         "飢えている家計の層とそのわけ（hunger）、満期の近い国債、直近のターンの出来事、注意。"
-        "自分の島なら赤字の施設・命令の列と結果・未読の公電も。",
+        "自分の島なら赤字の施設・命令の列と、直近に命令を実行したターン（last_turn）の結果・"
+        "未読の公電も。",
         _summary,
         {"island": ISLAND},
     ),

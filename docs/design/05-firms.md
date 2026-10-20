@@ -45,8 +45,8 @@
 | FM-22 | 倒産と撤退の後、設備と在庫を売った代金は、未払い賃金 → 未払いの税 → 貸し手（貸した額の割合で）の順に分け、余れば持ち主に返す。撤退した施設の残りの在庫は国が市場の値段で引き取る | 決定 |  | tests/core/test_balance_round3.py::test_foreclosure_money_goes_to_wages_then_taxes_then_lenders_by_share, ::test_leftover_stock_is_bought_by_the_state_at_market_price, ::test_bankruptcy_pays_unpaid_wages_before_the_lenders |
 | FM-23 | 民営の工事が決めたターン数進まなければ工事をやめる。建設資金は預金で返し、返しきれない分は貸し倒れ、買ってあった資材は国の倉庫に入る | 決定 | `firms.abandon_turns` | tests/core/test_finance.py::test_stalled_private_site_is_abandoned |
 | FM-24 | 民営の施設はプレイヤーが取り壊せない（国有化すれば取り壊せる） | 決定 |  | （未確認） |
-| FM-25 | 国有化（命令）: 民営の施設を純資産（0未満なら0）で政府が買い取り、代金を国庫から資本家階級に払い、借入は引き継ぐ。差し押さえ中の施設は銀行から売り値で買う | 決定 |  | tests/core/test_finance.py::test_nationalize_then_privatize |
-| FM-26 | 民営化（命令）: 国営の施設を純資産で資本家階級に売る。国庫直轄の施設は運転資金を出資して独立採算に移してから売る。計画経済の島と混合経済の基幹産業ではできない | 決定 | `firms.operating_turns` | tests/core/test_finance.py::test_nationalize_then_privatize, ::test_planned_economy_cannot_privatize_or_license_banks |
+| FM-25 | 国有化（命令）: 民営の施設を純資産（0未満なら0）で政府が買い取り、代金を国庫から資本家階級に払い、借入は引き継ぐ。差し押さえ中の施設は銀行から売り値で買う。今の国庫で払えなければ、命令を出したとき（議会にかける前）に知らせ、実行のときにも見直す | 決定 |  | tests/core/test_finance.py::test_nationalize_then_privatize |
+| FM-26 | 民営化（命令）: 国営の施設を純資産で資本家階級に売る。国庫直轄の施設は運転資金を出資して独立採算に移してから売る。資本家階級の預金で払えなければ、命令を出したときに知らせ、実行のときは会計を移す前に断る。計画経済の島と混合経済の基幹産業ではできない | 決定 | `firms.operating_turns` | tests/core/test_finance.py::test_nationalize_then_privatize, ::test_planned_economy_cannot_privatize_or_license_banks |
 | FM-27 | 補助金（命令。補助金の予算から払い、足りなければ比例で減らす）は、生産補助（品目か工業団地のマスに売上の割合）・設備投資補助（品目に建設費の割合）・救済補助（施設の赤字を決めたターン数埋める）の3つ。民間は参入の判断で見込む | 決定 | `fiscal.budget.subsidies` | tests/core/test_finance.py::test_subsidy_is_set_and_cleared |
 | FM-28 | 命令 `set_zone` で陸のマスを工業団地かオフィス街に指定・解除する（首都と町のマスは指定できず、マスの数に上限がある）。指定したマスには町が建たない。解除しても建っている施設は残る | 決定 |  | tests/core/test_finance.py::test_set_zone_marks_tiles, tests/server/test_finance.py::test_zone_order_runs_and_shows_on_tile |
 | FM-29 | 鉱山は鉱業資源ごとの作り方を持ち、島に決めた数まで（工事中も数え、民営も数える。採石場は含まない）。掘る物は替えられない | 決定 |  | tests/core/test_phase3_2.py::test_a_mine_cannot_switch_to_another_deposit |

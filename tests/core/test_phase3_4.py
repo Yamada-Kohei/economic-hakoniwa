@@ -211,6 +211,9 @@ def test_destroyed_facility_is_repaired_as_state_works(game, base):
     politics_stage.damage(island, ctx, f)
     assert not f.built and f.ext.get("repair")
     books_ok(game, island)
+    # 同じころに始まったほかの国の工事（水力発電所など。世界の動きで変わる）に公共事業費を先に
+    # 取られて、直すのが 12 ターンに収まらないことがないように、公共事業費を多めにしておく
+    island.policy.budget["construction"] *= 2
     kinds = set()
     run(game, world, 12, lambda w: kinds.update(e.kind for e in island.log))
     assert f.built and "repair" not in f.ext
@@ -719,6 +722,8 @@ def test_planned_traders_export_unsold_goods_whatever_the_price(game, base):
     island.markets.append(
         MarketRecord(good=good, price=prices[good], volume=0, demand=0, supply=5000)
     )
+    # 売りはどれも島の売り手のもの（海外の商人と商社の売りはない）とする
+    island.scratch.get(trade_traders.FOREIGN_SUPPLY, {}).pop(good, None)
     trade_traders.update_targets(island, game.defs, game.config, {}, {})
     # 国内で売れ残った物は、値段によらず輸出の向きにする（ボーキサイトの島の製錬所が動くように）
     items = [trade_traders.goods_of(f).get(good) for f in sellers]
