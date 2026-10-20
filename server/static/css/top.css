@@ -87,3 +87,6 @@
 .banner { margin: 4px 0; }
 .banner-html { width: 100%; box-sizing: border-box; font-family: monospace; font-size: 0.8em; }
 #world-summary .records th { white-space: normal; }
+
+.table-flag { vertical-align: middle; border: 1px solid #0002; object-fit: cover; }
+.award-badge { background: #fff4c2; border-color: #c9a227; }

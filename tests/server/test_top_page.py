@@ -47,7 +47,7 @@ def test_table_lists_islands_by_gdp_with_columns(client, world):
     assert table[0]["columns"]["gdp"]["value"]  # 見る人の通貨の国は直せる
     html = res.content.decode()
     labels = ("順位", "体制", "人口", "GDP", "1人あたり GDP", "失業率", "物価上昇率", "幸福度")
-    labels += ("称号",)
+    labels += ("賞・称号",)
     for label in labels:
         assert f">{label}<" in html, label
     first = table[0]

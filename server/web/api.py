@@ -33,6 +33,7 @@ from server.web import chain as chain_views
 from server.web import country as country_views
 from server.web import diplomacy as diplomacy_views
 from server.web import display, overview, rankings, reports
+from server.web import news as news_views
 from server.web import politics as politics_views
 from server.web import top as top_page
 from server.web import trade as trade_views
@@ -508,6 +509,15 @@ def island_diplomacy(request, island_id: int):
     条約の提案（届いたもの・出したもの）と命令の選択肢も（server/web/diplomacy.py）。"""
     island = get_object_or_404(m.Island, pk=island_id)
     return _json(diplomacy_views.diplomacy_data(island, _mine(request, island)))
+
+
+@require_GET
+def news(request):
+    """世界の近況（?page=）。全部の国の主な出来事を新しい順に。誰でも読める（server/web/news.py）。"""
+    world = m.World.objects.order_by("id").first()
+    if world is None:
+        return _json({"turn": 0, "page": 1, "pages": 1, "count": 0, "entries": []})
+    return _json(news_views.news_data(world, request.GET.get("page")))
 
 
 @require_GET

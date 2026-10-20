@@ -50,18 +50,18 @@
     <th data-sort="name"><button type="button">{% translate "島" %}</button></th>
     <th>{% translate "体制" %}</th>
     {% for name, label, unit in columns %}<th data-sort="{{ name }}" class="num"><button type="button">{{ label }}</button></th>{% endfor %}
-    <th>{% translate "称号" %}</th>
+    <th>{% translate "賞・称号" %}</th>
   </tr></thead>
   <tbody>
     {% for r in table %}
     <tr data-rank="{{ r.rank }}" data-name="{{ r.name }}"{% for name, c in r.columns.items %} data-{{ name|cut:"_" }}="{{ c.value|default_if_none:'' }}"{% endfor %}{% if r.inactive %} class="inactive"{% endif %}>
       <td class="rank">{{ r.rank }}</td>
       <td class="move">{% if r.move is None %}<span class="muted">-</span>{% elif r.move > 0 %}<span class="up">↑{{ r.move }}</span>{% elif r.move < 0 %}<span class="down">↓{{ r.move|stringformat:"d"|cut:"-" }}</span>{% else %}<span class="muted">→</span>{% endif %}</td>
-      <td class="island-name"><a href="{% url 'island' r.island %}">{{ r.name }}</a>{% if r.ai %} {% include "web/ai_mark.html" %}{% endif %}{% if r.new %} <span class="new-mark">NEW!</span>{% endif %}
+      <td class="island-name"><img class="table-flag" src="{{ r.flag }}" alt="" width="24" height="16" loading="lazy"> <a href="{% url 'island' r.island %}">{{ r.name }}</a>{% if r.ai %} {% include "web/ai_mark.html" %}{% endif %}{% if r.new %} <span class="new-mark">NEW!</span>{% endif %}
         <br><small>{% if r.owner %}{{ r.owner }}{% else %}{% translate "持ち主なし" %}{% endif %}{% if r.inactive %} ・ {% translate "休止中" %}{% endif %}</small></td>
       <td class="regime">{{ r.regime|default:"-" }}</td>
       {% for name, c in r.columns.items %}<td class="num">{% if c.value is None and c.text %}<span class="muted">{{ c.text }}</span>{% elif c.text %}{{ c.text }}{% else %}<span class="muted">-</span>{% endif %}</td>{% endfor %}
-      <td class="titles">{% for t in r.titles %}<span class="title-badge">{{ t }}</span>{% empty %}<span class="muted">-</span>{% endfor %}</td>
+      <td class="titles">{% for a in r.awards %}<span class="title-badge award-badge">{{ a }}</span>{% endfor %}{% for t in r.titles %}<span class="title-badge">{{ t }}</span>{% endfor %}{% if not r.awards and not r.titles %}<span class="muted">-</span>{% endif %}</td>
     </tr>
     {% empty %}
     <tr><td colspan="{{ columns|length|add:5 }}">{% translate "まだ島がありません。" %}</td></tr>

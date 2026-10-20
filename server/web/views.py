@@ -27,6 +27,9 @@ from server.web import (
     reports,
     trade,
 )
+from server.web import (
+    news as news_views,
+)
 from server.web import politics as politics_views
 from server.web import top as top_page
 from server.world.models import Island, World
@@ -295,6 +298,20 @@ def diplomacy_page(request, island_id: int):
     island, context, _ = _report(request, island_id, "diplomacy", "外交")
     context["diplomacy"] = diplomacy.diplomacy_data(island, context["mine"])
     return render(request, "web/diplomacy.html", context)
+
+
+def news_page(request):
+    """世界の近況: 全部の国の主な出来事（建国・選挙・憲法の改正・災害・倒産・条約・戦争など）。"""
+    world = World.objects.order_by("id").first()
+    if world is None:
+        return render(request, "web/news.html", {"entries": [], "page": None})
+    data = news_views.news_data(world, request.GET.get("page"))
+    paginator = Paginator(range(data["count"]), news_views.PAGE_SIZE)
+    return render(
+        request,
+        "web/news.html",
+        {**data, "page": paginator.get_page(data["page"])},
+    )
 
 
 def country_page(request, island_id: int):

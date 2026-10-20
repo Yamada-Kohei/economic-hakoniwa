@@ -1,0 +1,114 @@
+"""賞（フェーズ4-1）: 島の一覧と国の公開ページに並べる印。
+
+賞は記録を持たず、そのつどターンログと統計から数える（巻き戻せば賞も巻き戻る）。しきい値は
+game.yaml の ``awards``。元の箱庭諸島の賞の名前を使う（繁栄賞・超繁栄賞・究極繁栄賞・平和賞・
+災難賞・ターン杯）。
+
+- 繁栄賞・超繁栄賞・究極繁栄賞: 人口がしきい値に届いたことがある（いちばん高い段だけ出す）
+- 平和賞: 災害・暴動・反乱・戦争が、建国から数えて続けて ``peace_turns`` ターンない（いま）
+- 災難賞: 災害・暴動・反乱・飢え・倒産・債務不履行・銀行の破綻の出来事が ``calamity_count`` 件以上
+- ターン杯: 休止中でない国のうち建国がいちばん古い 1 国（``cup_turns`` ターン以上続いたとき）
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from django.db.models import Count, Max, Q
+
+from server.game import get_game
+from server.turns.models import TurnLog
+from server.world import models as m
+
+PROSPERITY = ("繁栄賞", "超繁栄賞", "究極繁栄賞")
+
+# 災難の出来事（ターンログの文の種類。名前が _ で終わるものは、その始まりの種類全部）
+CALAMITIES = (
+    "disaster_",
+    "politics_riot",
+    "politics_rebellion",
+    "riot_destroyed",
+    "population_starved",
+    "population_hunger_deaths",
+    "facility_bankrupt",
+    "firm_bankrupt",
+    "bank_failed_",
+    "bond_default",
+)
+# 平和を破る出来事（災害・暴動・反乱・戦争の始まり）
+UNREST = (
+    "disaster_",
+    "politics_riot",
+    "politics_rebellion",
+    "riot_destroyed",
+    "war_declared",
+    "war_declared_on",
+    "war_resumed",
+)
+
+
+def _kinds(kinds: tuple[str, ...]) -> Q:
+    q = Q()
+    for kind in kinds:
+        q |= Q(kind__startswith=kind) if kind.endswith("_") else Q(kind=kind)
+    return q
+
+
+def settings() -> dict[str, Any]:
+    config = get_game().config
+    return {
+        "prosperity": [int(n) for n in config.get("awards.prosperity")],
+        "peace_turns": int(config.get("awards.peace_turns")),
+        "calamity_count": int(config.get("awards.calamity_count")),
+        "cup_turns": int(config.get("awards.cup_turns")),
+    }
+
+
+def holders(world: m.World) -> dict[int, list[dict[str, Any]]]:
+    """島の番号 → その島の賞の一覧（{"id", "name", "detail"}）。賞のない島は載らない。"""
+    rule = settings()
+    islands = list(world.islands.values("id", "ext", "inactive"))
+    peak = dict(
+        m.StatRecord.objects.filter(island__world=world, name="population")
+        .values("island")
+        .annotate(top=Max("value"))
+        .values_list("island", "top")
+    )
+    calamities = dict(
+        TurnLog.objects.filter(_kinds(CALAMITIES), island__world=world)
+        .values("island")
+        .annotate(n=Count("id"))
+        .values_list("island", "n")
+    )
+    unrest = dict(
+        TurnLog.objects.filter(_kinds(UNREST), island__world=world)
+        .values("island")
+        .annotate(last=Max("turn"))
+        .values_list("island", "last")
+    )
+    founded = {i["id"]: int((i["ext"] or {}).get("founded_turn") or 0) for i in islands}
+    out: dict[int, list[dict[str, Any]]] = {}
+
+    def give(island: int, award: str, name: str, detail: str) -> None:
+        out.setdefault(island, []).append({"id": award, "name": name, "detail": detail})
+
+    for island in islands:
+        i = island["id"]
+        level = sum(1 for n in rule["prosperity"] if peak.get(i, 0) >= n)
+        if level:
+            need = rule["prosperity"][level - 1]
+            give(i, f"prosperity_{level}", PROSPERITY[level - 1], f"人口が {need:,} 人に届きました")
+        quiet = world.turn - max(unrest.get(i, 0), founded[i])
+        if quiet >= rule["peace_turns"]:
+            give(i, "peace", "平和賞", f"{quiet} ターンのあいだ、災害も暴動も戦争もありません")
+        if calamities.get(i, 0) >= rule["calamity_count"]:
+            give(i, "calamity", "災難賞", f"災難の出来事が {calamities[i]} 件ありました")
+    alive = [i for i in islands if not i["inactive"]]
+    if alive:
+        oldest = min(alive, key=lambda i: (founded[i["id"]], i["id"]))
+        age = world.turn - founded[oldest["id"]]
+        if age >= rule["cup_turns"]:
+            give(
+                oldest["id"], "cup", "ターン杯", f"建国から {age} ターン、いちばん長く続いています"
+            )
+    return out

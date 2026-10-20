@@ -307,6 +307,10 @@ def _send_letter(request, args):
     return call_ok(request, "POST", "/api/letters", body=body)
 
 
+def _news(request, args):
+    return call_ok(request, "GET", "/api/news", query={"page": args.get("page") or 1})
+
+
 def _hall(request, args):
     return call_ok(request, "GET", "/api/hall", query={"page": args.get("page") or 1})
 
@@ -794,6 +798,14 @@ TOOLS = [
         read_only=False,
     ),
     Tool(
+        "news",
+        "世界の近況",
+        "世界の近況（誰でも読める）。全部の国の主な出来事（建国・選挙・憲法の改正・災害・倒産・称号・"
+        "条約・戦争など）の新しい順。国ごとの年表は report page=country。",
+        _news,
+        {"page": PAGE},
+    ),
+    Tool(
         "hall",
         "国際会議場",
         "国際会議場（誰でも読める公開の声明の場）。いまの戦争の状態と効いている条約、声明と、条約・"
@@ -953,6 +965,7 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "island_plan": ("report",),
     "island_diplomacy": ("report",),
     "island_country": ("report", "country_set", "flag_set", "country_note"),
+    "news": ("news",),
     "hall": ("hall", "hall_post"),
     "board": ("board",),
     "board_new": ("board_new_thread",),

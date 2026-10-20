@@ -104,6 +104,7 @@ DB の表は、マス（`Tile`）・施設（`Facility`）・在庫（`Stock`、
 | `/board/` | 掲示板 |
 | `/hall/` | 国際会議場: 戦争の状態・効いている条約・声明と出来事の並び。島を持つ人には声明の入力欄も |
 | `/islands/<id>/diplomacy/` | 外交の状態（フェーズ4-1）: 戦争・効いている条約・終わった条約・条約の違反の記録。持ち主には返事待ちの提案と、宣戦・条約・署名・断り・取り下げ・破棄の命令の欄も |
+| `/news/` | 世界の近況（フェーズ4-1。世界の主な出来事を新しい順に 30 件ずつ。`server/web/news.py`）。賞（`server/web/awards.py`）は島の一覧の表と国の公開ページに出る |
 | `/islands/<id>/country/` | 国の公開ページ（フェーズ4-1）: 国旗・元首・体制・通貨・人口・紹介文・年表（国ごとの紀年）・来訪者の一言。持ち主には紹介文・紀年・国旗の入力欄、ほかの国を持つ人には一言の入力欄 |
 | `/islands/<id>/flag` | 国旗の画像（上げた PNG。上げていない・管理者が隠した国は仮の旗の SVG） |
 | `/letters/` | 外交: 届いた公電・送った公電（`sent/`）・1通（`<番号>/`）・送る（`new/`。`?to=島の番号`、返電は `?re=公電の番号`）。島を持つ人だけ |
@@ -156,6 +157,7 @@ DB の表は、マス（`Tile`）・施設（`Facility`）・在庫（`Stock`、
 | `POST /api/founding` | 建国する（1人1島） |
 | `GET /api/hall` | 国際会議場（`?page=`）: 戦争の状態（`wars`）・効いている条約（`treaties`）・声明と出来事の新しい順の並び（`entries`）。誰でも読める。`POST` で声明を出す（`{"title", "body"}`。島を持つ人だけ。送りすぎは 429） |
 | `GET /api/islands/<id>/diplomacy` | 外交（フェーズ4-1）。だれにでも戦争の状態・効いている条約・終わった条約・条約の違反の記録を、持ち主には返事待ちの提案（`incoming`・`outgoing`）と命令の選択肢（`choices`）も |
+| `GET /api/news` | 世界の近況（`page`。`entries`・`count`・`pages`） |
 | `GET /api/islands/<id>/country` | 国の公開ページ。だれにでも国旗・元首・体制・通貨・人口・紹介文・年表（`timeline`。`timeline_text` は wiki に貼れる文）・来訪者の一言を、持ち主には紀年の選択肢と紹介文の元の文も。書き込みは `PUT …/country/edit`（`intro`・`era`・`new_era`）、`PUT・DELETE …/flag`（`png_base64` か `image/png`）、`POST …/country/notes`（`text`） |
 | `GET /api/letters` | 自分の島の手紙の一覧（`?box=inbox`・`?box=sent` と `&page=`。新しい順）と未読の数。ログインして島を持つ人だけ（ほかは 403） |
 | `POST /api/letters` | 手紙を送る（`{"to": 島の番号, "subject", "body"}`）。自分宛てと存在しない島は 400、送りすぎは 429 |

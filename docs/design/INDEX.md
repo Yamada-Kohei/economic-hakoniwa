@@ -461,7 +461,7 @@
 
 ## [11 画面と統計](11-ui.md)
 
-決まり 40 個、うち仮の決まりの表にあるもの 0 個。
+決まり 42 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -505,6 +505,8 @@
 | UI-38 | 国の公開ページ（`/islands/<番号>/country/`、JSON API `GET /`… | 決定（4-1 ③） | tests/server/test_country.py |
 | UI-39 | 国ごとの紀年は表示だけで、世界の暦（ターン）は変わらない | 決定（4-1 ③） | tests/server/test_country.py |
 | UI-40 | 放置された国（命令が途絶えた国）は、自動で休止にも無人にもしない | 決定（4-1 ③） | tests/server/test_country.py |
+| UI-41 | 世界の近況（`/news/`、JSON API `GET /api/news?page=`、MC… | 決定（4-1 ③） | tests/server/test_news_awards.py |
+| UI-42 | 賞は記録を持たず、そのつどターンログと統計から数える（巻き戻せば賞も巻き戻る） | 決定（4-1 ③） | tests/server/test_news_awards.py |
 
 ## [12 確かめ方](12-checks.md)
 

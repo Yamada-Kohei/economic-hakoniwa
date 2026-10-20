@@ -16,6 +16,7 @@
         <tr><th scope="row">{% translate "通貨" %}</th><td>{{ c.head.currency|default:"—" }}{% if c.head.currency_symbol %}（{{ c.head.currency_symbol }}）{% endif %}</td></tr>
         <tr><th scope="row">{% translate "体制" %}</th><td>{% for axis, name in c.head.regime.items %}{{ name }}{% if not forloop.last %} ・ {% endif %}{% endfor %}</td></tr>
         {% if c.head.population is not None %}<tr><th scope="row">{% translate "人口" %}</th><td>{{ c.head.population|floatformat:0 }}{% translate "人" %}</td></tr>{% endif %}
+        {% if c.awards or c.titles %}<tr><th scope="row">{% translate "賞・称号" %}</th><td>{% for a in c.awards %}<span class="title-badge award-badge" title="{{ a.detail }}">{{ a.name }}</span>{% endfor %}{% for t in c.titles %}<span class="title-badge">{{ t }}</span>{% endfor %}</td></tr>{% endif %}
         <tr><th scope="row">{% translate "建国" %}</th><td>{{ c.era.founded }}</td></tr>
         <tr><th scope="row">{% translate "いま" %}</th><td>{{ c.era.now }}（{{ c.era.kind_name }}）</td></tr>
       </tbody>
