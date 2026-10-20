@@ -36,6 +36,15 @@ AI で作った絵は、作った道具の名前と、依頼した人を書き�
 | パス | 作った人 | ライセンス | 出典 |
 |---|---|---|---|
 | server/static/themes/default/sprites | Claude（tools/sprites/silhouette.py で生成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/facility/barracks.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/facility/naval_base.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/facility/naval_base@sw.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/facility/naval_base@ne.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/facility/naval_base@nw.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/facility/radar.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/unit/infantry.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/fleet/frigate.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/overlay/trench.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
 
 ## GitHub Actions
 

@@ -69,6 +69,9 @@ STORE_PINK = "#d9668f"  # 百貨店の日よけと看板（小さな地図の色
 STORE_STONE = "#e6dac0"  # 百貨店の石張りの壁
 PARTS_BLUE = "#5b7fb0"  # 部品工場の屋根（小さな地図の色）
 TIRE = "#2b2c2f"
+MILITARY = "#7d8466"  # 軍の壁・部隊の服
+MILITARY_DARK = "#5c6249"  # 軍の屋根
+NAVY_GRAY = "#8a96a0"  # 軍艦の船体
 STRIPES = (STORE_PINK, WHITE)  # 縞の日よけ
 
 # 基の色と、面ごとの明るさ（上面・屋根の左向き・左の側面・屋根の右向き・右の側面）。
@@ -1802,10 +1805,138 @@ def shipyard(s: Side) -> list[Prim]:
     ]
 
 
-for _name, _shape in (("fishing_port", fishing_port), ("port", port), ("shipyard", shipyard)):
+def naval_base(s: Side) -> list[Prim]:
+    """軍港: 広い水面の軍艦 1 隻、細長い桟橋、陸上の管制塔。"""
+    wz = s.water_z
+    return [
+        *basin(s, 0.44),
+        *tiered(0, s.box(0.08, 0.08, 0.56, 0.92, 0, 0.6, CONCRETE, PAVEMENT)),
+        s.box(0.22, 0.16, 0.4, 0.36, 0.6, 14, MILITARY),
+        s.box(0.2, 0.14, 0.42, 0.38, 14.6, 4, GLASS, MILITARY_DARK),
+        s.box(0.18, 0.12, 0.44, 0.4, 18.6, 1.4, MILITARY_DARK),
+        *[
+            s.cylinder(0.64, v, 0.016, wz, 1 - wz, c=IRON)
+            for v in (0.16, 0.48, 0.82)
+        ],
+        s.box(0.54, 0.1, 0.7, 0.88, 1, 1.2, CONCRETE, PAVEMENT),
+        *[s.cylinder(0.68, v, 0.014, 2.2, 1.2, c=IRON) for v in (0.2, 0.72)],
+        # 船の下端は必ず水面。長い先細りの甲板を空け、商船の箱と見分ける。
+        s.ship(0.74, 0.12, 0.96, 0.88, wz, 4, 0.2, NAVY_GRAY, METAL, along="v"),
+        s.box(0.775, 0.32, 0.925, 0.53, wz + 4, 3, NAVY_GRAY),
+        s.box(0.79, 0.34, 0.91, 0.45, wz + 7, 2, GLASS, NAVY_GRAY),
+        s.box(0.82, 0.25, 0.88, 0.3, wz + 4, 5, ROOF_STEEL, DARK),
+        s.cylinder(0.85, 0.49, 0.009, wz + 7, 8, c=IRON),
+        s.box(0.79, 0.475, 0.91, 0.505, wz + 14, 1, METAL),
+        s.cylinder(0.85, 0.67, 0.035, wz + 4, 2, c=NAVY_GRAY),
+        s.strut((0.85, 0.67, wz + 6), (0.85, 0.79, wz + 6.5), 0.8, IRON),
+        *[
+            s.strut((0.68, v, 3), (0.75, v + 0.03, wz + 4), 0.5, IRON)
+            for v in (0.2, 0.72)
+        ],
+    ]
+
+
+for _name, _shape in (
+    ("fishing_port", fishing_port),
+    ("port", port),
+    ("shipyard", shipyard),
+    ("naval_base", naval_base),
+):
     for _side in SIDES:
         _suffix = "" if _side == "se" else f"@{_side}"
         SHAPES[f"facility/{_name}{_suffix}"] = _shape(Side(_side))
+
+
+# --- 軍事のサンプル（第1部。theme.yaml への登録は施設の実装時に行う）----------------------
+
+
+def radar_dish(uc: float, vc: float, z: float) -> Prim:
+    """斜めに傾いた皿。楕円の縁と浅い内面を、平らな多角形だけで描く。"""
+    cx, cy = iso(uc, vc, z)
+    angle = math.radians(-32)
+
+    def ellipse(rx: float, ry: float, dx: float, dy: float) -> list[tuple[float, float]]:
+        return [
+            (
+                cx + dx + rx * math.cos(t) * math.cos(angle) - ry * math.sin(t) * math.sin(angle),
+                cy + dy + rx * math.cos(t) * math.sin(angle) + ry * math.sin(t) * math.cos(angle),
+            )
+            for t in (i * math.tau / 32 for i in range(32))
+        ]
+
+    return Prim(
+        (uc - 0.12, vc - 0.12, uc + 0.12, vc + 0.12),
+        z,
+        [
+            Face("right", ROOF_STEEL, ellipse(11, 6, 1, 1.6)),
+            Face("top", METAL, ellipse(11, 6, 0, 0)),
+            Face("left", CONCRETE, ellipse(8.6, 4.3, -0.5, -0.3)),
+        ],
+    )
+
+
+def radar() -> list[Prim]:
+    """低い岩の台と、交差した梁の塔。塔の高さは約 3 段、皿だけ上へ出す。"""
+    return [
+        crag(0.16, 0.18, 0.84, 0.84, 6, ROCK),
+        box(0.32, 0.32, 0.68, 0.68, 3, 2, CONCRETE),
+        *[
+            strut((u, v, 5), (0.5 + (u - 0.5) * 0.42, 0.5 + (v - 0.5) * 0.42, 29), 1.4, IRON)
+            for u, v in ((0.34, 0.34), (0.66, 0.34), (0.66, 0.66), (0.34, 0.66))
+        ],
+        *[
+            strut(a, b, 0.8, METAL)
+            for z, lo, hi in ((5, 0.34, 0.66), (16, 0.4, 0.6))
+            for a, b in (
+                ((lo, hi, z), (hi - 0.05, hi - 0.05, z + 11)),
+                ((hi, hi, z), (lo + 0.05, hi - 0.05, z + 11)),
+                ((hi, lo, z), (hi - 0.05, hi - 0.05, z + 11)),
+                ((hi, hi, z), (hi - 0.05, lo + 0.05, z + 11)),
+            )
+        ],
+        box(0.41, 0.41, 0.59, 0.59, 28, 2, ROOF_STEEL),
+        strut((0.5, 0.5, 30), (0.5, 0.5, 34), 2, IRON),
+        *tiered(2, radar_dish(0.5, 0.5, 36)),
+        *tiered(3, strut((0.5, 0.5, 36), (0.38, 0.52, 40), 0.9, IRON)),
+    ]
+
+
+def trench() -> list[Prim]:
+    """縁に沿った折れ曲がる溝と土嚢。中央の約 6 割四方には何も描かない。"""
+    prims = []
+    for side in SIDES:
+        s = Side(side)
+        # 溝の外縁と内縁。ひと続きの細い帯で、ひし形の中を塗りつぶさない。
+        outer = [(0.91 if i % 2 == 0 else 0.85, 0.12 + i * 0.095) for i in range(9)]
+        inner = [(u - 0.055, v) for u, v in reversed(outer)]
+        prims.append(patch([s.pt(u, v) for u, v in outer + inner], COAL))
+        for i in range(5):
+            v = 0.14 + i * 0.16
+            prims.append(s.box(0.91, v, 0.96, v + 0.105, 0, 2.8, SOIL, STONE))
+    return prims
+
+
+SHAPES.update(
+    {
+        "facility/barracks": [
+            *tiered(0, box(0.1, 0.08, 0.9, 0.92, 0, 0.4, CONCRETE, PAVEMENT)),
+            *[
+                p
+                for u in (0.15, 0.59)
+                for p in (
+                    box(u, 0.12, u + 0.25, 0.64, 0.4, 12, MILITARY),
+                    gable(u, 0.12, u + 0.25, 0.64, 12.4, 3, "v", MILITARY_DARK, MILITARY),
+                    *windows(u, 0.12, u + 0.25, 0.64, [5.5], 2.6, (2, 4), c=GLASS),
+                    box(u + 0.09, 0.64, u + 0.16, 0.646, 0.4, 4.5, DARK),
+                )
+            ],
+            # 手前に平らな練兵場を確保。旗や目立つ色は足さない。
+            box(0.15, 0.73, 0.85, 0.88, 0.4, 0.2, CONCRETE),
+        ],
+        "facility/radar": radar(),
+        "overlay/trench": trench(),
+    }
+)
 
 
 # --- 記念碑（フェーズ4-1。設計書 タブ 2 の PO-47）--------------------------------------------

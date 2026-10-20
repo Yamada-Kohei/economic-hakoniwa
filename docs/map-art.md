@@ -73,6 +73,32 @@ sprites:
 | `facility/monument_tower` | 展望塔 | 赤と白の鉄骨の塔。5 段 |
 | `facility/monument_ledger` | 帳簿の碑 | 罫線の入った石板。2 段 |
 | `facility/monument_verification` | 検証の碑 | 濃灰色の角柱と測定枠。3.5 段 |
+| `facility/barracks` | 兵舎 | 1.5 段・第1部 |
+| `facility/naval_base` | 軍港 | 2 段・海沿い・第1部。海が右下 |
+| `facility/naval_base@sw` | 軍港（海が左下） | 2 段・第1部 |
+| `facility/naval_base@ne` | 軍港（海が右上） | 2 段・第1部 |
+| `facility/naval_base@nw` | 軍港（海が左上） | 2 段・第1部 |
+| `facility/radar` | レーダー | 3 段・平地か山・第1部 |
+| `facility/arms_plant` | 兵器工場 | 2.5 段・第2部（未制作） |
+| `facility/copper_smelter` | 銅の精錬所 | 3 段・第2部（未制作） |
+| `facility/electronics_plant` | 電子機器工場 | 2 段・第2部（未制作） |
+| `facility/fortress` | 要塞 | 1.5 段・マスを使う施設・第2部（未制作） |
+| `facility/missile_plant` | ミサイル工場 | 2.5 段・第2部（未制作） |
+| `facility/missile_base` | ミサイル基地 | 1 段・第2部（未制作） |
+| `facility/air_defense` | 防空陣地 | 1 段・第2部（未制作） |
+| `facility/nuclear_facility` | 核施設 | 3 段・第2部（未制作） |
+| `overlay/trench` | 陣地（塹壕） | 幅64・0.3 段・中央が透ける重ねる印・第1部 |
+| `overlay/battlefield` | 戦場の焦げ跡 | 幅64・重ねる印・第2部（未制作） |
+| `overlay/occupied` | 占領された印 | 幅64・柵と見張り台・重ねる印・第2部（未制作） |
+| `overlay/ruined` | 壊れた施設 | 幅64・崩れた壁。施設の絵の代わりに使う共通の絵・第2部（未制作） |
+| `overlay/contaminated` | 汚染が残るマス | 幅64・灰色がかった斑点・重ねる印・第2部（未制作） |
+| `unit/infantry` | 歩兵の印 | 幅28・高さ28・ヘルメットの兵3人・第1部 |
+| `unit/armor` | 機甲の印 | 幅28・高さ28ほど・戦車1両・第2部（未制作） |
+| `unit/rebels` | 反乱軍の印 | 幅28・高さ28ほど・第2部（未制作） |
+| `fleet/corvette` | 小さな軍艦 | 幅16・高さ12ほど・真横から見た船・第2部（未制作） |
+| `fleet/frigate` | フリゲート | 幅16・高さ12・長い船体とレーダーの塔・第1部 |
+| `fleet/submarine` | 潜水艦 | 幅16・高さ12ほど・第2部（未制作） |
+| `fleet/transport` | 輸送船 | 幅16・高さ12ほど・第2部（未制作） |
 | `housing/village` | 村 | 1 段 |
 | `housing/town` | 町 | 2 段 |
 | `housing/city` | 都市 | 4 段 |
@@ -88,7 +114,8 @@ sprites:
 海のマスと段差なくつなげます。絵が下の頂点より下に伸びるので、`anchor` で基準点を合わせます。海が奥の絵は、
 陸の縁に隠れて岸壁が見えないので、水面を陸の高さに描きます。船は水の上に置き、陸に載せません。
 
-施設はこれからも増えます（フェーズ2-2 以降）。新しい施設の絵は、その施設が定義データに入ってから足します。
+施設はこれからも増えます（フェーズ2-2 以降）。新しい施設の絵は、原則としてその施設が定義データに入ってから足します。
+軍事の絵は下の節のとおり、先にファイルを置き、施設などが入る PR で登録します。
 いまある名前は、見本ページ（下）の上に「絵がないもの」として出ます。
 
 ## 大きさと位置
@@ -161,7 +188,26 @@ sprites:
 
 ## 軍事の絵（フェーズ4）の雰囲気合わせ
 
-フェーズ4（軍事。設計は [docs/design/15-military.md](design/15-military.md)）で足す絵は、今ある絵と並べて浮かないように、次に合わせます。名前は、その絵を描ける仕組み（地図の API と描くコード）が入る回の PR で、上の「名前の一覧」に足します。それまでは描き始めません。
+フェーズ4（軍事。設計は [docs/design/15-military.md](design/15-military.md)）で足す絵は、今ある絵と並べて浮かないように、次に合わせます。名前は上の「名前の一覧」で先に決め、絵のファイルを先に置きます。`theme.yaml` の `sprites` には今回登録せず、施設の定義データや描く仕組みが入る Claude の PR で1行ずつ登録します。第1部の6種類（軍港の4方向を含め9ファイル）で雰囲気を確認し、承認後に第2部を別の依頼で制作します。
+
+第1部の再生成は次の2つです（標準ライブラリだけを使います）。
+
+```sh
+python tools/sprites/silhouette.py server/static/themes/default/sprites
+python tools/sprites/military_icons.py server/static/themes/default/sprites
+```
+
+比較用の `tools/sprites/military-preview.html` は
+`python tools/sprites/military_preview.py` で再生成できます。等倍・0.25倍・4倍で既存の絵と並べ、
+町・農場・兵舎に塹壕を重ねた例も含めます。`tools/sprites/military-preview.png` は、
+ブラウザを使わず SVG を別途描画した確認画像です（ゲームで使うスプライトではありません）。
+
+軍港の登録時の基準点は、`facility/naval_base` と `facility/naval_base@sw` が `anchor: [32, 49]` です。
+`@ne` と `@nw` は既定の下中央を使います。歩兵は `[14, 28]`、フリゲートは `[8, 12]`（どちらも下中央）です。
+
+未登録の間は、`tests/server/test_theme_sprites.py` の `test_no_unlisted_sprite_files` が失敗します。
+この試験は画像ファイルの登録漏れも調べるためです。今回の先行配置では試験や登録を変更せず、
+新しい SVG の形式・寸法・安全性は別に確認します。実際の島と既存の見本ページへの表示確認は登録後に行います。
 
 ### 今の絵と同じにすること
 

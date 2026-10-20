@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">
+<g stroke-width="0.4" stroke-linejoin="round">
+<polygon points="1.5,15.5 2.5,10.5 6.5,8.5 10.5,10.5 11.5,15.5 10.3,21.5 2.7,21.5" fill="#55514d" stroke="#55514d"/>
+<polygon points="2.7,14.5 3.5,11.3 6.5,9.7 9.5,11.3 10.3,14.5 9.3,20.5 3.7,20.5" fill="#7d8466" stroke="#7d8466"/>
+<polygon points="7.5,10.5 9.5,11.5 10.3,14.5 9.3,20.5 7.5,20.5" fill="#5c6249" stroke="#5c6249"/>
+<polygon points="4,5.5 9,5.5 8.5,10.5 5.5,10.5 4,8.5" fill="#55514d" stroke="#55514d"/>
+<polygon points="4.7,6.5 8.1,6.5 7.7,9.5 5.5,9.5" fill="#dccb98" stroke="#dccb98"/>
+<path d="M 2.1 7.5 Q 2.1 1.5 6.5 1.5 Q 10.9 1.5 10.9 7.5 Z" fill="#55514d" stroke="#55514d"/>
+<path d="M 3.1 6.5 Q 3.1 2.5 6.5 2.5 Q 9.9 2.5 9.9 6.5 Z" fill="#7d8466" stroke="#7d8466"/>
+<polygon points="2,6.7 11,6.7 11,7.8 2,7.8" fill="#5c6249" stroke="#5c6249"/>
+<polygon points="16.5,15.5 17.5,10.5 21.5,8.5 25.5,10.5 26.5,15.5 25.3,21.5 17.7,21.5" fill="#55514d" stroke="#55514d"/>
+<polygon points="17.7,14.5 18.5,11.3 21.5,9.7 24.5,11.3 25.3,14.5 24.3,20.5 18.7,20.5" fill="#7d8466" stroke="#7d8466"/>
+<polygon points="22.5,10.5 24.5,11.5 25.3,14.5 24.3,20.5 22.5,20.5" fill="#5c6249" stroke="#5c6249"/>
+<polygon points="19,5.5 24,5.5 23.5,10.5 20.5,10.5 19,8.5" fill="#55514d" stroke="#55514d"/>
+<polygon points="19.7,6.5 23.1,6.5 22.7,9.5 20.5,9.5" fill="#dccb98" stroke="#dccb98"/>
+<path d="M 17.1 7.5 Q 17.1 1.5 21.5 1.5 Q 25.9 1.5 25.9 7.5 Z" fill="#55514d" stroke="#55514d"/>
+<path d="M 18.1 6.5 Q 18.1 2.5 21.5 2.5 Q 24.9 2.5 24.9 6.5 Z" fill="#7d8466" stroke="#7d8466"/>
+<polygon points="17,6.7 26,6.7 26,7.8 17,7.8" fill="#5c6249" stroke="#5c6249"/>
+<polygon points="9,20 10,15 14,13 18,15 19,20 17.8,26 10.2,26" fill="#55514d" stroke="#55514d"/>
+<polygon points="10.2,19 11,15.8 14,14.2 17,15.8 17.8,19 16.8,25 11.2,25" fill="#7d8466" stroke="#7d8466"/>
+<polygon points="15,15 17,16 17.8,19 16.8,25 15,25" fill="#5c6249" stroke="#5c6249"/>
+<polygon points="11.5,10 16.5,10 16,15 13,15 11.5,13" fill="#55514d" stroke="#55514d"/>
+<polygon points="12.2,11 15.6,11 15.2,14 13,14" fill="#dccb98" stroke="#dccb98"/>
+<path d="M 9.6 12 Q 9.6 6 14 6 Q 18.4 6 18.4 12 Z" fill="#55514d" stroke="#55514d"/>
+<path d="M 10.6 11 Q 10.6 7 14 7 Q 17.4 7 17.4 11 Z" fill="#7d8466" stroke="#7d8466"/>
+<polygon points="9.5,11.2 18.5,11.2 18.5,12.3 9.5,12.3" fill="#5c6249" stroke="#5c6249"/>
+</g>
+</svg>
