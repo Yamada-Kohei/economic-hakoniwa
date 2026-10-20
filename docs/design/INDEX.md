@@ -384,7 +384,7 @@
 | FX-28 | レートは「決済通貨1単位が自国通貨でいくらか」 | 決定 | tests/core/test_trade.py |
 | FX-29 | 注文を出すのはその島の主体: 商社（次の数ターンの輸入の分を残して売り買い）・政府（契約の支払い… | 決定 | tests/core/test_trade.py |
 | FX-30 | 中央銀行は受け身の注文を出す: 前のレートより安い側で市場の厚みの分を買い、高い側で持っている分… | 決定 | tests/core/test_codex_turn300_fixes.py、tests/core/test_playtest5_fixes.py、tests/core/test_trade.py |
-| FX-31 | 政府は契約のそのターンに払う分を、値幅の上端の買い注文で先に買う（外貨建ての契約の代金はほぼ全部… | 決定 | tests/core/test_playtest5_fixes.py |
+| FX-31 | 政府は外貨建ての契約のそのターンに払う分を、中央銀行が持っているその通貨から今のレートで先に受け… | 決定 | tests/core/test_playtest5_fixes.py、tests/core/test_playtest_round1_trade.py |
 | FX-32 | 片側だけの注文は、相手のない量 ÷（相手のない量＋市場の厚み）の割合だけ、出ている一番よい指値へ… | 決定 | tests/core/test_trade.py |
 | FX-33 | 同じ通貨の組のレートは1つ（島 A の板で決まったレートの逆数を島 B の板にも入れる） | 決定 | （未確認） |
 | FX-34 | 受け身の買いは、中央銀行の外国の資産から融通で借りている額を引いた正味が年の GDP の決めた割… | 仮（仮の決まりの表あり） | tests/core/test_phase3_3.py |

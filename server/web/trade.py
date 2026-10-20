@@ -533,6 +533,9 @@ def contract_rows(
                 "paid": c.get("paid", 0),
                 "short": _amount(view["good"], view["short"]),
                 "short_any": view["short"] > 0,
+                # 外貨が足りずに届かなかった直近のターンに、払う外貨をどこからいくら用意できたか
+                # （買う側だけ。契約の通貨の額。turn・need・had・reserve・market・short）
+                "fx": view["fx"],
                 # 届いた物の行き先（買う側だけが決める。決める前は市場）
                 "delivery": view["delivery"] if view["side"] == "buy" else "",
                 "delivery_name": DELIVERY_NAMES.get(view["delivery"], "")

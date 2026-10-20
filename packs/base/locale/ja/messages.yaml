@@ -318,6 +318,8 @@ contract_short: "契約（{contract}番。{seller}から{buyer}への{good}）�
 contract_short_goods: "売る国の倉庫に品物が足りません"
 contract_short_money: "買う国の払うお金が足りません"
 contract_short_fx: "買う国が決済の通貨を必要なだけ買えませんでした（1ターンに為替の市場で買える量を超えています）"
+# 2026-10-20 から（国の契約の払いは中央銀行の外貨から先に使う）。上の contract_short_fx は前のターンのログのために残す
+contract_short_fx_bought: "買う国が{currency}を必要なだけ用意できませんでした。このターンの{currency}建ての契約の払い {need:,} のうち、政府の手持ち {had:,}・中央銀行の外貨から {reserve:,}・為替の市場で {market:,} を用意し、{short:,} 足りません。為替の市場で1ターンに買えるのは、値幅の上端までに売りに出た分だけです。国の契約の払いには中央銀行の外貨を先に使うので、為替介入で中央銀行に{currency}を買わせておくと足りるようになります"
 contract_short_ships: "空いた輸送船が足りません"
 contract_short_port: "港の扱える量が足りません"
 trade_request_sent: "命令「{order}」を貿易の段に回しました（このターンの貿易で行います）"

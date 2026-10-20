@@ -8,9 +8,10 @@
    市場の段が売りに出す
 2. 海運業の船: 使えるターン数を過ぎた船を解体し、市場で買った船を船団に入れる
 3. 圏の作成・加盟・設定、契約の申し込み・受け入れ・やめる（命令の段の申し送りを、島の番号の順に）
-4. 為替の板寄せ（島の通貨と、その島が使う決済通貨の組ごと。hakoniwa_core/trade/fx.py）。中央銀行
-   の受け身の売りに足りない外貨は中央銀行どうしの融通で借り、全部の板の後に融通の利払いと返済を
-   する（hakoniwa_core/trade/swap.py）
+4. 為替の板寄せ（島の通貨と、その島が使う決済通貨の組ごと。hakoniwa_core/trade/fx.py）。外貨建ての
+   契約で政府がこのターンに払う外貨は、板寄せの前に中央銀行が持っている外貨から先に政府へ回し、
+   足りない分だけ板で買う。中央銀行の受け身の売りに足りない外貨は中央銀行どうしの融通で借り、
+   全部の板の後に融通の利払いと返済をする（hakoniwa_core/trade/swap.py）
 5. 二国間契約の履行（船と港の余裕は契約が先に使う）
 6. 圏×財の板寄せ（値幅 trade.bloc_band）。約定は近い島の組から割り当て、代金はその場で決済通貨の
    島の帳簿の上で払う。荷は買い手の島の船で運び、往復の間（片道の 2 倍）船はほかに使えない
@@ -141,6 +142,29 @@ class _IslandTurn:
         self.turnover[currency] = self.turnover.get(currency, 0) + amount
 
 
+@dataclass
+class _ContractFx:
+    """このターンに政府が外貨建ての契約の払いに用意した外貨（島と通貨ごと。どれもその通貨の額）。
+    払えなかった契約のログと契約の記録に出す。"""
+
+    need: int = 0  # このターンに契約で払う額の合計
+    had: int = 0  # 政府がターンの初めに持っていた分
+    reserve: int = 0  # 中央銀行の外貨から受け取った分
+    market: int = 0  # 為替の市場で買えた分
+
+    def short(self) -> int:
+        return max(0, self.need - self.had - self.reserve - self.market)
+
+    def values(self) -> dict[str, int]:
+        return {
+            "need": self.need,
+            "had": self.had,
+            "reserve": self.reserve,
+            "market": self.market,
+            "short": self.short(),
+        }
+
+
 class Trade(WorldStage):
     name = "trade"
 
@@ -174,6 +198,8 @@ class _Round:
         self.islands = {i: _IslandTurn() for i in self.ids}
         self.quota_left: dict[tuple[int, str], int] = {}  # (島, 財) → 輸入の割り当ての残り
         self.cargo = self.state.setdefault("cargo", {"loaded": {}, "unloaded": {}})
+        # (島, 通貨) → このターンに政府が外貨建ての契約の払いに用意した外貨
+        self.contract_fx: dict[tuple[int, int], _ContractFx] = {}
 
     def run(self) -> None:
         self._unload()
@@ -459,9 +485,10 @@ class _Round:
         """島ごと・決済通貨ごとに、商社と政府の為替の注文を板寄せする。商社は、次の fx.keep_turns
         ターンの輸入に要る分を、輸入が引き合う一番高いレートまで買い、余った分を、輸出が引き合う
         一番低いレートより安くは売らない（賃金を払う自国通貨が足りないときは、その分は値幅の下端まで
-        売る）。政府は契約の支払いに要る分を値幅の上端まで買い（このターンに払う分は、段に分けずに
-        ほかの買いより先に）、受け取った分を下端まで売る。市場の厚みには、このターンに効く契約の
-        代金を足す（fxrates.depth）。"""
+        売る）。政府は契約の支払いに要る分を、まず中央銀行が持っている外貨から受け取り（_from_reserve）、
+        足りない分を値幅の上端まで買い（このターンに払う分は、段に分けずにほかの買いより先に）、
+        受け取った分を下端まで売る。次のターンからの払いの分は、中央銀行に残っている外貨で足りない
+        分だけを前もって買う。市場の厚みには、このターンに効く契約の代金を足す（fxrates.depth）。"""
         width = fxrates.band_width(self.config)
         keep = self.config.get("fx.keep_turns")
         active = contracts.active(self.world, self.turn)
@@ -495,13 +522,18 @@ class _Round:
                     keep_all.add(entity)
                 wages = traders.workers_wanted(self.config, self.defs, f) * wage * keep
                 short[entity] = max(0, wages - funds.available(island, payers[entity]))
-            gov_need: dict[int, list[tuple[int, int | None]]] = {}
             due: dict[int, int] = {}  # 通貨 → このターンに契約で払う額（政府）
             for c in active:
                 if c["buyer"] == i and c["currency"] != i:
                     amount = money_of(c["price"], c["qty"])
                     due[c["currency"]] = due.get(c["currency"], 0) + amount
-                    gov_need.setdefault(c["currency"], []).append((amount * (keep - 1), None))
+            gov_need: dict[int, list[tuple[int, int | None]]] = {}
+            for currency, amount in sorted(due.items()):
+                self.contract_fx[(i, currency)] = self._from_reserve(island, currency, amount)
+                # 次のターンからの払いも中央銀行の外貨から先に受け取るので、前もって買うのは
+                # 中央銀行に残っている外貨で足りない分だけ
+                ahead = amount * (keep - 1) - fxmoney.holding(island, ledger.CB, currency)
+                gov_need[currency] = [(ahead, None)] if ahead > 0 else []
             needs[ledger.GOV] = gov_need
             payers[ledger.GOV] = gov_payer()
             self._capital_needs(island, needs, floors, payers, width)
@@ -558,9 +590,47 @@ class _Round:
                         short[entity] = max(0, short[entity] - have * reference // BASIS)
                 if not book.buys and not book.sells and currency not in steered:
                     continue
+                before = fxmoney.holding(island, ledger.GOV, currency)
                 price, volume, _, _ = fxrates.clear(self.world, island, currency, book, width)
                 island.stats[f"fx.volume.{currency}"] = volume
+                record = self.contract_fx.get((i, currency))
+                if record is not None:  # このターンの契約の払いのために、政府が板で買えた分
+                    bought = fxmoney.holding(island, ledger.GOV, currency) - before
+                    record.market = max(0, min(bought, record.need - record.had - record.reserve))
         swap.service(self.world, self.config)  # 融通の利払いと返済
+
+    def _from_reserve(self, island: IslandState, currency: int, due: int) -> _ContractFx:
+        """国の契約のこのターンの払いに要る外貨 due のうち、政府の手持ちで足りない分を、中央銀行が
+        持っている外貨（為替介入で買った分や、受け身の買いで貯まった分）から先に受け取る（2026-10-20
+        セビーリャさんの決定「国の契約だけ」。商社の輸入には回さない）。今のレートで、政府が自国通貨を
+        中央銀行に払う（為替の市場で中央銀行から買うときと同じ仕訳の種類 fx_exchange。中央銀行の
+        売りとして fx.dealt にも数える）。足りない分は、これまでどおり為替の市場で買う
+        （_fx_orders）。介入で外貨を買っている通貨では中央銀行の受け身の売りが出ないので、前は政府が
+        板で買えず、外貨を貯めている国でも契約が届かなかった（試し遊び1回目）。"""
+        record = _ContractFx(need=due, had=fxmoney.holding(island, ledger.GOV, currency))
+        e = fxrates.rate(island, currency)
+        take = min(
+            due - record.had,
+            fxmoney.holding(island, ledger.CB, currency),
+            funds.available(island, gov_payer()) * BASIS // max(1, e),
+        )
+        own = fxrates.to_own(island, currency, take)
+        if take <= 0 or own <= 0:
+            return record
+        funds.pay(island, gov_payer(), ledger.CB, own, "fx_exchange")
+        fxmoney.transfer(
+            self.world,
+            currency,
+            (island.id, ledger.CB),
+            (island.id, ledger.GOV),
+            take,
+            "fx_exchange",
+            own,
+        )
+        key = f"fx.dealt.{currency}"
+        island.stats[key] = island.stats.get(key, 0) - take
+        record.reserve = take
+        return record
 
     def _capital_needs(
         self,
@@ -647,6 +717,7 @@ class _Round:
                 continue
             if c["buyer"] not in self.islands:
                 continue
+            c.pop("fx", None)  # 外貨の用意の記録は、外貨が足りなかったターンだけ残す
             if policy.blocked(self.world, seller.id, buyer.id, c["good"]):
                 # 禁輸（フェーズ3-3）: その国との契約は届けない（止まったターンに1度だけ知らせる）
                 c["short"] = c["qty"]
@@ -679,7 +750,11 @@ class _Round:
         if qty < want:
             why = min(limits, key=lambda k: limits[k])
             missing = want - qty
-            args = contracts.short_args(self.world, c, missing, why)
+            record = self.contract_fx.get((buyer.id, currency)) if why == "fx" else None
+            fx = record.values() if record is not None else None
+            if fx is not None:  # 外貨をどこからいくら用意できたか（契約の画面に出す）
+                c["fx"] = {"turn": self.turn, **fx}
+            args = contracts.short_args(self.world, c, missing, why, fx)
             seller.log.append(LogEntry("contract_short", args))
             buyer.log.append(LogEntry("contract_short", args))
         c["short"] = want - qty
@@ -1287,6 +1362,8 @@ def contract_view(c: dict[str, Any], island_id: int, turn: int) -> dict[str, Any
         "delivered": c["delivered"],
         "short": c["short"],
         "delivery": contracts.delivery_of(c),
+        # 外貨が足りずに届かなかったターンに、買う国がその通貨をどこからいくら用意できたか
+        "fx": None if selling else c.get("fx"),
     }
 
 

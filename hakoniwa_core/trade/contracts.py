@@ -7,15 +7,19 @@
 売り切れるまで毎ターン島の市場の値段で売りに出し、warehouse は国の倉庫に置いたまま（命令
 warehouse_trade で売るか使う）にします。傷みやすい物はどちらでもすぐ市場に出します。買い手が申し込む
 ときは申し込みの命令で、売り手が申し込んだ契約は受ける命令で決めます。外貨が要るときは、政府
-が為替の市場で買います。物かお金が足りないターンは払える分だけ履行し、不足を両方のログと契約の
-記録に残します（罰はない）。どちらからでも命令でやめられ、やめるのは
+が中央銀行の持っている外貨から先に受け取り、足りない分を為替の市場で買います（2026-10-20
+セビーリャさんの決定「国の契約だけ」。modules/trade の _from_reserve）。物かお金が足りないターンは
+払える分だけ履行し、不足を両方のログと契約の記録に残します（罰はない。外貨が足りなかったときは、
+どこからいくら用意できたかを fx に残す）。どちらからでも命令でやめられ、やめるのは
 trade.contract_cancel_turns ターン後です。
 
 契約は ``world.ext["trade"]["contracts"]`` に辞書で持ちます: id・seller・buyer（島）・proposer・
 good・qty（1ターンの量。1000 分の 1 単位）・price（1 単位の値段。契約の通貨）・currency・
 turns（期間）・state（proposed・active・ended）・start・end（このターンの前まで効く）・
 delivered・paid・short（直近の不足の量）・delivery（届いた物の行き先。ない契約は market）・
-aid（物の援助。フェーズ3-3。値段 0 で、相手の承諾なしに次のターンから効く）。
+aid（物の援助。フェーズ3-3。値段 0 で、相手の承諾なしに次のターンから効く）・fx（直近のターンに
+外貨が足りず届かなかったとき、買い手の政府がその通貨をどこからいくら用意できたか。turn・need・
+had・reserve・market・short。どれも買い手の島で、このターンにその通貨で払う契約の分の合計）。
 """
 
 from __future__ import annotations
@@ -213,5 +217,18 @@ def _args(world: WorldState, c: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def short_args(world: WorldState, c: dict[str, Any], missing: int, why: str) -> dict[str, Any]:
-    return {**_args(world, c), "missing": from_milli(missing), "reason": f"contract_short_{why}"}
+def short_args(
+    world: WorldState,
+    c: dict[str, Any],
+    missing: int,
+    why: str,
+    fx: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    """不足のログの引数。外貨を買えなかった（why が fx）ときは、fx（このターンの契約の通貨の払い
+    に要った額 need・政府の手持ち had・中央銀行から受け取った分 reserve・為替の市場で買えた分
+    market・足りない分 short）をわけの文に入れる（文の種類 contract_short_fx_bought）。"""
+    args = {**_args(world, c), "missing": from_milli(missing), "reason": f"contract_short_{why}"}
+    if why == "fx" and fx is not None:
+        args["reason"] = "contract_short_fx_bought"
+        args["reason_args"] = {"currency": currency_label(world, c["currency"]), **fx}
+    return args
