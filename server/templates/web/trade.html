@@ -403,7 +403,7 @@
           </tbody>
         </table>
       </div>
-      <p class="hint">{% translate "島の市場で、決まった値段と1ターンの上限で売ります（買いはしません）。港も船も外貨も要りません。代金は島の外に出て、輸入に数えます。" %}</p>
+      <p class="hint">{% translate "島の市場で、決まった値段と1ターンの上限で売ります（買いはしません）。港も船も外貨も要りません。代金は島の外に出て、輸入に数えます。公定価格のある国（計画経済）では、島の買い手は公定価格で払い、商人の値段との差は政府が払います。輸入と貿易収支は島の買い手が払った額で数え、「海外の商人から買った額」と国際収支は政府が払った差も含めるので、海外の商人から買った額が輸入より大きくなることがあります。" %}</p>
       {% elif mc.until is not None %}
       <p class="muted">{% blocktranslate with t=mc.until|turn_date %}海外の商人はもう来ません。{{ t }}まで来ていました。{% endblocktranslate %}</p>
       {% else %}
@@ -423,7 +423,7 @@
         <figure class="chart" data-names="trade.exports,trade.imports,trade.balance"><figcaption>{% translate "輸出・輸入・貿易収支（1ターン）" %}</figcaption></figure>
         <figure class="chart" data-names="ships,ships.busy"><figcaption>{% translate "輸送船" %}</figcaption></figure>
         {% if mine %}
-        <figure class="chart" data-names="trade.merchant"><figcaption>{% translate "海外の商人から買った額（1ターン）" %}</figcaption></figure>
+        <figure class="chart" data-names="trade.merchant,trade.merchant_gap"><figcaption>{% translate "海外の商人から買った額（1ターン）" %}</figcaption></figure>
         <figure class="chart" data-names="port.handled"><figcaption>{% translate "港で積み下ろした荷" %}</figcaption></figure>
         <figure class="chart" data-names="freight.ship_rate"><figcaption>{% translate "船の運賃（荷 1 トン・1 区画あたり）" %}</figcaption></figure>
         {% endif %}

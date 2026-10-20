@@ -130,9 +130,18 @@ _EXTRA_STATS = [
     ("fiscal.balance", "財政の収支", "money"),
     # 貿易と為替（フェーズ3-1）
     ("trade.exports", "輸出（1ターン）", "money"),
-    ("trade.imports", "輸入（海外の商人を含む。1ターン）", "money"),
+    # 計画経済の国が海外の商人から買った分は、島の買い手が払った公定価格の額で数える（GDP の輸入）
+    (
+        "trade.imports",
+        "輸入（海外の商人を含む。公定価格のある国は公定価格の額で。1ターン）",
+        "money",
+    ),
     ("trade.balance", "貿易収支（輸出 − 輸入）", "money"),
-    ("trade.merchant", "海外の商人から買った額（1ターン）", "money"),
+    (
+        "trade.merchant",
+        "海外の商人から買った額（政府が払った公定価格との差を含む。1ターン）",
+        "money",
+    ),
     ("trade.unpaid", "お金が足りず払えなかった運賃と港の使用料", "money"),
     ("ships", "輸送船", " 隻"),
     ("ships.busy", "航海に出ている輸送船", " 隻"),

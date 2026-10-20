@@ -57,6 +57,7 @@ TRADE_STATS = [
     "trade.imports",
     "trade.balance",
     "trade.merchant",
+    "trade.merchant_gap",  # 計画経済の国で、海外の商人の値段と公定価格の差を政府が払った分
     "ships",
     "ships.busy",
     "freight.ship_rate",
@@ -76,6 +77,7 @@ FX_STATS = [
     "trade.imports",
     "trade.balance",
     "trade.merchant",
+    "trade.merchant_gap",
     "fx.holdings",
     "money.nonresident",
     "fx.reserves",

@@ -1,5 +1,5 @@
 """試し遊び1回目（5 か国、ターン 1〜50）の報告のうち、貿易の直し: 国の契約の外貨は中央銀行の外貨から
-先に払う（2026-10-20 の決定「国の契約だけ」）。"""
+先に払う（2026-10-20 の決定「国の契約だけ」）、海外の商人から買った額と輸入の数え方。"""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import copy
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.log import format_log
 from hakoniwa_core.modules.trade import check
-from hakoniwa_core.trade import contracts
+from hakoniwa_core.trade import contracts, traders
 from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.trade import money as fxmoney
 from hakoniwa_core.units import QUANTITY_SCALE, money_of
@@ -107,3 +107,27 @@ def test_contract_short_of_foreign_currency_tells_where_it_came_from(game, trade
     assert fxmoney.holding(buyer, ledger.CB, seller.id) <= fx["market"]
     assert buyer.stats[f"fx.dealt.{seller.id}"] <= -reserve
     assert check(world) == []
+
+
+# --- 海外の商人から買った額と輸入 -----------------------------------------------------------
+
+
+def test_planned_merchant_purchases_count_the_gap_outside_imports(game, traded):
+    """公定価格のある島が海外の商人から買うと、島の買い手は公定価格で払い、商人の値段との差は政府が
+    払う。輸入（GDP）は島の買い手が払った額で数え、海外の商人から買った額と国際収支は差も含める
+    （試し遊び1回目で、海外の商人から買った額が、それを含むはずの輸入より大きく見えた。画面の名前と
+    説明で分ける）。"""
+    world = copy.deepcopy(traded[0])
+    planned = next(i for i in world.islands.values() if traders.is_planned(i))
+    gaps = []
+
+    def keep(w):
+        s = w.islands[planned.id].stats
+        paid = sum(t.amount for t in w.islands[planned.id].trades if t.seller == "merchant")
+        gap = s.get("trade.merchant_gap", 0)
+        assert s["trade.merchant"] == paid + gap
+        assert s["trade.imports"] >= paid
+        gaps.append(gap)
+
+    run_world(game, world, 3, keep)
+    assert any(gaps)
