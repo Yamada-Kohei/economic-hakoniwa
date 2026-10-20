@@ -12,7 +12,7 @@ from hakoniwa_core.trade import contracts, tradable_goods
 from server.accounts import keys
 from server.country import png as flag_png
 from server.country import services as country_services
-from server.country.models import Flag
+from server.country.models import Flag, MonumentImage
 from server.game import get_game
 from server.turns.models import TurnLog
 from server.web import (
@@ -32,7 +32,7 @@ from server.web import (
 )
 from server.web import politics as politics_views
 from server.web import top as top_page
-from server.world.models import Island, World
+from server.world.models import Facility, Island, World
 from server.world.services import grid_size
 
 GUIDE_TURNS = 12  # 建国からこのターン数の間、島の画面に「はじめの手順」を出す
@@ -354,6 +354,17 @@ def _country_post(request, island: Island, viewer: Island | None, mine: bool) ->
         )
     elif action == "flag_clear":
         country_services.clear_flag(island)
+    elif action == "monument_image":
+        upload = request.FILES.get("image")
+        if upload is None:
+            raise country_services.CountryError("PNG の画像を選んでください")
+        country_services.set_monument_image(
+            island,
+            request.POST.get("number"),
+            upload.read(django_settings.HAKONIWA_FLAG_MAX_KB * 1024 + 1),
+        )
+    elif action == "monument_image_clear":
+        country_services.clear_monument_image(island, request.POST.get("number"))
     elif action == "note_hide":
         country_services.hide_note(island, request.POST.get("note"))
     else:
@@ -368,6 +379,25 @@ def island_flag(request, island_id: int):
         body, kind = bytes(flag.png), "image/png"
     else:
         body, kind = flag_png.provisional_flag(island.id, island.name).encode(), "image/svg+xml"
+    response = HttpResponse(body, content_type=kind)
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'"
+    response["Cache-Control"] = "public, max-age=300"
+    return response
+
+
+def monument_image(request, island_id: int, number: int):
+    """自作の記念碑の絵。上げた PNG。上げていない（管理者が隠した）ときは仮の絵（SVG）。"""
+    island = get_object_or_404(Island.objects.only("id", "name"), pk=island_id)
+    get_object_or_404(
+        Facility.objects.only("id"), island=island, number=number, kind="monument_custom"
+    )
+    image = MonumentImage.objects.filter(island=island, number=number, hidden=False).first()
+    if image is not None:
+        body, kind = bytes(image.png), "image/png"
+    else:
+        body = flag_png.provisional_monument(island.id, number).encode()
+        kind = "image/svg+xml"
     response = HttpResponse(body, content_type=kind)
     response["X-Content-Type-Options"] = "nosniff"
     response["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'"

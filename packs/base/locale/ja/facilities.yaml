@@ -31,3 +31,14 @@ housing: 町
 services: 商業・サービス業
 shop: 商店
 department_store: 百貨店
+monument_monolith: モノリス
+monument_custom: 自作の記念碑
+monument_founding: 建国記念碑
+monument_peace: 平和記念碑
+monument_battle: 戦いの碑
+monument_cenotaph: 慰霊碑
+monument_leader: 元首の像
+monument_worker: 労働者の像
+monument_tower: 展望塔
+monument_ledger: 帳簿の碑
+monument_verification: 検証の碑

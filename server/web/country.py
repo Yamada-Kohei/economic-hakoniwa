@@ -15,7 +15,7 @@ from django.urls import reverse
 from server.country import services
 from server.country.models import Flag, Note, Profile
 from server.turns.models import TurnLog
-from server.web import awards, display, overview, rankings, top
+from server.web import awards, display, monuments, overview, rankings, top
 from server.world import models as m
 
 TIMELINE = 300  # 年表に出す出来事の数（新しいほうから）
@@ -141,6 +141,7 @@ def country_data(island: m.Island, mine: bool, viewer: m.Island | None = None) -
         "intro": "" if (intro_hidden or not profile) else profile.intro,
         "timeline": rows,
         "timeline_text": timeline_text(rows),
+        "monuments": monuments.listing(island, mine),
         "notes": notes(island, profile),
         "limits": {"intro": services.INTRO_MAX, "note": services.NOTE_MAX},
         "can_note": viewer is not None and viewer.pk != island.pk,
@@ -161,5 +162,6 @@ def brief(island: m.Island, mine: bool) -> dict[str, Any]:
         "era": services.KIND_NAMES[profile.era_kind if profile else "world"],
         "intro": profile.intro if shown else "",
         "notes": Note.objects.filter(island=island, hidden=False).count(),
+        "monuments": monuments.count(island),
     }
     return out

@@ -81,8 +81,8 @@ def is_public_service(defs: Defs, f: Facility) -> bool:
 def default_accounting(defs: Defs, island: IslandState, kind: str, owner: str) -> str:
     """建てるときの会計の形。公務員の施設はいつも国庫直轄、民営は独立採算、国営は経済体制の既定
     （regimes.yaml の state_accounting）。"""
-    if defs.facilities[kind].get("public_service"):
-        return ACCOUNTING_TREASURY
+    if defs.facilities[kind].get("public_service") or defs.facilities[kind].get("monument"):
+        return ACCOUNTING_TREASURY  # 記念碑は売り上げがないので、いつも国庫の直轄
     if owner == OWNER_PRIVATE:
         return ACCOUNTING_SELF
     regime = defs.regimes.get(island.regime.get("economy", ""), {})

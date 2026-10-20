@@ -543,3 +543,138 @@ housing:
   recipes:
     default: {}
   sprite: housing
+
+# 記念碑（フェーズ4-1。設計書 タブ 2 の PO-47・PO-48）。働く人も産出もなく、効果は将来の観光の魅力
+# （attraction）だけ。費用は資材と工事の賃金で、ふつうの施設の工事と同じ。建てられる条件は
+# monument（hakoniwa_core/monuments.py の CONDITIONS。しきい値は game.yaml の monuments）。
+# 碑文は建てるときに自動の文を作り（server/web/monuments.py）、遊ぶ人が 1〜2 行足せる。
+# モノリスと自作の記念碑以外は、1 つの国に 1 つまで（建て直すと、その時の記録で碑文が変わる）。
+monument_monolith:
+  category: monument
+  monument: always
+  terrain: [plain, forest, mountain]
+  construction: {turns: 2, labor: 100, materials: {stone: 5}}
+  workers: 0
+  attraction: 1
+  recipes:
+    default: {}
+  sprite: monument_monolith
+
+monument_custom:
+  category: monument
+  monument: always
+  terrain: [plain, forest, mountain]
+  construction: {turns: 2, labor: 100, materials: {stone: 5}}
+  workers: 0
+  attraction: 1
+  recipes:
+    default: {}
+  sprite: monument_custom
+
+monument_founding:
+  category: monument
+  monument: founding
+  terrain: [plain, forest, mountain]
+  max_per_island: 1
+  construction: {turns: 2, labor: 150, materials: {stone: 10}}
+  workers: 0
+  attraction: 2
+  recipes:
+    default: {}
+  sprite: monument_founding
+
+monument_peace:
+  category: monument
+  monument: peace
+  terrain: [plain, forest, mountain]
+  max_per_island: 1
+  construction: {turns: 3, labor: 200, materials: {stone: 10, building_materials: 5}}
+  workers: 0
+  attraction: 2
+  recipes:
+    default: {}
+  sprite: monument_peace
+
+monument_battle:
+  category: monument
+  monument: battle
+  terrain: [plain, forest, mountain]
+  max_per_island: 1
+  construction: {turns: 3, labor: 200, materials: {stone: 15, steel: 2}}
+  workers: 0
+  attraction: 2
+  recipes:
+    default: {}
+  sprite: monument_battle
+
+monument_cenotaph:
+  category: monument
+  monument: cenotaph
+  terrain: [plain, forest, mountain]
+  max_per_island: 1
+  construction: {turns: 2, labor: 150, materials: {stone: 10}}
+  workers: 0
+  attraction: 1
+  recipes:
+    default: {}
+  sprite: monument_cenotaph
+
+monument_leader:
+  category: monument
+  monument: leader
+  terrain: [plain, forest, mountain]
+  max_per_island: 1
+  construction: {turns: 3, labor: 300, materials: {building_materials: 10, steel: 5}}
+  workers: 0
+  attraction: 2
+  recipes:
+    default: {}
+  sprite: monument_leader
+
+monument_worker:
+  category: monument
+  monument: worker
+  terrain: [plain, forest, mountain]
+  max_per_island: 1
+  construction: {turns: 3, labor: 300, materials: {building_materials: 10, steel: 5}}
+  workers: 0
+  attraction: 2
+  recipes:
+    default: {}
+  sprite: monument_worker
+
+monument_tower:
+  category: monument
+  monument: tower
+  terrain: [plain, forest, mountain]
+  max_per_island: 1
+  construction: {turns: 4, labor: 500, materials: {building_materials: 20, steel: 15}}
+  workers: 0
+  attraction: 5
+  recipes:
+    default: {}
+  sprite: monument_tower
+
+monument_ledger:
+  category: monument
+  monument: ledger
+  terrain: [plain, forest, mountain]
+  max_per_island: 1
+  construction: {turns: 2, labor: 150, materials: {stone: 8}}
+  workers: 0
+  attraction: 1
+  recipes:
+    default: {}
+  sprite: monument_ledger
+
+monument_verification:
+  category: monument
+  monument: verification
+  terrain: [plain, forest, mountain]
+  max_per_island: 1
+  construction: {turns: 2, labor: 150, materials: {stone: 8}}
+  workers: 0
+  attraction: 1
+  recipes:
+    default: {}
+  sprite: monument_verification

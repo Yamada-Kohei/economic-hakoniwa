@@ -214,6 +214,7 @@ def _facility_def(fid: str, f: Any) -> dict[str, Any]:
         "tileless": f.get("tileless", False),
         "site": f.get("site"),
         "zone": f.get("zone"),
+        "monument": "monument" in f,
         "construction": {
             "turns": construction["turns"],
             "labor": construction.get("labor", 0),

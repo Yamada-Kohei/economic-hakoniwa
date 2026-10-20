@@ -3,7 +3,7 @@ import base64
 from django.contrib import admin
 from django.utils.html import format_html
 
-from server.country.models import Flag, Note, Profile
+from server.country.models import Flag, MonumentImage, Note, Profile
 
 # 管理画面では中身を読むだけにして、変えられるのは非表示の印だけにする（国旗の画像は見られる）
 
@@ -41,6 +41,21 @@ class FlagAdmin(HideOnlyAdmin):
         )
 
     @admin.action(description="選んだ国旗を非表示にする（仮の旗に戻る）")
+    def hide(self, request, queryset):
+        queryset.update(hidden=True)
+
+
+@admin.register(MonumentImage)
+class MonumentImageAdmin(FlagAdmin):
+    list_display = ["island", "number", "width", "height", "updated_at", "hidden"]
+    fields = ["island", "number", "preview", "width", "height", "updated_at", "hidden"]
+    readonly_fields = ["island", "number", "preview", "width", "height", "updated_at"]
+
+    @admin.display(description="絵")
+    def preview(self, obj):
+        return super().preview(obj)
+
+    @admin.action(description="選んだ絵を非表示にする（仮の絵に戻る）")
     def hide(self, request, queryset):
         queryset.update(hidden=True)
 

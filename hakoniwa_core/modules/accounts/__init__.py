@@ -375,6 +375,8 @@ def check_accounting(island: IslandState, payload: dict[str, Any], defs: Defs) -
         raise OrderFailed("reason_public_service", facility=f.kind)
     if defs.facilities[f.kind].get("category") == "finance":
         raise OrderFailed("reason_bank_accounting")
+    if defs.facilities[f.kind].get("monument"):
+        raise OrderFailed("reason_monument_accounting")
     if payload["accounting"] not in (ACCOUNTING_SELF, ACCOUNTING_TREASURY):
         raise OrderFailed("reason_invalid_payload")
     if f.accounting == payload["accounting"]:

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="56" viewBox="0 0 64 56">
+<g transform="translate(0 24)" stroke-linejoin="round" stroke-width="0.4">
+<polygon points="8.96,16.00 32.00,27.52 32.00,26.92 8.96,15.40" fill="#a5a097" stroke="#a5a097"/>
+<polygon points="55.04,16.00 32.00,27.52 32.00,26.92 55.04,15.40" fill="#858179" stroke="#858179"/>
+<polygon points="32.00,3.88 55.04,15.40 32.00,26.92 8.96,15.40" fill="#d9d4c8" stroke="#d9d4c8"/>
+<polygon points="17.28,13.16 23.68,16.36 23.68,-5.64 17.28,-8.84" fill="#b4a67d" stroke="#b4a67d"/>
+<polygon points="33.92,11.24 23.68,16.36 23.68,-5.64 33.92,-10.76" fill="#918664" stroke="#918664"/>
+<polygon points="27.52,-13.96 33.92,-10.76 23.68,-5.64 17.28,-8.84" fill="#dccb98" stroke="#dccb98"/>
+<polygon points="23.68,16.36 30.08,19.56 30.08,18.56 23.68,15.36" fill="#2b2c30" stroke="#2b2c30"/>
+<polygon points="35.20,17.00 30.08,19.56 30.08,18.56 35.20,16.00" fill="#222426" stroke="#222426"/>
+<polygon points="28.80,12.80 35.20,16.00 30.08,18.56 23.68,15.36" fill="#34363a" stroke="#34363a"/>
+<polygon points="29.44,15.68 27.84,14.28 29.14,11.68 31.04,14.08" fill="#f08a24" stroke="#f08a24"/>
+<polygon points="30.08,19.56 36.48,22.76 36.48,0.76 30.08,-2.44" fill="#b4a67d" stroke="#b4a67d"/>
+<polygon points="46.72,17.64 36.48,22.76 36.48,0.76 46.72,-4.36" fill="#918664" stroke="#918664"/>
+<polygon points="40.32,-7.56 46.72,-4.36 36.48,0.76 30.08,-2.44" fill="#dccb98" stroke="#dccb98"/>
+<polygon points="17.28,-8.84 36.48,0.76 36.48,-5.24 17.28,-14.84" fill="#b4a67d" stroke="#b4a67d"/>
+<polygon points="46.72,-4.36 36.48,0.76 36.48,-5.24 46.72,-10.36" fill="#918664" stroke="#918664"/>
+<polygon points="27.52,-19.96 46.72,-10.36 36.48,-5.24 17.28,-14.84" fill="#dccb98" stroke="#dccb98"/>
+<polygon points="16.00,-14.84 36.48,-4.60 36.48,-6.20 16.00,-16.44" fill="#c4baa4" stroke="#c4baa4"/>
+<polygon points="48.00,-10.36 36.48,-4.60 36.48,-6.20 48.00,-11.96" fill="#9e9684" stroke="#9e9684"/>
+<polygon points="27.52,-22.20 48.00,-11.96 36.48,-6.20 16.00,-16.44" fill="#efe3c8" stroke="#efe3c8"/>
+</g>
+</svg>

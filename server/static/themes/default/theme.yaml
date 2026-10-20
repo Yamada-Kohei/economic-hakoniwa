@@ -38,6 +38,18 @@ facilities:
   ranch:                    {color: "#a8c46a", height: 0.5}
   automobile_plant:         {color: "#4a6fa5", height: 2.5}
   auto_parts_plant:         {color: "#5b7fb0", height: 2}       # 回7 後半
+  # 記念碑（フェーズ4-1）
+  monument_monolith:        {color: "#2f3236", height: 3}
+  monument_custom:          {color: "#e8e4da", height: 2.5}
+  monument_founding:        {color: "#efeae0", height: 3.5}
+  monument_peace:           {color: "#e8f0e4", height: 3.5}
+  monument_battle:          {color: "#d9c08a", height: 3}
+  monument_cenotaph:        {color: "#4a4e53", height: 1}
+  monument_leader:          {color: "#7a6640", height: 3.5}
+  monument_worker:          {color: "#b8bec4", height: 3.5}
+  monument_tower:           {color: "#c8473a", height: 5}
+  monument_ledger:          {color: "#efe3c8", height: 3}
+  monument_verification:    {color: "#3d4044", height: 3.5}
   department_store:         {color: "#d9668f", height: 3}     # 回7
   housing:                  {color: "#d9826b", height: 1}   # 高さは住宅地の段階（settlements の height）
 facility_fallback: {color: "#bbbbbb", height: 1.5}
@@ -84,6 +96,17 @@ sprites:
   facility/mine: sprites/facility/mine.svg
   facility/oil_well: sprites/facility/oil_well.svg
   facility/police: sprites/facility/police.svg
+  facility/monument_monolith: sprites/facility/monument_monolith.svg
+  facility/monument_custom: sprites/facility/monument_custom.svg
+  facility/monument_founding: sprites/facility/monument_founding.svg
+  facility/monument_peace: sprites/facility/monument_peace.svg
+  facility/monument_battle: sprites/facility/monument_battle.svg
+  facility/monument_cenotaph: sprites/facility/monument_cenotaph.svg
+  facility/monument_leader: sprites/facility/monument_leader.svg
+  facility/monument_worker: sprites/facility/monument_worker.svg
+  facility/monument_tower: sprites/facility/monument_tower.svg
+  facility/monument_ledger: sprites/facility/monument_ledger.svg
+  facility/monument_verification: sprites/facility/monument_verification.svg
   facility/port: {file: sprites/facility/port.svg, anchor: [32, 60]}
   facility/port@sw: {file: sprites/facility/port@sw.svg, anchor: [32, 60]}
   facility/port@ne: sprites/facility/port@ne.svg

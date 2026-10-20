@@ -17,10 +17,10 @@ from django.utils import timezone
 
 from hakoniwa_core.dates import Calendar
 from server.country import png
-from server.country.models import ERA_KINDS, Flag, Note, Profile
+from server.country.models import ERA_KINDS, Flag, MonumentImage, Note, Profile
 from server.game import get_game
 from server.letters.services import own_island
-from server.world.models import Island
+from server.world.models import Facility, Island
 
 INTRO_MAX = Profile._meta.get_field("intro").max_length
 NOTE_MAX = Note._meta.get_field("text").max_length
@@ -191,6 +191,54 @@ def set_flag(island: Island, data: bytes) -> Flag:
 
 def clear_flag(island: Island) -> None:
     Flag.objects.filter(island=island).delete()
+
+
+# --- 自作の記念碑の絵 -----------------------------------------------------------------------
+
+CUSTOM_MONUMENT = "monument_custom"
+
+
+def _custom_monument(island: Island, number: Any) -> Facility:
+    try:
+        row = Facility.objects.filter(island=island, number=int(number)).first()
+    except (TypeError, ValueError):
+        row = None
+    if row is None:
+        raise CountryError("その施設はありません", 404)
+    if row.kind != CUSTOM_MONUMENT:
+        raise CountryError("絵を上げられるのは自作の記念碑だけです")
+    return row
+
+
+def set_monument_image(island: Island, number: Any, data: bytes) -> MonumentImage:
+    """自作の記念碑の絵（PNG。国旗と同じ検査）。隠された絵と同じ画像の上げ直しは隠したまま。"""
+    _custom_monument(island, number)
+    try:
+        cleaned, width, height = png.clean(
+            data, settings.HAKONIWA_FLAG_MAX_KB * 1024, settings.HAKONIWA_FLAG_MAX_SIDE
+        )
+    except png.PngError as e:
+        raise CountryError(e.text) from e
+    digest = hashlib.sha256(cleaned).hexdigest()
+    old = MonumentImage.objects.filter(island=island, number=int(number)).first()
+    hidden = old is not None and old.hidden and old.digest == digest
+    image, _ = MonumentImage.objects.update_or_create(
+        island=island,
+        number=int(number),
+        defaults={
+            "png": cleaned,
+            "digest": digest,
+            "width": width,
+            "height": height,
+            "hidden": hidden,
+        },
+    )
+    return image
+
+
+def clear_monument_image(island: Island, number: Any) -> None:
+    _custom_monument(island, number)
+    MonumentImage.objects.filter(island=island, number=int(number)).delete()
 
 
 # --- 来訪者の一言 ---------------------------------------------------------------------------

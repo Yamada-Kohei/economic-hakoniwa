@@ -339,6 +339,16 @@ def _flag_set(request, args):
     return call_ok(request, "PUT", path, body={"png_base64": args["png_base64"]})
 
 
+def _monument_image_set(request, args):
+    island = _own_island(request).id
+    path = f"/api/islands/{island}/monuments/{int(args['number'])}/image"
+    if args.get("clear"):
+        return call_ok(request, "DELETE", path)
+    if not args.get("png_base64"):
+        raise ToolError("png_base64（PNG を base64 にした文字）か clear=true を指定してください")
+    return call_ok(request, "PUT", path, body={"png_base64": args["png_base64"]})
+
+
 def _country_note(request, args):
     path = f"/api/islands/{int(args['island'])}/country/notes"
     return call_ok(request, "POST", path, body={"text": args["text"]})
@@ -857,6 +867,22 @@ TOOLS = [
         read_only=False,
     ),
     Tool(
+        "monument_image_set",
+        "自作の記念碑の絵を上げる",
+        "自分の国の自作の記念碑（monument_custom）の絵の PNG を上げる（number は施設の番号。"
+        "png_base64。国旗と同じ制限。管理者が不適切と判断すると、仮の絵に戻る）。clear=true で"
+        "外す。碑文は、建てる命令 build の note（2 行まで。1 行 40 字まで）で足す。"
+        "読むのは report page=country の monuments。",
+        _monument_image_set,
+        {
+            "number": {"type": "integer", "description": "自作の記念碑の施設の番号"},
+            "png_base64": {"type": "string", "description": "PNG を base64 にした文字"},
+            "clear": {"type": "boolean"},
+        },
+        ("number",),
+        read_only=False,
+    ),
+    Tool(
         "country_note",
         "他国のページに一言を残す",
         "ほかの国の公開ページに一言（80 字まで。誰でも読める）を残す（1つの国が 24 時間に残せる数に"
@@ -964,7 +990,7 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "island_politics": ("report",),
     "island_plan": ("report",),
     "island_diplomacy": ("report",),
-    "island_country": ("report", "country_set", "flag_set", "country_note"),
+    "island_country": ("report", "country_set", "flag_set", "monument_image_set", "country_note"),
     "news": ("news",),
     "hall": ("hall", "hall_post"),
     "board": ("board",),
@@ -976,8 +1002,9 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "letter": ("read_letter",),
 }
 # AI の入り口が要らない画面（アカウントの画面。鍵は人が画面で作って AI に渡す）
-# 国旗の画像（island_flag）も要らない（report page=country の flag に大きさと仮の旗かどうかがある）
-NOT_FOR_AI = {"signup", "login", "logout", "api_keys", "island_flag"}
+# 国旗と自作の記念碑の画像（island_flag・monument_image）も要らない（report page=country の flag と
+# monuments に、大きさや仮の絵かどうかがある）
+NOT_FOR_AI = {"signup", "login", "logout", "api_keys", "island_flag", "monument_image"}
 
 
 # --- 文にする ---------------------------------------------------------------------------

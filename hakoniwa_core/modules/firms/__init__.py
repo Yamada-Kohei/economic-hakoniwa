@@ -126,7 +126,14 @@ from hakoniwa_core.trade import traders as trade_traders
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, money_of, part, round_money, to_basis
 
-NOT_PRIVATE = ("admin", "finance", "housing", "security", "transport")  # 民間が建てない施設の分類
+NOT_PRIVATE = (
+    "admin",
+    "finance",
+    "housing",
+    "monument",
+    "security",
+    "transport",
+)  # 民間が建てない施設の分類
 
 
 def private_allowed(defs: Defs, island: IslandState, kind: str) -> bool:

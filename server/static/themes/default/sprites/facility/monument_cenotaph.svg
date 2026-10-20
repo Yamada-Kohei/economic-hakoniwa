@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="33" viewBox="0 0 64 33">
+<g transform="translate(0 1)" stroke-linejoin="round" stroke-width="0.4">
+<polygon points="8.96,16.00 32.00,27.52 32.00,26.92 8.96,15.40" fill="#a5a097" stroke="#a5a097"/>
+<polygon points="55.04,16.00 32.00,27.52 32.00,26.92 55.04,15.40" fill="#858179" stroke="#858179"/>
+<polygon points="32.00,3.88 55.04,15.40 32.00,26.92 8.96,15.40" fill="#d9d4c8" stroke="#d9d4c8"/>
+<polygon points="31.68,8.52 33.28,9.32 33.28,7.12 31.68,6.32" fill="#c8c6c0" stroke="#c8c6c0"/>
+<polygon points="34.88,8.52 33.28,9.32 33.28,7.12 34.88,6.32" fill="#a19f9a" stroke="#a19f9a"/>
+<polygon points="33.28,5.52 34.88,6.32 33.28,7.12 31.68,6.32" fill="#f4f1ea" stroke="#f4f1ea"/>
+<polygon points="35.52,10.44 37.12,11.24 37.12,9.04 35.52,8.24" fill="#c8c6c0" stroke="#c8c6c0"/>
+<polygon points="38.72,10.44 37.12,11.24 37.12,9.04 38.72,8.24" fill="#a19f9a" stroke="#a19f9a"/>
+<polygon points="37.12,7.44 38.72,8.24 37.12,9.04 35.52,8.24" fill="#f4f1ea" stroke="#f4f1ea"/>
+<polygon points="39.36,12.36 40.96,13.16 40.96,10.96 39.36,10.16" fill="#c8c6c0" stroke="#c8c6c0"/>
+<polygon points="42.56,12.36 40.96,13.16 40.96,10.96 42.56,10.16" fill="#a19f9a" stroke="#a19f9a"/>
+<polygon points="40.96,9.36 42.56,10.16 40.96,10.96 39.36,10.16" fill="#f4f1ea" stroke="#f4f1ea"/>
+<polygon points="43.20,14.28 44.80,15.08 44.80,12.88 43.20,12.08" fill="#c8c6c0" stroke="#c8c6c0"/>
+<polygon points="46.40,14.28 44.80,15.08 44.80,12.88 46.40,12.08" fill="#a19f9a" stroke="#a19f9a"/>
+<polygon points="44.80,11.28 46.40,12.08 44.80,12.88 43.20,12.08" fill="#f4f1ea" stroke="#f4f1ea"/>
+<polygon points="17.28,13.80 35.20,22.76 35.20,17.76 17.28,8.80" fill="#27292c" stroke="#27292c"/>
+<polygon points="46.72,17.00 35.20,22.76 35.20,17.76 46.72,12.00" fill="#1f2124" stroke="#1f2124"/>
+<polygon points="28.80,3.04 46.72,12.00 35.20,17.76 17.28,8.80" fill="#4a4e53" stroke="#4a4e53"/>
+<polygon points="21.76,9.12 34.56,15.52 34.56,13.12 21.76,6.72" fill="#717477" stroke="#717477"/>
+<polygon points="42.24,11.68 34.56,15.52 34.56,13.12 42.24,9.28" fill="#5b5d60" stroke="#5b5d60"/>
+<polygon points="29.44,2.88 42.24,9.28 34.56,13.12 21.76,6.72" fill="#a4a7ab" stroke="#a4a7ab"/>
+<path d="M 32.00 9.13 A 2.26 1.13 0 0 1 29.74 8.00 L 29.74 5.00 L 32.00 5.00 Z" fill="#46423f" stroke="#46423f"/>
+<path d="M 32.00 9.13 A 2.26 1.13 0 0 0 34.26 8.00 L 34.26 5.00 L 32.00 5.00 Z" fill="#383533" stroke="#383533"/>
+<path d="M 29.74 5.00 A 2.26 1.13 0 1 0 34.26 5.00 A 2.26 1.13 0 1 0 29.74 5.00 Z" fill="#55514d" stroke="#55514d"/>
+<polygon points="32.00,5.00 30.40,3.25 31.70,0.00 33.60,3.00" fill="#f08a24" stroke="#f08a24"/>
+<polygon points="18.56,17.00 20.16,17.80 20.16,15.60 18.56,14.80" fill="#b28822" stroke="#b28822"/>
+<polygon points="21.76,17.00 20.16,17.80 20.16,15.60 21.76,14.80" fill="#8f6e1c" stroke="#8f6e1c"/>
+<polygon points="20.16,14.00 21.76,14.80 20.16,15.60 18.56,14.80" fill="#d9a62a" stroke="#d9a62a"/>
+<polygon points="23.68,19.56 25.28,20.36 25.28,18.16 23.68,17.36" fill="#b28822" stroke="#b28822"/>
+<polygon points="26.88,19.56 25.28,20.36 25.28,18.16 26.88,17.36" fill="#8f6e1c" stroke="#8f6e1c"/>
+<polygon points="25.28,16.56 26.88,17.36 25.28,18.16 23.68,17.36" fill="#d9a62a" stroke="#d9a62a"/>
+<polygon points="28.80,22.12 30.40,22.92 30.40,20.72 28.80,19.92" fill="#b28822" stroke="#b28822"/>
+<polygon points="32.00,22.12 30.40,22.92 30.40,20.72 32.00,19.92" fill="#8f6e1c" stroke="#8f6e1c"/>
+<polygon points="30.40,19.12 32.00,19.92 30.40,20.72 28.80,19.92" fill="#d9a62a" stroke="#d9a62a"/>
+</g>
+</svg>
