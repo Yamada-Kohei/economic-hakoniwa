@@ -78,10 +78,29 @@ function facilitySprite(f, defs, map, isCapital, sprites) {
     return sprites.get(`housing/${level}`);
   }
   const name = defs.facilities[f.kind]?.sprite || f.kind;
-  if (!isCapital) return sprites.get(`facility/${name}`);
+  if (!isCapital) return coastalSprite(f, defs, map, name, sprites) || sprites.get(`facility/${name}`);
   const buildings = defs.facilities[f.kind]?.category === "admin" ? map.capital_buildings || [] : [];
   const regime = buildings.length ? sprites.get(`capital/${buildings.join("-")}`) : null;
   return regime || sprites.get(`capital/${name}`) || sprites.get(`facility/${name}`);
+}
+
+// 海沿いの施設の絵の向き: 海のあるマスの向きと、その絵の名前に付ける印（docs/map-art.md）。
+// 海が手前（右下・左下）の絵は水面と岸壁が見えるので先に選ぶ
+const SEA_SIDES = [["", 1, 0], ["@sw", 0, 1], ["@ne", 0, -1], ["@nw", -1, 0]];
+
+/** 海沿いの施設（coastal）は、隣の海のある向きの絵（facility/port@sw など）。なければ null。 */
+function coastalSprite(f, defs, map, name, sprites) {
+  if (!defs.facilities[f.kind]?.coastal) return null;
+  const n = map.size;
+  for (const [suffix, dx, dy] of SEA_SIDES) {
+    const x = f.x + dx;
+    const y = f.y + dy;
+    if (x < 0 || y < 0 || x >= n || y >= n) continue;
+    if (defs.terrain[map.terrain[y * n + x]]?.land) continue;
+    const sprite = sprites.get(`facility/${name}${suffix}`);
+    if (sprite) return sprite;
+  }
+  return null;
 }
 
 /** 施設: 絵があれば絵、なければ色付きの箱。住宅の高さは住宅地の段階、工事中は枠だけ。 */

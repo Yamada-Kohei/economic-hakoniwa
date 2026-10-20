@@ -65,6 +65,11 @@ KREMLIN_RED = "#a8483a"
 TOWER_GREEN = "#3d7a5c"
 PARTY_STONE = "#d4ccb8"
 PLAZA = "#d6d0c2"  # 広場の石畳
+STORE_PINK = "#d9668f"  # 百貨店の日よけと看板（小さな地図の色）
+STORE_STONE = "#e6dac0"  # 百貨店の石張りの壁
+PARTS_BLUE = "#5b7fb0"  # 部品工場の屋根（小さな地図の色）
+TIRE = "#2b2c2f"
+STRIPES = (STORE_PINK, WHITE)  # 縞の日よけ
 
 # 基の色と、面ごとの明るさ（上面・屋根の左向き・左の側面・屋根の右向き・右の側面）。
 # color は部品の色を使い、base は色のない部品にだけ使う
@@ -109,6 +114,7 @@ class Prim:
     bounds: tuple[float, float, float, float]
     z0: float
     faces: list[Face]
+    tier: int = 1  # 描く段: 0 は地面と水面、1 はふつうの形、2 はクレーンの腕のように上を渡るもの
 
 
 def _before(a: Prim, b: Prim) -> bool:
@@ -136,6 +142,23 @@ def _depth(p: Prim) -> tuple[float, float]:
 
 
 def order(prims: list[Prim]) -> list[Prim]:
+    """段（tier）ごとに、低い段から並べる。"""
+    return [
+        p
+        for t in sorted({p.tier for p in prims})
+        for p in _order([q for q in prims if q.tier == t])
+    ]
+
+
+def tiered(tier: int, *prims: Prim) -> list[Prim]:
+    """形を描く段に置く。足元が長い形（岸壁の床や、上を渡るクレーンの腕）が、ほかの形と
+    奥と手前の順を循環させて崩さないように、先か後にまとめて描く。"""
+    for p in prims:
+        p.tier = tier
+    return list(prims)
+
+
+def _order(prims: list[Prim]) -> list[Prim]:
     """奥から手前・下から上の順に並べる。決まらないものは足元の中心が奥のものから。"""
     rest = list(prims)
     out: list[Prim] = []
@@ -963,14 +986,6 @@ SHAPES: dict[str, list[Prim]] = {
         *house(0.5, 0.45, 0.88, 0.85, 12, 7, "u", WALL, ROOF_SLATE),
         cone(0.25, 0.72, 0.13, 9, c=COAL),
     ],
-    "facility/fishing_port": [
-        box(0.45, 0.4, 0.98, 0.55, 0, 3, WOOD),
-        box(0.45, 0.62, 0.98, 0.77, 0, 3, WOOD),
-        *house(0.1, 0.15, 0.4, 0.55, 10, 7, "v", WALL, "#4f8fb8"),
-        box(0.12, 0.6, 0.38, 0.85, 0, 7, WALL, "#4fa3c7"),
-        box(0.85, 0.25, 0.9, 0.3, 3, 26, YELLOW),
-        box(0.62, 0.25, 0.9, 0.29, 29, 2, YELLOW),
-    ],
     "facility/steel_mill": [
         # 熱風炉 3 基・高炉・鋳床の建屋・煙突
         *[
@@ -1087,55 +1102,7 @@ SHAPES: dict[str, list[Prim]] = {
         box(0.15, 0.12, 0.87, 0.785, 23, 1.5, "#efe6c4"),
         gable(0.15, 0.12, 0.87, 0.785, 24.5, 9, "v", "#b9a676", "#efe6c4"),
     ],
-    # フェーズ3-1 の港・造船所・商社。港と造船所は、右手前の縁を海側の水面にする
-    "facility/port": [
-        # 岸壁（コンクリートの床）と水面、赤いコンテナクレーン、積んだコンテナ、倉庫、係船柱
-        box(0.06, 0.06, 0.76, 0.94, 0, 4, CONCRETE, PAVEMENT),
-        box(0.76, 0.04, 0.98, 0.96, 0, 0.5, WATER),
-        box(0.1, 0.1, 0.36, 0.38, 4, 9, WALL),
-        gable(0.1, 0.1, 0.36, 0.38, 13, 5, "u", ROOF_STEEL, WALL),
-        *[
-            box(u, v, u + 0.22, v + 0.08, 4 + 4 * k, 4, col)
-            for u, v, k, col in (
-                (0.1, 0.56, 0, RED),
-                (0.1, 0.56, 1, CONTAINER_BLUE),
-                (0.1, 0.66, 0, YELLOW),
-                (0.1, 0.76, 0, CONTAINER_BLUE),
-                (0.1, 0.76, 1, COPPER),
-                (0.1, 0.86, 0, RED),
-                (0.42, 0.72, 0, COPPER),
-                (0.42, 0.82, 0, YELLOW),
-            )
-        ],
-        # クレーン: 4 本の脚の上に、海の上まで張り出す腕。腕の根元に機械室、柱から腕の両端へ控え
-        *[box(u, v, u + 0.04, v + 0.04, 4, 30, RED) for u in (0.48, 0.66) for v in (0.34, 0.5)],
-        box(0.28, 0.36, 1.0, 0.52, 34, 3, RED),
-        box(0.3, 0.38, 0.44, 0.5, 37, 6, WHITE),
-        box(0.57, 0.42, 0.61, 0.46, 37, 14, RED),
-        strut((0.59, 0.44, 51), (0.98, 0.44, 37)),
-        strut((0.59, 0.44, 51), (0.44, 0.44, 43)),
-        *[cylinder(0.72, v, 0.022, 4, 2.5, c=IRON) for v in (0.14, 0.42, 0.66, 0.88)],
-    ],
-    "facility/shipyard": [
-        # 乾ドックで組み立て中の船体（赤い船底・とがった船首）と、それをまたぐ黄色い門形クレーンが
-        # 吊った船体の部品、奥に加工の建屋、手前に鋼材
-        box(0.06, 0.06, 0.82, 0.36, 0, 3, CONCRETE, PAVEMENT),
-        box(0.06, 0.64, 0.82, 0.94, 0, 3, CONCRETE, PAVEMENT),
-        box(0.06, 0.36, 0.14, 0.64, 0, 3, CONCRETE, PAVEMENT),
-        box(0.14, 0.36, 0.82, 0.64, 0, 0.5, "#8d8a84"),
-        box(0.82, 0.04, 0.98, 0.96, 0, 0.5, WATER),
-        box(0.08, 0.08, 0.38, 0.32, 3, 10, WALL),
-        gable(0.08, 0.08, 0.38, 0.32, 13, 5, "u", ROOF_STEEL, WALL),
-        hull(0.2, 0.4, 0.78, 0.6, 0.5, 7, 0.16, RED),
-        hull(0.2, 0.4, 0.78, 0.6, 7.5, 5.5, 0.16, METAL, "#c3c8cc"),
-        box(0.22, 0.43, 0.34, 0.57, 13, 6, WHITE),
-        *[box(u, 0.12, u + 0.1, 0.3, 3, 2 + k, ROOF_STEEL) for k, u in enumerate((0.6, 0.7))],
-        *[box(0.5, v, 0.56, v + 0.06, 3, 39, YELLOW) for v in (0.12, 0.82)],
-        strut((0.53, 0.5, 42), (0.53, 0.5, 25), 0.6, IRON),
-        box(0.47, 0.44, 0.59, 0.56, 19, 6, METAL, "#c3c8cc"),
-        box(0.48, 0.08, 0.58, 0.92, 42, 6, YELLOW),
-        box(0.47, 0.44, 0.59, 0.56, 48, 4, WHITE),
-    ],
+    # フェーズ3-1 の商社（港と造船所は下の「海沿いの施設」）
     "facility/trading": [
         # 白い事務所の塔に横長の窓の帯、屋上の地球儀、正面に旗を 3 本
         box(0.12, 0.64, 0.9, 0.9, 0, 1, CONCRETE, PAVEMENT),
@@ -1249,6 +1216,27 @@ SHAPES: dict[str, list[Prim]] = {
             for prim in car(u, v, CAR_COLORS[(i * 2 + j) % len(CAR_COLORS)], 1)
         ],
     ],
+    # 回7 後半の自動車部品工場
+    "facility/auto_parts_plant": [
+        # のこぎり屋根の部品の建屋、荷積みの台と箱の荷台のトラック、積んだタイヤの山、部品の箱
+        box(0.06, 0.06, 0.94, 0.94, 0, 1, CONCRETE, PAVEMENT),
+        box(0.1, 0.1, 0.62, 0.9, 1, 12, WALL),
+        *[
+            prim
+            for v in (0.1, 0.3, 0.5, 0.7)
+            for prim in sawtooth(0.1, v, 0.62, v + 0.2, 13, 7, "u", PARTS_BLUE, GLASS, WALL)
+        ],
+        box(0.62, 0.14, 0.7, 0.5, 1, 3, CONCRETE, PAVEMENT),
+        box(0.72, 0.16, 0.86, 0.4, 1, 9, WHITE, "#dfe3e8"),
+        box(0.86, 0.2, 0.92, 0.36, 1, 6, PARTS_BLUE, GLASS2),
+        *[
+            cylinder(u, v, 0.04, 1 + 1.8 * k, 1.5, c=TIRE)
+            for u, v, n in ((0.72, 0.58, 4), (0.82, 0.58, 3), (0.72, 0.7, 3), (0.82, 0.7, 2))
+            for k in range(n)
+        ],
+        *[box(u, 0.8, u + 0.08, 0.88, 1, 4, WOOD) for u in (0.68, 0.78)],
+        box(0.68, 0.8, 0.76, 0.88, 5, 4, WOOD),
+    ],
     # フェーズ3-4 の警察署
     "facility/police": [
         # 3 階建ての白い庁舎に青い帯と金の記章、入口のひさしに赤い灯、屋上の無線のアンテナ、
@@ -1273,6 +1261,30 @@ SHAPES: dict[str, list[Prim]] = {
         *patrol_car(0.72, 0.66, 0.6),
         *broadleaf(0.16, 0.8, 3.5, 10),
         *broadleaf(0.52, 0.84, 3.5, 10),
+    ],
+    # 回7 の百貨店
+    "facility/department_store": [
+        # 石張りの 5 階建ての大きな店、1 階のショーウィンドウと縞の日よけ、上の階の窓の列、
+        # 屋上の塔屋と、文字のない看板の枠、前の歩道の植え込み
+        box(0.06, 0.06, 0.94, 0.94, 0, 0.6, CONCRETE, PAVEMENT),
+        box(0.12, 0.12, 0.78, 0.78, 0.6, 30, STORE_STONE, "#cfc8b8"),
+        box(0.12, 0.78, 0.78, 0.785, 1.2, 5.5, GLASS),
+        box(0.78, 0.12, 0.785, 0.78, 1.2, 5.5, GLASS),
+        *[
+            box(0.12 + i * 0.066, 0.785, 0.186 + i * 0.066, 0.84, 7, 1.4, STRIPES[i % 2])
+            for i in range(10)
+        ],
+        *[
+            box(0.785, 0.12 + i * 0.066, 0.84, 0.186 + i * 0.066, 7, 1.4, STRIPES[i % 2])
+            for i in range(10)
+        ],
+        *windows(0.12, 0.12, 0.78, 0.78, [11, 16, 21, 26], 2.6, (6, 6), c="#7f9bb3"),
+        box(0.115, 0.115, 0.785, 0.785, 30.6, 1.6, "#f1e9d6", "#cfc8b8"),
+        box(0.18, 0.18, 0.4, 0.4, 32.2, 5, STORE_STONE, "#cfc8b8"),
+        *[box(u, 0.6, u + 0.014, 0.614, 32.2, 4, METAL) for u in (0.44, 0.6, 0.72)],
+        box(0.42, 0.6, 0.74, 0.62, 36.2, 7, STORE_PINK),
+        *broadleaf(0.88, 0.3, 2.8, 8),
+        *broadleaf(0.3, 0.9, 2.8, 8),
     ],
     # 首都の建物。政治の仕組みの建物（議事堂・首相官邸・党本部）と元首の建物（王宮・大統領府）の
     # 組み合わせごとに 1 枚。実在の建物の雰囲気だけを借り、そっくりには描かない
@@ -1449,6 +1461,353 @@ SHAPES: dict[str, list[Prim]] = {
 }
 
 
+# 海沿いの施設（漁港・港・造船所）。マスの縁の 1 つが海に面していて、そこを岸壁と水面にする。
+# 水面は海と同じ高さ（平地の 1 段下）まで下げ、海のマスとつながって見えるようにする。
+# 形は海が右下（u = 1 の縁、マスの x + 1）にある向きで書き、Side で 4 つの向きに回す
+SEA_Z = -8  # 海の水面の高さ（平地の高さ 1 段 = theme.yaml の step_height 8 ピクセル下）
+SEA_TOP = "#2f6db5"  # 海の上面（theme.yaml の terrain の sea）
+SEA_WAVE = "#4580c2"
+PLAIN_TOP = "#8cc163"  # 平地の上面と側面（theme.yaml の terrain の plain）
+PLAIN_LEFT = "#6f9a4e"
+PLAIN_RIGHT = "#5c8040"
+QUAY = "#b3ada2"  # 岸壁の石
+HULL_DARK = "#3a4654"
+
+# 海のある向き（画面の上で）。se: 右下（x + 1）、sw: 左下（y + 1）、
+# ne: 右上（y - 1）、nw: 左上（x - 1）。
+# se の絵は名前に向きを付けず、ほかは「facility/port@sw」のように付ける（renderer.js が選ぶ）
+SIDES = ("se", "sw", "ne", "nw")
+
+
+class Side:
+    """海のある向き。海が右下にある形の位置 (u, v) を、その向きの位置に移す。"""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.swap = name in ("sw", "ne")  # u と v が入れ替わる
+        self.front = name in ("se", "sw")  # 海が手前（水面と岸壁が見える）
+        # 水の上のもの（船・桟橋の脚）の下の端。奥の海は陸の縁に隠れて見えないので、
+        # 水面を陸の高さに描く
+        self.water_z = SEA_Z if self.front else 0.2
+
+    def pt(self, u: float, v: float) -> tuple[float, float]:
+        return {"se": (u, v), "sw": (v, u), "nw": (1 - u, v), "ne": (v, 1 - u)}[self.name]
+
+    def rect(self, u0: float, v0: float, u1: float, v1: float) -> tuple[float, float, float, float]:
+        a, b = self.pt(u0, v0), self.pt(u1, v1)
+        return min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1])
+
+    def along(self, a: str) -> str:
+        return {"u": "v", "v": "u"}[a] if self.swap else a
+
+    def box(self, u0: float, v0: float, u1: float, v1: float, *a: object, **k: object) -> Prim:
+        return box(*self.rect(u0, v0, u1, v1), *a, **k)
+
+    def gable(
+        self,
+        u0: float,
+        v0: float,
+        u1: float,
+        v1: float,
+        z0: float,
+        r: float,
+        along: str,
+        *a: object,
+    ) -> Prim:
+        return gable(*self.rect(u0, v0, u1, v1), z0, r, self.along(along), *a)
+
+    def house(
+        self,
+        u0: float,
+        v0: float,
+        u1: float,
+        v1: float,
+        h: float,
+        r: float,
+        along: str,
+        wall: str,
+        roof: str,
+    ) -> list[Prim]:
+        return [
+            self.box(u0, v0, u1, v1, 0, h, wall),
+            self.gable(u0, v0, u1, v1, h, r, along, roof, wall),
+        ]
+
+    def cylinder(self, uc: float, vc: float, *a: object, **k: object) -> Prim:
+        return cylinder(*self.pt(uc, vc), *a, **k)
+
+    def strut(
+        self, a: tuple[float, float, float], b: tuple[float, float, float], *x: object
+    ) -> Prim:
+        return strut((*self.pt(a[0], a[1]), a[2]), (*self.pt(b[0], b[1]), b[2]), *x)
+
+    def prism(
+        self, points: list[tuple[float, float]], z0: float, h: float, c: str, top: str | None = None
+    ) -> Prim:
+        return prism([self.pt(u, v) for u, v in points], z0, h, c, top)
+
+    def ship(
+        self,
+        u0: float,
+        v0: float,
+        u1: float,
+        v1: float,
+        z0: float,
+        h: float,
+        bow: float,
+        c: str,
+        top: str | None = None,
+        along: str = "u",
+    ) -> Prim:
+        """船体（の一段）。along の向きに長く、u1（v1）の側がとがった船首。"""
+        if along == "u":
+            vm = (v0 + v1) / 2
+            pts = [(u0, v0), (u1 - bow, v0), (u1, vm), (u1 - bow, v1), (u0, v1)]
+        else:
+            um = (u0 + u1) / 2
+            pts = [(u0, v0), (u1, v0), (u1, v1 - bow), (um, v1), (u0, v1 - bow)]
+        return self.prism(pts, z0, h, c, top)
+
+
+def prism(
+    points: list[tuple[float, float]],
+    z0: float,
+    h: float,
+    c: str,
+    top: str | None = None,
+    side_color: object = None,
+) -> Prim:
+    """足元が凸の多角形 points の柱。見えるのは上面と、手前（u か v の増える向き）を向いた側面。
+
+    side_color は側面ごとの色を返す関数 (a, b, (nu, nv)) -> (色, 明るさ)。
+    なければ c を面の向きで陰影する。
+    """
+    zt = z0 + h
+    cu = sum(u for u, _ in points) / len(points)
+    cv = sum(v for _, v in points) / len(points)
+    faces = []
+    for a, b in zip(points, points[1:] + points[:1], strict=True):
+        nu, nv = b[1] - a[1], a[0] - b[0]
+        if nu * ((a[0] + b[0]) / 2 - cu) + nv * ((a[1] + b[1]) / 2 - cv) < 0:
+            nu, nv = -nu, -nv
+        if nu + nv <= 1e-9:
+            continue
+        if abs(nu) < 1e-9:
+            shade = "left"
+        elif abs(nv) < 1e-9:
+            shade = "right"
+        else:
+            shade = "slope_l" if nv > nu else "slope_r"
+        pts = [iso(*a, z0), iso(*b, z0), iso(*b, zt), iso(*a, zt)]
+        if side_color:
+            color, k = side_color(a, b, (nu, nv))
+            faces.append(Face(shade, color, pts, k=k))
+        else:
+            faces.append(Face(shade, c, pts))
+    faces.append(Face("top", top or c, [iso(u, v, zt) for u, v in points]))
+    us, vs = [u for u, _ in points], [v for _, v in points]
+    return Prim((min(us), min(vs), max(us), max(vs)), z0, faces)
+
+
+def basin(s: Side, w: float, a: float = 0.08, b: float = 0.92) -> list[Prim]:
+    """海側の縁から幅 w の水面と岸壁。
+
+    海が手前なら、水面を海の高さまで下げ、陸の側に岸壁の石の壁を立てる。縁の両端（v < a と v > b）は
+    陸のまま残し、その切り口も描く（崖の色は theme.yaml の平地の側面）。海が奥なら、陸の縁に隠れて
+    岸壁は見えないので、水面だけを陸の高さに描く。
+    """
+    u0 = 1 - w
+    if not s.front:
+        pts = [s.pt(u, v) for u, v in ((u0, 0), (1, 0), (1, 1), (u0, 1))]
+        us, vs = [u for u, _ in pts], [v for _, v in pts]
+        surface = [iso(u, v, 0.2) for u, v in pts]
+        return tiered(
+            0,
+            Prim((min(us), min(vs), max(us), max(vs)), 0.1, [Face("top", SEA_TOP, surface, k=1.0)]),
+        )
+
+    def edge_color(
+        p: tuple[float, float], q: tuple[float, float], n: tuple[float, float]
+    ) -> tuple[str, float | None]:
+        outer = (p[0] == q[0] == 1) or (p[1] == q[1] == 1)
+        if outer:
+            return (PLAIN_LEFT if n[1] > n[0] else PLAIN_RIGHT), 1.0
+        return QUAY, None
+
+    pts = [s.pt(u, v) for u, v in ((u0, a), (1, a), (1, b), (u0, b))]
+    us, vs = [u for u, _ in pts], [v for _, v in pts]
+    water = Prim(
+        (min(us), min(vs), max(us), max(vs)),
+        SEA_Z - 0.01,
+        [Face("top", SEA_TOP, [iso(u, v, SEA_Z) for u, v in pts], k=1.0)],
+    )
+    waves = [
+        Prim(
+            water.bounds,
+            SEA_Z - 0.005,
+            [Face("top", SEA_WAVE, [iso(*s.pt(u, v), SEA_Z) for u, v in q], k=1.0)],
+        )
+        for q in (
+            [
+                (u0 + w * 0.55, a + 0.1),
+                (u0 + w * 0.62, a + 0.14),
+                (u0 + w * 0.55, a + 0.2),
+                (u0 + w * 0.5, a + 0.14),
+            ],
+            [
+                (u0 + w * 0.7, b - 0.22),
+                (u0 + w * 0.77, b - 0.17),
+                (u0 + w * 0.7, b - 0.12),
+                (u0 + w * 0.65, b - 0.17),
+            ],
+        )
+    ]
+    wall_pts = [s.pt(u0, a), s.pt(u0, b)]
+    (wu0, wv0), (wu1, wv1) = wall_pts
+    wall_face = [iso(wu0, wv0, SEA_Z), iso(wu1, wv1, SEA_Z), iso(wu1, wv1, 0), iso(wu0, wv0, 0)]
+    wall = Prim(
+        (min(wu0, wu1), min(wv0, wv1), max(wu0, wu1), max(wv0, wv1)),
+        SEA_Z,
+        [Face("right" if not s.swap else "left", QUAY, wall_face)],
+    )
+    corners = [
+        prism(
+            [s.pt(u, v) for u, v in ((u0, v0), (1, v0), (1, v1), (u0, v1))],
+            SEA_Z,
+            -SEA_Z,
+            PLAIN_TOP,
+            PLAIN_TOP,
+            edge_color,
+        )
+        for v0, v1 in ((0, a), (b, 1))
+    ]
+    for c in corners:
+        c.faces[-1].k = 1.0
+    return [*tiered(0, water, *waves, wall), *corners]
+
+
+def fishing_port(s: Side) -> list[Prim]:
+    # 青い屋根の漁協の建物と魚の市場、岸壁、水の上に突き出た木の桟橋 2 本と、つないだ漁船、
+    # 荷揚げの小さなクレーン
+    wz = s.water_z
+    return [
+        *basin(s, 0.36),
+        *tiered(0, s.box(0.06, 0.06, 0.64, 0.94, 0, 0.6, CONCRETE, PAVEMENT)),
+        *s.house(0.1, 0.12, 0.4, 0.5, 10, 7, "v", WALL, "#4f8fb8"),
+        s.box(0.12, 0.58, 0.4, 0.86, 0.6, 7, WALL, "#4fa3c7"),
+        *[
+            prim
+            for v in (0.26, 0.66)
+            for prim in (
+                *[s.cylinder(u, v + 0.04, 0.012, wz, -wz + 0.2, c=TRUNK) for u in (0.78, 0.92)],
+                s.box(0.64, v, 0.96, v + 0.08, 0.2, 0.8, WOOD),
+            )
+        ],
+        s.ship(0.7, 0.4, 0.94, 0.52, wz, 2.5, 0.07, WHITE, "#d8dde0"),
+        s.box(0.74, 0.42, 0.8, 0.5, wz + 2.5, 3, "#4f8fb8", WHITE),
+        s.ship(0.68, 0.78, 0.9, 0.88, wz, 2.2, 0.06, "#c8473a", "#e8e2d6"),
+        s.box(0.72, 0.8, 0.77, 0.86, wz + 2.2, 2.6, WHITE),
+        s.box(0.58, 0.16, 0.62, 0.2, 0.6, 24, YELLOW),
+        *tiered(2, s.box(0.58, 0.16, 0.82, 0.2, 24.6, 2, YELLOW)),
+    ]
+
+
+def port(s: Side) -> list[Prim]:
+    # 岸壁（コンクリートの床）、横付けしたコンテナ船、赤いコンテナクレーン、積んだコンテナ、
+    # 倉庫、係船柱
+    wz = s.water_z
+    return [
+        *basin(s, 0.26),
+        *tiered(0, s.box(0.06, 0.06, 0.74, 0.94, 0, 4, CONCRETE, PAVEMENT)),
+        s.box(0.1, 0.1, 0.36, 0.38, 4, 9, WALL),
+        s.gable(0.1, 0.1, 0.36, 0.38, 13, 5, "u", ROOF_STEEL, WALL),
+        *[
+            s.box(u, v, u + 0.22, v + 0.08, 4 + 4 * k, 4, col)
+            for u, v, k, col in (
+                (0.1, 0.56, 0, RED),
+                (0.1, 0.56, 1, CONTAINER_BLUE),
+                (0.1, 0.66, 0, YELLOW),
+                (0.1, 0.76, 0, CONTAINER_BLUE),
+                (0.1, 0.76, 1, COPPER),
+                (0.1, 0.86, 0, RED),
+                (0.42, 0.72, 0, COPPER),
+                (0.42, 0.82, 0, YELLOW),
+            )
+        ],
+        # 船: 黒い船体に赤い船底の線、甲板にコンテナ、後ろに白い船橋
+        s.ship(0.78, 0.14, 0.96, 0.9, wz, 2, 0.14, RED, along="v"),
+        s.ship(0.78, 0.14, 0.96, 0.9, wz + 2, 5, 0.14, HULL_DARK, "#7c8794", along="v"),
+        # 船尾の船橋: 白い居住区の上に窓の帯と張り出した操舵室、後ろに煙突
+        s.box(0.8, 0.15, 0.94, 0.25, wz + 7, 6, WHITE),
+        s.box(0.795, 0.145, 0.945, 0.255, wz + 13, 2, "#3e5a73", WHITE),
+        s.box(0.79, 0.17, 0.95, 0.23, wz + 15, 1, WHITE),
+        s.box(0.84, 0.15, 0.9, 0.19, wz + 13, 5, RED, COAL),
+        *[
+            s.box(0.81, v, 0.93, v + 0.1, wz + 7 + 3.5 * k, 3.5, col)
+            for v, k, col in (
+                (0.3, 0, CONTAINER_BLUE),
+                (0.42, 0, RED),
+                (0.42, 1, YELLOW),
+                (0.54, 0, COPPER),
+                (0.66, 0, CONTAINER_BLUE),
+                (0.66, 1, RED),
+            )
+        ],
+        # クレーン: 4 本の脚の上に、船の上まで張り出す腕。腕の根元に機械室、柱から腕の両端へ控え
+        *[s.box(u, v, u + 0.04, v + 0.04, 4, 24, RED) for u in (0.48, 0.66) for v in (0.34, 0.5)],
+        *tiered(
+            2,
+            s.box(0.28, 0.36, 1.0, 0.52, 28, 3, RED),
+            s.box(0.3, 0.38, 0.44, 0.5, 31, 6, WHITE),
+            s.box(0.57, 0.42, 0.61, 0.46, 31, 11, RED),
+            s.strut((0.59, 0.44, 42), (0.98, 0.44, 31)),
+            s.strut((0.59, 0.44, 42), (0.44, 0.44, 37)),
+        ),
+        *[s.cylinder(0.71, v, 0.02, 4, 2.5, c=IRON) for v in (0.14, 0.42, 0.66, 0.88)],
+    ]
+
+
+def shipyard(s: Side) -> list[Prim]:
+    # 地面を掘り下げた乾ドックで組み立て中の船体（赤い船底・とがった船首）、海との間の扉船、
+    # それをまたぐ黄色い門形クレーンが吊った船体の部品、奥に加工の建屋、手前に鋼材
+    return [
+        *basin(s, 0.18),
+        s.box(0.06, 0.06, 0.82, 0.36, -6, 9, CONCRETE, PAVEMENT),
+        s.box(0.06, 0.64, 0.82, 0.94, 0, 3, CONCRETE, PAVEMENT),
+        s.box(0.06, 0.36, 0.14, 0.64, -6, 9, CONCRETE, PAVEMENT),
+        s.box(0.14, 0.36, 0.79, 0.64, -6, 0.3, "#8d8a84"),
+        s.box(
+            0.79,
+            0.36,
+            0.82,
+            0.64,
+            SEA_Z if s.front else -6,
+            (-SEA_Z if s.front else 6) + 2,
+            "#6d7177",
+        ),
+        s.box(0.08, 0.08, 0.38, 0.32, 3, 10, WALL),
+        s.gable(0.08, 0.08, 0.38, 0.32, 13, 5, "u", ROOF_STEEL, WALL),
+        s.ship(0.2, 0.4, 0.78, 0.6, -5.7, 8, 0.16, RED),
+        s.ship(0.2, 0.4, 0.78, 0.6, 2.3, 5.5, 0.16, METAL, "#c3c8cc"),
+        s.box(0.22, 0.43, 0.34, 0.57, 7.8, 6, WHITE),
+        *[s.box(u, 0.12, u + 0.1, 0.3, 3, 2 + k, ROOF_STEEL) for k, u in enumerate((0.6, 0.7))],
+        *[s.box(0.5, v, 0.56, v + 0.06, 3, 31, YELLOW) for v in (0.12, 0.82)],
+        s.strut((0.53, 0.5, 34), (0.53, 0.5, 25), 0.6, IRON),
+        s.box(0.47, 0.44, 0.59, 0.56, 19, 6, METAL, "#c3c8cc"),
+        *tiered(
+            2,
+            s.box(0.48, 0.08, 0.58, 0.92, 34, 6, YELLOW),
+            s.box(0.47, 0.44, 0.59, 0.56, 40, 4, WHITE),
+        ),
+    ]
+
+
+for _name, _shape in (("fishing_port", fishing_port), ("port", port), ("shipyard", shipyard)):
+    for _side in SIDES:
+        _suffix = "" if _side == "se" else f"@{_side}"
+        SHAPES[f"facility/{_name}{_suffix}"] = _shape(Side(_side))
+
+
 def render(prims: list[Prim], style: dict) -> str:
     prims = order(prims)
     faces = [f for p in prims for f in p.faces]
@@ -1457,7 +1816,10 @@ def render(prims: list[Prim], style: dict) -> str:
     ys += [f.ymin for f in faces if f.path]
     top = min(min(ys), 0.0)
     off = math.ceil(-top) + 1
-    height = TILE_H + off
+    # 下の頂点より下に出るもの（海の高さまで下げた水面）があれば、そのぶん下へ伸ばす。
+    # そのときは theme.yaml の anchor を [32, TILE_H + off] にする（main が書き出す）
+    below = max(ys) - TILE_H
+    height = TILE_H + off + (math.ceil(below) if below > 0.01 else 0)
     out = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{TILE_W}" height="{height}" '
         f'viewBox="0 0 {TILE_W} {height}">',
@@ -1492,7 +1854,12 @@ def main() -> None:
     for name, prims in SHAPES.items():
         path = args.out / f"{name}.svg"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(render(prims, STYLES[args.style]), encoding="utf-8")
+        svg = render(prims, STYLES[args.style])
+        path.write_text(svg, encoding="utf-8")
+        height = int(svg.split('height="', 1)[1].split('"', 1)[0])
+        off = int(svg.split("translate(0 ", 1)[1].split(")", 1)[0])
+        if height > TILE_H + off:
+            print(f"  {name}: theme.yaml に anchor: [{TILE_W // 2}, {TILE_H + off}]")
     print(f"{len(SHAPES)} 枚を {args.out} に書きました")
 
 
