@@ -1,6 +1,7 @@
 import random
 
 from django.contrib import admin, messages
+from django.db.models import Max
 
 from server.turns.services import TurnError, run_turn
 from server.world import models as m
@@ -70,8 +71,56 @@ class TileInline(admin.TabularInline):
 
 @admin.register(m.Island)
 class IslandAdmin(admin.ModelAdmin):
-    list_display = ["name", "owner", "wx", "wy", "inactive", "created_at"]
+    """島の管理。放置された国（命令が途絶えた国）は自動で消さず、ここの「命令が途絶えたターン数」と
+    「最後のログイン」を見て、休止中にする・無人の島にする（持ち主を外す）を管理者が選ぶ。"""
+
+    list_display = [
+        "name",
+        "owner",
+        "wx",
+        "wy",
+        "inactive",
+        "idle_turns",
+        "last_login",
+        "created_at",
+    ]
+    list_filter = ["inactive"]
     search_fields = ["name"]
+    actions = ["make_inactive", "make_active", "release_owner"]
+
+    def get_queryset(self, request):
+        # 命令を最後に実行したターン（実行済みの命令がなければ空）
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("owner", "world")
+            .annotate(last_order_turn=Max("orders__executed_turn"))
+        )
+
+    @admin.display(description="命令が途絶えたターン数", ordering="last_order_turn")
+    def idle_turns(self, obj) -> int:
+        """最後に命令を実行したターン（なければ建国のターン）から、いまのターンまで。"""
+        since = obj.last_order_turn or (obj.ext or {}).get("founded_turn") or 0
+        return max(0, obj.world.turn - since)
+
+    @admin.display(description="最後のログイン", ordering="owner__last_login")
+    def last_login(self, obj):
+        return obj.owner.last_login if obj.owner else None
+
+    @admin.action(description="選んだ島を休止中にする（条約や戦争はそのまま残る）")
+    def make_inactive(self, request, queryset):
+        n = queryset.update(inactive=True)
+        self.message_user(request, f"{n} 島を休止中にしました")
+
+    @admin.action(description="選んだ島の休止を解く")
+    def make_active(self, request, queryset):
+        n = queryset.update(inactive=False)
+        self.message_user(request, f"{n} 島の休止を解きました")
+
+    @admin.action(description="選んだ島を無人の島にする（持ち主を外す。島は残る）")
+    def release_owner(self, request, queryset):
+        n = queryset.exclude(owner=None).update(owner=None)
+        self.message_user(request, f"{n} 島の持ち主を外しました")
 
     def get_fields(self, request, obj=None):
         if obj is None:

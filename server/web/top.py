@@ -65,7 +65,7 @@ HEADLINES = (
 )
 
 
-def _headline_filter() -> Q:
+def headline_filter() -> Q:
     q = Q()
     for kind in HEADLINES:
         q |= Q(kind__startswith=kind) if kind.endswith("_") else Q(kind=kind)
@@ -75,7 +75,7 @@ def _headline_filter() -> Q:
 def recent_events(world: m.World, limit: int = RECENT) -> list[dict[str, Any]]:
     """全部の島の最近の出来事（新しい順）。文は島のターンログと同じ。"""
     logs = list(
-        TurnLog.objects.filter(_headline_filter(), island__world=world)
+        TurnLog.objects.filter(headline_filter(), island__world=world)
         .select_related("island")
         .order_by("-turn", "-id")[:limit]
     )

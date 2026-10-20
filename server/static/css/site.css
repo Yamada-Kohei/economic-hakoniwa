@@ -254,3 +254,9 @@ table.ranking-table td:nth-child(3), table.titles-table th, table.titles-table t
 }
 /* 地名ラベルの下に隠れた島の形も見られるように、指を乗せたら消す */
 .world-grid .cell:hover .cell-name, .world-grid .cell:focus .cell-name { opacity: 0; }
+
+/* 国の公開ページ: 国旗と、その横に国の概要の表 */
+.country-head { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+.country-flag { max-width: 180px; height: auto; border: 1px solid #0002; background: #fff; }
+.country-head h2 { margin-top: 0; }
+.country-timeline td:nth-child(n+2), .country-timeline th:nth-child(n+2) { text-align: left; }

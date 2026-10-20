@@ -4,16 +4,21 @@ from __future__ import annotations
 
 from django.conf import settings as django_settings
 from django.core.paginator import Paginator
-from django.shortcuts import get_object_or_404, render
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404, redirect, render
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.trade import contracts, tradable_goods
 from server.accounts import keys
+from server.country import png as flag_png
+from server.country import services as country_services
+from server.country.models import Flag
 from server.game import get_game
 from server.turns.models import TurnLog
 from server.web import (
     chain,
     counter,
+    country,
     diplomacy,
     display,
     founding,
@@ -290,6 +295,65 @@ def diplomacy_page(request, island_id: int):
     island, context, _ = _report(request, island_id, "diplomacy", "外交")
     context["diplomacy"] = diplomacy.diplomacy_data(island, context["mine"])
     return render(request, "web/diplomacy.html", context)
+
+
+def country_page(request, island_id: int):
+    """国の公開ページ（フェーズ4-1）: 国旗・名前・元首・体制・通貨・人口・紹介文・年表（国ごとの
+    紀年の日付）・来訪者の一言。持ち主には紹介文・紀年・国旗の入力欄、ほかの国を持つ人には一言の
+    入力欄も。"""
+    island, context, _ = _report(request, island_id, "country", "国の紹介")
+    viewer = country_services.own_island(request.user)
+    if request.method == "POST":
+        try:
+            _country_post(request, island, viewer, context["mine"])
+        except country_services.CountryError as e:
+            context["error"] = e.text
+        else:
+            return redirect("island_country", island.id)
+    context["country"] = country.country_data(island, context["mine"], viewer)
+    return render(request, "web/country.html", context)
+
+
+def _country_post(request, island: Island, viewer: Island | None, mine: bool) -> None:
+    """国の公開ページの入力欄（action で見分ける）を受ける。持ち主だけが国自身の欄を書き換える。"""
+    action = request.POST.get("action", "")
+    if action == "note":
+        country_services.post_note(request.user, island, request.POST.get("text", ""))
+        return
+    if not mine:
+        raise country_services.CountryError("この国の持ち主だけが書き換えられます", 403)
+    if action == "intro":
+        country_services.set_intro(island, request.POST.get("intro", ""))
+    elif action == "era":
+        country_services.set_era(island, request.POST.get("kind", ""), request.POST.get("name"))
+    elif action == "new_era":
+        country_services.new_era(island, request.POST.get("name"))
+    elif action == "flag":
+        upload = request.FILES.get("flag")
+        if upload is None:
+            raise country_services.CountryError("PNG の画像を選んでください")
+        country_services.set_flag(
+            island, upload.read(django_settings.HAKONIWA_FLAG_MAX_KB * 1024 + 1)
+        )
+    elif action == "flag_clear":
+        country_services.clear_flag(island)
+    else:
+        raise country_services.CountryError("何をするのか分かりません")
+
+
+def island_flag(request, island_id: int):
+    """国旗の画像。上げた PNG。上げていない（管理者が隠した）国は、国から決まる仮の旗（SVG）。"""
+    island = get_object_or_404(Island, pk=island_id)
+    flag = Flag.objects.filter(island=island, hidden=False).first()
+    if flag is not None:
+        body, kind = bytes(flag.png), "image/png"
+    else:
+        body, kind = flag_png.provisional_flag(island.id, island.name).encode(), "image/svg+xml"
+    response = HttpResponse(body, content_type=kind)
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'"
+    response["Cache-Control"] = "public, max-age=300"
+    return response
 
 
 def plan_page(request, island_id: int):

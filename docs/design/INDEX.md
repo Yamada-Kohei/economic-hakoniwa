@@ -461,7 +461,7 @@
 
 ## [11 画面と統計](11-ui.md)
 
-決まり 37 個、うち仮の決まりの表にあるもの 0 個。
+決まり 40 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -495,13 +495,16 @@
 | UI-28 | 国の要約と前のターンからの差分は、画面と同じ値を集めて短くしたもの | 決定 | tests/server/test_ai_players.py |
 | UI-29 | MCP のつなぎ先は状態を持たず、道具はサーバーの中で JSON API を同じアカウントで呼ぶ… | 決定 | tests/server/test_ai_players.py |
 | UI-30 | 命令・画面・画面に出す値・地図の重ね表示を足したり変えたりしたら、同じ PR で JSON AP… | 決定 | tests/server/test_ai_parity.py |
-| UI-31 | 管理は Django の管理サイトで行う: 更新の一時停止、巻き戻し、何ターンかまとめて進める、… | 決定 | tests/server/test_letters.py、tests/server/test_turns.py、tests/server/test_web.py |
+| UI-31 | 管理は Django の管理サイトで行う: 更新の一時停止、巻き戻し、何ターンかまとめて進める、… | 決定 | tests/server/test_country.py、tests/server/test_letters.py、tests/server/test_turns.py、tests/server/test_web.py |
 | UI-32 | 同じ接続元からの登録は管理者が設定で数を決める（家族・学校・携帯回線で 1 つの接続元を分け合う… | 決定 | tests/server/test_phase1.py |
 | UI-33 | 量は実物に近い単位で見せる（計算は変えない） | 決定 | tests/server/test_display_units.py |
 | UI-34 | トップ画面は島の順位の表（列の頭で並べ替え、既定は GDP の順 | 決定 | tests/server/test_top_page.py |
 | UI-35 | 島の画面のマスの情報は、押したマスのそばの小さな窓（ポップオーバー）に出す | 決定 | tests/server/test_map_popover_pies_wording.py |
 | UI-36 | 全体を分けた割合を見る統計（人口の階級ごとの内訳・歳入と歳出の内訳・産業ごとの従業者数）は円グラ… | 決定 | tests/server/test_map_popover_pies_wording.py |
 | UI-37 | 表示名は統計の正式な言い方にそろえる（労働力人口・就業者・完全失業率・自給農家・従業者、労働者階… | 決定 | tests/server/test_map_popover_pies_wording.py |
+| UI-38 | 国の公開ページ（`/islands/<番号>/country/`、JSON API `GET /`… | 決定（4-1 ③） | tests/server/test_country.py |
+| UI-39 | 国ごとの紀年は表示だけで、世界の暦（ターン）は変わらない | 決定（4-1 ③） | tests/server/test_country.py |
+| UI-40 | 放置された国（命令が途絶えた国）は、自動で休止にも無人にもしない | 決定（4-1 ③） | tests/server/test_country.py |
 
 ## [12 確かめ方](12-checks.md)
 

@@ -68,7 +68,7 @@ def post_statement(user, island: Island, title: str, body: str) -> Statement:
     )
 
 
-def _event_text(log: TurnLog) -> str:
+def event_text(log: TurnLog) -> str:
     game = get_game()
     return format_log(game.defs, f"hall_{log.kind}", log.args or {}, calendar=game.calendar)
 
@@ -102,7 +102,7 @@ def timeline(world: World) -> list[dict[str, Any]]:
                 "id": log.id,
                 "turn": log.turn,
                 "kind": log.kind,
-                "text": _event_text(log),
+                "text": event_text(log),
             }
         )
     # 同じターンでは、出来事の後ろに声明（声明はそのターンの内に出たもの）
