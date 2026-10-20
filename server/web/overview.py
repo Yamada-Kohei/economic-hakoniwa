@@ -26,7 +26,7 @@ from server.hall import services as hall
 from server.letters import services as letters
 from server.orders.models import Order
 from server.turns.models import TurnLog
-from server.web import country, diplomacy, display, rankings, reports
+from server.web import country, diplomacy, display, military, rankings, reports
 from server.web import politics as politics_views
 from server.world import models as m
 from server.world.repository import facility_from_row
@@ -497,6 +497,7 @@ def summary(island: m.Island, mine: bool) -> dict[str, Any]:
         "indicators": indicators(stats, before, currency),
         "politics": politics,
         "diplomacy": diplomacy.brief(island, mine),
+        "military": military.brief(island, mine),
         "country": country.brief(island, mine),
         "strengths": rankings.island_strengths(island, latest),
         "facilities": facilities,

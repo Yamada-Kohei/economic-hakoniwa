@@ -158,7 +158,7 @@ set_budget:
   payload:
     type: object                          # 項目（game.yaml の fiscal.budget_items）ごとの年の予算
     minProperties: 1
-    propertyNames: {enum: [construction, education, security, subsidies, warehouse]}
+    propertyNames: {enum: [construction, education, security, subsidies, warehouse, defense_personnel, defense_procurement]}
     additionalProperties: {type: integer, minimum: 0, description: "年の予算の額（毎ターンその12分の1まで使う）"}
 
 set_labor_policy:
@@ -848,3 +848,43 @@ denounce_treaty:                          # 効いている条約を予告つき
     additionalProperties: false
     properties:
       treaty: {type: integer, minimum: 1}
+
+# --- 軍（フェーズ4-2。設計書 15-military MI-07〜MI-14）。兵の命令は行政力を使う国の命令 -------------
+set_defense:                              # 国防費の年の額と分け方、志願の賃金（建国の島は 0 から）
+  admin_cost: 1
+  payload:
+    type: object
+    minProperties: 1
+    additionalProperties: false
+    properties:
+      annual: {type: integer, minimum: 0, description: "国防費の年の額（毎ターンその12分の1まで使う）"}
+      personnel_share: {type: integer, minimum: 0, maximum: 100, description: "国防費のうち、兵の賃金と食べ物（defense_personnel）に回す %。残りは装備の買い入れと編成（defense_procurement）"}
+      volunteer_wage: {type: number, minimum: 0, maximum: 500, description: "志願の兵の賃金（島の平均賃金に対する %）"}
+
+recruit:                                  # 志願の兵を集める（失業者から先に。軍の賃金が島の平均賃金より低いと失業者しか集まらない）
+  admin_cost: 1
+  payload:
+    type: object
+    required: [count]
+    additionalProperties: false
+    properties:
+      count: {type: integer, minimum: 1, description: "集めたい人数"}
+
+conscript:                                # 徴兵（人口に比例してくじで集める。賃金は低く、政情の目標が下がる。民主主義は議会の過半数）
+  admin_cost: 2
+  parliament: majority
+  payload:
+    type: object
+    required: [count]
+    additionalProperties: false
+    properties:
+      count: {type: integer, minimum: 1, description: "集めたい人数"}
+
+discharge:                                # 除隊（兵は家計に戻り失業者になる。徴兵した兵から先に帰す）
+  admin_cost: 1
+  payload:
+    type: object
+    required: [count]
+    additionalProperties: false
+    properties:
+      count: {type: integer, minimum: 1, description: "除隊させる人数"}

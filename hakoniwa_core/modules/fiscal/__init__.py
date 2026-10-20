@@ -15,6 +15,7 @@ from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import BONDS, arrears, funds
 from hakoniwa_core.economy.debt import due
+from hakoniwa_core.modules import military
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import IslandState, LogEntry
 from hakoniwa_core.turn.context import StageContext
@@ -41,6 +42,10 @@ class Budget(IslandStage):
         # 段の初めに払う。今月の分を止めてまで先に返さない）
         estimates[arrears.ARREARS] = arrears.total(island, ledger.GOV)
         caps = {item: island.policy.budget.get(item, 0) // YEAR for item in fiscal["budget_items"]}
+        for item, amount in military.planned(
+            island, ctx.config
+        ).items():  # 兵の賃金と食べ物（MI-13）
+            estimates[item] = max(estimates.get(item, 0), min(amount, caps.get(item, 0)))
         funds.open_treasury(island, estimates, fiscal["payment_order"], caps)
 
 

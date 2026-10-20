@@ -649,7 +649,8 @@ TOOLS = [
         "買えなかった量と国の倉庫の在庫（stock）、商業・サービス業の店（services）、人口の増減のわけ（population_changes）、"
         "飢えている家計の層とそのわけ（hunger）、満期の近い国債、直近のターンの出来事、注意。"
         "自分の島なら赤字の施設・命令の列と、直近に命令を実行したターン（last_turn）の結果・"
-        "未読の公電も。",
+        "未読の公電、軍（military。兵の数・士気・練度・賃金の遅れ・国防費。命令は set_defense・"
+        "recruit・conscript・discharge）も。",
         _summary,
         {"island": ISLAND},
     ),

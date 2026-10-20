@@ -66,3 +66,7 @@ sign_treaty: 条約への署名
 refuse_treaty: 条約を断る
 withdraw_treaty: 条約の提案の取り下げ
 denounce_treaty: 条約の破棄
+set_defense: 国防費の変更
+recruit: 志願兵の募集
+conscript: 徴兵
+discharge: 除隊
