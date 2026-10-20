@@ -84,16 +84,16 @@ sprites:
   facility/mine: sprites/facility/mine.svg
   facility/oil_well: sprites/facility/oil_well.svg
   facility/police: sprites/facility/police.svg
-  facility/port: {file: sprites/facility/port.svg, anchor: [32, 69]}
-  facility/port@sw: {file: sprites/facility/port@sw.svg, anchor: [32, 69]}
+  facility/port: {file: sprites/facility/port.svg, anchor: [32, 60]}
+  facility/port@sw: {file: sprites/facility/port@sw.svg, anchor: [32, 60]}
   facility/port@ne: sprites/facility/port@ne.svg
   facility/port@nw: sprites/facility/port@nw.svg
   facility/quarry: sprites/facility/quarry.svg
   facility/ranch: sprites/facility/ranch.svg
   facility/refinery: sprites/facility/refinery.svg
   facility/school: sprites/facility/school.svg
-  facility/shipyard: {file: sprites/facility/shipyard.svg, anchor: [32, 73]}
-  facility/shipyard@sw: {file: sprites/facility/shipyard@sw.svg, anchor: [32, 73]}
+  facility/shipyard: {file: sprites/facility/shipyard.svg, anchor: [32, 65]}
+  facility/shipyard@sw: {file: sprites/facility/shipyard@sw.svg, anchor: [32, 65]}
   facility/shipyard@ne: sprites/facility/shipyard@ne.svg
   facility/shipyard@nw: sprites/facility/shipyard@nw.svg
   facility/steel_mill: sprites/facility/steel_mill.svg
