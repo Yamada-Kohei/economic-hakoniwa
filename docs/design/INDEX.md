@@ -98,9 +98,9 @@
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
 | MK-01 | 取引は「島×財」ごとに、ターンの市場の段で1回の板寄せで決める | 決定 | tests/core/test_economy.py |
-| MK-02 | 値段は前のターンの約定価格から1ターンに値幅までしか動かない | 決定 | tests/core/test_economy.py |
+| MK-02 | 財の市場に値幅はない | 決定 | tests/core/test_economy.py |
 | MK-03 | 約定価格ちょうどの注文と、値幅の端で止まったときの多い側は、優先順位の高い順、同じ順位の中は量に… | 決定 | tests/core/test_economy.py |
-| MK-04 | 売りと買いが交わらなければ約定せず、値幅の中の気配を次のターンの基準の値段にする | 決定 | tests/core/test_economy.py |
+| MK-04 | 売りと買いが交わらなければ約定せず、一番安い売りと一番高い買いの指値の真ん中（気配）を次のターン… | 決定 | tests/core/test_economy.py |
 | MK-05 | 注文は出すときに「量×指値」のお金を取り置き、取り置けない分は出せない | 決定 | tests/core/test_economy.py |
 | MK-06 | 注文を出すのは、独立採算と国庫直轄の施設（在庫の売りと次のターンの投入財の買い）、工事中の施設と… | 決定 | tests/core/test_balance_round3.py |
 | MK-07 | 希望価格は売れ行きで見直す（式 `price_update`） | 決定 | tests/core/test_economy.py |
@@ -111,7 +111,7 @@
 | MK-12 | 原料が足りずに稼働率が下がった施設は、前のターンに買うつもりだった分の原料がそろっていれば、止ま… | 決定 | tests/core/test_playtest3_fixes.py |
 | MK-13 | 品切れの財（買いたい人がいるのに売りに出なかった財）は、島で作り始められる一番安い値段が今の値段… | 決定 | tests/core/test_balance_round4.py |
 | MK-14 | 島に買い手がなく売りだけの財は、圏で輸出が引き合う値段まで値幅ずつ下がる | 決定 | tests/core/test_trade.py |
-| MK-15 | 前のターンに食べきれなかった家計は、食費の限りで値幅の上端を超えて食料を買い上がる（形はタブ 4… | 決定 | tests/core/test_balance_round3.py |
+| MK-15 | 家計は食料を、少ししか買えない段ほど高い指値で買う | 決定 | tests/core/test_balance_round3.py |
 | MK-16 | 値幅の上端で買い続ける買い手（家計の車の燃料、工事とインフラの資材）は、いつもの値段の一番上の段… | 仮（仮の決まりの表あり） | tests/core/test_phase3_2.py |
 | MK-17 | 工事とインフラの資材の注文は、同じ払い手（公共事業費）の分を合わせて売りに出ている量までにし、超… | 決定 | （未確認） |
 | MK-18 | 作り方が複数ある施設は施設ごとに作り方を持つ | 決定 | tests/core/test_phase3_2.py |
@@ -434,7 +434,7 @@
 | PL-26 | 命令: 公定価格の改定（名指しした財を今の原価に | 決定 | tests/core/test_phase3_4.py |
 | PL-27 | 割当ルール: 足りないときは、重点産業の施設 → ほかの国営施設と国の工事 → 家計（配給）→ … | 決定 | tests/core/test_phase3_4.py |
 | PL-28 | 配給: 家計の中はお金の多さでなく1人あたり同じ量まで | 決定 | tests/core/test_phase3_4.py |
-| PL-29 | 生産目標: 国営施設ごとに、直近の公定価格での需要（買えなかった分も含む）に上乗せした量を、同じ… | 決定 | tests/core/test_phase3_4.py |
+| PL-29 | 生産目標: 国営施設ごとに、直近の公定価格での需要（買えなかった分と、国の工事とインフラの資材の… | 決定 | tests/core/test_phase3_4.py |
 | PL-30 | 重点産業は命令で産業の分類を決めた数まで選ぶ | 決定 | tests/core/test_phase3_4.py |
 | PL-31 | 計画経済の貿易は国営の商社の独占: 行列のある財を輸入し、売れ残った財を値段によらず輸出する | 決定 | tests/core/test_phase3_4.py |
 | PL-32 | 混合経済はどの財にも値段の上限と下限を決められる | 決定 | tests/core/test_phase3_4.py、tests/server/test_phase3_4.py |

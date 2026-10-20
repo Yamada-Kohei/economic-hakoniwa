@@ -254,6 +254,7 @@ class EntryExit(IslandStage):
         settings = config.get("firms")
         margin = to_basis(settings["recipe_margin"])
         prices: dict[str, int] | None = None
+        imports: dict[str, int] = {}
         supplied: set[str] = set()
         rates: dict[int, int] = {}
         missing = _missing(island.economy.finance)
@@ -273,11 +274,12 @@ class EntryExit(IslandStage):
                 continue
             if prices is None:
                 prices = average_prices(island, settings["price_turns"])
+                imports = self._import_prices(island, ctx)
                 supplied = self._supplied(island, ctx)
                 rates = freight_rates.facility_rates(island, defs, config)
             busy = self._switched_into(island, ctx)
             profits = self._recipe_profits(
-                island, ctx, f, prices, supplied, rates.get(f.id, 0), busy, missing
+                island, ctx, f, prices, supplied, rates.get(f.id, 0), busy, missing, imports
             )
             now = profits.get(f.recipe, 0)
             choice = max(sorted(profits), key=lambda name: profits[name])
@@ -322,8 +324,10 @@ class EntryExit(IslandStage):
         rate: int,
         busy: set[str] | None = None,
         missing: set[str] | None = None,
+        imports: dict[str, int] | None = None,
     ) -> dict[str, int]:
-        """施設 f が選べる作り方ごとの変動費の利益（今の作り方を含む）。選べるのは、島で使える
+        """施設 f が選べる作り方ごとの変動費の利益（今の作り方を含む）。原料のうち海外の商人から
+        しか買えない財は、商人の売り値で見る（imports。_import_prices）。選べるのは、島で使える
         作り方（鉱業資源と気候）のうち、原料がどれも島で手に入り、今より多く使う原料は直近に
         売りに出た量が買いたい量より増える分以上多く、産出物に買い手のいる（直近に買いたい量が
         あった）作り方（今と同じ原料を倍使う作り方に替えて、その原料が品切れになったため）。
@@ -366,7 +370,8 @@ class EntryExit(IslandStage):
             ):
                 continue
             probe = productivity.probe(island, defs, config, f.kind, name, (f.x, f.y))
-            out[name] = variable_profit(defs, config, probe, prices, wage, rate)
+            costed = EntryExit._costed(prices, imports or {}, recipe)
+            out[name] = variable_profit(defs, config, probe, costed, wage, rate)
         return out
 
     def _exits(self, island: IslandState, ctx: StageContext) -> None:
@@ -516,7 +521,8 @@ class EntryExit(IslandStage):
     ) -> bool:
         defs, config = ctx.defs, ctx.config
         settings = config.get("firms")
-        prices = average_prices(island, settings["price_turns"])
+        average = average_prices(island, settings["price_turns"])
+        imports = self._import_prices(island, ctx)
         wage = island.economy.average_wage
         rates = freight_rates.facility_rates(island, defs, config)
         typical = sum(rates.values()) // len(rates) if rates else 0
@@ -533,7 +539,8 @@ class EntryExit(IslandStage):
         coming = self._coming(island, ctx)
 
         def add(kind: str, rname: str, recipe: dict[str, Any], fill: float) -> None:
-            full = round_money(construction_cost(defs, kind, prices, wage))
+            prices = self._costed(average, imports, recipe)
+            full = round_money(construction_cost(defs, kind, average, wage))
             rate = capital_subsidy(island, kind, recipe)
             subsidy = min(part(full, rate), room)  # 先に払える分だけを補助として見る
             capital = full - subsidy
@@ -550,6 +557,7 @@ class EntryExit(IslandStage):
                     continue  # 鉱業資源がないか、気候で使えない（フェーズ3-2）
                 if not recipe["outputs"] or busy & set(recipe["outputs"]):
                     continue
+                prices = self._costed(average, imports, recipe)
                 cost = unit_cost(defs, config, kind, recipe, prices, wage)
                 fill = self._fill(recipe, shortages, demand, capacity, prices, cost, settings)
                 if fill <= 0:
@@ -589,6 +597,7 @@ class EntryExit(IslandStage):
                     args = {"rate": estimate * 100, "need": threshold * 100}
                     blocks.append((estimate, kind, "unprofitable", args))
                 break
+            prices = self._costed(average, imports, defs.facilities[kind]["recipes"][rname])
             if self._buy_foreclosed(island, ctx, kind, rname, prices, threshold, estimate, fill):
                 return True
             materials = defs.facilities[kind]["construction"].get("materials", {})
@@ -780,13 +789,42 @@ class EntryExit(IslandStage):
         return found
 
     @staticmethod
-    def _supplied(island: IslandState, ctx: StageContext) -> set[str]:
-        """島で手に入る財: 動いている施設が作っている財（国の倉庫の物は、政府が売りに出さなければ
-        市場に出ないので数えない）と、商社が輸入している財・海外の商人が売っている財（フェーズ3-1）。"""
+    def _import_prices(island: IslandState, ctx: StageContext) -> dict[str, int]:
+        """島で作られておらず海外の商人からしか買えない財の、商人の売り値（財 → 値段）。作り方の
+        見直しと参入の採算で、原料をこの値段で見る（_costed）。島の値段は、だれも買っていなければ
+        初めの値段のままで安く見えるため、鋼鉄を作っていない国で民営の工場が鋼鉄から作る方式に替え、
+        翌ターン「鋼鉄が高く採算が合わない」で止まっていた（試し遊び1回目の報告の決め 1）。"""
+        made = EntryExit._made(island, ctx)
+        offers = merchant.offers(island, ctx.defs, ctx.config, ctx.turn)
+        return {good: price for good, _, price in offers if good not in made}
+
+    @staticmethod
+    def _costed(
+        prices: dict[str, int], imports: dict[str, int], recipe: dict[str, Any]
+    ) -> dict[str, int]:
+        """作り方 recipe の採算に使う値段: 原料のうち商人からしか買えない財だけ、商人の売り値まで
+        上げる。作る物の値段は上げない（作る物まで上げると、島で作っていない物がみな商人の値段で
+        売れると見え、綿の工場と農場が早く建って綿が余り、値段が初めの 0.1% まで下がった）。"""
+        out = dict(prices)
+        for good in recipe.get("inputs", {}):
+            if good in imports:
+                out[good] = max(out.get(good, 0), imports[good])
+        return out
+
+    @staticmethod
+    def _made(island: IslandState, ctx: StageContext) -> set[str]:
+        """動いている施設が作っている財。"""
         goods: set[str] = set()
         for f in island.facilities:
             if f.built and not is_stopped(f):
                 goods |= set(ctx.defs.facilities[f.kind]["recipes"][f.recipe].get("outputs", {}))
+        return goods
+
+    @staticmethod
+    def _supplied(island: IslandState, ctx: StageContext) -> set[str]:
+        """島で手に入る財: 動いている施設が作っている財（国の倉庫の物は、政府が売りに出さなければ
+        市場に出ないので数えない）と、商社が輸入している財・海外の商人が売っている財（フェーズ3-1）。"""
+        goods = EntryExit._made(island, ctx)
         goods |= trade_traders.imported(island, ctx.config)
         goods |= {g for g, _, _ in merchant.offers(island, ctx.defs, ctx.config, ctx.turn)}
         return goods

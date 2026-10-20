@@ -264,3 +264,65 @@ def test_small_hungry_layers_order_all_they_need(game):
     # 取り分の切り捨てで数単位欠けただけなら、「物がない」ではなく「買い負けた」
     summary = {"need": 1000, "ordered": 999, "offered": 998, "cost": 10, "budget": 1000}
     assert food_short_reason(summary) == "outbid"
+
+
+def test_inputs_only_merchants_sell_are_priced_at_the_merchant_price(game, warmed, monkeypatch):
+    """作り方の見直しと参入の採算では、原料のうち島で作られておらず海外の商人からしか買えない財を、
+    商人の売り値で見る（島の値段は、だれも買っていなければ初めの値段のままで安く見え、鋼鉄を作って
+    いない国で民営の工場が鋼鉄から作る方式に替えて、翌ターン採算が合わずに止まった。報告の決め 1）。
+    島で作っている財と、作る物の値段は島の値段のまま。"""
+    from hakoniwa_core.modules.firms import EntryExit
+    from hakoniwa_core.trade import merchant
+
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    made = EntryExit._made(island, context(game, world))
+    absent = next(g for g in sorted(game.defs.goods) if g not in made)
+    present = next(g for g in sorted(made) if g in game.defs.goods)
+    prices = {absent: 100, present: 100}
+    offers = [(absent, 1000, 5_000), (present, 1000, 5_000)]
+    monkeypatch.setattr(merchant, "offers", lambda *args: offers)
+    imports = EntryExit._import_prices(island, context(game, world))
+    assert imports == {absent: 5_000}
+    seen = EntryExit._costed(prices, imports, {"inputs": {absent: 1, present: 1}})
+    assert seen[absent] == 5_000
+    assert seen[present] == 100
+    # 作る物は上げない（島で作っていない物がみな商人の値段で売れると見えないように）
+    sold = EntryExit._costed(prices, imports, {"inputs": {present: 1}, "outputs": {absent: 1}})
+    assert sold[absent] == 100
+
+
+def test_factories_raise_bids_step_by_step_only_after_being_outbid():
+    """工場の原料の指値は、前のターンに買い負けた財だけ、前の指値の market.band 増しまで上げる
+    （ふだんの指値より低くせず、利益が0になる値段を超えない）。一度に利益が0になる値段まで買い
+    上がると、石炭の値段が1ターンで3倍半に跳ねた（1つの島の 300 ターンの試験）。"""
+    width = 1000  # 1割
+    assert Market._step_up(110, 500, None, width) == 110  # 買い負けていなければふだんの指値
+    assert Market._step_up(110, 500, 200, width) == 220
+    assert Market._step_up(110, 500, 480, width) == 500  # 利益が0になる値段まで
+    assert Market._step_up(110, 500, 50, width) == 110  # ふだんの指値より低くしない
+
+
+def test_leftover_crops_are_not_sold_below_what_they_cost_to_grow(game, warmed):
+    """作り方を替えて残った物は、同じ施設でその物を作る費用より安くは売らない（綿から穀物に
+    替えた国の農場が、残りの綿を毎ターン1割安く売り続け、綿の値段が初めの 0.04 倍まで下がった）。
+    その施設で作れない物は下限なし。"""
+    from dataclasses import replace
+
+    from hakoniwa_core.economy.prices import unit_floor
+
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    recipes = game.defs.facilities["farm"]["recipes"]
+    farm = next(f for f in island.facilities if f.kind == "farm" and f.built)
+    other = next(
+        n for n, r in sorted(recipes.items()) if n != farm.recipe and r["outputs"].get("cotton")
+    )
+    prices = dict(island.economy.prices)
+    floor = Market._leftover_floor(game.defs, game.config, farm, "cotton", prices, 0)
+    wage = farm.economy.get("wage", 0)
+    cost = unit_floor(
+        game.defs, game.config, replace(farm, recipe=other), "cotton", prices, wage, 0
+    )
+    assert floor == cost > 0
+    assert Market._leftover_floor(game.defs, game.config, farm, "chemicals", prices, 0) == 0
