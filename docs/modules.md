@@ -228,6 +228,7 @@ python -m hakoniwa_core.simulate --scenario plan --seed 1 --turns 300 --gate \
     --out runs/plan-s1.json --series runs/plan-s1.jsonl
 python -m hakoniwa_core.measure batch --set quick --out-dir runs/new   # 回ごとの比べ（種1・2、300ターン）
 python -m hakoniwa_core.measure batch --set full --out-dir runs/full   # 回の終わりに一度（種1〜4、500ターン）
+python -m hakoniwa_core.measure batch --set quick --out-dir runs/new --reuse runs/main  # 計算の中身が runs/main と同じ組は回さず写す
 python -m hakoniwa_core.measure compare runs/base runs/new            # 2つの結果を表に並べる
 python -m hakoniwa_core.measure show runs/new                         # 要点（失業の内わけなど）
 ```
@@ -242,6 +243,9 @@ python -m hakoniwa_core.measure show runs/new                         # 要点�
   輸送船が入ります。
 - `--series` の JSON Lines は島×ターンの1行ずつで、`--zones-every` ターンごとに町と村ごとの内わけも
   付きます（50島×500ターンで 60MB ほど）。
+- `--out` の JSON には、回したときの計算の中身の指紋（`code_fingerprint`。hakoniwa_core・game.yaml・
+  packs・schemas の中身）も入ります。`batch --reuse` は、同じ組で指紋が今と同じ結果を回さずに写すので、
+  main の結果は計算の中身が変わるまで回し直しません。指紋が違う・書いていないものは回します。
 - 測りは状態を読むだけで、同じ種なら `--out` を付けても付けなくても「状態の指紋」は同じです。
 - 崩れの見張り（設計書 12 確かめ方の「崩れの見張り」）: `--out` の JSON の `collapse` に、1ターン目から
   数えた崩れ（飢饉・人口の大きな減り・品切れなど。`gate.COLLAPSE_KINDS`）が島ごとに入ります。

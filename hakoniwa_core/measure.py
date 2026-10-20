@@ -20,6 +20,10 @@
 
 quick は比べるための組（種1・2、300ターン）、full は回の終わりに1回だけ回す組（種1〜4、500ターン）。
 compare は2つの結果を並べます。
+
+--reuse に前の結果のフォルダを渡すと、計算の中身（hakoniwa_core・game.yaml・packs・schemas）が
+前と同じ組は回さず、その結果を写します（hakoniwa_core/reuse.py）。main の結果を何度も回し直さずに
+済みます。
 """
 
 from __future__ import annotations
@@ -27,18 +31,19 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import statistics
 import subprocess
 import sys
 import time
 from collections import Counter
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import gate, politics
+from hakoniwa_core import gate, politics, reuse
 from hakoniwa_core.autoplan import plan_trade, plan_turn, queue_orders
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
@@ -670,6 +675,7 @@ def result(
         "turns": turns,
         "seconds": seconds,
         "digest": digest,
+        "code_fingerprint": reuse.code_fingerprint(),
         "independent": sum(1 for i in world.islands.values() if i.policy.cb_independent),
         "independent_since": sorted(measure.independent_since.values()),
         "collapse": collapse(scenario.name, seed, recorder),
@@ -688,10 +694,32 @@ def run_name(scenario: str, seed: int, turns: int) -> str:
     return f"{scenario}-s{seed}-t{turns}"
 
 
-def batch(names: Iterable[tuple[str, int, int]], out_dir: Path, jobs: int, series: bool) -> int:
-    """場面・種・ターン数の組を、jobs 本ずつ別の処理で回す。結果は out_dir/<名前>.json。"""
+def batch(
+    names: Iterable[tuple[str, int, int]],
+    out_dir: Path,
+    jobs: int,
+    series: bool,
+    reuse_dirs: Sequence[Path] = (),
+) -> int:
+    """場面・種・ターン数の組を、jobs 本ずつ別の処理で回す。結果は out_dir/<名前>.json。
+
+    reuse_dirs の中に同じ組の結果があり、その指紋が今の計算の中身と同じなら、回さずに写す。
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
-    waiting = list(names)
+    waiting = []
+    if reuse_dirs:
+        fingerprint = reuse.code_fingerprint()
+        print(f"計算の中身の指紋: {fingerprint[:12]}", flush=True)
+    for scenario, seed, turns in names:
+        name = run_name(scenario, seed, turns)
+        if reuse_dirs:
+            found, why = reuse.find(name, fingerprint, reuse_dirs, series)
+            if found is not None:
+                _copy_result(found.parent, name, out_dir, series)
+                print(f"使い回した: {name}（元: {found.parent}）", flush=True)
+                continue
+            print(f"使い回せない: {name}（{why}）", flush=True)
+        waiting.append((scenario, seed, turns))
     running: list[tuple[str, subprocess.Popen, IO[str]]] = []
     failed = 0
     while waiting or running:
@@ -722,6 +750,16 @@ def batch(names: Iterable[tuple[str, int, int]], out_dir: Path, jobs: int, serie
             failed += 0 if ok else 1
             print(f"{'終わった' if ok else '失敗した'}: {name}", flush=True)
     return failed
+
+
+def _copy_result(source: Path, name: str, out_dir: Path, series: bool) -> None:
+    """使い回す結果（JSON と、要るなら時系列）を out_dir に写し、どこから写したかを .log に残す。"""
+    if source.resolve() == out_dir.resolve():
+        return
+    shutil.copy2(source / f"{name}.json", out_dir / f"{name}.json")
+    if series:
+        shutil.copy2(source / f"{name}.jsonl", out_dir / f"{name}.jsonl")
+    (out_dir / f"{name}.log").write_text(f"使い回し: {source}\n", encoding="utf-8")
 
 
 def load(path: Path) -> dict[tuple[str, int, int], dict[str, Any]]:
@@ -971,6 +1009,13 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--jobs", type=int, default=os.cpu_count() or 1)
     run.add_argument("--series", action="store_true", help="島×ターンの時系列も書く（大きい）")
     run.add_argument("--only", help="場面の名前をカンマで区切って、その場面だけ回す")
+    run.add_argument(
+        "--reuse",
+        action="append",
+        default=[],
+        metavar="DIR",
+        help="前の結果のフォルダ。計算の中身が今と同じ組は回さずに写す（何本でも指せる）",
+    )
     cmp = sub.add_parser("compare", help="2つの結果を比べる")
     cmp.add_argument("base")
     cmp.add_argument("new")
@@ -982,7 +1027,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.only:
             keep = set(args.only.split(","))
             names = [n for n in names if n[0] in keep]
-        failed = batch(names, Path(args.out_dir), args.jobs, args.series)
+        failed = batch(
+            names, Path(args.out_dir), args.jobs, args.series, [Path(d) for d in args.reuse]
+        )
         print(show(Path(args.out_dir)))
         return 1 if failed else 0
     if args.command == "compare":

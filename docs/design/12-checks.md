@@ -6,13 +6,13 @@
 
 - 一括シミュレーション: `hakoniwa_core/simulate.py`（DB なしで同じ段を回す）
 - 関門の目安と記録、崩れの見張り: `hakoniwa_core/gate.py`（目安と崩れの基準の値はゲームのルールでないので game.yaml でなくここに置く）
-- バランスの測り（場面・組・比べ・失業の内わけ）: `hakoniwa_core/measure.py`
+- バランスの測り（場面・組・比べ・失業の内わけ）: `hakoniwa_core/measure.py`、結果の使い回し `hakoniwa_core/reuse.py`
 - 夜の点検: `hakoniwa_core/nightly.py`、X870 で回す台本 `tools/nightly/`、説明 [docs/nightly.md](../nightly.md)
 - 標準の計画: `hakoniwa_core/autoplan.py`（数値もこのファイルに置く）
 - 規模の測り方と記録: [docs/scale.md](../scale.md)
 - 試し遊び: [docs/playtest.md](../playtest.md)、`tools/playtest/hk.py`
 - 設計書の索引と設定の一覧: `tools/spec/design_index.py`、`tools/spec/settings.py`
-- 試験: tests/core/test_engine.py、tests/core/test_gate.py、tests/core/test_measure.py、tests/core/test_collapse.py、tests/core/test_shocks.py、tests/core/test_nightly.py、tests/core/test_economy.py、tests/core/test_phase3_3.py、tests/core/test_phase3_4.py、tests/core/test_spec_design.py、tests/core/test_docs_match.py、tests/core/test_spec_settings.py、tests/server/test_phase1.py、tests/server/test_turns.py
+- 試験: tests/core/test_engine.py、tests/core/test_gate.py、tests/core/test_measure.py、tests/core/test_measure_reuse.py、tests/core/test_collapse.py、tests/core/test_shocks.py、tests/core/test_nightly.py、tests/core/test_economy.py、tests/core/test_phase3_3.py、tests/core/test_phase3_4.py、tests/core/test_spec_design.py、tests/core/test_docs_match.py、tests/core/test_spec_settings.py、tests/server/test_phase1.py、tests/server/test_turns.py
 
 ## つながり
 
@@ -64,6 +64,7 @@
 | GT-38 | 回7 の目安と見張り: 働く人のうちサービス（商業・金融・運輸・商社・公務・教育・治安）で働く割合が、1人あたりの実質の GDP に見合う幅（貧しい島 3〜4 割、豊かな島 6〜7 割）か。崩れの見張りに、企業ごとの倒産の連鎖と手当のない国の飢えを足す | 決定 | `gate.py` の `SERVICES_POOR`・`SERVICES_RICH`・`RICH_INCOME`・`CASCADE_MIN`・`FIRM_CASCADE_TURNS` | tests/core/test_balance_round7.py::test_services_band_widens_with_income, ::test_firm_cascade_watch_counts_falls_per_firm, ::test_firm_cascade_watch_skips_own_closings |
 | GT-39 | 関門の値段の幅は、サービスと小売りだけ物価指数でなく平均賃金の伸びで割って見る（賃金が物の値段より速く上がると人の手間の値段は物価に対して上がる。ボーモル効果）。幅の値（初めの 0.25〜4 倍）は変えない | 決定（回7 後半） |  | tests/core/test_gate.py::test_supply_chain_runs_for_300_turns |
 | GT-40 | 標準の計画は、島で作っていない投入財でも、作る施設の投入財が手元にあれば手に入ると見て使う施設（自動車の組み立て工場）を建て、島のどこでも作っていない投入財の工場は、余裕がなくても1つ目を建てる（組で建てる）。回7 後半の測りで、自動車工場と部品工場が互いを待ってどちらも建たず、自動車の売り買いが main の 1〜3 割になったため | 決定（回7 後半） |  | tests/core/test_balance_round7b.py::test_standard_plan_builds_assembly_and_parts_plants_together |
+| GT-41 | 測りは、計算の中身（hakoniwa_core・game.yaml・packs・schemas）の指紋が前と同じ組を回し直さず、前の結果を使えるようにする。結果の JSON に指紋を書き、`measure batch --reuse` が同じ組で指紋が同じ結果だけを写す。指紋が違う・書いていない・時系列がない・壊れているときは回す。改行の違いと Python の写しは数えない | 決定 |  | tests/core/test_measure_reuse.py |
 
 ### 仮の決まり
 
@@ -153,6 +154,7 @@
 
 - **組**（`measure.SETS`）: quick は回ごとの比べ（標準の計画の種 1・2 の 300 ターンと、ほかの場面）、full は回の終わりに一度だけ（標準の計画と少ない島と移民の世界は種 1〜4 か 1・2 の 500 ターン、命令なしと独立は 300 ターン）。300 ターンは初めに配った船の寿命の直前で終わるので、full で 500 ターンも見ます（Codex B04・E31）。
 - 結果は `python -m hakoniwa_core.measure compare` で 2 つを並べます。元にする結果は共有フォルダの balance/runs/ に置きます。
+- **結果の使い回し**（GT-41）: 結果の JSON に、回したときの計算の中身の指紋（`code_fingerprint`）を書きます。`measure batch --reuse <前の結果のフォルダ>` は、同じ組の結果で指紋が今と同じものを回さずに写します（`.log` に写した元を書く）。main の結果を何度も回し直さずに済みます。指紋は `hakoniwa_core/` の全部、`game.yaml`、`packs_dirs` と `schemas_dir` の中身で、改行は LF にそろえて数えます。`server/`・`tests/`・`docs/` と Python の版は数えません（3.12・3.13・3.14 で状態の指紋が一致することを確かめてある）。指紋が違う・書いていない・時系列がない・壊れているときは使わず回します（回しすぎる側に倒す）。
 
 ### 揺さぶりの試験
 
