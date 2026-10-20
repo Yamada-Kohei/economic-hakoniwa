@@ -2374,12 +2374,17 @@ class Market(IslandStage):
                 continue
             # 輸出の買いは、ふだんの買い手と同じく前の値段の market.band 増しまで（引き合う値段まで
             # 一度に買い上がると、値幅をなくした後は島の家計より高く買い、食料が1ターンで島の外へ
-            # 出た。値幅のあった間と同じく、値段が1ターンに値幅ずつ上がる間は島の買い手が先）
+            # 出た。値幅のあった間と同じく、値段が1ターンに値幅ずつ上がる間は島の買い手が先）。公定
+            # 価格の財は公定価格で約定し、家計を先にする層の順で分けるので、上限は付けない（付けると
+            # 計画経済の島の銀行が中央銀行から借り続ける世界が増えた。quick の測り。2026-10-20）
             usual = high + part(high, rate)
+            limit = order.limit or 0
+            if order.good not in official:
+                limit = min(limit, usual)
             plan = self._afford(
                 island,
                 payer,
-                {order.good: (order.qty, net_limit(min(order.limit or 0, usual), rate, 0))},
+                {order.good: (order.qty, net_limit(limit, rate, 0))},
                 rate,
                 0,
             )

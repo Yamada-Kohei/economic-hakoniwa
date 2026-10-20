@@ -400,3 +400,41 @@ def test_standard_plan_prepares_for_the_merchants_leaving(game, warmed, monkeypa
     assert maker not in planned(island, last + 1)  # まだ値段を上げ始めていない
     assert maker in planned(island, last)
     assert maker not in planned(island, 0)  # もう去った
+
+
+def test_trader_export_bids_are_capped_except_at_official_prices(game, warmed, monkeypatch):
+    """商社の輸出の買いは、島の市場では前の値段の market.band 増しまで（引き合う値段まで一度に買い
+    上がると、島の家計より高く買って食料が1ターンで島の外へ出た）。公定価格の財は公定価格で約定し、
+    家計を先にする層の順で分けるので、上限を付けない（付けると計画経済の島の銀行が中央銀行から借り
+    続ける世界が増えた。quick の測り）。"""
+    from hakoniwa_core.economy import entity_of
+    from hakoniwa_core.modules import market as market_module
+    from hakoniwa_core.trade import started
+
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    assert started(island)
+    f = traders_of(island, game.config)[0]
+    good = "steel"
+    price = island.economy.prices[good]
+    bid = price * 3
+    entity = entity_of(game.config, f)
+    bank = island.economy.deposit_bank or ledger.CB
+    ledger.create(island, entity, ledger.DEPOSIT, bank, bid * 10_000, "x")
+    monkeypatch.setattr(market_module.merchant, "offers", lambda *args: [])
+    monkeypatch.setattr(
+        market_module.traders,
+        "home_orders",
+        lambda *args: [trade_traders.HomeOrder(f, good, "buy", 1_000, bid)],
+    )
+
+    def placed() -> int:
+        books: dict = {}
+        Market()._trade_orders(island, context(game, world), books, {}, 0)
+        return max(o.limit for o, p in books[good].buys if p.facility is f)
+
+    capped = placed()
+    assert price < capped < bid
+    monkeypatch.setattr(market_module.planning, "is_planned", lambda *args: True)
+    monkeypatch.setattr(market_module.planning, "official", lambda *args: {good: price})
+    assert placed() == bid
