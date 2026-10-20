@@ -56,6 +56,9 @@ commercial: "rgba(220, 70, 150, 0.35)"       # 商業地のマス
 #     facility/bank: {file: sprites/facility/bank.png, scale: 0.5}   # 2倍の大きさで描いた PNG
 sprite_scale: 1         # 画像の 1 ピクセルを何ピクセルとして描くか（項目の scale がなければこれ）
 sprites:
+  # 海沿いの施設（coastal）は、海のある向きごとに描き分ける。名前のままの絵は海が右下（x + 1）、
+  # @sw は左下（y + 1）、@ne は右上（y - 1）、@nw は左上（x - 1）。水面を海の高さまで下げて描くので、
+  # 海が手前の絵は下の頂点より下に伸び、anchor で基準点を合わせる
   terrain/sea: sprites/terrain/sea.svg
   terrain/shallows: sprites/terrain/shallows.svg
   terrain/plain: sprites/terrain/plain.svg
@@ -69,7 +72,10 @@ sprites:
   facility/consumer_goods_factory: sprites/facility/consumer_goods_factory.svg
   facility/farm: sprites/facility/farm.svg
   facility/department_store: sprites/facility/department_store.svg
-  facility/fishing_port: sprites/facility/fishing_port.svg
+  facility/fishing_port: {file: sprites/facility/fishing_port.svg, anchor: [32, 48]}
+  facility/fishing_port@sw: {file: sprites/facility/fishing_port@sw.svg, anchor: [32, 48]}
+  facility/fishing_port@ne: sprites/facility/fishing_port@ne.svg
+  facility/fishing_port@nw: sprites/facility/fishing_port@nw.svg
   facility/food_factory: sprites/facility/food_factory.svg
   facility/government_office: sprites/facility/government_office.svg
   facility/hydro_power_plant: sprites/facility/hydro_power_plant.svg
@@ -78,12 +84,18 @@ sprites:
   facility/mine: sprites/facility/mine.svg
   facility/oil_well: sprites/facility/oil_well.svg
   facility/police: sprites/facility/police.svg
-  facility/port: sprites/facility/port.svg
+  facility/port: {file: sprites/facility/port.svg, anchor: [32, 69]}
+  facility/port@sw: {file: sprites/facility/port@sw.svg, anchor: [32, 69]}
+  facility/port@ne: sprites/facility/port@ne.svg
+  facility/port@nw: sprites/facility/port@nw.svg
   facility/quarry: sprites/facility/quarry.svg
   facility/ranch: sprites/facility/ranch.svg
   facility/refinery: sprites/facility/refinery.svg
   facility/school: sprites/facility/school.svg
-  facility/shipyard: sprites/facility/shipyard.svg
+  facility/shipyard: {file: sprites/facility/shipyard.svg, anchor: [32, 73]}
+  facility/shipyard@sw: {file: sprites/facility/shipyard@sw.svg, anchor: [32, 73]}
+  facility/shipyard@ne: sprites/facility/shipyard@ne.svg
+  facility/shipyard@nw: sprites/facility/shipyard@nw.svg
   facility/steel_mill: sprites/facility/steel_mill.svg
   facility/textile_mill: sprites/facility/textile_mill.svg
   facility/thermal_power_plant: sprites/facility/thermal_power_plant.svg

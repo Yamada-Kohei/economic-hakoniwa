@@ -60,9 +60,11 @@ def _capital_combos() -> set[str]:
 def _allowed_keys() -> set[str]:
     d = get_game().defs
     sprites = {f.get("sprite", fid) for fid, f in d.facilities.items() if not f.get("tileless")}
+    coastal = {f.get("sprite", fid) for fid, f in d.facilities.items() if f.get("coastal")}
     return (
         {f"terrain/{t}" for t in d.terrain}
         | {f"facility/{s}" for s in sprites}
+        | {f"facility/{s}@{side}" for s in coastal for side in ("sw", "ne", "nw")}
         | {f"capital/{s}" for s in sprites}
         | {f"capital/{c}" for c in _capital_combos()}
         | {f"housing/{s}" for s in d.settlements}
