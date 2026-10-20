@@ -86,8 +86,8 @@ def scene(name: str, under: str | None = None) -> str:
 def main() -> None:
     parts = [
         '<!doctype html><html lang="ja"><meta charset="utf-8">',
-        '<title>軍事の絵 第1部・比較</title>',
-        '<style>body{font:14px system-ui;background:#eeeae2;color:#34363a;margin:24px}',
+        "<title>軍事の絵 第1部・比較</title>",
+        "<style>body{font:14px system-ui;background:#eeeae2;color:#34363a;margin:24px}",
         "nav a{margin-right:24px}section{display:flex;flex-wrap:wrap;gap:12px}",
         "figure{margin:0;padding:12px;background:#faf8f2;border:1px solid #ccc6ba}",
         "figcaption{max-width:240px}small{display:block;color:#666}",

@@ -34,10 +34,10 @@ def _load(theme_dir: Path) -> dict:
         return yaml.safe_load(fh)
 
 
-def _entries(theme: dict) -> dict[str, dict]:
+def _entries(theme: dict, field: str = "sprites") -> dict[str, dict]:
     return {
         key: spec if isinstance(spec, dict) else {"file": spec}
-        for key, spec in (theme.get("sprites") or {}).items()
+        for key, spec in (theme.get(field) or {}).items()
     }
 
 
@@ -114,11 +114,15 @@ def _check_svg(path: Path) -> None:
 def test_sprite_entries(theme_dir: Path) -> None:
     theme = _load(theme_dir)
     entries = _entries(theme)
+    # 使う施設や描く仕組みがまだ入っていない絵（先に置いたもの）。名前の一覧との照合だけ省く
+    pending = _entries(theme, "pending_sprites")
+    assert not entries.keys() & pending.keys(), "sprites と pending_sprites に同じ名前があります"
     allowed = _allowed_keys()
     third_party = THIRD_PARTY.read_text(encoding="utf-8")
-    for key, spec in entries.items():
+    for key, spec in {**entries, **pending}.items():
         scale = spec.get("scale", theme.get("sprite_scale", 1))
-        assert key in allowed, f"{key}: 使える名前ではありません（docs/map-art.md の一覧）"
+        if key not in pending:
+            assert key in allowed, f"{key}: 使える名前ではありません（docs/map-art.md の一覧）"
         path = (theme_dir / spec["file"]).resolve()
         assert path.is_relative_to(theme_dir.resolve()), f"{key}: テーマのフォルダの外です"
         assert path.exists(), f"{key}: {spec['file']} がありません"
@@ -144,7 +148,9 @@ def test_sprite_entries(theme_dir: Path) -> None:
 @pytest.mark.parametrize("theme_dir", _themes(), ids=lambda p: p.name)
 def test_no_unlisted_sprite_files(theme_dir: Path) -> None:
     """テーマのフォルダに置いた絵は、どれも theme.yaml の sprites から使われていること。"""
-    listed = {(theme_dir / s["file"]).resolve() for s in _entries(_load(theme_dir)).values()}
+    theme = _load(theme_dir)
+    specs = [*_entries(theme).values(), *_entries(theme, "pending_sprites").values()]
+    listed = {(theme_dir / s["file"]).resolve() for s in specs}
     for path in theme_dir.rglob("*"):
         if path.suffix in FORMATS:
             assert path.resolve() in listed, f"{path.name}: theme.yaml の sprites に載っていません"

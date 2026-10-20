@@ -135,3 +135,16 @@ sprites:
   capital/official_residence-presidential_office: sprites/capital/official_residence-presidential_office.svg
   capital/party_headquarters-palace: sprites/capital/party_headquarters-palace.svg
   capital/party_headquarters-presidential_office: sprites/capital/party_headquarters-presidential_office.svg
+
+# 絵のファイルは置いたが、使う施設や描く仕組みがまだ入っていないもの（軍事の絵。docs/map-art.md）。
+# ゲームの描画は読まない。入ったら、その行を上の sprites へ移す（海沿いの anchor はここに書いてある値のまま）
+pending_sprites:
+  facility/barracks: sprites/facility/barracks.svg
+  facility/naval_base: {file: sprites/facility/naval_base.svg, anchor: [32, 49]}
+  facility/naval_base@sw: {file: sprites/facility/naval_base@sw.svg, anchor: [32, 49]}
+  facility/naval_base@ne: sprites/facility/naval_base@ne.svg
+  facility/naval_base@nw: sprites/facility/naval_base@nw.svg
+  facility/radar: sprites/facility/radar.svg
+  overlay/trench: sprites/overlay/trench.svg
+  unit/infantry: {file: sprites/unit/infantry.svg, anchor: [14, 28]}
+  fleet/frigate: {file: sprites/fleet/frigate.svg, anchor: [8, 12]}

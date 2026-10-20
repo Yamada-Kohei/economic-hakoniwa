@@ -1814,10 +1814,7 @@ def naval_base(s: Side) -> list[Prim]:
         s.box(0.22, 0.16, 0.4, 0.36, 0.6, 14, MILITARY),
         s.box(0.2, 0.14, 0.42, 0.38, 14.6, 4, GLASS, MILITARY_DARK),
         s.box(0.18, 0.12, 0.44, 0.4, 18.6, 1.4, MILITARY_DARK),
-        *[
-            s.cylinder(0.64, v, 0.016, wz, 1 - wz, c=IRON)
-            for v in (0.16, 0.48, 0.82)
-        ],
+        *[s.cylinder(0.64, v, 0.016, wz, 1 - wz, c=IRON) for v in (0.16, 0.48, 0.82)],
         s.box(0.54, 0.1, 0.7, 0.88, 1, 1.2, CONCRETE, PAVEMENT),
         *[s.cylinder(0.68, v, 0.014, 2.2, 1.2, c=IRON) for v in (0.2, 0.72)],
         # 船の下端は必ず水面。長い先細りの甲板を空け、商船の箱と見分ける。
@@ -1829,10 +1826,7 @@ def naval_base(s: Side) -> list[Prim]:
         s.box(0.79, 0.475, 0.91, 0.505, wz + 14, 1, METAL),
         s.cylinder(0.85, 0.67, 0.035, wz + 4, 2, c=NAVY_GRAY),
         s.strut((0.85, 0.67, wz + 6), (0.85, 0.79, wz + 6.5), 0.8, IRON),
-        *[
-            s.strut((0.68, v, 3), (0.75, v + 0.03, wz + 4), 0.5, IRON)
-            for v in (0.2, 0.72)
-        ],
+        *[s.strut((0.68, v, 3), (0.75, v + 0.03, wz + 4), 0.5, IRON) for v in (0.2, 0.72)],
     ]
 
 

@@ -83,9 +83,7 @@ def soldier(x: float, y: float) -> list[str]:
             ],
             IRON,
         ),
-        polygon(
-            [(x - 1.8, y - 1), (x + 1.6, y - 1), (x + 1.2, y + 2), (x - 1, y + 2)], SAND
-        ),
+        polygon([(x - 1.8, y - 1), (x + 1.6, y - 1), (x + 1.2, y + 2), (x - 1, y + 2)], SAND),
         path(
             f"M {x - 4.4:g} {y:g} Q {x - 4.4:g} {y - 6:g} {x:g} {y - 6:g} "
             f"Q {x + 4.4:g} {y - 6:g} {x + 4.4:g} {y:g} Z",
@@ -127,9 +125,7 @@ def icons() -> dict[str, str]:
     """今回の歩兵とフリゲートだけを作る。"""
     hull_side = _color(STYLES["color"], Face("left", NAVY_GRAY))
     return {
-        "unit/infantry": svg(
-            28, 28, [*soldier(6.5, 7.5), *soldier(21.5, 7.5), *soldier(14, 12)]
-        ),
+        "unit/infantry": svg(28, 28, [*soldier(6.5, 7.5), *soldier(21.5, 7.5), *soldier(14, 12)]),
         "fleet/frigate": svg(
             16,
             12,

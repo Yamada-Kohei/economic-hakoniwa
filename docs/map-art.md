@@ -197,17 +197,15 @@ python tools/sprites/silhouette.py server/static/themes/default/sprites
 python tools/sprites/military_icons.py server/static/themes/default/sprites
 ```
 
-比較用の `tools/sprites/military-preview.html` は
-`python tools/sprites/military_preview.py` で再生成できます。等倍・0.25倍・4倍で既存の絵と並べ、
-町・農場・兵舎に塹壕を重ねた例も含めます。`tools/sprites/military-preview.png` は、
-ブラウザを使わず SVG を別途描画した確認画像です（ゲームで使うスプライトではありません）。
+比較用の確認ページは `python tools/sprites/military_preview.py` で作れます（`military-preview.html` と `.png` ができます。ゲームで使うものではないので、コミットしません）。
+等倍・0.25倍・4倍で既存の絵と並べ、町・農場・兵舎に塹壕を重ねた例も含めます。
 
 軍港の登録時の基準点は、`facility/naval_base` と `facility/naval_base@sw` が `anchor: [32, 49]` です。
 `@ne` と `@nw` は既定の下中央を使います。歩兵は `[14, 28]`、フリゲートは `[8, 12]`（どちらも下中央）です。
 
-未登録の間は、`tests/server/test_theme_sprites.py` の `test_no_unlisted_sprite_files` が失敗します。
-この試験は画像ファイルの登録漏れも調べるためです。今回の先行配置では試験や登録を変更せず、
-新しい SVG の形式・寸法・安全性は別に確認します。実際の島と既存の見本ページへの表示確認は登録後に行います。
+登録までの間、絵は `theme.yaml` の `pending_sprites`（`sprites` と同じ書き方。基準点などもここに書く）に載せます。
+ゲームの描画は `pending_sprites` を読みません。試験は、ここに載せた絵のファイルの形式・寸法・安全性・出典を `sprites` と同じように調べますが、名前が使える名前の一覧にあるかは調べません。
+施設や描く仕組みが入る PR で、その行を `pending_sprites` から `sprites` へ移します。
 
 ### 今の絵と同じにすること
 
