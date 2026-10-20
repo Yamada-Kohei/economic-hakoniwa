@@ -114,6 +114,19 @@ def available(island: IslandState, payer: Payer, capped: bool = True) -> int:
     return max(0, amount)
 
 
+BUDGET_LIMIT = "budget"  # 年の予算の月割りで止まっている
+TREASURY_LIMIT = "treasury"  # 国庫のお金が足りない
+
+
+def limit_of(island: IslandState, payer: Payer) -> str:
+    """政府の払い手の使えるお金を止めているのが、年の予算の月割り（BUDGET_LIMIT）か、国庫の残り
+    （TREASURY_LIMIT）か。試し遊びでは「公共事業費が足りず」だけで、年の予算を上げても国庫が
+    足りずに進まないことが分からなかった。"""
+    if available(island, payer) < available(island, payer, capped=False):
+        return BUDGET_LIMIT
+    return TREASURY_LIMIT
+
+
 def _claim(island: IslandState, payer: Payer, amount: int) -> None:
     if amount > available(island, payer):
         raise FundsError(f"{payer.entity}（{payer.item}）のお金が足りません: {amount}")

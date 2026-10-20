@@ -355,6 +355,7 @@ def help_page(request):
             "workers": f["workers"],
             "recipes": [
                 {
+                    "id": rid,
                     "name": defs.recipe_name(fid, rid),
                     "inputs": display.goods_list(r["inputs"]),
                     "outputs": display.goods_list(r["outputs"]),
@@ -479,7 +480,17 @@ def _admin_people(defs) -> int | None:
 
 
 def _placement_notes(f) -> str:
+    defs = get_game().defs
     notes = []
+    if f.get("zone"):
+        notes.append(f"{defs.name('messages', 'zone_' + f['zone'])}に指定したマスのみ")
+    if f.get("site") == "town":  # 町のマスに入る店。数は町の大きさで決まる（回7）
+        shops = [
+            f"{defs.name('settlements', level)} {s['shops']}"
+            for level, s in defs.settlements.items()
+            if s.get("shops")
+        ]
+        notes.append(f"町のマスに入る（1つの町に{'・'.join(shops)}まで）")
     if f.get("coastal"):
         notes.append("海に面したマスのみ")
     if f.get("near_capital") is not None:

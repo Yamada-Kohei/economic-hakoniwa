@@ -275,7 +275,8 @@ def test_nationalize_and_privatize_whole_firm(game, base):
     assert co.record(island, state)[co.OWNER] == "state"
     assert ledger.money(island, household(OWNERS)) >= owners_before
     assert ledger.money(island, co.entity(number)) == 0
-    assert any(e.kind == "firm_nationalized" for e in island.log)
+    entry = next(e for e in island.log if e.kind == "firm_nationalized_into")
+    assert "国営" in entry.args["into"] and f"（企業 {state}）" in entry.args["into"], entry.args
     books_ok(game, island)
 
     open_books(island)

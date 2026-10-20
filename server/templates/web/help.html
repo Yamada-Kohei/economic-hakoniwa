@@ -161,7 +161,7 @@
       {% for f in facilities %}
         <tr>
           <td>{{ f.name }}</td><td>{{ f.terrain }}{% if f.notes %}<br><small>{{ f.notes }}</small>{% endif %}</td><td>{{ f.workers }}</td>
-          <td>{% for r in f.recipes %}<div>{% if f.recipes|length > 1 %}{{ r.name }}: {% endif %}{% for g in r.inputs %}{{ g.name }} {{ g.amount }} {{ g.unit }}{% if not forloop.last %}・{% endif %}{% empty %}{% translate "なし" %}{% endfor %} → {% for g in r.outputs %}{{ g.name }} {{ g.amount }} {{ g.unit }}{% if not forloop.last %}・{% endif %}{% empty %}{% translate "なし" %}{% endfor %}{% if r.resource %} <small>（{% blocktranslate with good=r.resource %}地下資源「{{ good }}」が必要{% endblocktranslate %}）</small>{% endif %}</div>{% endfor %}</td>
+          <td>{% for r in f.recipes %}<div>{% if f.recipes|length > 1 %}{{ r.name }}<small>（{% blocktranslate with id=r.id %}命令では {{ id }}{% endblocktranslate %}）</small>: {% endif %}{% for g in r.inputs %}{{ g.name }} {{ g.amount }} {{ g.unit }}{% if not forloop.last %}・{% endif %}{% empty %}{% translate "なし" %}{% endfor %} → {% for g in r.outputs %}{{ g.name }} {{ g.amount }} {{ g.unit }}{% if not forloop.last %}・{% endif %}{% empty %}{% translate "なし" %}{% endfor %}{% if r.resource %} <small>（{% blocktranslate with good=r.resource %}地下資源「{{ good }}」が必要{% endblocktranslate %}）</small>{% endif %}</div>{% endfor %}</td>
         </tr>
       {% endfor %}
     </tbody>

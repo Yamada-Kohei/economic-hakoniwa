@@ -915,8 +915,10 @@ class EntryExit(IslandStage):
             rate = island.policy.policy_rate + banks.margin_of(island, config, bank) + leverage
             plan.append((bank, piece, rate))
             service += ledger.interest(piece, rate) + -(-piece // turns)
-        if earnings < config.get("loans.coverage") * service:
-            return ("loan_refused", {"earnings": earnings, "service": service})
+        coverage = config.get("loans.coverage")
+        if earnings < coverage * service:  # 何倍の余裕が要るかも書く（試し遊びで分からなかった）
+            args = {"earnings": earnings, "service": service, "coverage": coverage}
+            return ("loan_short_of_coverage", args)
         return plan
 
     def _build(
@@ -1460,10 +1462,14 @@ def nationalize_firm(island: IslandState, payload: dict[str, Any], ctx: StageCon
         if isinstance(seized, dict) and seized.get("owner") == name:
             seized["owner"] = ledger.GOV
     del island.economy.firms[str(number)]
+    # 企業の番号はなくなり、施設は業種の国営企業に入る。どこに入ったかを書く（試し遊びでは、前の
+    # 番号で民営化しようとして「その番号の企業はありません」となった）
+    joined = sorted({f.economy[companies.FIRM] for f in working})
+    into = "・".join(f"{companies.display_name(island, ctx.defs, n)}（企業 {n}）" for n in joined)
     island.log.append(
         LogEntry(
-            "firm_nationalized",
-            {"firm": title, "count": len(working), "price": price},
+            "firm_nationalized_into",
+            {"firm": title, "count": len(working), "price": price, "into": into},
         )
     )
 
@@ -1572,12 +1578,13 @@ def check_subsidy(island: IslandState, payload: dict[str, Any], defs: Defs) -> N
     has_tile = payload.get("x") is not None and payload.get("y") is not None
     if has_good and payload["good"] not in defs.goods:
         raise OrderFailed("reason_unknown_good")
+    # 何が足りないかを書く（試し遊びでは「命令の内容が不正です」だけで分からなかった）
     if kind == "capital" and not has_good:
-        raise OrderFailed("reason_invalid_payload")
+        raise OrderFailed("reason_subsidy_needs_good")
     if kind == "bailout" and not has_tile:
-        raise OrderFailed("reason_invalid_payload")
+        raise OrderFailed("reason_subsidy_needs_tile")
     if kind == "production" and not (has_good or has_tile):
-        raise OrderFailed("reason_invalid_payload")
+        raise OrderFailed("reason_subsidy_needs_good_or_tile")
     if has_tile and not island.in_bounds(payload["x"], payload["y"]):
         raise OrderFailed("reason_out_of_bounds")
 

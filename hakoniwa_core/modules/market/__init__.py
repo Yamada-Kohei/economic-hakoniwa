@@ -1426,7 +1426,10 @@ class Market(IslandStage):
             priority = fac.priority_of(defs, config, f)
             afforded = self._afford(island, payer, plan, rate, 0)
             if any(afforded.get(g, (0, 0))[0] < q for g, (q, _) in plan.items()):
-                f.ext["short_funds"] = True
+                # 国の工事は、年の予算と国庫のどちらで止まったかを残す（ログに出す）
+                f.ext["short_funds"] = (
+                    funds.limit_of(island, payer) if payer.entity == ledger.GOV else True
+                )
             for good, (qty, limit) in sorted(afforded.items()):
                 party = Party(SITE, facility_entity(f.id), payer, rate, 0, f)
                 party.reserved = gross_cost(limit, qty, rate, 0)

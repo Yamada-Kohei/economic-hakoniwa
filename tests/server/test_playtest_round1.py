@@ -138,3 +138,12 @@ def test_hk_summary_names_the_warehouse_and_the_turn_of_old_results(capsys):
     }
     for x in orders["last_results"]:
         assert "ターン 44 実行" in hk._result(x)
+
+
+def test_help_says_where_shops_go_and_the_recipe_names(client, world):
+    """手引きの施設の表に、百貨店は商業地だけ・商店は町のマスに町の大きさの数まで・生産方式の
+    命令に書く名前が出る（試し遊びでは、どれも試して落ちるまで分からなかった）。"""
+    page = client.get("/help/").content.decode()
+    assert "商業地に指定したマスのみ" in page
+    assert "町のマスに入る（1つの町に" in page
+    assert "命令では wood" in page

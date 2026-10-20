@@ -391,6 +391,8 @@ def _watch(island: IslandState, state: dict[str, Any], waiting: bool, moved: boo
     works["why"] = why
     if turns == STALL_TURNS:
         island.log.append(LogEntry(f"infrastructure_stalled_{why}", {}))
+        if why == "funds":  # 年の予算と国庫のどちらで止まっているか
+            island.log.append(LogEntry(f"funds_limit_{funds.limit_of(island, PAYER)}", {}))
 
 
 # --- 市場の段から -------------------------------------------------------------------

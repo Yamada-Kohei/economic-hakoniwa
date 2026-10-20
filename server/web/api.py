@@ -21,6 +21,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import freight
 from hakoniwa_core.founding import land_terrains
+from hakoniwa_core.modules import production
 from hakoniwa_core.naming import default_place_style, place_of, place_styles
 from hakoniwa_core.orders import check_order
 from hakoniwa_core.units import from_milli, to_basis
@@ -751,7 +752,21 @@ def check(request, island_id: int):
         labor, employed = fac.commute_labor(get_game().defs, get_game().config, state, kind, x, y)
         radius = fac.commute_radius(get_game().defs, get_game().config, kind)
         data["commute"] = {"radius": radius, "labor": labor, "employed": employed}
+        data["notes"] = _build_notes(state, kind, x, y, labor - employed)
     return _json(data)
+
+
+def _build_notes(state, kind: str, x: int, y: int, free: int) -> list[str]:
+    """建てられるが、建てた後に止まりそうなわけ（試し遊びで、確かめの時点で分かっていたのに
+    言わなかったもの: 送電網につながらない・通勤圏に空いている働き手が足りない）。"""
+    game = get_game()
+    notes = []
+    if production.reaches_power(state, game.defs, game.config, kind, x, y) is False:
+        notes.append(display.message("check_note_no_grid"))
+    need = game.defs.facilities[kind].get("workers", 0)
+    if need > free:
+        notes.append(display.message("check_note_few_workers", free=max(0, free), need=need))
+    return notes
 
 
 def _secret_orders() -> Q:

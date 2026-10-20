@@ -179,7 +179,7 @@ def test_entry_block_is_recorded_and_logged_once(game, warmed):
         "inputs_short",
         "inputs_capped",
         "owners_short",
-        "loan_refused",
+        "loan_short_of_coverage",
         "no_bank",
     }
     assert len(logged) == 1  # わけが変わらなければ、ログは1度だけ

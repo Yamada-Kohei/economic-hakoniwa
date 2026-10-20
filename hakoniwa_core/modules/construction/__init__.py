@@ -234,6 +234,8 @@ class Construction(IslandStage):
             if why == "funds" and is_private_site(f):
                 why += "_private"
             island.log.append(LogEntry(f"construction_no_{why}", args))
+            if why == "funds" and isinstance(f.ext.get("short_funds"), str):
+                island.log.append(LogEntry(f"funds_limit_{f.ext['short_funds']}", {}))
 
     @staticmethod
     def _complete(island: IslandState, f: Facility, ctx: StageContext) -> None:

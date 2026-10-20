@@ -182,3 +182,56 @@ def test_warehouse_buy_with_no_budget_is_refused_at_the_check(game):
         assert result.reason == "reason_warehouse_no_budget"
     island.policy.budget["warehouse"] = 10_000
     assert check_order(game.defs, game.registry, island, "warehouse_trade", buy).ok
+
+
+def test_recipe_errors_list_the_names_to_write(game):
+    """生産方式の名前を省いたり間違えたりしたときは、命令に書く名前と表示名を並べて知らせる。"""
+    for kind in ("reason_unknown_recipe", "reason_recipe_required"):
+        text = format_log(game.defs, kind, {"facility": "consumer_goods_factory"})
+        assert "wood（木材から製造）" in text and "default（鋼鉄と木材から製造）" in text, text
+
+
+def test_public_works_say_whether_the_budget_or_the_treasury_ran_out(game):
+    """公共事業費で止まった工事は、年の予算の月割りと国庫のどちらで止まったかを書く（試し遊び
+    では、国庫が足りないのに年の予算を何度も上げていた）。"""
+    from hakoniwa_core.economy import CONSTRUCTION
+
+    island = make_island(game)
+    home(game, island, 5, 5, 3000)
+    with_economy(game, island)
+    payer = Payer(ledger.GOV, CONSTRUCTION)
+    money = funds.available(island, payer, capped=False)
+    assert money > 10
+    funds.fiscal_state(island)["caps"][CONSTRUCTION] = 10
+    assert funds.limit_of(island, payer) == funds.BUDGET_LIMIT
+    funds.fiscal_state(island)["caps"][CONSTRUCTION] = money * 2
+    assert funds.limit_of(island, payer) == funds.TREASURY_LIMIT
+    for limit in (funds.BUDGET_LIMIT, funds.TREASURY_LIMIT):
+        assert "年の予算" in format_log(game.defs, f"funds_limit_{limit}", {})
+
+
+def test_subsidy_without_its_target_says_what_is_missing(game):
+    """設備投資補助で財を省くと、「内容が不正」ではなく「財を書いてください」と出る。"""
+    from hakoniwa_core.orders import check_order
+
+    island = make_island(game)
+    home(game, island, 5, 5, 3000)
+    with_economy(game, island)
+    payload = {"kind": "capital", "rate": 20, "turns": 12}
+    result = check_order(game.defs, game.registry, island, "set_subsidy", payload)
+    assert result.reason == "reason_subsidy_needs_good"
+    assert "good" in format_log(game.defs, result.reason, {})
+
+
+def test_build_check_sees_whether_the_site_reaches_a_power_plant(game):
+    """建てる前に、そのマスが発電所のある送電網につながるかが分かる（試し遊びでは造船所が完成の
+    翌ターンに「送電網につながっていない」で止まった）。電力を使わない施設は None。"""
+    from hakoniwa_core.modules.production import reaches_power
+
+    island = make_island(game)
+    home(game, island, 3, 3, 1000)
+    assert reaches_power(island, game.defs, game.config, "consumer_goods_factory", 10, 10) is False
+    plant = Facility(id=50, kind="thermal_power_plant", x=10, y=11, built=True)
+    island.facilities.append(plant)
+    assert reaches_power(island, game.defs, game.config, "consumer_goods_factory", 10, 10) is True
+    assert reaches_power(island, game.defs, game.config, "thermal_power_plant", 12, 12) is None

@@ -53,6 +53,13 @@ def _off_map(args: dict[str, Any]) -> bool:
     return isinstance(x, int) and isinstance(y, int) and (x < 0 or y < 0)
 
 
+def _recipe_names(defs: Defs, facility: str, lang: str) -> str:
+    """施設の生産方式の、命令に書く名前と表示名（「wood（木材から製造）」）。試し遊びでは、
+    違う名前を書くと「その生産方式はありません」だけで、使える名前が分からなかった。"""
+    recipes = defs.facilities.get(facility, {}).get("recipes", {})
+    return "・".join(f"{r}（{defs.name('recipes', f'{facility}_{r}', lang)}）" for r in recipes)
+
+
 def format_turn(defs: Defs, turn: int, calendar: Calendar | None = None, lang: str = "ja") -> str:
     """ある時点のターンの書き方。暦があれば「箱庭暦32年11月（ターン 383）」、なければ
     「ターン 383」。
@@ -122,6 +129,8 @@ def format_log(
         if isinstance(args.get(key), list):
             names = [f"{defs.name('finance', t, lang)} {p}%" for t, p in args[key]]
             shown[key] = "・".join(names)
+    if "{recipes}" in template and isinstance(args.get("facility"), str):
+        shown["recipes"] = _recipe_names(defs, args["facility"], lang)
     if isinstance(args.get("reason"), str):
         shown["reason"] = format_log(
             defs, args["reason"], args.get("reason_args") or {}, lang, calendar
