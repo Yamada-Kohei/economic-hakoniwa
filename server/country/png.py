@@ -163,3 +163,17 @@ def provisional_flag(island_id: int, name: str) -> str:
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 60" width="90" height="60">'
         f'{body}<rect width="90" height="60" fill="none" stroke="#00000033"/></svg>'
     )
+
+
+def provisional_monument(island_id: int, number: int) -> str:
+    """自作の記念碑の仮の絵の SVG（石の碑）。同じ碑はいつも同じ色になる。"""
+    digest = hashlib.sha256(f"monument:{island_id}:{number}".encode()).digest()
+    tint = PALETTE[digest[0] % len(PALETTE)]
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">'
+        '<rect width="96" height="96" fill="#e8e4da"/>'
+        '<polygon points="36,84 40,16 56,16 60,84" fill="#8d8a82"/>'
+        '<polygon points="40,16 48,8 56,16" fill="#a9a69d"/>'
+        f'<rect x="30" y="84" width="36" height="6" fill="{tint}"/>'
+        "</svg>"
+    )

@@ -263,3 +263,23 @@ table.ranking-table td:nth-child(3), table.titles-table th, table.titles-table t
 .inline-form { display: inline; }
 .link-button { background: none; border: 0; padding: 0 4px; color: #4f62a0; text-decoration: underline; cursor: pointer; font-size: 0.85em; }
 .news-table td:nth-child(n+2), .news-table th:nth-child(n+2) { text-align: left; }
+
+/* 記念碑（フェーズ4-1）: 碑文と自作の記念碑の絵 */
+.inscription {
+  margin: 0.5em 0;
+  padding: 0.4em 0.8em;
+  border-left: 3px solid var(--border, #999);
+  font-style: italic;
+}
+.monument-image {
+  float: right;
+  margin: 0 0 0.5em 0.8em;
+  border: 1px solid var(--border, #999);
+  background: #fff;
+  object-fit: contain;
+}
+.monument::after {
+  content: "";
+  display: block;
+  clear: both;
+}

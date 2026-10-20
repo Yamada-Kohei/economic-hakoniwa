@@ -191,7 +191,7 @@ export class TilePanel {
       rows.push(["建設進捗", `${Math.round(f.progress * 100)}%（工期 ${f.turns} ターン）`]);
       rows.push(["建設労働者", `${f.workers.toLocaleString()} / ${f.workers_needed.toLocaleString()} 人`]);
       if (f.materials.length) rows.push(["建設資材", goodsText(f.materials)]);
-    } else if (f.workers_needed != null) {
+    } else if (f.workers_needed != null && !f.monument) {
       rows.push(["従業者", `${f.workers.toLocaleString()} / ${f.workers_needed.toLocaleString()} 人`]);
       rows.push(["稼働率", `${Math.round(f.operating_rate * 100)}%`]);
       // 設備の傷み（回6）: 傷んだ分は作れない
@@ -219,10 +219,25 @@ export class TilePanel {
     }
     if (f.stock.length) rows.push(["施設在庫", goodsText(f.stock)]);
     const parts = [`<h3>${escapeHtml(f.name)}</h3>${table(rows)}`];
+    if (f.monument) parts.push(this.monumentHtml(f.monument));
     if (f.bank) parts.push(bankHtml(f.bank));
     parts.push(this.booksHtml(f.books));
     if (f.loans?.length) parts.push(loansHtml(f.loans));
     return parts.join("");
+  }
+
+  /** 記念碑の碑文（自動の文と、足した文）と、自作の記念碑の絵。 */
+  monumentHtml(m) {
+    const lines = [m.text, ...(m.note || [])].map((line) => escapeHtml(line)).join("<br>");
+    const image = m.image ? `<img src="${escapeHtml(m.image)}" alt="" width="96" height="96" class="monument-image">` : "";
+    return `<h4>碑文</h4>${image}<p class="inscription">${lines}</p>`;
+  }
+
+  /** 記念碑を建てるときの、碑文に足す文の入力欄（記念碑でなければ空）。 */
+  noteField(facility) {
+    if (!this.defs.facilities[facility]?.monument) return "";
+    return `<label>碑文に足す文（2 行まで・1 行 40 字まで。空欄なら自動の碑文だけ）<br>
+      <textarea name="note" rows="2" maxlength="81" class="wide"></textarea></label>`;
   }
 
   /** 施設の収支（直近のターンの内訳と、直近の数ターンの損益の合計）と預金。 */
@@ -262,6 +277,7 @@ export class TilePanel {
           <label>施設 <select name="facility">${options}</select></label>
           <span data-slot="recipe">${this.recipeSelect(choices[0][0])}</span>
           <label>名称（空欄なら自動） <input name="name" maxlength="32"></label>
+          <span data-slot="note">${this.noteField(choices[0][0])}</span>
           <p class="hint" data-slot="build-info">${this.buildInfo(choices[0][0])}</p>
           <p class="hint" data-slot="commute"></p>
           <p class="warning" data-slot="check" aria-live="polite"></p>
@@ -448,7 +464,7 @@ export class TilePanel {
     const c = d.construction;
     const bits = [`工期 ${c.turns} ターン`];
     if (c.labor) bits.push(`建設労働者 ${c.labor.toLocaleString()} 人`);
-    bits.push(`完成後の従業者 ${d.workers.toLocaleString()} 人`);
+    if (!d.monument) bits.push(`完成後の従業者 ${d.workers.toLocaleString()} 人`);
     const materials = Object.entries(c.materials);
     if (materials.length) bits.push(`建設資材 ${materials.map(([g, q]) => `${this.goodName(g)} ${q} ${this.unitName(g)}`).join("・")}`);
     if (d.coastal) bits.push("海に面したマスのみ");
@@ -544,6 +560,7 @@ export class TilePanel {
     if (e.target.name === "facility") {
       form.querySelector("[data-slot=recipe]").innerHTML = this.recipeSelect(e.target.value);
       form.querySelector("[data-slot=build-info]").innerHTML = this.buildInfo(e.target.value);
+      form.querySelector("[data-slot=note]").innerHTML = this.noteField(e.target.value);
     }
     this.checkBuild();
   }
@@ -564,6 +581,8 @@ export class TilePanel {
       const payload = { facility: data.get("facility"), x, y };
       if (data.get("recipe")) payload.recipe = data.get("recipe");
       if (name) payload.name = name;
+      const note = String(data.get("note") ?? "").trim();
+      if (note) payload.note = note;
       this.addOrder("build", payload);
     } else if (form.dataset.form === "shop") {
       const payload = { facility: "shop", x, y };
@@ -603,6 +622,8 @@ export class TilePanel {
     const data = new FormData(form);
     const payload = { facility: data.get("facility"), x: this.tile.x, y: this.tile.y };
     if (data.get("recipe")) payload.recipe = data.get("recipe");
+    const note = String(data.get("note") ?? "").trim();
+    if (note) payload.note = note;
     return payload;
   }
 

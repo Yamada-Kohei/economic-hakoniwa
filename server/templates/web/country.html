@@ -54,6 +54,31 @@
   {% endif %}
 </section>
 
+<section class="panel" id="monuments">
+  <h2>{% translate "記念碑" %}</h2>
+  {% for mo in c.monuments %}
+    <article class="monument">
+      <h3>{{ mo.name }}{% if mo.name != mo.kind_name %} <small class="muted">（{{ mo.kind_name }}）</small>{% endif %}{% if not mo.built %} <small class="muted">{% translate "（工事中）" %}</small>{% endif %}</h3>
+      {% if mo.image %}<img src="{{ mo.image }}" alt="" class="monument-image" width="96" height="96">{% endif %}
+      <p class="inscription">{{ mo.text }}{% for line in mo.note %}<br>{{ line }}{% endfor %}</p>
+      {% if mine and mo.image %}
+      <form method="post" enctype="multipart/form-data" class="actions">{% csrf_token %}
+        <input type="hidden" name="action" value="monument_image"><input type="hidden" name="number" value="{{ mo.number }}">
+        <label>{% translate "絵（PNG）" %} <input type="file" name="image" accept="image/png" required></label>
+        <button type="submit">{% translate "絵を上げる" %}</button>
+      </form>
+      <form method="post" class="actions">{% csrf_token %}
+        <input type="hidden" name="action" value="monument_image_clear"><input type="hidden" name="number" value="{{ mo.number }}">
+        <button type="submit">{% translate "絵を外す（仮の絵に戻す）" %}</button>
+      </form>
+      {% if mo.image_hidden_by_admin %}<p class="warning">{% translate "上げた絵は管理者が非表示にしました。別の絵を上げると、もう一度見てもらえます。" %}</p>{% endif %}
+      {% endif %}
+    </article>
+  {% empty %}
+    <p class="muted">{% translate "記念碑はまだありません。" %}</p>
+  {% endfor %}
+</section>
+
 <section class="panel" id="notes">
   <h2>{% translate "来訪者の一言" %}</h2>
   <ul class="plain-list">

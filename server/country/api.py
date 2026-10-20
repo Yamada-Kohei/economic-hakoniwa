@@ -19,6 +19,7 @@ from django.views.decorators.http import require_http_methods
 
 from server.country import services
 from server.web import country as country_views
+from server.web import monuments as monuments_web
 from server.world.models import Island
 
 JSON = {"json_dumps_params": {"ensure_ascii": False}}
@@ -80,6 +81,20 @@ def flag(request, island_id: int):
     except services.CountryError as e:
         return _error(e.text, e.status)
     return _json({"flag": country_views.flag_info(island, True)})
+
+
+@require_http_methods(["PUT", "DELETE"])
+def monument_image(request, island_id: int, number: int):
+    """自作の記念碑の絵を上げる・外す（国旗と同じ。PUT は png_base64 か image/png）。"""
+    try:
+        island = _owned(request, island_id)
+        if request.method == "DELETE":
+            services.clear_monument_image(island, number)
+        else:
+            services.set_monument_image(island, number, _png_of(request))
+    except services.CountryError as e:
+        return _error(e.text, e.status)
+    return _json({"monuments": monuments_web.listing(island)})
 
 
 def _png_of(request) -> bytes:

@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, ledger, stock
+from hakoniwa_core import infra, ledger, monuments, stock
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     CONSTRUCTION,
@@ -54,6 +54,18 @@ def check_build(island: IslandState, payload: dict[str, Any], defs: Defs) -> Non
     )
     if problem is not None:
         raise OrderFailed(problem[0], **problem[1])
+    if payload.get("note") and not monuments.is_monument(defs, kind):
+        raise OrderFailed("reason_note_not_monument", facility=kind)
+    if monuments.is_monument(defs, kind):
+        problem = monuments.problem(defs, island, kind)
+        if problem is not None:
+            raise OrderFailed(problem[0], **problem[1])
+        note = monuments.inscription_note(payload.get("note", ""))
+        lines = note.split("\n") if note else []
+        if len(lines) > monuments.NOTE_LINES or any(len(x) > monuments.NOTE_CHARS for x in lines):
+            raise OrderFailed(
+                "reason_monument_note", lines=monuments.NOTE_LINES, chars=monuments.NOTE_CHARS
+            )
 
 
 def build(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
@@ -61,6 +73,11 @@ def build(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> No
     # 町の中の店（回7）は、マスを取らない負の位置に置き、町のマスを ext["site"] に持つ
     shop = ctx.defs.facilities[kind].get("site") == "town"
     at = retail.tileless_position(island) if shop else (x, y)
+    if monuments.is_monument(ctx.defs, kind):
+        # 条件は命令を受けたときと同じ（しきい値は設定から）。満たさなくなっていたら建てない
+        problem = monuments.problem(ctx.defs, island, kind, dict(ctx.config.get("monuments")))
+        if problem is not None:
+            raise OrderFailed(problem[0], **problem[1])
     f = Facility(
         id=island.next_facility_id(),
         kind=kind,
@@ -79,6 +96,8 @@ def build(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> No
         f.ext["build_total"] = max(fac.FULL, round(turns * factor * fac.FULL))
     if shop:
         f.ext[fac.SITE] = [x, y]
+    if monuments.is_monument(ctx.defs, kind):
+        monuments.stamp(ctx.defs, island, f, ctx.turn, payload.get("note", ""))
     assign_serial(island, f)
     island.facilities.append(f)
     island.log.append(LogEntry("construction_started", {"facility": kind, "x": x, "y": y}))

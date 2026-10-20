@@ -50,6 +50,7 @@ build:
       y: {type: integer, minimum: 0}
       recipe: {type: string}                # 作り方が複数ある施設では必ず選ぶ
       name: {type: string, maxLength: 32}
+      note: {type: string, maxLength: 81}   # 記念碑の碑文に足す文（2 行まで。1 行 40 字まで）
 
 demolish:
   admin_cost: 1

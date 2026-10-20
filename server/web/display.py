@@ -163,6 +163,11 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
     }
     if not fdef:
         return info
+    from server.web import monuments  # 記念碑の碑文は display を使うので、ここで読み込む
+
+    note = monuments.detail(row.island, row)  # 記念碑なら、碑文と自作の絵
+    if note is not None:
+        info["monument"] = note
     recipes = fdef["recipes"]
     if len(recipes) > 1:
         info["recipe"] = f.recipe

@@ -38,6 +38,31 @@ class Flag(models.Model):
         return f"{self.island} の国旗"
 
 
+class MonumentImage(models.Model):
+    """自作の記念碑（monument_custom）の絵。国旗と同じ PNG の検査と守り（png.py）。管理者が隠すと
+    仮の絵に戻る。碑の国の画面とタイルの欄に出る（島の地図の絵は、どの自作の碑も共通の絵）。"""
+
+    island = models.ForeignKey(
+        Island, verbose_name="国", on_delete=models.CASCADE, related_name="monument_images"
+    )
+    number = models.IntegerField("施設の番号")
+    png = models.BinaryField("PNG")
+    digest = models.CharField("PNG の指紋", max_length=64, blank=True, default="")
+    width = models.IntegerField("幅")
+    height = models.IntegerField("高さ")
+    hidden = models.BooleanField("非表示", default=False)
+    updated_at = models.DateTimeField("上げた時刻", auto_now=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = "自作の記念碑の絵"
+        constraints = [
+            models.UniqueConstraint(fields=["island", "number"], name="unique_monument_image")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.island} の自作の記念碑 {self.number}"
+
+
 class Profile(models.Model):
     """国の紹介文と、国ごとの紀年の選び。紀年は表示だけで、ゲームの暦（ターン）は変わらない。"""
 

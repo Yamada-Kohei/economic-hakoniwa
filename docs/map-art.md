@@ -62,6 +62,17 @@ sprites:
 | `facility/auto_parts_plant` | 自動車部品工場（回7 後半） | 2 段・平地 |
 | `facility/police` | 警察署（フェーズ3-4） | 2.5 段・平地（屋上のアンテナの先は 4 段ほど） |
 | `facility/department_store` | 百貨店（回7） | 3 段・平地・商業地（屋上の看板まで 4 段ほど）。町の中の商店はマスを取らないので絵は要りません |
+| `facility/monument_monolith` | モノリス（フェーズ4-1） | 黒い石板。2〜3 段・平地・森・山 |
+| `facility/monument_custom` | 自作の記念碑（フェーズ4-1） | 絵を入れる額。2.5 段。どの自作の碑も共通の絵 |
+| `facility/monument_founding` | 建国記念碑 | 白いオベリスク。3.5 段 |
+| `facility/monument_peace` | 平和記念碑 | 白い円柱の塔と緑の丸屋根。3.5 段 |
+| `facility/monument_battle` | 戦いの碑 | 砂岩の門。3 段 |
+| `facility/monument_cenotaph` | 慰霊碑 | 低い黒御影の台と灯。1 段 |
+| `facility/monument_leader` | 元首の像 | 台座の上の青銅の像。3.5 段 |
+| `facility/monument_worker` | 労働者の像 | 台座の上の像と赤い旗。3.5 段 |
+| `facility/monument_tower` | 展望塔 | 赤と白の鉄骨の塔。5 段 |
+| `facility/monument_ledger` | 帳簿の碑 | 罫線の入った石板。2 段 |
+| `facility/monument_verification` | 検証の碑 | 濃灰色の角柱と測定枠。3.5 段 |
 | `housing/village` | 村 | 1 段 |
 | `housing/town` | 町 | 2 段 |
 | `housing/city` | 都市 | 4 段 |

@@ -1808,6 +1808,151 @@ for _name, _shape in (("fishing_port", fishing_port), ("port", port), ("shipyard
         SHAPES[f"facility/{_name}{_suffix}"] = _shape(Side(_side))
 
 
+# --- 記念碑（フェーズ4-1。設計書 タブ 2 の PO-47）--------------------------------------------
+
+BLACK_STONE = "#2f3236"
+GRANITE = "#8a8d91"
+BRONZE = "#7a6640"
+OBELISK = "#efeae0"
+STEEL_SILVER = "#b8bec4"
+MONUMENT_PLAZA = "#d9d4c8"
+
+
+def _plaza(r: float = 0.86) -> Prim:
+    """記念碑の足元の石畳（どの碑も共通）。"""
+    return box(1 - r, 1 - r, r, r, 0, 0.6, CONCRETE, MONUMENT_PLAZA)
+
+
+def _tower_legs(base: float, top: float, z_top: float, c: str, w: float = 1.4) -> list[Prim]:
+    """細くすぼまる 4 本の脚（展望塔）。足元の角 (base, 1 - base) から頂点 (0.5, 0.5, z_top) へ。"""
+    corners = [(base, base), (base, 1 - base), (1 - base, base), (1 - base, 1 - base)]
+    return [strut((u, v, 0.6), (0.5, 0.5, z_top), w, c) for u, v in corners]
+
+
+def _figure(u: float, v: float, z0: float, h: float, c: str, arm: bool = True) -> list[Prim]:
+    """記念碑の人の像: 太めの胴と丸い頭、上げた右腕。statue() より大きく、遠くからも人に見える。"""
+    prims = [
+        cylinder(u, v, 0.06, z0, h * 0.62, r_top=0.04, c=c),
+        crown(u, v, z0 + h * 0.6, h * 0.19, c),
+    ]
+    if arm:
+        prims.append(box(u + 0.03, v - 0.012, u + 0.055, v + 0.012, z0 + h * 0.4, h * 0.6, c))
+    return prims
+
+
+SHAPES.update(
+    {
+        # モノリス: 何も刻まれていない黒い石板（箱庭の原点）。低い台の上に立つ
+        "facility/monument_monolith": [
+            _plaza(),
+            box(0.3, 0.3, 0.7, 0.7, 0.6, 1.6, GRANITE, "#a4a7ab"),
+            box(0.43, 0.36, 0.55, 0.64, 2.2, 28, BLACK_STONE, "#4a4e53"),
+        ],
+        # 自作の記念碑: 低い台に、絵を入れる額（白い板に木の枠）が立つ
+        "facility/monument_custom": [
+            _plaza(),
+            box(0.28, 0.28, 0.72, 0.72, 0.6, 3, GRANITE, "#a4a7ab"),
+            box(0.3, 0.46, 0.7, 0.54, 3.6, 22, WOOD),
+            box(0.33, 0.54, 0.67, 0.545, 5.6, 18, WHITE),
+            *flag(0.7, 0.62, 3.6, 8, YELLOW, 0.06),
+        ],
+        # 建国記念碑: 白いオベリスク（四角い柱が細くなり、先がとがる）
+        "facility/monument_founding": [
+            _plaza(),
+            box(0.3, 0.3, 0.7, 0.7, 0.6, 3.4, GRANITE, "#a4a7ab"),
+            box(0.38, 0.38, 0.62, 0.62, 4, 4, OBELISK),
+            box(0.41, 0.41, 0.59, 0.59, 8, 20, OBELISK),
+            hip(0.41, 0.41, 0.59, 0.59, 28, 7, "#d9d2c0"),
+            *flag(0.64, 0.66, 4, 8, RED, 0.06),
+        ],
+        # 平和記念碑: 白い円柱の塔と、先の緑の丸屋根、足元の木
+        "facility/monument_peace": [
+            _plaza(),
+            cylinder(0.5, 0.5, 0.26, 0.6, 3.2, c=GRANITE),
+            cylinder(0.5, 0.5, 0.12, 3.8, 24, r_top=0.085, c=WHITE),
+            cylinder(0.5, 0.5, 0.1, 27.8, 2, c=STONE),
+            dome(0.5, 0.5, 0.1, 29.8, 8, TOWER_GREEN),
+            *broadleaf(0.2, 0.78, 3.4, 9),
+            *broadleaf(0.8, 0.8, 3.4, 9),
+        ],
+        # 戦いの碑: 砂岩の門（二本の脚と、それをまたぐ梁。凱旋門の雰囲気だけ）
+        "facility/monument_battle": [
+            _plaza(),
+            box(0.2, 0.34, 0.4, 0.66, 0.6, 22, SAND),
+            box(0.6, 0.34, 0.8, 0.66, 0.6, 22, SAND),
+            box(0.2, 0.34, 0.8, 0.66, 22.6, 6, SAND),
+            box(0.18, 0.32, 0.82, 0.68, 28.6, 1.6, CREAM),
+            box(0.4, 0.5, 0.6, 0.66, 0.6, 1, COAL),
+            flame(0.5, 0.58, 1.6, 4),
+        ],
+        # 慰霊碑: 低い黒御影の台と、白い花、小さな灯
+        "facility/monument_cenotaph": [
+            _plaza(),
+            box(0.22, 0.32, 0.78, 0.68, 0.6, 5, BLACK_STONE, "#4a4e53"),
+            box(0.3, 0.38, 0.7, 0.62, 5.6, 2.4, GRANITE, "#a4a7ab"),
+            *[
+                box(u, 0.24, u + 0.05, 0.29, 0.6, 2.2, WHITE, "#f4f1ea")
+                for u in (0.28, 0.4, 0.52, 0.64)
+            ],
+            *[box(u, 0.71, u + 0.05, 0.76, 0.6, 2.2, YELLOW) for u in (0.34, 0.5, 0.66)],
+            cylinder(0.5, 0.5, 0.05, 8, 3, c=IRON),
+            flame(0.5, 0.5, 11, 5),
+        ],
+        # 元首の像: 高い台座の上の青銅の像
+        "facility/monument_leader": [
+            _plaza(),
+            box(0.3, 0.3, 0.7, 0.7, 0.6, 3, GRANITE, "#a4a7ab"),
+            box(0.38, 0.38, 0.62, 0.62, 3.6, 13, CONCRETE, "#d7d2c6"),
+            box(0.36, 0.36, 0.64, 0.64, 16.6, 1.6, GRANITE, "#a4a7ab"),
+            *_figure(0.5, 0.5, 18.2, 20, BRONZE),
+        ],
+        # 労働者の像: 台座の上に、金づちを掲げる像と、前の赤い旗
+        "facility/monument_worker": [
+            _plaza(),
+            box(0.28, 0.32, 0.72, 0.68, 0.6, 4, "#8c4a3c", "#a8604a"),
+            box(0.36, 0.38, 0.64, 0.62, 4.6, 9, CONCRETE, "#d7d2c6"),
+            *_figure(0.4, 0.42, 13.6, 18, STEEL_SILVER),
+            *_figure(0.6, 0.6, 13.6, 15, STEEL_SILVER, arm=False),
+            box(0.3, 0.6, 0.7, 0.64, 4.6, 1.4, RED),
+            *flag(0.7, 0.3, 4.6, 12, RED, 0.08),
+        ],
+        # 展望塔: 赤と白の鉄骨の塔。二つの展望台と、先のアンテナ
+        "facility/monument_tower": [
+            _plaza(),
+            *_tower_legs(0.28, 0.5, 44, RED, 2.2),
+            *tiered(
+                1,
+                box(0.34, 0.34, 0.66, 0.66, 12, 3.4, WHITE, "#cfd3d8"),
+                box(0.4, 0.4, 0.6, 0.6, 24, 3, WHITE, "#cfd3d8"),
+            ),
+            cylinder(0.5, 0.5, 0.012, 38, 12, c=RED),
+            cylinder(0.5, 0.5, 0.005, 50, 6, c=METAL),
+        ],
+        # 帳簿の碑: 開いた帳簿のように罫線の入った低い石板（真ん中の赤い線が借方と貸方を分ける）
+        "facility/monument_ledger": [
+            _plaza(),
+            box(0.18, 0.3, 0.82, 0.7, 0.6, 2.4, GRANITE, "#a4a7ab"),
+            box(0.22, 0.38, 0.78, 0.62, 3, 13, CREAM, "#d9cfb4"),
+            *[box(0.26, 0.62, 0.74, 0.625, 5.5 + 2.6 * k, 0.6, IRON) for k in range(4)],
+            box(0.495, 0.62, 0.505, 0.625, 4, 11, RED),
+            box(0.22, 0.38, 0.78, 0.62, 16, 1, GRANITE, "#a4a7ab"),
+        ],
+        # 検証の碑: 灰色の敷石の台座に濃灰色の角柱、それを囲む銀灰色のコの字の測定枠
+        "facility/monument_verification": [
+            box(0.12, 0.12, 0.88, 0.88, 0, 1.4, "#9a9da1", "#b4b7bb"),
+            box(0.4, 0.4, 0.6, 0.6, 1.4, 24, "#3d4044", "#55595e"),
+            box(0.24, 0.24, 0.29, 0.29, 1.4, 30, STEEL_SILVER),
+            box(0.24, 0.71, 0.29, 0.76, 1.4, 30, STEEL_SILVER),
+            box(0.24, 0.24, 0.29, 0.76, 31.4, 2.4, STEEL_SILVER),
+            *[
+                box(0.29, 0.24 + 0.1 * k, 0.31, 0.25 + 0.1 * k, 31.4, 1.2, IRON)
+                for k in range(1, 5)
+            ],
+        ],
+    }
+)
+
+
 def render(prims: list[Prim], style: dict) -> str:
     prims = order(prims)
     faces = [f for p in prims for f in p.faces]

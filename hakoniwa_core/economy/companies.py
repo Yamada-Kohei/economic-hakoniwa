@@ -90,7 +90,16 @@ def eligible(defs: Defs, config: GameConfig, f: Facility) -> bool:
     """企業に入る施設か（地図の上の物を作る施設と店）。"""
     fdef = defs.facilities[f.kind]
     category = fdef.get("category")
-    if category in ("finance", "housing", "transport", "trade", "admin", "education", "security"):
+    if category in (
+        "finance",
+        "housing",
+        "transport",
+        "trade",
+        "admin",
+        "education",
+        "security",
+        "monument",
+    ):
         return False
     if fdef.get("public_service"):
         return False

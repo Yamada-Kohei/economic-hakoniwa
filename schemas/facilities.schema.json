@@ -106,6 +106,11 @@
       "description": "作り方。複数あれば建てるときに選ぶ"
     },
     "factors": {"$ref": "#/$defs/factors", "description": "生産性の係数の重み（フェーズ2-3）"},
+    "monument": {
+      "enum": ["always", "founding", "peace", "battle", "cenotaph", "leader", "worker", "tower", "ledger", "verification"],
+      "description": "記念碑（フェーズ4-1）。建てられる条件の名前（hakoniwa_core/monuments.py）。碑文を持ち、命令の note を受ける"
+    },
+    "attraction": {"type": "integer", "minimum": 0, "description": "観光の魅力（記念碑。観光が入るまでは見せるだけ）"},
     "sprite": {"type": "string", "description": "絵の名前（テーマの中のファイル名）"},
     "override": {"const": true}
   }
