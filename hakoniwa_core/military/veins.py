@@ -23,7 +23,8 @@ def place(island: IslandState, config: GameConfig, seed: int) -> list[str]:
     island.ext[KEY] = VERSION
     rng = make_rng(seed, 0, KEY, island.id)
     placed = []
-    # 資源が増えても他の資源の結果が変わらないように、置く置かないにかかわらず名前の順に1つずつ引く
+    # 置く置かないにかかわらず名前の順に1つずつ引く。資源を足すときは、名前の順で後ろに置くか、
+    # 新しい版（VERSION）で別の乱数を使う（先に引く資源の結果が変わるため）
     for good, share in sorted(config.get("military.veins").items()):
         roll = rng.random()
         if roll < share and good not in island.resources:

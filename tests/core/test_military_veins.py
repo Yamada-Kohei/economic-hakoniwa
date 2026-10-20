@@ -56,3 +56,17 @@ def test_veins_are_placed_once_by_seed_and_island_number_only(game):
     # 鉱業資源の上限（建国で選べる数）の外に置く
     limit = game.config.get("founding.max_resources")
     assert any(len(i.resources) > limit for i in world.islands.values())
+
+
+def test_the_standard_plan_does_not_dig_the_vein_resources(game):
+    """買い手が軍だけの間は、標準の計画は銅を掘らない（買い手のいない精錬所と鉱山が建ち、鉱山の
+    上限で鉄鉱石の鉱山が建たなくなるため）。"""
+    from tests.core.test_gate import make_world, run_with_plan
+
+    world = make_world(game, 7, ["coal", "iron_ore"])
+    island = world.islands[1]
+    island.resources = sorted([*island.resources, "copper_ore"])
+    run_with_plan(game, world, 80)
+    kinds = [f.kind for f in island.facilities]
+    assert "copper_smelter" not in kinds
+    assert any(f.kind == "mine" and f.recipe == "iron_ore" for f in island.facilities)

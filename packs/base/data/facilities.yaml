@@ -529,12 +529,12 @@ shipyard:
     warship:              # フェーズ4-2: 小さな軍艦。10 ターンで 1 隻
       inputs: {steel: 1.6, machinery: 0.3, electronics: 0.2, electricity: 1.25}
       outputs: {warship: 0.1}
-    frigate:              # 大きな軍艦。24 ターンで 1 隻
+    frigate:              # 大きな軍艦。24 ターンで 1 隻（量は 1000 分の 1 単位の整数なので 0.042 隻 = 24 ターンで 1.008 隻）
       inputs: {steel: 2.0, machinery: 0.375, electronics: 0.33, electricity: 1.25}
-      outputs: {frigate: 0.0417}
-    submarine:            # 潜水艦。12 ターンで 1 隻
+      outputs: {frigate: 0.042}
+    submarine:            # 潜水艦。12 ターンで 1 隻（同じく 0.084 隻 = 12 ターンで 1.008 隻）
       inputs: {steel: 1.0, machinery: 0.25, electronics: 0.25, electricity: 1.25}
-      outputs: {submarine: 0.0833}
+      outputs: {submarine: 0.084}
   sprite: shipyard
 
 # 商社（フェーズ3-1）。銀行と同じくオフィス街のマスに入り、島にいくつも置けます。島の市場で輸出する物を

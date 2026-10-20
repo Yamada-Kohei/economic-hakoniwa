@@ -28,6 +28,7 @@ from hakoniwa_core.trade import (
     abroad,
     balance,
     blocs,
+    contract_goods,
     currency_labels,
     is_port,
     is_trader,
@@ -405,7 +406,7 @@ def trade_data(
             "unit": defs.unit_name(g),
             "home_price": _price_or_none(g, here.economy.prices.get(g)),
         }
-        for g in tradable_goods(defs)
+        for g in contract_goods(defs)
     ]
     data["cancel_turns"] = config.get("trade.contract_cancel_turns")
     data["policy"] = policy_view(world, here, islands)

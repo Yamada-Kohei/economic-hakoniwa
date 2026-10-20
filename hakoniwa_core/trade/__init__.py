@@ -168,6 +168,11 @@ def tradable_goods(defs: Defs) -> list[str]:
     return sorted(g for g in defs.goods if tradable(defs, g) and not defs.goods[g].get("arms"))
 
 
+def contract_goods(defs: Defs) -> list[str]:
+    """国どうしの契約と物の援助に使える財（軍事品を含む。MI-17）。"""
+    return sorted(g for g in defs.goods if tradable(defs, g))
+
+
 def unit_weight(defs: Defs, good: str) -> int:
     """財 1 単位の重さ（1000 分の 1 トン）。"""
     return to_milli(defs.goods[good].get("freight_weight", 0))
