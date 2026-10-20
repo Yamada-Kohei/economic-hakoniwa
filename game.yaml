@@ -60,8 +60,8 @@ world:
   cells_per_island: 2   # 世界マップの区画数は島数のおよそこの倍
   default_islands: 50   # 規模の目安（区画数の計算に使う）
   # 一括シミュレーションとサンプルの島が鉱業資源を選ぶ重み（フェーズ3-2。プレイヤーの建国には
-  # 効かない）。石炭と鉄鉱石はどこにでもあり、原油とボーキサイトは限られた島にある
-  sample_resources: {coal: 3, iron_ore: 3, stone: 2, crude_oil: 1, bauxite: 1}
+  # 効かない）。石炭と鉄鉱石はどこにでもあり、原油とボーキサイトは限られた島にある。銅鉱石は選ばず、military.veins で鉱業資源の上限の外に置く（フェーズ4-2）
+  sample_resources: {coal: 3, iron_ore: 3, stone: 2, crude_oil: 1, bauxite: 1, copper_ore: 0}
 
 # 気候帯と肥沃度（フェーズ3-2。hakoniwa_core/nature.py）。気候帯ごとの倍率は climate.yaml
 climate:
@@ -726,3 +726,9 @@ monuments:
   cenotaph_dead: 1000    # 慰霊碑: 飢え・戦争で亡くなった人が、原因ごとにこの人数以上
   ledger_turns: 12       # 帳簿の碑: 最初の決算（建国から 1 年）を終えた国
   verification_turns: 50 # 検証の碑: 建国からこのターン数以上
+
+# 軍事（フェーズ4-2。設計書 docs/design/15-military.md。初めの値は /mnt/project-files/phase4/military-values-draft.md）
+military:
+  # 鉱脈（MI-60）: 世界の種と島の番号だけで決め、島ごとに 1 度だけ、鉱業資源の上限の外に置く。
+  # 値は置く島の割合（銅は多くの国が小さくても持つが、主な産地は限られる）
+  veins: {copper_ore: 0.4}

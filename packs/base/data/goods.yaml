@@ -45,3 +45,16 @@ services:           {tier: 3, unit: person_month, shelf_life: 0, consumer: true,
 # retail.value_per_unit）の小売りも商店・百貨店から買う。持ち越せず、島の外へ運べない。量は売り場の人1人の
 # 1ターンの働き（人月）
 retail:             {tier: 3, unit: person_month, shelf_life: 0, consumer: true, need: retail}
+
+# フェーズ4-2: 銅と電子機器と兵器。arms: true は軍事品で、貿易圏の市場には出さず、国どうしの契約と物の
+# 援助でだけ動く（設計書 15-military MI-17。買うのは国だけ）。武器は 1 組が兵 1 人分、弾薬・軍用車両・
+# 艦は部隊と艦隊の装備（4-2 の②③）
+copper_ore:         {tier: 1, unit: ton, display_scale: 25, mining: true, freight_weight: 1}
+copper:             {tier: 2, unit: ton, display_scale: 25, freight_weight: 1}
+electronics:        {tier: 3, unit: ton, display_scale: 25, freight_weight: 1}
+weapons:            {tier: 3, unit: set, arms: true, freight_weight: 0.002}
+ammunition:         {tier: 3, unit: ton, display_scale: 25, arms: true, freight_weight: 1}
+military_vehicle:   {tier: 3, unit: piece, arms: true, freight_weight: 1.6}
+warship:            {tier: 3, unit: ship, arms: true, freight_weight: 0}      # 小さな軍艦（コルベット級）
+frigate:            {tier: 3, unit: ship, arms: true, freight_weight: 0}      # 大きな軍艦（フリゲート級）
+submarine:          {tier: 3, unit: ship, arms: true, freight_weight: 0}

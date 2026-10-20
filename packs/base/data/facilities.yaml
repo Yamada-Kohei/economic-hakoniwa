@@ -98,6 +98,10 @@ mine:
       requires_resource: bauxite
       inputs: {electricity: 2}
       outputs: {bauxite: 12}
+    copper_ore:           # フェーズ4-2
+      requires_resource: copper_ore
+      inputs: {electricity: 2}
+      outputs: {copper_ore: 12}
   sprite: mine
 
 # 油井（フェーズ3-2）。原油を選んだ島の平地か山に建ちます。鉱山と同じく1つの国が2つまで。
@@ -274,6 +278,54 @@ aluminium_smelter:
       outputs: {aluminium: 3}
   sprite: aluminium_smelter
 
+# 銅の精錬所・電子機器工場・兵器工場（フェーズ4-2。設計書 15-military「武器と装備」）。
+# 銅の精錬所は銅鉱石から銅を、電子機器工場は銅・化学品・機械から電子機器（レーダー・ミサイル・軍艦・潜水艦・
+# 軍用車両の材料）を、兵器工場は武器と弾薬（作り方で選ぶ）を作る。兵器は国だけが買う。
+copper_smelter:
+  category: industry
+  industry: nonferrous
+  terrain: [plain]
+  construction: {turns: 5, labor: 600, materials: {building_materials: 25, steel: 10, machinery: 3}}
+  workers: {general: 270, engineer: 30}
+  pollution: {amount: 4, radius: 1}
+  factors: {infra: 0.6, education: 0.5}
+  recipes:
+    default:
+      inputs: {copper_ore: 12, electricity: 8}
+      outputs: {copper: 4}
+  sprite: copper_smelter
+
+electronics_plant:
+  category: industry
+  industry: electronics
+  terrain: [plain]
+  construction: {turns: 6, labor: 800, materials: {building_materials: 30, steel: 10, machinery: 5}}
+  workers: {general: 320, engineer: 80}
+  pollution: {amount: 2, radius: 1}
+  factors: {infra: 0.7, education: 0.8}
+  recipes:
+    default:
+      inputs: {copper: 1, chemicals: 0.6, machinery: 0.4, electricity: 3}
+      outputs: {electronics: 2}
+  sprite: electronics_plant
+
+arms_plant:
+  category: industry
+  industry: arms
+  terrain: [plain]
+  construction: {turns: 5, labor: 600, materials: {building_materials: 25, steel: 10, machinery: 3}}
+  workers: {general: 270, engineer: 30}
+  pollution: {amount: 3, radius: 1}
+  factors: {infra: 0.6, education: 0.5}
+  recipes:
+    default:              # 武器 300 組（兵 300 人分）
+      inputs: {steel: 0.6, machinery: 0.15, chemicals: 0.15, electricity: 1}
+      outputs: {weapons: 300}
+    ammunition:           # 弾薬 6 トン
+      inputs: {chemicals: 3, steel: 1.8, electricity: 1}
+      outputs: {ammunition: 6}
+  sprite: arms_plant
+
 # 繊維工場（フェーズ3-2）。綿から衣料を作ります。人手は多く、技術者は要りません。
 textile_mill:
   category: industry
@@ -342,6 +394,9 @@ automobile_plant:
     default:
       inputs: {auto_parts: 200, steel: 2.2, chemicals: 0.3, electricity: 1.5}
       outputs: {automobile: 200}
+    military_vehicle:     # フェーズ4-2: 戦車などの軍用車両。平時の自動車と工場を取り合う
+      inputs: {auto_parts: 20, steel: 2.4, machinery: 0.2, electronics: 0.1, electricity: 1.5}
+      outputs: {military_vehicle: 2}
   sprite: automobile_plant
 
 government_office:
@@ -471,6 +526,15 @@ shipyard:
     aluminium:            # 鋼鉄の 3 割をアルミに替える（フェーズ3-2）
       inputs: {steel: 1.05, aluminium: 0.225, machinery: 0.25, electricity: 1.25}
       outputs: {transport_ship: 0.25}
+    warship:              # フェーズ4-2: 小さな軍艦。10 ターンで 1 隻
+      inputs: {steel: 1.6, machinery: 0.3, electronics: 0.2, electricity: 1.25}
+      outputs: {warship: 0.1}
+    frigate:              # 大きな軍艦。24 ターンで 1 隻
+      inputs: {steel: 2.0, machinery: 0.375, electronics: 0.33, electricity: 1.25}
+      outputs: {frigate: 0.0417}
+    submarine:            # 潜水艦。12 ターンで 1 隻
+      inputs: {steel: 1.0, machinery: 0.25, electronics: 0.25, electricity: 1.25}
+      outputs: {submarine: 0.0833}
   sprite: shipyard
 
 # 商社（フェーズ3-1）。銀行と同じくオフィス街のマスに入り、島にいくつも置けます。島の市場で輸出する物を

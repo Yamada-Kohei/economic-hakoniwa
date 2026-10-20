@@ -164,7 +164,8 @@ def tradable(defs: Defs, good: str) -> bool:
 
 
 def tradable_goods(defs: Defs) -> list[str]:
-    return sorted(g for g in defs.goods if tradable(defs, g))
+    """貿易圏の市場と商社で扱う財。軍事品（arms）は国どうしの契約と物の援助でだけ動く。"""
+    return sorted(g for g in defs.goods if tradable(defs, g) and not defs.goods[g].get("arms"))
 
 
 def unit_weight(defs: Defs, good: str) -> int:

@@ -23,6 +23,9 @@ trading: 商社
 oil_well: 油井
 refinery: 製油所
 aluminium_smelter: アルミ精錬所
+copper_smelter: 銅の精錬所
+electronics_plant: 電子機器工場
+arms_plant: 兵器工場
 textile_mill: 繊維工場
 ranch: 牧場
 automobile_plant: 自動車工場
