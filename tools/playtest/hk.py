@@ -285,7 +285,9 @@ def cmd_map(c: Client, a) -> int:
         state = f.get("status") or ""
         if not f.get("built", True):
             state = "工事中"
-        print(f"({f['x']},{f['y']}) {name} {state} 稼働 {f.get('rate', 0)}".rstrip())
+        # 稼働率は 1000 分の 1 で来る（MCP の地図と同じく % で出す）
+        rate = f"稼働 {round(f.get('rate', 0) / 10)}%" if f.get("built", True) else ""
+        print(" ".join(p for p in (f"({f['x']},{f['y']})", name, state, rate) if p))
     return 0
 
 
@@ -574,7 +576,7 @@ def _good(g: dict) -> str:
     change = f"({g['change']})" if g.get("change") else ""
     return (
         f"{g['name']} {g.get('price', '-')}{change} 売買 {g.get('volume', 0)}"
-        f" 買えず {g.get('unmet', 0)} 生産 {g['production']} 在庫 {g['stock']}"
+        f" 買えず {g.get('unmet', 0)} 生産 {g['production']} 国の倉庫 {g['stock']}"
     )
 
 
@@ -688,6 +690,8 @@ def print_summary(d: dict) -> None:
         print(f"[命令] 行政力 {o['admin_power']}、列 {len(o['pending'])} 件")
         for x in o["pending"]:
             print(f"  待ち: {x['text']}")
+        if o["last_results"]:
+            print(f"  直近に命令を実行したターン {o['last_turn']} の結果:")
         for x in o["last_results"]:
             print(f"  {_result(x)}")
     if "letters" in d:
