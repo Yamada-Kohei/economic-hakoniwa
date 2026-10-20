@@ -25,9 +25,13 @@ function buildMap(defs) {
   const items = [];
   const landTerrain = (f) => f.terrain.find((t) => defs.terrain[t]?.land) || "plain";
   for (const [tid, t] of Object.entries(defs.terrain)) items.push({ label: t.name, terrain: tid });
+  // 海沿いの施設は、海のある向きを変えて 4 つ並べる（矢印が海の向き）
+  const seaSides = [["↘", 1, 0], ["↙", 0, 1], ["↗", 0, -1], ["↖", -1, 0]];
   for (const [fid, f] of Object.entries(defs.facilities)) {
     if (f.tileless || fid === defs.housing) continue;
-    items.push({ label: f.name, terrain: landTerrain(f), facility: { kind: fid, built: true } });
+    const base = { terrain: landTerrain(f), facility: { kind: fid, built: true } };
+    if (!f.coastal) items.push({ label: f.name, ...base });
+    else for (const [arrow, dx, dy] of seaSides) items.push({ label: `${f.name}${arrow}`, ...base, sea: [dx, dy] });
   }
   for (const [sid, s] of Object.entries(defs.settlements)) {
     items.push({ label: s.name, terrain: "plain", facility: { kind: defs.housing, built: true, level: sid } });
@@ -59,6 +63,7 @@ function buildMap(defs) {
     const y = 1 + Math.floor(k / cols) * 2;
     const i = y * n + x;
     map.terrain[i] = item.terrain;
+    if (item.sea) map.terrain[i + item.sea[1] * n + item.sea[0]] = sea;
     map.population[i] = 3000;
     if (item.zone) map.zone[i] = item.zone;
     if (item.power) {
