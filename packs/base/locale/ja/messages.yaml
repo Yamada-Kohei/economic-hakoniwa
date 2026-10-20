@@ -126,6 +126,7 @@ reason_warehouse_no_budget: "国の倉庫の買い入れ費の年の予算が足
 reason_not_state_owned: "{facility}は国営施設ではありません"
 reason_public_service: "{facility}は公務の施設のため、会計方式を変更できません"
 reason_accounting_unchanged: "{facility}は既にその会計方式です"
+reason_monument_accounting: "記念碑は売り上げがないので、会計方式を変更できません（いつも国庫の直轄です）"
 reason_bank_accounting: "銀行は会計方式を変更できません（銀行はいつも自分の勘定で営業します）"
 reason_private_demolish: "{facility}は民営のため撤去できません（国有化すれば撤去できます）"
 reason_zone_capital: "({x}, {y}) は首都のため指定できません"

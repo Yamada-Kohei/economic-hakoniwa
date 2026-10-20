@@ -217,6 +217,14 @@ def test_a_market_economy_state_does_not_run_a_monument_as_a_business(game, worl
     queue_orders(island, [("build", {"facility": "monument_monolith", "x": x, "y": y})])
     game.engine.run_turn(world)
     assert island.facility_at(x, y).accounting == "treasury"
+    result = check_order(
+        game.defs,
+        game.registry,
+        island,
+        "set_accounting",
+        {"x": x, "y": y, "accounting": "self_supporting"},
+    )
+    assert result.reason == "reason_monument_accounting"
 
 
 def test_monuments_stay_out_of_firms_and_cost_nothing_to_run(game, world):
