@@ -149,7 +149,9 @@ def propose(
     if reason is not None:
         return reason
     for c in clean:
-        if c["type"] in cl.SINGLE and between(world, island.id, partner, c["type"]):
+        # 効いている講和は、戦争を終えた後は賠償が残っているだけなので、次の戦争の講和を塞がない
+        states = (PROPOSED,) if c["type"] == cl.PEACE else LIVE
+        if c["type"] in cl.SINGLE and between(world, island.id, partner, c["type"], states):
             return "reason_treaty_exists"
     title = (payload.get("title") or "").strip() or _default_title(clean)
     treaty = {
@@ -208,6 +210,9 @@ def sign(
         return "reason_treaty_closed"
     if treaty["proposer"] == island.id:
         return "reason_treaty_own_offer"
+    proposer = world.islands.get(treaty["proposer"])
+    if proposer is None or is_inactive(proposer):
+        return "reason_treaty_inactive"
     # 提案のあとで戦争の状態が変わっていれば、結び直す（戦争が終わっていた・停戦が済んでいた等）
     a, b = treaty["parties"]
     reason = cl.check_set(world, treaty["clauses"], a, b, turn)
@@ -263,6 +268,10 @@ def _force(world: WorldState, config: GameConfig, treaty: dict[str, Any], turn: 
             war.begin_ceasefire(w, treaty["id"])
         elif kind == cl.PEACE and w is not None:
             war.end(w, treaty["id"], turn, clause["withdraw_turns"], clause["prisoners"])
+            # 戦争を終えたので、その戦争の停戦の条約はここで終わる（次の戦争の停戦を塞がない）
+            for old in between(world, a, b, cl.CEASEFIRE, (IN_FORCE,)):
+                if old is not treaty:
+                    _end(world, old, turn, "superseded")
         rep = clause.get("reparations")
         if rep is not None:
             rep["due"] = turn + rep["due_turns"]
@@ -454,6 +463,9 @@ def on_war_declared(
 ) -> None:
     """宣戦したとき、不可侵と同盟の条約を破っていれば違反として記録する（宣戦そのものは止めない）。"""
     for t in between(world, attacker, defender, None, (IN_FORCE,)):
+        notice = t.get("notice")
+        if notice and turn >= notice["until"]:
+            continue  # 予告のターンがたった条約は、このターンに終わる（予告どおりの破棄は罰なし）
         for kind in cl.BREAKABLE_BY_WAR:
             if kind in kinds(t):
                 violate(world, config, t, attacker, kind, "war_declared", turn)

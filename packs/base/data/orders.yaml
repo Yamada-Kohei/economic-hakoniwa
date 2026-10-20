@@ -747,8 +747,9 @@ declare_war:                              # 宣戦布告（戦争は次のター
       target: {type: integer, minimum: 1}  # 相手の島の番号
       reason: {type: string, maxLength: 200}  # 布告の理由（国際会議場に載る）
 
-propose_treaty:                           # 条約の提案（相手が署名すると効く）
+propose_treaty:                           # 条約の提案（相手が署名すると効く。提案する国はその時に署名したことになるので、民主主義は採決する）
   admin_cost: 1
+  parliament: majority
   payload:
     type: object
     required: [partner, clauses]

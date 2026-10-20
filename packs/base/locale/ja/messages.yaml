@@ -652,6 +652,7 @@ hall_treaty_denounced: "{by}が条約「{title}」（{a}と{b}。{treaty}番）�
 hall_treaty_ended: "{a}と{b}の条約「{title}」は、予告どおり終わりました"
 hall_treaty_violated: "{by}が{a}と{b}の条約「{title}」（{treaty}番）の{clause}を破りました（{why}）"
 reason_war_target: "宣戦の相手が正しくありません"
+reason_war_inactive: "その国は休止中なので、宣戦できません"
 reason_war_exists: "その国とは、すでに戦争か停戦の間です"
 reason_treaty_partner: "条約の相手の国が正しくありません"
 reason_treaty_inactive: "その国は休止中なので、条約を結べません"

@@ -299,6 +299,8 @@ def test_unpaid_reparations_are_a_violation_that_dents_credit(game, world):
 def test_declaring_war_on_a_treaty_partner_is_a_violation(game, world):
     for kind in ("non_aggression", "alliance"):
         w = generate_world(7, 3, game.config, game.defs)
+        for island in w.islands.values():
+            island.regime["politics"] = "authoritarian"
         t = propose(game, w, 1, 2, [{"type": kind}])
         sign(game, w, t["id"], 2)
         step(game, w, {1: [("declare_war", {"target": 2})]})
@@ -339,8 +341,11 @@ def test_democracy_votes_on_war_and_treaties(game):
     step(game, world, {1: [("declare_war", {"target": 2})]})
     assert war.open_war(world, 1, 2) is None
     assert logs(world, 1, "order_failed")[-1].args["reason"] == "reason_parliament_rejected"
+    seats(1, 0.4)
+    step(game, world, {1: [("propose_treaty", {"partner": 2, "clauses": [{"type": "alliance"}]})]})
+    assert not treaties.treaties(world)  # 提案する国も署名にあたるので採決する
     seats(1, 0.8)
-    t = propose(game, world, 1, 2, [{"type": "alliance"}])  # 提案は採決しない
+    t = propose(game, world, 1, 2, [{"type": "alliance"}])
     assert t["state"] == treaties.PROPOSED
     seats(2, 0.4)
     step(game, world, {2: [("sign_treaty", {"treaty": t["id"]})]})
@@ -355,7 +360,7 @@ def test_democracy_votes_on_war_and_treaties(game):
 
 def test_orders_are_public_and_democracies_vote(game):
     orders = game.defs.orders
-    for kind in ("declare_war", "sign_treaty", "denounce_treaty"):
+    for kind in ("declare_war", "propose_treaty", "sign_treaty", "denounce_treaty"):
         assert orders[kind]["parliament"] == "majority", kind
     for kind in (
         "declare_war",
@@ -378,3 +383,43 @@ def test_state_survives_a_json_round_trip(game, world):
     assert treaties.find(again, t["id"])["clauses"] == t["clauses"]
     sign(game, again, t["id"], 1)
     assert war.open_war(again, 1, 2)["state"] == war.CEASEFIRE
+
+
+def test_inactive_islands_cannot_be_attacked_or_signed_with(game, world):
+    world.islands[2].ext["inactive"] = True
+    assert refused_why(game, world, 1, "declare_war", {"target": 2}) == "reason_war_inactive"
+
+
+def test_peace_ends_the_ceasefire_and_does_not_block_the_next_war(game, world):
+    step(game, world, {1: [("declare_war", {"target": 2})]})
+    step(game, world, {})
+    cease = propose(game, world, 2, 1, [{"type": "ceasefire"}])
+    sign(game, world, cease["id"], 1)
+    peace = propose(
+        game,
+        world,
+        2,
+        1,
+        [{"type": "peace", "reparations": {"payer": 1, "amount": 100, "due_turns": 40}}],
+    )
+    sign(game, world, peace["id"], 1)
+    assert war.open_war(world, 1, 2) is None
+    assert cease["state"] == treaties.ENDED and peace["state"] == treaties.IN_FORCE
+    # 賠償が残っている講和があっても、次の戦争の停戦と講和を結べる
+    step(game, world, {1: [("declare_war", {"target": 2})]})
+    again = propose(game, world, 2, 1, [{"type": "ceasefire"}])
+    assert again["state"] == treaties.PROPOSED
+    sign(game, world, again["id"], 1)
+    second = propose(game, world, 2, 1, [{"type": "peace"}])
+    assert second["state"] == treaties.PROPOSED
+
+
+def test_declaring_war_on_the_day_the_notice_runs_out_is_not_a_violation(game, world):
+    t = propose(game, world, 1, 2, [{"type": "non_aggression", "notice_turns": 2}])
+    sign(game, world, t["id"], 2)
+    step(game, world, {2: [("denounce_treaty", {"treaty": t["id"]})]})
+    until = t["notice"]["until"]
+    while world.turn + 1 < until:
+        step(game, world, {})
+    step(game, world, {1: [("declare_war", {"target": 2})]})
+    assert not t["violations"]

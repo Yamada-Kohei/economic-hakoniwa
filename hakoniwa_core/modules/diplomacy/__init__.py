@@ -17,8 +17,8 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core.defs import Defs
+from hakoniwa_core.diplomacy import is_inactive, war, world_state
 from hakoniwa_core.diplomacy import treaties as tr
-from hakoniwa_core.diplomacy import war, world_state
 from hakoniwa_core.registry import OrderFailed, OrderHandler, Registry, WorldStage
 from hakoniwa_core.state import IslandState, LogEntry, WorldState
 from hakoniwa_core.turn.context import StageContext
@@ -86,6 +86,8 @@ def _declare(
     other = world.islands.get(target)
     if other is None or target == island.id:
         return "reason_war_target"
+    if is_inactive(other):
+        return "reason_war_inactive"  # 休止中の島は応じられない（停戦も講和も結べなくなる）
     if war.open_war(world, island.id, target) is not None:
         return "reason_war_exists"
     w = war.declare(world, island.id, target, ctx.turn)
