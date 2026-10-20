@@ -242,11 +242,18 @@ def test_default_of_one_plant_bankrupts_the_firms_borrowers(game, base):
     open_books(island)
     loan = banks.loans_by_borrower(island, facility_entity(a.id))[0]
     loan.arrears = game.config.get("loans.arrears_limit")
+    cascades = island.stats.get("firms.cascade", 0)  # 準備の世界のそのターンに数えた分
+    # a の企業に前から借入のある施設がほかにあれば、それも一緒に倒れる（世界の歩みしだい）
+    group = [
+        m
+        for m in co.members(island, co.firm_of(a))
+        if banks.loans_by_borrower(island, facility_entity(m.id))
+    ]
+    assert a in group and b in group
     cross_default(island, ctx, a)
-    assert "foreclosed" in a.economy and "foreclosed" in b.economy
-    assert co.firm_of(a) is None and co.firm_of(b) is None
+    assert all("foreclosed" in m.economy and co.firm_of(m) is None for m in group)
     assert any(e.kind == "firm_bankrupt" for e in island.log)
-    assert island.stats["firms.cascade"] == 2
+    assert island.stats["firms.cascade"] - cascades == len(group)
     books_ok(game, island)
 
 

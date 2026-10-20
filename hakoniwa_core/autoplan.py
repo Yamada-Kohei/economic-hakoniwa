@@ -73,7 +73,8 @@
 飢饉の手（回5。設計書 12 確かめ方 GT-29）: 食べ物の充足が FAMINE_RATIO を下回った月は、国営の
 農場のうち穀物以外を作っているものを穀物に替え、国の倉庫の食べ物をすべて市場に出し、足りない分の
 穀物を今の値段の EMERGENCY_PRICE 倍の指値で国の倉庫に買い入れます（値段が上がれば商社が輸入する）。
-ふだんの月は、島の食べる量の STORE_TURNS ターン分まで穀物を今の値段で買って蓄え、傷む
+ふだんの月は、島の食べる量の STORE_TURNS ターン分まで穀物をこの1年でいちばん安い値段の指値で
+買って蓄え（値段の下がった月の余りだけを買い、家計の貧しい層より高く買わない）、傷む
 ROTATE_TURNS ターン前になった古い分を市場に出して入れ替えます（インドの国の穀物の買い上げと備蓄と
 同じ形）。国の倉庫の年の予算は、その買い入れに足りるまで上げます。
 電気料金が初めの値段の POWER_CAP 倍を超えたら、そこを公共料金の上限にします。
@@ -466,7 +467,10 @@ def _food_orders(
             and island.stats.get("treasury", 0) >= spending * SURPLUS_TURNS
         )
         buy = need * STORE_TURNS - (held - old) if spare else 0
-        limit = price
+        # 指値はこの1年でいちばん安い値段まで。今の値段で買うと、値段の高い月に出した注文が行政力の
+        # 列で遅れて約定し、家計の貧しい層より高く買って食べ物を奪った（財の値幅をなくした後の関門
+        # seed 1 の 300 ターン目。2026-10-20）
+        limit = min([price, *island.economy.price_history.get(GRAIN, [])[-TURNS_PER_YEAR:]])
     if buy > 0 and limit > 0:
         budget = money_of(limit, buy) * TURNS_PER_YEAR
         if island.policy.budget.get("warehouse", 0) < budget:

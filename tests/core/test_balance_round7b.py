@@ -70,11 +70,12 @@ def test_short_plant_draws_on_sibling_cash_when_the_firm_has_none(game, base):
     ea = facility_entity(a.id)
     ledger.pay(island, ledger.GOV, ea, ledger.money(island, ledger.GOV) // 2, "subsidy")
     before = ledger.money(island, ea)
+    pooled = island.stats.get("firms.pooled", 0)  # 準備の世界のそのターンに回した分
     moved = co.draw(island, b, 1000, ctx)
     assert moved == 1000
     assert ledger.money(island, ea) == before - 1000
     assert b.economy[co.POOLED] == 1
-    assert island.stats["firms.pooled"] == 1000
+    assert island.stats["firms.pooled"] - pooled == 1000
     # 運転資金の分（ctx なし）は企業の預金だけ
     assert co.draw(island, b, 1000) == 0
     books_ok(game, island)
