@@ -46,6 +46,7 @@ from typing import IO, Any
 from hakoniwa_core import measure
 from hakoniwa_core.autoplan import queue_orders
 from hakoniwa_core.defs.freeze import thaw
+from hakoniwa_core.diplomacy import treaties as diplomacy_treaties
 from hakoniwa_core.game import Game, load_game
 from hakoniwa_core.gate import KINDS, START, Recorder
 from hakoniwa_core.orders import check_order
@@ -209,10 +210,13 @@ class OrderMaker:
     def _integer(self, name: str, schema: dict[str, Any]) -> int:
         if name in ("x", "y"):
             return self.spot[0] if name == "x" else self.spot[1]
-        if name in ("partner", "issuer", "to", "approve", "currency"):
+        if name in ("partner", "issuer", "to", "approve", "currency", "target", "payer"):
             return self.rng.choice(self.world.island_ids())
         if name == "bloc":
             ids = [b["id"] for b in trade_blocs.blocs(self.world)]
+            return self.rng.choice(ids + [1, 2, 3])
+        if name == "treaty":
+            ids = [t["id"] for t in diplomacy_treaties.treaties(self.world)]
             return self.rng.choice(ids + [1, 2, 3])
         if name == "contract":
             ids = [c["id"] for c in trade_contracts.contracts(self.world)]

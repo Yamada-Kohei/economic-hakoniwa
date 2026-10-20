@@ -9,6 +9,7 @@
 - HAKONIWA_CLIENT_IP_HEADER: 利用者の IP を読む場所（既定 REMOTE_ADDR。リバースプロキシの後ろでは
   HTTP_X_REAL_IP など、プロキシが書き込む場所にする）
 - HAKONIWA_LETTERS_PER_DAY: 1つの島が 24 時間に送れる手紙の数（既定 50。送りすぎの歯止め）
+- HAKONIWA_HALL_PER_DAY: 1つの島が 24 時間に国際会議場に出せる声明の数（既定 10。出しすぎの歯止め）
 - HAKONIWA_AI_CALLS_PER_MINUTE: AI 用の鍵1つで 1 分に呼べる API の回数（既定 60。0 で上限なし。
   server/accounts/keys.py）
 """
@@ -45,6 +46,7 @@ INSTALLED_APPS = [
     "server.turns",
     "server.board",
     "server.letters",
+    "server.hall",
     "server.web",
 ]
 
@@ -129,4 +131,5 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 HAKONIWA_GAME_CONFIG = os.environ.get("HAKONIWA_GAME_CONFIG", str(BASE_DIR / "game.yaml"))
 HAKONIWA_CLIENT_IP_HEADER = os.environ.get("HAKONIWA_CLIENT_IP_HEADER", "REMOTE_ADDR")
 HAKONIWA_LETTERS_PER_DAY = int(os.environ.get("HAKONIWA_LETTERS_PER_DAY", "50"))
+HAKONIWA_HALL_PER_DAY = int(os.environ.get("HAKONIWA_HALL_PER_DAY", "10"))
 HAKONIWA_AI_CALLS_PER_MINUTE = int(os.environ.get("HAKONIWA_AI_CALLS_PER_MINUTE", "60"))

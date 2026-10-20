@@ -1,0 +1,164 @@
+{% extends "base.html" %}{% load i18n static calendar_tags %}
+{% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+{% include "web/report_header.html" %}
+
+<div class="report-layout{% if mine %} with-orders{% endif %}">
+  <div class="report-main">
+{% with d=diplomacy %}
+<section class="panel" id="wars">
+  <h2>{% translate "戦争の状態" %}</h2>
+  <div class="table-scroll">
+  <table class="goods">
+    <thead><tr><th>{% translate "宣戦した国" %}</th><th>{% translate "された国" %}</th><th>{% translate "状態" %}</th><th>{% translate "布告" %}</th></tr></thead>
+    <tbody>
+    {% for w in d.wars %}
+      <tr><td><a href="{% url 'island_diplomacy' w.attacker.id %}">{{ w.attacker.name }}</a></td><td><a href="{% url 'island_diplomacy' w.defender.id %}">{{ w.defender.name }}</a></td><td>{{ w.state_name }}</td><td>{{ w.declared|turn_date }}</td></tr>
+    {% empty %}
+      <tr><td colspan="4" class="muted">{% translate "戦争も停戦もありません。" %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if d.past_wars %}
+  <h3>{% translate "終わった戦争" %}</h3>
+  <ul class="plain-list">
+    {% for w in d.past_wars %}<li>{% blocktranslate with a=w.attacker.name b=w.defender.name s=w.declared|turn_date e=w.ended|turn_date %}{{ a }}と{{ b }}（{{ s }}に布告。{{ e }}に講和）{% endblocktranslate %}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% if mine %}
+  <form class="actions" data-order="declare_war" data-confirm="{% translate '宣戦を布告します。戦争は次のターンから始まります。よろしいですか。' %}">
+    <strong>{% translate "宣戦布告" %}</strong>
+    <label>{% translate "相手" %} <select name="target" required><option value="">{% translate "（国を選んでください）" %}</option>{% for p in d.choices.partners %}<option value="{{ p.id }}">{{ p.name }}（{{ p.id }}）</option>{% endfor %}</select></label>
+    <label>{% translate "理由" %} <input name="reason" maxlength="200"></label>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  <p class="order-notice" aria-live="polite"></p>
+  {% endif %}
+</section>
+
+<section class="panel" id="treaties">
+  <h2>{% translate "効いている条約" %}</h2>
+  <div class="table-scroll">
+  <table class="goods">
+    <thead><tr><th>{% translate "番号" %}</th><th>{% translate "条約" %}</th><th>{% translate "当事国" %}</th><th>{% translate "条項" %}</th><th>{% translate "効いた時期" %}</th>{% if mine %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for t in d.treaties %}
+      <tr>
+        <td>{{ t.id }}</td>
+        <td>{{ t.title }}{% if t.text %}<br><small class="muted">{{ t.text }}</small>{% endif %}{% if t.notice %}<br><small class="warning">{% blocktranslate with by=t.notice.by.name u=t.notice.until|turn_date %}{{ by }}が破棄を予告（{{ u }}に終わります）{% endblocktranslate %}</small>{% endif %}</td>
+        <td>{% for p in t.parties %}<a href="{% url 'island_diplomacy' p.id %}">{{ p.name }}</a>{% if not forloop.last %}・{% endif %}{% endfor %}</td>
+        <td>{% for c in t.clauses %}{{ c.name }}{% if c.reparations %}（{% blocktranslate with p=c.reparations.payer.name a=c.reparations.amount|floatformat:"0g" paid=c.reparations.paid|floatformat:"0g" %}{{ p }}が賠償 {{ a }}、払った分 {{ paid }}{% endblocktranslate %}）{% endif %}{% if not forloop.last %}・{% endif %}{% endfor %}</td>
+        <td>{{ t.start|turn_date }}</td>
+        {% if mine %}<td>{% if not t.notice %}<form class="actions" data-order="denounce_treaty" data-confirm="{% translate '予告のうえで条約を破棄します。よろしいですか。' %}"><input type="hidden" name="treaty" value="{{ t.id }}"><button type="submit">{% translate "破棄を予告（命令に追加）" %}</button></form>{% endif %}</td>{% endif %}
+      </tr>
+    {% empty %}
+      <tr><td colspan="{% if mine %}6{% else %}5{% endif %}" class="muted">{% translate "効いている条約はありません。" %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="hint">{% blocktranslate with n=d.rules.notice_turns %}条約は、予告（既定 {{ n }} ターン）をしてから破棄できます。予告より前に破ると違反として記録され、国債の利回りに信用の傷が乗ります。ゲームは条約の中身を強いません。{% endblocktranslate %}</p>
+  {% if mine %}<p class="order-notice" aria-live="polite"></p>{% endif %}
+</section>
+
+{% if mine %}
+<section class="panel" id="proposals">
+  <h2>{% translate "返事待ちの条約の提案" %}</h2>
+  <h3>{% translate "届いた提案" %}</h3>
+  <div class="table-scroll">
+  <table class="goods">
+    <thead><tr><th>{% translate "番号" %}</th><th>{% translate "条約" %}</th><th>{% translate "提案した国" %}</th><th>{% translate "条項" %}</th><th></th></tr></thead>
+    <tbody>
+    {% for t in d.incoming %}
+      <tr>
+        <td>{{ t.id }}</td><td>{{ t.title }}{% if t.text %}<br><small class="muted">{{ t.text }}</small>{% endif %}</td>
+        <td><a href="{% url 'island_diplomacy' t.proposer.id %}">{{ t.proposer.name }}</a></td>
+        <td>{% for c in t.clauses %}{{ c.name }}{% if not forloop.last %}・{% endif %}{% endfor %}</td>
+        <td>
+          <form class="actions" data-order="sign_treaty"><input type="hidden" name="treaty" value="{{ t.id }}"><button type="submit">{% translate "署名（命令に追加）" %}</button></form>
+          <form class="actions" data-order="refuse_treaty"><input type="hidden" name="treaty" value="{{ t.id }}"><button type="submit">{% translate "断る（命令に追加）" %}</button></form>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5" class="muted">{% translate "届いている提案はありません。" %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <h3>{% translate "出した提案" %}</h3>
+  <div class="table-scroll">
+  <table class="goods">
+    <thead><tr><th>{% translate "番号" %}</th><th>{% translate "条約" %}</th><th>{% translate "相手" %}</th><th>{% translate "条項" %}</th><th></th></tr></thead>
+    <tbody>
+    {% for t in d.outgoing %}
+      <tr>
+        <td>{{ t.id }}</td><td>{{ t.title }}</td>
+        <td>{% for p in t.parties %}{% if p.id != island.id %}<a href="{% url 'island_diplomacy' p.id %}">{{ p.name }}</a>{% endif %}{% endfor %}</td>
+        <td>{% for c in t.clauses %}{{ c.name }}{% if not forloop.last %}・{% endif %}{% endfor %}</td>
+        <td><form class="actions" data-order="withdraw_treaty"><input type="hidden" name="treaty" value="{{ t.id }}"><button type="submit">{% translate "取り下げ（命令に追加）" %}</button></form></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5" class="muted">{% translate "返事待ちの提案はありません。" %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="hint">{% blocktranslate with n=d.rules.proposal_turns m=d.rules.max_proposals %}提案は、返事がないまま {{ n }} ターンたつと流れます。出せる提案は同時に {{ m }} 件までです。{% endblocktranslate %}</p>
+  <p class="order-notice" aria-live="polite"></p>
+</section>
+
+<section class="panel" id="propose">
+  <h2>{% translate "条約を提案する" %}</h2>
+  <form class="actions" data-order="propose_treaty" data-clauses="clause">
+    <label>{% translate "相手" %} <select name="partner" required><option value="">{% translate "（国を選んでください）" %}</option>{% for p in d.choices.partners %}<option value="{{ p.id }}">{{ p.name }}（{{ p.id }}）</option>{% endfor %}</select></label>
+    <label>{% translate "条約の名前" %} <input name="title" maxlength="40"></label>
+    <label>{% translate "前文" %} <input name="text" maxlength="400"></label>
+    <fieldset>
+      <legend>{% translate "条項（1つ以上）" %}</legend>
+      {% for c in d.choices.clauses %}<label><input type="checkbox" name="clause" value="{{ c.id }}"> {{ c.name }}</label> {% endfor %}
+    </fieldset>
+    <label>{% translate "破棄の予告のターン数（停戦・不可侵・同盟）" %} <input name="notice_turns" type="number" min="{{ d.rules.min_notice_turns }}" max="{{ d.rules.max_notice_turns }}" placeholder="{{ d.rules.notice_turns }}"></label>
+    <label>{% translate "引き揚げの期限（講和。ターン）" %} <input name="withdraw_turns" type="number" min="0" max="{{ d.rules.max_withdraw_turns }}" placeholder="{{ d.rules.withdraw_turns }}"></label>
+    <label><input type="checkbox" name="keep_prisoners" value="false"> {% translate "捕虜を返さない（講和）" %}</label>
+    <fieldset>
+      <legend>{% translate "賠償（講和。書かなければなし）" %}</legend>
+      <label>{% translate "払う国" %} <select name="payer"><option value="">{% translate "（なし）" %}</option>{% for p in d.choices.partners %}<option value="{{ p.id }}">{{ p.name }}（{{ p.id }}）</option>{% endfor %}<option value="{{ island.id }}">{{ island.name }}（{% translate "自国" %}）</option></select></label>
+      <label>{% translate "額" %} <input name="amount" type="number" min="1"></label>
+      <label>{% translate "期日（効いてからのターン数）" %} <input name="due_turns" type="number" min="1" max="{{ d.rules.max_reparation_turns }}"></label>
+    </fieldset>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  <p class="hint">{% translate "戦争のあいだに結べるのは停戦と講和だけです。賠償は、払う国が援助の命令で送ります（ゲームは自動で払わせません）。期日までに届かないと違反として記録します。" %}</p>
+  <p class="order-notice" aria-live="polite"></p>
+</section>
+{% endif %}
+
+<section class="panel" id="closed">
+  <h2>{% translate "終わった条約" %}</h2>
+  <ul class="plain-list">
+    {% for t in d.closed %}<li>{% blocktranslate with id=t.id title=t.title state=t.state_name %}{{ id }}番 {{ title }}（{{ state }}）{% endblocktranslate %}</li>
+    {% empty %}<li class="muted">{% translate "終わった条約はありません。" %}</li>{% endfor %}
+  </ul>
+</section>
+
+<section class="panel" id="violations">
+  <h2>{% translate "条約の違反の記録" %}</h2>
+  <ul class="plain-list">
+    {% for v in d.violations %}<li>{% blocktranslate with t=v.turn|turn_date title=v.treaty_title clause=v.clause_name why=v.reason_name %}{{ t }}: 条約「{{ title }}」の{{ clause }}を破りました（{{ why }}）{% endblocktranslate %}</li>
+    {% empty %}<li class="muted">{% translate "違反の記録はありません。" %}</li>{% endfor %}
+  </ul>
+  <p class="hint">{% blocktranslate with p=d.rules.violation_premium m=d.rules.violation_premium_max t=d.rules.violation_decay_turns %}違反は信用の傷として、国債の利回りに乗ります（1件 +{{ p }}、合計 +{{ m }} まで、{{ t }} ターンかけて消えます）。{% endblocktranslate %}</p>
+</section>
+{% endwith %}
+  </div>
+
+  {% if mine %}
+  <aside id="orders" class="panel report-orders" data-url="{% url 'api_orders' island.id %}" data-defs="{% url 'api_defs' %}"
+         data-forms="" data-heading="{% translate '外交の命令' %}"></aside>
+  {% endif %}
+</div>
+
+{% csrf_token %}
+<script type="module" src="{% static 'js/reports/diplomacy.js' %}"></script>
+{% endblock %}

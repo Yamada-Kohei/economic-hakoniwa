@@ -22,10 +22,11 @@ from hakoniwa_core.state import ACCOUNTING_SELF
 from server.accounts import keys
 from server.economy.models import FacilityBook
 from server.game import get_game
+from server.hall import services as hall
 from server.letters import services as letters
 from server.orders.models import Order
 from server.turns.models import TurnLog
-from server.web import display, rankings, reports
+from server.web import diplomacy, display, rankings, reports
 from server.web import politics as politics_views
 from server.world import models as m
 from server.world.repository import facility_from_row
@@ -345,6 +346,16 @@ def _mine_alerts(island: m.Island, losing: list[dict[str, Any]], unread: int) ->
     return out
 
 
+def _diplomacy_alerts(brief: dict[str, Any]) -> list[str]:
+    """持ち主にだけ出す外交の注意（返事待ちの条約の提案・戦争・破棄の予告）。"""
+    out = []
+    if brief.get("to_answer"):
+        out.append(f"返事をしていない条約の提案が {len(brief['to_answer'])} 件あります")
+    for w in brief["wars"]:
+        out.append(f"{w['with']['name']}と{w['state_name']}です")
+    return out
+
+
 def island_alerts(island: m.Island, mine: bool) -> list[str]:
     """島の画面の「注意」（国の要約の alerts と同じ文）。"""
     world = island.world
@@ -363,6 +374,7 @@ def island_alerts(island: m.Island, mine: bool) -> list[str]:
     if mine:
         unread = letters.inbox(island).filter(read_at__isnull=True).count()
         out += _mine_alerts(island, losing_facilities(island, currency), unread)
+        out += _diplomacy_alerts(diplomacy.brief(island, mine))
     return out
 
 
@@ -484,6 +496,7 @@ def summary(island: m.Island, mine: bool) -> dict[str, Any]:
         "stats_turn": stats_turn,
         "indicators": indicators(stats, before, currency),
         "politics": politics,
+        "diplomacy": diplomacy.brief(island, mine),
         "strengths": rankings.island_strengths(island, latest),
         "facilities": facilities,
         "goods": goods,
@@ -515,6 +528,7 @@ def summary(island: m.Island, mine: bool) -> dict[str, Any]:
             ],
         }
         data["alerts"] += _mine_alerts(island, losing, data["letters"]["unread"])
+        data["alerts"] += _diplomacy_alerts(data["diplomacy"])
     return data
 
 
@@ -591,6 +605,7 @@ def changes(island: m.Island, since: int, mine: bool, secret_orders: Any) -> dic
         ],
         "orders": [_result(o) for o in results.order_by("executed_turn", "seq")],
     }
+    data["hall"] = hall.entries_since(world, since)[-LOG_TURNS_MAX:]  # 国際会議場（誰にでも）
     if mine:
         received = letters.inbox(island).filter(turn__gt=since)
         data["letters"] = [

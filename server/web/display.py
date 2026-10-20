@@ -786,10 +786,25 @@ def describe_order(kind: str, payload: dict[str, Any]) -> str:
         _describe_finance(kind, payload, name, where)
         or _describe_trade(kind, payload, name)
         or _describe_politics(kind, payload, name)
+        or _describe_diplomacy(kind, payload, name)
     )
     if text:
         return text
     return f"{name} {where}".strip()
+
+
+def _describe_diplomacy(kind: str, payload: dict[str, Any], name: str) -> str:
+    """外交の命令（フェーズ4-1）の説明。ほかの命令は ""。島は番号から名前にする。"""
+    if kind == "declare_war":
+        text = f"{name}: {island_name(payload.get('target'))}"
+        return f"{text}（{payload['reason']}）" if payload.get("reason") else text
+    if kind == "propose_treaty":
+        kinds = "・".join(message(f"clause_{c.get('type')}") for c in payload.get("clauses", []))
+        title = f"「{payload['title']}」" if payload.get("title") else ""
+        return f"{name}: {island_name(payload.get('partner'))} {title}{kinds}"
+    if kind in ("sign_treaty", "refuse_treaty", "withdraw_treaty", "denounce_treaty"):
+        return f"{name}: 条約 {payload.get('treaty')} 番"
+    return ""
 
 
 def _describe_trade(kind: str, payload: dict[str, Any], name: str) -> str:

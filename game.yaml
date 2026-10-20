@@ -10,6 +10,7 @@ schemas_dir: schemas    # 定義データのスキーマ
 stages:
   - upgrade          # 前のフェーズから続く島の移し替え（1度だけ）
   - execute_orders   # 計画の実行（命令）。税率・予算などの政策もここで変わる
+  - diplomacy        # 世界の段（フェーズ4-1）: 宣戦布告と条約（提案・署名・破棄）の命令、流れた提案、破棄の予告、講和の賠償の期日
   - budget           # 国庫の取り置き（支出の項目ごとに、支払いの順番で）
   - employment       # 通勤と雇用（賃金の高い施設から）
   - production       # 生産と電力（電力は送電網ごとに板寄せし、電気代を払う）
@@ -687,3 +688,19 @@ planning:
   target_markup: 0.1    # 生産目標 = 需要の平均 ×（1 + これ）
   max_priority: 3       # 重点産業の数の上限
 
+# 外交（フェーズ4-1。hakoniwa_core/diplomacy と hakoniwa_core/modules/diplomacy）
+diplomacy:
+  proposal_turns: 12    # 条約の提案が返事を待つターン数（過ぎると流れる）
+  max_proposals: 6      # 1つの島が出せる、返事待ちの提案の数
+  notice_turns: 3       # 予告つきの破棄の予告のターン数の既定（条項で決めなければ）
+  min_notice_turns: 1
+  max_notice_turns: 24
+  withdraw_turns: 3     # 講和の引き揚げの期限の既定（講和が効いてから、相手の島の部隊が引き揚げるターン数）
+  max_withdraw_turns: 12
+  max_reparation_turns: 60  # 講和の賠償の期日（効いてから）の上限
+  # 条約の違反が残す信用の傷: 国債の利回りへの上乗せ。違反の重み 1 ごとに violation_premium を、
+  # violation_decay_turns ターンかけて 0 に減らし、足し合わせた上乗せは violation_premium_max まで
+  # （債務不履行は bonds.default_premium。違反は銀行が国債を買わなくなるほどは重くない）
+  violation_premium: 0.03
+  violation_premium_max: 0.1
+  violation_decay_turns: 60

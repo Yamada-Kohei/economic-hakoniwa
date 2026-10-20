@@ -53,6 +53,7 @@ from typing import Any
 
 from hakoniwa_core import ledger
 from hakoniwa_core.defs import Defs
+from hakoniwa_core.diplomacy import credit
 from hakoniwa_core.economy import BONDS, Payer, banks, books, debt, funds
 from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.market import auction
@@ -82,13 +83,15 @@ def term_premium(defs: Defs, turns: int) -> float:
 
 
 def default_premium(island: IslandState, ctx: StageContext) -> float:
-    """債務不履行の上乗せ δ（不履行の直後に bonds.default_premium で、だんだん 0 に減る）。"""
+    """債務不履行の上乗せ δ（不履行の直後に bonds.default_premium で、だんだん 0 に減る）。
+    条約の違反の信用の傷（diplomacy/credit.py）も、同じ上乗せに足す。"""
+    credit_premium = credit.premium(island, ctx.turn, ctx.config)
     turn = island.economy.finance.get("default_turn")
     if turn is None:
-        return 0.0
+        return credit_premium
     settings = ctx.config.get("bonds")
     left = 1 - (ctx.turn - turn) / settings["default_decay_turns"]
-    return settings["default_premium"] * max(0.0, left)
+    return settings["default_premium"] * max(0.0, left) + credit_premium
 
 
 def bond_yield(island: IslandState, turns: int, ctx: StageContext) -> int:

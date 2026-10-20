@@ -30,6 +30,7 @@ from server.game import get_game
 from server.letters import services as letter_services
 from server.orders.models import Order
 from server.web import chain as chain_views
+from server.web import diplomacy as diplomacy_views
 from server.web import display, overview, rankings, reports
 from server.web import politics as politics_views
 from server.web import top as top_page
@@ -498,6 +499,14 @@ def island_politics(request, island_id: int):
     持ち主には政情の内訳・出来事・採決の履歴・たまった不満・警察・動員も（server/web/politics.py）。"""
     island = get_object_or_404(m.Island, pk=island_id)
     return _json(politics_views.politics_data(island, _mine(request, island)))
+
+
+@require_GET
+def island_diplomacy(request, island_id: int):
+    """外交。だれにでも戦争の状態・効いている条約・終わった条約・条約の違反の記録を、持ち主には返事待ちの
+    条約の提案（届いたもの・出したもの）と命令の選択肢も（server/web/diplomacy.py）。"""
+    island = get_object_or_404(m.Island, pk=island_id)
+    return _json(diplomacy_views.diplomacy_data(island, _mine(request, island)))
 
 
 @require_GET

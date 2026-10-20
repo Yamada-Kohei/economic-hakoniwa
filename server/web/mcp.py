@@ -53,7 +53,7 @@ INSTRUCTIONS = """\
 - 命令は check_order で確かめてから、set_orders で命令の列を丸ごと置き換えます（今の列は summary の
   orders.pending）。中身の形は defs(section="orders")。1ターンに実行されるのは行政力の数までです。
 - ターンはサーバーが決まった時刻に進めます。ほかの国との連絡は公電（letters・send_letter）と
-  掲示板です。
+  掲示板です。国際会議場（hall）には公開の声明と、戦争・条約の出来事が載ります。
 """
 
 # 道具の答えの文の上限（これを超える分は切って、続きの読み方を添える）
@@ -185,6 +185,8 @@ REPORTS = {
     "trade": "貿易（輸出入・貿易圏。持ち主には契約・商社・船団・産業政策）",
     "fx": "為替と国際収支（持ち主には外貨の持ち高と為替の政策）",
     "politics": "政治（体制・政情・支持率・議席・選挙。持ち主には政情の内訳と命令の選択肢）",
+    "diplomacy": "外交（戦争の状態・効いている条約・終わった条約・条約の違反の記録。持ち主には"
+    "返事待ちの条約の提案と、宣戦・条約の命令の選択肢）",
     "plan": "計画と値段の規制（計画経済・混合経済の島）",
     "chain": "産業の鎖（自分の島だけ。品目ごとの作った量・使った量と、止まっている工場のわけ）",
     "orders": "命令の列・行政力・今の政策（税・予算・金融）・最近の命令の結果",
@@ -301,6 +303,16 @@ def _read_letter(request, args):
 def _send_letter(request, args):
     body = {"to": args["to"], "subject": args["subject"], "body": args["body"]}
     return call_ok(request, "POST", "/api/letters", body=body)
+
+
+def _hall(request, args):
+    return call_ok(request, "GET", "/api/hall", query={"page": args.get("page") or 1})
+
+
+def _hall_post(request, args):
+    return call_ok(
+        request, "POST", "/api/hall", body={"title": args["title"], "body": args["body"]}
+    )
 
 
 def _board(request, args):
@@ -757,6 +769,25 @@ TOOLS = [
         read_only=False,
     ),
     Tool(
+        "hall",
+        "国際会議場",
+        "国際会議場（誰でも読める公開の声明の場）。いまの戦争の状態と効いている条約、声明と、条約・"
+        "宣戦・停戦・講和の出来事の新しい順の並び。自分の島の詳しい状態と命令の選択肢は "
+        "report page=diplomacy。",
+        _hall,
+        {"page": PAGE},
+    ),
+    Tool(
+        "hall_post",
+        "国際会議場に声明を出す",
+        "国際会議場に公開の声明を出す（すぐ載る。1つの島が出せる数には 24 時間の上限がある）。"
+        "条約の提案や宣戦は、命令（set_orders。propose_treaty・declare_war）で行う。",
+        _hall_post,
+        {"title": {"type": "string"}, "body": {"type": "string"}},
+        ("title", "body"),
+        read_only=False,
+    ),
+    Tool(
         "board",
         "掲示板",
         "掲示板（誰でも読める）のスレッドの一覧。",
@@ -849,6 +880,8 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "island_fx": ("report",),
     "island_politics": ("report",),
     "island_plan": ("report",),
+    "island_diplomacy": ("report",),
+    "hall": ("hall", "hall_post"),
     "board": ("board",),
     "board_new": ("board_new_thread",),
     "board_thread": ("board_thread", "board_post"),

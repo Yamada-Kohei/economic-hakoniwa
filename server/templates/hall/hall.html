@@ -1,0 +1,69 @@
+{% extends "base.html" %}{% load i18n calendar_tags %}
+{% block title %}{% translate "国際会議場" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+<h1>{% translate "国際会議場" %}</h1>
+<p class="hint">{% translate "国どうしの公開の声明と、戦争・条約の出来事が載る場所です。誰でも読めます。" %}</p>
+
+<section class="panel" id="wars">
+  <h2>{% translate "戦争の状態" %}</h2>
+  <div class="table-scroll">
+  <table class="goods">
+    <thead><tr><th>{% translate "宣戦した国" %}</th><th>{% translate "された国" %}</th><th>{% translate "状態" %}</th><th>{% translate "布告" %}</th></tr></thead>
+    <tbody>
+    {% for w in wars %}
+      <tr>
+        <td><a href="{% url 'island_diplomacy' w.attacker.id %}">{{ w.attacker.name }}</a></td>
+        <td><a href="{% url 'island_diplomacy' w.defender.id %}">{{ w.defender.name }}</a></td>
+        <td>{{ w.state_name }}</td>
+        <td>{{ w.declared|turn_date }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="4" class="muted">{% translate "いま戦争をしている国はありません。" %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="panel" id="treaties">
+  <h2>{% translate "効いている条約" %}</h2>
+  <div class="table-scroll">
+  <table class="goods">
+    <thead><tr><th>{% translate "条約" %}</th><th>{% translate "当事国" %}</th><th>{% translate "条項" %}</th><th>{% translate "効いた時期" %}</th></tr></thead>
+    <tbody>
+    {% for t in treaties %}
+      <tr>
+        <td>{{ t.title }}{% if t.notice %} <small class="warning">{% blocktranslate with u=t.notice.until|turn_date %}（破棄の予告。{{ u }}に終わります）{% endblocktranslate %}</small>{% endif %}</td>
+        <td>{% for p in t.parties %}<a href="{% url 'island_diplomacy' p.id %}">{{ p.name }}</a>{% if not forloop.last %}・{% endif %}{% endfor %}</td>
+        <td>{% for c in t.clauses %}{{ c.name }}{% if not forloop.last %}・{% endif %}{% endfor %}</td>
+        <td>{{ t.start|turn_date }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="4" class="muted">{% translate "効いている条約はありません。" %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="panel" id="statements">
+  <h2>{% translate "声明と出来事" %}</h2>
+  {% for e in page %}
+    <article class="statement{% if e.type == 'event' %} event{% endif %}">
+      <p class="muted"><small>{{ e.turn|turn_date }}{% if e.type == "statement" %} ・ <a href="{% url 'island' e.island.id %}">{{ e.island.name }}</a>{% endif %}</small></p>
+      {% if e.type == "statement" %}<h3>{{ e.title }}</h3><p>{{ e.text|linebreaksbr }}</p>{% else %}<p>{{ e.text }}</p>{% endif %}
+    </article>
+  {% empty %}
+    <p class="muted">{% translate "まだ声明も出来事もありません。" %}</p>
+  {% endfor %}
+  {% include "board/pager.html" %}
+</section>
+
+{% if form %}
+<section class="panel" id="post">
+  <h2>{% translate "声明を出す" %}</h2>
+  <form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit" class="primary">{% translate "出す" %}</button></form>
+  <p class="hint">{% blocktranslate %}声明はすぐに載り、国際会議場を開いた人なら誰でも読めます。1つの島が 24 時間に出せるのは {{ limit }} 件までです。{% endblocktranslate %}</p>
+</section>
+{% endif %}
+{% endblock %}

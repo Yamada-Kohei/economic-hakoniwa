@@ -39,6 +39,7 @@ from typing import Any
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
+from hakoniwa_core.diplomacy import treaties as diplomacy_treaties
 from hakoniwa_core.economy import SUBSIDIES, Payer, books, entity_of, funds
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
@@ -472,6 +473,7 @@ class _Round:
             payer=gov_payer(),
             values={island.id: value, partner: received},
         )
+        diplomacy_treaties.note_payment(self.world, island.id, partner, currency, amount, self.turn)
         args = {"amount": amount, "currency": currency_label(self.world, currency)}
         island.log.append(LogEntry("aid_sent", {**args, "country": other.name}))
         other.log.append(LogEntry("aid_received", {**args, "country": island.name}))

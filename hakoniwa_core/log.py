@@ -40,6 +40,8 @@ _ARG_KINDS = {
     "before": "regimes",
     "building": "messages",
     "policy": "messages",
+    "clause": "messages",  # 条約の条項（フェーズ4-1。値は clause_<種類>）
+    "why": "messages",  # 条約を破ったわけ（値は why_<わけ>）
 }
 # マスを持たない施設（x, y が負）の場所の書き方: 文面のこの部分を、表示名 OFF_MAP_TO に置き換える
 OFF_MAP_FROM = "({x}, {y}) の"
@@ -122,6 +124,9 @@ def format_log(
     if isinstance(args.get("goods"), list):
         names = [defs.name("goods", g, lang) for g in args["goods"]]
         shown["goods"] = "・".join(names) or defs.name("messages", "none", lang)
+    if isinstance(args.get("clauses"), list):  # 条約の条項 [種類, ...]（フェーズ4-1）
+        names = [defs.name("messages", f"clause_{c}", lang) for c in args["clauses"]]
+        shown["clauses"] = "・".join(names)
     if isinstance(args.get("industries"), list):  # 重点産業（フェーズ3-4）
         names = [defs.name("industries", g, lang) for g in args["industries"]]
         shown["industries"] = "・".join(names) or defs.name("messages", "none", lang)

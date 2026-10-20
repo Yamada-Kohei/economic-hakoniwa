@@ -731,3 +731,89 @@ set_price_floor:                          # 値段の下限（混合経済だけ
     properties:
       good: {type: string}
       price: {type: integer, minimum: 0}  # 0 で下限をなくす
+
+# --- 外交（フェーズ4-1。hakoniwa_core/modules/diplomacy） ----------------------------------------
+# 宣戦布告・条約の命令は、実行のとき外交の段に回し、島の番号の順に決める。宣戦布告・停戦・講和は、
+# 現実の国が前もって公表しない命令ではないので、伏せない（MI-27）。民主主義は、宣戦と署名と破棄に
+# 議会の採決が要る（タブ 10 PL-14 の議会の要る命令に足す）。
+declare_war:                              # 宣戦布告（戦争は次のターンから）
+  admin_cost: 2
+  parliament: majority
+  payload:
+    type: object
+    required: [target]
+    additionalProperties: false
+    properties:
+      target: {type: integer, minimum: 1}  # 相手の島の番号
+      reason: {type: string, maxLength: 200}  # 布告の理由（国際会議場に載る）
+
+propose_treaty:                           # 条約の提案（相手が署名すると効く）
+  admin_cost: 1
+  payload:
+    type: object
+    required: [partner, clauses]
+    additionalProperties: false
+    properties:
+      partner: {type: integer, minimum: 1}   # 相手の島の番号
+      title: {type: string, maxLength: 40}   # 省くと条項の名前
+      text: {type: string, maxLength: 400}   # 前文
+      clauses:
+        type: array
+        minItems: 1
+        maxItems: 6
+        items:
+          type: object
+          required: [type]
+          additionalProperties: false
+          properties:
+            type: {enum: [ceasefire, peace, non_aggression, alliance]}
+            notice_turns: {type: integer, minimum: 1, maximum: 24}  # 破棄の予告のターン数
+            withdraw_turns: {type: integer, minimum: 0, maximum: 12}  # 講和: 部隊の引き揚げの期限
+            prisoners: {type: boolean}          # 講和: 捕虜を返す（既定 true）
+            reparations:                        # 講和: 賠償（ゲームは払わせず、期日までに届かなければ違反）
+              type: object
+              required: [payer, amount, due_turns]
+              additionalProperties: false
+              properties:
+                payer: {type: integer, minimum: 1}     # 払う国の島の番号
+                amount: {type: integer, minimum: 1}
+                currency: {type: integer, minimum: 1}  # どちらかの島の番号（省くと払う国の通貨）
+                due_turns: {type: integer, minimum: 1, maximum: 60}  # 効いてから何ターンのうちに
+
+sign_treaty:                              # 相手の出した条約に署名する
+  admin_cost: 1
+  parliament: majority
+  payload:
+    type: object
+    required: [treaty]
+    additionalProperties: false
+    properties:
+      treaty: {type: integer, minimum: 1}
+
+refuse_treaty:                            # 相手の出した条約を断る
+  admin_cost: 0
+  payload:
+    type: object
+    required: [treaty]
+    additionalProperties: false
+    properties:
+      treaty: {type: integer, minimum: 1}
+
+withdraw_treaty:                          # 自分の出した条約の提案を取り下げる
+  admin_cost: 0
+  payload:
+    type: object
+    required: [treaty]
+    additionalProperties: false
+    properties:
+      treaty: {type: integer, minimum: 1}
+
+denounce_treaty:                          # 効いている条約を予告つきで破棄する（予告のターンがたつと終わる）
+  admin_cost: 1
+  parliament: majority
+  payload:
+    type: object
+    required: [treaty]
+    additionalProperties: false
+    properties:
+      treaty: {type: integer, minimum: 1}

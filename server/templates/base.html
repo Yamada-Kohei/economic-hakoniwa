@@ -19,6 +19,7 @@
       {% endif %}
       <a href="{% url 'world' %}">{% translate "世界マップ" %}</a>
       <a href="{% url 'rankings' %}">{% translate "順位" %}</a>
+      <a href="{% url 'hall' %}">{% translate "国際会議場" %}</a>
       <a href="{% url 'board' %}">{% translate "掲示板" %}</a>
       <a href="{% url 'help' %}">{% translate "手引き" %}</a>
       {% if user.is_authenticated %}
