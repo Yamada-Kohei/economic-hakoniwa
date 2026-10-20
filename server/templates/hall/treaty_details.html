@@ -1,0 +1,10 @@
+{% load i18n calendar_tags %}
+<header class="diplomacy-card-heading">
+  <h3>{{ t.title }} <small class="muted">{% blocktranslate with id=t.id %}第 {{ id }} 号{% endblocktranslate %}</small></h3>
+  <span class="diplomacy-status{% if t.notice and t.state == 'in_force' %} status-notice{% endif %}">{% if t.notice and t.state == "in_force" %}{% translate "破棄の予告中" %}{% else %}{{ t.state_name }}{% endif %}</span>
+</header>
+<p class="diplomacy-parties">{% for p in t.parties %}<a href="{% url 'island_diplomacy' p.id %}">{{ p.name }}</a>{% if not forloop.last %} ・ {% endif %}{% endfor %}</p>
+{% if t.text %}<p class="diplomacy-preamble">{{ t.text|linebreaksbr }}</p>{% endif %}
+{% if t.state == "proposed" %}<p class="hint">{% blocktranslate with country=t.proposer.name date=t.created|turn_date %}{{ country }}が {{ date }}に提案{% endblocktranslate %}{% if proposal_turns %} ・ {% blocktranslate with date=t.created|add:proposal_turns|turn_date %}返事がなければ {{ date }}に流れます{% endblocktranslate %}{% endif %}</p>{% elif t.start is not None %}<p class="hint">{% blocktranslate with date=t.start|turn_date %}{{ date }}から有効{% endblocktranslate %}{% if t.end is not None %} ・ {% blocktranslate with date=t.end|turn_date %}{{ date }}に終了{% endblocktranslate %}{% endif %}</p>{% endif %}
+{% include "hall/treaty_clauses.html" %}
+{% if t.notice and t.state == "in_force" %}<p class="diplomacy-callout notice-warning">{% blocktranslate with by=t.notice.by.name date=t.notice.until|turn_date %}{{ by }}が破棄を予告。{{ date }}に終わります。それまでは条約が効いています。{% endblocktranslate %}</p>{% endif %}
