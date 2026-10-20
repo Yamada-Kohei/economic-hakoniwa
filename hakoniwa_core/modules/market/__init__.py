@@ -398,9 +398,10 @@ def hungry_food_orders(
         return []
     orders: list[tuple[str, int, int]] = []
     done, reserved = 0.0, 0
+    placed = dict.fromkeys(basket, 0)  # 財ごとに、前の段までに注文した量
     for upto in steps:
         portion = upto - done
-        done = upto
+        start, done = done, upto
         if portion <= 0:
             continue
         scale = upto ** (-1 / elasticity)
@@ -413,9 +414,19 @@ def hungry_food_orders(
         fit = min(portion, (budget - reserved) / cost) if cost > 0 else 0.0
         if fit <= 0:
             break
+        # 段の量は累積の量の差にする（段ごとに切り捨てると、人数の少ない層は小さい段が 0 になり、
+        # 要る量の半分ほどしか注文しないまま飢え続けた。試し遊び1回目の報告の 2）
+        reach = upto if fit >= portion else start + fit
         for good, qty in basket.items():
-            amount = round_money(qty * fit)
+            amount = round_money(qty * reach) - placed[good]
+            # 差にすると切り捨ての 1 単位が戻るので、食費の限りを超える分は削る
+            while (
+                amount > 0
+                and reserved + gross_cost(limits[good], amount, menu.rate, menu.tax) > budget
+            ):
+                amount -= 1
             if amount > 0:
+                placed[good] += amount
                 orders.append((good, amount, limits[good]))
                 reserved += gross_cost(limits[good], amount, menu.rate, menu.tax)
         if fit < portion:

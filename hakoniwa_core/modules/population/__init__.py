@@ -442,7 +442,10 @@ def food_short_reason(orders: dict[str, int] | None) -> str:
         return "goods"
     if orders["budget"] <= 0 or orders["cost"] >= orders["budget"] * 0.98:
         return "money"
-    if orders["offered"] >= orders["need"] and orders["ordered"] >= orders["need"]:
+    # 層の取り分（売りの量 × 人数の割合）と注文の量は切り捨てで数単位欠けるので、1% までは足りた
+    # とみなす（食べた割合 99.9% で「物がない」と出ていた。試し遊び1回目の報告の 2）
+    enough = orders["need"] * 0.99
+    if orders["offered"] >= enough and orders["ordered"] >= enough:
         return "outbid"
     return "goods"
 
