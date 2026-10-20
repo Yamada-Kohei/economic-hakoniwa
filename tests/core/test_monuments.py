@@ -210,6 +210,15 @@ def test_leader_statue_falls_when_the_country_becomes_a_democracy(game, world):
     assert any(e.kind == "monument_toppled" for e in island.log)
 
 
+def test_a_market_economy_state_does_not_run_a_monument_as_a_business(game, world):
+    island = world.islands[1]
+    island.regime["economy"] = "market"  # 国営の施設は独立採算が既定の体制
+    x, y = spot(island)
+    queue_orders(island, [("build", {"facility": "monument_monolith", "x": x, "y": y})])
+    game.engine.run_turn(world)
+    assert island.facility_at(x, y).accounting == "treasury"
+
+
 def test_monuments_stay_out_of_firms_and_cost_nothing_to_run(game, world):
     island = world.islands[1]
     x, y = spot(island)
@@ -218,4 +227,5 @@ def test_monuments_stay_out_of_firms_and_cost_nothing_to_run(game, world):
         game.engine.run_turn(world)
     f = island.facility_at(x, y)
     assert f is not None and f.built and f.workers == 0
-    assert f.owner == "state"
+    assert f.owner == "state" and f.accounting == "treasury"  # 売り上げがないので国庫の直轄
+    assert not any(e.kind.endswith("bankrupt") for e in island.log)

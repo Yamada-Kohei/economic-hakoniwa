@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from hakoniwa_core import monuments
+from hakoniwa_core import monuments, stock
 from hakoniwa_core.economy import experience
 from hakoniwa_core.registry import Registry, WorldStage
 from hakoniwa_core.state import IslandState, LogEntry, WorldState
@@ -77,6 +77,7 @@ def _topple_leader(island: IslandState, ctx: StageContext) -> None:
     if island.regime.get("politics", monuments.FREE_POLITICS) != monuments.FREE_POLITICS:
         return
     for f in [f for f in island.facilities if f.kind == LEADER_KIND]:
+        stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
         island.facilities.remove(f)
         args = {"facility": f.kind, "x": f.x, "y": f.y}
         island.log.append(LogEntry("monument_toppled", args))
