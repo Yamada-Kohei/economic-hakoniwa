@@ -1,0 +1,12 @@
+{% load i18n calendar_tags %}
+<ul class="diplomacy-wars">
+  {% for w in wars %}
+  <li class="diplomacy-war war-{{ w.state }}">
+    <span class="diplomacy-status status-{{ w.state }}">{{ w.state_name }}</span>
+    <p class="diplomacy-parties"><a href="{% url 'island_diplomacy' w.attacker.id %}">{{ w.attacker.name }}</a> <span class="muted">{% translate "→" %}</span> <a href="{% url 'island_diplomacy' w.defender.id %}">{{ w.defender.name }}</a></p>
+    <p class="hint">{% blocktranslate with date=w.declared|turn_date %}{{ date }}に宣戦布告{% endblocktranslate %}{% if w.state == "declared" %} ・ {% blocktranslate with date=w.start|turn_date %}{{ date }}から戦争{% endblocktranslate %}{% elif w.state == "ceasefire" %} ・ {% translate "戦争は終わっていません。" %}{% if w.ceasefire %} <a href="#treaty-{{ w.ceasefire }}">{% translate "停戦の条約を確認" %}</a>{% endif %}{% endif %}</p>
+  </li>
+  {% empty %}
+  <li class="diplomacy-empty">{% translate "戦争も停戦もありません。" %}</li>
+  {% endfor %}
+</ul>

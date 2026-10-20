@@ -1,0 +1,23 @@
+{% load i18n calendar_tags %}
+<ul class="diplomacy-clauses">
+  {% for c in t.clauses %}
+  <li>
+    <strong>{{ c.name }}</strong>
+    {% if c.notice_turns %}<span class="hint">{% blocktranslate with n=c.notice_turns %}（破棄の予告から {{ n }} ターン）{% endblocktranslate %}</span>{% endif %}
+    {% if c.detail %}<p class="hint">{{ c.detail }}</p>{% endif %}
+    {% if c.type == "peace" %}
+    <p class="hint">{% blocktranslate with n=c.withdraw_turns %}引き揚げの期限: {{ n }} ターン{% endblocktranslate %} ・ {% if c.prisoners %}{% translate "捕虜を返す" %}{% else %}{% translate "捕虜を返さない" %}{% endif %}</p>
+    {% endif %}
+    {% if c.reparations %}
+    {% with r=c.reparations %}
+    <dl class="diplomacy-terms reparations">
+      <dt>{% translate "賠償" %}</dt><dd><a href="{% url 'island_diplomacy' r.payer.id %}">{{ r.payer.name }}</a> → <a href="{% url 'island_diplomacy' r.payee.id %}">{{ r.payee.name }}</a></dd>
+      <dt>{% translate "額・通貨" %}</dt><dd>{{ r.amount|floatformat:"0g" }}（{% blocktranslate with country=r.currency.name %}{{ country }}の通貨の最小単位{% endblocktranslate %}）</dd>
+      <dt>{% translate "支払済額" %}</dt><dd>{{ r.paid|floatformat:"0g" }} / {{ r.amount|floatformat:"0g" }}{% if r.state == "paid" %} <strong>{% translate "支払済み" %}</strong>{% elif r.state == "defaulted" %} <strong class="error">{% translate "期日超過・違反" %}</strong>{% endif %}</dd>
+      <dt>{% translate "期日" %}</dt><dd>{% if r.due is not None %}{{ r.due|turn_date }}{% else %}{% blocktranslate with n=r.due_turns %}効いてから {{ n }} ターン以内{% endblocktranslate %}{% endif %}</dd>
+    </dl>
+    {% endwith %}
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>

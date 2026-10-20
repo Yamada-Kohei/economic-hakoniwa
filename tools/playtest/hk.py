@@ -9,6 +9,9 @@
     python tools/playtest/hk.py get api/islands/4/economy
     python tools/playtest/hk.py map 4
     python tools/playtest/hk.py send 5 'ごあいさつ' 'はじめまして'
+    python tools/playtest/hk.py hall                              # 国際会議場
+    python tools/playtest/hk.py hall-post 'ごあいさつ' '各国に平和を。'
+    python tools/playtest/hk.py diplomacy                         # 自分の国の外交
     python tools/playtest/hk.py mcp                                       # MCP の stdio のつなぎ
 
 AI 用の鍵（アカウントの画面 /accounts/keys/ で作る）は HK_KEY か、`key` で覚えさせたファイル
@@ -53,7 +56,7 @@ def fix_path(path: str) -> str:
     ものは、/api/ や /islands/ から後ろを使う。"""
     if re.match(r"^[A-Za-z]:[/\\]", path):
         found = re.search(
-            r"/(api|islands|letters|board|accounts|help)(/|$)", path.replace("\\", "/")
+            r"/(api|islands|letters|board|hall|accounts|help)(/|$)", path.replace("\\", "/")
         )
         if found:
             return path.replace("\\", "/")[found.start() :]
@@ -316,7 +319,7 @@ def cmd_advance(c: Client, a) -> int:
     return 0
 
 
-# --- 手紙と掲示板 --------------------------------------------------------------
+# --- 手紙・掲示板・国際会議場・外交 ----------------------------------------------
 # 出力は人が読める短い形にする。--json を付けると API の JSON をそのまま出す。
 
 
@@ -473,6 +476,139 @@ def cmd_new_thread(c: Client, a) -> int:
         return fail(status, body)
     t = json.loads(body)["thread"]
     print(f"スレッドを立てました: #{t['id']} {t['title']}")
+    return 0
+
+
+def print_wars(wars: list[dict]) -> None:
+    for w in wars:
+        print(
+            f"  戦争 #{w['id']} {island_label(w['attacker'])} → {island_label(w['defender'])}"
+            f": {w['state_name']}（布告 ターン {w['declared']}、開戦 ターン {w['start']}）"
+        )
+        if w.get("ended") is not None:
+            print(f"    終結 ターン {w['ended']}")
+    if not wars:
+        print("  （ありません）")
+
+
+def print_treaties(treaties: list[dict]) -> None:
+    for t in treaties:
+        parties = "・".join(island_label(p) for p in t["parties"])
+        print(f"  条約 #{t['id']} {t['title']} [{t['state_name']}] {parties}")
+        print(f"    提案: {island_label(t['proposer'])}・ターン {t['created']}")
+        if t.get("start") is not None:
+            print(f"    効き始め ターン {t['start']}")
+        if t.get("end") is not None:
+            print(f"    終了 ターン {t['end']}")
+        if t.get("text"):
+            print(t["text"])
+        for clause in t["clauses"]:
+            details = []
+            if "notice_turns" in clause:
+                details.append(f"破棄の予告 {clause['notice_turns']} ターン")
+            if "withdraw_turns" in clause:
+                details.append(f"引き揚げ {clause['withdraw_turns']} ターン以内")
+            if "prisoners" in clause:
+                details.append("捕虜を返す" if clause["prisoners"] else "捕虜の返還なし")
+            print(f"    {clause['name']}" + (f"（{'、'.join(details)}）" if details else ""))
+            rep = clause.get("reparations")
+            if rep:
+                due = (
+                    f"ターン {rep['due']}"
+                    if rep["due"] is not None
+                    else f"効き始めから {rep['due_turns']} ターン以内"
+                )
+                print(
+                    f"      賠償: {island_label(rep['payer'])} → {island_label(rep['payee'])}、"
+                    f"{island_label(rep['currency'])}の通貨で {rep['amount']}"
+                    f"（送付済み {rep['paid']}、額は通貨の最小単位）、期日 {due} [{rep['state']}]"
+                )
+        notice = t.get("notice")
+        if notice:
+            print(
+                f"    破棄の予告: {island_label(notice['by'])}・ターン {notice['turn']}、"
+                f"終了予定 ターン {notice['until']}"
+            )
+        for v in t.get("violations", []):
+            print(
+                f"    違反: ターン {v['turn']} {island_label(v['by'])}"
+                f"・{v['clause']}・{v['reason']}"
+            )
+    if not treaties:
+        print("  （ありません）")
+
+
+def cmd_hall(c: Client, a) -> int:
+    status, body, _ = c.get(f"/api/hall?page={a.page}")
+    if a.json or status >= 400:
+        return show(status, body) if a.json else fail(status, body)
+    data = json.loads(body)
+    print(
+        f"国際会議場（ターン {data['turn']}、{data['page']}/{data['pages']} ページ、"
+        f"声明と出来事 {data['count']} 件）"
+    )
+    print("[戦争の状態]")
+    print_wars(data["wars"])
+    print("[効いている条約]")
+    print_treaties(data["treaties"])
+    print("[声明と出来事]")
+    for entry in data["entries"]:
+        if entry["type"] == "statement":
+            print(
+                f"--- 声明 #{entry['id']} ターン {entry['turn']} {when(entry['posted_at'])}"
+                f" {island_label(entry['island'])}: {entry['title']}"
+            )
+        else:
+            print(f"--- 出来事 ターン {entry['turn']}")
+        print(entry["text"])
+    if not data["entries"]:
+        print("  （声明と出来事はありません）")
+    return 0
+
+
+def cmd_hall_post(c: Client, a) -> int:
+    text = read_text(a.body, a.file)
+    c.get("/")  # csrf の cookie
+    status, body = c.json("POST", "/api/hall", {"title": a.title, "body": text})
+    if a.json or status >= 400:
+        return show(status, body) if a.json else fail(status, body)
+    entry = json.loads(body)
+    print(
+        f"声明を出しました: #{entry['id']} {island_label(entry['island'])}: {entry['title']}"
+        f"（ターン {entry['turn']}）"
+    )
+    return 0
+
+
+def cmd_diplomacy(c: Client, a) -> int:
+    island = a.island or own_island(c)
+    status, body, _ = c.get(f"/api/islands/{island}/diplomacy")
+    if a.json or status >= 400:
+        return show(status, body) if a.json else fail(status, body)
+    data = json.loads(body)
+    print(f"島 {island} の外交（ターン {data['turn']}）")
+    print("[戦争の状態]")
+    print_wars(data["wars"])
+    for key, label in (
+        ("treaties", "効いている条約"),
+        ("incoming", "届いた提案（返事待ち）"),
+        ("outgoing", "出した提案（返事待ち）"),
+        ("closed", "終わった条約と提案"),
+    ):
+        if key in data:
+            print(f"[{label}]")
+            print_treaties(data[key])
+    print("[終わった戦争]")
+    print_wars(data["past_wars"])
+    print("[条約の違反の記録]")
+    for v in data["violations"]:
+        print(
+            f"  ターン {v['turn']} 条約 #{v['treaty']} {v['treaty_title']}"
+            f"・{v['clause_name']}: {v['reason_name']}"
+        )
+    if not data["violations"]:
+        print("  （ありません）")
+    print("決まりと命令の選択肢を含む全項目は --json で読めます。")
     return 0
 
 
@@ -940,6 +1076,19 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("title", help="題名")
     add_text(s)
     s.set_defaults(func=cmd_new_thread)
+
+    s = sub.add_parser("hall", parents=[raw], help="国際会議場の戦争・条約・声明と出来事")
+    s.add_argument("--page", type=int, default=1)
+    s.set_defaults(func=cmd_hall)
+
+    s = sub.add_parser("hall-post", parents=[raw], help="国際会議場に公開の声明を出す")
+    s.add_argument("title", help="題名")
+    add_text(s)
+    s.set_defaults(func=cmd_hall_post)
+
+    s = sub.add_parser("diplomacy", parents=[raw], help="外交の状態（島を省くと自分の島）")
+    s.add_argument("island", nargs="?", type=int)
+    s.set_defaults(func=cmd_diplomacy)
 
     s = sub.add_parser("key", help="AI 用の鍵を覚えさせる（引数か標準入力。--forget で消す）")
     s.add_argument("value", nargs="?", help="鍵（省くと標準入力から読む）")

@@ -1,0 +1,63 @@
+/* 外交と国際会議場。政治・貿易と同じ青の見出しと罫線を使う。 */
+.diplomacy-page { overflow-wrap: anywhere; }
+.diplomacy-page .report-main { min-width: 0; }
+.diplomacy-links { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 12px 0; font-size: 0.9em; }
+.diplomacy-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 12px 0; }
+.diplomacy-summary > div { background: var(--panel); border: 1px solid var(--border); border-top: 3px solid var(--accent); padding: 8px 12px; }
+.diplomacy-summary dt { font-size: 0.85em; }
+.diplomacy-summary dd { margin: 4px 0 0; font-size: 1.5em; font-weight: bold; }
+.diplomacy-summary small { font-size: 0.6em; font-weight: normal; }
+.diplomacy-wars, .diplomacy-records { list-style: none; padding: 0; margin: 0; }
+.diplomacy-war { padding: 10px 12px; background: var(--pale); border: 1px solid var(--rule); border-left: 4px solid var(--accent); margin: 8px 0; }
+.diplomacy-war.war-war { border-left-color: #a42a30; }
+.diplomacy-war.war-declared { border-left-color: #946000; }
+.diplomacy-war.war-ceasefire { border-left-color: #2d6b46; }
+.diplomacy-status { display: inline-block; background: var(--head); color: var(--navy); border: 1px solid var(--border); padding: 2px 7px; font-size: 0.8em; font-weight: bold; }
+.diplomacy-status.status-war, .diplomacy-status.status-violation { background: #fff0f1; color: #92222a; border-color: #d9a1a5; }
+.diplomacy-status.status-declared, .diplomacy-status.status-notice { background: #fff5db; color: #785000; border-color: #d0b86c; }
+.diplomacy-status.status-ceasefire { background: #edf7ee; color: #245737; border-color: #8cb99a; }
+.diplomacy-status.status-event { background: var(--pale); }
+.diplomacy-parties { margin: 8px 0; font-weight: bold; }
+.diplomacy-empty { margin: 8px 0; padding: 12px; background: var(--pale); border: 1px dashed var(--rule); color: #4f62a0; }
+.diplomacy-card { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--rule); }
+.diplomacy-card-heading, .hall-entry-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; }
+.diplomacy-card-heading h3 { border: 0; margin: 0; flex: 1 1 180px; }
+.diplomacy-card-heading h3 small { font-size: 0.75em; font-weight: normal; }
+.diplomacy-preamble { background: var(--pale); padding: 8px; font-size: 0.9em; }
+.diplomacy-clauses { padding-left: 1.2em; margin: 8px 0; }
+.diplomacy-clauses > li { margin: 6px 0; }
+.diplomacy-clauses p { margin: 4px 0; }
+.diplomacy-terms { display: grid; grid-template-columns: 6em minmax(0, 1fr); margin: 8px 0; font-size: 0.9em; border-top: 1px solid var(--rule); }
+.diplomacy-terms dt, .diplomacy-terms dd { margin: 0; padding: 5px 6px; border-bottom: 1px solid var(--rule); }
+.diplomacy-terms dt { background: var(--pale); }
+.diplomacy-callout { font-size: 0.9em; padding: 8px 10px; border-left: 3px solid var(--accent); background: var(--pale); }
+.diplomacy-callout.notice-warning { color: #785000; border-color: #946000; background: #fff5db; }
+.diplomacy-buttons { display: flex; flex-wrap: wrap; gap: 4px 8px; border-top: 1px solid var(--rule); margin-top: 8px; padding-top: 6px; }
+.diplomacy-buttons .actions { border: 0; margin: 0; padding: 0; }
+.diplomacy-compose, .diplomacy-history { margin-top: 12px; }
+.diplomacy-compose summary, .diplomacy-history summary { cursor: pointer; font-weight: bold; padding: 6px 0; }
+.diplomacy-form label, .diplomacy-field { display: block; margin: 10px 0; }
+.diplomacy-form label > input:not([type="checkbox"]), .diplomacy-form label > select, .diplomacy-field input, .diplomacy-field textarea { display: block; width: 100%; margin-top: 4px; min-height: 34px; padding: 4px 6px; }
+.diplomacy-form fieldset { min-width: 0; margin: 14px 0; border: 1px solid var(--rule); padding: 8px 12px; }
+.diplomacy-form legend { font-weight: bold; font-size: 0.95em; padding: 0 4px; }
+.diplomacy-clause-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.diplomacy-clause-picker label { margin: 0; padding: 6px; background: var(--pale); }
+.diplomacy-clause-picker small { display: block; margin: 4px 0 0 22px; color: #4f62a0; }
+.diplomacy-form fieldset:disabled { opacity: 0.55; }
+.diplomacy-page .order-notice:empty { display: none; }
+.diplomacy-page .order-notice { font-size: 0.9em; padding: 8px; border: 1px solid var(--rule); background: var(--pale); }
+.diplomacy-records > li:not(.diplomacy-empty) { padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.diplomacy-records p { margin: 6px 0 0; }
+.hall-treaties { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 10px; }
+.hall-treaties .diplomacy-card { margin: 0; }
+.hall-timeline .statement { border-left: 3px solid var(--accent); border-bottom: 1px solid var(--rule); padding: 12px; margin: 12px 0; }
+.hall-timeline .statement.event { border-left-color: var(--border); background: var(--pale); }
+.hall-entry-heading { justify-content: flex-start; font-size: 0.9em; }
+.hall-timeline .statement p { margin: 8px 0 0; }
+.diplomacy-page .errorlist { color: #92222a; padding-left: 1.2em; }
+@media (max-width: 540px) {
+  .diplomacy-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .diplomacy-clause-picker { grid-template-columns: 1fr; }
+  .diplomacy-form fieldset { padding: 6px 8px; }
+  .diplomacy-card { padding: 8px; }
+}
