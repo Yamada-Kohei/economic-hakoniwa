@@ -1,7 +1,9 @@
 import random
 
 from django.contrib import admin, messages
+from django.db.models import OuterRef, Subquery
 
+from server.orders.models import Order
 from server.turns.services import TurnError, run_turn
 from server.world import models as m
 from server.world.services import create_sample_island, get_or_create_world
@@ -70,8 +72,87 @@ class TileInline(admin.TabularInline):
 
 @admin.register(m.Island)
 class IslandAdmin(admin.ModelAdmin):
-    list_display = ["name", "owner", "wx", "wy", "inactive", "created_at"]
+    """島の管理。放置された国（命令が途絶えた国）は自動で消さず、ここの「命令が途絶えたターン数」と
+    「最後のログイン」を見て、休止中にする・無人の島にする（持ち主を外す）を管理者が選ぶ。"""
+
+    list_display = [
+        "name",
+        "owner",
+        "wx",
+        "wy",
+        "inactive",
+        "idle_turns",
+        "last_login",
+        "created_at",
+    ]
+    list_filter = ["inactive"]
     search_fields = ["name"]
+    actions = ["make_inactive", "make_active", "release_owner"]
+
+    def get_queryset(self, request):
+        # 命令を最後に実行したターン（実行済みの命令がなければ空）
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("owner", "world")
+            .annotate(
+                last_order_turn=Subquery(
+                    Order.objects.filter(island=OuterRef("pk"), executed_turn__isnull=False)
+                    .order_by("-executed_turn")
+                    .values("executed_turn")[:1]
+                )
+            )
+        )
+
+    @admin.display(description="命令が途絶えたターン数", ordering="last_order_turn")
+    def idle_turns(self, obj) -> int:
+        """最後に命令を実行したターン（なければ建国のターン）から、いまのターンまで。"""
+        since = obj.last_order_turn or (obj.ext or {}).get("founded_turn") or 0
+        return max(0, obj.world.turn - since)
+
+    @admin.display(description="最後のログイン", ordering="owner__last_login")
+    def last_login(self, obj):
+        return obj.owner.last_login if obj.owner else None
+
+    @admin.action(
+        description="選んだ島を休止中にする（条約や戦争は残り、休止中の島とは停戦も講和も結べない）"
+    )
+    def make_inactive(self, request, queryset):
+        at_war = self._at_war(queryset)
+        n = queryset.update(inactive=True)
+        self.message_user(request, f"{n} 島を休止中にしました")
+        if at_war:
+            self.message_user(
+                request,
+                f"戦争中・停戦中の島が含まれています（{'・'.join(at_war)}）。休止中の島とは"
+                "停戦も講和も結べないので、戦争が終わらなくなります。休止を解くと結べます",
+                messages.WARNING,
+            )
+
+    @staticmethod
+    def _at_war(queryset) -> list[str]:
+        """戦争中・停戦中の島の名前（休止にする前の確かめ）。"""
+        names = []
+        for island in queryset.select_related("world"):
+            wars = ((island.world.ext or {}).get("diplomacy") or {}).get("wars", [])
+            for w in wars:
+                if w.get("state") in ("war", "ceasefire") and island.id in (
+                    w.get("attacker"),
+                    w.get("defender"),
+                ):
+                    names.append(island.name)
+                    break
+        return names
+
+    @admin.action(description="選んだ島の休止を解く")
+    def make_active(self, request, queryset):
+        n = queryset.update(inactive=False)
+        self.message_user(request, f"{n} 島の休止を解きました")
+
+    @admin.action(description="選んだ島を無人の島にする（持ち主を外す。島は残る）")
+    def release_owner(self, request, queryset):
+        n = queryset.exclude(owner=None).update(owner=None)
+        self.message_user(request, f"{n} 島の持ち主を外しました")
 
     def get_fields(self, request, obj=None):
         if obj is None:

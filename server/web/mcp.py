@@ -187,6 +187,8 @@ REPORTS = {
     "politics": "政治（体制・政情・支持率・議席・選挙。持ち主には政情の内訳と命令の選択肢）",
     "diplomacy": "外交（戦争の状態・効いている条約・終わった条約・条約の違反の記録。持ち主には"
     "返事待ちの条約の提案と、宣戦・条約の命令の選択肢。経済の条項は terms に中身が出る）",
+    "country": "国の公開ページ（国旗・元首・体制・通貨・人口・紹介文・年表・来訪者の一言。日付は"
+    "その国の選んだ紀年。年表は timeline_text で wiki にそのまま貼れる文でも読める）",
     "plan": "計画と値段の規制（計画経済・混合経済の島）",
     "chain": "産業の鎖（自分の島だけ。品目ごとの作った量・使った量と、止まっている工場のわけ）",
     "orders": "命令の列・行政力・今の政策（税・予算・金融）・最近の命令の結果",
@@ -313,6 +315,29 @@ def _hall_post(request, args):
     return call_ok(
         request, "POST", "/api/hall", body={"title": args["title"], "body": args["body"]}
     )
+
+
+def _country_set(request, args):
+    island = _own_island(request).id
+    body = {k: args[k] for k in ("intro", "era", "new_era") if k in args}
+    if not body:
+        raise ToolError("intro・era・new_era のどれかを指定してください")
+    return call_ok(request, "PUT", f"/api/islands/{island}/country/edit", body=body)
+
+
+def _flag_set(request, args):
+    island = _own_island(request).id
+    path = f"/api/islands/{island}/flag"
+    if args.get("clear"):
+        return call_ok(request, "DELETE", path)
+    if not args.get("png_base64"):
+        raise ToolError("png_base64（PNG を base64 にした文字）か clear=true を指定してください")
+    return call_ok(request, "PUT", path, body={"png_base64": args["png_base64"]})
+
+
+def _country_note(request, args):
+    path = f"/api/islands/{int(args['island'])}/country/notes"
+    return call_ok(request, "POST", path, body={"text": args["text"]})
 
 
 def _board(request, args):
@@ -790,6 +815,50 @@ TOOLS = [
         read_only=False,
     ),
     Tool(
+        "country_set",
+        "国の紹介文と紀年を書く",
+        "自分の国の公開ページに載る紹介文（600 字まで）と、紀年（era: "
+        "{kind: world|founding|regnal, "
+        "name: 元号。元号に切り替えるときだけ}。世界の暦のまま・建国紀元・元号）を書き換える。"
+        "new_era に元号の名前を渡すと、今のターンから改元する。紀年は表示だけで、ゲームの暦は"
+        "変わらない。"
+        "読むのは report page=country。",
+        _country_set,
+        {
+            "intro": {"type": "string", "description": "紹介文（600 字まで。空にすると消える）"},
+            "era": {"type": "object", "description": "{kind, name?}"},
+            "new_era": {"type": "string", "description": "改元する新しい元号（8 字まで）"},
+        },
+        read_only=False,
+    ),
+    Tool(
+        "flag_set",
+        "国旗を上げる",
+        "自分の国の国旗の PNG を上げる（png_base64。縦横 16〜512 ピクセル・100 KB まで・"
+        "インターレースなし。管理者が不適切と判断すると、仮の旗に戻る）。clear=true で外して"
+        "仮の旗に戻す。",
+        _flag_set,
+        {
+            "png_base64": {"type": "string", "description": "PNG を base64 にした文字"},
+            "clear": {"type": "boolean"},
+        },
+        read_only=False,
+    ),
+    Tool(
+        "country_note",
+        "他国のページに一言を残す",
+        "ほかの国の公開ページに一言（80 字まで。誰でも読める）を残す（1つの国が 24 時間に残せる数に"
+        "は"
+        "上限がある）。",
+        _country_note,
+        {
+            "island": {"type": "integer", "description": "残す先の国の番号"},
+            "text": {"type": "string"},
+        },
+        ("island", "text"),
+        read_only=False,
+    ),
+    Tool(
         "board",
         "掲示板",
         "掲示板（誰でも読める）のスレッドの一覧。",
@@ -883,6 +952,7 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "island_politics": ("report",),
     "island_plan": ("report",),
     "island_diplomacy": ("report",),
+    "island_country": ("report", "country_set", "flag_set", "country_note"),
     "hall": ("hall", "hall_post"),
     "board": ("board",),
     "board_new": ("board_new_thread",),
@@ -893,7 +963,8 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "letter": ("read_letter",),
 }
 # AI の入り口が要らない画面（アカウントの画面。鍵は人が画面で作って AI に渡す）
-NOT_FOR_AI = {"signup", "login", "logout", "api_keys"}
+# 国旗の画像（island_flag）も要らない（report page=country の flag に大きさと仮の旗かどうかがある）
+NOT_FOR_AI = {"signup", "login", "logout", "api_keys", "island_flag"}
 
 
 # --- 文にする ---------------------------------------------------------------------------

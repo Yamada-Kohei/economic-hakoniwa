@@ -26,7 +26,7 @@ from server.hall import services as hall
 from server.letters import services as letters
 from server.orders.models import Order
 from server.turns.models import TurnLog
-from server.web import diplomacy, display, rankings, reports
+from server.web import country, diplomacy, display, rankings, reports
 from server.web import politics as politics_views
 from server.world import models as m
 from server.world.repository import facility_from_row
@@ -497,6 +497,7 @@ def summary(island: m.Island, mine: bool) -> dict[str, Any]:
         "indicators": indicators(stats, before, currency),
         "politics": politics,
         "diplomacy": diplomacy.brief(island, mine),
+        "country": country.brief(island, mine),
         "strengths": rankings.island_strengths(island, latest),
         "facilities": facilities,
         "goods": goods,
@@ -607,6 +608,13 @@ def changes(island: m.Island, since: int, mine: bool, secret_orders: Any) -> dic
     }
     data["hall"] = hall.entries_since(world, since)[-LOG_TURNS_MAX:]  # 国際会議場（誰にでも）
     if mine:
+        visitors = island.visitor_notes.filter(hidden=False, turn__gt=since).select_related(
+            "visitor"
+        )
+        data["visitor_notes"] = [
+            {"from": {"id": n.visitor_id, "name": n.visitor.name}, "text": n.text, "turn": n.turn}
+            for n in visitors.order_by("id")[:50]
+        ]
         received = letters.inbox(island).filter(turn__gt=since)
         data["letters"] = [
             {

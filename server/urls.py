@@ -10,5 +10,6 @@ urlpatterns = [
     path("api/", include("server.board.api_urls")),
     path("api/", include("server.letters.api_urls")),
     path("api/", include("server.hall.api_urls")),
+    path("api/", include("server.country.api_urls")),
     path("", include("server.web.urls")),
 ]

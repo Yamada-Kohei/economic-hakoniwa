@@ -10,6 +10,7 @@
   <a href="{% url 'island_fx' island.id %}"{% if page == "fx" %} aria-current="page"{% endif %}>{% translate "為替" %}</a>
   <a href="{% url 'island_politics' island.id %}"{% if page == "politics" %} aria-current="page"{% endif %}>{% translate "政治" %}</a>
   <a href="{% url 'island_diplomacy' island.id %}"{% if page == "diplomacy" %} aria-current="page"{% endif %}>{% translate "外交の状態" %}</a>
+  <a href="{% url 'island_country' island.id %}"{% if page == "country" %} aria-current="page"{% endif %}>{% translate "国の紹介" %}</a>
   {% if plan_label %}<a href="{% url 'island_plan' island.id %}"{% if page == "plan" %} aria-current="page"{% endif %}>{{ plan_label }}</a>{% endif %}
   <a href="{% url 'turn_log' island.id %}"{% if page == "log" %} aria-current="page"{% endif %}>{% translate "ターンログ" %}</a>
 </nav>
