@@ -60,3 +60,9 @@ review_official_prices: 公定価格の改定
 set_official_price_rules: 公定価格の決まりの変更
 set_priority_industries: 重点産業の変更
 set_price_floor: 値段の下限の変更
+declare_war: 宣戦布告
+propose_treaty: 条約の提案
+sign_treaty: 条約への署名
+refuse_treaty: 条約を断る
+withdraw_treaty: 条約の提案の取り下げ
+denounce_treaty: 条約の破棄

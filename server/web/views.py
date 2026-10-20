@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from django.conf import settings as django_settings
 from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, render
 
@@ -10,7 +11,17 @@ from hakoniwa_core.trade import contracts, tradable_goods
 from server.accounts import keys
 from server.game import get_game
 from server.turns.models import TurnLog
-from server.web import chain, counter, display, founding, overview, rankings, reports, trade
+from server.web import (
+    chain,
+    counter,
+    diplomacy,
+    display,
+    founding,
+    overview,
+    rankings,
+    reports,
+    trade,
+)
 from server.web import politics as politics_views
 from server.web import top as top_page
 from server.world.models import Island, World
@@ -273,6 +284,14 @@ def politics_page(request, island_id: int):
     return render(request, "web/politics.html", context)
 
 
+def diplomacy_page(request, island_id: int):
+    """外交（フェーズ4-1）: 戦争の状態・効いている条約・条約の違反の記録と、終わった条約。持ち主には
+    返事待ちの条約の提案と、宣戦・条約・署名・断り・取り下げ・破棄の命令の入力欄も。"""
+    island, context, _ = _report(request, island_id, "diplomacy", "外交")
+    context["diplomacy"] = diplomacy.diplomacy_data(island, context["mine"])
+    return render(request, "web/diplomacy.html", context)
+
+
 def plan_page(request, island_id: int):
     """計画（フェーズ3-4）: 計画経済の公定価格・生産目標と達成率・重点産業・財ごとの行列と、混合
     経済の値段の上限と下限。持ち主には命令の入力欄も。"""
@@ -406,6 +425,7 @@ def help_page(request):
                 if defs.unit_name(g)
             ],
             "trade": _trade_help(game),
+            "diplomacy": _diplomacy_help(game),
             **_per_person_help(game),
             **_goods_help(game),
         },
@@ -444,6 +464,17 @@ def _goods_help(game) -> dict:
             "share": percent(config.get("records.shortage.share")),
             "turns": config.get("records.shortage.turns"),
         },
+    }
+
+
+def _diplomacy_help(game) -> dict:
+    """手引きの「外交と条約」に出す数（game.yaml の diplomacy）。"""
+    config = game.config
+    return {
+        **{k: config.get(f"diplomacy.{k}") for k in diplomacy.RULES},
+        "violation_premium": f"{config.get('diplomacy.violation_premium') * 100:g}",
+        "violation_premium_max": f"{config.get('diplomacy.violation_premium_max') * 100:g}",
+        "hall_per_day": django_settings.HAKONIWA_HALL_PER_DAY,
     }
 
 
