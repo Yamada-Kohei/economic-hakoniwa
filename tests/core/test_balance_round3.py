@@ -35,8 +35,9 @@ from tests.core.test_finance import game as game  # noqa: F401  （試験の部�
 from tests.core.test_finance import warmed as warmed  # noqa: F401
 
 
-def _private(island, workers=True):
-    """動いている民営の施設（差し押さえ中・閉鎖の途中でなく、まだ未払いのないもの）。"""
+def _private(island, workers=True, profitable=False):
+    """動いている民営の施設（差し押さえ中・閉鎖の途中でなく、まだ未払いのないもの）。profitable なら
+    黒字のものだけ（赤字や売れ残りの施設は、未払いとは別に人を減らすため）。"""
     return next(
         f
         for f in sorted(island.facilities, key=lambda f: f.id)
@@ -47,6 +48,10 @@ def _private(island, workers=True):
         and "foreclosed" not in f.economy
         and "closing" not in f.economy
         and f.kind not in ("bank", "services")  # 商業・サービス業は倒産しない（回4）
+        and (
+            not profitable
+            or (f.economy.get("loss_streak", 0) == 0 and f.economy.get("ebitda", [0])[-1] > 0)
+        )
     )
 
 
@@ -194,10 +199,14 @@ def test_hungry_bids_stay_within_the_food_budget(game):
 
 def test_unpaid_wages_stay_owed_and_are_paid_first_when_money_comes(game, warmed):
     """お金のない施設の働き手はすぐには辞めず、払われなかった賃金は未払い（施設の負債）として残る。
-    お金が入ると、新しく雇う前に未払いを先に払う。"""
+    お金が入ると、新しく雇う前に未払いを先に払う。
+
+    売れ残りで操業を絞っている施設は、未払いとは別に人を減らすので、黒字の施設で見る（値幅を
+    なくした後の世界の流れでは、最初の民営の施設が穀物の売れ残った農場になり、操業目標で人を
+    減らした）。"""
     world = copy.deepcopy(warmed)
     island = island_of(world, "market")
-    f = _private(island)
+    f = _private(island, profitable=True)
     entity = facility_entity(f.id)
     staff = f.workers
     owners = household(OWNERS)

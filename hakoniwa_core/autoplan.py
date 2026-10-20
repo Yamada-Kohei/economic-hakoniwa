@@ -13,6 +13,9 @@
 4. 投入財の作る量が使う量に届かなければ、それを作る施設。島で作っている投入財と工事の資材は、
    前のターンの市場で売りに出た量が買いたい量に届かず、値段が初めの PRICE_HIGH 倍を超えていても
    建てる（工事の資材の使う量は作る量と使う量の流れに数えないため。フェーズ3-2）
+4'. 海外の商人が値段を上げ始めたら（来なくなる foreign_merchant.last_turns ターン前から）、前の
+   ターンに商人から買った物のうち島で作っていない物を作る施設（投入財が島で作られている作り方だけ。
+   投入財も商人から買っていれば、その投入財を作る施設が先に建つ）
 5. 消費財（衣料・消費財・嗜好品）の生産が住民1人あたりの目安（household.targets）に届かないか、
    前のターンの市場で売りに出た量が買いたい量に届かなければ、それを作る施設（加工食品・肉・自動車・
    燃料も、売りに出た量が買いたい量に届かなければ作る施設）。必需品、ぜいたく品、自動車、燃料の順
@@ -93,6 +96,7 @@ from hakoniwa_core.economy import arrears, equipment, needs, services
 from hakoniwa_core.economy.prices import initial_prices, unit_cost
 from hakoniwa_core.geo import components, distance, shortest_path, within
 from hakoniwa_core.modules.firms import private_allowed
+from hakoniwa_core.modules.market import MERCHANT
 from hakoniwa_core.state import (
     ORDER_PENDING,
     OWNER_PRIVATE,
@@ -105,6 +109,7 @@ from hakoniwa_core.state import (
     WorldState,
 )
 from hakoniwa_core.trade import blocs as trade_blocs
+from hakoniwa_core.trade import merchant as trade_merchant
 from hakoniwa_core.trade import traders as trade_traders
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE, money_of, to_milli
 
@@ -873,6 +878,20 @@ def _candidates(
             and record.price > initial.get(good, 0) * PRICE_HIGH
         ):
             yield from (c for c in _producers(defs, config, island, good) if spare(*c))
+
+    # 海外の商人が値段を上げ始めたら（来なくなる foreign_merchant.last_turns ターン前から）、前の
+    # ターンに商人から買った物のうち島で作っていない物を作る施設を建てる。投入財も商人から買って
+    # いれば、その投入財を作る施設が先に建つ（1つの島の 300 ターンの試験: 商人が帰ってから機械を
+    # 作る施設が建つまで機械が島から消え、値段が初めの4倍を超えた）
+    left = trade_merchant.turns_left(island, config, turn)
+    if 0 < left <= config.get("foreign_merchant.last_turns"):
+        bought = {t.good for t in island.trades if t.seller == MERCHANT}
+        for good in sorted(bought - making, key=lambda g: (defs.goods[g].get("tier", 9), g)):
+            yield from (
+                c
+                for c in _producers(defs, config, island, good)
+                if _inputs_at_hand(defs, config, *c, making)
+            )
 
     # 作り方の投入財が手元にあるか。部品のように島で作っていなくても、作る施設の投入財が手元にある
     # 物は手に入ると見る（組み立て工場と部品工場を組で建てる。回7 後半: 自動車工場が部品工場を待ち、

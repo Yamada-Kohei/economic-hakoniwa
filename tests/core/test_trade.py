@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import copy
+from dataclasses import replace
 from functools import partial
 
 import pytest
@@ -434,10 +435,18 @@ def test_foreign_merchant_comes_for_a_limited_time(game, traded):
 
 def test_trade_facilities_hiring_for_their_cargo_are_not_short_of_workers(game, traded):
     """港と商社は扱う量に合わせて少なく雇うので、雇いたい人数がそろっていれば「労働者不足」ではなく
-    「扱う荷に合わせて操業」と出す。"""
+    「扱う荷に合わせて操業」と出す。
+
+    港はその月に扱った量を、雇った後（貿易の段）に足すので、雇ったときに見た前の月までの量で
+    比べる（値幅をなくした後の流れで、最後の月に荷が増えて1人足りなく見えた）。"""
     for island in traded[0].islands.values():
-        for f in [port_of(island, game.config), *traders_of(island, game.config)]:
-            assert f is not None and f.workers >= staff.wanted(game.config, game.defs, f)
+        port = port_of(island, game.config)
+        assert port is not None
+        for f in [port, *traders_of(island, game.config)]:
+            seen = f
+            if f is port:
+                seen = replace(f, economy={**f.economy, "handled": f.economy["handled"][:-1]})
+            assert f.workers >= staff.wanted(game.config, game.defs, seen)
             assert f.status in ("", "cargo")
     assert format_log(game.defs, "status_cargo", {}) == "扱う荷に合わせて操業"
 

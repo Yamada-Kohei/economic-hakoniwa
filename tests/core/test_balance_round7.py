@@ -295,14 +295,45 @@ def test_nationalize_and_privatize_whole_firm(game, base):
 # --- 店と小売り（W-15・W-22） --------------------------------------------------------------
 
 
-def test_households_buy_retail_from_shops_then_direct(base):
-    """家計の要る小売りは、商店・百貨店で買えた分と、小さな店・屋台から割高に買った分を足したもの。"""
+def test_households_buy_retail_from_shops_then_direct(game, base, monkeypatch):
+    """家計の要る小売りは、商店・百貨店で買えた分と、小さな店・屋台から割高に買った分を足したもの。
+
+    屋台の分は払えるだけ買う。使う額をすべて品物に充てた層（失業者など）は小売りの代金が残らない
+    ことがあり、そのときは要る量に届かない（どの島でもそうならないかは、世界の歩みしだい）。"""
+    from hakoniwa_core.economy import funds, retail
+    from hakoniwa_core.modules import market as mk
+    from hakoniwa_core.units import QUANTITY_SCALE
+
+    world = copy.deepcopy(base)
+    seen = {}
+    direct_of = mk.Market._direct
+
+    def spy(island, ctx, wanted, got):
+        good = retail.good_of(ctx.config)
+        unit = mk.Market._direct_unit(island, ctx.config)
+        tax = island.policy.consumption_tax
+        short = {layer: qty - got.get(layer, {}).get(good, 0) for layer, qty in wanted.items()}
+        broke = any(
+            mk.gross_cost(unit, qty, 0, tax) > funds.available(island, mk.Payer(household(layer)))
+            for layer, qty in short.items()
+            if qty > 0
+        )
+        seen[island.id] = (sum(max(0, qty) for qty in short.values()) / QUANTITY_SCALE, broke)
+        direct_of(island, ctx, wanted, got)
+
+    monkeypatch.setattr(mk.Market, "_direct", staticmethod(spy))
+    run_checked(game, world, 1)
     sold_somewhere = False
-    for i in base.island_ids():
-        stats = base.islands[i].stats
+    for i in world.island_ids():
+        stats = world.islands[i].stats
         need, sold, direct = stats["retail.need"], stats["retail.sold"], stats["retail.direct"]
+        short, broke = seen[i]
         assert need > 0
-        assert sold + direct == pytest.approx(need, abs=1)
+        assert sold + short == pytest.approx(need, abs=1)  # 店が売った分を家計が受け取った
+        if broke:
+            assert direct <= short + 1
+        else:
+            assert direct == pytest.approx(short, abs=1)
         assert stats["retail.direct_sales"] > 0
         sold_somewhere = sold_somewhere or sold > 0
     assert sold_somewhere, "どの島でも店が売れていない"

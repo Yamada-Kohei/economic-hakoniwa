@@ -130,7 +130,8 @@ STORE = "warehouse"
 WAREHOUSE_PLACED = "warehouse_placed"
 WAREHOUSE_BUDGET = "warehouse"  # 年の予算の項目（国の倉庫の買い入れ費）
 UNFUNDED = "unfunded"  # 国の工事が公共事業費で買えず、注文しなかった資材の量（財 → 量）
-# 施設の economy: 前のターンに出した投入財の買いの指値（財 → 指値）。買い負けたら少しずつ上げる
+# 施設の economy: 投入財の買いの指値を出したターンと指値（{"turn", "limits": 財 → 指値}）。
+# 買い負けたら次のターンに少しずつ上げる
 BIDS = "bids"
 REBUILD = "rebuild"  # 首都の建物の建て替えの資材（フェーズ3-4。modules/politics）
 REPAIR = "repair"  # 傷んだ設備を直す資材（回6。economy/equipment.py）
@@ -182,12 +183,22 @@ def net_limit(gross: int, freight: int, tax: int) -> int:
 
 
 def seller_limit(ask: int, freight: int, high: int) -> int:
-    """運賃を払った後に ask が手元に残る指値（切り上げ）。ただし値幅の上端 high まで。
-
-    上端より高い指値は売れないので、上端で売りに出す（費用より安くても、売れないまま腐らせる
-    よりよい。値段は1ターンに値幅ずつ費用まで上がっていく）。
+    """運賃を払った後に ask が手元に残る指値（切り上げ）。ただし前の値段の値幅の上端 high まで
+    （希望価格は1ターンに値幅ずつ動く）。
     """
     return min(high, -(-ask * BASIS // max(1, BASIS - freight)))
+
+
+def floored_limit(ask: int, floor: int, freight: int, high: int) -> int:
+    """作った物の売りの指値: seller_limit で値幅の上端まで抑えるが、作る費用 floor（運賃を払った
+    後に残る額）より安くはしない。
+
+    値幅のあった間は、上端より高い指値は売れないので費用より安くても上端で売ったが、値幅をなくした
+    後は、だれかが安く投げ売りして前の値段が一度に下がると、ほかの作り手まで費用を割って売り続ける
+    ことになる（見直し役が挙げた場面。2026-10-20）。腐る分は指値なしで別に売る。"""
+    if floor <= 0:
+        return seller_limit(ask, freight, high)
+    return max(seller_limit(ask, freight, high), -(-floor * BASIS // max(1, BASIS - freight)))
 
 
 def consumer_tiers(
@@ -736,6 +747,12 @@ class Market(IslandStage):
             bounds=bounds,
             allocate_buys=allocate,
         )
+        if result.volume <= 0:
+            # 約定しなかったときの気配は、前の値段から market.band までしか動かさない（売り手の
+            # 指値は前の値段の値幅の上端までなので、気配が一度に下がると次のターンに費用より安く
+            # 売りに出すことになる。見直し役が挙げた場面）
+            lo, hi = auction.band(reference, to_basis(ctx.config.get("market.band")))
+            result.price = max(bounds[0], min(bounds[1], max(lo, min(hi, result.price))))
         self._late_to_eaters(book, result)
         results[good] = result
         transport, routes = island.scratch[CLEARING]
@@ -1236,13 +1253,13 @@ class Market(IslandStage):
                 floor = unit_floor(defs, config, f, good, prices, f.economy.get("wage", 0), rate)
                 ask = max(ask, floor)
                 if good in official:  # 計画経済: 費用に届かなくても公定価格で売る（フェーズ3-4）
-                    ask = 0
+                    ask = floor = 0
                 expiring = stock.expiring(f.stock, good, ctx.turn, defs.goods)
                 if expiring:
                     self._add(books_by_good, good, "sell", Order(expiring), seller)
                 if total - expiring > 0:
                     _, high = auction.band(prices.get(good, 1), width)
-                    order = Order(total - expiring, seller_limit(ask, rate, high))
+                    order = Order(total - expiring, floored_limit(ask, floor, rate, high))
                     self._add(books_by_good, good, "sell", order, seller)
             # 作り方を替えて使わなくなった物（フェーズ3-2）は、値幅の下端を指値に売る。ただし同じ
             # 施設のほかの作り方で作れる物は、作る費用より安くは売らない（_leftover_floor）
@@ -1257,11 +1274,16 @@ class Market(IslandStage):
                     continue
                 low, high = auction.band(prices.get(good, 1), width)
                 floor = self._leftover_floor(defs, config, f, good, prices, rate)
-                order = Order(total - expiring, seller_limit(max(low, floor), rate, high))
+                if good in official:  # 計画経済: 公定価格で売る（3 の作った物と同じ）
+                    order = Order(total - expiring, 0)
+                else:
+                    order = Order(total - expiring, floored_limit(low, floor, rate, high))
                 self._add(books_by_good, good, "sell", order, seller)
             needs = self._input_needs(ctx, f, power)
             outbid = {g for g, why in f.economy.pop("short", {}).items() if why == "price"}
-            last = f.economy.pop(BIDS, {})
+            placed = f.economy.pop(BIDS, {})
+            # 前のターンに出した指値だけを見る（壊れて直していた間などの古い指値で上げない）
+            last = placed.get("limits", {}) if placed.get("turn") == ctx.turn - 1 else {}
             if recipe["inputs"]:  # 次のターンにどれだけ動くつもりで原料を買ったか（生産の段で使う）
                 f.economy["input_plan"] = self._input_plan(ctx, f)
             if not needs:
@@ -1283,7 +1305,10 @@ class Market(IslandStage):
                     for g, b in bids.items()
                 }
                 plan = self._raise_bids(island, payer, plan, most, rate)
-            f.economy[BIDS] = {g: lim for g, (_, lim) in sorted(plan.items())}
+            f.economy[BIDS] = {
+                "turn": ctx.turn,
+                "limits": {g: lim for g, (_, lim) in sorted(plan.items())},
+            }
             priority = fac.priority_of(defs, config, f)
             for good, (qty, limit) in sorted(plan.items()):
                 party = Party(FACILITY, name, payer, rate, 0, f)
@@ -1353,7 +1378,7 @@ class Market(IslandStage):
         同じく、買えなかったのを見てから少しずつ上げる（相手の払える値段は分からないので）。"""
         if last is None:
             return usual
-        return min(most, max(usual, last + part(last, width)))
+        return min(most, max(usual, last + max(1, part(last, width))))
 
     @classmethod
     def _raise_bids(
@@ -2335,10 +2360,14 @@ class Market(IslandStage):
                 limit = None if order.limit is None else seller_limit(order.limit, rate, high)
                 self._add(books_by_good, order.good, "sell", Order(order.qty, limit), party)
                 continue
+            # 輸出の買いは、ふだんの買い手と同じく前の値段の market.band 増しまで（引き合う値段まで
+            # 一度に買い上がると、値幅をなくした後は島の家計より高く買い、食料が1ターンで島の外へ
+            # 出た。値幅のあった間と同じく、値段が1ターンに値幅ずつ上がる間は島の買い手が先）
+            usual = high + part(high, rate)
             plan = self._afford(
                 island,
                 payer,
-                {order.good: (order.qty, net_limit(order.limit or 0, rate, 0))},
+                {order.good: (order.qty, net_limit(min(order.limit or 0, usual), rate, 0))},
                 rate,
                 0,
             )

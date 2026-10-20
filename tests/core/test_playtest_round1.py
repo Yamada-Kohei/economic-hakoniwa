@@ -267,7 +267,7 @@ def test_small_hungry_layers_order_all_they_need(game):
 
 
 def test_inputs_only_merchants_sell_are_priced_at_the_merchant_price(game, warmed, monkeypatch):
-    """作り方の見直しと参入の採算では、原料のうち島で作られておらず海外の商人からしか買えない財を、
+    """作り方の見直しでは、原料のうち島で作られておらず海外の商人からしか買えない財を、
     商人の売り値で見る（島の値段は、だれも買っていなければ初めの値段のままで安く見え、鋼鉄を作って
     いない国で民営の工場が鋼鉄から作る方式に替えて、翌ターン採算が合わずに止まった。報告の決め 1）。
     島で作っている財と、作る物の値段は島の値段のまま。"""
@@ -301,6 +301,20 @@ def test_factories_raise_bids_step_by_step_only_after_being_outbid():
     assert Market._step_up(110, 500, 200, width) == 220
     assert Market._step_up(110, 500, 480, width) == 500  # 利益が0になる値段まで
     assert Market._step_up(110, 500, 50, width) == 110  # ふだんの指値より低くしない
+    assert Market._step_up(1, 10, 1, width) == 2  # 値段が小さくても上がれる
+
+
+def test_producers_do_not_sell_below_cost_after_a_price_crash():
+    """作った物の売りの指値は前の値段の値幅の上端までだが、作る費用より安くはしない（値幅を
+    なくした後、だれかの投げ売りで前の値段が一度に下がると、ほかの作り手まで費用を割って売り
+    続けた。見直し役が挙げた場面）。費用のない物（公定価格で売る物）は今までどおり。"""
+    from hakoniwa_core.modules.market import floored_limit, seller_limit
+
+    assert floored_limit(100, 150, 0, 110) == 150
+    assert floored_limit(100, 50, 0, 110) == 100
+    assert floored_limit(200, 50, 0, 110) == 110  # 希望価格は上端まで
+    assert floored_limit(100, 0, 500, 2) == seller_limit(100, 500, 2)
+    assert floored_limit(100, 150, 500, 2) == seller_limit(150, 500, 10**9)  # 運賃の分も足す
 
 
 def test_leftover_crops_are_not_sold_below_what_they_cost_to_grow(game, warmed):
@@ -326,3 +340,50 @@ def test_leftover_crops_are_not_sold_below_what_they_cost_to_grow(game, warmed):
     )
     assert floor == cost > 0
     assert Market._leftover_floor(game.defs, game.config, farm, "chemicals", prices, 0) == 0
+
+
+def test_standard_plan_prepares_for_the_merchants_leaving(game, warmed, monkeypatch):
+    """標準の計画は、海外の商人が値段を上げ始めたら（去る foreign_merchant.last_turns ターン
+    前から）、前のターンに商人から買った物のうち島で作っていない物を作る施設を建てる（1つの島の
+    300 ターンの試験で、商人が去ってから機械を作る施設が建つまで機械が島から消え、値段が初めの
+    4倍を超えた）。"""
+    from hakoniwa_core import autoplan
+    from hakoniwa_core.modules.market import MERCHANT
+    from hakoniwa_core.state import TradeRecord
+    from hakoniwa_core.trade import merchant
+
+    defs, config = game.defs, game.config
+    last = config.get("foreign_merchant.last_turns")
+
+    def planned(island, left: int) -> list[tuple[str, str]]:
+        monkeypatch.setattr(merchant, "turns_left", lambda *args: left)
+        return list(autoplan._candidates(island, defs, config, warmed.turn + 1))
+
+    def outputs(f) -> set[str]:
+        return set(fac.recipe_of(defs, f)["outputs"])
+
+    # 商人が売る物のうち、作る施設を島から除くと、ほかの決まりでは作る施設が挙がらず、投入財は島で
+    # 作っている物（どの島・どの物になるかは世界の流れによるので探す）
+    found = None
+    for island_id, good in sorted(
+        (i, g) for i in warmed.island_ids() for g in config.get("foreign_merchant.goods")
+    ):
+        world = copy.deepcopy(warmed)
+        island = world.islands[island_id]
+        island.facilities = [f for f in island.facilities if good not in outputs(f)]
+        making = {g for f in island.facilities for g in outputs(f)}
+        before = planned(island, last + 1)
+        makers = [
+            c
+            for c in autoplan._producers(defs, config, island, good)
+            if autoplan._inputs_at_hand(defs, config, *c, making) and c not in before
+        ]
+        if makers:
+            found = island, good, makers[0]
+            break
+    assert found is not None, "試せる物がない"
+    island, good, maker = found
+    island.trades.append(TradeRecord(good, "fac:1", MERCHANT, 10, 1000))
+    assert maker not in planned(island, last + 1)  # まだ値段を上げ始めていない
+    assert maker in planned(island, last)
+    assert maker not in planned(island, 0)  # もう去った

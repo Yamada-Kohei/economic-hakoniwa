@@ -521,8 +521,7 @@ class EntryExit(IslandStage):
     ) -> bool:
         defs, config = ctx.defs, ctx.config
         settings = config.get("firms")
-        average = average_prices(island, settings["price_turns"])
-        imports = self._import_prices(island, ctx)
+        prices = average_prices(island, settings["price_turns"])
         wage = island.economy.average_wage
         rates = freight_rates.facility_rates(island, defs, config)
         typical = sum(rates.values()) // len(rates) if rates else 0
@@ -539,8 +538,7 @@ class EntryExit(IslandStage):
         coming = self._coming(island, ctx)
 
         def add(kind: str, rname: str, recipe: dict[str, Any], fill: float) -> None:
-            prices = self._costed(average, imports, recipe)
-            full = round_money(construction_cost(defs, kind, average, wage))
+            full = round_money(construction_cost(defs, kind, prices, wage))
             rate = capital_subsidy(island, kind, recipe)
             subsidy = min(part(full, rate), room)  # 先に払える分だけを補助として見る
             capital = full - subsidy
@@ -557,7 +555,6 @@ class EntryExit(IslandStage):
                     continue  # 鉱業資源がないか、気候で使えない（フェーズ3-2）
                 if not recipe["outputs"] or busy & set(recipe["outputs"]):
                     continue
-                prices = self._costed(average, imports, recipe)
                 cost = unit_cost(defs, config, kind, recipe, prices, wage)
                 fill = self._fill(recipe, shortages, demand, capacity, prices, cost, settings)
                 if fill <= 0:
@@ -597,7 +594,6 @@ class EntryExit(IslandStage):
                     args = {"rate": estimate * 100, "need": threshold * 100}
                     blocks.append((estimate, kind, "unprofitable", args))
                 break
-            prices = self._costed(average, imports, defs.facilities[kind]["recipes"][rname])
             if self._buy_foreclosed(island, ctx, kind, rname, prices, threshold, estimate, fill):
                 return True
             materials = defs.facilities[kind]["construction"].get("materials", {})
@@ -791,9 +787,13 @@ class EntryExit(IslandStage):
     @staticmethod
     def _import_prices(island: IslandState, ctx: StageContext) -> dict[str, int]:
         """島で作られておらず海外の商人からしか買えない財の、商人の売り値（財 → 値段）。作り方の
-        見直しと参入の採算で、原料をこの値段で見る（_costed）。島の値段は、だれも買っていなければ
-        初めの値段のままで安く見えるため、鋼鉄を作っていない国で民営の工場が鋼鉄から作る方式に替え、
-        翌ターン「鋼鉄が高く採算が合わない」で止まっていた（試し遊び1回目の報告の決め 1）。"""
+        見直しで、原料をこの値段で見る（_costed）。島の値段は、だれも買っていなければ初めの値段の
+        ままで安く見えるため、鋼鉄を作っていない国で民営の工場が鋼鉄から作る方式に替え、翌ターン
+        「鋼鉄が高く採算が合わない」で止まっていた（試し遊び1回目の報告の決め 1）。
+
+        参入の採算は島の値段のまま見る（建つまでに島で作り始めることが多い。参入にも商人の値段を
+        使うと、鋼鉄を作っていない島で機械工場が建たず、海外の商人が来なくなった後に機械が何十
+        ターンも島から消え、値段が初めの4倍を超えた。1つの島の 300 ターンの試験）。"""
         made = EntryExit._made(island, ctx)
         offers = merchant.offers(island, ctx.defs, ctx.config, ctx.turn)
         return {good: price for good, _, price in offers if good not in made}
