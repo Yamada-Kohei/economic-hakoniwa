@@ -8,8 +8,8 @@
 - 効き始め（on_force）: 約束どおりの状態にします（圏をつくる・契約を始める・固定相場にする・移民の
   受け入れを開ける）
 - 毎ターンの見張り（watch）: 約束が守られているかを、外交の段で見ます。破っていれば、破った国の
-  違反として記録します。破棄を予告したあとの条約は、約束を守る必要がありません（予告どおりの破棄は
-  罰なし）
+  違反として記録します。破棄を予告しても、予告のターンがたつまでは約束を守る必要があります
+  （予告してすぐ破ると違反。予告のターンがたって条約が終われば罰なし）
 - 済む条項（契約・援助）は、期間か回数を終えると done になり、条項がすべて済んだ条約は終わります
 
 状態を見張る条項（貿易圏・固定相場・移民）は、守れている状態から守れていない状態に変わったときに
@@ -215,11 +215,12 @@ def _open_doors(island: Any, kind: str) -> None:
 
 def watch(world: WorldState, config: GameConfig, treaty: dict[str, Any], turn: int) -> None:
     """効いている条約の経済の条項が守られているかを見る（外交の段。番号の順）。"""
-    noticed = treaty["notice"] is not None
+    notice = treaty["notice"]
+    expired = notice is not None and turn >= notice["until"]  # このターンに終わる条約は見ない
     for clause in treaty["clauses"]:
         kind = clause["type"]
         if kind == cl.BLOC:
-            _watch_bloc(world, config, treaty, clause, turn, noticed)
+            _watch_bloc(world, config, treaty, clause, turn, expired)
         elif kind == cl.CONTRACT:
             _watch_contract(world, config, treaty, clause, turn)
         elif kind == cl.PEG:
@@ -228,7 +229,7 @@ def watch(world: WorldState, config: GameConfig, treaty: dict[str, Any], turn: i
                 continue  # 島が世界からなくなった（管理画面で消した）。見張るものがない
             ok = island.policy.fx_peg.get(str(clause["currency"])) == clause["rate_basis"]
             _state(
-                world, config, treaty, clause, turn, noticed, clause["pegger"], ok, "peg_dropped"
+                world, config, treaty, clause, turn, expired, clause["pegger"], ok, "peg_dropped"
             )
         elif kind == cl.AID:
             _watch_aid(world, config, treaty, clause, turn)
@@ -240,7 +241,7 @@ def watch(world: WorldState, config: GameConfig, treaty: dict[str, Any], turn: i
                 mode = world.islands[i].policy.immigration or "closed"
                 ok = mode in ACCEPTS[kind]
                 reason = "migration_closed"
-                _state(world, config, treaty, clause, turn, noticed, i, ok, reason)
+                _state(world, config, treaty, clause, turn, expired, i, ok, reason)
 
 
 def _violate(
@@ -268,13 +269,14 @@ def _state(
     treaty: dict[str, Any],
     clause: dict[str, Any],
     turn: int,
-    noticed: bool,
+    expired: bool,
     by: int,
     ok: bool,
     reason: str,
 ) -> None:
-    """状態を見張る条項: 守れている状態から守れていない状態に変わったときに 1 回だけ違反にする。"""
-    if noticed:
+    """状態を見張る条項: 守れている状態から守れていない状態に変わったときに 1 回だけ違反にする。
+    expired は予告のターンがたって、このターンに終わる条約（予告どおりの破棄は罰なし）。"""
+    if expired:
         return
     flags = clause.setdefault("ok", {})
     if ok:
@@ -290,14 +292,14 @@ def _watch_bloc(
     treaty: dict[str, Any],
     clause: dict[str, Any],
     turn: int,
-    noticed: bool,
+    expired: bool,
 ) -> None:
     from hakoniwa_core.trade import blocs
 
     bloc = blocs.find(world, clause["bloc_id"]) if clause["bloc_id"] is not None else None
     for i in treaty["parties"]:
         ok = bloc is not None and i in bloc["members"] and i not in bloc["leaving"]
-        _state(world, config, treaty, clause, turn, noticed, i, ok, "bloc_left")
+        _state(world, config, treaty, clause, turn, expired, i, ok, "bloc_left")
 
 
 def _watch_contract(
