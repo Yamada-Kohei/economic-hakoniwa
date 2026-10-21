@@ -29,13 +29,13 @@ export function payloadOf(entries) {
 }
 
 export function landAt(military, tile) {
-  return (military.units || []).filter((u) => !u.aboard && u.x === tile.x && u.y === tile.y);
+  return (military.units || []).filter((u) => !u.aboard && !u.abroad && u.x === tile.x && u.y === tile.y);
 }
 export function portsOf(military) {
   return (military.bases || []).filter((b) => b.naval_base);
 }
 export function loadableUnits(military) {
-  return (military.units || []).filter((u) => !u.aboard &&
+  return (military.units || []).filter((u) => !u.aboard && !u.abroad &&
     portsOf(military).some((b) => b.x === u.x && b.y === u.y));
 }
 export function transports(military) {

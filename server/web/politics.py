@@ -44,6 +44,9 @@ EVENT_NAMES = {
     "office": "首都の政府の建物が壊れている",
     "trapped": "出国を止められて出られない人",
     "conscription": "徴兵した兵",
+    "war_rally": "宣戦の後の団結",
+    "war_weariness": "戦死者が増えたことによる厭戦",
+    "occupied": "占領された住民",
 }
 # 政情の元にした数の表示名と単位（display.stat_text の単位）
 FACT_NAMES = {

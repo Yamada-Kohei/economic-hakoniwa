@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from hakoniwa_core.military import army, forces, vision
+from hakoniwa_core.military import army, forces, occupation, vision
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE
 from server.game import get_game
 from server.web import display
@@ -38,6 +38,7 @@ def brief(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str, 
             "budget": spend,
             "stats_turn": stats_turn,
             "fleets": seen_fleets(island.world, viewer, island.id),
+            "seen_units": seen_land(island.world, viewer, owner=island.id),
         }
     return {
         "soldiers": volunteers + conscripts,
@@ -61,6 +62,21 @@ def brief(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str, 
         "fleets": fleets(island),
         "bases": bases(island),
         "trenches": trenches(island),
+        "enemy_units": seen_land(island.world, island.id, place=island.id, others=True),
+        "wounded": sum(n for _, n in raw.get("wounded", [])),
+        "abroad": raw.get("abroad", 0),
+        "reserve": {g: q / QUANTITY_SCALE for g, q in (raw.get("reserve") or {}).items()},
+        "prisoners": prisoners(raw),
+        "captive": raw.get("captive", 0),
+        "occupied": occupied_tiles(island),
+        "occupying": occupying(island),
+        "stats": {
+            "killed": stats.get("military.killed", 0),
+            "wounded": stats.get("military.wounded", 0),
+            "kills": stats.get("military.kills", 0),
+            "civilian_dead": stats.get("military.civilian_dead", 0),
+            "refugees": stats.get("military.refugees", 0),
+        },
     }
 
 
@@ -69,8 +85,8 @@ def _raw_units(island: m.Island) -> list[dict[str, Any]]:
 
 
 def units(island: m.Island) -> list[dict[str, Any]]:
-    """島の持ち主の陸の部隊（フェーズ4-2 の③）。他の国の部隊が見える範囲に入ってくるのは、揚陸の入る
-    4-3 から。今は持ち主だけが見る。"""
+    """島の持ち主の陸の部隊（フェーズ4-2 の③。外国の島に揚陸した部隊も含む。4-3 の①）。ほかの国の
+    部隊は seen_land（見える範囲）で出す。"""
     defs = get_game().defs
     out = []
     for u in _raw_units(island):
@@ -93,6 +109,13 @@ def units(island: m.Island) -> list[dict[str, Any]]:
                 "status": u["status"],
                 "order": u["order"],
                 "aboard": u.get("aboard"),
+                "island": army.where(u),  # いる島（外国の島に揚陸していれば、その島の番号）
+                "abroad": army.abroad(u),
+                "stores": {g: q / QUANTITY_SCALE for g, q in (u.get("stores") or {}).items()},
+                "hungry": bool(u.get("hungry")),
+                "role": u.get("role"),  # 戦っている間: attack 攻め・defend 守り
+                "fought": u.get("fought", 0),
+                "requisition": u.get("requisition", True),
             }
         )
     return sorted(out, key=lambda u: u["id"])
@@ -124,6 +147,7 @@ def fleets(island: m.Island) -> list[dict[str, Any]]:
                 "steps_left": len(order["route"]) if order and "route" in order else 0,
                 "cargo": u["cargo"],
                 "capacity": spec.get("capacity", 0) * u["ships"],
+                "goods": {g: q / QUANTITY_SCALE for g, q in (u.get("goods") or {}).items()},
             }
         )
     return sorted(out, key=lambda f: f["id"])
@@ -140,7 +164,7 @@ def seen_fleets(
     memory = ((world.ext or {}).get(forces.KEY) or {}).get(vision.SEEN, {}).get(str(viewer), {})
     out = []
     for fid, row in memory.items():
-        if owner is not None and row["owner"] != owner:
+        if row.get("arm") == "land" or (owner is not None and row["owner"] != owner):
             continue
         out.append(
             {
@@ -155,6 +179,107 @@ def seen_fleets(
             }
         )
     return sorted(out, key=lambda f: f["id"])
+
+
+def seen_land(
+    world: m.World,
+    viewer: int | None,
+    owner: int | None = None,
+    place: int | None = None,
+    others: bool = False,
+) -> list[dict[str, Any]]:
+    """見ている国（viewer）が見た、ほかの国の陸の部隊（今見えているものは current、前に見たものは
+    最後の場所とターン）。owner はその国の部隊だけ、place はその島にいる部隊だけ、others は持ち主
+    以外の部隊だけ。兵の数は出さない（自分の部隊だけが知っている）。"""
+    if viewer is None:
+        return []
+    defs = get_game().defs
+    memory = ((world.ext or {}).get(forces.KEY) or {}).get(vision.SEEN, {}).get(str(viewer), {})
+    out = []
+    for key, row in memory.items():
+        if row.get("arm") != "land":
+            continue
+        if owner is not None and row["owner"] != owner:
+            continue
+        if place is not None and row["at"] != place:
+            continue
+        if others and row["owner"] == viewer:
+            continue
+        out.append(
+            {
+                "id": int(key[1:]),
+                "owner": row["owner"],
+                "army": row["kind"],
+                "name": defs.name("army", row["kind"]) if row["kind"] in defs.army else row["kind"],
+                "island": row["at"],
+                "x": row["x"],
+                "y": row["y"],
+                "turn": row["turn"],
+                "current": row["turn"] == world.turn,
+            }
+        )
+    return sorted(out, key=lambda u: u["id"])
+
+
+def prisoners(raw: dict[str, Any]) -> dict[str, Any]:
+    """捕らえている捕虜（出身の島ごと）。"""
+    by_origin: dict[int, int] = {}
+    for _turn, origin, count in raw.get("prisoners", []):
+        by_origin[origin] = by_origin.get(origin, 0) + count
+    return {
+        "total": sum(by_origin.values()),
+        "by_island": {str(k): v for k, v in sorted(by_origin.items())},
+    }
+
+
+def occupied_tiles(island: m.Island) -> list[dict[str, int]]:
+    """この島で占領されているマス（占領した国の島の番号と、占領されたターン）。"""
+    rows = island.tiles.filter(**{f"ext__{occupation.OCCUPIED}__isnull": False}).order_by("y", "x")
+    return [
+        {
+            "x": t.x,
+            "y": t.y,
+            "by": t.ext[occupation.OCCUPIED]["by"],
+            "turn": t.ext[occupation.OCCUPIED]["turn"],
+        }
+        for t in rows
+    ]
+
+
+def occupying(island: m.Island) -> list[dict[str, int]]:
+    """この国が占領しているほかの島のマス。"""
+    rows = m.Tile.objects.filter(
+        island__world=island.world, **{f"ext__{occupation.OCCUPIED}__by": island.id}
+    ).order_by("island_id", "y", "x")
+    return [
+        {"island": t.island_id, "x": t.x, "y": t.y, "turn": t.ext[occupation.OCCUPIED]["turn"]}
+        for t in rows
+    ]
+
+
+def island_units(island: m.Island, viewer: m.Island | None) -> list[dict[str, Any]]:
+    """島の俯瞰図に出す陸の部隊: 見ている国（viewer）に見えるもの。島の持ち主には、
+    入ってきた敵も見える
+    （MI-26）。船に載っている部隊は出さない。"""
+    if viewer is None:
+        return []
+    mine = [
+        {
+            "id": u["id"],
+            "owner": viewer.id,
+            "army": u["army"],
+            "x": u["x"],
+            "y": u["y"],
+            "current": True,
+        }
+        for u in units(viewer)
+        if u["aboard"] is None and u["island"] == island.id
+    ]
+    seen = [
+        {k: row[k] for k in ("id", "owner", "army", "x", "y", "current")}
+        for row in seen_land(island.world, viewer.id, place=island.id, others=True)
+    ]
+    return sorted(mine + seen, key=lambda r: (r["owner"], r["id"]))
 
 
 def world_fleets(world: m.World, viewer: int | None) -> dict[str, Any]:

@@ -39,6 +39,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from hakoniwa_core import facilities as fac
@@ -162,12 +163,40 @@ def events_bonus(island: IslandState, ctx: StageContext) -> dict[str, float]:
         whole = sum(t.population for t in island.tiles if t.population > 0) + cons
         c = ctx.config.get("military.conscription")
         out["conscription"] = -min(c["max"], c["stability"] * cons * 100 / max(1, whole))
+    out.update(war_bonus(island, ctx))
     from hakoniwa_core.modules.migration import trapped_share  # 移民の段がこの段を読むので
 
     trapped = trapped_share(island)
     if trapped > 0:
         m = ctx.config.get("migration")
         out["trapped"] = -min(m["trapped_max"], m["trapped"] * trapped * 100)
+    return out
+
+
+def war_bonus(island: IslandState, ctx: StageContext) -> dict[str, float]:
+    """戦争の政情（MI-42）: 宣戦の後は一時だけ目標が上がり（旗の下の団結）、それから自国の戦死者の
+    人口に対する割合 r について scale × log(1 + k × r) だけ下がる（厭戦。戦死 0・人口 0
+    は下げない）。
+    占領されたマスの住民の割合に応じても下がる。"""
+    cfg = ctx.config.get("military.war")
+    history = island.ext.get("history", {})
+    out: dict[str, float] = {}
+    started = history.get("war")
+    if started and 0 <= ctx.turn - started.get("turn", -99) < cfg["rally"]["turns"]:
+        out["war_rally"] = cfg["rally"]["stability"]
+    whole = (
+        sum(t.population for t in island.tiles if t.population > 0)
+        + island.ext.get("military", {}).get("volunteers", 0)
+        + island.ext.get("military", {}).get("conscripts", 0)
+    )
+    dead = history.get("dead", {}).get("war", 0)
+    if dead > 0 and whole > 0:
+        w = cfg["weariness"]
+        out["war_weariness"] = -min(w["max"], w["scale"] * math.log(1 + w["k"] * dead / whole))
+    taken = sum(t.population for t in island.tiles if t.ext.get("occupied"))
+    if taken > 0 and whole > 0:
+        o = cfg["occupied"]
+        out["occupied"] = -min(o["max"], o["stability"] * taken / whole)
     return out
 
 
@@ -652,6 +681,47 @@ def amend(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> No
     island.log.append(LogEntry("constitution_amended", args))
 
 
+def check_choose_regime(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    """降伏で体制が倒れた国だけ、体制を選び直せる（MI-58。混乱期間中でも出せる）。"""
+    if "reselect" not in politics.state_of(island):
+        raise OrderFailed("reason_no_reselect")
+    choices = defs.regime_axes()
+    for axis, value in payload.items():
+        if value not in choices.get(axis, ()):
+            raise OrderFailed("reason_unknown_regime")
+
+
+def choose_regime(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
+    """体制の選び直し（降伏した国）。憲法改正と経済体制の変更と同じ作りで軸ごとに決めるが、混乱期間は
+    降伏のときに始まっているので、ここでは始め直さない。"""
+    state = politics.state_of(island)
+    transition, productivity = state.get("transition"), state.get("productivity")
+    amended = {
+        k: payload[k]
+        for k in ("politics", "head_of_state")
+        if k in payload and payload[k] != island.regime.get(k)
+    }
+    if amended:
+        amend(island, amended, ctx)
+    if "economy" in payload and payload["economy"] != island.regime.get("economy"):
+        change_economy(island, {"economy": payload["economy"]}, ctx)
+    state["transition"], state["productivity"] = transition, productivity
+    if transition is None:
+        state.pop("transition", None)
+    if productivity is None:
+        state.pop("productivity", None)
+    reselect = state.pop("reselect", None) or {}
+    island.log.append(
+        LogEntry(
+            "regime_chosen",
+            {
+                "by": reselect.get("by", 0),
+                **{k: payload.get(k, "") for k in ("politics", "head_of_state", "economy")},
+            },
+        )
+    )
+
+
 def check_change_economy(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
     _check_change(island, defs, {"economy": payload["economy"]})
 
@@ -787,4 +857,7 @@ def register(registry: Registry) -> None:
     registry.add_order(OrderHandler("amend_constitution", execute=amend, check=check_amend))
     registry.add_order(
         OrderHandler("change_economy", execute=change_economy, check=check_change_economy)
+    )
+    registry.add_order(
+        OrderHandler("choose_regime", execute=choose_regime, check=check_choose_regime)
     )

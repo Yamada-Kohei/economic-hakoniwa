@@ -187,8 +187,10 @@ REPORTS = {
     "politics": "政治（体制・政情・支持率・議席・選挙。持ち主には政情の内訳と命令の選択肢）",
     "diplomacy": "外交（戦争の状態・効いている条約・終わった条約・条約の違反の記録。持ち主には"
     "返事待ちの条約の提案と、宣戦・条約の命令の選択肢。経済の条項は terms に中身が出る）",
-    "military": "軍（持ち主には兵・士気・練度・国防費・部隊・艦隊・基地・陣地。ほかの国には兵の"
-    "総数と国防費と見えた艦隊。世界の艦隊は api_get /api/world/fleets）",
+    "military": "軍（持ち主には兵・士気・練度・国防費・部隊（外国の島の部隊の補給と飢えも）・艦隊・"
+    "基地・陣地・捕虜・占領されたマスと占領しているマス・戦死と負傷の数。ほかの国には兵の総数と"
+    "国防費と見えた艦隊と部隊。世界の艦隊は api_get /api/world/fleets、島の俯瞰図の部隊と占領は"
+    "api_get /api/islands/<島>/map の units と occupied）",
     "country": "国の公開ページ（国旗・元首・体制・通貨・人口・紹介文・年表・来訪者の一言。日付は"
     "その国の選んだ紀年。年表は timeline_text で wiki にそのまま貼れる文でも読める）",
     "plan": "計画と値段の規制（計画経済・混合経済の島）",
@@ -654,7 +656,9 @@ TOOLS = [
         "自分の島なら赤字の施設・命令の列と、直近に命令を実行したターン（last_turn）の結果・"
         "未読の公電、軍（military。兵の数・士気・練度・賃金の遅れ・国防費。命令は set_defense・"
         "recruit・conscript・discharge。部隊は form_unit・disband_unit・move_unit・dig_trench・"
-        "stop_unit、艦隊は form_fleet・sail_fleet・load_unit・unload_unit）も。",
+        "stop_unit・set_requisition、艦隊は form_fleet・sail_fleet・load_unit・"
+        "unload_unit（island を付けると戦争の相手の島へ揚陸）・load_supplies。"
+        "降伏で体制が倒れたら choose_regime）も。",
         _summary,
         {"island": ISLAND},
     ),

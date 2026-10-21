@@ -158,7 +158,7 @@ class Employment(IslandStage):
         labor = {
             (t.x, t.y): fac.labor_force(defs, island, t, share)
             for t in island.tiles
-            if t.population
+            if t.population and not t.ext.get("occupied")  # 占領されたマスの人は通えない（MI-36）
         }
         free = dict(labor)
         # 食べ物が買えずに畑に戻った村の働き手（食べ物を作る施設のほかには勤めない。回4）
@@ -533,8 +533,8 @@ class Employment(IslandStage):
     def _wage(island: IslandState, ctx: StageContext, f: Facility) -> int | None:
         """この施設の賃金。人を雇わない施設は None。"""
         config = ctx.config
-        if fac.is_housing(config, f) or is_stopped(f):
-            return None
+        if fac.is_housing(config, f) or is_stopped(f) or f.ext.get("occupied"):
+            return None  # 占領されたマスの施設は、働き手を雇わない（MI-36）
         if not f.built or is_public_service(ctx.defs, f):
             return Employment._site_wage(island, ctx)
         if "wage" not in f.economy:

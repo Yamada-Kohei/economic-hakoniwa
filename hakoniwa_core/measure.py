@@ -44,7 +44,7 @@ from typing import IO, Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import gate, politics, reuse
-from hakoniwa_core.autoplan import plan_trade, plan_turn, queue_orders
+from hakoniwa_core.autoplan import plan_trade, plan_turn, plan_war, queue_orders
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
@@ -213,6 +213,8 @@ def queue_scenario_orders(world: WorldState, scenario: Scenario, defs: Defs, con
     if scenario.orders == "plan":
         for island_id, orders in plan_trade(world, defs, config).items():
             queue_orders(world.islands[island_id], orders)
+        for island_id, orders in plan_war(world, defs, config).items():
+            queue_orders(world.islands[island_id], orders)  # 宣戦されたら守る（MI-44）
 
 
 # --- 島×ターンの記録 ------------------------------------------------------------------

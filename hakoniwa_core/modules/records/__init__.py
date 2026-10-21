@@ -73,7 +73,13 @@ class Records(IslandStage):
             working = min(force, tile.ext.get("employed", 0))
             employed += working
             farming += min(force - working, int(subsistence_persons(defs, island, tile) * share))
-        stats["population"] = population + military_soldiers(island)  # 兵はマスの住民の外（MI-53）
+        # 兵と、捕らえられている捕虜も住民に数える（マスの住民の外。MI-53・MI-49）
+        stats["population"] = (
+            population
+            + military_soldiers(island)
+            + island.ext.get("military", {}).get("captive", 0)
+            + sum(n for _, n in island.ext.get("military", {}).get("wounded", []))
+        )
         stats["labor"] = labor
         stats["employed"] = employed
         stats["subsistence"] = farming

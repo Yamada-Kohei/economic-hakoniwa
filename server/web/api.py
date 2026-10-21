@@ -298,6 +298,7 @@ def island_map(request, island_id: int):
         "zone": [],
         "power_line": [],
         "trench": [],
+        "occupied": [],
         "pollution": [],
         "happiness": [],
         "power": [],
@@ -311,6 +312,7 @@ def island_map(request, island_id: int):
         data["zone"].append(zone)
         data["power_line"].append(1 if display.carries_power(infra) else 0)
         data["trench"].append(1 if (ext or {}).get(army.TRENCH) else 0)
+        data["occupied"].append(((ext or {}).get("occupied") or {}).get("by", 0))
         data["pollution"].append(pollution)
         data["happiness"].append((ext or {}).get("happiness"))
         data["power"].append((ext or {}).get("power"))
@@ -322,12 +324,9 @@ def island_map(request, island_id: int):
     if request.GET.get("freight"):
         data.update(_freight(island))
     mine = request.user.is_authenticated and island.owner_id == request.user.id
-    if mine:  # 部隊の印は持ち主だけ（ほかの国の部隊が見えるのは 4-3 から。陣地は誰にでも見える）
-        data["units"] = [
-            {"id": u["id"], "army": u["army"], "x": u["x"], "y": u["y"]}
-            for u in military_views.units(island)
-            if u["aboard"] is None
-        ]
+    # 部隊の印は、見ている国に見えるものだけ（自分の部隊と、見える範囲に入った相手の部隊。
+    # 陣地と占領は誰にでも見える）
+    data["units"] = military_views.island_units(island, letter_services.own_island(request.user))
     facilities = [
         {
             "number": f.number,

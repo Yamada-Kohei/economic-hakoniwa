@@ -1308,3 +1308,81 @@ def plan_trade(
             if i not in bloc["members"] and i not in bloc["applicants"]:
                 plans.setdefault(i, []).append(("join_bloc", {"bloc": bloc["id"]}))
     return plans
+
+
+# --- 戦争（フェーズ4-3。設計書 MI-44） -------------------------------------------------------
+
+DEFENSE_SHARE = 0.005  # 宣戦されたとき、住民のこの割合を目標に兵を集める（平時の軍の大きさ）
+DEFENSE_MIN = 100  # 兵の目標の下限（歩兵 1 中隊）
+WAR_ORDERS = ("sign_treaty", "set_defense", "recruit", "form_unit")
+
+
+def plan_war(
+    world: WorldState, defs: Defs, config: GameConfig
+) -> dict[int, list[tuple[str, dict]]]:
+    """宣戦されたときの標準の計画（島ごとの命令）。標準の計画は自分から宣戦せず、核施設も建てない。
+
+    戦争の相手がいる島は、1 ターンに 1 つずつ次を進めます:
+    相手が出した停戦と講和（戦争のあいだに結べる
+    条項だけの条約）に署名する → 兵舎がなければ建てる → 国防費を決める → 兵を集める → 兵舎に歩兵を
+    編成する。戦争のない島は何もしません（測りの戦争のない場面を変えないため）。サーバーの持ち主の
+    いない島はこの計画を使いません（測りと試験だけで動く）。
+    """
+    from hakoniwa_core.diplomacy import clauses as cl
+    from hakoniwa_core.diplomacy import treaties, war
+    from hakoniwa_core.military import army, forces
+
+    plans: dict[int, list[tuple[str, dict]]] = {}
+    for i in world.island_ids():
+        island = world.islands[i]
+        if not island.has_economy or not war.open_wars_of(world, i):
+            continue
+        if any(o.status == ORDER_PENDING and o.kind in WAR_ORDERS for o in island.orders):
+            continue  # 前の手がまだ済んでいない（行政力が足りず繰り越したときなど）
+        for t in treaties.treaties(world):
+            if (
+                t["state"] == treaties.PROPOSED
+                and i in t["parties"]
+                and t["proposer"] != i
+                and str(i) not in t["signed"]
+                and set(treaties.kinds(t)) <= set(cl.WARTIME)
+            ):
+                plans[i] = [("sign_treaty", {"treaty": t["id"]})]
+                break
+        else:
+            order = _defense_order(island, world, defs, config, army, forces)
+            if order is not None:
+                plans[i] = [order]
+    return plans
+
+
+def _defense_order(
+    island: IslandState, world: WorldState, defs: Defs, config: GameConfig, army: Any, forces: Any
+) -> tuple[str, dict] | None:
+    barracks = [f for f in island.facilities if f.kind == "barracks"]
+    ready = [f for f in barracks if f.built]
+    if not barracks:
+        pos = _site_for(island, defs, config, "barracks", "default")
+        if pos is None:
+            return None
+        return ("build", {"facility": "barracks", "x": pos[0], "y": pos[1]})
+    if any(o.kind == "build" and o.status == ORDER_PENDING for o in island.orders):
+        return None
+    target = max(DEFENSE_MIN, int(population_of(island) * DEFENSE_SHARE))
+    budget = island.policy.budget
+    if not budget.get(forces.BUDGET_PERSONNEL) and not budget.get(forces.BUDGET_PROCUREMENT):
+        wage = island.economy.average_wage or config.get("labor.initial_wage")
+        annual = wage * target * 12 * 2  # 兵の賃金と装備の買い入れを同じだけ
+        return ("set_defense", {"annual": annual, "personnel_share": 50})
+    soldiers = forces.soldiers(island)
+    if soldiers < target:
+        return ("recruit", {"count": target - soldiers})
+    units = army.land_units_of(world, island.id)
+    free = soldiers - sum(u["soldiers"] for u in units)
+    spec = defs.army["infantry"]
+    for f in ready:
+        if free >= spec["soldiers"] and army.housed(world, defs, island.id, f.x, f.y) + spec[
+            "soldiers"
+        ] <= army.barracks_at(island, defs, f.x, f.y):
+            return ("form_unit", {"army": "infantry", "x": f.x, "y": f.y})
+    return None
