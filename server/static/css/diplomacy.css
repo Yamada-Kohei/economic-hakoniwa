@@ -44,6 +44,11 @@
 .diplomacy-clause-picker label { margin: 0; padding: 6px; background: var(--pale); }
 .diplomacy-clause-picker small { display: block; margin: 4px 0 0 22px; color: #4f62a0; }
 .diplomacy-form fieldset:disabled { opacity: 0.55; }
+.diplomacy-form fieldset[hidden] { display: none; }
+.diplomacy-form [data-clause-fields] { background: var(--pale); border-left: 3px solid var(--accent); }
+.diplomacy-clause-picker label:has(input:checked) { background: var(--head); outline: 1px solid var(--border); }
+.diplomacy-terms.aid-progress dd { font-variant-numeric: tabular-nums; }
+.diplomacy-terms.aid-progress .aid-received { font-size: 1.1em; font-weight: bold; color: var(--navy); }
 .diplomacy-page .order-notice:empty { display: none; }
 .diplomacy-page .order-notice { font-size: 0.9em; padding: 8px; border: 1px solid var(--rule); background: var(--pale); }
 .diplomacy-records > li:not(.diplomacy-empty) { padding: 10px 0; border-bottom: 1px solid var(--rule); }

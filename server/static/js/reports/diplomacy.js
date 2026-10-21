@@ -117,10 +117,21 @@ export function syncProposal(form) {
   const peaceFields = form.querySelector("[data-peace-fields]");
   const reparationFields = form.querySelector("[data-reparation-fields]");
   notice.disabled = !chosen.some((type) => TERMINABLE.has(type));
+  notice.hidden = notice.disabled;
   peaceFields.disabled = !peace;
+  peaceFields.hidden = !peace;
   const reparations = peace && form.querySelector("[data-reparations-toggle]").checked;
   reparationFields.disabled = !reparations;
+  reparationFields.hidden = !reparations;
   for (const name of ["payer", "amount", "due_turns"]) form.elements[name].required = reparations;
+  for (const fields of form.querySelectorAll("[data-clause-fields]")) {
+    const type = fields.dataset.clauseFields;
+    const selected = chosen.includes(type);
+    fields.hidden = !selected;
+    fields.disabled = !selected;
+    const checkbox = clauses.find((c) => c.value === type);
+    checkbox?.setAttribute("aria-controls", fields.id);
+  }
 
   const partner = form.elements.partner;
   for (const option of form.querySelectorAll("[data-partner-option]")) {
@@ -135,8 +146,8 @@ export function syncProposal(form) {
   let error = "";
   if (!chosen.length) error = "条項を1つ以上選んでください。";
   else if (peace && ceasefire) error = "停戦と講和は一緒に選べません。";
-  else if (ceasefire && chosen.some((type) => TERMINABLE.has(type) && type !== "ceasefire")) {
-    error = "停戦に不可侵・同盟は添えられません。講和の取り決めに添えてください。";
+  else if (ceasefire && chosen.some((type) => type !== "ceasefire")) {
+    error = form.dataset.ceasefireError;
   }
   clauses[0]?.setCustomValidity(error);
 }

@@ -1,0 +1,24 @@
+{% load i18n %}
+{% if kind == "war_declared" or kind == "war_declared_on" or kind == "war_resumed" %}
+  {% if icon %}<span aria-hidden="true">⚔</span>{% else %}{% translate "宣戦・戦争" %}{% endif %}
+{% elif kind == "war_ended" or kind == "ceasefire_started" %}
+  {% if icon %}<span aria-hidden="true">🕊</span>{% else %}{% translate "停戦・講和" %}{% endif %}
+{% elif kind == "treaty_violated" %}
+  {% if icon %}<span aria-hidden="true">⚠</span>{% else %}{% translate "条約違反" %}{% endif %}
+{% elif kind|slice:":7" == "treaty_" %}
+  {% if icon %}<span aria-hidden="true">📜</span>{% else %}{% translate "条約" %}{% endif %}
+{% elif kind|slice:":6" == "title_" or kind|slice:":6" == "award_" %}
+  {% if icon %}<span aria-hidden="true">🏅</span>{% else %}{% translate "賞・称号" %}{% endif %}
+{% elif kind|slice:":9" == "disaster_" or kind|slice:":7" == "famine_" or kind|slice:":11" == "population_" %}
+  {% if icon %}<span aria-hidden="true">⚠</span>{% else %}{% translate "災害・飢え" %}{% endif %}
+{% elif kind == "facility_bankrupt" or kind == "firm_bankrupt" or kind|slice:":5" == "bank_" or kind == "bond_default" %}
+  {% if icon %}<span aria-hidden="true">▥</span>{% else %}{% translate "経済・金融" %}{% endif %}
+{% elif kind|slice:":9" == "election_" or kind|slice:":9" == "politics_" or kind == "constitution_amended" or kind == "riot_destroyed" or kind == "leader_renamed" or kind == "capital_rebuilt" or kind == "transition_ended" or kind == "mobilization_started" or kind == "economy_changed" or kind == "nationalized_all" %}
+  {% if icon %}<span aria-hidden="true">⚖</span>{% else %}{% translate "政治" %}{% endif %}
+{% elif kind|slice:":5" == "bloc_" or kind == "trade_started" or kind == "embargo_set" or kind == "aid_sent" or kind == "fx_peg_broken" %}
+  {% if icon %}<span aria-hidden="true">⇄</span>{% else %}{% translate "貿易・援助" %}{% endif %}
+{% elif kind == "island_founded" %}
+  {% if icon %}<span aria-hidden="true">⚑</span>{% else %}{% translate "建国" %}{% endif %}
+{% else %}
+  {% if icon %}<span aria-hidden="true">◆</span>{% else %}{% translate "国の出来事" %}{% endif %}
+{% endif %}

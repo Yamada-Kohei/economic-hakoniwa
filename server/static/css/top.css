@@ -52,10 +52,13 @@
 .island-table .rank { text-align: center; font-weight: bold; }
 .island-table .island-name { white-space: nowrap; }
 .island-table small { color: #4f62a0; }
-.title-badge { display: inline-block; margin: 1px 2px; padding: 0 4px; border: 1px solid #c79a2b;
-  background: #fff6d6; color: #7a4d00; font-size: 0.85em; white-space: nowrap; }
+.island-name-line { display: flex; align-items: center; gap: 6px; }
+.island-owner { display: block; margin: 4px 0 0 31px; }
+.badge-summary { width: 200px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; line-height: 1.8; }
+.badge-summary .title-badge { margin-right: 4px; }
+.badge-summary:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
 
-.retro-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.retro-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 12px; }
 .retro-box { min-width: 0; }
 .recent-events { margin: 0; padding-left: 1.2em; font-size: 0.9em; }
 .recent-events li { margin: 2px 0; }
@@ -88,5 +91,6 @@
 .banner-html { width: 100%; box-sizing: border-box; font-family: monospace; font-size: 0.8em; }
 #world-summary .records th { white-space: normal; }
 
-.table-flag { vertical-align: middle; border: 1px solid #0002; object-fit: cover; }
-.award-badge { background: #fff4c2; border-color: #c9a227; }
+@media (max-width: 540px) {
+  .retro-title h1 { font-size: 1.5em; letter-spacing: 0.08em; overflow-wrap: anywhere; }
+}
