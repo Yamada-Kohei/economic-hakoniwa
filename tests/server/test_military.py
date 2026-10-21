@@ -243,6 +243,10 @@ def test_military_page_and_defs(world):
     assert army["infantry"]["arm"] == "land" and army["infantry"]["equipment"] == {"weapons": 100}
     assert army["transport"]["capacity"] == 40 and army["submarine"]["stealth"] is True
     assert army["frigate"]["name"] == "フリゲートの艦隊"
+    facilities = Client().get("/api/defs").json()["facilities"]
+    assert facilities["missile_base"]["hide"] == {"turns": 8, "materials_factor": 2}
+    assert facilities["nuclear_facility"]["hide"]["turns"] == 20
+    assert "hide" not in facilities["barracks"]
 
 
 def test_a_hidden_facility_shows_only_to_its_owner_and_the_ones_who_found_it(world):
