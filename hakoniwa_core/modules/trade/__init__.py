@@ -43,6 +43,7 @@ from hakoniwa_core.diplomacy import treaties as diplomacy_treaties
 from hakoniwa_core.economy import SUBSIDIES, Payer, books, entity_of, funds
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
+from hakoniwa_core.military import naval
 from hakoniwa_core.modules.records import LedgerCheckFailed
 from hakoniwa_core.registry import OrderFailed, OrderHandler, Registry, WorldStage
 from hakoniwa_core.state import Facility, IslandState, LogEntry, WorldState
@@ -203,6 +204,7 @@ class _Round:
         self.contract_fx: dict[tuple[int, int], _ContractFx] = {}
 
     def run(self) -> None:
+        self._intercept()
         self._unload()
         for i in self.ids:
             island = self.world.islands[i]
@@ -215,6 +217,76 @@ class _Round:
         blocs.settle_leaves(self.world)
         contracts.close(self.world, self.turn)
         self._close(bloc_unmet, bloc_sellers)
+
+    # --- 0. 海での襲撃と封鎖（フェーズ4-3 の②。MI-33・MI-34・MI-48・MI-56） ----------------
+
+    def _intercept(self) -> None:
+        """航海中の貿易の船が、見張りの区画や封鎖の区画で襲われるか。行きで沈めば船だけ、帰りで
+        沈めば荷も失う。封鎖で追い返された中立の船は 1 ターン待つ。"""
+        watchers = naval.hunters(self.world, self.defs, self.config)
+        if not watchers and not naval.blockades(self.world, self.defs, self.config, self.turn):
+            return
+        gone: set[int] = set()
+        for s in sorted(self.state["shipments"], key=lambda s: s["id"]):
+            # 護衛が艦を沈めると封鎖が弱まることがあるので、船ごとに数え直す
+            groups = naval.blockades(self.world, self.defs, self.config, self.turn)
+            outcome = naval.shipment_outcome(
+                self.world, self.defs, self.config, self.turn, s, watchers, groups
+            )
+            if outcome is None:
+                continue
+            island = self.world.islands.get(s["to"])
+            where = naval.position(self.world, s, self.turn)
+            if island is None or where is None:
+                continue
+            if outcome == naval.TURNED:
+                s["arrive"] += 1
+                s["delay"] = s.get("delay", 0) + 1
+                args = {"good": s["good"]}
+                island.log.append(LogEntry("cargo_turned_back", args))
+            elif where[1]:
+                self._sink_cargo(island, s)
+                gone.add(s["id"])
+            elif shipping_of(island, self.config) is not None:
+                self._sink_ship(island, s)
+                s["arrive"] += s["oneway"]
+                s["delay"] = s.get("delay", 0) + s["oneway"]
+        if gone:
+            self.state["shipments"] = [s for s in self.state["shipments"] if s["id"] not in gone]
+
+    def _lose_ships(self, island: IslandState, s: dict[str, Any], release: bool = True) -> int:
+        """沈んだ船を船団から除き、傷みと同じ費用に数える（運賃に乗る）。除いた隻数（1000 分の 1）を
+        返す。行きで沈んだときは release=False（代わりの船が同じ荷の分を使い続ける）。"""
+        shipping = shipping_of(island, self.config)
+        if shipping is None:
+            return 0
+        if release:
+            ships.release(shipping, s["id"])
+        lost = max(1, ships.ships_of_load(self.config, s["load"]))
+        return ships.lose_ships(island, self.config, shipping, lost)
+
+    def _sink_ship(self, island: IslandState, s: dict[str, Any]) -> None:
+        count = self._lose_ships(island, s, release=False)
+        island.stats["trade.ships_sunk"] = island.stats.get("trade.ships_sunk", 0) + count
+        island.log.append(LogEntry("ship_sunk_out", {"ships": count / QUANTITY_SCALE}))
+
+    def _sink_cargo(self, island: IslandState, s: dict[str, Any]) -> None:
+        """帰りの航海で沈んだ船の荷（沈んで失った荷として突き合わせに入れる）。"""
+        good = s["good"]
+        qty = sum(q for _, q in s["batches"])
+        f = island.facility(s["facility"]) if s.get("facility") is not None else None
+        if f is not None and is_trader(self.config, f):
+            item = traders.entry(f, good)
+            item["transit"] = max(0, item["transit"] - qty)
+            books.stock_moved(island, f.id, good, -qty)  # 買ったときに入れた在庫の増えを消す
+        count = self._lose_ships(island, s)
+        unloaded = self.cargo["unloaded"]
+        unloaded[good] = unloaded.get(good, 0) + qty
+        stats = island.stats
+        stats["trade.ships_sunk"] = stats.get("trade.ships_sunk", 0) + count
+        stats["trade.cargo_sunk"] = stats.get("trade.cargo_sunk", 0) + qty
+        args = {"ships": count / QUANTITY_SCALE, "good": good, "amount": qty / QUANTITY_SCALE}
+        island.log.append(LogEntry("ship_sunk_cargo", args))
 
     # --- 1. 荷下ろし -------------------------------------------------------------------
 
@@ -811,6 +883,8 @@ class _Round:
         f = shipping_of(buyer, self.config)
         if f is None or port_of(buyer, self.config) is None:
             return 0
+        if naval.blocked(self.world, self.defs, self.config, self.turn, buyer.id, seller.id, good):
+            return 0  # 封鎖に止められた（出入りする船を止める）
         here = self.islands[buyer.id]
         free = ships.free(self.config, f) - here.ships_used
         trip = 2 * one_way_turns(self.config, buyer, seller)
@@ -872,6 +946,7 @@ class _Round:
             freight = (
                 ships.freight_rate(buyer, self.config, shipping) * load * span // QUANTITY_SCALE
             )
+            freight = self._war_risk(freight, buyer, seller)
             payer = Payer(entity) if f is not None else gov_payer()
             paid = self._pay_freight(buyer, payer, freight, f)
             if f is not None:
@@ -889,6 +964,8 @@ class _Round:
                 "load": load,
                 "loaded": self.turn,
                 "arrive": arrive,
+                "ship": load > 0 and shipping is not None,
+                "oneway": oneway,
                 **({"delivery": delivery} if delivery is not None else {}),
                 # 圏の市場の約定の値段と決済通貨（荷を下ろすときの関税。フェーズ3-3）
                 **({"price": price, "currency": currency} if price is not None else {}),
@@ -897,6 +974,19 @@ class _Round:
         loaded = self.cargo["loaded"]
         loaded[good] = loaded.get(good, 0) + qty
         self.islands[buyer.id].shipments.append(shipment_id)
+
+    def _war_risk(self, freight: int, buyer: IslandState, seller: IslandState) -> int:
+        """戦争の危険の上乗せ（MI-35・MI-57）: 戦争の相手の見張りや封鎖のある区画を通る航海には、
+        見込みの損失を運賃に足す（沈む見込み p のとき運賃 ÷ (1 − p)）。"""
+        p = naval.risk(
+            self.world,
+            self.defs,
+            self.config,
+            self.turn,
+            buyer.id,
+            naval.route_cells(self.world, buyer.id, seller.id),
+        )
+        return freight if p <= 0 else round(freight / (1 - min(p, 0.95)))
 
     # --- 5. 圏の市場 ------------------------------------------------------------------------
 

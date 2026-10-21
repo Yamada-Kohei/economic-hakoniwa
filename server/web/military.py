@@ -143,6 +143,7 @@ def fleets(island: m.Island) -> list[dict[str, Any]]:
                 "soldiers_full": spec.get("soldiers", 0) * u["ships"],
                 "equipment": u["equipment"],
                 "status": u["status"],
+                "duty": u.get("duty"),
                 "order": {k: v for k, v in order.items() if k != "route"} if order else None,
                 "steps_left": len(order["route"]) if order and "route" in order else 0,
                 "cargo": u["cargo"],

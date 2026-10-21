@@ -18,7 +18,7 @@ from typing import Any
 from hakoniwa_core import stock
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.diplomacy import war
-from hakoniwa_core.military import army, battle, forces, occupation, sea, supply, vision
+from hakoniwa_core.military import army, battle, forces, naval, occupation, sea, supply, vision
 from hakoniwa_core.registry import OrderFailed, OrderHandler, Registry, WorldStage
 from hakoniwa_core.state import IslandState, LogEntry, WorldState
 from hakoniwa_core.turn.context import StageContext
@@ -55,6 +55,7 @@ class Operations(WorldStage):
                     )
         for i in world.island_ids():
             _run_island(world, ctx, world.islands[i])
+        naval.battle(world, ctx.defs, ctx.config, ctx.turn)
         battle.run(world, ctx)
         occupation.update(world, ctx)
         supply.run(world, ctx)
@@ -79,9 +80,8 @@ def _handle(
         return _form(world, ctx, island, req)
     if kind == "form_fleet":
         return _form_fleet(world, ctx, island, req)
-    unit = army.find(
-        world, req.get("fleet" if kind in ("sail_fleet", "load_supplies") else "unit", -1)
-    )
+    key = "fleet" if kind in ("sail_fleet", "load_supplies", "fleet_duty") else "unit"
+    unit = army.find(world, req.get(key, -1))
     if kind == "load_supplies" and unit is not None and unit["owner"] == island.id:
         return _load_supplies(world, ctx, island, unit, req)
     if unit is None or unit["owner"] != island.id:
@@ -93,6 +93,8 @@ def _handle(
         return None
     if kind == "sail_fleet":
         return _sail_order(world, ctx, island, unit, req)
+    if kind == "fleet_duty":
+        return _duty_order(world, ctx, island, unit, req)
     if kind in ("load_unit", "unload_unit"):
         return _cargo_order(world, ctx, island, unit, req, load=kind == "load_unit")
     if kind == "set_requisition":
@@ -222,6 +224,37 @@ def _sail_order(
         fleet["order"] = None
         return None
     fleet["order"] = {"type": sea.SAIL, "x": x, "y": y, "route": [list(c) for c in route]}
+    if fleet.get("duty") != naval.ESCORT:
+        fleet.pop("duty", None)  # 見張りと封鎖は動くと外れる。護衛は航海しながらでも続く
+    return None
+
+
+def _duty_order(
+    world: WorldState,
+    ctx: StageContext,
+    island: IslandState,
+    fleet: dict[str, Any],
+    req: dict[str, Any],
+) -> str | None:
+    """艦隊に続く務め（護衛・見張り・封鎖）を付ける。none で外す。護衛はレーダーの目を持つ軍艦、
+    見張りと封鎖は軍艦（潜水艦は見張りだけ）。封鎖は、艦隊のいる区画に他国の島がなければ付けない。"""
+    if not army.is_sea(fleet):
+        return "reason_not_fleet"
+    duty = req["duty"]
+    if duty == "none":
+        fleet.pop("duty", None)
+        return None
+    spec = ctx.defs.army[fleet["kind"]]
+    if fleet["status"] != army.READY:
+        return "reason_unit_forming"
+    if not naval.is_warship(spec) or (duty == naval.ESCORT and not spec.get("detect")):
+        return "reason_fleet_not_warship"
+    if duty == naval.BLOCKADE and (
+        spec.get("stealth")
+        or naval.island_cells(world).get((fleet["x"], fleet["y"]), island.id) == island.id
+    ):
+        return "reason_no_blockade_target"
+    fleet["duty"] = duty
     return None
 
 
@@ -642,6 +675,7 @@ ORDERS = (
     "stop_unit",
     "form_fleet",
     "sail_fleet",
+    "fleet_duty",
     "load_unit",
     "unload_unit",
     "load_supplies",

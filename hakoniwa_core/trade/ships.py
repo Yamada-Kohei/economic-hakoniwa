@@ -101,6 +101,27 @@ def ships_of_load(config: GameConfig, load: int) -> int:
     return load // max(1, config.get("trade.ship_capacity"))
 
 
+def lose_ships(island: IslandState, config: GameConfig, f: Facility, qty: int) -> int:
+    """沈んだ船 qty（1000 分の 1 隻）を古い順に船団から除く。設備の額と償却済みの額から沈んだ船の
+    割合を除き、まだ償却していなかった分を船の傷みと同じ費用に数えて運賃に乗せる（close_turn）。除いた量を返す。"""
+    before = fleet(f)
+    taken = 0
+    keep = []
+    for since, q in sorted(f.economy.get("fleet", []), key=lambda e: e[0]):
+        n = min(q, qty - taken)
+        taken += n
+        if q - n > 0:
+            keep.append([since, q - n])
+    f.economy["fleet"] = keep
+    if before > 0 and taken > 0:  # 設備の額と償却済みの額から、沈んだ船の分の割合を除く
+        capital, done = f.economy.get("capital", 0), f.economy.get("depreciated", 0)
+        gone_capital, gone_done = capital * taken // before, done * taken // before
+        f.economy["capital"] = capital - gone_capital
+        f.economy["depreciated"] = done - gone_done
+        f.economy["sunk_value"] = f.economy.get("sunk_value", 0) + max(0, gone_capital - gone_done)
+    return taken
+
+
 def commission(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> int:
     """海運業の在庫にある輸送船（市場で買った船）を船団に移す。移した量を返す。"""
     f = shipping_of(island, config)
@@ -249,7 +270,8 @@ def close_turn(island: IslandState, config: GameConfig, carried: int, fuel_value
         * from_milli(fleet(f))
         / config.get("trade.ship_life")
     )
-    costs = [*f.economy.get("costs", []), wage_bill + fuel_value + wear][-keep:]
+    sunk = f.economy.pop("sunk_value", 0)  # 沈んだ船の値段も船の傷みと同じ費用（MI-35）
+    costs = [*f.economy.get("costs", []), wage_bill + fuel_value + wear + sunk][-keep:]
     f.economy["used"] = [*f.economy.get("used", []), busy(f)][-keep:]
     loads = [*f.economy.get("carried", []), carried][-keep:]
     f.economy["costs"] = costs

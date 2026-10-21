@@ -77,6 +77,7 @@ dig_trench: 陣地を掘る
 stop_unit: 部隊の命令を止める
 form_fleet: 艦隊の編成
 sail_fleet: 艦隊の航海
+fleet_duty: 艦隊の務め（護衛・見張り・封鎖）
 load_unit: 部隊を船に載せる
 unload_unit: 部隊を船から降ろす
 load_supplies: 輸送船団に補給を積む

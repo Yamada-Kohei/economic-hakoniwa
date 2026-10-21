@@ -209,7 +209,7 @@ def _army_def(aid: str, a: Any) -> dict[str, Any]:
         "speed": a["speed"],
         "strength": a.get("strength"),
     }
-    for key in ("weight", "vehicles", "vision", "fuel", "capacity", "stealth", "detect"):
+    for key in ("weight", "vehicles", "vision", "fuel", "capacity", "stealth", "detect", "hunt"):
         if key in a:
             out[key] = a[key]
     return out
