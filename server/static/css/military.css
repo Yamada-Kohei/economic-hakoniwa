@@ -1,0 +1,25 @@
+/* 軍の画面も政治・外交と同じ罫線と色。表の幅はスクロール欄の中に収める。 */
+.military-page { overflow-wrap: anywhere; min-width: 0; }
+.military-page .report-main, .military-page .panel { min-width: 0; }
+.military-links, .military-buttons { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 12px 0; }
+.military-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; }
+.military-summary > div { padding: 10px; border: 1px solid var(--border); border-top: 3px solid var(--accent); background: var(--panel); }
+.military-summary dt { font-size: .9em; }
+.military-summary dd { margin: 6px 0 0; font-size: 1.2em; font-weight: bold; }
+.military-summary meter { display: block; width: 100%; }
+.military-table th, .military-table td { white-space: nowrap; }
+.military-form { border: 1px solid var(--rule); padding: 10px; margin: 10px 0; min-width: 0; }
+.military-form label { display: block; margin: 8px 0; }
+.military-form input, .military-form select { display: block; width: 100%; max-width: 100%; min-width: 0; min-height: 34px; box-sizing: border-box; margin-top: 4px; }
+.military-form button, .military-buttons button { max-width: 100%; white-space: normal; }
+.military-warning { border-left: 4px solid #a42a30; padding: 10px; background: #fff0f1; color: #92222a; }
+.military-page .order-notice:not(:empty) { background: var(--pale); border: 1px solid var(--rule); padding: 8px; }
+.military-card { border: 1px solid var(--rule); margin: 10px 0; padding: 10px; }
+.military-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.fleet-key { display: inline-block; width: 24px; margin-right: 5px; border-top: 3px solid #ffca28; vertical-align: middle; }
+.fleet-key.other { border-color: #ff5252; }
+.fleet-key.previous { border-color: #ff5252; border-top-style: dashed; opacity: .5; }
+.world-grid.fleet-picking .cell { cursor: crosshair; }
+.world-grid.fleet-picking .cell:focus, .world-grid.fleet-picking .cell:hover { outline: 3px solid var(--accent); z-index: 4; }
+.military-picking { background: var(--pale); border: 2px solid var(--accent); padding: 10px; }
+.military-picking[hidden] { display: none; }

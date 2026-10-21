@@ -98,6 +98,7 @@ def defs(request):
             },
             "infrastructure": {kid: _infra_def(kid, k) for kid, k in d.infrastructure.items()},
             "mining": {gid: d.name("goods", gid) for gid in d.mining_resources()},
+            "army": {aid: _army_def(aid, a) for aid, a in d.army.items()},
             "housing": fac.housing_kind(game.config),
             "commute_radius": game.config.get("labor.commute_radius"),
             "founding": {
@@ -196,6 +197,22 @@ def _infra_def(kid: str, k: Any) -> dict[str, Any]:
         "labor": k.get("labor", 0),
         "materials": _shown_amounts(k.get("materials", {})),
     }
+
+
+def _army_def(aid: str, a: Any) -> dict[str, Any]:
+    """部隊・艦隊の種類（army.yaml）。装備は財 → 見せる量。海の艦隊は 1 隻あたりの値。"""
+    out = {
+        "name": get_game().defs.name("army", aid),
+        "arm": a["arm"],
+        "soldiers": a["soldiers"],
+        "equipment": _shown_amounts(a["equipment"]),
+        "speed": a["speed"],
+        "strength": a.get("strength"),
+    }
+    for key in ("weight", "vehicles", "vision", "fuel", "capacity", "stealth", "detect"):
+        if key in a:
+            out[key] = a[key]
+    return out
 
 
 def _facility_def(fid: str, f: Any) -> dict[str, Any]:

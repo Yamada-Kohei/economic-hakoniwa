@@ -12,6 +12,8 @@
     python tools/playtest/hk.py hall                              # 国際会議場
     python tools/playtest/hk.py hall-post 'ごあいさつ' '各国に平和を。'
     python tools/playtest/hk.py diplomacy                         # 自分の国の外交
+    python tools/playtest/hk.py military                          # 自分の国の軍
+    python tools/playtest/hk.py fleets                            # 世界の艦隊と前に見た場所
     python tools/playtest/hk.py mcp                                       # MCP の stdio のつなぎ
 
 AI 用の鍵（アカウントの画面 /accounts/keys/ で作る）は HK_KEY か、`key` で覚えさせたファイル
@@ -580,6 +582,87 @@ def cmd_hall_post(c: Client, a) -> int:
     return 0
 
 
+def print_military_rows(rows: list[dict], seen: bool = False) -> None:
+    """部隊・艦隊の一覧。API が返した公開範囲の項目だけを出す。"""
+    for row in rows:
+        location = f"({row['x']}, {row['y']})"
+        name = row.get("name", row["army"])
+        if seen:
+            state = "今見えている" if row["current"] else "前に見た場所"
+            print(
+                f"  #{row['id']} {name} 国 #{row['owner']} {location} {state} ターン {row['turn']}"
+            )
+            continue
+        state = {"forming": "編成中", "ready": "そろった"}.get(row["status"], row["status"])
+        full = row.get("soldiers_full")
+        print(f"  #{row['id']} {name} {location} 兵 {row['soldiers']}/{full} {state}")
+        if "ships" in row:
+            docked = "母港につないでいる" if row["docked"] else "母港の外"
+            print(f"    艦 {row['ships']} 隻 {docked} 残り {row['steps_left']} 区画")
+            if row["capacity"]:
+                print(f"    荷 {row['cargo']} 運べる重さ {row['capacity']} トン")
+        elif row.get("aboard"):
+            print(f"    乗船先 #{row['aboard']}")
+        print(f"    装備 {row.get('equipment', {})} 命令 {row.get('order')}")
+    if not rows:
+        print("  （ありません）")
+
+
+def cmd_military(c: Client, a) -> int:
+    island = a.island or own_island(c)
+    status, body, _ = c.get(f"/api/islands/{island}/military")
+    if a.json or status >= 400:
+        return show(status, body) if a.json else fail(status, body)
+    data = json.loads(body)["military"]
+    print(f"島 {island} の軍（統計のターン {data['stats_turn']}）")
+    print(f"兵 {data['soldiers']} 人")
+    print(f"国防費・兵の賃金と食べ物 {data['budget']['personnel']}")
+    print(f"国防費・装備の買い入れと編成 {data['budget']['procurement']}")
+    if "volunteers" in data:
+        print(f"志願 {data['volunteers']} 徴兵 {data['conscripts']} 未配属 {data['free_soldiers']}")
+        print(f"士気 {data['morale']:.0%} 練度 {data['training']:.0%}")
+        print(
+            f"賃金・志願 {data['volunteer_wage']:.0%} "
+            f"徴兵 {data['conscript_wage']:.0%}（島の平均賃金に対して）"
+        )
+        print(f"賃金の遅れ {data['wages_late_turns']} ターン 食べ物の不足 {data['hungry']}")
+        print(
+            f"直近の賃金・支払 {data['wages_paid']} 未払 {data['wages_unpaid']} "
+            f"逃亡 {data['deserted']} 死亡 {data['starved']}"
+        )
+        print("[陸の部隊]")
+        print_military_rows(data["units"])
+        print("[艦隊]")
+        print_military_rows(data["fleets"])
+        print("[基地]")
+        for base in data["bases"]:
+            print(f"  #{base['facility']} {base['kind']} ({base['x']}, {base['y']}) {base}")
+        if not data["bases"]:
+            print("  （ありません）")
+        print("[陣地]")
+        print("  " + ("、".join(f"({t['x']}, {t['y']})" for t in data["trenches"]) or "なし"))
+    else:
+        print("部隊と艦隊の中身は、その国の持ち主だけに見えます。")
+        print("[見つけた艦隊]")
+        print_military_rows(data["fleets"], seen=True)
+    print("全項目は --json で読めます。")
+    return 0
+
+
+def cmd_fleets(c: Client, a) -> int:
+    status, body, _ = c.get("/api/world/fleets")
+    if a.json or status >= 400:
+        return show(status, body) if a.json else fail(status, body)
+    data = json.loads(body)
+    print(f"世界の艦隊（ターン {data['turn']}）")
+    print("[自国の艦隊]")
+    print_military_rows(data["mine"])
+    print("[見つけた他国の艦隊]")
+    print_military_rows(data["seen"], seen=True)
+    print("全項目は --json で読めます。")
+    return 0
+
+
 def cmd_diplomacy(c: Client, a) -> int:
     island = a.island or own_island(c)
     status, body, _ = c.get(f"/api/islands/{island}/diplomacy")
@@ -1089,6 +1172,13 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("diplomacy", parents=[raw], help="外交の状態（島を省くと自分の島）")
     s.add_argument("island", nargs="?", type=int)
     s.set_defaults(func=cmd_diplomacy)
+
+    s = sub.add_parser("military", parents=[raw], help="軍の状態（島を省くと自分の島）")
+    s.add_argument("island", nargs="?", type=int)
+    s.set_defaults(func=cmd_military)
+
+    s = sub.add_parser("fleets", parents=[raw], help="世界の艦隊（自国と見つけた他国）")
+    s.set_defaults(func=cmd_fleets)
 
     s = sub.add_parser("key", help="AI 用の鍵を覚えさせる（引数か標準入力。--forget で消す）")
     s.add_argument("value", nargs="?", help="鍵（省くと標準入力から読む）")

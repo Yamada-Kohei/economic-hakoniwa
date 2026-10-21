@@ -35,6 +35,7 @@ urlpatterns = [
     path("islands/<int:island_id>/politics/", views.politics_page, name="island_politics"),
     path("islands/<int:island_id>/plan/", views.plan_page, name="island_plan"),
     path("islands/<int:island_id>/diplomacy/", views.diplomacy_page, name="island_diplomacy"),
+    path("islands/<int:island_id>/military/", views.military_page, name="island_military"),
     path("islands/<int:island_id>/country/", views.country_page, name="island_country"),
     path("islands/<int:island_id>/flag", views.island_flag, name="island_flag"),
     path(
