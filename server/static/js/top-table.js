@@ -3,6 +3,14 @@
 (function () {
   const table = document.getElementById("island-table");
   if (!table) return;
+  // 省略したバッジも、マウスと読み上げでは全部の名前を確かめられるようにする。
+  for (const summary of table.querySelectorAll(".badge-summary")) {
+    const names = [...summary.querySelectorAll(".title-badge")].map((badge) => badge.textContent.trim());
+    if (names.length) {
+      summary.title = names.join("・");
+      summary.setAttribute("aria-label", summary.title);
+    }
+  }
   const body = table.tBodies[0];
   const heads = table.querySelectorAll("th[data-sort]");
   const numeric = (key) => key !== "name";

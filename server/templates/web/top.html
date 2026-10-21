@@ -57,11 +57,11 @@
     <tr data-rank="{{ r.rank }}" data-name="{{ r.name }}"{% for name, c in r.columns.items %} data-{{ name|cut:"_" }}="{{ c.value|default_if_none:'' }}"{% endfor %}{% if r.inactive %} class="inactive"{% endif %}>
       <td class="rank">{{ r.rank }}</td>
       <td class="move">{% if r.move is None %}<span class="muted">-</span>{% elif r.move > 0 %}<span class="up">↑{{ r.move }}</span>{% elif r.move < 0 %}<span class="down">↓{{ r.move|stringformat:"d"|cut:"-" }}</span>{% else %}<span class="muted">→</span>{% endif %}</td>
-      <td class="island-name"><img class="table-flag" src="{{ r.flag }}" alt="" width="24" height="16" loading="lazy"> <a href="{% url 'island' r.island %}">{{ r.name }}</a>{% if r.ai %} {% include "web/ai_mark.html" %}{% endif %}{% if r.new %} <span class="new-mark">NEW!</span>{% endif %}
-        <br><small>{% if r.owner %}{{ r.owner }}{% else %}{% translate "持ち主なし" %}{% endif %}{% if r.inactive %} ・ {% translate "休止中" %}{% endif %}</small></td>
+      <td class="island-name"><div class="island-name-line"><a class="country-link" href="{% url 'island' r.island %}"><img class="table-flag" src="{{ r.flag }}" alt="" width="24" height="16" loading="lazy"><span>{{ r.name }}</span></a>{% if r.ai %} {% include "web/ai_mark.html" %}{% endif %}{% if r.new %} <span class="new-mark">NEW!</span>{% endif %}</div>
+        <small class="island-owner">{% if r.owner %}{{ r.owner }}{% else %}{% translate "持ち主なし" %}{% endif %}{% if r.inactive %} ・ {% translate "休止中" %}{% endif %}</small></td>
       <td class="regime">{{ r.regime|default:"-" }}</td>
       {% for name, c in r.columns.items %}<td class="num">{% if c.value is None and c.text %}<span class="muted">{{ c.text }}</span>{% elif c.text %}{{ c.text }}{% else %}<span class="muted">-</span>{% endif %}</td>{% endfor %}
-      <td class="titles">{% for a in r.awards %}<span class="title-badge award-badge">{{ a }}</span>{% endfor %}{% for t in r.titles %}<span class="title-badge">{{ t }}</span>{% endfor %}{% if not r.awards and not r.titles %}<span class="muted">-</span>{% endif %}</td>
+      <td class="titles"><div class="badge-summary"{% if r.awards or r.titles %} tabindex="0" title="{{ r.awards|join:'・' }}{% if r.awards and r.titles %}・{% endif %}{{ r.titles|join:'・' }}"{% endif %}>{% for a in r.awards %}{% include "web/award_badge.html" with name=a %}{% endfor %}{% for t in r.titles %}<span class="title-badge">{{ t }}</span>{% endfor %}{% if not r.awards and not r.titles %}<span class="muted">-</span>{% endif %}</div></td>
     </tr>
     {% empty %}
     <tr><td colspan="{{ columns|length|add:5 }}">{% translate "まだ島がありません。" %}</td></tr>
@@ -70,10 +70,25 @@
 </table>
 </div>
 
+<section id="awards">
+  <h2 class="retro-h">{% translate "世界の賞と受賞国" %}</h2>
+  <p class="retro-note">{% translate "いま賞を持っている国です。国の名前から公開ページを読めます。受賞の条件は手引きにあります。" %} <a href="{% url 'help' %}#country-pages">{% translate "賞の手引き" %}</a></p>
+  <div class="award-grid">
+    {% translate "繁栄賞" as award_name %}{% include "web/award_card.html" with name=award_name %}
+    {% translate "超繁栄賞" as award_name %}{% include "web/award_card.html" with name=award_name %}
+    {% translate "究極繁栄賞" as award_name %}{% include "web/award_card.html" with name=award_name %}
+    {% translate "平和賞" as award_name %}{% include "web/award_card.html" with name=award_name %}
+    {% translate "平穏賞" as award_name %}{% include "web/award_card.html" with name=award_name %}
+    {% translate "災難賞" as award_name %}{% include "web/award_card.html" with name=award_name %}
+    {% translate "ターン杯" as award_name %}{% include "web/award_card.html" with name=award_name %}
+  </div>
+</section>
+
 <div class="retro-columns">
   <section class="retro-box" id="world-summary">
     <h2 class="retro-h">{% translate "世界の様子" %}</h2>
     {% with w=world_summary %}
+    <div class="table-scroll">
     <table class="retro-table records">
       <tr><th>{% translate "国の数" %}</th><td class="num">{{ w.islands }}{% if w.inactive %} <small>{% blocktranslate with n=w.inactive %}（ほかに休止中 {{ n }}）{% endblocktranslate %}</small>{% endif %}</td><td></td></tr>
       {% for c in w.totals %}<tr><th>{{ c.label }}</th><td class="num">{{ c.text }}</td><td class="num">{% if c.change is not None %}<span class="{% if c.change > 0 %}up{% elif c.change < 0 %}down{% else %}muted{% endif %}">{{ c.change|stringformat:"+.2f" }}%</span>{% else %}<span class="muted">-</span>{% endif %}</td></tr>{% endfor %}
@@ -81,18 +96,21 @@
       <tr><th>{% translate "二国間の契約" %}</th><td class="num">{{ w.contracts }}</td><td></td></tr>
       <tr><th>{% translate "運んでいる船荷" %}</th><td class="num">{{ w.shipments }}</td><td></td></tr>
     </table>
+    </div>
     <p class="retro-note">{% translate "右の数は前のターンからの増え方です。" %}{% if w.unconverted %}{% blocktranslate with n=w.unconverted %}為替レートがなく直せない {{ n }} か国は、お金の合計に入れていません。{% endblocktranslate %}{% endif %}</p>
     {% endwith %}
   </section>
   <section class="retro-box" id="fx">
     <h2 class="retro-h">{% translate "為替の相場表" %}</h2>
     {% if fx %}
+    <div class="table-scroll">
     <table class="retro-table fx-table">
       <thead><tr><th>{% translate "通貨" %}</th><th class="num">{% blocktranslate with c=base_name %}1 単位が {{ c }} で{% endblocktranslate %}</th><th class="num">{% translate "前回比" %}</th></tr></thead>
       <tbody>
       {% for r in fx %}<tr><td>{{ r.name }}<br><small>{{ r.island_name }}</small></td><td class="num">{{ r.text }}{% if not r.direct %} <small class="muted">{% translate "目安" %}</small>{% endif %}</td><td class="num">{% if r.change is not None %}<span class="{% if r.change > 0 %}up{% elif r.change < 0 %}down{% else %}muted{% endif %}">{{ r.change|stringformat:"+.2f" }}%</span>{% else %}<span class="muted">-</span>{% endif %}</td></tr>{% endfor %}
       </tbody>
     </table>
+    </div>
     <p class="retro-note">{% translate "「目安」は直接の相場がなく、ほかの通貨を通して計算した値です。詳しくは各国の為替の画面で。" %}</p>
     {% else %}<p class="muted">{% translate "まだ貿易を始めた国がありません。" %}</p>{% endif %}
   </section>
@@ -110,9 +128,11 @@
   <section class="retro-box">
     <h2 class="retro-h">{% translate "歴代の記録" %}</h2>
     {% if records %}
+    <div class="table-scroll">
     <table class="retro-table records">
       {% for r in records %}<tr><th>{{ r.label }}</th><td class="num">{{ r.text }}</td><td><a href="{% url 'island' r.island %}">{{ r.name }}</a><br><small>{% if r.key == "longest" %}{% if r.turn %}{% blocktranslate with d=r.date %}{{ d }}に建国{% endblocktranslate %}{% else %}{% translate "世界のはじめから" %}{% endif %}{% else %}{{ r.date }}{% endif %}</small></td></tr>{% endfor %}
     </table>
+    </div>
     {% else %}<p class="muted">{% translate "まだ記録はありません。" %}</p>{% endif %}
     <h2 class="retro-h">{% translate "キリ番ゲッター様" %}</h2>
     {% if getters %}

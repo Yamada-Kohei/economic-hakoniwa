@@ -1,0 +1,10 @@
+{% load i18n %}
+<article class="award-card">
+  <h3>{% include "web/award_badge.html" %}</h3>
+  <ul class="award-holders">
+    {% for r in table %}{% if name in r.awards %}
+    <li><a class="country-link" href="{% url 'island_country' r.island %}"><img class="table-flag" src="{{ r.flag }}" alt="" width="24" height="16" loading="lazy"><span>{{ r.name }}</span></a></li>
+    {% endif %}{% endfor %}
+  </ul>
+  <p class="award-no-holder muted">{% translate "まだ受賞国はありません。" %}</p>
+</article>

@@ -1,26 +1,28 @@
 {% extends "base.html" %}{% load i18n %}
 {% block title %}{% translate "世界の近況" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
+<div class="news-page">
 <h1>{% translate "世界の近況" %}</h1>
 <p class="hint">{% translate "全部の国の主な出来事です（建国・選挙・憲法の改正・災害・倒産・称号・条約・戦争など）。国の名前から、その国の年表と紹介のページへ行けます。" %}</p>
+<p><a href="{% url 'top' %}#awards">{% translate "世界の賞と受賞国を見る" %}</a></p>
 
 <section class="panel" id="news">
-  <div class="table-scroll">
-  <table class="goods news-table">
-    <thead><tr><th>{% translate "日付" %}</th><th>{% translate "国" %}</th><th>{% translate "出来事" %}</th></tr></thead>
-    <tbody>
+  <h2>{% translate "新しい出来事" %}</h2>
+  <ol class="news-feed">
     {% for e in entries %}
-      <tr>
-        <td>{{ e.date }}{% if e.country_date %}<br><small class="muted">{{ e.country_date }}</small>{% endif %}</td>
-        <td><img class="table-flag" src="{{ e.island.flag }}" alt="" width="24" height="16" loading="lazy"> <a href="{% url 'island_country' e.island.id %}">{{ e.island.name }}</a></td>
-        <td>{{ e.text }}</td>
-      </tr>
+      <li class="news-entry">
+        <div class="news-mark">{% include "web/news_kind.html" with kind=e.kind icon=True %}</div>
+        <article>
+          <div class="news-meta"><span class="news-kind">{% include "web/news_kind.html" with kind=e.kind icon=False %}</span><span>{{ e.date }}</span>{% if e.country_date %}<span>{{ e.country_date }}</span>{% endif %}</div>
+          <a class="country-link" href="{% url 'island_country' e.island.id %}"><img class="table-flag" src="{{ e.island.flag }}" alt="" width="24" height="16" loading="lazy"><span>{{ e.island.name }}</span></a>
+          <p>{{ e.text }}</p>
+        </article>
+      </li>
     {% empty %}
-      <tr><td colspan="3" class="muted">{% translate "まだ出来事がありません。" %}</td></tr>
+      <li class="muted">{% translate "まだ出来事がありません。" %}</li>
     {% endfor %}
-    </tbody>
-  </table>
-  </div>
+  </ol>
   {% include "board/pager.html" %}
 </section>
+</div>
 {% endblock %}

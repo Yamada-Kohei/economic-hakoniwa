@@ -3,12 +3,20 @@
 {% block content %}
 {% include "web/report_header.html" %}
 {% with c=country %}
+<div class="country-page">
 {% if error %}<p class="warning" role="alert">{{ error }}</p>{% endif %}
 
 <section class="panel country-head" id="profile">
   <img class="country-flag" src="{{ c.flag.url }}" alt="{% blocktranslate with name=island.name %}{{ name }}の国旗{% endblocktranslate %}"{% if c.flag.width %} width="{{ c.flag.width }}" height="{{ c.flag.height }}"{% endif %}>
-  <div>
+  <div class="country-head-body">
     <h2>{{ c.head.name }}{% if c.head.inactive %} <small class="muted">{% translate "（休止中）" %}</small>{% endif %}</h2>
+    {% if c.awards or c.titles %}
+    <div class="country-honours" aria-label="{% translate '賞・称号' %}">
+      {% for a in c.awards %}{% include "web/award_badge.html" with name=a.name detail=a.detail %}{% endfor %}
+      {% for t in c.titles %}<span class="title-badge">{{ t }}</span>{% endfor %}
+    </div>
+    {% endif %}
+    <div class="table-scroll">
     <table class="info">
       <tbody>
         <tr><th scope="row">{% translate "元首" %}</th><td>{{ c.head.leader|default:"—" }}</td></tr>
@@ -16,11 +24,11 @@
         <tr><th scope="row">{% translate "通貨" %}</th><td>{{ c.head.currency|default:"—" }}{% if c.head.currency_symbol %}（{{ c.head.currency_symbol }}）{% endif %}</td></tr>
         <tr><th scope="row">{% translate "体制" %}</th><td>{% for axis, name in c.head.regime.items %}{{ name }}{% if not forloop.last %} ・ {% endif %}{% endfor %}</td></tr>
         {% if c.head.population is not None %}<tr><th scope="row">{% translate "人口" %}</th><td>{{ c.head.population|floatformat:0 }}{% translate "人" %}</td></tr>{% endif %}
-        {% if c.awards or c.titles %}<tr><th scope="row">{% translate "賞・称号" %}</th><td>{% for a in c.awards %}<span class="title-badge award-badge" title="{{ a.detail }}">{{ a.name }}</span>{% endfor %}{% for t in c.titles %}<span class="title-badge">{{ t }}</span>{% endfor %}</td></tr>{% endif %}
         <tr><th scope="row">{% translate "建国" %}</th><td>{{ c.era.founded }}</td></tr>
         <tr><th scope="row">{% translate "いま" %}</th><td>{{ c.era.now }}（{{ c.era.kind_name }}）</td></tr>
       </tbody>
     </table>
+    </div>
     {% if c.flag.provisional %}<p class="hint">{% translate "仮の旗です（国旗を上げると入れ替わります）。" %}</p>{% endif %}
   </div>
 </section>
@@ -33,7 +41,7 @@
 
 <section class="panel" id="timeline">
   <h2>{% translate "年表" %}</h2>
-  <p class="hint">{% translate "建国・選挙・憲法の改正・条約・戦争などの主な出来事です。日付は、この国が選んだ紀年で書いています。" %}</p>
+  <p class="hint">{% translate "建国・選挙・憲法の改正・条約・戦争などの主な出来事を、新しい順に並べています。日付は、この国が選んだ紀年で書いています。" %}</p>
   <div class="table-scroll">
   <table class="goods country-timeline">
     <thead><tr><th>{% translate "日付" %}</th><th>{% translate "出来事" %}</th></tr></thead>
@@ -49,47 +57,42 @@
   {% if c.timeline_text %}
   <details>
     <summary>{% translate "wiki などに貼る文を出す" %}</summary>
-    <textarea readonly rows="8" class="wide">{{ c.timeline_text }}</textarea>
+    <label class="country-field">{% translate "年表のコピー用の文" %}<textarea readonly rows="8" class="wide">{{ c.timeline_text }}</textarea></label>
   </details>
   {% endif %}
 </section>
 
 <section class="panel" id="monuments">
   <h2>{% translate "記念碑" %}</h2>
+  <div class="monument-grid">
   {% for mo in c.monuments %}
-    <article class="monument">
+    <article class="monument" id="monument-{{ mo.number }}">
+      <div class="monument-body">
+      {% if mo.image %}<img src="{{ mo.image }}" alt="" class="monument-image" width="96" height="96" loading="lazy">{% else %}<span class="monument-image monument-placeholder" aria-hidden="true">▥</span>{% endif %}
+      <div class="monument-copy">
       <h3>{{ mo.name }}{% if mo.name != mo.kind_name %} <small class="muted">（{{ mo.kind_name }}）</small>{% endif %}{% if not mo.built %} <small class="muted">{% translate "（工事中）" %}</small>{% endif %}</h3>
-      {% if mo.image %}<img src="{{ mo.image }}" alt="" class="monument-image" width="96" height="96">{% endif %}
-      <p class="inscription">{{ mo.text }}{% for line in mo.note %}<br>{{ line }}{% endfor %}</p>
-      {% if mine and mo.image %}
-      <form method="post" enctype="multipart/form-data" class="actions">{% csrf_token %}
-        <input type="hidden" name="action" value="monument_image"><input type="hidden" name="number" value="{{ mo.number }}">
-        <label>{% translate "絵（PNG）" %} <input type="file" name="image" accept="image/png" required></label>
-        <button type="submit">{% translate "絵を上げる" %}</button>
-      </form>
-      <form method="post" class="actions">{% csrf_token %}
-        <input type="hidden" name="action" value="monument_image_clear"><input type="hidden" name="number" value="{{ mo.number }}">
-        <button type="submit">{% translate "絵を外す（仮の絵に戻す）" %}</button>
-      </form>
-      {% if mo.image_hidden_by_admin %}<p class="warning">{% translate "上げた絵は管理者が非表示にしました。別の絵を上げると、もう一度見てもらえます。" %}</p>{% endif %}
-      {% endif %}
+      <blockquote class="inscription">{{ mo.text|linebreaksbr }}{% for line in mo.note %}<br>{{ line }}{% endfor %}</blockquote>
+      </div>
+      </div>
     </article>
   {% empty %}
     <p class="muted">{% translate "記念碑はまだありません。" %}</p>
   {% endfor %}
+  </div>
 </section>
 
 <section class="panel" id="notes">
   <h2>{% translate "来訪者の一言" %}</h2>
-  <ul class="plain-list">
-    {% for n in c.notes %}<li>{{ n.text }} <small class="muted">— <a href="{% url 'island_country' n.from.id %}">{{ n.from.name }}</a>（{{ n.date }}）</small>
-      {% if mine %}<form method="post" class="inline-form">{% csrf_token %}<input type="hidden" name="action" value="note_hide"><input type="hidden" name="note" value="{{ n.id }}"><button type="submit" class="link-button">{% translate "隠す" %}</button></form>{% endif %}</li>
+  <ul class="visitor-notes">
+    {% for n in c.notes %}<li><p>{{ n.text }}</p><footer><a href="{% url 'island_country' n.from.id %}">{{ n.from.name }}</a><span class="muted">{{ n.date }}</span>
+      {% if mine %}<form method="post" class="inline-form">{% csrf_token %}<input type="hidden" name="action" value="note_hide"><input type="hidden" name="note" value="{{ n.id }}"><button type="submit" class="link-button">{% translate "隠す" %}</button></form>{% endif %}</footer></li>
     {% empty %}<li class="muted">{% translate "まだ一言はありません。" %}</li>{% endfor %}
   </ul>
   {% if c.can_note %}
-  <form method="post" class="actions">{% csrf_token %}
+  <form method="post" class="actions visitor-compose">{% csrf_token %}
     <input type="hidden" name="action" value="note">
-    <label>{% translate "一言" %} <input name="text" maxlength="{{ c.limits.note }}" required></label>
+    <label>{% translate "この国へ一言を残す" %}<input name="text" maxlength="{{ c.limits.note }}" required aria-describedby="note-limit"></label>
+    <p class="hint" id="note-limit">{% blocktranslate with n=c.limits.note %}{{ n }} 字まで。このページを訪れた人に公開されます。{% endblocktranslate %}</p>
     <button type="submit">{% translate "残す" %}</button>
   </form>
   {% endif %}
@@ -97,7 +100,9 @@
 
 {% if mine %}
 <section class="panel" id="edit">
-  <h2>{% translate "国のページを整える" %}</h2>
+  <details class="country-editor"{% if error %} open{% endif %}>
+  <summary>{% translate "国のページを整える" %}<small>{% translate "紹介文・紀年・国旗・記念碑の絵" %}</small></summary>
+  <h3>{% translate "紹介文" %}</h3>
   <form method="post" id="edit-intro">{% csrf_token %}
     <input type="hidden" name="action" value="intro">
     <label>{% translate "紹介文（国の由来・国是・歴史など）" %}<br>
@@ -105,6 +110,7 @@
     <button type="submit">{% translate "保存" %}</button>
   </form>
 
+  <h3>{% translate "紀年と改元" %}</h3>
   <form method="post" class="actions" id="edit-era">{% csrf_token %}
     <input type="hidden" name="action" value="era">
     <label>{% translate "紀年" %} <select name="kind">{% for k in c.era.choices %}<option value="{{ k.id }}"{% if k.id == c.era.kind %} selected{% endif %}>{{ k.name }}</option>{% endfor %}</select></label>
@@ -119,6 +125,7 @@
   {% if c.era.eras %}<p class="hint">{% for e in c.era.eras %}{{ e.name }}（{{ e.start }}から）{% if not forloop.last %} → {% endif %}{% endfor %}</p>{% endif %}
   <p class="hint">{% translate "紀年は表示だけで、ゲームの暦は変わりません。" %}</p>
 
+  <h3>{% translate "国旗" %}</h3>
   <form method="post" enctype="multipart/form-data" class="actions" id="edit-flag">{% csrf_token %}
     <input type="hidden" name="action" value="flag">
     <label>{% translate "国旗（PNG）" %} <input type="file" name="flag" accept="image/png" required></label>
@@ -132,7 +139,26 @@
     <button type="submit">{% translate "国旗を外す（仮の旗に戻す）" %}</button>
   </form>
   {% endif %}
+  <h3>{% translate "記念碑の絵" %}</h3>
+  <p class="hint">{% translate "自作の記念碑の絵を差し替えられます。PNG の縦横は 16〜512 ピクセル、100 KB までです。" %}</p>
+  {% for mo in c.monuments %}{% if mo.image %}
+  <fieldset class="monument-editor" id="edit-monument-{{ mo.number }}">
+    <legend>{{ mo.name }}</legend>
+    <form method="post" enctype="multipart/form-data" class="actions">{% csrf_token %}
+      <input type="hidden" name="action" value="monument_image"><input type="hidden" name="number" value="{{ mo.number }}">
+      <label>{% translate "絵（PNG）" %}<input type="file" name="image" accept="image/png" required></label>
+      <button type="submit">{% translate "絵を上げる" %}</button>
+    </form>
+    <form method="post" class="actions">{% csrf_token %}
+      <input type="hidden" name="action" value="monument_image_clear"><input type="hidden" name="number" value="{{ mo.number }}">
+      <button type="submit">{% translate "絵を外す（仮の絵に戻す）" %}</button>
+    </form>
+    {% if mo.image_hidden_by_admin %}<p class="warning">{% translate "上げた絵は管理者が非表示にしました。別の絵を上げると、もう一度見てもらえます。" %}</p>{% endif %}
+  </fieldset>
+  {% endif %}{% endfor %}
+  </details>
 </section>
 {% endif %}
+</div>
 {% endwith %}
 {% endblock %}
