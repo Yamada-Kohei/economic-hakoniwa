@@ -49,6 +49,7 @@ STONE = "#c4bcad"
 GLASS = "#9db6c7"
 GLASS2 = "#b7c4cc"
 COPPER = "#6fa98f"
+COPPER_ROOF = "#b57850"  # 赤みのある銅板（緑青の COPPER とは別）
 WATER = "#3d7ea6"
 PAVEMENT = "#d9d4c8"  # 岸壁・屋上などの床
 CONTAINER_BLUE = "#4f8fb8"
@@ -1957,6 +1958,295 @@ SHAPES.update(
 )
 
 
+# --- 軍事第2部（第1部の形・描画関数は変更しない）-------------------------------------------
+
+
+def military_pad() -> list[Prim]:
+    """平地・山のどちらにも置ける、レーダーと同じ低い岩盤と整地面。"""
+    return tiered(
+        0,
+        crag(0.12, 0.12, 0.88, 0.88, 4, ROCK),
+        box(0.2, 0.2, 0.8, 0.8, 3, 0.7, CONCRETE, PAVEMENT),
+    )
+
+
+def earth_magazine() -> list[Prim]:
+    """土で覆ったかまぼこ形の弾薬庫。曲面を細い面に分け、手前に低い入口。"""
+    u0, u1, v0, v1 = 0.57, 0.88, 0.2, 0.7
+    section = [(0, 0), (0, 3), (0.15, 5.5), (0.35, 7), (0.65, 7), (0.85, 5.5), (1, 3), (1, 0)]
+    faces = [Face("left", SOIL, [iso(u0 + t * (u1 - u0), v1, 0.5 + z) for t, z in section])]
+    for (a, za), (b, zb) in zip(section, section[1:], strict=False):
+        faces.append(
+            Face(
+                "slope_l" if a < 0.5 else "slope_r",
+                MILITARY_DARK,
+                [
+                    iso(u0 + t * (u1 - u0), v, 0.5 + z)
+                    for t, v, z in ((a, v0, za), (b, v0, zb), (b, v1, zb), (a, v1, za))
+                ],
+            )
+        )
+    return [
+        Prim((u0, v0, u1, v1), 0.5, faces),
+        box(0.655, v1, 0.795, v1 + 0.005, 0.5, 4, CONCRETE),
+        box(0.68, v1 + 0.006, 0.77, v1 + 0.012, 0.5, 3.1, IRON),
+    ]
+
+
+def fortress() -> list[Prim]:
+    """厚い低壁の八角形。地面は舗装、砲座は三か所。"""
+    outer = [
+        (0.24, 0.12),
+        (0.76, 0.12),
+        (0.88, 0.24),
+        (0.88, 0.76),
+        (0.76, 0.88),
+        (0.24, 0.88),
+        (0.12, 0.76),
+        (0.12, 0.24),
+    ]
+    inner = [(0.5 + (u - 0.5) * 0.68, 0.5 + (v - 0.5) * 0.68) for u, v in outer]
+    parts = tiered(0, box(0.1, 0.1, 0.9, 0.9, 0, 0.5, CONCRETE, PAVEMENT))
+    for i, a in enumerate(outer):
+        b, c, d = outer[(i + 1) % 8], inner[(i + 1) % 8], inner[i]
+        shade = "left" if b[0] != a[0] else "right"
+        parts.append(
+            Prim(
+                (min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1])),
+                0.5,
+                [
+                    Face(shade, CONCRETE, [iso(*a, 0.5), iso(*b, 0.5), iso(*b, 12), iso(*a, 12)]),
+                    Face("right", CONCRETE, [iso(*d, 0.5), iso(*c, 0.5), iso(*c, 12), iso(*d, 12)]),
+                    Face("top", STONE, [iso(*p, 12) for p in (a, b, c, d)]),
+                ],
+            )
+        )
+    for u, v in ((0.3, 0.18), (0.82, 0.4), (0.35, 0.82)):
+        parts.extend(tiered(2, box(u - 0.07, v - 0.06, u + 0.07, v + 0.06, 12, 2.2, MILITARY)))
+        parts.extend(tiered(3, strut((u, v, 14), (u + 0.1, v + 0.07, 14.6), 1, DARK)))
+    return parts
+
+
+def air_defense() -> list[Prim]:
+    """土嚢内の旋回台。二本の角筒を斜め上へ向ける。"""
+    parts = [
+        box(0.15, 0.15, 0.85, 0.85, 0, 1, SOIL),
+        box(0.4, 0.35, 0.67, 0.66, 1, 3, MILITARY_DARK),
+    ]
+    for v in (0.42, 0.57):
+        tube = box(0.35, v, 0.74, v + 0.07, 4, 2.2, MILITARY, MILITARY_DARK)
+        # u が小さい奥側ほど上がる。角筒の断面も残す。
+        for face in tube.faces:
+            face.points = [(x, y - (40 - x) * 0.65) for x, y in face.points]
+        parts.extend(tiered(2, tube))
+    parts += [box(0.24, 0.24, 0.29, 0.29, 1, 6, IRON)]
+    dish = radar_dish(0.265, 0.265, 8)
+    cx, cy = iso(0.265, 0.265, 8)
+    for face in dish.faces:
+        face.points = [(cx + (x - cx) * 0.24, cy + (y - cy) * 0.24) for x, y in face.points]
+    parts.append(dish)
+    for side in ("nw", "ne", "sw", "se"):
+        s = Side(side)
+        parts += [
+            s.box(0.83, 0.19 + i * 0.12, 0.9, 0.29 + i * 0.12, 0, 1.6, SOIL, STONE)
+            for i in range(5)
+        ]
+    return parts
+
+
+def rebel_soldier(u: float, v: float, step: float) -> list[Prim]:
+    """歩兵と同じ全身の箱。低い布帽、茶色の服、背中の斜めの小銃で区別。"""
+    rifle = strut((u - 0.045, v - 0.035, 4), (u + 0.085, v - 0.035, 10.5), 0.8, COAL)
+    return [
+        box(u - 0.035 + step, v - 0.03, u + 0.005 + step, v + 0.025, 0, 4, IRON),
+        box(u + 0.025 - step, v - 0.03, u + 0.065 - step, v + 0.025, 0, 4, IRON),
+        box(u - 0.045, v - 0.04, u + 0.075, v + 0.045, 4, 4.1, WOOD),
+        box(u - 0.018, v - 0.028, u + 0.05, v + 0.035, 8.1, 1.9, SAND),
+        box(u - 0.025, v - 0.035, u + 0.055, v + 0.045, 10, 0.6, SOIL),
+        box(u + 0.045, v - 0.035, u + 0.09, v + 0.045, 9.9, 0.25, SOIL),
+        *tiered(2, rifle),
+    ]
+
+
+def ground_marks(color: str) -> list[Prim]:
+    """建物より先に描く、透明な余白の多い不規則な地面の斑点。"""
+    return [
+        patch(
+            [
+                (
+                    u + (du * math.cos(i) - dv * math.sin(i)) * r,
+                    v + (du * math.sin(i) + dv * math.cos(i)) * r * 0.8,
+                )
+                for du, dv in (
+                    (-0.95, -0.05),
+                    (-0.71, -0.51),
+                    (-0.3, -0.65),
+                    (0.15, -0.5),
+                    (0.57, -0.68),
+                    (0.9, -0.25),
+                    (0.84, 0.16),
+                    (0.48, 0.57),
+                    (0.05, 0.48),
+                    (-0.39, 0.7),
+                    (-0.79, 0.36),
+                )
+            ],
+            color,
+        )
+        for i, (u, v, r) in enumerate(
+            (
+                (0.12, 0.4, 0.1),
+                (0.6, 0.1, 0.1),
+                (0.89, 0.54, 0.1),
+                (0.56, 0.59, 0.14),
+                (0.13, 0.78, 0.1),
+                (0.43, 0.9, 0.12),
+            )
+        )
+    ]
+
+
+def occupied() -> list[Prim]:
+    """建物のあとに描く。奥の角の細い見張り台と、奥側の短い柵。"""
+    parts = []
+    for u, v in ((0.035, 0.035), (0.145, 0.035), (0.035, 0.145), (0.145, 0.145)):
+        parts.append(box(u, v, u + 0.02, v + 0.02, 0, 7, WOOD))
+    parts += [
+        box(0.025, 0.025, 0.175, 0.175, 6.5, 0.7, WOOD),
+        box(0.035, 0.035, 0.165, 0.165, 7.2, 2.5, MILITARY),
+        *windows(0.035, 0.035, 0.165, 0.165, [8], 1.1, (1, 1), 0.09, DARK),
+        box(0.02, 0.02, 0.18, 0.18, 9.7, 0.5, MILITARY_DARK),
+    ]
+    for side in ("nw", "ne"):
+        s = Side(side)
+        for v in (0.36, 0.52, 0.68):
+            parts.append(s.box(0.92, v, 0.94, v + 0.025, 0, 3, WOOD))
+        parts.append(s.box(0.92, 0.36, 0.94, 0.705, 1.8, 0.5, WOOD))
+    return parts
+
+
+def broken_wall(u: float, v: float, length: float, h: float) -> Prim:
+    """崩れた壁の断面。上端に欠けを作り、整った箱のままにしない。"""
+    edge = [
+        (u, h),
+        (u + length * 0.2, h - 0.8),
+        (u + length * 0.31, h - 3),
+        (u + length * 0.5, h - 1.8),
+        (u + length * 0.66, h - 3.4),
+        (u + length * 0.81, h - 2.4),
+        (u + length, h - 3.8),
+    ]
+    faces = []
+    for side, shade in ((v, "right"), (v + 0.06, "left")):
+        faces.append(
+            Face(
+                shade,
+                CONCRETE,
+                [
+                    iso(u, side, 0),
+                    iso(u + length, side, 0),
+                    *[iso(x, side, z) for x, z in reversed(edge)],
+                ],
+            )
+        )
+    faces += [
+        Face(
+            "top", STONE, [iso(a, v, za), iso(b, v, zb), iso(b, v + 0.06, zb), iso(a, v + 0.06, za)]
+        )
+        for (a, za), (b, zb) in zip(edge, edge[1:], strict=False)
+    ]
+    return Prim((u, v, u + length, v + 0.06), 0, faces)
+
+
+SHAPES.update(
+    {
+        "facility/arms_plant": [
+            *tiered(0, box(0.1, 0.1, 0.9, 0.9, 0, 0.5, CONCRETE, PAVEMENT)),
+            box(0.16, 0.16, 0.51, 0.73, 0.5, 22, MILITARY, MILITARY_DARK),
+            gable(0.16, 0.16, 0.51, 0.73, 22.5, 3, "v", MILITARY_DARK, MILITARY),
+            *windows(0.16, 0.16, 0.51, 0.73, [16], 1.7, (2, 3), c=GLASS),
+            box(0.25, 0.73, 0.43, 0.737, 0.5, 9, IRON),
+            *earth_magazine(),
+        ],
+        "facility/copper_smelter": [
+            box(0.1, 0.1, 0.9, 0.9, 0, 0.6, CONCRETE, PAVEMENT),
+            box(0.18, 0.23, 0.78, 0.82, 0.6, 26, CONCRETE),
+            gable(0.16, 0.21, 0.8, 0.84, 26.6, 5, "u", COPPER_ROOF, CONCRETE),
+            cylinder(0.73, 0.18, 0.085, 0.6, 40, c=IRON, cap_c=COAL),
+            *windows(0.18, 0.23, 0.78, 0.82, [15], 2, (4, 3), c=GLASS),
+            box(0.25, 0.82, 0.45, 0.826, 0.6, 10, IRON),
+        ],
+        "facility/electronics_plant": [
+            box(0.1, 0.1, 0.9, 0.9, 0, 0.5, CONCRETE, PAVEMENT),
+            box(0.17, 0.17, 0.83, 0.8, 0.5, 19, WHITE, PAVEMENT),
+            *windows(0.17, 0.17, 0.83, 0.8, [4, 10.5], 3.2, (6, 6), 0.085, GLASS),
+            *[box(u, 0.3, u + 0.12, 0.48, 19.5, 2.2, METAL) for u in (0.25, 0.45, 0.65)],
+        ],
+        "facility/fortress": fortress(),
+        "facility/missile_plant": [
+            box(0.1, 0.1, 0.9, 0.9, 0, 0.5, CONCRETE, PAVEMENT),
+            box(0.22, 0.18, 0.7, 0.73, 0.5, 25, MILITARY, MILITARY_DARK),
+            box(0.34, 0.73, 0.58, 0.739, 0.5, 21, IRON),
+            box(0.455, 0.74, 0.465, 0.747, 0.5, 21, METAL),
+            box(0.73, 0.42, 0.86, 0.74, 0.5, 8, CONCRETE, MILITARY_DARK),
+            *windows(0.73, 0.42, 0.86, 0.74, [4], 1.7, (1, 2), c=GLASS),
+        ],
+        "facility/missile_base": [
+            *military_pad(),
+            box(0.22, 0.22, 0.42, 0.47, 3.7, 7, MILITARY, MILITARY_DARK),
+            *windows(0.22, 0.22, 0.42, 0.47, [7], 1.5, (1, 2), c=GLASS),
+            *[
+                p
+                for u, v in ((0.65, 0.35), (0.64, 0.66), (0.33, 0.68))
+                for p in (
+                    cylinder(u, v, 0.1, 3.7, 0.35, c=IRON, cap_c=CONCRETE),
+                    box(u - 0.06, v, u + 0.06, v + 0.009, 4.05, 0.05, IRON),
+                )
+            ],
+        ],
+        "facility/air_defense": air_defense(),
+        "facility/nuclear_facility": [
+            *military_pad(),
+            cylinder(0.43, 0.4, 0.26, 3.7, 18, cap="dome", c=CONCRETE, cap_c=METAL),
+            box(0.58, 0.53, 0.8, 0.78, 3.7, 12, CONCRETE, ROOF_STEEL),
+            *windows(0.58, 0.53, 0.8, 0.78, [10], 2, (2, 2), c=GLASS),
+            box(0.34, 0.61, 0.47, 0.617, 3.7, 9, IRON),
+        ],
+        "unit/armor": [
+            box(0.6, 0.6, 0.98, 0.69, 0, 2.5, COAL),
+            box(0.6, 0.9, 0.98, 0.98, 0, 2.5, COAL),
+            box(0.61, 0.67, 0.98, 0.92, 1.3, 3.3, MILITARY, MILITARY_DARK),
+            box(0.71, 0.73, 0.87, 0.87, 4.6, 2.5, MILITARY, MILITARY_DARK),
+            box(0.48, 0.783, 0.77, 0.817, 5.3, 0.7, MILITARY_DARK),
+        ],
+        "unit/rebels": [
+            *rebel_soldier(0.609, 0.828, 0.012),
+            *rebel_soldier(0.828, 0.609, -0.012),
+            *rebel_soldier(0.9375, 0.9375, 0.008),
+        ],
+        "overlay/battlefield": ground_marks(TRUNK),
+        "overlay/contaminated": ground_marks(DARK),
+        "overlay/occupied": occupied(),
+        "overlay/ruined": [
+            # 施設画像を置き換える。地面全体を塗らず、低い壁と崩れた石だけを残す。
+            broken_wall(0.24, 0.24, 0.38, 7),
+            box(0.24, 0.3, 0.3, 0.6, 0, 4, CONCRETE),
+            box(0.6, 0.3, 0.67, 0.48, 0, 5.5, CONCRETE),
+            broken_wall(0.44, 0.67, 0.28, 4),
+            *[
+                crag(u, v, u + 0.15, v + 0.14, h, STONE)
+                for u, v, h in (
+                    (0.32, 0.43, 3),
+                    (0.5, 0.48, 3.5),
+                    (0.65, 0.54, 2),
+                    (0.22, 0.65, 2.5),
+                )
+            ],
+        ],
+    }
+)
+
+
 # --- 記念碑（フェーズ4-1。設計書 タブ 2 の PO-47）--------------------------------------------
 
 BLACK_STONE = "#2f3236"
@@ -2162,7 +2452,7 @@ def main() -> None:
     for name, prims in SHAPES.items():
         path = args.out / f"{name}.svg"
         path.parent.mkdir(parents=True, exist_ok=True)
-        canvas = (28, 28, -18, -4) if name == "unit/infantry" else None
+        canvas = (28, 28, -18, -4) if name.startswith("unit/") else None
         svg = render(prims, STYLES[args.style], canvas=canvas)
         path.write_text(svg, encoding="utf-8")
         if canvas:
