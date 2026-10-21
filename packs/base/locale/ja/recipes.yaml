@@ -21,6 +21,7 @@ auto_parts_plant_aluminium: 鋼鉄とアルミから製造
 shipyard_default: 鋼鉄から建造
 shipyard_aluminium: 鋼鉄とアルミから建造
 mine_copper_ore: 銅鉱石採掘
+mine_uranium_ore: ウラン鉱石採掘
 automobile_plant_military_vehicle: 軍用車両を製造
 shipyard_warship: 軍艦を建造
 shipyard_frigate: フリゲートを建造
@@ -29,3 +30,4 @@ arms_plant_default: 武器を製造
 arms_plant_ammunition: 弾薬を製造
 missile_plant_default: ミサイルを製造
 missile_plant_interceptor: 迎撃ミサイルを製造
+nuclear_facility_default: 核弾頭を製造

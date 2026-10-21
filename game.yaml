@@ -63,7 +63,7 @@ world:
   default_islands: 50   # 規模の目安（区画数の計算に使う）
   # 一括シミュレーションとサンプルの島が鉱業資源を選ぶ重み（フェーズ3-2。プレイヤーの建国には
   # 効かない）。石炭と鉄鉱石はどこにでもあり、原油とボーキサイトは限られた島にある。銅鉱石は選ばず、military.veins で鉱業資源の上限の外に置く（フェーズ4-2）
-  sample_resources: {coal: 3, iron_ore: 3, stone: 2, crude_oil: 1, bauxite: 1, copper_ore: 0}
+  sample_resources: {coal: 3, iron_ore: 3, stone: 2, crude_oil: 1, bauxite: 1, copper_ore: 0, uranium_ore: 0}
 
 # 気候帯と肥沃度（フェーズ3-2。hakoniwa_core/nature.py）。気候帯ごとの倍率は climate.yaml
 climate:
@@ -733,7 +733,7 @@ monuments:
 military:
   # 鉱脈（MI-60）: 世界の種と島の番号だけで決め、島ごとに 1 度だけ、鉱業資源の上限の外に置く。
   # 値は置く島の割合（銅は多くの国が小さくても持つが、主な産地は限られる）
-  veins: {copper_ore: 0.4}
+  veins: {copper_ore: 0.4, uranium_ore: 0.15}
   # 兵と軍の維持（4-2 の②。設計書 MI-07〜MI-14・MI-53）。建国の島は軍を持たない（国防費 0）
   volunteer_wage: 1.0   # 志願の兵の賃金（島の平均賃金に対する倍率。命令 set_defense で変えられる）
   conscript_wage: 0.3   # 徴兵の兵の賃金（同じ）
@@ -773,6 +773,15 @@ military:
     flee: 0.3             # 同じく逃げる割合
     infra: 0.5            # 港と道路（交通の整備度）が残る割合
     violation_weight: 1   # 住宅を撃ったときの違反の重み（信用の傷。MI-06）
+  nuclear:                # 核兵器（4-3 の③b。設計書 MI-46・MI-47）
+    dead: [0.4, 0.2, 0.05]    # 着弾したマス・隣の 1 周・その外の 1 周の住民が亡くなる割合（広島は 3〜4 割）
+    flee: 0.3             # 生き残った住民が逃げる割合
+    fallout: [8, 5, 3]    # 同じ 3 つの輪に残る汚染の濃さ（毎ターン計算する汚染に足す。PO-36）
+    half_life: 120        # 残る汚染が半分になるターン数（10 年）
+    infra: 0.1            # 輪の中の港と道路（交通の整備度）が残る割合
+    intercept: 0.3        # 防空陣地の迎撃ミサイル 1 発が核弾頭を落とす見込み（ふつうのミサイルより低い）
+    violation_weight: 5   # 使ったときの違反の重み（信用の傷。住宅へのふつうの攻撃は 1）
+    treaty_weight: 3      # 核を持たない約束を破ったときの違反の重み
   naval:                  # 海の戦い・護衛・通商破壊・封鎖（MI-31〜35・MI-48・MI-56・MI-57）
     base_loss: 0.2        # 強さが同じとき、1 ターンに沈む艦の割合
     exponent: 0.7         # 沈む割合 = base_loss × (相手の強さ ÷ 自分の強さ)^exponent

@@ -153,6 +153,7 @@ sprites:
   facility/electronics_plant: sprites/facility/electronics_plant.svg
   facility/fortress: sprites/facility/fortress.svg
   facility/missile_plant: sprites/facility/missile_plant.svg
+  facility/nuclear_facility: sprites/facility/nuclear_facility.svg
   facility/missile_base: sprites/facility/missile_base.svg
   facility/air_defense: sprites/facility/air_defense.svg
   unit/armor: {file: sprites/unit/armor.svg, anchor: [14, 28]}
@@ -163,7 +164,6 @@ sprites:
 # 絵のファイルは置いたが、使う施設や描く仕組みがまだ入っていないもの（軍事の絵。docs/map-art.md）。
 # ゲームの描画は読まない。入ったら、その行を上の sprites へ移す（海沿いの anchor はここに書いてある値のまま）
 pending_sprites:
-  facility/nuclear_facility: sprites/facility/nuclear_facility.svg
   unit/rebels: {file: sprites/unit/rebels.svg, anchor: [14, 28]}
   overlay/battlefield: sprites/overlay/battlefield.svg  # 地形のあと・建物より先
   overlay/occupied: sprites/overlay/occupied.svg      # 建物のあと

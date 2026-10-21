@@ -314,8 +314,9 @@ def bases(island: m.Island) -> list[dict[str, Any]]:
         if info:
             row = {"facility": f.number, "kind": f.kind, "x": f.x, "y": f.y, **info}
             for key, good in missiles.SOURCES:
-                if key in info:
-                    row["stock"] = kept.get((f.pk, good), 0) // QUANTITY_SCALE
+                if key in info:  # 核弾頭は stock と別の欄（warheads）に出す
+                    name = "warheads" if good == missiles.WARHEAD else "stock"
+                    row[name] = kept.get((f.pk, good), 0) // QUANTITY_SCALE
             out.append(row)
     return out
 

@@ -102,6 +102,10 @@ mine:
       requires_resource: copper_ore
       inputs: {electricity: 2}
       outputs: {copper_ore: 12}
+    uranium_ore:          # フェーズ4-3
+      requires_resource: uranium_ore
+      inputs: {electricity: 2}
+      outputs: {uranium_ore: 12}
   sprite: mine
 
 # 油井（フェーズ3-2）。原油を選んだ島の平地か山に建ちます。鉱山と同じく1つの国が2つまで。
@@ -344,6 +348,24 @@ missile_plant:
       outputs: {interceptor: 6}
   sprite: missile_plant
 
+# 核施設（フェーズ4-3 の③b。設計書 15-military「核兵器」）。ウラン鉱石から核弾頭を、長い年月をかけて少しずつ
+# 作る（初めの 1 発まで工事の 12 ターンと合わせて 1 年ほど、その後は 6 ターンに 1 発）。大きな電力と技術者を
+# 使い、1 つの国に 1 つだけ。国営で建てる（民営にはならないよう、命令で国営の建設にする: 台帳 W-123）。
+nuclear_facility:
+  category: industry
+  industry: arms
+  terrain: [plain, mountain]
+  max_per_island: 1
+  construction: {turns: 12, labor: 1000, materials: {building_materials: 60, steel: 20, machinery: 10, electronics: 5}}
+  workers: {general: 400, engineer: 100}
+  pollution: {amount: 1, radius: 1}
+  factors: {infra: 0.7, education: 0.9}
+  recipes:
+    default:              # 核弾頭 1 発を 6 ターンで
+      inputs: {uranium_ore: 7, chemicals: 0.9, machinery: 0.35, electronics: 0.35, electricity: 50}
+      outputs: {nuclear_warhead: 0.167}
+  sprite: nuclear_facility
+
 # 繊維工場（フェーズ3-2）。綿から衣料を作ります。人手は多く、技術者は要りません。
 textile_mill:
   category: industry
@@ -498,7 +520,7 @@ missile_base:
   construction: {turns: 4, labor: 400, materials: {building_materials: 20, steel: 5, electronics: 1}}
   workers: 40
   priority: 9
-  military: {missile_base: 12}
+  military: {missile_base: 12, warhead: 2}
   recipes:
     default: {}
   sprite: missile_base

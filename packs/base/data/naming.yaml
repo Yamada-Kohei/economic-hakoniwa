@@ -58,6 +58,7 @@ ja:
     electronics_plant: {short: 電子, long: 電子機器工場}
     arms_plant: {short: 兵器, long: 兵器工場}
     missile_plant: {short: ミサイル, long: ミサイル工場}
+    nuclear_facility: {short: 核, long: 核施設}
     trading: {short: 商事, long: 商社}
     thermal_power_plant: {short: 電力, long: 火力発電所}
     hydro_power_plant: {short: 水力電気, long: 水力発電所}

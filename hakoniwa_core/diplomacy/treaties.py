@@ -189,6 +189,7 @@ def _default_title(clauses: list[dict[str, Any]]) -> str:
         cl.AID: "援助の約束",
         cl.FREE_MOVEMENT: "移民の協定",
         cl.REFUGEES: "難民の受け入れ",
+        cl.NO_NUCLEAR: "核を持たない約束",
     }
     return "・".join(names.get(c["type"], c["type"]) for c in clauses)
 

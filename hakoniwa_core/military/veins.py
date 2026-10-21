@@ -13,21 +13,29 @@ from hakoniwa_core.state import IslandState
 from hakoniwa_core.turn.rng import make_rng
 
 KEY = "veins"  # island.ext: 鉱脈を置いた版
-VERSION = 1
+VERSION = 2
+# 版ごとに置く資源。版 1 は銅（4-2）、版 2 はウラン（4-3）。古い世界の島は、足りない版の分だけ
+# 置く。版の乱数は別に引くので、先の版の結果は変わらない
+RESOURCES = {1: ("copper_ore",), 2: ("uranium_ore",)}
 
 
 def place(island: IslandState, config: GameConfig, seed: int) -> list[str]:
     """まだ鉱脈の版が古い島に、設定 military.veins の割合で鉱脈を置く。置いた資源を返す。"""
-    if island.ext.get(KEY, 0) >= VERSION:
-        return []
-    island.ext[KEY] = VERSION
-    rng = make_rng(seed, 0, KEY, island.id)
+    have = island.ext.get(KEY, 0)
+    shares = config.get("military.veins")
     placed = []
-    # 置く置かないにかかわらず名前の順に1つずつ引く。資源を足すときは、名前の順で後ろに置くか、
-    # 新しい版（VERSION）で別の乱数を使う（先に引く資源の結果が変わるため）
-    for good, share in sorted(config.get("military.veins").items()):
-        roll = rng.random()
-        if roll < share and good not in island.resources:
-            island.resources = sorted([*island.resources, good])
-            placed.append(good)
+    for version in range(have + 1, VERSION + 1):
+        # 版 1 の乱数は 4-2 のまま（銅の結果を変えない）。版 2 からは版を乱数の種に足す
+        rng = (
+            make_rng(seed, 0, KEY, island.id)
+            if version == 1
+            else make_rng(seed, 0, f"{KEY}:{version}", island.id)
+        )
+        # 置く置かないにかかわらず名前の順に1つずつ引く
+        for good in sorted(RESOURCES[version]):
+            roll = rng.random()
+            if roll < shares[good] and good not in island.resources:
+                island.resources = sorted([*island.resources, good])
+                placed.append(good)
+    island.ext[KEY] = VERSION
     return placed

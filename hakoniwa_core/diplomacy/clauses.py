@@ -28,6 +28,11 @@
   と違反。回数を終えると済む
 - free_movement: 人の行き来の自由。両国が移民の受け入れを open に保つ。変えると違反
 - refugees: 難民の受け入れ。host が難民を受け入れる政策（open か refugees）を保つ。変えると違反
+
+4-3 の③b の条項（arms.py）:
+
+- no_nuclear: 核を持たない・使わない約束。核施設か核弾頭を持ち始める・核を使うと違反（MI-47）。
+  予告つきで破棄できる。戦争のあいだは結べない
 """
 
 from __future__ import annotations
@@ -50,19 +55,41 @@ SWAP = "swap"
 AID = "aid"
 FREE_MOVEMENT = "free_movement"
 REFUGEES = "refugees"
+NO_NUCLEAR = "no_nuclear"
 
-MILITARY = (CEASEFIRE, PEACE, NON_AGGRESSION, ALLIANCE)
+MILITARY = (CEASEFIRE, PEACE, NON_AGGRESSION, ALLIANCE, NO_NUCLEAR)
 ECONOMIC = (BLOC, CONTRACT, PEG, SWAP, AID, FREE_MOVEMENT, REFUGEES)
 TYPES = MILITARY + ECONOMIC
 # 戦争のあいだに結べる条項（それ以外は、戦争の相手と結ぶのは講和の条約の一部としてだけ）
 WARTIME = (CEASEFIRE, PEACE)
 # 破棄できる条項（予告つき）。講和は戦争を終えた事実で、賠償が残る間は破棄できない
-TERMINABLE = (CEASEFIRE, NON_AGGRESSION, ALLIANCE, BLOC, PEG, SWAP, FREE_MOVEMENT, REFUGEES)
+TERMINABLE = (
+    CEASEFIRE,
+    NON_AGGRESSION,
+    ALLIANCE,
+    NO_NUCLEAR,
+    BLOC,
+    PEG,
+    SWAP,
+    FREE_MOVEMENT,
+    REFUGEES,
+)
 # 済む条項（賠償を払い終える・契約の期間が終わる・援助の回数を終える）。済むまで予告つきの破棄は
 # できず、条約の条項がすべて済んだものなら、条約が終わる
 FINITE = (PEACE, CONTRACT, AID)
 # 同じ組で、効いている・返事待ちのものが 1 つだけの条項（契約と援助は何本でも結べる）
-SINGLE = (CEASEFIRE, PEACE, NON_AGGRESSION, ALLIANCE, BLOC, PEG, SWAP, FREE_MOVEMENT, REFUGEES)
+SINGLE = (
+    CEASEFIRE,
+    PEACE,
+    NON_AGGRESSION,
+    ALLIANCE,
+    NO_NUCLEAR,
+    BLOC,
+    PEG,
+    SWAP,
+    FREE_MOVEMENT,
+    REFUGEES,
+)
 # 効いている間、同じ組の戦争を止める（宣戦しても戦争にならない）わけではない。違反になる条項
 BREAKABLE_BY_WAR = (NON_AGGRESSION, ALLIANCE)
 

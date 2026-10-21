@@ -31,6 +31,7 @@ VERSION = 1  # economy.ext["nature"]: 1 はフェーズ3-2 の自然条件を置
 CLIMATE = "climate"  # island.ext: 気候帯の名前
 BLEND = "climate_blend"  # island.ext: 倍率を効かせ終わるまでの残りのターン数（移し替えた島）
 FERTILITY = "fertility"  # tile.ext: 肥沃度（1000 分の 1）
+FALLOUT = "fallout"  # tile.ext: 核の汚染の残り（1000 分の 1。半減期で減る。MI-46）
 POLLUTED = "polluted_turns"  # tile.ext: 肥沃度が下がるまでにたまった、汚染のあったターン数
 FULL = 1000
 STRETCH = 1.5  # 肥沃度の点の間をならすと幅が狭まるので、真ん中から広げる倍率
@@ -120,6 +121,19 @@ def _noise(seed: int, x: int, y: int) -> float:
     """種と格子の点だけで決まる 0 以上 1 未満の数。"""
     key = f"fertility:{seed}:{x},{y}".encode()
     return int.from_bytes(hashlib.blake2b(key, digest_size=8).digest(), "big") / 2**64
+
+
+def decay_fallout(tile: Tile, config: GameConfig) -> int:
+    """マスに残る核の汚染を 1 ターン分減らし、今の濃さ（1000 分の 1）を返す。薄まりきったら消す。"""
+    left = tile.ext.get(FALLOUT, 0)
+    if left <= 0:
+        return 0
+    left = int(left * 0.5 ** (1 / config.get("military.nuclear.half_life")))
+    if left < 1000 // 20:
+        tile.ext.pop(FALLOUT, None)
+        return 0
+    tile.ext[FALLOUT] = left
+    return left
 
 
 def wear_fertility(island: IslandState, config: GameConfig) -> None:

@@ -101,8 +101,9 @@ def test_missile_bases_show_their_stock(world):
         island=island, number=901, kind="missile_base", x=1, y=1, built=True
     )
     m.Stock.objects.create(island=island, facility=base, good="missile", quantity=3_000)
+    m.Stock.objects.create(island=island, facility=base, good="nuclear_warhead", quantity=1_000)
     rows = client.get(f"/api/islands/{island.id}/military").json()["military"]["bases"]
-    assert [(b["kind"], b["stock"]) for b in rows] == [("missile_base", 3)]
+    assert [(b["kind"], b["stock"], b["warheads"]) for b in rows] == [("missile_base", 3, 1)]
 
 
 # --- ③': 秘密の命令・ログの出し分け・艦隊の見え方（MI-27・MI-55・MI-26） -----------------------

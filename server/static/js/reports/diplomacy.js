@@ -36,6 +36,7 @@ const TERMINABLE = new Set([
   "ceasefire",
   "non_aggression",
   "alliance",
+  "no_nuclear",
   "bloc",
   "peg",
   "swap",
