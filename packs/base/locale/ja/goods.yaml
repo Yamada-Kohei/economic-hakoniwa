@@ -25,6 +25,8 @@ auto_parts: 自動車部品
 services: サービス
 retail: 小売り
 copper_ore: 銅鉱石
+uranium_ore: ウラン鉱石
+nuclear_warhead: 核弾頭
 copper: 銅
 electronics: 電子機器
 weapons: 武器

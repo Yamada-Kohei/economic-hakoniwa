@@ -57,6 +57,8 @@ ammunition:         {tier: 3, unit: ton, display_scale: 25, arms: true, freight_
 military_vehicle:   {tier: 3, unit: piece, arms: true, freight_weight: 1.6}
 missile:            {tier: 3, unit: piece, arms: true, freight_weight: 0.1}      # ミサイル（フェーズ4-3 の③。基地に置いて撃つ）
 interceptor:        {tier: 3, unit: piece, arms: true, freight_weight: 0.05}     # 迎撃ミサイル（防空陣地に置く）
+uranium_ore:        {tier: 1, unit: ton, display_scale: 25, mining: true, vein_only: true, arms: true, freight_weight: 1}   # ウラン鉱石（限られた島の鉱脈。国どうしの契約でだけ動く）
+nuclear_warhead:    {tier: 3, unit: piece, arms: true, freight_weight: 0.2}     # 核弾頭（核施設で作り、ミサイル基地に置いてミサイルに積む）
 warship:            {tier: 3, unit: ship, arms: true, freight_weight: 0}      # 小さな軍艦（コルベット級）
 frigate:            {tier: 3, unit: ship, arms: true, freight_weight: 0}      # 大きな軍艦（フリゲート級）
 submarine:          {tier: 3, unit: ship, arms: true, freight_weight: 0}

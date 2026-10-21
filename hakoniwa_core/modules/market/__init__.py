@@ -609,7 +609,7 @@ class SiteFunds:
         width = to_basis(config.get("market.band"))
         amount = 0
         for good, need in sorted(fac.step_materials(defs, f, after).items()):
-            qty = cdef["materials"][good]
+            qty = fac.materials_of(defs, f)[good]
             used = qty * after // total - qty * f.progress // total
             want = need - (stock.total(f.stock, good) - used)
             free = max(0, min(want, self.warehouse.get(good, 0)))

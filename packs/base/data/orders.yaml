@@ -53,6 +53,7 @@ build:
       recipe: {type: string}                # 作り方が複数ある施設では必ず選ぶ
       name: {type: string, maxLength: 32}
       note: {type: string, maxLength: 81}   # 記念碑の碑文に足す文（2 行まで。1 行 40 字まで）
+      hidden: {type: boolean}               # true で地下に造る（ミサイル基地と核施設だけ。工期と資材が増え、ほかの国には見えない）
 
 demolish:
   admin_cost: 1
@@ -783,6 +784,7 @@ propose_treaty:                           # 条約の提案（相手が署名す
                 - aid             # お金の援助の約束: payer が period ごとに amount を count 回送る
                 - free_movement   # 人の行き来の自由: 両国が移民の受け入れを open に保つ
                 - refugees        # 難民の受け入れ: host が難民を受け入れる政策を保つ
+                - no_nuclear      # 核を持たない約束: 両国が核施設も核弾頭も持たず、核を使わない（破ると違反）
             notice_turns: {type: integer, minimum: 1, maximum: 24}  # 破棄の予告のターン数
             withdraw_turns: {type: integer, minimum: 0, maximum: 12}  # 講和: 部隊の引き揚げの期限
             prisoners: {type: boolean}          # 講和: 捕虜を返す（既定 true）
@@ -995,6 +997,7 @@ fire_missile:                             # ミサイル基地から、戦争の
       x: {type: integer, minimum: 0, description: "狙うマスの x"}
       y: {type: integer, minimum: 0, description: "狙うマスの y"}
       count: {type: integer, minimum: 1, description: "撃つ数（基地の在庫と 1 ターンの上限まで）"}
+      nuclear: {type: boolean, description: "true で核弾頭を積んで撃つ（ミサイルと核弾頭を 1 発ずつ使う）"}
 
 load_unit:                                # 陸の部隊を輸送船団に載せる（母港の区画につないだ船団と、軍港のマスにいる部隊だけ）
   admin_cost: 0

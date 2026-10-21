@@ -54,6 +54,8 @@ def check_build(island: IslandState, payload: dict[str, Any], defs: Defs) -> Non
     )
     if problem is not None:
         raise OrderFailed(problem[0], **problem[1])
+    if payload.get("hidden") and "hide" not in defs.facilities.get(kind, {}):
+        raise OrderFailed("reason_cannot_hide", facility=kind)
     if payload.get("note") and not monuments.is_monument(defs, kind):
         raise OrderFailed("reason_note_not_monument", facility=kind)
     if monuments.is_monument(defs, kind):
@@ -94,6 +96,11 @@ def build(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> No
     if factor != 1.0:
         turns = ctx.defs.facilities[kind]["construction"]["turns"]
         f.ext["build_total"] = max(fac.FULL, round(turns * factor * fac.FULL))
+    if payload.get("hidden"):  # 地下に造る: 工期が延び、資材が増える。ほかの国には見えない（MI-62）
+        hide = ctx.defs.facilities[kind]["hide"]
+        f.ext["hidden"] = True
+        f.ext["materials_factor"] = hide["materials_factor"]
+        f.ext["build_total"] = max(f.ext.get("build_total", 0), round(hide["turns"] * fac.FULL))
     if shop:
         f.ext[fac.SITE] = [x, y]
     if monuments.is_monument(ctx.defs, kind):
@@ -206,7 +213,7 @@ class Construction(IslandStage):
             before = f.progress
             f.progress = min(before + rate, total)
             # 進んだ分だけ資材を使う。引き算で決めるので、工事全体でちょうど定義の量になる
-            for good, qty in sorted(cdef.get("materials", {}).items()):
+            for good, qty in sorted(fac.materials_of(defs, f).items()):
                 stock.take(f.stock, good, qty * f.progress // total - qty * before // total)
             if f.progress >= total:
                 self._complete(island, f, ctx)
@@ -261,7 +268,7 @@ class Construction(IslandStage):
         f.built = True
         f.workers = 0
         f.status = fac.STATUS_STARTING
-        for key in ("waiting", "short_funds", "short_wages", "build_total"):
+        for key in ("waiting", "short_funds", "short_wages", "build_total", "materials_factor"):
             f.ext.pop(key, None)
         for key in ("no_materials_turns", "no_workers_turns", "stalled_turns"):
             f.ext.pop(key, None)

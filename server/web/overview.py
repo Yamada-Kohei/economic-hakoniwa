@@ -102,13 +102,16 @@ def _facility_rows(island: m.Island) -> list[m.Facility]:
     return list(island.facilities.exclude(kind=housing).order_by("number"))
 
 
-def facility_state(island: m.Island) -> dict[str, Any]:
-    """止まった施設、満たない稼働のわけごとの数、工事中の施設（地図の施設の状態と同じ。誰にでも）。"""
+def facility_state(
+    island: m.Island, mine: bool = True, viewer: int | None = None
+) -> dict[str, Any]:
+    """止まった施設、満たない稼働のわけごとの数、工事中の施設（地図の施設の状態と同じ。誰にでも。
+    隠した施設は持ち主と見つけた国だけ。MI-62）。"""
     game = get_game()
     state = display.island_for_naming(island)
     stopped, works = [], []
     reasons: dict[str, int] = defaultdict(int)
-    rows = _facility_rows(island)
+    rows = [r for r in _facility_rows(island) if display.sees_facility(r, mine, viewer)]
     for row in rows:
         f = facility_from_row(row)
         text = display.status_text(f)
@@ -365,7 +368,7 @@ def island_alerts(island: m.Island, mine: bool) -> list[str]:
     out = _alerts(
         stats,
         _politics(island, mine),
-        facility_state(island),
+        facility_state(island, mine),
         _goods(island, latest, currency),
         _bonds_due(island, world.turn, currency),
         hunger(island, latest, currency),
@@ -480,12 +483,12 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
     stats_turn, latest = display.latest_stats(island)
     stats = reports.with_fiscal(latest)
     before = _stats_at(island, stats_turn - 1) if stats_turn is not None else {}
-    facilities = facility_state(island)
+    facilities = facility_state(island, mine, viewer)
     goods = _goods(island, latest, currency)
     bonds = _bonds_due(island, world.turn, currency)
     politics = _politics(island, mine)
     hungry = hunger(island, latest, currency)
-    logs = display.visible_logs(TurnLog.objects.filter(island=island), mine)
+    logs = display.visible_logs(TurnLog.objects.filter(island=island), mine, island)
     log_turn = logs.aggregate(t=Max("turn"))["t"]
     data: dict[str, Any] = {
         "island": island_head(island),
@@ -574,7 +577,7 @@ def _result(o: Order) -> dict[str, Any]:
 def log_range(island: m.Island, start: int, end: int, mine: bool) -> list[dict[str, Any]]:
     """ターン start〜end のターンログ（古いターンから）。軍の行は持ち主だけ（MI-55）。"""
     rows = display.visible_logs(
-        TurnLog.objects.filter(island=island, turn__gte=start, turn__lte=end), mine
+        TurnLog.objects.filter(island=island, turn__gte=start, turn__lte=end), mine, island
     )
     return display.log_entries(rows.order_by("turn", "id"))
 

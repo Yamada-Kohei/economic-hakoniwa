@@ -428,7 +428,7 @@ def _civilians(world: WorldState, ctx: StageContext, loc: IslandState, x: int, y
         tile.population -= dead + flee
         monuments.add_dead(loc, monuments.WAR_DEAD, dead)
         loc.stats["military.civilian_dead"] = loc.stats.get("military.civilian_dead", 0) + dead
-        _flee(world, loc, x, y, flee)
+        _flee(world, loc, x, y, flee, ctx.config.get("military.refugees.abroad_share"))
     facility = loc.facility_at(x, y)
     if facility is None or not facility.built or fac.is_housing(ctx.config, facility):
         return
@@ -443,11 +443,22 @@ def _civilians(world: WorldState, ctx: StageContext, loc: IslandState, x: int, y
             facility.ext["halt_reason"] = "war"
 
 
-def _flee(world: WorldState, loc: IslandState, x: int, y: int, count: int) -> None:
+def _flee(
+    world: WorldState,
+    loc: IslandState,
+    x: int,
+    y: int,
+    count: int,
+    abroad: float = 0.0,
+    avoid: set[tuple[int, int]] | None = None,
+) -> None:
     """逃げる人を、同じ島のほかの住宅のマス（戦場と戦場の隣を除く）へ人口に比例して移す。
     逃げる先がなければ、その場に残る。"""
     if count <= 0:
         return
+    if abroad > 0:  # 国外へ逃げたい人（abroad は割合）。移民の段が受け入れ先へ送る（MI-61）
+        pool = loc.ext.setdefault("migration", {})
+        pool["war"] = pool.get("war", 0) + count * abroad
     busy = {
         (u["x"], u["y"])
         for u in army.on_land(world, loc.id)
@@ -456,7 +467,10 @@ def _flee(world: WorldState, loc: IslandState, x: int, y: int, count: int) -> No
     pools = [
         (i, t.population)
         for i, t in enumerate(loc.tiles)
-        if t.population > 0 and (t.x, t.y) not in busy and (t.x, t.y) != (x, y)
+        if t.population > 0
+        and (t.x, t.y) not in busy
+        and (t.x, t.y) != (x, y)
+        and (t.x, t.y) not in (avoid or ())
     ]
     whole = sum(p for _, p in pools)
     if whole <= 0:

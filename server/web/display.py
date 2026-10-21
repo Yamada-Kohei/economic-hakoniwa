@@ -6,7 +6,7 @@ import math
 from dataclasses import replace
 from typing import Any
 
-from django.db.models import Sum
+from django.db.models import Q, Sum
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, ledger
@@ -1258,9 +1258,30 @@ def finance_policy_view(island) -> dict[str, Any]:
     }
 
 
-def visible_logs(logs, mine: bool):
-    """ターンログの行のうち、見る人に見せるもの。軍の行（MI-55）は持ち主だけ。"""
-    return logs if mine else logs.exclude(kind__in=PRIVATE_LOGS)
+def hidden_places(island) -> list[tuple[int, int]]:
+    """隠して建てた施設（MI-62）のマス。持ち主以外には、見つかった後も出さない。"""
+    return [(f.x, f.y) for f in island.facilities.filter(x__gte=0) if (f.ext or {}).get("hidden")]
+
+
+def sees_facility(row, mine: bool, viewer: int | None) -> bool:
+    """施設の行が、見る人に見えるか。隠した施設（MI-62）は、持ち主と、見つけた国（と同盟国）だけ。"""
+    ext = row.ext or {}
+    return mine or not ext.get("hidden") or (viewer is not None and viewer in ext.get("found", ()))
+
+
+def visible_logs(logs, mine: bool, island=None):
+    """ターンログの行のうち、見る人に見せるもの。軍の行（MI-55）は持ち主だけ。隠した施設のマス
+    （MI-62）の行も持ち主だけ。"""
+    if mine:
+        return logs
+    logs = logs.exclude(kind__in=PRIVATE_LOGS)
+    if island is not None:
+        for x, y in hidden_places(island):
+            # x・y のキーが無い行は残す（キー無しは NULL になり、単純な exclude では消えてしまう）
+            logs = logs.exclude(
+                Q(args__has_key="x") & Q(args__has_key="y") & Q(args__x=x) & Q(args__y=y)
+            )
+    return logs
 
 
 def log_entries(logs) -> list[dict[str, Any]]:

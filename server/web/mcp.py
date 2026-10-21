@@ -532,7 +532,10 @@ def _map(request, args):
     state = display.island_for_naming(island)
     lines = []
     towns = 0
+    seen = {f["number"] for f in data["facilities"]}  # 隠した施設（MI-62）は見える国にだけ
     for row in island.facilities.order_by("number"):
+        if (row.ext or {}).get("hidden") and row.number not in seen:
+            continue
         on_map = row.x >= 0 and row.y >= 0
         if row.kind == housing:
             towns += 1
@@ -656,8 +659,8 @@ TOOLS = [
         "自分の島なら赤字の施設・命令の列と、直近に命令を実行したターン（last_turn）の結果・"
         "未読の公電、軍（military。兵の数・士気・練度・賃金の遅れ・国防費。命令は set_defense・"
         "recruit・conscript・discharge。部隊は form_unit・disband_unit・move_unit・dig_trench・"
-        "stop_unit・set_requisition、ミサイル基地は fire_missile、艦隊は form_fleet・sail_fleet・"
-        "fleet_duty（護衛・見張り・封鎖）・load_unit・"
+        "stop_unit・set_requisition、ミサイル基地は fire_missile（nuclear で核弾頭を積む）、"
+        "艦隊は form_fleet・sail_fleet・fleet_duty（護衛・見張り・封鎖）・load_unit・"
         "unload_unit（island を付けると戦争の相手の島へ揚陸）・load_supplies。"
         "降伏で体制が倒れたら choose_regime）も。",
         _summary,
@@ -839,8 +842,9 @@ TOOLS = [
         "国際会議場に声明を出す",
         "国際会議場に公開の声明を出す（すぐ載る。1つの島が出せる数には 24 時間の上限がある）。"
         "条約の提案や宣戦は、命令（set_orders。propose_treaty・declare_war）で行う。条約の条項は、"
-        "停戦・講和・不可侵・同盟と、経済の取り決め（貿易圏 bloc・契約 contract・固定相場 peg・"
-        "通貨の融通 swap・援助 aid・人の行き来 free_movement・難民 refugees）。",
+        "停戦・講和・不可侵・同盟・核を持たない約束 no_nuclear と、経済の取り決め"
+        "（貿易圏 bloc・契約 contract・固定相場 peg・通貨の融通 swap・援助 aid・"
+        "人の行き来 free_movement・難民 refugees）。",
         _hall_post,
         {"title": {"type": "string"}, "body": {"type": "string"}},
         ("title", "body"),

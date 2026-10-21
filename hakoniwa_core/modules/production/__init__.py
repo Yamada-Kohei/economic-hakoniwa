@@ -607,7 +607,8 @@ class Production(IslandStage):
                 share = amount * (radius + 1 - distance(pos, (f.x, f.y))) // (radius + 1)
                 totals[pos] = totals.get(pos, 0) + share
         for tile in island.tiles:
-            tile.pollution = round(from_milli(totals.get((tile.x, tile.y), 0)))
+            left = nature.decay_fallout(tile, ctx.config)  # 核の汚染が年月をかけて薄れる（MI-46）
+            tile.pollution = round(from_milli(totals.get((tile.x, tile.y), 0) + left))
 
 
 # --- 命令 -------------------------------------------------------------------------

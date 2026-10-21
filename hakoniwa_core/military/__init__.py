@@ -40,5 +40,9 @@ PRIVATE_LOGS = (
     "missile_hit",
     "missile_intercepted",
     "missile_violation",
+    "nuclear_hit",
+    "hidden_found",
+    "hidden_found_by",
+    "nuclear_violation",
     "fleet_sunk",
 )

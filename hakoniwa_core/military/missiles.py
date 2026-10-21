@@ -21,7 +21,7 @@ from typing import Any
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, monuments, stock
 from hakoniwa_core.diplomacy import credit, war
-from hakoniwa_core.military import army, battle
+from hakoniwa_core.military import army, battle, hidden, nuclear
 from hakoniwa_core.state import Facility, IslandState, LogEntry, WorldState
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import QUANTITY_SCALE
@@ -29,7 +29,8 @@ from hakoniwa_core.units import QUANTITY_SCALE
 MISSILE = "missile"
 INTERCEPTOR = "interceptor"
 STRIKES = "strikes"
-SOURCES = (("missile_base", MISSILE), ("air_defense", INTERCEPTOR))
+WARHEAD = "nuclear_warhead"
+SOURCES = (("missile_base", MISSILE), ("air_defense", INTERCEPTOR), ("warhead", WARHEAD))
 
 
 def strikes(world: WorldState) -> list[dict[str, Any]]:
@@ -68,6 +69,10 @@ def wanted(island: IslandState, defs, turn: int) -> dict[str, int]:
     """基地に足りないミサイルと迎撃ミサイル（国の倉庫へ買い集めたい量。1000 分の 1 単位）。"""
     out: dict[str, int] = {}
     for key, good in SOURCES:
+        if good == WARHEAD and not any(
+            f.built and f.kind == "nuclear_facility" for f in island.facilities
+        ):
+            continue  # 核弾頭は、核施設を持つ国だけが基地に満たす
         missing = sum(cap - have for _, cap, have in stocked(island, defs, key, good, turn))
         if missing > 0:
             out[good] = missing * QUANTITY_SCALE
@@ -107,13 +112,27 @@ def launch(
     fired = base.ext.get("fired", {})
     used = fired.get("n", 0) if fired.get("turn") == ctx.turn else 0
     have = stock.total(base.stock, MISSILE) // QUANTITY_SCALE
+    nuclear = bool(req.get("nuclear"))
+    heads = stock.total(base.stock, WARHEAD) // QUANTITY_SCALE
+    if nuclear:
+        if heads <= 0:
+            return "reason_no_warheads"
+        have = min(have, heads)
     count = min(req["count"], have, cfg["fire_per_turn"] - used)
     if count <= 0:
         return "reason_no_missiles"
     books.stock_moved(
         island, base.id, MISSILE, -stock.take(base.stock, MISSILE, count * QUANTITY_SCALE)
     )
+    if nuclear:
+        books.stock_moved(
+            island, base.id, WARHEAD, -stock.take(base.stock, WARHEAD, count * QUANTITY_SCALE)
+        )
     base.ext["fired"] = {"turn": ctx.turn, "n": used + count}
+    if hidden.is_hidden(base) and hidden.reveal(
+        world, base, target.id
+    ):  # 撃つと位置が分かる（MI-62）
+        hidden.announce(island, target, base)
     state = army.world_state(world)
     state["seq"] += 1
     strikes(world).append(
@@ -124,6 +143,7 @@ def launch(
             "x": req["x"],
             "y": req["y"],
             "count": count,
+            "nuclear": nuclear,
         }
     )
     island.stats["military.missiles_fired"] = island.stats.get("military.missiles_fired", 0) + count
@@ -151,6 +171,12 @@ def _strike(world: WorldState, ctx: StageContext, strike: dict[str, Any]) -> Non
     if loc is None or attacker is None:
         return
     residential = False
+    atomic = strike.get("nuclear", False)
+    chance = ctx.config.get("military.nuclear.intercept") if atomic else cfg["intercept"]
+    violated = army.world_state(world).setdefault("violated", {})
+    if atomic and violated.get(f"n{attacker.id}") != ctx.turn:
+        violated[f"n{attacker.id}"] = ctx.turn  # 撃った時点で、落とされても使ったと数える
+        nuclear.condemn(world, ctx, attacker, loc)
     for i in range(strike["count"]):
         rng = random.Random(f"{world.seed}:{ctx.turn}:missile:{strike['id']}:{i}")
         x, y = strike["x"], strike["y"]
@@ -158,8 +184,11 @@ def _strike(world: WorldState, ctx: StageContext, strike: dict[str, Any]) -> Non
             dx, dy = rng.choice(((1, 0), (-1, 0), (0, 1), (0, -1)))
             if loc.in_bounds(x + dx, y + dy):
                 x, y = x + dx, y + dy
-        if _intercepted(world, ctx, loc, cfg, rng, x, y):
+        if _intercepted(world, ctx, loc, chance, rng, x, y):
             loc.log.append(LogEntry("missile_intercepted", {"x": x, "y": y}))
+            continue
+        if atomic:
+            nuclear_hit(world, ctx, loc, x, y, attacker)
             continue
         residential |= _hit(world, ctx, loc, cfg, rng, x, y, attacker.id)
     violated = army.world_state(world).setdefault("violated", {})
@@ -181,20 +210,22 @@ def _intercepted(
     world: WorldState,
     ctx: StageContext,
     loc: IslandState,
-    cfg: dict[str, Any],
+    chance: float,
     rng: random.Random,
     x: int,
     y: int,
 ) -> bool:
     from hakoniwa_core.economy import books
 
+    shield = ctx.config.get("military.missiles.shield_radius")
+
     for f, _cap, have in sorted(
         stocked(loc, ctx.defs, "air_defense", INTERCEPTOR, ctx.turn), key=lambda r: r[0].id
     ):
-        if have <= 0 or max(abs(f.x - x), abs(f.y - y)) > cfg["shield_radius"]:
+        if have <= 0 or max(abs(f.x - x), abs(f.y - y)) > shield:
             continue
         books.stock_moved(loc, f.id, INTERCEPTOR, -stock.take(f.stock, INTERCEPTOR, QUANTITY_SCALE))
-        if rng.random() < cfg["intercept"]:
+        if rng.random() < chance:
             return True
     return False
 
@@ -221,7 +252,7 @@ def _hit(
         monuments.add_dead(loc, monuments.WAR_DEAD, dead)
         monuments.add_kills(world.islands[attacker], dead)
         loc.stats["military.civilian_dead"] = loc.stats.get("military.civilian_dead", 0) + dead
-        battle._flee(world, loc, x, y, flee)
+        battle._flee(world, loc, x, y, flee, ctx.config.get("military.refugees.abroad_share"))
         hurt = True
     facility = loc.facility_at(x, y)
     if facility is not None and facility.built and not fac.is_housing(ctx.config, facility):
@@ -251,3 +282,15 @@ def brief(island: IslandState, defs) -> dict[str, list[dict[str, Any]]]:
             for f, cap, have in stocked(island, defs, key, good)
         ]
     return out
+
+
+def nuclear_hit(
+    world: WorldState,
+    ctx: StageContext,
+    loc: IslandState,
+    x: int,
+    y: int,
+    attacker: IslandState,
+) -> None:
+    """核弾頭の着弾（被害は nuclear.detonate、違反は nuclear.condemn）。"""
+    nuclear.detonate(world, ctx, loc, x, y, attacker)

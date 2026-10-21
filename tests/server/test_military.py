@@ -101,8 +101,9 @@ def test_missile_bases_show_their_stock(world):
         island=island, number=901, kind="missile_base", x=1, y=1, built=True
     )
     m.Stock.objects.create(island=island, facility=base, good="missile", quantity=3_000)
+    m.Stock.objects.create(island=island, facility=base, good="nuclear_warhead", quantity=1_000)
     rows = client.get(f"/api/islands/{island.id}/military").json()["military"]["bases"]
-    assert [(b["kind"], b["stock"]) for b in rows] == [("missile_base", 3)]
+    assert [(b["kind"], b["stock"], b["warheads"]) for b in rows] == [("missile_base", 3, 1)]
 
 
 # --- ③': 秘密の命令・ログの出し分け・艦隊の見え方（MI-27・MI-55・MI-26） -----------------------
@@ -242,3 +243,78 @@ def test_military_page_and_defs(world):
     assert army["infantry"]["arm"] == "land" and army["infantry"]["equipment"] == {"weapons": 100}
     assert army["transport"]["capacity"] == 40 and army["submarine"]["stealth"] is True
     assert army["frigate"]["name"] == "フリゲートの艦隊"
+
+
+def test_a_hidden_facility_shows_only_to_its_owner_and_the_ones_who_found_it(world):
+    client, island = _player()
+    other = m.Island.objects.exclude(pk=island.pk).order_by("id").first()
+    other_user = User.objects.create_user("spy", password="a-long-pass-123")
+    other.owner = other_user
+    other.save()
+    spy = Client()
+    spy.force_login(other_user)
+    secret = m.Facility.objects.create(
+        island=island, number=902, kind="missile_base", x=1, y=1, built=True, ext={"hidden": True}
+    )
+    m.Facility.objects.create(island=island, number=903, kind="barracks", x=2, y=2, built=True)
+    url = f"/api/islands/{island.id}/map"
+
+    def kinds(who):
+        return {f["kind"] for f in who.get(url).json()["facilities"]}
+
+    assert {"barracks", "missile_base"} <= kinds(client)
+    rows = client.get(url).json()["facilities"]
+    assert [f.get("hidden") for f in rows if f["kind"] == "missile_base"] == [True]
+    assert "barracks" in kinds(spy) and "missile_base" not in kinds(spy)
+    assert "missile_base" not in kinds(Client())
+    secret.ext = {"hidden": True, "found": [other.id]}
+    secret.save()
+    assert "missile_base" in kinds(spy) and "missile_base" not in kinds(Client())
+    # 隠した施設のマスのターンログは持ち主だけ
+    from server.turns.models import TurnLog
+
+    TurnLog.objects.create(island=island, turn=1, kind="facility_started", args={"x": 1, "y": 1})
+    TurnLog.objects.create(island=island, turn=1, kind="facility_started", args={"x": 2, "y": 2})
+    TurnLog.objects.create(island=island, turn=1, kind="facility_started", args={})  # マスのない行
+    TurnLog.objects.create(island=island, turn=1, kind="facility_started", args={"x": 1})
+    rows = TurnLog.objects.filter(island=island, kind="facility_started")
+    seen = display.visible_logs(rows, False, island)
+    kept = sorted(str(e.args) for e in seen)
+    assert kept == sorted(str(a) for a in ({"x": 2, "y": 2}, {}, {"x": 1}))
+    assert display.visible_logs(rows, True, island).count() == 4
+
+
+def test_a_hidden_facility_stays_off_the_world_map_and_the_summary(world):
+    client, island = _player()
+    other = m.Island.objects.exclude(pk=island.pk).order_by("id").first()
+    other_user = User.objects.create_user("spy2", password="a-long-pass-123")
+    other.owner = other_user
+    other.save()
+    spy = Client()
+    spy.force_login(other_user)
+    m.Facility.objects.create(
+        island=island, number=902, kind="missile_base", x=1, y=1, built=False, ext={"hidden": True}
+    )
+
+    def cell(who):
+        data = who.get("/api/world/shapes").json()
+        shape = next(i for i in data["islands"] if i["id"] == island.id)
+        return data["codes"].get(shape["cells"][1 * shape["size"] + 1], "")
+
+    def works(who):
+        return who.get(f"/api/islands/{island.id}/summary").json()["facilities"][
+            "construction_count"
+        ]
+
+    assert cell(client) == "construction"
+    assert cell(spy).startswith("terrain:") and cell(Client()).startswith("terrain:")
+    assert works(client) == 1 and works(spy) == 0
+
+
+def test_map_shows_the_nuclear_fallout_to_all(world):
+    _, island = _player()
+    tile = island.tiles.order_by("y", "x").first()
+    tile.ext = {"fallout": 5_000}
+    tile.save()
+    fallout = Client().get(f"/api/islands/{island.id}/map").json()["fallout"]
+    assert fallout[0] == 5.0 and sum(fallout) == 5.0
