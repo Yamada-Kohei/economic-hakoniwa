@@ -46,23 +46,23 @@ AI で作った絵は、作った道具の名前と、依頼した人を書き�
 | server/static/themes/default/sprites/fleet/frigate.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
 | server/static/themes/default/sprites/overlay/trench_back.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
 | server/static/themes/default/sprites/overlay/trench_front.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
-| server/static/themes/default/sprites/facility/arms_plant.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
-| server/static/themes/default/sprites/facility/copper_smelter.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
-| server/static/themes/default/sprites/facility/electronics_plant.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
-| server/static/themes/default/sprites/facility/fortress.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
-| server/static/themes/default/sprites/facility/missile_plant.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
-| server/static/themes/default/sprites/facility/missile_base.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
-| server/static/themes/default/sprites/facility/air_defense.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
-| server/static/themes/default/sprites/facility/nuclear_facility.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
-| server/static/themes/default/sprites/unit/armor.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/facility/arms_plant.svg | Claude（Anthropic。幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/facility/copper_smelter.svg | Claude（Anthropic。幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/facility/electronics_plant.svg | Claude（Anthropic。幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/facility/fortress.svg | Claude（Anthropic。幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/facility/missile_plant.svg | Claude（Anthropic。幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/facility/missile_base.svg | Claude（Anthropic。幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/facility/air_defense.svg | Claude（Anthropic。幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/facility/nuclear_facility.svg | Claude（Anthropic。幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/unit/armor.svg | Claude（Anthropic。幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
 | server/static/themes/default/sprites/unit/rebels.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
 | server/static/themes/default/sprites/fleet/corvette.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
 | server/static/themes/default/sprites/fleet/submarine.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
 | server/static/themes/default/sprites/fleet/transport.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
-| server/static/themes/default/sprites/overlay/battlefield.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
-| server/static/themes/default/sprites/overlay/occupied.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/overlay/battlefield.svg | Claude（Anthropic。幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/overlay/occupied.svg | Claude（Anthropic。幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
 | server/static/themes/default/sprites/overlay/ruined.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
-| server/static/themes/default/sprites/overlay/contaminated.svg | OpenAI Codex（幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/themes/default/sprites/overlay/contaminated.svg | Claude（Anthropic。幾何の形で作成。依頼: セビーリャ） | MIT | このリポジトリ |
 
 ## GitHub Actions
 
