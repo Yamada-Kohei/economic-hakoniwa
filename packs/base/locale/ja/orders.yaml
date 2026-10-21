@@ -66,3 +66,12 @@ sign_treaty: 条約への署名
 refuse_treaty: 条約を断る
 withdraw_treaty: 条約の提案の取り下げ
 denounce_treaty: 条約の破棄
+set_defense: 国防費の変更
+recruit: 志願兵の募集
+conscript: 徴兵
+discharge: 除隊
+form_unit: 部隊の編成
+disband_unit: 部隊の解散
+move_unit: 部隊の移動
+dig_trench: 陣地を掘る
+stop_unit: 部隊の命令を止める

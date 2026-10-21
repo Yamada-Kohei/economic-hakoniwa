@@ -157,6 +157,11 @@ def events_bonus(island: IslandState, ctx: StageContext) -> dict[str, float]:
     office = capital_office(island, ctx.defs)
     if office is not None and not office.built and office.ext.get("repair"):
         out["office"] = e["office"]
+    cons = island.ext.get("military", {}).get("conscripts", 0)
+    if cons > 0:  # 徴兵した兵が住民に占める割合に応じて政情の目標を下げる（MI-09）
+        whole = sum(t.population for t in island.tiles if t.population > 0) + cons
+        c = ctx.config.get("military.conscription")
+        out["conscription"] = -min(c["max"], c["stability"] * cons * 100 / max(1, whole))
     from hakoniwa_core.modules.migration import trapped_share  # 移民の段がこの段を読むので
 
     trapped = trapped_share(island)

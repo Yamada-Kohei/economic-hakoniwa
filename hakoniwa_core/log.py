@@ -30,6 +30,7 @@ _ARG_KINDS = {
     "subsidy": "messages",
     "infra": "infrastructure",
     "climate": "climate",
+    "army": "army",
     "recipe": "recipes",
     "industry": "industries",
     "mode": "messages",

@@ -2276,7 +2276,7 @@ class Market(IslandStage):
             if item["side"] == "sell":
                 placed.append((good, "sell", qty, sell(good, qty, limit or None), "stock"))
                 continue
-            buyer = Payer(ledger.GOV, WAREHOUSE)
+            buyer = Payer(ledger.GOV, item.get("budget", WAREHOUSE))
             plan = self._afford(island, buyer, {good: (qty, limit)}, 0, 0)
             # 削ったわけ: 年の予算の月割りで止まったか、国庫のお金そのものが足りないか
             capped = funds.available(island, buyer) < funds.available(island, buyer, capped=False)
@@ -2287,7 +2287,8 @@ class Market(IslandStage):
                 funds.commit(island, buyer, party.reserved)
                 order = Order(q, lim)
                 self._add(books_by_good, g, "buy", order, party)
-            placed.append((good, "buy", qty, order, "budget" if capped else "treasury"))
+            if not item.get("quiet"):  # 軍の食べ物の買い入れなどは、結果をログに出さない
+                placed.append((good, "buy", qty, order, "budget" if capped else "treasury"))
         island.scratch[WAREHOUSE_PLACED] = placed
 
     @staticmethod

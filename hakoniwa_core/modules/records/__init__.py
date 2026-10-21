@@ -30,6 +30,7 @@ from hakoniwa_core.economy import (
 from hakoniwa_core.economy.debt import annual_gdp, total_debt
 from hakoniwa_core.economy.households import close_income
 from hakoniwa_core.economy.stats import inflation, update_cpi
+from hakoniwa_core.military.forces import soldiers as military_soldiers
 from hakoniwa_core.modules.labor import engineer_unemployment, has_own_wage
 from hakoniwa_core.modules.population import subsistence_persons
 from hakoniwa_core.registry import IslandStage, Registry
@@ -72,7 +73,7 @@ class Records(IslandStage):
             working = min(force, tile.ext.get("employed", 0))
             employed += working
             farming += min(force - working, int(subsistence_persons(defs, island, tile) * share))
-        stats["population"] = population
+        stats["population"] = population + military_soldiers(island)  # 兵はマスの住民の外（MI-53）
         stats["labor"] = labor
         stats["employed"] = employed
         stats["subsistence"] = farming

@@ -89,6 +89,11 @@ class Defs:
         """気候帯（フェーズ3-2。climate.yaml）。"""
         return self.tables["climate"]
 
+    @property
+    def army(self) -> Mapping[str, Mapping[str, Any]]:
+        """部隊の種類（フェーズ4-2。army.yaml。units.yaml と重ならない名前）。"""
+        return self.tables["army"]
+
     def journal_kinds(self) -> list[str]:
         """仕訳の種類（finance.yaml の type: journal）。"""
         return [k for k, v in self.finance.items() if v["type"] == "journal"]
