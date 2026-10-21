@@ -6,6 +6,8 @@
 # 利下げ・不履行・銀行の救済・解散・交渉中の契約など。実行した後は、ほかの命令と同じく誰にでも見える。
 # 書かない命令は、予算・税・関税のように前もって公表するもので、待っている間も誰にでも見える。
 # {項目: 値} と書くと、payload のその項目がその値の命令だけを伏せる。例: 国の倉庫の買い入れ）。
+# always: 実行した後も、持ち主以外には見せない（部隊と艦隊への命令。現実の軍が動きを公にしないため。
+# 失敗も含めて、他の国の画面・API・MCP の命令の欄に出さない。フェーズ4-2 の③'、設計書 MI-27）。
 # 処理する関数は hakoniwa_core/modules/ の各モジュールで登録します。
 rename_island:
   admin_cost: 0
@@ -893,6 +895,7 @@ discharge:                                # 除隊（兵は家計に戻り失業
 # 部隊が持ち続ける命令なので行政力を使わない。実行は全島の段 operations が決める。
 form_unit:                                # 部隊の編成（兵舎のマスに置く。兵と装備がそろうまで編成中）
   admin_cost: 1
+  secret: always
   payload:
     type: object
     required: [army, x, y]
@@ -904,6 +907,7 @@ form_unit:                                # 部隊の編成（兵舎のマスに
 
 disband_unit:                             # 部隊の解散（兵は島の余りの兵に戻り、装備は国の倉庫に戻る）
   admin_cost: 1
+  secret: always
   payload:
     type: object
     required: [unit]
@@ -913,6 +917,7 @@ disband_unit:                             # 部隊の解散（兵は島の余り
 
 move_unit:                                # 部隊の移動（そろった部隊だけ。着くまで毎ターン進む）
   admin_cost: 0
+  secret: always
   payload:
     type: object
     required: [unit, x, y]
@@ -924,6 +929,7 @@ move_unit:                                # 部隊の移動（そろった部隊
 
 dig_trench:                               # 陣地（塹壕）を掘る（部隊のいるマス。兵と建材で何ターンかかける）
   admin_cost: 0
+  secret: always
   payload:
     type: object
     required: [unit]
@@ -933,9 +939,57 @@ dig_trench:                               # 陣地（塹壕）を掘る（部隊
 
 stop_unit:                                # 部隊の続く命令を止める
   admin_cost: 0
+  secret: always
   payload:
     type: object
     required: [unit]
     additionalProperties: false
     properties:
       unit: {type: integer, minimum: 1, description: "部隊の番号"}
+
+form_fleet:                               # 艦隊の編成（母港の軍港のある島の区画に置く。乗員と艦がそろうまで編成中）
+  admin_cost: 1
+  secret: always
+  payload:
+    type: object
+    required: [army, ships]
+    additionalProperties: false
+    properties:
+      army: {type: string, description: "艦隊の種類（army.yaml の名前。小さな軍艦 corvette・フリゲート frigate・潜水艦 submarine・輸送船団 transport）"}
+      ships: {type: integer, minimum: 1, description: "艦の数（1 艦隊に束ねる数。同じ種類だけ）"}
+
+sail_fleet:                               # 艦隊の航海（そろった艦隊だけ。行き先の区画まで船の道を毎ターン進む。母港の区画に戻ると港につなぐ）
+  admin_cost: 0
+  secret: always
+  payload:
+    type: object
+    required: [fleet, x, y]
+    additionalProperties: false
+    properties:
+      fleet: {type: integer, minimum: 1, description: "艦隊の番号"}
+      x: {type: integer, minimum: 0, description: "行き先の区画の x（世界マップ）"}
+      y: {type: integer, minimum: 0, description: "行き先の区画の y（世界マップ）"}
+
+load_unit:                                # 陸の部隊を輸送船団に載せる（母港の区画につないだ船団と、軍港のマスにいる部隊だけ）
+  admin_cost: 0
+  secret: always
+  payload:
+    type: object
+    required: [unit, fleet]
+    additionalProperties: false
+    properties:
+      unit: {type: integer, minimum: 1, description: "部隊の番号"}
+      fleet: {type: integer, minimum: 1, description: "輸送船団の番号"}
+
+unload_unit:                              # 載せた部隊を、母港の軍港のマスに降ろす（外国の島への揚陸は 4-3）
+  admin_cost: 0
+  secret: always
+  payload:
+    type: object
+    required: [unit, fleet, x, y]
+    additionalProperties: false
+    properties:
+      unit: {type: integer, minimum: 1, description: "部隊の番号"}
+      fleet: {type: integer, minimum: 1, description: "輸送船団の番号"}
+      x: {type: integer, minimum: 0, description: "降ろす軍港のマスの x"}
+      y: {type: integer, minimum: 0, description: "降ろす軍港のマスの y"}

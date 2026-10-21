@@ -10,6 +10,11 @@
 - status: forming（編成中。兵と装備がそろうまで）/ ready（そろった）
 - order: 続く命令。None / {"type": "move", "x", "y"} / {"type": "dig", "left"}
 
+海の艦隊（4-2 の③'。同じ種類の艦を束ねた部隊。army.yaml の arm: sea）も同じ形で、次の点が違います
+（詳しくは sea.py）: arm = "sea"、x, y は島のマスでなく世界マップの区画、ships = 艦の数（soldiers と
+equipment は艦の数ぶんそろえる）、order は {"type": "sail", "x", "y"}、cargo = 載せた部隊の番号。
+陸の部隊を艦隊に載せている間は、その部隊に aboard = 艦隊の番号を置く。
+
 兵の賃金・食べ物は島の兵の合計に対して払うので、部隊に入っても二重には払いません。
 島の陣地（塹壕）はマスの `tile.ext["trench"]`（1）に持ちます。
 """
@@ -40,15 +45,35 @@ def world_state(world: WorldState) -> dict[str, Any]:
 
 
 def units_of(world: WorldState, island_id: int) -> list[dict[str, Any]]:
-    """島の持ち主の部隊（番号の順）。"""
+    """島の持ち主の部隊と艦隊（番号の順）。"""
     return [u for u in world_state(world)["units"] if u["owner"] == island_id]
+
+
+def land_units_of(world: WorldState, island_id: int) -> list[dict[str, Any]]:
+    return [u for u in units_of(world, island_id) if not is_sea(u)]
+
+
+def fleets_of(world: WorldState, island_id: int) -> list[dict[str, Any]]:
+    return [u for u in units_of(world, island_id) if is_sea(u)]
 
 
 def find(world: WorldState, unit_id: int) -> dict[str, Any] | None:
     return next((u for u in world_state(world)["units"] if u["id"] == unit_id), None)
 
 
-def new_unit(world: WorldState, island_id: int, kind: str, x: int, y: int) -> dict[str, Any]:
+def is_sea(unit: dict[str, Any]) -> bool:
+    return unit.get("arm") == "sea"
+
+
+def size(unit: dict[str, Any]) -> int:
+    """部隊の大きさ（艦隊は艦の数、陸の部隊は 1）。兵と装備の数はこれを掛けた分がそろう数。"""
+    return unit.get("ships", 1)
+
+
+def new_unit(
+    world: WorldState, island_id: int, kind: str, x: int, y: int, ships: int = 0
+) -> dict[str, Any]:
+    """部隊を作る。ships を決めると艦隊（x, y は世界マップの区画）。"""
     state = world_state(world)
     state["seq"] += 1
     unit = {
@@ -62,6 +87,8 @@ def new_unit(world: WorldState, island_id: int, kind: str, x: int, y: int) -> di
         "status": FORMING,
         "order": None,
     }
+    if ships:
+        unit.update(arm="sea", ships=ships, cargo=[])
     state["units"].append(unit)
     return unit
 
@@ -94,11 +121,12 @@ def barracks_at(island: IslandState, defs: Defs, x: int, y: int) -> int:
 
 
 def housed(world: WorldState, defs: Defs, island_id: int, x: int, y: int) -> int:
-    """マス (x, y) の兵舎に置く部隊の兵の定員の合計（編成中の部隊も、そろったときの数で数える）。"""
+    """マス (x, y) の兵舎に置く部隊の兵の定員の合計（編成中の部隊も、そろったときの数で数える。
+    船に載せた部隊は兵舎にいない）。"""
     return sum(
         defs.army.get(u["kind"], {}).get("soldiers", u["soldiers"])
-        for u in units_of(world, island_id)
-        if (u["x"], u["y"]) == (x, y)
+        for u in land_units_of(world, island_id)
+        if (u["x"], u["y"]) == (x, y) and "aboard" not in u
     )
 
 

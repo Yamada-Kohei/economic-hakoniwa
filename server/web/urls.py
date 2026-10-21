@@ -50,6 +50,7 @@ urlpatterns = [
     path("api/news", api.news, name="api_news"),
     path("api/world/shapes", api.world_shapes, name="api_world_shapes"),
     path("api/world/trade", api.world_trade, name="api_world_trade"),
+    path("api/world/fleets", api.world_fleets, name="api_world_fleets"),
     path("api/islands/<int:island_id>/map", api.island_map, name="api_island_map"),
     path("api/islands/<int:island_id>/tiles/<sint:x>,<sint:y>", api.tile, name="api_tile"),
     path("api/islands/<int:island_id>/economy", api.economy, name="api_island_economy"),

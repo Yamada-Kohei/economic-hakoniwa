@@ -756,3 +756,7 @@ military:
     road_bonus: 0.5       # 道路の整備度が満ちたマスで進める量が増える割合（1.5 倍）
     fuel_per_tile: 0.01   # 車両 1 両が 1 マス進むのに使う燃料（トン）
   trench: {soldiers: 50, turns: 2, materials: {building_materials: 2}}  # 陣地: 掘る兵の数・かかるターン数・使う建材
+  # 艦隊と海の動き（4-2 の③'。設計書 MI-18・MI-22・MI-23）
+  sea:
+    max_ships: 10         # 1 つの艦隊に束ねられる艦の数
+    port_fuel: 0.1        # 母港の区画につないでいる間に使う燃料（航海中に対する割合）

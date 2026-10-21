@@ -136,7 +136,7 @@ def _check_order(oid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator
         yield ("orders", oid, ("payload",), f"payload のスキーマが正しくありません: {e.message}")
         return
     secret = entry.get("secret", True)
-    if secret is True:
+    if secret is True or secret == "always":
         return
     # 中身で伏せる命令: 項目は payload にあり、値はその項目の形に合う
     properties = entry["payload"].get("properties", {})

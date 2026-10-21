@@ -23,6 +23,7 @@ from hakoniwa_core.economy import (
     retail,
 )
 from hakoniwa_core.log import format_log, format_turn
+from hakoniwa_core.military import PRIVATE_LOGS
 from hakoniwa_core.modules.banking import ENTRY as BANK_ENTRY
 from hakoniwa_core.modules.bonds import CUT, UNDERWRITE
 from hakoniwa_core.modules.failures import METHODS as RESOLUTION_METHODS
@@ -1255,6 +1256,11 @@ def finance_policy_view(island) -> dict[str, Any]:
             for s in p.subsidies
         ],
     }
+
+
+def visible_logs(logs, mine: bool):
+    """ターンログの行のうち、見る人に見せるもの。軍の行（MI-55）は持ち主だけ。"""
+    return logs if mine else logs.exclude(kind__in=PRIVATE_LOGS)
 
 
 def log_entries(logs) -> list[dict[str, Any]]:

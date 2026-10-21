@@ -6,17 +6,22 @@
   "additionalProperties": false,
   "properties": {
     "arm": {"enum": ["land", "sea"], "description": "陸の部隊か、海の艦隊か"},
-    "soldiers": {"type": "integer", "minimum": 1, "description": "部隊 1 つの兵の数"},
+    "soldiers": {"type": "integer", "minimum": 1, "description": "部隊 1 つの兵の数（艦は 1 隻の乗員）"},
     "equipment": {
       "type": "object",
       "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
       "additionalProperties": {"type": "number", "minimum": 0},
-      "description": "部隊 1 つが持つ装備（財 → 数。goods.yaml の単位。組・両・隻）"
+      "description": "部隊 1 つが持つ装備（財 → 数。goods.yaml の単位。組・両。艦は 1 隻の分）"
     },
     "weight": {"type": "number", "minimum": 0, "description": "船で運ぶ重さ（トン。兵と装備の合計）"},
     "speed": {"type": "number", "minimum": 0, "description": "1 ターンに進める量（陸は平地のマスの数、海は区画の数）"},
     "vehicles": {"type": "boolean", "description": "車両・艦があって、動くと燃料を使うか"},
     "strength": {"type": "number", "minimum": 0, "description": "強さ（歩兵 = 1。戦闘の回で使う）"},
+    "vision": {"type": "number", "minimum": 0, "description": "艦が見える範囲（世界マップの区画の数。0 は同じ区画だけ）"},
+    "fuel": {"type": "number", "minimum": 0, "description": "艦 1 隻が航海中の 1 ターンに使う燃料（トン）"},
+    "capacity": {"type": "number", "minimum": 0, "description": "輸送船 1 隻が運べる兵と装備の重さ（トン）"},
+    "stealth": {"type": "boolean", "description": "潜水艦か（近くの軍艦にしか見つからない）"},
+    "detect": {"type": "number", "minimum": 0, "maximum": 1, "description": "同じ区画の潜水艦を見つける見込み（軍艦だけ）"},
     "override": {"const": true}
   }
 }
