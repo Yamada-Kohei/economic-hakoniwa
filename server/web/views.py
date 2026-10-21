@@ -22,6 +22,7 @@ from server.web import (
     diplomacy,
     display,
     founding,
+    military,
     overview,
     rankings,
     reports,
@@ -298,6 +299,15 @@ def diplomacy_page(request, island_id: int):
     island, context, _ = _report(request, island_id, "diplomacy", "外交")
     context["diplomacy"] = diplomacy.diplomacy_data(island, context["mine"])
     return render(request, "web/diplomacy.html", context)
+
+
+def military_page(request, island_id: int):
+    """軍（フェーズ4-2）: 兵と国防費・部隊・艦隊・基地と陣地（持ち主）。ほかの国には兵の総数と
+    国防費と見えた艦隊だけ。値は JSON API の /military と同じ（military.py の brief）。"""
+    island, context, _ = _report(request, island_id, "military", "軍")
+    viewer = country_services.own_island(request.user)
+    context["military"] = military.brief(island, context["mine"], viewer.id if viewer else None)
+    return render(request, "web/military.html", context)
 
 
 def news_page(request):

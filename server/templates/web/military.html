@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+{% include "web/report_header.html" %}
+{% with m=military %}
+<section class="panel" id="forces">
+  <h2>{% translate "兵と国防費" %}</h2>
+  <dl>
+    <dt>{% translate "兵の数" %}</dt><dd>{{ m.soldiers }}</dd>
+    <dt>{% translate "国防費（兵の賃金と食べ物）" %}</dt><dd>{{ m.budget.personnel }}</dd>
+    <dt>{% translate "国防費（装備の買い入れと編成）" %}</dt><dd>{{ m.budget.procurement }}</dd>
+  </dl>
+  {% if not mine %}<p class="hint">{% translate "部隊と艦隊の中身は、その国の持ち主だけに見えます。" %}</p>{% endif %}
+</section>
+{% endwith %}
+{% endblock %}

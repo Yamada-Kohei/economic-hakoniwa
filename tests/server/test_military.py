@@ -210,3 +210,16 @@ def test_map_shows_trenches_to_all_and_units_to_the_owner(world):
     assert mine["units"] == [{"id": 1, "army": "infantry", "x": plain.x, "y": plain.y}]
     public = Client().get(url).json()
     assert sum(public["trench"]) == 1 and "units" not in public
+
+
+def test_military_page_and_defs(world):
+    client, island = _player()
+    page = client.get(f"/islands/{island.id}/military/")
+    assert page.status_code == 200 and "兵と国防費" in page.content.decode()
+    others = Client().get(f"/islands/{island.id}/military/")
+    assert others.status_code == 200
+    assert "その国の持ち主だけに見えます" in others.content.decode()
+    army = Client().get("/api/defs").json()["army"]
+    assert army["infantry"]["arm"] == "land" and army["infantry"]["equipment"] == {"weapons": 100}
+    assert army["transport"]["capacity"] == 40 and army["submarine"]["stealth"] is True
+    assert army["frigate"]["name"] == "フリゲートの艦隊"
