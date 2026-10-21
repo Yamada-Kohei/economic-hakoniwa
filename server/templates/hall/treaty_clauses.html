@@ -5,6 +5,17 @@
     <strong>{{ c.name }}</strong>
     {% if c.notice_turns %}<span class="hint">{% blocktranslate with n=c.notice_turns %}（破棄の予告から {{ n }} ターン）{% endblocktranslate %}</span>{% endif %}
     {% if c.detail %}<p class="hint">{{ c.detail }}</p>{% endif %}
+    {% if c.type == "aid" %}
+    {% with a=c.terms %}
+    <dl class="diplomacy-terms aid-progress">
+      <dt>{% translate "援助" %}</dt><dd><a href="{% url 'island_diplomacy' a.payer.id %}">{{ a.payer.name }}</a> → <a href="{% url 'island_diplomacy' a.payee.id %}">{{ a.payee.name }}</a></dd>
+      <dt>{% translate "1回の額" %}</dt><dd>{{ a.amount|floatformat:"0g" }}（{% blocktranslate with country=a.currency.name %}{{ country }}の通貨の最小単位{% endblocktranslate %}）</dd>
+      <dt>{% translate "間隔・回数" %}</dt><dd>{% blocktranslate with period=a.period count=a.count %}{{ period }} ターンごと・{{ count }} 回{% endblocktranslate %}</dd>
+      <dt>{% translate "届いた累計" %}</dt><dd class="aid-received">{{ a.paid|default:0|floatformat:"0g" }}</dd>
+      {% if t.start is not None %}<dt>{% translate "期日を確認した回数" %}</dt><dd>{% blocktranslate with done=a.done_count|default:0 count=a.count %}{{ done }} / {{ count }} 回{% endblocktranslate %}</dd>{% endif %}
+    </dl>
+    {% endwith %}
+    {% endif %}
     {% if c.type == "peace" %}
     <p class="hint">{% blocktranslate with n=c.withdraw_turns %}引き揚げの期限: {{ n }} ターン{% endblocktranslate %} ・ {% if c.prisoners %}{% translate "捕虜を返す" %}{% else %}{% translate "捕虜を返さない" %}{% endif %}</p>
     {% endif %}

@@ -219,7 +219,7 @@ export class TilePanel {
     }
     if (f.stock.length) rows.push(["施設在庫", goodsText(f.stock)]);
     const parts = [`<h3>${escapeHtml(f.name)}</h3>${table(rows)}`];
-    if (f.monument) parts.push(this.monumentHtml(f.monument));
+    if (f.monument) parts.push(this.monumentHtml(f.monument, f.number));
     if (f.bank) parts.push(bankHtml(f.bank));
     parts.push(this.booksHtml(f.books));
     if (f.loans?.length) parts.push(loansHtml(f.loans));
@@ -227,10 +227,16 @@ export class TilePanel {
   }
 
   /** 記念碑の碑文（自動の文と、足した文）と、自作の記念碑の絵。 */
-  monumentHtml(m) {
+  monumentHtml(m, number) {
     const lines = [m.text, ...(m.note || [])].map((line) => escapeHtml(line)).join("<br>");
-    const image = m.image ? `<img src="${escapeHtml(m.image)}" alt="" width="96" height="96" class="monument-image">` : "";
-    return `<h4>碑文</h4>${image}<p class="inscription">${lines}</p>`;
+    const image = m.image ? `<img src="${escapeHtml(m.image)}" alt="" width="96" height="96" class="monument-image">`
+      : `<span class="monument-image monument-placeholder" aria-hidden="true">▥</span>`;
+    const built = m.built_turn != null && this.info.facility.built
+      ? `<p class="hint">${escapeHtml(this.el.dataset.monumentBuilt)}: ${escapeHtml(turnDate(m.built_turn))}</p>` : "";
+    const edit = this.orders && m.image && this.el.dataset.countryUrl
+      ? `<a class="monument-edit-link" href="${escapeHtml(this.el.dataset.countryUrl)}#edit-monument-${encodeURIComponent(number)}">${escapeHtml(this.el.dataset.monumentEdit)}</a>` : "";
+    return `<section class="monument"><h4>${escapeHtml(this.el.dataset.monumentInscription)}</h4>
+      <div class="monument-body">${image}<div class="monument-copy">${built}<blockquote class="inscription">${lines}</blockquote></div></div>${edit}</section>`;
   }
 
   /** 記念碑を建てるときの、碑文に足す文の入力欄（記念碑でなければ空）。 */
@@ -662,7 +668,7 @@ function idSet(text) {
 
 function table(rows) {
   const body = rows.map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`).join("");
-  return `<table class="info">${body}</table>`;
+  return `<div class="table-scroll"><table class="info">${body}</table></div>`;
 }
 
 /** 銀行の帳簿（直近の統計）と預金金利・破綻。 */

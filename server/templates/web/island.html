@@ -52,6 +52,9 @@
       <div id="tile-popover" class="tile-popover" role="dialog" aria-label="{% translate 'マスの情報' %}" hidden>
         <button type="button" class="popover-close" data-close aria-label="{% translate '閉じる' %}">×</button>
         <div id="tile-panel" data-tile-url="{% url 'api_tile' island.id 0 0 %}"
+             data-country-url="{% url 'island_country' island.id %}"
+             data-monument-inscription="{% translate '碑文' %}" data-monument-built="{% translate '建立' %}"
+             data-monument-edit="{% translate '絵を差し替える（国のページ）' %}"
              data-check-url="{% url 'api_order_check' island.id %}"
              data-resources="{{ resource_ids|join:',' }}" data-producible="{{ producible|join:',' }}" aria-live="polite"></div>
       </div>
