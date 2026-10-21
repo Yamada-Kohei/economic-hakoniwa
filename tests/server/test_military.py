@@ -190,3 +190,23 @@ def test_world_fleets_show_own_and_seen_fleets_only(world):
     assert "soldiers" not in seen[0] and "equipment" not in seen[0]
     anonymous = Client().get("/api/world/fleets").json()
     assert anonymous["mine"] == [] and anonymous["seen"] == []
+
+
+def test_map_shows_trenches_to_all_and_units_to_the_owner(world):
+    from hakoniwa_core.military import army
+
+    client, island = _player()
+    plain = island.tiles.filter(terrain="plain").order_by("y", "x").first()
+    plain.ext = {army.TRENCH: 1}
+    plain.save()
+    w = island.world
+    unit = {"id": 1, "owner": island.id, "kind": "infantry", "x": plain.x, "y": plain.y}
+    w.ext = {army.KEY: {"seq": 1, "units": [unit | {"soldiers": 100, "equipment": {}}]}}
+    w.ext[army.KEY]["units"][0] |= {"status": "ready", "order": None}
+    w.save()
+    url = f"/api/islands/{island.id}/map"
+    mine = client.get(url).json()
+    assert mine["trench"][plain.y * island.size + plain.x] == 1 and sum(mine["trench"]) == 1
+    assert mine["units"] == [{"id": 1, "army": "infantry", "x": plain.x, "y": plain.y}]
+    public = Client().get(url).json()
+    assert sum(public["trench"]) == 1 and "units" not in public

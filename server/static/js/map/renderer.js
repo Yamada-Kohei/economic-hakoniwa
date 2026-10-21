@@ -20,6 +20,11 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
   const n = map.size;
   const facilityAt = new Map();
   for (const f of map.facilities || []) facilityAt.set(f.y * n + f.x, f);
+  const unitsAt = new Map();
+  for (const u of map.units || []) {
+    const i = u.y * n + u.x;
+    unitsAt.set(i, [...(unitsAt.get(i) || []), u]);
+  }
 
   for (let s = 0; s <= 2 * (n - 1); s++) {
     for (let x = Math.max(0, s - n + 1); x <= Math.min(s, n - 1); x++) {
@@ -43,13 +48,45 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       }
       if (map.zone?.[i] === "no_development") drawHatch(ctx, px, top, theme);
       if (map.power_line?.[i] && !facilityAt.has(i)) drawPowerLine(ctx, map, x, y, px, top, theme, facilityAt);
+      // 陣地（塹壕）: 奥の2辺を施設・住宅より先に、手前の2辺をあとに描く（docs/map-art.md）
+      const trench = map.trench?.[i];
+      if (trench) drawOverlay(ctx, sprites.get("overlay/trench_back"), px, top, theme);
       if (f) drawFacility(ctx, f, map, defs, px, top, theme, sprites);
+      if (trench) drawOverlay(ctx, sprites.get("overlay/trench_front"), px, top, theme);
+      if (unitsAt.has(i)) drawUnits(ctx, unitsAt.get(i), px, top, theme, sprites);
       if (options.marked?.has(`${x},${y}`)) outlineTop(ctx, px, top, theme, "#ff5722");
       if (options.selected && options.selected.x === x && options.selected.y === y) {
         outlineTop(ctx, px, top, theme, "#ffeb3b");
       }
     }
   }
+}
+
+/** マスいっぱいの重ねる絵（overlay/）。基準点を上面のひし形の下の頂点に合わせる。 */
+function drawOverlay(ctx, sprite, px, top, theme) {
+  if (sprite) drawSprite(ctx, sprite, px, top + theme.tile_height);
+}
+
+const OWN_RING = "#ffca28"; // 自国の部隊の印の下の輪（site.css の自国の区画の縁の色）
+
+/**
+ * 部隊の印（unit/<種類>）をマスの真ん中に立て、下に国の色の輪を描く。絵は国によらず同じ。
+ * 絵がない種類は輪だけ。1 マスに複数いるときは横にずらす。
+ */
+function drawUnits(ctx, units, px, top, theme, sprites) {
+  const hw = theme.tile_width / 5;
+  const hh = theme.tile_height / 5;
+  const cy = top + theme.tile_height / 2;
+  units.forEach((u, k) => {
+    const x = px + (k - (units.length - 1) / 2) * theme.tile_width * 0.22;
+    ctx.strokeStyle = OWN_RING;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(x, cy, hw, hh, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    const sprite = sprites.get(`unit/${u.army}`);
+    if (sprite) drawSprite(ctx, sprite, x, cy + hh / 2);
+  });
 }
 
 function drawBlock(ctx, px, py, h, colors, theme, sprite) {

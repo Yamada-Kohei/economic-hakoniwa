@@ -21,6 +21,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import freight
 from hakoniwa_core.founding import land_terrains
+from hakoniwa_core.military import army
 from hakoniwa_core.modules import production
 from hakoniwa_core.naming import default_place_style, place_of, place_styles
 from hakoniwa_core.orders import check_order
@@ -279,6 +280,7 @@ def island_map(request, island_id: int):
         "population": [],
         "zone": [],
         "power_line": [],
+        "trench": [],
         "pollution": [],
         "happiness": [],
         "power": [],
@@ -291,6 +293,7 @@ def island_map(request, island_id: int):
         data["population"].append(population)
         data["zone"].append(zone)
         data["power_line"].append(1 if display.carries_power(infra) else 0)
+        data["trench"].append(1 if (ext or {}).get(army.TRENCH) else 0)
         data["pollution"].append(pollution)
         data["happiness"].append((ext or {}).get("happiness"))
         data["power"].append((ext or {}).get("power"))
@@ -301,6 +304,13 @@ def island_map(request, island_id: int):
     data["infra_why"] = display.works_why(island.economy)
     if request.GET.get("freight"):
         data.update(_freight(island))
+    mine = request.user.is_authenticated and island.owner_id == request.user.id
+    if mine:  # 部隊の印は持ち主だけ（ほかの国の部隊が見えるのは 4-3 から。陣地は誰にでも見える）
+        data["units"] = [
+            {"id": u["id"], "army": u["army"], "x": u["x"], "y": u["y"]}
+            for u in military_views.units(island)
+            if u["aboard"] is None
+        ]
     facilities = [
         {
             "number": f.number,
@@ -325,7 +335,7 @@ def island_map(request, island_id: int):
             else None,
             "regime": island.regime,
             "capital_buildings": _capital_buildings(island.regime, island.ext, get_game().defs),
-            "mine": request.user.is_authenticated and island.owner_id == request.user.id,
+            "mine": mine,
             "facilities": facilities,
             **data,
         }
