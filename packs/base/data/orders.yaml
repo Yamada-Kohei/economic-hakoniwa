@@ -982,6 +982,20 @@ fleet_duty:                               # 艦隊に続く務めを付ける（
       fleet: {type: integer, minimum: 1, description: "艦隊の番号"}
       duty: {type: string, enum: [escort, watch, blockade, none], description: "務め（護衛 escort・見張り watch・封鎖 blockade・外す none）"}
 
+fire_missile:                             # ミサイル基地から、戦争の相手の島のマスをミサイルで撃つ（射程は島の区画どうしの距離。着弾は軍の段の終わり）
+  admin_cost: 0
+  secret: always
+  payload:
+    type: object
+    required: [base, island, x, y, count]
+    additionalProperties: false
+    properties:
+      base: {type: integer, minimum: 1, description: "ミサイル基地の施設の番号"}
+      island: {type: integer, minimum: 1, description: "撃つ戦争の相手の島の番号"}
+      x: {type: integer, minimum: 0, description: "狙うマスの x"}
+      y: {type: integer, minimum: 0, description: "狙うマスの y"}
+      count: {type: integer, minimum: 1, description: "撃つ数（基地の在庫と 1 ターンの上限まで）"}
+
 load_unit:                                # 陸の部隊を輸送船団に載せる（母港の区画につないだ船団と、軍港のマスにいる部隊だけ）
   admin_cost: 0
   secret: always

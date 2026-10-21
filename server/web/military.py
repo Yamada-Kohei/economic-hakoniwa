@@ -10,7 +10,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from hakoniwa_core.military import army, forces, occupation, vision
+from django.db.models import Sum
+
+from hakoniwa_core.military import army, forces, missiles, occupation, vision
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE
 from server.game import get_game
 from server.web import display
@@ -297,11 +299,24 @@ def bases(island: m.Island) -> list[dict[str, Any]]:
     """建ち終わった基地の施設（兵舎・軍港・レーダー・要塞）。誰にでも見える（施設は俯瞰図で見える）が、
     要約には持ち主の分だけ入れる。"""
     defs = get_game().defs
+    kept = {
+        (facility, good): qty
+        for facility, good, qty in island.stocks.filter(
+            facility__isnull=False, good__in=[g for _, g in missiles.SOURCES]
+        )
+        .values("facility", "good")
+        .annotate(qty=Sum("quantity"))
+        .values_list("facility", "good", "qty")
+    }  # ミサイルと迎撃ミサイルの在庫（要約は持ち主の分だけ）
     out = []
     for f in island.facilities.filter(built=True).order_by("number"):
         info = defs.facilities.get(f.kind, {}).get("military")
         if info:
-            out.append({"facility": f.number, "kind": f.kind, "x": f.x, "y": f.y, **info})
+            row = {"facility": f.number, "kind": f.kind, "x": f.x, "y": f.y, **info}
+            for key, good in missiles.SOURCES:
+                if key in info:
+                    row["stock"] = kept.get((f.pk, good), 0) // QUANTITY_SCALE
+            out.append(row)
     return out
 
 

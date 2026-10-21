@@ -27,3 +27,5 @@ shipyard_frigate: フリゲートを建造
 shipyard_submarine: 潜水艦を建造
 arms_plant_default: 武器を製造
 arms_plant_ammunition: 弾薬を製造
+missile_plant_default: ミサイルを製造
+missile_plant_interceptor: 迎撃ミサイルを製造

@@ -326,6 +326,24 @@ arms_plant:
       outputs: {ammunition: 6}
   sprite: arms_plant
 
+# ミサイル工場（フェーズ4-3 の③）。ミサイルと迎撃ミサイルを作り（作り方で選ぶ）、国だけが買う。
+missile_plant:
+  category: industry
+  industry: arms
+  terrain: [plain]
+  construction: {turns: 6, labor: 700, materials: {building_materials: 30, steel: 10, machinery: 5, electronics: 1}}
+  workers: {general: 200, engineer: 50}
+  pollution: {amount: 2, radius: 1}
+  factors: {infra: 0.7, education: 0.8}
+  recipes:
+    default:              # ミサイル 4 発
+      inputs: {chemicals: 0.4, electronics: 0.2, machinery: 0.2, fuel: 0.4, electricity: 2}
+      outputs: {missile: 4}
+    interceptor:          # 迎撃ミサイル 6 発
+      inputs: {chemicals: 0.3, electronics: 0.24, machinery: 0.12, electricity: 2}
+      outputs: {interceptor: 6}
+  sprite: missile_plant
+
 # 繊維工場（フェーズ3-2）。綿から衣料を作ります。人手は多く、技術者は要りません。
 textile_mill:
   category: industry
@@ -471,6 +489,32 @@ radar:
   recipes:
     default: {}
   sprite: radar
+
+missile_base:
+  category: military
+  terrain: [plain, mountain]
+  public_service: true
+  budget: defense_personnel
+  construction: {turns: 4, labor: 400, materials: {building_materials: 20, steel: 5, electronics: 1}}
+  workers: 40
+  priority: 9
+  military: {missile_base: 12}
+  recipes:
+    default: {}
+  sprite: missile_base
+
+air_defense:
+  category: military
+  terrain: [plain, mountain]
+  public_service: true
+  budget: defense_personnel
+  construction: {turns: 3, labor: 300, materials: {building_materials: 8, steel: 2, electronics: 1}}
+  workers: 30
+  priority: 9
+  military: {air_defense: 12}
+  recipes:
+    default: {}
+  sprite: air_defense
 
 fortress:
   category: military

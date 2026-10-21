@@ -57,6 +57,7 @@ ja:
     copper_smelter: {short: 製銅, long: 銅の精錬所}
     electronics_plant: {short: 電子, long: 電子機器工場}
     arms_plant: {short: 兵器, long: 兵器工場}
+    missile_plant: {short: ミサイル, long: ミサイル工場}
     trading: {short: 商事, long: 商社}
     thermal_power_plant: {short: 電力, long: 火力発電所}
     hydro_power_plant: {short: 水力電気, long: 水力発電所}
@@ -66,6 +67,8 @@ ja:
     naval_base: {short: 軍港, long: 軍港}
     radar: {short: レーダー, long: レーダー基地}
     fortress: {short: 要塞, long: 要塞}
+    missile_base: {short: ミサイル基地, long: ミサイル基地}
+    air_defense: {short: 防空, long: 防空陣地}
   patterns:   # 上から順に、条件（when）に合う最初の形を使います
     - {when: {category: admin}, text: "中央省庁"}
     - {when: {category: security}, text: "{place}{long}"}

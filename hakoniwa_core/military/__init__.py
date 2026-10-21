@@ -36,5 +36,9 @@ PRIVATE_LOGS = (
     "unit_demobilized_abroad",
     "war_facility_ruined",
     "sea_battle",
+    "missile_fired",
+    "missile_hit",
+    "missile_intercepted",
+    "missile_violation",
     "fleet_sunk",
 )
