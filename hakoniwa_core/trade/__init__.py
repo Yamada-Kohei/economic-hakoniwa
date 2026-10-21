@@ -164,6 +164,12 @@ def tradable(defs: Defs, good: str) -> bool:
 
 
 def tradable_goods(defs: Defs) -> list[str]:
+    """貿易圏の市場と商社で扱う財。軍事品（arms）は国どうしの契約と物の援助でだけ動く。"""
+    return sorted(g for g in defs.goods if tradable(defs, g) and not defs.goods[g].get("arms"))
+
+
+def contract_goods(defs: Defs) -> list[str]:
+    """国どうしの契約と物の援助に使える財（軍事品を含む。MI-17）。"""
     return sorted(g for g in defs.goods if tradable(defs, g))
 
 

@@ -59,7 +59,7 @@ steel_mill: 製鉄所
 
 | ファイル | 1項目の中身 | スキーマ |
 |---|---|---|
-| `goods.yaml` | `tier`（1 原料、2 中間財、3 最終財）、`unit`（量の単位。表示名は `locale/<言語>/units.yaml`）、`shelf_life`（持ち越せるターン数。0 は持ち越せない。書かなければ無期限）、`food`（食べられる財の `nutrition` と `quality`）、`mining`（建国時に選べる鉱業資源）、`consumer`（家計が買う財。物価指数に入れる） | `schemas/goods.schema.json` |
+| `goods.yaml` | `tier`（1 原料、2 中間財、3 最終財）、`unit`（量の単位。表示名は `locale/<言語>/units.yaml`）、`shelf_life`（持ち越せるターン数。0 は持ち越せない。書かなければ無期限）、`food`（食べられる財の `nutrition` と `quality`）、`mining`（建国時に選べる鉱業資源）、`arms`（軍事品。貿易圏の市場に出さず、国どうしの契約と物の援助でだけ動く。フェーズ4-2）、`consumer`（家計が買う財。物価指数に入れる） | `schemas/goods.schema.json` |
 | `terrain.yaml` | `land`（陸地か）、`reclaimable`（埋め立てられるか）、`height`（描画用の高さ） | `schemas/terrain.schema.json` |
 | `facilities.yaml` | 上の例のとおり。ほかに下の表の項目 | `schemas/facilities.schema.json` |
 | `orders.yaml` | `admin_cost`（要る行政力。ふつう 1、名前の変更は 0）、`payload`（命令の中身の形を JSON Schema で） | `schemas/orders.schema.json` |

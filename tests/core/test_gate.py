@@ -30,6 +30,7 @@ from hakoniwa_core import gate
 from hakoniwa_core.autoplan import plan_trade, plan_turn, queue_orders
 from hakoniwa_core.founding import found_island
 from hakoniwa_core.game import load_game
+from hakoniwa_core.military import veins
 from hakoniwa_core.simulate import world_digest
 from hakoniwa_core.state import WorldState
 from hakoniwa_core.state.generate import generate_land, generate_world, random_plan
@@ -53,6 +54,7 @@ def make_world(game, seed: int, resources: list[str]) -> WorldState:
     plan = random_plan(rng, "試験島", config, game.defs, land)
     plan.resources = resources
     island = found_island(game.defs, config, plan, 1, 0, 0)
+    island.ext[veins.KEY] = veins.VERSION  # 資源を決めた島に、銅の鉱脈を足さない
     return WorldState(turn=0, seed=seed, islands={1: island})
 
 

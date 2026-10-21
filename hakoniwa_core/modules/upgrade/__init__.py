@@ -29,6 +29,8 @@
 回7 後半からは、定義から消えた作り方を指す施設（自動車工場の「アルミ」）を既定の作り方に移します
 （fix_recipes。サーバーの世界は移行ファイル server/world/migrations/0006 で同じことをする）。
 
+フェーズ4-2 からは、銅の鉱脈を一部の島に 1 度だけ置きます（military/veins.py。経済のない島にも）。
+
 移し替えをターンの中で行うのは、サーバーを通さずにコアだけで世界を回すとき（一括シミュレーションや
 テスト）にも同じに動くようにするためです。
 """
@@ -41,6 +43,7 @@ from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import groundwork, services
 from hakoniwa_core.economy.households import ensure_jobless
 from hakoniwa_core.economy.prices import add_missing_prices
+from hakoniwa_core.military import veins
 from hakoniwa_core.modules.bonds import whole_terms
 from hakoniwa_core.modules.central_bank import end_for_planned
 from hakoniwa_core.registry import IslandStage, Registry
@@ -55,6 +58,8 @@ class Upgrade(IslandStage):
 
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
         economy = island.economy
+        for good in veins.place(island, ctx.config, ctx.seed):  # 経済のない島にも置く（MI-60）
+            island.log.append(LogEntry("vein_found", {"good": good}))
         if not island.has_economy:
             return
         if economy.ext.get("version", 0) < groundwork.VERSION:

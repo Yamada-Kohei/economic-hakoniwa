@@ -263,6 +263,7 @@ def test_screens_show_nothing_the_ai_cannot_read(played, monkeypatch):
 def test_summary_has_what_the_island_screen_has(played):
     _, ai, own, other = played
     data = json.loads(_tool(ai, "summary"))
+    own.refresh_from_db()  # ターンの移し替えで鉱脈が足されることがある
     assert data["island"]["resource_ids"] == own.resources
     assert set(data["island"]["resource_ids"]) <= set(data["island"]["producible"])
     assert "strengths" in data["strengths"] and "titles" in data["strengths"]
