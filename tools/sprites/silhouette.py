@@ -2141,6 +2141,54 @@ FALLOUT = "#7d8470"
 FALLOUT_LIGHT = "#98a08a"
 
 
+def main_battle_tank(
+    pal: tuple[str, str, str],
+    bar: str,
+    hull_h: float = 4.4,
+    turret_h: float = 3.4,
+    u0: float = 0.6,
+) -> list[Prim]:
+    """レオパルト風の戦車: 細い履帯と装甲板、前が 2 段に下がる高い車体、角ばった砲塔、長い砲身。
+
+    pal は迷彩の 3 色。車体と砲塔を u の向きの帯で塗り分ける。
+    """
+    z_h = 1.0 + hull_h
+    parts = [
+        box(u0, 0.65, 1.0, 0.7, 0, 2.4, IRON, COAL),
+        box(u0, 0.93, 1.0, 0.98, 0, 2.4, IRON, COAL),
+        *[
+            box(u0 + 0.03 + i * 0.057, 0.98, u0 + 0.075 + i * 0.057, 0.984, 0.4, 1.5, COAL)
+            for i in range(round((1 - u0 - 0.03) / 0.057))
+        ],
+    ]
+    hull_cuts = [u0 + 0.02, 0.68, 0.74, 0.82, 0.88]
+    for i, order in enumerate((0, 1, 2, 0)):
+        k = pal[order]
+        parts.append(box(hull_cuts[i], 0.7, hull_cuts[i + 1], 0.93, 1.0, hull_h, k, k))
+    parts += [
+        box(0.88, 0.7, 0.95, 0.93, 1.0, hull_h * 0.78, pal[1], pal[1]),
+        box(0.95, 0.7, 1.0, 0.93, 1.0, hull_h * 0.5, pal[0], pal[0]),
+        box(u0 + 0.04, 0.98, 0.98, 0.99, 1.2, 2.0, pal[2], pal[2]),
+    ]
+    tur_cuts = [u0 + 0.1, 0.77, 0.84, 0.9]
+    for i, order in enumerate((1, 0, 2)):
+        k = pal[order]
+        parts.append(box(tur_cuts[i], 0.735, tur_cuts[i + 1], 0.895, z_h, turret_h, k, k))
+    parts += [
+        box(0.9, 0.75, 0.98, 0.88, z_h, turret_h * 0.8, pal[2], pal[2]),
+        box(u0 + 0.06, 0.75, u0 + 0.1, 0.88, z_h + 0.3, turret_h * 0.8, pal[0], pal[0]),
+    ]
+    gun_z = z_h + turret_h * 0.55
+    parts += [
+        box(0.98, 0.797, 1.15, 0.823, gun_z, 0.8, bar),
+        box(1.04, 0.79, 1.09, 0.83, gun_z - 0.1, 1.0, bar),
+        box(1.15, 0.79, 1.19, 0.83, gun_z - 0.1, 1.0, COAL),
+        cylinder(u0 + 0.2, 0.86, 0.034, z_h + turret_h, 1.1, c=IRON),
+        box(u0 + 0.2, 0.76, u0 + 0.27, 0.8, z_h + turret_h, 0.5, IRON),
+    ]
+    return parts
+
+
 def pane_row(
     wall: str,
     fixed: float,
@@ -2361,17 +2409,7 @@ SHAPES.update(
             *pane_row("v", 0.84, 0.21, 0.33, [3.8], 1.6, 1, 0.07, COAL),
             cylinder(0.5, 0.78, 0.028, 2.75, 18, r_top=0.022, c=WHITE),
         ],
-        "unit/armor": [
-            # 履帯（前後 2 本。外側の面に転輪）の上に、張り出した車体、角ばった砲塔、箱の砲身
-            box(0.6, 0.64, 1.0, 0.73, 0, 2.8, IRON, COAL),
-            box(0.6, 0.9, 1.0, 0.99, 0, 2.8, IRON, COAL),
-            *[box(0.64 + i * 0.08, 0.99, 0.7 + i * 0.08, 0.996, 0.5, 1.8, COAL) for i in range(5)],
-            box(0.62, 0.73, 1.0, 0.9, 1.2, 3.4, MILITARY, "#8d9570"),
-            box(0.68, 0.75, 0.92, 0.88, 4.6, 2.0, MILITARY, "#8d9570"),
-            box(0.92, 0.785, 1.1, 0.825, 5.2, 0.9, MILITARY_DARK),
-            box(1.1, 0.78, 1.14, 0.83, 5.1, 1.1, COAL),
-            cylinder(0.78, 0.83, 0.035, 6.6, 1.2, c=IRON),
-        ],
+        "unit/armor": main_battle_tank(("#5f6b3f", "#5d4a34", "#2e3125"), "#2a2d20"),
         "overlay/battlefield": [
             # 焼けた地面（大きな斑 4 つ）に、えぐれた穴と折れた杭
             blob(0.5, 0.5, 0.44, 0.36, SCORCH, 1),
