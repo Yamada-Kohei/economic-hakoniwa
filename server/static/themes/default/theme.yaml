@@ -137,3 +137,34 @@ sprites:
   capital/official_residence-presidential_office: sprites/capital/official_residence-presidential_office.svg
   capital/party_headquarters-palace: sprites/capital/party_headquarters-palace.svg
   capital/party_headquarters-presidential_office: sprites/capital/party_headquarters-presidential_office.svg
+
+# 絵のファイルは置いたが、使う施設や描く仕組みがまだ入っていないもの（軍事の絵。docs/map-art.md）。
+# ゲームの描画は読まない。入ったら、その行を上の sprites へ移す（海沿いの anchor はここに書いてある値のまま）
+pending_sprites:
+  facility/barracks: sprites/facility/barracks.svg
+  facility/naval_base: {file: sprites/facility/naval_base.svg, anchor: [32, 49]}
+  facility/naval_base@sw: {file: sprites/facility/naval_base@sw.svg, anchor: [32, 49]}
+  facility/naval_base@ne: sprites/facility/naval_base@ne.svg
+  facility/naval_base@nw: sprites/facility/naval_base@nw.svg
+  facility/radar: sprites/facility/radar.svg
+  overlay/trench_back: sprites/overlay/trench_back.svg
+  overlay/trench_front: sprites/overlay/trench_front.svg
+  unit/infantry: {file: sprites/unit/infantry.svg, anchor: [14, 28]}
+  fleet/frigate: {file: sprites/fleet/frigate.svg, anchor: [12, 10]}
+  facility/arms_plant: sprites/facility/arms_plant.svg
+  facility/copper_smelter: sprites/facility/copper_smelter.svg
+  facility/electronics_plant: sprites/facility/electronics_plant.svg
+  facility/fortress: sprites/facility/fortress.svg
+  facility/missile_plant: sprites/facility/missile_plant.svg
+  facility/missile_base: sprites/facility/missile_base.svg
+  facility/air_defense: sprites/facility/air_defense.svg
+  facility/nuclear_facility: sprites/facility/nuclear_facility.svg
+  unit/armor: {file: sprites/unit/armor.svg, anchor: [14, 28]}
+  unit/rebels: {file: sprites/unit/rebels.svg, anchor: [14, 28]}
+  fleet/corvette: {file: sprites/fleet/corvette.svg, anchor: [10, 9]}
+  fleet/submarine: {file: sprites/fleet/submarine.svg, anchor: [11, 7]}
+  fleet/transport: {file: sprites/fleet/transport.svg, anchor: [12, 10]}
+  overlay/battlefield: sprites/overlay/battlefield.svg  # 地形のあと・建物より先
+  overlay/occupied: sprites/overlay/occupied.svg      # 建物のあと
+  overlay/ruined: sprites/overlay/ruined.svg          # 建物の代わり（重ねない）
+  overlay/contaminated: sprites/overlay/contaminated.svg  # 地形のあと・建物より先
