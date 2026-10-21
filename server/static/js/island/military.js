@@ -54,7 +54,7 @@ export class MilitaryTile {
           <p class="order-notice" role="status"></p></form>`;
       }).join("");
       const port = this.data.bases.some((b) => b.naval_base && b.x === tile.x && b.y === tile.y);
-      const fleets = port ? transports(this.data) : [];
+      const fleets = port ? transports(this.data).filter((f) => f.docked) : [];
       const load = fleets.length ? orderForm("load_unit", choices + field("fleet", w.transport,
         options(fleets.map((f) => [f.id, `#${f.id} ${armyName(f, p.defs)}`])))) : "";
       return `<section class="military-card"><h4>#${u.id} ${escapeHtml(armyName(u, p.defs))}</h4>` +
@@ -68,6 +68,10 @@ export class MilitaryTile {
     if (barracks && choices) parts.push(`<h4>${escapeHtml(w.formUnit)}</h4>` + orderForm("form_unit",
       `<input type="hidden" name="x" value="${tile.x}"><input type="hidden" name="y" value="${tile.y}">` +
       field("army", w.kind, choices)));
+    const missile = this.data.bases.find((b) => b.missile_base != null && b.x === tile.x && b.y === tile.y);
+    if (missile) parts.push(`<h4>${escapeHtml(w.missile)}</h4>` +
+      table([w.stock, w.warheads], [[`${missile.stock} / ${missile.missile_base}`, `${missile.warheads ?? 0} / ${missile.warhead ?? 0}`]]) +
+      `<button type="button" data-missile-base="${missile.facility}">${escapeHtml(w.targetMap)}</button>`);
     return parts.length ? `<div class="military-page">${parts.join("")}</div>` : "";
   }
 

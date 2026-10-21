@@ -3,6 +3,7 @@ import { escapeHtml, getJson } from "../island/api.js";
 import {
   words, coord, armyName, statusName, orderText, table, options,
   transportForms, bindOrderForms, appendOrder,
+  dutyName, fleetDutyForm, goodsText,
 } from "../military/common.js";
 
 export async function mountFleetCommands(grid, defsReady, fleetsReady) {
@@ -79,12 +80,12 @@ export async function mountFleetCommands(grid, defsReady, fleetsReady) {
       if (picking != null) cancel();
       const f = selected();
       controls.querySelector("[data-fleet-details]").innerHTML = table(
-        [w.kind, w.ships, w.location, w.docked, w.crew, w.status, w.order, w.steps, w.cargo, w.capacity],
+        [w.kind, w.ships, w.location, w.docked, w.crew, w.status, w.order, w.duty, w.steps, w.cargo, w.stores, w.capacity],
         [[armyName(f, defs), f.ships, coord(f), f.docked ? w.yes : w.no,
-          `${f.soldiers} / ${f.soldiers_full}`, statusName(f), orderText(f.order), f.steps_left,
-          f.capacity > 0 ? f.cargo.join(", ") || w.none : "—", f.capacity > 0 ? f.capacity : "—"]]);
+          `${f.soldiers} / ${f.soldiers_full}`, statusName(f), orderText(f.order), dutyName(f), f.steps_left,
+          f.capacity > 0 ? f.cargo.join(", ") || w.none : "—", goodsText(f.goods, defs), f.capacity > 0 ? f.capacity : "—"]]);
       controls.querySelector("[data-sail]").disabled = f.status !== "ready";
-      controls.querySelector("[data-transport]").innerHTML = transportForms(military, f);
+      controls.querySelector("[data-transport]").innerHTML = fleetDutyForm(f) + transportForms(military, f);
     }
     select.addEventListener("change", show);
     controls.querySelector("[data-sail]").addEventListener("click", () => {

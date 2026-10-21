@@ -18,11 +18,19 @@ export function payloadOf(entries) {
         throw new Error("Invalid coordinate");
       }
       Object.assign(payload, { x, y });
-    } else if (key === "army") payload[key] = String(value);
+    } else if (["army", "duty", "good", "politics", "head_of_state", "economy"].includes(key)) payload[key] = String(value);
+    else if (["enabled", "nuclear", "hidden"].includes(key)) {
+      if (!["true", "false"].includes(String(value))) throw new Error("Invalid boolean");
+      payload[key] = String(value) === "true";
+    }
     else {
       const number = Number(value);
       if (!Number.isFinite(number)) throw new Error("Invalid number");
-      payload[key] = number;
+      if (key.startsWith("reserve.")) {
+        const good = key.slice("reserve.".length);
+        if (!["food", "ammunition", "fuel"].includes(good)) throw new Error("Invalid reserve");
+        (payload.reserve ??= {})[good] = number;
+      } else payload[key] = number;
     }
   }
   return payload;
@@ -39,7 +47,22 @@ export function loadableUnits(military) {
     portsOf(military).some((b) => b.x === u.x && b.y === u.y));
 }
 export function transports(military) {
-  return (military.fleets || []).filter((f) => f.docked && f.capacity > 0);
+  return (military.fleets || []).filter((f) => f.capacity > 0);
+}
+
+export const dutyName = (fleet) => words()[fleet.duty || "none"] || fleet.duty;
+export function goodsText(goods, defs = {}) {
+  return Object.entries(goods || {}).map(([g, q]) => `${defs.goods?.[g]?.name || words()[g] || g}: ${q}`).join("、") || words().none;
+}
+export function numberField(name, label, { min = 0, step = "1", required = true, value = "" } = {}) {
+  return `<label>${escapeHtml(label)} <input name="${name}" type="number" min="${min}" step="${step}" value="${escapeHtml(value)}"${required ? " required" : ""}></label>`;
+}
+export function fleetDutyForm(fleet) {
+  const w = words();
+  const choices = options(["none", "escort", "watch", "blockade"].map((d) => [d, w[d]]))
+    .replace(`value="${fleet.duty || "none"}"`, `value="${fleet.duty || "none"}" selected`);
+  return `<h4>${escapeHtml(w.duty)}</h4><p class="hint">${escapeHtml(w.blockadeHint)}</p>` +
+    orderForm("fleet_duty", `<input type="hidden" name="fleet" value="${fleet.id}">` + field("duty", w.duty, choices));
 }
 
 export function options(rows) {
@@ -79,17 +102,23 @@ export function table(headings, rows) {
     `<tr><td colspan="${headings.length}">${escapeHtml(words().empty)}</td></tr>`}</tbody></table></div>`;
 }
 export function transportForms(military, fleet) {
-  if (!fleet.docked || fleet.capacity <= 0) return "";
+  if (fleet.capacity <= 0) return "";
   const w = words();
   const fixed = `<input type="hidden" name="fleet" value="${fleet.id}">`;
   const units = loadableUnits(military);
   const cargo = (military.units || []).filter((u) => u.aboard === fleet.id && fleet.cargo.includes(u.id));
   let html = "";
-  if (units.length) html += `<h4>${escapeHtml(w.load)}</h4>` + orderForm("load_unit", fixed +
+  if (fleet.docked && units.length) html += `<h4>${escapeHtml(w.load)}</h4>` + orderForm("load_unit", fixed +
     field("unit", w.unit, options(units.map((u) => [u.id, `#${u.id} ${u.name || u.army} ${coord(u)}`]))));
-  if (cargo.length && portsOf(military).length) html += `<h4>${escapeHtml(w.unload)}</h4>` +
+  if (fleet.docked && cargo.length && portsOf(military).length) html += `<h4>${escapeHtml(w.unload)}</h4>` +
     orderForm("unload_unit", fixed + field("unit", w.unit, options(cargo.map((u) => [u.id, `#${u.id} ${u.name || u.army}`]))) +
       field("cell", w.port, options(portsOf(military).map((b) => [`${b.x},${b.y}`, coord(b)]))));
+  if (cargo.length) html += `<h4>${escapeHtml(w.landing)}</h4><p class="hint">${escapeHtml(w.landingHint)}</p>` +
+    orderForm("unload_unit", fixed + field("unit", w.unit, options(cargo.map((u) => [u.id, `#${u.id} ${u.name || u.army}`]))) +
+      numberField("island", w.targetIsland, { min: 1 }) + numberField("x", "x") + numberField("y", "y"));
+  if (fleet.docked) html += `<h4>${escapeHtml(w.loadSupplies)}</h4>` + orderForm("load_supplies", fixed +
+    field("good", w.good, options(["food", "ammunition", "fuel"].map((g) => [g, w[g]]))) +
+    numberField("quantity", w.tons, { min: 0.001, step: "any" }));
   return html;
 }
 
@@ -100,7 +129,8 @@ export function bindOrderForms(root, add) {
     if (!form) return;
     event.preventDefault();
     if (form.dataset.busy || !form.reportValidity()) return;
-    if (form.dataset.confirm && !confirm(form.dataset.confirm)) return;
+    const confirmation = form.elements.namedItem("nuclear")?.checked ? words().nuclearConfirm : form.dataset.confirm;
+    if (confirmation && !confirm(confirmation)) return;
     const notice = form.querySelector(".order-notice");
     form.dataset.busy = "true";
     const button = form.querySelector('[type="submit"]');
