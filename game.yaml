@@ -760,3 +760,43 @@ military:
   sea:
     max_ships: 10         # 1 つの艦隊に束ねられる艦の数
     port_fuel: 0.1        # 母港の区画につないでいる間に使う燃料（航海中に対する割合）
+  vision: {land: 2}       # 陸の部隊が見える範囲（周りのマス。MI-26）
+  # 陸の戦闘と揚陸と占領（4-3 の①。設計書 MI-24〜MI-30・MI-36・MI-42・MI-49）
+  combat:
+    base_loss: 0.15       # 強さが同じとき、1 ターンに失う兵と装備の割合
+    exponent: 0.7         # 損害 = base_loss × (相手の強さ ÷ 自分の強さ)^exponent
+    max_loss: 0.6         # 1 ターンの損害の上限
+    killed_share: 0.25    # 損害のうち戦死の割合（残りは負傷。戦死:負傷 = 1:3）
+    wounded_return: {turns: 3, share: 0.5}  # 負傷から戻るまでのターン数と、戻る割合（残りは除隊して家へ）
+    defense: {forest: 1.3, mountain: 1.6, town: 1.3, city: 1.5, trench: 1.3, fortress: 2.0, cap: 3.5}
+    armor_mountain: 0.5   # 機甲が山で戦うときの強さの倍率
+    equipment_floor: 0.1  # 装備のそろいの下限（強さが 0 になって 0÷0 にならないように）
+    landing_weak: 0.5     # 港でない所に下ろしたターンの強さの倍率
+    landing_tons: 40      # 港でない所に 1 ターンに下ろせる重さ（トン。輸送船 1 隻分）
+    surprise: 1.3         # 宣戦と同じターンの初めの戦闘で、宣戦した側の強さの倍率
+    stalemate_turns: 6    # 決着しないまま続いたら、攻めた側が元のマスへ退くターン数
+    training_floor: 0.5   # 練度 0 の兵の強さの倍率（練度 1 で 1 倍）
+    ammo_floor: 0.3       # 弾薬が尽きたときの強さの倍率
+    hungry: 0.7           # 食べ物が尽きたときの強さの倍率
+    morale_floor: 0.2     # 士気が低くても、強さの倍率はこれより下げない
+    min_casualties: 1     # 1 回の戦いで、戦っている側が必ず失う兵の数
+    ammo_per_thousand: 36 # 戦ったターンに兵 1000 人が使う弾薬（トン）
+    fuel_per_vehicle: 0.2 # 戦ったターンに車両 1 両が使う燃料（トン）
+    break: {morale: 0.3, ratio: 3.0, remaining: 0.5}  # 崩れる条件: 士気が下回る・相手の強さがこの倍以上・戦い始めの兵がこの割合を下回る
+    morale: {win: 0.05, lose: 0.1, rout: 0.2}  # 戦いで士気が動く量（勝った・負けた・崩れて退いた）
+    training_gain: 0.03   # 戦ったターンに練度が上がる量（上限 1）
+    police: {per_person: 0.3, workers: 100}   # 警察の守り: 警察 100 人ぶんが歩兵中隊の 0.3 の強さ
+    civilians: {dead: 0.02, flee: 0.2}  # 戦場のマスの住民が 1 ターンに亡くなる割合と、同じ島のほかの町へ逃げる割合
+    facilities: {halt: 0.3, destroy: 0.05, halt_turns: 2}  # 戦場の施設が 1 ターンに止まる・壊れる見込みと、止まるターン数
+  supply:
+    store_turns: 3        # 外国の島の部隊が持てる食べ物・弾薬・燃料のターン数
+    unload_per_ship: 8    # 輸送船 1 隻が 1 ターンに陸の部隊へ渡せる補給（トン。揚陸した海岸）
+    port_unload: 4.0      # 占領した港があれば、渡せる量の倍率
+    starve: 0.05          # 食べ物がまったくないターンに、外国の島の部隊から病気と飢えで亡くなる割合
+  occupation:
+    prisoner_turns: 24    # 講和がなくても、捕虜を帰すまでのターン数（2 年）
+    requisition: [food, ammunition, fuel]   # 占領したマスの施設の在庫から取り立てられる物
+  war:
+    rally: {stability: 5.0, turns: 3}       # 宣戦の後、一時だけ政情の目標が上がる量とターン数（旗の下の団結）
+    weariness: {scale: 8.0, k: 200.0, max: 25.0}  # 厭戦: 政情の目標を scale × log(1 + k × 戦死者 ÷ 人口) 下げる（上限 max）
+    occupied: {stability: 30.0, max: 30.0}  # 占領されたマスの住民の割合 1（全部）ごとに政情の目標を下げる量と上限

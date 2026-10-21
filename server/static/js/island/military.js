@@ -72,7 +72,7 @@ export class MilitaryTile {
   }
 
   start(id) {
-    const unit = this.data?.units.find((u) => u.id === id && !u.aboard && u.status === "ready");
+    const unit = this.data?.units.find((u) => u.id === id && !u.aboard && !u.abroad && u.status === "ready");
     if (!unit) return;
     this.panel.endMarking();
     this.picking = id;

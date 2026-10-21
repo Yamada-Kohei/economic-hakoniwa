@@ -37,9 +37,13 @@ def wage_bill(island: IslandState) -> int:
 
 
 def food_need(island: IslandState, config) -> int:
-    """兵が 1 ターンに食べる食べ物（1000 分の 1 トン）。"""
+    """国の倉庫から食べる分の、1 ターンの食べ物（1000 分の 1 トン）。兵（外国の島にいる部隊を除く。
+    その分は部隊が自分の補給で食べる。MI-64）と、捕らえている捕虜の分。"""
     per_thousand = to_milli(config.get("military.food_per_thousand"))
-    return forces.soldiers(island) * per_thousand // 1000
+    state = island.ext.get(forces.KEY, {})
+    home = max(0, forces.soldiers(island) - state.get("abroad", 0))
+    prisoners = sum(n for _, _, n in state.get("prisoners", []))
+    return (home + prisoners) * per_thousand // 1000
 
 
 def planned(island: IslandState, config) -> dict[str, int]:
@@ -71,7 +75,7 @@ class Military(IslandStage):
         whole = forces.soldiers(island)
         new = min(state["new"], whole)  # 入ったターンは家で食べる
         state["new"] = 0
-        need = food_need(island, config) * (whole - new) // whole
+        need = food_need(island, config) * (whole - new) // whole if whole else 0
         eaten = stock.take(island.warehouse, FOOD, need)
         state["hungry"] = eaten < need
         if state["hungry"]:
@@ -81,7 +85,10 @@ class Military(IslandStage):
         food = food_need(island, config) * config.get("military.food_stock_turns")
         self._order(island, config, FOOD, food, BUDGET_PERSONNEL)
         self._order(island, config, AMMUNITION, ammo * 2, BUDGET_PROCUREMENT)
-        for good, qty in sorted(state.get("wanted", {}).items()):  # 部隊に集める装備と燃料
+        wanted = dict(state.get("wanted", {}))
+        for good, qty in state.get("reserve", {}).items():  # 備蓄の目標（外国へ送る補給のもと）
+            wanted[good] = max(wanted.get(good, 0), qty)
+        for good, qty in sorted(wanted.items()):  # 部隊に集める装備と燃料、備蓄
             self._order(island, config, good, qty, BUDGET_PROCUREMENT)
         stats["military.soldiers"] = forces.soldiers(island)
         stats["military.morale"] = state["morale"] / BASIS
@@ -209,6 +216,8 @@ def set_defense(island: IslandState, payload: dict[str, Any], ctx: StageContext)
         budget[BUDGET_PROCUREMENT] = annual - annual * share // 100
     if "volunteer_wage" in payload:
         state["volunteer_wage"] = to_basis(payload["volunteer_wage"] / 100)
+    if "reserve" in payload:  # 備蓄の目標（トン）。外国へ送る補給や戦う弾薬のもと（4-3）
+        state["reserve"] = {g: to_milli(q) for g, q in payload["reserve"].items()}
     island.log.append(
         LogEntry(
             "defense_set",

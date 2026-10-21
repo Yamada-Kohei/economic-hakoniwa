@@ -26,4 +26,13 @@ PRIVATE_LOGS = (
     "fleet_ready",
     "fleet_arrived",
     "fleet_no_fuel",
+    "battle",
+    "battle_on_land",
+    "unit_retreated",
+    "unit_surrendered",
+    "prisoners_taken",
+    "prisoners_returned",
+    "unit_landed",
+    "unit_demobilized_abroad",
+    "war_facility_ruined",
 )

@@ -5,6 +5,7 @@
 部隊 1 つの形:
 
 - id / owner（持ち主の島の番号）/ kind（army.yaml の名前）/ x, y（島のマス）
+- at: 部隊のいる島の番号（持ち主の島にいる間は書かない。外国の島に揚陸した部隊だけ。`where`）
 - soldiers: 部隊に入った兵の数（島の兵の合計 `island.ext["military"]` のうち、部隊に割り当てた分）
 - equipment: 持っている装備（財 → 数。goods.yaml の単位。組・両）
 - status: forming（編成中。兵と装備がそろうまで）/ ready（そろった）
@@ -14,6 +15,13 @@
 （詳しくは sea.py）: arm = "sea"、x, y は島のマスでなく世界マップの区画、ships = 艦の数（soldiers と
 equipment は艦の数ぶんそろえる）、order は {"type": "sail", "x", "y"}、cargo = 載せた部隊の番号。
 陸の部隊を艦隊に載せている間は、その部隊に aboard = 艦隊の番号を置く。
+
+外国の島にいる部隊（4-3 の①）は、食べ物・弾薬・燃料を自分の `stores`（財 → 1000 分の 1 単位）
+で持ち、
+船で運んだ補給と占領したマスの取り立てで補います（MI-25・MI-64）。戦っている間は
+role（attack・defend）、
+entered（そのマスに入ったターン）、from（入る前のマス）、fought（続けて戦ったターン数）、engaged（戦い始めの
+兵の数）を持ちます（combat.py）。
 
 兵の賃金・食べ物は島の兵の合計に対して払うので、部隊に入っても二重には払いません。
 島の陣地（塹壕）はマスの `tile.ext["trench"]`（1）に持ちます。
@@ -55,6 +63,25 @@ def land_units_of(world: WorldState, island_id: int) -> list[dict[str, Any]]:
 
 def fleets_of(world: WorldState, island_id: int) -> list[dict[str, Any]]:
     return [u for u in units_of(world, island_id) if is_sea(u)]
+
+
+def where(unit: dict[str, Any]) -> int:
+    """部隊のいる島の番号（外国の島に揚陸していなければ持ち主の島）。"""
+    return unit.get("at", unit["owner"])
+
+
+def abroad(unit: dict[str, Any]) -> bool:
+    """外国の島にいる部隊か（船に載っている間は、まだ持ち主の島のもの）。"""
+    return where(unit) != unit["owner"] and "aboard" not in unit
+
+
+def on_land(world: WorldState, island_id: int) -> list[dict[str, Any]]:
+    """島の上にいる陸の部隊（誰の部隊でも。船に載っている間は含まない。番号の順）。"""
+    return [
+        u
+        for u in world_state(world)["units"]
+        if not is_sea(u) and where(u) == island_id and "aboard" not in u
+    ]
 
 
 def find(world: WorldState, unit_id: int) -> dict[str, Any] | None:
@@ -126,7 +153,7 @@ def housed(world: WorldState, defs: Defs, island_id: int, x: int, y: int) -> int
     return sum(
         defs.army.get(u["kind"], {}).get("soldiers", u["soldiers"])
         for u in land_units_of(world, island_id)
-        if (u["x"], u["y"]) == (x, y) and "aboard" not in u
+        if (u["x"], u["y"]) == (x, y) and "aboard" not in u and where(u) == island_id
     )
 
 

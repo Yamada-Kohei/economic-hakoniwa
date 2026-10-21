@@ -862,6 +862,7 @@ set_defense:                              # 国防費の年の額と分け方、
       annual: {type: integer, minimum: 0, description: "国防費の年の額（毎ターンその12分の1まで使う）"}
       personnel_share: {type: integer, minimum: 0, maximum: 100, description: "国防費のうち、兵の賃金と食べ物（defense_personnel）に回す %。残りは装備の買い入れと編成（defense_procurement）"}
       volunteer_wage: {type: number, minimum: 0, maximum: 500, description: "志願の兵の賃金（島の平均賃金に対する %）"}
+      reserve: {type: object, additionalProperties: false, description: "国の倉庫に備蓄しておく量（トン。国防費の装備の分で市場から買う）。外国へ送る補給の元", properties: {food: {type: number, minimum: 0}, ammunition: {type: number, minimum: 0}, fuel: {type: number, minimum: 0}}}
 
 recruit:                                  # 志願の兵を集める（失業者から先に。軍の賃金が島の平均賃金より低いと失業者しか集まらない）
   admin_cost: 1
@@ -981,7 +982,7 @@ load_unit:                                # 陸の部隊を輸送船団に載せ
       unit: {type: integer, minimum: 1, description: "部隊の番号"}
       fleet: {type: integer, minimum: 1, description: "輸送船団の番号"}
 
-unload_unit:                              # 載せた部隊を、母港の軍港のマスに降ろす（外国の島への揚陸は 4-3）
+unload_unit:                              # 載せた部隊を降ろす（自分の母港の軍港のマス。戦争の相手の島には、船団がその島の区画にいれば、港か海に接する平地のマスに揚陸する）
   admin_cost: 0
   secret: always
   payload:
@@ -991,5 +992,40 @@ unload_unit:                              # 載せた部隊を、母港の軍港
     properties:
       unit: {type: integer, minimum: 1, description: "部隊の番号"}
       fleet: {type: integer, minimum: 1, description: "輸送船団の番号"}
-      x: {type: integer, minimum: 0, description: "降ろす軍港のマスの x"}
-      y: {type: integer, minimum: 0, description: "降ろす軍港のマスの y"}
+      x: {type: integer, minimum: 0, description: "降ろすマスの x（自分の軍港。揚陸なら相手の島の港か海に接する平地）"}
+      y: {type: integer, minimum: 0, description: "降ろすマスの y"}
+      island: {type: integer, minimum: 1, description: "揚陸する戦争の相手の島の番号（自分の島に降ろすなら書かない）"}
+
+load_supplies:                            # 輸送船団に補給（食べ物・弾薬・燃料）を積む（母港の区画につないだ船団だけ。国の倉庫から。船の重さの上限に数える）
+  admin_cost: 0
+  secret: always
+  payload:
+    type: object
+    required: [fleet, good, quantity]
+    additionalProperties: false
+    properties:
+      fleet: {type: integer, minimum: 1, description: "輸送船団の番号"}
+      good: {type: string, enum: [food, ammunition, fuel], description: "積む物（食べ物 food・弾薬 ammunition・燃料 fuel）"}
+      quantity: {type: number, exclusiveMinimum: 0, description: "積む量（トン）"}
+
+set_requisition:                          # 占領したマスの在庫を補給に取り立てるかを部隊ごとに決める（初めは取り立てる）
+  admin_cost: 0
+  secret: always
+  payload:
+    type: object
+    required: [unit, enabled]
+    additionalProperties: false
+    properties:
+      unit: {type: integer, minimum: 1, description: "部隊の番号"}
+      enabled: {type: boolean, description: "取り立てるか"}
+
+choose_regime:                            # 降伏で体制が倒れた国が、体制を選び直す（行政力も議会も要らない。混乱期間中でも出せる。決めない間は今の体制のまま）
+  admin_cost: 0
+  payload:
+    type: object
+    minProperties: 1
+    additionalProperties: false
+    properties:
+      politics: {type: string}
+      head_of_state: {type: string}
+      economy: {type: string}

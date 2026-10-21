@@ -79,3 +79,6 @@ form_fleet: 艦隊の編成
 sail_fleet: 艦隊の航海
 load_unit: 部隊を船に載せる
 unload_unit: 部隊を船から降ろす
+load_supplies: 輸送船団に補給を積む
+set_requisition: 占領地の取り立てを切り替える
+choose_regime: 体制を選び直す

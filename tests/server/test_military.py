@@ -91,7 +91,7 @@ def test_units_and_bases_show_in_the_summary_and_the_military_api(world):
         client.get(f"/api/islands/{island.id}/summary").json()["military"]["units"] == mine["units"]
     )
     public = Client().get(f"/api/islands/{island.id}/military").json()["military"]
-    assert set(public) == {"soldiers", "budget", "stats_turn", "fleets"}
+    assert set(public) == {"soldiers", "budget", "stats_turn", "fleets", "seen_units"}
     assert row.pk
 
 
@@ -207,9 +207,18 @@ def test_map_shows_trenches_to_all_and_units_to_the_owner(world):
     url = f"/api/islands/{island.id}/map"
     mine = client.get(url).json()
     assert mine["trench"][plain.y * island.size + plain.x] == 1 and sum(mine["trench"]) == 1
-    assert mine["units"] == [{"id": 1, "army": "infantry", "x": plain.x, "y": plain.y}]
+    assert mine["units"] == [
+        {
+            "id": 1,
+            "owner": island.id,
+            "army": "infantry",
+            "x": plain.x,
+            "y": plain.y,
+            "current": True,
+        }
+    ]
     public = Client().get(url).json()
-    assert sum(public["trench"]) == 1 and "units" not in public
+    assert sum(public["trench"]) == 1 and public.get("units", []) == []
 
 
 def test_military_page_and_defs(world):

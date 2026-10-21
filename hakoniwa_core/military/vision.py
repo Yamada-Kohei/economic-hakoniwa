@@ -11,7 +11,12 @@
 ほかの目には見えません。見つかるかどうかは世界の種・ターン・見る国・艦隊から決めた乱数で決めます
 （島の順番に結果が左右されません）。
 
-見えた艦隊の最後の場所とターンは `world.ext["military"]["seen"][見る国][艦隊の番号]` に残します
+陸の部隊（4-3 の①）は、その島の持ち主（入ってきた敵も見える）、部隊の持ち主、同盟国のほか、
+見る国と同盟国の
+部隊の周り（`military.vision.land` マス）にいるときに見えます。
+
+見えた艦隊と部隊の最後の場所とターンは `world.ext["military"]["seen"][見る国][艦隊の番号]`
+に残します
 （ターンが今のターンなら今見えている、前のターンなら「前に見た場所」）。持ち主以外の画面・API・MCP・
 国の要約は、艦隊をここからだけ出します。書くのは operations の段だけです（MI-54）。
 """
@@ -96,17 +101,40 @@ def can_see(
     return any(_reach(eye, unit["x"], unit["y"]) for eye in sight)
 
 
-def update(world: WorldState, defs: Defs, turn: int) -> None:
-    """全島の見える範囲を計算し直し、見えた艦隊の最後の場所とターンを残す（operations の最後）。"""
+def can_see_land(world: WorldState, viewer: int, unit: dict[str, Any], radius: int) -> bool:
+    """見る国が陸の部隊 unit を今見られるか（船に載っている間は見えない。
+    自分の部隊はいつも見える）。"""
+    if unit["owner"] == viewer:
+        return True
+    if "aboard" in unit:
+        return False
+    friends = {viewer, *allies(world, viewer)}
+    place = army.where(unit)
+    if place in friends:
+        return True
+    return any(
+        other["owner"] in friends
+        and other["status"] == army.READY
+        and max(abs(other["x"] - unit["x"]), abs(other["y"] - unit["y"])) <= radius
+        for other in army.on_land(world, place)
+    )
+
+
+def update(world: WorldState, defs: Defs, turn: int, land_radius: int = 2) -> None:
+    """全島の見える範囲を計算し直し、見えた艦隊と陸の部隊の最後の場所とターンを残す（operations
+    の最後）。"""
     state = army.world_state(world)
     seen = state.setdefault(SEEN, {})
     alive = {u["id"]: u for u in state["units"] if army.is_sea(u)}
+    ground = {u["id"]: u for u in state["units"] if not army.is_sea(u)}
     for viewer in world.island_ids():
         if not world.islands[viewer].has_economy:
             continue
         mine = seen.setdefault(str(viewer), {})
-        for fid in [k for k in mine if int(k) not in alive]:
+        for fid in [k for k in mine if not k.startswith("g") and int(k) not in alive]:
             del mine[fid]  # なくなった艦隊の記録は捨てる
+        for gid in [k for k in mine if k.startswith("g") and int(k[1:]) not in ground]:
+            del mine[gid]  # なくなった部隊の記録も
         sight = eyes(world, defs, viewer)
         for fid, unit in alive.items():
             if unit["owner"] == viewer:
@@ -115,6 +143,17 @@ def update(world: WorldState, defs: Defs, turn: int) -> None:
                 mine[str(fid)] = {
                     "owner": unit["owner"],
                     "kind": unit["kind"],
+                    "x": unit["x"],
+                    "y": unit["y"],
+                    "turn": turn,
+                }
+        for uid, unit in ground.items():
+            if unit["owner"] != viewer and can_see_land(world, viewer, unit, land_radius):
+                mine[f"g{uid}"] = {
+                    "owner": unit["owner"],
+                    "kind": unit["kind"],
+                    "arm": "land",
+                    "at": army.where(unit),
                     "x": unit["x"],
                     "y": unit["y"],
                     "turn": turn,
