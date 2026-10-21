@@ -152,17 +152,54 @@ def test_bloc_clause_adds_the_partner_to_a_bloc_the_proposer_leads(game, world):
     )
 
 
-def test_leaving_after_notice_is_not_a_violation(game, world):
-    t = propose(game, world, 1, 2, [{"type": "bloc", "name": "短い圏", "notice_turns": 2}])
+def denounced_bloc(game, world, notice_turns=4):
+    """1 が貿易圏の条約を破棄の予告にした直後の (条約の番号, 圏の番号)。"""
+    t = propose(
+        game, world, 1, 2, [{"type": "bloc", "name": "短い圏", "notice_turns": notice_turns}]
+    )
     sign(game, world, t["id"], 2)
     bloc_id = treaties.find(world, t["id"])["clauses"][0]["bloc_id"]
     step(game, world, {1: [("denounce_treaty", {"treaty": t["id"]})]})
+    return t["id"], bloc_id
+
+
+def test_leaving_after_notice_period_is_not_a_violation(game, world):
+    tid, bloc_id = denounced_bloc(game, world)
+    until = treaties.find(world, tid)["notice"]["until"]
+    while world.turn < until - 1:
+        step(game, world)
     step(game, world, {2: [("leave_bloc", {"bloc": bloc_id})]})
     step(game, world)
-    step(game, world)
-    t = treaties.find(world, t["id"])
+    t = treaties.find(world, tid)
     assert t["state"] == treaties.ENDED and t["end_reason"] == "notice"
     assert violations(t) == []
+
+
+def test_leaving_during_notice_is_a_violation(game, world):
+    tid, bloc_id = denounced_bloc(game, world)
+    assert world.turn < treaties.find(world, tid)["notice"]["until"] - 1
+    step(game, world, {2: [("leave_bloc", {"bloc": bloc_id})]})
+    step(game, world)
+    t = treaties.find(world, tid)
+    assert t["state"] == treaties.IN_FORCE  # 予告のターンがたつまでは条約が効いている
+    assert violations(t) == [(2, "bloc", "bloc_left")]
+    while t["state"] == treaties.IN_FORCE:
+        step(game, world)
+        t = treaties.find(world, tid)
+    assert t["end_reason"] == "notice"
+    assert violations(t) == [(2, "bloc", "bloc_left")]  # 終わるときに重ねて数えない
+
+
+def test_closing_the_doors_during_notice_is_a_violation(game, world):
+    world.islands[1].policy.immigration = ""
+    world.islands[2].policy.immigration = ""
+    t = propose(game, world, 1, 2, [{"type": "free_movement"}])
+    sign(game, world, t["id"], 2)
+    step(game, world, {1: [("denounce_treaty", {"treaty": t["id"]})]})
+    assert treaties.find(world, t["id"])["notice"]["until"] > world.turn + 1
+    step(game, world, {2: [("set_immigration", {"mode": "closed"})]})
+    step(game, world)
+    assert violations(treaties.find(world, t["id"])) == [(2, "free_movement", "migration_closed")]
 
 
 def test_contract_clause_starts_a_contract_and_the_treaty_ends_when_it_does(game, world):

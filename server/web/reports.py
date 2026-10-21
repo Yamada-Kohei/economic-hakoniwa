@@ -358,9 +358,16 @@ def stat_choices(island: m.Island, mine: bool) -> list[dict[str, str]]:
     return sorted(rows, key=lambda r: r["label"])
 
 
+PUBLIC_MILITARY_STATS = ("military.soldiers",)  # 国全体の兵の数は誰にでも（MI-55）
+
+
 def visible(name: str, mine: bool) -> bool:
-    """他国の島の人に見せる統計か（銀行ごとの中身は持ち主だけ）。"""
-    return mine or not name.startswith("bank.")
+    """他国の島の人に見せる統計か（銀行ごとの中身と、軍の中身は持ち主だけ）。"""
+    if mine:
+        return True
+    return not name.startswith("bank.") and (
+        not name.startswith("military.") or name in PUBLIC_MILITARY_STATS
+    )
 
 
 # --- 統計の系列 -----------------------------------------------------------------------

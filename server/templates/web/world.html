@@ -6,7 +6,7 @@
   <p class="muted">{% blocktranslate with turn=world.turn|turn_date %}{{ turn }}。島の形と町・施設を1マス1点で描いています。区画を押すとその島の画面へ移ります。{% endblocktranslate %}</p>
   <div id="world-grid" class="world-grid" style="--grid: {{ rows|length }}"
        data-defs="{% url 'api_defs' %}" data-shapes="{% url 'api_world_shapes' %}"
-       data-trade="{% url 'api_world_trade' %}">
+       data-trade="{% url 'api_world_trade' %}" data-fleets="{% url 'api_world_fleets' %}">
     {% for row in rows %}{% for island in row %}
       {% if island %}
         <a class="cell island{% if island.id == own_id %} mine{% endif %}" href="{% url 'island' island.id %}"

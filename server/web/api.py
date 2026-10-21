@@ -21,6 +21,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import freight
 from hakoniwa_core.founding import land_terrains
+from hakoniwa_core.military import army
 from hakoniwa_core.modules import production
 from hakoniwa_core.naming import default_place_style, place_of, place_styles
 from hakoniwa_core.orders import check_order
@@ -279,6 +280,7 @@ def island_map(request, island_id: int):
         "population": [],
         "zone": [],
         "power_line": [],
+        "trench": [],
         "pollution": [],
         "happiness": [],
         "power": [],
@@ -291,6 +293,7 @@ def island_map(request, island_id: int):
         data["population"].append(population)
         data["zone"].append(zone)
         data["power_line"].append(1 if display.carries_power(infra) else 0)
+        data["trench"].append(1 if (ext or {}).get(army.TRENCH) else 0)
         data["pollution"].append(pollution)
         data["happiness"].append((ext or {}).get("happiness"))
         data["power"].append((ext or {}).get("power"))
@@ -301,6 +304,13 @@ def island_map(request, island_id: int):
     data["infra_why"] = display.works_why(island.economy)
     if request.GET.get("freight"):
         data.update(_freight(island))
+    mine = request.user.is_authenticated and island.owner_id == request.user.id
+    if mine:  # 部隊の印は持ち主だけ（ほかの国の部隊が見えるのは 4-3 から。陣地は誰にでも見える）
+        data["units"] = [
+            {"id": u["id"], "army": u["army"], "x": u["x"], "y": u["y"]}
+            for u in military_views.units(island)
+            if u["aboard"] is None
+        ]
     facilities = [
         {
             "number": f.number,
@@ -325,7 +335,7 @@ def island_map(request, island_id: int):
             else None,
             "regime": island.regime,
             "capital_buildings": _capital_buildings(island.regime, island.ext, get_game().defs),
-            "mine": request.user.is_authenticated and island.owner_id == request.user.id,
+            "mine": mine,
             "facilities": facilities,
             **data,
         }
@@ -507,10 +517,27 @@ def island_politics(request, island_id: int):
 
 @require_GET
 def island_military(request, island_id: int):
-    """軍（フェーズ4-2）。持ち主には兵の数・士気・練度・国防費・部隊・基地・陣地を、ほかの国には
-    null（見える範囲の決まりは MI-26。server/web/military.py）。"""
-    island = get_object_or_404(m.Island, pk=island_id)
-    return _json({"military": military_views.brief(island, _mine(request, island))})
+    """軍（フェーズ4-2）。持ち主には兵の数・士気・練度・国防費・部隊・艦隊・基地・陣地を、ほかの国には
+    国全体の兵の数と国防費と見えた艦隊（MI-26・MI-55。server/web/military.py）。"""
+    island = get_object_or_404(m.Island.objects.select_related("world"), pk=island_id)
+    viewer = letter_services.own_island(request.user)
+    return _json(
+        {
+            "military": military_views.brief(
+                island, _mine(request, island), viewer.id if viewer else None
+            )
+        }
+    )
+
+
+@require_GET
+def world_fleets(request):
+    """世界マップの艦隊: 自分の艦隊と、見える範囲に入ったほかの国の艦隊（前に見た所とターンも）。"""
+    w = m.World.objects.order_by("id").first()
+    if w is None:
+        return _json({"turn": 0, "viewer": None, "mine": [], "seen": []})
+    viewer = letter_services.own_island(request.user)
+    return _json(military_views.world_fleets(w, viewer.id if viewer else None))
 
 
 @require_GET
@@ -635,7 +662,7 @@ def turn_log(request, island_id: int):
             "island": island.id,
             "from": start,
             "to": end,
-            "entries": overview.log_range(island, start, end),
+            "entries": overview.log_range(island, start, end, _mine(request, island)),
         }
     )
 
@@ -698,7 +725,8 @@ def summary(request, island_id: int):
     """国の要約: 主な指標と前のターンからの変化、政情、止まった施設と工事、財の値段と品切れ、
     満期の近い国債、直近のターンの出来事、注意。持ち主には赤字の施設・命令の列と結果・公電も。"""
     island = get_object_or_404(m.Island.objects.select_related("owner", "world"), pk=island_id)
-    return _json(overview.summary(island, _mine(request, island)))
+    viewer = letter_services.own_island(request.user)
+    return _json(overview.summary(island, _mine(request, island), viewer.id if viewer else None))
 
 
 @require_GET
@@ -707,7 +735,7 @@ def changes(request, island_id: int):
     island = get_object_or_404(m.Island.objects.select_related("world"), pk=island_id)
     since = _turn_arg(request.GET.get("since"), island.world.turn - 1)
     mine = _mine(request, island)
-    return _json(overview.changes(island, since, mine, _secret_orders()))
+    return _json(overview.changes(island, since, mine, _secret_orders(), _hidden_orders()))
 
 
 # --- 命令 -------------------------------------------------------------------
@@ -812,16 +840,26 @@ def _build_notes(state, kind: str, x: int, y: int, free: int) -> list[str]:
 def _secret_orders() -> Q:
     """実行するまで伏せる命令の条件。
 
-    定義の secret が true ならその種類の命令すべて、{項目: 値} なら中身のその項目がその値の命令。
+    定義の secret が true か always ならその種類の命令すべて、{項目: 値} なら中身のその項目が
+    その値の命令。
     """
     secret = Q(pk__in=[])
     for kind, spec in get_game().defs.orders.items():
         when = spec.get("secret")
-        if when is True:
+        if when is True or when == "always":
             secret |= Q(kind=kind)
         elif when:
             secret |= Q(kind=kind, **{f"payload__{key}": value for key, value in when.items()})
     return secret
+
+
+def _hidden_orders() -> Q:
+    """実行した後も持ち主だけに見せる命令の条件（secret が always の種類。部隊と艦隊への命令）。"""
+    hidden = Q(pk__in=[])
+    for kind, spec in get_game().defs.orders.items():
+        if spec.get("secret") == "always":
+            hidden |= Q(kind=kind)
+    return hidden
 
 
 def _orders_view(island: m.Island, mine: bool = True) -> dict[str, Any]:
@@ -829,7 +867,8 @@ def _orders_view(island: m.Island, mine: bool = True) -> dict[str, Any]:
 
     ほかの国の人（mine でない）には、実行するまで伏せる命令（定義の secret。為替介入・利下げ・
     不履行・国の倉庫の買い入れなど、現実の国が前もって公表しないもの）を待っている列から除き、
-    最近の結果からは、伏せる命令のうち失敗したもの（実行されなかったもの）を除く。前もって公表する
+    最近の結果からは、伏せる命令のうち失敗したもの（実行されなかったもの）と、実行した後も伏せる命令
+    （secret: always。部隊と艦隊への命令）を除く。前もって公表する
     命令（予算・税・関税・備蓄の放出など）と、実行した命令は誰にでも見える。
     """
     d = get_game().defs
@@ -838,7 +877,7 @@ def _orders_view(island: m.Island, mine: bool = True) -> dict[str, Any]:
     if not mine:
         secret = _secret_orders()
         pending = pending.exclude(secret)
-        recent = recent.exclude(Q(status="failed") & secret)
+        recent = recent.exclude(Q(status="failed") & secret).exclude(_hidden_orders())
     pending = pending.order_by("seq", "id")
     turn, stats = display.latest_stats(island)
     admin_power = stats.get("admin_power")

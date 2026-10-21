@@ -473,8 +473,8 @@ def firms_brief(island: m.Island, stats: dict[str, float], mine: bool) -> dict[s
     return out
 
 
-def summary(island: m.Island, mine: bool) -> dict[str, Any]:
-    """国の要約（GET /api/islands/<id>/summary）。"""
+def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str, Any]:
+    """国の要約（GET /api/islands/<id>/summary）。viewer は見ている人の島の番号。"""
     world = island.world
     currency = _currency(island)
     stats_turn, latest = display.latest_stats(island)
@@ -485,7 +485,7 @@ def summary(island: m.Island, mine: bool) -> dict[str, Any]:
     bonds = _bonds_due(island, world.turn, currency)
     politics = _politics(island, mine)
     hungry = hunger(island, latest, currency)
-    logs = TurnLog.objects.filter(island=island)
+    logs = display.visible_logs(TurnLog.objects.filter(island=island), mine)
     log_turn = logs.aggregate(t=Max("turn"))["t"]
     data: dict[str, Any] = {
         "island": island_head(island),
@@ -497,7 +497,7 @@ def summary(island: m.Island, mine: bool) -> dict[str, Any]:
         "indicators": indicators(stats, before, currency),
         "politics": politics,
         "diplomacy": diplomacy.brief(island, mine),
-        "military": military.brief(island, mine),
+        "military": military.brief(island, mine, viewer),
         "country": country.brief(island, mine),
         "strengths": rankings.island_strengths(island, latest),
         "facilities": facilities,
@@ -571,18 +571,23 @@ def _result(o: Order) -> dict[str, Any]:
     }
 
 
-def log_range(island: m.Island, start: int, end: int) -> list[dict[str, Any]]:
-    """ターン start〜end のターンログ（古いターンから）。"""
-    rows = TurnLog.objects.filter(island=island, turn__gte=start, turn__lte=end)
+def log_range(island: m.Island, start: int, end: int, mine: bool) -> list[dict[str, Any]]:
+    """ターン start〜end のターンログ（古いターンから）。軍の行は持ち主だけ（MI-55）。"""
+    rows = display.visible_logs(
+        TurnLog.objects.filter(island=island, turn__gte=start, turn__lte=end), mine
+    )
     return display.log_entries(rows.order_by("turn", "id"))
 
 
-def changes(island: m.Island, since: int, mine: bool, secret_orders: Any) -> dict[str, Any]:
+def changes(
+    island: m.Island, since: int, mine: bool, secret_orders: Any, hidden_orders: Any
+) -> dict[str, Any]:
     """ターン since より後に起きたこと（GET /api/islands/<id>/changes?since=）。
 
     ターンログ・主な指標の変わり方・実行した命令の結果と、持ち主には届いた公電。ターンログは
     LOG_TURNS_MAX ターン分まで（それより前は truncated を立て、log_from から返す）。
-    secret_orders は伏せる命令の条件（ほかの国の人に、失敗した伏せる命令を見せないため）。
+    secret_orders は伏せる命令の条件（ほかの国の人に、失敗した伏せる命令を見せないため）、
+    hidden_orders は実行した後も伏せる命令の条件（部隊と艦隊への命令。ほかの国の人には見せない）。
     """
     world = island.world
     currency = _currency(island)
@@ -591,6 +596,7 @@ def changes(island: m.Island, since: int, mine: bool, secret_orders: Any) -> dic
     results = island.orders.exclude(status="pending").filter(executed_turn__gt=since)
     if not mine:
         results = results.exclude(Q(status="failed") & secret_orders)
+        results = results.exclude(hidden_orders)
     data: dict[str, Any] = {
         "island": island.id,
         "since": since,
@@ -599,7 +605,7 @@ def changes(island: m.Island, since: int, mine: bool, secret_orders: Any) -> dic
         "stats_turn": stats_turn,
         "log_from": log_from,
         "truncated": log_from > since + 1,
-        "log": log_range(island, log_from, world.turn),
+        "log": log_range(island, log_from, world.turn, mine),
         "indicators": [
             row
             for row in indicators(reports.with_fiscal(latest), _stats_at(island, since), currency)

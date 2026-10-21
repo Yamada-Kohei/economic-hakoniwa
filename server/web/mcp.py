@@ -651,7 +651,7 @@ TOOLS = [
         "自分の島なら赤字の施設・命令の列と、直近に命令を実行したターン（last_turn）の結果・"
         "未読の公電、軍（military。兵の数・士気・練度・賃金の遅れ・国防費。命令は set_defense・"
         "recruit・conscript・discharge。部隊は form_unit・disband_unit・move_unit・dig_trench・"
-        "stop_unit）も。",
+        "stop_unit、艦隊は form_fleet・sail_fleet・load_unit・unload_unit）も。",
         _summary,
         {"island": ISLAND},
     ),
@@ -962,7 +962,7 @@ TOOLS = [
         "api_get",
         "API を読む",
         "ほかの道具にない JSON API を読む（GET。/api/ で始まる場所だけ）。例: "
-        "/api/islands/4/facilities/12/book（施設の帳簿の推移）、/api/world/trade（世界の貿易）。",
+        "/api/islands/4/facilities/12/book（施設の帳簿の推移）、/api/world/trade（世界の貿易）、/api/world/fleets（世界の艦隊）、/api/islands/4/military（軍。ほかの国には兵の総数と見えた艦隊）。",
         _api_get,
         {"path": {"type": "string", "description": "/api/ で始まる場所（?の後ろも書ける）"}},
         ("path",),
@@ -976,7 +976,10 @@ TOOLS_BY_NAME = {t.name: t for t in TOOLS}
 SCREENS: dict[str, tuple[str, ...]] = {
     "top": ("world", "rankings"),  # 島の一覧の表と歴代の記録は rankings
     "found": ("found",),
-    "world": ("world", "api_get"),  # 世界の貿易は api_get /api/world/trade
+    "world": (
+        "world",
+        "api_get",
+    ),  # 世界の貿易は api_get /api/world/trade、艦隊は /api/world/fleets
     "rankings": ("rankings",),
     "help": ("guide",),
     "island": ("summary", "map", "tile"),  # 地図の重ね表示は map の overlay

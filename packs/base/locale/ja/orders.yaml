@@ -75,3 +75,7 @@ disband_unit: 部隊の解散
 move_unit: 部隊の移動
 dig_trench: 陣地を掘る
 stop_unit: 部隊の命令を止める
+form_fleet: 艦隊の編成
+sail_fleet: 艦隊の航海
+load_unit: 部隊を船に載せる
+unload_unit: 部隊を船から降ろす

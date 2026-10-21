@@ -71,7 +71,8 @@ def island_page(request, island_id: int):
     turn, stats = display.latest_stats(island)
     currency = (island.names or {}).get("currency_symbol", "")
     founded = (island.ext or {}).get("founded_turn", 0)
-    logs = TurnLog.objects.filter(island=island).order_by("-turn", "id")
+    mine = request.user.is_authenticated and island.owner_id == request.user.id
+    logs = display.visible_logs(TurnLog.objects.filter(island=island), mine).order_by("-turn", "id")
     last_turn = logs.values_list("turn", flat=True).first()
     regime = [
         {
@@ -81,7 +82,6 @@ def island_page(request, island_id: int):
         for r in (island.regime or {}).values()
         if r in defs.regimes
     ]
-    mine = request.user.is_authenticated and island.owner_id == request.user.id
     context = {
         "island": island,
         "mine": mine,
@@ -422,15 +422,18 @@ def plan_page(request, island_id: int):
 def turn_log(request, island_id: int):
     """ターンログ。ターンごとに区切り、新しいターンから並べる。"""
     island = get_object_or_404(Island, pk=island_id)
+    mine = request.user.is_authenticated and island.owner_id == request.user.id
     turns = (
-        TurnLog.objects.filter(island=island)
+        display.visible_logs(TurnLog.objects.filter(island=island), mine)
         .order_by("-turn")
         .values_list("turn", flat=True)
         .distinct()
     )
     page = Paginator(list(turns), 10).get_page(request.GET.get("page"))
     entries = display.log_entries(
-        TurnLog.objects.filter(island=island, turn__in=list(page)).order_by("-turn", "id")
+        display.visible_logs(TurnLog.objects.filter(island=island), mine)
+        .filter(turn__in=list(page))
+        .order_by("-turn", "id")
     )
     groups: dict[int, list] = {}
     for entry in entries:
