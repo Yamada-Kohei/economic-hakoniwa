@@ -43,6 +43,7 @@ EVENT_NAMES = {
     "transition": "体制を変えた後の混乱期間",
     "office": "首都の政府の建物が壊れている",
     "trapped": "出国を止められて出られない人",
+    "conscription": "徴兵した兵",
 }
 # 政情の元にした数の表示名と単位（display.stat_text の単位）
 FACT_NAMES = {

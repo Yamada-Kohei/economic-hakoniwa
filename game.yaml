@@ -12,6 +12,7 @@ stages:
   - execute_orders   # 計画の実行（命令）。税率・予算などの政策もここで変わる
   - diplomacy        # 世界の段（フェーズ4-1）: 宣戦布告と条約（提案・署名・破棄）の命令、流れた提案、破棄の予告、講和の賠償の期日
   - budget           # 国庫の取り置き（支出の項目ごとに、支払いの順番で）
+  - military         # 軍の維持（フェーズ4-2）: 兵の賃金（国防費）・食べ物・士気と練度・逃げる兵、食べ物を市場で買う注文
   - employment       # 通勤と雇用（賃金の高い施設から）
   - production       # 生産と電力（電力は送電網ごとに板寄せし、電気代を払う）
   - construction     # 工事の進み
@@ -473,15 +474,15 @@ fiscal:
   # arrears は前のターンまでの未払い賃金（回3。お金が入れば先に払う）
   # 支払いの順番。[ ] の組の中は、国庫が足りなければ見積もりに同じ割合を掛けて取り置く（今月の人件費と
   # 運営費。回5）。昔の未払い賃金（arrears）は失業手当の後に残ったお金で払う
-  payment_order: [bonds, [civil_servants, state_facilities, education, security], unemployment, arrears, construction, subsidies, warehouse]
+  payment_order: [bonds, [civil_servants, state_facilities, education, security, defense_personnel], unemployment, arrears, construction, defense_procurement, subsidies, warehouse]
   # 銀行の救済と預金保護（支出の項目の外）は、この項目の入った組までの次のターンの支払いを国庫に残した額から出す
   rescue_after: civil_servants
   # 年の予算を命令で決める項目（毎ターン予算の12分の1まで使う）。construction は公共事業費
   # （国の工事とインフラの工事・維持の資材と作業員の賃金）、education は教育費（学校と大学の教員の
   # 賃金と教材。建国のときの額は education.start_budget_years）、subsidies は補助金、security は治安費
   # （警察官の賃金。フェーズ3-4）
-  budget_items: [construction, education, security, subsidies, warehouse]
-  budget: {construction: 600, security: 0, subsidies: 0, warehouse: 0}  # 建国のときの年の予算（住民1人あたり）
+  budget_items: [construction, education, security, subsidies, warehouse, defense_personnel, defense_procurement]
+  budget: {construction: 600, security: 0, subsidies: 0, warehouse: 0, defense_personnel: 0, defense_procurement: 0}  # 建国のときの年の予算（住民1人あたり）
   reserve_margin: 0.2   # 取り置きの見積もりを、前のターンの支出よりこの割合だけ多めにする
 
 infrastructure:
@@ -732,3 +733,19 @@ military:
   # 鉱脈（MI-60）: 世界の種と島の番号だけで決め、島ごとに 1 度だけ、鉱業資源の上限の外に置く。
   # 値は置く島の割合（銅は多くの国が小さくても持つが、主な産地は限られる）
   veins: {copper_ore: 0.4}
+  # 兵と軍の維持（4-2 の②。設計書 MI-07〜MI-14・MI-53）。建国の島は軍を持たない（国防費 0）
+  volunteer_wage: 1.0   # 志願の兵の賃金（島の平均賃金に対する倍率。命令 set_defense で変えられる）
+  conscript_wage: 0.3   # 徴兵の兵の賃金（同じ）
+  max_share: 0.15       # 兵の数の上限（住民と兵の合計に対する割合。総力戦でも 1 割台）
+  recruit_share: 0.02   # 志願で、失業者のほかに働いている人から集まる人数の上限（住民に対する割合）
+  conscript_share: 0.05 # 徴兵 1 回で集められる人数の上限（住民に対する割合）
+  keep_per_tile: 1      # 兵に取られても各マスに残す人数
+  food_per_thousand: 2.4  # 兵 1000 人が 1 ターンに食べる食べ物（トン。家計の 1.2 倍）
+  food_stock_turns: 2   # 国の倉庫に持っておく食べ物のターン数
+  food_limit: 2.0       # 食べ物を買う注文の指値（今の値段に対する倍率）
+  starve: 0.05          # 食べ物がまったくないターンに、病気と飢えで亡くなる兵の割合
+  training: {rate: 0.2, basic: 0.6, hungry: 0.2}  # 練度: 1 ターンに増える量、基礎訓練の上限（3 ターン）、食べ物がないときに落ちる量
+  morale: {start: 0.7, late: 0.1, hungry: 0.15, recover: 0.02, desert_below: 0.5, desert_rate: 0.2}
+  # 徴兵した兵が住民に占める割合 1% ごとに政情の目標を下げる量と、下げる量の上限
+  conscription: {stability: 2.0, max: 20.0}
+
