@@ -82,6 +82,7 @@ def test_take_people_is_proportional_and_exact(world):
 
 def test_soldiers_are_paid_from_the_defense_budget_and_fed_from_the_warehouse(game, world):
     island = world.islands[1]
+    stock.add(island.warehouse, "ammunition", 5000, world.turn, game.defs.goods)  # 訓練の弾薬
     play(game, world, 1, [("set_defense", {"annual": 3_000_000}), ("recruit", {"count": 50})])
     play(game, world, 3)
     state = island.ext["military"]

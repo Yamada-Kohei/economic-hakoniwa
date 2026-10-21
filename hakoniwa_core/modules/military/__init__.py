@@ -24,6 +24,7 @@ from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE, part, to_basis, to_milli
 
 FOOD = "food"
+AMMUNITION = "ammunition"
 
 
 def wage_bill(island: IslandState) -> int:
@@ -55,9 +56,14 @@ class Military(IslandStage):
     name = "military"
 
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
-        if not island.has_economy or not forces.soldiers(island):
+        if not island.has_economy:
             return
         config = ctx.config
+        if not forces.soldiers(island):  # 兵がいなくても、編成中の部隊の装備は買い集める
+            wanted = island.ext.get(forces.KEY, {}).get("wanted", {})
+            for good, qty in sorted(wanted.items()):
+                self._order(island, config, good, qty, BUDGET_PROCUREMENT)
+            return
         state = forces.state_of(island, config)
         stats = island.stats
         unpaid = self._pay(island, state)
@@ -70,11 +76,13 @@ class Military(IslandStage):
         state["hungry"] = eaten < need
         if state["hungry"]:
             self._hunger(island, state, config, need, eaten)
-        rate = to_basis(config.get("military.training.rate"))
-        cap = to_basis(config.get("military.training.basic"))
-        state["training"] = max(state["training"], min(cap, state["training"] + rate))
+        ammo = self._train(island, state, config)
         self._desert(island, state, config)
-        self._order_food(island, config)
+        food = food_need(island, config) * config.get("military.food_stock_turns")
+        self._order(island, config, FOOD, food, BUDGET_PERSONNEL)
+        self._order(island, config, AMMUNITION, ammo * 2, BUDGET_PROCUREMENT)
+        for good, qty in sorted(state.get("wanted", {}).items()):  # 部隊に集める装備と燃料
+            self._order(island, config, good, qty, BUDGET_PROCUREMENT)
         stats["military.soldiers"] = forces.soldiers(island)
         stats["military.morale"] = state["morale"] / BASIS
         stats["military.training"] = state["training"] / BASIS
@@ -143,21 +151,36 @@ class Military(IslandStage):
         island.log.append(LogEntry("military_deserted", {"count": gone}))
 
     @staticmethod
-    def _order_food(island: IslandState, config) -> None:
-        """次のターンに食べる分まで、国の倉庫に食べ物が足りなければ、国として市場で買う注文を出す。"""
-        price = island.economy.prices.get(FOOD, 0)
-        want = food_need(island, config) * config.get("military.food_stock_turns")
-        buy = want - stock.total(island.warehouse, FOOD)
+    def _train(island: IslandState, state: dict[str, Any], config) -> int:
+        """訓練で弾薬を使い（国の倉庫から。足りなければ使わない）、練度を基礎訓練まで上げる。
+        1 ターンに使う弾薬の量（1000 分の 1 トン）を返す。"""
+        use = forces.soldiers(island) * to_milli(config.get("military.ammo_per_thousand")) // 1000
+        short = stock.total(island.warehouse, AMMUNITION) < use
+        if not short:
+            stock.take(island.warehouse, AMMUNITION, use)
+        state["ammo_short"] = (
+            short  # 基礎訓練までは弾薬なしで進む。その先の訓練は戦闘のある 4-3 で使う
+        )
+        rate = to_basis(config.get("military.training.rate"))
+        cap = to_basis(config.get("military.training.basic"))
+        state["training"] = max(state["training"], min(cap, state["training"] + rate))
+        return use
+
+    @staticmethod
+    def _order(island: IslandState, config, good: str, want: int, budget: str) -> None:
+        """good が国の倉庫に want まで足りなければ、国として市場で買う注文を出す。"""
+        price = island.economy.prices.get(good, 0)
+        buy = want - stock.total(island.warehouse, good)
         if price <= 0 or buy <= 0:
             return
-        limit = round(price * config.get("military.food_limit"))
+        limit = round(price * config.get("military.buy_limit"))
         island.economy.ext.setdefault("warehouse_orders", []).append(
             {
-                "good": FOOD,
+                "good": good,
                 "side": "buy",
                 "quantity": buy,
                 "limit": limit,
-                "budget": BUDGET_PERSONNEL,
+                "budget": budget,
                 "quiet": True,
             }
         )
@@ -225,13 +248,20 @@ def conscript(island: IslandState, payload: dict[str, Any], ctx: StageContext) -
     island.log.append(LogEntry("conscripted", {"count": got, "wanted": payload["count"]}))
 
 
+def _free(island: IslandState) -> int:
+    """部隊に入っていない兵の数（除隊できるのはこの分だけ）。"""
+    return forces.soldiers(island) - island.ext.get(forces.KEY, {}).get("assigned", 0)
+
+
 def check_discharge(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
     if not forces.soldiers(island):
         raise OrderFailed("reason_no_soldiers")
+    if _free(island) <= 0:
+        raise OrderFailed("reason_soldiers_in_units")
 
 
 def discharge(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
-    gone = forces.discharge(island, payload["count"])
+    gone = forces.discharge(island, min(payload["count"], _free(island)))
     island.log.append(LogEntry("discharged", {"count": gone}))
 
 

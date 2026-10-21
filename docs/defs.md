@@ -11,7 +11,8 @@ packs/base/
     terrain.yaml       地形
     facilities.yaml    施設
     orders.yaml        命令
-    settlements.yaml   町の段階（村・町・都市・大都市）と、育つのに使う資源
+    army.yaml          部隊の種類（陸の歩兵・機甲。フェーズ4-2）
+   settlements.yaml   町の段階（村・町・都市・大都市）と、育つのに使う資源
     workers.yaml       労働者の種類
     regimes.yaml       体制の選択肢
     start_island.yaml  建国直後の島の中身
@@ -63,6 +64,7 @@ steel_mill: 製鉄所
 | `terrain.yaml` | `land`（陸地か）、`reclaimable`（埋め立てられるか）、`height`（描画用の高さ） | `schemas/terrain.schema.json` |
 | `facilities.yaml` | 上の例のとおり。ほかに下の表の項目 | `schemas/facilities.schema.json` |
 | `orders.yaml` | `admin_cost`（要る行政力。ふつう 1、名前の変更は 0）、`payload`（命令の中身の形を JSON Schema で） | `schemas/orders.schema.json` |
+| `army.yaml` | `arm`（land・sea）、`soldiers`（部隊 1 つの兵の数）、`equipment`（持つ装備。財 → 数）、`weight`（船で運ぶ重さ）、`speed`（1 ターンに進める量）、`vehicles`（動くと燃料を使うか）、`strength`（強さ） | `schemas/army.schema.json` |
 | `settlements.yaml` | `min_population`（この段階になる人口）、`capacity`（住める人数）、`height`（描画用の高さ）、`subsistence`（働き口がなくても自給の農業で暮らせるか）、`materials`（この段階に育つ・いちばん下の段階なら新しくできるときに倉庫から使う資源） | `schemas/settlements.schema.json` |
 | `workers.yaml` | `share`（住民のうち、この種類の労働者になる割合） | `schemas/workers.schema.json` |
 | `regimes.yaml` | `axis`（政治の仕組み・国家元首の形・経済体制のどれか）、`capital_building`（首都に建つ建物）、経済体制では `owner`・`state_owned`・`state_accounting`・`start`・`bank_owner`（建国のときに置く銀行の持ち主）・`capital_controls`（資本取引の既定。フェーズ3-3） | `schemas/regimes.schema.json` |

@@ -70,3 +70,8 @@ set_defense: 国防費の変更
 recruit: 志願兵の募集
 conscript: 徴兵
 discharge: 除隊
+form_unit: 部隊の編成
+disband_unit: 部隊の解散
+move_unit: 部隊の移動
+dig_trench: 陣地を掘る
+stop_unit: 部隊の命令を止める

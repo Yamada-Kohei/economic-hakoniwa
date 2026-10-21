@@ -803,6 +803,15 @@ def _describe_military(kind: str, payload: dict[str, Any], name: str) -> str:
     """兵の命令（フェーズ4-2）の説明。ほかの命令は ""。"""
     if kind in ("recruit", "conscript", "discharge"):
         return f"{name}: {payload.get('count', 0):,} 人"
+    if kind == "form_unit":
+        defs = get_game().defs
+        army = payload.get("army", "")
+        label = defs.name("army", army) if army in defs.army else army
+        return f"{name}: {label}（兵舎 {payload.get('x')}, {payload.get('y')}）"
+    if kind == "move_unit":
+        return f"{name}: 部隊 {payload.get('unit')} 番 → ({payload.get('x')}, {payload.get('y')})"
+    if kind in ("disband_unit", "dig_trench", "stop_unit"):
+        return f"{name}: 部隊 {payload.get('unit')} 番"
     if kind == "set_defense":
         parts = []
         if payload.get("annual") is not None:

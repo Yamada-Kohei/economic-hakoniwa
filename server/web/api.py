@@ -33,6 +33,7 @@ from server.web import chain as chain_views
 from server.web import country as country_views
 from server.web import diplomacy as diplomacy_views
 from server.web import display, overview, rankings, reports
+from server.web import military as military_views
 from server.web import news as news_views
 from server.web import politics as politics_views
 from server.web import top as top_page
@@ -502,6 +503,14 @@ def island_politics(request, island_id: int):
     持ち主には政情の内訳・出来事・採決の履歴・たまった不満・警察・動員も（server/web/politics.py）。"""
     island = get_object_or_404(m.Island, pk=island_id)
     return _json(politics_views.politics_data(island, _mine(request, island)))
+
+
+@require_GET
+def island_military(request, island_id: int):
+    """軍（フェーズ4-2）。持ち主には兵の数・士気・練度・国防費・部隊・基地・陣地を、ほかの国には
+    null（見える範囲の決まりは MI-26。server/web/military.py）。"""
+    island = get_object_or_404(m.Island, pk=island_id)
+    return _json({"military": military_views.brief(island, _mine(request, island))})
 
 
 @require_GET

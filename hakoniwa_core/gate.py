@@ -79,7 +79,16 @@ NO_COAL = "coal"  # この資源の出ない島の失業率を別に出す
 SERVICES_POOR = (0.3, 0.4)
 SERVICES_RICH = (0.6, 0.7)
 RICH_INCOME = 8.0
-SERVICE_CATEGORIES = ("commerce", "finance", "transport", "trade", "admin", "education", "security")
+SERVICE_CATEGORIES = (
+    "commerce",
+    "finance",
+    "transport",
+    "trade",
+    "admin",
+    "education",
+    "security",
+    "military",
+)
 TITLE_SHARE = 1 / 3  # 1つの島が持つ称号（産業ごとの経験の1位）の、称号のある産業に対する割合の上限
 RESERVE_CAP = 2.0  # 外国の資産 ÷ 年の GDP の上限
 RESERVE_WINDOW = 120  # 外国の資産の増え方を見るターン数（最後から）

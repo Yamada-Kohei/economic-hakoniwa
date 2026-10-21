@@ -75,6 +75,12 @@ def _normalize_infrastructure(entry: dict[str, Any]) -> dict[str, Any]:
     return entry
 
 
+def _normalize_army(entry: dict[str, Any]) -> dict[str, Any]:
+    entry = dict(entry)
+    entry["equipment"] = _milli_map(entry.get("equipment", {}))
+    return entry
+
+
 def _normalize_start(entry: dict[str, Any]) -> dict[str, Any]:
     entry = dict(entry)
     entry["warehouse"] = _milli_map(entry.get("warehouse", {}))
@@ -197,6 +203,10 @@ def _check_naming(nid: str, entry: Mapping[str, Any], tables: Tables) -> Iterato
                 yield ("naming", nid, path, message)
 
 
+def _check_army(uid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator[Problem]:
+    yield from _goods("army", uid, ("equipment",), entry.get("equipment", {}), tables)
+
+
 def _check_climate(cid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator[Problem]:
     yield from _goods("climate", cid, ("outputs",), entry.get("outputs", {}), tables)
 
@@ -236,6 +246,7 @@ KINDS: dict[str, KindSpec] = {
         KindSpec("naming", "naming.schema.json", check=_check_naming, needs_locale=False),
         KindSpec("finance", "finance.schema.json"),
         KindSpec("climate", "climate.schema.json", check=_check_climate),
+        KindSpec("army", "army.schema.json", normalize=_normalize_army, check=_check_army),
     ]
 }
 

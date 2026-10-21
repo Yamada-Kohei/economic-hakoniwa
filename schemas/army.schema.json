@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "部隊の種類 army.yaml の1項目（陸の歩兵・機甲など。フェーズ4-2）",
+  "type": "object",
+  "required": ["arm", "soldiers", "speed", "strength"],
+  "additionalProperties": false,
+  "properties": {
+    "arm": {"enum": ["land", "sea"], "description": "陸の部隊か、海の艦隊か"},
+    "soldiers": {"type": "integer", "minimum": 1, "description": "部隊 1 つの兵の数"},
+    "equipment": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {"type": "number", "minimum": 0},
+      "description": "部隊 1 つが持つ装備（財 → 数。goods.yaml の単位。組・両・隻）"
+    },
+    "weight": {"type": "number", "minimum": 0, "description": "船で運ぶ重さ（トン。兵と装備の合計）"},
+    "speed": {"type": "number", "minimum": 0, "description": "1 ターンに進める量（陸は平地のマスの数、海は区画の数）"},
+    "vehicles": {"type": "boolean", "description": "車両・艦があって、動くと燃料を使うか"},
+    "strength": {"type": "number", "minimum": 0, "description": "強さ（歩兵 = 1。戦闘の回で使う）"},
+    "override": {"const": true}
+  }
+}

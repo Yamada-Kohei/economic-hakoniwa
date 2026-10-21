@@ -1,0 +1,21 @@
+# 部隊の種類（フェーズ4-2 の③。設計書 15-military「部隊と基地」。初めの値の案は
+# /mnt/project-files/phase4/military-values-draft.md）。
+# soldiers: 部隊 1 つの兵の数（中隊）、equipment: 部隊が持つ装備（財 → 数）、weight: 船で運ぶ重さ（トン）、
+# speed: 平地のマスで 1 ターンに進めるマス数（道路が満ちたマスは 1.5 倍、山と森は 2 マス分）、
+# vehicles: 動くと燃料を使うか、strength: 強さ（歩兵 = 1。戦闘は 4-3）
+infantry:
+  arm: land
+  soldiers: 100
+  equipment: {weapons: 100}
+  weight: 8
+  speed: 8
+  strength: 1
+
+armor:
+  arm: land
+  soldiers: 60
+  equipment: {weapons: 60, military_vehicle: 10}
+  weight: 21
+  speed: 12
+  vehicles: true
+  strength: 3
