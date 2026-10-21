@@ -971,6 +971,17 @@ sail_fleet:                               # 艦隊の航海（そろった艦隊
       x: {type: integer, minimum: 0, description: "行き先の区画の x（世界マップ）"}
       y: {type: integer, minimum: 0, description: "行き先の区画の y（世界マップ）"}
 
+fleet_duty:                               # 艦隊に続く務めを付ける（護衛 escort＝自国の海運業の船団を守る、見張り watch＝通る相手の商船を見つけて沈める、封鎖 blockade＝相手の島の区画で出入りする船を止める。none で外す）
+  admin_cost: 0
+  secret: always
+  payload:
+    type: object
+    required: [fleet, duty]
+    additionalProperties: false
+    properties:
+      fleet: {type: integer, minimum: 1, description: "艦隊の番号"}
+      duty: {type: string, enum: [escort, watch, blockade, none], description: "務め（護衛 escort・見張り watch・封鎖 blockade・外す none）"}
+
 load_unit:                                # 陸の部隊を輸送船団に載せる（母港の区画につないだ船団と、軍港のマスにいる部隊だけ）
   admin_cost: 0
   secret: always

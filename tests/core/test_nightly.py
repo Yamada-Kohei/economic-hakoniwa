@@ -38,8 +38,9 @@ def test_random_orders_pass_the_same_check_as_the_screen(game):
             assert check_order(game.defs, game.registry, island, kind, payload).ok
             kinds.add(kind)
     # 建国したばかりの島でも、ほとんどの種類の命令を出せる（民営化や破綻した銀行の処理は後で出る。
-    # 施設のあるマスを引くかどうかで入れ替わる 2〜3 種類と、兵のいない島で通らない除隊の余裕を見る）
-    assert len(kinds) >= len(maker.kinds) - 10
+    # 施設のあるマスを引くかどうかで入れ替わる 2〜3 種類と、兵のいない島で通らない除隊、
+    # 降伏していない島では通らない体制の選び直し（choose_regime）の余裕を見る）
+    assert len(kinds) >= len(maker.kinds) - 13
 
 
 def test_random_world_runs_and_counts_the_orders(game):

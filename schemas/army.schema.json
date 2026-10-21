@@ -22,6 +22,7 @@
     "capacity": {"type": "number", "minimum": 0, "description": "輸送船 1 隻が運べる兵と装備の重さ（トン）"},
     "stealth": {"type": "boolean", "description": "潜水艦か（近くの軍艦にしか見つからない）"},
     "detect": {"type": "number", "minimum": 0, "maximum": 1, "description": "同じ区画の潜水艦を見つける見込み（軍艦だけ）"},
+    "hunt": {"type": "number", "minimum": 0, "maximum": 1, "description": "1 隻あたり、見張りの区画を通る商船を 1 ターンに見つける見込み（通商破壊。軍艦と潜水艦）"},
     "override": {"const": true}
   }
 }

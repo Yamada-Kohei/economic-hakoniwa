@@ -5,7 +5,8 @@
 # vehicles: 動くと燃料を使うか、strength: 強さ（歩兵 = 1。戦闘は 4-3）
 # 海の艦隊（arm: sea。フェーズ4-2 の③'。同じ種類の艦を束ねた艦隊）は、soldiers と equipment が艦 1 隻の
 # 乗員と艦、speed が 1 ターンに進む世界マップの区画の数、fuel が航海中の 1 隻 1 ターンの燃料（トン）、
-# vision が見える範囲（区画。0 は同じ区画だけ）、capacity が輸送船 1 隻の運べる重さ（トン）
+# vision が見える範囲（区画。0 は同じ区画だけ）、capacity が輸送船 1 隻の運べる重さ（トン）、
+# hunt が 1 隻あたり、見張りの区画を通る商船を 1 ターンに見つける見込み（通商破壊。MI-33）
 infantry:
   arm: land
   soldiers: 100
@@ -31,6 +32,7 @@ corvette:
   vision: 1
   fuel: 0.1
   detect: 0.5
+  hunt: 0.25
   strength: 1
 
 frigate:
@@ -41,6 +43,7 @@ frigate:
   vision: 2
   fuel: 0.35
   detect: 0.7
+  hunt: 0.25
   strength: 3.5
 
 submarine:
@@ -51,6 +54,7 @@ submarine:
   vision: 0
   fuel: 0.06
   stealth: true
+  hunt: 0.15
   strength: 0.8
 
 transport:
