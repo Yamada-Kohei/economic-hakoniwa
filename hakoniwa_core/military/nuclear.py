@@ -36,26 +36,36 @@ def detonate(
     """マス (x, y) に核弾頭が落ちたときの被害。亡くなった人の数を返す。"""
     cfg = ctx.config.get("military.nuclear")
     refuge = ctx.config.get("military.refugees.abroad_share")
+    halt = ctx.config.get("military.missiles.halt_turns")
     rings = len(cfg["dead"])
+    hit = [t for t in loc.tiles if ring(t.x, t.y, x, y) < rings]
+    inside = {(t.x, t.y) for t in hit}
     killed = 0
-    for tile in loc.tiles:
+    fled: list[tuple[int, int, int]] = []
+    for tile in hit:  # 先に全マスの死者と逃げる人を元の人口で決める（難民が輪の中で被爆し直さない）
         r = ring(tile.x, tile.y, x, y)
-        if r >= rings:
-            continue
         if tile.population > 0:
             dead = min(tile.population, round(tile.population * cfg["dead"][r]))
             flee = round((tile.population - dead) * cfg["flee"])
             tile.population -= dead + flee
             killed += dead
-            battle._flee(world, loc, tile.x, tile.y, flee, refuge)
+            fled.append((tile.x, tile.y, flee))
         facility = loc.facility_at(tile.x, tile.y)
         if facility is not None and facility.built and not fac.is_housing(ctx.config, facility):
-            battle._ruin(loc, ctx, facility)
+            if ctx.defs.facilities[facility.kind].get("category") in ("finance", "trade"):
+                facility.ext["halted_until"] = max(  # 帳簿を持つ施設は壊さず止める
+                    facility.ext.get("halted_until", 0), ctx.turn + halt
+                )
+                facility.ext.setdefault("halt_reason", "missile")
+            else:
+                battle._ruin(loc, ctx, facility)
         for kind in ctx.defs.infra_kinds("transport"):
             level = infra.level(tile, kind)
             if level:
                 infra.set_level(tile, kind, round(level * cfg["infra"]))
         tile.ext[nature.FALLOUT] = tile.ext.get(nature.FALLOUT, 0) + round(cfg["fallout"][r] * 1000)
+    for tx, ty, flee in fled:
+        battle._flee(world, loc, tx, ty, flee, refuge, avoid=inside)
     monuments.add_dead(loc, monuments.WAR_DEAD, killed)
     monuments.add_kills(attacker, killed)
     loc.stats["military.civilian_dead"] = loc.stats.get("military.civilian_dead", 0) + killed

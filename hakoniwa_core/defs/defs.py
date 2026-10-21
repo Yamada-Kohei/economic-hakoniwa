@@ -111,7 +111,11 @@ class Defs:
 
     def mining_resources(self) -> list[str]:
         """建国時に選べる鉱業資源（定義した順）。"""
-        return [gid for gid, good in self.goods.items() if good.get("mining")]
+        return [
+            gid
+            for gid, good in self.goods.items()
+            if good.get("mining") and not good.get("vein_only")
+        ]
 
     def industries(self) -> list[str]:
         """施設の産業の分類（facilities.yaml の industry。定義に出てくる順。フェーズ3-3）。"""

@@ -207,3 +207,48 @@ def test_an_interceptor_is_less_likely_to_stop_a_warhead(game, world):
         missiles._intercepted(world, ctx, loc, chance, rng, shield.x, shield.y) for _ in range(12)
     )
     assert 0 < hits < 12
+
+
+def test_a_bank_in_the_blast_is_halted_not_ruined_and_refugees_stay_out_of_the_rings(game, world):
+    start_war(game, world)
+    attacker, loc = world.islands[1], world.islands[2]
+    cx, cy = loc.size // 2, loc.size // 2
+    for tile in loc.tiles:
+        tile.population = 100
+    bank = build(game, loc, "bank", loc.tile(cx + 1, cy))
+    ctx = ctx_of(game, world)
+    nuclear.detonate(world, ctx, loc, cx, cy, attacker)
+    assert bank.built and bank.ext["halted_until"] > ctx.turn
+    cfg = game.config.get("military.nuclear")
+    for tile in loc.tiles:
+        r = nuclear.ring(tile.x, tile.y, cx, cy)
+        if r < len(cfg["dead"]):  # 逃げた人は輪の外へ行き、輪の中に戻らない
+            assert tile.population <= round(100 * (1 - cfg["dead"][r]) * (1 - cfg["flee"])) + 1
+
+
+def test_nuclear_use_is_recorded_once_per_turn_even_when_intercepted(game, world):
+    start_war(game, world)
+    attacker, loc = world.islands[1], world.islands[2]
+    shield = build(game, loc, "air_defense", free_tiles(loc, 1)[0])
+    load(game, shield, "interceptor", 12)
+    ctx = ctx_of(game, world)
+    for n in (1, 2):
+        missiles.strikes(world).append(
+            {
+                "id": n,
+                "owner": 1,
+                "island": 2,
+                "x": shield.x,
+                "y": shield.y,
+                "count": 2,
+                "nuclear": True,
+            }
+        )
+    missiles.run(world, ctx)
+    rows = [v for v in attacker.ext["diplomacy"]["violations"] if v["reason"] == "nuclear_used"]
+    assert len(rows) == 1
+
+
+def test_uranium_cannot_be_chosen_at_founding(game):
+    assert "uranium_ore" not in game.defs.mining_resources()
+    assert "copper_ore" in game.defs.mining_resources()

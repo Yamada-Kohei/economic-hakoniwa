@@ -171,8 +171,12 @@ def _strike(world: WorldState, ctx: StageContext, strike: dict[str, Any]) -> Non
     if loc is None or attacker is None:
         return
     residential = False
-    nuclear = strike.get("nuclear", False)
-    chance = ctx.config.get("military.nuclear.intercept") if nuclear else cfg["intercept"]
+    atomic = strike.get("nuclear", False)
+    chance = ctx.config.get("military.nuclear.intercept") if atomic else cfg["intercept"]
+    violated = army.world_state(world).setdefault("violated", {})
+    if atomic and violated.get(f"n{attacker.id}") != ctx.turn:
+        violated[f"n{attacker.id}"] = ctx.turn  # 撃った時点で、落とされても使ったと数える
+        nuclear.condemn(world, ctx, attacker, loc)
     for i in range(strike["count"]):
         rng = random.Random(f"{world.seed}:{ctx.turn}:missile:{strike['id']}:{i}")
         x, y = strike["x"], strike["y"]
@@ -183,7 +187,7 @@ def _strike(world: WorldState, ctx: StageContext, strike: dict[str, Any]) -> Non
         if _intercepted(world, ctx, loc, chance, rng, x, y):
             loc.log.append(LogEntry("missile_intercepted", {"x": x, "y": y}))
             continue
-        if nuclear:
+        if atomic:
             nuclear_hit(world, ctx, loc, x, y, attacker)
             continue
         residential |= _hit(world, ctx, loc, cfg, rng, x, y, attacker.id)
@@ -290,4 +294,3 @@ def nuclear_hit(
 ) -> None:
     """核弾頭の着弾（被害は nuclear.detonate、違反は nuclear.condemn）。"""
     nuclear.detonate(world, ctx, loc, x, y, attacker)
-    nuclear.condemn(world, ctx, attacker, loc)
