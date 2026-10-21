@@ -27,6 +27,8 @@ facilities:
   hydro_power_plant:        {color: "#3d7ea6", height: 2.5}
   government_office:        {color: "#f2efe6", height: 3}
   police:                   {color: "#3b5ba5", height: 2}     # フェーズ3-4
+  school:                   {color: "#e4b94f", height: 2}     # フェーズ2-3（色の表に抜けていた）
+  university:               {color: "#8e5aa6", height: 3}      # 同上
   bank:                     {color: "#d8c27a", height: 2.5}
   port:                     {color: "#c8473a", height: 2.5}   # フェーズ3-1
   shipyard:                 {color: "#d9a62a", height: 3}
