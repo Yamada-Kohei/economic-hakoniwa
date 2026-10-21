@@ -69,7 +69,12 @@ def _allowed_keys() -> set[str]:
         | {f"capital/{c}" for c in _capital_combos()}
         | {f"housing/{s}" for s in d.settlements}
         | {"construction"}
-        | {"overlay/trench_back", "overlay/trench_front"}
+        | {
+            "overlay/trench_back",
+            "overlay/trench_front",
+            "overlay/occupied",
+            "overlay/contaminated",
+        }
         | {f"unit/{a}" for a, spec in d.army.items() if spec["arm"] == "land"}
         | {f"fleet/{a}" for a, spec in d.army.items() if spec["arm"] == "sea"}
     )

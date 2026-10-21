@@ -38,6 +38,7 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       const f = facilityAt.get(i);
       // 施設のあるマスは地形の絵（木や山）を描かず、上面の色だけにする。施設の絵と重ならないように
       drawBlock(ctx, px, py, h, colors, theme, f ? null : sprites.get(`terrain/${terrain}`));
+      drawFallout(ctx, map.fallout?.[i], sprites.get("overlay/contaminated"), px, top, theme);
       if (options.overlay) {
         const color = options.overlay.color(map, i, defs);
         if (color) {
@@ -52,7 +53,12 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       const trench = map.trench?.[i];
       if (trench) drawOverlay(ctx, sprites.get("overlay/trench_back"), px, top, theme);
       if (f) drawFacility(ctx, f, map, defs, px, top, theme, sprites);
+      if (f?.hidden && map.mine) drawUnderground(ctx, px, top, theme, options.undergroundLabel || "");
       if (trench) drawOverlay(ctx, sprites.get("overlay/trench_front"), px, top, theme);
+      if (map.occupied?.[i]) {
+        if (sprites.has("overlay/occupied")) drawOverlay(ctx, sprites.get("overlay/occupied"), px, top, theme);
+        else outlineTop(ctx, px, top, theme, "#c34b38");
+      }
       if (unitsAt.has(i)) drawUnits(ctx, unitsAt.get(i), px, top, theme, sprites);
       if (options.marked?.has(`${x},${y}`)) outlineTop(ctx, px, top, theme, "#ff5722");
       if (options.selected && options.selected.x === x && options.selected.y === y) {
@@ -60,6 +66,36 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       }
     }
   }
+}
+
+/** 1 点を超えてもなめらかに濃くする。表示の透明度であり、ゲームの数値ではない。 */
+export function falloutOpacity(value) {
+  return value > 0 ? 0.15 + 0.8 * value / (value + 3) : 0;
+}
+function drawFallout(ctx, value, sprite, px, top, theme) {
+  const opacity = falloutOpacity(value);
+  if (!opacity) return;
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  if (sprite) drawOverlay(ctx, sprite, px, top, theme);
+  else {
+    ctx.fillStyle = "#9a8d30";
+    diamondPath(ctx, px, top, theme.tile_width / 2, theme.tile_height / 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+function drawUnderground(ctx, px, top, theme, label) {
+  ctx.save();
+  ctx.font = "bold 9px sans-serif";
+  ctx.textAlign = "center";
+  const y = top + theme.tile_height * 0.8;
+  const width = Math.max(22, ctx.measureText(label).width + 6);
+  ctx.fillStyle = "#283b4b";
+  ctx.fillRect(px - width / 2, y - 9, width, 12);
+  ctx.fillStyle = "#fff";
+  ctx.fillText(label, px, y);
+  ctx.restore();
 }
 
 /** マスいっぱいの重ねる絵（overlay/）。基準点を上面のひし形の下の頂点に合わせる。 */

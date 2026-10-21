@@ -11,6 +11,14 @@
       <label>{% translate "志願の賃金（島の平均賃金に対する %）" %}<input name="volunteer_wage" type="number" min="0" max="500" step="any"></label>
       <button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p>
     </form>
+    <form class="actions military-form" data-order="set_defense">
+      <h3>{% translate "国の倉庫に備える補給の目標（トン）" %}</h3>
+      <p class="hint">{% translate "3 種類の目標をまとめて指定します。0 にするとその物の買い足しをやめます。外国の島への補給は、備えた物を輸送船団に積んで運びます。" %}</p>
+      <label>{% translate "食べ物" %}<input name="reserve.food" type="number" min="0" step="any" value="{{ m.reserve.food|default:0 }}" required></label>
+      <label>{% translate "弾薬" %}<input name="reserve.ammunition" type="number" min="0" step="any" value="{{ m.reserve.ammunition|default:0 }}" required></label>
+      <label>{% translate "燃料" %}<input name="reserve.fuel" type="number" min="0" step="any" value="{{ m.reserve.fuel|default:0 }}" required></label>
+      <button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p>
+    </form>
     <form class="actions military-form" data-order="recruit"><h3>{% translate "志願の兵を集める" %}</h3><label>{% translate "人数" %}<input name="count" type="number" min="1" step="1" required></label><button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p></form>
     <form class="actions military-form" data-order="conscript"><h3>{% translate "徴兵" %}</h3><p class="hint">{% translate "民主主義では議会の過半数が要ります。徴兵の命令は他の国にも見えます。働き手が減り、支持率も下がります。" %}</p><label>{% translate "人数" %}<input name="count" type="number" min="1" step="1" required></label><button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p></form>
     <form class="actions military-form" data-order="discharge"><h3>{% translate "除隊" %}</h3><label>{% translate "人数" %}<input name="count" type="number" min="1" step="1" required></label><button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p></form>
@@ -21,4 +29,5 @@
   </details>
   <details><summary>{% translate "部隊への命令" %}</summary><div id="unit-commands"></div></details>
   <details><summary>{% translate "輸送船団の載せ降ろし" %}</summary><div id="transport-commands"></div></details>
+  <details><summary>{% translate "艦隊の務め" %}</summary><div id="fleet-duty-commands"></div></details>
 </section>

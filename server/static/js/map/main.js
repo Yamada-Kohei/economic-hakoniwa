@@ -10,6 +10,8 @@ import { drawIsland } from "./renderer.js";
 import { loadSprites } from "./sprites.js";
 import { OrderQueue } from "../island/orders.js";
 import { TilePanel } from "../island/panel.js";
+import { MissileTarget } from "../island/missiles.js";
+import { words } from "../military/common.js";
 
 const canvas = document.getElementById("island-map");
 const ctx = canvas.getContext("2d");
@@ -27,7 +29,7 @@ const [defs, map] = await Promise.all([
 ]);
 const theme = defs.theme;
 const view = { scale: 1, offsetX: 0, offsetY: 0, dpr: window.devicePixelRatio || 1 };
-const state = { selected: null, marked: new Set(), overlay: null, sprites: new Map() };
+const state = { selected: null, marked: new Set(), overlay: null, sprites: new Map(), undergroundLabel: words().hidden };
 let pending = false;
 
 function heightOf(x, y) {
@@ -116,6 +118,7 @@ function centerOn(x, y) {
 }
 
 const orders = map.mine ? new OrderQueue(document.getElementById("orders"), defs, map) : null;
+const missiles = new MissileTarget(document.getElementById("missile-target"), defs, orders);
 const overlays = overlayList(defs);
 const panel = new TilePanel(document.getElementById("tile-panel"), defs, map, {
   orders,
@@ -129,6 +132,7 @@ const panel = new TilePanel(document.getElementById("tile-panel"), defs, map, {
 
 async function select(tile) {
   state.selected = tile;
+  missiles.select(tile);
   redraw();
   await panel.show(tile);
   if (tile && narrow.matches && state.selected === tile) revealAboveSheet(tile);
@@ -219,6 +223,14 @@ loadSprites(theme).then((sprites) => {
 
 // ターンログのリンクなどから ?x=..&y=.. で来たら、そのマスを選ぶ
 const params = new URLSearchParams(location.search);
+if (params.has("missile_base")) {
+  const id = Number(params.get("missile_base"));
+  if (Number.isInteger(id) && id > 0) missiles.start(id, true);
+}
+document.getElementById("tile-panel").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-missile-base]");
+  if (button) missiles.start(Number(button.dataset.missileBase));
+});
 if (params.has("x") && params.has("y")) {
   const tile = { x: Number(params.get("x")), y: Number(params.get("y")) };
   centerOn(tile.x + 0.5, tile.y + 0.5);

@@ -5,11 +5,12 @@
 {% include "web/report_header.html" %}
 {% include "web/military_text.html" %}
 {{ military|json_script:"military-data" }}
-<div class="military-page" id="military-page" data-defs="{% url 'api_defs' %}" data-map="{% url 'island' island.id %}">
+<div class="military-page" id="military-page" data-defs="{% url 'api_defs' %}" data-map="{% url 'island' island.id %}" data-island-url="{% url 'island' 0 %}">
 <nav class="military-links" aria-label="{% translate '軍の項目' %}">
   <a href="#forces">{% translate "兵と国防費" %}</a>
   {% if mine %}<a href="#units">{% translate "部隊" %}</a><a href="#fleets">{% translate "艦隊" %}</a><a href="#bases">{% translate "基地と陣地" %}</a><a href="#commands">{% translate "軍の命令" %}</a>{% endif %}
   <a href="{% url 'help' %}#military">{% translate "軍と部隊の手引き" %}</a>
+  {% if mine %}<a href="#supply">{% translate "負傷者と補給" %}</a><a href="#occupation">{% translate "占領と捕虜" %}</a><a href="#war-stats">{% translate "戦争の数" %}</a>{% endif %}
 </nav>
 <div class="report-layout{% if mine %} with-orders{% endif %}"><div class="report-main">
 {% with m=military %}
@@ -48,6 +49,45 @@
   {% if not mine %}<p class="hint">{% translate "部隊と艦隊の中身は、その国の持ち主だけに見えます。" %}</p>{% endif %}
 </section>
 {% if mine %}
+<section class="panel" id="supply">
+  <h2>{% translate "負傷者と補給の備え" %}</h2>
+  <dl class="military-summary">
+    <div><dt>{% translate "回復を待つ負傷者" %}</dt><dd>{{ m.wounded }}</dd></div>
+    <div><dt>{% translate "島の外にいる兵" %}</dt><dd>{{ m.abroad }}</dd></div>
+  </dl>
+  <p class="military-warning">{% translate "外国の島にいる部隊は、その島の市場では食べ物を買いません。自国から船で運んだ補給と、占領したマスで取り立てた物だけが頼りです。補給が尽きると飢え、戦う力が落ち、亡くなる兵も出ます。" %}</p>
+  <h3>{% translate "国の倉庫に備える目標量" %}</h3><p class="hint">{% translate "現在の在庫ではなく、国防費の装備の分で買い足す目標です。輸送船団に積んで部隊へ運びます。" %}</p><div data-table="reserve"></div>
+</section>
+<section class="panel" id="occupation">
+  <h2>{% translate "占領と捕虜" %}</h2>
+  <h3>{% translate "自国で占領されているマス" %}</h3><div data-table="occupied"></div>
+  <h3>{% translate "自国が占領しているマス" %}</h3><div data-table="occupying"></div>
+  <h3>{% translate "自国の島で見つけた他国の部隊" %}</h3><p class="hint">{% translate "前に見た場所は、現在の位置とは限りません。" %}</p><div data-table="enemy"></div>
+  <dl class="military-summary">
+    <div><dt>{% translate "捕らえている捕虜" %}</dt><dd>{{ m.prisoners.total }}</dd></div>
+    <div><dt>{% translate "他国に捕らわれている自国の兵" %}</dt><dd>{{ m.captive }}</dd></div>
+  </dl><div data-table="prisoners"></div>
+  {% if island.ext.politics.reselect %}
+  <p class="military-warning">{% translate "首都を占領されて降伏し、体制が倒れました。体制を選び直してください。占領と取り立ては停戦中も続き、講和で解けます。" %}</p>
+  <form class="actions military-form" data-order="choose_regime">
+    <h3>{% translate "体制を選び直す" %}</h3>
+    <label>{% translate "政治の体制" %}<select name="politics" data-axis="politics" required></select></label>
+    <label>{% translate "元首の形" %}<select name="head_of_state" data-axis="head_of_state" required></select></label>
+    <label>{% translate "経済の体制" %}<select name="economy" data-axis="economy" required></select></label>
+    <button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p>
+  </form>
+  {% endif %}
+</section>
+<section class="panel" id="war-stats">
+  <h2>{% translate "戦争の数（直近の集計）" %} <small class="heading-date">{{ stats_turn|turn_date }}</small></h2>
+  <dl class="military-summary">
+    <div><dt>{% translate "戦死した兵" %}</dt><dd>{{ m.stats.killed }}</dd></div>
+    <div><dt>{% translate "負傷した兵" %}</dt><dd>{{ m.stats.wounded }}</dd></div>
+    <div><dt>{% translate "撃破" %}</dt><dd>{{ m.stats.kills }}</dd></div>
+    <div><dt>{% translate "民間の死者" %}</dt><dd>{{ m.stats.civilian_dead }}</dd></div>
+    <div><dt>{% translate "戦争の難民" %}</dt><dd>{{ m.stats.refugees }}</dd></div>
+  </dl>
+</section>
 <section class="panel" id="units"><h2>{% translate "陸の部隊" %}</h2><div data-table="units"><p>{% translate "読み込み中…" %}</p></div><p class="hint"><a href="{% url 'island' island.id %}">{% translate "移動の行き先は島の地図で部隊のマスを選んで指定できます。" %}</a></p></section>
 <section class="panel" id="fleets"><h2>{% translate "艦隊" %}</h2><div data-table="fleets"><p>{% translate "読み込み中…" %}</p></div><p class="hint"><a href="{% url 'world' %}">{% translate "世界マップで艦隊を選び、航海先を指定できます。" %}</a></p></section>
 <section class="panel" id="bases"><h2>{% translate "基地と陣地" %}</h2><div data-table="bases"><p>{% translate "読み込み中…" %}</p></div><h3>{% translate "陣地のあるマス" %}</h3><ul>{% for t in m.trenches %}<li><a href="{% url 'island' island.id %}?x={{ t.x }}&amp;y={{ t.y }}">({{ t.x }}, {{ t.y }})</a></li>{% empty %}<li>{% translate "陣地はありません。" %}</li>{% endfor %}</ul></section>

@@ -10,6 +10,7 @@
 import { turnDate } from "../calendar.js";
 import { escapeHtml, getJson, sendJson } from "./api.js";
 import { MilitaryTile } from "./military.js";
+import { words } from "../military/common.js";
 
 const MAX_TILES = 64; // 1つの命令で選べるマスの数（orders.yaml の maxItems と同じ）
 
@@ -144,6 +145,10 @@ export class TilePanel {
       parts.push(`<p class="error">マスの情報を取得できませんでした。</p>`);
     } else {
       parts.push(this.tileHtml(this.info));
+      const index = this.tile.y * this.map.size + this.tile.x;
+      const w = words();
+      if (this.map.fallout?.[index] > 0) parts.push(`<p class="military-warning">${escapeHtml(w.fallout)}: ${this.map.fallout[index]}</p>`);
+      if (this.map.occupied?.[index]) parts.push(`<p class="military-warning">${escapeHtml(w.occupied)}: ${this.map.occupied[index]}</p>`);
       if (this.military) parts.push(this.military.html(this.tile));
       if (this.info.facility) parts.push(this.facilityHtml(this.info.facility));
       if (this.orders) parts.push(this.actionsHtml(this.info));
@@ -295,6 +300,7 @@ export class TilePanel {
           <span data-slot="recipe">${this.recipeSelect(choices[0][0])}</span>
           <label>名称（空欄なら自動） <input name="name" maxlength="32"></label>
           <span data-slot="note">${this.noteField(choices[0][0])}</span>
+          <div data-slot="hide">${this.hideField(choices[0][0])}</div>
           <p class="hint" data-slot="build-info">${this.buildInfo(choices[0][0])}</p>
           <p class="hint" data-slot="commute"></p>
           <p class="warning" data-slot="check" aria-live="polite"></p>
@@ -490,6 +496,16 @@ export class TilePanel {
     return escapeHtml(bits.join(" ／ "));
   }
 
+  /** 地下建設の数値は定義の hide からだけ読む。API にない間は指定を送らない。 */
+  hideField(kind) {
+    const w = words();
+    const hide = this.defs.facilities[kind]?.hide;
+    if (!hide) return ["missile_base", "nuclear_facility"].includes(kind)
+      ? `<p class="hint">${escapeHtml(w.hideUnavailable)}</p>` : "";
+    return `<label><input type="checkbox" name="hidden" value="true"> ${escapeHtml(w.hide)}</label>
+      <p class="hint">${escapeHtml(w.hideHint)} ${escapeHtml(w.hideTurns)}: ${escapeHtml(hide.turns)} ／ ${escapeHtml(w.hideMaterials)}: ${escapeHtml(hide.materials_factor)}</p>`;
+  }
+
   goodName(good) {
     return this.defs.goods[good]?.name || good;
   }
@@ -579,6 +595,7 @@ export class TilePanel {
       form.querySelector("[data-slot=recipe]").innerHTML = this.recipeSelect(e.target.value);
       form.querySelector("[data-slot=build-info]").innerHTML = this.buildInfo(e.target.value);
       form.querySelector("[data-slot=note]").innerHTML = this.noteField(e.target.value);
+      form.querySelector("[data-slot=hide]").innerHTML = this.hideField(e.target.value);
     }
     this.checkBuild();
   }
@@ -599,6 +616,7 @@ export class TilePanel {
     if (form.dataset.form === "build") {
       const payload = { facility: data.get("facility"), x, y };
       if (data.get("recipe")) payload.recipe = data.get("recipe");
+      if (this.defs.facilities[payload.facility]?.hide && data.get("hidden") === "true") payload.hidden = true;
       if (name) payload.name = name;
       const note = String(data.get("note") ?? "").trim();
       if (note) payload.note = note;
@@ -641,6 +659,7 @@ export class TilePanel {
     const data = new FormData(form);
     const payload = { facility: data.get("facility"), x: this.tile.x, y: this.tile.y };
     if (data.get("recipe")) payload.recipe = data.get("recipe");
+    if (this.defs.facilities[payload.facility]?.hide && data.get("hidden") === "true") payload.hidden = true;
     const note = String(data.get("note") ?? "").trim();
     if (note) payload.note = note;
     return payload;

@@ -234,6 +234,8 @@ def _facility_def(fid: str, f: Any) -> dict[str, Any]:
         "site": f.get("site"),
         "zone": f.get("zone"),
         "monument": "monument" in f,
+        # 隠して建てられる施設（MI-62）だけ。工期と資材の倍率
+        **({"hide": dict(f["hide"])} if f.get("hide") else {}),
         "construction": {
             "turns": construction["turns"],
             "labor": construction.get("labor", 0),

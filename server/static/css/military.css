@@ -23,3 +23,8 @@
 .world-grid.fleet-picking .cell:focus, .world-grid.fleet-picking .cell:hover { outline: 3px solid var(--accent); z-index: 4; }
 .military-picking { background: var(--pale); border: 2px solid var(--accent); padding: 10px; }
 .military-picking[hidden] { display: none; }
+.military-form input[type="checkbox"] { display: inline-block; width: auto; min-height: auto; margin-right: 5px; }
+.military-form fieldset { min-width: 0; }
+.military-nuclear { border: 3px solid #a42a30; background: #fff0f1; }
+.military-nuclear button[type="submit"] { background: #a42a30; color: #fff; }
+#missile-target[hidden] { display: none; }

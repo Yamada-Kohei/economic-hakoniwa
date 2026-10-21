@@ -146,6 +146,8 @@ sprites:
   facility/radar: sprites/facility/radar.svg
   overlay/trench_back: sprites/overlay/trench_back.svg
   overlay/trench_front: sprites/overlay/trench_front.svg
+  overlay/occupied: sprites/overlay/occupied.svg      # 建物のあと
+  overlay/contaminated: sprites/overlay/contaminated.svg  # 地形のあと・建物より先
   unit/infantry: {file: sprites/unit/infantry.svg, anchor: [14, 28]}
   fleet/frigate: {file: sprites/fleet/frigate.svg, anchor: [12, 10]}
   facility/arms_plant: sprites/facility/arms_plant.svg
@@ -166,6 +168,4 @@ sprites:
 pending_sprites:
   unit/rebels: {file: sprites/unit/rebels.svg, anchor: [14, 28]}
   overlay/battlefield: sprites/overlay/battlefield.svg  # 地形のあと・建物より先
-  overlay/occupied: sprites/overlay/occupied.svg      # 建物のあと
   overlay/ruined: sprites/overlay/ruined.svg          # 建物の代わり（重ねない）
-  overlay/contaminated: sprites/overlay/contaminated.svg  # 地形のあと・建物より先

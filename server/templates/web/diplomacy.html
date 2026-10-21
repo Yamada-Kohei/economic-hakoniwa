@@ -80,16 +80,16 @@
     <label>{% translate "前文（任意）" %}<textarea name="text" maxlength="400" rows="3"></textarea></label>
     <fieldset class="diplomacy-clause-picker">
       <legend>{% translate "条項（1つ以上）" %}</legend>
-      {% for c in d.choices.clauses %}<label><input type="checkbox" name="clause" value="{{ c.id }}"> <strong>{{ c.name }}</strong>{% if c.id == "ceasefire" %}<small>{% translate "戦争を一時止める" %}</small>{% elif c.id == "peace" %}<small>{% translate "戦争を終える" %}</small>{% elif c.id == "non_aggression" %}<small>{% translate "互いに宣戦しない取り決め" %}</small>{% elif c.id == "alliance" %}<small>{% translate "協力の取り決め。自動では参戦しない" %}</small>{% endif %}</label>{% endfor %}
+      {% for c in d.choices.clauses %}<label><input type="checkbox" name="clause" value="{{ c.id }}"> <strong>{{ c.name }}</strong>{% if c.id == "ceasefire" %}<small>{% translate "戦争を一時止める" %}</small>{% elif c.id == "peace" %}<small>{% translate "戦争を終える" %}</small>{% elif c.id == "non_aggression" %}<small>{% translate "互いに宣戦しない取り決め" %}</small>{% elif c.id == "alliance" %}<small>{% translate "協力の取り決め。自動では参戦しない" %}</small>{% elif c.id == "no_nuclear" %}<small>{% translate "核施設と核弾頭を持たず、核を使わない約束。戦争のあいだは結べません。" %}</small>{% endif %}</label>{% endfor %}
     </fieldset>
     <fieldset data-notice-fields>
       <legend>{% translate "破棄の予告期間" %}</legend>
-      <p class="hint" id="notice-help">{% blocktranslate with n=d.rules.notice_turns min=d.rules.min_notice_turns max=d.rules.max_notice_turns %}停戦・不可侵・同盟と、貿易圏・固定相場・通貨の融通・移民の条項に使います。空欄なら {{ n }} ターン。{{ min }}〜{{ max }} ターンから選べます。破棄を予告しても、この期間がたつまでは条約が効きます。期間がたった後は罰なしで終わります。{% endblocktranslate %}</p>
+      <p class="hint" id="notice-help">{% blocktranslate with n=d.rules.notice_turns min=d.rules.min_notice_turns max=d.rules.max_notice_turns %}停戦・不可侵・同盟・核を持たない約束と、貿易圏・固定相場・通貨の融通・移民の条項に使います。空欄なら {{ n }} ターン。{{ min }}〜{{ max }} ターンから選べます。破棄を予告しても、この期間がたつまでは条約が効きます。期間がたった後は罰なしで終わります。{% endblocktranslate %}</p>
       <label>{% translate "予告から終わるまでのターン数" %}<input name="notice_turns" type="number" step="1" min="{{ d.rules.min_notice_turns }}" max="{{ d.rules.max_notice_turns }}" placeholder="{{ d.rules.notice_turns }}" aria-describedby="notice-help"></label>
     </fieldset>
     <fieldset data-peace-fields>
       <legend>{% translate "講和の取り決め" %}</legend>
-      <p class="hint">{% blocktranslate with n=d.rules.withdraw_turns max=d.rules.max_withdraw_turns %}引き揚げの期限は、空欄なら {{ n }} ターン。0〜{{ max }} ターンから選べます。今は期限と捕虜を返す約束を記録します。{% endblocktranslate %}</p>
+      <p class="hint">{% blocktranslate with n=d.rules.withdraw_turns max=d.rules.max_withdraw_turns %}引き揚げの期限は、空欄なら {{ n }} ターン。0〜{{ max }} ターンから選べます。講和で占領を解き、部隊を引き揚げさせ、約束した捕虜を返します。{% endblocktranslate %}</p>
       <label>{% translate "引き揚げの期限（効いてからのターン数）" %}<input name="withdraw_turns" type="number" step="1" min="0" max="{{ d.rules.max_withdraw_turns }}" placeholder="{{ d.rules.withdraw_turns }}"></label>
       <label><input type="checkbox" name="keep_prisoners" value="false"> {% translate "捕虜を返さない（選ばなければ返す）" %}</label>
       <label><input type="checkbox" data-reparations-toggle> {% translate "賠償を取り決める" %}</label>
