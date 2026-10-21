@@ -62,9 +62,14 @@ ja:
     hydro_power_plant: {short: 水力電気, long: 水力発電所}
     government_office: {short: 中央省庁, long: 中央省庁}
     police: {short: 警察, long: 警察署}
+    barracks: {short: 兵舎, long: 兵舎}
+    naval_base: {short: 軍港, long: 軍港}
+    radar: {short: レーダー, long: レーダー基地}
+    fortress: {short: 要塞, long: 要塞}
   patterns:   # 上から順に、条件（when）に合う最初の形を使います
     - {when: {category: admin}, text: "中央省庁"}
     - {when: {category: security}, text: "{place}{long}"}
+    - {when: {category: military}, text: "{place}{long}"}
     - {when: {politics: totalitarian, economy: planned}, every: 5, text: "{leader}記念{long}"}
     - {when: {economy: planned}, text: "国営第{number}{long}"}
     - {when: {head_of_state: monarchy, owner: state}, text: "王立{place}{long}"}

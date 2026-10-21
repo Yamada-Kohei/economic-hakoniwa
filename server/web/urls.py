@@ -70,6 +70,11 @@ urlpatterns = [
     path("api/islands/<int:island_id>/politics", api.island_politics, name="api_island_politics"),
     path("api/islands/<int:island_id>/plan", api.island_plan, name="api_island_plan"),
     path(
+        "api/islands/<int:island_id>/military",
+        api.island_military,
+        name="api_island_military",
+    ),
+    path(
         "api/islands/<int:island_id>/diplomacy",
         api.island_diplomacy,
         name="api_island_diplomacy",

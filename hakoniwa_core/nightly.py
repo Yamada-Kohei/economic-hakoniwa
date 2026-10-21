@@ -49,6 +49,7 @@ from hakoniwa_core.defs.freeze import thaw
 from hakoniwa_core.diplomacy import treaties as diplomacy_treaties
 from hakoniwa_core.game import Game, load_game
 from hakoniwa_core.gate import KINDS, START, Recorder
+from hakoniwa_core.military import army
 from hakoniwa_core.orders import check_order
 from hakoniwa_core.state import ORDER_DONE, ORDER_FAILED, ORDER_PENDING, IslandState, WorldState
 from hakoniwa_core.state.generate import generate_world
@@ -229,6 +230,9 @@ class OrderMaker:
         if name == "treaty":
             ids = [t["id"] for t in diplomacy_treaties.treaties(self.world)]
             return self.rng.choice(ids + [1, 2, 3])
+        if name == "unit":
+            ids = [u["id"] for u in army.world_state(self.world)["units"]]
+            return self.rng.choice(ids + [1, 2, 3])
         if name == "contract":
             ids = [c["id"] for c in trade_contracts.contracts(self.world)]
             return self.rng.choice(ids + [1, 2, 3])
@@ -272,6 +276,8 @@ class OrderMaker:
             return self.rng.choice(self.goods)
         if name == "facility":
             return self.rng.choice(self.facilities)
+        if name == "army":
+            return self.rng.choice(list(self.game.defs.army))
         if name == "recipe":
             kind = self.spot[2]
             if kind is not None and self.rng.random() < 0.7:

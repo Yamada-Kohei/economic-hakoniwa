@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from hakoniwa_core.military import forces
-from hakoniwa_core.units import BASIS
+from hakoniwa_core.military import army, forces
+from hakoniwa_core.units import BASIS, QUANTITY_SCALE
+from server.game import get_game
 from server.web import display
 from server.world import models as m
 
@@ -46,4 +47,57 @@ def brief(island: m.Island, mine: bool) -> dict[str, Any] | None:
         "wages_unpaid": stats.get("military.wages_unpaid", 0),
         "deserted": stats.get("military.deserted", 0),
         "starved": stats.get("military.starved", 0),
+        "assigned": raw.get("assigned", 0),
+        "free_soldiers": volunteers + conscripts - raw.get("assigned", 0),
+        "units": units(island),
+        "bases": bases(island),
+        "trenches": trenches(island),
     }
+
+
+def units(island: m.Island) -> list[dict[str, Any]]:
+    """島の持ち主の部隊（フェーズ4-2 の③）。見える範囲の決まり（MI-26）は、他の国の部隊が
+    入ってくる 4-3 で足す。今は持ち主だけが見る。"""
+    defs = get_game().defs
+    raw = ((island.world.ext or {}).get(forces.KEY) or {}).get("units", [])
+    out = []
+    for u in raw:
+        if u["owner"] != island.id:
+            continue
+        spec = defs.army.get(u["kind"], {})
+        out.append(
+            {
+                "id": u["id"],
+                "army": u["kind"],
+                "name": defs.name("army", u["kind"]) if u["kind"] in defs.army else u["kind"],
+                "x": u["x"],
+                "y": u["y"],
+                "soldiers": u["soldiers"],
+                "soldiers_full": spec.get("soldiers"),
+                "equipment": u["equipment"],
+                "equipment_full": {
+                    g: q // QUANTITY_SCALE for g, q in spec.get("equipment", {}).items()
+                },
+                "status": u["status"],
+                "order": u["order"],
+            }
+        )
+    return sorted(out, key=lambda u: u["id"])
+
+
+def bases(island: m.Island) -> list[dict[str, Any]]:
+    """建ち終わった基地の施設（兵舎・軍港・レーダー・要塞）。誰にでも見える（施設は俯瞰図で見える）が、
+    要約には持ち主の分だけ入れる。"""
+    defs = get_game().defs
+    out = []
+    for f in island.facilities.filter(built=True).order_by("number"):
+        info = defs.facilities.get(f.kind, {}).get("military")
+        if info:
+            out.append({"facility": f.number, "kind": f.kind, "x": f.x, "y": f.y, **info})
+    return out
+
+
+def trenches(island: m.Island) -> list[dict[str, int]]:
+    """陣地（塹壕）のあるマス。"""
+    rows = island.tiles.filter(**{f"ext__{army.TRENCH}": 1}).order_by("y", "x")
+    return [{"x": t.x, "y": t.y} for t in rows]

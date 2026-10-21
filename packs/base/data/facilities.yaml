@@ -428,6 +428,63 @@ police:
   recipes:
     default: {}
 
+# 基地（フェーズ4-2 の③。設計書 15-military「部隊と基地」）。国庫直轄の公務の施設で、働き手の賃金は
+# 国防費の「兵の賃金と食べ物」（defense_personnel）から払います。military: barracks は兵を置ける数
+# （陸の部隊が平時にいる所）、naval_base は艦隊の母港（海に接するマス。艦隊は 4-2 の④以降）、radar は
+# 見える範囲を広げる区画の数、fortress は守りの兵の数（そのマスで守る部隊が強くなる。戦闘は 4-3）。
+barracks:
+  category: military
+  terrain: [plain]
+  public_service: true
+  budget: defense_personnel
+  construction: {turns: 3, labor: 300, materials: {building_materials: 10, wood: 5}}
+  workers: 20
+  priority: 9
+  military: {barracks: 500}
+  recipes:
+    default: {}
+  sprite: barracks
+
+naval_base:
+  category: military
+  terrain: [plain]
+  coastal: true
+  public_service: true
+  budget: defense_personnel
+  construction: {turns: 5, labor: 500, materials: {building_materials: 25, steel: 5, machinery: 2}}
+  workers: 80
+  priority: 9
+  military: {naval_base: true}
+  recipes:
+    default: {}
+  sprite: naval_base
+
+radar:
+  category: military
+  terrain: [plain, mountain]
+  public_service: true
+  budget: defense_personnel
+  construction: {turns: 3, labor: 300, materials: {steel: 3, electronics: 2}}
+  workers: 20
+  priority: 9
+  military: {radar: 3}
+  recipes:
+    default: {}
+  sprite: radar
+
+fortress:
+  category: military
+  terrain: [plain, mountain]
+  public_service: true
+  budget: defense_personnel
+  construction: {turns: 6, labor: 600, materials: {building_materials: 30, steel: 5}}
+  workers: 10
+  priority: 9
+  military: {fortress: 100}
+  recipes:
+    default: {}
+  sprite: fortress
+
 # 学校と大学（フェーズ2-3）。国庫直轄の公務の施設で、教員の賃金と教材（投入の消費財）は教育費から
 # 払います。education の capacity は学校の子どもの定員、engineers は大学が1ターンに育てる技術者の数で、
 # どちらも稼働率（教員と教材の足りている割合の小さい方）の分だけ効きます。

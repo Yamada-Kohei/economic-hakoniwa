@@ -888,3 +888,54 @@ discharge:                                # 除隊（兵は家計に戻り失業
     additionalProperties: false
     properties:
       count: {type: integer, minimum: 1, description: "除隊させる人数"}
+
+# 部隊の命令（フェーズ4-2 の③。MI-18〜21・MI-52）。編成と解散は行政力を使い、動き・陣地・止めるは
+# 部隊が持ち続ける命令なので行政力を使わない。実行は全島の段 operations が決める。
+form_unit:                                # 部隊の編成（兵舎のマスに置く。兵と装備がそろうまで編成中）
+  admin_cost: 1
+  payload:
+    type: object
+    required: [army, x, y]
+    additionalProperties: false
+    properties:
+      army: {type: string, description: "部隊の種類（army.yaml の名前。歩兵 infantry・機甲 armor）"}
+      x: {type: integer, minimum: 0, description: "兵舎のマスの x"}
+      y: {type: integer, minimum: 0, description: "兵舎のマスの y"}
+
+disband_unit:                             # 部隊の解散（兵は島の余りの兵に戻り、装備は国の倉庫に戻る）
+  admin_cost: 1
+  payload:
+    type: object
+    required: [unit]
+    additionalProperties: false
+    properties:
+      unit: {type: integer, minimum: 1, description: "部隊の番号"}
+
+move_unit:                                # 部隊の移動（そろった部隊だけ。着くまで毎ターン進む）
+  admin_cost: 0
+  payload:
+    type: object
+    required: [unit, x, y]
+    additionalProperties: false
+    properties:
+      unit: {type: integer, minimum: 1, description: "部隊の番号"}
+      x: {type: integer, minimum: 0, description: "行き先のマスの x"}
+      y: {type: integer, minimum: 0, description: "行き先のマスの y"}
+
+dig_trench:                               # 陣地（塹壕）を掘る（部隊のいるマス。兵と建材で何ターンかかける）
+  admin_cost: 0
+  payload:
+    type: object
+    required: [unit]
+    additionalProperties: false
+    properties:
+      unit: {type: integer, minimum: 1, description: "部隊の番号"}
+
+stop_unit:                                # 部隊の続く命令を止める
+  admin_cost: 0
+  payload:
+    type: object
+    required: [unit]
+    additionalProperties: false
+    properties:
+      unit: {type: integer, minimum: 1, description: "部隊の番号"}
