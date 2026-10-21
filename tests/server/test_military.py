@@ -243,3 +243,48 @@ def test_military_page_and_defs(world):
     assert army["infantry"]["arm"] == "land" and army["infantry"]["equipment"] == {"weapons": 100}
     assert army["transport"]["capacity"] == 40 and army["submarine"]["stealth"] is True
     assert army["frigate"]["name"] == "フリゲートの艦隊"
+
+
+def test_a_hidden_facility_shows_only_to_its_owner_and_the_ones_who_found_it(world):
+    client, island = _player()
+    other = m.Island.objects.exclude(pk=island.pk).order_by("id").first()
+    other_user = User.objects.create_user("spy", password="a-long-pass-123")
+    other.owner = other_user
+    other.save()
+    spy = Client()
+    spy.force_login(other_user)
+    secret = m.Facility.objects.create(
+        island=island, number=902, kind="missile_base", x=1, y=1, built=True, ext={"hidden": True}
+    )
+    m.Facility.objects.create(island=island, number=903, kind="barracks", x=2, y=2, built=True)
+    url = f"/api/islands/{island.id}/map"
+
+    def kinds(who):
+        return {f["kind"] for f in who.get(url).json()["facilities"]}
+
+    assert {"barracks", "missile_base"} <= kinds(client)
+    rows = client.get(url).json()["facilities"]
+    assert [f.get("hidden") for f in rows if f["kind"] == "missile_base"] == [True]
+    assert "barracks" in kinds(spy) and "missile_base" not in kinds(spy)
+    assert "missile_base" not in kinds(Client())
+    secret.ext = {"hidden": True, "found": [other.id]}
+    secret.save()
+    assert "missile_base" in kinds(spy) and "missile_base" not in kinds(Client())
+    # 隠した施設のマスのターンログは持ち主だけ
+    from server.turns.models import TurnLog
+
+    TurnLog.objects.create(island=island, turn=1, kind="facility_started", args={"x": 1, "y": 1})
+    TurnLog.objects.create(island=island, turn=1, kind="facility_started", args={"x": 2, "y": 2})
+    rows = TurnLog.objects.filter(island=island, kind="facility_started")
+    seen = display.visible_logs(rows, False, island)
+    assert [e.args for e in seen] == [{"x": 2, "y": 2}]
+    assert display.visible_logs(rows, True, island).count() == 2
+
+
+def test_map_shows_the_nuclear_fallout_to_all(world):
+    _, island = _player()
+    tile = island.tiles.order_by("y", "x").first()
+    tile.ext = {"fallout": 5_000}
+    tile.save()
+    fallout = Client().get(f"/api/islands/{island.id}/map").json()["fallout"]
+    assert fallout[0] == 5.0 and sum(fallout) == 5.0

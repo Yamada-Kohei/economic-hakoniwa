@@ -210,7 +210,13 @@ class Flow:
     persons: float
     returning: bool = False  # 元の島へ帰る人
     leaked: bool = False  # 出国を止められたが、国境をすり抜けた人
+    war: bool = False  # 戦争の難民（出国の政策によらず出る。行き先の受け入れの政策は見る。MI-61）
     count: int = 0  # 丸めた人数
+
+
+WAR_POOL = (
+    "war"  # island.ext["migration"]: 戦争で国外へ逃げたい人（戦闘の段が足し、移民の段が使う）
+)
 
 
 def _accepts(mode: str, layer: str, hungry: bool) -> bool:
@@ -266,6 +272,7 @@ def run(world: WorldState, ctx: StageContext) -> None:
         return
     views = {i: view_of(world.islands[i], ctx) for i in ids}
     flows = _wanted(world, settings, ids, views)
+    flows.extend(_war_refugees(world, ctx, ids, views))
     _admit(world, ctx, settings, ids, views, flows)
     flows = _exit(world, ctx, settings, ids, views, flows)
     rng = ctx.rng()
@@ -319,6 +326,36 @@ def _wanted(
             if g > 0:
                 persons = min(people, home.persons.get(GENERAL, 0))
                 flows.append(Flow(o, GENERAL, d, persons * response * g, returning=True))
+    return flows
+
+
+def _war_refugees(
+    world: WorldState, ctx: StageContext, ids: list[int], views: dict[int, View]
+) -> list[Flow]:
+    """戦場で逃げる人のうち国外へ逃げたい人（戦闘の段が足した分）を、受け入れてくれる近い島へ向ける。
+    封鎖された島からは、封鎖の割合だけ出られない。使い終わった分は消す（受け入れられなかった人は
+    そのまま島に残る）。"""
+    from hakoniwa_core.military import naval
+
+    flows: list[Flow] = []
+    groups = naval.blockades(world, ctx.defs, ctx.config, ctx.turn)
+    for o in ids:
+        origin = world.islands[o]
+        pool = origin.ext.get(KEY, {}).pop(WAR_POOL, 0)
+        persons = min(pool, views[o].persons.get(GENERAL, 0))
+        for owner, ships in groups.get((origin.wx, origin.wy), {}).items():
+            if owner != o:  # 封鎖された島からは、封鎖の割合だけ出られない
+                persons *= 1 - naval.blockade_share(ctx.config, ships)
+        if persons <= 0:
+            continue
+        weights = {
+            d: 1 / (1 + distance(origin, world.islands[d]))
+            for d in ids
+            if d != o and _accepts(immigration(world.islands[d]), GENERAL, True)
+        }
+        whole = sum(weights.values())
+        for d, w in sorted(weights.items()):
+            flows.append(Flow(o, GENERAL, d, persons * w / whole, war=True))
     return flows
 
 
@@ -387,7 +424,8 @@ def _exit(
     out: list[Flow] = []
     for o in ids:
         island = world.islands[o]
-        leaving = [f for f in flows if f.origin == o and f.persons > 0]
+        out.extend(f for f in flows if f.origin == o and f.war and f.persons > 0)
+        leaving = [f for f in flows if f.origin == o and f.persons > 0 and not f.war]
         if not leaving:
             continue
         mode = emigration(island)

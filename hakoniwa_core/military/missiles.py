@@ -21,7 +21,7 @@ from typing import Any
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, monuments, stock
 from hakoniwa_core.diplomacy import credit, war
-from hakoniwa_core.military import army, battle, nuclear
+from hakoniwa_core.military import army, battle, hidden, nuclear
 from hakoniwa_core.state import Facility, IslandState, LogEntry, WorldState
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import QUANTITY_SCALE
@@ -129,6 +129,10 @@ def launch(
             island, base.id, WARHEAD, -stock.take(base.stock, WARHEAD, count * QUANTITY_SCALE)
         )
     base.ext["fired"] = {"turn": ctx.turn, "n": used + count}
+    if hidden.is_hidden(base) and hidden.reveal(
+        world, base, target.id
+    ):  # 撃つと位置が分かる（MI-62）
+        hidden.announce(island, target, base)
     state = army.world_state(world)
     state["seq"] += 1
     strikes(world).append(
@@ -244,7 +248,7 @@ def _hit(
         monuments.add_dead(loc, monuments.WAR_DEAD, dead)
         monuments.add_kills(world.islands[attacker], dead)
         loc.stats["military.civilian_dead"] = loc.stats.get("military.civilian_dead", 0) + dead
-        battle._flee(world, loc, x, y, flee)
+        battle._flee(world, loc, x, y, flee, ctx.config.get("military.refugees.abroad_share"))
         hurt = True
     facility = loc.facility_at(x, y)
     if facility is not None and facility.built and not fac.is_housing(ctx.config, facility):

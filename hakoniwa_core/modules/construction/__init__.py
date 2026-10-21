@@ -54,6 +54,8 @@ def check_build(island: IslandState, payload: dict[str, Any], defs: Defs) -> Non
     )
     if problem is not None:
         raise OrderFailed(problem[0], **problem[1])
+    if payload.get("hidden") and "hide" not in defs.facilities.get(kind, {}):
+        raise OrderFailed("reason_cannot_hide", facility=kind)
     if payload.get("note") and not monuments.is_monument(defs, kind):
         raise OrderFailed("reason_note_not_monument", facility=kind)
     if monuments.is_monument(defs, kind):
@@ -94,6 +96,11 @@ def build(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> No
     if factor != 1.0:
         turns = ctx.defs.facilities[kind]["construction"]["turns"]
         f.ext["build_total"] = max(fac.FULL, round(turns * factor * fac.FULL))
+    if payload.get("hidden"):  # 地下に造る: 工期が延び、資材が増える。ほかの国には見えない（MI-62）
+        hide = ctx.defs.facilities[kind]["hide"]
+        f.ext["hidden"] = True
+        f.ext["materials_factor"] = hide["materials_factor"]
+        f.ext["build_total"] = max(f.ext.get("build_total", 0), round(hide["turns"] * fac.FULL))
     if shop:
         f.ext[fac.SITE] = [x, y]
     if monuments.is_monument(ctx.defs, kind):

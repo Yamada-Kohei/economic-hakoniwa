@@ -1258,9 +1258,21 @@ def finance_policy_view(island) -> dict[str, Any]:
     }
 
 
-def visible_logs(logs, mine: bool):
-    """ターンログの行のうち、見る人に見せるもの。軍の行（MI-55）は持ち主だけ。"""
-    return logs if mine else logs.exclude(kind__in=PRIVATE_LOGS)
+def hidden_places(island) -> list[tuple[int, int]]:
+    """隠して建てた施設（MI-62）のマス。持ち主以外には、見つかった後も出さない。"""
+    return [(f.x, f.y) for f in island.facilities.filter(x__gte=0) if (f.ext or {}).get("hidden")]
+
+
+def visible_logs(logs, mine: bool, island=None):
+    """ターンログの行のうち、見る人に見せるもの。軍の行（MI-55）は持ち主だけ。隠した施設のマス
+    （MI-62）の行も持ち主だけ。"""
+    if mine:
+        return logs
+    logs = logs.exclude(kind__in=PRIVATE_LOGS)
+    if island is not None:
+        for x, y in hidden_places(island):
+            logs = logs.exclude(args__x=x, args__y=y)
+    return logs
 
 
 def log_entries(logs) -> list[dict[str, Any]]:

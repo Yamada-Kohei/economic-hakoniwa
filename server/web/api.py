@@ -299,6 +299,7 @@ def island_map(request, island_id: int):
         "power_line": [],
         "trench": [],
         "occupied": [],
+        "fallout": [],
         "pollution": [],
         "happiness": [],
         "power": [],
@@ -313,6 +314,9 @@ def island_map(request, island_id: int):
         data["power_line"].append(1 if display.carries_power(infra) else 0)
         data["trench"].append(1 if (ext or {}).get(army.TRENCH) else 0)
         data["occupied"].append(((ext or {}).get("occupied") or {}).get("by", 0))
+        data["fallout"].append(
+            round((ext or {}).get("fallout", 0) / 1000, 1)
+        )  # 核の汚染の濃さ（点）
         data["pollution"].append(pollution)
         data["happiness"].append((ext or {}).get("happiness"))
         data["power"].append((ext or {}).get("power"))
@@ -327,6 +331,7 @@ def island_map(request, island_id: int):
     # 部隊の印は、見ている国に見えるものだけ（自分の部隊と、見える範囲に入った相手の部隊。
     # 陣地と占領は誰にでも見える）
     data["units"] = military_views.island_units(island, letter_services.own_island(request.user))
+    viewer = letter_services.own_island(request.user)
     facilities = [
         {
             "number": f.number,
@@ -337,8 +342,13 @@ def island_map(request, island_id: int):
             "level": (f.ext or {}).get("level"),
             "status": f.status,
             "rate": f.operating_rate,
+            **({"hidden": True} if (f.ext or {}).get("hidden") else {}),
         }
         for f in island.facilities.filter(x__gte=0).order_by("number")  # マスを持つ施設だけ
+        # 隠した施設（MI-62）は、持ち主と、見つけた国（と同盟国）にだけ見える
+        if mine
+        or not (f.ext or {}).get("hidden")
+        or (viewer and viewer.id in f.ext.get("found", ()))
     ]
     return _json(
         {

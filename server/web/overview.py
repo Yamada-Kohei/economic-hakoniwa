@@ -485,7 +485,7 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
     bonds = _bonds_due(island, world.turn, currency)
     politics = _politics(island, mine)
     hungry = hunger(island, latest, currency)
-    logs = display.visible_logs(TurnLog.objects.filter(island=island), mine)
+    logs = display.visible_logs(TurnLog.objects.filter(island=island), mine, island)
     log_turn = logs.aggregate(t=Max("turn"))["t"]
     data: dict[str, Any] = {
         "island": island_head(island),
@@ -574,7 +574,7 @@ def _result(o: Order) -> dict[str, Any]:
 def log_range(island: m.Island, start: int, end: int, mine: bool) -> list[dict[str, Any]]:
     """ターン start〜end のターンログ（古いターンから）。軍の行は持ち主だけ（MI-55）。"""
     rows = display.visible_logs(
-        TurnLog.objects.filter(island=island, turn__gte=start, turn__lte=end), mine
+        TurnLog.objects.filter(island=island, turn__gte=start, turn__lte=end), mine, island
     )
     return display.log_entries(rows.order_by("turn", "id"))
 

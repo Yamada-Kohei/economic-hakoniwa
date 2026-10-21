@@ -22,6 +22,7 @@ from hakoniwa_core.military import (
     army,
     battle,
     forces,
+    hidden,
     missiles,
     naval,
     nuclear,
@@ -70,6 +71,7 @@ class Operations(WorldStage):
         battle.run(world, ctx)
         occupation.update(world, ctx)
         missiles.run(world, ctx)
+        hidden.discover(world)
         missiles.restock(world, ctx)
         nuclear.watch(world, ctx)
         supply.run(world, ctx)

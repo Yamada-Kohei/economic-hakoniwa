@@ -91,6 +91,16 @@
       },
       "description": "基地の施設（フェーズ4-2）"
     },
+    "hide": {
+      "type": "object",
+      "required": ["turns", "materials_factor"],
+      "additionalProperties": false,
+      "description": "隠して（地下に）建てられる施設（フェーズ4-3 の③c。MI-62）。隠すと工期が turns になり、資材が materials_factor 倍",
+      "properties": {
+        "turns": {"type": "integer", "minimum": 1},
+        "materials_factor": {"type": "number", "minimum": 1}
+      }
+    },
     "police": {"type": "boolean", "description": "警察。働く人の足りている割合だけ、暴動で止まる施設と壊れる施設を減らす（フェーズ3-4）"},
     "pollution": {
       "type": "object",

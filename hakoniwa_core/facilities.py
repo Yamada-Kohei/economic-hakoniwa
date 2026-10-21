@@ -408,10 +408,18 @@ def total_progress(defs: Defs, f: Facility) -> int:
     return defs.facilities[f.kind]["construction"]["turns"] * FULL
 
 
+def materials_of(defs: Defs, f: Facility) -> dict[str, int]:
+    """工事 f の資材の合計。隠して建てる施設（ext["materials_factor"]。MI-62）は定義より多い。"""
+    materials = defs.facilities[f.kind]["construction"].get("materials", {})
+    factor = f.ext.get("materials_factor")
+    if not factor:
+        return dict(materials)
+    return {good: round(qty * factor) for good, qty in materials.items()}
+
+
 def step_materials(defs: Defs, f: Facility, progress: int | None = None) -> dict[str, int]:
     """工事を今（progress を渡せばその進みから）1ターン分（1000）進めるのに要る資材。
     全部の工事で合計がちょうど定義の量になる。"""
-    construction = defs.facilities[f.kind]["construction"]
     whole = total_progress(defs, f)
     if progress is None:
         progress = f.progress
@@ -419,7 +427,7 @@ def step_materials(defs: Defs, f: Facility, progress: int | None = None) -> dict
     end = min(progress + FULL, whole)
     return {
         good: qty * end // whole - qty * start // whole
-        for good, qty in sorted(construction.get("materials", {}).items())
+        for good, qty in sorted(materials_of(defs, f).items())
     }
 
 

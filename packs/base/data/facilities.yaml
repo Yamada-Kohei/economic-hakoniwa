@@ -356,6 +356,7 @@ nuclear_facility:
   industry: arms
   terrain: [plain, mountain]
   max_per_island: 1
+  hide: {turns: 20, materials_factor: 2}   # 隠して建てる（地下。フェーズ4-3 の③c）
   construction: {turns: 12, labor: 1000, materials: {building_materials: 60, steel: 20, machinery: 10, electronics: 5}}
   workers: {general: 400, engineer: 100}
   pollution: {amount: 1, radius: 1}
@@ -521,6 +522,7 @@ missile_base:
   workers: 40
   priority: 9
   military: {missile_base: 12, warhead: 2}
+  hide: {turns: 8, materials_factor: 2}   # 隠して建てる（地下。フェーズ4-3 の③c）
   recipes:
     default: {}
   sprite: missile_base

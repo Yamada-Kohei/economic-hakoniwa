@@ -35,6 +35,7 @@ def detonate(
 ) -> int:
     """マス (x, y) に核弾頭が落ちたときの被害。亡くなった人の数を返す。"""
     cfg = ctx.config.get("military.nuclear")
+    refuge = ctx.config.get("military.refugees.abroad_share")
     rings = len(cfg["dead"])
     killed = 0
     for tile in loc.tiles:
@@ -46,7 +47,7 @@ def detonate(
             flee = round((tile.population - dead) * cfg["flee"])
             tile.population -= dead + flee
             killed += dead
-            battle._flee(world, loc, tile.x, tile.y, flee)
+            battle._flee(world, loc, tile.x, tile.y, flee, refuge)
         facility = loc.facility_at(tile.x, tile.y)
         if facility is not None and facility.built and not fac.is_housing(ctx.config, facility):
             battle._ruin(loc, ctx, facility)

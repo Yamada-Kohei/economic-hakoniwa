@@ -73,7 +73,9 @@ def island_page(request, island_id: int):
     currency = (island.names or {}).get("currency_symbol", "")
     founded = (island.ext or {}).get("founded_turn", 0)
     mine = request.user.is_authenticated and island.owner_id == request.user.id
-    logs = display.visible_logs(TurnLog.objects.filter(island=island), mine).order_by("-turn", "id")
+    logs = display.visible_logs(TurnLog.objects.filter(island=island), mine, island).order_by(
+        "-turn", "id"
+    )
     last_turn = logs.values_list("turn", flat=True).first()
     regime = [
         {
@@ -434,14 +436,14 @@ def turn_log(request, island_id: int):
     island = get_object_or_404(Island, pk=island_id)
     mine = request.user.is_authenticated and island.owner_id == request.user.id
     turns = (
-        display.visible_logs(TurnLog.objects.filter(island=island), mine)
+        display.visible_logs(TurnLog.objects.filter(island=island), mine, island)
         .order_by("-turn")
         .values_list("turn", flat=True)
         .distinct()
     )
     page = Paginator(list(turns), 10).get_page(request.GET.get("page"))
     entries = display.log_entries(
-        display.visible_logs(TurnLog.objects.filter(island=island), mine)
+        display.visible_logs(TurnLog.objects.filter(island=island), mine, island)
         .filter(turn__in=list(page))
         .order_by("-turn", "id")
     )
