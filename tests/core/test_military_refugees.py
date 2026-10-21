@@ -66,3 +66,13 @@ def test_a_blockaded_island_cannot_let_its_refugees_out(game, base, monkeypatch)
     flee_from(world, poor, 300)
     ctx, ids, views = pool(game, world)
     assert migration._war_refugees(world, ctx, ids, views) == []
+
+
+def test_a_pool_with_nowhere_to_go_is_not_carried_over(game, base, monkeypatch):
+    world = copy.deepcopy(base)
+    poor, _ = _pair(world)
+    flee_from(world, poor, 300)
+    assert poor.ext["migration"]["war"] == 300
+    monkeypatch.setattr(migration, "active", lambda island: island is poor)  # 移民の相手がいない
+    migration.run(world, _ctx(game, world))
+    assert "war" not in poor.ext["migration"]

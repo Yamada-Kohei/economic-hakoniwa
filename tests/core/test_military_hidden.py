@@ -10,7 +10,7 @@ from hakoniwa_core.autoplan import queue_orders
 from hakoniwa_core.diplomacy import war
 from hakoniwa_core.game import load_game
 from hakoniwa_core.military import army, hidden, missiles, occupation
-from hakoniwa_core.modules.construction import check_build
+from hakoniwa_core.modules.construction import Construction, check_build
 from hakoniwa_core.registry import OrderFailed
 from hakoniwa_core.state import Facility
 from hakoniwa_core.state.generate import generate_world
@@ -87,6 +87,28 @@ def test_a_hidden_site_takes_longer_and_more_materials(game, world):
     assert fac.total_progress(game.defs, f) == 8 * fac.FULL
     plain = game.defs.facilities["missile_base"]["construction"]["materials"]
     assert fac.materials_of(game.defs, f) == {g: q * 2 for g, q in plain.items()}
+
+
+def test_a_hidden_site_uses_up_the_extra_materials_it_asked_for(game, world):
+    isl = world.islands[1]
+    tile = free_tiles(isl, 1)[0]
+    step(
+        game,
+        world,
+        {1: [("build", {"facility": "missile_base", "x": tile.x, "y": tile.y, "hidden": True})]},
+    )
+    f = isl.facility_at(tile.x, tile.y)
+    need = fac.materials_of(game.defs, f)
+    total = fac.total_progress(game.defs, f)
+    f.stock.clear()
+    for good, qty in need.items():
+        stock.add(f.stock, good, qty, world.turn, game.defs.goods)
+    f.workers = 100_000
+    f.progress = 0
+    Construction().run_island(isl, ctx_of(game, world))
+    assert f.progress == fac.FULL
+    for good, qty in need.items():  # 定義の量ではなく、増えた量の 1 ターン分を使う
+        assert stock.total(f.stock, good) == qty - qty * fac.FULL // total
 
 
 def test_a_foreign_unit_next_to_it_finds_it_and_so_does_an_ally(game, world):

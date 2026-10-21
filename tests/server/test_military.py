@@ -275,10 +275,40 @@ def test_a_hidden_facility_shows_only_to_its_owner_and_the_ones_who_found_it(wor
 
     TurnLog.objects.create(island=island, turn=1, kind="facility_started", args={"x": 1, "y": 1})
     TurnLog.objects.create(island=island, turn=1, kind="facility_started", args={"x": 2, "y": 2})
+    TurnLog.objects.create(island=island, turn=1, kind="facility_started", args={})  # マスのない行
+    TurnLog.objects.create(island=island, turn=1, kind="facility_started", args={"x": 1})
     rows = TurnLog.objects.filter(island=island, kind="facility_started")
     seen = display.visible_logs(rows, False, island)
-    assert [e.args for e in seen] == [{"x": 2, "y": 2}]
-    assert display.visible_logs(rows, True, island).count() == 2
+    kept = sorted(str(e.args) for e in seen)
+    assert kept == sorted(str(a) for a in ({"x": 2, "y": 2}, {}, {"x": 1}))
+    assert display.visible_logs(rows, True, island).count() == 4
+
+
+def test_a_hidden_facility_stays_off_the_world_map_and_the_summary(world):
+    client, island = _player()
+    other = m.Island.objects.exclude(pk=island.pk).order_by("id").first()
+    other_user = User.objects.create_user("spy2", password="a-long-pass-123")
+    other.owner = other_user
+    other.save()
+    spy = Client()
+    spy.force_login(other_user)
+    m.Facility.objects.create(
+        island=island, number=902, kind="missile_base", x=1, y=1, built=False, ext={"hidden": True}
+    )
+
+    def cell(who):
+        data = who.get("/api/world/shapes").json()
+        shape = next(i for i in data["islands"] if i["id"] == island.id)
+        return data["codes"].get(shape["cells"][1 * shape["size"] + 1], "")
+
+    def works(who):
+        return who.get(f"/api/islands/{island.id}/summary").json()["facilities"][
+            "construction_count"
+        ]
+
+    assert cell(client) == "construction"
+    assert cell(spy).startswith("terrain:") and cell(Client()).startswith("terrain:")
+    assert works(client) == 1 and works(spy) == 0
 
 
 def test_map_shows_the_nuclear_fallout_to_all(world):

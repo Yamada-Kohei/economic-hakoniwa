@@ -346,9 +346,7 @@ def island_map(request, island_id: int):
         }
         for f in island.facilities.filter(x__gte=0).order_by("number")  # マスを持つ施設だけ
         # 隠した施設（MI-62）は、持ち主と、見つけた国（と同盟国）にだけ見える
-        if mine
-        or not (f.ext or {}).get("hidden")
-        or (viewer and viewer.id in f.ext.get("found", ()))
+        if display.sees_facility(f, mine, viewer.id if viewer else None)
     ]
     return _json(
         {
@@ -972,9 +970,15 @@ def world_shapes(request):
     facilities = m.Facility.objects.filter(island__world=w).values_list(
         "island_id", "x", "y", "kind", "built", "ext"
     )
+    viewer = letter_services.own_island(request.user)
     for island_id, x, y, kind, built, ext in facilities.iterator(chunk_size=4000):
         island = islands[island_id]
         if x < 0 or y < 0:  # 運送業のようなマスを持たない施設
+            continue
+        # 隠した施設（MI-62）は、持ち主と見つけた国にだけ。ほかには元の地形のまま
+        if (ext or {}).get("hidden") and not (
+            viewer is not None and (viewer.id == island_id or viewer.id in ext.get("found", ()))
+        ):
             continue
         if kind == housing:
             level = (ext or {}).get("level") or d.settlement_levels()[0]

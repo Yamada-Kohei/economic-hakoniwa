@@ -268,6 +268,9 @@ def run(world: WorldState, ctx: StageContext) -> None:
         if KEY in island.ext:
             island.ext[KEY]["trapped"] = 0.0
     ids = [i for i in world.island_ids() if active(world.islands[i])]
+    for i, island in world.islands.items():  # 逃げ先がない島に、戦争の難民の数を持ち越さない
+        if i not in ids or len(ids) < 2:
+            island.ext.get(KEY, {}).pop(WAR_POOL, None)
     if len(ids) < 2:
         return
     views = {i: view_of(world.islands[i], ctx) for i in ids}

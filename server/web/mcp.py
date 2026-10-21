@@ -532,7 +532,10 @@ def _map(request, args):
     state = display.island_for_naming(island)
     lines = []
     towns = 0
+    seen = {f["number"] for f in data["facilities"]}  # 隠した施設（MI-62）は見える国にだけ
     for row in island.facilities.order_by("number"):
+        if (row.ext or {}).get("hidden") and row.number not in seen:
+            continue
         on_map = row.x >= 0 and row.y >= 0
         if row.kind == housing:
             towns += 1

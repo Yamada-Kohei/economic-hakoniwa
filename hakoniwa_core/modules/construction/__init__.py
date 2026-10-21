@@ -213,7 +213,7 @@ class Construction(IslandStage):
             before = f.progress
             f.progress = min(before + rate, total)
             # 進んだ分だけ資材を使う。引き算で決めるので、工事全体でちょうど定義の量になる
-            for good, qty in sorted(cdef.get("materials", {}).items()):
+            for good, qty in sorted(fac.materials_of(defs, f).items()):
                 stock.take(f.stock, good, qty * f.progress // total - qty * before // total)
             if f.progress >= total:
                 self._complete(island, f, ctx)
@@ -268,7 +268,7 @@ class Construction(IslandStage):
         f.built = True
         f.workers = 0
         f.status = fac.STATUS_STARTING
-        for key in ("waiting", "short_funds", "short_wages", "build_total"):
+        for key in ("waiting", "short_funds", "short_wages", "build_total", "materials_factor"):
             f.ext.pop(key, None)
         for key in ("no_materials_turns", "no_workers_turns", "stalled_turns"):
             f.ext.pop(key, None)
