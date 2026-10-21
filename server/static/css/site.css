@@ -277,7 +277,7 @@ table.ranking-table td:nth-child(3), table.titles-table th, table.titles-table t
 .country-link > span { min-width: 0; overflow-wrap: anywhere; }
 .country-timeline td { padding: 8px 10px; }
 .country-timeline td:first-child { width: 13em; font-weight: bold; color: var(--navy); }
-.country-timeline td:nth-child(n+2), .country-timeline th:nth-child(n+2) { text-align: left; }
+table.goods.country-timeline td:nth-child(n+2), table.goods.country-timeline th:nth-child(n+2) { text-align: left; }
 .country-page details summary { cursor: pointer; padding: 8px 0; font-weight: bold; }
 .country-editor > summary { color: var(--navy); }
 .country-editor > summary small { display: block; margin: 4px 0 0 18px; font-weight: normal; color: #4f62a0; }
