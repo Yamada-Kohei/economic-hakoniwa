@@ -656,7 +656,7 @@ TOOLS = [
         "自分の島なら赤字の施設・命令の列と、直近に命令を実行したターン（last_turn）の結果・"
         "未読の公電、軍（military。兵の数・士気・練度・賃金の遅れ・国防費。命令は set_defense・"
         "recruit・conscript・discharge。部隊は form_unit・disband_unit・move_unit・dig_trench・"
-        "stop_unit・set_requisition、艦隊は form_fleet・sail_fleet・"
+        "stop_unit・set_requisition、ミサイル基地は fire_missile、艦隊は form_fleet・sail_fleet・"
         "fleet_duty（護衛・見張り・封鎖）・load_unit・"
         "unload_unit（island を付けると戦争の相手の島へ揚陸）・load_supplies。"
         "降伏で体制が倒れたら choose_regime）も。",

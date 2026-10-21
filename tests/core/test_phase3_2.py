@@ -49,8 +49,9 @@ NEW_GOODS = [
 
 def test_there_are_24_goods_and_every_good_has_a_maker(game):
     defs = game.defs
-    # 回4 でサービス、回7 で小売り、回7 後半で自動車部品、フェーズ4-2 で銅・電子機器・兵器の 9 品目
-    assert len(defs.goods) == 35
+    # 回4 でサービス、回7 で小売り、回7 後半で自動車部品、4-2 で銅・電子機器・兵器の 9 品目、
+    # 4-3 の③a でミサイルと迎撃ミサイル
+    assert len(defs.goods) == 37
     assert set(NEW_GOODS) <= set(defs.goods)
     made = {
         g

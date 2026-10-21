@@ -18,7 +18,17 @@ from typing import Any
 from hakoniwa_core import stock
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.diplomacy import war
-from hakoniwa_core.military import army, battle, forces, naval, occupation, sea, supply, vision
+from hakoniwa_core.military import (
+    army,
+    battle,
+    forces,
+    missiles,
+    naval,
+    occupation,
+    sea,
+    supply,
+    vision,
+)
 from hakoniwa_core.registry import OrderFailed, OrderHandler, Registry, WorldStage
 from hakoniwa_core.state import IslandState, LogEntry, WorldState
 from hakoniwa_core.turn.context import StageContext
@@ -58,6 +68,8 @@ class Operations(WorldStage):
         naval.battle(world, ctx.defs, ctx.config, ctx.turn)
         battle.run(world, ctx)
         occupation.update(world, ctx)
+        missiles.run(world, ctx)
+        missiles.restock(world, ctx)
         supply.run(world, ctx)
         supply.recall(world, ctx)
         occupation.release(world, ctx)
@@ -80,6 +92,8 @@ def _handle(
         return _form(world, ctx, island, req)
     if kind == "form_fleet":
         return _form_fleet(world, ctx, island, req)
+    if kind == "fire_missile":
+        return missiles.launch(world, ctx, island, req)
     key = "fleet" if kind in ("sail_fleet", "load_supplies", "fleet_duty") else "unit"
     unit = army.find(world, req.get(key, -1))
     if kind == "load_supplies" and unit is not None and unit["owner"] == island.id:
@@ -438,7 +452,8 @@ def _load_supplies(
 
 def _run_island(world: WorldState, ctx: StageContext, island: IslandState) -> None:
     units = [u for u in army.units_of(world, island.id) if u["kind"] in ctx.defs.army]
-    if not units and army.KEY not in island.ext:
+    stored = missiles.wanted(island, ctx.defs, ctx.turn)  # 基地の弾の買い付け（部隊がなくても要る）
+    if not units and army.KEY not in island.ext and not stored:
         return
     state = forces.state_of(island)
     _reconcile(island, units)
@@ -450,6 +465,8 @@ def _run_island(world: WorldState, ctx: StageContext, island: IslandState) -> No
         _act(world, ctx, island, unit)
     state["assigned"] = sum(u["soldiers"] for u in units)
     state["wanted"] = _wanted(ctx, island, units)
+    for good, qty in stored.items():
+        state["wanted"][good] = state["wanted"].get(good, 0) + qty
     land = [u for u in units if not army.is_sea(u)]
     fleets = [u for u in units if army.is_sea(u)]
     island.stats["military.units"] = len(land)
@@ -676,6 +693,7 @@ ORDERS = (
     "form_fleet",
     "sail_fleet",
     "fleet_duty",
+    "fire_missile",
     "load_unit",
     "unload_unit",
     "load_supplies",

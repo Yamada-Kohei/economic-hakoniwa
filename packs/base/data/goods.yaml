@@ -55,6 +55,8 @@ electronics:        {tier: 3, unit: ton, display_scale: 25, freight_weight: 1}
 weapons:            {tier: 3, unit: set, arms: true, freight_weight: 0.002}
 ammunition:         {tier: 3, unit: ton, display_scale: 25, arms: true, freight_weight: 1}
 military_vehicle:   {tier: 3, unit: piece, arms: true, freight_weight: 1.6}
+missile:            {tier: 3, unit: piece, arms: true, freight_weight: 0.1}      # ミサイル（フェーズ4-3 の③。基地に置いて撃つ）
+interceptor:        {tier: 3, unit: piece, arms: true, freight_weight: 0.05}     # 迎撃ミサイル（防空陣地に置く）
 warship:            {tier: 3, unit: ship, arms: true, freight_weight: 0}      # 小さな軍艦（コルベット級）
 frigate:            {tier: 3, unit: ship, arms: true, freight_weight: 0}      # 大きな軍艦（フリゲート級）
 submarine:          {tier: 3, unit: ship, arms: true, freight_weight: 0}

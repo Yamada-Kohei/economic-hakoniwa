@@ -84,7 +84,9 @@
         "barracks": {"type": "integer", "minimum": 1, "description": "兵舎: 置ける兵の数"},
         "naval_base": {"const": true, "description": "軍港: 艦隊の母港"},
         "radar": {"type": "integer", "minimum": 1, "description": "レーダー: 見える範囲を広げる区画の数"},
-        "fortress": {"type": "integer", "minimum": 1, "description": "要塞: 守りの兵の数"}
+        "fortress": {"type": "integer", "minimum": 1, "description": "要塞: 守りの兵の数"},
+        "missile_base": {"type": "integer", "minimum": 1, "description": "ミサイル基地: 置けるミサイルの数"},
+        "air_defense": {"type": "integer", "minimum": 1, "description": "防空陣地: 置ける迎撃ミサイルの数"}
       },
       "description": "基地の施設（フェーズ4-2）"
     },
