@@ -590,8 +590,7 @@ def print_military_rows(rows: list[dict], seen: bool = False) -> None:
         if seen:
             state = "今見えている" if row["current"] else "前に見た場所"
             print(
-                f"  #{row['id']} {name} 国 #{row['owner']} "
-                f"{location} {state} ターン {row['turn']}"
+                f"  #{row['id']} {name} 国 #{row['owner']} {location} {state} ターン {row['turn']}"
             )
             continue
         state = {"forming": "編成中", "ready": "そろった"}.get(row["status"], row["status"])
@@ -620,10 +619,7 @@ def cmd_military(c: Client, a) -> int:
     print(f"国防費・兵の賃金と食べ物 {data['budget']['personnel']}")
     print(f"国防費・装備の買い入れと編成 {data['budget']['procurement']}")
     if "volunteers" in data:
-        print(
-            f"志願 {data['volunteers']} 徴兵 {data['conscripts']} "
-            f"未配属 {data['free_soldiers']}"
-        )
+        print(f"志願 {data['volunteers']} 徴兵 {data['conscripts']} 未配属 {data['free_soldiers']}")
         print(f"士気 {data['morale']:.0%} 練度 {data['training']:.0%}")
         print(
             f"賃金・志願 {data['volunteer_wage']:.0%} "
