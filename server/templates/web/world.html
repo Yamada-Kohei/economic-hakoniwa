@@ -1,6 +1,8 @@
 {% extends "base.html" %}{% load i18n static calendar_tags %}
 {% block title %}{% translate "世界マップ" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
+<link rel="stylesheet" href="{% static 'css/military.css' %}">
+{% include "web/military_text.html" %}
 <h1>{% translate "世界マップ" %}</h1>
 {% if world %}
   <p class="muted">{% blocktranslate with turn=world.turn|turn_date %}{{ turn }}。島の形と町・施設を1マス1点で描いています。区画を押すとその島の画面へ移ります。{% endblocktranslate %}</p>
@@ -10,15 +12,32 @@
     {% for row in rows %}{% for island in row %}
       {% if island %}
         <a class="cell island{% if island.id == own_id %} mine{% endif %}" href="{% url 'island' island.id %}"
+           data-x="{{ forloop.counter0 }}" data-y="{{ forloop.parentloop.counter0 }}"
            title="{{ island.name }}{% if island.owner %}（{{ island.owner.username }}）{% endif %}">
           <canvas class="island-pixels" data-island="{{ island.id }}" width="32" height="32" aria-hidden="true"></canvas>
           <span class="cell-name">{{ island.name|truncatechars:8 }}</span>
         </a>
       {% else %}
-        <span class="cell sea" aria-hidden="true"></span>
+        <span class="cell sea" data-x="{{ forloop.counter0 }}" data-y="{{ forloop.parentloop.counter0 }}" aria-hidden="true"></span>
       {% endif %}
     {% endfor %}{% endfor %}
   </div>
+  <div class="military-legend">
+    <span><i class="fleet-key" aria-hidden="true"></i>{% translate "自国の艦隊" %}</span>
+    <span><i class="fleet-key other" aria-hidden="true"></i>{% translate "今見えている他国の艦隊" %}</span>
+    <span><i class="fleet-key previous" aria-hidden="true"></i>{% translate "前に見た場所（薄い点線）" %}</span>
+  </div>
+  {% if own_id %}
+  <section id="world-military" class="panel military-page" data-military="{% url 'api_island_military' own_id %}" data-orders="{% url 'api_orders' own_id %}">
+    <h2>{% translate "自分の艦隊" %}</h2>
+    <p class="hint">{% translate "艦隊を選んで「航海先を選ぶ」を押し、世界マップの海か島の区画を選びます。命令は自国の列の後ろに追加され、ターン更新で実行されます。" %} <a href="{% url 'island' own_id %}#orders">{% translate "自国の命令の列" %}</a> · <a href="{% url 'island_military' own_id %}">{% translate "軍" %}</a> · <a href="{% url 'help' %}#military">{% translate "軍と部隊の手引き" %}</a></p>
+    <div data-fleet-controls><p>{% translate "読み込み中…" %}</p></div>
+    <div data-fleet-picking class="military-picking" hidden><p data-fleet-picking-label></p><button type="button" data-fleet-cancel>{% translate "取り消し" %}</button></div>
+    <p data-fleet-notice class="order-notice" role="status"></p>
+  </section>
+  {% csrf_token %}
+  <noscript><p class="error">{% translate "艦隊への命令の入力には JavaScript が必要です。" %}</p></noscript>
+  {% endif %}
   <section id="world-trade" class="panel" aria-labelledby="world-trade-title" hidden>
     <h2 id="world-trade-title">{% translate "貿易圏と航路" %}</h2>
     <p class="hint">{% translate "島の区画の縁の色が加盟している貿易圏です（2つ以上の圏に入っている島は縁が重なります）。白い丸は港のある島、線は船で運ぶ途中の荷のある航路で、太いほど船が多く、矢じりが荷の向かう先です。荷の中身は自国の荷だけ表示します。" %}</p>

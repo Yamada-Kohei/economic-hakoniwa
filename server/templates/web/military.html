@@ -1,16 +1,65 @@
-{% extends "base.html" %}{% load i18n static %}
+{% extends "base.html" %}{% load i18n static calendar_tags %}
 {% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
+<link rel="stylesheet" href="{% static 'css/military.css' %}">
 {% include "web/report_header.html" %}
+{% include "web/military_text.html" %}
+{{ military|json_script:"military-data" }}
+<div class="military-page" id="military-page" data-defs="{% url 'api_defs' %}" data-map="{% url 'island' island.id %}">
+<nav class="military-links" aria-label="{% translate '軍の項目' %}">
+  <a href="#forces">{% translate "兵と国防費" %}</a>
+  {% if mine %}<a href="#units">{% translate "部隊" %}</a><a href="#fleets">{% translate "艦隊" %}</a><a href="#bases">{% translate "基地と陣地" %}</a><a href="#commands">{% translate "軍の命令" %}</a>{% endif %}
+  <a href="{% url 'help' %}#military">{% translate "軍と部隊の手引き" %}</a>
+</nav>
+<div class="report-layout{% if mine %} with-orders{% endif %}"><div class="report-main">
 {% with m=military %}
 <section class="panel" id="forces">
   <h2>{% translate "兵と国防費" %}</h2>
-  <dl>
-    <dt>{% translate "兵の数" %}</dt><dd>{{ m.soldiers }}</dd>
-    <dt>{% translate "国防費（兵の賃金と食べ物）" %}</dt><dd>{{ m.budget.personnel }}</dd>
-    <dt>{% translate "国防費（装備の買い入れと編成）" %}</dt><dd>{{ m.budget.procurement }}</dd>
+  <dl class="military-summary">
+    <div><dt>{% translate "兵の数" %}</dt><dd>{{ m.soldiers }}</dd></div>
+    {% if mine %}
+    <div><dt>{% translate "志願の兵" %}</dt><dd>{{ m.volunteers }}</dd></div>
+    <div><dt>{% translate "徴兵した兵" %}</dt><dd>{{ m.conscripts }}</dd></div>
+    <div><dt>{% translate "部隊に付いていない兵" %}</dt><dd>{{ m.free_soldiers }}</dd></div>
+    <div><dt>{% translate "士気" %}</dt><dd><span data-percent="{{ m.morale|stringformat:'.4f' }}"></span><meter min="0" max="1" value="{{ m.morale|stringformat:'.4f' }}" aria-label="{% translate '士気' %}">{{ m.morale }}</meter></dd></div>
+    <div><dt>{% translate "練度" %}</dt><dd><span data-percent="{{ m.training|stringformat:'.4f' }}"></span><meter min="0" max="1" value="{{ m.training|stringformat:'.4f' }}" aria-label="{% translate '練度' %}">{{ m.training }}</meter></dd></div>
+    {% endif %}
   </dl>
+  {% if mine %}
+    {% if m.wages_late_turns %}<p class="military-warning" role="status">{% blocktranslate with turns=m.wages_late_turns %}兵の賃金が {{ turns }} ターン遅れています。士気の低下と逃亡に注意してください。{% endblocktranslate %}</p>{% endif %}
+    {% if m.hungry %}<p class="military-warning" role="status">{% translate "兵の食べ物が尽きています。練度が落ち、亡くなる兵も出ます。" %}</p>{% endif %}
+    <h3>{% translate "直近のターン" %} <small class="heading-date">{{ stats_turn|turn_date }}</small></h3>
+    <div class="table-scroll"><table><tbody>
+      <tr><th>{% translate "払った賃金" %}</th><td>{{ m.wages_paid }} {{ currency }}</td></tr>
+      <tr><th>{% translate "払えなかった賃金" %}</th><td>{{ m.wages_unpaid }} {{ currency }}</td></tr>
+      <tr><th>{% translate "逃げた兵" %}</th><td>{{ m.deserted }}</td></tr>
+      <tr><th>{% translate "亡くなった兵" %}</th><td>{{ m.starved }}</td></tr>
+    </tbody></table></div>
+  {% endif %}
+  <h3>{% translate "国防費（年の額）" %}</h3>
+  <div class="table-scroll"><table><tbody>
+    <tr><th>{% translate "兵の賃金と食べ物" %}</th><td>{{ m.budget.personnel }} {{ currency }}</td></tr>
+    <tr><th>{% translate "装備の買い入れと編成" %}</th><td>{{ m.budget.procurement }} {{ currency }}</td></tr>
+    {% if mine %}
+    <tr><th>{% translate "志願の賃金（島の平均賃金に対する割合）" %}</th><td data-percent="{{ m.volunteer_wage|stringformat:'.4f' }}">{{ m.volunteer_wage }}</td></tr>
+    <tr><th>{% translate "徴兵の賃金（島の平均賃金に対する割合）" %}</th><td data-percent="{{ m.conscript_wage|stringformat:'.4f' }}">{{ m.conscript_wage }}</td></tr>
+    {% endif %}
+  </tbody></table></div>
   {% if not mine %}<p class="hint">{% translate "部隊と艦隊の中身は、その国の持ち主だけに見えます。" %}</p>{% endif %}
 </section>
+{% if mine %}
+<section class="panel" id="units"><h2>{% translate "陸の部隊" %}</h2><div data-table="units"><p>{% translate "読み込み中…" %}</p></div><p class="hint"><a href="{% url 'island' island.id %}">{% translate "移動の行き先は島の地図で部隊のマスを選んで指定できます。" %}</a></p></section>
+<section class="panel" id="fleets"><h2>{% translate "艦隊" %}</h2><div data-table="fleets"><p>{% translate "読み込み中…" %}</p></div><p class="hint"><a href="{% url 'world' %}">{% translate "世界マップで艦隊を選び、航海先を指定できます。" %}</a></p></section>
+<section class="panel" id="bases"><h2>{% translate "基地と陣地" %}</h2><div data-table="bases"><p>{% translate "読み込み中…" %}</p></div><h3>{% translate "陣地のあるマス" %}</h3><ul>{% for t in m.trenches %}<li><a href="{% url 'island' island.id %}?x={{ t.x }}&amp;y={{ t.y }}">({{ t.x }}, {{ t.y }})</a></li>{% empty %}<li>{% translate "陣地はありません。" %}</li>{% endfor %}</ul></section>
+{% include "web/military_commands.html" %}
+{% else %}
+<section class="panel" id="seen-fleets"><h2>{% translate "見つけた艦隊" %}</h2><p class="hint">{% translate "見ている国が見つけた艦隊だけを表示します。前に見た場所は、現在の位置とは限りません。" %}</p><div data-table="seen"><p>{% translate "読み込み中…" %}</p></div></section>
+{% endif %}
 {% endwith %}
+</div>
+{% if mine %}<aside id="orders" class="panel report-orders" data-url="{% url 'api_orders' island.id %}" data-defs="{% url 'api_defs' %}" data-forms="" data-heading="{% translate '軍の命令' %}"></aside>{% endif %}
+</div></div>
+<noscript><p class="error">{% translate "部隊と艦隊の表と命令の入力には JavaScript が必要です。" %}</p></noscript>
+{% csrf_token %}
+<script type="module" src="{% static 'js/reports/military.js' %}"></script>
 {% endblock %}

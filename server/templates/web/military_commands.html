@@ -1,0 +1,24 @@
+{% load i18n %}
+<section class="panel" id="commands">
+  <h2>{% translate "軍の命令" %}</h2>
+  <p class="hint">{% translate "命令は列の後ろに追加され、ターン更新で実行されます。編成・解散・移動・陣地・停止・航海・載せ降ろしの命令は、実行の後も持ち主だけに見えます。" %}</p>
+  <details open><summary>{% translate "国防費と兵の集め方" %}</summary>
+    <form class="actions military-form" data-order="set_defense">
+      <h3>{% translate "国防費を決める" %}</h3>
+      <p class="hint">{% translate "変更する項目だけ入力してください。兵の賃金と食べ物に回さなかった分は、装備の買い入れと編成に回ります。" %}</p>
+      <label>{% translate "年の額" %}（{{ currency }}）<input name="annual" type="number" min="0" step="1"></label>
+      <label>{% translate "兵の賃金と食べ物に回す割合（%）" %}<input name="personnel_share" type="number" min="0" max="100" step="1"></label>
+      <label>{% translate "志願の賃金（島の平均賃金に対する %）" %}<input name="volunteer_wage" type="number" min="0" max="500" step="any"></label>
+      <button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p>
+    </form>
+    <form class="actions military-form" data-order="recruit"><h3>{% translate "志願の兵を集める" %}</h3><label>{% translate "人数" %}<input name="count" type="number" min="1" step="1" required></label><button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p></form>
+    <form class="actions military-form" data-order="conscript"><h3>{% translate "徴兵" %}</h3><p class="hint">{% translate "民主主義では議会の過半数が要ります。徴兵の命令は他の国にも見えます。働き手が減り、支持率も下がります。" %}</p><label>{% translate "人数" %}<input name="count" type="number" min="1" step="1" required></label><button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p></form>
+    <form class="actions military-form" data-order="discharge"><h3>{% translate "除隊" %}</h3><label>{% translate "人数" %}<input name="count" type="number" min="1" step="1" required></label><button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p></form>
+  </details>
+  <details><summary>{% translate "部隊と艦隊の編成" %}</summary>
+    <form class="actions military-form" data-order="form_unit"><h3>{% translate "部隊の編成" %}</h3><label>{% translate "種類" %}<select name="army" data-arm="land" required></select></label><label>{% translate "兵舎のマス" %}<select name="cell" required>{% for b in m.bases %}{% if b.barracks %}<option value="{{ b.x }},{{ b.y }}">({{ b.x }}, {{ b.y }})</option>{% endif %}{% endfor %}</select></label><button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p></form>
+    <form class="actions military-form" data-order="form_fleet"><h3>{% translate "艦隊の編成" %}</h3><label>{% translate "種類" %}<select name="army" data-arm="sea" required></select></label><label>{% translate "艦の数" %}<input name="ships" type="number" min="1" step="1" required></label><button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p></form>
+  </details>
+  <details><summary>{% translate "部隊への命令" %}</summary><div id="unit-commands"></div></details>
+  <details><summary>{% translate "輸送船団の載せ降ろし" %}</summary><div id="transport-commands"></div></details>
+</section>

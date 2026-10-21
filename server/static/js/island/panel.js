@@ -9,6 +9,7 @@
 
 import { turnDate } from "../calendar.js";
 import { escapeHtml, getJson, sendJson } from "./api.js";
+import { MilitaryTile } from "./military.js";
 
 const MAX_TILES = 64; // 1つの命令で選べるマスの数（orders.yaml の maxItems と同じ）
 
@@ -75,6 +76,7 @@ export class TilePanel {
     this.tile = null;
     this.info = null;
     this.request = 0;
+    this.military = this.orders && el.dataset.militaryUrl ? new MilitaryTile(this) : null;
     for (const target of [el, this.tools]) {
       target?.addEventListener("click", (e) => this.handleClick(e));
       target?.addEventListener("change", (e) => this.handleChange(e));
@@ -84,7 +86,7 @@ export class TilePanel {
 
   /** 地図でマスを選んでいる途中か。 */
   get marking() {
-    return this.mode !== null;
+    return this.mode !== null || this.military?.picking != null;
   }
 
   async show(tile) {
@@ -97,7 +99,10 @@ export class TilePanel {
     const request = ++this.request;
     this.el.setAttribute("aria-busy", "true");
     try {
-      const info = await getJson(this.el.dataset.tileUrl.replace(/0,0$/, `${tile.x},${tile.y}`));
+      const [info] = await Promise.all([
+        getJson(this.el.dataset.tileUrl.replace(/0,0$/, `${tile.x},${tile.y}`)),
+        this.military?.load(),
+      ]);
       if (request !== this.request) return; // 待つ間に別のマスが選ばれた
       this.info = info;
     } catch {
@@ -110,6 +115,10 @@ export class TilePanel {
   }
 
   toggleMark(tile) {
+    if (this.military?.picking != null) {
+      this.military.choose(tile);
+      return;
+    }
     const key = `${tile.x},${tile.y}`;
     if (this.marked.has(key)) this.marked.delete(key);
     else if (this.marked.size < MAX_TILES) this.marked.add(key);
@@ -122,7 +131,8 @@ export class TilePanel {
   render() {
     if (this.tools) {
       // 中身が変わったときだけ書き換える（押したボタンのフォーカスと読み上げを保つ）
-      const tools = this.orders ? (this.mode ? this.markingHtml() : this.markButtonsHtml()) : "";
+      const tools = this.military?.picking != null ? this.military.pickingHtml()
+        : this.orders ? (this.mode ? this.markingHtml() : this.markButtonsHtml()) : "";
       if (tools !== this.toolsHtml) this.tools.innerHTML = this.toolsHtml = tools;
     }
     const parts = [];
@@ -134,6 +144,7 @@ export class TilePanel {
       parts.push(`<p class="error">マスの情報を取得できませんでした。</p>`);
     } else {
       parts.push(this.tileHtml(this.info));
+      if (this.military) parts.push(this.military.html(this.tile));
       if (this.info.facility) parts.push(this.facilityHtml(this.info.facility));
       if (this.orders) parts.push(this.actionsHtml(this.info));
     }
@@ -529,6 +540,7 @@ export class TilePanel {
     const button = e.target.closest("button");
     if (!button || !(this.el.contains(button) || this.tools?.contains(button))) return;
     if (button.type === "submit") {
+      if (button.form?.dataset.order) return;
       e.preventDefault();
       this.submit(button.form);
       return;
@@ -573,6 +585,7 @@ export class TilePanel {
 
   endMarking() {
     this.mode = null;
+    if (this.military) this.military.picking = null;
     this.marked.clear();
     this.onMarkedChange();
     this.render();

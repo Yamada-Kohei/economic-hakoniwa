@@ -186,12 +186,20 @@ if (minimap) {
     const tile = minimapTile(minimap, map, e.clientX, e.clientY);
     if (!tile) return;
     centerOn(tile.x + 0.5, tile.y + 0.5);
+    if (panel.marking) {
+      panel.toggleMark(tile);
+      return;
+    }
     select(tile);
   });
 }
 
 popover.querySelector("[data-close]").addEventListener("click", () => select(null));
 document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && panel.marking) {
+    panel.endMarking();
+    return;
+  }
   // 入力欄で書いている途中は閉じない（書きかけを消さないように）
   if (e.key === "Escape" && state.selected && !e.target.closest?.("input, select, textarea")) select(null);
 });
