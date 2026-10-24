@@ -638,7 +638,7 @@ def fiscal(request, island_id: int):
             "island": island.id,
             "mine": mine,
             "stats_turn": turn,
-            "fiscal": reports.fiscal_view(island, stats, _currency(island)),
+            "fiscal": reports.fiscal_view(island, stats, _currency(island), mine),
             "bonds": reports.bond_rows(island, _currency(island), mine),
         }
     )

@@ -1046,9 +1046,11 @@ def facility_book(
 # --- 財政 -----------------------------------------------------------------------------
 
 
-def fiscal_view(island: m.Island, stats: dict[str, float], currency: str) -> dict[str, Any]:
+def fiscal_view(
+    island: m.Island, stats: dict[str, float], currency: str, mine: bool = False
+) -> dict[str, Any]:
     """直近のターンの国庫の収入と支出（仕訳の種類ごと）、借入と返済、予算の項目ごとの予算と
-    使った額、税率、国庫と国債の残高。"""
+    使った額、税率、国庫と国債の残高。予算の目安（budget_guide）は持ち主だけ。"""
     config = get_game().config
 
     def flows(side: str) -> list[dict[str, Any]]:
@@ -1075,7 +1077,7 @@ def fiscal_view(island: m.Island, stats: dict[str, float], currency: str) -> dic
     policy = island.policy or {}
     budget = policy.get("budget", {})
     items = config.get("fiscal.budget_items")
-    guides = budget_guide.guide(island)
+    guides = budget_guide.guide(island) if mine else {}
     budget_rows = [
         {
             "item": item,
@@ -1083,7 +1085,7 @@ def fiscal_view(island: m.Island, stats: dict[str, float], currency: str) -> dic
             "annual": money(budget.get(item, 0)),
             "per_turn": money(budget.get(item, 0) // TURNS_PER_YEAR),
             "spent": money(stats.get(f"spent.{item}", 0)),
-            **budget_guide.texts(guides[item], currency),
+            **(budget_guide.texts(guides[item], currency) if mine else {}),
         }
         for item in items
     ]

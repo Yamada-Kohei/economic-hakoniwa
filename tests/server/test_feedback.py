@@ -135,3 +135,15 @@ def test_admin_lists_and_changes_the_status(world):
         {"action": "mark_working", "_selected_action": [number]},
     )
     assert res.status_code == 302 and BugReport.objects.get(pk=number).status == "working"
+
+
+def test_nul_characters_are_dropped(world):
+    """PostgreSQL は文字列の中の NUL を受けないので、報告の文・URL・添え物から除く。"""
+    client, _, _ = _player(world)
+    res = _post(
+        client, text="a\u0000b", url="/x\u0000y", client={"js_errors": [{"message": "m\u0000"}]}
+    )
+    assert res.status_code == 201
+    report = BugReport.objects.get()
+    assert report.text == "ab" and report.url == "/xy"
+    assert report.context["js_errors"][0]["message"] == "m"

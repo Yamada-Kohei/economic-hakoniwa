@@ -61,7 +61,8 @@ def game_version() -> str:
 
 
 def _short(value: Any, limit: int = FIELD_MAX) -> str:
-    return str(value if value is not None else "")[:limit]
+    """文字にして長さを切る（PostgreSQL が受けない NUL 文字は除く）。"""
+    return str(value if value is not None else "").replace("\x00", "")[:limit]
 
 
 def clean_client(client: Any) -> dict[str, Any]:
@@ -117,7 +118,7 @@ def submit(
     via: str = "web",
 ) -> BugReport:
     """報告を 1 件受ける。受けられなければ ReportError。"""
-    text = (text or "").strip()
+    text = (text or "").replace("\x00", "").strip()
     if not text:
         raise ReportError("何が起きたかを書いてください")
     if len(text) > TEXT_MAX:

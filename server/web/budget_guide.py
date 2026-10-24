@@ -50,17 +50,10 @@ def _materials_cost(
 def _past(island: m.Island, items: list[str]) -> dict[str, list[float]]:
     """項目ごとに、直近 12 ターンに使った額（新しいターンから）。"""
     names = [f"spent.{item}" for item in items]
-    latest = (
-        m.StatRecord.objects.filter(island=island, name__in=names)
-        .order_by("-turn")
-        .values_list("turn", flat=True)
-        .first()
-    )
     out: dict[str, list[float]] = {item: [] for item in items}
-    if latest is None:
-        return out
+    # 使わなかったターンの記録はないので、窓は項目の記録ではなく世界の今のターンから数える
     rows = m.StatRecord.objects.filter(
-        island=island, name__in=names, turn__gt=latest - TURNS_PER_YEAR
+        island=island, name__in=names, turn__gt=island.world.turn - TURNS_PER_YEAR
     ).order_by("-turn")
     for name, value in rows.values_list("name", "value"):
         out[name.removeprefix("spent.")].append(value)
@@ -71,7 +64,7 @@ def _works_left(state, defs, prices, wage, band) -> int:
     """始めている国の施設の工事の残り（人手の賃金と、これから使う資材の代金）。"""
     total = 0
     for f in state.facilities:
-        if f.built or f.owner != OWNER_STATE:
+        if f.built or f.owner != OWNER_STATE or f.kind not in defs.facilities:
             continue
         spec = defs.facilities[f.kind]["construction"]
         whole = fac.total_progress(defs, f)

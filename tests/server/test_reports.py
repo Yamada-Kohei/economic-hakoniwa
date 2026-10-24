@@ -348,6 +348,8 @@ def test_budget_guide_on_the_fiscal_page_and_the_orders_form(client, world):
     """予算の目安（W-143）: 去年（直近12ターン）に使った額・いちばん使った月の年換算・使い切れない
     額の目安が、財政の画面の表と予算の入力欄に出る。国の工事を始めると公共事業費の目安が増える。"""
     island = _own_island(client)
+    island.world.turn = 14  # 窓は世界の今のターンから数える（使わなかったターンの記録はない）
+    island.world.save()
     for turn in range(1, 15):  # 14 ターンのうち、新しい 12 ターンだけ数える
         _stats(island, turn, {"spent.construction": 100.0 if turn > 2 else 9999.0})
     _stats(island, 7, {"spent.education": 40.0})
@@ -376,6 +378,23 @@ def test_budget_guide_on_the_fiscal_page_and_the_orders_form(client, world):
     more = budget_guide.guide(island)["construction"]
     assert more["works"] > state["works"] and more["limit"] > state["limit"]
 
-    # ほかの国の人には入力欄の政策がないので、目安も出さない
-    public = client.get(f"/api/islands/{m.Island.objects.exclude(pk=island.pk).first().id}/orders")
+    # ほかの国の人には入力欄の政策がないので、目安も出さない。財政の画面と API にも出さない
+    other = m.Island.objects.exclude(pk=island.pk).first()
+    public = client.get(f"/api/islands/{other.id}/orders")
     assert all("guide" not in b for b in public.json()["policy"]["budget"].values())
+    page = client.get(f"/islands/{other.id}/fiscal/").content.decode()
+    assert "使い切れない目安" not in page and "budget-guide" not in page
+    rows = client.get(f"/api/islands/{other.id}/fiscal").json()["fiscal"]["budget"]
+    assert all("limit" not in r for r in rows)
+
+    # 最後に使ったのが 12 ターンより前なら、去年の合計は 0
+    island.world.turn = 40
+    island.world.save()
+    old = {
+        b["item"]: b
+        for b in client.get(f"/islands/{island.id}/fiscal/").context["fiscal"]["budget"]
+    }
+    assert (
+        old["construction"]["last_year"].endswith("0")
+        and "100" not in old["construction"]["last_year"]
+    )
