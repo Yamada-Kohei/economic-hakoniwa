@@ -62,14 +62,21 @@ world:
   cells_per_island: 2   # 世界マップの区画数は島数のおよそこの倍
   default_islands: 50   # 規模の目安（区画数の計算に使う）
   # 一括シミュレーションとサンプルの島が鉱業資源を選ぶ重み（フェーズ3-2。プレイヤーの建国には
-  # 効かない）。石炭と鉄鉱石はどこにでもあり、原油とボーキサイトは限られた島にある。銅鉱石は選ばず、military.veins で鉱業資源の上限の外に置く（フェーズ4-2）
+  # 効かない）。石炭と鉄鉱石はどこにでもあり、原油とボーキサイトは限られた島にある。銅鉱石は選ばず、world.veins で鉱業資源の上限の外に置く（フェーズ4-2）
   sample_resources: {coal: 3, iron_ore: 3, stone: 2, crude_oil: 1, bauxite: 1, copper_ore: 0, uranium_ore: 0}
+  # 鉱脈（MI-60。hakoniwa_core/veins.py）: 世界の種と島の番号だけで決め、島ごとに 1 度だけ、鉱業資源の
+  # 上限の外に置く。値は置く島の割合（銅は多くの国が小さくても持つが、主な産地は限られる）。
+  # 4-2 では military に置いていたが、軍事の設定ではないので 2026-10-25 に world へ移した
+  veins: {copper_ore: 0.4, uranium_ore: 0.15}
 
 # 気候帯と肥沃度（フェーズ3-2。hakoniwa_core/nature.py）。気候帯ごとの倍率は climate.yaml
 climate:
   zones: [cold, temperate, tropical]   # 世界マップの行を上からこの順に分ける
   shares: [0.34, 0.33, 0.33]           # 分ける割合（合わせて 1）
   blend_turns: 12       # 移し替えた島は、気候の倍率をこのターン数かけて効かせる
+  # その年の雨のぶれ（W-148。12月に島ごとに引く倍率。正規分布を min〜max で切る）。水力発電所の出力が
+  # 渇水の年に落ちる。気候帯の雨の多さは climate.yaml の rainfall
+  rain: {sigma: 0.15, min: 0.5, max: 1.4}
   fertility: [0.7, 1.3] # 平地のマスの肥沃度の幅（島を作るときにまとまりで配る）
   fertility_cell: 5     # まとまりの大きさの目安（マス）
   fertility_terrain: plain
@@ -734,9 +741,6 @@ monuments:
 
 # 軍事（フェーズ4-2。設計書 docs/design/15-military.md。初めの値は /mnt/project-files/phase4/military-values-draft.md）
 military:
-  # 鉱脈（MI-60）: 世界の種と島の番号だけで決め、島ごとに 1 度だけ、鉱業資源の上限の外に置く。
-  # 値は置く島の割合（銅は多くの国が小さくても持つが、主な産地は限られる）
-  veins: {copper_ore: 0.4, uranium_ore: 0.15}
   # 兵と軍の維持（4-2 の②。設計書 MI-07〜MI-14・MI-53）。建国の島は軍を持たない（国防費 0）
   volunteer_wage: 1.0   # 志願の兵の賃金（島の平均賃金に対する倍率。命令 set_defense で変えられる）
   conscript_wage: 0.3   # 徴兵の兵の賃金（同じ）

@@ -25,7 +25,8 @@ Django（server/）……保存・アカウント・命令の受付・ターン�
 | `trade/` | 貿易と為替の部品（フェーズ3-1）: 貿易圏・二国間契約・為替・島をまたぐお金・海外の商人・港と船・商社・移し替え。フェーズ3-3 の産業政策（`policy.py`）・国際収支（`balance.py`）・外国の国債（`abroad.py`） |
 | `politics.py` | 政治の状態（フェーズ3-4）: 政情とその段階、体制の特色（`regimes.yaml` の `traits`）、報道と集会の扱い、首都の建物、建て替えの資材。段と命令は `modules/politics`（政情・選挙と議会の採決・デモと暴動・混乱期間・体制の変更）と `modules/plan`（公定価格・重点産業） |
 | `diplomacy/` | 宣戦・条約・戦争の状態（フェーズ4-1）: 戦争（`war.py`）・条約（`treaties.py`）・条項の種類（`clauses.py`）・経済の条項（貿易圏・契約・固定相場・融通・援助・移民。`economic.py`）・違反が残す信用の傷（`credit.py`）。世界の状態は `world.ext["diplomacy"]`、島の違反の記録は `island.ext["diplomacy"]`。段と命令は `modules/diplomacy` |
-| `military/` | 軍事（フェーズ4-2 から）: 銅の鉱脈の置き方（`veins.py`。移し替えの段が島ごとに 1 度だけ置く）と、兵の出入り（`forces.py`。志願・徴兵・除隊と、兵をマスの人口から抜いて島の `ext["military"]` に持つ。賃金・食べ物・士気の毎ターンの更新は島の段 `modules/military`）。部隊と基地と陸の動き（`army.py`。部隊は世界の状態 `world.ext["military"]`、陣地はマスの `ext["trench"]`。段と命令は `modules/operations`）。艦隊と海の動き（`sea.py`。艦隊は部隊と同じ一覧に入り、置き場所は世界マップの区画）と見える範囲（`vision.py`。国ごとの「前に見た場所」を operations の段が `world.ext` に残す）。軍のターンログの種類は `PRIVATE_LOGS`（持ち主だけに出す。設計書 15-military） |
+| `veins.py` | 銅とウランの鉱脈の置き方（設定 `world.veins`。移し替えの段が島ごとに 1 度だけ置く）。鉱業資源の置き方なので軍事のフォルダの外（W-144） |
+| `military/` | 軍事（フェーズ4-2 から）: 兵の出入り（`forces.py`。志願・徴兵・除隊と、兵をマスの人口から抜いて島の `ext["military"]` に持つ。賃金・食べ物・士気の毎ターンの更新は島の段 `modules/military`）。部隊と基地と陸の動き（`army.py`。部隊は世界の状態 `world.ext["military"]`、陣地はマスの `ext["trench"]`。段と命令は `modules/operations`）。艦隊と海の動き（`sea.py`。艦隊は部隊と同じ一覧に入り、置き場所は世界マップの区画）と見える範囲（`vision.py`。国ごとの「前に見た場所」を operations の段が `world.ext` に残す）。軍のターンログの種類は `PRIVATE_LOGS`（持ち主だけに出す。設計書 15-military） |
 | `units.py` | 量・お金・率の単位と丸め |
 | `dates.py` | 暦: 1年のターン数（1ターン＝1か月）、ターンの年と月、年の終わり（年に1度の処理はターンが12の倍数の12月）。世界の暦は `game.yaml` の `calendar`。文面は `log.py` の `format_turn` |
 | `turn/` | 段の進行役（`Engine`）、段に渡すもの（`StageContext`）、乱数 |

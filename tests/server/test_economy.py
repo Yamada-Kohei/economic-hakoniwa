@@ -184,3 +184,27 @@ def test_accounting_order_is_not_offered_before_the_money_economy(client, world)
     plant = island.facilities.get(kind="thermal_power_plant", owner="state")
     info = client.get(f"/api/islands/{island.id}/tiles/{plant.x},{plant.y}").json()["facility"]
     assert "accounting_target" not in info
+
+
+def test_mountain_tiles_show_the_hydro_outlook_and_plants_show_their_water(client, world):
+    """山のマスには水力発電所の出力の見込みを出し、建っている水力発電所には今の水の量を出す（W-148）。"""
+    island = Island.objects.order_by("id").first()
+    mountain = Tile.objects.filter(island=island, terrain="mountain", x__gte=0).first()
+    data = client.get(f"/api/islands/{island.id}/tiles/{mountain.x},{mountain.y}").json()
+    water = data["water"]
+    assert water["kind"] == "hydro_power_plant" and water["kind_name"] == "水力発電所"
+    assert 0 <= water["percent"] <= 100 and water["buildable"] == (water["percent"] >= water["min"])
+    plain = Tile.objects.filter(island=island, terrain="plain").first()
+    assert "water" not in client.get(f"/api/islands/{island.id}/tiles/{plain.x},{plain.y}").json()
+    plant = Facility.objects.create(
+        island=island,
+        number=999,
+        kind="hydro_power_plant",
+        x=mountain.x,
+        y=mountain.y,
+        recipe="default",
+        built=True,
+    )
+    data = client.get(f"/api/islands/{island.id}/tiles/{plant.x},{plant.y}").json()
+    assert {"percent", "year", "site"} <= data["facility_water"].keys()
+    assert data["facility_water"]["year"] == 100  # 雨のぶれを引く前の年

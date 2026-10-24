@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core.military import veins
+from hakoniwa_core import veins
 from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.trade import tradable, tradable_goods
 from tests.core.test_phase3_3 import game as game  # noqa: F401  （試験の部品を使い回す）
@@ -46,7 +46,7 @@ def test_veins_are_placed_once_by_seed_and_island_number_only(game):
     }
     assert placed == again
     count = sum(1 for p in placed.values() if "copper_ore" in p)
-    share = game.config.get("military.veins")["copper_ore"]
+    share = game.config.get("world.veins")["copper_ore"]
     assert 0.2 * len(placed) < count < 0.6 * len(placed) and 0.2 < share < 0.6
     # 2 度目は何もしない
     for island in world.islands.values():
@@ -81,7 +81,7 @@ def test_uranium_veins_come_with_version_two_and_leave_the_copper_alone(game):
     placed = {i: veins.place(world.islands[i], game.config, world.seed) for i in world.island_ids()}
     assert all(set(p) <= {"uranium_ore"} for p in placed.values())  # 銅は動かさない
     count = sum(1 for p in placed.values() if p)
-    share = game.config.get("military.veins")["uranium_ore"]
+    share = game.config.get("world.veins")["uranium_ore"]
     assert 0 < count < 0.4 * len(placed) and share < 0.3
     for island in world.islands.values():
         assert island.ext[veins.KEY] == veins.VERSION

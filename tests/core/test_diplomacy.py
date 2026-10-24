@@ -390,6 +390,102 @@ def test_inactive_islands_cannot_be_attacked_or_signed_with(game, world):
     assert refused_why(game, world, 1, "declare_war", {"target": 2}) == "reason_war_inactive"
 
 
+def test_a_caretaker_accepts_a_ceasefire_and_a_plain_peace_for_an_inactive_island(game, world):
+    """休止中の島とも、停戦と、休止中の島が払う賠償のない講和は結べる（W-96）。そのほかは断る。"""
+    step(game, world, {1: [("declare_war", {"target": 2})]})
+    step(game, world, {})
+    world.islands[2].ext["inactive"] = True
+    assert (
+        refused_why(
+            game,
+            world,
+            1,
+            "propose_treaty",
+            {"partner": 2, "clauses": [{"type": "peace"}, {"type": "non_aggression"}]},
+        )
+        == "reason_treaty_inactive"
+    )
+    assert (
+        refused_why(
+            game,
+            world,
+            1,
+            "propose_treaty",
+            {"partner": 3, "clauses": [{"type": "non_aggression"}]},
+        )
+        is None
+    )  # 戦争のない相手は今までどおり
+    assert (
+        refused_why(
+            game,
+            world,
+            1,
+            "propose_treaty",
+            {
+                "partner": 2,
+                "clauses": [
+                    {"type": "peace", "reparations": {"payer": 2, "amount": 100, "due_turns": 40}}
+                ],
+            },
+        )
+        == "reason_treaty_inactive"
+    )
+    assert war.open_war(world, 1, 2)["state"] == war.WAR
+    cease = propose(game, world, 1, 2, [{"type": "ceasefire"}])
+    assert cease["state"] == treaties.IN_FORCE and cease["caretaker"] == 2
+    assert war.open_war(world, 1, 2)["state"] == war.CEASEFIRE
+    assert logs(world, 2, "treaty_caretaker") and logs(world, 2, "ceasefire_started")
+    # 提案した国が払う賠償は、休止中の島が受け取る側なので受ける
+    peace = propose(
+        game,
+        world,
+        1,
+        2,
+        [{"type": "peace", "reparations": {"payer": 1, "amount": 100, "due_turns": 40}}],
+    )
+    assert peace["state"] == treaties.IN_FORCE
+    assert war.open_war(world, 1, 2) is None
+    assert cease["state"] == treaties.ENDED
+    assert "留守を預かる" in format_log(
+        game.defs, "treaty_caretaker", logs(world, 2, "treaty_caretaker")[0].args
+    )
+
+
+def test_a_plain_peace_ends_the_war_with_an_inactive_island(game, world):
+    step(game, world, {1: [("declare_war", {"target": 2})]})
+    step(game, world, {})
+    world.islands[2].ext["inactive"] = True
+    peace = propose(game, world, 1, 2, [{"type": "peace"}])
+    assert peace["caretaker"] == 2 and war.open_war(world, 1, 2) is None  # 賠償のない講和は即済む
+    # 戦争が終われば、また休止中の島には宣戦できない
+    assert refused_why(game, world, 1, "declare_war", {"target": 2}) == "reason_war_inactive"
+
+
+def test_a_caretaker_does_not_accept_a_peace_that_keeps_the_prisoners(game, world):
+    step(game, world, {1: [("declare_war", {"target": 2})]})
+    step(game, world, {})
+    world.islands[2].ext["inactive"] = True
+    why = refused_why(
+        game,
+        world,
+        1,
+        "propose_treaty",
+        {"partner": 2, "clauses": [{"type": "peace", "prisoners": False}]},
+    )
+    assert why == "reason_treaty_inactive"
+    assert war.open_war(world, 1, 2)["state"] == war.WAR
+
+
+def test_a_full_queue_of_offers_does_not_block_a_caretaker_ceasefire(game, world):
+    step(game, world, {1: [("declare_war", {"target": 2})]})
+    step(game, world, {})
+    world.islands[2].ext["inactive"] = True
+    for _ in range(game.config.get("diplomacy.max_proposals")):
+        propose(game, world, 1, 3, [{"type": "non_aggression"}])
+    cease = propose(game, world, 1, 2, [{"type": "ceasefire"}])
+    assert cease["state"] == treaties.IN_FORCE
+
+
 def test_peace_ends_the_ceasefire_and_does_not_block_the_next_war(game, world):
     step(game, world, {1: [("declare_war", {"target": 2})]})
     step(game, world, {})

@@ -221,6 +221,11 @@ thermal_power_plant:
       outputs: {electricity: 30}
   sprite: thermal_power_plant
 
+# 水力発電所。出力は川の水の量で決まる（W-148）: 半径 radius マスの陸に降った雨が集まる（山を 1 として、
+# マスごとの集める量を runoff に書く。森は土にしみこませて少なく、平地はわずか）。集まった水が full（山
+# のマス何個分か）に届けば全力で、届かなければ割合で下がる。同じマスの水は近くの水力発電所どうしで
+# 分け合い、気候帯の雨の多さ（climate.yaml）とその年の雨のぶれ（game.yaml の climate.rain。渇水の年）でも
+# 変わる。出力が min に届かない場所には建てられない
 hydro_power_plant:
   category: power
   industry: energy
@@ -228,7 +233,12 @@ hydro_power_plant:
   construction: {turns: 8, labor: 1000, materials: {building_materials: 60, steel: 10, machinery: 5}}
   workers: {general: 270, engineer: 30}
   priority: 8
-  factors: {infra: 0.2, education: 0.3}
+  factors: {infra: 0.2, education: 0.3, water: 1}
+  water:
+    radius: 4
+    runoff: {mountain: 1.0, forest: 0.25, plain: 0.03}
+    full: 26
+    min: 0.3
   recipes:
     default:
       outputs: {electricity: 20}

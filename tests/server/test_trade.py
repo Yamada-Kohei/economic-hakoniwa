@@ -297,10 +297,10 @@ def test_island_pages_link_to_trade_and_fx(client, world):
         html = client.get(url).content.decode()
         assert f'href="/islands/{island.id}/trade/"' in html
         assert f'href="/islands/{island.id}/fx/"' in html
-    # 貿易を始める前の島でも開ける
     assert client.get(f"/islands/{island.id}/trade/").status_code == 200
     assert client.get(f"/islands/{island.id}/fx/").status_code == 200
-    assert client.get(f"/api/islands/{island.id}/trade").json()["started"] is False
+    # 島を作った時点で港と商社が置かれるので、最初の更新の前から貿易は始まっている（W-140）
+    assert client.get(f"/api/islands/{island.id}/trade").json()["started"] is True
 
 
 def test_help_explains_trade_and_fx(client, world):

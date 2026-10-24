@@ -59,6 +59,7 @@ def _normalize_facility(entry: dict[str, Any]) -> dict[str, Any]:
             "industry": entry.get("industry"),
             "experience_share": entry.get("experience_share", 1),
             "category": entry.get("category"),
+            "water": entry.get("water"),  # 川の水で出力が決まる施設の水の決まり（W-148）
         }
         for name, recipe in entry["recipes"].items()
     }

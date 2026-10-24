@@ -152,7 +152,7 @@ export class TilePanel {
       const occupier = this.map.occupied?.[index];
       if (occupier) parts.push(`<p class="military-warning">${escapeHtml(occupier === -1 ? w.rebelHeld : `${w.occupied}: ${occupier}`)}</p>`);
       if (this.military) parts.push(this.military.html(this.tile));
-      if (this.info.facility) parts.push(this.facilityHtml(this.info.facility));
+      if (this.info.facility) parts.push(this.facilityHtml(this.info.facility, this.info.facility_water));
       if (this.orders) parts.push(this.actionsHtml(this.info));
     }
     this.el.innerHTML = parts.join("");
@@ -169,6 +169,12 @@ export class TilePanel {
     if (t.power != null && t.population) rows.push(["電力充足率", `${Math.round(t.power / 10)}%`]);
     if (t.pollution) rows.push(["汚染度", t.pollution]);
     if (t.fertility != null) rows.push(["肥沃度", t.fertility.toFixed(2)]);
+    if (t.water) {
+      // 山のマスに水力発電所を建てたときの出力の見込み（周りの山と森の水を、近くの水力発電所と分け合った量）
+      const w = t.water;
+      const note = w.buildable ? "" : `（${w.min}% に届かないので建てられません）`;
+      rows.push([`${w.kind_name}の見込み`, `全力の ${w.percent}%${note}`]);
+    }
     for (const i of t.infra || []) {
       const keep = i.keep > i.level ? `（維持の目標 ${i.keep}%）` : "";
       const grid = this.defs.infrastructure?.[i.kind]?.role === "power" ? (t.power_line ? "・電力を通します" : "・電力を通すには整備度が足りません") : "";
@@ -189,7 +195,7 @@ export class TilePanel {
     return `<h3>${escapeHtml(title)}</h3>${table(rows)}`;
   }
 
-  facilityHtml(f) {
+  facilityHtml(f, water) {
     if (f.level_name) {
       // 町（住宅地）には名前を付けない。段階と、次の段階に育つのに要る資源を出す
       const rows = [["段階", f.level_name], ["居住上限", `${f.capacity.toLocaleString()} 人`]];
@@ -213,6 +219,8 @@ export class TilePanel {
     } else if (f.workers_needed != null && !f.monument) {
       rows.push(["従業者", `${f.workers.toLocaleString()} / ${f.workers_needed.toLocaleString()} 人`]);
       rows.push(["稼働率", `${Math.round(f.operating_rate * 100)}%`]);
+      // 水力発電所（W-148）: 川の水で出る分。近くの水力発電所と水を分け合い、雨の少ない年は下がる
+      if (water) rows.push(["水の量（全力に対して）", `${water.percent}%（場所は ${water.site}%、今年の雨は平年の ${water.year}%）`]);
       // 設備の傷み（回6）: 傷んだ分は作れない
       if (f.equipment != null) rows.push(["設備", `${Math.round(f.equipment * 100)}%${f.equipment < 1 ? "（傷んだ分は作れません）" : ""}`]);
       if (f.wage != null) rows.push(["賃金（1人1ターン）", f.wage.toLocaleString()]);

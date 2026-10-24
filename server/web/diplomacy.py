@@ -230,6 +230,7 @@ def proposal_choices(world: m.World, island: m.Island) -> dict[str, Any]:
     """条約の提案の選択肢（相手にできる国と条項）。外交の画面と国際会議場の入力欄が使う。"""
     return {
         "partners": _partners(world, island),
+        "truce_partners": _truce_partners(world, island),
         "clauses": [{"id": c, "name": display.message(f"clause_{c}")} for c in cl.TYPES],
     }
 
@@ -243,8 +244,26 @@ def _dead(t: dict[str, Any]) -> bool:
 
 
 def _partners(world: m.World, island: m.Island) -> list[dict[str, Any]]:
+    """条約の相手にできる国（休止中の国は入れない）。"""
     rows = m.Island.objects.filter(world=world, inactive=False).exclude(pk=island.pk)
     return [{"id": i, "name": n} for i, n in rows.order_by("id").values_list("id", "name")]
+
+
+def _truce_partners(world: m.World, island: m.Island) -> list[dict[str, Any]]:
+    """自国と戦争（停戦の間も）をしている休止中の国。休止中の国とは、停戦と、休止中の国が払う
+    賠償のない講和だけ結べる（W-96）ので、条約の「相手」の欄にだけ足す。"""
+    at_war = {
+        other
+        for w in (_raw(world).get("wars") or [])
+        if w["state"] in ("war", "ceasefire") and island.id in _sides(w)
+        for other in _sides(w)
+        if other != island.id
+    }
+    rows = m.Island.objects.filter(world=world, inactive=True, id__in=at_war)
+    return [
+        {"id": i, "name": f"{n}（休止中。停戦と講和だけ）"}
+        for i, n in rows.order_by("id").values_list("id", "name")
+    ]
 
 
 def brief(island: m.Island, mine: bool) -> dict[str, Any]:

@@ -1,7 +1,7 @@
 {% load i18n %}{# 条約の提案の入力欄。外交の画面と国際会議場が同じものを使う。文脈: island（自国）・choices（partners）・rules（外交の数） #}
 <p class="hint">{% translate "提案は自国の署名も兼ねます。相手が署名すると、そのターンの外交の段から効きます。戦争の状態（布告・戦争中・停戦中）の相手とは、停戦と講和だけを結べます。講和には不可侵・同盟も添えられます。" %}</p>
   <form class="actions diplomacy-form" data-order="propose_treaty" data-clauses="clause" data-ceasefire-error="{% translate '停戦にはほかの条項を添えられません。講和の取り決めに添えてください。' %}">
-    <label>{% translate "相手" %}<select name="partner" required><option value="">{% translate "（国を選んでください）" %}</option>{% for p in choices.partners %}<option value="{{ p.id }}">{{ p.name }}（{{ p.id }}）</option>{% endfor %}</select></label>
+    <label>{% translate "相手" %}<select name="partner" required><option value="">{% translate "（国を選んでください）" %}</option>{% for p in choices.partners %}<option value="{{ p.id }}">{{ p.name }}（{{ p.id }}）</option>{% endfor %}{% for p in choices.truce_partners %}<option value="{{ p.id }}">{{ p.name }}（{{ p.id }}）</option>{% endfor %}</select></label>
     <label>{% translate "条約の名前（任意）" %}<input name="title" maxlength="40" placeholder="{% translate '空欄なら条項から名前が付きます' %}"></label>
     <label>{% translate "前文（任意）" %}<textarea name="text" maxlength="400" rows="3"></textarea></label>
     <fieldset class="diplomacy-clause-picker">

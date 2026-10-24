@@ -6,7 +6,7 @@ import random
 
 from django.db import transaction
 
-from hakoniwa_core.founding import FoundingError, FoundingPlan, found_island
+from hakoniwa_core.founding import FoundingError, FoundingPlan, found_island, open_for_business
 from hakoniwa_core.nature import zone_of
 from hakoniwa_core.state.generate import generate_island, world_grid_size
 from server.game import get_game
@@ -48,6 +48,7 @@ def create_sample_island(world: m.World, name: str, rng: random.Random, owner=No
     climate = zone_of(wy, grid_size(world), game.config)
     island = generate_island(rng, 0, name, wx, wy, game.config, game.defs, climate=climate)
     island.ext["founded_turn"] = world.turn
+    open_for_business(island, game.defs, game.config, world.turn)
     return create_island(world, island, owner=owner)
 
 
@@ -68,4 +69,5 @@ def found_for_user(world: m.World, user, plan: FoundingPlan, wx: int, wy: int) -
     if problems:
         raise FoundingError(problems)
     island.ext["founded_turn"] = world.turn
+    open_for_business(island, game.defs, game.config, world.turn)
     return create_island(world, island, owner=user)

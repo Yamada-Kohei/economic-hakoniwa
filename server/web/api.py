@@ -18,6 +18,7 @@ from django.templatetags.static import static
 from django.views.decorators.http import require_GET, require_http_methods
 
 from hakoniwa_core import facilities as fac
+from hakoniwa_core import nature
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import freight
 from hakoniwa_core.founding import land_terrains
@@ -425,7 +426,47 @@ def tile(request, island_id: int, x: int, y: int):
     f = m.Facility.objects.filter(island_id=island_id, x=x, y=y).first()
     if f is not None:
         data["facility"] = display.facility_info(f, island, _mine(request, row.island))
+    water = _water(row, f)
+    if water is not None:  # 水力発電所の見込み（W-148）
+        data["water" if f is None else "facility_water"] = water
     return _json(data)
+
+
+def _water(row: m.Tile, f: m.Facility | None) -> dict[str, Any] | None:
+    """山のマスに水力発電所を建てたときの見込みか、建っている水力発電所の今の出力（全力を 100）。
+    集水域は周りのマスの地形で決まる。近くの水力発電所と水を分け合うので、島の施設も読む。"""
+    game = get_game()
+    defs = game.defs
+    if f is None and row.terrain != "mountain":
+        return None
+    if f is not None:
+        recipes = defs.facilities.get(f.kind, {}).get("recipes", {})
+        spec = nature.water_spec(recipes.get(f.recipe, {}))
+        kind = f.kind
+    else:
+        kind, spec = next(
+            (
+                (k, w)
+                for k, v in defs.facilities.items()
+                if v.get("buildable") is not False
+                and (w := nature.water_spec(v["recipes"].get("default", {}))) is not None
+                and row.terrain in v["terrain"]
+            ),
+            (None, None),
+        )
+    if spec is None:
+        return None
+    island = load_island(row.island)
+    here = nature.water_factor(island, defs, spec, row.x, row.y, weather=False)
+    out = {"kind": kind, "kind_name": defs.name("facilities", kind), "percent": round(here * 100)}
+    if f is None:
+        out["min"] = round(spec["min"] * 100)
+        out["buildable"] = here >= spec["min"]
+    else:  # 建っている発電所は、気候と今の年の雨のぶれも入れた出力
+        out["percent"] = round(nature.water_factor(island, defs, spec, row.x, row.y) * 100)
+        out["year"] = round(nature.rain_year(island) * 100)
+        out["site"] = round(here * 100)
+    return out
 
 
 # --- 統計（経済・市場・施設・金融の画面） ---------------------------------------------

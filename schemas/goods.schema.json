@@ -20,7 +20,7 @@
       "description": "住民が食べられる財にだけ書く"
     },
     "mining": {"type": "boolean", "description": "鉱業資源か（持つ島の鉱山などで採れる）"},
-    "vein_only": {"type": "boolean", "description": "建国では選べず、鉱脈（military.veins）としてだけ置かれる鉱業資源（ウラン鉱石。フェーズ4-3）"},
+    "vein_only": {"type": "boolean", "description": "建国では選べず、鉱脈（world.veins）としてだけ置かれる鉱業資源（ウラン鉱石。フェーズ4-3）"},
     "arms": {"type": "boolean", "description": "軍事品か（フェーズ4-2）。貿易圏の市場と商社には出さず、国どうしの契約と物の援助でだけ動く（買うのは国だけ）"},
     "consumer": {"type": "boolean", "description": "家計が買う財か（物価指数に入れる）"},
     "freight_weight": {"type": "number", "minimum": 0, "description": "船で運ぶときの 1 単位の重さ（トン。フェーズ3-1）。書かない財は島の外へ運べない。0 は自分で航海して届く物（輸送船）"},

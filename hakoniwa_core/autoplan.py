@@ -59,7 +59,8 @@
 
 お金の経済の島では、初めに失業手当を平均賃金の BENEFIT % にし、BUDGET_TURNS ターンごとに
 公共事業費（国の工事とインフラの年の予算）と教育費を見直します。教育費は、学校と大学を全力で
-動かす年の費用（今の賃金と、値幅の上端の教材の値段で）の EDUCATION_MARGIN 倍です。
+動かす年の費用（今の賃金と、値幅の上端の教材の値段で）の EDUCATION_MARGIN 倍で、返す力の比が
+FISCAL_LIMIT を超えたら公共事業費と同じ率で減らします（EDUCATION_FLOOR まで）。
 住民1人あたり PUBLIC_WORKS を基本に、失業率がふつう（5%）より高ければ増やし、物価上昇率が高ければ
 減らします（額を物価や GDP に合わせて動かさないので、物価が下がり続けたり上がり続けたりしにくい）。
 国営の施設の設備が1年に傷む値打ち（直す分。回6）は、その上に足します。
@@ -132,6 +133,10 @@ NATURAL_UNEMPLOYMENT = 0.05
 # 返す力の比（中央銀行以外への利払い ÷ 国の収入）がこれを超えたら、歳出を削り増税する
 FISCAL_LIMIT = 0.3
 BURDEN_RESPONSE = 2.0  # 比が FISCAL_LIMIT より 0.1 高いごとに、公共事業費を基本の 20% 減らす
+# 教育費も、比が FISCAL_LIMIT を超えた分に応じて同じ率で減らす（W-63）。借金の重い国が学校の費用も
+# 切り詰める形で、予算の目安（全力で動かす費用の EDUCATION_MARGIN 倍）の半分までにとどめる
+# （全力の費用の 0.65 倍ほどで、学校を閉じるほどは削らない）
+EDUCATION_FLOOR = 0.5
 TAX_TURN = 3  # BUDGET_TURNS の周期のうち税を見直すターン（公共事業費の見直しと重ならないように）
 TAX_STEP = 2  # 一度に上げ下げする税率（ポイント）
 TAX_MAX = {"income_tax": 30, "consumption_tax": 20}  # 上げる上限（%）
@@ -158,6 +163,9 @@ UNIVERSITY = "university"
 SCHOOL_TARGET = 0.8  # 学校の定員を、子どもの数のこの割合に保つ
 ENGINEER_TARGET = 0.8  # 要る技術者が、島の技術者のこの倍を超えたら大学を建てる
 EDUCATION_MARGIN = 1.3  # 教育費を、学校と大学を全力で動かす年の費用のこの倍にする
+# 標準の計画が水力発電所を建てるのは、見込める出力が全力のこの割合以上の場所だけ。それより水の少ない
+# 場所は、建てられても（施設の定義の min）割に合わないので、火力発電所に回す（W-148）
+WATER_MIN = 0.6
 ROAD_LEVEL = 0.6  # 新しい施設の周りに、交通の整備度がこれに届かないマスがあれば道路を引く
 
 
@@ -363,7 +371,8 @@ def _budget_order(
     scale = 1.0
     scale += UNEMPLOYMENT_RESPONSE * (stats.get("unemployment", 0) - NATURAL_UNEMPLOYMENT)
     scale -= INFLATION_RESPONSE * max(0.0, stats.get("inflation", 0) - INFLATION_LIMIT)
-    scale -= BURDEN_RESPONSE * max(0.0, stats.get("bonds.burden", 0) - FISCAL_LIMIT)
+    cut = BURDEN_RESPONSE * max(0.0, stats.get("bonds.burden", 0) - FISCAL_LIMIT)
+    scale -= cut
     scale = min(WORKS_RANGE[1], max(WORKS_RANGE[0], scale))
     # 国営の施設の設備を直す分（新品の設備が1年に傷む値打ち）を足す（回6。直す分は公共事業費から
     # 払うので、足さないと新しい工事の分が減る）
@@ -388,7 +397,7 @@ def _budget_order(
             construction = max(construction, min(top, int(current * (1 + STARVED_RAISE))))
     targets = {
         "construction": construction,
-        "education": _education_cost(island, defs, config),
+        "education": int(_education_cost(island, defs, config) * max(EDUCATION_FLOOR, 1 - cut)),
     }
     payload = {}
     for item, target in targets.items():
@@ -572,8 +581,15 @@ def _flows(island: IslandState, defs: Defs, config: GameConfig) -> tuple[dict, d
         stuck = f.built and fac.short_of_inputs(f.status)
         imports = frozenset() if power in recipe["outputs"] else traded
         stuck = stuck or not _recipe_ok(defs, island, recipe, frozenset(), imports)
+        water = nature.water_spec(recipe)
+        # 水力発電所は、川の水の量で出る分（工事中も、場所の水で見込む。W-148）
+        share = (
+            nature.water_factor(island, defs, water, f.x, f.y)
+            if water is not None and f.x >= 0
+            else 1.0
+        )
         for good, qty in recipe["outputs"].items():
-            supply[good] = supply.get(good, 0) + (0 if stuck else qty)
+            supply[good] = supply.get(good, 0) + (0 if stuck else round(qty * share))
         for good, qty in recipe["inputs"].items():
             demand[good] = demand.get(good, 0) + qty
     population = sum(t.population for t in island.tiles)
@@ -966,9 +982,9 @@ def _candidates(
         return
     # 島の鉱業資源を、島のどの施設（工事中を含む）も使っていなければ、使う施設を1つ（輸出向け）
     used = {g for f in island.facilities for g in fac.recipe_of(defs, f)["inputs"]}
-    # 鉱脈の資源（銅など。military.veins）は、買い手が軍だけの間は掘らない（設計書 MI-44。掘ると
+    # 鉱脈の資源（銅など。world.veins）は、買い手が軍だけの間は掘らない（設計書 MI-44。掘ると
     # 買い手のいない精錬所と鉱山が建ち、鉱山の上限 2 を使って鉄鉱石の鉱山が建たなくなる）
-    veins = set(config.get("military.veins"))
+    veins = set(config.get("world.veins"))
     for resource in sorted(set(island.resources) - used - veins):
         yield from (c for c in _users(defs, config, island, resource) if spare(*c))
     # 貿易圏で買いたい人が残った物を、島の中だけで作れるなら作る（輸出向け）
@@ -1227,17 +1243,26 @@ def _site_for(
     housing = fac.housing_kind(config)
     homes = [(f.x, f.y) for f in island.facilities if f.kind == housing]
     radius = fac.commute_radius(defs, config, kind)
-    fertile = bool(defs.facilities[kind]["recipes"][recipe].get("factors", {}).get("fertility"))
+    spec = defs.facilities[kind]["recipes"][recipe]
+    fertile = bool(spec.get("factors", {}).get("fertility"))
+    water = nature.water_spec(spec)
     best, best_key = None, None
     for pos in within(island, capital, island.size):
         if island.tile(*pos).zone != ZONE_NONE:
             continue
         if fac.placement_problem(defs, island, kind, pos[0], pos[1], recipe) is not None:
             continue
+        # 水力発電所は、水が WATER_MIN 未満の場所には建てず、水の多い場所を先に（0.1 刻み。W-148）
+        wet = 0
+        if water is not None:
+            level = nature.water_factor(island, defs, water, pos[0], pos[1], weather=False)
+            if level < WATER_MIN:
+                continue
+            wet = -int(level * 10)
         near = min((distance(pos, h) for h in homes), default=island.size)
         # 肥沃度の効く作り方（農場と牧場）は、肥沃なマスを先に（0.1 刻み。フェーズ3-2）
         rich = -nature.fertility(island.tile(*pos)) // 100 if fertile else 0
-        key = (max(0, near - radius), near <= 1, rich, distance(pos, capital))
+        key = (max(0, near - radius), near <= 1, wet, rich, distance(pos, capital))
         if best_key is None or key < best_key:
             best, best_key = pos, key
     return best

@@ -87,7 +87,7 @@ def _declare(
     if other is None or target == island.id:
         return "reason_war_target"
     if is_inactive(other):
-        return "reason_war_inactive"  # 休止中の島は応じられない（停戦も講和も結べなくなる）
+        return "reason_war_inactive"  # 休止中の島に宣戦はできない（停戦と講和は結べる。W-96）
     if war.open_war(world, island.id, target) is not None:
         return "reason_war_exists"
     w = war.declare(world, island.id, target, ctx.turn)

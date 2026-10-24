@@ -11,6 +11,7 @@
       "description": "作る物ごとの産出の倍率（書かない物は 1）。0 はその気候では作れない"
     },
     "household_power": {"type": "number", "exclusiveMinimum": 0, "description": "家計の電力の要る量の倍率（書かなければ 1）"},
+    "rainfall": {"type": "number", "exclusiveMinimum": 0, "description": "雨の多さの倍率（書かなければ 1）。水力発電所に集まる水の量に掛かる（W-148）"},
     "override": {"const": true}
   }
 }

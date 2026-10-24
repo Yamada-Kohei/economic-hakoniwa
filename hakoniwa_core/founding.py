@@ -18,7 +18,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, nature, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import default_accounting
+from hakoniwa_core.economy import default_accounting, services
 from hakoniwa_core.economy.start import start_economy
 from hakoniwa_core.geo import NEIGHBORS4, NEIGHBORS8, components, distance, shortest_path, within
 from hakoniwa_core.naming import (
@@ -37,6 +37,7 @@ from hakoniwa_core.state import (
     LogEntry,
     Tile,
 )
+from hakoniwa_core.trade import setup as trade_setup
 
 Pos = tuple[int, int]
 Problem = tuple[str, dict[str, Any]]
@@ -333,6 +334,18 @@ def found_island(
     return island
 
 
+def open_for_business(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> None:
+    """建国した島に、港・海運業・商社と商業・サービス業を、建国の瞬間に置く（W-140）。
+
+    次の更新の移し替えの段（modules/upgrade）が同じ順で置くので、呼ばなくても動くが、建国から最初の
+    更新まで（最長4時間）貿易の施設のない島が見えていた。置き終えた島は、移し替えの段では何もしない。
+    プレイヤーの建国（server/world/services.py）が呼ぶ。試験と一括シミュレーションの島は、これまでどおり
+    最初の更新で置く（動きを変えないため）。
+    """
+    services.prepare(island, defs, config)
+    trade_setup.prepare(island, defs, config, turn)
+
+
 def refound(island: IslandState, turn: int) -> None:
     """建国したばかりの島（まだ一度も更新していない島）を、ターン turn に建国したことにする。
 
@@ -352,6 +365,15 @@ def refound(island: IslandState, turn: int) -> None:
             for batch in batches:
                 if batch[0] > turn:
                     batch[0] += shift
+    # 貿易の仕組みを置いたターン（海外の商人の来る期間の数え始め）と、輸送船を迎えたターン（W-140）
+    trade = island.ext.get("trade", {})
+    for key in ("since", "merchant_from"):
+        if trade.get(key, turn) > turn:
+            trade[key] += shift
+    for f in island.facilities:
+        for batch in f.economy.get("fleet", ()):
+            if batch[0] > turn:
+                batch[0] += shift
 
 
 def place_start(

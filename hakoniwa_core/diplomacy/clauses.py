@@ -180,3 +180,21 @@ def check_set(
             if reason is not None:
                 return reason
     return None
+
+
+def caretaker_accepts(clauses: list[dict[str, Any]], inactive: int) -> bool:
+    """休止中の島（inactive）が相手のとき、留守を預かる政府が代わりに受けてよい条項の組か（W-96）。
+
+    受けるのは停戦だけの条約と、戦争を終える講和だけの条約（賠償は休止中の島が払う形でなく、捕虜は
+    返す形のものに限る。引き揚げの期限は提案した国が決めてよい）。休止中の島が払うことになる賠償や、経済の
+    取り決め・不可侵・同盟のように、持ち主の判断が要るものは受けない（持ち主が戻ってから結ぶ）。
+    """
+    kinds = [c["type"] for c in clauses]
+    if kinds == [CEASEFIRE]:
+        return True
+    if kinds != [PEACE]:
+        return False
+    rep = clauses[0].get("reparations")
+    if not clauses[0].get("prisoners", True):
+        return False  # 休止中の島の捕虜を返さない講和は、持ち主が戻ってから
+    return rep is None or rep["payer"] != inactive

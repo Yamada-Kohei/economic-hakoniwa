@@ -115,7 +115,7 @@ class IslandAdmin(admin.ModelAdmin):
         return obj.owner.last_login if obj.owner else None
 
     @admin.action(
-        description="選んだ島を休止中にする（条約や戦争は残り、休止中の島とは停戦も講和も結べない）"
+        description="選んだ島を休止中にする（条約や戦争は残る。休止中の島とは停戦と、相手が払う賠償のない講和だけ結べる）"
     )
     def make_inactive(self, request, queryset):
         at_war = self._at_war(queryset)
@@ -124,8 +124,9 @@ class IslandAdmin(admin.ModelAdmin):
         if at_war:
             self.message_user(
                 request,
-                f"戦争中・停戦中の島が含まれています（{'・'.join(at_war)}）。休止中の島とは"
-                "停戦も講和も結べないので、戦争が終わらなくなります。休止を解くと結べます",
+                f"戦争中・停戦中の島が含まれています（{'・'.join(at_war)}）。休止中の島は兵を動かせず"
+                "守れません。相手の国が提案すれば、留守を預かる政府が停戦と、休止中の島が払う賠償のない"
+                "講和だけは受けます。そのほかの条約は休止を解いてから結びます",
                 messages.WARNING,
             )
 
