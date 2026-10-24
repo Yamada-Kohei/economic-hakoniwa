@@ -132,11 +132,10 @@ def propose(
     other = world.islands.get(partner)
     if partner == island.id or other is None:
         return "reason_treaty_partner"
-    if is_inactive(other):
-        return "reason_treaty_inactive"
     cfg = config.get("diplomacy")
     waiting = [t for t in treaties(world) if t["proposer"] == island.id and t["state"] == PROPOSED]
-    if len(waiting) >= cfg["max_proposals"]:
+    # 休止中の島への提案は返事待ちの席に残らない（受けるか断るかをその場で決める）ので数えない
+    if not is_inactive(other) and len(waiting) >= cfg["max_proposals"]:
         return "reason_treaty_too_many"
     clean: list[dict[str, Any]] = []
     for raw in payload["clauses"]:
@@ -148,6 +147,9 @@ def propose(
     reason = cl.check_set(world, clean, island.id, partner, turn)
     if reason is not None:
         return reason
+    caretaker = is_inactive(other)
+    if caretaker and not cl.caretaker_accepts(clean, partner):
+        return "reason_treaty_inactive"
     for c in clean:
         # 効いている講和は、戦争を終えた後は賠償が残っているだけなので、次の戦争の講和を塞がない
         states = (PROPOSED,) if c["type"] == cl.PEACE else LIVE
@@ -171,6 +173,14 @@ def propose(
         "violations": [],
     }
     treaties(world).append(treaty)
+    if caretaker:
+        # 休止中の国は応じられないので、停戦と、賠償も約束もない講和だけは、留守を預かる政府が受ける
+        # （W-96）。署名したことにして、そのまま効かせる
+        treaty["signed"][str(partner)] = turn
+        treaty["caretaker"] = partner
+        _force(world, config, treaty, turn)
+        _log(world, treaty, "treaty_caretaker", only=partner)
+        return None
     _log(world, treaty, "treaty_proposed", only=island.id)
     _log(world, treaty, "treaty_offer", only=partner)
     return None

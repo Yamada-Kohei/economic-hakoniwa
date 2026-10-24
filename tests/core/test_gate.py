@@ -26,11 +26,10 @@ import random
 import pytest
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import gate
+from hakoniwa_core import gate, veins
 from hakoniwa_core.autoplan import plan_trade, plan_turn, queue_orders
 from hakoniwa_core.founding import found_island
 from hakoniwa_core.game import load_game
-from hakoniwa_core.military import veins
 from hakoniwa_core.simulate import world_digest
 from hakoniwa_core.state import WorldState
 from hakoniwa_core.state.generate import generate_land, generate_world, random_plan

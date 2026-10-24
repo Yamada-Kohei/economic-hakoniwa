@@ -6,6 +6,15 @@
 あるときに、作る物の倍率を生産性に掛けます（economy/productivity.py）。倍率が 0 の作り方は、その
 気候の島では使えません（placement_problem と usable）。
 
+水（W-148）: 水力発電所のように作り方の factors に water がある施設は、川の水の量で
+出力が決まります。水は周り（facilities.yaml の water.radius 以内）の陸のマスに降った雨が集まった
+ものです。マスの地形ごとに集める量が違い（山は多く、森は土にしみこませて少なく、平地はわずか）、同じマスの水は、近くの
+水力発電所どうしで等分に分け合います。出力は「集まった水 × 気候帯の雨の多さ × その年の
+雨のぶれ」が water.full に届けば全力で、届かなければ割合で下がります（ダムの湖が
+季節の流れをならすので、月ごとの流れは見ません）。雨のぶれは年に1度（12月）島ごとに引き、
+島の ``ext["rain"]`` に持ちます。出力が water.min に届かないマスには建てられません
+（placement_problem）。
+
 前のフェーズから移し替えた島（migrate）は、気候帯を世界マップの区画（島が world.default_islands の
 ときの区画の数で数える）から決め、倍率を climate.blend_turns ターンかけて 1 から効かせます
 （``island.ext["climate_blend"]``: 残りのターン数）。肥沃度は 1 のままです。
@@ -33,6 +42,7 @@ BLEND = "climate_blend"  # island.ext: 倍率を効かせ終わるまでの残�
 FERTILITY = "fertility"  # tile.ext: 肥沃度（1000 分の 1）
 FALLOUT = "fallout"  # tile.ext: 核の汚染の残り（1000 分の 1。半減期で減る。MI-46）
 POLLUTED = "polluted_turns"  # tile.ext: 肥沃度が下がるまでにたまった、汚染のあったターン数
+RAIN = "rain"  # island.ext: その年の雨の倍率 {"factor": 1000 分の 1, "turn": 引いたターン}
 FULL = 1000
 STRETCH = 1.5  # 肥沃度の点の間をならすと幅が狭まるので、真ん中から広げる倍率
 
@@ -180,3 +190,74 @@ def migrate(island: IslandState, config: GameConfig) -> None:
         island.ext[CLIMATE] = zone_of(island.wy, grid, config)
     begin_blend(island, config)
     island.log.append(LogEntry("nature_started", {"climate": climate_of(island)}))
+
+
+# --- 水（W-148）-----------------------------------------------------------------------
+
+
+def rainfall(defs: Defs, island: IslandState) -> float:
+    """気候帯の雨の多さの倍率（climate.yaml の rainfall。書かなければ 1）。"""
+    return float(_zone_spec(defs, island).get("rainfall", 1.0))
+
+
+def rain_year(island: IslandState) -> float:
+    """その年の雨のぶれの倍率（まだ引いていなければ 1）。"""
+    return island.ext.get(RAIN, {}).get("factor", FULL) / FULL
+
+
+def draw_rain(island: IslandState, config: GameConfig, rng: Any, turn: int) -> float:
+    """12月に、次の年の雨のぶれを引いて島に持たせる。倍率を返す（climate.rain の幅）。"""
+    spec = config.get("climate.rain")
+    value = min(spec["max"], max(spec["min"], rng.gauss(1.0, spec["sigma"])))
+    island.ext[RAIN] = {"factor": round(value * FULL), "turn": turn}
+    return value
+
+
+def water_spec(recipe: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """作り方の出力が川の水で決まるなら、その施設の水の決まり（facilities.yaml の water）。"""
+    return recipe.get("water") if (recipe.get("factors") or {}).get("water") else None
+
+
+def catchment(
+    island: IslandState, spec: Mapping[str, Any], x: int, y: int
+) -> dict[tuple[int, int], float]:
+    """(x, y) に水力発電所を置いたときの集水域: 周りのマスと、マスが集める水（山を 1 とする）。"""
+    radius, runoff = spec["radius"], spec["runoff"]
+    out: dict[tuple[int, int], float] = {}
+    for py in range(y - radius, y + radius + 1):
+        for px in range(x - radius, x + radius + 1):
+            if island.in_bounds(px, py):
+                weight = runoff.get(island.tile(px, py).terrain, 0.0)
+                if weight > 0:
+                    out[(px, py)] = weight
+    return out
+
+
+def water_share(island: IslandState, defs: Defs, spec: Mapping[str, Any], x: int, y: int) -> float:
+    """(x, y) の水力発電所が使える水の量（山のマス何個分か）。同じマスの水は、集水域の重なる
+    ほかの水力発電所（工事中も数える）と等分に分け合う。(x, y) に今ある施設は数えない。"""
+    from hakoniwa_core.economy import is_stopped  # economy は nature を使うので、ここで読む
+
+    mine = catchment(island, spec, x, y)
+    rivals = []
+    for f in island.facilities:
+        if f.x < 0 or f.y < 0 or (f.x, f.y) == (x, y) or is_stopped(f):
+            continue  # 閉鎖中・差し押さえ中の発電所は水を使わない
+        other = water_spec(defs.facilities[f.kind]["recipes"][f.recipe])
+        if other is not None:
+            rivals.append(catchment(island, other, f.x, f.y))
+    return sum(w / (1 + sum(1 for c in rivals if pos in c)) for pos, w in mine.items())
+
+
+def water_factor(
+    island: IslandState,
+    defs: Defs,
+    spec: Mapping[str, Any],
+    x: int,
+    y: int,
+    weather: bool = True,
+) -> float:
+    """(x, y) の水力発電所の出力の倍率（全力を 1 として 1 まで）。weather が偽なら、その年の
+    雨のぶれは見ない（建てられるかを決めるときと、画面の見込み）。"""
+    rain = rainfall(defs, island) * (rain_year(island) if weather else 1.0)
+    return min(1.0, water_share(island, defs, spec, x, y) * rain / spec["full"])

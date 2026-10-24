@@ -12,7 +12,8 @@ w はレシピの factors（infra・education）で、L は次のとおりです
 下げます（最低で infrastructure.pollution_floor）。
 
 フェーズ3-2 から、自然条件の係数も掛けます（hakoniwa_core/nature.py）。factors の climate は島の
-気候帯の産出の倍率、fertility は施設のマスの肥沃度で、どちらも 1 + w ×（値 − 1）です。
+気候帯の産出の倍率、fertility は施設のマスの肥沃度で、どちらも 1 + w ×（値 − 1）です。水力発電所は
+water（周りの山と森の集める水を近くの水力発電所と分け合った量。W-148）も同じ形で掛けます。
 
 フェーズ3-3 から、経験と集積の係数も掛けます（hakoniwa_core/economy/experience.py）。経験は作り方の
 施設の産業（industry）の島の累積で、集積は施設のマスの周りの同じ産業の施設の数で決まります。どちらも
@@ -96,6 +97,9 @@ def productivity(
     if weights.get("fertility") and island.in_bounds(x, y):
         rich = nature.fertility(island.tile(x, y)) / FULL
         value *= 1 + weights["fertility"] * (rich - 1)
+    water = nature.water_spec(recipe)
+    if water is not None and island.in_bounds(x, y):
+        value *= 1 + weights["water"] * (nature.water_factor(island, defs, water, x, y) - 1)
     if industry:
         value *= experience.factor(island, config, industry)
         value *= experience.cluster_factor(island, defs, config, recipe, x, y)

@@ -549,7 +549,15 @@ def placement_problem(
             return ("reason_recipe_required", {"facility": kind})
     if recipe not in recipes:
         return ("reason_unknown_recipe", {"facility": kind})
-    return recipe_problem(defs, island, kind, recipe)
+    problem = recipe_problem(defs, island, kind, recipe)
+    water = nature.water_spec(recipes[recipe])
+    if problem is None and water is not None:
+        # 水力発電所は、川の水が足りない場所には建てられない（その年の雨のぶれは見ない。W-148）
+        got = nature.water_factor(island, defs, water, x, y, weather=False)
+        if got < water["min"]:
+            args = {"facility": kind, "percent": round(got * 100), "min": round(water["min"] * 100)}
+            return ("reason_dry_site", args)
+    return problem
 
 
 def recipe_problem(

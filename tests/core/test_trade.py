@@ -610,3 +610,93 @@ def test_bloc_buyer_in_the_settlement_currency_pays_only_what_it_has(game, trade
     run(game, world, 6)
     assert inflated
     assert check(world) == []
+
+
+# --- W-140: 建国の瞬間に置く・商社が戻る道 ----------------------------------------------------
+
+
+def _market_island(game, seed=7):
+    from hakoniwa_core.state.generate import generate_world
+
+    world = generate_world(seed, 1, game.config, game.defs)
+    island = world.islands[1]
+    assert island.regime["economy"] == "market"
+    return world, island
+
+
+def test_open_for_business_places_port_and_trader_at_founding(game):
+    """プレイヤーの建国は、次の更新を待たずに港・海運業・商社を置く。更新の段は重ねて置かない。"""
+    from hakoniwa_core.founding import open_for_business
+
+    world, island = _market_island(game)
+    assert not started(island) and port_of(island, game.config) is None
+    open_for_business(island, game.defs, game.config, world.turn)
+    assert started(island)
+    assert port_of(island, game.config) is not None
+    assert shipping_of(island, game.config) is not None
+    assert len(traders_of(island, game.config)) == 1
+    before = sorted((f.kind, f.x, f.y) for f in island.facilities)
+    game.engine.run_turn(world)
+    after = sorted((f.kind, f.x, f.y) for f in island.facilities)
+    assert [f for f in after if f[0] in ("port", "trading")] == [
+        f for f in before if f[0] in ("port", "trading")
+    ]
+
+
+def test_refound_moves_the_turns_of_the_trade_setup(game):
+    import random
+
+    from hakoniwa_core.founding import found_island, open_for_business, refound
+    from hakoniwa_core.state.generate import random_plan
+    from hakoniwa_core.state.serialize import island_to_dict
+
+    land = {(x, y) for x in range(8, 24) for y in range(8, 24)}
+    plan = random_plan(random.Random(5), "T", game.config, game.defs, land, {"economy": "market"})
+    early = found_island(game.defs, game.config, plan, 1, 0, 0, turn=3)
+    open_for_business(early, game.defs, game.config, 3)
+    late = found_island(game.defs, game.config, plan, 1, 0, 0, turn=9)
+    open_for_business(late, game.defs, game.config, 9)
+    assert island_to_dict(late) != island_to_dict(early)
+    refound(late, 3)
+    assert island_to_dict(late) == island_to_dict(early)
+
+
+def _foreclose_all_traders(island, config, turn):
+    for f in traders_of(island, config):
+        f.economy["foreclosed"] = {"since": turn}
+
+
+def test_a_foreclosed_trader_does_not_keep_the_island_without_a_trader(game):
+    """倒産して差し押さえ中の商社が残っていても、entry_turns ターンたつと民間が新しい商社を開く。"""
+    from hakoniwa_core.trade import setup
+
+    world, island = _market_island(game)
+    game.engine.run_turn(world)
+    assert traders_of(island, game.config)
+    old = traders_of(island, game.config)[0]
+    _foreclose_all_traders(island, game.config, world.turn)
+    assert traders_of(island, game.config) == []
+    wait = game.config.get("trade.entry_turns")
+    first = world.turn + 1  # 動いている商社がいないと気づいたターンから数える
+    for turn in range(first, first + wait):
+        assert setup.entry(island, game.defs, game.config, False, turn) is None
+    opened = setup.entry(island, game.defs, game.config, False, first + wait)
+    assert opened is not None and opened is not old
+    assert traders_of(island, game.config) == [opened]
+
+
+def test_the_state_opens_a_trading_company_when_private_owners_cannot(game, monkeypatch):
+    """民間に開業の資金がないまま、さらに entry_turns ターンたつと、国が国営の商社を開く。"""
+    from hakoniwa_core.trade import setup
+
+    world, island = _market_island(game)
+    game.engine.run_turn(world)
+    _foreclose_all_traders(island, game.config, world.turn)
+    monkeypatch.setattr(setup, "owners_can_fund", lambda island, config: False)
+    wait = game.config.get("trade.entry_turns")
+    first = world.turn + 1
+    for turn in range(first, first + 2 * wait):
+        assert setup.entry(island, game.defs, game.config, False, turn) is None
+    opened = setup.entry(island, game.defs, game.config, False, first + 2 * wait)
+    assert opened is not None and opened.owner == "state"
+    assert any(e.kind == "trader_opened_state" for e in island.log)

@@ -1,9 +1,12 @@
-"""銅の鉱脈の置き方（設計書 15-military MI-60）。
+"""鉱脈の置き方（銅とウラン。設計書 15-military MI-60）。
 
 銅鉱石は建国のとき鉱業資源として選べますが（goods.yaml の mining）、選ばなかった島にも、現実の
 銅の産地が限られるのと同じに、一部の島に鉱脈を置きます。置くかは世界の種と島の番号だけで決まる
 乱数で、ターンや島の順番には左右されません。島ごとに 1 度だけ置き（版の印 island.ext["veins"]）、
 鉱業資源の上限（founding.max_resources）の外とします。経済のない島も対象です。
+
+軍事の部品ではなく島の自然条件（建国で選ぶ鉱業資源と同じ仲間）なので、nature.py や founding.py と
+並べて置いてあります（4-2 では銅を軍艦の材料に使うため military/ に置いたが、2026-10-25 に移した）。
 """
 
 from __future__ import annotations
@@ -20,9 +23,9 @@ RESOURCES = {1: ("copper_ore",), 2: ("uranium_ore",)}
 
 
 def place(island: IslandState, config: GameConfig, seed: int) -> list[str]:
-    """まだ鉱脈の版が古い島に、設定 military.veins の割合で鉱脈を置く。置いた資源を返す。"""
+    """まだ鉱脈の版が古い島に、設定 world.veins の割合で鉱脈を置く。置いた資源を返す。"""
     have = island.ext.get(KEY, 0)
-    shares = config.get("military.veins")
+    shares = config.get("world.veins")
     placed = []
     for version in range(have + 1, VERSION + 1):
         # 版 1 の乱数は 4-2 のまま（銅の結果を変えない）。版 2 からは版を乱数の種に足す

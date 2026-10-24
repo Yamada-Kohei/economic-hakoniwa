@@ -28,6 +28,7 @@ from hakoniwa_core.economy import (
     facility_entity,
     funds,
     household,
+    is_stopped,
     owner_entity,
 )
 from hakoniwa_core.economy.start import init_facility, invest
@@ -225,7 +226,9 @@ def entry(
         return None
     kind = config.get("trade.trader_facility")
     current = [f for f in island.facilities if f.kind == kind]
-    if not current:
+    # 倒産して差し押さえ中の商社は動いていないので、いないものとして開き直す（差し押さえ中のまま
+    # 次の商社が開かず、島の貿易が止まったまま戻らなかった。W-140）
+    if not any(f.built and not is_stopped(f) for f in current) and all(f.built for f in current):
         return _reopen(island, defs, config, turn)
     island_state(island).pop("trader_gone", None)
     limit = defs.facilities[kind].get("max_per_island")
@@ -259,7 +262,12 @@ def _reopen(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> F
     kind = config.get("trade.trader_facility")
     owner = _owner(defs, island, kind)
     if owner == OWNER_PRIVATE and not owners_can_fund(island, config):
-        return None
+        # 民間に商社を開く資金がないまま、さらに entry_turns ターンたったら、国が国営の貿易会社
+        # として開く（資金のない民間に代わる、現実の国営貿易会社。W-140。民間の資金が戻れば、
+        # 民間の商社が増える参入は entry の続きの条件で開く）
+        if turn - gone < 2 * config.get("trade.entry_turns"):
+            return None
+        owner = OWNER_STATE
     spot = _office_spot(island, defs, config)
     if spot is None:
         return None

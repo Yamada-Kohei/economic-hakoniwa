@@ -19,7 +19,8 @@
         "education": {"type": "number", "minimum": 0, "description": "島の教育水準の効き目の重み"},
         "pollution": {"type": "number", "minimum": 0, "maximum": 1, "description": "施設のマスの汚染1あたりに産出を下げる割合"},
         "climate": {"type": "number", "minimum": 0, "maximum": 1, "description": "島の気候帯の産出の倍率（climate.yaml）の効き目の重み（フェーズ3-2）"},
-        "fertility": {"type": "number", "minimum": 0, "maximum": 1, "description": "施設のマスの肥沃度の効き目の重み（フェーズ3-2）"}
+        "fertility": {"type": "number", "minimum": 0, "maximum": 1, "description": "施設のマスの肥沃度の効き目の重み（フェーズ3-2）"},
+        "water": {"type": "number", "minimum": 0, "maximum": 1, "description": "川の水の量（周りの山と森の集める水を、近くの水力発電所と分け合った量。game.yaml の power.hydro）の効き目の重み（W-148）"}
       }
     }
   },
@@ -35,6 +36,23 @@
       "description": "建てられる地形"
     },
     "coastal": {"type": "boolean", "description": "海か浅瀬に接したマスにだけ建てられる"},
+    "water": {
+      "type": "object",
+      "required": ["radius", "runoff", "full", "min"],
+      "additionalProperties": false,
+      "description": "川の水の量で出力が決まる施設（水力発電所。W-148）。作り方の factors に water の重みを書く",
+      "properties": {
+        "radius": {"type": "integer", "minimum": 1, "description": "集水域の半径（マス）"},
+        "runoff": {
+          "type": "object",
+          "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+          "additionalProperties": {"type": "number", "minimum": 0},
+          "description": "地形ごとに、マスが集める水の量（山を 1 とする）"
+        },
+        "full": {"type": "number", "exclusiveMinimum": 0, "description": "全力で動くのに要る水の量（山のマス何個分か）"},
+        "min": {"type": "number", "minimum": 0, "maximum": 1, "description": "見込める出力（全力を 1 として）がこれに届かない場所には建てられない"}
+      }
+    },
     "near_capital": {"type": "integer", "minimum": 0, "description": "首都のマスからこのマス数以内にだけ建てられる"},
     "max_per_island": {"type": "integer", "minimum": 1, "description": "1つの国が持てる数（工事中も数える）。書かなければ上限なし"},
     "buildable": {"type": "boolean", "description": "命令で建てられるか。false は自動で建つもの（町など）。書かなければ true"},
