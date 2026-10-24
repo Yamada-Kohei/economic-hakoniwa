@@ -213,3 +213,23 @@ def test_letter_pages(client, world):
     client.logout()
     assert client.get("/letters/")["Location"].startswith("/accounts/login/")
     assert "/letters/new/?to=" not in client.get(f"/islands/{b.id}/").content.decode()
+
+
+def test_arrival_is_written_to_the_recipients_log_for_the_owner_only(client, world):
+    """届いた公電は宛先の島のターンログに 1 行残り、持ち主にだけ見える（W-39）。"""
+    from server.turns.models import TurnLog
+    from server.web import display
+
+    (alice, _, _), (a, b, _) = _players(world)
+    world.turn = 5
+    world.save(update_fields=["turn"])
+    client.force_login(alice)
+    assert _send(client, b.id, subject="通商のご相談").status_code == 201
+    letter = Letter.objects.get()
+
+    logs = TurnLog.objects.filter(island=b, kind="letter_received")
+    assert [(x.turn, x.args["letter"]) for x in logs] == [(5, letter.id)]
+    assert not TurnLog.objects.filter(island=a, kind="letter_received").exists()
+    [entry] = display.log_entries(display.visible_logs(logs, True, b))
+    assert entry["text"] == f"{a.name}から公電「通商のご相談」が届きました"
+    assert not display.visible_logs(logs, False, b).exists()

@@ -44,6 +44,7 @@ from hakoniwa_core.trade import currency_labels
 from hakoniwa_core.units import BASIS, from_milli
 from server.economy.models import Account, FacilityBook, Loan, MarketRecord
 from server.game import get_game
+from server.letters.services import LETTER_LOG
 from server.world import models as m
 from server.world.repository import facility_from_row, island_from_row
 
@@ -1291,11 +1292,11 @@ def sees_facility(row, mine: bool, viewer: int | None) -> bool:
 
 
 def visible_logs(logs, mine: bool, island=None):
-    """ターンログの行のうち、見る人に見せるもの。軍の行（MI-55）は持ち主だけ。隠した施設のマス
+    """ターンログの行のうち、見る人に見せるもの。軍の行（MI-55）と届いた公電の行（W-39）は持ち主だけ。隠した施設のマス
     （MI-62）の行も持ち主だけ。"""
     if mine:
         return logs
-    logs = logs.exclude(kind__in=PRIVATE_LOGS)
+    logs = logs.exclude(kind__in=(*PRIVATE_LOGS, LETTER_LOG))
     if island is not None:
         for x, y in hidden_places(island):
             # x・y のキーが無い行は残す（キー無しは NULL になり、単純な exclude では消えてしまう）
