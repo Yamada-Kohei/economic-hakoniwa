@@ -431,6 +431,8 @@ def test_mcp_tools_play_by_the_same_rules(played):
     assert not error and "~ 海" in text and "@" in text
     text, _ = _tool(client, "guide", find="行政力", length=200)
     assert "行政力" in text and "offset=" in text
+    text, _ = _tool(client, "guide", which="hakoniwa", length=300)
+    assert "箱庭" in text and "[手引き 0〜" in text
     text, _ = _tool(client, "defs", section="orders", ids=["build"])
     assert list(json.loads(text)["orders"]) == ["build"]
     text, _ = _tool(client, "report", page="fiscal")

@@ -306,11 +306,22 @@ def test_island_pages_link_to_trade_and_fx(client, world):
 def test_help_explains_trade_and_fx(client, world):
     config = get_game().config
     html = client.get("/help/").content.decode()
-    assert "貿易と為替（フェーズ3-1）" in html
+    assert "<h2>貿易と為替</h2>" in html
     assert f"{config.get('foreign_merchant.turns')} ターンのあいだ" in html
     assert f"最後の {config.get('foreign_merchant.last_turns')} ターン" in html
     assert f"1ターンに {config.get('fx.band') * 100:g}% までしか動きません" in html
     assert "二国間契約の申し込み" in html  # 命令の表は定義データから
+
+
+def test_help_has_two_guides(client, world):
+    """ふつうの手引きと箱庭民向けの手引きがあり、互いにリンクし、更新の間隔が出る（W-149）。"""
+    config = get_game().config
+    hours = f"{config.get('turn.interval_minutes') / 60:g}"
+    general = client.get("/help/").content.decode()
+    hakoniwa = client.get("/help/hakoniwa/").content.decode()
+    assert "/help/hakoniwa/" in general
+    assert 'href="/help/"' in hakoniwa
+    assert f"{hours} 時間おき" in general and f"{hours} 時間おき" in hakoniwa
 
 
 # --- 命令の説明と統計の表示名 ---------------------------------------------------------------

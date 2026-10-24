@@ -492,8 +492,18 @@ def world_map(request):
 
 
 def help_page(request):
+    return render(request, "web/help.html", _help_context())
+
+
+def help_hakoniwa_page(request):
+    """箱庭を遊んだことのある人向けの手引き。数は同じ手引きの変数を使う。"""
+    return render(request, "web/help_hakoniwa.html", _help_context())
+
+
+def _help_context() -> dict:
     game = get_game()
     defs = game.defs
+    interval_minutes = game.config.get("turn.interval_minutes")
     facilities = [
         {
             "name": defs.name("facilities", fid),
@@ -520,44 +530,41 @@ def help_page(request):
         {"name": defs.name("orders", oid), "cost": o["admin_cost"]}
         for oid, o in defs.orders.items()
     ]
-    return render(
-        request,
-        "web/help.html",
-        {
-            "facilities": facilities,
-            "orders": orders,
-            "commute": game.config.get("labor.commute_radius"),
-            "base_admin": game.config.get("orders.base_admin_power"),
-            "max_admin": game.config.get("orders.max_admin_power"),
-            "admin_per_office": _admin_people(defs),
-            # 金融と企業（フェーズ2-2）の説明に出す数
-            "arrears_limit": game.config.get("loans.arrears_limit"),
-            "foreclosure_turns": game.config.get("firms.foreclosure_turns"),
-            "cb_lock_turns": game.config.get("central_bank.switch_lock_turns"),
-            # 国債の債務不履行の罰
-            "default_premium": f"{game.config.get('bonds.default_premium') * 100:g}",
-            "default_decay": game.config.get("bonds.default_decay_turns"),
-            "default_exclusion": game.config.get("bonds.default_exclusion_turns"),
-            "default_crunch": game.config.get("banking.default_crunch_turns"),
-            "settlements": [
-                {
-                    "name": defs.name("settlements", sid),
-                    "capacity": s["capacity"],
-                    "materials": display.goods_list(s.get("materials", {})),
-                }
-                for sid, s in ((sid, defs.settlements[sid]) for sid in defs.settlement_levels())
-            ],
-            "units": [
-                {"name": defs.name("goods", g), "unit": defs.unit_name(g)}
-                for g in defs.goods
-                if defs.unit_name(g)
-            ],
-            "trade": _trade_help(game),
-            "diplomacy": _diplomacy_help(game),
-            **_per_person_help(game),
-            **_goods_help(game),
-        },
-    )
+    return {
+        "facilities": facilities,
+        "orders": orders,
+        "commute": game.config.get("labor.commute_radius"),
+        "interval_hours": f"{interval_minutes / 60:g}" if interval_minutes else "",
+        "base_admin": game.config.get("orders.base_admin_power"),
+        "max_admin": game.config.get("orders.max_admin_power"),
+        "admin_per_office": _admin_people(defs),
+        # 金融と企業（フェーズ2-2）の説明に出す数
+        "arrears_limit": game.config.get("loans.arrears_limit"),
+        "foreclosure_turns": game.config.get("firms.foreclosure_turns"),
+        "cb_lock_turns": game.config.get("central_bank.switch_lock_turns"),
+        # 国債の債務不履行の罰
+        "default_premium": f"{game.config.get('bonds.default_premium') * 100:g}",
+        "default_decay": game.config.get("bonds.default_decay_turns"),
+        "default_exclusion": game.config.get("bonds.default_exclusion_turns"),
+        "default_crunch": game.config.get("banking.default_crunch_turns"),
+        "settlements": [
+            {
+                "name": defs.name("settlements", sid),
+                "capacity": s["capacity"],
+                "materials": display.goods_list(s.get("materials", {})),
+            }
+            for sid, s in ((sid, defs.settlements[sid]) for sid in defs.settlement_levels())
+        ],
+        "units": [
+            {"name": defs.name("goods", g), "unit": defs.unit_name(g)}
+            for g in defs.goods
+            if defs.unit_name(g)
+        ],
+        "trade": _trade_help(game),
+        "diplomacy": _diplomacy_help(game),
+        **_per_person_help(game),
+        **_goods_help(game),
+    }
 
 
 def _per_person_help(game) -> dict:

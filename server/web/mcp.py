@@ -465,8 +465,10 @@ def _api_get(request, args):
 
 
 def _guide(request, args):
-    """手引き（/help/）を文字にして、find の見出しから、または offset から length 字。"""
-    page = call_ok(request, "GET", "/help/")
+    """手引きを文字にして、find の見出しから、または offset から length 字（which で2種を選ぶ）。"""
+    page = call_ok(
+        request, "GET", "/help/hakoniwa/" if args.get("which") == "hakoniwa" else "/help/"
+    )
     text = _html_text(page)
     start = int(args.get("offset") or 0)
     if args.get("find"):
@@ -719,9 +721,15 @@ TOOLS = [
         "guide",
         "手引き",
         "ゲームの中の手引き（/help/）を文字で読む。遊び始める前に全部読む。"
-        "find で見出しや言葉から、offset で続きから読める。",
+        "find で見出しや言葉から、offset で続きから読める。which=hakoniwa なら、"
+        "従来の箱庭を遊んだ人向けの手引き（/help/hakoniwa/）。",
         _guide,
         {
+            "which": {
+                "type": "string",
+                "enum": ["general", "hakoniwa"],
+                "description": "general（既定）はふつうの手引き、hakoniwa は従来の箱庭との違い",
+            },
             "find": {"type": "string", "description": "この言葉から読み始める"},
             "offset": {"type": "integer", "minimum": 0, "description": "読み始める字数"},
             "length": {"type": "integer", "minimum": 1, "description": "読む字数（既定 8000）"},
@@ -1201,6 +1209,7 @@ SCREENS: dict[str, tuple[str, ...]] = {
     ),  # 世界の貿易は api_get /api/world/trade、艦隊は /api/world/fleets
     "rankings": ("rankings",),
     "help": ("guide",),
+    "help_hakoniwa": ("guide",),
     "island": ("summary", "map", "tile"),  # 地図の重ね表示は map の overlay
     "turn_log": ("turn_log", "changes"),
     "island_economy": ("report", "stats"),
