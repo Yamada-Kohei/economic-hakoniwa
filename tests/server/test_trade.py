@@ -313,6 +313,17 @@ def test_help_explains_trade_and_fx(client, world):
     assert "二国間契約の申し込み" in html  # 命令の表は定義データから
 
 
+def test_help_has_two_guides(client, world):
+    """ふつうの手引きと箱庭民向けの手引きがあり、互いにリンクし、更新の間隔が出る（W-149）。"""
+    config = get_game().config
+    hours = f"{config.get('turn.interval_minutes') / 60:g}"
+    general = client.get("/help/").content.decode()
+    hakoniwa = client.get("/help/hakoniwa/").content.decode()
+    assert "/help/hakoniwa/" in general
+    assert 'href="/help/"' in hakoniwa
+    assert f"{hours} 時間おき" in general and f"{hours} 時間おき" in hakoniwa
+
+
 # --- 命令の説明と統計の表示名 ---------------------------------------------------------------
 
 ISLAND_KEYS = ("currency", "approve", "to", "partner")  # 命令の中身のうち、島の番号を持つ項目

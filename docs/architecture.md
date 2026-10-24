@@ -113,6 +113,7 @@ DB の表は、マス（`Tile`）・施設（`Facility`）・在庫（`Stock`、
 | `/islands/<id>/flag` | 国旗の画像（上げた PNG。上げていない・管理者が隠した国は仮の旗の SVG） |
 | `/letters/` | 外交: 届いた公電・送った公電（`sent/`）・1通（`<番号>/`）・送る（`new/`。`?to=島の番号`、返電は `?re=公電の番号`）。島を持つ人だけ |
 | `/help/` | 手引き（施設と命令の表は定義データから作る） |
+| `/help/hakoniwa/` | 従来の箱庭を遊んだ人向けの手引き（違いと読み替え。MCP の guide は which=hakoniwa） |
 | `/accounts/keys/` | AI 用の鍵を作る・取り消す（見出しの自分の名前から開く。鍵は作ったときに1度だけ見せる） |
 
 画面の JavaScript は `server/static/js/` にあり、ビルドなしの ES モジュールです。
