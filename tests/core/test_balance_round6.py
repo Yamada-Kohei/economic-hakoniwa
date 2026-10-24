@@ -327,7 +327,11 @@ def test_automobile_needs_the_parts_of_a_real_car(game):
     }
     assert set(parts["default"]["inputs"]) == set(parts["aluminium"]["inputs"]) - {"aluminium"}
     cars = game.defs.facilities["automobile_plant"]["recipes"]
-    assert set(cars) == {"default", "military_vehicle"}  # 軍用車両はフェーズ4-2 の作り方
+    assert set(cars) == {
+        "default",
+        "automated",
+        "military_vehicle",
+    }  # 軍用車両はフェーズ4-2 の作り方
     assert set(cars["default"]["inputs"]) == {"auto_parts", "steel", "chemicals", "electricity"}
     steel = parts["default"]["inputs"]["steel"] + cars["default"]["inputs"]["steel"]
     assert steel == 5400  # 回6 の1ターン全力の 5.4（1000 分の 1）

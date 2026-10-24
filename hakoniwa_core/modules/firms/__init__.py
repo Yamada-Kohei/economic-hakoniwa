@@ -69,6 +69,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, politics, stock, trade
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
+from hakoniwa_core.defs.kinds import AUTOMATED
 from hakoniwa_core.economy import (
     OWNERS,
     STATE_FACILITIES,
@@ -560,8 +561,8 @@ class EntryExit(IslandStage):
             for rname, recipe in sorted(fdef["recipes"].items()):
                 if fac.recipe_problem(defs, island, kind, rname) is not None:
                     continue  # 鉱業資源がないか、気候で使えない（フェーズ3-2）
-                if not recipe["outputs"] or busy & set(recipe["outputs"]):
-                    continue
+                if rname == AUTOMATED or not recipe["outputs"] or busy & set(recipe["outputs"]):
+                    continue  # 電子機器を使う作り方は、建ててから見直しで選ぶ
                 cost = unit_cost(defs, config, kind, recipe, prices, wage)
                 fill = self._fill(recipe, shortages, demand, capacity, prices, cost, settings)
                 if fill <= 0:
@@ -780,6 +781,8 @@ class EntryExit(IslandStage):
                 if not private_allowed(defs, island, kind):
                     continue
                 for rname, recipe in sorted(fdef["recipes"].items()):
+                    if rname == AUTOMATED:  # 参入は基本の作り方で。電子機器は建ててから見直す
+                        continue
                     if good not in recipe["outputs"] or not set(recipe["inputs"]) <= supplied:
                         continue
                     if fac.recipe_problem(defs, island, kind, rname) is not None:

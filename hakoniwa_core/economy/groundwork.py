@@ -112,7 +112,7 @@ def _school_budget(island: IslandState, defs: Defs, config: GameConfig, f: Facil
     """学校を全力で動かす年の費用（教員の賃金と教材）× education.start_budget_years。"""
     wage = island.economy.average_wage or config.get("labor.initial_wage")
     prices = island.economy.prices
-    turn = fac.workers_needed(defs, f.kind) * wage
+    turn = fac.workers_of(defs, f) * wage
     for good, qty in fac.recipe_of(defs, f)["inputs"].items():
         turn += money_of(prices.get(good, 0), qty)
     return round_money(turn * YEAR * config.get("education.start_budget_years"))

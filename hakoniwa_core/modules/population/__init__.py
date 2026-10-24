@@ -342,7 +342,7 @@ def vacancies_of(
     """
     found = []
     for f in island.facilities:
-        if not fac.located(f) or (f.built and fac.workers_needed(defs, f.kind) <= 0):
+        if not fac.located(f) or (f.built and fac.workers_of(defs, f) <= 0):
             continue
         want = f.economy.get("wanted", fac.labor_demand(defs, f, turn))
         missing = want - f.workers

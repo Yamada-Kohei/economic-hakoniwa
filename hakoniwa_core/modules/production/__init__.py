@@ -39,6 +39,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, ledger, nature, stock
 from hakoniwa_core.dates import is_year_end
 from hakoniwa_core.defs import Defs
+from hakoniwa_core.defs.kinds import ELECTRONICS, OPTIONAL_RECIPES
 from hakoniwa_core.economy import (
     Payer,
     banks,
@@ -156,6 +157,8 @@ class Production(IslandStage):
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
         defs, config = ctx.defs, ctx.config
         power = config.get("power.good")
+        for f in island.facilities:
+            self._fall_back(island, f, ctx)
         for f in island.facilities:  # このターンに売りに出した量と売れた量（電力とこの後の市場）
             f.economy.pop("sales", None)
             f.economy.pop("late_sales", None)
@@ -228,6 +231,34 @@ class Production(IslandStage):
                     island.log.append(LogEntry("experience_faded", {"industry": industry}))
         for industry, (amount, _) in sorted(experience.table(island).items()):
             island.stats[f"experience.{industry}"] = from_milli(amount)
+
+    @staticmethod
+    def _fall_back(island: IslandState, f: Facility, ctx: StageContext) -> None:
+        """電子機器を使う作り方（automated・digital。MI-43）で、電子機器が手元にないまま
+        automation.grace_turns ターンたったら、基本の作り方に戻す。国営は市場の見直しで戻らず、
+        人手を減らしたまま電子機器が買えずに止まる。民営の見直しは平均の値段で見るので戻りが遅い。"""
+        if f.recipe not in OPTIONAL_RECIPES or not f.built:
+            return
+        if ctx.turn - f.ext.get(fac.RECIPE_CHANGED, -(10**9)) < ctx.config.get(
+            "automation.grace_turns"
+        ):
+            return
+        if stock.total(f.stock, ELECTRONICS) > 0:
+            return
+        fdef = ctx.defs.facilities[f.kind]
+        base = fdef.get("automation", {}).get("from", "default")
+        fac.switch_recipe(ctx.defs, f, base if base in fdef["recipes"] else "default", ctx.turn)
+        island.log.append(
+            LogEntry(
+                "recipe_fell_back",
+                {
+                    "x": f.x,
+                    "y": f.y,
+                    "facility": ctx.defs.name("facilities", f.kind),
+                    "recipe": ctx.defs.recipe_name(f.kind, f.recipe),
+                },
+            )
+        )
 
     @staticmethod
     def _operates(f: Facility, ctx: StageContext) -> bool:

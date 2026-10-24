@@ -62,7 +62,8 @@ def school_seats(island: IslandState, ctx: StageContext) -> tuple[float, float]:
         spec = ctx.defs.facilities[f.kind].get("education")
         if not spec or not f.built:
             continue
-        rate = f.operating_rate / FULL
+        # 教材に電子機器を使う作り方は、教員 1 人あたりの育ちが上がる（MI-43）
+        rate = f.operating_rate / FULL * fac.recipe_of(ctx.defs, f).get("education_scale", 1.0)
         seats += spec.get("capacity", 0) * rate
         trained += spec.get("engineers", 0) * rate
     return seats, trained

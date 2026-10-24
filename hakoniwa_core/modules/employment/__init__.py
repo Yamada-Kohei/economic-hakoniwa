@@ -216,7 +216,7 @@ class Employment(IslandStage):
             wanted[f.id] = want + unpaid[f.id]
             seats[f.id] = 0
             if engineers:
-                need = fac.workers_needed(defs, f.kind)
+                need = fac.workers_of(defs, f)
                 seats[f.id] = engineers * want // need
             if seats[f.id]:
                 f.economy["engineer_wage"] = fac.engineer_wage_of(config, f, wage)
@@ -421,7 +421,7 @@ class Employment(IslandStage):
         chosen.sort(key=lambda f: (-fac.priority_of(defs, config, f), f.id))
         for f in chosen:
             hired = sum(staff[f.id].values()) + engineers.get(f.id, 0) + spare.get(f.id, 0)
-            room = fac.workers_needed(defs, f.kind) - hired
+            room = fac.workers_of(defs, f) - hired
             if room <= 0:
                 continue
             payer = payer_of(defs, config, f)
@@ -462,7 +462,7 @@ class Employment(IslandStage):
         if engineers <= 0:
             return 0, 0
         extra = max(0, fac.engineer_wage_of(ctx.config, f, wage) - wage)
-        return engineers, -(-extra * engineers // fac.workers_needed(defs, f.kind))
+        return engineers, -(-extra * engineers // fac.workers_of(defs, f))
 
     def _assign_engineers(
         self,
@@ -578,7 +578,7 @@ class Employment(IslandStage):
             return 0
         power = ctx.config.get("power.good")
         use = fac.recipe_of(ctx.defs, f)["inputs"].get(power, 0)
-        workers = fac.workers_needed(ctx.defs, f.kind)
+        workers = fac.workers_of(ctx.defs, f)
         if not use or not workers:
             return 0
         price = island.economy.prices.get(power, 0)

@@ -146,6 +146,7 @@ steel_mill:
   terrain: [plain]
   construction: {turns: 6, labor: 800, materials: {building_materials: 30, machinery: 5}}
   workers: {general: 1900, engineer: 100}
+  automation: {labor: 0.7, electronics: 0.23}   # 電子機器を使う作り方（フェーズ4-4。MI-43）
   pollution: {amount: 8, radius: 2}
   factors: {infra: 0.8, education: 0.4}
   recipes:
@@ -160,6 +161,7 @@ building_materials_plant:
   terrain: [plain]
   construction: {turns: 4, labor: 500, materials: {wood: 25}}
   workers: 1000
+  automation: {from: stone, labor: 0.7, electronics: 0.121}   # 電子機器を使う作り方（フェーズ4-4。MI-43）
   pollution: {amount: 3, radius: 1}
   factors: {infra: 0.6, education: 0.3}
   recipes:
@@ -177,6 +179,7 @@ machinery_plant:
   terrain: [plain]
   construction: {turns: 6, labor: 800, materials: {building_materials: 30, steel: 10}}
   workers: {general: 1350, engineer: 150}
+  automation: {labor: 0.65, electronics: 0.191}   # 電子機器を使う作り方（フェーズ4-4。MI-43）
   pollution: {amount: 3, radius: 1}
   factors: {infra: 0.5, education: 0.8}
   recipes:
@@ -191,6 +194,7 @@ food_factory:
   terrain: [plain]
   construction: {turns: 3, labor: 400, materials: {building_materials: 10}}
   workers: 800
+  automation: {labor: 0.7, electronics: 0.097}   # 電子機器を使う作り方（フェーズ4-4。MI-43）
   priority: 6
   factors: {infra: 0.5, education: 0.3}
   recipes:
@@ -236,6 +240,7 @@ consumer_goods_factory:
   terrain: [plain]
   construction: {turns: 4, labor: 500, materials: {building_materials: 20, machinery: 5}}
   workers: {general: 950, engineer: 50}
+  automation: {labor: 0.65, electronics: 0.134}   # 電子機器を使う作り方（フェーズ4-4。MI-43）
   pollution: {amount: 2, radius: 1}
   factors: {infra: 0.5, education: 0.5}
   recipes:
@@ -259,6 +264,7 @@ refinery:
   terrain: [plain]
   construction: {turns: 6, labor: 700, materials: {building_materials: 30, steel: 10, machinery: 3}}
   workers: {general: 550, engineer: 70}
+  automation: {labor: 0.7, electronics: 0.067}   # 電子機器を使う作り方（フェーズ4-4。MI-43）
   pollution: {amount: 6, radius: 2}
   factors: {infra: 0.6, education: 0.5}
   recipes:
@@ -274,6 +280,7 @@ aluminium_smelter:
   terrain: [plain]
   construction: {turns: 6, labor: 600, materials: {building_materials: 30, steel: 10, machinery: 3}}
   workers: {general: 450, engineer: 50}
+  automation: {labor: 0.7, electronics: 0.055}   # 電子機器を使う作り方（フェーズ4-4。MI-43）
   pollution: {amount: 4, radius: 1}
   factors: {infra: 0.6, education: 0.5}
   recipes:
@@ -291,6 +298,7 @@ copper_smelter:
   terrain: [plain]
   construction: {turns: 5, labor: 600, materials: {building_materials: 25, steel: 10, machinery: 3}}
   workers: {general: 270, engineer: 30}
+  automation: {labor: 0.7, electronics: 0.033}   # 電子機器を使う作り方（フェーズ4-4。MI-43）
   pollution: {amount: 4, radius: 1}
   factors: {infra: 0.6, education: 0.5}
   recipes:
@@ -374,6 +382,7 @@ textile_mill:
   terrain: [plain]
   construction: {turns: 3, labor: 400, materials: {building_materials: 15, machinery: 1}}
   workers: 1500
+  automation: {labor: 0.6, electronics: 0.242}   # 電子機器を使う作り方（フェーズ4-4。MI-43）
   pollution: {amount: 1, radius: 1}
   factors: {infra: 0.5, education: 0.2}
   recipes:
@@ -408,6 +417,7 @@ auto_parts_plant:
   terrain: [plain]
   construction: {turns: 5, labor: 600, materials: {building_materials: 25, steel: 10, machinery: 6}}
   workers: {general: 1250, engineer: 130}
+  automation: {labor: 0.65, electronics: 0.177}   # 電子機器を使う作り方（フェーズ4-4。MI-43）
   pollution: {amount: 2, radius: 1}
   factors: {infra: 0.7, education: 0.7}
   recipes:
@@ -429,6 +439,7 @@ automobile_plant:
   terrain: [plain]
   construction: {turns: 8, labor: 1000, materials: {building_materials: 40, steel: 20, machinery: 10}}
   workers: {general: 550, engineer: 70}
+  automation: {labor: 0.6, electronics: 0.089}   # 電子機器を使う作り方（フェーズ4-4。MI-43）
   pollution: {amount: 3, radius: 1}
   factors: {infra: 0.8, education: 0.8}
   recipes:
@@ -568,6 +579,10 @@ school:
   recipes:
     default:
       inputs: {consumer_goods: 0.1}   # 教材（教員の賃金の2割ほど）
+    # 教材に電子機器を足す（フェーズ4-4。MI-43）: 教員 1 人あたりの育ちが 2 割上がる
+    digital:
+      inputs: {consumer_goods: 0.1, electronics: 0.04}
+      education_scale: 1.2
   sprite: school
 
 university:
@@ -582,6 +597,9 @@ university:
   recipes:
     default:
       inputs: {consumer_goods: 0.3}
+    digital:
+      inputs: {consumer_goods: 0.3, electronics: 0.1}
+      education_scale: 1.2
   sprite: university
 
 # 市中銀行。オフィス街のマスに入ります。フェーズ2-1 は建国のときに島に1つ置き、建設の命令はフェーズ2-2 から。
@@ -642,6 +660,7 @@ shipyard:
   coastal: true
   construction: {turns: 5, labor: 600, materials: {building_materials: 25, steel: 10, machinery: 3}}
   workers: {general: 380, engineer: 20}
+  automation: {labor: 0.65, electronics: 0.054}   # 電子機器を使う作り方（フェーズ4-4。MI-43）
   pollution: {amount: 2, radius: 1}
   factors: {infra: 0.5, education: 0.5}
   recipes:

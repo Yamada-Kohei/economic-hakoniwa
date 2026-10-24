@@ -247,6 +247,10 @@ def _facility_def(fid: str, f: Any) -> dict[str, Any]:
                 "inputs": _shown_amounts(r["inputs"]),
                 "outputs": _shown_amounts(r["outputs"]),
                 "requires_resource": r.get("requires_resource"),
+                # 電子機器を使う作り方（MI-43）は少ない人手で同じだけ作り、学校は育ちが上がる
+                "labor": r.get("labor", 1.0),
+                "workers": fac.workers_needed(d, fid, rid),
+                **({"education_scale": r["education_scale"]} if "education_scale" in r else {}),
             }
             for rid, r in f["recipes"].items()
         },

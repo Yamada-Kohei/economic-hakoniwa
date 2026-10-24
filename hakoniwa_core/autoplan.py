@@ -93,6 +93,7 @@ from hakoniwa_core import infra, ledger, nature, stock, trade
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
+from hakoniwa_core.defs.kinds import AUTOMATED
 from hakoniwa_core.economy import arrears, equipment, needs, services
 from hakoniwa_core.economy.prices import initial_prices, unit_cost
 from hakoniwa_core.geo import components, distance, shortest_path, within
@@ -505,7 +506,7 @@ def _education_cost(island: IslandState, defs: Defs, config: GameConfig) -> int:
     for f in island.facilities:
         if not defs.facilities[f.kind].get("education"):
             continue
-        per_turn += fac.workers_needed(defs, f.kind) * wage
+        per_turn += fac.workers_of(defs, f) * wage
         for good, qty in fac.recipe_of(defs, f)["inputs"].items():
             per_turn += money_of(int(island.economy.prices.get(good, 0) * band), qty)
     return int(per_turn * TURNS_PER_YEAR * EDUCATION_MARGIN)
@@ -631,6 +632,10 @@ def _producers(
         if fdef.get("buildable") is False:
             continue
         for rname, recipe in fdef["recipes"].items():
+            if (
+                rname == AUTOMATED
+            ):  # 標準の計画は電子機器の供給を見ない。自動化は民間の見直しに任せる
+                continue
             if good in recipe["outputs"] and _feasible(defs, island, kind, rname, traded):
                 inside = _feasible(defs, island, kind, rname)  # 輸入に頼らない作り方を先に
                 cost = unit_cost(defs, config, kind, recipe, prices, wage)
@@ -651,6 +656,8 @@ def _users(
         if fdef.get("buildable") is False:
             continue
         for rname, recipe in fdef["recipes"].items():
+            if rname == AUTOMATED:
+                continue
             if (
                 good in recipe["inputs"]
                 and power not in recipe["outputs"]
