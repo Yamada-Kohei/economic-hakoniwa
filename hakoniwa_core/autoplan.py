@@ -1344,8 +1344,11 @@ def plan_war(
         island = world.islands[i]
         if not island.has_economy:
             continue
-        if not (war.open_wars_of(world, i) or civil_war.active(world, i)):
-            continue  # 反乱軍が立ち上がった島も守る（MI-40）
+        if not (
+            war.open_wars_of(world, i)
+            or civil_war.alarmed(world, island, config.get("military.civil_war.trigger_turns"))
+        ):
+            continue  # 反乱の前触れが続く島と内戦の島も備える（MI-40）
         if any(o.status == ORDER_PENDING and o.kind in WAR_ORDERS for o in island.orders):
             continue  # 前の手がまだ済んでいない（行政力が足りず繰り越したときなど）
         for t in treaties.treaties(world):

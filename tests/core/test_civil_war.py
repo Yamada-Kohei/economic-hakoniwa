@@ -347,3 +347,51 @@ def test_standard_plan_defends_an_island_with_rebels_only(game, world, still):
     plans = plan_war(world, game.defs, game.config)
     assert set(plans) == {1}
     assert plans[1][0][0] in ("build", "set_defense", "recruit", "form_unit")
+
+
+def test_routed_rebels_do_not_return_at_once(game, world, still):
+    """反乱軍が尽きたときも、次の反乱まで間を空ける（追い払うたびに7ターンで再び立ち上がらない）。"""
+    island = raise_rebels(game, world)
+    now = world.turn + 20
+    for g in rebels(world):  # 長引いて最後の兵が逃げる
+        g["soldiers"] = 1
+        g["since"] = now - game.config.get("military.civil_war.drag_turns")
+    unrest(island)
+    civil_war.run(world, ctx_of(game, world, now))
+    assert not rebels(world)
+    state = civil_war.state_of(island)
+    assert state["cooldown"] == now + game.config.get("military.civil_war.cooldown")
+    assert logs(world, 1, "rebellion_ended")
+    for i in range(1, game.config.get("military.civil_war.cooldown")):
+        unrest(island)
+        civil_war.run(world, ctx_of(game, world, now + i))
+    assert not rebels(world) and state["alarm"] == 0  # 間は前触れを数えない
+
+
+def test_revolution_gives_a_longer_quiet_time_than_a_defeat(game, world):
+    cfg = game.config.get("military.civil_war")
+    assert cfg["revolution_cooldown"] > cfg["cooldown"] > 0
+
+
+def test_rebels_leave_a_tile_a_foreign_army_occupies(game, world, still):
+    island = raise_rebels(game, world)
+    [group] = rebels(world)
+    tile = empty_plain(island)
+    tile.population = 50
+    group["x"], group["y"] = tile.x, tile.y
+    tile.ext["occupied"] = {"by": 2, "turn": 1}
+    civil_war._hold(world, ctx_of(game, world), island, group)
+    assert tile.ext["occupied"]["by"] == 2
+
+
+def test_standard_plan_prepares_once_unrest_has_lasted(game, world):
+    from hakoniwa_core.autoplan import plan_war
+
+    island = world.islands[1]
+    assert plan_war(world, game.defs, game.config) == {}
+    half = game.config.get("military.civil_war.trigger_turns") // 2
+    for i in range(half):
+        unrest(island)
+        civil_war.run(world, ctx_of(game, world, i + 1))
+    assert not rebels(world)
+    assert set(plan_war(world, game.defs, game.config)) == {1}

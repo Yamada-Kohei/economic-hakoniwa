@@ -832,6 +832,7 @@ reason_no_reselect: "体制を選び直せるのは、降伏で体制が倒れ�
 rebellion_started: "({x}, {y}) の町で反乱が起きました。失業者と貧しい人々 {count:,} 人が立ち上がり、首都へ向かいます"
 rebellion_ended: "反乱が終わりました（{why}）。残った兵 {count:,} 人は家に帰りました"
 civil_war_end_calm: "政情が落ち着きました"
+civil_war_end_routed: "反乱軍が尽きました"
 revolution: "反乱軍が首都を落とし、体制が倒れました。混乱期間に入ります。体制を選び直してください（決めない間は今の体制のままです）"
 tile_rebel_held: "({x}, {y}) が反乱軍に占領されました。施設は止まり、在庫は取り立てられます"
 tile_rebel_lifted: "({x}, {y}) の反乱軍の占領が解けました"

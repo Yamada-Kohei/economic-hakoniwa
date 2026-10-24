@@ -72,6 +72,11 @@ def state_of(island: IslandState) -> dict[str, Any]:
     return state
 
 
+def alarmed(world: WorldState, island: IslandState, trigger_turns: int) -> bool:
+    """島で内戦が起きているか、反乱の前触れが立ち上がりの半分のターン続いているか（標準の計画が備える）。"""
+    return active(world, island.id) or state_of(island)["alarm"] >= max(1, trigger_turns // 2)
+
+
 def is_rebel_tile(tile: Any) -> bool:
     held = tile.ext.get("occupied")
     return bool(held) and held.get("by") == REBELS
@@ -114,10 +119,24 @@ def run(world: WorldState, ctx: StageContext) -> None:
             _recruit(world, ctx, island, g)
             _eat(world, ctx, island, g)
         _lift(world, ctx, island)
+        if active(world, island_id):
+            _drag(world, ctx, island)
         if not active(world, island_id):
+            _settle(ctx, island)  # 追い払った・飢えた・逃げ尽きたときも、次の反乱まで間を空ける
             continue
-        _drag(world, ctx, island)
         _write_stats(world, island)
+
+
+def _settle(ctx: StageContext, island: IslandState) -> None:
+    """最後の反乱軍がいなくなった島の後始末（鎮まった・首都が落ちたときは済んでいる）。"""
+    cfg = ctx.config.get("military.civil_war")
+    state = state_of(island)
+    if state["cooldown"] > ctx.turn:
+        return
+    state["alarm"] = 0
+    state["calm"] = 0
+    state["cooldown"] = ctx.turn + cfg["cooldown"]
+    island.log.append(LogEntry("rebellion_ended", {"why": "civil_war_end_routed", "count": 0}))
 
 
 def _write_stats(world: WorldState, island: IslandState) -> None:
@@ -137,7 +156,9 @@ def _watch(world: WorldState, ctx: StageContext, island: IslandState) -> None:
     state = state_of(island)
     if not active(world, island.id):
         state["calm"] = 0
-        if pol.get("level") == politics.REBELLION:
+        if ctx.turn < state["cooldown"]:
+            state["alarm"] = 0  # 鎮まった後・体制が替わった後の間は、前触れを数えない
+        elif pol.get("level") == politics.REBELLION:
             state["alarm"] += 1
         else:
             state["alarm"] = 0
@@ -186,6 +207,7 @@ def _release_all(world: WorldState, island: IslandState) -> None:
     for tile in island.tiles:
         if is_rebel_tile(tile):
             del tile.ext["occupied"]
+            tile.ext.pop("seized", None)  # 兵舎の武器庫は、次の反乱でまた奪われうる
 
 
 # --- 立ち上がり -----------------------------------------------------------------------------
@@ -321,12 +343,14 @@ def _blend(old: int, old_n: int, new: int, new_n: int) -> int:
 def _defenders(
     world: WorldState, ctx: StageContext, island: IslandState, x: int, y: int
 ) -> list[dict[str, Any]]:
-    """マス (x, y) で反乱軍と戦う政府の側（政府の部隊と、守る警察）。"""
+    """マス (x, y) で反乱軍と戦う政府の側（政府の部隊と、守る警察）。部隊は defend_radius マス以内に
+    いれば駆けつける（兵舎のそばの部隊が、首都の守りに加わる）。"""
+    reach = ctx.config.get("military.civil_war.defend_radius")
     units = [
         u
         for u in army.on_land(world, island.id)
         if u["owner"] == island.id
-        and (u["x"], u["y"]) == (x, y)
+        and _distance((u["x"], u["y"]), (x, y)) <= reach
         and u["status"] == army.READY
         and u["soldiers"] > 0
     ]
@@ -498,6 +522,9 @@ def _hold(world: WorldState, ctx: StageContext, island: IslandState, g: dict[str
     tile = army.tile_at(island, g["x"], g["y"])
     if tile is None or _defenders(world, ctx, island, g["x"], g["y"]):
         return
+    held = tile.ext.get("occupied")
+    if held and held.get("by") != REBELS:
+        return  # 外国の軍が占領しているマスは、反乱軍が上書きしない
     if (tile.x, tile.y) == island.capital:
         _overthrow(world, ctx, island, g)
         return
@@ -614,4 +641,4 @@ def _overthrow(
     state = state_of(island)
     state["alarm"] = 0
     state["calm"] = 0
-    state["cooldown"] = ctx.turn + cfg["cooldown"]
+    state["cooldown"] = ctx.turn + cfg["revolution_cooldown"]
