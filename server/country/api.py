@@ -133,3 +133,18 @@ def note(request, island_id: int):
     except services.CountryError as e:
         return _error(e.text, e.status)
     return _json({"id": n.id, "turn": n.turn, "text": n.text}, status=201)
+
+
+@require_http_methods(["GET", "PUT"])
+def diary(request, island_id: int):
+    """国の日誌（持ち主だけ）。GET は {"text", "turn", "updated_at"}、PUT {"text"} は全文を
+    置き換える。"""
+    try:
+        island = _owned(request, island_id)
+        if request.method == "PUT":
+            services.set_diary(island, _body(request).get("text"))
+    except services.CountryError as e:
+        if e.text == "この国の持ち主だけが書き換えられます":
+            return _error("国の日誌は持ち主だけが読めます", 403)
+        return _error(e.text, e.status)
+    return _json({"island": island.id, **services.diary_data(island)})

@@ -1,4 +1,4 @@
-"""国の公開ページに載せるもの: 国旗・紹介文と紀年・来訪者の一言。
+"""国の公開ページに載せるもの: 国旗・紹介文と紀年・来訪者の一言。持ち主だけが読む国の日誌も。
 
 どれもシミュレーションの外の、遊ぶ人が書く・上げるもの。管理者は不適切なものを非表示にできる
 （admin.py）。世界の状態（island.ext）には置かない（ターンの処理が ext を書き換えるため）。
@@ -116,3 +116,21 @@ class Note(models.Model):
 
     def __str__(self) -> str:
         return f"{self.visitor} → {self.island}: {self.text}"
+
+
+class Diary(models.Model):
+    """国の日誌（W-37）: 持ち主だけが読み書きする非公開のメモ欄。方針や引き継ぎを書いておき、
+    次に遊ぶときに読む（AI のプレイヤーの引き継ぎにも使う）。管理画面には出さない。"""
+
+    island = models.OneToOneField(
+        Island, verbose_name="国", on_delete=models.CASCADE, related_name="diary"
+    )
+    text = models.TextField("日誌", max_length=20000, blank=True, default="")
+    turn = models.IntegerField("書いたターン", default=0)
+    updated_at = models.DateTimeField("書いた時刻", auto_now=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = "国の日誌"
+
+    def __str__(self) -> str:
+        return f"{self.island} の日誌"

@@ -205,7 +205,10 @@ def cmd_login(c: Client, a) -> int:
     user = a.user or ("" if ACTIVE_PROFILE else os.environ.get("HK_USER", ""))
     password = a.password or ("" if ACTIVE_PROFILE else os.environ.get("HK_PASSWORD", ""))
     if not user or not password:
-        print("名前とパスワードを指定してください（プロファイルでは HK_USER・HK_PASSWORD は使いません）")
+        print(
+            "名前とパスワードを指定してください"
+            "（プロファイルでは HK_USER・HK_PASSWORD は使いません）"
+        )
         return 1
     status, body, final = c.form("/accounts/login/", {"username": user, "password": password})
     if "/accounts/login" in final:
@@ -373,7 +376,9 @@ def cmd_facilities(c: Client, a) -> int:
     if a.json:
         return show(status, body)
     if "table" not in data:
-        print("施設ごとの一覧は島の持ち主だけが読めます。国全体の数は get で API を読んでください。")
+        print(
+            "施設ごとの一覧は島の持ち主だけが読めます。国全体の数は get で API を読んでください。"
+        )
         return 1
     rows = data["table"]["rows"]
     count = 0
@@ -523,6 +528,37 @@ def cmd_send(c: Client, a) -> int:
         return fail(status, body)
     x = json.loads(body)
     print(f"送りました: #{x['id']} → {island_label(x['to'])}: {x['subject']}（ターン {x['turn']}）")
+    return 0
+
+
+def cmd_diary(c: Client, a) -> int:
+    island = a.island or own_island(c)
+    status, body, _ = c.get(f"/api/islands/{island}/diary")
+    if a.json:
+        return show(status, body)
+    if status >= 400:
+        return fail(status, body)
+    x = json.loads(body)
+    if x["turn"] is None:
+        print("（国の日誌はまだありません）")
+        return 0
+    print(f"国の日誌（ターン {x['turn']}・{when(x['updated_at'])} に書いたもの）")
+    print("----")
+    print(x["text"])
+    return 0
+
+
+def cmd_diary_set(c: Client, a) -> int:
+    text = read_text(a.body, a.file)
+    island = a.island or own_island(c)
+    c.get("/")  # csrf の cookie
+    status, body = c.json("PUT", f"/api/islands/{island}/diary", {"text": text})
+    if a.json:
+        return show(status, body)
+    if status >= 400:
+        return fail(status, body)
+    x = json.loads(body)
+    print(f"国の日誌を書きました（{len(x['text'])} 字、ターン {x['turn']}）")
     return 0
 
 
@@ -1392,6 +1428,17 @@ def main(argv: list[str] | None = None) -> int:
     def add_text(s: argparse.ArgumentParser) -> None:
         s.add_argument("body", nargs="?", help="本文（省くと標準入力から読む）")
         s.add_argument("-f", "--file", help="本文のファイル（- は標準入力）")
+
+    s = sub.add_parser("diary", parents=[raw], help="自分の国の日誌（持ち主だけのメモ欄）を読む")
+    s.add_argument("--island", type=int, help="自分の島の番号（省けば自分の島）")
+    s.set_defaults(func=cmd_diary)
+
+    s = sub.add_parser(
+        "diary-set", parents=[raw], help="自分の国の日誌を書き換える（全文を置き換え）"
+    )
+    s.add_argument("--island", type=int, help="自分の島の番号（省けば自分の島）")
+    add_text(s)
+    s.set_defaults(func=cmd_diary_set)
 
     s = sub.add_parser("letters", parents=[raw], help="届いた手紙の一覧（--sent で送った手紙）")
     s.add_argument("--sent", action="store_true")
