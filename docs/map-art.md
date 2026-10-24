@@ -71,7 +71,7 @@ sprites:
 | `facility/monument_leader` | 元首の像 | 台座の上の青銅の像。3.5 段 |
 | `facility/monument_worker` | 労働者の像 | 台座の上の像と赤い旗。3.5 段 |
 | `facility/monument_tower` | 展望塔 | 赤と白の鉄骨の塔。5 段 |
-| `facility/monument_ledger` | 帳簿の碑 | 罫線の入った石板。2 段 |
+| `facility/monument_ledger` | 帳簿の碑 | 立てた開き帳簿（罫線と赤い中心線）。別案の金の天秤は ALTERNATES |
 | `facility/monument_verification` | 検証の碑 | 濃灰色の角柱と測定枠。3.5 段 |
 | `facility/barracks` | 兵舎 | 1.5 段・第1部 |
 | `facility/naval_base` | 軍港 | 2 段・海沿い・第1部。海が右下 |

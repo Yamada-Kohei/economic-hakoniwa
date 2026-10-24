@@ -563,32 +563,6 @@ def awning(
     return prims
 
 
-def clock_face(wall: str, fixed: float, a: float, z: float, r: float) -> list[Prim]:
-    """壁にはった丸い時計の文字盤（文字はなく、白い円・暗い縁・2 本の針）。r はピクセル。"""
-    k = 1 / 32 / 1.12
-    ring = [
-        (a + r * k * math.cos(t), z + r * math.sin(t)) for t in (i * math.pi / 8 for i in range(16))
-    ]
-    face = [
-        (a + (r - 0.8) * k * math.cos(t), z + (r - 0.8) * math.sin(t))
-        for t in (i * math.pi / 8 for i in range(16))
-    ]
-    hands = [
-        [
-            (a - 0.25 * k, z),
-            (a + 0.25 * k, z),
-            (a + 0.25 * k, z + r * 0.68),
-            (a - 0.25 * k, z + r * 0.68),
-        ],
-        [(a, z - 0.25), (a + r * 0.5 * k, z - 0.25), (a + r * 0.5 * k, z + 0.25), (a, z + 0.25)],
-    ]
-    return [
-        plane_poly(wall, fixed, ring, DARK, 1),
-        plane_poly(wall, fixed, face, WHITE, 2),
-        *[plane_poly(wall, fixed, h, COAL, 3) for h in hands],
-    ]
-
-
 def plane_poly(
     wall: str,
     fixed: float,
@@ -1590,7 +1564,7 @@ SHAPES: dict[str, list[Prim]] = {
     # 回7 の百貨店
     "facility/department_store": [
         # 石張りの 5 階建ての大きな店、1 階のショーウィンドウと赤白の縞の日よけ、上の階の窓の列、
-        # 屋上の時計塔（文字のない丸い文字盤）、前の歩道の植え込み
+        # 屋上の空調、前の歩道の植え込み
         box(0.06, 0.06, 0.94, 0.94, 0, 0.6, CONCRETE, PAVEMENT),
         box(0.12, 0.12, 0.78, 0.78, 0.6, 30, STORE_STONE, "#cfc8b8"),
         *pane_row("v", 0.78, 0.12, 0.78, [1.4], 5.4, 5, 0.1, GLASS),
@@ -1601,16 +1575,11 @@ SHAPES: dict[str, list[Prim]] = {
         *pane_row("v", 0.78, 0.12, 0.78, [11, 16, 21, 26], 2.6, 6, 0.06, STORE_WINDOW),
         *pane_row("u", 0.78, 0.12, 0.78, [11, 16, 21, 26], 2.6, 6, 0.06, STORE_WINDOW),
         box(0.115, 0.115, 0.785, 0.785, 30.6, 1.6, "#f1e9d6", "#cfc8b8"),
-        # 屋上の時計塔と空調の箱（ほかの形と描く順が循環しないよう、最後にまとめて描く）
+        # 屋上の空調の箱（ほかの形と描く順が循環しないよう、最後にまとめて描く）
         *tiered(
             2,
-            box(0.2, 0.2, 0.38, 0.38, 32.2, 9, STORE_STONE, "#cfc8b8"),
-            box(0.19, 0.19, 0.39, 0.39, 41.2, 1.2, "#f1e9d6", "#cfc8b8"),
-            *clock_face("v", 0.38, 0.29, 36.8, 3.4),
-            hip(0.2, 0.2, 0.38, 0.38, 42.4, 6, COPPER),
-            *flag(0.29, 0.29, 48.4, 5, RED, 0.05),
-            box(0.5, 0.5, 0.72, 0.72, 32.2, 2.4, STORE_STONE, "#cfc8b8"),
-            *[box(u, 0.52, u + 0.05, 0.57, 34.6, 1.2, METAL) for u in (0.52, 0.6, 0.68)],
+            box(0.46, 0.46, 0.7, 0.7, 32.2, 2.4, STORE_STONE, "#cfc8b8"),
+            *[box(u, 0.49, u + 0.05, 0.56, 34.6, 1.2, METAL) for u in (0.5, 0.58, 0.66)],
         ),
         *broadleaf(0.88, 0.3, 2.8, 8),
         *broadleaf(0.3, 0.9, 2.8, 8),
@@ -1772,6 +1741,21 @@ SHAPES: dict[str, list[Prim]] = {
         *house(0.55, 0.15, 0.85, 0.42, 10, 6, "v", roof=ROOF_BROWN),
         *house(0.12, 0.55, 0.4, 0.85, 10, 6, "v", roof=ROOF_BROWN),
         *house(0.55, 0.55, 0.85, 0.85, 16, 6, "u", "#e2d5bd"),
+    ],
+    # 都市と大都市は箱だけの形のまま（持ち主が前の形のほうがよいと言った。別の案は ALTERNATES）
+    "housing/city": [
+        box(0.12, 0.12, 0.45, 0.45, 0, 36, "#d9cfbf", "#8f969c"),
+        box(0.55, 0.12, 0.88, 0.42, 0, 26, "#e3dccd", "#8f969c"),
+        box(0.12, 0.55, 0.42, 0.88, 0, 22, "#cfc8bd", "#8f969c"),
+        box(0.52, 0.52, 0.88, 0.88, 0, 42, "#e3dccd", "#8f969c"),
+    ],
+    "housing/metropolis": [
+        box(0.1, 0.1, 0.9, 0.9, 0, 6, CONCRETE),
+        box(0.15, 0.15, 0.42, 0.42, 6, 58, GLASS2, "#7e8f9a"),
+        box(0.58, 0.15, 0.85, 0.4, 6, 40, "#d9cfbf", "#8f969c"),
+        box(0.15, 0.58, 0.4, 0.85, 6, 34, "#e3dccd", "#8f969c"),
+        box(0.52, 0.52, 0.85, 0.85, 6, 66, GLASS, "#7e8f9a"),
+        box(0.62, 0.62, 0.75, 0.75, 72, 8, METAL),
     ],
 }
 
@@ -2810,23 +2794,6 @@ def _plaza(r: float = 0.86) -> Prim:
     return box(1 - r, 1 - r, r, r, 0, 0.6, CONCRETE, MONUMENT_PLAZA)
 
 
-def _tower_legs(base: float, top: float, z_top: float, c: str, w: float = 1.4) -> list[Prim]:
-    """細くすぼまる 4 本の脚（展望塔）。足元の角 (base, 1 - base) から頂点 (0.5, 0.5, z_top) へ。"""
-    corners = [(base, base), (base, 1 - base), (1 - base, base), (1 - base, 1 - base)]
-    return [strut((u, v, 0.6), (0.5, 0.5, z_top), w, c) for u, v in corners]
-
-
-def _figure(u: float, v: float, z0: float, h: float, c: str, arm: bool = True) -> list[Prim]:
-    """記念碑の人の像: 太めの胴と丸い頭、上げた右腕。statue() より大きく、遠くからも人に見える。"""
-    prims = [
-        cylinder(u, v, 0.06, z0, h * 0.62, r_top=0.04, c=c),
-        crown(u, v, z0 + h * 0.6, h * 0.19, c),
-    ]
-    if arm:
-        prims.append(box(u + 0.03, v - 0.012, u + 0.055, v + 0.012, z0 + h * 0.4, h * 0.6, c))
-    return prims
-
-
 TOWER_RED = "#d1432c"  # 展望塔の赤（鉄骨と、大展望台の帯）
 LEADER_COAT = "#6b5a38"  # 元首の像の外套（青銅の暗い面）
 LEADER_FACE = "#9c8454"  # 元首の像の顔と手（磨いた青銅）
@@ -2844,9 +2811,9 @@ def lattice_tower() -> list[Prim]:
     足元には脚を受ける沓を置く。
     """
     cx = 0.5
-    z_a, z_b = 1.2, 15.0  # 下の脚: 足元から大展望台の下
-    z_c, z_d = 19.0, 36.0  # 上の脚: 大展望台の上から特別展望台の下
-    ha0, ha1, hb0, hb1 = 0.27, 0.155, 0.115, 0.05  # 脚の中心からの距離（足元と上）
+    z_a, z_b = 1.2, 16.0  # 下の脚: 足元から大展望台の下
+    z_c, z_d = 20.0, 40.0  # 上の脚: 大展望台の上から特別展望台の下
+    ha0, ha1, hb0, hb1 = 0.17, 0.095, 0.07, 0.034  # 脚の中心からの距離（足元と上）
     corners = ((-1, -1), (1, -1), (1, 1), (-1, 1))
     ring = list(zip(corners, corners[1:] + corners[:1], strict=True))
 
@@ -2863,31 +2830,31 @@ def lattice_tower() -> list[Prim]:
     prims = [_plaza()]
     for su, sv in corners:
         u, v = cx + su * ha0, cx + sv * ha0
-        prims.append(box(u - 0.03, v - 0.03, u + 0.03, v + 0.03, 0.6, 1.4, CONCRETE, PAVEMENT))
-        prims.append(strut(low(0, su, sv), low(1, su, sv), 2.0, TOWER_RED))
-        prims.append(strut(high(0, su, sv), high(1, su, sv), 1.5, TOWER_RED))
+        prims.append(box(u - 0.025, v - 0.025, u + 0.025, v + 0.025, 0.6, 1.4, CONCRETE, PAVEMENT))
+        prims.append(strut(low(0, su, sv), low(1, su, sv), 1.5, TOWER_RED))
+        prims.append(strut(high(0, su, sv), high(1, su, sv), 1.1, TOWER_RED))
     for t in (0.28, 0.58, 0.88):  # 横の梁（白）
-        prims += [strut(low(t, *a), low(t, *b), 1.0, WHITE) for a, b in ring]
+        prims += [strut(low(t, *a), low(t, *b), 0.8, WHITE) for a, b in ring]
     for t0, t1 in ((0.0, 0.28), (0.28, 0.58), (0.58, 0.88)):  # 手前の 2 面の斜め材
         for a, b in (((-1, 1), (1, 1)), ((1, -1), (1, 1))):
-            prims.append(strut(low(t0, *a), low(t1, *b), 0.8, TOWER_RED))
-            prims.append(strut(low(t0, *b), low(t1, *a), 0.8, TOWER_RED))
+            prims.append(strut(low(t0, *a), low(t1, *b), 0.6, TOWER_RED))
+            prims.append(strut(low(t0, *b), low(t1, *a), 0.6, TOWER_RED))
     for t in (0.35, 0.7):
-        prims += [strut(high(t, *a), high(t, *b), 0.9, WHITE) for a, b in ring]
+        prims += [strut(high(t, *a), high(t, *b), 0.7, WHITE) for a, b in ring]
     # 大展望台（赤い帯と白い帯）と、特別展望台
     prims += [
-        box(0.32, 0.32, 0.68, 0.68, z_b, 1.8, TOWER_RED),
-        box(0.31, 0.31, 0.69, 0.69, z_b + 1.8, 2.4, WHITE, "#cfd3d8"),
-        box(0.4, 0.4, 0.6, 0.6, z_d, 1.4, TOWER_RED),
-        box(0.39, 0.39, 0.61, 0.61, z_d + 1.4, 2.0, WHITE, "#cfd3d8"),
-        *pane_row("v", 0.69, 0.33, 0.67, [z_b + 2.2], 1.4, 5, 0.05, "#7f9bb3"),
-        *pane_row("u", 0.69, 0.33, 0.67, [z_b + 2.2], 1.4, 5, 0.05, "#7f9bb3"),
+        box(0.385, 0.385, 0.615, 0.615, z_b, 1.8, TOWER_RED),
+        box(0.375, 0.375, 0.625, 0.625, z_b + 1.8, 2.4, WHITE, "#cfd3d8"),
+        box(0.44, 0.44, 0.56, 0.56, z_d, 1.4, TOWER_RED),
+        box(0.43, 0.43, 0.57, 0.57, z_d + 1.4, 2.0, WHITE, "#cfd3d8"),
+        *pane_row("v", 0.625, 0.39, 0.61, [z_b + 2.2], 1.4, 4, 0.035, "#7f9bb3"),
+        *pane_row("u", 0.625, 0.39, 0.61, [z_b + 2.2], 1.4, 4, 0.035, "#7f9bb3"),
     ]
     # アンテナ: 赤白に塗り分けた細い柱
     for i in range(3):
         prims.append(
             cylinder(
-                cx, cx, 0.016 - 0.003 * i, z_d + 3.4 + 6 * i, 6, c=WHITE if i % 2 else TOWER_RED
+                cx, cx, 0.013 - 0.0025 * i, z_d + 3.4 + 6 * i, 6, c=WHITE if i % 2 else TOWER_RED
             )
         )
     return prims
@@ -2896,16 +2863,18 @@ def lattice_tower() -> list[Prim]:
 def triumphal_arch() -> list[Prim]:
     """戦いの碑: 凱旋門。4 本の脚の上に、門の穴をあけた厚い壁がのる（凱旋門の雰囲気だけ）。
 
-    手前の左の面に大きな門、右の面に小さな門があり、脚のあいだから向こうが見える。下に火は置かない。
+    手前の左の面に大きな門、右の面に小さな門があり、脚のあいだから向こうが見える。
+    門の上は彫刻の帯（暗い帯に明るい縦の刻み）、脚には上が丸い彫刻の板。下に火は置かない。
     """
-    zs, zt = 9.0, 27.0
-    u0, u1, v0, v1 = 0.1, 0.9, 0.28, 0.72
-    big = arc_pts(0.5, 0.17, zs, 19.0)
-    small = arc_pts(0.5, 0.1, zs, 15.5)
-    parts = [_plaza(0.94)]
+    zs, zt = 10.0, 30.0
+    u0, u1, v0, v1 = 0.1, 0.9, 0.27, 0.73
+    big = arc_pts(0.5, 0.17, zs, 21.5)
+    small = arc_pts(0.5, 0.1, zs, 17.0)
+    parts = [_plaza(0.94), box(0.07, 0.24, 0.93, 0.76, 0.6, 1.6, CREAM, "#f1e9d6")]
+    zb = 2.2
     for pu0, pu1 in ((u0, 0.33), (0.67, u1)):
         for pv0, pv1 in ((v0, 0.4), (0.6, v1)):
-            parts.append(box(pu0, pv0, pu1, pv1, 0.6, zs - 0.6, SAND, CREAM))
+            parts.append(box(pu0, pv0, pu1, pv1, zb, zs - zb, SAND, CREAM))
     parts.append(
         Prim(
             (u0, v0, u1, v1),
@@ -2921,16 +2890,29 @@ def triumphal_arch() -> list[Prim]:
             ],
         )
     )
-    parts.append(box(0.125, 0.265, 0.875, 0.735, zt - 3.2, 3.2, CREAM, "#f1e9d6"))  # 軒
-    relief = "#b9a877"
-    for a0, a1 in ((0.14, 0.29), (0.71, 0.86)):  # 脚の面の彫刻の板
-        parts.append(plane_poly("v", v1, [(a0, 4), (a1, 4), (a1, 19), (a0, 19)], relief, 1))
-    for b0, b1 in ((0.32, 0.38), (0.62, 0.68)):
-        parts.append(plane_poly("u", u1, [(b0, 5), (b1, 5), (b1, 16), (b0, 16)], relief, 1))
-    for i in range(5):  # 上の帯の浅い凹み
-        a = 0.2 + i * 0.12
-        pts = [(a, 20.3), (a + 0.07, 20.3), (a + 0.07, 23.2), (a, 23.2)]
-        parts.append(plane_poly("v", v1, pts, "#a89865", 2))
+    parts.append(box(0.085, 0.255, 0.915, 0.745, zt - 0.4, 2.2, CREAM, "#f1e9d6"))  # 主軒
+    relief, band, tick = "#b9a877", "#a08f5c", "#cdbd8d"
+    parts.append(plane_poly("v", v1, [(0.11, 25), (0.89, 25), (0.89, 29), (0.11, 29)], band, 1))
+    parts.append(plane_poly("u", u1, [(0.29, 25), (0.71, 25), (0.71, 29), (0.29, 29)], band, 1))
+    for wall, fixed, a0, n, step in (("v", v1, 0.14, 13, 0.06), ("u", u1, 0.32, 5, 0.08)):
+        for i in range(n):
+            a = a0 + i * step
+            pts = [(a, 25.8), (a + 0.022, 25.8), (a + 0.022, 28.2), (a, 28.2)]
+            parts.append(plane_poly(wall, fixed, pts, tick, 2))
+
+    def panel(wall: str, fixed: float, a0: float, a1: float, z0: float, z1: float) -> Prim:
+        """脚の彫刻の板（上が丸い）。"""
+        am, w = (a0 + a1) / 2, (a1 - a0) / 2
+        top = [
+            (am - w * math.cos(math.pi * i / 8), z1 + w * 28 * math.sin(math.pi * i / 8))
+            for i in range(9)
+        ]
+        return plane_poly(wall, fixed, [(a0, z0), (a1, z0), *top[::-1]], relief, 1)
+
+    for a0, a1 in ((0.145, 0.295), (0.705, 0.855)):
+        parts.append(panel("v", v1, a0, a1, 4.6, 16.0))
+    for b0, b1 in ((0.315, 0.385), (0.615, 0.685)):
+        parts.append(panel("u", u1, b0, b1, 4.6, 10.0))
     return parts
 
 
@@ -3019,7 +3001,7 @@ def peace_fountain() -> list[Prim]:
 
 
 def balance_scale() -> list[Prim]:
-    """帳簿の碑: 金の天秤。借方と貸方がいつも等しいことを、釣り合った二つの皿で表す。"""
+    """帳簿の碑（別案）: 金の天秤。借方と貸方がいつも等しいことを、釣り合った二つの皿で表す。"""
     zb = 28.0
     parts = [
         _plaza(),
@@ -3040,7 +3022,7 @@ def balance_scale() -> list[Prim]:
 
 
 def open_ledger() -> list[Prim]:
-    """帳簿の碑（別案）: 立てた開き帳簿。罫線と、真ん中の赤い線で左右に分かれる。"""
+    """帳簿の碑: 立てた開き帳簿。罫線と、真ん中の赤い線で左右に分かれる。"""
     parts = [
         _plaza(),
         box(0.14, 0.36, 0.86, 0.64, 0.6, 2.6, GRANITE, "#a4a7ab"),
@@ -3096,7 +3078,7 @@ def magnifier() -> list[Prim]:
 ALTERNATES: dict[str, list[Prim]] = {
     "facility/monument_peace_ring": peace_ring(),
     "facility/monument_peace_fountain": peace_fountain(),
-    "facility/monument_ledger_book": open_ledger(),
+    "facility/monument_ledger_scale": balance_scale(),
     "facility/monument_verification_magnifier": magnifier(),
 }
 
@@ -3160,36 +3142,23 @@ SHAPES.update(
             *flag(0.74, 0.3, 4.0, 14, RED, 0.08),
         ],
         "facility/monument_tower": lattice_tower(),
-        "facility/monument_ledger": balance_scale(),
+        "facility/monument_ledger": open_ledger(),
         "facility/monument_verification": check_slab(),
     }
 )
 
 
-# --- 都市と大都市（建物ごと描き分け、窓は壁の板。数案は ALTERNATES） ---------------------------
+# --- 都市と大都市の別の案（ゲームの絵は前の形のまま。数案は ALTERNATES） ---------------------
 
-ROAD = "#6d7177"
 WIN = "#6f8aa3"
 WIN_DARK = "#4f6c86"
-BRICK_LIGHT = "#c47a5e"
-OCHRE = "#e0c58e"
+WIN_LIGHT = "#8aa5ba"
 SIDE_GRAY = "#8f969c"  # 屋上の面の色（高層の側面でない部分）
-
-
-def rooftop_tank(u: float, v: float, z: float) -> list[Prim]:
-    """屋上の給水塔: 足と、円すい屋根の丸い胴。"""
-    return [
-        box(u - 0.025, v - 0.025, u + 0.025, v + 0.025, z, 2.4, IRON),
-        cylinder(u, v, 0.045, z + 2.4, 3.6, cap="cone", c=WOOD, cap_c=ROOF_BROWN),
-    ]
-
-
-def rooftop_unit(u: float, v: float, z: float) -> list[Prim]:
-    """屋上の空調機（箱と、その上の小さな箱）。"""
-    return [
-        box(u, v, u + 0.1, v + 0.06, z, 1.6, METAL, "#c0c7ce"),
-        box(u + 0.012, v + 0.012, u + 0.05, v + 0.048, z + 1.6, 0.8, DARK),
-    ]
+ROOF_CAP = "#eee8da"  # 屋根の縁
+ROOF_CAP_SIDE = "#cfc8b8"
+LAWN = "#84b36a"
+LAWN_SIDE = "#6f9a4e"
+ROAD = "#6d7177"
 
 
 def mast(uc: float, vc: float, z: float, h: float, c: str = METAL, tip: str = RED) -> list[Prim]:
@@ -3200,243 +3169,159 @@ def mast(uc: float, vc: float, z: float, h: float, c: str = METAL, tip: str = RE
     ]
 
 
-def block_ground(z: float = 0.6, roads: bool = True) -> list[Prim]:
-    """街区の足元の舗装と、十字の道。ほかの形より先に描く。"""
-    ground = [box(0.05, 0.05, 0.95, 0.95, 0, z, CONCRETE, PAVEMENT)]
-    if roads:
-        ground += [
-            box(0.46, 0.05, 0.54, 0.95, z, 0.12, ROAD, "#7d8288"),
-            box(0.05, 0.46, 0.95, 0.54, z, 0.12, ROAD, "#7d8288"),
-        ]
-    return tiered(0, *ground)
+def block_ground(z: float = 0.6) -> list[Prim]:
+    """街区の足元の舗装。ほかの形より先に描く。"""
+    return tiered(0, box(0.05, 0.05, 0.95, 0.95, 0, z, CONCRETE, PAVEMENT))
 
 
-def street_trees(z: float = 0.6) -> list[Prim]:
-    """道の交わりのまわりの街路樹。"""
+def capped(
+    u0: float, v0: float, u1: float, v1: float, z0: float, h: float, wall: str, side: str
+) -> list[Prim]:
+    """壁・屋根の縁がそろった棟（窓は呼び出しで足す）。"""
     return [
-        p
-        for u, v in ((0.5, 0.28), (0.5, 0.72), (0.28, 0.5), (0.74, 0.5))
-        for p in broadleaf(u, v, 2.6, 7)
+        box(u0, v0, u1, v1, z0, h, wall, side),
+        box(u0 - 0.012, v0 - 0.012, u1 + 0.012, v1 + 0.012, z0 + h, 1.0, ROOF_CAP, ROOF_CAP_SIDE),
     ]
 
 
-def city_blocks() -> list[Prim]:
-    """都市: 奥に屋上の給水塔のある赤れんがの事務所、右奥に白い集合住宅（切妻）、
-    左手前にクリーム色の中層（屋上に空調）、手前の右に低い店。十字の道に街路樹。"""
+def banded(
+    u0: float, v0: float, u1: float, v1: float, h: float, wall: str, win: str, z0: float = 0.6
+) -> list[Prim]:
+    """横長の窓の帯（階ごと）に屋根の縁の棟。1 階は石のまま。"""
+    return [
+        *capped(u0, v0, u1, v1, z0, h, wall, SIDE_GRAY),
+        *band_facade(u0, v0, u1, v1, z0 + 4.0, z0 + h - 1.6, 4.2, 2.4, win, 0.03),
+    ]
+
+
+def city_bands() -> list[Prim]:
+    """都市（案 1）: 前の 4 つの棟の形のまま、窓の帯と屋根の縁を足しただけ。"""
+    return [
+        *block_ground(),
+        *banded(0.12, 0.12, 0.45, 0.45, 36, "#d9cfbf", WIN_LIGHT),
+        *banded(0.55, 0.12, 0.88, 0.42, 26, "#e3dccd", WIN_LIGHT),
+        *banded(0.12, 0.55, 0.42, 0.88, 22, "#cfc8bd", WIN_LIGHT),
+        *banded(0.52, 0.52, 0.88, 0.88, 42, "#e3dccd", WIN),
+        box(0.62, 0.62, 0.78, 0.78, 43.6, 3.0, "#d9cfbf", SIDE_GRAY),
+    ]
+
+
+def city_slabs() -> list[Prim]:
+    """都市（案 2）: 平行に並ぶ 2 本の細長い棟（奥が高い）と、手前の低い店の列。"""
     z0 = 0.6
+    stone, side = "#ddd2bd", "#a79e8e"
     parts = block_ground()
+    for u0, v0, u1, v1, h, nl, nr in (
+        (0.08, 0.08, 0.92, 0.3, 38, 9, 3),
+        (0.08, 0.4, 0.72, 0.6, 24, 7, 3),
+    ):
+        parts += [
+            *capped(u0, v0, u1, v1, z0, h, stone, side),
+            *facade(
+                u0, v0, u1, v1, z0 + 3.0, z0 + h - 1.2, 4.4, 2.6, nl, nr, WIN_LIGHT, 0.05, 0.04
+            ),
+        ]
     parts += [
-        box(0.1, 0.1, 0.42, 0.42, z0, 36, BRICK, SIDE_GRAY),
-        *facade(0.1, 0.1, 0.42, 0.42, 4.5, 34, 5.0, 2.8, 4, 4, WIN),
-        box(0.09, 0.09, 0.43, 0.43, z0 + 36, 1.2, CREAM, "#c9c3b8"),
-        *rooftop_tank(0.18, 0.18, z0 + 37.2),
-    ]
-    parts += [
-        box(0.58, 0.1, 0.9, 0.4, z0, 22, WALL, SIDE_GRAY),
-        *facade(0.58, 0.1, 0.9, 0.4, 3.5, 21, 4.6, 2.6, 5, 4, WIN_DARK),
-        gable(0.58, 0.1, 0.9, 0.4, z0 + 22, 6, "v", ROOF_TILE, WALL),
-    ]
-    parts += [
-        box(0.1, 0.58, 0.4, 0.9, z0, 24, OCHRE, SIDE_GRAY),
-        *facade(0.1, 0.58, 0.4, 0.9, 3.5, 23, 4.6, 2.6, 4, 4, WIN),
-        box(0.09, 0.57, 0.41, 0.91, z0 + 24, 1.0, CREAM, "#c9c3b8"),
-        *rooftop_unit(0.16, 0.64, z0 + 25),
-        *rooftop_unit(0.24, 0.74, z0 + 25),
-    ]
-    parts += [
-        box(0.6, 0.6, 0.9, 0.9, z0, 11, "#e6dac0", "#cfc8b8"),
-        *pane_row("v", 0.9, 0.63, 0.87, [1.2], 5.0, 4, 0.045, GLASS),
-        *pane_row("u", 0.9, 0.63, 0.87, [1.2], 5.0, 4, 0.045, GLASS),
-        *pane_row("v", 0.9, 0.63, 0.87, [7.2], 2.6, 4, 0.045, WIN),
-        *pane_row("u", 0.9, 0.63, 0.87, [7.2], 2.6, 4, 0.045, WIN),
-        box(0.585, 0.585, 0.915, 0.915, z0 + 11, 1.0, CREAM, "#c9c3b8"),
-        *rooftop_unit(0.66, 0.66, z0 + 12),
-    ]
-    return parts + street_trees()
-
-
-def city_plaza() -> list[Prim]:
-    """都市（別案）: 時計塔のある役所を奥に、瓦屋根の建物が広場の噴水を囲む。"""
-    z0 = 0.6
-    stone = "#e8dfc9"
-    parts = [box(0.05, 0.05, 0.95, 0.95, 0, 0.6, CONCRETE, PAVEMENT)]
-    parts += [
-        box(0.3, 0.3, 0.8, 0.8, z0, 0.4, "#e6dcc4", PAVEMENT),
-        cylinder(0.58, 0.62, 0.09, z0 + 0.4, 1.4, c=GRANITE, cap_c=SKY_BLUE),
-        cylinder(0.58, 0.62, 0.02, z0 + 1.8, 3.4, c=WHITE),
-    ]
-    parts += [
-        box(0.1, 0.1, 0.5, 0.34, z0, 24, stone, "#a39d90"),
-        *facade(0.1, 0.1, 0.5, 0.34, 4, 23, 6.5, 3.2, 4, 3, WIN_DARK),
-        gable(0.1, 0.1, 0.5, 0.34, z0 + 24, 6, "v", ROOF_TILE, stone),
-        box(0.2, 0.14, 0.32, 0.26, z0 + 24, 12, stone, "#a39d90"),
-        hip(0.2, 0.14, 0.32, 0.26, z0 + 36, 7, ROOF_SLATE),
-        *clock_face("v", 0.26, 0.26, z0 + 30, 2.6),
-    ]
-    parts += [
-        box(0.62, 0.1, 0.9, 0.46, z0, 24, "#d9a96f", "#a39d90"),
-        *facade(0.62, 0.1, 0.9, 0.46, 3.5, 23, 5.4, 2.8, 3, 4, WIN_DARK),
-        gable(0.62, 0.1, 0.9, 0.46, z0 + 24, 6, "u", ROOF_TILE, "#d9a96f"),
-    ]
-    parts += [
-        box(0.1, 0.5, 0.3, 0.9, z0, 18, "#e3dccd", "#a39d90"),
-        *facade(0.1, 0.5, 0.3, 0.9, 3.5, 17, 5.4, 2.8, 2, 4, WIN_DARK),
-        gable(0.1, 0.5, 0.3, 0.9, z0 + 18, 5, "u", ROOF_BROWN, "#e3dccd"),
-    ]
-    parts += [
-        box(0.4, 0.84, 0.9, 0.92, z0, 9, BRICK_LIGHT, SIDE_GRAY),
-        *awning("v", 0.92, 0.42, 0.88, 7.2, 5.4, 0.04),
-        *pane_row("v", 0.92, 0.42, 0.88, [1.2], 4.0, 5, 0.06, GLASS),
-        gable(0.4, 0.84, 0.9, 0.92, z0 + 9, 3, "u", ROOF_TILE, BRICK_LIGHT),
-        *broadleaf(0.36, 0.7, 2.6, 7),
+        box(0.08, 0.72, 0.92, 0.92, z0, 7, STORE_STONE, ROOF_CAP_SIDE),
+        *pane_row("v", 0.92, 0.1, 0.9, [z0 + 1.0], 4.6, 7, 0.07, GLASS),
+        *pane_row("u", 0.92, 0.74, 0.9, [z0 + 1.0], 4.6, 2, 0.07, GLASS),
+        box(0.07, 0.71, 0.93, 0.93, z0 + 7, 0.8, ROOF_CAP, ROOF_CAP_SIDE),
+        box(0.76, 0.38, 0.92, 0.62, z0, 0.3, LAWN, LAWN_SIDE),
+        *broadleaf(0.84, 0.46, 2.6, 7),
+        *broadleaf(0.84, 0.56, 2.6, 7),
+        *broadleaf(0.2, 0.67, 2.2, 6),
+        *broadleaf(0.5, 0.67, 2.2, 6),
     ]
     return parts
 
 
-def city_glass() -> list[Prim]:
-    """都市（別案）: 現代の街区。奥にガラスの高い塔、右に屋上庭園の低い棟、左に中層、
-    手前に低い基壇。"""
+def city_green() -> list[Prim]:
+    """都市（案 3）: 屋上が緑の低い住宅棟 2 つと、その手前の高い白い塔 1 本。"""
     z0 = 0.6
-    garden = "#4f9a42"
+    brick, side = "#c9a98c", "#9a8168"
     parts = block_ground()
-    parts += [
-        box(0.1, 0.1, 0.42, 0.42, z0, 40, GLASS, "#7e8f9a"),
-        *band_facade(0.1, 0.1, 0.42, 0.42, 2.0, 39, 3.0, 1.6, "#5d7ea0"),
-        box(0.16, 0.16, 0.36, 0.36, z0 + 40, 3, METAL, "#c0c7ce"),
-    ]
-    parts += [
-        box(0.58, 0.1, 0.9, 0.4, z0, 17, WHITE, SIDE_GRAY),
-        *band_facade(0.58, 0.1, 0.9, 0.4, 2.5, 16, 4.0, 2.0, WIN),
-        box(0.62, 0.14, 0.86, 0.36, z0 + 17, 0.5, TREE, garden),
-    ]
-    parts += [
-        box(0.1, 0.58, 0.4, 0.9, z0, 24, "#d6dde2", SIDE_GRAY),
-        *band_facade(0.1, 0.58, 0.4, 0.9, 2.5, 23, 3.6, 1.8, "#5d7ea0"),
-    ]
-    parts += [
-        box(0.6, 0.6, 0.9, 0.9, z0, 9, "#b9c6cf", SIDE_GRAY),
-        *band_facade(0.6, 0.6, 0.9, 0.9, 2.0, 8, 3.4, 1.7, WIN_DARK),
-        box(0.64, 0.64, 0.86, 0.86, z0 + 9, 0.5, TREE, garden),
-    ]
-    return parts + street_trees()
+    for u0, v0, u1, v1, h, nl, nr in (
+        (0.08, 0.08, 0.92, 0.38, 12, 10, 5),
+        (0.08, 0.5, 0.38, 0.92, 16, 4, 5),
+    ):
+        parts += [
+            box(u0, v0, u1, v1, z0, h, brick, side),
+            *facade(u0, v0, u1, v1, z0 + 2.2, z0 + h - 1.0, 4.2, 2.4, nl, nr, WIN, 0.04, 0.04),
+            box(u0, v0, u1, v1, z0 + h, 0.5, LAWN, LAWN_SIDE),
+        ]
+    parts += banded(0.5, 0.5, 0.9, 0.9, 40, "#e6e0d2", WIN)
+    return parts
 
 
-def metropolis_deco() -> list[Prim]:
-    """大都市: 石の外壁が段々にすぼまる、金の尖塔をいただくアールデコの摩天楼と、
-    まわりの段々の塔。"""
-    z0 = 4.0
-    stone, sand, side = "#e6dcc4", "#d9cfb4", "#a39d90"
-    win = "#5d6f7e"
-    parts = block_ground(z0, roads=False)
-    parts += [
-        box(0.1, 0.1, 0.36, 0.36, z0, 30, stone, side),
-        *facade(0.1, 0.1, 0.36, 0.36, z0 + 3, z0 + 29, 4.4, 3.0, 4, 4, win, 0.03),
-        box(0.15, 0.15, 0.31, 0.31, z0 + 30, 12, stone, side),
-        box(0.2, 0.2, 0.26, 0.26, z0 + 42, 8, stone, side),
-        hip(0.2, 0.2, 0.26, 0.26, z0 + 50, 6, GOLD),
+def metropolis_bands() -> list[Prim]:
+    """大都市（案 1）: 前の形のまま。青いガラスの高い塔 2 本に窓の帯、頭に小さな箱とアンテナ。"""
+    zb = 5.6
+    return [
+        *block_ground(),
+        box(0.1, 0.1, 0.9, 0.9, 0.6, 5, CONCRETE, "#bdb8ac"),
+        *banded(0.58, 0.15, 0.85, 0.4, 40, "#d9cfbf", WIN_LIGHT, zb),
+        *banded(0.15, 0.58, 0.4, 0.85, 34, "#e3dccd", WIN_LIGHT, zb),
+        box(0.15, 0.15, 0.42, 0.42, zb, 58, GLASS2, "#7e8f9a"),
+        *band_facade(0.15, 0.15, 0.42, 0.42, zb + 4, zb + 56, 3.6, 2.2, WIN_DARK, 0.03),
+        box(0.17, 0.17, 0.4, 0.4, zb + 58, 3.0, GLASS2, "#7e8f9a"),
+        box(0.52, 0.52, 0.85, 0.85, zb, 66, GLASS, "#7e8f9a"),
+        *band_facade(0.52, 0.52, 0.85, 0.85, zb + 4, zb + 64, 3.6, 2.2, WIN_DARK, 0.03),
+        box(0.56, 0.56, 0.81, 0.81, zb + 66, 3.0, GLASS, "#7e8f9a"),
+        box(0.62, 0.62, 0.75, 0.75, zb + 69, 4.0, METAL),
+        *mast(0.685, 0.685, zb + 73, 10),
     ]
+
+
+def metropolis_tiers() -> list[Prim]:
+    """大都市（案 2）: 段を重ねて細くなる石の高層。縦に並ぶ窓の列とアンテナ。"""
+    stone, side = "#d6cdbb", "#9d9585"
+    parts = block_ground()
+    for u0, v0, u1, v1, za, h in (
+        (0.12, 0.12, 0.88, 0.88, 0.0, 18),
+        (0.2, 0.2, 0.8, 0.8, 18, 22),
+        (0.28, 0.28, 0.72, 0.72, 40, 22),
+        (0.36, 0.36, 0.64, 0.64, 62, 16),
+    ):
+        z = 0.6 + za
+        parts += [
+            *capped(u0, v0, u1, v1, z, h, stone, side),
+            *facade(u0, v0, u1, v1, z + 2.2, z + h - 1.2, 4.0, 2.6, 8, 8, WIN, 0.03, 0.04),
+        ]
+    parts += [box(0.44, 0.44, 0.56, 0.56, 79.6, 8, stone, side), *mast(0.5, 0.5, 87.6, 12)]
+    return parts
+
+
+def metropolis_twin() -> list[Prim]:
+    """大都市（案 3）: 背の違う青いガラスの塔 2 本が奥に並び、手前に低い棟 2 つ。
+    塔の頭は 2 段に細くなる。"""
+    zb = 5.6
+    parts = [*block_ground(), box(0.08, 0.08, 0.92, 0.92, 0.6, 5, "#d8d4c8", "#b4afa2")]
+    for u0, u1, h, c in ((0.1, 0.42, 64, GLASS2), (0.56, 0.9, 50, GLASS)):
+        v0, v1 = 0.1, 0.4
+        parts += [
+            box(u0, v0, u1, v1, zb, h, c, "#7e8f9a"),
+            *band_facade(u0, v0, u1, v1, zb + 3, zb + h - 1, 3.6, 2.2, WIN_DARK, 0.03),
+            box(u0 + 0.04, v0 + 0.04, u1 - 0.04, v1 - 0.04, zb + h, 3.0, c, "#7e8f9a"),
+            box(u0 + 0.09, v0 + 0.09, u1 - 0.09, v1 - 0.09, zb + h + 3, 3.0, c, "#7e8f9a"),
+        ]
     parts += [
-        box(0.64, 0.1, 0.9, 0.34, z0, 24, sand, side),
-        *facade(0.64, 0.1, 0.9, 0.34, z0 + 3, z0 + 23, 4.4, 3.0, 4, 4, win, 0.03),
-        box(0.7, 0.16, 0.84, 0.28, z0 + 24, 9, sand, side),
-        hip(0.7, 0.16, 0.84, 0.28, z0 + 33, 4, GOLD),
-    ]
-    parts += [
-        box(0.1, 0.64, 0.34, 0.9, z0, 20, sand, side),
-        *facade(0.1, 0.64, 0.34, 0.9, z0 + 3, z0 + 19, 4.4, 3.0, 4, 4, win, 0.03),
-        box(0.15, 0.69, 0.29, 0.85, z0 + 20, 8, sand, side),
-    ]
-    parts += [
-        box(0.38, 0.38, 0.66, 0.66, z0, 26, stone, side),
-        *facade(0.38, 0.38, 0.66, 0.66, z0 + 3, z0 + 25, 4.4, 3.0, 5, 5, win, 0.03),
-        box(0.42, 0.42, 0.62, 0.62, z0 + 26, 14, stone, side),
-        *facade(0.42, 0.42, 0.62, 0.62, z0 + 28, z0 + 39, 4.4, 3.0, 4, 4, win, 0.03),
-        box(0.46, 0.46, 0.58, 0.58, z0 + 40, 12, stone, side),
-        *facade(0.46, 0.46, 0.58, 0.58, z0 + 42, z0 + 51, 4.4, 3.0, 2, 2, win, 0.03),
-        box(0.49, 0.49, 0.55, 0.55, z0 + 52, 8, "#f1e9d6", side),
-        hip(0.49, 0.49, 0.55, 0.55, z0 + 60, 10, GOLD),
-        *mast(0.52, 0.52, z0 + 70, 7, GOLD, GOLD),
+        box(0.1, 0.56, 0.4, 0.88, zb, 18, "#d9cfbf", SIDE_GRAY),
+        *facade(0.1, 0.56, 0.4, 0.88, zb + 2.5, zb + 17, 4.2, 2.6, 4, 5, WIN, 0.04, 0.04),
+        box(0.56, 0.56, 0.88, 0.88, zb, 12, "#e3dccd", SIDE_GRAY),
+        *facade(0.56, 0.56, 0.88, 0.88, zb + 2.5, zb + 11, 4.2, 2.6, 5, 5, WIN, 0.04, 0.04),
+        *mast(0.26, 0.25, zb + 70, 10),
     ]
     return parts
 
 
-def metropolis_glass() -> list[Prim]:
-    """大都市（別案）: 中央の段々にすぼまるガラスの超高層と、まわりのガラスの塔、手前の屋上庭園。"""
-    z0 = 4.0
-    blue = "#b7c4cc"
-    parts = block_ground(z0, roads=False)
-    parts += [
-        box(0.1, 0.1, 0.34, 0.34, z0, 44, "#a9bcc9", "#7e8f9a"),
-        *band_facade(0.1, 0.1, 0.34, 0.34, z0 + 3, z0 + 43, 3.2, 1.7, WIN_DARK),
-        box(0.14, 0.14, 0.3, 0.3, z0 + 44, 3, METAL, "#c0c7ce"),
-        *mast(0.22, 0.22, z0 + 47, 9),
-    ]
-    parts += [
-        box(0.62, 0.1, 0.9, 0.34, z0, 34, WHITE, "#cfd3d8"),
-        *band_facade(0.62, 0.1, 0.9, 0.34, z0 + 3, z0 + 33, 3.4, 1.8, WIN),
-        box(0.7, 0.16, 0.82, 0.28, z0 + 34, 3, GLASS2, SIDE_GRAY),
-    ]
-    parts += [
-        box(0.1, 0.62, 0.34, 0.9, z0, 28, GLASS, "#7e8f9a"),
-        *band_facade(0.1, 0.62, 0.34, 0.9, z0 + 3, z0 + 27, 3.2, 1.7, WIN_DARK),
-        box(0.14, 0.66, 0.3, 0.86, z0 + 28, 1.2, METAL, "#c0c7ce"),
-    ]
-    parts += [
-        box(0.4, 0.4, 0.64, 0.64, z0, 36, blue, SIDE_GRAY),
-        *band_facade(0.4, 0.4, 0.64, 0.64, z0 + 2.5, z0 + 35, 3.2, 1.7, WIN_DARK),
-        box(0.44, 0.44, 0.6, 0.6, z0 + 36, 18, blue, SIDE_GRAY),
-        *band_facade(0.44, 0.44, 0.6, 0.6, z0 + 38, z0 + 53, 3.2, 1.7, WIN_DARK),
-        box(0.48, 0.48, 0.56, 0.56, z0 + 54, 8, blue, SIDE_GRAY),
-        *mast(0.52, 0.52, z0 + 62, 14),
-    ]
-    parts += [
-        box(0.68, 0.68, 0.9, 0.9, z0, 8, WHITE, "#cfd3d8"),
-        *band_facade(0.68, 0.68, 0.9, 0.9, z0 + 1.5, z0 + 7, 3.2, 1.6, WIN),
-        box(0.7, 0.7, 0.88, 0.88, z0 + 8, 0.5, TREE, "#4f9a42"),
-    ]
-    return parts
-
-
-def metropolis_round() -> list[Prim]:
-    """大都市（別案）: 奥の丸い高い塔（ガラスと白の帯）、板のような塔、
-    手前のガラスのピラミッド屋根。"""
-    z0 = 4.0
-    parts = block_ground(z0, roads=False)
-    for i in range(14):
-        parts.append(
-            cylinder(0.3, 0.3, 0.17, z0 + i * 3.6, 3.6, c=WIN if i % 2 == 0 else "#dfe4e8")
-        )
-    parts += [
-        cylinder(0.3, 0.3, 0.17, z0 + 50.4, 2, c=METAL),
-        cylinder(0.3, 0.3, 0.1, z0 + 52.4, 5, cap="dome", c=GLASS, cap_c=GLASS2),
-        *mast(0.3, 0.3, z0 + 62, 8),
-    ]
-    parts += [
-        box(0.6, 0.12, 0.9, 0.3, z0, 40, "#cfd6db", SIDE_GRAY),
-        *band_facade(0.6, 0.12, 0.9, 0.3, z0 + 2.5, z0 + 39, 3.2, 1.7, WIN_DARK),
-        box(0.62, 0.14, 0.88, 0.28, z0 + 40, 1.5, METAL, "#c0c7ce"),
-    ]
-    parts += [
-        box(0.1, 0.6, 0.34, 0.9, z0, 32, GLASS, "#7e8f9a"),
-        *band_facade(0.1, 0.6, 0.34, 0.9, z0 + 2.5, z0 + 31, 3.2, 1.7, WIN_DARK),
-        box(0.14, 0.64, 0.3, 0.86, z0 + 32, 3, METAL, "#c0c7ce"),
-    ]
-    parts += [
-        box(0.5, 0.5, 0.9, 0.9, z0, 8, WHITE, "#cfd3d8"),
-        *band_facade(0.5, 0.5, 0.9, 0.9, z0 + 1.5, z0 + 7, 3.4, 1.7, WIN),
-        hip(0.55, 0.55, 0.85, 0.85, z0 + 8, 10, GLASS),
-    ]
-    return parts
-
-
-SHAPES["housing/city"] = city_blocks()
-SHAPES["housing/metropolis"] = metropolis_deco()
 ALTERNATES.update(
     {
-        "housing/city_plaza": city_plaza(),
-        "housing/city_glass": city_glass(),
-        "housing/metropolis_glass": metropolis_glass(),
-        "housing/metropolis_round": metropolis_round(),
+        "housing/city_bands": city_bands(),
+        "housing/city_slabs": city_slabs(),
+        "housing/city_green": city_green(),
+        "housing/metropolis_bands": metropolis_bands(),
+        "housing/metropolis_tiers": metropolis_tiers(),
+        "housing/metropolis_twin": metropolis_twin(),
     }
 )
 
