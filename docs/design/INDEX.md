@@ -35,7 +35,7 @@
 | OV-23 | 巻き戻しは世界全体を同じ時点にそろえる | 決定 | tests/server/test_turns.py |
 | OV-24 | 前のフェーズから続く島は、更新の初めの段 `upgrade` が 1 度だけ移し替える | 決定 | tests/core/test_phase3_2.py、tests/core/test_shocks.py |
 | OV-25 | 財の量の単位（トン・m³・台・MWh など）は定義データに持ち、画面では「資源」と呼ぶ | 仮（仮の決まりの表あり） | （未確認） |
-| OV-26 | ベータ版は VPS 1 台で動かし、世界を複数動かすときは DB とサービスを世界ごとに分ける | 決定 | （未確認） |
+| OV-26 | ベータ版は家に置く専用の機械 1 台で動かし（10-25 に VPS から変更）、世界を複数動か… | 決定 | （未確認） |
 | OV-28 | 更新が走っている間は、命令の列の書き換えを受け付けない（409 | 決定 | tests/server/test_turns.py |
 | OV-29 | JSON を受ける入り口は、壊れた本文・オブジェクトでない本文・NaN や Infinity・項… | 決定 | tests/server/test_bad_input.py |
 | OV-27 | 登録は誰でもできる | 決定 | tests/server/test_web.py |
