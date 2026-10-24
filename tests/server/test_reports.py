@@ -359,7 +359,7 @@ def test_budget_guide_on_the_fiscal_page_and_the_orders_form(client, world):
     assert rows["education"]["peak_year"].endswith("480")
     assert rows["construction"]["limit"] != "—" and "工事" in rows["construction"]["note"]
     assert rows["subsidies"]["limit"] == "—" and rows["subsidies"]["last_year"].endswith("0")
-    assert "使い切れない額の目安" in client.get(f"/islands/{island.id}/fiscal/").content.decode()
+    assert "使い切れない目安" in client.get(f"/islands/{island.id}/fiscal/").content.decode()
 
     before = client.get(f"/api/islands/{island.id}/orders").json()["policy"]["budget"]
     assert before["construction"]["guide"]["last_year"].endswith("1,200")

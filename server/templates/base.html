@@ -6,6 +6,7 @@
   <title>{% block title %}{% translate "経済版箱庭諸国" %}{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'css/site.css' %}">
   {% calendar_script %}
+  <script src="{% static 'js/feedback.js' %}" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -24,6 +25,7 @@
       <a href="{% url 'board' %}">{% translate "掲示板" %}</a>
       <a href="{% url 'help' %}">{% translate "手引き" %}</a>
       {% if user.is_authenticated %}
+        <button type="button" class="bug-report-open" data-bug-open>{% translate "不具合を報告" %}</button>
         <a class="muted" href="{% url 'api_keys' %}" title="{% translate 'AI 用の鍵' %}">{{ user.username }}</a>
         <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}<button type="submit">{% translate "ログアウト" %}</button></form>
       {% else %}
@@ -33,5 +35,19 @@
     </nav>
   </header>
   <main>{% block content %}{% endblock %}</main>
+  {% if user.is_authenticated %}
+  <dialog id="bug-report" class="bug-report" data-url="{% url 'api_bug_reports' %}">
+    <form method="dialog" class="bug-report-form">
+      <h2>{% translate "不具合を報告" %}</h2>
+      <p class="hint">{% translate "何が起きたかだけ書いてください。開いていた画面・ターン・ゲームの版・直前の命令などは自動で添えます。" %}</p>
+      <label>{% translate "何が起きましたか" %}<textarea name="what" rows="5" maxlength="2000" required></textarea></label>
+      <label>{% translate "種類（任意）" %}
+        <select name="kind"><option value="">{% translate "（選ばない）" %}</option><option value="bug">{% translate "動かない・おかしい" %}</option><option value="display">{% translate "表示・使いにくさ" %}</option><option value="rule">{% translate "ゲームの数字・仕組み" %}</option><option value="other">{% translate "そのほか" %}</option></select>
+      </label>
+      <p class="bug-report-status" role="status"></p>
+      <div class="bug-report-buttons"><button type="submit" class="primary" value="send">{% translate "送る" %}</button><button type="button" data-bug-close>{% translate "閉じる" %}</button></div>
+    </form>
+  </dialog>
+  {% endif %}
 </body>
 </html>

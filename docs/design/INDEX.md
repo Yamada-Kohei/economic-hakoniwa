@@ -461,7 +461,7 @@
 
 ## [11 画面と統計](11-ui.md)
 
-決まり 43 個、うち仮の決まりの表にあるもの 0 個。
+決まり 45 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -508,6 +508,8 @@
 | UI-41 | 世界の近況（`/news/`、JSON API `GET /api/news?page=`、MC… | 決定（4-1 ③） | tests/server/test_news_awards.py |
 | UI-42 | 賞は記録を持たず、そのつどターンログと統計から数える（巻き戻せば賞も巻き戻る） | 決定（4-1 ③） | tests/server/test_news_awards.py |
 | UI-43 | 記念碑は命令 `build`（`facility` に `monument_…` | 決定（4-1 ④） | tests/server/test_monuments.py |
+| UI-44 | 財政の画面の「予算と使った額」（と、予算の命令の入力欄）に、項目ごとに目安を出す | 決定（画面の直し W-143） | tests/server/test_reports.py |
+| UI-45 | 不具合の報告: ログインした人は画面のどこからでも「不具合を報告」を開ける | 決定（画面の直し W-146） | tests/server/test_feedback.py |
 
 ## [12 確かめ方](12-checks.md)
 
