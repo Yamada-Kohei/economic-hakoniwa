@@ -207,7 +207,7 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         if pending in recipes:
             info["recipe_next_name"] = defs.recipe_name(f.kind, pending)
     if f.built:
-        info["workers_needed"] = fdef["workers"]
+        info["workers_needed"] = fac.workers_of(defs, f)
         # 投入と産出は今の作り方で。畑を作り替えている途中なら、収穫している畑を混ぜた作り方（前の
         # 作物の畑の分も含む。蒔いて育っている畑は何も出さない）と、畑の内訳（Codex の試し遊び）
         recipe = fac.recipe_of(defs, f) if f.recipe in recipes else {}

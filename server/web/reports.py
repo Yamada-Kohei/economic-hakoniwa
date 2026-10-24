@@ -787,7 +787,7 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
             "built": f.built,
             "status_text": display.status_text(f),
             "workers": f.workers,
-            "workers_needed": fdef.get("workers", 0)
+            "workers_needed": (fac.workers_of(game.defs, f) if fdef else 0)
             if f.built
             else fdef.get("construction", {}).get("labor", 0),
             "operating_rate": round(f.operating_rate * 100 / fac.FULL) if f.built else None,

@@ -101,7 +101,7 @@ def wage_update(island: IslandState, f: Facility, ctx: StageContext) -> int:
         cap = int(price * services.settings(ctx.config)["per_worker"])
         new = min(new, max(wage, cap))
     elif new > wage and is_self_supporting(f) and not is_transport(ctx.config, f):
-        workers = fac.workers_needed(ctx.defs, f.kind)
+        workers = fac.workers_of(ctx.defs, f)
         rate = freight.facility_rates(island, ctx.defs, ctx.config).get(f.id, 0)
         prices = island.economy.prices
         workers -= fac.engineers_needed(ctx.defs, f.kind)  # 技術者の賃金は利益の側で引く

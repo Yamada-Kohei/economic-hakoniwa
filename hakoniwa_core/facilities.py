@@ -323,9 +323,29 @@ def is_tileless(defs: Defs, kind: str) -> bool:
     return bool(defs.facilities[kind].get("tileless"))
 
 
-def workers_needed(defs: Defs, kind: str) -> int:
-    """全力で動くのに要る労働者の数（技術者を含む）。"""
-    return defs.facilities[kind]["workers"]
+def recipe_labor(defs: Defs, kind: str, recipe: str | None) -> float:
+    """作り方 recipe の一般の労働者の割合（書かなければ 1）。電子機器を使う作り方は少ない人手で
+    同じだけ作る（MI-43。工場の自動化・役所・銀行）。"""
+    return defs.facilities[kind]["recipes"].get(recipe or "", {}).get("labor", 1.0)
+
+
+def workers_needed(defs: Defs, kind: str, recipe: str | None = None) -> int:
+    """全力で動くのに要る労働者の数（技術者を含む）。作り方 recipe を渡すと、その作り方の人手
+    （技術者の数は変えず、一般の労働者を recipe_labor の割合に）。"""
+    return scaled_workers(defs, kind, recipe_labor(defs, kind, recipe))
+
+
+def scaled_workers(defs: Defs, kind: str, labor: float) -> int:
+    """一般の労働者を labor の割合にしたときの、全力で動くのに要る労働者の数。"""
+    fdef = defs.facilities[kind]
+    if labor >= 1:
+        return fdef["workers"]
+    return fdef["workers"] - int(fdef["staff"].get("general", 0) * (1 - labor))
+
+
+def workers_of(defs: Defs, f: Facility) -> int:
+    """施設 f の今の作り方で全力で動くのに要る労働者の数。"""
+    return workers_needed(defs, f.kind, f.recipe)
 
 
 def engineers_needed(defs: Defs, kind: str) -> int:
@@ -342,12 +362,19 @@ def engineer_wage_of(config: GameConfig, f: Facility | None, wage: Any) -> Any:
 
 
 def labor_cost(
-    defs: Defs, config: GameConfig, kind: str, wage: Any, f: Facility | None = None
+    defs: Defs,
+    config: GameConfig,
+    kind: str,
+    wage: Any,
+    f: Facility | None = None,
+    labor: float | None = None,
 ) -> Any:
     """全力で動いたときの1ターンの賃金: 一般の賃金 wage × 一般の人数 ＋ 技術者の賃金 × 技術者の人数
-    （施設 f があれば、その技術者の賃金で）。"""
+    （施設 f があれば、その技術者の賃金と作り方で。labor を渡すと、その一般の労働者の割合で）。"""
     engineers = engineers_needed(defs, kind)
-    general = workers_needed(defs, kind) - engineers
+    if labor is None:
+        labor = recipe_labor(defs, kind, f.recipe) if f is not None else 1.0
+    general = scaled_workers(defs, kind, labor) - engineers
     if not engineers:
         return general * wage
     return general * wage + engineers * engineer_wage_of(config, f, wage)
@@ -396,7 +423,7 @@ def labor_force(defs: Defs, island: IslandState, tile: Tile, share: float | None
 
 
 def labor_ratio(defs: Defs, f: Facility) -> int:
-    return ratio(f.workers, workers_needed(defs, f.kind))
+    return ratio(f.workers, workers_of(defs, f))
 
 
 def total_progress(defs: Defs, f: Facility) -> int:
@@ -469,7 +496,7 @@ def labor_demand(defs: Defs, f: Facility, turn: int, power: str | None = None) -
     target = min(f.economy.get("target", FULL), equipment_cap(f))
     if power is not None and "target" in f.economy:
         target = min(target, input_ratio(defs, f, power)[0])
-    return scale(workers_needed(defs, f.kind), target)
+    return scale(workers_of(defs, f), target)
 
 
 def placement_problem(

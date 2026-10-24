@@ -18,6 +18,10 @@ from hakoniwa_core.units import to_milli
 # 確認の結果は (種類, 名前, たどる場所, 内容) で返す。行番号は読み込み側で探す。
 Problem = tuple[str, str, tuple[str | int, ...], str]
 Tables = Mapping[str, Mapping[str, Mapping[str, Any]]]
+AUTOMATED = "automated"  # 施設の automation から作る、電子機器を使う作り方の名前
+ELECTRONICS = "electronics"
+DIGITAL = "digital"  # 学校・大学の、教材に電子機器を足す作り方
+OPTIONAL_RECIPES = (AUTOMATED, DIGITAL)  # 電子機器がなければ基本の作り方に戻す作り方
 
 
 @dataclass(frozen=True)
@@ -58,6 +62,15 @@ def _normalize_facility(entry: dict[str, Any]) -> dict[str, Any]:
         }
         for name, recipe in entry["recipes"].items()
     }
+    automation = entry.get("automation")
+    if automation:  # 電子機器を使う作り方 automated（MI-43）: 既定の作り方と同じ産出を少ない人手で
+        base = entry["recipes"][automation.get("from", "default")]
+        inputs = dict(base["inputs"])
+        inputs[ELECTRONICS] = inputs.get(ELECTRONICS, 0) + to_milli(automation["electronics"])
+        entry["recipes"] = {
+            **entry["recipes"],
+            AUTOMATED: {**base, "inputs": inputs, "labor": automation["labor"]},
+        }
     return entry
 
 

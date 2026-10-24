@@ -112,6 +112,17 @@
       },
       "description": "汚染の出し方"
     },
+    "automation": {
+      "type": "object",
+      "required": ["labor", "electronics"],
+      "additionalProperties": false,
+      "properties": {
+        "from": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "元にする作り方の名前（書かなければ default）"},
+        "labor": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "description": "電子機器を使う作り方（automated）の一般の労働者の割合"},
+        "electronics": {"type": "number", "exclusiveMinimum": 0, "description": "電子機器を使う作り方が全力で動いたときに1ターンに足す電子機器（傷んだ分の買い替え）"}
+      },
+      "description": "電子機器を使う作り方（フェーズ4-4）。書くと、既定の作り方（default）と同じ産出を少ない人手で作る作り方 automated を定義の読み込みで足す"
+    },
     "recipes": {
       "type": "object",
       "minProperties": 1,
@@ -124,7 +135,9 @@
           "outputs": {"$ref": "#/$defs/amounts", "description": "全力で動いたときの1ターンの産出"},
           "requires_resource": {"type": "string", "description": "島で選んだ鉱業資源がこれのときだけ使える"},
           "grow_turns": {"type": "integer", "minimum": 1, "description": "作物が蒔いてから収穫まで育つターン数（書けば畑を少しずつ作り替える）"},
-          "factors": {"$ref": "#/$defs/factors", "description": "この作り方の生産性の係数の重み（書かなければ施設の factors）"}
+          "factors": {"$ref": "#/$defs/factors", "description": "この作り方の生産性の係数の重み（書かなければ施設の factors）"},
+          "labor": {"type": "number", "exclusiveMinimum": 0, "maximum": 1, "description": "全力で動くのに要る一般の労働者の割合（書かなければ 1。技術者の数は変えない。電子機器を使う作り方、フェーズ4-4）"},
+          "education_scale": {"type": "number", "minimum": 1, "description": "学校と大学の定員・育てる技術者の数の倍率（書かなければ 1。教材に電子機器を使う作り方、フェーズ4-4）"}
         }
       },
       "description": "作り方。複数あれば建てるときに選ぶ"

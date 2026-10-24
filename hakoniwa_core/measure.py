@@ -271,7 +271,7 @@ def jobs(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, float
         if not f.built:
             out["jobs.sites"] += f.workers
             continue
-        need = fac.workers_needed(defs, f.kind)
+        need = fac.workers_of(defs, f)
         if need <= 0 or not fac.located(f):
             continue
         out["jobs.capacity"] += need

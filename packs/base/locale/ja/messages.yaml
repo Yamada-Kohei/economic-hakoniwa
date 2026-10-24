@@ -829,3 +829,4 @@ reason_not_landing_site: "揚陸できるのは、港か海に接する平地の
 reason_landing_limit: "港でない所には、1 ターンにこれ以上降ろせません"
 reason_no_supplies: "国の倉庫にその補給がありません"
 reason_no_reselect: "体制を選び直せるのは、降伏で体制が倒れた国だけです"
+recipe_fell_back: "({x}, {y}) の{facility}は、電子機器が手に入らないため、生産方式を「{recipe}」に戻しました（次のターンは稼働率が半分になります）"

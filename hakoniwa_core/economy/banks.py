@@ -209,7 +209,7 @@ def staff_wanted(island: IslandState, config: GameConfig, defs: Any, f: Facility
     人数、それより小さい銀行はその割合（下限は定義の人数の banking.staff_floor）。預金の集まらない
     銀行が、定義の人数の賃金を払い続けて赤字で破綻していた（試し遊び4回目）。経費を切り詰めている
     銀行（watch_costs）は下限なし。"""
-    need = fac.workers_needed(defs, f.kind)
+    need = fac.workers_of(defs, f)
     if need <= 0:
         return 0
     bank = ledger.bank_entity(f.id)
