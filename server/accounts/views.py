@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
+import logging
 from datetime import timedelta
 
 from django.conf import settings
@@ -23,11 +25,40 @@ from server.accounts.models import ApiKey, SignupRecord
 from server.game import get_game
 from server.world.models import Island
 
+logger = logging.getLogger(__name__)
+
+
+def _parse_ip(text: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """IP の文字を読む。ポート付き（1.2.3.4:80、[::1]:80）と括弧付き（[::1]）も受ける。"""
+    candidates = [text]
+    if text.startswith("["):
+        candidates.append(text[1:].split("]", 1)[0])
+    elif text.count(":") == 1:
+        candidates.append(text.split(":", 1)[0])
+    for candidate in candidates:
+        try:
+            return ipaddress.ip_address(candidate)
+        except ValueError:
+            continue
+    return None
+
 
 def client_ip(request) -> str:
-    """利用者の IP。リバースプロキシの後ろでは HAKONIWA_CLIENT_IP_HEADER で見る場所を変える。"""
+    """利用者の IP。リバースプロキシの後ろでは HAKONIWA_CLIENT_IP_HEADER で見る場所を変える。
+
+    IPv6 は、1 つの回線に配られる /64 の先頭の部分にそろえる（同じ人が /64 の中で接続元を
+    変えて、制限をすり抜けられないように）。IPv4 を IPv6 の形で書いたものは IPv4 に直す。
+    読めない・空のときは空文字。
+    """
     value = request.META.get(settings.HAKONIWA_CLIENT_IP_HEADER, "") or ""
-    return value.split(",")[0].strip()
+    ip = _parse_ip(value.split(",")[0].strip())
+    if ip is None:
+        return ""
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            return str(ip.ipv4_mapped)
+        return str(ipaddress.ip_network((ip, 64), strict=False).network_address)
+    return str(ip)
 
 
 def ip_hash(ip: str) -> str:
@@ -35,22 +66,38 @@ def ip_hash(ip: str) -> str:
 
 
 def signup_blocked(request) -> bool:
+    """この接続元から登録できる数に達しているか。接続元が分からないときは止めない（全員を同じ
+    接続元として数えて、誰も登録できなくなるのを避ける。読む場所の設定違いはログに残す）。"""
     config = get_game().config
     limit = config.get("accounts.signups_per_ip")
     if limit <= 0:
         return False
-    since = timezone.now() - timedelta(days=config.get("accounts.remember_days"))
-    SignupRecord.objects.filter(created_at__lt=since).delete()
-    return SignupRecord.objects.filter(ip_hash=ip_hash(client_ip(request))).count() >= limit
+    ip = client_ip(request)
+    if not ip:
+        logger.warning(
+            "接続元の IP が読めないので、登録の数を数えません（HAKONIWA_CLIENT_IP_HEADER=%s）",
+            settings.HAKONIWA_CLIENT_IP_HEADER,
+        )
+        return False
+    recent = SignupRecord.objects.filter(ip_hash=ip_hash(ip), created_at__gte=_since())
+    return recent.count() >= limit
+
+
+def _since():
+    return timezone.now() - timedelta(days=get_game().config.get("accounts.remember_days"))
 
 
 def signup(request):
+    if request.method == "POST":  # 古い記録は、登録を受けるときにまとめて消す
+        SignupRecord.objects.filter(created_at__lt=_since()).delete()
     blocked = signup_blocked(request)
     form = SignupForm(request.POST or None)
     if request.method == "POST" and not blocked and form.is_valid():
         with transaction.atomic():
             user = form.save()
-            SignupRecord.objects.create(ip_hash=ip_hash(client_ip(request)))
+            ip = client_ip(request)
+            if ip:
+                SignupRecord.objects.create(ip_hash=ip_hash(ip))
         login(request, user)
         return redirect("found")
     return render(request, "accounts/signup.html", {"form": form, "blocked": blocked})

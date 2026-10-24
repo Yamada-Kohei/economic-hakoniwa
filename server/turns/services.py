@@ -8,8 +8,9 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from django.conf import settings
 from django.core.mail import mail_admins
-from django.db import transaction
+from django.db import OperationalError, connection, transaction
 from django.utils import timezone
 
 from hakoniwa_core import ledger
@@ -55,6 +56,44 @@ def get_world() -> m.World:
     return world
 
 
+# 更新中の印を立てた直後から、更新が行の鎖を取るまでの間（別の更新が割り込んで見るかもしれない）
+LOCK_GRACE = timedelta(minutes=2)
+
+
+def update_is_stale(world: m.World, now: datetime | None = None) -> bool:
+    """更新中の印が、強制終了などで残ったままの古いものか。
+
+    更新は世界の行の鎖を取ったまま走るので、鎖を取れた側が印を見つけたなら、更新していた側は
+    もういない。鎖を使えない DB（SQLite）では見分けられないので、
+    HAKONIWA_UPDATE_STALE_MINUTES より古い印を残りものとみなす。ターンの計算がそれより長くかかる
+    世界では、その分だけ大きくする。鎖を取れた側（select_for_update の後）か、取れない DB で呼ぶ。
+    """
+    since = world.updating_since
+    if since is None:
+        return False
+    limit = (
+        LOCK_GRACE
+        if connection.features.has_select_for_update
+        else timedelta(minutes=settings.HAKONIWA_UPDATE_STALE_MINUTES)
+    )
+    return (now or timezone.now()) - since > limit
+
+
+def update_running() -> bool:
+    """今、更新が走っているか（残りものの印は数えない）。命令の書き換えを断るかどうかに使う。
+
+    呼ぶ側のトランザクションの中で呼ぶ。世界の行の鎖を、待たずに取りにいく。取れなければ更新が
+    走っている。取れたら、そのトランザクションが終わるまで更新は始まらない（始まる側が待つ）ので、
+    その間に命令を書き換えても更新が読んだ命令とぶつからない。
+    """
+    try:
+        with transaction.atomic():  # 鎖が取れない失敗で呼び出し側のトランザクションを壊さない
+            world = m.World.objects.select_for_update(nowait=True).get(pk=get_world().pk)
+    except OperationalError:
+        return True
+    return world.updating_since is not None and not update_is_stale(world)
+
+
 def run_turn(force: bool = False, now: datetime | None = None) -> TurnResult:
     """次の更新時刻になっていれば1ターン進める。なっていなければ何もしない。
 
@@ -64,23 +103,53 @@ def run_turn(force: bool = False, now: datetime | None = None) -> TurnResult:
     game = get_game()
 
     # 1. 更新中の印を立てる（同時に2つ走らないように）
+    cleared: str | None = None
     with transaction.atomic():
         world = m.World.objects.select_for_update().get(pk=get_world().pk)
-        if world.updating_since is not None and not force:
-            return TurnResult(False, f"更新中です（{world.updating_since} から）", world.turn)
-        if world.paused and not force:
-            return TurnResult(False, "更新は一時停止中です", world.turn)
-        if not force and world.next_turn_at is not None and now < world.next_turn_at:
-            return TurnResult(False, f"次の更新は {world.next_turn_at} です", world.turn)
-        world.updating_since = now
-        world.save(update_fields=["updating_since"])
+        if world.updating_since is not None and update_is_stale(world, now):
+            # 外すのはその場で保存する（一時停止中などで更新を始めずに戻っても、印を残さない）
+            logger.warning("更新中の印が残っていたので外します（%s から）", world.updating_since)
+            cleared = f"{world.updating_since} に始まった更新が終わらないまま止まっていました"
+            world.updating_since = None
+            world.save(update_fields=["updating_since"])
+        result = _begin_update(world, force, now)
+    if cleared:  # メールは保存の後に。送れなくても更新は止めない
+        try:
+            mail_admins(
+                "更新中の印が残っていたので外しました",
+                f"{cleared}（強制終了など）。ターン {world.turn} から更新をやり直します。",
+            )
+        except Exception:
+            logger.exception("更新中の印を外したことのメールを送れませんでした")
+    if result is not None:
+        return result
+    return _run_update(world, game, now)
 
+
+def _begin_update(world: m.World, force: bool, now: datetime) -> TurnResult | None:
+    """更新を始めてよければ印を立てて None。だめなら、そのわけの結果。"""
+    if world.updating_since is not None and not force:
+        return TurnResult(False, f"更新中です（{world.updating_since} から）", world.turn)
+    if world.paused and not force:
+        return TurnResult(False, "更新は一時停止中です", world.turn)
+    if not force and world.next_turn_at is not None and now < world.next_turn_at:
+        return TurnResult(False, f"次の更新は {world.next_turn_at} です", world.turn)
+    world.updating_since = now
+    world.save(update_fields=["updating_since"])
+    return None
+
+
+def _run_update(world: m.World, game, now: datetime) -> TurnResult:
     started = timezone.now()
     try:
         # 2. 読み込み → バックアップ → 計算 → 書き戻しを1つのトランザクションで行う。
         #    途中で失敗したら何も書かれず、ターンも進まない。
         with transaction.atomic():
             world = m.World.objects.select_for_update().get(pk=world.pk)
+            if world.updating_since != now:
+                # 古い印とみなされて外され、別の更新が印を取り直した。その更新に任せる
+                text = "別の更新が始まっていたので、この更新はやめました"
+                return TurnResult(False, text, world.turn)
             repo = WorldRepository(world)
             state = repo.load(orders_until=now)
             _check_defs_cover(state)
@@ -173,7 +242,7 @@ def rollback(to_turn: int) -> WorldState:
     TurnError。
     """
     world = m.World.objects.select_for_update().get(pk=get_world().pk)
-    if world.updating_since is not None:
+    if world.updating_since is not None and not update_is_stale(world):
         raise TurnError("更新中は巻き戻せません")
     backup = Backup.objects.filter(world=world, turn=to_turn).order_by("-id").first()
     if backup is None:

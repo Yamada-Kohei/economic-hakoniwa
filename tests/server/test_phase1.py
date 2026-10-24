@@ -8,6 +8,8 @@ import pytest
 from django.contrib.auth.models import User
 
 from hakoniwa_core.state.serialize import world_to_dict
+from server.accounts.models import SignupRecord
+from server.accounts.views import ip_hash
 from server.game import get_game
 from server.orders.models import Order
 from server.turns.services import rollback, run_turn
@@ -276,3 +278,34 @@ def test_pages_render(client, world):
     # マスの欄から足した命令の結果は、地図の上に重ねて出す（命令の欄まで見に行かなくてよいように）
     assert 'id="order-notice"' in page
     assert island.name in client.get("/world/").content.decode()
+
+
+def test_signup_groups_ipv6_by_64_and_ignores_unreadable_ip(client, db, caplog):
+    assert _signup(client, "v6a", "2001:db8:1:2::1").status_code == 302
+    client.logout()
+    # 同じ /64 の別の接続元は同じ回線として数える
+    res = _signup(client, "v6b", "2001:db8:1:2:ffff::9")
+    assert res.status_code == 200 and "すでに登録されています" in res.content.decode()
+    client.logout()
+    assert _signup(client, "v6c", "2001:db8:1:3::1")["Location"] == "/found/"
+    client.logout()
+    # IPv4 を IPv6 の形で書いたものは IPv4 と同じ接続元
+    assert _signup(client, "m1", "::ffff:10.0.0.7").status_code == 302
+    client.logout()
+    assert _signup(client, "m2", "10.0.0.7").status_code == 200
+    client.logout()
+    # ポート付き・括弧付きも読める
+    assert _signup(client, "p1", "10.1.1.1:5555").status_code == 302
+    client.logout()
+    assert _signup(client, "p2", "10.1.1.1").status_code == 200
+    client.logout()
+    assert _signup(client, "p3", "[2001:db8:9:9::1]:80").status_code == 302
+    client.logout()
+    assert _signup(client, "p4", "2001:db8:9:9::2").status_code == 200
+    client.logout()
+    # 接続元が読めないときは数えない（全員が同じ接続元になって誰も登録できなくなるのを避ける）
+    for i in range(3):
+        assert _signup(client, f"blank{i}", "")["Location"] == "/found/"
+        client.logout()
+    assert not SignupRecord.objects.filter(ip_hash=ip_hash("")).exists()
+    assert "接続元の IP が読めない" in caplog.text

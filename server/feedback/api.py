@@ -7,12 +7,12 @@ GET  /api/bug-reports  自分が送った報告の一覧（状態つき）
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 
+from server import jsonbody
 from server.feedback import services
 from server.feedback.models import BugReport
 
@@ -36,7 +36,7 @@ def bug_reports(request):
         rows = BugReport.objects.filter(user=request.user)[:LIST_MAX]
         return _json({"reports": [services.view(r) for r in rows]})
     try:
-        data = json.loads(request.body or b"{}")
+        data = jsonbody.loads(request.body or b"{}")
         if not isinstance(data, dict):
             raise ValueError
     except ValueError:

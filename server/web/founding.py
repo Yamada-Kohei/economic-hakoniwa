@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import json
 import random
 from typing import Any
 
@@ -27,6 +26,7 @@ from hakoniwa_core.founding import (
 )
 from hakoniwa_core.nature import zone_of
 from hakoniwa_core.state.generate import generate_land
+from server import jsonbody
 from server.game import get_game
 from server.web import display
 from server.world import models as m
@@ -45,10 +45,19 @@ def page(request):
 
 
 def _body(request) -> dict[str, Any]:
-    data = json.loads(request.body or b"{}")
+    data = jsonbody.loads(request.body or b"{}")
     if not isinstance(data, dict):
         raise ValueError
     return data
+
+
+def _str_map(value: Any) -> dict[str, str]:
+    """{項目: 値} の形の入力を、文字どうしの dict に。形が違えば ValueError。"""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError
+    return {str(k): str(v) for k, v in value.items()}
 
 
 def _land(data: dict[str, Any]) -> set[tuple[int, int]]:
@@ -84,7 +93,8 @@ def terrain(request):
         land = _land(data)
         seed = int(data.get("seed", 0))
         edits = {(int(x), int(y)): str(t) for x, y, t in data.get("edits", [])}
-    except (ValueError, TypeError):
+        regime = _str_map(data.get("regime"))
+    except (ValueError, TypeError, OverflowError):
         return HttpResponseBadRequest("JSON で送ってください")
     game = get_game()
     size = game.config.get("island.size")
@@ -96,7 +106,6 @@ def terrain(request):
     for pos, t in edits.items():
         if pos in land and t in game.defs.terrain:
             tiles[pos] = t
-    regime = data.get("regime") or {}
     kind = start_of(game.defs, regime)["capital"]["facility"]
     capital = suggest_capital(tiles, land, game.defs, game.config, kind) if land else None
     return JsonResponse(
@@ -120,15 +129,15 @@ def found(request):
         plan = FoundingPlan(
             land=_land(data),
             capital=(int(data["capital"][0]), int(data["capital"][1])),
-            regime={str(k): str(v) for k, v in (data.get("regime") or {}).items()},
-            names={str(k): str(v) for k, v in (data.get("names") or {}).items()},
+            regime=_str_map(data.get("regime")),
+            names=_str_map(data.get("names")),
             resources=[str(r) for r in data.get("resources", [])],
             terrain_edits={(int(x), int(y)): str(t) for x, y, t in data.get("edits", [])},
             seed=int(data.get("seed", 0)),
             place_style=str(data.get("place_style") or ""),
         )
         wx, wy = int(data["cell"][0]), int(data["cell"][1])
-    except (ValueError, TypeError, KeyError, IndexError):
+    except (ValueError, TypeError, KeyError, IndexError, OverflowError):
         return JsonResponse(
             {"problems": ["送られた内容の形が正しくありません"]}, status=400, **JSON
         )

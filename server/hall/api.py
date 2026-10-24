@@ -5,13 +5,13 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from django.core.paginator import Paginator
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 
+from server import jsonbody
 from server.hall import services
 from server.turns.services import get_world
 from server.web import diplomacy
@@ -56,7 +56,7 @@ def _post(request) -> JsonResponse:
     if island is None:
         return _error("声明は自分の島を持つ人だけが出せます", 403)
     try:
-        data = json.loads(request.body or b"{}")
+        data = jsonbody.loads(request.body or b"{}")
         if not isinstance(data, dict):
             raise ValueError
     except ValueError:
