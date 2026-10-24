@@ -585,10 +585,11 @@ def spend_estimate(f: Facility) -> int:
 
 
 def workers_wanted(config: GameConfig, defs: Defs, f: Facility) -> int:
-    """商社が雇いたい人数: 定義の人数 × 直近の扱った重さの割合（少なくとも 1 割）。"""
+    """商社が雇いたい人数: 定義の人数 × 直近の扱った重さの割合（少なくとも trade.staff_floor。荷が
+    ないまま圏にも入れない商社が、定義の人数の 1 割の賃金を払い続けて赤字だった。W-157）。"""
     full = defs.facilities[f.kind]["workers"]
-    share = max(0.1, min(1.0, volume_share(config, f)))
-    return round_money(full * share + 0.5)
+    share = max(config.get("trade.staff_floor"), min(1.0, volume_share(config, f)))
+    return max(1, round_money(full * share + 0.5))
 
 
 def import_needs(

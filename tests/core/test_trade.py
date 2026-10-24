@@ -446,6 +446,11 @@ def test_trade_facilities_hiring_for_their_cargo_are_not_short_of_workers(game, 
             seen = f
             if f is port:
                 seen = replace(f, economy={**f.economy, "handled": f.economy["handled"][:-1]})
+            else:  # 商社も同じ: 雇ったときに見た前の月までの量で比べる
+                state = traders.state_of(f)
+                seen = replace(
+                    f, economy={**f.economy, "trade": {**state, "volume": state["volume"][:-1]}}
+                )
             assert f.workers >= staff.wanted(game.config, game.defs, seen)
             assert f.status in ("", "cargo")
     assert format_log(game.defs, "status_cargo", {}) == "扱う荷に合わせて操業"
@@ -700,3 +705,42 @@ def test_the_state_opens_a_trading_company_when_private_owners_cannot(game, monk
     opened = setup.entry(island, game.defs, game.config, False, first + 2 * wait)
     assert opened is not None and opened.owner == "state"
     assert any(e.kind == "trader_opened_state" for e in island.log)
+
+
+# --- 商社の採算（W-157） -----------------------------------------------------------------
+
+
+def test_a_trader_without_cargo_keeps_only_a_caretaker_and_grows_with_its_cargo(game):
+    """荷がない商社（圏に入れない島など）は 1 人だけ置き、扱う荷が増えれば直近の量に合わせて増やす。
+    前は荷が 0 でも定義の人数の 1 割（5 人）を雇い続け、収入がないまま賃金だけ出ていた。"""
+    world, island = _market_island(game)
+    game.engine.run_turn(world)
+    f = traders_of(island, game.config)[0]
+    full = game.defs.facilities[f.kind]["workers"]
+    capacity = game.config.get("trade.trader_capacity") * QUANTITY_SCALE
+    assert game.config.get("trade.staff_floor") < 0.1
+    traders.state_of(f)["volume"] = []
+    assert traders.workers_wanted(game.config, game.defs, f) == 1
+    traders.state_of(f)["volume"] = [0] * 12
+    assert traders.workers_wanted(game.config, game.defs, f) == 1
+    traders.state_of(f)["volume"] = [capacity // 10] * 12
+    assert traders.workers_wanted(game.config, game.defs, f) == round(full * 0.1)
+    traders.state_of(f)["volume"] = [capacity] * 12
+    assert traders.workers_wanted(game.config, game.defs, f) == full
+    traders.state_of(f)["volume"] = [capacity * 3] * 12  # 扱える重さを超えても定義の人数まで
+    assert traders.workers_wanted(game.config, game.defs, f) == full
+
+
+def test_an_island_outside_every_bloc_pays_its_trader_one_wage(game):
+    """貿易圏に入っていない島の商社は、取引量 0 のまま、賃金は 1 人分だけ。"""
+    world = generate_world(7, 2, game.config, game.defs)
+    for _ in range(20):
+        for island in world.islands.values():
+            queue_orders(island, plan_turn(island, game.defs, game.config, world.turn + 1))
+        game.engine.run_turn(world)  # 貿易圏の計画は出さない
+    for island in world.islands.values():
+        f = traders_of(island, game.config)[0]
+        assert not traders.views(island)
+        assert f.workers == 1
+        assert f.economy["ebitda"][-1] == -f.economy["wage"] * f.workers
+        assert sum(traders.state_of(f)["volume"]) == 0
