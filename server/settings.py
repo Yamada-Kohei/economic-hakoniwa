@@ -12,6 +12,10 @@
 - HAKONIWA_HALL_PER_DAY: 1つの島が 24 時間に国際会議場に出せる声明の数（既定 10。出しすぎの歯止め）
 - HAKONIWA_BUG_REPORTS_PER_DAY: 1人が 24 時間に送れる不具合の報告の数（既定 10。送りすぎの歯止め）
 - HAKONIWA_VERSION: 不具合の報告に添えるゲームの版（既定は git のコミット）
+- HAKONIWA_BOARD_NEWCOMER_MINUTES: 登録してから掲示板に書けるまでの分（既定 1。0 で待たない）
+- HAKONIWA_BOARD_INTERVAL_SECONDS: 掲示板の連投の間隔（秒。既定 10）
+- HAKONIWA_BOARD_POSTS_PER_DAY: 1 人が 24 時間に掲示板に書ける数（既定 200）
+- HAKONIWA_BOARD_THREADS_PER_DAY: 1 人が 24 時間に立てられるスレッドの数（既定 5）
 - HAKONIWA_FLAG_MAX_KB: 国旗の PNG の大きさの上限（KB。既定 100）
 - HAKONIWA_FLAG_MAX_SIDE: 国旗の PNG の縦横の上限（ピクセル。既定 512）
 - HAKONIWA_COUNTRY_NOTES_PER_DAY: 1つの国が 24 時間に他国のページに残せる一言の数（既定 10）
@@ -84,6 +88,7 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "server.web.context.own_island",
                 "server.letters.context.unread_letters",
+                "server.board.context.unread_replies",
             ],
         },
     },
@@ -141,6 +146,10 @@ HAKONIWA_LETTERS_PER_DAY = int(os.environ.get("HAKONIWA_LETTERS_PER_DAY", "50"))
 HAKONIWA_HALL_PER_DAY = int(os.environ.get("HAKONIWA_HALL_PER_DAY", "10"))
 HAKONIWA_BUG_REPORTS_PER_DAY = int(os.environ.get("HAKONIWA_BUG_REPORTS_PER_DAY", "10"))
 HAKONIWA_VERSION = os.environ.get("HAKONIWA_VERSION", "")
+HAKONIWA_BOARD_NEWCOMER_MINUTES = int(os.environ.get("HAKONIWA_BOARD_NEWCOMER_MINUTES", "1"))
+HAKONIWA_BOARD_INTERVAL_SECONDS = int(os.environ.get("HAKONIWA_BOARD_INTERVAL_SECONDS", "10"))
+HAKONIWA_BOARD_POSTS_PER_DAY = int(os.environ.get("HAKONIWA_BOARD_POSTS_PER_DAY", "200"))
+HAKONIWA_BOARD_THREADS_PER_DAY = int(os.environ.get("HAKONIWA_BOARD_THREADS_PER_DAY", "5"))
 HAKONIWA_FLAG_MAX_KB = int(os.environ.get("HAKONIWA_FLAG_MAX_KB", "100"))
 HAKONIWA_FLAG_MAX_SIDE = int(os.environ.get("HAKONIWA_FLAG_MAX_SIDE", "512"))
 HAKONIWA_COUNTRY_NOTES_PER_DAY = int(os.environ.get("HAKONIWA_COUNTRY_NOTES_PER_DAY", "10"))

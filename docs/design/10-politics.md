@@ -11,8 +11,9 @@
 - 体制の特色: `packs/base/data/regimes.yaml` の `traits`。警察署は `facilities.yaml` の `police`
 - 移民の政策: `hakoniwa_core/modules/migration/`（動きはタブ 2）
 - 公電（内部の名前 letters）: `server/` の外交の画面と API、`tools/playtest/hk.py`
+- 掲示板: `server/board/`（保存 `models.py`、書く・読む・歯止め `services.py`、名前とトリップと ID `identity.py`、本文の HTML `render.py`、画面 `views.py`、API `api.py`）、画面は `server/templates/board/`・`server/static/js/board.js`・`server/static/css/board.css`
 - 宣戦・条約・戦争の状態（フェーズ4-1）: `hakoniwa_core/diplomacy/`（戦争 `war.py`・条約 `treaties.py`・条項 `clauses.py`・経済の条項 `economic.py`・違反の信用の傷 `credit.py`）、段と命令は `hakoniwa_core/modules/diplomacy/`。国際会議場は `server/hall/`、外交の画面と API は `server/web/diplomacy.py`
-- 試験: tests/core/test_phase3_4.py、tests/core/test_migration.py、tests/core/test_log_messages.py、tests/server/test_phase3_4.py、tests/server/test_letters.py、tests/core/test_diplomacy.py、tests/core/test_diplomacy_economic.py、tests/server/test_diplomacy.py
+- 試験: tests/core/test_phase3_4.py、tests/core/test_migration.py、tests/core/test_log_messages.py、tests/server/test_phase3_4.py、tests/server/test_letters.py、tests/core/test_diplomacy.py、tests/core/test_diplomacy_economic.py、tests/server/test_diplomacy.py、tests/server/test_board.py
 
 ## つながり
 
@@ -58,7 +59,7 @@
 | PL-32 | 混合経済はどの財にも値段の上限と下限を決められる。市場経済は電気料金の上限だけ | 決定 |  | tests/core/test_phase3_4.py::test_price_floor_keeps_the_market_price_up, tests/server/test_phase3_4.py::test_plan_page_for_a_mixed_economy_shows_price_controls |
 | PL-33 | 闇市は入れない。後からモジュールで足せるよう、配給で買えなかった量と余ったお金を段の間に残す | 決定（後から） |  | （未確認） |
 | PL-34 | 移民の出国の政策は政治の仕組みで上限がある: 民主主義は自由だけ、権威主義は許可制まで、全体主義は禁止まで（`regimes.yaml` の `exit_control`）。受け入れの政策は体制によらない | 決定 |  | tests/core/test_migration.py::test_democracy_cannot_restrict_exit_and_amending_relaxes_it |
-| PL-35 | 国どうしのやりとりは、非公開の公電（送るとすぐ届き、発信国と宛先国の持ち主だけが読める）と公開の掲示板。画面・API・hk.py から同じように使える | 決定 |  | tests/server/test_letters.py::test_send_receive_and_read, tests/server/test_letters.py::test_others_cannot_read |
+| PL-35 | 国どうしのやりとりは、非公開の公電（送るとすぐ届き、発信国と宛先国の持ち主だけが読める）と公開の掲示板（板・番号付きの書き込み。PL-51〜PL-55）。画面・API・MCP・hk.py から同じように使える | 決定 |  | tests/server/test_letters.py::test_send_receive_and_read, tests/server/test_letters.py::test_others_cannot_read |
 | PL-36 | 公電は1つの島が24時間に送れる数に上限があり（サーバーの設定）、管理画面で非表示にできる | 決定 |  | tests/server/test_letters.py::test_daily_limit, tests/server/test_letters.py::test_admin_hides_letters |
 | PL-37 | 外交の決まりは遊ぶ人に任せる。条約は両国が署名すると効く条項の束で、停戦・講和・不可侵・同盟は4-1の①で作った（予告どおりの破棄は罰なし、破ると違反の記録と信用の傷、ゲームは条項を強いない）。貿易圏・二国間契約・固定相場・融通・援助・移民の約束も同じ条約の条項（PL-45〜PL-50。4-1の②で作った）。関税と禁輸は一方的のまま | 決定（①と②で作った） | `diplomacy.notice_turns`, `diplomacy.violation_premium` | tests/core/test_diplomacy.py::test_denounced_non_aggression_ends_without_penalty, tests/core/test_diplomacy.py::test_declaring_war_on_a_treaty_partner_is_a_violation |
 | PL-38 | 反乱と内戦はフェーズ4。今は反乱の前触れをターンログで知らせるだけ | 決定（フェーズ4 で作る） |  |  |
@@ -74,6 +75,11 @@
 | PL-48 | 固定相場と融通の条項: 固定相場は、固定する国の中央銀行が相手の通貨を決めたレートに固定する（独立した中央銀行は約束できない）。やめる・準備が尽きて外れると、固定した国の違反。融通は、相手の中央銀行も、手元の外貨の余りを貸せる相手（スワップの貸し手）に数える。違反はない | 決定 | | tests/core/test_diplomacy_economic.py::test_peg_clause_pegs_the_currency_and_dropping_it_is_a_violation, tests/core/test_diplomacy_economic.py::test_independent_central_bank_cannot_promise_a_peg, tests/core/test_diplomacy_economic.py::test_swap_clause_makes_the_partner_a_lender |
 | PL-49 | 援助の条項: 送る国が、決めた間隔（1〜`max_aid_period_turns` ターン）で 1 回の額を決めた回数（1〜`max_aid_count`）送る約束。送るのは今までどおりお金の援助の命令で、届いた累計が約束に足りないとき（n 回目の期日の次のターンに n 回分の累計で見る）は送る国の違反（1 回落としても、その遅れは次の回から数え直さない）。1 回の援助は、同じ条件の援助の約束が何本かあれば番号の順に、約束の残りまで充てる。1 回の援助は、先に講和の賠償の残りに数え、余りを援助の約束に数える。回数を終えると条項が済む | 決定 | `diplomacy.max_aid_period_turns`, `diplomacy.max_aid_count` | tests/core/test_diplomacy_economic.py::test_aid_clause_counts_payments_and_missing_one_is_a_violation, tests/core/test_diplomacy_economic.py::test_one_aid_payment_counts_for_reparations_first |
 | PL-50 | 移民の条項: 人の行き来の自由は、両国が移民の受け入れ（政策）を open に保つ約束、難民の受け入れは、受け入れる国が open か refugees に保つ約束。効くと足りない国の受け入れをその値にする（上限の人数は今のまま）。政策を変えて約束を外すと、変えた国の違反。移民の政策は世界に対して 1 つなので、特定の相手だけに開けることはできない | 決定（現実との違い: 相手を限った受け入れは持たない） | | tests/core/test_diplomacy_economic.py::test_migration_clauses_open_the_doors_and_closing_them_is_a_violation, tests/core/test_diplomacy_economic.py::test_refugee_clause_only_asks_the_host |
+| PL-51 | 掲示板は板（雑談・外交・質問・攻略・運営からの告知。管理画面で足せる。告知は管理者だけが書ける）の中にスレッドが並び、スレッドの中に 1 から始まる番号の書き込みが並ぶ。1 つのスレッドは 1000 件で書けなくなる。板ごとのスレッドの数に上限があり、超えると書き込みが一番古いスレッドが過去ログへ落ちる（固定のスレッドは落ちない）。過去ログは読めて検索できるが書けない。sage の書き込みはスレッドを上げない。非表示にした書き込みは番号を残し、本文を出さない（あぼーん） | 決定（W-147） |  | tests/server/test_board.py::test_thread_closes_at_1000, tests/server/test_board.py::test_old_threads_fall_into_the_log, tests/server/test_board.py::test_sage_does_not_bump |
+| PL-52 | 書き込みの名前欄は、空なら「名無し」、`名前#秘密` で秘密から作ったトリップ（◆の印）が付く。「国名で書く」を選ぶと自分の国名で書け、国のページへ飛べる。ID は板ごと・日ごとに変わる（同じ日に同じ板で書いた同じアカウントが分かる）。国名で書いた書き込みと管理者として書いた書き込みには ID を付けない（名無しで書いた書き込みと結びつけない）。画面と API にアカウント名は出さず、管理者だけが誰かを確かめられる | 決定（W-147） |  | tests/server/test_board.py::test_threads_posts_are_numbered_and_hide_the_account, tests/server/test_board.py::test_id_is_per_board_and_per_day, tests/server/test_board.py::test_trip_and_name, tests/server/test_board.py::test_country_name_links_to_the_country_page |
+| PL-53 | 本文の `>>番号`（`>>3-5` も）は同じスレッドの書き込みへのリンクになり、指を置く（スマホは押す）と元の書き込みが浮き出る。返された書き込みには「返信: >>12」が付き、返された人（自分への返信を除く）には「返信の知らせ」（見出しの未読の数・国の要約の注意）が出て、開くと既読になる。いいねは 1 人 1 つ、自分の書き込みには付けられない | 決定（W-147） |  | tests/server/test_board.py::test_anchors_become_links_and_replies_are_recorded, tests/server/test_board.py::test_notices_count_unread_replies_and_mark_read, tests/server/test_board.py::test_like_toggles_and_not_own |
+| PL-54 | NG は人・ID・言葉で決める。人の NG は書き込みを指して付け、誰かは返さずに保存して名前を変えても効く（名無しで書いた書き込みか、その国名で書いた書き込みのどちらか一方にだけ効き、同じ人の名無しと国名は結びつけない）。ID の NG はその日の分だけ効く。NG に当たった書き込みは折りたたんで見せ（API は本文を null にし、`ng=show` で出す）、その人からの返信は未読の数にも「返信:」にも入れず、運営の書き込みは NG にできない。通報は 1 人が 1 つの書き込みに 1 回で、管理画面で書き込みを非表示にして対応済みにできる。ゲームの不具合の報告（UI-45）とは別の窓口 | 決定（W-147） |  | tests/server/test_board.py::test_ng_person_ident_and_word, tests/server/test_board.py::test_report_once_and_admin_can_hide |
+| PL-55 | 書き込みの歯止め（いいね・通報にも同じ待ち）: 登録してから `HAKONIWA_BOARD_NEWCOMER_MINUTES` 分は書けない（5ch のどんぐりに当たる）、連投は `HAKONIWA_BOARD_INTERVAL_SECONDS` 秒あける、24 時間に書ける数は `HAKONIWA_BOARD_POSTS_PER_DAY`・立てられるスレッドは `HAKONIWA_BOARD_THREADS_PER_DAY`、同じ文を 24 時間に 2 回は書けない。名前に「運営」は使えない。同じアカウントの書き込みは 1 つずつ受ける（同時に送って歯止めを抜けられない）。本文は 2000 字・40 行まで、題名は 100 字まで。管理者は歯止めの外。画像は入れない（守りの手間が大きい。入れるなら国旗と同じ検査をする） | 決定（W-147） | `HAKONIWA_BOARD_NEWCOMER_MINUTES`・`HAKONIWA_BOARD_INTERVAL_SECONDS`・`HAKONIWA_BOARD_POSTS_PER_DAY`・`HAKONIWA_BOARD_THREADS_PER_DAY` | tests/server/test_board.py::test_limits, tests/server/test_board.py::test_validation |
 
 ### 仮の決まり
 
@@ -187,6 +193,11 @@ T^{*} = b + w_H\,(H - H_0) - w_U\,(U - U_0)^{+} - w_\pi\,(\pi - \pi_0)^{+} - w_G
 ### 国どうしのやりとり
 
 - 非公開の公電（内部の名前は letters。2026-10-15 のカードで画面の言葉を「外交」「公電」「件名・発信国・宛先国・返電」に決めた）と、公開の掲示板。画面だけでなく API と試し遊びの道具 hk.py からも読み書きでき、人のプレイヤーも同じように使える（2026-10-14 決定）。
+- 掲示板（W-147、2026-10-25 に自前で作り直した。外部の掲示板に置き換える案は取りやめ）は、昔の 2 ちゃんねるの形（板・番号付きの書き込み・`>>番号` の返信・名無しとトリップと日ごとの ID・sage・1000 件で止まる・古いスレッドが過去ログへ落ちる）に、今の掲示板の便利な所（返信の知らせ・いいね・NG・通報・どんぐり相当の歯止め・検索）を足したもの。決まりは PL-51〜PL-55。
+  - 板は雑談・外交・質問・攻略・運営からの告知の 5 つ。国際会議場（公式の声明と自動の出来事の 1 本の並び）とは別で、国名で書いた書き込みから国のページへ飛べる。
+  - 匿名の守り方: 書き込みには書いた人のアカウントを持つが、画面と API には出さない（管理者だけが見られ、荒らしの対処に使う。利用規約に書く）。ID は板ごと・日ごとに変わるハッシュで、サーバーの秘密鍵で混ぜるので元のアカウントはたどれない。国名で書く書き込みには ID を付けず、名無しの書き込みと結びつかないようにする。
+  - 通報（荒らし・不適切な書き込みを管理者へ）とゲームの不具合の報告（UI-45）は別の窓口。画面の案内でも分けて書く。
+  - 後から足せるもの: 画像の貼り付け（入れるなら国旗と同じ検査）、板ごとの「国名で書く必須」、専用の閲覧ソフトのための形、書き込みの編集と削除。
 - 公電は送るとすぐ届き、読めるのは発信国と宛先国の島の持ち主だけ。自分や持ち主のいない島には送れない。1つの島が24時間に送れる数はサーバーの設定 `HAKONIWA_LETTERS_PER_DAY`。管理画面で非表示にでき、隠した公電は出さない。
 - 国際会議場（公開の声明の場。2026-10-20、4-1）。声明は島を持つ人がいつでも出せ、条約と戦争の出来事（宣戦・停戦・講和・条約の効き始め・破棄の予告・違反）は当事国のターンログから自動で載る。宣戦・条約・戦争の状態の決まりは PL-40〜PL-44。
 - 外交の決まりは遊ぶ人に任せ、システムの制約にしない（2026-10-12）。ただし経済の取り決め（貿易圏の加入と承認・二国間契約・固定相場・中央銀行の融通・援助・移民の約束）は、フェーズ4の初めに国際会議場と一緒に、両国が署名すると効く条約の条項にする（2026-10-15 決定、4-1 の②で作った。PL-45〜PL-50。違反は国債の不履行と同じく信用の傷、予告どおりの破棄なら罰なし。民主主義では議会の採決が要る）。関税と禁輸は今のまま一方的に出せる。公電が届いたときの知らせはベータ版の前（タブ 14）。

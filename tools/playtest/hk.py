@@ -348,10 +348,16 @@ def island_label(island: dict | None) -> str:
 
 
 def who(item: dict) -> str:
-    """掲示板の書いた人（島があれば国名と島の番号も）。"""
-    name = item.get("author") or "退会した人"
+    """掲示板の書いた人: 名前（国名で書いたなら島の番号も）・トリップ・ID。"""
+    text = item.get("name") or "名無し"
     island = item.get("island")
-    return f"{name}（{island['name']}・島 {island['id']}）" if island else name
+    if island:
+        text += f"（島 {island['id']}）"
+    if item.get("trip"):
+        text += f" ◆{item['trip']}"
+    if item.get("id"):
+        text += f" ID:{item['id']}"
+    return text
 
 
 def read_text(arg: str | None, path: str | None) -> str:
@@ -422,8 +428,41 @@ def cmd_send(c: Client, a) -> int:
     return 0
 
 
+def board_post_line(p: dict) -> str:
+    """書き込み 1 件の見出し（番号・名前・時刻・いいね・返信）。"""
+    head = f"--- {p['number']} {who(p)} {when(p['created_at'])}"
+    if p.get("sage"):
+        head += " sage"
+    if p.get("likes"):
+        head += f" ♥{p['likes']}"
+    if p.get("replied_by"):
+        head += " 返信:" + ",".join(f">>{n}" for n in p["replied_by"])
+    return head
+
+
+def board_post_body(p: dict) -> str:
+    if p.get("hidden"):
+        return "（あぼーん: 管理者が非表示にしました）"
+    return p["body"] if p.get("body") is not None else "（NG の書き込み。--show-ng で出す）"
+
+
+def cmd_boards(c: Client, a) -> int:
+    status, body, _ = c.get("/api/board/boards")
+    if a.json:
+        return show(status, body)
+    if status >= 400:
+        return fail(status, body)
+    for b in json.loads(body)["boards"]:
+        note = "（運営のみ）" if b["staff_only"] else ""
+        print(f"{b['slug']}: {b['name']}{note} {b['threads']} スレッド {b['description']}")
+    return 0
+
+
 def cmd_board(c: Client, a) -> int:
-    status, body, _ = c.get(f"/api/board/threads?page={a.page}")
+    query = f"page={a.page}" + (f"&board={a.board}" if a.board else "")
+    if a.archived:
+        query += "&archived=1"
+    status, body, _ = c.get(f"/api/board/threads?{query}")
     if a.json:
         return show(status, body)
     if status >= 400:
@@ -431,9 +470,10 @@ def cmd_board(c: Client, a) -> int:
     data = json.loads(body)
     print(f"掲示板（{data['page']}/{data['pages']} ページ、{data['count']} スレッド）")
     for t in data["threads"]:
+        flags = ("固定 " if t["pinned"] else "") + ("満 " if t["closed"] else "")
         print(
-            f"#{t['id']} {t['title']}（{t['posts']} 件、最後 {when(t['updated_at'])}）"
-            f" 立てた人 {who(t)}"
+            f"#{t['id']} [{t['board']['slug']}] {t['title']}（{t['posts']} 件、"
+            f"{flags}最後 {when(t['updated_at'])}）"
         )
     if not data["threads"]:
         print("（スレッドはありません）")
@@ -441,43 +481,154 @@ def cmd_board(c: Client, a) -> int:
 
 
 def cmd_thread(c: Client, a) -> int:
-    status, body, _ = c.get(f"/api/board/threads/{a.number}?page={a.page}")
+    query = []
+    if a.latest:
+        query.append(f"latest={a.latest}")
+    elif a.start:
+        query.append(f"from={a.start}")
+        if a.to:
+            query.append(f"to={a.to}")
+    else:
+        query.append(f"page={a.page}")
+    if a.show_ng:
+        query.append("ng=show")
+    status, body, _ = c.get(f"/api/board/threads/{a.number}?{'&'.join(query)}")
     if a.json:
         return show(status, body)
     if status >= 400:
         return fail(status, body)
     data = json.loads(body)
     t = data["thread"]
-    print(f"#{t['id']} {t['title']}（{data['page']}/{data['pages']} ページ、{data['count']} 件）")
+    print(f"#{t['id']} [{t['board']['slug']}] {t['title']}（{t['posts']}/{t['limit']} 件）")
     for p in data["posts"]:
-        print(f"--- #{p['id']} {who(p)} {when(p['created_at'])}")
-        print(p["body"])
+        print(board_post_line(p))
+        print(board_post_body(p))
     return 0
+
+
+def writer_fields(a) -> dict:
+    fields: dict = {"identity": "country" if a.country else "anon"}
+    if a.name:
+        fields["name"] = a.name
+    if a.sage:
+        fields["sage"] = True
+    return fields
 
 
 def cmd_post(c: Client, a) -> int:
     text = read_text(a.body, a.file)
     c.get("/")  # csrf の cookie
-    status, body = c.json("POST", f"/api/board/threads/{a.thread}/posts", {"body": text})
+    value = {"body": text, **writer_fields(a)}
+    status, body = c.json("POST", f"/api/board/threads/{a.thread}/posts", value)
     if a.json:
         return show(status, body)
     if status >= 400:
         return fail(status, body)
     p = json.loads(body)
-    print(f"書き込みました: スレッド #{p['thread']} の #{p['id']}")
+    print(f"書き込みました: スレッド #{p['thread']} の {p['number']} 番 ({who(p)})")
     return 0
 
 
 def cmd_new_thread(c: Client, a) -> int:
     text = read_text(a.body, a.file)
     c.get("/")  # csrf の cookie
-    status, body = c.json("POST", "/api/board/threads", {"title": a.title, "body": text})
+    value = {"title": a.title, "body": text, "board": a.board, **writer_fields(a)}
+    status, body = c.json("POST", "/api/board/threads", value)
     if a.json:
         return show(status, body)
     if status >= 400:
         return fail(status, body)
     t = json.loads(body)["thread"]
-    print(f"スレッドを立てました: #{t['id']} {t['title']}")
+    print(f"スレッドを立てました: #{t['id']} [{t['board']['slug']}] {t['title']}")
+    return 0
+
+
+def cmd_board_search(c: Client, a) -> int:
+    query = urllib.parse.urlencode({"q": a.query, "board": a.board or "", "page": a.page})
+    status, body, _ = c.get(f"/api/board/search?{query}")
+    if a.json:
+        return show(status, body)
+    if status >= 400:
+        return fail(status, body)
+    data = json.loads(body)
+    print(f"「{data['query']}」{data['count']} 件（{data['page']}/{data['pages']} ページ）")
+    for p in data["posts"]:
+        print(f"スレッド #{p['thread']['id']} {p['thread']['title']}")
+        print(board_post_line(p))
+        print(board_post_body(p))
+    return 0
+
+
+def cmd_replies(c: Client, a) -> int:
+    if a.mark:
+        c.get("/")  # csrf の cookie
+        status, body = c.json("POST", "/api/board/notices", {})
+    else:
+        status, body, _ = c.get("/api/board/notices")
+    if a.json:
+        return show(status, body)
+    if status >= 400:
+        return fail(status, body)
+    data = json.loads(body)
+    print(f"自分の書き込みへの返信（未読 {data['unread']} 件）")
+    for n in data["notices"]:
+        new = "NEW " if n["unread"] else ""
+        print(
+            f"{new}スレッド #{n['thread']['id']} {n['thread']['title']}（あなたの {n['to']} 番へ）"
+        )
+        print(board_post_line(n["post"]))
+        print(board_post_body(n["post"]))
+    if not data["notices"]:
+        print("（返信はありません）")
+    return 0
+
+
+def board_act(c: Client, a, path: str, value: dict, done: str) -> int:
+    c.get("/")  # csrf の cookie
+    status, body = c.json("POST", path, value)
+    if a.json:
+        return show(status, body)
+    if status >= 400:
+        return fail(status, body)
+    print(done.format(**json.loads(body)))
+    return 0
+
+
+def cmd_like(c: Client, a) -> int:
+    path = f"/api/board/threads/{a.thread}/posts/{a.number}/like"
+    return board_act(c, a, path, {}, "いいね: {number} 番 {likes} 件（付けた: {liked}）")
+
+
+def cmd_report(c: Client, a) -> int:
+    path = f"/api/board/threads/{a.thread}/posts/{a.number}/report"
+    return board_act(c, a, path, {"reason": a.reason}, "通報しました（{number} 番）")
+
+
+def cmd_ng(c: Client, a) -> int:
+    if a.action == "list":
+        status, body, _ = c.get("/api/board/ng")
+        if a.json:
+            return show(status, body)
+        if status >= 400:
+            return fail(status, body)
+        for r in json.loads(body)["rules"]:
+            print(f"#{r['id']} {r['kind']} {r['word']} {r['label']}")
+        return 0
+    c.get("/")  # csrf の cookie
+    if a.action == "remove":
+        status, body = c.json("DELETE", f"/api/board/ng/{a.target}", {})
+    else:
+        value: dict = {"kind": a.kind}
+        if a.kind == "word":
+            value["word"] = a.target
+        else:
+            value.update(thread=a.thread, number=int(a.target))
+        status, body = c.json("POST", "/api/board/ng", value)
+    if a.json:
+        return show(status, body)
+    if status >= 400:
+        return fail(status, body)
+    print("NG の設定を変えました")
     return 0
 
 
@@ -1141,24 +1292,69 @@ def main(argv: list[str] | None = None) -> int:
     add_text(s)
     s.set_defaults(func=cmd_send)
 
+    def add_writer(s: argparse.ArgumentParser) -> None:
+        s.add_argument("--name", help="名前（名前#秘密 でトリップ。空なら名無し）")
+        s.add_argument("--country", action="store_true", help="自分の国名で書く")
+        s.add_argument("--sage", action="store_true", help="上げない")
+
+    s = sub.add_parser("boards", parents=[raw], help="掲示板の板の一覧")
+    s.set_defaults(func=cmd_boards)
+
     s = sub.add_parser("board", parents=[raw], help="掲示板のスレッドの一覧")
+    s.add_argument("--board", help="板の名前（boards の左の名前）。省くとすべて")
+    s.add_argument("--archived", action="store_true", help="過去ログ")
     s.add_argument("--page", type=int, default=1)
     s.set_defaults(func=cmd_board)
 
     s = sub.add_parser("thread", parents=[raw], help="スレッドの書き込みを読む")
     s.add_argument("number", type=int)
-    s.add_argument("--page", default="last", help="ページ（既定は最後のページ）")
+    s.add_argument("--page", default="last", help="ページ（100 件ずつ。既定は最後のページ）")
+    s.add_argument("--latest", type=int, help="最後の N 件")
+    s.add_argument("--from", dest="start", type=int, help="この番号から（--to まで）")
+    s.add_argument("--to", type=int)
+    s.add_argument("--show-ng", action="store_true", help="NG の書き込みの本文も出す")
     s.set_defaults(func=cmd_thread)
 
-    s = sub.add_parser("post", parents=[raw], help="スレッドに書き込む")
+    s = sub.add_parser("post", parents=[raw], help="スレッドに書き込む（>>番号 で返信）")
     s.add_argument("thread", type=int)
     add_text(s)
+    add_writer(s)
     s.set_defaults(func=cmd_post)
 
     s = sub.add_parser("new-thread", parents=[raw], help="スレッドを立てる")
     s.add_argument("title", help="題名")
+    s.add_argument("--board", default="chat", help="板の名前（既定 chat）")
     add_text(s)
+    add_writer(s)
     s.set_defaults(func=cmd_new_thread)
+
+    s = sub.add_parser("board-search", parents=[raw], help="掲示板の題名と本文を探す")
+    s.add_argument("query", help="言葉（空白で区切るとすべてを含む）")
+    s.add_argument("--board")
+    s.add_argument("--page", type=int, default=1)
+    s.set_defaults(func=cmd_board_search)
+
+    s = sub.add_parser("replies", parents=[raw], help="自分の書き込みへの返信の知らせ")
+    s.add_argument("--mark", action="store_true", help="見えたぶんを既読にする")
+    s.set_defaults(func=cmd_replies)
+
+    s = sub.add_parser("like", parents=[raw], help="書き込みにいいねを付ける・外す")
+    s.add_argument("thread", type=int)
+    s.add_argument("number", type=int)
+    s.set_defaults(func=cmd_like)
+
+    s = sub.add_parser("report", parents=[raw], help="荒らしの書き込みを管理者に通報する")
+    s.add_argument("thread", type=int)
+    s.add_argument("number", type=int)
+    s.add_argument("--reason", default="")
+    s.set_defaults(func=cmd_report)
+
+    s = sub.add_parser("ng", parents=[raw], help="掲示板の NG（list・add・remove）")
+    s.add_argument("action", choices=["list", "add", "remove"])
+    s.add_argument("target", nargs="?", help="add: word なら言葉、person・ident なら書き込みの番号")
+    s.add_argument("--kind", choices=["word", "ident", "person"], default="word")
+    s.add_argument("--thread", type=int, help="person・ident のとき、書き込みのあるスレッド")
+    s.set_defaults(func=cmd_ng)
 
     s = sub.add_parser("hall", parents=[raw], help="国際会議場の戦争・条約・声明と出来事")
     s.add_argument("--page", type=int, default=1)

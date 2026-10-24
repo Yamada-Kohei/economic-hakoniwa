@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{% translate "NG の設定" %} - {% translate "掲示板" %}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'css/board.css' %}">
+<div class="board-page">
+<h1>{% translate "NG の設定" %}</h1>
+{% include "board/_nav.html" %}
+<p class="hint">{% translate "NG にした人・ID・言葉の書き込みは、折りたたんで見えなくなります（押せば開けます）。人の NG は誰かを明かさず保存され、あとで名前や国名を変えても効きます。人と ID は書き込みの「NG」ボタンから足します。ID は日が変わると変わるので、その日の分だけ効きます。" %}</p>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<form method="post" class="bsearch">{% csrf_token %}
+  <select name="kind"><option value="word">{% translate "言葉" %}</option><option value="ident">ID</option></select>
+  <input type="text" name="word" maxlength="60" size="24" required>
+  <button type="submit">{% translate "足す" %}</button>
+</form>
+<table class="boards">
+  <thead><tr><th>{% translate "種類" %}</th><th>{% translate "内容" %}</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rules %}
+    <tr><td>{% if r.kind == "person" %}{% translate "人" %}{% elif r.kind == "ident" %}ID{% else %}{% translate "言葉" %}{% endif %}</td>
+      <td>{{ r.word }}{% if r.label %} <small class="muted">{{ r.label }}</small>{% endif %}</td>
+      <td><form method="post">{% csrf_token %}<button type="submit" name="delete" value="{{ r.id }}">{% translate "外す" %}</button></form></td></tr>
+  {% empty %}<tr><td colspan="3" class="muted">{% translate "NG の設定はありません。" %}</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

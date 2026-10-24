@@ -22,7 +22,7 @@
       <a href="{% url 'rankings' %}">{% translate "順位" %}</a>
       <a href="{% url 'news' %}">{% translate "世界の近況" %}</a>
       <a href="{% url 'hall' %}">{% translate "国際会議場" %}</a>
-      <a href="{% url 'board' %}">{% translate "掲示板" %}</a>
+      <a href="{% url 'board' %}">{% translate "掲示板" %}{% if board_unread %} <span class="badge">{% blocktranslate with n=board_unread %}返信 {{ n }}{% endblocktranslate %}</span>{% endif %}</a>
       <a href="{% url 'help' %}">{% translate "手引き" %}</a>
       {% if user.is_authenticated %}
         <button type="button" class="bug-report-open" data-bug-open>{% translate "不具合を報告" %}</button>

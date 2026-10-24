@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{{ board.name }} {% translate "過去ログ" %} - {% translate "掲示板" %}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'css/board.css' %}">
+<div class="board-page">
+<h1>{{ board.name }} {% translate "過去ログ" %}</h1>
+{% include "board/_nav.html" %}
+<p class="hint">{% translate "スレッドの数が上限を超えて落ちたスレッドです。読めますが書けません。" %}</p>
+<p><a href="{% url 'board_forum' board.slug %}">{% blocktranslate with name=board.name %}{{ name }}に戻る{% endblocktranslate %}</a></p>
+<ol class="bthreads">
+  {% for t in page %}
+    <li><a href="{% url 'board_thread' t.id %}">{{ t.title }}</a> <span class="bcount">({{ t.post_count }})</span> <small class="muted">{{ t.updated_at|date:"Y-m-d H:i" }}</small></li>
+  {% empty %}<li class="muted">{% translate "過去ログはまだありません。" %}</li>{% endfor %}
+</ol>
+{% include "board/pager.html" %}
+</div>
+{% endblock %}

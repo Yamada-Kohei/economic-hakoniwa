@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{% translate "掲示板の検索" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'css/board.css' %}">
+<div class="board-page">
+<h1>{% translate "掲示板の検索" %}</h1>
+{% include "board/_nav.html" %}
+<form method="get" class="bsearch">
+  <input type="search" name="q" value="{{ q }}" size="30" placeholder="{% translate '言葉（空白で区切るとすべてを含む）' %}">
+  <select name="board"><option value="">{% translate "すべての板" %}</option>{% for b in boards %}<option value="{{ b.slug }}"{% if board and board.id == b.id %} selected{% endif %}>{{ b.name }}</option>{% endfor %}</select>
+  <button type="submit">{% translate "探す" %}</button>
+</form>
+<p class="hint">{% translate "題名と本文を探します。過去ログも含みます。" %}</p>
+{% if page %}
+  <p>{% blocktranslate with n=page.paginator.count %}{{ n }} 件見つかりました。{% endblocktranslate %}</p>
+  <div class="bposts">
+  {% for p in page.hits %}
+    <p class="bhit"><a href="{{ p.href }}">{{ p.thread.title }}</a> <small class="muted">{{ p.thread.board.name }}</small></p>
+    {% include "board/_post.html" with p=p compact=True %}
+  {% empty %}<p class="muted">{% translate "見つかりませんでした。" %}</p>{% endfor %}
+  </div>
+  {% include "board/pager.html" %}
+{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{% translate "返信の知らせ" %} - {% translate "掲示板" %}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'css/board.css' %}">
+<div class="board-page">
+<h1>{% translate "返信の知らせ" %}</h1>
+{% include "board/_nav.html" %}
+<p class="hint">{% translate "自分の書き込みに `>>番号` で返信が付くと、ここに出ます。開くと既読になります。" %}</p>
+<div class="bposts">
+{% for n in notices %}
+  <p class="bhit">{% if n.unread %}<span class="badge">NEW</span> {% endif %}<a href="{% url 'board_thread' n.thread.id %}?p=last">{{ n.thread.title }}</a> <small class="muted">{% blocktranslate with to=n.to %}あなたの {{ to }} 番への返信{% endblocktranslate %}</small></p>
+  {% include "board/_post.html" with p=n.post compact=True %}
+{% empty %}<p class="muted">{% translate "返信はまだありません。" %}</p>{% endfor %}
+</div>
+</div>
+{% endblock %}

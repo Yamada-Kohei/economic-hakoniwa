@@ -404,7 +404,7 @@
 
 ## [10 政治と体制](10-politics.md)
 
-決まり 50 個、うち仮の決まりの表にあるもの 2 個。
+決まり 55 個、うち仮の決まりの表にあるもの 2 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -458,10 +458,15 @@
 | PL-48 | 固定相場と融通の条項: 固定相場は、固定する国の中央銀行が相手の通貨を決めたレートに固定する（独… | 決定 | tests/core/test_diplomacy_economic.py |
 | PL-49 | 援助の条項: 送る国が、決めた間隔（1〜`max_aid_period_turns` ターン）で… | 決定 | tests/core/test_diplomacy_economic.py |
 | PL-50 | 移民の条項: 人の行き来の自由は、両国が移民の受け入れ（政策）を open に保つ約束、難民の受… | 決定（現実との違い: 相手を限った受け入れは持たない） | tests/core/test_diplomacy_economic.py |
+| PL-51 | 掲示板は板（雑談・外交・質問・攻略・運営からの告知 | 決定（W-147） | tests/server/test_board.py |
+| PL-52 | 書き込みの名前欄は、空なら「名無し」、`名前#秘密` で秘密から作ったトリップ（◆の印）が付く | 決定（W-147） | tests/server/test_board.py |
+| PL-53 | 本文の `>>番号`（`>>3-5` も）は同じスレッドの書き込みへのリンクになり、指を置く（ス… | 決定（W-147） | tests/server/test_board.py |
+| PL-54 | NG は人・ID・言葉で決める | 決定（W-147） | tests/server/test_board.py |
+| PL-55 | 書き込みの歯止め（いいね・通報にも同じ待ち）: 登録してから `HAKONIWA_BOARD_N`… | 決定（W-147） | tests/server/test_board.py |
 
 ## [11 画面と統計](11-ui.md)
 
-決まり 45 個、うち仮の決まりの表にあるもの 0 個。
+決まり 46 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -510,6 +515,7 @@
 | UI-43 | 記念碑は命令 `build`（`facility` に `monument_…` | 決定（4-1 ④） | tests/server/test_monuments.py |
 | UI-44 | 財政の画面の「予算と使った額」（と、予算の命令の入力欄）に、項目ごとに目安を出す | 決定（画面の直し W-143） | tests/server/test_reports.py |
 | UI-45 | 不具合の報告: ログインした人は画面のどこからでも「不具合を報告」を開ける | 決定（画面の直し W-146） | tests/server/test_feedback.py |
+| UI-46 | 掲示板の画面（`/board/` 板の一覧と最近のスレッド、`/board/b/<板>/` スレ… | 決定（W-147） | tests/server/test_ai_parity.py、tests/server/test_board.py |
 
 ## [12 確かめ方](12-checks.md)
 

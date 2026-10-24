@@ -8,7 +8,6 @@ import pytest
 from django.contrib.auth.models import User
 
 from hakoniwa_core.state.serialize import world_to_dict
-from server.board.models import Post, Thread
 from server.game import get_game
 from server.orders.models import Order
 from server.turns.services import rollback, run_turn
@@ -259,24 +258,6 @@ def test_signup_is_limited_per_ip(client, db):
     assert res.status_code == 200 and "すでに登録されています" in res.content.decode()
     assert not User.objects.filter(username="second").exists()
     assert _signup(client, "third", "10.0.0.2")["Location"] == "/found/"
-
-
-def test_board(client, db):
-    assert client.get("/board/").status_code == 200
-    assert client.post("/board/new/", {"title": "t", "body": "b"}).status_code == 302
-    assert not Thread.objects.exists()
-    _login(client)
-    res = client.post("/board/new/", {"title": "はじめまして", "body": "よろしく<b>"})
-    thread = Thread.objects.get()
-    assert res["Location"] == f"/board/{thread.id}/"
-    client.post(f"/board/{thread.id}/", {"body": "二つ目"})
-    page = client.get(f"/board/{thread.id}/").content.decode()
-    assert "よろしく&lt;b&gt;" in page and "二つ目" in page
-    assert "はじめまして" in client.get("/board/").content.decode()
-    Post.objects.filter(body="二つ目").update(hidden=True)
-    assert "二つ目" not in client.get(f"/board/{thread.id}/").content.decode()
-    Thread.objects.update(hidden=True)
-    assert client.get(f"/board/{thread.id}/").status_code == 404
 
 
 def test_pages_render(client, world):
