@@ -76,7 +76,7 @@ MILITARY = "#7d8466"  # 軍の壁・部隊の服
 MILITARY_DARK = "#5c6249"  # 軍の屋根
 NAVY_GRAY = "#8a96a0"  # 軍艦の船体
 STRIPES = (RED, WHITE)  # 縞の日よけ（赤白）
-STORE_SIGN = "#23406b"  # 百貨店の屋上の広告塔の紺
+STORE_PINK = "#d9668f"  # 百貨店の屋上の看板のピンク
 STORE_WINDOW = "#7f9bb3"
 
 # 基の色と、面ごとの明るさ（上面・屋根の左向き・左の側面・屋根の右向き・右の側面）。
@@ -147,6 +147,55 @@ def _before(a: Prim, b: Prim) -> bool:
 def _depth(p: Prim) -> tuple[float, float]:
     u0, v0, u1, v1 = p.bounds
     return (u0 + u1 + v0 + v1, p.z0)
+
+
+def _cyclic_groups(after: list[list[int]]) -> list[list[int]]:
+    """有向グラフ（after[i] は i より後に描くものの番号）の、2 つ以上でつながった循環の組。"""
+    index: dict[int, int] = {}
+    low: dict[int, int] = {}
+    stack: list[int] = []
+    on_stack: set[int] = set()
+    groups: list[list[int]] = []
+
+    def visit(v: int) -> None:
+        index[v] = low[v] = len(index)
+        stack.append(v)
+        on_stack.add(v)
+        for w in after[v]:
+            if w not in index:
+                visit(w)
+                low[v] = min(low[v], low[w])
+            elif w in on_stack:
+                low[v] = min(low[v], index[w])
+        if low[v] == index[v]:
+            group = []
+            while True:
+                w = stack.pop()
+                on_stack.discard(w)
+                group.append(w)
+                if w == v:
+                    break
+            if len(group) > 1:
+                groups.append(group)
+
+    for v in range(len(after)):
+        if v not in index:
+            visit(v)
+    return groups
+
+
+def order_cycles(prims: list[Prim]) -> list[list[Prim]]:
+    """描く順が決まらない（前後が循環する）部品の組。段（tier）ごとに調べる。
+
+    循環があると足元の位置の近似で並べ直すため、窓や縁が壁の中へ突き抜けて見えることがある。
+    絵を直したら、この結果が空であることを確かめる。
+    """
+    found: list[list[Prim]] = []
+    for tier in sorted({p.tier for p in prims}):
+        ps = [p for p in prims if p.tier == tier]
+        after = [[j for j, q in enumerate(ps) if q is not p and _before(p, q)] for p in ps]
+        found += [[ps[i] for i in group] for group in _cyclic_groups(after)]
+    return found
 
 
 def order(prims: list[Prim]) -> list[Prim]:
@@ -1569,31 +1618,31 @@ SHAPES: dict[str, list[Prim]] = {
     # 回7 の百貨店
     "facility/department_store": [
         # 石張りの 5 階建ての大きな店、1 階のショーウィンドウと赤白の縞の日よけ、上の階の窓の列、
-        # 屋上の広告塔、前の歩道の植え込み
+        # 屋上のピンクの看板、前の歩道の植え込み
         box(0.06, 0.06, 0.94, 0.94, 0, 0.6, CONCRETE, PAVEMENT),
         box(0.12, 0.12, 0.78, 0.78, 0.6, 30, STORE_STONE, "#cfc8b8"),
         *pane_row("v", 0.78, 0.12, 0.78, [1.4], 5.4, 5, 0.1, GLASS),
         *pane_row("u", 0.78, 0.12, 0.78, [1.4], 5.4, 5, 0.1, GLASS),
         *pane_row("v", 0.78, 0.4, 0.5, [1.4], 5.4, 1, 0.07, COAL),
-        *awning("v", 0.78, 0.12, 0.78, 9.0, 7.0, 0.07),
-        *awning("u", 0.78, 0.12, 0.78, 9.0, 7.0, 0.07),
         *pane_row("v", 0.78, 0.12, 0.78, [11, 16, 21, 26], 2.6, 6, 0.06, STORE_WINDOW),
         *pane_row("u", 0.78, 0.12, 0.78, [11, 16, 21, 26], 2.6, 6, 0.06, STORE_WINDOW),
-        box(0.115, 0.115, 0.785, 0.785, 30.6, 1.6, "#f1e9d6", "#cfc8b8"),
-        # 屋上の広告塔（紺の細い柱に金の縦線と金の頭）。ほかの形と描く順が循環しないよう、最後に描く
+        box(0.12, 0.12, 0.78, 0.78, 30.6, 1.6, "#f1e9d6", "#cfc8b8"),
+        # 屋上の塔屋とピンクの看板（文字のない板を細い柱で支える）。ほかの形と描く順が
+        # 循環しないよう、最後にまとめて描く
         *tiered(
             2,
-            box(0.6, 0.6, 0.72, 0.72, 32.2, 17, STORE_SIGN, "#3a5a85"),
-            box(0.59, 0.59, 0.73, 0.73, 49.2, 1.2, GOLD, "#e8c25c"),
-            plane_poly(
-                "v", 0.72, [(0.645, 36.0), (0.675, 36.0), (0.675, 47.0), (0.645, 47.0)], GOLD, 1
-            ),
-            plane_poly(
-                "u", 0.72, [(0.645, 36.0), (0.675, 36.0), (0.675, 47.0), (0.645, 47.0)], GOLD, 1
-            ),
+            box(0.18, 0.18, 0.4, 0.4, 32.2, 5, STORE_STONE, "#cfc8b8"),
+            *[box(u, 0.6, u + 0.014, 0.614, 32.2, 4, METAL) for u in (0.44, 0.6, 0.72)],
+            box(0.42, 0.6, 0.74, 0.62, 36.2, 7, STORE_PINK),
         ),
-        *broadleaf(0.88, 0.3, 2.8, 8),
-        *broadleaf(0.3, 0.9, 2.8, 8),
+        # 日よけと植え込みの木は、壁の窓の板より前なので、最後にまとめて描く
+        *tiered(
+            2,
+            *awning("v", 0.78, 0.12, 0.78, 9.0, 7.0, 0.07),
+            *awning("u", 0.78, 0.12, 0.78, 9.0, 7.0, 0.07),
+            *broadleaf(0.915, 0.3, 2.6, 8, 0.6),
+            *broadleaf(0.3, 0.915, 2.6, 8, 0.6),
+        ),
     ],
     # 首都の建物。政治の仕組みの建物（議事堂・首相官邸・党本部）と元首の建物（王宮・大統領府）の
     # 組み合わせごとに 1 枚。実在の建物の雰囲気だけを借り、そっくりには描かない
@@ -1752,21 +1801,6 @@ SHAPES: dict[str, list[Prim]] = {
         *house(0.55, 0.15, 0.85, 0.42, 10, 6, "v", roof=ROOF_BROWN),
         *house(0.12, 0.55, 0.4, 0.85, 10, 6, "v", roof=ROOF_BROWN),
         *house(0.55, 0.55, 0.85, 0.85, 16, 6, "u", "#e2d5bd"),
-    ],
-    # 都市と大都市は箱だけの形のまま（持ち主が前の形のほうがよいと言った。別の案は ALTERNATES）
-    "housing/city": [
-        box(0.12, 0.12, 0.45, 0.45, 0, 36, "#d9cfbf", "#8f969c"),
-        box(0.55, 0.12, 0.88, 0.42, 0, 26, "#e3dccd", "#8f969c"),
-        box(0.12, 0.55, 0.42, 0.88, 0, 22, "#cfc8bd", "#8f969c"),
-        box(0.52, 0.52, 0.88, 0.88, 0, 42, "#e3dccd", "#8f969c"),
-    ],
-    "housing/metropolis": [
-        box(0.1, 0.1, 0.9, 0.9, 0, 6, CONCRETE),
-        box(0.15, 0.15, 0.42, 0.42, 6, 58, GLASS2, "#7e8f9a"),
-        box(0.58, 0.15, 0.85, 0.4, 6, 40, "#d9cfbf", "#8f969c"),
-        box(0.15, 0.58, 0.4, 0.85, 6, 34, "#e3dccd", "#8f969c"),
-        box(0.52, 0.52, 0.85, 0.85, 6, 66, GLASS, "#7e8f9a"),
-        box(0.62, 0.62, 0.75, 0.75, 72, 8, METAL),
     ],
 }
 
@@ -3159,7 +3193,7 @@ SHAPES.update(
 )
 
 
-# --- 都市と大都市の別の案（ゲームの絵は前の形のまま。数案は ALTERNATES） ---------------------
+# --- 都市と大都市（採用は細長い棟と双子の塔。ほかは ALTERNATES） ----------------------
 
 WIN = "#6f8aa3"
 WIN_DARK = "#4f6c86"
@@ -3234,7 +3268,7 @@ def pilasters(
 
 
 def city_slabs() -> list[Prim]:
-    """都市（案 2）: 平行に並ぶ 2 本の細長い棟（奥が高く、頭に塔屋）と、手前の低い店の列
+    """都市: 平行に並ぶ 2 本の細長い棟（奥が高く、頭に塔屋）と、手前の 2 階建ての店の列
     （赤白の日よけ）。棟のあいだは芝と並木。"""
     z0 = 0.6
     parts = block_ground()
@@ -3257,18 +3291,23 @@ def city_slabs() -> list[Prim]:
         *mast(0.65, 0.19, 45.4, 9),
         box(0.14, 0.44, 0.3, 0.56, 25.2, 1.8, METAL, "#c0c7ce"),
         box(0.36, 0.45, 0.52, 0.55, 25.2, 1.2, METAL, "#c0c7ce"),
-        # 手前の店の列: 大きな窓・赤白の日よけ・入口の庇
-        box(0.08, 0.72, 0.92, 0.92, z0, 5.6, STORE_STONE, ROOF_CAP_SIDE),
+        # 手前の店の列（2 階建て）: 1 階に大きな窓と赤白の日よけ、2 階に窓の列
+        box(0.08, 0.72, 0.92, 0.92, z0, 11, STORE_STONE, ROOF_CAP_SIDE),
         *pane_row("v", 0.92, 0.1, 0.9, [z0 + 0.6], 2.6, 7, 0.07, GLASS),
         *pane_row("u", 0.92, 0.74, 0.9, [z0 + 0.6], 2.6, 2, 0.07, GLASS),
-        *awning("v", 0.92, 0.1, 0.9, z0 + 4.6, z0 + 3.4, 0.05),
-        *awning("u", 0.92, 0.72, 0.9, z0 + 4.6, z0 + 3.4, 0.05),
-        box(0.08, 0.72, 0.92, 0.92, z0 + 5.6, 0.8, ROOF_CAP, ROOF_CAP_SIDE),
+        *pane_row("v", 0.92, 0.1, 0.9, [z0 + 6.4], 2.8, 7, 0.07, WIN_LIGHT),
+        *pane_row("u", 0.92, 0.74, 0.9, [z0 + 6.4], 2.8, 2, 0.07, WIN_LIGHT),
+        *tiered(
+            2,
+            *awning("v", 0.92, 0.1, 0.9, z0 + 4.6, z0 + 3.4, 0.05),
+            *awning("u", 0.92, 0.72, 0.9, z0 + 4.6, z0 + 3.4, 0.05),
+        ),
+        box(0.08, 0.72, 0.92, 0.92, z0 + 11, 0.8, ROOF_CAP, ROOF_CAP_SIDE),
         box(0.76, 0.38, 0.92, 0.62, z0, 0.3, LAWN, LAWN_SIDE),
         *broadleaf(0.84, 0.46, 2.6, 7, 0.9),
         *broadleaf(0.84, 0.56, 2.6, 7, 0.9),
-        *broadleaf(0.2, 0.66, 2.2, 6),
-        *broadleaf(0.5, 0.66, 2.2, 6),
+        *broadleaf(0.2, 0.66, 2.2, 6, 0.6),
+        *broadleaf(0.5, 0.66, 2.2, 6, 0.6),
     ]
     return parts
 
@@ -3380,14 +3419,15 @@ def metropolis_tiers() -> list[Prim]:
     return parts
 
 
+SHAPES["housing/city"] = city_slabs()
+SHAPES["housing/metropolis"] = metropolis_twin()
+# 別の案（案 1: 窓の帯、など）はゲームで使わない。--spare で別のフォルダに書き出せる
 ALTERNATES.update(
     {
         "housing/city_bands": city_bands(),
-        "housing/city_slabs": city_slabs(),
         "housing/city_green": city_green(),
         "housing/metropolis_bands": metropolis_bands(),
         "housing/metropolis_tiers": metropolis_tiers(),
-        "housing/metropolis_twin": metropolis_twin(),
     }
 )
 

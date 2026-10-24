@@ -198,6 +198,8 @@ python tools/sprites/silhouette.py server/static/themes/default/sprites
 python tools/sprites/military_icons.py server/static/themes/default/sprites
 ```
 
+描く順が循環すると（窓の板・屋根の縁・日よけ・台の上の木などの前後が決まらないと）壁を突き抜けて見えます。`silhouette.py` の `order_cycles(prims)` が空であることを確かめてください（直した絵は `tests/server/test_sprite_draw_order.py` が見張ります）。屋根の縁や台の箱は壁と同じ大きさにし（はみ出させない）、窓は間隔より細く、台の上の木は `broadleaf(…, z)` で台の高さから植え、日よけや前に出るものは `tiered(2, …)` で最後に描きます。
+
 数案を出すときの別の案は `silhouette.py` の `ALTERNATES` に入れ、`--spare <フォルダ>` を付けるとゲームで使わない絵として別のフォルダに書き出せます（採用しなかった案は `/mnt/project-files/map-art/spare-<日付>/` に残します）。
 
 比較用の確認ページは `python tools/sprites/military_preview.py` で作れます（`military-preview.html` と、第2部17枚の `military-part2-4x.html` ができます。PNGはブラウザで別途撮影します。ゲームで使うものではないので、コミットしません）。
