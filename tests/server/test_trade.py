@@ -306,7 +306,7 @@ def test_island_pages_link_to_trade_and_fx(client, world):
 def test_help_explains_trade_and_fx(client, world):
     config = get_game().config
     html = client.get("/help/").content.decode()
-    assert "貿易と為替（フェーズ3-1）" in html
+    assert "<h2>貿易と為替</h2>" in html
     assert f"{config.get('foreign_merchant.turns')} ターンのあいだ" in html
     assert f"最後の {config.get('foreign_merchant.last_turns')} ターン" in html
     assert f"1ターンに {config.get('fx.band') * 100:g}% までしか動きません" in html
