@@ -12,6 +12,7 @@ import { OrderQueue } from "../island/orders.js";
 import { TilePanel } from "../island/panel.js";
 import { MissileTarget } from "../island/missiles.js";
 import { words } from "../military/common.js";
+import { getJson } from "../island/api.js";
 
 const canvas = document.getElementById("island-map");
 const ctx = canvas.getContext("2d");
@@ -214,6 +215,18 @@ narrow.addEventListener("change", () => placePopover());
 window.addEventListener("resize", resize);
 fit();
 resize();
+
+// 地図の API にない反乱軍の位置は、持ち主だけが軍の要約から読む。
+if (map.mine) {
+  getJson(document.getElementById("tile-panel").dataset.militaryUrl).then(({ military }) => {
+    map.civil_war = military.civil_war;
+    redraw();
+  }).catch(() => {
+    const notice = document.getElementById("rebel-map-notice");
+    notice.textContent = words().error;
+    notice.hidden = false;
+  });
+}
 
 // 絵は読み込めたら描き直す（読み込むまでは色の箱で描く）
 loadSprites(theme).then((sprites) => {

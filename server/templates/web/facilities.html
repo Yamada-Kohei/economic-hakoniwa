@@ -2,6 +2,7 @@
 {% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 {% include "web/report_header.html" %}
+<p class="hint">{% translate "電子機器を使う作り方では工場の人手を減らし、学校と大学の育ちを上げられます。国営の施設は地図で施設のマスを選んで切り替えを命令に追加します。民営の工場は持ち主の企業が採算を見て自分で替えます。" %} <a href="{% url 'help' %}#electronics">{% translate "電子機器の使い道" %}</a></p>
 
 {% if table %}
 <section class="panel">
