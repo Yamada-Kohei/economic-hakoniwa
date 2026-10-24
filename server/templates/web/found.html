@@ -3,7 +3,7 @@
 {% block content %}
 {% csrf_token %}
 <h1>{% translate "建国" %}</h1>
-<p class="muted">{% translate "島の場所・形・地形・地下資源・首都・体制・名前を決めて、最後に「建国する」を押します。建国後は形と体制を変更できません。" %}</p>
+<p class="muted">{% translate "島の場所・形・地形・地下資源・首都・体制・名前を決めて、最後に「建国する」を押します。建国後は島の形を変更できません。政治体制と元首制度は憲法改正で、経済体制は経済体制の変更で変えられます。政治の画面で条件と影響を確かめてください。" %}</p>
 
 <div id="founding" data-seed="{{ seed }}" data-defs="{% url 'api_defs' %}" data-world="{% url 'api_world' %}"
      data-cells="{% url 'api_founding_cells' %}" data-shapes="{% url 'api_world_shapes' %}" data-shape="{% url 'api_founding_shape' %}"

@@ -1,0 +1,8 @@
+{% load i18n static %}
+<p class="turn-schedule hint" role="status" data-paused="{{ world.paused|yesno:'1,0' }}" data-updating="{{ world.updating_since|date:'c' }}" data-next="{{ world.next_turn_at|date:'c' }}">
+  {% if world.paused %}{% translate "更新は一時停止中です。" %}
+  {% elif world.updating_since %}{% translate "ターンを更新中です。命令が次回に回ることがあります。" %}
+  {% elif world.next_turn_at %}{% translate "次の更新予定:" %} <time datetime="{{ world.next_turn_at|date:'c' }}">{{ world.next_turn_at|date:"Y-m-d H:i T" }}</time>
+  {% else %}{% translate "次の更新時刻は未設定です。手動で進める運用か、予定の設定待ちです。" %}{% endif %}
+</p>
+<script type="module" src="{% static 'js/turn-schedule.js' %}"></script>
