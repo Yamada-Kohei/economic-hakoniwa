@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% load i18n calendar_tags %}
+{% extends "base.html" %}{% load i18n static calendar_tags %}
 {% block title %}{% translate "順位" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 <h1>{% translate "統計の順位" %}</h1>
@@ -21,11 +21,12 @@
   <section class="panel" id="rank-{{ c.name }}">
     <h2>{{ c.label }}</h2>
     {% if c.rows %}
+    <p class="hint" data-ranking-count role="status"></p>
     <table class="goods ranking-table">
       <thead><tr><th>{% translate "順位" %}</th><th>{% translate "国" %}</th><th>{% translate "値" %}</th></tr></thead>
       <tbody>
         {% for r in c.rows %}
-        <tr><td>{% if r.rank %}{{ r.rank }}{% else %}-{% endif %}</td><td><a href="{% url 'island_economy' r.island %}">{{ r.name }}</a></td><td>{% if r.rank %}{{ r.text }}{% else %}<span class="muted">{% translate "為替レートがなく直せない" %}</span>{% endif %}</td></tr>
+        <tr data-ranked="{{ r.rank|yesno:'1,0' }}"><td>{% if r.rank %}{{ r.rank }}{% else %}-{% endif %}</td><td><a href="{% url 'island_economy' r.island %}">{{ r.name }}</a></td><td>{% if r.rank %}{{ r.text }}{% else %}<span class="muted">{% translate "為替レートがなく直せない" %}</span>{% endif %}</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -55,4 +56,5 @@
   </div>
 </section>
 {% endif %}
+<script type="module" src="{% static 'js/reports/rankings.js' %}"></script>
 {% endblock %}

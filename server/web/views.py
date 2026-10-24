@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from django.conf import settings as django_settings
 from django.core.paginator import Paginator
-from django.http import HttpResponse
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.trade import contracts, tradable_goods
@@ -343,6 +344,26 @@ def country_page(request, island_id: int):
     return render(request, "web/country.html", context)
 
 
+def diary_page(request, island_id: int):
+    """国の日誌（W-37）: 持ち主だけが読み書きする非公開のメモ欄。ほかの人には 404。"""
+    island, context, _ = _report(request, island_id, "diary", "日誌")
+    if not context["mine"]:
+        raise Http404
+    if request.method == "POST":
+        try:
+            country_services.set_diary(island, request.POST.get("text", ""))
+        except country_services.CountryError as e:
+            context["error"] = e.text
+        else:
+            return redirect(f"{reverse('diary', args=[island.id])}?saved=1")
+    context.update(
+        diary=country_services.diary_data(island),
+        diary_max=country_services.DIARY_MAX,
+        saved=request.GET.get("saved") == "1",
+    )
+    return render(request, "web/diary.html", context)
+
+
 def _country_post(request, island: Island, viewer: Island | None, mine: bool) -> None:
     """国の公開ページの入力欄（action で見分ける）を受ける。持ち主だけが国自身の欄を書き換える。"""
     action = request.POST.get("action", "")
@@ -453,7 +474,12 @@ def turn_log(request, island_id: int):
     return render(
         request,
         "web/log.html",
-        {"island": island, "page": page, "groups": sorted(groups.items(), reverse=True)},
+        {
+            "island": island,
+            "mine": mine,
+            "page": page,
+            "groups": sorted(groups.items(), reverse=True),
+        },
     )
 
 

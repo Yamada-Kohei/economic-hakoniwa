@@ -12,6 +12,7 @@ urlpatterns = [
         name="api_monument_image",
     ),
     path("islands/<int:island_id>/country/notes", api.note, name="api_country_note"),
+    path("islands/<int:island_id>/diary", api.diary, name="api_country_diary"),
     path(
         "islands/<int:island_id>/country/notes/<int:note_id>",
         api.note_hide,

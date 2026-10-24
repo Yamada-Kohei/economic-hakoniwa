@@ -8,6 +8,8 @@ import { OrderQueue } from "../island/orders.js";
 export async function mountOrders() {
   const el = document.getElementById("orders");
   if (!el) return null;
+  const schedule = document.querySelector(".turn-schedule");
+  if (schedule) el.before(schedule.cloneNode(true));
   let defs;
   try {
     defs = await getJson(el.dataset.defs);

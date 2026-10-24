@@ -43,11 +43,51 @@ COOKIES = Path(os.environ.get("HK_COOKIES", Path.home() / ".hk-cookies.txt"))
 KEY_FILE = Path(os.environ.get("HK_KEY_FILE", Path.home() / ".hk-key"))
 STATE = Path(os.environ.get("HK_STATE", Path.home() / ".hk-state.json"))
 KEY_PATHS = ("/api/", "/mcp")  # 鍵が効く場所（サーバーの server/accounts/keys.py と同じ）
+ACTIVE_PROFILE = ""
+
+
+def read_profiles(path: Path) -> dict[str, dict[str, str]]:
+    """接続先とファイルの場所だけ読む。鍵・パスワードそのものは置かない。"""
+    profiles = json.loads(path.read_text(encoding="utf-8-sig"))
+    if not isinstance(profiles, dict):
+        raise ValueError("プロファイルは名前ごとのオブジェクトにしてください")
+    for name, settings in profiles.items():
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+            raise ValueError("プロファイル名は英数字・_・- だけにしてください")
+        allowed = {"base", "key_file", "cookies", "state"}
+        if not isinstance(settings, dict) or set(settings) - allowed:
+            raise ValueError("設定できるのは base・key_file・cookies・state だけです")
+        if not all(isinstance(value, str) and value.strip() for value in settings.values()):
+            raise ValueError("プロファイルの値は空でない文字列にしてください")
+        base = urllib.parse.urlsplit(settings.get("base", DEFAULT_BASE))
+        if (
+            base.scheme not in {"http", "https"}
+            or not base.netloc
+            or base.username
+            or base.password
+        ):
+            raise ValueError("base は資格情報を含まない http / https の URL にしてください")
+    return profiles
+
+
+def use_profile(name: str, settings: dict[str, str], source: Path) -> None:
+    """選んだアカウントの鍵・cookie・差分の記録を分ける。選択はこの呼び出しだけ。"""
+    global ACTIVE_PROFILE, COOKIES, KEY_FILE, STATE
+    ACTIVE_PROFILE = name
+    root = Path.home() / ".hk" / name
+
+    def location(key: str, default: Path) -> Path:
+        path = Path(settings[key]).expanduser() if key in settings else default
+        return path.resolve() if path.is_absolute() else (source.parent / path).resolve()
+
+    COOKIES = location("cookies", root / "cookies.txt")
+    KEY_FILE = location("key_file", root / "key.txt")
+    STATE = location("state", root / "state.json")
 
 
 def load_key() -> str:
     """AI 用の鍵（HK_KEY か、key で覚えさせたファイル）。なければ空。"""
-    key = os.environ.get("HK_KEY", "").strip()
+    key = "" if ACTIVE_PROFILE else os.environ.get("HK_KEY", "").strip()
     if not key and KEY_FILE.exists():
         key = KEY_FILE.read_text(encoding="utf-8").strip()
     return key
@@ -162,8 +202,14 @@ def cmd_signup(c: Client, a) -> int:
 
 
 def cmd_login(c: Client, a) -> int:
-    user = a.user or os.environ.get("HK_USER", "")
-    password = a.password or os.environ.get("HK_PASSWORD", "")
+    user = a.user or ("" if ACTIVE_PROFILE else os.environ.get("HK_USER", ""))
+    password = a.password or ("" if ACTIVE_PROFILE else os.environ.get("HK_PASSWORD", ""))
+    if not user or not password:
+        print(
+            "名前とパスワードを指定してください"
+            "（プロファイルでは HK_USER・HK_PASSWORD は使いません）"
+        )
+        return 1
     status, body, final = c.form("/accounts/login/", {"username": user, "password": password})
     if "/accounts/login" in final:
         print("ログインできませんでした:", errors_in(body) or "名前かパスワードが違います")
@@ -240,14 +286,38 @@ def cmd_page(c: Client, a) -> int:
 def load_value(arg: str):
     """JSON そのものか、@ファイル名。"""
     if arg.startswith("@"):
-        return json.loads(Path(arg[1:]).read_text(encoding="utf-8"))
+        return json.loads(Path(arg[1:]).read_text(encoding="utf-8-sig"))
     return json.loads(arg)
 
 
 def cmd_check(c: Client, a) -> int:
+    """1件または列を、今の状態で1件ずつ確かめる。列の置き換えはしない。"""
+    value = load_value(a.order)
+    orders = value.get("orders") if isinstance(value, dict) and "orders" in value else value
+    batch = isinstance(orders, list)
+    orders = orders if batch else [orders]
+    if not all(
+        isinstance(order, dict)
+        and isinstance(order.get("kind"), str)
+        and isinstance(order.get("payload", {}), dict)
+        for order in orders
+    ):
+        print("命令は {kind, payload} か、その一覧にしてください", file=sys.stderr)
+        return 1
     c.get("/")  # csrf の cookie
-    status, body = c.json("POST", f"/api/islands/{a.island}/orders/check", load_value(a.order))
-    return show(status, body)
+    results = []
+    for index, order in enumerate(orders, 1):
+        status, body = c.json("POST", f"/api/islands/{a.island}/orders/check", order)
+        if status >= 400:
+            return fail(status, body)
+        result = json.loads(body)
+        if not batch:
+            show(status, body)
+            return 0 if result.get("ok") is True else 1
+        results.append({"index": index, **result})
+    ok = all(result.get("ok") is True for result in results)
+    show(200, json.dumps({"ok": ok, "results": results}, ensure_ascii=False))
+    return 0 if ok else 1
 
 
 def cmd_orders(c: Client, a) -> int:
@@ -293,6 +363,39 @@ def cmd_map(c: Client, a) -> int:
         # 稼働率は 1000 分の 1 で来る（MCP の地図と同じく % で出す）
         rate = f"稼働 {round(f.get('rate', 0) / 10)}%" if f.get("built", True) else ""
         print(" ".join(p for p in (f"({f['x']},{f['y']})", name, state, rate) if p))
+    return 0
+
+
+def cmd_facilities(c: Client, a) -> int:
+    """施設の画面と同じ一覧を1行ずつ出す（損益などは持ち主だけ）。"""
+    island = a.island or own_island(c)
+    status, body, _ = c.get(f"/api/islands/{island}/facilities")
+    if status >= 400:
+        return show(status, body) if a.json else fail(status, body)
+    data = json.loads(body)
+    if a.json:
+        return show(status, body)
+    if "table" not in data:
+        print(
+            "施設ごとの一覧は島の持ち主だけが読めます。国全体の数は get で API を読んでください。"
+        )
+        return 1
+    rows = data["table"]["rows"]
+    count = 0
+    for row in rows:
+        state = (row.get("status_text") or "稼働中") if row.get("built") else "建設中"
+        if a.status and state != a.status:
+            continue
+        count += 1
+        place = f"({row['x']},{row['y']})" if row["on_map"] else "マスなし"
+        rate = row.get("operating_rate")
+        rate_text = "未観測" if rate is None else f"{rate}%"
+        print(
+            f"#{row['number']} {place} {row['name']}（{row['kind_name']}） {state} "
+            f"稼働 {rate_text} 従業者 {row['workers']} "
+            f"損益 {row.get('profit') or '未集計'} 預金 {row.get('deposit') or '—'}"
+        )
+    print(f"{count} / {len(rows)} 件")
     return 0
 
 
@@ -425,6 +528,37 @@ def cmd_send(c: Client, a) -> int:
         return fail(status, body)
     x = json.loads(body)
     print(f"送りました: #{x['id']} → {island_label(x['to'])}: {x['subject']}（ターン {x['turn']}）")
+    return 0
+
+
+def cmd_diary(c: Client, a) -> int:
+    island = a.island or own_island(c)
+    status, body, _ = c.get(f"/api/islands/{island}/diary")
+    if a.json:
+        return show(status, body)
+    if status >= 400:
+        return fail(status, body)
+    x = json.loads(body)
+    if x["turn"] is None:
+        print("（国の日誌はまだありません）")
+        return 0
+    print(f"国の日誌（ターン {x['turn']}・{when(x['updated_at'])} に書いたもの）")
+    print("----")
+    print(x["text"])
+    return 0
+
+
+def cmd_diary_set(c: Client, a) -> int:
+    text = read_text(a.body, a.file)
+    island = a.island or own_island(c)
+    c.get("/")  # csrf の cookie
+    status, body = c.json("PUT", f"/api/islands/{island}/diary", {"text": text})
+    if a.json:
+        return show(status, body)
+    if status >= 400:
+        return fail(status, body)
+    x = json.loads(body)
+    print(f"国の日誌を書きました（{len(x['text'])} 字、ターン {x['turn']}）")
     return 0
 
 
@@ -1205,9 +1339,20 @@ def cmd_mcp(c: Client, a) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Windows のコンソール・リダイレクトでも日本語を UTF-8 で出す。MCP は既存どおりバイト列。
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     p = argparse.ArgumentParser(description="経済版箱庭諸国の試し遊びの道具")
     p.add_argument(
-        "--base", default=DEFAULT_BASE, help="サーバーの URL（既定は HK_BASE か 127.0.0.1:8000）"
+        "--base", help="サーバーの URL（既定はプロファイル・HK_BASE・127.0.0.1:8000 の順）"
+    )
+    p.add_argument("--profile", help="アカウントごとの設定名（この呼び出しだけ切り替える）")
+    p.add_argument(
+        "--profiles",
+        type=Path,
+        default=Path.home() / ".hk-profiles.json",
+        help="プロファイルの JSON（接続先とファイルの場所だけ。リポジトリの外に置く）",
     )
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -1248,7 +1393,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("length", nargs="?", type=int, default=4000)
     s.set_defaults(func=cmd_page)
 
-    s = sub.add_parser("check", help='命令を1つ確かめる（{"kind":..,"payload":..} か @ファイル）')
+    s = sub.add_parser("check", help="命令1件か列を確かめる（JSON か @ファイル。列は1件ずつ確認）")
     s.add_argument("island", type=int)
     s.add_argument("order")
     s.set_defaults(func=cmd_check)
@@ -1273,9 +1418,27 @@ def main(argv: list[str] | None = None) -> int:
     raw = argparse.ArgumentParser(add_help=False)
     raw.add_argument("--json", action="store_true", help="API の JSON をそのまま出す")
 
+    s = sub.add_parser("facilities", parents=[raw], help="施設の一覧を1行ずつ出す（持ち主だけ）")
+    s.add_argument("island", nargs="?", type=int)
+    s.add_argument("--status", help="状態の表示名で絞る（例: 原料不足・電力不足・建設中）")
+    s.set_defaults(func=cmd_facilities)
+
+    sub.add_parser("profiles", help="設定済みのプロファイル名を出す（鍵の中身は読まない）")
+
     def add_text(s: argparse.ArgumentParser) -> None:
         s.add_argument("body", nargs="?", help="本文（省くと標準入力から読む）")
         s.add_argument("-f", "--file", help="本文のファイル（- は標準入力）")
+
+    s = sub.add_parser("diary", parents=[raw], help="自分の国の日誌（持ち主だけのメモ欄）を読む")
+    s.add_argument("--island", type=int, help="自分の島の番号（省けば自分の島）")
+    s.set_defaults(func=cmd_diary)
+
+    s = sub.add_parser(
+        "diary-set", parents=[raw], help="自分の国の日誌を書き換える（全文を置き換え）"
+    )
+    s.add_argument("--island", type=int, help="自分の島の番号（省けば自分の島）")
+    add_text(s)
+    s.set_defaults(func=cmd_diary_set)
 
     s = sub.add_parser("letters", parents=[raw], help="届いた手紙の一覧（--sent で送った手紙）")
     s.add_argument("--sent", action="store_true")
@@ -1411,6 +1574,24 @@ def main(argv: list[str] | None = None) -> int:
     s.set_defaults(func=cmd_mcp)
 
     a = p.parse_args(argv)
+    base_override = a.base
+    a.base = base_override or DEFAULT_BASE
+    if a.profile or a.command == "profiles":
+        source = a.profiles.expanduser().resolve()
+        try:
+            profiles = read_profiles(source)
+        except (OSError, ValueError) as e:
+            p.error(f"プロファイルを読めません: {e}")
+        if a.command == "profiles":
+            print("\n".join(sorted(profiles)) or "（プロファイルはありません）")
+            return 0
+        if a.profile not in profiles:
+            p.error("指定したプロファイルがありません（profiles で名前を確認してください）")
+        profile = profiles[a.profile]
+        # --base の指定があればそちらを使う。環境の HK_KEY などを別の国へ持ち越さない。
+        if base_override is None:
+            a.base = profile.get("base", DEFAULT_BASE)
+        use_profile(a.profile, profile, source)
     return a.func(Client(a.base), a)
 
 

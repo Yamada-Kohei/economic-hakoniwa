@@ -575,3 +575,47 @@ def test_admin_flag_preview_shows_hidden_flags_and_can_unhide(admin_client, play
     admin_client.post("/admin/country/flag/", {"action": "show", "_selected_action": [flag.pk]})
     flag.refresh_from_db()
     assert not flag.hidden
+
+
+def test_diary_is_private_to_the_owner(players, settings):
+    """国の日誌（W-37）: 持ち主だけが画面・JSON API・MCP で読み書きでき、ほかの人には見えない。"""
+    settings.HAKONIWA_AI_CALLS_PER_MINUTE = 10_000
+    (ca, a), (cb, b) = players
+    url = f"/api/islands/{a.id}/diary"
+    assert ca.get(url).json() == {"island": a.id, "text": "", "turn": None, "updated_at": None}
+    res = ca.put(
+        url, json.dumps({"text": "方針: 食料を先に\r\n次: 港を広げる"}), "application/json"
+    )
+    assert res.status_code == 200
+    assert res.json()["text"] == "方針: 食料を先に\n次: 港を広げる" and res.json()["turn"] == 20
+    assert cb.get(url).status_code == 403
+    assert cb.put(url, json.dumps({"text": "x"}), "application/json").status_code == 403
+    assert Client().get(url).status_code == 403
+    too_long = "あ" * (services.DIARY_MAX + 1)
+    assert ca.put(url, json.dumps({"text": too_long}), "application/json").status_code == 400
+    assert ca.put(url, json.dumps({"text": "a‮b"}), "application/json").status_code == 400
+
+    page = f"/islands/{a.id}/diary/"
+    assert "港を広げる" in ca.get(page).content.decode()
+    assert cb.get(page).status_code == 404
+    assert f'href="{page}"' in ca.get(f"/islands/{a.id}/").content.decode()  # 見出しのタブ
+    assert f'href="{page}"' not in cb.get(f"/islands/{a.id}/").content.decode()
+    res = ca.post(page, {"text": "画面から書いた"})
+    assert res.status_code == 302 and ca.get(url).json()["text"] == "画面から書いた"
+
+    _, token = keys.issue(a.owner, "test")
+    ai = Client(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+    def call(name, **arguments):
+        message = {"jsonrpc": "2.0", "id": 1, "method": "tools/call"}
+        message["params"] = {"name": name, "arguments": arguments}
+        res = ai.post("/mcp", json.dumps(message), content_type="application/json")
+        result = res.json()["result"]
+        return result["content"][0]["text"], result["isError"]
+
+    text, error = call("diary_set", text="AI の引き継ぎ")
+    assert not error, text
+    text, error = call("diary")
+    assert not error and json.loads(text)["text"] == "AI の引き継ぎ"
+    text, error = call("diary", island=b.id)
+    assert error and "403" in text

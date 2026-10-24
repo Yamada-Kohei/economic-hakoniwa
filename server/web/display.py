@@ -7,6 +7,7 @@ from dataclasses import replace
 from typing import Any
 
 from django.db.models import Q, Sum
+from django.utils import timezone
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, ledger
@@ -68,6 +69,26 @@ def turn_text(turn: int) -> str:
     """ある時点のターンを、世界の暦の日付で書く（「箱庭暦32年11月（ターン 383）」）。"""
     game = get_game()
     return format_turn(game.defs, turn, game.calendar)
+
+
+def turn_schedule(world) -> dict[str, Any]:
+    """更新の予定（U07）: 一時停止・更新中・次の更新時刻と、サーバーの今の時刻・予定を過ぎたか・
+    更新の間隔。画面（turn_schedule.html）・JSON API・MCP が同じ値を読む。"""
+    now = timezone.now()
+    nxt = world.next_turn_at
+    state = "paused" if world.paused else "updating" if world.updating_since else "scheduled"
+    if state == "scheduled" and nxt is None:
+        state = "unscheduled"
+    elif state == "scheduled" and now > nxt:
+        state = "late"
+    return {
+        "state": state,
+        "paused": world.paused,
+        "updating_since": world.updating_since.isoformat() if world.updating_since else None,
+        "next_turn_at": nxt.isoformat() if nxt else None,
+        "server_now": now.isoformat(),
+        "interval_minutes": get_game().config.get("turn.interval_minutes"),
+    }
 
 
 def calendar_settings() -> dict[str, Any]:

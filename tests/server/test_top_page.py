@@ -410,3 +410,39 @@ def test_updates_without_git(monkeypatch):
 
     monkeypatch.setattr(top.subprocess, "run", broken)
     assert top.git_updates() == []
+
+
+def test_default_base_is_the_currency_that_compares_the_most_countries(world, monkeypatch):
+    """順位の初めの通貨（U05）: 直せる国がいちばん多い通貨。同じ数なら見る人の国、次に番号順。"""
+    a, b, c = m.Island.objects.order_by("id")
+    w = m.World.objects.get()
+    monkeypatch.setattr(rankings, "comparable_counts", lambda _: {a.id: 1, b.id: 3, c.id: 3})
+    assert rankings.default_base(w, a) == b.id  # 自国の通貨では 1 か国しか比べられない
+    assert rankings.default_base(w, c) == c.id  # 同じ数なら自国
+    assert rankings.default_base(w, None) == b.id  # さらに同じなら番号の小さい国
+    monkeypatch.setattr(rankings, "comparable_counts", lambda _: {})
+    assert rankings.default_base(w, a) == a.id and rankings.default_base(w, None) is None
+
+
+def test_turn_schedule_tells_paused_updating_late_and_unscheduled(client, world):
+    """更新の予定（U07）: 画面と同じ状態を /api/me と国の要約でも読める。"""
+    w = m.World.objects.get()
+    island = m.Island.objects.order_by("id").first()
+    w.next_turn_at = timezone.now() + timedelta(hours=2)
+    w.save()
+    me = client.get("/api/me").json()["turn_schedule"]
+    assert me["state"] == "scheduled" and me["next_turn_at"] and me["server_now"]
+    assert me["interval_minutes"] > 0
+    summary = client.get(f"/api/islands/{island.id}/summary").json()["turn_schedule"]
+    assert summary["state"] == "scheduled"
+    w.next_turn_at = timezone.now() - timedelta(minutes=5)
+    w.save()
+    assert display.turn_schedule(w)["state"] == "late"
+    w.next_turn_at = None
+    assert display.turn_schedule(w)["state"] == "unscheduled"
+    w.updating_since = timezone.now()
+    assert display.turn_schedule(w)["state"] == "updating"
+    w.paused = True
+    assert display.turn_schedule(w)["state"] == "paused"
+    page = client.get("/").content.decode()
+    assert "turn-schedule" in page

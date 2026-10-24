@@ -777,6 +777,7 @@ def me(request):
         "turn": turn,
         "date": display.turn_text(turn),
         "next_turn_at": w.next_turn_at.isoformat() if w and w.next_turn_at else None,
+        "turn_schedule": display.turn_schedule(w) if w else None,
     }
     key = getattr(request, "api_key", None)
     if key is not None:

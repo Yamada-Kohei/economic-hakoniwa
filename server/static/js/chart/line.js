@@ -42,6 +42,14 @@ export class LineChart {
     this.legend = document.createElement("ul");
     this.legend.className = "chart-legend";
     container.append(this.box, this.legend);
+    const logUrl = document.querySelector("[data-log-url]")?.dataset.logUrl;
+    if (logUrl) {
+      this.logLink = document.createElement("a");
+      this.logLink.hidden = true;
+      this.logLink.className = "chart-log-link";
+      this.logUrl = logUrl;
+      container.append(this.logLink);
+    }
 
     this.canvas.addEventListener("pointermove", (e) => this.pointAt(e));
     this.canvas.addEventListener("pointerdown", (e) => this.pointAt(e));
@@ -68,6 +76,7 @@ export class LineChart {
     this.loaded = true;
     this.error = false;
     this.turns = turns;
+    if (this.logLink) this.logLink.hidden = true;
     this.series = series.map((s, i) => ({ ...s, color: s.color || COLORS[i % COLORS.length] }));
     this.hover = null;
     this.tip.hidden = true;
@@ -272,6 +281,12 @@ export class LineChart {
       })
       .join("");
     this.tip.innerHTML = `<div>${escape(turnDate(this.turns[i]))}</div><ul>${rows}</ul>`;
+    if (this.logLink) {
+      const turn = this.turns[i];
+      this.logLink.href = `${this.logUrl}?${new URLSearchParams({ from: turn, to: turn })}`;
+      this.logLink.textContent = `${turnDate(turn)}のログを読む`;
+      this.logLink.hidden = false;
+    }
     this.tip.hidden = false;
     // 吹き出しは指の反対側に出し、グラフの外にはみ出さないようにする
     const box = this.box.getBoundingClientRect();

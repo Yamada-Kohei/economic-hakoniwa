@@ -13,5 +13,6 @@
   <a href="{% url 'island_military' island.id %}"{% if page == "military" %} aria-current="page"{% endif %}>{% translate "軍" %}</a>
   <a href="{% url 'island_country' island.id %}"{% if page == "country" %} aria-current="page"{% endif %}>{% translate "国の紹介" %}</a>
   {% if plan_label %}<a href="{% url 'island_plan' island.id %}"{% if page == "plan" %} aria-current="page"{% endif %}>{{ plan_label }}</a>{% endif %}
+  {% if mine %}<a href="{% url 'diary' island.id %}"{% if page == "diary" %} aria-current="page"{% endif %}>{% translate "日誌" %}</a>{% endif %}
   <a href="{% url 'turn_log' island.id %}"{% if page == "log" %} aria-current="page"{% endif %}>{% translate "ターンログ" %}</a>
 </nav>

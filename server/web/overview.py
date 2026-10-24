@@ -508,6 +508,7 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
         "turn": world.turn,
         "date": display.turn_text(world.turn),
         "next_turn_at": world.next_turn_at.isoformat() if world.next_turn_at else None,
+        "turn_schedule": display.turn_schedule(world),
         "stats_turn": stats_turn,
         "indicators": indicators(stats, before, currency),
         "politics": politics,

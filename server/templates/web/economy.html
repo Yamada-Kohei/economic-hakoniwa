@@ -2,6 +2,12 @@
 {% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 {% include "web/report_header.html" %}
+{% include "web/stat_definitions.html" %}
+<details class="panel" id="happiness-help">
+  <summary>{% translate "幸福度を調べる" %}</summary>
+  <p>{% translate "食料・衣料・電力・実質賃金などが暮らしに影響します。ここで各要因の寄与点はまだ表示できません。" %}</p>
+  <p><a href="{% url 'island_market' island.id %}">{% translate "市場で食料・衣料の不足と値段を見る" %}</a> ・ <a href="{% url 'island_facilities' island.id %}">{% translate "施設で電力・雇用を調べる" %}</a> ・ <a href="{% url 'island_fiscal' island.id %}">{% translate "財政で賃金と失業手当を調べる" %}</a> ・ <a href="{% url 'help' %}#island">{% translate "暮らしの仕組み" %}</a></p>
+</details>
 
 {% if tiles %}
 <section class="stat-tiles" aria-label="{% translate '直近の主な指標' %}">
