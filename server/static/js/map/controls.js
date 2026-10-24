@@ -1,4 +1,4 @@
-// 操作: ドラッグで移動、ホイールとピンチで拡大縮小、タップでマスを選ぶ。
+// 操作: ドラッグで移動、Ctrl＋ホイールとピンチで拡大縮小、タップでマスを選ぶ。
 
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 4;
@@ -68,6 +68,8 @@ export function attachControls(canvas, view, { onChange, onTap }) {
   canvas.addEventListener(
     "wheel",
     (e) => {
+      // 通常のホイールはページのスクロールに使う。
+      if (!e.ctrlKey || e.deltaY === 0) return;
       e.preventDefault();
       const p = local(e);
       zoomAt(e.deltaY < 0 ? 1.1 : 1 / 1.1, p.x, p.y);

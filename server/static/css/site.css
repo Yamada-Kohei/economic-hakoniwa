@@ -70,8 +70,8 @@ table.goods td:nth-child(n+2), table.goods th:nth-child(n+2) { text-align: right
 /* 島の画面 */
 .island-header h1 { margin-bottom: 0; }
 .island-header p { margin-top: 4px; }
-/* 地図は横の欄をなくした分、本文の幅（1100px）より広い画面では左右に 1400px まで広げる */
-.island-layout { margin-inline: calc((100% - max(100%, min(100vw - 48px, 1400px))) / 2); }
+/* 地図も下の表や命令の欄と同じ本文の幅に収める */
+.island-layout { margin-inline: 0; }
 /* マスの情報の窓。位置は map/main.js が選んだマスのそばに決める */
 .tile-popover { position: absolute; z-index: 3; width: min(360px, calc(100% - 16px)); max-height: calc(100% - 16px);
   display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
@@ -167,11 +167,15 @@ table.letters tr.unread td { font-weight: bold; }
 .rules dt { font-weight: bold; margin-top: 8px; }
 .rules dd { margin: 2px 0 0 1em; }
 
-/* 島の画面の見出しの下のリンク（地図・経済・市場・施設・財政・金融・ターンログ） */
-.island-nav { display: flex; flex-wrap: wrap; gap: 4px 6px; margin: 6px 0 4px; }
-.island-nav a { padding: 4px 10px; border: 1px solid var(--border); border-radius: 16px; background: var(--panel);
+/* 見出しの下のリンクはつながった帯にし、入りきらないときは帯の中を横に送る */
+.island-nav { display: flex; flex-wrap: nowrap; gap: 0; overflow-x: auto; max-width: 100%; margin: 6px 0 4px; }
+.island-nav a { flex: 0 0 auto; padding: 8px 12px; min-height: 40px; border: 1px solid var(--border);
+  border-right: 0; border-radius: 0; background: var(--panel);
   text-decoration: none; white-space: nowrap; }
-.island-nav a[aria-current="page"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.island-nav a:last-child { border-right: 1px solid var(--border); }
+.island-nav a:hover { background: var(--pale); }
+.island-nav a:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }
+.island-nav a[aria-current="page"] { background: var(--accent); color: #fff; }
 .page-title { font-size: 0.7em; font-weight: normal; color: #4f62a0; margin-left: 4px; }
 /* 見出しに添える日付（箱庭暦） */
 .heading-date { font-size: 0.75em; font-weight: normal; color: #6a7aa0; margin-left: 4px; }

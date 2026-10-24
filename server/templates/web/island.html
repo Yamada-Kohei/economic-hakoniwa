@@ -40,6 +40,7 @@
       </label>
       <span id="overlay-legend" class="hint" aria-live="polite"></span>
     </div>
+    <p id="map-help" class="hint">{% translate "地図はドラッグで移動、Ctrl＋ホイールか＋－ボタンで拡大縮小できます。スマートフォンでは2本指で拡大縮小できます。通常のホイールはページをスクロールします。" %}</p>
     {% if mine %}<div id="mark-tools" class="mark-tools" aria-live="polite"></div>{% endif %}
     {% if own_island %}<section id="missile-target" class="military-page panel" hidden
       data-military="{% url 'api_island_military' own_island.id %}" data-orders="{% url 'api_orders' own_island.id %}"
@@ -47,7 +48,7 @@
       aria-label="{% translate 'ミサイル攻撃' %}"></section>{% endif %}
     <div class="map-wrap">
       <canvas id="island-map" data-island="{{ island.id }}" data-api="{% url 'api_island_map' island.id %}"
-              data-defs="{% url 'api_defs' %}" aria-label="{% translate '島の俯瞰図' %}"></canvas>
+              data-defs="{% url 'api_defs' %}" aria-label="{% translate '島の俯瞰図' %}" aria-describedby="map-help"></canvas>
       <div class="map-buttons">
         <button type="button" data-zoom="in" aria-label="{% translate '拡大' %}">＋</button>
         <button type="button" data-zoom="out" aria-label="{% translate '縮小' %}">－</button>
