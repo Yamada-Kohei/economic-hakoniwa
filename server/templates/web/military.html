@@ -7,6 +7,7 @@
 {{ military|json_script:"military-data" }}
 <div class="military-page" id="military-page" data-defs="{% url 'api_defs' %}" data-map="{% url 'island' island.id %}" data-island-url="{% url 'island' 0 %}">
 <nav class="military-links" aria-label="{% translate '軍の項目' %}">
+  {% if mine or military.civil_war.active %}<a href="#civil-war">{% translate "内戦" %}</a>{% endif %}
   <a href="#forces">{% translate "兵と国防費" %}</a>
   {% if mine %}<a href="#units">{% translate "部隊" %}</a><a href="#fleets">{% translate "艦隊" %}</a><a href="#bases">{% translate "基地と陣地" %}</a><a href="#commands">{% translate "軍の命令" %}</a>{% endif %}
   <a href="{% url 'help' %}#military">{% translate "軍と部隊の手引き" %}</a>
@@ -14,6 +15,28 @@
 </nav>
 <div class="report-layout{% if mine %} with-orders{% endif %}"><div class="report-main">
 {% with m=military %}
+{% if mine or m.civil_war.active %}
+<section class="panel" id="civil-war">
+  <h2>{% translate "内戦" %}</h2>
+  {% if m.civil_war.active %}
+  <p class="military-warning" role="status">{% blocktranslate with soldiers=m.civil_war.rebels tiles=m.civil_war.held_tiles %}内戦が起きています。反乱軍の兵 {{ soldiers }} 人、占領されたマス {{ tiles }}。{% endblocktranslate %}</p>
+  {% if mine %}
+  <p class="hint">{% blocktranslate with turns=m.civil_war.calm_turns %}内戦の間、政情が落ち着いて続いたターン数: {{ turns }}{% endblocktranslate %}</p>
+  <div class="table-scroll"><table class="military-table">
+    <thead><tr><th>{% translate "番号" %}</th><th>{% translate "いる場所" %}</th><th>{% translate "兵" %}</th><th>{% translate "武器" %}</th><th>{% translate "士気" %}</th><th>{% translate "飢え" %}</th><th>{% translate "立ち上がったターン" %}</th></tr></thead>
+    <tbody>{% for g in m.civil_war.groups %}<tr>
+      <td>{{ g.id }}</td><td><a href="{% url 'island' island.id %}?x={{ g.x }}&amp;y={{ g.y }}">({{ g.x }}, {{ g.y }})</a></td>
+      <td>{{ g.soldiers }}</td><td>{{ g.weapons }}</td><td data-percent="{{ g.morale|stringformat:'.4f' }}">{{ g.morale }}</td>
+      <td>{% if g.hungry %}{% translate "はい" %}{% else %}{% translate "いいえ" %}{% endif %}</td><td>{{ g.since }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+  {% else %}
+  <p class="muted">{% blocktranslate with turns=m.civil_war.alarm_turns %}反乱の前触れが続いているターン数: {{ turns }}{% endblocktranslate %}</p>
+  {% if m.civil_war.cooldown_until > island.world.turn %}<p class="muted">{% blocktranslate with until=m.civil_war.cooldown_until %}ターン {{ until }} までは新しい反乱は起きません。{% endblocktranslate %}</p>{% endif %}
+  {% endif %}
+</section>
+{% endif %}
 <section class="panel" id="forces">
   <h2>{% translate "兵と国防費" %}</h2>
   <dl class="military-summary">
@@ -68,7 +91,7 @@
     <div><dt>{% translate "他国に捕らわれている自国の兵" %}</dt><dd>{{ m.captive }}</dd></div>
   </dl><div data-table="prisoners"></div>
   {% if island.ext.politics.reselect %}
-  <p class="military-warning">{% translate "首都を占領されて降伏し、体制が倒れました。体制を選び直してください。占領と取り立ては停戦中も続き、講和で解けます。" %}</p>
+  <p class="military-warning">{% translate "体制が倒れました。体制を選び直してください。" %}</p>
   <form class="actions military-form" data-order="choose_regime">
     <h3>{% translate "体制を選び直す" %}</h3>
     <label>{% translate "政治の体制" %}<select name="politics" data-axis="politics" required></select></label>
@@ -82,6 +105,7 @@
   <h2>{% translate "戦争の数（直近の集計）" %} <small class="heading-date">{{ stats_turn|turn_date }}</small></h2>
   <dl class="military-summary">
     <div><dt>{% translate "戦死した兵" %}</dt><dd>{{ m.stats.killed }}</dd></div>
+    <div><dt>{% translate "反乱軍に占領されているマス" %}</dt><dd>{{ m.civil_war.held_tiles }}</dd></div>
     <div><dt>{% translate "負傷した兵" %}</dt><dd>{{ m.stats.wounded }}</dd></div>
     <div><dt>{% translate "撃破" %}</dt><dd>{{ m.stats.kills }}</dd></div>
     <div><dt>{% translate "民間の死者" %}</dt><dd>{{ m.stats.civilian_dead }}</dd></div>

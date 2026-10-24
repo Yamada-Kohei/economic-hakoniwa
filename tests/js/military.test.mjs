@@ -256,7 +256,7 @@ test("持ち主の戦況は外国の地図へ結び、補給・占領・捕虜�
     fleets: [{ ...military.fleets[0], duty: "watch", goods: { fuel: 1.5 } }],
     bases: [{ facility: 8, kind: "missile_base", x: 0, y: 1, stock: 7, missile_base: 12, warheads: 1, warhead: 2 },
       { facility: 9, kind: "air_defense", x: 1, y: 1, stock: 3, air_defense: 12 }],
-    reserve: { food: 4.5 }, occupied: [{ x: 0, y: 0, by: 2, turn: 5 }],
+    reserve: { food: 4.5 }, occupied: [{ x: 0, y: 0, by: 2, turn: 5 }, { x: 1, y: 0, by: -1, turn: 6 }],
     occupying: [{ island: 2, x: 1, y: 2, turn: 6 }], prisoners: { by_island: { 2: 6 } },
     enemy_units: [{ id: 40, owner: 2, island: 1, x: 2, y: 0, army: "<相手>", current: true, turn: 8 }],
   };
@@ -280,6 +280,8 @@ test("持ち主の戦況は外国の地図へ結び、補給・占領・捕虜�
     assert.match(slots.bases.innerHTML, /3 \/ 12/);
     assert.match(slots.reserve.innerHTML, /4.5/);
     assert.match(slots.occupied.innerHTML, /\/islands\/1\/\?x=0&amp;y=0/);
+    assert.match(slots.occupied.innerHTML, /<td>rebels<\/td>/);
+    assert.doesNotMatch(slots.occupied.innerHTML, /<td>-1<\/td>/);
     assert.match(slots.occupying.innerHTML, /\/islands\/2\/\?x=1&amp;y=2/);
     assert.match(slots.prisoners.innerHTML, /<td>2<\/td><td>6<\/td>/);
     assert.match(slots.enemy.innerHTML, /&lt;相手&gt;/);

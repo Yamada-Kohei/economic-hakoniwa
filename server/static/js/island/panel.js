@@ -11,6 +11,7 @@ import { turnDate } from "../calendar.js";
 import { escapeHtml, getJson, sendJson } from "./api.js";
 import { MilitaryTile } from "./military.js";
 import { words } from "../military/common.js";
+import { recipeLabel, recipeWords } from "./recipes.js";
 
 const MAX_TILES = 64; // 1つの命令で選べるマスの数（orders.yaml の maxItems と同じ）
 
@@ -148,7 +149,8 @@ export class TilePanel {
       const index = this.tile.y * this.map.size + this.tile.x;
       const w = words();
       if (this.map.fallout?.[index] > 0) parts.push(`<p class="military-warning">${escapeHtml(w.fallout)}: ${this.map.fallout[index]}</p>`);
-      if (this.map.occupied?.[index]) parts.push(`<p class="military-warning">${escapeHtml(w.occupied)}: ${this.map.occupied[index]}</p>`);
+      const occupier = this.map.occupied?.[index];
+      if (occupier) parts.push(`<p class="military-warning">${escapeHtml(occupier === -1 ? w.rebelHeld : `${w.occupied}: ${occupier}`)}</p>`);
       if (this.military) parts.push(this.military.html(this.tile));
       if (this.info.facility) parts.push(this.facilityHtml(this.info.facility));
       if (this.orders) parts.push(this.actionsHtml(this.info));
@@ -201,7 +203,8 @@ export class TilePanel {
     }
     const rows = [["種類", f.kind_name], ["所有", `${f.owner_name}・${f.accounting_name}`]];
     if (f.firm_name) rows.push(["企業", f.firm_name]);
-    if (f.recipe_name) rows.push(["生産方式", f.recipe_name]);
+    if (f.recipe_name) rows.push([recipeWords().method, recipeLabel(f.recipe,
+      this.defs.facilities[f.kind]?.recipes?.[f.recipe], f.recipe_name)]);
     if (!f.built) {
       if (f.private_site) rows.push(["建設", "民間の資本が自分の資金で建設中"]);
       rows.push(["建設進捗", `${Math.round(f.progress * 100)}%（工期 ${f.turns} ターン）`]);
@@ -235,6 +238,9 @@ export class TilePanel {
     }
     if (f.stock.length) rows.push(["施設在庫", goodsText(f.stock)]);
     const parts = [`<h3>${escapeHtml(f.name)}</h3>${table(rows)}`];
+    if (f.owner === "private" && Object.keys(this.defs.facilities[f.kind]?.recipes || {}).length > 1) {
+      parts.push(`<p class="hint">${escapeHtml(recipeWords().ownershipHint)}</p>`);
+    }
     if (f.monument) parts.push(this.monumentHtml(f.monument, f.number));
     if (f.bank) parts.push(bankHtml(f.bank));
     parts.push(this.booksHtml(f.books));
@@ -297,7 +303,7 @@ export class TilePanel {
         <form class="actions" data-form="build">
           <h4>建設</h4>
           <label>施設 <select name="facility">${options}</select></label>
-          <span data-slot="recipe">${this.recipeSelect(choices[0][0])}</span>
+          <div data-slot="recipe">${this.recipeSelect(choices[0][0])}</div>
           <label>名称（空欄なら自動） <input name="name" maxlength="32"></label>
           <span data-slot="note">${this.noteField(choices[0][0])}</span>
           <div data-slot="hide">${this.hideField(choices[0][0])}</div>
@@ -350,20 +356,22 @@ export class TilePanel {
     }
     if (f.recipe_choices?.length || f.recipe_next_name) {
       // 生産方式の切り替え（国営の施設だけ。次のターンの市場の段で切り替わり、そのターンは稼働率が半分）
-      const amounts = (list) => list.map((g) => `${escapeHtml(g.name)} ${g.amount}`).join("・") || "なし";
+      const w = recipeWords();
+      const amounts = (list) => list.map((g) => `${escapeHtml(g.name)} ${g.amount}`).join("・") || escapeHtml(w.none);
       const options = (f.recipe_choices || [])
-        .map((r) => `<option value="${escapeHtml(r.recipe)}">${escapeHtml(r.name)}（${amounts(r.inputs)} → ${amounts(r.outputs)}）</option>`)
+        .map((r) => `<option value="${escapeHtml(r.recipe)}">${escapeHtml(recipeLabel(r.recipe,
+          this.defs.facilities[f.kind]?.recipes?.[r.recipe], r.name))}（${amounts(r.inputs)} → ${amounts(r.outputs)}）</option>`)
         .join("");
       const pending = f.recipe_next_name
-        ? `<p class="hint">次のターンに「${escapeHtml(f.recipe_next_name)}」に切り替えます。</p>` : "";
+        ? `<p class="hint">${escapeHtml(w.next.replace("{name}", f.recipe_next_name))}</p>` : "";
       const form = options ? `
-          <select name="recipe">${options}</select>
-          <p class="hint">次のターンの市場で切り替わり、そのターンは稼働率が半分になります。</p>
-          <button type="submit">命令に追加</button>` : "";
+          <select class="recipe-select" name="recipe" aria-label="${escapeHtml(w.method)}">${options}</select>
+          <p class="hint">${escapeHtml(w.transition)}</p>
+          <button type="submit">${escapeHtml(w.add)}</button>` : "";
       parts.push(`
         <form class="actions" data-form="recipe">
-          <h4>生産方式の切り替え（現在: ${escapeHtml(f.recipe_name || "")}）</h4>
-          ${pending}${form}
+          <h4>${escapeHtml(w.change)}（${escapeHtml(w.current)}: ${escapeHtml(f.recipe_name || "")}）</h4>
+          ${this.recipeHint(f.kind)}${pending}${form}
         </form>`);
     }
     if (f.ownership_target) {
@@ -464,10 +472,18 @@ export class TilePanel {
       .map(([id, r]) => {
         const problem = this.recipeProblem(r);
         const selected = id === chosen ? " selected" : "";
-        return `<option value="${id}"${selected}>${escapeHtml(r.name)}${problem ? `（${problem}）` : ""}</option>`;
+        return `<option value="${escapeHtml(id)}"${selected}>${escapeHtml(recipeLabel(id, r))}${problem ? `（${problem}）` : ""}</option>`;
       })
       .join("");
-    return `<label>生産方式 <select name="recipe">${options}</select></label>`;
+    return `${this.recipeHint(facility)}<label>${escapeHtml(recipeWords().method)} <select class="recipe-select" name="recipe">${options}</select></label>`;
+  }
+
+  recipeHint(facility) {
+    const w = recipeWords();
+    const recipes = Object.values(this.defs.facilities[facility]?.recipes || {});
+    const electronics = recipes.some((r) => Object.hasOwn(r.inputs || {}, "electronics"));
+    return (electronics ? `<p class="hint">${escapeHtml(w.electronicsHint)}</p>` : "") +
+      `<p class="hint">${escapeHtml(w.ownershipHint)}</p>`;
   }
 
   /** 選んでいる生産方式の原料をこの島で生産できないときの注意（なければ ""）。 */
