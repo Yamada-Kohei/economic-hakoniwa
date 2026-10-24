@@ -235,12 +235,13 @@ def report(request, thread_id: int, number: int):
     return _json({"report": found.id, "number": number}, status=201)
 
 
-@require_GET
+@require_http_methods(["GET", "POST"])
 def notices(request):
-    """自分の書き込みへの返信（新しい順）。?mark=1 で、見えたぶんを既読にする。"""
+    """自分の書き込みへの返信（新しい順）。GET は読むだけ、POST は見えたぶんを既読にして返す
+    （ほかのサイトから GET で踏まれて既読にならないように）。"""
     if not request.user.is_authenticated:
         return _error("ログインしてください", 403)
-    rows = services.notices(request.user, mark=request.GET.get("mark") in ("1", "true"))
+    rows = services.notices(request.user, mark=request.method == "POST")
     unread = services.unread_count(request.user)
     for row in rows:
         row["post"] = _post_json(row["post"])

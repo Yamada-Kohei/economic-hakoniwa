@@ -426,8 +426,8 @@ def _board_search(request, args):
 
 
 def _board_replies(request, args):
-    query = {"mark": 1 if args.get("mark") else None}
-    return call_ok(request, "GET", "/api/board/notices", query=query)
+    method = "POST" if args.get("mark") else "GET"
+    return call_ok(request, method, "/api/board/notices", body={} if args.get("mark") else None)
 
 
 def _board_like(request, args):

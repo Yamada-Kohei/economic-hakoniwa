@@ -15,6 +15,7 @@ from django.conf import settings
 
 NAME_MAX = 20
 BLOCKED_NAME_CHARS = "★◆​‌‍﻿"  # 管理者の印・トリップの印に似せられないようにする
+STAFF_NAME = "運営"  # 管理者の名前（名前欄では使えない）
 NO_NAME = "名無し"  # 名前欄が空のときの表示
 
 

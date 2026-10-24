@@ -161,7 +161,7 @@ def test_notices_count_unread_replies_and_mark_read(client):
     data = client.get("/api/board/notices").json()
     assert data["unread"] == 1 and data["notices"][0]["to"] == 1
     assert data["notices"][0]["post"]["number"] == 3 and data["notices"][0]["unread"]
-    client.get("/api/board/notices?mark=1")
+    _json(client, "/api/board/notices")
     assert client.get("/api/board/notices").json()["unread"] == 0
     # 画面を開いても既読になる
     client.force_login(bob)
@@ -455,3 +455,50 @@ def test_ng_page_and_unauthenticated_redirects(client):
     client.post("/board/ng/", {"delete": rule.id})
     assert not alice.board_ng_rules.exists()
     assert "種類" in client.post("/board/ng/", {"kind": "person", "word": "x"}).content.decode()
+
+
+def test_person_ng_does_not_link_anonymous_and_country_posts(client, world):
+    alice, bob = _user("alice"), _user("bob")
+    island = Island.objects.order_by("id").first()
+    island.owner = alice
+    island.save(update_fields=["owner"])
+    thread_id = _thread(client, alice, body="名無しで書く")
+    _say(client, thread_id, "国名で書く", identity="country")
+    client.force_login(bob)
+    _json(client, "/api/board/ng", {"kind": "person", "thread": thread_id, "number": 1})
+    posts = client.get(f"/api/board/threads/{thread_id}").json()["posts"]
+    assert [p["ng"] for p in posts] == [True, False]  # 国名の書き込みは同じ人でも結びつかない
+    _json(client, "/api/board/ng", {"kind": "person", "thread": thread_id, "number": 2})
+    posts = client.get(f"/api/board/threads/{thread_id}").json()["posts"]
+    assert [p["ng"] for p in posts] == [True, True]
+
+
+def test_ng_hides_replies_from_unread_replied_by_and_compact_pages(client):
+    alice, bob = _user("alice"), _user("bob")
+    thread_id = _thread(client, bob, body="ボブの最初")
+    client.force_login(alice)
+    _say(client, thread_id, ">>1 返信です ひみつの文")
+    client.force_login(bob)
+    assert services.unread_count(bob) == 1
+    _json(client, "/api/board/ng", {"kind": "person", "thread": thread_id, "number": 2})
+    assert services.unread_count(bob) == 0
+    assert client.get(f"/api/board/threads/{thread_id}").json()["posts"][0]["replied_by"] == []
+    assert (
+        "ひみつの文"
+        not in client.get("/board/search/?q=ひみつ").content.decode().split("<details")[0]
+    )
+    assert "NG の書き込み" in client.get("/board/notices/").content.decode()
+
+
+def test_names_cannot_pose_as_staff_and_like_needs_the_wait(client, settings):
+    alice, bob = _user("alice"), _user("bob")
+    client.force_login(alice)
+    res = _json(client, "/api/board/threads", {"title": "t", "body": "b", "name": "運営の者"})
+    assert res.status_code == 400
+    thread_id = _thread(client, alice)
+    settings.HAKONIWA_BOARD_NEWCOMER_MINUTES = 10
+    client.force_login(bob)
+    assert _json(client, f"/api/board/threads/{thread_id}/posts/1/like").status_code == 429
+    assert _json(client, f"/api/board/threads/{thread_id}/posts/1/report").status_code == 429
+    assert _json(client, "/api/board/notices", method="post").status_code == 200
+    assert _json(client, "/api/board/notices").json()["unread"] == 0

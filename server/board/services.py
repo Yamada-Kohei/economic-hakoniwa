@@ -12,6 +12,7 @@ from datetime import timedelta
 from typing import Any
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.db.models import Count, F, Max, Q, QuerySet
@@ -125,11 +126,17 @@ def thread_view(thread: Thread) -> dict[str, Any]:
     }
 
 
+def face_of(post: Post) -> str:
+    """書き込みの「書き方の別」: 名無しか、どの国名か。人の NG はこの別ごとに効き、同じ人の名無しと
+    国名を結びつけない。"""
+    return f"island:{post.island_id or 0}" if post.island_name else "anon"
+
+
 @dataclass
 class NgFilter:
     """見る人の NG の設定。人は誰かを明かさずに保存してあり、ID はその日の分だけ当たる。"""
 
-    persons: set[int] = field(default_factory=set)
+    persons: set[tuple[int, str]] = field(default_factory=set)  # （アカウント, 書き方の別）
     idents: set[str] = field(default_factory=set)
     words: list[str] = field(default_factory=list)
 
@@ -140,7 +147,7 @@ class NgFilter:
             return found
         for rule in NgRule.objects.filter(user=user):
             if rule.kind == NgRule.PERSON and rule.target_id:
-                found.persons.add(rule.target_id)
+                found.persons.add((rule.target_id, rule.word))
             elif rule.kind == NgRule.IDENT:
                 found.idents.add(rule.word)
             elif rule.kind == NgRule.WORD:
@@ -150,7 +157,9 @@ class NgFilter:
     def matches(self, post: Post) -> bool:
         if post.by_staff or post.hidden:
             return False
-        if post.author_id in self.persons or (post.ident and post.ident in self.idents):
+        if (post.author_id, face_of(post)) in self.persons or (
+            post.ident and post.ident in self.idents
+        ):
             return True
         text = f"{post.name}\n{post.island_name}\n{post.body}".lower()
         return any(word in text for word in self.words)
@@ -168,7 +177,7 @@ def post_view(
     if post.island_name:
         island = {"id": post.island_id, "name": post.island_name}
     if post.by_staff:
-        name = "運営"
+        name = ident_mod.STAFF_NAME
     elif island:
         name = island["name"]
     else:
@@ -223,14 +232,15 @@ def read_posts(
         if user is not None and user.is_authenticated
         else set()
     )
-    replied_by: dict[int, list[int]] = {}
-    for target_id, source_number in (
-        Reply.objects.filter(target_id__in=ids, source__hidden=False)
-        .order_by("source__number")
-        .values_list("target_id", "source__number")
-    ):
-        replied_by.setdefault(target_id, []).append(source_number)
     ng = NgFilter.of(user)
+    replied_by: dict[int, list[int]] = {}
+    for reply in (
+        Reply.objects.filter(target_id__in=ids, source__hidden=False)
+        .select_related("source")
+        .order_by("source__number")
+    ):
+        if not ng.matches(reply.source):  # NG の人の返信は「返信:」にも出さない
+            replied_by.setdefault(reply.target_id, []).append(reply.source.number)
     return {
         **paging,
         "posts": [post_view(p, ng=ng, liked=liked, replied_by=replied_by) for p in picked],
@@ -270,6 +280,18 @@ def _clean_title(title: str) -> str:
     return title
 
 
+def _check_newcomer(user) -> None:
+    """登録してしばらくは、書き込みもいいねも通報もできない（管理者は除く）。"""
+    if user.is_staff:
+        return
+    wait = timedelta(minutes=settings.HAKONIWA_BOARD_NEWCOMER_MINUTES) - (
+        timezone.now() - user.date_joined
+    )
+    if wait > timedelta(0):
+        minutes = int(wait.total_seconds() // 60) + 1
+        raise BoardError(f"登録してしばらくは使えません。あと {minutes} 分ほどお待ちください", 429)
+
+
 def _check_writer(user, board: Board, body: str, *, new_thread: bool) -> None:
     """書いてよい人か。登録してすぐ・連投・書きすぎ・同じ文の連投を断る（管理者は除く）。"""
     if not user.is_authenticated:
@@ -278,11 +300,8 @@ def _check_writer(user, board: Board, body: str, *, new_thread: bool) -> None:
         return
     if board.staff_only:
         raise BoardError("この板は管理者だけが書けます", 403)
+    _check_newcomer(user)
     now = timezone.now()
-    wait = timedelta(minutes=settings.HAKONIWA_BOARD_NEWCOMER_MINUTES) - (now - user.date_joined)
-    if wait > timedelta(0):
-        minutes = int(wait.total_seconds() // 60) + 1
-        raise BoardError(f"登録してしばらくは書けません。あと {minutes} 分ほどお待ちください", 429)
     mine = Post.objects.filter(author=user)
     last = mine.order_by("-created_at").values_list("created_at", flat=True).first()
     gap = timedelta(seconds=settings.HAKONIWA_BOARD_INTERVAL_SECONDS)
@@ -307,6 +326,8 @@ def _writer(user, board: Board, name: str, identity: str) -> dict[str, Any]:
     if identity not in IDENTITIES:
         raise BoardError("identity は anon・country・staff のどれかです")
     shown, trip = ident_mod.split_name(name or "")
+    if not user.is_staff and ident_mod.STAFF_NAME in shown:
+        raise BoardError("名前に「運営」は使えません")
     fields: dict[str, Any] = {
         "name": shown,
         "trip": trip,
@@ -319,7 +340,7 @@ def _writer(user, board: Board, name: str, identity: str) -> dict[str, Any]:
         island = own_island(user)
         if island is None:
             raise BoardError("国名で書けるのは、自分の国を持つ人だけです", 403)
-        # 国名で書く（と運営として書く）ときは ID を付けない: 名無しで書いた同じ日の書き込みと結びつけない
+        # 国名で書く（と運営として書く）ときは ID を付けない（名無しで書いた書き込みと結びつけない）
         fields.update(name="", island=island, island_name=island.name, ident="")
     elif identity == "staff" or (board.staff_only and user.is_staff):
         if not user.is_staff:
@@ -340,9 +361,10 @@ def start_thread(
 ) -> Thread:
     """スレッドを立て、1 番を書く。板のスレッドが上限を超えたら、古いものを過去ログへ落とす。"""
     title, body = _clean_title(title), _clean_body(body)
-    _check_writer(user, board, body, new_thread=True)
     writer = _writer(user, board, name, identity)
     with transaction.atomic():
+        _lock_writer(user)
+        _check_writer(user, board, body, new_thread=True)
         thread = Thread.objects.create(board=board, title=title, author=user)
         _write(thread, user, body, writer, sage=False)
         prune(board)
@@ -361,10 +383,17 @@ def add_post(
 ) -> Post:
     """スレッドの最後に書き込む。1000 に届いたらスレッドを閉じる。"""
     body = _clean_body(body)
-    _check_writer(user, thread.board, body, new_thread=False)
     writer = _writer(user, thread.board, name, identity)
     with transaction.atomic():
+        _lock_writer(user)
+        _check_writer(user, thread.board, body, new_thread=False)
         return _write(thread, user, body, writer, sage=sage)
+
+
+def _lock_writer(user) -> None:
+    """同じアカウントの書き込みを 1 つずつにする（同時に送って連投の歯止めを抜けられないように。
+    SQLite は書き込みが元々 1 つずつ）。"""
+    get_user_model().objects.select_for_update().filter(pk=user.pk).first()
 
 
 def _write(thread: Thread, user, body: str, writer: dict[str, Any], *, sage: bool) -> Post:
@@ -436,12 +465,12 @@ def toggle_like(user, post: Post) -> dict[str, Any]:
         raise BoardError("ログインしてください", 403)
     if post.author_id == user.id:
         raise BoardError("自分の書き込みにはいいねできません")
+    _check_newcomer(user)
     with transaction.atomic():
         like, created = Like.objects.get_or_create(post=post, user=user)
         if created:
             Post.objects.filter(pk=post.pk).update(like_count=F("like_count") + 1)
-        else:
-            like.delete()
+        elif like.delete()[0]:
             Post.objects.filter(pk=post.pk, like_count__gt=0).update(like_count=F("like_count") - 1)
     post.refresh_from_db(fields=["like_count"])
     return {"number": post.number, "liked": created, "likes": post.like_count}
@@ -453,6 +482,7 @@ def report_post(user, post: Post, reason: str) -> Report:
         raise BoardError("ログインしてください", 403)
     if post.author_id == user.id:
         raise BoardError("自分の書き込みは通報できません")
+    _check_newcomer(user)
     reason = reason.replace("\x00", "").strip()[:REASON_MAX]
     report, created = Report.objects.get_or_create(
         post=post, reporter=user, defaults={"reason": reason}
@@ -498,11 +528,12 @@ def add_ng(
             target = post.author
             if target is None:
                 raise BoardError("この書き込みの人は NG にできません")
+            word = face_of(post)  # 名無しで書いたものか、その国名で書いたものだけに効く
         else:
             word = post.ident
     elif kind not in (NgRule.IDENT, NgRule.WORD):
         raise BoardError("書き込みを指してください（thread と number）")
-    if kind != NgRule.PERSON and not word:
+    if not word:
         raise BoardError("NG にする言葉か ID を書いてください")
     existing = mine.filter(kind=kind, word=word, target=target).first()
     if existing is not None:
@@ -522,9 +553,12 @@ def _unread() -> Q:
 
 
 def unread_count(user) -> int:
+    """未読の返信の数（NG にした人からの返信は数えない）。"""
     if not user.is_authenticated:
         return 0
-    return Reply.objects.filter(_unread(), target__author=user).count()
+    rows = Reply.objects.filter(_unread(), target__author=user).select_related("source")
+    ng = NgFilter.of(user)
+    return sum(1 for r in rows if not ng.matches(r.source))
 
 
 def notices(user, *, mark: bool = False, limit: int = 50) -> list[dict[str, Any]]:
@@ -536,11 +570,12 @@ def notices(user, *, mark: bool = False, limit: int = 50) -> list[dict[str, Any]
         .select_related("source__thread__board", "source__island", "target")
         .order_by("-id")[:limit]
     )
+    ng = NgFilter.of(user)
     shown = [
         {
             "thread": {"id": r.source.thread_id, "title": r.source.thread.title},
             "to": r.target.number,
-            "post": post_view(r.source, ng=NgFilter.of(user)),
+            "post": post_view(r.source, ng=ng),
             "unread": not r.seen,
         }
         for r in rows

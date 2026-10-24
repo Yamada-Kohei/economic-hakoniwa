@@ -560,7 +560,11 @@ def cmd_board_search(c: Client, a) -> int:
 
 
 def cmd_replies(c: Client, a) -> int:
-    status, body, _ = c.get("/api/board/notices" + ("?mark=1" if a.mark else ""))
+    if a.mark:
+        c.get("/")  # csrf の cookie
+        status, body = c.json("POST", "/api/board/notices", {})
+    else:
+        status, body, _ = c.get("/api/board/notices")
     if a.json:
         return show(status, body)
     if status >= 400:

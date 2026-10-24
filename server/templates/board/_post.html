@@ -10,7 +10,7 @@
   </header>
   {% if p.hidden %}
     <p class="bbody muted">{% translate "このレスは管理者により非表示にされました（あぼーん）。" %}</p>
-  {% elif p.ng and not compact %}
+  {% elif p.ng %}
     <details class="bng"><summary>{% translate "NG の書き込み（押すと開きます）" %}</summary><div class="bbody">{{ p.html }}</div></details>
   {% else %}
     <div class="bbody">{{ p.html }}</div>

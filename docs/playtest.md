@@ -174,15 +174,21 @@ $H letters --sent                          # 送った公電の一覧（相手�
 $H letter 12                               # 公電 12 を読む（届いた公電は既読になる）
 $H send 5 'ごあいさつ' '本文'              # 島 5 に送る。本文を省くと標準入力から読む
 $H send 5 '貿易の相談' -f letter.txt       # 本文をファイルから
-$H board                                   # 掲示板のスレッドの一覧（--page N）
-$H thread 3                                # スレッド 3 の書き込み（既定は最後のページ。--page 1 で最初）
-$H post 3 '本文'                           # スレッド 3 に書き込む（本文の渡し方は send と同じ）
-$H new-thread '題名' '本文'                # スレッドを立てる
+$H boards                                  # 掲示板の板の一覧（左の名前を --board に使う）
+$H board --board diplomacy                 # 板のスレッドの一覧（--archived で過去ログ、--page N）
+$H thread 3                                # スレッド 3 の書き込み（既定は最後のページ。--page 1・--latest 50・--from 10 --to 20）
+$H post 3 '>>5 賛成です' --country         # スレッド 3 に書き込む（>>番号 で返信。--country で国名、--name 名前#秘密、--sage）
+$H new-thread '題名' '本文' --board chat   # スレッドを立てる
+$H board-search '関税'                     # 題名と本文を探す（過去ログも）
+$H replies --mark                          # 自分の書き込みへの返信の知らせ（--mark で既読に）
+$H like 3 5                                # スレッド 3 の 5 番にいいね（もう一度で外す）
+$H report 3 5 --reason '荒らし'            # 荒らしを管理者に通報する
+$H ng add '言葉'                           # NG（ng list・ng remove 番号。人は ng add 5 --kind person --thread 3）
 $H letters --json                          # どの命令も --json で API の JSON をそのまま出す
 ```
 
 API は `GET・POST /api/letters`（`?box=inbox|sent&page=`、送るのは `{"to", "subject", "body"}`）、`GET /api/letters/<番号>`、
-`GET・POST /api/board/threads`、`GET /api/board/threads/<番号>`（`?page=last` で最後のページ）、`POST /api/board/threads/<番号>/posts` です。
+`/api/board/` の下（板・スレッド・書き込み・いいね・通報・返信の知らせ・NG・検索。一覧は docs/architecture.md）です。新しく作ったアカウントは、掲示板に書けるまで少し待たされます（`HAKONIWA_BOARD_NEWCOMER_MINUTES`。試し遊びのサーバーでは 0 にしてよい）。
 ブラウザでは見出しの「外交」（未読があれば「未読の公電」の数が出る）と、ほかの国の島の画面の「この国に公電を送る」から使えます。
 
 読むと役に立つ画面と API（`<id>` は島の番号）:

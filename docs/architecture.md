@@ -62,7 +62,7 @@ Django（server/）……保存・アカウント・命令の受付・ターン�
 | `orders` | 命令のモデル |
 | `turns` | ターン更新、バックアップと巻き戻し、ターンログ |
 | `web` | 画面と JSON API。表示の文面づくりは `display.py`（ルールの計算はしない） |
-| `board` | 掲示板（読むのは誰でも、書くのは登録した人だけ。管理画面で書き込みを非表示にできる） |
+| `board` | 掲示板（板 `Board`・スレッド `Thread`・番号付きの書き込み `Post`・返信 `Reply`・いいね `Like`・NG `NgRule`・通報 `Report`。読むのは誰でも、書くのは登録して少したった人だけ。歯止めと書く決まりは `services.py`、名前とトリップと日ごとの ID は `identity.py`、本文の HTML は `render.py`。管理画面で板・スレッド・書き込み・通報を扱う） |
 | `hall` | 国際会議場（フェーズ4-1。公開の声明の表 `Statement`。誰でも読め、島を持つ人が出せる。1 つの島が 24 時間に出せる数は設定 `HAKONIWA_HALL_PER_DAY`。管理画面で非表示にできる。条約と戦争の出来事は表に持たず、当事国のターンログの `hall` の印から表示のときに作る） |
 | `country` | 国の公開ページ（フェーズ4-1。国旗 `Flag`（検査した PNG。`png.py`）・紹介文と紀年の選び `Profile`・来訪者の一言 `Note`・自作の記念碑の絵 `MonumentImage`。どれも管理画面で非表示にできる。国ごとの日付の書き方は `services.py`。中身の組み立ては `server/web/country.py`） |
 | `letters` | 国どうしの手紙（画面では「外交」の「公電」。非公開。読めるのは差出人と宛先の島の持ち主だけ。送るとすぐ届く。1 つの島が 24 時間に送れる数は設定 `HAKONIWA_LETTERS_PER_DAY`。管理画面で非表示にできる） |
@@ -102,7 +102,7 @@ DB の表は、マス（`Tile`）・施設（`Facility`）・在庫（`Stock`、
 | `/islands/<id>/plan/` | 計画（フェーズ3-4。計画経済と混合経済の島だけ、見出しのリンクは計画経済で「計画」、混合経済で「値段の規制」）: 国全体の行列と強制貯蓄。持ち主には、計画経済なら財ごとの公定価格・原価との差・生産目標・作った量・達成率・行列、見直す幅と据え置く財、重点産業、混合経済なら財ごとの値段の上限と下限と、その命令の欄も |
 | `/islands/<id>/log/` | ターンログ（ターンごと） |
 | `/world/` | 世界マップ（貿易圏の色の縁取り・港・運ぶ途中の荷のある航路を重ねる。`js/world/trade.js`） |
-| `/board/` | 掲示板 |
+| `/board/` | 掲示板の板の一覧と最近のスレッド（`/board/b/<板>/` スレッドの一覧、`/board/b/<板>/log/` 過去ログ、`/board/t/<番号>/` スレッド（`?p=`・`?latest=50`・`?from=&to=`）、`/board/search/` 検索、`/board/notices/` 返信の知らせ、`/board/ng/` NG の設定） |
 | `/hall/` | 国際会議場: 戦争の状態・効いている条約・声明と出来事の並び。島を持つ人には声明の入力欄も |
 | `/islands/<id>/diplomacy/` | 外交の状態（フェーズ4-1）: 戦争・効いている条約・終わった条約・条約の違反の記録。持ち主には返事待ちの提案と、宣戦・条約・署名・断り・取り下げ・破棄の命令の欄も |
 | `/islands/<id>/military/` | 軍（フェーズ4-2）: 兵と国防費・部隊・艦隊・基地・陣地（持ち主）。ほかの国には兵の総数と国防費と見えた艦隊だけ。値は `GET /api/islands/<id>/military` と同じ（`server/web/military.py` の `brief`） |
@@ -168,9 +168,16 @@ DB の表は、マス（`Tile`）・施設（`Facility`）・在庫（`Stock`、
 | `GET /api/letters` | 自分の島の手紙の一覧（`?box=inbox`・`?box=sent` と `&page=`。新しい順）と未読の数。ログインして島を持つ人だけ（ほかは 403） |
 | `POST /api/letters` | 手紙を送る（`{"to": 島の番号, "subject", "body"}`）。自分宛てと存在しない島は 400、送りすぎは 429 |
 | `GET /api/letters/<番号>` | 手紙1通（本文つき）。差出人と宛先の島の持ち主だけ（ほかは 404）。宛先の持ち主が読むと既読になる |
-| `GET /api/board/threads` | 掲示板のスレッドの一覧（`?page=`）。`POST` で立てる（`{"title", "body"}`。ログインした人だけ） |
-| `GET /api/board/threads/<番号>` | スレッドの書き込み（`?page=`、`page=last` で最後のページ）。書いた人の名前と、その人の島の番号と国名つき |
-| `POST /api/board/threads/<番号>/posts` | スレッドに書き込む（`{"body"}`。ログインした人だけ） |
+| `GET /api/board/boards` | 掲示板の板の一覧（`slug`・名前・スレッドの数・最後の書き込み） |
+| `GET /api/board/threads` | 掲示板のスレッドの一覧（`?board=板の名前`・`?archived=1` で過去ログ・`?page=`）。`POST` で立てる（`{"board"?, "title", "body", "name"?, "identity"?: anon\|country, "sage"?}`。ログインした人だけ。登録してしばらく・連投・書きすぎは 429） |
+| `GET /api/board/threads/<番号>` | スレッドの書き込み（`?page=`（`last` で最後）・`?latest=N`・`?from=&to=`）。名前（空なら名無し）・トリップ・ID・国名で書いたときの島・いいねの数・返信が付いた番号つき。アカウント名は出ない。非表示は本文 null、NG に当たったものも本文 null（`?ng=show` で出す） |
+| `POST /api/board/threads/<番号>/posts` | スレッドに書き込む（`{"body", "name"?, "identity"?, "sage"?}`。ログインした人だけ） |
+| `GET /api/board/threads/<番号>/posts/<n>` | 書き込み 1 件（`>>n` の浮き出しに使う） |
+| `POST /api/board/threads/<番号>/posts/<n>/like` | いいねを付ける・外す |
+| `POST /api/board/threads/<番号>/posts/<n>/report` | 荒らしを管理者に通報する（`{"reason"?}`。ゲームの不具合の報告は `/api/bug-reports`） |
+| `GET /api/board/notices` | 自分の書き込みへの返信（`?mark=1` で既読にする）と未読の数 |
+| `GET・POST /api/board/ng`・`DELETE /api/board/ng/<番号>` | NG の設定（`{"kind": word\|ident\|person, "word"?, "thread"?, "number"?}`） |
+| `GET /api/board/search` | 題名と本文の検索（`?q=`・`?board=`・`?page=`。過去ログも） |
 
 書き込み（PUT・POST）には Django の CSRF の印が要ります（AI 用の鍵で呼ぶときは要りません）。
 
