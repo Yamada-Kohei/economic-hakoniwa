@@ -193,7 +193,7 @@ def test_armor_needs_fuel_to_move(game, world):
 
 def test_a_unit_digs_a_trench_with_soldiers_and_materials(game, world):
     island, unit, base = ready_unit(game, world)
-    give(island, "building_materials", 5, game)
+    give(island, "building_materials", 100, game)  # 道路などの手入れも倉庫の建材を使うので多めに
     order(game, world, ("dig_trench", {"unit": unit["id"]}))
     assert unit["order"]["type"] == "dig" and not army.has_trench(island.tile(base.x, base.y))
     step(game, world)
@@ -253,6 +253,6 @@ def test_a_trench_uses_materials_only_when_it_is_finished(game, world):
     step(game, world)
     assert not army.has_trench(island.tile(base.x, base.y))  # 建材がないので待つ
     assert unit["order"] is not None
-    give(island, "building_materials", 5, game)
+    give(island, "building_materials", 100, game)  # 道路などの手入れも倉庫の建材を使うので多めに
     step(game, world)
     assert army.has_trench(island.tile(base.x, base.y)) and unit["order"] is None
