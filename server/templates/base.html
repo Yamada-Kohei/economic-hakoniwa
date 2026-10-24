@@ -7,6 +7,9 @@
   <link rel="stylesheet" href="{% static 'css/site.css' %}">
   {% calendar_script %}
   <script src="{% static 'js/feedback.js' %}" defer></script>
+  {% if user.is_authenticated and own_island %}
+  <script type="module" src="{% static 'js/letter-notice.js' %}"></script>
+  {% endif %}
 </head>
 <body>
   <header class="site-header">
@@ -14,7 +17,7 @@
     <nav>
       {% if own_island %}
         <a href="{% url 'island' own_island.id %}">{% translate "自国" %}</a>
-        <a href="{% url 'letters' %}">{% translate "外交" %}{% if letters_unread %} <span class="badge">{% blocktranslate with n=letters_unread %}未読の公電 {{ n }}{% endblocktranslate %}</span>{% endif %}</a>
+        <a id="letters-link" href="{% url 'letters' %}">{% translate "外交" %}{% if letters_unread %} <span class="badge">{% blocktranslate with n=letters_unread %}未読の公電 {{ n }}{% endblocktranslate %}</span>{% endif %}</a>
       {% else %}
         <a href="{% url 'found' %}">{% translate "建国" %}</a>
       {% endif %}
@@ -35,6 +38,16 @@
     </nav>
   </header>
   <main>{% block content %}{% endblock %}</main>
+  {% if user.is_authenticated and own_island %}
+  <div id="letter-notice" class="letter-notice" role="status" aria-live="polite" aria-atomic="true"
+       data-user="{{ user.pk }}" data-island="{{ own_island.id }}" data-url="{% url 'api_letters' %}"
+       data-letter-url="{% url 'letter' 0 %}">
+    <div class="letter-notice-card" hidden>
+      <a data-letter-notice-link href="{% url 'letters' %}"></a>
+      <button type="button" data-letter-notice-close>{% translate "閉じる" %}</button>
+    </div>
+  </div>
+  {% endif %}
   {% if user.is_authenticated %}
   <dialog id="bug-report" class="bug-report" data-url="{% url 'api_bug_reports' %}">
     <form method="dialog" class="bug-report-form">

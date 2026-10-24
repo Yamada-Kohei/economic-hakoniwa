@@ -4,6 +4,10 @@
 <h1>{% translate "外交" %} <span class="page-title">{{ island.name }}</span></h1>
 {% include "letters/nav.html" %}
 <p class="hint">{% translate "公電は送るとすぐに届き、発信国と宛先国の持ち主だけが読めます。" %}</p>
+<p id="letter-notice-preference" class="letter-notice-preference" hidden>
+  <label><input type="checkbox" id="letter-notice-enabled" checked> {% translate "届いたときに画面の隅で知らせる" %}</label>
+  <small class="hint">{% translate "このブラウザに設定を覚えます。" %}</small>
+</p>
 <div class="table-scroll">
 <table class="letters">
   <thead><tr>

@@ -5,6 +5,7 @@
 
 <section class="panel">
   <h2>{% if market_turn is not None %}{% translate "財ごとの市場" %} <small class="heading-date">{{ market_turn|turn_date }}</small>{% else %}{% translate "財ごとの市場" %}{% endif %}</h2>
+  <p class="hint">{% translate "値段だけで取引の成立は判断できません。売買量は成立した量で、0 はそのターンに約定がないことを表します。気配は売買の目安です。未観測・未集計は 0 と区別して読みます。" %}</p>
   {% if rows %}
   <div class="table-scroll">
     <table class="goods market-table">

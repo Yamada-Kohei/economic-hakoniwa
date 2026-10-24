@@ -1,8 +1,22 @@
-{% extends "base.html" %}{% load i18n calendar_tags %}
+{% extends "base.html" %}{% load i18n static calendar_tags %}
 {% block title %}{{ island.name }} {% translate "ターンログ" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 <h1>{{ island.name }} {% translate "ターンログ" %}</h1>
 <p><a href="{% url 'island' island.id %}">{% translate "島の画面へ戻る" %}</a></p>
+<form id="log-filter" class="panel actions" data-url="{% url 'api_island_log' island.id %}" data-island-url="{% url 'island' island.id %}" data-turn="{{ island.world.turn }}">
+  <label>{% translate "最初のターン" %}<input name="from" type="number" min="0" step="1" required></label>
+  <label>{% translate "最後のターン" %}<input name="to" type="number" min="0" step="1" required></label>
+  <label>{% translate "出来事の種類（代表の文）" %}<select name="kind"><option value="">{% translate "すべて" %}</option></select></label>
+  <label>{% translate "施設のマス X" %}<input name="x" type="number" min="0" step="1" max="{{ island.size|add:'-1' }}"></label>
+  <label>{% translate "Y" %}<input name="y" type="number" min="0" step="1" max="{{ island.size|add:'-1' }}"></label>
+  <button type="submit">{% translate "この範囲を読む" %}</button>
+  <p class="hint">{% translate "一度に24ターンまで読みます。種類と施設のマスは読み込んだ範囲を絞り込みます。マスの情報がない出来事は、施設を指定すると含まれません。" %}</p>
+  <p data-status role="status"></p>
+</form>
+<p><a href="{% url 'turn_log' island.id %}">{% translate "通常のページ表示へ戻る" %}</a></p>
+<noscript><p class="hint">{% translate "絞り込みには JavaScript が必要です。下のページ送りからすべてのログを読めます。" %}</p></noscript>
+<div id="filtered-log" hidden></div>
+<div id="paged-log">
 {% for turn, entries in groups %}
   <section class="panel">
     <h2>{{ turn|turn_date }}</h2>
@@ -18,4 +32,6 @@
   {% if page.has_next %}<a href="?page={{ page.next_page_number }}">{% translate "古いターン" %}</a>{% endif %}
 </nav>
 {% endif %}
+</div>
+<script type="module" src="{% static 'js/reports/log.js' %}"></script>
 {% endblock %}

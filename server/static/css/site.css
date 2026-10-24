@@ -160,6 +160,21 @@ table.letters { border-collapse: collapse; width: 100%; }
 table.letters th, table.letters td { text-align: left; padding: 3px 6px; border: 1px solid var(--rule); vertical-align: top; }
 table.letters tr.unread td { font-weight: bold; }
 .badge { display: inline-block; padding: 0 6px; border-radius: 10px; background: #c62828; color: #fff; font-size: 0.8em; }
+/* 公電の知らせ。スマホでは下の操作欄とキーボードを避け、上の隅に置く。 */
+.letter-notice { position: fixed; z-index: 10; right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom)); width: min(360px, calc(100% - 32px)); }
+.letter-notice-card { display: flex; align-items: flex-start; gap: 12px; padding: 12px;
+  max-height: 30vh; overflow-y: auto; background: var(--panel); color: var(--fg);
+  border: 2px solid var(--accent); box-shadow: 2px 2px 0 var(--rule); }
+.letter-notice-card[hidden] { display: none; }
+.letter-notice-card a { flex: 1; min-width: 0; overflow-wrap: anywhere; line-height: 1.6; }
+.letter-notice-card button { flex: 0 0 auto; min-height: 44px; }
+.letter-notice-preference label { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }
+.letter-notice-preference small { display: block; }
+@media (max-width: 760px) {
+  .letter-notice { top: max(8px, env(safe-area-inset-top)); bottom: auto;
+    right: max(8px, env(safe-area-inset-right)); width: min(360px, calc(100% - 16px)); }
+}
 /* AI が動かしている国の印（国の一覧と国の画面） */
 .ai-mark { display: inline-block; padding: 0 6px; border-radius: 4px; border: 1px solid #1565c0; color: #1565c0; font-size: 0.7em; font-weight: bold; vertical-align: middle; cursor: help; }
 
@@ -348,6 +363,11 @@ table.goods.country-timeline td:nth-child(n+2), table.goods.country-timeline th:
   object-fit: contain;
 }
 .monument-placeholder { display: grid; place-items: center; background: linear-gradient(var(--pale), var(--head)); color: #4f62a0; font-size: 48px; }
+/* 表やパネルの表示方法にかかわらず、絞り込んだ行と未表示の欄を隠す。 */
+[hidden] { display: none !important; }
+#island-map:focus-visible { outline: 3px solid var(--fg); outline-offset: -3px; }
+#map-coordinate input { width: 5em; }
+.chart-log-link { display: inline-block; margin-top: 0.5em; }
 .monument-edit-link { display: block; margin-top: 10px; font-size: 0.85em; }
 @media (max-width: 540px) {
   .country-head { gap: 12px; }

@@ -81,11 +81,15 @@ def _latest(world: m.World, turn: int | None = None) -> dict[int, dict[str, floa
     return out
 
 
-def _factors(world: m.World, base: int | None) -> dict[int, float]:
-    """島の番号 → その島の通貨 1 を基準の通貨 base に直す倍率（直せない島は入れない）。"""
+def _factors(
+    world: m.World, base: int | None, trading: dict[int, Any] | None = None
+) -> dict[int, float]:
+    """島の番号 → その島の通貨 1 を基準の通貨 base に直す倍率（直せない島は入れない）。trading は
+    貿易を始めた島（何度も呼ぶときに渡す）。"""
     if base is None:
         return {}
-    trading = trading_islands(world)
+    if trading is None:
+        trading = trading_islands(world)
     if base not in trading:
         return {base: 1.0}
     here = trading[base]
@@ -103,13 +107,23 @@ def _factors(world: m.World, base: int | None) -> dict[int, float]:
     return out
 
 
-def default_base(world: m.World, own: m.Island | None) -> int | None:
-    """基準の通貨: 見る人の国、国がなければ貿易を始めた一番番号の小さい国（どちらもなければ
-    None）。"""
-    if own is not None:
-        return own.id
+def comparable_counts(world: m.World) -> dict[int, int]:
+    """貿易を始めた島の番号 → その島の通貨を基準にしたとき、お金の額を直せる島の数
+    （自分を含む）。"""
     trading = trading_islands(world)
-    return min(trading) if trading else None
+    return {base: len(_factors(world, base, trading)) for base in trading}
+
+
+def default_base(world: m.World, own: m.Island | None) -> int | None:
+    """基準の通貨（U05）: お金の額を直せる国がいちばん多い通貨。同じ数なら見る人の国、さらに同じなら
+    番号の小さい国。貿易を始めた国がなければ見る人の国（それもなければ None）。"""
+    counts = comparable_counts(world)
+    if not counts:
+        return own.id if own is not None else None
+    best = max(counts.values())
+    if own is not None and counts.get(own.id) == best:
+        return own.id
+    return min(i for i, n in counts.items() if n == best)
 
 
 def ranking_data(world: m.World, base: int | None) -> dict[str, Any]:

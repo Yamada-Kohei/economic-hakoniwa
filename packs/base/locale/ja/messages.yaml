@@ -845,3 +845,4 @@ rebels_dispersed: "({x}, {y}) の反乱軍は疲れて兵が家へ帰り、尽�
 unit_defected: "賃金の遅れた部隊 {unit} 番（兵 {count:,} 人）が反乱軍に寝返りました"
 arsenal_seized: "反乱軍が占領した兵舎で、島の武器庫の武器 {count:,} 組を奪いました"
 recipe_fell_back: "({x}, {y}) の{facility}は、電子機器が手に入らないため、生産方式を「{recipe}」に戻しました（次のターンは稼働率が半分になります）"
+letter_received: "{sender}から公電「{subject}」が届きました"

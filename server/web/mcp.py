@@ -33,6 +33,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.naming import facility_name
+from server import jsonbody
 from server.game import get_game
 from server.letters import services as letter_services
 from server.web import display
@@ -48,7 +49,8 @@ INSTRUCTIONS = """\
 遊ぶための道具です。人のプレイヤーと同じ決まりで動き、見られるのは画面で見られることだけです。
 
 - 初めに whoami で自分の島とターンを確かめ、guide で手引きを読み、summary で国の要約を読みます。
-  島がなければ found で建国します。
+  島がなければ found で建国します。前に遊んだ方針や引き継ぎは国の日誌（diary）にあり、区切りで
+  diary_set に書いておきます（持ち主だけが読めます）。
 - 次のターンからは changes(since=前に読んだターン) で、その後に起きたことだけを読みます。
 - 命令は check_order で確かめてから、set_orders で命令の列を丸ごと置き換えます（今の列は summary の
   orders.pending）。中身の形は defs(section="orders")。1ターンに実行されるのは行政力の数までです。
@@ -373,6 +375,16 @@ def _monument_image_set(request, args):
 def _country_note(request, args):
     path = f"/api/islands/{int(args['island'])}/country/notes"
     return call_ok(request, "POST", path, body={"text": args["text"]})
+
+
+def _diary(request, args):
+    island = args.get("island") or _own_island(request).id
+    return call_ok(request, "GET", f"/api/islands/{int(island)}/diary")
+
+
+def _diary_set(request, args):
+    island = args.get("island") or _own_island(request).id
+    return call_ok(request, "PUT", f"/api/islands/{int(island)}/diary", body={"text": args["text"]})
 
 
 def _board_boards(request, args):
@@ -1018,6 +1030,27 @@ TOOLS = [
         read_only=False,
     ),
     Tool(
+        "diary",
+        "国の日誌を読む",
+        "自分の国の日誌（持ち主だけが読める非公開のメモ欄。方針・引き継ぎ・次にすること）を読む。"
+        "遊び始めに読むと、前の回の引き継ぎが分かる。",
+        _diary,
+        {"island": {"type": "integer", "description": "自分の島の番号（省けば自分の島）"}},
+    ),
+    Tool(
+        "diary_set",
+        "国の日誌を書く",
+        "自分の国の日誌を書き換える（全文の置き換え。20,000 字まで。空にもできる）。区切りで方針と"
+        "引き継ぎを書いておく。",
+        _diary_set,
+        {
+            "island": {"type": "integer", "description": "自分の島の番号（省けば自分の島）"},
+            "text": {"type": "string"},
+        },
+        ("text",),
+        read_only=False,
+    ),
+    Tool(
         "board_boards",
         "掲示板の板",
         "掲示板の板の一覧（雑談・外交・質問・攻略・運営からの告知など。slug が板の名前）。",
@@ -1225,6 +1258,7 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "island_diplomacy": ("report",),
     "island_military": ("report",),
     "island_country": ("report", "country_set", "flag_set", "monument_image_set", "country_note"),
+    "diary": ("diary", "diary_set"),
     "news": ("news",),
     "hall": ("hall", "hall_post"),
     "board": ("board_boards", "board_replies"),
@@ -1371,7 +1405,7 @@ def endpoint(request: HttpRequest) -> HttpResponse:
         response["WWW-Authenticate"] = 'Bearer realm="hakoniwa"'
         return response
     try:
-        message = json.loads(request.body or b"")
+        message = jsonbody.loads(request.body or b"")
     except ValueError:
         return _json(_error(None, -32700, "JSON として読めません"), status=400)
     if isinstance(message, list):  # まとめて送る形（2025-03-26 の版）

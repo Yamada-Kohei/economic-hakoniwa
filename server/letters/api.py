@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from typing import Any
 
@@ -16,6 +15,7 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods
 
+from server import jsonbody
 from server.letters import services
 from server.letters.models import Letter
 from server.world.models import Island
@@ -92,7 +92,7 @@ def letters(request):
 
 def _send(request, island: Island) -> JsonResponse:
     try:
-        data = json.loads(request.body or b"{}")
+        data = jsonbody.loads(request.body or b"{}")
         if not isinstance(data, dict):
             raise ValueError
     except ValueError:

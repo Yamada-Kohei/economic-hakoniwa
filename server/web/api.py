@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import string
 from collections.abc import Mapping
 from functools import cache
@@ -25,12 +24,14 @@ from hakoniwa_core.founding import land_terrains
 from hakoniwa_core.military import army
 from hakoniwa_core.modules import production
 from hakoniwa_core.naming import default_place_style, place_of, place_styles
-from hakoniwa_core.orders import check_order
+from hakoniwa_core.orders import OrderCheck, check_order
 from hakoniwa_core.units import from_milli, to_basis
+from server import jsonbody
 from server.accounts import keys
 from server.game import get_game
 from server.letters import services as letter_services
 from server.orders.models import Order
+from server.turns import services as turn_services
 from server.web import budget_guide, display, overview, rankings, reports
 from server.web import chain as chain_views
 from server.web import country as country_views
@@ -776,6 +777,7 @@ def me(request):
         "turn": turn,
         "date": display.turn_text(turn),
         "next_turn_at": w.next_turn_at.isoformat() if w and w.next_turn_at else None,
+        "turn_schedule": display.turn_schedule(w) if w else None,
     }
     key = getattr(request, "api_key", None)
     if key is not None:
@@ -812,6 +814,13 @@ def changes(request, island_id: int):
 # --- 命令 -------------------------------------------------------------------
 
 
+def _check_order(state, kind: Any, payload: Any):
+    """命令を確かめる。種類が文字でないもの（JSON の型違い）は、知らない命令として断る。"""
+    if not isinstance(kind, str):
+        return OrderCheck(False, "reason_unknown_order")
+    return check_order(get_game().defs, get_game().registry, state, kind, payload)
+
+
 @require_http_methods(["GET", "PUT"])
 def orders(request, island_id: int):
     """GET: 待っている命令の列と行政力。PUT: 列を丸ごと置き換える（島の持ち主だけ）。"""
@@ -821,7 +830,7 @@ def orders(request, island_id: int):
     if not request.user.is_authenticated or island.owner_id != request.user.id:
         return _json({"error": "この島の命令は持ち主だけが変えられます"}, status=403)
     try:
-        body = json.loads(request.body or b"{}")
+        body = jsonbody.loads(request.body or b"{}")
         items = body["orders"]
         if not isinstance(items, list):
             raise TypeError
@@ -842,7 +851,7 @@ def orders(request, island_id: int):
         # 量と値段は見せる単位で受け取り、計算の単位に直して確かめ、並べる（W-30）
         kind = item.get("kind")
         payload = item["payload"] = display.order_payload(kind, item.get("payload"), to_game=True)
-        result = check_order(get_game().defs, get_game().registry, state, kind, payload)
+        result = _check_order(state, kind, payload)
         if result.ok:
             continue
         text = display.message(result.reason or "reason_unknown_order", **result.args)
@@ -854,6 +863,9 @@ def orders(request, island_id: int):
     if errors:
         return _json({"errors": errors}, status=400)
     with transaction.atomic():
+        if turn_services.update_running():
+            text = "いま更新中か、別の書き換えと重なりました。数秒おいてもう一度送ってください"
+            return _json({"error": text}, status=409)
         Order.objects.filter(island=island, status="pending").delete()
         Order.objects.bulk_create(
             [
@@ -872,14 +884,14 @@ def check(request, island_id: int):
     if not _mine(request, island):
         return _json({"error": "この島の命令は持ち主だけが確かめられます"}, status=403)
     try:
-        body = json.loads(request.body or b"{}")
+        body = jsonbody.loads(request.body or b"{}")
     except ValueError:
         return HttpResponseBadRequest("JSON で送ってください")
     if not isinstance(body, dict) or not isinstance(body.get("payload", {}), dict):
         return HttpResponseBadRequest("命令は1つずつ {kind, payload} の形で送ってください")
     state = load_island(island)
     payload = display.order_payload(body.get("kind"), body.get("payload"), to_game=True)
-    result = check_order(get_game().defs, get_game().registry, state, body.get("kind"), payload)
+    result = _check_order(state, body.get("kind"), payload)
     text = "" if result.ok else display.message(result.reason or "", **result.args)
     data = {"ok": result.ok, "text": text, "details": list(result.details)}
     if result.ok:  # どう読んだか（率の % や量の単位）を見られるように、命令の列と同じ説明を添える

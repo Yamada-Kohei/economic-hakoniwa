@@ -19,6 +19,9 @@
 - HAKONIWA_FLAG_MAX_KB: 国旗の PNG の大きさの上限（KB。既定 100）
 - HAKONIWA_FLAG_MAX_SIDE: 国旗の PNG の縦横の上限（ピクセル。既定 512）
 - HAKONIWA_COUNTRY_NOTES_PER_DAY: 1つの国が 24 時間に他国のページに残せる一言の数（既定 10）
+- HAKONIWA_UPDATE_STALE_MINUTES: 鎖の取れない DB（SQLite）で、更新中の印がこの分より古ければ
+  強制終了などで残ったものとみなして外す（既定 30。ターンの計算がそれより長くかかる世界では
+  大きくする。PostgreSQL では鎖で見分けるので使わない。server/turns/services.py）
 - HAKONIWA_AI_CALLS_PER_MINUTE: AI 用の鍵1つで 1 分に呼べる API の回数（既定 60。0 で上限なし。
   server/accounts/keys.py）
 """
@@ -153,4 +156,5 @@ HAKONIWA_BOARD_THREADS_PER_DAY = int(os.environ.get("HAKONIWA_BOARD_THREADS_PER_
 HAKONIWA_FLAG_MAX_KB = int(os.environ.get("HAKONIWA_FLAG_MAX_KB", "100"))
 HAKONIWA_FLAG_MAX_SIDE = int(os.environ.get("HAKONIWA_FLAG_MAX_SIDE", "512"))
 HAKONIWA_COUNTRY_NOTES_PER_DAY = int(os.environ.get("HAKONIWA_COUNTRY_NOTES_PER_DAY", "10"))
+HAKONIWA_UPDATE_STALE_MINUTES = int(os.environ.get("HAKONIWA_UPDATE_STALE_MINUTES", "30"))
 HAKONIWA_AI_CALLS_PER_MINUTE = int(os.environ.get("HAKONIWA_AI_CALLS_PER_MINUTE", "60"))

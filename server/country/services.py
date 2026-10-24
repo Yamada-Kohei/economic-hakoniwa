@@ -1,4 +1,5 @@
-"""国の公開ページの書き込み（紹介文・紀年・国旗・来訪者の一言）と、国ごとの日付の書き方。
+"""国の公開ページの書き込み（紹介文・紀年・国旗・来訪者の一言）と、国ごとの日付の書き方、
+持ち主だけの国の日誌。
 
 画面（server/web/views.py）・JSON API（api.py）・MCP が同じ関数を使う。出せない・書けないときは
 CountryError（text は画面と API にそのまま出し、status は API の HTTP の状態にする）。
@@ -17,13 +18,14 @@ from django.utils import timezone
 
 from hakoniwa_core.dates import Calendar
 from server.country import png
-from server.country.models import ERA_KINDS, Flag, MonumentImage, Note, Profile
+from server.country.models import ERA_KINDS, Diary, Flag, MonumentImage, Note, Profile
 from server.game import get_game
 from server.letters.services import own_island
 from server.world.models import Facility, Island
 
 INTRO_MAX = Profile._meta.get_field("intro").max_length
 NOTE_MAX = Note._meta.get_field("text").max_length
+DIARY_MAX = Diary._meta.get_field("text").max_length
 ERA_NAME_MAX = 8  # 元号の長さ
 MAX_ERAS = 50
 NOTES_PER_TARGET = 3  # 同じ国のページに 1 つの国が 24 時間に残せる一言の数
@@ -301,3 +303,28 @@ def edit(island: Island, data: dict[str, Any]) -> None:
             set_era(island, str(era.get("kind", "")), era.get("name"))
         if "new_era" in data:
             new_era(island, data["new_era"])
+
+
+def diary_data(island: Island) -> dict[str, Any]:
+    """国の日誌の中身（まだ書いていなければ空）。持ち主だけに見せる（呼ぶ側で確かめる）。"""
+    diary = Diary.objects.filter(island=island).first()
+    if diary is None:
+        return {"text": "", "turn": None, "updated_at": None}
+    return {
+        "text": diary.text,
+        "turn": diary.turn,
+        "updated_at": timezone.localtime(diary.updated_at).isoformat(),
+    }
+
+
+def set_diary(island: Island, text: Any) -> Diary:
+    """国の日誌を書き換える（全文の置き換え。空にもできる）。"""
+    if not isinstance(text, str):
+        raise CountryError("日誌の文を送ってください")
+    text = _plain(text, "日誌", lines=True).strip()
+    if len(text) > DIARY_MAX:
+        raise CountryError(f"日誌は {DIARY_MAX} 字までです（いまは {len(text)} 字）")
+    diary, _ = Diary.objects.update_or_create(
+        island=island, defaults={"text": text, "turn": island.world.turn}
+    )
+    return diary
