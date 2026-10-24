@@ -71,7 +71,7 @@ sprites:
 | `facility/monument_leader` | 元首の像 | 台座の上の青銅の像。3.5 段 |
 | `facility/monument_worker` | 労働者の像 | 台座の上の像と赤い旗。3.5 段 |
 | `facility/monument_tower` | 展望塔 | 赤と白の鉄骨の塔。5 段 |
-| `facility/monument_ledger` | 帳簿の碑 | 罫線の入った石板。2 段 |
+| `facility/monument_ledger` | 帳簿の碑 | 立てた開き帳簿（罫線と赤い中心線）。別案の金の天秤は ALTERNATES |
 | `facility/monument_verification` | 検証の碑 | 濃灰色の角柱と測定枠。3.5 段 |
 | `facility/barracks` | 兵舎 | 1.5 段・第1部 |
 | `facility/naval_base` | 軍港 | 2 段・海沿い・第1部。海が右下 |
@@ -189,7 +189,7 @@ sprites:
 
 ## 軍事の絵（フェーズ4）の雰囲気合わせ
 
-フェーズ4（軍事。設計は [docs/design/15-military.md](design/15-military.md)）で足す絵は、今ある絵と並べて浮かないように、次に合わせます。名前は上の「名前の一覧」で先に決め、絵のファイルを先に置きます。`theme.yaml` の `sprites` には今回登録せず、施設の定義データや描く仕組みが入る Claude の PR で1行ずつ登録します。第1部（兵舎・軍港・レーダー・歩兵・陣地）と第2部の船（フリゲートを除く）・反乱軍・壊れた施設は Codex が、フリゲートと第2部の施設・戦車・戦場・占領・汚染の印は持ち主の希望で Claude が作り直しました。
+フェーズ4（軍事。設計は [docs/design/15-military.md](design/15-military.md)）で足す絵は、今ある絵と並べて浮かないように、次に合わせます。名前は上の「名前の一覧」で先に決め、絵のファイルを先に置きます。`theme.yaml` の `sprites` には今回登録せず、施設の定義データや描く仕組みが入る Claude の PR で1行ずつ登録します。第1部（兵舎・軍港・レーダー・歩兵・陣地）と第2部の船（フリゲートを除く）・反乱軍・壊れた施設は Codex が（兵舎の窓と軍港の軍艦は 10-25 に Claude が直した）、フリゲートと第2部の施設・戦車・戦場・占領・汚染の印は持ち主の希望で Claude が作り直しました。
 
 第1部・第2部の再生成は次の2つです（標準ライブラリだけを使います）。
 
@@ -197,6 +197,10 @@ sprites:
 python tools/sprites/silhouette.py server/static/themes/default/sprites
 python tools/sprites/military_icons.py server/static/themes/default/sprites
 ```
+
+描く順が循環すると（窓の板・屋根の縁・日よけ・台の上の木などの前後が決まらないと）壁を突き抜けて見えます。`silhouette.py` の `order_cycles(prims)` が空であることを確かめてください（直した絵は `tests/server/test_sprite_draw_order.py` が見張ります）。屋根の縁や台の箱は壁と同じ大きさにし（はみ出させない）、窓は間隔より細く、台の上の木は `broadleaf(…, z)` で台の高さから植え、日よけや前に出るものは `tiered(2, …)` で最後に描きます。
+
+数案を出すときの別の案は `silhouette.py` の `ALTERNATES` に入れ、`--spare <フォルダ>` を付けるとゲームで使わない絵として別のフォルダに書き出せます（採用しなかった案は `/mnt/project-files/map-art/spare-<日付>/` に残します）。
 
 比較用の確認ページは `python tools/sprites/military_preview.py` で作れます（`military-preview.html` と、第2部17枚の `military-part2-4x.html` ができます。PNGはブラウザで別途撮影します。ゲームで使うものではないので、コミットしません）。
 等倍・0.25倍・4倍で既存の絵と並べ、町・農場・兵舎に部隊と重ねる印を置いた例、ミサイル基地・核施設を平地と山の色面に置いた例も含めます。塹壕は奥側→建物→手前側、焦げ跡と汚染は地形→印→建物、占領は地形→建物→印の順です。瓦礫は建物を置き換えます。山の立体面に平面の印を重ねる例は、実装側での合成確認が必要です。
