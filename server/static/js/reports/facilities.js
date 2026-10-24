@@ -8,6 +8,18 @@ import { mountOrders } from "./orders.js";
 mountCharts();
 mountStaticPies();
 
+const stateFilter = document.getElementById("facility-state");
+if (stateFilter) {
+  const rows = [...document.querySelectorAll("tr[data-facility-state]")];
+  for (const state of new Set(rows.map((row) => row.dataset.facilityState))) stateFilter.add(new Option(state, state));
+  const filter = () => {
+    for (const row of rows) row.hidden = !!stateFilter.value && row.dataset.facilityState !== stateFilter.value;
+    document.getElementById("facility-count").textContent = `${rows.filter((row) => !row.hidden).length} / ${rows.length} 件（損益の合計は全施設）`;
+  };
+  stateFilter.addEventListener("change", filter);
+  filter();
+}
+
 // 企業の表の国有化・民営化（回7）: 押すと命令の列に足す
 const firmOrders = await mountOrders();
 const firmNotice = document.querySelector(".firm-notice");

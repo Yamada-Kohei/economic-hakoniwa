@@ -13,6 +13,9 @@ import { TilePanel } from "../island/panel.js";
 import { MissileTarget } from "../island/missiles.js";
 import { words } from "../military/common.js";
 import { getJson } from "../island/api.js";
+import { mountRecentChanges } from "../island/recent-changes.js";
+
+mountRecentChanges();
 
 const canvas = document.getElementById("island-map");
 const ctx = canvas.getContext("2d");
@@ -133,11 +136,51 @@ const panel = new TilePanel(document.getElementById("tile-panel"), defs, map, {
 
 async function select(tile) {
   state.selected = tile;
+  if (tile) {
+    coordinateForm.elements.x.value = tile.x;
+    coordinateForm.elements.y.value = tile.y;
+    document.getElementById("map-selection").textContent = `選択中: (${tile.x}, ${tile.y})`;
+  }
   missiles.select(tile);
   redraw();
   await panel.show(tile);
   if (tile && narrow.matches && state.selected === tile) revealAboveSheet(tile);
 }
+
+const coordinateForm = document.getElementById("map-coordinate");
+for (const name of ["x", "y"]) coordinateForm.elements[name].max = map.size - 1;
+function validTile(tile) {
+  return Number.isInteger(tile.x) && Number.isInteger(tile.y) && tile.x >= 0 && tile.y >= 0 && tile.x < map.size && tile.y < map.size;
+}
+function chooseCoordinate(tile) {
+  if (!validTile(tile)) return;
+  centerOn(tile.x + 0.5, tile.y + 0.5);
+  if (panel.marking) {
+    panel.toggleMark(tile);
+    redraw();
+  } else select(tile);
+}
+coordinateForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  chooseCoordinate({ x: coordinateForm.elements.x.valueAsNumber, y: coordinateForm.elements.y.valueAsNumber });
+});
+canvas.addEventListener("keydown", (event) => {
+  const steps = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+  if (steps[event.key]) {
+    event.preventDefault();
+    const [dx, dy] = steps[event.key];
+    const x = Math.max(0, Math.min(map.size - 1, Number(coordinateForm.elements.x.value) + dx));
+    const y = Math.max(0, Math.min(map.size - 1, Number(coordinateForm.elements.y.value) + dy));
+    coordinateForm.elements.x.value = x;
+    coordinateForm.elements.y.value = y;
+    centerOn(x + 0.5, y + 0.5);
+    document.getElementById("map-selection").textContent = `座標: (${x}, ${y})。Enter で選びます。`;
+    redraw();
+  } else if (event.key === "Enter") {
+    event.preventDefault();
+    chooseCoordinate({ x: coordinateForm.elements.x.valueAsNumber, y: coordinateForm.elements.y.valueAsNumber });
+  }
+});
 
 const controls = attachControls(canvas, view, {
   onChange: redraw,
@@ -199,14 +242,17 @@ if (minimap) {
   });
 }
 
-popover.querySelector("[data-close]").addEventListener("click", () => select(null));
+popover.querySelector("[data-close]").addEventListener("click", () => { select(null); canvas.focus({ preventScroll: true }); });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && panel.marking) {
     panel.endMarking();
     return;
   }
   // 入力欄で書いている途中は閉じない（書きかけを消さないように）
-  if (e.key === "Escape" && state.selected && !e.target.closest?.("input, select, textarea")) select(null);
+  if (e.key === "Escape" && state.selected && !e.target.closest?.("input, select, textarea")) {
+    select(null);
+    canvas.focus({ preventScroll: true });
+  }
 });
 // 窓の中身を読み込んだり書き換えたりして大きさが変わったら、置き直す
 new ResizeObserver(() => placePopover()).observe(popover);
@@ -246,6 +292,5 @@ document.getElementById("tile-panel").addEventListener("click", (event) => {
 });
 if (params.has("x") && params.has("y")) {
   const tile = { x: Number(params.get("x")), y: Number(params.get("y")) };
-  centerOn(tile.x + 0.5, tile.y + 0.5);
-  select(tile);
+  if (validTile(tile)) chooseCoordinate(tile);
 }

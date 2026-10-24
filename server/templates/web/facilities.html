@@ -8,6 +8,8 @@
 <section class="panel">
   <h2>{% if table.turn is not None %}{% translate "施設の一覧と収支" %} <small class="heading-date">{% blocktranslate with turn=table.turn|turn_date %}{{ turn }}の決算{% endblocktranslate %}</small>{% else %}{% translate "施設の一覧と収支" %}{% endif %}</h2>
   <p class="hint">{% blocktranslate with turns=table.book_turns %}町を除く全施設（民営・建設中を含む）です。損益は直近のターン、合計は直近 {{ turns }} ターンの合計です。国庫直轄の施設は自分の預金を持ちません（お金は国庫が出し入れします）。{% endblocktranslate %}</p>
+  <label>{% translate "状態で絞り込む" %} <select id="facility-state"><option value="">{% translate "すべて" %}</option></select></label>
+  <p id="facility-count" class="hint" role="status"></p>
   <div class="table-scroll">
     <table class="facilities report-table">
       <thead><tr>
@@ -17,7 +19,7 @@
       </tr></thead>
       <tbody>
         {% for f in table.rows %}
-        <tr>
+        <tr data-facility-state="{% if not f.built %}{% translate '建設中' %}{% else %}{{ f.status_text|default:'稼働中' }}{% endif %}">
           <td>{% if f.on_map %}<a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a>{% else %}{{ f.name }}{% endif %}<br><small class="muted">{{ f.kind_name }}</small></td>
           <td>{{ f.owner_name }}<br><small class="muted">{{ f.accounting_name }}</small>{% if f.firm_name %}<br><small>{{ f.firm_name }}</small>{% endif %}</td>
           <td>{% if not f.built %}{% translate "建設中" %}{% if f.status_text and f.status_text != "建設中" %}<br><small>{{ f.status_text }}</small>{% endif %}{% else %}{{ f.status_text|default:"稼働中" }}{% if f.transition %}<br><small>{{ f.transition }}</small>{% endif %}{% endif %}</td>

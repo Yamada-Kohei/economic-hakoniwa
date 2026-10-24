@@ -1,4 +1,4 @@
-{% load i18n calendar_tags %}<div class="island-header">
+{% load i18n calendar_tags %}<div class="island-header" data-log-url="{% url 'turn_log' island.id %}">
   <h1>{{ island.name }} <span class="page-title">{{ title }}</span></h1>
   <p class="muted">
     {% if island.owner %}{{ island.owner.username }}{% else %}{% translate "持ち主なし" %}{% endif %}
@@ -7,3 +7,4 @@
   {% include "web/island_nav.html" %}
   {% if note %}<p class="hint">{{ note }}</p>{% endif %}
 </div>
+{% include "web/turn_schedule.html" with world=island.world %}

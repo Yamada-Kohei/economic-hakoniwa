@@ -19,10 +19,12 @@
   {% include "web/island_nav.html" %}
 </div>
 
-{% if mine and show_guide %}
-<details class="guide" open>
+{% if mine %}
+<details class="guide"{% if show_guide %} open{% endif %}>
   <summary>{% translate "はじめの手順" %}</summary>
   <ol>
+    <li>{% translate "まず食料を足りさせましょう。" %} <a href="{% url 'island_market' island.id %}">{% translate "市場で食料と買えなかった量を見る" %}</a>。{% translate "物があっても買えないときは、賃金と失業手当も確かめます。" %}</li>
+    <li>{% translate "止まった施設を一つ調べましょう。" %} <a href="{% url 'island_facilities' island.id %}">{% translate "施設の状態" %}</a>・<a href="{% url 'island_chain' island.id %}">{% translate "産業の鎖" %}</a>{% translate "から原料・電力・人手を確かめ、地図のマスを選んで詳しい状況を見ます。" %}</li>
     <li>{% translate "地図のマスを押すと、地形・人口・施設の状況がそのマスのそば（狭い画面では下）の小さな窓に表示されます。窓は右上の × で閉じ、ほかのマスを押すとそのマスの情報に替わります。赤い点は停止中の施設です。" %}</li>
     <li>{% translate "空いている平地を選択し「建設」で命令を追加します。命令は次のターンの更新時に上から実行されます。" %}</li>
     <li>{% translate "工場には労働者・原料・電力が必要です。発電所と施設を送電線（または施設同士の隣接）で接続してください。" %}</li>
@@ -33,6 +35,19 @@
 </details>
 {% endif %}
 
+{% if alerts %}
+<section class="panel alerts">
+  <h2>{% translate "注意" %}</h2>
+  <ul>{% for a in alerts %}<li>{{ a }}</li>{% endfor %}</ul>
+  <p><a href="{% url 'island_market' island.id %}">{% translate "市場で不足を調べる" %}</a> ・ <a href="{% url 'island_facilities' island.id %}">{% translate "施設の状態を調べる" %}</a> ・ <a href="{% url 'island_fiscal' island.id %}">{% translate "財政と失業手当" %}</a>{% if mine %} ・ <a href="{% url 'island_chain' island.id %}">{% translate "産業の鎖" %}</a>{% endif %}</p>
+</section>
+{% endif %}
+<section class="panel" id="recent-changes" hidden data-url="{% url 'api_island_summary' island.id %}">
+  <h2>{% translate "前のターンからの主な変化" %}</h2>
+  <ul aria-live="polite"></ul>
+  <p class="hint">{% translate "変化した指標を最大3件表示します。数字だけでは原因は分かりません。リンク先で施設の状態・市場・家計を確かめてください。" %}</p>
+</section>
+
 <div class="island-layout">
   <section class="map-column">
     <div class="map-tools">
@@ -42,6 +57,13 @@
       <span id="overlay-legend" class="hint" aria-live="polite"></span>
     </div>
     <p id="map-help" class="hint">{% translate "地図はドラッグで移動、Ctrl＋ホイールか＋－ボタンで拡大縮小できます。スマートフォンでは2本指で拡大縮小できます。通常のホイールはページをスクロールします。" %}</p>
+    <form id="map-coordinate" class="actions">
+      <label>X <input name="x" type="number" min="0" step="1" value="0" required></label>
+      <label>Y <input name="y" type="number" min="0" step="1" value="0" required></label>
+      <button type="submit">{% translate "このマスを選ぶ" %}</button>
+      <span id="map-selection" class="hint" aria-live="polite"></span>
+    </form>
+    <p id="map-key-help" class="hint">{% translate "地図にフォーカスして矢印キーで座標を動かし、Enter で詳細を開きます。マスの選択中は Enter で追加・解除できます。Esc で閉じ、Tab で詳細の操作へ進めます。" %}</p>
     <p class="hint">{% translate "赤みのあるマスは反乱軍の占領です。" %}{% if mine %} {% translate "赤い輪の反乱軍には兵の数を添えています。" %}{% endif %}</p>
     {% if mine %}<p id="rebel-map-notice" class="error" role="status" hidden></p>{% endif %}
     {% if mine %}<div id="mark-tools" class="mark-tools" aria-live="polite"></div>{% endif %}
@@ -51,7 +73,7 @@
       aria-label="{% translate 'ミサイル攻撃' %}"></section>{% endif %}
     <div class="map-wrap">
       <canvas id="island-map" data-island="{{ island.id }}" data-api="{% url 'api_island_map' island.id %}"
-              data-defs="{% url 'api_defs' %}" aria-label="{% translate '島の俯瞰図' %}" aria-describedby="map-help"></canvas>
+              data-defs="{% url 'api_defs' %}" tabindex="0" aria-label="{% translate '島の俯瞰図' %}" aria-describedby="map-help map-key-help map-selection"></canvas>
       <div class="map-buttons">
         <button type="button" data-zoom="in" aria-label="{% translate '拡大' %}">＋</button>
         <button type="button" data-zoom="out" aria-label="{% translate '縮小' %}">－</button>
@@ -74,19 +96,14 @@
 </div>
 
 {% if mine %}
+{% include "web/turn_schedule.html" with world=island.world %}
 <section id="orders" class="panel" data-url="{% url 'api_orders' island.id %}"></section>
-{% endif %}
-
-{% if alerts %}
-<section class="panel alerts">
-  <h2>{% translate "注意" %}</h2>
-  <ul>{% for a in alerts %}<li>{{ a }}</li>{% endfor %}</ul>
-</section>
 {% endif %}
 
 <div class="island-stats">
   <section class="panel">
     <h2>{% translate "国勢" %}</h2>
+    {% include "web/stat_definitions.html" %}
     {% if summary %}
       <table class="info">
         {% for row in summary %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}

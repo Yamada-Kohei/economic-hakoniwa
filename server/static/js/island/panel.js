@@ -459,7 +459,7 @@ export class TilePanel {
   recipeProblem(recipe) {
     const resource = recipe.requires_resource;
     if (resource && !this.resources.has(resource)) return "地下資源なし";
-    if (this.producible && Object.keys(recipe.inputs).some((g) => !this.producible.has(g))) return "原料なし";
+    if (this.producible && Object.keys(recipe.inputs).some((g) => !this.producible.has(g))) return "原料は輸入が必要";
     return "";
   }
 
@@ -468,7 +468,7 @@ export class TilePanel {
     if (d.max_per_island != null && this.facilityCount(id) >= d.max_per_island) return "上限に達しています";
     const problems = Object.values(d.recipes).map((r) => this.recipeProblem(r));
     if (problems.some((p) => !p)) return "";
-    return problems.includes("原料なし") ? "原料なし" : "地下資源なし";
+    return problems.includes("原料は輸入が必要") ? "原料は輸入が必要" : "地下資源なし";
   }
 
   recipeSelect(facility) {
@@ -502,7 +502,7 @@ export class TilePanel {
     const missing = Object.keys(recipe.inputs).filter((g) => !this.producible.has(g));
     if (!missing.length) return "";
     const names = missing.map((g) => this.goodName(g)).join("・");
-    return `原料の${names}をこの島では生産できないため、建てても操業できない見込みです。`;
+    return `原料の${names}は国内では作れず、輸入が必要です。貿易での入手先・外貨・船と港を確かめてください。国内で作れないことだけでは、操業できないとは限りません。`;
   }
 
   buildInfo(facility) {

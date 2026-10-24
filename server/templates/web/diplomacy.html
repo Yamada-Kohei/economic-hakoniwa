@@ -3,6 +3,7 @@
 {% block content %}
 <link rel="stylesheet" href="{% static 'css/diplomacy.css' %}">
 {% include "web/report_header.html" %}
+<p class="hint">{% translate "通貨の融通（スワップ）は中央銀行どうしの外貨の貸し借りです。為替市場での通貨の交換とは異なり、返済と利払いが必要です。" %}</p>
 {% with d=diplomacy %}
 <div class="diplomacy-page">
 <nav class="diplomacy-links" aria-label="{% translate '外交の項目' %}">

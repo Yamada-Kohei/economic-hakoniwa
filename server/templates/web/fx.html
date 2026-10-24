@@ -155,6 +155,7 @@
 
 <section class="panel" id="swaps">
   <h2>{% translate "中央銀行どうしの融通" %}</h2>
+  <p class="hint">{% translate "スワップは中央銀行どうしの外貨の貸し借りです。為替市場での通貨の交換とは異なり、返済と利払いが必要です。" %} <a href="{% url 'help' %}#trade">{% translate "貿易と為替の手引き" %}</a></p>
   {% with s=fx.swaps %}
   {% if s.owed or s.lent %}
   <div class="table-scroll">

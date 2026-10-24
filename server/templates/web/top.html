@@ -7,10 +7,8 @@
   <h1>{% translate "経済版箱庭諸国" %}</h1>
   <p class="retro-sub">{% translate "～ 島国の産業と人口を育てる、経済の箱庭 ～" %}</p>
   {% if world %}
-  <p class="retro-date">{{ world.turn|turn_date }}
-    {% if world.next_turn_at %} ／ {% translate "次の更新" %}: {{ world.next_turn_at|date:"Y-m-d H:i" }}{% endif %}
-    {% if world.paused %} ／ <strong>{% translate "更新は一時停止中" %}</strong>{% endif %}
-  </p>
+  <p class="retro-date">{{ world.turn|turn_date }}</p>
+  {% include "web/turn_schedule.html" %}
   {% endif %}
 </div>
 
