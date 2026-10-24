@@ -92,6 +92,8 @@ table.goods td:nth-child(n+2), table.goods th:nth-child(n+2) { text-align: right
 .actions { border-top: 1px solid var(--rule); padding-top: 6px; margin-top: 8px; }
 .actions label { display: block; margin: 4px 0; }
 .actions button { margin: 2px 4px 2px 0; }
+.budget-hint { display: block; color: #6a7aa0; font-size: 0.8em; }
+.budget-guide { margin: 6px 0 0; padding-left: 1.2em; font-size: 0.9em; }
 .hint { font-size: 0.85em; color: #4f62a0; }
 .marking { background: #fff3e0; border: 1px solid #ffb74d; border-radius: 4px; padding: 6px 8px; }
 .order-list { padding-left: 0; list-style: none; }

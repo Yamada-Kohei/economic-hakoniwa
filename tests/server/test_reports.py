@@ -342,3 +342,40 @@ def test_firm_table_and_summary_for_owner(client, world):
     assert 'class="firm-action"' in html and 'id="orders"' in html
     summary = client.get(f"/api/islands/{island.id}/summary").json()
     assert summary["firms"]["count"] >= 0 and "list" in summary["firms"]
+
+
+def test_budget_guide_on_the_fiscal_page_and_the_orders_form(client, world):
+    """予算の目安（W-143）: 去年（直近12ターン）に使った額・いちばん使った月の年換算・使い切れない
+    額の目安が、財政の画面の表と予算の入力欄に出る。国の工事を始めると公共事業費の目安が増える。"""
+    island = _own_island(client)
+    for turn in range(1, 15):  # 14 ターンのうち、新しい 12 ターンだけ数える
+        _stats(island, turn, {"spent.construction": 100.0 if turn > 2 else 9999.0})
+    _stats(island, 7, {"spent.education": 40.0})
+    fiscal = client.get(f"/islands/{island.id}/fiscal/").context["fiscal"]
+    rows = {b["item"]: b for b in fiscal["budget"]}
+    assert rows["construction"]["last_year"].endswith("1,200")
+    assert rows["construction"]["peak_year"].endswith("1,200")
+    assert rows["education"]["last_year"].endswith("40")
+    assert rows["education"]["peak_year"].endswith("480")
+    assert rows["construction"]["limit"] != "—" and "工事" in rows["construction"]["note"]
+    assert rows["subsidies"]["limit"] == "—" and rows["subsidies"]["last_year"].endswith("0")
+    assert "使い切れない額の目安" in client.get(f"/islands/{island.id}/fiscal/").content.decode()
+
+    before = client.get(f"/api/islands/{island.id}/orders").json()["policy"]["budget"]
+    assert before["construction"]["guide"]["last_year"].endswith("1,200")
+    assert before["construction"]["guide"]["limit"] == rows["construction"]["limit"]
+
+    # 国の工事（住宅でない施設）を始めると、残りの工事の分だけ上限の目安が増える
+    from hakoniwa_core.state import OWNER_STATE
+    from server.web import budget_guide
+
+    state = budget_guide.guide(island)["construction"]
+    site = _first_facility(island)
+    site.built, site.progress, site.owner = False, 0, OWNER_STATE
+    site.save()
+    more = budget_guide.guide(island)["construction"]
+    assert more["works"] > state["works"] and more["limit"] > state["limit"]
+
+    # ほかの国の人には入力欄の政策がないので、目安も出さない
+    public = client.get(f"/api/islands/{m.Island.objects.exclude(pk=island.pk).first().id}/orders")
+    assert all("guide" not in b for b in public.json()["policy"]["budget"].values())

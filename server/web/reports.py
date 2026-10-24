@@ -34,7 +34,7 @@ from hakoniwa_core.trade import abroad
 from hakoniwa_core.units import from_milli
 from server.economy.models import Account, FacilityBook, MarketRecord, Trade
 from server.game import get_game
-from server.web import display
+from server.web import budget_guide, display
 from server.world import models as m
 from server.world.repository import bond_from_row, facility_from_row, load_money
 
@@ -1075,6 +1075,7 @@ def fiscal_view(island: m.Island, stats: dict[str, float], currency: str) -> dic
     policy = island.policy or {}
     budget = policy.get("budget", {})
     items = config.get("fiscal.budget_items")
+    guides = budget_guide.guide(island)
     budget_rows = [
         {
             "item": item,
@@ -1082,6 +1083,7 @@ def fiscal_view(island: m.Island, stats: dict[str, float], currency: str) -> dic
             "annual": money(budget.get(item, 0)),
             "per_turn": money(budget.get(item, 0) // TURNS_PER_YEAR),
             "spent": money(stats.get(f"spent.{item}", 0)),
+            **budget_guide.texts(guides[item], currency),
         }
         for item in items
     ]
