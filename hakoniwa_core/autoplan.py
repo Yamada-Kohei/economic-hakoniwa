@@ -1329,7 +1329,7 @@ def plan_war(
 ) -> dict[int, list[tuple[str, dict]]]:
     """宣戦されたときの標準の計画（島ごとの命令）。標準の計画は自分から宣戦せず、核施設も建てない。
 
-    戦争の相手がいる島は、1 ターンに 1 つずつ次を進めます:
+    戦争の相手がいる島と、内戦の起きている島は、1 ターンに 1 つずつ次を進めます:
     相手が出した停戦と講和（戦争のあいだに結べる
     条項だけの条約）に署名する → 兵舎がなければ建てる → 国防費を決める → 兵を集める → 兵舎に歩兵を
     編成する。戦争のない島は何もしません（測りの戦争のない場面を変えないため）。サーバーの持ち主の
@@ -1337,13 +1337,15 @@ def plan_war(
     """
     from hakoniwa_core.diplomacy import clauses as cl
     from hakoniwa_core.diplomacy import treaties, war
-    from hakoniwa_core.military import army, forces
+    from hakoniwa_core.military import army, civil_war, forces
 
     plans: dict[int, list[tuple[str, dict]]] = {}
     for i in world.island_ids():
         island = world.islands[i]
-        if not island.has_economy or not war.open_wars_of(world, i):
+        if not island.has_economy:
             continue
+        if not (war.open_wars_of(world, i) or civil_war.active(world, i)):
+            continue  # 反乱軍が立ち上がった島も守る（MI-40）
         if any(o.status == ORDER_PENDING and o.kind in WAR_ORDERS for o in island.orders):
             continue  # 前の手がまだ済んでいない（行政力が足りず繰り越したときなど）
         for t in treaties.treaties(world):

@@ -45,6 +45,8 @@ UNREST = (
     "politics_riot",
     "politics_rebellion",
     "politics_rebellion_warning",
+    "rebellion_started",
+    "revolution",
     "riot_destroyed",
     "war_declared",
     "war_declared_on",

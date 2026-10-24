@@ -21,6 +21,7 @@ from hakoniwa_core.diplomacy import war
 from hakoniwa_core.military import (
     army,
     battle,
+    civil_war,
     forces,
     hidden,
     missiles,
@@ -69,6 +70,7 @@ class Operations(WorldStage):
             _run_island(world, ctx, world.islands[i])
         naval.battle(world, ctx.defs, ctx.config, ctx.turn)
         battle.run(world, ctx)
+        civil_war.run(world, ctx)
         occupation.update(world, ctx)
         missiles.run(world, ctx)
         hidden.discover(world)
@@ -583,7 +585,7 @@ def _hostile_near(
             world, unit["owner"], other["owner"], ctx.turn
         ):
             return True
-    return False
+    return not army.abroad(unit) and civil_war.near(world, unit["owner"], x, y, reach)
 
 
 def _move(

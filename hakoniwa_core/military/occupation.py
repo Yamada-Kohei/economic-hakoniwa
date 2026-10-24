@@ -71,6 +71,8 @@ def update(world: WorldState, ctx: StageContext) -> None:
             pos = (tile.x, tile.y)
             held = tile.ext.get(OCCUPIED)
             units = here.get(pos, [])
+            if held and held.get("rebel"):
+                continue  # 反乱軍の占領は civil_war が決める（4-4）
             if held:
                 _check_lift(world, ctx, island, tile, units)
             elif units:

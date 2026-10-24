@@ -74,6 +74,7 @@ def _allowed_keys() -> set[str]:
             "overlay/trench_front",
             "overlay/occupied",
             "overlay/contaminated",
+            "unit/rebels",  # 反乱軍（部隊の一覧に入らない。4-4）
         }
         | {f"unit/{a}" for a, spec in d.army.items() if spec["arm"] == "land"}
         | {f"fleet/{a}" for a, spec in d.army.items() if spec["arm"] == "sea"}
