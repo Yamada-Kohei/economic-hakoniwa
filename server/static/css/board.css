@@ -1,0 +1,47 @@
+/* 掲示板（設計書 UI-46）: 昔の 2 ちゃんねるの並びを、青基調の全体の見た目とスマホの幅に合わせる */
+.board-nav { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0 10px; padding: 4px 8px; background: var(--pale);
+  border: 1px solid var(--rule); }
+.crumbs { margin: 8px 0 0; font-size: 0.9em; }
+table.boards { border-collapse: collapse; width: 100%; background: var(--panel); }
+table.boards th, table.boards td { text-align: left; padding: 4px 8px; border: 1px solid var(--rule); vertical-align: top; }
+table.boards thead th { background: var(--head); color: var(--navy); }
+.bthreads { background: var(--panel); border: 1px solid var(--rule); margin: 8px 0; padding: 8px 8px 8px 2.4em; }
+.bthreads li { margin: 3px 0; overflow-wrap: anywhere; }
+.bthreads .bcount, .bflag { color: #6a7aa0; }
+.bflag { border: 1px solid var(--border); padding: 0 4px; font-size: 0.8em; margin-left: 4px; }
+.bpager { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 8px 0; }
+.bpager strong { color: #c62828; }
+.bposts { margin: 8px 0; }
+.bpost { background: var(--panel); border: 1px solid var(--rule); border-left: 4px solid var(--border); padding: 6px 10px;
+  margin: 6px 0; scroll-margin-top: 8px; }
+.bpost:target, .bpost.flash { background: #fff8d6; border-left-color: #e0a100; }
+.bpost.staff { border-left-color: #c62828; }
+.bpost.aborn { background: var(--pale); color: #6a7aa0; }
+.bpost-head { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; font-size: 0.9em; color: #4f62a0; }
+.bnum { font-weight: bold; color: var(--navy); text-decoration: none; cursor: pointer; }
+.bname { color: #0a7a2f; font-weight: bold; }
+.bname a { color: inherit; }
+.btrip { color: #0a7a2f; }
+.bid { font-family: ui-monospace, monospace; }
+.bsage { color: #6a7aa0; }
+.bbody { margin: 6px 0 4px 1.2em; overflow-wrap: anywhere; line-height: 1.55; }
+.bng summary { cursor: pointer; color: #6a7aa0; }
+.bpost-foot { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; font-size: 0.85em; margin-left: 1.2em; }
+.bactions { display: flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
+.bactions button { font-size: 0.85em; min-height: 28px; padding: 1px 8px; }
+.bactions .blike.on { background: #ffe0e6; border-color: #c62828; color: #c62828; }
+a.anchor { text-decoration: none; }
+.bhit { margin: 12px 0 0; }
+.bwrite input[name=title] { width: min(100%, 36em); }
+.bwrite textarea { width: 100%; }
+.bwrite ul.errorlist { color: #c62828; margin: 0; padding-left: 1.2em; }
+.bsearch { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+/* >>番号に指を置いたとき浮き出す元の書き込み */
+.bpop { position: absolute; z-index: 20; width: min(560px, calc(100vw - 16px)); max-height: 60vh; overflow-y: auto; background: #fffef4;
+  border: 1px solid var(--border); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); padding: 6px 10px; font-size: 0.95em; }
+.bpop .bpost { border: 0; margin: 0; padding: 0; background: none; }
+.bpop-go { display: block; text-align: right; font-size: 0.85em; }
+@media (max-width: 600px) {
+  .bbody, .bpost-foot { margin-left: 0; }
+  .bactions { margin-left: 0; width: 100%; }
+}

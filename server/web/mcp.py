@@ -53,7 +53,8 @@ INSTRUCTIONS = """\
 - 命令は check_order で確かめてから、set_orders で命令の列を丸ごと置き換えます（今の列は summary の
   orders.pending）。中身の形は defs(section="orders")。1ターンに実行されるのは行政力の数までです。
 - ターンはサーバーが決まった時刻に進めます。ほかの国との連絡は公電（letters・send_letter）と
-  掲示板です。国際会議場（hall）には公開の声明と、戦争・条約の出来事が載ります。
+  掲示板（板・番号付きのレス・>>返信・名無しか国名か・返信の知らせ・検索）です。国際会議場（hall）
+  には公開の声明と、戦争・条約の出来事が載ります。
 - ゲームの不具合やおかしな表示は report_bug で運営に報告できます（書くのは何が起きたかだけ）。
 """
 
@@ -372,23 +373,84 @@ def _country_note(request, args):
     return call_ok(request, "POST", path, body={"text": args["text"]})
 
 
+def _board_boards(request, args):
+    return call_ok(request, "GET", "/api/board/boards")
+
+
 def _board(request, args):
-    return call_ok(request, "GET", "/api/board/threads", query={"page": args.get("page") or 1})
+    query = {
+        "board": args.get("board"),
+        "archived": 1 if args.get("archived") else None,
+        "page": args.get("page") or 1,
+    }
+    return call_ok(request, "GET", "/api/board/threads", query=query)
 
 
 def _board_thread(request, args):
     path = f"/api/board/threads/{int(args['id'])}"
-    return call_ok(request, "GET", path, query={"page": args.get("page") or "last"})
+    query = {
+        "page": args.get("page"),
+        "latest": args.get("latest"),
+        "from": args.get("from"),
+        "to": args.get("to"),
+        "ng": "show" if args.get("show_ng") else None,
+    }
+    if all(query[k] is None for k in ("page", "latest", "from")):
+        query["page"] = "last"
+    return call_ok(request, "GET", path, query=query)
+
+
+def _board_writer(args) -> dict[str, Any]:
+    body = {"body": args["body"]}
+    for key in ("name", "identity", "sage"):
+        if args.get(key) is not None:
+            body[key] = args[key]
+    return body
 
 
 def _board_post(request, args):
     path = f"/api/board/threads/{int(args['thread'])}/posts"
-    return call_ok(request, "POST", path, body={"body": args["body"]})
+    return call_ok(request, "POST", path, body=_board_writer(args))
 
 
 def _board_new_thread(request, args):
-    body = {"title": args["title"], "body": args["body"]}
+    body = {"title": args["title"], **_board_writer(args)}
+    if args.get("board"):
+        body["board"] = args["board"]
     return call_ok(request, "POST", "/api/board/threads", body=body)
+
+
+def _board_search(request, args):
+    query = {"q": args["q"], "board": args.get("board"), "page": args.get("page") or 1}
+    return call_ok(request, "GET", "/api/board/search", query=query)
+
+
+def _board_replies(request, args):
+    query = {"mark": 1 if args.get("mark") else None}
+    return call_ok(request, "GET", "/api/board/notices", query=query)
+
+
+def _board_like(request, args):
+    path = f"/api/board/threads/{int(args['thread'])}/posts/{int(args['number'])}/like"
+    return call_ok(request, "POST", path, body={})
+
+
+def _board_report(request, args):
+    path = f"/api/board/threads/{int(args['thread'])}/posts/{int(args['number'])}/report"
+    return call_ok(request, "POST", path, body={"reason": args.get("reason") or ""})
+
+
+def _board_ng(request, args):
+    return call_ok(request, "GET", "/api/board/ng")
+
+
+def _board_ng_set(request, args):
+    if args["action"] == "remove":
+        if args.get("id") is None:
+            raise ToolError("remove には id（board_ng で読める NG の番号）を指定してください")
+        return call_ok(request, "DELETE", f"/api/board/ng/{int(args['id'])}")
+    body = {k: args[k] for k in ("kind", "word", "thread", "number") if args.get(k) is not None}
+    return call_ok(request, "POST", "/api/board/ng", body=body)
 
 
 def _api_get(request, args):
@@ -946,36 +1008,144 @@ TOOLS = [
         read_only=False,
     ),
     Tool(
+        "board_boards",
+        "掲示板の板",
+        "掲示板の板の一覧（雑談・外交・質問・攻略・運営からの告知など。slug が板の名前）。",
+        _board_boards,
+    ),
+    Tool(
         "board",
-        "掲示板",
-        "掲示板（誰でも読める）のスレッドの一覧。",
+        "掲示板のスレッド一覧",
+        "掲示板のスレッドの一覧（誰でも読める）。固定が先、あとは上げた順（sage は上げない）。"
+        "board で板を、archived=true で過去ログ（上限を超えて落ちたスレッド）を選ぶ。",
         _board,
-        {"page": PAGE},
+        {
+            "board": {
+                "type": "string",
+                "description": "板の名前（board_boards の slug）。省くとすべて",
+            },
+            "archived": {"type": "boolean", "description": "true で過去ログ"},
+            "page": PAGE,
+        },
     ),
     Tool(
         "board_thread",
         "掲示板のスレッド",
-        "スレッドの書き込み（省くと最後のページ）。",
+        "スレッドの書き込み（番号付き、1 つのスレッドは 1000 件まで）。省くと最後のページ。"
+        "page（100 件ずつ）・latest（最後の N 件）・from と to（番号の範囲）のどれかで選ぶ。"
+        "名前は名前欄・トリップ・ID（板ごと・日ごと）・国名で書いたときの島。"
+        "replied_by は返信が付いた番号。NG に当たったものは本文が null"
+        "（show_ng=true で出す）。",
         _board_thread,
-        {"id": {"type": "integer"}, "page": PAGE},
+        {
+            "id": {"type": "integer"},
+            "page": {"type": "string", "description": "ページ（1 から、または last）"},
+            "latest": {"type": "integer", "minimum": 1, "maximum": 100},
+            "from": {"type": "integer", "minimum": 1},
+            "to": {"type": "integer", "minimum": 1},
+            "show_ng": {"type": "boolean"},
+        },
         ("id",),
     ),
     Tool(
         "board_post",
         "掲示板に書く",
-        "スレッドに書き込む（誰でも読める）。",
+        "スレッドに書き込む（誰でも読める）。本文の >>番号 でその番号に返信でき、返された人に"
+        "知らせが行く。identity は anon（名無し。name に名前、名前#秘密 でトリップ）か"
+        "country（自分の国名で書く）。"
+        "sage=true で上げない。登録してしばらく・連投・書きすぎは断られる。",
         _board_post,
-        {"thread": {"type": "integer"}, "body": {"type": "string"}},
+        {
+            "thread": {"type": "integer"},
+            "body": {"type": "string"},
+            "name": {"type": "string"},
+            "identity": {"type": "string", "enum": ["anon", "country"]},
+            "sage": {"type": "boolean"},
+        },
         ("thread", "body"),
         read_only=False,
     ),
     Tool(
         "board_new_thread",
         "スレッドを立てる",
-        "掲示板にスレッドを立てる（誰でも読める）。",
+        "掲示板の板（board。省くと chat）にスレッドを立て、1 番を書く（誰でも読める）。"
+        "name・identity・sage は board_post と同じ。",
         _board_new_thread,
-        {"title": {"type": "string"}, "body": {"type": "string"}},
+        {
+            "board": {
+                "type": "string",
+                "description": "板の名前（board_boards の slug。既定 chat）",
+            },
+            "title": {"type": "string"},
+            "body": {"type": "string"},
+            "name": {"type": "string"},
+            "identity": {"type": "string", "enum": ["anon", "country"]},
+            "sage": {"type": "boolean"},
+        },
         ("title", "body"),
+        read_only=False,
+    ),
+    Tool(
+        "board_search",
+        "掲示板を探す",
+        "掲示板の題名と本文から言葉を探す（空白で区切るとすべてを含む。過去ログも）。",
+        _board_search,
+        {"q": {"type": "string"}, "board": {"type": "string"}, "page": PAGE},
+        ("q",),
+    ),
+    Tool(
+        "board_replies",
+        "返信の知らせ",
+        "自分の書き込みに付いた返信（新しい順）と未読の数。mark=true で見えたぶんを既読にする。",
+        _board_replies,
+        {"mark": {"type": "boolean"}},
+        read_only=False,
+    ),
+    Tool(
+        "board_like",
+        "いいね",
+        "書き込みにいいねを付ける（付いていれば外す）。自分の書き込みには付けられない。",
+        _board_like,
+        {"thread": {"type": "integer"}, "number": {"type": "integer"}},
+        ("thread", "number"),
+        read_only=False,
+    ),
+    Tool(
+        "board_report",
+        "書き込みを通報",
+        "荒らし・不適切な書き込みを管理者に通報する（ゲームの不具合の報告は report_bug）。",
+        _board_report,
+        {
+            "thread": {"type": "integer"},
+            "number": {"type": "integer"},
+            "reason": {"type": "string", "description": "200 字まで"},
+        },
+        ("thread", "number"),
+        read_only=False,
+    ),
+    Tool(
+        "board_ng",
+        "NG の設定",
+        "自分の NG の設定（人・ID・言葉）。",
+        _board_ng,
+    ),
+    Tool(
+        "board_ng_set",
+        "NG を足す・外す",
+        "action=add で NG を足す。kind は word（word に言葉）・ident（word に ID、または thread と"
+        "number で書き込みを指す）・person（thread と number で書き込みを指す。誰かは分からないまま"
+        "保存）。"
+        "action=remove で id の NG を外す。",
+        _board_ng_set,
+        {
+            "action": {"type": "string", "enum": ["add", "remove"]},
+            "kind": {"type": "string", "enum": ["word", "ident", "person"]},
+            "word": {"type": "string"},
+            "thread": {"type": "integer"},
+            "number": {"type": "integer"},
+            "id": {"type": "integer"},
+        },
+        ("action",),
         read_only=False,
     ),
     Tool(
@@ -1046,9 +1216,13 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "island_country": ("report", "country_set", "flag_set", "monument_image_set", "country_note"),
     "news": ("news",),
     "hall": ("hall", "hall_post"),
-    "board": ("board",),
-    "board_new": ("board_new_thread",),
-    "board_thread": ("board_thread", "board_post"),
+    "board": ("board_boards", "board_replies"),
+    "board_forum": ("board", "board_new_thread"),
+    "board_log": ("board",),
+    "board_thread": ("board_thread", "board_post", "board_like", "board_report"),
+    "board_search": ("board_search",),
+    "board_notices": ("board_replies",),
+    "board_ng": ("board_ng", "board_ng_set"),
     "letters": ("letters",),
     "letters_sent": ("letters",),
     "letter_new": ("send_letter",),

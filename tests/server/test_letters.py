@@ -1,4 +1,4 @@
-"""国どうしの手紙（非公開）と、掲示板の JSON API（フェーズ3-4）。"""
+"""国どうしの手紙（非公開）（フェーズ3-4）。"""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ from django.contrib.auth.models import User
 from django.test import Client
 from django.utils import timezone
 
-from server.board.models import Post, Thread
 from server.letters.models import Letter
 from server.world.models import Island
 
@@ -214,68 +213,3 @@ def test_letter_pages(client, world):
     client.logout()
     assert client.get("/letters/")["Location"].startswith("/accounts/login/")
     assert "/letters/new/?to=" not in client.get(f"/islands/{b.id}/").content.decode()
-
-
-# --- 掲示板の API ---------------------------------------------------------------
-
-
-def _post_json(client, url: str, value: dict):
-    return client.post(url, value, content_type="application/json")
-
-
-def test_board_api(client, world):
-    (alice, _, _), (a, _, _) = _players(world)
-    assert client.get("/api/board/threads").json()["threads"] == []
-    res = _post_json(client, "/api/board/threads", {"title": "t", "body": "b"})
-    assert res.status_code == 403 and not Thread.objects.exists()
-
-    client.force_login(alice)
-    res = _post_json(client, "/api/board/threads", {"title": "同盟の相談", "body": "はじめまして"})
-    assert res.status_code == 201
-    created = res.json()
-    thread_id = created["thread"]["id"]
-    assert created["thread"]["author"] == "player0"
-    assert created["thread"]["island"] == {"id": a.id, "name": a.name}
-    assert created["posts"][0]["body"] == "はじめまして"
-    assert _post_json(client, "/api/board/threads", {"title": "", "body": "x"}).status_code == 400
-
-    client.force_login(User.objects.create_user("guest", password="a-long-pass-123"))
-    res = _post_json(client, f"/api/board/threads/{thread_id}/posts", {"body": "島はまだです"})
-    assert res.status_code == 201
-    assert res.json()["author"] == "guest" and res.json()["island"] is None
-
-    client.logout()
-    data = client.get(f"/api/board/threads/{thread_id}").json()
-    assert [p["body"] for p in data["posts"]] == ["はじめまして", "島はまだです"]
-    assert data["posts"][0]["island"]["id"] == a.id
-    assert client.get(f"/api/board/threads/{thread_id}?page=last").json()["page"] == 1
-    listed = client.get("/api/board/threads").json()
-    assert listed["threads"][0]["title"] == "同盟の相談" and listed["threads"][0]["posts"] == 2
-    # 画面の掲示板にも出る
-    assert "島はまだです" in client.get(f"/board/{thread_id}/").content.decode()
-
-    # 一覧は最後の書き込みの新しい順
-    client.force_login(alice)
-    _post_json(client, "/api/board/threads", {"title": "貿易圏", "body": "作りませんか"})
-    titles = [t["title"] for t in client.get("/api/board/threads").json()["threads"]]
-    assert titles == ["貿易圏", "同盟の相談"]
-    _post_json(client, f"/api/board/threads/{thread_id}/posts", {"body": "三つ目"})
-    titles = [t["title"] for t in client.get("/api/board/threads").json()["threads"]]
-    assert titles == ["同盟の相談", "貿易圏"]
-
-
-def test_board_api_hides_hidden(client, world):
-    (alice, _, _), _ = _players(world)
-    client.force_login(alice)
-    res = _post_json(client, "/api/board/threads", {"title": "題", "body": "一つ目"})
-    thread_id = res.json()["thread"]["id"]
-    _post_json(client, f"/api/board/threads/{thread_id}/posts", {"body": "二つ目"})
-    Post.objects.filter(body="二つ目").update(hidden=True)
-    data = client.get(f"/api/board/threads/{thread_id}").json()
-    assert [p["body"] for p in data["posts"]] == ["一つ目"]
-    assert client.get("/api/board/threads").json()["threads"][0]["posts"] == 1
-    Thread.objects.update(hidden=True)
-    assert client.get(f"/api/board/threads/{thread_id}").status_code == 404
-    res = _post_json(client, f"/api/board/threads/{thread_id}/posts", {"body": "三つ目"})
-    assert res.status_code == 404
-    assert client.get("/api/board/threads").json()["threads"] == []

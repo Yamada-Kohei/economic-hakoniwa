@@ -1,20 +1,38 @@
-{% extends "base.html" %}{% load i18n %}
-{% block title %}{{ thread.title }} - {% translate "掲示板" %}{% endblock %}
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{{ thread.title }} - {{ thread.board.name }}{% endblock %}
 {% block content %}
+<link rel="stylesheet" href="{% static 'css/board.css' %}">
+<div class="board-page bthread" data-thread="{{ thread.id }}">
+<p class="crumbs"><a href="{% url 'board' %}">{% translate "掲示板" %}</a> &gt; <a href="{% url 'board_forum' thread.board.slug %}">{{ thread.board.name }}</a></p>
 <h1>{{ thread.title }}</h1>
-<p><a href="{% url 'board' %}">{% translate "掲示板へ戻る" %}</a></p>
-<ol class="posts">
-  {% for post in page %}
-    <li class="panel">
-      <p class="muted">{% if post.author %}{{ post.author.username }}{% else %}{% translate "退会した人" %}{% endif %} ・ {{ post.created_at|date:"Y-m-d H:i" }}</p>
-      <div class="post-body">{{ post.body|linebreaksbr }}</div>
-    </li>
-  {% endfor %}
-</ol>
-{% include "board/pager.html" %}
-{% if form %}
-  <form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">{% translate "書き込む" %}</button></form>
-{% else %}
-  <p class="muted">{% translate "書き込むにはログインしてください。" %}</p>
+{% include "board/_nav.html" %}
+<nav class="bpager" aria-label="{% translate 'ページ' %}">
+  <a href="?p=1">{% translate "全部" %}</a>
+  <a href="?latest=50">{% translate "最新 50" %}</a>
+  {% for n in pages %}{% if n == page and not ranged %}<strong>{{ n }}</strong>{% else %}<a href="?p={{ n }}">{{ n }}</a>{% endif %}{% endfor %}
+  <a href="#bottom">{% translate "↓" %}</a>
+  <span class="muted">{{ thread.post_count }} / {{ view.limit }}</span>
+</nav>
+{% if thread.archived %}<p class="panel">{% translate "このスレッドは過去ログです。読めますが書けません。" %}</p>{% endif %}
+<div class="bposts">
+  {% for p in posts %}{% include "board/_post.html" with p=p compact=False %}{% empty %}<p class="muted">{% translate "書き込みがありません。" %}</p>{% endfor %}
+</div>
+<nav class="bpager" id="bottom" aria-label="{% translate 'ページ' %}">
+  <a href="?p=1">{% translate "全部" %}</a>
+  <a href="?latest=50">{% translate "最新 50" %}</a>
+  {% for n in pages %}{% if n == page and not ranged %}<strong>{{ n }}</strong>{% else %}<a href="?p={{ n }}">{{ n }}</a>{% endif %}{% endfor %}
+  <a href="#top">{% translate "↑" %}</a>
+</nav>
+{% if thread.closed and not thread.archived %}<p class="panel">{% blocktranslate with n=view.limit %}このスレッドは {{ n }} 件に届いたので、もう書けません。次のスレッドを立ててください。{% endblocktranslate %}</p>{% endif %}
+{% if form and can_write %}
+  <section class="panel">
+    <h2>{% translate "書き込む" %}</h2>
+    <p class="hint">{% blocktranslate with n=limit_left %}あと {{ n }} 件書けます。{% endblocktranslate %}</p>
+    {% include "board/_write.html" %}
+  </section>
+{% elif not user.is_authenticated %}
+  <p class="muted">{% translate "書き込むにはログインしてください。" %} <a href="{% url 'login' %}">{% translate "ログイン" %}</a></p>
 {% endif %}
+</div>
+<script type="module" src="{% static 'js/board.js' %}"></script>
 {% endblock %}

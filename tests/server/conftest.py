@@ -15,3 +15,10 @@ def world(db) -> World:
 class _Null:
     def write(self, *_):
         pass
+
+
+@pytest.fixture(autouse=True)
+def board_without_waiting(settings):
+    """掲示板の歯止め（登録直後・連投の間隔）は、試験では待たない。歯止めの試験は自分で戻す。"""
+    settings.HAKONIWA_BOARD_NEWCOMER_MINUTES = 0
+    settings.HAKONIWA_BOARD_INTERVAL_SECONDS = 0

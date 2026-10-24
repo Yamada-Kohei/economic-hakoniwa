@@ -1,0 +1,32 @@
+{% load i18n %}{# 書き込み 1 件。p は services.post_view の形に html と thread_id と replies を足したもの。compact なら操作の押しボタンを出さない #}
+<article class="bpost{% if p.hidden %} aborn{% endif %}{% if p.staff %} staff{% endif %}" id="p{{ p.number }}" data-n="{{ p.number }}"{% if p.id %} data-ident="{{ p.id }}"{% endif %}>
+  <header class="bpost-head">
+    <a class="bnum" href="#p{{ p.number }}"{% if not compact %} data-act="reply" title="{% translate '返信の書き出しを入れる' %}"{% endif %}>{{ p.number }}</a>
+    <span class="bname">{% if p.staff %}★{% endif %}{% if p.island and p.island.id %}<a href="{% url 'island_country' p.island.id %}">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}</span>
+    {% if p.trip %}<span class="btrip">◆{{ p.trip }}</span>{% endif %}
+    <time class="btime" datetime="{{ p.created_at|date:'c' }}">{{ p.created_at|date:"Y-m-d H:i" }}</time>
+    {% if p.id %}<span class="bid">ID:{{ p.id }}</span>{% endif %}
+    {% if p.sage %}<span class="bsage">sage</span>{% endif %}
+  </header>
+  {% if p.hidden %}
+    <p class="bbody muted">{% translate "このレスは管理者により非表示にされました（あぼーん）。" %}</p>
+  {% elif p.ng and not compact %}
+    <details class="bng"><summary>{% translate "NG の書き込み（押すと開きます）" %}</summary><div class="bbody">{{ p.html }}</div></details>
+  {% else %}
+    <div class="bbody">{{ p.html }}</div>
+  {% endif %}
+  {% if not p.hidden %}
+  <footer class="bpost-foot">
+    {% if p.replies %}<span class="breplies">{% translate "返信:" %}{% for r in p.replies %} <a class="anchor" href="{{ r.href }}" data-n="{{ r.number }}" data-thread="{{ p.thread_id }}">&gt;&gt;{{ r.number }}</a>{% endfor %}</span>{% endif %}
+    {% if not compact and user.is_authenticated %}
+      <span class="bactions" data-thread="{{ p.thread_id }}" data-n="{{ p.number }}">
+        <button type="button" data-act="like" class="blike{% if p.liked %} on{% endif %}" aria-pressed="{% if p.liked %}true{% else %}false{% endif %}">♥ <span class="bcount">{{ p.likes }}</span></button>
+        <button type="button" data-act="reply">{% translate "返信" %}</button>
+        <button type="button" data-act="report">{% translate "通報" %}</button>
+        <button type="button" data-act="ng-person">{% translate "この人を NG" %}</button>
+        {% if p.id %}<button type="button" data-act="ng-ident">{% translate "ID を NG" %}</button>{% endif %}
+      </span>
+    {% elif p.likes %}<span class="blike-static">♥ {{ p.likes }}</span>{% endif %}
+  </footer>
+  {% endif %}
+</article>

@@ -1,0 +1,10 @@
+{% load i18n %}
+<nav class="board-nav" aria-label="{% translate '掲示板の項目' %}">
+  <a href="{% url 'board' %}">{% translate "板の一覧" %}</a>
+  <a href="{% url 'board_search' %}">{% translate "検索" %}</a>
+  {% if user.is_authenticated %}
+    <a href="{% url 'board_notices' %}">{% translate "返信の知らせ" %}{% if board_unread %} <span class="badge">{{ board_unread }}</span>{% endif %}</a>
+    <a href="{% url 'board_ng' %}">{% translate "NG の設定" %}</a>
+  {% endif %}
+  <a href="{% url 'help' %}#board">{% translate "掲示板の使い方" %}</a>
+</nav>

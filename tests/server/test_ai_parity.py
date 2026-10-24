@@ -320,3 +320,56 @@ def test_every_map_overlay_has_a_text_map(played):
     power = (tile.ext or {}).get("power") or 0
     rows = [r for r in _tool(ai, "map", overlay="power").splitlines() if r[:3].strip().isdigit()]
     assert rows[tile.y][4 + tile.x] == ("*" if power >= 1000 else str(min(9, power // 100)))
+
+
+def test_ai_uses_the_board_like_a_person(played, settings):
+    """板・スレッド・国名で書く・返信の知らせ・いいね・通報・NG・検索を、道具で人と同じにできる。"""
+    settings.HAKONIWA_BOARD_NEWCOMER_MINUTES = settings.HAKONIWA_BOARD_INTERVAL_SECONDS = 0
+    _, ai, own, other = played
+    boards = json.loads(_tool(ai, "board_boards"))["boards"]
+    assert {"chat", "diplomacy", "news"} <= {b["slug"] for b in boards}
+    made = json.loads(
+        _tool(
+            ai,
+            "board_new_thread",
+            board="diplomacy",
+            title="貿易圏の相談",
+            body="関税",
+            identity="country",
+        )
+    )
+    thread = made["thread"]["id"]
+    assert made["posts"][0]["island"] == {"id": own.id, "name": own.name}
+    listed = json.loads(_tool(ai, "board", board="diplomacy"))
+    assert [t["title"] for t in listed["threads"]] == ["貿易圏の相談"]
+
+    someone = Client()
+    someone.force_login(other.owner)
+    reply = someone.post(
+        f"/api/board/threads/{thread}/posts",
+        {"body": ">>1 賛成です", "name": "通りすがり#ひみつ"},
+        content_type="application/json",
+    )
+    assert reply.status_code == 201
+    notices = json.loads(_tool(ai, "board_replies"))
+    assert notices["unread"] == 1 and notices["notices"][0]["post"]["body"] == ">>1 賛成です"
+    assert json.loads(_tool(ai, "board_replies", mark=True))["notices"][0]["unread"] is True
+    assert json.loads(_tool(ai, "board_replies"))["unread"] == 0
+
+    read = json.loads(_tool(ai, "board_thread", id=thread))
+    assert [p["number"] for p in read["posts"]] == [1, 2] and read["posts"][0]["replied_by"] == [2]
+    assert json.loads(_tool(ai, "board_thread", id=thread, latest=1))["posts"][0]["number"] == 2
+    assert json.loads(_tool(ai, "board_like", thread=thread, number=2))["liked"] is True
+    assert json.loads(_tool(ai, "board_report", thread=thread, number=2, reason="x"))["number"] == 2
+    found = json.loads(_tool(ai, "board_search", q="賛成"))
+    assert found["count"] == 1 and found["posts"][0]["thread"]["id"] == thread
+
+    ng = json.loads(_tool(ai, "board_ng_set", action="add", kind="person", thread=thread, number=2))
+    assert json.loads(_tool(ai, "board_thread", id=thread))["posts"][1]["ng"] is True
+    assert json.loads(_tool(ai, "board_ng"))["rules"][0]["id"] == ng["id"]
+    _tool(ai, "board_ng_set", action="remove", id=ng["id"])
+    assert json.loads(_tool(ai, "board_ng"))["rules"] == []
+    posted = json.loads(_tool(ai, "board_post", thread=thread, body="ありがとう", sage=True))
+    assert posted["number"] == 3 and posted["sage"] is True
+    text, is_error = _call(ai, "board_post", thread=thread, body="ありがとう")
+    assert is_error and "同じ内容" in text

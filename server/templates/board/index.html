@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{% translate "掲示板" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'css/board.css' %}">
+<div class="board-page">
+<h1>{% translate "掲示板" %}</h1>
+{% include "board/_nav.html" %}
+<p class="hint">{% translate "国どうしの公開の場です。ゲームの不具合は画面の上の「不具合を報告」へ、荒らしは書き込みの「通報」へ。公式の声明は国際会議場に出します。" %}</p>
+{% if unread %}<p class="panel"><a href="{% url 'board_notices' %}">{% blocktranslate with n=unread %}自分の書き込みへの返信が {{ n }} 件あります。{% endblocktranslate %}</a></p>{% endif %}
+<table class="boards">
+  <thead><tr><th>{% translate "板" %}</th><th>{% translate "スレッド" %}</th><th>{% translate "最後の書き込み" %}</th></tr></thead>
+  <tbody>
+  {% for b in boards %}
+    <tr><td><a href="{% url 'board_forum' b.slug %}">{{ b.name }}</a>{% if b.staff_only %} <small class="muted">{% translate "（運営のみ）" %}</small>{% endif %}<br><small class="muted">{{ b.description }}</small></td>
+      <td>{{ b.threads }}</td><td>{% if b.updated_at %}{{ b.updated_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<section class="panel">
+  <h2>{% translate "最近書き込みがあったスレッド" %}</h2>
+  <ul class="thread-list">
+    {% for t in recent %}<li><a href="{% url 'board_thread' t.id %}?p=last">{{ t.title }}</a> <small>{{ t.board.name }} ・ {{ t.post_count }} ・ {{ t.updated_at|date:"m-d H:i" }}</small></li>
+    {% empty %}<li class="muted">{% translate "まだスレッドがありません。" %}</li>{% endfor %}
+  </ul>
+</section>
+</div>
+{% endblock %}

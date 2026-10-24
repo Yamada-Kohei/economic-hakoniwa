@@ -1,0 +1,11 @@
+{% load i18n %}{# 書き込みの欄。form は views.WriteForm。thread_form なら題名もある #}
+<form method="post" class="bwrite" id="write">{% csrf_token %}
+  {{ form.non_field_errors }}
+  {% if form.title %}<p>{{ form.title.errors }}{{ form.title.label_tag }} {{ form.title }}</p>{% endif %}
+  <p>{{ form.name.label_tag }} {{ form.name }}
+    {{ form.identity.label_tag }} {{ form.identity }}
+    <label>{{ form.sage }} {{ form.sage.label }}</label></p>
+  <p>{{ form.body.errors }}{{ form.body }}</p>
+  <p class="hint">{% blocktranslate %}名前は空なら「名無し」。「名前#秘密」と書くと、秘密から作った◆の印（トリップ）が付きます。「国名で書く」にすると自分の国の名前で書き、国のページへ飛べます。管理者は書いた人を確かめられます。{% endblocktranslate %}</p>
+  <button type="submit" class="primary">{% translate "書き込む" %}</button>
+</form>

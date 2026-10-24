@@ -20,6 +20,7 @@ from hakoniwa_core.economy import books, retail
 from hakoniwa_core.naming import facility_name
 from hakoniwa_core.state import ACCOUNTING_SELF
 from server.accounts import keys
+from server.board import services as board
 from server.economy.models import FacilityBook
 from server.game import get_game
 from server.hall import services as hall
@@ -338,14 +339,23 @@ def _alerts(
     return out
 
 
-def _mine_alerts(island: m.Island, losing: list[dict[str, Any]], unread: int) -> list[str]:
-    """持ち主にだけ出す注意（赤字の施設・未読の公電）。"""
+def _board_unread(island: m.Island) -> int:
+    """持ち主の、掲示板で自分の書き込みに付いた未読の返信の数。"""
+    return board.unread_count(island.owner) if island.owner else 0
+
+
+def _mine_alerts(
+    island: m.Island, losing: list[dict[str, Any]], unread: int, replies: int = 0
+) -> list[str]:
+    """持ち主にだけ出す注意（赤字の施設・未読の公電・掲示板の返信）。"""
     out = []
     if losing:
         turns = display.BOOK_TURNS
         out.append(f"直近 {turns} ターンの損益が赤字の施設が {len(losing)} か所あります")
     if unread:
         out.append(f"読んでいない公電が {unread} 通あります")
+    if replies:
+        out.append(f"掲示板で自分の書き込みへの返信が {replies} 件あります")
     return out
 
 
@@ -376,7 +386,9 @@ def island_alerts(island: m.Island, mine: bool) -> list[str]:
     )
     if mine:
         unread = letters.inbox(island).filter(read_at__isnull=True).count()
-        out += _mine_alerts(island, losing_facilities(island, currency), unread)
+        out += _mine_alerts(
+            island, losing_facilities(island, currency), unread, _board_unread(island)
+        )
         out += _diplomacy_alerts(diplomacy.brief(island, mine))
     return out
 
@@ -532,7 +544,10 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
                 for x in unread[:5]
             ],
         }
-        data["alerts"] += _mine_alerts(island, losing, data["letters"]["unread"])
+        data["board"] = {"unread_replies": _board_unread(island)}
+        data["alerts"] += _mine_alerts(
+            island, losing, data["letters"]["unread"], data["board"]["unread_replies"]
+        )
         data["alerts"] += _diplomacy_alerts(data["diplomacy"])
     return data
 
@@ -636,4 +651,5 @@ def changes(
             }
             for x in received[:50]
         ]
+        data["board"] = {"unread_replies": _board_unread(island)}
     return data

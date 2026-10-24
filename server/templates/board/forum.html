@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{{ board.name }} - {% translate "掲示板" %}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'css/board.css' %}">
+<div class="board-page">
+<h1>{{ board.name }}</h1>
+{% include "board/_nav.html" %}
+<p class="hint">{{ board.description }}</p>
+<p><a href="{% url 'board_log' board.slug %}">{% translate "過去ログ" %}</a></p>
+<ol class="bthreads">
+  {% for t in threads %}
+    <li><a href="{% url 'board_thread' t.id %}">{{ t.title }}</a> <span class="bcount">({{ t.post_count }})</span>
+      {% if t.pinned %}<span class="bflag">{% translate "固定" %}</span>{% endif %}{% if t.closed %}<span class="bflag">{% translate "満" %}</span>{% endif %}
+      <small class="muted">{{ t.updated_at|date:"m-d H:i" }}</small></li>
+  {% empty %}<li class="muted">{% translate "まだスレッドがありません。" %}</li>{% endfor %}
+</ol>
+{% if form and can_write %}
+  <section class="panel">
+    <h2>{% translate "スレッドを立てる" %}</h2>
+    {% include "board/_write.html" %}
+  </section>
+{% elif not user.is_authenticated %}
+  <p class="muted">{% translate "書き込むにはログインしてください。" %} <a href="{% url 'login' %}">{% translate "ログイン" %}</a></p>
+{% else %}
+  <p class="muted">{% translate "この板は管理者だけが書けます。" %}</p>
+{% endif %}
+</div>
+{% endblock %}
