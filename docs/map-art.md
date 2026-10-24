@@ -189,7 +189,7 @@ sprites:
 
 ## 軍事の絵（フェーズ4）の雰囲気合わせ
 
-フェーズ4（軍事。設計は [docs/design/15-military.md](design/15-military.md)）で足す絵は、今ある絵と並べて浮かないように、次に合わせます。名前は上の「名前の一覧」で先に決め、絵のファイルを先に置きます。`theme.yaml` の `sprites` には今回登録せず、施設の定義データや描く仕組みが入る Claude の PR で1行ずつ登録します。第1部（兵舎・軍港・レーダー・歩兵・陣地）と第2部の船（フリゲートを除く）・反乱軍・壊れた施設は Codex が、フリゲートと第2部の施設・戦車・戦場・占領・汚染の印は持ち主の希望で Claude が作り直しました。
+フェーズ4（軍事。設計は [docs/design/15-military.md](design/15-military.md)）で足す絵は、今ある絵と並べて浮かないように、次に合わせます。名前は上の「名前の一覧」で先に決め、絵のファイルを先に置きます。`theme.yaml` の `sprites` には今回登録せず、施設の定義データや描く仕組みが入る Claude の PR で1行ずつ登録します。第1部（兵舎・軍港・レーダー・歩兵・陣地）と第2部の船（フリゲートを除く）・反乱軍・壊れた施設は Codex が（兵舎の窓と軍港の軍艦は 10-25 に Claude が直した）、フリゲートと第2部の施設・戦車・戦場・占領・汚染の印は持ち主の希望で Claude が作り直しました。
 
 第1部・第2部の再生成は次の2つです（標準ライブラリだけを使います）。
 
@@ -197,6 +197,8 @@ sprites:
 python tools/sprites/silhouette.py server/static/themes/default/sprites
 python tools/sprites/military_icons.py server/static/themes/default/sprites
 ```
+
+数案を出すときの別の案は `silhouette.py` の `ALTERNATES` に入れ、`--spare <フォルダ>` を付けるとゲームで使わない絵として別のフォルダに書き出せます（採用しなかった案は `/mnt/project-files/map-art/spare-<日付>/` に残します）。
 
 比較用の確認ページは `python tools/sprites/military_preview.py` で作れます（`military-preview.html` と、第2部17枚の `military-part2-4x.html` ができます。PNGはブラウザで別途撮影します。ゲームで使うものではないので、コミットしません）。
 等倍・0.25倍・4倍で既存の絵と並べ、町・農場・兵舎に部隊と重ねる印を置いた例、ミサイル基地・核施設を平地と山の色面に置いた例も含めます。塹壕は奥側→建物→手前側、焦げ跡と汚染は地形→印→建物、占領は地形→建物→印の順です。瓦礫は建物を置き換えます。山の立体面に平面の印を重ねる例は、実装側での合成確認が必要です。

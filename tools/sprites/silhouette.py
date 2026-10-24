@@ -1,6 +1,7 @@
 """地形・施設・住宅のシルエットの絵（SVG）を、箱・円柱・屋根などの形の組み合わせから作る。
 
 使い方: python tools/sprites/silhouette.py <出力フォルダ> [--style color|clay|flat]
+          [--spare <別の案のフォルダ>]
   例: python tools/sprites/silhouette.py server/static/themes/default/sprites
   color: 部品ごとの色で塗り、面の向きで濃淡を付ける（上面が明るく、左の側面・右の側面の順に暗い）
   clay: 色を付けず、白い模型のように 1 色の濃淡で面を分ける
@@ -55,6 +56,8 @@ PAVEMENT = "#d9d4c8"  # 岸壁・屋上などの床
 CONTAINER_BLUE = "#4f8fb8"
 CAR_COLORS = (RED, WHITE, CONTAINER_BLUE, METAL, YELLOW, COAL)
 POLICE_BLUE = "#2f4f96"
+POLICE_GLASS = "#5d7ea0"  # 庁舎の窓
+GOV_GLASS = "#8aa0b2"  # 中央省庁の窓
 GOLD = "#d9a62a"
 GOTHIC_STONE = "#d6c08a"  # 議事堂の砂岩
 GOTHIC_ROOF = "#55646a"
@@ -66,14 +69,14 @@ KREMLIN_RED = "#a8483a"
 TOWER_GREEN = "#3d7a5c"
 PARTY_STONE = "#d4ccb8"
 PLAZA = "#d6d0c2"  # 広場の石畳
-STORE_PINK = "#d9668f"  # 百貨店の日よけと看板（小さな地図の色）
 STORE_STONE = "#e6dac0"  # 百貨店の石張りの壁
 PARTS_BLUE = "#5b7fb0"  # 部品工場の屋根（小さな地図の色）
 TIRE = "#2b2c2f"
 MILITARY = "#7d8466"  # 軍の壁・部隊の服
 MILITARY_DARK = "#5c6249"  # 軍の屋根
 NAVY_GRAY = "#8a96a0"  # 軍艦の船体
-STRIPES = (STORE_PINK, WHITE)  # 縞の日よけ
+STRIPES = (RED, WHITE)  # 縞の日よけ（赤白）
+STORE_WINDOW = "#7f9bb3"
 
 # 基の色と、面ごとの明るさ（上面・屋根の左向き・左の側面・屋根の右向き・右の側面）。
 # color は部品の色を使い、base は色のない部品にだけ使う
@@ -499,6 +502,310 @@ def windows(
             vc = v0 + (i + 0.5) * (v1 - v0) / n_right
             prims.append(box(u1, vc - w / 2, u1 + 0.005, vc + w / 2, z, h, c))
     return prims
+
+
+def pane_row(
+    wall: str,
+    fixed: float,
+    a0: float,
+    a1: float,
+    zs: list[float],
+    h: float,
+    count: int,
+    w: float,
+    c: str,
+) -> list[Prim]:
+    """壁にぴったり貼った窓。壁の面と同じ平面の板 1 枚ずつで、厚みも上面もない。
+
+    wall "v" は左の面（v = fixed、u の向きに並べる）、"u" は右の面（u = fixed、v の向きに並べる）。
+    """
+    prims = []
+    f = fixed + 0.003
+    for z in zs:
+        for i in range(count):
+            mid = a0 + (i + 0.5) * (a1 - a0) / count
+            lo, hi = mid - w / 2, mid + w / 2
+            if wall == "v":
+                pts = [iso(lo, f, z), iso(hi, f, z), iso(hi, f, z + h), iso(lo, f, z + h)]
+                prims.append(Prim((lo, fixed, hi, fixed + 0.004), z, [Face("left", c, pts)]))
+            else:
+                pts = [iso(f, lo, z), iso(f, hi, z), iso(f, hi, z + h), iso(f, lo, z + h)]
+                prims.append(Prim((fixed, lo, fixed + 0.004, hi), z, [Face("right", c, pts)]))
+    return prims
+
+
+def awning(
+    wall: str, fixed: float, a0: float, a1: float, z_wall: float, z_edge: float, out: float
+) -> list[Prim]:
+    """赤白の縞の日よけ。壁（fixed）の高さ z_wall から外へ out だけ張り出し、
+    先が z_edge に下がる斜めの布と、先の縁の垂れ。壁に沿って a0〜a1 を 2 色の縞で分ける。"""
+    n = max(1, round((a1 - a0) / 0.07))
+    step = (a1 - a0) / n
+    prims = []
+    for i in range(n):
+        x0, x1 = a0 + i * step, a0 + (i + 1) * step
+        c = STRIPES[i % 2]
+        if wall == "v":
+            cloth = [iso(x0, fixed, z_wall), iso(x1, fixed, z_wall)]
+            cloth += [iso(x1, fixed + out, z_edge), iso(x0, fixed + out, z_edge)]
+            drop = [iso(x0, fixed + out, z_edge), iso(x1, fixed + out, z_edge)]
+            drop += [iso(x1, fixed + out, z_edge - 1.3), iso(x0, fixed + out, z_edge - 1.3)]
+            b = (x0, fixed, x1, fixed + out)
+            slope, front = "slope_l", "left"
+        else:
+            cloth = [iso(fixed, x0, z_wall), iso(fixed, x1, z_wall)]
+            cloth += [iso(fixed + out, x1, z_edge), iso(fixed + out, x0, z_edge)]
+            drop = [iso(fixed + out, x0, z_edge), iso(fixed + out, x1, z_edge)]
+            drop += [iso(fixed + out, x1, z_edge - 1.3), iso(fixed + out, x0, z_edge - 1.3)]
+            b = (fixed, x0, fixed + out, x1)
+            slope, front = "slope_r", "right"
+        prims.append(Prim(b, z_edge - 1.3, [Face(slope, c, cloth), Face(front, c, drop)]))
+    return prims
+
+
+def clock_face(wall: str, fixed: float, a: float, z: float, r: float) -> list[Prim]:
+    """壁にはった丸い時計の文字盤（文字はなく、白い円・暗い縁・2 本の針）。r はピクセル。"""
+    k = 1 / 32 / 1.12
+    ring = [
+        (a + r * k * math.cos(t), z + r * math.sin(t)) for t in (i * math.pi / 8 for i in range(16))
+    ]
+    face = [
+        (a + (r - 0.8) * k * math.cos(t), z + (r - 0.8) * math.sin(t))
+        for t in (i * math.pi / 8 for i in range(16))
+    ]
+    hands = [
+        [
+            (a - 0.25 * k, z),
+            (a + 0.25 * k, z),
+            (a + 0.25 * k, z + r * 0.68),
+            (a - 0.25 * k, z + r * 0.68),
+        ],
+        [(a, z - 0.25), (a + r * 0.5 * k, z - 0.25), (a + r * 0.5 * k, z + 0.25), (a, z + 0.25)],
+    ]
+    return [
+        plane_poly(wall, fixed, ring, DARK, 1),
+        plane_poly(wall, fixed, face, WHITE, 2),
+        *[plane_poly(wall, fixed, h, COAL, 3) for h in hands],
+    ]
+
+
+def plane_poly(
+    wall: str,
+    fixed: float,
+    pts: list[tuple[float, float]],
+    c: str,
+    layer: int = 0,
+    k: float | None = None,
+) -> Prim:
+    """壁の面に貼った平らな多角形。pts は (壁に沿った位置, 高さ)。layer が大きいほど上に重ねる。
+
+    wall "v" は左の面（v = fixed、u に沿う）、"u" は右の面（u = fixed、v に沿う）。
+    pane_row と同じ平面。k は明るさ（なければ面の向きで決まる。白い鳩のように、
+    陰にしたくない絵に使う）。
+    """
+    f = fixed + 0.003
+    along = [a for a, _ in pts]
+    z0 = min(z for _, z in pts) + layer * 1000  # 重なる面は layer の順に描く
+    if wall == "v":
+        face = Face("left", c, [iso(a, f, z) for a, z in pts], k=k)
+        return Prim((min(along), fixed, max(along), fixed + 0.004), z0, [face])
+    face = Face("right", c, [iso(f, a, z) for a, z in pts], k=k)
+    return Prim((fixed, min(along), fixed + 0.004, max(along)), z0, [face])
+
+
+# 壁の面（斜めに見える面）に描く円の横幅: 面の上の 1 ピクセルは u・v の 1 / 32 / 1.12
+PLANE_PX = 1 / 32 / 1.12
+
+
+def px_poly(
+    wall: str,
+    fixed: float,
+    a: float,
+    z: float,
+    pts: list[tuple[float, float]],
+    c: str,
+    layer: int = 0,
+    s: float = 1.0,
+    k: float | None = None,
+) -> Prim:
+    """壁の面の (a, z) を中心に、ピクセル単位の点列 pts（右が +x、上が +y）を s 倍して貼る。"""
+    return plane_poly(wall, fixed, [(a + x * s * PLANE_PX, z + y * s) for x, y in pts], c, layer, k)
+
+
+def ellipse_pts(
+    a: float, z: float, r: float, n: int = 16, start: float = 0, end: float = 360
+) -> list[tuple[float, float]]:
+    """壁の面の (a, z) を中心にした半径 r ピクセルの円周の点（start〜end 度）。"""
+    return [
+        (a + r * PLANE_PX * math.cos(t), z + r * math.sin(t))
+        for t in (math.radians(start + (end - start) * i / n) for i in range(n + 1))
+    ]
+
+
+def ring_plane(
+    wall: str, fixed: float, a: float, z: float, r_out: float, r_in: float, c: str, n: int = 20
+) -> list[Prim]:
+    """壁の面に立つ輪（外の半径 r_out、内の半径 r_in、ピクセル）。台形に分けた板をつなぐ。"""
+    prims = []
+    for i in range(n):
+        o0, o1 = ellipse_pts(a, z, r_out, 1, 360 * i / n, 360 * (i + 1) / n)
+        i0, i1 = ellipse_pts(a, z, r_in, 1, 360 * i / n, 360 * (i + 1) / n)
+        prims.append(plane_poly(wall, fixed, [o0, o1, i1, i0], c, 1))
+    return prims
+
+
+def arc_pts(
+    ac: float, half: float, z_spring: float, z_crown: float, n: int = 10
+) -> list[tuple[float, float]]:
+    """アーチの輪郭の点: 中心 ac、半分の幅 half、起点の高さ z_spring、頂の高さ z_crown。"""
+    return [
+        (
+            ac - half * math.cos(math.pi * i / n),
+            z_spring + (z_crown - z_spring) * math.sin(math.pi * i / n),
+        )
+        for i in range(n + 1)
+    ]
+
+
+def holed_face(
+    wall: str,
+    fixed: float,
+    a0: float,
+    a1: float,
+    z0: float,
+    z1: float,
+    hole: list[tuple[float, float]],
+    c: str,
+    shade: str,
+) -> Face:
+    """壁の面（a0〜a1、z0〜z1）の下の縁に、アーチの穴（hole の点列）をあけた 1 つの多角形。
+    穴からは向こうが見える。"""
+    pts = [(a0, z0), (hole[0][0], z0), *hole, (hole[-1][0], z0), (a1, z0), (a1, z1), (a0, z1)]
+    if wall == "v":
+        return Face(shade, c, [iso(a, fixed, z) for a, z in pts])
+    return Face(shade, c, [iso(fixed, a, z) for a, z in pts])
+
+
+def cog(wall: str, fixed: float, a: float, z: float, r: float, c: str, teeth: int = 8) -> Prim:
+    """壁の面に貼った歯車（歯が teeth 個）。"""
+    pts = []
+    for i in range(teeth * 4):
+        rr = r if (i // 2) % 2 == 0 else r * 0.74
+        t = math.radians(360 * i / (teeth * 4))
+        pts.append((a + rr * PLANE_PX * math.cos(t), z + rr * math.sin(t)))
+    return plane_poly(wall, fixed, pts, c, 1)
+
+
+def person(
+    u: float,
+    v: float,
+    z0: float,
+    h: float,
+    c: str,
+    legs_c: str | None = None,
+    skin: str | None = None,
+    coat: bool = False,
+    cap: str | None = None,
+    belt: str | None = None,
+    boots: str | None = None,
+) -> list[Prim]:
+    """全身の像（v の増える向き、手前の左の面へ向かって立つ）。h は高さ（ピクセル）。
+
+    丸い頭・首・肩の張った胸・細い腰・2 本の脚と足がそろう。skin は頭の色。
+    腕は arm_down などで足す。
+    coat は裾の長い外套（脚は裾の下に少しだけ見える）。
+    """
+    legs_c = legs_c or c
+    skin = skin or c
+    boots = boots or legs_c
+    zl = z0 + h * 0.45  # 腰
+    zw = z0 + h * 0.58  # 胸の下端
+    zs = z0 + h * 0.8  # 肩
+    if coat:
+        parts = [
+            box(u - 0.07, v - 0.036, u + 0.07, v + 0.036, z0 + h * 0.1, h * 0.4, c),
+            box(u - 0.04, v - 0.03, u - 0.002, v + 0.03, z0 + 0.4, h * 0.1, legs_c),
+            box(u + 0.002, v - 0.03, u + 0.04, v + 0.03, z0 + 0.4, h * 0.1, legs_c),
+            box(u - 0.042, v - 0.03, u, v + 0.05, z0, 0.6, boots),
+            box(u, v - 0.03, u + 0.042, v + 0.05, z0, 0.6, boots),
+        ]
+    else:
+        parts = [
+            box(u - 0.072, v - 0.03, u - 0.006, v + 0.03, z0 + 0.8, h * 0.45 - 0.8, legs_c),
+            box(u + 0.006, v - 0.03, u + 0.072, v + 0.03, z0 + 0.8, h * 0.45 - 0.8, legs_c),
+            box(u - 0.076, v - 0.03, u - 0.004, v + 0.052, z0, 0.9, boots),
+            box(u + 0.004, v - 0.03, u + 0.076, v + 0.052, z0, 0.9, boots),
+        ]
+    parts += [
+        box(u - 0.08, v - 0.036, u + 0.08, v + 0.036, zl, zw - zl, c),
+        box(u - 0.108, v - 0.046, u + 0.108, v + 0.046, zw, zs - zw, c),
+        box(u - 0.026, v - 0.022, u + 0.026, v + 0.022, zs, h * 0.04, skin),
+        crown(u, v, zs + h * 0.03, h * 0.095, skin),
+    ]
+    if belt:
+        parts.append(box(u - 0.083, v - 0.039, u + 0.083, v + 0.039, zl - 0.2, 1.1, belt))
+    if cap:
+        parts.append(
+            box(u - 0.058, v - 0.048, u + 0.058, v + 0.058, zs + h * 0.185, h * 0.035, cap)
+        )
+        parts.append(box(u - 0.05, v - 0.04, u + 0.05, v + 0.04, zs + h * 0.22, h * 0.03, cap))
+    return parts
+
+
+def arm_down(
+    u: float, v: float, z_sh: float, h: float, c: str, side: int, hand: str | None = None
+) -> list[Prim]:
+    """肩から垂らした腕と手。side は -1（u の小さい側）か 1。"""
+    x = u + side * 0.128
+    return [
+        box(x - 0.02, v - 0.024, x + 0.02, v + 0.024, z_sh - h * 0.34, h * 0.36, c),
+        box(x - 0.018, v - 0.02, x + 0.018, v + 0.02, z_sh - h * 0.4, h * 0.07, hand or c),
+    ]
+
+
+def facade(
+    u0: float,
+    v0: float,
+    u1: float,
+    v1: float,
+    z_from: float,
+    z_to: float,
+    pitch: float,
+    hh: float,
+    nl: int,
+    nr: int,
+    c: str,
+    w: float = 0.045,
+    m: float = 0.035,
+) -> list[Prim]:
+    """建物の見える 2 面に、階ごとの窓の列（板）を貼る。z_from〜z_to は窓を置く高さの範囲で、
+    建物の足元（または段の下の端）より下に出さない。
+    nl・nr は左の面・右の面の 1 階あたりの窓の数。"""
+    zs = [z_from + pitch * i for i in range(int((z_to - z_from - hh) / pitch) + 1)]
+    return [
+        *pane_row("v", v1, u0 + m, u1 - m, zs, hh, nl, w, c),
+        *pane_row("u", u1, v0 + m, v1 - m, zs, hh, nr, w, c),
+    ]
+
+
+def band_facade(
+    u0: float,
+    v0: float,
+    u1: float,
+    v1: float,
+    z_from: float,
+    z_to: float,
+    pitch: float,
+    hh: float,
+    c: str,
+    m: float = 0.02,
+) -> list[Prim]:
+    """ガラス張りの高層の窓: 階ごとに 1 本の横長の板。"""
+    zs = [z_from + pitch * i for i in range(int((z_to - z_from - hh) / pitch) + 1)]
+    return [
+        *pane_row("v", v1, u0 + m, u1 - m, zs, hh, 1, (u1 - u0) - 2 * m, c),
+        *pane_row("u", u1, v0 + m, v1 - m, zs, hh, 1, (v1 - v0) - 2 * m, c),
+    ]
 
 
 def strut(
@@ -1073,10 +1380,20 @@ SHAPES: dict[str, list[Prim]] = {
         box(0.61, 0.86, 0.755, 0.885, 8, 1, METAL),
     ],
     "facility/government_office": [
-        box(0.1, 0.25, 0.9, 0.75, 0, 18, WHITE, "#d9d4c8"),
-        box(0.35, 0.3, 0.65, 0.7, 18, 6, WHITE),
+        # 白い石の庁舎: 窓の列、前の柱廊（4 本の柱と三角の破風）、軒の帯、銅の丸屋根の中央棟
+        box(0.1, 0.25, 0.9, 0.75, 0, 17, WHITE, "#d9d4c8"),
+        *pane_row("v", 0.75, 0.12, 0.3, [3.8, 9, 13.4], 2.8, 2, 0.05, GOV_GLASS),
+        *pane_row("v", 0.75, 0.7, 0.88, [3.8, 9, 13.4], 2.8, 2, 0.05, GOV_GLASS),
+        *pane_row("u", 0.9, 0.27, 0.73, [3.8, 9, 13.4], 2.8, 5, 0.05, GOV_GLASS),
+        box(0.09, 0.24, 0.91, 0.76, 17, 1.4, CREAM, "#f1e9d6"),
+        box(0.35, 0.3, 0.65, 0.7, 18.4, 5.6, WHITE),
+        *pane_row("v", 0.7, 0.4, 0.6, [20], 2.4, 3, 0.04, GOV_GLASS),
         cylinder(0.5, 0.5, 0.13, 24, 6, cap="dome", c=WHITE, cap_c=COPPER),
         box(0.1, 0.75, 0.9, 0.86, 0, 3, CONCRETE),
+        box(0.3, 0.86, 0.7, 0.92, 0, 1.4, CONCRETE, PAVEMENT),
+        *[cylinder(u, 0.82, 0.022, 3, 12.4, c=WHITE) for u in (0.34, 0.447, 0.553, 0.66)],
+        box(0.3, 0.76, 0.7, 0.88, 15.4, 1.6, CREAM, "#f1e9d6"),
+        gable(0.3, 0.76, 0.7, 0.88, 17, 4, "v", CONCRETE, WHITE),
     ],
     "facility/school": [
         box(0.12, 0.15, 0.45, 0.85, 0, 14, CREAM, "#7f97ad"),
@@ -1249,7 +1566,11 @@ SHAPES: dict[str, list[Prim]] = {
         box(0.62, 0.08, 0.92, 0.92, 0, 0.6, "#6d7177"),
         box(0.14, 0.12, 0.58, 0.56, 0.6, 1.6, POLICE_BLUE),
         box(0.14, 0.12, 0.58, 0.56, 2.2, 19.8, "#eceae4", "#cfd3d8"),
-        *windows(0.14, 0.12, 0.58, 0.56, [4, 10.5, 17], 3.2, (5, 5)),
+        # 窓は壁にぴったり貼った板。1 階の正面は入口のひさしをよけて両端の 2 つだけ
+        *pane_row("v", 0.56, 0.14, 0.228, [4], 3.2, 1, 0.05, POLICE_GLASS),
+        *pane_row("v", 0.56, 0.492, 0.58, [4], 3.2, 1, 0.05, POLICE_GLASS),
+        *pane_row("v", 0.56, 0.14, 0.58, [10.5, 17], 3.2, 5, 0.05, POLICE_GLASS),
+        *pane_row("u", 0.58, 0.12, 0.56, [4, 10.5, 17], 3.2, 5, 0.05, POLICE_GLASS),
         box(0.135, 0.115, 0.585, 0.565, 21.5, 3, POLICE_BLUE, "#cfd3d8"),
         box(0.35, 0.565, 0.38, 0.57, 22, 2, YELLOW),
         box(0.36, 0.16, 0.52, 0.3, 24.5, 4, "#eceae4", "#cfd3d8"),
@@ -1268,25 +1589,29 @@ SHAPES: dict[str, list[Prim]] = {
     ],
     # 回7 の百貨店
     "facility/department_store": [
-        # 石張りの 5 階建ての大きな店、1 階のショーウィンドウと縞の日よけ、上の階の窓の列、
-        # 屋上の塔屋と、文字のない看板の枠、前の歩道の植え込み
+        # 石張りの 5 階建ての大きな店、1 階のショーウィンドウと赤白の縞の日よけ、上の階の窓の列、
+        # 屋上の時計塔（文字のない丸い文字盤）、前の歩道の植え込み
         box(0.06, 0.06, 0.94, 0.94, 0, 0.6, CONCRETE, PAVEMENT),
         box(0.12, 0.12, 0.78, 0.78, 0.6, 30, STORE_STONE, "#cfc8b8"),
-        box(0.12, 0.78, 0.78, 0.785, 1.2, 5.5, GLASS),
-        box(0.78, 0.12, 0.785, 0.78, 1.2, 5.5, GLASS),
-        *[
-            box(0.12 + i * 0.066, 0.785, 0.186 + i * 0.066, 0.84, 7, 1.4, STRIPES[i % 2])
-            for i in range(10)
-        ],
-        *[
-            box(0.785, 0.12 + i * 0.066, 0.84, 0.186 + i * 0.066, 7, 1.4, STRIPES[i % 2])
-            for i in range(10)
-        ],
-        *windows(0.12, 0.12, 0.78, 0.78, [11, 16, 21, 26], 2.6, (6, 6), c="#7f9bb3"),
+        *pane_row("v", 0.78, 0.12, 0.78, [1.4], 5.4, 5, 0.1, GLASS),
+        *pane_row("u", 0.78, 0.12, 0.78, [1.4], 5.4, 5, 0.1, GLASS),
+        *pane_row("v", 0.78, 0.4, 0.5, [1.4], 5.4, 1, 0.07, COAL),
+        *awning("v", 0.78, 0.12, 0.78, 9.0, 7.0, 0.07),
+        *awning("u", 0.78, 0.12, 0.78, 9.0, 7.0, 0.07),
+        *pane_row("v", 0.78, 0.12, 0.78, [11, 16, 21, 26], 2.6, 6, 0.06, STORE_WINDOW),
+        *pane_row("u", 0.78, 0.12, 0.78, [11, 16, 21, 26], 2.6, 6, 0.06, STORE_WINDOW),
         box(0.115, 0.115, 0.785, 0.785, 30.6, 1.6, "#f1e9d6", "#cfc8b8"),
-        box(0.18, 0.18, 0.4, 0.4, 32.2, 5, STORE_STONE, "#cfc8b8"),
-        *[box(u, 0.6, u + 0.014, 0.614, 32.2, 4, METAL) for u in (0.44, 0.6, 0.72)],
-        box(0.42, 0.6, 0.74, 0.62, 36.2, 7, STORE_PINK),
+        # 屋上の時計塔と空調の箱（ほかの形と描く順が循環しないよう、最後にまとめて描く）
+        *tiered(
+            2,
+            box(0.2, 0.2, 0.38, 0.38, 32.2, 9, STORE_STONE, "#cfc8b8"),
+            box(0.19, 0.19, 0.39, 0.39, 41.2, 1.2, "#f1e9d6", "#cfc8b8"),
+            *clock_face("v", 0.38, 0.29, 36.8, 3.4),
+            hip(0.2, 0.2, 0.38, 0.38, 42.4, 6, COPPER),
+            *flag(0.29, 0.29, 48.4, 5, RED, 0.05),
+            box(0.5, 0.5, 0.72, 0.72, 32.2, 2.4, STORE_STONE, "#cfc8b8"),
+            *[box(u, 0.52, u + 0.05, 0.57, 34.6, 1.2, METAL) for u in (0.52, 0.6, 0.68)],
+        ),
         *broadleaf(0.88, 0.3, 2.8, 8),
         *broadleaf(0.3, 0.9, 2.8, 8),
     ],
@@ -1447,20 +1772,6 @@ SHAPES: dict[str, list[Prim]] = {
         *house(0.55, 0.15, 0.85, 0.42, 10, 6, "v", roof=ROOF_BROWN),
         *house(0.12, 0.55, 0.4, 0.85, 10, 6, "v", roof=ROOF_BROWN),
         *house(0.55, 0.55, 0.85, 0.85, 16, 6, "u", "#e2d5bd"),
-    ],
-    "housing/city": [
-        box(0.12, 0.12, 0.45, 0.45, 0, 36, "#d9cfbf", "#8f969c"),
-        box(0.55, 0.12, 0.88, 0.42, 0, 26, "#e3dccd", "#8f969c"),
-        box(0.12, 0.55, 0.42, 0.88, 0, 22, "#cfc8bd", "#8f969c"),
-        box(0.52, 0.52, 0.88, 0.88, 0, 42, "#e3dccd", "#8f969c"),
-    ],
-    "housing/metropolis": [
-        box(0.1, 0.1, 0.9, 0.9, 0, 6, CONCRETE),
-        box(0.15, 0.15, 0.42, 0.42, 6, 58, GLASS2, "#7e8f9a"),
-        box(0.58, 0.15, 0.85, 0.4, 6, 40, "#d9cfbf", "#8f969c"),
-        box(0.15, 0.58, 0.4, 0.85, 6, 34, "#e3dccd", "#8f969c"),
-        box(0.52, 0.52, 0.85, 0.85, 6, 66, GLASS, "#7e8f9a"),
-        box(0.62, 0.62, 0.75, 0.75, 72, 8, METAL),
     ],
 }
 
@@ -1818,16 +2129,37 @@ def naval_base(s: Side) -> list[Prim]:
         *[s.cylinder(0.64, v, 0.016, wz, 1 - wz, c=IRON) for v in (0.16, 0.48, 0.82)],
         s.box(0.54, 0.1, 0.7, 0.88, 1, 1.2, CONCRETE, PAVEMENT),
         *[s.cylinder(0.68, v, 0.014, 2.2, 1.2, c=IRON) for v in (0.2, 0.72)],
-        # 船の下端は必ず水面。長い先細りの甲板を空け、商船の箱と見分ける。
-        s.ship(0.74, 0.12, 0.96, 0.88, wz, 4, 0.2, NAVY_GRAY, METAL, along="v"),
-        s.box(0.775, 0.32, 0.925, 0.53, wz + 4, 3, NAVY_GRAY),
-        s.box(0.79, 0.34, 0.91, 0.45, wz + 7, 2, GLASS, NAVY_GRAY),
-        s.box(0.82, 0.25, 0.88, 0.3, wz + 4, 5, ROOF_STEEL, DARK),
-        s.cylinder(0.85, 0.49, 0.009, wz + 7, 8, c=IRON),
-        s.box(0.79, 0.475, 0.91, 0.505, wz + 14, 1, METAL),
-        s.cylinder(0.85, 0.67, 0.035, wz + 4, 2, c=NAVY_GRAY),
-        s.strut((0.85, 0.67, wz + 6), (0.85, 0.79, wz + 6.5), 0.8, IRON),
-        *[s.strut((0.68, v, 3), (0.75, v + 0.03, wz + 4), 0.5, IRON) for v in (0.2, 0.72)],
+        *warship(s, wz),
+        *[s.strut((0.68, v, 3), (0.77, v + 0.03, wz + 3.2), 0.5, IRON) for v in (0.2, 0.72)],
+    ]
+
+
+def warship(s: Side, wz: float) -> list[Prim]:
+    """直線だけの船体の護衛艦（フリゲートの絵と同じ作り）。
+    細長い船体の船首（v の大きい側）をとがらせ、艦尾に格納庫、中ほどに箱を重ねた艦橋と
+    細いマスト、船首の側に発射機の蓋と砲を置く。船の下端は水面。
+    """
+    deck = wz + 4.2
+    return [
+        s.ship(0.775, 0.1, 0.885, 0.8, wz, 1.6, 0.2, HULL_DARK, HULL_DARK, along="v"),
+        s.ship(0.77, 0.1, 0.89, 0.8, wz + 1.6, 2.6, 0.2, NAVY_GRAY, "#a3adb6", along="v"),
+        # 艦尾の格納庫とヘリの甲板の線
+        s.box(0.79, 0.117, 0.87, 0.275, deck, 3.0, NAVY_GRAY, DARK),
+        s.box(0.8, 0.275, 0.86, 0.279, deck, 2.2, COAL),
+        # 艦橋: 下の段・上の段（窓の帯）・屋根
+        s.box(0.785, 0.345, 0.875, 0.52, deck, 3.4, NAVY_GRAY, ROOF_STEEL),
+        s.box(0.8, 0.38, 0.86, 0.468, deck + 3.4, 2.2, GLASS, NAVY_GRAY),
+        s.box(0.795, 0.376, 0.865, 0.472, deck + 5.6, 0.5, DARK),
+        # マスト・レーダーの板・先の細い棒
+        s.cylinder(0.83, 0.424, 0.008, deck + 6.1, 6, c=IRON),
+        s.box(0.8, 0.406, 0.86, 0.441, deck + 8.5, 0.8, METAL),
+        s.cylinder(0.83, 0.424, 0.004, deck + 12.1, 3, c=METAL),
+        # 煙突
+        s.box(0.8, 0.485, 0.86, 0.52, deck + 3.4, 1.8, DARK, COAL),
+        # 垂直発射機の蓋と、前の主砲
+        s.box(0.8, 0.564, 0.86, 0.651, deck, 0.6, DARK, COAL),
+        s.box(0.805, 0.686, 0.855, 0.73, deck, 1.6, METAL, "#c0c7ce"),
+        s.box(0.825, 0.73, 0.835, 0.782, deck + 0.8, 0.5, IRON),
     ]
 
 
@@ -1939,8 +2271,11 @@ SHAPES.update(
                 for p in (
                     box(u, 0.12, u + 0.25, 0.64, 0.4, 12, MILITARY),
                     gable(u, 0.12, u + 0.25, 0.64, 12.4, 3, "v", MILITARY_DARK, MILITARY),
-                    *windows(u, 0.12, u + 0.25, 0.64, [5.5], 2.6, (2, 4), c=GLASS),
-                    box(u + 0.09, 0.64, u + 0.16, 0.646, 0.4, 4.5, DARK),
+                    # 窓は壁にぴったり貼った板。妻面は入口の両わきに 1 つずつ、長い面は 2 段
+                    *pane_row("v", 0.64, u + 0.01, u + 0.08, [5.5], 2.6, 1, 0.05, GLASS),
+                    *pane_row("v", 0.64, u + 0.17, u + 0.24, [5.5], 2.6, 1, 0.05, GLASS),
+                    *pane_row("v", 0.64, u + 0.085, u + 0.165, [0.4], 4.6, 1, 0.07, DARK),
+                    *pane_row("u", u + 0.25, 0.12, 0.64, [1.8, 6.8], 2.6, 4, 0.06, GLASS),
                 )
             ],
             # 手前に平らな練兵場を確保。旗や目立つ色は足さない。
@@ -2187,36 +2522,6 @@ def main_battle_tank(
         box(u0 + 0.2, 0.76, u0 + 0.27, 0.8, z_h + turret_h, 0.5, IRON),
     ]
     return parts
-
-
-def pane_row(
-    wall: str,
-    fixed: float,
-    a0: float,
-    a1: float,
-    zs: list[float],
-    h: float,
-    count: int,
-    w: float,
-    c: str,
-) -> list[Prim]:
-    """壁にぴったり貼った窓。壁の面と同じ平面の板 1 枚ずつで、厚みも上面もない。
-
-    wall "v" は左の面（v = fixed、u の向きに並べる）、"u" は右の面（u = fixed、v の向きに並べる）。
-    """
-    prims = []
-    f = fixed + 0.003
-    for z in zs:
-        for i in range(count):
-            mid = a0 + (i + 0.5) * (a1 - a0) / count
-            lo, hi = mid - w / 2, mid + w / 2
-            if wall == "v":
-                pts = [iso(lo, f, z), iso(hi, f, z), iso(hi, f, z + h), iso(lo, f, z + h)]
-                prims.append(Prim((lo, fixed, hi, fixed + 0.004), z, [Face("left", c, pts)]))
-            else:
-                pts = [iso(f, lo, z), iso(f, hi, z), iso(f, hi, z + h), iso(f, lo, z + h)]
-                prims.append(Prim((fixed, lo, fixed + 0.004, hi), z, [Face("right", c, pts)]))
-    return prims
 
 
 def plinth(top: float = 2.4) -> list[Prim]:
@@ -2522,6 +2827,279 @@ def _figure(u: float, v: float, z0: float, h: float, c: str, arm: bool = True) -
     return prims
 
 
+TOWER_RED = "#d1432c"  # 展望塔の赤（鉄骨と、大展望台の帯）
+LEADER_COAT = "#6b5a38"  # 元首の像の外套（青銅の暗い面）
+LEADER_FACE = "#9c8454"  # 元首の像の顔と手（磨いた青銅）
+WORKER_BLUE = "#7f8f9e"  # 労働者の像の作業ズボン
+SKY_BLUE = "#7fb2d6"  # 平和の碑の青い板
+OLIVE = "#6f8a3c"
+TICK_GREEN = "#3f9a52"  # 検証の碑のチェック
+
+
+def lattice_tower() -> list[Prim]:
+    """展望塔: 赤い鉄骨の脚が上へすぼまり、大展望台の下で終わる。
+    展望台は脚の上にのり、脚をつらぬかない。
+
+    大展望台の上からは細い脚がもう一段立ち、特別展望台とアンテナへ続く。
+    足元には脚を受ける沓を置く。
+    """
+    cx = 0.5
+    z_a, z_b = 1.2, 15.0  # 下の脚: 足元から大展望台の下
+    z_c, z_d = 19.0, 36.0  # 上の脚: 大展望台の上から特別展望台の下
+    ha0, ha1, hb0, hb1 = 0.27, 0.155, 0.115, 0.05  # 脚の中心からの距離（足元と上）
+    corners = ((-1, -1), (1, -1), (1, 1), (-1, 1))
+    ring = list(zip(corners, corners[1:] + corners[:1], strict=True))
+
+    def leg(h0: float, h1: float, za: float, zb: float, t: float, su: int, sv: int):
+        h = h0 + (h1 - h0) * t
+        return (cx + su * h, cx + sv * h, za + (zb - za) * t)
+
+    def low(t: float, su: int, sv: int) -> tuple[float, float, float]:
+        return leg(ha0, ha1, z_a, z_b, t, su, sv)
+
+    def high(t: float, su: int, sv: int) -> tuple[float, float, float]:
+        return leg(hb0, hb1, z_c, z_d, t, su, sv)
+
+    prims = [_plaza()]
+    for su, sv in corners:
+        u, v = cx + su * ha0, cx + sv * ha0
+        prims.append(box(u - 0.03, v - 0.03, u + 0.03, v + 0.03, 0.6, 1.4, CONCRETE, PAVEMENT))
+        prims.append(strut(low(0, su, sv), low(1, su, sv), 2.0, TOWER_RED))
+        prims.append(strut(high(0, su, sv), high(1, su, sv), 1.5, TOWER_RED))
+    for t in (0.28, 0.58, 0.88):  # 横の梁（白）
+        prims += [strut(low(t, *a), low(t, *b), 1.0, WHITE) for a, b in ring]
+    for t0, t1 in ((0.0, 0.28), (0.28, 0.58), (0.58, 0.88)):  # 手前の 2 面の斜め材
+        for a, b in (((-1, 1), (1, 1)), ((1, -1), (1, 1))):
+            prims.append(strut(low(t0, *a), low(t1, *b), 0.8, TOWER_RED))
+            prims.append(strut(low(t0, *b), low(t1, *a), 0.8, TOWER_RED))
+    for t in (0.35, 0.7):
+        prims += [strut(high(t, *a), high(t, *b), 0.9, WHITE) for a, b in ring]
+    # 大展望台（赤い帯と白い帯）と、特別展望台
+    prims += [
+        box(0.32, 0.32, 0.68, 0.68, z_b, 1.8, TOWER_RED),
+        box(0.31, 0.31, 0.69, 0.69, z_b + 1.8, 2.4, WHITE, "#cfd3d8"),
+        box(0.4, 0.4, 0.6, 0.6, z_d, 1.4, TOWER_RED),
+        box(0.39, 0.39, 0.61, 0.61, z_d + 1.4, 2.0, WHITE, "#cfd3d8"),
+        *pane_row("v", 0.69, 0.33, 0.67, [z_b + 2.2], 1.4, 5, 0.05, "#7f9bb3"),
+        *pane_row("u", 0.69, 0.33, 0.67, [z_b + 2.2], 1.4, 5, 0.05, "#7f9bb3"),
+    ]
+    # アンテナ: 赤白に塗り分けた細い柱
+    for i in range(3):
+        prims.append(
+            cylinder(
+                cx, cx, 0.016 - 0.003 * i, z_d + 3.4 + 6 * i, 6, c=WHITE if i % 2 else TOWER_RED
+            )
+        )
+    return prims
+
+
+def triumphal_arch() -> list[Prim]:
+    """戦いの碑: 凱旋門。4 本の脚の上に、門の穴をあけた厚い壁がのる（凱旋門の雰囲気だけ）。
+
+    手前の左の面に大きな門、右の面に小さな門があり、脚のあいだから向こうが見える。下に火は置かない。
+    """
+    zs, zt = 9.0, 27.0
+    u0, u1, v0, v1 = 0.1, 0.9, 0.28, 0.72
+    big = arc_pts(0.5, 0.17, zs, 19.0)
+    small = arc_pts(0.5, 0.1, zs, 15.5)
+    parts = [_plaza(0.94)]
+    for pu0, pu1 in ((u0, 0.33), (0.67, u1)):
+        for pv0, pv1 in ((v0, 0.4), (0.6, v1)):
+            parts.append(box(pu0, pv0, pu1, pv1, 0.6, zs - 0.6, SAND, CREAM))
+    parts.append(
+        Prim(
+            (u0, v0, u1, v1),
+            zs,
+            [
+                Face(
+                    "top",
+                    CREAM,
+                    [iso(u0, v0, zt), iso(u1, v0, zt), iso(u1, v1, zt), iso(u0, v1, zt)],
+                ),
+                holed_face("v", v1, u0, u1, zs, zt, big, SAND, "left"),
+                holed_face("u", u1, v0, v1, zs, zt, small, SAND, "right"),
+            ],
+        )
+    )
+    parts.append(box(0.125, 0.265, 0.875, 0.735, zt - 3.2, 3.2, CREAM, "#f1e9d6"))  # 軒
+    relief = "#b9a877"
+    for a0, a1 in ((0.14, 0.29), (0.71, 0.86)):  # 脚の面の彫刻の板
+        parts.append(plane_poly("v", v1, [(a0, 4), (a1, 4), (a1, 19), (a0, 19)], relief, 1))
+    for b0, b1 in ((0.32, 0.38), (0.62, 0.68)):
+        parts.append(plane_poly("u", u1, [(b0, 5), (b1, 5), (b1, 16), (b0, 16)], relief, 1))
+    for i in range(5):  # 上の帯の浅い凹み
+        a = 0.2 + i * 0.12
+        pts = [(a, 20.3), (a + 0.07, 20.3), (a + 0.07, 23.2), (a, 23.2)]
+        parts.append(plane_poly("v", v1, pts, "#a89865", 2))
+    return parts
+
+
+def leader_statue(z0: float = 13.0, h: float = 28) -> list[Prim]:
+    """元首の像: 外套に帽子の全身。右手を高く上げ、左手は下げる。"""
+    u, v = 0.5, 0.5
+    zs = z0 + h * 0.8
+    parts = person(
+        u, v, z0, h, LEADER_COAT, "#52452b", LEADER_FACE, True, LEADER_COAT, "#4a3f26", "#3f351f"
+    )
+    parts += arm_down(u, v, zs, h, LEADER_COAT, -1, LEADER_FACE)
+    parts.append(strut((u + 0.1, v, zs - 1.2), (u + 0.215, v + 0.01, zs + 5.0), 2.6, LEADER_COAT))
+    parts.append(box(u + 0.2, v - 0.02, u + 0.24, v + 0.02, zs + 4.6, 2.2, LEADER_FACE))
+    return parts
+
+
+def worker_statue(z0: float = 13.0, h: float = 28) -> list[Prim]:
+    """労働者の像: 帽子・前かけ・作業ズボンの全身。右手に金づちを高くかかげ、左手は下げる。"""
+    u, v = 0.5, 0.5
+    zs = z0 + h * 0.8
+    hand = "#d4d9dd"
+    parts = person(
+        u, v, z0, h, STEEL_SILVER, WORKER_BLUE, hand, False, "#8a949c", "#6e747a", "#5c6268"
+    )
+    parts += arm_down(u, v, zs, h, STEEL_SILVER, -1, hand)
+    apron = [(u - 0.06, z0 + h * 0.3), (u + 0.06, z0 + h * 0.3)]
+    apron += [(u + 0.07, z0 + h * 0.6), (u - 0.07, z0 + h * 0.6)]
+    parts.append(plane_poly("v", v + 0.036, apron, "#8c6b43", 1))
+    parts.append(strut((u + 0.105, v, zs - 1.0), (u + 0.14, v, zs + 8.0), 2.6, STEEL_SILVER))
+    parts.append(box(u + 0.125, v - 0.02, u + 0.16, v + 0.02, zs + 7.4, 2.0, hand))
+    parts.append(strut((u + 0.143, v, zs + 8.2), (u + 0.143, v, zs + 15.5), 1.2, WOOD))
+    parts.append(box(u + 0.1, v - 0.026, u + 0.186, v + 0.026, zs + 14.0, 3.0, IRON, "#6d6a66"))
+    return parts
+
+
+# 白い鳩（右向き、中心からのピクセル）と、チェック
+DOVE = [
+    (-8.5, -1.6), (-5, -2.7), (-1, -3.3), (2.5, -2.3), (4.2, -0.5), (4.7, 1.4), (5.7, 2.4),
+    (7.4, 2.0), (5.9, 3.3), (4.7, 4.2), (3.4, 3.8), (2.4, 2.2), (1.2, 1.4), (1.6, 4.8),
+    (-0.4, 7.2), (-3.2, 8.4), (-3.6, 5.0), (-4.0, 2.2), (-6.4, 1.4), (-9, 0.4),
+]  # fmt: skip
+CHECK = [(-6.2, 0.3), (-4.4, 2.0), (-2.6, 0.0), (3.8, 6.6), (6.0, 4.7), (-2.5, -4.6)]
+
+
+def dove_wall() -> list[Prim]:
+    """平和の碑: 青い板に白い鳩の浮き彫りがある、白い石の壁。両わきにオリーブの木。"""
+    return [
+        _plaza(),
+        box(0.14, 0.4, 0.86, 0.6, 0.6, 2.0, GRANITE, "#a4a7ab"),
+        box(0.18, 0.44, 0.82, 0.56, 2.6, 17, WHITE, "#e6e2d8"),
+        box(0.16, 0.42, 0.84, 0.58, 19.6, 1.4, WHITE, "#f1eee6"),
+        plane_poly("v", 0.56, [(0.24, 5), (0.76, 5), (0.76, 18.5), (0.24, 18.5)], SKY_BLUE, 1),
+        px_poly("v", 0.56, 0.5, 9.2, DOVE, "#fbfbf7", 2, 1.0, k=1.0),
+        *broadleaf(0.14, 0.8, 3.4, 9),
+        *broadleaf(0.84, 0.8, 3.4, 9),
+    ]
+
+
+def peace_ring() -> list[Prim]:
+    """平和の碑（別案）: 白い石の輪の中に鳩。"""
+    return [
+        _plaza(),
+        box(0.3, 0.38, 0.7, 0.62, 0.6, 2.4, GRANITE, "#a4a7ab"),
+        box(0.4, 0.44, 0.6, 0.56, 3.0, 4.6, WHITE, "#e6e2d8"),
+        plane_poly("v", 0.5, ellipse_pts(0.5, 19.0, 8.2, 20)[:-1], SKY_BLUE),
+        *ring_plane("v", 0.5, 0.5, 19.0, 11.5, 7.4, WHITE, 24),
+        px_poly("v", 0.5, 0.5, 19.0, DOVE, "#fbfbf7", 2, 0.7, k=1.0),
+        *broadleaf(0.2, 0.78, 3.4, 9),
+        *broadleaf(0.8, 0.8, 3.4, 9),
+    ]
+
+
+def peace_fountain() -> list[Prim]:
+    """平和の碑（別案）: 円い水盤の真ん中の柱に、小さな平和の灯。"""
+    return [
+        _plaza(),
+        cylinder(0.5, 0.5, 0.32, 0.6, 1.8, c=GRANITE, cap_c="#a4a7ab"),
+        cylinder(0.5, 0.5, 0.27, 2.4, 0.6, c=WHITE, cap_c=SKY_BLUE),
+        cylinder(0.5, 0.5, 0.075, 3.0, 10, c=WHITE),
+        cylinder(0.5, 0.5, 0.1, 13, 2.2, c=GRANITE, cap_c="#a4a7ab"),
+        cylinder(0.5, 0.5, 0.05, 15.2, 1.2, c=IRON),
+        flame(0.5, 0.5, 16.4, 6),
+        *broadleaf(0.2, 0.78, 3.4, 9),
+        *broadleaf(0.8, 0.8, 3.4, 9),
+    ]
+
+
+def balance_scale() -> list[Prim]:
+    """帳簿の碑: 金の天秤。借方と貸方がいつも等しいことを、釣り合った二つの皿で表す。"""
+    zb = 28.0
+    parts = [
+        _plaza(),
+        box(0.3, 0.38, 0.7, 0.62, 0.6, 2.4, GRANITE, "#a4a7ab"),
+        box(0.4, 0.44, 0.6, 0.56, 3.0, 2.0, CONCRETE, "#d7d2c6"),
+        box(0.465, 0.465, 0.535, 0.535, 5.0, 19, WHITE, "#e6e2d8"),
+        box(0.45, 0.45, 0.55, 0.55, 24, 1.2, GRANITE, "#a4a7ab"),
+        cylinder(0.5, 0.5, 0.03, 25.2, 3.0, c=GOLD),
+        box(0.2, 0.485, 0.8, 0.515, zb, 1.4, GOLD, "#e8c25c"),
+    ]
+    for u in (0.2, 0.8):
+        parts.append(strut((u, 0.5, zb), (u - 0.1, 0.5, 18), 0.7, IRON))
+        parts.append(strut((u, 0.5, zb), (u + 0.1, 0.5, 18), 0.7, IRON))
+        parts.append(cylinder(u, 0.5, 0.12, 17, 1.4, c=GOLD))
+        for k in range(3):
+            parts.append(cylinder(u, 0.5, 0.045, 18.4 + 1.1 * k, 1.0, c="#f0d060", cap_c="#f7e28a"))
+    return parts
+
+
+def open_ledger() -> list[Prim]:
+    """帳簿の碑（別案）: 立てた開き帳簿。罫線と、真ん中の赤い線で左右に分かれる。"""
+    parts = [
+        _plaza(),
+        box(0.14, 0.36, 0.86, 0.64, 0.6, 2.6, GRANITE, "#a4a7ab"),
+        box(0.18, 0.42, 0.82, 0.5, 3.2, 24, "#6b4a3a", "#7d5a48"),
+        box(0.21, 0.5, 0.495, 0.52, 4.6, 21, CREAM, "#f3ead6"),
+        box(0.505, 0.5, 0.79, 0.52, 4.6, 21, CREAM, "#f3ead6"),
+        box(0.495, 0.5, 0.505, 0.525, 4.6, 21, "#a8483a"),
+    ]
+    for a0, a1 in ((0.235, 0.47), (0.53, 0.765)):
+        for k in range(8):
+            z = 8.0 + 2.2 * k
+            parts.append(
+                plane_poly(
+                    "v", 0.52, [(a0, z), (a1, z), (a1, z + 0.55), (a0, z + 0.55)], "#7b6f5b", 1
+                )
+            )
+        a = a0 + (a1 - a0) * 0.62
+        parts.append(
+            plane_poly(
+                "v", 0.52, [(a, 7.6), (a + 0.006, 7.6), (a + 0.006, 25.2), (a, 25.2)], "#a8483a", 1
+            )
+        )
+    return parts
+
+
+def check_slab() -> list[Prim]:
+    """検証の碑: 黒い石板の白い面に、緑のチェック（確かめた印）。"""
+    return [
+        _plaza(),
+        box(0.24, 0.38, 0.76, 0.62, 0.6, 2.4, GRANITE, "#a4a7ab"),
+        box(0.3, 0.45, 0.7, 0.55, 3.0, 25, "#3d4044", "#55595e"),
+        plane_poly("v", 0.55, [(0.32, 7), (0.68, 7), (0.68, 25), (0.32, 25)], "#f1eee6", 1),
+        px_poly("v", 0.55, 0.5, 16, CHECK, TICK_GREEN, 2, 1.0),
+    ]
+
+
+def magnifier() -> list[Prim]:
+    """検証の碑（別案）: 台に立てた虫眼鏡。レンズの中に緑のチェック。"""
+    r_out, r_in = 8.5, 6.6
+    a, z = 0.5, 24.0
+    return [
+        _plaza(),
+        box(0.24, 0.38, 0.76, 0.62, 0.6, 2.4, GRANITE, "#a4a7ab"),
+        box(0.34, 0.44, 0.66, 0.56, 3.0, 2.4, "#3d4044", "#55595e"),
+        strut((a - 0.07, 0.5, z - 6.2), (a - 0.17, 0.5, 5.4), 2.4, "#3d4044"),
+        plane_poly("v", 0.5, ellipse_pts(a, z, r_in, 18)[:-1], "#cfe6f3"),
+        *ring_plane("v", 0.5, a, z, r_out, r_in - 0.4, STEEL_SILVER, 22),
+        px_poly("v", 0.5, a, z, CHECK, TICK_GREEN, 2, 0.85),
+    ]
+
+
+# 数案を出すときの別の案（theme.yaml には載せない。--spare で別のフォルダに書き出す）
+ALTERNATES: dict[str, list[Prim]] = {
+    "facility/monument_peace_ring": peace_ring(),
+    "facility/monument_peace_fountain": peace_fountain(),
+    "facility/monument_ledger_book": open_ledger(),
+    "facility/monument_verification_magnifier": magnifier(),
+}
+
 SHAPES.update(
     {
         # モノリス: 何も刻まれていない黒い石板（箱庭の原点）。低い台の上に立つ
@@ -2538,35 +3116,18 @@ SHAPES.update(
             box(0.33, 0.54, 0.67, 0.545, 5.6, 18, WHITE),
             *flag(0.7, 0.62, 3.6, 8, YELLOW, 0.06),
         ],
-        # 建国記念碑: 白いオベリスク（四角い柱が細くなり、先がとがる）
+        # 建国記念碑: 白いオベリスク（細い四角い柱が、先へすぼまってとがる）
         "facility/monument_founding": [
             _plaza(),
-            box(0.3, 0.3, 0.7, 0.7, 0.6, 3.4, GRANITE, "#a4a7ab"),
-            box(0.38, 0.38, 0.62, 0.62, 4, 4, OBELISK),
-            box(0.41, 0.41, 0.59, 0.59, 8, 20, OBELISK),
-            hip(0.41, 0.41, 0.59, 0.59, 28, 7, "#d9d2c0"),
-            *flag(0.64, 0.66, 4, 8, RED, 0.06),
+            box(0.3, 0.3, 0.7, 0.7, 0.6, 3.0, GRANITE, "#a4a7ab"),
+            box(0.36, 0.36, 0.64, 0.64, 3.6, 3.0, "#c9c3b8", "#d7d2c6"),
+            box(0.42, 0.42, 0.58, 0.58, 6.6, 3.4, OBELISK),
+            box(0.44, 0.44, 0.56, 0.56, 10, 24, OBELISK),
+            hip(0.44, 0.44, 0.56, 0.56, 34, 6, "#d9d2c0"),
+            *flag(0.63, 0.65, 3.6, 8, RED, 0.06),
         ],
-        # 平和記念碑: 白い円柱の塔と、先の緑の丸屋根、足元の木
-        "facility/monument_peace": [
-            _plaza(),
-            cylinder(0.5, 0.5, 0.26, 0.6, 3.2, c=GRANITE),
-            cylinder(0.5, 0.5, 0.12, 3.8, 24, r_top=0.085, c=WHITE),
-            cylinder(0.5, 0.5, 0.1, 27.8, 2, c=STONE),
-            dome(0.5, 0.5, 0.1, 29.8, 8, TOWER_GREEN),
-            *broadleaf(0.2, 0.78, 3.4, 9),
-            *broadleaf(0.8, 0.8, 3.4, 9),
-        ],
-        # 戦いの碑: 砂岩の門（二本の脚と、それをまたぐ梁。凱旋門の雰囲気だけ）
-        "facility/monument_battle": [
-            _plaza(),
-            box(0.2, 0.34, 0.4, 0.66, 0.6, 22, SAND),
-            box(0.6, 0.34, 0.8, 0.66, 0.6, 22, SAND),
-            box(0.2, 0.34, 0.8, 0.66, 22.6, 6, SAND),
-            box(0.18, 0.32, 0.82, 0.68, 28.6, 1.6, CREAM),
-            box(0.4, 0.5, 0.6, 0.66, 0.6, 1, COAL),
-            flame(0.5, 0.58, 1.6, 4),
-        ],
+        "facility/monument_peace": dove_wall(),
+        "facility/monument_battle": triumphal_arch(),
         # 慰霊碑: 低い黒御影の台と、白い花、小さな灯
         "facility/monument_cenotaph": [
             _plaza(),
@@ -2580,57 +3141,302 @@ SHAPES.update(
             cylinder(0.5, 0.5, 0.05, 8, 3, c=IRON),
             flame(0.5, 0.5, 11, 5),
         ],
-        # 元首の像: 高い台座の上の青銅の像
+        # 元首の像: 低い台座の上の青銅の像
         "facility/monument_leader": [
             _plaza(),
-            box(0.3, 0.3, 0.7, 0.7, 0.6, 3, GRANITE, "#a4a7ab"),
-            box(0.38, 0.38, 0.62, 0.62, 3.6, 13, CONCRETE, "#d7d2c6"),
-            box(0.36, 0.36, 0.64, 0.64, 16.6, 1.6, GRANITE, "#a4a7ab"),
-            *_figure(0.5, 0.5, 18.2, 20, BRONZE),
+            box(0.3, 0.3, 0.7, 0.7, 0.6, 2.6, GRANITE, "#a4a7ab"),
+            box(0.38, 0.38, 0.62, 0.62, 3.2, 8.4, CONCRETE, "#d7d2c6"),
+            box(0.36, 0.36, 0.64, 0.64, 11.6, 1.4, GRANITE, "#a4a7ab"),
+            *leader_statue(),
         ],
-        # 労働者の像: 台座の上に、金づちを掲げる像と、前の赤い旗
+        # 労働者の像: 煉瓦の台座の上に、金づちをかかげる像。台座には歯車と、前の赤い旗
         "facility/monument_worker": [
             _plaza(),
-            box(0.28, 0.32, 0.72, 0.68, 0.6, 4, "#8c4a3c", "#a8604a"),
-            box(0.36, 0.38, 0.64, 0.62, 4.6, 9, CONCRETE, "#d7d2c6"),
-            *_figure(0.4, 0.42, 13.6, 18, STEEL_SILVER),
-            *_figure(0.6, 0.6, 13.6, 15, STEEL_SILVER, arm=False),
-            box(0.3, 0.6, 0.7, 0.64, 4.6, 1.4, RED),
-            *flag(0.7, 0.3, 4.6, 12, RED, 0.08),
+            box(0.28, 0.32, 0.72, 0.68, 0.6, 3.4, "#8c4a3c", "#a8604a"),
+            box(0.36, 0.38, 0.64, 0.62, 4.0, 8.6, CONCRETE, "#d7d2c6"),
+            box(0.345, 0.365, 0.655, 0.635, 12.6, 0.4, GRANITE, "#a4a7ab"),
+            cog("v", 0.62, 0.5, 8.4, 3.2, "#8c4a3c"),
+            *worker_statue(),
+            *flag(0.74, 0.3, 4.0, 14, RED, 0.08),
         ],
-        # 展望塔: 赤と白の鉄骨の塔。二つの展望台と、先のアンテナ
-        "facility/monument_tower": [
-            _plaza(),
-            *_tower_legs(0.28, 0.5, 44, RED, 2.2),
-            *tiered(
-                1,
-                box(0.34, 0.34, 0.66, 0.66, 12, 3.4, WHITE, "#cfd3d8"),
-                box(0.4, 0.4, 0.6, 0.6, 24, 3, WHITE, "#cfd3d8"),
-            ),
-            cylinder(0.5, 0.5, 0.012, 38, 12, c=RED),
-            cylinder(0.5, 0.5, 0.005, 50, 6, c=METAL),
-        ],
-        # 帳簿の碑: 開いた帳簿のように罫線の入った低い石板（真ん中の赤い線が借方と貸方を分ける）
-        "facility/monument_ledger": [
-            _plaza(),
-            box(0.18, 0.3, 0.82, 0.7, 0.6, 2.4, GRANITE, "#a4a7ab"),
-            box(0.22, 0.38, 0.78, 0.62, 3, 13, CREAM, "#d9cfb4"),
-            *[box(0.26, 0.62, 0.74, 0.625, 5.5 + 2.6 * k, 0.6, IRON) for k in range(4)],
-            box(0.495, 0.62, 0.505, 0.625, 4, 11, RED),
-            box(0.22, 0.38, 0.78, 0.62, 16, 1, GRANITE, "#a4a7ab"),
-        ],
-        # 検証の碑: 灰色の敷石の台座に濃灰色の角柱、それを囲む銀灰色のコの字の測定枠
-        "facility/monument_verification": [
-            box(0.12, 0.12, 0.88, 0.88, 0, 1.4, "#9a9da1", "#b4b7bb"),
-            box(0.4, 0.4, 0.6, 0.6, 1.4, 24, "#3d4044", "#55595e"),
-            box(0.24, 0.24, 0.29, 0.29, 1.4, 30, STEEL_SILVER),
-            box(0.24, 0.71, 0.29, 0.76, 1.4, 30, STEEL_SILVER),
-            box(0.24, 0.24, 0.29, 0.76, 31.4, 2.4, STEEL_SILVER),
-            *[
-                box(0.29, 0.24 + 0.1 * k, 0.31, 0.25 + 0.1 * k, 31.4, 1.2, IRON)
-                for k in range(1, 5)
-            ],
-        ],
+        "facility/monument_tower": lattice_tower(),
+        "facility/monument_ledger": balance_scale(),
+        "facility/monument_verification": check_slab(),
+    }
+)
+
+
+# --- 都市と大都市（建物ごと描き分け、窓は壁の板。数案は ALTERNATES） ---------------------------
+
+ROAD = "#6d7177"
+WIN = "#6f8aa3"
+WIN_DARK = "#4f6c86"
+BRICK_LIGHT = "#c47a5e"
+OCHRE = "#e0c58e"
+SIDE_GRAY = "#8f969c"  # 屋上の面の色（高層の側面でない部分）
+
+
+def rooftop_tank(u: float, v: float, z: float) -> list[Prim]:
+    """屋上の給水塔: 足と、円すい屋根の丸い胴。"""
+    return [
+        box(u - 0.025, v - 0.025, u + 0.025, v + 0.025, z, 2.4, IRON),
+        cylinder(u, v, 0.045, z + 2.4, 3.6, cap="cone", c=WOOD, cap_c=ROOF_BROWN),
+    ]
+
+
+def rooftop_unit(u: float, v: float, z: float) -> list[Prim]:
+    """屋上の空調機（箱と、その上の小さな箱）。"""
+    return [
+        box(u, v, u + 0.1, v + 0.06, z, 1.6, METAL, "#c0c7ce"),
+        box(u + 0.012, v + 0.012, u + 0.05, v + 0.048, z + 1.6, 0.8, DARK),
+    ]
+
+
+def mast(uc: float, vc: float, z: float, h: float, c: str = METAL, tip: str = RED) -> list[Prim]:
+    """高層の屋上の細いアンテナ（先の小さな灯）。"""
+    return [
+        cylinder(uc, vc, 0.014, z, h, r_top=0.004, c=c),
+        cylinder(uc, vc, 0.006, z + h, 1.6, c=tip),
+    ]
+
+
+def block_ground(z: float = 0.6, roads: bool = True) -> list[Prim]:
+    """街区の足元の舗装と、十字の道。ほかの形より先に描く。"""
+    ground = [box(0.05, 0.05, 0.95, 0.95, 0, z, CONCRETE, PAVEMENT)]
+    if roads:
+        ground += [
+            box(0.46, 0.05, 0.54, 0.95, z, 0.12, ROAD, "#7d8288"),
+            box(0.05, 0.46, 0.95, 0.54, z, 0.12, ROAD, "#7d8288"),
+        ]
+    return tiered(0, *ground)
+
+
+def street_trees(z: float = 0.6) -> list[Prim]:
+    """道の交わりのまわりの街路樹。"""
+    return [
+        p
+        for u, v in ((0.5, 0.28), (0.5, 0.72), (0.28, 0.5), (0.74, 0.5))
+        for p in broadleaf(u, v, 2.6, 7)
+    ]
+
+
+def city_blocks() -> list[Prim]:
+    """都市: 奥に屋上の給水塔のある赤れんがの事務所、右奥に白い集合住宅（切妻）、
+    左手前にクリーム色の中層（屋上に空調）、手前の右に低い店。十字の道に街路樹。"""
+    z0 = 0.6
+    parts = block_ground()
+    parts += [
+        box(0.1, 0.1, 0.42, 0.42, z0, 36, BRICK, SIDE_GRAY),
+        *facade(0.1, 0.1, 0.42, 0.42, 4.5, 34, 5.0, 2.8, 4, 4, WIN),
+        box(0.09, 0.09, 0.43, 0.43, z0 + 36, 1.2, CREAM, "#c9c3b8"),
+        *rooftop_tank(0.18, 0.18, z0 + 37.2),
+    ]
+    parts += [
+        box(0.58, 0.1, 0.9, 0.4, z0, 22, WALL, SIDE_GRAY),
+        *facade(0.58, 0.1, 0.9, 0.4, 3.5, 21, 4.6, 2.6, 5, 4, WIN_DARK),
+        gable(0.58, 0.1, 0.9, 0.4, z0 + 22, 6, "v", ROOF_TILE, WALL),
+    ]
+    parts += [
+        box(0.1, 0.58, 0.4, 0.9, z0, 24, OCHRE, SIDE_GRAY),
+        *facade(0.1, 0.58, 0.4, 0.9, 3.5, 23, 4.6, 2.6, 4, 4, WIN),
+        box(0.09, 0.57, 0.41, 0.91, z0 + 24, 1.0, CREAM, "#c9c3b8"),
+        *rooftop_unit(0.16, 0.64, z0 + 25),
+        *rooftop_unit(0.24, 0.74, z0 + 25),
+    ]
+    parts += [
+        box(0.6, 0.6, 0.9, 0.9, z0, 11, "#e6dac0", "#cfc8b8"),
+        *pane_row("v", 0.9, 0.63, 0.87, [1.2], 5.0, 4, 0.045, GLASS),
+        *pane_row("u", 0.9, 0.63, 0.87, [1.2], 5.0, 4, 0.045, GLASS),
+        *pane_row("v", 0.9, 0.63, 0.87, [7.2], 2.6, 4, 0.045, WIN),
+        *pane_row("u", 0.9, 0.63, 0.87, [7.2], 2.6, 4, 0.045, WIN),
+        box(0.585, 0.585, 0.915, 0.915, z0 + 11, 1.0, CREAM, "#c9c3b8"),
+        *rooftop_unit(0.66, 0.66, z0 + 12),
+    ]
+    return parts + street_trees()
+
+
+def city_plaza() -> list[Prim]:
+    """都市（別案）: 時計塔のある役所を奥に、瓦屋根の建物が広場の噴水を囲む。"""
+    z0 = 0.6
+    stone = "#e8dfc9"
+    parts = [box(0.05, 0.05, 0.95, 0.95, 0, 0.6, CONCRETE, PAVEMENT)]
+    parts += [
+        box(0.3, 0.3, 0.8, 0.8, z0, 0.4, "#e6dcc4", PAVEMENT),
+        cylinder(0.58, 0.62, 0.09, z0 + 0.4, 1.4, c=GRANITE, cap_c=SKY_BLUE),
+        cylinder(0.58, 0.62, 0.02, z0 + 1.8, 3.4, c=WHITE),
+    ]
+    parts += [
+        box(0.1, 0.1, 0.5, 0.34, z0, 24, stone, "#a39d90"),
+        *facade(0.1, 0.1, 0.5, 0.34, 4, 23, 6.5, 3.2, 4, 3, WIN_DARK),
+        gable(0.1, 0.1, 0.5, 0.34, z0 + 24, 6, "v", ROOF_TILE, stone),
+        box(0.2, 0.14, 0.32, 0.26, z0 + 24, 12, stone, "#a39d90"),
+        hip(0.2, 0.14, 0.32, 0.26, z0 + 36, 7, ROOF_SLATE),
+        *clock_face("v", 0.26, 0.26, z0 + 30, 2.6),
+    ]
+    parts += [
+        box(0.62, 0.1, 0.9, 0.46, z0, 24, "#d9a96f", "#a39d90"),
+        *facade(0.62, 0.1, 0.9, 0.46, 3.5, 23, 5.4, 2.8, 3, 4, WIN_DARK),
+        gable(0.62, 0.1, 0.9, 0.46, z0 + 24, 6, "u", ROOF_TILE, "#d9a96f"),
+    ]
+    parts += [
+        box(0.1, 0.5, 0.3, 0.9, z0, 18, "#e3dccd", "#a39d90"),
+        *facade(0.1, 0.5, 0.3, 0.9, 3.5, 17, 5.4, 2.8, 2, 4, WIN_DARK),
+        gable(0.1, 0.5, 0.3, 0.9, z0 + 18, 5, "u", ROOF_BROWN, "#e3dccd"),
+    ]
+    parts += [
+        box(0.4, 0.84, 0.9, 0.92, z0, 9, BRICK_LIGHT, SIDE_GRAY),
+        *awning("v", 0.92, 0.42, 0.88, 7.2, 5.4, 0.04),
+        *pane_row("v", 0.92, 0.42, 0.88, [1.2], 4.0, 5, 0.06, GLASS),
+        gable(0.4, 0.84, 0.9, 0.92, z0 + 9, 3, "u", ROOF_TILE, BRICK_LIGHT),
+        *broadleaf(0.36, 0.7, 2.6, 7),
+    ]
+    return parts
+
+
+def city_glass() -> list[Prim]:
+    """都市（別案）: 現代の街区。奥にガラスの高い塔、右に屋上庭園の低い棟、左に中層、
+    手前に低い基壇。"""
+    z0 = 0.6
+    garden = "#4f9a42"
+    parts = block_ground()
+    parts += [
+        box(0.1, 0.1, 0.42, 0.42, z0, 40, GLASS, "#7e8f9a"),
+        *band_facade(0.1, 0.1, 0.42, 0.42, 2.0, 39, 3.0, 1.6, "#5d7ea0"),
+        box(0.16, 0.16, 0.36, 0.36, z0 + 40, 3, METAL, "#c0c7ce"),
+    ]
+    parts += [
+        box(0.58, 0.1, 0.9, 0.4, z0, 17, WHITE, SIDE_GRAY),
+        *band_facade(0.58, 0.1, 0.9, 0.4, 2.5, 16, 4.0, 2.0, WIN),
+        box(0.62, 0.14, 0.86, 0.36, z0 + 17, 0.5, TREE, garden),
+    ]
+    parts += [
+        box(0.1, 0.58, 0.4, 0.9, z0, 24, "#d6dde2", SIDE_GRAY),
+        *band_facade(0.1, 0.58, 0.4, 0.9, 2.5, 23, 3.6, 1.8, "#5d7ea0"),
+    ]
+    parts += [
+        box(0.6, 0.6, 0.9, 0.9, z0, 9, "#b9c6cf", SIDE_GRAY),
+        *band_facade(0.6, 0.6, 0.9, 0.9, 2.0, 8, 3.4, 1.7, WIN_DARK),
+        box(0.64, 0.64, 0.86, 0.86, z0 + 9, 0.5, TREE, garden),
+    ]
+    return parts + street_trees()
+
+
+def metropolis_deco() -> list[Prim]:
+    """大都市: 石の外壁が段々にすぼまる、金の尖塔をいただくアールデコの摩天楼と、
+    まわりの段々の塔。"""
+    z0 = 4.0
+    stone, sand, side = "#e6dcc4", "#d9cfb4", "#a39d90"
+    win = "#5d6f7e"
+    parts = block_ground(z0, roads=False)
+    parts += [
+        box(0.1, 0.1, 0.36, 0.36, z0, 30, stone, side),
+        *facade(0.1, 0.1, 0.36, 0.36, z0 + 3, z0 + 29, 4.4, 3.0, 4, 4, win, 0.03),
+        box(0.15, 0.15, 0.31, 0.31, z0 + 30, 12, stone, side),
+        box(0.2, 0.2, 0.26, 0.26, z0 + 42, 8, stone, side),
+        hip(0.2, 0.2, 0.26, 0.26, z0 + 50, 6, GOLD),
+    ]
+    parts += [
+        box(0.64, 0.1, 0.9, 0.34, z0, 24, sand, side),
+        *facade(0.64, 0.1, 0.9, 0.34, z0 + 3, z0 + 23, 4.4, 3.0, 4, 4, win, 0.03),
+        box(0.7, 0.16, 0.84, 0.28, z0 + 24, 9, sand, side),
+        hip(0.7, 0.16, 0.84, 0.28, z0 + 33, 4, GOLD),
+    ]
+    parts += [
+        box(0.1, 0.64, 0.34, 0.9, z0, 20, sand, side),
+        *facade(0.1, 0.64, 0.34, 0.9, z0 + 3, z0 + 19, 4.4, 3.0, 4, 4, win, 0.03),
+        box(0.15, 0.69, 0.29, 0.85, z0 + 20, 8, sand, side),
+    ]
+    parts += [
+        box(0.38, 0.38, 0.66, 0.66, z0, 26, stone, side),
+        *facade(0.38, 0.38, 0.66, 0.66, z0 + 3, z0 + 25, 4.4, 3.0, 5, 5, win, 0.03),
+        box(0.42, 0.42, 0.62, 0.62, z0 + 26, 14, stone, side),
+        *facade(0.42, 0.42, 0.62, 0.62, z0 + 28, z0 + 39, 4.4, 3.0, 4, 4, win, 0.03),
+        box(0.46, 0.46, 0.58, 0.58, z0 + 40, 12, stone, side),
+        *facade(0.46, 0.46, 0.58, 0.58, z0 + 42, z0 + 51, 4.4, 3.0, 2, 2, win, 0.03),
+        box(0.49, 0.49, 0.55, 0.55, z0 + 52, 8, "#f1e9d6", side),
+        hip(0.49, 0.49, 0.55, 0.55, z0 + 60, 10, GOLD),
+        *mast(0.52, 0.52, z0 + 70, 7, GOLD, GOLD),
+    ]
+    return parts
+
+
+def metropolis_glass() -> list[Prim]:
+    """大都市（別案）: 中央の段々にすぼまるガラスの超高層と、まわりのガラスの塔、手前の屋上庭園。"""
+    z0 = 4.0
+    blue = "#b7c4cc"
+    parts = block_ground(z0, roads=False)
+    parts += [
+        box(0.1, 0.1, 0.34, 0.34, z0, 44, "#a9bcc9", "#7e8f9a"),
+        *band_facade(0.1, 0.1, 0.34, 0.34, z0 + 3, z0 + 43, 3.2, 1.7, WIN_DARK),
+        box(0.14, 0.14, 0.3, 0.3, z0 + 44, 3, METAL, "#c0c7ce"),
+        *mast(0.22, 0.22, z0 + 47, 9),
+    ]
+    parts += [
+        box(0.62, 0.1, 0.9, 0.34, z0, 34, WHITE, "#cfd3d8"),
+        *band_facade(0.62, 0.1, 0.9, 0.34, z0 + 3, z0 + 33, 3.4, 1.8, WIN),
+        box(0.7, 0.16, 0.82, 0.28, z0 + 34, 3, GLASS2, SIDE_GRAY),
+    ]
+    parts += [
+        box(0.1, 0.62, 0.34, 0.9, z0, 28, GLASS, "#7e8f9a"),
+        *band_facade(0.1, 0.62, 0.34, 0.9, z0 + 3, z0 + 27, 3.2, 1.7, WIN_DARK),
+        box(0.14, 0.66, 0.3, 0.86, z0 + 28, 1.2, METAL, "#c0c7ce"),
+    ]
+    parts += [
+        box(0.4, 0.4, 0.64, 0.64, z0, 36, blue, SIDE_GRAY),
+        *band_facade(0.4, 0.4, 0.64, 0.64, z0 + 2.5, z0 + 35, 3.2, 1.7, WIN_DARK),
+        box(0.44, 0.44, 0.6, 0.6, z0 + 36, 18, blue, SIDE_GRAY),
+        *band_facade(0.44, 0.44, 0.6, 0.6, z0 + 38, z0 + 53, 3.2, 1.7, WIN_DARK),
+        box(0.48, 0.48, 0.56, 0.56, z0 + 54, 8, blue, SIDE_GRAY),
+        *mast(0.52, 0.52, z0 + 62, 14),
+    ]
+    parts += [
+        box(0.68, 0.68, 0.9, 0.9, z0, 8, WHITE, "#cfd3d8"),
+        *band_facade(0.68, 0.68, 0.9, 0.9, z0 + 1.5, z0 + 7, 3.2, 1.6, WIN),
+        box(0.7, 0.7, 0.88, 0.88, z0 + 8, 0.5, TREE, "#4f9a42"),
+    ]
+    return parts
+
+
+def metropolis_round() -> list[Prim]:
+    """大都市（別案）: 奥の丸い高い塔（ガラスと白の帯）、板のような塔、
+    手前のガラスのピラミッド屋根。"""
+    z0 = 4.0
+    parts = block_ground(z0, roads=False)
+    for i in range(14):
+        parts.append(
+            cylinder(0.3, 0.3, 0.17, z0 + i * 3.6, 3.6, c=WIN if i % 2 == 0 else "#dfe4e8")
+        )
+    parts += [
+        cylinder(0.3, 0.3, 0.17, z0 + 50.4, 2, c=METAL),
+        cylinder(0.3, 0.3, 0.1, z0 + 52.4, 5, cap="dome", c=GLASS, cap_c=GLASS2),
+        *mast(0.3, 0.3, z0 + 62, 8),
+    ]
+    parts += [
+        box(0.6, 0.12, 0.9, 0.3, z0, 40, "#cfd6db", SIDE_GRAY),
+        *band_facade(0.6, 0.12, 0.9, 0.3, z0 + 2.5, z0 + 39, 3.2, 1.7, WIN_DARK),
+        box(0.62, 0.14, 0.88, 0.28, z0 + 40, 1.5, METAL, "#c0c7ce"),
+    ]
+    parts += [
+        box(0.1, 0.6, 0.34, 0.9, z0, 32, GLASS, "#7e8f9a"),
+        *band_facade(0.1, 0.6, 0.34, 0.9, z0 + 2.5, z0 + 31, 3.2, 1.7, WIN_DARK),
+        box(0.14, 0.64, 0.3, 0.86, z0 + 32, 3, METAL, "#c0c7ce"),
+    ]
+    parts += [
+        box(0.5, 0.5, 0.9, 0.9, z0, 8, WHITE, "#cfd3d8"),
+        *band_facade(0.5, 0.5, 0.9, 0.9, z0 + 1.5, z0 + 7, 3.4, 1.7, WIN),
+        hip(0.55, 0.55, 0.85, 0.85, z0 + 8, 10, GLASS),
+    ]
+    return parts
+
+
+SHAPES["housing/city"] = city_blocks()
+SHAPES["housing/metropolis"] = metropolis_deco()
+ALTERNATES.update(
+    {
+        "housing/city_plaza": city_plaza(),
+        "housing/city_glass": city_glass(),
+        "housing/metropolis_glass": metropolis_glass(),
+        "housing/metropolis_round": metropolis_round(),
     }
 )
 
@@ -2691,7 +3497,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("out", type=Path)
     parser.add_argument("--style", choices=list(STYLES), default="color")
+    parser.add_argument(
+        "--spare", type=Path, help="ゲームで使わない別の案（ALTERNATES）を書き出すフォルダ"
+    )
     args = parser.parse_args()
+    if args.spare:
+        for name, prims in ALTERNATES.items():
+            path = args.spare / f"{name}.svg"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(render(prims, STYLES[args.style]), encoding="utf-8")
+        print(f"別の案 {len(ALTERNATES)} 枚を {args.spare} に書きました")
     for name, prims in SHAPES.items():
         path = args.out / f"{name}.svg"
         path.parent.mkdir(parents=True, exist_ok=True)
