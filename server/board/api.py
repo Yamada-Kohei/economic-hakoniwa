@@ -9,7 +9,6 @@ null にする（あぼーん）。NG に当たった書き込みは本文を nu
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from typing import Any
 
@@ -18,6 +17,7 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods
 
+from server import jsonbody
 from server.board import services
 from server.board.models import NgRule, Post, Thread
 
@@ -43,7 +43,7 @@ def _page_info(page: Page) -> dict[str, int]:
 
 def _body(request) -> dict[str, Any]:
     try:
-        data = json.loads(request.body or b"{}")
+        data = jsonbody.loads(request.body or b"{}")
     except ValueError:
         data = None
     if not isinstance(data, dict):

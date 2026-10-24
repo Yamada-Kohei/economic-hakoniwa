@@ -89,7 +89,7 @@ def test_orders_api_rejects_non_finite_numbers_without_crashing(client, world):
     island = _own_island(client)
     body = '{"kind": "set_price_cap", "payload": {"good": "electricity", "price": NaN}}'
     res = client.post(f"/api/islands/{island.id}/orders/check", body, "application/json")
-    assert res.status_code == 200 and res.json()["ok"] is False
+    assert res.status_code == 400  # NaN は JSON にない。入り口で断る（server/jsonbody.py）
 
 
 def test_order_defs_say_prices_are_shown_units(client, world):

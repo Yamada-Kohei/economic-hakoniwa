@@ -33,6 +33,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.naming import facility_name
+from server import jsonbody
 from server.game import get_game
 from server.letters import services as letter_services
 from server.web import display
@@ -1404,7 +1405,7 @@ def endpoint(request: HttpRequest) -> HttpResponse:
         response["WWW-Authenticate"] = 'Bearer realm="hakoniwa"'
         return response
     try:
-        message = json.loads(request.body or b"")
+        message = jsonbody.loads(request.body or b"")
     except ValueError:
         return _json(_error(None, -32700, "JSON として読めません"), status=400)
     if isinstance(message, list):  # まとめて送る形（2025-03-26 の版）

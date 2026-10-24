@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import copy
+from datetime import timedelta
 
 import pytest
 from django.contrib.auth.models import User
+from django.utils import timezone
 
 from hakoniwa_core.state.serialize import world_to_dict
+from server.accounts.models import SignupRecord
+from server.accounts.views import ip_hash
 from server.game import get_game
 from server.orders.models import Order
 from server.turns.services import rollback, run_turn
@@ -276,3 +280,54 @@ def test_pages_render(client, world):
     # マスの欄から足した命令の結果は、地図の上に重ねて出す（命令の欄まで見に行かなくてよいように）
     assert 'id="order-notice"' in page
     assert island.name in client.get("/world/").content.decode()
+
+
+def test_signup_groups_ipv6_by_64_and_ignores_unreadable_ip(client, db, caplog):
+    assert _signup(client, "v6a", "2001:db8:1:2::1").status_code == 302
+    client.logout()
+    # 同じ /64 の別の接続元は同じ回線として数える
+    res = _signup(client, "v6b", "2001:db8:1:2:ffff::9")
+    assert res.status_code == 200 and "すでに登録されています" in res.content.decode()
+    client.logout()
+    assert _signup(client, "v6c", "2001:db8:1:3::1")["Location"] == "/found/"
+    client.logout()
+    # IPv4 を IPv6 の形で書いたものは IPv4 と同じ接続元
+    assert _signup(client, "m1", "::ffff:10.0.0.7").status_code == 302
+    client.logout()
+    assert _signup(client, "m2", "10.0.0.7").status_code == 200
+    client.logout()
+    # ポート付き・括弧付きも読める
+    assert _signup(client, "p1", "10.1.1.1:5555").status_code == 302
+    client.logout()
+    assert _signup(client, "p2", "10.1.1.1").status_code == 200
+    client.logout()
+    assert _signup(client, "p3", "[2001:db8:9:9::1]:80").status_code == 302
+    client.logout()
+    assert _signup(client, "p4", "2001:db8:9:9::2").status_code == 200
+    client.logout()
+    # 接続元が読めないときは数えない（全員が同じ接続元になって誰も登録できなくなるのを避ける）
+    for i in range(3):
+        assert _signup(client, f"blank{i}", "")["Location"] == "/found/"
+        client.logout()
+    assert not SignupRecord.objects.filter(ip_hash=ip_hash("")).exists()
+    assert "接続元の IP が読めない" in caplog.text
+
+
+def test_admin_can_let_one_account_register_more_from_the_same_ip(client, db):
+    assert _signup(client, "first", "10.2.2.2").status_code == 302
+    client.logout()
+    assert _signup(client, "second", "10.2.2.2").status_code == 200  # 上限は 1 のまま
+    record = SignupRecord.objects.get(user__username="first")
+    record.extra = 2  # 管理画面で「追加で登録できる人数」を入れる
+    record.save()
+    for name in ("second", "third"):
+        assert _signup(client, name, "10.2.2.2")["Location"] == "/found/"
+        client.logout()
+    assert _signup(client, "fourth", "10.2.2.2").status_code == 200
+    assert not User.objects.filter(username="fourth").exists()
+    # ほかの接続元には効かず、古くなっても認めた分の記録は消えない
+    assert _signup(client, "other", "10.2.2.3")["Location"] == "/found/"
+    SignupRecord.objects.filter(pk=record.pk).update(created_at=timezone.now() - timedelta(days=90))
+    client.logout()
+    _signup(client, "after-expiry", "10.2.2.9")  # 掃除が走る
+    assert SignupRecord.objects.filter(pk=record.pk).exists()

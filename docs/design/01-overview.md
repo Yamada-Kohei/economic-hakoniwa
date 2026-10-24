@@ -5,7 +5,7 @@
 ## コードの場所と試験
 
 - 段の進め方: `hakoniwa_core/turn/engine.py`（段を `stages` の順に呼ぶ、島ごとの段と全島の段）、`hakoniwa_core/turn/context.py` の `StageContext`、`hakoniwa_core/turn/rng.py`（乱数の作り方）、`hakoniwa_core/registry.py`（段・命令・式の差し替え口）
-- ターンの実行と保存: `server/turns/services.py` の `run_turn`（更新中の印・写し・トランザクション）
+- ターンの実行と保存: `server/turns/services.py` の `run_turn`（更新中の印・写し・トランザクション）と、`update_is_stale`・`update_running`（残った印と、走っている更新の見分け）。入り口の JSON の読み方: `server/jsonbody.py`
 - お金の帳簿: `hakoniwa_core/ledger.py` の `post`・`pay`。量の単位: `hakoniwa_core/units.py`
 - 定義データ: `hakoniwa_core/defs/`（`loader.py` の `load_defs`、`defs.py` の `Defs`）、`packs/`。命令: `hakoniwa_core/orders.py`
 - 試験: tests/core/test_engine.py、tests/core/test_defs.py、tests/core/test_rules.py、tests/server/test_turns.py
@@ -47,6 +47,8 @@
 | OV-24 | 前のフェーズから続く島は、更新の初めの段 `upgrade` が 1 度だけ移し替える | 決定 | | tests/core/test_shocks.py::test_upgrade_from_phase2_1_keeps_production, tests/core/test_phase3_2.py::test_upgrade_gives_old_islands_a_climate_and_blends_it_in |
 | OV-25 | 財の量の単位（トン・m³・台・MWh など）は定義データに持ち、画面では「資源」と呼ぶ。ゲームの 1 トンは実物よりかなり大きいまま | 仮 | （設定にない） | （未確認） |
 | OV-26 | ベータ版は VPS 1 台で動かし、世界を複数動かすときは DB とサービスを世界ごとに分ける。写しはゲームの中・毎晩の DB・外の 3 重 | 決定 | `backups.keep` | （未確認） |
+| OV-28 | 更新が走っている間は、命令の列の書き換えを受け付けない（409。更新が読んだ列と食い違わせない）。強制終了などで印だけが残ったときは、次の呼び出しが印を外して更新をやり直し、管理者にメールする。見分けは、PostgreSQL では世界の行の鎖（走っている更新が持つ。印を立てた直後の短い猶予だけ待つ）、鎖のない SQLite では印の古さ | 決定 | `HAKONIWA_UPDATE_STALE_MINUTES`（環境変数） | tests/server/test_turns.py::test_leftover_updating_mark_is_cleared_after_the_stale_limit, ::test_orders_are_refused_while_an_update_is_running, ::test_row_lock_tells_a_running_update_from_a_leftover_mark |
+| OV-29 | JSON を受ける入り口は、壊れた本文・オブジェクトでない本文・NaN や Infinity・項目の型違い・ありえない値を送られても 500 にせず、400 台で断る | 決定 | | tests/server/test_bad_input.py |
 | OV-27 | 登録は誰でもできる。守りはロボット避け、同じ接続元から登録できる数、パスワードの試しすぎの上限、管理画面での非表示 | 決定 | `accounts.signups_per_ip`, `accounts.remember_days` | tests/server/test_web.py |
 
 ### 仮の決まり
@@ -80,7 +82,7 @@
 ### 1 回のターン更新で起きること
 
 1. 定期実行が `manage.py run_turn` を呼ぶ。次の更新時刻になっていなければ何もしないので、短い間隔で呼んでも二重に進まない。更新中や一時停止中も進まない。
-2. 更新中の印を立てる。その後に届いた命令は次のターンに回る。
+2. 更新中の印を立てる（残っていた古い印は外してやり直す）。その後に届いた命令は次のターンに回り、更新中は命令の列を書き換えられない。
 3. DB から世界全体をコアの状態 `WorldState` に読み込み、写しをバックアップに取る。読み込んだ定義データが DB にあるものを覆っているかを確かめ、消えたものがあれば止める。
 4. `stages` の順に段を実行する。島ごとの段は島ごとに、全島の段は世界全体に 1 度。前のフェーズから続く島があれば、初めの段 `upgrade` がその回の最初のターンに 1 度だけ移し替える。
 5. 変わったものだけを書き戻し、ターンログと統計、お金の勘定と帳簿の記録を足し、ターン番号を進める。
@@ -167,9 +169,9 @@
 
 | 場面 | 誰が・何を | どれくらいの間に | 元に戻る道 | 現実の例 | 設定の名前 |
 | --- | --- | --- | --- | --- | --- |
-| 足りない | 行政力が足りなければ命令はそこで止まり、残りは列に残って次のターンに回る（遅らせる役: 命令の列）。1 ターンの計算が更新の間隔を超えると、次の呼び出しは「更新中」で何もしない | そのターン | 次のターンに続きを実行する。中央省庁の公務員を増やす | 政府の決裁の滞り | `orders.base_admin_power`, `orders.max_admin_power`, `turn.interval_minutes` |
+| 足りない | 行政力が足りなければ命令はそこで止まり、残りは列に残って次のターンに回る（遅らせる役: 命令の列）。1 ターンの計算が更新の間隔を超えると、次の呼び出しは「更新中」で何もしない。更新中に命令の列を書き換えようとすると断られ、少し待ってもう一度送る | そのターン | 次のターンに続きを実行する。中央省庁の公務員を増やす | 政府の決裁の滞り | `orders.base_admin_power`, `orders.max_admin_power`, `turn.interval_minutes` |
 | 余る | 並べられる命令が上限を超えると受け付けない。バックアップと記録は決めた数・期間を超えた分から消す | 受付時／毎ターン | 命令を消す・実行を待つ。記録の期間は設定で延ばせる | | `orders.max_queue`, `backups.keep`, `records.journal_turns`, `records.trades_turns`, `records.books_turns` |
-| 0 になる | 島が 0 の世界でも段は回る（フェーズ0 の空の世界）。段の途中で例外が出たら何も書かず、ターンを進めず、管理者にメールする。帳簿や世界の確かめが合わないときも同じ | そのターン | 不具合を直して `run_turn --force`、または巻き戻し。更新中の印が残った場合は管理画面で外す（ベータ版の前の直し。タブ 14） | | `backups.keep` |
+| 0 になる | 島が 0 の世界でも段は回る（フェーズ0 の空の世界）。段の途中で例外が出たら何も書かず、ターンを進めず、管理者にメールする。帳簿や世界の確かめが合わないときも同じ | そのターン | 不具合を直して `run_turn --force`、または巻き戻し。更新中の印が残った場合は次の呼び出しが自動で外す（OV-28） | | `backups.keep` |
 | 一部だけ（層の中の少しの人、島の中の 1 か所） | 一部の島が前のフェーズのまま → `upgrade` の段がその島だけを 1 度移し替える。一部の定義が DB にあるのにパックから消えた → 更新を止める | 移し替えはその回の最初のターン | 移し替えの手順をパックに同梱する | | |
 | 持ち主・相手がいない | 長く操作しない島は「休止中」の印を付けて残し、自動の処理だけを続ける（自動で消さず、管理者が管理画面で休止・無人にする）。貿易圏の代表が休止中なら加盟国が引き継ぐ（タブ 9） | 管理者が決めるまで | 持ち主が戻って命令を出す | 行政の自動運転 | |
 | 時間がたつ（満期・寿命・一巡・育ちきった後） | 12 の倍数のターンに年に 1 度の処理が動く。国債の銘柄や勘定が増えると 1 ターンが遅くなる（`docs/scale.md`。結果を変えない直しで速くし、銘柄の数そのものは回5 で見る）。バックアップは古いものから消える | 毎年／ターンごとに少しずつ | 帳簿の索引（`Accounts`）で勘定の数に比例しないようにした | | `backups.keep` |
