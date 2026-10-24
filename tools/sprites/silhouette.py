@@ -76,7 +76,7 @@ MILITARY = "#7d8466"  # 軍の壁・部隊の服
 MILITARY_DARK = "#5c6249"  # 軍の屋根
 NAVY_GRAY = "#8a96a0"  # 軍艦の船体
 STRIPES = (RED, WHITE)  # 縞の日よけ（赤白）
-STORE_SIGN = "#23406b"  # 百貨店の屋上の看板の紺
+STORE_SIGN = "#23406b"  # 百貨店の屋上の広告塔の紺
 STORE_WINDOW = "#7f9bb3"
 
 # 基の色と、面ごとの明るさ（上面・屋根の左向き・左の側面・屋根の右向き・右の側面）。
@@ -757,9 +757,12 @@ def facade(
     建物の足元（または段の下の端）より下に出さない。
     nl・nr は左の面・右の面の 1 階あたりの窓の数。"""
     zs = [z_from + pitch * i for i in range(int((z_to - z_from - hh) / pitch) + 1)]
+    # 窓どうしが重ならないよう、幅は 1 つぶんの間隔の 7 割まで
+    wl = min(w, 0.7 * (u1 - u0 - 2 * m) / nl)
+    wr = min(w, 0.7 * (v1 - v0 - 2 * m) / nr)
     return [
-        *pane_row("v", v1, u0 + m, u1 - m, zs, hh, nl, w, c),
-        *pane_row("u", u1, v0 + m, v1 - m, zs, hh, nr, w, c),
+        *pane_row("v", v1, u0 + m, u1 - m, zs, hh, nl, wl, c),
+        *pane_row("u", u1, v0 + m, v1 - m, zs, hh, nr, wr, c),
     ]
 
 
@@ -971,9 +974,10 @@ def crown(uc: float, vc: float, z0: float, r: float, c: str = "#4f9a42") -> Prim
     return Prim((uc - ru, vc - ru, uc + ru, vc + ru), z0 + 0.3, faces)
 
 
-def broadleaf(uc: float, vc: float, r: float, h: float) -> list[Prim]:
-    """広葉樹: 短い幹と丸い葉。r は葉の半径（ピクセル）、h は木の高さ（ピクセル）。"""
-    return [cylinder(uc, vc, 0.015, 0, h - 2 * r + 1, c=TRUNK), crown(uc, vc, h - 2 * r, r)]
+def broadleaf(uc: float, vc: float, r: float, h: float, z: float = 0) -> list[Prim]:
+    """広葉樹: 短い幹と丸い葉。r は葉の半径（ピクセル）、h は木の高さ（ピクセル）、
+    z は根元の高さ（台の上に植えるとき）。"""
+    return [cylinder(uc, vc, 0.015, z, h - 2 * r + 1, c=TRUNK), crown(uc, vc, z + h - 2 * r, r)]
 
 
 # 山の帯の色（足元から上へ）。雪をかぶるのは高い峰だけ
@@ -1565,7 +1569,7 @@ SHAPES: dict[str, list[Prim]] = {
     # 回7 の百貨店
     "facility/department_store": [
         # 石張りの 5 階建ての大きな店、1 階のショーウィンドウと赤白の縞の日よけ、上の階の窓の列、
-        # 屋上の空調、前の歩道の植え込み
+        # 屋上の広告塔、前の歩道の植え込み
         box(0.06, 0.06, 0.94, 0.94, 0, 0.6, CONCRETE, PAVEMENT),
         box(0.12, 0.12, 0.78, 0.78, 0.6, 30, STORE_STONE, "#cfc8b8"),
         *pane_row("v", 0.78, 0.12, 0.78, [1.4], 5.4, 5, 0.1, GLASS),
@@ -1576,24 +1580,17 @@ SHAPES: dict[str, list[Prim]] = {
         *pane_row("v", 0.78, 0.12, 0.78, [11, 16, 21, 26], 2.6, 6, 0.06, STORE_WINDOW),
         *pane_row("u", 0.78, 0.12, 0.78, [11, 16, 21, 26], 2.6, 6, 0.06, STORE_WINDOW),
         box(0.115, 0.115, 0.785, 0.785, 30.6, 1.6, "#f1e9d6", "#cfc8b8"),
-        # 屋上の看板（紺の板に金の丸い印と白い字の並び）と空調の箱。ほかの形と描く順が
-        # 循環しないよう、最後にまとめて描く
+        # 屋上の広告塔（紺の細い柱に金の縦線と金の頭）。ほかの形と描く順が循環しないよう、最後に描く
         *tiered(
             2,
-            box(0.24, 0.7, 0.27, 0.73, 32.2, 3.2, IRON),
-            box(0.63, 0.7, 0.66, 0.73, 32.2, 3.2, IRON),
-            box(0.2, 0.7, 0.7, 0.74, 35.4, 7.0, STORE_SIGN, "#3a5a85"),
-            box(0.2, 0.7, 0.7, 0.74, 42.4, 0.8, GOLD, "#e8c25c"),
-            plane_poly("v", 0.74, ellipse_pts(0.45, 38.9, 3.0, 14)[:-1], GOLD, 1),
-            plane_poly("v", 0.74, ellipse_pts(0.45, 38.9, 1.4, 10)[:-1], STORE_SIGN, 2),
-            *[
-                plane_poly(
-                    "v", 0.74, [(a, 37.4), (a + 0.04, 37.4), (a + 0.04, 40.4), (a, 40.4)], WHITE, 1
-                )
-                for a in (0.23, 0.29, 0.35, 0.53, 0.59, 0.65)
-            ],
-            box(0.4, 0.4, 0.62, 0.62, 32.2, 2.4, STORE_STONE, "#cfc8b8"),
-            *[box(u, 0.43, u + 0.05, 0.48, 34.6, 1.2, METAL) for u in (0.44, 0.52, 0.6)],
+            box(0.6, 0.6, 0.72, 0.72, 32.2, 17, STORE_SIGN, "#3a5a85"),
+            box(0.59, 0.59, 0.73, 0.73, 49.2, 1.2, GOLD, "#e8c25c"),
+            plane_poly(
+                "v", 0.72, [(0.645, 36.0), (0.675, 36.0), (0.675, 47.0), (0.645, 47.0)], GOLD, 1
+            ),
+            plane_poly(
+                "u", 0.72, [(0.645, 36.0), (0.675, 36.0), (0.675, 47.0), (0.645, 47.0)], GOLD, 1
+            ),
         ),
         *broadleaf(0.88, 0.3, 2.8, 8),
         *broadleaf(0.3, 0.9, 2.8, 8),
@@ -3194,7 +3191,7 @@ def capped(
     """壁・屋根の縁がそろった棟（窓は呼び出しで足す）。"""
     return [
         box(u0, v0, u1, v1, z0, h, wall, side),
-        box(u0 - 0.012, v0 - 0.012, u1 + 0.012, v1 + 0.012, z0 + h, 1.0, ROOF_CAP, ROOF_CAP_SIDE),
+        box(u0, v0, u1, v1, z0 + h, 1.0, ROOF_CAP, ROOF_CAP_SIDE),
     ]
 
 
@@ -3252,12 +3249,11 @@ def city_slabs() -> list[Prim]:
             ),
             *band_facade(u0, v0, u1, v1, z0 + 0.6, z0 + 4.2, 4.0, 3.0, WIN_DARK, 0.03),
             *pilasters(u0, v0, u1, v1, z0 + 4.6, z0 + h - 0.6, nl, nr, 0.04),
-            box(u0 - 0.01, v0 - 0.01, u1 + 0.01, v1 + 0.01, z0 + 4.2, 0.7, ROOF_CAP, ROOF_CAP_SIDE),
         ]
     parts += [
         # 奥の棟の塔屋と屋上の空調、中の棟の屋上の空調とアンテナ
         box(0.5, 0.12, 0.8, 0.26, 39.6, 5.0, "#d6cdbb", "#a79e8e"),
-        box(0.49, 0.11, 0.81, 0.27, 44.6, 0.8, ROOF_CAP, ROOF_CAP_SIDE),
+        box(0.5, 0.12, 0.8, 0.26, 44.6, 0.8, ROOF_CAP, ROOF_CAP_SIDE),
         *mast(0.65, 0.19, 45.4, 9),
         box(0.14, 0.44, 0.3, 0.56, 25.2, 1.8, METAL, "#c0c7ce"),
         box(0.36, 0.45, 0.52, 0.55, 25.2, 1.2, METAL, "#c0c7ce"),
@@ -3267,10 +3263,10 @@ def city_slabs() -> list[Prim]:
         *pane_row("u", 0.92, 0.74, 0.9, [z0 + 0.6], 2.6, 2, 0.07, GLASS),
         *awning("v", 0.92, 0.1, 0.9, z0 + 4.6, z0 + 3.4, 0.05),
         *awning("u", 0.92, 0.72, 0.9, z0 + 4.6, z0 + 3.4, 0.05),
-        box(0.07, 0.71, 0.93, 0.93, z0 + 5.6, 0.8, ROOF_CAP, ROOF_CAP_SIDE),
+        box(0.08, 0.72, 0.92, 0.92, z0 + 5.6, 0.8, ROOF_CAP, ROOF_CAP_SIDE),
         box(0.76, 0.38, 0.92, 0.62, z0, 0.3, LAWN, LAWN_SIDE),
-        *broadleaf(0.84, 0.46, 2.6, 7),
-        *broadleaf(0.84, 0.56, 2.6, 7),
+        *broadleaf(0.84, 0.46, 2.6, 7, 0.9),
+        *broadleaf(0.84, 0.56, 2.6, 7, 0.9),
         *broadleaf(0.2, 0.66, 2.2, 6),
         *broadleaf(0.5, 0.66, 2.2, 6),
     ]
@@ -3308,7 +3304,7 @@ def tower(
         lobby(u0, v0, u1, v1, z),
         box(u0, v0, u1, v1, z + 3.2, h - 3.2, c, "#7e8f9a"),
         *band_facade(u0, v0, u1, v1, z + 4.6, z + h - 1.0, 3.6, 2.2, win, 0.03),
-        box(u0 - 0.008, v0 - 0.008, u1 + 0.008, v1 + 0.008, z + h, 0.9, ROOF_CAP, ROOF_CAP_SIDE),
+        box(u0, v0, u1, v1, z + h, 0.9, ROOF_CAP, ROOF_CAP_SIDE),
     ]
 
 
@@ -3355,12 +3351,12 @@ def metropolis_twin() -> list[Prim]:
         ]
     parts += [
         *mast(0.26, 0.25, zb + 71, 10),
-        box(0.1, 0.56, 0.4, 0.88, zb, 18, "#d9cfbf", SIDE_GRAY),
-        *facade(0.1, 0.56, 0.4, 0.88, zb + 2.5, zb + 17, 4.2, 2.6, 4, 5, WIN, 0.04, 0.04),
-        box(0.56, 0.56, 0.88, 0.88, zb, 12, "#e3dccd", SIDE_GRAY),
-        *facade(0.56, 0.56, 0.88, 0.88, zb + 2.5, zb + 11, 4.2, 2.6, 5, 5, WIN, 0.04, 0.04),
-        *broadleaf(0.46, 0.7, 2.4, 6),
-        *broadleaf(0.46, 0.9, 2.4, 6),
+        box(0.1, 0.56, 0.4, 0.88, zb, 25, "#d9cfbf", SIDE_GRAY),
+        *facade(0.1, 0.56, 0.4, 0.88, zb + 2.5, zb + 24, 4.2, 2.6, 4, 5, WIN, 0.04, 0.04),
+        box(0.56, 0.56, 0.88, 0.88, zb, 17, "#e3dccd", SIDE_GRAY),
+        *facade(0.56, 0.56, 0.88, 0.88, zb + 2.5, zb + 16, 4.2, 2.6, 5, 5, WIN, 0.04, 0.04),
+        *broadleaf(0.46, 0.68, 2.4, 6, zb),
+        *broadleaf(0.46, 0.84, 2.4, 6, zb),
     ]
     return parts
 
