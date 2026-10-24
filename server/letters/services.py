@@ -14,11 +14,13 @@ from django.db.models import QuerySet
 from django.utils import timezone
 
 from server.letters.models import Letter
+from server.turns.models import TurnLog
 from server.world.models import Island
 
 SUBJECT_MAX = Letter._meta.get_field("subject").max_length
 BODY_MAX = Letter._meta.get_field("body").max_length
 PAGE_SIZE = 30  # 一覧の1ページの通数
+LETTER_LOG = "letter_received"  # 届いたことを宛先の島のターンログに残す行の種類
 
 
 class LetterError(Exception):
@@ -99,7 +101,7 @@ def send_letter(user, sender: Island, to: int, subject: str, body: str) -> Lette
             "しばらく待ってから送ってください",
             status=429,
         )
-    return Letter.objects.create(
+    letter = Letter.objects.create(
         sender=sender,
         recipient=recipient,
         author=user,
@@ -107,6 +109,19 @@ def send_letter(user, sender: Island, to: int, subject: str, body: str) -> Lette
         body=body,
         turn=sender.world.turn,
     )
+    # 宛先の島のターンログにも残す（W-39）。行は持ち主だけに見せる（display.PRIVATE_SERVER_LOGS）
+    TurnLog.objects.create(
+        island=recipient,
+        turn=letter.turn,
+        kind=LETTER_LOG,
+        args={
+            "letter": letter.id,
+            "sender": sender.name,
+            "sender_id": sender.id,
+            "subject": subject,
+        },
+    )
+    return letter
 
 
 def reply_subject(subject: str) -> str:
