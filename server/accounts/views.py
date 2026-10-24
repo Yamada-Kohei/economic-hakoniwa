@@ -16,6 +16,7 @@ from django.conf import settings
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.db.models import Sum
 from django.shortcuts import redirect, render
 from django.utils import timezone
 
@@ -79,8 +80,9 @@ def signup_blocked(request) -> bool:
             settings.HAKONIWA_CLIENT_IP_HEADER,
         )
         return False
-    recent = SignupRecord.objects.filter(ip_hash=ip_hash(ip), created_at__gte=_since())
-    return recent.count() >= limit
+    mine = SignupRecord.objects.filter(ip_hash=ip_hash(ip))
+    allowed = limit + (mine.aggregate(total=Sum("extra"))["total"] or 0)  # 管理者が認めた分
+    return mine.filter(created_at__gte=_since()).count() >= allowed
 
 
 def _since():
@@ -89,7 +91,7 @@ def _since():
 
 def signup(request):
     if request.method == "POST":  # 古い記録は、登録を受けるときにまとめて消す
-        SignupRecord.objects.filter(created_at__lt=_since()).delete()
+        SignupRecord.objects.filter(created_at__lt=_since(), extra=0).delete()
     blocked = signup_blocked(request)
     form = SignupForm(request.POST or None)
     if request.method == "POST" and not blocked and form.is_valid():
@@ -97,7 +99,7 @@ def signup(request):
             user = form.save()
             ip = client_ip(request)
             if ip:
-                SignupRecord.objects.create(ip_hash=ip_hash(ip))
+                SignupRecord.objects.create(ip_hash=ip_hash(ip), user=user)
         login(request, user)
         return redirect("found")
     return render(request, "accounts/signup.html", {"form": form, "blocked": blocked})

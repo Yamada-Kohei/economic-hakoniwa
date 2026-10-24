@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import copy
+from datetime import timedelta
 
 import pytest
 from django.contrib.auth.models import User
+from django.utils import timezone
 
 from hakoniwa_core.state.serialize import world_to_dict
 from server.accounts.models import SignupRecord
@@ -309,3 +311,23 @@ def test_signup_groups_ipv6_by_64_and_ignores_unreadable_ip(client, db, caplog):
         client.logout()
     assert not SignupRecord.objects.filter(ip_hash=ip_hash("")).exists()
     assert "接続元の IP が読めない" in caplog.text
+
+
+def test_admin_can_let_one_account_register_more_from_the_same_ip(client, db):
+    assert _signup(client, "first", "10.2.2.2").status_code == 302
+    client.logout()
+    assert _signup(client, "second", "10.2.2.2").status_code == 200  # 上限は 1 のまま
+    record = SignupRecord.objects.get(user__username="first")
+    record.extra = 2  # 管理画面で「追加で登録できる人数」を入れる
+    record.save()
+    for name in ("second", "third"):
+        assert _signup(client, name, "10.2.2.2")["Location"] == "/found/"
+        client.logout()
+    assert _signup(client, "fourth", "10.2.2.2").status_code == 200
+    assert not User.objects.filter(username="fourth").exists()
+    # ほかの接続元には効かず、古くなっても認めた分の記録は消えない
+    assert _signup(client, "other", "10.2.2.3")["Location"] == "/found/"
+    SignupRecord.objects.filter(pk=record.pk).update(created_at=timezone.now() - timedelta(days=90))
+    client.logout()
+    _signup(client, "after-expiry", "10.2.2.9")  # 掃除が走る
+    assert SignupRecord.objects.filter(pk=record.pk).exists()

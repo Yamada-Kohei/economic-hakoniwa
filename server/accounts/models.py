@@ -13,6 +13,21 @@ from django.db import models
 class SignupRecord(models.Model):
     ip_hash = models.CharField("IP のハッシュ", max_length=64, db_index=True)
     created_at = models.DateTimeField("登録した時刻", auto_now_add=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name="登録したアカウント",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="signup_records",
+    )
+    extra = models.PositiveSmallIntegerField(
+        "追加で登録できる人数",
+        default=0,
+        help_text="管理者が決める。この接続元から、上限に加えてこの人数まで登録できる"
+        "（家族・学校など、特定の人に複数の登録を認めるとき）。"
+        "0 より大きい記録は古くなっても消さない。",
+    )
 
     class Meta:
         verbose_name = verbose_name_plural = "登録の記録"
