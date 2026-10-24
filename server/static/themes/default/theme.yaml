@@ -159,6 +159,7 @@ sprites:
   facility/missile_base: sprites/facility/missile_base.svg
   facility/air_defense: sprites/facility/air_defense.svg
   unit/armor: {file: sprites/unit/armor.svg, anchor: [14, 28]}
+  unit/rebels: {file: sprites/unit/rebels.svg, anchor: [14, 28]}
   fleet/corvette: {file: sprites/fleet/corvette.svg, anchor: [10, 9]}
   fleet/submarine: {file: sprites/fleet/submarine.svg, anchor: [11, 7]}
   fleet/transport: {file: sprites/fleet/transport.svg, anchor: [12, 10]}
@@ -166,6 +167,5 @@ sprites:
 # 絵のファイルは置いたが、使う施設や描く仕組みがまだ入っていないもの（軍事の絵。docs/map-art.md）。
 # ゲームの描画は読まない。入ったら、その行を上の sprites へ移す（海沿いの anchor はここに書いてある値のまま）
 pending_sprites:
-  unit/rebels: {file: sprites/unit/rebels.svg, anchor: [14, 28]}
   overlay/battlefield: sprites/overlay/battlefield.svg  # 地形のあと・建物より先
   overlay/ruined: sprites/overlay/ruined.svg          # 建物の代わり（重ねない）

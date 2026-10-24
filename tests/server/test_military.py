@@ -91,7 +91,7 @@ def test_units_and_bases_show_in_the_summary_and_the_military_api(world):
         client.get(f"/api/islands/{island.id}/summary").json()["military"]["units"] == mine["units"]
     )
     public = Client().get(f"/api/islands/{island.id}/military").json()["military"]
-    assert set(public) == {"soldiers", "budget", "stats_turn", "fleets", "seen_units"}
+    assert set(public) == {"soldiers", "budget", "civil_war", "stats_turn", "fleets", "seen_units"}
     assert row.pk
 
 
@@ -322,3 +322,40 @@ def test_map_shows_the_nuclear_fallout_to_all(world):
     tile.save()
     fallout = Client().get(f"/api/islands/{island.id}/map").json()["fallout"]
     assert fallout[0] == 5.0 and sum(fallout) == 5.0
+
+
+def test_civil_war_shows_to_all_with_the_groups_for_the_owner_only(world):
+    """反乱と内戦（4-4）: 起きているか・兵の総数・占領したマスの数はだれにも見える。グループと
+    見張りは持ち主だけ。反乱軍の占領は地図の occupied に -1 で出る。"""
+    from hakoniwa_core.military import civil_war
+
+    client, island = _player()
+    quiet = client.get(f"/api/islands/{island.id}/summary").json()["military"]["civil_war"]
+    assert quiet["active"] is False and quiet["rebels"] == 0 and quiet["groups"] == []
+    tile = island.tiles.filter(terrain="plain").order_by("y", "x").first()
+    tile.ext = {**(tile.ext or {}), "occupied": {"by": civil_war.REBELS, "turn": 3, "rebel": True}}
+    tile.save()
+    ext = island.world.ext or {}
+    ext.setdefault("military", {})[civil_war.KEY] = [
+        {
+            "id": 1,
+            "island": island.id,
+            "x": tile.x,
+            "y": tile.y,
+            "soldiers": 80,
+            "weapons": 5,
+            "morale": 700,
+            "since": 3,
+            "entered": 3,
+            "hungry": False,
+        }
+    ]
+    island.world.ext = ext
+    island.world.save()
+    mine = client.get(f"/api/islands/{island.id}/summary").json()["military"]["civil_war"]
+    assert mine["active"] and mine["rebels"] == 80 and mine["held_tiles"] == 1
+    assert mine["groups"][0]["soldiers"] == 80 and mine["groups"][0]["x"] == tile.x
+    public = Client().get(f"/api/islands/{island.id}/summary").json()["military"]["civil_war"]
+    assert public["active"] and public["rebels"] == 80 and "groups" not in public
+    mapped = client.get(f"/api/islands/{island.id}/map").json()["occupied"]
+    assert civil_war.REBELS in mapped

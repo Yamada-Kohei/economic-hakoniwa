@@ -343,9 +343,11 @@ def test_automobile_needs_the_parts_of_a_real_car(game):
 # --- 揺さぶりの試験（GT-19） ------------------------------------------------------------
 
 
-def test_halting_the_settlement_currency_island_keeps_the_world_running(game, base):
+def test_halting_the_settlement_currency_island_keeps_the_world_running(game, base, monkeypatch):
     """決済通貨の島の施設を全部止めても、帳簿と国際収支が合ったままターンが回る。止めている間は
-    その島の生産が止まって GDP が落ち、止めるのをやめると生産が戻る。ほかの島は回り続ける。"""
+    その島の生産が止まって GDP が落ち、止めるのをやめると生産が戻る。ほかの島は回り続ける。
+    （全部止めた後の失業は反乱を呼びうるが、この試験は経済だけを見るので反乱は起こさせない）"""
+    monkeypatch.setitem(game.config.raw["military"]["civil_war"], "trigger_turns", 10**6)
     world = copy.deepcopy(base)
     currencies = {b["currency"] for b in blocs.blocs(world) if len(b.get("members", [])) > 1}
     target = min(currencies) if currencies else min(world.island_ids())

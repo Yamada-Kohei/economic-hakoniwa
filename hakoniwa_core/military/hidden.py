@@ -69,6 +69,7 @@ def discover(world: WorldState) -> list[tuple[int, int, int]]:
             by: set[int] = set()
             if tile is not None and tile.ext.get(occupation.OCCUPIED):
                 by.add(tile.ext[occupation.OCCUPIED]["by"])
+            by.discard(-1)  # 反乱軍の占領では見つからない（国ではない。4-4）
             by |= {u["owner"] for u in foreign if _near((u["x"], u["y"]), (f.x, f.y))}
             for finder in sorted(by):
                 if reveal(world, f, finder):

@@ -12,7 +12,7 @@ from typing import Any
 
 from django.db.models import Sum
 
-from hakoniwa_core.military import army, forces, missiles, occupation, vision
+from hakoniwa_core.military import army, civil_war, forces, missiles, occupation, vision
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE
 from server.game import get_game
 from server.web import display
@@ -34,10 +34,12 @@ def brief(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str, 
         "personnel": budget.get(forces.BUDGET_PERSONNEL, 0),
         "procurement": budget.get(forces.BUDGET_PROCUREMENT, 0),
     }
+    civil = civil_war_brief(island, mine)
     if not mine:
         return {
             "soldiers": volunteers + conscripts,
             "budget": spend,
+            "civil_war": civil,
             "stats_turn": stats_turn,
             "fleets": seen_fleets(island.world, viewer, island.id),
             "seen_units": seen_land(island.world, viewer, owner=island.id),
@@ -70,6 +72,7 @@ def brief(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str, 
         "reserve": {g: q / QUANTITY_SCALE for g, q in (raw.get("reserve") or {}).items()},
         "prisoners": prisoners(raw),
         "captive": raw.get("captive", 0),
+        "civil_war": civil,
         "occupied": occupied_tiles(island),
         "occupying": occupying(island),
         "stats": {
@@ -233,6 +236,39 @@ def prisoners(raw: dict[str, Any]) -> dict[str, Any]:
         "total": sum(by_origin.values()),
         "by_island": {str(k): v for k, v in sorted(by_origin.items())},
     }
+
+
+def civil_war_brief(island: m.Island, mine: bool) -> dict[str, Any]:
+    """反乱と内戦（フェーズ4-4。MI-39〜MI-41）。起きているか、反乱軍の兵の総数と占領しているマスの数は
+    だれにも見える（国じゅうが知ること）。持ち主には反乱軍のグループ（いる場所・兵・士気・武器・飢え）と、
+    次の反乱までの見張り（前触れが続いたターン数・鎮まるまでのターン数・次の反乱が起きない期間）も。"""
+    raw = ((island.world.ext or {}).get(forces.KEY) or {}).get(civil_war.KEY) or []
+    groups = [g for g in raw if g["island"] == island.id]
+    held = island.tiles.filter(**{f"ext__{occupation.OCCUPIED}__by": civil_war.REBELS}).count()
+    out: dict[str, Any] = {
+        "active": bool(groups),
+        "rebels": sum(g["soldiers"] for g in groups),
+        "held_tiles": held,
+    }
+    if mine:
+        state = (island.ext or {}).get(civil_war.STATE) or {}
+        out["groups"] = [
+            {
+                "id": g["id"],
+                "x": g["x"],
+                "y": g["y"],
+                "soldiers": g["soldiers"],
+                "weapons": g["weapons"],
+                "morale": g["morale"] / BASIS,
+                "hungry": bool(g.get("hungry")),
+                "since": g["since"],
+            }
+            for g in sorted(groups, key=lambda g: g["id"])
+        ]
+        out["alarm_turns"] = state.get("alarm", 0)
+        out["calm_turns"] = state.get("calm", 0)
+        out["cooldown_until"] = state.get("cooldown", 0)
+    return out
 
 
 def occupied_tiles(island: m.Island) -> list[dict[str, int]]:

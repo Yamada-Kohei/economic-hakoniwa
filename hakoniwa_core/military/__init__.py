@@ -45,4 +45,9 @@ PRIVATE_LOGS = (
     "hidden_found_by",
     "nuclear_violation",
     "fleet_sunk",
+    "civil_battle",
+    "unit_defected",
+    "arsenal_seized",
+    "tile_rebel_held",
+    "tile_rebel_lifted",
 )
