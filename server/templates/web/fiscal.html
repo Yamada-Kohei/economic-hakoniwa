@@ -27,13 +27,18 @@
       <p class="hint">{% translate "予算は1年（12ターン）分で、毎ターンその12分の1まで使います。国庫が足りないときは、利払い・公務員・失業手当などの支払いが先になります。" %}</p>
       <div class="table-scroll">
         <table class="goods budget-table">
-          <thead><tr><th>{% translate "項目" %}</th><th>{% translate "年の予算" %}</th><th>{% translate "1ターンの上限" %}</th><th>{% translate "このターンに使った額" %}</th></tr></thead>
+          <thead><tr><th>{% translate "項目" %}</th><th>{% translate "年の予算" %}</th><th>{% translate "1ターンの上限" %}</th><th>{% translate "このターンに使った額" %}</th>{% if mine %}<th>{% translate "去年の合計" %}</th><th>{% translate "最大の月の年換算" %}</th><th>{% translate "使い切れない目安" %}</th>{% endif %}</tr></thead>
           <tbody>
-            {% for b in fiscal.budget %}<tr><td>{{ b.name }}</td><td>{{ b.annual }}</td><td>{{ b.per_turn }}</td><td>{{ b.spent }}</td></tr>{% endfor %}
-            {% for b in fiscal.other_spent %}<tr class="muted-row"><td>{{ b.name }}<br><small>{% translate "（予算の外）" %}</small></td><td></td><td></td><td>{{ b.spent }}</td></tr>{% endfor %}
+            {% for b in fiscal.budget %}<tr><td>{{ b.name }}</td><td>{{ b.annual }}</td><td>{{ b.per_turn }}</td><td>{{ b.spent }}</td>{% if mine %}<td>{{ b.last_year }}</td><td>{{ b.peak_year }}</td><td>{{ b.limit }}</td>{% endif %}</tr>{% endfor %}
+            {% for b in fiscal.other_spent %}<tr class="muted-row"><td>{{ b.name }}<br><small>{% translate "（予算の外）" %}</small></td><td></td><td></td><td>{{ b.spent }}</td>{% if mine %}<td></td><td></td><td></td>{% endif %}</tr>{% endfor %}
           </tbody>
         </table>
       </div>
+      {% if mine %}<p class="hint">{% translate "年の予算を決める目安です。「去年の合計」は直近12ターンに使った額、「最大の月の年換算」はその中でいちばん使った月が1年続いた額です。「使い切れない目安」は、これより積んでも使い道がない額で、予算の命令の入力欄にも出ます。" %}</p>
+      <ul class="budget-guide">
+        {% for b in fiscal.budget %}{% if b.limit != "—" %}<li><strong>{{ b.name }}</strong>: {{ b.note }}{% if b.parts %}<br><small class="muted">{{ b.parts }}。{% translate "命令で新しい工事を足すと増えます。" %}</small>{% endif %}</li>{% endif %}{% endfor %}
+        <li>{% translate "補助金・国の倉庫・国防費は、使い道が命令や軍の状態で決まるため、去年の実績だけを出しています。" %}</li>
+      </ul>{% endif %}
     </section>
 
     <section class="panel">

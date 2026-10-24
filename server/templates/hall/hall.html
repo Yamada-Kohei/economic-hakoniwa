@@ -6,13 +6,15 @@
 <h1>{% translate "国際会議場" %}</h1>
 <p class="hint">{% translate "国どうしの公開の声明と、戦争・条約の出来事が載る場所です。誰でも読めます。" %}</p>
 <nav class="diplomacy-links" aria-label="{% translate '国際会議場の項目' %}">
-  <a href="#statements">{% translate "声明と出来事" %}</a><a href="#wars">{% translate "戦争の状態" %}</a><a href="#treaties">{% translate "条約" %}</a>{% if form %}<a href="#post">{% translate "声明を出す" %}</a>{% endif %}{% if own_island %}<a href="{% url 'island_diplomacy' own_island.id %}">{% translate "自国の外交" %}</a>{% endif %}<a href="{% url 'help' %}#diplomacy">{% translate "外交と条約の手引き" %}</a>
+  <a href="#statements">{% translate "声明と出来事" %}</a><a href="#wars">{% translate "戦争の状態" %}</a><a href="#treaties">{% translate "条約" %}</a>{% if treaty_island %}<a href="#propose">{% translate "条約を提案" %}</a>{% endif %}{% if form %}<a href="#post">{% translate "声明を出す" %}</a>{% endif %}{% if own_island %}<a href="{% url 'island_diplomacy' own_island.id %}">{% translate "自国の外交" %}</a>{% endif %}<a href="{% url 'help' %}#diplomacy">{% translate "外交と条約の手引き" %}</a>
 </nav>
 <dl class="diplomacy-summary">
   <div><dt>{% translate "戦争・布告・停戦" %}</dt><dd>{{ wars|length }} <small>{% translate "件" %}</small></dd></div>
   <div><dt>{% translate "効いている条約" %}</dt><dd>{{ treaties|length }} <small>{% translate "件" %}</small></dd></div>
   <div><dt>{% translate "声明と出来事" %}</dt><dd>{{ page.paginator.count }} <small>{% translate "件" %}</small></dd></div>
 </dl>
+<div class="report-layout{% if treaty_island %} with-orders{% endif %}">
+<div class="report-main">
 <section class="panel" id="wars">
   <h2>{% translate "戦争の状態" %}</h2>
   {% include "hall/war_list.html" %}
@@ -24,6 +26,13 @@
     {% empty %}<p class="diplomacy-empty">{% translate "効いている条約はありません。" %}</p>{% endfor %}
   </div>
 </section>
+{% if treaty_island %}
+<section class="panel" id="propose">
+  <h2>{% translate "条約を提案する" %}</h2>
+  <p class="hint">{% translate "条約は声明の書き込み欄では結べません。ここで条項を選んで提案します（自国の外交の画面からも同じ命令を出せます）。操作は命令の列に追加され、ターン更新で実行されます。民主主義では、提案に議会の過半数の賛成が要ります。" %}</p>
+  {% include "web/treaty_propose_form.html" with island=treaty_island choices=choices rules=rules %}
+</section>
+{% endif %}
 <section class="panel" id="statements">
   <h2>{% translate "声明と出来事" %}</h2>
   <p class="hint">{% translate "新しい順です。宣戦・停戦・講和・条約の効き始め・破棄の予告・違反は自動で載ります。" %}</p>
@@ -40,6 +49,7 @@
 {% if form %}
 <section class="panel" id="post">
   <h2>{% translate "声明を出す" %}</h2>
+  <p class="hint">{% translate "ここに書くのは公開の声明だけです。条約を結ぶには、上の「条約を提案する」から条項を選んで提案してください。" %}</p>
   <p class="hint" id="statement-help">{% blocktranslate with n=limit %}声明はすぐに載り、誰でも読めます。1つの島が 24 時間に出せるのは {{ n }} 件までです。{% endblocktranslate %}</p>
   <form method="post" class="diplomacy-form" aria-describedby="statement-help">
     {% csrf_token %}{{ form.non_field_errors }}
@@ -50,4 +60,10 @@
 </section>
 {% else %}<p class="hint">{% translate "声明を出すには、自分の国を持つアカウントでログインしてください。" %} <a href="{% url 'login' %}">{% translate "ログイン" %}</a></p>{% endif %}
 </div>
+{% if treaty_island %}<aside id="orders" class="panel report-orders" data-url="{% url 'api_orders' treaty_island.id %}" data-defs="{% url 'api_defs' %}" data-forms="" data-heading="{% translate '外交の命令' %}"></aside>{% endif %}
+</div>
+</div>
+{% if treaty_island %}<noscript><p class="error">{% translate "命令の入力には JavaScript が必要です。" %}</p></noscript>
+{% csrf_token %}
+<script type="module" src="{% static 'js/reports/diplomacy.js' %}"></script>{% endif %}
 {% endblock %}

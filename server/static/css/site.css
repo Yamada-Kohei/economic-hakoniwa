@@ -24,6 +24,14 @@ a { color: #0000ee; }
 a:visited { color: #551a8b; }
 .site-header nav a, .site-header nav a:visited, .island-nav a:visited { color: #0000ee; }
 form.inline { display: inline; }
+.bug-report-open { font-size: 0.85em; }
+dialog.bug-report { width: min(480px, calc(100vw - 32px)); padding: 12px 16px; border: 1px solid var(--border); background: var(--panel, #fff); color: var(--fg); }
+dialog.bug-report::backdrop { background: rgba(0, 0, 0, 0.4); }
+.bug-report-form h2 { margin: 0 0 6px; font-size: 1.1em; }
+.bug-report-form label { display: block; margin: 8px 0; }
+.bug-report-form textarea { display: block; width: 100%; }
+.bug-report-status { min-height: 1.4em; margin: 6px 0; font-weight: bold; }
+.bug-report-buttons { display: flex; gap: 8px; }
 .island-list li { margin: 4px 0; }
 .island-list small { margin-left: 8px; color: #6a7aa0; }
 .map-wrap { position: relative; border: 1px solid var(--border); background: #1d3f66; }
@@ -92,6 +100,8 @@ table.goods td:nth-child(n+2), table.goods th:nth-child(n+2) { text-align: right
 .actions { border-top: 1px solid var(--rule); padding-top: 6px; margin-top: 8px; }
 .actions label { display: block; margin: 4px 0; }
 .actions button { margin: 2px 4px 2px 0; }
+.budget-hint { display: block; color: #6a7aa0; font-size: 0.8em; }
+.budget-guide { margin: 6px 0 0; padding-left: 1.2em; font-size: 0.9em; }
 .hint { font-size: 0.85em; color: #4f62a0; }
 .marking { background: #fff3e0; border: 1px solid #ffb74d; border-radius: 4px; padding: 6px 8px; }
 .order-list { padding-left: 0; list-style: none; }

@@ -16,6 +16,14 @@ const INT_FIELDS = ["minimum_wage", "bond_trade", "issue", "underwrite", "deposi
 // 中身のない命令（項目を入れなくても足せる）
 const EMPTY_OK = new Set(["grant_bank_license"]);
 
+/** 予算の入力欄に添える目安（去年に使った額・いちばん使った月の年換算・使い切れない額の目安）。 */
+function budgetHint(guide) {
+  if (!guide) return "";
+  const limit = guide.limit === "—" ? "" : `・使い切れない額の目安 ${guide.limit}`;
+  const title = guide.note ? ` title="${escapeHtml(guide.note)}"` : "";
+  return `<small class="budget-hint"${title}>去年 ${escapeHtml(guide.last_year)}・最大の月の年換算 ${escapeHtml(guide.peak_year)}${escapeHtml(limit)}</small>`;
+}
+
 export class OrderQueue {
   /**
    * el: 欄の要素（data-url に命令の列の API の URL）
@@ -221,7 +229,7 @@ export class OrderQueue {
     const num = (name, value, attrs = "") =>
       `<input name="${name}" type="number" min="0" ${attrs} placeholder="${value}">`;
     const budget = Object.entries(p.budget)
-      .map(([item, b]) => `<label>${escapeHtml(b.name)} ${num(item, b.amount, 'step="1"')}</label>`)
+      .map(([item, b]) => `<label>${escapeHtml(b.name)} ${num(item, b.amount, 'step="1"')}${budgetHint(b.guide)}</label>`)
       .join("");
     const goods = Object.entries(this.defs.goods)
       .filter(([g]) => g !== this.powerGood)

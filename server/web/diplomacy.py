@@ -182,7 +182,6 @@ def diplomacy_data(island: m.Island, mine: bool) -> dict[str, Any]:
     names = _names(world)
     raw = _raw(world)
     turn = world.turn
-    config = get_game().config
     wars = [_war_row(w, names, turn) for w in raw.get("wars", []) if island.id in _sides(w)]
     mine_treaties = [t for t in raw.get("treaties", []) if island.id in t["parties"]]
     closed = [t for t in mine_treaties if t["state"] in ("ended",) or (mine and _dead(t))]
@@ -204,7 +203,7 @@ def diplomacy_data(island: m.Island, mine: bool) -> dict[str, Any]:
             }
             for v in violations
         ],
-        "rules": {k: config.get(f"diplomacy.{k}") for k in RULES},
+        "rules": rules(),
     }
     if mine:
         data["incoming"] = [
@@ -217,11 +216,22 @@ def diplomacy_data(island: m.Island, mine: bool) -> dict[str, Any]:
             for t in mine_treaties
             if t["state"] == "proposed" and t["proposer"] == island.id
         ]
-        data["choices"] = {
-            "partners": _partners(world, island),
-            "clauses": [{"id": c, "name": display.message(f"clause_{c}")} for c in cl.TYPES],
-        }
+        data["choices"] = proposal_choices(world, island)
     return data
+
+
+def rules() -> dict[str, Any]:
+    """外交の決まりの数（game.yaml の diplomacy。入力欄の説明と上限に使う）。"""
+    config = get_game().config
+    return {k: config.get(f"diplomacy.{k}") for k in RULES}
+
+
+def proposal_choices(world: m.World, island: m.Island) -> dict[str, Any]:
+    """条約の提案の選択肢（相手にできる国と条項）。外交の画面と国際会議場の入力欄が使う。"""
+    return {
+        "partners": _partners(world, island),
+        "clauses": [{"id": c, "name": display.message(f"clause_{c}")} for c in cl.TYPES],
+    }
 
 
 def _sides(w: dict[str, Any]) -> tuple[int, int]:
