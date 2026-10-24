@@ -10,6 +10,8 @@
   HTTP_X_REAL_IP など、プロキシが書き込む場所にする）
 - HAKONIWA_LETTERS_PER_DAY: 1つの島が 24 時間に送れる手紙の数（既定 50。送りすぎの歯止め）
 - HAKONIWA_HALL_PER_DAY: 1つの島が 24 時間に国際会議場に出せる声明の数（既定 10。出しすぎの歯止め）
+- HAKONIWA_BUG_REPORTS_PER_DAY: 1人が 24 時間に送れる不具合の報告の数（既定 10。送りすぎの歯止め）
+- HAKONIWA_VERSION: 不具合の報告に添えるゲームの版（既定は git のコミット）
 - HAKONIWA_FLAG_MAX_KB: 国旗の PNG の大きさの上限（KB。既定 100）
 - HAKONIWA_FLAG_MAX_SIDE: 国旗の PNG の縦横の上限（ピクセル。既定 512）
 - HAKONIWA_COUNTRY_NOTES_PER_DAY: 1つの国が 24 時間に他国のページに残せる一言の数（既定 10）
@@ -50,6 +52,7 @@ INSTALLED_APPS = [
     "server.board",
     "server.letters",
     "server.hall",
+    "server.feedback",
     "server.country",
     "server.web",
 ]
@@ -136,6 +139,8 @@ HAKONIWA_GAME_CONFIG = os.environ.get("HAKONIWA_GAME_CONFIG", str(BASE_DIR / "ga
 HAKONIWA_CLIENT_IP_HEADER = os.environ.get("HAKONIWA_CLIENT_IP_HEADER", "REMOTE_ADDR")
 HAKONIWA_LETTERS_PER_DAY = int(os.environ.get("HAKONIWA_LETTERS_PER_DAY", "50"))
 HAKONIWA_HALL_PER_DAY = int(os.environ.get("HAKONIWA_HALL_PER_DAY", "10"))
+HAKONIWA_BUG_REPORTS_PER_DAY = int(os.environ.get("HAKONIWA_BUG_REPORTS_PER_DAY", "10"))
+HAKONIWA_VERSION = os.environ.get("HAKONIWA_VERSION", "")
 HAKONIWA_FLAG_MAX_KB = int(os.environ.get("HAKONIWA_FLAG_MAX_KB", "100"))
 HAKONIWA_FLAG_MAX_SIDE = int(os.environ.get("HAKONIWA_FLAG_MAX_SIDE", "512"))
 HAKONIWA_COUNTRY_NOTES_PER_DAY = int(os.environ.get("HAKONIWA_COUNTRY_NOTES_PER_DAY", "10"))

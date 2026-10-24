@@ -135,6 +135,29 @@ def test_statements(world, settings):
     assert res.status_code == 429
 
 
+def test_the_hall_has_the_treaty_form_for_island_owners_only(world):
+    """国際会議場からも条約を提案できる（外交の画面と同じ入力欄と命令の欄）。声明の欄では結べない
+    ことも書く。島を持たない人と読むだけの人には出ない。"""
+    (ca, a), (_, b), _ = _players(world)
+    html = ca.get("/hall/").content.decode()
+    assert 'data-order="propose_treaty"' in html and 'id="propose"' in html
+    assert f'data-url="/api/islands/{a.id}/orders"' in html and 'id="orders"' in html
+    assert "js/reports/diplomacy.js" in html and "声明の書き込み欄では結べません" in html
+    partners = html.split('name="partner"')[1].split("</select>")[0]
+    assert (
+        f'<option value="{b.id}">{b.name}' in partners
+        and f'<option value="{a.id}">' not in partners
+    )
+    public = Client().get("/hall/").content.decode()
+    assert "data-order" not in public and 'id="orders"' not in public
+    stranger = Client()
+    stranger.force_login(User.objects.create_user("nobody", password="a-long-pass-123"))
+    html = stranger.get("/hall/").content.decode()
+    assert "data-order" not in html and 'id="orders"' not in html
+    # 画面の入力欄が出す命令は、外交の画面と同じ命令でそのまま通る
+    _orders(ca, a, ("propose_treaty", {"partner": b.id, "clauses": [{"type": "non_aggression"}]}))
+
+
 def test_order_descriptions(world):
     (_, a), (_, b), _ = _players(world)
     text = display.describe_order("declare_war", {"target": b.id, "reason": "理由"})

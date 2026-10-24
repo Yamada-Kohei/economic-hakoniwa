@@ -1,4 +1,4 @@
-"""国際会議場の画面。読むのは誰でも、声明を出せるのは自分の島を持つ人だけ。"""
+"""国際会議場の画面。読むのは誰でも、声明を出せるのと条約を提案できるのは自分の島を持つ人だけ。"""
 
 from __future__ import annotations
 
@@ -42,4 +42,10 @@ def hall_page(request):
         "limit": settings.HAKONIWA_HALL_PER_DAY,
         **diplomacy.world_view(world),
     }
+    if island is not None:  # 条約の提案の入力欄（外交の画面と同じもの）
+        context.update(
+            treaty_island=island,
+            choices=diplomacy.proposal_choices(world, island),
+            rules=diplomacy.rules(),
+        )
     return render(request, "hall/hall.html", context)

@@ -30,10 +30,10 @@ from server.accounts import keys
 from server.game import get_game
 from server.letters import services as letter_services
 from server.orders.models import Order
+from server.web import budget_guide, display, overview, rankings, reports
 from server.web import chain as chain_views
 from server.web import country as country_views
 from server.web import diplomacy as diplomacy_views
-from server.web import display, overview, rankings, reports
 from server.web import military as military_views
 from server.web import news as news_views
 from server.web import politics as politics_views
@@ -638,7 +638,7 @@ def fiscal(request, island_id: int):
             "island": island.id,
             "mine": mine,
             "stats_turn": turn,
-            "fiscal": reports.fiscal_view(island, stats, _currency(island)),
+            "fiscal": reports.fiscal_view(island, stats, _currency(island), mine),
             "bonds": reports.bond_rows(island, _currency(island), mine),
         }
     )
@@ -912,7 +912,11 @@ def _orders_view(island: m.Island, mine: bool = True) -> dict[str, Any]:
     recent = recent.order_by("-executed_turn", "-seq")[:20]
     return {
         "admin_power": int(admin_power),
-        "policy": display.policy_view(island),
+        "policy": (
+            budget_guide.attach(display.policy_view(island), island)
+            if mine
+            else display.policy_view(island)
+        ),
         "power_good": get_game().config.get("power.good"),
         "orders": [
             {

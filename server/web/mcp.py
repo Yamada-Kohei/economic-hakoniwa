@@ -54,6 +54,7 @@ INSTRUCTIONS = """\
   orders.pending）。中身の形は defs(section="orders")。1ターンに実行されるのは行政力の数までです。
 - ターンはサーバーが決まった時刻に進めます。ほかの国との連絡は公電（letters・send_letter）と
   掲示板です。国際会議場（hall）には公開の声明と、戦争・条約の出来事が載ります。
+- ゲームの不具合やおかしな表示は report_bug で運営に報告できます（書くのは何が起きたかだけ）。
 """
 
 # 道具の答えの文の上限（これを超える分は切って、続きの読み方を添える）
@@ -324,6 +325,18 @@ def _hall_post(request, args):
     return call_ok(
         request, "POST", "/api/hall", body={"title": args["title"], "body": args["body"]}
     )
+
+
+def _report_bug(request, args):
+    body = {"text": args["text"], "via": "mcp"}
+    for key in ("kind", "url"):
+        if args.get(key):
+            body[key] = args[key]
+    return call_ok(request, "POST", "/api/bug-reports", body=body)
+
+
+def _bug_reports(request, args):
+    return call_ok(request, "GET", "/api/bug-reports")
 
 
 def _country_set(request, args):
@@ -849,6 +862,28 @@ TOOLS = [
         {"title": {"type": "string"}, "body": {"type": "string"}},
         ("title", "body"),
         read_only=False,
+    ),
+    Tool(
+        "report_bug",
+        "不具合を報告する",
+        "ゲームの不具合・おかしな表示・分かりにくい所を運営に報告する。書くのは何が起きたか（text）だけ"
+        "でよい（kind は bug・display・rule・other のどれか。任意。url は開いていた画面があれば）。"
+        "島・ターン・ゲームの版・直前に出した命令はサーバーが自動で添える。返る id が報告番号。"
+        "1人が 24 時間に送れる数には上限があり、同じ文は重ねて送れない。",
+        _report_bug,
+        {
+            "text": {"type": "string", "description": "何が起きたか（2000 字まで）"},
+            "kind": {"type": "string", "enum": ["bug", "display", "rule", "other"]},
+            "url": {"type": "string", "description": "開いていた画面の URL（任意）"},
+        },
+        ("text",),
+        read_only=False,
+    ),
+    Tool(
+        "bug_reports",
+        "送った不具合の報告の状態",
+        "自分が送った不具合の報告の一覧（新しい順。状態は未読・対応中・済み）。",
+        _bug_reports,
     ),
     Tool(
         "country_set",
