@@ -219,7 +219,7 @@ def fiscal_page(request, island_id: int):
     """財政: 国庫の収入と支出、予算と使った額、税率、国債の一覧。持ち主には命令の入力も。"""
     island, context, stats = _report(request, island_id, "fiscal", "財政")
     context.update(
-        fiscal=reports.fiscal_view(island, stats, context["currency"]),
+        fiscal=reports.fiscal_view(island, stats, context["currency"], context["mine"]),
         bonds=reports.bond_rows(island, context["currency"], context["mine"]),
     )
     return render(request, "web/fiscal.html", context)
