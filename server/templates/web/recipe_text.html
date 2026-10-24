@@ -1,0 +1,14 @@
+{% load i18n %}
+{# 施設の生産方式を選ぶ欄で使う文言。 #}
+<div id="recipe-text" hidden
+  data-labor="{% translate '人手 {count} 割' %}"
+  data-education="{% translate '育ち +{count}%' %}"
+  data-electronics-hint="{% translate '電子機器を使う作り方は毎ターン電子機器を使い、手元にないまま続くと基本の作り方に戻ります。' %}"
+  data-ownership-hint="{% translate '国営の施設は生産方式の切り替えを命令に追加できます。民営の工場は持ち主の企業が採算を見て自分で替えるため、画面からは替えられません。' %}"
+  data-method="{% translate '生産方式' %}"
+  data-change="{% translate '生産方式の切り替え' %}"
+  data-current="{% translate '現在' %}"
+  data-next="{% translate '次のターンに「{name}」に切り替えます。' %}"
+  data-transition="{% translate '次のターンの市場で切り替わり、そのターンは稼働率が半分になります。' %}"
+  data-add="{% translate '命令に追加' %}"
+  data-none="{% translate 'なし' %}"></div>

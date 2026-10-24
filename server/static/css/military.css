@@ -1,6 +1,7 @@
 /* 軍の画面も政治・外交と同じ罫線と色。表の幅はスクロール欄の中に収める。 */
 .military-page { overflow-wrap: anywhere; min-width: 0; }
 .military-page .report-main, .military-page .panel { min-width: 0; }
+#tile-panel .recipe-select { width: 100%; max-width: 100%; min-width: 0; }
 .military-links, .military-buttons { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 12px 0; }
 .military-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; }
 .military-summary > div { padding: 10px; border: 1px solid var(--border); border-top: 3px solid var(--accent); background: var(--panel); }

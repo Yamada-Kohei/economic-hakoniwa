@@ -53,7 +53,7 @@ function showTables(defs) {
       b.warhead != null ? `${b.warheads ?? 0} / ${b.warhead}` : "—"];
   }));
   set("reserve", [w.good, w.tons], Object.entries(military.reserve || {}).map(([g, q]) => [defs.goods?.[g]?.name || w[g] || g, q]));
-  set("occupied", [w.location, w.owner, w.since], (military.occupied || []).map((t) => [mapLink(t), t.by, t.turn]));
+  set("occupied", [w.location, w.owner, w.since], (military.occupied || []).map((t) => [mapLink(t), t.by === -1 ? w.rebels : t.by, t.turn]));
   set("occupying", [w.island, w.location, w.since], (military.occupying || []).map((t) => [t.island, mapLink(t), t.turn]));
   set("prisoners", [w.owner, w.people], Object.entries(military.prisoners?.by_island || {}).map(([i, n]) => [i, n]));
   set("enemy", [w.id, w.owner, w.kind, w.location, w.status, w.turn], (military.enemy_units || []).map((u) =>

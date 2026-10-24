@@ -3,6 +3,7 @@
 {% block content %}
 <link rel="stylesheet" href="{% static 'css/military.css' %}">
 {% include "web/military_text.html" %}
+{% include "web/recipe_text.html" %}
 {% csrf_token %}
 <div class="island-header">
   <h1>{{ island.name }}{% if ai %} {% include "web/ai_mark.html" %}{% endif %}</h1>
@@ -41,6 +42,8 @@
       <span id="overlay-legend" class="hint" aria-live="polite"></span>
     </div>
     <p id="map-help" class="hint">{% translate "地図はドラッグで移動、Ctrl＋ホイールか＋－ボタンで拡大縮小できます。スマートフォンでは2本指で拡大縮小できます。通常のホイールはページをスクロールします。" %}</p>
+    <p class="hint">{% translate "赤みのあるマスは反乱軍の占領です。" %}{% if mine %} {% translate "赤い輪の反乱軍には兵の数を添えています。" %}{% endif %}</p>
+    {% if mine %}<p id="rebel-map-notice" class="error" role="status" hidden></p>{% endif %}
     {% if mine %}<div id="mark-tools" class="mark-tools" aria-live="polite"></div>{% endif %}
     {% if own_island %}<section id="missile-target" class="military-page panel" hidden
       data-military="{% url 'api_island_military' own_island.id %}" data-orders="{% url 'api_orders' own_island.id %}"

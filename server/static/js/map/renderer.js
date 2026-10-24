@@ -21,7 +21,9 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
   const facilityAt = new Map();
   for (const f of map.facilities || []) facilityAt.set(f.y * n + f.x, f);
   const unitsAt = new Map();
-  for (const u of map.units || []) {
+  // 反乱軍の位置は持ち主だけ。通常の部隊とまとめて、同じマスでは印をずらす。
+  const rebels = map.mine ? (map.civil_war?.groups || []).map((g) => ({ ...g, army: "rebels", rebel: true })) : [];
+  for (const u of [...(map.units || []), ...rebels]) {
     const i = u.y * n + u.x;
     unitsAt.set(i, [...(unitsAt.get(i) || []), u]);
   }
@@ -56,7 +58,12 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       if (f?.hidden && map.mine) drawUnderground(ctx, px, top, theme, options.undergroundLabel || "");
       if (trench) drawOverlay(ctx, sprites.get("overlay/trench_front"), px, top, theme);
       if (map.occupied?.[i]) {
-        if (sprites.has("overlay/occupied")) drawOverlay(ctx, sprites.get("overlay/occupied"), px, top, theme);
+        if (map.occupied[i] === -1) {
+          ctx.fillStyle = "rgba(190, 35, 55, 0.35)";
+          diamondPath(ctx, px, top, theme.tile_width / 2, theme.tile_height / 2);
+          ctx.fill();
+          outlineTop(ctx, px, top, theme, "#b51f38");
+        } else if (sprites.has("overlay/occupied")) drawOverlay(ctx, sprites.get("overlay/occupied"), px, top, theme);
         else outlineTop(ctx, px, top, theme, "#c34b38");
       }
       if (unitsAt.has(i)) drawUnits(ctx, unitsAt.get(i), px, top, theme, sprites);
@@ -115,13 +122,25 @@ function drawUnits(ctx, units, px, top, theme, sprites) {
   const cy = top + theme.tile_height / 2;
   units.forEach((u, k) => {
     const x = px + (k - (units.length - 1) / 2) * theme.tile_width * 0.22;
-    ctx.strokeStyle = OWN_RING;
+    ctx.strokeStyle = u.rebel ? "#b51f38" : OWN_RING;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.ellipse(x, cy, hw, hh, 0, 0, Math.PI * 2);
     ctx.stroke();
     const sprite = sprites.get(`unit/${u.army}`);
     if (sprite) drawSprite(ctx, sprite, x, cy + hh / 2);
+    if (u.rebel) {
+      ctx.save();
+      ctx.font = "bold 9px sans-serif";
+      ctx.textAlign = "center";
+      const label = String(u.soldiers);
+      const width = ctx.measureText(label).width + 6;
+      ctx.fillStyle = "#92222a";
+      ctx.fillRect(x - width / 2, cy + hh, width, 12);
+      ctx.fillStyle = "#fff";
+      ctx.fillText(label, x, cy + hh + 9);
+      ctx.restore();
+    }
   });
 }
 
