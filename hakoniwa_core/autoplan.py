@@ -1308,7 +1308,9 @@ def _site_for(
         if fac.placement_problem(defs, island, kind, *pos, recipe, expand=True) is not None:
             continue
         target = fac.expansion_target(island, kind, *pos)
-        if target is not None and target.recipe != recipe:
+        if target is not None and (
+            target.recipe != recipe or not _labor_for_expansion(island, defs, kind, pos, radius)
+        ):
             continue
         # 水力発電所は、水が WATER_MIN 未満の場所には建てず、水の多い場所を先に（0.1 刻み。W-148）
         wet = 0
@@ -1326,6 +1328,20 @@ def _site_for(
         if best_key is None or key < best_key:
             best, best_key = pos, key
     return best
+
+
+def _labor_for_expansion(
+    island: IslandState, defs: Defs, kind: str, pos: tuple[int, int], radius: int
+) -> bool:
+    """建て増す施設の通勤圏に、規模 1 つ分の働き手の半分以上の雇われていない人がいるか（段6 A3）。
+    いなければ建て増しても雇えずに動かない（_flows は全力で動く見込みで数えるので、通勤圏の人手が
+    尽きた施設を建て増し続けて、投入財が品切れになった。測りの戦争の場面）。新しいマスに建てる。"""
+    idle = 0
+    for x, y in within(island, pos, radius):
+        t = island.tile(x, y)
+        if t.population:
+            idle += max(0, fac.labor_force(defs, island, t) - t.ext.get("employed", 0))
+    return idle * 2 >= defs.facilities[kind]["workers"]
 
 
 def _power_line(island: IslandState, defs: Defs, pos: tuple[int, int]) -> list[tuple[int, int]]:
