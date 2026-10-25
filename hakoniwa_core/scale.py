@@ -9,8 +9,13 @@ game.yaml の数は倍 1 の大きさで書き、読み込むときに、大き�
 現実の物の大きさで決まる数（軍艦 1 隻の乗員と材料、自動車 1 台、兵 1 人の武器と食べ物）は
 変えません。
 
+倍は世界ごとに決まります。サーバーは世界を作るときの倍を世界の拡張欄（World.ext の "scale"）に書き、
+次からはその倍で設定を読みます（server/game.py）。倍を入れる前に作った世界（8000・8001）は拡張欄に
+倍がないので、倍 1 のまま動きます（人口やお金を後から 20 倍に移し替えると、預金・国債・会社の
+資本など数の多い状態を全部揃えて直す必要があり、間違えやすいため）。
+
 試験は環境変数 HK_SCALE で倍を替えられます（tests/conftest.py は 1 にして、倍 1 の数で書いた試験を
-そのまま使う）。測りで倍 1 と比べるときも同じです。
+そのまま使う）。測りで倍 1 と比べるときも同じです。環境変数は世界の倍より先に効きます。
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ from collections.abc import Mapping
 from typing import Any
 
 ENV = "HK_SCALE"
+WORLD_KEY = "scale"  # 世界の拡張欄に書く倍
 
 # game.yaml の大きさに比例する設定（名前 → 倍の掛け方。"x" は掛ける、"/" は割る）
 CONFIG_FIELDS: dict[str, str] = {
@@ -46,11 +52,13 @@ CONFIG_FIELDS: dict[str, str] = {
 }
 
 
-def factor(raw: Mapping[str, Any]) -> float:
-    """設定の倍（環境変数 HK_SCALE があればそちら）。"""
+def factor(raw: Mapping[str, Any], world: float | None = None) -> float:
+    """設定の倍。環境変数 HK_SCALE、世界の倍（world）、game.yaml の順に先に効く。"""
     env = os.environ.get(ENV)
     if env:
         return float(env)
+    if world is not None:
+        return float(world)
     return float((raw.get("scale") or {}).get("people", 1))
 
 
@@ -74,9 +82,9 @@ def _times(value: Any, k: float) -> Any:
     return value
 
 
-def apply_config(raw: dict[str, Any]) -> dict[str, Any]:
+def apply_config(raw: dict[str, Any], world: float | None = None) -> dict[str, Any]:
     """game.yaml の中身に倍を掛けて、掛けた倍を scale.people に書く。"""
-    k = factor(raw)
+    k = factor(raw, world)
     raw.setdefault("scale", {})
     raw["scale"] = {**raw["scale"], "people": k}
     if k == 1:

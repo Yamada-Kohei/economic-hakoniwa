@@ -76,7 +76,7 @@ def wear_down(game, f, share):
     kit = equipment.kit(game.defs, f.kind)
     have = {g: fac.scale(q, round(share * fac.FULL)) for g, q in kit.items() if q > 0}
     f.economy[equipment.EQUIPMENT] = have
-    f.economy[equipment.CONDITION] = equipment._ratio(game.defs, f.kind, have)
+    f.economy[equipment.CONDITION] = equipment._ratio(game.defs, f, have)
 
 
 # --- 設備の傷み ------------------------------------------------------------------------

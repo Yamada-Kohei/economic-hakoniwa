@@ -122,14 +122,14 @@ def test_build_on_the_same_facility_starts_an_expansion(game, world):
 def test_land_bound_facilities_cannot_expand(game, world):
     island = world.islands[1]
     farm = _built(island, "farm")
-    problem = fac.placement_problem(game.defs, island, "farm", farm.x, farm.y)
+    problem = fac.placement_problem(game.defs, island, "farm", farm.x, farm.y, expand=True)
     assert problem is not None and problem[0] == "reason_cannot_expand"
 
 
 def test_expansion_stops_at_the_tile_limit(game, world):
     island, plant = _state_plant(world)
     plant.ext[fac.SIZE] = fac.max_size(game.defs, plant.kind)
-    problem = fac.placement_problem(game.defs, island, plant.kind, plant.x, plant.y)
+    problem = fac.placement_problem(game.defs, island, plant.kind, plant.x, plant.y, expand=True)
     assert problem is not None and problem[0] == "reason_expand_full"
 
 
@@ -138,3 +138,20 @@ def test_other_facility_still_blocks_the_tile(game, world):
     plant = _built(island, "thermal_power_plant")
     problem = fac.placement_problem(game.defs, island, "steel_mill", plant.x, plant.y)
     assert problem is not None and problem[0] in ("reason_tile_occupied", "reason_wrong_terrain")
+
+
+def test_world_scale_comes_after_the_environment(monkeypatch):
+    monkeypatch.delenv(scale.ENV, raising=False)
+    raw = {"scale": {"people": 20}}
+    assert scale.factor(raw) == 20
+    assert scale.factor(raw, world=1) == 1  # 倍を入れる前の世界
+    monkeypatch.setenv(scale.ENV, "5")
+    assert scale.factor(raw, world=1) == 5
+
+
+def test_searching_for_a_free_tile_skips_the_same_facility(game, world):
+    """建国や民営の会社の空いたマス探しは、同じ施設のマスを空いたマスとみない。"""
+    island = world.islands[1]
+    plant = _built(island, "thermal_power_plant")
+    problem = fac.placement_problem(game.defs, island, plant.kind, plant.x, plant.y)
+    assert problem is not None and problem[0] == "reason_tile_occupied"

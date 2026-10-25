@@ -1305,7 +1305,7 @@ def _site_for(
     for pos in within(island, capital, island.size):
         if island.tile(*pos).zone != ZONE_NONE:
             continue
-        if fac.placement_problem(defs, island, kind, pos[0], pos[1], recipe) is not None:
+        if fac.placement_problem(defs, island, kind, *pos, recipe, expand=True) is not None:
             continue
         target = fac.expansion_target(island, kind, *pos)
         if target is not None and target.recipe != recipe:

@@ -50,7 +50,7 @@ def check_build(island: IslandState, payload: dict[str, Any], defs: Defs) -> Non
     if kind in defs.facilities and defs.facilities[kind].get("buildable") is False:
         raise OrderFailed("reason_not_buildable", facility=kind)
     problem = fac.placement_problem(
-        defs, island, kind, payload["x"], payload["y"], payload.get("recipe")
+        defs, island, kind, payload["x"], payload["y"], payload.get("recipe"), expand=True
     )
     if problem is not None:
         raise OrderFailed(problem[0], **problem[1])

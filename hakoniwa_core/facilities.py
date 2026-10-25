@@ -589,9 +589,18 @@ def labor_demand(defs: Defs, f: Facility, turn: int, power: str | None = None) -
 
 
 def placement_problem(
-    defs: Defs, island: IslandState, kind: str, x: int, y: int, recipe: str | None = None
+    defs: Defs,
+    island: IslandState,
+    kind: str,
+    x: int,
+    y: int,
+    recipe: str | None = None,
+    expand: bool = False,
 ) -> tuple[str, dict[str, Any]] | None:
-    """施設 kind を (x, y) に建てられないときは (理由, 引数) を返す。建てられれば None。"""
+    """施設 kind を (x, y) に建てられないときは (理由, 引数) を返す。建てられれば None。
+
+    expand が真なら、同じ施設の建っているマスは建て増しとして見る（段6 A3。建てる命令と標準の
+    計画）。偽なら施設のあるマスは埋まっている（建国や民営の会社の空いたマス探し）。"""
     if kind not in defs.facilities:
         return ("reason_unknown_facility", {})
     fdef = defs.facilities[kind]
@@ -619,7 +628,7 @@ def placement_problem(
             return wrong_zone
         occupant = island.facility_at(x, y)
         if occupant is not None:
-            if occupant.kind != kind:
+            if occupant.kind != kind or not expand:
                 return ("reason_tile_occupied", {})
             # 同じ施設の建っているマスには建て増す（段6 A3。作り方は建っている施設のまま）
             return expansion_problem(defs, island, occupant)
