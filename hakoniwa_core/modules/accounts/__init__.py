@@ -6,7 +6,10 @@
              − 職員の賃金 − 貸し倒れ ＋ 国債の実現損益
 商社は、外貨を売ったときの為替の実現損益（受け取った自国通貨 − 外貨の帳簿の値打ち）も損益に入れ
 ます。まだ売っていない外貨の評価損益は入れません（フェーズ3-1。hakoniwa_core/trade/money.py）。
-在庫の増減は、そのターンの値段で数えます（hakoniwa_core/economy/books.py）。
+在庫の増減は、損益では原価法・低価法で数えます（W-196）: 施設の作る物は「1単位の原価（変動費と設備の
+傷み。economy/prices.py の unit_floor）とそのターンの値段の安い方」、仕入れた物はそのターンの値段。
+作って売れていない物を売り値で数えてもうけにすると、建国の1ターン目に売れ残りのもうけに法人税と配当を
+払った。GDP（economy/books.py）は、国の計算の決まりどおりそのターンの値段で数えます。
 
 設備の傷み（回6。hakoniwa_core/economy/equipment.py）: 物を作る施設の設備をこの段で1ターン分傷ませ、
 減価償却は「帳簿の設備の値打ち（設備の額 − 償却済み）× 傷んだ資材の値打ち ÷ 傷む前の設備の値打ち」
@@ -70,7 +73,9 @@ from hakoniwa_core.economy import (
     is_self_supporting,
     owner_entity,
 )
+from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.households import add_income
+from hakoniwa_core.economy.prices import unit_floor
 from hakoniwa_core.economy.start import fund_facility, next_payments
 from hakoniwa_core.modules.construction import close_accounts
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
@@ -95,8 +100,8 @@ class Accounts(IslandStage):
             return
         config = ctx.config
         prices = island.economy.prices
-        inventory = books.inventory_changes(island, prices)
-        island.scratch["inventory_changes"] = inventory
+        island.scratch["inventory_changes"] = books.inventory_changes(island, prices)
+        inventory = self._book_inventory(island, ctx)
         flows = books.facility_items(island)
         valuation, realized = self._valuation(island, ctx)
         rows: list[tuple[Facility, dict[str, int]]] = []
@@ -169,6 +174,32 @@ class Accounts(IslandStage):
         cb_realized = realized.get(ledger.CB, 0)
         cb_valuation = valuation[ledger.CB] - cb_realized if ledger.CB in valuation else 0
         self._central_bank(island, cb_realized, cb_valuation)
+
+    @staticmethod
+    def _book_inventory(island: IslandState, ctx: StageContext) -> dict[int, int]:
+        """施設ごとの損益の在庫の増減（原価法・低価法。作る物は1単位の原価とそのターンの値段の
+        安い方、仕入れた物はそのターンの値段）。"""
+        prices = island.economy.prices
+        rates: dict[int, int] | None = None
+        out = {}
+        for facility, goods in books.stock_flows(island).items():
+            f = island.facility(facility)
+            outputs = fac.recipe_of(ctx.defs, f)["outputs"] if f is not None and f.built else {}
+            value = 0
+            for good, qty in sorted(goods.items()):
+                price = prices.get(good, 0)
+                if good in outputs and f is not None:
+                    if rates is None:
+                        rates, _ = freight_rates.compute(island, ctx.defs, ctx.config)
+                    wage = f.economy.get("wage") or island.economy.average_wage
+                    cost = unit_floor(
+                        ctx.defs, ctx.config, f, good, prices, wage, rates.get(f.id, 0)
+                    )
+                    if cost > 0:
+                        price = min(price, cost)
+                value += money_of(price, qty)
+            out[facility] = value
+        return out
 
     @staticmethod
     def _valuation(island: IslandState, ctx: StageContext) -> tuple[dict[str, int], dict[str, int]]:

@@ -13,7 +13,8 @@
 # need: 家計にとっての種類（フェーズ3-2）。necessity 必需品（食べ物・電力・衣料）、luxury ぜいたく品、
 #   durable 耐久消費財（ぜいたく品の種類にも数える）、service サービス（ぜいたく品の種類にも数える。
 #   バランス調整）。家計の買い方と幸福度は game.yaml の household
-grain:              {tier: 1, unit: ton, display_scale: 25, shelf_life: 8, consumer: true, food: {nutrition: 1, quality: 0.2}, freight_weight: 1, need: necessity}
+# 穀物（麦・米）は乾かして倉庫に置けば年単位でもつ。国の備蓄の入れ替えの目安で2年（W-199。魚・食品・肉は短い）
+grain:              {tier: 1, unit: ton, display_scale: 25, shelf_life: 24, consumer: true, food: {nutrition: 1, quality: 0.2}, freight_weight: 1, need: necessity}
 fish:               {tier: 1, unit: ton, display_scale: 25, shelf_life: 2, consumer: true, food: {nutrition: 1, quality: 0.4}, freight_weight: 1, need: necessity}
 wood:               {tier: 1, unit: cubic_meter, display_scale: 25, freight_weight: 0.7}
 stone:              {tier: 1, unit: ton, display_scale: 25, mining: true, freight_weight: 1}

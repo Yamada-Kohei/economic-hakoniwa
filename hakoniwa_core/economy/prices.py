@@ -6,6 +6,8 @@
 （電力は火力発電所）はその施設の原価で決めます。追加パックで財を足しても同じ計算で値段が付きます。
 人手だけで出すサービス（game.yaml の services。バランス調整）は「賃金 ÷ 働く人1人の量」に
 上乗せします。
+建国のときに置く施設の産業（昔からの産業）は、建国の経験の係数（economy/experience.py の
+founding_factor）の生産性で作るとみて、1単位あたりの原価をその係数で割ります（W-186 の直し 回1）。
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.defs.kinds import AUTOMATED
-from hakoniwa_core.economy import equipment
+from hakoniwa_core.economy import equipment, experience
 from hakoniwa_core.market import auction
 from hakoniwa_core.state import Facility, IslandState
 from hakoniwa_core.units import QUANTITY_SCALE, money_of, part, round_money, scale_price
@@ -136,7 +138,7 @@ def _solve_prices(
     markup = 1 + settings["markup"]
     reference = settings.get("reference") or {}
     made = None if resources is None else fac.producible_goods(defs, resources)
-    producers: dict[str, list[tuple[str, Mapping[str, Any]]]] = {}
+    producers: dict[str, list[tuple[str, str, Mapping[str, Any]]]] = {}
     for kind, fdef in defs.facilities.items():
         for rname, recipe in fdef["recipes"].items():
             if (
@@ -148,15 +150,21 @@ def _solve_prices(
             for good in recipe["outputs"]:
                 if good in reference and reference[good] != kind:
                     continue
-                producers.setdefault(good, []).append((kind, recipe))
+                producers.setdefault(good, []).append((kind, rname, recipe))
     fixed = fixed or {}
+    # 建国で置く施設の作り方は、昔からの産業の経験の係数の生産性で作る（産出が係数倍なので、1単位の
+    # 原価は係数で割る）
+    founded = experience.founding_recipes(defs)
+    skill = experience.founding_factor(config)
     prices: dict[str, float] = {g: float(fixed.get(g, settings["default"])) for g in defs.goods}
     for _ in range(settings.get("iterations", 500)):
         changed = 0.0
         for good in sorted(producers):
             best = None
-            for kind, recipe in producers[good]:
+            for kind, rname, recipe in producers[good]:
                 unit = unit_cost(defs, config, kind, recipe, prices, wage)
+                if (kind, rname) in founded:
+                    unit /= skill
                 best = unit if best is None else min(best, unit)
             assert best is not None
             new = best * markup

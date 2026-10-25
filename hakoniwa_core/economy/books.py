@@ -88,6 +88,11 @@ def sector(island: IslandState, name: str) -> dict[str, int]:
     return _flows(island)["sectors"].get(name, {})
 
 
+def stock_flows(island: IslandState) -> dict[int, dict[str, int]]:
+    """施設ごと・財ごとの在庫の出入りの量（入れば正）。"""
+    return _flows(island)["stock"]
+
+
 def inventory_changes(island: IslandState, prices: Mapping[str, int]) -> dict[int, int]:
     """施設ごとの在庫の増減の値打ち（そのターンの値段で）。"""
     out = {}

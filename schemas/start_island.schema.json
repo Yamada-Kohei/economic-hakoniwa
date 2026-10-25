@@ -44,7 +44,10 @@
           "kind": {"type": "string", "description": "施設の名前"},
           "count": {"type": "integer", "minimum": 1, "description": "いくつ置くか（書かなければ1）"},
           "recipe": {"type": "string", "description": "作り方（複数ある施設だけ）"},
-          "if_resource": {"type": "string", "description": "この鉱業資源を選んだ島にだけ置く"}
+          "if_resource": {"type": "string", "description": "この鉱業資源を選んだ島にだけ置く"},
+          "fit": {"enum": ["food", "inputs"], "description": "数を要る量に合わせる（food: 建国の住民の食べる量、inputs: 上に書いた施設が使う量。count の代わり）"},
+          "min": {"type": "integer", "minimum": 0, "description": "fit のとき、要る量によらず置く数"},
+          "max": {"type": "integer", "minimum": 1, "description": "fit のとき、置く数の上限（書かなければ10）"}
         }
       },
       "description": "首都に近い、建てられる空いたマスから順に置く施設"

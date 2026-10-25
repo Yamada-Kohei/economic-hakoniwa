@@ -35,7 +35,7 @@
 | FS-12 | 国債の段が毎ターン「次のターンの支払いの見込み＋手元に残す額−国庫の残高」を自動で発行して国庫を空にしない。満期の償還は足りない分をその場で発行して充てる。売れ残りの扱いは命令で決める（タブ 7） | 決定 |  | tests/core/test_finance.py::test_unsold_bonds_cut_spending_instead_of_underwriting |
 | FS-13 | 銀行の救済と預金保護に国庫から出すのは、次のターンの支払いの順番の決めた項目までを残した額まで。出したターンは、次のターンの支出の分まで国債を出して国庫を戻す | 決定 | `fiscal.rescue_after` | tests/core/test_playtest_fixes.py::test_rescue_keeps_next_turn_priority_payments, tests/core/test_playtest3_fixes.py::test_rescue_refills_the_treasury_for_next_turn, tests/core/test_playtest5_fixes.py::test_bailout_leaves_reserves_for_next_turns_wages |
 | FS-14 | 政府の買い物（国庫直轄の施設の仕入れ、公共事業と学校の資材）は、ほかの買い手と同じく市場の板寄せで買う。売りに出ていない物にはお金を取り置かない | 決定 |  | tests/core/test_playtest3_fixes.py::test_public_sites_do_not_reserve_money_for_goods_not_on_sale |
-| FS-15 | 国の倉庫は政府が持つ倉庫。国の工事はここにある資材を先に使い、命令 `warehouse_trade` で市場に売ったり備蓄を買い入れたりする。中身はそのターンの値段で政府の資産に数える | 決定 | `fiscal.budget.warehouse` | tests/core/test_infrastructure.py::test_public_works_build_a_queued_road_from_the_warehouse, tests/server/test_economy.py::test_warehouse_sale_check_reads_the_warehouse |
+| FS-15 | 国の倉庫は政府が持つ倉庫。国の工事はここにある資材を先に使い、命令 `warehouse_trade` で市場に売ったり備蓄を買い入れたりする。中身はそのターンの値段で政府の資産に数える。穀物は国の備蓄として、命令がなくても放出・入れ替え・買い足しをする（FS-25） | 決定 | `fiscal.budget.warehouse` | tests/core/test_infrastructure.py::test_public_works_build_a_queued_road_from_the_warehouse, tests/server/test_economy.py::test_warehouse_sale_check_reads_the_warehouse |
 | FS-16 | 契約で届いた物は、買い手が契約ごとに「市場に出す」（既定）か「国の倉庫に入れる」かを選ぶ。腐る物はどちらでも届いたらすぐ市場に出す | 決定 |  | tests/core/test_playtest5_fixes.py::test_contract_goods_go_to_the_market_by_default, ::test_contract_goods_can_stay_in_the_warehouse, tests/core/test_trade.py::test_perishables_arriving_in_the_warehouse_go_to_the_market |
 | FS-17 | 失業手当は失業者1人に平均賃金の決めた割合を国庫から払う。建国のときから払い、命令 `set_labor_policy` で変える（受け取り方はタブ 4 LB-10） | 決定 | `fiscal.unemployment_benefit` | tests/server/test_economy.py::test_policy_orders_from_the_island_page |
 | FS-18 | 産業政策は命令（行政力1、次のターンから）で決める4つの道具: 関税（輸入の財ごとの率）・輸出補助（財ごとの1単位あたりの額）・輸入の割り当て（財ごとの1ターンの上限）・禁輸（国ごと、国×財ごと） | 決定 |  | tests/core/test_phase3_3.py::test_tariffs_are_paid_on_bloc_imports_and_lower_the_bids, ::test_export_subsidies_are_paid_from_the_subsidy_budget, ::test_import_quota_stops_bloc_imports_of_the_good, ::test_embargo_stops_trade_between_the_two_countries |
@@ -45,6 +45,7 @@
 | FS-22 | 国庫が払えないとき、国債の利払いは先頭のまま払い、支払いを止めるかはプレイヤーの命令 `set_bond_payment` で選ぶ（自動では止めない）。今月の人件費と運営費は同じ割合で遅配にし、国営の農場だけが押し出されないようにする | 決定 | `fiscal.payment_order` | tests/core/test_balance_round5.py::test_payroll_group_is_cut_in_proportion_and_old_arrears_wait |
 | FS-23 | 国営の施設の設備は国が予算から直す（回6。タブ 5 FM-12） | 決定（回6 で作る） |  | （未確認） |
 | FS-24 | 国庫のうち「支出の `bonds.buffer_turns`+1 ターン分と次の利払い」を超えた分は、国債の段の終わりに自己資本比率が規制の値以上の市中銀行へ政府の預金として預ける（民間の預金の割合で分ける）。国庫と同じく取り置きと支払いに使え、国庫で足りない分は払うときと国債を出す前に引き出す（破綻した銀行からは引き出さず、準備預金をマイナスにしない分まで）。担保付きの預金として、準備の最低限・利子・預金保護・切り捨て・お金の量の外に置く。国がいつでも引き出すので、銀行は預かった分を全額準備預金のまま持ち、国債の入札に回さない | 決定（回5） | `bonds.buffer_turns` | tests/core/test_balance_round5.py::test_treasury_surplus_is_deposited_at_banks_and_drawn_back |
+| FS-25 | 国の穀物の備蓄: 目安は住民の食べる量の決めたターン数分で、建国のときに国の倉庫に入れる。建国の備蓄の作られたターンは日持ちの間にならす。前のターンに飢えた家計があればいつもの値段で、値段がいつもの値段の決めた割合だけ上がっていればその値段で売りに出す（放出。ふだんは出さない）。日持ちの残りが決めたターン数以下の組は今の値段で売る（入れ替え）。放出しないターンは、入れ替えで売った分と、目安に足りない分の決めた割合を、いつもの値段を指値に国の倉庫の予算から買う。輸入や命令で倉庫が穀物を売りに出しているターンは買わない | 決定 | `food_reserve.good`, `food_reserve.turns`, `food_reserve.release`, `food_reserve.rotate`, `food_reserve.refill`, `fiscal.budget.warehouse` | tests/core/test_recession_round1.py::test_reserve_releases_when_the_price_spikes_or_people_go_hungry, ::test_reserve_rotates_old_grain_and_refills, ::test_founding_reserve_is_spread_over_the_shelf_life |
 
 ## 仕組み
 
@@ -95,7 +96,8 @@
 ### 国の倉庫
 
 - フェーズ1の島の共同倉庫は、政府が持つ「国の倉庫」になった。国の工事（国営施設と公共事業）はここにある資材を先に使う。
-- 命令 `warehouse_trade` で市場に売ったり、備蓄として買い入れたりできる（買い入れは国の倉庫の予算から）。飢饉のときの食料の放出もこの命令で出す。
+- 命令 `warehouse_trade` で市場に売ったり、備蓄として買い入れたりできる（買い入れは国の倉庫の予算から）。
+- 国の穀物の備蓄（FS-25。`hakoniwa_core/economy/reserve.py`、W-186 の直し 回1）: 現実の国の備蓄（日本の米は年の消費の約 1.5 か月分を持ち古い物から入れ替える。中国やインドは値上がりで放出し、値下がりで買い入れる）に倣い、命令がなくても政府が次のようにする。目安は住民の食べる量の `food_reserve.turns` ターン分で、建国のときに倉庫に入れておく。昔から積んできた物なので、作られたターンを入れ替えまでのターン数にならしておく（同じターンにすると、約 20 ターン後に全部が一度に入れ替えの時期になり、農場の売上を奪って値崩れさせる）。漁港が災害で止まるなどして、前のターンに飢えた家計があればいつもの値段を指値に（計画経済の公定価格や値段の上限の下でも売れる）、値段がいつもの値段の (1 + `food_reserve.release`) 倍以上になっていればその値段を指値に、倉庫の穀物を売りに出す（放出）。ふだんは売りに出さない（出しておくと、需要が生産を上回っても市場の売りが足りて見え、農場が建たない）。日持ちの残りが `food_reserve.rotate` ターン以下の組は今の値段で売る（入れ替え）。放出しないターンは、入れ替えで売った分と、目安に足りない分の `food_reserve.refill` の割合を（目安まで）、いつもの値段を指値に国の倉庫の予算（`fiscal.budget.warehouse`）から買う（予算を 0 にすれば買わない）。契約の輸入や命令で倉庫が穀物を売りに出しているターンは買わない（自分の売りを買わない。入れ替えの売りは少しずつなので、同じ板で一部を買い戻すことはある）。売り買いの結果はログに出さない。前は余分の農場 3 つで飢饉に備えていた（タブ 2 PO-14）。標準の計画は、飢饉の月の手（穀物への作り替え・倉庫の食べ物を全部売る・緊急の買い入れ）だけを命令で出す。
 - 中身はそのターンの値段で政府の資産に数える。腐る物は持ち越せる期間を過ぎると捨てる（タブ 3）。
 - 契約で届いた物は、買い手が契約ごとに「市場に出す」（既定）か「国の倉庫に入れる」かを選ぶ。腐る物はどちらでも届いたらすぐ市場に出す。
 - 撤退した施設の残りの在庫は国が市場の値段で引き取る（タブ 5）。民営の工事をやめたときに買ってあった資材は国の倉庫に入る。

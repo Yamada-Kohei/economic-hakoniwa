@@ -48,7 +48,7 @@
 | MK-26 | 運賃の率は施設ごとの見込み。取引の相手になりうる所を近い順に自分の量に届くまで数えた平均の道のりから出し、相手で埋まらない分は拠点（首都・都市以上の町・港）までの道のりで数える | 決定 | `freight.per_step`, `freight.max_rate`, `freight.hub_level` | tests/core/test_rules.py::test_freight_depends_on_distance_to_trading_partners, tests/core/test_infrastructure.py::test_roads_shorten_freight |
 | MK-27 | 運送業は島に1つ（マスを持たない施設）。前のターンの運賃の決めた割合を賃金で割った人数の運転手を島のどこからでも雇い、人手が足りない割合だけ次の率を割り増す。参入・撤退・倒産はしない | 決定 | `freight.facility`, `freight.labor_share`, `freight.max_surcharge` | tests/core/test_rules.py::test_transport_keeps_freight_income_to_hire_drivers |
 | MK-28 | 運送業は自動車をトラックとして買い、1台を運転手の決めた人数分と数える。トラックは燃料を使い、年に傷む。運転手より安く使えるときだけ買い、燃料がなければ動かない | 決定 | `freight.trucks.good`, `freight.trucks.drivers`, `freight.trucks.fuel.fuel`, `freight.trucks.wear`, `freight.trucks.max_share`, `freight.trucks.catch_up`, `freight.trucks.fuel_turns` | tests/core/test_phase3_2.py::test_transport_buys_trucks_when_they_cost_less_than_drivers, ::test_trucks_replace_drivers_only_while_they_have_fuel |
-| MK-29 | 初めの値段は、建国と移し替えのときに定義データのレシピから「原価＋上乗せ」で解く。原価は投入財・賃金・設備の利子と減価償却。作り方が複数なら島で使える安い方、電力は決めた発電所の原価 | 決定 | `market.initial_prices.markup`, `market.initial_prices.capital_rate`, `market.initial_prices.reference.electricity`, `market.initial_prices.default`, `labor.initial_wage`, `firms.depreciation_turns` | tests/core/test_rules.py::test_initial_prices_use_recipes_the_island_can_run |
+| MK-29 | 初めの値段は、建国と移し替えのときに定義データのレシピから「原価＋上乗せ」で解く。原価は投入財・賃金・設備の利子と減価償却。作り方が複数なら島で使える安い方、電力は決めた発電所の原価。建国の施設の産業（昔からの産業）は建国の経験の係数の生産性で作るとみて、1 単位の原価をその係数で割る | 決定 | `founding.experience_turns`, `market.initial_prices.markup`, `market.initial_prices.capital_rate`, `market.initial_prices.reference.electricity`, `market.initial_prices.default`, `labor.initial_wage`, `firms.depreciation_turns` | tests/core/test_rules.py::test_initial_prices_use_recipes_the_island_can_run, tests/core/test_recession_round1.py::test_founding_industries_start_with_experience_and_cheaper_prices |
 | MK-30 | 前のフェーズから移し替えた島で値段のない新しい財には、島の初めの値段に今の物価指数の倍率を掛けた値段を置く | 決定 |  | tests/core/test_phase3_2.py::test_upgrade_prices_new_goods_at_the_island_price_level |
 | MK-31 | 財は 24 品目（23 品目とサービス）。原料・中間財・最終財の段、家計にとっての種類、持ち越せる期間、栄養と質、船で運ぶ重さを `packs/base/data/goods.yaml` に持つ | 決定 |  | （未確認） |
 | MK-32 | 計算の量は島の大きさに合わせて縮め、重さの1トンは実物のおよそ 25 トン分とする。見せるときは実物に近い単位に直す（タブ 11 UI-33） | 仮 |  | tests/server/test_display_units.py |
@@ -71,7 +71,7 @@
 
 - 財は原料・中間財・最終財の 3 段で、産業は「原料 → 工場 → 使う物」の 1〜2 段にする。中間財は使い道の広い燃料・化学品・アルミだけにする（細かくしすぎると遊ぶのが大変になるため）。
 - 家計にとっての種類（`need`）は、必需品（食べ物・電力・衣料）、ぜいたく品（消費財・嗜好品）、耐久消費財（自動車。ぜいたく品の種類にも数える）、サービス（タブ 4）。食べ物は栄養と質を持ち、所得が上がると質の高い物に移る。
-- 持ち越せる期間（`shelf_life`）のある財は、期間を過ぎると捨てる。電力とサービスは持ち越せない。船で運ぶ重さ（`freight_weight`）のない財は島の外へ運べない（電力・サービス）。
+- 持ち越せる期間（`shelf_life`）のある財は、期間を過ぎると捨てる。電力とサービスは持ち越せない。穀物は乾かして倉庫に置けば年単位でもつので、国の備蓄の入れ替えの目安の 2 年にしている（W-199。魚・食品・肉は短い）。船で運ぶ重さ（`freight_weight`）のない財は島の外へ運べない（電力・サービス）。
 - 輸送船は貿易と援助の荷を運ぶ設備でもある（タブ 9）。自動車と燃料は、フェーズ4で軍用車両と軍の維持にも使う。銅鉱石と電子機器はフェーズ4、観光業はベータ版の後（タブ 14）。
 - 入れないもの: 季節、資源の埋蔵量・枯渇・探鉱・品位、1 つの工場にしか行かない中間財。
 - 量の単位: 計算の量は島の大きさに合わせて縮めてあり、重さの 1 トンは実物のおよそ 25 トン分（1 人 1 ターンの食料 0.002 トンが実物の月 50kg ほど）。見せるときは財ごとの `display_scale` を掛けて実物に近い単位にする（タブ 11 UI-33）。重さ・体積の財と、同じ縮め方の電力・消費財・機械は 25 倍、1 つずつ数える自動車・部品の組・輸送船と、人月で数えるサービス・小売りはそのまま。電力は実物の使い方（家庭・アルミ・発電所）で縮め方がばらばらなので、1 つの倍率では寄せきれない（家庭の電気は 1 人 1 か月 12.5kWh と少なめに見える）。
@@ -145,6 +145,7 @@
 ### 初めの値段
 
 - 建国と移し替えのときに、定義データのレシピから「原価＋`market.initial_prices.markup`」で解く。原価は投入財、賃金（`labor.initial_wage`）、設備の利子（`market.initial_prices.capital_rate`）と減価償却（`firms.depreciation_turns`）の合計。
+- 建国で置く施設の作り方（`start_island.yaml` に書いた施設と作り方。昔からの産業）は、建国の経験の累積 `founding.experience_turns` の係数（タブ 5 FM-31）の生産性で作るとみて、1 単位の原価をその係数で割る（W-186 の直し 回1。生産性 1 の値段のまま建国の施設が係数倍作ると、1 年目に値段が下がり続けた）。同じ産業でも建国で置かない作り方（鉄鉱石の鉱山・建材の工場・水力発電所など）と、島に新しく入る産業は係数 1 のまま（産業の名前で割ると、その産業の経験のない島の工場が、安すぎる値段で赤字になる）。
 - 作り方が複数あれば島で使える安い方を使い、電力は `market.initial_prices.reference.electricity` の原価で決める。作る施設のない財は `market.initial_prices.default`。追加パックで財を足しても同じ計算で値段が付く。
 - 前のフェーズから移し替えた島で値段のない財には、島の初めの値段に今の物価指数の倍率を掛けた値段を置く。
 - 初めの値段は、1 人 1 か月の食費が住民 1 人あたりの賃金の 1〜4 割に収まる大きさを目安にしている。実物の数字は `/mnt/project-files/settings/game-settings.md` を見る。

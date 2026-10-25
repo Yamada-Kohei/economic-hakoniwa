@@ -42,7 +42,7 @@
 
 ## [2 島と町と人口](02-population.md)
 
-決まり 49 個、うち仮の決まりの表にあるもの 1 個。
+決まり 49 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -59,7 +59,7 @@
 | PO-11 | 国名・首都名・通貨名と記号・国家元首の名前は建国で入れ（長さの上限は `founding.nam`… | 決定 | tests/core/test_founding.py |
 | PO-12 | 地名は島を `naming.place_block` マス四方の区画に分けて作風で自動で付け、首… | 決定 | tests/core/test_founding.py、tests/core/test_orders.py、tests/core/test_rules.py |
 | PO-13 | 建国直後の島は `start_island.yaml` に従い、首都の町・周りの村・初めの施設・… | 決定 | tests/core/test_founding.py |
-| PO-14 | 初めの食料の施設は、災害で漁港か農場が 1 つ止まっても食べ物が半分を切らないよう、農場を多めに… | 仮（仮の決まりの表あり） | tests/core/test_founding.py |
+| PO-14 | 初めの施設のうち `fit` を書いたものは、数を要る量に合わせる: 食料は建国の住民の食べる量… | 決定 | tests/core/test_founding.py、tests/core/test_recession_round1.py |
 | PO-15 | 建国のお金は、建国の国債 → 家計への給付 → 出資 → 銀行の国債買い、の順の仕訳で作る | 決定 | tests/core/test_founding.py、tests/core/test_infrastructure.py |
 | PO-16 | 町（住宅）は自動で建つ施設 `housing.facility` で、段階（村・町・都市・大都市… | 決定 | tests/core/test_playtest3_fixes.py |
 | PO-17 | 町ができる・育つのは、人手の足りない施設（店が雇いきれなかった集落を含む）の通勤圏で、空いている… | 決定 | tests/core/test_rules.py |
@@ -130,7 +130,7 @@
 | MK-26 | 運賃の率は施設ごとの見込み | 決定 | tests/core/test_infrastructure.py、tests/core/test_rules.py |
 | MK-27 | 運送業は島に1つ（マスを持たない施設） | 決定 | tests/core/test_rules.py |
 | MK-28 | 運送業は自動車をトラックとして買い、1台を運転手の決めた人数分と数える | 決定 | tests/core/test_phase3_2.py |
-| MK-29 | 初めの値段は、建国と移し替えのときに定義データのレシピから「原価＋上乗せ」で解く | 決定 | tests/core/test_rules.py |
+| MK-29 | 初めの値段は、建国と移し替えのときに定義データのレシピから「原価＋上乗せ」で解く | 決定 | tests/core/test_recession_round1.py、tests/core/test_rules.py |
 | MK-30 | 前のフェーズから移し替えた島で値段のない新しい財には、島の初めの値段に今の物価指数の倍率を掛けた… | 決定 | tests/core/test_phase3_2.py |
 | MK-31 | 財は 24 品目（23 品目とサービス） | 決定 | （未確認） |
 | MK-32 | 計算の量は島の大きさに合わせて縮め、重さの1トンは実物のおよそ 25 トン分とする | 仮（仮の決まりの表あり） | tests/server/test_display_units.py |
@@ -173,7 +173,7 @@
 | LB-25 | 町の資材は、都市の発展の段が「育てる」と決めた分を一般の層が預金の決めた割合まで市場で買う（住宅… | 決定 | （未確認） |
 | LB-26 | 村の仕事のない住民は自給の農業で自分の食べる分をまかない、市場で買わない | 決定 | tests/core/test_balance_round4.py |
 | LB-27 | 幸福度は家計の層ごとに出して人数で平均する | 決定 | （未確認） |
-| LB-28 | 建国のとき、働く層と資本家階級に1人あたりの預金を置き、一般の労働者の決めた割合を技術者にする | 決定 | tests/server/test_economy.py |
+| LB-28 | 建国のとき、働く層と資本家階級に1人あたりの預金を置き、一般の労働者の決めた割合を技術者にする | 決定 | tests/core/test_recession_round1.py、tests/server/test_economy.py |
 | LB-29 | 財「サービス」はその場で作ってその場で使い、持ち越せず島の外へ運べない | 作り直し予定（回7） | tests/core/test_balance_round4.py |
 | LB-30 | 家計は必需品を買った残りのうち所得に応じた割合をサービスに使う | 決定（回7 でも残す） | tests/core/test_balance_round4.py |
 | LB-31 | 店の場所は通勤圏でいちばん人の多い集落で、雇う人数は場所ごとに買いに来る住民で割り振る | 仮（仮の決まりの表あり） | tests/core/test_balance_round4.py |
@@ -188,7 +188,7 @@
 
 ## [5 施設と企業](05-firms.md)
 
-決まり 47 個、うち仮の決まりの表にあるもの 0 個。
+決まり 48 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -222,7 +222,7 @@
 | FM-28 | 命令 `set_zone` で陸のマスを工業団地かオフィス街に指定・解除する（首都と町のマスは指… | 決定 | tests/core/test_finance.py、tests/server/test_finance.py |
 | FM-29 | 鉱山は鉱業資源ごとの作り方を持ち、島に決めた数まで（工事中も数え、民営も数える | 決定 | tests/core/test_phase3_2.py |
 | FM-30 | 施設の定義に産業の分類 `industry`（農業・鉱業・鉄鋼・非鉄・機械・自動車・繊維・石油・… | 決定 | （未確認） |
-| FM-31 | 経験: 島×産業ごとに施設が出した産出の倍率（稼働率×生産性）を足して数え、係数を累積の対数で上… | 決定 | tests/core/test_phase3_3.py |
+| FM-31 | 経験: 島×産業ごとに施設が出した産出の倍率（稼働率×生産性）を足して数え、係数を累積の対数で上… | 決定 | tests/core/test_phase3_3.py、tests/core/test_recession_round1.py |
 | FM-32 | 集積: 工場（分類が industry の施設）だけに、半径の中の同じ産業のほかの施設1つごとに… | 決定 | tests/core/test_phase3_3.py |
 | FM-33 | 各産業の累積が世界1位の国に「鋼都」（鉄鋼）などの称号を付け、統計の画面に得意産業と世界の順位を… | 決定 | （未確認） |
 | FM-34 | 暴動で止まるのは都市のマスの近くの施設で、農林水産業（農場・漁港・牧場・製材所）は止まらない（暴… | 決定 | tests/core/test_phase3_4.py |
@@ -239,10 +239,11 @@
 | FM-45 | 水力発電所の出力は、集水域（半径 4 マス | 決定（W-148） | tests/core/test_hydro.py |
 | FM-46 | 施設と企業の自動の名前は、生まれたときに一度だけ決めて残す（民営の企業は創業者の姓か生まれた地名… | 決定（仮: 創業者と地元の出資の割合） | tests/core/test_company_names.py |
 | FM-47 | 施設の規模（段6 A3、W-85）: 同じ施設の建っているマスに同じ施設を建てる命令は、建て増し… | 決定 | tests/core/test_scale.py |
+| FM-48 | 損益の在庫の増減は原価法・低価法で数える: 施設の作る物は「1 単位の原価（変動費と設備の傷み）… | 決定 | tests/core/test_recession_round1.py |
 
 ## [6 国の財政と政策](06-finance.md)
 
-決まり 24 個、うち仮の決まりの表にあるもの 0 個。
+決まり 25 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -270,6 +271,7 @@
 | FS-22 | 国庫が払えないとき、国債の利払いは先頭のまま払い、支払いを止めるかはプレイヤーの命令 `set_`… | 決定 | tests/core/test_balance_round5.py |
 | FS-23 | 国営の施設の設備は国が予算から直す（回6 | 決定（回6 で作る） | （未確認） |
 | FS-24 | 国庫のうち「支出の `bonds.buffer_turns`+1 ターン分と次の利払い」を超えた… | 決定（回5） | tests/core/test_balance_round5.py |
+| FS-25 | 国の穀物の備蓄: 目安は住民の食べる量の決めたターン数分で、建国のときに国の倉庫に入れる | 決定 | tests/core/test_recession_round1.py |
 
 ## [7 お金と銀行](07-banking.md)
 

@@ -32,9 +32,9 @@
 | PO-10 | 政治体制（2 軸）と経済体制（市場・混合・計画）を建国で選び、初めの施設の持ち主を経済体制に合わせる（`regimes.yaml` の owner と state_owned） | 決定 |  | tests/core/test_founding.py::test_owner_follows_economy |
 | PO-11 | 国名・首都名・通貨名と記号・国家元首の名前は建国で入れ（長さの上限は `founding.name_max`）、地名の作風を 8 つから選ぶ（既定は `naming.place_style`） | 決定 | `founding.name_max.country`, `founding.name_max.capital`, `founding.name_max.currency`, `founding.name_max.currency_symbol`, `founding.name_max.leader`, `naming.place_style` | tests/core/test_founding.py::test_place_names_follow_style_and_capital |
 | PO-12 | 地名は島を `naming.place_block` マス四方の区画に分けて作風で自動で付け、首都の区画は首都名。命令で変えられ行政力を使わない。町には名前を付けない | 決定 | `naming.place_block` | tests/core/test_rules.py::test_rename_place, tests/core/test_orders.py::test_renames_do_not_use_admin_power, tests/core/test_founding.py::test_housing_has_no_name_and_admin_has_no_place |
-| PO-13 | 建国直後の島は `start_island.yaml` に従い、首都の町・周りの村・初めの施設・送電線・倉庫の資材を置き、初めの施設には最初のターンに全力で動ける投入財を倉庫から渡す | 決定 |  | tests/core/test_founding.py::test_start_island |
-| PO-14 | 初めの食料の施設は、災害で漁港か農場が 1 つ止まっても食べ物が半分を切らないよう、農場を多めに置く（数は `start_island.yaml`） | 仮 |  | tests/core/test_founding.py::test_start_island |
-| PO-15 | 建国のお金は、建国の国債 → 家計への給付 → 出資 → 銀行の国債買い、の順の仕訳で作る。額は `founding.money` と、建国の予算・失業手当・教育・道路・技術者の設定で決まる | 決定 | `founding.money.general_deposit`, `founding.money.owner_deposit`, `founding.money.treasury`, `founding.money.operating_turns`, `founding.money.bond`, `fiscal.unemployment_benefit`, `fiscal.budget.construction`, `education.start`, `education.start_school`, `education.start_budget_years`, `education.engineer_share`, `infrastructure.start_road` | tests/core/test_founding.py::test_start_island, tests/core/test_infrastructure.py::test_groundwork_sets_roads_water_school_and_engineers |
+| PO-13 | 建国直後の島は `start_island.yaml` に従い、首都の町・周りの村・初めの施設・送電線・倉庫の資材と国の穀物の備蓄を置き、初めの施設には最初のターンに全力で動ける投入財を倉庫から渡す | 決定 | `food_reserve.turns` | tests/core/test_founding.py::test_start_island |
+| PO-14 | 初めの施設のうち `fit` を書いたものは、数を要る量に合わせる: 食料は建国の住民の食べる量、原料はそれより前に置いた施設が全力で使う量で、その島の生産性（気候・肥沃度・経験と、建国の後に置く道路・教育の初めの値）の見込みの産出から、残りが施設 1 つの産出の `founding.fit_share`（食料は 0 で切り上げ、原料は 0.5 で四捨五入）以上ある間だけ置く。飢饉の備えは余分の農場でなく国の穀物の備蓄（タブ 6 FS-15） | 決定 | `founding.fit_share` | tests/core/test_founding.py::test_start_island, tests/core/test_recession_round1.py::test_start_facilities_fit_the_need |
+| PO-15 | 建国のお金は、建国の国債 → 家計への給付 → 出資 → 銀行の国債買い、の順の仕訳で作る。額は `founding.money` と、建国の予算・失業手当・教育・道路・技術者の設定で決まる。一般の層の預金は家計が持っていたい額「(1 − c1) ÷ c2 × 建国の使う額」（c1 は初めの預金金利で物価が動かないときの値） | 決定 | `household.layers.general.c1`, `household.c2`, `household.base_income`, `founding.money.owner_deposit`, `founding.money.treasury`, `founding.money.operating_turns`, `founding.money.bond`, `fiscal.unemployment_benefit`, `fiscal.budget.construction`, `education.start`, `education.start_school`, `education.start_budget_years`, `education.engineer_share`, `infrastructure.start_road` | tests/core/test_founding.py::test_start_island, tests/core/test_infrastructure.py::test_groundwork_sets_roads_water_school_and_engineers |
 | PO-16 | 町（住宅）は自動で建つ施設 `housing.facility` で、段階（村・町・都市・大都市）ごとの住める上限・見た目・育つ資材・上下水道の条件は `settlements.yaml` にある | 決定 | `housing.facility` | tests/core/test_playtest3_fixes.py::test_settlement_grew_is_logged_when_the_town_level_rises |
 | PO-17 | 町ができる・育つのは、人手の足りない施設（店が雇いきれなかった集落を含む）の通勤圏で、空いている町に入れる人と近くの仕事のない人では足りないとき | 決定 | `labor.commute_radius` | tests/core/test_rules.py::test_housing_grows_near_vacancies_but_not_on_no_development |
 | PO-18 | 育つのは人数が上限の `housing.fill_ratio` を超えた町で、新しくできる数と育つ数は 1 ターンにそれぞれ上限まで。開発を止めたマスと指定したマスには建たない | 決定 | `housing.fill_ratio`, `housing.max_new_per_turn`, `housing.max_upgrades_per_turn` | tests/core/test_rules.py::test_housing_grows_near_vacancies_but_not_on_no_development |
@@ -72,9 +72,7 @@
 
 ### 仮の決まり
 
-| 番号 | 何の代わりか | いつ外すか |
-| --- | --- | --- |
-| PO-14 | 飢えの蓄えが入る前の「1 ターンに 1 割が亡くなる崖」への備えとして農場を 3 つにした（本来は国の穀物の蓄えと配給の仕組み。rework-design.md 案7 の「寄せの借り」） | 決めていない。回5 の「標準の計画の飢饉の手」（穀物の蓄え・配給）と一緒に見直す候補 |
+今はない。初めの農場の数の仮（PO-14）は、施設の数を要る量に合わせる形と国の穀物の備蓄で外した（2026-10-26、W-186 の直し 回1）。
 
 ## 仕組み
 
@@ -113,11 +111,13 @@
 
 ### 建国直後の島と初期値
 
-建国直後の島の中身は `start_island.yaml` にあります。首都のマスに中央省庁、周りに町の段階の住宅、少し離れて村、首都に近い建てられるマスから順に初めの施設（農場・漁港・林業場・消費財工場・火力発電所と、選んだ資源の鉱山や採石場）、倉庫の資材、首都とつながる送電線です。初めの施設には、最初のターンに全力で動ける分の投入財を倉庫から渡しておきます。人口の規模は初版の 10 倍です（首都の町の人数は `start_island.yaml`）。
+建国直後の島の中身は `start_island.yaml` にあります。首都のマスに中央省庁、周りに町の段階の住宅、少し離れて村、首都に近い建てられるマスから順に初めの施設（漁港・農場・火力発電所・消費財工場・林業場と、選んだ資源の鉱山や採石場）、倉庫の資材と国の穀物の備蓄（住民の食べる量の `food_reserve.turns` ターン分。タブ 6）、首都とつながる送電線です。初めの施設には、最初のターンに全力で動ける分の投入財を倉庫から渡しておきます。人口の規模は初版の 10 倍です（首都の町の人数は `start_island.yaml`）。
 
-初めの食料の施設は、漁港と農場 1 つで住民の買う量に足ります。災害で漁港か農場が止まっても、止めていた農場が動き出すまで食べ物が半分を切らないよう、農場を多めに置いています（PO-14。これは飢えの蓄えが入る前の崖への備えで、仮の決まり）。
+初めの施設の数は、決まった数でなく、建国の人口が食べる量・使う量とその島の出来高から決めます（PO-14。`start_island.yaml` の `fit`）。食料の施設（農場）は、漁港の見込みの産出を引いた残りがある間は置き（住民が飢えないように切り上げ。`founding.fit_share.food` 0）、林業場と石炭の鉱山は、それより前に置いた消費財工場と発電所が全力で使う木材・石炭に合わせます（残りが 1 つの産出の半分以上なら置く四捨五入。鉱山は半分の大きさがないので 1 つ）。見込みの生産性には、建国の後に置く道路と教育の初めの値を入れます（入れないと 1〜3 割低く見込み、施設を置きすぎた）。気候の悪い島は農場が多く、魚の多い島は少なくなります。前は農場を 3 つ置いていたので食べ物が 6 割余り、農場は 1 年目から 1〜2 割しか動かず、働き手が余っていました（W-186）。災害で漁港が止まったときの備えは、余分の農場でなく国の穀物の備蓄です（タブ 6 FS-15）。
 
-建国のお金と基盤は、建国と前のフェーズの世界の移し替えで同じ関数が作ります（`hakoniwa_core/economy/start.py`・`groundwork.py`）。初めの残高は仕訳の列として作るので、最初のターンから帳簿の確かめが通ります。順は、政府が建国の国債（期間 `founding.money.bond`）を出して中央銀行が引き受ける → 政府が家計の各層に建国の給付を払う（1 人あたり `founding.money.general_deposit`・`founding.money.owner_deposit`、国庫は 1 人 `founding.money.treasury`）→ 銀行と独立採算の施設に持ち主が出資する（施設の手元資金は `founding.money.operating_turns` ターン分の支払い）→ 銀行が中央銀行から国債を買う、です（仕訳の中身と銀行の初めの値はタブ 7）。失業手当は建国のときから `fiscal.unemployment_benefit` で払い、年の予算は `fiscal.budget` と `education.start_budget_years` です（タブ 6）。生産の基盤は、教育水準 `education.start`、技術者は一般の労働者の `education.engineer_share`（と建っている施設が要る数の多い方）、首都の近くに `education.start_school` を建てた状態で 1 つ、施設と町のマスに道路 `infrastructure.start_road`、首都の近くのオフィス街に銀行と商社です（タブ 8・7・9）。これで建国直後のインフラと教育の係数はほぼ 1 になります。値段は定義データから「原価 + 1 割」で解きます（タブ 3）。
+初めの施設の産業（農林水産業・消費財・電力・鉱業）は、島で昔から営んできた産業なので、経験の累積 `founding.experience_turns` から始めます（タブ 5 FM-31）。0 から始めると 1 年目に生産性が 15% ほど伸び、費用と値段が下がり続けました。
+
+建国のお金と基盤は、建国と前のフェーズの世界の移し替えで同じ関数が作ります（`hakoniwa_core/economy/start.py`・`groundwork.py`）。初めの残高は仕訳の列として作るので、最初のターンから帳簿の確かめが通ります。順は、政府が建国の国債（期間 `founding.money.bond`）を出して中央銀行が引き受ける → 政府が家計の各層に建国の給付を払う（1 人あたり、一般の層は家計が持っていたい額、資産を持つ層は `founding.money.owner_deposit`、国庫は 1 人 `founding.money.treasury`）→ 銀行と独立採算の施設に持ち主が出資する（施設の手元資金は `founding.money.operating_turns` ターン分の支払い）→ 銀行が中央銀行から国債を買う、です（仕訳の中身と銀行の初めの値はタブ 7）。一般の層の持っていたい額は、使う額 C = c1 × 所得 + c2 × 預金（タブ 4）が所得と釣り合う預金「(1 − c1) ÷ c2 × 所得」で、所得は建国のときの使う額 `household.base_income` とみます（所得の約 10 か月分）。前は約 5 か月分で、1 年目に家計が使わずに貯め込み、需要が落ちました（W-186）。失業手当は建国のときから `fiscal.unemployment_benefit` で払い、年の予算は `fiscal.budget` と `education.start_budget_years` です（タブ 6）。生産の基盤は、教育水準 `education.start`、技術者は一般の労働者の `education.engineer_share`（と建っている施設が要る数の多い方）、首都の近くに `education.start_school` を建てた状態で 1 つ、施設と町のマスに道路 `infrastructure.start_road`、首都の近くのオフィス街に銀行と商社です（タブ 8・7・9）。これで建国直後のインフラと教育の係数はほぼ 1 になります。値段は定義データから「原価 + 1 割」で解き、昔からの産業は建国の経験の生産性で原価を割ります（タブ 3）。
 
 ### 町（住宅）の段階と育ち方
 
@@ -217,7 +217,7 @@
 | 場面 | 誰が・何を | どれくらいの間に | 元に戻る道 | 現実の例 | 設定の名前 |
 | --- | --- | --- | --- | --- | --- |
 | 足りない | 食料が足りない: 家計の層ごとに飢えの蓄えがたまり（遅らせる役: 体の蓄え・村の自給）、買い上がり（タブ 3）・村の人は畑へ・町の人は村へ・受け入れる島があれば移民・子が減る・幸福度と政情が下がる（ずらす役）。住む所が足りない: 町が育つか新しくでき（資材がそろえば）、空きがなければ詰めて住み（過密）、島の空きより過密の人が多ければ近くの平地に村を開く（分家と開拓）。開けるまで過密で亡くなる人が増え、生まれる人と幸福度が下がる | 蓄えが体の余力を超えるまで数か月。弱い人から何か月かに分かれて亡くなる。畑へ戻るのは翌ターン、村へ逃れるのは蓄えが flee を超えてから | 食べ物が市場に戻れば蓄えは recovery で戻り、畑の人は back_to_work ずつ仕事に戻る。村へ逃れた人が町へ戻る道は弱い（回7 で見る） | オランダの飢餓の冬は半年で人口の 0.5% ほど、ベンガルは 1 年で 5% ほど、レニングラードの最悪の冬は 1 か月に 4% ほど。飢饉の国からの出国は年に数%、アイルランドの大飢饉は 10 年で 2 割 | `population.hunger.*`, `labor.back_to_work`, `migration.*`, `housing.*` |
-| 余る | 食料が余る: 農場が操業目標を下げ、売れ残りは傷んで捨てられる（タブ 3・5）。国の備蓄は命令と予算（`fiscal.budget.warehouse`）がなければ 0 で、遅らせる役がない（rework-design.md 2.2。備蓄の案は未実施）。人が余る（仕事がない）: 失業のまま。村なら自給、町なら店が最後に雇う（回4 の仮。タブ 4）、人手の足りない施設の近くへ移る、受け入れる島があれば移民 | 農場の減産は操業目標の見直しの速さで（タブ 5） | 品切れになれば値段が上がって作り方が戻る（タブ 3） | 現実の政府は穀物を買い上げて備蓄する（独立後のインド）。回5 の「標準の計画の飢饉の手」で入れる | `fiscal.budget.warehouse`, `population.migration_rate` |
+| 余る | 食料が余る: 農場が操業目標を下げ、売れ残りは農場の在庫に残り（穀物の日持ちは `shelf_life` 24 ターン）、過ぎれば傷んで捨てられる（タブ 3・5）。国の穀物の備蓄（タブ 6 FS-15）は目安を超えて買わない。建国の施設の数は要る量に合わせる（PO-14）。人が余る（仕事がない）: 失業のまま。村なら自給、町なら店が最後に雇う（回4 の仮。タブ 4）、人手の足りない施設の近くへ移る、受け入れる島があれば移民 | 農場の減産は操業目標の見直しの速さで（タブ 5） | 品切れになれば値段が上がって作り方が戻る（タブ 3）。備蓄は飢えた家計が出るか、値段がいつもの値段の (1 + `food_reserve.release`) 倍まで上がると放出し、放出しないターンに買い足す | 現実の政府は穀物を買い上げて備蓄する（独立後のインド、日本の米は年の消費の約 1.5 か月分） | `food_reserve.*`, `fiscal.budget.warehouse`, `population.migration_rate` |
 | 0 になる | 食料が 0: まったく食べられないと数か月で多くが亡くなる（遅らせる役: 蓄えと村の自給。ずらす役: 買い上がり・輸入・村へ逃れる・移民）。人口が 0: 島が空になり、戻る道は受け入れを開いた移民だけ。関門は初めの人口に対する下限と上限、1 ターンの変化の上限で見る（gate.py の固定値。設定にない。タブ 12）。住む所の空きが 0: 詰めて住み、平地と木材があれば村を開く。平地がなければ過密が続き、亡くなる割合が上がり生まれる割合が下がって、上限の少し上で釣り合う | 何も食べられなければ 3 か月目から多く亡くなり、4 か月で 3 分の 2 ほど | 食べ物が戻れば蓄えは戻る。空になった島に人が戻るのは移民の受け入れが要る | 飢えで島じゅうが亡くなる流れは回3・回4 で消えた（10 島で漁港が暴動で止まり島が 3 か月で空になった件は、暴動から農林水産業を外して直した。タブ 10） | `population.hunger.reserve`, `population.hunger.reserve_min` |
 | 一部だけ | 層の一部が飢える: 家計を分けて失業している家計から飢える。少しの人が飢えても層の全員が買い物をやめない（タブ 4）。島の 1 か所: 上下水道のない密な町はそのマスの亡くなる割合が上がる（標準の計画が上下水道を引く）、汚染の重なるマスは幸福度と肥沃度が下がる、離れ小島は自前の発電所が要り港が入るまで運賃が高い（タブ 8・3） | 密な町の死亡率はその場で。肥沃度は 1 年分たまるごと | 上下水道を引けば下がる。汚染が消えても肥沃度は戻らない（下限まで下がったまま） | 19 世紀の農村とリバプール・マンチェスターの死亡率の差 | `population.deaths.crowd`, `population.deaths.water`, `climate.fertility_loss` |
 | 持ち主・相手がいない | 移民の行き先がない（どの島も閉じている。既定は閉じる）: 出られず留まり、出たい人の不満が政情に効く。町を育てる資材を作る施設が島にない: 育たず「町が育たない」と知らせ続ける。通勤圏に人を雇う施設がない: 町はできず、人は移らない | 2 ターン続けて資材が足りなければ知らせ | 資材を作る施設を建てる・輸入する。移民は受け入れを開く国が出るまで | ベルリンの壁の前の東ドイツは年に 1〜2% を失った | `migration.trapped`, `migration.trapped_max` |
@@ -248,3 +248,4 @@
 | 日付 | 見つけた場面 | 設計に足したこと |
 | --- | --- | --- |
 | 2026-10-17 | 設計書の整理で書き直した。境目の表は rework-design.md 2.2 の分（食料・人口・移民）と本文の「足りないとき」を埋めた | フェーズ1 の人口・町・餓死・消える人の決まりは回3・回4 の後の姿だけにした。建国の初期値の「手元資金 2 ターン分」「失業手当 0」は設定の名前（`founding.money.operating_turns`・`fiscal.unemployment_benefit`）で書いた。初めの農場の数は仮の決まりとして残した |
+| 2026-10-26 | W-186 の直し 回1 の読むだけの見直し役: ①施設の数の見込みが道路と教育を 0 で見て低く、施設を置きすぎる ②鉱業などの産業の名前で初めの値段を下げると、その産業の経験のない島の工場（鉄鉱石・建材・水力）が赤字になる ③備蓄の売りを毎ターン出しておくと、穀物の品切れが見えず農場が建たない ④計画経済の公定価格や値段の上限の下では放出が約定しない ⑤建国の備蓄が同じターンの組で、約 20 ターン後に一度に入れ替わる ⑥輸入した穀物を国の倉庫が自分で買う ⑦預金の目安が金利の分の c1 の下げを見ていない ⑧見込みを直すと、四捨五入では食べ物が 1 割足りない島が出る | ①見込みに道路と教育の初めの値を入れた ②値段を下げるのは建国で置く施設の作り方だけにした（タブ 3・5） ③④放出は飢えた家計が出たか値段が上がったときだけにし、飢えた家計があればいつもの値段で出す（タブ 6 FS-25） ⑤建国の備蓄の作られたターンをならした ⑥輸入や命令で倉庫が穀物を売るターンは買わない ⑦c1 は初めの預金金利の分を下げた値で出す（PO-15） ⑧食料の施設は切り上げにした（PO-14）。国債と銀行の自己資本の増え方、在庫を原価で数えることの貸借とのずれ、称号の 1 ターン目の決まり方は、回2〜4 で見る |

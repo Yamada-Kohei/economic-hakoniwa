@@ -122,8 +122,17 @@ founding:
     - {terrain: mountain, share: 0.12, inland: true}   # inland: 海から遠いマスから
     - {terrain: forest, share: 0.25}                   # まとまりで散らす
   capital_margin: 2     # 首都の候補は、海からこのマス数以上離れたマスを優先する
+  # 昔からの産業（初めの施設の産業）の経験の累積（標準の施設が動いたターン数。economy/experience.py の
+  # start）。標準の施設が20年ほど動いた分で、係数は約 1.35、その後の伸びは年 1〜3% ほど（W-186 の直し 回1）
+  experience_turns: 240
+  # start_island.yaml の fit を書いた施設は、要る量の残りがその施設1つの産出のこの割合以上ある間だけ置く。
+  # 食べ物は 0（残りがあれば置く。住民が飢えないように切り上げ）、原料は 0.5（四捨五入。足りない分は
+  # 値段と輸入で埋まり、余る施設は建国から遊ぶ）
+  fit_share: {food: 0.0, inputs: 0.5}
   money:                # 建国と移し替えのときのお金（仕訳の列として作る）
-    general_deposit: 1500   # 一般の層の預金（1人あたり）
+    # 一般の層の預金（1人あたり）は、家計が持っていたい額: 使う額 C = c1 × 所得 + c2 × 預金 が所得と
+    # 釣り合う預金「(1 − c1) ÷ c2 × 所得」（c1 は初めの預金金利の分を下げた値。一般の層で所得の約1年分）。
+    # 所得は household.base_income（建国のときの一般の層の使う額）とみる。少ないと1年目に家計が使わず貯め込み、需要が落ちた（W-186）
     owner_deposit: 30000    # 資産を持つ層の預金（1人あたり、出資の後に残る額）
     treasury: 500           # 国庫（住民1人あたり）
     # 建国のときに独立採算の施設に持たせる手元の資金（支払いのターン数分）。売れ出すまでの賃金を払えず
@@ -136,6 +145,15 @@ founding:
     currency: 16
     currency_symbol: 4
     leader: 16
+
+# 国の穀物の備蓄（W-186 の直し 回1。hakoniwa_core/economy/reserve.py）。飢饉の備えを余分の農場でなく国の
+# 倉庫の穀物で持つ。現実の国の備蓄は年の消費の1〜2か月分ほど（日本の米は約1.5か月分）
+food_reserve:
+  good: grain
+  turns: 2              # 目安: 住民の食べる量の何ターン分か（建国のときに国の倉庫に入れておく。作られたターンは日持ちの間にならす）
+  release: 0.25         # 放出: 値段がいつもの値段のこの割合だけ上がるとその値段で、飢えた家計があればいつもの値段で売りに出す（ふだんは出さない）
+  rotate: 4             # 日持ちの残りがこのターン数以下の組は、傷む前に今の値段で売る（入れ替え）
+  refill: 0.25          # 目安に足りない分のうち、1ターンにいつもの値段を指値に買い足す割合（入れ替えで売った分は全部買い直す。国の倉庫の買い入れの予算から）
 
 labor:
   commute_radius: 3     # 通勤圏（マス）。施設の定義の commute_radius で施設ごとに変えられる
@@ -502,7 +520,9 @@ fiscal:
   # 賃金と教材。建国のときの額は education.start_budget_years）、subsidies は補助金、security は治安費
   # （警察官の賃金。フェーズ3-4）
   budget_items: [construction, education, security, subsidies, warehouse, defense_personnel, defense_procurement]
-  budget: {construction: 600, security: 0, subsidies: 0, warehouse: 0, defense_personnel: 0, defense_procurement: 0}  # 建国のときの年の予算（住民1人あたり）
+  # 建国のときの年の予算（住民1人あたり）。warehouse は国の穀物の備蓄の入れ替えと買い足しの分（food_reserve。
+  # 目安の量を日持ちの間に1回入れ替える代金のおよそ2倍。売った代金は国庫に戻る）
+  budget: {construction: 600, security: 0, subsidies: 0, warehouse: 100, defense_personnel: 0, defense_procurement: 0}
   reserve_margin: 0.2   # 取り置きの見積もりを、前のターンの支出よりこの割合だけ多めにする
 
 infrastructure:

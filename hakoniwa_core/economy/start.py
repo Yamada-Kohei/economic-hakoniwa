@@ -36,7 +36,7 @@ from hakoniwa_core.economy import (
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.banks import FINANCE_VERSION
 from hakoniwa_core.economy.debt import traded, underwrite
-from hakoniwa_core.economy.households import init_layers
+from hakoniwa_core.economy.households import init_layers, propensity
 from hakoniwa_core.economy.prices import construction_cost, initial_prices
 from hakoniwa_core.economy.stats import BASE_CPI
 from hakoniwa_core.geo import within
@@ -292,7 +292,7 @@ def _open_money(
             funds[f.id] = turns * operating_cost(defs, config, f, prices, wage, rates[f.id])
         elif is_self_supporting(f) and not is_bank(config, f):
             funds[f.id] = 0
-    general = settings["general_deposit"] * households[GENERAL]["persons"]
+    general = founding_deposit(config) * households[GENERAL]["persons"]
     owners_keep = settings["owner_deposit"] * households.get(OWNERS, {}).get("persons", 0)
     deposits = general + owners_keep + sum(funds.values())
     moved = [0] + [general // len(bank_names)] * (len(bank_names) - 1)
@@ -334,6 +334,19 @@ def _open_money(
         traded(island, bond.id, ledger.CB, bank, amount, amount)
         ledger.transfer(island, item, ledger.GOV, ledger.CB, bank, amount, "bond_purchase")
         ledger.pay(island, bank, ledger.CB, amount, "bond_purchase")
+
+
+def founding_deposit(config: GameConfig) -> int:
+    """建国のときの一般の層の1人あたりの預金: 家計が持っていたい額（W-186 の直し 回1）。
+
+    使う額は C = c1 × 所得 + c2 × 預金（economy/households.py）なので、預金が
+    「(1 − c1) ÷ c2 × 所得」のとき使う額が所得と釣り合い、それより少なければ家計は貯め、多ければ
+    崩す。所得は建国のときの一般の層の使う額（household.base_income）、c1 は初めの預金金利
+    （banking.deposit_rate）で物価が動かないときの値とみる（一般の層で約1年分）。
+    """
+    c1 = propensity(config, GENERAL, config.get("banking.deposit_rate"))
+    c2 = config.get("household.c2")
+    return round((1 - c1) / c2 * config.get("household.base_income"))
 
 
 def operating_capital(

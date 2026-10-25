@@ -70,23 +70,30 @@ def productivity(
     recipe: Mapping[str, Any],
     x: int,
     y: int,
+    founding: bool = False,
 ) -> int:
     """作り方 recipe の施設を (x, y) に置いたときの生産性（1000 分の 1）。
 
     (x, y) が島の外なら、場所で決まるインフラと汚染の係数は 1 と見ます（場所を決める前の見込み）。
+    経済の始まっていない島は 1 です。founding なら始まる前でも掛けます（建国の施設の数を決める
+    見込み。founding.py の place_start）。道路と教育は、建国の後に置く初めの値で見込む。
     """
     weights = recipe.get("factors") or {}
     industry = recipe.get("industry")
-    if not island.has_economy:
+    if not island.has_economy and not founding:
         return FULL
     # 体制を変えた後の混乱期間（フェーズ3-4）は、どの施設にも掛ける
     value = politics.productivity_factor(island)
     if not weights and not industry:
         return max(1, round(value * FULL))
+    road, school = infra_level(island, defs, x, y), island.economy.education
+    if founding:  # 建国の後に置く道路と教育の初めの値（economy/groundwork.py）で見込む
+        road = max(road, round(config.get("infrastructure.start_road") * FULL))
+        school = max(school, round(config.get("education.start") * FULL))
     if weights.get("infra") and island.in_bounds(x, y):
-        value *= factor(weights["infra"], infra_level(island, defs, x, y), config)
+        value *= factor(weights["infra"], road, config)
     if weights.get("education"):
-        value *= factor(weights["education"], island.economy.education, config)
+        value *= factor(weights["education"], school, config)
     if weights.get("pollution") and island.in_bounds(x, y):
         floor = config.get("infrastructure.pollution_floor")
         value *= max(floor, 1 - weights["pollution"] * island.tile(x, y).pollution)

@@ -236,6 +236,14 @@ def layer_of(entity: str) -> str | None:
     return entity[3:] if entity.startswith("hh:") else None
 
 
+def propensity(config: GameConfig, layer: str, real_rate: float) -> float:
+    """層の c1: 既定の値から、預金の実質金利が1%高いごとに c1_rate_effect 下げる（± c1_range）。"""
+    settings = config.get("household")
+    shift = settings["c1_rate_effect"] * real_rate * 100
+    limit = settings["c1_range"]
+    return layers(config)[layer]["c1"] - max(-limit, min(limit, shift))
+
+
 def consumption(island: IslandState, layer: str, config: GameConfig, inflation: float) -> int:
     """層が使う額: C = c1 × Ȳ + c2 × M（名前付きの式 consumption の既定）。
 
@@ -243,7 +251,6 @@ def consumption(island: IslandState, layer: str, config: GameConfig, inflation: 
     c1 は預金の実質金利（預金金利 − 物価上昇率）が1%高いごとに c1_rate_effect 下げる
     （既定の値から ± c1_range）。
     """
-    spec = layers(config)[layer]
     settings = config.get("household")
     h = island.economy.households[layer]
     history = h["income"][-settings["income_turns"] :]
@@ -251,9 +258,6 @@ def consumption(island: IslandState, layer: str, config: GameConfig, inflation: 
         income = sum(history) / len(history)
     else:
         income = island.scratch.get("income", {}).get(layer, 0)
-    real_rate = island.policy.deposit_rate / BASIS - inflation
-    shift = settings["c1_rate_effect"] * real_rate * 100
-    limit = settings["c1_range"]
-    c1 = spec["c1"] - max(-limit, min(limit, shift))
+    c1 = propensity(config, layer, island.policy.deposit_rate / BASIS - inflation)
     deposits = ledger.money(island, household(layer))
     return max(0, round_money(c1 * max(0.0, income) + settings["c2"] * deposits))

@@ -399,6 +399,11 @@ def test_private_farm_turns_to_a_new_crop_only_when_it_is_short(game, warmed):
     world = copy.deepcopy(warmed)
     hot = next(i for i in world.islands.values() if nature.climate_of(i) == "tropical")
     farm = next(f for f in hot.facilities if f.kind == "farm" and f.recipe == "default" and f.built)
+    # 島でただ 1 つ穀物を作る農場は作物を替えない（_sole_food）。建国の農場の数は食べる量に合わせる
+    # （W-186 回1）ので 1 つのこともあり、同じ農場をもう 1 つ足しておく
+    twin = copy.deepcopy(farm)
+    twin.id = max(f.id for f in hot.facilities) + 1
+    hot.facilities.append(twin)
     ctx = context(game, world)
     prices = dict(hot.economy.prices)
     full = game.defs.facilities["farm"]["recipes"]["cotton"]["outputs"]["cotton"]
