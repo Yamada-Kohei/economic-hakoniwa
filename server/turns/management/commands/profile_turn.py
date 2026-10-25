@@ -6,6 +6,11 @@ JSON の長さなど）を出す。--profile で cProfile の上位も出す。-
 向けないこと（--keep なしでも更新中の鎖を取る）。
 
     DATABASE_URL=sqlite:////path/to/copy.sqlite3 python manage.py profile_turn --turns 3 --profile
+
+公開の大きさの世界を長く進めたときの重さを見るには、試しの世界を作って標準の計画で進める:
+
+    python manage.py create_sample_world --islands 40
+    python manage.py profile_turn --turns 600 --keep --autoplan --detail-every 60 --profile
 """
 
 from __future__ import annotations
@@ -17,11 +22,13 @@ import pstats
 import time
 from collections import Counter
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+from hakoniwa_core import measure
 from hakoniwa_core.state.serialize import world_to_dict
 from server.game import get_game
+from server.orders.models import Order
 from server.turns import services
 from server.world.repository import WorldRepository
 
@@ -34,11 +41,26 @@ class Command(BaseCommand):
         parser.add_argument("--keep", action="store_true", help="進めたターンを DB に残す")
         parser.add_argument("--profile", action="store_true", help="cProfile の上位も出す")
         parser.add_argument("--top", type=int, default=40, help="cProfile で出す行の数")
+        parser.add_argument(
+            "--autoplan",
+            action="store_true",
+            help="毎ターン標準の計画の命令を並べる（命令の行がない、試しに作った世界だけ）",
+        )
+        parser.add_argument(
+            "--detail-every",
+            type=int,
+            default=1,
+            help="世界の大きさと cProfile を出す間隔（ターン）。ほかのターンは1行だけ",
+        )
 
-    def handle(self, *args, turns: int, keep: bool, profile: bool, top: int, **options):
+    def handle(self, *args, turns, keep, profile, top, autoplan, detail_every, **options):
         game = get_game()
-        for _ in range(turns):
-            prof = cProfile.Profile() if profile else None
+        if autoplan and Order.objects.exists():
+            raise CommandError("--autoplan は命令の行がない、試しに作った世界の写しだけで使えます")
+        carried: dict[int, tuple] = {}  # 標準の計画が読む、前のターンの統計と市場の記録
+        for n in range(turns):
+            detail = (n + 1) % detail_every == 0 or n == turns - 1
+            prof = cProfile.Profile() if profile and detail else None
             with transaction.atomic():
                 world = services.get_world()
                 times: dict[str, float] = {}
@@ -48,6 +70,14 @@ class Command(BaseCommand):
                 repo = WorldRepository(world)
                 state = repo.load()
                 times["load"] = time.perf_counter() - t
+                if autoplan:
+                    for island in state.islands.values():
+                        island.stats, island.markets = carried.get(island.id, ({}, []))
+                    t = time.perf_counter()
+                    measure.queue_scenario_orders(
+                        state, measure.SCENARIOS["plan"], game.defs, game.config
+                    )
+                    times["autoplan"] = time.perf_counter() - t
                 t = time.perf_counter()
                 services._check_defs_cover(state)
                 services._make_backup(world, state)
@@ -63,12 +93,28 @@ class Command(BaseCommand):
                     prof.disable()
                 if not keep:
                     transaction.set_rollback(True)
-            self._report(state, times, report.seconds, prof, top)
+            if autoplan:
+                carried = {i.id: (dict(i.stats), list(i.markets)) for i in state.islands.values()}
+            if detail:
+                self._report(state, times, report.seconds, prof, top)
+            else:
+                self._line(state, times)
+
+    def _line(self, state, times):
+        total = sum(v for k, v in times.items() if k != "autoplan")
+        people = sum(t.population for i in state.islands.values() for t in i.tiles)
+        facilities = sum(len(i.facilities) for i in state.islands.values())
+        parts = "  ".join(f"{k} {v:.2f}" for k, v in times.items())
+        self.stdout.write(
+            f"ターン {state.turn}  合計 {total:.2f} 秒  {parts}  人口 {people:,}  施設 {facilities}"
+        )
 
     def _report(self, state, times, stages, prof, top):
         out = self.stdout.write
-        total = sum(times.values())
-        out(f"== ターン {state.turn}  合計 {total:.2f} 秒")
+        total = sum(v for k, v in times.items() if k != "autoplan")
+        people = sum(t.population for i in state.islands.values() for t in i.tiles)
+        out(f"== ターン {state.turn}  合計 {total:.2f} 秒（標準の計画を並べる時間は除く）")
+        out(f"  人口 {people:,}")
         out("  " + "  ".join(f"{k} {v:.2f}" for k, v in times.items()))
         out("  計算の段（秒、0.05 以上）:")
         for name, sec in sorted(stages.items(), key=lambda kv: -kv[1]):
