@@ -134,7 +134,8 @@ TERM_ISLANDS = ("seller", "buyer", "pegger", "payer", "payee", "host", "currency
 
 def _terms(c: dict[str, Any], names: dict[int, str]) -> dict[str, Any]:
     """経済の条項の中身（保存された条項から、島の番号を名前つきにして取り出す）。"""
-    terms: dict[str, Any] = {k: c[k] for k in TERM_KEYS if k in c}
+    shown = display.shown_clause(c)  # 契約の量と値段は見せる単位に（W-182）
+    terms: dict[str, Any] = {k: shown[k] for k in TERM_KEYS if k in shown}
     for key in TERM_ISLANDS:
         if c.get(key) is not None:
             terms[key] = _ref(names, c[key])

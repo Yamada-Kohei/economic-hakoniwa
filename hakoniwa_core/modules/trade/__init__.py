@@ -45,6 +45,7 @@ from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
 from hakoniwa_core.military import naval
 from hakoniwa_core.modules.records import LedgerCheckFailed
+from hakoniwa_core.orders import defer, fail_deferred, take_deferred
 from hakoniwa_core.registry import OrderFailed, OrderHandler, Registry, WorldStage
 from hakoniwa_core.state import Facility, IslandState, LogEntry, WorldState
 from hakoniwa_core.trade import (
@@ -109,7 +110,7 @@ def gov_payer() -> Payer:
 
 def request(island: IslandState, kind: str, payload: dict[str, Any]) -> None:
     """命令の段から、貿易の段への申し送りを積む。"""
-    island.scratch.setdefault(REQUESTS, []).append({"kind": kind, **payload})
+    defer(island, REQUESTS, kind, payload)
 
 
 @dataclass
@@ -445,7 +446,7 @@ class _Round:
         for i in self.world.island_ids():
             island = self.world.islands[i]
             policy.write_notes(self.world, island)
-            for req in island.scratch.pop(REQUESTS, []):
+            for req, order_id in take_deferred(island, REQUESTS):
                 kind = req["kind"]
                 reason = None
                 if i not in self.islands:
@@ -474,6 +475,7 @@ class _Round:
                 else:
                     reason = self._bloc_request(island, kind, req)
                 if reason is not None:
+                    fail_deferred(island, order_id, reason)
                     island.log.append(
                         LogEntry("trade_request_failed", {"order": kind, "reason": reason})
                     )

@@ -71,7 +71,7 @@ def brief(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str, 
         "enemy_units": seen_land(island.world, island.id, place=island.id, others=True),
         "wounded": sum(n for _, n in raw.get("wounded", [])),
         "abroad": raw.get("abroad", 0),
-        "reserve": {g: q / QUANTITY_SCALE for g, q in (raw.get("reserve") or {}).items()},
+        "reserve": _shown_goods(raw.get("reserve")),
         "prisoners": prisoners(raw),
         "captive": raw.get("captive", 0),
         "civil_war": civil,
@@ -85,6 +85,17 @@ def brief(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str, 
             "refugees": stats.get("military.refugees", 0),
         },
     }
+
+
+def _shown_goods(amounts: dict[str, int] | None) -> dict[str, float]:
+    """財 → 1000 分の 1 単位の量（備蓄の目標・部隊の補給の蓄え・艦隊の積荷）を、画面と同じ見せる単位
+    （重さの財は実物のトン）に（W-182。命令で打ち込む量と同じ単位）。"""
+    return {g: display.amount(q, g) for g, q in (amounts or {}).items()}
+
+
+def _shown_weight(tons: float) -> float:
+    """船の運べる重さ（計算のトン）を、見せるトンに（積荷の量と同じ単位。W-182）。"""
+    return tons * get_game().defs.weight_scale()
 
 
 def _raw_units(island: m.Island) -> list[dict[str, Any]]:
@@ -118,7 +129,7 @@ def units(island: m.Island) -> list[dict[str, Any]]:
                 "aboard": u.get("aboard"),
                 "island": army.where(u),  # いる島（外国の島に揚陸していれば、その島の番号）
                 "abroad": army.abroad(u),
-                "stores": {g: q / QUANTITY_SCALE for g, q in (u.get("stores") or {}).items()},
+                "stores": _shown_goods(u.get("stores")),
                 "hungry": bool(u.get("hungry")),
                 "role": u.get("role"),  # 戦っている間: attack 攻め・defend 守り
                 "fought": u.get("fought", 0),
@@ -154,8 +165,8 @@ def fleets(island: m.Island) -> list[dict[str, Any]]:
                 "order": {k: v for k, v in order.items() if k != "route"} if order else None,
                 "steps_left": len(order["route"]) if order and "route" in order else 0,
                 "cargo": u["cargo"],
-                "capacity": spec.get("capacity", 0) * u["ships"],
-                "goods": {g: q / QUANTITY_SCALE for g, q in (u.get("goods") or {}).items()},
+                "capacity": _shown_weight(spec.get("capacity", 0) * u["ships"]),
+                "goods": _shown_goods(u.get("goods")),
             }
         )
     return sorted(out, key=lambda f: f["id"])

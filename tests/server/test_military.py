@@ -241,7 +241,7 @@ def test_military_page_and_defs(world):
     assert "その国の持ち主だけに見えます" in others.content.decode()
     army = Client().get("/api/defs").json()["army"]
     assert army["infantry"]["arm"] == "land" and army["infantry"]["equipment"] == {"weapons": 100}
-    assert army["transport"]["capacity"] == 40 and army["submarine"]["stealth"] is True
+    assert army["transport"]["capacity"] == 40 * 25 and army["submarine"]["stealth"] is True
     assert army["frigate"]["name"] == "フリゲートの艦隊"
     facilities = Client().get("/api/defs").json()["facilities"]
     assert facilities["missile_base"]["hide"] == {"turns": 8, "materials_factor": 2}

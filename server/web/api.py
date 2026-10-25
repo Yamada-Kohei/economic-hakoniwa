@@ -140,7 +140,7 @@ def order_defs(request):
                     "name": d.name("orders", oid),
                     "admin_cost": o["admin_cost"],
                     "payload": _order_schema(oid, _plain(o["payload"])),
-                    **({"units": ORDER_UNITS_NOTE} if oid in display.ORDER_UNITS else {}),
+                    **({"units": ORDER_UNITS_NOTE} if display.order_has_units(oid) else {}),
                     **({"parliament": o["parliament"]} if o.get("parliament") else {}),
                     **({"secret": _plain(o["secret"])} if o.get("secret") else {}),
                 }
@@ -157,12 +157,27 @@ ORDER_UNITS_NOTE = (
 
 
 def _order_schema(kind: str, schema: Any) -> Any:
-    """命令の中身の形。値段の項目は見せる単位で小数も書けるので number にする（W-30）。"""
-    spec = display.ORDER_UNITS.get(kind)
-    if spec is None or not isinstance(schema, dict):
+    """命令の中身の形。値段の項目は見せる単位で小数も書けるので number にする（W-30・W-182）。"""
+    if not isinstance(schema, dict):
         return schema
+    spec = display.ORDER_UNITS.get(kind)
+    if spec is not None:
+        schema = _number_prices(schema, spec[2])
+    nested = display.ORDER_NESTED_UNITS.get(kind)
+    if nested is not None:
+        key, item_spec = nested
+        properties = dict(schema.get("properties", {}))
+        array = properties.get(key)
+        if isinstance(array, dict) and isinstance(array.get("items"), dict):
+            items = _number_prices(array["items"], item_spec[2])
+            properties[key] = {**array, "items": items}
+            schema = {**schema, "properties": properties}
+    return schema
+
+
+def _number_prices(schema: dict[str, Any], price_keys: tuple[str, ...]) -> dict[str, Any]:
     properties = dict(schema.get("properties", {}))
-    for key in spec[2]:
+    for key in price_keys:
         if isinstance(properties.get(key), dict):
             properties[key] = {**properties[key], "type": "number"}
     return {**schema, "properties": properties}
@@ -202,7 +217,8 @@ def _infra_def(kid: str, k: Any) -> dict[str, Any]:
 
 
 def _army_def(aid: str, a: Any) -> dict[str, Any]:
-    """部隊・艦隊の種類（army.yaml）。装備は財 → 見せる量。海の艦隊は 1 隻あたりの値。"""
+    """部隊・艦隊の種類（army.yaml）。装備は財 → 見せる量、重さ・燃料・運べる重さは見せるトン。
+    海の艦隊は 1 隻あたりの値。"""
     out = {
         "name": get_game().defs.name("army", aid),
         "arm": a["arm"],
@@ -211,9 +227,11 @@ def _army_def(aid: str, a: Any) -> dict[str, Any]:
         "speed": a["speed"],
         "strength": a.get("strength"),
     }
+    weight_scale = get_game().defs.weight_scale()
     for key in ("weight", "vehicles", "vision", "fuel", "capacity", "stealth", "detect", "hunt"):
         if key in a:
-            out[key] = a[key]
+            # 重さ（トン）は積荷の量と同じ見せる単位に（W-182）
+            out[key] = a[key] * weight_scale if key in ("weight", "fuel", "capacity") else a[key]
     return out
 
 

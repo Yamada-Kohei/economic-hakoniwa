@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core import politics
-from hakoniwa_core.orders import check_order
+from hakoniwa_core.orders import CURRENT, check_order
 from hakoniwa_core.registry import IslandStage, OrderFailed, Registry
 from hakoniwa_core.state import (
     ORDER_DONE,
@@ -69,6 +69,7 @@ class ExecuteOrders(IslandStage):
             if not check.ok:
                 self._fail(island, order, check.reason or "reason_unknown_order", check.args)
                 continue
+            island.scratch[CURRENT] = order.id  # 後の段へ申し送る命令が、どの命令からかを覚える
             try:
                 for gate in registry.order_gates:
                     gate(island, order, ctx)
@@ -76,6 +77,8 @@ class ExecuteOrders(IslandStage):
             except OrderFailed as e:
                 self._fail(island, order, e.reason, e.args_)
                 continue
+            finally:
+                island.scratch.pop(CURRENT, None)
             order.status = ORDER_DONE
             island.log.append(LogEntry("order_done", {"order": order.kind}))
 

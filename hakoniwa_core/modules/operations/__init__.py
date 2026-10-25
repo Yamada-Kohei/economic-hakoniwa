@@ -32,6 +32,7 @@ from hakoniwa_core.military import (
     supply,
     vision,
 )
+from hakoniwa_core.orders import defer, fail_deferred, take_deferred
 from hakoniwa_core.registry import OrderFailed, OrderHandler, Registry, WorldStage
 from hakoniwa_core.state import IslandState, LogEntry, WorldState
 from hakoniwa_core.turn.context import StageContext
@@ -45,7 +46,7 @@ VEHICLE = "military_vehicle"
 
 def request(island: IslandState, kind: str, payload: dict[str, Any]) -> None:
     """命令の段から、この段への申し送りを積む。"""
-    island.scratch.setdefault(REQUESTS, []).append({"kind": kind, **payload})
+    defer(island, REQUESTS, kind, payload)
 
 
 class Operations(WorldStage):
@@ -60,9 +61,10 @@ class Operations(WorldStage):
         army.world_state(world)
         for i in world.island_ids():
             island = world.islands[i]
-            for req in island.scratch.pop(REQUESTS, []):
+            for req, order_id in take_deferred(island, REQUESTS):
                 reason = _handle(world, ctx, island, req)
                 if reason is not None:
+                    fail_deferred(island, order_id, reason)
                     island.log.append(
                         LogEntry("unit_order_failed", {"order": req["kind"], "reason": reason})
                     )

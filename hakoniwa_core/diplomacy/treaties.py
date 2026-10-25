@@ -348,8 +348,11 @@ def denounce(
         return "reason_treaty_closed"
     if treaty["notice"] is not None:
         return "reason_treaty_denounced"
-    if any(not _settled(c) for c in treaty["clauses"] if c["type"] not in cl.TERMINABLE):
-        return "reason_treaty_not_terminable"
+    unsettled = {c["type"] for c in treaty["clauses"] if not _settled(c)} - set(cl.TERMINABLE)
+    if cl.PEACE in unsettled:
+        return "reason_treaty_reparations_open"
+    if unsettled:  # 契約の期間か援助の回数が終わっていない
+        return "reason_treaty_term_open"
     notice = max(
         (cl.notice_turns(c, config) for c in treaty["clauses"] if c["type"] in cl.TERMINABLE),
         default=0,
