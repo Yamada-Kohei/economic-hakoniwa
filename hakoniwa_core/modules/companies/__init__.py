@@ -46,6 +46,7 @@ from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.households import add_income
 from hakoniwa_core.economy.prices import variable_profit
 from hakoniwa_core.economy.start import next_payments
+from hakoniwa_core.naming import ensure_names
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import (
     OWNER_PRIVATE,
@@ -65,6 +66,7 @@ class FirmsFunds(IslandStage):
         if not island.has_economy:
             return
         enroll(island, ctx)
+        ensure_names(ctx.defs, ctx.config, island, ctx.turn)
         profits = {b.facility: b.items for b in island.books}
         for key in sorted(island.economy.firms, key=int):
             number = int(key)

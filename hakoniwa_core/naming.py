@@ -14,7 +14,10 @@ from typing import Any
 
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.state import Facility, IslandState
+from hakoniwa_core.state import Facility, IslandState, LogEntry
+
+AUTO_NAME = "auto_name"  # 施設の ext: 生まれたときに決めて残す自動の名前
+AUTO_BASIS = "auto_basis"  # 施設の ext: その名前を付けたときの事情。変わると付け直す（出来事）
 
 
 def _style(defs: Defs, config: GameConfig) -> Mapping[str, Any] | None:
@@ -87,6 +90,9 @@ def facility_name(defs: Defs, config: GameConfig, island: IslandState, f: Facili
         return defs.name("settlements", level, config.raw.get("locale", "ja"))
     if f.name:
         return f.name
+    stored = f.ext.get(AUTO_NAME)
+    if stored:
+        return stored
     return auto_name(defs, config, island, f)
 
 
@@ -149,3 +155,199 @@ def _base_name(
             continue
         return pattern["text"].format(**values), values, pattern["text"]
     return display, values, None
+
+
+# --- 生まれたときに決めて残す名前（段6 A4） ------------------------------------------------
+#
+# 民営の企業は生まれるときに、創業者の姓か地元の地名を頭の名前（brand）にして名前を抽選する。
+# 工場の名前は「頭の名前＋地名＋業種」（土地に根ざす施設は地名＋業種）。国営は体制ごとの形
+# （auto_name）で作る。名前は生まれたとき（企業に入った後）に一度だけ決めて ext に残し、
+# 付け直すのは「事情」（auto_basis: 属する企業・国営か・体制）が変わった出来事のときだけ。
+# 抽選は島の乱数と別に引くので、名前は計算の結果に影響しない。
+
+
+def _draw(island: IslandState, *key: object) -> random.Random:
+    return random.Random(":".join(str(k) for k in ("name", island.id, island.wx, island.wy, *key)))
+
+
+def _company(defs: Defs, config: GameConfig, island: IslandState) -> Mapping[str, Any] | None:
+    style = _style(defs, config)
+    if style is None:
+        return None
+    companies = style.get("companies", {})
+    sid = island.ext.get("place_style") or default_place_style(defs, config)
+    return companies.get(sid) or companies.get(default_place_style(defs, config))
+
+
+def _short(defs: Defs, config: GameConfig, company: Mapping[str, Any], kind: str) -> str:
+    style = _style(defs, config) or {}
+    over = company.get("industries", {}).get(kind, {})
+    base = style.get("industries", {}).get(kind, {})
+    return over.get("short") or base.get("short") or defs.name("facilities", kind, "ja")
+
+
+def _long(defs: Defs, config: GameConfig, kind: str) -> str:
+    style = _style(defs, config) or {}
+    return style.get("industries", {}).get(kind, {}).get("long") or defs.name(
+        "facilities", kind, config.raw.get("locale", "ja")
+    )
+
+
+def _site(island: IslandState, f: Facility, config: GameConfig) -> str:
+    x, y = (f.x, f.y) if f.x >= 0 and f.y >= 0 else (island.capital or (0, 0))
+    return place_of(island, x, y, config)
+
+
+def _numbered(style: Mapping[str, Any], names: set[str], make: Any) -> str:
+    """make(番号の言葉か空) が taken と重ならない名前を返す（先頭は番号なし）。"""
+    numbers = style.get("numbers", [])
+    n = 1
+    while True:
+        word = "" if n == 1 else (numbers[n - 1] if n - 1 < len(numbers) else str(n))
+        name = make(word)
+        if name not in names or n > 99:
+            return name
+        n += 1
+
+
+def name_firm(defs: Defs, config: GameConfig, island: IslandState, number: int, turn: int) -> bool:
+    """民営の企業の名前（auto_name）と頭の名前（brand）を、生まれた事情で一度だけ決める。"""
+    from hakoniwa_core.economy import companies as co
+
+    rec = co.record(island, number)
+    company = _company(defs, config, island)
+    if rec is None or rec.get(co.AUTO) or rec[co.OWNER] != "private" or company is None:
+        return False
+    members = sorted(co.members(island, number), key=lambda m: m.id)
+    if not members:
+        return False
+    first = members[0]
+    style = _style(defs, config) or {}
+    short = _short(defs, config, company, first.kind)
+    place = _site(island, first, config)
+    rng = _draw(island, "firm", number)
+    founder = rng.random() < float(config.get("naming.founder_share"))
+    used = {r.get(co.AUTO) for r in island.economy.firms.values()}
+    brands = {r.get(co.BRAND) for r in island.economy.firms.values()}
+    early = rec.get(co.FOUNDED, turn) < config.get("naming.early_years") * 12
+    if founder:
+        forms = company["early" if early else "late"]
+        pool = list(company["surnames"])
+        rng.shuffle(pool)
+        pool.sort(key=lambda sn: sn in brands)  # 使われていない姓を先に
+        brand = pool[0]
+        form = rng.choice(forms)
+        make = lambda word: form.format(  # noqa: E731
+            surname=brand + (word and f"第{word}"), short=short, place=place
+        )
+    else:
+        brand = place
+        form = rng.choice(company["local"])
+        make = lambda word: form.format(  # noqa: E731
+            place=place + (word and f"第{word}"), surname="", short=short
+        )
+    rec[co.AUTO] = _numbered(style, used, make)
+    rec[co.BRAND] = brand
+    return True
+
+
+def _basis(island: IslandState, f: Facility) -> str:
+    from hakoniwa_core.economy import companies as co
+
+    if f.owner == "state":
+        regime = island.regime
+        leader = bool(island.names.get("leader"))
+        axes = ":".join(str(regime.get(a)) for a in ("politics", "head_of_state", "economy"))
+        return f"state:{axes}:{leader}"
+    number = co.firm_of(f)
+    return f"private:{number}" if number is not None else "private"
+
+
+def _private_name(
+    defs: Defs,
+    config: GameConfig,
+    island: IslandState,
+    f: Facility,
+    taken: set[str],
+) -> str:
+    from hakoniwa_core.economy import companies as co
+
+    style = _style(defs, config) or {}
+    company = _company(defs, config, island)
+    kind = f.kind
+    long = _long(defs, config, kind)
+    place = _site(island, f, config)
+    joiner = company.get("joiner", "") if company else ""
+    number = co.firm_of(f)
+    rec = co.record(island, number) if number is not None else None
+    land = kind in style.get("land_bound", [])
+
+    def tail(word: str) -> str:
+        return place + (word and f"第{word}")
+
+    if company is None:
+        return auto_name(defs, config, island, f)
+    if land:
+        return _numbered(style, taken, lambda w: tail(w) + long)
+    if rec is not None and rec.get(co.BRAND):
+        brand = rec[co.BRAND]
+        if brand == place:
+            return _numbered(style, taken, lambda w: tail(w) + long)
+        return _numbered(style, taken, lambda w: brand + joiner + tail(w) + long)
+    # 企業に入らない民営（銀行・運送業・商社など）は、施設ごとに創業者の姓か地名で呼ぶ
+    rng = _draw(island, "facility", f.id)
+    short = _short(defs, config, company, kind)
+    if rng.random() < float(config.get("naming.founder_share")):
+        surname = rng.choice(company["surnames"])
+        return _numbered(style, taken, lambda w: surname + (w and f"第{w}") + joiner + short)
+    return _numbered(style, taken, lambda w: tail(w) + short)
+
+
+def ensure_names(defs: Defs, config: GameConfig, island: IslandState, turn: int) -> None:
+    """企業の名前と、名前のない施設の名前を決め、事情の変わった施設の名前を付け直す。企業に入る
+    のを待つ施設・差し押さえ中の施設・町と記念碑は飛ばす（飛ばした施設は従来の名前で呼ぶ）。
+    付け直した施設があれば、ターンログに1行出す（初めて名前を付けたときは出さない）。"""
+    from hakoniwa_core.economy import companies as co
+
+    style = _style(defs, config)
+    if style is None:
+        return
+    for key in sorted(island.economy.firms, key=int):
+        name_firm(defs, config, island, int(key), turn)
+    housing = config.get("housing.facility")
+    eligible = {
+        k
+        for k, d in defs.facilities.items()
+        if d.get("category") not in ("housing", "monument") and k != housing
+    }
+    taken: dict[str, set[str]] = {}
+    for f in island.facilities:
+        if f.ext.get(AUTO_NAME):
+            taken.setdefault(f.kind, set()).add(f.ext[AUTO_NAME])
+    renamed: list[tuple[str, str]] = []
+    for f in sorted(island.facilities, key=lambda f: f.id):
+        if f.kind not in eligible or "foreclosed" in f.economy:
+            continue
+        if f.owner == "private" and co.eligible(defs, config, f) and co.firm_of(f) is None:
+            continue  # 企業に入るまで待つ
+        basis = _basis(island, f)
+        if f.ext.get(AUTO_NAME) and f.ext.get(AUTO_BASIS) == basis:
+            continue
+        old = f.ext.get(AUTO_NAME)
+        names = taken.setdefault(f.kind, set())
+        names.discard(old)
+        if f.owner == "state":
+            f.ext.pop(AUTO_NAME, None)
+            new = auto_name(defs, config, island, f)
+        else:
+            new = _private_name(defs, config, island, f, names)
+        names.add(new)
+        f.ext[AUTO_NAME] = new
+        f.ext[AUTO_BASIS] = basis
+        if old and old != new and not f.name:
+            renamed.append((old, new))
+    if renamed:
+        old, new = renamed[0]
+        island.log.append(
+            LogEntry("facilities_renamed", {"count": len(renamed), "old": old, "new": new})
+        )
