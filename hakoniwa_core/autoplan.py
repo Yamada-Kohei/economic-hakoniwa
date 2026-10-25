@@ -168,11 +168,10 @@ EDUCATION_MARGIN = 1.3  # 教育費を、学校と大学を全力で動かす年
 WATER_MIN = 0.6
 ROAD_LEVEL = 0.6  # 新しい施設の周りに、交通の整備度がこれに届かないマスがあれば道路を引く
 # 治安と国防（段6 A2）
-SECURITY_FROM = 24  # 警察署・兵舎・武器工場を建て始めるターン（食料・電力・資材の施設が先）
+SECURITY_FROM = 24  # 警察署を建て始めるターン（食料・電力・資材の施設が先）
 SECURITY_MARGIN = 1.3  # 治安費を、警察署を全力で動かす年の費用のこの倍にする
 POLICE = "police"
 BARRACKS = "barracks"
-ARMS_PLANT = "arms_plant"
 
 
 def plan_turn(
@@ -1089,29 +1088,17 @@ def _education(island: IslandState, defs: Defs, config: GameConfig) -> Iterator[
 def _security(
     island: IslandState, defs: Defs, config: GameConfig, turn: int
 ) -> Iterator[tuple[str, str]]:
-    """警察署を1つ（SECURITY_FROM ターンから）。武器の原料が島で作れるか貿易で手に入る島は、
-    武器工場と兵舎も1つずつ（武器工場が先。兵舎だけ先に建つと、働き手の賃金だけがかかる）。
+    """警察署を1つ（SECURITY_FROM ターンから）。工事の資材の扱いは学校と同じ（資材が倉庫に足りず
+    島で作っていなければ、先にその資材を作る施設）。
 
-    武器は貿易で売り買いできないので、軍を持つ国は自分の島で作る。原料のない島（化学品の手に入ら
-    ない島）に兵舎を建てても、武器がなく部隊は編成中のままなので建てない。工事の資材の扱いは学校と
-    同じ（資材が倉庫に足りず島で作っていなければ、先にその資材を作る施設）。
+    平時に兵舎と武器工場は建てない。武器工場は武器の原料（鉄鋼・機械・化学品）を平時から食い、
+    建てた島の鉄鋼と機械が品切れになった（段6 A2 の測り）。兵は反乱の前触れが続くか宣戦されたとき
+    plan_war が集める。
     """
     if not island.has_economy or turn < SECURITY_FROM:
         return
     if POLICE in defs.facilities and _count(island, POLICE) == 0:
         yield from _build_or_supply(island, defs, config, POLICE)
-    if not (
-        BARRACKS in defs.facilities
-        and ARMS_PLANT in defs.facilities
-        and _feasible(defs, island, ARMS_PLANT, "default", _traded(island, config))
-    ):
-        return
-    if _count(island, ARMS_PLANT) == 0:
-        yield from _build_or_supply(island, defs, config, ARMS_PLANT)
-    elif _count(island, BARRACKS) == 0 and any(
-        f.built and f.kind == ARMS_PLANT for f in island.facilities
-    ):
-        yield from _build_or_supply(island, defs, config, BARRACKS)
 
 
 def _build_or_supply(
@@ -1407,23 +1394,22 @@ def plan_trade(
     return plans
 
 
-# --- 戦争（フェーズ4-3。設計書 MI-44）と平時の守り（段6 A2） --------------------------------
+# --- 戦争（フェーズ4-3。設計書 MI-44） --------------------------------
 
-GARRISON = 100  # 平時に備える兵の数（歩兵 1 中隊。住民 2.5 万人の島で 0.4%）
-DEFENSE_SHARE = 0.01  # 宣戦されたとき（反乱の前触れが続くときも）、住民のこの割合を目標に兵を集める
+DEFENSE_SHARE = 0.005  # 宣戦されたとき（反乱の前触れが続くときも）、住民のこの割合を兵の目標にする
+DEFENSE_MIN = 100  # 兵の目標の下限（歩兵 1 中隊）
 WAR_ORDERS = ("sign_treaty", "set_defense", "recruit", "form_unit")
 
 
 def plan_war(
     world: WorldState, defs: Defs, config: GameConfig
 ) -> dict[int, list[tuple[str, dict]]]:
-    """国防の標準の計画（島ごとの命令）。標準の計画は自分から宣戦せず、核施設も建てない。
+    """宣戦されたときの標準の計画（島ごとの命令）。標準の計画は自分から宣戦せず、核施設も建てない。
 
-    平時でも、兵舎が建った島は、国防費を決める → 志願の兵を GARRISON まで集める → 兵舎に歩兵を
-    編成する、を1ターンに1つずつ進めます（武器工場と兵舎は plan_turn が建てる）。
-    戦争の相手がいる島と、内戦の起きている島（反乱の前触れが続く島を含む）は、相手が出した停戦と講和
-    （戦争のあいだに結べる条項だけの条約）に署名する → 兵舎がなければ建てる → 国防費を決める →
-    兵を DEFENSE_SHARE まで集める → 兵舎に歩兵を編成する、を進めます。
+    戦争の相手がいる島と、内戦の起きている島（反乱の前触れが続く島を含む）は、1 ターンに 1 つずつ
+    次を進めます: 相手が出した停戦と講和（戦争のあいだに結べる条項だけの条約）に署名する → 兵舎が
+    なければ建てる → 国防費を決める → 兵を集める → 兵舎に歩兵を編成する。戦争も反乱の前触れもない島
+    は何もしません（平時の守りは警察署。平時の兵は置かない）。
     サーバーの持ち主のいない島はこの計画を使いません（測りと試験だけで動く）。
     """
     from hakoniwa_core.diplomacy import clauses as cl
@@ -1439,8 +1425,8 @@ def plan_war(
             war.open_wars_of(world, i)
             or civil_war.alarmed(world, island, config.get("military.civil_war.trigger_turns"))
         )
-        if not threatened and not (_armed(island) and fed(island, defs, config)):
-            continue  # 平時の守りは、兵舎と武器工場が建ち、兵の食べ物が手に入ってから
+        if not threatened:
+            continue  # 反乱の前触れが続く島と内戦の島も備える（MI-40）
         if any(o.status == ORDER_PENDING and o.kind in WAR_ORDERS for o in island.orders):
             continue  # 前の手がまだ済んでいない（行政力が足りず繰り越したときなど）
         for t in treaties.treaties(world):
@@ -1455,24 +1441,17 @@ def plan_war(
                 plans[i] = [("sign_treaty", {"treaty": t["id"]})]
                 break
         else:
-            target = GARRISON
-            if threatened:
-                target = max(GARRISON, int(population_of(island) * DEFENSE_SHARE))
+            target = max(DEFENSE_MIN, int(population_of(island) * DEFENSE_SHARE))
             order = defense_order(island, world, defs, config, target)
             if order is not None:
                 plans[i] = [order]
     return plans
 
 
-def _armed(island: IslandState) -> bool:
-    """兵舎が建ち、武器を作る工場が建っているか（武器がなければ部隊は編成中のままで戦えない）。"""
-    built = {f.kind for f in island.facilities if f.built}
-    return BARRACKS in built and ARMS_PLANT in built
-
-
 def fed(island: IslandState, defs: Defs, config: GameConfig) -> bool:
     """兵が食べる物（food）を、島で作っているか貿易で手に入れられるか。兵は food しか食べないので、
-    ない島に兵を置くと、飢えて士気が落ち、逃げ出す（4-2 の決まり。台帳 W-160 で広げるか見る）。"""
+    ない島に兵を置くと、飢えて士気が落ち、逃げ出す（4-2 の決まり。台帳 W-174 で広げるか見る）。
+    測りの戦争の場面が攻める側を選ぶのに使う。"""
     from hakoniwa_core.modules import military
 
     return military.FOOD in _made(island, defs) or military.FOOD in _traded(island, config)

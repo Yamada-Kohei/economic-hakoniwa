@@ -58,30 +58,12 @@ def test_one_police_station_is_enough(game, world):
     assert autoplan.POLICE not in kinds(found)
 
 
-def test_barracks_wait_for_a_weapons_source(game, world, monkeypatch):
-    """武器の原料が手に入らない島に兵舎を建てない（武器は貿易で買えず、部隊は編成中のままになる）。"""
+def test_peacetime_plan_builds_no_barracks_or_arms_plant(game, world):
+    """平時に武器工場を建てると、鉄鋼と機械が品切れになった（段6 A2 の測り）。警察署だけ建てる。"""
     island = world.islands[1]
     add(island, autoplan.POLICE)
-    monkeypatch.setattr(autoplan, "_feasible", lambda *a, **k: False)
     found = list(autoplan._security(island, game.defs, game.config, autoplan.SECURITY_FROM))
     assert found == []
-    monkeypatch.setattr(autoplan, "_feasible", lambda *a, **k: True)
-    found = list(autoplan._security(island, game.defs, game.config, autoplan.SECURITY_FROM))
-    assert autoplan.ARMS_PLANT in kinds(found)
-
-
-def test_barracks_follow_the_arms_plant(game, world, monkeypatch):
-    island = world.islands[1]
-    add(island, autoplan.POLICE)
-    monkeypatch.setattr(autoplan, "_feasible", lambda *a, **k: True)
-    found = list(autoplan._security(island, game.defs, game.config, autoplan.SECURITY_FROM))
-    assert kinds(found)[-1:] != [autoplan.BARRACKS] and autoplan.BARRACKS not in kinds(found)
-    add(island, autoplan.ARMS_PLANT, built=False)
-    found = list(autoplan._security(island, game.defs, game.config, autoplan.SECURITY_FROM))
-    assert found == []  # 武器工場ができるまで待つ
-    island.facilities[-1].built = True
-    found = list(autoplan._security(island, game.defs, game.config, autoplan.SECURITY_FROM))
-    assert autoplan.BARRACKS in kinds(found)
 
 
 def test_security_budget_follows_the_police_staff(game, world):
@@ -104,22 +86,16 @@ def test_warehouse_keeps_the_soldiers_food(game, world):
     assert autoplan._military_keep(island, game.config)["food"] >= 5
 
 
-# --- 平時の兵と戦時の兵 --------------------------------------------------------------------
+# --- 戦時の兵 -----------------------------------------------------------------------------
 
 
-def test_peacetime_garrison_needs_barracks_arms_and_food(game, world):
+def test_no_soldiers_are_raised_in_peacetime(game, world):
     island = world.islands[1]
+    arm(island)
     assert autoplan.plan_war(world, game.defs, game.config) == {}
-    add(island, "barracks")
-    add(island, "arms_plant")
-    assert autoplan.plan_war(world, game.defs, game.config) == {}  # 兵の食べ物がない
-    add(island, "food_factory")
-    assert autoplan.fed(island, game.defs, game.config)
-    plans = autoplan.plan_war(world, game.defs, game.config)
-    assert set(plans) == {1}  # ほかの島は備えない
 
 
-def test_garrison_steps_are_budget_then_recruit_then_unit(game, world):
+def test_defense_steps_are_budget_then_recruit_then_unit(game, world):
     island = world.islands[1]
     arm(island)
     kind, payload = autoplan.defense_order(island, world, game.defs, game.config, 100)
@@ -147,18 +123,16 @@ def test_defense_order_waits_for_a_barracks_under_construction(game, world):
     assert autoplan.defense_order(island, world, game.defs, game.config, 100) is None
 
 
-def test_war_raises_the_target_above_the_garrison(game, world):
-    """宣戦された島は、住民の DEFENSE_SHARE まで兵を集める（平時は GARRISON まで）。"""
+def test_war_sets_the_target_by_population(game, world):
+    """宣戦された島は、住民の DEFENSE_SHARE（下限 DEFENSE_MIN）まで兵を集める。"""
     island = world.islands[1]
     arm(island)
-    island.tiles[0].population = int(10 * autoplan.GARRISON / autoplan.DEFENSE_SHARE)
+    island.tiles[0].population = int(10 * autoplan.DEFENSE_MIN / autoplan.DEFENSE_SHARE)
     island.policy.budget[forces.BUDGET_PERSONNEL] = 10**12
     island.policy.budget[forces.BUDGET_PROCUREMENT] = 10**12
-    peace = autoplan.plan_war(world, game.defs, game.config)[1][0]
-    assert peace == ("recruit", {"count": autoplan.GARRISON})
     war.declare(world, 2, 1, world.turn + 1)
-    wartime = autoplan.plan_war(world, game.defs, game.config)[1][0]
-    assert wartime[0] == "recruit" and wartime[1]["count"] > autoplan.GARRISON
+    order = autoplan.plan_war(world, game.defs, game.config)[1][0]
+    assert order[0] == "recruit" and order[1]["count"] > autoplan.DEFENSE_MIN
 
 
 # --- 測りの戦争の場面 ----------------------------------------------------------------------
