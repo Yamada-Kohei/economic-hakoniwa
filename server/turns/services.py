@@ -216,7 +216,10 @@ def _start_economies(state: WorldState) -> None:
 
 
 def _make_backup(world: m.World, state: WorldState) -> None:
-    data = gzip.compress(json.dumps(world_to_dict(state), ensure_ascii=False).encode())
+    # 圧縮の強さは 6（既定の 9 より1割ほど大きくなるが、時間は4分の1ほど。W-35）
+    data = gzip.compress(
+        json.dumps(world_to_dict(state), ensure_ascii=False).encode(), compresslevel=6
+    )
     Backup.objects.create(world=world, turn=state.turn, data=data)
     keep = get_game().config.get("backups.keep")
     old = (
