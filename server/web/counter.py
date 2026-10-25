@@ -27,7 +27,7 @@ from django.db.models import F
 from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 
-from server.accounts.views import client_ip
+from server.accounts.clientip import client_ip
 from server.web.models import AccessCounter, KiribanGetter, Visit
 from server.world.models import Island
 

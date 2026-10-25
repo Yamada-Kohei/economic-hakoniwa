@@ -478,7 +478,7 @@
 
 ## [11 画面と統計](11-ui.md)
 
-決まり 46 個、うち仮の決まりの表にあるもの 0 個。
+決まり 49 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -528,6 +528,9 @@
 | UI-44 | 財政の画面の「予算と使った額」（と、予算の命令の入力欄）に、項目ごとに目安を出す | 決定（画面の直し W-143） | tests/server/test_reports.py |
 | UI-45 | 不具合の報告: ログインした人は画面のどこからでも「不具合を報告」を開ける | 決定（画面の直し W-146） | tests/server/test_feedback.py |
 | UI-46 | 掲示板の画面（`/board/` 板の一覧と最近のスレッド、`/board/b/<板>/` スレ… | 決定（W-147） | tests/server/test_ai_parity.py、tests/server/test_board.py |
+| UI-47 | ログインの試しすぎには上限を置く（通常のログインと管理画面のログインの両方、同じ記録を使う） | 決定（10-26、ChatGPT が書いた依頼を本人が貼ったもの） | tests/server/test_rate_limits.py |
+| UI-48 | AI 用の鍵の処理数の上限は、HTTP の送信数ではなく処理の数で数える: `/api/` の呼… | 決定（10-26、同上） | tests/server/test_rate_limits.py |
+| UI-49 | 回数制限が使う接続元は、つないできた相手の IP（`REMOTE_ADDR`）が既定 | 決定（10-26、同上） | tests/server/test_rate_limits.py |
 
 ## [12 確かめ方](12-checks.md)
 
