@@ -306,7 +306,7 @@ class _Round:
                 continue
             here = self.islands[s["to"]]
             port = port_of(island, self.config)
-            room = self.config.get("trade.port_capacity") * QUANTITY_SCALE - here.port_used
+            room = ships.port_capacity(self.config, port) * QUANTITY_SCALE - here.port_used
             if port is not None and s["load"] > room and here.port_used > 0:
                 waiting.append(s)  # 港が混んでいる。次のターンに下ろす
                 continue
@@ -893,12 +893,13 @@ class _Round:
 
     def _port_room(self, island: IslandState, good: str) -> int:
         """島の港でこのターンにまだ積める量（1000 分の 1 単位）。港がなければ 0。"""
-        if port_of(island, self.config) is None:
+        port = port_of(island, self.config)
+        if port is None:
             return 0
         unit = unit_weight(self.defs, good)
         if unit <= 0:
             return 10**15
-        room = self.config.get("trade.port_capacity") * QUANTITY_SCALE
+        room = ships.port_capacity(self.config, port) * QUANTITY_SCALE
         room -= self.islands[island.id].port_used
         return max(0, room) * QUANTITY_SCALE // unit
 

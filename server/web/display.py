@@ -167,6 +167,8 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         "built": f.built,
         "workers": f.workers,
         "operating_rate": f.operating_rate / fac.FULL,
+        "size": fac.size_of(f),  # 規模（段6 A3。建て増した数 + 1）
+        "expanding": fac.pending_expansions(island, f),
         "priority": fac.priority_of(defs, config, f) if fdef else None,
         "priority_changed": f.priority is not None,
         "status": f.status,
@@ -219,7 +221,7 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
     info.update(engineers_info(f, fdef))
     info.update(equipment_info(defs, config, f))
     if fdef.get("education"):
-        info["education"] = education_text(fdef["education"])
+        info["education"] = education_text(fdef["education"], fac.size_of(f))
     if mine and f.built and len(recipes) > 1:
         # 生産方式の切り替え（フェーズ3-2。国営の施設だけ。次の市場の段で切り替わる）
         choices = recipe_choices(island, f)
@@ -316,7 +318,7 @@ def engineers_info(f: Facility, fdef: Any) -> dict[str, Any]:
     技術者の要らない施設では、一般の仕事に回った技術者がいるときだけ出す。
     """
     out: dict[str, Any] = {}
-    needed = fdef.get("staff", {}).get(fac.ENGINEER, 0)
+    needed = fdef.get("staff", {}).get(fac.ENGINEER, 0) * fac.size_of(f)  # 規模の分（段6 A3）
     if needed:
         out["engineers_needed"] = needed
         out["engineers"] = f.economy.get("engineers", 0)
@@ -328,13 +330,13 @@ def engineers_info(f: Facility, fdef: Any) -> dict[str, Any]:
     return out
 
 
-def education_text(spec: Any) -> str:
-    """学校と大学の働き（定義の education）の文。稼働率を掛ける前の数。"""
+def education_text(spec: Any, size: int = 1) -> str:
+    """学校と大学の働き（定義の education）の文。稼働率を掛ける前の数（規模 size の分。段6 A3）。"""
     parts = []
     if spec.get("capacity"):
-        parts.append(f"子どもの定員 {spec['capacity']:,} 人")
+        parts.append(f"子どもの定員 {spec['capacity'] * size:,} 人")
     if spec.get("engineers"):
-        parts.append(f"1ターンに技術者を {spec['engineers']:,} 人育てる")
+        parts.append(f"1ターンに技術者を {spec['engineers'] * size:,} 人育てる")
     return "・".join(parts)
 
 

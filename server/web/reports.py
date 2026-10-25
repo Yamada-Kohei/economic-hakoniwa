@@ -784,6 +784,8 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
             "x": f.x,
             "y": f.y,
             "on_map": f.x >= 0 and f.y >= 0,
+            "size": fac.size_of(f),  # 規模（段6 A3）
+            "expands": fac.expansion_of(f),  # 建て増しの工事なら、建て増す施設の番号
             "built": f.built,
             "status_text": display.status_text(f),
             "workers": f.workers,

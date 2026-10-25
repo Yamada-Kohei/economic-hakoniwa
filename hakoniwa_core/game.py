@@ -22,8 +22,8 @@ class Game:
     calendar: Calendar  # 世界の暦（game.yaml の calendar）
 
 
-def load_game(config_path: str | Path | None = None) -> Game:
-    config = load_config(config_path or default_config_path())
+def load_game(config_path: str | Path | None = None, people: float | None = None) -> Game:
+    config = load_config(config_path or default_config_path(), people)
     defs = load_defs(config)
     registry = build_registry(defs)
     return Game(

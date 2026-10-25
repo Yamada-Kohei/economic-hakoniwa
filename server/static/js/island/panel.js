@@ -209,6 +209,8 @@ export class TilePanel {
     }
     const rows = [["種類", f.kind_name], ["所有", `${f.owner_name}・${f.accounting_name}`]];
     if (f.firm_name) rows.push(["企業", f.firm_name]);
+    // 規模（段6 A3）: 同じマスに同じ施設を建てると建て増しの工事になり、済むと規模が 1 つ上がる
+    if (f.size > 1 || f.expanding) rows.push(["規模", `${f.size}${f.expanding ? `（建て増しの工事 ${f.expanding} 件）` : ""}`]);
     if (f.recipe_name) rows.push([recipeWords().method, recipeLabel(f.recipe,
       this.defs.facilities[f.kind]?.recipes?.[f.recipe], f.recipe_name)]);
     if (!f.built) {

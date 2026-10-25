@@ -2959,7 +2959,9 @@ class Market(IslandStage):
             for name, recipe in sorted(defs.facilities[f.kind]["recipes"].items()):
                 if not recipe["outputs"].get(good) or fac.switch_problem(defs, island, f, name):
                     continue
-                probe = productivity.probe(island, defs, config, f.kind, name, (f.x, f.y))
+                probe = productivity.probe(
+                    island, defs, config, f.kind, name, (f.x, f.y), fac.size_of(f)
+                )
                 floor = unit_floor(defs, config, probe, good, prices, wage, rate)
                 if f.owner == OWNER_PRIVATE and is_self_supporting(f):
                     if now is None:

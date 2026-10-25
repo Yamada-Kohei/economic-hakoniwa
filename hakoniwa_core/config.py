@@ -8,6 +8,8 @@ from typing import Any
 
 import yaml
 
+from hakoniwa_core import scale
+
 
 @dataclass(frozen=True)
 class GameConfig:
@@ -43,10 +45,12 @@ class GameConfig:
 _PARTS: dict[str, tuple[str, ...]] = {}
 
 
-def load_config(path: str | Path) -> GameConfig:
+def load_config(path: str | Path, people: float | None = None) -> GameConfig:
+    """people は世界の倍（段6 A3。None なら game.yaml の倍）。"""
     path = Path(path).resolve()
     with path.open(encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
+    raw = scale.apply_config(raw, people)  # 国の大きさの倍（段6 A3）
     base = path.parent
     return GameConfig(
         base_dir=base,

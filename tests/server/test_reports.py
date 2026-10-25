@@ -307,14 +307,16 @@ def test_tile_api_infra_and_education(client, world):
 
 def test_engineers_info():
     fdef = {"staff": {"general": 100, "engineer": 10}}
-    f = SimpleNamespace(economy={"engineers": 4, "engineers_wanted": 10, "engineer_wage": 900})
+    f = SimpleNamespace(
+        ext={}, economy={"engineers": 4, "engineers_wanted": 10, "engineer_wage": 900}
+    )
     assert display.engineers_info(f, fdef) == {
         "engineers_needed": 10,
         "engineers": 4,
         "engineers_wanted": 10,
         "engineer_wage": 900,
     }
-    general = SimpleNamespace(economy={"engineers_general": 3})
+    general = SimpleNamespace(ext={}, economy={"engineers_general": 3})
     assert display.engineers_info(general, {"staff": {"general": 50}}) == {"engineers_general": 3}
     assert display.education_text({"engineers": 10}) == "1ターンに技術者を 10 人育てる"
 

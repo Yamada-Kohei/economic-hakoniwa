@@ -90,7 +90,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, ledger, nature, stock, trade
+from hakoniwa_core import infra, ledger, nature, scale, stock, trade
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
@@ -123,7 +123,7 @@ CONSUMER_MARGIN = 1.0  # 消費財の生産を、住民1人あたりの目安の
 MARKET_SHORT = 0.9  # 前のターンの市場で、売りに出た量が買いたい量のこの割合より少なければ足りない
 PRICE_HIGH = 1.5  # 投入財と資材は、買いたい量に届かず値段が初めのこの倍を超えていれば足りない
 BUSY_UNEMPLOYMENT = 0.1  # 失業率がこれを超えている間は、同時に進める工事を1つ増やす
-MAX_MISSING_WORKERS = 1000  # 足りない労働者がこの人数より多い間は、連鎖を太くしない
+MAX_MISSING_WORKERS = 1000  # 足りない労働者がこの人数（× 国の大きさの倍）より多い間は増やさない
 BUDGET_TURNS = 6  # 公共事業費を見直す間隔
 PUBLIC_WORKS = 600  # 公共事業費の基本（住民1人あたりの年の額）
 UNEMPLOYMENT_RESPONSE = 5.0  # 失業率がふつうより 1% 高いごとに、基本のこの % だけ増やす
@@ -400,7 +400,7 @@ def _budget_order(
     prices = island.economy.prices
     repairs = int(
         sum(
-            equipment.yearly_wear(defs, config, f.kind, prices)
+            equipment.yearly_wear(defs, config, f.kind, prices) * fac.size_of(f)
             for f in island.facilities
             if f.owner == OWNER_STATE and equipment.has_equipment(defs, config, f)
         )
@@ -1014,7 +1014,8 @@ def _candidates(
         for f in island.facilities
         if not services.is_services(config, f)
     )
-    if missing > MAX_MISSING_WORKERS or _hireable(island, config) < NATURAL_UNEMPLOYMENT:
+    too_few = _hireable(island, config) < NATURAL_UNEMPLOYMENT
+    if missing > MAX_MISSING_WORKERS * scale.people(config) or too_few:
         return
     # 島の鉱業資源を、島のどの施設（工事中を含む）も使っていなければ、使う施設を1つ（輸出向け）
     used = {g for f in island.facilities for g in fac.recipe_of(defs, f)["inputs"]}
@@ -1072,14 +1073,14 @@ def _education(island: IslandState, defs: Defs, config: GameConfig) -> Iterator[
         return
     if SCHOOL in defs.facilities:
         seats = sum(
-            defs.facilities[f.kind].get("education", {}).get("capacity", 0)
+            defs.facilities[f.kind].get("education", {}).get("capacity", 0) * fac.size_of(f)
             for f in island.facilities
         )
         children = population_of(island) * config.get("education.children")
         if seats < children * SCHOOL_TARGET:
             yield from _build_or_supply(island, defs, config, SCHOOL)
     if UNIVERSITY in defs.facilities and _count(island, UNIVERSITY) == 0:
-        needed = sum(fac.engineers_needed(defs, f.kind) for f in island.facilities)
+        needed = sum(fac.engineers_of(defs, f) for f in island.facilities)
         if needed > island.economy.workers.get(fac.ENGINEER, 0) * ENGINEER_TARGET:
             keep = _private_needs(island, defs)
             yield from _build_or_supply(island, defs, config, UNIVERSITY, keep)
@@ -1288,7 +1289,9 @@ def _commercial_order(
 def _site_for(
     island: IslandState, defs: Defs, config: GameConfig, kind: str, recipe: str
 ) -> tuple[int, int] | None:
-    """住宅の通勤圏の中で首都に近いマス。開発を止めたマスと、住宅の育つ余地はなるべく避ける。"""
+    """住宅の通勤圏の中で首都に近いマス。開発を止めたマスと、住宅の育つ余地はなるべく避ける。
+    通勤圏の中に同じ作り方の国営の同じ施設があれば、新しいマスより先にそれを建て増す（土地を
+    詰めて使う。段6 A3）。"""
     capital = island.capital
     if capital is None:
         return None
@@ -1302,7 +1305,12 @@ def _site_for(
     for pos in within(island, capital, island.size):
         if island.tile(*pos).zone != ZONE_NONE:
             continue
-        if fac.placement_problem(defs, island, kind, pos[0], pos[1], recipe) is not None:
+        if fac.placement_problem(defs, island, kind, *pos, recipe, expand=True) is not None:
+            continue
+        target = fac.expansion_target(island, kind, *pos)
+        if target is not None and (
+            target.recipe != recipe or not _labor_for_expansion(island, defs, kind, pos, radius)
+        ):
             continue
         # 水力発電所は、水が WATER_MIN 未満の場所には建てず、水の多い場所を先に（0.1 刻み。W-148）
         wet = 0
@@ -1314,10 +1322,26 @@ def _site_for(
         near = min((distance(pos, h) for h in homes), default=island.size)
         # 肥沃度の効く作り方（農場と牧場）は、肥沃なマスを先に（0.1 刻み。フェーズ3-2）
         rich = -nature.fertility(island.tile(*pos)) // 100 if fertile else 0
-        key = (max(0, near - radius), near <= 1, wet, rich, distance(pos, capital))
+        new = target is None
+        # 住宅の隣は、建て増しでも避ける（汚染は規模の分だけ増える）。その次に建て増しを先に
+        key = (max(0, near - radius), near <= 1, new, wet, rich, distance(pos, capital))
         if best_key is None or key < best_key:
             best, best_key = pos, key
     return best
+
+
+def _labor_for_expansion(
+    island: IslandState, defs: Defs, kind: str, pos: tuple[int, int], radius: int
+) -> bool:
+    """建て増す施設の通勤圏に、規模 1 つ分の働き手の半分以上の雇われていない人がいるか（段6 A3）。
+    いなければ建て増しても雇えずに動かない（_flows は全力で動く見込みで数えるので、通勤圏の人手が
+    尽きた施設を建て増し続けて、投入財が品切れになった。測りの戦争の場面）。新しいマスに建てる。"""
+    idle = 0
+    for x, y in within(island, pos, radius):
+        t = island.tile(x, y)
+        if t.population:
+            idle += max(0, fac.labor_force(defs, island, t) - t.ext.get("employed", 0))
+    return idle * 2 >= defs.facilities[kind]["workers"]
 
 
 def _power_line(island: IslandState, defs: Defs, pos: tuple[int, int]) -> list[tuple[int, int]]:
@@ -1397,7 +1421,7 @@ def plan_trade(
 # --- 戦争（フェーズ4-3。設計書 MI-44） --------------------------------
 
 DEFENSE_SHARE = 0.005  # 宣戦されたとき（反乱の前触れが続くときも）、住民のこの割合を兵の目標にする
-DEFENSE_MIN = 100  # 兵の目標の下限（歩兵 1 中隊）
+DEFENSE_MIN = 1  # 兵の目標の下限（歩兵の部隊の数。兵の数は army.yaml の infantry の soldiers）
 WAR_ORDERS = ("sign_treaty", "set_defense", "recruit", "form_unit")
 
 
@@ -1441,7 +1465,8 @@ def plan_war(
                 plans[i] = [("sign_treaty", {"treaty": t["id"]})]
                 break
         else:
-            target = max(DEFENSE_MIN, int(population_of(island) * DEFENSE_SHARE))
+            floor = DEFENSE_MIN * defs.army["infantry"]["soldiers"]
+            target = max(floor, int(population_of(island) * DEFENSE_SHARE))
             order = defense_order(island, world, defs, config, target)
             if order is not None:
                 plans[i] = [order]

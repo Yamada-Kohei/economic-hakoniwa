@@ -458,7 +458,7 @@ class Employment(IslandStage):
         defs = ctx.defs
         if not island.has_economy or not f.built or is_public_service(defs, f):
             return 0, 0
-        engineers = fac.engineers_needed(defs, f.kind)
+        engineers = fac.engineers_of(defs, f)
         if engineers <= 0:
             return 0, 0
         extra = max(0, fac.engineer_wage_of(ctx.config, f, wage) - wage)

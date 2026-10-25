@@ -6,6 +6,7 @@ import random
 
 from django.db import transaction
 
+from hakoniwa_core import scale
 from hakoniwa_core.founding import FoundingError, FoundingPlan, found_island, open_for_business
 from hakoniwa_core.nature import zone_of
 from hakoniwa_core.state.generate import generate_island, world_grid_size
@@ -20,6 +21,7 @@ def get_or_create_world(seed: int | None = None) -> m.World:
         world = m.World.objects.create(
             seed=seed if seed is not None else random.SystemRandom().randrange(2**62),
             packs=get_game().defs.pack_versions(),
+            ext={scale.WORLD_KEY: scale.people(get_game().config)},  # この世界の倍（段6 A3）
         )
     return world
 

@@ -119,7 +119,7 @@ def init_facility(
     if fac.is_housing(config, f):
         return
     recipe = fac.recipe_of(defs, f)
-    cost = round_money(construction_cost(defs, f.kind, prices, wage))
+    cost = round_money(construction_cost(defs, f.kind, prices, wage)) * fac.size_of(f)
     firm = f.economy.get("firm")  # 属する企業は持ち越す（回7）
     if not f.built:
         total = fac.total_progress(defs, f)

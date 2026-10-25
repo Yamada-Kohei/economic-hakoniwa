@@ -36,7 +36,7 @@ from hakoniwa_core.economy import (
     retail,
 )
 from hakoniwa_core.economy import plan as planning
-from hakoniwa_core.economy.start import fund_facility, init_facility
+from hakoniwa_core.economy.start import fund_facility, init_facility, operating_capital
 from hakoniwa_core.modules import infrastructure
 from hakoniwa_core.naming import assign_serial
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
@@ -50,7 +50,7 @@ def check_build(island: IslandState, payload: dict[str, Any], defs: Defs) -> Non
     if kind in defs.facilities and defs.facilities[kind].get("buildable") is False:
         raise OrderFailed("reason_not_buildable", facility=kind)
     problem = fac.placement_problem(
-        defs, island, kind, payload["x"], payload["y"], payload.get("recipe")
+        defs, island, kind, payload["x"], payload["y"], payload.get("recipe"), expand=True
     )
     if problem is not None:
         raise OrderFailed(problem[0], **problem[1])
@@ -72,6 +72,13 @@ def check_build(island: IslandState, payload: dict[str, Any], defs: Defs) -> Non
 
 def build(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
     kind, x, y = payload["facility"], payload["x"], payload["y"]
+    target = fac.expansion_target(island, kind, x, y)
+    if target is not None:  # 同じ施設の建っているマスには建て増す（段6 A3）
+        problem = fac.expansion_problem(ctx.defs, island, target)
+        if problem is not None:
+            raise OrderFailed(problem[0], **problem[1])
+        start_expansion(island, ctx, target, payload.get("name", ""))
+        return
     # 町の中の店（回7）は、マスを取らない負の位置に置き、町のマスを ext["site"] に持つ
     shop = ctx.defs.facilities[kind].get("site") == "town"
     at = retail.tileless_position(island) if shop else (x, y)
@@ -108,6 +115,45 @@ def build(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> No
     assign_serial(island, f)
     island.facilities.append(f)
     island.log.append(LogEntry("construction_started", {"facility": kind, "x": x, "y": y}))
+
+
+def start_expansion(
+    island: IslandState, ctx: StageContext, target: Facility, name: str = ""
+) -> Facility:
+    """施設 target の建て増しの工事を始める（段6 A3）。工事は町の中の店と同じくマスを取らない負の
+    位置に置き、働く場所（SITE）を target のマスにする。資材・人手・お金の出どころは新しく建てる
+    工事と同じで、済むと target の規模を 1 つ上げる（_merge_expansion）。工事の間も target は
+    動く。"""
+    at = retail.tileless_position(island)
+    f = Facility(
+        id=island.next_facility_id(),
+        kind=target.kind,
+        x=at[0],
+        y=at[1],
+        recipe=target.recipe,
+        owner=target.owner,
+        accounting=target.accounting,
+        name=name.strip(),
+        economy={"capital": 0},
+        ext={fac.SITE: [target.x, target.y], fac.EXPANDS: target.id},
+    )
+    factor = planning.build_factor(island, ctx.defs, target.kind, f.recipe)
+    if factor != 1.0:
+        turns = ctx.defs.facilities[target.kind]["construction"]["turns"]
+        f.ext["build_total"] = max(fac.FULL, round(turns * factor * fac.FULL))
+    island.facilities.append(f)
+    island.log.append(
+        LogEntry(
+            "expansion_started",
+            {
+                "facility": target.kind,
+                "x": target.x,
+                "y": target.y,
+                "size": fac.size_of(target) + 1,
+            },
+        )
+    )
+    return f
 
 
 def check_demolish(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
@@ -265,6 +311,9 @@ class Construction(IslandStage):
 
     @staticmethod
     def _complete(island: IslandState, f: Facility, ctx: StageContext) -> None:
+        if fac.expansion_of(f) is not None and not f.ext.get("repair"):
+            _merge_expansion(island, f, ctx)
+            return
         f.built = True
         f.workers = 0
         f.status = fac.STATUS_STARTING
@@ -298,6 +347,94 @@ class Construction(IslandStage):
             _start_private(island, ctx, f)
         elif is_self_supporting(f):
             fund_facility(island, ctx.defs, ctx.config, f, Payer(ledger.GOV, CONSTRUCTION))
+
+
+def _merge_expansion(island: IslandState, site: Facility, ctx: StageContext) -> None:
+    """建て増しの工事が済んだ（段6 A3）: 建て増す施設の規模を 1 つ上げ、工事にかかった設備の額と
+    新品の設備を足し、工事の残りの資材を国の倉庫に移して、工事を取り除く。建て増す施設がもうない
+    （取り壊された・閉じた）ときは、空いたマスに新しい施設として建てる（マスがふさがっていれば資材を
+    倉庫に戻して取り除く）。民営の工事は、預金と融資と出資を建て増す施設へ移す。"""
+    defs = ctx.defs
+    old = fac.expansion_of(site)
+    target = island.facility(old or -1)
+    x, y = fac.position(site)
+    if target is None or not (target.built or target.ext.get("repair")):
+        site.ext.pop(fac.EXPANDS, None)
+        site.ext.pop(fac.SITE, None)
+        if island.facility_at(x, y) is None:
+            site.x, site.y = x, y
+            for other in island.facilities:  # 同じ施設のほかの建て増しは、この新しい施設を建て増す
+                if other.ext.get(fac.EXPANDS) == old:
+                    other.ext[fac.EXPANDS] = site.id
+            assign_serial(island, site)
+            Construction._complete(island, site, ctx)
+            return
+        _drop_expansion(island, site, ctx)
+        return
+    if site.owner != target.owner or "foreclosed" in target.economy:
+        # 工事の間に元の施設の持ち主が替わった（国有化・民営化・差し押さえ）: 建て増しはやめる。
+        # 前の持ち主のお金を新しい持ち主の施設へ移さないため
+        _drop_expansion(island, site, ctx)
+        return
+    stock.move_to_warehouse(site.stock, island.warehouse, ctx.turn, defs.goods)
+    size = fac.size_of(target) + 1
+    target.ext[fac.SIZE] = size
+    island.facilities.remove(site)
+    island.log.append(
+        LogEntry("facility_expanded", {"facility": target.kind, "x": x, "y": y, "size": size})
+    )
+    if not island.has_economy:
+        return
+    from hakoniwa_core.economy import equipment
+
+    equipment.expand(defs, target)
+    target.economy["capital"] = target.economy.get("capital", 0) + site.economy.get("capital", 0)
+    freight.forget(island)
+    if is_private_site(site):
+        _move_private(island, site, target)
+        target.economy["entered"] = ctx.turn  # 次の参入は売り出した後の値段を待つ
+        for loan in banks.loans_by_borrower(island, facility_entity(target.id)):
+            if loan.purpose == banks.CONSTRUCTION and loan.repay_from > ctx.turn + 10**8:
+                loan.repay_from = ctx.turn + 1 + ctx.config.get("loans.grace_turns")
+    elif is_self_supporting(target):
+        # 足した規模の分の運転資金を出資する（新しく建てたときの fund_facility の規模 1 つ分）
+        payer = Payer(ledger.GOV, CONSTRUCTION)
+        amount = operating_capital(island, defs, ctx.config, target, payer) // size
+        if amount > 0:
+            entity = facility_entity(target.id)
+            funds.pay(island, payer, entity, amount, "capital_injection")
+            ledger.create(
+                island, owner_entity(target), ledger.EQUITY, entity, amount, "capital_injection"
+            )
+
+
+def _drop_expansion(island: IslandState, site: Facility, ctx: StageContext) -> None:
+    """建て増しの工事をやめる: 残りの在庫を売り、口座を閉じ、資材を国の倉庫に戻して取り除く。"""
+    x, y = fac.position(site)
+    island.log.append(LogEntry("expansion_dropped", {"facility": site.kind, "x": x, "y": y}))
+    sell_leftover_stock(island, site)
+    close_accounts(island, site)
+    stock.move_to_warehouse(site.stock, island.warehouse, ctx.turn, ctx.defs.goods)
+    island.facilities.remove(site)
+
+
+def _move_private(island: IslandState, site: Facility, target: Facility) -> None:
+    """民営の建て増しの工事の預金・建設資金の融資・出資を、建て増す施設へ移す（段6 A3）。"""
+    source, dest = facility_entity(site.id), facility_entity(target.id)
+    for loan in banks.loans_by_borrower(island, source):
+        left = banks.outstanding(island, loan)
+        item = ledger.loan_item(loan.id)
+        ledger.cancel(island, loan.lender, item, source, left, "equity_transfer")
+        ledger.create(island, loan.lender, item, dest, left, "equity_transfer")
+        loan.borrower = dest
+    ledger.pay(island, source, dest, ledger.money(island, source), "equity_transfer")
+    owner = owner_entity(site)
+    for name, value in sorted(ledger.holdings(island, owner, ledger.EQUITY).items()):
+        if name.endswith(f"/{source}"):
+            ledger.cancel(island, owner, ledger.EQUITY, source, value, "equity_transfer")
+            ledger.create(
+                island, owner_entity(target), ledger.EQUITY, dest, value, "equity_transfer"
+            )
 
 
 def _start_private(island: IslandState, ctx: StageContext, f: Facility) -> None:

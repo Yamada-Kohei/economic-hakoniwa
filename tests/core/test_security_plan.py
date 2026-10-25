@@ -174,7 +174,7 @@ def test_scene_grants_weapons_then_declares_war(game, world):
     plans, preparing = warscene.orders(world, game.defs, game.config)
     assert attacker in preparing  # 備えの間、標準の計画の守りは止める
     warehouse = world.islands[attacker].warehouse
-    for good in warscene.GRANT:  # 武器と弾薬を国の倉庫に足した（仮）
+    for good in ("weapons", "ammunition"):  # 武器と弾薬を国の倉庫に足した（仮）
         assert stock.total(warehouse, good) > 0
     world.turn = warscene.WAR_FROM - 1
     plans, preparing = warscene.orders(world, game.defs, game.config)

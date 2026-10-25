@@ -42,6 +42,11 @@ FINISHED = "finished"  # 工事が終わったターン（ext。回6）
 # 原料が高くて採算が合わない、funds は原料を買うお金が足りない、public_price は学校と大学の教材が
 # 高くて買えない
 INPUT_SHORT = ("input", "input_price", "funds", "public_price")
+# 建て増し（段6 A3）: 施設の規模（ext。書いていなければ 1）。規模 n の施設は、働き手・原料・産出・
+# 設備・汚染が規模 1 の n 倍。建て増しの工事は、町の中の店と同じくマスを持たない負の位置に置き、
+# 働く場所（SITE）と建て増す施設の番号（EXPANDS）を ext に持つ。済むと建て増す施設に合わせる
+SIZE = "size"
+EXPANDS = "expands"
 
 
 def short_of_inputs(status: str) -> bool:
@@ -66,6 +71,61 @@ def productivity_of(f: Facility) -> int:
     return f.economy.get("productivity", FULL)
 
 
+def size_of(f: Facility) -> int:
+    """施設の規模（建て増した数 + 1）。"""
+    return int(f.ext.get(SIZE, 1))
+
+
+# 1 マスに入る規模の上限の既定（facilities.yaml の max_size を書いていない施設）。15km 四方ほどの
+# マス（国の大きさ 20 倍）に大きな工場が 10 ほど並ぶ見立ての仮の値で、現実の数から出していない。
+# 測りで土地が足りるかを見て直す
+DEFAULT_MAX_SIZE = 10
+
+
+def max_size(defs: Defs, kind: str) -> int:
+    """1 マスに入る規模の上限。マスを持たない施設・町・記念碑は建て増さない（1）。"""
+    fdef = defs.facilities[kind]
+    if fdef.get("tileless") or fdef.get("buildable") is False or fdef.get("monument"):
+        return 1
+    if fdef.get("max_per_island"):  # 島に決めた数までの施設（鉱山・核施設）は数の決まりを保つ
+        return 1
+    return int(fdef.get("max_size", DEFAULT_MAX_SIZE))
+
+
+def pending_expansions(island: IslandState, target: Facility) -> int:
+    """施設 target を建て増している工事の数。"""
+    return sum(1 for f in island.facilities if f.ext.get(EXPANDS) == target.id)
+
+
+def expansion_target(island: IslandState, kind: str, x: int, y: int) -> Facility | None:
+    """(x, y) に同じ施設 kind が建っていれば、その施設（建て増す相手）。"""
+    f = island.facility_at(x, y)
+    return f if f is not None and f.kind == kind else None
+
+
+def expansion_problem(
+    defs: Defs, island: IslandState, target: Facility
+) -> tuple[str, dict[str, Any]] | None:
+    """施設 target を建て増せないときは (理由, 引数)。"""
+    kind = target.kind
+    limit = max_size(defs, kind)
+    if limit <= 1:
+        return ("reason_cannot_expand", {"facility": kind})
+    if not target.built or target.ext.get("repair"):
+        return ("reason_expand_unbuilt", {"facility": kind})
+    if target.owner != OWNER_STATE:
+        return ("reason_private_expand", {"facility": kind})
+    if size_of(target) + pending_expansions(island, target) >= limit:
+        return ("reason_expand_full", {"facility": kind, "max": limit})
+    return None
+
+
+def expansion_of(f: Facility) -> int | None:
+    """建て増しの工事なら、建て増す施設の番号。"""
+    found = f.ext.get(EXPANDS)
+    return int(found) if found is not None else None
+
+
 def outputs_of(defs: Defs, f: Facility) -> dict[str, int]:
     """全力で動いたときの1ターンの産出（作り方の産出 × 生産性）。"""
     p = productivity_of(f)
@@ -81,8 +141,33 @@ def recipe_of(defs: Defs, f: Facility) -> Mapping[str, Any]:
     作り方を割合で混ぜた作り方（蒔いて育っている畑は何も出さず、何も使わない）。"""
     fields = f.economy.get(FIELDS)
     if fields is None:
-        return defs.facilities[f.kind]["recipes"][f.recipe]
-    return _blend(defs, f.kind, f.recipe, tuple(sorted(fields.items())))
+        recipe = defs.facilities[f.kind]["recipes"][f.recipe]
+    else:
+        recipe = _blend(defs, f.kind, f.recipe, tuple(sorted(fields.items())))
+    size = size_of(f)
+    return recipe if size == 1 else _sized(recipe, size)
+
+
+_SIZED: dict[tuple[int, int], tuple[Mapping[str, Any], Mapping[str, Any]]] = {}
+
+
+def _sized(recipe: Mapping[str, Any], size: int) -> Mapping[str, Any]:
+    """規模 size の施設の作り方（原料と産出を size 倍）。"""
+    key = (id(recipe), size)
+    found = _SIZED.get(key)
+    if found is not None and found[0] is recipe:
+        return found[1]
+    if len(_SIZED) > 4096:
+        _SIZED.clear()
+    sized = MappingProxyType(
+        {
+            **recipe,
+            "inputs": MappingProxyType({g: q * size for g, q in recipe["inputs"].items()}),
+            "outputs": MappingProxyType({g: q * size for g, q in recipe["outputs"].items()}),
+        }
+    )
+    _SIZED[key] = (recipe, sized)
+    return sized
 
 
 _BLENDS: dict[tuple[int, str, str, tuple[tuple[str, int], ...]], Mapping[str, Any]] = {}
@@ -297,7 +382,7 @@ def located(f: Facility) -> bool:
 def shops_at(island: IslandState, pos: tuple[int, int]) -> int:
     """町のマス pos に入っている店の数。"""
     key = [pos[0], pos[1]]
-    return sum(1 for f in island.facilities if f.ext.get(SITE) == key)
+    return sum(1 for f in island.facilities if f.ext.get(SITE) == key and EXPANDS not in f.ext)
 
 
 def shop_slots(defs: Defs, town: Facility) -> int:
@@ -344,13 +429,18 @@ def scaled_workers(defs: Defs, kind: str, labor: float) -> int:
 
 
 def workers_of(defs: Defs, f: Facility) -> int:
-    """施設 f の今の作り方で全力で動くのに要る労働者の数。"""
-    return workers_needed(defs, f.kind, f.recipe)
+    """施設 f の今の作り方で全力で動くのに要る労働者の数（規模の分を含む）。"""
+    return workers_needed(defs, f.kind, f.recipe) * size_of(f)
 
 
 def engineers_needed(defs: Defs, kind: str) -> int:
-    """全力で動くのに要る労働者のうちの技術者の数。"""
+    """全力で動くのに要る労働者のうちの技術者の数（規模 1）。"""
     return defs.facilities[kind].get("staff", {}).get(ENGINEER, 0)
+
+
+def engineers_of(defs: Defs, f: Facility) -> int:
+    """施設 f が全力で動くのに要る技術者の数（規模の分を含む）。"""
+    return engineers_needed(defs, f.kind) * size_of(f)
 
 
 def engineer_wage_of(config: GameConfig, f: Facility | None, wage: Any) -> Any:
@@ -375,9 +465,10 @@ def labor_cost(
     if labor is None:
         labor = recipe_labor(defs, kind, f.recipe) if f is not None else 1.0
     general = scaled_workers(defs, kind, labor) - engineers
+    size = size_of(f) if f is not None else 1
     if not engineers:
-        return general * wage
-    return general * wage + engineers * engineer_wage_of(config, f, wage)
+        return general * wage * size
+    return (general * wage + engineers * engineer_wage_of(config, f, wage)) * size
 
 
 def engineer_cap(config: GameConfig, f: Facility) -> int:
@@ -438,8 +529,9 @@ def total_progress(defs: Defs, f: Facility) -> int:
 def materials_of(defs: Defs, f: Facility) -> dict[str, int]:
     """工事 f の資材の合計。隠して建てる施設（ext["materials_factor"]。MI-62）は定義より多い。"""
     materials = defs.facilities[f.kind]["construction"].get("materials", {})
-    factor = f.ext.get("materials_factor")
-    if not factor:
+    # 建て増した施設の直し（戦争・暴動で壊れた後）は規模の分だけ資材が要る（段6 A3）
+    factor = f.ext.get("materials_factor", 1) * size_of(f)
+    if factor == 1:
         return dict(materials)
     return {good: round(qty * factor) for good, qty in materials.items()}
 
@@ -488,7 +580,7 @@ def labor_demand(defs: Defs, f: Facility, turn: int, power: str | None = None) -
     """
     fdef = defs.facilities[f.kind]
     if not f.built:
-        labor = fdef["construction"].get("labor", 0)
+        labor = fdef["construction"].get("labor", 0) * size_of(f)  # 直しは規模の分（段6 A3）
         return -(-labor * material_ratio(defs, f) // FULL)  # 切り上げ
     if is_halted(f, turn):
         return 0
@@ -500,9 +592,18 @@ def labor_demand(defs: Defs, f: Facility, turn: int, power: str | None = None) -
 
 
 def placement_problem(
-    defs: Defs, island: IslandState, kind: str, x: int, y: int, recipe: str | None = None
+    defs: Defs,
+    island: IslandState,
+    kind: str,
+    x: int,
+    y: int,
+    recipe: str | None = None,
+    expand: bool = False,
 ) -> tuple[str, dict[str, Any]] | None:
-    """施設 kind を (x, y) に建てられないときは (理由, 引数) を返す。建てられれば None。"""
+    """施設 kind を (x, y) に建てられないときは (理由, 引数) を返す。建てられれば None。
+
+    expand が真なら、同じ施設の建っているマスは建て増しとして見る（段6 A3。建てる命令と標準の
+    計画）。偽なら施設のあるマスは埋まっている（建国や民営の会社の空いたマス探し）。"""
     if kind not in defs.facilities:
         return ("reason_unknown_facility", {})
     fdef = defs.facilities[kind]
@@ -528,14 +629,21 @@ def placement_problem(
         # 「商業地にだけ建てられる」と分かるように。試し遊び1回目）
         if wrong_zone is not None:
             return wrong_zone
-        if island.facility_at(x, y) is not None:
-            return ("reason_tile_occupied", {})
+        occupant = island.facility_at(x, y)
+        if occupant is not None:
+            if occupant.kind != kind or not expand:
+                return ("reason_tile_occupied", {})
+            # 同じ施設の建っているマスには建て増す（段6 A3。作り方は建っている施設のまま）
+            return expansion_problem(defs, island, occupant)
     if zone is None and tile.zone in (ZONE_OFFICE, ZONE_COMMERCIAL) and not fdef.get("site"):
         return ("reason_office_zone" if tile.zone == ZONE_OFFICE else "reason_commercial_zone", {})
     if fdef.get("coastal") and not is_coastal(island, (x, y), lambda t: is_land(defs, t)):
         return ("reason_not_coastal", {"facility": kind})
     limit = fdef.get("max_per_island")
-    if limit is not None and sum(1 for f in island.facilities if f.kind == kind) >= limit:
+    if (
+        limit is not None
+        and sum(1 for f in island.facilities if f.kind == kind and EXPANDS not in f.ext) >= limit
+    ):
         return ("reason_too_many", {"facility": kind, "max": limit})
     near = fdef.get("near_capital")
     if near is not None:

@@ -354,6 +354,7 @@ class EntryExit(IslandStage):
         finance = island.economy.finance
         demand = finance.get("demand", {})
         now = fac.recipe_of(defs, f)["inputs"]
+        size = fac.size_of(f)  # 建て増した施設は、替えた後も規模の分だけ使い、作る（段6 A3）
         made = fac.field_goods(defs, f)  # 畑を作り替えている途中の前の作物も、作っている物と見る
         wage = f.economy.get("wage", 0)
         sole = _sole_food(island, defs, f)
@@ -365,19 +366,19 @@ class EntryExit(IslandStage):
                 or set(recipe["inputs"]) - supplied
                 or not all(g == power or any(demand.get(g, [])) for g in recipe["outputs"])
                 or any(
-                    _spare(finance, g) < qty - now.get(g, 0)
+                    _spare(finance, g) < qty * size - now.get(g, 0)
                     for g, qty in recipe["inputs"].items()
-                    if g != power and qty > now.get(g, 0)
+                    if g != power and qty * size > now.get(g, 0)
                 )
                 or any(
-                    -_spare(finance, g) < qty * gap
+                    -_spare(finance, g) < qty * size * gap
                     for g, qty in recipe["outputs"].items()
                     if g != power and g not in made and g not in (missing or ())
                 )
                 or any(g in (busy or ()) for g in recipe["outputs"] if g != power and g not in made)
             ):
                 continue
-            probe = productivity.probe(island, defs, config, f.kind, name, (f.x, f.y))
+            probe = productivity.probe(island, defs, config, f.kind, name, (f.x, f.y), size)
             costed = EntryExit._costed(prices, imports or {}, recipe)
             out[name] = variable_profit(defs, config, probe, costed, wage, rate)
         return out
@@ -906,6 +907,9 @@ class EntryExit(IslandStage):
                     idle += shop.get((x, y), 0)
             if idle * 2 >= need:
                 spots.append((tile.x, tile.y))
+        if not spots and not retail.is_shop(defs, kind):
+            # 空いたマスがなければ、同じ作り方の民営の同じ施設を建て増す（段6 A3）
+            spots = self._expansion_spots(island, ctx, kind, rname, need, radius, shop)
         if not spots:
             if fitting:
                 return "no_workers"
@@ -918,6 +922,38 @@ class EntryExit(IslandStage):
         rates = freight_rates.candidate_rates(island, defs, config, kind, rname, spots)
         best = min(spots, key=lambda p: (rates[p], p[1], p[0]))
         return best, rates[best]
+
+    @staticmethod
+    def _expansion_spots(
+        island: IslandState,
+        ctx: StageContext,
+        kind: str,
+        rname: str,
+        need: int,
+        radius: int,
+        shop: dict[tuple[int, int], int],
+    ) -> list[tuple[int, int]]:
+        """建て増せる民営の同じ施設のマス（同じ作り方、規模に空きがあり、閉じかけでも差し押さえ
+        中でもない。通勤圏に雇える人が要る人数の半分以上いる）。"""
+        defs = ctx.defs
+        limit = fac.max_size(defs, kind)
+        spots = []
+        for f in island.facilities:
+            if f.kind != kind or f.recipe != rname or f.owner != OWNER_PRIVATE or not f.built:
+                continue
+            if "closing" in f.economy or "foreclosed" in f.economy or not fac.on_map(f):
+                continue
+            if fac.size_of(f) + fac.pending_expansions(island, f) >= limit:
+                continue
+            idle = 0
+            for x, y in within(island, (f.x, f.y), radius):
+                t = island.tile(x, y)
+                if t.population:
+                    idle += max(0, fac.labor_force(defs, island, t) - t.ext.get("employed", 0))
+                    idle += shop.get((x, y), 0)
+            if idle * 2 >= need:
+                spots.append((f.x, f.y))
+        return spots
 
     def _finance(
         self, island: IslandState, ctx: StageContext, amount: int, earnings: int, kind: str = ""
@@ -1006,7 +1042,15 @@ class EntryExit(IslandStage):
         if isinstance(plan, tuple):
             return plan
         payer, firm = island.scratch.pop("entry_investor", None) or (household(OWNERS), None)
-        at = retail.tileless_position(island) if retail.is_shop(defs, kind) else pos
+        target = fac.expansion_target(island, kind, *pos)
+        if target is not None:  # 建て増し（段6 A3）: 出資するのは建て増す施設の持ち主
+            payer, firm = owner_entity(target), None
+            share = amount - sum(p for _, p, _ in plan)
+            have = ledger.money(island, payer)
+            if have < share:
+                return ("owners_short", {"need": share, "have": have, "loan": amount - share})
+        tileless = retail.is_shop(defs, kind) or target is not None
+        at = retail.tileless_position(island) if tileless else pos
         f = Facility(
             id=island.next_facility_id(),
             kind=kind,
@@ -1018,13 +1062,19 @@ class EntryExit(IslandStage):
             economy={"capital": 0},
             ext={"private_entry": True},
         )
-        if retail.is_shop(defs, kind):
+        if retail.is_shop(defs, kind) or target is not None:
             f.ext[fac.SITE] = [pos[0], pos[1]]
-        assign_serial(island, f)
+        if target is not None:
+            f.ext[fac.EXPANDS] = target.id
+            if "firm" in target.economy:
+                f.economy["firm"] = target.economy["firm"]
+        else:
+            assign_serial(island, f)
         island.facilities.append(f)
         entity = facility_entity(f.id)
         invest(island, payer, entity, amount - sum(p for _, p, _ in plan))
-        companies.invested(island, firm, f, ctx.turn)
+        if target is None:
+            companies.invested(island, firm, f, ctx.turn)
         turns = config.get("loans.construction_turns")
         far = 10**9  # 元金は工事が済んでから返す（工事の段で返し始めるターンを決める）
         for bank, loan, loan_rate in plan:

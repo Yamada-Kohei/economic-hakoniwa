@@ -55,6 +55,7 @@
     },
     "near_capital": {"type": "integer", "minimum": 0, "description": "首都のマスからこのマス数以内にだけ建てられる"},
     "max_per_island": {"type": "integer", "minimum": 1, "description": "1つの国が持てる数（工事中も数える）。書かなければ上限なし"},
+    "max_size": {"type": "integer", "minimum": 1, "description": "1 マスに建て増せる規模の上限（段6 A3）。書かなければ hakoniwa_core/facilities.py の DEFAULT_MAX_SIZE。1 は建て増せない"},
     "buildable": {"type": "boolean", "description": "命令で建てられるか。false は自動で建つもの（町など）。書かなければ true"},
     "zone": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "このマスの指定（office など）があるマスにだけ建つ"},
     "tileless": {"type": "boolean", "description": "マスを持たない施設（運送業など）"},

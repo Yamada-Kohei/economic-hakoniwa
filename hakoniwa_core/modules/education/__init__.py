@@ -64,6 +64,7 @@ def school_seats(island: IslandState, ctx: StageContext) -> tuple[float, float]:
             continue
         # 教材に電子機器を使う作り方は、教員 1 人あたりの育ちが上がる（MI-43）
         rate = f.operating_rate / FULL * fac.recipe_of(ctx.defs, f).get("education_scale", 1.0)
+        rate *= fac.size_of(f)  # 建て増した学校は規模の分だけ多く教える（段6 A3）
         seats += spec.get("capacity", 0) * rate
         trained += spec.get("engineers", 0) * rate
     return seats, trained
