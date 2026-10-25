@@ -30,3 +30,12 @@ def test_world_scale_wins_over_game_yaml(db, monkeypatch):
 
 def test_no_world_uses_game_yaml(db):
     assert server_game.world_scale() is None
+
+
+def test_facility_rows_show_the_size(world):
+    from server.web import reports
+    from server.world.models import Island
+
+    island = Island.objects.order_by("id").first()
+    rows = reports.facility_rows(island, "")["rows"]
+    assert rows and all(r["size"] == 1 and r["expands"] is None for r in rows)

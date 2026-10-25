@@ -66,10 +66,15 @@
 | FM-43 | 自動車は部品工場（鋼鉄・アルミ・化学品・衣料・機械・電力 → 自動車部品）と組み立て工場（部品・車体の鋼鉄・塗料・電力 → 自動車）に分け、2つを足した材料は回6 の自動車工場と同じ。部品工場は組み立てより人が多い。経験は2つで自動車1台分（`experience_share`） | 決定（回7 後半。W-76） |  | tests/core/test_balance_round7b.py::test_parts_plant_and_assembly_share_the_experience_of_one_car, tests/core/test_balance_round6.py::test_automobile_needs_the_parts_of_a_real_car |
 | FM-44 | 組の参入: 原料が島で作られていなくても、島にある原料で作れる民営の施設があれば、その施設を先に建てる（建っている途中の施設の作る物は、使う工場の参入で作られている物に数える）。新しい施設の出資は、同じ種類 → 売り先 → 原料 → ほかの企業の順（系列） | 決定（回7 後半） |  | tests/core/test_balance_round7b.py::test_maker_of_a_missing_input_is_found_for_a_bundle_entry, ::test_assembler_invests_in_its_parts_supplier_first |
 | FM-45 | 水力発電所の出力は、集水域（半径 4 マス。水力発電所の定義 `facilities.yaml` の `water`）に降る水で決まる。マスごとの流れ込む水は地形ごとの重み（山 1・森 0.25・平地 0.03）に気候帯の雨の多さと年ごとの雨の係数を掛けた量で、重なるマスは近くの水力発電所（工事中も数える。閉鎖中と差し押さえ中は数えない）で等分する。全力に要る水（`water.full`）に対する割合を生産性に掛け（係数 `water`）、割合が `water.min` に満たない場所には建てられない（天気は数えず、平年の雨で見る）。雨の係数は 12 月に島ごとに引き直す（`climate.rain`）。水が足りない年はログに書く。標準の計画は `WATER_MIN` に満たない場所に建てない | 決定（W-148） | `climate.rain.sigma`, `climate.rain.min`, `climate.rain.max` | tests/core/test_hydro.py::test_a_mountain_mass_gives_full_power_and_a_lone_hill_does_not, ::test_nearby_plants_share_the_water_and_far_ones_do_not, ::test_a_second_plant_cannot_be_built_on_what_is_left, ::test_productivity_follows_the_water, ::test_climate_and_the_year_change_the_output, ::test_the_rain_of_the_next_year_is_drawn_in_december_and_drought_is_reported, ::test_the_standard_plan_counts_only_the_water_it_will_get |
+| FM-46 | 施設の規模（段6 A3、W-85）: 同じ施設の建っているマスに同じ施設を建てる命令は、建て増しの工事になる。工事はマスを取らず、資材・人手・お金の出どころは新しく建てる工事と同じで、工事の間も元の施設は動く。済むと元の施設の規模が 1 つ上がり、働き手・技術者・投入・産出・設備・汚染・建設費・兵舎の定員・港の容量が規模の倍になる。作り方は元の施設のまま。土地や資源に縛られる施設（農場・鉱山・林業・漁港・住宅など、`facilities.yaml` の `max_size: 1`）と島に1つの施設は建て増せない。標準の計画は空いたマスと同じ順で建て増しも選び、民営の会社は空いたマスがないときだけ自分の施設を建て増す（出資は元の施設の持ち主、済むと預金・融資・出資を元の施設へ移す）。国営の施設は民営の会社が建て増さない。工事の間に元の施設がなくなれば、マスが空いていれば新しい施設として建てる | 決定 |  | tests/core/test_scale.py::test_build_on_the_same_facility_starts_an_expansion, tests/core/test_scale.py::test_size_multiplies_workers_inputs_outputs_and_equipment, tests/core/test_scale.py::test_land_bound_facilities_cannot_expand |
 
 ### 仮の決まり
 
-なし（回7 で FM-05 を企業の仕組み FM-36 に置き換えた）。
+| 番号 | 何の代わりか | いつ外すか |
+| --- | --- | --- |
+| FM-46 | 規模の上限 10（`facilities.DEFAULT_MAX_SIZE`）は、マス1つ（倍 20 で約 240 km²）に建てられる工場の広さから決めた目安。本来は施設の敷地の広さとマスの空いた土地から決める | 敷地の広さを施設の定義に持たせるとき（W-177） |
+
+回7 で FM-05 を企業の仕組み FM-36 に置き換えた。
 
 ## 仕組み
 
@@ -208,6 +213,12 @@ R = \frac{12 \times \left(P_{\mathrm{out}} Q - \sum P_{\mathrm{in}} q_{\mathrm{i
 - 蒔き直した畑が育っている間は、撤退の「動いていない月」に数えません（作りすぎの月に人を減らした農場が、次の収穫を待たずに閉じたため。W-20）。
 - 豚の循環（W-18）は、上の2つと、替えたばかりの財に替えない決まり（作り方と作付けの替え方。タブ 3）で足りるかを測りで見ます。
 
+### 施設の規模と建て増し（段6 A3）
+
+- 島の人口の伸びは土地の広さではなく、マス1つ・施設1つの大きさで止まっていた（main の測りで、陸地 140〜350 マスのうち使うのは 50〜67 マス）。そこで国の大きさの倍（タブ 2 の PO-49）に加えて、1 つのマスに同じ施設を重ねて大きくできるようにした（FM-46）。
+- 規模は施設の `ext` の `size`（ない施設は 1）。建て増しの工事は町の中の店と同じ負の位置の施設で、`ext` の `site` に元の施設のマス、`expands` に元の施設の番号を持つ。済むと工事を取り除き、元の施設の規模を上げ、新品の設備を足す。
+- 現実の例: 製鉄所や発電所は同じ敷地に炉や発電機を足して大きくなる。土地そのものを使う農場や鉱山は、隣の土地を使う（ここでは別のマスに建てる）。
+
 ## 境目の表
 
 | 場面 | 誰が・何を | どれくらいの間に | 元に戻る道 | 現実の例 | 設定の名前 |
@@ -219,6 +230,9 @@ R = \frac{12 \times \left(P_{\mathrm{out}} Q - \sum P_{\mathrm{in}} q_{\mathrm{i
 | 一部だけ（企業の1施設がずっと足りない） | 兄弟の施設の手元の余りから返済と未払いを回す（FM-42）。続けば `firms.restructure_turns` で閉める。部品工場がない島の組み立て工場は止まり、組の参入で部品工場が先に建つ | 回してもらうのが1年続けば閉鎖 | 閉鎖・輸入 | 不採算部門の切り離し、部品不足の減産 | `firms.pool_floor_turns`, `firms.restructure_turns` |
 | 持ち主・相手がいない | 差し押さえた施設に買い手がなければ取り壊す。計画経済の島には民営がない。出資する資本家階級がいなければ建たない。撤退した施設の残りの在庫は国が市場の値段で引き取る | 決めたターン数 |  |  | `firms.foreclosure_turns`, `firms.foreclosure_price` |
 | 時間がたつ（満期・寿命・一巡・育ちきった後） | 設備は資材ごとに年 2.5〜8% 傷む（直さなければ機械は 20 年で約2割）。直していれば一定に保たれ、建てる工事が一巡した後も機械と鋼材の買い手が続く。使わない産業の経験は年に減る。民営の工事は進まなければやめる 水力発電所の雨の係数は年ごとに引き直し、前の年の値は残さない。 | 機械 8%、鋼鉄 3%、建材 2.5% が年に傷む | 直す投資。民営は採算が合わなければ閉じ、後に参入 | 現実の工業国では設備の傷みが GDP の 15〜20% ほどで、投資の多くは置き換え | `equipment.wear`, `experience.decay`, `firms.abandon_turns` |
+| 足りない（建て増し、FM-46） | 建て増しの工事は新しく建てる工事と同じに資材と作業員を待つ（据え置き・建設資金の融資）。建て増した施設の働き手が通勤圏に足りなければ雇える分だけで動き、稼働率が下がる。民営の持ち主の預金が出資の分に足りなければ建て増さない | 工期、雇いは毎ターン | 人が移り住む・賃金が上がる | 大工場の人手不足で操業を落とす | `firms.equity_share` |
+| 一部だけ（規模の大きい施設） | 規模 10 の施設は 1 マスに 10 倍の汚染を出し、まわりの健康と生産性を下げる。閉じると規模の分の働き手が一度に失業する | 撤退の決まりのターン数 | 移り住む・別の工場に雇われる | 工業地帯の公害、大工場の閉鎖 | `firms.exit_loss_turns` |
+| 持ち主・相手がいない（建て増し） | 工事の間に元の施設が取り壊された・閉じたときは、マスが空いていれば新しい施設として建て、ふさがっていれば資材を国の倉庫に戻して工事をやめる | 工事が済むターン | — | — | — |
 
 ## 前提と依存
 

@@ -68,6 +68,7 @@
 | PO-46 | 飢饉で村へ逃れた人は、町で食べ物が買え、町に人手の足りない仕事があれば、1 ターンに決めた割合ずつ町へ戻る | 決定 | `population.hunger.return_share` | tests/core/test_balance_round7.py::test_people_who_fled_to_villages_return_when_towns_need_workers |
 | PO-47 | 標準の記念碑は 10: モノリス・建国記念碑・平和記念碑・戦いの碑・慰霊碑・元首の像・労働者の像・展望塔・帳簿の碑・検証の碑。それぞれ建てられる条件があり（モノリスだけ条件なし）、効果は観光の魅力だけ。碑文は自動の文に遊ぶ人が 1〜2 行足せる（1 行 40 字まで）。モノリスと自作以外は 1 つの国に 1 つまで | 決定（4-1 ④） | `monuments.founding_turns`・`monuments.peace_turns`・`monuments.cenotaph_dead`・`monuments.ledger_turns`・`monuments.verification_turns` | tests/core/test_monuments.py, tests/server/test_monuments.py |
 | PO-48 | 自作の記念碑はモノリスと同じ条件で、絵を遊ぶ人が上げる（国旗と同じ守り）。管理者が隠せる。絵は国のページとマスの欄に出る（島の地図の絵はどの自作の碑も共通の石碑） | 決定（4-1 ④） |  | tests/server/test_monuments.py::test_custom_monument_image_is_png_or_provisional_and_can_be_hidden |
+| PO-49 | 国の大きさの倍（段6 A3、W-85）: マス1つ・施設1つの表す大きさを `scale.people` 倍（20）にする。定義データと game.yaml は倍 1 の大きさで書き、読み込むときに大きさに比例する数（町に住める人数・初めの人口・施設の働き手と投入と産出と材料・インフラの資材と人手・学校の定員・陸の部隊の兵と装備・輸送船の積める重さ・平均賃金の何倍で書いた額など）だけを掛ける。1 人あたりの量・賃金・値段・率・ターン数・マスの数・軍艦は変えないので、失業・物価・税の割合は倍 1 と同じ形になる。役所の公務員 1 人あたりの行政力は倍で割る。倍は世界ごとに決まり（サーバーの世界の拡張欄 `scale`）、倍を入れる前の世界は倍 1 のまま続く | 決定 | `scale.people` | tests/core/test_scale.py::test_scale_multiplies_sizes_but_not_per_person_amounts, tests/core/test_scale.py::test_founding_population_follows_the_scale, tests/server/test_world_scale.py::test_old_world_without_scale_loads_at_one |
 
 ### 仮の決まり
 

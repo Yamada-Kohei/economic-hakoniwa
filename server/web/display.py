@@ -167,6 +167,8 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         "built": f.built,
         "workers": f.workers,
         "operating_rate": f.operating_rate / fac.FULL,
+        "size": fac.size_of(f),  # 規模（段6 A3。建て増した数 + 1）
+        "expanding": fac.pending_expansions(island, f),
         "priority": fac.priority_of(defs, config, f) if fdef else None,
         "priority_changed": f.priority is not None,
         "status": f.status,
