@@ -57,7 +57,7 @@ Django（server/）……保存・アカウント・命令の受付・ターン�
 
 | アプリ | 中身 |
 |---|---|
-| `accounts` | 登録・ログイン。同じ接続元からの重複登録の制限（IP は秘密鍵で混ぜたハッシュで、決まった日数だけ持つ。IPv6 は /64 にそろえ、読めないときは数えない。管理画面で記録に「追加で登録できる人数」`extra` を入れると、その接続元の上限が増える）。AI 用の鍵（`ApiKey`、`keys.py`。下の「AI 用の入り口」） |
+| `accounts` | 登録・ログイン。同じ接続元からの重複登録の制限（IP は秘密鍵で混ぜたハッシュで、決まった日数だけ持つ。IPv6 は /64 にそろえ、読めないときは数えない。管理画面で記録に「追加で登録できる人数」`extra` を入れると、その接続元の上限が増える）。AI 用の鍵（`ApiKey`、`keys.py`。下の「AI 用の入り口」）。ログインの試しすぎの上限（`loginguard.py`）と、回数の数え（`throttle.py`）・接続元の読み方（`clientip.py`）は [rate-limits.md](rate-limits.md) |
 | `world` | 世界・島・マス・施設・在庫・統計のモデル、DB とコアの変換（`repository.py`）、建国（`services.py`） |
 | `economy` | お金の勘定・国債の銘柄・仕訳・約定・市場の記録・施設の帳簿のモデル（フェーズ2） |
 | `orders` | 命令のモデル |
@@ -189,8 +189,9 @@ AI（Claude や ChatGPT など）が人と同じ決まりで遊ぶための入�
 
 - **AI 用の鍵**（`server/accounts/keys.py`、表 `ApiKey`）: アカウントの画面で作り、AI に渡す。`/api/` と `/mcp` だけで、
   `Authorization: Bearer <鍵>` をそのアカウントのログインとして扱う（`KeyMiddleware`。ブラウザが勝手に付けないので CSRF の印は要らない）。
-  鍵そのものは作ったときに1度だけ見せ、DB には SHA-256 のハッシュだけを置く。1つの鍵で呼べる回数は1分に `HAKONIWA_AI_CALLS_PER_MINUTE`
-  回まで（既定 60。Django のキャッシュで数える）。
+  鍵そのものは作ったときに1度だけ見せ、DB には SHA-256 のハッシュだけを置く。1つの鍵で使える処理は1分に `HAKONIWA_AI_CALLS_PER_MINUTE`
+  件まで（既定 60。`/api/` は1回に1件、`/mcp` は POST に含まれるメッセージの数。DB で数え、複数のワーカーで共有する。
+  まとめ送信は1回 `HAKONIWA_MCP_MAX_BATCH` 件まで）。詳しくは [rate-limits.md](rate-limits.md)。
 - **AI の国の印**: 取り消していない鍵を持つアカウントの島と、鍵を最後に使ってから 12 ターン（`MARK_TURNS`）の間の島には、
   国の一覧（`/`）と国の画面の見出しに「AI」の印を出す（`web/ai_mark.html`。`/api/world` の `ai` も）。持ち主は消せない。
 - **国の要約と差分**（`server/web/overview.py`）: 上の `summary`・`changes`。画面と同じ値を集めて短くしただけで、新しい計算や先の見込みは出さない。

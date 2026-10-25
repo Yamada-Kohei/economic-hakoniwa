@@ -7,7 +7,19 @@
 - DJANGO_ALLOWED_HOSTS: カンマ区切り
 - HAKONIWA_GAME_CONFIG: game.yaml の場所（既定はリポジトリ直下）
 - HAKONIWA_CLIENT_IP_HEADER: 利用者の IP を読む場所（既定 REMOTE_ADDR。リバースプロキシの後ろでは
-  HTTP_X_REAL_IP など、プロキシが書き込む場所にする）
+  HTTP_CF_CONNECTING_IP・HTTP_X_REAL_IP・HTTP_X_FORWARDED_FOR など、プロキシが書き込む場所にする）
+- HAKONIWA_TRUSTED_PROXIES: 上の見出しを信じてよい中継元の IP / CIDR（カンマ区切り。既定は同じ機械
+  の 127.0.0.1, ::1）。ここにない相手から来た見出しは使わず、つないできた相手の IP（REMOTE_ADDR）を
+  接続元にする（利用者が見出しを偽って回数制限をすり抜けるのを防ぐ。server/accounts/clientip.py）
+- HAKONIWA_LOGIN_MAX_FAILURES: 同じ接続元から同じアカウントへのログインに失敗できる回数（既定 5）。
+  この回数に達したら HAKONIWA_LOGIN_LOCK_MINUTES 分の間、その組み合わせのログインを断る
+- HAKONIWA_LOGIN_LOCK_MINUTES: 上の停止の長さ（分。既定 15）
+- HAKONIWA_LOGIN_FAILURE_WINDOW_MINUTES: 失敗を数える期間（分。最初の失敗からこの間に回数に達する
+  と停止。既定 15）
+- HAKONIWA_LOGIN_POSTS_PER_WINDOW: 同じ接続元がログインの画面（通常・管理画面）に送れる回数
+  （アカウント名を変えても合算。既定 30）
+- HAKONIWA_LOGIN_POST_WINDOW_SECONDS: 上の回数を数える区切りの秒（既定 60）
+- HAKONIWA_THROTTLE_KEEP_HOURS: 回数の記録（失敗と区切りごとの数）を消すまでの時間（既定 24）
 - HAKONIWA_LETTERS_PER_DAY: 1つの島が 24 時間に送れる手紙の数（既定 50。送りすぎの歯止め）
 - HAKONIWA_HALL_PER_DAY: 1つの島が 24 時間に国際会議場に出せる声明の数（既定 10。出しすぎの歯止め）
 - HAKONIWA_BUG_REPORTS_PER_DAY: 1人が 24 時間に送れる不具合の報告の数（既定 10。送りすぎの歯止め）
@@ -22,8 +34,10 @@
 - HAKONIWA_UPDATE_STALE_MINUTES: 鎖の取れない DB（SQLite）で、更新中の印がこの分より古ければ
   強制終了などで残ったものとみなして外す（既定 30。ターンの計算がそれより長くかかる世界では
   大きくする。PostgreSQL では鎖で見分けるので使わない。server/turns/services.py）
-- HAKONIWA_AI_CALLS_PER_MINUTE: AI 用の鍵1つで 1 分に呼べる API の回数（既定 60。0 で上限なし。
-  server/accounts/keys.py）
+- HAKONIWA_AI_CALLS_PER_MINUTE: AI 用の鍵1つで 1 分に使える処理の数（既定 60。0 で上限なし。
+  /api/ の呼び出しは 1 回に 1、/mcp は含まれるメッセージの数。server/accounts/keys.py）
+- HAKONIWA_MCP_MAX_BATCH: /mcp に 1 回の送信でまとめて送れるメッセージの数（既定 10。超えたら 1 件も
+  実行せず断る。上の 0 でも適用）
 """
 
 from __future__ import annotations
@@ -72,6 +86,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "server.accounts.keys.KeyMiddleware",  # AI 用の鍵（/api/ と /mcp だけ）
+    "server.accounts.loginguard.LoginGuardMiddleware",  # ログインの試しすぎの上限（通常・管理画面）
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -145,6 +160,19 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 HAKONIWA_GAME_CONFIG = os.environ.get("HAKONIWA_GAME_CONFIG", str(BASE_DIR / "game.yaml"))
 HAKONIWA_CLIENT_IP_HEADER = os.environ.get("HAKONIWA_CLIENT_IP_HEADER", "REMOTE_ADDR")
+HAKONIWA_TRUSTED_PROXIES = [
+    p.strip()
+    for p in os.environ.get("HAKONIWA_TRUSTED_PROXIES", "127.0.0.1,::1").split(",")
+    if p.strip()
+]
+HAKONIWA_LOGIN_MAX_FAILURES = int(os.environ.get("HAKONIWA_LOGIN_MAX_FAILURES", "5"))
+HAKONIWA_LOGIN_LOCK_MINUTES = int(os.environ.get("HAKONIWA_LOGIN_LOCK_MINUTES", "15"))
+HAKONIWA_LOGIN_FAILURE_WINDOW_MINUTES = int(
+    os.environ.get("HAKONIWA_LOGIN_FAILURE_WINDOW_MINUTES", "15")
+)
+HAKONIWA_LOGIN_POSTS_PER_WINDOW = int(os.environ.get("HAKONIWA_LOGIN_POSTS_PER_WINDOW", "30"))
+HAKONIWA_LOGIN_POST_WINDOW_SECONDS = int(os.environ.get("HAKONIWA_LOGIN_POST_WINDOW_SECONDS", "60"))
+HAKONIWA_THROTTLE_KEEP_HOURS = int(os.environ.get("HAKONIWA_THROTTLE_KEEP_HOURS", "24"))
 HAKONIWA_LETTERS_PER_DAY = int(os.environ.get("HAKONIWA_LETTERS_PER_DAY", "50"))
 HAKONIWA_HALL_PER_DAY = int(os.environ.get("HAKONIWA_HALL_PER_DAY", "10"))
 HAKONIWA_BUG_REPORTS_PER_DAY = int(os.environ.get("HAKONIWA_BUG_REPORTS_PER_DAY", "10"))
@@ -158,3 +186,4 @@ HAKONIWA_FLAG_MAX_SIDE = int(os.environ.get("HAKONIWA_FLAG_MAX_SIDE", "512"))
 HAKONIWA_COUNTRY_NOTES_PER_DAY = int(os.environ.get("HAKONIWA_COUNTRY_NOTES_PER_DAY", "10"))
 HAKONIWA_UPDATE_STALE_MINUTES = int(os.environ.get("HAKONIWA_UPDATE_STALE_MINUTES", "30"))
 HAKONIWA_AI_CALLS_PER_MINUTE = int(os.environ.get("HAKONIWA_AI_CALLS_PER_MINUTE", "60"))
+HAKONIWA_MCP_MAX_BATCH = int(os.environ.get("HAKONIWA_MCP_MAX_BATCH", "10"))

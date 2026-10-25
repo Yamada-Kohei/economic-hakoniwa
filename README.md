@@ -87,7 +87,9 @@ python manage.py migrate
 
 公開サーバーでは `DJANGO_SECRET_KEY`、`DJANGO_DEBUG=0`、`DJANGO_ALLOWED_HOSTS` も設定してください
 （`server/settings.py` の先頭に一覧があります）。リバースプロキシの後ろに置くときは、利用者の IP を読む場所を
-`HAKONIWA_CLIENT_IP_HEADER`（例: プロキシが書き込む `HTTP_X_REAL_IP`）で指定します。同じ接続元から登録できる数は
+`HAKONIWA_CLIENT_IP_HEADER`（例: プロキシが書き込む `HTTP_CF_CONNECTING_IP`）で指定し、その見出しを信じてよい
+中継元を `HAKONIWA_TRUSTED_PROXIES` に書きます（既定は同じ機械の `127.0.0.1,::1`）。ログインの試しすぎの上限と AI 用の
+鍵の回数の上限は [docs/rate-limits.md](docs/rate-limits.md) にあります。同じ接続元から登録できる数は
 `game.yaml` の `accounts.signups_per_ip` で変えられます（0 で無制限）。
 
 50 島の世界で 1 回のターン更新は約 2 秒です（[docs/scale.md](docs/scale.md)）。
