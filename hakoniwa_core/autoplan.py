@@ -167,6 +167,11 @@ EDUCATION_MARGIN = 1.3  # 教育費を、学校と大学を全力で動かす年
 # 場所は、建てられても（施設の定義の min）割に合わないので、火力発電所に回す（W-148）
 WATER_MIN = 0.6
 ROAD_LEVEL = 0.6  # 新しい施設の周りに、交通の整備度がこれに届かないマスがあれば道路を引く
+# 治安と国防（段6 A2）
+SECURITY_FROM = 24  # 警察署を建て始めるターン（食料・電力・資材の施設が先）
+SECURITY_MARGIN = 1.3  # 治安費を、警察署を全力で動かす年の費用のこの倍にする
+POLICE = "police"
+BARRACKS = "barracks"
 
 
 def plan_turn(
@@ -294,6 +299,8 @@ def _warehouse_sales(island: IslandState, defs: Defs, config: GameConfig) -> lis
     reserved = _reserved_materials(island, defs)
     for good, qty in _chain_keep(island, defs, config).items():
         reserved[good] = reserved.get(good, 0) + qty
+    for good, qty in _military_keep(island, config).items():
+        reserved[good] = reserved.get(good, 0) + qty
     initial = initial_prices(defs, config, island.resources)
     orders = []
     sold: dict[str, int] = {}
@@ -315,6 +322,20 @@ def _warehouse_sales(island: IslandState, defs: Defs, config: GameConfig) -> lis
         }
         orders.append(("warehouse_trade", payload))
     return orders
+
+
+def _military_keep(island: IslandState, config: GameConfig) -> dict[str, int]:
+    """国の倉庫に残しておく軍の分: 兵の食べ物（取り置きのターン数）と、国防費で決めた備蓄の目標。
+    売ると、兵が飢えるか、外国へ送る補給がなくなる。"""
+    from hakoniwa_core.military import forces
+    from hakoniwa_core.modules import military
+
+    if not forces.soldiers(island) and not island.ext.get(forces.KEY, {}).get("reserve"):
+        return {}
+    keep = dict(island.ext.get(forces.KEY, {}).get("reserve", {}))
+    food = military.food_need(island, config) * config.get("military.food_stock_turns")
+    keep[military.FOOD] = max(keep.get(military.FOOD, 0), food)
+    return keep
 
 
 def _private_materials(island: IslandState, defs: Defs) -> dict[str, int]:
@@ -398,10 +419,13 @@ def _budget_order(
     targets = {
         "construction": construction,
         "education": int(_education_cost(island, defs, config) * max(EDUCATION_FLOOR, 1 - cut)),
+        "security": _security_cost(island, defs, config),
     }
     payload = {}
     for item, target in targets.items():
         current = island.policy.budget.get(item, 0)
+        if not (current or target):
+            continue
         if not current or abs(target - current) > current // 10:
             payload[item] = target
     return ("set_budget", payload) if payload else None
@@ -444,8 +468,9 @@ def _food_orders(
             recipe = _grain_recipe(defs, island, f)
             if recipe is not None:
                 orders.append(("change_recipe", {"x": f.x, "y": f.y, "recipe": recipe}))
+        keep = _military_keep(island, config)  # 兵の食べ物は売らない
         for good in sorted(island.warehouse):
-            qty = stock.total(island.warehouse, good)
+            qty = stock.total(island.warehouse, good) - keep.get(good, 0)
             if qty > 0 and "food" in defs.goods.get(good, {}):
                 orders.append(
                     (
@@ -519,6 +544,15 @@ def _education_cost(island: IslandState, defs: Defs, config: GameConfig) -> int:
         for good, qty in fac.recipe_of(defs, f)["inputs"].items():
             per_turn += money_of(int(island.economy.prices.get(good, 0) * band), qty)
     return int(per_turn * TURNS_PER_YEAR * EDUCATION_MARGIN)
+
+
+def _security_cost(island: IslandState, defs: Defs, config: GameConfig) -> int:
+    """警察署（工事中を含む）を全力で動かす年の費用 × SECURITY_MARGIN。"""
+    wage = island.economy.average_wage or config.get("labor.initial_wage")
+    workers = sum(
+        fac.workers_of(defs, f) for f in island.facilities if defs.facilities[f.kind].get("police")
+    )
+    return int(workers * wage * TURNS_PER_YEAR * SECURITY_MARGIN)
 
 
 def _price_cap_order(
@@ -859,6 +893,8 @@ def _candidates(
 
     yield from _education(island, defs, config)
 
+    yield from _security(island, defs, config, turn)
+
     def spare(kind: str, rname: str) -> bool:
         """投入財に余裕がある（作る量が、今使う量とこの施設の使う量に届く）か。
 
@@ -1047,6 +1083,22 @@ def _education(island: IslandState, defs: Defs, config: GameConfig) -> Iterator[
         if needed > island.economy.workers.get(fac.ENGINEER, 0) * ENGINEER_TARGET:
             keep = _private_needs(island, defs)
             yield from _build_or_supply(island, defs, config, UNIVERSITY, keep)
+
+
+def _security(
+    island: IslandState, defs: Defs, config: GameConfig, turn: int
+) -> Iterator[tuple[str, str]]:
+    """警察署を1つ（SECURITY_FROM ターンから）。工事の資材の扱いは学校と同じ（資材が倉庫に足りず
+    島で作っていなければ、先にその資材を作る施設）。
+
+    平時に兵舎と武器工場は建てない。武器工場は武器の原料（鉄鋼・機械・化学品）を平時から食い、
+    建てた島の鉄鋼と機械が品切れになった（段6 A2 の測り）。兵は反乱の前触れが続くか宣戦されたとき
+    plan_war が集める。
+    """
+    if not island.has_economy or turn < SECURITY_FROM:
+        return
+    if POLICE in defs.facilities and _count(island, POLICE) == 0:
+        yield from _build_or_supply(island, defs, config, POLICE)
 
 
 def _build_or_supply(
@@ -1342,9 +1394,9 @@ def plan_trade(
     return plans
 
 
-# --- 戦争（フェーズ4-3。設計書 MI-44） -------------------------------------------------------
+# --- 戦争（フェーズ4-3。設計書 MI-44） --------------------------------
 
-DEFENSE_SHARE = 0.005  # 宣戦されたとき、住民のこの割合を目標に兵を集める（平時の軍の大きさ）
+DEFENSE_SHARE = 0.005  # 宣戦されたとき（反乱の前触れが続くときも）、住民のこの割合を兵の目標にする
 DEFENSE_MIN = 100  # 兵の目標の下限（歩兵 1 中隊）
 WAR_ORDERS = ("sign_treaty", "set_defense", "recruit", "form_unit")
 
@@ -1354,31 +1406,33 @@ def plan_war(
 ) -> dict[int, list[tuple[str, dict]]]:
     """宣戦されたときの標準の計画（島ごとの命令）。標準の計画は自分から宣戦せず、核施設も建てない。
 
-    戦争の相手がいる島と、内戦の起きている島は、1 ターンに 1 つずつ次を進めます:
-    相手が出した停戦と講和（戦争のあいだに結べる
-    条項だけの条約）に署名する → 兵舎がなければ建てる → 国防費を決める → 兵を集める → 兵舎に歩兵を
-    編成する。戦争のない島は何もしません（測りの戦争のない場面を変えないため）。サーバーの持ち主の
-    いない島はこの計画を使いません（測りと試験だけで動く）。
+    戦争の相手がいる島と、内戦の起きている島（反乱の前触れが続く島を含む）は、1 ターンに 1 つずつ
+    次を進めます: 相手が出した停戦と講和（戦争のあいだに結べる条項だけの条約）に署名する → 兵舎が
+    なければ建てる → 国防費を決める → 兵を集める → 兵舎に歩兵を編成する。戦争も反乱の前触れもない島
+    は何もしません（平時の守りは警察署。平時の兵は置かない）。
+    サーバーの持ち主のいない島はこの計画を使いません（測りと試験だけで動く）。
     """
     from hakoniwa_core.diplomacy import clauses as cl
     from hakoniwa_core.diplomacy import treaties, war
-    from hakoniwa_core.military import army, civil_war, forces
+    from hakoniwa_core.military import civil_war
 
     plans: dict[int, list[tuple[str, dict]]] = {}
     for i in world.island_ids():
         island = world.islands[i]
         if not island.has_economy:
             continue
-        if not (
+        threatened = bool(
             war.open_wars_of(world, i)
             or civil_war.alarmed(world, island, config.get("military.civil_war.trigger_turns"))
-        ):
+        )
+        if not threatened:
             continue  # 反乱の前触れが続く島と内戦の島も備える（MI-40）
         if any(o.status == ORDER_PENDING and o.kind in WAR_ORDERS for o in island.orders):
             continue  # 前の手がまだ済んでいない（行政力が足りず繰り越したときなど）
         for t in treaties.treaties(world):
             if (
-                t["state"] == treaties.PROPOSED
+                threatened
+                and t["state"] == treaties.PROPOSED
                 and i in t["parties"]
                 and t["proposer"] != i
                 and str(i) not in t["signed"]
@@ -1387,30 +1441,53 @@ def plan_war(
                 plans[i] = [("sign_treaty", {"treaty": t["id"]})]
                 break
         else:
-            order = _defense_order(island, world, defs, config, army, forces)
+            target = max(DEFENSE_MIN, int(population_of(island) * DEFENSE_SHARE))
+            order = defense_order(island, world, defs, config, target)
             if order is not None:
                 plans[i] = [order]
     return plans
 
 
-def _defense_order(
-    island: IslandState, world: WorldState, defs: Defs, config: GameConfig, army: Any, forces: Any
+def fed(island: IslandState, defs: Defs, config: GameConfig) -> bool:
+    """兵が食べる物（food）を、島で作っているか貿易で手に入れられるか。兵は food しか食べないので、
+    ない島に兵を置くと、飢えて士気が落ち、逃げ出す（4-2 の決まり。台帳 W-174 で広げるか見る）。
+    測りの戦争の場面が攻める側を選ぶのに使う。"""
+    from hakoniwa_core.modules import military
+
+    return military.FOOD in _made(island, defs) or military.FOOD in _traded(island, config)
+
+
+def defense_order(
+    island: IslandState, world: WorldState, defs: Defs, config: GameConfig, target: int
 ) -> tuple[str, dict] | None:
-    barracks = [f for f in island.facilities if f.kind == "barracks"]
+    """兵を target 人まで備える次の 1 手: 兵舎を建てる → 国防費を決める → 兵を集める → 歩兵を編成
+    する。測りの戦争の場面（warscene）の攻める側も、これを使う。"""
+    from hakoniwa_core.military import army, forces
+
+    barracks = [f for f in island.facilities if f.kind == BARRACKS]
     ready = [f for f in barracks if f.built]
     if not barracks:
-        pos = _site_for(island, defs, config, "barracks", "default")
+        if any(
+            o.kind == "build"
+            and o.status == ORDER_PENDING
+            and o.payload.get("facility") == BARRACKS
+            for o in island.orders
+        ):
+            return None  # 標準の計画が同じターンに建てる
+        pos = _site_for(island, defs, config, BARRACKS, "default")
         if pos is None:
             return None
-        return ("build", {"facility": "barracks", "x": pos[0], "y": pos[1]})
+        return ("build", {"facility": BARRACKS, "x": pos[0], "y": pos[1]})
     if any(o.kind == "build" and o.status == ORDER_PENDING for o in island.orders):
         return None
-    target = max(DEFENSE_MIN, int(population_of(island) * DEFENSE_SHARE))
     budget = island.policy.budget
-    if not budget.get(forces.BUDGET_PERSONNEL) and not budget.get(forces.BUDGET_PROCUREMENT):
-        wage = island.economy.average_wage or config.get("labor.initial_wage")
-        annual = wage * target * 12 * 2  # 兵の賃金と装備の買い入れを同じだけ
-        return ("set_defense", {"annual": annual, "personnel_share": 50})
+    wage = island.economy.average_wage or config.get("labor.initial_wage")
+    # 兵の賃金と食べ物に、兵の年の賃金の 2.8 倍（食べ物の買い注文は指値の 2 倍の値段で取り置くので、
+    # 賃金のほかに賃金と同じほどの額が要る）、装備の買い入れに 1.2 倍
+    annual = wage * target * 12 * 4
+    set_now = budget.get(forces.BUDGET_PERSONNEL, 0) + budget.get(forces.BUDGET_PROCUREMENT, 0)
+    if set_now * 4 < annual * 3:  # 目標が増えた（宣戦された）か、賃金が上がって足りなくなった
+        return ("set_defense", {"annual": annual, "personnel_share": 70})
     soldiers = forces.soldiers(island)
     if soldiers < target:
         return ("recruit", {"count": target - soldiers})
