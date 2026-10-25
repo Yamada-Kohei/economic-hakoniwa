@@ -1321,7 +1321,8 @@ def _site_for(
         # 肥沃度の効く作り方（農場と牧場）は、肥沃なマスを先に（0.1 刻み。フェーズ3-2）
         rich = -nature.fertility(island.tile(*pos)) // 100 if fertile else 0
         new = target is None
-        key = (max(0, near - radius), new, near <= 1 and new, wet, rich, distance(pos, capital))
+        # 住宅の隣は、建て増しでも避ける（汚染は規模の分だけ増える）。その次に建て増しを先に
+        key = (max(0, near - radius), near <= 1, new, wet, rich, distance(pos, capital))
         if best_key is None or key < best_key:
             best, best_key = pos, key
     return best

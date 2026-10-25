@@ -354,6 +354,7 @@ class EntryExit(IslandStage):
         finance = island.economy.finance
         demand = finance.get("demand", {})
         now = fac.recipe_of(defs, f)["inputs"]
+        size = fac.size_of(f)  # 建て増した施設は、替えた後も規模の分だけ使い、作る（段6 A3）
         made = fac.field_goods(defs, f)  # 畑を作り替えている途中の前の作物も、作っている物と見る
         wage = f.economy.get("wage", 0)
         sole = _sole_food(island, defs, f)
@@ -365,19 +366,19 @@ class EntryExit(IslandStage):
                 or set(recipe["inputs"]) - supplied
                 or not all(g == power or any(demand.get(g, [])) for g in recipe["outputs"])
                 or any(
-                    _spare(finance, g) < qty - now.get(g, 0)
+                    _spare(finance, g) < qty * size - now.get(g, 0)
                     for g, qty in recipe["inputs"].items()
-                    if g != power and qty > now.get(g, 0)
+                    if g != power and qty * size > now.get(g, 0)
                 )
                 or any(
-                    -_spare(finance, g) < qty * gap
+                    -_spare(finance, g) < qty * size * gap
                     for g, qty in recipe["outputs"].items()
                     if g != power and g not in made and g not in (missing or ())
                 )
                 or any(g in (busy or ()) for g in recipe["outputs"] if g != power and g not in made)
             ):
                 continue
-            probe = productivity.probe(island, defs, config, f.kind, name, (f.x, f.y))
+            probe = productivity.probe(island, defs, config, f.kind, name, (f.x, f.y), size)
             costed = EntryExit._costed(prices, imports or {}, recipe)
             out[name] = variable_profit(defs, config, probe, costed, wage, rate)
         return out

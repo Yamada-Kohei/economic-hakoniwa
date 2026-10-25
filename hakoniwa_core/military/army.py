@@ -33,7 +33,7 @@ import heapq
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra
+from hakoniwa_core import infra, scale
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.state import Facility, IslandState, Tile, WorldState
@@ -139,8 +139,9 @@ def bases(island: IslandState, defs: Defs, key: str) -> list[tuple[Facility, Any
     for f in island.facilities:
         value = defs.facilities[f.kind].get("military", {}).get(key)
         if f.built and value:
-            # 建て増した兵舎と要塞は規模の分だけ多くの兵を入れる（段6 A3）
-            sized = value * fac.size_of(f) if not isinstance(value, bool) else value
+            # 建て増した基地は規模の分だけ多くの兵・ミサイルを入れる（段6 A3）。レーダーの見える
+            # 距離は変わらない
+            sized = value * fac.size_of(f) if key in scale.MILITARY_SIZED else value
             out.append((f, sized))
     return out
 

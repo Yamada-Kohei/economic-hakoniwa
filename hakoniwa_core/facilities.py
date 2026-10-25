@@ -87,6 +87,8 @@ def max_size(defs: Defs, kind: str) -> int:
     fdef = defs.facilities[kind]
     if fdef.get("tileless") or fdef.get("buildable") is False or fdef.get("monument"):
         return 1
+    if fdef.get("max_per_island"):  # 島に決めた数までの施設（鉱山・核施設）は数の決まりを保つ
+        return 1
     return int(fdef.get("max_size", DEFAULT_MAX_SIZE))
 
 
@@ -527,8 +529,9 @@ def total_progress(defs: Defs, f: Facility) -> int:
 def materials_of(defs: Defs, f: Facility) -> dict[str, int]:
     """工事 f の資材の合計。隠して建てる施設（ext["materials_factor"]。MI-62）は定義より多い。"""
     materials = defs.facilities[f.kind]["construction"].get("materials", {})
-    factor = f.ext.get("materials_factor")
-    if not factor:
+    # 建て増した施設の直し（戦争・暴動で壊れた後）は規模の分だけ資材が要る（段6 A3）
+    factor = f.ext.get("materials_factor", 1) * size_of(f)
+    if factor == 1:
         return dict(materials)
     return {good: round(qty * factor) for good, qty in materials.items()}
 
@@ -577,7 +580,7 @@ def labor_demand(defs: Defs, f: Facility, turn: int, power: str | None = None) -
     """
     fdef = defs.facilities[f.kind]
     if not f.built:
-        labor = fdef["construction"].get("labor", 0)
+        labor = fdef["construction"].get("labor", 0) * size_of(f)  # 直しは規模の分（段6 A3）
         return -(-labor * material_ratio(defs, f) // FULL)  # 切り上げ
     if is_halted(f, turn):
         return 0

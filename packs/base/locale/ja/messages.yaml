@@ -194,6 +194,7 @@ reason_capital_closed: "資本取引を制限しているため、外国の国�
 # 建設と生産
 construction_done: "({x}, {y}) の{facility}が完成しました"
 facility_expanded: "({x}, {y}) の{facility}の建て増しが済み、規模 {size} になりました"
+expansion_dropped: "({x}, {y}) の{facility}の建て増しをやめ、資材を国の倉庫に戻しました（施設が取り壊されたか、持ち主が替わったため）"
 construction_no_workers: "({x}, {y}) の{facility}の工事は、通勤圏で労働者を雇えないため進んでいません"
 construction_no_materials: "({x}, {y}) の{facility}の工事は、資材（{goods}）が手に入らないため進んでいません"
 construction_no_funds: "({x}, {y}) の{facility}の工事は、公共事業費が足りず資材（{goods}）を買えないため進んでいません"

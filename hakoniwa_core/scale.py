@@ -27,10 +27,17 @@ from typing import Any
 ENV = "HK_SCALE"
 WORLD_KEY = "scale"  # 世界の拡張欄に書く倍
 
+# 1 単位が倍の分だけ大きくなる財（大きな貨物船）。作る数・持つ数は倍 1 のまま
+GROWN = frozenset({"transport_ship"})
+
+# 基地の定員（兵の人数・ミサイルと迎撃ミサイルの数）。レーダーの見える距離（区画）は掛けない
+MILITARY_SIZED = ("barracks", "fortress", "missile_base", "warhead", "air_defense")
+
 # game.yaml の大きさに比例する設定（名前 → 倍の掛け方。"x" は掛ける、"/" は割る）
 CONFIG_FIELDS: dict[str, str] = {
     "trade.ship_capacity": "x",  # 輸送船 1 隻を大きな貨物船にして、隻数を倍 1 と同じに保つ
     "trade.ship_crew": "x",
+    "trade.ship_fuel": "x",  # 大きな貨物船は 1 隻で多く燃やす
     "trade.start_fuel": "x",
     "trade.port_capacity": "x",
     "trade.trader_capacity": "x",
@@ -46,6 +53,12 @@ CONFIG_FIELDS: dict[str, str] = {
     "military.combat.police.workers": "x",
     "military.supply.unload_per_ship": "x",
     "military.civil_war.start_min": "x",
+    "military.naval.blockade_full": "x",  # 大きな島の港を封じるには多くの軍艦が要る
+    # ミサイル 1 発は実物の大きさ: 広いマスの人のうち亡くなる・逃げる割合と、施設を壊す見込みは
+    # 倍で割る
+    "military.missiles.dead": "/",
+    "military.missiles.flee": "/",
+    "military.missiles.ruin": "/",
     "awards.prosperity": "x",
     "awards.peace_kills": "x",
     "monuments.cenotaph_dead": "x",
@@ -68,7 +81,7 @@ def people(config: Any) -> float:
 
 
 def _times(value: Any, k: float) -> Any:
-    """数・数の表・数の並びに k を掛ける（整数は整数のまま）。"""
+    """数・数の表・数の並びに k を掛ける（整数は整数のまま。財の表の GROWN は掛けない）。"""
     if isinstance(value, bool):
         return value
     if isinstance(value, int):
@@ -76,7 +89,7 @@ def _times(value: Any, k: float) -> Any:
     if isinstance(value, float):
         return value * k
     if isinstance(value, Mapping):
-        return {key: _times(v, k) for key, v in value.items()}
+        return {key: v if key in GROWN else _times(v, k) for key, v in value.items()}
     if isinstance(value, list):
         return [_times(v, k) for v in value]
     return value
@@ -124,8 +137,9 @@ def apply_defs(tables: dict[str, dict[str, dict[str, Any]]], k: float) -> None:
                 if key in entry:
                     entry[key] = _times(entry[key], k)
         elif "capacity" in entry:  # 輸送船の艦隊: 大きな貨物船（軍艦は実物の大きさのまま）
-            entry["capacity"] = _times(entry["capacity"], k)
-            entry["soldiers"] = _times(entry["soldiers"], k)
+            for key in ("capacity", "soldiers", "fuel"):
+                if key in entry:
+                    entry[key] = _times(entry[key], k)
 
 
 def _facility(entry: dict[str, Any], k: float) -> None:
@@ -148,7 +162,7 @@ def _facility(entry: dict[str, Any], k: float) -> None:
                 education[key] = _times(education[key], k)
     military = entry.get("military")
     if military:
-        for key in ("barracks", "fortress"):
+        for key in MILITARY_SIZED:
             if key in military and not isinstance(military[key], bool):
                 military[key] = _times(military[key], k)
     if "admin_power" in entry:  # 公務員 1 人あたりの行政力: 働き手が増えた分だけ割る

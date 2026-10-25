@@ -656,7 +656,7 @@ def fleet_view(island: m.Island, here: IslandState, stats: dict[str, float]) -> 
             "x": port.x,
             "y": port.y,
             "fee": display.weight_price(ships.port_fee(here, config)),  # 荷 1 トンあたり
-            "capacity": config.get("trade.port_capacity") * weight,  # 1ターンに積み下ろせるトン
+            "capacity": ships.port_capacity(config, port) * weight,  # 1ターンに積み下ろせるトン
             "handled": display.stat_value("port.handled", stats.get("port.handled"), " トン"),
             "workers": port.workers,
         }

@@ -32,7 +32,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from hakoniwa_core import autoplan, stock
+from hakoniwa_core import autoplan, scale, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.diplomacy import war
@@ -50,7 +50,7 @@ COMPANIES = 5  # 攻める側の歩兵の中隊の数（兵舎 1 つの定員 50
 PEACE_AFTER = 48  # 上陸から何ターン後に講和を提案するか
 SEALIFT_SHIPS = 2  # 補給の船団の輸送船の数
 AMMUNITION = 0.24  # 備えの初めに国の倉庫へ足す弾薬（兵 1 人あたりのトン）。武器は兵の数だけ
-RESERVE = {"food": 12}  # 外国へ送る補給の備蓄の目標（トン。国防費の装備の分で市場から買う）
+RESERVE = {"food": 12}  # 外国へ送る補給の備蓄の目標（倍 1 のトン。国防費の装備の分で市場から買う）
 
 
 def pairs(world: WorldState, defs: Defs, config: GameConfig) -> list[tuple[int, int]]:
@@ -162,7 +162,9 @@ def _prepare(
     if any(o.status == ORDER_PENDING for o in attacker.orders if o.kind in autoplan.WAR_ORDERS):
         return
     if not forces.state_of(attacker, config).get("reserve"):
-        plans.setdefault(attacker.id, []).append(("set_defense", {"reserve": RESERVE}))
+        k = scale.people(config)
+        reserve = {g: round(q * k) for g, q in RESERVE.items()}
+        plans.setdefault(attacker.id, []).append(("set_defense", {"reserve": reserve}))
         return
     order = autoplan.defense_order(attacker, world, defs, config, _soldiers(defs))
     if order is not None:

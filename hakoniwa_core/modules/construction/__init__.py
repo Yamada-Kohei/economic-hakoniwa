@@ -355,19 +355,26 @@ def _merge_expansion(island: IslandState, site: Facility, ctx: StageContext) -> 
     （取り壊された・閉じた）ときは、空いたマスに新しい施設として建てる（マスがふさがっていれば資材を
     倉庫に戻して取り除く）。民営の工事は、預金と融資と出資を建て増す施設へ移す。"""
     defs = ctx.defs
-    target = island.facility(fac.expansion_of(site) or -1)
+    old = fac.expansion_of(site)
+    target = island.facility(old or -1)
     x, y = fac.position(site)
-    if target is None or not target.built:
+    if target is None or not (target.built or target.ext.get("repair")):
         site.ext.pop(fac.EXPANDS, None)
         site.ext.pop(fac.SITE, None)
         if island.facility_at(x, y) is None:
             site.x, site.y = x, y
+            for other in island.facilities:  # 同じ施設のほかの建て増しは、この新しい施設を建て増す
+                if other.ext.get(fac.EXPANDS) == old:
+                    other.ext[fac.EXPANDS] = site.id
+            assign_serial(island, site)
             Construction._complete(island, site, ctx)
             return
-        sell_leftover_stock(island, site)
-        close_accounts(island, site)
-        stock.move_to_warehouse(site.stock, island.warehouse, ctx.turn, defs.goods)
-        island.facilities.remove(site)
+        _drop_expansion(island, site, ctx)
+        return
+    if site.owner != target.owner or "foreclosed" in target.economy:
+        # 工事の間に元の施設の持ち主が替わった（国有化・民営化・差し押さえ）: 建て増しはやめる。
+        # 前の持ち主のお金を新しい持ち主の施設へ移さないため
+        _drop_expansion(island, site, ctx)
         return
     stock.move_to_warehouse(site.stock, island.warehouse, ctx.turn, defs.goods)
     size = fac.size_of(target) + 1
@@ -385,6 +392,7 @@ def _merge_expansion(island: IslandState, site: Facility, ctx: StageContext) -> 
     freight.forget(island)
     if is_private_site(site):
         _move_private(island, site, target)
+        target.economy["entered"] = ctx.turn  # 次の参入は売り出した後の値段を待つ
         for loan in banks.loans_by_borrower(island, facility_entity(target.id)):
             if loan.purpose == banks.CONSTRUCTION and loan.repay_from > ctx.turn + 10**8:
                 loan.repay_from = ctx.turn + 1 + ctx.config.get("loans.grace_turns")
@@ -398,6 +406,16 @@ def _merge_expansion(island: IslandState, site: Facility, ctx: StageContext) -> 
             ledger.create(
                 island, owner_entity(target), ledger.EQUITY, entity, amount, "capital_injection"
             )
+
+
+def _drop_expansion(island: IslandState, site: Facility, ctx: StageContext) -> None:
+    """建て増しの工事をやめる: 残りの在庫を売り、口座を閉じ、資材を国の倉庫に戻して取り除く。"""
+    x, y = fac.position(site)
+    island.log.append(LogEntry("expansion_dropped", {"facility": site.kind, "x": x, "y": y}))
+    sell_leftover_stock(island, site)
+    close_accounts(island, site)
+    stock.move_to_warehouse(site.stock, island.warehouse, ctx.turn, ctx.defs.goods)
+    island.facilities.remove(site)
 
 
 def _move_private(island: IslandState, site: Facility, target: Facility) -> None:

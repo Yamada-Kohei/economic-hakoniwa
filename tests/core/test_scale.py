@@ -155,3 +155,64 @@ def test_searching_for_a_free_tile_skips_the_same_facility(game, world):
     plant = _built(island, "thermal_power_plant")
     problem = fac.placement_problem(game.defs, island, plant.kind, plant.x, plant.y)
     assert problem is not None and problem[0] == "reason_tile_occupied"
+
+
+def test_big_cargo_ships_are_not_counted_twice(monkeypatch):
+    """輸送船は 1 隻を大きくする（積める重さと燃料を倍）。造船所の作る隻数は倍 1 のまま。"""
+    base = load_game()
+    monkeypatch.setenv(scale.ENV, "20")
+    big = load_game()
+    yard, yard20 = base.defs.facilities["shipyard"], big.defs.facilities["shipyard"]
+    out = yard["recipes"]["default"]["outputs"]["transport_ship"]
+    assert yard20["recipes"]["default"]["outputs"]["transport_ship"] == out
+    assert yard20["recipes"]["warship"]["outputs"]["warship"] == pytest.approx(
+        yard["recipes"]["warship"]["outputs"]["warship"] * 20
+    )
+    assert big.config.get("trade.ship_fuel")["fuel"] == pytest.approx(
+        base.config.get("trade.ship_fuel")["fuel"] * 20
+    )
+    assert big.defs.facilities["radar"]["military"]["radar"] == 3  # 見える距離は変えない
+    assert big.defs.facilities["missile_base"]["military"]["missile_base"] == 12 * 20
+
+
+def test_resource_and_counted_facilities_do_not_expand(game):
+    for kind in ("hydro_power_plant", "nuclear_facility"):
+        assert fac.max_size(game.defs, kind) == 1
+
+
+def test_repairs_of_an_expanded_facility_need_the_whole_size(game, world):
+    island, plant = _state_plant(world)
+    one = fac.materials_of(game.defs, plant)
+    plant.ext[fac.SIZE] = 3
+    assert fac.materials_of(game.defs, plant) == {g: q * 3 for g, q in one.items()}
+
+
+def _finish(game, world, island, site):
+    for _ in range(30):
+        if site not in island.facilities:
+            return
+        game.engine.run_turn(world)
+    raise AssertionError("建て増しの工事が済まない")
+
+
+def test_expansion_is_dropped_when_the_owner_changes(game, world):
+    island, plant = _state_plant(world)
+    payload = {"facility": plant.kind, "x": plant.x, "y": plant.y}
+    assert order(game, world, island, "build", payload).status == "done"
+    site = next(f for f in island.facilities if fac.expansion_of(f) == plant.id)
+    site.owner = "private"  # 工事の間に持ち主が替わったのと同じ（国営の工事と民営の施設）
+    _finish(game, world, island, site)
+    assert fac.size_of(plant) == 1  # 工事は取り除かれ、規模は上がらない
+
+
+def test_expansion_finishes_on_a_facility_under_repair(game, world):
+    island, plant = _state_plant(world)
+    payload = {"facility": plant.kind, "x": plant.x, "y": plant.y}
+    assert order(game, world, island, "build", payload).status == "done"
+    site = next(f for f in island.facilities if fac.expansion_of(f) == plant.id)
+    site.progress = fac.total_progress(game.defs, site) - 1
+    plant.built = False  # 戦争や暴動で壊れて直している
+    plant.ext["repair"] = True
+    plant.progress = 0
+    _finish(game, world, island, site)
+    assert fac.size_of(plant) == 2

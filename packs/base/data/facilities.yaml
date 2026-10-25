@@ -236,6 +236,7 @@ thermal_power_plant:
 # 変わる。出力が min に届かない場所には建てられない
 hydro_power_plant:
   category: power
+  max_size: 1  # 集水域の水で出力が決まる（建て増しても水は増えない。段6 A3）
   industry: energy
   terrain: [mountain]
   construction: {turns: 8, labor: 1000, materials: {building_materials: 60, steel: 10, machinery: 5}}

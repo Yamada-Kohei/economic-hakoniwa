@@ -12,6 +12,8 @@ from typing import Any
 
 from django.db.models import Sum
 
+from hakoniwa_core import facilities as fac
+from hakoniwa_core import scale
 from hakoniwa_core.military import army, civil_war, forces, missiles, occupation, vision
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE
 from server.game import get_game
@@ -348,6 +350,8 @@ def bases(island: m.Island) -> list[dict[str, Any]]:
     for f in island.facilities.filter(built=True).order_by("number"):
         info = defs.facilities.get(f.kind, {}).get("military")
         if info:
+            size = int((f.ext or {}).get(fac.SIZE, 1))  # 建て増した基地の定員（段6 A3）
+            info = {k: v * size if k in scale.MILITARY_SIZED else v for k, v in info.items()}
             row = {"facility": f.number, "kind": f.kind, "x": f.x, "y": f.y, **info}
             for key, good in missiles.SOURCES:
                 if key in info:  # 核弾頭は stock と別の欄（warheads）に出す

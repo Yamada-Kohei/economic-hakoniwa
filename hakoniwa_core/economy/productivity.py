@@ -113,11 +113,14 @@ def probe(
     kind: str,
     recipe: str,
     pos: tuple[int, int] | None = None,
+    size: int = 1,
 ) -> Facility:
     """建てる前の見込みの計算に使う仮の施設（生産性を入れておく）。pos がなければ場所によらない
-    係数（教育）だけを掛ける。"""
+    係数（教育）だけを掛ける。size は建っている施設の作り方を替える見込みのときの規模（段6 A3）。"""
     x, y = pos if pos is not None else (-1, -1)
     f = Facility(id=-1, kind=kind, x=x, y=y, recipe=recipe, built=True)
+    if size != 1:
+        f.ext["size"] = size
     value = productivity(island, defs, config, defs.facilities[kind]["recipes"][recipe], x, y)
     if value != FULL:
         f.economy["productivity"] = value
