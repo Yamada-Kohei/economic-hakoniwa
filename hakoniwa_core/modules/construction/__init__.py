@@ -385,6 +385,9 @@ def _merge_expansion(island: IslandState, site: Facility, ctx: StageContext) -> 
     freight.forget(island)
     if is_private_site(site):
         _move_private(island, site, target)
+        for loan in banks.loans_by_borrower(island, facility_entity(target.id)):
+            if loan.purpose == banks.CONSTRUCTION and loan.repay_from > ctx.turn + 10**8:
+                loan.repay_from = ctx.turn + 1 + ctx.config.get("loans.grace_turns")
     elif is_self_supporting(target):
         # 足した規模の分の運転資金を出資する（新しく建てたときの fund_facility の規模 1 つ分）
         payer = Payer(ledger.GOV, CONSTRUCTION)

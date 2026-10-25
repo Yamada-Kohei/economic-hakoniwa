@@ -1289,7 +1289,9 @@ def _commercial_order(
 def _site_for(
     island: IslandState, defs: Defs, config: GameConfig, kind: str, recipe: str
 ) -> tuple[int, int] | None:
-    """住宅の通勤圏の中で首都に近いマス。開発を止めたマスと、住宅の育つ余地はなるべく避ける。"""
+    """住宅の通勤圏の中で首都に近いマス。開発を止めたマスと、住宅の育つ余地はなるべく避ける。
+    通勤圏の中に同じ作り方の国営の同じ施設があれば、新しいマスより先にそれを建て増す（土地を
+    詰めて使う。段6 A3）。"""
     capital = island.capital
     if capital is None:
         return None
@@ -1305,6 +1307,9 @@ def _site_for(
             continue
         if fac.placement_problem(defs, island, kind, pos[0], pos[1], recipe) is not None:
             continue
+        target = fac.expansion_target(island, kind, *pos)
+        if target is not None and target.recipe != recipe:
+            continue
         # 水力発電所は、水が WATER_MIN 未満の場所には建てず、水の多い場所を先に（0.1 刻み。W-148）
         wet = 0
         if water is not None:
@@ -1315,7 +1320,8 @@ def _site_for(
         near = min((distance(pos, h) for h in homes), default=island.size)
         # 肥沃度の効く作り方（農場と牧場）は、肥沃なマスを先に（0.1 刻み。フェーズ3-2）
         rich = -nature.fertility(island.tile(*pos)) // 100 if fertile else 0
-        key = (max(0, near - radius), near <= 1, wet, rich, distance(pos, capital))
+        new = target is None
+        key = (max(0, near - radius), new, near <= 1 and new, wet, rich, distance(pos, capital))
         if best_key is None or key < best_key:
             best, best_key = pos, key
     return best
