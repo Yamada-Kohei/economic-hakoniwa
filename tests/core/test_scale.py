@@ -1,0 +1,140 @@
+"""国の大きさの倍と施設の建て増し（段6 A3、W-85）。"""
+
+from __future__ import annotations
+
+import pytest
+
+from hakoniwa_core import facilities as fac
+from hakoniwa_core import scale
+from hakoniwa_core.economy import equipment
+from hakoniwa_core.game import load_game
+from hakoniwa_core.state import OrderState
+from hakoniwa_core.state.generate import generate_world
+
+
+@pytest.fixture(scope="module")
+def game():
+    return load_game()
+
+
+@pytest.fixture
+def world(game):
+    world = generate_world(3, 2, game.config, game.defs)
+    game.engine.run_turn(world)  # 経済のある島にする
+    return world
+
+
+def order(game, world, island, kind, payload):
+    island.orders = [OrderState(id=1, seq=1, kind=kind, payload=payload)]
+    game.engine.run_turn(world)
+    return island.orders[0]
+
+
+# --- 国の大きさの倍 ----------------------------------------------------------------------
+
+
+def test_scale_multiplies_sizes_but_not_per_person_amounts(monkeypatch):
+    base = load_game()
+    monkeypatch.setenv(scale.ENV, "20")
+    big = load_game()
+    assert scale.people(big.config) == 20
+    farm, farm20 = base.defs.facilities["farm"], big.defs.facilities["farm"]
+    assert farm20["workers"] == farm["workers"] * 20
+    assert farm20["recipes"]["default"]["outputs"]["grain"] == (
+        farm["recipes"]["default"]["outputs"]["grain"] * 20
+    )
+    assert (
+        big.defs.settlements["town"]["capacity"] == base.defs.settlements["town"]["capacity"] * 20
+    )
+    assert big.defs.army["infantry"]["soldiers"] == base.defs.army["infantry"]["soldiers"] * 20
+    assert big.defs.army["corvette"]["soldiers"] == base.defs.army["corvette"]["soldiers"]
+    assert big.config.get("trade.ship_capacity") == base.config.get("trade.ship_capacity") * 20
+    # 1 人あたりの量と賃金は変えない
+    for name in ("population.food_per_person", "labor.initial_wage", "founding.money.treasury"):
+        assert big.config.get(name) == base.config.get(name)
+    office = "government_office"
+    assert big.defs.facilities[office]["admin_power"] * 20 == pytest.approx(
+        base.defs.facilities[office]["admin_power"]
+    )
+
+
+def test_founding_population_follows_the_scale(monkeypatch):
+    small = load_game()
+    monkeypatch.setenv(scale.ENV, "20")
+    big = load_game()
+    count = [
+        sum(t.population for t in island.tiles)
+        for g in (small, big)
+        for island in [generate_world(5, 1, g.config, g.defs).islands[1]]
+    ]
+    assert count[1] == count[0] * 20
+
+
+# --- 建て増し ------------------------------------------------------------------------------
+
+
+def _built(island, kind):
+    return next(f for f in island.facilities if f.kind == kind and f.built)
+
+
+def _state_plant(world):
+    """国営の火力発電所のある島と、その発電所。"""
+    for island in world.islands.values():
+        for f in island.facilities:
+            if f.kind == "thermal_power_plant" and f.built and f.owner == "state":
+                return island, f
+    raise AssertionError("国営の火力発電所がない")
+
+
+def test_size_multiplies_workers_inputs_outputs_and_equipment(game, world):
+    island = world.islands[1]
+    plant = _built(island, "thermal_power_plant")
+    workers = fac.workers_of(game.defs, plant)
+    outputs = dict(fac.recipe_of(game.defs, plant)["outputs"])
+    kit = dict(equipment.kit_of(game.defs, plant))
+    plant.ext[fac.SIZE] = 3
+    assert fac.workers_of(game.defs, plant) == workers * 3
+    assert dict(fac.recipe_of(game.defs, plant)["outputs"]) == {
+        g: q * 3 for g, q in outputs.items()
+    }
+    assert dict(equipment.kit_of(game.defs, plant)) == {g: q * 3 for g, q in kit.items()}
+    assert fac.engineers_of(game.defs, plant) == fac.engineers_needed(game.defs, plant.kind) * 3
+
+
+def test_build_on_the_same_facility_starts_an_expansion(game, world):
+    island, plant = _state_plant(world)
+    payload = {"facility": plant.kind, "x": plant.x, "y": plant.y}
+    done = order(game, world, island, "build", payload)
+    assert done.status == "done", done.reason
+    site = next(f for f in island.facilities if fac.expansion_of(f) == plant.id)
+    assert not site.built and not fac.on_map(site)
+    assert fac.position(site) == (plant.x, plant.y)
+    assert plant.built  # 工事の間も動く
+    for _ in range(30):
+        if site not in island.facilities:
+            break
+        game.engine.run_turn(world)
+    assert site not in island.facilities
+    assert fac.size_of(plant) == 2
+    assert any(e.kind == "facility_expanded" for e in island.log)
+
+
+def test_land_bound_facilities_cannot_expand(game, world):
+    island = world.islands[1]
+    farm = _built(island, "farm")
+    problem = fac.placement_problem(game.defs, island, "farm", farm.x, farm.y)
+    assert problem is not None and problem[0] == "reason_cannot_expand"
+
+
+def test_expansion_stops_at_the_tile_limit(game, world):
+    island, plant = _state_plant(world)
+    plant.ext[fac.SIZE] = fac.max_size(game.defs, plant.kind)
+    problem = fac.placement_problem(game.defs, island, plant.kind, plant.x, plant.y)
+    assert problem is not None and problem[0] == "reason_expand_full"
+
+
+def test_other_facility_still_blocks_the_tile(game, world):
+    island = world.islands[1]
+    plant = _built(island, "thermal_power_plant")
+    problem = fac.placement_problem(game.defs, island, "steel_mill", plant.x, plant.y)
+    assert problem is not None and problem[0] in ("reason_tile_occupied", "reason_wrong_terrain")

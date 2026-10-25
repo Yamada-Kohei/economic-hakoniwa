@@ -632,7 +632,8 @@ class Production(IslandStage):
             pollution = ctx.defs.facilities[f.kind].get("pollution")
             if not pollution or not f.built or f.operating_rate <= 0 or not fac.on_map(f):
                 continue
-            amount = fac.scale(to_milli(pollution["amount"]), f.operating_rate)
+            # 建て増した施設は規模の分だけ多く汚す（段6 A3）
+            amount = fac.scale(to_milli(pollution["amount"]) * fac.size_of(f), f.operating_rate)
             radius = pollution["radius"]
             for pos in within(island, (f.x, f.y), radius):
                 share = amount * (radius + 1 - distance(pos, (f.x, f.y))) // (radius + 1)

@@ -10,8 +10,11 @@
 #   気候の倍率が 0 の作り方は、その気候の島では使えません。
 # industry: 産業の分類（フェーズ3-2。表示名は locale の industries.yaml）。経験・集積・称号（3-3）と
 #   計画経済の重点産業（3-4）で使います。
+# max_size: 1 マスに建て増せる規模の上限（段6 A3）。書かなければ facilities.py の DEFAULT_MAX_SIZE。マスの
+#   土地や資源そのものを使う農場・牧場・林業場・漁港・鉱山・油井・採石場と、島に 1 つの施設は 1（建て増せない）
 
 farm:
+  max_size: 1
   category: primary
   industry: agriculture
   terrain: [plain]
@@ -48,6 +51,7 @@ farm:
   sprite: farm
 
 lumber_camp:
+  max_size: 1
   category: primary
   industry: agriculture
   terrain: [forest]
@@ -61,6 +65,7 @@ lumber_camp:
   sprite: lumber_camp
 
 quarry:
+  max_size: 1
   category: primary
   industry: mining
   terrain: [mountain]
@@ -76,6 +81,7 @@ quarry:
   sprite: quarry
 
 mine:
+  max_size: 1
   category: primary
   industry: mining
   terrain: [mountain]
@@ -110,6 +116,7 @@ mine:
 
 # 油井（フェーズ3-2）。原油を選んだ島の平地か山に建ちます。鉱山と同じく1つの国が2つまで。
 oil_well:
+  max_size: 1
   category: primary
   industry: mining
   terrain: [plain, mountain]
@@ -127,6 +134,7 @@ oil_well:
   sprite: oil_well
 
 fishing_port:
+  max_size: 1
   category: primary
   industry: agriculture
   terrain: [plain]
@@ -403,6 +411,7 @@ textile_mill:
 
 # 牧場（フェーズ3-2）。穀物を飼料にして肉を作ります（放牧なので気候と肥沃度が効く）。
 ranch:
+  max_size: 1
   category: primary
   industry: agriculture
   terrain: [plain]
@@ -462,6 +471,7 @@ automobile_plant:
   sprite: automobile_plant
 
 government_office:
+  max_size: 1
   category: admin
   terrain: [plain]
   near_capital: 3
@@ -614,6 +624,7 @@ university:
 
 # 市中銀行。オフィス街のマスに入ります。フェーズ2-1 は建国のときに島に1つ置き、建設の命令はフェーズ2-2 から。
 bank:
+  max_size: 1
   category: finance
   terrain: [plain]
   zone: office
@@ -694,6 +705,7 @@ shipyard:
 # 商社（フェーズ3-1）。銀行と同じくオフィス街のマスに入り、島にいくつも置けます。島の市場で輸出する物を
 # 買って貿易圏の市場で売り、圏で買った物を輸入して島の市場で売ります（hakoniwa_core/trade/traders.py）。
 trading:
+  max_size: 1
   category: trade
   terrain: [plain]
   zone: office

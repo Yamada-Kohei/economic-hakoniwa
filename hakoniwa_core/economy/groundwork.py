@@ -131,7 +131,7 @@ def _engineers(island: IslandState, defs: Defs, config: GameConfig) -> None:
     general = population * fac.labor_share(defs, island)
     count = round(general * config.get("education.engineer_share"))
     needed = sum(
-        fac.engineers_needed(defs, f.kind)
+        fac.engineers_of(defs, f)
         for f in island.facilities
         if f.built and not is_public_service(defs, f)
     )

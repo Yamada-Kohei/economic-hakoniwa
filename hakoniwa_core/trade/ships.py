@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from hakoniwa_core import facilities as fac
 from hakoniwa_core import stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
@@ -302,10 +303,16 @@ def fee_for(island: IslandState, config: GameConfig, load: int) -> int:
 
 def port_room(island: IslandState, config: GameConfig, scratch: dict[str, Any]) -> int:
     """港でこのターンにまだ積み下ろしできる重さ（1000 分の 1 トン）。港がなければ 0。"""
-    if port_of(island, config) is None:
+    port = port_of(island, config)
+    if port is None:
         return 0
     used = scratch.get("port_used", {}).get(island.id, 0)
-    return max(0, config.get("trade.port_capacity") * MILLI - used)
+    return max(0, port_capacity(config, port) * MILLI - used)
+
+
+def port_capacity(config: GameConfig, port: Facility) -> int:
+    """港が 1 ターンに積み下ろしできる重さ（トン）。建て増した港は規模の分だけ多い（段6 A3）。"""
+    return config.get("trade.port_capacity") * fac.size_of(port)
 
 
 def use_port(island: IslandState, scratch: dict[str, Any], load: int) -> None:
@@ -327,7 +334,7 @@ def port_workers(config: GameConfig, defs: Defs, f: Facility) -> int:
     少なくともその 2%）。"""
     handled = f.economy.get("handled", [])
     average = sum(handled) / len(handled) / MILLI if handled else 0.0
-    full = defs.facilities[f.kind]["workers"]
+    full = fac.workers_of(defs, f)
     want = round_money(average * config.get("trade.port_labor") + 0.999)
     return max(full // 50, min(full, want))
 

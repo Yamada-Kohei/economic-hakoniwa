@@ -266,7 +266,8 @@ def unit_floor(
         cost += amount if g == power else amount + part(amount, freight)
     # 設備が1か月に傷む値打ち（回6）。使わなくても傷むが、売り値で取り戻さなければ直せない（国の
     # 水力発電所が賃金だけの値段で売り、電気料金が初めの 0.3 倍まで下がって火力発電所が閉じた）
-    cost += round_money(equipment.yearly_wear(defs, config, f.kind, prices) / TURNS_PER_YEAR)
+    worn = equipment.yearly_wear(defs, config, f.kind, prices) * fac.size_of(f)
+    cost += round_money(worn / TURNS_PER_YEAR)
     if len(outputs) > 1:
         reference = initial_prices(defs, config)
         worth = {g: max(1, reference.get(g, 0)) * q for g, q in outputs.items()}

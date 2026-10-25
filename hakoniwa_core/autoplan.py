@@ -400,7 +400,7 @@ def _budget_order(
     prices = island.economy.prices
     repairs = int(
         sum(
-            equipment.yearly_wear(defs, config, f.kind, prices)
+            equipment.yearly_wear(defs, config, f.kind, prices) * fac.size_of(f)
             for f in island.facilities
             if f.owner == OWNER_STATE and equipment.has_equipment(defs, config, f)
         )
@@ -1073,14 +1073,14 @@ def _education(island: IslandState, defs: Defs, config: GameConfig) -> Iterator[
         return
     if SCHOOL in defs.facilities:
         seats = sum(
-            defs.facilities[f.kind].get("education", {}).get("capacity", 0)
+            defs.facilities[f.kind].get("education", {}).get("capacity", 0) * fac.size_of(f)
             for f in island.facilities
         )
         children = population_of(island) * config.get("education.children")
         if seats < children * SCHOOL_TARGET:
             yield from _build_or_supply(island, defs, config, SCHOOL)
     if UNIVERSITY in defs.facilities and _count(island, UNIVERSITY) == 0:
-        needed = sum(fac.engineers_needed(defs, f.kind) for f in island.facilities)
+        needed = sum(fac.engineers_of(defs, f) for f in island.facilities)
         if needed > island.economy.workers.get(fac.ENGINEER, 0) * ENGINEER_TARGET:
             keep = _private_needs(island, defs)
             yield from _build_or_supply(island, defs, config, UNIVERSITY, keep)

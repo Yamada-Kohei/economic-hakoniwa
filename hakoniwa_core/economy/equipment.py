@@ -46,6 +46,13 @@ def kit(defs: Defs, kind: str) -> Mapping[str, int]:
     return defs.facilities[kind]["construction"].get("materials", {})
 
 
+def kit_of(defs: Defs, f: Facility) -> Mapping[str, int]:
+    """施設 f の新品の設備（建て増した施設は規模の分だけ多い。段6 A3）。"""
+    size = fac.size_of(f)
+    base = kit(defs, f.kind)
+    return base if size == 1 else {g: q * size for g, q in base.items()}
+
+
 def _makes_goods(defs: Defs, kind: str) -> bool:
     return any(r.get("outputs") for r in defs.facilities[kind].get("recipes", {}).values())
 
@@ -58,7 +65,7 @@ def has_equipment(defs: Defs, config: GameConfig, f: Facility) -> bool:
         and not fac.is_housing(config, f)
         and not fac.is_tileless(defs, f.kind)
         and _makes_goods(defs, f.kind)
-        and any(q > 0 for q in kit(defs, f.kind).values())
+        and any(q > 0 for q in kit_of(defs, f).values())
     )
 
 
@@ -66,12 +73,12 @@ def holdings(defs: Defs, f: Facility) -> dict[str, int]:
     """今の設備（資材 → 残りの量）。書いていなければ新品。"""
     found = f.economy.get(EQUIPMENT) or {}
     # 書いていない資材（定義に足した資材など）は新品とする
-    return {g: found.get(g, q) for g, q in sorted(kit(defs, f.kind).items()) if q > 0}
+    return {g: found.get(g, q) for g, q in sorted(kit_of(defs, f).items()) if q > 0}
 
 
-def _ratio(defs: Defs, kind: str, have: Mapping[str, int]) -> int:
+def _ratio(defs: Defs, f: Facility, have: Mapping[str, int]) -> int:
     return min(
-        (fac.ratio(have.get(g, 0), q) for g, q in kit(defs, kind).items() if q > 0),
+        (fac.ratio(have.get(g, 0), q) for g, q in kit_of(defs, f).items() if q > 0),
         default=FULL,
     )
 
@@ -83,7 +90,7 @@ def condition(f: Facility) -> int:
 
 def _store(defs: Defs, f: Facility, have: dict[str, int]) -> None:
     f.economy[EQUIPMENT] = have
-    f.economy[CONDITION] = _ratio(defs, f.kind, have)
+    f.economy[CONDITION] = _ratio(defs, f, have)
 
 
 def wear_rate(config: GameConfig, good: str) -> float:
@@ -108,7 +115,7 @@ def yearly_cost(defs: Defs, config: GameConfig, f: Facility, prices: Mapping[str
     （もう払った設備の利子は数えない）。直すかどうかの比べに使う。"""
     rate = config.get("market.initial_prices.capital_rate")
     cost = value(wants(defs, config, f), prices)
-    return yearly_wear(defs, config, f.kind, prices) + cost * rate
+    return yearly_wear(defs, config, f.kind, prices) * fac.size_of(f) + cost * rate
 
 
 def wear(defs: Defs, config: GameConfig, f: Facility, prices: Mapping[str, int]) -> tuple[int, int]:
@@ -140,12 +147,12 @@ def wants(
     have = holdings(defs, f)
     if room is not None:
         reach = min(
-            (fac.ratio(have.get(g, 0) + room.get(g, 0), q) for g, q in kit(defs, f.kind).items()),
+            (fac.ratio(have.get(g, 0) + room.get(g, 0), q) for g, q in kit_of(defs, f).items()),
             default=FULL,
         )
         goal = min(goal, reach)
     out = {}
-    for good, qty in sorted(kit(defs, f.kind).items()):
+    for good, qty in sorted(kit_of(defs, f).items()):
         need = fac.scale(qty, goal) - have.get(good, 0)
         if need > 0:
             out[good] = need
@@ -155,7 +162,7 @@ def wants(
 def shortfall(defs: Defs, f: Facility) -> dict[str, int]:
     """新品まで直すのに要る資材。"""
     have = holdings(defs, f)
-    return {g: q - have.get(g, 0) for g, q in kit(defs, f.kind).items() if q > have.get(g, 0)}
+    return {g: q - have.get(g, 0) for g, q in kit_of(defs, f).items() if q > have.get(g, 0)}
 
 
 def worthwhile(
@@ -181,3 +188,14 @@ def install(defs: Defs, f: Facility, good: str, qty: int, cost: int) -> None:
 def keep(f: Facility) -> dict[str, int]:
     """作り直す前の施設の経済の状態から、引き継ぐ設備（差し押さえた施設の売却など）。"""
     return {k: f.economy[k] for k in (EQUIPMENT, CONDITION) if k in f.economy}
+
+
+def expand(defs: Defs, f: Facility, added: int = 1) -> None:
+    """建て増し（段6 A3）: 新しく足した規模の分の新品の設備を、今の設備に足す。f の規模は呼ぶ
+    前に上げておく（今の設備は上げる前の規模の分）。"""
+    if EQUIPMENT not in f.economy:
+        return  # 書いていなければ新品のまま
+    have = dict(f.economy[EQUIPMENT])
+    for good, qty in kit(defs, f.kind).items():
+        have[good] = have.get(good, 0) + qty * added
+    _store(defs, f, have)
