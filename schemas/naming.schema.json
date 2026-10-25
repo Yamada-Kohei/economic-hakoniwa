@@ -36,6 +36,33 @@
       },
       "description": "施設ごとの業種名。書かなければ施設の表示名を使う"
     },
+    "land_bound": {"type": "array", "items": {"type": "string"}, "description": "土地に根ざす施設（会社の名前を付けず、地名と業種の名前で呼ぶ）"},
+    "companies": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {
+        "type": "object",
+        "required": ["surnames", "early", "late", "local"],
+        "additionalProperties": false,
+        "properties": {
+          "joiner": {"type": "string", "description": "会社の頭の名前と地名の間に入れる文字"},
+          "surnames": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "description": "創業者の姓"},
+          "early": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "description": "創業者の会社の昔風の形。{surname} 姓、{short} 業種名"},
+          "late": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "description": "創業者の会社の育った後の形"},
+          "local": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "description": "地元の出資の会社の形。{place} 地名、{short} 業種名"},
+          "industries": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {"short": {"type": "string", "minLength": 1}}
+            },
+            "description": "この作風で言い換える業種の短い名前"
+          }
+        }
+      },
+      "description": "民営の企業の名前の材料。地名の作風（places）と同じ名前で書く"
+    },
     "patterns": {
       "type": "array",
       "minItems": 1,

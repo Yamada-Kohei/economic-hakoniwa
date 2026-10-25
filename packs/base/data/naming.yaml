@@ -1,5 +1,6 @@
 # 自動で付く名前の材料。名前（ja など）は言語で、game.yaml の locale の言語のものを使います。
-# プレイヤーが名前を付けた施設には使いません。体制が変わると、自動の名前も付け直されます。
+# プレイヤーが名前を付けた施設には使いません。自動の名前は生まれたときに決めて残し、国有化・民営化・
+# 体制の変更のときだけ付け直されます（hakoniwa_core/naming.py）。
 ja:
   # 島の地名の作風。建国のときに1つ選び、「前半＋後半」で区画ごとの地名を作ります（作風は足せます）。
   # 地名は島の画面から命令で付け直せます。首都のある区画の地名は首都名になります。
@@ -70,6 +71,20 @@ ja:
     fortress: {short: 要塞, long: 要塞}
     missile_base: {short: ミサイル基地, long: ミサイル基地}
     air_defense: {short: 防空, long: 防空陣地}
+    oil_well: {short: 石油, long: 油井}
+    refinery: {short: 製油, long: 製油所}
+    aluminium_smelter: {short: アルミ, long: アルミ精錬所}
+    textile_mill: {short: 繊維, long: 繊維工場}
+    ranch: {short: 牧畜, long: 牧場}
+    auto_parts_plant: {short: 自動車部品, long: 自動車部品工場}
+    automobile_plant: {short: 自動車, long: 自動車工場}
+    school: {short: 学園, long: 学校}
+    university: {short: 大学, long: 大学}
+    shop: {short: 商店, long: 商店}
+    department_store: {short: 百貨, long: 百貨店}
+    services: {short: サービス, long: サービス業}
+  # 土地に根ざす施設は、会社の名前を付けず地名で呼ぶ（三池炭鉱のように）
+  land_bound: [farm, lumber_camp, quarry, mine, oil_well, fishing_port, ranch, hydro_power_plant, thermal_power_plant, port]
   patterns:   # 上から順に、条件（when）に合う最初の形を使います
     - {when: {category: admin}, text: "中央省庁"}
     - {when: {category: security}, text: "{place}{long}"}
@@ -80,3 +95,63 @@ ja:
     - {when: {economy: mixed, owner: state}, text: "{place}{short}公社"}
     - {when: {owner: state}, text: "国営{place}{long}"}
     - {text: "{place}{short}"}
+
+  # 民営の企業の名前の材料（作風ごと。島の地名の作風に合わせる）。実在の会社名・人名は入れない。
+  #   surnames: 創業者の姓。early / late: 創業者の会社の形（建国から early_years 年以内に生まれたら early）
+  #   local: 地元の出資の会社の形。{surname} 姓、{place} 生まれた地名、{short} 最初の業種の短い名前
+  #   joiner: 会社の頭の名前と地名の間に入れる文字。industries: この作風で言い換える業種の短い名前
+  companies:
+    japanese:
+      surnames: [川端, 古賀, 柴田, 島田, 中野, 藤井, 大野, 青木, 森下, 堀内, 浅井, 多田, 久保, 山岸, 宮坂, 水野, 関口, 安藤, 平野, 石川, 岡崎, 千葉, 桑原, 梶原, 村井, 内田, 吉岡, 小野寺, 大塚, 北川, 西園, 戸田, 松岡, 生駒, 越智, 菊池]
+      early: ["{surname}商会", "{surname}商店", "{surname}製作所", "{surname}組"]
+      late: ["{surname}{short}", "{surname}工業", "{surname}産業", "{surname}興業"]
+      local: ["{place}{short}", "{place}{short}会社", "{place}興業", "{place}産業"]
+    british:
+      joiner: ・
+      surnames: [ブラッドショー, ペンバートン, ハーグリーブス, フェンウィック, ソーンリー, オールドリッジ, ウィットコム, アシュダウン, ヘイワード, ラングレー, ミドルトン, ウェザビー, ギャスケル, ロックウッド, ホーソーン, ペンローズ, ダンスタン, コルソープ, レッドメイン, ハスケル, トレヴェリアン, ブロムリー, カルバート, ガーランド, プレスコット]
+      early: ["{surname}商会", "{surname}・アンド・サンズ", "{surname}製作所"]
+      late: ["{surname}・アンド・カンパニー", "{surname}{short}社", "{surname}・インダストリーズ"]
+      local: ["{place}{short}社", "{place}{short}会社", "{place}・インダストリアル"]
+      industries: {steel_mill: {short: スティール}, machinery_plant: {short: エンジニアリング}, bank: {short: バンク}, food_factory: {short: フーズ}, trading: {short: トレーディング}, textile_mill: {short: ミルズ}, automobile_plant: {short: モーターズ}, shipyard: {short: シップヤード}}
+    american:
+      joiner: ・
+      surnames: [ホロウェイ, ダンフォース, ウェストブルック, カルホーン, ピアソン, ブラッドフォード, ヘイズ, メイナード, ロックハート, キャンベル, ドーソン, ガードナー, ハーモン, ワイリー, スローン, ブリッジス, マクレラン, ターナー, クレイトン, フィンチ, ウィンスロー, ハドソン, ケンドール]
+      early: ["{surname}商会", "{surname}・アンド・サンズ", "{surname}製作所"]
+      late: ["{surname}{short}社", "{surname}・アンド・カンパニー", "{surname}・コーポレーション"]
+      local: ["{place}{short}社", "{place}{short}カンパニー"]
+      industries: {steel_mill: {short: スティール}, machinery_plant: {short: マシナリー}, bank: {short: バンク}, food_factory: {short: フーズ}, trading: {short: トレーディング}, textile_mill: {short: テキスタイル}, automobile_plant: {short: モーターズ}, shipyard: {short: シップビルディング}}
+    german:
+      joiner: ・
+      surnames: [ハルトマン, ケルナー, ブレンナー, ヴァイゲル, ランゲ, ホフマイスター, ツィンマー, ラインハルト, エッカルト, ベルクマン, フォルクマー, ギーゼラー, ヘルビッヒ, ザイデル, ノイハウス, ウンガー, リンデマン, バウムガルト, シュトルツ, ラムゼン, カールゼン, ドレクスラー]
+      early: ["{surname}商会", "{surname}・ウント・ゾーン", "{surname}ヴェルケ"]
+      late: ["{surname}・{short}ヴェルケ", "{surname}・ウント・コンパニー", "{surname}工業"]
+      local: ["{place}{short}ヴェルケ", "{place}{short}社"]
+      industries: {steel_mill: {short: シュタール}, machinery_plant: {short: マシーネンバウ}, bank: {short: バンク}, food_factory: {short: ナールング}, trading: {short: ハンデル}, textile_mill: {short: シュピンネライ}, automobile_plant: {short: アウトモビーレ}, shipyard: {short: ヴェルフト}}
+    russian:
+      joiner: ・
+      surnames: [ペトロフ, セミョーノフ, ルキン, ベリャーエフ, コズロフ, ゴルベフ, ステパノフ, ミロノフ, ザイツェフ, オルロフ, ソコロフ, ニキーチン, ガヴリロフ, クズネツォフ, ドミトリエフ, イグナトフ, チェルノフ, タラソフ, ブラギン, ラザレフ, ウシャコフ]
+      early: ["{surname}商会", "{surname}工房", "{surname}兄弟商会"]
+      late: ["{surname}{short}ザヴォート", "{surname}工場", "{surname}・{short}"]
+      local: ["{place}{short}コンビナート", "{place}{short}ザヴォート", "{place}{short}工場"]
+      industries: {steel_mill: {short: 製鋼}, machinery_plant: {short: マシノストロイ}, bank: {short: バンク}, food_factory: {short: ピシチェ}, trading: {short: トルグ}, textile_mill: {short: テキスチリ}, automobile_plant: {short: アフトモビリ}, shipyard: {short: ヴェルフィ}}
+    spanish:
+      joiner: ・
+      surnames: [アルバレス, カスティージョ, ドミンゲス, エレーラ, フエンテス, イバニェス, ハラミージョ, ロドリゲス, モンテロ, ナバロ, オルテガ, ペニャ, キンタナ, ロメロ, サラサール, トレス, ウルタド, バルガス, ベガ]
+      early: ["{surname}商会", "{surname}・エルマノス", "{surname}・イ・ヒホス"]
+      late: ["{surname}{short}社", "{surname}・インドゥストリアル", "{surname}・イ・コンパニア"]
+      local: ["{place}{short}社", "{place}・{short}会社"]
+      industries: {steel_mill: {short: シデルルヒア}, machinery_plant: {short: マキナリア}, bank: {short: バンコ}, food_factory: {short: アリメントス}, trading: {short: コメルシオ}, textile_mill: {short: テヒドス}, automobile_plant: {short: アウトモビレス}, shipyard: {short: アスティリェロ}}
+    french:
+      joiner: ・
+      surnames: [デュボワ, ルフェーブル, ラクロワ, モロー, ベルトラン, ガルニエ, ブーランジェ, デュモン, シャルパンティエ, ラングロワ, マルシャン, ペルティエ, ヴィダル, ルロワ, ブシェ, ガスパール]
+      early: ["{surname}商会", "{surname}・エ・フィス", "{surname}工房"]
+      late: ["{surname}{short}会社", "{surname}・エ・シー", "{surname}・アンデュストリ"]
+      local: ["{place}{short}会社", "{place}{short}社"]
+      industries: {steel_mill: {short: シデリュルジー}, machinery_plant: {short: メカニク}, bank: {short: バンク}, food_factory: {short: アリマンテール}, trading: {short: コメルス}, textile_mill: {short: テクスティル}, automobile_plant: {short: オトモビル}, shipyard: {short: シャンティエ}}
+    italian:
+      joiner: ・
+      surnames: [ベルトーリ, カルボーネ, ドナーティ, ファブリ, ガッリ, ランディ, マンチーニ, ノービレ, オルシーニ, パルミエーリ, レオーニ, サルヴィ, テデスキ, ヴェントゥーリ, ズッカ, アマート, ベネデッティ, コンティ, ファリーナ]
+      early: ["{surname}商会", "{surname}・エ・フィリ", "{surname}工房"]
+      late: ["{surname}{short}社", "{surname}・エ・コンパーニャ", "{surname}・インドゥストリエ"]
+      local: ["{place}{short}社", "{place}{short}会社"]
+      industries: {steel_mill: {short: シデルルジーア}, machinery_plant: {short: メッカニカ}, bank: {short: バンカ}, food_factory: {short: アリメンターリ}, trading: {short: コンメルチョ}, textile_mill: {short: テッスィーリ}, automobile_plant: {short: アウトモービリ}, shipyard: {short: カンティエーレ}}

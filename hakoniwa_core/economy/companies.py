@@ -38,6 +38,8 @@ OWNER = "owner"  # private（民営）か state（国営）
 FOUNDED = "founded"  # 作ったターン
 SECTOR = "sector"  # 国営企業の業種の分類（民営は空）
 LOSSES = "losses"  # 繰り越した赤字 [[ターン, 額], ...]
+AUTO = "auto_name"  # 生まれたときに決めた自動の名前（民営。hakoniwa_core/naming.py）
+BRAND = "brand"  # 企業の頭の名前（創業者の姓か生まれた地名）。工場の名前の頭になる
 INVESTED = "invested"  # 最後に施設を建てた・買ったターン
 RED = "red_turns"  # 連結の現金収支がマイナスの続いたターン数
 SUPPORTED = "supported"  # このターンに施設へ回した額
@@ -268,6 +270,8 @@ def display_name(island: IslandState, defs: Any, number: int) -> str:
         return ""
     if rec.get(NAME):
         return rec[NAME]
+    if rec.get(AUTO):
+        return rec[AUTO]
     if rec[OWNER] == OWNER_STATE:  # 業種の名前は messages の state_firm_<業種>（なければ番号）
         key = f"state_firm_{rec.get(SECTOR, '')}"
         name = defs.name("messages", key)

@@ -9,6 +9,7 @@
 - 会計と決算: `hakoniwa_core/modules/accounts/`（段 `accounts`、命令 `set_accounting`）、`hakoniwa_core/economy/books.py`
 - 参入・撤退・国有化・補助金: `hakoniwa_core/modules/firms/`（段 `entry_exit`、`entry_return`・`nationalize`・`privatize`・`set_subsidy`・`set_zone`）
 - 倒産と差し押さえ: `hakoniwa_core/modules/failures/`（`bankrupt`・`close_foreclosure`）。施設の定義: `packs/base/data/facilities.yaml`
+- 名前: `hakoniwa_core/naming.py`（`ensure_names`・`name_firm`）、材料 `packs/base/data/naming.yaml`、試験 tests/core/test_company_names.py
 - 試験: tests/core/test_finance.py、tests/core/test_shocks.py、tests/core/test_playtest_fixes.py
 
 ## つながり
@@ -66,10 +67,13 @@
 | FM-43 | 自動車は部品工場（鋼鉄・アルミ・化学品・衣料・機械・電力 → 自動車部品）と組み立て工場（部品・車体の鋼鉄・塗料・電力 → 自動車）に分け、2つを足した材料は回6 の自動車工場と同じ。部品工場は組み立てより人が多い。経験は2つで自動車1台分（`experience_share`） | 決定（回7 後半。W-76） |  | tests/core/test_balance_round7b.py::test_parts_plant_and_assembly_share_the_experience_of_one_car, tests/core/test_balance_round6.py::test_automobile_needs_the_parts_of_a_real_car |
 | FM-44 | 組の参入: 原料が島で作られていなくても、島にある原料で作れる民営の施設があれば、その施設を先に建てる（建っている途中の施設の作る物は、使う工場の参入で作られている物に数える）。新しい施設の出資は、同じ種類 → 売り先 → 原料 → ほかの企業の順（系列） | 決定（回7 後半） |  | tests/core/test_balance_round7b.py::test_maker_of_a_missing_input_is_found_for_a_bundle_entry, ::test_assembler_invests_in_its_parts_supplier_first |
 | FM-45 | 水力発電所の出力は、集水域（半径 4 マス。水力発電所の定義 `facilities.yaml` の `water`）に降る水で決まる。マスごとの流れ込む水は地形ごとの重み（山 1・森 0.25・平地 0.03）に気候帯の雨の多さと年ごとの雨の係数を掛けた量で、重なるマスは近くの水力発電所（工事中も数える。閉鎖中と差し押さえ中は数えない）で等分する。全力に要る水（`water.full`）に対する割合を生産性に掛け（係数 `water`）、割合が `water.min` に満たない場所には建てられない（天気は数えず、平年の雨で見る）。雨の係数は 12 月に島ごとに引き直す（`climate.rain`）。水が足りない年はログに書く。標準の計画は `WATER_MIN` に満たない場所に建てない | 決定（W-148） | `climate.rain.sigma`, `climate.rain.min`, `climate.rain.max` | tests/core/test_hydro.py::test_a_mountain_mass_gives_full_power_and_a_lone_hill_does_not, ::test_nearby_plants_share_the_water_and_far_ones_do_not, ::test_a_second_plant_cannot_be_built_on_what_is_left, ::test_productivity_follows_the_water, ::test_climate_and_the_year_change_the_output, ::test_the_rain_of_the_next_year_is_drawn_in_december_and_drought_is_reported, ::test_the_standard_plan_counts_only_the_water_it_will_get |
+| FM-46 | 施設と企業の自動の名前は、生まれたときに一度だけ決めて残す（民営の企業は創業者の姓か生まれた地名を頭の名前にし、工場は「頭の名前＋地名＋業種」、土地に根ざす施設は地名＋業種、国営は体制ごとの形）。付け直すのは国有化・民営化・体制の変更・企業の移り替えのときだけで、ターンログに出す。プレイヤーが付けた名前が最優先。名前は計算に使わず、乱数は島の乱数と別に引く | 決定（仮: 創業者と地元の出資の割合） | `naming.founder_share`, `naming.early_years` | tests/core/test_company_names.py::test_names_are_stored_at_birth_and_firms_get_a_brand, tests/core/test_company_names.py::test_state_facilities_are_renamed_when_the_regime_changes, tests/core/test_company_names.py::test_naming_does_not_change_the_economy |
 
 ### 仮の決まり
 
-なし（回7 で FM-05 を企業の仕組み FM-36 に置き換えた）。
+- 創業者と地元の出資の割合（`naming.founder_share`、FM-46）: ゲームにまだ創業者・出資者の区別がないので、生まれた民営の企業が姓か地名を名にする割合を決め打ちで引く。何の代わりか: 起業と地元の出資の現実の割合。外す時: 企業に創業者や出資者の区別ができたとき。
+
+（回7 で FM-05 を企業の仕組み FM-36 に置き換えた。）
 
 ## 仕組み
 
@@ -208,6 +212,15 @@ R = \frac{12 \times \left(P_{\mathrm{out}} Q - \sum P_{\mathrm{in}} q_{\mathrm{i
 - 蒔き直した畑が育っている間は、撤退の「動いていない月」に数えません（作りすぎの月に人を減らした農場が、次の収穫を待たずに閉じたため。W-20）。
 - 豚の循環（W-18）は、上の2つと、替えたばかりの財に替えない決まり（作り方と作付けの替え方。タブ 3）で足りるかを測りで見ます。
 
+### 施設と企業の自動の名前（段6 の A4、FM-46）
+
+- 民営の企業が生まれるとき（`ensure_names`。段 `firms_funds` の企業に入れた直後）、島の地名の作風の材料（`naming.yaml` の `companies`）で名前を一度だけ抽選する。`naming.founder_share` の割合で創業者の姓（建国から `naming.early_years` 年以内は「〇〇商会」、育った後は「〇〇工業」「〇〇・アンド・カンパニー」など作風の形）、残りは生まれた地名（「北浜製鉄」）。同じ島の中で企業の名前は重ならない。頭の名前（姓か地名）は企業が持つ。
+- 工場の名前は「頭の名前＋地名＋業種の長い名前」（例 川端南岡機械工場）。頭の名前が地名なら地名は重ねない。農場・鉱山・港・発電所など土地に根ざす施設（`naming.yaml` の `land_bound`）は、会社の名前を付けず「地名＋業種」。1つの企業が違う業種を持てば同じ頭の名前が並ぶ（財閥の形。別会社を作る動きはまだないので、親の名前を継ぐ新会社は入れない）。同じ名前になる施設は地名に「第二」を付ける。
+- 銀行・運送業・商社・海運業など企業に入らない民営の施設は、施設ごとに姓か地名で呼ぶ。国営は今までの体制ごとの形（公社・王立・第〇〇・記念）を、生まれたときに決めて残す。
+- 付け直すのは、施設の事情（属する企業・国営か民営か・体制の3軸）が変わったときだけ（国有化・民営化・体制の変更・差し押さえた施設の買い取り）。付け直した施設があればターンログに1行出す（初めて名前を付けたときは出さない）。差し押さえ中の施設は名前を変えない。プレイヤーが付けた名前（`name`）は最優先で、空にすると保存した自動の名前に戻る。
+- 名前は計算に使わない。抽選は `random.Random(文字列の種)` で島の乱数とは別に引くので、お金・人口・崩れは変わらない（試験で確かめる）。実在の会社名・人名は材料に入れない。業種の言葉がなかった施設（油井・製油所・アルミ精錬所・繊維工場・牧場・自動車部品工場・自動車工場・学校・大学・商店・百貨店・サービス業）の言葉も `naming.yaml` に足した。
+- 既存の世界では、次のターンの `firms_funds` で全部の施設に初めての名前が付く（そのときは付け直しのログを出さない）。国営の施設は今までと同じ名前になる。
+
 ## 境目の表
 
 | 場面 | 誰が・何を | どれくらいの間に | 元に戻る道 | 現実の例 | 設定の名前 |
@@ -217,6 +230,7 @@ R = \frac{12 \times \left(P_{\mathrm{out}} Q - \sum P_{\mathrm{in}} q_{\mathrm{i
 | 0 になる | 稼働率 0 が続けば閉鎖。島の作り手が 0 の財は品切れの値段（タブ 3）と参入の合図になる。国庫が 0 だと国庫直轄の施設の仕入れが削られて止まる（遅配はタブ 6）。資本家階級の預金が 0 だと出資できず民営工場が建たない |  | 輸入（タブ 9）、国営で建てる |  | `firms.equity_share` |
 | 一部だけ（層の中の少しの人、島の中の 1 か所） | 島に1つの施設（漁港・穀物の農場）が止まると島じゅうが困る。暴動は農林水産業を止めない。鉱山が上限の島では原料の空きが足りず下流の工場が建たない 水力発電所の集水域が重なるマスは近くの発電所で等分する（工事中も数え、閉鎖中と差し押さえ中は数えない）。 | 暴動は数ターン | 国営で建てる・輸入 | 1つの工場の事故で部品が途切れる |  |
 | 一部だけ（企業の1施設がずっと足りない） | 兄弟の施設の手元の余りから返済と未払いを回す（FM-42）。続けば `firms.restructure_turns` で閉める。部品工場がない島の組み立て工場は止まり、組の参入で部品工場が先に建つ | 回してもらうのが1年続けば閉鎖 | 閉鎖・輸入 | 不採算部門の切り離し、部品不足の減産 | `firms.pool_floor_turns`, `firms.restructure_turns` |
+| 名前（FM-46）: 企業に入る前・差し押さえ中・企業が消えた後・同じ名前が重なる | 企業に入るまで従来の名前で呼ぶ。差し押さえ中は名前を変えない（買い取られて企業に入ったとき付け直す）。企業が消えても施設の保存した名前は残り、重なる名前には「第二」を付ける | 次の `firms_funds` まで・差し押さえが終わるまで | プレイヤーが名前を付ける（空にすれば保存した自動の名前） | 日産自動車の工場名（地名）、三井物産などの財閥の頭の名前 | `naming.founder_share`, `naming.early_years` |
 | 持ち主・相手がいない | 差し押さえた施設に買い手がなければ取り壊す。計画経済の島には民営がない。出資する資本家階級がいなければ建たない。撤退した施設の残りの在庫は国が市場の値段で引き取る | 決めたターン数 |  |  | `firms.foreclosure_turns`, `firms.foreclosure_price` |
 | 時間がたつ（満期・寿命・一巡・育ちきった後） | 設備は資材ごとに年 2.5〜8% 傷む（直さなければ機械は 20 年で約2割）。直していれば一定に保たれ、建てる工事が一巡した後も機械と鋼材の買い手が続く。使わない産業の経験は年に減る。民営の工事は進まなければやめる 水力発電所の雨の係数は年ごとに引き直し、前の年の値は残さない。 | 機械 8%、鋼鉄 3%、建材 2.5% が年に傷む | 直す投資。民営は採算が合わなければ閉じ、後に参入 | 現実の工業国では設備の傷みが GDP の 15〜20% ほどで、投資の多くは置き換え | `equipment.wear`, `experience.decay`, `firms.abandon_turns` |
 
