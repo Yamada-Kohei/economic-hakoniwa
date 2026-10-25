@@ -163,7 +163,9 @@ def git_updates() -> list[dict[str, str]]:
             ["git", "log", "--fixed-strings", "--grep=更新履歴", "--format=%x1e%H%x1f%cI%x1f%B"],
             cwd=root,
             capture_output=True,
-            text=True,
+            # Windows では既定の文字コードが cp932 で、日本語の記録を読めず stdout が None になる
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
             check=True,
         ).stdout
