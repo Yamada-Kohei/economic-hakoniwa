@@ -70,7 +70,7 @@ steel_mill: 製鉄所
 | `regimes.yaml` | `axis`（政治の仕組み・国家元首の形・経済体制のどれか）、`capital_building`（首都に建つ建物）、経済体制では `owner`・`state_owned`・`state_accounting`・`start`・`bank_owner`（建国のときに置く銀行の持ち主）・`capital_controls`（資本取引の既定。フェーズ3-3） | `schemas/regimes.schema.json` |
 | `start_island.yaml` | 首都の施設と周りの町、村の数と人口、最初の施設（`if_resource` で資源があるときだけ）、送電線、倉庫の中身 | `schemas/start_island.schema.json` |
 | `finance.yaml` | `type: journal` は仕訳の種類（お金の動きの名前。帳簿の確かめは、ここにない種類の仕訳を誤りにする）、`type: bond_term` は国債の期間（`turns` と期間の上乗せの利回り `premium`） | `schemas/finance.schema.json` |
-| `naming.yaml` | 言語ごとの、地名の様式（`places`。様式ごとに表示名 `label`・前半 `first`・後半 `second`・つなぎ `joiner`）、数字、施設の種類ごとの短い名前と長い名前、名前の形 | `schemas/naming.schema.json` |
+| `naming.yaml` | 言語ごとの、地名の様式（`places`。様式ごとに表示名 `label`・前半 `first`・後半 `second`・つなぎ `joiner`）、民営の企業の名前の材料（`companies`。姓・会社の形）、土地に根ざす施設（`land_bound`）、数字、施設の種類ごとの短い名前と長い名前、名前の形 | `schemas/naming.schema.json` |
 
 施設の項目:
 
@@ -128,7 +128,7 @@ steel_mill: 製鉄所
 | `power` | 電気の財、住民1人あたりの電力、町への配電の優先度 |
 | `population` | 1人あたりの食料、増え方と減り方、幸福度の計算の重み |
 | `housing` | 町が1ターンに新しくできる・育つ数 |
-| `naming` | 地名の区画の大きさ（`place_block`）、地名の様式の既定（`place_style`） |
+| `naming` | 地名の区画の大きさ（`place_block`）、地名の様式の既定（`place_style`）、昔風の会社の形になる年数（`early_years`）、創業者の姓を名にする企業の割合（`founder_share`、仮） |
 | `disasters` | 災害の起きる割合と、施設が止まるターン数 |
 | `accounts` | 同じ接続元から登録できる数（`signups_per_ip`、0 で無制限）と、覚えておく日数 |
 
