@@ -469,8 +469,9 @@ def _food_orders(
             recipe = _grain_recipe(defs, island, f)
             if recipe is not None:
                 orders.append(("change_recipe", {"x": f.x, "y": f.y, "recipe": recipe}))
+        keep = _military_keep(island, config)  # 兵の食べ物は売らない
         for good in sorted(island.warehouse):
-            qty = stock.total(island.warehouse, good)
+            qty = stock.total(island.warehouse, good) - keep.get(good, 0)
             if qty > 0 and "food" in defs.goods.get(good, {}):
                 orders.append(
                     (
@@ -1088,8 +1089,8 @@ def _education(island: IslandState, defs: Defs, config: GameConfig) -> Iterator[
 def _security(
     island: IslandState, defs: Defs, config: GameConfig, turn: int
 ) -> Iterator[tuple[str, str]]:
-    """警察署を1つ（SECURITY_FROM ターンから）。武器の原料が島で作れるか貿易で手に入る島は、兵舎と
-    武器工場も1つずつ。
+    """警察署を1つ（SECURITY_FROM ターンから）。武器の原料が島で作れるか貿易で手に入る島は、
+    武器工場と兵舎も1つずつ（武器工場が先。兵舎だけ先に建つと、働き手の賃金だけがかかる）。
 
     武器は貿易で売り買いできないので、軍を持つ国は自分の島で作る。原料のない島（化学品の手に入ら
     ない島）に兵舎を建てても、武器がなく部隊は編成中のままなので建てない。工事の資材の扱いは学校と
@@ -1105,12 +1106,12 @@ def _security(
         and _feasible(defs, island, ARMS_PLANT, "default", _traded(island, config))
     ):
         return
-    if _count(island, BARRACKS) == 0:
-        yield from _build_or_supply(island, defs, config, BARRACKS)
-    elif _count(island, ARMS_PLANT) == 0 and any(
-        f.built and f.kind == BARRACKS for f in island.facilities
-    ):
+    if _count(island, ARMS_PLANT) == 0:
         yield from _build_or_supply(island, defs, config, ARMS_PLANT)
+    elif _count(island, BARRACKS) == 0 and any(
+        f.built and f.kind == ARMS_PLANT for f in island.facilities
+    ):
+        yield from _build_or_supply(island, defs, config, BARRACKS)
 
 
 def _build_or_supply(
@@ -1487,6 +1488,13 @@ def defense_order(
     barracks = [f for f in island.facilities if f.kind == BARRACKS]
     ready = [f for f in barracks if f.built]
     if not barracks:
+        if any(
+            o.kind == "build"
+            and o.status == ORDER_PENDING
+            and o.payload.get("facility") == BARRACKS
+            for o in island.orders
+        ):
+            return None  # 標準の計画が同じターンに建てる
         pos = _site_for(island, defs, config, BARRACKS, "default")
         if pos is None:
             return None

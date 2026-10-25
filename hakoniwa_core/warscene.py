@@ -59,7 +59,10 @@ def pairs(world: WorldState, defs: Defs, config: GameConfig) -> list[tuple[int, 
     if saved is None:
         if world.turn + 1 < WAR_FROM - WAR_PREP:
             return []
-        saved = world.ext[KEY] = [list(p) for p in _choose(world, defs, config)]
+        chosen = [list(p) for p in _choose(world, defs, config)]
+        if not chosen:
+            return []  # 兵の食べ物が手に入る島ができるまで、組は決めない
+        saved = world.ext[KEY] = chosen
     return [(a, d) for a, d in saved]
 
 
@@ -370,9 +373,8 @@ def pair_line(result: Any, attacker: int, defender: int) -> str:
     parts = []
     if wars:
         parts.append(f"宣戦 {wars['declared']}")
-        landed = first.get("unit_landed", {}).get(a)
-        if landed:
-            parts.append(f"上陸 {landed}")
+        if wars.get("start"):  # 上陸は場面が部隊を直接置くので、ログが出ない。宣戦の次のターン
+            parts.append(f"上陸（仮） {wars['start']}")
     killed = result.get("killed", {})
     parts.append(
         f"戦闘 {by.get(d, {}).get('battle', 0)} 回（戦死 攻め {killed.get(a, 0)}・"

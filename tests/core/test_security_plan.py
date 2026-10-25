@@ -67,19 +67,21 @@ def test_barracks_wait_for_a_weapons_source(game, world, monkeypatch):
     assert found == []
     monkeypatch.setattr(autoplan, "_feasible", lambda *a, **k: True)
     found = list(autoplan._security(island, game.defs, game.config, autoplan.SECURITY_FROM))
-    assert autoplan.BARRACKS in kinds(found)
+    assert autoplan.ARMS_PLANT in kinds(found)
 
 
-def test_arms_plant_follows_the_barracks(game, world, monkeypatch):
+def test_barracks_follow_the_arms_plant(game, world, monkeypatch):
     island = world.islands[1]
     add(island, autoplan.POLICE)
     monkeypatch.setattr(autoplan, "_feasible", lambda *a, **k: True)
-    add(island, autoplan.BARRACKS, built=False)
     found = list(autoplan._security(island, game.defs, game.config, autoplan.SECURITY_FROM))
-    assert found == []  # 兵舎ができるまで待つ
+    assert kinds(found)[-1:] != [autoplan.BARRACKS] and autoplan.BARRACKS not in kinds(found)
+    add(island, autoplan.ARMS_PLANT, built=False)
+    found = list(autoplan._security(island, game.defs, game.config, autoplan.SECURITY_FROM))
+    assert found == []  # 武器工場ができるまで待つ
     island.facilities[-1].built = True
     found = list(autoplan._security(island, game.defs, game.config, autoplan.SECURITY_FROM))
-    assert autoplan.ARMS_PLANT in kinds(found)
+    assert autoplan.BARRACKS in kinds(found)
 
 
 def test_security_budget_follows_the_police_staff(game, world):
@@ -180,6 +182,9 @@ def test_scene_picks_pairs_once_and_keeps_them(game, world):
 def test_scene_skips_attackers_that_cannot_feed_soldiers(game, world):
     world.turn = warscene.WAR_FROM - warscene.WAR_PREP - 1
     assert warscene.pairs(world, game.defs, game.config) == []  # どの島も兵の食べ物がない
+    assert (
+        warscene.KEY not in world.ext
+    )  # 決められなかった組は残さない（後で食べ物が手に入れば決める）
 
 
 def test_scene_is_silent_before_the_preparation(game, world):
