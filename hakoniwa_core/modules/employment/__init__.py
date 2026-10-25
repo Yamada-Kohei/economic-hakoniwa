@@ -65,6 +65,7 @@ from hakoniwa_core.economy import (
     services,
     trucks,
 )
+from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.geo import distance, within
 from hakoniwa_core.modules import infrastructure
 from hakoniwa_core.modules.market import SITE_HOLDS, SiteFunds
@@ -143,6 +144,9 @@ def _pos(key: str) -> Pos:
     return int(x), int(y)
 
 
+ATTRITION = "attrition"  # f.economy: 人を抱える施設の、辞める人の端数（W-198）
+
+
 def staff_of(f: Facility) -> dict[Pos, int]:
     return {_pos(k): v for k, v in f.economy.get("staff", {}).items() if v > 0}
 
@@ -193,9 +197,15 @@ class Employment(IslandStage):
                 island.scratch.setdefault(SITE_HOLDS, []).append((payer, hold))
         # 雇いたい人数を決め、その賃金を取り置く（高い賃金の施設から）
         unpaid: dict[int, int] = {}  # 払えないまま働き続ける人（賃金の遅配。回3）
+        needs: dict[int, int] = {}  # 操業目標などに要る人数（抱える人を足す前）
         quit_rate = config.get("labor.arrears_quit")
         for f, wage in plans:
             demand = self._wanted(island, ctx, f, wage)
+            # 人を抱える施設（W-198）は前のターンの人を抱える。技術者の席と、賃金の式が見る人手の
+            # 足りなさ（economy["wanted"]）は、操業目標に要る人数（needs）のまま
+            needs[f.id] = demand
+            if self._hoards(island, ctx, f):
+                demand = max(demand, self._kept(ctx, f))
             payer = payer_of(defs, config, f)
             engineers, extra = self._engineer_terms(island, ctx, f, wage)
             per_worker = wage + self._power_per_worker(island, ctx, f) + extra
@@ -209,22 +219,22 @@ class Employment(IslandStage):
             short = money >= funds.available(island, payer, capped=False)
             if want < demand and short and f.built and island.has_economy:
                 # 前のターンに働いていた人は、払えない分もすぐには辞めない（未払いが続いた月数に
-                # 応じて辞める）
-                stay = max(0, min(demand, sum(staff_of(f).values())) - want)
+                # 応じて辞める）。抱えた人（W-198）は遅配にせず手放す（国が払えなければ抱えない）
+                stay = max(0, min(needs[f.id], sum(staff_of(f).values())) - want)
                 share = min(1.0, quit_rate * (f.economy.get("arrears_months", 0) + 1))
                 unpaid[f.id] = stay - min(stay, math.ceil(stay * share))
             wanted[f.id] = want + unpaid[f.id]
             seats[f.id] = 0
             if engineers:
                 need = fac.workers_of(defs, f)
-                seats[f.id] = engineers * want // need
+                seats[f.id] = engineers * min(want, needs[f.id]) // need
             if seats[f.id]:
                 f.economy["engineer_wage"] = fac.engineer_wage_of(config, f, wage)
             cost = want * wage + seats[f.id] * (fac.engineer_wage_of(config, f, wage) - wage)
             funds.commit(island, payer, cost)
             # 賃金を払うお金が足りずに雇いたい分を雇えなかったことは、施設の状態に出す（人手不足と
             # 分けて、国庫が空で止まった施設が「労働者不足」と出ないように）
-            if want < demand:
+            if want < needs[f.id]:  # 抱えた人を手放しただけなら、払えなかったとは出さない
                 f.ext["short_wages"] = True
             else:
                 f.ext.pop("short_wages", None)
@@ -331,7 +341,7 @@ class Employment(IslandStage):
             skilled, spared = engineers.get(f.id, 0), spare.get(f.id, 0)
             f.workers = hired + skilled + spared + mobilized.get(f.id, 0)
             f.economy["staff"] = {_key(p): n for p, n in sorted(mine.items())}
-            f.economy["wanted"] = wanted[f.id]
+            f.economy["wanted"] = min(wanted[f.id], needs[f.id])
             f.economy["poached"] = poached.get(f.id, 0)
             for key, value in (
                 ("engineers", skilled),
@@ -570,6 +580,27 @@ class Employment(IslandStage):
         if f.built and is_bank(config, f):  # 銀行は預金と融資の大きさに合わせて
             return banks.staff_wanted(island, config, ctx.defs, f)
         return fac.labor_demand(ctx.defs, f, ctx.turn, config.get("power.good"))
+
+    @staticmethod
+    def _hoards(island: IslandState, ctx: StageContext, f: Facility) -> bool:
+        """人を抱える施設か（plan.hoards。人数を荷・売上・預金で決める施設と、止まった施設は除く）。"""
+        config = ctx.config
+        if not planning.hoards(island, ctx.defs, f) or fac.is_halted(f, ctx.turn):
+            return False
+        if is_transport(config, f) or services.is_services(config, f) or is_bank(config, f):
+            return False
+        return staff.wanted(config, ctx.defs, f) is None
+
+    @staticmethod
+    def _kept(ctx: StageContext, f: Facility) -> int:
+        """人を抱える施設が雇い続ける人数: 前のターンに働いていた人（動員した人を除く）から、辞める
+        人の分（月 planning.attrition。端数は economy["attrition"] にためる）を引いた数。設備の
+        傷んだ分を除いた全力の人数まで。"""
+        before = f.workers - f.economy.get("mobilized", 0)
+        leave = before * ctx.config.get("planning.attrition") + f.economy.get(ATTRITION, 0.0)
+        f.economy[ATTRITION] = leave - int(leave)
+        full = fac.scale(fac.workers_of(ctx.defs, f), fac.equipment_cap(f))
+        return max(0, min(full, before - int(leave)))
 
     @staticmethod
     def _power_per_worker(island: IslandState, ctx: StageContext, f: Facility) -> int:

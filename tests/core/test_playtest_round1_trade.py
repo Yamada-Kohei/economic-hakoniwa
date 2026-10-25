@@ -172,4 +172,6 @@ def test_traders_do_not_export_what_only_the_merchant_sells(game, traded):
                 item = traders.goods_of(f).get(good, {})
                 assert not (item.get("dir") == traders.EXPORT and item.get("x")), (island.id, good)
     planned = next(i for i in world.islands.values() if traders.is_planned(i))
-    assert {"crude_oil", "fuel"} <= merchant_only[planned.id]
+    # 場面の確かめ: 計画経済の島に、海外の商人だけが売る物がある（油井がないので原油。燃料は国営の
+    # 製油所が商人の原油で作り始めることがある）
+    assert "crude_oil" in merchant_only[planned.id]

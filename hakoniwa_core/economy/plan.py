@@ -96,6 +96,13 @@ def is_priority(island: IslandState, defs: Defs, f: Facility) -> bool:
     return fac.recipe_of(defs, f).get("industry") in chosen
 
 
+def hoards(island: IslandState, defs: Defs, f: Facility) -> bool:
+    """人を抱える施設か（W-198。計画経済の島の、動いている国営の施設）。操業目標が下がっても
+    一般の働き手を解雇せず（辞める人の分 planning.attrition ずつ減る）、作る量は操業目標までに
+    抑える（余った人は隠れた失業）。現実のソ連・東欧の国営企業は解雇せず人を抱え込んだ。"""
+    return f.owner == OWNER_STATE and f.built and is_planned(island, defs)
+
+
 def industry_of(defs: Defs, kind: str, recipe: str | None) -> str | None:
     recipes = defs.facilities[kind]["recipes"]
     spec = recipes.get(recipe or "") or next(iter(recipes.values()), {})

@@ -24,7 +24,7 @@
 | LB-02 | 雇用の段は、前のターンの人を雇い続け（多ければ遠いマスから減らす）、賃金の高い施設から通勤圏の失業者を近い順に雇い、足りなければ賃金が安い施設から限度まで引き抜く | 決定 | `labor.poach_gap`, `labor.poach_limit`, `labor.default_priority` | tests/core/test_rules.py::test_employment_by_priority_and_commute |
 | LB-03 | 雇いたい人数は操業目標（工事中は資材で進められる分）で決め、払える賃金の分までに抑える。施設は稼働率にかかわらず雇った人数分の賃金を払い、国庫が空で雇えない施設は「賃金が払えない」と出る | 決定 |  | tests/core/test_playtest_fixes.py::test_facility_without_wage_money_says_wages |
 | LB-04 | 技術者の席は定義の技術者数に雇いたい人数の割合を掛けた分。技術者の賃金の高い施設から割り当て、埋まらない席は一般の席にし、足りない分だけ稼働率の上限が下がる。余った技術者は一般の席に島のどこへでも就く（賃金は一般のもの） | 決定 | `labor.engineer_floor` | tests/core/test_playtest3_fixes.py::test_engineers_employed_never_exceed_the_total |
-| LB-05 | 賃金は施設ごと・労働者の種類ごとに毎ターン見直す（式 `wage_update`）。物価の上がった分の決めた割合を追い、人手が足りなければ足りなさに応じて上げ、通勤圏の失業率がふつうより高ければ下げる向きに動く。1ターンの変化には上限があり、最低賃金より下がらない | 決定 | `labor.indexation`, `labor.wage_speed`, `labor.slack_speed`, `labor.natural_unemployment`, `labor.max_raise`, `labor.max_cut`, `fiscal.minimum_wage` | （未確認） |
+| LB-05 | 賃金は施設ごと・労働者の種類ごとに毎ターン見直す（式 `wage_update`）。物価の上がった分の決めた割合を追い、人手が足りなければ足りなさに応じて上げ、通勤圏の失業率がふつうより高ければ下げる向きに動く。1ターンの変化には上限があり、最低賃金より下がらない。施設の月（施設の番号で12か月にばらす）には、生産性（タブ 5 FM の経験・集積・インフラ・教育・汚染の積）がそれまでに賃金に乗せた一番高い値から伸びた割合だけ上げる（上げ幅の上限の外。W-186 回2） | 決定 | `labor.indexation`, `labor.wage_speed`, `labor.slack_speed`, `labor.natural_unemployment`, `labor.max_raise`, `labor.max_cut`, `fiscal.minimum_wage` | tests/core/test_recession_round2.py::test_wages_follow_productivity_once_a_year_on_the_facility_month |
 | LB-06 | 独立採算の施設は、今の値段で変動費の利益が 0 になる賃金より上げない。商業・サービス業はサービスの値段 × 1人の量まで | 決定 | `services.per_worker` | tests/core/test_balance_round4.py::test_shops_hire_and_the_price_covers_wages |
 | LB-07 | 技術者の賃金は初め一般の決めた倍率で、同じ式で動く。人手の足りなさは技術者の席の埋まらなかった割合、失業率は島の技術者の失業率で見て、施設の一般の賃金より下げない | 決定 | `labor.engineer_wage_ratio` | （未確認） |
 | LB-08 | 工事の作業員・公務員・教員・警察官は前のターンの島の平均賃金で雇う。作業員は施設が雇った後に残った失業者から島のどこからでも雇い（引き抜かない）、賃金は工事の持ち主（国の工事は公共事業費）が払う。公務員・教員・警察官は国庫が払う | 決定 |  | tests/core/test_rules.py::test_urgent_site_materials_come_before_other_sites_wages |
@@ -92,7 +92,8 @@
 
 - 物価の上がった分（直近1年の物価上昇率）のうち `labor.indexation` の割合を追います。物価が下がっても、それだけでは賃金を下げません。
 - 雇いたい人数に届かなかった施設は「足りない人数 ÷ 雇いたい人数」に `labor.wage_speed` を掛けて上げます。全員を雇えた施設は、通勤圏の失業率がふつうの失業率 `labor.natural_unemployment` を超えた分に応じて `labor.slack_speed` で下げる向きに動きます。
-- 1ターンの変化は上がる方が `labor.max_raise`、下がる方が `labor.max_cut` までです（賃金は下がりにくい）。政府が最低賃金 `fiscal.minimum_wage` を決めると、それより下がりません。
+- 1ターンの変化は上がる方が `labor.max_raise`、下がる方が `labor.max_cut` までです（賃金は下がりにくい）。
+- 施設の生産性が伸びた分は、年に1回、施設の月（施設の番号で12か月にばらし、同じ月に値段が跳ねないようにする）に賃金に乗せます。比べるのは、それまでに賃金に乗せた一番高い生産性です（下がった年は下げず、下がってから戻った分は二度乗せない。新しい施設は最初の施設の月に記録するだけ）。上げ幅の上限 `labor.max_raise` の外で乗せ、独立採算の施設の変動費の利益の上限は効きます。技術者の賃金にも同じ割合を乗せます。集積・インフラ・教育で伸びた分や、作り方を替えて伸びた分も乗ります（W-186 回2。長い目で見ると賃金は生産性の伸びについていく。前は経験で伸びた分が値下がりにだけ出て、家計の所得が増えなかった）。政府が最低賃金 `fiscal.minimum_wage` を決めると、それより下がりません。
 - 独立採算の施設は、今の値段で変動費の利益が 0 になる賃金より上げません。店はサービスの値段 × `services.per_worker` までです。
 - 技術者の賃金は施設ごとに持ち、初めは一般の `labor.engineer_wage_ratio` 倍です。同じ式で、人手の足りなさは技術者の席の埋まらなかった割合、失業率は島の技術者の失業率（席に就けなかった技術者の割合）で見て、施設の一般の賃金より下げません。値段の原価・融資の審査・参入の計算の人件費にも入れます。
 - 失業が多い島でも物価の上がった分は賃金に追わせる形は、回5 で入れます（今は失業がふつうより多いと、下げる向きが追う分を打ち消して賃金が凍る）。

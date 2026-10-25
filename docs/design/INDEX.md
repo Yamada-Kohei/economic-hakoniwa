@@ -108,13 +108,13 @@
 | MK-04 | 売りと買いが交わらなければ約定せず、一番安い売りと一番高い買いの指値の真ん中（気配）を次のターン… | 決定 | tests/core/test_economy.py |
 | MK-05 | 注文は出すときに「量×指値」のお金を取り置き、取り置けない分は出せない | 決定 | tests/core/test_economy.py |
 | MK-06 | 注文を出すのは、独立採算と国庫直轄の施設（在庫の売りと次のターンの投入財の買い）、工事中の施設と… | 決定 | tests/core/test_balance_round3.py |
-| MK-07 | 希望価格は売れ行きで見直す（式 `price_update`） | 決定 | tests/core/test_economy.py |
+| MK-07 | 希望価格は売れ行きで見直す（式 `price_update`） | 決定 | tests/core/test_economy.py、tests/core/test_recession_round2.py |
 | MK-08 | 独立採算の売り手は1単位の変動費（投入財・賃金・電気代・運賃）より安い指値を出さない | 決定 | （未確認） |
 | MK-09 | 操業目標は、売れ行きの見込み（前のターンに売れた量へ少しずつ近づける）と在庫の目安との差で決め、… | 決定 | tests/core/test_rules.py |
 | MK-10 | 持ち越せない売れ残りを翌ターンに指値なしで売った分は、値段が変動費を下回った幅が値幅に届くまで、… | 決定 | tests/core/test_economy.py |
 | MK-11 | 市場の段の後に、持ち越せる期間（goods.yaml の `shelf_life`）を過ぎた在庫… | 決定 | tests/core/test_playtest4_fixes.py、tests/core/test_rules.py |
 | MK-12 | 原料が足りずに稼働率が下がった施設は、前のターンに買うつもりだった分の原料がそろっていれば、止ま… | 決定 | tests/core/test_playtest3_fixes.py |
-| MK-13 | 品切れの財（買いたい人がいるのに売りに出なかった財）は、島で作り始められる一番安い値段が今の値段… | 決定 | tests/core/test_balance_round4.py |
+| MK-13 | 品切れの財（買いたい人がいるのに売りに出なかった財）は、島で作り始められる一番安い値段が今の値段… | 決定 | tests/core/test_balance_round4.py、tests/core/test_recession_round2.py |
 | MK-14 | 島に買い手がなく売りだけの財は、圏で輸出が引き合う値段まで値幅ずつ下がる | 決定 | tests/core/test_trade.py |
 | MK-15 | 家計は食料を、少ししか買えない段ほど高い指値で買う | 決定 | tests/core/test_balance_round3.py |
 | MK-16 | 値幅の上端で買い続ける買い手（家計の車の燃料、工事とインフラの資材）は、いつもの値段の一番上の段… | 仮（仮の決まりの表あり） | tests/core/test_phase3_2.py |
@@ -150,7 +150,7 @@
 | LB-02 | 雇用の段は、前のターンの人を雇い続け（多ければ遠いマスから減らす）、賃金の高い施設から通勤圏の失… | 決定 | tests/core/test_rules.py |
 | LB-03 | 雇いたい人数は操業目標（工事中は資材で進められる分）で決め、払える賃金の分までに抑える | 決定 | tests/core/test_playtest_fixes.py |
 | LB-04 | 技術者の席は定義の技術者数に雇いたい人数の割合を掛けた分 | 決定 | tests/core/test_playtest3_fixes.py |
-| LB-05 | 賃金は施設ごと・労働者の種類ごとに毎ターン見直す（式 `wage_update`） | 決定（仮の決まりの表あり） | （未確認） |
+| LB-05 | 賃金は施設ごと・労働者の種類ごとに毎ターン見直す（式 `wage_update`） | 決定（仮の決まりの表あり） | tests/core/test_recession_round2.py |
 | LB-06 | 独立採算の施設は、今の値段で変動費の利益が 0 になる賃金より上げない | 決定 | tests/core/test_balance_round4.py |
 | LB-07 | 技術者の賃金は初め一般の決めた倍率で、同じ式で動く | 決定 | （未確認） |
 | LB-08 | 工事の作業員・公務員・教員・警察官は前のターンの島の平均賃金で雇う | 決定 | tests/core/test_rules.py |
@@ -415,7 +415,7 @@
 
 ## [10 政治と体制](10-politics.md)
 
-決まり 56 個、うち仮の決まりの表にあるもの 2 個。
+決まり 57 個、うち仮の決まりの表にあるもの 2 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -475,6 +475,7 @@
 | PL-54 | NG は人・ID・言葉で決める | 決定（W-147） | tests/server/test_board.py |
 | PL-55 | 書き込みの歯止め（いいね・通報にも同じ待ち）: 登録してから `HAKONIWA_BOARD_N`… | 決定（W-147） | tests/server/test_board.py |
 | PL-56 | 休止中の島とも、停戦と、休止中の島が賠償を払わず捕虜を返す講和は結べる | 決定（W-96） | tests/core/test_diplomacy.py |
+| PL-57 | 計画経済の島の国営施設は人を抱える（W-198）: 操業目標が下がっても、前のターンに働いていた… | 決定 | tests/core/test_recession_round2.py |
 
 ## [11 画面と統計](11-ui.md)
 

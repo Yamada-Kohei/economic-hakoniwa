@@ -69,6 +69,24 @@ from hakoniwa_core.units import (
     to_milli,
 )
 
+# f.economy: 賃金に乗せた生産性（施設の月ごとの、それまでで一番高い値。W-186 回2）
+PRODUCTIVITY_YEAR = "productivity_year"
+
+
+def wage_month(f: Facility, turn: int) -> bool:
+    """施設の生産性の伸びを賃金に乗せる月か（施設の番号で12か月にばらす。一斉に上げて同じ月に
+    値段が跳ねないように）。"""
+    return (turn - f.id) % YEAR == 0
+
+
+def productivity_growth(f: Facility, turn: int) -> float:
+    """施設の月なら、賃金に乗せた生産性（前の施設の月までで一番高い値）からの伸び（下がった年と
+    記録のない年は 0。賃金は下げないので、下がってから戻った分は二度乗せない）。"""
+    last = f.economy.get(PRODUCTIVITY_YEAR, 0)
+    if not wage_month(f, turn) or last <= 0:
+        return 0.0
+    return max(0.0, fac.productivity_of(f) / last - 1)
+
 
 def wage_update(island: IslandState, f: Facility, ctx: StageContext) -> int:
     """次のターンの賃金: W × (1 + a × max(0, π) / 12 + k_w × g)。
@@ -81,6 +99,8 @@ def wage_update(island: IslandState, f: Facility, ctx: StageContext) -> int:
     labor.wage_speed）、全員を雇えたら「(u* − u) ÷ u*」を 0 以下に切った値（u は通勤圏の失業率、
     u* はふつうの失業率。k_w は labor.slack_speed）。
     1ターンの変化は labor.max_raise と labor.max_cut まで、最低賃金より下がらない。
+    施設の月（年に1回）には、施設の生産性が1年で伸びた割合だけ上げる（productivity_growth。上げ幅の
+    上限の外。W-186 回2。長い目で見ると賃金は生産性の伸びについていく）。
     独立採算の施設は、今の値段で変動費の利益が 0 になる賃金より上げない（商業・サービス業は、
     サービスの値段 × 1人の量まで。バランス調整）。
     """
@@ -95,7 +115,7 @@ def wage_update(island: IslandState, f: Facility, ctx: StageContext) -> int:
     speed = settings["wage_speed"] if gap > 0 else settings["slack_speed"]
     change = settings["indexation"] * max(0.0, inflation(island.economy)) / YEAR + speed * gap
     change = max(-settings["max_cut"], min(settings["max_raise"], change))
-    new = scale_price(wage, 1 + change)
+    new = scale_price(wage, (1 + change) * (1 + productivity_growth(f, ctx.turn)))
     if new > wage and is_self_supporting(f) and services.is_services(ctx.config, f):
         price = island.economy.prices.get(services.good_of(ctx.config), 0)
         cap = int(price * services.settings(ctx.config)["per_worker"])
@@ -135,7 +155,8 @@ def engineer_wage_update(island: IslandState, f: Facility, ctx: StageContext) ->
     speed = settings["wage_speed"] if gap > 0 else settings["slack_speed"]
     change = settings["indexation"] * max(0.0, inflation(island.economy)) / YEAR + speed * gap
     change = max(-settings["max_cut"], min(settings["max_raise"], change))
-    return max(scale_price(wage, 1 + change), f.economy["wage"])
+    growth = productivity_growth(f, ctx.turn)  # 施設の月の生産性の分は一般の賃金と同じ
+    return max(scale_price(wage, (1 + change) * (1 + growth)), f.economy["wage"])
 
 
 FURLOUGH = ("power", "no_grid", "input")  # 休業手当にする status（外から物が来ずに動けない）
@@ -268,6 +289,9 @@ class Payroll(IslandStage):
                 f.economy["wage"] = ctx.formula("wage_update")(island, f, ctx)
                 if "engineer_wage" in f.economy:
                     f.economy["engineer_wage"] = ctx.formula("engineer_wage_update")(island, f, ctx)
+                if wage_month(f, ctx.turn):
+                    now = fac.productivity_of(f)
+                    f.economy[PRODUCTIVITY_YEAR] = max(now, f.economy.get(PRODUCTIVITY_YEAR, 0))
         if workers:
             island.economy.average_wage = paid // workers
         keep = config.get("records.history_turns")

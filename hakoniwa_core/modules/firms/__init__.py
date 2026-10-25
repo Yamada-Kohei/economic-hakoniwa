@@ -191,6 +191,62 @@ def entry_return(
     return (YEAR * (profit + subsidy) - worn) * (1 - tax) / capital
 
 
+def entry_price(island: IslandState, ctx: StageContext, good: str) -> int | None:
+    """島に新しく建つ民営の施設が、財 good を作って参入に要る利益率（_threshold）に届く一番安い
+    値段（W-186 回2。market の _record が、売りに出ない財の値段を上げる先に使う）。
+
+    参入の候補（_try_enter と同じ: 民営で建てられ、資源と気候が合い、原料が島で手に入る作り方）
+    ごとに、建てる場所（_site）の生産性と運賃で、ほかの値段は今のまま good の値段だけを動かした
+    ときの見込みの利益率（式 entry_return。値段に1次）に売れると見込む割合（_fill）を掛けて、
+    要る利益率に届く値段を2点から解く。候補がない・
+    建てる場所がない・銀行がない（参入できない）なら None。作れず輸入もない財は上がらない（前は
+    島で最後の農場が閉じると、買いたい人がいても穀物の値段が動かず、新しい農場の見込みが赤字の
+    まま建たなかった）。"""
+    defs, config = ctx.defs, ctx.config
+    threshold = EntryExit._threshold(island, ctx)
+    if threshold == float("inf"):
+        return None
+    prices = average_prices(island, config.get("firms.price_turns"))
+    wage = island.economy.average_wage
+    supplied = EntryExit._supplied(island, ctx)
+    estimate = ctx.formula("entry_return")
+    settings = config.get("firms")
+    shortages = island.economy.finance.get("shortages", {})
+    demand = island.economy.finance.get("demand", {})
+    capacity = EntryExit._capacity(island, ctx)
+    best = None
+    for kind, fdef in sorted(defs.facilities.items()):
+        if not private_allowed(defs, island, kind):
+            continue
+        capital = round_money(construction_cost(defs, kind, prices, wage))
+        for rname, recipe in sorted(fdef["recipes"].items()):
+            if rname == AUTOMATED or not recipe["outputs"].get(good):
+                continue
+            if not set(recipe.get("inputs", {})) <= supplied:
+                continue
+            if fac.recipe_problem(defs, island, kind, rname) is not None:
+                continue
+            site = EntryExit()._site(island, ctx, kind, rname)  # 建てる場所の生産性と運賃で見る
+            if isinstance(site, str):
+                continue  # 建てる場所がない
+            pos, freight = site
+            # 新しい施設が売れると見込む割合（_fill。品切れの量 ÷ 全力の産出）だけ見込みが減る
+            cost = unit_cost(defs, config, kind, recipe, prices, wage)
+            fill = EntryExit._fill(recipe, shortages, demand, capacity, prices, cost, settings)
+            if fill <= 0:
+                continue
+            low = max(1, prices.get(good, 1))
+            r1, r2 = (
+                estimate(island, ctx, kind, rname, {**prices, good: p}, freight, capital, pos)
+                for p in (low, 2 * low)
+            )
+            if r2 <= r1:
+                continue
+            price = max(1, round_money(low + (threshold / fill - r1) * low / (r2 - r1)))
+            best = price if best is None else min(best, price)
+    return best
+
+
 def capital_subsidy(island: IslandState, kind: str, recipe: dict[str, Any]) -> int:
     """設備投資補助の率（1万分の1。品目の合計）。"""
     return sum(
