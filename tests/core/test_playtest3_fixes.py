@@ -205,7 +205,9 @@ def test_rescue_refills_the_treasury_for_next_turn(game, warmed):
     log = next(e for e in island.log if e.kind == "bank_bailed_out")
     assert log.args["amount"] > 0
     money = ledger.money(island, ledger.GOV)
-    assert target * 0.99 <= money <= target * 1.01 + 1000
+    # 国債は入札の組ごとにまとめて出すので、目標を少し（1 割まで）超えることがある。世界の流れで
+    # 国庫の額が変わると超え方が変わるので、上は 1 割までにする（超えすぎは出しすぎ）
+    assert target * 0.99 <= money <= target * 1.10 + 1000
     assert debt.total_debt(island) > debt_before
     books_ok(game, island)
 

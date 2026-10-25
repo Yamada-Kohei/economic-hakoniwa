@@ -110,7 +110,9 @@ def main(argv: list[str] | None = None) -> int:
             series = stack.enter_context(open(args.series, "w", encoding="utf-8"))
         meter = None
         if args.out or series is not None:
-            meter = measure.Measure(world, game.defs, game.config, series, args.zones_every)
+            meter = measure.Measure(
+                world, game.defs, game.config, series, args.zones_every, scenario.war
+            )
         per_turn = []
         for _ in range(args.turns):
             measure.queue_scenario_orders(world, scenario, game.defs, game.config)

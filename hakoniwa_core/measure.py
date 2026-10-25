@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import IO, Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import gate, politics, reuse
+from hakoniwa_core import gate, politics, reuse, warscene
 from hakoniwa_core.autoplan import plan_trade, plan_turn, plan_war, queue_orders
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
@@ -81,6 +81,8 @@ class Scenario:
     kinds: tuple[str, ...] | None = None  # 関門に数える目安の種類（None なら全部）
     # 初めのターンに、どの島も移民の受け入れをこれにする（回3。"" は命令を出さない）
     immigration: str = ""
+    # 数組の島が戦争をする場面（段6 A2。hakoniwa_core/warscene.py）
+    war: bool = False
 
 
 SCENARIOS = {
@@ -95,6 +97,7 @@ SCENARIOS = {
         Scenario(
             "open", "どの島も移民を受け入れる世界（標準の計画）", 50, "plan", immigration="open"
         ),
+        Scenario("war", "数組の島が戦争をする世界（標準の計画）", 12, "plan", war=True),
     )
 }
 
@@ -107,6 +110,7 @@ SETS = {
         ("independent", 1, 300),
         *[("small", seed, 300) for seed in (1, 2, 3, 4)],
         ("open", 1, 300),
+        ("war", 1, 300),
     ],
     "full": [
         *[("plan", seed, 500) for seed in (1, 2, 3, 4)],
@@ -117,6 +121,8 @@ SETS = {
         *[("small", seed, 500) for seed in (1, 2, 3, 4)],
         ("open", 1, 500),
         ("open", 2, 500),
+        ("war", 1, 300),
+        ("war", 2, 300),
     ],
 }
 
@@ -213,8 +219,16 @@ def queue_scenario_orders(world: WorldState, scenario: Scenario, defs: Defs, con
     if scenario.orders == "plan":
         for island_id, orders in plan_trade(world, defs, config).items():
             queue_orders(world.islands[island_id], orders)
-        for island_id, orders in plan_war(world, defs, config).items():
-            queue_orders(world.islands[island_id], orders)  # 宣戦されたら守る（MI-44）
+        guard = plan_war(world, defs, config)  # 宣戦されたら守る（MI-44）
+        staged: dict = {}
+        if scenario.war:
+            staged, preparing = warscene.orders(world, defs, config)
+            for island_id in preparing:  # 攻める側の備えは場面が決める
+                guard.pop(island_id, None)
+        for island_id, orders in guard.items():
+            queue_orders(world.islands[island_id], orders)
+        for island_id, orders in staged.items():
+            queue_orders(world.islands[island_id], orders)
 
 
 # --- 島×ターンの記録 ------------------------------------------------------------------
@@ -439,8 +453,10 @@ class Measure:
         config: GameConfig,
         series: IO[str] | None = None,
         zones_every: int = 12,
+        war: bool = False,
     ) -> None:
         self.defs, self.config = defs, config
+        self.watch = warscene.Watch(war, defs, config)
         self.prices = {
             i.id: initial_prices(defs, config, i.resources) for i in world.islands.values()
         }
@@ -451,6 +467,7 @@ class Measure:
         self.independent_since: dict[int, int] = {}  # 島 → 中央銀行が独立したターン
 
     def record(self, world: WorldState) -> None:
+        self.watch.record(world)
         total: Counter = Counter()
         for island in world.islands.values():
             if not island.has_economy:
@@ -684,6 +701,7 @@ def result(
         "early": recorder.early(),
         "first_year": measure.window(1, gate.EARLY_TURN),
         "ships": measure.ships(),
+        "war": measure.watch.result(),
         "windows": windows,
         "curve": measure.curve(),
     }
@@ -900,13 +918,46 @@ def _compare_means(a: Mapping, b: Mapping) -> list[str]:
     return lines
 
 
+def _compare_war(a: Mapping, b: Mapping) -> list[str]:
+    """戦争と反乱の出来事の数を、組ごとに前と後で並べる（増減に向きは付けない）。"""
+    lines = [
+        "## 戦争と反乱の出来事（数。向きなし）",
+        "",
+        "| 組 | 出来事 | 前 | 後 | 差 |",
+        "|---|---|---|---|---|",
+    ]
+    rows = 0
+    for key in sorted(set(a) & set(b)):
+        ea = a[key].get("war", {}).get("events", {})
+        eb = b[key].get("war", {}).get("events", {})
+        for kind in warscene.EVENTS:
+            x, y = ea.get(kind, 0), eb.get(kind, 0)
+            if kind in ("riot_halted", "riot_halted_police") or not (x or y):
+                continue
+            lines.append(
+                f"| {run_name(*key)} | {warscene.TITLES.get(kind, kind)} | {x} | {y} | {y - x:+d} |"
+            )
+            rows += 1
+    if not rows:
+        lines.append("| （どちらにも出来事なし） | | | | |")
+    return lines
+
+
 def compare(base: Path, new: Path) -> str:
     """2つの結果（ディレクトリかファイル）を、同じ場面・種・ターン数どうしで Markdown の表に並べる。
 
     悪くなった値に「悪化」と書く（向きのある値だけ）。
     """
     a, b = load(base), load(new)
-    lines = [*_compare_collapse(a, b), "", *_compare_means(a, b), "", "## 組ごと"]
+    lines = [
+        *_compare_collapse(a, b),
+        "",
+        *_compare_means(a, b),
+        "",
+        *_compare_war(a, b),
+        "",
+        "## 組ごと",
+    ]
     for key in sorted(set(a) & set(b)):
         name = run_name(*key)
         lines += [
@@ -991,6 +1042,8 @@ def show(path: Path) -> str:
                     f"{m.get('politics.demo', 0):.1%}・暴動以上 {m.get('politics.riot', 0):.1%}。"
                     f"自動車 {m.get('buy.automobile.per_turn', 0):.0f}/ターン"
                 )
+        if data.get("war"):
+            lines += _show_war(data["war"])
         if data.get("ships"):
             sh = data["ships"]
             lines.append(
@@ -1000,6 +1053,23 @@ def show(path: Path) -> str:
                 f"{sh['port.handled.before']:.0f} → {sh['port.handled.after']:.0f}"
             )
     return "\n".join(lines).strip()
+
+
+def _show_war(war: Mapping[str, Any]) -> list[str]:
+    """戦争と反乱の出来事（数と、戦争の組ごとの流れ）。"""
+    events = war.get("events", {})
+    out = []
+    if events:
+        out.append(
+            "- 戦争と反乱の出来事（世界全体）: "
+            + "、".join(f"{warscene.TITLES.get(k, k)} {v}" for k, v in sorted(events.items()))
+        )
+    for attacker, defender in war.get("pairs", []):
+        out.append(
+            f"  - 島 {attacker} が島 {defender} に攻める: "
+            + warscene.pair_line(war, attacker, defender)
+        )
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
