@@ -670,6 +670,11 @@ def facility_books(row: m.Facility, f: Facility, currency: str = "") -> dict[str
     return out
 
 
+# 施設の ext["halt_reason"]（止まったわけ）のうち、状態の文を分けるもの。暴動は施設の状態が
+# 「riot」になる（status_riot）ので、ここには入れない
+HALT_REASONS = ("war", "missile", "occupied")
+
+
 def status_text(f: Facility) -> str:
     if not f.built:
         # 民営の工事でお金が足りないのは、公共事業費ではなく会社の資金
@@ -687,6 +692,11 @@ def status_text(f: Facility) -> str:
     if not f.status:
         return ""
     kind, _, good = f.status.partition(":")
+    reason = f.ext.get("halt_reason")
+    if (
+        kind == "halted" and reason in HALT_REASONS
+    ):  # 戦争・ミサイル・占領で止まったのは災害ではない
+        kind = f"halted_{reason}"
     text = message(f"status_{kind}")
     if good:
         text += f"（{get_game().defs.name('goods', good)}）"

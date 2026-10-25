@@ -359,3 +359,18 @@ def test_civil_war_shows_to_all_with_the_groups_for_the_owner_only(world):
     assert public["active"] and public["rebels"] == 80 and "groups" not in public
     mapped = client.get(f"/api/islands/{island.id}/map").json()["occupied"]
     assert civil_war.REBELS in mapped
+
+
+def test_a_facility_stopped_by_the_war_says_why_not_a_disaster(world):
+    """戦闘・ミサイル・占領で止まった施設の状態が「災害により停止中」と出ていた（段6 B4）。"""
+    from hakoniwa_core.state import Facility
+
+    def text(reason):
+        f = Facility(id=1, kind="farm", x=0, y=0, built=True, status="halted")
+        if reason:
+            f.ext["halt_reason"] = reason
+        return display.status_text(f)
+
+    assert "占領" in text("occupied") and "災害" not in text("occupied")
+    assert "戦闘" in text("war") and "ミサイル" in text("missile")
+    assert text(None) == "災害により停止中"
