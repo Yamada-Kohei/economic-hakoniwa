@@ -366,7 +366,6 @@ table.goods.country-timeline td:nth-child(n+2), table.goods.country-timeline th:
 /* 表やパネルの表示方法にかかわらず、絞り込んだ行と未表示の欄を隠す。 */
 [hidden] { display: none !important; }
 #island-map:focus-visible { outline: 3px solid var(--fg); outline-offset: -3px; }
-#map-coordinate input { width: 5em; }
 .chart-log-link { display: inline-block; margin-top: 0.5em; }
 .monument-edit-link { display: block; margin-top: 10px; font-size: 0.85em; }
 @media (max-width: 540px) {
