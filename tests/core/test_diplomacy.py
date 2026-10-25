@@ -245,7 +245,7 @@ def test_reparations_paid_in_time_is_not_a_violation(game, world):
     step(game, world, {2: [("denounce_treaty", {"treaty": t["id"]})]})
     assert (
         logs(world, 2, "diplomacy_request_failed")[-1].args["reason"]
-        == "reason_treaty_not_terminable"
+        == "reason_treaty_reparations_open"
     )
     treaties.note_payment(world, 2, 1, 2, 600, world.turn)
     treaties.note_payment(world, 2, 1, 1, 9999, world.turn)  # 別の通貨は数えない

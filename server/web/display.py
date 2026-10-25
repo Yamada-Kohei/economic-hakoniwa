@@ -730,23 +730,45 @@ ORDER_UNITS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = {
     "bloc_settings": ("fixed_good", (), ("fixed_price",)),
     "set_official_price": ("good", (), ("price",)),
     "set_price_floor": ("good", (), ("price",)),
+    "load_supplies": ("good", ("quantity",), ()),
 }
+# 項目の下の配列の各要素に、同じ形で量と値段を持つ命令（W-182）。種類 → (配列の項目, 要素の形)。
+# 条約の条項のうち契約だけが財を持つ（財のない条項は、財の項目が文字列でないので素通りする）
+CLAUSE_UNITS = ("good", ("quantity",), ("price",))
+ORDER_NESTED_UNITS: dict[str, tuple[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
+    "propose_treaty": ("clauses", CLAUSE_UNITS),
+}
+# 項目の下に「財 → 量」の表を持つ命令（W-182）。種類 → 項目。備蓄の目標（food などの補給も財）
+ORDER_GOOD_MAPS: dict[str, str] = {"set_defense": "reserve"}
+
+
+def order_has_units(kind: str) -> bool:
+    """命令の中身に、見せる単位で受け取る量か値段があるか。"""
+    return kind in ORDER_UNITS or kind in ORDER_NESTED_UNITS or kind in ORDER_GOOD_MAPS
 
 
 def _plain_number(value: float) -> float:
     return int(value) if float(value).is_integer() else value
 
 
-def order_payload(kind: Any, payload: Any, to_game: bool) -> Any:
-    """命令の中身の量と値段を、見せる単位と計算の単位のあいだで直す（API の出入り口で。W-30）。
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
-    to_game なら打ち込まれた中身（見せる単位）を計算の単位に、そうでなければ計算の単位の中身を見せる
-    単位に。丸めないので、命令の列を読んでそのまま送り返しても同じ命令になる（値段は計算の単位の
-    整数に丸めて受け取る。倍率 1 の財でも）。形の違う中身はそのまま返し、確かめ（check_order）に
-    任せる。
-    """
-    spec = ORDER_UNITS.get(kind) if isinstance(kind, str) else None
-    if spec is None or not isinstance(payload, dict):
+
+def _unit_value(value: Any, scale: float, is_price: bool, to_game: bool) -> Any:
+    """量か値段 1 つを、見せる単位と計算の単位のあいだで直す。数でない値はそのまま。"""
+    if not _is_number(value):
+        return value
+    if is_price:
+        return round(value * scale) if to_game else _plain_number(round(value / scale, 6))
+    return round(value / scale, 9) if to_game else _plain_number(round(value * scale, 6))
+
+
+def _flat_units(
+    payload: Any, spec: tuple[str, tuple[str, ...], tuple[str, ...]], to_game: bool
+) -> Any:
+    """財の項目と量・値段の項目が同じ階層にある中身を直す。形の違う中身はそのまま返す。"""
+    if not isinstance(payload, dict):
         return payload
     defs = get_game().defs
     good_key, qty_keys, price_keys = spec
@@ -756,25 +778,56 @@ def order_payload(kind: Any, payload: Any, to_game: bool) -> Any:
     scale = defs.display_scale(good)
     out = dict(payload)
     for key in qty_keys + price_keys:
-        value = out.get(key)
-        if (
-            not isinstance(value, (int, float))
-            or isinstance(value, bool)
-            or not math.isfinite(value)
-        ):
-            continue
-        if key in price_keys:
-            out[key] = round(value * scale) if to_game else _plain_number(round(value / scale, 6))
-        else:
-            out[key] = (
-                round(value / scale, 9) if to_game else _plain_number(round(value * scale, 6))
-            )
+        if key in out:
+            out[key] = _unit_value(out[key], scale, key in price_keys, to_game)
+    return out
+
+
+def shown_clause(clause: dict[str, Any]) -> dict[str, Any]:
+    """保存された条約の条項（計算の単位）の量と値段を、見せる単位に直す（W-182）。"""
+    return _flat_units(clause, CLAUSE_UNITS, to_game=False)
+
+
+def order_payload(kind: Any, payload: Any, to_game: bool) -> Any:
+    """命令の中身の量と値段を、見せる単位と計算の単位のあいだで直す（API の出入り口。W-30・W-182）。
+
+    to_game なら打ち込まれた中身（見せる単位）を計算の単位に、そうでなければ計算の単位の中身を見せる
+    単位に。丸めないので、命令の列を読んでそのまま送り返しても同じ命令になる（値段は計算の単位の
+    整数に丸めて受け取る。倍率 1 の財でも）。形の違う中身はそのまま返し、確かめ（check_order）に
+    任せる。どの命令のどの項目を直すかは ORDER_UNITS・ORDER_NESTED_UNITS・ORDER_GOOD_MAPS
+    （一覧に載っていない命令は直さないので、量か値段を持つ命令を足したら一覧にも足す。
+    tests/server/test_display_units.py が見つける）。
+    """
+    if not isinstance(kind, str) or not isinstance(payload, dict):
+        return payload
+    out = payload
+    if kind in ORDER_UNITS:
+        out = _flat_units(out, ORDER_UNITS[kind], to_game)
+    if kind in ORDER_NESTED_UNITS:
+        key, spec = ORDER_NESTED_UNITS[kind]
+        if isinstance(out.get(key), list):
+            out = {**out, key: [_flat_units(item, spec, to_game) for item in out[key]]}
+    if kind in ORDER_GOOD_MAPS:
+        key = ORDER_GOOD_MAPS[kind]
+        table = out.get(key)
+        if isinstance(table, dict):
+            defs = get_game().defs
+            out = {
+                **out,
+                key: {
+                    good: _unit_value(q, defs.display_scale(good), False, to_game)
+                    if good in defs.goods
+                    else q
+                    for good, q in table.items()
+                },
+            }
     return out
 
 
 def describe_order(kind: str, payload: dict[str, Any]) -> str:
     """命令の列に出す、命令の中身の短い説明（量と値段は見せる単位で）。"""
     defs = get_game().defs
+    stored = payload  # 条約の条項の説明（clause_summary）は、計算の単位の条項を受け取る
     payload = order_payload(kind, payload, to_game=False)
     name = defs.name("orders", kind)
     where = f"({payload['x']}, {payload['y']})" if "x" in payload and "y" in payload else ""
@@ -826,7 +879,7 @@ def describe_order(kind: str, payload: dict[str, Any]) -> str:
         _describe_finance(kind, payload, name, where)
         or _describe_trade(kind, payload, name)
         or _describe_politics(kind, payload, name)
-        or _describe_diplomacy(kind, payload, name)
+        or _describe_diplomacy(kind, stored, name)
         or _describe_military(kind, payload, name)
     )
     if text:
@@ -873,8 +926,9 @@ def _describe_diplomacy(kind: str, payload: dict[str, Any], name: str) -> str:
 
 
 def clause_summary(c: dict[str, Any]) -> str:
-    """条約の条項（命令の中身か、保存された条項）を 1 つの文にする。経済の条項（フェーズ4-1 の②）は
-    中身（誰が・何を・いくら）まで書く。島と通貨は番号から名前にする。"""
+    """条約の条項（命令の中身か、保存された条項。どちらも計算の単位）を 1 つの文にする。経済の条項
+    （フェーズ4-1 の②）は中身（誰が・何を・いくら）まで書く。島と通貨は番号から名前にする。契約の
+    量と値段は見せる単位に直して書く（W-182）。"""
     kind = c.get("type")
     label = message(f"clause_{kind}")
     if kind == "bloc":
@@ -887,10 +941,11 @@ def clause_summary(c: dict[str, Any]) -> str:
         unit = defs.unit_name(good) if good in defs.goods else ""
         goods_name = defs.name("goods", good) if good in defs.goods else good
         currency = currency_name(c["currency"]) if "currency" in c else "売る国の通貨"
+        shown = shown_clause(c)
+        quantity, price = shown.get("quantity", 0), shown.get("price", 0)
         return (
             f"{label}（{island_name(c.get('seller'))}が{goods_name}を毎ターン "
-            f"{c.get('quantity', 0):g} {unit}、1{unit} {c.get('price', 0):,}（{currency}）で"
-            f" {c.get('turns', 0)} ターン）"
+            f"{quantity:g} {unit}、1{unit} {price:,}（{currency}）で {c.get('turns', 0)} ターン）"
         )
     if kind == "peg":
         return (

@@ -71,6 +71,14 @@ dst.close()
 src.close()' "$1" "$2"
 }
 
+# 世界の行があるか。建国前の空の DB は、ターンを進められない（run_turn が「世界がまだありません」で
+# 失敗する）ので、写しの試しのターンを飛ばす。調べられなければ失敗にする。
+world_state() {
+  local out
+  out="$("$1" manage.py shell -c 'from server.world.models import World; print("state:" + ("world" if World.objects.exists() else "empty"))' 2>>"$LOG")" || return 1
+  grep -o 'state:[a-z]*' <<<"$out" | tail -n1
+}
+
 # ポートの主なページが全部 200 になるまで待つ（最大およそ60秒）。
 pages_ok() {
   local port="$1" page code i
@@ -89,7 +97,7 @@ pages_ok() {
 
 # 1. 新しい版を写しの DB で試す。動いている世界には触らない。
 trial() {
-  local tmp src py w service port db prefix copy url pid
+  local tmp src py w service port db prefix copy url pid state
   tmp="$(mktemp -d)"
   src="$tmp/src"
   step "試しの作業ツリーを作る" git -C "$APP_DIR" worktree add --detach "$src" "$NEW" || { rm -rf "$tmp"; return 1; }
@@ -109,9 +117,14 @@ trial() {
       (cd "$src" && export DATABASE_URL="$url" &&
         step "$service の写しで migrate" "$py" manage.py migrate --noinput &&
         step "$service の写しで check_defs" "$py" manage.py check_defs &&
-        for ((i = 1; i <= TRIAL_TURNS; i++)); do
-          step "$service の写しで $i ターン目" "$py" manage.py run_turn --force || exit 1
-        done) || { trial_cleanup "$tmp"; return 1; }
+        state="$(world_state "$py")" &&
+        if [[ "$state" == state:empty ]]; then
+          log "$service の写しは世界がまだない（建国前）ので、ターンの試しは飛ばす"
+        else
+          for ((i = 1; i <= TRIAL_TURNS; i++)); do
+            step "$service の写しで $i ターン目" "$py" manage.py run_turn --force || exit 1
+          done
+        fi) || { trial_cleanup "$tmp"; return 1; }
     # 写しの世界を別のポートで立て、主なページを見る。
     (cd "$src" && DATABASE_URL="$url" exec "$py" manage.py runserver --noreload "127.0.0.1:$((port + 10000))" >>"$LOG" 2>&1) &
     pid=$!

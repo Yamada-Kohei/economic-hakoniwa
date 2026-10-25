@@ -215,7 +215,7 @@ def test_contract_clause_starts_a_contract_and_the_treaty_ends_when_it_does(game
     # 契約を結んでいる間は、予告つきの破棄で抜けられない
     step(game, world, {1: [("denounce_treaty", {"treaty": t["id"]})]})
     assert logs(world, 1, "diplomacy_request_failed")[-1].args["reason"] == (
-        "reason_treaty_not_terminable"
+        "reason_treaty_term_open"
     )
     for _ in range(5):
         step(game, world)

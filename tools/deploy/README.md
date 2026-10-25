@@ -8,6 +8,7 @@ main にマージされた版を、LAN のサーバーの2つの世界（ポー�
 1. `git fetch` して、origin/main が今の版より進んでいなければ何もしない。
 2. 新しい版を別の作業ツリーに出し、両方の世界の DB の写しで migrate・check_defs・3ターン・主なページ（`/` `/help/` `/world/` `/board/`）を試す。
    動いている世界には触らない。`pyproject.toml` が変わったときだけ、試し用の venv を作る。
+   世界の行がまだない（建国前の空の）DB は、ターンを進められないので、ターンの試しだけ飛ばす（migrate・check_defs・ページは見る。W-189）。
 3. 両方のサービスを止め、DB を `~/apps/hakoniwa-backups/` に控える（`db.sqlite3.main-<コミット>-<日時>`、`codex-db.sqlite3.main-…`）。
 4. 新しい版にして `pip install -e .`・両方の migrate・check_defs をし、再起動して主なページが 200 か確かめる。
 5. 3・4 で失敗したら、DB の控えと前の版に戻して動かし直す。

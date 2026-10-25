@@ -40,7 +40,7 @@
 | OV-17 | 定義データは文字列の名前で参照し、DB の外部キーにしない。世界は読み込んだパックの版を持ち、移し替えがないまま定義が消えたら更新を止める | 決定 | | tests/server/test_turns.py::test_removed_definition_stops_update |
 | OV-18 | 式は名前の付いた差し替え口で、`formulas` で別の関数に替えられる。モジュール固有の状態は島・マス・世界の `ext` に入れる | 決定 | `formulas` | tests/core/test_engine.py::test_formula_override |
 | OV-19 | コード中に数値を直接書かず、定義データか `game.yaml` に置く。関門の目安と標準の計画の数はルールではないので例外 | 決定 | | （未確認） |
-| OV-20 | 命令は受付時と実行時の 2 回検証する。行政力の範囲で上から実行し、足りなくなった所で止めて残りは次のターンに回す。失敗は理由をターンログに書く | 決定 | `orders.base_admin_power`, `orders.max_admin_power`, `orders.max_queue` | tests/core/test_rules.py::test_orders_run_in_turn, ::test_admin_power_limits_orders, ::test_admin_power_from_civil_servants |
+| OV-20 | 命令は受付時と実行時の 2 回検証する。行政力の範囲で上から実行し、足りなくなった所で止めて残りは次のターンに回す。失敗は理由をターンログに書き、命令を失敗にする（外交・部隊・貿易の命令は後の世界の段が断ることがあり、そのときも命令を実行済みから失敗に直す） | 決定 | `orders.base_admin_power`, `orders.max_admin_power`, `orders.max_queue` | tests/core/test_rules.py::test_orders_run_in_turn, ::test_admin_power_limits_orders, ::test_admin_power_from_civil_servants |
 | OV-21 | 画面用の別の計算を持たず、施設の収支や統計はターン更新で保存した記録から作る。記録を残す期間は設定で決める | 決定 | `records.journal_turns`, `records.trades_turns`, `records.books_turns`, `records.history_turns` | （未確認） |
 | OV-22 | DB 固有の書き方をせず Django の ORM だけを使い、SQLite と PostgreSQL のどちらでも動かす。自動テストは両方で回す | 決定 | | tests/server/test_settings.py |
 | OV-23 | 巻き戻しは世界全体を同じ時点にそろえる。後に建国した島は建国時の姿に戻し、実行した命令は待ちに戻し、書く前に帳簿と島をまたぐお金・荷を確かめる | 決定 | `backups.keep` | tests/server/test_turns.py::test_rollback_restores_state |
@@ -151,7 +151,7 @@
 
 ### 命令の扱い
 
-プレイヤーはいつでも命令を並べられ、並べておける数は `orders.max_queue` までです。受付時にコアで中身を検証し、形の誤りはその場で画面に返します。実行時にもう一度検証し（資材が足りない、マスが埋まったなど）、失敗した命令は理由をターンログに書きます。行政力は 1 ターンに実行できる命令の数で、中央省庁で働く公務員の数で増え、最低 `orders.base_admin_power`・最大 `orders.max_admin_power` です。命令ごとの消費は `orders.yaml` の `admin_cost` で、名前の変更は消費しません。足りなくなった所で止め、残りは次のターンに回します。議会の要る命令は実行の前に命令の関門（`add_order_gate`）で採決します（タブ 10）。ほかの国に見せるかどうか（`orders.yaml` の `secret`）はタブ 11、行政力の中身はタブ 6 にあります。
+プレイヤーはいつでも命令を並べられ、並べておける数は `orders.max_queue` までです。受付時にコアで中身を検証し、形の誤りはその場で画面に返します。実行時にもう一度検証し（資材が足りない、マスが埋まったなど）、失敗した命令は理由をターンログに書き、命令の結果を失敗にします。外交・部隊・貿易の命令は、命令の段では世界の段への申し送り（`hakoniwa_core/orders.py` の `defer`）を積むだけで、断るかどうかは後の段が決めます。後の段で断られたときは、積んだ命令の番号をたどって命令を実行済みから失敗に直し（`fail_deferred`）、理由を付けます。行政力は 1 ターンに実行できる命令の数で、中央省庁で働く公務員の数で増え、最低 `orders.base_admin_power`・最大 `orders.max_admin_power` です。命令ごとの消費は `orders.yaml` の `admin_cost` で、名前の変更は消費しません。足りなくなった所で止め、残りは次のターンに回します。議会の要る命令は実行の前に命令の関門（`add_order_gate`）で採決します（タブ 10）。ほかの国に見せるかどうか（`orders.yaml` の `secret`）はタブ 11、行政力の中身はタブ 6 にあります。
 
 ### 保存・バックアップ・巻き戻し
 
