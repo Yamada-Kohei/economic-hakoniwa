@@ -7,21 +7,24 @@ default:
     town_population: 3000
     town_level: town
   villages: {count: 8, population: 1500, min_distance: 3, max_distance: 7}
-  # 初めの施設は、建国のときの住民の買う量に合わせる。食料は漁港と農場1つで足りるが、災害で
-  # 漁港か農場が止まっても、止めていた農場が動き出すまで食べ物が半分を切らないよう、農場は3つ
-  # （2つ以下だと、50島の試し回しで1ターンに人口が5%を超えて減る島が出た）。消費財工場は木材
-  # から作り、林業場2つの木材で動く
+  # 初めの施設（W-186 の直し 回1）。上から順に、首都に近い空いたマスに置く。fit を書いた施設は数を決めて
+  # 書かず、要る量に合わせる（founding.py の _fits）: food は建国の住民の食べる量、inputs はそれより上に
+  # 書いた施設が全力で使う量で、その島の気候・肥沃度・経験での産出の見込みから、残りが施設1つの産出の
+  # founding.fit_share 以上ある間だけ置く（min から max まで）。飢饉の備えは余分の農場でなく、国の倉庫の
+  # 穀物の備蓄で持つ（game.yaml の food_reserve）。消費財工場は木材から作る
   facilities:
-    - {kind: farm, count: 3}
     - {kind: fishing_port}
-    - {kind: lumber_camp, count: 2}
-    - {kind: consumer_goods_factory, recipe: wood, count: 2}
+    - {kind: farm, fit: food, max: 4}
     - {kind: thermal_power_plant}
-    - {kind: mine, recipe: coal, if_resource: coal}
+    - {kind: consumer_goods_factory, recipe: wood, count: 2}
+    - {kind: lumber_camp, fit: inputs, min: 1, max: 3}
+    # 石炭のある島は、発電所の分の鉱山を1つ（産出は発電所の使う量より多いが、半分の鉱山はない）
+    - {kind: mine, recipe: coal, if_resource: coal, fit: inputs, min: 1, max: 1}
+    # 石材は国の工事の建材の原料（建材の工場は建国の後に建てる）。石材のある島に1つ
     - {kind: quarry, if_resource: stone}
   power_lines: true
+  # 倉庫の資材。穀物はここに書かず、国の穀物の備蓄の目安（game.yaml の food_reserve）だけ入れる
   warehouse:
-    grain: 50                     # 多いと売れないまま傷んで捨てられる
     wood: 150
     building_materials: 120
     steel: 40

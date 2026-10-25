@@ -258,7 +258,7 @@ def rollback(to_turn: int) -> WorldState:
     later = _founding_states(world, backup, sorted(existing - set(islands)))
     founded: dict[int, int] = {}  # 後から建国した島 → 建国のログと統計を書いたターン
     for island in later.values():
-        refound(island, to_turn)
+        refound(island, to_turn, get_game().defs)
         founded[island.id] = island.ext.get("founded_turn", to_turn)
         island.ext["founded_turn"] = min(founded[island.id], to_turn)
     state.islands = {**islands, **later}

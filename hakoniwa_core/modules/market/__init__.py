@@ -73,6 +73,7 @@ from hakoniwa_core.economy import (
     needs,
     payer_of,
     productivity,
+    reserve,
     retail,
     services,
     trucks,
@@ -880,11 +881,13 @@ class Market(IslandStage):
         wanted: dict[str, int],
         got: dict[str, dict[str, int]],
     ) -> None:
-        """店で買いきれなかった小売りを、商業・サービス業から割高に買う（直売・屋台）。"""
+        """店で買いきれなかった小売りを、商業・サービス業から割高に買う（直売・屋台）。商業・サービス業に
+        働く人がいなければ売らない（建国の1ターン目は、まだ誰も雇っていないのに売れて、売上がまるごと
+        もうけになり法人税と配当を払った。W-196）。"""
         config = ctx.config
         good = retail.good_of(config)
         shop = services.facility_of(island, config)
-        if shop is None or not shop.built or "foreclosed" in shop.economy:
+        if shop is None or not shop.built or "foreclosed" in shop.economy or shop.workers <= 0:
             return
         unit = Market._direct_unit(island, config)
         tax = island.policy.consumption_tax
@@ -2289,7 +2292,59 @@ class Market(IslandStage):
                 self._add(books_by_good, g, "buy", order, party)
             if not item.get("quiet"):  # 軍の食べ物の買い入れなどは、結果をログに出さない
                 placed.append((good, "buy", qty, order, "budget" if capped else "treasury"))
+        self._reserve_orders(island, ctx, books_by_good, sell, offered)
         island.scratch[WAREHOUSE_PLACED] = placed
+
+    def _reserve_orders(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        books_by_good: dict[str, Book],
+        sell: Any,
+        offered: dict[str, int],
+    ) -> None:
+        """国の穀物の備蓄（economy/reserve.py）の入れ替え・放出・買い足し。命令の売りの後に出す
+        （命令で売ると決めた分は、もう売りに出ている）。offered: 倉庫がこのターンに売りに出した量。
+        """
+        spec = ctx.config.get("food_reserve")
+        good = spec["good"]
+        if spec["turns"] <= 0:
+            return
+        selling = offered.get(good, 0)  # 契約の輸入や命令で、もう売りに出している量
+        usual = usual_price(island, good, ctx.config.get("household.usual_price_turns"))
+        price = island.economy.prices.get(good, 0)
+        old = reserve.rotating(island, ctx.defs, ctx.config, ctx.turn)
+        if old > 0:  # 傷む前に、今の値段で売る
+            sell(good, old, price or None)
+        hungry = self._anyone_hungry(island, ctx)
+        high = scale_price(usual, 1 + spec["release"])
+        release = usual > 0 and (hungry or price >= high)
+        if release:
+            sell(good, stock.total(island.warehouse, good), usual if hungry else high)
+        # 目安に足りない分の refill の割合と、入れ替えで売りに出した分（新しい組と入れ替える）
+        short = reserve.target(island, ctx.defs, ctx.config) - stock.total(island.warehouse, good)
+        renew = min(old, stock.total(island.warehouse, good))
+        want = min(int(max(0, short) * spec["refill"]) + renew, short + renew)  # 目安まで
+        # 放出するターンと、輸入や命令で倉庫が穀物を売りに出しているターンは買わない（自分の売りを
+        # 買わない。入れ替えの売りは少しずつなので、同じ板で一部を買い戻すことはある）
+        if selling > 0 or release or want <= 0 or usual <= 0:
+            return
+        buyer = Payer(ledger.GOV, WAREHOUSE)
+        plan = self._afford(island, buyer, {good: (want, usual)}, 0, 0)
+        for g, (q, lim) in plan.items():
+            party = Party(STORE, ledger.GOV, buyer)
+            party.reserved = gross_cost(lim, q, 0, 0)
+            funds.commit(island, buyer, party.reserved)
+            self._add(books_by_good, g, "buy", Order(q, lim), party)
+
+    @staticmethod
+    def _anyone_hungry(island: IslandState, ctx: StageContext) -> bool:
+        """前のターンに食べきれなかった家計の層があるか（飢えた家計の買い上がりと同じ見方）。"""
+        threshold = to_milli(ctx.config.get("household.hungry.threshold"))
+        return any(
+            state.get(FED, fac.FULL) < threshold or state.get(HUNGER, 0) > 0
+            for state in island.economy.households.values()
+        )
 
     @staticmethod
     def _warehouse_results(

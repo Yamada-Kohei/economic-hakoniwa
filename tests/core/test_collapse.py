@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+import copy
+import dataclasses
 import json
 
 import pytest
@@ -105,7 +107,12 @@ def test_many_facilities_switching_at_once_is_herding(scene, game):
     _, island, recorder, step = scene
     step()
     farms = [f for f in island.facilities if f.kind == "farm" and f.built]
-    assert len(farms) >= gate.HERD_MIN
+    # 建国の農場の数は食べる量に合わせる（W-186 回1）ので、群れになる数まで同じ農場を足す
+    next_id = max(f.id for f in island.facilities) + 1
+    while len(farms) < gate.HERD_MIN:
+        farms.append(dataclasses.replace(copy.deepcopy(farms[0]), id=next_id))
+        island.facilities.append(farms[-1])
+        next_id += 1
     used = {f.recipe for f in farms}
     first, then = [r for r in game.defs.facilities["farm"]["recipes"] if r not in used][:2]
     farms[0].recipe = first

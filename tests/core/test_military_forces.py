@@ -6,7 +6,7 @@ import copy
 
 import pytest
 
-from hakoniwa_core import stock
+from hakoniwa_core import politics, stock
 from hakoniwa_core.autoplan import queue_orders
 from hakoniwa_core.game import load_game
 from hakoniwa_core.military import forces
@@ -83,6 +83,8 @@ def test_take_people_is_proportional_and_exact(world):
 def test_soldiers_are_paid_from_the_defense_budget_and_fed_from_the_warehouse(game, world):
     island = world.islands[1]
     stock.add(island.warehouse, "ammunition", 5000, world.turn, game.defs.goods)  # 訓練の弾薬
+    # 兵の食べ物（加工食品）。島の食品工場が動いているかはこの試験の外
+    stock.add(island.warehouse, "food", 5000, world.turn, game.defs.goods)
     play(game, world, 1, [("set_defense", {"annual": 3_000_000}), ("recruit", {"count": 50})])
     play(game, world, 3)
     state = island.ext["military"]
@@ -145,6 +147,9 @@ def test_volunteers_come_from_the_unemployed_unless_the_wage_is_high(game, world
 def test_conscription_is_capped_by_the_population(game, world):
     island = world.islands[1]
     population = forces.population_of(island)
+    # 議会の採決はこの試験の外（与党が議席の多数を持ち、支持も選挙のときのまま）
+    state = politics.state_of(island)
+    state["seats"], state["support"], state["elected"] = 0.7, 50.0, 50.0
     run_orders(game, world, [("conscript", {"count": 10**9})])
     state = island.ext["military"]
     cap = int(population * game.config.get("military.conscript_share"))

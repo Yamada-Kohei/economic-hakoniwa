@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from types import SimpleNamespace
 
 import pytest
@@ -12,7 +13,18 @@ import pytest
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.allocation import by_priority, proportional
-from hakoniwa_core.economy import BONDS, GENERAL, Payer, debt, freight, funds, household
+from hakoniwa_core.config import GameConfig
+from hakoniwa_core.economy import (
+    BONDS,
+    GENERAL,
+    Payer,
+    debt,
+    experience,
+    freight,
+    funds,
+    household,
+    reserve,
+)
 from hakoniwa_core.economy.households import set_workers
 from hakoniwa_core.economy.prices import initial_prices, material_limit, variable_profit
 from hakoniwa_core.economy.start import init_facility, start_economy
@@ -78,18 +90,39 @@ def add(island, kind, x, y, built=True, recipe="default", stock=None, **kw) -> F
     return f
 
 
-def with_economy(game, island, groundwork=False) -> IslandState:
+def with_economy(game, island, groundwork=False, founded=False) -> IslandState:
     """置いた施設と住民で、お金の経済を始める（首都の近くに銀行、マスを持たない運送業が増える）。
 
     groundwork が False なら、フェーズ2-3 の基盤のうち学校と技術者を外す（雇用と予算の数を
     手作りの島の施設だけで確かめるため）。道路と教育水準は、生産性の係数が 1 になる初めの値のまま。
+    founded なら、建国した島と同じく昔からの産業の経験を置く。そうでなければ経験がないので、初めの
+    値段も経験の係数なし（生産性 1）で出す（W-186 回1: 建国で置く施設の作り方の初めの値段は、昔から
+    の産業の経験の生産性で出す。経験のない手作りの島がその値段のままだと、施設が赤字に見える）。
     """
-    start_economy(island, game.defs, game.config, 0)
+    config = game.config
+    if founded:
+        experience.start(island, config, set(experience.founding_industries(game.defs)))
+    else:
+        config = plain_config(config)
+    start_economy(island, game.defs, config, 0)
     if not groundwork:
         school = game.config.get("education.start_school")
         island.facilities = [f for f in island.facilities if f.kind != school]
         set_workers(island, game.defs, fac.ENGINEER, 0)
     return island
+
+
+_PLAIN: dict[int, tuple[GameConfig, GameConfig]] = {}
+
+
+def plain_config(config: GameConfig) -> GameConfig:
+    """建国の経験（founding.experience_turns）を 0 にした設定（初めの値段を生産性 1 で出す）。"""
+    cached = _PLAIN.get(id(config))
+    if cached is None or cached[0] is not config:
+        founding = {**config.raw["founding"], "experience_turns": 0}
+        cached = (config, dataclasses.replace(config, raw={**config.raw, "founding": founding}))
+        _PLAIN[id(config)] = cached
+    return cached[1]
 
 
 def without_roads(island) -> None:
@@ -563,6 +596,9 @@ def test_sites_are_funded_by_priority_and_show_why_they_wait(game):
     urgent = add(island, "food_factory", 7, 6, built=False, priority=9)
     with_economy(game, island)
     without_roads(island)  # 道路の維持の資材が、先に公共事業費を使わないように
+    # 国の穀物の備蓄は目安まで新しい組である（入れ替えと買い足しが、先に国庫を使わないように）
+    goal = reserve.target(island, game.defs, game.config)
+    stock.add(island.warehouse, "grain", goal, 0, game.defs.goods)
     # 国庫には、優先度の高い工事の1ターン分の建材を、指値（値幅の上端といつもの値段の段の安い方）と
     # 運賃で買えるだけ残す
     step = fac.step_materials(game.defs, urgent)["building_materials"]

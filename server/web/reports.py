@@ -24,6 +24,7 @@ from hakoniwa_core.economy import (
     companies,
     debt,
     entity_of,
+    is_public_service,
     services,
 )
 from hakoniwa_core.modules.failures import METHODS as RESOLUTION_METHODS
@@ -811,7 +812,8 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
             item["firm_name"] = companies.display_name(state, defs, int(number))
         if latest is not None:
             profit = latest.items.get(books.PROFIT, 0)
-            total += profit
+            if not (fdef and is_public_service(defs, f)):  # 合計は国の統計のもうけと同じ数え方
+                total += profit
             item["profit"] = display.money_text(profit, currency)
             item["loss"] = profit < 0
             if entity_of(config, f) != ledger.GOV:  # 国庫直轄の施設は自分の預金を持たない

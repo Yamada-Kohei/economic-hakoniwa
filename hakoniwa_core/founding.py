@@ -18,7 +18,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, nature, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import default_accounting, services
+from hakoniwa_core.economy import default_accounting, experience, productivity, reserve, services
 from hakoniwa_core.economy.start import start_economy
 from hakoniwa_core.geo import NEIGHBORS4, NEIGHBORS8, components, distance, shortest_path, within
 from hakoniwa_core.naming import (
@@ -38,6 +38,7 @@ from hakoniwa_core.state import (
     Tile,
 )
 from hakoniwa_core.trade import setup as trade_setup
+from hakoniwa_core.units import QUANTITY_SCALE, to_milli
 
 Pos = tuple[int, int]
 Problem = tuple[str, dict[str, Any]]
@@ -346,7 +347,7 @@ def open_for_business(island: IslandState, defs: Defs, config: GameConfig, turn:
     trade_setup.prepare(island, defs, config, turn)
 
 
-def refound(island: IslandState, turn: int) -> None:
+def refound(island: IslandState, turn: int, defs: Defs) -> None:
     """建国したばかりの島（まだ一度も更新していない島）を、ターン turn に建国したことにする。
 
     巻き戻しで、戻した先より後に建国した島に使う（島は残し、世界と同じ時点にそろえる）。建国の
@@ -360,11 +361,14 @@ def refound(island: IslandState, turn: int) -> None:
     island.economy.started = turn
     for bond in island.bonds:
         bond.issued += shift
+    # 日持ちのある物の組は、どれも建国のときに作られたターンを書いてある（国の穀物の備蓄は建国より
+    # 前のターンにならしてある）。日持ちのない物の組は作られたターンを書かない
     for held in [island.warehouse, *(f.stock for f in island.facilities)]:
-        for batches in held.values():
+        for good, batches in held.items():
+            if "shelf_life" not in defs.goods[good]:
+                continue
             for batch in batches:
-                if batch[0] > turn:
-                    batch[0] += shift
+                batch[0] += shift
     # 貿易の仕組みを置いたターン（海外の商人の来る期間の数え始め）と、輸送船を迎えたターン（W-140）
     trade = island.ext.get("trade", {})
     for key in ("since", "merchant_from"):
@@ -419,21 +423,95 @@ def place_start(
             fac.new_housing(island, housing, pos, levels[0])
             island.tile(*pos).population = villages["population"]
 
+    # 昔からの産業の経験を先に置き、施設の数を決める見込みの生産性に入れる（島の資源がなくて置かない
+    # 施設の産業は後で外す。fit で数が 0 になった施設の産業は残す: 農場を置かない島も農業は営む）
+    founded = experience.founding_industries(defs)
+    experience.start(island, config, set(founded))
+    kept: set[str | None] = set()
     for item in start["facilities"]:
         resource = item.get("if_resource")
         if resource is not None and resource not in island.resources:
             continue
-        for _ in range(item.get("count", 1)):
+        kept.add(defs.facilities[item["kind"]].get("industry"))
+        fit = item.get("fit")
+        count = item.get("count", 1) if fit is None else item.get("max", FIT_MAX)
+        least = count if fit is None else item.get("min", 0)
+        for n in range(count):
             pos = _start_site(island, defs, config, item["kind"], item.get("recipe"))
             if pos is None:
                 break
+            if n >= least and not _fits(island, defs, config, item, pos):
+                break
             _add_facility(island, defs, item["kind"], pos, item.get("recipe"))
+    rows = experience.table(island)
+    for industry in sorted(founded - kept):
+        rows.pop(industry, None)
 
     if start.get("power_lines"):
         connect_power(island, defs)
     for good, qty in start.get("warehouse", {}).items():
         stock.add(island.warehouse, good, qty, turn, defs.goods)
+    # 国の穀物の備蓄（economy/reserve.py）
+    reserve.stock_up(island, defs, config, turn)
     _prime_inputs(island, defs, config)
+
+
+FIT_MAX = 10  # fit を書いた施設を置く数の上限の既定（start_island.yaml の max）
+
+
+def _fits(
+    island: IslandState, defs: Defs, config: GameConfig, item: Mapping[str, Any], pos: Pos
+) -> bool:
+    """fit を書いた初めの施設を、もう1つ pos に置くか: 要る量の残りが、その施設1つの見込みの産出の
+    founding.fit_share（fit ごと）以上あるとき（W-186 の直し 回1）。食べ物は 0 で、残りがあれば
+    置く（住民が飢えないように切り上げる）。原料は 0.5 で四捨五入。
+
+    fit が food なら、要る量は建国の住民の食べる量（栄養。population.food_per_person）で、もう置いた
+    施設の食料の産出を引く。inputs なら、もう置いた施設が全力で使う、この施設の産出物の量から、もう
+    置いた施設の産出を引く。産出は施設の場所の生産性（気候・肥沃度・インフラ・教育・経験）の見込み。
+    """
+    kind = item["kind"]
+    name = item.get("recipe") or fac.default_recipe(defs, kind) or "default"
+    recipe = defs.facilities[kind]["recipes"][name]
+    placed = [
+        f
+        for f in island.facilities
+        if not fac.is_housing(config, f) and defs.facilities[f.kind].get("recipes")
+    ]
+    if item["fit"] == "food":
+
+        def value(outputs: Mapping[str, int]) -> int:
+            return sum(
+                q * to_milli(defs.goods[g]["food"]["nutrition"]) // QUANTITY_SCALE
+                for g, q in outputs.items()
+                if "food" in defs.goods[g]
+            )
+
+        population = sum(t.population for t in island.tiles)
+        need = to_milli(population * config.get("population.food_per_person"))
+    else:
+        made = set(recipe["outputs"])
+
+        def value(outputs: Mapping[str, int]) -> int:
+            return sum(q for g, q in outputs.items() if g in made)
+
+        need = sum(
+            q for f in placed for g, q in fac.recipe_of(defs, f)["inputs"].items() if g in made
+        )
+    for f in placed:
+        built = productivity.productivity(
+            island, defs, config, fac.recipe_of(defs, f), f.x, f.y, founding=True
+        )
+        need -= value(
+            {
+                g: q * built // productivity.FULL
+                for g, q in fac.recipe_of(defs, f)["outputs"].items()
+            }
+        )
+    one = productivity.productivity(island, defs, config, recipe, pos[0], pos[1], founding=True)
+    supply = value({g: q * one // productivity.FULL for g, q in recipe["outputs"].items()})
+    share = config.get("founding.fit_share")[item["fit"]]
+    return supply > 0 and need > 0 and need >= supply * share
 
 
 def _prime_inputs(island: IslandState, defs: Defs, config: GameConfig) -> None:

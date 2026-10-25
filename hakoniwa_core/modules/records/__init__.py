@@ -24,6 +24,7 @@ from hakoniwa_core.economy import (
     debt,
     funds,
     household,
+    is_public_service,
     is_transport,
     trucks,
 )
@@ -183,8 +184,13 @@ class Records(IslandStage):
                 per_capita[name] = income.get(name, 0) / persons
         if per_capita.get(GENERAL) and OWNERS in per_capita:
             stats["inequality"] = per_capita[OWNERS] / per_capita[GENERAL]
-        # 施設の利益
-        stats["profit"] = sum(b.items.get(books.PROFIT, 0) for b in island.books)
+        # 施設の利益。売上のない公務員の施設（役所・学校など）は入れない（その賃金は政府の支出。
+        # W-197）
+        stats["profit"] = sum(
+            b.items.get(books.PROFIT, 0)
+            for b in island.books
+            if not _public(ctx.defs, island, b.facility)
+        )
         stats["freight.surcharge"] = economy.freight.get("surcharge", BASIS) / BASIS
         for f in island.facilities:  # 運送業のトラック（フェーズ3-2）
             if is_transport(config, f) and trucks.owned(f):
@@ -315,6 +321,11 @@ def _banking(island: IslandState, ctx: StageContext) -> dict[str, float]:
     written = sum(b.items.get(books.WRITE_OFF, 0) for b in island.books)
     stats["loans.write_off"] = written
     return stats
+
+
+def _public(defs: Defs, island: IslandState, number: int) -> bool:
+    f = island.facility(number)
+    return f is not None and is_public_service(defs, f)
 
 
 def register(registry: Registry) -> None:

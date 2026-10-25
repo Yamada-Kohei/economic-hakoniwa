@@ -10,6 +10,13 @@ experience.cap、組み立て産業（experience.assembly）は experience.assem
 experience.decay だけ減ります。貿易で経験が少し移る形（技術の移転）は、add で足せるようにして
 あります。
 
+建国のとき（W-186 の直し 回1）: 初めの施設の産業（start_island.yaml に書いた施設の産業。農林水産業・
+消費財・電力・鉱業）は、島で昔から営んできた産業なので、累積 founding.experience_turns（標準の施設が
+動いたターン数）から始めます（start）。0 から始めると、建国の1年目に生産性が 15% ほど伸びて費用と
+値段が下がり続けた。初めの値段も、建国で置く施設の作り方（founding_recipes）はこの係数
+（founding_factor）の生産性で出します（economy/prices.py）。島の資源がなくて置かない施設の産業と、
+島に新しく入る産業は 0 から（新しい産業の習熟）。
+
 集積: 半径 experience.cluster_radius マス以内に、同じ産業のほかの施設（建ったもの）が1つあるごとに
 experience.cluster_step（上限 experience.cluster_cap）だけ生産性を上げます。効くのは
 experience.cluster_categories の分類の施設（既定は工場の industry だけ。農場や鉱山は島じゅうに
@@ -26,6 +33,7 @@ import math
 from collections.abc import Mapping
 from typing import Any
 
+from hakoniwa_core import facilities as fac
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.state import IslandState, WorldState
@@ -51,6 +59,49 @@ def add(island: IslandState, industry: str, amount: int) -> None:
     entry = table(island).setdefault(industry, [0, 0])
     entry[0] += amount
     entry[1] += amount
+
+
+def founding_industries(defs: Defs) -> frozenset[str]:
+    """建国のときに置く施設（start_island.yaml のどの中身にでも書いた施設）の産業。"""
+    found = set()
+    for start in defs.start_island.values():
+        for item in start.get("facilities", ()):
+            industry = defs.facilities[item["kind"]].get("industry")
+            if industry:
+                found.add(industry)
+    return frozenset(found)
+
+
+def founding_recipes(defs: Defs) -> frozenset[tuple[str, str]]:
+    """建国のときに置く施設の (施設, 作り方)。初めの値段で経験の係数を掛けるのはこの作り方だけ
+    （同じ産業でも、建国で置かない作り方を島が昔から営んでいたとは限らない）。"""
+    found = set()
+    for start in defs.start_island.values():
+        for item in start.get("facilities", ()):
+            kind = item["kind"]
+            found.add((kind, item.get("recipe") or fac.default_recipe(defs, kind) or "default"))
+    return frozenset(found)
+
+
+def founding_factor(config: GameConfig) -> float:
+    """建国のときの累積（founding.experience_turns）の経験の係数。"""
+    settings = config.get("experience")
+    turns = config.get("founding.experience_turns")
+    if turns <= 0:
+        return 1.0
+    value = 1 + settings["slope"] * math.log2(1 + turns / settings["base_turns"])
+    return min(settings["cap"], value)
+
+
+def start(island: IslandState, config: GameConfig, industries: set[str]) -> None:
+    """建国した島の、昔からの産業 industries の累積を founding.experience_turns にする（その年の量は
+    0。年の終わりに減らす判定は、その年に動かした量で見る）。"""
+    amount = round(config.get("founding.experience_turns") * FULL)
+    if amount <= 0:
+        return
+    rows = table(island)
+    for industry in sorted(industries):
+        rows[industry] = [amount, 0]
 
 
 def close_year(island: IslandState, config: GameConfig) -> list[str]:

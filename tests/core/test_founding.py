@@ -6,6 +6,7 @@ import pytest
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import stock
+from hakoniwa_core.economy import reserve
 from hakoniwa_core.founding import (
     FoundingError,
     FoundingPlan,
@@ -115,7 +116,8 @@ def test_start_island(game):
     assert all(island.tile(h.x, h.y).population == 3000 for h in towns)
     assert len(homes) - len(towns) == 8
     kinds = [f.kind for f in island.facilities]
-    assert kinds.count("farm") == 3
+    # 農場は住民の食べる量に合わせる（漁港の産出の残り。上限 4）
+    assert 1 <= kinds.count("farm") <= 4
     # 住民の買う消費財は、初めから木材で作る（鋼鉄がなくても動く）
     goods = [f for f in island.facilities if f.kind == "consumer_goods_factory"]
     assert [f.recipe for f in goods] == ["wood", "wood"]
@@ -130,6 +132,7 @@ def test_start_island(game):
     assert all((f.x, f.y) in grid for f in placed)
     # 倉庫の資材と、初めの施設の投入財
     assert island.warehouse["steel"][0][1] == 40_000
+    assert stock.total(island.warehouse, "grain") == reserve.target(island, defs, config)
     plant = next(f for f in island.facilities if f.kind == "thermal_power_plant")
     assert stock.total(plant.stock, "coal") == 4_000
     assert all(fac.housing_capacity(defs, h) >= island.tile(h.x, h.y).population for h in homes)
@@ -216,7 +219,7 @@ def test_refound_moves_the_founding_turn(game, economy):
     early = found_island(game.defs, game.config, plan, 1, 0, 0, turn=3)
     late = found_island(game.defs, game.config, plan, 1, 0, 0, turn=9)
     assert island_to_dict(late) != island_to_dict(early)
-    refound(late, 3)
+    refound(late, 3, game.defs)
     assert island_to_dict(late) == island_to_dict(early)
-    refound(late, 5)  # 戻した先より前に建国した島は変えない
+    refound(late, 5, game.defs)  # 戻した先より前に建国した島は変えない
     assert island_to_dict(late) == island_to_dict(early)

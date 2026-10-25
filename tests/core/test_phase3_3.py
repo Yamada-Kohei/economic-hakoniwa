@@ -138,6 +138,7 @@ def test_experience_factor_follows_the_formula_and_its_caps(game):
 def test_an_industry_left_idle_for_a_year_fades(game):
     settings = game.config.get("experience")
     island = generate_world(2, 1, game.config, game.defs).islands[1]
+    island.ext[experience.KEY] = {}  # 建国の昔からの産業の経験は除く
     busy = settings["base_turns"] * experience.FULL
     experience.table(island)["steel"] = [100 * busy, busy]  # その年も動かした
     experience.table(island)["textile"] = [100 * busy, 0]  # その年は動かさなかった
@@ -690,7 +691,7 @@ def test_swap_borrowing_stops_at_the_quota(game, base):
     borrower.economy.gdp_history = [0] * 11 + [1]  # 上限は 0
     assert swap.available(world, game.config, borrower.id, c) == 0
     assert swap.draw(world, game.config, borrower.id, c, 10_000) == 0
-    issuer.economy.gdp_history = [1] * 12  # 発行した国も新しく作れない
+    issuer.economy.gdp_history = [0] * 11 + [1]  # 発行した国も新しく作れない（上限は 0）
     borrower.economy.gdp_history = [10**12] * 12
     assert swap.available(world, game.config, borrower.id, c) == sum(
         spare for _, spare in swap.lenders(world, game.config, borrower.id, c)

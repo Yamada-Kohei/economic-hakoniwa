@@ -74,10 +74,8 @@ FISCAL_LIMIT を超えたら公共事業費と同じ率で減らします（EDUC
 飢饉の手（回5。設計書 12 確かめ方 GT-29）: 食べ物の充足が FAMINE_RATIO を下回った月は、国営の
 農場のうち穀物以外を作っているものを穀物に替え、国の倉庫の食べ物をすべて市場に出し、足りない分の
 穀物を今の値段の EMERGENCY_PRICE 倍の指値で国の倉庫に買い入れます（値段が上がれば商社が輸入する）。
-ふだんの月は、島の食べる量の STORE_TURNS ターン分まで穀物をこの1年でいちばん安い値段の指値で
-買って蓄え（値段の下がった月の余りだけを買い、家計の貧しい層より高く買わない）、傷む
-ROTATE_TURNS ターン前になった古い分を市場に出して入れ替えます（インドの国の穀物の買い上げと備蓄と
-同じ形）。国の倉庫の年の予算は、その買い入れに足りるまで上げます。
+国の倉庫の年の予算は、その買い入れに足りるまで上げます。ふだんの月の穀物の蓄えと入れ替えは、計画に
+よらず国の穀物の備蓄（economy/reserve.py。W-186 の直し 回1）がします。
 電気料金が初めの値段の POWER_CAP 倍を超えたら、そこを公共料金の上限にします。
 民営工場が建てられる島（市場経済と混合経済）では、空いた工業団地のマスが ZONE_SPARE より少なければ、
 町の通勤圏の空いた平地と、地下資源のある島では山を ZONE_BATCH マスまで工業団地に指定します（町の
@@ -143,8 +141,6 @@ TAX_MAX = {"income_tax": 30, "consumption_tax": 20}  # 上げる上限（%）
 SURPLUS_TURNS = 6  # 国庫に支出のこのターン数分があれば、税を戻してよい
 FAMINE_RATIO = 0.95  # 食べ物の充足がこれを下回った月は飢饉の手を打つ
 EMERGENCY_PRICE = 1.5  # 飢饉の月の穀物の買い入れの指値（今の値段のこの倍）
-STORE_TURNS = 2  # ふだんの月に国の倉庫に蓄える穀物（島の食べる量の何ターン分か）
-ROTATE_TURNS = 2  # 傷むこのターン数前になった蓄えは、市場に出して入れ替える
 GRAIN = "grain"
 WORKS_RANGE = (0.2, 2.0)  # 基本に対する倍率の下限と上限
 STARVED_RAISE = 0.25  # 国の工事が公共事業費を待って止まっている間、見直しのたびに増やす割合
@@ -455,57 +451,32 @@ def _tax_order(island: IslandState, config: GameConfig, turn: int) -> tuple[str,
 def _food_orders(
     island: IslandState, defs: Defs, config: GameConfig, turn: int
 ) -> list[tuple[str, dict]]:
-    """飢饉の手と、ふだんの月の穀物の蓄えと入れ替えの命令。"""
+    """飢饉の手の命令（ふだんの月の穀物の蓄えと入れ替えは、国の穀物の備蓄 economy/reserve.py が
+    する）。"""
     ratio = island.stats.get("food.ratio")
     if not island.has_economy or ratio is None or GRAIN not in island.economy.prices:
         return []
+    if ratio >= FAMINE_RATIO:
+        return []
     need = to_milli(island.stats.get("food.need", 0))  # 1ターンに食べる量（穀物に直さない）
     price = island.economy.prices[GRAIN]
-    held = stock.total(island.warehouse, GRAIN)
     orders: list[tuple[str, dict]] = []
-    if ratio < FAMINE_RATIO:
-        for f in island.facilities:
-            recipe = _grain_recipe(defs, island, f)
-            if recipe is not None:
-                orders.append(("change_recipe", {"x": f.x, "y": f.y, "recipe": recipe}))
-        keep = _military_keep(island, config)  # 兵の食べ物は売らない
-        for good in sorted(island.warehouse):
-            qty = stock.total(island.warehouse, good) - keep.get(good, 0)
-            if qty > 0 and "food" in defs.goods.get(good, {}):
-                orders.append(
-                    (
-                        "warehouse_trade",
-                        {"good": good, "side": "sell", "quantity": qty / QUANTITY_SCALE},
-                    )
-                )
-        buy = round(need * (1 - ratio))
-        limit = int(price * EMERGENCY_PRICE)
-    else:
-        shelf = defs.goods[GRAIN].get("shelf_life")
-        old = sum(
-            q
-            for made, q in island.warehouse.get(GRAIN, ())
-            if shelf and turn - made >= shelf - ROTATE_TURNS
-        )
-        if old > 0:
+    for f in island.facilities:
+        recipe = _grain_recipe(defs, island, f)
+        if recipe is not None:
+            orders.append(("change_recipe", {"x": f.x, "y": f.y, "recipe": recipe}))
+    keep = _military_keep(island, config)  # 兵の食べ物は売らない
+    for good in sorted(island.warehouse):
+        qty = stock.total(island.warehouse, good) - keep.get(good, 0)
+        if qty > 0 and "food" in defs.goods.get(good, {}):
             orders.append(
                 (
                     "warehouse_trade",
-                    {"good": GRAIN, "side": "sell", "quantity": old / QUANTITY_SCALE},
+                    {"good": good, "side": "sell", "quantity": qty / QUANTITY_SCALE},
                 )
             )
-        # 蓄えるのは食べ物が足りていて、国が賃金を払えていて国庫にゆとりのある月だけ
-        spending = sum(v for k, v in island.economy.spending.items() if k != "bonds")
-        spare = (
-            ratio >= 1
-            and arrears.total(island, ledger.GOV) <= 0
-            and island.stats.get("treasury", 0) >= spending * SURPLUS_TURNS
-        )
-        buy = need * STORE_TURNS - (held - old) if spare else 0
-        # 指値はこの1年でいちばん安い値段まで。今の値段で買うと、値段の高い月に出した注文が行政力の
-        # 列で遅れて約定し、家計の貧しい層より高く買って食べ物を奪った（財の値幅をなくした後の関門
-        # seed 1 の 300 ターン目。2026-10-20）
-        limit = min([price, *island.economy.price_history.get(GRAIN, [])[-TURNS_PER_YEAR:]])
+    buy = round(need * (1 - ratio))
+    limit = int(price * EMERGENCY_PRICE)
     if buy > 0 and limit > 0:
         budget = money_of(limit, buy) * TURNS_PER_YEAR
         if island.policy.budget.get("warehouse", 0) < budget:

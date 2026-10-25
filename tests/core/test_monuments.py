@@ -153,6 +153,7 @@ def test_stage_records_unrest_war_hunger_and_titles(game, world):
         LogEntry("population_hunger_deaths", {"count": 700, "months": 2.0}),
     ]
     world.ext.setdefault("rankings", {})["titles"] = {"agriculture": 1}
+    monuments.history(island).pop("titles", None)  # 建国の経験で前のターンから持つ称号は除く
     stage.update(world, context(game, world))
     h = monuments.history(island)
     assert h["unrest"] == world.turn + 1
