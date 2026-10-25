@@ -8,8 +8,10 @@ AI（Claude や ChatGPT など）には、パスワードの代わりにアカ�
 - 鍵そのものは作ったときに1度だけ見せ、DB には SHA-256 のハッシュだけを置く（鍵は推測できない長い
   乱数なので、ハッシュから戻せない）。
 - 鍵が効くのは /api/ と /mcp だけ。画面・管理画面・ログインには使えない。
-- 鍵での呼び出しには、1つの鍵が1分に呼べる回数の上限がある（設定 HAKONIWA_AI_CALLS_PER_MINUTE）。
-  サーバーの負担と、人より速く何度も試す有利を抑えるため。
+- 鍵には、1つの鍵が1分に使える処理の数の上限がある（設定 HAKONIWA_AI_CALLS_PER_MINUTE）。/api/ の
+  呼び出しは1回に1、/mcp はまとめ送信に含まれるメッセージの数（1回の送信は HAKONIWA_MCP_MAX_BATCH
+  件まで）。サーバーの負担と、人より速く何度も試す有利を抑えるため。数えは DB で、複数のワーカー
+  が同じ数を見る（server/accounts/throttle.py）。
 - AI の国の印: 取り消していない鍵を持つアカウントの島と、鍵を最後に使ってから MARK_TURNS ターンの
   間の島には、国の一覧と国の画面に「AI」の印を出す。持ち主は消せない（鍵を取り消しても、使った後
   しばらくは残る）。
@@ -19,21 +21,21 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-import time
 from typing import Any
 
 from django.conf import settings
-from django.core.cache import cache
 from django.db.models import Q
 from django.http import JsonResponse
 from django.utils import timezone
 
+from server.accounts import throttle
 from server.accounts.models import ApiKey
 
 TOKEN_PREFIX = "hk_"
 MAX_KEYS = 5  # 1つのアカウントが同時に持てる（取り消していない）鍵の数
 MARK_TURNS = 12  # 鍵を取り消しても、最後に使ってからこのターン数の間は AI の国の印を出す（1年）
 KEY_PATHS = ("/api/", "/mcp")  # 鍵が効く場所
+WINDOW = 60  # 回数を数える区切り（秒）
 NAME_MAX = ApiKey._meta.get_field("name").max_length
 
 
@@ -98,26 +100,28 @@ def touch(key: ApiKey) -> None:
     ApiKey.objects.filter(pk=key.pk).update(last_used_at=now, last_used_turn=turn)
 
 
-def over_limit(key: ApiKey) -> int:
-    """1分に呼べる回数を超えたら、次に呼べるまでの秒数。超えていなければ 0。
+def charge(key: ApiKey, cost: int = 1) -> int:
+    """cost 件分の処理を、この鍵の 1 分の枠から使う。使えたら 0。足りなければ何も使わず、次の枠
+    までの秒数。上限なし（0）なら常に 0。
 
-    数は Django のキャッシュ（既定はプロセスの中のメモリー）で、その分の始めからの回数を数える。
-    """
+    /api/ の呼び出しは 1 回に 1、/mcp は含まれるメッセージの数（server/web/mcp.py）。数えは DB で、
+    どのワーカーも同じ回数を見る（server/accounts/throttle.py）。"""
     limit = settings.HAKONIWA_AI_CALLS_PER_MINUTE
     if limit <= 0:
         return 0
-    now = time.time()
-    window = int(now // 60)
-    name = f"hakoniwa:ai-calls:{key.pk}:{window}"
-    cache.add(name, 0, timeout=120)
-    try:
-        count = cache.incr(name)
-    except ValueError:  # 数えている間に消えた
-        cache.set(name, 1, timeout=120)
-        count = 1
-    if count > limit:
-        return max(1, 60 - int(now % 60))
-    return 0
+    return throttle.consume("ai-key", str(key.pk), limit=limit, window_seconds=WINDOW, cost=cost)
+
+
+def over_limit_response(wait: int, cost: int = 1) -> JsonResponse:
+    limit = settings.HAKONIWA_AI_CALLS_PER_MINUTE
+    if cost > limit:
+        text = (
+            f"一度に {cost} 件の処理は送れません。AI 用の鍵で 1 分に使えるのは {limit} 件までです。"
+            "件数を減らして送ってください"
+        )
+    else:
+        text = f"AI 用の鍵で使えるのは 1 分に {limit} 件までです。{wait} 秒ほど待ってください"
+    return _error(text, 429, **{"Retry-After": str(wait)})
 
 
 def ai_owner_ids(turn: int | None = None) -> set[int]:
@@ -166,14 +170,11 @@ class KeyMiddleware:
                     401,
                     **{"WWW-Authenticate": 'Bearer realm="hakoniwa"'},
                 )
-            wait = over_limit(key)
-            if wait:
-                limit = settings.HAKONIWA_AI_CALLS_PER_MINUTE
-                return _error(
-                    f"AI 用の鍵で呼べるのは 1 分に {limit} 回までです。{wait} 秒ほど待ってください",
-                    429,
-                    **{"Retry-After": str(wait)},
-                )
+            # POST /mcp は、本文のメッセージの数を見てから数える（server/web/mcp.py の endpoint）
+            if not (request.method == "POST" and request.path == "/mcp"):
+                wait = charge(key)
+                if wait:
+                    return over_limit_response(wait)
             touch(key)
             request.user = key.user
             request.api_key = key

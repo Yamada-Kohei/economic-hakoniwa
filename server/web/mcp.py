@@ -9,7 +9,11 @@ MCP（Model Context Protocol）は、AI が外の道具を使うための公開�
 - 道具の中身は、画面が使う JSON API（api.py ほか）をサーバーの中で呼ぶだけ。見られるもの・出せる
   命令・送れる公電の数は、画面で遊ぶ人と同じ決まりで決まる。AI だけが見られる値や、先の見込みは
   出さない。
-- 鍵での呼び出しの回数の上限は、MCP の1つの POST を1回と数える。
+- 鍵の処理数の上限（1 分に HAKONIWA_AI_CALLS_PER_MINUTE 件）は、POST に含まれるメッセージの数で
+  数える（単独は 1 件、まとめ送信は配列の長さ。通知・知らない命令・形の誤ったものも 1 件）。
+  まとめ送信は 1 回に HAKONIWA_MCP_MAX_BATCH 件まで。件数の超過も、残りの枠より多いときも、
+  1 件も実行せずに 429 か 400 で断る（server/accounts/keys.py の charge）。道具の中で呼ぶ API は
+  数え直さない。
 
 決まりの版は PROTOCOL_VERSIONS のどれでも受ける（initialize で相手が言った版が分かれば、それで
 答える）。
@@ -27,6 +31,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlencode, urlsplit
 
+from django.conf import settings
 from django.http import Http404, HttpRequest, HttpResponse, JsonResponse, QueryDict
 from django.urls import Resolver404, resolve
 from django.views.decorators.csrf import csrf_exempt
@@ -34,6 +39,7 @@ from django.views.decorators.csrf import csrf_exempt
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.naming import facility_name
 from server import jsonbody
+from server.accounts import keys
 from server.game import get_game
 from server.letters import services as letter_services
 from server.web import display
@@ -1404,11 +1410,34 @@ def endpoint(request: HttpRequest) -> HttpResponse:
         )
         response["WWW-Authenticate"] = 'Bearer realm="hakoniwa"'
         return response
+    key = request.api_key
     try:
         message = jsonbody.loads(request.body or b"")
     except ValueError:
+        wait = keys.charge(key, 1)
+        if wait:
+            return keys.over_limit_response(wait)
         return _json(_error(None, -32700, "JSON として読めません"), status=400)
-    if isinstance(message, list):  # まとめて送る形（2025-03-26 の版）
+    # 実行の前に、メッセージの数を確かめて、枠をまとめて使う（断るなら 1 件も実行しない）
+    batch = isinstance(message, list)  # まとめて送る形（2025-03-26 の版）
+    max_batch = max(1, settings.HAKONIWA_MCP_MAX_BATCH)
+    if batch and len(message) > max_batch:
+        wait = keys.charge(key, 1)  # 断るだけの送信も、ただでは受けない
+        if wait:
+            return keys.over_limit_response(wait)
+        return _json(
+            _error(
+                None, -32600, f"まとめ送信は 1 回に {max_batch} 件までです（{len(message)} 件）"
+            ),
+            status=400,
+        )
+    cost = max(1, len(message)) if batch else 1
+    wait = keys.charge(key, cost)
+    if wait:
+        return keys.over_limit_response(wait, cost)
+    if batch:
+        if not message:
+            return _json(_error(None, -32600, "空のまとめ送信は受け付けません"), status=400)
         answers = [a for a in (handle(request, x) for x in message) if a is not None]
         return _json(answers) if answers else HttpResponse(status=202)
     answer = handle(request, message)

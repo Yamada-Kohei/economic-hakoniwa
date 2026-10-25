@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% load i18n %}
+{% block content %}
+<h1>{% translate "ログインを少し待ってください" %}</h1>
+<p>{% blocktranslate %}ログインの試しが多すぎます。{{ wait_text }}ほど待ってから、もう一度お試しください。{% endblocktranslate %}</p>
+<p><a href="{% url 'login' %}">{% translate "ログインの画面にもどる" %}</a></p>
+{% endblock %}

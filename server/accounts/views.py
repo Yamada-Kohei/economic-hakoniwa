@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import ipaddress
 import logging
 from datetime import timedelta
 
@@ -21,45 +20,13 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 
 from server.accounts import keys
+from server.accounts.clientip import client_ip
 from server.accounts.forms import SignupForm
 from server.accounts.models import ApiKey, SignupRecord
 from server.game import get_game
 from server.world.models import Island
 
 logger = logging.getLogger(__name__)
-
-
-def _parse_ip(text: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
-    """IP の文字を読む。ポート付き（1.2.3.4:80、[::1]:80）と括弧付き（[::1]）も受ける。"""
-    candidates = [text]
-    if text.startswith("["):
-        candidates.append(text[1:].split("]", 1)[0])
-    elif text.count(":") == 1:
-        candidates.append(text.split(":", 1)[0])
-    for candidate in candidates:
-        try:
-            return ipaddress.ip_address(candidate)
-        except ValueError:
-            continue
-    return None
-
-
-def client_ip(request) -> str:
-    """利用者の IP。リバースプロキシの後ろでは HAKONIWA_CLIENT_IP_HEADER で見る場所を変える。
-
-    IPv6 は、1 つの回線に配られる /64 の先頭の部分にそろえる（同じ人が /64 の中で接続元を
-    変えて、制限をすり抜けられないように）。IPv4 を IPv6 の形で書いたものは IPv4 に直す。
-    読めない・空のときは空文字。
-    """
-    value = request.META.get(settings.HAKONIWA_CLIENT_IP_HEADER, "") or ""
-    ip = _parse_ip(value.split(",")[0].strip())
-    if ip is None:
-        return ""
-    if isinstance(ip, ipaddress.IPv6Address):
-        if ip.ipv4_mapped is not None:
-            return str(ip.ipv4_mapped)
-        return str(ipaddress.ip_network((ip, 64), strict=False).network_address)
-    return str(ip)
 
 
 def ip_hash(ip: str) -> str:

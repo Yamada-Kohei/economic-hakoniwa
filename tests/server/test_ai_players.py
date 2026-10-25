@@ -149,7 +149,7 @@ def test_key_calls_per_minute(world, settings):
     assert [client.get("/api/me").status_code for _ in range(3)] == [200, 200, 200]
     res = client.get("/api/me")
     assert res.status_code == 429 and int(res["Retry-After"]) >= 1
-    assert "1 分に 3 回まで" in res.json()["error"]
+    assert "1 分に 3 件まで" in res.json()["error"]
     assert _keyed(other).get("/api/me").status_code == 200  # 鍵ごとに数える
     assert Client().get("/api/me").status_code == 200  # 画面（鍵なし）は数えない
 
