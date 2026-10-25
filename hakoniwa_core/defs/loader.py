@@ -13,6 +13,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
+from hakoniwa_core import scale
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs.defs import Defs, PackInfo
 from hakoniwa_core.defs.errors import DefsError, DefsIssue
@@ -56,6 +57,8 @@ class _Loader:
             self._load_pack_data(found[name], tables, origins)
         self._raise_if_issues()
 
+        # 国の大きさの倍（段6 A3。hakoniwa_core/scale.py）は正規化の前に掛ける
+        scale.apply_defs(tables, scale.people(self.config))
         tables = {
             kind: {i: KINDS[kind].normalize(e) for i, e in entries.items()}
             for kind, entries in tables.items()

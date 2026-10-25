@@ -90,7 +90,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, ledger, nature, stock, trade
+from hakoniwa_core import infra, ledger, nature, scale, stock, trade
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
@@ -123,7 +123,7 @@ CONSUMER_MARGIN = 1.0  # 消費財の生産を、住民1人あたりの目安の
 MARKET_SHORT = 0.9  # 前のターンの市場で、売りに出た量が買いたい量のこの割合より少なければ足りない
 PRICE_HIGH = 1.5  # 投入財と資材は、買いたい量に届かず値段が初めのこの倍を超えていれば足りない
 BUSY_UNEMPLOYMENT = 0.1  # 失業率がこれを超えている間は、同時に進める工事を1つ増やす
-MAX_MISSING_WORKERS = 1000  # 足りない労働者がこの人数より多い間は、連鎖を太くしない
+MAX_MISSING_WORKERS = 1000  # 足りない労働者がこの人数（× 国の大きさの倍）より多い間は増やさない
 BUDGET_TURNS = 6  # 公共事業費を見直す間隔
 PUBLIC_WORKS = 600  # 公共事業費の基本（住民1人あたりの年の額）
 UNEMPLOYMENT_RESPONSE = 5.0  # 失業率がふつうより 1% 高いごとに、基本のこの % だけ増やす
@@ -1014,7 +1014,8 @@ def _candidates(
         for f in island.facilities
         if not services.is_services(config, f)
     )
-    if missing > MAX_MISSING_WORKERS or _hireable(island, config) < NATURAL_UNEMPLOYMENT:
+    too_few = _hireable(island, config) < NATURAL_UNEMPLOYMENT
+    if missing > MAX_MISSING_WORKERS * scale.people(config) or too_few:
         return
     # 島の鉱業資源を、島のどの施設（工事中を含む）も使っていなければ、使う施設を1つ（輸出向け）
     used = {g for f in island.facilities for g in fac.recipe_of(defs, f)["inputs"]}
@@ -1397,7 +1398,7 @@ def plan_trade(
 # --- 戦争（フェーズ4-3。設計書 MI-44） --------------------------------
 
 DEFENSE_SHARE = 0.005  # 宣戦されたとき（反乱の前触れが続くときも）、住民のこの割合を兵の目標にする
-DEFENSE_MIN = 100  # 兵の目標の下限（歩兵 1 中隊）
+DEFENSE_MIN = 1  # 兵の目標の下限（歩兵の部隊の数。兵の数は army.yaml の infantry の soldiers）
 WAR_ORDERS = ("sign_treaty", "set_defense", "recruit", "form_unit")
 
 
@@ -1441,7 +1442,8 @@ def plan_war(
                 plans[i] = [("sign_treaty", {"treaty": t["id"]})]
                 break
         else:
-            target = max(DEFENSE_MIN, int(population_of(island) * DEFENSE_SHARE))
+            floor = DEFENSE_MIN * defs.army["infantry"]["soldiers"]
+            target = max(floor, int(population_of(island) * DEFENSE_SHARE))
             order = defense_order(island, world, defs, config, target)
             if order is not None:
                 plans[i] = [order]

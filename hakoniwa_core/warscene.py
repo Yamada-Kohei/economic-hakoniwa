@@ -49,7 +49,7 @@ WAR_PREP = 24  # 宣戦の何ターン前から攻める側が備えるか
 COMPANIES = 5  # 攻める側の歩兵の中隊の数（兵舎 1 つの定員 500 人）
 PEACE_AFTER = 48  # 上陸から何ターン後に講和を提案するか
 SEALIFT_SHIPS = 2  # 補給の船団の輸送船の数
-GRANT = {"weapons": COMPANIES * 100, "ammunition": 120}  # 備えの初めに足す国の倉庫の物（トン・組）
+AMMUNITION = 0.24  # 備えの初めに国の倉庫へ足す弾薬（兵 1 人あたりのトン）。武器は兵の数だけ
 RESERVE = {"food": 12}  # 外国へ送る補給の備蓄の目標（トン。国防費の装備の分で市場から買う）
 
 
@@ -140,8 +140,15 @@ def orders(
 
 
 def _grant(world: WorldState, defs: Defs, island: IslandState) -> None:
-    for good, tons in GRANT.items():
-        stock.add(island.warehouse, good, tons * QUANTITY_SCALE, world.turn, defs.goods)
+    soldiers = _soldiers(defs)
+    grant = {"weapons": soldiers, "ammunition": AMMUNITION * soldiers}
+    for good, tons in grant.items():
+        stock.add(island.warehouse, good, round(tons * QUANTITY_SCALE), world.turn, defs.goods)
+
+
+def _soldiers(defs: Defs) -> int:
+    """攻める側の歩兵の兵の数（COMPANIES 部隊ぶん）。"""
+    return COMPANIES * defs.army["infantry"]["soldiers"]
 
 
 def _prepare(
@@ -157,7 +164,7 @@ def _prepare(
     if not forces.state_of(attacker, config).get("reserve"):
         plans.setdefault(attacker.id, []).append(("set_defense", {"reserve": RESERVE}))
         return
-    order = autoplan.defense_order(attacker, world, defs, config, COMPANIES * 100)
+    order = autoplan.defense_order(attacker, world, defs, config, _soldiers(defs))
     if order is not None:
         plans.setdefault(attacker.id, []).append(order)
 
@@ -191,8 +198,9 @@ def _land(
         world, attacker.id, "transport", defender.wx, defender.wy, ships=SEALIFT_SHIPS
     )
     fleet["status"] = army.READY
-    fleet["soldiers"], fleet["equipment"] = 10 * SEALIFT_SHIPS, {"transport_ship": SEALIFT_SHIPS}
-    forces.state_of(attacker)["volunteers"] += 10 * SEALIFT_SHIPS
+    crew = ctx.defs.army["transport"]["soldiers"] * SEALIFT_SHIPS
+    fleet["soldiers"], fleet["equipment"] = crew, {"transport_ship": SEALIFT_SHIPS}
+    forces.state_of(attacker)["volunteers"] += crew
     return ready
 
 

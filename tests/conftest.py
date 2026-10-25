@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import textwrap
 from pathlib import Path
@@ -7,6 +8,9 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
+
+# 試験は国の大きさの倍 1 の数で書いてある（倍の試験は tests/core/test_scale.py で倍を指して回す）
+os.environ.setdefault("HK_SCALE", "1")
 
 
 @pytest.fixture
