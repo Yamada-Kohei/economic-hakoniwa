@@ -284,6 +284,12 @@ Codex のレビュー（2026-10-16 付け、`docs/reviews/2026-10-16-codex-revie
 | W-192 | 講和の部隊の引き揚げ（10-26 本人「5B」）: 期限が来たとき、運べる船（輸送船団）があれば部隊を自動で帰国させ、なければ今のとおりその場で除隊する。条約の破棄の後も貿易圏の加盟が残るのは今のまま（手引きに書く） | 試し遊び2回目（2026-10-26、/mnt/project-files/playtest-round2/summary.md） | 15 軍事と戦争、14 外交 |
 | W-193 | 中央銀行の国債の買い入れを、値段を上げて買えるようにする（10-26 本人「B＋今の C」）: 今は中央銀行の買いは指値なしでも、利回りが 1 か月に動ける幅（`bonds.trade_band`）の中でしか値段が付かず、銀行が今の利回りで持ちたい分しか売らないので、不況の国が 20 億で注文しても 0〜3 億しか買えない（試し遊びの E）。中央銀行の買いには国債の値段を幅を越えて上げてでも買う道を入れ（指値オペに近い）、利回りが下がって銀行が売るようにする。売れ残りの国債を中央銀行が引き受ける今の道（BK-29・BK-44）は残す。境目の表と測りの比べを通す | 試し遊び2回目（2026-10-26、/mnt/project-files/playtest-round2/summary.md） | 7 お金と銀行、6 国の財政と政策 |
 | W-164 | 運用の細部の後回し（段6 の運用の直しで見つけたもの）: (1) 同時に出された登録は、数えてから作る間に上限を超えうる（ロボット避けを入れてから見る）、(2) NAT64 の裏の接続元は 1 つにまとまる、(3) 更新が鎖を待っている間に命令の書き換えがコミットされると、その島の命令はそのターンに読まれず次のターンに回る、(4) 世界の行の鎖が 1 つなので、別の島の命令の書き換えが重なると 409 になる（再送で通る） | 運用の直し（PR #131）の見直し | 11 画面と統計 UI-32、1 全体 OV-28 |
+| W-194 | 混合経済の島で、農場が閉じた後の 34〜36 ターン目に飢饉が起きる | スレッド「市場経済の国の不況を Opus 最大で調べる」2026-10-26（W-186 の調べで見つかった別件。報告書 https://claude.ai/artifact/VCrXuynigiPkFFG5kVfNBi、引き継ぎ /mnt/project-files/playtest-round2/recession-max-handoff.md） | 5 施設と企業、2 島と町と人口 |
+| W-195 | 外国の商人が去る 120 ターン目の後、石炭のない島の発電が止まり、126〜150 ターン目に崩れる（W-27 と関係） | スレッド「市場経済の国の不況を Opus 最大で調べる」2026-10-26（W-186 の調べで見つかった別件。報告書 https://claude.ai/artifact/VCrXuynigiPkFFG5kVfNBi、引き継ぎ /mnt/project-files/playtest-round2/recession-max-handoff.md） | 9 貿易と為替、8 インフラと教育 |
+| W-196 | 1 ターン目に、売れていない在庫を市場の値段で数えてもうけとし、法人税（3 ターン目の 3 倍）と配当を払う | スレッド「市場経済の国の不況を Opus 最大で調べる」2026-10-26（W-186 の調べで見つかった別件。報告書 https://claude.ai/artifact/VCrXuynigiPkFFG5kVfNBi、引き継ぎ /mnt/project-files/playtest-round2/recession-max-handoff.md） | 5 施設と企業、6 国の財政と政策 |
+| W-197 | 島の「もうけ」の統計に役所・学校の賃金が入り、GDP の −19% に見える（民間の会社だけならほぼ 0） | スレッド「市場経済の国の不況を Opus 最大で調べる」2026-10-26（W-186 の調べで見つかった別件。報告書 https://claude.ai/artifact/VCrXuynigiPkFFG5kVfNBi、引き継ぎ /mnt/project-files/playtest-round2/recession-max-handoff.md） | 11 画面と統計 |
+| W-198 | 計画経済の国営企業が売れないと人を減らす（失業 14%）。現実は人を抱え込み、品不足が出る | スレッド「市場経済の国の不況を Opus 最大で調べる」2026-10-26（W-186 の調べで見つかった別件。報告書 https://claude.ai/artifact/VCrXuynigiPkFFG5kVfNBi、引き継ぎ /mnt/project-files/playtest-round2/recession-max-handoff.md） | 10 政治と体制、5 施設と企業 |
+| W-199 | 穀物の日持ちが 8 ターンで、備蓄に向かない | スレッド「市場経済の国の不況を Opus 最大で調べる」2026-10-26（W-186 の調べで見つかった別件。報告書 https://claude.ai/artifact/VCrXuynigiPkFFG5kVfNBi、引き継ぎ /mnt/project-files/playtest-round2/recession-max-handoff.md） | 3 物と市場と値段 |
 
 ## 未決事項（決めが要るもの）
 
