@@ -10,6 +10,7 @@ save() で変わったものだけを書き戻す。トランザクションは�
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
@@ -33,7 +34,7 @@ from server.game import get_game
 from server.orders.models import Order
 from server.turns.models import TurnLog
 from server.world import models as m
-from server.world.bulk import update_rows
+from server.world.bulk import insert_rows, update_rows
 
 BATCH = 2000
 
@@ -177,21 +178,19 @@ class WorldRepository:
         ]
         update_rows(Order, changed_orders, ORDER_FIELDS)
 
-        TurnLog.objects.bulk_create(
-            [
-                TurnLog(island_id=island.id, turn=state.turn, kind=e.kind, args=e.args)
-                for island in islands
-                for e in island.log
-            ],
-            batch_size=BATCH,
+        insert_rows(
+            TurnLog,
+            ["island_id", "turn", "kind", "args"],
+            ((island.id, state.turn, e.kind, e.args) for island in islands for e in island.log),
         )
-        m.StatRecord.objects.bulk_create(
-            [
-                m.StatRecord(island_id=island.id, turn=state.turn, name=name, value=value)
+        insert_rows(
+            m.StatRecord,
+            ["island_id", "turn", "name", "value"],
+            (
+                (island.id, state.turn, name, value)
                 for island in islands
                 for name, value in sorted(island.stats.items())
-            ],
-            batch_size=BATCH,
+            ),
         )
 
         self.world.turn = state.turn
@@ -308,20 +307,13 @@ def write_stocks(islands: Iterable[IslandState], replace: bool) -> None:
     for island in islands:
         for good in sorted(island.warehouse):
             for made, qty in island.warehouse[good]:
-                rows.append(m.Stock(island_id=island.id, good=good, made_turn=made, quantity=qty))
+                rows.append((island.id, None, good, made, qty))
         for f in island.facilities:
+            pk = facility_pk[(island.id, f.id)]
             for good in sorted(f.stock):
                 for made, qty in f.stock[good]:
-                    rows.append(
-                        m.Stock(
-                            island_id=island.id,
-                            facility_id=facility_pk[(island.id, f.id)],
-                            good=good,
-                            made_turn=made,
-                            quantity=qty,
-                        )
-                    )
-    m.Stock.objects.bulk_create(rows, batch_size=BATCH)
+                    rows.append((island.id, pk, good, made, qty))
+    insert_rows(m.Stock, ["island_id", "facility_id", "good", "made_turn", "quantity"], rows)
 
 
 def load_money(islands: dict[int, IslandState], accounts) -> None:
@@ -340,40 +332,32 @@ def write_money(islands: Iterable[IslandState], replace: bool) -> None:
         em.Account.objects.filter(island_id__in=ids).delete()
         em.Bond.objects.filter(island_id__in=ids).delete()
         em.Loan.objects.filter(island_id__in=ids).delete()
-    em.Account.objects.bulk_create(
-        [
-            em.Account(island_id=island.id, name=name, balance=balance)
+    insert_rows(
+        em.Account,
+        ["island_id", "name", "balance"],
+        (
+            (island.id, name, balance)
             for island in islands
             for name, balance in sorted(island.accounts.items())
-        ],
-        batch_size=BATCH,
+        ),
     )
-    em.Bond.objects.bulk_create(
-        [
-            em.Bond(
-                island_id=island.id,
-                number=b.id,
-                issued=b.issued,
-                term=b.term,
-                rate=b.rate,
-                face=b.face,
-            )
+    insert_rows(
+        em.Bond,
+        ["island_id", "number", "issued", "term", "rate", "face"],
+        (
+            (island.id, b.id, b.issued, b.term, b.rate, b.face)
             for island in islands
             for b in island.bonds
-        ],
-        batch_size=BATCH,
+        ),
     )
-    em.Loan.objects.bulk_create(
-        [
-            em.Loan(
-                island_id=island.id,
-                number=x.id,
-                **{name: getattr(x, name) for name in LOAN_FIELDS},
-            )
+    insert_rows(
+        em.Loan,
+        ["island_id", "number", *LOAN_FIELDS],
+        (
+            (island.id, x.id, *(getattr(x, name) for name in LOAN_FIELDS))
             for island in islands
             for x in island.loans
-        ],
-        batch_size=BATCH,
+        ),
     )
 
 
@@ -402,68 +386,37 @@ def loan_from_row(row: em.Loan) -> Loan:
 def write_records(islands: Iterable[IslandState], turn: int) -> None:
     """このターンの仕訳・約定・市場の記録・施設の帳簿を足し、残す期間を過ぎた行を消す。"""
     islands = list(islands)
-    em.JournalEntry.objects.bulk_create(
-        [
-            em.JournalEntry(
-                island_id=i.id,
-                turn=turn,
-                kind=e.kind,
-                debit=e.debit,
-                credit=e.credit,
-                amount=e.amount,
-            )
-            for i in islands
-            for e in i.journal
-        ],
-        batch_size=BATCH,
+    insert_rows(
+        em.JournalEntry,
+        ["island_id", "turn", "kind", "debit", "credit", "amount"],
+        ((i.id, turn, e.kind, e.debit, e.credit, e.amount) for i in islands for e in i.journal),
     )
-    em.Trade.objects.bulk_create(
-        [
-            em.Trade(
-                island_id=i.id,
-                turn=turn,
-                good=t.good,
-                buyer=t.buyer,
-                seller=t.seller,
-                quantity=t.quantity,
-                amount=t.amount,
-            )
+    insert_rows(
+        em.Trade,
+        ["island_id", "turn", "good", "buyer", "seller", "quantity", "amount"],
+        (
+            (i.id, turn, t.good, t.buyer, t.seller, t.quantity, t.amount)
             for i in islands
             for t in i.trades
-        ],
-        batch_size=BATCH,
+        ),
     )
-    em.MarketRecord.objects.bulk_create(
-        [
-            em.MarketRecord(
-                island_id=i.id,
-                turn=turn,
-                good=r.good,
-                price=r.price,
-                volume=r.volume,
-                demand=r.demand,
-                supply=r.supply,
-            )
+    insert_rows(
+        em.MarketRecord,
+        ["island_id", "turn", "good", "price", "volume", "demand", "supply"],
+        (
+            (i.id, turn, r.good, r.price, r.volume, r.demand, r.supply)
             for i in islands
             for r in i.markets
-        ],
-        batch_size=BATCH,
+        ),
     )
-    em.FacilityBook.objects.bulk_create(
-        [
-            em.FacilityBook(
-                island_id=i.id,
-                turn=turn,
-                facility=b.facility,
-                items=b.items,
-                deposit=b.deposit,
-                debt=b.debt,
-                inventory=b.inventory,
-            )
+    insert_rows(
+        em.FacilityBook,
+        ["island_id", "turn", "facility", "items", "deposit", "debt", "inventory"],
+        (
+            (i.id, turn, b.facility, b.items, b.deposit, b.debt, b.inventory)
             for i in islands
             for b in i.books
-        ],
-        batch_size=BATCH,
+        ),
     )
     records = get_game().config.get("records")
     ids = [i.id for i in islands]
@@ -554,15 +507,16 @@ def _values(obj: Any, names: list[str]) -> tuple[Any, ...]:
     return tuple(_freeze_json(_plain(getattr(obj, name))) for name in names)
 
 
+def _freeze_json(value: Any) -> Any:
+    """比較用。入れ子の dict や list は、キーを並べた JSON の文字列にして比べる。
+
+    DB の JSON の欄に入る形で比べるので、キーの数と文字の違い（1 と "1"）は同じとみなす。
+    """
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
+    return value
+
+
 def _plain(value: Any) -> Any:
     """保存する形（JSON の欄に入れる dict）。経済の状態や政策の dataclass は dict にする。"""
     return asdict(value) if is_dataclass(value) and not isinstance(value, type) else value
-
-
-def _freeze_json(value: Any) -> Any:
-    """比較用。入れ子の dict や list も比べられる形にする。"""
-    if isinstance(value, dict):
-        return tuple(sorted((k, _freeze_json(v)) for k, v in value.items()))
-    if isinstance(value, list):
-        return tuple(_freeze_json(v) for v in value)
-    return value
