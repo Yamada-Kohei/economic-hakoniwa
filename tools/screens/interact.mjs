@@ -26,9 +26,10 @@ async function session(kind) {
 
 async function pickTile(page, id, x, y) {
   await page.goto(`${base}/islands/${id}/`, { waitUntil: 'networkidle' });
-  await page.fill('#map-coordinate input[name=x]', String(x));
-  await page.fill('#map-coordinate input[name=y]', String(y));
-  await page.click('#map-coordinate button[type=submit]');
+  // 小さな地図の押した位置からマスを選ぶ
+  const n = await page.evaluate(async () => (await fetch(document.getElementById('island-map').dataset.api).then((r) => r.json())).size);
+  const box = await page.locator('#minimap').boundingBox();
+  await page.mouse.click(box.x + ((x + 0.5) / n) * box.width, box.y + ((y + 0.5) / n) * box.height);
   await page.waitForTimeout(800);
   return page.evaluate(() => document.body.innerText);
 }
