@@ -693,11 +693,11 @@ def status_text(f: Facility) -> str:
         return ""
     kind, _, good = f.status.partition(":")
     reason = f.ext.get("halt_reason")
-    if (
-        kind == "halted" and reason in HALT_REASONS
-    ):  # 戦争・ミサイル・占領で止まったのは災害ではない
-        kind = f"halted_{reason}"
-    text = message(f"status_{kind}")
+    # 戦争・ミサイル・占領で止まったのは災害ではない
+    if kind == "halted" and reason in HALT_REASONS:
+        text = message(f"halt_reason_{reason}")
+    else:
+        text = message(f"status_{kind}")
     if good:
         text += f"（{get_game().defs.name('goods', good)}）"
     return text

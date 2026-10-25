@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from django.contrib.auth.models import User
 from django.core.management import call_command
+from django.core.management.color import no_style
+from django.db import connection
 
 from hakoniwa_core import politics
 from hakoniwa_core.military import army, civil_war, forces
@@ -38,6 +40,16 @@ PASSWORD = "a-long-pass-123"
 class _Null:
     def write(self, *_):
         pass
+
+
+def _restart_island_numbers() -> None:
+    """島の番号を 1 から振り直す（部隊や戦争の置き方の道具は島 1・島 2 と決めて書いてある。
+    PostgreSQL は試験の巻き戻しでも番号の数え方が戻らない）。"""
+    with connection.cursor() as cursor:
+        for sql in connection.ops.sequence_reset_by_name_sql(
+            no_style(), [{"table": "world_island", "column": "id"}]
+        ):
+            cursor.execute(sql)
 
 
 def make_user(name: str) -> User:
@@ -69,6 +81,7 @@ def build(seed: int = 3, warm_turns: int = 3, war_turns: int = 4) -> dict[str, i
     """世界を作って返す（島の種類 → 島の番号）。DB の中で呼ぶ。"""
     from server.world.models import World
 
+    _restart_island_numbers()
     call_command("create_sample_world", islands=4, seed=seed, stdout=_Null())
     world = World.objects.get()
     islands = list(world.islands.order_by("id"))
