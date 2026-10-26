@@ -763,9 +763,32 @@ def settlement_of(defs: Defs, population: int) -> str:
     return found
 
 
-def housing_capacity(defs: Defs, f: Facility) -> int:
+# 町の economy（回3）: 家の傷み具合（HOUSING_FULL 分の 1。書いていなければ新品）と、傷みで住める
+# 上限の割合（FULL 分の 1。書いていなければ全部。都市の発展の段が housing.livable から書く）
+HOUSING_CONDITION = "housing_condition"
+HOUSING_ROOM = "housing_room"
+HOUSING_FULL = 100_000
+
+
+def nominal_housing_capacity(defs: Defs, f: Facility) -> int:
+    """町の段階の住める上限（傷みを見ない。育つかどうかの目安と画面に使う）。"""
     level = f.ext.get("level") or defs.settlement_levels()[0]
     return defs.settlements[level]["capacity"]
+
+
+def housing_capacity(defs: Defs, f: Facility) -> int:
+    """町に住める上限（傷んだ家は住める人が減る。回3）。"""
+    return nominal_housing_capacity(defs, f) * f.economy.get(HOUSING_ROOM, FULL) // FULL
+
+
+def housing_materials(defs: Defs, level: str) -> dict[str, int]:
+    """いちばん下の段階から level まで育つのに使った資材の合計（家の値打ちと手入れの量に使う）。"""
+    levels = defs.settlement_levels()
+    total: dict[str, int] = {}
+    for name in levels[: levels.index(level) + 1]:
+        for good, qty in defs.settlements[name].get("materials", {}).items():
+            total[good] = total.get(good, 0) + qty
+    return total
 
 
 def new_housing(island: IslandState, kind: str, pos: tuple[int, int], level: str) -> Facility:

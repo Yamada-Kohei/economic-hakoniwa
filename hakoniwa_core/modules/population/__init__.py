@@ -1178,6 +1178,8 @@ class Housing(IslandStage):
         homes = homes_of(island, config)
         kind = fac.housing_kind(config)
         levels = defs.settlement_levels()
+        if island.has_economy:
+            self._maintain(island, defs, h, homes, levels)
         built = upgraded = 0
         short: set[str] = set()  # 足りなくて町が育たなかった資源
         dry: set[Pos] = set()  # 上下水道が足りなくて育たなかった町のマス
@@ -1294,11 +1296,52 @@ class Housing(IslandStage):
         if not missing:
             for good, qty in sorted(need.items()):
                 stock.take(held, good, qty)
-        else:
+        else:  # 次のターンに買うのは1か所分まで（育たなかった町の数だけ積み上げない。回3）
             want = housing["want"]
             for good, qty in sorted(need.items()):
-                want[good] = want.get(good, 0) + qty
+                want[good] = max(want.get(good, 0), qty)
         return missing
+
+    @staticmethod
+    def _maintain(
+        island: IslandState,
+        defs: Defs,
+        h: dict[str, Any],
+        homes: dict[Pos, Facility],
+        levels: tuple[str, ...],
+    ) -> None:
+        """家の傷みと手入れ（回3）: 町の家は年に housing.wear ずつ傷む。傷んだ分の資材（その段階まで
+        育つのに使った資材 × 傷んだ割合）を、家計が買った資材から育つより先に使って直す。足りない分
+        は economy.housing["repair"] に書き、次のターンの市場で一般の層が預金から買う。傷みが
+        housing.livable を下回った町は、住める上限がその割合で下がる。"""
+        full = fac.HOUSING_FULL
+        step = round(h["wear"] * full / YEAR)
+        held = island.economy.housing["stock"]
+        repair: dict[str, int] = {}
+        order = sorted(
+            homes.items(),
+            key=lambda kv: (kv[1].economy.get(fac.HOUSING_CONDITION, full), kv[0][1], kv[0][0]),
+        )
+        for _, home in order:
+            cond = max(0, home.economy.get(fac.HOUSING_CONDITION, full) - step)
+            lost = full - cond
+            need = {
+                g: q * lost // full
+                for g, q in fac.housing_materials(defs, home.ext.get("level", levels[0])).items()
+            }
+            need = {g: q for g, q in need.items() if q > 0}
+            if need:
+                share = min(1.0, *(stock.total(held, g) / q for g, q in need.items()))
+                for good, qty in sorted(need.items()):
+                    used = int(qty * share)
+                    stock.take(held, good, used)
+                    if used < qty:
+                        repair[good] = repair.get(good, 0) + qty - used
+                cond += int(lost * share)
+            home.economy[fac.HOUSING_CONDITION] = cond
+            livable = round(h["livable"] * full)
+            home.economy[fac.HOUSING_ROOM] = min(fac.FULL, cond * fac.FULL // max(1, livable))
+        island.economy.housing["repair"] = repair
 
     @staticmethod
     def _upgradable(
@@ -1317,7 +1360,7 @@ class Housing(IslandStage):
             level = home.ext.get("level", levels[0])
             if levels.index(level) + 1 >= len(levels):
                 continue
-            if island.tile(*pos).population < fac.housing_capacity(defs, home) * fill_ratio:
+            if island.tile(*pos).population < fac.nominal_housing_capacity(defs, home) * fill_ratio:
                 continue
             need = defs.settlements[levels[levels.index(level) + 1]].get("water", 0)
             if island.has_economy and infra.water(defs, island.tile(*pos)) < round(need * 1000):

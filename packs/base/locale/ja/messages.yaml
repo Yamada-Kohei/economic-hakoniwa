@@ -575,6 +575,7 @@ founding_already: "既に国を保有しています（1人1国）"
 # 画面（フェーズ2-2）
 loan_working: "運転資金"
 loan_construction: "建設資金"
+loan_mortgage: "住宅ローン"
 
 # 政治（フェーズ3-4）
 none: "なし"

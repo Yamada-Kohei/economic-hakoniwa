@@ -304,8 +304,12 @@ def test_housing_grows_near_vacancies_but_not_on_no_development(game):
     assert "wood" in island.ext["housing_short"]
     # 国の倉庫の木材を市場に出すと、住民が（預金の決めた割合までずつ）買って村を作る
     # （開発禁止区域には作らない）
-    stock.add(island.warehouse, "wood", 20_000, 0, game.defs.goods)
-    sell = {"good": "wood", "side": "sell", "quantity": 20}
+    # 村の資材は家の値打ちの分だけ多く、この島の銀行は人がいなくて住宅ローンを貸せない（回3）。
+    # 前のターンまでに 9 割を買ってあったことにして、残りを市場で買う
+    need = game.defs.settlements["village"]["materials"]["wood"]
+    stock.add(island.economy.housing["stock"], "wood", need * 9 // 10, 0, game.defs.goods)
+    stock.add(island.warehouse, "wood", 200_000, 0, game.defs.goods)
+    sell = {"good": "wood", "side": "sell", "quantity": 40}
     for _ in range(3):
         run(game, island, stages, orders=[("warehouse_trade", sell)])
     new = [f for f in island.facilities if f.kind == "housing" and (f.x, f.y) not in before]

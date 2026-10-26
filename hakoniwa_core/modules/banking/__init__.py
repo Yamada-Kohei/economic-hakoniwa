@@ -158,12 +158,15 @@ class Banking(IslandStage):
                 continue
             loan.rate = rate_of(island, ctx, loan.lender, loan.borrower)
             interest = ledger.interest(balance, loan.rate)
-            principal = min(balance, loan.installment) if ctx.turn >= loan.repay_from else 0
+            installment = loan.installment
+            if loan.purpose == banks.MORTGAGE:  # 残り ÷ 残りの期間で出し直す
+                installment = -(-balance // banks.remaining_turns(loan, ctx.turn))
+            principal = min(balance, installment) if ctx.turn >= loan.repay_from else 0
             due.setdefault(loan.borrower, []).append((loan, interest, principal))
         for borrower, rows in sorted(due.items()):
             payer = Payer(borrower)
             short = sum(i + p for _, i, p in rows) - funds.available(island, payer)
-            f = island.facility(int(borrower.split(":")[1]))
+            f = banks.borrower_facility(island, borrower)
             if short > 0 and f is not None:
                 short -= companies.draw(island, f, short, ctx)  # 企業の中のお金から先に回す（回7）
             if short > 0 and f is not None and in_business(f):
@@ -182,6 +185,20 @@ class Banking(IslandStage):
                     self._inject(island, f, Payer(ledger.GOV, STATE_FACILITIES), short)
             for loan, interest, principal in rows:
                 self._pay_loan(island, loan, interest, principal)
+                if loan.purpose == banks.MORTGAGE:
+                    self._write_off_mortgage(island, ctx, loan)
+
+    @staticmethod
+    def _write_off_mortgage(island: IslandState, ctx: StageContext, loan: Loan) -> None:
+        """返済が loans.arrears_limit 回続けて遅れた層の住宅ローンは、残りを銀行の損として消す
+        （仕事を失った人の焦げ付き。家と人はそのまま。回3）。"""
+        if loan.arrears < ctx.config.get("loans.arrears_limit"):
+            return
+        left = banks.outstanding(island, loan)
+        banks.write_off(island, loan, left)
+        loan.arrears = 0
+        stats = island.stats
+        stats["loans.mortgage_write_off"] = stats.get("loans.mortgage_write_off", 0) + left
 
     @staticmethod
     def _pay_loan(island: IslandState, loan: Loan, interest: int, principal: int) -> None:
@@ -196,7 +213,11 @@ class Banking(IslandStage):
             ledger.create(
                 island, loan.lender, ledger.loan_item(loan.id), borrower, unpaid, "interest_loan"
             )
-        books.add(island, int(borrower.split(":")[1]), books.INTEREST, -interest)
+        layer = layer_of(borrower)
+        if layer is not None:  # 家計の払った利子は層の所得から引く
+            add_income(island, layer, -paid_interest)
+        else:
+            books.add(island, int(borrower.split(":")[1]), books.INTEREST, -interest)
         books.add(island, banks.bank_number(loan.lender), books.INTEREST, interest)
         banks.repay(island, loan, paid_principal)
         if paid_interest + paid_principal < interest + principal:

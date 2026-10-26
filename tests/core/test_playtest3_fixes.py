@@ -223,7 +223,7 @@ def test_settlement_grew_is_logged_when_the_town_level_rises(game):
     with_economy(game, island)
     held = island.economy.housing["stock"]
     for good, qty in game.defs.settlements["town"]["materials"].items():
-        stock.add(held, good, qty, 0, game.defs.goods)
+        stock.add(held, good, qty * 2, 0, game.defs.goods)  # 傷んだ家の手入れに先に使う分も
     run_stages(game, island, ["employment", "housing"])
     assert town.ext["level"] == "town"
     grew = [e for e in island.log if e.kind == "settlement_grew"]
