@@ -52,7 +52,7 @@ def test_merchant_purchases_and_imports_are_told_apart(client, world):
     own, _, _ = _trading_world(client)
     html = client.get(f"/islands/{own.id}/trade/").content.decode()
     assert "海外の商人から買った額が輸入より大きくなることがあります" in html
-    assert 'data-names="trade.merchant,trade.merchant_gap"' in html
+    assert 'data-names="trade.merchant,trade.merchant_gap,' in html
     html = client.get(f"/islands/{own.id}/fx/").content.decode()
     assert "政府が払った差も含めて数えます" in html
     html = client.get("/help/").content.decode()

@@ -178,6 +178,11 @@ def test_riot_halts_urban_facilities_and_police_hold_it_down(game, base):
     candidates = politics_stage.urban_facilities(island, ctx)
     assert candidates
     plain = copy.deepcopy(island)
+    # 警察のいない島で確かめる（島によっては試験の世界ですでに警察で働く人がいる）
+    for f in plain.facilities:
+        if game.defs.facilities[f.kind].get("police"):
+            f.workers = 0
+    assert politics_stage.police_coverage(plain, ctx) == 0.0
     Politics()._riot(plain, ctx, politics.RIOT)
     stopped = [f for f in plain.facilities if f.ext.get("halt_reason") == "riot"]
     assert stopped and all(f.ext["halted_until"] > world.turn for f in stopped)
