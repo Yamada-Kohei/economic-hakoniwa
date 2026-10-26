@@ -91,12 +91,17 @@ def worst_dead(island: IslandState) -> tuple[str, int]:
     return (cause, int(count))
 
 
+TOWER_LEVEL = "metropolis"  # 塔の記念碑の条件の段階（これ以上。高層の段階も含む）
+
+
 def has_metropolis(defs: Defs, island: IslandState) -> bool:
-    top = defs.settlement_levels()[-1]
+    """大都市（以上）の段階の町があるか。"""
+    levels = defs.settlement_levels()
+    enough = set(levels[levels.index(TOWER_LEVEL) :])
     return any(
         f.built
         and defs.facilities[f.kind].get("category") == "housing"
-        and f.ext.get("level") == top
+        and f.ext.get("level") in enough
         for f in island.facilities
     )
 

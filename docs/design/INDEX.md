@@ -61,7 +61,7 @@
 | PO-13 | 建国直後の島は `start_island.yaml` に従い、首都の町・周りの村・初めの施設・… | 決定 | tests/core/test_founding.py |
 | PO-14 | 初めの施設のうち `fit` を書いたものは、数を要る量に合わせる: 食料は建国の住民の食べる量… | 決定 | tests/core/test_founding.py、tests/core/test_recession_round1.py |
 | PO-15 | 建国のお金は、建国の国債 → 家計への給付 → 出資 → 銀行の国債買い、の順の仕訳で作る | 決定 | tests/core/test_founding.py、tests/core/test_infrastructure.py |
-| PO-16 | 町（住宅）は自動で建つ施設 `housing.facility` で、段階（村・町・都市・大都市… | 決定（高層の2段階は回2 で作る） | tests/core/test_housing_floor.py、tests/core/test_playtest3_fixes.py |
+| PO-16 | 町（住宅）は自動で建つ施設 `housing.facility` で、段階（村・町・都市・大都市… | 決定 | tests/core/test_high_rise.py、tests/core/test_housing_floor.py、tests/core/test_playtest3_fixes.py |
 | PO-17 | 町ができる・床を足すのは、人手の足りない施設（店が雇いきれなかった集落を含む）の通勤圏で、近くの… | 決定 | tests/core/test_rules.py |
 | PO-18 | 床は段階の幅の `housing.floor_step` ずつ足し、段階の上限を超えるときに次の… | 決定 | tests/core/test_housing_floor.py、tests/core/test_rules.py |
 | PO-19 | 床を足す資材は、市場・混合の国では、人手の足りない所で町を育てる分は一般の層が、住み替えの分は望… | 決定（国が買う分は回2 で作る） | tests/core/test_housing_floor.py、tests/core/test_playtest3_fixes.py、tests/core/test_rules.py |
@@ -99,7 +99,7 @@
 | PO-51 | 延べ床（W-190・W-201）: 町のマスは延べ床を持ち、最低の広さ `housing.spa`… | 決定 | tests/core/test_housing_floor.py |
 | PO-52 | 望む広さと住み替え（W-201）: 層の望む広さは `housing.space.base` ×… | 決定 | tests/core/test_housing_floor.py |
 | PO-53 | 幸福度の住まいの広さ: 層ごとに min(1, 1 人あたりの広さ ÷ 望む広さ) × 重み ``… | 決定 | tests/core/test_housing_floor.py |
-| PO-54 | 高層化（W-190）: 大都市から上（高層都市・超高層）へは、そのマスの通勤圏に新しい町を置ける… | 決定（W-190 の回で作る | （作る回で） |
+| PO-54 | 高層化（W-190）: 大都市から上（高層都市・超高層）へは、そのマスの通勤圏に新しい町を置ける… | 決定（仮: 地価の代わり、W-206 | tests/core/test_high_rise.py |
 | PO-55 | 国の命令「住宅を建てる」（W-190）: 町のマスか空いた平地を選び、足す床（次の段階まで、また… | 決定（W-190 の回で作る） | （作る回で） |
 | PO-56 | 計画経済の国営住宅（W-202）: 計画経済の国では家計は住宅の資材を買わず住宅ローンも借りない | 決定（W-190 の回で作る） | （作る回で） |
 

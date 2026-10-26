@@ -1275,7 +1275,10 @@ class Housing(IslandStage):
             if share <= 0 or room * share + idle >= missing:
                 continue
             if grown < h["max_upgrades_per_turn"]:
-                pos = self._growable(island, defs, homes, near, status, h["fill_ratio"], dry)
+                land_open = self._empty_site(island, defs, kind, area) is not None
+                pos = self._growable(
+                    island, defs, homes, near, status, h["fill_ratio"], dry, land_open
+                )
                 if pos is not None:
                     home = homes[pos]
                     floor = fac.floor_of(defs, home)
@@ -1458,10 +1461,12 @@ class Housing(IslandStage):
         status: dict[Pos, Dwelling],
         fill_ratio: float,
         dry: set[Pos],
+        land_open: bool = True,
     ) -> Pos | None:
         """床を足す町のマス。住む人が望む広さで使う床が今の床の fill_ratio を超えた、最上段でない
         マス。次の段階に入るのに要る上下水道（settlements.yaml の water）が足りないマスは飛ばして
-        dry に入れる（お金の経済の島だけ）。"""
+        dry に入れる（お金の経済の島だけ）。land_short の段階（高層）へは、通勤圏に空いた平地が
+        あれば（land_open）育たない（横に広がる。PO-54）。"""
         for pos in near:
             floor = fac.floor_of(defs, homes[pos])
             upper = fac.level_after(defs, floor)
@@ -1470,6 +1475,8 @@ class Housing(IslandStage):
             if status[pos].want < status[pos].nominal * fill_ratio:
                 continue
             if upper != fac.level_of_floor(defs, floor):
+                if land_open and defs.settlements[upper].get("land_short"):
+                    continue
                 need = defs.settlements[upper].get("water", 0)
                 if island.has_economy and infra.water(defs, island.tile(*pos)) < round(need * 1000):
                     dry.add(pos)
@@ -1495,6 +1502,8 @@ class Housing(IslandStage):
         spec = h["space"]
         rate = spec["move_rate"] / YEAR
         top = fac.max_floor(defs)
+        kind = fac.housing_kind(ctx.config)
+        radius = ctx.config.get("labor.commute_radius")
         housing = island.economy.housing
         held = housing["stock"]
         move: dict[str, dict[str, int]] = housing["move"]
@@ -1516,6 +1525,11 @@ class Housing(IslandStage):
             upper = fac.level_after(defs, floor)
             room = top - floor
             if upper != level:  # 段階の上限にいる: 次の段階に入るのに上下水道が要る
+                if defs.settlements[upper].get("land_short") and Housing._empty_site(
+                    island, defs, kind, within(island, pos, radius)
+                ):
+                    home.ext[fac.FLOOR_DUE] = round(due, 6)  # 空いた平地があるうちは高く建てない
+                    continue
                 need_water = defs.settlements[upper].get("water", 0)
                 if island.has_economy and infra.water(defs, island.tile(*pos)) < round(
                     need_water * 1000
