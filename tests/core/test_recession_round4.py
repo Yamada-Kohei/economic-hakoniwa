@@ -33,7 +33,7 @@ def test_merchant_bids_for_the_same_goods_below_the_selling_price(game, base):
     prices = initial_prices(defs, config)
     bids = {g: (q, p) for g, q, p in merchant.bids(island, defs, config, turn)}
     offers = {g: (q, p) for g, q, p in merchant.offers(island, defs, config, turn)}
-    assert {"cotton", "wood", "coal"} <= set(bids)
+    assert set(bids) == set(game.config.get("foreign_merchant.goods"))
     assert "grain" not in bids  # 上限が島の食べる量の半分を超えるので入れない
     factor = config.get("foreign_merchant.buy_multiplier")
     for good, (qty, price) in bids.items():

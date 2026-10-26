@@ -278,8 +278,9 @@ foreign_merchant:
   last_multiplier: 3.0
   buy_multiplier: 0.7   # 同じ品目を、初めの値段 × これの指値で買う（島の外への輸出。W-186 回4）。0 で買わない
   # 1ターンの上限は、その財を作る標準の施設1つの全力の産出（売りも買いも）。穀物は上限が島の食べる量の
-  # 半分を超えるので入れない（上限を港や島の大きさから決める形と一緒に後で）
-  goods: [coal, iron_ore, steel, machinery, building_materials, crude_oil, fuel, cotton, wood]
+  # 半分を超えるので入れない。綿花と木材は、足すと商人に頼った計画経済の島が、商人の去った後に綿花が
+  # 品切れのまま飢饉になった（W-186 回4 の測り）ので入れない（どちらも上限を港や島の大きさから決める形と一緒に後で）
+  goods: [coal, iron_ore, steel, machinery, building_materials, crude_oil, fuel]
 
 household:
   layers:               # 家計の層。share を書いた層は住民のその割合で、働かない（資産を持つ層）
