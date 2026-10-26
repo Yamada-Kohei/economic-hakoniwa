@@ -43,6 +43,7 @@ _ARG_KINDS = {
     "policy": "messages",
     "clause": "messages",  # 条約の条項（フェーズ4-1。値は clause_<種類>）
     "why": "messages",  # 条約を破ったわけ（値は why_<わけ>）
+    "grade": "messages",  # 農場の段階（値は grade_<段階の名前>。W-190）
 }
 # マスを持たない施設（x, y が負）の場所の書き方: 文面のこの部分を、表示名 OFF_MAP_TO に置き換える
 OFF_MAP_FROM = "({x}, {y}) の"

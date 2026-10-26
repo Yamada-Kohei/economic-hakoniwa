@@ -20,7 +20,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.defs.kinds import AUTOMATED
+from hakoniwa_core.defs.kinds import is_variant
 from hakoniwa_core.economy import equipment, experience
 from hakoniwa_core.market import auction
 from hakoniwa_core.state import Facility, IslandState
@@ -141,9 +141,7 @@ def _solve_prices(
     producers: dict[str, list[tuple[str, str, Mapping[str, Any]]]] = {}
     for kind, fdef in defs.facilities.items():
         for rname, recipe in fdef["recipes"].items():
-            if (
-                rname == AUTOMATED
-            ):  # 電子機器を使う作り方は、買える島が選ぶ作り方。値段の基準にしない
+            if is_variant(rname, recipe):  # 電子機器・農場の段階の作り方は、値段の基準にしない
                 continue
             if resources is not None and made is not None and not _usable(recipe, resources, made):
                 continue

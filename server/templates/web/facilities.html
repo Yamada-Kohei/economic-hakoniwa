@@ -20,7 +20,7 @@
       <tbody>
         {% for f in table.rows %}
         <tr data-facility-state="{% if not f.built %}{% translate '建設中' %}{% else %}{{ f.status_text|default:'稼働中' }}{% endif %}">
-          <td>{% if f.on_map %}<a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a>{% else %}{{ f.name }}{% endif %}<br><small class="muted">{{ f.kind_name }}{% if f.size > 1 %} {% blocktranslate with size=f.size %}規模 {{ size }}{% endblocktranslate %}{% endif %}{% if f.expands %} {% translate "（建て増し）" %}{% endif %}</small></td>
+          <td>{% if f.on_map %}<a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a>{% else %}{{ f.name }}{% endif %}<br><small class="muted">{{ f.kind_name }}{% if f.size > 1 %} {% blocktranslate with size=f.size %}規模 {{ size }}{% endblocktranslate %}{% endif %}{% if f.grade_name and not f.grading %} {{ f.grade_name }}{% endif %}{% if f.grading %} {% blocktranslate with grade=f.grading %}（{{ grade }}にする工事）{% endblocktranslate %}{% elif f.expands %} {% translate "（建て増し）" %}{% endif %}</small></td>
           <td>{{ f.owner_name }}<br><small class="muted">{{ f.accounting_name }}</small>{% if f.firm_name %}<br><small>{{ f.firm_name }}</small>{% endif %}</td>
           <td>{% if not f.built %}{% translate "建設中" %}{% if f.status_text and f.status_text != "建設中" %}<br><small>{{ f.status_text }}</small>{% endif %}{% else %}{{ f.status_text|default:"稼働中" }}{% if f.transition %}<br><small>{{ f.transition }}</small>{% endif %}{% endif %}</td>
           <td class="num">{{ f.workers }}{% if f.workers_needed %} / {{ f.workers_needed }}{% endif %}</td>

@@ -142,6 +142,39 @@
       },
       "description": "電子機器を使う作り方（フェーズ4-4）。書くと、既定の作り方（default）と同じ産出を少ない人手で作る作り方 automated を定義の読み込みで足す"
     },
+    "grades": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "labor", "output", "construction"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z][a-z0-9]*$", "description": "段階の名前（作り方の名前の後ろに付く）"},
+          "requires_input": {"type": "string", "description": "前の段階の作り方のうち、この財を使うものだけを元にする（近代化は肥料のある作り方から）"},
+          "labor": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "description": "一般の労働者の割合（手作業を 1 として）"},
+          "output": {"type": "number", "exclusiveMinimum": 0, "description": "元の作り方に対する産出の倍率"},
+          "inputs": {"$ref": "#/$defs/amounts", "description": "元の作り方の投入に足す、毎ターンの投入（燃料）"},
+          "scale_inputs": {
+            "type": "object",
+            "additionalProperties": {"type": "number", "exclusiveMinimum": 0},
+            "description": "元の作り方の投入のうち、この倍にする財（近代化の化学品）"
+          },
+          "machines": {"type": "boolean", "description": "true なら、この段階の資材は機械（傷んだ分だけ畑が手作業に戻る。FM-51）。false は施設の設備と同じ"},
+          "construction": {
+            "type": "object",
+            "required": ["turns", "materials"],
+            "additionalProperties": false,
+            "properties": {
+              "turns": {"type": "integer", "minimum": 1},
+              "materials": {"$ref": "#/$defs/amounts"}
+            },
+            "description": "この段階に上げる工事の工期と資材（人手は施設の construction.labor）"
+          }
+        }
+      },
+      "description": "農場の段階（W-190。FM-50）。書くと、手作業の作り方の上に段階ごとの作り方（<元の作り方>_<段階の名前>）を定義の読み込みで足す。段階は順番に上がり、工事が済むとその段階の作り方が使える"
+    },
     "recipes": {
       "type": "object",
       "minProperties": 1,
