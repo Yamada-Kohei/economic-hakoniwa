@@ -322,10 +322,11 @@ class _Round:
                 continue
             here = self.islands[s["to"]]
             port = port_of(island, self.config)
-            room = ships.port_capacity(self.config, port) * QUANTITY_SCALE - here.port_used
-            if port is not None and s["load"] > room and here.port_used > 0:
-                waiting.append(s)  # 港が混んでいる。次のターンに下ろす
-                continue
+            if port is not None:  # 港がなくなった（戦争で失うなど）島には、混み具合を見ずに下ろす
+                room = ships.port_capacity(self.config, port) * QUANTITY_SCALE - here.port_used
+                if s["load"] > room and here.port_used > 0:
+                    waiting.append(s)  # 港が混んでいる。次のターンに下ろす
+                    continue
             self._deliver(island, s, port)
         self.state["shipments"] = sorted(waiting, key=lambda s: s["id"])
 

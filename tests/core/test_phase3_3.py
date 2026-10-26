@@ -31,6 +31,7 @@ from hakoniwa_core.trade import (
     balance,
     blocs,
     contracts,
+    is_port,
     policy,
     swap,
     traders,
@@ -1008,3 +1009,14 @@ def test_balance_of_payments_items_add_up(game, base):
     liabilities = sum(s[f"bop.{k}"] for k in balance.LIABILITY_ITEMS)
     assert current == s["bop.current"]
     assert assets - liabilities == s["bop.financial"] == current
+
+
+def test_shipment_arriving_after_the_port_is_lost_is_unloaded(game, base):
+    """港をなくした島に荷が届いても落ちない（戦争で港を失った後など）。"""
+    world = copy.deepcopy(base)
+    run_checked(game, world, 6)
+    transit = [s for s in world_state(world)["shipments"] if s["arrive"] > world.turn]
+    assert transit, "運んでいる荷がない"
+    island = world.islands[transit[0]["to"]]
+    island.facilities = [f for f in island.facilities if not is_port(game.config, f)]
+    run_checked(game, world, max(s["arrive"] for s in transit) - world.turn + 1)
