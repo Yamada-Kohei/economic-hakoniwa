@@ -178,6 +178,42 @@ def test_choose_regime_works_after_a_revolution(game, world):
     assert island.regime["politics"] == new
 
 
+def test_a_capital_that_falls_in_a_transition_can_still_choose_again(game, world):
+    """体制を変えた混乱期間の中に首都が落ちても、選び直せる（W-183）。混乱期間は始め直さない。"""
+    island = raise_rebels(game, world)
+    for f in list(island.facilities):
+        if game.defs.facilities[f.kind].get("police"):
+            island.facilities.remove(f)
+    state = politics.state_of(island)
+    state["transition"] = {"since": world.turn, "until": world.turn + 12, "kind": "economy"}
+    for i in range(40):
+        civil_war.run(world, ctx_of(game, world, world.turn + 1 + i % 3))
+        if not civil_war.active(world, 1):
+            break
+        unrest(island)
+    assert not civil_war.active(world, 1)
+    assert logs(world, 1, "revolution")
+    assert state["reselect"]["by"] == 0
+    assert state["transition"]["kind"] == "economy"  # 前の混乱期間のまま
+    new = next(p for p in game.defs.regime_axes()["politics"] if p != island.regime["politics"])
+    queue_orders(island, [("choose_regime", {"politics": new})])
+    game.engine.run_turn(world)
+    assert island.orders[-1].status != "failed"
+    assert "reselect" not in politics.state_of(island)
+    assert island.regime["politics"] == new
+
+
+def test_a_second_fall_keeps_the_first_record_of_who_toppled_the_regime(game, world):
+    island = world.islands[1]
+    ctx = ctx_of(game, world)
+    from hakoniwa_core.modules import politics as politics_stage
+
+    politics_stage.lose_regime(island, ctx, "surrender", 2)
+    politics_stage.lose_regime(island, ctx, "revolution", 0)
+    state = politics.state_of(island)
+    assert state["reselect"]["by"] == 2 and state["transition"]["kind"] == "surrender"
+
+
 def put_garrison(game, world, x, y, soldiers=100):
     """首都のマスに政府の歩兵を置く（強い守り）。"""
     island = world.islands[1]
@@ -395,3 +431,14 @@ def test_standard_plan_prepares_once_unrest_has_lasted(game, world):
         civil_war.run(world, ctx_of(game, world, i + 1))
     assert not rebels(world)
     assert set(plan_war(world, game.defs, game.config)) == {1}
+
+
+def test_a_fall_in_the_last_turn_of_a_transition_still_costs_a_full_transition(game, world):
+    island = world.islands[1]
+    ctx = ctx_of(game, world)
+    state = politics.state_of(island)
+    state["transition"] = {"since": ctx.turn - 9, "until": ctx.turn, "kind": "economy"}
+    from hakoniwa_core.modules import politics as politics_stage
+
+    politics_stage.lose_regime(island, ctx, "revolution", 0)
+    assert state["transition"]["until"] == ctx.turn + game.config.get("politics.transition.turns")

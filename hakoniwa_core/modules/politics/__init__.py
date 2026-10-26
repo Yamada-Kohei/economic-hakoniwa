@@ -750,6 +750,22 @@ def change_economy(island: IslandState, payload: dict[str, Any], ctx: StageConte
     island.log.append(LogEntry("economy_changed", args))
 
 
+def lose_regime(island: IslandState, ctx: StageContext, kind: str, by: int) -> None:
+    """首都が落ちて体制が倒れる（降伏 surrender・革命 revolution。MI-41・MI-58）。混乱期間を始め、
+    持ち主が体制を選び直せる印（reselect）を立てる。体制を変えた混乱期間の中のときは、混乱期間は
+    今のものを続け（残りが短ければ新しい期間の分まで延ばし）、選び直しの印を立てる（W-183。以前は混乱期間の中だと印も立たず、選び直せな
+    かった）。すでに選び直し待ちなら、倒した側の記録は最初のものを残す。by は降伏させた国の番号
+    （革命は 0）。"""
+    if not politics.in_transition(island, ctx.turn):
+        _start_transition(island, ctx, kind)
+    else:  # 残りが新しい期間より短ければ、新しい期間の分まで延ばす
+        transition = politics.state_of(island)["transition"]
+        transition["until"] = max(
+            transition["until"], ctx.turn + ctx.config.get("politics.transition.turns")
+        )
+    politics.state_of(island).setdefault("reselect", {"since": ctx.turn, "by": by})
+
+
 def _start_transition(island: IslandState, ctx: StageContext, kind: str) -> None:
     turns = ctx.config.get("politics.transition.turns")
     state = politics.state_of(island)

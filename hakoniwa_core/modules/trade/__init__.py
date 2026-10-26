@@ -812,6 +812,7 @@ class _Round:
             if policy.blocked(self.world, seller.id, buyer.id, c["good"]):
                 # 禁輸（フェーズ3-3）: その国との契約は届けない（止まったターンに1度だけ知らせる）
                 c["short"] = c["qty"]
+                c["short_why"], c["short_turn"] = "embargo", self.turn
                 if not c.get("embargoed"):
                     c["embargoed"] = True
                     args = contracts.short_args(self.world, c, c["qty"], "embargo")
@@ -834,6 +835,12 @@ class _Round:
                 # 外貨が足りないとき、国庫の自国通貨なら足りるのは、外貨を買えなかったため（fx）
                 spare = fxrates.to_foreign(buyer, currency, own) * QUANTITY_SCALE // price
                 limits["fx" if held + spare >= want else "money"] = held
+        # 封鎖に止められた船出は、船が足りないのと分けて数える（契約の荷も物の援助の荷も船で
+        # 運ぶので、封鎖の島の出入りは止まる。MI-34・W-187）
+        if unit_weight(self.defs, good) > 0 and naval.blocked(
+            self.world, self.defs, self.config, self.turn, buyer.id, seller.id, good
+        ):  # 重さのない財は船が自分で航海して届くので封鎖に止められない
+            limits["blockade"] = 0
         limits["ships"] = self._ship_room(buyer, seller, good)
         limits["port"] = self._port_room(seller, good)
         qty = min(want, *limits.values())
@@ -1473,6 +1480,7 @@ def contract_view(c: dict[str, Any], island_id: int, turn: int) -> dict[str, Any
         "active": c["state"] == contracts.ACTIVE and c["start"] <= turn + 1 < c["end"],
         "delivered": c["delivered"],
         "short": c["short"],
+        "short_why": c.get("short_why") if c["short"] > 0 else None,  # 直近の不足のわけ
         "delivery": contracts.delivery_of(c),
         # 外貨が足りずに届かなかったターンに、買う国がその通貨をどこからいくら用意できたか
         "fx": None if selling else c.get("fx"),

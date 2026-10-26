@@ -21,7 +21,7 @@ from hakoniwa_core.military.forces import BUDGET_PERSONNEL, BUDGET_PROCUREMENT
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import IslandState, LogEntry
 from hakoniwa_core.turn.context import StageContext
-from hakoniwa_core.units import BASIS, QUANTITY_SCALE, part, to_basis, to_milli
+from hakoniwa_core.units import BASIS, QUANTITY_SCALE, money_of, part, to_basis, to_milli
 
 FOOD = "food"
 AMMUNITION = "ammunition"
@@ -63,6 +63,7 @@ class Military(IslandStage):
         if not island.has_economy:
             return
         config = ctx.config
+        island.ext.get(forces.KEY, {}).pop("purchases", None)  # 前のターンの買い入れの結果
         if not forces.soldiers(island):  # 兵がいなくても、編成中の部隊の装備は買い集める
             wanted = island.ext.get(forces.KEY, {}).get("wanted", {})
             for good, qty in sorted(wanted.items()):
@@ -70,7 +71,7 @@ class Military(IslandStage):
             return
         state = forces.state_of(island, config)
         stats = island.stats
-        unpaid = self._pay(island, state)
+        unpaid = self._pay(island, state, self._food_hold(island, config))
         self._morale(island, state, config, unpaid > 0)
         whole = forces.soldiers(island)
         new = min(state["new"], whole)  # 入ったターンは家で食べる
@@ -96,11 +97,28 @@ class Military(IslandStage):
         stats["military.wages_unpaid"] = unpaid
 
     @staticmethod
-    def _pay(island: IslandState, state: dict[str, Any]) -> int:
-        """兵の賃金を払う。払えない分は未払い賃金に残し、払えなかった額を返す。"""
+    def _food_hold(island: IslandState, config) -> int:
+        """このターンに兵の食べ物を買い足すのに要るお金（国防費の賃金と食べ物の月割りから、賃金より
+        先に取り分けておく額。W-184: 補給は賃金より先に確保する。買い注文は指値の額を取り置くので、
+        指値で数える）。国の倉庫の食べ物がこのターンに食べる分を引いても目標に届くなら 0。"""
+        price = island.economy.prices.get(FOOD, 0)
+        if price <= 0:
+            return 0
+        need = food_need(island, config)
+        target = need * config.get("military.food_stock_turns")
+        left = max(0, stock.total(island.warehouse, FOOD) - need)
+        buy = target - left
+        if buy <= 0:
+            return 0
+        return money_of(round(price * config.get("military.buy_limit")), buy)
+
+    @staticmethod
+    def _pay(island: IslandState, state: dict[str, Any], hold: int = 0) -> int:
+        """兵の賃金を払う。食べ物を買う分（hold）は賃金より先に残し、払えない賃金は未払い賃金に
+        残す。払えなかった額を返す。"""
         due = wage_bill(island)
         payer = Payer(ledger.GOV, BUDGET_PERSONNEL)
-        pay = min(due, funds.available(island, payer))
+        pay = min(due, max(0, funds.available(island, payer) - hold))
         if pay > 0:
             funds.pay(island, payer, household(GENERAL), pay, "wage")
             tax = part(pay, island.policy.income_tax)
@@ -178,6 +196,9 @@ class Military(IslandStage):
         """good が国の倉庫に want まで足りなければ、国として市場で買う注文を出す。"""
         price = island.economy.prices.get(good, 0)
         buy = want - stock.total(island.warehouse, good)
+        for item in island.economy.ext.get("warehouse_orders", []):  # 同じ財の注文を重ねない
+            if item.get("military") and item["good"] == good:
+                buy -= item["quantity"]
         if price <= 0 or buy <= 0:
             return
         limit = round(price * config.get("military.buy_limit"))
@@ -188,7 +209,7 @@ class Military(IslandStage):
                 "quantity": buy,
                 "limit": limit,
                 "budget": budget,
-                "quiet": True,
+                "military": True,  # 結果は軍の状態（purchases）とログに出す（W-184）
             }
         )
 

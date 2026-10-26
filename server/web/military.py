@@ -72,9 +72,11 @@ def brief(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str, 
         "wounded": sum(n for _, n in raw.get("wounded", [])),
         "abroad": raw.get("abroad", 0),
         "reserve": _shown_goods(raw.get("reserve")),
+        "purchases": purchases(raw),
         "prisoners": prisoners(raw),
         "captive": raw.get("captive", 0),
         "civil_war": civil,
+        "reselect": ((island.ext or {}).get("politics") or {}).get("reselect"),
         "occupied": occupied_tiles(island),
         "occupying": occupying(island),
         "stats": {
@@ -85,6 +87,29 @@ def brief(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str, 
             "refugees": stats.get("military.refugees", 0),
         },
     }
+
+
+def purchases(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """国として買った兵の食べ物・弾薬・装備の、直近のターンの結果（買いたかった量・買えた量・足りな
+    かったわけ。W-184）。足りなかったものを先に並べる。"""
+    defs = get_game().defs
+    rows = []
+    for good, row in sorted((raw.get("purchases") or {}).items()):
+        why = row.get("why")
+        rows.append(
+            {
+                "good": good,
+                "good_name": defs.name("goods", good),
+                "unit": defs.unit_name(good),
+                "wanted": display.amount(row["wanted"], good),
+                "filled": display.amount(row["filled"], good),
+                "short": why is not None,
+                "why": why,
+                "why_text": display.message(f"military_why_{why}") if why else "",
+                "turn": row["turn"],
+            }
+        )
+    return sorted(rows, key=lambda r: not r["short"])
 
 
 def _shown_goods(amounts: dict[str, int] | None) -> dict[str, float]:

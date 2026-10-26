@@ -52,6 +52,7 @@
   {% if mine %}
     {% if m.wages_late_turns %}<p class="military-warning" role="status">{% blocktranslate with turns=m.wages_late_turns %}兵の賃金が {{ turns }} ターン遅れています。士気の低下と逃亡に注意してください。{% endblocktranslate %}</p>{% endif %}
     {% if m.hungry %}<p class="military-warning" role="status">{% translate "兵の食べ物が尽きています。練度が落ち、亡くなる兵も出ます。" %}</p>{% endif %}
+    {% for p in m.purchases %}{% if p.short and p.good == "food" %}<p class="military-warning" role="status">{% blocktranslate with name=p.good_name why=p.why_text %}兵の{{ name }}の買い入れが足りませんでした: {{ why }}{% endblocktranslate %}</p>{% endif %}{% endfor %}
     <h3>{% translate "直近のターン" %} <small class="heading-date">{{ stats_turn|turn_date }}</small></h3>
     <div class="table-scroll"><table><tbody>
       <tr><th>{% translate "払った賃金" %}</th><td>{{ m.wages_paid }} {{ currency }}</td></tr>
@@ -59,6 +60,15 @@
       <tr><th>{% translate "逃げた兵" %}</th><td>{{ m.deserted }}</td></tr>
       <tr><th>{% translate "亡くなった兵" %}</th><td>{{ m.starved }}</td></tr>
     </tbody></table></div>
+    {% if m.purchases %}
+    <h3>{% translate "国として買った物（兵の食べ物・弾薬・装備）" %}</h3>
+    <div class="table-scroll"><table>
+      <thead><tr><th>{% translate "物" %}</th><th>{% translate "買いたかった量" %}</th><th>{% translate "買えた量" %}</th><th>{% translate "足りなかったわけ" %}</th></tr></thead>
+      <tbody>
+      {% for p in m.purchases %}<tr><th>{{ p.good_name }}</th><td>{{ p.wanted }} {{ p.unit }}</td><td>{{ p.filled }} {{ p.unit }}</td><td>{% if p.short %}{{ p.why_text }}{% else %}—{% endif %}</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+    {% endif %}
   {% endif %}
   <h3>{% translate "国防費（年の額）" %}</h3>
   <div class="table-scroll"><table><tbody>

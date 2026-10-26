@@ -23,7 +23,7 @@ from hakoniwa_core.log import format_log
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
 from hakoniwa_core.modules import market
-from hakoniwa_core.modules.trade import check
+from hakoniwa_core.modules.trade import check, contract_view
 from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.trade import (
     blocs,
@@ -315,6 +315,68 @@ def test_contract_delivers_goods_and_money(game, traded):
     assert abs(c["paid"] - c["delivered"] * price // QUANTITY_SCALE) <= 6
     shipped = [s for s in world_state(world)["shipments"] if s["kind"] == "contract"]
     assert sum(sum(q for _, q in s["batches"]) for s in shipped) <= c["delivered"]
+    assert check(world) == []
+
+
+def _blockade(game, world, blockader, target, ships=2):
+    """blockader が target の戦争の相手になり、target の島の区画に封鎖の艦隊を置く。"""
+    from hakoniwa_core.diplomacy import war
+    from hakoniwa_core.military import army, forces
+
+    war.declare(world, blockader.id, target.id, world.turn)
+    spec = game.defs.army["corvette"]
+    forces.state_of(blockader, game.config)["volunteers"] += spec["soldiers"] * ships
+    fleet = army.new_unit(world, blockader.id, "corvette", target.wx, target.wy, ships=ships)
+    fleet["status"] = army.READY
+    fleet["soldiers"] = spec["soldiers"] * ships
+    fleet["equipment"] = {g: q // QUANTITY_SCALE * ships for g, q in spec["equipment"].items()}
+    fleet["duty"] = "blockade"
+
+
+def test_a_blockade_stops_contract_and_aid_cargo_and_says_so(game, traded):
+    """封鎖は契約の荷も物の援助の荷も止める（W-187）。止まったわけは船不足と分けて「封鎖」と出る。"""
+    world = copy.deepcopy(traded[0])
+    seller, buyer = world.islands[1], world.islands[2]
+    blockader = world.islands[3]
+    good = "building_materials"
+    stock.add(seller.warehouse, good, 300 * QUANTITY_SCALE, world.turn, game.defs.goods)
+    payload = {
+        "partner": buyer.id,
+        "side": "sell",
+        "good": good,
+        "quantity": 2,
+        "price": buyer.economy.prices[good],
+        "turns": 8,
+    }
+    assert contracts.propose(world, seller, payload, world.turn) is None
+    c = contracts.contracts(world)[-1]
+    assert contracts.accept(world, buyer, c, world.turn) is None
+    contracts.aid(
+        world, seller, {"partner": buyer.id, "good": good, "quantity": 2, "turns": 8}, world.turn
+    )
+    aid = contracts.contracts(world)[-1]
+    assert aid["aid"]
+    run(game, world, 2)
+    assert c["delivered"] > 0 and aid["delivered"] > 0  # 封鎖の前は届く
+    before = (c["delivered"], aid["delivered"])
+    _blockade(game, world, blockader, buyer)
+    run(game, world, 3)
+    assert (c["delivered"], aid["delivered"]) == before
+    for one in (c, aid):
+        assert one["short"] > 0 and one["short_why"] == "blockade"
+        view = contract_view(one, buyer.id, world.turn)
+        assert view["short_why"] == "blockade"
+    reasons = {e.args["reason"] for e in seller.log if e.kind == "contract_short"}
+    assert reasons == {"contract_short_blockade"}
+    text = format_log(
+        game.defs, "contract_short", next(e for e in seller.log if e.kind == "contract_short").args
+    )
+    assert "封鎖" in text
+    # 封鎖が解ければ、また届く
+    army_units = world.ext["military"]["units"]
+    army_units[:] = [u for u in army_units if u.get("duty") != "blockade"]
+    run(game, world, 3)
+    assert c["delivered"] > before[0]
     assert check(world) == []
 
 

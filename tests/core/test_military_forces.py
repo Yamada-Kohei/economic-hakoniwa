@@ -6,9 +6,11 @@ import copy
 
 import pytest
 
+import hakoniwa_core.military as military_logs
 from hakoniwa_core import politics, stock
 from hakoniwa_core.autoplan import queue_orders
 from hakoniwa_core.game import load_game
+from hakoniwa_core.log import format_log
 from hakoniwa_core.military import forces
 from hakoniwa_core.modules import military as mil
 from tests.core.test_gate import make_world, run_with_plan
@@ -235,3 +237,39 @@ def test_set_defense_changes_only_what_it_names(game, world):
     run_orders(game, world, [("set_defense", {"personnel_share": 50})])
     assert island.policy.budget[forces.BUDGET_PERSONNEL] == 1_000_000
     assert island.policy.budget[forces.BUDGET_PROCUREMENT] == 1_000_000
+
+
+def test_the_result_of_the_state_buying_is_kept_and_logged_when_it_falls_short(game, world):
+    """兵の食べ物・弾薬・装備の買い入れ（国の倉庫の注文）は、買えた量と足りなかったわけを軍の状態に
+    残し、わけが新しく出たターンにログに出す（W-184）。賃金が先に払われて食べ物の分が残らないとき
+    は、国防費の賃金と食べ物の月割りのせいだと分かる。"""
+    island = world.islands[1]
+    logged = []
+    play(game, world, 1, [("set_defense", {"annual": 60_000}), ("recruit", {"count": 60})])
+    for _ in range(6):
+        logged += [e for e in island.log if e.kind == "military_buy_short"]
+        play(game, world, 1)
+    logged += [e for e in island.log if e.kind == "military_buy_short"]
+    row = island.ext["military"]["purchases"]["food"]
+    assert row["wanted"] > row["filled"] and row["why"] == "budget_defense_personnel"
+    assert row["turn"] == world.turn
+    food = [e for e in logged if e.args["good"] == "food"]
+    assert len(food) == 1  # 同じわけのあいだは、毎ターンは出さない
+    assert food[0].args["reason"] == "military_why_budget_defense_personnel"
+    text = format_log(game.defs, "military_buy_short", food[0].args)
+    assert "賃金" in text and "食べ物" in text
+    assert "military_buy_short" in military_logs.PRIVATE_LOGS  # 持ち主だけに見せる
+
+
+def test_food_is_bought_before_wages_when_the_budget_is_short(game, world):
+    """国防費の賃金と食べ物の月割りが足りないときは、食べ物を先に確保し、賃金が遅れる（W-184。
+    補給は賃金より先）。賃金だけで月割りを使い切る前の形では、食べ物が買えず兵が飢えた。"""
+    island = world.islands[1]
+    play(game, world, 1, [("set_defense", {"annual": 700_000}), ("recruit", {"count": 60})])
+    for _ in range(5):
+        play(game, world, 1)
+        state = island.ext["military"]
+        assert not state["hungry"]
+        assert island.ext["military"]["purchases"]["food"]["why"] is None  # 食べ物は買えた
+    assert island.stats["military.wages_unpaid"] > 0  # 賃金は食べ物の残りで払うので遅れる
+    assert "military.starved" not in island.stats

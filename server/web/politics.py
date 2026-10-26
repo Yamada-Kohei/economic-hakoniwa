@@ -146,6 +146,8 @@ def politics_data(island: m.Island, mine: bool) -> dict[str, Any]:
             if k in facts
         ],
         events=[{"key": k, "name": EVENT_NAMES.get(k, k), "value": v} for k, v in events.items()],
+        # 首都が落ちて体制が倒れ、選び直し（命令 choose_regime）を待っているか（W-183）
+        reselect=state.get("reselect"),
         votes=[
             {
                 **v,
