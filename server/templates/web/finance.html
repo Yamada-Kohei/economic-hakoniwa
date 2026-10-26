@@ -5,13 +5,14 @@
 
 <div class="report-layout{% if mine %} with-orders{% endif %}">
   <div class="report-main">
-    <section class="panel">
+    <section class="panel" id="central-bank">
       <h2>{% translate "中央銀行" %}</h2>
       <table class="info">
         <tr><th>{% translate "政策金利" %}</th><td>{{ central_bank.policy_rate|floatformat:2 }}%</td></tr>
         <tr><th>{% translate "独立" %}</th><td>{% if central_bank.independent %}{% translate "独立（政策金利は中央銀行が物価と失業率を見て決めます）" %}{% else %}{% translate "政府の下（政策金利と国債の売買を政府が決めます）" %}{% endif %}{% if central_bank.unlock_turn %}<br><small>{% blocktranslate with t=central_bank.unlock_turn|turn_date %}{{ t }}までは切り替えられません{% endblocktranslate %}</small>{% endif %}</td></tr>
         <tr><th>{% translate "国債の売買の方針" %}</th><td>{{ central_bank.bond_trade_text }}</td></tr>
       </table>
+      <p class="hint">{% translate "量的緩和（中央銀行の国債の買い入れ）は、売りたい銀行がいる分だけ買えます。決めた額より実際に買えた額が少ないことがあります。直近の買い入れ額・売却額は、下の「金利・お金・融資」で確認できます。" %}</p>
     </section>
 
     <section class="panel">
@@ -93,9 +94,12 @@
   </div>
 
   {% if mine %}
+  <div class="report-orders">
+  <p class="hint">{% translate "「金融政策の変更」の国債の買い入れ額は目標です。売りたい銀行がいなければ、その額まで買えません。直近に買えた額・売れた額とターンログを確かめてください。" %} <a href="#central-bank">{% translate "中央銀行の方針と実績を見る" %}</a></p>
   <aside id="orders" class="panel report-orders" data-url="{% url 'api_orders' island.id %}" data-defs="{% url 'api_defs' %}"
          data-forms="set_monetary_policy,set_central_bank_independence,set_bank_policy,grant_bank_license"
          data-heading="{% translate '金融の命令' %}"></aside>
+  </div>
   {% endif %}
 </div>
 

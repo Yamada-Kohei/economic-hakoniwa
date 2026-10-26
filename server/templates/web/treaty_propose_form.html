@@ -41,6 +41,8 @@
       <label>{% translate "1ターンの量" %} <input name="contract_quantity" type="number" min="0" step="any"></label>
       <label>{% translate "1単位の値段" %} <input name="contract_price" type="number" min="0"></label>
       <label>{% translate "通貨（国の番号。省くと売る国）" %} <input name="contract_currency" type="number" min="1"></label>
+      <p class="hint">{% translate "買う国は、選んだ通貨で毎ターン支払います。その通貨を決済時に用意できない分は支払えず、品物も届きません。外貨は中央銀行の手持ちや為替の市場から用意されますが、不足することがあります。" %}</p>
+      <p class="hint">{% translate "このフォームで結ぶ契約の品物は、届くと買う国の市場で売りに出されます。国の倉庫に備蓄する契約にはなりません。" %}</p>
       <label>{% translate "期間（ターン）" %} <input name="contract_turns" type="number" min="1" max="{{ rules.max_contract_turns }}"></label>
     </fieldset>
     <fieldset data-clause-fields="peg" id="clause-fields-peg">
@@ -54,6 +56,7 @@
       <label>{% translate "送る国" %} <select name="aid_payer"><option value="">{% translate "（なし）" %}</option>{% for p in choices.partners %}<option value="{{ p.id }}">{{ p.name }}（{{ p.id }}）</option>{% endfor %}<option value="{{ island.id }}">{{ island.name }}（{% translate "自国" %}）</option></select></label>
       <label>{% translate "1回の額" %} <input name="aid_amount" type="number" min="1"></label>
       <label>{% translate "通貨（国の番号。省くと送る国）" %} <input name="aid_currency" type="number" min="1"></label>
+      <p class="hint">{% translate "送る国は、約束した通貨を支払えるだけ持っている必要があります。外貨の援助は、送金前にその通貨を用意してください。この条項はお金の援助です。別の命令で送る品物の援助は、届くと受け取る国の市場で売りに出されます。" %}</p>
       <label>{% translate "送る間隔（ターン）" %} <input name="aid_period" type="number" min="1" max="{{ rules.max_aid_period_turns }}"></label>
       <label>{% translate "送る回数" %} <input name="aid_count" type="number" min="1" max="{{ rules.max_aid_count }}"></label>
     </fieldset>

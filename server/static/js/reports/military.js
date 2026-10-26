@@ -2,7 +2,7 @@
 import { mountOrders } from "./orders.js";
 import { escapeHtml, getJson } from "../island/api.js";
 import {
-  words, coord, armyName, statusName, percent, equipmentText, orderText, table,
+  words, coord, armyName, percent, equipmentText, missingText, statusCell, orderText, table,
   armyOptions, options, field, orderForm, transports, transportForms, bindOrderForms,
   dutyName, goodsText, fleetDutyForm,
 } from "../military/common.js";
@@ -20,6 +20,18 @@ bindOrderForms(root, async (kind, payload) => {
 
 const w = words();
 for (const el of root.querySelectorAll("[data-percent]")) el.textContent = percent(el.dataset.percent);
+for (const el of root.querySelectorAll("[data-base-warning]")) {
+  el.hidden = (military.bases || []).some((base) => base[el.dataset.baseWarning]);
+}
+root.addEventListener("click", (event) => {
+  if (!event.target.closest("[data-open-fuel]")) return;
+  const input = document.getElementById("reserve-fuel");
+  if (!input) return;
+  for (let parent = input.parentElement; parent; parent = parent.parentElement) {
+    if (parent.tagName === "DETAILS") parent.open = true;
+  }
+  input.focus();
+});
 
 function mapLink(row) {
   const url = row.island ? root.dataset.islandUrl.replace("/0/", `/${row.island}/`) : root.dataset.map;
@@ -30,15 +42,15 @@ function showTables(defs) {
     const slot = root.querySelector(`[data-table="${name}"]`);
     if (slot) slot.innerHTML = table(headings, rows);
   };
-  set("units", [w.id, w.kind, w.island, w.location, w.soldiers, w.equipment, w.status, w.order, w.aboard,
+  set("units", [w.id, w.kind, w.island, w.location, w.soldiers, w.equipment, w.status, w.missing, w.order, w.aboard,
     w.role, w.fought, w.stores, w.hungry, w.requisition],
     (military.units || []).map((u) => [u.id, armyName(u, defs), `${u.island ?? "—"}${u.abroad ? ` (${w.abroad})` : ""}`, u.aboard ? "—" : mapLink(u),
-      `${u.soldiers} / ${u.soldiers_full ?? "—"}`, equipmentText(u, defs), statusName(u),
+      `${u.soldiers} / ${u.soldiers_full ?? "—"}`, equipmentText(u, defs), statusCell(u), missingText(u, defs),
       orderText(u.order), u.aboard ?? w.none, w[u.role] || w.none, u.fought ?? 0, goodsText(u.stores, defs),
       u.hungry ? w.yes : w.no, u.requisition ? w.yes : w.no]));
-  set("fleets", [w.id, w.kind, w.ships, w.location, w.docked, w.crew, w.status, w.order, w.duty, w.steps, w.cargo, w.stores, w.capacity],
+  set("fleets", [w.id, w.kind, w.ships, w.location, w.docked, w.crew, w.status, w.missing, w.order, w.duty, w.steps, w.cargo, w.stores, w.capacity],
     (military.fleets || []).map((f) => [f.id, armyName(f, defs), f.ships, coord(f),
-      f.docked ? w.yes : w.no, `${f.soldiers} / ${f.soldiers_full}`, statusName(f),
+      f.docked ? w.yes : w.no, `${f.soldiers} / ${f.soldiers_full}`, statusCell(f), missingText(f, defs),
       orderText(f.order), dutyName(f), f.steps_left, f.capacity > 0 ? f.cargo.join(", ") || w.none : "—", goodsText(f.goods, defs),
       f.capacity > 0 ? f.capacity : "—"]));
   set("seen", [w.id, w.kind, w.location, w.status, w.turn],
@@ -53,6 +65,8 @@ function showTables(defs) {
       b.warhead != null ? `${b.warheads ?? 0} / ${b.warhead}` : "—"];
   }));
   set("reserve", [w.good, w.tons], Object.entries(military.reserve || {}).map(([g, q]) => [defs.goods?.[g]?.name || w[g] || g, q]));
+  set("warehouse", [w.good, w.stock], Object.entries(military.warehouse || {}).map(([g, q]) =>
+    [defs.goods?.[g]?.name || w[g] || g, `${q} ${defs.goods?.[g]?.unit || ""}`.trim()]));
   set("occupied", [w.location, w.owner, w.since], (military.occupied || []).map((t) => [mapLink(t), t.by === -1 ? w.rebels : t.by, t.turn]));
   set("occupying", [w.island, w.location, w.since], (military.occupying || []).map((t) => [t.island, mapLink(t), t.turn]));
   set("prisoners", [w.owner, w.people], Object.entries(military.prisoners?.by_island || {}).map(([i, n]) => [i, n]));

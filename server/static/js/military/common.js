@@ -85,6 +85,23 @@ export function equipmentText(row, defs) {
   return [...keys].map((key) => `${defs.goods?.[key]?.name || key}: ${row.equipment?.[key] ?? 0}` +
     (row.equipment_full?.[key] != null ? ` / ${row.equipment_full[key]}` : "")).join("、") || words().none;
 }
+/** 不足量は API の表示単位をそのまま使う。編成済みの行には出さない。 */
+export function missingText(row, defs) {
+  if (row.status !== "forming") return words().none;
+  const parts = [];
+  if (row.missing?.soldiers > 0) parts.push(`${words().missingSoldiers}: ${row.missing.soldiers}`);
+  for (const [good, quantity] of Object.entries(row.missing?.equipment || {})) {
+    if (quantity > 0) parts.push(`${defs.goods?.[good]?.name || good}: ${quantity} ${defs.goods?.[good]?.unit || ""}`.trim());
+  }
+  return parts.join("、") || words().none;
+}
+export function statusCell(row) {
+  const status = escapeHtml(statusName(row));
+  if (!row.no_fuel) return { html: status };
+  const w = words();
+  return { html: `${status}<p class="military-warning military-status-warning"><strong>${escapeHtml(w.noFuel)}</strong><br>` +
+    `${escapeHtml(w.noFuelHint)} <a href="#reserve-fuel" data-open-fuel>${escapeHtml(w.fuelTarget)}</a></p>` };
+}
 export function orderText(order) {
   if (!order) return words().none;
   const w = words();

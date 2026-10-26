@@ -1,6 +1,10 @@
 {% load i18n %}
 {# JavaScript が作る欄の文言もテンプレートの翻訳に通す。 #}
 <div id="military-text" hidden
+  data-missing="{% translate '編成に足りないもの' %}" data-missing-soldiers="{% translate '兵（人）' %}"
+  data-no-fuel="{% translate '燃料不足' %}"
+  data-no-fuel-hint="{% translate '燃料が足りず進めません。「国の倉庫に備える補給の目標」の燃料を増やすと、国が買い足します。' %}"
+  data-fuel-target="{% translate '燃料の補給目標を変える' %}"
   data-id="{% translate '番号' %}" data-kind="{% translate '種類' %}"
   data-location="{% translate '場所' %}" data-soldiers="{% translate '兵（現在 / 定員）' %}"
   data-equipment="{% translate '装備（現在 / 必要数）' %}" data-status="{% translate '状態' %}"
