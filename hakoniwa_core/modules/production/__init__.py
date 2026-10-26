@@ -295,6 +295,10 @@ class Production(IslandStage):
             )
         if short is not None and have < rate:
             rate, cause = have, Production._short(f, short, ctx.defs)
+        target = f.economy.get("target", fac.FULL)
+        if target < rate and planning.hoards(island, ctx.defs, f):
+            # 人を抱える国営の施設（W-198）は、抱えた人で操業目標より多く作らない（隠れた失業）
+            rate, cause = target, "target"
         cap = fac.engineer_cap(ctx.config, f)  # 技術者が足りなければ、稼働率の上限が下がる
         if cap < rate:
             rate, cause = cap, "engineers"

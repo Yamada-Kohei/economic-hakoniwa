@@ -83,9 +83,10 @@ def test_take_people_is_proportional_and_exact(world):
 def test_soldiers_are_paid_from_the_defense_budget_and_fed_from_the_warehouse(game, world):
     island = world.islands[1]
     stock.add(island.warehouse, "ammunition", 5000, world.turn, game.defs.goods)  # 訓練の弾薬
-    # 兵の食べ物（加工食品）。島の食品工場が動いているかはこの試験の外
-    stock.add(island.warehouse, "food", 5000, world.turn, game.defs.goods)
     play(game, world, 1, [("set_defense", {"annual": 3_000_000}), ("recruit", {"count": 50})])
+    # 兵の食べ物（加工食品）。島の食品工場が動いているかはこの試験の外。日持ちが 6 ターンなので、
+    # 命令が行政力で先送りされたターン数によらず傷まないよう、兵が入ってから入れる
+    stock.add(island.warehouse, "food", 5000, world.turn, game.defs.goods)
     play(game, world, 3)
     state = island.ext["military"]
     assert island.stats["military.wages"] > 0 and island.stats["military.wages_unpaid"] == 0

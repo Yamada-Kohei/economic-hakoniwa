@@ -480,6 +480,19 @@ def price_update(price: int, offered: int, sold: int, shortage: float, ctx) -> i
     return scale_price(price, 1 + max(-width, min(width, change)))
 
 
+def offered_beyond_stock(offered: int, sold: int, keep: int) -> int | None:
+    """希望価格の見直しに使う「売りに出した量」（W-186 回2）。売れ残りのうち、ふだん持っておく在庫
+    keep（売れ行きの見込み × 在庫の目安）までは余りに数えない（会社は安全在庫を持ち、目安を超えた
+    ときに値引きする）。売れ残りが keep 以内なら None（希望価格を動かさない。値上げもしない）。
+    全部売れたら offered のまま（今までどおり品不足の分を値上げに足す）。"""
+    unsold = offered - sold
+    if unsold <= 0:
+        return offered
+    if unsold <= keep:
+        return None
+    return offered - keep
+
+
 def late_weight(price: int, floor: int, band: float) -> float:
     """持ち越せずに指値なしで出して売れた分を、操業目標の見込みに数える割合。
 
@@ -2106,7 +2119,9 @@ class Market(IslandStage):
             wanted[car] = wanted.get(car, 0) + want
             return used
         part_of, whole = portion
-        mine = offered[car] * part_of // max(1, whole)
+        # 切り上げる（切り捨てると、売りに出た車が層の数より少ないときにどの層も注文せず、最後の
+        # 1台の端数が売れないまま「売りも買いもあるのに取引が成り立たない」が続いた。W-186 回2）
+        mine = -(-offered[car] * part_of // max(1, whole))
         extra = min(want, offered[car]) - min(want, mine)
         if extra > 0:
             unplaced = island.scratch.setdefault("unplaced", {})
@@ -2929,6 +2944,8 @@ class Market(IslandStage):
                 prices[good] = result.price
             elif result.demand > 0:
                 wanted[good] = wanted.get(good, 0) + result.demand
+        from hakoniwa_core.modules.firms import entry_price  # firms は market を読むので、ここで
+
         # 買いたい人がいるのに売りに出なかった財は、島で作り始められる一番安い値段
         # （_supply_floors）が今の値段以上なら、値幅の上端まで上げる（作って採算が合う値段まで
         # 1ターンに値幅ずつ上がり、作り始める）。商社がいれば、輸入が引き合う値段も作る施設の
@@ -2962,6 +2979,11 @@ class Market(IslandStage):
             floors = Market._supply_floors(island, ctx, good, prices, rates)
             if good in found and found[good].import_floor > 0:
                 floors.append(found[good].import_floor)
+            # 新しく建つ施設が参入に見合う値段も、作り始める値段の候補にする（W-186 回2。島で
+            # 作る施設がなくなった財も、参入が見合うまで1ターンに値幅ずつ上がる）
+            entering = entry_price(island, ctx, good)
+            if entering is not None:
+                floors.append(entering)
             price = prices.get(good, 1)
             if floors and min(floors) >= price:
                 prices[good] = auction.band(price, width)[1]
@@ -3107,7 +3129,11 @@ class Market(IslandStage):
                 f.economy.setdefault("sales", {})[good] = entry
                 asks = f.economy.setdefault("ask", {})
                 before = asks.get(good, result.price)
-                ask = update(before, offered, done, shortage, ctx)
+                expected = f.economy.get("expected", {}).get(good, 0)
+                beyond = offered_beyond_stock(
+                    offered, done, round(expected * inventory_turns(ctx, good))
+                )
+                ask = before if beyond is None else update(before, beyond, done, shortage, ctx)
                 rate = rates.get(f.id, 0)
                 if ceiling is not None and ask > before:
                     # 板寄せに出す指値（運賃を足した値段）が、買えなかった買い手の指値を超えない
