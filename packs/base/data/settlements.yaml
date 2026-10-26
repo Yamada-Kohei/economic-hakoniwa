@@ -2,11 +2,13 @@
 # capacity: この段階まで育ったマスに住める上限、min_population: この人数から見た目がこの段階になる、
 # height: 建物の高さ（段）、subsistence: 仕事のない住民が自給の農業で食べていけるか
 # materials: この段階に育つとき（いちばん下の段階は新しく建つとき）に使う資源。住民（一般の層）が
-#            市場で買います。足りなければ、そろうまで育ちません。
+#            市場で買います。足りなければ、そろうまで育ちません。量は回3 で 5 倍にしました
+#            （家の値打ちが年の GDP の 2 割足らずから 7〜9 割に）。
+#            ここまでの段階の資材の合計が家の値打ちで、傷んだ分の資材で手入れします（game.yaml の housing.wear）。
 # water: この段階に育つのに要る、そのマスの上下水道の整備度（フェーズ2-3。書かなければ要らない）
 # shops: この段階の町のマスに入る商店の数（回7。書かなければ 0）
 # min_population は1つ下の段階の capacity より大きくします（育たないと見た目も変わらない）。
-village:    {min_population: 0,     capacity: 2400,  height: 1, subsistence: true, materials: {wood: 5}}
-town:       {min_population: 2500,  capacity: 6000,  height: 2, shops: 2, materials: {wood: 10, building_materials: 10}}
-city:       {min_population: 8000,  capacity: 15000, height: 4, shops: 5, water: 0.5, materials: {building_materials: 30, steel: 5}}
-metropolis: {min_population: 20000, capacity: 30000, height: 6, shops: 10, water: 0.8, materials: {building_materials: 60, steel: 15, machinery: 2}}
+village:    {min_population: 0,     capacity: 2400,  height: 1, subsistence: true, materials: {wood: 25}}
+town:       {min_population: 2500,  capacity: 6000,  height: 2, shops: 2, materials: {wood: 50, building_materials: 50}}
+city:       {min_population: 8000,  capacity: 15000, height: 4, shops: 5, water: 0.5, materials: {building_materials: 150, steel: 25}}
+metropolis: {min_population: 20000, capacity: 30000, height: 6, shops: 10, water: 0.8, materials: {building_materials: 300, steel: 75, machinery: 10}}

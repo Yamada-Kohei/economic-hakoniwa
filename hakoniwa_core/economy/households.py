@@ -181,7 +181,7 @@ def recount_engineers(island: IslandState, pool: int, grown: int, retired: int) 
 
 
 def move_people(island: IslandState, changes: dict[str, int]) -> None:
-    """層を移った人の預金を、元の層の1人あたりの額で一緒に移す（仕訳で付け替える）。
+    """層を移った人の預金と住宅ローンを、元の層の1人あたりの額で一緒に移す（仕訳で付け替える）。
 
     share（と workers）の層の人数が増えた分は一般の層から、減った分は一般の層へ移ったと考える。
     飢えの蓄え（hunger）も、移った人の分を人数で混ぜる（人口の段）。
@@ -199,6 +199,9 @@ def move_people(island: IslandState, changes: dict[str, int]) -> None:
         payer = household(source)
         amount = ledger.money(island, payer) * abs(moved) // persons
         ledger.pay(island, payer, household(target), amount, "layer_transfer")
+        from hakoniwa_core.economy import banks  # 住宅ローンも一緒に移す（回3）
+
+        banks.move_mortgages(island, payer, household(target), abs(moved), persons)
 
 
 def blend_hunger(source: dict[str, Any], target: dict[str, Any], moved: int) -> None:

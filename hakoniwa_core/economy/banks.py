@@ -35,6 +35,7 @@ from hakoniwa_core.units import BASIS, money_of, part, to_basis
 
 WORKING = "working"  # 運転資金
 CONSTRUCTION = "construction"  # 建設資金
+MORTGAGE = "mortgage"  # 住宅ローン（家計の層が借りる。回3）
 
 FINANCE_VERSION = 2  # economy.finance["version"]: 2 はフェーズ2-2 の金融が始まった島
 
@@ -289,12 +290,21 @@ def loans_by_lender(island: IslandState, lender: str) -> list[Loan]:
     return [x for x in island.loans if x.lender == lender]
 
 
+def borrower_facility(island: IslandState, borrower: str) -> Facility | None:
+    """借り手が施設ならその施設（家計の層の住宅ローンなら None）。"""
+    if not borrower.startswith("fac:"):
+        return None
+    return island.facility(int(borrower.split(":")[1]))
+
+
 def impaired(island: IslandState, loan: Loan) -> bool:
     """返ってこないおそれの大きい融資: 返済が遅れているか、借り手が動いていない（閉鎖中・差し押さえ
-    中・稼働率0、工事なら資材が買えずに止まっている）。"""
+    中・稼働率0、工事なら資材が買えずに止まっている）。家計の住宅ローンは遅れだけで見る。"""
     if loan.arrears > 0:
         return True
-    f = island.facility(int(loan.borrower.split(":")[1]))
+    if layer_of(loan.borrower) is not None:
+        return False
+    f = borrower_facility(island, loan.borrower)
     if f is None or "closing" in f.economy or "foreclosed" in f.economy:
         return True
     if not f.built:
@@ -306,7 +316,9 @@ def defaulting(island: IslandState, loan: Loan) -> bool:
     """返済が遅れているか、借り手が倒産した（いない・差し押さえ中の）融資。"""
     if loan.arrears > 0:
         return True
-    f = island.facility(int(loan.borrower.split(":")[1]))
+    if layer_of(loan.borrower) is not None:
+        return False
+    f = borrower_facility(island, loan.borrower)
     return f is None or "foreclosed" in f.economy
 
 
@@ -409,9 +421,23 @@ def lend(
     """銀行 lender が borrower に amount を貸す（借り手の預金が生まれる）。
 
     運転資金は、同じ銀行から借りている運転資金に足して1件にまとめる（返す期間は今から数え直す）。
+    住宅ローンも同じ銀行と層ごとに1件にまとめ、残りの期間を残高の重みで混ぜ直す（毎月借りても
+    件数が積もらない。回3）。
     """
     if amount <= 0:
         return None
+    if purpose == MORTGAGE:
+        for loan in island.loans:
+            if loan.lender == lender and loan.borrower == borrower and loan.purpose == MORTGAGE:
+                held = outstanding(island, loan)
+                left = remaining_turns(loan, turn)
+                ledger.create(island, lender, ledger.loan_item(loan.id), borrower, amount, "loan")
+                ledger.pay(island, lender, borrower, amount, "loan")
+                loan.principal = held + amount
+                loan.term = max(1, (held * left + amount * term) // loan.principal)
+                loan.start, loan.rate = turn, rate
+                loan.installment = -(-loan.principal // loan.term)
+                return loan
     if purpose == WORKING:
         for loan in island.loans:
             if loan.lender == lender and loan.borrower == borrower and loan.purpose == WORKING:
@@ -441,6 +467,52 @@ def lend(
     economy.deposit_bank.setdefault(borrower, bank_number(lender))
     ledger.pay(island, lender, borrower, amount, "loan")
     return loan
+
+
+def move_mortgages(island: IslandState, source: str, target: str, moved: int, persons: int) -> None:
+    """層を移った moved 人（元の層は移る前 persons 人）の住宅ローンを、預金と同じく1人あたりの額で
+    移った先の層に付け替える（失業した人は借金を持って失業者の層へ移り、職に就けば戻る。回3）。"""
+    for loan in sorted(loans_by_borrower(island, source), key=lambda x: x.id):
+        if loan.purpose != MORTGAGE:
+            continue
+        amount = outstanding(island, loan) * moved // persons
+        if amount <= 0:
+            continue
+        item = ledger.loan_item(loan.id)
+        ledger.cancel(island, loan.lender, item, source, amount, "layer_transfer")
+        loan.principal -= min(loan.principal, amount)
+        dest = next(
+            (
+                x
+                for x in island.loans
+                if x.lender == loan.lender and x.borrower == target and x.purpose == MORTGAGE
+            ),
+            None,
+        )
+        if dest is None:
+            island.economy.loan_seq += 1
+            dest = Loan(
+                id=island.economy.loan_seq,
+                lender=loan.lender,
+                borrower=target,
+                purpose=MORTGAGE,
+                principal=0,
+                term=loan.term,
+                start=loan.start,
+                rate=loan.rate,
+                installment=0,
+                repay_from=loan.repay_from,
+            )
+            island.loans.append(dest)
+        item = ledger.loan_item(dest.id)
+        ledger.create(island, dest.lender, item, target, amount, "layer_transfer")
+        dest.principal += amount
+        dest.installment = -(-dest.principal // remaining_turns(dest, dest.start))
+
+
+def remaining_turns(loan: Loan, turn: int) -> int:
+    """融資を返し終えるまでの残りのターン数（1 以上）。"""
+    return max(1, loan.start + loan.term - turn)
 
 
 def repay(island: IslandState, loan: Loan, amount: int, kind: str = "loan_repayment") -> None:

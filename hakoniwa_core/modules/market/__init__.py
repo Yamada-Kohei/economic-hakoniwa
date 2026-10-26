@@ -59,6 +59,7 @@ from hakoniwa_core.economy import (
     GENERAL,
     WAREHOUSE,
     Payer,
+    banks,
     books,
     companies,
     entity_of,
@@ -141,6 +142,8 @@ TRADER_PRIORITY = 0  # 商社の輸出の買い注文の優先順位（値幅の
 CONTRACT_PRIORITY = 9  # 契約で売る分を政府が買う注文の優先順位
 GOV_TRADE = "trade"  # 政府が貿易に払う項目（どの項目にも取り置いていない国庫から）
 MERCHANT_GAP = Payer(ledger.GOV, GOV_TRADE)  # 計画経済の島で、海外の商人の値段と公定価格の差を払う
+# island.scratch: このターンに住宅ローンで借りた額と、町が育つ資材の注文（回3）
+MORTGAGE_DRAWN = "mortgage_drawn"
 CLEARING = "market_clearing"  # island.scratch: 板寄せの払いに使う（運送業, 道のり）
 IMPORTED = "imported"  # 国の倉庫に届いた腐る物の売り（Party.layer）
 
@@ -589,6 +592,40 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
     return max(target - limit, min(target + limit, plan))
 
 
+MISSED = "missed"  # 施設の economy: 直近の売り逃した量（全力の産出に対する 1000 分の 1。古い順）
+
+
+def record_missed(island: IslandState, f: Facility, ctx: StageContext) -> None:
+    """全力の近くで動いて売り切れた民営の施設が、このターンに売り逃した量を残す（W-186 回3。
+    設備投資の合図。modules/firms の建て増し）。
+
+    売り逃した量は、市場で買えなかった量（買いたい量 − 約定した量）を、その施設が売れた量の割合で
+    分けた分。売り切れていない施設（希望価格が高くて売れ残った・作る量を絞っている）や、設備の割合の
+    firms.invest_use 倍より低く動いた施設は 0（売れ行きでなく値段か操業が足りないので、設備を
+    増やしても売れない）。作りたい量（操業目標）は在庫を目安に戻す分と、売り切れたときの上積みを
+    含むので使わない。産出物が2つ以上なら、売り逃した割合の一番大きいもの。
+    """
+    if f.owner != OWNER_PRIVATE or not is_self_supporting(f):
+        return
+    config = ctx.config
+    power = config.get("power.good")
+    records = {m.good: m for m in island.markets}
+    capacity = min(fac.FULL, equipment.condition(f))
+    busy = f.operating_rate >= capacity * config.get("firms.invest_use")
+    missed = 0
+    for good, full in sorted(fac.outputs_of(ctx.defs, f).items()):
+        if good == power or not full or not busy:
+            continue
+        offered, sold, _ = f.economy.get("sales", {}).get(good, [0, 0, 0])
+        record = records.get(good)
+        if record is None or offered <= 0 or sold < offered or record.volume <= 0:
+            continue
+        unmet = max(0, record.demand - record.volume)
+        missed = max(missed, fac.ratio(unmet * sold // record.volume, full))
+    history = [*f.economy.get(MISSED, []), missed][-config.get("firms.invest_turns") :]
+    f.economy[MISSED] = history
+
+
 # --- 工事の資材の代金の取り置き ------------------------------------------------------
 
 SITE_HOLDS = "site_holds"  # island.scratch: 雇用の段で取り置いた資材の代金の (支払い手, 額)
@@ -711,6 +748,9 @@ class Market(IslandStage):
         for f, good, qty, cost in island.scratch.pop(REPAIR, []):  # 直す資材を設備に入れる（回6）
             equipment.install(defs, f, good, qty, cost)
         self._trade_settled(island, ctx, rates)
+        drawn = island.scratch.get(MORTGAGE_DRAWN)
+        if drawn:  # 住宅ローンで買った額は、取り置きを戻す前に数える（回3）
+            island.scratch[MORTGAGE_DRAWN] = (drawn[0], sum(a - p.reserved for p, a in drawn[1]))
         for _, book in sorted(books_by_good.items()):
             for _, party in book.buys:
                 funds.release(island, party.payer, party.reserved)
@@ -718,6 +758,7 @@ class Market(IslandStage):
             for _, party in book.sells:  # 海外の商人の売れ残りの分の、政府が払う差
                 funds.release(island, MERCHANT_GAP, party.reserved)
                 party.reserved = 0
+        self._settle_mortgage(island, ctx)
         needs.close_cars(island, config)
         foreign = self._foreign_supply(config, books_by_good, results)
         island.scratch[traders.FOREIGN_SUPPLY] = foreign
@@ -738,6 +779,7 @@ class Market(IslandStage):
                     goal = planning.target(island, f, defs, config) if official else None
                     if goal is None:
                         goal = ctx.formula("operating_target")(island, f, ctx)
+                        record_missed(island, f, ctx)
                     f.economy["target"] = goal
         services.plan(
             island,
@@ -1954,7 +1996,7 @@ class Market(IslandStage):
                     self._household_buy(
                         island, books_by_good, good, qty, limit, rate, tax, layer, priority
                     )
-        self._housing_orders(island, ctx, books_by_good, rate)
+        self._housing_orders(island, ctx, books_by_good, rate, offered)
 
     def _service_buys(
         self,
@@ -2231,37 +2273,128 @@ class Market(IslandStage):
         return qty, cost
 
     def _housing_orders(
-        self, island: IslandState, ctx: StageContext, books_by_good: dict[str, Book], rate: int
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        books_by_good: dict[str, Book],
+        rate: int,
+        offered: dict[str, int],
     ) -> None:
-        """町が育つのに要る資材（都市の発展の段が決めたもの）を、一般の層が預金の決めた割合まで買う。"""
-        want = island.economy.housing.get("want", {})
-        if not want:
+        """町の資材を一般の層が買う。傷んだ家の手入れの資材（economy.housing["repair"]）は預金から先
+        に、町が育つ資材（都市の発展の段が決めた want）は代金の housing.ltv を住宅ローンで借りて買う
+        （回3）。預金から出すのは、手入れと頭金を合わせて預金の household.housing_share まで。売りに
+        出ている量までしか注文しない（ない物の手入れにお金を取り置いて、育つ分が買えなくならない）。"""
+        housing = island.economy.housing
+        want = housing.get("want", {})
+        repair = housing.get("repair", {})
+        if not want and not repair:
             return
+        config = ctx.config
         payer = Payer(household(GENERAL))
-        width = to_basis(ctx.config.get("market.band"))
-        held = island.economy.housing.setdefault("stock", {})
-        plan = {}
-        for good, qty in sorted(want.items()):
-            missing = qty - stock.total(held, good)
-            if missing > 0:
-                _, high = auction.band(island.economy.prices.get(good, 1), width)
-                plan[good] = (missing, high)
-        cap = part(
-            ledger.money(island, household(GENERAL)),
-            to_basis(ctx.config.get("household.housing_share")),
-        )
-        cost = sum(gross_cost(lim, q, rate, 0) for q, lim in plan.values())
-        cap = min(cap, funds.available(island, payer))
-        if cost > cap and cost > 0:
-            plan = {g: (q * cap // cost, lim) for g, (q, lim) in plan.items()}
-        priority = ctx.config.get("market.household_priority")
-        for good, (qty, limit) in sorted(plan.items()):
-            if qty <= 0:
+        width = to_basis(config.get("market.band"))
+        held = housing.setdefault("stock", {})
+        fix: dict[str, tuple[int, int]] = {}
+        grow: dict[str, tuple[int, int]] = {}
+        for good in sorted(set(want) | set(repair)):
+            missing = want.get(good, 0) + repair.get(good, 0) - stock.total(held, good)
+            missing = min(missing, offered.get(good, 0))
+            if missing <= 0:
                 continue
-            party = Party(HOUSEHOLD, household(GENERAL), payer, rate, 0, layer="housing")
-            party.reserved = gross_cost(limit, qty, rate, 0)
-            funds.commit(island, payer, party.reserved)
-            self._add(books_by_good, good, "buy", Order(qty, limit, priority), party)
+            _, high = auction.band(island.economy.prices.get(good, 1), width)
+            mend = min(missing, repair.get(good, 0))
+            if mend > 0:
+                fix[good] = (mend, high)
+            if missing > mend:
+                grow[good] = (missing - mend, high)
+        share = to_basis(config.get("household.housing_share"))
+        cash = part(ledger.money(island, payer.entity), share)
+        cash = min(cash, funds.available(island, payer))
+        fix_cost = sum(gross_cost(lim, q, rate, 0) for q, lim in fix.values())
+        if fix_cost > cash and fix_cost > 0:
+            fix = {g: (q * cash // fix_cost, lim) for g, (q, lim) in fix.items()}
+        cash -= min(cash, fix_cost)
+        grow_cost = sum(gross_cost(lim, q, rate, 0) for q, lim in grow.values())
+        ltv = config.get("housing.ltv")
+        loan = 0
+        if grow_cost > 0:
+            limit = min(ltv * grow_cost, cash * ltv / (1 - ltv))
+            loan = self._draw_mortgage(island, ctx, int(limit))
+        budget = cash + loan
+        if grow_cost > budget:
+            grow = {g: (q * budget // grow_cost, lim) for g, (q, lim) in grow.items()}
+        priority = config.get("market.household_priority")
+        growing = []
+        for plan, is_growth in ((fix, False), (grow, True)):
+            for good, (qty, limit) in sorted(plan.items()):
+                if qty <= 0:
+                    continue
+                party = Party(HOUSEHOLD, household(GENERAL), payer, rate, 0, layer="housing")
+                party.reserved = gross_cost(limit, qty, rate, 0)
+                funds.commit(island, payer, party.reserved)
+                self._add(books_by_good, good, "buy", Order(qty, limit, priority), party)
+                if is_growth:
+                    growing.append((party, party.reserved))
+        if loan:
+            island.scratch[MORTGAGE_DRAWN] = (loan, growing)
+
+    @staticmethod
+    def _draw_mortgage(island: IslandState, ctx: StageContext, amount: int) -> int:
+        """一般の層が amount まで住宅ローンを借りる（金利の低い銀行から、自己資本比率の規制の残り
+        まで）。毎ターンの返済（利子 ＋ 元金）は、層の直近の所得の平均の housing.dti まで。借りた額
+        を返す。"""
+        config = ctx.config
+        borrower = household(GENERAL)
+        incomes = island.economy.households.get(GENERAL, {}).get("income") or []
+        if amount <= 0 or not incomes:
+            return 0
+        income = sum(incomes) / len(incomes)
+        room = config.get("housing.dti") * income - banks.debt_service(island, borrower, ctx.turn)
+        term = config.get("housing.mortgage_turns")
+        rate_of = ctx.formula("loan_rate")
+        offers = sorted(
+            (rate_of(island, ctx, bank, borrower), bank)
+            for bank in banks.active_banks(island)
+            if banks.labor_ratio(island, config, ctx.defs, bank) > 0
+            and not banks.lending_stopped(island, bank, ctx.turn)
+        )
+        drawn = 0
+        for rate, bank in offers:
+            per_unit = rate / BASIS / YEAR + 1 / term  # 1 借りたときの毎ターンの返済
+            piece = min(
+                amount - drawn,
+                int(room / per_unit),
+                banks.capital_room(island, config, bank, ctx.turn),
+            )
+            if piece <= 0:
+                continue
+            banks.lend(island, bank, borrower, piece, banks.MORTGAGE, term, ctx.turn, rate)
+            drawn += piece
+            room -= piece * per_unit
+            if drawn >= amount:
+                break
+        return drawn
+
+    @staticmethod
+    def _settle_mortgage(island: IslandState, ctx: StageContext) -> None:
+        """約定の後、町が育つ資材に払った額の housing.ltv を超えて借りた分を、すぐ返す（借りたお金が
+        預金に残って消費に回らないように。回3）。"""
+        drawn, spent = island.scratch.pop(MORTGAGE_DRAWN, (0, 0))
+        if drawn <= 0:
+            return
+        keep = min(drawn, int(spent * ctx.config.get("housing.ltv")))
+        extra = drawn - keep
+        borrower = household(GENERAL)
+        for loan in sorted(banks.loans_by_borrower(island, borrower), key=lambda x: -x.id):
+            if extra <= 0:
+                break
+            if loan.purpose != banks.MORTGAGE:
+                continue
+            back = min(extra, banks.outstanding(island, loan), ledger.money(island, borrower))
+            banks.repay(island, loan, back)
+            loan.principal -= min(loan.principal, back)
+            extra -= back
+        stats = island.stats
+        stats["loans.mortgage_new"] = stats.get("loans.mortgage_new", 0) + drawn - max(0, extra)
 
     def _warehouse_orders(
         self, island: IslandState, ctx: StageContext, books_by_good: dict[str, Book]

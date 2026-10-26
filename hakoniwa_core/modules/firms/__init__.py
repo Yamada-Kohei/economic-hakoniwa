@@ -106,6 +106,7 @@ from hakoniwa_core.economy.start import (
 from hakoniwa_core.geo import within
 from hakoniwa_core.modules.banking import entry_policy, is_planned
 from hakoniwa_core.modules.failures import bankrupt, close_foreclosure, distribute
+from hakoniwa_core.modules.market import MISSED
 from hakoniwa_core.naming import assign_serial
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import (
@@ -270,6 +271,7 @@ class EntryExit(IslandStage):
             for _ in range(ctx.config.get("firms.entries_per_turn")):
                 if not self._enter(island, ctx):
                     break
+            self._invest(island, ctx)
         self._bank_entry(island, ctx)
         trade_setup.entry(island, ctx.defs, ctx.config, is_planned(ctx.defs, island), ctx.turn)
         private = [
@@ -689,6 +691,104 @@ class EntryExit(IslandStage):
             blocks.append((estimate, kind, failure[0], failure[1]))
         return False
 
+    def _invest(self, island: IslandState, ctx: StageContext) -> None:
+        """設備投資（W-186 回3）: 売り逃しが続いた民営の施設が、その場で建て増す。
+
+        全力の近くで動いて売り切れ、それでも売り逃した月（market の record_missed）が直近
+        firms.invest_turns ターンのうち半分以上あれば、売り逃した量の平均 ÷ 建て増す1つ分の産出を
+        売れると見込む割合にする。式 entry_return（そのマスの生産性と運賃、建て増した後の設備の傷み
+        の分は1つ分）× その割合が、参入に要る利益率（_threshold）を超えれば、持ち主の出資と銀行の
+        建設資金で1つ建て増す（_build。今の設備を直す採算が合わない施設は先に直すので建て増さない）。
+        新しい土地は要らない。工場ごとに1ターン1つまでで、建て増しの工事中と、建ってから
+        firms.price_turns ターンの間、同じ財を作る民営の工事がある間は見ない（売り出した後の売れ
+        行きを見てから決める。新しい工場の参入と同じ品切れに二重に投資しない）。
+        """
+        defs, config = ctx.defs, ctx.config
+        threshold = self._threshold(island, ctx)
+        if threshold == float("inf"):
+            return
+        settings = config.get("firms")
+        turns = settings["invest_turns"]
+        step = round_money(config.get("market.target_step") * fac.FULL + 0.5)  # 直す途中の幅
+        recent = ctx.turn - settings["price_turns"]
+        prices = average_prices(island, settings["price_turns"])
+        wage = island.economy.average_wage
+        rates = freight_rates.facility_rates(island, defs, config)
+        shortages = island.economy.finance.get("shortages", {})
+        capacity = self._capacity(island, ctx)
+        uses = self._capacity(island, ctx, "inputs")
+        demand = island.economy.finance.get("demand", {})
+        building = {
+            g
+            for x in island.facilities
+            if is_private_site(x)
+            for g in defs.facilities[x.kind]["recipes"][x.recipe]["outputs"]
+        }
+        supplied = self._supplied(island, ctx)
+        on_sale = {g for g, h in island.economy.finance.get("supply", {}).items() if any(h)}
+        shop = services.staff_by_tile(island, config)
+        expandable: dict[str, bool] = {}
+        for f in sorted(island.facilities, key=lambda x: x.id):
+            history = f.economy.get(MISSED, [])
+            if len(history) < turns or sum(1 for m in history if m > 0) * 2 < turns:
+                continue
+            if f.owner != OWNER_PRIVATE or not f.built or not is_self_supporting(f):
+                continue
+            if "closing" in f.economy or "foreclosed" in f.economy or not fac.on_map(f):
+                continue
+            if f.economy.get("entered", -(10**9)) > recent or fac.pending_expansions(island, f):
+                continue
+            if fac.size_of(f) >= fac.max_size(defs, f.kind):
+                continue
+            recipe = defs.facilities[f.kind]["recipes"][f.recipe]
+            if building & set(recipe["outputs"]):
+                continue
+            rate = rates.get(f.id, 0)
+            # 今の設備を直す採算が合わない・直しきれていない施設は、先に直す（増やさない）
+            profit = variable_profit(defs, config, f, prices, f.economy.get("wage", wage), rate)
+            if equipment.has_equipment(defs, config, f) and (
+                not equipment.worthwhile(defs, config, f, profit, prices)
+                or equipment.condition(f) + step < equipment.level(config, f)
+            ):
+                continue
+            fill = min(1.0, sum(history) / len(history) * fac.size_of(f) / fac.FULL)
+            if self._inputs_short(recipe, shortages, settings) or self._inputs_capped(
+                island, ctx, recipe, capacity, uses, demand, expandable
+            ):
+                continue
+            materials = defs.facilities[f.kind]["construction"].get("materials", {})
+            if set(materials) - supplied - on_sale:
+                continue
+            need = fac.workers_needed(defs, f.kind)
+            radius = fac.commute_radius(defs, config, f.kind)
+            spots = self._expansion_spots(island, ctx, f.kind, f.recipe, need, radius, shop)
+            if (f.x, f.y) not in spots:
+                continue  # 通勤圏に雇える人が足りない
+            full = round_money(construction_cost(defs, f.kind, prices, wage))
+            part_rate = capital_subsidy(island, f.kind, recipe)
+            room = funds.available(island, Payer(ledger.GOV, SUBSIDIES))
+            subsidy = min(part(full, part_rate), room)
+            capital = full - subsidy
+            estimate = ctx.formula("entry_return")(
+                island, ctx, f.kind, f.recipe, prices, rate, capital, (f.x, f.y)
+            )
+            if estimate * fill <= threshold:
+                continue
+            failure = self._build(
+                island,
+                ctx,
+                f.kind,
+                f.recipe,
+                (f.x, f.y),
+                capital,
+                prices,
+                rate,
+                (part_rate, subsidy),
+            )
+            if failure is None:
+                building |= set(recipe["outputs"])
+                island.stats["firms.invested"] = island.stats.get("firms.invested", 0) + 1
+
     @staticmethod
     def _fill(
         recipe: dict[str, Any],
@@ -1012,11 +1112,21 @@ class EntryExit(IslandStage):
         return spots
 
     def _finance(
-        self, island: IslandState, ctx: StageContext, amount: int, earnings: int, kind: str = ""
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        amount: int,
+        earnings: int,
+        kind: str = "",
+        target: Facility | None = None,
     ) -> list[tuple[str, int, int]] | tuple[str, dict[str, Any]]:
         """出資と建設資金の融資の組み立て: [(銀行, 借りる額, 金利)]（出資は amount − 借りる額の合
         計）。資産を持つ層が出資しきれないか、審査に通らなければ、そのわけ（わけと引数の組）。
-        国債の債務不履行で損をして新しい融資を止めている銀行からは借りない。"""
+        国債の債務不履行で損をして新しい融資を止めている銀行からは借りない。
+
+        建て増し（target）は、融資が済んだ後に建て増す施設へ移るので、大口融資の上限はその施設への
+        今の残高を足して見て（exposure_room）、返済の余裕もその施設の今の返済と利益を足して見る
+        （W-186 回3）。"""
         config = ctx.config
         want = amount - round_money(amount * config.get("firms.equity_share"))
         owners = Payer(household(OWNERS))
@@ -1034,10 +1144,12 @@ class EntryExit(IslandStage):
         pieces = []
         left = want
         for _, bank in sorted(offers):
-            room = min(
-                banks.capital_room(island, config, bank, ctx.turn),
-                banks.exposure_limit(island, config, bank, ctx.turn),
-            )
+            if target is None:
+                limit = banks.exposure_limit(island, config, bank, ctx.turn)
+            else:
+                borrower = facility_entity(target.id)
+                limit = banks.exposure_room(island, config, bank, borrower, ctx.turn)
+            room = min(banks.capital_room(island, config, bank, ctx.turn), limit)
             piece = min(left, room)
             if piece > 0:
                 pieces.append((bank, piece))
@@ -1063,6 +1175,8 @@ class EntryExit(IslandStage):
             rate = island.policy.policy_rate + banks.margin_of(island, config, bank) + leverage
             plan.append((bank, piece, rate))
             service += ledger.interest(piece, rate) + -(-piece // turns)
+        if target is not None:
+            service += banks.debt_service(island, facility_entity(target.id), ctx.turn)
         coverage = config.get("loans.coverage")
         if earnings < coverage * service:  # 何倍の余裕が要るかも書く（試し遊びで分からなかった）
             args = {"earnings": earnings, "service": service, "coverage": coverage}
@@ -1094,11 +1208,15 @@ class EntryExit(IslandStage):
         # ターン分）も合わせて調達する
         start = operating_cost(defs, config, probe, prices, wage, rate)
         amount = capital + capital // 10 + start * config.get("firms.operating_turns")
-        plan = self._finance(island, ctx, amount, earnings, kind)
+        target = fac.expansion_target(island, kind, *pos)
+        if target is not None:  # 建て増す施設の今の利益も返済に充てられる
+            earnings += variable_profit(
+                defs, config, target, prices, target.economy.get("wage", wage), rate
+            )
+        plan = self._finance(island, ctx, amount, earnings, kind, target)
         if isinstance(plan, tuple):
             return plan
         payer, firm = island.scratch.pop("entry_investor", None) or (household(OWNERS), None)
-        target = fac.expansion_target(island, kind, *pos)
         if target is not None:  # 建て増し（段6 A3）: 出資するのは建て増す施設の持ち主
             payer, firm = owner_entity(target), None
             share = amount - sum(p for _, p, _ in plan)

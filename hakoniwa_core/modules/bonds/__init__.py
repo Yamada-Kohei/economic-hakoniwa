@@ -157,6 +157,18 @@ def target_holding(assets: int, market: int, base: int, free: float, premium: fl
     return int(assets * max(0.0, min(1.0, share)))
 
 
+def holding_at(assets: int, market: int, base: int, floor: int, free: float, premium: float) -> int:
+    """区分の利回りが market のとき銀行が持ちたい国債の額面（W-193）。市場の求める利回り base 以上
+    では target_holding と同じ。base より下では、準備預金の利回り floor との差が縮まるほど国債を
+    持たずに準備で持つ（base で偏りの許す割合 free、floor で 0。間は直線）。中央銀行が国債を買って
+    利回りを下げたとき、銀行が売る量の曲線（中央銀行の買いの2回目の板寄せだけで使う）。"""
+    if market >= base or premium <= 0:
+        return target_holding(assets, market, base, free, premium)
+    if market <= floor or base <= floor:
+        return 0
+    return int(assets * free * (market - floor) / (base - floor))
+
+
 def auction_budget(island: IslandState, ctx: StageContext, bank: str) -> int:
     """銀行が国債の入札に回すお金: 準備預金のうち、最低限 ＋ 預金 × banking.liquidity_share と、
     中央銀行と銀行間から借りている額と、政府の預金を超えた分（決算の支払いと預金の出入りの分を
@@ -703,6 +715,8 @@ class Bonds(WorldStage):
             held = holdings[ledger.CB]
             total = sum(held)
             if trade > 0:
+                # 値幅の中で買い、届かない分はふつうの板寄せの後に、売ってもよい銀行の売りとだけ
+                # 合わせて値幅を越えて買う（_cb_buy。W-193）
                 for k in range(count):
                     buyers[k].append((Order(trade // count), ledger.CB))
             elif total > 0:
@@ -717,6 +731,7 @@ class Bonds(WorldStage):
         band = to_basis(config.get("bonds.trade_band"))
         top = to_basis(config.get("bonds.max_yield"))
         cb_done = 0  # 中央銀行が売り買いした額面
+        cb_bought = [0] * count  # 区分ごとに中央銀行が買った額面
         cb_moved = {"bought": 0, "sold": 0}
         for k in range(count):
             if not sellers[k] or not buyers[k]:
@@ -736,9 +751,14 @@ class Bonds(WorldStage):
                 done = self._deliver(island, ctx, seller, buyer, qty, k, result.price, by_id)
                 if ledger.CB in (seller, buyer):
                     cb_done += done
+                    if buyer == ledger.CB:
+                        cb_bought[k] += done
                     cb_moved["bought" if buyer == ledger.CB else "sold"] += done
             stats = island.scratch.setdefault("bond_stats", {})
             stats["traded"] = stats.get("traded", 0) + result.volume
+        if trade > 0 and not island.policy.cb_independent:
+            left = [max(0, trade // count - cb_bought[k]) for k in range(count)]
+            cb_done += self._cb_buy(island, ctx, left, yields, wanted, by_id)
         if trade and not island.policy.cb_independent:
             self._log_cb_trade(island, trade, cb_done)
         if island.policy.cb_independent:
@@ -753,6 +773,69 @@ class Bonds(WorldStage):
                 if amount > 0:
                     stats[f"cb_{side}"] = amount
                     island.log.append(LogEntry(f"cb_open_market_{side}", {"amount": amount}))
+
+    def _cb_buy(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        left: list[int],
+        yields: list[int],
+        wanted: list[int],
+        by_id: dict[int, Bond],
+    ) -> int:
+        """独立していない中央銀行の国債の買い（政策 cb_bond_trade ＞ 0。W-193）のうち、ふつうの
+        板寄せ（値幅の中）で買いきれなかった区分ごとの額面 left を買う。買った額面を返す。
+
+        区分ごとに、ふつうの板寄せが済んだ後の利回りから、準備預金の利回り（政策金利 −
+        central_bank.reserve_spread）までを banking.cb_sell_steps 段に分け、各銀行が「その利回りまで
+        下がれば、持ちたい額（holding_at）を超えた分を売る」指値の売りを出し、中央銀行の指値なしの
+        買い（買いきれなかった分）と板寄せする。利回りは売りが足りるところまで下がり、
+        国債の売買の値幅（bonds.trade_band）を越えてよい（日本銀行の指値オペのように、値段を上げて
+        でも買う）。準備預金の利回りより下には下げない（それより低い利回りで国債を持つ銀行はない）。
+        売りが足りなければ買えた額だけ（ログに届かなかったと出す）。準備預金が足りない銀行と外国の
+        持ち手の指値なしの売りは、ふつうの板寄せで済んでいて、ここには入れない（指値なしどうしだと
+        利回りが一度に下端まで動くので）。"""
+        config = ctx.config
+        edges = config.get("bonds.buckets")
+        count = len(edges) + 1
+        steps = config.get("banking.cb_sell_steps")
+        floor = max(
+            0, island.policy.policy_rate - to_basis(config.get("central_bank.reserve_spread"))
+        )
+        free, slope = concentration(ctx, island)
+        done = 0
+        for k in range(count):
+            ref = yields[k]
+            if ref <= floor or left[k] <= 0:
+                continue
+            sells: list[tuple[Order, str]] = []
+            for bank in banks.active_banks(island):
+                if banks.excess_reserves(island, config, bank) < 0:
+                    continue  # 準備の足りない銀行は、ふつうの板寄せで指値なしで売った
+                held = self._by_bucket(island, bank, ctx.turn, edges, by_id)[k]
+                if held <= 0:
+                    continue
+                assets = bond_assets(island, bank)
+                offered = 0
+                for j in range(1, steps + 1):
+                    level = ref - (ref - floor) * j // steps
+                    keep = holding_at(assets, level, wanted[k], floor, free, slope) // count
+                    qty = max(0, held - keep) - offered
+                    if qty > 0:
+                        sells.append((Order(qty, level), bank))
+                        offered += qty
+            if not sells:
+                continue
+            buy = Order(left[k])
+            result = auction.clear([o for o, _ in sells], [buy], ref, bounds=(floor, ref))
+            if result.volume <= 0:
+                continue
+            yields[k] = result.price
+            for s, _, qty in auction.match(result.bought, result.sold):
+                done += self._deliver(
+                    island, ctx, sells[s][1], ledger.CB, qty, k, result.price, by_id
+                )
+        return done
 
     @staticmethod
     def _open_market(

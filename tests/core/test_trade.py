@@ -279,8 +279,9 @@ def test_contract_delivers_goods_and_money(game, traded):
     world = copy.deepcopy(traded[0])
     seller, buyer = world.islands[1], world.islands[2]
     good = "building_materials"
-    # 国の工事も倉庫の資材を先に使う（8ターンで50ほど）ので、契約の12にその分を足して入れておく
-    stock.add(seller.warehouse, good, 100 * QUANTITY_SCALE, world.turn, game.defs.goods)
+    # 国の工事も倉庫の資材を先に使う（使う量は世界の流れで変わり、回3 で 100 を超えた）ので、契約の
+    # 12 に多めに足して入れておく
+    stock.add(seller.warehouse, good, 200 * QUANTITY_SCALE, world.turn, game.defs.goods)
     price = buyer.economy.prices[good]
     proposal = {
         "partner": buyer.id,

@@ -171,8 +171,8 @@ class Loan:
 
     id: int
     lender: str  # 貸し手の銀行の主体（bank:<番号>）
-    borrower: str  # 借り手の主体（fac:<番号>）
-    purpose: str  # 使い道: construction（建設資金）、working（運転資金）
+    borrower: str  # 借り手の主体（fac:<番号>。住宅ローンは家計の層 hh:<層>）
+    purpose: str  # 使い道: construction（建設資金）、working（運転資金）、mortgage（住宅ローン）
     principal: int  # 貸した額
     term: int  # 元金を返す期間（ターン）
     start: int  # 貸したターン

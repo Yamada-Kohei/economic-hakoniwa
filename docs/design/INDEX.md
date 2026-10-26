@@ -42,7 +42,7 @@
 
 ## [2 島と町と人口](02-population.md)
 
-決まり 49 個、うち仮の決まりの表にあるもの 0 個。
+決まり 50 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -64,7 +64,7 @@
 | PO-16 | 町（住宅）は自動で建つ施設 `housing.facility` で、段階（村・町・都市・大都市… | 決定 | tests/core/test_playtest3_fixes.py |
 | PO-17 | 町ができる・育つのは、人手の足りない施設（店が雇いきれなかった集落を含む）の通勤圏で、空いている… | 決定 | tests/core/test_rules.py |
 | PO-18 | 育つのは人数が上限の `housing.fill_ratio` を超えた町で、新しくできる数と育… | 決定 | tests/core/test_rules.py |
-| PO-19 | 育つ資材は一般の層が市場で買い（預金の `household.housing_share` まで… | 決定 | tests/core/test_playtest3_fixes.py、tests/core/test_rules.py |
+| PO-19 | 育つ資材は一般の層が市場で買い（預金から出すのは手入れと頭金を合わせて預金の `househol`… | 決定 | tests/core/test_playtest3_fixes.py、tests/core/test_rules.py |
 | PO-20 | 都市・大都市に育つには、そのマスの上下水道が `settlements.yaml` の wate… | 決定 | tests/core/test_balance_round4.py |
 | PO-21 | 村の仕事のない住民は自給の農業で自分の食べる分をまかない、市場で買わない | 決定 | tests/core/test_balance_round3.py |
 | PO-22 | 仕事のない人は毎ターン `population.migration_rate` の割合で、人手の… | 決定 | （未確認） |
@@ -95,6 +95,7 @@
 | PO-47 | 標準の記念碑は 10: モノリス・建国記念碑・平和記念碑・戦いの碑・慰霊碑・元首の像・労働者の像… | 決定（4-1 ④） | tests/core/test_monuments.py、tests/server/test_monuments.py |
 | PO-48 | 自作の記念碑はモノリスと同じ条件で、絵を遊ぶ人が上げる（国旗と同じ守り） | 決定（4-1 ④） | tests/server/test_monuments.py |
 | PO-49 | 国の大きさの倍（段6 A3、W-85）: マス1つ・施設1つの表す大きさを `scale.peo`… | 決定 | tests/core/test_scale.py、tests/server/test_world_scale.py |
+| PO-50 | 家の傷みと手入れ（W-186 の直し 回3）: 町の家は年に `housing.wear` ずつ… | 決定（回3） | tests/core/test_recession_round3.py |
 
 ## [3 物と市場と値段](03-market.md)
 
@@ -188,7 +189,7 @@
 
 ## [5 施設と企業](05-firms.md)
 
-決まり 48 個、うち仮の決まりの表にあるもの 0 個。
+決まり 49 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -240,6 +241,7 @@
 | FM-46 | 施設と企業の自動の名前は、生まれたときに一度だけ決めて残す（民営の企業は創業者の姓か生まれた地名… | 決定（仮: 創業者と地元の出資の割合） | tests/core/test_company_names.py |
 | FM-47 | 施設の規模（段6 A3、W-85）: 同じ施設の建っているマスに同じ施設を建てる命令は、建て増し… | 決定 | tests/core/test_scale.py |
 | FM-48 | 損益の在庫の増減は原価法・低価法で数える: 施設の作る物は「1 単位の原価（変動費と設備の傷み）… | 決定 | tests/core/test_recession_round1.py |
+| FM-49 | 設備投資（W-186 の直し 回3）: 民営の独立採算の施設が、直近 `firms.invest`… | 決定（回3） | tests/core/test_recession_round3.py |
 
 ## [6 国の財政と政策](06-finance.md)
 
@@ -275,7 +277,7 @@
 
 ## [7 お金と銀行](07-banking.md)
 
-決まり 46 個、うち仮の決まりの表にあるもの 1 個。
+決まり 48 個、うち仮の決まりの表にあるもの 1 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -288,7 +290,7 @@
 | BK-07 | 国営銀行はプレイヤーが建設の命令で建てる | 決定 | tests/core/test_finance.py、tests/core/test_playtest5_fixes.py、tests/core/test_playtest_fixes.py |
 | BK-08 | 家計の層は毎ターン預金の一部を「預金金利−危なさ」の高い銀行へ移す | 決定 | （未確認） |
 | BK-09 | 預金金利は「政策金利−差」へ少しずつ近づけ、手元の流動性（準備預金の余りと国債の額面）が足りない… | 決定 | tests/core/test_shocks.py |
-| BK-10 | 融資は建設資金（据え置きの後に均等に返す）と運転資金（短く返し、貸し手と借り手ごとに1本で回す） | 決定 | tests/core/test_finance.py |
+| BK-10 | 融資は建設資金（据え置きの後に均等に返す）と運転資金（短く返し、貸し手と借り手ごとに1本で回す）… | 決定 | tests/core/test_finance.py |
 | BK-11 | 審査は、現金で見た営業の利益が返済の決めた倍以上で、借入が資産の決めた割合以下 | 決定 | （未確認） |
 | BK-12 | 銀行が貸せるのは、貸した後も自己資本比率が規制以上で、1つの民営施設への残高が大口融資の規制以内… | 決定 | tests/core/test_finance.py |
 | BK-13 | 運転資金を借りきれない分は、国営施設なら政府が出資し、民営施設なら変動費の利益が出ている間だけ資… | 決定 | （未確認） |
@@ -323,6 +325,8 @@
 | BK-42 | 回5 で、刷ったお金が物価に効く経路を入れる（預金から使う割合を物価と実質金利で動かす・指値に物… | 決定（回5 で作る） | tests/core/test_shocks.py |
 | BK-43 | 計画経済の国は中央銀行を独立させられない（命令は通らない） | 決定（回5） | tests/core/test_balance_round5.py |
 | BK-44 | 独立した中央銀行は国債の売買の市場で売り買いする | 決定（回5） | tests/core/test_balance_round5.py |
+| BK-47 | 家計の住宅ローン（W-186 の直し 回3）: 町が育つ資材の代金の `housing.ltv`… | 決定（回3） | tests/core/test_recession_round3.py |
+| BK-48 | 中央銀行の買いが値幅の中で買いきれなければ、値幅を越えて利回りを下げて買う（W-193 | 決定（回3） | tests/core/test_recession_round3.py |
 | BK-45 | 直近 1 年の利益がマイナスの銀行は、職員の下限 `banking.staff_floor` を… | 決定（回7 後半） | tests/core/test_balance_round7b.py、tests/core/test_playtest5_fixes.py |
 | BK-46 | 破綻の前の合併: 直近 1 年の利益がマイナスで、自己資本比率が「規制＋`banking.ris`… | 決定（回7 後半） | tests/core/test_balance_round7b.py |
 

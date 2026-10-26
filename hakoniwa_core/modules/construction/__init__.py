@@ -379,6 +379,10 @@ def _merge_expansion(island: IslandState, site: Facility, ctx: StageContext) -> 
     stock.move_to_warehouse(site.stock, island.warehouse, ctx.turn, defs.goods)
     size = fac.size_of(target) + 1
     target.ext[fac.SIZE] = size
+    if "target" in target.economy:
+        # 操業目標は全力に対する割合なので、規模が増えた分だけ割り直す（作る量を一度に跳ねさせず、
+        # 売れ行きを見ながら上げる。W-186 回3）
+        target.economy["target"] = target.economy["target"] * (size - 1) // size
     island.facilities.remove(site)
     island.log.append(
         LogEntry("facility_expanded", {"facility": target.kind, "x": x, "y": y, "size": size})

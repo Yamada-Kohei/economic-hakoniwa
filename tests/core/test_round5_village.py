@@ -77,8 +77,8 @@ def test_overcrowded_island_opens_a_new_village_with_wood(game):
     need = game.defs.settlements["village"]["materials"]
     assert island.economy.housing["want"] == need
     held = island.economy.housing["stock"]
-    for good, qty in need.items():
-        stock.add(held, good, qty, 0, game.defs.goods)
+    for good, qty in need.items():  # 傷んだ家の手入れに先に使う分も
+        stock.add(held, good, qty * 2, 0, game.defs.goods)
     run_stages(game, island, ["housing"])
     founded = [e for e in island.log if e.kind == "village_founded"]
     assert len(founded) == 1
