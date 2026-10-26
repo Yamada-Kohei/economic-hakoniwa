@@ -3419,54 +3419,38 @@ def metropolis_tiers() -> list[Prim]:
     return parts
 
 
-def dense_tower(
-    u0: float, v0: float, u1: float, v1: float, z: float, h: float, c: str
-) -> list[Prim]:
-    """大都市と同じ窓帯と、二段に細くなる屋上を持つ塔。"""
-    return [
-        *tower(u0, v0, u1, v1, z, h, c, WIN_DARK),
-        box(u0 + 0.03, v0 + 0.03, u1 - 0.03, v1 - 0.03, z + h + 0.9, 3, c, "#7e8f9a"),
-        box(u0 + 0.07, v0 + 0.07, u1 - 0.07, v1 - 0.07, z + h + 3.9, 3, c, "#7e8f9a"),
-    ]
+def dense_blocks(heights: tuple[tuple[int, ...], ...], gap: float) -> list[Prim]:
+    """高さのそろった棟を街区全体に並べる。窓は壁と同じ面、屋根の縁は壁と同じ幅。"""
+    zb = 5.6
+    parts = [*block_ground(), box(0.08, 0.08, 0.92, 0.92, 0.6, 5, "#d8d4c8", "#b4afa2")]
+    pitch = 0.84 / len(heights)
+    palette = (GLASS2, CONCRETE, GLASS2, GLASS, "#d9cfbf")
+    for row, hs in enumerate(heights):
+        for col, h in enumerate(hs):
+            u0, v0 = 0.08 + col * pitch + gap / 2, 0.08 + row * pitch + gap / 2
+            u1, v1 = u0 + pitch - gap, v0 + pitch - gap
+            wall = palette[(col + row * 2) % len(palette)]
+            win = WIN_DARK if wall in (GLASS, GLASS2) else WIN
+            parts += [
+                *capped(u0, v0, u1, v1, zb, h, wall, SIDE_GRAY),
+                *band_facade(u0, v0, u1, v1, zb + 3, zb + h - 1, 6.4, 3.6, win, 0.02),
+            ]
+            if (row + col) % 2 == 0:
+                parts.append(box(u0 + 0.06, v0 + 0.06, u1 - 0.06, v1 - 0.06, zb + h + 1, 2, METAL))
+    return parts
 
 
 def high_rise() -> list[Prim]:
-    """高層都市: 奥の塔三本と、手前を埋める中層三棟。最も高い壁は大都市の1.5倍。"""
-    zb = 5.6
-    parts = [*block_ground(), box(0.08, 0.08, 0.92, 0.92, 0.6, 5, "#d8d4c8", "#b4afa2")]
-    for u0, h, c in ((0.1, 78, GLASS2), (0.38, 96, GLASS), (0.66, 70, GLASS2)):
-        parts += dense_tower(u0, 0.1, u0 + 0.24, 0.4, zb, h, c)
-    parts += mast(0.5, 0.25, zb + 102.9, 10)
-    for u0, h, c in ((0.1, 38, "#d9cfbf"), (0.38, 30, "#e3dccd"), (0.66, 44, CONCRETE)):
-        parts += [
-            *capped(u0, 0.53, u0 + 0.24, 0.89, zb, h, c, SIDE_GRAY),
-            *facade(u0, 0.53, u0 + 0.24, 0.89, zb + 2.5, zb + h - 1, 4.2, 2.6, 3, 5, WIN),
-        ]
-    return parts
+    """高層都市: 9段ほどの九棟で面を埋める。壁の高低差は14px以内で、突出した塔は置かない。"""
+    return dense_blocks(((78, 90, 84), (82, 86, 78), (76, 82, 80)), 0.03)
 
 
 def skyscraper() -> list[Prim]:
-    """超高層都市: 奥の三本と左の一本の超高層、足元に五棟が詰まる都心。"""
-    zb = 5.6
-    parts = [*block_ground(), box(0.08, 0.08, 0.92, 0.92, 0.6, 5, "#d8d4c8", "#b4afa2")]
-    for u0, h, c in ((0.1, 108, GLASS2), (0.38, 128, GLASS), (0.66, 112, GLASS2)):
-        parts += dense_tower(u0, 0.1, u0 + 0.24, 0.34, zb, h, c)
-    parts += [
-        *mast(0.5, 0.22, zb + 134.9, 10),
-        *dense_tower(0.1, 0.38, 0.34, 0.62, zb, 86, GLASS),
-    ]
-    for u0, v0, h, c in (
-        (0.38, 0.38, 60, "#d9cfbf"),
-        (0.66, 0.38, 68, CONCRETE),
-        (0.1, 0.66, 42, "#e3dccd"),
-        (0.38, 0.66, 50, CONCRETE),
-        (0.66, 0.66, 36, "#d9cfbf"),
-    ):
-        parts += [
-            *capped(u0, v0, u0 + 0.24, v0 + 0.24, zb, h, c, SIDE_GRAY),
-            *facade(u0, v0, u0 + 0.24, v0 + 0.24, zb + 2.5, zb + h - 1, 4.2, 2.6, 3, 3, WIN),
-        ]
-    return parts
+    """超高層都市: 12段ほどの十六棟。棟間をさらに詰め、街区全体の背を上げる。"""
+    return dense_blocks(
+        ((112, 120, 114, 116), (116, 114, 118, 110), (110, 116, 112, 114), (108, 112, 110, 114)),
+        0.005,
+    )
 
 
 SHAPES["housing/high_rise"] = high_rise()
