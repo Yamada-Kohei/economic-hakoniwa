@@ -808,6 +808,12 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
             "has_books": bool(books_of),
         }
         item.update(display.engineers_info(f, fdef) if fdef else {})
+        if fdef and fac.grade_steps(defs, f.kind):  # 農場の段階（W-190）。工事なら上げる先の段階
+            item["grade_name"] = display.message(fac.grade_name(defs, f.kind, fac.grade_of(f)))
+            if fac.GRADE_TO in f.ext:
+                item["grading"] = display.message(
+                    fac.grade_name(defs, f.kind, int(f.ext[fac.GRADE_TO]))
+                )
         if fdef and f.built:  # 設備の割合（回6。%）
             worn = display.equipment_info(game.defs, game.config, f)
             if worn:

@@ -152,6 +152,12 @@ def _facility(entry: dict[str, Any], k: float) -> None:
         for key in ("inputs", "outputs"):
             if key in recipe:
                 recipe[key] = _times(recipe[key], k)
+    for grade in entry.get("grades") or []:  # 農場の段階の資材と燃料も、国の大きさの倍に合わせる
+        construction = grade.get("construction") or {}
+        if "materials" in construction:
+            construction["materials"] = _times(construction["materials"], k)
+        if "inputs" in grade:
+            grade["inputs"] = _times(grade["inputs"], k)
     automation = entry.get("automation")
     if automation and "electronics" in automation:
         automation["electronics"] = automation["electronics"] * k

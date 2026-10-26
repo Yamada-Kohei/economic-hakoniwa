@@ -1117,7 +1117,7 @@ class Market(IslandStage):
         for f in sorted(island.facilities, key=lambda f: f.id):
             if not equipment.has_equipment(defs, config, f) or is_stopped(f):
                 continue
-            if equipment.condition(f) >= equipment.level(config, f):
+            if not equipment.needs_repair(defs, config, f):
                 continue
             profit = None
             if f.owner == OWNER_PRIVATE:
@@ -1433,7 +1433,8 @@ class Market(IslandStage):
         defs: Defs, config: GameConfig, f: Facility, good: str, prices: dict[str, int], rate: int
     ) -> int:
         """作り方を替えて使わなくなった物の売り値の下限: 同じ施設のほかの作り方でその物を作る費用
-        （unit_floor。作り方が複数あれば安いほう）。作れない物（使わなくなった原料など）は 0。
+        （unit_floor。作り方が複数あれば安いほう）。農場は今の段階の作り方でしか作れない。作れない物
+        （使わなくなった原料など）は 0。
 
         作れる物は、余って値段が費用を下回っても、費用を割ってまで売らずに持っておく（腐る分は
         別に売る）。綿から穀物に替えた国の農場が残りの綿を毎ターン1割安く売り続け、綿の値段が
@@ -1443,7 +1444,7 @@ class Market(IslandStage):
         floors = [
             unit_floor(defs, config, replace(f, recipe=name), good, prices, wage, rate)
             for name, recipe in sorted(defs.facilities[f.kind]["recipes"].items())
-            if recipe["outputs"].get(good, 0) > 0
+            if recipe["outputs"].get(good, 0) > 0 and recipe.get("grade", 0) == fac.grade_of(f)
         ]
         return min(floors) if floors else 0
 
@@ -1524,7 +1525,8 @@ class Market(IslandStage):
             # ならないように）
             expected *= settings["public_stock_turns"]
         needs = []
-        for good, qty in sorted(fac.recipe_of(ctx.defs, f)["inputs"].items()):
+        # 燃料は手元の割合で減らさず、全部の機械の畑の分を買う（FM-51）
+        for good, qty in sorted(fac.recipe_of(ctx.defs, f, fuelled=False)["inputs"].items()):
             if good == power:
                 continue
             # このターンの終わりに捨てられる分は、次のターンに使えないので手元に数えない
@@ -2823,7 +2825,11 @@ class Market(IslandStage):
         高い希望価格で売れ残っていたのは price（高くて採算が合わない）、そうでなければ supply
         （売りに出ている量が足りない）。"""
         for good, book in sorted(books_by_good.items()):
-            result = results[good]
+            result = results.get(good)
+            if (
+                result is None
+            ):  # 板寄せをしなかった財（売りが全部なくなった小売りに買い注文だけが残った）
+                continue
             dear = [
                 auction.sell_limit(o)
                 for i, (o, p) in enumerate(book.sells)

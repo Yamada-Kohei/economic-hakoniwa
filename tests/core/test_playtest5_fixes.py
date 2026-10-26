@@ -365,11 +365,12 @@ def test_contract_goods_can_stay_in_the_warehouse(game, traded, monkeypatch):
     stock.add(seller.warehouse, good, 20 * QUANTITY_SCALE, world.turn, game.defs.goods)
     before = stock.total(buyer.warehouse, good)
     c = _contract(world, seller, buyer, good, 1, 2, delivery=contracts.WAREHOUSE)
-    held = []  # 国の倉庫の量（届いた後に、標準の計画の工事が資材として使うことがある）
+    # 国の倉庫の量（標準の計画の工事や、機械化した農場の機械の直しが資材として少し使う）
+    held = []
     run_world(game, world, 8, lambda w: held.append(stock.total(w.islands[2].warehouse, good)))
     assert c["delivered"] == 2 * QUANTITY_SCALE
     assert to_market(buyer).get(good, 0) == 0
-    assert max(held) >= before + 2 * QUANTITY_SCALE - 1
+    assert max(held) >= before + 2 * QUANTITY_SCALE - QUANTITY_SCALE // 10  # 市場に売られていない
     assert not any(e.kind == "cargo_to_market_contract" for e in buyer.log)
 
 

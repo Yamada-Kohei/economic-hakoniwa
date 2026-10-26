@@ -109,6 +109,14 @@ def test_help_page_shows_real_world_amounts(client, world):
     assert "1隻で1航海に" in page
 
 
+def test_help_page_explains_farm_grades(client, world):
+    page = client.get("/help/").content.decode()
+    assert "施設の建て増しと農場の段階" in page
+    assert "機械化: 働き手が手作業の34%" in page
+    assert "近代化: 働き手が手作業の40%" in page
+    assert "default_mechanized" not in page  # 段階の作り方は表に並べず、段階の説明にまとめる
+
+
 # --- 条約の中・備蓄・積み込みの単位（W-182） ---
 
 

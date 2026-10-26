@@ -69,6 +69,14 @@ def test_merchant_bids_below_the_price_are_not_island_demand():
     assert Market._out_of_money(book, result) == 0
 
 
+def test_a_good_with_only_buy_orders_and_no_clearing_does_not_break_the_shortage_notes():
+    """小売りは売りが全部なくなっても買い注文が残ることがあり、その財は板寄せをしないので結果がない。
+    足りなかったわけを残す段は、結果のない財を飛ばす（X870 の測りで KeyError になった）。"""
+    book = Book()
+    book.buys.append((Order(3 * QUANTITY_SCALE, 200), Party("household", "hh:general", Payer(CB))))
+    Market._record_shortages({"retail": book}, {}, {})
+
+
 def test_islands_sell_to_merchants_with_balanced_books(game, base):
     """商人が島の物を買うと、代金は島の外から入り（輸出）、国際収支と帳簿が釣り合う（run_checked が
     毎ターン確かめる）。"""
@@ -78,7 +86,9 @@ def test_islands_sell_to_merchants_with_balanced_books(game, base):
     def keep(w):
         sold.append(sum(i.stats.get("trade.merchant_sold", 0) for i in w.islands.values()))
 
-    run_checked(game, world, 6, keep)
+    run_checked(
+        game, world, 14, keep
+    )  # 商人の買いはとぎれとぎれ（買わない間が 6 ターン続くことがある）
     assert sum(sold) > 0
     for island in world.islands.values():
         s = island.stats

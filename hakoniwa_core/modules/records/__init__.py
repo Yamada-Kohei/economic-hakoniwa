@@ -98,6 +98,13 @@ class Records(IslandStage):
             stats["food.ratio"] = food["ratio"] / fac.FULL
             stats["food.need"] = from_milli(food["need"])
             stats["food.supplied"] = from_milli(food["supplied"])
+        grades = [
+            fac.grade_of(f)
+            for f in island.facilities
+            if f.built and fac.on_map(f) and fac.grade_steps(defs, f.kind)
+        ]
+        if grades:  # 農場の段階の平均（0 手作業・1 機械化・2 近代化。W-190）
+            stats["farm.grade"] = sum(grades) / len(grades)
         demand = stats.get("power.demand", 0)
         if demand:  # 電力の不足率（買いたかった量のうち届かなかった割合）
             stats["power.shortage"] = max(0.0, 1 - stats.get("power.used", 0) / demand)

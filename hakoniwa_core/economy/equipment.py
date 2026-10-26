@@ -47,9 +47,14 @@ def kit(defs: Defs, kind: str) -> Mapping[str, int]:
 
 
 def kit_of(defs: Defs, f: Facility) -> Mapping[str, int]:
-    """施設 f の新品の設備（建て増した施設は規模の分だけ多い。段6 A3）。"""
+    """施設 f の新品の設備（建て増した施設は規模の分だけ多い。段6 A3）。農場は、段階を上げる工事で
+    足した機械や用水路の資材も設備に入る（W-190）。"""
     size = fac.size_of(f)
     base = kit(defs, f.kind)
+    if fac.GRADE in f.ext:
+        base = dict(base)
+        for good, qty in fac.grade_kit(defs, f).items():
+            base[good] = base.get(good, 0) + qty
     return base if size == 1 else {g: q * size for g, q in base.items()}
 
 
@@ -76,9 +81,32 @@ def holdings(defs: Defs, f: Facility) -> dict[str, int]:
     return {g: found.get(g, q) for g, q in sorted(kit_of(defs, f).items()) if q > 0}
 
 
+def machine_goods(defs: Defs, f: Facility) -> set[str]:
+    """機械として別に傷みを見る設備の資材（農場の機械。傷むと畑が手作業に戻る。FM-51）。"""
+    return fac.machine_goods(defs, f) if fac.GRADE in f.ext else set()
+
+
 def _ratio(defs: Defs, f: Facility, have: Mapping[str, int]) -> int:
+    """設備の割合。機械は入れない（機械が傷んでも、稼働率の上限でなく、畑が手作業に戻る形で表す）。"""
+    machines = machine_goods(defs, f)
     return min(
-        (fac.ratio(have.get(g, 0), q) for g, q in kit_of(defs, f).items() if q > 0),
+        (
+            fac.ratio(have.get(g, 0), q)
+            for g, q in kit_of(defs, f).items()
+            if q > 0 and g not in machines
+        ),
+        default=FULL,
+    )
+
+
+def _machine_ratio(defs: Defs, f: Facility, have: Mapping[str, int]) -> int:
+    machines = machine_goods(defs, f)
+    return min(
+        (
+            fac.ratio(have.get(g, 0), q)
+            for g, q in kit_of(defs, f).items()
+            if g in machines and q > 0
+        ),
         default=FULL,
     )
 
@@ -91,6 +119,16 @@ def condition(f: Facility) -> int:
 def _store(defs: Defs, f: Facility, have: dict[str, int]) -> None:
     f.economy[EQUIPMENT] = have
     f.economy[CONDITION] = _ratio(defs, f, have)
+    if machine_goods(defs, f):
+        f.economy[fac.MACHINES] = _machine_ratio(defs, f, have)
+
+
+def needs_repair(defs: Defs, config: GameConfig, f: Facility) -> bool:
+    """設備を直したいか: 設備の割合が直したい割合に届かないか、機械が新品でない（機械は傷んだ分だけ
+    人手が戻るので、操業目標でなく新品まで直す）。"""
+    return condition(f) < level(config, f) or (
+        bool(machine_goods(defs, f)) and fac.machine_ratio(f) < FULL
+    )
 
 
 def wear_rate(config: GameConfig, good: str) -> float:
@@ -145,15 +183,25 @@ def wants(
     買っても直らない）。"""
     goal = level(config, f)
     have = holdings(defs, f)
+    machines = machine_goods(defs, f)
     if room is not None:
         reach = min(
-            (fac.ratio(have.get(g, 0) + room.get(g, 0), q) for g, q in kit_of(defs, f).items()),
+            (
+                fac.ratio(have.get(g, 0) + room.get(g, 0), q)
+                for g, q in kit_of(defs, f).items()
+                if g not in machines
+            ),
             default=FULL,
         )
         goal = min(goal, reach)
     out = {}
     for good, qty in sorted(kit_of(defs, f).items()):
-        need = fac.scale(qty, goal) - have.get(good, 0)
+        if good in machines:  # 機械は新品まで（手に入る量まで）
+            need = qty - have.get(good, 0)
+            if room is not None:
+                need = min(need, room.get(good, 0))
+        else:
+            need = fac.scale(qty, goal) - have.get(good, 0)
         if need > 0:
             out[good] = need
     return out
@@ -187,7 +235,7 @@ def install(defs: Defs, f: Facility, good: str, qty: int, cost: int) -> None:
 
 def keep(f: Facility) -> dict[str, int]:
     """作り直す前の施設の経済の状態から、引き継ぐ設備（差し押さえた施設の売却など）。"""
-    return {k: f.economy[k] for k in (EQUIPMENT, CONDITION) if k in f.economy}
+    return {k: f.economy[k] for k in (EQUIPMENT, CONDITION, fac.MACHINES) if k in f.economy}
 
 
 def expand(defs: Defs, f: Facility, added: int = 1) -> None:
