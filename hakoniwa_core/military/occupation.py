@@ -189,12 +189,7 @@ def surrender(
         w["ceasefire"] = SURRENDER
     loser.log.append(LogEntry("surrendered", {"country": winner.name}))
     winner.log.append(LogEntry("enemy_surrendered", {"country": loser.name}))
-    from hakoniwa_core import politics
-
-    if politics.in_transition(loser, ctx.turn):
-        return
-    politics_stage._start_transition(loser, ctx, "surrender")
-    politics.state_of(loser)["reselect"] = {"since": ctx.turn, "by": winner.id}
+    politics_stage.lose_regime(loser, ctx, "surrender", winner.id)
 
 
 # --- 捕虜 ---------------------------------------------------------------------------------

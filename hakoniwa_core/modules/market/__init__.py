@@ -95,6 +95,7 @@ from hakoniwa_core.economy.start import next_payments
 from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
+from hakoniwa_core.military import forces
 from hakoniwa_core.modules import infrastructure
 from hakoniwa_core.modules.population import FED, FOOD_ORDERS, HUNGER, layer_food_needs
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
@@ -744,7 +745,7 @@ class Market(IslandStage):
             self._clear(island, ctx, good, books_by_good, official, persons, results, stale)
         self._retail(island, ctx, books_by_good, official, persons, results, stale)
         self._record_shortages(books_by_good, results, stale)
-        self._warehouse_results(island, books_by_good, results)
+        self._warehouse_results(island, ctx, books_by_good, results)
         self._refresh_waiting(island, ctx)
         for f, good, qty, cost in island.scratch.pop(REPAIR, []):  # 直す資材を設備に入れる（回6）
             equipment.install(defs, f, good, qty, cost)
@@ -2407,8 +2408,9 @@ class Market(IslandStage):
         まで。"""
         orders = island.economy.ext.pop("warehouse_orders", [])
         offered: dict[str, int] = {}
-        # 命令の注文（財, 売り買い, 命令の量, 出した注文, 量を削ったわけ）。結果をログに出す
-        placed: list[tuple[str, str, int, Order | None, str]] = []
+        # 命令の注文（財, 売り買い, 命令の量, 出した注文, 量を削ったわけ, 軍の買い入れか）。結果を
+        # ログに出す（軍の買い入れは軍の状態にも書く）
+        placed: list[tuple[str, str, int, Order | None, str, bool]] = []
 
         def sell(good: str, qty: int, limit: int | None, layer: str | None = None) -> Order | None:
             qty = min(qty, stock.total(island.warehouse, good) - offered.get(good, 0))
@@ -2428,7 +2430,7 @@ class Market(IslandStage):
         for item in orders:
             good, qty, limit = item["good"], item["quantity"], item["limit"]
             if item["side"] == "sell":
-                placed.append((good, "sell", qty, sell(good, qty, limit or None), "stock"))
+                placed.append((good, "sell", qty, sell(good, qty, limit or None), "stock", False))
                 continue
             buyer = Payer(ledger.GOV, item.get("budget", WAREHOUSE))
             plan = self._afford(island, buyer, {good: (qty, limit)}, 0, 0)
@@ -2441,8 +2443,12 @@ class Market(IslandStage):
                 funds.commit(island, buyer, party.reserved)
                 order = Order(q, lim)
                 self._add(books_by_good, g, "buy", order, party)
-            if not item.get("quiet"):  # 軍の食べ物の買い入れなどは、結果をログに出さない
-                placed.append((good, "buy", qty, order, "budget" if capped else "treasury"))
+            military = bool(item.get("military"))
+            if capped:  # 軍の買い入れは、どの国防費の項目の月割りかも書く（賃金と食べ物 / 装備）
+                cut = f"budget_{buyer.item}" if military else "budget"
+            else:
+                cut = "treasury"
+            placed.append((good, "buy", qty, order, cut, military))
         self._reserve_orders(island, ctx, books_by_good, sell, offered)
         island.scratch[WAREHOUSE_PLACED] = placed
 
@@ -2499,10 +2505,15 @@ class Market(IslandStage):
 
     @staticmethod
     def _warehouse_results(
-        island: IslandState, books_by_good: dict[str, Book], results: dict[str, auction.Result]
+        island: IslandState,
+        ctx: StageContext,
+        books_by_good: dict[str, Book],
+        results: dict[str, auction.Result],
     ) -> None:
-        """命令で出した国の倉庫の売り買いの結果（約定した量と、足りなかったわけ）をログに出す。"""
-        for good, side, wanted, order, cut in island.scratch.pop(WAREHOUSE_PLACED, []):
+        """命令で出した国の倉庫の売り買いの結果（約定した量と、足りなかったわけ）をログに出す。軍の
+        買い入れ（兵の食べ物・弾薬・装備。W-184）は、足りなかったときだけ、軍の状態の purchases に
+        書いてログに出す（持ち主だけが読む）。"""
+        for good, side, wanted, order, cut, military in island.scratch.pop(WAREHOUSE_PLACED, []):
             book, result = books_by_good.get(good), results.get(good)
             filled = 0
             if order is not None and book is not None and result is not None:
@@ -2518,7 +2529,10 @@ class Market(IslandStage):
                 "filled": filled / QUANTITY_SCALE,
             }
             if filled >= wanted:
-                island.log.append(LogEntry(f"warehouse_{side}_result", args))
+                if military:
+                    forces.record_purchase(island, ctx.turn, good, wanted, filled, None)
+                else:
+                    island.log.append(LogEntry(f"warehouse_{side}_result", args))
                 continue
             placed_qty = order.quantity if order is not None else 0
             if placed_qty < wanted:  # 注文の前に削った（予算・国庫・倉庫の残り）
@@ -2533,7 +2547,11 @@ class Market(IslandStage):
                 why = "limit"
             else:
                 why = "few_sellers" if side == "buy" else "few_buyers"
-            args["reason"] = f"warehouse_why_{why}"
+            args["reason"] = f"{'military' if military else 'warehouse'}_why_{why}"
+            if military:
+                if forces.record_purchase(island, ctx.turn, good, wanted, filled, why):
+                    island.log.append(LogEntry("military_buy_short", args))
+                continue
             island.log.append(LogEntry(f"warehouse_{side}_short", args))
 
     # --- 貿易（フェーズ3-1） -----------------------------------------------------------

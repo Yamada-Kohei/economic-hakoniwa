@@ -13,15 +13,16 @@
 - 占領したマスの取り立て（徴発。命令 set_requisition で部隊ごとに切り替え。初めは取り立てる）。
 
 補給が届かなければ持っている分を食べ尽くし、食べ物が尽きると部隊は弱くなり（battle.py の hungry）、
-病気と飢えで兵が亡くなります（MI-14）。講和で戦争が終わると、相手の島の部隊は期限までに引き揚げ、
-期限を過ぎてもいる部隊はその場で除隊して自国の家計に戻ります（見直し役が挙げた場面への手当て）。
+病気と飢えで兵が亡くなります（MI-14）。講和で戦争が終わると、相手の島の部隊は期限までに引き揚げます。期限を過ぎてもいる部隊は、
+自国の輸送船団に空きがあれば船に乗って帰国し、なければその場で除隊して自国の家計に戻ります
+（見直し役が挙げた場面への手当て。W-192）。
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from hakoniwa_core import monuments
+from hakoniwa_core import monuments, stock
 from hakoniwa_core.diplomacy import war
 from hakoniwa_core.military import army, battle, forces, occupation, sea
 from hakoniwa_core.state import LogEntry, WorldState
@@ -146,8 +147,11 @@ def _eat(world: WorldState, ctx: StageContext, unit: dict[str, Any]) -> None:
 
 
 def recall(world: WorldState, ctx: StageContext) -> None:
-    """講和で戦争が終わった相手の島の部隊のうち、引き揚げの期限を過ぎたものは、その場で除隊して
-    自国の家計に戻る（船がなくて帰れない場合の手当て）。"""
+    """講和で戦争が終わった相手の島の部隊のうち、引き揚げの期限を過ぎたものを国に帰す（W-192）。
+    自国の輸送船団（母港で使える）に空きがあれば、部隊は船団に乗って帰国し、母港の軍港のマスに戻る
+    （航海の日数と燃料は数えない。仮）。船がない・空きが足りない・戻る軍港がないときは、今までどおり
+    その場で除隊して自国の家計に戻る。"""
+    room: dict[int, float] = {}  # 輸送船団の番号 → このターンにまだ載せられる重さ（トン）
     for unit in list(army.world_state(world)["units"]):
         if army.is_sea(unit) or not army.abroad(unit):
             continue
@@ -159,8 +163,11 @@ def recall(world: WorldState, ctx: StageContext) -> None:
                 continue
             if w["withdraw_until"] is not None and ctx.turn > w["withdraw_until"]:
                 owner = world.islands[unit["owner"]]
+                if _ship_home(world, ctx, owner, unit, room):
+                    break
                 forces.lose(owner, unit["soldiers"])
                 forces.return_people(owner, unit["soldiers"])
+                _left_abroad(owner, unit["soldiers"])
                 owner.log.append(
                     LogEntry(
                         "unit_demobilized_abroad", {"unit": unit["id"], "count": unit["soldiers"]}
@@ -168,6 +175,67 @@ def recall(world: WorldState, ctx: StageContext) -> None:
                 )
                 army.remove(world, unit)
                 break
+
+
+def _left_abroad(owner, soldiers: int) -> None:
+    """島の外にいる兵の数（食べ物を部隊の補給で食べる分）から、帰った・除隊した兵を引く。次の数え直しを
+    待つと、帰った兵が 1 ターン国の倉庫の食べ物を食べない。"""
+    state = owner.ext.get(forces.KEY)
+    if state is not None:
+        state["abroad"] = max(0, state.get("abroad", 0) - soldiers)
+
+
+def _ship_home(
+    world: WorldState,
+    ctx: StageContext,
+    owner,
+    unit: dict[str, Any],
+    room: dict[int, float],
+) -> bool:
+    """外国の島の部隊を、空きのある輸送船団に載せて母港の軍港のマスへ帰す。帰せたら True。
+    room は船団ごとの載せられる重さの残り（呼び出しの間で使い回す）。"""
+    bases = sea.naval_bases(owner, ctx.defs)
+    if not bases:
+        return False
+    weight = ctx.defs.army.get(unit["kind"], {}).get("weight", 0)
+    for fleet in army.fleets_of(world, owner.id):
+        spec = ctx.defs.army.get(fleet["kind"], {})
+        if not spec.get("capacity") or fleet["status"] != army.READY:
+            continue
+        if not sea.docked(fleet, owner):  # 母港の区画につないである船団だけ使う
+            continue
+        if fleet["id"] not in room:
+            room[fleet["id"]] = sea.capacity(spec, fleet) - cargo_load(world, ctx, fleet)
+        if room[fleet["id"]] < weight:
+            continue
+        room[fleet["id"]] -= weight
+        base = bases[0]
+        stores = battle.stores_of(unit)
+        for good, qty in stores.items():  # 外国で持っていた補給の残りは国の倉庫へ
+            stock.add(owner.warehouse, good, qty, ctx.turn, ctx.defs.goods)
+        for key in (
+            "at",
+            "stores",
+            "role",
+            "fought",
+            "engaged",
+            "from",
+            "entered",
+            "landed",
+            "hungry",
+        ):
+            unit.pop(key, None)
+        unit["x"], unit["y"] = base.x, base.y
+        unit["order"] = None
+        _left_abroad(owner, unit["soldiers"])
+        owner.log.append(
+            LogEntry(
+                "unit_returned_home",
+                {"unit": unit["id"], "count": unit["soldiers"], "fleet": fleet["id"]},
+            )
+        )
+        return True
+    return False
 
 
 def landing_tons(ctx: StageContext) -> float:

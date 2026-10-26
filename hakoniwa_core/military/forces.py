@@ -44,6 +44,33 @@ def state_of(island: IslandState, config: GameConfig | None = None) -> dict[str,
     return state
 
 
+def record_purchase(
+    island: IslandState, turn: int, good: str, wanted: int, filled: int, why: str | None
+) -> bool:
+    """国として買う注文（兵の食べ物・弾薬・装備。MI-10・W-184）の、このターンの結果を残す。wanted は
+    買いたかった量、filled は約定した量（1000 分の 1 単位）、why は足りなかったわけ（budget・
+    treasury・limit・no_sellers・few_sellers。足りていれば None）。同じ財の注文が 2 つあれば足す。
+    足りないわけが新しく出た（前のターンは足りていたか、わけが違う）ときだけ True を返す
+    （ログに出す）。"""
+    state = state_of(island)
+    rows = state.setdefault("purchases", {})
+    row = rows.get(good)
+    if row is None:
+        row = rows[good] = {"turn": turn, "wanted": 0, "filled": 0, "why": None}
+    row["wanted"] += wanted
+    row["filled"] += filled
+    if why is not None:
+        row["why"] = why
+    seen = state.setdefault("purchase_short", {})
+    if why is None:
+        if row["why"] is None:
+            seen.pop(good, None)
+        return False
+    new = seen.get(good) != why
+    seen[good] = why
+    return new
+
+
 def soldiers(island: IslandState) -> int:
     """兵の数。"""
     state = island.ext.get(KEY)

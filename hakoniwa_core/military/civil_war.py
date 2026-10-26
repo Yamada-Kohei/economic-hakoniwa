@@ -632,9 +632,7 @@ def _overthrow(
 
     cfg = ctx.config.get("military.civil_war")
     island.log.append(LogEntry("revolution", {}))
-    if not politics.in_transition(island, ctx.turn):
-        politics_stage._start_transition(island, ctx, "revolution")
-        politics.state_of(island)["reselect"] = {"since": ctx.turn, "by": 0}
+    politics_stage.lose_regime(island, ctx, "revolution", 0)
     for other in groups_of(world, island.id):
         _vanish(world, ctx, island, other)
     _release_all(world, island)

@@ -265,6 +265,26 @@ def test_taking_the_capital_makes_the_country_surrender_once(game, world):
     assert politics.state_of(isl2)["transition"]["until"] == until
 
 
+def test_a_surrender_in_a_transition_can_still_choose_again(game, world):
+    """体制を変えた混乱期間の中に首都を取られても、選び直せる（W-183）。"""
+    start_war(game, world)
+    isl2 = world.islands[2]
+    state = politics.state_of(isl2)
+    state["transition"] = {"since": world.turn, "until": world.turn + 12, "kind": "economy"}
+    cx, cy = isl2.capital
+    for f in isl2.facilities:
+        if game.defs.facilities[f.kind].get("police"):
+            f.workers = 0
+    unit = put_unit(game, world, 1, "armor", cx, cy, at=2)
+    unit["entered"] = world.turn + 1
+    feed(game, world)
+    step(game, world)
+    assert war.open_war(world, 1, 2)["ceasefire"] == occupation.SURRENDER
+    assert state["reselect"]["by"] == 1 and state["transition"]["kind"] == "economy"
+    step(game, world, {2: [("choose_regime", {"politics": "totalitarian"})]})
+    assert isl2.regime["politics"] == "totalitarian"
+
+
 def test_choose_regime_only_after_a_surrender(game, world):
     step(game, world, {2: [("choose_regime", {"politics": "totalitarian"})]})
     assert world.islands[2].orders[-1].status == "failed"
@@ -450,6 +470,92 @@ def test_units_past_the_withdrawal_deadline_are_sent_home(game, world):
     assert unit not in world.ext["military"]["units"]
     assert sum(t.population for t in isl1.tiles) == before + 100
     assert logs(world, 1, "unit_demobilized_abroad")
+
+
+def _ended_war_with_a_unit_abroad(game, world):
+    start_war(game, world)
+    isl2 = world.islands[2]
+    tile = plain_tiles(isl2, 1)[0]
+    unit = put_unit(game, world, 1, "infantry", tile.x, tile.y, at=2)
+    war.end(war.open_war(world, 1, 2), 1, world.turn, 2, True)
+    ctx = _ctx(game, world)
+    ctx.turn = world.turn + 5  # 期限（2 ターン）を過ぎた
+    return unit, ctx
+
+
+def test_units_past_the_deadline_sail_home_when_a_transport_has_room(game, world):
+    """引き揚げの期限が来たとき、空きのある輸送船団があれば部隊は帰国する（W-192）。"""
+    from tests.core.test_military_fleets import put_port
+
+    isl1 = world.islands[1]
+    port = put_port(isl1)
+    unit, ctx = _ended_war_with_a_unit_abroad(game, world)
+    forces.state_of(isl1)["abroad"] = unit["soldiers"]
+    stores = dict(unit["stores"])
+    fleet = put_transport(world, 1, isl1.wx, isl1.wy, ships=2)
+    before = (sum(t.population for t in isl1.tiles), stock.total(isl1.warehouse, "food"))
+    supply.recall(world, ctx)
+    assert unit in world.ext["military"]["units"] and not army.abroad(unit)
+    assert "at" not in unit and (unit["x"], unit["y"]) == (port.x, port.y)
+    assert unit["soldiers"] == 100 and unit["status"] == army.READY
+    assert "stores" not in unit  # 外国で持っていた補給は国の倉庫へ
+    assert forces.state_of(isl1).get("abroad", 0) == 0  # 島の外にいる兵の数から引く
+    assert stock.total(isl1.warehouse, "food") == before[1] + stores["food"]
+    assert sum(t.population for t in isl1.tiles) == before[0]  # 家計には戻らない
+    [entry] = logs(world, 1, "unit_returned_home")
+    assert entry.args["fleet"] == fleet["id"] and not logs(world, 1, "unit_demobilized_abroad")
+    assert format_log(game.defs, "unit_returned_home", entry.args)
+
+
+def test_units_with_no_room_on_the_transports_are_discharged_where_they_stand(game, world):
+    from tests.core.test_military_fleets import put_port
+
+    isl1 = world.islands[1]
+    put_port(isl1)
+    unit, ctx = _ended_war_with_a_unit_abroad(game, world)
+    fleet = put_transport(world, 1, isl1.wx, isl1.wy)
+    spec = game.defs.army["transport"]
+    # 補給で船いっぱいにして、部隊 1 つ分の重さの空きもない
+    fleet["goods"] = {"food": int(spec["capacity"]) * QUANTITY_SCALE}
+    before = sum(t.population for t in isl1.tiles)
+    supply.recall(world, ctx)
+    assert unit not in world.ext["military"]["units"]
+    assert sum(t.population for t in isl1.tiles) == before + 100
+    assert logs(world, 1, "unit_demobilized_abroad") and not logs(world, 1, "unit_returned_home")
+
+
+def test_a_transport_away_from_its_home_port_cannot_carry_units_home(game, world):
+    from tests.core.test_military_fleets import put_port
+
+    isl1 = world.islands[1]
+    put_port(isl1)
+    unit, ctx = _ended_war_with_a_unit_abroad(game, world)
+    isl2 = world.islands[2]
+    put_transport(world, 1, isl2.wx, isl2.wy, ships=2)  # 母港の区画にいない
+    supply.recall(world, ctx)
+    assert unit not in world.ext["military"]["units"]
+    assert logs(world, 1, "unit_demobilized_abroad")
+
+
+def test_a_transport_carries_only_what_fits_and_the_rest_are_discharged(game, world):
+    """1 隻の空きで載せられるのは部隊の重さの分だけ。載り切らない部隊はその場で除隊する。"""
+    from tests.core.test_military_fleets import put_port
+
+    isl1 = world.islands[1]
+    put_port(isl1)
+    unit, ctx = _ended_war_with_a_unit_abroad(game, world)
+    tile = plain_tiles(world.islands[2], 2)[1]
+    second = put_unit(game, world, 1, "infantry", tile.x, tile.y, at=2)
+    weight = game.defs.army["infantry"]["weight"]
+    fleet = put_transport(world, 1, isl1.wx, isl1.wy)
+    fleet["goods"] = {
+        "food": int(game.defs.army["transport"]["capacity"] - weight * 1.5) * QUANTITY_SCALE
+    }
+    supply.recall(world, ctx)
+    kept = [u for u in (unit, second) if u in world.ext["military"]["units"]]
+    assert len(kept) == 1 and kept[0] is unit  # 番号の若い部隊が先に載る
+    assert len(logs(world, 1, "unit_returned_home")) == 1
+    assert len(logs(world, 1, "unit_demobilized_abroad")) == 1
 
 
 def test_an_old_war_does_not_send_units_home_from_a_new_war(game, world):

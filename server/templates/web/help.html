@@ -420,7 +420,7 @@
       <p>{% blocktranslate with turns=diplomacy.notice_turns min=diplomacy.min_notice_turns max=diplomacy.max_notice_turns %}同盟を結んでも自動では参戦せず、参戦する国が自分で宣戦します。{% endblocktranslate %}</p>
     </dd>
     <dt>{% translate "停戦と講和" %}</dt>
-    <dd>{% blocktranslate with turns=diplomacy.withdraw_turns max=diplomacy.max_withdraw_turns %}停戦は両国が署名すると効き、破棄の予告期間が過ぎると戦争に戻ります。講和は戦争を終え、その戦争の停戦の条約も終わらせます。講和には、部隊の引き揚げの期限（初めの値は {{ turns }} ターン、最大 {{ max }} ターン）・捕虜を返すかどうか・賠償を書けます。占領の解除と部隊の引き揚げ、約束した捕虜の返還はゲームが行います。{% endblocktranslate %}</dd>
+    <dd>{% blocktranslate with turns=diplomacy.withdraw_turns max=diplomacy.max_withdraw_turns %}停戦は両国が署名すると効き、破棄の予告期間が過ぎると戦争に戻ります。講和は戦争を終え、その戦争の停戦の条約も終わらせます。講和には、部隊の引き揚げの期限（初めの値は {{ turns }} ターン、最大 {{ max }} ターン）・捕虜を返すかどうか・賠償を書けます。占領の解除と、約束した捕虜の返還はゲームが行います。引き揚げの期限が来ても外国の島にいる部隊は、自国の輸送船団に載せる空きがあれば船で帰国し、なければその場で除隊して家計に戻ります。条約を破棄しても、貿易圏の加盟は残ります（抜けるときは貿易圏の命令で）。{% endblocktranslate %}</dd>
     <dt>{% translate "賠償の約束と支払い" %}</dt>
     <dd>{% blocktranslate with turns=diplomacy.max_reparation_turns %}講和に賠償を添えるときは、払う国・通貨・額・講和が効いてから期日までのターン数（最大 {{ turns }} ターン）を決めます。ゲームは自動では払わせません。払う国が「貿易」の画面からお金の援助の命令を出し、相手へ送ります。約束の通貨と額が期日までに届かなければ、払う国の条約違反として記録されます。{% endblocktranslate %}</dd>
     <dt id="economic-clauses">{% translate "経済の条項" %}</dt>
