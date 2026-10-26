@@ -202,10 +202,16 @@ def demolish(island: IslandState, payload: dict[str, Any], ctx: StageContext) ->
         freight.forget(island)
         island.log.append(LogEntry("infrastructure_removed", {"x": x, "y": y}))
         return
-    sell_leftover_stock(island, f)
-    close_accounts(island, f)
-    stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
-    island.facilities.remove(f)
+    # 町を取り壊すと、その町のマスに入っていた店も一緒になくなる（店は町のマスに属する。残すと、
+    # 属する町のない店が送電網や住宅の数え方で落ちる）
+    shops = []
+    if fac.is_housing(ctx.config, f):
+        shops = [s for s in island.facilities if s.ext.get(fac.SITE) == [x, y]]
+    for gone in [*shops, f]:
+        sell_leftover_stock(island, gone)
+        close_accounts(island, gone)
+        stock.move_to_warehouse(gone.stock, island.warehouse, ctx.turn, ctx.defs.goods)
+        island.facilities.remove(gone)
     island.log.append(LogEntry("facility_demolished", {"facility": f.kind, "x": x, "y": y}))
 
 

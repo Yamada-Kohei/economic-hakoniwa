@@ -1546,6 +1546,7 @@ class Housing(IslandStage):
                 home = fac.new_housing(island, kind, pos, defs.settlement_levels()[0])
                 fac.set_floor(defs, home, 0)
                 homes[pos] = home
+                status[pos] = _with_home(defs, config, status.get(pos), home)
             floor = fac.floor_of(defs, home)
             target = min(int(work["floor"]), fac.max_floor(defs))
             if floor >= target:

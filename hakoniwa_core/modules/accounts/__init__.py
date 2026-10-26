@@ -340,7 +340,8 @@ class Accounts(IslandStage):
             room -= banks.capital_target(island, ctx.config, bank)
             if banks.is_failed(island, bank):
                 room = 0
-            dividend = max(0, min(dividend, room))
+            # 手元の現金（準備）を超えては払えない（自己資本は貸出や債券の値打ちも含む）
+            dividend = max(0, min(dividend, room, funds.available(island, payer)))
         else:
             cost = next_payments(island, ctx.defs, ctx.config, f)
             keep = settings["operating_turns"] * cost
