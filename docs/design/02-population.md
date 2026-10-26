@@ -35,10 +35,10 @@
 | PO-13 | 建国直後の島は `start_island.yaml` に従い、首都の町・周りの村・初めの施設・送電線・倉庫の資材と国の穀物の備蓄を置き、初めの施設には最初のターンに全力で動ける投入財を倉庫から渡す | 決定 | `food_reserve.turns` | tests/core/test_founding.py::test_start_island |
 | PO-14 | 初めの施設のうち `fit` を書いたものは、数を要る量に合わせる: 食料は建国の住民の食べる量、原料はそれより前に置いた施設が全力で使う量で、その島の生産性（気候・肥沃度・経験と、建国の後に置く道路・教育の初めの値）の見込みの産出から、残りが施設 1 つの産出の `founding.fit_share`（食料は 0 で切り上げ、原料は 0.5 で四捨五入）以上ある間だけ置く。飢饉の備えは余分の農場でなく国の穀物の備蓄（タブ 6 FS-15） | 決定 | `founding.fit_share` | tests/core/test_founding.py::test_start_island, tests/core/test_recession_round1.py::test_start_facilities_fit_the_need |
 | PO-15 | 建国のお金は、建国の国債 → 家計への給付 → 出資 → 銀行の国債買い、の順の仕訳で作る。額は `founding.money` と、建国の予算・失業手当・教育・道路・技術者の設定で決まる。一般の層の預金は家計が持っていたい額「(1 − c1) ÷ c2 × 建国の使う額」（c1 は初めの預金金利で物価が動かないときの値） | 決定 | `household.layers.general.c1`, `household.c2`, `household.base_income`, `founding.money.owner_deposit`, `founding.money.treasury`, `founding.money.operating_turns`, `founding.money.bond`, `fiscal.unemployment_benefit`, `fiscal.budget.construction`, `education.start`, `education.start_school`, `education.start_budget_years`, `education.engineer_share`, `infrastructure.start_road` | tests/core/test_founding.py::test_start_island, tests/core/test_infrastructure.py::test_groundwork_sets_roads_water_school_and_engineers |
-| PO-16 | 町（住宅）は自動で建つ施設 `housing.facility` で、段階（村・町・都市・大都市）ごとの住める上限・見た目・育つ資材・上下水道の条件は `settlements.yaml` にある | 決定 | `housing.facility` | tests/core/test_playtest3_fixes.py::test_settlement_grew_is_logged_when_the_town_level_rises |
-| PO-17 | 町ができる・育つのは、人手の足りない施設（店が雇いきれなかった集落を含む）の通勤圏で、空いている町に入れる人と近くの仕事のない人では足りないとき | 決定 | `labor.commute_radius` | tests/core/test_rules.py::test_housing_grows_near_vacancies_but_not_on_no_development |
-| PO-18 | 育つのは人数が上限の `housing.fill_ratio` を超えた町で、新しくできる数と育つ数は 1 ターンにそれぞれ上限まで。開発を止めたマスと指定したマスには建たない | 決定 | `housing.fill_ratio`, `housing.max_new_per_turn`, `housing.max_upgrades_per_turn` | tests/core/test_rules.py::test_housing_grows_near_vacancies_but_not_on_no_development |
-| PO-19 | 育つ資材は一般の層が市場で買い（預金から出すのは手入れと頭金を合わせて預金の `household.housing_share` まで、代金の残りは住宅ローン。タブ 7 BK-47）、そろうまで育たない。次のターンに買うのは1か所分まで。2 ターン続けて足りなければ知らせ、段階が上がったターンに「発展」を知らせる | 決定 | `household.housing_share` | tests/core/test_rules.py::test_housing_short_is_logged_after_two_turns, tests/core/test_playtest3_fixes.py::test_settlement_grew_is_logged_when_the_town_level_rises |
+| PO-16 | 町（住宅）は自動で建つ施設 `housing.facility` で、段階（村・町・都市・大都市・高層都市・超高層）ごとの床の上限（最低の広さ `housing.space.min` で住める人数で書く）・見た目・床を足す資材・上下水道の条件は `settlements.yaml` にある。高層の2段階は、1km² あたりの延べ床が東京都の平均と東京 23 区ほどになる大きさ。見た目の段階は建った段階 | 決定（W-190 の回で作る） | `housing.facility`, housing.space.min（作る回で足す） | tests/core/test_playtest3_fixes.py::test_settlement_grew_is_logged_when_the_town_level_rises |
+| PO-17 | 町ができる・床を足すのは、人手の足りない施設（店が雇いきれなかった集落を含む）の通勤圏で、近くの町の「望む広さでの空き」（床 ÷ 住む人の望む広さ − 住む人）と近くの仕事のない人では足りないとき。所得が伸びて望む広さが広がると、人が増えなくても町が育つ | 決定（W-190 の回で作る） | `labor.commute_radius` | tests/core/test_rules.py::test_housing_grows_near_vacancies_but_not_on_no_development |
+| PO-18 | 床は段階の幅の `housing.floor_step` ずつ足し、段階の上限を超えるときに次の段階へ上がる（人数で上がるのでなく床で上がる）。新しくできる数と床を足す町の数は 1 ターンにそれぞれ上限まで。開発を止めたマスと指定したマスには建たない | 決定（W-190 の回で作る） | housing.floor_step（作る回で足す）, `housing.max_new_per_turn`, `housing.max_upgrades_per_turn` | tests/core/test_rules.py::test_housing_grows_near_vacancies_but_not_on_no_development |
+| PO-19 | 床を足す資材は、市場・混合の国では望む広さに足りない層（一般・技術者・資産を持つ層）が市場で買い（預金から出すのは手入れと頭金を合わせて預金の `household.housing_share` まで、代金の残りは住宅ローン。タブ 7 BK-47）、計画経済の国と国の命令では国が住宅費で買う（PO-55・PO-56）。資材の在庫は持ち主（家計・国）ごとに分ける。そろうまで床は増えない。次のターンに買うのは1か所分まで。2 ターン続けて足りなければ知らせ、段階が上がったターンに「発展」を知らせる | 決定（W-190 の回で作る） | `household.housing_share` | tests/core/test_rules.py::test_housing_short_is_logged_after_two_turns, tests/core/test_playtest3_fixes.py::test_settlement_grew_is_logged_when_the_town_level_rises |
 | PO-20 | 都市・大都市に育つには、そのマスの上下水道が `settlements.yaml` の water 以上要る。足りずに育たない町はマスごとに 1 度知らせる | 決定 |  | tests/core/test_balance_round4.py::test_autoplan_brings_water_to_crowded_towns |
 | PO-21 | 村の仕事のない住民は自給の農業で自分の食べる分をまかない、市場で買わない。村のままでいられる人数は、自給できない段階のいちばん小さい人数の手前まで | 決定 |  | tests/core/test_balance_round3.py::test_subsistence_farmers_do_not_starve_when_the_market_has_no_food |
 | PO-22 | 仕事のない人は毎ターン `population.migration_rate` の割合で、人手の足りない施設の近くの空いた町（近く、幸福度の高い順）へ移る。町が育つのはこの移り住みから | 決定 | `population.migration_rate` | （未確認） |
@@ -53,7 +53,7 @@
 | PO-31 | 亡くなる割合は式 `death_rate`（`population.deaths`）で、食事の質と上下水道で下がり、人が密に住むマスほど上がる。飢えで亡くなる人は別 | 決定 | `population.deaths.base`, `population.deaths.food`, `population.deaths.water`, `population.deaths.crowd` | tests/core/test_balance_round4.py::test_deaths_fall_with_food_and_water_and_crowding_raises_them |
 | PO-32 | 生まれたマスに住む所がなければ島の空いた町へ移り、どこにも空きがなければ消えずに詰めて住む（過密）。過密の度合いで亡くなる割合が上がり、生まれる割合と幸福度が下がる。自給の村があふれた分は近い町へ出る。年齢の層は持たない | 決定 | `population.overcrowding.deaths`, `population.overcrowding.births`, `population.happiness.crowding`, `population.happiness.crowding_max` | tests/core/test_round5_village.py::test_births_are_kept_when_every_home_is_full, ::test_overflow_beyond_a_village_goes_to_the_nearest_town, ::test_crowding_lowers_happiness_and_immigration_room |
 | PO-33 | 人口の増減は家計の層の人数に比例して割り振り、資本家階級は割合を保つ。層を移る人は 1 人あたりの預金を一緒に持つ（層の決まりはタブ 4） | 決定 |  | （未確認） |
-| PO-34 | 幸福度は式 `happiness`（`population.happiness`）で層ごとに出し、人数で平均する。食料・働き口・電力・食事の質・衣料・ぜいたく品・上下水道・教育の項目と、汚染・実質賃金・物価・飢え・遅配の減点 | 決定 | `population.happiness.base`, `population.happiness.food`, `population.happiness.jobs`, `population.happiness.power`, `population.happiness.food_quality`, `population.happiness.clothing`, `population.happiness.luxury`, `population.happiness.water`, `population.happiness.education`, `population.happiness.pollution_per_point`, `population.happiness.real_wage_per_point`, `population.happiness.real_wage_max`, `population.happiness.inflation_threshold`, `population.happiness.inflation_per_point`, `population.happiness.inflation_max`, `population.happiness.arrears` | tests/core/test_phase3_4.py（幸福度の上限）, tests/core/test_playtest3_fixes.py::test_happiness_weight_change_is_announced_once |
+| PO-34 | 幸福度は式 `happiness`（`population.happiness`）で層ごとに出し、人数で平均する。食料・働き口・電力・食事の質・衣料・ぜいたく品・上下水道・教育・住まいの広さ（PO-53）の項目と、汚染・実質賃金・物価・飢え・遅配の減点 | 決定 | `population.happiness.base`, `population.happiness.food`, `population.happiness.jobs`, `population.happiness.power`, `population.happiness.food_quality`, `population.happiness.clothing`, `population.happiness.luxury`, `population.happiness.water`, `population.happiness.education`, `population.happiness.pollution_per_point`, `population.happiness.real_wage_per_point`, `population.happiness.real_wage_max`, `population.happiness.inflation_threshold`, `population.happiness.inflation_per_point`, `population.happiness.inflation_max`, `population.happiness.arrears` | tests/core/test_phase3_4.py（幸福度の上限）, tests/core/test_playtest3_fixes.py::test_happiness_weight_change_is_announced_once |
 | PO-35 | 前のフェーズから移し替えた島は、幸福度の重みをその時の重みから `population.blend_turns` かけて移し、移し始めのターンに 1 度知らせる | 決定 | `population.blend_turns`, `population.happiness_phase1`, `population.happiness_phase2`, `population.happiness_phase3_1` | tests/core/test_playtest3_fixes.py::test_happiness_weight_change_is_announced_once |
 | PO-36 | 汚染は施設が稼働率に応じて `facilities.yaml` の pollution の量を radius に広げ、毎ターン計算し直す。幸福度を汚染 1 あたり減らし、農場と漁港の産出と肥沃度を下げる | 決定 | `population.happiness.pollution_per_point`, `infrastructure.pollution_floor`, `climate.fertility_loss` | tests/core/test_phase3_2.py::test_pollution_wears_fertility_down_to_the_floor |
 | PO-37 | 災害は 1 島 1 ターンに `disasters.rate` の確率で起き、施設 1 つが種類ごとの `halt_turns` の間止まる。マスごと消える災害はない | 決定 | `disasters.rate`, `disasters.kinds` | tests/core/test_rules.py::test_disaster_halts_a_facility, tests/core/test_playtest3_fixes.py::test_disaster_on_a_facility_without_a_tile_names_no_position, tests/core/test_balance_round6.py::test_a_disaster_does_not_shorten_a_longer_halt |
@@ -69,11 +69,19 @@
 | PO-47 | 標準の記念碑は 10: モノリス・建国記念碑・平和記念碑・戦いの碑・慰霊碑・元首の像・労働者の像・展望塔・帳簿の碑・検証の碑。それぞれ建てられる条件があり（モノリスだけ条件なし）、効果は観光の魅力だけ。碑文は自動の文に遊ぶ人が 1〜2 行足せる（1 行 40 字まで）。モノリスと自作以外は 1 つの国に 1 つまで | 決定（4-1 ④） | `monuments.founding_turns`・`monuments.peace_turns`・`monuments.cenotaph_dead`・`monuments.ledger_turns`・`monuments.verification_turns` | tests/core/test_monuments.py, tests/server/test_monuments.py |
 | PO-48 | 自作の記念碑はモノリスと同じ条件で、絵を遊ぶ人が上げる（国旗と同じ守り）。管理者が隠せる。絵は国のページとマスの欄に出る（島の地図の絵はどの自作の碑も共通の石碑） | 決定（4-1 ④） |  | tests/server/test_monuments.py::test_custom_monument_image_is_png_or_provisional_and_can_be_hidden |
 | PO-49 | 国の大きさの倍（段6 A3、W-85）: マス1つ・施設1つの表す大きさを `scale.people` 倍（20）にする。定義データと game.yaml は倍 1 の大きさで書き、読み込むときに大きさに比例する数（町に住める人数・初めの人口・施設の働き手と投入と産出と材料・インフラの資材と人手・学校の定員・陸の部隊の兵と装備・輸送船の積める重さ・平均賃金の何倍で書いた額など）だけを掛ける。1 人あたりの量・賃金・値段・率・ターン数・マスの数・軍艦は変えないので、失業・物価・税の割合は倍 1 と同じ形になる。役所の公務員 1 人あたりの行政力は倍で割る。倍は世界ごとに決まり（サーバーの世界の拡張欄 `scale`）、倍を入れる前の世界は倍 1 のまま続く | 決定 | `scale.people` | tests/core/test_scale.py::test_scale_multiplies_sizes_but_not_per_person_amounts, tests/core/test_scale.py::test_founding_population_follows_the_scale, tests/server/test_world_scale.py::test_old_world_without_scale_loads_at_one |
-| PO-50 | 家の傷みと手入れ（W-186 の直し 回3）: 町の家は年に `housing.wear` ずつ傷み、傷んだ分の資材（その段階まで育つのに使った資材×傷んだ割合）を、育つより先に家計の買った資材から使って直す（足りない分は次のターンに預金から買う）。傷みが `housing.livable` を下回った町は、その割合で住める上限が下がる（育つかどうかの目安と画面は元の上限）。家の値打ちは傷みの割合×その段階までの資材の値打ちで、資材の量は前の 5 倍（命令なしの 48 ターンの測りで、家の値打ちが年の GDP の 7〜9 割。前は 2 割足らず） | 決定（回3） | `housing.wear`, `housing.livable`, `settlements.yaml` の materials | tests/core/test_recession_round3.py::test_houses_wear_and_lose_room_only_below_the_livable_line |
+| PO-50 | 家の傷みと手入れ（W-186 の直し 回3）: 町の家は年に `housing.wear` ずつ傷み、傷んだ分の資材（持っている床 × 床 1 つあたりの資材 × 傷んだ割合。W-190 の回から。今はその段階まで育つのに使った資材 × 傷んだ割合）を、育つより先に家計の買った資材から使って直す（足りない分は次のターンに預金から買う）。傷みが `housing.livable` を下回った町は、その割合で住める上限が下がる（育つかどうかの目安と画面は元の上限）。家の値打ちは傷みの割合×その段階までの資材の値打ちで、資材の量は前の 5 倍（命令なしの 48 ターンの測りで、家の値打ちが年の GDP の 7〜9 割。前は 2 割足らず） | 決定（回3） | `housing.wear`, `housing.livable`, `settlements.yaml` の materials | tests/core/test_recession_round3.py::test_houses_wear_and_lose_room_only_below_the_livable_line |
+| PO-51 | 延べ床（W-190・W-201）: 町のマスは延べ床を持ち、最低の広さ `housing.space.min` で住める人数の単位で数える。人が入れるか・あふれるか（移り住み PO-22、飢饉の逃げと戻り PO-29・PO-46、生まれた人の行き先と過密 PO-32、移民の受け入れ PO-40、村のままでいられる人数 PO-21）は床で見る。床はマスだけが持ち、層は島の床の持ち分の割合（家の値打ち・住宅ローン・家賃の割り振り）を持って、預金・住宅ローンと同じ割合で人と一緒に層を移る（端数は一般の層）。前からある世界の町の床は今の段階の上限、持ち分は人数で分ける | 決定（W-190 の回で作る） | housing.space.min（作る回で足す） | （作る回で） |
+| PO-52 | 望む広さと住み替え（W-201）: 層の望む広さは `housing.space.base` ×（層の実質の所得の倍率）^`housing.space.elasticity`（最低の広さより下げない）。層の 1 人あたりの広さは、マスの床 × 傷みの割合を、そこに住む層の人数 × 望む広さの重みで分けて出す。望む広さに足りない層は、足りない床の `housing.space.move_rate`（毎年引っ越すか建て替える世帯の割合）を毎ターン買って住むマスに床を足す。広すぎても売らず壊さない。建国の町は建国の住民が望む広さで住める床を持つ | 決定（W-190 の回で作る） | housing.space.base（作る回で足す）, housing.space.elasticity（作る回で足す）, housing.space.move_rate（作る回で足す） | （作る回で） |
+| PO-53 | 幸福度の住まいの広さ: 層ごとに min(1, 1 人あたりの広さ ÷ 望む広さ) × 重み `population.happiness.housing`。重みは土台から移し、重みの合計は変えない。前の世界は PO-35 と同じく `population.blend_turns` かけて移し、移し始めに知らせる | 決定（W-190 の回で作る） | population.happiness.housing（作る回で足す）, `population.happiness.base` | （作る回で） |
+| PO-54 | 高層化（W-190）: 大都市から上（高層都市・超高層）へは、そのマスの通勤圏に新しい町を置ける空いた平地がないとき（土地が足りない）か国の命令（PO-55）のときだけ床を足す。空いた平地があれば近くに村を置いて横に広がる。上下水道の条件は PO-20 と同じ | 決定（W-190 の回で作る。仮: 地価の代わり、W-206） | `labor.commute_radius` | （作る回で） |
+| PO-55 | 国の命令「住宅を建てる」（W-190）: 町のマスか空いた平地を選び、足す床（次の段階まで、または床の数）を決めると、国が住宅費（タブ 6 FS-26）で資材を市場で買って床を足す（公営住宅）。国の床は国の持ち分として持ち、所得の低い層から（失業 → 一般）望む広さに足りない分を埋める形で割り当て、住む層は家賃（FS-27）を国庫に払う。手入れは国が住宅費から。開発を止めたマスと指定したマスには建てない | 決定（W-190 の回で作る） | fiscal.budget.housing（作る回で足す）, housing.public_rent（作る回で足す） | （作る回で） |
+| PO-56 | 計画経済の国営住宅（W-202）: 計画経済の国では家計は住宅の資材を買わず住宅ローンも借りない。町ができる・床を足す・手入れの資材は国が住宅費で買い、床は国の床として層の人数に比例して割り当て、住む層は家賃を払う。住宅費が足りなければ町は育たず、空きがなければ過密になる（ソ連の住宅の待ち列）。体制が変わっても床の持ち主はそのまま（払い下げは後回し W-207）。前からある計画経済の世界の家計の床は家計のまま | 決定（W-190 の回で作る） | fiscal.budget.housing（作る回で足す）, housing.public_rent（作る回で足す） | （作る回で） |
 
 ### 仮の決まり
 
-今はない。初めの農場の数の仮（PO-14）は、施設の数を要る量に合わせる形と国の穀物の備蓄で外した（2026-10-26、W-186 の直し 回1）。
+- 高層化の条件（PO-54）: 大都市から上へは「通勤圏に空いた平地がないとき」だけ育てる。地価と家賃の市場がないので、その代わりの目安（現実は地価が高い所ほど高く建てる）。地価を入れるときに外す（W-206）。
+
+初めの農場の数の仮（PO-14）は、施設の数を要る量に合わせる形と国の穀物の備蓄で外した（2026-10-26、W-186 の直し 回1）。
 
 ## 仕組み
 
@@ -122,17 +130,41 @@
 
 ### 町（住宅）の段階と育ち方
 
-町は自動で建つ施設 `housing.facility` で、プレイヤーは建てられません。段階は `settlements.yaml` の村・町・都市・大都市で、段階ごとに住める上限（capacity）・見た目の人数（min_population）・建物の高さ・育つときに使う資材（materials）・育つのに要る上下水道の整備度（water。都市と大都市）・自給の農業ができるか（subsistence。村だけ）を持ちます。段階（住める上限と見た目）が上がるのは育ったときで、「都市に発展しました」はそのターンに出します。
+町は自動で建つ施設 `housing.facility` で、プレイヤーは施設としては建てられません（国が床を足す命令「住宅を建てる」は下の「高層化と公営住宅」）。段階は `settlements.yaml` の村・町・都市・大都市・高層都市・超高層で、段階ごとに床の上限（capacity。最低の広さ `housing.space.min` で詰めて住める人数で書く）・建物の高さ・床を足すときに使う資材（materials。段階の幅の分）・育つのに要る上下水道の整備度（water。都市から上）・自給の農業ができるか（subsistence。村だけ）を持ちます。マスは 15km 四方ほどで、大都市は 1km² あたりの延べ床が約 3.2 万㎡（神戸市くらい）、高層都市は約 20 万㎡（東京都の平均）、超高層は約 46 万㎡（東京 23 区）です。
 
-町ができる・育つのは都市の発展の段で、人手の足りない施設（工事中を含む。店が集落ごとに雇いきれなかった人数も含む）の通勤圏（`labor.commute_radius`）で住む所が足りないときです。足りない人数の多い所から見て、通勤圏の空いている町に入れる人と、もう近くに住んでいて仕事のない人で足りれば育てません。足りなければ、通勤圏の中で人数が上限の `housing.fill_ratio` を超えた町を 1 つ上の段階へ育て、育てる町がなければ空いた平地に村を新しく作ります。
+町のマスは延べ床を持ちます（PO-51。W-190 の回で作る）。床は段階の幅の `housing.floor_step` ずつ足し、段階の上限を超えるときに次の段階へ上がります（見た目の段階は建った段階。人数では決めない）。「都市に発展しました」は段階が上がったターンに出します。人が入れるか・あふれるか（移り住み・移民・飢饉の逃げと戻り・生まれた人の行き先・過密・村のままでいられる人数）は床（最低の広さで住める人数）で見ます。現実でも、人は狭くても仕事のある町へ移り、詰めて住みます。
+
+町ができる・育つのは都市の発展の段で、人手の足りない施設（工事中を含む。店が集落ごとに雇いきれなかった人数も含む）の通勤圏（`labor.commute_radius`）で住む所が足りないときです。足りない人数の多い所から見て、通勤圏の町の「望む広さでの空き」（床 ÷ 住む人の望む広さ − 住む人）と、もう近くに住んでいて仕事のない人で足りれば育てません。足りなければ、通勤圏の中で段階の上限に空きのある町に床を足し、足せる町がなければ空いた平地に村を新しく作ります。大都市から上へは、通勤圏に新しい町を置ける空いた平地がないときだけ床を足します（PO-54。土地が足りない所ほど高く建てる現実の形を、地価を持たない代わりに「空いた平地がない」で見る仮の目安。W-206）。
 
 人手の足りない所がなくても、島の住む所の上限を超えて住む人（過密）が島の空きより多ければ、家計がいちばん過密なマスから `housing.settle_radius` マスの内の空いた平地に新しい村を開きます（分家と開拓。江戸の新田開発や分家に当たる。施設の通勤圏でなくてよい）。資材は村の materials（木材）で、町が育つときと同じく家計が買います。平地も木材もなければ開けず、過密が続きます。1 ターンに育つ数は `housing.max_upgrades_per_turn`、新しくできる数は人手の足りない所の分と開拓の分を合わせて `housing.max_new_per_turn` までです（人手の足りない所が先）。開発を止めたマスと、工業団地・オフィス街に指定したマスには建ちません。
 
-育つ・できるときの資材は、一般の層が市場で買います（住宅への投資として数える）。代金の `housing.ltv` は住宅ローンで借り、頭金と手入れの資材は預金から、合わせて預金の `household.housing_share` まで出します（住宅ローンの借り方と返し方はタブ 7 BK-47）。売りに出ていない資材にはお金を取り置かず、次のターンに買うのは1か所分までです（育たなかった町の数だけ積み上げない）。
+育つ・できるときの資材は、市場・混合の国では家計の層（一般・技術者・資産を持つ層）が市場で買います（住宅への投資として数える）。代金の `housing.ltv` は住宅ローンで借り、頭金と手入れの資材は預金から、合わせて預金の `household.housing_share` まで出します（住宅ローンの借り方と返し方はタブ 7 BK-47）。計画経済の国では国が住宅費で買います（下の「計画経済の国営住宅」）。資材の在庫は持ち主（家計・国）ごとに分けます。売りに出ていない資材にはお金を取り置かず、次のターンに買うのは1か所分までです（育たなかった町の数だけ積み上げない）。
 
-家は年に `housing.wear` ずつ傷みます（回3。日本の木造住宅の値打ちの減りは年 2〜3%）。町は傷みの割合を1つ持ち（書いていなければ新品）、毎ターン、傷んだ分の資材（その段階まで育つのに使った資材×傷んだ割合）を、育つより先に家計の買った資材から使って直します。資材のどれかが足りなければ、そろった割合だけ直し、足りない分は次のターンに預金から買います。傷みが `housing.livable` を下回った町は、住める上限が「上限×傷みの割合÷`housing.livable`」に下がります（少しの傷みでは住める。生まれる数・亡くなる数・暮らし向き・移り住み・開拓は下がった上限で見る）。育つかどうかの目安（`housing.fill_ratio`）と画面は元の上限を使います。家の値打ちは「傷みの割合×その段階までの資材の値打ち」で、資材の量は前の 5 倍で、命令なしの 48 ターンの測りでは家の値打ちが年の GDP の 7〜9 割（計画経済の国は 7 割。前はどれも 2 割足らず）です。建国で置く町はただのまま（資材を買わずに建つ）です。所得が上がって良い家に住み替える道と、計画経済の国営住宅は入れていません（後ですることの記録 W-201・W-202）。
+家は年に `housing.wear` ずつ傷みます（回3。日本の木造住宅の値打ちの減りは年 2〜3%）。町は傷みの割合を1つ持ち（書いていなければ新品）、毎ターン、傷んだ分の資材（持っている床 × 床 1 つあたりの資材 × 傷んだ割合。W-190 の回から。今はその段階まで育つのに使った資材 × 傷んだ割合）を、育つより先に家計の買った資材から使って直します。資材のどれかが足りなければ、そろった割合だけ直し、足りない分は次のターンに預金から買います。傷みが `housing.livable` を下回った町は、住める上限が「上限×傷みの割合÷`housing.livable`」に下がります（少しの傷みでは住める。生まれる数・亡くなる数・暮らし向き・移り住み・開拓は下がった上限で見る）。育つかどうかの目安（`housing.fill_ratio`）と画面は元の上限を使います。家の値打ちは「傷みの割合×その段階までの資材の値打ち」で、資材の量は前の 5 倍で、命令なしの 48 ターンの測りでは家の値打ちが年の GDP の 7〜9 割（計画経済の国は 7 割。前はどれも 2 割足らず）です。建国で置く町はただのまま（資材を買わずに建つ）で、建国の住民が望む広さで住める床を持ちます。
 
 買えた資材がそろえば次のターンに育ち、足りなければ要る資材を次のターンの市場で買い、2 ターン続けて足りなければ「町が育たない」と資材の名前を知らせます。都市と大都市に育つには、そのマスの上下水道が `settlements.yaml` の water 以上要り、足りずに育たない町はマスごとに 1 度知らせます（整備度が足りたら印を外す）。道路や送電網が人口に追いつかないときの混雑は入れません。人口がゼロになった町の扱いと、町の中に入る店（回7）はタブ 4 と 5 にあります。
+
+### 住み替え（W-201）
+
+家の広さ（1 人あたりの延べ床）は所得とともに広がります。日本は 1968 年の約 20㎡ から 2018 年の約 40㎡ へ、その間に 1 人あたりの実質の所得は約 3 倍でした（世帯の人数の減りの分を除くと、所得の伸びに対する広さの伸びの比はおよそ 0.5）。アメリカは約 65㎡、ソ連は 1960 年の約 9㎡ から 1990 年の約 16㎡ です。毎年、全世帯の 5〜10% が引っ越すか建て替え・建て増しをし、そのたびに望む広さに近づけます。
+
+層の望む広さは `housing.space.base`（建国のときの一般の層の所得で。日本の 1950 年代末ほど）×（層の実質の所得の倍率 `layer_income`）^`housing.space.elasticity` で、最低の広さ `housing.space.min`（日本の最低居住面積水準ほど）より下げません（PO-52）。層はマスを持たないので、床はマスだけが持ち、層は島の床の持ち分の割合を持ちます（PO-51）。層の 1 人あたりの広さは、マスの床 × 傷みの割合を、そこに住む層の人数 × 望む広さの重みで分けて出します（所得の高い層ほど広く住む）。望む広さに足りない層は、足りない床の `housing.space.move_rate` を毎ターン、住むマスに足す資材として買います（払い方は上の町の資材と同じ）。広さが望む広さを上回っても売らず、家は壊しません。所得が下がって返済に困ると、住宅ローンの遅れと焦げ付き（タブ 7 BK-47）になります。
+
+広さは幸福度の「住まいの広さ」の項目になり（PO-53）、町が育つかの見立てにも効きます（所得が伸びると望む広さでの空きが減り、人が増えなくても町が育つ）。
+
+### 高層化と公営住宅（W-190）
+
+土地が足りず地価が高い所ほど建物は高くなり（都市経済学の付け値地代。高く建てるほど床 1㎡ あたりの建設費は上がる）、土地に余りのある所は横に広がります（郊外化）。国は公営住宅を建てます（日本の公営住宅・UR、シンガポールの HDB）。
+
+- 大都市から上の段階は、通勤圏に新しい町を置ける空いた平地がないときか、国の命令のときだけ床を足します（PO-54）。資材は鋼鉄と建材が多く、エレベーターの機械も要り、床 1 つあたりの建設費は大都市の約 1.5 倍（高層都市）と約 2 倍（超高層）です。上下水道は高層都市 0.9、超高層 1.0。
+- 国の命令「住宅を建てる」（PO-55）は、町のマスか空いた平地を選び、足す床（次の段階まで、または床の数）を決めます。国が予算の住宅費（タブ 6 FS-26）で資材を市場で買い、床を足します。上下水道の条件は同じです。
+- 国の床（公営住宅）は国の持ち分として持ち、所得の低い層から（失業 → 一般の順に、望む広さに足りない分を埋める形で）割り当てます。住む層は家賃（タブ 6 FS-27）を国庫に払い、手入れは国が住宅費から払います。
+
+### 計画経済の国営住宅（W-202）
+
+ソ連の住宅は国と国営企業が建てて割り当て、家賃は家計の支出の 3% ほどと安く、建てる量は計画の予算で決まって、待つ人の列がいつもありました（1 人あたり 9〜16㎡）。
+
+計画経済の国では、家計は住宅の資材を買わず、住宅ローンも借りません（PO-56）。町ができる・床を足す・手入れの資材は国が住宅費で買い、人手の足りない施設の近くで町が要るときも住宅費から建てます。床はみな国の床として層の人数に比例して割り当て、住む層は家賃を払います。住宅費が足りないと町は育たず、空きがなければ過密になり、望む広さに届かない分だけ幸福度の住まいの項目が下がります。標準の計画は計画経済の島の住宅費を、育つ町と手入れに要る資材の見込みで決めます。体制が変わっても床の持ち主はそのままで（家計の床は家計、国の床は国。払い下げは W-207）、新しい床は新しい体制の形で建ちます。
 
 ### 村の自給と島の中の移り住み
 
@@ -171,7 +203,7 @@
 
 ### 幸福度
 
-幸福度は 0〜100 で、式 `happiness` で家計の層ごとに出し、島の幸福度は人数で平均します。項目は土台 `population.happiness.base` に、食料（必要な量に対して食べられた割合）・働き口（そのマスの労働者のうち仕事のある割合。仕事のある家計は満点、失業している家計は 0、資本家階級はいつも満点）・電力（届いた割合）・食事の質・衣料・ぜいたく品（種類が多いほど高い）・上下水道（そのマスの整備度）・教育（島の教育水準）を、それぞれ足りている割合 × 重み（`population.happiness` の各項目）で足したものです。減点は、汚染 1 あたり `population.happiness.pollution_per_point`、実質賃金が 1 年前より下がった 1% ごと（上限 `population.happiness.real_wage_max`）、物価上昇率が `population.happiness.inflation_threshold` を超えた 1% ごと（上限 `population.happiness.inflation_max`）、飢えの蓄え、賃金の遅配（払われなかった働き手の割合 × `population.happiness.arrears`）です。上限は体制の happiness_cap（全体主義。タブ 10）。
+幸福度は 0〜100 で、式 `happiness` で家計の層ごとに出し、島の幸福度は人数で平均します。項目は土台 `population.happiness.base` に、食料（必要な量に対して食べられた割合）・働き口（そのマスの労働者のうち仕事のある割合。仕事のある家計は満点、失業している家計は 0、資本家階級はいつも満点）・電力（届いた割合）・食事の質・衣料・ぜいたく品（種類が多いほど高い）・上下水道（そのマスの整備度）・教育（島の教育水準）・住まいの広さ（1 人あたりの広さの望む広さに対する割合。W-190 の回で作る。重みは土台から移す）を、それぞれ足りている割合 × 重み（`population.happiness` の各項目）で足したものです。減点は、汚染 1 あたり `population.happiness.pollution_per_point`、実質賃金が 1 年前より下がった 1% ごと（上限 `population.happiness.real_wage_max`）、物価上昇率が `population.happiness.inflation_threshold` を超えた 1% ごと（上限 `population.happiness.inflation_max`）、飢えの蓄え、賃金の遅配（払われなかった働き手の割合 × `population.happiness.arrears`）です。上限は体制の happiness_cap（全体主義。タブ 10）。
 
 一般の層はマスごとに出し（働き口・電力・汚染・上下水道はマスの値）、仕事のある家計と失業している家計をマスに住む人数で混ぜた値がマスの幸福度になります（地図・町の育ち・人の移り先に使う）。ほかの層は島全体で出します。前のフェーズから移し替えた島は、重みをその時の重み（`population.happiness_phase1`・`population.happiness_phase2`・`population.happiness_phase3_1`）から `population.blend_turns` かけて移し、移し始めのターンに重みが変わることを知らせます（知らせないと、何もしていないのに幸福度が動いて見える）。幸福度は政情の目標に効きます（タブ 10）。
 
@@ -194,7 +226,7 @@
 | 慰霊碑 | 飢饉・暴動・災害・戦争で決めた数より多くの人が亡くなった後 | その出来事と亡くなった人の数 | 震災の慰霊碑 |
 | 元首の像 | 権威主義と全体主義だけ。体制が民主主義に変わると倒され、ターンログに出る | 元首の名前 | 各国の指導者の像 |
 | 労働者の像 | 産業の称号を持っている間（建てた後は称号を失っても残る） | その産業と称号を得た年 | 「労働者とコルホーズの女性」像 |
-| 展望塔 | 大都市が 1 つ以上ある国 | 繁栄 | 東京タワー |
+| 展望塔 | 大都市以上（高層都市・超高層を含む）の町が 1 つ以上ある国 | 繁栄 | 東京タワー |
 | 帳簿の碑（Claude） | 建国から 12 ターンの最初の決算を終えた国 | その国の最初の仕訳（建国の月の帳簿の記録から自動で）と「借方と貸方は、いつも等しい」、小さく「設計と実装 Claude」 | |
 | 検証の碑（Codex） | 建国から 50 ターン | 「確かめ、記し、次へつなぐ。／開発の検証に協力した Codex に捧ぐ。」と、建国 50 か月目の人口・就業者・月の GDP（その時の通貨名で、記録の段の値） | |
 
@@ -227,7 +259,14 @@
 | 一部だけ | 層の一部が飢える: 家計を分けて失業している家計から飢える。少しの人が飢えても層の全員が買い物をやめない（タブ 4）。島の 1 か所: 上下水道のない密な町はそのマスの亡くなる割合が上がる（標準の計画が上下水道を引く）、汚染の重なるマスは幸福度と肥沃度が下がる、離れ小島は自前の発電所が要り港が入るまで運賃が高い（タブ 8・3） | 密な町の死亡率はその場で。肥沃度は 1 年分たまるごと | 上下水道を引けば下がる。汚染が消えても肥沃度は戻らない（下限まで下がったまま） | 19 世紀の農村とリバプール・マンチェスターの死亡率の差 | `population.deaths.crowd`, `population.deaths.water`, `climate.fertility_loss` |
 | 持ち主・相手がいない | 移民の行き先がない（どの島も閉じている。既定は閉じる）: 出られず留まり、出たい人の不満が政情に効く。町を育てる資材を作る施設が島にない: 育たず「町が育たない」と知らせ続ける。通勤圏に人を雇う施設がない: 町はできず、人は移らない | 2 ターン続けて資材が足りなければ知らせ | 資材を作る施設を建てる・輸入する。移民は受け入れを開く国が出るまで | ベルリンの壁の前の東ドイツは年に 1〜2% を失った | `migration.trapped`, `migration.trapped_max` |
 | 時間がたつ（家の傷み） | 町の家は年に `housing.wear` ずつ傷み、家計が資材を買って直す。直せないと傷みがたまり、`housing.livable` を下回ると住める人が減って過密になる（PO-50） | 毎ターン少しずつ。新品から 10 年で 2 割 | 資材が買えれば直す | 手入れされない家の老朽化と空き家 | `housing.wear`, `housing.livable` |
-| 時間がたつ | 育ちきった町（大都市の上限）: それ以上育たず、空きがなければ人は他の町へ、どこにも空きがなければ詰めて住む（過密）。教育と所得が上がると生まれる割合は豊かな国の水準まで下がる（人口転換）。同郷のつながりは年に薄れて送金も減る。汚染の続くマスの肥沃度は下限まで下がる | 人口転換は教育の蓄えの速さ（働く期間。タブ 8）で数十年 | 人口が増えると国の借金が膨らむ件は回5 で見る（タブ 7） | 学校に通えた人が 3 割台の国で年 4〜5%、9 割を超える中所得の国で 1.5〜2%、豊かな国で 1% ほど | `population.births.*`, `migration.ties_decay`, `climate.fertility_floor` |
+| 時間がたつ | 育ちきった町（超高層の上限）: それ以上育たず、空きがなければ人は他の町へ、どこにも空きがなければ詰めて住む（過密）。教育と所得が上がると生まれる割合は豊かな国の水準まで下がる（人口転換）。同郷のつながりは年に薄れて送金も減る。汚染の続くマスの肥沃度は下限まで下がる | 人口転換は教育の蓄えの速さ（働く期間。タブ 8）で数十年 | 人口が増えると国の借金が膨らむ件は回5 で見る（タブ 7） | 学校に通えた人が 3 割台の国で年 4〜5%、9 割を超える中所得の国で 1.5〜2%、豊かな国で 1% ほど | `population.births.*`, `migration.ties_decay`, `climate.fertility_floor` |
+
+| 足りない（広さが望みに届かない、W-201） | 層が足りない床の一部を毎ターン買う（頭金と住宅ローン）。買えない分は幸福度の住まいの項目が下がる。計画経済の国は国の住宅費しだい | 足りない床の `housing.space.move_rate` ずつ（年に 5〜10%） | 所得と預金が増え、ローンが返ると買える。計画経済は予算を増やす | 戦後の日本の住宅難と建て増し・住み替え、ソ連の住宅の待ち列 | `housing.space.*`, `fiscal.budget.housing` |
+| 余る（広すぎる・人が減った） | 床は売らず壊さない。空いた床に新しく来る人が入る。手入れは持ち主が続ける（国の床は国が） | | 人が増えれば埋まる | 空き家、人口の減る町 | |
+| 0 になる（住宅費 0・預金も借りられる額も 0） | 床を足さない。傷みが進めば住める人数が減る（PO-50）。計画経済の島で住宅費が 0 のまま町が要るときは知らせる | 傷みの速さ | 予算を付ける・所得が戻る | 荒れた住宅地 | `fiscal.budget.housing` |
+| 足りない（土地も床も足りない、W-190） | 通勤圏に空いた平地のない大都市が高層へ床を足す。空いた平地があれば横に広がる。上下水道が足りなければ育たず過密 | 床を足すたび | 上下水道を整える・命令で建てる | 東京・香港の高層化、郊外化 | `housing.floor_step` |
+| 層を移る（失業など） | 人と一緒に床の持ち分・預金・住宅ローンが移る。失業の層は広い家に住んだまま返済に困る | 遅れが `loans.arrears_limit` 回続けば焦げ付き | 職に就けば戻る | 失業と住宅ローンの焦げ付き | `loans.arrears_limit` |
+| 体制が変わる | 床の持ち主はそのまま。新しい床は新しい体制の形（計画経済は国、市場・混合は家計）で建つ。払い下げは入れない（W-207） | | | 東欧の住宅の払い下げ | |
 
 ## 前提と依存
 
@@ -235,7 +274,7 @@
 
 - 食料が市場に出ること（農場・漁港・牧場・食品工場の産出と商社の輸入。タブ 3・5・9）と、家計がそれを買えるお金（賃金・失業手当・送金。タブ 4・6）。
 - 人手の足りない施設があること（町が育つ条件。市場で売れ行きが縛りになると人手不足が起きにくく、町が育ちにくい。rework-design.md 3 の表の未解決の行）。
-- 町の資材（木材・建材・鋼鉄・機械）が市場に出ること（タブ 5）と、都市・大都市に要る上下水道（タブ 8）。
+- 町の資材（木材・建材・鋼鉄・機械）が市場に出ること（タブ 5）と、都市から上に要る上下水道（タブ 8）。計画経済の国と公営住宅では国の住宅費（タブ 6）。
 - 電力が届くこと（幸福度の項目。タブ 8・3）、島の教育水準（生まれる割合と幸福度。タブ 8）。
 - 警察の人手（国境の見張り。タブ 10）、為替の市場（預金の持ち出しと送金。タブ 9）、港と船（移民が動くのは貿易の仕組みを置き終えた島。タブ 9）。
 - 移民の受け入れと出国の政策、体制ごとの上限（タブ 10）。
@@ -256,3 +295,4 @@
 | 2026-10-17 | 設計書の整理で書き直した。境目の表は rework-design.md 2.2 の分（食料・人口・移民）と本文の「足りないとき」を埋めた | フェーズ1 の人口・町・餓死・消える人の決まりは回3・回4 の後の姿だけにした。建国の初期値の「手元資金 2 ターン分」「失業手当 0」は設定の名前（`founding.money.operating_turns`・`fiscal.unemployment_benefit`）で書いた。初めの農場の数は仮の決まりとして残した |
 | 2026-10-26 | W-186 の直し 回1 の読むだけの見直し役: ①施設の数の見込みが道路と教育を 0 で見て低く、施設を置きすぎる ②鉱業などの産業の名前で初めの値段を下げると、その産業の経験のない島の工場（鉄鉱石・建材・水力）が赤字になる ③備蓄の売りを毎ターン出しておくと、穀物の品切れが見えず農場が建たない ④計画経済の公定価格や値段の上限の下では放出が約定しない ⑤建国の備蓄が同じターンの組で、約 20 ターン後に一度に入れ替わる ⑥輸入した穀物を国の倉庫が自分で買う ⑦預金の目安が金利の分の c1 の下げを見ていない ⑧見込みを直すと、四捨五入では食べ物が 1 割足りない島が出る | ①見込みに道路と教育の初めの値を入れた ②値段を下げるのは建国で置く施設の作り方だけにした（タブ 3・5） ③④放出は飢えた家計が出たか値段が上がったときだけにし、飢えた家計があればいつもの値段で出す（タブ 6 FS-25） ⑤建国の備蓄の作られたターンをならした ⑥輸入や命令で倉庫が穀物を売るターンは買わない ⑦c1 は初めの預金金利の分を下げた値で出す（PO-15） ⑧食料の施設は切り上げにした（PO-14）。国債と銀行の自己資本の増え方、在庫を原価で数えることの貸借とのずれ、称号の 1 ターン目の決まり方は、回2〜4 で見る |
 | 2026-10-26 | W-186 の直し 回3: 家の値打ちが年の GDP の 2 割ほどしかなく、住宅への投資がほぼ 0 だった（市場経済の国で GDP の 0%） | 資材を 5 倍にし、家の傷みと手入れ・住宅ローンを入れた（PO-19・PO-50、タブ 7 BK-47） |
+| 2026-10-26 | W-190・W-201・W-202 の設計（スレッド「町の高層化と住み替えを設計する」）の読むだけの見直し役: ①望む広さを人の入れる上限に使うと、所得が伸びるとどこにも空きがなくなり、移り住み・移民・飢饉の逃げと戻りが止まる ②層はマスを持たないので層ごとの床は持てない ③人数で段階を見る所（fill_ratio・見た目・塔の記念碑ほか）がずれる ④望む広さ 20㎡ では建国の村が村の床に収まらない ⑤住宅の資材の在庫を家計と国が取り合う | ①入れる・あふれるは床（最低の広さ）のまま、望む広さは育つ見立てと幸福度だけ（PO-51・PO-52） ②床はマスだけ、層は持ち分の割合 ③段階は床と建った段階で見る（PO-18）、展望塔は「大都市以上」 ④望む広さの土台を 16㎡ ほど（日本の 1950 年代末）に ⑤在庫は持ち主ごとに分ける（PO-19） |
