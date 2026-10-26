@@ -589,6 +589,40 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
     return max(target - limit, min(target + limit, plan))
 
 
+MISSED = "missed"  # 施設の economy: 直近の売り逃した量（全力の産出に対する 1000 分の 1。古い順）
+
+
+def record_missed(island: IslandState, f: Facility, ctx: StageContext) -> None:
+    """全力の近くで動いて売り切れた民営の施設が、このターンに売り逃した量を残す（W-186 回3。
+    設備投資の合図。modules/firms の建て増し）。
+
+    売り逃した量は、市場で買えなかった量（買いたい量 − 約定した量）を、その施設が売れた量の割合で
+    分けた分。売り切れていない施設（希望価格が高くて売れ残った・作る量を絞っている）や、設備の割合の
+    firms.invest_use 倍より低く動いた施設は 0（売れ行きでなく値段か操業が足りないので、設備を
+    増やしても売れない）。作りたい量（操業目標）は在庫を目安に戻す分と、売り切れたときの上積みを
+    含むので使わない。産出物が2つ以上なら、売り逃した割合の一番大きいもの。
+    """
+    if f.owner != OWNER_PRIVATE or not is_self_supporting(f):
+        return
+    config = ctx.config
+    power = config.get("power.good")
+    records = {m.good: m for m in island.markets}
+    capacity = min(fac.FULL, equipment.condition(f))
+    busy = f.operating_rate >= capacity * config.get("firms.invest_use")
+    missed = 0
+    for good, full in sorted(fac.outputs_of(ctx.defs, f).items()):
+        if good == power or not full or not busy:
+            continue
+        offered, sold, _ = f.economy.get("sales", {}).get(good, [0, 0, 0])
+        record = records.get(good)
+        if record is None or offered <= 0 or sold < offered or record.volume <= 0:
+            continue
+        unmet = max(0, record.demand - record.volume)
+        missed = max(missed, fac.ratio(unmet * sold // record.volume, full))
+    history = [*f.economy.get(MISSED, []), missed][-config.get("firms.invest_turns") :]
+    f.economy[MISSED] = history
+
+
 # --- 工事の資材の代金の取り置き ------------------------------------------------------
 
 SITE_HOLDS = "site_holds"  # island.scratch: 雇用の段で取り置いた資材の代金の (支払い手, 額)
@@ -738,6 +772,7 @@ class Market(IslandStage):
                     goal = planning.target(island, f, defs, config) if official else None
                     if goal is None:
                         goal = ctx.formula("operating_target")(island, f, ctx)
+                        record_missed(island, f, ctx)
                     f.economy["target"] = goal
         services.plan(
             island,
