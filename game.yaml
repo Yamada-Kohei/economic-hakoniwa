@@ -276,7 +276,11 @@ foreign_merchant:
   multiplier: 1.5       # 値段 = 初めの値段（原価 + 1 割）× これ
   last_turns: 24        # 最後のこのターン数で、値段の倍率を last_multiplier まで上げていく
   last_multiplier: 3.0
-  goods: [coal, iron_ore, steel, machinery, building_materials, crude_oil, fuel]  # 1ターンの上限は、その財を作る標準の施設1つの全力の産出
+  buy_multiplier: 0.7   # 同じ品目を、初めの値段 × これの指値で買う（島の外への輸出。W-186 回4）。0 で買わない
+  # 1ターンの上限は、その財を作る標準の施設1つの全力の産出（売りも買いも）。穀物は上限が島の食べる量の
+  # 半分を超えるので入れない。綿花と木材は、足すと商人に頼った計画経済の島が、商人の去った後に綿花が
+  # 品切れのまま飢饉になった（W-186 回4 の測り）ので入れない（どちらも上限を港や島の大きさから決める形と一緒に後で）
+  goods: [coal, iron_ore, steel, machinery, building_materials, crude_oil, fuel]
 
 household:
   layers:               # 家計の層。share を書いた層は住民のその割合で、働かない（資産を持つ層）
@@ -543,6 +547,9 @@ infrastructure:
   # 建国と移し替えのときに、施設のマスとその周りの陸のマスと町のマスに引く道路の整備度
   start_road: 0.6
   start_water: 0.8      # 移し替えのときに、都市と大都市のマスに引く上下水道の整備度
+  # 役所の決まった事業（W-186 回4。命令の工事がなくても、公共事業費の月割りの残りで並べる工事）
+  auto_works:
+    road_level: 0.6     # 施設と町のまわりの、交通の整備度がこれに届かないマスに道路を引く（標準の計画も同じ）
 
 education:
   start: 0.6            # 建国と移し替えのときの教育水準（インフラと教育の係数が 1 になる値）

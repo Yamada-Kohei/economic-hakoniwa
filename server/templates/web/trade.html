@@ -395,15 +395,16 @@
         {% else %}{% blocktranslate with x=mc.multiplier n=mc.last_turns y=mc.last_multiplier %}値段は初めの値段の {{ x }} 倍で、最後の {{ n }} ターンは少しずつ上がり、最後は {{ y }} 倍になります。{% endblocktranslate %}{% endif %}</p>
       <div class="table-scroll">
         <table class="goods merchant-table">
-          <thead><tr><th>{% translate "資源" %}</th><th>{% translate "値段（1単位）" %}</th><th>{% translate "島の値段" %}</th><th>{% translate "1ターンの上限" %}</th><th>{% translate "単位" %}</th></tr></thead>
+          <thead><tr><th>{% translate "資源" %}</th><th>{% translate "売る値段（1単位）" %}</th><th>{% translate "買う値段（1単位）" %}</th><th>{% translate "島の値段" %}</th><th>{% translate "1ターンの上限" %}</th><th>{% translate "単位" %}</th></tr></thead>
           <tbody>
             {% for g in mc.goods %}
-            <tr><td>{{ g.name }}</td><td>{{ currency }}{{ g.price|floatformat:"-1g" }}</td><td>{% if g.home_price %}{{ currency }}{{ g.home_price|floatformat:"-1g" }}{% else %}-{% endif %}</td><td>{{ g.quantity|floatformat:"-2g" }}</td><td>{{ g.unit }}</td></tr>
+            <tr><td>{{ g.name }}</td><td>{{ currency }}{{ g.price|floatformat:"-1g" }}</td><td>{% if g.buy_price %}{{ currency }}{{ g.buy_price|floatformat:"-1g" }}{% else %}-{% endif %}</td><td>{% if g.home_price %}{{ currency }}{{ g.home_price|floatformat:"-1g" }}{% else %}-{% endif %}</td><td>{{ g.quantity|floatformat:"-2g" }}</td><td>{{ g.unit }}</td></tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
-      <p class="hint">{% translate "島の市場で、決まった値段と1ターンの上限で売ります（買いはしません）。港も船も外貨も要りません。代金は島の外に出て、輸入に数えます。公定価格のある国（計画経済）では、島の買い手は公定価格で払い、商人の値段との差は政府が払います。輸入と貿易収支は島の買い手が払った額で数え、「海外の商人から買った額」と国際収支は政府が払った差も含めるので、海外の商人から買った額が輸入より大きくなることがあります。" %}</p>
+      {% if mc.blockaded %}<p class="warning">{% translate "港が封鎖されているため、商人はその強さの分だけ少なく来ます。" %}</p>{% endif %}
+      <p class="hint">{% translate "島の市場で、決まった値段と1ターンの上限で売ります。同じ品目を、安い決まった値段（初めの値段の" %} {{ mc.buy_multiplier }} {% translate "倍）と同じ上限で、施設の売りから買いもします（国の倉庫からは買いません）。港も船も外貨も要りません。売った代金は島の外に出て輸入に、買った代金は島の外から入って輸出に数えます。公定価格のある国（計画経済）では、島の買い手は公定価格で払い、商人の値段との差は政府が払います。輸入と貿易収支は島の買い手が払った額で数え、「海外の商人から買った額」と国際収支は政府が払った差も含めるので、海外の商人から買った額が輸入より大きくなることがあります。" %}</p>
       {% elif mc.until is not None %}
       <p class="muted">{% blocktranslate with t=mc.until|turn_date %}海外の商人はもう来ません。{{ t }}まで来ていました。{% endblocktranslate %}</p>
       {% else %}
@@ -423,7 +424,7 @@
         <figure class="chart" data-names="trade.exports,trade.imports,trade.balance"><figcaption>{% translate "輸出・輸入・貿易収支（1ターン）" %}</figcaption></figure>
         <figure class="chart" data-names="ships,ships.busy"><figcaption>{% translate "輸送船" %}</figcaption></figure>
         {% if mine %}
-        <figure class="chart" data-names="trade.merchant,trade.merchant_gap"><figcaption>{% translate "海外の商人から買った額（1ターン）" %}</figcaption></figure>
+        <figure class="chart" data-names="trade.merchant,trade.merchant_gap,trade.merchant_sold,trade.merchant_premium"><figcaption>{% translate "海外の商人との売り買いの額（1ターン）" %}</figcaption></figure>
         <figure class="chart" data-names="port.handled"><figcaption>{% translate "港で積み下ろした荷" %}</figcaption></figure>
         <figure class="chart" data-names="freight.ship_rate"><figcaption>{% translate "船の運賃（荷 1 トン・1 区画あたり）" %}</figcaption></figure>
         {% endif %}

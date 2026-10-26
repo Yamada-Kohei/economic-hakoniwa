@@ -175,6 +175,7 @@ SERIES_STATS = (
     "trade.exports",
     "trade.imports",
     "trade.merchant",
+    "trade.merchant_sold",
     "ships",
     "ships.busy",
     "port.handled",

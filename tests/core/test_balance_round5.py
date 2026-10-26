@@ -16,7 +16,9 @@ from tests.core.test_finance import warmed as warmed  # noqa: F401
 
 
 def _treasury(island, amount):
-    """国庫を amount にする（差は資産を持つ層とやり取りする）。"""
+    """国庫を amount にする（差は資産を持つ層とやり取りする）。市中銀行の政府の預金は先に国庫に
+    戻す（W-186 回4 で、海外の商人の買いで国庫に余りが出て、預けていた島があった）。"""
+    funds.recall(island, sum(funds.deposited(island).values()))
     gap = amount - ledger.money(island, ledger.GOV)
     if gap > 0:
         ledger.pay(island, "hh:owners", ledger.GOV, gap, "capital_injection")

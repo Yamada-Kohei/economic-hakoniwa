@@ -10,7 +10,7 @@ import { escapeHtml, getJson, sendJson } from "./api.js";
 
 // 政策の命令の入力欄の値の形（ほかの欄は数）
 const TEXT_FIELDS = new Set(["good", "side", "kind", "unsold", "issue_term", "underwrite_term", "entry", "large_store"]);
-const FLAG_FIELDS = new Set(["independent", "stop", "approve"]); // "true" / "false"
+const FLAG_FIELDS = new Set(["independent", "stop", "approve", "auto"]); // "true" / "false"
 // 指値と値段は見せる単位で小数も書ける（W-30。サーバーが計算の単位に直して丸める）
 const INT_FIELDS = ["minimum_wage", "bond_trade", "issue", "underwrite", "deposit_insurance", "turns"];
 // 中身のない命令（項目を入れなくても足せる）
@@ -249,6 +249,13 @@ export class OrderQueue {
       set_budget: `
         <form class="actions" data-form="set_budget">
           <strong>年の予算</strong>${budget}
+          <button type="submit">命令に追加</button>
+        </form>`,
+      set_public_works: `
+        <form class="actions" data-form="set_public_works">
+          <strong>役所の決まった事業（今: ${p.public_works_auto ? "動いている" : "止めている"}）</strong>
+          <p class="hint">命令の工事がなくても、役所が公共事業費の月割りの残りで、上下水道の足りない町と、施設と町のまわりの道路の工事を1ターンに1か所分ずつ並べます。資材は国の倉庫から使わずに市場で買い、命令で並べた工事の後に進めます。止めると、命令で並べた工事と手入れだけになります。</p>
+          <label><select name="auto"><option value="true">始める</option><option value="false">止める</option></select></label>
           <button type="submit">命令に追加</button>
         </form>`,
       set_labor_policy: `

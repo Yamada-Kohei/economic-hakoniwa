@@ -281,6 +281,7 @@ PLAN_STATS = [
     "plan.subsidy",
     "plan.subsidy_unpaid",
     "trade.merchant_gap",
+    "trade.merchant_premium",
     "labor.mobilized",
 ]
 
@@ -660,6 +661,7 @@ def _trade_help(game) -> dict:
         "merchant_last": settings["last_turns"],
         "merchant_multiplier": f"{settings['multiplier']:g}",
         "merchant_last_multiplier": f"{settings['last_multiplier']:g}",
+        "merchant_buy_multiplier": f"{settings.get('buy_multiplier', 0):g}",
         "merchant_goods": "・".join(defs.name("goods", g) for g in settings["goods"]),
         "tradable": "・".join(defs.name("goods", g) for g in tradable_goods(defs)),
     }

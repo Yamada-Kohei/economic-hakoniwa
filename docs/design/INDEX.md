@@ -332,7 +332,7 @@
 
 ## [8 インフラと教育](08-infrastructure.md)
 
-決まり 25 個、うち仮の決まりの表にあるもの 0 個。
+決まり 27 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -360,11 +360,13 @@
 | IN-22 | 大学は1ターンに「育てる数×稼働率×入学の割合」を一般の労働者から技術者にし、技術者は決めた割合… | 決定 | tests/core/test_infrastructure.py、tests/core/test_playtest3_fixes.py |
 | IN-23 | 入学の割合は技術者の失業率が上がるほど下がる（育ちすぎて失業する技術者が増え続けないように） | 決定 | tests/core/test_infrastructure.py |
 | IN-24 | 技術者は島全体の人数で、通勤圏を見ずに島のどこへでも通う | 決定 | tests/core/test_infrastructure.py、tests/core/test_playtest3_fixes.py |
+| IN-26 | 役所の決まった事業: 命令の工事がなくても、役所が上下水道の足りない町（育たない町と、人が密に住… | 決定（回4） | tests/core/test_recession_round4.py |
+| IN-27 | 役所が並べた工事は、命令で並べた工事の後に進め、資材は国の倉庫から使わずに市場で買う（倉庫は遊ぶ… | 決定（回4） | tests/core/test_recession_round4.py |
 | IN-25 | 島の地図の重ね表示に、インフラの整備度（種類ごと）・運賃の率・工事中の印を出す | 決定 | tests/server/test_reports.py |
 
 ## [9 貿易と為替](09-trade.md)
 
-決まり 48 個、うち仮の決まりの表にあるもの 3 個。
+決まり 50 個、うち仮の決まりの表にあるもの 3 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -416,6 +418,8 @@
 | FX-46 | サーバーが島を作る（建国・サンプルの島）ときに、港と商社を置く（`founding.open_f`… | 決定（W-140） | tests/core/test_trade.py |
 | FX-47 | 倒産して差し押さえられた商社だけが残る島も、動いている商社がない島として開き直す | 決定（W-140） | tests/core/test_trade.py |
 | FX-48 | 商社が雇う人数は、直近 `trade.entry_turns` ターンの扱った重さの平均が扱える… | 決定（W-157） | tests/core/test_trade.py |
+| FX-49 | 海外の商人は売りと同じ品目を、初めの値段 × `foreign_merchant.buy_mul`… | 仮 | tests/core/test_recession_round4.py |
+| FX-50 | 戦争で港が封鎖された島には、海外の商人が封鎖の強さ（`military.naval.blocka`… | 仮 | tests/core/test_recession_round4.py |
 
 ## [10 政治と体制](10-politics.md)
 

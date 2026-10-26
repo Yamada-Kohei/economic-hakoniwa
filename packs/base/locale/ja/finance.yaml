@@ -58,6 +58,7 @@ contract: 二国間契約の代金
 port_fee: 港の使用料
 shipping_freight: 船の運賃
 merchant: 海外の商人への代金
+merchant_export: 海外の商人が買った物の代金
 tariff: 関税
 export_subsidy: 輸出補助金
 fx_intervention: 為替の介入

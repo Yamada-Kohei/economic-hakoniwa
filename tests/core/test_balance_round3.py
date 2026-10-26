@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.economy import (
     GENERAL,
@@ -53,6 +54,16 @@ def _private(island, workers=True, profitable=False):
             or (f.economy.get("loss_streak", 0) == 0 and f.economy.get("ebitda", [0])[-1] > 0)
         )
     )
+
+
+def _stock_inputs(game, world, island, f, months=4):
+    """施設に months ターン分の原料（電力を除く）を持たせる。お金をなくした施設が原料を買えずに
+    止まって人を減らすと、賃金の遅配の形が見えないため（W-186 回4 で、黒字の施設に選ばれた消費財
+    工場が、商人の買いで値段の上がった木材を買えずに止まった）。"""
+    power = game.config.get("power.good")
+    for good, qty in fac.recipe_of(game.defs, f)["inputs"].items():
+        if good != power:
+            stock.add(f.stock, good, qty * months, world.turn, game.defs.goods)
 
 
 # --- 飢えの蓄え -------------------------------------------------------------------------
@@ -210,6 +221,7 @@ def test_unpaid_wages_stay_owed_and_are_paid_first_when_money_comes(game, warmed
     entity = facility_entity(f.id)
     staff = f.workers
     owners = household(OWNERS)
+    _stock_inputs(game, world, island, f)
     ledger.pay(island, entity, owners, ledger.money(island, entity), "equity_return")
     game.engine.run_turn(world)
     owed = arrears.total(island, entity)
@@ -247,6 +259,7 @@ def test_workers_quit_little_by_little_while_wages_go_unpaid(game, warmed):
     )
     entity = facility_entity(f.id)
     staff = []
+    _stock_inputs(game, world, island, f, months=6)
     for _ in range(4):
         ledger.pay(island, entity, household(OWNERS), ledger.money(island, entity), "equity_return")
         for loan in banks.loans_by_borrower(island, entity):  # 新しく借りられないようにする
