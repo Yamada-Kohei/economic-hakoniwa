@@ -217,6 +217,7 @@ def test_public_builds_use_the_state_stock_and_a_new_village_is_public(game, bas
     world = copy.deepcopy(base)
     island = _market_island(world)
     need = fac.floor_materials(game.defs, 0, 600)
+    island.economy.housing["want"] = {}  # 回してきた分の家計の注文は消す
     # 国の資材がなければ何も使わず、国の次のターンの注文（want）に書く。家計の注文には書かない
     assert Housing._pay_goods(island, need, True)
     assert pub.state(island)["want"] and not island.economy.housing["want"]

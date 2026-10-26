@@ -53,6 +53,10 @@ EXPANDS = "expands"
 GRADE = "grade"
 GRADE_TO = "grade_to"
 MACHINES = "machines"
+FUEL = "fuel"  # 機械化した畑が毎ターン使う燃料の財
+FUEL_SHARE = (
+    "fuel_share"  # economy: 機械の畑のうち、燃料が手元にある割合（1000 分の 1。なければ全部）
+)
 
 
 def short_of_inputs(status: str) -> bool:
@@ -219,11 +223,17 @@ def facility_def(defs: Defs, f: Facility) -> Mapping[str, Any]:
     return defs.facilities[f.kind]
 
 
-def recipe_of(defs: Defs, f: Facility) -> Mapping[str, Any]:
+def recipe_of(defs: Defs, f: Facility, fuelled: bool = True) -> Mapping[str, Any]:
     """施設の今の作り方。畑を作り替えている途中の施設（economy["fields"]）は、収穫している畑の
-    作り方を割合で混ぜた作り方（蒔いて育っている畑は何も出さず、何も使わない）。"""
+    作り方を割合で混ぜた作り方（蒔いて育っている畑は何も出さず、何も使わない）。
+
+    機械化した農場は、機械の傷みと燃料の手元の割合（FUEL_SHARE）の小さいほうだけ、その割合の畑が
+    手作業で動く（FM-51）。fuelled=False は燃料の手元を見ない作り方で、燃料を買う量を決めるのに使う
+    （手元が足りないからと買う量を減らすと、いつまでも手作業のままになる）。"""
     fields = f.economy.get(FIELDS)
     share = machine_ratio(f) if GRADE in f.ext else FULL
+    if fuelled and GRADE in f.ext:
+        share = min(share, f.economy.get(FUEL_SHARE, FULL))
     if fields is None and share >= FULL:
         recipe = defs.facilities[f.kind]["recipes"][f.recipe]
     else:
@@ -255,6 +265,25 @@ def _sized(recipe: Mapping[str, Any], size: int) -> Mapping[str, Any]:
     )
     _SIZED[key] = (recipe, sized)
     return sized
+
+
+def refresh_fuel(defs: Defs, f: Facility) -> None:
+    """機械化した農場の、燃料が手元にある割合を決める（雇用の段の初め。前のターンの市場で買った
+    分）。足りない割合の畑は手作業で動くので、燃料が買えなくても農場は止まらない（FM-51。石油
+    危機の農業）。今の操業目標で使う分に足りるかを見る。"""
+    if GRADE not in f.ext or not f.built:
+        return
+    need = scale(
+        recipe_of(defs, f, fuelled=False)["inputs"].get(FUEL, 0), f.economy.get("target", FULL)
+    )
+    if need <= 0:
+        f.economy.pop(FUEL_SHARE, None)
+        return
+    have = ratio(stock.total(f.stock, FUEL), need)
+    if have >= FULL:
+        f.economy.pop(FUEL_SHARE, None)
+    else:
+        f.economy[FUEL_SHARE] = have
 
 
 def _worn(defs: Defs, kind: str, table: dict[str, int], share: int) -> dict[str, int]:

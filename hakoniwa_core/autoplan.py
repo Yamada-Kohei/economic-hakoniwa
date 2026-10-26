@@ -1310,6 +1310,9 @@ def _grade_order(island: IslandState, defs: Defs, config: GameConfig) -> tuple[s
             for g, q in step["materials"].items()
         ):
             continue
+        # 機械化は燃料が島で作られるか国の倉庫にあるときだけ（燃料のない島の機械は手作業のまま働く）
+        if grade == 0 and fac.FUEL not in made and stock.total(island.warehouse, fac.FUEL) <= 0:
+            continue
         return ("build", {"facility": f.kind, "x": f.x, "y": f.y})
     return None
 

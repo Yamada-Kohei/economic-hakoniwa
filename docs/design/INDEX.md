@@ -249,7 +249,7 @@
 | FM-48 | 損益の在庫の増減は原価法・低価法で数える: 施設の作る物は「1 単位の原価（変動費と設備の傷み）… | 決定 | tests/core/test_recession_round1.py |
 | FM-49 | 設備投資（W-186 の直し 回3）: 民営の独立採算の施設が、直近 `firms.invest`… | 決定（回3） | tests/core/test_recession_round3.py |
 | FM-50 | 農場の段階（W-190）: 農場は規模でなく段階で集約する（max_size 1 のまま） | 決定（W-190 の回で作る） | （作る回で） |
-| FM-51 | 農場の機械（W-190）: 機械は段階の設備として施設の設備（FM-11）と別に持ち、傷む（寿命… | 決定・実装済み（W-190 回3 | tests/core/test_farm_grades.py |
+| FM-51 | 農場の機械（W-190）: 機械は段階の設備として施設の設備（FM-11）と別に持ち、傷む（寿命… | 決定・実装済み（W-190 回3） | tests/core/test_farm_grades.py |
 | FM-52 | 民営の農場の集約（W-190）: 作り方を見直す周期（`recipe_turns`）ごとに、次の… | 決定・実装済み（W-190 回3） | tests/core/test_farm_grades.py |
 
 ## [6 国の財政と政策](06-finance.md)

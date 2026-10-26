@@ -1525,7 +1525,8 @@ class Market(IslandStage):
             # ならないように）
             expected *= settings["public_stock_turns"]
         needs = []
-        for good, qty in sorted(fac.recipe_of(ctx.defs, f)["inputs"].items()):
+        # 燃料は手元の割合で減らさず、全部の機械の畑の分を買う（FM-51）
+        for good, qty in sorted(fac.recipe_of(ctx.defs, f, fuelled=False)["inputs"].items()):
             if good == power:
                 continue
             # このターンの終わりに捨てられる分は、次のターンに使えないので手元に数えない
@@ -2824,7 +2825,11 @@ class Market(IslandStage):
         高い希望価格で売れ残っていたのは price（高くて採算が合わない）、そうでなければ supply
         （売りに出ている量が足りない）。"""
         for good, book in sorted(books_by_good.items()):
-            result = results[good]
+            result = results.get(good)
+            if (
+                result is None
+            ):  # 板寄せをしなかった財（売りが全部なくなった小売りに買い注文だけが残った）
+                continue
             dear = [
                 auction.sell_limit(o)
                 for i, (o, p) in enumerate(book.sells)

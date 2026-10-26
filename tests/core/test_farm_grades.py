@@ -274,6 +274,8 @@ def _warehouse_for(game, island, grade):
     step = fac.grade_steps(game.defs, "farm")[grade]
     for good, qty in step["materials"].items():
         stock.add(island.warehouse, good, qty, 0, game.defs.goods)
+    if grade == 0:  # 機械化は燃料のある島だけ
+        stock.add(island.warehouse, fac.FUEL, 1000, 0, game.defs.goods)
 
 
 def test_autoplan_mechanizes_state_farms_only_when_hands_are_short(game, world):
@@ -340,3 +342,45 @@ def test_fields_without_fertilizer_and_leftover_floors_stay_in_the_farms_grade(g
     hand.recipe = "cotton_mechanized"
     mech_only = Market._leftover_floor(defs, game.config, hand, "cotton", prices, 0)
     assert manual_only > 0 and mech_only > 0 and manual_only != mech_only
+
+
+def test_autoplan_does_not_mechanize_an_island_without_fuel(game, world):
+    from hakoniwa_core import autoplan
+
+    island, _ = _state_farm(world)
+    island.stats.update(labor=1000, unemployment=0.0)
+    for f in island.facilities:
+        if f.built:
+            f.workers = 0
+    _warehouse_for(game, island, 0)
+    assert autoplan._grade_order(island, game.defs, game.config) is not None
+    island.warehouse.pop(fac.FUEL, None)
+    if fac.FUEL not in autoplan._made(island, game.defs):
+        assert autoplan._grade_order(island, game.defs, game.config) is None
+
+
+def test_mechanized_fields_without_fuel_work_by_hand_instead_of_stalling(game, world):
+    """燃料が手元にない機械の畑は手作業で動き、農場は止まらない（FM-51）。燃料は全部の機械の畑の分を
+    買い続ける。"""
+    island, farm = _state_farm(world)
+    farm.ext[fac.GRADE] = 1
+    farm.recipe = fac.regrade(game.defs, "farm", farm.recipe, 1)
+    farm.economy[fac.MACHINES] = fac.FULL
+    farm.economy["target"] = fac.FULL
+    farm.stock.pop(fac.FUEL, None)
+    fac.refresh_fuel(game.defs, farm)
+    assert farm.economy[fac.FUEL_SHARE] == 0
+    now = fac.recipe_of(game.defs, farm)
+    assert fac.FUEL not in now["inputs"]  # 手作業の作り方
+    assert fac.input_ratio(game.defs, farm, game.config.get("power.good"))[0] == fac.FULL
+    full = fac.recipe_of(game.defs, farm, fuelled=False)
+    assert full["inputs"][fac.FUEL] > 0  # 買う量は全部の畑の分
+    need = full["inputs"][fac.FUEL]
+    stock.add(farm.stock, fac.FUEL, need // 2, 0, game.defs.goods)
+    fac.refresh_fuel(game.defs, farm)
+    assert fac.FULL // 2 - 1 <= farm.economy[fac.FUEL_SHARE] <= fac.FULL // 2
+    assert fac.input_ratio(game.defs, farm, game.config.get("power.good"))[0] == fac.FULL
+    stock.add(farm.stock, fac.FUEL, need, 0, game.defs.goods)
+    fac.refresh_fuel(game.defs, farm)
+    assert fac.FUEL_SHARE not in farm.economy
+    assert fac.recipe_of(game.defs, farm)["inputs"][fac.FUEL] == need
