@@ -3,6 +3,7 @@ rename_place: 地名の変更
 rename_facility: 施設名の変更
 build: 施設の建設
 demolish: 撤去
+build_housing: 住宅の建設（国の床）
 build_power_line: 送電線の敷設
 build_infrastructure: インフラの工事
 set_no_development: 開発禁止区域の指定

@@ -57,6 +57,7 @@
 |---|---|
 | `basics` | `rename_island`・`rename_place`・`rename_facility`（名前の変更） |
 | `construction` | `build`・`demolish`（建設・取り壊し） |
+| `population` | `build_housing`（国の床を足す工事を列に並べる。資材は住宅費で買う） |
 | `land` | `build_power_line`・`set_no_development`（送電網の工事・開発禁止） |
 | `infrastructure` | `build_infrastructure`（インフラの工事を列に並べる）・`set_public_works`（役所の決まった事業を始める・止める） |
 | `fiscal` | `set_taxes`（税率）・`set_budget`（年の予算） |

@@ -524,17 +524,20 @@ fiscal:
   # arrears は前のターンまでの未払い賃金（回3。お金が入れば先に払う）
   # 支払いの順番。[ ] の組の中は、国庫が足りなければ見積もりに同じ割合を掛けて取り置く（今月の人件費と
   # 運営費。回5）。昔の未払い賃金（arrears）は失業手当の後に残ったお金で払う
-  payment_order: [bonds, [civil_servants, state_facilities, education, security, defense_personnel], unemployment, arrears, construction, defense_procurement, subsidies, warehouse]
+  payment_order: [bonds, [civil_servants, state_facilities, education, security, defense_personnel], unemployment, arrears, construction, housing, defense_procurement, subsidies, warehouse]
   # 銀行の救済と預金保護（支出の項目の外）は、この項目の入った組までの次のターンの支払いを国庫に残した額から出す
   rescue_after: civil_servants
   # 年の予算を命令で決める項目（毎ターン予算の12分の1まで使う）。construction は公共事業費
   # （国の工事とインフラの工事・維持の資材と作業員の賃金）、education は教育費（学校と大学の教員の
   # 賃金と教材。建国のときの額は education.start_budget_years）、subsidies は補助金、security は治安費
-  # （警察官の賃金。フェーズ3-4）
-  budget_items: [construction, education, security, subsidies, warehouse, defense_personnel, defense_procurement]
+  # （警察官の賃金。フェーズ3-4）、housing は住宅費（W-190・W-202。国が建てる町の床と手入れの資材。公共事業費のすぐ後）
+  budget_items: [construction, housing, education, security, subsidies, warehouse, defense_personnel, defense_procurement]
   # 建国のときの年の予算（住民1人あたり）。warehouse は国の穀物の備蓄の入れ替えと買い足しの分（food_reserve。
   # 目安の量を日持ちの間に1回入れ替える代金のおよそ2倍。売った代金は国庫に戻る）
-  budget: {construction: 600, security: 0, subsidies: 0, warehouse: 100, defense_personnel: 0, defense_procurement: 0}
+  budget: {construction: 600, housing: 0, security: 0, subsidies: 0, warehouse: 100, defense_personnel: 0, defense_procurement: 0}
+  # 計画経済の国の建国のときの年の予算（住民1人あたり。budget の同じ項目を置き換える）。家計は住宅の資材を
+  # 買わないので、町が育つ・手入れの資材は住宅費で買う（市場・混合の国は 0 のまま、遊ぶ人が決める）
+  budget_planned: {housing: 150}
   reserve_margin: 0.2   # 取り置きの見積もりを、前のターンの支出よりこの割合だけ多めにする
 
 infrastructure:
@@ -665,6 +668,9 @@ housing:
   ltv: 0.8
   dti: 0.1
   mortgage_turns: 360
+  # 国の床（公営住宅。W-190・W-202）の家賃: 使われている国の床 1 人分につき、household.base_income のこの割合を
+  # 毎ターン国庫に払う（ソ連の家賃は家計の支出の 3% ほど。物価に合わせて動かさない）
+  public_rent: 0.03
 
 # 国をまたぐ移民（バランス調整の回3。hakoniwa_core/modules/migration）。暮らしの見込み V =
 # 実質賃金 × 仕事の見つかる割合 × 食べられた割合 が、行き先で ln(V行き先 ÷ V今) − cost −

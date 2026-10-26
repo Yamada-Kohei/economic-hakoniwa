@@ -27,6 +27,7 @@ def _full_island(game):
     town = game.defs.settlements["town"]["capacity"]
     home(game, island, 4, 4, village, "village")
     home(game, island, 9, 9, town, "town")
+    island.regime["economy"] = "market"  # 計画経済は国が建てる（国の住宅は test_public_housing.py）
     with_economy(game, island)
     return island
 

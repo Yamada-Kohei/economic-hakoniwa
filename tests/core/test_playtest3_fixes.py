@@ -220,6 +220,7 @@ def test_settlement_grew_is_logged_when_the_town_level_rises(game):
     town = home(game, island, 5, 6, 2300, level="village")  # 上限 2,400 の8割を超えている
     add(island, "steel_mill", 8, 8, stock={"iron_ore": 100_000, "coal": 50_000})  # 人手が足りない
     home(game, island, 2, 13, 20000, level="metropolis")  # 通勤圏の外（国庫を厚くする）
+    island.regime["economy"] = "market"  # 計画経済は国が建てる（国の住宅は test_public_housing.py）
     with_economy(game, island)
     held = island.economy.housing["stock"]
     for good, qty in game.defs.settlements["town"]["materials"].items():

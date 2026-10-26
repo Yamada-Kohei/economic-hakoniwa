@@ -92,7 +92,13 @@ def start_economy(
     economy.freight = {"surcharge": BASIS, "revenue": 0}
     economy.housing = {"want": {}, "stock": {}}
     economy.happiness_blend = config.get("population.blend_turns") if migrated else 0
-    island.policy = default_policy(defs, config, sum(t.population for t in island.tiles))
+    population = sum(t.population for t in island.tiles)
+    island.policy = default_policy(defs, config, population)
+    if (
+        island.regime.get("economy") == "planned"
+    ):  # 家計は住宅の資材を買わないので、国が住宅費を持つ
+        for item, per_person in config.get("fiscal.budget_planned").items():
+            island.policy.budget[item] = round_money(per_person * population)
     init_layers(island, defs, config)
     placed = _place_banks(island, defs, config)
     _place_transport(island, defs, config)

@@ -31,12 +31,13 @@ import random
 from typing import Any, NamedTuple
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, politics, stock
+from hakoniwa_core import infra, ledger, politics, stock
 from hakoniwa_core.allocation import proportional
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import GENERAL, JOBLESS, needs, services
+from hakoniwa_core.economy import GENERAL, JOBLESS, household, needs, services
+from hakoniwa_core.economy import public_housing as pub
 from hakoniwa_core.economy.households import (
     blend_hunger,
     move_people,
@@ -45,7 +46,7 @@ from hakoniwa_core.economy.households import (
 )
 from hakoniwa_core.economy.stats import inflation, real_wage_change
 from hakoniwa_core.geo import distance, within
-from hakoniwa_core.registry import IslandStage, Registry
+from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import ZONE_NONE, Facility, IslandState, LogEntry, Tile
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import QUANTITY_SCALE, to_milli
@@ -1248,12 +1249,16 @@ class Housing(IslandStage):
         housing.setdefault("stock", {})
         housing["want"] = {}
         housing["move"] = {}
+        public = pub.planned(island)  # 計画経済の国は、国が建てる（床は国の床。PO-56）
+        pub.state(island)["want"] = {}
         homes = homes_of(island, config)
         kind = fac.housing_kind(config)
         levels = defs.settlement_levels()
         if island.has_economy:
             self._maintain(island, defs, h, homes)
         status = dwelling_status(defs, config, island, homes)
+        if island.has_economy:
+            self._collect_rent(island, config, homes, status)
         general = desired_space(island, config, GENERAL)
         min_space = h["space"]["min"]
         built = grown = 0
@@ -1263,6 +1268,7 @@ class Housing(IslandStage):
             vacancies_of(defs, island, config, ctx.turn),
             key=lambda v: (-v[2], v[3], v[0][1], v[0][0]),
         )
+        self._run_works(island, defs, config, h, homes, status, dry, short)
         for site, radius, missing, _ in vacancies:
             if built >= h["max_new_per_turn"] and grown >= h["max_upgrades_per_turn"]:
                 break
@@ -1283,28 +1289,30 @@ class Housing(IslandStage):
                     home = homes[pos]
                     floor = fac.floor_of(defs, home)
                     target = _next_floor(defs, floor, h["floor_step"])
-                    missing = self._pay_goods(island, fac.floor_materials(defs, floor, target))
+                    missing = self._pay_goods(
+                        island, fac.floor_materials(defs, floor, target), public
+                    )
                     if not missing:
-                        self._add_floor(island, defs, home, target)
+                        self._add_floor(island, defs, home, target, public)
                         grown += 1
                         continue
                     short.update(missing)
             if built < h["max_new_per_turn"]:
                 pos = self._empty_site(island, defs, kind, area)
                 if pos is not None:
-                    missing = self._pay(island, defs, levels[0])
+                    missing = self._pay(island, defs, levels[0], public)
                     if not missing:
-                        homes[pos] = fac.new_housing(island, kind, pos, levels[0])
+                        homes[pos] = self._new_village(island, defs, kind, pos, levels[0], public)
                         status[pos] = _with_home(defs, config, status.get(pos), homes[pos])
                         built += 1
                     short.update(missing)
         if built < h["max_new_per_turn"]:
             left = h["max_new_per_turn"] - built
-            self._settle(island, defs, h, homes, kind, levels[0], left, short)
+            self._settle(island, defs, h, homes, kind, levels[0], left, short, public)
         for pos, home in homes.items():  # このターンに建った村
             if pos not in status or status[pos].nominal != fac.floor_of(defs, home) * min_space:
                 status[pos] = _with_home(defs, config, status.get(pos), home)
-        if island.has_economy:
+        if island.has_economy and not public:  # 計画経済の家計は住宅の資材を買わない
             self._relocate(island, ctx, h, homes, status, dry)
         self._watch_water(island, defs, homes, dry)
         self._record(island, ctx, homes)
@@ -1345,6 +1353,7 @@ class Housing(IslandStage):
         level: str,
         limit: int,
         short: set[str],
+        public: bool = False,
     ) -> None:
         """分家と開拓（回5、10-19 のカード「分家と開拓」）: 島の上限を超えて住む人が島の空きより
         多ければ、いちばん過密なマスから housing.settle_radius マスの内の空いた平地に、新しい村を
@@ -1370,28 +1379,29 @@ class Housing(IslandStage):
             site = self._empty_site(island, defs, kind, within(island, pos, h["settle_radius"]))
             if site is None:
                 continue
-            missing = self._pay(island, defs, level)
+            missing = self._pay(island, defs, level, public)
             if missing:
                 short.update(missing)
                 return
-            homes[site] = fac.new_housing(island, kind, site, level)
+            homes[site] = self._new_village(island, defs, kind, site, level, public)
             island.log.append(LogEntry("village_founded", {"x": site[0], "y": site[1]}))
             excess -= size
             limit -= 1
 
     @classmethod
-    def _pay(cls, island: IslandState, defs: Defs, level: str) -> list[str]:
-        """段階 level の床を丸ごと新しく建てる資材（村が建つとき）を、家計が買った資材から使う。"""
+    def _pay(cls, island: IslandState, defs: Defs, level: str, public: bool = False) -> list[str]:
+        """段階 level の床を丸ごと新しく建てる資材（村が建つとき）を、家計が買った資材（public なら
+        国が買った資材）から使う。"""
         floor = defs.settlements[level]["capacity"]
-        return cls._pay_goods(island, fac.floor_materials(defs, 0, floor))
+        return cls._pay_goods(island, fac.floor_materials(defs, 0, floor), public)
 
     @staticmethod
-    def _pay_goods(island: IslandState, need: dict[str, int]) -> list[str]:
-        """資材 need を、家計が買った資材から使う。
+    def _pay_goods(island: IslandState, need: dict[str, int], public: bool = False) -> list[str]:
+        """資材 need を、家計が買った資材（public なら国が住宅費で買った資材）から使う。
 
         足りなければ何も使わず、要る資材を次のターンに買う分（want）に足して、足りない資材を返す。
         """
-        housing = island.economy.housing
+        housing = pub.state(island) if public else island.economy.housing
         held = housing["stock"]
         missing = [g for g, q in sorted(need.items()) if stock.total(held, g) < q]
         if not missing:
@@ -1404,10 +1414,26 @@ class Housing(IslandStage):
         return missing
 
     @staticmethod
-    def _add_floor(island: IslandState, defs: Defs, home: Facility, floor: int) -> None:
-        """町の床を floor にする。段階が上がったターンに知らせる（見た目も変わる）。"""
+    def _new_village(
+        island: IslandState, defs: Defs, kind: str, pos: Pos, level: str, public: bool
+    ) -> Facility:
+        """新しい村を建てる。public なら床はみな国の床。"""
+        home = fac.new_housing(island, kind, pos, level)
+        if public:
+            pub.set_floor(home, fac.floor_of(defs, home))
+        return home
+
+    @staticmethod
+    def _add_floor(
+        island: IslandState, defs: Defs, home: Facility, floor: int, public: bool = False
+    ) -> None:
+        """町の床を floor にする（public なら足した分は国の床）。段階が上がったターンに知らせる
+        （見た目も変わる）。"""
         before = home.ext.get("level")
+        added = floor - fac.floor_of(defs, home)
         fac.set_floor(defs, home, floor)
+        if public and added > 0:
+            pub.set_floor(home, pub.floor_of(home) + added)
         if home.ext["level"] != before and before is not None:
             args = {"x": home.x, "y": home.y, "level": home.ext["level"]}
             island.log.append(LogEntry("settlement_grew", args))
@@ -1425,8 +1451,10 @@ class Housing(IslandStage):
         housing.livable を下回った町は、住める上限がその割合で下がる。"""
         full = fac.HOUSING_FULL
         step = round(h["wear"] * full / YEAR)
-        held = island.economy.housing["stock"]
-        repair: dict[str, int] = {}
+        owners = (
+            (island.economy.housing["stock"], {}),  # 家計の床の手入れ
+            (pub.state(island)["stock"], {}),  # 国の床の手入れ（住宅費で買った資材から）
+        )
         order = sorted(
             homes.items(),
             key=lambda kv: (kv[1].economy.get(fac.HOUSING_CONDITION, full), kv[0][1], kv[0][0]),
@@ -1434,23 +1462,125 @@ class Housing(IslandStage):
         for _, home in order:
             cond = max(0, home.economy.get(fac.HOUSING_CONDITION, full) - step)
             lost = full - cond
-            need = {
-                g: q * lost // full
-                for g, q in fac.housing_materials(defs, fac.floor_of(defs, home)).items()
-            }
-            need = {g: q for g, q in need.items() if q > 0}
-            if need:
-                share = min(1.0, *(stock.total(held, g) / q for g, q in need.items()))
-                for good, qty in sorted(need.items()):
-                    used = int(qty * share)
-                    stock.take(held, good, used)
-                    if used < qty:
-                        repair[good] = repair.get(good, 0) + qty - used
-                cond += int(lost * share)
+            floor = fac.floor_of(defs, home)
+            state_part = pub.share(home, floor)
+            mended = 0.0
+            for (held, repair), part in zip(owners, (1 - state_part, state_part), strict=True):
+                need = {
+                    g: int(q * lost * part) // full
+                    for g, q in fac.housing_materials(defs, floor).items()
+                }
+                need = {g: q for g, q in need.items() if q > 0}
+                share = 1.0
+                if need:
+                    share = min(1.0, *(stock.total(held, g) / q for g, q in need.items()))
+                    for good, qty in sorted(need.items()):
+                        used = int(qty * share)
+                        stock.take(held, good, used)
+                        if used < qty:
+                            repair[good] = repair.get(good, 0) + qty - used
+                mended += part * share
+            cond += int(lost * mended)
             home.economy[fac.HOUSING_CONDITION] = cond
             livable = round(h["livable"] * full)
             home.economy[fac.HOUSING_ROOM] = min(fac.FULL, cond * fac.FULL // max(1, livable))
-        island.economy.housing["repair"] = repair
+        island.economy.housing["repair"] = owners[0][1]
+        pub.state(island)["repair"] = owners[1][1]
+
+    @staticmethod
+    def _collect_rent(
+        island: IslandState,
+        config: GameConfig,
+        homes: dict[Pos, Facility],
+        status: dict[Pos, Dwelling],
+    ) -> None:
+        """国の床の家賃（PO-55）: 国の床は所得の低い層から入り、使われている国の床 1 人分につき
+        housing.public_rent を毎ターン国庫に払う。払えない分は減免する（国の未収にしない）。"""
+        min_space = config.get("housing.space")["min"]
+        used: dict[str, float] = {}
+        for pos, home in homes.items():
+            units = pub.floor_of(home)
+            if units <= 0 or pos not in status:
+                continue
+            for name, taken in pub.tenants(status[pos].layers, units, min_space).items():
+                used[name] = used.get(name, 0.0) + taken
+        paid = 0
+        for name, due in sorted(pub.rent(config, used).items()):
+            if name not in island.economy.households:
+                continue
+            amount = min(due, ledger.money(island, household(name)))
+            if amount > 0:
+                ledger.pay(island, household(name), ledger.GOV, amount, pub.RENT)
+                paid += amount
+        island.stats["housing.rent"] = paid
+        island.stats["housing.public_floor"] = pub.tile_total(island)
+
+    def _run_works(
+        self,
+        island: IslandState,
+        defs: Defs,
+        config: GameConfig,
+        h: dict[str, Any],
+        homes: dict[Pos, Facility],
+        status: dict[Pos, Dwelling],
+        dry: set[Pos],
+        short: set[str],
+    ) -> None:
+        """命令 build_housing の工事の列（PO-55）を、国が住宅費で買った資材で進める。1つの工事は
+        1ターンに床を housing.floor_step だけ足す（目標の床まで）。通勤圏に空いた平地があっても
+        高層へ育つ。上下水道が足りない段階には入れず、資材が足りなければ次のターンに買う。
+        開発を止めた・ほかの施設が建ったマスの工事は取り下げる。"""
+        works = pub.works_pending(island)
+        if not works:
+            return
+        kind = fac.housing_kind(config)
+        keep = []
+        for work in works:
+            pos = (work["x"], work["y"])
+            home = homes.get(pos)
+            tile = island.tile(*pos)
+            if home is None:
+                if not self._site_open(island, defs, kind, pos):
+                    island.log.append(LogEntry("housing_works_dropped", {"x": pos[0], "y": pos[1]}))
+                    continue
+                home = fac.new_housing(island, kind, pos, defs.settlement_levels()[0])
+                fac.set_floor(defs, home, 0)
+                homes[pos] = home
+            floor = fac.floor_of(defs, home)
+            target = min(int(work["floor"]), fac.max_floor(defs))
+            if floor >= target:
+                island.log.append(LogEntry("housing_works_done", {"x": pos[0], "y": pos[1]}))
+                continue
+            step = min(target, _next_floor(defs, floor, h["floor_step"]))
+            upper = fac.level_after(defs, floor)
+            if upper != fac.level_of_floor(defs, floor) and island.has_economy:
+                need_water = round(defs.settlements[upper].get("water", 0) * 1000)
+                if infra.water(defs, tile) < need_water:
+                    dry.add(pos)
+                    keep.append(work)
+                    continue
+            missing = self._pay_goods(island, fac.floor_materials(defs, floor, step), True)
+            if missing:
+                short.update(missing)
+                keep.append(work)
+                continue
+            self._add_floor(island, defs, home, step, True)
+            status[pos] = _with_home(defs, config, status.get(pos), home)
+            if step < target:
+                keep.append(work)
+            else:
+                island.log.append(LogEntry("housing_works_done", {"x": pos[0], "y": pos[1]}))
+        pub.state(island)["works"] = keep
+
+    @staticmethod
+    def _site_open(island: IslandState, defs: Defs, kind: str, pos: Pos) -> bool:
+        """命令の工事で新しく町を置けるマスか（町を置ける地形で、開発を止めておらず、施設がない）。"""
+        tile = island.tile(*pos)
+        return (
+            tile.terrain in defs.facilities[kind]["terrain"]
+            and tile.zone == ZONE_NONE
+            and island.facility_at(*pos) is None
+        )
 
     @staticmethod
     def _growable(
@@ -1631,9 +1761,61 @@ def check_population_defs(defs: Defs, config: GameConfig) -> list[str]:
     return problems
 
 
+# --- 命令 build_housing（PO-55）-----------------------------------------------------
+
+
+def _housing_target(defs: Defs, island: IslandState, payload: dict[str, Any]) -> tuple[Pos, int]:
+    """命令 build_housing の場所と目標の床。町のマスか、町を置ける空いた平地を選び、足す床の数
+    （floors）か、床を届かせる段階（level。その段階の上限まで）のどちらか1つを決める。"""
+    pos = (payload["x"], payload["y"])
+    if not (0 <= pos[0] < island.size and 0 <= pos[1] < island.size):
+        raise OrderFailed("reason_out_of_bounds")
+    if ("floors" in payload) == ("level" in payload):
+        raise OrderFailed("reason_housing_target")
+    level = payload.get("level")
+    if level is not None and level not in defs.settlements:
+        raise OrderFailed("reason_housing_target")
+    kind = next(k for k, f in defs.facilities.items() if f.get("category") == "housing")
+    home = island.facility_at(*pos)
+    if home is not None and home.kind != kind:
+        raise OrderFailed("reason_tile_occupied")
+    tile = island.tile(*pos)
+    if home is None and (
+        tile.terrain not in defs.facilities[kind]["terrain"] or tile.zone != ZONE_NONE
+    ):
+        raise OrderFailed("reason_housing_site", x=pos[0], y=pos[1])
+    floor = fac.floor_of(defs, home) if home is not None else 0
+    target = floor + payload["floors"] if level is None else defs.settlements[level]["capacity"]
+    top = fac.max_floor(defs)
+    if floor >= top:
+        raise OrderFailed("reason_housing_top", x=pos[0], y=pos[1])
+    if target <= floor:
+        raise OrderFailed("reason_housing_enough", x=pos[0], y=pos[1])
+    return pos, min(target, top)
+
+
+def check_build_housing(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    _housing_target(defs, island, payload)
+
+
+def build_housing(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
+    """国の床を足す工事を列に並べる（同じマスの工事は置き換える）。資材は国が住宅費で市場で買い、
+    工事の列は住宅の段（Housing）が 1 ターンに床を housing.floor_step ずつ進める。"""
+    pos, target = _housing_target(ctx.defs, island, payload)
+    works = [w for w in pub.works_pending(island) if (w["x"], w["y"]) != pos]
+    works.append({"x": pos[0], "y": pos[1], "floor": target})
+    pub.state(island)["works"] = works
+    island.log.append(
+        LogEntry("housing_works_started", {"x": pos[0], "y": pos[1], "floor": target})
+    )
+
+
 def register(registry: Registry) -> None:
     registry.add_stage(Population())
     registry.add_stage(Housing())
+    registry.add_order(
+        OrderHandler("build_housing", execute=build_housing, check=check_build_housing)
+    )
     registry.add_formula("food_need", food_need)
     registry.add_formula("happiness", happiness)
     registry.add_formula("hunger_deaths", hunger_deaths)

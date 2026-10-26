@@ -202,6 +202,9 @@ export class TilePanel {
       // 住まいの広さ（W-201）: 延べ床と、住む人の1人あたりの広さ・望む広さ
       if (f.floor_m2 != null) rows.push(["延べ床", `${f.floor_m2.toLocaleString()} ㎡`]);
       if (f.space != null) rows.push(["1人あたりの広さ", `${f.space} ㎡（住む人の望みは ${f.space_wanted} ㎡）`]);
+      // 国の床（公営住宅。W-190・W-202）と、命令の工事の目標
+      if (f.public_floor) rows.push(["国の床", `${(f.public_floor * f.floor_m2 / f.capacity).toLocaleString()} ㎡（家賃を国庫に払います）`]);
+      if (f.housing_work) rows.push(["国の住宅の工事", `目標の床 ${f.housing_work.toLocaleString()} 人分まで、資材が買えた分だけ少しずつ足します`]);
       // 町の商店（回7）: 町の段階ごとに建てられる数が決まる
       if (f.shop_slots != null) rows.push(["商店", `${(f.shops || 0).toLocaleString()} / ${f.shop_slots.toLocaleString()} 軒`]);
       if (f.next_level_name) {
@@ -324,10 +327,11 @@ export class TilePanel {
           <p class="hint" data-slot="commute"></p>
           <p class="warning" data-slot="check" aria-live="polite"></p>
           <button type="submit">命令に追加</button>
-        </form>${placeForm}`;
+        </form>${this.housingForm(null)}${placeForm}`;
     }
     const isHousing = f.kind === this.defs.housing;
     const parts = [];
+    if (isHousing) parts.push(this.housingForm(f));
     if (isHousing && f.shop_slots) {
       // 町の商店（回7）: 町のマスを選んで建てる。入る数は町の段階で決まる
       const full = (f.shops || 0) >= f.shop_slots;
@@ -427,6 +431,18 @@ export class TilePanel {
     }
     parts.push(placeForm);
     return parts.join("");
+  }
+
+  /** 国の住宅を建てる（命令 build_housing。W-190・W-202）。町のマスか、町を置ける空いた平地に。 */
+  housingForm(f) {
+    const heading = f ? "国の住宅を建てる（床を足す）" : "町を置く（国の住宅）";
+    return `
+      <form class="actions" data-form="housing">
+        <h4>${heading}</h4>
+        <p class="hint">国が住宅費の予算で資材を市場で買い、毎月少しずつ床を足します。住む人は国の床の家賃を国庫に払います。通勤圏に空いた平地があっても、高層の段階まで育てられます。</p>
+        <label>足す床（最低の広さで住める人数） <input name="floors" type="number" min="1" step="1" required></label>
+        <button type="submit">命令に追加</button>
+      </form>`;
   }
 
   /** この施設への補助金（生産補助・救済補助）の入力欄。 */
@@ -669,6 +685,8 @@ export class TilePanel {
     } else if (form.dataset.form === "subsidy") {
       const payload = { kind: data.get("kind"), x, y, rate: Number(data.get("rate")) };
       this.addOrder("set_subsidy", { ...payload, turns: Math.round(Number(data.get("turns"))) });
+    } else if (form.dataset.form === "housing") {
+      this.addOrder("build_housing", { x, y, floors: Math.round(Number(data.get("floors"))) });
     } else if (form.dataset.form === "emergency") {
       this.addOrder("emergency_loan", { x, y, amount: Math.round(Number(data.get("amount"))) });
     } else if (form.dataset.form === "resolve") {

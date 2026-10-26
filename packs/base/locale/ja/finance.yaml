@@ -46,6 +46,7 @@ bond_redemption: 国債の償還
 bond_trade: 国債の売買
 bond_default: 国債の不履行
 layer_transfer: 層の移動
+housing_rent: 国の床の家賃
 wage_arrears: 賃金の未払い
 wage_arrears_paid: 未払い賃金の支払い
 wage_arrears_lost: 未払い賃金の切り捨て
