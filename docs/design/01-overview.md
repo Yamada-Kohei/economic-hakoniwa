@@ -46,7 +46,7 @@
 | OV-23 | 巻き戻しは世界全体を同じ時点にそろえる。後に建国した島は建国時の姿に戻し、実行した命令は待ちに戻し、書く前に帳簿と島をまたぐお金・荷を確かめる | 決定 | `backups.keep` | tests/server/test_turns.py::test_rollback_restores_state |
 | OV-24 | 前のフェーズから続く島は、更新の初めの段 `upgrade` が 1 度だけ移し替える | 決定 | | tests/core/test_shocks.py::test_upgrade_from_phase2_1_keeps_production, tests/core/test_phase3_2.py::test_upgrade_gives_old_islands_a_climate_and_blends_it_in |
 | OV-25 | 財の量の単位（トン・m³・台・MWh など）は定義データに持ち、画面では「資源」と呼ぶ。ゲームの 1 トンは実物よりかなり大きいまま | 仮 | （設定にない） | （未確認） |
-| OV-26 | ベータ版は家に置く専用の機械 1 台で動かし（10-25 に VPS から変更）、世界を複数動かすときは DB とサービスを世界ごとに分ける。写しはゲームの中・毎晩の DB・外の 3 重 | 決定 | `backups.keep` | （未確認） |
+| OV-26 | ベータ版は家に置く専用の機械 1 台で動かし（10-25 に VPS から変更）、世界を複数動かすときは DB とサービスを世界ごとに分ける。写しはゲームの中と、毎晩の DB（機械の中の HDD に 30 日分）の 2 重（10-26 に家の外の写しをやめた） | 決定 | `backups.keep` | （未確認） |
 | OV-28 | 更新が走っている間は、命令の列の書き換えを受け付けない（409。更新が読んだ列と食い違わせない）。強制終了などで印だけが残ったときは、次の呼び出しが印を外して更新をやり直し、管理者にメールする。見分けは、PostgreSQL では世界の行の鎖（走っている更新が持つ。印を立てた直後の短い猶予だけ待つ）、鎖のない SQLite では印の古さ | 決定 | `HAKONIWA_UPDATE_STALE_MINUTES`（環境変数） | tests/server/test_turns.py::test_leftover_updating_mark_is_cleared_after_the_stale_limit, ::test_orders_are_refused_while_an_update_is_running, ::test_row_lock_tells_a_running_update_from_a_leftover_mark |
 | OV-29 | JSON を受ける入り口は、壊れた本文・オブジェクトでない本文・NaN や Infinity・項目の型違い・ありえない値を送られても 500 にせず、400 台で断る | 決定 | | tests/server/test_bad_input.py |
 | OV-27 | 登録は誰でもできる。守りはロボット避け、同じ接続元から登録できる数、パスワードの試しすぎの上限、管理画面での非表示 | 決定 | `accounts.signups_per_ip`, `accounts.remember_days` | tests/server/test_web.py |
