@@ -297,6 +297,17 @@ def test_trucks_replace_drivers_only_while_they_have_fuel(game, warmed):
     assert trucks.drive(island, config, f, 12) == 6
 
 
+def _hand_farm(island):
+    """手作業の穀物の農場。warmed の世界は機械化が済んだ農場もあるので、その農場を手作業に戻して使う
+    （W-190）。"""
+    farm = next(f for f in island.facilities if f.kind == "farm" and f.built)
+    farm.ext.pop(fac.GRADE, None)
+    for key in (fac.MACHINES, fac.FIELDS):
+        farm.economy.pop(key, None)
+    farm.recipe = "default"
+    return farm
+
+
 # --- 作り方の変更 -------------------------------------------------------------------
 
 
@@ -304,7 +315,7 @@ def test_change_recipe_is_for_state_facilities_and_usable_recipes(game, warmed):
     defs = game.defs
     world = copy.deepcopy(warmed)
     hot = next(i for i in world.islands.values() if nature.climate_of(i) == "tropical")
-    farm = next(f for f in hot.facilities if f.kind == "farm" and f.recipe == "default")
+    farm = _hand_farm(hot)
     farm.owner = OWNER_STATE
     check_change_recipe(hot, {"x": farm.x, "y": farm.y, "recipe": "cotton"}, defs)
     with pytest.raises(OrderFailed) as err:
@@ -318,7 +329,7 @@ def test_change_recipe_is_for_state_facilities_and_usable_recipes(game, warmed):
         check_change_recipe(hot, {"x": farm.x, "y": farm.y, "recipe": "cotton"}, defs)
     assert err.value.reason == "reason_not_state_owned"
     cold = island_of(world, "market")  # 寒冷の島では綿を作れない
-    farm = next(f for f in cold.facilities if f.kind == "farm")
+    farm = _hand_farm(cold)
     farm.owner = OWNER_STATE
     with pytest.raises(OrderFailed) as err:
         check_change_recipe(cold, {"x": farm.x, "y": farm.y, "recipe": "cotton"}, defs)
@@ -371,7 +382,7 @@ def test_change_recipe_of_a_farm_resows_the_fields_little_by_little(game, warmed
     （回3。Codex E17）。稼働率は半分にしない。"""
     world = copy.deepcopy(warmed)
     hot = next(i for i in world.islands.values() if nature.climate_of(i) == "tropical")
-    farm = next(f for f in hot.facilities if f.kind == "farm" and f.recipe == "default" and f.built)
+    farm = _hand_farm(hot)
     farm.owner = OWNER_STATE
     state = order(game, world, hot, "change_recipe", {"x": farm.x, "y": farm.y, "recipe": "cotton"})
     assert state.status == "done", state.reason
@@ -398,7 +409,7 @@ def test_private_farm_turns_to_a_new_crop_only_when_it_is_short(game, warmed):
     ターンに民営の農場がそろって綿に替え、綿が余って値段が初めの 0.1 倍まで下がった）。"""
     world = copy.deepcopy(warmed)
     hot = next(i for i in world.islands.values() if nature.climate_of(i) == "tropical")
-    farm = next(f for f in hot.facilities if f.kind == "farm" and f.recipe == "default" and f.built)
+    farm = _hand_farm(hot)
     # 島でただ 1 つ穀物を作る農場は作物を替えない（_sole_food）。建国の農場の数は食べる量に合わせる
     # （W-186 回1）ので 1 つのこともあり、同じ農場をもう 1 つ足しておく
     twin = copy.deepcopy(farm)

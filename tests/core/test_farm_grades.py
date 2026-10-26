@@ -310,3 +310,33 @@ def test_autoplan_needs_the_materials_and_one_site_at_a_time(game, world):
     assert autoplan._grade_order(island, game.defs, game.config) is not None
     order(game, world, island, "build", {"facility": "farm", "x": farm.x, "y": farm.y})
     assert autoplan._grade_order(island, game.defs, game.config) is None  # 工事の間は次を出さない
+
+
+def test_fields_without_fertilizer_and_leftover_floors_stay_in_the_farms_grade(game):
+    """肥料のない畑への戻りも、売り値の下限も、農場の今の段階の作り方の中で選ぶ（手作業の農場に
+    機械化の作り方を持ち込まない）。"""
+    from hakoniwa_core.modules.market import Market
+    from hakoniwa_core.state import Facility
+
+    defs = game.defs
+    power = game.config.get("power.good")
+    cases = (
+        (0, "cotton", "fertilized", "default"),
+        (1, "cotton_mechanized", "fertilized_mechanized", "default_mechanized"),
+    )
+    for grade, crop, fertilized, plain in cases:
+        f = Facility(id=1, kind="farm", x=0, y=0, owner="state", recipe=crop, built=True)
+        if grade:
+            f.ext[fac.GRADE] = grade
+        f.economy[fac.FIELDS] = {fertilized: 600, crop: 400}
+        f.stock = {}
+        stock.add(f.stock, "fuel", 100_000, 0, defs.goods)  # 燃料はある。足りないのは化学品だけ
+        fac.fit_fields(defs, f, power)
+        assert f.economy[fac.FIELDS] == {plain: 600, crop: 400}, grade
+    hand = Facility(id=2, kind="farm", x=1, y=0, owner="state", recipe="cotton", built=True)
+    prices = {g: 1000 for g in defs.goods}
+    manual_only = Market._leftover_floor(defs, game.config, hand, "cotton", prices, 0)
+    hand.ext[fac.GRADE] = 1
+    hand.recipe = "cotton_mechanized"
+    mech_only = Market._leftover_floor(defs, game.config, hand, "cotton", prices, 0)
+    assert manual_only > 0 and mech_only > 0 and manual_only != mech_only

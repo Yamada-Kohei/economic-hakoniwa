@@ -286,6 +286,13 @@ def test_nationalize_and_privatize_whole_firm(game, base):
     assert "国営" in entry.args["into"] and f"（企業 {state}）" in entry.args["into"], entry.args
     books_ok(game, island)
 
+    # 国営企業には、機械化した農場のように値打ちの大きい施設も入っている。資本家の預金が足りなければ
+    # 一般の層の預金から移す（買い取りの値段の確かめは、この試験の見たいことではない）
+    sold = [m for m in island.facilities if m.owner == "state" and m.built]
+    price = sum(banks.net_assets(island, m, facility_entity(m.id)) for m in sold)
+    short = price - ledger.money(island, household(OWNERS))
+    if short > 0:
+        ledger.pay(island, household(GENERAL), household(OWNERS), short, "test_top_up")
     open_books(island)
     check_privatize_firm(island, {"firm": state}, game.defs)
     privatize_firm(island, {"firm": state}, ctx)
@@ -457,6 +464,9 @@ def test_fields_without_fertilizer_fall_back_instead_of_stopping_the_farm(game, 
     from hakoniwa_core import facilities as fac
 
     _, farm = a_farm(base)
+    farm = copy.deepcopy(farm)
+    farm.ext.pop(fac.GRADE, None)  # 手作業の農場（機械化した農場の畑は機械化の作り方に戻る）
+    farm.economy.pop(fac.MACHINES, None)
     f = copy.deepcopy(farm)
     power = game.config.get("power.good")
     f.recipe = "cotton"

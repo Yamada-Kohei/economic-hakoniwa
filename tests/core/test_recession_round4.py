@@ -78,7 +78,9 @@ def test_islands_sell_to_merchants_with_balanced_books(game, base):
     def keep(w):
         sold.append(sum(i.stats.get("trade.merchant_sold", 0) for i in w.islands.values()))
 
-    run_checked(game, world, 6, keep)
+    run_checked(
+        game, world, 14, keep
+    )  # 商人の買いはとぎれとぎれ（買わない間が 6 ターン続くことがある）
     assert sum(sold) > 0
     for island in world.islands.values():
         s = island.stats

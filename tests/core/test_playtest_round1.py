@@ -342,6 +342,8 @@ def test_leftover_crops_are_not_sold_below_what_they_cost_to_grow(game, warmed):
     island = island_of(world, "market")
     recipes = game.defs.facilities["farm"]["recipes"]
     farm = next(f for f in island.facilities if f.kind == "farm" and f.built)
+    # 手作業の穀物の農場（機械化した農場の下限は、機械化の作り方の中で決まる。W-190）
+    farm = replace(farm, recipe="default", ext={})
     other = next(
         n for n, r in sorted(recipes.items()) if n != farm.recipe and r["outputs"].get("cotton")
     )

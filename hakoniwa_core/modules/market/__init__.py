@@ -1433,7 +1433,8 @@ class Market(IslandStage):
         defs: Defs, config: GameConfig, f: Facility, good: str, prices: dict[str, int], rate: int
     ) -> int:
         """作り方を替えて使わなくなった物の売り値の下限: 同じ施設のほかの作り方でその物を作る費用
-        （unit_floor。作り方が複数あれば安いほう）。作れない物（使わなくなった原料など）は 0。
+        （unit_floor。作り方が複数あれば安いほう）。農場は今の段階の作り方でしか作れない。作れない物
+        （使わなくなった原料など）は 0。
 
         作れる物は、余って値段が費用を下回っても、費用を割ってまで売らずに持っておく（腐る分は
         別に売る）。綿から穀物に替えた国の農場が残りの綿を毎ターン1割安く売り続け、綿の値段が
@@ -1443,7 +1444,7 @@ class Market(IslandStage):
         floors = [
             unit_floor(defs, config, replace(f, recipe=name), good, prices, wage, rate)
             for name, recipe in sorted(defs.facilities[f.kind]["recipes"].items())
-            if recipe["outputs"].get(good, 0) > 0
+            if recipe["outputs"].get(good, 0) > 0 and recipe.get("grade", 0) == fac.grade_of(f)
         ]
         return min(floors) if floors else 0
 

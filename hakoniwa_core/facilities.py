@@ -402,6 +402,7 @@ def fit_fields(defs: Defs, f: Facility, power: str) -> None:
             for other, r in sorted(recipes.items())
             if other != name
             and crop_of(defs, f.kind, other) == crop
+            and r.get("grade", 0) == recipes[name].get("grade", 0)  # 段階は今のまま
             and not set(r["inputs"]) & lacking
         ]
         if not fallback:
