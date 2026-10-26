@@ -17,6 +17,8 @@ CHECKED = [
     "facility/monument_ledger",
     "housing/city",
     "housing/metropolis",
+    "housing/high_rise",
+    "housing/skyscraper",
 ]
 CHECKED_SPARE = [
     "housing/city_bands",
