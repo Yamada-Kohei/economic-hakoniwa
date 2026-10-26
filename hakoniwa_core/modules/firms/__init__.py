@@ -63,13 +63,14 @@ banking.entry_roe_margin」を超え、政策金利が今の銀行の預金金�
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, politics, stock, trade
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.defs.kinds import AUTOMATED
+from hakoniwa_core.defs.kinds import is_variant
 from hakoniwa_core.economy import (
     OWNERS,
     STATE_FACILITIES,
@@ -126,7 +127,7 @@ from hakoniwa_core.trade import merchant, send_to_market
 from hakoniwa_core.trade import setup as trade_setup
 from hakoniwa_core.trade import traders as trade_traders
 from hakoniwa_core.turn.context import StageContext
-from hakoniwa_core.units import BASIS, money_of, part, round_money, to_basis
+from hakoniwa_core.units import BASIS, QUANTITY_SCALE, money_of, part, round_money, to_basis
 
 NOT_PRIVATE = (
     "admin",
@@ -221,7 +222,7 @@ def entry_price(island: IslandState, ctx: StageContext, good: str) -> int | None
             continue
         capital = round_money(construction_cost(defs, kind, prices, wage))
         for rname, recipe in sorted(fdef["recipes"].items()):
-            if rname == AUTOMATED or not recipe["outputs"].get(good):
+            if is_variant(rname, recipe) or not recipe["outputs"].get(good):
                 continue
             if not set(recipe.get("inputs", {})) <= supplied:
                 continue
@@ -272,6 +273,7 @@ class EntryExit(IslandStage):
                 if not self._enter(island, ctx):
                     break
             self._invest(island, ctx)
+            self._raise_grades(island, ctx)
         self._bank_entry(island, ctx)
         trade_setup.entry(island, ctx.defs, ctx.config, is_planned(ctx.defs, island), ctx.turn)
         private = [
@@ -620,7 +622,11 @@ class EntryExit(IslandStage):
             for rname, recipe in sorted(fdef["recipes"].items()):
                 if fac.recipe_problem(defs, island, kind, rname) is not None:
                     continue  # 鉱業資源がないか、気候で使えない（フェーズ3-2）
-                if rname == AUTOMATED or not recipe["outputs"] or busy & set(recipe["outputs"]):
+                if (
+                    is_variant(rname, recipe)
+                    or not recipe["outputs"]
+                    or busy & set(recipe["outputs"])
+                ):
                     continue  # 電子機器を使う作り方は、建ててから見直しで選ぶ
                 cost = unit_cost(defs, config, kind, recipe, prices, wage)
                 fill = self._fill(recipe, shortages, demand, capacity, prices, cost, settings)
@@ -789,6 +795,110 @@ class EntryExit(IslandStage):
                 building |= set(recipe["outputs"])
                 island.stats["firms.invested"] = island.stats.get("firms.invested", 0) + 1
 
+    def _raise_grades(self, island: IslandState, ctx: StageContext) -> None:
+        """民営の農場の集約（W-190。FM-52）: 作り方を見直す周期（firms.recipe_turns）ごとに、次の
+        段階に上げたときの「浮く賃金 ＋ 増える収穫の売上 − 増える燃料・化学品 − 機械の傷み」を建設費
+        で割ったもうけ率が、参入に要る利益率（_threshold）を超えれば、持ち主の出資と銀行の建設資金で
+        上げる（_build。お金の出どころと審査は建て増しと同じ）。賃金が安く人が余る島ではもうけ率が
+        足りず機械化しない。銀行がない島は利益率が出ないので上げない。段階を上げる工事の間は見ない。"""
+        defs, config = ctx.defs, ctx.config
+        threshold = self._threshold(island, ctx)
+        if threshold == float("inf"):
+            return
+        settings = config.get("firms")
+        recent = ctx.turn - settings["price_turns"]
+        prices: dict[str, int] | None = None
+        supplied: set[str] = set()
+        on_sale: set[str] = set()
+        rates: dict[int, int] = {}
+        for f in sorted(island.facilities, key=lambda x: x.id):
+            steps = fac.grade_steps(defs, f.kind)
+            if (
+                not steps
+                or f.owner != OWNER_PRIVATE
+                or not f.built
+                or not is_self_supporting(f)
+                or (ctx.turn + f.id) % settings["recipe_turns"]
+                or "closing" in f.economy
+                or "foreclosed" in f.economy
+                or not fac.on_map(f)
+                or f.economy.get("entered", -(10**9)) > recent
+                or fac.grade_problem(defs, island, f, private=True) is not None
+            ):
+                continue
+            if prices is None:
+                prices = average_prices(island, settings["price_turns"])
+                supplied = self._supplied(island, ctx)
+                on_sale = {g for g, h in island.economy.finance.get("supply", {}).items() if any(h)}
+                rates = freight_rates.facility_rates(island, defs, config)
+            grade = fac.grade_of(f)
+            step = steps[grade]
+            upper = fac.regrade(defs, f.kind, f.recipe, grade + 1)
+            if set(step["materials"]) - supplied - on_sale:
+                continue  # 機械や用水路の資材が島で作られておらず、売りに出てもいない
+            if set(defs.facilities[f.kind]["recipes"][upper]["inputs"]) - supplied:
+                continue  # 燃料や化学品が島で手に入らない
+            rate = rates.get(f.id, 0)
+            estimate, after = self._grade_return(island, ctx, f, upper, step, prices, rate)
+            if estimate <= threshold:
+                continue
+            wage = f.economy.get("wage", island.economy.average_wage)
+            capital = round_money(self._grade_cost(defs, f, step, prices, wage))
+            failure = self._build(
+                island,
+                ctx,
+                f.kind,
+                f.recipe,
+                (f.x, f.y),
+                capital,
+                prices,
+                rate,
+                grade=(grade + 1, after),
+            )
+            if failure is None:
+                stats = island.stats
+                stats["firms.graded"] = stats.get("firms.graded", 0) + 1
+
+    @staticmethod
+    def _grade_cost(
+        defs: Defs, f: Facility, step: dict[str, Any], prices: dict[str, int], wage: int
+    ) -> float:
+        """段階を上げる工事の費用（資材の代金と、工事の人手の賃金）。"""
+        materials = sum(prices.get(g, 0) * q / QUANTITY_SCALE for g, q in step["materials"].items())
+        labor = defs.facilities[f.kind]["construction"].get("labor", 0)
+        return materials + labor * step["turns"] * wage
+
+    def _grade_return(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        f: Facility,
+        upper: str,
+        step: dict[str, Any],
+        prices: dict[str, int],
+        rate: int,
+    ) -> tuple[float, int]:
+        """段階を上げたときの年のもうけ率: (増える変動費の利益の1年分 − 足す資材の傷みの1年分) ÷
+        工事の費用と、上げた後の変動費の利益（銀行の審査に使う）。上げた後の農場は、機械が新品で、
+        畑がみな上の段階の同じ作物の作り方で動く。"""
+        defs, config = ctx.defs, ctx.config
+        wage = f.economy.get("wage", island.economy.average_wage)
+        now = variable_profit(defs, config, f, prices, wage, rate)
+        economy = {
+            k: v for k, v in f.economy.items() if k not in (fac.FIELDS, fac.SOWN, fac.MACHINES)
+        }
+        after = replace(f, recipe=upper, ext={**f.ext, fac.GRADE: step["grade"]}, economy=economy)
+        later = variable_profit(defs, config, after, prices, wage, rate)
+        gain = later - now
+        worn = sum(
+            money_of(prices.get(g, 0), q) * equipment.wear_rate(config, g)
+            for g, q in step["materials"].items()
+        )
+        cost = self._grade_cost(defs, f, step, prices, wage)
+        if cost <= 0:
+            return (float("inf") if gain > 0 else 0.0), later
+        return (gain * YEAR - worn) / cost, later
+
     @staticmethod
     def _fill(
         recipe: dict[str, Any],
@@ -938,7 +1048,9 @@ class EntryExit(IslandStage):
                 if not private_allowed(defs, island, kind):
                     continue
                 for rname, recipe in sorted(fdef["recipes"].items()):
-                    if rname == AUTOMATED:  # 参入は基本の作り方で。電子機器は建ててから見直す
+                    if is_variant(
+                        rname, recipe
+                    ):  # 参入は基本の作り方で。電子機器・農場の段階は建ててから
                         continue
                     if good not in recipe["outputs"] or not set(recipe["inputs"]) <= supplied:
                         continue
@@ -1194,19 +1306,26 @@ class EntryExit(IslandStage):
         prices: dict[str, int],
         rate: int,
         subsidy: tuple[int, int] = (0, 0),
+        grade: tuple[int, int] | None = None,
     ) -> tuple[str, dict[str, Any]] | None:
         """民営工場の工事を始める。建てられなければ、そのわけ（_finance）。
+
+        grade を渡すと、そのマスの農場の段階を上げる工事（W-190。上げる先の段階と、上げた後の
+        変動費の利益）。動いている農場の工事なので、動き出すときの運転資金は要らない。
 
         subsidy は設備投資補助の（率, 先に払う額）。先に払う額は工事を始めるときに補助金の予算から
         払い（建設費の残りだけを集めて、工事の途中で資金が尽きないように）、完成のときに精算する。
         """
         defs, config = ctx.defs, ctx.config
-        probe = productivity.probe(island, defs, config, kind, rname, pos)
         wage = island.economy.average_wage
-        earnings = variable_profit(defs, config, probe, prices, wage, rate)
-        # 資材の値上がりに備えて建設費を1割多めに用意し、動き出すときの支払い（firms.operating_turns
-        # ターン分）も合わせて調達する
-        start = operating_cost(defs, config, probe, prices, wage, rate)
+        if grade is None:
+            probe = productivity.probe(island, defs, config, kind, rname, pos)
+            earnings = variable_profit(defs, config, probe, prices, wage, rate)
+            # 資材の値上がりに備えて建設費を1割多めに用意し、動き出すときの支払い
+            # （firms.operating_turns ターン分）も合わせて調達する
+            start = operating_cost(defs, config, probe, prices, wage, rate)
+        else:
+            earnings, start = grade[1], 0
         amount = capital + capital // 10 + start * config.get("firms.operating_turns")
         target = fac.expansion_target(island, kind, *pos)
         if target is not None:  # 建て増す施設の今の利益も返済に充てられる
@@ -1221,6 +1340,12 @@ class EntryExit(IslandStage):
             payer, firm = owner_entity(target), None
             share = amount - sum(p for _, p, _ in plan)
             have = ledger.money(island, payer)
+            if grade is not None and have < share and payer != household(OWNERS):
+                # 農場の企業の手元は小さいので、足りない分は資本家階級が企業に増資して出す
+                top = share - have
+                if funds.available(island, Payer(household(OWNERS))) >= top:
+                    invest(island, household(OWNERS), payer, top)
+                    have = share
             if have < share:
                 return ("owners_short", {"need": share, "have": have, "loan": amount - share})
         tileless = retail.is_shop(defs, kind) or target is not None
@@ -1240,6 +1365,10 @@ class EntryExit(IslandStage):
             f.ext[fac.SITE] = [pos[0], pos[1]]
         if target is not None:
             f.ext[fac.EXPANDS] = target.id
+            if grade is not None:
+                step = fac.grade_steps(defs, kind)[grade[0] - 1]
+                f.ext[fac.GRADE_TO] = grade[0]
+                f.ext["build_total"] = step["turns"] * fac.FULL
             if "firm" in target.economy:
                 f.economy["firm"] = target.economy["firm"]
         else:
@@ -1263,6 +1392,11 @@ class EntryExit(IslandStage):
             funds.pay(island, payer, entity, upfront, "subsidy")
             f.ext["subsidy_paid"] = upfront
         freight_rates.forget(island)
+        if grade is not None:
+            step = fac.grade_steps(defs, kind)[grade[0] - 1]
+            args = {"facility": kind, "x": pos[0], "y": pos[1], "grade": step["name"]}
+            island.log.append(LogEntry("grade_started", args))
+            return None
         island.log.append(
             LogEntry(
                 "private_entry",

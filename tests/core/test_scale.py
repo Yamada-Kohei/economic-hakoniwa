@@ -121,9 +121,17 @@ def test_build_on_the_same_facility_starts_an_expansion(game, world):
 
 def test_land_bound_facilities_cannot_expand(game, world):
     island = world.islands[1]
-    farm = _built(island, "farm")
-    problem = fac.placement_problem(game.defs, island, "farm", farm.x, farm.y, expand=True)
+    lumber = _built(island, "lumber_camp")
+    problem = fac.placement_problem(
+        game.defs, island, "lumber_camp", lumber.x, lumber.y, expand=True
+    )
     assert problem is not None and problem[0] == "reason_cannot_expand"
+    # 農場は規模でなく段階を上げる（W-190。tests/core/test_farm_grades.py）
+    farm = _built(island, "farm")
+    assert fac.placement_problem(game.defs, island, "farm", farm.x, farm.y, expand=True) in (
+        None,
+        ("reason_private_expand", {"facility": "farm"}),
+    )
 
 
 def test_expansion_stops_at_the_tile_limit(game, world):

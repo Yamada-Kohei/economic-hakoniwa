@@ -47,6 +47,12 @@ INPUT_SHORT = ("input", "input_price", "funds", "public_price")
 # 働く場所（SITE）と建て増す施設の番号（EXPANDS）を ext に持つ。済むと建て増す施設に合わせる
 SIZE = "size"
 EXPANDS = "expands"
+# 農場の段階（W-190。FM-50・FM-51）: ext の GRADE は段階（書いていなければ 0 = 手作業）。段階を
+# 上げる工事は建て増しと同じくマスを取らない工事で、上げる先の段階（GRADE_TO）を ext に持つ。
+# 機械の設備の割合（MACHINES。economy。1000 分の 1）が下がった分だけ、その割合の畑が手作業で動く
+GRADE = "grade"
+GRADE_TO = "grade_to"
+MACHINES = "machines"
 
 
 def short_of_inputs(status: str) -> bool:
@@ -97,6 +103,81 @@ def pending_expansions(island: IslandState, target: Facility) -> int:
     return sum(1 for f in island.facilities if f.ext.get(EXPANDS) == target.id)
 
 
+def grade_of(f: Facility) -> int:
+    """農場の段階（0 手作業・1 機械化・2 近代化）。段階のない施設は 0。"""
+    return int(f.ext.get(GRADE, 0))
+
+
+def grade_steps(defs: Defs, kind: str) -> tuple[Mapping[str, Any], ...]:
+    """施設の段階を上げる工事（段階 1 から順に。facilities.yaml の grades）。段階のない施設は空。"""
+    return defs.facilities[kind].get("grade_steps", ())
+
+
+def grade_name(defs: Defs, kind: str, grade: int) -> str:
+    """段階の表示名の文面の名前（grade_manual・grade_mechanized・grade_modern）。"""
+    return f"grade_{grade_steps(defs, kind)[grade - 1]['name']}" if grade else "grade_manual"
+
+
+def machine_ratio(f: Facility) -> int:
+    """機械の設備の割合（1000 分の 1。economy/equipment.py）。機械のない段階は 100%。"""
+    return f.economy.get(MACHINES, FULL)
+
+
+def grade_kit(defs: Defs, f: Facility) -> dict[str, int]:
+    """農場が今の段階までの工事で足した設備の資材（機械か、用水路の建材）。"""
+    out: dict[str, int] = {}
+    for step in grade_steps(defs, f.kind)[: grade_of(f)]:
+        for good, qty in step["materials"].items():
+            out[good] = out.get(good, 0) + qty
+    return out
+
+
+def machine_goods(defs: Defs, f: Facility) -> set[str]:
+    """設備の資材のうち、機械として別に傷みを見る資材（傷むと畑が手作業に戻る。FM-51）。"""
+    return {
+        good
+        for step in grade_steps(defs, f.kind)[: grade_of(f)]
+        if step["machines"]
+        for good in step["materials"]
+    }
+
+
+def regrade(defs: Defs, kind: str, recipe: str, grade: int) -> str:
+    """作り方 recipe を、段階 grade の同じ作物の作り方にした名前。同じ元の作り方（base）があれば
+    それを、なければ同じ作物の作り方を選ぶ（近代化は肥料のある作り方だけ）。"""
+    recipes = defs.facilities[kind]["recipes"]
+    now = recipes[recipe]
+    if now.get("grade", 0) == grade:
+        return recipe
+    crop = tuple(sorted(now["outputs"]))
+    same = [
+        name
+        for name, r in sorted(recipes.items())
+        if r.get("grade", 0) == grade and tuple(sorted(r["outputs"])) == crop
+    ]
+    for name in same:
+        if recipes[name]["base"] == now["base"]:
+            return name
+    return same[0] if same else recipe
+
+
+def grade_problem(
+    defs: Defs, island: IslandState, target: Facility, private: bool = False
+) -> tuple[str, dict[str, Any]] | None:
+    """農場 target の段階を上げる工事を始められないときは (理由, 引数)。命令は国営だけ。民営の農場は
+    自分の採算で上げる（private が真のとき）。"""
+    kind = target.kind
+    if not target.built or target.ext.get("repair"):
+        return ("reason_expand_unbuilt", {"facility": kind})
+    if target.owner != OWNER_STATE and not private:
+        return ("reason_private_expand", {"facility": kind})
+    if grade_of(target) >= len(grade_steps(defs, kind)):
+        return ("reason_grade_top", {"facility": kind})
+    if pending_expansions(island, target):
+        return ("reason_grade_pending", {"facility": kind})
+    return None
+
+
 def expansion_target(island: IslandState, kind: str, x: int, y: int) -> Facility | None:
     """(x, y) に同じ施設 kind が建っていれば、その施設（建て増す相手）。"""
     f = island.facility_at(x, y)
@@ -108,6 +189,8 @@ def expansion_problem(
 ) -> tuple[str, dict[str, Any]] | None:
     """施設 target を建て増せないときは (理由, 引数)。"""
     kind = target.kind
+    if grade_steps(defs, kind):  # 農場は規模でなく段階を上げる（W-190。FM-50）
+        return grade_problem(defs, island, target)
     limit = max_size(defs, kind)
     if limit <= 1:
         return ("reason_cannot_expand", {"facility": kind})
@@ -140,10 +223,14 @@ def recipe_of(defs: Defs, f: Facility) -> Mapping[str, Any]:
     """施設の今の作り方。畑を作り替えている途中の施設（economy["fields"]）は、収穫している畑の
     作り方を割合で混ぜた作り方（蒔いて育っている畑は何も出さず、何も使わない）。"""
     fields = f.economy.get(FIELDS)
-    if fields is None:
+    share = machine_ratio(f) if GRADE in f.ext else FULL
+    if fields is None and share >= FULL:
         recipe = defs.facilities[f.kind]["recipes"][f.recipe]
     else:
-        recipe = _blend(defs, f.kind, f.recipe, tuple(sorted(fields.items())))
+        table = {f.recipe: FULL} if fields is None else dict(fields)
+        if share < FULL:
+            table = _worn(defs, f.kind, table, share)
+        recipe = _blend(defs, f.kind, f.recipe, tuple(sorted(table.items())))
     size = size_of(f)
     return recipe if size == 1 else _sized(recipe, size)
 
@@ -170,6 +257,22 @@ def _sized(recipe: Mapping[str, Any], size: int) -> Mapping[str, Any]:
     return sized
 
 
+def _worn(defs: Defs, kind: str, table: dict[str, int], share: int) -> dict[str, int]:
+    """畑の割合 table のうち、機械の設備の割合が share しかないぶん、段階の作り方の畑を手作業の
+    作り方の畑にした割合（FM-51。傷んだ機械の分だけ人手が戻り、農場は止まらない）。"""
+    recipes = defs.facilities[kind]["recipes"]
+    out: dict[str, int] = {}
+    for name, part in table.items():
+        if recipes[name].get("grade", 0) == 0:
+            out[name] = out.get(name, 0) + part
+            continue
+        kept = part * share // FULL
+        manual = recipes[name]["base"]
+        out[name] = out.get(name, 0) + kept
+        out[manual] = out.get(manual, 0) + part - kept
+    return {name: part for name, part in out.items() if part > 0}
+
+
 _BLENDS: dict[tuple[int, str, str, tuple[tuple[str, int], ...]], Mapping[str, Any]] = {}
 
 
@@ -190,13 +293,22 @@ def _blend(
         for table, amounts in ((inputs, recipe["inputs"]), (outputs, recipe["outputs"])):
             for good, qty in amounts.items():
                 table[good] = table.get(good, 0) + qty * share // FULL
-    blended = MappingProxyType(
-        {
-            **recipes[target],
-            "inputs": MappingProxyType({g: q for g, q in sorted(inputs.items()) if q > 0}),
-            "outputs": MappingProxyType({g: q for g, q in sorted(outputs.items()) if q > 0}),
-        }
-    )
+    labor = recipes[target].get("labor", 1.0)
+    if "labor" in recipes[target] or any("labor" in recipes[name] for name, _ in fields):
+        # 機械化した畑と手作業の畑が混ざるときは、畑の割合で働き手の割合を混ぜる（蒔いたばかりの畑は
+        # 今の作り方の人手で数える）
+        shared = sum(share for _, share in fields)
+        mixed = sum(recipes[name].get("labor", 1.0) * share for name, share in fields)
+        labor = (mixed + labor * max(0, FULL - shared)) / FULL
+    mixed_recipe = {
+        **recipes[target],
+        "inputs": MappingProxyType({g: q for g, q in sorted(inputs.items()) if q > 0}),
+        "outputs": MappingProxyType({g: q for g, q in sorted(outputs.items()) if q > 0}),
+    }
+    mixed_recipe.pop("labor", None)
+    if labor != 1.0:
+        mixed_recipe["labor"] = labor
+    blended = MappingProxyType(mixed_recipe)
     _BLENDS[key] = blended
     return blended
 
@@ -430,6 +542,8 @@ def scaled_workers(defs: Defs, kind: str, labor: float) -> int:
 
 def workers_of(defs: Defs, f: Facility) -> int:
     """施設 f の今の作り方で全力で動くのに要る労働者の数（規模の分を含む）。"""
+    if grade_steps(defs, f.kind):  # 農場: 機械の傷みで手作業に戻った畑の人手を混ぜる（FM-51）
+        return scaled_workers(defs, f.kind, recipe_of(defs, f).get("labor", 1.0)) * size_of(f)
     return workers_needed(defs, f.kind, f.recipe) * size_of(f)
 
 
@@ -463,7 +577,13 @@ def labor_cost(
     （施設 f があれば、その技術者の賃金と作り方で。labor を渡すと、その一般の労働者の割合で）。"""
     engineers = engineers_needed(defs, kind)
     if labor is None:
-        labor = recipe_labor(defs, kind, f.recipe) if f is not None else 1.0
+        labor = 1.0
+        if f is not None:
+            labor = (
+                recipe_of(defs, f).get("labor", 1.0)
+                if grade_steps(defs, kind)
+                else recipe_labor(defs, kind, f.recipe)
+            )
     general = scaled_workers(defs, kind, labor) - engineers
     size = size_of(f) if f is not None else 1
     if not engineers:
@@ -529,6 +649,8 @@ def total_progress(defs: Defs, f: Facility) -> int:
 def materials_of(defs: Defs, f: Facility) -> dict[str, int]:
     """工事 f の資材の合計。隠して建てる施設（ext["materials_factor"]。MI-62）は定義より多い。"""
     materials = defs.facilities[f.kind]["construction"].get("materials", {})
+    if GRADE_TO in f.ext:  # 農場の段階を上げる工事（W-190）は、その段階の資材
+        materials = grade_steps(defs, f.kind)[int(f.ext[GRADE_TO]) - 1]["materials"]
     # 建て増した施設の直し（戦争・暴動で壊れた後）は規模の分だけ資材が要る（段6 A3）
     factor = f.ext.get("materials_factor", 1) * size_of(f)
     if factor == 1:
@@ -718,6 +840,10 @@ def switch_problem(
     now = recipes.get(f.recipe, {}).get("requires_resource")
     if recipes[recipe].get("requires_resource") != now:
         return ("reason_recipe_other_resource", {"facility": f.kind})
+    if recipes[recipe].get("grade", 0) != grade_of(
+        f
+    ):  # 農場の段階の作り方は、工事が済んだ段階のもの
+        return ("reason_recipe_grade", {"facility": f.kind})
     return recipe_problem(defs, island, f.kind, recipe)
 
 

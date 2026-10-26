@@ -1117,7 +1117,7 @@ class Market(IslandStage):
         for f in sorted(island.facilities, key=lambda f: f.id):
             if not equipment.has_equipment(defs, config, f) or is_stopped(f):
                 continue
-            if equipment.condition(f) >= equipment.level(config, f):
+            if not equipment.needs_repair(defs, config, f):
                 continue
             profit = None
             if f.owner == OWNER_PRIVATE:

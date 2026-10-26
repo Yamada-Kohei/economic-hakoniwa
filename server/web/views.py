@@ -548,6 +548,7 @@ def _help_context() -> dict:
                     else "",
                 }
                 for rid, r in f["recipes"].items()
+                if not r.get("grade")  # 農場の段階の方式は、段階の説明にまとめる
             ],
         }
         for fid, f in defs.facilities.items()
@@ -587,11 +588,33 @@ def _help_context() -> dict:
             for g in defs.goods
             if defs.unit_name(g)
         ],
+        "grades": _grade_help(game),
         "trade": _trade_help(game),
         "diplomacy": _diplomacy_help(game),
         **_per_person_help(game),
         **_goods_help(game),
     }
+
+
+def _grade_help(game) -> list[dict]:
+    """手引きの「施設の建て増しと農場の段階」に出す、段階ごとの人手と収穫の割合と工事の資材（W-190）。"""
+    defs = game.defs
+    out = []
+    for kind, fdef in defs.facilities.items():
+        for step, raw in zip(fdef.get("grade_steps", ()), fdef.get("grades", ()), strict=True):
+            out.append(
+                {
+                    "facility": defs.name("facilities", kind),
+                    "name": display.message(f"grade_{step['name']}"),
+                    "labor": f"{raw['labor'] * 100:g}",
+                    "output": f"{raw['output'] * 100:g}",
+                    "materials": display.goods_list(step["materials"]),
+                    "turns": step["turns"],
+                    "machines": step["machines"],
+                    "chemicals": bool(raw.get("scale_inputs")),
+                }
+            )
+    return out
 
 
 def _per_person_help(game) -> dict:

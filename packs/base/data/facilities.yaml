@@ -48,6 +48,27 @@ farm:
       inputs: {chemicals: 1}
       outputs: {luxury_crop: 10.4}
       grow_turns: 12
+  # 農場の段階（W-190。FM-50・FM-51）。手作業の作り方の上に、段階ごとの作り方（<元の作り方>_<段階の名前>）を
+  # 読み込みで足す。工事が済むとその段階の作り方に替わり、手作業には戻らない。
+  # mechanized（機械化。トラクターとコンバイン）: 働き手が約 3 分の 1（アメリカでは 1930〜60 年に同じ収穫に
+  # 要る人手が約 7 割減った）、刈り入れの取りこぼしが減って産出が 1 割増え、燃料を毎ターン使う。資材は機械と
+  # 鋼鉄で、傷む（機械の傷みの割合だけ畑が手作業に戻る）。
+  # modern（近代化。灌漑と改良品種）: 肥料のある機械化の作り方の上に、産出が約 1.5 倍、化学品は 2 倍。資材は
+  # 用水路の建材で、傷むと農場の設備と同じに作れる量が減る。手作業・肥料なしから見て全部で約 2 倍
+  # （日本の米は 1950〜2000 年に約 1.7 倍、インドの小麦は 1960〜2000 年に約 3 倍）
+  grades:
+    - name: mechanized
+      labor: 0.34
+      output: 1.1
+      inputs: {fuel: 0.35}
+      machines: true
+      construction: {turns: 3, materials: {machinery: 2, steel: 5}}
+    - name: modern
+      requires_input: chemicals
+      labor: 0.4
+      output: 1.5
+      scale_inputs: {chemicals: 2}
+      construction: {turns: 3, materials: {building_materials: 25}}
   sprite: farm
 
 lumber_camp:

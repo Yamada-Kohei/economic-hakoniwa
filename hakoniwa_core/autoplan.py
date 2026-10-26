@@ -92,7 +92,7 @@ from hakoniwa_core import ledger, nature, scale, stock, trade
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.defs.kinds import AUTOMATED
+from hakoniwa_core.defs.kinds import is_variant
 from hakoniwa_core.economy import arrears, equipment, needs, services
 from hakoniwa_core.economy.prices import initial_prices, unit_cost
 from hakoniwa_core.geo import components, distance, shortest_path, within
@@ -194,6 +194,7 @@ def _plan_rest(
         _zone_order(island, defs, config),
         _commercial_order(island, defs, config),
         _water_order(island, defs, config),
+        _grade_order(island, defs, config),
     )
     for policy in policies:
         if policy is not None:
@@ -653,9 +654,7 @@ def _producers(
         if fdef.get("buildable") is False:
             continue
         for rname, recipe in fdef["recipes"].items():
-            if (
-                rname == AUTOMATED
-            ):  # 標準の計画は電子機器の供給を見ない。自動化は民間の見直しに任せる
+            if is_variant(rname, recipe):  # 標準の計画は電子機器・農場の段階を見ない
                 continue
             if good in recipe["outputs"] and _feasible(defs, island, kind, rname, traded):
                 inside = _feasible(defs, island, kind, rname)  # 輸入に頼らない作り方を先に
@@ -677,7 +676,7 @@ def _users(
         if fdef.get("buildable") is False:
             continue
         for rname, recipe in fdef["recipes"].items():
-            if rname == AUTOMATED:
+            if is_variant(rname, recipe):
                 continue
             if (
                 good in recipe["inputs"]
@@ -1241,6 +1240,8 @@ def _site_for(
         if fac.placement_problem(defs, island, kind, *pos, recipe, expand=True) is not None:
             continue
         target = fac.expansion_target(island, kind, *pos)
+        if target is not None and fac.grade_steps(defs, kind):
+            continue  # 農場の段階を上げる工事は、場所選びでなく _grade_order が決める（FM-52）
         if target is not None and (
             target.recipe != recipe or not _labor_for_expansion(island, defs, kind, pos, radius)
         ):
@@ -1261,6 +1262,56 @@ def _site_for(
         if best_key is None or key < best_key:
             best, best_key = pos, key
     return best
+
+
+# 国営の農場の段階（W-190。FM-52）: 機械化は、失業率が自然失業率のこの割合を下回り、国の施設で
+# 雇いきれない人数が働き手のこの割合を超えているとき（人手が足りない）。近代化は、機械化した農場が
+# あり、食料の足りない国で新しい農場の平地もないとき
+GRADE_SCARCE = 0.5
+GRADE_UNFILLED = 0.02
+
+
+def _grade_order(island: IslandState, defs: Defs, config: GameConfig) -> tuple[str, dict] | None:
+    """国営の農場の段階を 1 つ上げる命令（FM-52）。段階の工事は 1 島に 1 つずつ。上げる先の資材が
+    倉庫にも島の施設の産出にもなければ上げない。"""
+    if not island.has_economy:
+        return None
+    farms = [
+        f
+        for f in sorted(island.facilities, key=lambda f: f.id)
+        if fac.grade_steps(defs, f.kind) and f.built and f.owner == OWNER_STATE and fac.on_map(f)
+    ]
+    if not farms or any(fac.pending_expansions(island, f) for f in farms):
+        return None
+    made = _made(island, defs)
+    stats = island.stats
+    labor = stats.get("labor", 0)
+    unfilled = sum(
+        max(0, fac.workers_of(defs, f) - f.workers) for f in island.facilities if f.built
+    )
+    scarce = (
+        labor > 0
+        and stats.get("unemployment", 1.0) < config.get("labor.natural_unemployment") * GRADE_SCARCE
+        and unfilled > labor * GRADE_UNFILLED
+    )
+    hungry = (
+        stats.get("food.ratio", 1.0) < 1.0
+        and _site_for(island, defs, config, "farm", "default") is None
+    )
+    for f in farms:
+        if fac.grade_problem(defs, island, f) is not None:
+            continue
+        grade = fac.grade_of(f)
+        step = fac.grade_steps(defs, f.kind)[grade]
+        if not (scarce if grade == 0 else hungry):
+            continue
+        if any(
+            stock.total(island.warehouse, g) < q and g not in made
+            for g, q in step["materials"].items()
+        ):
+            continue
+        return ("build", {"facility": f.kind, "x": f.x, "y": f.y})
+    return None
 
 
 def _labor_for_expansion(

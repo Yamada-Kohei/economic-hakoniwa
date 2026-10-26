@@ -63,6 +63,7 @@ def _normalize_facility(entry: dict[str, Any]) -> dict[str, Any]:
         }
         for name, recipe in entry["recipes"].items()
     }
+    entry = _normalize_grades(entry)
     automation = entry.get("automation")
     if automation:  # 電子機器を使う作り方 automated（MI-43）: 既定の作り方と同じ産出を少ない人手で
         base = entry["recipes"][automation.get("from", "default")]
@@ -73,6 +74,61 @@ def _normalize_facility(entry: dict[str, Any]) -> dict[str, Any]:
             AUTOMATED: {**base, "inputs": inputs, "labor": automation["labor"]},
         }
     return entry
+
+
+def _normalize_grades(entry: dict[str, Any]) -> dict[str, Any]:
+    """農場の段階（W-190。FM-50）: 手作業の作り方の上に、段階ごとの作り方 <元の作り方>_<段階の名前>
+    を足す。段階 n の作り方は、段階 n-1 の作り方（requires_input があれば、その財を使うものだけ）を
+    元に、働き手の割合・産出の倍率・足す投入を変える。作り方には grade（段階の番号）と base（元の
+    手作業の作り方の名前。段階の作り方は、機械が傷んだ分の畑をこの作り方で動かす）を持たせる。"""
+    grades = entry.get("grades")
+    if not grades:
+        return entry
+    recipes = {
+        name: {**recipe, "grade": 0, "base": name} for name, recipe in entry["recipes"].items()
+    }
+    lower = dict(recipes)
+    steps = []
+    for number, grade in enumerate(grades, 1):
+        need = grade.get("requires_input")
+        made: dict[str, dict[str, Any]] = {}
+        for _, source in sorted(lower.items()):
+            if need is not None and need not in source["inputs"]:
+                continue
+            inputs = {
+                good: round(qty * grade.get("scale_inputs", {}).get(good, 1))
+                for good, qty in source["inputs"].items()
+            }
+            for good, qty in grade.get("inputs", {}).items():
+                inputs[good] = inputs.get(good, 0) + to_milli(qty)
+            outputs = {
+                good: round(qty * grade["output"]) for good, qty in source["outputs"].items()
+            }
+            made[f"{source['base']}_{grade['name']}"] = {
+                **source,
+                "inputs": inputs,
+                "outputs": outputs,
+                "labor": grade["labor"],
+                "grade": number,
+            }
+        recipes.update(made)
+        lower = made
+        steps.append(
+            {
+                "name": grade["name"],
+                "grade": number,
+                "turns": grade["construction"]["turns"],
+                "materials": _milli_map(grade["construction"]["materials"]),
+                "machines": bool(grade.get("machines")),
+            }
+        )
+    return {**entry, "recipes": recipes, "grade_steps": steps}
+
+
+def is_variant(name: str, recipe: Mapping[str, Any]) -> bool:
+    """作り方が、基本の作り方に足した作り方（電子機器の automated か、農場の段階の作り方）か。
+    初めの値段・参入・標準の計画の場所選びは基本の作り方だけを見る。"""
+    return name == AUTOMATED or recipe.get("grade", 0) > 0
 
 
 def _normalize_settlement(entry: dict[str, Any]) -> dict[str, Any]:

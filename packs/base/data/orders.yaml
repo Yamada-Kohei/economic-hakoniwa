@@ -40,7 +40,7 @@ rename_place:
       y: {type: integer, minimum: 0}
       name: {type: string, minLength: 1, maxLength: 16}
 
-build:
+build:  # 国営の施設が建つマスに同じ施設を建てると、建て増し（農場は次の段階への工事。W-190）になる
   admin_cost: 1
   payload:
     type: object

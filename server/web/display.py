@@ -196,6 +196,18 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
     if note is not None:
         info["monument"] = note
     recipes = fdef["recipes"]
+    steps = fac.grade_steps(defs, f.kind)
+    if steps:  # 農場の段階（W-190。FM-50）: 今の段階と、次に上げる工事・機械の残り
+        grade = fac.grade_of(f)
+        info["grade_name"] = message(fac.grade_name(defs, f.kind, grade))
+        if grade < len(steps):
+            info["grade_next"] = {
+                "name": message(fac.grade_name(defs, f.kind, grade + 1)),
+                "materials": goods_list(steps[grade]["materials"]),
+                "turns": steps[grade]["turns"],
+            }
+        if any(step["machines"] for step in steps[:grade]):
+            info["machines"] = round(fac.machine_ratio(f) / fac.FULL, 3)
     if len(recipes) > 1:
         info["recipe"] = f.recipe
         info["recipe_name"] = defs.recipe_name(f.kind, f.recipe)
@@ -265,7 +277,7 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         info["turns"] = -(-total // fac.FULL)
         if f.ext.get("repair"):
             info["repair"] = True  # 暴動で壊れて直している（フェーズ3-4）
-        info["materials"] = goods_list(construction.get("materials", {}))
+        info["materials"] = goods_list(fac.materials_of(defs, f))  # 段階の工事は、その段階の資材
     if f.ext.get("halted_until") is not None:
         info["halted_until"] = f.ext["halted_until"]
     if is_private_site(f):
@@ -1436,6 +1448,7 @@ SUMMARY_STATS = [
     ("housing.public_floor", "国の床（最低の広さで住める人数）", "人"),
     ("housing.rent", "国の床の家賃の収入（1ターン）", "money"),
     ("food.ratio", "食料充足率", "%"),
+    ("farm.grade", "農場の段階の平均（0 手作業・1 機械化・2 近代化）", ""),
     ("power.capacity", "発電量", "good:electricity"),
     ("power.demand", "電力需要", "good:electricity"),
     ("admin_power", "行政力（次ターンの命令実行数）", ""),

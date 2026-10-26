@@ -13,6 +13,15 @@ farm_cotton: 綿
 farm_cotton_fertilized: 綿（肥料あり）
 farm_luxury_crop: 嗜好品
 farm_luxury_crop_fertilized: 嗜好品（肥料あり）
+farm_default_mechanized: 穀物（機械化）
+farm_fertilized_mechanized: 穀物（肥料あり・機械化）
+farm_cotton_mechanized: 綿（機械化）
+farm_cotton_fertilized_mechanized: 綿（肥料あり・機械化）
+farm_luxury_crop_mechanized: 嗜好品（機械化）
+farm_luxury_crop_fertilized_mechanized: 嗜好品（肥料あり・機械化）
+farm_fertilized_modern: 穀物（近代化）
+farm_cotton_fertilized_modern: 綿（近代化）
+farm_luxury_crop_fertilized_modern: 嗜好品（近代化）
 thermal_power_plant_default: 石炭で発電
 thermal_power_plant_fuel: 燃料で発電
 automobile_plant_default: 部品を組み立て

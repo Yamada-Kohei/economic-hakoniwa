@@ -137,11 +137,29 @@ def start_expansion(
         economy={"capital": 0},
         ext={fac.SITE: [target.x, target.y], fac.EXPANDS: target.id},
     )
+    turns = ctx.defs.facilities[target.kind]["construction"]["turns"]
+    steps = fac.grade_steps(ctx.defs, target.kind)
+    if steps:  # 農場は規模でなく段階を上げる工事（W-190）。工期と資材はその段階のもの
+        step = steps[fac.grade_of(target)]
+        f.ext[fac.GRADE_TO] = step["grade"]
+        turns = step["turns"]
     factor = planning.build_factor(island, ctx.defs, target.kind, f.recipe)
-    if factor != 1.0:
-        turns = ctx.defs.facilities[target.kind]["construction"]["turns"]
+    if factor != 1.0 or steps:
         f.ext["build_total"] = max(fac.FULL, round(turns * factor * fac.FULL))
     island.facilities.append(f)
+    if steps:
+        island.log.append(
+            LogEntry(
+                "grade_started",
+                {
+                    "facility": target.kind,
+                    "x": target.x,
+                    "y": target.y,
+                    "grade": steps[fac.grade_of(target)]["name"],
+                },
+            )
+        )
+        return f
     island.log.append(
         LogEntry(
             "expansion_started",
@@ -359,6 +377,9 @@ def _merge_expansion(island: IslandState, site: Facility, ctx: StageContext) -> 
     target = island.facility(old or -1)
     x, y = fac.position(site)
     if target is None or not (target.built or target.ext.get("repair")):
+        if fac.GRADE_TO in site.ext:  # 段階の工事は新しい農場にならない。資材を倉庫に戻してやめる
+            _drop_expansion(island, site, ctx)
+            return
         site.ext.pop(fac.EXPANDS, None)
         site.ext.pop(fac.SITE, None)
         if island.facility_at(x, y) is None:
@@ -377,21 +398,28 @@ def _merge_expansion(island: IslandState, site: Facility, ctx: StageContext) -> 
         _drop_expansion(island, site, ctx)
         return
     stock.move_to_warehouse(site.stock, island.warehouse, ctx.turn, defs.goods)
-    size = fac.size_of(target) + 1
-    target.ext[fac.SIZE] = size
-    if "target" in target.economy:
-        # 操業目標は全力に対する割合なので、規模が増えた分だけ割り直す（作る量を一度に跳ねさせず、
-        # 売れ行きを見ながら上げる。W-186 回3）
-        target.economy["target"] = target.economy["target"] * (size - 1) // size
+    grade = site.ext.get(fac.GRADE_TO)
+    if grade is None:
+        size = fac.size_of(target) + 1
+        target.ext[fac.SIZE] = size
+        if "target" in target.economy:
+            # 操業目標は全力に対する割合なので、規模が増えた分だけ割り直す（作る量を一度に
+            # 跳ねさせず、売れ行きを見ながら上げる。W-186 回3）
+            target.economy["target"] = target.economy["target"] * (size - 1) // size
+    else:  # 農場の段階を上げる工事（W-190）
+        size = fac.size_of(target)
+        _raise_grade(island, defs, target, int(grade))
     island.facilities.remove(site)
-    island.log.append(
-        LogEntry("facility_expanded", {"facility": target.kind, "x": x, "y": y, "size": size})
-    )
+    if grade is None:
+        island.log.append(
+            LogEntry("facility_expanded", {"facility": target.kind, "x": x, "y": y, "size": size})
+        )
     if not island.has_economy:
         return
     from hakoniwa_core.economy import equipment
 
-    equipment.expand(defs, target)
+    if grade is None:
+        equipment.expand(defs, target)
     target.economy["capital"] = target.economy.get("capital", 0) + site.economy.get("capital", 0)
     freight.forget(island)
     if is_private_site(site):
@@ -400,7 +428,7 @@ def _merge_expansion(island: IslandState, site: Facility, ctx: StageContext) -> 
         for loan in banks.loans_by_borrower(island, facility_entity(target.id)):
             if loan.purpose == banks.CONSTRUCTION and loan.repay_from > ctx.turn + 10**8:
                 loan.repay_from = ctx.turn + 1 + ctx.config.get("loans.grace_turns")
-    elif is_self_supporting(target):
+    elif grade is None and is_self_supporting(target):
         # 足した規模の分の運転資金を出資する（新しく建てたときの fund_facility の規模 1 つ分）
         payer = Payer(ledger.GOV, CONSTRUCTION)
         amount = operating_capital(island, defs, ctx.config, target, payer) // size
@@ -410,6 +438,36 @@ def _merge_expansion(island: IslandState, site: Facility, ctx: StageContext) -> 
             ledger.create(
                 island, owner_entity(target), ledger.EQUITY, entity, amount, "capital_injection"
             )
+
+
+def _raise_grade(island: IslandState, defs: Defs, target: Facility, grade: int) -> None:
+    """農場 target の段階を grade に上げる（W-190）: 作り方をその段階の同じ作物の作り方にする（畑を
+    作り替えている途中なら、畑の作り方もみな替える）。新しい機械や用水路の資材は新品の設備になる。
+    要らなくなった働き手は、雇用の段が人手を減らして失業の層へ移す。"""
+    target.ext[fac.GRADE] = grade
+    target.ext.pop(fac.RECIPE_NEXT, None)
+    kind = target.kind
+
+    def remap(table: dict[str, int]) -> dict[str, int]:
+        out: dict[str, int] = {}
+        for name, share in table.items():
+            new = fac.regrade(defs, kind, name, grade)
+            out[new] = out.get(new, 0) + share
+        return out
+
+    fields = target.economy.get(fac.FIELDS)
+    if fields is not None:
+        target.economy[fac.FIELDS] = remap(fields)
+        for row in target.economy.get(fac.SOWN, []):
+            row[0] = fac.regrade(defs, kind, row[0], grade)
+    target.recipe = fac.regrade(defs, kind, target.recipe, grade)
+    step = fac.grade_steps(defs, kind)[grade - 1]
+    island.log.append(
+        LogEntry(
+            "grade_done",
+            {"facility": kind, "x": target.x, "y": target.y, "grade": step["name"]},
+        )
+    )
 
 
 def _drop_expansion(island: IslandState, site: Facility, ctx: StageContext) -> None:

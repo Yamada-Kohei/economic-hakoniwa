@@ -217,6 +217,12 @@ export class TilePanel {
     if (f.firm_name) rows.push(["企業", f.firm_name]);
     // 規模（段6 A3）: 同じマスに同じ施設を建てると建て増しの工事になり、済むと規模が 1 つ上がる
     if (f.size > 1 || f.expanding) rows.push(["規模", `${f.size}${f.expanding ? `（建て増しの工事 ${f.expanding} 件）` : ""}`]);
+    // 農場の段階（W-190）: 手作業・機械化・近代化。同じマスに農場を建てると次の段階への工事になる
+    if (f.grade_name) {
+      rows.push(["段階", f.grade_name]);
+      if (f.machines != null) rows.push(["機械", `${Math.round(f.machines * 100)}%${f.machines < 1 ? "（傷んだ分の畑は手作業に戻ります）" : ""}`]);
+      if (f.grade_next && f.built) rows.push([`${f.grade_next.name}への工事`, `${goodsText(f.grade_next.materials)}・工期 ${f.grade_next.turns} ターン（同じマスに農場を建てる命令）`]);
+    }
     if (f.recipe_name) rows.push([recipeWords().method, recipeLabel(f.recipe,
       this.defs.facilities[f.kind]?.recipes?.[f.recipe], f.recipe_name)]);
     if (!f.built) {
