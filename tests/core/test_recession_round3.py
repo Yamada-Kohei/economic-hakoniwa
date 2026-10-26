@@ -211,7 +211,7 @@ def test_houses_wear_and_lose_room_only_below_the_livable_line(game, base):
     stage.run_island(island, ctx)
     assert fac.housing_capacity(game.defs, home) < nominal * 0.51
     # 資材があれば、育つより先に直す
-    for good, qty in fac.housing_materials(game.defs, home.ext["level"]).items():
+    for good, qty in fac.housing_materials(game.defs, nominal).items():
         stock.add(island.economy.housing["stock"], good, qty, world.turn, game.defs.goods)
     stage.run_island(island, ctx)
     assert home.economy[fac.HOUSING_CONDITION] > full * 99 // 100

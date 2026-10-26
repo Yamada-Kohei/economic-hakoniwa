@@ -31,6 +31,10 @@
 
 フェーズ4-2 からは、銅の鉱脈を一部の島に 1 度だけ置きます（veins.py。経済のない島にも）。
 
+W-201 からは、住まいの広さを幸福度に入れていない島の幸福度の重みを、基礎の点から住まいの広さの
+項目へ population.blend_turns ターンかけて移します（町の床は今の段階の上限のまま。モジュール
+population の dwelling_status）。
+
 移し替えをターンの中で行うのは、サーバーを通さずにコアだけで世界を回すとき（一括シミュレーションや
 テスト）にも同じに動くようにするためです。
 """
@@ -78,6 +82,13 @@ class Upgrade(IslandStage):
             economy.ext["happiness_from"] = "happiness_phase3_1"
         elif island.ext.get(nature.BLEND):
             nature.step_blend(island)
+        if economy.ext.get("housing", 0) < fac.HOUSING_VERSION:
+            # 住まいの広さ（W-201）が幸福度に入る。重みは基礎の点から移す（ほかの移し替えの途中なら
+            # その移し替えが同じ重みへ移すので、重ねない）
+            economy.ext["housing"] = fac.HOUSING_VERSION
+            if economy.happiness_blend <= 0:
+                economy.happiness_blend = ctx.config.get("population.blend_turns")
+                economy.ext["happiness_from"] = "happiness_before_housing"
         fill_regime(island, ctx.defs)
         fix_recipes(island, ctx.defs)
         end_for_planned(island, ctx)  # 計画経済の国は中央銀行を独立させられない（BK-43）

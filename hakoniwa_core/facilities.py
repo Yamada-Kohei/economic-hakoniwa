@@ -770,10 +770,61 @@ HOUSING_ROOM = "housing_room"
 HOUSING_FULL = 100_000
 
 
-def nominal_housing_capacity(defs: Defs, f: Facility) -> int:
-    """町の段階の住める上限（傷みを見ない。育つかどうかの目安と画面に使う）。"""
+# economy.ext["housing"]: 1 は住まいの広さ（W-201）を幸福度に入れた島
+HOUSING_VERSION = 1
+
+# 町の延べ床（W-190・W-201。ext）: 最低の広さ（housing.space.min）で詰めて住める人数の単位で数える。
+# 書いていなければ段階の上限（前からある世界の町と、建ったばかりの村・町）。床を足すと書く
+FLOOR = "floor"
+# 住み替えで買う床のうち、まだ資材がそろわず足せていない分（ext。小数の人数分）
+FLOOR_DUE = "floor_due"
+
+
+def level_bounds(defs: Defs) -> list[tuple[str, int, int]]:
+    """町の段階ごとの (名前, 床の下の端, 床の上の端)。下の端は 1 つ下の段階の上限（最下段は 0）。"""
+    out = []
+    low = 0
+    for name in defs.settlement_levels():
+        high = defs.settlements[name]["capacity"]
+        out.append((name, low, high))
+        low = high
+    return out
+
+
+def level_of_floor(defs: Defs, floor: int) -> str:
+    """床 floor が収まるいちばん下の段階（上限が floor 以上）。どれにも収まらなければ最上段。"""
+    bounds = level_bounds(defs)
+    for name, _, high in bounds:
+        if floor <= high:
+            return name
+    return bounds[-1][0]
+
+
+def max_floor(defs: Defs) -> int:
+    """町の床の上限（いちばん上の段階の上限）。"""
+    return level_bounds(defs)[-1][2]
+
+
+def level_after(defs: Defs, floor: int) -> str | None:
+    """床 floor に 1 足したときの段階。段階の上限にいるときは次の段階で、最上段の上限なら None。"""
+    for name, _, high in level_bounds(defs):
+        if floor < high:
+            return name
+    return None
+
+
+def floor_of(defs: Defs, f: Facility) -> int:
+    """町の延べ床（人数の単位。傷みを見ない）。書いていなければ建った段階の上限。"""
+    floor = f.ext.get(FLOOR)
+    if floor is not None:
+        return int(floor)
     level = f.ext.get("level") or defs.settlement_levels()[0]
     return defs.settlements[level]["capacity"]
+
+
+def nominal_housing_capacity(defs: Defs, f: Facility) -> int:
+    """町の住める上限（傷みを見ない。画面に使う）。床そのもの（最低の広さで住める人数）。"""
+    return floor_of(defs, f)
 
 
 def housing_capacity(defs: Defs, f: Facility) -> int:
@@ -781,14 +832,29 @@ def housing_capacity(defs: Defs, f: Facility) -> int:
     return nominal_housing_capacity(defs, f) * f.economy.get(HOUSING_ROOM, FULL) // FULL
 
 
-def housing_materials(defs: Defs, level: str) -> dict[str, int]:
-    """いちばん下の段階から level まで育つのに使った資材の合計（家の値打ちと手入れの量に使う）。"""
-    levels = defs.settlement_levels()
+def floor_materials(defs: Defs, low: int, high: int) -> dict[str, int]:
+    """床を low から high まで足すのに使う資材（1000 分の 1 単位）。段階ごとの資材（settlements.yaml
+    の materials）を、その段階の床の幅（上限 − 下の段階の上限）に比例して割る。いちばん下の段階は
+    low = 0 から（新しく建つ村）。端数は切り上げる。"""
     total: dict[str, int] = {}
-    for name in levels[: levels.index(level) + 1]:
+    for name, start, end in level_bounds(defs):
+        overlap = min(high, end) - max(low, start)
+        if overlap <= 0:
+            continue
         for good, qty in defs.settlements[name].get("materials", {}).items():
-            total[good] = total.get(good, 0) + qty
-    return total
+            total[good] = total.get(good, 0) + -(-qty * overlap // (end - start))
+    return {good: qty for good, qty in total.items() if qty > 0}
+
+
+def housing_materials(defs: Defs, floor: int) -> dict[str, int]:
+    """床 floor を新しく建てるのに使った資材の合計（家の値打ちと手入れの量に使う）。"""
+    return floor_materials(defs, 0, floor)
+
+
+def set_floor(defs: Defs, f: Facility, floor: int) -> None:
+    """町の延べ床を floor にし、建った段階をそれに合わせる（床が収まるいちばん下の段階）。"""
+    f.ext[FLOOR] = floor
+    f.ext["level"] = level_of_floor(defs, floor)
 
 
 def new_housing(island: IslandState, kind: str, pos: tuple[int, int], level: str) -> Facility:

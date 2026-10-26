@@ -202,10 +202,12 @@ def _one_side(distance: int | None, per_step: int, top: int) -> int:
 
 
 def household_goods(defs: Defs, config: GameConfig, island: IslandState) -> list[str]:
-    """家計が買う財（食料と消費財。電力は送電網で送る）と、町が育つのに要る資材。"""
+    """家計が買う財（食料と消費財。電力は送電網で送る）と、町の床を足すのに要る資材。"""
     power = config.get("power.good")
     goods = {g for g, d in defs.goods.items() if d.get("consumer") and g != power}
-    goods |= set(island.economy.housing.get("want", {}))
+    housing = island.economy.housing
+    goods |= set(housing.get("want", {}))
+    goods |= {g for wanted in housing.get("move", {}).values() for g in wanted}
     return sorted(goods)
 
 

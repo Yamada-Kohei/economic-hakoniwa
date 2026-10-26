@@ -28,6 +28,7 @@ from hakoniwa_core.military import PRIVATE_LOGS
 from hakoniwa_core.modules.banking import ENTRY as BANK_ENTRY
 from hakoniwa_core.modules.bonds import CUT, UNDERWRITE
 from hakoniwa_core.modules.failures import METHODS as RESOLUTION_METHODS
+from hakoniwa_core.modules.population import dwelling_status
 from hakoniwa_core.naming import facility_name
 from hakoniwa_core.orders import check_order
 from hakoniwa_core.state import (
@@ -46,7 +47,7 @@ from server.economy.models import Account, FacilityBook, Loan, MarketRecord
 from server.game import get_game
 from server.letters.services import LETTER_LOG
 from server.world import models as m
-from server.world.repository import facility_from_row, island_from_row
+from server.world.repository import facility_from_row, island_from_row, load_island
 
 
 def message(key: str, **args: Any) -> str:
@@ -201,7 +202,17 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         level = f.ext.get("level") or defs.settlement_levels()[0]
         info["level"] = level
         info["level_name"] = defs.name("settlements", level)
-        info["capacity"] = defs.settlements[level]["capacity"]
+        info["capacity"] = fac.nominal_housing_capacity(defs, f)  # 床（最低の広さで住める人数）
+        # 住まいの広さ（W-201）: 床と、住む人の1人あたりの広さ・望む広さ（㎡）
+        spec = config.get("housing.space")
+        pos = fac.position(f)
+        full = island if island.tiles and island.tiles[0] is not None else load_island(row.island)
+        here = dwelling_status(defs, config, full, {pos: f}).get(pos)
+        population = full.tile(*pos).population
+        info["floor_m2"] = info["capacity"] * spec["min"]
+        if here is not None and population > 0 and here.want > 0:
+            info["space"] = round(here.floor / population, 1)
+            info["space_wanted"] = round(here.want / population, 1)
         # 町の商店（回7）: 入っている数と、町の段階で入る数
         info["shops"] = fac.shops_at(island, fac.position(f))
         info["shop_slots"] = fac.shop_slots(defs, f)
@@ -1408,6 +1419,10 @@ SUMMARY_STATS = [
     ("subsistence", "自給農家", "人"),
     ("unemployment", "完全失業率", "%"),
     ("happiness", "幸福度", ""),
+    ("housing.floor", "町の延べ床（最低の広さで住める人数）", "人"),
+    ("housing.space", "1人あたりの住まいの広さ", "㎡"),
+    ("housing.want", "住む人が望む広さ（1人あたり）", "㎡"),
+    ("housing.investment", "住宅への投資（1ターン）", "money"),
     ("food.ratio", "食料充足率", "%"),
     ("power.capacity", "発電量", "good:electricity"),
     ("power.demand", "電力需要", "good:electricity"),

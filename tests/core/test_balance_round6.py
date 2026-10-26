@@ -383,7 +383,7 @@ def test_halting_the_settlement_currency_island_keeps_the_world_running(game, ba
     # 止めた施設は止めている間は動かない（止めた後に建ち終わった施設は動く）。やめると、売れ行きを
     # 見ながら1年ほどかけて作り戻す
     assert max(rates[: halt - 1]) == 0
-    assert max(made[-6:]) > usual * 0.3
+    assert max(made[-12:]) > usual * 0.3  # 倍 1 の小さな島は月ごとのばらつきが大きいので 1 年で見る
     assert min(gdp[1 : halt - 1]) < before
     for i in world.island_ids():
         assert world.islands[i].stats.get("population", 0) > 0
