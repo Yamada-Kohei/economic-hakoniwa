@@ -8,8 +8,14 @@
   foreign_merchant.last_turns ターンで、倍率を last_multiplier まで少しずつ上げます。
 - 品目: foreign_merchant.goods。1ターンの上限は、その財を作る標準の施設（定義の作り方のうち一番
   多く作るもの）1つの全力の産出です。
-- 買うだけで、商人に売ることはできません。代金は自国通貨で払い、島の外に出て消えます（仕訳の種類
-  merchant。お金が消える場面に数え、貿易収支では輸入に入れる）。
+- 売りの代金は自国通貨で払い、島の外に出て消えます（仕訳の種類 merchant。お金が消える場面に数え、
+  貿易収支では輸入に入れる）。
+- 商人は同じ品目を、初めの値段 × foreign_merchant.buy_multiplier の指値で買いもします（W-186 回4。
+  島の外への輸出。上限は売りと同じ）。代金は島の外から入るお金で、中央銀行の帳簿から生まれます（仕訳
+  の種類 merchant_export。貿易収支では輸出）。島の値段は、商人の買い値と売り値の間に収まりやすく
+  なります。
+- 戦争で港が封鎖された島には、封鎖の強さ（naval.blockade_share）の割合だけ少なく来ます（前のターンの
+  貿易の段が数えた値。BLOCKADE）。
 """
 
 from __future__ import annotations
@@ -19,7 +25,7 @@ from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy.prices import initial_prices
 from hakoniwa_core.state import IslandState
 from hakoniwa_core.trade import island_state
-from hakoniwa_core.units import scale_price
+from hakoniwa_core.units import BASIS, scale_price
 
 
 def active(island: IslandState, config: GameConfig, turn: int) -> bool:
@@ -48,6 +54,15 @@ def multiplier(island: IslandState, config: GameConfig, turn: int) -> float:
     return base + (settings["last_multiplier"] - base) * done
 
 
+BLOCKADE = "merchant_blockade"  # 島の貿易の状態: 封鎖で商人が来なくなる割合（1万分の1）
+
+
+def _reach(island: IslandState, qty: int) -> int:
+    """封鎖で減らした、商人が持ってくる・持ち帰る量。"""
+    share = island_state(island).get(BLOCKADE, 0)
+    return qty * max(0, BASIS - share) // BASIS
+
+
 def cap_of(defs: Defs, good: str) -> int:
     """1ターンに売る上限: その財を作る施設の作り方のうち、一番多く作るものの全力の産出。"""
     best = 0
@@ -69,7 +84,27 @@ def offers(
     for good in sorted(config.get("foreign_merchant.goods")):
         if good not in defs.goods:
             continue
-        qty = cap_of(defs, good)
+        qty = _reach(island, cap_of(defs, good))
+        if qty > 0:
+            out.append((good, qty, scale_price(base.get(good, 1), factor)))
+    return out
+
+
+def bids(
+    island: IslandState, defs: Defs, config: GameConfig, turn: int
+) -> list[tuple[str, int, int]]:
+    """このターンに商人が買う注文（財, 量, 指値）。来ていなければ空。"""
+    if not active(island, config, turn):
+        return []
+    factor = config.get("foreign_merchant").get("buy_multiplier", 0)
+    if factor <= 0:
+        return []
+    base = initial_prices(defs, config)
+    out = []
+    for good in sorted(config.get("foreign_merchant.goods")):
+        if good not in defs.goods:
+            continue
+        qty = _reach(island, cap_of(defs, good))
         if qty > 0:
             out.append((good, qty, scale_price(base.get(good, 1), factor)))
     return out

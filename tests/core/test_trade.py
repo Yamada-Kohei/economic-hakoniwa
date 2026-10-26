@@ -449,6 +449,12 @@ def test_trade_facilities_hiring_for_their_cargo_are_not_short_of_workers(game, 
                 seen = replace(f, economy={**f.economy, "handled": f.economy["handled"][:-1]})
             else:  # 商社も同じ: 雇ったときに見た前の月までの量で比べる
                 state = traders.state_of(f)
+                if len(state["volume"]) >= game.config.get("trade.entry_turns"):
+                    # 残す月の数がいっぱいなら、雇ったときに見ていた一番古い月はもう消えているので、
+                    # 雇いたい人数は比べ直せない（操業の知らせだけ見る。W-186 回4 で量が変わり、
+                    # 消えた月の量で雇いたい人数が変わる島が出た）
+                    assert f.status in ("", "cargo")
+                    continue
                 seen = replace(
                     f, economy={**f.economy, "trade": {**state, "volume": state["volume"][:-1]}}
                 )

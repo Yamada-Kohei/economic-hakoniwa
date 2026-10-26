@@ -14,7 +14,14 @@
 - 市場の段（modules/market）: 次のターンの資材を、国の倉庫にある分を先に使い、足りない分を市場で
   値幅の上端の指値で買う（運賃の率は家計と同じ）。維持の分は施設の工事より先に、新しい工事の分は
   後に注文する。
-- インフラの段（この段。町の段の後）: 整備度を表の傷みの分だけ下げ、統計を残す。
+- インフラの段（この段。町の段の後）: 整備度を表の傷みの分だけ下げ、統計を残す。役所の決まった
+  事業（W-186 回4。_auto_works）: 命令の工事がなくても、上下水道が足りずに育たない町・人が密に
+  住むのに上下水道が半分に届かない町と、施設と町のまわりの交通の整備度が
+  infrastructure.auto_works.road_level に届かないマスに、1ターンに1か所分ずつ工事を並べる。並べる
+  のは
+  公共事業費の月割りから、このターンに使った額と、並んだ工事の次のターンの見込みを引いて、その
+  1か所分の費用が残るときだけ。役所が並べた工事は、遊ぶ人が命令で並べた工事の後に進め、資材は国の
+  倉庫から使わずに市場で買う（倉庫は遊ぶ人の備え）。命令 set_public_works で止められる。
 
 資材・運賃・作業員の賃金は、施設の工事と同じく工事の部門（GDP の投資）に数えます。インフラは
 政府の資産として記帳しません。
@@ -28,19 +35,22 @@ from typing import Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, politics, stock
+from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import CONSTRUCTION, Payer, funds
 from hakoniwa_core.facilities import is_land, producible_goods
-from hakoniwa_core.geo import NEIGHBORS8
+from hakoniwa_core.geo import NEIGHBORS8, within
 from hakoniwa_core.ledger import GOV
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import IslandState, LogEntry
 from hakoniwa_core.turn.context import StageContext
-from hakoniwa_core.units import from_milli
+from hakoniwa_core.units import from_milli, money_of
 
 WORKS = "works"  # island.scratch: このターンの公共事業の計画と雇えた人手
 UPKEEP = "works_upkeep"  # island.scratch: 維持の仕事の一覧（整備度か工事の列が変わったら捨てる）
 MATERIALS = "works_materials"  # island.scratch: 種類ごとに、決まった資材（True）か代わりの資材か
+AUTO = "auto"  # economy.infra: 役所が並べた工事 [種類, x, y]（命令の工事の後に進める）
+AUTO_OFF = "auto_off"  # economy.infra: 命令 set_public_works で役所の決まった事業を止めている
 PAYER = Payer(GOV, CONSTRUCTION)
 # 新しい工事が進まないまま、このターン数続いたらわけをログで知らせる（その後は進むまで出さない）
 STALL_TURNS = 2
@@ -159,14 +169,20 @@ class Works:
         cache[ahead] = [self.cost(i) for i in items]
         return cache[ahead]
 
-    def build(self, ahead: bool = False) -> list[Item]:
-        """新しい工事の仕事（工事の列の順）。
+    def build(self, ahead: bool = False, ordered_only: bool = False) -> list[Item]:
+        """新しい工事の仕事（工事の列の順。役所が並べた工事は、命令で並べた工事の後）。
 
         ahead なら、次のターンの分（このターンの終わりの傷みを足した分）を見積もる。傷みの分を
         買い足さないと、仕上がりの近いマスが毎ターン傷みの分だけ足りずに 100% に届かない。
+        ordered_only なら、命令で並べた工事だけ。
         """
         items = []
-        for kind, x, y in infra.queue(self.island):
+        auto = {tuple(e) for e in works_state(self.island).get(AUTO, [])}
+        queue = infra.queue(self.island)
+        ordered = [e for e in queue if tuple(e) not in auto]
+        if not ordered_only:
+            ordered += [e for e in queue if tuple(e) in auto]
+        for kind, x, y in ordered:
             if kind not in self.defs.infrastructure:
                 continue
             now = infra.level(self.island.tile(x, y), kind)
@@ -367,6 +383,7 @@ def progress(island: IslandState, ctx: StageContext) -> None:
         for k, x, y in queue
         if k in ctx.defs.infrastructure and infra.level(island.tile(x, y), k) < infra.FULL
     ]
+    _forget_auto(island)
     forget_upkeep(island)
     _watch(island, state, bool(queue), built > 0)
     if done_any:
@@ -398,10 +415,12 @@ def _watch(island: IslandState, state: dict[str, Any], waiting: bool, moved: boo
 # --- 市場の段から -------------------------------------------------------------------
 
 
-def wants(island: IslandState, ctx: StageContext, upkeep: bool) -> dict[str, int]:
+def wants(
+    island: IslandState, ctx: StageContext, upkeep: bool, ordered_only: bool = False
+) -> dict[str, int]:
     """次のターンの維持（upkeep）か新しい工事に要る資材のうち、手元にない分（国の倉庫から使う前）。
 
-    手元の工事の資材は、維持の分に先に充てる。
+    手元の工事の資材は、維持の分に先に充てる。ordered_only なら、新しい工事は命令で並べた分だけ。
     """
     if not island.has_economy:
         return {}
@@ -412,7 +431,8 @@ def wants(island: IslandState, ctx: StageContext, upkeep: bool) -> dict[str, int
             for good, qty in item.materials.items():
                 have[good] = have.get(good, 0) - qty
     need: dict[str, int] = {}
-    for item in works.upkeep(ahead=True) if upkeep else works.build(ahead=True):
+    items = works.upkeep(ahead=True) if upkeep else works.build(True, ordered_only)
+    for item in items:
         for good, qty in item.materials.items():
             need[good] = need.get(good, 0) + qty
     out = {}
@@ -424,9 +444,10 @@ def wants(island: IslandState, ctx: StageContext, upkeep: bool) -> dict[str, int
 
 
 def supply_from_warehouse(island: IslandState, ctx: StageContext, upkeep: bool) -> None:
-    """次のターンの仕事に要る資材を、国の倉庫にある分から工事の資材に移す。"""
+    """次のターンの仕事に要る資材を、国の倉庫にある分から工事の資材に移す。役所が並べた工事の
+    資材は倉庫から使わない（市場で買う。倉庫は遊ぶ人の備え）。"""
     held = works_stock(island)
-    for good, qty in sorted(wants(island, ctx, upkeep).items()):
+    for good, qty in sorted(wants(island, ctx, upkeep, ordered_only=True).items()):
         stock.put_batches(held, good, stock.take_batches(island.warehouse, good, qty))
 
 
@@ -471,6 +492,148 @@ class Infrastructure(IslandStage):
         held = stock.totals(works_stock(island))
         for good, qty in held.items():
             island.stats[f"works.stock.{good}"] = from_milli(qty)
+        if island.has_economy:
+            _auto_works(island, ctx)
+        island.stats["infra.auto_queued"] = len(works_state(island).get(AUTO, []))
+
+
+# --- 役所の決まった事業（W-186 回4） ---------------------------------------------------
+
+
+def _forget_auto(island: IslandState) -> None:
+    """仕上がって列から外れた工事を、役所が並べた工事の一覧からも外す。"""
+    state = works_state(island)
+    if AUTO not in state:
+        return
+    queue = {tuple(e) for e in infra.queue(island)}
+    state[AUTO] = [e for e in state[AUTO] if tuple(e) in queue]
+    if not state[AUTO]:
+        del state[AUTO]
+
+
+def materials_waited(island: IslandState, goods: set[str]) -> bool:
+    """goods のどれかを待っている施設の工事か、資材を待っているインフラの工事があるか。"""
+    if any(not f.built and goods & set(f.ext.get("waiting", ())) for f in island.facilities):
+        return True
+    works = island.economy.infra
+    return works.get("why") == "materials" and works.get("stalled", 0) > 0
+
+
+def road_tiles(
+    island: IslandState, defs: Defs, config: GameConfig, pos: tuple[int, int]
+) -> list[tuple[int, int]]:
+    """pos とその周りの陸のマスのうち、交通の整備度が infrastructure.auto_works.road_level に
+    届かず、まだ並んでいないマス。同じ資材を待っている工事があるあいだは空（道路の石材と建材を、施設の
+    工事に回す）。"""
+    kinds = defs.infra_kinds("transport")
+    if not kinds:
+        return []
+    goods = {
+        good
+        for kind in kinds
+        for key in ("materials", "fallback")
+        for good in defs.infrastructure[kind].get(key, {})
+    }
+    if materials_waited(island, goods):
+        return []
+    level = round(config.get("infrastructure.auto_works.road_level") * infra.FULL)
+    tiles = []
+    for x, y in within(island, pos, 1):
+        tile = island.tile(x, y)
+        if not is_land(defs, tile.terrain) or infra.transport(defs, tile) >= level:
+            continue
+        if not infra.queued(island, kinds[0], x, y):
+            tiles.append((x, y))
+    return tiles
+
+
+def water_tiles(island: IslandState, defs: Defs, config: GameConfig) -> list[tuple[int, int]]:
+    """上下水道が足りずに育たない町（印 water_short）のマスと、人が密に住むのに上下水道が半分に
+    届かない町（人数が population.deaths.crowd の半分以上。汚れた水から病気が広がり、亡くなる人が
+    増える。回4）のマスのうち、まだ並んでいないマス（y, x の順）。"""
+    kinds = defs.infra_kinds("water")
+    if not kinds:
+        return []
+    housing = fac.housing_kind(config)
+    crowded = config.get("population.deaths")["crowd"] // 2
+
+    def wanted(f) -> bool:
+        tile = island.tile(f.x, f.y)
+        water = infra.water(defs, tile)
+        if f.ext.get("water_short"):
+            return water < infra.FULL
+        return tile.population >= crowded and water < infra.FULL // 2
+
+    return [
+        (f.x, f.y)
+        for f in sorted(island.facilities, key=lambda f: (f.y, f.x))
+        if f.kind == housing and not infra.queued(island, kinds[0], f.x, f.y) and wanted(f)
+    ]
+
+
+def _cost(island: IslandState, works: Works, item: Item, wage: int) -> int:
+    """仕事 item の資材（今の島の値段）と作業員の賃金の額。"""
+    prices = island.economy.prices
+    total = item.labor * wage // 1000
+    for good, qty in item.materials.items():
+        total += money_of(prices.get(good, 1), qty)
+    return total
+
+
+def _auto_works(island: IslandState, ctx: StageContext) -> None:
+    """役所の決まった事業: 公共事業費の月割りに残りがあれば、上下水道か道路の工事を1か所分並べる。
+
+    残り = 月割り − このターンに公共事業費から使った額 − 並んだ工事の次のターンの見込み（資材は
+    今の値段、作業員はこのターンの賃金）。1か所分（その町のマスか、施設・町のまわりのマス）の
+    0% から仕上げるまでの費用の、工期で割った1ターン分が残りに収まるときだけ並べる。"""
+    state = works_state(island)
+    if state.get(AUTO_OFF):
+        return
+    cap = funds.fiscal_state(island)["caps"].get(CONSTRUCTION)
+    wage = (island.scratch.get(WORKS) or {}).get("wage", 0)
+    if not cap or wage <= 0:
+        return
+    defs, config = ctx.defs, ctx.config
+    works = Works(island, ctx)
+    used = funds.fiscal_state(island)["used"].get(CONSTRUCTION, 0)
+    ahead = works.upkeep(ahead=True) + works.build(ahead=True)
+    room = cap - used - sum(_cost(island, works, i, wage) for i in ahead)
+    if room <= 0:
+        return
+    sites: list[tuple[str, list[tuple[int, int]]]] = []
+    water = defs.infra_kinds("water")
+    if water:
+        sites += [(water[0], [pos]) for pos in water_tiles(island, defs, config)]
+    roads = defs.infra_kinds("transport")
+    if roads:  # 施設と町のまわり（y, x の順に、引くマスの残る最初の1か所）
+        places = sorted(
+            {(f.x, f.y) for f in island.facilities if fac.on_map(f) and f.built},
+            key=lambda p: (p[1], p[0]),
+        )
+        for pos in places:
+            tiles = road_tiles(island, defs, config, pos)
+            if tiles:
+                sites.append((roads[0], tiles))
+                break
+    for kind, tiles in sites:
+        monthly = 0
+        for x, y in tiles:
+            left = infra.FULL - infra.level(island.tile(x, y), kind)
+            whole = works.cost(Item(kind, x, y, left, False))
+            monthly += _cost(island, works, whole, wage) * works.step(kind) // infra.FULL
+        if monthly > room:
+            continue
+        count = infra.enqueue(island, kind, tiles)
+        if count:
+            state.setdefault(AUTO, []).extend(
+                [kind, x, y] for x, y in tiles if [kind, x, y] not in state.get(AUTO, [])
+            )
+            forget_upkeep(island)
+            from hakoniwa_core.economy import freight
+
+            freight.forget_paths(island)
+            island.log.append(LogEntry("public_works_auto", {"infra": kind, "count": count}))
+        return
 
 
 # --- 命令 -------------------------------------------------------------------------
@@ -524,8 +687,20 @@ def lay(island: IslandState, defs: Defs, kind: str, tiles: list[tuple[int, int]]
     return count
 
 
+def set_public_works(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
+    """役所の決まった事業を始める・止める（止めても、もう並べた工事はそのまま進める）。"""
+    state = works_state(island)
+    if payload["auto"]:
+        state.pop(AUTO_OFF, None)
+        island.log.append(LogEntry("public_works_on", {}))
+    else:
+        state[AUTO_OFF] = True
+        island.log.append(LogEntry("public_works_off", {}))
+
+
 def register(registry: Registry) -> None:
     registry.add_stage(Infrastructure())
+    registry.add_order(OrderHandler("set_public_works", execute=set_public_works))
     registry.add_order(
         OrderHandler(
             "build_infrastructure",

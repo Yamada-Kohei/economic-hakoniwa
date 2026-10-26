@@ -50,8 +50,8 @@
 て、民営の工事が待っている量か1つの工事に要る量まで売りに出します（国の倉庫の物は、売りに出さなけれ
 ば民間は買えないので）。民営の工事が待っていなければ、OFFER_TURNS + 1 ターンに一度にします。
 建てた施設は、陸地を通る一番短い送電線で送電網につなぎ、施設のマスと周りの陸のマスのうち交通の
-整備度が ROAD_LEVEL に届かないマスに道路を引きます（フェーズ2-3。インフラの係数を 1 以上にする。
-同じ資材を待っている工事があるあいだは引きません）。
+整備度が infrastructure.auto_works.road_level に届かないマスに道路を引きます（フェーズ2-3。インフラ
+の係数を 1 以上にする。同じ資材を待っている工事があるあいだは引きません）。
 上下水道が足りずに育たない町があれば、そのマスに上下水道を引きます。
 
 貿易（フェーズ3-1）: plan_trade が世界を見て、北と南に1つずつ誰でも入れる貿易圏を作り、貿易の
@@ -88,7 +88,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, ledger, nature, scale, stock, trade
+from hakoniwa_core import ledger, nature, scale, stock, trade
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
@@ -96,6 +96,7 @@ from hakoniwa_core.defs.kinds import AUTOMATED
 from hakoniwa_core.economy import arrears, equipment, needs, services
 from hakoniwa_core.economy.prices import initial_prices, unit_cost
 from hakoniwa_core.geo import components, distance, shortest_path, within
+from hakoniwa_core.modules import infrastructure as public_works
 from hakoniwa_core.modules.firms import private_allowed
 from hakoniwa_core.modules.market import MERCHANT
 from hakoniwa_core.state import (
@@ -162,7 +163,6 @@ EDUCATION_MARGIN = 1.3  # 教育費を、学校と大学を全力で動かす年
 # 標準の計画が水力発電所を建てるのは、見込める出力が全力のこの割合以上の場所だけ。それより水の少ない
 # 場所は、建てられても（施設の定義の min）割に合わないので、火力発電所に回す（W-148）
 WATER_MIN = 0.6
-ROAD_LEVEL = 0.6  # 新しい施設の周りに、交通の整備度がこれに届かないマスがあれば道路を引く
 # 治安と国防（段6 A2）
 SECURITY_FROM = 24  # 警察署を建て始めるターン（食料・電力・資材の施設が先）
 SECURITY_MARGIN = 1.3  # 治安費を、警察署を全力で動かす年の費用のこの倍にする
@@ -234,7 +234,7 @@ def _plan_rest(
     line = _power_line(island, defs, pos)
     if line:
         orders.append(("build_power_line", {"tiles": [list(p) for p in line[:64]]}))
-    road = _road_order(island, defs, pos)
+    road = _road_order(island, defs, config, pos)
     if road is not None:
         orders.append(road)
     return orders
@@ -1091,18 +1091,10 @@ def _build_or_supply(
     if lacking:
         for good in lacking:
             yield from _producers(defs, config, island, good)
-    elif not _materials_waited(island, _materials_of(defs, kind)) and _in_hand(
+    elif not public_works.materials_waited(island, _materials_of(defs, kind)) and _in_hand(
         island, defs, kind, keep
     ):
         yield (kind, "default")
-
-
-def _materials_waited(island: IslandState, goods: set[str]) -> bool:
-    """goods のどれかを待っている施設の工事か、資材を待っているインフラの工事があるか。"""
-    if any(not f.built and goods & set(f.ext.get("waiting", ())) for f in island.facilities):
-        return True
-    works = island.economy.infra
-    return works.get("why") == "materials" and works.get("stalled", 0) > 0
 
 
 def _materials_of(defs: Defs, kind: str) -> set[str]:
@@ -1131,60 +1123,30 @@ def _in_hand(
 # --- インフラ ---------------------------------------------------------------------
 
 
-def _road_order(island: IslandState, defs: Defs, pos: tuple[int, int]) -> tuple[str, dict] | None:
-    """pos とその周りの陸のマスのうち、交通の整備度が ROAD_LEVEL に届かないマスに道路を引く。
-
-    同じ資材を待っている工事があるあいだは引かない（道路の石材と建材を、施設の工事に回す）。
-    """
+def _road_order(
+    island: IslandState, defs: Defs, config: GameConfig, pos: tuple[int, int]
+) -> tuple[str, dict] | None:
+    """pos とその周りの陸のマスのうち、交通の整備度が届かないマスに道路を引く（選び方は役所の
+    決まった事業と同じ。modules/infrastructure.road_tiles）。"""
     kinds = defs.infra_kinds("transport")
     if not kinds or not island.has_economy:
         return None
-    goods = {
-        good
-        for kind in kinds
-        for key in ("materials", "fallback")
-        for good in defs.infrastructure[kind].get(key, {})
-    }
-    if _materials_waited(island, goods):
-        return None
-    level = round(ROAD_LEVEL * infra.FULL)
-    tiles = []
-    for x, y in within(island, pos, 1):
-        tile = island.tile(x, y)
-        if not fac.is_land(defs, tile.terrain) or infra.transport(defs, tile) >= level:
-            continue
-        if not infra.queued(island, kinds[0], x, y):
-            tiles.append([x, y])
+    tiles = public_works.road_tiles(island, defs, config, pos)
     if not tiles:
         return None
-    return ("build_infrastructure", {"kind": kinds[0], "tiles": tiles})
+    return ("build_infrastructure", {"kind": kinds[0], "tiles": [list(t) for t in tiles]})
 
 
 def _water_order(island: IslandState, defs: Defs, config: GameConfig) -> tuple[str, dict] | None:
-    """上下水道が足りずに育たない町（印 water_short）のマスと、人が密に住むのに上下水道が半分に
-    届かない町（人数が population.deaths.crowd の半分以上。汚れた水から病気が広がり、亡くなる人が
-    増える。回4）のマスに、上下水道を引く。"""
+    """上下水道の足りない町のマスに、上下水道を引く（選び方は役所の決まった事業と同じ。
+    modules/infrastructure.water_tiles）。"""
     kinds = defs.infra_kinds("water")
     if not kinds or not island.has_economy:
         return None
-    housing = fac.housing_kind(config)
-    crowded = config.get("population.deaths")["crowd"] // 2
-
-    def wanted(f) -> bool:
-        tile = island.tile(f.x, f.y)
-        water = infra.water(defs, tile)
-        if f.ext.get("water_short"):
-            return water < infra.FULL
-        return tile.population >= crowded and water < infra.FULL // 2
-
-    tiles = [
-        [f.x, f.y]
-        for f in sorted(island.facilities, key=lambda f: (f.y, f.x))
-        if f.kind == housing and not infra.queued(island, kinds[0], f.x, f.y) and wanted(f)
-    ]
+    tiles = public_works.water_tiles(island, defs, config)
     if not tiles:
         return None
-    return ("build_infrastructure", {"kind": kinds[0], "tiles": tiles[:64]})
+    return ("build_infrastructure", {"kind": kinds[0], "tiles": [list(t) for t in tiles[:64]]})
 
 
 # --- 工業団地 ---------------------------------------------------------------------

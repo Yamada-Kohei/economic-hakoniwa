@@ -59,6 +59,8 @@ TRADE_STATS = [
     "trade.balance",
     "trade.merchant",
     "trade.merchant_gap",  # 計画経済の国で、海外の商人の値段と公定価格の差を政府が払った分
+    "trade.merchant_sold",  # 海外の商人に売った額（W-186 回4）
+    "trade.merchant_premium",  # 計画経済の国で、商人の買い値と公定価格の差を政府が受け取った分
     "ships",
     "ships.busy",
     "freight.ship_rate",
@@ -79,6 +81,7 @@ FX_STATS = [
     "trade.balance",
     "trade.merchant",
     "trade.merchant_gap",
+    "trade.merchant_sold",
     "fx.holdings",
     "money.nonresident",
     "fx.reserves",
@@ -703,8 +706,9 @@ def shipment_rows(
 
 
 def merchant_view(here: IslandState, turn: int) -> dict[str, Any]:
-    """海外の商人: 次のターンに来るか、あと何ターン来るか、値段の倍率と、売る物（財・1ターンの上限・
-    値段と島の値段）。turn は世界の今のターン（商人は次のターンの市場で売る）。"""
+    """海外の商人: 次のターンに来るか、あと何ターン来るか、値段の倍率と、売り買いする物（財・1ターンの
+    上限・売る値段・買う値段と島の値段）。turn は世界の今のターン（商人は次のターンの市場で売り買い
+    する）。"""
     game = get_game()
     defs, config = game.defs, game.config
     settings = config.get("foreign_merchant")
@@ -712,6 +716,7 @@ def merchant_view(here: IslandState, turn: int) -> dict[str, Any]:
     left = merchant.turns_left(here, config, coming)
     since = here.ext.get(KEY, {}).get("merchant_from")
     prices = here.economy.prices
+    bids = {good: price for good, _, price in merchant.bids(here, defs, config, coming)}
     return {
         "enabled": bool(settings.get("enabled")),
         "active": merchant.active(here, config, coming),
@@ -723,6 +728,8 @@ def merchant_view(here: IslandState, turn: int) -> dict[str, Any]:
         "rising": 0 < left <= settings["last_turns"],
         "multiplier": round(merchant.multiplier(here, config, coming), 2),
         "last_multiplier": settings["last_multiplier"],
+        "buy_multiplier": settings.get("buy_multiplier", 0),
+        "blockaded": bool(here.ext.get(KEY, {}).get(merchant.BLOCKADE)),
         "goods": [
             {
                 "good": good,
@@ -730,6 +737,7 @@ def merchant_view(here: IslandState, turn: int) -> dict[str, Any]:
                 "unit": defs.unit_name(good),
                 "quantity": _amount(good, qty),  # 1ターンの上限
                 "price": display.price(good, price),
+                "buy_price": display.price(good, bids[good]) if good in bids else None,
                 "home_price": _price_or_none(good, prices.get(good)),
             }
             for good, qty, price in merchant.offers(here, defs, config, coming)

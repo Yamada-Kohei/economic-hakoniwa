@@ -56,6 +56,7 @@ from hakoniwa_core.trade import (
     currency_label,
     is_trader,
     island_state,
+    merchant,
     next_id,
     one_way_turns,
     policy,
@@ -218,6 +219,20 @@ class _Round:
         blocs.settle_leaves(self.world)
         contracts.close(self.world, self.turn)
         self._close(bloc_unmet, bloc_sellers)
+        self._merchant_blockade()
+
+    def _merchant_blockade(self) -> None:
+        """港が封鎖された島に、次のターンに海外の商人が来なくなる割合（W-186 回4。封鎖の強さと
+        同じ）。"""
+        groups = naval.blockades(self.world, self.defs, self.config, self.turn)
+        for i in self.ids:
+            island = self.world.islands[i]
+            ships_ = sum(groups.get((island.wx, island.wy), {}).values())
+            state = island_state(island)
+            if ships_ > 0:
+                state[merchant.BLOCKADE] = to_basis(naval.blockade_share(self.config, ships_))
+            else:
+                state.pop(merchant.BLOCKADE, None)
 
     # --- 0. 海での襲撃と封鎖（フェーズ4-3 の②。MI-33・MI-34・MI-48・MI-56） ----------------
 
@@ -1436,6 +1451,7 @@ class _Round:
         stats["fx.swap.borrowed"] = swap.debt_value(island)  # 融通で借りている額（自国通貨）
         stats["fx.swap.lent"] = swap.claims_value(island, foreign_only=False)
         stats.setdefault("trade.merchant", 0)
+        stats.setdefault("trade.merchant_sold", 0)
         abroad.keep_rates(island)  # 外国の国債の求める利回りに使う値下がりの率（フェーズ3-3）
 
 

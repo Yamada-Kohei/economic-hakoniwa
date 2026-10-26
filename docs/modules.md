@@ -43,7 +43,7 @@
 | `housing` | `population` | 働き口の近くに町を作り、人が増えた町を育てる（資材は市場で買う。都市と大都市は上下水道が要る） |
 | `migration` | `migration`（全島の段。バランス調整の回3） | 国をまたぐ移民。暮らしの見込み（実質賃金 × 仕事の見つかる割合 × 食べられた割合）の差から移りたい人を出し、行き先の受け入れの政策と上限・町の空き、元の島の出国の政策と国境の見張りで絞って、預金を持たせて移す（資本取引を禁止した島からは持ち出せない）。良くなった元の島へ帰る人、移った人の仕送り（国際収支の移転）、出たいのに出られない人（政情の出来事の補正）も受け持つ |
 | `politics` | `politics`（フェーズ3-4） | 政情を目標（式 `stability`）に近づけ、段階（落ち着き・デモ・暴動・反乱の前触れ）を決める。暴動で都市の施設を止め・まれに壊す（警察で減る）。支持率と選挙、報道の統制でたまった不満、体制を変えた後の混乱期間と首都の建物の建て替え（`hakoniwa_core/politics.py`） |
-| `infrastructure` | `infrastructure` | インフラの整備度を傷みの分だけ下げ、統計を残す |
+| `infrastructure` | `infrastructure` | インフラの整備度を傷みの分だけ下げ、統計を残す。役所の決まった事業（公共事業費の残りで上下水道と道路の工事を並べる） |
 | `education` | `education` | 教育水準（働き手のうち学校で学んだ人の割合）を、学校に通えた子どもが働き手に加わる分と引退する分だけ入れ替え（回3。上がるのも下がるのも同じ速さ）、大学で技術者を育て、技術者の引退を進める |
 | `events` | `events` | まれな災害で施設をしばらく止める |
 | `records` | `records` | 物価指数・GDP・貿易収支・国際収支などの統計を残し、帳簿の確かめ（合わなければその場で止める） |
@@ -58,7 +58,7 @@
 | `basics` | `rename_island`・`rename_place`・`rename_facility`（名前の変更） |
 | `construction` | `build`・`demolish`（建設・取り壊し） |
 | `land` | `build_power_line`・`set_no_development`（送電網の工事・開発禁止） |
-| `infrastructure` | `build_infrastructure`（インフラの工事を列に並べる） |
+| `infrastructure` | `build_infrastructure`（インフラの工事を列に並べる）・`set_public_works`（役所の決まった事業を始める・止める） |
 | `fiscal` | `set_taxes`（税率）・`set_budget`（年の予算） |
 | `labor` | `set_labor_policy`（失業手当・最低賃金） |
 | `accounts` | `set_accounting`（国営施設の会計の形） |

@@ -143,6 +143,11 @@ _EXTRA_STATS = [
         "海外の商人から買った額（政府が払った公定価格との差を含む。1ターン）",
         "money",
     ),
+    (
+        "trade.merchant_sold",
+        "海外の商人に売った額（政府が受け取った公定価格との差を含む。1ターン）",
+        "money",
+    ),
     ("trade.unpaid", "お金が足りず払えなかった運賃と港の使用料", "money"),
     ("ships", "輸送船", " 隻"),
     ("ships.busy", "航海に出ている輸送船", " 隻"),
@@ -170,6 +175,7 @@ _EXTRA_STATS = [
     ("bop.liabilities.bonds", "金融収支・外国が持つ自国の国債の増加（負債）", "money"),
     ("bop.liabilities.swaps", "金融収支・中央銀行が融通で借りた外貨の増加（負債）", "money"),
     ("bop.liabilities.merchant", "金融収支・海外の商人に払った額（負債）", "money"),
+    ("bop.assets.merchant", "金融収支・海外の商人から受け取った額（資産）", "money"),
     ("fx.reserves", "外貨準備（政府と中央銀行の外貨と外国の国債、融通で貸した外貨）", "money"),
     ("fx.swap.borrowed", "中央銀行が融通で借りている額（自国通貨に直す）", "money"),
     ("fx.swap.lent", "中央銀行が融通で貸している額（自国通貨に直す）", "money"),
@@ -206,6 +212,7 @@ _EXTRA_STATS = [
     ("plan.subsidy", "据え置きの補助金（帳簿の上の額。国庫直轄の分も。1ターン）", "money"),
     ("plan.subsidy_unpaid", "国庫が足りず払えなかった据え置きの補助金", "money"),
     ("trade.merchant_gap", "海外の商人に政府が払った、公定価格との差（1ターン）", "money"),
+    ("trade.merchant_premium", "海外の商人から政府が受け取った、公定価格との差（1ターン）", "money"),
     ("cars.households", "家計が持つ自動車", " 台"),
     # サービスの仕事と人口の増え方（バランス調整の回4）
     ("services.workers", "商業・サービス業就業者数", "人"),

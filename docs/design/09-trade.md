@@ -46,7 +46,7 @@
 | FX-24 | 売り手の国は国の倉庫から出し、足りなければ島の市場で優先して買う。足りないターンは払える分だけ履行し、不足を両方のログと契約の画面に残す（罰はない）。やめるのは命令の決めたターン数の後 | 決定 | `trade.contract_cancel_turns` | tests/core/test_trade.py::test_contract_delivers_goods_and_money |
 | FX-25 | 契約で届いた物の行き先は買い手が契約ごとに選ぶ: 市場に出す（既定。売り切れるまで島の今の値段で売る）か国の倉庫に入れるか。腐る物はどちらでもすぐ市場に出す | 決定 |  | tests/core/test_playtest5_fixes.py::test_contract_goods_go_to_the_market_by_default, tests/core/test_playtest5_fixes.py::test_contract_goods_can_stay_in_the_warehouse, tests/core/test_playtest5_fixes.py::test_only_the_buyer_chooses_where_contract_goods_go, tests/core/test_trade.py::test_perishables_arriving_in_the_warehouse_go_to_the_market |
 | FX-26 | 物の援助は値段0で相手の承諾の要らない片道の契約として船で運び、お金の援助は国庫から一度だけ送る。どちらも国際収支の移転に入れる。禁輸している相手には送れない | 決定 |  | tests/core/test_phase3_3.py::test_goods_aid_ships_goods_for_free, tests/core/test_phase3_3.py::test_money_aid_is_a_transfer_in_both_balances, tests/core/test_phase3_3.py::test_aid_to_an_embargoed_country_is_refused |
-| FX-27 | 海外の商人は、貿易の仕組みを置いたターン（建国か移し替え）から決めたターン数だけ、決まった値段と1ターンの上限で島の市場に売る（買わない）。最後の数ターンで値段を上げる。代金は島の外で消える | 仮 | `foreign_merchant.turns`, `foreign_merchant.multiplier`, `foreign_merchant.last_turns`, `foreign_merchant.last_multiplier`, `foreign_merchant.goods` | tests/core/test_trade.py::test_foreign_merchant_sells_at_the_start, tests/core/test_trade.py::test_foreign_merchant_comes_for_a_limited_time |
+| FX-27 | 海外の商人は、貿易の仕組みを置いたターン（建国か移し替え）から決めたターン数だけ、決まった値段と1ターンの上限で島の市場に売り、同じ品目を安い決まった値段で買う（FX-49）。最後の数ターンで売る値段を上げ、決めたターン数で去る（W-195。2026-10-26 本人のカードで「今のまま去る」）。売りの代金は島の外で消える | 仮 | `foreign_merchant.turns`, `foreign_merchant.multiplier`, `foreign_merchant.last_turns`, `foreign_merchant.last_multiplier`, `foreign_merchant.goods` | tests/core/test_trade.py::test_foreign_merchant_sells_at_the_start, tests/core/test_trade.py::test_foreign_merchant_comes_for_a_limited_time |
 | FX-28 | レートは「決済通貨1単位が自国通貨でいくらか」。為替の市場は「自国通貨と、その国が使う決済通貨」の組ごとに貿易の段で板寄せし、1ターンに値幅より大きく動かない。初めのレートは両方の島の平均賃金の比 | 決定 | `fx.band` | tests/core/test_trade.py::test_fx_moves_at_most_the_band_each_turn |
 | FX-29 | 注文を出すのはその島の主体: 商社（次の数ターンの輸入の分を残して売り買い）・政府（契約の支払い）・中央銀行・市中銀行。指値は輸入・輸出が引き合うレートまでの5つの段 | 決定 | `fx.keep_turns` | tests/core/test_trade.py::test_rate_moves_toward_buyers_without_sellers |
 | FX-30 | 中央銀行は受け身の注文を出す: 前のレートより安い側で市場の厚みの分を買い、高い側で持っている分を売る。厚みはこの通貨で払い・受け取った額の直近の平均（下限あり）に、このターンの契約の代金を足したもの | 決定 | `fx.depth_turns`, `fx.min_depth` | tests/core/test_trade.py::test_central_bank_buys_when_there_are_only_sellers, tests/core/test_codex_turn300_fixes.py::test_passive_fx_orders_place_the_whole_depth, tests/core/test_playtest5_fixes.py::test_fx_depth_covers_the_contracts_due_this_turn |
@@ -68,6 +68,8 @@
 | FX-46 | サーバーが島を作る（建国・サンプルの島）ときに、港と商社を置く（`founding.open_for_business`）。次の更新まで最長 4 時間、港も商社もない島ができていたため。核の建国と一括シミュレーションは今までどおり最初の更新で置く（置く時点を変えると回の測りが動くため） | 決定（W-140） |  | tests/core/test_trade.py::test_open_for_business_places_port_and_trader_at_founding, ::test_refound_moves_the_turns_of_the_trade_setup |
 | FX-47 | 倒産して差し押さえられた商社だけが残る島も、動いている商社がない島として開き直す。民営の持ち主が出資できない市場では、`trade.entry_turns` の 2 倍のターンだけ待って国営の商社を開く | 決定（W-140） | `trade.entry_turns` | tests/core/test_trade.py::test_a_foreclosed_trader_does_not_keep_the_island_without_a_trader, ::test_the_state_opens_a_trading_company_when_private_owners_cannot |
 | FX-48 | 商社が雇う人数は、直近 `trade.entry_turns` ターンの扱った重さの平均が扱える重さに占める割合 × 定義の人数。下限は定義の人数の `trade.staff_floor`（少なくとも 1 人。港の下限と同じ 2%）。荷がないまま貿易圏に入れない島の商社が、収入のないまま定義の人数の 1 割の賃金を払い続けていた（8001 の島1〜3）。取引は人数で止まらない（扱える重さの上限だけ）ので、圏に入って荷が出れば、直近の量に合わせて人が増える | 決定（W-157） | `trade.staff_floor`, `trade.entry_turns` | tests/core/test_trade.py::test_a_trader_without_cargo_keeps_only_a_caretaker_and_grows_with_its_cargo, ::test_an_island_outside_every_bloc_pays_its_trader_one_wage |
+| FX-49 | 海外の商人は売りと同じ品目を、初めの値段 × `foreign_merchant.buy_multiplier` の指値と売りと同じ1ターンの上限で買う（W-186 回4）。買うのは施設の売りから（国の倉庫と穀物の備蓄の売りは、ほかの買い手が先）。順位は商社の輸出と同じ一番下。代金は島の外から入るお金（仕訳 `merchant_export`）で、GDP と貿易収支では輸出、金融収支では資産の増加。計画経済の島では施設は公定価格を受け取り、商人の指値との差は政府が受け取る。指値が約定価格より安くて買えなかった分は、島の需要（品切れ・値上げ・作り始めの見方）に数えない | 仮 | `foreign_merchant.buy_multiplier`, `foreign_merchant.goods` | tests/core/test_recession_round4.py::test_merchant_bids_for_the_same_goods_below_the_selling_price, ::test_islands_sell_to_merchants_with_balanced_books, ::test_merchant_bids_below_the_price_are_not_island_demand |
+| FX-50 | 戦争で港が封鎖された島には、海外の商人が封鎖の強さ（`military.naval.blockade_full` 隻で全部）の割合だけ少なく来る（売りも買いも。前のターンの貿易の段が数えた値） | 仮 |  | tests/core/test_recession_round4.py::test_blockaded_port_gets_fewer_merchants |
 
 ### 仮の決まり
 
@@ -153,7 +155,14 @@
 
 - 島の市場の段に、「決まった値段・1ターンの上限つきの売り手」として加わる。港も船も為替も要らない。島に貿易の仕組みを置いたターン（建国、前のフェーズの島は移し替え。2026-10-14 決定）から `foreign_merchant.turns` ターンの間だけ来る。
 - 値段は初めの値段（定義のレシピの原価＋1割。どの島も同じ）× `foreign_merchant.multiplier`。最後の `foreign_merchant.last_turns` ターンで倍率を `foreign_merchant.last_multiplier` まで少しずつ上げる。品目は `foreign_merchant.goods`、1ターンの上限はその財を作る標準の施設1つの全力の産出。
-- 買うだけで、商人に売ることはできない。代金は自国通貨で払い、島の外に出て消える（仕訳の種類 `merchant`。お金が消える場面に数え、貿易収支では輸入、金融収支では負債の増加に入れる）。管理者は `foreign_merchant.enabled` でいつでも止められる。
+- 売りの代金は自国通貨で払い、島の外に出て消える（仕訳の種類 `merchant`。お金が消える場面に数え、貿易収支では輸入、金融収支では負債の増加に入れる）。管理者は `foreign_merchant.enabled` でいつでも止められる。
+- 商人は同じ品目を買いもする（W-186 回4。FX-49）: 初めの値段 × `foreign_merchant.buy_multiplier`（0.7）の指値で、1ターンの上限は売りと同じ。島は世界の市場とつながった小さな国で、一次産品の島の値段は、輸入の値段（世界の値段＋運賃と商人のもうけ）と輸出の値段（世界の値段−運賃と商人のもうけ）の間に収まる（値段の式に上下の限りは足さない。島の値段が商人の買い値まで下がると商人が買い、売り値まで上がると商人が売る）。品目に綿花と木材を足した。穀物は 1 ターンの上限（標準の農場 1 つの産出）が島の食べる量の半分を超え、島の食料の値段を商人が決めてしまうので入れない（上限を港や島の大きさから決める形と一緒に後で。タブ 14）。
+- 買うのは施設の売りから（約定の組み合わせで、国の倉庫と穀物の備蓄の売りは最後に回す。輸出業者は作り手から仕入れる）。順位は商社の輸出と同じ一番下（値幅の端で止まったときと、計画経済の配給の順では島の買い手が先）。買った物は島の外へ持ち出し、GDP の輸出（`trade.exports`）に入れる。代金は島の外から入るお金で、中央銀行の帳簿から生まれる（仕訳 `merchant_export`。売りの逆。BK-03）。国際収支は貿易収支の輸出と、金融収支の資産の増加（`assets.merchant`）。統計は `trade.merchant_sold`（受け取った額）。
+- 計画経済の島では、施設は公定価格を受け取り、商人の指値と公定価格の差は政府（貿易の項目）が受け取る（`trade.merchant_premium`。売りの差を政府が払う形と対の、国の貿易の独占）。公定価格が商人の指値より高い財は買わない。
+- 指値が約定価格（気配）より安くて買えなかった商人の買いは、島の需要に数えない（市場の記録・品切れと取引の止まりの見張り・計画の需要・値上げの見方・作り始めの値段の見方から外す）。指値が約定価格以上で買えなかった分は、輸出の値段まで下がった島の本当の需要なので数える。
+- 戦争で港が封鎖された島には、封鎖の強さ（`naval.blockade_share`）の割合だけ少なく来る（FX-50。貿易の段が次のターンの分を数える）。
+- 値段を為替とつなぐ形（通貨が安くなると商人の値段が上がる）は、世界の共通の値段の単位がないので入れていない（タブ 14 W-203）。
+- 120 ターン後に去る形（W-195）は残す（2026-10-26 本人のカード「今のまま去る」）。石炭の鉱山のない島は、それまでにほかの島との貿易か国営の商社で石炭を手に入れる道を作る必要がある（難しさとして残す）。
 - 公定価格のある島（計画経済。タブ 10）では、島の買い手は公定価格で払い、商人の値段との差は政府が払う（`trade.merchant_gap`）。GDP の輸入（`trade.imports`）と貿易収支（`trade.balance`）は島の買い手が払った額で数え（生産の側と合わせる）、海外の商人から買った額（`trade.merchant`）と国際収支の貿易収支は政府が払った差も含めるので、計画経済の島では海外の商人から買った額が輸入より大きくなることがある。画面の名前と説明にそう書き、差も並べて出す（試し遊び1回目で、食い違いに見えた）。
 
 ### 為替
@@ -274,3 +283,4 @@
 | 2026-10-18 | 設計書の整理で書き直した。境目の表は本文の分だけ埋めた | 3-1〜3-3 の「詰めたこと」を今の決まりとして書き直し、為替の値幅・港と船と商社の大きさは設定の名前で書いた |
 | 2026-10-25 | 建国の直後に港と商社が置かれない島があった。置くのが次の更新だったことと、倒産した商社が残って開き直しを塞いでいたことが原因（試し遊びの指摘） | サーバーが島を作る時点で置く・止まった商社は数えない・民営が出資できなければ国営で開く（FX-46・FX-47） |
 | 2026-10-25 | 貿易圏に入っていない島の商社が、取引量 0 のまま定義の人数の 1 割（5 人）の賃金を払い続け、営業利益が毎月負だった（8001 の島1〜3。試し遊びの指摘） | 雇う人数の下限を 1 割から `trade.staff_floor`（2%、少なくとも 1 人）に下げた（FX-48）。計画経済の国営の商社の赤字は仕様どおりで後回し（W-158） |
+| 2026-10-26 | 市場経済の国が建国直後から不況になる（W-186）。商人への払いが GDP の 6% 前後で、払ったお金は島の外で消え、商人は買わないので島で余った物の値段が下がり続けた（回4 の測り、6 島 × 種 1〜3、命令なし） | 商人が同じ品目を安い値段で買う形（FX-49）と封鎖（FX-50）。去る形は本人のカードで残した（W-195） |

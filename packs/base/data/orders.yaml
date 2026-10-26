@@ -164,6 +164,15 @@ set_budget:
     propertyNames: {enum: [construction, education, security, subsidies, warehouse, defense_personnel, defense_procurement]}
     additionalProperties: {type: integer, minimum: 0, description: "年の予算の額（毎ターンその12分の1まで使う）"}
 
+set_public_works:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [auto]
+    additionalProperties: false
+    properties:
+      auto: {type: boolean}                 # 役所の決まった事業（公共事業費の残りで、上下水道と道路の工事を並べる）。false で止める
+
 set_labor_policy:
   admin_cost: 1
   payload:
