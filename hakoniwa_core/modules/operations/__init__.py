@@ -538,7 +538,9 @@ def _act_fleet(ctx: StageContext, island: IslandState, fleet: dict[str, Any]) ->
     sailing = bool(order) and order["type"] == sea.SAIL
     need = sea.fuel_need(spec, fleet, ctx.config, port=sea.docked(fleet, island) and not sailing)
     have = stock.total(island.warehouse, FUEL)
+    fleet.pop("no_fuel", None)  # 軍の画面に出す印（燃料が足りず出航できなかったターンだけ）
     if sailing and have < need:
+        fleet["no_fuel"] = True
         island.log.append(LogEntry("fleet_no_fuel", {"unit": fleet["id"]}))
         return
     stock.take(island.warehouse, FUEL, min(need, have))
@@ -602,6 +604,7 @@ def _move(
     から使う。
     戦争の相手の部隊のいるマス、またはその隣のマスに入ったら、そのターンはそこで止まる。"""
     spec = ctx.defs.army[unit["kind"]]
+    unit.pop("no_fuel", None)
     loc = world.islands[army.where(unit)]
     goal = (order["x"], order["y"])
     route = army.path(loc, ctx.defs, ctx.config, (unit["x"], unit["y"]), goal)
@@ -616,6 +619,7 @@ def _move(
         if left <= 0:
             break
         if per_tile and battle._have(world, unit, FUEL) < per_tile:
+            unit["no_fuel"] = True  # 軍の画面に出す印（次に進めたときに消す）
             island.log.append(LogEntry("unit_no_fuel", {"unit": unit["id"]}))
             break
         tile = army.tile_at(loc, *step)
@@ -682,6 +686,8 @@ def check_form(island: IslandState, payload: dict[str, Any], defs: Defs) -> None
         raise OrderFailed("reason_unit_kind")
     if not island.has_economy:
         raise OrderFailed("reason_no_economy")
+    if army.barracks_at(island, defs, payload.get("x", -1), payload.get("y", -1)) <= 0:
+        raise OrderFailed("reason_no_barracks")
 
 
 def check_form_fleet(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
@@ -690,6 +696,8 @@ def check_form_fleet(island: IslandState, payload: dict[str, Any], defs: Defs) -
         raise OrderFailed("reason_fleet_kind")
     if not island.has_economy:
         raise OrderFailed("reason_no_economy")
+    if not sea.naval_bases(island, defs):
+        raise OrderFailed("reason_no_naval_base")
 
 
 ORDERS = (

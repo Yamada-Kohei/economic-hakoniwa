@@ -49,6 +49,9 @@ def test_orders_are_described():
     assert "20" in display.describe_order("recruit", {"count": 20})
     text = display.describe_order("set_defense", {"annual": 1_000_000, "personnel_share": 60})
     assert "1,000,000" in text and "60%" in text
+    # 備蓄の目標だけを変えた命令も、中身を説明に書く（W-188）
+    text = display.describe_order("set_defense", {"reserve": {"fuel": 10, "food": 30}})
+    assert "燃料" in text and "食" in text and "250" in text  # 計算の単位 → 見せる単位（倍 25）
 
 
 def test_units_and_bases_show_in_the_summary_and_the_military_api(world):
@@ -82,7 +85,7 @@ def test_units_and_bases_show_in_the_summary_and_the_military_api(world):
     tile.ext = {army.TRENCH: 1}
     tile.save()
     mine = client.get(f"/api/islands/{island.id}/military").json()["military"]
-    assert mine["units"][0]["name"] == "歩兵中隊" and mine["units"][0]["soldiers_full"] == 100
+    assert mine["units"][0]["name"] == "歩兵部隊" and mine["units"][0]["soldiers_full"] == 100
     assert [b["kind"] for b in mine["bases"]] == ["barracks"] and mine["bases"][0][
         "barracks"
     ] == 500
@@ -93,6 +96,58 @@ def test_units_and_bases_show_in_the_summary_and_the_military_api(world):
     public = Client().get(f"/api/islands/{island.id}/military").json()["military"]
     assert set(public) == {"soldiers", "budget", "civil_war", "stats_turn", "fleets", "seen_units"}
     assert row.pk
+
+
+def test_forming_units_show_what_they_lack(world):
+    """編成中の部隊に足りない兵と武器、倉庫にある量（W-191）と、燃料が足りない印（W-188）。"""
+    from hakoniwa_core.military import army
+
+    client, island = _player()
+    m.Stock.objects.create(island=island, facility=None, good="weapons", quantity=30_000)
+    w = island.world
+    w.ext = {
+        army.KEY: {
+            "seq": 2,
+            "units": [
+                {
+                    "id": 1,
+                    "owner": island.id,
+                    "kind": "infantry",
+                    "x": 1,
+                    "y": 1,
+                    "soldiers": 40,
+                    "equipment": {"weapons": 30},
+                    "status": "forming",
+                    "order": None,
+                    "no_fuel": True,
+                },
+                {
+                    "id": 2,
+                    "owner": island.id,
+                    "kind": "corvette",
+                    "x": island.wx,
+                    "y": island.wy,
+                    "soldiers": 60,
+                    "equipment": {"warship": 1},
+                    "status": "ready",
+                    "order": None,
+                    "arm": "sea",
+                    "ships": 1,
+                    "cargo": [],
+                    "no_fuel": True,
+                },
+            ],
+        }
+    }
+    w.save()
+    mine = client.get(f"/api/islands/{island.id}/military").json()["military"]
+    unit, fleet = mine["units"][0], mine["fleets"][0]
+    assert unit["missing"] == {"soldiers": 60, "equipment": {"weapons": 70}}
+    assert unit["no_fuel"] and fleet["no_fuel"] and fleet["missing"]["soldiers"] == 0
+    assert mine["formation"]["soldiers_short"] == 60
+    weapons = mine["formation"]["equipment"][0]
+    assert weapons["good"] == "weapons" and weapons["short"] == 70 and weapons["in_stock"] == 30
+    assert weapons["blocked"]
 
 
 def test_missile_bases_show_their_stock(world):

@@ -71,7 +71,11 @@ def refused(game, world, *orders):
     reasons: set[str] = set()
     for _ in range(3):
         step(game, world)
-        reasons |= {e.args["reason"] for e in island.log if e.kind == "unit_order_failed"}
+        reasons |= {
+            e.args["reason"]
+            for e in island.log
+            if e.kind in ("unit_order_failed", "order_failed")  # 命令の確かめで断られた分も
+        }
     return reasons
 
 

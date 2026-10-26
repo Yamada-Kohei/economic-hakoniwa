@@ -109,7 +109,8 @@ def test_forming_is_refused_without_a_barracks_or_room(game, world):
     order(game, world, ("form_unit", {"army": "infantry", "x": tile.x, "y": tile.y}))
     assert army.units_of(world, 1) == []
     assert any(
-        e.kind == "unit_order_failed" and e.args["reason"] == "reason_no_barracks"
+        e.kind in ("unit_order_failed", "order_failed")  # 命令の確かめで断られる
+        and e.args["reason"] == "reason_no_barracks"
         for e in island.log
     )
     base = put_barracks(island)
