@@ -104,6 +104,8 @@ sprites:
 | `housing/town` | 町 | 2 段 |
 | `housing/city` | 都市 | 4 段 |
 | `housing/metropolis` | 大都市 | 6 段 |
+| `housing/high_rise` | 高層都市 | 9 段 |
+| `housing/skyscraper` | 超高層都市 | 12 段 |
 | `capital/<政治の建物>-<元首の建物>` | 首都の官庁を、体制で決まる建物の組み合わせで描く（下の「首都の建物」） | 例 `capital/parliament-palace` |
 | `capital/<施設の sprite>` | 首都のマスにあるときの施設（任意。上の組み合わせの絵がないとき） | 例 `capital/government_office` |
 | `construction` | 工事中（任意。どの施設にも共通） | なければ白い点線の枠 |

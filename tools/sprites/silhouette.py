@@ -3419,6 +3419,58 @@ def metropolis_tiers() -> list[Prim]:
     return parts
 
 
+def dense_tower(
+    u0: float, v0: float, u1: float, v1: float, z: float, h: float, c: str
+) -> list[Prim]:
+    """大都市と同じ窓帯と、二段に細くなる屋上を持つ塔。"""
+    return [
+        *tower(u0, v0, u1, v1, z, h, c, WIN_DARK),
+        box(u0 + 0.03, v0 + 0.03, u1 - 0.03, v1 - 0.03, z + h + 0.9, 3, c, "#7e8f9a"),
+        box(u0 + 0.07, v0 + 0.07, u1 - 0.07, v1 - 0.07, z + h + 3.9, 3, c, "#7e8f9a"),
+    ]
+
+
+def high_rise() -> list[Prim]:
+    """高層都市: 奥の塔三本と、手前を埋める中層三棟。最も高い壁は大都市の1.5倍。"""
+    zb = 5.6
+    parts = [*block_ground(), box(0.08, 0.08, 0.92, 0.92, 0.6, 5, "#d8d4c8", "#b4afa2")]
+    for u0, h, c in ((0.1, 78, GLASS2), (0.38, 96, GLASS), (0.66, 70, GLASS2)):
+        parts += dense_tower(u0, 0.1, u0 + 0.24, 0.4, zb, h, c)
+    parts += mast(0.5, 0.25, zb + 102.9, 10)
+    for u0, h, c in ((0.1, 38, "#d9cfbf"), (0.38, 30, "#e3dccd"), (0.66, 44, CONCRETE)):
+        parts += [
+            *capped(u0, 0.53, u0 + 0.24, 0.89, zb, h, c, SIDE_GRAY),
+            *facade(u0, 0.53, u0 + 0.24, 0.89, zb + 2.5, zb + h - 1, 4.2, 2.6, 3, 5, WIN),
+        ]
+    return parts
+
+
+def skyscraper() -> list[Prim]:
+    """超高層都市: 奥の三本と左の一本の超高層、足元に五棟が詰まる都心。"""
+    zb = 5.6
+    parts = [*block_ground(), box(0.08, 0.08, 0.92, 0.92, 0.6, 5, "#d8d4c8", "#b4afa2")]
+    for u0, h, c in ((0.1, 108, GLASS2), (0.38, 128, GLASS), (0.66, 112, GLASS2)):
+        parts += dense_tower(u0, 0.1, u0 + 0.24, 0.34, zb, h, c)
+    parts += [
+        *mast(0.5, 0.22, zb + 134.9, 10),
+        *dense_tower(0.1, 0.38, 0.34, 0.62, zb, 86, GLASS),
+    ]
+    for u0, v0, h, c in (
+        (0.38, 0.38, 60, "#d9cfbf"),
+        (0.66, 0.38, 68, CONCRETE),
+        (0.1, 0.66, 42, "#e3dccd"),
+        (0.38, 0.66, 50, CONCRETE),
+        (0.66, 0.66, 36, "#d9cfbf"),
+    ):
+        parts += [
+            *capped(u0, v0, u0 + 0.24, v0 + 0.24, zb, h, c, SIDE_GRAY),
+            *facade(u0, v0, u0 + 0.24, v0 + 0.24, zb + 2.5, zb + h - 1, 4.2, 2.6, 3, 3, WIN),
+        ]
+    return parts
+
+
+SHAPES["housing/high_rise"] = high_rise()
+SHAPES["housing/skyscraper"] = skyscraper()
 SHAPES["housing/city"] = city_slabs()
 SHAPES["housing/metropolis"] = metropolis_twin()
 # 別の案（案 1: 窓の帯、など）はゲームで使わない。--spare で別のフォルダに書き出せる
