@@ -907,6 +907,13 @@ def _describe_military(kind: str, payload: dict[str, Any], name: str) -> str:
             parts.append(f"年 {payload['annual']:,}（兵の分 {share}%）")
         if payload.get("volunteer_wage") is not None:
             parts.append(f"志願の賃金 {payload['volunteer_wage']:g}%")
+        if payload.get("reserve"):
+            defs = get_game().defs
+            goods = "・".join(
+                f"{defs.name('goods', g) if g in defs.goods else g} {q:g}"
+                for g, q in payload["reserve"].items()
+            )
+            parts.append(f"備蓄の目標（トン）{goods}")
         return f"{name}: " + "・".join(parts)
     return ""
 

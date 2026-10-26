@@ -72,6 +72,8 @@ def brief(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str, 
         "wounded": sum(n for _, n in raw.get("wounded", [])),
         "abroad": raw.get("abroad", 0),
         "reserve": _shown_goods(raw.get("reserve")),
+        "warehouse": warehouse_goods(island),
+        "formation": formation(island),
         "purchases": purchases(raw),
         "prisoners": prisoners(raw),
         "captive": raw.get("captive", 0),
@@ -86,6 +88,50 @@ def brief(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str, 
             "civilian_dead": stats.get("military.civilian_dead", 0),
             "refugees": stats.get("military.refugees", 0),
         },
+    }
+
+
+def warehouse_goods(island: m.Island) -> dict[str, float]:
+    """国の倉庫にある軍に関わる物（兵の食べ物・弾薬・燃料と、装備の財）の在庫（見せる単位。W-191・
+    艦隊の燃料の備え）。"""
+    defs = get_game().defs
+    goods = {"food", "ammunition", "fuel"}
+    for spec in defs.army.values():
+        goods.update(spec.get("equipment", {}))
+    rows = (
+        island.stocks.filter(facility__isnull=True, good__in=goods)
+        .values("good")
+        .annotate(qty=Sum("quantity"))
+        .values_list("good", "qty")
+    )
+    return {g: display.amount(q, g) for g, q in rows}
+
+
+def formation(island: m.Island) -> dict[str, Any]:
+    """編成中の部隊・艦隊に足りないもの（兵と装備）の合計と、国の倉庫の在庫。徴兵で兵を集めても、
+    武器などの装備が倉庫になければ編成が終わらないので、画面に出す（W-191）。足りない装備は、
+    国防費の装備の分（備蓄の目標か国として買う注文）で倉庫へ買い足す。"""
+    defs = get_game().defs
+    stock = warehouse_goods(island)
+    soldiers = 0
+    short: dict[str, float] = {}
+    for u in [*units(island), *fleets(island)]:
+        soldiers += u["missing"]["soldiers"]
+        for good, qty in u["missing"]["equipment"].items():
+            short[good] = short.get(good, 0) + qty
+    return {
+        "soldiers_short": soldiers,
+        "equipment": [
+            {
+                "good": g,
+                "good_name": defs.name("goods", g),
+                "unit": defs.unit_name(g),
+                "short": q,
+                "in_stock": stock.get(g, 0),
+                "blocked": stock.get(g, 0) < q,
+            }
+            for g, q in sorted(short.items())
+        ],
     }
 
 
@@ -159,9 +205,27 @@ def units(island: m.Island) -> list[dict[str, Any]]:
                 "role": u.get("role"),  # 戦っている間: attack 攻め・defend 守り
                 "fought": u.get("fought", 0),
                 "requisition": u.get("requisition", True),
+                "no_fuel": bool(u.get("no_fuel")),  # 燃料が足りず車両が進めなかった（直近）
+                "missing": _missing(spec, u),
             }
         )
     return sorted(out, key=lambda u: u["id"])
+
+
+def _missing(spec: dict[str, Any], u: dict[str, Any]) -> dict[str, Any]:
+    """編成中の部隊・艦隊に足りない兵と装備（そろったら空。見せる単位。W-191）。"""
+    if u["status"] != army.FORMING:
+        return {"soldiers": 0, "equipment": {}}
+    size = army.size(u)
+    equipment = {}
+    for good, qty in spec.get("equipment", {}).items():
+        short = qty // QUANTITY_SCALE * size - u["equipment"].get(good, 0)
+        if short > 0:
+            equipment[good] = short
+    return {
+        "soldiers": max(0, spec.get("soldiers", 0) * size - u["soldiers"]),
+        "equipment": equipment,
+    }
 
 
 def fleets(island: m.Island) -> list[dict[str, Any]]:
@@ -192,6 +256,8 @@ def fleets(island: m.Island) -> list[dict[str, Any]]:
                 "cargo": u["cargo"],
                 "capacity": _shown_weight(spec.get("capacity", 0) * u["ships"]),
                 "goods": _shown_goods(u.get("goods")),
+                "no_fuel": bool(u.get("no_fuel")),  # 燃料が足りず出航できなかった（直近）
+                "missing": _missing(spec, u),
             }
         )
     return sorted(out, key=lambda f: f["id"])

@@ -50,6 +50,7 @@
     {% endif %}
   </dl>
   {% if mine %}
+    {% include "web/military_formation.html" %}
     {% if m.wages_late_turns %}<p class="military-warning" role="status">{% blocktranslate with turns=m.wages_late_turns %}兵の賃金が {{ turns }} ターン遅れています。士気の低下と逃亡に注意してください。{% endblocktranslate %}</p>{% endif %}
     {% if m.hungry %}<p class="military-warning" role="status">{% translate "兵の食べ物が尽きています。練度が落ち、亡くなる兵も出ます。" %}</p>{% endif %}
     {% for p in m.purchases %}{% if p.short and p.good == "food" %}<p class="military-warning" role="status">{% blocktranslate with name=p.good_name why=p.why_text %}兵の{{ name }}の買い入れが足りませんでした: {{ why }}{% endblocktranslate %}</p>{% endif %}{% endfor %}
@@ -62,6 +63,7 @@
     </tbody></table></div>
     {% if m.purchases %}
     <h3>{% translate "国として買った物（兵の食べ物・弾薬・装備）" %}</h3>
+    <p class="hint">{% translate "補給の備蓄・部隊の装備・軍艦などの買い入れは、「装備の買い入れと編成」の予算枠を分け合います。備蓄の目標を大きくすると、部隊の武器に回る分が足りなくなることがあります。実際の不足は「足りなかったわけ」で確認してください。" %}</p>
     <div class="table-scroll"><table>
       <thead><tr><th>{% translate "物" %}</th><th>{% translate "買いたかった量" %}</th><th>{% translate "買えた量" %}</th><th>{% translate "足りなかったわけ" %}</th></tr></thead>
       <tbody>
@@ -71,6 +73,7 @@
     {% endif %}
   {% endif %}
   <h3>{% translate "国防費（年の額）" %}</h3>
+  <p class="hint">{% translate "「装備の買い入れと編成」は、補給の備蓄・部隊の装備・軍艦などで共通の予算枠です。備蓄の目標を大きくすると、部隊の武器に回る分が足りなくなることがあります。" %}</p>
   <div class="table-scroll"><table><tbody>
     <tr><th>{% translate "兵の賃金と食べ物" %}</th><td>{{ m.budget.personnel }} {{ currency }}</td></tr>
     <tr><th>{% translate "装備の買い入れと編成" %}</th><td>{{ m.budget.procurement }} {{ currency }}</td></tr>
@@ -90,6 +93,7 @@
   </dl>
   <p class="military-warning">{% translate "外国の島にいる部隊は、その島の市場では食べ物を買いません。自国から船で運んだ補給と、占領したマスで取り立てた物だけが頼りです。補給が尽きると飢え、戦う力が落ち、亡くなる兵も出ます。" %}</p>
   <h3>{% translate "国の倉庫に備える目標量" %}</h3><p class="hint">{% translate "現在の在庫ではなく、国防費の装備の分で買い足す目標です。輸送船団に積んで部隊へ運びます。" %}</p><div data-table="reserve"></div>
+  <h3>{% translate "国の倉庫の現在の在庫" %}</h3><div data-table="warehouse"></div>
 </section>
 <section class="panel" id="occupation">
   <h2>{% translate "占領と捕虜" %}</h2>
