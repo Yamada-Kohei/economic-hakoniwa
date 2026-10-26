@@ -706,9 +706,9 @@ def shipment_rows(
 
 
 def merchant_view(here: IslandState, turn: int) -> dict[str, Any]:
-    """海外の商人: 次のターンに来るか、あと何ターン来るか、値段の倍率と、売り買いする物（財・1ターンの
-    上限・売る値段・買う値段と島の値段）。turn は世界の今のターン（商人は次のターンの市場で売り買い
-    する）。"""
+    """海外の商人: 次のターンに来るか、あと何ターン来るか、値段の倍率と、売り買いする物（財・
+    1ターンの上限・売る値段・買う値段と島の値段）。turn は世界の今のターン（商人は次のターンの
+    市場で売り買いする）。"""
     game = get_game()
     defs, config = game.defs, game.config
     settings = config.get("foreign_merchant")

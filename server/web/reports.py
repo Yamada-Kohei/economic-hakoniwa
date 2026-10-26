@@ -212,7 +212,11 @@ _EXTRA_STATS = [
     ("plan.subsidy", "据え置きの補助金（帳簿の上の額。国庫直轄の分も。1ターン）", "money"),
     ("plan.subsidy_unpaid", "国庫が足りず払えなかった据え置きの補助金", "money"),
     ("trade.merchant_gap", "海外の商人に政府が払った、公定価格との差（1ターン）", "money"),
-    ("trade.merchant_premium", "海外の商人から政府が受け取った、公定価格との差（1ターン）", "money"),
+    (
+        "trade.merchant_premium",
+        "海外の商人から政府が受け取った、公定価格との差（1ターン）",
+        "money",
+    ),
     ("cars.households", "家計が持つ自動車", " 台"),
     # サービスの仕事と人口の増え方（バランス調整の回4）
     ("services.workers", "商業・サービス業就業者数", "人"),
