@@ -583,21 +583,27 @@ def _cost(island: IslandState, works: Works, item: Item, wage: int) -> int:
 def _auto_works(island: IslandState, ctx: StageContext) -> None:
     """役所の決まった事業: 公共事業費の月割りに残りがあれば、上下水道か道路の工事を1か所分並べる。
 
-    残り = 月割り − このターンに公共事業費から使った額 − 並んだ工事の次のターンの見込み（資材は
-    今の値段、作業員はこのターンの賃金）。1か所分（その町のマスか、施設・町のまわりのマス）の
-    0% から仕上げるまでの費用の、工期で割った1ターン分が残りに収まるときだけ並べる。"""
+    残り = 月割り − このターンに公共事業費から使った額 − 並んだ工事と維持の次のターンの見込み
+    （作業員はこのターンの賃金、資材は工事の資材に持っていない分を今の値段で）。1か所分（その町の
+    マスか、施設・町のまわりのマス）のうち、0% から仕上げるまでの費用を工期で割った1ターン分が
+    残りに収まるマスまでを、順に並べる。"""
     state = works_state(island)
     if state.get(AUTO_OFF):
         return
     cap = funds.fiscal_state(island)["caps"].get(CONSTRUCTION)
-    wage = (island.scratch.get(WORKS) or {}).get("wage", 0)
+    wage = (island.scratch.get(WORKS) or {}).get("wage") or island.economy.average_wage
     if not cap or wage <= 0:
         return
     defs, config = ctx.defs, ctx.config
     works = Works(island, ctx)
     used = funds.fiscal_state(island)["used"].get(CONSTRUCTION, 0)
-    ahead = works.upkeep(ahead=True) + works.build(ahead=True)
-    room = cap - used - sum(_cost(island, works, i, wage) for i in ahead)
+    labor = sum(i.labor for i in works.upkeep(ahead=True) + works.build(ahead=True))
+    prices = island.economy.prices
+    buying = 0
+    for upkeep in (True, False):
+        for good, qty in wants(island, ctx, upkeep).items():
+            buying += money_of(prices.get(good, 1), qty)
+    room = cap - used - labor * wage // 1000 - buying
     if room <= 0:
         return
     sites: list[tuple[str, list[tuple[int, int]]]] = []
@@ -616,13 +622,18 @@ def _auto_works(island: IslandState, ctx: StageContext) -> None:
                 sites.append((roads[0], tiles))
                 break
     for kind, tiles in sites:
-        monthly = 0
+        picked = []
         for x, y in tiles:
             left = infra.FULL - infra.level(island.tile(x, y), kind)
             whole = works.cost(Item(kind, x, y, left, False))
-            monthly += _cost(island, works, whole, wage) * works.step(kind) // infra.FULL
-        if monthly > room:
+            monthly = _cost(island, works, whole, wage) * works.step(kind) // infra.FULL
+            if monthly > room:
+                break
+            room -= monthly
+            picked.append((x, y))
+        if not picked:
             continue
+        tiles = picked
         count = infra.enqueue(island, kind, tiles)
         if count:
             state.setdefault(AUTO, []).extend(
