@@ -13,18 +13,32 @@
     </form>
     <form class="actions military-form" data-order="set_defense">
       <h3>{% translate "国の倉庫に備える補給の目標（トン）" %}</h3>
-      <p class="hint">{% translate "3 種類の目標をまとめて指定します。0 にするとその物の買い足しをやめます。外国の島への補給は、備えた物を輸送船団に積んで運びます。" %}</p>
+      <p class="hint">{% translate "3 種類の目標をまとめて指定します。0 にすると、その目標による買い足しをやめます。編成や移動などに必要な分は別に買い入れます。外国の島への補給は、備えた物を輸送船団に積んで運びます。" %}</p>
       <label>{% translate "食べ物" %}<input name="reserve.food" type="number" min="0" step="any" value="{{ m.reserve.food|default:0 }}" required></label>
       <label>{% translate "弾薬" %}<input name="reserve.ammunition" type="number" min="0" step="any" value="{{ m.reserve.ammunition|default:0 }}" required></label>
-      <label>{% translate "燃料" %}<input name="reserve.fuel" type="number" min="0" step="any" value="{{ m.reserve.fuel|default:0 }}" required></label>
+      <label>{% translate "燃料" %}<input id="reserve-fuel" name="reserve.fuel" type="number" min="0" step="any" value="{{ m.reserve.fuel|default:0 }}" required></label>
       <button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p>
     </form>
+    {% include "web/military_formation.html" %}
     <form class="actions military-form" data-order="recruit"><h3>{% translate "志願の兵を集める" %}</h3><label>{% translate "人数" %}<input name="count" type="number" min="1" step="1" required></label><button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p></form>
+    {% include "web/military_formation.html" %}
+    <p class="hint">{% translate "徴兵した兵の食べ物は国が買って養います。食べ物を買う分は賃金より先に取り置くため、予算が足りないと賃金が遅れます。食べ物の不足や賃金の遅れは士気を下げます。" %}</p>
+    {% if m.hungry %}<p class="military-warning" role="status">{% translate "兵の食べ物が不足しています。このまま徴兵すると、さらに不足するおそれがあります。国防費の「兵の賃金と食べ物」と買い入れの結果を確認してください。" %}</p>{% else %}{% for p in m.purchases %}{% if p.good == "food" and p.short %}<p class="military-warning" role="status">{% blocktranslate with why=p.why_text %}兵の食べ物を買い切れていません（{{ why }}）。このまま徴兵すると、食べ物が足りなくなるおそれがあります。{% endblocktranslate %}</p>{% endif %}{% endfor %}{% endif %}
     <form class="actions military-form" data-order="conscript"><h3>{% translate "徴兵" %}</h3><p class="hint">{% translate "民主主義では議会の過半数が要ります。徴兵の命令は他の国にも見えます。働き手が減り、支持率も下がります。" %}</p><label>{% translate "人数" %}<input name="count" type="number" min="1" step="1" required></label><button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p></form>
     <form class="actions military-form" data-order="discharge"><h3>{% translate "除隊" %}</h3><label>{% translate "人数" %}<input name="count" type="number" min="1" step="1" required></label><button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p></form>
   </details>
   <details><summary>{% translate "部隊と艦隊の編成" %}</summary>
+    {% include "web/military_formation.html" %}
+    <p class="military-warning" data-base-warning="barracks" hidden>{% translate "兵舎がありません。建ち終わった兵舎が必要です。" %}</p>
     <form class="actions military-form" data-order="form_unit"><h3>{% translate "部隊の編成" %}</h3><label>{% translate "種類" %}<select name="army" data-arm="land" required></select></label><label>{% translate "兵舎のマス" %}<select name="cell" required>{% for b in m.bases %}{% if b.barracks %}<option value="{{ b.x }},{{ b.y }}">({{ b.x }}, {{ b.y }})</option>{% endif %}{% endfor %}</select></label><button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p></form>
+    <ol class="hint">
+      <li>{% translate "建ち終わった軍港を用意します。" %}</li>
+      <li>{% translate "志願か徴兵で乗員を集め、国の倉庫に軍艦を用意します。造船所を動かすには、国が買い注文を出します。貿易の「倉庫の売り買い」で必要な種類の艦を買えます。編成中に足りない艦も、国防費の装備の分で買い集めます。" %}</li>
+      <li>{% translate "種類と整数の隻数で編成を命令します。艦ごとに必要な乗員と装備がそろうと艦隊になります。輸送船団には輸送船を使います。" %}</li>
+      <li>{% translate "航海には燃料が要ります。国防費の「国の倉庫に備える補給の目標」で燃料を備えてください。" %}</li>
+    </ol>
+    {% include "web/military_formation.html" %}
+    <p class="military-warning" data-base-warning="naval_base" hidden>{% translate "軍港がありません。建ち終わった軍港が必要です。" %}</p>
     <form class="actions military-form" data-order="form_fleet"><h3>{% translate "艦隊の編成" %}</h3><label>{% translate "種類" %}<select name="army" data-arm="sea" required></select></label><label>{% translate "艦の数" %}<input name="ships" type="number" min="1" step="1" required></label><button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p></form>
   </details>
   <details><summary>{% translate "部隊への命令" %}</summary><div id="unit-commands"></div></details>

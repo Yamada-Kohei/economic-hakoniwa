@@ -1,0 +1,5 @@
+{% load i18n %}
+{% if m.formation.soldiers_short %}<p class="military-warning" role="status">{% blocktranslate with count=m.formation.soldiers_short %}編成中の部隊・艦隊には兵があと {{ count }} 人必要です。志願か徴兵で集めます。兵が集まっても、装備がそろうまでは編成が終わりません。{% endblocktranslate %}</p>{% endif %}
+{% for item in m.formation.equipment %}{% if item.blocked %}
+<p class="military-warning" role="status">{% blocktranslate with name=item.good_name short=item.short stock=item.in_stock unit=item.unit %}編成には {{ name }} があと {{ short }} {{ unit }} 必要ですが、倉庫には {{ stock }} {{ unit }} しかなく、編成できません。国防費の装備の分で買い足されます。予算と市場の売り手も確認してください。{% endblocktranslate %}</p>
+{% endif %}{% endfor %}

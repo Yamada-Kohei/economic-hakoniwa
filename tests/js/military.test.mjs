@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   payloadOf, landAt, loadableUnits, transports, armyOptions, transportForms,
-  appendOrder, orderText, equipmentText, percent,
+  appendOrder, orderText, equipmentText, missingText, statusCell, table, percent,
   fleetDutyForm, bindOrderForms,
 } from "../../server/static/js/military/common.js";
 import { MilitaryTile } from "../../server/static/js/island/military.js";
@@ -35,6 +35,23 @@ const military = {
     { id: 12, docked: true, capacity: 0, cargo: [] },
   ],
 };
+
+test("編成の不足は兵と財ごとの表示単位で出し、編成済みには残さない", () => {
+  const defs = { goods: { weapons: { name: "武器", unit: "挺" }, warship: { name: "軍艦", unit: "隻" } } };
+  const unit = { status: "forming", missing: { soldiers: 60, equipment: { weapons: 70, warship: 1 } } };
+  assert.equal(missingText(unit, defs), "missingSoldiers: 60、武器: 70 挺、軍艦: 1 隻");
+  assert.equal(missingText({ ...unit, status: "ready" }, defs), "none");
+  assert.equal(missingText({ status: "forming", missing: { soldiers: 0, equipment: {} } }, defs), "none");
+  assert.doesNotMatch(table(["不足"], [[missingText({ status: "forming", missing: { equipment: { "<script>": 1 } } }, {})]]), /<script>/);
+});
+
+test("燃料不足の行だけに目標へのリンクを出し、状態は HTML として解釈しない", () => {
+  assert.doesNotMatch(statusCell({ status: "ready", no_fuel: false }).html, /reserve-fuel/);
+  const cell = statusCell({ status: "<img src=x>", no_fuel: true });
+  assert.match(cell.html, /href="#reserve-fuel" data-open-fuel/);
+  assert.match(cell.html, /noFuelHint/);
+  assert.doesNotMatch(cell.html, /<img/);
+});
 
 test("補給・取り立て・務め・体制・核の指定を API の型で作り、0 と false を保つ", () => {
   assert.deepEqual(payloadOf([["reserve.food", "0"], ["reserve.ammunition", "1.5"], ["reserve.fuel", "2"]]),
@@ -471,6 +488,53 @@ test("世界マップで選ぶ間だけ島への遷移を止め、海の座標�
     assert.equal(restored.prevented, false);
   } finally {
     globalThis.document = oldDocument;
+  }
+});
+
+test("軍画面は編成の不足・倉庫・基地の有無を表示し、燃料リンクから閉じた入力欄を開く", async () => {
+  const oldDocument = globalThis.document;
+  const oldFetch = globalThis.fetch;
+  const slots = Object.fromEntries(["units", "fleets", "warehouse"].map(k => [k, { innerHTML: "" }]));
+  const warnings = ["barracks", "naval_base"].map(k => ({ dataset: { baseWarning: k }, hidden: true }));
+  const handlers = {};
+  const details = { tagName: "DETAILS", open: false, parentElement: null };
+  let focused = false;
+  const fuel = { parentElement: details, focus() { focused = true; } };
+  const data = { bases: [{ barracks: 100 }], warehouse: { fuel: 0.5 }, units: [
+    { id: 1, army: "infantry", status: "forming", soldiers: 0, soldiers_full: 60,
+      missing: { soldiers: 60, equipment: { weapons: 70 } }, no_fuel: true },
+  ], fleets: [
+    { id: 2, army: "corvette", ships: 1, soldiers: 0, soldiers_full: 60, status: "forming",
+      missing: { soldiers: 60, equipment: { warship: 1 } }, no_fuel: true, capacity: 0, cargo: [] },
+  ] };
+  const root = {
+    dataset: { defs: "/defs", map: "/island/1/" },
+    addEventListener: (event, handler) => { handlers[event] = handler; },
+    querySelectorAll: s => s === "[data-base-warning]" ? warnings : [],
+    querySelector: s => slots[s.match(/data-table="([^"]+)"/)?.[1]] || null,
+    prepend() { assert.fail("描画が失敗した"); },
+  };
+  globalThis.document = { getElementById: id => ({
+    "military-page": root, "military-text": { dataset: labels }, "reserve-fuel": fuel,
+    "military-data": { textContent: JSON.stringify(data) },
+  })[id] || null };
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({
+    goods: { weapons: { name: "武器", unit: "挺" }, warship: { name: "軍艦", unit: "隻" }, fuel: { name: "燃料", unit: "トン" } },
+  }) });
+  try {
+    await import("../../server/static/js/reports/military.js?formation-test");
+    assert.match(slots.units.innerHTML, /武器: 70 挺/);
+    assert.match(slots.fleets.innerHTML, /軍艦: 1 隻/);
+    assert.match(slots.units.innerHTML, /reserve-fuel/);
+    assert.match(slots.fleets.innerHTML, /reserve-fuel/);
+    assert.match(slots.warehouse.innerHTML, /0\.5 トン/);
+    assert.deepEqual(warnings.map(w => w.hidden), [true, false]);
+    handlers.click({ target: { closest: () => ({}) } });
+    assert.equal(details.open, true);
+    assert.equal(focused, true);
+  } finally {
+    globalThis.document = oldDocument;
+    globalThis.fetch = oldFetch;
   }
 });
 
