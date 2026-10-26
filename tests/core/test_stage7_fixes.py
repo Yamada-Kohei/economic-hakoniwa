@@ -85,3 +85,30 @@ def test_a_bank_pays_no_more_dividend_than_it_holds_in_cash(game, base, monkeypa
     tax, dividend = Accounts()._settle(island, ctx, bank, {books.PROFIT: 4 * cash})
     assert dividend <= cash
     assert before - ledger.money(island, payer.entity) <= cash  # 税と配当で現金を使い切らない
+
+
+def test_a_farm_does_not_count_harvest_the_market_cannot_take(game):
+    """農場の集約は、増える収穫を市場が引き取れる分だけ売上に見込む。みなが同じ値段を見て一斉に
+    上げ、売れ残りで潰れた（PR #161 の後、差し押さえの連鎖が3倍になった）。賃金や燃料で浮く分は
+    需要によらない。"""
+    from hakoniwa_core.modules.firms import EntryExit, average_prices
+    from hakoniwa_core.state.generate import generate_world
+
+    world = generate_world(3, 3, game.config, game.defs)
+    for _ in range(40):
+        game.engine.run_turn(world)
+    island = world.islands[1]
+    farm = next(f for f in island.facilities if f.kind == "farm" and f.owner == "private")
+    ctx = context(game, world)
+    prices = average_prices(island, game.config.get("firms.price_turns"))
+    step = fac.grade_steps(game.defs, "farm")[0]
+    upper = fac.regrade(game.defs, "farm", farm.recipe, 1)
+    farm.economy["wage"] = 1006
+    entry = EntryExit()
+    extra = entry._extra_outputs(game.defs, farm, upper, step)
+    assert extra  # 機械化で収穫が増える
+    roomy = {g: 10 * q for g, q in extra.items()}
+    full = entry._grade_return(island, ctx, farm, upper, step, prices, 0, roomy)[0]
+    unlimited = entry._grade_return(island, ctx, farm, upper, step, prices, 0)[0]
+    glutted = entry._grade_return(island, ctx, farm, upper, step, prices, 0, {})[0]
+    assert full == unlimited > glutted
