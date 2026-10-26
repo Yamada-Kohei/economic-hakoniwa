@@ -579,6 +579,8 @@ def _help_context() -> dict:
             {
                 "name": defs.name("settlements", sid),
                 "capacity": s["capacity"],
+                "water": f"{s.get('water', 0) * 100:g}",
+                "land_short": bool(s.get("land_short")),
                 "materials": display.goods_list(s.get("materials", {})),
             }
             for sid, s in ((sid, defs.settlements[sid]) for sid in defs.settlement_levels())

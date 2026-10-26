@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 360" width="480" height="360" font-family='"Noto Sans JP","Hiragino Kaku Gothic ProN","Meiryo","WenQuanYi Zen Hei",sans-serif' role="img" aria-labelledby="t d">
+<title id="t">命令の列と行政力</title><desc id="d">命令は列の上から行政力の範囲で実行され、足りなくなった所から下は次の月に繰り越される。重い命令が先頭なら、その月の行政力を全部使って実行される。</desc>
+<rect width="480" height="360" fill="#ffffff"/>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<text x="14" y="24" font-size="13" text-anchor="start" fill="#102a6b" font-weight="bold">今月の行政力（枠）</text>
+<rect x="14" y="34" width="452" height="42" fill="#ffffff" stroke="#1f4fa8" stroke-width="2"/>
+<rect x="14" y="34" width="110" height="42" rx="0" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.2"/>
+<text x="69.0" y="60.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">命令1</text>
+<rect x="124" y="34" width="80" height="42" rx="0" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.2"/>
+<text x="164.0" y="60.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">命令2</text>
+<rect x="204" y="34" width="100" height="42" rx="0" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.2"/>
+<text x="254.0" y="60.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">命令3</text>
+<text x="385.0" y="60" font-size="13" text-anchor="middle" fill="#5a6a90">残り</text>
+<line x1="304" y1="82" x2="304" y2="128" stroke="#8a4b00" stroke-width="2" marker-end="url(#ah)"/>
+<text x="312" y="102" font-size="13" text-anchor="start" fill="#8a4b00" font-weight="bold">ここで止まる</text>
+<text x="312" y="120" font-size="13" text-anchor="start" fill="#8a4b00">（命令4は枠に入らない）</text>
+<text x="14" y="140" font-size="13" text-anchor="start" fill="#102a6b" font-weight="bold">来月の先頭に繰り越し</text>
+<rect x="14" y="150" width="452" height="42" fill="#ffffff" stroke="#5a6a90" stroke-width="1.5" stroke-dasharray="5 4"/>
+<rect x="14" y="150" width="150" height="42" rx="0" fill="#fff1d0" stroke="#8a4b00" stroke-width="1.2"/>
+<text x="89.0" y="176.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">命令4</text>
+<rect x="164" y="150" width="60" height="42" rx="0" fill="#fff1d0" stroke="#8a4b00" stroke-width="1.2"/>
+<text x="194.0" y="176.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">命令5</text>
+<text x="344" y="176" font-size="13" text-anchor="middle" fill="#5a6a90">（来月、上から実行）</text>
+<text x="14" y="228" font-size="13" text-anchor="start" fill="#102a6b" font-weight="bold">例外: 1つで枠を超える重い命令（宣戦など）</text>
+<rect x="14" y="238" width="452" height="42" fill="#ffffff" stroke="#1f4fa8" stroke-width="2"/>
+<rect x="14" y="238" width="452" height="42" rx="0" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.2"/>
+<text x="240.0" y="264.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">宣戦（重い命令）が列の先頭</text>
+<text x="240" y="304" font-size="13" text-anchor="middle" fill="#102a6b">先頭で、その月の行政力がまだ使われていなければ、</text>
+<text x="240" y="324" font-size="13" text-anchor="middle" fill="#102a6b">枠を全部使って実行されます</text>
+</svg>

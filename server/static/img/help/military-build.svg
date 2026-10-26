@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 504" width="480" height="504" font-family='"Noto Sans JP","Hiragino Kaku Gothic ProN","Meiryo","WenQuanYi Zen Hei",sans-serif' role="img" aria-labelledby="t d">
+<title id="t">軍をつくって動かすまでの手順</title><desc id="d">兵舎か軍港を建て、兵を集め、装備をそろえ、編成し、燃料を備えてから動かす手順の図。足りない物があると編成中のまま止まる。</desc>
+<rect width="480" height="504" fill="#ffffff"/>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<rect x="48" y="12" width="410" height="50" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="253.0" y="32.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">兵舎・軍港を建てる</text>
+<text x="253.0" y="51.8" font-size="13" text-anchor="middle" fill="#102a6b">陸の部隊は兵舎、艦隊は軍港（建ち終わってから）</text>
+<circle cx="24" cy="37.0" r="12" fill="#1f4fa8"/>
+<text x="24" y="42.0" font-size="14" text-anchor="middle" fill="#ffffff" font-weight="bold">1</text>
+<line x1="253" y1="62" x2="253" y2="78" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="48" y="78" width="410" height="50" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="253.0" y="98.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">兵・乗員を集める</text>
+<text x="253.0" y="117.8" font-size="13" text-anchor="middle" fill="#102a6b">志願か徴兵。賃金が低いと失業者しか集まらない</text>
+<circle cx="24" cy="103.0" r="12" fill="#1f4fa8"/>
+<text x="24" y="108.0" font-size="14" text-anchor="middle" fill="#ffffff" font-weight="bold">2</text>
+<line x1="253" y1="128" x2="253" y2="144" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="48" y="144" width="410" height="50" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="253.0" y="164.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">装備をそろえる</text>
+<text x="253.0" y="183.8" font-size="13" text-anchor="middle" fill="#102a6b">武器や軍艦。国防費の装備の分で、倉庫と市場から</text>
+<circle cx="24" cy="169.0" r="12" fill="#1f4fa8"/>
+<text x="24" y="174.0" font-size="14" text-anchor="middle" fill="#ffffff" font-weight="bold">3</text>
+<line x1="253" y1="194" x2="253" y2="210" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="48" y="210" width="410" height="50" rx="6" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="253.0" y="230.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">編成する</text>
+<text x="253.0" y="249.8" font-size="13" text-anchor="middle" fill="#102a6b">そろうと「そろった」、足りないうちは「編成中」</text>
+<circle cx="24" cy="235.0" r="12" fill="#1f4fa8"/>
+<text x="24" y="240.0" font-size="14" text-anchor="middle" fill="#ffffff" font-weight="bold">4</text>
+<line x1="253" y1="260" x2="253" y2="276" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="48" y="276" width="410" height="50" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="253.0" y="296.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">燃料を備える</text>
+<text x="253.0" y="315.8" font-size="13" text-anchor="middle" fill="#102a6b">国の倉庫に補給の目標を置く。航海と機甲の移動で使う</text>
+<circle cx="24" cy="301.0" r="12" fill="#1f4fa8"/>
+<text x="24" y="306.0" font-size="14" text-anchor="middle" fill="#ffffff" font-weight="bold">5</text>
+<line x1="253" y1="326" x2="253" y2="342" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="48" y="342" width="410" height="50" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="253.0" y="362.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">動かす・宣戦する</text>
+<text x="253.0" y="381.8" font-size="13" text-anchor="middle" fill="#102a6b">部隊は島の地図から、艦隊は世界マップから</text>
+<circle cx="24" cy="367.0" r="12" fill="#1f4fa8"/>
+<text x="24" y="372.0" font-size="14" text-anchor="middle" fill="#ffffff" font-weight="bold">6</text>
+<path d="M458,235.0 L472,235.0 L472,169.0 L458,169.0" fill="none" stroke="#8a4b00" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#ah)"/>
+<rect x="14" y="406" width="452" height="84" rx="6" fill="#fff1d0" stroke="#8a4b00" stroke-width="1.5"/>
+<text x="240.0" y="426.6" font-size="13" text-anchor="middle" fill="#102a6b" font-weight="bold">維持するには</text>
+<text x="240.0" y="444.2" font-size="13" text-anchor="middle" fill="#102a6b">兵の賃金と食べ物（国防費）が毎月要ります。</text>
+<text x="240.0" y="461.7" font-size="13" text-anchor="middle" fill="#102a6b">賃金が遅れると士気が下がり、</text>
+<text x="240.0" y="479.3" font-size="13" text-anchor="middle" fill="#102a6b">食べ物が尽きると練度が落ちます</text>
+</svg>

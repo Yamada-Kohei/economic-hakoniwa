@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 540" width="480" height="540" font-family='"Noto Sans JP","Hiragino Kaku Gothic ProN","Meiryo","WenQuanYi Zen Hei",sans-serif' role="img" aria-labelledby="t d">
+<title id="t">1か月（1ターン）の更新の流れ</title><desc id="d">命令の実行、生産、賃金と市場、貿易、銀行と国債、人口と政治、記録の順に、1か月の更新が進むことを示す図。</desc>
+<rect width="480" height="540" fill="#ffffff"/>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<rect x="48" y="14" width="392" height="50" rx="6" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="244.0" y="34.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">命令を実行する</text>
+<text x="244.0" y="53.8" font-size="13" text-anchor="middle" fill="#102a6b">列の上から、行政力の範囲で。政策も建設もここ</text>
+<circle cx="25" cy="39.0" r="12" fill="#1f4fa8"/>
+<text x="25" y="44.0" font-size="14" text-anchor="middle" fill="#ffffff" font-weight="bold">1</text>
+<line x1="250" y1="64" x2="250" y2="80" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="48" y="80" width="392" height="50" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="244.0" y="100.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">予算を取り置き、働き手を割り当てる</text>
+<text x="244.0" y="119.8" font-size="13" text-anchor="middle" fill="#102a6b">賃金の高い施設から、通勤圏の人を雇う</text>
+<circle cx="25" cy="105.0" r="12" fill="#1f4fa8"/>
+<text x="25" y="110.0" font-size="14" text-anchor="middle" fill="#ffffff" font-weight="bold">2</text>
+<line x1="250" y1="130" x2="250" y2="146" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="48" y="146" width="392" height="50" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="244.0" y="166.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">電力・生産・工事</text>
+<text x="244.0" y="185.8" font-size="13" text-anchor="middle" fill="#102a6b">そろった割合だけ作る。資材が届けば工事が進む</text>
+<circle cx="25" cy="171.0" r="12" fill="#1f4fa8"/>
+<text x="25" y="176.0" font-size="14" text-anchor="middle" fill="#ffffff" font-weight="bold">3</text>
+<line x1="250" y1="196" x2="250" y2="212" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="48" y="212" width="392" height="50" rx="6" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="244.0" y="232.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">賃金を払い、市場で売り買い</text>
+<text x="244.0" y="251.8" font-size="13" text-anchor="middle" fill="#102a6b">賃金が先なので、同じ月に食べ物が買える</text>
+<circle cx="25" cy="237.0" r="12" fill="#1f4fa8"/>
+<text x="25" y="242.0" font-size="14" text-anchor="middle" fill="#ffffff" font-weight="bold">4</text>
+<line x1="250" y1="262" x2="250" y2="278" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="48" y="278" width="392" height="50" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="244.0" y="298.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">貿易と為替</text>
+<text x="244.0" y="317.8" font-size="13" text-anchor="middle" fill="#102a6b">荷下ろし・契約・為替・船出</text>
+<circle cx="25" cy="303.0" r="12" fill="#1f4fa8"/>
+<text x="25" y="308.0" font-size="14" text-anchor="middle" fill="#ffffff" font-weight="bold">5</text>
+<line x1="250" y1="328" x2="250" y2="344" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="48" y="344" width="392" height="50" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="244.0" y="364.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">銀行・国債・決算・倒産と参入</text>
+<text x="244.0" y="383.8" font-size="13" text-anchor="middle" fill="#102a6b">利払いと返済、決算、赤字の整理</text>
+<circle cx="25" cy="369.0" r="12" fill="#1f4fa8"/>
+<text x="25" y="374.0" font-size="14" text-anchor="middle" fill="#ffffff" font-weight="bold">6</text>
+<line x1="250" y1="394" x2="250" y2="410" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="48" y="410" width="392" height="50" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="244.0" y="430.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">人口・町・移民・政治・教育・災害</text>
+<text x="244.0" y="449.8" font-size="13" text-anchor="middle" fill="#102a6b">人が増減し、町が育ち、政情が動く</text>
+<circle cx="25" cy="435.0" r="12" fill="#1f4fa8"/>
+<text x="25" y="440.0" font-size="14" text-anchor="middle" fill="#ffffff" font-weight="bold">7</text>
+<line x1="250" y1="460" x2="250" y2="476" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="48" y="476" width="392" height="50" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="244.0" y="496.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">記録</text>
+<text x="244.0" y="515.8" font-size="13" text-anchor="middle" fill="#102a6b">統計を残し、帳簿が合うか確かめる</text>
+<circle cx="25" cy="501.0" r="12" fill="#1f4fa8"/>
+<text x="25" y="506.0" font-size="14" text-anchor="middle" fill="#ffffff" font-weight="bold">8</text>
+<path d="M440,501.0 L458,501.0 L458,39.0 L440,39.0" fill="none" stroke="#5a6a90" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#ah)"/>
+<text transform="translate(474 270.0) rotate(-90)" font-size="12" text-anchor="middle" fill="#5a6a90">次の月へ</text>
+</svg>

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 436" width="480" height="436" font-family='"Noto Sans JP","Hiragino Kaku Gothic ProN","Meiryo","WenQuanYi Zen Hei",sans-serif' role="img" aria-labelledby="t d">
+<title id="t">貿易の2つの道</title><desc id="d">貿易圏を通す道では、商社が島の市場と貿易圏の市場の値段の差を見て、港と船で運ぶ。二国間契約は、売る国の倉庫から船で運び、買う国の市場か倉庫に届ける。</desc>
+<rect width="480" height="436" fill="#ffffff"/>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<text x="14" y="24" font-size="14" text-anchor="start" fill="#102a6b" font-weight="bold">① 貿易圏を通す（商社が自動で売り買い）</text>
+<rect x="10" y="40" width="130" height="70" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="75.0" y="70.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">島の市場</text>
+<text x="75.0" y="89.8" font-size="13" text-anchor="middle" fill="#102a6b">自国の通貨</text>
+<rect x="175" y="40" width="130" height="70" rx="6" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="240.0" y="61.4" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">商社・港・船</text>
+<text x="240.0" y="80.3" font-size="13" text-anchor="middle" fill="#102a6b">差が取り分と運賃を</text>
+<text x="240.0" y="99.2" font-size="13" text-anchor="middle" fill="#102a6b">超えると売買</text>
+<rect x="340" y="40" width="130" height="70" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="405.0" y="70.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">貿易圏の市場</text>
+<text x="405.0" y="89.8" font-size="13" text-anchor="middle" fill="#102a6b">決済通貨</text>
+<line x1="140" y1="75" x2="175" y2="75" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<line x1="305" y1="75" x2="340" y2="75" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<text x="240" y="134" font-size="13" text-anchor="middle" fill="#5a6a90">為替のレートで、自国の通貨と決済通貨を替えます</text>
+<text x="14" y="184" font-size="14" text-anchor="start" fill="#102a6b" font-weight="bold">② 二国間契約（政府どうし）</text>
+<rect x="10" y="196" width="130" height="82" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="75.0" y="214.0" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">売る国</text>
+<text x="75.0" y="232.9" font-size="13" text-anchor="middle" fill="#102a6b">国の倉庫から出す</text>
+<text x="75.0" y="251.8" font-size="13" text-anchor="middle" fill="#102a6b">足りなければ</text>
+<text x="75.0" y="270.7" font-size="13" text-anchor="middle" fill="#102a6b">市場で買う</text>
+<rect x="175" y="196" width="130" height="82" rx="6" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="240.0" y="223.4" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">船</text>
+<text x="240.0" y="242.3" font-size="13" text-anchor="middle" fill="#102a6b">片道の日数は</text>
+<text x="240.0" y="261.2" font-size="13" text-anchor="middle" fill="#102a6b">距離で決まる</text>
+<rect x="340" y="196" width="130" height="82" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="405.0" y="223.4" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">買う国</text>
+<text x="405.0" y="242.3" font-size="13" text-anchor="middle" fill="#102a6b">市場に出す（既定）</text>
+<text x="405.0" y="261.2" font-size="13" text-anchor="middle" fill="#102a6b">か国の倉庫に置く</text>
+<line x1="140" y1="237" x2="175" y2="237" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="305" y1="237" x2="340" y2="237" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<text x="240" y="300" font-size="13" text-anchor="middle" fill="#5a6a90">代金は、約束した通貨で買う国が払います</text>
+<rect x="10" y="326" width="460" height="92" rx="6" fill="#fff1d0" stroke="#8a4b00" stroke-width="1.5"/>
+<text x="240.0" y="350.6" font-size="13" text-anchor="middle" fill="#102a6b" font-weight="bold">荷が動くために要る物</text>
+<text x="240.0" y="368.2" font-size="13" text-anchor="middle" fill="#102a6b">港（荷を積み下ろす）・船（燃料を使い、古くなる）</text>
+<text x="240.0" y="385.7" font-size="13" text-anchor="middle" fill="#102a6b">代金の通貨（外貨は為替か中央銀行の手持ちから）</text>
+<text x="240.0" y="403.3" font-size="13" text-anchor="middle" fill="#102a6b">電力は運べません</text>
+</svg>

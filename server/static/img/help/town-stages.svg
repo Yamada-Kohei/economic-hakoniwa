@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 392" width="480" height="392" font-family='"Noto Sans JP","Hiragino Kaku Gothic ProN","Meiryo","WenQuanYi Zen Hei",sans-serif' role="img" aria-labelledby="t d">
+<title id="t">町の6つの段階</title><desc id="d">村・町・都市・大都市・高層都市・超高層都市の順に建物が高くなる。都市から上は上下水道、高層都市から上は土地が足りないときだけ育つ。</desc>
+<rect width="480" height="392" fill="#ffffff"/>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<rect x="19" y="219" width="66" height="17" fill="#dbe6ff" stroke="#102a6b" stroke-width="1.2"/>
+<rect x="27" y="223" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="46" y="223" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="65" y="223" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<text x="52.0" y="256" font-size="13" text-anchor="middle" fill="#102a6b" font-weight="bold">村</text>
+<rect x="94" y="202" width="66" height="34" fill="#c4d6ff" stroke="#102a6b" stroke-width="1.2"/>
+<rect x="102" y="206" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="121" y="206" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="140" y="206" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="102" y="223" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="121" y="223" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="140" y="223" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<text x="127.0" y="256" font-size="13" text-anchor="middle" fill="#102a6b" font-weight="bold">町</text>
+<rect x="169" y="168" width="66" height="68" fill="#a9c2f5" stroke="#102a6b" stroke-width="1.2"/>
+<rect x="177" y="172" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="196" y="172" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="215" y="172" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="177" y="189" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="196" y="189" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="215" y="189" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="177" y="206" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="196" y="206" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="215" y="206" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="177" y="223" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="196" y="223" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="215" y="223" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<text x="202.0" y="256" font-size="13" text-anchor="middle" fill="#102a6b" font-weight="bold">都市</text>
+<rect x="169" y="266" width="66" height="24" rx="4" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1"/>
+<text x="202.0" y="282.9" font-size="13" text-anchor="middle" fill="#102a6b" font-weight="bold">必要</text>
+<rect x="244" y="134" width="66" height="102" fill="#8fb0ee" stroke="#102a6b" stroke-width="1.2"/>
+<rect x="252" y="138" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="271" y="138" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="290" y="138" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="252" y="155" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="271" y="155" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="290" y="155" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="252" y="172" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="271" y="172" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="290" y="172" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="252" y="189" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="271" y="189" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="290" y="189" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="252" y="206" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="271" y="206" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="290" y="206" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="252" y="223" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="271" y="223" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="290" y="223" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<text x="277.0" y="256" font-size="13" text-anchor="middle" fill="#102a6b" font-weight="bold">大都市</text>
+<rect x="244" y="266" width="66" height="24" rx="4" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1"/>
+<text x="277.0" y="282.9" font-size="13" text-anchor="middle" fill="#102a6b" font-weight="bold">もっと</text>
+<rect x="319" y="83" width="66" height="153" fill="#6f98e4" stroke="#102a6b" stroke-width="1.2"/>
+<rect x="327" y="87" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="346" y="87" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="365" y="87" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="327" y="104" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="346" y="104" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="365" y="104" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="327" y="121" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="346" y="121" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="365" y="121" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="327" y="138" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="346" y="138" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="365" y="138" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="327" y="155" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="346" y="155" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="365" y="155" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="327" y="172" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="346" y="172" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="365" y="172" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="327" y="189" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="346" y="189" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="365" y="189" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="327" y="206" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="346" y="206" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="365" y="206" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="327" y="223" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="346" y="223" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="365" y="223" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<text x="352.0" y="256" font-size="12" text-anchor="middle" fill="#102a6b" font-weight="bold">高層都市</text>
+<rect x="319" y="266" width="66" height="24" rx="4" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1"/>
+<text x="352.0" y="282.9" font-size="13" text-anchor="middle" fill="#102a6b" font-weight="bold">ほぼ全部</text>
+<rect x="394" y="32" width="66" height="204" fill="#4f7fd8" stroke="#102a6b" stroke-width="1.2"/>
+<rect x="402" y="36" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="421" y="36" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="440" y="36" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="402" y="53" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="421" y="53" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="440" y="53" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="402" y="70" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="421" y="70" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="440" y="70" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="402" y="87" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="421" y="87" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="440" y="87" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="402" y="104" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="421" y="104" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="440" y="104" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="402" y="121" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="421" y="121" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="440" y="121" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="402" y="138" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="421" y="138" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="440" y="138" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="402" y="155" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="421" y="155" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="440" y="155" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="402" y="172" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="421" y="172" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="440" y="172" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="402" y="189" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="421" y="189" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="440" y="189" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="402" y="206" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="421" y="206" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="440" y="206" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="402" y="223" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="421" y="223" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<rect x="440" y="223" width="11" height="9" fill="#fffbe0" stroke="#102a6b" stroke-width="0.6"/>
+<text x="427.0" y="256" font-size="12" text-anchor="middle" fill="#102a6b" font-weight="bold">超高層都市</text>
+<rect x="394" y="266" width="66" height="24" rx="4" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1"/>
+<text x="427.0" y="282.9" font-size="13" text-anchor="middle" fill="#102a6b" font-weight="bold">全部</text>
+<text x="240" y="314" font-size="13" text-anchor="middle" fill="#5a6a90">↑ 上下水道の整備度（上の段階ほど高く要る）</text>
+<line x1="19" y1="236" x2="460" y2="236" stroke="#102a6b" stroke-width="2"/>
+<rect x="316" y="14" width="147" height="282" rx="6" fill="none" stroke="#8a4b00" stroke-width="1.5" stroke-dasharray="5 4"/>
+<rect x="316" y="324" width="147" height="40" rx="6" fill="#fff1d0" stroke="#8a4b00" stroke-width="1.5"/>
+<text x="389.5" y="340.2" font-size="13" text-anchor="middle" fill="#8a4b00">空いた平地が</text>
+<text x="389.5" y="357.7" font-size="13" text-anchor="middle" fill="#8a4b00">ないときだけ</text>
+<rect x="19" y="324" width="291" height="40" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="164.5" y="340.2" font-size="13" text-anchor="middle" fill="#102a6b">大都市が満ちても、空いた平地があるうちは</text>
+<text x="164.5" y="357.7" font-size="13" text-anchor="middle" fill="#102a6b">高く建てずに近くへ村が広がる</text>
+</svg>

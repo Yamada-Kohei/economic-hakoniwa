@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 388" width="480" height="388" font-family='"Noto Sans JP","Hiragino Kaku Gothic ProN","Meiryo","WenQuanYi Zen Hei",sans-serif' role="img" aria-labelledby="t d">
+<title id="t">農場の段階</title><desc id="d">手作業、機械化、近代化の順に、働き手が減り、収穫が増える。機械化は燃料と機械の傷み、近代化は用水路と肥料が要る。</desc>
+<rect width="480" height="388" fill="#ffffff"/>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<rect x="8" y="8" width="148" height="224" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="82" y="31" font-size="15" text-anchor="middle" fill="#102a6b" font-weight="bold">手作業</text>
+<rect x="18" y="42" width="128" height="72" fill="#d9c27a" stroke="#102a6b" stroke-width="1"/>
+<line x1="18" y1="54" x2="146" y2="54" stroke="#a88f3a" stroke-width="1.5"/>
+<line x1="18" y1="70" x2="146" y2="70" stroke="#a88f3a" stroke-width="1.5"/>
+<line x1="18" y1="86" x2="146" y2="86" stroke="#a88f3a" stroke-width="1.5"/>
+<line x1="18" y1="102" x2="146" y2="102" stroke="#a88f3a" stroke-width="1.5"/>
+<rect x="166" y="8" width="148" height="224" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="240" y="31" font-size="15" text-anchor="middle" fill="#102a6b" font-weight="bold">機械化</text>
+<rect x="176" y="42" width="128" height="72" fill="#d9c27a" stroke="#102a6b" stroke-width="1"/>
+<line x1="176" y1="54" x2="304" y2="54" stroke="#a88f3a" stroke-width="1.5"/>
+<line x1="176" y1="70" x2="304" y2="70" stroke="#a88f3a" stroke-width="1.5"/>
+<line x1="176" y1="86" x2="304" y2="86" stroke="#a88f3a" stroke-width="1.5"/>
+<line x1="176" y1="102" x2="304" y2="102" stroke="#a88f3a" stroke-width="1.5"/>
+<rect x="324" y="8" width="148" height="224" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="398" y="31" font-size="15" text-anchor="middle" fill="#102a6b" font-weight="bold">近代化</text>
+<rect x="334" y="42" width="128" height="72" fill="#d9c27a" stroke="#102a6b" stroke-width="1"/>
+<line x1="334" y1="54" x2="462" y2="54" stroke="#a88f3a" stroke-width="1.5"/>
+<line x1="334" y1="70" x2="462" y2="70" stroke="#a88f3a" stroke-width="1.5"/>
+<line x1="334" y1="86" x2="462" y2="86" stroke="#a88f3a" stroke-width="1.5"/>
+<line x1="334" y1="102" x2="462" y2="102" stroke="#a88f3a" stroke-width="1.5"/>
+<rect x="334" y="108" width="128" height="6" fill="#5aa7e0"/>
+<text x="398" y="106" font-size="11" text-anchor="middle" fill="#ffffff">用水路</text>
+<circle cx="28" cy="124" r="5" fill="#102a6b"/><line x1="28" y1="129" x2="28" y2="142" stroke="#102a6b" stroke-width="2.5"/><line x1="22" y1="134" x2="34" y2="134" stroke="#102a6b" stroke-width="2.5"/><line x1="28" y1="142" x2="23" y2="152" stroke="#102a6b" stroke-width="2.5"/><line x1="28" y1="142" x2="33" y2="152" stroke="#102a6b" stroke-width="2.5"/>
+<circle cx="56" cy="124" r="5" fill="#102a6b"/><line x1="56" y1="129" x2="56" y2="142" stroke="#102a6b" stroke-width="2.5"/><line x1="50" y1="134" x2="62" y2="134" stroke="#102a6b" stroke-width="2.5"/><line x1="56" y1="142" x2="51" y2="152" stroke="#102a6b" stroke-width="2.5"/><line x1="56" y1="142" x2="61" y2="152" stroke="#102a6b" stroke-width="2.5"/>
+<circle cx="84" cy="124" r="5" fill="#102a6b"/><line x1="84" y1="129" x2="84" y2="142" stroke="#102a6b" stroke-width="2.5"/><line x1="78" y1="134" x2="90" y2="134" stroke="#102a6b" stroke-width="2.5"/><line x1="84" y1="142" x2="79" y2="152" stroke="#102a6b" stroke-width="2.5"/><line x1="84" y1="142" x2="89" y2="152" stroke="#102a6b" stroke-width="2.5"/>
+<circle cx="112" cy="124" r="5" fill="#102a6b"/><line x1="112" y1="129" x2="112" y2="142" stroke="#102a6b" stroke-width="2.5"/><line x1="106" y1="134" x2="118" y2="134" stroke="#102a6b" stroke-width="2.5"/><line x1="112" y1="142" x2="107" y2="152" stroke="#102a6b" stroke-width="2.5"/><line x1="112" y1="142" x2="117" y2="152" stroke="#102a6b" stroke-width="2.5"/>
+<circle cx="196" cy="124" r="5" fill="#102a6b"/><line x1="196" y1="129" x2="196" y2="142" stroke="#102a6b" stroke-width="2.5"/><line x1="190" y1="134" x2="202" y2="134" stroke="#102a6b" stroke-width="2.5"/><line x1="196" y1="142" x2="191" y2="152" stroke="#102a6b" stroke-width="2.5"/><line x1="196" y1="142" x2="201" y2="152" stroke="#102a6b" stroke-width="2.5"/>
+<circle cx="354" cy="124" r="5" fill="#102a6b"/><line x1="354" y1="129" x2="354" y2="142" stroke="#102a6b" stroke-width="2.5"/><line x1="348" y1="134" x2="360" y2="134" stroke="#102a6b" stroke-width="2.5"/><line x1="354" y1="142" x2="349" y2="152" stroke="#102a6b" stroke-width="2.5"/><line x1="354" y1="142" x2="359" y2="152" stroke="#102a6b" stroke-width="2.5"/>
+<circle cx="224" cy="124" r="5" fill="#102a6b"/><line x1="224" y1="129" x2="224" y2="142" stroke="#102a6b" stroke-width="2.5"/><line x1="218" y1="134" x2="230" y2="134" stroke="#102a6b" stroke-width="2.5"/><line x1="224" y1="142" x2="219" y2="152" stroke="#102a6b" stroke-width="2.5"/><line x1="224" y1="142" x2="229" y2="152" stroke="#102a6b" stroke-width="2.5"/>
+<circle cx="382" cy="124" r="5" fill="#102a6b"/><line x1="382" y1="129" x2="382" y2="142" stroke="#102a6b" stroke-width="2.5"/><line x1="376" y1="134" x2="388" y2="134" stroke="#102a6b" stroke-width="2.5"/><line x1="382" y1="142" x2="377" y2="152" stroke="#102a6b" stroke-width="2.5"/><line x1="382" y1="142" x2="387" y2="152" stroke="#102a6b" stroke-width="2.5"/>
+<rect x="210" y="54" width="26" height="14" fill="#e0a030" stroke="#102a6b" stroke-width="1.2"/><rect x="224" y="44" width="10" height="10" fill="#e0a030" stroke="#102a6b" stroke-width="1.2"/><circle cx="217" cy="71" r="8" fill="#555" stroke="#102a6b"/><circle cx="233" cy="73" r="5" fill="#555" stroke="#102a6b"/>
+<rect x="368" y="54" width="26" height="14" fill="#e0a030" stroke="#102a6b" stroke-width="1.2"/><rect x="382" y="44" width="10" height="10" fill="#e0a030" stroke="#102a6b" stroke-width="1.2"/><circle cx="375" cy="71" r="8" fill="#555" stroke="#102a6b"/><circle cx="391" cy="73" r="5" fill="#555" stroke="#102a6b"/>
+<ellipse cx="40" cy="196" rx="6" ry="9" fill="#e8c04a" stroke="#102a6b" stroke-width="1"/><line x1="35" y1="199" x2="45" y2="199" stroke="#102a6b" stroke-width="1"/>
+<ellipse cx="62" cy="196" rx="6" ry="9" fill="#e8c04a" stroke="#102a6b" stroke-width="1"/><line x1="57" y1="199" x2="67" y2="199" stroke="#102a6b" stroke-width="1"/>
+<ellipse cx="84" cy="196" rx="6" ry="9" fill="#e8c04a" stroke="#102a6b" stroke-width="1"/><line x1="79" y1="199" x2="89" y2="199" stroke="#102a6b" stroke-width="1"/>
+<ellipse cx="194" cy="196" rx="6" ry="9" fill="#e8c04a" stroke="#102a6b" stroke-width="1"/><line x1="189" y1="199" x2="199" y2="199" stroke="#102a6b" stroke-width="1"/>
+<ellipse cx="216" cy="196" rx="6" ry="9" fill="#e8c04a" stroke="#102a6b" stroke-width="1"/><line x1="211" y1="199" x2="221" y2="199" stroke="#102a6b" stroke-width="1"/>
+<ellipse cx="238" cy="196" rx="6" ry="9" fill="#e8c04a" stroke="#102a6b" stroke-width="1"/><line x1="233" y1="199" x2="243" y2="199" stroke="#102a6b" stroke-width="1"/>
+<ellipse cx="340" cy="196" rx="6" ry="9" fill="#e8c04a" stroke="#102a6b" stroke-width="1"/><line x1="335" y1="199" x2="345" y2="199" stroke="#102a6b" stroke-width="1"/>
+<ellipse cx="359" cy="196" rx="6" ry="9" fill="#e8c04a" stroke="#102a6b" stroke-width="1"/><line x1="354" y1="199" x2="364" y2="199" stroke="#102a6b" stroke-width="1"/>
+<ellipse cx="378" cy="196" rx="6" ry="9" fill="#e8c04a" stroke="#102a6b" stroke-width="1"/><line x1="373" y1="199" x2="383" y2="199" stroke="#102a6b" stroke-width="1"/>
+<ellipse cx="397" cy="196" rx="6" ry="9" fill="#e8c04a" stroke="#102a6b" stroke-width="1"/><line x1="392" y1="199" x2="402" y2="199" stroke="#102a6b" stroke-width="1"/>
+<ellipse cx="416" cy="196" rx="6" ry="9" fill="#e8c04a" stroke="#102a6b" stroke-width="1"/><line x1="411" y1="199" x2="421" y2="199" stroke="#102a6b" stroke-width="1"/>
+<ellipse cx="435" cy="196" rx="6" ry="9" fill="#e8c04a" stroke="#102a6b" stroke-width="1"/><line x1="430" y1="199" x2="440" y2="199" stroke="#102a6b" stroke-width="1"/>
+<text x="82" y="224" font-size="13" text-anchor="middle" fill="#5a6a90">収穫</text>
+<text x="240" y="224" font-size="13" text-anchor="middle" fill="#5a6a90">収穫</text>
+<text x="398" y="224" font-size="13" text-anchor="middle" fill="#5a6a90">収穫</text>
+<line x1="156" y1="128" x2="166" y2="128" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="314" y1="128" x2="324" y2="128" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<text x="161" y="114" font-size="13" text-anchor="middle" fill="#1f4fa8">工事</text>
+<text x="319" y="114" font-size="13" text-anchor="middle" fill="#1f4fa8">工事</text>
+<rect x="8" y="242" width="148" height="80" rx="6" fill="#ffffff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="82.0" y="260.6" font-size="13" text-anchor="middle" fill="#102a6b">働き手が多い</text>
+<text x="82.0" y="278.2" font-size="13" text-anchor="middle" fill="#102a6b">収穫は少なめ</text>
+<text x="82.0" y="295.7" font-size="13" text-anchor="middle" fill="#102a6b">機械も肥料もなし</text>
+<text x="82.0" y="313.3" font-size="13" text-anchor="middle" fill="#102a6b"></text>
+<rect x="166" y="242" width="148" height="80" rx="6" fill="#ffffff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="240.0" y="260.6" font-size="13" text-anchor="middle" fill="#102a6b">働き手が大きく減る</text>
+<text x="240.0" y="278.2" font-size="13" text-anchor="middle" fill="#102a6b">収穫は少し増える</text>
+<text x="240.0" y="295.7" font-size="13" text-anchor="middle" fill="#102a6b">燃料を毎月使い、</text>
+<text x="240.0" y="313.3" font-size="13" text-anchor="middle" fill="#102a6b">機械は傷む</text>
+<rect x="324" y="242" width="148" height="80" rx="6" fill="#ffffff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="398.0" y="260.6" font-size="13" text-anchor="middle" fill="#102a6b">収穫が大きく増える</text>
+<text x="398.0" y="278.2" font-size="13" text-anchor="middle" fill="#102a6b">用水路を引き、</text>
+<text x="398.0" y="295.7" font-size="13" text-anchor="middle" fill="#102a6b">肥料（化学品）を</text>
+<text x="398.0" y="313.3" font-size="13" text-anchor="middle" fill="#102a6b">たくさん使う</text>
+<rect x="8" y="334" width="464" height="44" rx="6" fill="#fff1d0" stroke="#8a4b00" stroke-width="1.5"/>
+<text x="240.0" y="352.2" font-size="13" text-anchor="middle" fill="#102a6b">標準の計画の国は、人手が足りないとき機械化し、</text>
+<text x="240.0" y="369.7" font-size="13" text-anchor="middle" fill="#102a6b">食料が足りず新しい平地もないとき近代化します</text>
+</svg>

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 500" width="480" height="500" font-family='"Noto Sans JP","Hiragino Kaku Gothic ProN","Meiryo","WenQuanYi Zen Hei",sans-serif' role="img" aria-labelledby="t d">
+<title id="t">国庫が足りないときの国債</title><desc id="d">国庫が足りない分は国債を入札で発行する。売れ残った分は、政策が中央銀行の引き受けで中央銀行が独立していなければ中央銀行が引き受け、そうでなければ発行せず支出が削られる。</desc>
+<rect width="480" height="500" fill="#ffffff"/>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<rect x="110" y="10" width="260" height="40" rx="6" fill="#fde7e7" stroke="#a32020" stroke-width="1.5"/>
+<text x="240.0" y="35.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">国庫が足りない</text>
+<line x1="240" y1="50" x2="240" y2="76" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="40" y="76" width="400" height="56" rx="6" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="240.0" y="99.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">国債を入札で発行する</text>
+<text x="240.0" y="118.8" font-size="13" text-anchor="middle" fill="#102a6b">利回りは政策金利・期間・物価・「返す力の比」で決まる</text>
+<line x1="150" y1="132" x2="150" y2="168" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="330" y1="132" x2="330" y2="168" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="40" y="168" width="220" height="44" rx="6" fill="#e2f4e5" stroke="#1b6b2f" stroke-width="1.5"/>
+<text x="150.0" y="185.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">売れた分</text>
+<text x="150.0" y="204.8" font-size="13" text-anchor="middle" fill="#102a6b">銀行などが買い、国庫に入る</text>
+<rect x="280" y="168" width="190" height="44" rx="6" fill="#fff1d0" stroke="#8a4b00" stroke-width="1.5"/>
+<text x="375.0" y="185.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">売れ残り</text>
+<text x="375.0" y="204.8" font-size="13" text-anchor="middle" fill="#102a6b">新しい支出の分</text>
+<line x1="375" y1="212" x2="375" y2="258" stroke="#8a4b00" stroke-width="2" marker-end="url(#ah)"/>
+<polygon points="330,237.0 470.0,296 330,355.0 190.0,296" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="330" y="283.4" font-size="13" text-anchor="middle" fill="#102a6b">政策が中央銀行の</text>
+<text x="330" y="300.9" font-size="13" text-anchor="middle" fill="#102a6b">引き受けで、かつ中央銀行が</text>
+<text x="330" y="318.5" font-size="13" text-anchor="middle" fill="#102a6b">独立していない？</text>
+<line x1="190" y1="296" x2="150" y2="296" stroke="#1b6b2f" stroke-width="2" marker-end="url(#ah)"/>
+<text x="172" y="288" font-size="13" text-anchor="middle" fill="#1b6b2f" font-weight="bold">はい</text>
+<line x1="330" y1="355" x2="330" y2="384" stroke="#a32020" stroke-width="2" marker-end="url(#ah)"/>
+<text x="342" y="376" font-size="13" text-anchor="start" fill="#a32020" font-weight="bold">いいえ</text>
+<rect x="14" y="270" width="136" height="52" rx="6" fill="#e2f4e5" stroke="#1b6b2f" stroke-width="1.5"/>
+<text x="82.0" y="291.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">中央銀行が</text>
+<text x="82.0" y="310.8" font-size="13" text-anchor="middle" fill="#102a6b">引き受ける</text>
+<rect x="190" y="384" width="280" height="52" rx="6" fill="#fde7e7" stroke="#a32020" stroke-width="1.5"/>
+<text x="330.0" y="405.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">発行しない</text>
+<text x="330.0" y="424.8" font-size="13" text-anchor="middle" fill="#102a6b">支払いの順番の後ろから支出が削られる</text>
+<rect x="14" y="452" width="452" height="36" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="240.0" y="474.9" font-size="13" text-anchor="middle" fill="#102a6b" font-weight="bold">満期の国債は別: 中央銀行の持ち分は同じ期間の国債に乗り換えます</text>
+</svg>
