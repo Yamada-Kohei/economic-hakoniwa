@@ -292,6 +292,7 @@ def test_housing_grows_near_vacancies_but_not_on_no_development(game):
     home(game, island, 3, 12, 1000, level="village")  # 官庁の通勤圏の外
     add(island, "government_office", 8, 8)  # 人手の足りない施設（公務員はいつも 1,000 人雇う）
     home(game, island, 2, 13, 20000, level="metropolis")  # 通勤圏の外（国庫を厚くする）
+    island.regime["economy"] = "market"  # 計画経済は国が建てる（国の住宅は test_public_housing.py）
     with_economy(game, island)
     for tile in island.tiles:  # 官庁のそばの (9, 9) のほかは開発禁止区域（オフィス街は除く）
         if (tile.x, tile.y) != (9, 9) and tile.zone == "":

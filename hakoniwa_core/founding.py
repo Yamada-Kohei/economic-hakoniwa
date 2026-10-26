@@ -18,7 +18,14 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, nature, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import default_accounting, experience, productivity, reserve, services
+from hakoniwa_core.economy import (
+    default_accounting,
+    experience,
+    productivity,
+    public_housing,
+    reserve,
+    services,
+)
 from hakoniwa_core.economy.start import start_economy
 from hakoniwa_core.geo import NEIGHBORS4, NEIGHBORS8, components, distance, shortest_path, within
 from hakoniwa_core.naming import (
@@ -389,6 +396,7 @@ def place_start(
     capital = island.capital
     assert capital is not None
     housing = fac.housing_kind(config)
+    public = public_housing.planned(island)  # 計画経済の国の町は、はじめから国の床
     levels = defs.settlement_levels()
     homes_terrain = defs.facilities[housing]["terrain"]
 
@@ -403,6 +411,8 @@ def place_start(
         home = fac.new_housing(island, housing, pos, cap.get("town_level") or levels[0])
         island.tile(*pos).population = cap.get("town_population", 0)
         home.ext["level"] = cap.get("town_level") or levels[0]
+        if public:
+            public_housing.set_floor(home, fac.floor_of(defs, home))
 
     villages = start.get("villages")
     if villages:
@@ -421,7 +431,9 @@ def place_start(
             if all(distance(pos, other) >= 2 for other in chosen):
                 chosen.append(pos)
         for pos in sorted(chosen, key=lambda p: (p[1], p[0])):
-            fac.new_housing(island, housing, pos, levels[0])
+            home = fac.new_housing(island, housing, pos, levels[0])
+            if public:
+                public_housing.set_floor(home, fac.floor_of(defs, home))
             island.tile(*pos).population = villages["population"]
 
     # 昔からの産業の経験を先に置き、施設の数を決める見込みの生産性に入れる（島の資源がなくて置かない

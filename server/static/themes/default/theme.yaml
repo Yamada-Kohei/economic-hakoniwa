@@ -127,6 +127,8 @@ sprites:
   facility/trading: sprites/facility/trading.svg
   facility/university: sprites/facility/university.svg
   housing/city: sprites/housing/city.svg
+  housing/high_rise: sprites/housing/high_rise.svg
+  housing/skyscraper: sprites/housing/skyscraper.svg
   housing/metropolis: sprites/housing/metropolis.svg
   housing/town: sprites/housing/town.svg
   housing/village: sprites/housing/village.svg

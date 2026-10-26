@@ -3419,6 +3419,74 @@ def metropolis_tiers() -> list[Prim]:
     return parts
 
 
+def dense_tower(
+    u0: float, v0: float, u1: float, v1: float, z: float, h: float, c: str
+) -> list[Prim]:
+    """大都市と同じ窓帯と、二段に細くなる屋上を持つ塔。"""
+    return [
+        *tower(u0, v0, u1, v1, z, h, c, WIN_DARK),
+        box(u0 + 0.03, v0 + 0.03, u1 - 0.03, v1 - 0.03, z + h + 0.9, 3, c, "#7e8f9a"),
+        box(u0 + 0.07, v0 + 0.07, u1 - 0.07, v1 - 0.07, z + h + 3.9, 3, c, "#7e8f9a"),
+    ]
+
+
+def curtain(
+    u0: float,
+    v0: float,
+    u1: float,
+    v1: float,
+    z: float,
+    h: float,
+    steps: int = 1,
+    c: str = "#cfdcdc",
+) -> list[Prim]:
+    """ガラスの格子の棟: 浅い緑みの銀色の壁に、細かい格子の窓。屋上は steps 段だけ細くなる。"""
+    parts = [
+        lobby(u0, v0, u1, v1, z, 2.6),
+        box(u0, v0, u1, v1, z + 2.6, h - 2.6, c, "#98a9aa"),
+        *facade(u0, v0, u1, v1, z + 3.6, z + h - 0.6, 3.2, 2.2, 5, 5, "#4f7478", 0.03, 0.03),
+        box(u0, v0, u1, v1, z + h, 0.9, ROOF_CAP, ROOF_CAP_SIDE),
+    ]
+    inset = (0.05, 0.04, 0.03)[steps - 1]  # 段が多いほど細かく（頂きの幅が 0 にならない）
+    for i in range(steps):
+        m = inset * (i + 1)
+        parts.append(box(u0 + m, v0 + m, u1 - m, v1 - m, z + h + 0.9 + 3 * i, 3, c, "#98a9aa"))
+    return parts
+
+
+def glass_block() -> list[Prim]:
+    """高層・超高層の足元（広場の台と舗装）。ほかの形より先に描く。"""
+    return [*block_ground(), box(0.08, 0.08, 0.92, 0.92, 0.6, 5, "#d8d4c8", "#b4afa2")]
+
+
+def high_rise() -> list[Prim]:
+    """高層都市: 奥に青いガラスの塔 3 本（アンテナ 1 本）、手前に銀緑のガラスの格子の棟 3 本。"""
+    zb = 5.6
+    parts = glass_block()
+    for u0, h, c in ((0.1, 78, GLASS2), (0.38, 96, GLASS), (0.66, 70, GLASS2)):
+        parts += dense_tower(u0, 0.1, u0 + 0.24, 0.4, zb, h, c)
+    parts += mast(0.5, 0.25, zb + 102.9, 10)
+    for u0, h in ((0.1, 42), (0.38, 34), (0.66, 46)):
+        parts += curtain(u0, 0.53, u0 + 0.24, 0.89, zb, h)
+    return parts
+
+
+def skyscraper() -> list[Prim]:
+    """超高層都市: 高層都市と同じ形のまま、真ん中の銀緑のガラスの塔（頭は 3 段）を高くそびえさせ、
+    両脇は青い塔、手前は頭が 2 段の棟にする。"""
+    zb = 5.6
+    parts = glass_block()
+    parts += dense_tower(0.1, 0.1, 0.34, 0.4, zb, 114, GLASS2)
+    parts += dense_tower(0.66, 0.1, 0.9, 0.4, zb, 104, GLASS2)
+    parts += curtain(0.38, 0.1, 0.62, 0.4, zb, 140, steps=3)
+    parts += mast(0.5, 0.25, zb + 149.9, 10)
+    for u0, h in ((0.1, 60), (0.38, 48), (0.66, 68)):
+        parts += curtain(u0, 0.53, u0 + 0.24, 0.89, zb, h, steps=2)
+    return parts
+
+
+SHAPES["housing/high_rise"] = high_rise()
+SHAPES["housing/skyscraper"] = skyscraper()
 SHAPES["housing/city"] = city_slabs()
 SHAPES["housing/metropolis"] = metropolis_twin()
 # 別の案（案 1: 窓の帯、など）はゲームで使わない。--spare で別のフォルダに書き出せる
@@ -3433,9 +3501,15 @@ ALTERNATES.update(
 
 
 def render(
-    prims: list[Prim], style: dict, *, canvas: tuple[int, int, int, int] | None = None
+    prims: list[Prim],
+    style: dict,
+    *,
+    canvas: tuple[int, int, int, int] | None = None,
+    group: bool = False,
 ) -> str:
-    """面の陰影を付けて描く。小さな印の canvas は幅・高さ・x移動・y移動。"""
+    """面の陰影を付けて描く。小さな印の canvas は幅・高さ・x移動・y移動。
+    group は、同じ色の面が続くとき色の指定を <g> にまとめる（見た目は同じで、窓の多い大きな絵の
+    ファイルを小さくする）。"""
     prims = order(prims)
     faces = [f for p in prims for f in p.faces]
     # 縦の大きさ: いちばん上の点が絵の上の端に来るよう、全体を下へずらす
@@ -3463,14 +3537,25 @@ def render(
             out.append(
                 f'<polygon points="{pts}" fill="{COAL}" stroke="{COAL}" stroke-width="1.1"/>'
             )
+    open_color = None  # group のとき、今開いている <g> の色
     for f in faces:
         color = _color(style, f)
         width = f' stroke-width="{2 * f.bleed:g}"' if f.bleed else ""
+        grouped = group and not width
+        if open_color is not None and (not grouped or color != open_color):
+            out.append("</g>")
+            open_color = None
+        if grouped and open_color is None:
+            out.append(f'<g fill="{color}" stroke="{color}">')
+            open_color = color
+        paint = "" if grouped else f' fill="{color}" stroke="{color}"{width}'
         if f.path:
-            out.append(f'<path d="{f.path}" fill="{color}" stroke="{color}"{width}/>')
+            out.append(f'<path d="{f.path}"{paint}/>')
         else:
             pts = " ".join(f"{x:.2f},{y:.2f}" for x, y in f.points)
-            out.append(f'<polygon points="{pts}" fill="{color}" stroke="{color}"{width}/>')
+            out.append(f'<polygon points="{pts}"{paint}/>')
+    if open_color is not None:
+        out.append("</g>")
     out += ["</g>", "</svg>"]
     return "\n".join(out) + "\n"
 
@@ -3482,6 +3567,11 @@ def _color(style: dict, face: Face) -> str:
         base = tuple(int(face.color[i : i + 2], 16) for i in (1, 3, 5))
     r, g, b = (round(c * k) for c in base)
     return f"#{r:02x}{g:02x}{b:02x}"
+
+
+MAX_PLAIN_BYTES = (
+    95_000  # これを超える絵は render(group=True) で書く（テーマの絵は 1 枚 100KB まで）
+)
 
 
 def main() -> None:
@@ -3503,6 +3593,8 @@ def main() -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         canvas = (28, 28, -18, -4) if name.startswith("unit/") else None
         svg = render(prims, STYLES[args.style], canvas=canvas)
+        if len(svg.encode()) > MAX_PLAIN_BYTES:  # 窓の多い絵は色をまとめて 100KB に収める
+            svg = render(prims, STYLES[args.style], canvas=canvas, group=True)
         path.write_text(svg, encoding="utf-8")
         if canvas:
             continue

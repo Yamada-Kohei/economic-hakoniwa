@@ -12,7 +12,8 @@
 公共事業費（construction）の limit は、始めている国の工事の残りと、インフラの工事の列の残り、
 インフラの維持（傷みを戻す分）と国の施設の設備の修理の 1 年分の合計。命令で新しい工事を足すと
 増える。教育費（education）と治安費（security）の limit は、その予算で賃金を払う国営の施設を全力で
-動かす 1 年の費用（標準の計画の教育費と同じ考え。余裕は足さない）。ほかの項目は去年の使った額だけ。
+動かす 1 年の費用（標準の計画の教育費と同じ考え。余裕は足さない）。住宅費（housing）の limit は、
+命令の住宅の工事の残りの資材と、国の床の 1 年の手入れの合計。ほかの項目は去年の使った額だけ。
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.economy import equipment
+from hakoniwa_core.economy import public_housing as pub
 from hakoniwa_core.state import OWNER_STATE, Tile
 from hakoniwa_core.units import money_of
 from server.game import get_game
@@ -114,6 +116,22 @@ def _staffed_cost(state, defs, config, item: str, wage: int, prices, band) -> in
     return per_turn * TURNS_PER_YEAR
 
 
+def _housing_costs(state, defs, config, prices, band) -> tuple[int, int]:
+    """命令の住宅の工事の列の残り（資材の代金）と、国の床の手入れの 1 年分（W-190・W-202）。"""
+    left = 0
+    for work in pub.works_pending(state):
+        home = state.facility_at(work["x"], work["y"])
+        floor = fac.floor_of(defs, home) if home is not None else 0
+        left += _materials_cost(fac.floor_materials(defs, floor, work["floor"]), prices, band)
+    wear = config.get("housing.wear")
+    upkeep = sum(
+        _materials_cost(fac.housing_materials(defs, pub.floor_of(f)), prices, band)
+        for f in state.facilities
+        if f.ext.get(pub.PUBLIC)
+    )
+    return left, round(upkeep * wear)
+
+
 def guide(island: m.Island) -> dict[str, dict[str, Any]]:
     """予算の項目ごとの目安（数は島の通貨の最小の単位）。"""
     game = get_game()
@@ -152,6 +170,14 @@ def guide(island: m.Island) -> dict[str, dict[str, Any]]:
         repairs=repairs,
         note="進んでいる国の工事の残り＋インフラの工事の列の残り＋1年の維持と設備の修理",
     )
+    if pub.HOUSING in out:
+        left, upkeep = _housing_costs(state, defs, config, prices, band)
+        out[pub.HOUSING].update(
+            limit=left + upkeep,
+            housing_works=left,
+            housing_upkeep=upkeep,
+            note="命令の住宅の工事の残り＋国の床の1年の手入れ（計画経済の町が育つ分は含みません）",
+        )
     for item in STAFFED:
         if item in out:
             out[item].update(
@@ -179,6 +205,11 @@ def texts(g: dict[str, Any], currency: str) -> dict[str, str]:
             f"・インフラの工事の列の残り {money(g['queued'])}"
             f"・インフラの維持（1年） {money(g['upkeep'])}"
             f"・国の施設の設備の修理（1年） {money(g['repairs'])}"
+        )
+    if "housing_works" in g:
+        out["parts"] = (
+            f"命令の住宅の工事の残りの資材 {money(g['housing_works'])}"
+            f"・国の床の手入れ（1年） {money(g['housing_upkeep'])}"
         )
     return out
 

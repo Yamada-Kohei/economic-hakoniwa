@@ -218,7 +218,7 @@ def test_destroyed_facility_is_repaired_as_state_works(game, base):
     books_ok(game, island)
     # 同じころに始まったほかの国の工事（水力発電所など。世界の動きで変わる）に公共事業費を先に
     # 取られて、直すのが 12 ターンに収まらないことがないように、公共事業費を多めにしておく
-    island.policy.budget["construction"] *= 2
+    island.policy.budget["construction"] *= 4
     kinds = set()
     run(game, world, 12, lambda w: kinds.update(e.kind for e in island.log))
     assert f.built and "repair" not in f.ext

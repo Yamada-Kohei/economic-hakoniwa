@@ -7,8 +7,17 @@
 #            ここまでの段階の資材の合計が家の値打ちで、傷んだ分の資材で手入れします（game.yaml の housing.wear）。
 # water: この段階に育つのに要る、そのマスの上下水道の整備度（フェーズ2-3。書かなければ要らない）
 # shops: この段階の町のマスに入る商店の数（回7。書かなければ 0）
+# land_short: この段階へは、そのマスの通勤圏に町を新しく置ける空いた平地がないとき（土地が足りない）か、
+#            国の命令（build_housing）のときだけ育つ。空いた平地があれば、高く建てずに横に広がる
+#            （地価の代わりの仮の目安。W-206）
 # min_population は1つ下の段階の capacity より大きくします（育たないと見た目も変わらない）。
+# 高層の2段（W-190）: 段階の大きさは人数でなく床の量で現実に合わせる。1 マス（15km 四方）が、高層都市で
+# 東京都の平均（1km² に約 20 万㎡）、超高層で 23 区ほど（約 46 万㎡）。capacity は最低の広さ（12㎡）で
+# 詰めた人数で書く。資材は、床 1 つあたりの費用が大都市の 1.5 倍・2 倍になる量（鋼鉄と建材を多く、
+# エレベーターなどの機械も）。
 village:    {min_population: 0,     capacity: 2400,  height: 1, subsistence: true, materials: {wood: 25}}
 town:       {min_population: 2500,  capacity: 6000,  height: 2, shops: 2, materials: {wood: 50, building_materials: 50}}
 city:       {min_population: 8000,  capacity: 15000, height: 4, shops: 5, water: 0.5, materials: {building_materials: 150, steel: 25}}
 metropolis: {min_population: 20000, capacity: 30000, height: 6, shops: 10, water: 0.8, materials: {building_materials: 300, steel: 75, machinery: 10}}
+high_rise:  {min_population: 32000, capacity: 190000, height: 9, shops: 14, water: 0.9, land_short: true, materials: {building_materials: 4500, steel: 1500, machinery: 100}}
+skyscraper: {min_population: 200000, capacity: 430000, height: 12, shops: 18, water: 1.0, land_short: true, materials: {building_materials: 6000, steel: 3600, machinery: 250}}

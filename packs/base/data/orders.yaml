@@ -55,6 +55,18 @@ build:
       note: {type: string, maxLength: 81}   # 記念碑の碑文に足す文（2 行まで。1 行 40 字まで）
       hidden: {type: boolean}               # true で地下に造る（ミサイル基地と核施設だけ。工期と資材が増え、ほかの国には見えない）
 
+build_housing:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [x, y]
+    additionalProperties: false
+    properties:
+      x: {type: integer, minimum: 0}        # 町のマス、または町を置ける空いた平地
+      y: {type: integer, minimum: 0}
+      floors: {type: integer, minimum: 1}   # 足す床の数（最低の広さで住める人数）。level と、どちらか1つを書く
+      level: {type: string}                 # 床を届かせる段階の名前（その段階の上限まで。settlements.yaml）
+
 demolish:
   admin_cost: 1
   payload:
@@ -161,7 +173,7 @@ set_budget:
   payload:
     type: object                          # 項目（game.yaml の fiscal.budget_items）ごとの年の予算
     minProperties: 1
-    propertyNames: {enum: [construction, education, security, subsidies, warehouse, defense_personnel, defense_procurement]}
+    propertyNames: {enum: [construction, housing, education, security, subsidies, warehouse, defense_personnel, defense_procurement]}
     additionalProperties: {type: integer, minimum: 0, description: "年の予算の額（毎ターンその12分の1まで使う）"}
 
 set_public_works:

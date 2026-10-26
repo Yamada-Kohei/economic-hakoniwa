@@ -82,6 +82,7 @@ from hakoniwa_core.economy import (
 )
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy import plan as planning
+from hakoniwa_core.economy import public_housing as pub
 from hakoniwa_core.economy.households import SUPPORT, consumption
 from hakoniwa_core.economy.prices import (
     adapt_usual,
@@ -128,6 +129,7 @@ ANCHOR = "anchor"  # 家計の層の状態: 飢える前の食料の値段（値
 FACILITY = "facility"
 SITE = "site"
 WORKS = "works"  # インフラの公共事業
+PUBLIC_HOUSING = "public_housing"  # 国の住宅の資材（住宅費。economy/public_housing.py）
 HOUSEHOLD = "household"
 STORE = "warehouse"
 # 命令で出した国の倉庫の注文（財, 売り買い, 命令の量, 出した注文）。板寄せの後に結果をログに出す
@@ -1588,6 +1590,45 @@ class Market(IslandStage):
             self._add(books_by_good, good, "buy", Order(qty, limit), party)
             claimed[(payer, good)] = claimed.get((payer, good), 0) + qty
 
+    def _public_housing_orders(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        books_by_good: dict[str, Book],
+        offered: dict[str, int],
+        claimed: dict[tuple[Payer, str], int],
+    ) -> None:
+        """国の住宅の資材の注文（W-190・W-202）。国の床の手入れ（repair）と、町が育つ・命令の工事・
+        新しい村の資材（want）を、住宅費（housing）で、国の在庫に足りない分だけ買う。買えた物は国の
+        住宅の在庫（economy.housing["public"]["stock"]）に入る。"""
+        held = pub.state(island)
+        goods = set(held["want"]) | set(held["repair"])
+        if not goods:
+            return
+        width = to_basis(ctx.config.get("market.band"))
+        wanted = island.scratch.setdefault("wanted", {})
+        payer = pub.PAYER
+        plan = {}
+        for good in sorted(goods):
+            asked = held["want"].get(good, 0) + held["repair"].get(good, 0)
+            need = asked - stock.total(held["stock"], good)
+            if need <= 0:
+                continue
+            if offered.get(good, 0) <= 0:
+                wanted[good] = wanted.get(good, 0) + need
+            need = self._room(island, offered, claimed, payer, good, need)
+            if need > 0:
+                plan[good] = (need, material_limit(island, ctx.config, good, width))
+        afforded = self._afford(island, payer, plan, 0, 0)
+        self._unfunded(island, plan, afforded)
+        priority = ctx.config.get("infrastructure.build_priority")
+        for good, (qty, limit) in sorted(afforded.items()):
+            party = Party(PUBLIC_HOUSING, ledger.GOV, payer)
+            party.reserved = gross_cost(limit, qty, 0, 0)
+            funds.commit(island, payer, party.reserved)
+            self._add(books_by_good, good, "buy", Order(qty, limit, priority), party)
+            claimed[(payer, good)] = claimed.get((payer, good), 0) + qty
+
     def _site_orders(
         self,
         island: IslandState,
@@ -1618,6 +1659,7 @@ class Market(IslandStage):
         wanted = island.scratch.setdefault("wanted", {})  # 売りに出ていなくて買えなかった量
         claimed: dict[tuple[Payer, str], int] = {}  # 払い手ごとの注文した量
         self._rebuild_orders(island, ctx, books_by_good, offered, claimed)
+        self._public_housing_orders(island, ctx, books_by_good, offered, claimed)
         self._works_orders(island, ctx, books_by_good, offered, hh_rate, claimed, upkeep=True)
         self._repair_orders(island, ctx, books_by_good, rates, offered, claimed)
         for f in self._sites(island, ctx):
@@ -3055,6 +3097,10 @@ class Market(IslandStage):
             stats["equipment.repair"] = stats.get("equipment.repair", 0) + amount + freight
         elif buyer.kind == WORKS:
             infrastructure.received(island, good, batches)
+            books.add_sector(island, CONSTRUCTION, "materials", amount)
+            books.add_sector(island, CONSTRUCTION, "freight", freight)
+        elif buyer.kind == PUBLIC_HOUSING:
+            stock.put_batches(pub.state(island)["stock"], good, batches)
             books.add_sector(island, CONSTRUCTION, "materials", amount)
             books.add_sector(island, CONSTRUCTION, "freight", freight)
         elif buyer.kind == REBUILD:

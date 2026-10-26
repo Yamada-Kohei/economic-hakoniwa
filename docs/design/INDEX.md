@@ -61,7 +61,7 @@
 | PO-13 | 建国直後の島は `start_island.yaml` に従い、首都の町・周りの村・初めの施設・… | 決定 | tests/core/test_founding.py |
 | PO-14 | 初めの施設のうち `fit` を書いたものは、数を要る量に合わせる: 食料は建国の住民の食べる量… | 決定 | tests/core/test_founding.py、tests/core/test_recession_round1.py |
 | PO-15 | 建国のお金は、建国の国債 → 家計への給付 → 出資 → 銀行の国債買い、の順の仕訳で作る | 決定 | tests/core/test_founding.py、tests/core/test_infrastructure.py |
-| PO-16 | 町（住宅）は自動で建つ施設 `housing.facility` で、段階（村・町・都市・大都市… | 決定（高層の2段階は回2 で作る） | tests/core/test_housing_floor.py、tests/core/test_playtest3_fixes.py |
+| PO-16 | 町（住宅）は自動で建つ施設 `housing.facility` で、段階（村・町・都市・大都市… | 決定 | tests/core/test_high_rise.py、tests/core/test_housing_floor.py、tests/core/test_playtest3_fixes.py |
 | PO-17 | 町ができる・床を足すのは、人手の足りない施設（店が雇いきれなかった集落を含む）の通勤圏で、近くの… | 決定 | tests/core/test_rules.py |
 | PO-18 | 床は段階の幅の `housing.floor_step` ずつ足し、段階の上限を超えるときに次の… | 決定 | tests/core/test_housing_floor.py、tests/core/test_rules.py |
 | PO-19 | 床を足す資材は、市場・混合の国では、人手の足りない所で町を育てる分は一般の層が、住み替えの分は望… | 決定（国が買う分は回2 で作る） | tests/core/test_housing_floor.py、tests/core/test_playtest3_fixes.py、tests/core/test_rules.py |
@@ -99,9 +99,9 @@
 | PO-51 | 延べ床（W-190・W-201）: 町のマスは延べ床を持ち、最低の広さ `housing.spa`… | 決定 | tests/core/test_housing_floor.py |
 | PO-52 | 望む広さと住み替え（W-201）: 層の望む広さは `housing.space.base` ×… | 決定 | tests/core/test_housing_floor.py |
 | PO-53 | 幸福度の住まいの広さ: 層ごとに min(1, 1 人あたりの広さ ÷ 望む広さ) × 重み ``… | 決定 | tests/core/test_housing_floor.py |
-| PO-54 | 高層化（W-190）: 大都市から上（高層都市・超高層）へは、そのマスの通勤圏に新しい町を置ける… | 決定（W-190 の回で作る | （作る回で） |
-| PO-55 | 国の命令「住宅を建てる」（W-190）: 町のマスか空いた平地を選び、足す床（次の段階まで、また… | 決定（W-190 の回で作る） | （作る回で） |
-| PO-56 | 計画経済の国営住宅（W-202）: 計画経済の国では家計は住宅の資材を買わず住宅ローンも借りない | 決定（W-190 の回で作る） | （作る回で） |
+| PO-54 | 高層化（W-190）: 大都市から上（高層都市・超高層）へは、そのマスの通勤圏に新しい町を置ける… | 決定（仮: 地価の代わり、W-206 | tests/core/test_high_rise.py |
+| PO-55 | 国の命令「住宅を建てる」（W-190）: 町のマスか空いた平地を選び、足す床（次の段階まで、また… | 決定（W-190 の回2 で作った | tests/core/test_public_housing.py |
+| PO-56 | 計画経済の国営住宅（W-202）: 計画経済の国では家計は住宅の資材を買わず住宅ローンも借りない | 決定（W-190 の回2 で作った | tests/core/test_public_housing.py |
 
 ## [3 物と市場と値段](03-market.md)
 
@@ -264,7 +264,7 @@
 | FS-04 | 税率は命令で変え、次の段から効く | 決定 | tests/core/test_phase3_4.py |
 | FS-05 | 支出は、公務員・教員・警察官の賃金、失業手当、国庫直轄の施設の費用、公共事業、教育、治安、補助金… | 決定 | （未確認） |
 | FS-06 | 予算の項目（公共事業費・住宅費・教育費・治安費・補助金・国の倉庫の買い入れ | 決定 | （未確認） |
-| FS-07 | 建国のときの予算は、住民1人あたりの決めた額（教育費は学校の運営の決めた年数分、住宅費は計画経済… | 決定 | （未確認） |
+| FS-07 | 建国のときの予算は、住民1人あたりの決めた額（教育費は学校の運営の決めた年数分、住宅費は計画経済… | 決定 | tests/core/test_public_housing.py |
 | FS-08 | ターンの初めに、前のターンの実績から各項目の支払いを多めに見積もり、国庫の残高を支払いの順番に取… | 決定 | （未確認） |
 | FS-09 | 支払いの順番は、国債の利払い →〔公務員・国庫直轄の施設・教育・治安〕→ 失業手当 → 昔の未払… | 決定 | tests/core/test_balance_round5.py |
 | FS-10 | 払えなかった賃金は未払い賃金として政府の負債に残し、お金が入れば新しく雇う前に先に払う | 決定 | tests/core/test_balance_round3.py |
@@ -283,8 +283,8 @@
 | FS-23 | 国営の施設の設備は国が予算から直す（回6 | 決定（回6 で作る） | （未確認） |
 | FS-24 | 国庫のうち「支出の `bonds.buffer_turns`+1 ターン分と次の利払い」を超えた… | 決定（回5） | tests/core/test_balance_round5.py |
 | FS-25 | 国の穀物の備蓄: 目安は住民の食べる量の決めたターン数分で、建国のときに国の倉庫に入れる | 決定 | tests/core/test_recession_round1.py |
-| FS-26 | 住宅費（W-190・W-202）: 国が町の床を足す資材（命令「住宅を建てる」と、計画経済の国の… | 決定（W-190 の回で作る） | （作る回で） |
-| FS-27 | 公営住宅の家賃（W-190・W-202）: 国の床に住む層は、床 1 人分ごとに命令で決める名目… | 決定（W-190 の回で作る） | （作る回で） |
+| FS-26 | 住宅費（W-190・W-202）: 国が町の床を足す資材（命令「住宅を建てる」と、計画経済の国の… | 決定（命令の工事と計画経済の町は回2 で作った | tests/core/test_public_housing.py |
+| FS-27 | 公営住宅の家賃（W-190・W-202）: 国の床に住む層は、床 1 人分ごとに命令で決める名目… | 決定（家賃の徴収は回2 で作った | tests/core/test_public_housing.py |
 
 ## [7 お金と銀行](07-banking.md)
 

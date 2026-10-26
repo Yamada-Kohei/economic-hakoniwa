@@ -60,6 +60,7 @@ bond_trade:           {type: journal}   # 国債の売買（買い手 → 売り
 bond_default:         {type: journal}   # 国債の不履行（額面の切り下げ）
 # 家計の層
 layer_transfer:       {type: journal}   # 層を移った人の預金の付け替え
+housing_rent:        {type: journal}   # 国の床の家賃（家計 → 政府。W-190・W-202）
 # 賃金と税の未払い（バランス調整の回3。hakoniwa_core/economy/arrears.py）
 wage_arrears:         {type: journal}   # 払えなかった賃金を未払い賃金として残す（払い手が家計の層に負う）
 wage_arrears_paid:    {type: journal}   # 未払い賃金の支払い（払い手 → 家計。倒産の後の分配も）
