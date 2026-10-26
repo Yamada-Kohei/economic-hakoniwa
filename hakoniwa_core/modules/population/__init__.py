@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import math
 import random
-from typing import Any
+from typing import Any, NamedTuple
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, politics, stock
@@ -63,6 +63,7 @@ HAPPINESS_FACTS = (
     "luxury",
     "water",
     "education",
+    "housing",
 )
 OLD_CONSUMER_GOOD = "consumer_goods"  # フェーズ3-1 までの幸福度の「消費財」で数える財
 HUNGER = "hunger"  # 層の飢えの蓄え（economy.households[層]。栄養の不足が何か月分たまったか）
@@ -202,6 +203,59 @@ def layer_income(island: IslandState, config: GameConfig, name: str) -> float:
     return max(0.0, per_person / cpi / config.get("household.base_income"))
 
 
+def desired_space(island: IslandState, config: GameConfig, layer: str) -> float:
+    """層の望む広さ（1 人あたりの延べ床、㎡。W-201）。housing.space.base ×（層の実質の所得の倍率）
+    ^ housing.space.elasticity で、最低の広さ housing.space.min より下げない。"""
+    spec = config.get("housing.space")
+    income = layer_income(island, config, layer)
+    return max(float(spec["min"]), spec["base"] * income ** spec["elasticity"])
+
+
+class Dwelling(NamedTuple):
+    """町のマスの床と住む人の望み（㎡）。floor は傷みを引いた床、nominal は傷みを見ない床、want は
+    住む人が望む広さで使う床の合計、layers は want の層ごとの内わけ。"""
+
+    floor: float
+    nominal: float
+    want: float
+    layers: dict[str, float]
+
+    @property
+    def ratio(self) -> float:
+        """住む人の望みに対する床の割合（1 まで。住む人がいなければ 1）。"""
+        return min(1.0, self.floor / self.want) if self.want > 0 else 1.0
+
+
+def dwelling_status(
+    defs: Defs,
+    config: GameConfig,
+    island: IslandState,
+    homes: dict[Pos, Facility],
+    placed: dict[str, dict[Pos, int]] | None = None,
+) -> dict[Pos, Dwelling]:
+    """人が住む、または町のあるマスごとの床と望み（W-201）。住む人は層ごとの人数（layer_tiles）に
+    層の望む広さを掛けて合わせ、層のないマスの人は一般の層の望む広さで数える。"""
+    min_space = config.get("housing.space")["min"]
+    if placed is None:
+        placed = layer_tiles(defs, island, island.economy.households)
+    desires = {name: desired_space(island, config, name) for name in placed}
+    general = desires.get(GENERAL) or desired_space(island, config, GENERAL)
+    out: dict[Pos, Dwelling] = {}
+    for tile in island.tiles:
+        pos = (tile.x, tile.y)
+        home = homes.get(pos)
+        if tile.population <= 0 and home is None:
+            continue
+        layers = {n: here * desires[n] for n in placed if (here := placed[n].get(pos, 0)) > 0}
+        gap = tile.population - sum(placed[n].get(pos, 0) for n in placed)
+        if gap > 0:
+            layers[GENERAL] = layers.get(GENERAL, 0.0) + gap * general
+        floor = fac.housing_capacity(defs, home) * min_space if home else 0
+        nominal = fac.nominal_housing_capacity(defs, home) * min_space if home else 0
+        out[pos] = Dwelling(floor, nominal, sum(layers.values()), layers)
+    return out
+
+
 def birth_rate(island: IslandState, income: float, ctx: StageContext) -> float:
     """1年に生まれる人の割合（粗出生率。名前付きの式 birth_rate の既定）。
 
@@ -258,6 +312,16 @@ def _blend_notice(island: IslandState, ctx: StageContext) -> None:
     source = island.economy.ext.get("happiness_from", "happiness_phase1")
     old = ctx.config.get(f"population.{source}")
     now = ctx.config.get("population.happiness")
+    if source == "happiness_before_housing":
+        # 住まいの広さ（W-201）を足す: 基礎の点が住まいの広さの項目へ移る
+        args = {
+            "turns": turns,
+            "base_from": old["base"],
+            "base": now["base"],
+            "housing": now["housing"],
+        }
+        island.log.append(LogEntry("happiness_weights_changed_housing", args))
+        return
     if old.get("water", 0) > 0:
         # フェーズ3-1 から続く島: 上下水道と教育はもうあり、消費財が衣料とぜいたく品に替わる
         # （基礎の点は変わらないのに「15 点から 15 点に下がります」と出ていた）
@@ -282,7 +346,8 @@ def _blend_notice(island: IslandState, ctx: StageContext) -> None:
 def happiness(island: IslandState, facts: dict[str, Any], ctx: StageContext) -> int:
     """幸福度（0〜100）。
 
-    facts: food・jobs・power・consumer_goods・clothing・luxury・water・education（1000 分の 1）、
+    facts: food・jobs・power・consumer_goods・clothing・luxury・water・education・housing
+    （1000 分の 1。housing は住まいの広さ: 住む人の望む広さに対する床の割合。書かなければ満点）、
     quality（0〜1）、pollution（汚染）、hunger（飢えの蓄え。か月）、arrears（賃金が払われなかった
     働き手の割合。0〜1）、crowding（マスの過密の度合い。0 から）。water はそのマスの上下水道の
     整備度、education は島の教育水準。clothing と luxury はフェーズ3-2 の衣料とぜいたく品
@@ -304,6 +369,7 @@ def happiness(island: IslandState, facts: dict[str, Any], ctx: StageContext) -> 
         + w.get("luxury", 0) * facts.get("luxury", 0) / fac.FULL
         + w.get("water", 0) * facts.get("water", 0) / fac.FULL
         + w.get("education", 0) * facts.get("education", 0) / fac.FULL
+        + w.get("housing", 0) * facts.get("housing", fac.FULL) / fac.FULL
         - w["pollution_per_point"] * facts["pollution"]
     )
     fall = -real_wage_change(island.economy) * 100
@@ -589,13 +655,14 @@ class Population(IslandStage):
             "ratio": fac.ratio(supplied, need) if layers else fac.FULL,
         }
         homes = homes_of(island, config)
+        dwell = dwelling_status(defs, config, island, homes, placed)
         # 飢えている層は子を持つ人が減る（回4）: 飢えの蓄えが、いちばん弱い人が亡くなり始める量
         # （population.hunger.reserve_min）に近づくほど減り、そこで生まれなくなる。体が耐えられる
         # 少しの不足（蓄えが増えない不足）では減らない
         reserve = config.get("population.hunger")["reserve_min"]
         fertile = {n: max(0.0, 1 - f[HUNGER] / reserve) for n, f in layers.items()}
         moods: dict[str, list[float]] = {}
-        power_sum = pollution_sum = water_sum = people = 0
+        power_sum = pollution_sum = water_sum = housing_sum = people = 0
         education = island.economy.education
         # 亡くなる人を、層ごとにその層の住むマスへ割り振る（村で自給の農業をしている人は除く）
         lost_by_tile: dict[Pos, int] = {}
@@ -637,6 +704,7 @@ class Population(IslandStage):
                 "water": infra.water(defs, tile),
                 "education": education,
                 "crowding": crowd,
+                "housing": round(dwell[pos].ratio * fac.FULL) if pos in dwell else fac.FULL,
             }
             idle = placed.get(JOBLESS, {}).get(pos, 0) if jobless else 0
             workers = max(0, placed.get(GENERAL, {}).get(pos, tile.population))
@@ -667,6 +735,7 @@ class Population(IslandStage):
             power_sum += local["power"] * tile.population
             pollution_sum += tile.pollution * tile.population
             water_sum += local["water"] * tile.population
+            housing_sum += local["housing"] * tile.population
             people += tile.population
             pop = tile.population - min(tile.population, lost_by_tile.get(pos, 0))
             # 生まれる人と亡くなる人（回4）: 層ごとの割合を、マスに住む層の人数で混ぜる
@@ -721,6 +790,7 @@ class Population(IslandStage):
                 "pollution": pollution_sum / people,
                 "water": water_sum // people,
                 "education": education,
+                "housing": housing_sum // people,
             }
             moods_by_layer[layer] = ctx.formula("happiness")(island, facts, ctx)
         island.scratch["layer_happiness"] = moods_by_layer
@@ -1159,11 +1229,13 @@ def remove_dead(island: IslandState, defs: Defs, deaths: dict[str, int]) -> None
 
 
 class Housing(IslandStage):
-    """都市の発展: 人手の足りない施設の通勤圏で住む所が足りなければ、町を育てるか新しく作る。
+    """都市の発展: 人手の足りない施設の通勤圏で住む所が足りなければ、町に床を足すか新しく作る。
+    望む広さに足りない層は、足りない床の一部を毎ターン買って住むマスに足す（住み替え。W-201）。
 
-    育つ・作るには、その段階の資材（settlements.yaml の materials）を、一般の層が市場で買った
-    資材（economy.housing["stock"]）から使う。足りなければ要る資材を economy.housing["want"] に
-    書き、次のターンの市場で一般の層が買う。2ターン続けて足りなければ知らせる。
+    床を足す・作るには、その床の資材（settlements.yaml の materials を段階の幅で割ったもの）を、
+    家計が市場で買った資材（economy.housing["stock"]）から使う。足りなければ要る資材を
+    economy.housing["want"]（人手の足りない所の分。一般の層が買う）と economy.housing["move"]
+    （住み替えの分。層ごと）に書き、次のターンの市場で買う。2ターン続けて足りなければ知らせる。
     """
 
     name = "housing"
@@ -1175,12 +1247,16 @@ class Housing(IslandStage):
         housing = island.economy.housing
         housing.setdefault("stock", {})
         housing["want"] = {}
+        housing["move"] = {}
         homes = homes_of(island, config)
         kind = fac.housing_kind(config)
         levels = defs.settlement_levels()
         if island.has_economy:
-            self._maintain(island, defs, h, homes, levels)
-        built = upgraded = 0
+            self._maintain(island, defs, h, homes)
+        status = dwelling_status(defs, config, island, homes)
+        general = desired_space(island, config, GENERAL)
+        min_space = h["space"]["min"]
+        built = grown = 0
         short: set[str] = set()  # 足りなくて町が育たなかった資源
         dry: set[Pos] = set()  # 上下水道が足りなくて育たなかった町のマス
         vacancies = sorted(
@@ -1188,31 +1264,26 @@ class Housing(IslandStage):
             key=lambda v: (-v[2], v[3], v[0][1], v[0][0]),
         )
         for site, radius, missing, _ in vacancies:
-            if built >= h["max_new_per_turn"] and upgraded >= h["max_upgrades_per_turn"]:
+            if built >= h["max_new_per_turn"] and grown >= h["max_upgrades_per_turn"]:
                 break
             area = within(island, site, radius)
             near = [pos for pos in area if pos in homes]
-            # 空いている町に入れる人と、もう近くに住んでいて仕事のない人で足りれば育てない
-            room = sum(
-                max(0, fac.housing_capacity(defs, homes[pos]) - island.tile(*pos).population)
-                for pos in near
-            )
+            # 空いている町に入れる人（望む広さで使う床の空き）と、もう近くに住んでいて仕事のない人で
+            # 足りれば育てない（PO-17）
+            room = sum(_room(status[pos], island.tile(*pos).population, general) for pos in near)
             idle = sum(_idle(defs, island, island.tile(*pos)) for pos in near)
             if share <= 0 or room * share + idle >= missing:
                 continue
-            if upgraded < h["max_upgrades_per_turn"]:
-                pos = self._upgradable(island, defs, homes, near, levels, h["fill_ratio"], dry)
+            if grown < h["max_upgrades_per_turn"]:
+                pos = self._growable(island, defs, homes, near, status, h["fill_ratio"], dry)
                 if pos is not None:
                     home = homes[pos]
-                    target = levels[levels.index(home.ext.get("level", levels[0])) + 1]
-                    missing = self._pay(island, defs, target)
+                    floor = fac.floor_of(defs, home)
+                    target = _next_floor(defs, floor, h["floor_step"])
+                    missing = self._pay_goods(island, fac.floor_materials(defs, floor, target))
                     if not missing:
-                        home.ext["level"] = target
-                        upgraded += 1
-                        # 住める上限が上がって見た目も変わるこのターンに知らせる
-                        island.log.append(
-                            LogEntry("settlement_grew", {"x": pos[0], "y": pos[1], "level": target})
-                        )
+                        self._add_floor(island, defs, home, target)
+                        grown += 1
                         continue
                     short.update(missing)
             if built < h["max_new_per_turn"]:
@@ -1221,12 +1292,19 @@ class Housing(IslandStage):
                     missing = self._pay(island, defs, levels[0])
                     if not missing:
                         homes[pos] = fac.new_housing(island, kind, pos, levels[0])
+                        status[pos] = _with_home(defs, config, status.get(pos), homes[pos])
                         built += 1
                     short.update(missing)
         if built < h["max_new_per_turn"]:
             left = h["max_new_per_turn"] - built
             self._settle(island, defs, h, homes, kind, levels[0], left, short)
+        for pos, home in homes.items():  # このターンに建った村
+            if pos not in status or status[pos].nominal != fac.floor_of(defs, home) * min_space:
+                status[pos] = _with_home(defs, config, status.get(pos), home)
+        if island.has_economy:
+            self._relocate(island, ctx, h, homes, status, dry)
         self._watch_water(island, defs, homes, dry)
+        self._record(island, ctx, homes)
         # 2ターン続けて資材を買えなかったときだけ知らせる
         # （足りない間は毎ターン同じ知らせを出さない）
         if short:
@@ -1238,6 +1316,21 @@ class Housing(IslandStage):
         else:
             island.ext.pop("housing_short", None)
             island.ext.pop("housing_short_turns", None)
+
+    @staticmethod
+    def _record(island: IslandState, ctx: StageContext, homes: dict[Pos, Facility]) -> None:
+        """住まいの広さの統計（W-201）: 町の延べ床の合計（最低の広さで住める人数）と、1 人あたりの
+        広さ・住む人が望む広さ（㎡）。"""
+        people = sum(t.population for t in island.tiles)
+        if people <= 0:
+            return
+        status = dwelling_status(ctx.defs, ctx.config, island, homes)
+        stats = island.stats
+        stats["housing.floor"] = sum(
+            fac.nominal_housing_capacity(ctx.defs, h) for h in homes.values()
+        )
+        stats["housing.space"] = sum(d.floor for d in status.values()) / people
+        stats["housing.want"] = sum(d.want for d in status.values()) / people
 
     def _settle(
         self,
@@ -1283,13 +1376,18 @@ class Housing(IslandStage):
             excess -= size
             limit -= 1
 
+    @classmethod
+    def _pay(cls, island: IslandState, defs: Defs, level: str) -> list[str]:
+        """段階 level の床を丸ごと新しく建てる資材（村が建つとき）を、家計が買った資材から使う。"""
+        floor = defs.settlements[level]["capacity"]
+        return cls._pay_goods(island, fac.floor_materials(defs, 0, floor))
+
     @staticmethod
-    def _pay(island: IslandState, defs: Defs, level: str) -> list[str]:
-        """段階 level に育つ資材を、家計が買った資材から使う。
+    def _pay_goods(island: IslandState, need: dict[str, int]) -> list[str]:
+        """資材 need を、家計が買った資材から使う。
 
         足りなければ何も使わず、要る資材を次のターンに買う分（want）に足して、足りない資材を返す。
         """
-        need = defs.settlements[level].get("materials", {})
         housing = island.economy.housing
         held = housing["stock"]
         missing = [g for g, q in sorted(need.items()) if stock.total(held, g) < q]
@@ -1303,15 +1401,23 @@ class Housing(IslandStage):
         return missing
 
     @staticmethod
+    def _add_floor(island: IslandState, defs: Defs, home: Facility, floor: int) -> None:
+        """町の床を floor にする。段階が上がったターンに知らせる（見た目も変わる）。"""
+        before = home.ext.get("level")
+        fac.set_floor(defs, home, floor)
+        if home.ext["level"] != before and before is not None:
+            args = {"x": home.x, "y": home.y, "level": home.ext["level"]}
+            island.log.append(LogEntry("settlement_grew", args))
+
+    @staticmethod
     def _maintain(
         island: IslandState,
         defs: Defs,
         h: dict[str, Any],
         homes: dict[Pos, Facility],
-        levels: tuple[str, ...],
     ) -> None:
-        """家の傷みと手入れ（回3）: 町の家は年に housing.wear ずつ傷む。傷んだ分の資材（その段階まで
-        育つのに使った資材 × 傷んだ割合）を、家計が買った資材から育つより先に使って直す。足りない分
+        """家の傷みと手入れ（回3）: 町の家は年に housing.wear ずつ傷む。傷んだ分の資材（持っている
+        床を新しく建てる資材 × 傷んだ割合）を、家計が買った資材から先に使って直す。足りない分
         は economy.housing["repair"] に書き、次のターンの市場で一般の層が預金から買う。傷みが
         housing.livable を下回った町は、住める上限がその割合で下がる。"""
         full = fac.HOUSING_FULL
@@ -1327,7 +1433,7 @@ class Housing(IslandStage):
             lost = full - cond
             need = {
                 g: q * lost // full
-                for g, q in fac.housing_materials(defs, home.ext.get("level", levels[0])).items()
+                for g, q in fac.housing_materials(defs, fac.floor_of(defs, home)).items()
             }
             need = {g: q for g, q in need.items() if q > 0}
             if need:
@@ -1344,30 +1450,106 @@ class Housing(IslandStage):
         island.economy.housing["repair"] = repair
 
     @staticmethod
-    def _upgradable(
+    def _growable(
         island: IslandState,
         defs: Defs,
         homes: dict[Pos, Facility],
         near: list[Pos],
-        levels: list[str],
+        status: dict[Pos, Dwelling],
         fill_ratio: float,
         dry: set[Pos],
     ) -> Pos | None:
-        """上の段階へ育てる町のマス。育つのに要る上下水道（settlements.yaml の water）が足りない
-        マスは飛ばして dry に入れる（お金の経済の島だけ）。"""
+        """床を足す町のマス。住む人が望む広さで使う床が今の床の fill_ratio を超えた、最上段でない
+        マス。次の段階に入るのに要る上下水道（settlements.yaml の water）が足りないマスは飛ばして
+        dry に入れる（お金の経済の島だけ）。"""
         for pos in near:
-            home = homes[pos]
-            level = home.ext.get("level", levels[0])
-            if levels.index(level) + 1 >= len(levels):
+            floor = fac.floor_of(defs, homes[pos])
+            upper = fac.level_after(defs, floor)
+            if upper is None:
                 continue
-            if island.tile(*pos).population < fac.nominal_housing_capacity(defs, home) * fill_ratio:
+            if status[pos].want < status[pos].nominal * fill_ratio:
                 continue
-            need = defs.settlements[levels[levels.index(level) + 1]].get("water", 0)
-            if island.has_economy and infra.water(defs, island.tile(*pos)) < round(need * 1000):
-                dry.add(pos)
-                continue
+            if upper != fac.level_of_floor(defs, floor):
+                need = defs.settlements[upper].get("water", 0)
+                if island.has_economy and infra.water(defs, island.tile(*pos)) < round(need * 1000):
+                    dry.add(pos)
+                    continue
             return pos
         return None
+
+    @staticmethod
+    def _relocate(
+        island: IslandState,
+        ctx: StageContext,
+        h: dict[str, Any],
+        homes: dict[Pos, Facility],
+        status: dict[Pos, Dwelling],
+        dry: set[Pos],
+    ) -> None:
+        """住み替え（W-201）: 望む広さに足りない層は、足りない床の housing.space.move_rate（毎年
+        引っ越すか建て替える世帯の割合）を、毎ターンの 12 分の 1 ずつ、住むマスに足す。失業している
+        家計は買わない（広さの足りなさは幸福度に残る）。床は家計が買った資材から足し、足りなければ
+        要る資材を economy.housing["move"]（層ごと）に書いて次のターンに買う。広すぎても売らない。
+        """
+        defs = ctx.defs
+        spec = h["space"]
+        rate = spec["move_rate"] / YEAR
+        top = fac.max_floor(defs)
+        housing = island.economy.housing
+        held = housing["stock"]
+        move: dict[str, dict[str, int]] = housing["move"]
+        order = sorted(
+            (pos for pos, d in status.items() if pos in homes and d.want > d.nominal),
+            key=lambda p: (-(status[p].want - status[p].nominal) / status[p].want, p[1], p[0]),
+        )
+        for pos in order:
+            d, home = status[pos], homes[pos]
+            buyers = {n: w for n, w in d.layers.items() if n != JOBLESS and w > 0}
+            floor = fac.floor_of(defs, home)
+            if not buyers or floor >= top:
+                home.ext.pop(fac.FLOOR_DUE, None)
+                continue
+            lack = (d.want - d.nominal) / spec["min"] * sum(buyers.values()) / d.want
+            # 買えていない分は年の分までためる（資材が売りに出るまでの間に積み上げすぎない）
+            due = min(home.ext.get(fac.FLOOR_DUE, 0.0) + lack * rate, lack * spec["move_rate"])
+            level = fac.level_of_floor(defs, floor)
+            upper = fac.level_after(defs, floor)
+            room = top - floor
+            if upper != level:  # 段階の上限にいる: 次の段階に入るのに上下水道が要る
+                need_water = defs.settlements[upper].get("water", 0)
+                if island.has_economy and infra.water(defs, island.tile(*pos)) < round(
+                    need_water * 1000
+                ):
+                    dry.add(pos)
+                    home.ext[fac.FLOOR_DUE] = round(due, 6)
+                    continue
+            else:  # 1回に段階をまたがない
+                room = min(room, defs.settlements[level]["capacity"] - floor)
+            count = min(int(due), room)
+            if count > 0:
+                need = fac.floor_materials(defs, floor, floor + count)
+                have = min(1.0, *(stock.total(held, g) / q for g, q in need.items() if q > 0))
+                bought = int(count * have)
+                if bought > 0:
+                    for good, qty in sorted(
+                        fac.floor_materials(defs, floor, floor + bought).items()
+                    ):
+                        stock.take(held, good, qty)
+                    Housing._add_floor(island, defs, home, floor + bought)
+                    floor += bought
+                    due -= bought
+                    room -= bought
+            # 足りなかった分を、次のターンに買う
+            count = min(int(due), room)
+            if count > 0:
+                total = sum(buyers.values())
+                for good, qty in sorted(fac.floor_materials(defs, floor, floor + count).items()):
+                    for layer, weight in sorted(buyers.items()):
+                        part = int(qty * weight / total)
+                        if part > 0:
+                            wanted = move.setdefault(layer, {})
+                            wanted[good] = wanted.get(good, 0) + part
+            home.ext[fac.FLOOR_DUE] = round(due, 6)
 
     @staticmethod
     def _watch_water(
@@ -1375,13 +1557,12 @@ class Housing(IslandStage):
     ) -> None:
         """上下水道が足りなくて育たなかった町を、マスごとに1度だけ知らせる（整備度が足りたら印を
         外す）。印 ext["water_short"] は、育つのに要る整備度（1000 分の 1）。"""
-        levels = defs.settlement_levels()
         for pos, home in sorted(homes.items(), key=lambda kv: (kv[0][1], kv[0][0])):
-            level = home.ext.get("level", levels[0])
-            if levels.index(level) + 1 >= len(levels):
+            upper = fac.level_after(defs, fac.floor_of(defs, home))
+            if upper is None:
                 home.ext.pop("water_short", None)
                 continue
-            need = round(defs.settlements[levels[levels.index(level) + 1]].get("water", 0) * 1000)
+            need = round(defs.settlements[upper].get("water", 0) * 1000)
             if pos in dry and not home.ext.get("water_short"):
                 home.ext["water_short"] = need
                 now = infra.water(defs, island.tile(*pos))
@@ -1399,6 +1580,29 @@ class Housing(IslandStage):
             if tile.terrain in terrains and tile.zone == ZONE_NONE and pos not in occupied:
                 return pos
         return None
+
+
+def _room(d: Dwelling, population: int, general: float) -> float:
+    """町のマスの、望む広さで数えた空き（人数。W-190 の PO-17）: 床 ÷ 住む人の望む広さ − 住む人。"""
+    per_person = d.want / population if population > 0 else general
+    return max(0.0, d.floor / per_person - population) if per_person > 0 else 0.0
+
+
+def _with_home(defs: Defs, config: GameConfig, old: Dwelling | None, home: Facility) -> Dwelling:
+    """建ったばかりの町の床を、そこに住む人の望み（なければ 0）に合わせた Dwelling にする。"""
+    min_space = config.get("housing.space")["min"]
+    want = old.want if old else 0.0
+    layers = old.layers if old else {}
+    floor = fac.housing_capacity(defs, home) * min_space
+    return Dwelling(floor, fac.nominal_housing_capacity(defs, home) * min_space, want, layers)
+
+
+def _next_floor(defs: Defs, floor: int, step: float) -> int:
+    """床 floor から 1 回で足したあとの床。足す段階の幅の step の割合で、段階の上限を超えない。"""
+    for _, low, high in fac.level_bounds(defs):
+        if floor < high:
+            return min(high, floor + max(1, math.ceil(step * (high - low))))
+    return floor
 
 
 def check_population_defs(defs: Defs, config: GameConfig) -> list[str]:

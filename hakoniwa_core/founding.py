@@ -332,6 +332,7 @@ def found_island(
     island.log.append(LogEntry("island_founded", {"name": island.name}))
     start_economy(island, defs, config, turn)
     island.economy.ext["nature"] = nature.VERSION  # 自然条件は建国のときに置いた（移し替えない）
+    island.economy.ext["housing"] = fac.HOUSING_VERSION  # 住まいの広さも建国のときから
     return island
 
 

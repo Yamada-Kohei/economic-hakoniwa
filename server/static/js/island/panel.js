@@ -199,6 +199,9 @@ export class TilePanel {
     if (f.level_name) {
       // 町（住宅地）には名前を付けない。段階と、次の段階に育つのに要る資源を出す
       const rows = [["段階", f.level_name], ["居住上限", `${f.capacity.toLocaleString()} 人`]];
+      // 住まいの広さ（W-201）: 延べ床と、住む人の1人あたりの広さ・望む広さ
+      if (f.floor_m2 != null) rows.push(["延べ床", `${f.floor_m2.toLocaleString()} ㎡`]);
+      if (f.space != null) rows.push(["1人あたりの広さ", `${f.space} ㎡（住む人の望みは ${f.space_wanted} ㎡）`]);
       // 町の商店（回7）: 町の段階ごとに建てられる数が決まる
       if (f.shop_slots != null) rows.push(["商店", `${(f.shops || 0).toLocaleString()} / ${f.shop_slots.toLocaleString()} 軒`]);
       if (f.next_level_name) {
