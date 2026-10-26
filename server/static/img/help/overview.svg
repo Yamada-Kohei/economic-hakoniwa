@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 545" width="480" height="545" font-family='"Noto Sans JP","Hiragino Kaku Gothic ProN","Meiryo","WenQuanYi Zen Hei",sans-serif' role="img" aria-labelledby="t d">
+<title id="t">お金と物の流れの全体図</title><desc id="d">国庫、銀行、民間（家計・施設と企業・市場）、外国の間で、税、公共事業、賃金、預金、融資、国債、貿易がどう流れるかを示す図。</desc>
+<rect width="480" height="545" fill="#ffffff"/>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<rect x="10" y="12" width="200" height="62" rx="6" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="110.0" y="38.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">国庫（政府）</text>
+<text x="110.0" y="57.8" font-size="13" text-anchor="middle" fill="#102a6b">税を集めて、事業と賃金に使う</text>
+<rect x="270" y="12" width="200" height="62" rx="6" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="370.0" y="38.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">銀行・中央銀行</text>
+<text x="370.0" y="57.8" font-size="13" text-anchor="middle" fill="#102a6b">預金を預かり、融資する</text>
+<line x1="210" y1="43" x2="270" y2="43" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<rect x="224.0" y="23.0" width="32.0" height="18" fill="#ffffff" opacity="0.92"/>
+<text x="240.0" y="36" font-size="13" text-anchor="middle" fill="#1f4fa8">国債</text>
+<rect x="10" y="165" width="460" height="260" rx="10" fill="#fbfdff" stroke="#6f8fd0" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="22" y="185" font-size="13" text-anchor="start" fill="#5a6a90" font-weight="bold">民間</text>
+<rect x="25" y="205" width="150" height="62" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="100.0" y="231.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">家計</text>
+<text x="100.0" y="250.8" font-size="13" text-anchor="middle" fill="#102a6b">働き、買い、暮らす</text>
+<rect x="305" y="205" width="150" height="62" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="380.0" y="231.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">施設・企業</text>
+<text x="380.0" y="250.8" font-size="13" text-anchor="middle" fill="#102a6b">作って、売って、雇う</text>
+<rect x="25" y="345" width="430" height="56" rx="6" fill="#eaf1ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="240.0" y="368.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">市場</text>
+<text x="240.0" y="387.8" font-size="13" text-anchor="middle" fill="#102a6b">財ごとに売りと買いを合わせて値段が決まる</text>
+<line x1="305" y1="222" x2="175" y2="222" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="224.0" y="203.0" width="32.0" height="18" fill="#ffffff" opacity="0.92"/>
+<text x="240.0" y="216" font-size="13" text-anchor="middle" fill="#1f4fa8">賃金</text>
+<line x1="175" y1="250" x2="305" y2="250" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="217.5" y="231.0" width="45.0" height="18" fill="#ffffff" opacity="0.92"/>
+<text x="240.0" y="244" font-size="13" text-anchor="middle" fill="#1f4fa8">働き手</text>
+<line x1="100" y1="267" x2="100" y2="345" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="108.0" y="299.0" width="123.0" height="18" fill="#ffffff" opacity="0.92"/>
+<text x="169.5" y="312" font-size="13" text-anchor="middle" fill="#1f4fa8">食べ物・品物を買う</text>
+<line x1="380" y1="267" x2="380" y2="345" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<rect x="262.0" y="299.0" width="110.0" height="18" fill="#ffffff" opacity="0.92"/>
+<text x="317.0" y="312" font-size="13" text-anchor="middle" fill="#1f4fa8">売る・原料を買う</text>
+<line x1="40" y1="165" x2="40" y2="74" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="47.0" y="112.0" width="19.0" height="18" fill="#ffffff" opacity="0.92"/>
+<text x="56.5" y="125" font-size="13" text-anchor="middle" fill="#1f4fa8">税</text>
+<line x1="135" y1="74" x2="135" y2="165" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="142.0" y="99.0" width="58.0" height="18" fill="#ffffff" opacity="0.92"/>
+<text x="171.0" y="112" font-size="13" text-anchor="middle" fill="#1f4fa8">公共事業</text>
+<rect x="142.0" y="117.0" width="84.0" height="18" fill="#ffffff" opacity="0.92"/>
+<text x="184.0" y="130" font-size="13" text-anchor="middle" fill="#1f4fa8">公務員の賃金</text>
+<rect x="142.0" y="135.0" width="58.0" height="18" fill="#ffffff" opacity="0.92"/>
+<text x="171.0" y="148" font-size="13" text-anchor="middle" fill="#1f4fa8">失業手当</text>
+<line x1="350" y1="74" x2="350" y2="165" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="311.0" y="112.0" width="32.0" height="18" fill="#ffffff" opacity="0.92"/>
+<text x="327.0" y="125" font-size="13" text-anchor="middle" fill="#1f4fa8">融資</text>
+<line x1="430" y1="165" x2="430" y2="74" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="391.0" y="112.0" width="32.0" height="18" fill="#ffffff" opacity="0.92"/>
+<text x="407.0" y="125" font-size="13" text-anchor="middle" fill="#1f4fa8">預金</text>
+<line x1="90" y1="401" x2="90" y2="462" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<rect x="10" y="462" width="160" height="44" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="90.0" y="489.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">港・商社・船</text>
+<line x1="170" y1="484" x2="310" y2="484" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<rect x="204.5" y="465.0" width="71.0" height="18" fill="#ffffff" opacity="0.92"/>
+<text x="240.0" y="478" font-size="13" text-anchor="middle" fill="#1f4fa8">輸出・輸入</text>
+<rect x="224.0" y="489.0" width="32.0" height="18" fill="#ffffff" opacity="0.92"/>
+<text x="240.0" y="502" font-size="13" text-anchor="middle" fill="#1f4fa8">為替</text>
+<rect x="310" y="462" width="160" height="44" rx="6" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="390.0" y="489.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">外国（ほかの国）</text>
+<text x="240" y="530" font-size="13" text-anchor="middle" fill="#5a6a90">商社が島の値段と外国の値段の差を見て、自動で売り買いします。</text>
+</svg>
