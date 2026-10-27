@@ -1,0 +1,6 @@
+[Unit]
+Description=経済版箱庭諸国 ターンと写しが遅れていないかの点検
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/hakoniwa/hakoniwa-health

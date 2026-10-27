@@ -1,0 +1,17 @@
+[Unit]
+Description=HP の release の枝を取りに行き、確かめてから切り替える
+
+[Service]
+Type=oneshot
+User=hp
+Group=hp
+EnvironmentFile=/etc/hakoniwa/notify.env
+ExecStart=/usr/local/lib/hakoniwa/hp-fetch
+TimeoutStartSec=10min
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/srv/hp

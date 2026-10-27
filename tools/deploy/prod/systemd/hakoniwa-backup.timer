@@ -1,0 +1,10 @@
+[Unit]
+Description=経済版箱庭諸国 毎晩の写し
+
+[Timer]
+OnCalendar=*-*-* 03:20:00
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target

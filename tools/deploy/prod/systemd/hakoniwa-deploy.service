@@ -1,0 +1,14 @@
+[Unit]
+Description=経済版箱庭諸国 release の枝の自動の反映（本番の写しで試してから）
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=hakoniwa
+Group=hakoniwa
+EnvironmentFile=/etc/hakoniwa/hakoniwa.env
+ExecStart=/usr/local/lib/hakoniwa/hakoniwa-deploy
+TimeoutStartSec=40min
+# 止める・動かすのは sudoers で許した 2 つの命令だけなので、権限を増やさない囲いは付けない（sudo が使えなくなる）
+ProtectHome=yes
+PrivateTmp=yes

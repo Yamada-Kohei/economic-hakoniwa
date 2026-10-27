@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# 機械の中の毎日の比べ（root で動く）。前の日の状態と比べて、違えば ntfy に知らせる。
+# 比べるもの: ログインのもと・待ち受け・使う人と鍵・台本とサービスの定義・作業ツリーの手の変更・入っている部品。
+# ディスクが 70% を超えたときも知らせる。初めの 1 回は何も言わず、基準を作る。
+set -uo pipefail
+# shellcheck source=lib.sh
+source "${HAKONIWA_LIB:-/usr/local/lib/hakoniwa}/lib.sh"
+load_env
+
+DIR=/var/lib/hakoniwa-watch
+mkdir -p "$DIR"
+chmod 700 "$DIR"
+cur="$DIR/current.txt"
+prev="$DIR/previous.txt"
+known="$DIR/known-logins.txt"
+
+hash_of() { sha256sum "$@" 2>/dev/null | awk '{print $1"  "$2}'; }
+
+{
+  echo "## 待ち受け"
+  ss -H -ltnup | awk '{print $1, $5, $7}' | sort
+  echo "## 使う人（ログインできるもの）"
+  getent passwd | awk -F: '$7 !~ /(nologin|false)$/ {print $1, $3, $7}' | sort
+  echo "## sudo の人"
+  getent group sudo
+  echo "## ssh の鍵と設定"
+  hash_of /home/*/.ssh/authorized_keys /root/.ssh/authorized_keys /etc/ssh/sshd_config /etc/ssh/sshd_config.d/* | sort -k2
+  echo "## 台本とサービスの定義"
+  hash_of /usr/local/lib/hakoniwa/* /usr/local/bin/* /etc/systemd/system/hakoniwa-* /etc/systemd/system/hp-* \
+    /etc/cron.d/* /etc/sudoers /etc/sudoers.d/* /etc/caddy/Caddyfile /etc/hakoniwa/*.env | sort -k2
+  echo "## 作業ツリーの手の変更"
+  runuser -u hakoniwa -- git -C "$APP_DIR" status --porcelain --untracked-files=all 2>/dev/null | head -n 50
+  echo "## 入っている部品"
+  "$VENV/bin/pip" freeze 2>/dev/null | sort
+  echo "## 起動時に読み込まれる設定"
+  ls /etc/ld.so.preload 2>/dev/null
+  echo "## cron（ユーザーごと）"
+  for u in $(cut -d: -f1 /etc/passwd); do crontab -l -u "$u" 2>/dev/null | grep -v '^#' | sed "s/^/$u: /"; done
+} >"$cur"
+
+msgs=()
+if [[ ! -f "$prev" ]]; then
+  log "基準を作った"
+else
+  d="$(diff <(cat "$prev") <(cat "$cur") | grep '^[<>]' | head -n 30)"
+  [[ -n "$d" ]] && msgs+=("機械の中が昨日と違います:"$'\n'"$d")
+fi
+cp "$cur" "$prev"
+
+# 前の日からの ssh ログイン（見たことのない 人×元 だけ知らせる）
+touch "$known"
+journalctl -u ssh --since '-26 hours' --no-pager 2>/dev/null |
+  sed -nE 's/.*Accepted [a-z]+ for ([^ ]+) from ([^ ]+) .*/\1 \2/p' | sort -u >"$DIR/logins-today.txt"
+new_logins="$(comm -13 <(sort "$known") "$DIR/logins-today.txt")"
+if [[ -n "$new_logins" ]]; then
+  if [[ -s "$known" ]]; then msgs+=("見たことのない ssh ログイン:"$'\n'"$new_logins"); fi
+  cat "$DIR/logins-today.txt" "$known" | sort -u >"$known.new" && mv "$known.new" "$known"
+fi
+
+# ディスク
+while read -r use mount; do
+  if ((${use%\%} > 70)); then msgs+=("ディスクが ${use} です: $mount"); fi
+done < <(df --output=pcent,target / /srv/backup 2>/dev/null | tail -n +2 | awk '{print $1, $2}')
+
+if ((${#msgs[@]} > 0)); then
+  notify "機械の中の見張り" "$(printf '%s\n' "${msgs[@]}")" 4
+  log "知らせた: ${#msgs[@]} 件"
+else
+  log "変わりなし"
+fi

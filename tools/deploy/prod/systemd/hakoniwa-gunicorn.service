@@ -1,0 +1,33 @@
+[Unit]
+Description=経済版箱庭諸国（gunicorn、127.0.0.1:8000 だけで受ける）
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+User=hakoniwa
+Group=hakoniwa
+WorkingDirectory=/srv/hakoniwa/app
+EnvironmentFile=/etc/hakoniwa/hakoniwa.env
+EnvironmentFile=-/srv/hakoniwa/state/version.env
+# アクセスの記録は出さない（10-26 の決まり）。エラーだけを journal へ
+ExecStart=/srv/hakoniwa/venv/bin/gunicorn --bind 127.0.0.1:8000 --workers 2 --timeout 120 --graceful-timeout 30 --error-logfile - --log-level warning server.wsgi:application
+Restart=on-failure
+RestartSec=5
+MemoryMax=3G
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+ReadWritePaths=/srv/hakoniwa/var
+
+[Install]
+WantedBy=multi-user.target

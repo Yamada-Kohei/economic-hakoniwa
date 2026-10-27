@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# 週のまとめ（root で動く）。ntfy に 1 通。おかしいときだけ Claude が見る。
+set -uo pipefail
+# shellcheck source=lib.sh
+source "${HAKONIWA_LIB:-/usr/local/lib/hakoniwa}/lib.sh"
+load_env
+
+q() { runuser -u postgres -- psql -d hakoniwa -Atc "$1" 2>/dev/null; }
+world="$(q "SELECT 'ターン '||turn||'、次の更新 '||coalesce(to_char(next_turn_at AT TIME ZONE 'Asia/Tokyo','MM-DD HH24:MI'),'-')||CASE WHEN paused THEN '（一時停止中）' ELSE '' END FROM world_world ORDER BY id LIMIT 1")"
+logins="$(q "SELECT coalesce(sum(failures),0)||' 回（'||count(*)||' 組）' FROM accounts_loginattempt WHERE touched_at > now() - interval '7 days'")"
+deploys="$(grep -c '反映した（' "$STATE_DIR/deploy.log" 2>/dev/null || echo 0)"
+last_deploy="$(head -n1 "$STATE_DIR/last" 2>/dev/null)"
+sshfail="$(journalctl -u ssh --since '-7 days' --no-pager 2>/dev/null | grep -Ec 'Failed password|Invalid user|authentication failure')"
+upgradable="$(apt list --upgradable 2>/dev/null | grep -c upgradable)"
+disk="$(df --output=pcent,target / /srv/backup 2>/dev/null | tail -n +2 | awk '{printf "%s %s、", $2, $1}')"
+backups="$(find /srv/backup/db -name 'hakoniwa-*.dump' 2>/dev/null | wc -l)"
+newest="$(find /srv/backup/db -name 'hakoniwa-*.dump' -printf '%f\n' 2>/dev/null | sort | tail -n1)"
+failed_units="$(systemctl --failed --no-legend 2>/dev/null | awk '{print $2}' | tr '\n' ' ')"
+
+notify "週のまとめ" "世界: ${world:-読めません}
+反映: 今週の件数 ${deploys}、最後は ${last_deploy:-なし}
+ログインの失敗（ゲーム）: ${logins:-読めません}、ssh の失敗: ${sshfail}
+更新の残り: ${upgradable} 件
+ディスク: ${disk}
+写し: ${backups} 本、いちばん新しいのは ${newest:-なし}
+失敗しているサービス: ${failed_units:-なし}" 2

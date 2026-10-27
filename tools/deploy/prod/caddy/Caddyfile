@@ -1,0 +1,58 @@
+# /etc/caddy/Caddyfile。Caddy は 127.0.0.1:8080 だけで受ける（HTTPS は Cloudflare が受け、トンネルがここへ運ぶ）。
+# 読む人のアクセスの記録は出さない（10-26 の決まり）: site に log を書かず、全体の記録は ERROR 以上だけにする。
+{
+	admin off
+	auto_https off
+	default_bind 127.0.0.1
+	log {
+		level ERROR
+	}
+}
+
+# ゲーム
+http://hakoniwa.sevilla-lab.com:8080 {
+	encode zstd gzip
+
+	# 上げ込み（絵の旗など）の大きさの上限
+	request_body {
+		max_size 2MB
+	}
+
+	handle_path /static/* {
+		root * /srv/hakoniwa/app/staticfiles
+		file_server
+		header Cache-Control "public, max-age=3600"
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:8000 {
+			# 本当の接続元は Cloudflare が付ける CF-Connecting-IP から読む（Django 側の設定）
+			header_up -X-Forwarded-For
+		}
+	}
+
+	# ゲームが止まっている間（反映・再起動）は「更新中です」を出す
+	handle_errors {
+		@down expression {err.status_code} in [502, 503, 504]
+		handle @down {
+			root * /srv/hakoniwa/maintenance
+			rewrite * /maintenance.html
+			header Cache-Control "no-store"
+			file_server {
+				status 503
+			}
+		}
+	}
+}
+
+# HP（配信用の release の枝を hp-fetch が /srv/hp/public へ切り替える）
+http://sevilla-lab.com:8080, http://www.sevilla-lab.com:8080 {
+	encode zstd gzip
+	root * /srv/hp/public
+	file_server
+}
+
+# 上のどの名前でもないもの（Host を偽った呼びがけなど）には何も返さない
+:8080 {
+	respond 404
+}

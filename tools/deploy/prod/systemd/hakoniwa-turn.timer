@@ -1,0 +1,11 @@
+[Unit]
+Description=経済版箱庭諸国 ターンの更新を 1 分ごとに見る（進むのは設定の間隔ごと）
+
+[Timer]
+OnBootSec=2min
+OnCalendar=*:*:00
+AccuracySec=1s
+Persistent=false
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# 月 1 回（root で動く）。いちばん新しい毎晩の写しを試し用の DB に戻し、開いて 1 ターン回せるかを確かめる。
+# 本番の DB には触らない。--file で写しを指定できる（通し稽古で使う）。
+set -uo pipefail
+# shellcheck source=lib.sh
+source "${HAKONIWA_LIB:-/usr/local/lib/hakoniwa}/lib.sh"
+load_env
+
+DIR=/srv/backup/db
+TRIAL_DB="${HAKONIWA_TRIAL_DB:-hakoniwa_trial}"
+file=""
+[[ "${1:-}" == "--file" ]] && file="${2:-}"
+[[ -n "$file" ]] || file="$(ls -1t "$DIR"/hakoniwa-*.dump 2>/dev/null | head -n1)"
+
+fail() {
+  log "戻し試験に失敗: $1"
+  notify "写しから戻せませんでした" "$1" 5
+  exit 1
+}
+
+[[ -s "$file" ]] || fail "写しが見つかりません"
+if grep -q "  $(basename "$file")\$" "$DIR/SHA256SUMS" 2>/dev/null; then
+  (cd "$DIR" && grep "  $(basename "$file")\$" SHA256SUMS | sha256sum -c --quiet) || fail "指紋が合いません: $file"
+fi
+runuser -u postgres -- psql -d "$TRIAL_DB" -v ON_ERROR_STOP=1 -qc 'DROP SCHEMA public CASCADE; CREATE SCHEMA public AUTHORIZATION hakoniwa;' || fail "試し用の DB を空にできません"
+runuser -u postgres -- pg_restore --no-owner --role=hakoniwa -d "$TRIAL_DB" <"$file" || fail "pg_restore が失敗"
+trial_url="$(sed -E "s#/[^/?]+(\\?.*)?\$#/$TRIAL_DB\\1#" <<<"$DATABASE_URL")"
+out="$(runuser -u hakoniwa -- env DATABASE_URL="$trial_url" bash -c "cd '$APP_DIR' && '$VENV/bin/python' manage.py migrate --noinput && '$VENV/bin/python' manage.py check_defs && '$VENV/bin/python' manage.py run_turn --force" 2>&1)" ||
+  fail "開けない、または 1 ターン回せません: $(tail -n 3 <<<"$out")"
+log "戻し試験に成功: $(basename "$file")"
+notify "写しから戻せることを確かめました" "$(basename "$file")" 2

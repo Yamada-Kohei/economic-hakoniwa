@@ -1,0 +1,8 @@
+[Unit]
+Description=経済版箱庭諸国 毎晩の写し（HDD に 30 日分）
+After=postgresql.service
+RequiresMountsFor=/srv/backup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/hakoniwa/hakoniwa-backup

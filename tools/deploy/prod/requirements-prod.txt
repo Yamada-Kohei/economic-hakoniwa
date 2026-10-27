@@ -1,0 +1,2 @@
+# 公開サーバーの venv に、pip install -e ".[postgres]" のほかに入れるもの
+gunicorn==23.0.0

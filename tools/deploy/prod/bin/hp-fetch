@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# HP の配信用リポジトリの release の枝を 5 分おきに取りに行く（ユーザー hp で動く）。
+# 取ったら /srv/hp/releases/<コミット>/ に広げ、確かめてから /srv/hp/public の向き先を一度に切り替える。
+# 取り決めは /mnt/project-files/beta-env/hp-on-home-server-reply7〜9。拡張子では絞らない。
+#   確かめること: 枝の一番上が public/ と release.json だけ／public/index.html がある／
+#                 release.json が読めて version・source_commit・built_at がある／symlink と submodule がない／
+#                 普通のファイルの合計が 500,000,000 バイト以下
+#   残す版: 今の版と前の 5 版（最大 6）。/srv/hp 全体が 5GB を超えそうなら古い版から消す（今と 1 つ前は残す）
+set -uo pipefail
+# shellcheck source=lib.sh
+source "${HAKONIWA_LIB:-/usr/local/lib/hakoniwa}/lib.sh"
+load_env
+
+HP="${HP_ROOT:-/srv/hp}"
+REPO="$HP/repo"
+URL="${HP_REPO_URL:-ssh://git@ssh.github.com:443/Yamada-Kohei/Sevilla-Homepage.git}"
+BRANCH="${HP_BRANCH:-release}"
+MAX_BYTES=500000000
+KEEP=6
+TOTAL_LIMIT=$((5 * 1024 * 1024 * 1024))
+export GIT_SSH_COMMAND="ssh -i $HP/.ssh/deploy_key -o IdentitiesOnly=yes -o UserKnownHostsFile=$HP/.ssh/known_hosts -o StrictHostKeyChecking=yes -o BatchMode=yes"
+
+reject() {
+  log "HP の版を入れません（${NEW:0:7}）: $1"
+  if [[ ! -e "$HP/rejected-$NEW" ]]; then
+    touch "$HP/rejected-$NEW"
+    notify "HP の新しい版を入れませんでした" "${NEW:0:7}: $1。前の版のまま配っています" 4
+  fi
+  exit 1
+}
+
+exec 7>"$HP/fetch.lock"
+flock -n 7 || exit 0
+[[ -e "$HP/paused" ]] && exit 0
+mkdir -p "$HP/releases"
+if [[ ! -d "$REPO/.git" ]]; then
+  git init -q "$REPO" && git -C "$REPO" remote add origin "$URL"
+fi
+git -C "$REPO" fetch -q --depth 1 origin "$BRANCH" || { log "失敗: git fetch"; exit 1; }
+NEW="$(git -C "$REPO" rev-parse FETCH_HEAD)"
+current=""
+[[ -L "$HP/public" ]] && current="$(basename "$(dirname "$(readlink "$HP/public")")")"
+[[ "$NEW" == "$current" ]] && exit 0
+[[ -e "$HP/rejected-$NEW" ]] && exit 1
+
+# 枝の一番上
+top="$(git -C "$REPO" ls-tree --name-only "$NEW" | sort | tr '\n' ' ')"
+[[ "$top" == "public release.json " ]] || reject "枝の一番上が public と release.json だけではありません（$top）"
+git -C "$REPO" cat-file -e "$NEW:public/index.html" 2>/dev/null || reject "public/index.html がありません"
+rel="$(git -C "$REPO" show "$NEW:release.json")"
+python3 -c 'import json,sys
+d=json.loads(sys.argv[1])
+assert all(isinstance(d.get(k),str) and d[k] for k in ("version","source_commit","built_at"))' "$rel" 2>/dev/null ||
+  reject "release.json が読めない、または version・source_commit・built_at がありません"
+version="$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["version"])' "$rel")"
+if git -C "$REPO" ls-tree -r "$NEW" | awk '{print $1}' | grep -Eq '^(120000|160000)$'; then
+  reject "symlink か submodule が入っています"
+fi
+bytes="$(git -C "$REPO" ls-tree -r -l "$NEW" | awk '{s+=$4} END {print s+0}')"
+((bytes <= MAX_BYTES)) || reject "大きさが $bytes バイトで、500,000,000 を超えています"
+
+# /srv/hp 全体の大きさ。超えそうなら古い版から消す（新しい 2 つ＝今と 1 つ前は残す）。
+used() { du -sb "$HP" | cut -f1; }
+while (($(used) + bytes > TOTAL_LIMIT)); do
+  victim="$(ls -1t "$HP/releases" | tail -n +3 | tail -n1)"
+  [[ -n "$victim" ]] || reject "/srv/hp が 5GB を超えそうで、消せる古い版もありません"
+  rm -rf "${HP:?}/releases/$victim"
+done
+
+dest="$HP/releases/$NEW"
+rm -rf "$dest.tmp" "$dest"
+mkdir -p "$dest.tmp"
+git -C "$REPO" archive --format=tar "$NEW" | tar -x -C "$dest.tmp" || { rm -rf "$dest.tmp"; reject "広げられませんでした"; }
+chmod -R u=rwX,go=rX "$dest.tmp"
+mv "$dest.tmp" "$dest"
+
+# 一度に切り替える（新しいリンクを作ってから置き換える）
+ln -sfn "releases/$NEW/public" "$HP/public.new"
+mv -T "$HP/public.new" "$HP/public"
+touch "$dest"
+# 古い版を整える（今の版と前の 5 版）
+ls -1t "$HP/releases" | tail -n +"$((KEEP + 1))" | while read -r old; do rm -rf "${HP:?}/releases/$old"; done
+rm -f "$HP"/rejected-*
+log "HP の版 $version（${NEW:0:7}）に切り替えた"
+notify "HP の版 $version が入りました" "${NEW:0:7}"
