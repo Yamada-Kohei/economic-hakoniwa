@@ -4,6 +4,10 @@
 	admin off
 	auto_https off
 	default_bind 127.0.0.1
+	# 受けるのは同じ機械のトンネル（cloudflared）だけ。そこから来た X-Forwarded-* は信じる
+	servers {
+		trusted_proxies static 127.0.0.1
+	}
 	log {
 		level ERROR
 	}
@@ -25,6 +29,9 @@ http://hakoniwa.sevilla-lab.com:8080 {
 	}
 
 	handle {
+		# 外は https（Cloudflare が受ける）。Django が https の要求と扱うよう gunicorn へ知らせる（CSRF の Origin の照合が通る）。
+		# header_up では Caddy が後から上書きするため、ここで付け、下の trusted_proxies で保つ
+		request_header X-Forwarded-Proto https
 		reverse_proxy 127.0.0.1:8000 {
 			# 本当の接続元は Cloudflare が付ける CF-Connecting-IP から読む（Django 側の設定）
 			header_up -X-Forwarded-For
