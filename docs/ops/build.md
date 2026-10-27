@@ -1,6 +1,6 @@
 # 建て方（sevilla-server にゲームを入れる）
 
-> 状態: 1〜8（ゲームと DB と受付）は 2026-10-27 に実機で通した。9（HP の取り込み）と 10 は 8-3 で通す。
+> 状態: 1〜9 と 11 は 2026-10-27 に実機で通した（9 の HP の取り込みは初回の版に切り替わるまで、11 のトンネルは Access の入口の確認まで）。10（電気が戻ったら自動で起動）は後で通す。
 
 前提: Ubuntu 24.04、ssh は鍵だけ、ufw は家の LAN からの 22 番だけ、自動更新あり（`docs/design/` タブ 14 の 2026-10-25）。
 作業は X870 から `ssh sevilla@sevilla-server`（ルーターで予約した 192.168.50.10）で行う。外へは 80・443・7844 番だけ出られる
@@ -101,7 +101,47 @@ sudo systemctl enable --now hp-fetch.timer
 
 起動の画面（BIOS）の AC Recovery を「Power On」にする。OS から入れられるかは 8-3 で調べる。
 
+## 11. トンネルと Access（8-5）
+
+外からの受け口はルーターに作らない。機械から Cloudflare へつなぐだけ（外向き 7844 番。ルーターの許可リストに `region1.v2.argotunnel.com`・`region2.v2.argotunnel.com` がある）。
+
+**本人の手が要るもの（1 回だけ、画面の名前どおり）**
+1. Cloudflare の「Zero Trust」を始める: チーム名（`sevilla-lab`）、プランは Free、支払いカードを登録（無料枠でも要る。請求は出ない）。
+2. Zero Trust → Integrations → Identity providers → Add new identity provider → One-time PIN を保存。
+3. Zero Trust → Access controls → Applications → Create new application → Self-hosted and private。公開ホスト名は `hakoniwa.sevilla-lab.com`・`sevilla-lab.com`・`www.sevilla-lab.com`（Domain は `sevilla-lab.com`、Subdomain は `hakoniwa`・空・`www`）。ポリシーは名前 `本人だけ`、Action は Allow、Include は **Emails（本人のメール）だけ**。Login Method を Include に足してはいけない（Include は「どれかに当てはまれば通す」なので、他人のメールでも One-time PIN で入れてしまう）。ログイン方法は One-time PIN だけ、Session Duration は 24 hours。
+4. 機械が出す「許可」の URL を、待たせずに 1 回開いて `sevilla-lab.com` を選び、承認を押す（長く待たせると機械が受け取れず、やり直しになる）。
+
+**機械の側（Claude）**
+
+```sh
+# 部品（Cloudflare の公式の apt の置き場。ルーターの許可リストに pkg.cloudflare.com がある）
+sudo mkdir -p --mode=0755 /usr/share/keyrings
+curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main' | sudo tee /etc/apt/sources.list.d/cloudflared.list
+sudo apt-get update && sudo apt-get install -y cloudflared
+sudo useradd --system --home-dir /var/lib/cloudflared --create-home --shell /usr/sbin/nologin cloudflared
+sudo install -d -o root -g cloudflared -m 750 /etc/cloudflared
+
+# ログインの URL を出す（ここだけ、ルーターの許可リストに api.cloudflare.com と login.cloudflareaccess.org を一時的に足す）
+sudo -u cloudflared env HOME=/var/lib/cloudflared sh -c 'setsid nohup cloudflared tunnel login > /var/lib/cloudflared/login.log 2>&1 < /dev/null &'
+sudo cat /var/lib/cloudflared/login.log        # URL を本人に渡す。許可が済むと .cloudflared/cert.pem ができる
+sudo -u cloudflared env HOME=/var/lib/cloudflared cloudflared tunnel create hakoniwa-sevilla   # UUID と鍵の JSON ができる
+# 鍵の JSON を /etc/cloudflared/<UUID>.json に root:cloudflared 0640 で移し、etc/cloudflared-config.yml.example を /etc/cloudflared/config.yml に写して UUID を入れる
+sudo cloudflared --config /etc/cloudflared/config.yml tunnel ingress validate
+sudo /srv/hakoniwa/app/tools/deploy/prod/install.sh units && sudo systemctl enable --now cloudflared
+# Access のアプリを作ってから、名前をトンネルへつなぐ（先につなぐと Access なしで届く瞬間ができる）
+for h in hakoniwa.sevilla-lab.com sevilla-lab.com www.sevilla-lab.com; do
+  sudo -u cloudflared env HOME=/var/lib/cloudflared cloudflared tunnel route dns hakoniwa-sevilla $h
+done
+# 後始末: 証明書と元の JSON を消し、ルーターの一時の名前を外す（cert.pem は DNS を書き換えられる強い権限）
+sudo shred -u /var/lib/cloudflared/.cloudflared/cert.pem /var/lib/cloudflared/.cloudflared/<UUID>.json
+```
+
+確かめ（家の中の PC から外向きに）: 3 つの名前とも `curl -I https://<名前>/` が `302` で `sevilla-lab.cloudflareaccess.com/cdn-cgi/access/login/...` へ向かう。
+スマホ（携帯回線）で、メールの番号を入れると入れる。DNS の行は CNAME の 3 つだけで、家の IP はどこにも書かれない。
+止めるボタンは [runbook.md](runbook.md) の 5。
+
 ## 入れ直し（OS から作り直すとき）
 
-1 から 9 を同じ順に行い、7 の代わりに `hakoniwa-restore-check --file <選んだ写し>` と同じ要領で本番の DB に戻す
+1 から 11 を同じ順に行い、7 の代わりに `hakoniwa-restore-check --file <選んだ写し>` と同じ要領で本番の DB に戻す
 （[runbook.md](runbook.md) の「入られた疑いのとき」）。
