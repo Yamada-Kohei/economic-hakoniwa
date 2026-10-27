@@ -22,7 +22,7 @@ fail() {
 if grep -q "  $(basename "$file")\$" "$DIR/SHA256SUMS" 2>/dev/null; then
   (cd "$DIR" && grep "  $(basename "$file")\$" SHA256SUMS | sha256sum -c --quiet) || fail "指紋が合いません: $file"
 fi
-runuser -u postgres -- psql -d "$TRIAL_DB" -v ON_ERROR_STOP=1 -qc 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' || fail "試し用の DB を空にできません"
+runuser -u postgres -- psql -d "$TRIAL_DB" -v ON_ERROR_STOP=1 -qc 'DROP SCHEMA public CASCADE; CREATE SCHEMA public AUTHORIZATION hakoniwa;' || fail "試し用の DB を空にできません"
 runuser -u postgres -- pg_restore --no-owner --role=hakoniwa -d "$TRIAL_DB" <"$file" || fail "pg_restore が失敗"
 trial_url="$(sed -E "s#/[^/?]+(\\?.*)?\$#/$TRIAL_DB\\1#" <<<"$DATABASE_URL")"
 out="$(runuser -u hakoniwa -- env DATABASE_URL="$trial_url" bash -c "cd '$APP_DIR' && '$VENV/bin/python' manage.py migrate --noinput && '$VENV/bin/python' manage.py check_defs && '$VENV/bin/python' manage.py run_turn --force" 2>&1)" ||

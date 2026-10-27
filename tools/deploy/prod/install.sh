@@ -8,7 +8,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 what="${1:-all}"
 [[ "$(id -u)" == 0 ]] || { echo "root で動かしてください" >&2; exit 1; }
 
-scripts() {
+do_scripts() {
   install -d -o root -g root -m 755 /usr/local/lib/hakoniwa
   install -o root -g root -m 755 "$here"/bin/* /usr/local/lib/hakoniwa/
   install -o root -g root -m 440 "$here/etc/sudoers-hakoniwa" /etc/sudoers.d/hakoniwa-deploy
@@ -19,11 +19,11 @@ scripts() {
   install -d -o root -g root -m 755 /srv/hakoniwa/maintenance
   install -o root -g root -m 644 "$here/maintenance/maintenance.html" /srv/hakoniwa/maintenance/maintenance.html
 }
-units() {
+do_units() {
   install -o root -g root -m 644 "$here"/systemd/* /etc/systemd/system/
   systemctl daemon-reload
 }
-caddy() {
+do_caddy() {
   install -o root -g root -m 644 "$here/caddy/Caddyfile" /etc/caddy/Caddyfile
   caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
   # 管理の窓口（admin）を止めているので reload は使えない。再起動する（数秒、ゲームの画面が一瞬つながらなくなる）
@@ -32,10 +32,10 @@ caddy() {
 }
 
 case "$what" in
-scripts) scripts ;;
-units) units ;;
-caddy) caddy ;;
-all) scripts; units; caddy ;;
+scripts) do_scripts ;;
+units) do_units ;;
+caddy) do_caddy ;;
+all) do_scripts; do_units; do_caddy ;;
 *) echo "使い方: $0 [scripts|units|caddy|all]" >&2; exit 2 ;;
 esac
 echo "置きました（$what）。タイマーを有効にするのは docs/ops/build.md の手順で"
