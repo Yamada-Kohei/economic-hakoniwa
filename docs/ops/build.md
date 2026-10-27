@@ -84,7 +84,7 @@ sudo -u hakoniwa bash -c 'set -a; . /etc/hakoniwa/hakoniwa.env; set +a; cd /srv/
 
 ```sh
 sudo systemctl enable --now hakoniwa-gunicorn.service
-sudo systemctl enable --now hakoniwa-turn.timer hakoniwa-deploy.timer hakoniwa-backup.timer hakoniwa-restore-check.timer hakoniwa-watch.timer
+sudo systemctl enable --now hakoniwa-turn.timer hakoniwa-deploy.timer hakoniwa-backup.timer hakoniwa-restore-check.timer hakoniwa-watch.timer hakoniwa-weekly.timer hakoniwa-health.timer
 # 画面は X870 から ssh のトンネルで確かめる（外には開けない）
 ssh -L 8080:127.0.0.1:8080 sevilla@sevilla-server      # → http://localhost:8080（Host が違うので curl -H 'Host: hakoniwa.sevilla-lab.com'）
 ```

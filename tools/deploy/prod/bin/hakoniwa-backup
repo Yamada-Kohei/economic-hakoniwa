@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 毎晩の写し（root で動く）。DB 丸ごとを HDD（/srv/backup）に 30 日分。ゲームのユーザーからは書き換えられない。
-# 写しの指紋（sha256）を Healthchecks.io の知らせに載せ、機械の外にも残す。
+# 写しの指紋（sha256）を ntfy（本人のスマホの履歴）にも送り、機械の外にも残す（入られた疑いのとき、写しが書き換えられていないか照らす）。
 set -uo pipefail
 # shellcheck source=lib.sh
 source "${HAKONIWA_LIB:-/usr/local/lib/hakoniwa}/lib.sh"
@@ -11,7 +11,6 @@ KEEP="${HAKONIWA_BACKUP_KEEP:-30}"
 
 fail() {
   log "写しに失敗: $1"
-  hc_ping "${HC_BACKUP:-}" fail "$1"
   notify "毎晩の写しに失敗" "$1" 4
   exit 1
 }
@@ -31,4 +30,4 @@ tmp="$(mktemp)"
 while read -r s f; do [[ -e "$DIR/$f" ]] && printf '%s  %s\n' "$s" "$f"; done <"$DIR/SHA256SUMS" >"$tmp" && cat "$tmp" >"$DIR/SHA256SUMS"
 rm -f "$tmp"
 log "写しを取った: $file $sum"
-hc_ping "${HC_BACKUP:-}" "" "$(basename "$file") sha256=$sum size=$(stat -c %s "$file")"
+notify "毎晩の写し" "$(basename "$file") sha256=$sum size=$(stat -c %s "$file")" 1

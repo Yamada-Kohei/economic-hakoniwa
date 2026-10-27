@@ -14,7 +14,6 @@ file=""
 
 fail() {
   log "戻し試験に失敗: $1"
-  hc_ping "${HC_RESTORE:-}" fail "$1"
   notify "写しから戻せませんでした" "$1" 5
   exit 1
 }
@@ -29,5 +28,4 @@ trial_url="$(sed -E "s#/[^/?]+(\\?.*)?\$#/$TRIAL_DB\\1#" <<<"$DATABASE_URL")"
 out="$(runuser -u hakoniwa -- env DATABASE_URL="$trial_url" bash -c "cd '$APP_DIR' && '$VENV/bin/python' manage.py migrate --noinput && '$VENV/bin/python' manage.py check_defs && '$VENV/bin/python' manage.py run_turn --force" 2>&1)" ||
   fail "開けない、または 1 ターン回せません: $(tail -n 3 <<<"$out")"
 log "戻し試験に成功: $(basename "$file")"
-hc_ping "${HC_RESTORE:-}" "" "$(basename "$file") ok"
 notify "写しから戻せることを確かめました" "$(basename "$file")" 2

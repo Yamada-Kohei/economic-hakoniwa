@@ -24,16 +24,18 @@ sevilla-lab.com・www は Caddy が /srv/hp/public の静的なファイルを�
 - 受け口はどれも 127.0.0.1 だけ。ルーターの外向きの受け口は開けない。
 - 動かす人（OS のユーザー）: `hakoniwa`（ゲーム・ターン・反映）、`hp`（HP の取り込み）。root の台本は `/usr/local/lib/hakoniwa/`（ゲームのユーザーが書き換えられない）。
 - 置き場: ゲーム `/srv/hakoniwa/`、HP `/srv/hp/`、毎晩の写し `/srv/backup/`（HDD、root だけ）、秘密 `/etc/hakoniwa/`。
-- 知らせ: 本人のスマホの ntfy（版が入った・失敗・見張り）と Healthchecks.io（ターン・写しが来なければメール）。
+- 知らせ: 本人のスマホの ntfy（版が入った・失敗・見張り）。ターンの遅れ・写しが古い・失敗したサービスは機械の中の点検（30 分ごと）が、機械そのものが応答しないときはルーターの見張りが、ntfy で知らせる。
 - Claude は Cloudflare Access を通らず、X870 から ssh で機械に入って管理する。
 
 ## 自動で動くもの
 
 | 名前 | いつ | 何をする | 誰で動く |
 |---|---|---|---|
-| `hakoniwa-turn.timer` | 1 分ごと | 時刻になっていれば 1 ターン進め、Healthchecks.io へ | hakoniwa |
+| `hakoniwa-turn.timer` | 1 分ごと | 時刻になっていれば 1 ターン進める | hakoniwa |
 | `hakoniwa-deploy.timer` | 5 分ごと | `release` の枝が進んでいれば、本番の写しで試してから反映 | hakoniwa |
-| `hakoniwa-backup.timer` | 毎晩 03:20 | DB 丸ごとを HDD に 30 日分、指紋を Healthchecks.io へ | root |
+| `hakoniwa-backup.timer` | 毎晩 03:20 | DB 丸ごとを HDD に 30 日分、指紋を ntfy へ | root |
+| `hakoniwa-health.timer` | 30 分ごと | ターンが遅れていないか・写しが古くないか・失敗したサービスがないかを見て、おかしければ ntfy へ | root |
+| `hakoniwa-weekly.timer` | 毎週日曜 08:00 | 週のまとめを ntfy へ | root |
 | `hakoniwa-restore-check.timer` | 毎月 1 日 05:10 | 最新の写しを試し用の DB に戻し、1 ターン回せるか確かめる | root |
 | `hakoniwa-watch.timer` | 毎日 06:40 | 前の日と比べて、違えば ntfy へ | root |
 | cron `hakoniwa-soft-update` | 毎日 04:10（日〜金）／土曜 05:10 | 安全の更新／apt 全部。何が入ったかを ntfy へ。要る再起動はターンの鍵が空いてから | root |

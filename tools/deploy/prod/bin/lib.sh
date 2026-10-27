@@ -35,12 +35,5 @@ notify() {
     log "知らせを送れませんでした: $title"
 }
 
-# Healthchecks.io へ。ping URL [fail|start] [本文]。送れなくても止めない。
-hc_ping() {
-  local url="${1:-}" kind="${2:-}" body="${3:-}"
-  [[ -n "$url" ]] || return 0
-  curl -fsS -m 20 --retry 2 --data-raw "$body" "${url}${kind:+/$kind}" >/dev/null 2>&1 || true
-}
-
 # Django の管理命令を、ゲームの環境で回す。
 manage() { (cd "$APP_DIR" && "$VENV/bin/python" manage.py "$@"); }

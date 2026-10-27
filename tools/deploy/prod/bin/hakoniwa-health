@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# 30 分ごと（root で動く）。ターンが遅れていないか、毎晩の写しが古くなっていないかを見て、おかしければ ntfy に知らせる
+# （同じ内容は 6 時間に 1 回まで）。機械そのものが止まったときは、ルーターの見張りが応答の途切れで知らせる。
+set -uo pipefail
+# shellcheck source=lib.sh
+source "${HAKONIWA_LIB:-/usr/local/lib/hakoniwa}/lib.sh"
+load_env
+
+STAMP_DIR=/var/lib/hakoniwa-watch/health
+mkdir -p "$STAMP_DIR"
+LATE_MINUTES="${HAKONIWA_TURN_LATE_MINUTES:-45}"
+
+# 同じ種類の知らせを 6 時間は繰り返さない。
+alert_once() {
+  local title="$2" body="$3" stamp="$STAMP_DIR/$1"
+  if [[ -e "$stamp" && -n "$(find "$stamp" -mmin -360 2>/dev/null)" ]]; then return 0; fi
+  touch "$stamp"
+  notify "$title" "$body" 4
+}
+clear_alert() { rm -f "$STAMP_DIR/$1"; }
+
+# ターン: 次の更新時刻から LATE_MINUTES を過ぎても進んでいない（一時停止中は見ない）
+late="$(runuser -u postgres -- psql -d hakoniwa -Atc "SELECT CASE WHEN paused OR next_turn_at IS NULL THEN 0 ELSE GREATEST(0, (extract(epoch FROM now() - next_turn_at) / 60)::int) END FROM world_world ORDER BY id LIMIT 1" 2>/dev/null)"
+if [[ "$late" =~ ^[0-9]+$ ]]; then
+  if ((late > LATE_MINUTES)); then
+    alert_once turn-late "ターンが進んでいません" "次の更新時刻から ${late} 分過ぎています。journalctl -u hakoniwa-turn を見てください"
+  else
+    clear_alert turn-late
+  fi
+else
+  alert_once db-unreadable "DB を読めません" "world_world を引けませんでした。PostgreSQL かゲームの状態を見てください"
+fi
+
+# 毎晩の写し: いちばん新しいものが 36 時間より古い
+newest="$(find /srv/backup/db -name 'hakoniwa-*.dump' -printf '%T@\n' 2>/dev/null | sort -n | tail -n1)"
+if [[ -z "$newest" ]] || (($(date +%s) - ${newest%.*} > 36 * 3600)); then
+  alert_once backup-old "毎晩の写しが古くなっています" "36 時間以上、新しい写しがありません。systemctl status hakoniwa-backup を見てください"
+else
+  clear_alert backup-old
+fi
+
+# 失敗しているサービス
+failed="$(systemctl --failed --no-legend 2>/dev/null | awk '{print $2}' | tr '\n' ' ')"
+if [[ -n "$failed" ]]; then
+  alert_once units-failed "失敗しているサービスがあります" "$failed"
+else
+  clear_alert units-failed
+fi
