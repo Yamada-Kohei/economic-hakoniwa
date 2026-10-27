@@ -29,7 +29,7 @@ hash_of() { sha256sum "$@" 2>/dev/null | awk '{print $1"  "$2}'; }
   hash_of /usr/local/lib/hakoniwa/* /usr/local/bin/* /etc/systemd/system/hakoniwa-* /etc/systemd/system/hp-* \
     /etc/cron.d/* /etc/sudoers /etc/sudoers.d/* /etc/caddy/Caddyfile /etc/hakoniwa/*.env | sort -k2
   echo "## 作業ツリーの手の変更"
-  git -C "$APP_DIR" status --porcelain --untracked-files=all 2>/dev/null | head -n 50
+  runuser -u hakoniwa -- git -C "$APP_DIR" status --porcelain --untracked-files=all 2>/dev/null | head -n 50
   echo "## 入っている部品"
   "$VENV/bin/pip" freeze 2>/dev/null | sort
   echo "## 起動時に読み込まれる設定"

@@ -26,7 +26,9 @@ units() {
 caddy() {
   install -o root -g root -m 644 "$here/caddy/Caddyfile" /etc/caddy/Caddyfile
   caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-  if systemctl is-active --quiet caddy; then systemctl reload caddy; else systemctl enable --now caddy; fi
+  # 管理の窓口（admin）を止めているので reload は使えない。再起動する（数秒、ゲームの画面が一瞬つながらなくなる）
+  systemctl enable caddy
+  systemctl restart caddy
 }
 
 case "$what" in

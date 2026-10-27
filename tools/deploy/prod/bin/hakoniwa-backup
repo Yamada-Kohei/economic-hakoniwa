@@ -15,13 +15,14 @@ fail() {
   exit 1
 }
 
+umask 077
 mountpoint -q /srv/backup || fail "/srv/backup（HDD）がつながっていません"
 mkdir -p "$DIR"
 chmod 700 "$DIR"
 file="$DIR/hakoniwa-$(date +%Y%m%d-%H%M).dump"
 runuser -u postgres -- pg_dump -Fc hakoniwa >"$file.part" || { rm -f "$file.part"; fail "pg_dump が失敗"; }
 mv "$file.part" "$file"
-runuser -u postgres -- pg_restore -l "$file" >/dev/null 2>&1 || fail "できた写しを読み直せません: $file"
+pg_restore -l <"$file" >/dev/null 2>&1 || fail "できた写しを読み直せません: $file"
 sum="$(sha256sum "$file" | cut -d' ' -f1)"
 printf '%s  %s\n' "$sum" "$(basename "$file")" >>"$DIR/SHA256SUMS"
 ls -1t "$DIR"/hakoniwa-*.dump | tail -n +"$((KEEP + 1))" | xargs -r rm -f
