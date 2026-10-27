@@ -112,3 +112,25 @@ def test_a_farm_does_not_count_harvest_the_market_cannot_take(game):
     unlimited = entry._grade_return(island, ctx, farm, upper, step, prices, 0)[0]
     glutted = entry._grade_return(island, ctx, farm, upper, step, prices, 0, {})[0]
     assert full == unlimited > glutted
+
+
+def test_a_planned_country_keeps_its_housing_budget_up_with_prices(game):
+    """計画経済の国の標準の計画は、住宅費を値段の動きに合わせる。建国のときの額のままだと、値段が
+    上がるうちに町の手入れの資材が買えず、町が傷みきって住めなくなった（長い年月の計画経済で、
+    詰め込みで子が生まれず、全部の国が人口を1割以上減らした）。"""
+    from hakoniwa_core import autoplan
+    from hakoniwa_core.state.generate import generate_world
+
+    world = generate_world(3, 3, game.config, game.defs)
+    for _ in range(5):
+        game.engine.run_turn(world)
+    island = next(i for i in world.islands.values() if i.regime.get("economy") == "planned")
+    founding = autoplan._housing_cost(island, game.defs, game.config)
+    assert founding >= island.policy.budget["housing"] > 0
+    for good in island.economy.prices:
+        island.economy.prices[good] *= 10_000
+    dear = autoplan._housing_cost(island, game.defs, game.config)
+    assert dear > 100 * founding
+    market = next(i for i in world.islands.values() if i.regime.get("economy") == "market")
+    order = autoplan._budget_order(market, game.defs, game.config, 12 * 4)
+    assert order is None or "housing" not in order[1]  # 市場経済の国は住宅費を決めない
