@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 30 分ごと（root で動く）。ターンが遅れていないか、毎晩の写しが古くなっていないかを見て、おかしければ ntfy に知らせる
-# （同じ内容は 6 時間に 1 回まで）。機械そのものが止まったときは、ルーターの見張りが応答の途切れで知らせる。
+# （同じ内容は 6 時間に 1 回まで）。機械そのものが止まったときは、機械の外の見張りが応答の途切れで知らせる。
 set -uo pipefail
 # shellcheck source=lib.sh
 source "${HAKONIWA_LIB:-/usr/local/lib/hakoniwa}/lib.sh"

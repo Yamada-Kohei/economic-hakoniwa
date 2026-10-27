@@ -4,7 +4,7 @@
 #   2. 試し用の DB に本番の写しを入れ、migrate・check_defs・数ターン・主なページを試す
 #   3. ターンの鍵を取り、ゲームを止め、DB を控え、新しい版にして migrate・静的ファイル・再起動し、主なページを確かめる
 #   4. 失敗したら DB の控えと前の版に戻す。失敗した版は、枝がさらに進むまで試し直さない
-# 止めたいときは $STATE_DIR/paused を置く。結果は $STATE_DIR/last と deploy.log。使い方は docs/ops/runbook.md。
+# 止めたいときは $STATE_DIR/paused を置く。結果は $STATE_DIR/last と deploy.log。使い方は家の資料の「公開サーバーの運用の手順」。
 set -uo pipefail
 # shellcheck source=lib.sh
 source "${HAKONIWA_LIB:-/usr/local/lib/hakoniwa}/lib.sh"
@@ -128,13 +128,22 @@ trial_cleanup() {
 STAMP="$(date '+%Y%m%d-%H%M%S')"
 DUMP=""
 
+# 部品の指定（pyproject.toml・requirements-prod.txt）が前の版と違うか。違うときだけ pip install が要る。
+pip_needed() {
+  ! git -C "$APP_DIR" diff --quiet "$OLD" "$NEW" -- pyproject.toml tools/deploy/prod/requirements-prod.txt
+}
+
 # 3. ゲームを止めて控え、新しい版にして動かす。
 deploy() {
   DUMP="$DUMP_DIR/pre-${NEW:0:7}-$STAMP.dump"
   step "ゲームを止める" sudo -n /usr/bin/systemctl stop hakoniwa-gunicorn.service || return 1
   step "DB を控える" pg_dump -Fc -f "$DUMP" "$DATABASE_URL" || return 1
   step "新しい版にする" git -C "$APP_DIR" merge --ff-only "$NEW" || return 1
-  step "pip install" "$VENV/bin/pip" install -q -e "${APP_DIR}[postgres]" -r "$APP_DIR/tools/deploy/prod/requirements-prod.txt" || return 1
+  # 部品の指定が変わったときだけ pip を使う（外の PyPI に届かなくても、コードだけの反映は止まらない）
+  if pip_needed; then
+    PIP_RAN=1
+    step "pip install" "$VENV/bin/pip" install -q -e "${APP_DIR}[postgres]" -r "$APP_DIR/tools/deploy/prod/requirements-prod.txt" || return 1
+  fi
   step "migrate" manage migrate --noinput || return 1
   step "check_defs" manage check_defs || return 1
   step "静的ファイル" manage collectstatic --noinput || return 1
@@ -155,7 +164,11 @@ restore() {
       step "控えを入れる" pg_restore --no-owner -d "$DATABASE_URL" "$DUMP" || return 1
   fi
   step "前の版に戻す" git -C "$APP_DIR" reset --hard -q "$OLD" || return 1
-  step "前の版で pip install" "$VENV/bin/pip" install -q -e "${APP_DIR}[postgres]" -r "$APP_DIR/tools/deploy/prod/requirements-prod.txt" || return 1
+  # 部品を入れ替えていないなら、前の版にそのまま戻る。入れ替えていても、失敗で戻しを止めない
+  # （止めるとゲームが止まったままになる。動かせるかは start_and_check が確かめる）
+  if [[ "${PIP_RAN:-0}" == 1 ]]; then
+    step "前の版で pip install" "$VENV/bin/pip" install -q -e "${APP_DIR}[postgres]" -r "$APP_DIR/tools/deploy/prod/requirements-prod.txt" || true
+  fi
   printf 'HAKONIWA_VERSION=%s\n' "${OLD:0:12}" >"$STATE_DIR/version.env"
   step "前の版で静的ファイル" manage collectstatic --noinput
   start_and_check
