@@ -5,6 +5,16 @@
 - DJANGO_SECRET_KEY: 公開サーバーでは必ず設定する
 - DJANGO_DEBUG: 1 で開発モード（既定は 1。公開サーバーでは 0）
 - DJANGO_ALLOWED_HOSTS: カンマ区切り
+- DJANGO_SECURE_HSTS_SECONDS: HSTS の秒数（既定 0。本番はまず 3600 など短い期間から）
+- DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS / DJANGO_SECURE_HSTS_PRELOAD: 既定はともに 0
+- DJANGO_SECURE_SSL_REDIRECT: Django で https へ転送する（既定 0）
+- DJANGO_SESSION_COOKIE_SECURE / DJANGO_CSRF_COOKIE_SECURE: cookie を https だけにする（既定 0）
+- DJANGO_TRUST_X_FORWARDED_PROTO: プロキシが上書きする X-Forwarded-Proto を信じる（既定 0）。
+  Django へ直接外から届かず、信頼するプロキシが見出しを必ず上書きする構成だけで 1 にする
+- DJANGO_HTTPS_REDIRECT_AT_PROXY: 外側のプロキシで http → https を転送済み（既定 0）。
+  1 かつ Django の転送が無効なときだけ、理由をこの宣言に限定して security.W008 を消す。
+  Cloudflare 等で転送が実際に有効であることを確認してから設定する
+  （上記の真偽値は 1/0、true/false、yes/no、on/off。大文字小文字は問わない）
 - HAKONIWA_GAME_CONFIG: game.yaml の場所（既定はリポジトリ直下）
 - HAKONIWA_CLIENT_IP_HEADER: 利用者の IP を読む場所（既定 REMOTE_ADDR。リバースプロキシの後ろでは
   HTTP_CF_CONNECTING_IP・HTTP_X_REAL_IP・HTTP_X_FORWARDED_FOR など、プロキシが書き込む場所にする）
@@ -57,6 +67,39 @@ if not SECRET_KEY:
 ALLOWED_HOSTS = [
     h for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h
 ]
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    """真偽値の設定ミスを、無言で無効にせず起動時に知らせる。"""
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    value = value.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise RuntimeError(f"{name} は 1/0、true/false、yes/no、on/off で設定してください")
+
+
+# DEBUG=0 でも既定は開発・LAN の http と同じ。本番で明示して有効にする。
+SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_SECURE_HSTS_SECONDS", "0"))
+if SECURE_HSTS_SECONDS < 0:
+    raise RuntimeError("DJANGO_SECURE_HSTS_SECONDS は 0 以上で設定してください")
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS")
+SECURE_HSTS_PRELOAD = env_bool("DJANGO_SECURE_HSTS_PRELOAD")
+SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT")
+SESSION_COOKIE_SECURE = env_bool("DJANGO_SESSION_COOKIE_SECURE")
+CSRF_COOKIE_SECURE = env_bool("DJANGO_CSRF_COOKIE_SECURE")
+SECURE_PROXY_SSL_HEADER = (
+    ("HTTP_X_FORWARDED_PROTO", "https") if env_bool("DJANGO_TRUST_X_FORWARDED_PROTO") else None
+)
+# 外側での転送を確認した構成だけに限定する。他の警告は隠さない。
+SILENCED_SYSTEM_CHECKS = (
+    ["security.W008"]
+    if env_bool("DJANGO_HTTPS_REDIRECT_AT_PROXY") and not SECURE_SSL_REDIRECT
+    else []
+)
 
 INSTALLED_APPS = [
     "django.contrib.admin",
