@@ -10,6 +10,7 @@
 | Django | サーバー | BSD-3-Clause | https://www.djangoproject.com/ |
 | PyYAML | 定義データの読み込み | MIT | https://pyyaml.org/ |
 | jsonschema | 定義データの検証 | MIT | https://github.com/python-jsonschema/jsonschema |
+| gunicorn（公開サーバー用） | ゲームの本体を動かす | MIT | https://gunicorn.org/ |
 | psycopg（任意） | PostgreSQL への接続 | LGPL-3.0 | https://www.psycopg.org/ |
 | pytest（開発用） | 自動テスト | MIT | https://pytest.org/ |
 | pytest-django（開発用） | 自動テスト | BSD-3-Clause | https://github.com/pytest-dev/pytest-django |
@@ -19,6 +20,14 @@
 
 psycopg は LGPL ですが、ライブラリとして import して使うだけで、コードを取り込んだり改変したりはしないため、
 このプロジェクトを MIT で公開することとは衝突しません。PostgreSQL を使うときだけ入れます。
+
+## 公開サーバーで使う道具（OS の部品として入れるもの。リポジトリには含めません）
+
+| 名前 | 用途 | ライセンス | 出典 |
+|---|---|---|---|
+| Caddy | ゲームと HP の静的なファイルを返し、gunicorn へ渡す | Apache-2.0 | https://caddyserver.com/ |
+| cloudflared | Cloudflare Tunnel（家から外へつなぐ） | Apache-2.0 | https://github.com/cloudflare/cloudflared |
+| PostgreSQL | DB | PostgreSQL License | https://www.postgresql.org/ |
 
 ## ブラウザ側
 

@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# 毎晩の写し（root で動く）。DB 丸ごとを HDD（/srv/backup）に 30 日分。ゲームのユーザーからは書き換えられない。
+# 写しの指紋（sha256）を Healthchecks.io の知らせに載せ、機械の外にも残す。
+set -uo pipefail
+# shellcheck source=lib.sh
+source "${HAKONIWA_LIB:-/usr/local/lib/hakoniwa}/lib.sh"
+load_env
+
+DIR=/srv/backup/db
+KEEP="${HAKONIWA_BACKUP_KEEP:-30}"
+
+fail() {
+  log "写しに失敗: $1"
+  hc_ping "${HC_BACKUP:-}" fail "$1"
+  notify "毎晩の写しに失敗" "$1" 4
+  exit 1
+}
+
+mountpoint -q /srv/backup || fail "/srv/backup（HDD）がつながっていません"
+mkdir -p "$DIR"
+chmod 700 "$DIR"
+file="$DIR/hakoniwa-$(date +%Y%m%d-%H%M).dump"
+runuser -u postgres -- pg_dump -Fc hakoniwa >"$file.part" || { rm -f "$file.part"; fail "pg_dump が失敗"; }
+mv "$file.part" "$file"
+runuser -u postgres -- pg_restore -l "$file" >/dev/null 2>&1 || fail "できた写しを読み直せません: $file"
+sum="$(sha256sum "$file" | cut -d' ' -f1)"
+printf '%s  %s\n' "$sum" "$(basename "$file")" >>"$DIR/SHA256SUMS"
+ls -1t "$DIR"/hakoniwa-*.dump | tail -n +"$((KEEP + 1))" | xargs -r rm -f
+# 消えた写しの指紋の行を整える
+tmp="$(mktemp)"
+while read -r s f; do [[ -e "$DIR/$f" ]] && printf '%s  %s\n' "$s" "$f"; done <"$DIR/SHA256SUMS" >"$tmp" && cat "$tmp" >"$DIR/SHA256SUMS"
+rm -f "$tmp"
+log "写しを取った: $file $sum"
+hc_ping "${HC_BACKUP:-}" "" "$(basename "$file") sha256=$sum size=$(stat -c %s "$file")"

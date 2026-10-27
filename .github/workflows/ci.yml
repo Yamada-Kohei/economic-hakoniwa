@@ -66,6 +66,8 @@ jobs:
         run: ruff format --check .
       - name: 定義データの検証
         run: python -m hakoniwa_core.defs
+      - name: 公開サーバーの台本（shellcheck）
+        run: shellcheck -x -e SC1091 -S warning tools/deploy/prod/bin/* tools/deploy/prod/install.sh
       - name: 移行ファイルの作り忘れ
         run: python manage.py makemigrations --check --dry-run
 

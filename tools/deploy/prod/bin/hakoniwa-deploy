@@ -1,0 +1,229 @@
+#!/usr/bin/env bash
+# release の枝を 5 分おきに見て、進んでいたら本番の DB の写しで試してから反映する（ユーザー hakoniwa で動く）。
+#   1. 次のターンまで 10 分以上あるときだけ進める
+#   2. 試し用の DB に本番の写しを入れ、migrate・check_defs・数ターン・主なページを試す
+#   3. ターンの鍵を取り、ゲームを止め、DB を控え、新しい版にして migrate・静的ファイル・再起動し、主なページを確かめる
+#   4. 失敗したら DB の控えと前の版に戻す。失敗した版は、枝がさらに進むまで試し直さない
+# 止めたいときは $STATE_DIR/paused を置く。結果は $STATE_DIR/last と deploy.log。使い方は docs/ops/runbook.md。
+set -uo pipefail
+# shellcheck source=lib.sh
+source "${HAKONIWA_LIB:-/usr/local/lib/hakoniwa}/lib.sh"
+load_env
+
+BRANCH="${HAKONIWA_DEPLOY_BRANCH:-release}"
+TRIAL_TURNS="${HAKONIWA_DEPLOY_TRIAL_TURNS:-3}"
+MIN_MINUTES_BEFORE_TURN="${HAKONIWA_DEPLOY_MIN_MINUTES:-10}"
+KEEP_DUMPS="${HAKONIWA_DEPLOY_KEEP_DUMPS:-10}"
+DUMP_DIR="$HAKONIWA_ROOT/var/predeploy"
+TRIAL_DB="${HAKONIWA_TRIAL_DB:-hakoniwa_trial}"
+TRIAL_PORT=18000
+PAGES=(/ /help/ /world/ /board/)
+DEPLOY_LOG="$STATE_DIR/deploy.log"
+mkdir -p "$STATE_DIR" "$DUMP_DIR"
+
+dlog() { log "$*" | tee -a "$DEPLOY_LOG"; }
+step() {
+  local what="$1"
+  shift
+  "$@" >>"$DEPLOY_LOG" 2>&1 && return 0
+  dlog "失敗: $what"
+  return 1
+}
+finish() {
+  printf '%s %s\n前の版 %s → %s %s\n' "$(date '+%F %T')" "$1" "${OLD:0:7}" "$BRANCH" "${NEW:0:7}" >"$STATE_DIR/last"
+  dlog "$1（${OLD:0:7} → ${NEW:0:7}）"
+}
+
+# DATABASE_URL の DB 名だけを差し替えた URL。
+url_with_db() { sed -E "s#/[^/?]+(\\?.*)?\$#/$1\\1#" <<<"$DATABASE_URL"; }
+
+# 主なページが全部 200 になるまで待つ（最大およそ 60 秒）。
+pages_ok() {
+  local port="$1" page code i
+  for ((i = 0; i < 30; i++)); do
+    curl -s -o /dev/null "http://127.0.0.1:$port/" && break
+    sleep 2
+  done
+  for page in "${PAGES[@]}"; do
+    code="$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: hakoniwa.sevilla-lab.com' "http://127.0.0.1:$port$page")"
+    if [[ "$code" != 200 ]]; then
+      dlog "ポート $port の $page が $code"
+      return 1
+    fi
+  done
+}
+
+# 次のターンまでの分数（世界がない・時刻がないときは 9999）。
+minutes_to_next_turn() {
+  manage shell -c 'from django.utils import timezone
+from server.world.models import World
+w = World.objects.order_by("id").first()
+t = getattr(w, "next_turn_at", None)
+print(int((t - timezone.now()).total_seconds() // 60) if t else 9999)' 2>>"$DEPLOY_LOG" | tail -n1
+}
+
+world_state() {
+  local py="$1" out
+  out="$("$py" manage.py shell -c 'from server.world.models import World; print("state:" + ("world" if World.objects.exists() else "empty"))' 2>>"$DEPLOY_LOG")" || return 1
+  grep -o 'state:[a-z]*' <<<"$out" | tail -n1
+}
+
+reset_schema() { # $1 = DB 名。中身を空にする（試し用の DB と、戻すときの本番の DB）
+  psql "$(url_with_db "$1")" -v ON_ERROR_STOP=1 -qc 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
+}
+
+# 2. 本番の写しで新しい版を試す。動いている世界には触らない。
+trial() {
+  local tmp src py state i pid ok
+  tmp="$(mktemp -d)"
+  src="$tmp/src"
+  step "試しの作業ツリーを作る" git -C "$APP_DIR" worktree add --detach "$src" "$NEW" || { rm -rf "$tmp"; return 1; }
+  py="$VENV/bin/python"
+  if ! git -C "$APP_DIR" diff --quiet "$OLD" "$NEW" -- pyproject.toml tools/deploy/prod/requirements-prod.txt; then
+    step "試し用の venv を作る" python3 -m venv "$tmp/venv" &&
+      step "試し用の venv に入れる" "$tmp/venv/bin/pip" install -q -e "${src}[postgres]" -r "$src/tools/deploy/prod/requirements-prod.txt" ||
+      { trial_cleanup "$tmp"; return 1; }
+    py="$tmp/venv/bin/python"
+  fi
+  local trial_url
+  trial_url="$(url_with_db "$TRIAL_DB")"
+  step "試し用の DB を空にする" reset_schema "$TRIAL_DB" &&
+    step "本番の写しを入れる" bash -c 'pg_dump -Fc "$1" | pg_restore --no-owner -d "$2"' _ "$DATABASE_URL" "$trial_url" ||
+    { trial_cleanup "$tmp"; return 1; }
+  (
+    cd "$src" || exit 1
+    export DATABASE_URL="$trial_url"
+    step "写しで migrate" "$py" manage.py migrate --noinput &&
+      step "写しで check_defs" "$py" manage.py check_defs &&
+      state="$(world_state "$py")" &&
+      if [[ "$state" == state:empty ]]; then
+        dlog "写しは世界がまだない（建国前）ので、ターンの試しは飛ばす"
+      else
+        for ((i = 1; i <= TRIAL_TURNS; i++)); do
+          step "写しで $i ターン目" "$py" manage.py run_turn --force || exit 1
+        done
+      fi
+  ) || { trial_cleanup "$tmp"; return 1; }
+  # 写しの世界を別のポートで立て、主なページを見る（gunicorn と同じ立て方で）。
+  (cd "$src" && DATABASE_URL="$trial_url" exec "$(dirname "$py")/gunicorn" --bind "127.0.0.1:$TRIAL_PORT" \
+    --workers 1 server.wsgi:application >>"$DEPLOY_LOG" 2>&1) &
+  pid=$!
+  pages_ok "$TRIAL_PORT"
+  ok=$?
+  kill "$pid" 2>/dev/null
+  wait "$pid" 2>/dev/null
+  trial_cleanup "$tmp"
+  if ((ok != 0)); then
+    dlog "失敗: 写しのページ"
+    return 1
+  fi
+  dlog "写しの試しが通った（$TRIAL_TURNS ターン）"
+}
+
+trial_cleanup() {
+  git -C "$APP_DIR" worktree remove --force "$1/src" >>"$DEPLOY_LOG" 2>&1
+  rm -rf "$1"
+}
+
+STAMP="$(date '+%Y%m%d-%H%M%S')"
+DUMP=""
+
+# 3. ゲームを止めて控え、新しい版にして動かす。
+deploy() {
+  DUMP="$DUMP_DIR/pre-${NEW:0:7}-$STAMP.dump"
+  step "ゲームを止める" sudo -n /usr/bin/systemctl stop hakoniwa-gunicorn.service || return 1
+  step "DB を控える" pg_dump -Fc -f "$DUMP" "$DATABASE_URL" || return 1
+  step "新しい版にする" git -C "$APP_DIR" merge --ff-only "$NEW" || return 1
+  step "pip install" "$VENV/bin/pip" install -q -e "${APP_DIR}[postgres]" -r "$APP_DIR/tools/deploy/prod/requirements-prod.txt" || return 1
+  step "migrate" manage migrate --noinput || return 1
+  step "check_defs" manage check_defs || return 1
+  step "静的ファイル" manage collectstatic --noinput || return 1
+  printf 'HAKONIWA_VERSION=%s\n' "${NEW:0:12}" >"$STATE_DIR/version.env"
+  start_and_check
+}
+
+start_and_check() {
+  step "ゲームを動かす" sudo -n /usr/bin/systemctl start hakoniwa-gunicorn.service || return 1
+  pages_ok 8000
+}
+
+# 失敗したら、DB の控えと前の版に戻す。
+restore() {
+  step "ゲームを止める" sudo -n /usr/bin/systemctl stop hakoniwa-gunicorn.service
+  if [[ -n "$DUMP" && -s "$DUMP" ]]; then
+    step "DB を戻す" reset_schema hakoniwa &&
+      step "控えを入れる" pg_restore --no-owner -d "$DATABASE_URL" "$DUMP" || return 1
+  fi
+  step "前の版に戻す" git -C "$APP_DIR" reset --hard -q "$OLD" || return 1
+  step "前の版で pip install" "$VENV/bin/pip" install -q -e "${APP_DIR}[postgres]" -r "$APP_DIR/tools/deploy/prod/requirements-prod.txt" || return 1
+  printf 'HAKONIWA_VERSION=%s\n' "${OLD:0:12}" >"$STATE_DIR/version.env"
+  step "前の版で静的ファイル" manage collectstatic --noinput
+  start_and_check
+}
+
+prune_dumps() { ls -1t "$DUMP_DIR"/pre-*.dump 2>/dev/null | tail -n +"$((KEEP_DUMPS + 1))" | xargs -r rm -f; }
+
+exec 8>"$STATE_DIR/deploy.lock"
+flock -n 8 || exit 0
+[[ -e "$STATE_DIR/paused" ]] && exit 0
+
+cd "$APP_DIR" || exit 1
+if [[ "${1:-}" == "--trial" ]]; then # 写しの試しだけ（反映しない）。例: hakoniwa-deploy --trial origin/release
+  OLD="$(git rev-parse HEAD)"
+  NEW="$(git rev-parse "${2:-HEAD}")"
+  trial
+  exit
+fi
+git fetch -q origin "$BRANCH" >>"$DEPLOY_LOG" 2>&1 || { dlog "失敗: git fetch"; exit 1; }
+OLD="$(git rev-parse HEAD)"
+NEW="$(git rev-parse "origin/$BRANCH")"
+[[ "$OLD" == "$NEW" ]] && exit 0
+[[ -e "$STATE_DIR/failed-$NEW" ]] && exit 0
+
+mins="$(minutes_to_next_turn)"
+if [[ "$mins" =~ ^[0-9]+$ ]] && ((mins < MIN_MINUTES_BEFORE_TURN)); then
+  exit 0 # 次のターンが近い。ターンの後に出直す（記録は残さない）
+fi
+
+dlog "$BRANCH ${NEW:0:7} を見つけた（今は ${OLD:0:7}）"
+if ! git merge-base --is-ancestor "$OLD" "$NEW"; then
+  touch "$STATE_DIR/failed-$NEW"
+  finish "止めた: 今の版から $BRANCH へ早送りできない"
+  notify "反映を止めた" "今の版から $BRANCH へ早送りできません（${NEW:0:7}）。確認が要ります" 4
+  exit 1
+fi
+if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+  touch "$STATE_DIR/failed-$NEW"
+  finish "止めた: 作業ツリーに手の変更がある"
+  notify "反映を止めた" "作業ツリーに手の変更があります。入られた疑いとして確認が要ります" 5
+  exit 1
+fi
+if ! trial; then
+  touch "$STATE_DIR/failed-$NEW"
+  finish "止めた: 写しの試しで失敗（動いている世界はそのまま）"
+  notify "反映を止めた" "${NEW:0:7} は本番の写しの試しで失敗しました。動いている版はそのままです" 4
+  exit 1
+fi
+
+# ターンの鍵を取る（走っているターンが終わるまで待つ。最大 5 分）
+exec 9>"$LOCK_FILE"
+if ! flock -w 300 9; then
+  dlog "ターンが終わらないので今回は見送る"
+  exit 0
+fi
+if ! deploy; then
+  dlog "反映に失敗したので戻す"
+  touch "$STATE_DIR/failed-$NEW"
+  if restore; then
+    finish "戻した: 反映に失敗し、DB の控えと前の版で動かし直した"
+    notify "反映に失敗して戻した" "${NEW:0:7} は入りませんでした。前の版 ${OLD:0:7} で動いています" 4
+  else
+    finish "要対応: 反映にも戻しにも失敗した。ゲームが止まっているかもしれない"
+    notify "要対応: ゲームが止まっているかもしれません" "反映にも戻しにも失敗しました（${NEW:0:7}）" 5
+  fi
+  exit 1
+fi
+rm -f "$STATE_DIR"/failed-*
+prune_dumps
+finish "反映した"
+notify "ゲームの新しい版が入りました" "${NEW:0:7}: $(git -C "$APP_DIR" log -1 --format=%s)"

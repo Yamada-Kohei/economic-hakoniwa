@@ -1,0 +1,6 @@
+# /etc/cron.d/hakoniwa-soft-update。ソフトの自動更新（10-26 の決まり: cron で動かす）
+# 安全の更新は毎日、apt で入れたもの全部は週 1 回（土曜の朝。ルーターの更新は 03:30、機械の写しは 03:20）。
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+10 4 * * 0-5 root /usr/local/lib/hakoniwa/hakoniwa-soft-update security
+10 5 * * 6 root /usr/local/lib/hakoniwa/hakoniwa-soft-update all

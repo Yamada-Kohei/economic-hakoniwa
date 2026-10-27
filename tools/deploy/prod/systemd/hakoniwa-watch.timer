@@ -1,0 +1,9 @@
+[Unit]
+Description=経済版箱庭諸国 機械の中の毎日の比べ
+
+[Timer]
+OnCalendar=*-*-* 06:40:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

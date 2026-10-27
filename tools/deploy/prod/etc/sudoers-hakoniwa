@@ -1,0 +1,2 @@
+# /etc/sudoers.d/hakoniwa-deploy（root:root 0440）。反映の台本（ユーザー hakoniwa）がゲームを止める・動かすためだけ。
+hakoniwa ALL=(root) NOPASSWD: /usr/bin/systemctl stop hakoniwa-gunicorn.service, /usr/bin/systemctl start hakoniwa-gunicorn.service, /usr/bin/systemctl restart hakoniwa-gunicorn.service

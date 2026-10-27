@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# ソフトの自動更新（root で動く、cron から）。
+#   security … 安全の更新だけ（毎日）
+#   all      … apt で入れたもの全部（週 1 回、土曜の朝）
+# 要る再起動は、ターンの鍵が空いているときにする。何が入ったかを ntfy に知らせる。
+# ゲームの Python の部品は、ここでは上げない（LAN で試してから新しい版と一緒に入れる）。
+set -uo pipefail
+# shellcheck source=lib.sh
+source "${HAKONIWA_LIB:-/usr/local/lib/hakoniwa}/lib.sh"
+load_env
+
+mode="${1:-security}"
+export DEBIAN_FRONTEND=noninteractive
+before="$(dpkg-query -W -f='${Package} ${Version}\n' | sort)"
+
+case "$mode" in
+security)
+  apt-get update -qq || { notify "ソフトの更新に失敗" "apt-get update が失敗しました" 4; exit 1; }
+  unattended-upgrade >/var/log/hakoniwa-soft-update.log 2>&1
+  ;;
+all)
+  apt-get update -qq || { notify "ソフトの更新に失敗" "apt-get update が失敗しました" 4; exit 1; }
+  apt-get -y -qq -o Dpkg::Options::=--force-confold upgrade >/var/log/hakoniwa-soft-update.log 2>&1 ||
+    { notify "ソフトの更新に失敗" "apt-get upgrade が失敗しました。/var/log/hakoniwa-soft-update.log" 4; exit 1; }
+  apt-get -y -qq autoremove >>/var/log/hakoniwa-soft-update.log 2>&1
+  ;;
+*)
+  echo "使い方: $0 security|all" >&2
+  exit 2
+  ;;
+esac
+
+after="$(dpkg-query -W -f='${Package} ${Version}\n' | sort)"
+changed="$(diff <(echo "$before") <(echo "$after") | grep '^>' | sed 's/^> //' | head -n 20)"
+body="${changed:-入ったものはありません}"
+if [[ -e /var/run/reboot-required ]]; then
+  # ターンの途中で再起動しない。鍵が取れなければ次の回（security は毎日）に任せる。
+  exec 9>"$LOCK_FILE"
+  if flock -w 600 9; then
+    notify "ソフトの更新が済みました（$mode）。再起動します" "$body" 3
+    systemctl reboot
+    exit 0
+  fi
+  notify "ソフトの更新が済みました（$mode）。再起動はターンの後に延ばしました" "$body" 3
+  exit 0
+fi
+[[ -n "$changed" ]] && notify "ソフトの更新が済みました（$mode）" "$body" 2
+exit 0
