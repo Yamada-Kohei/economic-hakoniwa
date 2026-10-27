@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# 1 分ごとのタイマーが呼ぶ。次の更新時刻になっていれば run_turn が 1 ターン進める（なっていなければ何もしない）。
+# 反映（hakoniwa-deploy）と同じ鍵を使い、重ならない。失敗したら ntfy に知らせる（進んでいないことは hakoniwa-health が見る）。
+set -uo pipefail
+# shellcheck source=lib.sh
+source "${HAKONIWA_LIB:-/usr/local/lib/hakoniwa}/lib.sh"
+load_env
+
+exec 9>"$LOCK_FILE"
+flock -n 9 || exit 0 # 反映中か、前のターンがまだ走っている
+
+out="$(manage run_turn 2>&1)"
+rc=$?
+if ((rc != 0)); then
+  log "ターン更新に失敗: $out"
+  notify "ターン更新に失敗" "$out" 4
+  exit 1
+fi
+if grep -q '進めました' <<<"$out"; then
+  log "$out"
+fi

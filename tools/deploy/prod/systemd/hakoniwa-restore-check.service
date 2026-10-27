@@ -1,0 +1,8 @@
+[Unit]
+Description=経済版箱庭諸国 写しから戻せるかの月 1 回の確かめ
+RequiresMountsFor=/srv/backup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/hakoniwa/hakoniwa-restore-check
+TimeoutStartSec=1h

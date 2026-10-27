@@ -1,0 +1,9 @@
+[Unit]
+Description=HP の release の枝を 5 分おきに見る
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=5min
+
+[Install]
+WantedBy=timers.target
