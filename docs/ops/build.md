@@ -141,7 +141,19 @@ sudo shred -u /var/lib/cloudflared/.cloudflared/cert.pem /var/lib/cloudflared/.c
 スマホ（携帯回線）で、メールの番号を入れると入れる。DNS の行は CNAME の 3 つだけで、家の IP はどこにも書かれない。
 止めるボタンは [runbook.md](runbook.md) の 5。
 
+## 12. 要らない外向きの定期通信を止める
+
+Ubuntu は、ファームウェア情報（fwupd）・お知らせ（motd-news、update-notifier、ua-timer、apt-news）を定期に外へ取りにいく。この機械には要らず、ルーターの許可の外なので、止めないと「許していない先へ出ようとしました」の知らせが鳴る（10-27 に fwupd で実際に鳴った）。許可の名前は足さず、止める。
+
+```sh
+sudo systemctl mask --now fwupd-refresh.timer fwupd-refresh.service motd-news.timer \
+  update-notifier-download.timer update-notifier-motd.timer ua-timer.timer
+sudo pro config set apt_news=false
+```
+
+戻すときは `systemctl unmask`。確かめは `systemctl list-timers --all` に上の名前が出ないこと。
+
 ## 入れ直し（OS から作り直すとき）
 
-1 から 11 を同じ順に行い、7 の代わりに `hakoniwa-restore-check --file <選んだ写し>` と同じ要領で本番の DB に戻す
+1 から 12 を同じ順に行い、7 の代わりに `hakoniwa-restore-check --file <選んだ写し>` と同じ要領で本番の DB に戻す
 （[runbook.md](runbook.md) の「入られた疑いのとき」）。
