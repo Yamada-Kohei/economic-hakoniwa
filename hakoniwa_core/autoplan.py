@@ -94,6 +94,7 @@ from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.defs.kinds import is_variant
 from hakoniwa_core.economy import arrears, equipment, needs, services
+from hakoniwa_core.economy import public_housing as pub
 from hakoniwa_core.economy.prices import initial_prices, unit_cost
 from hakoniwa_core.geo import components, distance, shortest_path, within
 from hakoniwa_core.modules import infrastructure as public_works
@@ -125,6 +126,8 @@ BUSY_UNEMPLOYMENT = 0.1  # 失業率がこれを超えている間は、同時�
 MAX_MISSING_WORKERS = 1000  # 足りない労働者がこの人数（× 国の大きさの倍）より多い間は増やさない
 BUDGET_TURNS = 6  # 公共事業費を見直す間隔
 PUBLIC_WORKS = 600  # 公共事業費の基本（住民1人あたりの年の額）
+HOUSING_MARGIN = 1.5  # 住宅費: 町の床が1年に傷む分の資材の値段に掛ける（値段の動きの余裕）
+HOUSING_BACKLOG_YEARS = 2  # 住宅費: 買いきれていない手入れの資材を、この年数で買う
 UNEMPLOYMENT_RESPONSE = 5.0  # 失業率がふつうより 1% 高いごとに、基本のこの % だけ増やす
 INFLATION_RESPONSE = 5.0  # 物価上昇率が INFLATION_LIMIT より 1% 高いごとに、基本のこの % だけ減らす
 INFLATION_LIMIT = 0.05
@@ -418,6 +421,8 @@ def _budget_order(
         "education": int(_education_cost(island, defs, config) * max(EDUCATION_FLOOR, 1 - cut)),
         "security": _security_cost(island, defs, config),
     }
+    if pub.planned(island):  # 計画経済の国だけ、国が町の手入れと建て増しの資材を買う
+        targets["housing"] = _housing_cost(island, defs, config)
     payload = {}
     for item, target in targets.items():
         current = island.policy.budget.get(item, 0)
@@ -516,6 +521,35 @@ def _education_cost(island: IslandState, defs: Defs, config: GameConfig) -> int:
         for good, qty in fac.recipe_of(defs, f)["inputs"].items():
             per_turn += money_of(int(island.economy.prices.get(good, 0) * band), qty)
     return int(per_turn * TURNS_PER_YEAR * EDUCATION_MARGIN)
+
+
+def _housing_cost(island: IslandState, defs: Defs, config: GameConfig) -> int:
+    """計画経済の国が住宅費に回す年の額（W-202）: 町の床が1年に傷む分の資材の値段 × HOUSING_MARGIN
+    に、買いきれていない手入れの資材の値段を HOUSING_BACKLOG_YEARS 年で買う分と、次のターンに買う
+    建て増しの資材の値段の1年分を足す。建国のときの額（住民1人あたり fiscal.budget_planned）より
+    下げない。値段が上がっても資材が買える額になる（固定の額のままだと、値段が上がるうちに手入れの
+    資材が買えず、町が傷みきって住めなくなった）。"""
+    prices = island.economy.prices
+    wear = config.get("housing")["wear"]
+    kind = fac.housing_kind(config)
+    upkeep = 0
+    for f in island.facilities:
+        if f.kind != kind:
+            continue
+        for good, qty in fac.housing_materials(defs, fac.floor_of(defs, f)).items():
+            upkeep += money_of(prices.get(good, 0), int(qty * wear))
+    held = pub.state(island)
+
+    def worth(goods: dict[str, int]) -> int:
+        return sum(money_of(prices.get(g, 0), q) for g, q in goods.items())
+
+    cost = (
+        upkeep * HOUSING_MARGIN
+        + worth(held["repair"]) / HOUSING_BACKLOG_YEARS
+        + worth(held["want"]) * TURNS_PER_YEAR
+    )
+    founding = config.get("fiscal.budget_planned").get("housing", 0) * population_of(island)
+    return int(max(cost, founding))
 
 
 def _security_cost(island: IslandState, defs: Defs, config: GameConfig) -> int:

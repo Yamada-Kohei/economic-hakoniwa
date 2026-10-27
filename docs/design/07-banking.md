@@ -37,7 +37,7 @@
 | BK-14 | 返済日に預金が足りなければ払える分だけ払って遅れを数え、続けて決めた回数で倒産。計画経済の島では国営銀行が借り換えさせ、倒産しない | 決定 | `loans.arrears_limit` | tests/core/test_finance.py::test_arrears_bankrupt_private_facility, tests/core/test_shocks.py::test_planned_economy_never_bankrupts_or_stops |
 | BK-15 | 混合経済では国営銀行が基幹産業に利ざやなしで貸す（政策融資）。計画経済では国営銀行が国営施設に審査なしで貸す | 決定 |  | （未確認） |
 | BK-16 | 自己資本比率は「自己資本÷融資の残高」。規制を下回った銀行は新しく貸さない | 決定 | `banking.regulatory_ratio` | （未確認） |
-| BK-17 | 銀行の損益は利子の差−職員の賃金−貸し倒れ＋国債の実現損益。法人税の後の配当と納付は、自己資本が目安以上に残る分まで | 決定 | `firms.payout`, `banking.capital_floor`, `banking.risk_buffer` | tests/server/test_finance.py::test_bank_books_separate_realized_and_unrealized_bond_gains |
+| BK-17 | 銀行の損益は利子の差−職員の賃金−貸し倒れ＋国債の実現損益。法人税の後の配当と納付は、自己資本が目安以上に残る分まで | 決定 | `firms.payout`, `banking.capital_floor`, `banking.risk_buffer` | tests/server/test_finance.py::test_bank_books_separate_realized_and_unrealized_bond_gains, tests/core/test_stage7_fixes.py::test_a_bank_pays_no_more_dividend_than_it_holds_in_cash |
 | BK-18 | 準備預金は預金の決めた割合を最低限として中央銀行に置き、余りには「政策金利−差」の利子が付く | 決定 | `banking.reserve_ratio`, `central_bank.reserve_spread` | （未確認） |
 | BK-19 | 中央銀行は島に1つの帳簿だけの主体。独立していなければ政策金利と国債の売買を命令で決め、独立していれば式 `policy_rate` で決める | 決定 | `central_bank.policy_rate`, `central_bank.natural_rate`, `central_bank.inflation_target`, `central_bank.inflation_weight`, `central_bank.unemployment_weight`, `central_bank.max_step`, `central_bank.rate_range` | tests/core/test_finance.py::test_monetary_policy_and_independence, tests/core/test_phase3_3.py::test_independent_central_bank_stops_steering_the_rate |
 | BK-20 | 独立させる・戻すのは命令で、切り替えた後の決めたターン数は戻せない。独立をやめたら売れ残りの扱いを独立の前に戻す | 決定 | `central_bank.switch_lock_turns` | tests/core/test_playtest_fixes.py::test_ending_independence_restores_underwriting, ::test_unsold_choice_made_while_independent_is_kept |
@@ -139,7 +139,7 @@ r_L = r_P + m + \rho \cdot \frac{D}{A}
 
 - 銀行の貸借対照表は勘定から計算する（資産は準備預金・融資・国債の時価・銀行間の貸し出し、負債は預金・銀行間の借り入れ・中央銀行からの借り入れ、残りが自己資本。建物は数えない）。
 - 自己資本比率＝自己資本÷融資の残高（国債と準備預金は危なさを 0 として数えない）。規制の値 `banking.regulatory_ratio` を下回ると新しく貸さない（貸し渋り）。
-- 損益は、融資・国債・準備預金・銀行間の受け取りの利子から、預金・銀行間・中央銀行への利子、職員の賃金、貸し倒れを引き、国債の実現損益を足した額。法人税の後、`firms.payout` を配当（民間）か国庫への納付（国営）にする。払った後も自己資本が目安（「融資×（規制＋`banking.risk_buffer`）」と「預金×`banking.capital_floor`」の大きい方）以上に残る分までしか払わない。
+- 損益は、融資・国債・準備預金・銀行間の受け取りの利子から、預金・銀行間・中央銀行への利子、職員の賃金、貸し倒れを引き、国債の実現損益を足した額。法人税の後、`firms.payout` を配当（民間）か国庫への納付（国営）にする。払った後も自己資本が目安（「融資×（規制＋`banking.risk_buffer`）」と「預金×`banking.capital_floor`」の大きい方）以上に残る分までしか払わない。自己資本には貸出や国債の値打ちが入っているので、配当は手元の現金（払える額）も超えない。
 - 準備預金は預金の `banking.reserve_ratio` を最低限として中央銀行に置く。銀行をまたぐ支払いで準備預金が動き、最低限を下回った銀行は国債を売るか銀行間で借りる。余りには「政策金利−`central_bank.reserve_spread`」の利子が付き、余りの一部で国債を買う。
 
 ### 中央銀行

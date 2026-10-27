@@ -371,6 +371,24 @@ class Employment(IslandStage):
                 employed[pos] = employed.get(pos, 0) + n
             if is_transport(config, f):
                 self._surcharge(island, ctx, wanted[f.id], hired)
+        # 順に取り置くうちに、先の施設が雇いきれなかった席の取り置きが戻る。払えずに遅配になった
+        # 席は、戻ったお金で払える分を払う（国庫にお金があるのに、雇えない席に取り置いたせいで
+        # 遅配になるのを避ける。賃金の高い施設から取り置くので、後ろの施設ほど遅配になりやすい）
+        for f, wage in plans:
+            owed = f.economy.get("unpaid", 0)
+            if owed <= 0 or wage <= 0:
+                continue
+            payer = payer_of(defs, config, f)
+            cover = min(owed, funds.available(island, payer) // wage)
+            if cover <= 0:
+                continue
+            funds.commit(island, payer, cover * wage)
+            unpaid_total -= cover
+            if owed > cover:
+                f.economy["unpaid"] = owed - cover
+            else:
+                f.economy.pop("unpaid", None)
+                f.economy.pop("arrears_months", None)
         for tile in island.tiles:
             count = employed.get((tile.x, tile.y), 0)
             if count:

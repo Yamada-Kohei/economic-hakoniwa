@@ -800,7 +800,12 @@ class EntryExit(IslandStage):
         段階に上げたときの「浮く賃金 ＋ 増える収穫の売上 − 増える燃料・化学品 − 機械の傷み」を建設費
         で割ったもうけ率が、参入に要る利益率（_threshold）を超えれば、持ち主の出資と銀行の建設資金で
         上げる（_build。お金の出どころと審査は建て増しと同じ）。賃金が安く人が余る島ではもうけ率が
-        足りず機械化しない。銀行がない島は利益率が出ないので上げない。段階を上げる工事の間は見ない。"""
+        足りず機械化しない。銀行がない島は利益率が出ないので上げない。段階を上げる工事の間は見ない。
+
+        増える収穫の売上は、市場が引き取れる分だけ見込む。直近の買いたい量の平均から、今ある施設の
+        全力の産出と、上げている途中の農場（や今ターン上げると決めた農場）の増える分を引いた余地
+        が、増える収穫に足りなければ、足りない割合の売上は見込まない（みなが同じ値段を見て一斉に
+        上げ、売れ残りで潰れるのを避ける。賃金や燃料で浮く分は需要によらない）。"""
         defs, config = ctx.defs, ctx.config
         threshold = self._threshold(island, ctx)
         if threshold == float("inf"):
@@ -811,6 +816,7 @@ class EntryExit(IslandStage):
         supplied: set[str] = set()
         on_sale: set[str] = set()
         rates: dict[int, int] = {}
+        room: dict[str, int] = {}
         for f in sorted(island.facilities, key=lambda x: x.id):
             steps = fac.grade_steps(defs, f.kind)
             if (
@@ -831,6 +837,7 @@ class EntryExit(IslandStage):
                 supplied = self._supplied(island, ctx)
                 on_sale = {g for g, h in island.economy.finance.get("supply", {}).items() if any(h)}
                 rates = freight_rates.facility_rates(island, defs, config)
+                room = self._market_room(island, ctx)
             grade = fac.grade_of(f)
             step = steps[grade]
             upper = fac.regrade(defs, f.kind, f.recipe, grade + 1)
@@ -839,7 +846,7 @@ class EntryExit(IslandStage):
             if set(defs.facilities[f.kind]["recipes"][upper]["inputs"]) - supplied:
                 continue  # 燃料や化学品が島で手に入らない
             rate = rates.get(f.id, 0)
-            estimate, after = self._grade_return(island, ctx, f, upper, step, prices, rate)
+            estimate, after = self._grade_return(island, ctx, f, upper, step, prices, rate, room)
             if estimate <= threshold:
                 continue
             wage = f.economy.get("wage", island.economy.average_wage)
@@ -858,6 +865,8 @@ class EntryExit(IslandStage):
             if failure is None:
                 stats = island.stats
                 stats["firms.graded"] = stats.get("firms.graded", 0) + 1
+                for g, extra in self._extra_outputs(defs, f, upper, step).items():
+                    room[g] = room.get(g, 0) - extra
 
     @staticmethod
     def _grade_cost(
@@ -877,19 +886,23 @@ class EntryExit(IslandStage):
         step: dict[str, Any],
         prices: dict[str, int],
         rate: int,
+        room: dict[str, int] | None = None,
     ) -> tuple[float, int]:
         """段階を上げたときの年のもうけ率: (増える変動費の利益の1年分 − 足す資材の傷みの1年分) ÷
         工事の費用と、上げた後の変動費の利益（銀行の審査に使う）。上げた後の農場は、機械が新品で、
-        畑がみな上の段階の同じ作物の作り方で動く。"""
+        畑がみな上の段階の同じ作物の作り方で動く。room（財ごとの市場の余地。_market_room）を渡すと、
+        増える収穫のうち市場が引き取れない割合の売上は、もうけに数えない。"""
         defs, config = ctx.defs, ctx.config
         wage = f.economy.get("wage", island.economy.average_wage)
         now = variable_profit(defs, config, f, prices, wage, rate)
-        economy = {
-            k: v for k, v in f.economy.items() if k not in (fac.FIELDS, fac.SOWN, fac.MACHINES)
-        }
-        after = replace(f, recipe=upper, ext={**f.ext, fac.GRADE: step["grade"]}, economy=economy)
+        after = self._graded(f, upper, step)
         later = variable_profit(defs, config, after, prices, wage, rate)
         gain = later - now
+        if room is not None:
+            for g, extra in self._extra_outputs(defs, f, upper, step).items():
+                unsold = extra - max(0, min(extra, room.get(g, 0)))
+                value = money_of(prices.get(g, 0), unsold)
+                gain -= value - part(value, rate)
         worn = sum(
             money_of(prices.get(g, 0), q) * equipment.wear_rate(config, g)
             for g, q in step["materials"].items()
@@ -898,6 +911,45 @@ class EntryExit(IslandStage):
         if cost <= 0:
             return (float("inf") if gain > 0 else 0.0), later
         return (gain * YEAR - worn) / cost, later
+
+    @staticmethod
+    def _graded(f: Facility, upper: str, step: dict[str, Any]) -> Facility:
+        """段階を上げた後の農場（機械が新品で、畑がみな上の段階の同じ作物の作り方で動く）。"""
+        economy = {
+            k: v for k, v in f.economy.items() if k not in (fac.FIELDS, fac.SOWN, fac.MACHINES)
+        }
+        return replace(f, recipe=upper, ext={**f.ext, fac.GRADE: step["grade"]}, economy=economy)
+
+    @classmethod
+    def _extra_outputs(
+        cls, defs: Defs, f: Facility, upper: str, step: dict[str, Any]
+    ) -> dict[str, int]:
+        """段階を上げて増える、全力の1ターンの産出（財ごと。増えない財は含めない）。"""
+        now = fac.outputs_of(defs, fac.steady(f))
+        later = fac.outputs_of(defs, cls._graded(f, upper, step))
+        return {g: q - now.get(g, 0) for g, q in later.items() if q > now.get(g, 0)}
+
+    def _market_room(self, island: IslandState, ctx: StageContext) -> dict[str, int]:
+        """財ごとの、市場が新たに引き取れる量の目安: 直近の買いたい量の平均 − 動いている施設の
+        全力の産出 − 段階を上げている途中の農場の、上がり終えたら増える産出。"""
+        defs = ctx.defs
+        demand = island.economy.finance.get("demand", {})
+        room = {g: sum(h) // len(h) for g, h in demand.items() if h}
+        for g, q in self._capacity(island, ctx).items():
+            room[g] = room.get(g, 0) - q
+        for site in island.facilities:
+            target_id = fac.expansion_of(site)
+            if target_id is None or fac.GRADE_TO not in site.ext:
+                continue
+            farm = next((x for x in island.facilities if x.id == target_id), None)
+            if farm is None:
+                continue
+            grade = int(site.ext[fac.GRADE_TO])
+            step = fac.grade_steps(defs, farm.kind)[grade - 1]
+            upper = fac.regrade(defs, farm.kind, farm.recipe, grade)
+            for g, extra in self._extra_outputs(defs, farm, upper, step).items():
+                room[g] = room.get(g, 0) - extra
+        return room
 
     @staticmethod
     def _fill(
