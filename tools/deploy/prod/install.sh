@@ -2,7 +2,7 @@
 # 台本・サービスの定義・Caddy の設定を、機械の決まった場所に置く（root で、リポジトリの中から）。
 #   sudo tools/deploy/prod/install.sh [scripts|units|caddy|all]
 # 置き場所の持ち主は root にする（ゲームのユーザーが書き換えられると、root の台本を乗っ取られるため）。
-# 秘密のファイル（/etc/hakoniwa/*.env）と、ユーザー・DB・HDD の用意はここではしない（docs/ops/build.md）。
+# 秘密のファイル（/etc/hakoniwa/*.env）と、ユーザー・DB・HDD の用意はここではしない（家の資料の「公開サーバーの建て方」）。
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 what="${1:-all}"
@@ -38,4 +38,4 @@ caddy) do_caddy ;;
 all) do_scripts; do_units; do_caddy ;;
 *) echo "使い方: $0 [scripts|units|caddy|all]" >&2; exit 2 ;;
 esac
-echo "置きました（$what）。タイマーを有効にするのは docs/ops/build.md の手順で"
+echo "置きました（$what）。タイマーを有効にするのは家の資料の「公開サーバーの建て方」の手順で"

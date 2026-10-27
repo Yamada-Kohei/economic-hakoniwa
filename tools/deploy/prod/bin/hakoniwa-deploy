@@ -4,7 +4,7 @@
 #   2. 試し用の DB に本番の写しを入れ、migrate・check_defs・数ターン・主なページを試す
 #   3. ターンの鍵を取り、ゲームを止め、DB を控え、新しい版にして migrate・静的ファイル・再起動し、主なページを確かめる
 #   4. 失敗したら DB の控えと前の版に戻す。失敗した版は、枝がさらに進むまで試し直さない
-# 止めたいときは $STATE_DIR/paused を置く。結果は $STATE_DIR/last と deploy.log。使い方は docs/ops/runbook.md。
+# 止めたいときは $STATE_DIR/paused を置く。結果は $STATE_DIR/last と deploy.log。使い方は家の資料の「公開サーバーの運用の手順」。
 set -uo pipefail
 # shellcheck source=lib.sh
 source "${HAKONIWA_LIB:-/usr/local/lib/hakoniwa}/lib.sh"
