@@ -250,7 +250,7 @@
 | FM-49 | 設備投資（W-186 の直し 回3）: 民営の独立採算の施設が、直近 `firms.invest`… | 決定（回3） | tests/core/test_recession_round3.py |
 | FM-50 | 農場の段階（W-190）: 農場は規模でなく段階で集約する（max_size 1 のまま） | 決定（W-190 の回で作る） | （作る回で） |
 | FM-51 | 農場の機械（W-190）: 機械は段階の設備として施設の設備（FM-11）と別に持ち、傷む（寿命… | 決定・実装済み（W-190 回3） | tests/core/test_farm_grades.py |
-| FM-52 | 民営の農場の集約（W-190）: 作り方を見直す周期（`recipe_turns`）ごとに、次の… | 決定・実装済み（W-190 回3） | tests/core/test_farm_grades.py |
+| FM-52 | 民営の農場の集約（W-190）: 作り方を見直す周期（`recipe_turns`）ごとに、次の… | 決定・実装済み（W-190 回3） | tests/core/test_farm_grades.py、tests/core/test_stage7_fixes.py |
 
 ## [6 国の財政と政策](06-finance.md)
 
@@ -283,7 +283,7 @@
 | FS-23 | 国営の施設の設備は国が予算から直す（回6 | 決定（回6 で作る） | （未確認） |
 | FS-24 | 国庫のうち「支出の `bonds.buffer_turns`+1 ターン分と次の利払い」を超えた… | 決定（回5） | tests/core/test_balance_round5.py |
 | FS-25 | 国の穀物の備蓄: 目安は住民の食べる量の決めたターン数分で、建国のときに国の倉庫に入れる | 決定 | tests/core/test_recession_round1.py |
-| FS-26 | 住宅費（W-190・W-202）: 国が町の床を足す資材（命令「住宅を建てる」と、計画経済の国の… | 決定（命令の工事と計画経済の町は回2 で作った | tests/core/test_public_housing.py |
+| FS-26 | 住宅費（W-190・W-202）: 国が町の床を足す資材（命令「住宅を建てる」と、計画経済の国の… | 決定（命令の工事と計画経済の町は回2 で作った | tests/core/test_public_housing.py、tests/core/test_stage7_fixes.py |
 | FS-27 | 公営住宅の家賃（W-190・W-202）: 国の床に住む層は、床 1 人分ごとに命令で決める名目… | 決定（家賃の徴収は回2 で作った | tests/core/test_public_housing.py |
 
 ## [7 お金と銀行](07-banking.md)
@@ -308,7 +308,7 @@
 | BK-14 | 返済日に預金が足りなければ払える分だけ払って遅れを数え、続けて決めた回数で倒産 | 決定 | tests/core/test_finance.py、tests/core/test_shocks.py |
 | BK-15 | 混合経済では国営銀行が基幹産業に利ざやなしで貸す（政策融資） | 決定 | （未確認） |
 | BK-16 | 自己資本比率は「自己資本÷融資の残高」 | 決定 | （未確認） |
-| BK-17 | 銀行の損益は利子の差−職員の賃金−貸し倒れ＋国債の実現損益 | 決定 | tests/server/test_finance.py |
+| BK-17 | 銀行の損益は利子の差−職員の賃金−貸し倒れ＋国債の実現損益 | 決定 | tests/core/test_stage7_fixes.py、tests/server/test_finance.py |
 | BK-18 | 準備預金は預金の決めた割合を最低限として中央銀行に置き、余りには「政策金利−差」の利子が付く | 決定 | （未確認） |
 | BK-19 | 中央銀行は島に1つの帳簿だけの主体 | 決定 | tests/core/test_finance.py、tests/core/test_phase3_3.py |
 | BK-20 | 独立させる・戻すのは命令で、切り替えた後の決めたターン数は戻せない | 決定 | tests/core/test_playtest_fixes.py |
