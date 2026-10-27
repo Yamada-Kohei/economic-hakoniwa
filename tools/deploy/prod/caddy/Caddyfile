@@ -51,3 +51,8 @@ http://sevilla-lab.com:8080, http://www.sevilla-lab.com:8080 {
 	root * /srv/hp/public
 	file_server
 }
+
+# 上のどの名前でもないもの（Host を偽った呼びがけなど）には何も返さない
+:8080 {
+	respond 404
+}

@@ -26,7 +26,7 @@ units() {
 caddy() {
   install -o root -g root -m 644 "$here/caddy/Caddyfile" /etc/caddy/Caddyfile
   caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-  systemctl reload caddy
+  if systemctl is-active --quiet caddy; then systemctl reload caddy; else systemctl enable --now caddy; fi
 }
 
 case "$what" in

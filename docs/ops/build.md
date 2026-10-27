@@ -1,7 +1,6 @@
 # 建て方（sevilla-server にゲームを入れる）
 
-> 状態: 台本は用意したが、実機ではまだ通していない（段 8 の 8-2・8-3 で通し、打ったコマンドに合わせてこの文書を直す）。
-> 8-2 以降、各手順の終わりに「確かめ」を書き足す。
+> 状態: 1〜8（ゲームと DB と受付）は 2026-10-27 に実機で通した。9（HP の取り込み）と 10 は 8-3 で通す。
 
 前提: Ubuntu 24.04、ssh は鍵だけ、ufw は家の LAN からの 22 番だけ、自動更新あり（`docs/design/` タブ 14 の 2026-10-25）。
 作業は X870 から `ssh sevilla@sevilla-server`（ルーターで予約した 192.168.50.10）で行う。外へは 80・443・7844 番だけ出られる
@@ -26,13 +25,13 @@ sudo chmod 755 /srv/hakoniwa /srv/hp
 sudo install -d -o root -g hakoniwa -m 750 /etc/hakoniwa
 ```
 
-HDD（500GB）は `/srv/backup` に据える。起動を止めないよう `nofail` を付ける。
+HDD（500GB、ext4）は `/srv/backup` に据える。機械を入れた時点で `/bk` に据えてあった（中身は空）ので、`/etc/fstab` の行を
+`/srv/backup` に直し、起動を止めないよう `nofail` を付けた（2026-10-27、直す前の控え `/etc/fstab.bak-20261027`）。新しい円盤のときは
+`lsblk -f` で円盤の名前を確かめてから、`mkfs.ext4`（中身が消える）と同じ形の行を足す。
 
 ```sh
-lsblk -f                      # HDD を探す（NVMe ではない方）
-sudo mkfs.ext4 -L backup /dev/sdX1     # 初めの 1 回だけ。中身が消える。HDD の名前を必ず確かめてから
-echo 'LABEL=backup /srv/backup ext4 defaults,nofail,x-systemd.device-timeout=10 0 2' | sudo tee -a /etc/fstab
-sudo install -d -m 700 /srv/backup && sudo mount /srv/backup && sudo chmod 700 /srv/backup
+sudo sed -i 's#^\(/dev/disk/by-uuid/<HDD の UUID>\) /bk ext4 defaults 0 1#\1 /srv/backup ext4 defaults,nofail,x-systemd.device-timeout=10 0 2#' /etc/fstab
+sudo umount /bk; sudo install -d -m 700 /srv/backup; sudo systemctl daemon-reload; sudo mount /srv/backup; sudo chmod 700 /srv/backup
 ```
 
 ## 3. PostgreSQL（機械の中だけで受ける）
