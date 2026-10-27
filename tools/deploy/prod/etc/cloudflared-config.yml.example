@@ -1,0 +1,12 @@
+# /etc/cloudflared/config.yml（root:cloudflared 0640）。<…> は cloudflared tunnel create の出力で埋める。
+# 名前は Caddy の Host の振り分け（caddy/Caddyfile）と同じ 3 つ。それ以外は 404。
+tunnel: <トンネルの UUID>
+credentials-file: /etc/cloudflared/<トンネルの UUID>.json
+ingress:
+  - hostname: hakoniwa.sevilla-lab.com
+    service: http://127.0.0.1:8080
+  - hostname: sevilla-lab.com
+    service: http://127.0.0.1:8080
+  - hostname: www.sevilla-lab.com
+    service: http://127.0.0.1:8080
+  - service: http_status:404

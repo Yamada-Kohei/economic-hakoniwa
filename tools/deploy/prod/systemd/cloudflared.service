@@ -1,0 +1,23 @@
+[Unit]
+Description=Cloudflare Tunnel（家から Cloudflare へつなぐだけ。外からの受け口は作らない）
+After=network-online.target caddy.service
+Wants=network-online.target
+
+[Service]
+User=cloudflared
+Group=cloudflared
+# 自動更新は止める（更新は apt の週 1 回の更新で入れる）。入口の定義は /etc/cloudflared/config.yml
+ExecStart=/usr/bin/cloudflared --no-autoupdate --config /etc/cloudflared/config.yml tunnel run
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target
