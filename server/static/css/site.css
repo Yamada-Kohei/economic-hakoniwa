@@ -375,3 +375,10 @@ table.goods.country-timeline td:nth-child(n+2), table.goods.country-timeline th:
   .country-timeline { min-width: 360px; }
   .news-entry { gap: 8px; }
 }
+
+/* 手引きの図（tools/help_diagrams/diagrams.py が作る SVG）。幅 480 の縦長で、狭い画面では縮む */
+figure.diagram { margin: 12px auto; max-width: 480px; }
+figure.diagram img { display: block; width: 100%; height: auto; border: 1px solid var(--rule); background: #fff; }
+figure.diagram figcaption { font-size: 0.9em; margin-top: 4px; }
+figure.diagram details { margin-top: 2px; }
+figure.diagram summary { cursor: pointer; color: var(--accent); }

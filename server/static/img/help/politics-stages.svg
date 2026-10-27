@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 486" width="480" height="486" font-family='"Noto Sans JP","Hiragino Kaku Gothic ProN","Meiryo","WenQuanYi Zen Hei",sans-serif' role="img" aria-labelledby="t d">
+<title id="t">政情が動くしくみ</title><desc id="d">幸福度・失業・物価・格差・体制の特色・出来事が政情の目標を決め、政情は目標へゆっくり近づく。段階は落ち着き、デモ、暴動、反乱の前触れの順に悪化し、行政力が減り、暴動では施設が止まる。</desc>
+<rect width="480" height="486" fill="#ffffff"/>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<rect x="14" y="12" width="142" height="32" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="85.0" y="33.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">幸福度</text>
+<rect x="168" y="12" width="142" height="32" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="239.0" y="33.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">失業</text>
+<rect x="322" y="12" width="142" height="32" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="393.0" y="33.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">物価上昇</text>
+<rect x="14" y="52" width="142" height="32" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="85.0" y="73.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">格差</text>
+<rect x="168" y="52" width="142" height="32" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="239.0" y="73.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">体制の特色</text>
+<rect x="322" y="52" width="142" height="32" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="393.0" y="73.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">出来事</text>
+<line x1="240" y1="96" x2="240" y2="124" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="80" y="124" width="320" height="44" rx="6" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="240.0" y="141.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">政情の目標</text>
+<text x="240.0" y="160.8" font-size="13" text-anchor="middle" fill="#102a6b">失業は一定の率を超えた分だけ強く目標を下げる</text>
+<line x1="240" y1="168" x2="240" y2="200" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="281.5" y="177.0" width="97.0" height="18" fill="#ffffff" opacity="0.92"/>
+<text x="330.0" y="190" font-size="13" text-anchor="middle" fill="#1f4fa8">少しずつ近づく</text>
+<rect x="80" y="200" width="320" height="36" rx="6" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="240.0" y="223.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">現在の政情</text>
+<line x1="240" y1="236" x2="240" y2="256" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="14" y="262" width="104" height="40" rx="6" fill="#e2f4e5" stroke="#1b6b2f" stroke-width="1.5"/>
+<text x="66.0" y="287.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">落ち着き</text>
+<rect x="14" y="308" width="104" height="78" rx="6" fill="#ffffff" stroke="#1b6b2f" stroke-width="1.5"/>
+<text x="66.0" y="343.2" font-size="13" text-anchor="middle" fill="#102a6b">ふつうに</text>
+<text x="66.0" y="360.7" font-size="13" text-anchor="middle" fill="#102a6b">命令が通る</text>
+<line x1="118" y1="282" x2="128" y2="282" stroke="#5a6a90" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="128" y="262" width="104" height="40" rx="6" fill="#fff8cc" stroke="#8a7a00" stroke-width="1.5"/>
+<text x="180.0" y="287.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">デモ</text>
+<rect x="128" y="308" width="104" height="78" rx="6" fill="#ffffff" stroke="#8a7a00" stroke-width="1.5"/>
+<text x="180.0" y="343.2" font-size="13" text-anchor="middle" fill="#102a6b">行政力が</text>
+<text x="180.0" y="360.7" font-size="13" text-anchor="middle" fill="#102a6b">減る</text>
+<line x1="232" y1="282" x2="242" y2="282" stroke="#5a6a90" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="242" y="262" width="104" height="40" rx="6" fill="#fff1d0" stroke="#8a4b00" stroke-width="1.5"/>
+<text x="294.0" y="287.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">暴動</text>
+<rect x="242" y="308" width="104" height="78" rx="6" fill="#ffffff" stroke="#8a4b00" stroke-width="1.5"/>
+<text x="294.0" y="325.6" font-size="13" text-anchor="middle" fill="#102a6b">さらに行政力が</text>
+<text x="294.0" y="343.2" font-size="13" text-anchor="middle" fill="#102a6b">減る。町の近く</text>
+<text x="294.0" y="360.7" font-size="13" text-anchor="middle" fill="#102a6b">の施設が止まる</text>
+<text x="294.0" y="378.3" font-size="13" text-anchor="middle" fill="#102a6b">・壊れる</text>
+<line x1="346" y1="282" x2="356" y2="282" stroke="#5a6a90" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="356" y="262" width="104" height="40" rx="6" fill="#fde7e7" stroke="#a32020" stroke-width="1.5"/>
+<text x="408.0" y="286.9" font-size="13" text-anchor="middle" fill="#102a6b" font-weight="bold">反乱の前触れ</text>
+<rect x="356" y="308" width="104" height="78" rx="6" fill="#ffffff" stroke="#a32020" stroke-width="1.5"/>
+<text x="408.0" y="325.6" font-size="13" text-anchor="middle" fill="#102a6b">行政力も被害も</text>
+<text x="408.0" y="343.2" font-size="13" text-anchor="middle" fill="#102a6b">いっそう厳しい</text>
+<text x="408.0" y="360.7" font-size="13" text-anchor="middle" fill="#102a6b">続くと反乱・</text>
+<text x="408.0" y="378.3" font-size="13" text-anchor="middle" fill="#102a6b">内戦へ</text>
+<text x="330" y="252" font-size="13" text-anchor="start" fill="#5a6a90">悪くなるほど右の段階へ</text>
+<rect x="14" y="404" width="452" height="66" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="240.0" y="424.4" font-size="13" text-anchor="middle" fill="#102a6b" font-weight="bold">警察署（治安費で警察官を雇う）</text>
+<text x="240.0" y="441.9" font-size="13" text-anchor="middle" fill="#102a6b">人手が足りるほど、暴動で止まる・壊れる施設が減る</text>
+<text x="240.0" y="459.5" font-size="13" text-anchor="middle" fill="#102a6b">農林水産業は、暴動では止まらない</text>
+<line x1="294" y1="404" x2="294" y2="388" stroke="#1b6b2f" stroke-width="2" marker-end="url(#ah)"/>
+</svg>

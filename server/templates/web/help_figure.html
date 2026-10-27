@@ -1,0 +1,7 @@
+{% load i18n static %}<figure class="diagram">
+  <img src="{% static src %}" width="{{ width }}" height="{{ height }}" alt="{{ title }}" loading="lazy">
+  <figcaption><strong>{{ title }}</strong>
+    <a href="{% static src %}" target="_blank" rel="noopener">{% translate "拡大して見る" %}</a>
+    <details><summary>{% translate "図を文字で読む" %}</summary><p>{{ text }}</p></details>
+  </figcaption>
+</figure>
