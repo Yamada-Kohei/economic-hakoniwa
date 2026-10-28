@@ -43,6 +43,8 @@ COOKIES = Path(os.environ.get("HK_COOKIES", Path.home() / ".hk-cookies.txt"))
 KEY_FILE = Path(os.environ.get("HK_KEY_FILE", Path.home() / ".hk-key"))
 STATE = Path(os.environ.get("HK_STATE", Path.home() / ".hk-state.json"))
 KEY_PATHS = ("/api/", "/mcp")  # 鍵が効く場所（サーバーの server/accounts/keys.py と同じ）
+# 道具として名乗る（Python の既定の名乗り Python-urllib は、公開の入り口でロボットとして止められる）
+USER_AGENT = "hakoniwa-hk.py (+https://github.com/Yamada-Kohei/economic-hakoniwa)"
 ACTIVE_PROFILE = ""
 
 
@@ -129,6 +131,7 @@ class Client:
         path = fix_path(path)
         url = self.base + path
         req = urllib.request.Request(url, data=data, method=method)
+        req.add_header("User-Agent", USER_AGENT)
         if self.key and path.startswith(KEY_PATHS):
             req.add_header("Authorization", f"Bearer {self.key}")
         elif method != "GET":
@@ -1296,6 +1299,7 @@ def cmd_mcp(c: Client, a) -> int:
         except ValueError:
             message = None
         req = urllib.request.Request(c.base + "/mcp", data=line.encode("utf-8"), method="POST")
+        req.add_header("User-Agent", USER_AGENT)
         req.add_header("Authorization", f"Bearer {c.key}")
         req.add_header("Content-Type", "application/json")
         req.add_header("Accept", "application/json, text/event-stream")
