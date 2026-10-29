@@ -16,7 +16,9 @@ def load_settings(**env: str) -> dict:
             key: value
             for key, value in runpy.run_path(str(BASE_DIR / "server/settings.py")).items()
             if key.startswith(("SECURE_", "SESSION_COOKIE_", "CSRF_COOKIE_"))
-            or key in {"DEBUG", "SECRET_KEY", "ALLOWED_HOSTS", "SILENCED_SYSTEM_CHECKS"}
+            or key
+            in {"DEBUG", "SECRET_KEY", "ALLOWED_HOSTS", "SILENCED_SYSTEM_CHECKS", "STATIC_URL"}
+            or key == "HAKONIWA_VERSION"
         }
 
 
@@ -169,3 +171,24 @@ def test_proxy_https_mode_keeps_deploy_pages_and_secure_login_working():
         assert response.status_code == 302
         assert response.cookies["sessionid"]["secure"]
         assert client.session["_auth_user_id"]
+
+
+def test_static_url_carries_the_game_version():
+    """版が変わると静的ファイルの URL が変わり、ブラウザや中継が古い CSS・JS を使わない。"""
+    config = load_settings(HAKONIWA_VERSION="72b51c0a1b2c")
+    assert config["STATIC_URL"] == "static/v-72b51c0a1b2c/"
+    assert config["HAKONIWA_VERSION"] == "72b51c0a1b2c"
+
+
+def test_static_url_ignores_a_version_unfit_for_urls():
+    config = load_settings(HAKONIWA_VERSION="../x y", PATH="")
+    assert config["STATIC_URL"] == "static/"
+
+
+@pytest.mark.django_db
+def test_pages_link_static_files_through_the_version(client):
+    from django.conf import settings
+
+    page = client.get("/help/").content.decode()
+    assert settings.STATIC_URL.startswith("/static/v-")
+    assert f"{settings.STATIC_URL}css/site.css" in page
