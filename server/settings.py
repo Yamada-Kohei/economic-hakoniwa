@@ -33,7 +33,9 @@
 - HAKONIWA_LETTERS_PER_DAY: 1つの島が 24 時間に送れる手紙の数（既定 50。送りすぎの歯止め）
 - HAKONIWA_HALL_PER_DAY: 1つの島が 24 時間に国際会議場に出せる声明の数（既定 10。出しすぎの歯止め）
 - HAKONIWA_BUG_REPORTS_PER_DAY: 1人が 24 時間に送れる不具合の報告の数（既定 10。送りすぎの歯止め）
-- HAKONIWA_VERSION: 不具合の報告に添えるゲームの版（既定は git のコミット）
+- HAKONIWA_VERSION: ゲームの版（既定は git のコミットの頭 12 字）。不具合の報告に添え、
+  静的ファイルの URL（/static/v-<版>/…）にも入れる。版が変わると URL が変わり、
+  ブラウザや中継が古い CSS・JS を使わない
 - HAKONIWA_BOARD_NEWCOMER_MINUTES: 登録してから掲示板に書けるまでの分（既定 1。0 で待たない）
 - HAKONIWA_BOARD_INTERVAL_SECONDS: 掲示板の連投の間隔（秒。既定 10）
 - HAKONIWA_BOARD_POSTS_PER_DAY: 1 人が 24 時間に掲示板に書ける数（既定 200）
@@ -53,6 +55,8 @@
 from __future__ import annotations
 
 import os
+import re
+import subprocess
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -198,7 +202,30 @@ TIME_ZONE = "Asia/Tokyo"
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = "static/"
+
+def _game_version() -> str:
+    """ゲームの版。HAKONIWA_VERSION、なければ git のコミットの頭 12 字。URL に使えない字なら空。"""
+    version = os.environ.get("HAKONIWA_VERSION", "").strip()
+    if not version:
+        try:
+            version = subprocess.run(
+                ["git", "rev-parse", "--short=12", "HEAD"],
+                cwd=BASE_DIR,
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=True,
+            ).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return ""
+    return version if re.fullmatch(r"[0-9A-Za-z._-]{1,40}", version) else ""
+
+
+# 静的ファイルの URL に版を入れる（/static/v-<版>/css/site.css）。ファイルの置き場所は版で変わらず、
+# Caddy が版の段を外して返し、版の付いた URL は長く覚えさせる（tools/deploy/prod/caddy/Caddyfile）。
+# JS の import は相対なので、1つの画面が読むファイルはみな同じ版にそろう。
+HAKONIWA_VERSION = _game_version()
+STATIC_URL = f"static/v-{HAKONIWA_VERSION}/" if HAKONIWA_VERSION else "static/"
 STATICFILES_DIRS = [BASE_DIR / "server" / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
@@ -220,7 +247,6 @@ HAKONIWA_THROTTLE_KEEP_HOURS = int(os.environ.get("HAKONIWA_THROTTLE_KEEP_HOURS"
 HAKONIWA_LETTERS_PER_DAY = int(os.environ.get("HAKONIWA_LETTERS_PER_DAY", "50"))
 HAKONIWA_HALL_PER_DAY = int(os.environ.get("HAKONIWA_HALL_PER_DAY", "10"))
 HAKONIWA_BUG_REPORTS_PER_DAY = int(os.environ.get("HAKONIWA_BUG_REPORTS_PER_DAY", "10"))
-HAKONIWA_VERSION = os.environ.get("HAKONIWA_VERSION", "")
 HAKONIWA_BOARD_NEWCOMER_MINUTES = int(os.environ.get("HAKONIWA_BOARD_NEWCOMER_MINUTES", "1"))
 HAKONIWA_BOARD_INTERVAL_SECONDS = int(os.environ.get("HAKONIWA_BOARD_INTERVAL_SECONDS", "10"))
 HAKONIWA_BOARD_POSTS_PER_DAY = int(os.environ.get("HAKONIWA_BOARD_POSTS_PER_DAY", "200"))
