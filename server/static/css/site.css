@@ -382,3 +382,6 @@ figure.diagram img { display: block; width: 100%; height: auto; border: 1px soli
 figure.diagram figcaption { font-size: 0.9em; margin-top: 4px; }
 figure.diagram details { margin-top: 2px; }
 figure.diagram summary { cursor: pointer; color: var(--accent); }
+.next-steps h2 { margin: 0 0 4px; font-size: 1.1em; }
+.next-steps ol { margin: 0; padding-left: 1.4em; }
+.next-steps li { margin: 4px 0; }

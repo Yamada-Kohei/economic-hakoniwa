@@ -553,6 +553,7 @@
 | UI-49 | 回数制限が使う接続元は、つないできた相手の IP（`REMOTE_ADDR`）が既定 | 決定（10-26、同上） | tests/server/test_rate_limits.py |
 | UI-50 | 住まいと農場の段階（W-190 の回で作る）: 命令 `build_housing`（町のマスか… | 決定（W-190 の回で作る） | tests/server/test_ai_parity.py |
 | UI-51 | 手引きの図: 手引きは図（SVG）で全体の流れ・町・農場・行政力・軍・政情・貿易・国債を見せる | 決定（2026-10-26、本人「図とか絵を使って分かりやすくしてほしい」） | tests/server/test_help_figures.py |
+| UI-52 | 建国から 1 年、島の画面の上と国の要約に「次にすること」を急ぐ順に 3 つまで出す。稼働準備中は止まりに数えない… | 決定 | tests/server/test_first_steps.py |
 
 ## [12 確かめ方](12-checks.md)
 
