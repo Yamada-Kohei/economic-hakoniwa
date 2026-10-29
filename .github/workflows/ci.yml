@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read # release 向けの PR で、main での CI の結果を読む
 
 jobs:
   # 変えたファイルが docs/ の下だけの PR か。そのときは lint とゲームの試験を飛ばし、
@@ -16,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
+      release: ${{ steps.diff.outputs.release }}
     steps:
       - uses: actions/checkout@v4
         if: github.event_name == 'pull_request'
@@ -34,10 +36,19 @@ jobs:
             fi
           fi
           echo "docs_only=$docs_only" | tee -a "$GITHUB_OUTPUT"
+          # release への PR（本番へ出す PR）か。中身は main で全部の試験を通っているので、
+          # 重い試験は回さず、下の release-check（軽い確かめ）だけにする。
+          release=false
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.base_ref }}" = "release" ]; then
+            release=true
+          fi
+          echo "release=$release" | tee -a "$GITHUB_OUTPUT"
 
   # 文書の確かめ。設計書の索引と本文のずれ（tools/spec/design_index.py check）と、
-  # docs/ を読む試験だけを回す。どの PR でも回る。
+  # docs/ を読む試験だけを回す。release への PR のほかは、どの PR でも回る。
   design:
+    needs: changes
+    if: needs.changes.outputs.release != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,7 +63,7 @@ jobs:
 
   lint:
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.release != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -73,7 +84,7 @@ jobs:
 
   test:
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.release != 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -104,3 +115,64 @@ jobs:
         run: pytest -n auto --durations=15
       - name: 一括シミュレーション（50島）
         run: python -m hakoniwa_core.simulate --islands 50 --turns 30
+
+  # release への PR（本番へ出す PR）だけの軽い確かめ。
+  #   1. PR の先頭が main に入っている commit で、main への push の CI がそこで成功している
+  #   2. 合わせた後の中身が main の先頭と同じ（main で試していない変更が本番に混ざらない）
+  #   3. 起動の最小確認（設定の検査・空の DB への migrate・数ターンの一括シミュレーション）
+  # main の CI がまだ動いているときは、終わるまで待つ（最大およそ 50 分）。
+  release-check:
+    needs: changes
+    if: needs.changes.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: PR の先頭が main に入っているか
+        run: |
+          git fetch -q origin main
+          if ! git merge-base --is-ancestor "$HEAD_SHA" origin/main; then
+            echo "::error::PR の先頭 ${HEAD_SHA:0:7} が main に入っていません。release へは main から出してください。"
+            exit 1
+          fi
+      - name: 合わせた後の中身が PR の先頭と同じか
+        run: |
+          # checkout は release と PR の合わせ（merge）の commit。2つ目の親が PR の先頭
+          if ! git diff --quiet HEAD^2 HEAD; then
+            git diff --stat HEAD^2 HEAD
+            echo "::error::release に main にない変更があり、合わせた後の中身が main と違います。"
+            exit 1
+          fi
+      - name: main での CI の結果
+        run: |
+          for i in $(seq 1 100); do
+            runs=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?event=push&branch=main&head_sha=$HEAD_SHA" \
+              --jq '[.workflow_runs[] | {status, conclusion}]')
+            echo "$runs"
+            if echo "$runs" | jq -e 'any(.conclusion == "success")' >/dev/null; then
+              echo "main の CI は ${HEAD_SHA:0:7} で成功済み"
+              exit 0
+            fi
+            if ! echo "$runs" | jq -e 'any(.status != "completed")' >/dev/null; then
+              echo "::error::main への push の CI が ${HEAD_SHA:0:7} で成功していません（ない・失敗・取り消し）。"
+              exit 1
+            fi
+            sleep 30
+          done
+          echo "::error::main の CI が 50 分たっても終わりません。"
+          exit 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - name: 起動の最小確認
+        env:
+          DATABASE_URL: sqlite:///db.sqlite3
+        run: |
+          python manage.py check
+          python manage.py migrate --noinput
+          python -m hakoniwa_core.simulate --islands 5 --turns 3
