@@ -240,9 +240,10 @@ function drawFacility(ctx, f, map, defs, px, ground, theme, sprites) {
   drawStopped(ctx, f, defs, px, top, hh);
 }
 
-/** 止まっている施設には赤い印（絵の上にも描く）。top は印を置くひし形の上の頂点。 */
+/** 止まっている施設には赤い印（絵の上にも描く）。top は印を置くひし形の上の頂点。
+ * 稼働準備中（まだ動いたことがなく、次の更新で動き出す）は止まりではないので描かない（W-219）。 */
 function drawStopped(ctx, f, defs, px, top, hh) {
-  if (f.kind === defs.housing || f.rate !== 0 || !f.status) return;
+  if (f.kind === defs.housing || f.rate !== 0 || !f.status || f.status === "starting") return;
   ctx.fillStyle = "#e53935";
   ctx.beginPath();
   ctx.arc(px, top + hh, Math.max(2, hh * 0.35), 0, Math.PI * 2);

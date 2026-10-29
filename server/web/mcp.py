@@ -54,7 +54,9 @@ INSTRUCTIONS = """\
 経済版箱庭諸国（島国の経済を育てるターン制のゲーム。1ターン＝1か月）を、AI 用の鍵のアカウントとして
 遊ぶための道具です。人のプレイヤーと同じ決まりで動き、見られるのは画面で見られることだけです。
 
-- 初めに whoami で自分の島とターンを確かめ、guide で手引きを読み、summary で国の要約を読みます。
+- 初めに whoami で自分の島とターンを確かめ、guide(which=start) で入門を、guide で詳しい仕組みを
+  読み、summary で国の要約を読みます。
+  建国から1年のあいだ、summary の next_steps に「次にすること」（急ぐ順に3つまで）が入ります。
   島がなければ found で建国します。前に遊んだ方針や引き継ぎは国の日誌（diary）にあり、区切りで
   diary_set に書いておきます（持ち主だけが読めます）。
 - 次のターンからは changes(since=前に読んだターン) で、その後に起きたことだけを読みます。
@@ -483,10 +485,9 @@ def _api_get(request, args):
 
 
 def _guide(request, args):
-    """手引きを文字にして、find の見出しから、または offset から length 字（which で2種を選ぶ）。"""
-    page = call_ok(
-        request, "GET", "/help/hakoniwa/" if args.get("which") == "hakoniwa" else "/help/"
-    )
+    """手引きを文字にして、find の見出しから、または offset から length 字（which で3種を選ぶ）。"""
+    path = {"hakoniwa": "/help/hakoniwa/", "start": "/help/start/"}.get(args.get("which"), "/help/")
+    page = call_ok(request, "GET", path)
     text = _html_text(page)
     start = int(args.get("offset") or 0)
     if args.get("find"):
@@ -738,15 +739,17 @@ TOOLS = [
     Tool(
         "guide",
         "手引き",
-        "ゲームの中の手引き（/help/）を文字で読む。遊び始める前に全部読む。"
-        "find で見出しや言葉から、offset で続きから読める。which=hakoniwa なら、"
+        "ゲームの中の手引き（/help/、詳しい仕組み）を文字で読む。遊び始める前に全部読む。"
+        "find で見出しや言葉から、offset で続きから読める。which=start なら入門"
+        "（/help/start/。最初の1年・困ったとき・施設の状態の言葉）、which=hakoniwa なら"
         "従来の箱庭を遊んだ人向けの手引き（/help/hakoniwa/）。",
         _guide,
         {
             "which": {
                 "type": "string",
-                "enum": ["general", "hakoniwa"],
-                "description": "general（既定）はふつうの手引き、hakoniwa は従来の箱庭との違い",
+                "enum": ["general", "start", "hakoniwa"],
+                "description": "general（既定）は詳しい仕組み、start は入門、"
+                "hakoniwa は従来の箱庭との違い",
             },
             "find": {"type": "string", "description": "この言葉から読み始める"},
             "offset": {"type": "integer", "minimum": 0, "description": "読み始める字数"},
@@ -1251,6 +1254,7 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "rankings": ("rankings",),
     "help": ("guide",),
     "help_hakoniwa": ("guide",),
+    "help_start": ("guide",),
     "island": ("summary", "map", "tile"),  # 地図の重ね表示は map の overlay
     "turn_log": ("turn_log", "changes"),
     "island_economy": ("report", "stats"),

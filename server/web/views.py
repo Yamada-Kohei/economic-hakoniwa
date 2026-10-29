@@ -37,8 +37,6 @@ from server.web import top as top_page
 from server.world.models import Facility, Island, World
 from server.world.services import grid_size
 
-GUIDE_TURNS = 12  # 建国からこのターン数の間、島の画面に「はじめの手順」を出す
-
 
 def top(request):
     """島の一覧（トップ）: GDP の順の表（前のターンからの順位の上下つき）と世界の様子・為替の
@@ -86,6 +84,7 @@ def island_page(request, island_id: int):
         for r in (island.regime or {}).values()
         if r in defs.regimes
     ]
+    alerts, next_steps = overview.island_alerts(island, mine)
     context = {
         "island": island,
         "mine": mine,
@@ -93,7 +92,9 @@ def island_page(request, island_id: int):
         "stats_turn": turn,
         "summary": display.summary(stats, currency),
         # 気をつけたほうがよいこと（国の要約の alerts と同じ文。飢えている層とそのわけも）
-        "alerts": overview.island_alerts(island, mine),
+        "alerts": alerts,
+        # 建国から1年、持ち主に出す「次にすること」（国の要約の next_steps と同じ）
+        "next_steps": next_steps,
         "strengths": rankings.island_strengths(island, stats),
         "goods": display.goods_table(stats, display.latest_markets(island, turn), currency),
         "regime": regime,
@@ -105,7 +106,7 @@ def island_page(request, island_id: int):
         "capital_name": (island.names or {}).get("capital", ""),
         "logs": display.log_entries(logs.filter(turn=last_turn)) if last_turn is not None else [],
         "log_turn": last_turn,
-        "show_guide": island.world.turn - founded < GUIDE_TURNS,
+        "show_guide": island.world.turn - founded < overview.GUIDE_TURNS,
         "page": "island",
         "plan_label": politics_views.page_label(island),
     }
@@ -520,6 +521,47 @@ def world_map(request):
 
 def help_page(request):
     return render(request, "web/help.html", _help_context())
+
+
+def help_start_page(request):
+    """初めて遊ぶ人向けの入門。詳しい決まりは help_page（詳しい仕組み）にある。"""
+    game = get_game()
+    return render(
+        request,
+        "web/help_start.html",
+        {
+            "statuses": [
+                {"name": display.message(f"status_{key}"), "text": text}
+                for key, text in STATUS_HELP
+            ],
+            "commute": game.config.get("labor.commute_radius"),
+            "base_admin": game.config.get("orders.base_admin_power"),
+        },
+    )
+
+
+# 入門の「施設の状態の言葉」（名前は messages.yaml の status_<key> から引く）
+STATUS_HELP = (
+    ("starting", "建ったばかりで、次の更新で動き出します。止まっているわけではありません。"),
+    ("construction", "工事中です。人手・資材・お金が足りないと、かっこの中にわけが出ます。"),
+    ("workers", "通える範囲に働き手が足りません。町の近くに建てるか、町が育つのを待ちます。"),
+    ("engineers", "技術者が足りない分だけ稼働が下がります（いなくても6割は動く）。"),
+    ("input", "原料が品切れで買えません。原料を作る施設を建てるか、輸入します。"),
+    ("input_price", "原料が高くて採算が合いません。原料の供給が増えると戻ります。"),
+    ("funds", "施設のお金が足りず原料を買えません。独立採算の施設は預金と融資を見ます。"),
+    ("wages", "賃金を払うお金が足りません。売上と賃金・仕入れの釣り合いを見ます。"),
+    ("power", "発電量が足りません。発電所の燃料か、発電所の数を見ます。"),
+    ("no_grid", "発電所のある送電網につながっていません。送電線か送電網の工事でつなぎます。"),
+    ("target", "売れ行きに合わせて作る量を減らしています。不具合ではありません。"),
+    ("equipment", "設備が傷んで作れる量が減っています。国営なら公共事業費で直します。"),
+    ("halted", "災害で一時止まっています。時間がたつと戻ります。"),
+    ("public_price", "学校・大学の教材が高く、教育費で買えません。教育費を見直します。"),
+    ("no_demand", "発電所の送電網に電気を使う所がありません。送電線で町や施設につなぎます。"),
+    ("power_price", "電気料金が発電の費用に届きません。燃料の値段か、電気料金の上限を見ます。"),
+    ("recipe_change", "生産方式を切り替えている間です。終わると新しい方式で動きます。"),
+    ("cargo", "運送業・海運業が、運ぶ荷の量に合わせて動いています。不具合ではありません。"),
+    ("business", "銀行が、預金と融資の大きさに合わせて動いています。不具合ではありません。"),
+)
 
 
 def help_hakoniwa_page(request):
