@@ -20,14 +20,23 @@
 </div>
 
 {% if mine and show_guide %}
-<section class="guide next-steps" aria-labelledby="next-steps-title">
-  <h2 id="next-steps-title">{% translate "次にすること" %}</h2>
+<section class="next-steps" aria-labelledby="next-steps-title">
+  <h2 id="next-steps-title">{% translate "次にすること" %} <small>{% translate "建国から1年のあいだ" %}</small></h2>
   {% if next_steps %}
-  <ol>{% for s in next_steps %}<li>{{ s.text }}{% if s.url %} <a href="{{ s.url }}">{{ s.link_text }}</a>{% endif %}</li>{% endfor %}</ol>
+  <ol class="next-steps-list">{% for s in next_steps %}
+    <li{% if forloop.first %} class="first"{% endif %}>
+      <span class="step-no" aria-hidden="true">{{ forloop.counter }}</span>
+      <div class="step-body">
+        {% if forloop.first %}<span class="step-tag">{% translate "まずはここから" %}</span>{% endif %}
+        <p>{{ s.text }}</p>
+        {% if s.url %}<a class="step-link" href="{{ s.url }}">{{ s.link_text }} →</a>{% endif %}
+      </div>
+    </li>{% endfor %}
+  </ol>
   {% else %}
   <p>{% translate "今すぐ手を付けることはありません。更新のたびに、下の「注意」と「前のターンからの主な変化」を見ます。" %}</p>
   {% endif %}
-  <p class="hint">{% translate "建国から1年のあいだ、島の今の状態から急ぐ順に出します。" %} <a href="{% url 'help' %}#first-steps">{% translate "はじめの30分（手引き）" %}</a></p>
+  <p class="hint">{% translate "島の今の状態から、急ぐ順に出します。" %} <a href="{% url 'help' %}#first-steps">{% translate "はじめの30分（手引き）" %}</a></p>
 </section>
 {% endif %}
 {% if mine %}

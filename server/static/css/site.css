@@ -382,6 +382,24 @@ figure.diagram img { display: block; width: 100%; height: auto; border: 1px soli
 figure.diagram figcaption { font-size: 0.9em; margin-top: 4px; }
 figure.diagram details { margin-top: 2px; }
 figure.diagram summary { cursor: pointer; color: var(--accent); }
-.next-steps h2 { margin: 0 0 4px; font-size: 1.1em; }
-.next-steps ol { margin: 0; padding-left: 1.4em; }
-.next-steps li { margin: 4px 0; }
+/* 建国から1年の「次にすること」（UI-52）: 注意欄と見分けるため、紺の二重枠に番号の丸と行き先のボタン */
+.next-steps { background: var(--panel); border: 3px double var(--navy); padding: 0 0 8px; margin: 12px 0;
+  box-shadow: 3px 3px 0 var(--rule); }
+.next-steps h2 { margin: 0; border-left: 0; background: linear-gradient(var(--accent), var(--navy)); padding: 6px 10px; }
+.next-steps h2 small { font-weight: normal; font-size: 0.8em; margin-left: 6px; color: #dce8ff; }
+.next-steps-list { list-style: none; margin: 0; padding: 4px 10px; }
+.next-steps-list li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px dotted var(--border); }
+.next-steps-list li:last-child { border-bottom: 0; }
+.next-steps-list li.first { background: #fffbe6; margin: 6px -10px 0; padding: 10px; border: 1px solid #e6d9a6; }
+.step-no { flex: none; width: 1.9em; height: 1.9em; border-radius: 50%; background: var(--navy); color: #fff;
+  font-weight: bold; display: flex; align-items: center; justify-content: center; }
+.first .step-no { background: #c77700; }
+.step-body { flex: 1; min-width: 0; }
+.step-body p { margin: 0 0 6px; line-height: 1.5; }
+.step-tag { display: inline-block; font-size: 0.8em; font-weight: bold; color: #8a5200; margin-bottom: 2px; }
+.step-link, .step-link:visited { display: inline-block; padding: 4px 12px; min-height: 32px; line-height: 24px;
+  border: 1px solid var(--accent); border-radius: 4px; background: var(--pale); color: var(--accent);
+  text-decoration: none; font-size: 0.95em; }
+.step-link:hover { background: var(--head); }
+.next-steps > p { margin: 4px 10px 0; }
+.next-steps .hint { font-size: 0.85em; color: #6a7aa0; }
