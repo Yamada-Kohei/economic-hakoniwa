@@ -32,7 +32,7 @@ def test_both_guides_show_their_figures_with_a_text_version(client, world):
     """図は文字でも読める（スクリーンリーダーと、HTML を文字にして読む AI の入り口のため）。"""
     general = client.get("/help/").content.decode()
     hakoniwa = client.get("/help/hakoniwa/").content.decode()
-    used = set(re.findall(r"/static/img/help/([a-z-]+)\.svg", general))
+    used = set(re.findall(r"/static/(?:v-[\w.-]+/)?img/help/([a-z-]+)\.svg", general))
     assert used == set(_generator().DIAGRAMS)
     assert {"overview", "town-stages"} <= set(re.findall(r"img/help/([a-z-]+)\.svg", hakoniwa))
     for name in used:
@@ -48,7 +48,8 @@ def test_figure_sizes_in_the_guides_match_the_svg(client, world):
     for url in ("/help/", "/help/hakoniwa/"):
         page = client.get(url).content.decode()
         for src, width, height in re.findall(
-            r'src="/static/img/help/([a-z-]+)\.svg" width="(\d+)" height="(\d+)"', page
+            r'src="/static/(?:v-[\w.-]+/)?img/help/([a-z-]+)\.svg" width="(\d+)" height="(\d+)"',
+            page,
         ):
             svg = (FIGURES / f"{src}.svg").read_text(encoding="utf-8")
             assert f'viewBox="0 0 {width} {height}"' in svg, (url, src)

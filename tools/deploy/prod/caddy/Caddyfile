@@ -22,10 +22,21 @@ http://hakoniwa.sevilla-lab.com:8080 {
 		max_size 2MB
 	}
 
+	# 静的ファイル。ゲームが書く URL は /static/v-<版>/…（版は反映した git のコミット、server/settings.py）。
+	# 版が変わると URL が変わるので、版の付いたものは 1 年覚えさせてよい（更新の後はブラウザも
+	# Cloudflare も新しい URL を取りに来る）。版のないもの（外のサイトが貼ったバナーなど）は毎回確かめさせる。
 	handle_path /static/* {
 		root * /srv/hakoniwa/app/staticfiles
-		file_server
-		header Cache-Control "public, max-age=3600"
+		@versioned path_regexp static_v ^/v-[0-9A-Za-z._-]+/(.*)$
+		handle @versioned {
+			rewrite * /{re.static_v.1}
+			header Cache-Control "public, max-age=31536000, immutable"
+			file_server
+		}
+		handle {
+			header Cache-Control "no-cache"
+			file_server
+		}
 	}
 
 	handle {
