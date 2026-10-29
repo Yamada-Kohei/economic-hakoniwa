@@ -13,12 +13,13 @@ from collections import defaultdict
 from typing import Any
 
 from django.db.models import Max, Q
+from django.urls import reverse
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import politics as core_politics
 from hakoniwa_core.economy import books, retail
 from hakoniwa_core.naming import facility_name
-from hakoniwa_core.state import ACCOUNTING_SELF
+from hakoniwa_core.state import ACCOUNTING_SELF, OWNER_STATE, ZONE_INDUSTRIAL
 from server.accounts import keys
 from server.board import services as board
 from server.economy.models import FacilityBook
@@ -35,6 +36,8 @@ from server.world.repository import facility_from_row
 LIST_MAX = 30  # 要約の一覧（止まった施設・工事・赤字の施設）に出す数
 BONDS_DUE_TURNS = 12  # このターン数のうちに満期になる国債を出す
 LOG_TURNS_MAX = 24  # 差分とターンログで1回に返すターン数
+GUIDE_TURNS = 12  # 建国からこのターン数の間、持ち主に「次にすること」と画面の使い方を出す
+NEXT_STEPS_MAX = 3  # 「次にすること」に出す数
 
 
 def _currency(island: m.Island) -> str:
@@ -106,17 +109,22 @@ def _facility_rows(island: m.Island) -> list[m.Facility]:
 def facility_state(
     island: m.Island, mine: bool = True, viewer: int | None = None
 ) -> dict[str, Any]:
-    """止まった施設、満たない稼働のわけごとの数、工事中の施設（地図の施設の状態と同じ。誰にでも。
-    隠した施設は持ち主と見つけた国だけ。MI-62）。"""
+    """止まった施設、満たない稼働のわけごとの数、工事中の施設、稼働準備中（まだ動いたことがない）の
+    施設の数（地図の施設の状態と同じ。誰にでも。隠した施設は持ち主と見つけた国だけ。MI-62）。"""
     game = get_game()
     state = display.island_for_naming(island)
     stopped, works = [], []
     reasons: dict[str, int] = defaultdict(int)
     rows = [r for r in _facility_rows(island) if display.sees_facility(r, mine, viewer)]
+    starting = 0
     for row in rows:
         f = facility_from_row(row)
         text = display.status_text(f)
         x, y = fac.position(f)  # 町の中の店は町のマス（施設の行の位置は負）
+        if row.built and row.status == fac.STATUS_STARTING:
+            # 工事が済んでまだ動いたことがない。次の更新で動き出すので止まりと分ける（W-219）
+            starting += 1
+            continue
         if not row.built:
             works.append(
                 {
@@ -148,6 +156,7 @@ def facility_state(
     return {
         "facilities": len(rows),
         "stopped_count": len(stopped),
+        "starting_count": starting,
         "stopped": stopped[:LIST_MAX],
         "partial": [
             {"status_text": t, "count": n} for t, n in sorted(reasons.items(), key=lambda r: -r[1])
@@ -369,28 +378,164 @@ def _diplomacy_alerts(brief: dict[str, Any]) -> list[str]:
     return out
 
 
-def island_alerts(island: m.Island, mine: bool) -> list[str]:
-    """島の画面の「注意」（国の要約の alerts と同じ文）。"""
+def island_alerts(island: m.Island, mine: bool) -> tuple[list[str], list[dict[str, Any]]]:
+    """島の画面の「注意」（国の要約の alerts と同じ文）と、持ち主の「次にすること」
+    （国の要約の next_steps と同じ）。"""
     world = island.world
     currency = _currency(island)
     _, latest = display.latest_stats(island)
     stats = reports.with_fiscal(latest)
+    facilities = facility_state(island, mine)
+    goods = _goods(island, latest, currency)
+    hungry = hunger(island, latest, currency)
     out = _alerts(
         stats,
         _politics(island, mine),
-        facility_state(island, mine),
-        _goods(island, latest, currency),
+        facilities,
+        goods,
         _bonds_due(island, world.turn, currency),
-        hunger(island, latest, currency),
+        hungry,
         world.turn,
     )
+    steps: list[dict[str, Any]] = []
     if mine:
+        losing = losing_facilities(island, currency)
         unread = letters.inbox(island).filter(read_at__isnull=True).count()
-        out += _mine_alerts(
-            island, losing_facilities(island, currency), unread, _board_unread(island)
-        )
+        out += _mine_alerts(island, losing, unread, _board_unread(island))
         out += _diplomacy_alerts(diplomacy.brief(island, mine))
-    return out
+        steps = next_steps(island, latest, facilities, goods, hungry, losing)
+    return out, steps
+
+
+STEP_LINKS = {
+    "map": "地図へ",
+    "orders": "命令の欄へ",
+    "market": "市場を見る",
+    "facilities": "施設の状態を見る",
+    "chain": "産業の鎖を見る",
+}
+
+
+def _step(key: str, text: str, page: str, island: m.Island) -> dict[str, Any]:
+    """「次にすること」の1行。page は行き先の画面（map・orders は島の画面の中の地図と命令の欄）。"""
+    if page in ("map", "orders"):
+        url = reverse("island", args=[island.id]) + ("#island-map" if page == "map" else "#orders")
+    elif page:
+        url = reverse(f"island_{page}", args=[island.id])
+    else:
+        url = ""
+    link = STEP_LINKS.get(page, "")
+    return {"key": key, "text": text, "page": page, "url": url, "link_text": link}
+
+
+def next_steps(
+    island: m.Island,
+    stats: dict[str, float],
+    facilities: dict[str, Any],
+    goods: list[dict[str, Any]],
+    hungry: list[dict[str, Any]],
+    losing: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """建国から GUIDE_TURNS の間、持ち主に出す「次にすること」（急ぐ順に NEXT_STEPS_MAX まで）。
+    画面の値と島の状態から選ぶだけで、先の見込みは入れない。それより後は空。"""
+    founded = (island.ext or {}).get("founded_turn", 0)
+    if island.world.turn - founded >= GUIDE_TURNS:
+        return []
+    defs = get_game().defs
+    planned = (
+        defs.regimes.get((island.regime or {}).get("economy", ""), {}).get("owner") == OWNER_STATE
+    )
+    out = []
+    if island.world.turn <= founded:  # まだ一度も更新されていない
+        starting = facilities.get("starting_count", 0)
+        out.append(
+            _step(
+                "first_update",
+                f"まだ一度も更新されていません。初めの施設 {starting} か所は「稼働準備中」で、"
+                "次の更新で動き出します。命令を出さなくても島は動きます",
+                "",
+                island,
+            )
+        )
+    food = stats.get("food.ratio")
+    if hungry or (food is not None and food < 1):
+        out.append(
+            _step(
+                "food",
+                "食料が足りていません。市場で、売りが足りないのか、お金が足りず買えないのかを見ます",
+                "market",
+                island,
+            )
+        )
+    if stats.get("power.shortage"):
+        out.append(
+            _step(
+                "power",
+                "電力が足りていません。発電所の燃料と、送電線でつながっている範囲を確かめます",
+                "facilities",
+                island,
+            )
+        )
+    block = (island.economy or {}).get("finance", {}).get("entry_block") or {}
+    no_zone = not island.tiles.filter(zone=ZONE_INDUSTRIAL).exists()
+    if not planned and (no_zone or block.get("reason") == "no_zone"):
+        out.append(
+            _step(
+                "industrial_zone",
+                "民営の工場は工業団地のマスにしか建ちません。地図で首都の近くの空いた平地を選び、"
+                "「工業団地の指定」をすると、民間の会社が採算を見て工場を建てます",
+                "map",
+                island,
+            )
+        )
+    elif block and block.get("reason") != "no_zone":
+        reason = display.message(f"entry_block_{block['reason']}", **(block.get("args") or {}))
+        name = defs.name("facilities", block.get("facility", ""))
+        page = "chain" if block["reason"].startswith("inputs") else "facilities"
+        out.append(_step("private_entry", f"民営の{name}が参入しません（{reason}）", page, island))
+    if facilities["stopped_count"]:
+        out.append(
+            _step(
+                "stopped",
+                f"止まっている施設が {facilities['stopped_count']} か所あります。施設の画面で、"
+                "人手・原料・電力のどれが足りないかを見ます",
+                "facilities",
+                island,
+            )
+        )
+    unmet = [g["name"] for g in goods if g.get("unmet")]
+    if unmet:
+        names = "・".join(unmet[:3]) + ("など" if len(unmet) > 3 else "")
+        out.append(
+            _step(
+                "unmet",
+                f"{names}は、買いたい量に売りが届きませんでした。作る施設を建てるか、国の倉庫に在庫が"
+                "あれば市場に売り出します",
+                "market",
+                island,
+            )
+        )
+    if losing:
+        out.append(
+            _step(
+                "losing",
+                f"直近の損益が赤字の施設が {len(losing)} か所あります。施設の画面で、売上と賃金・"
+                "仕入れのどれが重いかを見ます",
+                "facilities",
+                island,
+            )
+        )
+    if not island.orders.filter(status="pending").exists():
+        out.append(
+            _step(
+                "orders",
+                "命令の列が空です。命令は次の更新のときに上から実行されます（1ターンに実行できる数は"
+                "行政力まで）",
+                "orders",
+                island,
+            )
+        )
+    return out[:NEXT_STEPS_MAX]
 
 
 POPULATION_CHANGES = [
@@ -550,6 +695,7 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
             island, losing, data["letters"]["unread"], data["board"]["unread_replies"]
         )
         data["alerts"] += _diplomacy_alerts(data["diplomacy"])
+        data["next_steps"] = next_steps(island, latest, facilities, goods, hungry, losing)
     return data
 
 

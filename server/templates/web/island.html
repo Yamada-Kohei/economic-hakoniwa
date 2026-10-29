@@ -19,13 +19,31 @@
   {% include "web/island_nav.html" %}
 </div>
 
+{% if mine and show_guide %}
+<section class="next-steps" aria-labelledby="next-steps-title">
+  <h2 id="next-steps-title">{% translate "次にすること" %} <small>{% translate "建国から1年のあいだ" %}</small></h2>
+  {% if next_steps %}
+  <ol class="next-steps-list">{% for s in next_steps %}
+    <li{% if forloop.first %} class="first"{% endif %}>
+      <span class="step-no" aria-hidden="true">{{ forloop.counter }}</span>
+      <div class="step-body">
+        {% if forloop.first %}<span class="step-tag">{% translate "まずはここから" %}</span>{% endif %}
+        <p>{{ s.text }}</p>
+        {% if s.url %}<a class="step-link" href="{{ s.url }}">{{ s.link_text }} →</a>{% endif %}
+      </div>
+    </li>{% endfor %}
+  </ol>
+  {% else %}
+  <p>{% translate "今すぐ手を付けることはありません。更新のたびに、下の「注意」と「前のターンからの主な変化」を見ます。" %}</p>
+  {% endif %}
+  <p class="hint">{% translate "島の今の状態から、急ぐ順に出します。" %} <a href="{% url 'help' %}#first-steps">{% translate "はじめの30分（手引き）" %}</a></p>
+</section>
+{% endif %}
 {% if mine %}
-<details class="guide"{% if show_guide %} open{% endif %}>
-  <summary>{% translate "はじめの手順" %}</summary>
+<details class="guide">
+  <summary>{% translate "画面の使い方" %}</summary>
   <ol>
-    <li>{% translate "まず食料を足りさせましょう。" %} <a href="{% url 'island_market' island.id %}">{% translate "市場で食料と買えなかった量を見る" %}</a>。{% translate "物があっても買えないときは、賃金と失業手当も確かめます。" %}</li>
-    <li>{% translate "止まった施設を一つ調べましょう。" %} <a href="{% url 'island_facilities' island.id %}">{% translate "施設の状態" %}</a>・<a href="{% url 'island_chain' island.id %}">{% translate "産業の鎖" %}</a>{% translate "から原料・電力・人手を確かめ、地図のマスを選んで詳しい状況を見ます。" %}</li>
-    <li>{% translate "地図のマスを押すと、地形・人口・施設の状況がそのマスのそば（狭い画面では下）の小さな窓に表示されます。窓は右上の × で閉じ、ほかのマスを押すとそのマスの情報に替わります。赤い点は停止中の施設です。" %}</li>
+    <li>{% translate "地図のマスを押すと、地形・人口・施設の状況がそのマスのそば（狭い画面では下）の小さな窓に表示されます。窓は右上の × で閉じ、ほかのマスを押すとそのマスの情報に替わります。赤い点は止まっている施設です。" %}</li>
     <li>{% translate "空いている平地を選択し「建設」で命令を追加します。命令は次のターンの更新時に上から実行されます。" %}</li>
     <li>{% translate "工場には労働者・原料・電力が必要です。発電所と施設を送電線（または施設同士の隣接）で接続してください。" %}</li>
     <li>{% translate "労働者は町から近くの施設に通勤します。町は働き口の近くに自然に形成され、形成・発展には木材・建材などの資源を使います。" %}</li>

@@ -37,8 +37,6 @@ from server.web import top as top_page
 from server.world.models import Facility, Island, World
 from server.world.services import grid_size
 
-GUIDE_TURNS = 12  # 建国からこのターン数の間、島の画面に「はじめの手順」を出す
-
 
 def top(request):
     """島の一覧（トップ）: GDP の順の表（前のターンからの順位の上下つき）と世界の様子・為替の
@@ -86,6 +84,7 @@ def island_page(request, island_id: int):
         for r in (island.regime or {}).values()
         if r in defs.regimes
     ]
+    alerts, next_steps = overview.island_alerts(island, mine)
     context = {
         "island": island,
         "mine": mine,
@@ -93,7 +92,9 @@ def island_page(request, island_id: int):
         "stats_turn": turn,
         "summary": display.summary(stats, currency),
         # 気をつけたほうがよいこと（国の要約の alerts と同じ文。飢えている層とそのわけも）
-        "alerts": overview.island_alerts(island, mine),
+        "alerts": alerts,
+        # 建国から1年、持ち主に出す「次にすること」（国の要約の next_steps と同じ）
+        "next_steps": next_steps,
         "strengths": rankings.island_strengths(island, stats),
         "goods": display.goods_table(stats, display.latest_markets(island, turn), currency),
         "regime": regime,
@@ -105,7 +106,7 @@ def island_page(request, island_id: int):
         "capital_name": (island.names or {}).get("capital", ""),
         "logs": display.log_entries(logs.filter(turn=last_turn)) if last_turn is not None else [],
         "log_turn": last_turn,
-        "show_guide": island.world.turn - founded < GUIDE_TURNS,
+        "show_guide": island.world.turn - founded < overview.GUIDE_TURNS,
         "page": "island",
         "plan_label": politics_views.page_label(island),
     }

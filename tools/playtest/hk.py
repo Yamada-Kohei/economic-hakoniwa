@@ -1126,9 +1126,12 @@ def print_summary(d: dict) -> None:
         print(f"[得意産業] {'・'.join(ranks) or 'なし'}{titles}")
     for text in d["alerts"]:
         print(f"[注意] {text}")
+    for step in d.get("next_steps", []):
+        print(f"[次にすること] {step['text']}")
     why = f"（{f['infra_why']}）" if f["infra_why"] else ""
     print(
         f"[施設] {f['facilities']} か所、止まった施設 {f['stopped_count']}、"
+        f"稼働準備中 {f.get('starting_count', 0)}、"
         f"工事中 {f['construction_count']}、インフラの工事の列 {f['infra_works']}{why}"
     )
     for x in f["stopped"]:
