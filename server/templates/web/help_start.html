@@ -1,0 +1,121 @@
+{% extends "base.html" %}{% load i18n %}
+{% block title %}{% translate "入門 - 経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+<h1>{% translate "手引き：入門" %}</h1>
+
+<p>{% translate "初めて遊ぶ人向けの短い手引きです。仕組みの細かい決まりは" %} <a href="{% url 'help' %}">{% translate "手引き：詳しい仕組み" %}</a> {% translate "にあります。従来の箱庭を遊んだ方は" %} <a href="{% url 'help_hakoniwa' %}">{% translate "箱庭民向けの手引き" %}</a> {% translate "もどうぞ。" %}</p>
+
+<nav class="panel" aria-label="{% translate '入門の目次' %}">
+  <h2>{% translate "目次" %}</h2>
+  <ul>
+    <li><a href="#what">{% translate "このゲームでプレイヤーがすること" %}</a></li>
+    <li><a href="#first-year">{% translate "最初の1年" %}</a></li>
+    <li><a href="#regimes">{% translate "経済体制で変わること" %}</a></li>
+    <li><a href="#screens">{% translate "画面の見取り" %}</a></li>
+    <li><a href="#trouble">{% translate "困ったとき" %}</a></li>
+    <li><a href="#status">{% translate "施設の状態の言葉" %}</a></li>
+  </ul>
+</nav>
+
+<section class="panel" id="what">
+  <h2>{% translate "このゲームでプレイヤーがすること" %}</h2>
+  <p>{% translate "プレイヤーは国の政府です。工場を一つずつ動かすのではなく、施設を建て、予算・税・規制を決め、足りない物を国の倉庫や貿易で補います。働く人・会社・銀行・家計は自分で考えて動き、その結果が毎月（1ターン）の更新で出ます。" %}</p>
+  <p>{% translate "命令を出さなくても島は動きます。まずは何ターンか更新を待ち、何が足りないかを見てから手を打つのが基本です。一度にたくさん変えると、どれが効いたのか分からなくなります。" %}</p>
+</section>
+
+<section class="panel" id="first-year">
+  <h2>{% translate "最初の1年" %}</h2>
+  <dl class="rules">
+    <dt>{% translate "建国の直後（まだ一度も更新されていない）" %}</dt>
+    <dd>
+      <p>{% translate "首都と町、村、初めの農場・漁港・発電所・工場、学校、銀行、置ける場所があれば港と商社がそろっています。初めの施設は「稼働準備中」で、最初の更新で動き出します。止まっているわけではありません。" %}</p>
+      <p>{% translate "市場経済・混合経済では、最初の命令に「工業団地・オフィス街の指定」をおすすめします。民営の工場は工業団地のマスにしか建たず、建国の島には工業団地がありません。地図で首都の近くの空いた平地を選び、工業団地に指定すると、民間の会社が採算を見て工場を建てます。計画経済では民間の会社はないので、工場は国が「施設の建設」で建てます。" %}</p>
+      <p>{% blocktranslate with n=base_admin %}1ターンに実行できる命令は行政力の分だけで、初めは {{ n }} 程度です（命令ごとに重さが違います）。急ぐものから命令の列の上に並べます。{% endblocktranslate %}</p>
+    </dd>
+    <dt>{% translate "最初の数か月" %}</dt>
+    <dd>
+      <p>{% translate "更新のたびに、島の画面の「注意」と「前のターンからの主な変化」、ターンログを見ます。確かめる順は次のとおりです。" %}</p>
+      <ol>
+        <li>{% translate "食料：「市場」で穀物・魚・食品の買えなかった量を見ます。物が足りないのか、家計のお金が足りないのかで、打つ手が違います。" %}</li>
+        <li>{% translate "電力：電力不足なら、発電所の燃料と、送電線でつながっている範囲を見ます。" %}</li>
+        <li>{% translate "止まった施設：「施設」で、人手・原料・電力のどれが足りないかを見ます（下の「施設の状態の言葉」）。" %}</li>
+      </ol>
+    </dd>
+    <dt>{% translate "半年ごろまで" %}</dt>
+    <dd>
+      <p>{% translate "「産業の鎖」で、島で作れていない品目と、それを待って止まっている工場を見ます。足りない物は、作る施設を建てる・国の倉庫から売りに出す（「国の倉庫の売買」）・港と商社で輸入する、のどれかで補います。" %}</p>
+      <p>{% translate "独立採算の施設には建国のときの手元資金があり、失業手当も初めから払われますが、その後の収支は「施設」で確かめます。" %}</p>
+      <p>{% translate "「財政」で国庫と予算を見ます。予算は年の額で、毎月その12分の1ずつ使えます。入力欄の目安（去年使った額・使い切れない額）を見て「予算の変更」をします。国庫が足りない分は国債になります。" %}</p>
+    </dd>
+    <dt>{% translate "1年ごろ" %}</dt>
+    <dd>
+      <p>{% blocktranslate with r=commute %}町は人手の足りない働き口の近くで、資材がそろったときに育ちます。工場を町から遠くへ建てると人が通えません（通えるのは町から {{ r }} マス以内）。道路や上下水道は「インフラの工事」で、教育は学校と大学と教育費で、何年もかけて効いてきます。{% endblocktranslate %}</p>
+      <p>{% translate "ここまで来たら、詳しい仕組みの手引きで気になる所を読み、貿易・外交・政治へ広げてください。建国から1年のあいだは、島の画面の上に「次にすること」も出ます。" %}</p>
+    </dd>
+  </dl>
+</section>
+
+<section class="panel" id="regimes">
+  <h2>{% translate "経済体制で変わること" %}</h2>
+  <div class="table-scroll">
+  <table class="info">
+    <thead><tr><th></th><th>{% translate "市場経済" %}</th><th>{% translate "混合経済" %}</th><th>{% translate "計画経済" %}</th></tr></thead>
+    <tbody>
+      <tr><th>{% translate "工場を建てるのは" %}</th><td>{% translate "民間（工業団地に）。国も建てられる" %}</td><td>{% translate "民間（工業団地に）。発電所・鉱山・製鉄所などの基幹産業は国" %}</td><td>{% translate "国だけ" %}</td></tr>
+      <tr><th>{% translate "値段" %}</th><td>{% translate "市場で決まる（電気料金の上限だけ決められる）" %}</td><td>{% translate "財ごとに上限と下限を決められる" %}</td><td>{% translate "公定価格。足りない物は配給と行列" %}</td></tr>
+      <tr><th>{% translate "銀行" %}</th><td>{% translate "民間。参入は自由" %}</td><td>{% translate "国営と民間。参入は許可制" %}</td><td>{% translate "国営だけ" %}</td></tr>
+      <tr><th>{% translate "プレイヤーの主な仕事" %}</th><td>{% translate "工業団地・税・予算・インフラ" %}</td><td>{% translate "上に加えて基幹産業を国で建てる" %}</td><td>{% translate "施設を国で建て、重点産業と公定価格を決める" %}</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>{% translate "経済体制は後から「経済体制の変更」で変えられますが、しばらく混乱期間になります。" %} <a href="{% url 'help' %}#politics">{% translate "政治と計画の詳しい仕組み" %}</a></p>
+</section>
+
+<section class="panel" id="screens">
+  <h2>{% translate "画面の見取り" %}</h2>
+  <p>{% translate "島の画面の上の帯から開きます。どの画面にも、上に「この画面の手引き」のリンクがあります。" %}</p>
+  <div class="table-scroll">
+  <table class="info">
+    <tr><th>{% translate "地図" %}</th><td>{% translate "マスを押すと地形・人口・施設の様子。命令の列もここ。「重ねて表示」で人口・電力・インフラなどを色で見る" %}</td></tr>
+    <tr><th>{% translate "経済" %}</th><td>{% translate "GDP・物価・失業率などの推移" %}</td></tr>
+    <tr><th>{% translate "市場" %}</th><td>{% translate "財ごとの値段と売買の量、買えなかった量" %}</td></tr>
+    <tr><th>{% translate "産業の鎖" %}</th><td>{% translate "品目ごとの作った量・使った量・輸出入と、止まった工場が待っている物" %}</td></tr>
+    <tr><th>{% translate "施設" %}</th><td>{% translate "施設ごとの状態と収支、企業、町ごとの働き手" %}</td></tr>
+    <tr><th>{% translate "財政・金融" %}</th><td>{% translate "国庫・予算・税、銀行・国債・金利" %}</td></tr>
+    <tr><th>{% translate "貿易・為替" %}</th><td>{% translate "港・商社・船・契約、通貨と外貨" %}</td></tr>
+    <tr><th>{% translate "政治・外交の状態・軍" %}</th><td>{% translate "政情・議会・移民、条約と戦争、兵と部隊" %}</td></tr>
+    <tr><th>{% translate "ターンログ" %}</th><td>{% translate "更新で起きたことと、うまくいかなかったわけ" %}</td></tr>
+  </table>
+  </div>
+</section>
+
+<section class="panel" id="trouble">
+  <h2>{% translate "困ったとき" %}</h2>
+  <div class="table-scroll">
+  <table class="info">
+    <thead><tr><th>{% translate "こうなった" %}</th><th>{% translate "よくあるわけと、見る所・打つ手" %}</th></tr></thead>
+    <tbody>
+      <tr><th>{% translate "民間が工場を建てない" %}</th><td>{% translate "工業団地がない（市場・混合経済。「工業団地・オフィス街の指定」をする）。原料や工事の資材が島で作られていない（国で作るか、国の倉庫から売りに出す）。採算が合わない・銀行が貸さない。わけはターンログに出ます。" %} <a href="{% url 'help' %}#money">{% translate "詳しく" %}</a></td></tr>
+      <tr><th>{% translate "施設が止まっている" %}</th><td>{% translate "「施設」の状態で、人手・原料・電力・お金のどれかを見ます。下の「施設の状態の言葉」に、わけごとの打つ手があります。" %} <a href="{% url 'help' %}#island">{% translate "詳しく" %}</a></td></tr>
+      <tr><th>{% translate "食べ物が足りない・飢えている" %}</th><td>{% translate "「市場」で、売りが足りないのか、家計のお金が足りないのかを見ます。売りが足りなければ農場・漁港を建てるか輸入、お金が足りなければ失業手当や働き口を見直します。" %} <a href="{% url 'help' %}#island">{% translate "詳しく" %}</a></td></tr>
+      <tr><th>{% translate "電力不足" %}</th><td>{% translate "発電所の燃料（石炭など）が買えているか、施設が送電網につながっているかを見ます。送電線は海を越えられません。" %} <a href="{% url 'help' %}#island">{% translate "詳しく" %}</a></td></tr>
+      <tr><th>{% translate "人手が足りない" %}</th><td>{% blocktranslate with r=commute %}町から {{ r }} マス以内に住む働き手が足りません。町は人手の足りない働き口の近くで育つので、資材（木材・建材など）がそろうのを待つか、町に近い所に建てます。技術者は大学で育ちます。{% endblocktranslate %} <a href="{% url 'help' %}#island">{% translate "詳しく" %}</a></td></tr>
+      <tr><th>{% translate "町が育たない" %}</th><td>{% translate "近くに人手の足りない働き口がない、資材が買えない、都市から上は上下水道が足りない、のどれかです。島の画面の「注意」とターンログにわけが出ます。" %} <a href="{% url 'help' %}#settlements">{% translate "詳しく" %}</a></td></tr>
+      <tr><th>{% translate "命令が実行されない" %}</th><td>{% translate "命令は次の更新で、行政力の分だけ列の上から実行され、残りは次のターンに回ります。急ぐ命令を上に並べ替えます。" %} <a href="{% url 'help' %}#orders">{% translate "詳しく" %}</a></td></tr>
+      <tr><th>{% translate "国庫が減り続ける・国債が増える" %}</th><td>{% translate "「財政」で収入と支出の内訳を見ます。予算は年の額なので、使い切れない額を積んでいないか、税率が低すぎないかを確かめます。" %} <a href="{% url 'help' %}#money">{% translate "詳しく" %}</a></td></tr>
+      <tr><th>{% translate "デモや暴動が起きた" %}</th><td>{% translate "「政治」の政情の目標の内訳で、幸福度・失業・物価のどれが下げているかを見ます。" %} <a href="{% url 'help' %}#politics">{% translate "詳しく" %}</a></td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="panel" id="status">
+  <h2>{% translate "施設の状態の言葉" %}</h2>
+  <p>{% translate "「施設」の画面と、地図で施設のマスを押したときに出る言葉です。" %}</p>
+  <div class="table-scroll">
+  <table class="info">
+    {% for s in statuses %}<tr><th>{{ s.name }}</th><td>{{ s.text }}</td></tr>{% endfor %}
+  </table>
+  </div>
+</section>
+{% endblock %}

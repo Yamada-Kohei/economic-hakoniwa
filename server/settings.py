@@ -148,6 +148,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "server.web.context.own_island",
+                "server.web.context.screen_help",
                 "server.letters.context.unread_letters",
                 "server.board.context.unread_replies",
             ],

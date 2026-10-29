@@ -181,6 +181,8 @@ table.letters tr.unread td { font-weight: bold; }
 /* 手引き */
 .rules dt { font-weight: bold; margin-top: 8px; }
 .rules dd { margin: 2px 0 0 1em; }
+/* 画面の上の「この画面の手引き」 */
+.screen-help { float: right; margin: 4px 0 0 8px; font-size: 0.85em; }
 
 /* 見出しの下のリンクはつながった帯にし、入りきらないときは帯の中を横に送る */
 .island-nav { display: flex; flex-wrap: nowrap; gap: 0; overflow-x: auto; max-width: 100%; margin: 6px 0 4px; }

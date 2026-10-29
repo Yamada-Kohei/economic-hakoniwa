@@ -3,7 +3,7 @@
 {% block content %}
 <h1>{% translate "箱庭民向けの手引き" %}</h1>
 <p>{% translate "従来の箱庭諸国・箱庭諸島を遊んだ方のための入口です。版や派生によって違う所があるので、ここでは基本の遊び方を手がかりに、このゲームへの読み替えを案内します。" %}</p>
-<p><a href="{% url 'help' %}">{% translate "初めて遊ぶ方・詳しい決まりを知りたい方は、ふつうの手引きへ" %}</a></p>
+<p><a href="{% url 'help_start' %}">{% translate "初めて遊ぶ方は、入門の手引きへ" %}</a> ・ <a href="{% url 'help' %}">{% translate "詳しい決まりを知りたい方は、詳しい仕組みの手引きへ" %}</a></p>
 
 <nav class="panel" aria-label="{% translate '箱庭民向けの手引きの目次' %}">
   <h2>{% translate "目次" %}</h2>
@@ -129,7 +129,7 @@
 <section class="panel" id="first-screens">
   <h2>{% translate "建国したら最初に見る画面" %}</h2>
   <ol>
-    <li>{% translate "まず「地図」で首都・村と町・施設・送電網を見ます。初めの施設、置ける場所があれば港と商社もあります。" %} <a href="{% url 'help' %}#first-steps">{% translate "はじめの30分" %}</a></li>
+    <li>{% translate "まず「地図」で首都・村と町・施設・送電網を見ます。初めの施設、置ける場所があれば港と商社もあります。" %} <a href="{% url 'help_start' %}#first-year">{% translate "最初の1年（入門）" %}</a></li>
     <li>{% translate "次に「市場」で食料と燃料の値段・売り・買えなかった量を、「施設」で人手・原料・電力・賃金と収支を見ます。止まっていたら「産業の鎖」へ進みます。" %} <a href="{% url 'help' %}#island">{% translate "島の仕組み" %}</a></li>
     <li>{% translate "「財政」で国庫・予算・失業手当を、「金融」で銀行と国債を見ます。建国直後の手元資金があっても、その先の支払いが続くか確かめます。" %} <a href="{% url 'help' %}#money">{% translate "金融と企業" %}</a></li>
     <li>{% translate "不足する物の入手先を「貿易」、外貨とレートを「為替」で見ます。ほかの国との相談は「外交」の公電を使い、条約は島の「外交の状態」で命令します。" %} <a href="{% url 'help' %}#trade">{% translate "貿易と為替" %}</a></li>
