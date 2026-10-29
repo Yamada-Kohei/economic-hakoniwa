@@ -36,7 +36,7 @@
   {% else %}
   <p>{% translate "今すぐ手を付けることはありません。更新のたびに、下の「注意」と「前のターンからの主な変化」を見ます。" %}</p>
   {% endif %}
-  <p class="hint">{% translate "島の今の状態から、急ぐ順に出します。" %} <a href="{% url 'help' %}#first-steps">{% translate "はじめの30分（手引き）" %}</a></p>
+  <p class="hint">{% translate "島の今の状態から、急ぐ順に出します。" %} <a href="{% url 'help_start' %}#first-year">{% translate "最初の1年（手引き：入門）" %}</a></p>
 </section>
 {% endif %}
 {% if mine %}
@@ -49,7 +49,7 @@
     <li>{% translate "労働者は町から近くの施設に通勤します。町は働き口の近くに自然に形成され、形成・発展には木材・建材などの資源を使います。" %}</li>
     <li>{% translate "1ターンに実行できる命令の数（行政力）は原則1つです。中央省庁の公務員が増えると増え、最大5つまでです。名称・地名の変更は数に含みません。" %}</li>
   </ol>
-  <p><a href="{% url 'help' %}">{% translate "手引きをもっと読む" %}</a></p>
+  <p><a href="{% url 'help_start' %}">{% translate "手引きをもっと読む" %}</a></p>
 </details>
 {% endif %}
 
