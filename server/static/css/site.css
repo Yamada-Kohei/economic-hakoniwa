@@ -181,8 +181,16 @@ table.letters tr.unread td { font-weight: bold; }
 /* 手引き */
 .rules dt { font-weight: bold; margin-top: 8px; }
 .rules dd { margin: 2px 0 0 1em; }
-/* 画面の上の「この画面の手引き」 */
-.screen-help { float: right; margin: 4px 0 0 8px; font-size: 0.85em; }
+/* 画面の上の「この画面の手引き」。浮かせると下の枠（トップの題字の枠や見出しの帯）に重なるので、
+   1行に置いて右に寄せ、小さな札の形にする */
+.screen-help { display: flex; justify-content: flex-end; margin: 6px 0; font-size: 0.85em; line-height: 1.4; }
+.screen-help a, .screen-help a:visited { display: inline-flex; align-items: center; gap: 5px; padding: 2px 10px 2px 4px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--accent);
+  text-decoration: none; white-space: nowrap; }
+.screen-help a:hover { background: var(--pale); }
+.screen-help a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.screen-help-mark { display: inline-flex; align-items: center; justify-content: center; width: 1.35em; height: 1.35em;
+  border-radius: 50%; background: var(--accent); color: #fff; font-weight: bold; font-size: 0.9em; }
 
 /* 見出しの下のリンクはつながった帯にし、入りきらないときは帯の中を横に送る */
 .island-nav { display: flex; flex-wrap: nowrap; gap: 0; overflow-x: auto; max-width: 100%; margin: 6px 0 4px; }
