@@ -71,8 +71,9 @@ def test_key_page_issues_once_and_keeps_only_a_hash(client, world):
     # 鍵そのものは2度と出ない
     assert token not in client.get("/accounts/keys/").content.decode()
     assert key.prefix in client.get("/accounts/keys/").content.decode()
-    # 見出しの名前から鍵の画面へ
-    assert 'href="/accounts/keys/"' in client.get("/").content.decode()
+    # 見出しの名前からアカウントの画面へ、そこから鍵の画面へ（UI-55）
+    assert 'href="/accounts/settings/"' in client.get("/").content.decode()
+    assert 'href="/accounts/keys/"' in client.get("/accounts/settings/").content.decode()
 
     # 取り消すと使えない。ほかの人の鍵は取り消せない
     other = User.objects.create_user("mallory", password="a-long-pass-123")

@@ -12,8 +12,10 @@ import logging
 from datetime import timedelta
 
 from django.conf import settings
-from django.contrib.auth import login
+from django.contrib import messages
+from django.contrib.auth import login, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import PasswordChangeForm
 from django.db import transaction
 from django.db.models import Sum
 from django.shortcuts import redirect, render
@@ -21,10 +23,11 @@ from django.utils import timezone
 
 from server.accounts import keys
 from server.accounts.clientip import client_ip
-from server.accounts.forms import SignupForm
+from server.accounts.forms import ReleaseForm, RenameForm, SignupForm
 from server.accounts.models import ApiKey, SignupRecord
 from server.game import get_game
 from server.world.models import Island
+from server.world.services import release_by_owner, release_problem
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +73,51 @@ def signup(request):
         login(request, user)
         return redirect("found")
     return render(request, "accounts/signup.html", {"form": form, "blocked": blocked})
+
+
+@login_required
+def account(request):
+    """アカウントの画面: ログイン名とパスワードを変える、国を手放す。どれも今のパスワードで
+    確かめる。
+
+    ログイン名は公開の画面に出るので、ここで変えれば国のページなどの名前も変わる。国を手放すと島は
+    無人の島として残り、続けて建国の画面へ進める（運営の手を借りずにやり直せるように）。
+    """
+    user = request.user
+    island = Island.objects.filter(owner=user).select_related("world").order_by("id").first()
+    action = request.POST.get("action") if request.method == "POST" else None
+    data = request.POST
+    rename = RenameForm(user, data if action == "rename" else None, prefix="rename")
+    password = PasswordChangeForm(user, data if action == "password" else None, prefix="password")
+    release = (
+        ReleaseForm(user, island, data if action == "release" else None, prefix="release")
+        if island
+        else None
+    )
+    problem = release_problem(island, user) if island else ""
+    if action == "rename" and rename.is_valid():
+        user.username = rename.cleaned_data["username"]
+        user.save(update_fields=["username"])
+        messages.success(request, f"ログイン名を「{user.username}」に変えました。")
+        return redirect("account")
+    if action == "password" and password.is_valid():
+        password.save()
+        update_session_auth_hash(request, password.user)  # 変えた本人はログインしたままにする
+        messages.success(request, "パスワードを変えました。")
+        return redirect("account")
+    if action == "release" and release is not None and not problem and release.is_valid():
+        with transaction.atomic():
+            release_by_owner(island, user)
+        messages.success(request, f"{island.name}を手放しました。新しい国を建てられます。")
+        return redirect("found")
+    context = {
+        "rename": rename,
+        "password": password,
+        "release": release,
+        "island": island,
+        "problem": problem,
+    }
+    return render(request, "accounts/account.html", context)
 
 
 @login_required
