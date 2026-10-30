@@ -55,6 +55,31 @@
     </table>
   </div>
 </section>
+
+<section class="panel" id="firms">
+  <h2>{% translate "世界の企業" %}</h2>
+  <p class="hint">{% blocktranslate with n=data.firms|length %}動いている施設の多い順（同じなら働く人の多い順）に上位 {{ n }} 社です。国営企業は国の施設を業種ごとにまとめたものです。お金の数字は持ち主の国の「施設」で見られます。{% endblocktranslate %}</p>
+  {% if data.firms %}
+  <div class="table-scroll">
+    <table class="goods">
+      <thead><tr><th>{% translate "順位" %}</th><th>{% translate "企業" %}</th><th>{% translate "国" %}</th><th>{% translate "所有" %}</th><th>{% translate "施設" %}</th><th>{% translate "働く人" %}</th></tr></thead>
+      <tbody>
+        {% for f in data.firms %}
+        <tr>
+          <td>{{ f.rank }}</td><td>{{ f.name }}</td>
+          <td><a href="{% url 'island_facilities' f.island %}">{{ f.island_name }}</a></td>
+          <td>{{ f.owner_name }}</td>
+          <td>{{ f.count }}<br><small class="muted">{{ f.kinds }}</small></td>
+          <td class="num">{{ f.workers }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">{% translate "まだ企業がありません。" %}</p>
+  {% endif %}
+</section>
 {% endif %}
 <script type="module" src="{% static 'js/reports/rankings.js' %}"></script>
 {% endblock %}
