@@ -130,6 +130,6 @@ steel_mill: 製鉄所
 | `housing` | 町が1ターンに新しくできる・育つ数 |
 | `naming` | 地名の区画の大きさ（`place_block`）、地名の様式の既定（`place_style`）、昔風の会社の形になる年数（`early_years`）、創業者の姓を名にする企業の割合（`founder_share`、仮） |
 | `disasters` | 災害の起きる割合と、施設が止まるターン数 |
-| `accounts` | 同じ接続元から登録できる数（`signups_per_ip`、0 で無制限）と、覚えておく日数 |
+| `accounts` | 同じ接続元から登録できる数（`signups_per_ip`、0 で無制限）と、覚えておく日数、国を自分で手放したあと次に手放せるまでのターン数（`release_wait_turns`） |
 
 数値は試し遊びと一括シミュレーションで調整する仮の値です。

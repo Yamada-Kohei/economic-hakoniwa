@@ -722,6 +722,7 @@ backups:
 accounts:
   signups_per_ip: 1     # 同じ IP から登録できるアカウントの数（0 で制限しない）
   remember_days: 30     # 照合用に IP のハッシュを残す日数
+  release_wait_turns: 12  # 国を自分で手放したあと、次に手放せるまでのターン数（無人の島が地図を埋めないように）
 
 locale: ja              # 表示名を必ずそろえる言語
 theme: default          # 絵のテーマ（server/static/themes/<名前>/）

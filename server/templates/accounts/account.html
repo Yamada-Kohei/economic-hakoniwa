@@ -1,0 +1,36 @@
+{% extends "base.html" %}{% load i18n %}
+{% block title %}{% translate "アカウント" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+<h1>{% translate "アカウント" %}</h1>
+<p>{% blocktranslate with name=user.username %}ログイン名: <strong>{{ name }}</strong>{% endblocktranslate %}
+  ・ <a href="{% url 'api_keys' %}">{% translate "AI 用の鍵" %}</a></p>
+{% if "@" in user.username %}<p class="error">{% translate "ログイン名がメールアドレスになっています。ログイン名は国のページ・世界地図・順位などで誰にでも見えるので、下で別の名前に変えてください。" %}</p>{% endif %}
+
+<section class="panel" id="rename">
+  <h2>{% translate "ログイン名を変える" %}</h2>
+  <p class="muted">{% translate "変えると、国のページなどに出る名前も変わります。次からは新しいログイン名でログインしてください。" %}</p>
+  <form method="post" action="#rename">{% csrf_token %}<input type="hidden" name="action" value="rename">
+    {{ rename.as_p }}<button type="submit">{% translate "ログイン名を変える" %}</button></form>
+</section>
+
+<section class="panel" id="password">
+  <h2>{% translate "パスワードを変える" %}</h2>
+  <form method="post" action="#password">{% csrf_token %}<input type="hidden" name="action" value="password">
+    {{ password.as_p }}<button type="submit">{% translate "パスワードを変える" %}</button></form>
+</section>
+
+<section class="panel" id="release">
+  <h2>{% translate "国を手放して建て直す" %}</h2>
+  {% if island %}
+    <p>{% blocktranslate with name=island.name %}{{ name }}を手放すと、島は持ち主のいない無人の島として世界に残り、このアカウントで新しい国を建てられます。手放した国には戻れません。{% endblocktranslate %}</p>
+    {% if problem %}
+      <p class="error">{{ problem }}</p>
+    {% else %}
+      <form method="post" action="#release">{% csrf_token %}<input type="hidden" name="action" value="release">
+        {{ release.as_p }}<button type="submit">{% translate "国を手放す" %}</button></form>
+    {% endif %}
+  {% else %}
+    <p class="muted">{% translate "まだ国がありません。" %} <a href="{% url 'found' %}">{% translate "建国する" %}</a></p>
+  {% endif %}
+</section>
+{% endblock %}
