@@ -204,7 +204,7 @@ FACILITY_STATS = [
 
 
 def facilities_page(request, island_id: int):
-    """施設: 自国の全施設の損益・預金・借入と帳簿の推移。他国は国全体の統計だけ。"""
+    """施設: 自国の全施設の損益・預金・借入と帳簿の推移。他国は国全体の統計と企業の一覧だけ。"""
     island, context, stats = _report(request, island_id, "facilities", "施設")
     context["stats"] = reports.stat_rows(stats, FACILITY_STATS, context["currency"])
     context["chart_names"] = "facilities,construction,firms.private"
@@ -213,7 +213,10 @@ def facilities_page(request, island_id: int):
     if context["mine"]:
         context["table"] = reports.facility_rows(island, context["currency"])
     else:
-        context["note"] = OTHERS_NOTE
+        context["note"] = "他国の島のため、国全体の統計と企業の一覧だけを表示しています。"
+        context["firms"] = reports.firm_rows(
+            island, display.island_for_naming(island), context["currency"], mine=False
+        )
     return render(request, "web/facilities.html", context)
 
 

@@ -851,12 +851,15 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
     }
 
 
-def firm_rows(island: m.Island, state: IslandState, currency: str) -> list[dict[str, Any]]:
-    """自国の企業（回7）: 名前・民営か国営か・動いている施設の数と種類。民営の企業は、企業の預金と
-    直近のターンの連結の利益・法人税・配当、繰り越した赤字も。企業ごとの国有化・民営化の命令に使う
-    番号（firm）と命令の種類（order）も持つ。"""
+def firm_rows(
+    island: m.Island, state: IslandState, currency: str, mine: bool = True
+) -> list[dict[str, Any]]:
+    """企業（回7）: 名前・民営か国営か・動いている施設の数と種類・働く人。自国（mine）なら、民営の
+    企業の預金と直近のターンの連結の利益・法人税・配当、繰り越した赤字も。企業ごとの国有化・民営化の
+    命令に使う番号（firm）と命令の種類（order）も持つ。他国にはお金の数字と命令を見せない。"""
     defs = get_game().defs
-    load_money({island.id: state}, Account.objects.filter(island=island))
+    if mine:
+        load_money({island.id: state}, Account.objects.filter(island=island))
     rows = []
     for key, rec in sorted(state.economy.firms.items(), key=lambda kv: int(kv[0])):
         number = int(key)
@@ -874,9 +877,13 @@ def firm_rows(island: m.Island, state: IslandState, currency: str) -> list[dict[
                 f"{defs.name('facilities', k)}{f' {n}' if n > 1 else ''}"
                 for k, n in sorted(kinds.items())
             ),
+            "workers": sum(f.workers for f in members),
             "founded": rec.get(companies.FOUNDED),
-            "order": "nationalize_firm" if private else "privatize_firm",
         }
+        if not mine:
+            rows.append(row)
+            continue
+        row["order"] = "nationalize_firm" if private else "privatize_firm"
         if private:
             row["cash"] = display.money_text(
                 ledger.money(state, companies.entity(number)), currency
