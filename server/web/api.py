@@ -688,6 +688,9 @@ def facilities(request, island_id: int):
     }
     if mine:
         data["table"] = reports.facility_rows(island, _currency(island))
+    else:  # 他国には企業の名前・所有・施設の数と種類・働く人だけ
+        state = display.island_for_naming(island)
+        data["firms"] = reports.firm_rows(island, state, _currency(island), mine=False)
     return _json(data)
 
 

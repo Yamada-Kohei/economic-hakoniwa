@@ -16,7 +16,7 @@ from typing import Any
 from django.urls import reverse
 
 from hakoniwa_core import dates
-from hakoniwa_core.economy import experience
+from hakoniwa_core.economy import companies, experience
 from hakoniwa_core.state import WorldState
 from hakoniwa_core.trade import contracts as contract_states
 from hakoniwa_core.trade import fx as fxrates
@@ -46,6 +46,7 @@ WORLD_TOTALS = [
 MONEY_TOTALS = {name for name, _, unit in WORLD_TOTALS if unit == "money"}
 SOURCES = ("gdp", "population", "happiness", "trade.exports", "unemployment", "inflation")
 TOP = 3  # 産業ごとに見せる順位の数
+FIRMS_TOP = 30  # 世界の企業の一覧に見せる数
 
 # 島の一覧の表（トップの画面）の列: 統計の名前・表示名・単位
 # （お金はほかの順位と同じく基準の通貨に直す）
@@ -161,6 +162,7 @@ def ranking_data(world: m.World, base: int | None) -> dict[str, Any]:
         ],
         "categories": categories,
         "industries": industry_rows(world, islands),
+        "firms": world_firms(world, islands),
         "table": island_table(world, base, islands, stats, factors),
         "records": records(world, islands),
         "world_summary": world_summary(world, base, islands, stats, factors),
@@ -230,6 +232,52 @@ def industry_rows(
             }
         )
     return rows
+
+
+def world_firms(
+    world: m.World, islands: dict[int, dict[str, Any]] | None = None
+) -> list[dict[str, Any]]:
+    """世界の企業の一覧: 動いている施設の多い順（同じなら働く人の多い順）に FIRMS_TOP 社。
+    名前・国・民営か国営か・施設の数と種類・働く人だけで、お金の数字は持ち主の国にしか見せない。"""
+    defs = get_game().defs
+    islands = islands if islands is not None else directory(world)
+    found: dict[tuple[int, int], dict[str, Any]] = {}
+    rows = m.Facility.objects.filter(
+        island__world=world, built=True, economy__has_key=companies.FIRM
+    ).values_list("island_id", "kind", "workers", f"economy__{companies.FIRM}")
+    for island_id, kind, workers, number in rows:
+        entry = found.setdefault((island_id, int(number)), {"count": 0, "workers": 0, "kinds": {}})
+        entry["count"] += 1
+        entry["workers"] += workers
+        entry["kinds"][kind] = entry["kinds"].get(kind, 0) + 1
+    ranked = sorted(found.items(), key=lambda kv: (-kv[1]["count"], -kv[1]["workers"], kv[0]))
+    states = {
+        row.id: island_from_row(row) for row in world.islands.filter(id__in={i for i, _ in found})
+    }
+    out = []
+    for (island_id, number), entry in ranked:
+        state = states.get(island_id)
+        rec = companies.record(state, number) if state is not None else None
+        if rec is None:  # 企業の記録のない番号（解散の途中など）は数えない
+            continue
+        out.append(
+            {
+                "rank": len(out) + 1,
+                "island": island_id,
+                "island_name": islands.get(island_id, {}).get("name", f"島 {island_id}"),
+                "name": companies.display_name(state, defs, number),
+                "owner_name": display.message(f"owner_{rec[companies.OWNER]}"),
+                "count": entry["count"],
+                "workers": entry["workers"],
+                "kinds": "・".join(
+                    f"{defs.name('facilities', k)}{f' {n}' if n > 1 else ''}"
+                    for k, n in sorted(entry["kinds"].items(), key=lambda kv: (-kv[1], kv[0]))
+                ),
+            }
+        )
+        if len(out) >= FIRMS_TOP:
+            break
+    return out
 
 
 def island_strengths(island: m.Island, stats: dict[str, float]) -> dict[str, Any]:

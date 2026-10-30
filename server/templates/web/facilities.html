@@ -49,7 +49,7 @@
   <div class="table-scroll">
     <table class="report-table">
       <thead><tr>
-        <th>{% translate "企業" %}</th><th>{% translate "所有" %}</th><th>{% translate "施設" %}</th>
+        <th>{% translate "企業" %}</th><th>{% translate "所有" %}</th><th>{% translate "施設" %}</th><th>{% translate "働く人" %}</th>
         <th>{% translate "預金" %}</th><th>{% translate "連結の利益" %}</th><th>{% translate "法人税" %}</th><th>{% translate "配当" %}</th><th>{% translate "繰り越した赤字" %}</th><th></th>
       </tr></thead>
       <tbody>
@@ -58,6 +58,7 @@
           <td>{{ c.name }} <small class="muted">{% blocktranslate with n=c.firm %}番号 {{ n }}{% endblocktranslate %}</small></td>
           <td>{{ c.owner_name }}</td>
           <td>{{ c.count }}<br><small class="muted">{{ c.kinds }}</small></td>
+          <td class="num">{{ c.workers }}</td>
           <td class="num">{{ c.cash|default:"" }}</td>
           <td class="num">{{ c.profit|default:"" }}</td>
           <td class="num">{{ c.tax|default:"" }}</td>
@@ -108,6 +109,30 @@
     <figure class="chart" data-chart="balance"><figcaption>{% translate "預金・借入・在庫の値打ち" %}</figcaption></figure>
   </div>
   <div data-slot="table" class="table-scroll"></div>
+</section>
+{% endif %}
+
+{% if firms %}
+<section class="panel">
+  <h2>{% translate "企業" %}</h2>
+  <p class="hint">{% translate "この国の企業と、動いている施設の数と種類、働く人です。お金の数字は持ち主の国だけが見られます。世界の大きい企業は「統計の順位」にあります。" %} <a href="{% url 'rankings' %}#firms">{% translate "世界の企業" %}</a></p>
+  <div class="table-scroll">
+    <table class="report-table">
+      <thead><tr>
+        <th>{% translate "企業" %}</th><th>{% translate "所有" %}</th><th>{% translate "施設" %}</th><th>{% translate "働く人" %}</th>
+      </tr></thead>
+      <tbody>
+        {% for c in firms %}
+        <tr>
+          <td>{{ c.name }}</td>
+          <td>{{ c.owner_name }}</td>
+          <td>{{ c.count }}<br><small class="muted">{{ c.kinds }}</small></td>
+          <td class="num">{{ c.workers }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </section>
 {% endif %}
 
