@@ -120,7 +120,8 @@ jobs:
   #   1. PR の先頭が main に入っている commit で、main への push の CI がそこで成功している
   #   2. 合わせた後の中身が main の先頭と同じ（main で試していない変更が本番に混ざらない）
   #   3. 起動の最小確認（設定の検査・空の DB への migrate・数ターンの一括シミュレーション）
-  # main の CI がまだ動いているときは、終わるまで待つ（最大およそ 50 分）。
+  # 1 は、main の先頭が PR のマージで、中身がその PR の先頭と同じなら、PR で成功した CI で足りるとする
+  # （マージの直後でも待たない）。そうでなく main の CI がまだ動いているときは、終わるまで待つ（最大およそ 50 分）。
   release-check:
     needs: changes
     if: needs.changes.outputs.release == 'true'
@@ -149,6 +150,17 @@ jobs:
           fi
       - name: main での CI の結果
         run: |
+          ok() {  # ci.yml の run で、event と head_sha が合い、成功したものがあるか
+            gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?event=$1&head_sha=$2" \
+              --jq '[.workflow_runs[] | select(.conclusion == "success")] | length > 0' | grep -qx true
+          }
+          # 早道: 先頭が PR のマージで、マージ後の中身がその PR の先頭と同じなら、PR で通った CI を
+          # そのまま使う（同じ中身をもう一度試すだけなので、main の CI の終わりを待たない）
+          second=$(git rev-parse -q --verify "$HEAD_SHA^2" || true)
+          if [ -n "$second" ] && git diff --quiet "$second" "$HEAD_SHA" && ok pull_request "$second"; then
+            echo "マージした PR の先頭 ${second:0:7} の CI が成功済みで、中身も同じ"
+            exit 0
+          fi
           for i in $(seq 1 100); do
             runs=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?event=push&branch=main&head_sha=$HEAD_SHA" \
               --jq '[.workflow_runs[] | {status, conclusion}]')

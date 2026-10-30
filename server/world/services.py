@@ -73,3 +73,38 @@ def found_for_user(world: m.World, user, plan: FoundingPlan, wx: int, wy: int) -
     island.ext["founded_turn"] = world.turn
     open_for_business(island, game.defs, game.config, world.turn)
     return create_island(world, island, owner=user)
+
+
+def release_problem(island: m.Island, user) -> str:
+    """持ち主が自分で国を手放せないわけ（手放せるなら空）。
+
+    戦争の最中（宣戦から講和まで）は手放せない: 相手の国が戦う先を失い、賠償も取れなくなるため。
+    手放したあと次に手放せるのは accounts.release_wait_turns ターン後（無人の島が地図を
+    埋めないように）。
+    """
+    world = island.world
+    wars = ((world.ext or {}).get("diplomacy") or {}).get("wars", [])
+    for w in wars:
+        if w.get("state") in ("declared", "war", "ceasefire") and island.id in (
+            w.get("attacker"),
+            w.get("defender"),
+        ):
+            return "戦争の最中（宣戦から講和まで）は国を手放せません。"
+    wait = get_game().config.get("accounts.release_wait_turns")
+    last = (
+        m.Island.objects.filter(ext__released_by=user.pk)
+        .values_list("ext__released_turn", flat=True)
+        .order_by("-ext__released_turn")
+        .first()
+    )
+    if last is not None and world.turn < last + wait:
+        return f"国を手放したあと、次に手放せるのは {last + wait - world.turn} ターン後です。"
+    return ""
+
+
+def release_by_owner(island: m.Island, user) -> None:
+    """持ち主が自分の国を手放す。島は無人の島として残る（管理画面の「無人の島にする」と同じ）。
+    そのアカウントは、続けて新しい国を建てられる。"""
+    island.ext = {**(island.ext or {}), "released_by": user.pk, "released_turn": island.world.turn}
+    island.owner = None
+    island.save(update_fields=["owner", "ext"])

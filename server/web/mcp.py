@@ -1291,7 +1291,7 @@ SCREENS: dict[str, tuple[str, ...]] = {
 # AI の入り口が要らない画面（アカウントの画面。鍵は人が画面で作って AI に渡す）
 # 国旗と自作の記念碑の画像（island_flag・monument_image）も要らない（report page=country の flag と
 # monuments に、大きさや仮の絵かどうかがある）
-NOT_FOR_AI = {"signup", "login", "logout", "api_keys", "island_flag", "monument_image"}
+NOT_FOR_AI = {"signup", "login", "logout", "account", "api_keys", "island_flag", "monument_image"}
 
 
 # --- 文にする ---------------------------------------------------------------------------
