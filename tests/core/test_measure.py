@@ -206,12 +206,12 @@ def test_simulate_writes_a_result_and_a_series(game, tmp_path):
         ]
     )
     assert code == 0  # 目安を見始めるターンより前なので、外れたところはない
-    data = json.loads(out.read_text())
+    data = json.loads(out.read_text(encoding="utf-8"))
     assert (data["scenario"], data["seed"], data["turns"], data["islands"]) == ("small", 1, 13, 2)
     assert data["windows"] == {}
     assert "early.employment.median" in data["early"]
     assert data["first_year"]["labor.employed"] > 0
-    lines = [json.loads(line) for line in series.read_text().splitlines()]
+    lines = [json.loads(line) for line in series.read_text(encoding="utf-8").splitlines()]
     assert len(lines) == 2 * 13
     assert {line["t"] for line in lines} == set(range(1, 14))
     assert all("zones" in line for line in lines if line["t"] % 6 == 0)
@@ -253,7 +253,7 @@ def test_compare_reads_goods_only_values_from_rounds_without_services(tmp_path):
         }
         path = tmp_path / name
         path.mkdir()
-        (path / "plan-s1-t300.json").write_text(json.dumps(data))
+        (path / "plan-s1-t300.json").write_text(json.dumps(data), encoding="utf-8")
         return path
 
     old = write("old", {"households.real_per_person": 400.0, "output.real.per_person": 450.0})

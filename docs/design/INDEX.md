@@ -562,7 +562,7 @@
 
 ## [12 確かめ方](12-checks.md)
 
-決まり 42 個、うち仮の決まりの表にあるもの 0 個。
+決まり 43 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -608,6 +608,7 @@
 | GT-39 | 関門の値段の幅は、サービスと小売りだけ物価指数でなく平均賃金の伸びで割って見る（賃金が物の値段よ… | 決定（回7 後半） | tests/core/test_gate.py |
 | GT-40 | 標準の計画は、島で作っていない投入財でも、作る施設の投入財が手元にあれば手に入ると見て使う施設（… | 決定（回7 後半） | tests/core/test_balance_round7b.py |
 | GT-41 | 測りは、計算の中身（hakoniwa_core・game.yaml・packs・schemas）… | 決定 | tests/core/test_measure_reuse.py |
+| GT-43 | 試験は回す場所と順によらず同じ結果になる（Linux でも Windows の X870 でも、… | 決定 | tests/core/test_playtest_fixes.py、tests/server/test_board.py、tests/server/test_theme_sprites.py |
 
 ## [15 軍事と戦争](15-military.md)
 

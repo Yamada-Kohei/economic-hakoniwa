@@ -258,8 +258,7 @@ def test_bank_resolution_keeps_insured_deposits_and_books(game, warmed, method):
     open_books(island)
     bank = _break_bank(game, world, island)
     others = [b for b in banks.healthy_banks(island, game.config, ctx.turn) if b != bank]
-    if method != failures.BAILOUT and not others:
-        pytest.skip("引き継ぐ銀行がない")
+    assert method == failures.BAILOUT or others, "引き継ぐ銀行がない"
     before = _depositors(island, bank)
     money_before = {e: ledger.money(island, e) for e in before}
     f = banks.facility_of(island, bank)
