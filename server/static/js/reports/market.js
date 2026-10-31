@@ -1,9 +1,13 @@
 // 市場の画面: 選んだ資源の値段と量の推移（市場の API）と、直近のターンの約定・買えずに止まった施設
 // （島の持ち主だけ）。表の資源名を押すと、画面を読み直さずに資源を切り替える。
+// 持ち主には市場の命令の欄（国の倉庫の売買・資源ごとの補助金）も出し、選んだ資源を初めから選んでおく。
 
 import { turnDate } from "../calendar.js";
 import { getJson } from "../island/api.js";
 import { attachRange, escapeHtml, formatValue, makeChart, rangeQuery } from "./common.js";
+import { mountOrders } from "./orders.js";
+
+const ordersReady = mountOrders();
 
 const detail = document.getElementById("market-detail");
 
@@ -86,6 +90,7 @@ if (detail) {
       row.classList.toggle("chosen", row.dataset.good === state.good);
     }
     history.replaceState(null, "", `?good=${encodeURIComponent(state.good)}`);
+    ordersReady.then((orders) => orders?.setGood(state.good));
     load();
     detail.scrollIntoView({ behavior: "smooth", block: "start" });
   });
