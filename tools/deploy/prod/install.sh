@@ -21,6 +21,8 @@ do_scripts() {
 }
 do_units() {
   install -o root -g root -m 644 "$here"/systemd/* /etc/systemd/system/
+  # Caddy はパッケージのサービス定義のまま（落ちても起き直さない）なので、起き直す設定だけを足す
+  install -D -o root -g root -m 644 "$here/etc/caddy-restart.conf" /etc/systemd/system/caddy.service.d/hakoniwa-restart.conf
   systemctl daemon-reload
 }
 do_caddy() {
