@@ -161,6 +161,7 @@ def _treaty_row(t: dict[str, Any], names: dict[int, str]) -> dict[str, Any]:
             {**t["notice"], "by": _ref(names, t["notice"]["by"])} if t.get("notice") else None
         ),
         "violations": [{**v, "by": _ref(names, v["by"])} for v in t.get("violations", [])],
+        "surrender": _ref(names, t["surrender"]) if t.get("surrender") else None,  # 降伏文書
     }
 
 

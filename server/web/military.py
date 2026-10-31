@@ -78,7 +78,7 @@ def brief(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str, 
         "prisoners": prisoners(raw),
         "captive": raw.get("captive", 0),
         "civil_war": civil,
-        "reselect": ((island.ext or {}).get("politics") or {}).get("reselect"),
+        "reselect": _reselect(island),
         "occupied": occupied_tiles(island),
         "occupying": occupying(island),
         "stats": {
@@ -467,3 +467,13 @@ def trenches(island: m.Island) -> list[dict[str, int]]:
     """陣地（塹壕）のあるマス。"""
     rows = island.tiles.filter(**{f"ext__{army.TRENCH}": 1}).order_by("y", "x")
     return [{"x": t.x, "y": t.y} for t in rows]
+
+
+def _reselect(island) -> dict | None:
+    """体制の選び直し待ちと、その期限（混乱期間の終わりのターン。過ぎると今の体制のまま固まる。W-112）。"""
+    state = (island.ext or {}).get("politics") or {}
+    reselect = state.get("reselect")
+    if reselect is None:
+        return None
+    until = (state.get("transition") or {}).get("until")
+    return {**reselect, "until": until}

@@ -349,6 +349,19 @@ export class TilePanel {
           <button type="submit">命令に追加</button>
         </form>`);
     }
+    if (f.expand) {
+      // 同じマスに同じ施設を建てる命令（build）: 農場は次の段階への工事、ほかは規模を上げる建て増し
+      const e = f.expand;
+      const cost = `資材 ${goodsText(e.materials)}・工期 ${e.turns} ターン`;
+      parts.push(`
+        <form class="actions" data-form="expand">
+          <h4>${escapeHtml(e.label)}</h4>
+          <input type="hidden" name="facility" value="${escapeHtml(e.facility)}">
+          <p class="hint">${escapeHtml(cost)}</p>
+          ${e.problem ? `<p class="warning">現状では建設できません: ${escapeHtml(e.problem)}</p>` : ""}
+          <button type="submit">命令に追加</button>
+        </form>`);
+    }
     if (!isHousing) {
       parts.push(`
         <form class="actions" data-form="rename">
@@ -672,6 +685,8 @@ export class TilePanel {
       const note = String(data.get("note") ?? "").trim();
       if (note) payload.note = note;
       this.addOrder("build", payload);
+    } else if (form.dataset.form === "expand") {
+      this.addOrder("build", { facility: data.get("facility"), x, y });
     } else if (form.dataset.form === "shop") {
       const payload = { facility: "shop", x, y };
       if (name) payload.name = name;

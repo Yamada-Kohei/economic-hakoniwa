@@ -398,11 +398,12 @@ missile_plant:
 
 # 核施設（フェーズ4-3 の③b。設計書 15-military「核兵器」）。ウラン鉱石から核弾頭を、長い年月をかけて少しずつ
 # 作る（初めの 1 発まで工事の 12 ターンと合わせて 1 年ほど、その後は 6 ターンに 1 発）。大きな電力と技術者を
-# 使い、1 つの国に 1 つだけ。国営で建てる（民営にはならないよう、命令で国営の建設にする: 台帳 W-123）。
+# 使い、1 つの国に 1 つだけ。国だけが持てる（private: false。民営工場の参入と民営化の命令で除く: 台帳 W-123）。
 nuclear_facility:
   category: industry
   industry: arms
   terrain: [plain, mountain]
+  private: false
   max_per_island: 1
   hide: {turns: 20, materials_factor: 2}   # 隠して建てる（地下。フェーズ4-3 の③c）
   construction: {turns: 12, labor: 1000, materials: {building_materials: 60, steel: 20, machinery: 10, electronics: 5}}

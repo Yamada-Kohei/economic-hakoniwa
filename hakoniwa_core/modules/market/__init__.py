@@ -1400,6 +1400,8 @@ class Market(IslandStage):
         for f in sorted(island.facilities, key=lambda f: f.id):
             if not f.built or fac.is_housing(config, f) or not fac.located(f):
                 continue
+            if f.ext.get("occupied"):  # 占領されたマスの在庫は元の国の市場に出せない（W-112）
+                continue
             recipe = fac.recipe_of(defs, f)
             # 作り方のない施設は飛ばす。ただし畑をみな蒔き直している途中の農場は、前の作物の在庫を
             # 売る（回3）。商社の輸出と輸入の荷は商社が自分で売り買いするので、ここでは売らない
@@ -3405,7 +3407,7 @@ class Market(IslandStage):
             if asks:
                 idle[good] = min(asks)
         found: dict[str, traders.Prospect] = {}
-        if (wanted or idle) and traders.traders_of(island, ctx.config):
+        if (wanted or idle) and traders.traders_of(island, ctx.config, ctx.turn):
             found = traders.prospects(island, ctx.defs, ctx.config)
         # 商社がいて、輸出が引き合う値段（Prospect.export_limit）が売りの一番安い指値以上なのに、
         # 島の値段がそれより高い財は、値幅の下端まで下げる（輸入の側と同じく1ターンに値幅ずつ。

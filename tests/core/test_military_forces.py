@@ -219,14 +219,21 @@ def test_the_intake_limits_are_per_turn_not_per_order(game, world):
     assert forces.recruit(island, config, 10**9, 10) == 0 or forces.soldiers(island) <= cap + 10
 
 
-def test_nobody_leaves_the_army_when_no_tile_can_take_them_back(game, world):
+def test_soldiers_of_an_emptied_island_go_home_to_the_capital(game, world):
+    """住民のいなくなった島の兵は、除隊すると首都のマスに戻る（W-113）。首都もなければ除隊できない。"""
     island = world.islands[1]
     forces.recruit(island, game.config, 40, 100)
     for t in island.tiles:
         t.population = 0
     before = forces.soldiers(island)
+    assert forces.discharge(island, 10) == 10
+    assert forces.soldiers(island) == before - 10
+    cx, cy = island.capital
+    assert island.tile(cx, cy).population == 10
+    island.tile(cx, cy).population = 0
+    island.capital_x = island.capital_y = None
     assert forces.discharge(island, 10) == 0
-    assert forces.soldiers(island) == before
+    assert forces.soldiers(island) == before - 10
 
 
 def test_set_defense_changes_only_what_it_names(game, world):

@@ -325,6 +325,53 @@ def _force(world: WorldState, config: GameConfig, treaty: dict[str, Any], turn: 
         _log(world, treaty, "treaty_in_force", hall=True)
 
 
+def surrender(
+    world: WorldState, config: GameConfig, loser: int, winner: int, turn: int
+) -> dict[str, Any] | None:
+    """首都を占領された国の降伏を、両国が署名した停戦の条約（降伏文書）として効かせる（W-112）。
+
+    現実の降伏文書と同じく停戦の取り決めなので、ふつうの停戦と同じく予告つきで破棄でき（予告の
+    ターンがたつと戦争に戻る）、講和を結ぶとその講和で終わる。戦っていなければ何もしない。
+    """
+    w = war.open_war(world, loser, winner)
+    if w is None or w["state"] != war.WAR:
+        return None
+    treaty = {
+        "id": next_id(world_state(world), "treaty"),
+        "title": "降伏文書",
+        "text": "",
+        "parties": [winner, loser],
+        "proposer": winner,
+        "clauses": [
+            {"type": cl.CEASEFIRE, "notice_turns": int(config.get("diplomacy.notice_turns"))}
+        ],
+        "state": IN_FORCE,
+        "created": turn,
+        "signed": {str(winner): turn, str(loser): turn},
+        "start": turn,
+        "end": None,
+        "end_reason": None,
+        "notice": None,
+        "violations": [],
+        "surrender": loser,
+    }
+    treaties(world).append(treaty)
+    war.begin_ceasefire(w, treaty["id"])
+    return treaty
+
+
+def _adopt_old_surrenders(world: WorldState, config: GameConfig, turn: int) -> None:
+    """W-112 の前の降伏の停戦（war["ceasefire"] が -1 で、破棄できなかった）を降伏文書の条約に
+    移す。どちらが降伏したかは残っていないので、surrender の印は付けない。"""
+    for w in war.wars(world):
+        if w["state"] != war.CEASEFIRE or w["ceasefire"] != -1:
+            continue
+        w["state"] = war.WAR  # surrender が戦争中の組だけを受けるので、いったん戻してから結ぶ
+        deed = surrender(world, config, w["defender"], w["attacker"], turn)
+        if deed is not None:
+            deed.pop("surrender", None)
+
+
 def _clause(treaty: dict[str, Any], kind: str) -> dict[str, Any]:
     return next(c for c in treaty["clauses"] if c["type"] == kind)
 
@@ -378,6 +425,7 @@ def _settled(clause: dict[str, Any]) -> bool:
 
 def upkeep(world: WorldState, config: GameConfig, turn: int) -> None:
     """流れた提案・予告のターンがたった破棄・講和の賠償の期日・済んだ条約の始末（番号の順）。"""
+    _adopt_old_surrenders(world, config, turn)
     proposal_turns = config.get("diplomacy.proposal_turns")
     for t in list(treaties(world)):
         if t["state"] == PROPOSED and turn - t["created"] >= proposal_turns:

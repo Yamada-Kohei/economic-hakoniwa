@@ -595,7 +595,7 @@ class _Round:
             payers: dict[str, Payer] = {}
             found = traders.prospects(island, self.defs, self.config)
             wage = island.economy.average_wage or self.config.get("labor.initial_wage")
-            for f in traders_of(island, self.config):
+            for f in traders_of(island, self.config, self.turn):  # 止まった商社は両替しない
                 entity = entity_of(self.config, f)
                 payers[entity] = Payer(entity)
                 cash = funds.available(island, payers[entity])
@@ -632,9 +632,15 @@ class _Round:
             currencies = set(blocs.currencies_of(self.world, i))
             for entity_needs in needs.values():
                 currencies |= set(entity_needs)
+            halted = {  # 止まっている商社は外貨を持ったまま、売りも買いもしない（W-159）
+                entity_of(self.config, f)
+                for f in traders_of(island, self.config)
+                if f.ext.get("halted_until", 0) >= self.turn
+            }
             for entity, held in fxmoney.holdings(island).items():
                 currencies |= {int(k) for k, (amount, _) in held.items() if amount > 0}
-                if entity != ledger.CB:  # 中央銀行の注文は fxrates.dealer_orders が出す
+                # 中央銀行の注文は fxrates.dealer_orders が出す
+                if entity != ledger.CB and entity not in halted:
                     payers.setdefault(entity, Payer(entity))
             # 中央銀行の介入と固定相場の通貨（フェーズ3-3。注文は intervention_orders が出す）
             steered = {int(k) for k in island.policy.fx_intervention} | {
@@ -1102,7 +1108,7 @@ class _Round:
                 here.import_share = 0.0
                 continue
             want = 0
-            for f in traders_of(island, self.config):
+            for f in traders_of(island, self.config, self.turn):
                 for good, item in traders.goods_of(f).items():
                     if item.get("dir") == traders.IMPORT:
                         left = item["m"] - item["held"][0]
@@ -1147,7 +1153,7 @@ class _Round:
             cap_q = policy.quota(island, good)
             if cap_q is not None:
                 self.quota_left.setdefault((m, good), cap_q)
-            for f in traders_of(island, self.config):
+            for f in traders_of(island, self.config, self.turn):  # 止まった商社は注文しない
                 item = traders.goods_of(f).get(good)
                 if item is None:
                     continue
@@ -1404,7 +1410,9 @@ class _Round:
             here = self.islands[i]
             ships.close_turn(island, self.config, here.carried, here.fuel_value)
             ships.close_port(island, self.config, here.handled)
-            traders.update_targets(island, self.defs, self.config, bloc_unmet, bloc_sellers)
+            traders.update_targets(
+                island, self.defs, self.config, bloc_unmet, bloc_sellers, self.turn
+            )
             self._site(island)
             fxrates.keep_turnover(island, self.config, here.turnover)
             state = island_state(island)

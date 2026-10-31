@@ -15,6 +15,7 @@
 body { margin: 0; background: var(--bg); color: var(--fg);
   font-family: "MS PGothic", "ＭＳ Ｐゴシック", "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif; }
 main { padding: 0 16px 24px; max-width: 1100px; margin: 0 auto; }
+.site-footer { max-width: 1100px; margin: 0 auto; padding: 8px 16px 24px; border-top: 1px solid var(--border); font-size: 0.85em; color: #555; }
 .site-header { display: flex; justify-content: space-between; align-items: center; gap: 12px;
   padding: 8px 16px; background: linear-gradient(#ffffff, #dce8ff); border-bottom: 3px double var(--accent); flex-wrap: wrap; }
 .site-header nav { display: flex; gap: 12px; align-items: center; }

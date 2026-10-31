@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from hakoniwa_core import facilities as fac
 from server.economy.models import FacilityBook, JournalEntry, MarketRecord
 from server.game import get_game
 from server.orders.models import Order
@@ -176,6 +177,51 @@ def test_accounting_order_from_the_island_page(client, world):
     assert plant.accounting == "treasury"
     # 変えた後は、元に戻す向きを出す
     assert client.get(tile_url).json()["facility"]["accounting_target"] == "self_supporting"
+
+
+def test_occupied_tile_offers_the_same_tile_build(client, world):
+    """施設の建っているマスにも、同じ施設を建てる命令（建て増し・農場の段階の工事）の欄の値を出す
+    （遊ぶ人の不具合の報告: 農場を機械化できない）。持ち主だけ、通らないときはわけを添える。"""
+    user = _login(client)
+    island = Island.objects.order_by("id")[1]
+    island.owner = user
+    island.save()
+    plant = island.facilities.get(kind="thermal_power_plant", owner="state")
+    info = client.get(f"/api/islands/{island.id}/tiles/{plant.x},{plant.y}").json()["facility"]
+    expand = info["expand"]
+    assert expand["facility"] == "thermal_power_plant" and expand["label"].startswith("建て増し")
+    assert expand["turns"] > 0 and expand["problem"] == ""
+    # 農場は次の段階への工事。民営の農場は国の命令では上げられないので、わけを添える
+    used = set(island.facilities.values_list("x", "y"))
+    plains = [
+        t for t in Tile.objects.filter(island=island, terrain="plain") if (t.x, t.y) not in used
+    ]
+    recipe = fac.default_recipe(get_game().defs, "farm") or "default"
+    pairs = zip(plains[:2], ("state", "private"), strict=True)
+    for number, (tile, owner) in enumerate(pairs, start=990):
+        Facility.objects.create(
+            island=island,
+            number=number,
+            kind="farm",
+            x=tile.x,
+            y=tile.y,
+            recipe=recipe,
+            owner=owner,
+            built=True,
+        )
+        data = client.get(f"/api/islands/{island.id}/tiles/{tile.x},{tile.y}").json()
+        expand = data["facility"]["expand"]
+        assert expand["facility"] == "farm" and expand["label"] == "機械化への工事"
+        assert expand["materials"]
+        assert ("民営" in expand["problem"]) if owner == "private" else expand["problem"] == ""
+    # 町・記念碑など建て増せない施設と、ほかの国の島には出さない
+    town = island.facilities.filter(kind="housing").first()
+    data = client.get(f"/api/islands/{island.id}/tiles/{town.x},{town.y}").json()
+    assert "expand" not in data["facility"]
+    other = Island.objects.exclude(owner=user).order_by("id").first()
+    f = other.facilities.filter(kind="thermal_power_plant").first()
+    data = client.get(f"/api/islands/{other.id}/tiles/{f.x},{f.y}").json()
+    assert "expand" not in data["facility"]
 
 
 def test_accounting_order_is_not_offered_before_the_money_economy(client, world):

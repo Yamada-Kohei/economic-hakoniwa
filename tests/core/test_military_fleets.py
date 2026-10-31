@@ -320,3 +320,18 @@ def test_a_submarine_is_found_only_by_a_warship_in_the_same_cell(game, world):
     assert vision.can_see(world, game.defs, 2, sub) == vision.can_see(world, game.defs, 2, sub)
     hunter["x"] = 11  # 区画が違えば見つからない
     assert not any(vision.can_see(world, game.defs, 2, sub) for world.turn in range(40))
+
+
+def test_disbanding_a_transport_unloads_its_supplies_to_the_warehouse(game, world):
+    """母港で解散した輸送船団の積んでいた補給は、国の倉庫に戻る（W-113。前は消えていた）。"""
+    island, fleet = ready_fleet(game, world, kind="transport", ships=1)
+    give(island, "ammunition", 3, game)
+    load = {"fleet": fleet["id"], "good": "ammunition", "quantity": 2}
+    order(game, world, ("load_supplies", load))
+    loaded = fleet.get("goods", {}).get("ammunition", 0)
+    assert loaded > 0
+    before = stock.total(island.warehouse, "ammunition")
+    order(game, world, ("disband_unit", {"unit": fleet["id"]}))
+    assert army.find(world, fleet["id"]) is None
+    # 解散のターンの訓練で使う弾薬の分だけ少なくなりうる
+    assert stock.total(island.warehouse, "ammunition") > before + loaded // 2

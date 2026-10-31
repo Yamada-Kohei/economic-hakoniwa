@@ -240,6 +240,10 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
             info["next_level_name"] = defs.name("settlements", following)
             info["next_materials"] = goods_list(defs.settlements[following].get("materials", {}))
         return info
+    if mine:  # 同じマスに同じ施設を建てる命令（建て増し・農場の段階の工事）の入力欄に使う値
+        expand = expand_info(defs, island, f)
+        if expand is not None:
+            info["expand"] = expand
     # 会計方式の変更の命令を出せる施設には、変えた先を添える（マスの欄はそのときだけ入力欄を出す）
     target = accounting_target(island, f) if mine else None
     if target is not None:
@@ -289,6 +293,35 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         if island.has_economy:
             info.update(facility_finance(row, f, island, currency, mine))
     return info
+
+
+def expand_info(defs, island: IslandState, f: Facility) -> dict[str, Any] | None:
+    """同じマスに同じ施設を建てる命令（build）で始まる工事: 農場なら次の段階への工事（W-190）、
+    ほかは規模を 1 つ上げる建て増し（段6 A3）。建て増せない種類と、いちばん上の段階の農場は None。
+    今は命令が通らないとき（民営・工事中・規模の上限など）は problem にわけの文を入れる。"""
+    steps = fac.grade_steps(defs, f.kind)
+    if steps:
+        grade = fac.grade_of(f)
+        if grade >= len(steps):
+            return None
+        step = steps[grade]
+        label = message("expand_grade", grade=message(fac.grade_name(defs, f.kind, grade + 1)))
+        materials, turns = step["materials"], step["turns"]
+    else:
+        limit = fac.max_size(defs, f.kind)
+        if limit <= 1:
+            return None
+        construction = defs.facilities[f.kind]["construction"]
+        label = message("expand_size", size=fac.size_of(f) + 1, max=limit)
+        materials, turns = construction.get("materials", {}), construction["turns"]
+    problem = fac.expansion_problem(defs, island, f)
+    return {
+        "facility": f.kind,
+        "label": label,
+        "materials": goods_list(materials),
+        "turns": turns,
+        "problem": message(problem[0], **problem[1]) if problem is not None else "",
+    }
 
 
 def crop_transition(f: Facility) -> dict[str, Any]:

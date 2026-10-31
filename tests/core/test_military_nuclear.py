@@ -252,3 +252,17 @@ def test_nuclear_use_is_recorded_once_per_turn_even_when_intercepted(game, world
 def test_uranium_cannot_be_chosen_at_founding(game):
     assert "uranium_ore" not in game.defs.mining_resources()
     assert "copper_ore" in game.defs.mining_resources()
+
+
+def test_a_nuclear_facility_is_never_private(game):
+    """核施設は国だけが持てる（W-123）: 民営工場の参入にも民営化の命令にも入らない。"""
+    from hakoniwa_core.modules.firms import private_allowed
+    from hakoniwa_core.state.generate import generate_world
+
+    world = generate_world(7, 1, game.config, game.defs)
+    island = world.islands[1]
+    for economy in ("market", "mixed", "planned"):
+        island.regime["economy"] = economy
+        assert not private_allowed(game.defs, island, "nuclear_facility")
+    island.regime["economy"] = "market"
+    assert private_allowed(game.defs, island, "missile_plant")

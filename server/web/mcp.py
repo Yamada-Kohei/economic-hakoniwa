@@ -55,7 +55,7 @@ INSTRUCTIONS = """\
 遊ぶための道具です。人のプレイヤーと同じ決まりで動き、見られるのは画面で見られることだけです。
 
 - 初めに whoami で自分の島とターンを確かめ、guide(which=start) で入門を、guide で詳しい仕組みを
-  読み、summary で国の要約を読みます。
+  読み（利用規約は guide(which=terms)）、summary で国の要約を読みます。
   建国から1年のあいだ、summary の next_steps に「次にすること」（急ぐ順に3つまで）が入ります。
   summary の warehouse_release は備蓄の放出の決まり（auto と、いま放出している財）で、命令
   set_warehouse_release で止められます。
@@ -495,7 +495,8 @@ def _api_get(request, args):
 
 def _guide(request, args):
     """手引きを文字にして、find の見出しから、または offset から length 字（which で3種を選ぶ）。"""
-    path = {"hakoniwa": "/help/hakoniwa/", "start": "/help/start/"}.get(args.get("which"), "/help/")
+    paths = {"hakoniwa": "/help/hakoniwa/", "start": "/help/start/", "terms": "/terms/"}
+    path = paths.get(args.get("which"), "/help/")
     page = call_ok(request, "GET", path)
     text = _html_text(page)
     start = int(args.get("offset") or 0)
@@ -751,14 +752,15 @@ TOOLS = [
         "ゲームの中の手引き（/help/、詳しい仕組み）を文字で読む。遊び始める前に全部読む。"
         "find で見出しや言葉から、offset で続きから読める。which=start なら入門"
         "（/help/start/。最初の1年・困ったとき・施設の状態の言葉）、which=hakoniwa なら"
-        "従来の箱庭を遊んだ人向けの手引き（/help/hakoniwa/）。",
+        "従来の箱庭を遊んだ人向けの手引き（/help/hakoniwa/）、"
+        "which=terms なら利用規約（/terms/）。",
         _guide,
         {
             "which": {
                 "type": "string",
-                "enum": ["general", "start", "hakoniwa"],
+                "enum": ["general", "start", "hakoniwa", "terms"],
                 "description": "general（既定）は詳しい仕組み、start は入門、"
-                "hakoniwa は従来の箱庭との違い",
+                "hakoniwa は従来の箱庭との違い、terms は利用規約",
             },
             "find": {"type": "string", "description": "この言葉から読み始める"},
             "offset": {"type": "integer", "minimum": 0, "description": "読み始める字数"},
@@ -773,7 +775,8 @@ TOOLS = [
         "飢えている家計の層とそのわけ（hunger）、満期の近い国債、直近のターンの出来事、注意。"
         "自分の島なら赤字の施設・命令の列と、直近に命令を実行したターン（last_turn）の結果・"
         "未読の公電、軍（military。兵の数・士気・練度・賃金の遅れ・国防費・"
-        "国として買った食べ物や弾薬の結果 purchases・体制の選び直し待ち reselect。"
+        "国として買った食べ物や弾薬の結果 purchases・体制の選び直し待ち reselect"
+        "（until までに choose_regime を出さないと今の体制のまま固まる）。"
         "命令は set_defense・"
         "recruit・conscript・discharge。部隊は form_unit・disband_unit・move_unit・dig_trench・"
         "stop_unit・set_requisition、ミサイル基地は fire_missile（nuclear で核弾頭を積む）、"
@@ -816,7 +819,8 @@ TOOLS = [
         "tile",
         "マス",
         "1マスの中身（地形・人口・インフラの整備度・工事）と、そこの施設の詳しい情報。"
-        "自分の島なら施設の帳簿と命令に使う値も。",
+        "自分の島なら施設の帳簿と命令に使う値も。施設の expand は、同じマスに同じ施設を建てる"
+        "命令 build（建て増し・農場の次の段階への工事）の資材と工期、今は通らないわけ problem。",
         _tile,
         {"x": {"type": "integer"}, "y": {"type": "integer"}, "island": ISLAND},
         ("x", "y"),
@@ -1266,6 +1270,7 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "help": ("guide",),
     "help_hakoniwa": ("guide",),
     "help_start": ("guide",),
+    "terms": ("guide",),  # 利用規約は guide(which=terms)
     "island": ("summary", "map", "tile"),  # 地図の重ね表示は map の overlay
     "turn_log": ("turn_log", "changes"),
     "island_economy": ("report", "stats"),

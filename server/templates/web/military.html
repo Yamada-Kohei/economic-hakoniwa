@@ -105,7 +105,7 @@
     <div><dt>{% translate "他国に捕らわれている自国の兵" %}</dt><dd>{{ m.captive }}</dd></div>
   </dl><div data-table="prisoners"></div>
   {% if island.ext.politics.reselect %}
-  <p class="military-warning">{% translate "体制が倒れました。体制を選び直してください。" %}</p>
+  <p class="military-warning">{% translate "体制が倒れました。体制を選び直してください。" %}{% if m.reselect.until %}{% blocktranslate with until=m.reselect.until|turn_date %}{{ until }}までに決めないと、今の体制のまま固まります。{% endblocktranslate %}{% endif %}</p>
   <form class="actions military-form" data-order="choose_regime">
     <h3>{% translate "体制を選び直す" %}</h3>
     <label>{% translate "政治の体制" %}<select name="politics" data-axis="politics" required></select></label>

@@ -7,7 +7,7 @@ import pytest
 
 from hakoniwa_core import monuments, politics, stock
 from hakoniwa_core.autoplan import plan_war, queue_orders
-from hakoniwa_core.diplomacy import war
+from hakoniwa_core.diplomacy import treaties, war
 from hakoniwa_core.game import load_game
 from hakoniwa_core.log import format_log
 from hakoniwa_core.military import army, battle, forces, occupation, supply
@@ -247,7 +247,10 @@ def test_taking_the_capital_makes_the_country_surrender_once(game, world):
     feed(game, world)
     step(game, world)
     w = war.open_war(world, 1, 2)
-    assert w["state"] == war.CEASEFIRE and w["ceasefire"] == occupation.SURRENDER
+    assert w["state"] == war.CEASEFIRE
+    deed = treaties.find(world, w["ceasefire"])  # 降伏文書は両国の署名した停戦の条約（W-112）
+    assert deed["state"] == treaties.IN_FORCE and deed["surrender"] == 2
+    assert treaties.kinds(deed) == ["ceasefire"]
     assert politics.in_transition(isl2, world.turn)
     reselect = politics.state_of(isl2)["reselect"]
     assert reselect["by"] == 1
@@ -280,10 +283,127 @@ def test_a_surrender_in_a_transition_can_still_choose_again(game, world):
     unit["entered"] = world.turn + 1
     feed(game, world)
     step(game, world)
-    assert war.open_war(world, 1, 2)["ceasefire"] == occupation.SURRENDER
+    assert treaties.find(world, war.open_war(world, 1, 2)["ceasefire"])["surrender"] == 2
     assert state["reselect"]["by"] == 1 and state["transition"]["kind"] == "economy"
     step(game, world, {2: [("choose_regime", {"politics": "totalitarian"})]})
     assert isl2.regime["politics"] == "totalitarian"
+
+
+def test_a_surrender_ceasefire_can_be_denounced_back_to_war(game, world):
+    """降伏文書はふつうの停戦と同じく、予告つきで破棄すると戦争に戻る（W-112）。"""
+    start_war(game, world)
+    step(game, world)
+    isl2 = world.islands[2]
+    occupation.surrender(world, _ctx(game, world), isl2, world.islands[1])
+    w = war.open_war(world, 1, 2)
+    deed = treaties.find(world, w["ceasefire"])
+    assert w["state"] == war.CEASEFIRE and deed["surrender"] == 2
+    assert treaties.denounce(world, game.config, isl2, deed, world.turn) is None
+    treaties.upkeep(world, game.config, deed["notice"]["until"])
+    assert deed["state"] == treaties.ENDED and w["state"] == war.WAR
+
+
+def test_an_old_surrender_ceasefire_becomes_a_deed_that_can_be_denounced(game, world):
+    """W-112 の前のセーブの降伏の停戦（ceasefire が -1）は、次の外交の見張りで降伏文書に移る。"""
+    start_war(game, world)
+    step(game, world)
+    w = war.open_war(world, 1, 2)
+    w["state"], w["ceasefire"] = war.CEASEFIRE, occupation.SURRENDER
+    treaties.upkeep(world, game.config, world.turn + 1)
+    deed = treaties.find(world, w["ceasefire"])
+    assert w["state"] == war.CEASEFIRE and deed["state"] == treaties.IN_FORCE
+    assert treaties.denounce(world, game.config, world.islands[1], deed, world.turn) is None
+
+
+def test_a_reselect_left_after_the_transition_closes(game, world):
+    """混乱期間がもう終わっている前のセーブの選び直し待ちも、次のターンに閉じる（W-112）。"""
+    isl2 = world.islands[2]
+    state = politics.state_of(isl2)
+    state.pop("transition", None)
+    state["reselect"] = {"since": world.turn - 30, "by": 1}
+    step(game, world)
+    assert "reselect" not in state and logs(world, 2, "regime_kept")
+
+
+def test_an_unchosen_regime_stays_when_the_transition_ends(game, world):
+    """体制を選び直さないまま混乱期間が終わると、今の体制のまま固まり、選び直し待ちは閉じる（W-112）。
+    持ち主のいない島や AI の島に選び直し待ちが残り続けない。"""
+    isl2 = world.islands[2]
+    state = politics.state_of(isl2)
+    state["transition"] = {"since": world.turn - 10, "until": world.turn + 1, "kind": "surrender"}
+    state["reselect"] = {"since": world.turn - 10, "by": 1}
+    before = dict(isl2.regime)
+    step(game, world)
+    assert "reselect" not in state and "transition" not in state
+    assert isl2.regime == before
+    assert logs(world, 2, "regime_kept")
+
+
+def test_captor_without_soldiers_still_feeds_its_prisoners(game, world):
+    """兵が 0 の国も、捕らえている捕虜には国の倉庫の食べ物を食べさせ、足りなければ捕虜が亡くなる
+    （W-113。前は兵が 0 だと段が早く戻り、捕虜が何も食べなかった）。"""
+    captor = world.islands[1]
+    forces.state_of(captor, game.config)["prisoners"] = [[world.turn, 2, 1000]]
+    assert forces.soldiers(captor) == 0
+    stock.add(captor.warehouse, "food", 10 * QUANTITY_SCALE, world.turn, game.defs.goods)
+    before = stock.total(captor.warehouse, "food")
+    step(game, world)
+    assert stock.total(captor.warehouse, "food") < before  # 食べた
+    assert occupation.held(captor) == 1000
+    # 食べ物がなく買えもしなければ、病気と飢えで亡くなる
+    captor.warehouse.clear()
+    captor.policy.budget[forces.BUDGET_PERSONNEL] = 0
+    step(game, world)
+    assert 0 < occupation.held(captor) < 1000
+    assert logs(world, 1, "prisoners_starved")
+
+
+def test_people_return_to_the_capital_of_an_emptied_island(game, world):
+    """住民のいなくなった島へ帰る兵・捕虜は首都のマスに戻る（W-113。前は消えていた）。"""
+    home = world.islands[2]
+    for t in home.tiles:
+        t.population = 0
+    assert forces.return_people(home, 40) == 40
+    cx, cy = home.capital
+    assert home.tile(cx, cy).population == 40
+
+
+def test_prisoners_from_a_vanished_country_stay_with_the_captor(game, world):
+    captor = world.islands[1]
+    forces.state_of(captor, game.config)["prisoners"] = [[world.turn, 99, 30]]
+    before = sum(t.population for t in captor.tiles)
+    occupation.release(world, _ctx(game, world))
+    assert occupation.held(captor) == 0
+    assert sum(t.population for t in captor.tiles) == before + 30
+
+
+def test_occupied_facility_does_not_sell_in_the_home_market(game, world):
+    """占領されたマスの施設の在庫は、元の国の市場に売りに出ない（MI-36、W-112）。"""
+    from hakoniwa_core.modules.market import Market
+
+    isl2 = world.islands[2]
+    farm = next(
+        f
+        for f in isl2.facilities
+        if f.built and fac_outputs(game, f) and not (f.x, f.y) == isl2.capital
+    )
+    good = sorted(fac_outputs(game, farm))[0]
+    stock.add(farm.stock, good, 5 * QUANTITY_SCALE, world.turn, game.defs.goods)
+    ctx = _ctx(game, world)
+    books: dict = {}
+    Market()._facility_orders(isl2, ctx, books, {})
+    assert any(p.facility is farm for _, p in books[good].sells)
+    farm.ext["occupied"] = True
+    books = {}
+    Market()._facility_orders(isl2, ctx, books, {})
+    assert good not in books or not any(p.facility is farm for _, p in books[good].sells)
+
+
+def fac_outputs(game, f):
+    from hakoniwa_core import facilities as fac
+
+    power = game.config.get("power.good")
+    return [g for g in fac.recipe_of(game.defs, f)["outputs"] if g != power]
 
 
 def test_choose_regime_only_after_a_surrender(game, world):
