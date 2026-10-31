@@ -335,7 +335,7 @@
 | BK-39 | 引き継ぐ健全な銀行のない島で引き継ぎか清算を選ぶと、政府が銀行を引き取り、出資を消して損失を同じ… | 決定 | tests/core/test_playtest_fixes.py |
 | BK-40 | 救済と預金保護に国庫から出すのは、次のターンの優先の支払いを残した額まで | 決定 | tests/core/test_codex2_fixes.py、tests/core/test_playtest_fixes.py |
 | BK-41 | 銀行ごとに求める利回りは、市場の利回りに国債への偏り（国債の額面÷資産が決めた割合を超えた分）の… | 決定 | tests/core/test_balance_round5.py |
-| BK-42 | 回5 で、刷ったお金が物価に効く経路を入れる（預金から使う割合を物価と実質金利で動かす・指値に物… | 決定（回5 で作る） | tests/core/test_shocks.py |
+| BK-42 | 刷ったお金が物価に効く経路: 預金から使う割合を実質金利で動かす（タブ 4 LB-18）と、失業… | 決定 | tests/core/test_shocks.py |
 | BK-43 | 計画経済の国は中央銀行を独立させられない（命令は通らない） | 決定（回5） | tests/core/test_balance_round5.py |
 | BK-44 | 独立した中央銀行は国債の売買の市場で売り買いする | 決定（回5） | tests/core/test_balance_round5.py |
 | BK-47 | 家計の住宅ローン（W-186 の直し 回3）: 町の床を足す資材の代金の `housing.lt`… | 決定（回3） | tests/core/test_recession_round3.py |
