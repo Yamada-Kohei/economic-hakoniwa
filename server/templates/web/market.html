@@ -3,29 +3,31 @@
 {% block content %}
 {% include "web/report_header.html" %}
 
-<section class="panel">
-  <h2>{% if market_turn is not None %}{% translate "財ごとの市場" %} <small class="heading-date">{{ market_turn|turn_date }}</small>{% else %}{% translate "財ごとの市場" %}{% endif %}</h2>
-  <p class="hint">{% translate "値段だけで取引の成立は判断できません。売買量は成立した量で、0 はそのターンに約定がないことを表します。気配は売買の目安です。未観測・未集計は 0 と区別して読みます。" %}</p>
-  {% if rows %}
-  <div class="table-scroll">
-    <table class="goods market-table">
-      <thead><tr>
-        <th>{% translate "資源" %}</th><th>{% translate "値段（1単位）" %}</th><th>{% translate "前ターン比" %}</th>
-        <th>{% translate "売買量" %}</th><th>{% translate "買い注文" %}</th><th>{% translate "売り注文" %}</th>
-        <th>{% translate "買えなかった量" %}</th><th>{% translate "生産量" %}</th><th>{% translate "国の倉庫" %}</th><th>{% translate "単位" %}</th>
-      </tr></thead>
-      <tbody>
-        {% for r in rows %}
-        <tr data-good="{{ r.good }}"{% if r.good == good %} class="chosen"{% endif %}>
-          <td><a href="?good={{ r.good }}" data-good-link="{{ r.good }}">{{ r.name }}</a></td>
-          <td>{{ r.price|default:"-" }}</td><td>{{ r.change|default:"" }}</td>
-          <td>{{ r.volume|default:"-" }}</td><td>{{ r.demand|default:"-" }}</td><td>{{ r.supply|default:"-" }}</td>
-          <td{% if r.unmet %} class="warning-cell"{% endif %}>{{ r.unmet|default:"" }}</td>
-          <td>{{ r.production }}</td><td>{{ r.stock }}</td><td>{{ r.unit }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+<div class="report-layout{% if mine %} with-orders{% endif %}">
+  <div class="report-main">
+    <section class="panel">
+      <h2>{% if market_turn is not None %}{% translate "財ごとの市場" %} <small class="heading-date">{{ market_turn|turn_date }}</small>{% else %}{% translate "財ごとの市場" %}{% endif %}</h2>
+      <p class="hint">{% translate "値段だけで取引の成立は判断できません。売買量は成立した量で、0 はそのターンに約定がないことを表します。気配は売買の目安です。未観測・未集計は 0 と区別して読みます。" %}</p>
+      {% if rows %}
+      <div class="table-scroll">
+        <table class="goods market-table">
+          <thead><tr>
+            <th>{% translate "資源" %}</th><th>{% translate "値段（1単位）" %}</th><th>{% translate "前ターン比" %}</th>
+            <th>{% translate "売買量" %}</th><th>{% translate "買い注文" %}</th><th>{% translate "売り注文" %}</th>
+            <th>{% translate "買えなかった量" %}</th><th>{% translate "生産量" %}</th><th>{% translate "国の倉庫" %}</th><th>{% translate "単位" %}</th>
+          </tr></thead>
+          <tbody>
+            {% for r in rows %}
+            <tr data-good="{{ r.good }}"{% if r.good == good %} class="chosen"{% endif %}>
+              <td><a href="?good={{ r.good }}" data-good-link="{{ r.good }}">{{ r.name }}</a></td>
+              <td>{{ r.price|default:"-" }}</td><td>{{ r.change|default:"" }}</td>
+              <td>{{ r.volume|default:"-" }}</td><td>{{ r.demand|default:"-" }}</td><td>{{ r.supply|default:"-" }}</td>
+              <td{% if r.unmet %} class="warning-cell"{% endif %}>{{ r.unmet|default:"" }}</td>
+              <td>{{ r.production }}</td><td>{{ r.stock }}</td><td>{{ r.unit }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
   </div>
   <p class="hint">{% translate "買い注文・売り注文は、そのターンに買いたかった量と売りたかった量の合計です（値段が折り合わず約定しなかった分を含みます）。資源名を押すと推移を表示します。" %}</p>
   <p class="hint">{% translate "量は実物に近い単位で出します（重さの財はトンで、1 人が 1 か月に食べる食料は 0.05 トンほど）。値段はその単位 1 つあたりです。" %}</p>
@@ -48,6 +50,7 @@
   </div>
   <div data-slot="latest"></div>
   {% if mine %}
+  <p><a href="#orders">{% translate "この資源の命令（国の倉庫の売買・補助金）へ" %}</a></p>
   <h3>{% translate "直近のターンの約定（買い手と売り手の組ごと）" %}</h3>
   <div data-slot="trades" class="table-scroll"><p class="muted">{% translate "読み込み中…" %}</p></div>
   <h3>{% translate "この資源を買えずに止まった施設" %}</h3>
@@ -70,6 +73,15 @@
   {% endif %}
 </section>
 {% endif %}
+  </div>
 
+  {% if mine %}
+  <aside id="orders" class="panel report-orders" data-url="{% url 'api_orders' island.id %}" data-defs="{% url 'api_defs' %}"
+         data-forms="warehouse_trade,set_subsidy" data-good="{{ good }}"
+         data-heading="{% translate '市場の命令' %}"></aside>
+  {% endif %}
+</div>
+
+{% csrf_token %}
 <script type="module" src="{% static 'js/reports/market.js' %}"></script>
 {% endblock %}
