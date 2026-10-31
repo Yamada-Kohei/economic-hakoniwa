@@ -16,6 +16,7 @@ set_labor_policy: 最低賃金・失業手当の変更
 set_retail_policy: 小売りの政策の変更
 set_price_cap: 値段の上限（公共料金など）の変更
 warehouse_trade: 国の倉庫の売買
+set_warehouse_release: 備蓄の放出の決まり
 set_accounting: 国営施設の会計方式の変更
 set_zone: 工業団地・オフィス街の指定
 set_subsidy: 補助金の変更

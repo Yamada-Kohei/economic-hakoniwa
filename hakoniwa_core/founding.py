@@ -528,12 +528,17 @@ def _fits(
 
 
 def _prime_inputs(island: IslandState, defs: Defs, config: GameConfig) -> None:
-    """初めの施設に、最初のターンに全力で動ける分の投入財を倉庫から渡しておく。"""
+    """初めの施設に、最初のターンに全力で動ける分の投入財を倉庫から渡しておく。発電所は燃料を
+    founding.power_fuel_turns ターン分（民営の発電所は国の倉庫から買えないため）。"""
     power = config.get("power.good")
+    fuel_turns = config.get("founding.power_fuel_turns")
     for f in island.facilities:
-        for good, qty in sorted(fac.recipe_of(defs, f)["inputs"].items()):
+        recipe = fac.recipe_of(defs, f)
+        turns = fuel_turns if power in recipe["outputs"] else 1
+        for good, qty in sorted(recipe["inputs"].items()):
             if good != power:
-                stock.put_batches(f.stock, good, stock.take_batches(island.warehouse, good, qty))
+                batches = stock.take_batches(island.warehouse, good, qty * turns)
+                stock.put_batches(f.stock, good, batches)
 
 
 def _start_site(

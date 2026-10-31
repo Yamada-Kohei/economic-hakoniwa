@@ -10,12 +10,13 @@ from tests.core.test_founding import game as game  # noqa: F401  （試験の部
 from tests.core.test_founding import plan_for
 
 
-def _run(game, economy, turns=6):
+def _run(game, economy, turns=6, release=True):
     plan = plan_for(game, economy=economy, resources=["iron_ore"])  # 石炭の出ない国
     world = WorldState(
         turn=0, seed=1, islands={1: found_island(game.defs, game.config, plan, 1, 3, 4)}
     )
     island = world.islands[1]
+    island.policy.warehouse_release = release
     before = stock.total(island.warehouse, "coal")
     shortage, gaps = [], []
     for _ in range(turns):
@@ -28,7 +29,7 @@ def _run(game, economy, turns=6):
 
 
 def test_state_power_plant_burns_the_warehouse_coal(game):
-    island, before, shortage = _run(game, "mixed")
+    island, before, shortage = _run(game, "mixed", turns=10, release=False)
     plant = next(f for f in island.facilities if f.kind == "thermal_power_plant")
     assert plant.owner == OWNER_STATE
     assert stock.total(island.warehouse, "coal") < before  # 倉庫の石炭を使った
@@ -36,10 +37,22 @@ def test_state_power_plant_burns_the_warehouse_coal(game):
 
 
 def test_private_power_plant_does_not_take_from_the_warehouse(game):
-    island, before, _ = _run(game, "market", turns=3)
+    """民営の発電所は倉庫から直に使わない（備蓄の放出の決まりを止めると、倉庫の石炭は減らない）。"""
+    island, before, _ = _run(game, "market", turns=10, release=False)
     plant = next(f for f in island.facilities if f.kind == "thermal_power_plant")
     assert plant.owner == OWNER_PRIVATE
-    assert stock.total(island.warehouse, "coal") == before  # 民営は市場で買う
+    assert stock.total(island.warehouse, "coal") == before
+
+
+def test_private_power_plant_buys_the_released_coal(game):
+    """市場経済の島の民営の発電所は、建国のときに燃料を数ターン分持ち、切れたら備蓄の放出の決まりで
+    国の倉庫の石炭を市場で買う。"""
+    island, before, shortage = _run(game, "market", turns=12)
+    assert stock.total(island.warehouse, "coal") < before
+    assert max(shortage[1:]) == 0
+    assert any(e.kind == "warehouse_released" for e in island.log) or island.economy.ext.get(
+        "warehouse_released"
+    )
 
 
 def test_warehouse_keeps_building_materials_and_the_grain_reserve(game):

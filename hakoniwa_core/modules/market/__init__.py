@@ -127,6 +127,7 @@ ANCHOR = "anchor"  # 家計の層の状態: 飢える前の食料の値段（値
 
 # 注文を出す者の種類
 FACILITY = "facility"
+RELEASED = "warehouse_released"  # economy.ext: 備蓄の放出の決まりで前のターンに売りに出した財
 SITE = "site"
 WORKS = "works"  # インフラの公共事業
 PUBLIC_HOUSING = "public_housing"  # 国の住宅の資材（住宅費。economy/public_housing.py）
@@ -2619,8 +2620,57 @@ class Market(IslandStage):
             else:
                 cut = "treasury"
             placed.append((good, "buy", qty, order, cut, military))
+        self._release_orders(island, ctx, sell, {item["good"] for item in orders})
         self._reserve_orders(island, ctx, books_by_good, sell, offered)
         island.scratch[WAREHOUSE_PLACED] = placed
+
+    def _release_orders(
+        self, island: IslandState, ctx: StageContext, sell: Any, ordered: set[str]
+    ) -> None:
+        """備蓄の放出の決まり（2026-10-31）: 島のどの施設も作っていない物を、前のターンに市場で
+        買えなかった施設があれば、国の倉庫の余りを、施設がいま要る量までいつもの値段で売りに出す
+        （現実の国の石油の備蓄の放出と同じ。民営の発電所も、建国のときに倉庫にあった石炭を買える）。
+        命令 set_warehouse_release で止められる。工事・インフラ・設備の直しの資材、軍の備蓄、国の
+        穀物の備蓄（economy/reserve.py が別に放出する）、このターンに命令で売り買いする物は
+        出さない。"""
+        from hakoniwa_core import autoplan
+
+        if not island.policy.warehouse_release or not island.warehouse:
+            return
+        defs, config = ctx.defs, ctx.config
+        made = {g for f in island.facilities if f.built for g in fac.recipe_of(defs, f)["outputs"]}
+        skip = self._construction_goods(defs) | made | ordered
+        skip.add(config.get("food_reserve")["good"])
+        # 前のターンに原料を買えなかった施設（_record_shortages の short）が、いま要る量。放出を
+        # 始めた物は、買えた施設にも続けて出す（出すのをやめると、次のターンにまた買えなくなる）
+        power = config.get("power.good")
+        released = island.economy.ext.get(RELEASED, [])
+        unmet: dict[str, int] = {}
+        for f in island.facilities:
+            short = f.economy.get("short", {})
+            if not f.built or not (short or released):
+                continue
+            for good, qty in self._input_needs(ctx, f, power):
+                wanted = good in short or good in released
+                if wanted and good in island.warehouse and good not in skip:
+                    unmet[good] = unmet.get(good, 0) + qty
+        now = []
+        if unmet:
+            keep = autoplan._military_keep(island, config)
+            turns = config.get("household.usual_price_turns")
+            for good, qty in sorted(unmet.items()):
+                spare = stock.total(island.warehouse, good) - keep.get(good, 0)
+                usual = usual_price(island, good, turns) or island.economy.prices.get(good, 0)
+                if spare <= 0 or usual <= 0:
+                    continue
+                if sell(good, min(qty, spare), usual) is not None:
+                    now.append(good)
+                    if good not in released:  # 放出を始めた物だけログに出す
+                        island.log.append(LogEntry("warehouse_released", {"good": good}))
+        if now:
+            island.economy.ext[RELEASED] = now
+        else:
+            island.economy.ext.pop(RELEASED, None)
 
     def _reserve_orders(
         self,
@@ -3587,6 +3637,13 @@ def warehouse_trade(island: IslandState, payload: dict[str, Any], ctx: StageCont
     )
 
 
+def set_warehouse_release(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
+    """備蓄の放出の決まり（_release_orders）を始める・止める。"""
+    island.policy.warehouse_release = bool(payload["auto"])
+    kind = "warehouse_release_on" if payload["auto"] else "warehouse_release_off"
+    island.log.append(LogEntry(kind, {}))
+
+
 def check_price_cap(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
     if payload["good"] not in defs.goods:
         raise OrderFailed("reason_unknown_good")
@@ -3620,3 +3677,4 @@ def register(registry: Registry) -> None:
         OrderHandler("warehouse_trade", execute=warehouse_trade, check=check_warehouse_trade)
     )
     registry.add_order(OrderHandler("set_price_cap", execute=set_price_cap, check=check_price_cap))
+    registry.add_order(OrderHandler("set_warehouse_release", execute=set_warehouse_release))
