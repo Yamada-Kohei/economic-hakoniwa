@@ -572,6 +572,18 @@ STATUS_HELP = (
 )
 
 
+def terms_page(request):
+    """利用規約（W-215）。記録を持つ日数・時間は設定から出す。"""
+    return render(
+        request,
+        "web/terms.html",
+        {
+            "remember_days": get_game().config.get("accounts.remember_days"),
+            "throttle_hours": django_settings.HAKONIWA_THROTTLE_KEEP_HOURS,
+        },
+    )
+
+
 def help_hakoniwa_page(request):
     """箱庭を遊んだことのある人向けの手引き。数は同じ手引きの変数を使う。"""
     return render(request, "web/help_hakoniwa.html", _help_context())
@@ -643,6 +655,7 @@ def _help_context() -> dict:
         "grades": _grade_help(game),
         "trade": _trade_help(game),
         "diplomacy": _diplomacy_help(game),
+        "awards": _awards_help(game),
         **_per_person_help(game),
         **_goods_help(game),
     }
@@ -674,7 +687,11 @@ def _per_person_help(game) -> dict:
     config, defs = game.config, game.defs
     food = config.get("population.food_per_person") * defs.weight_scale()
     power = defs.shown_amount(config.get("power.good"), config.get("power.household_use"))
-    return {"food_per_person": f"{food:g}", "power_per_person": f"{power:g}"}
+    return {
+        "food_per_person": f"{food:g}",
+        "power_per_person": f"{power:g}",
+        "weight_scale": f"{defs.weight_scale():g}",
+    }
 
 
 def _goods_help(game) -> dict:
@@ -701,6 +718,34 @@ def _goods_help(game) -> dict:
             "share": percent(config.get("records.shortage.share")),
             "turns": config.get("records.shortage.turns"),
         },
+    }
+
+
+def _people(n: int) -> str:
+    """人数を「5 万」「1,000」のように（1 万以上は万で数える）。"""
+    if n >= 10000 and n % 10000 == 0:
+        return f"{n // 10000:,} 万"
+    return f"{n:,}"
+
+
+def _awards_help(game) -> dict:
+    """手引きの「国のページ・記念碑・賞」に出す数（game.yaml の awards・monuments）。人数は
+    世界の大きさの倍を掛けた後の値（hakoniwa_core/scale.py）で、倍 20 の世界では 20 倍（W-211）。"""
+    config = game.config
+    years = lambda turns: f"{turns / 12:g}"  # noqa: E731
+    return {
+        "prosperity": "・".join(_people(int(n)) for n in config.get("awards.prosperity")),
+        "peace_kills": _people(int(config.get("awards.peace_kills"))),
+        "calm_years": years(config.get("awards.calm_turns")),
+        "calamity_count": config.get("awards.calamity_count"),
+        "founding_years": years(config.get("monuments.founding_turns")),
+        "founding_turns": config.get("monuments.founding_turns"),
+        "peace_years": years(config.get("monuments.peace_turns")),
+        "peace_turns": config.get("monuments.peace_turns"),
+        "cenotaph_dead": _people(int(config.get("monuments.cenotaph_dead"))),
+        "ledger_years": years(config.get("monuments.ledger_turns")),
+        "ledger_turns": config.get("monuments.ledger_turns"),
+        "verification_turns": config.get("monuments.verification_turns"),
     }
 
 
