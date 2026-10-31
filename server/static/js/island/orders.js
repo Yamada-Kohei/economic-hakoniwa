@@ -27,7 +27,8 @@ function budgetHint(guide) {
 export class OrderQueue {
   /**
    * el: 欄の要素（data-url に命令の列の API の URL）
-   * options: forms（出す入力欄の命令の種類の並び。なければ島の画面の並び）、heading（見出し）
+   * options: forms（出す入力欄の命令の種類の並び。なければ島の画面の並び）、heading（見出し）、
+   *   good（資源を選ぶ欄で初めに選んでおく資源。市場の画面で選んだ資源）
    */
   constructor(el, defs, map, options = {}) {
     this.el = el;
@@ -36,6 +37,7 @@ export class OrderQueue {
     this.url = el.dataset.url;
     this.forms = options.forms || null;
     this.heading = options.heading || "命令";
+    this.good = options.good || "";
     this.items = [];
     this.recent = [];
     this.adminPower = 0;
@@ -201,6 +203,19 @@ export class OrderQueue {
       ${finance ? this.section("finance", "金融の命令", finance) : ""}`;
   }
 
+  /** 資源を選ぶ欄で初めに選んでおく資源を変える（市場の画面で資源を切り替えたとき）。 */
+  setGood(good) {
+    this.good = good;
+    this.render();
+  }
+
+  /** 資源の選択肢。選んでいる資源（this.good）に印を付ける。 */
+  goodOptions(entries, label) {
+    return entries
+      .map(([g, d]) => `<option value="${g}"${g === this.good ? " selected" : ""}>${escapeHtml(label(d))}</option>`)
+      .join("");
+  }
+
   section(key, title, body) {
     if (!body) return "";
     return `
@@ -231,10 +246,10 @@ export class OrderQueue {
     const budget = Object.entries(p.budget)
       .map(([item, b]) => `<label>${escapeHtml(b.name)} ${num(item, b.amount, 'step="1"')}${budgetHint(b.guide)}</label>`)
       .join("");
-    const goods = Object.entries(this.defs.goods)
-      .filter(([g]) => g !== this.powerGood)
-      .map(([g, d]) => `<option value="${g}">${escapeHtml(d.name)}（${escapeHtml(d.unit)}）</option>`)
-      .join("");
+    const goods = this.goodOptions(
+      Object.entries(this.defs.goods).filter(([g]) => g !== this.powerGood),
+      (d) => `${d.name}（${d.unit}）`,
+    );
     const power = this.defs.goods[this.powerGood];
     const cap = p.price_cap[this.powerGood] || 0;
     return {
@@ -268,10 +283,18 @@ export class OrderQueue {
       warehouse_trade: `
         <form class="actions" data-form="warehouse_trade">
           <strong>国の倉庫の売買</strong>
+          <p class="hint">このターンの市場に、指値で売り・買いの注文を出します。売れるのは、国の工事・インフラの維持・設備の直しが倉庫の物を先に使った残りまでです。買いは年の予算の「国の倉庫の買い入れ費」の範囲で注文します。</p>
           <label>資源 <select name="good">${goods}</select></label>
           <label><select name="side"><option value="sell">売る</option><option value="buy">買う</option></select></label>
           <label>量 <input name="quantity" type="number" min="0.1" step="0.1" required></label>
           <label>指値（1単位、買いは必須） <input name="limit" type="number" min="0" step="any"></label>
+          <button type="submit">命令に追加</button>
+        </form>`,
+      set_warehouse_release: `
+        <form class="actions" data-form="set_warehouse_release">
+          <strong>備蓄の放出の決まり（今: ${p.warehouse_release ? "動いている" : "止めている"}）</strong>
+          <p class="hint">島のどの施設も作っていない物（石炭の出ない島の石炭など）を、施設が市場で買えなかったら、国の倉庫の余りを施設が要る量までいつもの値段で売りに出します。工事の資材・軍の備蓄・穀物の備蓄は出しません。止めると、倉庫の物は「国の倉庫の売買」で売るときだけ市場に出ます。</p>
+          <label><select name="auto"><option value="true">始める</option><option value="false">止める</option></select></label>
           <button type="submit">命令に追加</button>
         </form>`,
       set_price_cap: power ? `
@@ -371,9 +394,7 @@ export class OrderQueue {
         <button type="submit">命令に追加</button>
       </form>`;
 
-    const goods = Object.entries(this.defs.goods)
-      .map(([g, d]) => `<option value="${g}">${escapeHtml(d.name)}</option>`)
-      .join("");
+    const goods = this.goodOptions(Object.entries(this.defs.goods), (d) => d.name);
     const current = p.subsidies
       .map((s, i) => `<li>${escapeHtml(s.text)} <button type="button" data-stop-subsidy="${i}">やめる（命令に追加）</button></li>`)
       .join("");

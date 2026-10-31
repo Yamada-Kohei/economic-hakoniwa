@@ -57,6 +57,8 @@ INSTRUCTIONS = """\
 - 初めに whoami で自分の島とターンを確かめ、guide(which=start) で入門を、guide で詳しい仕組みを
   読み、summary で国の要約を読みます。
   建国から1年のあいだ、summary の next_steps に「次にすること」（急ぐ順に3つまで）が入ります。
+  summary の warehouse_release は備蓄の放出の決まり（auto と、いま放出している財）で、命令
+  set_warehouse_release で止められます。
   島がなければ found で建国します。前に遊んだ方針や引き継ぎは国の日誌（diary）にあり、区切りで
   diary_set に書いておきます（持ち主だけが読めます）。
 - 次のターンからは changes(since=前に読んだターン) で、その後に起きたことだけを読みます。
@@ -188,7 +190,9 @@ PAGE = {"type": "integer", "minimum": 1, "description": "ページ（1 から）
 
 REPORTS = {
     "economy": "経済（主な指標と国勢の今の値・得意産業と称号・stats で読める統計の名前 choices）",
-    "market": "市場（財ごとの値段・売買量・買えなかった量。good を決めるとその財の推移と約定）",
+    "market": "市場（財ごとの値段・売買量・買えなかった量・国の倉庫の在庫。good を決めると"
+    "その財の推移と約定。画面と同じく、その財の国の倉庫の売買 warehouse_trade と"
+    "資源ごとの補助金 set_subsidy は set_orders で出す）",
     "facilities": "施設（町ごとの労働力・失業と買いに行く店の場所 towns、産業ごとの従業者数 "
     "industry_workers。持ち主には施設ごとの"
     "状態・人手・損益・預金・借入と、畑を作り替えている農場の内訳と企業の帳簿 table.firms、"

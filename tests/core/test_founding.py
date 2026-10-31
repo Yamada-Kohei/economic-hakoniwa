@@ -134,7 +134,8 @@ def test_start_island(game):
     assert island.warehouse["steel"][0][1] == 40_000
     assert stock.total(island.warehouse, "grain") == reserve.target(island, defs, config)
     plant = next(f for f in island.facilities if f.kind == "thermal_power_plant")
-    assert stock.total(plant.stock, "coal") == 4_000
+    # 発電所は燃料を founding.power_fuel_turns ターン分持って建国する
+    assert stock.total(plant.stock, "coal") == 4_000 * config.get("founding.power_fuel_turns")
     assert all(fac.housing_capacity(defs, h) >= island.tile(h.x, h.y).population for h in homes)
     names = [facility_name(defs, config, island, f) for f in island.facilities if f.kind == "farm"]
     assert names[0].startswith("国営第一")

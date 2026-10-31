@@ -275,7 +275,9 @@ table.titles-table td:nth-child(-n+4), table.titles-table th:nth-child(-n+4),
 table.foreign-bonds-table td:nth-child(2), table.foreign-bonds-table th:nth-child(2) { text-align: left; }
 table.ranking-table td:nth-child(3), table.titles-table th, table.titles-table td { white-space: nowrap; }
 .plain-list { padding-left: 1.2em; margin: 4px 0; }
-.report-layout.with-orders { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; align-items: start; }
+.report-layout.with-orders { display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: auto 1fr; gap: 12px; align-items: start; }
+/* 命令の欄の上に写す次の更新予定の行（reports/orders.js）は右の列の1段目に。本文は2段にまたがる */
+.report-layout.with-orders > .report-main { grid-row: span 2; }
 .report-orders { margin-top: 12px; }
 .bank-action { margin-top: 8px; }
 .bank-action h3 { font-size: 1em; }
