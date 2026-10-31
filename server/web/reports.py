@@ -100,6 +100,7 @@ _EXTRA_STATS = [
     ("equipment.wear", "施設の設備の傷み（1ターンの値打ちの減り）", "money"),
     ("equipment.condition", "施設の設備の平均の残り", "%"),
     ("equipment.repair", "施設の設備の直しに使った額（1ターン）", "money"),
+    ("warehouse.to_state", "国の倉庫から国営の施設に渡した原料の額（1ターン）", "money"),
     ("money.central_bank", "中央銀行のお金（準備預金と国庫）", "money"),
     ("cb_lending", "中央銀行の銀行への貸し出し", "money"),
     ("bonds.underwritten", "中央銀行の国債の直接の引き受け（1ターン）", "money"),

@@ -767,6 +767,7 @@ class Market(IslandStage):
                 funds.release(island, MERCHANT_GAP, party.reserved)
                 party.reserved = 0
         self._settle_mortgage(island, ctx)
+        self._supply_facilities_from_warehouse(island, ctx)
         needs.close_cars(island, config)
         foreign = self._foreign_supply(config, books_by_good, results)
         island.scratch[traders.FOREIGN_SUPPLY] = foreign
@@ -1275,6 +1276,68 @@ class Market(IslandStage):
                     value = money_of(island.economy.prices.get(good, 0), taken)
                     f.economy["capital"] = f.economy.get("capital", 0) + value
         infrastructure.supply_from_warehouse(island, ctx, upkeep=False)
+
+    def _supply_facilities_from_warehouse(self, island: IslandState, ctx: StageContext) -> None:
+        """国営の施設は、市場で買いきれなかった原料を国の倉庫から使う（次のターンに要る分まで）。
+        政府が自分の企業に倉庫の物を渡すので、施設は今の値段で政府に払い、帳簿は倉庫が売ったのと
+        同じに数える（運賃はかからない）。工事に取ってある資材・軍の備蓄・国の穀物の備蓄は使わない。民営の施設は
+        市場で買う（国の倉庫の物は、政府が売りに出したときだけ買える）。
+
+        石炭の出ない国でも、建国のときに倉庫にあった石炭で火力発電所が動くように（自動の国は
+        autoplan が倉庫の物を売りに出すが、人の国は売りに出さないと発電所が止まった。2026-10-31）。
+        """
+        from hakoniwa_core import autoplan
+
+        defs, config = ctx.defs, ctx.config
+        power = config.get("power.good")
+        prices = island.economy.prices
+        life = {g: d.get("shelf_life") for g, d in defs.goods.items()}
+        keep: dict[str, int] | None = None
+        state = [
+            f
+            for f in island.facilities
+            if f.owner != OWNER_PRIVATE
+            and f.built
+            and fac.located(f)
+            and not fac.is_housing(config, f)
+            and fac.recipe_of(defs, f)["inputs"]
+        ]
+        state.sort(key=lambda f: (-fac.priority_of(defs, config, f), f.id))
+        for f in state:
+            if not island.warehouse:
+                return
+            have = island.warehouse
+            wanted = [(g, q) for g, q in self._input_needs(ctx, f, power) if have.get(g)]
+            if not wanted:
+                continue
+            if keep is None:
+                keep = autoplan._reserved_materials(island, defs)
+                for good, qty in autoplan._military_keep(island, config).items():
+                    keep[good] = keep.get(good, 0) + qty
+                grain = config.get("food_reserve")["good"]  # 国の穀物の備蓄は飢饉の備え
+                keep[grain] = keep.get(grain, 0) + reserve.target(island, defs, config)
+            payer = payer_of(defs, config, f)
+            party = Party(FACILITY, facility_entity(f.id), payer, 0, 0, f)
+            party.public = is_public_service(defs, f)
+            for good, want in wanted:
+                spare = stock.total(island.warehouse, good) - keep.get(good, 0)
+                price = prices.get(good, 0)
+                if price > 0:
+                    spare = min(spare, qty_for(funds.available(island, payer), price))
+                qty = min(want, spare)
+                if qty <= 0:
+                    continue
+                expiry = None if life.get(good) is None else ctx.turn - life[good]
+                batches = stock.take_batches(island.warehouse, good, qty, expiry)
+                taken = sum(q for _, q in batches)
+                amount = money_of(price, taken)
+                funds.pay(island, payer, ledger.GOV, amount, "sale")
+                self._give_to_buyer(island, good, party, batches, amount, 0, 0, {})
+                books.add_sector(island, books.WAREHOUSE, "sales", amount)
+                if taken >= want:
+                    f.economy.get("short", {}).pop(good, None)
+                stats = island.stats
+                stats["warehouse.to_state"] = stats.get("warehouse.to_state", 0) + amount
 
     @staticmethod
     def _switch_recipes(island: IslandState, ctx: StageContext) -> None:
