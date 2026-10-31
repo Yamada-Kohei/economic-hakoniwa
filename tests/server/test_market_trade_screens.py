@@ -54,6 +54,10 @@ def test_contract_rows_show_shipped_and_cargo_at_sea():
     assert rows[5]["at_sea"] == trade._amount(good, 300_000)
     assert (rows[5]["arrive_first"], rows[5]["arrive_last"]) == (15, 16)
     # 海の上の荷のない契約は 0 で、着くターンはない（圏の荷は契約の荷に数えない）
+    assert rows[5]["port_wait"] is False
+    # 着く予定を過ぎた荷は、港の空き待ちとして次のターンに着く見込みにする
+    late = {r["id"]: r for r in trade.contract_rows(contracts, 2, 16, islands, shipments)}
+    assert (late[5]["arrive_first"], late[5]["arrive_last"], late[5]["port_wait"]) == (17, 17, True)
     assert rows[6]["at_sea"] == 0
     assert rows[6]["arrive_first"] is None
 
@@ -67,6 +71,10 @@ def test_price_kinds_separate_trade_quote_carry_and_none():
     assert reports.price_kind(record) == "carry"  # 片側だけの注文は前の値段のまま
     record.supply = 5
     assert reports.price_kind(record) == "quote"
+    # 商人の安い買いと島の売りだけで折り合わない気配は、記録の買い注文が 0 でも値段が前と変わる
+    lone = SimpleNamespace(volume=0, demand=0, supply=5, price=90)
+    assert reports.price_kind(lone, SimpleNamespace(price=100)) == "quote"
+    assert reports.price_kind(lone, SimpleNamespace(price=90)) == "carry"
     record.volume = 1
     assert reports.price_kind(record) == "trade"
     assert set(reports.PRICE_KINDS) == {"trade", "quote", "carry", "none"}

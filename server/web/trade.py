@@ -529,6 +529,11 @@ def contract_rows(
             continue
         view = contract_view(c, island_id, turn)
         at_sea, first_arrive, last_arrive = sailing.get(c["id"], [0, None, None])
+        # 着く予定のターンを過ぎた荷は、買う国の港の荷下ろしの空きを待っている（次のターン以降）
+        waiting = first_arrive is not None and first_arrive <= turn
+        if waiting:
+            first_arrive = max(first_arrive, turn + 1)
+            last_arrive = max(last_arrive, turn + 1)
         state = view["state"]
         proposed = state == contract_states.PROPOSED
         rows.append(
@@ -560,6 +565,7 @@ def contract_rows(
                 "at_sea": _amount(view["good"], at_sea),  # まだ海の上の量
                 "arrive_first": first_arrive,  # 海の上の荷が着く見込みのターン（早いもの）
                 "arrive_last": last_arrive,  # 同じく遅いもの（積んだターンが違う荷があるとき）
+                "port_wait": waiting,  # 港の荷下ろしの空きを待っている荷がある
                 "paid": c.get("paid", 0),
                 "short": _amount(view["good"], view["short"]),
                 "short_any": view["short"] > 0,

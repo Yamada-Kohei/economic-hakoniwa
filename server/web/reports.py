@@ -441,9 +441,7 @@ def series(island: m.Island, names: list[str], start: int, end: int, mine: bool)
     _derive(table)
     found = [n for n in names if not n.endswith("*") and n in table and visible(n, mine)]
     for p in [n[:-1] for n in names if n.endswith("*")]:
-        found += sorted(
-            n for n in table if n.startswith(p) and n not in found and visible(n, mine)
-        )
+        found += sorted(n for n in table if n.startswith(p) and n not in found and visible(n, mine))
     # 上限で返せなかった分は、黙って切らずに名前を返す（Codex の試し遊び: 80 系列で後ろが落ち、
     # 値がないのか切られたのか分からなかった）。選べる数を超えた名前も同じ
     dropped = found[MAX_SERIES:]
@@ -633,7 +631,7 @@ def market_table(
         to_state = stats.get(f"warehouse.to_state.{good}", 0) if mine else 0
         if record is None and not made and not stock and not to_state:
             continue
-        kind = price_kind(record)
+        kind = price_kind(record, before.get(good))
         row: dict[str, Any] = {
             "good": good,
             "name": defs.name("goods", good),
@@ -687,14 +685,21 @@ def market_series(
         "to": end,
         "turns": [r.turn for r in records],
         "price": [display.price(good, r.price) for r in records],
-        "price_kinds": [price_kind(r) for r in records],  # 値段の種類（PRICE_KINDS。W-171）
+        # 値段の種類（PRICE_KINDS。W-171）
+        "price_kinds": [
+            price_kind(r, records[i - 1] if i and records[i - 1].turn == r.turn - 1 else None)
+            for i, r in enumerate(records)
+        ],
         "volume": [_qty(good, r.volume) for r in records],
         "demand": [_qty(good, r.demand) for r in records],
         "supply": [_qty(good, r.supply) for r in records],
     }
     latest = MarketRecord.objects.filter(island=island, good=good).order_by("-turn").first()
     if latest is not None:
-        kind = price_kind(latest)
+        previous = MarketRecord.objects.filter(
+            island=island, good=good, turn=latest.turn - 1
+        ).first()
+        kind = price_kind(latest, previous)
         data["latest"] = {
             "turn": latest.turn,
             "price": display.price(good, latest.price),
