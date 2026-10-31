@@ -28,6 +28,7 @@ sevilla-lab.com・www は Caddy が /srv/hp/public の静的なファイルを�
 - ゲームの 500 エラーの原因（traceback）は gunicorn の標準エラーから journal に残る（`journalctl -u hakoniwa-gunicorn`）。アクセスの記録は出さない。
 - Caddy はパッケージのサービス定義に、落ちたら起き直す設定（`install.sh units` が置く drop-in）を足している。
 - Claude は Cloudflare Access を通らず、家の中から ssh で機械に入って管理する。
+- 今の様子（CPU・メモリ・ディスク・温度・サービス・遊び手の数、24 時間の推移）は管理画面の「サーバーの様子」（`/admin/server/`、管理者だけ）で見る。root でしか見られない値は `hakoniwa-status` が書き出し、ゲームは読むだけ。
 
 ## 自動で動くもの
 
@@ -40,5 +41,6 @@ sevilla-lab.com・www は Caddy が /srv/hp/public の静的なファイルを�
 | `hakoniwa-weekly.timer` | 毎週日曜 08:00 | 週のまとめを ntfy へ | root |
 | `hakoniwa-restore-check.timer` | 毎月 1 日 05:10 | 最新の写しを試し用の DB に戻し、1 ターン回せるか確かめる | root |
 | `hakoniwa-watch.timer` | 毎日 06:40 | 前の日と比べて、違えば ntfy へ | root |
+| `hakoniwa-status.timer` | 1 分ごと | 管理画面の「サーバーの様子」（`/admin/server/`）が読む値と 24 時間の推移を `/var/lib/hakoniwa-status/` に書き出す（知らせは送らない） | root |
 | cron `hakoniwa-soft-update` | 毎日 04:10（日〜金）／土曜 05:10 | 安全の更新／apt 全部。何が入ったかを ntfy へ。要る再起動はターンの鍵が空いてから | root |
 | `hp-fetch.timer` | 5 分ごと | HP の `release` の枝を取り、確かめて向き先を切り替える | hp |

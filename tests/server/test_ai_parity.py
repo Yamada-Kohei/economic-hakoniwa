@@ -77,7 +77,7 @@ def _screen_names() -> set[str]:
             if isinstance(p, URLResolver):
                 if getattr(p, "app_name", None) != "admin" and route != "api/":
                     walk(p.url_patterns, route)
-            elif p.name and not route.startswith("api/") and p.name != "mcp":
+            elif p.name and not route.startswith(("api/", "admin/")) and p.name != "mcp":
                 names.add(p.name)
 
     walk(get_resolver().url_patterns, "")

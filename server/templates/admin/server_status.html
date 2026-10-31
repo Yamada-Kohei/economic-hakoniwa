@@ -1,0 +1,122 @@
+{% extends "admin/base_site.html" %}
+{% comment %}管理者だけの「サーバーの様子」（server/web/server_status.py）。1 分ごとに読み直す。{% endcomment %}
+{% block extrahead %}{{ block.super }}
+<meta http-equiv="refresh" content="60">
+<style>
+  .ss { --ss-line: #2a78d6; --ss-good: #0ca30c; --ss-serious: #ec835a; --ss-critical: #d03b3b; max-width: 720px; }
+  @media (prefers-color-scheme: dark) { .ss { --ss-line: #3987e5; } }
+  html[data-theme="dark"] .ss { --ss-line: #3987e5; }
+  html[data-theme="light"] .ss { --ss-line: #2a78d6; }
+  .ss h2 { margin: 1.4em 0 .5em; font-size: 1.05rem; }
+  .ss .note { color: var(--body-quiet-color); margin: .2em 0 .8em; }
+  .ss .warn { border-left: 4px solid var(--ss-critical); padding: .4em .7em; background: var(--darkened-bg); }
+  .ss .meter { margin: .7em 0; }
+  .ss .meter-head { display: flex; justify-content: space-between; gap: .5em; flex-wrap: wrap; }
+  .ss .meter-value { font-weight: bold; font-variant-numeric: tabular-nums; }
+  .ss .bar { height: 10px; border-radius: 5px; background: var(--darkened-bg); border: 1px solid var(--hairline-color); overflow: hidden; margin-top: .25em; }
+  .ss .bar span { display: block; height: 100%; border-radius: 4px; }
+  .ss .lv-good { background: var(--ss-good); }
+  .ss .lv-serious { background: var(--ss-serious); }
+  .ss .lv-critical { background: var(--ss-critical); }
+  .ss .tag { font-size: .85em; color: var(--body-quiet-color); }
+  .ss .chart { margin: 1em 0 1.4em; }
+  .ss .chart-head { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5em; }
+  .ss svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .ss svg .grid { stroke: var(--hairline-color); stroke-width: 1; }
+  .ss svg .axis-text { fill: var(--body-quiet-color); font-size: 9px; }
+  .ss svg .line { fill: none; stroke: var(--ss-line); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+  .ss svg .dot { fill: var(--ss-line); }
+  .ss svg .hit { fill: transparent; }
+  .ss svg .hit:hover { fill: var(--darkened-bg); opacity: .6; }
+  .ss table { width: 100%; }
+  .ss td, .ss th { vertical-align: top; }
+  .ss th { width: 40%; font-weight: normal; color: var(--body-quiet-color); }
+  .ss .ok::before { content: "● "; color: var(--ss-good); }
+  .ss .ng::before { content: "▲ "; color: var(--ss-critical); }
+</style>
+{% endblock %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">ホーム</a> › サーバーの様子</div>{% endblock %}
+{% block content %}
+<div class="ss">
+  {% if not status %}
+    <p class="note">この機械では値を書き出していません（公開サーバーの hakoniwa-status が書く）。メモリ・ディスクなど、その場で読める分だけ出します。</p>
+  {% elif stale %}
+    <p class="warn">書き出しが {{ written_ago }} 秒前で止まっています。hakoniwa-status.timer を見てください。</p>
+  {% else %}
+    <p class="note">{{ now|date:"n月j日 H:i" }} の様子（1 分ごとに読み直します）</p>
+  {% endif %}
+  {% if alerts %}
+    <p class="warn">見張りが知らせている事: {{ alerts|join:"、" }}</p>
+  {% endif %}
+
+  <h2>機械</h2>
+  {% for m in meters %}
+    <div class="meter">
+      <div class="meter-head">
+        <span>{{ m.label }} <span class="tag">{{ m.detail }}</span></span>
+        <span><span class="meter-value">{% if m.value is None %}—{% else %}{{ m.value }}{{ m.unit }}{% endif %}</span> <span class="tag">{{ m.level_text }}</span></span>
+      </div>
+      <div class="bar" role="img" aria-label="{{ m.label }} {{ m.value }}{{ m.unit }}（{{ m.level_text }}）"><span class="lv-{{ m.level }}" style="width: {{ m.width|floatformat:1 }}%"></span></div>
+    </div>
+  {% endfor %}
+  <table>
+    <tr><th>負荷</th><td>{{ load }}</td></tr>
+    <tr><th>起動してから</th><td>{{ uptime }}</td></tr>
+    {% if status %}
+      <tr><th>更新の残り</th><td>{% if status.upgradable is None %}—{% else %}{{ status.upgradable }} 件{% endif %}{% if status.reboot_required %}（再起動が要ります）{% endif %}</td></tr>
+    {% endif %}
+  </table>
+
+  {% if charts %}
+    <h2>この 24 時間</h2>
+    <p class="note">5 分ごとの平均。触れると 1 時間ごとの値が出ます。</p>
+    {% for c in charts %}
+      <div class="chart">
+        <div class="chart-head"><span>{{ c.label }}（{{ c.unit }}）</span><span class="tag">いま {{ c.now }}、最大 {{ c.peak }}</span></div>
+        <svg viewBox="0 -10 {{ c.w }} {{ c.h|add:24 }}" role="img" aria-label="{{ c.label }}のこの 24 時間の推移。いま {{ c.now }}{{ c.unit }}、最大 {{ c.peak }}{{ c.unit }}">
+          <line class="grid" x1="0" y1="0" x2="{{ c.w }}" y2="0"/>
+          <line class="grid" x1="0" y1="{{ c.mid_y }}" x2="{{ c.w }}" y2="{{ c.mid_y }}"/>
+          <line class="grid" x1="0" y1="{{ c.h }}" x2="{{ c.w }}" y2="{{ c.h }}"/>
+          <text class="axis-text" x="2" y="-2">{{ c.top }}</text>
+          {% for t in c.ticks %}<text class="axis-text" x="{{ t.x }}" y="{{ c.h|add:11 }}">{{ t.text }}</text>{% endfor %}
+          {% for s in c.segments %}<polyline class="line" points="{{ s }}"/>{% endfor %}
+          {% for d in c.dots %}<circle class="dot" cx="{{ d.0 }}" cy="{{ d.1 }}" r="2"/>{% endfor %}
+          {% for hv in c.hover %}<rect class="hit" x="{{ hv.x }}" y="-10" width="{{ hv.w }}" height="{{ c.h|add:10 }}"><title>{{ hv.title }}</title></rect>{% endfor %}
+        </svg>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <h2>ゲーム</h2>
+  <table>
+    {% with w=game.world %}
+      <tr><th>ターン</th><td>{% if w %}{{ w.turn }}{% if w.paused %}（一時停止中）{% endif %}{% if w.updating_since %}（更新中）{% endif %}{% else %}世界がありません{% endif %}</td></tr>
+      <tr><th>次の更新</th><td>{% if w.next_turn_at %}{{ w.next_turn_at|date:"n月j日 H:i" }}{% else %}—{% endif %}{% if game.late_minutes %} <span class="ng">{{ game.late_minutes }} 分遅れ</span>{% endif %}</td></tr>
+    {% endwith %}
+    <tr><th>動いている版</th><td>{{ version }}</td></tr>
+    {% if status %}
+      <tr><th>最後の反映</th><td>{{ status.last_deploy|default:"—" }}</td></tr>
+      <tr><th>毎晩の写し</th><td>{% if backup_at %}{{ backup_at|date:"n月j日 H:i" }}（{{ backup_hours }} 時間前、{{ status.backup.bytes|filesizeformat }}）{% else %}<span class="ng">見つかりません</span>{% endif %}</td></tr>
+      <tr><th>ページの応答</th><td>{% if status.game_page.ms is None %}<span class="ng">応答なし</span>{% else %}{{ status.game_page.ms }} ミリ秒（{{ status.game_page.code }}）{% endif %}</td></tr>
+      <tr><th>トンネル</th><td>{% if status.tunnel_code == "200" %}<span class="ok">つながっています</span>{% else %}<span class="ng">つながっていません（{{ status.tunnel_code }}）</span>{% endif %}</td></tr>
+      <tr><th>エラー（24 時間）</th><td>{% if status.errors_24h %}<span class="ng">{{ status.errors_24h }} 件</span>（journalctl -u hakoniwa-gunicorn）{% else %}0 件{% endif %}</td></tr>
+    {% endif %}
+  </table>
+
+  {% if units %}
+    <h2>サービス</h2>
+    <table>
+      {% for u in units %}<tr><th>{{ u.name }}</th><td>{% if u.ok %}<span class="ok">動いています</span>{% else %}<span class="ng">{{ u.state }}</span>{% endif %}</td></tr>{% endfor %}
+      {% if status.failed_units %}<tr><th>失敗しているもの</th><td><span class="ng">{{ status.failed_units }}</span></td></tr>{% endif %}
+    </table>
+  {% endif %}
+
+  <h2>遊び手</h2>
+  <table>
+    <tr><th>国</th><td>{{ game.nations }}{% if game.resting %}（ほかに休止中 {{ game.resting }}）{% endif %}</td></tr>
+    <tr><th>24 時間に入った人</th><td>{{ game.active_24h }}</td></tr>
+    <tr><th>24 時間の新しい登録</th><td>{{ game.signups_24h }}</td></tr>
+    <tr><th>ログインの失敗（24 時間）</th><td>{{ game.login_failures_24h }} 回</td></tr>
+  </table>
+</div>
+{% endblock %}
