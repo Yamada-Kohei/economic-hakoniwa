@@ -419,8 +419,11 @@ class Production(IslandStage):
                 elif has_money:
                     limit = min(high, self._power_limit(island, ctx, b, reference, power))
                 if has_money:
-                    per_unit = limit + part(limit, b.tax)
-                    qty = min(qty, qty_for(funds.available(island, b.payer), per_unit))
+                    # 税込みで払える量。1単位の税を切り捨てて足した値段で割ると、取り置く額
+                    # （代金にまとめて掛けた税）が使えるお金を超え、ターンが止まった（測りの
+                    # open-s2 の t=361 の次）。消費財の _afford と同じく、税を除いたお金で量を決める
+                    money = funds.available(island, b.payer) * BASIS // (BASIS + b.tax)
+                    qty = min(qty, qty_for(money, limit))
                     b.reserved = money_of(limit, qty) + part(money_of(limit, qty), b.tax)
                     funds.commit(island, b.payer, b.reserved)
                 priority = (
