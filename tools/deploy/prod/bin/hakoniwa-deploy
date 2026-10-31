@@ -41,7 +41,7 @@ url_with_db() { sed -E "s#/[^/?]+(\\?.*)?\$#/$1\\1#" <<<"$DATABASE_URL"; }
 pages_ok() {
   local port="$1" page code i
   for ((i = 0; i < 30; i++)); do
-    curl -s -o /dev/null "http://127.0.0.1:$port/" && break
+    curl -s -o /dev/null -H 'Host: hakoniwa.sevilla-lab.com' "http://127.0.0.1:$port/" && break
     sleep 2
   done
   for page in "${PAGES[@]}"; do
