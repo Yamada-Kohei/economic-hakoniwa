@@ -24,7 +24,9 @@ sevilla-lab.com・www は Caddy が /srv/hp/public の静的なファイルを�
 - 受け口はどれも 127.0.0.1 だけ。ルーターの外向きの受け口は開けない。
 - 動かす人（OS のユーザー）: `hakoniwa`（ゲーム・ターン・反映）、`hp`（HP の取り込み）。root の台本は `/usr/local/lib/hakoniwa/`（ゲームのユーザーが書き換えられない）。
 - 置き場: ゲーム `/srv/hakoniwa/`、HP `/srv/hp/`、毎晩の写し `/srv/backup/`（HDD、root だけ）、秘密 `/etc/hakoniwa/`。
-- 知らせ: 本人のスマホの ntfy（版が入った・失敗・見張り）。ターンの遅れ・写しが古い・失敗したサービスは機械の中の点検（30 分ごと）が、機械そのものが応答しないときは機械の外の見張りが、ntfy で知らせる。
+- 知らせ: 本人のスマホの ntfy（版が入った・失敗・見張り）。ターンの遅れ・写しが古い・失敗したサービス・トンネルの切れ・ページが開かないは機械の中の点検（30 分ごと）が、機械そのものが応答しないときは機械の外の見張りが、ntfy で知らせる。
+- ゲームの 500 エラーの原因（traceback）は gunicorn の標準エラーから journal に残る（`journalctl -u hakoniwa-gunicorn`）。アクセスの記録は出さない。
+- Caddy はパッケージのサービス定義に、落ちたら起き直す設定（`install.sh units` が置く drop-in）を足している。
 - Claude は Cloudflare Access を通らず、家の中から ssh で機械に入って管理する。
 
 ## 自動で動くもの
@@ -34,7 +36,7 @@ sevilla-lab.com・www は Caddy が /srv/hp/public の静的なファイルを�
 | `hakoniwa-turn.timer` | 1 分ごと | 時刻になっていれば 1 ターン進める | hakoniwa |
 | `hakoniwa-deploy.timer` | 5 分ごと | `release` の枝が進んでいれば、本番の写しで試してから反映 | hakoniwa |
 | `hakoniwa-backup.timer` | 毎晩 03:20 | DB 丸ごとを HDD に 30 日分、指紋を ntfy へ | root |
-| `hakoniwa-health.timer` | 30 分ごと | ターンが遅れていないか・写しが古くないか・失敗したサービスがないかを見て、おかしければ ntfy へ | root |
+| `hakoniwa-health.timer` | 30 分ごと | ターンが遅れていないか・写しが古くないか・失敗したサービスがないか・トンネルとゲームのページが応答するかを見て、おかしければ ntfy へ | root |
 | `hakoniwa-weekly.timer` | 毎週日曜 08:00 | 週のまとめを ntfy へ | root |
 | `hakoniwa-restore-check.timer` | 毎月 1 日 05:10 | 最新の写しを試し用の DB に戻し、1 ターン回せるか確かめる | root |
 | `hakoniwa-watch.timer` | 毎日 06:40 | 前の日と比べて、違えば ntfy へ | root |

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 30 分ごと（root で動く）。ターンが遅れていないか、毎晩の写しが古くなっていないかを見て、おかしければ ntfy に知らせる
+# 30 分ごと（root で動く）。ターンが遅れていないか、毎晩の写しが古くなっていないか、失敗したサービス、
+# トンネルとゲームのページが応答するかを見て、おかしければ ntfy に知らせる
 # （同じ内容は 6 時間に 1 回まで）。機械そのものが止まったときは、機械の外の見張りが応答の途切れで知らせる。
 set -uo pipefail
 # shellcheck source=lib.sh
@@ -39,10 +40,31 @@ else
   clear_alert backup-old
 fi
 
-# 失敗しているサービス
-failed="$(systemctl --failed --no-legend 2>/dev/null | awk '{print $2}' | tr '\n' ' ')"
+# 失敗しているサービス（止めて masked にしたものは数えない。--plain で行頭の印を出さない）
+failed="$(systemctl list-units --state=failed --no-legend --plain 2>/dev/null | awk '$2 != "masked" {print $1}' | tr '\n' ' ')"
 if [[ -n "$failed" ]]; then
   alert_once units-failed "失敗しているサービスがあります" "$failed"
 else
   clear_alert units-failed
+fi
+
+# 機械は生きているのに外から開けない、を見つける（ルーターの見張りは ping だけなので）。
+# トンネル（cloudflared の /ready）と、Caddy 経由のゲームの最初のページ。反映の数十秒と重なることがあるので、
+# 失敗したら 60 秒おいてもう 1 回だけ見る。
+TUNNEL_READY_URL="${HAKONIWA_TUNNEL_READY_URL:-http://127.0.0.1:20241/ready}"
+GAME_HOST="${HAKONIWA_GAME_HOST:-hakoniwa.sevilla-lab.com}"
+tunnel_ok() { [[ "$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$TUNNEL_READY_URL" 2>/dev/null)" == 200 ]]; }
+game_code() { curl -s -o /dev/null -m 15 -w '%{http_code}' -H "Host: $GAME_HOST" http://127.0.0.1:8080/ 2>/dev/null; }
+game_ok() { [[ "$(game_code)" =~ ^[23][0-9][0-9]$ ]]; }
+
+if tunnel_ok || { sleep 60; tunnel_ok; }; then
+  clear_alert tunnel-down
+else
+  alert_once tunnel-down "トンネルがつながっていません" "cloudflared が Cloudflare につながっていません（${TUNNEL_READY_URL}）。外から開けません。journalctl -u cloudflared を見てください"
+fi
+
+if game_ok || { sleep 60; game_ok; }; then
+  clear_alert game-down
+else
+  alert_once game-down "ゲームのページが開きません" "Caddy 経由の最初のページが $(game_code) でした。systemctl status caddy hakoniwa-gunicorn と journalctl -u hakoniwa-gunicorn を見てください"
 fi
