@@ -5,11 +5,14 @@ $rev = "b43db2a"
 $branch = "claude/project-thread-i8d8am"
 $root = "C:\claude\経済版箱庭諸国\runs\wcheck-20261101"
 New-Item -ItemType Directory -Force $root | Out-Null
-Set-Location "C:\claude\経済版箱庭諸国\runs\x870-src"
+# git の入った置き場（前の測りと同じ所）。どちらもなければ clone する
+$repo = @("C:\claude\経済版箱庭諸国", "C:\claude\経済版箱庭諸国\runs\x870-src") | Where-Object { Test-Path "$_\.git" } | Select-Object -First 1
+if (-not $repo) { $repo = "$root\repo"; git clone https://github.com/Yamada-Kohei/economic-hakoniwa.git $repo }
+Set-Location $repo
 git fetch origin main $branch
 $wt = "$root\wt-$rev"
 if (-not (Test-Path $wt)) { git worktree add --detach $wt $rev }
-git show "origin/${branch}:tools/wcheck/wcheck.py" | Out-File -Encoding utf8 "$root\wcheck.py"
+cmd /c "git show origin/${branch}:tools/wcheck/wcheck.py > `"$root\wcheck.py`""  # cmd で写すと文字が化けない
 Push-Location $wt
 py -3.12 -m hakoniwa_core.measure batch --set full --jobs 14 --series --out-dir "$root\out" *> "$root\log.txt"
 Pop-Location
