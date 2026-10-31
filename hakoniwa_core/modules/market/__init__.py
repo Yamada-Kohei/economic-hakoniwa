@@ -1474,6 +1474,10 @@ class Market(IslandStage):
             }
             priority = fac.priority_of(defs, config, f)
             for good, (qty, limit) in sorted(plan.items()):
+                if limit <= 0:  # どの値段でも採算が合わない原料は注文しない（指値 0 の買いが気配を
+                    # 押し下げ、売りのある財の値段が毎ターン値幅ずつ下がり続けた。2026-10-31）
+                    f.economy.setdefault("short", {})[good] = "price"
+                    continue
                 party = Party(FACILITY, name, payer, rate, 0, f)
                 party.public = is_public_service(defs, f)
                 party.reserved = gross_cost(limit, qty, rate, 0)
