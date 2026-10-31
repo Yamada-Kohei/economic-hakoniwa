@@ -257,8 +257,9 @@ class HomeOrder:
 
 
 def home_orders(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> list[HomeOrder]:
-    """島の市場の段で、商社が出す注文（輸出する物を買う・輸入した物を売る）。"""
-    traders = traders_of(island, config)
+    """島の市場の段で、商社が出す注文（輸出する物を買う・輸入した物を売る）。止まっている商社は
+    出さない（W-159）。"""
+    traders = traders_of(island, config, turn)
     if not traders:
         return []
     found = prospects(island, defs, config)
@@ -368,21 +369,26 @@ def update_targets(
     config: GameConfig,
     bloc_unmet: dict[tuple[int, str], int],
     bloc_sellers: dict[tuple[int, str], int],
+    turn: int | None = None,
 ) -> None:
     """貿易の段の終わりに、商社ごと・財ごとの向きと狙う量を見直す。
 
     bloc_unmet は (圏, 財) ごとの圏の買えなかった量、bloc_sellers は (圏, 財) ごとの売りに出した商社
     の数。このターンに圏で売った量（輸出）と島の市場で売った量（輸入）は、商社の
-    state_of(f)["turn"]。
+    state_of(f)["turn"]。止まっている商社（turn を渡したとき）は、扱った量の記録だけ残して狙う量は
+    見直さない（注文を出していないので、売れなかった分で狙う量を下げない。W-159）。
     """
     traders = traders_of(island, config)
+    working = {f.id for f in traders_of(island, config, turn)}
     if not traders:
         return
     found = prospects(island, defs, config)
     speed = config.get("trade.target_speed")
     records = {m.good: m for m in island.markets}
     importers: dict[str, int] = {}
-    for f in traders:
+    for f in traders:  # 足りない分は動いている商社で分ける
+        if f.id not in working:
+            continue
         for good, item in goods_of(f).items():
             if item.get("dir") == IMPORT:
                 importers[good] = importers.get(good, 0) + 1
@@ -390,6 +396,8 @@ def update_targets(
     planned = is_planned(island)
     exporters: dict[str, int] = {}
     for f in traders:
+        if f.id not in working:
+            continue
         for good, item in goods_of(f).items():
             if item.get("dir") == EXPORT:
                 exporters[good] = exporters.get(good, 0) + 1
@@ -399,6 +407,8 @@ def update_targets(
         sold_home_ = turn.get("sold", {})
         _keep_history(config, f, turn)
         _forget_lost(f)
+        if f.id not in working:
+            continue
         for good in tradable_goods(defs):
             p = found.get(good)
             home = prices.get(good, 0)

@@ -369,11 +369,17 @@ class Politics(IslandStage):
         t = state.get("transition")
         if t is None:
             state.pop("productivity", None)
+            if state.pop("reselect", None) is not None:  # 混乱期間の外に残った選び直し待ち（W-112）
+                island.log.append(LogEntry("regime_kept", {}))
             return
         if ctx.turn >= t["until"]:
             state.pop("transition", None)
             state.pop("productivity", None)
             island.log.append(LogEntry("transition_ended", {}))
+            if state.pop("reselect", None) is not None:
+                # 体制を選び直さないまま混乱期間が終わった（持ち主のいない島・AI の島も）: 暫定の
+                # 政府が今の体制のまま固まり、選び直しの機会は閉じる（W-112）
+                island.log.append(LogEntry("regime_kept", {}))
             return
         total = max(1, t["until"] - t["since"])
         left = (t["until"] - ctx.turn) / total

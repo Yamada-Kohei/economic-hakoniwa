@@ -26,14 +26,15 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core import stock
-from hakoniwa_core.diplomacy import war
+from hakoniwa_core.diplomacy import treaties, war
 from hakoniwa_core.military import army, battle, forces
 from hakoniwa_core.state import IslandState, LogEntry, Tile, WorldState
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import QUANTITY_SCALE
 
 OCCUPIED = "occupied"
-SURRENDER = -1  # 降伏による停戦の印（war["ceasefire"] に入れる。条約の番号は 1 から）
+# 降伏による停戦の古い印（W-112 の前のセーブの war["ceasefire"]。今は降伏文書の条約の番号が入る）
+SURRENDER = -1
 
 
 def occupier(tile: Tile) -> int | None:
@@ -183,10 +184,7 @@ def surrender(
     """首都を占領された国が降伏する（始まったときの 1 回だけ。MI-36・MI-58）。"""
     from hakoniwa_core.modules import politics as politics_stage
 
-    w = war.open_war(world, loser.id, winner.id)
-    if w is not None and w["state"] == war.WAR:
-        w["state"] = war.CEASEFIRE
-        w["ceasefire"] = SURRENDER
+    treaties.surrender(world, ctx.config, loser.id, winner.id, ctx.turn)
     loser.log.append(LogEntry("surrendered", {"country": winner.name}))
     winner.log.append(LogEntry("enemy_surrendered", {"country": loser.name}))
     politics_stage.lose_regime(loser, ctx, "surrender", winner.id)
@@ -215,11 +213,13 @@ def release(world: WorldState, ctx: StageContext) -> None:
             home = world.islands.get(origin)
             ended = _ended_with_prisoners(world, island_id, origin)
             if ended or ctx.turn - turn >= limit or home is None:
-                if home is not None:
+                if home is not None and forces.can_return(home):
                     forces.return_people(home, count)
                     home.log.append(
                         LogEntry("prisoners_returned", {"count": count, "country": island.name})
                     )
+                else:  # 帰る国がなくなった捕虜は、捕らえた国に住む（W-113。前は消えていた）
+                    forces.return_people(island, count)
                 continue
             keep.append([turn, origin, count])
             captive[origin] = captive.get(origin, 0) + count

@@ -110,11 +110,20 @@ def take_people(island: IslandState, count: int, keep: int) -> int:
 
 
 def return_people(island: IslandState, count: int) -> int:
-    """兵を家計に戻す。住民のいるマスへ、人口に比例して戻す。戻した人数を返す。"""
+    """兵を家計に戻す。住民のいるマスへ、人口に比例して戻す。戻した人数を返す。
+
+    住民のいるマスが 1 つもない島（飢えや戦争で空になった島）には、首都のマスへ戻す（帰る家族の
+    いない人も故郷の町に帰る。前は誰も戻れず消えていた。W-113）。首都もなければ戻せない（0）。"""
+    if count <= 0:
+        return 0
     pools = [(i, t.population) for i, t in enumerate(island.tiles) if t.population > 0]
     whole = sum(p for _, p in pools)
-    if count <= 0 or whole <= 0:
-        return 0
+    if whole <= 0:
+        if island.capital is None:
+            return 0
+        cx, cy = island.capital
+        island.tile(cx, cy).population += count
+        return count
     given, left = {}, count
     for i, pool in pools:
         given[i] = count * pool // whole
@@ -127,6 +136,11 @@ def return_people(island: IslandState, count: int) -> int:
     for i, n in given.items():
         island.tiles[i].population += n
     return count
+
+
+def can_return(island: IslandState) -> bool:
+    """兵を家計に戻せるか（住民のいるマスか首都がある。return_people）。"""
+    return population_of(island) > 0 or island.capital is not None
 
 
 def _blend(old: int, old_n: int, new: int, new_n: int) -> int:
@@ -193,7 +207,7 @@ def discharge(island: IslandState, count: int, conscripts_first: bool = True) ->
     """兵を count 人まで除隊させ、家計に戻す。徴兵した兵から先に帰す。除隊させた人数を返す。"""
     state = state_of(island)
     count = min(count, soldiers(island))
-    if count <= 0 or population_of(island) <= 0:  # 戻す先のマスがなければ除隊できない
+    if count <= 0 or not can_return(island):  # 戻す先がなければ除隊できない
         return 0
     order = ("conscripts", "volunteers") if conscripts_first else ("volunteers", "conscripts")
     left = count

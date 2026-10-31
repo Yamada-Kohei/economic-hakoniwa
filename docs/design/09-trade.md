@@ -70,6 +70,7 @@
 | FX-48 | 商社が雇う人数は、直近 `trade.entry_turns` ターンの扱った重さの平均が扱える重さに占める割合 × 定義の人数。下限は定義の人数の `trade.staff_floor`（少なくとも 1 人。港の下限と同じ 2%）。荷がないまま貿易圏に入れない島の商社が、収入のないまま定義の人数の 1 割の賃金を払い続けていた（8001 の島1〜3）。取引は人数で止まらない（扱える重さの上限だけ）ので、圏に入って荷が出れば、直近の量に合わせて人が増える | 決定（W-157） | `trade.staff_floor`, `trade.entry_turns` | tests/core/test_trade.py::test_a_trader_without_cargo_keeps_only_a_caretaker_and_grows_with_its_cargo, ::test_an_island_outside_every_bloc_pays_its_trader_one_wage |
 | FX-49 | 海外の商人は売りと同じ品目を、初めの値段 × `foreign_merchant.buy_multiplier` の指値と売りと同じ1ターンの上限で買う（W-186 回4）。買うのは施設の売りから（国の倉庫と穀物の備蓄の売りは、ほかの買い手が先）。順位は商社の輸出と同じ一番下。代金は島の外から入るお金（仕訳 `merchant_export`）で、GDP と貿易収支では輸出、金融収支では資産の増加。計画経済の島では施設は公定価格を受け取り、商人の指値との差は政府が受け取る。指値が約定価格より安くて買えなかった分は、島の需要（品切れ・値上げ・作り始めの見方）に数えない | 仮 | `foreign_merchant.buy_multiplier`, `foreign_merchant.goods` | tests/core/test_recession_round4.py::test_merchant_bids_for_the_same_goods_below_the_selling_price, ::test_islands_sell_to_merchants_with_balanced_books, ::test_merchant_bids_below_the_price_are_not_island_demand |
 | FX-50 | 戦争で港が封鎖された島には、海外の商人が封鎖の強さ（`military.naval.blockade_full` 隻で全部）の割合だけ少なく来る（売りも買いも。前のターンの貿易の段が数えた値） | 仮 |  | tests/core/test_recession_round4.py::test_blockaded_port_gets_fewer_merchants |
+| FX-51 | 暴動・災害・占領で止まっている商社（施設の止まりの期間）は、人が来ないので新しい注文を出さない: 島の市場で輸出する物を買わず輸入した物を売らず、圏の市場に出さず、外貨を両替せず、狙う量も見直さない（売れなかった分で狙う量を下げない）。手元と運ぶ途中の荷はそのまま持ち、止まりが解けたら売り買いを続ける。足りない分を商社で分けるときは、動いている商社だけで分ける | 決定（W-159） |  | tests/core/test_trade.py::test_a_halted_trader_places_no_orders_and_keeps_its_targets |
 
 ### 仮の決まり
 
@@ -124,7 +125,7 @@
 
 ### 商社
 
-- 商社 `trading` は銀行と同じくオフィス街のマスに1社ずつ入る施設で、島に何社も置ける（上限は `facilities.yaml` の `max_per_island`）。帳簿・税・配当・運転資金の融資はほかの独立採算の施設と同じで、外貨は外貨の持ち高に持つ。扱った荷に合わせて雇う（定義の人数を全部は雇わず、荷がなければ `trade.staff_floor` の割合で 1 人。`staff.py`。FX-48）。
+- 商社 `trading` は銀行と同じくオフィス街のマスに1社ずつ入る施設で、島に何社も置ける（上限は `facilities.yaml` の `max_per_island`）。帳簿・税・配当・運転資金の融資はほかの独立採算の施設と同じで、外貨は外貨の持ち高に持つ。扱った荷に合わせて雇う（定義の人数を全部は雇わず、荷がなければ `trade.staff_floor` の割合で 1 人。`staff.py`。FX-48）。暴動・災害・占領で止まっている間は人が来ず、新しい注文も両替もしない（荷は持ったまま、止まりが解けたら続ける。FX-51）。
 - 荷は港の倉庫に置き、島の市場で買う・売るときの島の中の運賃は港のマスから数える（商社のマスの場所で値段が変わらないように）。商社の荷は商社が自分で売り買いし、市場の段が施設の在庫として売りに出すことはない（タブ 3）。
 - 島の市場（市場の段。前のターンの圏の値段とレートを見る）:
   - 輸出: 圏の前の値段を自国通貨に直し、取り分 `trade.trader_cut` と港の使用料を引き、輸出補助（タブ 6）を足した値段まで買う。量は「狙う量 − 手元の輸出の荷」。

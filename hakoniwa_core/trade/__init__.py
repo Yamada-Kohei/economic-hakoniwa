@@ -138,11 +138,24 @@ def shipping_of(island: IslandState, config: GameConfig) -> Facility | None:
     return None
 
 
-def traders_of(island: IslandState, config: GameConfig) -> list[Facility]:
-    """動いている商社（番号の順）。"""
+def traders_of(island: IslandState, config: GameConfig, turn: int | None = None) -> list[Facility]:
+    """動いている商社（番号の順）。
+
+    turn を渡すと、そのターンに暴動・災害・占領で止まっている商社（halted_until）も除く。止まって
+    いる商社は人が来ず（雇用の段）、新しい注文も外貨の両替もしない（W-159）。手元と運ぶ途中の荷は
+    そのまま持ち、止まりが解けたら売り買いを続ける。turn を渡さないのは、荷の持ち主を数える所
+    （輸入している財・運賃のマス）。
+    """
     kind = config.get("trade.trader_facility")
     return sorted(
-        (f for f in island.facilities if f.kind == kind and f.built and not is_stopped(f)),
+        (
+            f
+            for f in island.facilities
+            if f.kind == kind
+            and f.built
+            and not is_stopped(f)
+            and (turn is None or f.ext.get("halted_until", 0) < turn)
+        ),
         key=lambda f: f.id,
     )
 

@@ -16,7 +16,7 @@ from hakoniwa_core import ledger, stock
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import GENERAL, Payer, arrears, books, funds, household
 from hakoniwa_core.economy.households import add_income
-from hakoniwa_core.military import forces
+from hakoniwa_core.military import forces, occupation
 from hakoniwa_core.military.forces import BUDGET_PERSONNEL, BUDGET_PROCUREMENT
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import IslandState, LogEntry
@@ -46,10 +46,27 @@ def food_need(island: IslandState, config) -> int:
     return (home + prisoners) * per_thousand // 1000
 
 
+def starve_prisoners(island: IslandState, config, lack: int) -> int:
+    """食べ物の足りなかった割合 lack（1 万分の 1）に応じて、捕虜が病気と飢えで亡くなる（兵と同じ
+    military.starve。W-113）。捕らえた組ごとに人数に比例して減らし、亡くなった数を返す。"""
+    batches = island.ext.get(forces.KEY, {}).get("prisoners", [])
+    rate = part(to_basis(config.get("military.starve")), lack)
+    dead = 0
+    for batch in batches:
+        n = part(batch[2], rate)
+        batch[2] -= n
+        dead += n
+    if batches:
+        island.ext[forces.KEY]["prisoners"] = [b for b in batches if b[2] > 0]
+    if dead > 0:
+        island.log.append(LogEntry("prisoners_starved", {"count": dead}))
+    return dead
+
+
 def planned(island: IslandState, config) -> dict[str, int]:
     """国庫の取り置きの見積もりの下限。前のターンの支出が 0 でも、兵の賃金と食べ物の分は取り置く
     （開戦や徴兵の直後に取り置きが付かず、賃金が遅れるのを避ける。MI-13）。"""
-    if not forces.soldiers(island):
+    if not forces.soldiers(island) and not occupation.held(island):
         return {}
     price = island.economy.prices.get(FOOD, 0)
     food = food_need(island, config) * price // QUANTITY_SCALE
@@ -68,6 +85,8 @@ class Military(IslandStage):
             wanted = island.ext.get(forces.KEY, {}).get("wanted", {})
             for good, qty in sorted(wanted.items()):
                 self._order(island, config, good, qty, BUDGET_PROCUREMENT)
+            if occupation.held(island):  # 兵がいなくても捕虜には食べさせる（W-113）
+                self._feed_prisoners(island, config)
             return
         state = forces.state_of(island, config)
         stats = island.stats
@@ -76,11 +95,15 @@ class Military(IslandStage):
         whole = forces.soldiers(island)
         new = min(state["new"], whole)  # 入ったターンは家で食べる
         state["new"] = 0
-        need = food_need(island, config) * (whole - new) // whole if whole else 0
+        # 入ったばかりの兵の分だけ引く（捕虜はいつも国の倉庫から食べる。W-113）
+        per_thousand = to_milli(config.get("military.food_per_thousand"))
+        need = max(0, food_need(island, config) - new * per_thousand // 1000)
         eaten = stock.take(island.warehouse, FOOD, need)
         state["hungry"] = eaten < need
         if state["hungry"]:
             self._hunger(island, state, config, need, eaten)
+            if occupation.held(island):  # 捕虜も同じだけ足りない
+                starve_prisoners(island, config, BASIS - eaten * BASIS // need)
         ammo = self._train(island, state, config)
         self._desert(island, state, config)
         food = food_need(island, config) * config.get("military.food_stock_turns")
@@ -95,6 +118,17 @@ class Military(IslandStage):
         stats["military.morale"] = state["morale"] / BASIS
         stats["military.training"] = state["training"] / BASIS
         stats["military.wages_unpaid"] = unpaid
+
+    def _feed_prisoners(self, island: IslandState, config) -> None:
+        """兵のいない国が捕らえている捕虜に、国の倉庫の食べ物を食べさせ、次の分を国として買う
+        （ジュネーブ条約の捕虜の給養。お金は兵の食べ物と同じ国防費の賃金と食べ物の枠）。足りなければ
+        捕虜が病気と飢えで亡くなる。"""
+        need = food_need(island, config)
+        eaten = stock.take(island.warehouse, FOOD, need)
+        if eaten < need:
+            starve_prisoners(island, config, BASIS - eaten * BASIS // need)
+        food = food_need(island, config) * config.get("military.food_stock_turns")
+        self._order(island, config, FOOD, food, BUDGET_PERSONNEL)
 
     @staticmethod
     def _food_hold(island: IslandState, config) -> int:
@@ -164,9 +198,7 @@ class Military(IslandStage):
         below = to_basis(config.get("military.morale.desert_below"))
         if state["morale"] >= below:
             return
-        if (
-            not forces.soldiers(island) or forces.population_of(island) <= 0
-        ):  # 戻す先のマスがなければ逃げられない
+        if not forces.soldiers(island) or not forces.can_return(island):  # 戻る先がない
             return
         rate = part(below - state["morale"], to_basis(config.get("military.morale.desert_rate")))
         gone = max(1, part(forces.soldiers(island), rate))

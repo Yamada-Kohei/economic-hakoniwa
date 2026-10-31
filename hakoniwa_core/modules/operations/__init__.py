@@ -160,8 +160,15 @@ def _disband(
             return "reason_fleet_cargo"
     if "aboard" in unit:
         return "reason_unit_aboard"
+    if not army.is_sea(unit) and army.abroad(unit):  # 外国の島では解散できない（船で帰ってから）
+        return "reason_unit_abroad"
     for good, count in unit["equipment"].items():
         stock.add(island.warehouse, good, count * QUANTITY_SCALE, ctx.turn, ctx.defs.goods)
+    # 輸送船団に積んだ補給と、部隊の持つ補給は国の倉庫へ降ろす（W-113。前は解散で消えていた）
+    for key in ("goods", "stores"):
+        for good, qty in sorted((unit.get(key) or {}).items()):
+            if qty > 0:
+                stock.add(island.warehouse, good, qty, ctx.turn, ctx.defs.goods)
     island.log.append(
         LogEntry(
             "unit_disbanded", {"army": unit["kind"], "unit": unit["id"], "count": unit["soldiers"]}
