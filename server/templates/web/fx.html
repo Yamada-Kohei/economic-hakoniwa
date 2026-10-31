@@ -252,7 +252,7 @@
     {% if rate_names %}<figure class="chart" data-names="{{ rate_names }}"><figcaption>{% translate "為替レート（相手の通貨 1 が自国通貨でいくらか）" %}</figcaption></figure>{% endif %}
     <figure class="chart" data-names="trade.exports,trade.imports,trade.balance"><figcaption>{% translate "輸出・輸入・貿易収支（1ターン）" %}</figcaption></figure>
     <figure class="chart" data-names="fx.holdings,money.nonresident"><figcaption>{% translate "外貨の持ち高と、外国が持つ自国通貨" %}</figcaption></figure>
-    <figure class="chart" data-names="fx.volume.*"><figcaption>{% translate "為替の売買量（1ターン）" %}</figcaption></figure>
+    {% for v in volume_charts %}<figure class="chart" data-names="{{ v.name }}"><figcaption>{% blocktranslate with c=v.currency %}為替の売買量（{{ c }}の額。1ターン）{% endblocktranslate %}</figcaption></figure>{% empty %}<figure class="chart" data-names="fx.volume.*"><figcaption>{% translate "為替の売買量（1ターン）" %}</figcaption></figure>{% endfor %}
     <figure class="chart" data-names="fx.dealt.*"><figcaption>{% translate "中央銀行が買った外貨（1ターン。売りはマイナス）" %}</figcaption></figure>
     <figure class="chart" data-names="bop.current,bop.goods,bop.income,bop.transfers"><figcaption>{% translate "経常収支とその内訳（1ターン）" %}</figcaption></figure>
     <figure class="chart" data-names="fx.reserves,bonds.foreign"><figcaption>{% translate "外貨準備と、外国が持つ自国の国債" %}</figcaption></figure>

@@ -10,6 +10,7 @@ from hakoniwa_core.game import load_game
 from hakoniwa_core.log import format_log
 from hakoniwa_core.military import army, civil_war, forces, occupation
 from hakoniwa_core.state.generate import generate_world
+from hakoniwa_core.state.model import Facility
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import QUANTITY_SCALE
 
@@ -357,8 +358,19 @@ def test_arsenal_is_seized_at_a_barracks(game, world):
         ),
         None,
     )
-    if barracks is None:
-        pytest.skip("兵舎のない世界")
+    if (
+        barracks is None
+    ):  # 作った世界に兵舎がなければ、首都でない空いた平地に建てておく（飛ばさない）
+        used = {(f.x, f.y) for f in island.facilities}
+        tile = next(
+            t
+            for t in island.tiles
+            if t.terrain == "plain" and (t.x, t.y) not in used and (t.x, t.y) != island.capital
+        )
+        barracks = Facility(
+            id=island.next_facility_id(), kind="barracks", x=tile.x, y=tile.y, built=True
+        )
+        island.facilities.append(barracks)
     group["x"], group["y"] = barracks.x, barracks.y
     civil_war._hold(world, ctx_of(game, world), island, group)
     assert group["weapons"] > 0

@@ -213,6 +213,7 @@ def _game_version() -> str:
                 cwd=BASE_DIR,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=5,
                 check=True,
             ).stdout.strip()
@@ -257,3 +258,18 @@ HAKONIWA_COUNTRY_NOTES_PER_DAY = int(os.environ.get("HAKONIWA_COUNTRY_NOTES_PER_
 HAKONIWA_UPDATE_STALE_MINUTES = int(os.environ.get("HAKONIWA_UPDATE_STALE_MINUTES", "30"))
 HAKONIWA_AI_CALLS_PER_MINUTE = int(os.environ.get("HAKONIWA_AI_CALLS_PER_MINUTE", "60"))
 HAKONIWA_MCP_MAX_BATCH = int(os.environ.get("HAKONIWA_MCP_MAX_BATCH", "10"))
+
+# 記録: 500 の原因（traceback）を標準エラーに出し、公開サーバーでは systemd の journal に残す。
+# アクセスの記録は出さない（2026-10-26 の決まり）ので、django.request は ERROR だけ
+# （404 などの WARNING は出さない）。
+# ゲームの中の WARNING 以上（ログインの制限など）も、今までどおり標準エラーへ。
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"plain": {"format": "%(levelname)s %(name)s: %(message)s"}},
+    "handlers": {"stderr": {"class": "logging.StreamHandler", "formatter": "plain"}},
+    "loggers": {
+        "django.request": {"handlers": ["stderr"], "level": "ERROR", "propagate": False},
+    },
+    "root": {"handlers": ["stderr"], "level": "WARNING"},
+}

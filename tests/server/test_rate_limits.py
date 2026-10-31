@@ -606,6 +606,8 @@ def _run_workers(env, mode, arg, n=4) -> list[int]:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         for _ in range(n)
     ]
@@ -643,6 +645,8 @@ def test_several_processes_share_the_mcp_quota(shared_db):
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     ).stdout.strip()
     # 4 プロセス × 15 回 × 5 件 = 300 件分を送って、1 分 60 件の枠から通るのは 12 回（60 件分）だけ
     assert sum(_run_workers(shared_db, "mcp", token)) == 12

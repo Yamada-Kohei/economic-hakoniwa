@@ -148,6 +148,8 @@ def facility_state(
                     "x": x,
                     "y": y,
                     "status_text": text,
+                    # 国営か民営か（持ち主だけ。市場の画面の止まった施設と同じ。W-225）
+                    **({"owner_name": display.message(f"owner_{f.owner}")} if mine else {}),
                 }
             )
         elif row.operating_rate < fac.FULL and text:
@@ -235,11 +237,29 @@ def _politics(island: m.Island, mine: bool) -> dict[str, Any]:
     return out
 
 
-def _goods(island: m.Island, stats: dict[str, float], currency: str) -> list[dict[str, Any]]:
-    """財ごとの値段・売買量・買えなかった量・生産量・在庫（市場の画面の表と同じ）。"""
-    keep = ("good", "name", "unit", "price", "change", "volume", "unmet", "production", "stock")
+def _goods(
+    island: m.Island, stats: dict[str, float], currency: str, mine: bool = False
+) -> list[dict[str, Any]]:
+    """財ごとの値段と値段の種類（約定・気配・持ち越し・未観測）と最後に約定したターン・売買量・
+    買えなかった量・生産量・在庫と、持ち主には国の倉庫から国営の施設に渡した量（市場の画面の表と
+    同じ。W-171・W-225）。"""
+    keep = (
+        "good",
+        "name",
+        "unit",
+        "price",
+        "price_kind_name",
+        "observed_turn",
+        "change",
+        "volume",
+        "unmet",
+        "production",
+        "stock",
+        "to_state",
+    )
     return [
-        {k: r[k] for k in keep if k in r} for r in reports.market_table(island, stats, currency)
+        {k: r[k] for k in keep if k in r}
+        for r in reports.market_table(island, stats, currency, mine)
     ]
 
 
@@ -386,7 +406,7 @@ def island_alerts(island: m.Island, mine: bool) -> tuple[list[str], list[dict[st
     _, latest = display.latest_stats(island)
     stats = reports.with_fiscal(latest)
     facilities = facility_state(island, mine)
-    goods = _goods(island, latest, currency)
+    goods = _goods(island, latest, currency, mine)
     hungry = hunger(island, latest, currency)
     out = _alerts(
         stats,
@@ -642,7 +662,7 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
     stats = reports.with_fiscal(latest)
     before = _stats_at(island, stats_turn - 1) if stats_turn is not None else {}
     facilities = facility_state(island, mine, viewer)
-    goods = _goods(island, latest, currency)
+    goods = _goods(island, latest, currency, mine)
     bonds = _bonds_due(island, world.turn, currency)
     politics = _politics(island, mine)
     hungry = hunger(island, latest, currency)

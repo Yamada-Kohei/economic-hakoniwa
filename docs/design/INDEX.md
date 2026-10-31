@@ -500,7 +500,7 @@
 
 ## [11 画面と統計](11-ui.md)
 
-決まり 55 個、うち仮の決まりの表にあるもの 0 個。
+決まり 56 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -559,10 +559,11 @@
 | UI-53 | 手引きは 3 つ: 入門（`/help/start/` | 決定（2026-10-29、本人のカード「入門と詳しい仕組みに分ける」） | tests/server/test_help_start.py |
 | UI-54 | 企業の一覧は誰にでも見せる: 他国の施設の画面と国の要約に企業の名前・所有・施設の数と種類・働く… | 決定 | tests/server/test_firm_lists.py |
 | UI-55 | アカウントの画面（右上のログイン名から）で、ログイン名とパスワードを変え、国を手放して建て直せる | 決定 | tests/server/test_account.py |
+| UI-56 | 市場の値段には種類（約定・気配・持ち越し・未観測）と最後に売買が成立したターンを付け、0 や取引… | 決定（2026-10-31、W-171） | tests/server/test_market_trade_screens.py |
 
 ## [12 確かめ方](12-checks.md)
 
-決まり 42 個、うち仮の決まりの表にあるもの 0 個。
+決まり 43 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -608,6 +609,7 @@
 | GT-39 | 関門の値段の幅は、サービスと小売りだけ物価指数でなく平均賃金の伸びで割って見る（賃金が物の値段よ… | 決定（回7 後半） | tests/core/test_gate.py |
 | GT-40 | 標準の計画は、島で作っていない投入財でも、作る施設の投入財が手元にあれば手に入ると見て使う施設（… | 決定（回7 後半） | tests/core/test_balance_round7b.py |
 | GT-41 | 測りは、計算の中身（hakoniwa_core・game.yaml・packs・schemas）… | 決定 | tests/core/test_measure_reuse.py |
+| GT-43 | 試験は回す場所と順によらず同じ結果になる（Linux でも Windows の X870 でも、… | 決定 | tests/core/test_playtest_fixes.py、tests/server/test_board.py、tests/server/test_theme_sprites.py |
 
 ## [15 軍事と戦争](15-military.md)
 

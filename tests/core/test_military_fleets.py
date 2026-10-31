@@ -232,10 +232,14 @@ def test_every_military_log_kind_is_private():
     from pathlib import Path
 
     kinds = set()
-    for path in Path("hakoniwa_core").rglob("*.py"):
-        if "military" in str(path) or "operations" in str(path):
+    root = Path(__file__).resolve().parents[2] / "hakoniwa_core"  # 試験を回す場所によらない
+    for path in root.rglob("*.py"):
+        name = path.relative_to(root).as_posix()
+        if "military" in name or "operations" in name:
             kinds |= set(
-                re.findall(r'LogEntry\(\s*"((?:unit|fleet|trench)_\w+)"', path.read_text())
+                re.findall(
+                    r'LogEntry\(\s*"((?:unit|fleet|trench)_\w+)"', path.read_text(encoding="utf-8")
+                )
             )
     assert kinds
     assert kinds <= set(PRIVATE_LOGS)

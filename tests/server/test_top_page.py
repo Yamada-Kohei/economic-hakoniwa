@@ -211,7 +211,9 @@ def test_banner_and_its_html(world):
     assert "当サイトのバナー" in html
     assert res.context["banner_html"].startswith('<a href="http://testserver/"><img src="http')
     assert "img/banner-88x31.svg" in res.context["banner_html"]
-    svg = (Path(settings.BASE_DIR) / "server/static/img/banner-88x31.svg").read_text()
+    svg = (Path(settings.BASE_DIR) / "server/static/img/banner-88x31.svg").read_text(
+        encoding="utf-8"
+    )
     assert 'width="88" height="31"' in svg and "<script" not in svg
 
 

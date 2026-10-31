@@ -280,6 +280,10 @@ def test_old_threads_fall_into_the_log(client, settings):
     chat.save()
     settings.HAKONIWA_BOARD_THREADS_PER_DAY = 100
     ids = [_thread(client, alice, title=f"スレ{i}", body=f"本文{i}") for i in range(3)]
+    # 立てた時刻を 1 分ずつ前へずらす。続けて立てると時刻が同じになることがあり（Windows の時計は
+    # 粗い）、上げた順が番号の順に戻って、落ちるスレッドが入れ替わっていた
+    for minutes, pk in zip((3, 2, 1), ids, strict=True):
+        Thread.objects.filter(pk=pk).update(bumped_at=timezone.now() - timedelta(minutes=minutes))
     _say(client, ids[0], "上げる")  # 0 は新しくなる
     fourth = _thread(client, alice, title="スレ3", body="本文3")
     active = [t["title"] for t in client.get("/api/board/threads?board=chat").json()["threads"]]

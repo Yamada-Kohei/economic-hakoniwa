@@ -131,7 +131,7 @@
       <table class="goods">
         <thead><tr><th>{% translate "資源" %}</th><th>{% translate "在庫" %}</th><th>{% translate "生産量" %}</th><th>{% translate "売買量" %}</th><th>{% translate "単位" %}</th><th>{% translate "値段（1単位）" %}</th></tr></thead>
         <tbody>
-          {% for g in goods %}<tr><td>{{ g.name }}</td><td>{{ g.stock }}</td><td>{{ g.production }}</td><td>{{ g.volume }}</td><td>{{ g.unit }}</td><td>{{ g.price }}</td></tr>{% endfor %}
+          {% for g in goods %}<tr><td>{{ g.name }}</td><td>{{ g.stock }}</td><td>{{ g.production }}</td><td>{{ g.volume }}</td><td>{{ g.unit }}</td><td>{{ g.price|default:"-" }}{% if g.price_kind_name != "約定" %} <small class="muted">{{ g.price_kind_name }}</small>{% endif %}</td></tr>{% endfor %}
         </tbody>
       </table>
     {% else %}

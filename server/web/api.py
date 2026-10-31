@@ -722,7 +722,7 @@ def market_table(request, island_id: int):
         "island": island.id,
         "mine": mine,
         "turn": reports.market_turn(island),
-        "rows": reports.market_table(island, stats, _currency(island)),
+        "rows": reports.market_table(island, stats, _currency(island), mine),
     }
     if mine:
         data["short"] = reports.short_facilities(island, display.island_for_naming(island))

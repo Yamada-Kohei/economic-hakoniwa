@@ -50,8 +50,11 @@ if (detail) {
       { key: "supply", label: "売り注文", values: data.supply },
     ]);
     const l = data.latest;
+    const kind = l && l.price_kind !== "trade"
+      ? `（${escapeHtml(l.price_kind_name)}${l.observed_turn != null ? `。最後の約定 ${escapeHtml(turnDate(l.observed_turn))}` : "。約定なし"}）`
+      : "";
     slot("latest").innerHTML = l
-      ? `<p>${escapeHtml(turnDate(l.turn))}: 値段 ${escapeHtml(formatValue(l.price, "money", currency, true))}・売買量 ${escapeHtml(formatValue(l.volume, unit, "", true))}（買い注文 ${escapeHtml(formatValue(l.demand, unit, "", true))}・売り注文 ${escapeHtml(formatValue(l.supply, unit, "", true))}）</p>`
+      ? `<p>${escapeHtml(turnDate(l.turn))}: 値段 ${escapeHtml(formatValue(l.price, "money", currency, true))}${kind}・売買量 ${escapeHtml(formatValue(l.volume, unit, "", true))}（買い注文 ${escapeHtml(formatValue(l.demand, unit, "", true))}・売り注文 ${escapeHtml(formatValue(l.supply, unit, "", true))}）</p>`
       : `<p class="muted">この資源の市場の記録はありません。</p>`;
     if (mine) {
       slot("trades").innerHTML = tradesHtml(data, unit);
@@ -65,10 +68,11 @@ if (detail) {
       .map((t) => `<tr><td>${escapeHtml(t.buyer_name)}</td><td>${escapeHtml(t.seller_name)}</td>
         <td>${escapeHtml(formatValue(t.quantity, unit, "", true))}</td>
         <td>${escapeHtml(formatValue(t.amount, "money", currency, true))}</td>
-        <td>${escapeHtml(formatValue(t.price, "money", currency, true))}</td></tr>`)
+        <td>${escapeHtml(formatValue(t.price, "money", currency, true))}</td>
+        <td>${t.note ? `<small class="muted">${escapeHtml(t.note)}</small>` : ""}</td></tr>`)
       .join("");
     return `<table class="goods trades-table">
-      <thead><tr><th>買い手</th><th>売り手</th><th>量</th><th>代金</th><th>1${escapeHtml(data.unit)}あたり</th></tr></thead>
+      <thead><tr><th>買い手</th><th>売り手</th><th>量</th><th>代金</th><th>1${escapeHtml(data.unit)}あたり</th><th>中身</th></tr></thead>
       <tbody>${rows}</tbody></table>`;
   }
 
@@ -76,7 +80,7 @@ if (detail) {
     if (!list.length) return `<p class="muted">ありません。</p>`;
     const base = detail.dataset.islandUrl;
     return `<ul class="plain-list">${list
-      .map((f) => `<li><a href="${base}?x=${f.x}&amp;y=${f.y}">${escapeHtml(f.name)}</a> ・ ${escapeHtml(f.status_text)}</li>`)
+      .map((f) => `<li><a href="${base}?x=${f.x}&amp;y=${f.y}">${escapeHtml(f.name)}</a>（${escapeHtml(f.owner_name)}） ・ ${escapeHtml(f.status_text)}</li>`)
       .join("")}</ul>`;
   }
 

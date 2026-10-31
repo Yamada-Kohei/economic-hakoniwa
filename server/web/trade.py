@@ -391,7 +391,9 @@ def trade_data(
         for b in state["blocs"]
         if island.id not in b["members"]
     ]
-    data["contracts"] = contract_rows(state["contracts"], island.id, world.turn, islands)
+    data["contracts"] = contract_rows(
+        state["contracts"], island.id, world.turn, islands, state["shipments"]
+    )
     data["traders"] = trader_rows(here, islands, state["blocs"])
     data["fleet"] = fleet_view(island, here, stats)
     data["shipments"] = shipment_rows(state["shipments"], island.id, islands, state["blocs"])
@@ -499,16 +501,39 @@ def _member_bloc(
 
 
 def contract_rows(
-    contracts: list[dict[str, Any]], island_id: int, turn: int, islands: dict[int, dict[str, Any]]
+    contracts: list[dict[str, Any]],
+    island_id: int,
+    turn: int,
+    islands: dict[int, dict[str, Any]],
+    shipments: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """島が当事者の二国間契約（申し込み中・有効・終わったもの）。turn は世界の今のターン。"""
+    """島が当事者の二国間契約（申し込み中・有効・終わったもの）。turn は世界の今のターン。
+
+    shipments は運ぶ途中の荷。契約の荷のうち、まだ海の上の量と、いちばん早く着く見込みのターンを
+    出す（送り出した量は、積んで代金を払った時点で足す。届くのは船が着いてから。W-226）。
+    """
     defs = get_game().defs
     wait = get_game().config.get("trade.contract_cancel_turns")
+    sailing: dict[int, list[int]] = {}  # 契約の番号 → [海の上の量, 早く着くターン, 遅く着くターン]
+    for s in shipments or []:
+        if s.get("kind") != "contract":
+            continue
+        qty = sum(q for _, q in s["batches"])
+        item = sailing.setdefault(s["ref"], [0, s["arrive"], s["arrive"]])
+        item[0] += qty
+        item[1] = min(item[1], s["arrive"])
+        item[2] = max(item[2], s["arrive"])
     rows = []
     for c in contracts:
         if island_id not in (c["seller"], c["buyer"]):
             continue
         view = contract_view(c, island_id, turn)
+        at_sea, first_arrive, last_arrive = sailing.get(c["id"], [0, None, None])
+        # 着く予定のターンを過ぎた荷は、買う国の港の荷下ろしの空きを待っている（次のターン以降）
+        waiting = first_arrive is not None and first_arrive <= turn
+        if waiting:
+            first_arrive = max(first_arrive, turn + 1)
+            last_arrive = max(last_arrive, turn + 1)
         state = view["state"]
         proposed = state == contract_states.PROPOSED
         rows.append(
@@ -534,8 +559,13 @@ def contract_rows(
                 "start": view["start"] or None,
                 "end": view["end"] or None,
                 "active": view["active"],
-                # 届いた量と不足は丸めない（0.001 トンの未達が「不足なし」に見えた。Codex の報告）
-                "delivered": _amount(view["good"], view["delivered"]),
+                # 送り出した量と不足は丸めない（0.001 トンの未達が「不足なし」に見えた。Codex の
+                # 報告）。送り出した量は積んで代金を払った量の合計で、まだ海の上の分を含む（W-226）
+                "shipped": _amount(view["good"], view["delivered"]),
+                "at_sea": _amount(view["good"], at_sea),  # まだ海の上の量
+                "arrive_first": first_arrive,  # 海の上の荷が着く見込みのターン（早いもの）
+                "arrive_last": last_arrive,  # 同じく遅いもの（積んだターンが違う荷があるとき）
+                "port_wait": waiting,  # 港の荷下ろしの空きを待っている荷がある
                 "paid": c.get("paid", 0),
                 "short": _amount(view["good"], view["short"]),
                 "short_any": view["short"] > 0,

@@ -21,8 +21,8 @@ from hakoniwa_core.simulate import main as simulate_main
 @pytest.fixture
 def tree(tmp_path):
     (tmp_path / "core").mkdir()
-    (tmp_path / "core" / "a.py").write_text("x = 1\n")
-    (tmp_path / "game.yaml").write_text("packs: [base]\n")
+    (tmp_path / "core" / "a.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "game.yaml").write_text("packs: [base]\n", encoding="utf-8")
     return tmp_path
 
 
@@ -33,12 +33,12 @@ def fingerprint(tree):
 def test_fingerprint_changes_with_content_and_names(tree):
     before = fingerprint(tree)
     assert fingerprint(tree) == before
-    (tree / "core" / "a.py").write_text("x = 2\n")
+    (tree / "core" / "a.py").write_text("x = 2\n", encoding="utf-8")
     changed = fingerprint(tree)
     assert changed != before
-    (tree / "core" / "a.py").write_text("x = 1\n")
+    (tree / "core" / "a.py").write_text("x = 1\n", encoding="utf-8")
     assert fingerprint(tree) == before
-    (tree / "core" / "b.py").write_text("")  # 空のファイルを足しても変わる
+    (tree / "core" / "b.py").write_text("", encoding="utf-8")  # 空のファイルを足しても変わる
     assert fingerprint(tree) != before
 
 
@@ -61,7 +61,9 @@ def test_simulate_result_carries_the_fingerprint(tmp_path):
     out = tmp_path / "small.json"
     args = ["--scenario", "small", "--islands", "2", "--turns", "3", "--seed", "1"]
     assert simulate_main([*args, "--out", str(out)]) == 0
-    assert json.loads(out.read_text())["code_fingerprint"] == reuse.code_fingerprint()
+    assert (
+        json.loads(out.read_text(encoding="utf-8"))["code_fingerprint"] == reuse.code_fingerprint()
+    )
 
 
 # --- find ---------------------------------------------------------------------------------
@@ -70,7 +72,7 @@ def test_simulate_result_carries_the_fingerprint(tmp_path):
 def write(folder, name, **fields):
     folder.mkdir(exist_ok=True)
     data = {"scenario": "small", "seed": 1, "turns": 300, "digest": "d", **fields}
-    (folder / f"{name}.json").write_text(json.dumps(data))
+    (folder / f"{name}.json").write_text(json.dumps(data), encoding="utf-8")
     return folder / f"{name}.json"
 
 
@@ -80,7 +82,7 @@ def test_find_accepts_only_the_same_fingerprint(tmp_path):
     write(old, name, code_fingerprint="A")
     write(no_print, name)
     broken.mkdir()
-    (broken / f"{name}.json").write_text('{"scenario": "sma')
+    (broken / f"{name}.json").write_text('{"scenario": "sma', encoding="utf-8")
     write(same, name, code_fingerprint="B")
 
     assert reuse.find(name, "B", [old], False)[0] is None
@@ -92,7 +94,7 @@ def test_find_accepts_only_the_same_fingerprint(tmp_path):
     assert reuse.find(name, "B", [old, broken, same], False) == (same / f"{name}.json", "")
     # 時系列を頼まれたら、時系列のファイルが揃っているものだけ
     assert "時系列がない" in reuse.find(name, "B", [same], True)[1]
-    (same / f"{name}.jsonl").write_text("{}\n")
+    (same / f"{name}.jsonl").write_text("{}\n", encoding="utf-8")
     assert reuse.find(name, "B", [same], True)[0] == same / f"{name}.json"
 
 
@@ -107,7 +109,7 @@ class FakeProcess:
     def __init__(self, command, stdout=None, stderr=None):
         FakeProcess.started.append(command)
         out = command[command.index("--out") + 1]
-        with open(out, "w") as f:
+        with open(out, "w", encoding="utf-8") as f:
             json.dump({"scenario": "small", "seed": 1, "turns": 300, "fresh": True}, f)
 
     def poll(self):
@@ -136,9 +138,9 @@ def test_batch_copies_reusable_results_and_runs_the_rest(tmp_path, fake_runs):
     assert failed == 0
     started = [c[c.index("--seed") + 1] for c in fake_runs]
     assert started == ["2", "3"]  # 1 は回していない
-    assert json.loads((out / "small-s1-t300.json").read_text())["marker"] == "old"
-    assert json.loads((out / "small-s2-t300.json").read_text())["fresh"] is True
-    assert str(base) in (out / "small-s1-t300.log").read_text()
+    assert json.loads((out / "small-s1-t300.json").read_text(encoding="utf-8"))["marker"] == "old"
+    assert json.loads((out / "small-s2-t300.json").read_text(encoding="utf-8"))["fresh"] is True
+    assert str(base) in (out / "small-s1-t300.log").read_text(encoding="utf-8")
 
 
 def test_batch_without_reuse_runs_everything(tmp_path, fake_runs):
@@ -153,17 +155,19 @@ def test_batch_reusing_its_own_folder_runs_nothing(tmp_path, fake_runs):
     write(folder, "small-s1-t300", code_fingerprint=reuse.code_fingerprint(), marker="kept")
     assert measure.batch([("small", 1, 300)], folder, 1, False, [folder]) == 0
     assert fake_runs == []
-    assert json.loads((folder / "small-s1-t300.json").read_text())["marker"] == "kept"
+    assert (
+        json.loads((folder / "small-s1-t300.json").read_text(encoding="utf-8"))["marker"] == "kept"
+    )
 
 
 def test_batch_copies_the_series_when_asked(tmp_path, fake_runs):
     base = tmp_path / "main"
     write(base, "small-s1-t300", code_fingerprint=reuse.code_fingerprint())
-    (base / "small-s1-t300.jsonl").write_text('{"t": 1}\n')
+    (base / "small-s1-t300.jsonl").write_text('{"t": 1}\n', encoding="utf-8")
     out = tmp_path / "new"
     measure.batch([("small", 1, 300)], out, 1, True, [base])
     assert fake_runs == []
-    assert (out / "small-s1-t300.jsonl").read_text() == '{"t": 1}\n'
+    assert (out / "small-s1-t300.jsonl").read_text(encoding="utf-8") == '{"t": 1}\n'
     # 時系列がなければ回す
     (base / "small-s1-t300.jsonl").unlink()
     measure.batch([("small", 1, 300)], tmp_path / "other", 1, True, [base])

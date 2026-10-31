@@ -1347,6 +1347,9 @@ class Market(IslandStage):
                     f.economy.get("short", {}).pop(good, None)
                 stats = island.stats
                 stats["warehouse.to_state"] = stats.get("warehouse.to_state", 0) + amount
+                # 品目ごとの量（記録だけ。市場の画面で持ち主に見せる。W-225）
+                key = f"warehouse.to_state.{good}"
+                stats[key] = stats.get(key, 0) + from_milli(taken)
 
     @staticmethod
     def _construction_goods(defs: Defs) -> set[str]:
