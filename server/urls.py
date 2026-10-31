@@ -1,7 +1,11 @@
 from django.contrib import admin
 from django.urls import include, path
 
+from server.web import server_status
+
 urlpatterns = [
+    # 管理者だけの「サーバーの様子」。/admin/ の下に置き、管理画面と同じ守りに入れる
+    path("admin/server/", admin.site.admin_view(server_status.view), name="server_status"),
     path("admin/", admin.site.urls),
     path("accounts/", include("server.accounts.urls")),
     path("board/", include("server.board.urls")),

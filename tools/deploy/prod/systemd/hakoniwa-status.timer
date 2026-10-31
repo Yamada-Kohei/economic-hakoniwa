@@ -1,0 +1,10 @@
+[Unit]
+Description=経済版箱庭諸国 「サーバーの様子」の値を 1 分ごとに
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
