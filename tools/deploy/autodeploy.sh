@@ -103,9 +103,11 @@ trial() {
   step "試しの作業ツリーを作る" git -C "$APP_DIR" worktree add --detach "$src" "$NEW" || { rm -rf "$tmp"; return 1; }
   py="$PY"
   if ! git -C "$APP_DIR" diff --quiet "$OLD" "$NEW" -- pyproject.toml; then
-    # 使う部品が変わったときだけ、試し用の venv を作る。
-    step "試し用の venv を作る" python3 -m venv "$tmp/venv" &&
-      step "試し用の venv に入れる" "$tmp/venv/bin/pip" install -q -e "$src" || { trial_cleanup "$tmp"; return 1; }
+    # 使う部品が変わったときだけ、試し用の venv を作る。サーバーに python3.12-venv（ensurepip）が
+    # なくても作れるよう、pip なしで作り、動いている venv の pip で入れる（pip の --python）。
+    step "試し用の venv を作る" "$PY" -m venv --without-pip "$tmp/venv" &&
+      step "試し用の venv に入れる" "$PY" -m pip --python "$tmp/venv/bin/python" install -q -e "$src" ||
+      { trial_cleanup "$tmp"; return 1; }
     py="$tmp/venv/bin/python"
   fi
   for w in "${WORLDS[@]}"; do

@@ -13,6 +13,16 @@ REPO = Path(__file__).resolve().parent.parent
 os.environ.setdefault("HK_SCALE", "1")
 
 
+def pytest_configure(config) -> None:
+    # 文字コードを書かずにファイルを読み書きすると、Windows（X870）では cp932 になって落ちる。
+    # CI は PYTHONWARNDEFAULTENCODING=1 で回し、ここで自分のコードの分だけを誤りにする（GT-43）。
+    # pyproject.toml に書かないのは、LAN の自動の反映が pyproject.toml の変わった版で試しの venv を
+    # 作ろうとし、サーバーに python3.12-venv がなくて止まったため
+    config.addinivalue_line(
+        "filterwarnings", "error::EncodingWarning:(tests|hakoniwa_core|server|tools)"
+    )
+
+
 @pytest.fixture
 def game_dir(tmp_path: Path):
     """本体パックとスキーマを写した、書き換えてよい game.yaml の置き場所。
