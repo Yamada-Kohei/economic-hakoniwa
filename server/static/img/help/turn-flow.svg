@@ -1,16 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 540" width="480" height="540" font-family='"Noto Sans JP","Hiragino Kaku Gothic ProN","Meiryo","WenQuanYi Zen Hei",sans-serif' role="img" aria-labelledby="t d">
-<title id="t">1か月（1ターン）の更新の流れ</title><desc id="d">命令の実行、生産、賃金と市場、貿易、銀行と国債、人口と政治、記録の順に、1か月の更新が進むことを示す図。</desc>
+<title id="t">1か月（1ターン）の更新の流れ</title><desc id="d">命令の実行、予算と軍の維持、生産、賃金と市場、部隊の動きと貿易、銀行と国債、人口と政治、記録の順に、1か月の更新が進むことを示す図。</desc>
 <rect width="480" height="540" fill="#ffffff"/>
 <defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
 <rect x="48" y="14" width="392" height="50" rx="6" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
 <text x="244.0" y="34.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">命令を実行する</text>
-<text x="244.0" y="53.8" font-size="13" text-anchor="middle" fill="#102a6b">列の上から、行政力の範囲で。政策も建設もここ</text>
+<text x="244.0" y="53.8" font-size="13" text-anchor="middle" fill="#102a6b">列の上から行政力の範囲で。政策・建設・宣戦・条約</text>
 <circle cx="25" cy="39.0" r="12" fill="#1f4fa8"/>
 <text x="25" y="44.0" font-size="14" text-anchor="middle" fill="#ffffff" font-weight="bold">1</text>
 <line x1="250" y1="64" x2="250" y2="80" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
 <rect x="48" y="80" width="392" height="50" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
-<text x="244.0" y="100.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">予算を取り置き、働き手を割り当てる</text>
-<text x="244.0" y="119.8" font-size="13" text-anchor="middle" fill="#102a6b">賃金の高い施設から、通勤圏の人を雇う</text>
+<text x="244.0" y="100.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">予算を取り置き、軍を保ち、働き手を割り当てる</text>
+<text x="244.0" y="119.8" font-size="13" text-anchor="middle" fill="#102a6b">兵の賃金と食べ物。通勤圏の人を賃金の高い施設へ</text>
 <circle cx="25" cy="105.0" r="12" fill="#1f4fa8"/>
 <text x="25" y="110.0" font-size="14" text-anchor="middle" fill="#ffffff" font-weight="bold">2</text>
 <line x1="250" y1="130" x2="250" y2="146" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
@@ -27,8 +27,8 @@
 <text x="25" y="242.0" font-size="14" text-anchor="middle" fill="#ffffff" font-weight="bold">4</text>
 <line x1="250" y1="262" x2="250" y2="278" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
 <rect x="48" y="278" width="392" height="50" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
-<text x="244.0" y="298.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">貿易と為替</text>
-<text x="244.0" y="317.8" font-size="13" text-anchor="middle" fill="#102a6b">荷下ろし・契約・為替・船出</text>
+<text x="244.0" y="298.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">部隊の動き、貿易と為替</text>
+<text x="244.0" y="317.8" font-size="13" text-anchor="middle" fill="#102a6b">戦闘と占領、荷下ろし・契約・為替・船出</text>
 <circle cx="25" cy="303.0" r="12" fill="#1f4fa8"/>
 <text x="25" y="308.0" font-size="14" text-anchor="middle" fill="#ffffff" font-weight="bold">5</text>
 <line x1="250" y1="328" x2="250" y2="344" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>

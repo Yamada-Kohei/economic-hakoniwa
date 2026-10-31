@@ -4,7 +4,8 @@
 {% if blocked %}
   <p class="error">{% translate "この接続元からは、すでに登録されています。1人1つのアカウントでお願いします。" %}</p>
 {% else %}
-  <form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">{% translate "登録する" %}</button></form>
+  <p>{% translate "登録する前に" %} <a href="{% url 'terms' %}">{% translate "利用規約" %}</a> {% translate "を読んでください。荒らしへの対処のために管理者が公電を読むことがあること、1 人 1 つのアカウントであることなどが書いてあります。登録すると、利用規約に同意したものとします。" %}</p>
+  <form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">{% translate "利用規約に同意して登録する" %}</button></form>
   <p class="muted">{% translate "登録すると、続けて島を作る（建国する）画面に進みます。" %}</p>
 {% endif %}
 {% endblock %}

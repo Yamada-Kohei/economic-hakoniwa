@@ -38,6 +38,7 @@
     </nav>
   </header>
   <main>{% if screen_help_url %}<p class="screen-help"><a href="{{ screen_help_url }}"><span class="screen-help-mark" aria-hidden="true">?</span>{% translate "この画面の手引き" %}</a></p>{% endif %}{% if user.is_authenticated and "@" in user.username %}<p class="flash error">{% translate "ログイン名がメールアドレスのままで、国のページなどで誰にでも見えています。" %} <a href="{% url 'account' %}#rename">{% translate "ログイン名を変える" %}</a></p>{% endif %}{% if messages %}<ul class="flash" role="status">{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}{% block content %}{% endblock %}</main>
+  <footer class="site-footer"><a href="{% url 'terms' %}">{% translate "利用規約" %}</a> ・ <a href="{% url 'help_start' %}">{% translate "手引き" %}</a></footer>
   {% if user.is_authenticated and own_island %}
   <div id="letter-notice" class="letter-notice" role="status" aria-live="polite" aria-atomic="true"
        data-user="{{ user.pk }}" data-island="{{ own_island.id }}" data-url="{% url 'api_letters' %}"

@@ -54,7 +54,7 @@
   {% translate "お金と物の流れ" as fig_title %}{% translate "国庫（政府）は民間から税を集め、公共事業・公務員の賃金・失業手当を払います。銀行は民間の預金を預かって融資し、国庫とは国債でつながります。民間の中では、施設・企業が家計に賃金を払い、家計は働き手として働き、食べ物や品物を市場で買います。施設・企業は市場で売り、原料を買います。島の外とは、港・商社・船が市場とつながり、為替で通貨を替えて外国と売り買いします。" as fig_text %}
   {% include "web/help_figure.html" with src="img/help/overview.svg" width=480 height=545 title=fig_title text=fig_text %}
   <p>{% translate "1か月（1ターン）に起きることの順番です。賃金を市場より先に払うので、働いた人は同じ月にその賃金で食べ物を買えます。" %}</p>
-  {% translate "1か月（1ターン）の更新の流れ" as fig_title %}{% translate "1か月は次の順に進みます。(1)命令の実行 (2)予算の取り置きと働き手の割り当て (3)電力・生産・工事 (4)賃金の支払いと市場の売り買い（賃金が先なので、同じ月に食べ物が買えます） (5)貿易と為替 (6)銀行・国債・決算・倒産と参入 (7)人口・町・移民・政治・教育・災害 (8)記録。終わると次の月です。" as fig_text %}
+  {% translate "1か月（1ターン）の更新の流れ" as fig_title %}{% translate "1か月は次の順に進みます。(1)命令の実行（宣戦と条約も） (2)予算の取り置き、軍の維持（兵の賃金と食べ物）と働き手の割り当て (3)電力・生産・工事 (4)賃金の支払いと市場の売り買い（賃金が先なので、同じ月に食べ物が買えます） (5)部隊の動き（戦闘と占領）、貿易と為替 (6)銀行・国債・決算・倒産と参入 (7)人口・町・移民・政治・教育・災害 (8)記録。終わると次の月です。" as fig_text %}
   {% include "web/help_figure.html" with src="img/help/turn-flow.svg" width=480 height=540 title=fig_title text=fig_text %}
 </section>
 
@@ -649,21 +649,21 @@
 <section class="panel" id="country-pages">
   <h2>{% translate "国のページ・記念碑・賞" %}</h2>
   <p>{% blocktranslate %}国の公開ページ（島の画面の「国の紹介」）は誰でも読めます。国旗（PNG）と紹介文、国ごとの紀年（世界の暦のまま・建国紀元・元号）、年表、来訪者の一言が載ります。世界の近況（上のメニュー）は、全部の国の主な出来事を新しい順に並べたものです。島の一覧の表には、国旗と賞が付きます。{% endblocktranslate %}</p>
-  <p>{% blocktranslate %}賞は記録ではなく、そのつどターンの記録から数えます。繁栄賞・超繁栄賞・究極繁栄賞は人口が 5 万・10 万・20 万人に届いたとき、平和賞は戦争で殺した相手の数が 1 万人に届いたとき（元の箱庭諸島と同じ、平和という名前への皮肉です）、平穏賞は災害・暴動・反乱・戦争が 10 年続けてないとき、災難賞は災難の出来事が 24 件以上のとき、ターン杯は建国がいちばん古い国に付きます。{% endblocktranslate %}</p>
+  <p>{% blocktranslate with prosperity=awards.prosperity peace_kills=awards.peace_kills calm_years=awards.calm_years calamity_count=awards.calamity_count %}賞は記録ではなく、そのつどターンの記録から数えます。繁栄賞・超繁栄賞・究極繁栄賞は人口が {{ prosperity }} 人に届いたとき、平和賞は戦争で殺した相手の数が {{ peace_kills }} 人に届いたとき（元の箱庭諸島と同じ、平和という名前への皮肉です）、平穏賞は災害・暴動・反乱・戦争が {{ calm_years }} 年続けてないとき、災難賞は災難の出来事が {{ calamity_count }} 件以上のとき、ターン杯は建国がいちばん古い国に付きます。{% endblocktranslate %}</p>
   <p>{% blocktranslate %}記念碑は、資材と工事の賃金で建てる、働く人のいない施設です。碑文は自動の文（建てたときの記録から作り、後で変わりません）に、建てるときに 1〜2 行足せます。建てられる条件は次のとおりです。モノリスと自作の記念碑以外は 1 つの国に 1 つまでです。{% endblocktranslate %}</p>
   <div class="table-scroll">
   <table class="info">
     <tr><th>{% translate "モノリス" %}</th><td>{% translate "いつでも" %}</td></tr>
     <tr><th>{% translate "自作の記念碑" %}</th><td>{% translate "いつでも。絵（PNG）を国のページで上げられます（管理者が不適切と判断すると仮の絵に戻ります）" %}</td></tr>
-    <tr><th>{% translate "建国記念碑" %}</th><td>{% translate "建国から 1 年（12 ターン）以上" %}</td></tr>
-    <tr><th>{% translate "平和記念碑" %}</th><td>{% translate "災害・暴動・反乱・戦争が 10 年（120 ターン）続けてなかった国" %}</td></tr>
+    <tr><th>{% translate "建国記念碑" %}</th><td>{% blocktranslate with years=awards.founding_years turns=awards.founding_turns %}建国から {{ years }} 年（{{ turns }} ターン）以上{% endblocktranslate %}</td></tr>
+    <tr><th>{% translate "平和記念碑" %}</th><td>{% blocktranslate with years=awards.peace_years turns=awards.peace_turns %}災害・暴動・反乱・戦争が {{ years }} 年（{{ turns }} ターン）続けてなかった国{% endblocktranslate %}</td></tr>
     <tr><th>{% translate "戦いの碑" %}</th><td>{% translate "戦争に加わったことのある国" %}</td></tr>
-    <tr><th>{% translate "慰霊碑" %}</th><td>{% translate "飢えや戦争で 1,000 人以上が亡くなったことのある国" %}</td></tr>
+    <tr><th>{% translate "慰霊碑" %}</th><td>{% blocktranslate with n=awards.cenotaph_dead %}飢えや戦争で {{ n }} 人以上が亡くなったことのある国{% endblocktranslate %}</td></tr>
     <tr><th>{% translate "元首の像" %}</th><td>{% translate "民主主義でない国（民主主義に変わると倒されます）" %}</td></tr>
     <tr><th>{% translate "労働者の像" %}</th><td>{% translate "産業の称号を持っている国" %}</td></tr>
     <tr><th>{% translate "展望塔" %}</th><td>{% translate "大都市（以上）のある国" %}</td></tr>
-    <tr><th>{% translate "帳簿の碑" %}</th><td>{% translate "建国から 1 年（12 ターン）以上" %}</td></tr>
-    <tr><th>{% translate "検証の碑" %}</th><td>{% translate "建国から 50 ターン以上" %}</td></tr>
+    <tr><th>{% translate "帳簿の碑" %}</th><td>{% blocktranslate with years=awards.ledger_years turns=awards.ledger_turns %}建国から {{ years }} 年（{{ turns }} ターン）以上{% endblocktranslate %}</td></tr>
+    <tr><th>{% translate "検証の碑" %}</th><td>{% blocktranslate with turns=awards.verification_turns %}建国から {{ turns }} ターン以上{% endblocktranslate %}</td></tr>
   </table>
   </div>
 </section>
@@ -710,7 +710,7 @@
 <section class="panel" id="units">
   <h2>{% translate "資源の単位" %}</h2>
   <p>{% blocktranslate with food=food_per_person power=power_per_person %}量は実物に近い単位で出します。1人が1か月に食べる食料は {{ food }} トン、家庭で使う電力は1人1か月 {{ power }} MWh です。自動車・自動車部品・輸送船は1つずつ、サービスと小売りは働く人1人の1か月の働き（人月）で数えます。{% endblocktranslate %}</p>
-  <p>{% translate "内部の計算では量を縮めており、計算上の1トンは実物のおよそ25トン分です。画面・ログ・この手引きの量は、すでに財ごとの倍率で換算した値です。表示されたトン数をさらに25倍する必要はありません。" %}</p>
+  <p>{% blocktranslate with n=weight_scale %}内部の計算では量を縮めており、計算上の1トンは実物のおよそ{{ n }}トン分です。画面・ログ・この手引きの量は、すでに財ごとの倍率で換算した値です。表示されたトン数をさらに{{ n }}倍する必要はありません。{% endblocktranslate %}</p>
   <div class="table-scroll">
   <table class="info">
     {% for u in units %}<tr><th>{{ u.name }}</th><td>{{ u.unit }}</td></tr>{% endfor %}
