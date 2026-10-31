@@ -1239,7 +1239,7 @@ def _describe_finance(kind: str, payload: dict[str, Any], name: str, where: str)
         return f"{name}: " + "・".join(parts) if parts else name
     if kind == "set_bond_payment":
         return f"{name}: " + ("止める（債務不履行）" if payload.get("stop") else "再開する")
-    if kind == "set_public_works":
+    if kind in ("set_public_works", "set_warehouse_release"):
         return f"{name}: " + ("始める" if payload.get("auto") else "止める")
     if kind == "set_bank_policy":
         parts = []
@@ -1305,6 +1305,8 @@ def policy_view(island) -> dict[str, Any]:
         },
         # 役所の決まった事業（W-186 回4。命令 set_public_works で止めていなければ動く）
         "public_works_auto": not (island.economy or {}).get("infra", {}).get("auto_off"),
+        # 備蓄の放出の決まり（2026-10-31。命令 set_warehouse_release で止めていなければ動く）
+        "warehouse_release": policy.get("warehouse_release", True),
         # 公共料金の上限は見せる単位 1 つあたり（W-30）
         "price_cap": {g: price(g, p) for g, p in policy.get("price_cap", {}).items()},
         **finance_policy_view(island),

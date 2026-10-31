@@ -185,6 +185,15 @@ set_public_works:
     properties:
       auto: {type: boolean}                 # 役所の決まった事業（公共事業費の残りで、上下水道と道路の工事を並べる）。false で止める
 
+set_warehouse_release:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [auto]
+    additionalProperties: false
+    properties:
+      auto: {type: boolean}                 # 備蓄の放出の決まり（島で作っていない物を施設が買えなければ国の倉庫の余りを売りに出す）。false で止める
+
 set_labor_policy:
   admin_cost: 1
   payload:

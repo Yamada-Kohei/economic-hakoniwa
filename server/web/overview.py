@@ -697,6 +697,12 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
         )
         data["alerts"] += _diplomacy_alerts(data["diplomacy"])
         data["next_steps"] = next_steps(island, latest, facilities, goods, hungry, losing)
+        # 備蓄の放出の決まり（市場 MK-39。命令 set_warehouse_release）と、いま放出している財
+        released = (island.economy or {}).get("ext", {}).get("warehouse_released", [])
+        data["warehouse_release"] = {
+            "auto": (island.policy or {}).get("warehouse_release", True),
+            "releasing": [get_game().defs.name("goods", g) for g in released],
+        }
     return data
 
 

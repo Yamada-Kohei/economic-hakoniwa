@@ -57,6 +57,8 @@ INSTRUCTIONS = """\
 - 初めに whoami で自分の島とターンを確かめ、guide(which=start) で入門を、guide で詳しい仕組みを
   読み、summary で国の要約を読みます。
   建国から1年のあいだ、summary の next_steps に「次にすること」（急ぐ順に3つまで）が入ります。
+  summary の warehouse_release は備蓄の放出の決まり（auto と、いま放出している財）で、命令
+  set_warehouse_release で止められます。
   島がなければ found で建国します。前に遊んだ方針や引き継ぎは国の日誌（diary）にあり、区切りで
   diary_set に書いておきます（持ち主だけが読めます）。
 - 次のターンからは changes(since=前に読んだターン) で、その後に起きたことだけを読みます。

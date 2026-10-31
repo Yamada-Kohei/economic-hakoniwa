@@ -232,6 +232,8 @@ class Policy:
     # 以下は回7（hakoniwa_core/economy/retail.py）。大きな店（百貨店）の出店: none（規制なし）・
     # permit（許可制。申請を1件ずつ命令で許す）・ban（禁止）
     large_store: str = "none"
+    # 備蓄の放出の決まり（島で作っていない物が買えなかったら国の倉庫の余りを売りに出す。2026-10-31）
+    warehouse_release: bool = True
 
 
 @dataclass

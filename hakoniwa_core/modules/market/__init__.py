@@ -127,6 +127,7 @@ ANCHOR = "anchor"  # 家計の層の状態: 飢える前の食料の値段（値
 
 # 注文を出す者の種類
 FACILITY = "facility"
+RELEASED = "warehouse_released"  # economy.ext: 備蓄の放出の決まりで前のターンに売りに出した財
 SITE = "site"
 WORKS = "works"  # インフラの公共事業
 PUBLIC_HOUSING = "public_housing"  # 国の住宅の資材（住宅費。economy/public_housing.py）
@@ -767,6 +768,7 @@ class Market(IslandStage):
                 funds.release(island, MERCHANT_GAP, party.reserved)
                 party.reserved = 0
         self._settle_mortgage(island, ctx)
+        self._supply_facilities_from_warehouse(island, ctx)
         needs.close_cars(island, config)
         foreign = self._foreign_supply(config, books_by_good, results)
         island.scratch[traders.FOREIGN_SUPPLY] = foreign
@@ -1276,6 +1278,87 @@ class Market(IslandStage):
                     f.economy["capital"] = f.economy.get("capital", 0) + value
         infrastructure.supply_from_warehouse(island, ctx, upkeep=False)
 
+    def _supply_facilities_from_warehouse(self, island: IslandState, ctx: StageContext) -> None:
+        """国営の施設は、市場で買いきれなかった原料を国の倉庫から使う（次のターンに要る分まで）。
+        政府が自分の企業に倉庫の物を渡すので、施設は今の値段で政府に払い、帳簿は倉庫が売ったのと
+        同じに数える（運賃はかからない）。民営の施設は市場で買う（国の倉庫の物は、政府が売りに出した
+        ときだけ買える）。
+
+        使わない物: 工事とインフラと設備の直しの資材（国の工事の備え。_construction_goods）、軍の
+        備蓄、国の穀物の備蓄、今夜捨てられる組、値段のない物。
+
+        石炭の出ない国でも、建国のときに倉庫にあった石炭で火力発電所が動くように（自動の国は
+        autoplan が倉庫の物を売りに出すが、人の国は売りに出さないと発電所が止まった。2026-10-31）。
+        """
+        from hakoniwa_core import autoplan
+
+        defs, config = ctx.defs, ctx.config
+        power = config.get("power.good")
+        prices = island.economy.prices
+        building = self._construction_goods(defs)
+        keep: dict[str, int] | None = None
+        state = [
+            f
+            for f in island.facilities
+            if f.owner != OWNER_PRIVATE
+            and f.built
+            and fac.located(f)
+            and not fac.is_housing(config, f)
+            and fac.recipe_of(defs, f)["inputs"]
+        ]
+        state.sort(key=lambda f: (-fac.priority_of(defs, config, f), f.id))
+        for f in state:
+            have = island.warehouse
+            if not have:
+                return
+            wanted = [
+                (g, q)
+                for g, q in self._input_needs(ctx, f, power)
+                if have.get(g) and g not in building and prices.get(g, 0) > 0
+            ]
+            if not wanted:
+                continue
+            if keep is None:
+                keep = dict(autoplan._military_keep(island, config))
+                grain = config.get("food_reserve")["good"]  # 国の穀物の備蓄は飢饉の備え
+                keep[grain] = keep.get(grain, 0) + reserve.target(island, defs, config)
+            payer = payer_of(defs, config, f)
+            party = Party(FACILITY, facility_entity(f.id), payer, 0, 0, f)
+            party.public = is_public_service(defs, f)
+            for good, want in wanted:
+                spare = (
+                    stock.total(have, good)
+                    - stock.expiring(have, good, ctx.turn, defs.goods)
+                    - keep.get(good, 0)
+                )
+                price = prices[good]
+                qty = min(want, spare, qty_for(funds.available(island, payer), price))
+                if qty <= 0:
+                    continue
+                life = defs.goods[good].get("shelf_life")
+                last = None if life is None else ctx.turn - life  # 今夜捨てられる組は残す
+                batches = stock.take_batches(have, good, qty, last)
+                taken = sum(q for _, q in batches)
+                amount = money_of(price, taken)
+                funds.pay(island, payer, ledger.GOV, amount, "sale")
+                self._give_to_buyer(island, good, party, batches, amount, 0, 0, {})
+                books.add_sector(island, books.WAREHOUSE, "sales", amount)
+                if taken >= want:
+                    f.economy.get("short", {}).pop(good, None)
+                stats = island.stats
+                stats["warehouse.to_state"] = stats.get("warehouse.to_state", 0) + amount
+
+    @staticmethod
+    def _construction_goods(defs: Defs) -> set[str]:
+        """施設の工事・インフラの工事（代わりの資材も）・設備の直しに使う財。国の倉庫のこれらは国の
+        工事の備えなので、国営の施設の原料には回さない。"""
+        goods: set[str] = set()
+        for spec in defs.facilities.values():
+            goods |= set(spec.get("construction", {}).get("materials", {}))
+        for spec in defs.infrastructure.values():
+            goods |= set(spec.get("materials", {})) | set(spec.get("fallback", {}))
+        return goods
+
     @staticmethod
     def _switch_recipes(island: IslandState, ctx: StageContext) -> None:
         """命令か民営の見直しで決めた作り方の変更（facilities.RECIPE_NEXT）を、注文の前に行う
@@ -1391,6 +1474,10 @@ class Market(IslandStage):
             }
             priority = fac.priority_of(defs, config, f)
             for good, (qty, limit) in sorted(plan.items()):
+                if limit <= 0:  # どの値段でも採算が合わない原料は注文しない（指値 0 の買いが気配を
+                    # 押し下げ、売りのある財の値段が毎ターン値幅ずつ下がり続けた。2026-10-31）
+                    f.economy.setdefault("short", {})[good] = "price"
+                    continue
                 party = Party(FACILITY, name, payer, rate, 0, f)
                 party.public = is_public_service(defs, f)
                 party.reserved = gross_cost(limit, qty, rate, 0)
@@ -2537,8 +2624,57 @@ class Market(IslandStage):
             else:
                 cut = "treasury"
             placed.append((good, "buy", qty, order, cut, military))
+        self._release_orders(island, ctx, sell, {item["good"] for item in orders})
         self._reserve_orders(island, ctx, books_by_good, sell, offered)
         island.scratch[WAREHOUSE_PLACED] = placed
+
+    def _release_orders(
+        self, island: IslandState, ctx: StageContext, sell: Any, ordered: set[str]
+    ) -> None:
+        """備蓄の放出の決まり（2026-10-31）: 島のどの施設も作っていない物を、前のターンに市場で
+        買えなかった施設があれば、国の倉庫の余りを、施設がいま要る量までいつもの値段で売りに出す
+        （現実の国の石油の備蓄の放出と同じ。民営の発電所も、建国のときに倉庫にあった石炭を買える）。
+        命令 set_warehouse_release で止められる。工事・インフラ・設備の直しの資材、軍の備蓄、国の
+        穀物の備蓄（economy/reserve.py が別に放出する）、このターンに命令で売り買いする物は
+        出さない。"""
+        from hakoniwa_core import autoplan
+
+        if not island.policy.warehouse_release or not island.warehouse:
+            return
+        defs, config = ctx.defs, ctx.config
+        made = {g for f in island.facilities if f.built for g in fac.recipe_of(defs, f)["outputs"]}
+        skip = self._construction_goods(defs) | made | ordered
+        skip.add(config.get("food_reserve")["good"])
+        # 前のターンに原料を買えなかった施設（_record_shortages の short）が、いま要る量。放出を
+        # 始めた物は、買えた施設にも続けて出す（出すのをやめると、次のターンにまた買えなくなる）
+        power = config.get("power.good")
+        released = island.economy.ext.get(RELEASED, [])
+        unmet: dict[str, int] = {}
+        for f in island.facilities:
+            short = f.economy.get("short", {})
+            if not f.built or not (short or released):
+                continue
+            for good, qty in self._input_needs(ctx, f, power):
+                wanted = good in short or good in released
+                if wanted and good in island.warehouse and good not in skip:
+                    unmet[good] = unmet.get(good, 0) + qty
+        now = []
+        if unmet:
+            keep = autoplan._military_keep(island, config)
+            turns = config.get("household.usual_price_turns")
+            for good, qty in sorted(unmet.items()):
+                spare = stock.total(island.warehouse, good) - keep.get(good, 0)
+                usual = usual_price(island, good, turns) or island.economy.prices.get(good, 0)
+                if spare <= 0 or usual <= 0:
+                    continue
+                if sell(good, min(qty, spare), usual) is not None:
+                    now.append(good)
+                    if good not in released:  # 放出を始めた物だけログに出す
+                        island.log.append(LogEntry("warehouse_released", {"good": good}))
+        if now:
+            island.economy.ext[RELEASED] = now
+        else:
+            island.economy.ext.pop(RELEASED, None)
 
     def _reserve_orders(
         self,
@@ -3505,6 +3641,13 @@ def warehouse_trade(island: IslandState, payload: dict[str, Any], ctx: StageCont
     )
 
 
+def set_warehouse_release(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
+    """備蓄の放出の決まり（_release_orders）を始める・止める。"""
+    island.policy.warehouse_release = bool(payload["auto"])
+    kind = "warehouse_release_on" if payload["auto"] else "warehouse_release_off"
+    island.log.append(LogEntry(kind, {}))
+
+
 def check_price_cap(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
     if payload["good"] not in defs.goods:
         raise OrderFailed("reason_unknown_good")
@@ -3538,3 +3681,4 @@ def register(registry: Registry) -> None:
         OrderHandler("warehouse_trade", execute=warehouse_trade, check=check_warehouse_trade)
     )
     registry.add_order(OrderHandler("set_price_cap", execute=set_price_cap, check=check_price_cap))
+    registry.add_order(OrderHandler("set_warehouse_release", execute=set_warehouse_release))

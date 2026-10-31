@@ -290,6 +290,13 @@ export class OrderQueue {
           <label>指値（1単位、買いは必須） <input name="limit" type="number" min="0" step="any"></label>
           <button type="submit">命令に追加</button>
         </form>`,
+      set_warehouse_release: `
+        <form class="actions" data-form="set_warehouse_release">
+          <strong>備蓄の放出の決まり（今: ${p.warehouse_release ? "動いている" : "止めている"}）</strong>
+          <p class="hint">島のどの施設も作っていない物（石炭の出ない島の石炭など）を、施設が市場で買えなかったら、国の倉庫の余りを施設が要る量までいつもの値段で売りに出します。工事の資材・軍の備蓄・穀物の備蓄は出しません。止めると、倉庫の物は「国の倉庫の売買」で売るときだけ市場に出ます。</p>
+          <label><select name="auto"><option value="true">始める</option><option value="false">止める</option></select></label>
+          <button type="submit">命令に追加</button>
+        </form>`,
       set_price_cap: power ? `
         <form class="actions" data-form="set_price_cap">
           <strong>公共料金の上限</strong>
