@@ -815,3 +815,36 @@ def test_an_island_outside_every_bloc_pays_its_trader_one_wage(game):
         # 賃金はそのターンの払った後に動くことがあるので、1 人分の賃金と 1% の内で合えばよい
         assert -f.economy["ebitda"][-1] == pytest.approx(f.economy["wage"] * f.workers, rel=0.01)
         assert sum(traders.state_of(f)["volume"]) == 0
+
+
+# --- 止まった商社（W-159） -------------------------------------------------------------
+
+
+def test_a_halted_trader_places_no_orders_and_keeps_its_targets(game, traded):
+    """暴動・災害・占領で止まっている商社は、島の市場にも圏にも注文を出さず、狙う量も見直さない
+    （W-159。前は止まっている間も取引していた）。止まりが解ければまた注文する。"""
+    import copy
+
+    from hakoniwa_core.trade import traders as trade_traders
+
+    world = copy.deepcopy(traded[0])
+    turn = world.turn + 1
+    island, f = next(
+        (i, t)
+        for i in world.islands.values()
+        for t in traders_of(i, game.config)
+        if any(o.facility is t for o in trade_traders.home_orders(i, game.defs, game.config, turn))
+    )
+    f.ext["halted_until"] = turn
+    assert f not in traders_of(island, game.config, turn)
+    assert f in traders_of(island, game.config)  # 荷の持ち主としては残る
+    orders = trade_traders.home_orders(island, game.defs, game.config, turn)
+    assert not any(o.facility is f for o in orders)
+    before = copy.deepcopy(trade_traders.goods_of(f))
+    trade_traders.update_targets(island, game.defs, game.config, {}, {}, turn)
+    assert {g: (i["x"], i["m"]) for g, i in trade_traders.goods_of(f).items()} == {
+        g: (i["x"], i["m"]) for g, i in before.items()
+    }
+    # 止まりが解けた次のターンは、また注文する
+    after = trade_traders.home_orders(island, game.defs, game.config, turn + 1)
+    assert any(o.facility is f for o in after)

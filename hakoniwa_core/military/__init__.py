@@ -14,6 +14,7 @@ PRIVATE_LOGS = (
     "discharged",
     "military_wages_late",
     "military_starved",
+    "prisoners_starved",
     "military_buy_short",
     "military_deserted",
     "unit_forming",

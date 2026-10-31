@@ -13,7 +13,7 @@
   {% if icon %}<span aria-hidden="true">⚠</span>{% else %}{% translate "災害・飢え" %}{% endif %}
 {% elif kind == "facility_bankrupt" or kind == "firm_bankrupt" or kind|slice:":5" == "bank_" or kind == "bond_default" %}
   {% if icon %}<span aria-hidden="true">▥</span>{% else %}{% translate "経済・金融" %}{% endif %}
-{% elif kind|slice:":9" == "election_" or kind|slice:":9" == "politics_" or kind == "constitution_amended" or kind == "riot_destroyed" or kind == "leader_renamed" or kind == "capital_rebuilt" or kind == "transition_ended" or kind == "mobilization_started" or kind == "economy_changed" or kind == "nationalized_all" %}
+{% elif kind|slice:":9" == "election_" or kind|slice:":9" == "politics_" or kind == "constitution_amended" or kind == "riot_destroyed" or kind == "leader_renamed" or kind == "capital_rebuilt" or kind == "transition_ended" or kind == "regime_kept" or kind == "mobilization_started" or kind == "economy_changed" or kind == "nationalized_all" %}
   {% if icon %}<span aria-hidden="true">⚖</span>{% else %}{% translate "政治" %}{% endif %}
 {% elif kind|slice:":5" == "bloc_" or kind == "trade_started" or kind == "embargo_set" or kind == "aid_sent" or kind == "fx_peg_broken" %}
   {% if icon %}<span aria-hidden="true">⇄</span>{% else %}{% translate "貿易・援助" %}{% endif %}

@@ -42,6 +42,7 @@ HEADLINES = (
     "economy_changed",
     "nationalized_all",
     "transition_ended",
+    "regime_kept",
     "mobilization_started",
     "leader_renamed",
     "capital_rebuilt",
