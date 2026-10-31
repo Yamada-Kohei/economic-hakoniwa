@@ -258,6 +258,9 @@ HAKONIWA_COUNTRY_NOTES_PER_DAY = int(os.environ.get("HAKONIWA_COUNTRY_NOTES_PER_
 HAKONIWA_UPDATE_STALE_MINUTES = int(os.environ.get("HAKONIWA_UPDATE_STALE_MINUTES", "30"))
 HAKONIWA_AI_CALLS_PER_MINUTE = int(os.environ.get("HAKONIWA_AI_CALLS_PER_MINUTE", "60"))
 HAKONIWA_MCP_MAX_BATCH = int(os.environ.get("HAKONIWA_MCP_MAX_BATCH", "10"))
+# 管理画面の「サーバーの様子」が読む、公開サーバーの hakoniwa-status の書き出し先
+# （server/web/server_status.py）
+HAKONIWA_STATUS_DIR = os.environ.get("HAKONIWA_STATUS_DIR", "/var/lib/hakoniwa-status")
 
 # 記録: 500 の原因（traceback）を標準エラーに出し、公開サーバーでは systemd の journal に残す。
 # アクセスの記録は出さない（2026-10-26 の決まり）ので、django.request は ERROR だけ

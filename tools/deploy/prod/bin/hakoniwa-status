@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# 1 分ごと（root で動く）。管理画面の「サーバーの様子」（/admin/server/）が読む値を書き出す。
+# root でしか見られない値（サービスの状態・エラーの記録・写しの置き場など）をここで集め、
+# ゲームの側は書き出したものを読むだけにする（ゲームのユーザーの権限は上げない）。
+# 書くもの（$DIR、root の持ち物で誰でも読める）:
+#   status.json  今の値
+#   history.csv  この 24 時間の 1 分おきの値（時刻,CPU%,メモリ%,負荷,温度,ページの応答ミリ秒）
+# 知らせは送らない（おかしいときに知らせるのは hakoniwa-health の役目）。
+set -uo pipefail
+# shellcheck source=lib.sh
+source "${HAKONIWA_LIB:-/usr/local/lib/hakoniwa}/lib.sh"
+load_env
+
+DIR="${HAKONIWA_STATUS_DIR:-/var/lib/hakoniwa-status}"
+KEEP_ROWS="${HAKONIWA_STATUS_KEEP_ROWS:-1440}"
+GAME_HOST="${HAKONIWA_GAME_HOST:-hakoniwa.sevilla-lab.com}"
+TUNNEL_READY_URL="${HAKONIWA_TUNNEL_READY_URL:-http://127.0.0.1:20241/ready}"
+UNITS="${HAKONIWA_STATUS_UNITS:-hakoniwa-gunicorn caddy cloudflared postgresql@16-main hakoniwa-turn.timer hakoniwa-deploy.timer hakoniwa-health.timer hakoniwa-backup.timer}"
+install -d -o root -g root -m 755 "$DIR"
+umask 022
+now="$(date +%s)"
+
+# JSON の文字列にする（" と \ と制御文字を逃がす）
+js() {
+  local s="${1//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\t'/ }"
+  s="${s//$'\n'/ }"
+  s="${s//$'\r'/ }"
+  printf '"%s"' "$s"
+}
+# 数か null
+jn() { if [[ "$1" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then printf '%s' "$1"; else printf 'null'; fi; }
+
+# CPU: 前の回からの /proc/stat の差で、この 1 分の平均の使用率
+read -r _ u n s i w q sq st _ </proc/stat
+total=$((u + n + s + i + w + q + sq + st))
+idle=$((i + w))
+cpu=""
+if [[ -r "$DIR/cpu.prev" ]] && read -r pt pi <"$DIR/cpu.prev" && ((total > pt)); then
+  dt=$((total - pt))
+  cpu=$(((100 * (dt - (idle - pi)) + dt / 2) / dt))
+fi
+echo "$total $idle" >"$DIR/cpu.prev"
+
+mem="$(awk '/^MemTotal:/ {t=$2} /^MemAvailable:/ {a=$2} END {if (t > 0) printf "%d", (100 * (t - a) + t / 2) / t}' /proc/meminfo)"
+load1="$(cut -d' ' -f1 /proc/loadavg)"
+
+# 温度: CPU のパッケージの温度（なければ温度の出る所のいちばん高い値）。度
+temp=""
+for z in /sys/class/thermal/thermal_zone*; do
+  [[ -r "$z/temp" ]] || continue
+  t="$(cat "$z/temp" 2>/dev/null)"
+  [[ "$t" =~ ^[0-9]+$ ]] || continue
+  if [[ "$(cat "$z/type" 2>/dev/null)" == x86_pkg_temp ]]; then
+    temp=$((t / 1000))
+    break
+  fi
+  ((t / 1000 > ${temp:-0})) && temp=$((t / 1000))
+done
+
+# ゲームの最初のページの応答（Caddy 経由、機械の中から）と、トンネルのつながり
+read -r game_code game_s < <(curl -s -o /dev/null -m 15 -w '%{http_code} %{time_total}' -H "Host: $GAME_HOST" http://127.0.0.1:8080/ 2>/dev/null || echo "000 0")
+game_ms="$(awk -v s="${game_s:-0}" 'BEGIN {printf "%d", s * 1000 + 0.5}')"
+[[ "$game_code" == 000 ]] && game_ms=""
+tunnel_code="$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$TUNNEL_READY_URL" 2>/dev/null)"
+
+# サービス
+units_json=""
+for unit in $UNITS; do
+  state="$(systemctl is-active "$unit" 2>/dev/null)"
+  units_json+="${units_json:+,}{\"name\":$(js "$unit"),\"state\":$(js "${state:-unknown}")}"
+done
+failed="$(systemctl list-units --state=failed --no-legend --plain 2>/dev/null | awk '$2 != "masked" {print $1}' | tr '\n' ' ')"
+
+# ゲームの 500 エラー（この 24 時間）。settings.py の LOGGING が 1 件ごとに 1 行の頭を書く
+errors="$(journalctl -u hakoniwa-gunicorn --since '-24 hours' --no-pager -o cat 2>/dev/null | grep -c '^ERROR django.request')"
+
+# 毎晩の写し
+read -r backup_at backup_bytes < <(find /srv/backup/db -name 'hakoniwa-*.dump' -printf '%T@ %s\n' 2>/dev/null | sort -n | tail -n1)
+backup_at="${backup_at%.*}"
+
+# 最後の反映（hakoniwa-deploy の記録の 1 行目）
+deploy="$(head -n1 "$STATE_DIR/last" 2>/dev/null)"
+
+# 更新の残り（重いので 1 時間に 1 回だけ数え直す）
+apt_cache="$DIR/upgradable"
+if [[ ! -s "$apt_cache" || -n "$(find "$apt_cache" -mmin +60 2>/dev/null)" ]]; then
+  { apt-get -s -o Debug::NoLocking=1 upgrade 2>/dev/null | grep -c '^Inst '; } >"$apt_cache.new"
+  mv "$apt_cache.new" "$apt_cache"
+fi
+upgradable="$(cat "$apt_cache" 2>/dev/null)"
+reboot=false
+[[ -e /var/run/reboot-required ]] && reboot=true
+
+# hakoniwa-health が今出している知らせ（6 時間の印が残っているもの）
+alerts=""
+for f in /var/lib/hakoniwa-watch/health/*; do
+  [[ -e "$f" && -n "$(find "$f" -mmin -360 2>/dev/null)" ]] || continue
+  alerts+="${alerts:+,}$(js "$(basename "$f")")"
+done
+
+cat >"$DIR/status.json.new" <<EOF
+{"written_at":$now,"cpu_percent":$(jn "$cpu"),"memory_percent":$(jn "$mem"),"load1":$(jn "$load1"),"temperature_c":$(jn "$temp"),
+"game_page":{"code":$(js "$game_code"),"ms":$(jn "$game_ms")},"tunnel_code":$(js "$tunnel_code"),
+"units":[$units_json],"failed_units":$(js "${failed% }"),"errors_24h":$(jn "$errors"),
+"backup":{"at":$(jn "$backup_at"),"bytes":$(jn "$backup_bytes")},"last_deploy":$(js "$deploy"),
+"upgradable":$(jn "$upgradable"),"reboot_required":$reboot,"alerts":[$alerts]}
+EOF
+mv "$DIR/status.json.new" "$DIR/status.json"
+
+# 推移の記録。古い行を落として KEEP_ROWS 行にそろえる
+hist="$DIR/history.csv"
+echo "$now,$cpu,$mem,$load1,$temp,$game_ms" >>"$hist"
+if (($(wc -l <"$hist") > KEEP_ROWS + 60)); then
+  tail -n "$KEEP_ROWS" "$hist" >"$hist.new" && mv "$hist.new" "$hist"
+fi

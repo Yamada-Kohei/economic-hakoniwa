@@ -1,0 +1,12 @@
+{% extends "admin/index.html" %}
+{% comment %}管理画面のホームの上に「サーバーの様子」への入口を足す（server/web/server_status.py）。{% endcomment %}
+{% block content %}
+{% if request.user.is_superuser %}
+<div class="module" style="margin-bottom: 20px;">
+  <table style="width: 100%;"><caption>運営</caption>
+    <tr><th scope="row"><a href="{% url 'server_status' %}">サーバーの様子</a></th><td>CPU・メモリ・ディスク・温度・サービス・遊び手の数</td></tr>
+  </table>
+</div>
+{% endif %}
+{{ block.super }}
+{% endblock %}
