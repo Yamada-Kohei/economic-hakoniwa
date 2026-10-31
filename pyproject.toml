@@ -31,6 +31,9 @@ include = ["hakoniwa_core*", "server*"]
 DJANGO_SETTINGS_MODULE = "server.settings"
 testpaths = ["tests"]
 addopts = "-q"
+# 文字コードを書かずにファイルを読み書きすると、Windows（X870）では cp932 になって落ちる。
+# CI は PYTHONWARNDEFAULTENCODING=1 で回し、ここで自分のコードの分だけを誤りにする（W-224）
+filterwarnings = ["error::EncodingWarning:(tests|hakoniwa_core|server|tools)"]
 
 [tool.ruff]
 line-length = 100

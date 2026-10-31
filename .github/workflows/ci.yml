@@ -103,6 +103,8 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: ${{ matrix.db == 'postgres' && 'postgres://hakoniwa:hakoniwa@localhost:5432/hakoniwa' || 'sqlite:///db.sqlite3' }}
+      # 文字コードを書かない読み書きを見つける（Windows では cp932 になる。pyproject.toml で誤りにする）
+      PYTHONWARNDEFAULTENCODING: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -112,7 +114,8 @@ jobs:
       # 試験を頭の数（GitHub の入れ物は4つ）だけ同時に回す（pytest-xdist）。
       # PostgreSQL の組は、pytest-django が回し手ごとに別の DB（名前に gw0 などが付く）を作る。
       - name: 自動テスト
-        run: pytest -n auto --durations=15
+        # -rs: 飛ばした試験とそのわけを最後に並べる（黙って何も確かめていない試験に気づくため）
+        run: pytest -n auto --durations=15 -rs
       - name: 一括シミュレーション（50島）
         run: python -m hakoniwa_core.simulate --islands 50 --turns 30
 

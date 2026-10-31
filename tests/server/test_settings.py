@@ -192,3 +192,14 @@ def test_pages_link_static_files_through_the_version(client):
     page = client.get("/help/").content.decode()
     assert settings.STATIC_URL.startswith("/static/v-")
     assert f"{settings.STATIC_URL}css/site.css" in page
+
+
+def test_server_errors_are_logged_without_access_log():
+    """500 の原因は標準エラー（公開サーバーでは journal）に残し、404 などの WARNING は出さない。"""
+    from django.conf import settings
+
+    request_log = settings.LOGGING["loggers"]["django.request"]
+    assert request_log["level"] == "ERROR"
+    assert request_log["propagate"] is False
+    handler = settings.LOGGING["handlers"][request_log["handlers"][0]]
+    assert handler["class"] == "logging.StreamHandler"

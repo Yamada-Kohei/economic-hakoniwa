@@ -507,7 +507,7 @@ def test_hk_paths_and_key(tmp_path, monkeypatch):
     monkeypatch.setattr(hk, "KEY_FILE", tmp_path / "key")
     monkeypatch.delenv("HK_KEY", raising=False)
     assert hk.load_key() == ""
-    (tmp_path / "key").write_text("hk_from_file\n")
+    (tmp_path / "key").write_text("hk_from_file\n", encoding="utf-8")
     assert hk.load_key() == "hk_from_file"
     monkeypatch.setenv("HK_KEY", "hk_from_env")
     assert hk.load_key() == "hk_from_env"

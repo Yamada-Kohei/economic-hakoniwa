@@ -7,8 +7,6 @@ from __future__ import annotations
 
 import copy
 
-import pytest
-
 from hakoniwa_core import ledger
 from hakoniwa_core.economy import CIVIL_SERVANTS, Payer, banks, debt, funds, household
 from hakoniwa_core.log import format_log
@@ -169,8 +167,7 @@ def test_entry_block_is_recorded_and_logged_once(game, warmed):
         entry._enter(island, ctx)
         blocks.append(island.economy.finance.get("entry_block"))
     logged = [e for e in island.log if e.kind == "private_entry_blocked"]
-    if blocks[0] is None:
-        pytest.skip("参入の合図がない")
+    assert blocks[0] is not None, "参入の合図がない"
     assert blocks[0]["reason"] in {
         "no_zone",
         "unprofitable",
@@ -212,6 +209,8 @@ def test_capital_subsidy_is_paid_at_entry(game, warmed):
     world = copy.deepcopy(warmed)
     island = island_of(world, "market")
     island.policy.budget["subsidies"] = 10**12
+    # 国庫が細いと補助が建設費のほんの一部になり、参入が起きずに確かめられない。国庫を厚くしておく
+    ledger.pay(island, ledger.CB, ledger.GOV, 10**12, "grant")
     goods = {
         g
         for f in game.defs.facilities.values()
@@ -228,8 +227,7 @@ def test_capital_subsidy_is_paid_at_entry(game, warmed):
         if any(f.ext.get("subsidy_paid") for f in sites):
             paid = next(f for f in sites if f.ext.get("subsidy_paid"))
             break
-    if paid is None:
-        pytest.skip("補助の付いた参入が起きなかった")
+    assert paid is not None, "補助の付いた参入が起きなかった"
     assert paid.ext["subsidy_rate"] == 8000
 
 
@@ -303,7 +301,7 @@ def test_redemption_is_logged(game, warmed):
         if any(e.kind in ("bonds_redeemed", "bonds_redeemed_any") for e in island.log):
             break
     else:
-        pytest.skip("償還がなかった")
+        raise AssertionError("償還がなかった")
     entry = next(e for e in island.log if e.kind.startswith("bonds_redeemed"))
     assert "償還" in format_log(game.defs, entry.kind, entry.args)
 
