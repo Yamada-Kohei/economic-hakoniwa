@@ -1280,8 +1280,11 @@ class Market(IslandStage):
     def _supply_facilities_from_warehouse(self, island: IslandState, ctx: StageContext) -> None:
         """国営の施設は、市場で買いきれなかった原料を国の倉庫から使う（次のターンに要る分まで）。
         政府が自分の企業に倉庫の物を渡すので、施設は今の値段で政府に払い、帳簿は倉庫が売ったのと
-        同じに数える（運賃はかからない）。工事に取ってある資材・軍の備蓄・国の穀物の備蓄は使わない。民営の施設は
-        市場で買う（国の倉庫の物は、政府が売りに出したときだけ買える）。
+        同じに数える（運賃はかからない）。民営の施設は市場で買う（国の倉庫の物は、政府が売りに出した
+        ときだけ買える）。
+
+        使わない物: 工事とインフラと設備の直しの資材（国の工事の備え。_construction_goods）、軍の
+        備蓄、国の穀物の備蓄、今夜捨てられる組、値段のない物。
 
         石炭の出ない国でも、建国のときに倉庫にあった石炭で火力発電所が動くように（自動の国は
         autoplan が倉庫の物を売りに出すが、人の国は売りに出さないと発電所が止まった。2026-10-31）。
@@ -1291,7 +1294,7 @@ class Market(IslandStage):
         defs, config = ctx.defs, ctx.config
         power = config.get("power.good")
         prices = island.economy.prices
-        life = {g: d.get("shelf_life") for g, d in defs.goods.items()}
+        building = self._construction_goods(defs)
         keep: dict[str, int] | None = None
         state = [
             f
@@ -1304,31 +1307,36 @@ class Market(IslandStage):
         ]
         state.sort(key=lambda f: (-fac.priority_of(defs, config, f), f.id))
         for f in state:
-            if not island.warehouse:
-                return
             have = island.warehouse
-            wanted = [(g, q) for g, q in self._input_needs(ctx, f, power) if have.get(g)]
+            if not have:
+                return
+            wanted = [
+                (g, q)
+                for g, q in self._input_needs(ctx, f, power)
+                if have.get(g) and g not in building and prices.get(g, 0) > 0
+            ]
             if not wanted:
                 continue
             if keep is None:
-                keep = autoplan._reserved_materials(island, defs)
-                for good, qty in autoplan._military_keep(island, config).items():
-                    keep[good] = keep.get(good, 0) + qty
+                keep = dict(autoplan._military_keep(island, config))
                 grain = config.get("food_reserve")["good"]  # 国の穀物の備蓄は飢饉の備え
                 keep[grain] = keep.get(grain, 0) + reserve.target(island, defs, config)
             payer = payer_of(defs, config, f)
             party = Party(FACILITY, facility_entity(f.id), payer, 0, 0, f)
             party.public = is_public_service(defs, f)
             for good, want in wanted:
-                spare = stock.total(island.warehouse, good) - keep.get(good, 0)
-                price = prices.get(good, 0)
-                if price > 0:
-                    spare = min(spare, qty_for(funds.available(island, payer), price))
-                qty = min(want, spare)
+                spare = (
+                    stock.total(have, good)
+                    - stock.expiring(have, good, ctx.turn, defs.goods)
+                    - keep.get(good, 0)
+                )
+                price = prices[good]
+                qty = min(want, spare, qty_for(funds.available(island, payer), price))
                 if qty <= 0:
                     continue
-                expiry = None if life.get(good) is None else ctx.turn - life[good]
-                batches = stock.take_batches(island.warehouse, good, qty, expiry)
+                life = defs.goods[good].get("shelf_life")
+                last = None if life is None else ctx.turn - life  # 今夜捨てられる組は残す
+                batches = stock.take_batches(have, good, qty, last)
                 taken = sum(q for _, q in batches)
                 amount = money_of(price, taken)
                 funds.pay(island, payer, ledger.GOV, amount, "sale")
@@ -1338,6 +1346,17 @@ class Market(IslandStage):
                     f.economy.get("short", {}).pop(good, None)
                 stats = island.stats
                 stats["warehouse.to_state"] = stats.get("warehouse.to_state", 0) + amount
+
+    @staticmethod
+    def _construction_goods(defs: Defs) -> set[str]:
+        """施設の工事・インフラの工事（代わりの資材も）・設備の直しに使う財。国の倉庫のこれらは国の
+        工事の備えなので、国営の施設の原料には回さない。"""
+        goods: set[str] = set()
+        for spec in defs.facilities.values():
+            goods |= set(spec.get("construction", {}).get("materials", {}))
+        for spec in defs.infrastructure.values():
+            goods |= set(spec.get("materials", {})) | set(spec.get("fallback", {}))
+        return goods
 
     @staticmethod
     def _switch_recipes(island: IslandState, ctx: StageContext) -> None:

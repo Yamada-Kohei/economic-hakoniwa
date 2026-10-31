@@ -40,3 +40,23 @@ def test_private_power_plant_does_not_take_from_the_warehouse(game):
     plant = next(f for f in island.facilities if f.kind == "thermal_power_plant")
     assert plant.owner == OWNER_PRIVATE
     assert stock.total(island.warehouse, "coal") == before  # 民営は市場で買う
+
+
+def test_warehouse_keeps_building_materials_and_the_grain_reserve(game):
+    """工事の資材（木材・鋼鉄など）と国の穀物の備蓄は、国営の工場の原料に回さない。"""
+    from hakoniwa_core.economy import reserve
+    from hakoniwa_core.modules.market import Market
+    from tests.core.test_recession_round1 import context
+
+    plan = plan_for(game, economy="planned", resources=["iron_ore"])
+    island = found_island(game.defs, game.config, plan, 1, 3, 4)
+    for f in island.facilities:  # 原料の手元をなくす（どの工場も倉庫から取りたくなる）
+        f.stock.clear()
+    held = {g: stock.total(island.warehouse, g) for g in island.warehouse}
+    Market()._supply_facilities_from_warehouse(island, context(game))
+    after = {g: stock.total(island.warehouse, g) for g in held}
+    assert after["coal"] < held["coal"]  # 発電所の燃料は使う
+    for good in ("wood", "steel", "machinery", "building_materials"):
+        assert after[good] == held[good], good
+    target = reserve.target(island, game.defs, game.config)
+    assert after["grain"] >= min(held["grain"], target)
