@@ -178,7 +178,7 @@
           <thead><tr>
             <th>{% translate "番号" %}</th><th>{% translate "状態" %}</th><th>{% translate "相手" %}</th><th>{% translate "こちらが" %}</th>
             <th>{% translate "資源" %}</th><th>{% translate "1ターンの量" %}</th><th>{% translate "値段（1単位）" %}</th><th>{% translate "期間" %}</th>
-            <th>{% translate "届いた量" %}</th><th>{% translate "届いた物" %}</th><th>{% translate "直近の不足" %}</th><th></th>
+            <th>{% translate "送り出した量" %}</th><th>{% translate "海の上" %}</th><th>{% translate "届いた物" %}</th><th>{% translate "直近の不足" %}</th><th></th>
           </tr></thead>
           <tbody>
             {% for c in trade.contracts %}
@@ -191,7 +191,8 @@
               <td>{{ c.quantity|floatformat:"-1g" }} {{ c.unit }}</td>
               <td>{{ c.currency_symbol }}{{ c.price|floatformat:"-1g" }}<br><small class="muted">{{ c.currency_name }}</small></td>
               <td>{% if c.start %}{% blocktranslate with s=c.start|turn_date e=c.end|add:"-1"|turn_date %}{{ s }}〜{{ e }}{% endblocktranslate %}{% else %}{% blocktranslate with n=c.turns %}{{ n }} ターン{% endblocktranslate %}{% endif %}</td>
-              <td>{{ c.delivered|floatformat:"-3g" }}</td>
+              <td>{{ c.shipped|floatformat:"-3g" }}</td>
+              <td>{% if c.at_sea %}{{ c.at_sea|floatformat:"-3g" }}<br><small class="muted">{% if c.arrive_first == c.arrive_last %}{% blocktranslate with t=c.arrive_first|turn_date %}{{ t }}に着く見込み{% endblocktranslate %}{% else %}{% blocktranslate with a=c.arrive_first|turn_date b=c.arrive_last|turn_date %}{{ a }}〜{{ b }}に着く見込み{% endblocktranslate %}{% endif %}</small>{% else %}-{% endif %}</td>
               <td>{{ c.delivery_name|default:"-" }}</td>
               <td{% if c.short %} class="warning-cell"{% endif %}>{% if c.short %}{{ c.short|floatformat:"-3g" }}{% endif %}{% if c.fx %}<br><small class="muted">{% blocktranslate with t=c.fx.turn|turn_date s=c.currency_symbol need=c.fx.need|floatformat:"0g" had=c.fx.had|floatformat:"0g" reserve=c.fx.reserve|floatformat:"0g" market=c.fx.market|floatformat:"0g" short=c.fx.short|floatformat:"0g" %}{{ t }}の外貨の払い {{ s }}{{ need }}: 手持ち {{ s }}{{ had }}・中央銀行から {{ s }}{{ reserve }}・為替の市場で {{ s }}{{ market }}・不足 {{ s }}{{ short }}{% endblocktranslate %}</small>{% endif %}</td>
               <td>
@@ -203,7 +204,7 @@
           </tbody>
         </table>
       </div>
-      <p class="hint">{% blocktranslate with t=trade.cancel_turns %}売る国は国の倉庫から出し（足りなければ島の市場で優先して買い）、買う国は国庫から払って国の倉庫に受け取ります。届いた物は、買う国が決めたとおり、売り切れるまで島の市場の値段で売りに出すか、国の倉庫に置いておきます（傷みやすい物はどちらでもすぐ市場に出します）。相手の国の通貨で払う契約は、中央銀行が持っているその通貨から先に払い、足りない分を政府が為替の市場で買います（1ターンに買えるのは値幅の上端までに売りに出た分だけなので、為替介入で中央銀行に買わせておくと足ります）。物・お金・外貨・船・港が足りないターンは届けられるだけ届け、不足をログに残します。やめる命令から {{ t }} ターン後に終わります。{% endblocktranslate %}</p>
+      <p class="hint">{% blocktranslate with t=trade.cancel_turns %}売る国は国の倉庫から出し（足りなければ島の市場で優先して買い）、買う国は国庫から払って国の倉庫に受け取ります。届いた物は、買う国が決めたとおり、売り切れるまで島の市場の値段で売りに出すか、国の倉庫に置いておきます（傷みやすい物はどちらでもすぐ市場に出します）。相手の国の通貨で払う契約は、中央銀行が持っているその通貨から先に払い、足りない分を政府が為替の市場で買います（1ターンに買えるのは値幅の上端までに売りに出た分だけなので、為替介入で中央銀行に買わせておくと足ります）。物・お金・外貨・船・港が足りないターンは届けられるだけ届け、不足をログに残します。「送り出した量」は売る国の港で積んで代金を払った量の合計で、まだ海の上の荷を含みます（買う国の倉庫や市場に入るのは船が着いてから）。やめる命令から {{ t }} ターン後に終わります。{% endblocktranslate %}</p>
       {% else %}
       <p class="muted">{% translate "契約はありません。" %}</p>
       {% endif %}

@@ -257,6 +257,7 @@ _GOODS_STATS = {
     "use.": ("{good}の使った量（施設の原料）", "good"),
     "stock.": ("{good}の国の倉庫の在庫", "good"),
     "works.stock.": ("公共事業の資材の在庫（{good}）", "good"),
+    "warehouse.to_state.": ("国の倉庫から国営の施設に渡した{good}（1ターン）", "good"),
 }
 # 計算で作る系列（統計の表にはなく、ほかの統計から作る）。層の1人あたりの所得は
 # layer.<層>.income_per_person
@@ -323,7 +324,9 @@ def _fx_label(rest: str) -> tuple[str, str] | None:
     currency = display.currency_name(int(key))
     if not kind:
         return f"為替レート（{currency} 1 が自国通貨でいくらか）", "fx"
-    return FX_KINDS[kind].format(currency=currency), ""
+    # 額はその通貨で数える。グラフの縦軸に記号を付ける（money:<記号>。記号のない通貨は数だけ。W-70）
+    symbol = display.currency_symbol(int(key))
+    return FX_KINDS[kind].format(currency=currency), f"money:{symbol}" if symbol else ""
 
 
 def flow_name(side: str, kind: str) -> str:
@@ -371,14 +374,16 @@ def stat_choices(island: m.Island, mine: bool) -> list[dict[str, str]]:
     return sorted(rows, key=lambda r: r["label"])
 
 
+PRIVATE_PREFIXES = ("bank.", "warehouse.to_state.")  # 持ち主だけに見せる統計の名前の頭
 PUBLIC_MILITARY_STATS = ("military.soldiers",)  # 国全体の兵の数は誰にでも（MI-55）
 
 
 def visible(name: str, mine: bool) -> bool:
-    """他国の島の人に見せる統計か（銀行ごとの中身と、軍の中身は持ち主だけ）。"""
+    """他国の島の人に見せる統計か（銀行ごとの中身と、軍の中身と、国の倉庫から国営の施設に渡した
+    品目ごとの量（国の計画の中身。W-225）は持ち主だけ）。"""
     if mine:
         return True
-    return not name.startswith("bank.") and (
+    return not name.startswith(PRIVATE_PREFIXES) and (
         not name.startswith("military.") or name in PUBLIC_MILITARY_STATS
     )
 
@@ -428,14 +433,17 @@ def series(island: m.Island, names: list[str], start: int, end: int, mine: bool)
         query |= Q(name__startswith=p)
     rows = island.stats.filter(query, turn__gte=start, turn__lte=end)
     if not mine:
-        rows = rows.exclude(name__startswith="bank.")
+        for head in PRIVATE_PREFIXES:
+            rows = rows.exclude(name__startswith=head)
     table: dict[str, dict[int, float]] = defaultdict(dict)
     for turn, name, value in rows.values_list("turn", "name", "value"):
         table[name][turn] = value
     _derive(table)
     found = [n for n in names if not n.endswith("*") and n in table and visible(n, mine)]
     for p in [n[:-1] for n in names if n.endswith("*")]:
-        found += sorted(n for n in table if n.startswith(p) and n not in found)
+        found += sorted(
+            n for n in table if n.startswith(p) and n not in found and visible(n, mine)
+        )
     # 上限で返せなかった分は、黙って切らずに名前を返す（Codex の試し遊び: 80 系列で後ろが落ち、
     # 値がないのか切られたのか分からなかった）。選べる数を超えた名前も同じ
     dropped = found[MAX_SERIES:]
@@ -589,9 +597,26 @@ def market_turn(island: m.Island) -> int | None:
     return MarketRecord.objects.filter(island=island).aggregate(turn=Max("turn"))["turn"]
 
 
-def market_table(island: m.Island, stats: dict[str, float], currency: str) -> list[dict]:
-    """財ごとの直近のターンの値段・前のターンからの変わり方・売買の量・買いたかった量と
-    売りたかった量（注文）・生産量・国の倉庫の在庫。"""
+PRICE_KINDS = display.PRICE_KINDS
+price_kind = display.price_kind
+
+
+def last_trades(island: m.Island, goods: Any = None) -> dict[str, int]:
+    """財ごとの、売買が成立した最後のターン（一度も成立していない財は入らない）。"""
+    query = MarketRecord.objects.filter(island=island, volume__gt=0)
+    if goods is not None:
+        query = query.filter(good__in=list(goods))
+    return {
+        r["good"]: r["turn"] for r in query.values("good").annotate(turn=Max("turn")).order_by()
+    }
+
+
+def market_table(
+    island: m.Island, stats: dict[str, float], currency: str, mine: bool = False
+) -> list[dict]:
+    """財ごとの直近のターンの値段・値段の種類（約定・気配・持ち越し・未観測）と最後に約定した
+    ターン・前のターンからの変わり方・売買の量・買いたかった量と売りたかった量（注文）・生産量・
+    国の倉庫の在庫。持ち主（mine）には、国の倉庫から国営の施設に渡した量も（W-225）。"""
     defs = get_game().defs
     turn = market_turn(island)
     now, before = {}, {}
@@ -599,20 +624,28 @@ def market_table(island: m.Island, stats: dict[str, float], currency: str) -> li
         records = MarketRecord.objects.filter(island=island, turn__in=[turn, turn - 1])
         for r in records:
             (now if r.turn == turn else before)[r.good] = r
+    traded = last_trades(island)
     rows = []
     for good in defs.goods:
         record = now.get(good)
         made = stats.get(f"production.{good}", 0)
         stock = stats.get(f"stock.{good}", 0)
-        if record is None and not made and not stock:
+        to_state = stats.get(f"warehouse.to_state.{good}", 0) if mine else 0
+        if record is None and not made and not stock and not to_state:
             continue
+        kind = price_kind(record)
         row: dict[str, Any] = {
             "good": good,
             "name": defs.name("goods", good),
             "unit": defs.unit_name(good),
             "production": display.shown(good, made),
             "stock": display.shown(good, stock),
+            "price_kind": kind,
+            "price_kind_name": PRICE_KINDS[kind],
+            "observed_turn": traded.get(good),  # 最後に売買が成立したターン（ないものは None）
         }
+        if mine:
+            row["to_state"] = display.shown(good, to_state)
         if record is not None:
             row.update(
                 price=display.price_text(good, record.price, currency),
@@ -654,15 +687,20 @@ def market_series(
         "to": end,
         "turns": [r.turn for r in records],
         "price": [display.price(good, r.price) for r in records],
+        "price_kinds": [price_kind(r) for r in records],  # 値段の種類（PRICE_KINDS。W-171）
         "volume": [_qty(good, r.volume) for r in records],
         "demand": [_qty(good, r.demand) for r in records],
         "supply": [_qty(good, r.supply) for r in records],
     }
     latest = MarketRecord.objects.filter(island=island, good=good).order_by("-turn").first()
     if latest is not None:
+        kind = price_kind(latest)
         data["latest"] = {
             "turn": latest.turn,
             "price": display.price(good, latest.price),
+            "price_kind": kind,
+            "price_kind_name": PRICE_KINDS[kind],
+            "observed_turn": last_trades(island, [good]).get(good),
             "volume": _qty(good, latest.volume),
             "demand": _qty(good, latest.demand),
             "supply": _qty(good, latest.supply),
@@ -690,6 +728,7 @@ def trades(island: m.Island, state: IslandState, good: str, turn: int) -> list[d
         pair[0] += qty
         pair[1] += amount
     names = entity_names(island, state, {e for pair in pairs for e in pair})
+    grain = get_game().config.get("food_reserve")["good"]
     rows = [
         {
             "buyer": buyer,
@@ -699,10 +738,24 @@ def trades(island: m.Island, state: IslandState, good: str, turn: int) -> list[d
             "quantity": _qty(good, qty),
             "amount": amount,
             "price": display.price(good, round(amount / from_milli(qty))) if qty else None,
+            "note": trade_note(good, grain, buyer, seller),
         }
         for (buyer, seller), (qty, amount) in pairs.items()
     ]
     return sorted(rows, key=lambda r: (-r["amount"], r["buyer"], r["seller"]))
+
+
+def trade_note(good: str, grain: str, buyer: str, seller: str) -> str:
+    """約定の組の中身の説明。国の穀物の備蓄（economy/reserve.py）の財で政府（国の倉庫）が買い手か
+    売り手の組は、備蓄の入れ替え・放出・買い足しの分を含む。買い手も売り手も政府の組は、同じ板で
+    古い組を売って新しい組を買い直した備蓄の入れ替え（W-222）。"""
+    if good != grain or ledger.GOV not in (buyer, seller):
+        return ""
+    if buyer == seller:
+        return "備蓄の入れ替え（傷む前の古い穀物を売り、同じ市場で新しい穀物を買い直した分）"
+    if seller == ledger.GOV:
+        return "国の倉庫の売り（備蓄の入れ替え・放出と、契約で届いた分や命令の売りを含む）"
+    return "国の倉庫の買い（備蓄の買い足しと、命令や軍の買い入れを含む）"
 
 
 # 約定の記録の主体の名前（施設・家計・銀行のほか）
@@ -758,6 +811,9 @@ def short_facilities(
                 "good": wanted,
                 "good_name": game.defs.name("goods", wanted),
                 "status_text": display.status_text(f),
+                # 国営か民営か（国営は国の倉庫から自動で引き出せる分を使い切ったあと止まる。W-225）
+                "owner": f.owner,
+                "owner_name": display.message(f"owner_{f.owner}"),
             }
         )
     return out

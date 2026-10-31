@@ -159,7 +159,7 @@ def economy_page(request, island_id: int):
 def market_page(request, island_id: int):
     """市場: 財ごとの値段と売買の量、選んだ財の推移とこのターンの約定、買えなかった施設。"""
     island, context, stats = _report(request, island_id, "market", "市場")
-    rows = reports.market_table(island, stats, context["currency"])
+    rows = reports.market_table(island, stats, context["currency"], context["mine"])
     goods = [r["good"] for r in rows]
     chosen = request.GET.get("good")
     context.update(
@@ -271,6 +271,11 @@ def fx_page(request, island_id: int):
         stats=reports.stat_rows(stats, trade.FX_STATS, context["currency"]),
         bop=reports.stat_rows(stats, trade.BOP_STATS, context["currency"]),
         rate_names=",".join(trade.rate_names(island)),
+        # 為替の売買量は通貨ごとに1枚のグラフに（縦軸にその通貨の記号を付ける。W-70）
+        volume_charts=[
+            {"name": f"fx.volume.{n.removeprefix('fx.')}", "currency": display.currency_name(n[3:])}
+            for n in trade.rate_names(island)
+        ],
         band=f"{data['band'] * 100:g}",
     )
     if not context["mine"]:

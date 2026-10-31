@@ -1196,6 +1196,16 @@ def currency_name(island_id: Any) -> str:
     return currency_labels(names)[key]
 
 
+def currency_symbol(island_id: Any) -> str:
+    """通貨（番号は島の番号）の記号。島がないか記号がなければ ""。"""
+    try:
+        key = int(island_id)
+    except (TypeError, ValueError):
+        return ""
+    names = m.Island.objects.filter(pk=key).values_list("names", flat=True).first()
+    return (names or {}).get("currency_symbol", "")
+
+
 def _describe_finance(kind: str, payload: dict[str, Any], name: str, where: str) -> str:
     """銀行・国債・企業の命令（フェーズ2-2）の説明。ほかの命令は ""。"""
     defs = get_game().defs
@@ -1549,13 +1559,15 @@ def _per_unit(key: str) -> bool:
 def stat_text(key: str, value: float, unit: str, currency: str = "") -> str:
     """統計の値の文。
 
-    unit は money（お金）・index（指数）・rate（% の数で入っている率）・percent（% の数で入っている
-    割合）・%（0〜1 の割合）・ratio（倍）・fx（為替レート）・good:<財>（その単位）か、数の後ろに
-    付ける文字。
+    unit は money（お金）・money:<記号>（ほかの国の通貨の額）・index（指数）・rate（% の数で
+    入っている率）・percent（% の数で入っている割合）・%（0〜1 の割合）・ratio（倍）・fx（為替
+    レート）・good:<財>（その単位）か、数の後ろに付ける文字。
     """
     value = stat_value(key, value, unit)
     if unit.startswith("good:"):
         unit = " " + get_game().defs.unit_name(unit.removeprefix("good:"))
+    if unit.startswith("money:"):  # ほかの国の通貨の額（為替の売買量など。money:<記号>。W-70）
+        return money_text(round(value), unit.removeprefix("money:"))
     if unit == "money":
         if abs(value) < 100 and not float(value).is_integer() and _per_unit(key):
             return f"{'-' if value < 0 else ''}{currency}{abs(value):,.1f}"  # 安い 1 単位の値段
@@ -1580,6 +1592,28 @@ def stat_text(key: str, value: float, unit: str, currency: str = "") -> str:
     if isinstance(value, float) and not value.is_integer():
         return f"{value:,.1f}{unit}"
     return f"{int(value):,}{unit}"
+
+
+# 値段の種類（W-171）: 約定（売買が成立した値段）・気配（買いと売りの注文はあったが折り合わず、
+# その間に置いた値段）・持ち越し（注文が片側だけかなく、前の値段のまま）・未観測（市場の記録がない）
+PRICE_KINDS = {
+    "trade": "約定",
+    "quote": "気配",
+    "carry": "持ち越し",
+    "none": "未観測",
+}
+
+
+def price_kind(record: MarketRecord | None) -> str:
+    """市場の記録の値段の種類（PRICE_KINDS の名前）。市場の段の板寄せ（market/auction.py）は、売買が
+    あれば約定の値段、両側の注文が折り合わなければ間の気配、注文が片側だけかなければ基準の値段を残す。"""
+    if record is None:
+        return "none"
+    if record.volume > 0:
+        return "trade"
+    if record.demand > 0 and record.supply > 0:
+        return "quote"
+    return "carry"
 
 
 def goods_table(
@@ -1607,6 +1641,7 @@ def goods_table(
                     "production": shown(good, made),
                     "price": price_text(good, record.price, currency) if record is not None else "",
                     "volume": amount(record.volume, good) if record is not None else "",
+                    "price_kind_name": PRICE_KINDS[price_kind(record)],
                 }
             )
     return rows

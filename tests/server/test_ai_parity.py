@@ -45,6 +45,7 @@ PRESENTATION = {
     "chart_names",
     "bank_ratio_names",
     "rate_names",
+    "volume_charts",  # 為替の売買量のグラフ（通貨ごと。系列は stats で読む）
     "band",  # 為替の幅の % の文（答えの band）
     "show_guide",  # はじめの手順（MCP は INSTRUCTIONS と guide）
 }

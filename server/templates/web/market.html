@@ -7,29 +7,30 @@
   <div class="report-main">
     <section class="panel">
       <h2>{% if market_turn is not None %}{% translate "財ごとの市場" %} <small class="heading-date">{{ market_turn|turn_date }}</small>{% else %}{% translate "財ごとの市場" %}{% endif %}</h2>
-      <p class="hint">{% translate "値段だけで取引の成立は判断できません。売買量は成立した量で、0 はそのターンに約定がないことを表します。気配は売買の目安です。未観測・未集計は 0 と区別して読みます。" %}</p>
+      <p class="hint">{% translate "値段の下の小さな字は値段の種類です。印がなければ、そのターンに売買が成立した約定の値段です。「気配」は買いと売りの注文はあったが折り合わず、その間に置いた目安の値段、「持ち越し」は注文が片側だけかなく前の値段のままのもの、「未観測」は市場の記録がないものです（どれも売買量は 0 で、0 円の値段ではありません）。約定でない値段には、最後に売買が成立したターンを添えます。" %}</p>
       {% if rows %}
       <div class="table-scroll">
         <table class="goods market-table">
           <thead><tr>
             <th>{% translate "資源" %}</th><th>{% translate "値段（1単位）" %}</th><th>{% translate "前ターン比" %}</th>
             <th>{% translate "売買量" %}</th><th>{% translate "買い注文" %}</th><th>{% translate "売り注文" %}</th>
-            <th>{% translate "買えなかった量" %}</th><th>{% translate "生産量" %}</th><th>{% translate "国の倉庫" %}</th><th>{% translate "単位" %}</th>
+            <th>{% translate "買えなかった量" %}</th><th>{% translate "生産量" %}</th><th>{% translate "国の倉庫" %}</th>{% if mine %}<th>{% translate "倉庫から国営の施設へ" %}</th>{% endif %}<th>{% translate "単位" %}</th>
           </tr></thead>
           <tbody>
             {% for r in rows %}
             <tr data-good="{{ r.good }}"{% if r.good == good %} class="chosen"{% endif %}>
               <td><a href="?good={{ r.good }}" data-good-link="{{ r.good }}">{{ r.name }}</a></td>
-              <td>{{ r.price|default:"-" }}</td><td>{{ r.change|default:"" }}</td>
+              <td>{{ r.price|default:"-" }}{% if r.price_kind != "trade" %}<br><small class="muted">{{ r.price_kind_name }}{% if r.observed_turn is not None %}{% blocktranslate with t=r.observed_turn|turn_date %}（最後の約定 {{ t }}）{% endblocktranslate %}{% else %}{% translate "（約定なし）" %}{% endif %}</small>{% endif %}</td><td>{{ r.change|default:"" }}</td>
               <td>{{ r.volume|default:"-" }}</td><td>{{ r.demand|default:"-" }}</td><td>{{ r.supply|default:"-" }}</td>
               <td{% if r.unmet %} class="warning-cell"{% endif %}>{{ r.unmet|default:"" }}</td>
-              <td>{{ r.production }}</td><td>{{ r.stock }}</td><td>{{ r.unit }}</td>
+              <td>{{ r.production }}</td><td>{{ r.stock }}</td>{% if mine %}<td>{{ r.to_state|default:"" }}</td>{% endif %}<td>{{ r.unit }}</td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
   </div>
   <p class="hint">{% translate "買い注文・売り注文は、そのターンに買いたかった量と売りたかった量の合計です（値段が折り合わず約定しなかった分を含みます）。資源名を押すと推移を表示します。" %}</p>
+  {% if mine %}<p class="hint">{% translate "「倉庫から国営の施設へ」は、国営の施設が市場で買う前に国の倉庫から自動で引き出した原料の量です（そのターン。市場の売買量には入りません。この国の持ち主だけに見えます）。" %}</p>{% endif %}
   <p class="hint">{% translate "量は実物に近い単位で出します（重さの財はトンで、1 人が 1 か月に食べる食料は 0.05 トンほど）。値段はその単位 1 つあたりです。" %}</p>
   {% else %}
   <p class="muted">{% translate "記録がありません。" %}</p>
@@ -65,7 +66,7 @@
   {% if short %}
   <ul class="plain-list">
     {% for f in short %}
-    <li><a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a> ・ {{ f.status_text }}</li>
+    <li><a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a>（{{ f.owner_name }}） ・ {{ f.status_text }}</li>
     {% endfor %}
   </ul>
   {% else %}
