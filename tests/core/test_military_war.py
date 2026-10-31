@@ -13,6 +13,7 @@ from hakoniwa_core.log import format_log
 from hakoniwa_core.military import army, battle, forces, occupation, supply
 from hakoniwa_core.modules import politics as politics_stage
 from hakoniwa_core.state.generate import generate_world
+from hakoniwa_core.state.model import Facility
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE
 
 
@@ -577,9 +578,15 @@ def test_police_hold_a_town_until_overwhelmed(game, world):
     start_war(game, world)
     isl2 = world.islands[2]
     ctx = _ctx(game, world)
+    if battle.police_unit(world, ctx, isl2) is None:  # 作った世界に警察がなければ置く（飛ばさない）
+        used = {(f.x, f.y) for f in isl2.facilities}
+        tile = next(t for t in isl2.tiles if t.terrain == "plain" and (t.x, t.y) not in used)
+        isl2.facilities.append(
+            Facility(id=isl2.next_facility_id(), kind="police", x=tile.x, y=tile.y, built=True)
+        )
+        isl2.facilities[-1].workers = 120
     police = battle.police_unit(world, ctx, isl2)
-    if police is None:
-        pytest.skip("この島に警察がいない")
+    assert police is not None and police["soldiers"] > 0
     assert battle.police_power(ctx, police) == pytest.approx(0.3 * police["soldiers"] / 100)
     assert BASIS == 10_000
 

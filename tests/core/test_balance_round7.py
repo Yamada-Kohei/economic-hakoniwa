@@ -559,8 +559,7 @@ def test_firm_cascade_watch_counts_falls_per_firm(game, base):
     members = [
         f for f in island.facilities if co.private_firm_of(island, f) is not None and f.built
     ]
-    if len(members) < gate.CASCADE_MIN:
-        pytest.skip("民営の企業の施設が少ない")
+    assert len(members) >= gate.CASCADE_MIN, "民営の企業の施設が少ない"
     firm = co.private_firm_of(island, members[0])
     for f in members:
         f.economy[co.FIRM] = firm
@@ -580,8 +579,7 @@ def test_firm_cascade_watch_skips_own_closings(game, base):
     members = [
         f for f in island.facilities if co.private_firm_of(island, f) is not None and f.built
     ]
-    if len(members) < gate.CASCADE_MIN:
-        pytest.skip("民営の企業の施設が少ない")
+    assert len(members) >= gate.CASCADE_MIN, "民営の企業の施設が少ない"
     firm = co.private_firm_of(island, members[0])
     for f in members:
         f.economy[co.FIRM] = firm

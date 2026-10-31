@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import functools
 import itertools
 import re
 import struct
@@ -16,7 +17,7 @@ import pytest
 import yaml
 from django.conf import settings
 
-from server.game import get_game
+from hakoniwa_core.game import load_game
 
 THEMES = settings.BASE_DIR / "server" / "static" / "themes"
 THIRD_PARTY = settings.BASE_DIR / "THIRD_PARTY.md"
@@ -43,7 +44,7 @@ def _entries(theme: dict, field: str = "sprites") -> dict[str, dict]:
 
 def _capital_combos() -> set[str]:
     """首都の建物の組み合わせ（軸ごとに体制の建物を 1 つずつ、軸の順に "-" でつなぐ）。"""
-    d = get_game().defs
+    d = _defs()
     per_axis = [
         sorted(
             {
@@ -57,8 +58,15 @@ def _capital_combos() -> set[str]:
     return {"-".join(combo) for combo in itertools.product(*[b for b in per_axis if b])}
 
 
+@functools.cache
+def _defs():
+    """定義データ。server.game.get_game は DB の世界から倍を読むので使わない（DB のない試験で、
+    ほかの試験が先に読み込んでいたかどうかで結果が変わっていた）。絵の名前は倍によらない。"""
+    return load_game(settings.HAKONIWA_GAME_CONFIG).defs
+
+
 def _allowed_keys() -> set[str]:
-    d = get_game().defs
+    d = _defs()
     sprites = {f.get("sprite", fid) for fid, f in d.facilities.items() if not f.get("tileless")}
     coastal = {f.get("sprite", fid) for fid, f in d.facilities.items() if f.get("coastal")}
     return (
