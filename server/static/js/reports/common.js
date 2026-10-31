@@ -11,12 +11,16 @@ const whole = new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 0 });
 const fine = new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 2 });
 
 /**
- * 統計の値を文字にする。unit はサーバーの統計の単位（money・%・rate・percent・index・ratio・
- * fx（為替レート）、または数の後ろに付ける文字）。exact なら丸めずに（お金は1の位まで）書く。
+ * 統計の値を文字にする。unit はサーバーの統計の単位（money・money:<記号>（ほかの国の通貨の額）・
+ * %・rate・percent・index・ratio・fx（為替レート）、または数の後ろに付ける文字）。exact なら丸めずに（お金は1の位まで）書く。
  */
 export function formatValue(value, unit, currency = "", exact = false) {
   if (value == null || !Number.isFinite(value)) return "-";
   const number = exact ? (Math.abs(value) >= 1000 ? whole : fine) : compact;
+  if (unit?.startsWith("money:")) {
+    // ほかの国の通貨の額（為替の売買量など。money:<記号>。W-70）
+    return `${value < 0 ? "-" : ""}${unit.slice(6)}${number.format(Math.abs(value))}`;
+  }
   switch (unit) {
     case "money":
       return `${value < 0 ? "-" : ""}${currency}${number.format(Math.abs(value))}`;
@@ -43,8 +47,8 @@ export function makeChart(container, unit, currency, label) {
     label,
     format: (v) => formatValue(v, unit, currency),
     detail: (v) => formatValue(v, unit, currency, true),
-    zero: unit === "money" || unit === "%" || unit === "percent",
-    integer: unit === "money",
+    zero: unit === "money" || unit?.startsWith("money:") || unit === "%" || unit === "percent",
+    integer: unit === "money" || unit?.startsWith("money:"),
   });
 }
 
@@ -213,7 +217,10 @@ export class ChartGroup {
 
   draw(item, data) {
     const keys = keysOf(item.figure.dataset.names, data);
-    const unit = keys.length ? data.units[keys[0]] : "";
+    // 系列の単位がそろわない（通貨の違う為替の額を1つのグラフに並べた）ときは、縦軸に記号を付けない
+    const units = new Set(keys.map((k) => data.units[k]));
+    const mixed = units.size > 1 && [...units].some((u) => u?.startsWith("money:"));
+    const unit = mixed ? "" : keys.length ? data.units[keys[0]] : "";
     const series = keys.map((k) => ({ key: k, label: data.labels[k] || k, values: data.series[k] }));
     // 系列ごとに、値のあるターンだけに詰める（全部の系列で値のないターンは描かない）
     const used = data.turns.map((_, i) => series.some((s) => s.values[i] != null));
