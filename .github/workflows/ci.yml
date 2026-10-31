@@ -103,7 +103,7 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: ${{ matrix.db == 'postgres' && 'postgres://hakoniwa:hakoniwa@localhost:5432/hakoniwa' || 'sqlite:///db.sqlite3' }}
-      # 文字コードを書かない読み書きを見つける（Windows では cp932 になる。pyproject.toml で誤りにする）
+      # 文字コードを書かない読み書きを見つける（Windows では cp932 になる。tests/conftest.py で誤りにする）
       PYTHONWARNDEFAULTENCODING: "1"
     steps:
       - uses: actions/checkout@v4
