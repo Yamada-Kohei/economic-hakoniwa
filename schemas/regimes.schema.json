@@ -44,8 +44,6 @@
         "monarch": {"type": "boolean"},
         "election_bonus": {"type": "number"},
         "official_prices": {"type": "boolean"},
-        "priority_build_turns": {"type": "number", "exclusiveMinimum": 0},
-        "priority_experience": {"type": "number", "minimum": 0},
         "luxury_variety": {"type": "number", "minimum": 0},
         "entry_margin": {"type": "number"},
         "price_controls": {"type": "boolean"},
