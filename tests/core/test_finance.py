@@ -117,6 +117,23 @@ def test_working_loans_merge_per_lender_and_borrower(game, warmed):
     books_ok(game, island)
 
 
+def test_repay_and_write_off_stop_at_outstanding(game, warmed):
+    """残っている元金を超えて返す・消すと、融資の勘定がマイナスで残るので、誤りにする。"""
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    bank = banks.active_banks(island)[0]
+    f = next(f for f in island.facilities if f.owner == OWNER_PRIVATE and f.built)
+    loan = banks.lend(island, bank, facility_entity(f.id), 1000, banks.WORKING, 6, world.turn, 500)
+    left = banks.outstanding(island, loan)
+    with pytest.raises(ledger.LedgerError):
+        banks.repay(island, loan, left + 1)
+    with pytest.raises(ledger.LedgerError):
+        banks.write_off(island, loan, left + 1)
+    assert banks.outstanding(island, loan) == left  # 断ったときは何も動かさない
+    banks.write_off(island, loan, left)
+    assert banks.outstanding(island, loan) == 0
+
+
 def _unexposed_private(island, bank):
     """bank から借りていない、できあがった民営施設の名前（勘定の持ち主）。"""
     return next(

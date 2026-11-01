@@ -19,6 +19,7 @@ from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.log import format_log
 from hakoniwa_core.market import auction
 from hakoniwa_core.modules import accounts as accounts_stage
+from hakoniwa_core.modules import market as market_mod
 from hakoniwa_core.modules import plan as plan_orders
 from hakoniwa_core.modules import politics as politics_stage
 from hakoniwa_core.modules.politics import Politics, parliament_gate
@@ -543,6 +544,25 @@ def test_plan_orders_check_and_log(game, base):
     assert mixed.policy.price_floor == {"grain": 100}
     plan_orders.set_price_floor(mixed, {"good": "grain", "price": 0}, ctx)
     assert mixed.policy.price_floor == {}
+    # 上限より高い下限・下限より安い上限は出せない（両方あると下限が勝ち、上限が効かない）
+    mixed.policy.price_cap["grain"] = 100
+    with pytest.raises(OrderFailed) as above:
+        plan_orders.check_price_floor(mixed, {"good": "grain", "price": 101}, defs)
+    assert above.value.reason == "reason_floor_above_cap" and above.value.args_["cap"] == 100
+    plan_orders.check_price_floor(mixed, {"good": "grain", "price": 100}, defs)  # 同じ値はよい
+    plan_orders.check_price_floor(mixed, {"good": "grain", "price": 0}, defs)  # なくすのはよい
+    mixed.policy.price_cap.clear()
+    mixed.policy.price_floor["grain"] = 100
+    with pytest.raises(OrderFailed) as below:
+        market_mod.check_price_cap(mixed, {"good": "grain", "price": 99}, defs)
+    assert below.value.reason == "reason_cap_below_floor" and below.value.args_["floor"] == 100
+    market_mod.check_price_cap(mixed, {"good": "grain", "price": 0}, defs)
+    mixed.policy.price_floor.clear()
+    # 体制を変えた後に残った下限は効かないので、上限を止めない。0 で消すのは体制によらず通る
+    market.policy.price_floor["electricity"] = 100
+    market_mod.check_price_cap(market, {"good": "electricity", "price": 50}, defs)
+    plan_orders.check_price_floor(market, {"good": "electricity", "price": 0}, defs)
+    market.policy.price_floor.clear()
     for island in (planned, mixed):
         logs_ok(game, island)
 
