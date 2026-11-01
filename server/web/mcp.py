@@ -1394,8 +1394,9 @@ def handle(request: HttpRequest, message: Any) -> dict[str, Any] | None:
     if method == "tools/list":
         return _result(id_, {"tools": [t.spec() for t in TOOLS]})
     if method == "tools/call":
-        if params.get("name") not in TOOLS_BY_NAME:
-            return _error(id_, -32602, f"道具 {params.get('name')} はありません")
+        name = params.get("name")
+        if not isinstance(name, str) or name not in TOOLS_BY_NAME:  # 辞書や配列の名前も断る
+            return _error(id_, -32602, f"道具 {str(name)[:60]} はありません")
         if not isinstance(params.get("arguments") or {}, dict):
             return _error(id_, -32602, "arguments はオブジェクトで送ってください")
         return _result(id_, _call_tool(request, params))

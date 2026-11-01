@@ -236,6 +236,9 @@ def test_mcp_odd_messages_never_500(player, settings):
     from server.accounts import keys
 
     _, token = keys.issue(User.objects.get(username="fuzz"), "t")
+    # 鍵の 1 分の上限で 429 になると中の処理まで届かず、遅い回で分の境をまたいだときだけ
+    # 500 が出た（2026-11-01 の PR #239 の CI）。上限を外して、毎回すべての形を中まで通す
+    settings.HAKONIWA_AI_CALLS_PER_MINUTE = 0
     seen = []
 
     def post(body):
