@@ -392,8 +392,9 @@
       <p class="muted">{% translate "海外の商人は来ません。" %}</p>
       {% elif mc.active %}
       <p>{% blocktranslate with n=mc.turns_left t=mc.until|turn_date %}{{ t }}まで、あと <strong>{{ n }}</strong> ターン来ます。{% endblocktranslate %}
-        {% if mc.rising %}<span class="warning">{% blocktranslate with x=mc.multiplier y=mc.last_multiplier %}最後の時期に入ったため、値段が上がっています（今は初めの値段の {{ x }} 倍。最後は {{ y }} 倍）。{% endblocktranslate %}</span>
-        {% else %}{% blocktranslate with x=mc.multiplier n=mc.last_turns y=mc.last_multiplier %}値段は初めの値段の {{ x }} 倍で、最後の {{ n }} ターンは少しずつ上がり、最後は {{ y }} 倍になります。{% endblocktranslate %}{% endif %}</p>
+        {% if mc.tapering %}<span class="warning">{% blocktranslate with p=mc.share %}持ってくる量を減らしています（今は初めの {{ p }}%。来なくなるまでに少しずつ 0 になります）。{% endblocktranslate %}</span>
+        {% else %}{% blocktranslate with t=mc.taper_start|turn_date %}{{ t }}の後は、持ってくる量と買っていく量が少しずつ減っていきます。{% endblocktranslate %}{% endif %}
+        {% blocktranslate with x=mc.multiplier %}値段は初めの値段の {{ x }} 倍です（島の物価に合わせて動きます）。{% endblocktranslate %}</p>
       <div class="table-scroll">
         <table class="goods merchant-table">
           <thead><tr><th>{% translate "資源" %}</th><th>{% translate "売る値段（1単位）" %}</th><th>{% translate "買う値段（1単位）" %}</th><th>{% translate "島の値段" %}</th><th>{% translate "1ターンの上限" %}</th><th>{% translate "単位" %}</th></tr></thead>

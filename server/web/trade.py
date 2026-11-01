@@ -738,14 +738,15 @@ def shipment_rows(
 
 
 def merchant_view(here: IslandState, turn: int) -> dict[str, Any]:
-    """海外の商人: 次のターンに来るか、あと何ターン来るか、値段の倍率と、売り買いする物（財・
-    1ターンの上限・売る値段・買う値段と島の値段）。turn は世界の今のターン（商人は次のターンの
-    市場で売り買いする）。"""
+    """海外の商人: 次のターンに来るか、あと何ターン来るか、量を減らし始めるターンと今の量の割合、
+    値段の倍率（島の物価を含む）と、売り買いする物（財・1ターンの上限・売る値段・買う値段と島の
+    値段）。turn は世界の今のターン（商人は次のターンの市場で売り買いする）。"""
     game = get_game()
     defs, config = game.defs, game.config
     settings = config.get("foreign_merchant")
     coming = turn + 1
     left = merchant.turns_left(here, config, coming)
+    share = merchant.taper(here, config, coming)
     since = here.ext.get(KEY, {}).get("merchant_from")
     prices = here.economy.prices
     bids = {good: price for good, _, price in merchant.bids(here, defs, config, coming)}
@@ -756,10 +757,12 @@ def merchant_view(here: IslandState, turn: int) -> dict[str, Any]:
         "since": since,
         "until": since + settings["turns"] - 1 if since is not None else None,
         "turns": settings["turns"],
-        "last_turns": settings["last_turns"],
-        "rising": 0 < left <= settings["last_turns"],
+        "taper_from": settings["taper_from"],
+        # 持ってくる量を減らし始めるターン（この次のターンから減る）と、今の量の割合（%）
+        "taper_start": since + settings["taper_from"] if since is not None else None,
+        "tapering": 0 < share < 1,
+        "share": round(share * 100),
         "multiplier": round(merchant.multiplier(here, config, coming), 2),
-        "last_multiplier": settings["last_multiplier"],
         "buy_multiplier": settings.get("buy_multiplier", 0),
         "blockaded": bool(here.ext.get(KEY, {}).get(merchant.BLOCKADE)),
         "goods": [

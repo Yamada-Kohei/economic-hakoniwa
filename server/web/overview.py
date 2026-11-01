@@ -20,6 +20,8 @@ from hakoniwa_core import politics as core_politics
 from hakoniwa_core.economy import books, retail
 from hakoniwa_core.naming import facility_name
 from hakoniwa_core.state import ACCOUNTING_SELF, OWNER_STATE, ZONE_INDUSTRIAL
+from hakoniwa_core.trade import island_state as trade_state
+from hakoniwa_core.trade import merchant
 from server.accounts import keys
 from server.board import services as board
 from server.economy.models import FacilityBook
@@ -31,7 +33,7 @@ from server.turns.models import TurnLog
 from server.web import country, diplomacy, display, military, rankings, reports
 from server.web import politics as politics_views
 from server.world import models as m
-from server.world.repository import facility_from_row
+from server.world.repository import facility_from_row, island_from_row
 
 LIST_MAX = 30  # 要約の一覧（止まった施設・工事・赤字の施設）に出す数
 BONDS_DUE_TURNS = 12  # このターン数のうちに満期になる国債を出す
@@ -388,6 +390,35 @@ def _mine_alerts(
     return out
 
 
+MERCHANT_NOTICE_TURNS = 24  # 海外の商人が量を減らし始める何ターン前から注意を出すか
+
+
+def _merchant_alerts(island: m.Island) -> list[str]:
+    """持ち主にだけ出す海外の商人の注意（量を減らし始める前と、減っている間。タブ 9 FX-27）。
+    商人は次のターンの市場で売り買いするので、次のターンで見る（貿易の画面と同じ）。"""
+    config = get_game().config
+    here = island_from_row(island)
+    coming = island.world.turn + 1
+    if not merchant.active(here, config, coming):
+        return []
+    left = merchant.turns_left(here, config, coming)
+    share = merchant.taper(here, config, coming)
+    if share < 1:
+        return [
+            f"海外の商人が持ってくる量と買っていく量が減っています"
+            f"（今は初めの {round(share * 100)}%。あと {left} ターン来て、その後は来なくなります）"
+        ]
+    # 量が減る初めのターン（来てから taper_from ターンを過ぎたターン）まで、今から何ターンか
+    start = trade_state(here)["merchant_from"] + config.get("foreign_merchant.taper_from") + 1
+    soon = start - island.world.turn
+    if soon <= MERCHANT_NOTICE_TURNS:
+        return [
+            f"海外の商人は {soon} ターン後から持ってくる量と買っていく量を減らし始めます"
+            f"（あと {left} ターン来て、その後は来なくなります）"
+        ]
+    return []
+
+
 def _diplomacy_alerts(brief: dict[str, Any]) -> list[str]:
     """持ち主にだけ出す外交の注意（返事待ちの条約の提案・戦争・破棄の予告）。"""
     out = []
@@ -422,6 +453,7 @@ def island_alerts(island: m.Island, mine: bool) -> tuple[list[str], list[dict[st
         losing = losing_facilities(island, currency)
         unread = letters.inbox(island).filter(read_at__isnull=True).count()
         out += _mine_alerts(island, losing, unread, _board_unread(island))
+        out += _merchant_alerts(island)
         out += _diplomacy_alerts(diplomacy.brief(island, mine))
         steps = next_steps(island, latest, facilities, goods, hungry, losing)
     return out, steps

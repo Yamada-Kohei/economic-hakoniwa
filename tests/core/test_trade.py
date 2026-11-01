@@ -484,13 +484,47 @@ def test_foreign_merchant_comes_for_a_limited_time(game, traded):
     island.ext["trade"]["merchant_from"] = since
     turns = config.get("foreign_merchant.turns")
     assert merchant.offers(island, game.defs, config, since)
+    island.economy.cpi_history = [100.0]
     assert merchant.multiplier(island, config, since) == config.get("foreign_merchant.multiplier")
-    last = since + turns - 1
-    assert merchant.multiplier(island, config, last) == pytest.approx(
-        config.get("foreign_merchant.last_multiplier")
-    )
     assert merchant.offers(island, game.defs, config, since + turns) == []
     assert merchant.offers(island, game.defs, config, since - 1) == []
+
+
+def test_foreign_merchant_tapers_to_zero_and_follows_island_prices(game, traded):
+    """海外の商人は taper_from ターンまでは同じ量、その後は売る量と買う量を直線に減らし、来なく
+    なるターンで 0 になる（2026-11-01 本人「0まで減らして去る」）。値段は島の物価に合わせて上がり、
+    最後の値上げはない。"""
+    island = copy.deepcopy(traded[0].islands[1])
+    defs, config = game.defs, game.config
+    since = 10
+    island.ext["trade"]["merchant_from"] = since
+    island.ext["trade"].pop(merchant.BLOCKADE, None)
+    turns = config.get("foreign_merchant.turns")
+    start = config.get("foreign_merchant.taper_from")
+    island.economy.cpi_history = [100.0]
+
+    def sold(turn):
+        return {g: q for g, q, _ in merchant.offers(island, defs, config, turn)}
+
+    full = sold(since)
+    assert sold(since + start) == full
+    assert merchant.taper(island, config, since + start) == 1.0
+    middle = since + (start + turns) // 2
+    assert merchant.taper(island, config, middle) == pytest.approx(0.5)
+    good = next(iter(full))
+    assert sold(middle)[good] == pytest.approx(full[good] / 2, rel=0.01)
+    assert {g: q for g, q, _ in merchant.bids(island, defs, config, middle)}[good] == pytest.approx(
+        full[good] / 2, rel=0.01
+    )
+    assert merchant.taper(island, config, since + turns - 1) > 0
+    assert sold(since + turns) == {}
+
+    def price():
+        return {g: p for g, _, p in merchant.offers(island, defs, config, since)}[good]
+
+    before = price()
+    island.economy.cpi_history = [100.0, 200.0]  # 島の物価が倍になる
+    assert price() == pytest.approx(2 * before, rel=0.01)
 
 
 # --- 試し遊び（ターン150）の直し -----------------------------------------------------------

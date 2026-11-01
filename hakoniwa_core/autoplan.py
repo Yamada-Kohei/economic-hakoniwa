@@ -13,8 +13,8 @@
 4. 投入財の作る量が使う量に届かなければ、それを作る施設。島で作っている投入財と工事の資材は、
    前のターンの市場で売りに出た量が買いたい量に届かず、値段が初めの PRICE_HIGH 倍を超えていても
    建てる（工事の資材の使う量は作る量と使う量の流れに数えないため。フェーズ3-2）
-4'. 海外の商人が値段を上げ始めたら（来なくなる foreign_merchant.last_turns ターン前から）、前の
-   ターンに商人から買った物のうち島で作っていない物を作る施設（投入財が島で作られている作り方だけ。
+4'. 海外の商人が持ってくる量を減らし始めたら（foreign_merchant.taper_from ターンを過ぎてから）、
+   前のターンに商人から買った物のうち島で作っていない物を作る施設（投入財が島で作られている作り方だけ。
    投入財も商人から買っていれば、その投入財を作る施設が先に建つ）
 5. 消費財（衣料・消費財・嗜好品）の生産が住民1人あたりの目安（household.targets）に届かないか、
    前のターンの市場で売りに出た量が買いたい量に届かなければ、それを作る施設（加工食品・肉・自動車・
@@ -946,12 +946,11 @@ def _candidates(
         ):
             yield from (c for c in _producers(defs, config, island, good) if spare(*c))
 
-    # 海外の商人が値段を上げ始めたら（来なくなる foreign_merchant.last_turns ターン前から）、前の
-    # ターンに商人から買った物のうち島で作っていない物を作る施設を建てる。投入財も商人から買って
+    # 海外の商人が持ってくる量を減らし始めたら（foreign_merchant.taper_from ターンを過ぎてから）、
+    # 前のターンに商人から買った物のうち島で作っていない物を作る施設を建てる。投入財も商人から買って
     # いれば、その投入財を作る施設が先に建つ（1つの島の 300 ターンの試験: 商人が帰ってから機械を
     # 作る施設が建つまで機械が島から消え、値段が初めの4倍を超えた）
-    left = trade_merchant.turns_left(island, config, turn)
-    if 0 < left <= config.get("foreign_merchant.last_turns"):
+    if 0 < trade_merchant.taper(island, config, turn) < 1.0:
         bought = {t.good for t in island.trades if t.seller == MERCHANT}
         for good in sorted(bought - making, key=lambda g: (defs.goods[g].get("tier", 9), g)):
             yield from (
