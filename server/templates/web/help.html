@@ -364,9 +364,9 @@
     </dd>
     <dt>{% translate "海外の商人" %}</dt>
     <dd>
-      <p>{% blocktranslate with turns=trade.merchant_turns last=trade.merchant_last x=trade.merchant_multiplier y=trade.merchant_last_multiplier goods=trade.merchant_goods %}貿易が始まったターン（建国、前のフェーズからの島は移し替え）から {{ turns }} ターンのあいだ、海外の商人が島の市場に来て、{{ goods }}を決まった値段と1ターンの上限（その財を作る施設1つの全力の産出）で売ります。港も船も外貨も要らず、まだ作れない資材を手に入れる助けになります。{% endblocktranslate %}</p>
+      <p>{% blocktranslate with turns=trade.merchant_turns from=trade.merchant_taper_from goods=trade.merchant_goods %}貿易が始まったターン（建国、前のフェーズからの島は移し替え）から {{ turns }} ターンのあいだ、海外の商人が島の市場に来て、{{ goods }}を決まった値段と1ターンの上限（その財を作る施設1つの全力の産出）で売ります。港も船も外貨も要らず、まだ作れない資材を手に入れる助けになります。{{ from }} ターンを過ぎると、商人が持ってくる量と買っていく量は少しずつ減り、{{ turns }} ターンで 0 になって来なくなります。それまでに、島で作るか、ほかの国との貿易で手に入れる道を作ってください。{% endblocktranslate %}</p>
       <p>{% blocktranslate with b=trade.merchant_buy_multiplier %}商人は同じ品目を、初めの値段の {{ b }} 倍の決まった値段と同じ上限で、施設の売りから買いもします（国の倉庫からは買いません）。島で作りすぎた物は、その値段より安くなる前に商人が買っていくので、値段は商人の買い値と売り値の間に収まりやすくなります。買った代金は島の外から入り、貿易収支では輸出に数えます。公定価格のある国では、施設は公定価格を受け取り、商人の買い値との差は政府が受け取ります。戦争で港が封鎖されると、商人はその強さの分だけ少なく来ます。{% endblocktranslate %}</p>
-      <p>{% blocktranslate with turns=trade.merchant_turns last=trade.merchant_last x=trade.merchant_multiplier y=trade.merchant_last_multiplier goods=trade.merchant_goods %}値段は初めの値段の {{ x }} 倍で、最後の {{ last }} ターンは少しずつ上がり、最後は {{ y }} 倍になります。代金は島の外に出て消え、貿易収支では輸入に数えます。公定価格のある国（計画経済）では、島の買い手は公定価格で払い、商人の値段との差は政府が払います（差は輸入と貿易収支には数えず、「海外の商人から買った額」と国際収支には含めます）。{% endblocktranslate %}</p>
+      <p>{% blocktranslate with x=trade.merchant_multiplier %}値段は初めの値段の {{ x }} 倍に、島の物価（建国のときを 1 とした小売りの物価指数）を掛けた値段です。島の物価が上がれば、商人の売り値と買い値も同じだけ上がります。代金は島の外に出て消え、貿易収支では輸入に数えます。公定価格のある国（計画経済）では、島の買い手は公定価格で払い、商人の値段との差は政府が払います（差は輸入と貿易収支には数えず、「海外の商人から買った額」と国際収支には含めます）。{% endblocktranslate %}</p>
     </dd>
   </dl>
   <h3>{% translate "産業政策と援助" %}</h3>
