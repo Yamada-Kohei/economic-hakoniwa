@@ -57,9 +57,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from hakoniwa_core import stock
+from hakoniwa_core import ledger, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
+from hakoniwa_core.economy import Payer, books, funds, owner_entity
 from hakoniwa_core.market import auction
 from hakoniwa_core.state import Facility, IslandState, MarketRecord
 from hakoniwa_core.trade import fx as fxrates
@@ -89,6 +90,33 @@ CLEARANCE_FLOOR = 0.5
 def is_planned(island: IslandState) -> bool:
     """計画経済の島か（公定価格がある。フェーズ3-4。hakoniwa_core/economy/plan.py）。"""
     return bool(island.ext.get("plan", {}).get("prices"))
+
+
+GOV_TRADE = "trade"  # 政府が貿易に払う項目（どの項目にも取り置いていない国庫から）
+PRICE_GAPS = "trade.price_gap_subsidies"  # 統計: 政府が国営の商社に払った価格差の補給金（1ターン）
+
+
+def cover_price_gap(
+    island: IslandState, f: Facility, entity: str, cost: int, received: int
+) -> None:
+    """計画経済の島の国営の商社が、仕入れ値 cost の物を received（自国の通貨）で売った損を、政府が
+    貿易の項目から価格差の補給金として埋める（払える分だけ）。輸入した物を公定価格で島に売った分
+    （市場の段）と、公定価格で買った余りを圏の値段で輸出した分（貿易の段）の両方。国の貿易の独占で
+    は、国内の値段と外国の値段の差は国庫が持つ（ソ連の対外貿易の価格差補填）。前は差を銀行の運転
+    資金で借り続け、利子が積み上がって銀行が中央銀行から借り続けた（W-158。2026-11-01）。
+    国庫直轄の商社（entity が政府）は国庫の中なので払わない。"""
+    gap = cost - received
+    if gap <= 0 or entity == ledger.GOV or not is_planned(island):
+        return
+    if owner_entity(f) != ledger.GOV:
+        return
+    payer = Payer(ledger.GOV, GOV_TRADE)
+    paid = min(gap, funds.available(island, payer))
+    if paid <= 0:
+        return
+    funds.pay(island, payer, entity, paid, "price_gap_subsidy")
+    books.add(island, f.id, books.SUBSIDY, paid)
+    island.stats[PRICE_GAPS] = island.stats.get(PRICE_GAPS, 0) + paid
 
 
 ANY_RATE = 10**15  # 計画経済の輸入: どのレートでも引き合う（外貨は持っている分だけ使い、買わない）

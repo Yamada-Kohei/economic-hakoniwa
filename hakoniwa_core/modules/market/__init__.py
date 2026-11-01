@@ -150,7 +150,7 @@ MATERIAL_BUYERS = frozenset({SITE, WORKS, PUBLIC_HOUSING, REBUILD, REPAIR})
 SITE_BOUGHT = "site_bought"  # island.scratch: このターンに工事の資材の買い手が約定した量（財 → 量）
 TRADER_PRIORITY = 0  # 商社の輸出の買い注文の優先順位（値幅の端で止まったときは島の買い手が先）
 CONTRACT_PRIORITY = 9  # 契約で売る分を政府が買う注文の優先順位
-GOV_TRADE = "trade"  # 政府が貿易に払う項目（どの項目にも取り置いていない国庫から）
+GOV_TRADE = traders.GOV_TRADE  # 政府が貿易に払う項目（どの項目にも取り置いていない国庫から）
 MERCHANT_GAP = Payer(ledger.GOV, GOV_TRADE)  # 計画経済の島で、海外の商人の値段と公定価格の差を払う
 # island.scratch: このターンに住宅ローンで借りた額と、床を足す資材の注文（回3）。層 → (借りた額,
 # 床を足す資材の注文)
@@ -2970,7 +2970,8 @@ class Market(IslandStage):
 
     @staticmethod
     def _trade_settled(island: IslandState, ctx: StageContext, rates: dict[int, int]) -> None:
-        """商社が島の市場で買った・売った量を、仕入れ値の記録に足す（運賃を含めて）。"""
+        """商社が島の市場で買った・売った量を、仕入れ値の記録に足す（運賃を含めて）。計画経済の島の
+        国営の商社が仕入れ値より安く売った差は国庫が埋める（traders.cover_price_gap）。"""
         found = {facility_entity(f.id): f for f in trade.traders_of(island, ctx.config)}
         if not found:
             return
@@ -2981,7 +2982,9 @@ class Market(IslandStage):
                 traders.bought_home(f, record.good, record.quantity, cost)
             f = found.get(record.seller)
             if f is not None:
-                traders.sold_home(f, record.good, record.quantity)
+                cost = traders.sold_home(f, record.good, record.quantity)
+                received = record.amount - part(record.amount, rates.get(f.id, 0))
+                traders.cover_price_gap(island, f, record.seller, cost, received)
 
     @classmethod
     def _record_shortages(
