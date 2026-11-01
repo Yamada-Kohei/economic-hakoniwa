@@ -44,6 +44,7 @@ from hakoniwa_core.economy import (
     payer_of,
     services,
 )
+from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy.households import (
     SUPPORT,
     add_income,
@@ -71,6 +72,17 @@ from hakoniwa_core.units import (
 
 # f.economy: 賃金に乗せた生産性（施設の月ごとの、それまでで一番高い値。W-186 回2）
 PRODUCTIVITY_YEAR = "productivity_year"
+
+
+def planned_wages(island: IslandState, ctx: StageContext) -> bool:
+    """国が賃金を決める島か（計画経済。economy/plan.py の is_planned）。
+
+    国の施設の賃金は、人手の足りなさや物価では動かさず、国が年に1回（施設の月）、施設の生産性が
+    伸びた割合だけ上げる。現実の計画経済では、国が賃金表と年の計画の賃金の総額を決め、伸びを
+    生産性の伸びの内に抑えた。市場と同じ式で上げると、賃金 → 原価 → 公定価格の改定 → 賃金の
+    追いかけっこになり、物価が年 30% ほど上がり続けた（W-12。2026-11-01 の価格の決まり方の見直し）。
+    人手の足りない施設の席は埋まらないまま残る（物不足が、値上がりでなく空いた席と行列に出る）。"""
+    return planning.is_planned(island, ctx.defs)
 
 
 def wage_month(f: Facility, turn: int) -> bool:
@@ -103,6 +115,9 @@ def wage_update(island: IslandState, f: Facility, ctx: StageContext) -> int:
     上限の外。W-186 回2。長い目で見ると賃金は生産性の伸びについていく）。
     独立採算の施設は、今の値段で変動費の利益が 0 になる賃金より上げない（商業・サービス業は、
     サービスの値段 × 1人の量まで。バランス調整）。
+
+    計画経済の島（planned_wages）では、物価と人手の足りなさの分（a と g）を 0 にし、施設の月の
+    生産性の伸びだけで上げる（国が賃金を決める）。
     """
     settings = ctx.config.get("labor")
     wage = f.economy["wage"]
@@ -115,6 +130,8 @@ def wage_update(island: IslandState, f: Facility, ctx: StageContext) -> int:
     speed = settings["wage_speed"] if gap > 0 else settings["slack_speed"]
     change = settings["indexation"] * max(0.0, inflation(island.economy)) / YEAR + speed * gap
     change = max(-settings["max_cut"], min(settings["max_raise"], change))
+    if planned_wages(island, ctx):
+        change = 0.0
     new = scale_price(wage, (1 + change) * (1 + productivity_growth(f, ctx.turn)))
     if new > wage and is_self_supporting(f) and services.is_services(ctx.config, f):
         price = island.economy.prices.get(services.good_of(ctx.config), 0)
@@ -155,6 +172,8 @@ def engineer_wage_update(island: IslandState, f: Facility, ctx: StageContext) ->
     speed = settings["wage_speed"] if gap > 0 else settings["slack_speed"]
     change = settings["indexation"] * max(0.0, inflation(island.economy)) / YEAR + speed * gap
     change = max(-settings["max_cut"], min(settings["max_raise"], change))
+    if planned_wages(island, ctx):
+        change = 0.0
     growth = productivity_growth(f, ctx.turn)  # 施設の月の生産性の分は一般の賃金と同じ
     return max(scale_price(wage, (1 + change) * (1 + growth)), f.economy["wage"])
 
