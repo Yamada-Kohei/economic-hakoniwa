@@ -515,18 +515,29 @@ def remaining_turns(loan: Loan, turn: int) -> int:
     return max(1, loan.start + loan.term - turn)
 
 
+def _within_outstanding(island: IslandState, loan: Loan, amount: int) -> None:
+    """残っている元金を超えて返す・消すと、融資の勘定がマイナスで残り、貸し出しの合計が狂う。"""
+    left = outstanding(island, loan)
+    if amount > left:
+        raise ledger.LedgerError(
+            f"融資 {loan.id} の残り {left} より多い {amount} を返す・消そうとしました"
+        )
+
+
 def repay(island: IslandState, loan: Loan, amount: int, kind: str = "loan_repayment") -> None:
-    """元金を返す（借り手の預金が消える）。"""
+    """元金を返す（借り手の預金が消える）。残っている元金より多くは返せない（呼ぶ側が切る）。"""
     if amount <= 0:
         return
+    _within_outstanding(island, loan, amount)
     ledger.pay(island, loan.borrower, loan.lender, amount, kind)
     ledger.cancel(island, loan.lender, ledger.loan_item(loan.id), loan.borrower, amount, kind)
 
 
 def write_off(island: IslandState, loan: Loan, amount: int) -> None:
-    """返ってこない元金を、貸し手の損失として消す。"""
+    """返ってこない元金を、貸し手の損失として消す。残っている元金より多くは消せない。"""
     if amount <= 0:
         return
+    _within_outstanding(island, loan, amount)
     ledger.cancel(
         island, loan.lender, ledger.loan_item(loan.id), loan.borrower, amount, "loan_write_off"
     )

@@ -643,6 +643,8 @@ price_floor_cleared: "{good}の値段の下限をなくしました"
 reason_not_planned: "計画経済ではありません"
 reason_unknown_industry: "{industry}という産業はありません"
 reason_too_many_priority: "重点産業は {limit} つまでです"
+reason_floor_above_cap: "{good}の下限 {price} は、いまの上限 {cap} より高くできません（先に上限を上げるか、なくしてください）"
+reason_cap_below_floor: "{good}の上限 {price} は、いまの下限 {floor} より安くできません（先に下限を下げるか、なくしてください）"
 reason_price_controls_forbidden: "どの財にも値段の上限と下限を決められるのは混合経済だけです（ほかの体制は電気料金の上限だけ）"
 
 # 外交: 宣戦と条約と戦争の状態（フェーズ4-1）
