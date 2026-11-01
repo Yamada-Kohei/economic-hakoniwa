@@ -103,29 +103,10 @@ def hoards(island: IslandState, defs: Defs, f: Facility) -> bool:
     return f.owner == OWNER_STATE and f.built and is_planned(island, defs)
 
 
-def industry_of(defs: Defs, kind: str, recipe: str | None) -> str | None:
-    recipes = defs.facilities[kind]["recipes"]
-    spec = recipes.get(recipe or "") or next(iter(recipes.values()), {})
-    return spec.get("industry")
-
-
-def build_factor(island: IslandState, defs: Defs, kind: str, recipe: str | None) -> float:
-    """命令で建てる国の工事の工期の倍率: 体制の works_turns（権威主義の公共事業）と、計画経済の
-    重点産業なら priority_build_turns を掛ける。"""
-    found = politics.traits(island, defs)
-    factor = found.get("works_turns", 1.0)
-    chosen = island.ext.get(KEY, {}).get("priority")
-    if chosen and industry_of(defs, kind, recipe) in chosen:
-        factor *= found.get("priority_build_turns", 1.0)
-    return factor
-
-
-def experience_factor(island: IslandState, defs: Defs, industry: str) -> float:
-    """経験の伸びの倍率（計画経済の重点産業は priority_experience）。"""
-    chosen = island.ext.get(KEY, {}).get("priority")
-    if not chosen or industry not in chosen:
-        return 1.0
-    return float(politics.trait(island, defs, "priority_experience", 1.0))
+def build_factor(island: IslandState, defs: Defs) -> float:
+    """命令で建てる国の工事の工期の倍率（体制の works_turns。権威主義の公共事業）。計画経済の
+    重点産業は、工期の倍率ではなく、資材を先に受け取ることで早く建つ（割当ルール）。"""
+    return float(politics.traits(island, defs).get("works_turns", 1.0))
 
 
 # --- 公定価格 ---------------------------------------------------------------------

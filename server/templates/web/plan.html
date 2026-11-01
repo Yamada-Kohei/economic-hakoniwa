@@ -80,7 +80,7 @@
 <section class="panel" id="priority">
   <h2>{% translate "重点産業" %}</h2>
   <p>{% for i in p.priority %}{{ i.name }}{% if not forloop.last %}・{% endif %}{% empty %}<span class="muted">{% translate "決めていません。" %}</span>{% endfor %}</p>
-  <p class="hint">{% blocktranslate with n=p.max_priority %}重点産業の施設は、足りない財を先に受け取り、工期が短く、経験が速く積もります（{{ n }} つまで）。{% endblocktranslate %}</p>
+  <p class="hint">{% blocktranslate with n=p.max_priority %}重点産業の施設と、建てている重点産業の工事は、足りない財を先に受け取ります（{{ n }} つまで）。{% endblocktranslate %}</p>
   <form class="actions" data-order="set_priority_industries" data-list="industries">
     <strong>{% translate "重点産業を決める" %}</strong>
     {% for i in p.industries %}<label><input type="checkbox" name="industries" value="{{ i.id }}"{% for c in p.priority %}{% if c.id == i.id %} checked{% endif %}{% endfor %}> {{ i.name }}</label>{% endfor %}

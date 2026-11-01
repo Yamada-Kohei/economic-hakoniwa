@@ -98,8 +98,8 @@ def build(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> No
         name=payload.get("name", "").strip(),
         economy={"capital": 0},
     )
-    # 体制（権威主義の公共事業）と計画経済の重点産業で工期を変える（フェーズ3-4）
-    factor = planning.build_factor(island, ctx.defs, kind, f.recipe)
+    # 体制（権威主義の公共事業）で工期を変える（フェーズ3-4）
+    factor = planning.build_factor(island, ctx.defs)
     if factor != 1.0:
         turns = ctx.defs.facilities[kind]["construction"]["turns"]
         f.ext["build_total"] = max(fac.FULL, round(turns * factor * fac.FULL))
@@ -143,7 +143,7 @@ def start_expansion(
         step = steps[fac.grade_of(target)]
         f.ext[fac.GRADE_TO] = step["grade"]
         turns = step["turns"]
-    factor = planning.build_factor(island, ctx.defs, target.kind, f.recipe)
+    factor = planning.build_factor(island, ctx.defs)
     if factor != 1.0 or steps:
         f.ext["build_total"] = max(fac.FULL, round(turns * factor * fac.FULL))
     island.facilities.append(f)
