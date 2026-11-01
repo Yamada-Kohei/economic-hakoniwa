@@ -82,6 +82,19 @@ jobs:
       - name: 移行ファイルの作り忘れ
         run: python manage.py makemigrations --check --dry-run
 
+  # 画面の JavaScript（server/static/js/）の試験。Node の標準の試験の道具だけで動く（package.json は要らない）
+  js:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.release != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 画面の JavaScript の試験
+        run: node --test tests/js/*.test.mjs
+
   test:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.release != 'true'

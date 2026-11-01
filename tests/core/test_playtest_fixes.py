@@ -159,6 +159,12 @@ def test_entry_block_is_recorded_and_logged_once(game, warmed):
         if tile.zone == ZONE_INDUSTRIAL:
             tile.zone = ZONE_NONE
     island.economy.finance.pop("entry_block", None)  # 前のターンまでのわけは消しておく
+    # 町に建つ店（工業団地の要らない参入）の合図（品切れと高い値段の買いたい量）も消す（店が建つと
+    # わけが残らない。2026-11-01 の価格の決まり方の直し 第2弾で、40 ターン目の島に店が建つ道筋に
+    # なった）
+    for good in game.defs.facilities["shop"]["recipes"]["default"]["outputs"]:
+        for key in ("shortages", "demand"):
+            island.economy.finance.get(key, {}).pop(good, None)
     island.log.clear()  # 前のターンのログも
     ctx = context(game, world)
     entry = EntryExit()

@@ -61,6 +61,7 @@ TRADE_STATS = [
     "trade.merchant_gap",  # 計画経済の国で、海外の商人の値段と公定価格の差を政府が払った分
     "trade.merchant_sold",  # 海外の商人に売った額（W-186 回4）
     "trade.merchant_premium",  # 計画経済の国で、商人の買い値と公定価格の差を政府が受け取った分
+    "trade.price_gap_subsidies",  # 計画経済の国で、国営の商社の輸入の価格差を政府が払った分
     "ships",
     "ships.busy",
     "freight.ship_rate",

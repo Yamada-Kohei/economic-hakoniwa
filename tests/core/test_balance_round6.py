@@ -429,17 +429,17 @@ def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
     turn = world.turn
     planned = list(autoplan._candidates(island, game.defs, game.config, turn))
     # 標準の計画が造船所を候補に挙げるか、もう建て始めている（回7 の企業で流れが変わり、36 ターンの
-    # うちに工事が始まるようになった）。造船所の機械がまだどの島でも作れず貿易でも手に入らなければ、
+    # うちに工事が始まるようになった）。造船所の機械をこの島で作っておらず貿易でも手に入らなければ、
     # 機械の工場の工事が先（W-186 回2 で流れが変わり、この世界では機械の工場の工事が石の品切れで
-    # 遅れる: 会社の立て直しで島に1つの石切り場が閉じ、通勤圏に雇える人がいなくて次が建たない）
-    made = {
-        g for x in _all_facilities(world) if x.built for g in fac.recipe_of(game.defs, x)["outputs"]
-    }
+    # 遅れる: 会社の立て直しで島に1つの石切り場が閉じ、通勤圏に雇える人がいなくて次が建たない。
+    # 2026-11-01 の価格の直しの後は、ほかの島の機械の工場が先に動くが、この島にはまだ届かない）
+    made = {g for x in island.facilities for g in fac.recipe_of(game.defs, x)["outputs"]}
+    at_hand = made | autoplan._traded(island, game.config)
     assert (
         any(kind == "shipyard" for kind, _ in planned)
         or any(x.kind == "shipyard" for x in island.facilities)
         or (
-            "machinery" not in made
+            "machinery" not in at_hand
             and any(
                 "machinery" in fac.recipe_of(game.defs, x)["outputs"] and not x.built
                 for x in _all_facilities(world)

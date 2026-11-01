@@ -25,7 +25,7 @@
 | 番号 | 決まり（一行） | 状態 | 設定の名前 | 試験 |
 | --- | --- | --- | --- | --- |
 | GT-01 | 同じ種なら同じ結果になる。島の並び順・島の数・保存と読み込みで結果が変わらない。結果の同じを状態の指紋で比べる | 決定 |  | tests/core/test_engine.py::test_empty_stages_300_turns_same_seed_same_result, ::test_island_order_does_not_matter, ::test_island_rng_does_not_depend_on_island_count, tests/core/test_gate.py::test_same_seed_same_result, ::test_island_order_does_not_change_the_result, ::test_saving_and_loading_does_not_change_the_result |
-| GT-02 | 帳簿の確かめは毎ターン記録の段の最後に行い、崩れていればそのターンを失敗にして、サーバーは何も保存しない | 決定 |  | tests/core/test_economy.py::test_ledger_catches_balance_changed_without_entry, tests/server/test_turns.py::test_failed_turn_writes_nothing |
+| GT-02 | 帳簿の確かめは毎ターン記録の段の最後に行い、崩れていればそのターンを失敗にして、サーバーは何も保存しない。例外は島ごとに分けて飛ばさず、ターン全体を止める | 決定 |  | tests/core/test_economy.py::test_ledger_catches_balance_changed_without_entry, tests/server/test_turns.py::test_failed_turn_writes_nothing |
 | GT-03 | 島をまたぐお金（外貨の持ち高と非居住者の預金、融通、外国の国債）と運ぶ途中の荷の突き合わせは、毎ターン世界の段 `trade_check` が行い、合わなければ止める | 決定 |  | tests/core/test_phase3_3.py::test_world_check_finds_swap_mismatch, ::test_world_check_finds_foreign_bond_mismatch |
 | GT-04 | DB を通して回したターンと、メモリだけで回したターンは同じ結果になる | 決定 |  | tests/server/test_phase1.py::test_turns_through_db_match_turns_in_memory |
 | GT-05 | 部品の試験: 板寄せは乱数の注文で「約定量が最大・値幅を守る・指値より不利な約定がない・取り置いたお金を超えない」を、帳簿はわざと崩した帳簿で失敗することを確かめる | 決定 |  | tests/core/test_economy.py::test_auction_properties, ::test_ledger_catches_entry_between_different_items, ::test_ledger_catches_negative_deposit |
@@ -85,6 +85,7 @@
 - 記録の段の最後に帳簿の 4 つの確かめ（タブ 7）を行い、崩れていれば例外を出してそのターンを失敗にします。サーバーは何も保存せず、ターンは進みません。
 - 島をまたぐお金（外貨の持ち高と非居住者の預金、中央銀行どうしの融通、外国の国債）と運ぶ途中の荷は、世界の段 `trade_check` が毎ターン突き合わせ、合わなければ同じく止めます（タブ 9）。
 - ターンが止まるのはゲームの不具合なので、夜の点検は「止まった」を一番重いものとして書き残します。
+- どの段でも、例外が出たらターン全体を止めます（島ごとに分けて、その島の段だけ飛ばすことはしません）。市場・貿易・為替・送金は島をまたぐので、1 つの島の段だけ飛ばすと相手の島の帳簿と合わなくなり、食い違ったまま進んでしまうためです。お金がすべて複式の帳簿で動くことを守るほうを選び、止まったときはサーバーが管理者に知らせ、印を外して次の更新でやり直します。
 
 ### 部品の試験
 

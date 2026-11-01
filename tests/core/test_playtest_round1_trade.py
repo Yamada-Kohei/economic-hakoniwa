@@ -175,3 +175,37 @@ def test_traders_do_not_export_what_only_the_merchant_sells(game, traded):
     # 場面の確かめ: 計画経済の島に、海外の商人だけが売る物がある（油井がないので原油。燃料は国営の
     # 製油所が商人の原油で作り始めることがある）
     assert "crude_oil" in merchant_only[planned.id]
+
+
+# --- 計画経済の国営の商社の価格差は国庫が埋める（価格の決まり方の直し 2026-11-01） ---------------
+
+
+def test_planned_state_trader_gets_the_price_gap_from_the_treasury(game, traded):
+    """計画経済の島の国営の商社が、輸入した物を仕入れ値より安く（公定価格で）売ると、差を政府が
+    貿易の項目から補給金として払う。仕入れ値で売れたときは払わない（前は差を運転資金で借り続け、
+    銀行が中央銀行から借り続けた）。"""
+    from types import SimpleNamespace
+
+    from hakoniwa_core.economy import books, facility_entity, funds
+    from hakoniwa_core.modules.market import MERCHANT_GAP, Market
+    from hakoniwa_core.state import TradeRecord
+
+    world = copy.deepcopy(traded[0])
+    island = next(i for i in world.islands.values() if traders.is_planned(i))
+    ctx = SimpleNamespace(config=game.config)
+    f = next(t for t in traders_of(island, game.config) if t.owner != "private")
+    entity = facility_entity(f.id)
+    gap = 1000
+    assert funds.available(island, MERCHANT_GAP) >= gap
+
+    def sell(cost, amount):
+        traders.entry(f, "rice")["held"] = [QUANTITY_SCALE, cost]
+        island.trades = [TradeRecord("rice", "hh:general", entity, QUANTITY_SCALE, amount)]
+        island.stats.pop("trade.price_gap_subsidies", None)
+        before = books.facility_items(island).get(f.id, {}).get(books.SUBSIDY, 0)
+        Market._trade_settled(island, ctx, {})
+        after = books.facility_items(island).get(f.id, {}).get(books.SUBSIDY, 0)
+        return island.stats.get("trade.price_gap_subsidies", 0), after - before
+
+    assert sell(5000 + gap, 5000) == (gap, gap)
+    assert sell(5000, 5000) == (0, 0)

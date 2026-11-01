@@ -272,7 +272,7 @@ def test_food_is_bought_before_wages_when_the_budget_is_short(game, world):
     """国防費の賃金と食べ物の月割りが足りないときは、食べ物を先に確保し、賃金が遅れる（W-184。
     補給は賃金より先）。賃金だけで月割りを使い切る前の形では、食べ物が買えず兵が飢えた。"""
     island = world.islands[1]
-    play(game, world, 1, [("set_defense", {"annual": 700_000}), ("recruit", {"count": 60})])
+    play(game, world, 1, [("set_defense", {"annual": 720_000}), ("recruit", {"count": 60})])
     for _ in range(5):
         play(game, world, 1)
         state = island.ext["military"]

@@ -291,6 +291,7 @@ PLAN_STATS = [
     "plan.subsidy_unpaid",
     "trade.merchant_gap",
     "trade.merchant_premium",
+    "trade.price_gap_subsidies",
     "labor.mobilized",
 ]
 

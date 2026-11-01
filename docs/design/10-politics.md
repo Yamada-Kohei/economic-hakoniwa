@@ -56,7 +56,7 @@
 | PL-29 | 生産目標: 国営施設ごとに、直近の公定価格での需要（買えなかった分と、国の工事とインフラの資材のうち公共事業費で買えなかった分も含む）に上乗せした量を、同じ財を作る国営施設に設備の大きさで割り振る。施設は採算でなく目標に合わせて動く | 決定 | `planning.demand_turns`, `planning.target_markup` | tests/core/test_phase3_4.py::test_targets_follow_demand_and_capacity |
 | PL-30 | 重点産業は命令で産業の分類を決めた数まで選ぶ。割当の先頭になり、体制の特色（工期と経験）が効く | 決定 | `planning.max_priority` | tests/core/test_phase3_4.py::test_plan_orders_check_and_log |
 | PL-31 | 計画経済の貿易は国営の商社の独占: 行列のある財を輸入し、売れ残った財を値段によらず輸出する。輸入は輸出で得た外貨の範囲（タブ 9） | 決定 |  | tests/core/test_phase3_4.py::test_planned_trade_is_a_state_monopoly, tests/core/test_phase3_4.py::test_planned_traders_export_unsold_goods_whatever_the_price |
-| PL-32 | 混合経済はどの財にも値段の上限と下限を決められる。市場経済は電気料金の上限だけ | 決定 |  | tests/core/test_phase3_4.py::test_price_floor_keeps_the_market_price_up, tests/server/test_phase3_4.py::test_plan_page_for_a_mixed_economy_shows_price_controls |
+| PL-32 | 混合経済はどの財にも値段の上限と下限を決められる。市場経済は電気料金の上限だけ。上限より高い下限・下限より安い上限の命令は断る | 決定 |  | tests/core/test_phase3_4.py::test_price_floor_keeps_the_market_price_up, tests/server/test_phase3_4.py::test_plan_page_for_a_mixed_economy_shows_price_controls |
 | PL-33 | 闇市は入れない。後からモジュールで足せるよう、配給で買えなかった量と余ったお金を段の間に残す | 決定（後から） |  | （未確認） |
 | PL-34 | 移民の出国の政策は政治の仕組みで上限がある: 民主主義は自由だけ、権威主義は許可制まで、全体主義は禁止まで（`regimes.yaml` の `exit_control`）。受け入れの政策は体制によらない | 決定 |  | tests/core/test_migration.py::test_democracy_cannot_restrict_exit_and_amending_relaxes_it |
 | PL-35 | 国どうしのやりとりは、非公開の公電（送るとすぐ届き、発信国と宛先国の持ち主だけが読める）と公開の掲示板（板・番号付きの書き込み。PL-51〜PL-55）。画面・API・MCP・hk.py から同じように使える | 決定 |  | tests/server/test_letters.py::test_send_receive_and_read, tests/server/test_letters.py::test_others_cannot_read |
@@ -170,6 +170,7 @@ T^{*} = b + w_H\,(H - H_0) - w_U\,(U - U_0)^{+} - w_\pi\,(\pi - \pi_0)^{+} - w_G
 - 経済体制の特色 `official_prices` を持つ島（計画経済）だけで効く。板寄せは同じ関数で、値幅を0にして割当ルールを差し替える（タブ 3 MK-34）。
 - 公定価格: 財ごとに国が決める値段で、原則は据え置き（ソ連の小売価格のように、決めた値段を長く変えない。2026-10-15 決定）。
   - `planning.review_turns` ターンごとに原価を確かめ、公定価格との差が幅（`planning.review_band`）を超えた財だけ原価に改める。原価は、建国の初めの値段と同じ解き方（原価＋1割）を今の島の平均賃金で解いた値段。島で作れない財は、前の原価に平均賃金の伸びを掛ける。
+  - 賃金は国が決め、施設の月に生産性の伸びの分だけ上げる（タブ 4 LB-40）。人手の足りなさや物価では上げないので、改定が賃金を押し上げ、賃金がまた改定を押す追いかけっこにならない。
   - 据え置く財（`planning.held_goods`。既定は穀物・魚・肉・食品）は、原価を下回っても据え置き、売った量 ×（原価 − 公定価格）を補助金にする。独立採算の施設には国庫（国営施設の項目）から払い、足りなければ量に比例して払える分だけで、残りはその施設の赤字。国庫直轄の施設はお金を動かさず帳簿にだけ残す。払いきれていない間は1度だけ知らせる。
   - 命令: 公定価格の改定 `review_official_prices`（名指しした財、空なら上書きしていない財すべてを今の原価に。政治の決断なので行政力が重く、議会のある体制では過半数）、公定価格の決まり `set_official_price_rules`（幅と据え置く財）、財ごとの上書き `set_official_price`（確かめで変えない。0 でやめる）。
   - 市場の段の初めに公定価格を基準の値段にし、島の市場は公定価格で値幅0の板寄せになる。電力も生産の段で同じにする。
@@ -184,7 +185,7 @@ T^{*} = b + w_H\,(H - H_0) - w_U\,(U - U_0)^{+} - w_\pi\,(\pi - \pi_0)^{+} - w_G
 
 ### 混合経済と市場経済の値段の規制
 
-- 混合経済は、どの財にも値段の上限（`set_price_cap`）と下限（`set_price_floor`。農産物の支えなど。0 でなくす）を決められる。市場経済とほかの体制は電気料金の上限だけ。板寄せの値幅の中で上限と下限を守る（タブ 3）。
+- 混合経済は、どの財にも値段の上限（`set_price_cap`）と下限（`set_price_floor`。農産物の支えなど。0 でなくす）を決められる。市場経済とほかの体制は電気料金の上限だけ。板寄せの値幅の中で上限と下限を守る（タブ 3）。上限より高い下限、下限より安い上限の命令は断る（両方あると下限が勝ち、上限が効かなくなるため）。
 - 計画の画面は、計画経済の島で「計画」、混合経済の島で「値段の規制」として見出しに出る。市場経済には出さない。
 
 ### 移民の政策の体制ごとの上限

@@ -79,6 +79,7 @@ merchant_export:      {type: journal}   # 海外の商人が買った物の代�
 # 産業政策と国際金融（フェーズ3-3）
 tariff:               {type: journal}   # 関税（輸入した商社 → 政府）
 export_subsidy:       {type: journal}   # 輸出補助金（政府 → 輸出した商社）
+price_gap_subsidy:    {type: journal}   # 価格差の補給金（政府 → 輸入を公定価格で売った計画経済の国営の商社。2026-11-01）
 fx_intervention:      {type: journal}   # 為替の介入（中央銀行の外貨の売り買い）
 aid:                  {type: journal}   # お金の援助（送る国の政府 → 受け取る国の政府）
 # 国をまたぐ移民（バランス調整の回3。hakoniwa_core/modules/migration）

@@ -453,10 +453,11 @@ def test_foreign_currency_contract_larger_than_the_depth_is_delivered(game, trad
     # 島2の中央銀行が売る島1の通貨は、中央銀行どうしの融通で借りる。借りられる残り（島1の年の GDP
     # の割合まで）が尽きれば外貨を買えずに届かないのが正しいので、ここでは厚みを見るため、残りの
     # 3/4 に収まるターン数にする（ほかの買いの分も借りる。回6 で世界の道筋が変わり、島1の GDP が
-    # 下がって6ターン分に足りなくなった）
+    # 下がって6ターン分に足りなくなった。2026-11-01 の価格の直しで世界の道筋が変わり、3ターン分にも
+    # 足りなくなった。2ターンでもレートの動きと届いた量は確かめられる）
     room = swap.available(world, game.config, buyer.id, seller.id)
     turns = min(6, room * 3 // 4 // money_of(price, qty * QUANTITY_SCALE))
-    assert turns >= 3
+    assert turns >= 2
     stock.add(seller.warehouse, good, (qty * 8 + 5) * QUANTITY_SCALE, world.turn, game.defs.goods)
     ledger.pay(buyer, ledger.CB, ledger.GOV, 10**12, "trade")  # 国庫の自国通貨は足りている
     payload = {
