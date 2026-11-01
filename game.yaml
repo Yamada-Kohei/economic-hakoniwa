@@ -66,6 +66,7 @@ world:
   sample_resources: {coal: 3, iron_ore: 3, stone: 2, crude_oil: 1, bauxite: 1, copper_ore: 0, uranium_ore: 0}
   # 鉱脈（MI-60。hakoniwa_core/veins.py）: 世界の種と島の番号だけで決め、島ごとに 1 度だけ、鉱業資源の
   # 上限の外に置く。値は置く島の割合（銅は多くの国が小さくても持つが、主な産地は限られる）。
+  # 鉱脈を足しても、島の鉱業資源は max_resources より 1 つ多いところまで（4 種類持つ国を出さない）。
   # 4-2 では military に置いていたが、軍事の設定ではないので 2026-10-25 に world へ移した
   veins: {copper_ore: 0.4, uranium_ore: 0.15}
 

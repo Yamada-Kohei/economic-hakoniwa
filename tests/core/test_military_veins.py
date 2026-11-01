@@ -86,3 +86,21 @@ def test_uranium_veins_come_with_version_two_and_leave_the_copper_alone(game):
     for island in world.islands.values():
         assert island.ext[veins.KEY] == veins.VERSION
         assert veins.place(island, game.config, world.seed) == []
+
+
+def test_veins_never_give_an_island_a_fourth_resource(game):
+    """建国で上限まで選んだ島に銅とウランの両方が出ても、資源は上限 + 1 種類まで（2026-11-01 本人
+    「4 種類持ってる国がいたらまずい」）。"""
+    limit = game.config.get("founding.max_resources")
+    world = generate_world(5, 200, game.config, game.defs)
+    both_rolled = 0
+    for island in world.islands.values():
+        island.resources = ["coal", "iron_ore"][:limit]
+        island.ext.pop(veins.KEY, None)
+        free = copy.deepcopy(island)
+        free.resources = []  # 比べる島: 資源を選んでいない島なら両方が出るか
+        if len(veins.place(free, game.config, world.seed)) == 2:
+            both_rolled += 1
+        veins.place(island, game.config, world.seed)
+        assert len(island.resources) <= limit + 1
+    assert both_rolled > 0  # 両方が出る島で試せている
