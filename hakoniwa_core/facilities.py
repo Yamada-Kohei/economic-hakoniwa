@@ -668,8 +668,8 @@ def labor_ratio(defs: Defs, f: Facility) -> int:
 
 
 def total_progress(defs: Defs, f: Facility) -> int:
-    """工事が済むまでの進みの合計（1ターンに最大 1000 進む）。定義の工期 × 1000 で、体制や重点産業で
-    工期を変えた国の工事は、建て始めたときに決めた ext["build_total"]（フェーズ3-4）。"""
+    """工事が済むまでの進みの合計（1ターンに最大 1000 進む）。定義の工期 × 1000 で、体制で工期を
+    変えた国の工事と地下の工事は、建て始めたときに決めた ext["build_total"]（フェーズ3-4）。"""
     found = f.ext.get("build_total")
     if found:
         return int(found)

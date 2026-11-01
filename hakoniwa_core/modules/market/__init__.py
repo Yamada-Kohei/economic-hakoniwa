@@ -1124,9 +1124,18 @@ class Market(IslandStage):
 
     @staticmethod
     def _sites(island: IslandState, ctx: StageContext) -> list[Facility]:
-        """工事中の施設。資材とお金は優先度の高い工事から回す（同じ優先度は番号の順）。"""
+        """工事中の施設。資材とお金は優先度の高い工事から回す。同じ優先度の中は、計画経済の重点産業の
+        工事を先に（国の倉庫の資材・注文の量・公共事業費のどれも、この順に回すので、足りないときに
+        後ろの工事は注文も出せない）、あとは番号の順。"""
         sites = [f for f in island.facilities if not f.built]
-        sites.sort(key=lambda f: (-fac.priority_of(ctx.defs, ctx.config, f), f.id))
+        planned = planning.is_planned(island, ctx.defs)
+        sites.sort(
+            key=lambda f: (
+                -fac.priority_of(ctx.defs, ctx.config, f),
+                not (planned and planning.is_priority(island, ctx.defs, f)),
+                f.id,
+            )
+        )
         return sites
 
     @staticmethod
