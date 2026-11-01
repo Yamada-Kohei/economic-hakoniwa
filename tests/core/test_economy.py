@@ -80,14 +80,15 @@ def test_auction_stops_at_band_and_allocates_by_priority():
     assert result.bought == [0, 5]  # 上端で止まったら優先順位の高い方から
 
 
-def test_auction_settles_at_the_reference_when_it_lies_where_both_sides_balance():
-    """売りと買いが同じ量になる値段の幅に基準の値段が入るときは、基準の値段で約定する（幅の端の
-    指値を選ぶと、並んだときの決め方で安いほうに寄っていた。2026-11-01 のコードの見直し）。"""
-    r = auction.clear([auction.Order(10, 100)], [auction.Order(10, 90)], 95)
-    assert (r.price, r.volume) == (95, 10)
-    # 基準の値段が幅の外なら、幅のうち基準に近い端
-    assert auction.clear([auction.Order(10, 100)], [auction.Order(10, 90)], 89).price == 90
-    assert auction.clear([auction.Order(10, 100)], [auction.Order(10, 90)], 101).price == 100
+def test_auction_settles_at_an_order_price_nearest_the_reference():
+    """売りと買いが同じ量になる値段が幅で並ぶときは、出た指値のうち基準の値段に近い方で約定する。
+    基準の値段そのものにはしない（すると幅に基準の値段が入っている間は値段が動かず、上がった値段が
+    戻らなかった。2026-11-01 の試し、MK-02）。"""
+    buys, sells = [auction.Order(10, 100)], [auction.Order(10, 90)]
+    r = auction.clear(buys, sells, 98)
+    assert (r.price, r.volume) == (100, 10)
+    assert auction.clear(buys, sells, 92).price == 90
+    assert auction.clear(buys, sells, 95).price == 90  # 並べば安い方
 
 
 def test_auction_without_cross_returns_midpoint_quote():
