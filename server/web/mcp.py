@@ -203,7 +203,9 @@ REPORTS = {
     "fiscal": "財政（国庫の収入と支出・予算・税率・国債の一覧）",
     "finance": "金融（中央銀行の方針・金利・融資。持ち主には銀行ごとの帳簿と金融の政策）",
     "trade": "貿易（輸出入・貿易圏。持ち主には契約（送り出した量 shipped・まだ海の上の量 at_sea と"
-    "着く見込みのターン arrive_first〜arrive_last）・商社・船団・産業政策）",
+    "着く見込みのターン arrive_first〜arrive_last）・商社・船団・産業政策・海外の商人 merchant"
+    "（あと何ターン来るか turns_left、量を減らし始めるターン taper_start、今の量の割合 share（%）、"
+    "値段の倍率 multiplier（島の物価を含む））",
     "fx": "為替と国際収支（持ち主には外貨の持ち高と為替の政策）",
     "politics": "政治（体制・政情・支持率・議席・選挙。持ち主には政情の内訳と命令の選択肢）",
     "diplomacy": "外交（戦争の状態・効いている条約・終わった条約・条約の違反の記録。持ち主には"
@@ -1394,8 +1396,9 @@ def handle(request: HttpRequest, message: Any) -> dict[str, Any] | None:
     if method == "tools/list":
         return _result(id_, {"tools": [t.spec() for t in TOOLS]})
     if method == "tools/call":
-        if params.get("name") not in TOOLS_BY_NAME:
-            return _error(id_, -32602, f"道具 {params.get('name')} はありません")
+        name = params.get("name")
+        if not isinstance(name, str) or name not in TOOLS_BY_NAME:  # 辞書や配列の名前も断る
+            return _error(id_, -32602, f"道具 {str(name)[:60]} はありません")
         if not isinstance(params.get("arguments") or {}, dict):
             return _error(id_, -32602, "arguments はオブジェクトで送ってください")
         return _result(id_, _call_tool(request, params))

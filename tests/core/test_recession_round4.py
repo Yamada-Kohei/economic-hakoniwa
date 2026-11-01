@@ -6,7 +6,7 @@ from __future__ import annotations
 import copy
 
 from hakoniwa_core import infra
-from hakoniwa_core.economy import Payer, funds
+from hakoniwa_core.economy import Payer, funds, retail
 from hakoniwa_core.economy.prices import initial_prices
 from hakoniwa_core.ledger import CB
 from hakoniwa_core.market import auction
@@ -35,7 +35,9 @@ def test_merchant_bids_for_the_same_goods_below_the_selling_price(game, base):
     offers = {g: (q, p) for g, q, p in merchant.offers(island, defs, config, turn)}
     assert set(bids) == set(game.config.get("foreign_merchant.goods"))
     assert "grain" not in bids  # 上限が島の食べる量の半分を超えるので入れない
-    factor = config.get("foreign_merchant.buy_multiplier")
+    factor = config.get("foreign_merchant.buy_multiplier") * retail.cpi(
+        island
+    )  # 島の物価に合わせる
     for good, (qty, price) in bids.items():
         assert price == scale_price(prices[good], factor)
         assert price < offers[good][1]

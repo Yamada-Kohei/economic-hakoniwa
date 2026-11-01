@@ -2,14 +2,13 @@
 
 段と命令（政情・選挙・議会・憲法改正・報道の統制・労働の動員）は hakoniwa_core/modules/politics、
 計画経済（公定価格・生産目標・配給）は hakoniwa_core/economy/plan.py にあります。ほかの段は、ここの
-関数で体制の特色と政治の状態を読みます（行政力・工期・経験・幸福度の上限・混乱期間の生産性など）。
+関数で体制の特色と政治の状態を読みます（行政力・工期・幸福度の上限・混乱期間の生産性など）。
 
 体制の特色は regimes.yaml の各体制の traits に書き、島が選んだ体制（軸ごとに1つ）の特色を合わせて
 使います（traits）。足し合わせるもの（政情の補正 stability_bonus・行政力 admin_bonus）、掛け合わせる
-もの（工期の倍率 works_turns・priority_build_turns、経験の伸び priority_experience、ぜいたく品の
-満足 luxury_variety）、小さいほうを取るもの（幸福度の上限 happiness_cap）、どれかが真なら真のもの
-（議会 parliament・労働の動員 mobilization ほか）があります。報道の統制 press_control は、どれかが
-偽なら偽です。
+もの（工期の倍率 works_turns、ぜいたく品の満足 luxury_variety）、小さいほうを取るもの（幸福度の上限
+happiness_cap）、どれかが真なら真のもの（議会 parliament・労働の動員 mobilization ほか）があります。
+報道の統制 press_control は、どれかが偽なら偽です。
 
 島の政治の状態は ``island.ext["politics"]`` に、JSON にそのまま保存できる形で置きます。
 
@@ -53,7 +52,7 @@ CONTROLLED = "controlled"  # 統制
 PRESS = (FREE, LIMITED, CONTROLLED)
 
 _SUMS = ("stability_bonus", "admin_bonus")
-_PRODUCTS = ("works_turns", "priority_build_turns", "priority_experience", "luxury_variety")
+_PRODUCTS = ("works_turns", "luxury_variety")
 _ALL = ("press_control",)  # どれかが偽なら偽
 
 

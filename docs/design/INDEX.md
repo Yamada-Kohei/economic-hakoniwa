@@ -410,7 +410,7 @@
 | FX-24 | 売り手の国は国の倉庫から出し、足りなければ島の市場で優先して買う | 決定 | tests/core/test_trade.py |
 | FX-25 | 契約で届いた物の行き先は買い手が契約ごとに選ぶ: 市場に出す（既定 | 決定 | tests/core/test_playtest5_fixes.py、tests/core/test_trade.py |
 | FX-26 | 物の援助は値段0で相手の承諾の要らない片道の契約として船で運び、お金の援助は国庫から一度だけ送る | 決定 | tests/core/test_phase3_3.py |
-| FX-27 | 海外の商人は、貿易の仕組みを置いたターン（建国か移し替え）から決めたターン数だけ、決まった値段と… | 仮（仮の決まりの表あり） | tests/core/test_trade.py |
+| FX-27 | 海外の商人は、貿易の仕組みを置いたターン（建国か移し替え）から `foreign_merchan`… | 仮（仮の決まりの表あり） | tests/core/test_trade.py |
 | FX-28 | レートは「決済通貨1単位が自国通貨でいくらか」 | 決定 | tests/core/test_trade.py |
 | FX-29 | 注文を出すのはその島の主体: 商社（次の数ターンの輸入の分を残して売り買い）・政府（契約の支払い… | 決定 | tests/core/test_trade.py |
 | FX-30 | 中央銀行は受け身の注文を出す: 前のレートより安い側で市場の厚みの分を買い、高い側で持っている分… | 決定 | tests/core/test_codex_turn300_fixes.py、tests/core/test_playtest5_fixes.py、tests/core/test_trade.py |
@@ -464,7 +464,7 @@
 | PL-19 | 政治体制を変えると首都の建物を建て替える | 決定 | tests/core/test_phase3_4.py、tests/server/test_phase3_4.py |
 | PL-20 | 計画経済に移ると、民営の施設と民間銀行は帳簿の純資産を国債で払って国有化する | 決定 | tests/core/test_phase3_4.py |
 | PL-21 | 体制の特色: 民主主義は政情が下がる動きが遅く R が正、権威主義は行政力 ＋1 と国の工事の工… | 仮（仮の決まりの表あり） | tests/core/test_phase3_4.py |
-| PL-22 | 経済体制の特色: 計画経済は重点産業の工期と経験の伸びが良く、ぜいたく品の種類の満足が少ない | 仮（仮の決まりの表あり） | （未確認） |
+| PL-22 | 経済体制の特色: 計画経済はぜいたく品の種類の満足が少ない（重点産業の工期と経験の倍率は 202… | 仮（仮の決まりの表あり） | （未確認） |
 | PL-23 | 労働の動員（全体主義の命令）: 失業者を国営施設に最低賃金（なければ平均賃金の決めた割合）で割り… | 決定 | tests/core/test_phase3_4.py |
 | PL-24 | 計画経済の島は公定価格で値幅0の板寄せ（電力も） | 決定 | tests/core/test_phase3_4.py |
 | PL-25 | 据え置く財（既定は食料）は原価を下回っても据え置き、差を国庫から補助金で埋める（払えなければ量に… | 決定 | tests/core/test_phase3_4.py |
