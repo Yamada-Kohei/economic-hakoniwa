@@ -78,6 +78,9 @@ def test_price_kinds_separate_trade_quote_carry_and_none():
     record.volume = 1
     assert reports.price_kind(record) == "trade"
     assert set(reports.PRICE_KINDS) == {"trade", "quote", "carry", "none"}
+    # W-227: 市場の段が残した種類があれば、それを使う（推し量らない）
+    kept = SimpleNamespace(volume=0, demand=5, supply=5, price=90, kind="carry")
+    assert reports.price_kind(kept, SimpleNamespace(price=100)) == "carry"
 
 
 def test_market_table_has_price_kind_and_to_state_only_for_owner(world):

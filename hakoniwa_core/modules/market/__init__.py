@@ -85,6 +85,7 @@ from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy import public_housing as pub
 from hakoniwa_core.economy.households import SUPPORT, consumption
 from hakoniwa_core.economy.prices import (
+    adapt_materials,
     adapt_usual,
     input_limit,
     material_limit,
@@ -108,6 +109,7 @@ from hakoniwa_core.state import (
     MarketRecord,
     TradeRecord,
 )
+from hakoniwa_core.state.model import PRICE_CARRY, PRICE_QUOTE, PRICE_TRADE
 from hakoniwa_core.trade import balance, merchant, ships, traders
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import (
@@ -143,6 +145,9 @@ BIDS = "bids"
 REBUILD = "rebuild"  # 首都の建物の建て替えの資材（フェーズ3-4。modules/politics）
 REPAIR = "repair"  # 傷んだ設備を直す資材（回6。economy/equipment.py）
 MERCHANT = "merchant"  # 海外の商人（フェーズ3-1）
+# 工事の資材の買い手（指値は material_limit。積算のし直しを数える。2026-11-01）
+MATERIAL_BUYERS = frozenset({SITE, WORKS, PUBLIC_HOUSING, REBUILD, REPAIR})
+SITE_BOUGHT = "site_bought"  # island.scratch: このターンに工事の資材の買い手が約定した量（財 → 量）
 TRADER_PRIORITY = 0  # 商社の輸出の買い注文の優先順位（値幅の端で止まったときは島の買い手が先）
 CONTRACT_PRIORITY = 9  # 契約で売る分を政府が買う注文の優先順位
 GOV_TRADE = "trade"  # 政府が貿易に払う項目（どの項目にも取り置いていない国庫から）
@@ -480,6 +485,16 @@ def hungry_food_orders(
 # --- 名前付きの式 -----------------------------------------------------------------
 
 
+def _kind(result: auction.Result) -> str:
+    """板寄せの結果の値段の種類（W-227）: 売買があれば約定、売りと買いの注文が両方あって折り合わな
+    ければ気配（海外の商人の買いも数える）、注文が片側だけなら持ち越し。"""
+    if result.volume > 0:
+        return PRICE_TRADE
+    if result.supply > 0 and result.demand > 0:
+        return PRICE_QUOTE
+    return PRICE_CARRY
+
+
 def price_update(price: int, offered: int, sold: int, shortage: float, ctx) -> int:
     """売り手の希望価格の見直し: P × (1 + k (D − S) / max(S, D))、1ターンに値幅まで。
 
@@ -787,6 +802,7 @@ class Market(IslandStage):
         self._imports_left(island, sold)
         self._record(island, ctx, books_by_good, results, bought)
         self._adapt_usual(island, ctx, books_by_good)
+        self._adapt_materials(island, ctx, books_by_good)
         self._update_prices(island, ctx, books_by_good, results)
         power = config.get("power.good")
         if official:
@@ -2309,6 +2325,15 @@ class Market(IslandStage):
                 )
                 used += cost
         want = needs.cars_wanted(config, owned, desired)
+        # 欲しい量に数えるのは払える台数まで（ぜいたく品の予算の cars.share で、いつもの値段の一番
+        # 上の段で買える台数。2026-11-01 の価格の決まり方の直し 第2弾、W-176。前は払えない台数も
+        # 買えなかった量に数え、売り手が品不足と見て値上げし、買える人がいないまま取引が止まった）
+        price = usual_price(island, car, settings["usual_price_turns"], settings["reprice_turns"])
+        room = min(round_money((spend - used) * settings["cars"]["share"]), spend - used)
+        top = scale_price(price, max(settings["consumer_goods_tiers"]))
+        one = gross_cost(top, QUANTITY_SCALE, rate, tax)
+        if one > 0:
+            want = min(want, max(0, room) * QUANTITY_SCALE // one)
         if want <= 0:
             return used
         if offered.get(car, 0) <= 0:
@@ -2325,9 +2350,6 @@ class Market(IslandStage):
         want = min(want, mine)
         if want <= 0:
             return used
-        price = usual_price(island, car, settings["usual_price_turns"], settings["reprice_turns"])
-        room = min(round_money((spend - used) * settings["cars"]["share"]), spend - used)
-        top = scale_price(price, max(settings["consumer_goods_tiers"]))
         room = min(room, gross_cost(top, want, rate, tax))
         bought = 0
         for qty, limit in consumer_tiers(
@@ -3224,6 +3246,9 @@ class Market(IslandStage):
         bought: dict[str, int],
     ) -> None:
         qty = sum(q for _, q in batches)
+        if buyer.kind in MATERIAL_BUYERS and qty > 0:
+            done = island.scratch.setdefault(SITE_BOUGHT, {})
+            done[good] = done.get(good, 0) + qty
         if buyer.kind == FACILITY and buyer.public:
             # 公務の施設（学校と大学）の教材は政府の消費（GDP の支出の側）。施設の在庫に数えない
             assert buyer.facility is not None
@@ -3384,13 +3409,17 @@ class Market(IslandStage):
         for good in sorted(set(results) | set(wanted)):
             result = results.get(good)
             if result is None:  # 売りも買いの注文もなかったが、あれば買いたい人がいた
-                island.markets.append(MarketRecord(good, prices.get(good, 1), 0, wanted[good], 0))
+                island.markets.append(
+                    MarketRecord(good, prices.get(good, 1), 0, wanted[good], 0, PRICE_CARRY)
+                )
                 continue
             own = result.demand - Market._out_of_money(books_by_good.get(good), result)
             demand = own + (wanted.get(good, 0) if result.supply <= 0 else 0)
             demand += island.scratch.get("unplaced", {}).get(good, 0)
             island.markets.append(
-                MarketRecord(good, result.price, result.volume, demand, result.supply)
+                MarketRecord(
+                    good, result.price, result.volume, demand, result.supply, _kind(result)
+                )
             )
             supply[good] = result.supply
             if own > 0 and result.supply > 0:  # 約定しなくても気配で値段が動く
@@ -3455,6 +3484,23 @@ class Market(IslandStage):
             limits = [o.limit for o, _ in book.sells if o.limit is not None] if book else []
             asks[good] = min(limits) if limits else 0
         adapt_usual(island, ctx.config, asks)
+
+    @staticmethod
+    def _adapt_materials(
+        island: IslandState, ctx: StageContext, books_by_good: dict[str, Book]
+    ) -> None:
+        """工事・インフラ・設備の直し・公営住宅・建て直しが買いを出した財の、島の売り手（海外の商人を
+        除く）の一番安い指値と約定した量で、工事の資材の値段を積算し直す（economy/prices.py の
+        adapt_materials）。"""
+        bought = island.scratch.get(SITE_BOUGHT, {})
+        asks = {}
+        for good, book in sorted(books_by_good.items()):
+            if not any(party.kind in MATERIAL_BUYERS for _, party in book.buys):
+                continue
+            limits = [o.limit for o, p in book.sells if o.limit is not None and p.kind != MERCHANT]
+            asks[good] = min(limits) if limits else 0
+        width = to_basis(ctx.config.get("market.band"))
+        adapt_materials(island, ctx.config, width, asks, bought)
 
     @staticmethod
     def _supply_floors(

@@ -23,25 +23,42 @@ def basket(defs: Defs) -> list[str]:
     return sorted(g for g, d in defs.goods.items() if d.get("consumer"))
 
 
+PAID = "paid_prices"  # economy.ext: 物価指数に入れた財ごとの、最後に約定した値段
+
+
 def update_cpi(
     economy: EconomyState,
     defs: Defs,
     config: GameConfig,
     prices: Mapping[str, int],
     bought: Mapping[str, int],
+    traded: Mapping[str, int] | None = None,
 ) -> float:
-    """このターンの値段 prices と家計が買った量 bought で指数を足し、指数を返す。"""
+    """このターンの値段 prices と家計が買った量 bought で指数を足し、指数を返す。
+
+    traded（このターンに約定した財 → 約定の値段）を渡すと、指数は約定した値段で数える: 約定しな
+    かった財は、最後に約定した値段のまま（一度も約定していなければ今の値段）。気配や、作り始める
+    値段に向けて上げた値段は誰も払っていないので、物価に入れない（W-227。取引所が約定と気配を分けて
+    出すのと同じ）。prices の記録（price_history）は今までどおり基準の値段で残す。"""
     keep = config.get("records.history_turns")
     weight_turns = config.get("records.cpi_weight_turns")
     goods = basket(defs)
-    previous = {g: economy.price_history.get(g, [prices.get(g, 0)])[-1] for g in goods}
+    last = {g: economy.price_history.get(g, [prices.get(g, 0)])[-1] for g in goods}
+    if traded is not None:
+        paid = dict(economy.ext.get(PAID, {}))
+        previous = {g: paid.get(g, last[g]) for g in goods}
+        paid.update({g: traded[g] for g in goods if g in traded})
+        economy.ext[PAID] = paid
+        now = {g: paid.get(g, prices.get(g, 0)) for g in goods}
+    else:
+        previous, now = last, {g: prices.get(g, 0) for g in goods}
     weights = {g: sum(economy.bought_history.get(g, [])[-weight_turns:]) for g in goods}
     if not any(weights.values()):  # 買った記録がまだない（初めのターン）: このターンに買った量
         weights = {g: bought.get(g, 0) for g in goods}
     if not any(weights.values()):
         weights = dict.fromkeys(goods, 1)
     old = sum(weights[g] * previous[g] for g in goods)
-    new = sum(weights[g] * prices.get(g, 0) for g in goods)
+    new = sum(weights[g] * now[g] for g in goods)
     last = economy.cpi_history[-1] if economy.cpi_history else BASE_CPI
     cpi = last * new / old if old > 0 else last
     economy.cpi_history = [*economy.cpi_history, cpi][-keep:]

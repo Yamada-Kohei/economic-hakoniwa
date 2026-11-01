@@ -1638,14 +1638,18 @@ PRICE_KINDS = {
 
 
 def price_kind(record: MarketRecord | None, previous: MarketRecord | None = None) -> str:
-    """市場の記録の値段の種類（PRICE_KINDS の名前）。市場の段の板寄せ（market/auction.py）は、売買が
-    あれば約定の値段、両側の注文が折り合わなければ間の気配、注文が片側だけかなければ基準の値段を残す。
+    """市場の記録の値段の種類（PRICE_KINDS の名前）。市場の段が記録に残した種類（W-227）を使う。
+    種類を残す前の記録は、量から推し量る: 市場の段の板寄せは、売買があれば約定の値段、両側の注文が
+    折り合わなければ間の気配、注文が片側だけかなければ基準の値段を残す。
 
     記録の買い注文の量は、約定の値段に届かない海外の商人の買いを除いた量なので、商人の安い買いと
     島の売りだけで折り合わなかった気配は、買い注文 0 に見える。前のターンの記録（previous）が
     あれば、値段が前と違うものも気配に数える（持ち越しなら前の値段のまま）。"""
     if record is None:
         return "none"
+    kind = getattr(record, "kind", "")
+    if kind in PRICE_KINDS:
+        return kind
     if record.volume > 0:
         return "trade"
     if record.demand > 0 and record.supply > 0:

@@ -71,6 +71,7 @@ from hakoniwa_core.state import (
     MarketRecord,
     TradeRecord,
 )
+from hakoniwa_core.state.model import PRICE_CARRY, PRICE_TRADE
 from hakoniwa_core.trade import staff
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import (
@@ -486,7 +487,14 @@ class Production(IslandStage):
         if has_money:
             price = fixed or (unit_price(value, volume) if volume else reference)
             island.markets.append(
-                MarketRecord(power, price, volume, totals["demand"], totals["capacity"])
+                MarketRecord(
+                    power,
+                    price,
+                    volume,
+                    totals["demand"],
+                    totals["capacity"],
+                    PRICE_TRADE if volume else PRICE_CARRY,
+                )
             )
             if volume:
                 economy.prices[power] = price
@@ -508,7 +516,8 @@ class Production(IslandStage):
             f = b.run.f
             rate = freight.facility_rates(island, ctx.defs, config).get(f.id, 0)
             wage = f.economy.get("wage", island.economy.average_wage)
-            limit = input_limit(ctx.defs, config, f, power, island.economy.prices, wage, rate)
+            prices, band = island.economy.prices, config.get("market.band")
+            limit = input_limit(ctx.defs, config, f, power, prices, wage, rate, band)
             return limit if is_self_supporting(f) else max(limit, reference)
         assert b.layer is not None
         budget = ctx.formula("consumption")(island, b.layer, config, inflation(island.economy))

@@ -207,14 +207,25 @@ def variable_profit(
 
 
 def input_limit(
-    defs: Defs, config: GameConfig, f: Facility, good: str, prices: Prices, wage: int, freight: int
+    defs: Defs,
+    config: GameConfig,
+    f: Facility,
+    good: str,
+    prices: Prices,
+    wage: int,
+    freight: int,
+    ahead: float = 0.0,
 ) -> int:
     """投入財 good に払える一番高い値段: 変動費の利益が0になる値段（0以上）。
 
     買い手の指値の上限に使う（品切れが続いても、作っても損になる値段までは買い上がらない）。
-    産出物は今の値段から値幅（market.band）の分まで値上げできると見る（費用が上がった分を
-    売る値段に回せるので、値段が費用ぎりぎりの施設も仕入れを止めない）。ほかの投入財は今の値段。
-    電力は運賃がかからないので、電力のときは freight を見ない。
+    産出物もほかの投入財も今の値段で見る（2026-11-01 の価格の決まり方の直し 第2弾。前は産出物が
+    今より値幅の分高く売れると見ていたので、原料の買い手が自分の製品の値上がりを先取りして買い
+    上がり、つながった財が一緒に上がった）。電力は運賃がかからないので、電力のときは freight を
+    見ない。
+
+    ahead は、産出物が今の値段のその割合だけ高く売れると見る分（電力の買いだけ。生産の段で1度だけ
+    買い上がりなしで買うので、今までどおり market.band を渡す。仮: 電力を料金表で買う形の代わり）。
     """
     steady = fac.steady(f)  # 畑を作り替えている途中なら、今の作物で見る（回3）
     recipe = fac.recipe_of(defs, steady)
@@ -241,10 +252,11 @@ def input_limit(
     amount = money_of(prices.get(good, 0), qty)
     if good != config.get("power.good"):
         amount += part(amount, freight)
-    raised = dict(prices)
-    for g in recipe["outputs"]:
-        raised[g] = scale_price(prices.get(g, 0), 1 + config.get("market.band"))
-    room = variable_profit(defs, config, steady, raised, wage, freight) + amount
+    seen = dict(prices)
+    if ahead:
+        for g in recipe["outputs"]:
+            seen[g] = scale_price(prices.get(g, 0), 1 + ahead)
+    room = variable_profit(defs, config, steady, seen, wage, freight) + amount
     return max(0, room * QUANTITY_SCALE // qty)
 
 
@@ -352,14 +364,75 @@ def adapt_usual(island: IslandState, config: GameConfig, asks: dict[str, int]) -
             table.pop(good, None)
 
 
+# economy.ext: 財 → {"stall": 工事の買いが約定しなかったターン数, "low": その間の一番安い売りの指値,
+# "ref": 積算し直した値段}（工事・インフラ・設備の直しの資材。2026-11-01）
+SITE_USUAL = "site_usual"
+
+
 def material_limit(island: IslandState, config: GameConfig, good: str, width: int) -> int:
     """工事とインフラの資材の買いの指値: 値幅の上端と、いつもの値段の一番上の段
     （household.consumer_goods_tiers）の安い方（フェーズ3-2。値幅の上端で買い続けると、品薄の
-    島で機械と鋼鉄の値段が初めの数十〜数百倍まで上がった。高ければ工事が待つ）。"""
+    島で機械と鋼鉄の値段が初めの数十〜数百倍まで上がった。高ければ工事が待つ）。積算し直した
+    値段（adapt_materials）があれば、それより低くはしない。"""
     settings = config.get("household")
     usual = usual_price(island, good, settings["usual_price_turns"], settings["reprice_turns"])
     _, high = auction.band(island.economy.prices.get(good, 1), width)
-    return min(high, scale_price(usual, max(settings["consumer_goods_tiers"])))
+    limit = min(high, scale_price(usual, max(settings["consumer_goods_tiers"])))
+    if good in island.ext.get("plan", {}).get("prices", {}):  # 公定価格の財は積算し直さない
+        return limit
+    ref = island.economy.ext.get(SITE_USUAL, {}).get(good, {}).get("ref", 0)
+    return max(limit, ref)
+
+
+def adapt_materials(
+    island: IslandState,
+    config: GameConfig,
+    width: int,
+    asks: dict[str, int],
+    bought: dict[str, int],
+) -> None:
+    """工事の資材の積算のし直し（市場の段の終わり。2026-11-01 の価格の決まり方の直し 第2弾）。
+
+    asks は、このターンに工事・インフラ・設備の直し・公営住宅・建て直しが買いを出した財の、島の
+    売り手（海外の商人を除く）の一番安い指値（売りがなければ 0）。bought はそのうち約定した量。
+    売りが出ていたのに工事の買いが1つも約定しないターンが household.reprice_turns 続いたら、
+    積算し直した値段 ref を、その間の一番安い売りの指値にする（公共工事の入札が不調なら、今の
+    相場で積算し直す）。売りのないターンは数えない。工事が買えたら数え直し、ref は今の一番安い
+    売りの指値より高くはしない（売り手が下げたら下げる）。ふだんの指値が ref に届いたら外す。
+
+    前は工事の指値が「値幅の上端」と「12 ターン平均の 1.05 倍」の安い方に止まり、作り手の費用が
+    上がって売りの指値がそれより高くなると、売り手も買い手もいるのに機械の取引が何十ターンも
+    止まった（W-180）。積算し直すと、作り手の費用の上がった分は工事の値段に乗る（費用までで、
+    売り手の指値より高くは買わない）。海外の商人の値段（初めの値段の何倍か）は島の相場に数えない。
+    """
+    turns = config.get("household.reprice_turns")
+    if turns <= 0:
+        return
+    economy = island.economy
+    table = economy.ext.setdefault(SITE_USUAL, {})
+    for good in sorted(asks):
+        ask = asks[good]
+        entry = table.get(good, {})
+        if bought.get(good, 0) > 0:
+            entry["stall"] = 0
+            ref = entry.pop("ref", 0)
+            if ask > 0:
+                ref = min(ref, ask)
+            table[good] = entry  # ref を外したときの、ふだんの指値と比べる
+            if material_limit(island, config, good, width) < ref:
+                entry["ref"] = ref
+        elif ask > 0:
+            entry["stall"] = entry.get("stall", 0) + 1
+            entry["low"] = min(ask, entry.get("low", ask)) if entry["stall"] > 1 else ask
+            if entry["stall"] >= turns:
+                table[good] = entry
+                if entry["low"] > material_limit(island, config, good, width):
+                    entry["ref"] = entry["low"]
+                entry["stall"] = 0
+        if entry.get("stall") or "ref" in entry:
+            table[good] = entry
+        else:
+            table.pop(good, None)
 
 
 def add_missing_prices(island: IslandState, defs: Defs, config: GameConfig) -> list[str]:
