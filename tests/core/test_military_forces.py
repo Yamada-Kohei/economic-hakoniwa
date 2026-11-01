@@ -13,6 +13,7 @@ from hakoniwa_core.game import load_game
 from hakoniwa_core.log import format_log
 from hakoniwa_core.military import forces
 from hakoniwa_core.modules import military as mil
+from hakoniwa_core.units import QUANTITY_SCALE
 from tests.core.test_gate import make_world, run_with_plan
 
 
@@ -272,8 +273,19 @@ def test_food_is_bought_before_wages_when_the_budget_is_short(game, world):
     """国防費の賃金と食べ物の月割りが足りないときは、食べ物を先に確保し、賃金が遅れる（W-184。
     補給は賃金より先）。賃金だけで月割りを使い切る前の形では、食べ物が買えず兵が飢えた。"""
     island = world.islands[1]
+    # この試験は国防費の分け方を見るので、食べ物の売り手がいるようにする: 閉じかけていない工場が、
+    # 毎ターン作りたての食べ物を在庫に持つ（試験の世界の流れで、工場が閉じて在庫ごと片付けられ、
+    # 建て直している間、食べ物の売り手のいないターンがあった）
+    factory = next(f for f in island.facilities if f.kind == "food_factory" and f.built)
+
+    def made() -> None:
+        factory.economy.pop("closing", None)
+        stock.add(factory.stock, "food", 40 * QUANTITY_SCALE, world.turn, game.defs.goods)
+
+    made()
     play(game, world, 1, [("set_defense", {"annual": 720_000}), ("recruit", {"count": 60})])
     for _ in range(5):
+        made()
         play(game, world, 1)
         state = island.ext["military"]
         assert not state["hungry"]

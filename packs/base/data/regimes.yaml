@@ -15,7 +15,6 @@
 #   election_bonus: 選挙で支持率が politics.republic.support を超えたら、次の politics.republic.turns
 #     ターンは政情の目標にこれを足す
 #   official_prices: 公定価格・生産目標・配給で動く（計画経済。hakoniwa_core/economy/plan.py）
-#   priority_build_turns・priority_experience: 重点産業の工期の倍率と経験の伸びの倍率
 #   luxury_variety: ぜいたく品の種類から来る満足の倍率
 #   entry_margin: 民営工場の参入の基準（見込みの利益率が金利 + これを超えたら建つ。既定は
 #     game.yaml の firms.entry_margin）
@@ -85,4 +84,4 @@ planned:
   bank_entry: closed
   capital_controls: official
   start: default
-  traits: {official_prices: true, priority_build_turns: 0.7, priority_experience: 1.2, luxury_variety: 0.7}
+  traits: {official_prices: true, luxury_variety: 0.7}

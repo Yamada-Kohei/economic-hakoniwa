@@ -37,6 +37,7 @@ from hakoniwa_core.state.serialize import world_from_dict, world_to_dict
 from hakoniwa_core.units import from_milli
 
 TURNS = 300
+MERCHANT_CALM = 12  # 海外の商人が去った後、値段を見ないターン数（貿易のない 1 島の世界）
 
 
 @pytest.fixture(scope="module")
@@ -145,7 +146,19 @@ def test_supply_chain_runs_for_300_turns(game, seed):
     if short:
         assert starved < start_population * 0.01
     food = {g for g, d in game.defs.goods.items() if "food" in d} if short else set()
-    failures = [m for m in recorder.failures() if any(h in m for h in hard)]
+    # 海外の商人の量が初めの 1 割を切ってから、去った後 MERCHANT_CALM ターンまでは、値段を見ない
+    # （タブ 9 FX-27）。この世界は貿易の相手のいない 1 島で、島で作れない商人の品目（燃料など）は
+    # 商人の最後の少ない荷を高い値段で奪い合い、物価が跳ねる（輸入が止まったときの現実の値動き）。
+    # 前の形（120 ターンで急に去る）では、去った後はその品目が売り買いされず、値段に数えなかった
+    merchant = game.config.get("foreign_merchant")
+    leave = island.ext["trade"]["merchant_from"] + merchant["turns"]
+    tail = (merchant["turns"] - merchant["taper_from"]) // 10
+    priced = [
+        *recorder.failures(end=leave - tail - 1),
+        *recorder.failures(start=leave + MERCHANT_CALM),
+    ]
+    failures = [m for m in recorder.failures() if any(h in m for h in hard) and "の値段が" not in m]
+    failures += [m for m in priced if "の値段が" in m]
     assert [m for m in failures if not any(f"）: {g} の値段が" in m for g in food)] == []
 
 

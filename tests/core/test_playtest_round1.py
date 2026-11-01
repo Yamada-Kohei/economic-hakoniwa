@@ -358,8 +358,8 @@ def test_leftover_crops_are_not_sold_below_what_they_cost_to_grow(game, warmed):
 
 
 def test_standard_plan_prepares_for_the_merchants_leaving(game, warmed, monkeypatch):
-    """標準の計画は、海外の商人が値段を上げ始めたら（去る foreign_merchant.last_turns ターン
-    前から）、前のターンに商人から買った物のうち島で作っていない物を作る施設を建てる（1つの島の
+    """標準の計画は、海外の商人が持ってくる量を減らし始めたら（foreign_merchant.taper_from ターン
+    を過ぎてから）、前のターンに商人から買った物のうち島で作っていない物を作る施設を建てる（1つの島の
     300 ターンの試験で、商人が去ってから機械を作る施設が建つまで機械が島から消え、値段が初めの
     4倍を超えた）。"""
     from hakoniwa_core import autoplan
@@ -368,10 +368,9 @@ def test_standard_plan_prepares_for_the_merchants_leaving(game, warmed, monkeypa
     from hakoniwa_core.trade import merchant
 
     defs, config = game.defs, game.config
-    last = config.get("foreign_merchant.last_turns")
 
-    def planned(island, left: int) -> list[tuple[str, str]]:
-        monkeypatch.setattr(merchant, "turns_left", lambda *args: left)
+    def planned(island, share: float) -> list[tuple[str, str]]:
+        monkeypatch.setattr(merchant, "taper", lambda *args: share)
         return list(autoplan._candidates(island, defs, config, warmed.turn + 1))
 
     def outputs(f) -> set[str]:
@@ -387,7 +386,7 @@ def test_standard_plan_prepares_for_the_merchants_leaving(game, warmed, monkeypa
         island = world.islands[island_id]
         island.facilities = [f for f in island.facilities if good not in outputs(f)]
         making = {g for f in island.facilities for g in outputs(f)}
-        before = planned(island, last + 1)
+        before = planned(island, 1.0)
         makers = [
             c
             for c in autoplan._producers(defs, config, island, good)
@@ -399,9 +398,9 @@ def test_standard_plan_prepares_for_the_merchants_leaving(game, warmed, monkeypa
     assert found is not None, "試せる物がない"
     island, good, maker = found
     island.trades.append(TradeRecord(good, "fac:1", MERCHANT, 10, 1000))
-    assert maker not in planned(island, last + 1)  # まだ値段を上げ始めていない
-    assert maker in planned(island, last)
-    assert maker not in planned(island, 0)  # もう去った
+    assert maker not in planned(island, 1.0)  # まだ減らし始めていない
+    assert maker in planned(island, 0.9)
+    assert maker not in planned(island, 0.0)  # もう去った
 
 
 def test_trader_export_bids_are_capped_except_at_official_prices(game, warmed, monkeypatch):

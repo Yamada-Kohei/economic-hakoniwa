@@ -14,7 +14,7 @@ import pytest
 from hakoniwa_core import autoplan, nature, stock
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.economy import needs, services, trucks
-from hakoniwa_core.economy.prices import initial_prices, material_limit, unit_floor
+from hakoniwa_core.economy.prices import SITE_USUAL, initial_prices, material_limit, unit_floor
 from hakoniwa_core.gate import Recorder
 from hakoniwa_core.market import auction
 from hakoniwa_core.modules import records
@@ -523,6 +523,9 @@ def test_construction_bids_stop_at_the_top_household_tier(game, warmed):
     top = max(config.get("household.consumer_goods_tiers"))
     island.economy.prices["steel"] = 2000
     island.economy.price_history["steel"] = [1000] * 12
+    # 積算し直した値段（第2弾。tests/core/test_pricing_fix2.py）は、ここでは見ない（値段を置き換えた
+    # ので、前のターンまでの積算は合わない）
+    island.economy.ext.get(SITE_USUAL, {}).pop("steel", None)
     assert material_limit(island, config, "steel", 1000) == scale_price(1000, top)
     island.economy.price_history["steel"] = [4000] * 12  # 値段が下がってきたときは値幅の上端
     assert material_limit(island, config, "steel", 1000) == auction.band(2000, 1000)[1]

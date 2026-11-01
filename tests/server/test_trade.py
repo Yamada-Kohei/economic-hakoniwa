@@ -193,6 +193,46 @@ def test_trade_api_for_owner(client, world):
     assert 'data-order="bloc_settings"' in html and 'data-order="transfer_bloc"' in html
 
 
+def test_merchant_tapering_on_trade_page_and_alerts(client, world):
+    """海外の商人が量を減らし始める前と減っている間、貿易の API が割合を出し、持ち主の国の要約の
+    注意に出る（タブ 9 FX-27）。"""
+    from hakoniwa_core.trade import KEY
+    from server.web import overview
+
+    config = get_game().config
+    start, end = config.get("foreign_merchant.taper_from"), config.get("foreign_merchant.turns")
+    own = _own_island(client)
+    run_turn(force=True)  # 移し替えの段が港・海運業・商社を置き、商人が来始める
+    own.refresh_from_db()
+    coming = m.World.objects.get().turn + 1
+
+    def alerts_at(age: int) -> tuple[dict, list[str]]:
+        own.ext[KEY]["merchant_from"] = coming - age
+        own.save()
+        data = client.get(f"/api/islands/{own.id}/trade").json()["merchant"]
+        return data, [a for a in overview.island_alerts(own, True)[0] if "海外の商人" in a]
+
+    data, alerts = alerts_at(10)  # 減らし始めるのはまだ先
+    assert data["share"] == 100 and data["tapering"] is False and alerts == []
+
+    data, alerts = alerts_at(start - 10)
+    assert data["share"] == 100 and data["taper_start"] == coming - (start - 10) + start
+    assert alerts == [
+        f"海外の商人は 12 ターン後から持ってくる量と買っていく量を減らし始めます"
+        f"（あと {end - start + 10} ターン来て、その後は来なくなります）"
+    ]
+
+    data, alerts = alerts_at(start + (end - start) // 2)  # 半分まで減った
+    assert data["tapering"] is True and data["share"] == 50
+    assert alerts == [
+        "海外の商人が持ってくる量と買っていく量が減っています"
+        f"（今は初めの 50%。あと {(end - start) // 2} ターン来て、その後は来なくなります）"
+    ]
+
+    data, alerts = alerts_at(end)  # 去った
+    assert data["active"] is False and data["goods"] == [] and alerts == []
+
+
 def test_representative_on_break_can_be_taken_over(client, world):
     own, second, _ = _trading_world(client)
     m.Island.objects.filter(pk=second.pk).update(inactive=True)
@@ -308,7 +348,7 @@ def test_help_explains_trade_and_fx(client, world):
     html = client.get("/help/").content.decode()
     assert "<h2>貿易と為替</h2>" in html
     assert f"{config.get('foreign_merchant.turns')} ターンのあいだ" in html
-    assert f"最後の {config.get('foreign_merchant.last_turns')} ターン" in html
+    assert f"{config.get('foreign_merchant.taper_from')} ターンを過ぎると" in html
     assert f"1ターンに {config.get('fx.band') * 100:g}% までしか動きません" in html
     assert "二国間契約の申し込み" in html  # 命令の表は定義データから
 

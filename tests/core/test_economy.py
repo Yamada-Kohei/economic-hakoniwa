@@ -80,6 +80,17 @@ def test_auction_stops_at_band_and_allocates_by_priority():
     assert result.bought == [0, 5]  # 上端で止まったら優先順位の高い方から
 
 
+def test_auction_settles_at_an_order_price_nearest_the_reference():
+    """売りと買いが同じ量になる値段が幅で並ぶときは、出た指値のうち基準の値段に近い方で約定する。
+    基準の値段そのものにはしない（すると幅に基準の値段が入っている間は値段が動かず、上がった値段が
+    戻らなかった。2026-11-01 の試し、MK-02）。"""
+    buys, sells = [auction.Order(10, 100)], [auction.Order(10, 90)]
+    r = auction.clear(buys, sells, 98)
+    assert (r.price, r.volume) == (100, 10)
+    assert auction.clear(buys, sells, 92).price == 90
+    assert auction.clear(buys, sells, 95).price == 90  # 並べば安い方
+
+
 def test_auction_without_cross_returns_midpoint_quote():
     result = auction.clear([auction.Order(5, 95)], [auction.Order(5, 105)], 100, width=1000)
     assert result.volume == 0

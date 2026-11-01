@@ -567,6 +567,48 @@ def test_plan_orders_check_and_log(game, base):
         logs_ok(game, island)
 
 
+def test_priority_industries_come_first_but_get_no_build_or_experience_multiplier(game, base):
+    """重点産業は割当の先頭になるだけで、工期と経験の伸びの倍率は付かない（2026-11-01、PL-22・PL-30。
+    前の仮の倍率は、資材を先に回す割当と二重に得をしていた）。"""
+    world = copy.deepcopy(base)
+    planned = island_of(world, "planned")
+    defs = game.defs
+    found = politics.traits(planned, defs)
+    assert "priority_build_turns" not in found and "priority_experience" not in found
+    factory = next(
+        f
+        for f in planned.facilities
+        if f.owner == OWNER_STATE and fac.recipe_of(defs, f).get("industry")
+    )
+    industry = fac.recipe_of(defs, factory).get("industry")
+    before = planning.build_factor(planned, defs)
+    plan_orders.set_priority(planned, {"industries": [industry]}, context(game, world))
+    assert planning.is_priority(planned, defs, factory)  # 割当の先頭
+    assert planning.build_factor(planned, defs) == before == found.get("works_turns", 1.0)
+    assert not hasattr(planning, "experience_factor")
+    # 同じ優先度の工事の中では、重点産業の工事が番号の大きくても先に資材と公共事業費を受け取る
+    ctx = context(game, world)
+    level = fac.priority_of(defs, game.config, dataclasses.replace(factory, priority=None))
+
+    def site(kind, number):
+        recipe = fac.default_recipe(defs, kind) or next(iter(defs.facilities[kind]["recipes"]))
+        return dataclasses.replace(
+            factory, id=number, kind=kind, recipe=recipe, built=False, priority=level
+        )
+
+    first = next(
+        f
+        for k, d in sorted(defs.facilities.items())
+        if d.get("construction") and d.get("recipes")
+        for f in [site(k, 10**6)]
+        if fac.recipe_of(defs, f).get("industry") not in (None, industry)
+    )
+    later = site(factory.kind, 10**6 + 1)
+    planned.facilities += [first, later]
+    order = [f.id for f in market_mod.Market._sites(planned, ctx) if f.id >= 10**6]
+    assert order == [later.id, first.id]
+
+
 def test_official_prices_stay_unless_the_gap_passes_the_band(game, base):
     """公定価格は原則据え置き: 原価との差が幅の中なら確かめで変えず、幅を超えた財だけ原価に改める。
     据え置く財（既定は食料）は原価を下回っていても据え置く。"""
