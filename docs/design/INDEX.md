@@ -115,7 +115,7 @@
 | MK-04 | 売りと買いが交わらなければ約定せず、一番安い売りと一番高い買いの指値の真ん中（気配）を次のターン… | 決定 | tests/core/test_economy.py |
 | MK-05 | 注文は出すときに「量×指値」のお金を取り置き、取り置けない分は出せない | 決定 | tests/core/test_economy.py |
 | MK-06 | 注文を出すのは、独立採算と国庫直轄の施設（在庫の売りと次のターンの投入財の買い）、工事中の施設と… | 決定 | tests/core/test_balance_round3.py |
-| MK-07 | 希望価格は売れ行きで見直す（式 `price_update`） | 決定 | tests/core/test_economy.py、tests/core/test_recession_round2.py |
+| MK-07 | 希望価格は売れ行きで見直す（式 `price_update`） | 決定 | tests/core/test_economy.py、tests/core/test_pricing_fix1.py、tests/core/test_recession_round2.py |
 | MK-08 | 独立採算の売り手は1単位の変動費（投入財・賃金・電気代・運賃）より安い指値を出さない | 決定 | （未確認） |
 | MK-09 | 操業目標は、売れ行きの見込み（前のターンに売れた量へ少しずつ近づける）と在庫の目安との差で決め、… | 決定 | tests/core/test_rules.py |
 | MK-10 | 持ち越せない売れ残りを翌ターンに指値なしで売った分は、値段が変動費を下回った幅が値幅に届くまで、… | 決定 | tests/core/test_economy.py |
@@ -151,7 +151,7 @@
 
 ## [4 仕事と家計](04-labor.md)
 
-決まり 39 個、うち仮の決まりの表にあるもの 3 個。
+決まり 40 個、うち仮の決まりの表にあるもの 3 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -194,6 +194,7 @@
 | LB-37 | 統計に、層ごとの人数・可処分所得・預金・幸福度、平均賃金（一般）と技術者の賃金、実質賃金、失業率… | 決定 | tests/server/test_reports.py |
 | LB-38 | 電気・送電網・原料が足りずに動けなかった分の働き手には、賃金の `labor.furlough_`… | 決定（回7 後半） | tests/core/test_balance_round7b.py |
 | LB-39 | 売りに出ていたのに家計が1つも買わないターンが `household.reprice_turns`… | 決定（回7 後半 | tests/core/test_balance_round7b.py |
+| LB-40 | 計画経済の島の施設の賃金は、国が決める: 物価の上がった分と人手の足りなさでは動かさず（LB-0… | 決定（2026-11-01 の価格の決まり方の見直し） | tests/core/test_pricing_fix1.py |
 
 ## [5 施設と企業](05-firms.md)
 
