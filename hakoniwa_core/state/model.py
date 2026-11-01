@@ -125,15 +125,23 @@ class TradeRecord:
     amount: int  # 代金（運賃と税を含まない）
 
 
+# 市場の記録の値段の種類（W-227）: 約定（売買が成立した値段）・気配（買いと売りの注文はあったが
+# 折り合わず、その間に置いた値段）・持ち越し（注文が片側だけかなく、基準の値段のまま）
+PRICE_TRADE = "trade"
+PRICE_QUOTE = "quote"
+PRICE_CARRY = "carry"
+
+
 @dataclass
 class MarketRecord:
     """財ごとの、このターンの市場の記録。"""
 
     good: str
-    price: int  # 約定価格（売買がなければ基準の値段のまま）
+    price: int  # 約定価格（売買がなければ気配か基準の値段）
     volume: int  # 売買の量
     demand: int  # 買いたかった量（出された買い注文の合計）
     supply: int  # 売りたかった量（出された売り注文の合計）
+    kind: str = ""  # 値段の種類（PRICE_TRADE・PRICE_QUOTE・PRICE_CARRY。空は種類を残す前の記録）
 
 
 @dataclass

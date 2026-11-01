@@ -1343,7 +1343,8 @@ class _Round:
             books.stock_moved(seller, sf.id, good, -moved)
             books.add(seller, sf.id, books.SALES, value)
             books.add_sector(seller, books.TRADE, "exports", value)
-            traders.take_cost(traders.entry(sf, good), moved)
+            taken = traders.take_cost(traders.entry(sf, good), moved)
+            traders.cover_price_gap(seller, sf, ask.entity, taken, value)
             traders.exported(sf, good, moved)
             traders.add_volume(sf, weight(self.defs, good, moved))
             self.islands[seller.id].exports += value

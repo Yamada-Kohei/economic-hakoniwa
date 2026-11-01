@@ -119,7 +119,8 @@ class Records(IslandStage):
         economy = island.economy
         prices = economy.prices
         bought = island.scratch.get("household_bought", {})
-        cpi = update_cpi(economy, defs, config, prices, bought)
+        traded = {r.good: r.price for r in island.markets if r.volume > 0}
+        cpi = update_cpi(economy, defs, config, prices, bought, traded)
         stats["cpi"] = cpi
         stats["inflation"] = inflation(economy)
         for good, price in sorted(prices.items()):

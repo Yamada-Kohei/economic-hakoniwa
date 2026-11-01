@@ -214,6 +214,11 @@ _EXTRA_STATS = [
     ("plan.subsidy_unpaid", "国庫が足りず払えなかった据え置きの補助金", "money"),
     ("trade.merchant_gap", "海外の商人に政府が払った、公定価格との差（1ターン）", "money"),
     (
+        "trade.price_gap_subsidies",
+        "国営の商社に政府が払った、輸入の仕入れ値と公定価格の差（1ターン）",
+        "money",
+    ),
+    (
         "trade.merchant_premium",
         "海外の商人から政府が受け取った、公定価格との差（1ターン）",
         "money",

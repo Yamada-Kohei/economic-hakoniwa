@@ -380,7 +380,7 @@
 
 ## [9 貿易と為替](09-trade.md)
 
-決まり 51 個、うち仮の決まりの表にあるもの 3 個。
+決まり 52 個、うち仮の決まりの表にあるもの 3 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -435,6 +435,7 @@
 | FX-49 | 海外の商人は売りと同じ品目を、初めの値段 × `foreign_merchant.buy_mul`… | 仮 | tests/core/test_recession_round4.py |
 | FX-50 | 戦争で港が封鎖された島には、海外の商人が封鎖の強さ（`military.naval.blocka`… | 仮 | tests/core/test_recession_round4.py |
 | FX-51 | 暴動・災害・占領で止まっている商社（施設の止まりの期間）は、人が来ないので新しい注文を出さない:… | 決定（W-159） | tests/core/test_trade.py |
+| FX-52 | 計画経済の島の国営の商社（独立採算）が、仕入れ値より安く売った差は、政府が貿易の項目（どの項目に… | 決定（W-158 | tests/core/test_playtest_round1_trade.py |
 
 ## [10 政治と体制](10-politics.md)
 

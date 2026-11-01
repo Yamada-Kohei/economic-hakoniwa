@@ -402,9 +402,9 @@ def write_records(islands: Iterable[IslandState], turn: int) -> None:
     )
     insert_rows(
         em.MarketRecord,
-        ["island_id", "turn", "good", "price", "volume", "demand", "supply"],
+        ["island_id", "turn", "good", "price", "volume", "demand", "supply", "kind"],
         (
-            (i.id, turn, r.good, r.price, r.volume, r.demand, r.supply)
+            (i.id, turn, r.good, r.price, r.volume, r.demand, r.supply, r.kind)
             for i in islands
             for r in i.markets
         ),
