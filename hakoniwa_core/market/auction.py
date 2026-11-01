@@ -117,7 +117,9 @@ def clear(
         return result
     bids = [buy_limit(o, high) for o in buys]
     asks = [sell_limit(o) for o in sells]
-    candidates = {low, high}
+    # 基準の値段も候補に入れる。売りと買いが同じ量になる値段の幅に基準の値段が入るとき、仕様どおり
+    # 基準の値段で約定させる（入れないと幅の端の指値が選ばれ、安いほうに寄っていた）
+    candidates = {low, high, min(max(reference, low), high)}
     candidates.update(p for p in bids if low <= p <= high)
     candidates.update(p for p in asks if low <= p <= high)
     best = None
