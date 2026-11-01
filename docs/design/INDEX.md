@@ -380,7 +380,7 @@
 
 ## [9 貿易と為替](09-trade.md)
 
-決まり 52 個、うち仮の決まりの表にあるもの 3 個。
+決まり 54 個、うち仮の決まりの表にあるもの 3 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -392,7 +392,7 @@
 | FX-06 | 島の外との物の出入りはすべて港を通り輸送船で運ぶ（海外の商人だけは要らない） | 決定 | tests/core/test_trade.py |
 | FX-07 | 海運業は島に1つでマスを持たず、輸送船を設備として持つ | 決定 | tests/core/test_trade.py |
 | FX-08 | 荷は買う側の島の船で運ぶ | 決定 | tests/core/test_trade.py |
-| FX-09 | 船は燃料か石炭の、今の値段で安い方で動き、船出のときに往復の分を使う | 決定 | tests/core/test_trade.py |
+| FX-09 | 船は燃料か石炭の、今の値段で安い方で動き、船出のときに往復の分（実際に走る時間の分の船の数で）を… | 決定 | tests/core/test_trade.py |
 | FX-10 | 運賃は「荷1トン×区画1つ」あたりで、直近の費用（船員の賃金・燃料・船の傷み）÷ 運んだ量 ×（… | 決定 | tests/core/test_trade.py |
 | FX-11 | 船は決めたターン数使ったら解体する | 決定 | tests/core/test_balance_round6.py、tests/core/test_trade.py |
 | FX-12 | 国は命令で貿易圏を作り、作った国が代表 | 決定 | tests/core/test_trade.py、tests/server/test_phase3_3.py |
@@ -436,6 +436,8 @@
 | FX-50 | 戦争で港が封鎖された島には、海外の商人が封鎖の強さ（`military.naval.blocka`… | 仮 | tests/core/test_recession_round4.py |
 | FX-51 | 暴動・災害・占領で止まっている商社（施設の止まりの期間）は、人が来ないので新しい注文を出さない:… | 決定（W-159） | tests/core/test_trade.py |
 | FX-52 | 計画経済の島の国営の商社（独立採算）が、仕入れ値より安く売った差は、政府が貿易の項目（どの項目に… | 決定（W-158 | tests/core/test_playtest_round1_trade.py |
+| FX-53 | 圏×財の板寄せで約定しなかった買いの分は、商社が取り置いたお金（指値 × 量）と運ぶ重さを戻し、… | 決定（2026-11-01） | tests/core/test_trade_fixes.py |
+| FX-54 | 計画経済の島の商社が輸出を狙う量は、市場経済の島の商社と同じく圏で売れる量（売れた量と買えなかっ… | 決定（2026-11-01） | tests/core/test_phase3_4.py |
 
 ## [10 政治と体制](10-politics.md)
 
@@ -598,7 +600,7 @@
 | GT-25 | 規模の目標: 既定の 50 島で 1 回のターン更新を 5 分以内にする | 決定 | （未確認） |
 | GT-26 | 標準の計画は測りと自動の試験と開発用のサンプルの島だけで使い、サーバーの世界の国は動かさない（命… | 決定 | tests/core/test_gate.py |
 | GT-27 | 標準の計画は毎ターン上から見て最初に足りないもの（食料・発電・工事の資材・投入財・消費財・使って… | 決定 | tests/core/test_autoplan_budget.py、tests/core/test_gate.py |
-| GT-28 | 標準の計画の世界の側: 北と南に 1 つずつ誰でも入れる貿易圏を作り、真ん中の行の島は両方に入れ… | 決定 | tests/core/test_trade.py |
+| GT-28 | 標準の計画の世界の側: 貿易の始まった島ぜんぶで 1 つの誰でも入れる貿易圏を作る（決済通貨は人… | 決定 | tests/core/test_trade.py |
 | GT-29 | 標準の計画の飢饉の手: 食べ物の充足が下がった月は国営の農場を穀物に替え、国の倉庫の食べ物を出し… | 決定 | tests/core/test_balance_round5.py |
 | GT-37 | 標準の計画の財政の手: 国が賃金を払いきれなければ所得税と消費税を少しずつ上げ、ゆとりが戻れば建… | 決定 | tests/core/test_balance_round5.py |
 | GT-30 | 設計書の決まりの一覧と索引がずれていない、番号の頭・試験のパス・設定の名前が正しい、段の表が g… | 決定 | tests/core/test_docs_match.py、tests/core/test_spec_design.py、tests/core/test_spec_settings.py |

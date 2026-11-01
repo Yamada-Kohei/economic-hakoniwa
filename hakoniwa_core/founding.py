@@ -382,10 +382,10 @@ def refound(island: IslandState, turn: int, defs: Defs) -> None:
     for key in ("since", "merchant_from"):
         if trade.get(key, turn) > turn:
             trade[key] += shift
+    # 輸送船の組も、どれも建国のときに書いたターン（建国の船団には建国より前の年の船もある）
     for f in island.facilities:
         for batch in f.economy.get("fleet", ()):
-            if batch[0] > turn:
-                batch[0] += shift
+            batch[0] += shift
 
 
 def place_start(

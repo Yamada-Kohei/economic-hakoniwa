@@ -918,8 +918,12 @@ class _Round:
             return 0  # 封鎖に止められた（出入りする船を止める）
         here = self.islands[buyer.id]
         free = ships.free(self.config, f) - here.ships_used
-        trip = 2 * one_way_turns(self.config, buyer, seller)
+        oneway = one_way_turns(self.config, buyer, seller)
+        trip = 2 * oneway
         room = min(free, ships.fuel_room(self.config, f, trip))
+        # 船は走る時間の分だけ使う（_ship）ので、運べる重さは、空いている船の重さ ×（片道の
+        # ターン数 × 船の速さ ÷ 区画）。近い島へは、1ターンに何度も行き来できる
+        room = room * oneway * self.config.get("trade.ship_speed") // route_cells(buyer, seller)
         return max(0, room) * QUANTITY_SCALE // unit_weight(self.defs, good)
 
     def _port_room(self, island: IslandState, good: str) -> int:
@@ -970,10 +974,14 @@ class _Round:
         arrive = self.turn + oneway
         if load > 0 and shipping is not None:
             arrive = self.turn + 2 * oneway
-            ships.occupy(shipping, shipment_id, load)
+            # 荷が着くのはターンの区切りだが、船（と船員・燃料）を使うのは実際に走る時間の分だけ
+            # （区画 ÷ 船の速さ。片道のターン数に切り上げない）。運賃は今までどおり荷 1 トン ×
+            # 区画で払うので、近い島への航海の運賃が、船員の賃金と燃料より安くならない
+            held = max(1, load * span // (oneway * self.config.get("trade.ship_speed")))
+            ships.occupy(shipping, shipment_id, held)
             here = self.islands[buyer.id]
-            here.ships_used += load
-            here.fuel_value += ships.burn(buyer, self.config, shipping, load, 2 * oneway)
+            here.ships_used += held
+            here.fuel_value += ships.burn(buyer, self.config, shipping, held, 2 * oneway)
             here.carried += load * span
             freight = (
                 ships.freight_rate(buyer, self.config, shipping) * load * span // QUANTITY_SCALE
@@ -1036,9 +1044,11 @@ class _Round:
                 buys, sells, bids, asks = self._bloc_orders(
                     bloc, members, good, budgets, money_left
                 )
+                placed = list(zip(buys, bids, strict=True))  # 取り置きをした買い注文
                 fixed = blocs.fixed_price(bloc, good)
                 reference = fixed or blocs.reference(self.world, bloc, good)
                 if reference is None:
+                    self._refund(bloc, good, placed, {}, 0, budgets, money_left)
                     continue
                 buys, sells, bids, asks = self._drop_blocked(good, buys, sells, bids, asks)
                 # 圏内の固定価格（フェーズ3-3）: 値幅 0 で板寄せし、余った側を量に比例して分ける
@@ -1064,6 +1074,8 @@ class _Round:
                 volume = 0
                 if result.volume > 0:
                     volume = self._settle_bloc(bloc, good, result.price, result, bids, asks)
+                got = {id(o): n for o, n in zip(buys, result.bought, strict=True)}
+                self._refund(bloc, good, placed, got, result.price, budgets, money_left)
                 self._record_bloc(bloc, good, price, result, volume)
                 unmet[key] = result.demand - volume
                 sellers[key] = len({id(a.facility) for a in asks})
@@ -1272,6 +1284,42 @@ class _Round:
             return None
         money_left[key] -= money_of(limit, want)
         return Order(want, limit)
+
+    def _refund(
+        self,
+        bloc: dict[str, Any],
+        good: str,
+        placed: list[tuple[Order, _Bid]],
+        got: dict[int, int],
+        price: int,
+        budgets: dict[int, int],
+        money_left: dict[tuple[int, str, int], int],
+    ) -> None:
+        """圏×財の板寄せと払いの後、買い注文ごとに、取り置いた額（指値 × 量。_import_order）
+        から約定の値段 × 板寄せで割り当てた量を引いた分を money_left に、運ばなかった重さを budgets
+        に戻す（約定しなかった買いは、買い手のお金を使わない）。払いは約定の値段 × 割り当てた量
+        以下なので、取り置いた額より多くは戻らない。戻した後の残りは、今の手元（決済通貨が自国の
+        通貨なら預金。運賃と使用料も同じお金から払った後。外貨なら持ち高）までにする。"""
+        currency = bloc["currency"]
+        touched = set()
+        for order, bid in placed:
+            bought = min(order.quantity, got.get(id(order), 0))
+            key = (bid.island, bid.entity, currency)
+            if key in money_left:
+                back = money_of(order.limit or 0, order.quantity) - money_of(price, bought)
+                money_left[key] += max(0, back)
+                touched.add(key)
+            slot = bid.facility.id + bid.island * 10**6
+            if slot in budgets:
+                unused = weight(self.defs, good, order.quantity) - weight(self.defs, good, bought)
+                budgets[slot] += max(0, unused)
+        for key in sorted(touched):
+            island = self.world.islands[key[0]]
+            if key[0] == currency:
+                have = funds.available(island, Payer(key[1]))
+            else:
+                have = fxmoney.holding(island, key[1], currency)
+            money_left[key] = min(money_left[key], have)
 
     def _record_bloc(
         self, bloc: dict[str, Any], good: str, price: int, result: auction.Result, volume: int
