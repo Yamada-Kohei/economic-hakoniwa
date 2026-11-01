@@ -176,7 +176,11 @@ def state_firm(island: IslandState, defs: Defs, kind: str, turn: int) -> int:
 
 
 def spare(island: IslandState, number: int) -> int:
-    """企業が施設に回せるお金（企業の預金。未払いの税の分は残す）。"""
+    """企業が施設に回せるお金（企業の預金。未払いの税の分は残す）。
+
+    取り置き（economy/funds の commit）は引かない。賃金や注文の取り置きは施設の勘定に付き、
+    企業の勘定を払い手にする取り置きはないため。企業が自分で取り置くようにするときは、ここで
+    funds.available を使うこと。"""
     from hakoniwa_core.economy import arrears
 
     name = entity(number)

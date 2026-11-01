@@ -726,6 +726,8 @@ def batch(
 
     reuse_dirs の中に同じ組の結果があり、その指紋が今の計算の中身と同じなら、回さずに写す。
     """
+    if jobs < 1:  # 0 以下だと1本も回らず、終わらない
+        raise ValueError(f"--jobs は 1 以上にしてください（{jobs}）")
     out_dir.mkdir(parents=True, exist_ok=True)
     waiting = []
     if reuse_dirs:

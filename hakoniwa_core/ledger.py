@@ -423,7 +423,8 @@ def check(
 ) -> list[str]:
     """帳簿の確かめ。問題を文で返す（空なら問題なし）。
 
-    1. 仕訳の借り方と貸し方の合計が一致し、どの仕訳も同じ持ち物の勘定の間にある
+    1. どの仕訳も金額が正で、同じ持ち物の勘定の間にある（仕訳は1つの金額を借り方と貸し方に
+       同じだけ付けるので、借り方と貸し方の合計は作りから一致する。確かめるのは 2 の再生で）
     2. 前のターンの残高にこのターンの仕訳を足した値が、今の残高と一致する
     3. 預金と中央銀行のお金の増減が、お金が生まれる・消える仕訳の合計と一致する
     4. 預金と国庫と非居住者の預金がマイナスになっていない
@@ -431,19 +432,14 @@ def check(
     """
     problems: list[str] = []
     known = set(kinds) if kinds is not None else None
-    debit_total = credit_total = 0
     replay = dict(opening)
     for e in island.journal:
-        debit_total += e.amount
-        credit_total += e.amount
         if e.amount <= 0 or instrument(e.debit) != instrument(e.credit):
             problems.append(f"形の正しくない仕訳: {e}")
         if known is not None and e.kind not in known:
             problems.append(f"定義されていない仕訳の種類: {e.kind}")
         replay[e.debit] = replay.get(e.debit, 0) + e.amount
         replay[e.credit] = replay.get(e.credit, 0) - e.amount
-    if debit_total != credit_total:
-        problems.append(f"借り方 {debit_total} と貸し方 {credit_total} が一致しません")
     closing = island.accounts
     # 全部の勘定を並べると重いので、合わない勘定だけを名前の順に並べる
     wrong = [name for name in replay if replay[name] != closing.get(name, 0)]

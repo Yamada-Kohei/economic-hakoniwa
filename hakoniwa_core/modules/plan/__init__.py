@@ -102,6 +102,11 @@ def check_price_floor(island: IslandState, payload: dict[str, Any], defs: Defs) 
         raise OrderFailed("reason_price_controls_forbidden")
     if payload["good"] not in defs.goods:
         raise OrderFailed("reason_unknown_good")
+    # 上限より高い下限は出せない（両方あると下限が勝ち、上限を超えて売り買いされてしまう）
+    good, price = payload["good"], payload["price"]
+    cap = island.policy.price_cap.get(good)
+    if price > 0 and cap and price > cap:
+        raise OrderFailed("reason_floor_above_cap", good=good, price=price, cap=cap)
 
 
 def set_price_floor(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:

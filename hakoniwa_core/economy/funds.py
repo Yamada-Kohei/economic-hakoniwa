@@ -145,12 +145,24 @@ def commit(island: IslandState, payer: Payer, amount: int) -> None:
     committed[payer.entity] = committed.get(payer.entity, 0) + amount
 
 
+def _uncommit(island: IslandState, payer: Payer, amount: int) -> None:
+    """取り置きから amount を外す。取り置いた額より多くは外せない（外すと available() が手元の
+    お金より多くを返し、同じお金を二度使えてしまう）。"""
+    committed = _committed(island)
+    left = committed.get(payer.entity, 0) - amount
+    if left < 0:
+        raise FundsError(
+            f"{payer.entity}（{payer.item}）の取り置き {committed.get(payer.entity, 0)} より多い"
+            f" {amount} を戻そうとしました"
+        )
+    committed[payer.entity] = left
+
+
 def release(island: IslandState, payer: Payer, amount: int) -> None:
     """取り置いたお金を、払わずに戻す。"""
     if amount <= 0:
         return
-    committed = _committed(island)
-    committed[payer.entity] = committed.get(payer.entity, 0) - amount
+    _uncommit(island, payer, amount)
     if payer.entity == ledger.GOV:
         used = fiscal_state(island)["used"]
         item = payer.item or ""
@@ -169,8 +181,7 @@ def pay(
     if amount <= 0:
         return
     if committed:
-        held = _committed(island)
-        held[payer.entity] = held.get(payer.entity, 0) - amount
+        _uncommit(island, payer, amount)
     else:
         _claim(island, payer, amount)
     if payer.entity == ledger.GOV:  # 国庫で足りない分は、市中銀行の政府の預金から戻して払う

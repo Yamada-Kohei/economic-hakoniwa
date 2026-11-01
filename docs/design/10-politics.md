@@ -56,7 +56,7 @@
 | PL-29 | 生産目標: 国営施設ごとに、直近の公定価格での需要（買えなかった分と、国の工事とインフラの資材のうち公共事業費で買えなかった分も含む）に上乗せした量を、同じ財を作る国営施設に設備の大きさで割り振る。施設は採算でなく目標に合わせて動く | 決定 | `planning.demand_turns`, `planning.target_markup` | tests/core/test_phase3_4.py::test_targets_follow_demand_and_capacity |
 | PL-30 | 重点産業は命令で産業の分類を決めた数まで選ぶ。割当の先頭になり、体制の特色（工期と経験）が効く | 決定 | `planning.max_priority` | tests/core/test_phase3_4.py::test_plan_orders_check_and_log |
 | PL-31 | 計画経済の貿易は国営の商社の独占: 行列のある財を輸入し、売れ残った財を値段によらず輸出する。輸入は輸出で得た外貨の範囲（タブ 9） | 決定 |  | tests/core/test_phase3_4.py::test_planned_trade_is_a_state_monopoly, tests/core/test_phase3_4.py::test_planned_traders_export_unsold_goods_whatever_the_price |
-| PL-32 | 混合経済はどの財にも値段の上限と下限を決められる。市場経済は電気料金の上限だけ | 決定 |  | tests/core/test_phase3_4.py::test_price_floor_keeps_the_market_price_up, tests/server/test_phase3_4.py::test_plan_page_for_a_mixed_economy_shows_price_controls |
+| PL-32 | 混合経済はどの財にも値段の上限と下限を決められる。市場経済は電気料金の上限だけ。上限より高い下限・下限より安い上限の命令は断る | 決定 |  | tests/core/test_phase3_4.py::test_price_floor_keeps_the_market_price_up, tests/server/test_phase3_4.py::test_plan_page_for_a_mixed_economy_shows_price_controls |
 | PL-33 | 闇市は入れない。後からモジュールで足せるよう、配給で買えなかった量と余ったお金を段の間に残す | 決定（後から） |  | （未確認） |
 | PL-34 | 移民の出国の政策は政治の仕組みで上限がある: 民主主義は自由だけ、権威主義は許可制まで、全体主義は禁止まで（`regimes.yaml` の `exit_control`）。受け入れの政策は体制によらない | 決定 |  | tests/core/test_migration.py::test_democracy_cannot_restrict_exit_and_amending_relaxes_it |
 | PL-35 | 国どうしのやりとりは、非公開の公電（送るとすぐ届き、発信国と宛先国の持ち主だけが読める）と公開の掲示板（板・番号付きの書き込み。PL-51〜PL-55）。画面・API・MCP・hk.py から同じように使える | 決定 |  | tests/server/test_letters.py::test_send_receive_and_read, tests/server/test_letters.py::test_others_cannot_read |
@@ -184,7 +184,7 @@ T^{*} = b + w_H\,(H - H_0) - w_U\,(U - U_0)^{+} - w_\pi\,(\pi - \pi_0)^{+} - w_G
 
 ### 混合経済と市場経済の値段の規制
 
-- 混合経済は、どの財にも値段の上限（`set_price_cap`）と下限（`set_price_floor`。農産物の支えなど。0 でなくす）を決められる。市場経済とほかの体制は電気料金の上限だけ。板寄せの値幅の中で上限と下限を守る（タブ 3）。
+- 混合経済は、どの財にも値段の上限（`set_price_cap`）と下限（`set_price_floor`。農産物の支えなど。0 でなくす）を決められる。市場経済とほかの体制は電気料金の上限だけ。板寄せの値幅の中で上限と下限を守る（タブ 3）。上限より高い下限、下限より安い上限の命令は断る（両方あると下限が勝ち、上限が効かなくなるため）。
 - 計画の画面は、計画経済の島で「計画」、混合経済の島で「値段の規制」として見出しに出る。市場経済には出さない。
 
 ### 移民の政策の体制ごとの上限
