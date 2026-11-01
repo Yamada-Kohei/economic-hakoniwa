@@ -586,6 +586,27 @@ def test_priority_industries_come_first_but_get_no_build_or_experience_multiplie
     assert planning.is_priority(planned, defs, factory)  # 割当の先頭
     assert planning.build_factor(planned, defs) == before == found.get("works_turns", 1.0)
     assert not hasattr(planning, "experience_factor")
+    # 同じ優先度の工事の中では、重点産業の工事が番号の大きくても先に資材と公共事業費を受け取る
+    ctx = context(game, world)
+    level = fac.priority_of(defs, game.config, dataclasses.replace(factory, priority=None))
+
+    def site(kind, number):
+        recipe = fac.default_recipe(defs, kind) or next(iter(defs.facilities[kind]["recipes"]))
+        return dataclasses.replace(
+            factory, id=number, kind=kind, recipe=recipe, built=False, priority=level
+        )
+
+    first = next(
+        f
+        for k, d in sorted(defs.facilities.items())
+        if d.get("construction") and d.get("recipes")
+        for f in [site(k, 10**6)]
+        if fac.recipe_of(defs, f).get("industry") not in (None, industry)
+    )
+    later = site(factory.kind, 10**6 + 1)
+    planned.facilities += [first, later]
+    order = [f.id for f in market_mod.Market._sites(planned, ctx) if f.id >= 10**6]
+    assert order == [later.id, first.id]
 
 
 def test_official_prices_stay_unless_the_gap_passes_the_band(game, base):
