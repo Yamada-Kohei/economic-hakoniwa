@@ -5,6 +5,9 @@
 乱数で、ターンや島の順番には左右されません。島ごとに 1 度だけ置き（版の印 island.ext["veins"]）、
 鉱業資源の上限（founding.max_resources）の外とします。経済のない島も対象です。
 
+ただし島の鉱業資源は、建国で選べる数より 1 つ多いところまでです（今は 3 種類。2026-11-01 本人
+「4 種類持ってる国がいたらまずい」）。建国で上限まで選び、銅の鉱脈も出た島には、ウランを置きません。
+
 軍事の部品ではなく島の自然条件（建国で選ぶ鉱業資源と同じ仲間）なので、nature.py や founding.py と
 並べて置いてあります（4-2 では銅を軍艦の材料に使うため military/ に置いたが、2026-10-25 に移した）。
 """
@@ -23,9 +26,12 @@ RESOURCES = {1: ("copper_ore",), 2: ("uranium_ore",)}
 
 
 def place(island: IslandState, config: GameConfig, seed: int) -> list[str]:
-    """まだ鉱脈の版が古い島に、設定 world.veins の割合で鉱脈を置く。置いた資源を返す。"""
+    """まだ鉱脈の版が古い島に、設定 world.veins の割合で鉱脈を置く。置いた資源を返す。
+
+    島の資源が建国で選べる数 + 1 に届いていたら、それ以上は置かない。"""
     have = island.ext.get(KEY, 0)
     shares = config.get("world.veins")
+    most = config.get("founding.max_resources") + 1  # 鉱脈を足しても、資源はここまで
     placed = []
     for version in range(have + 1, VERSION + 1):
         # 版 1 の乱数は 4-2 のまま（銅の結果を変えない）。版 2 からは版を乱数の種に足す
@@ -37,7 +43,8 @@ def place(island: IslandState, config: GameConfig, seed: int) -> list[str]:
         # 置く置かないにかかわらず名前の順に1つずつ引く
         for good in sorted(RESOURCES[version]):
             roll = rng.random()
-            if roll < shares[good] and good not in island.resources:
+            full = len(island.resources) >= most
+            if roll < shares[good] and good not in island.resources and not full:
                 island.resources = sorted([*island.resources, good])
                 placed.append(good)
     island.ext[KEY] = VERSION
