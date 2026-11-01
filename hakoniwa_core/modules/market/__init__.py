@@ -212,6 +212,20 @@ def seller_limit(ask: int, freight: int, high: int) -> int:
     return min(high, -(-ask * BASIS // max(1, BASIS - freight)))
 
 
+def _lowest_ask(ctx, island: IslandState, order: Order, party: Party, good: str) -> int:
+    """売りの注文の売り手が受け入れる一番安い値段: 施設が作った物なら、作る費用（unit_floor）
+    に運賃を足した額（指値より高くはしない）。費用のわからない売り手（国の倉庫・商社など）は指値。"""
+    f = party.facility
+    assert order.limit is not None
+    if f is None:
+        return order.limit
+    wage = f.economy.get("wage", 0)
+    floor = unit_floor(ctx.defs, ctx.config, f, good, island.economy.prices, wage, party.freight)
+    if floor <= 0:
+        return order.limit
+    return min(order.limit, -(-floor * BASIS // max(1, BASIS - party.freight)))
+
+
 def floored_limit(ask: int, floor: int, freight: int, high: int) -> int:
     """作り方を替えて残った物の売りの指値: seller_limit で値幅の上端まで抑えるが、その施設で作る
     費用 floor（運賃を払った後に残る額）より安くはしない（Market._leftover_floor）。
@@ -3456,7 +3470,16 @@ class Market(IslandStage):
                 continue
             if result.demand > Market._out_of_money(books_by_good[good], result):
                 continue
-            asks = [o.limit for o, _ in books_by_good[good].sells if o.limit is not None]
+            # 売り手が受け入れる一番安い値段は、指値でなく作る費用（unit_floor に運賃を足した額）。
+            # 指値は前の値段の値幅の中に縛られるので、輸出が引き合う値段が島の値段の値幅の下端より
+            # 安いと、作る費用で引き合う輸出があっても島の値段がいつまでも下がらなかった（造船所
+            # の売れ残った船。島に買い手がなく、島の値段が費用の 2〜3 倍のまま 100 ターン以上
+            # 止まった）
+            asks = [
+                _lowest_ask(ctx, island, o, party, good)
+                for o, party in books_by_good[good].sells
+                if o.limit is not None
+            ]
             if asks:
                 idle[good] = min(asks)
         found: dict[str, traders.Prospect] = {}

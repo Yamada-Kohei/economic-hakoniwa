@@ -27,7 +27,7 @@
 | FM-03 | 稼働率は人手・投入財・電力の充足率の一番低いものと操業目標で決まる。産出は基本の産出量×稼働率×生産性で、生産性はインフラ・教育・汚染・自然条件・経験・集積の係数の積。どれが効くかはレシピの `factors` で決める | 決定 | `infrastructure.factor`, `infrastructure.pollution_floor` | tests/core/test_infrastructure.py::test_infrastructure_and_education_change_productivity |
 | FM-04 | 施設の会計は、民営（独立採算）・国営の独立採算・国営の国庫直轄の3つ。国営の形は建てるときに経済体制の既定（regimes.yaml の `state_accounting`）で決まり、命令で変えられる | 決定 |  | （未確認） |
 | FM-05 | （FM-36 に置き換え）施設1つがお金の主体1つで、民営の持ち主は資本家階級1つ（企業という単位がない） | 置き換え（回7） |  | （未確認） |
-| FM-06 | 独立採算の施設は自分の預金と借入を持ち、税引き後の利益の決めた割合を配当（民営）か国庫への納付（国営）に回す。手元の資金が決めたターン数分の支払いを超えた分も回す。赤字のターンは配当せず、赤字は決めたターン数まで繰り越す | 決定 | `firms.payout`, `firms.cash_turns`, `firms.loss_carry_turns` | tests/core/test_rules.py::test_no_dividend_in_a_loss_turn |
+| FM-06 | 独立採算の施設は自分の預金と借入を持ち、税引き後の利益の決めた割合を配当（民営）か国庫への納付（国営）に回す。手元の資金が決めたターン数分の支払いを超えた分も回す（運転資金の借入の残りは超えた分から除く。2026-11-01）。赤字のターンは配当せず、赤字は決めたターン数まで繰り越す | 決定 | `firms.payout`, `firms.cash_turns`, `firms.loss_carry_turns` | tests/core/test_rules.py::test_no_dividend_in_a_loss_turn |
 | FM-07 | 国庫直轄の施設は口座を持たず、売上は国庫へ、費用は国庫から予算の範囲で払う。倒産しない。国庫が足りなければ仕入れが削られて止まる。全力で動き、在庫が目安を超えたら下げる | 決定 |  | tests/core/test_shocks.py::test_planned_economy_never_bankrupts_or_stops |
 | FM-08 | 国営の独立採算の施設は民営と同じく操業目標を決めるが、自分で閉鎖せず倒産しない（返済が足りなければ政府が出資して埋める）。決めたターン数続けて赤字なら、補助金・縮小・閉鎖を選ぶようプレイヤーに知らせる | 決定 | `firms.loss_notice_turns` | （未確認） |
 | FM-09 | 計画経済の島では倒産を起こさず、返済が遅れた国営施設には国営銀行が借り換えで穴を埋める | 決定 |  | tests/core/test_shocks.py::test_planned_economy_never_bankrupts_or_stops |
@@ -112,7 +112,7 @@ Q = Q_0 \times u \times f_{\mathrm{infra}} \times f_{\mathrm{edu}} \times f_{\ma
 | 国営の国庫直轄 | 口座を持たない。売上は国庫へ、費用は国庫から | すべて国庫 | 倒産しない。国庫が足りなければ仕入れが削られて止まる | 全力。在庫が目安を超えたら下げる |
 
 - 国営の形は建てるときに経済体制の既定（`regimes.yaml` の `state_accounting`）で決まり、命令で変えられる。計画経済の島では倒産を起こさない。
-- 手元の資金が `firms.cash_turns` 分の支払いを超えたら、超えた分も配当・納付に回す。建国と出資のときに持たせる手元の資金は `founding.money.operating_turns`・`firms.operating_turns`。
+- 手元の資金が `firms.cash_turns` 分の支払いを超えたら、超えた分も配当・納付に回す。運転資金の借入の残りは超えた分から除く（借りたお金を配当に出さない。2026-11-01。海運業が船を買うために借りた運転資金が、注文をやめたターンに余りとして配当に出て、返済が遅れて倒産した）。建国と出資のときに持たせる手元の資金は `founding.money.operating_turns`・`firms.operating_turns`。
 - 操業目標の決め方（売れ行きの見込みと在庫の目安）はタブ 3。運転資金と建設資金の借り方と審査はタブ 7。
 
 ### 設備の傷みと直し（回6）

@@ -40,7 +40,10 @@ PUSH_MARGIN より上回るときは、島の市場の買いたい量より多�
 
 計画経済の島（フェーズ3-4。公定価格のある島）の商社は、値段の差ではなく、島の市場で買えなかった
 量（行列）のある財を、圏の値段で一番安い圏から輸入し、島の売り手の売れ残った財を輸出します（貿易の
-独占）。島では
+独占）。輸出する量は、市場経済の島の商社と同じく、圏で売れた量と圏の買えなかった量の分け前（売り
+切ったら多めに）を狙い、島の売れ残りを輸出する商社で分けた分までです（売れ残りをぜんぶ狙うと、
+圏に買い手のない物の島での買いに扱える重さと預金を使い切り、圏に買い手のいる物を輸出できなかった）。
+島では
 公定価格で売り買いし（輸入した物は仕入れ値によらず売り、輸出する物は公定価格で買う）、圏では輸出の
 荷を指値なしで売り、輸入は圏の値幅の上端まで買います。輸入に使えるのは商社が輸出で得て持っている
 外貨だけで（為替で外貨を買わない）、余った外貨は売りません（modules/trade の為替）。
@@ -493,8 +496,9 @@ def update_targets(
                 if _probing(item["x"], sold_bloc.get(good, 0), stock.total(f.stock, good)):
                     want_x = max(want_x, item["x"] + probe)
                 want_x = min(want_x, supply)
-                if planned:  # 売れ残った量を、輸出する商社で分ける
-                    want_x = sold_bloc.get(good, 0) + left_over // max(1, exporters.get(good, 1))
+                if planned:  # 圏で売れる量まで。売れ残りを輸出する商社で分けた分を超えない
+                    plan_x = sold_bloc.get(good, 0) + left_over // max(1, exporters.get(good, 1))
+                    want_x = min(want_x, plan_x)
             if direction == IMPORT and can_import:
                 assert record is not None
                 unmet = max(0, record.demand - record.volume)
