@@ -558,6 +558,11 @@ def test_plan_orders_check_and_log(game, base):
     assert below.value.reason == "reason_cap_below_floor" and below.value.args_["floor"] == 100
     market_mod.check_price_cap(mixed, {"good": "grain", "price": 0}, defs)
     mixed.policy.price_floor.clear()
+    # 体制を変えた後に残った下限は効かないので、上限を止めない。0 で消すのは体制によらず通る
+    market.policy.price_floor["electricity"] = 100
+    market_mod.check_price_cap(market, {"good": "electricity", "price": 50}, defs)
+    plan_orders.check_price_floor(market, {"good": "electricity", "price": 0}, defs)
+    market.policy.price_floor.clear()
     for island in (planned, mixed):
         logs_ok(game, island)
 

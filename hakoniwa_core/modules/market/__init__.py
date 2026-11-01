@@ -3662,9 +3662,12 @@ def check_price_cap(island: IslandState, payload: dict[str, Any], defs: Defs) ->
     utility = defs.goods[payload["good"]].get("shelf_life") == 0
     if not utility and not politics.trait(island, defs, "price_controls", False):
         raise OrderFailed("reason_price_controls_forbidden")
-    # 下限より安い上限は出せない（両方あると下限が勝ち、上限が効かない。下限は modules/plan）
+    # 下限より安い上限は出せない（両方あると下限が勝ち、上限が効かない。下限は modules/plan）。
+    # 比べるのは下限が効くとき（混合経済の、電気料金でない財）だけ。体制を変えた後に残った下限や
+    # 電気料金の下限は値段に効かないので、上限を止めない
     good, price = payload["good"], payload["price"]
-    floor = island.policy.price_floor.get(good)
+    controlled = politics.trait(island, defs, "price_controls", False)
+    floor = island.policy.price_floor.get(good) if controlled and not utility else None
     if price > 0 and floor and price < floor:
         raise OrderFailed("reason_cap_below_floor", good=good, price=price, floor=floor)
 
