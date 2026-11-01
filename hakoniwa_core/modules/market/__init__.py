@@ -188,8 +188,16 @@ def gross_cost(net: int, qty: int, freight: int, tax: int) -> int:
 
 
 def net_limit(gross: int, freight: int, tax: int) -> int:
-    """運賃と税を含めて gross まで払えるときの、板寄せに出す指値。"""
-    return gross * BASIS // (BASIS + freight + tax)
+    """運賃と税を含めて gross まで払えるときの、板寄せに出す指値: 「指値 ＋ 運賃 ＋ 税」（どれも
+    切り捨て）が gross を超えない一番高い値段。
+
+    割り算で戻すだけだと、運賃と税の切り捨ての端数の分だけ1つ低くなり、「前の値段の値幅の上端
+    ＋ 運賃」で決めた買いの指値が上端より1低くなって、上端に張り付いた売りと最初のターンにほぼ
+    必ずすれ違った（2026-11-01 の価格の決まり方の見直し）。"""
+    net = gross * BASIS // (BASIS + freight + tax)
+    while net + 1 + part(net + 1, freight) + part(net + 1, tax) <= gross:
+        net += 1
+    return net
 
 
 def seller_limit(ask: int, freight: int, high: int) -> int:
@@ -517,10 +525,12 @@ def inventory_turns(ctx, good: str) -> float:
     """産出物 good の在庫の目安（売れ行きの見込みの何ターン分か）。
 
     持ち越せる期間の短い物は、その半分（(期間 − 1) ÷ 2 ターン）までにする（売れ残りを捨てない）。
+    持ち越せない物（期間 0。サービス・小売・電力）は 0（在庫を持たない。式のままだと −0.5 ターン分に
+    なり、1単位の売れ残りで値下げし、作る量も見込みより少なくなっていた。2026-11-01）。
     """
     turns = ctx.config.get("market.inventory_turns")
     life = ctx.defs.goods[good].get("shelf_life")
-    return turns if life is None else min(turns, (life - 1) / 2)
+    return turns if life is None else max(0.0, min(turns, (life - 1) / 2))
 
 
 def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int:

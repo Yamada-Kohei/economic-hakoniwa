@@ -26,7 +26,7 @@
 | MK-04 | 売りと買いが交わらなければ約定せず、一番安い売りと一番高い買いの指値の真ん中（気配）を次のターンの基準の値段にする。注文が片側だけなら基準の値段のまま | 決定 | `market.band` | tests/core/test_economy.py::test_auction_without_cross_returns_midpoint_quote |
 | MK-05 | 注文は出すときに「量×指値」のお金を取り置き、取り置けない分は出せない。約定は指値より不利にならないので、払えない約定は起きず、財ごとの板寄せは互いに独立 | 決定 |  | tests/core/test_economy.py::test_auction_properties |
 | MK-06 | 注文を出すのは、独立採算と国庫直轄の施設（在庫の売りと次のターンの投入財の買い）、工事中の施設とインフラ（資材）、家計、国の倉庫（命令の分）。商社の荷は市場の段で売りに出さない | 決定 |  | tests/core/test_balance_round3.py::test_market_sells_old_crops_of_a_resown_farm_but_not_the_traders_cargo |
-| MK-07 | 希望価格は売れ行きで見直す（式 `price_update`）。全部売れたら市場の買えなかった割合で上げ、全部買えたら売れ残りの割合で下げる。1ターンの変化は値幅まで。売れ残りのうち、ふだん持っておく在庫（売れ行きの見込み × 在庫の目安 `market.inventory_turns`）までは余りに数えず、目安以内なら希望価格を動かさない（W-186 回2。持ち越せない物は目安が 0 なので今までどおり） | 決定 | `market.price_speed`, `market.band`, `market.inventory_turns` | tests/core/test_economy.py::test_price_update_moves_toward_balance_within_band, tests/core/test_recession_round2.py::test_normal_inventory_is_not_read_as_excess |
+| MK-07 | 希望価格は売れ行きで見直す（式 `price_update`）。全部売れたら市場の買えなかった割合で上げ、全部買えたら売れ残りの割合で下げる。1ターンの変化は値幅まで。売れ残りのうち、ふだん持っておく在庫（売れ行きの見込み × 在庫の目安 `market.inventory_turns`）までは余りに数えず、目安以内なら希望価格を動かさない（W-186 回2。持ち越せない物は目安が 0 なので今までどおり） | 決定 | `market.price_speed`, `market.band`, `market.inventory_turns` | tests/core/test_economy.py::test_price_update_moves_toward_balance_within_band, tests/core/test_recession_round2.py::test_normal_inventory_is_not_read_as_excess, tests/core/test_pricing_fix1.py::test_goods_that_cannot_be_carried_over_keep_no_stock |
 | MK-08 | 独立採算の売り手は1単位の変動費（投入財・賃金・電気代・運賃）より安い指値を出さない。売れなければ在庫に持ち、操業目標を下げる。持ち越せる期間が残り1ターンの物は指値なしで売る | 決定 |  | （未確認） |
 | MK-09 | 操業目標は、売れ行きの見込み（前のターンに売れた量へ少しずつ近づける）と在庫の目安との差で決め、売り切れて値段が変動費より十分高ければ増やす。変える幅には上限があり、上がる分まで先に仕入れる | 決定 | `market.sales_smoothing`, `market.inventory_turns`, `market.inventory_adjust`, `market.target_step`, `market.expand_margin`, `market.max_target_change` | tests/core/test_rules.py::test_inputs_are_bought_ahead_of_a_rising_target |
 | MK-10 | 持ち越せない売れ残りを翌ターンに指値なしで売った分は、値段が変動費を下回った幅が値幅に届くまで、幅に応じて減らして売れ行きの見込みに数える（希望価格の見直しには入れない） | 決定 | `market.band` | tests/core/test_economy.py::test_late_sales_count_less_as_the_price_falls_below_the_floor |
@@ -137,7 +137,7 @@
 ### 島の中の運賃と運送業
 
 - 島の中の輸送はお金の運賃で払う。物は売り手から買い手まで運ばれ、売り手と買い手がそれぞれ「約定価格×自分の運賃の率」を島の運送業に払う。率は道のり 1 あたり `freight.per_step` を売り手と買い手が半分ずつで、1 人の率の上限は `freight.max_rate`。
-- 板寄せの前に買いの指値を（1＋率）で、売りの指値を（1−率）で割っておくので、運賃を払っても指値より不利にならず、取り置くお金も足りる。約定は道のりの近い組から割り当てる。
+- 板寄せの前に買いの指値を（1＋率）で、売りの指値を（1−率）で割っておくので、運賃を払っても指値より不利にならず、取り置くお金も足りる。買いの指値は「指値＋運賃（切り捨て）」が払える額に収まる一番高い値段にする（ただ割って切り捨てると端数の分だけ 1 低くなり、値幅の上端で決めた原料の買いが、上端に張り付いた売りと最初のターンにほぼ必ずすれ違っていた。2026-11-01）。約定は道のりの近い組から割り当てる。
 - 率は施設ごとの見込み: 取引の相手になりうる所（売る物なら買う施設・工事・住民、買う物なら作る施設）を近い順に、全力で動いたときの自分の量に届くまで数えた平均の道のりを、財の金額で平均する。住民は一番近い住んでいるマスまで運ぶ。
 - 相手で埋まらない分は拠点（首都のマス、`freight.hub_level` 以上の町、港）までの道のりで数える。家計の率は住んでいるマスから一番近い売り手までの率を人口で平均し、国の倉庫は首都にあるので 0。拠点にも行けない離れ小島は上限の率になる。
 - 道のりは陸のマスをたどる歩数で、道路と鉄道の整備度で短くなる（係数はタブ 8）。電力（送電網で送る）とサービス（その場で使う）には運賃がかからない。
