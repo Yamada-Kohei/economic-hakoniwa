@@ -160,7 +160,10 @@ class FirmsFunds(IslandStage):
         rec["tax"] = tax
         rec["dividend"] = dividend
         # 6. 立て直し
-        if len(built) >= 2 and rec[co.RED] >= settings["restructure_turns"]:
+        # 閉鎖の途中の施設があるあいだは次を閉めない（2026-11-02 FM-54。閉める施設の赤字がまだ
+        # 連結に数えられていて、島でただ1つの漁港のような儲かる施設まで閉め、島から食べ物が消えた）
+        closing = any("closing" in f.economy for f in built)
+        if len(built) >= 2 and rec[co.RED] >= settings["restructure_turns"] and not closing:
             payments = sum(next_payments(island, ctx.defs, config, f) for f in built)
             if co.spare(island, number) < payments:
                 self._close_worst(island, ctx, number, built)
@@ -201,6 +204,10 @@ class FirmsFunds(IslandStage):
             profit = variable_profit(
                 defs, config, f, prices, f.economy.get("wage", 0), rates.get(f.id, 0)
             )
+            if sole and profit > 0:
+                # 島でただ1つの作り手で変動費の利益が出ている施設は閉めない（閉めても企業の現金
+                # 収支は良くならず、島からその物が消える。FM-54）
+                continue
             candidates.append(((sole or supplier), profit, f.id, f))
         if not candidates:
             return
