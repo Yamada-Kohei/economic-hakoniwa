@@ -67,6 +67,8 @@ TRADE_STATS = [
     "freight.ship_rate",
     "port.handled",
     "trade.unpaid",
+    "trade.charter_income",  # 貸した船の運賃の収入（ほかの国の荷を運んだ）
+    "trade.charter_paid",  # 借りたほかの国の船に払った運賃
     "trade.tariffs",
     "trade.tariff_unpaid",
     "trade.export_subsidies",
@@ -132,6 +134,7 @@ WHY_NAMES = {
     trade_stage.WHY_BUYERS: "圏の買いが足りないか、買いの値段が安い",
     trade_stage.WHY_FUNDS: "払うお金（商社の預金）が足りない",
     trade_stage.WHY_QUOTA: "輸入の割り当ての上限まで買った",
+    trade_stage.WHY_BLOCKADE: "封鎖で船出を断られた",
 }
 SHIPMENT_KINDS = {"bloc": "貿易圏", "contract": "二国間契約"}
 # 外貨の持ち高と非居住者の預金の持ち手（施設はまとめて「商社など」）
@@ -649,7 +652,13 @@ def fleet_view(island: m.Island, here: IslandState, stats: dict[str, float]) -> 
     defs, config = game.defs, game.config
     capacity = config.get("trade.ship_capacity")
     weight = defs.weight_scale()  # 荷の重さは見せるトンで（W-30）
-    out: dict[str, Any] = {"ship_capacity": capacity * weight, "shipping": None, "port": None}
+    out: dict[str, Any] = {
+        "ship_capacity": capacity * weight,
+        "shipping": None,
+        "port": None,
+        # 空いている船を、圏の市場のほかの国の荷のために貸すか（命令 set_ship_lending）
+        "lend_ships": here.policy.lend_ships,
+    }
     f = shipping_of(here, config)
     if f is not None:
         need = ships.fuel_per_turn(config, ships.capacity(config, f))
@@ -671,6 +680,9 @@ def fleet_view(island: m.Island, here: IslandState, stats: dict[str, float]) -> 
             # 直近の、船が足りずに輸入を減らしたターンの数（数えたターンのうち）
             "short_turns": sum(f.economy.get("ships_short", [])),
             "short_of": len(f.economy.get("ships_short", [])),
+            # 圏の荷を運ぶ船の貸し借り（1ターンの運賃）
+            "charter_income": stats.get("trade.charter_income", 0),
+            "charter_paid": stats.get("trade.charter_paid", 0),
             "fuel": [
                 {
                     "good": good,
@@ -706,22 +718,35 @@ def shipment_rows(
     islands: dict[int, dict[str, Any]],
     blocs: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """島が積み出したか受け取る、運ぶ途中の荷（着く順）。圏の荷は、どの圏で約定したかも出す。"""
+    """島が積み出したか受け取る、運ぶ途中の荷と、ほかの国に貸した船で運んでいる荷（着く順）。圏の
+    荷は、どの圏で約定したかと、ほかの国から借りた船ならその国も出す。"""
     defs = get_game().defs
     names = {b["id"]: b["name"] for b in blocs or []}
     rows = []
     for s in shipments:
-        if island_id not in (s["from"], s["to"]):
+        carrier = s.get("carrier", s["to"])
+        if island_id not in (s["from"], s["to"], carrier):
             continue
         incoming = s["to"] == island_id
-        partner = s["from"] if incoming else s["to"]
+        lent = island_id not in (s["from"], s["to"])
+        partner = s["to"] if lent else s["from"] if incoming else s["to"]
+        if lent:
+            direction, direction_name = "lent", "貸した船"
+        else:
+            direction = traders.IMPORT if incoming else traders.EXPORT
+            direction_name = "輸入" if incoming else "輸出"
         rows.append(
             {
                 "id": s["id"],
-                "direction": traders.IMPORT if incoming else traders.EXPORT,
-                "direction_name": "輸入" if incoming else "輸出",
+                "direction": direction,
+                "direction_name": direction_name,
                 "partner": partner,
                 "partner_name": _name(islands, partner),
+                # ほかの国から借りた船で運ぶ荷は、その船の国（貸した船の行と自分の船の荷は空）
+                "carrier": carrier if carrier not in (s["to"], island_id) else None,
+                "carrier_name": _name(islands, carrier)
+                if carrier not in (s["to"], island_id)
+                else "",
                 "kind": s["kind"],
                 "kind_name": SHIPMENT_KINDS.get(s["kind"], s["kind"]),
                 "bloc_name": names.get(s.get("ref"), "") if s["kind"] == "bloc" else "",

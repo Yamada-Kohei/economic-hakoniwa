@@ -45,6 +45,7 @@ set_tariff: 関税
 set_export_subsidy: 輸出補助
 set_import_quota: 輸入の割り当て
 set_embargo: 禁輸
+set_ship_lending: 船の貸し出し
 send_aid: 援助
 set_capital_controls: 資本取引の制限
 set_fx_intervention: 為替の介入
@@ -81,6 +82,7 @@ stop_unit: 部隊の命令を止める
 form_fleet: 艦隊の編成
 sail_fleet: 艦隊の航海
 fleet_duty: 艦隊の務め（護衛・見張り・封鎖）
+set_neutral_ships: 中立国の船の扱い
 fire_missile: ミサイル攻撃
 load_unit: 部隊を船に載せる
 unload_unit: 部隊を船から降ろす

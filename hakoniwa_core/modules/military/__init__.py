@@ -327,9 +327,24 @@ def discharge(island: IslandState, payload: dict[str, Any], ctx: StageContext) -
     island.log.append(LogEntry("discharged", {"count": gone}))
 
 
+def check_neutral_ships(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    if not island.has_economy:
+        raise OrderFailed("reason_no_economy")
+
+
+def set_neutral_ships(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
+    """戦争の相手の荷を運ぶ中立国の船を、封鎖と見張りの艦が沈めるか追い返すか（タブ 15 MI-34）。"""
+    island.policy.sink_neutral_ships = bool(payload["sink"])
+    kind = "neutral_ships_sink" if payload["sink"] else "neutral_ships_turn_back"
+    island.log.append(LogEntry(kind, {}))
+
+
 def register(registry: Registry) -> None:
     registry.add_stage(Military())
     registry.add_order(OrderHandler("set_defense", execute=set_defense, check=check_set_defense))
     registry.add_order(OrderHandler("recruit", execute=recruit, check=check_recruit))
     registry.add_order(OrderHandler("conscript", execute=conscript, check=check_recruit))
     registry.add_order(OrderHandler("discharge", execute=discharge, check=check_discharge))
+    registry.add_order(
+        OrderHandler("set_neutral_ships", execute=set_neutral_ships, check=check_neutral_ships)
+    )

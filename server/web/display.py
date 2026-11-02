@@ -966,6 +966,8 @@ def _describe_military(kind: str, payload: dict[str, Any], name: str) -> str:
         return f"{name}: 部隊 {payload.get('unit')} 番 → ({payload.get('x')}, {payload.get('y')})"
     if kind in ("disband_unit", "dig_trench", "stop_unit"):
         return f"{name}: 部隊 {payload.get('unit')} 番"
+    if kind == "set_neutral_ships":
+        return f"{name}: " + ("沈める" if payload.get("sink") else "追い返す")
     if kind == "set_defense":
         parts = []
         if payload.get("annual") is not None:
@@ -1101,6 +1103,8 @@ def _describe_policy(kind: str, payload: dict[str, Any], name: str) -> str:
         if "quantity" not in payload:
             return f"{name}をやめる: {good_name}"
         return f"{name}: {good_name} 1ターン {payload['quantity']:g} {unit}まで"
+    if kind == "set_ship_lending":
+        return f"{name}: " + ("貸す" if payload.get("lend") else "貸さない")
     if kind == "set_embargo":
         what = good_name or "すべての財"
         verb = "やめる" if payload.get("lift") else "始める"

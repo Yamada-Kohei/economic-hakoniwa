@@ -836,3 +836,32 @@ def test_planned_traders_export_only_what_the_bloc_takes(game, base):
         sellers
     )  # 圏の買えなかった量まで
     assert targets(10 * unsold) <= unsold  # 売れ残りより多くは狙わない
+
+
+def test_planned_traders_sell_at_the_bloc_price(game, base):
+    """計画経済の島の商社の売りの指値は、圏の公定の値段か、なければ圏の今の値段（タブ 9 FX-58。
+    指値なしで売ると、買いが値幅の上端にそろう圏で値段だけを毎ターン値幅ずつ下げ、圏の石炭の値段が
+    作る費用の 1/15 まで崩れた）。"""
+    from hakoniwa_core import stock
+    from hakoniwa_core.modules import trade as trade_stage
+    from hakoniwa_core.trade import blocs, traders_of
+    from hakoniwa_core.trade import traders as trade_traders
+    from tests.core.test_trade import _context
+
+    world = copy.deepcopy(base)
+    island = island_of(world, "planned")
+    [bloc] = blocs.member_of(world, island.id)
+    good = "coal"
+    [f, *_] = traders_of(island, game.config)
+    item = trade_traders.entry(f, good)
+    item.update({"dir": trade_traders.EXPORT, "bx": bloc["id"], "x": 10 * QUANTITY_SCALE})
+    stock.add(f.stock, good, 10 * QUANTITY_SCALE, world.turn, game.defs.goods)
+    r = trade_stage._Round(world, _context(game, world))
+    members = [m for m in bloc["members"] if m in r.islands]
+    _, sells, _, asks = r._bloc_orders(bloc, members, good, {}, {})
+    [order] = [o for o, a in zip(sells, asks, strict=True) if a.facility is f]
+    assert order.limit == blocs.reference(world, bloc, good) > 0
+    bloc.setdefault("fixed", {})[good] = 1234
+    _, sells, _, asks = r._bloc_orders(bloc, members, good, {}, {})
+    [order] = [o for o, a in zip(sells, asks, strict=True) if a.facility is f]
+    assert order.limit == 1234
