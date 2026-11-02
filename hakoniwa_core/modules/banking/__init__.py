@@ -152,6 +152,7 @@ class Banking(IslandStage):
         planned = is_planned(ctx.defs, island)
         rate_of = ctx.formula("loan_rate")
         due: dict[str, list[tuple[Loan, int, int]]] = {}
+        margin_call = self._margin_call(island, ctx)
         for loan in sorted(island.loans, key=lambda x: x.id):
             balance = banks.outstanding(island, loan)
             if balance <= 0:
@@ -162,6 +163,10 @@ class Banking(IslandStage):
             if loan.purpose == banks.MORTGAGE:  # 残り ÷ 残りの期間で出し直す
                 installment = -(-balance // banks.remaining_turns(loan, ctx.turn))
             principal = min(balance, installment) if ctx.turn >= loan.repay_from else 0
+            if loan.purpose == banks.PLEDGE and margin_call > 0:  # 追い証（2026-11-03）
+                extra = min(balance - principal, margin_call)
+                principal += extra
+                margin_call -= extra
             due.setdefault(loan.borrower, []).append((loan, interest, principal))
         for borrower, rows in sorted(due.items()):
             payer = Payer(borrower)
@@ -185,20 +190,38 @@ class Banking(IslandStage):
                     self._inject(island, f, Payer(ledger.GOV, STATE_FACILITIES), short)
             for loan, interest, principal in rows:
                 self._pay_loan(island, loan, interest, principal)
-                if loan.purpose == banks.MORTGAGE:
+                if loan.purpose in (banks.MORTGAGE, banks.PLEDGE):
                     self._write_off_mortgage(island, ctx, loan)
 
     @staticmethod
+    def _margin_call(island: IslandState, ctx: StageContext) -> int:
+        """株を担保にした借入の追い証（2026-11-03）: 資本家階級の株を担保にした借入の残高が、担保の
+        値打ち（companies.owners_collateral）× firms.pledge_ratio を超えた分。このターンの返済に
+        足して、すぐ返してもらう（現実の担保割れの追加の返済）。"""
+        borrower = household(OWNERS)
+        held = sum(
+            banks.outstanding(island, x)
+            for x in banks.loans_by_borrower(island, borrower)
+            if x.purpose == banks.PLEDGE
+        )
+        if held <= 0:
+            return 0
+        cover = int(companies.owners_collateral(island) * ctx.config.get("firms.pledge_ratio"))
+        return max(0, held - cover)
+
+    @staticmethod
     def _write_off_mortgage(island: IslandState, ctx: StageContext, loan: Loan) -> None:
-        """返済が loans.arrears_limit 回続けて遅れた層の住宅ローンは、残りを銀行の損として消す
-        （仕事を失った人の焦げ付き。家と人はそのまま。回3）。"""
+        """返済が loans.arrears_limit 回続けて遅れた層の住宅ローンと株を担保にした借入は、残りを
+        銀行の損として消す（仕事を失った人の焦げ付き。家と人はそのまま。回3）。株を担保にした借入
+        も、銀行が担保の株を取って売る道は入れない（株の市場がない。2026-11-03）。"""
         if loan.arrears < ctx.config.get("loans.arrears_limit"):
             return
         left = banks.outstanding(island, loan)
         banks.write_off(island, loan, left)
         loan.arrears = 0
         stats = island.stats
-        stats["loans.mortgage_write_off"] = stats.get("loans.mortgage_write_off", 0) + left
+        key = f"loans.{loan.purpose}_write_off"
+        stats[key] = stats.get(key, 0) + left
 
     @staticmethod
     def _pay_loan(island: IslandState, loan: Loan, interest: int, principal: int) -> None:

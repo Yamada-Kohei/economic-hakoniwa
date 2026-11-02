@@ -247,12 +247,21 @@ def propensity(config: GameConfig, layer: str, real_rate: float) -> float:
     return layers(config)[layer]["c1"] - max(-limit, min(limit, shift))
 
 
+def wealth_propensity(config: GameConfig, layer: str) -> float:
+    """層の c2（預金から毎ターン使う割合）: 層に c2 を書いていればその値、なければ household.c2。
+
+    資本家階級（上位1%）は財産から年3〜5%しか取り崩さないので、働く層（household.c2）と分ける
+    （2026-11-03）。"""
+    spec = layers(config)[layer]
+    return spec["c2"] if "c2" in spec else config.get("household.c2")
+
+
 def consumption(island: IslandState, layer: str, config: GameConfig, inflation: float) -> int:
     """層が使う額: C = c1 × Ȳ + c2 × M（名前付きの式 consumption の既定）。
 
     Ȳ は直近のターンの可処分所得の平均（記録がなければこのターンの所得）、M は層の預金。
     c1 は預金の実質金利（預金金利 − 物価上昇率）が1%高いごとに c1_rate_effect 下げる
-    （既定の値から ± c1_range）。
+    （既定の値から ± c1_range）。c2 は層ごと（wealth_propensity）。
     """
     settings = config.get("household")
     h = island.economy.households[layer]
@@ -263,4 +272,5 @@ def consumption(island: IslandState, layer: str, config: GameConfig, inflation: 
         income = island.scratch.get("income", {}).get(layer, 0)
     c1 = propensity(config, layer, island.policy.deposit_rate / BASIS - inflation)
     deposits = ledger.money(island, household(layer))
-    return max(0, round_money(c1 * max(0.0, income) + settings["c2"] * deposits))
+    c2 = wealth_propensity(config, layer)
+    return max(0, round_money(c1 * max(0.0, income) + c2 * deposits))
