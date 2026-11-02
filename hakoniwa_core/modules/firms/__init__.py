@@ -1233,10 +1233,16 @@ class EntryExit(IslandStage):
     @staticmethod
     def _supplied(island: IslandState, ctx: StageContext) -> set[str]:
         """島で手に入る財: 動いている施設が作っている財（国の倉庫の物は、政府が売りに出さなければ
-        市場に出ないので数えない）と、商社が輸入している財・海外の商人が売っている財（フェーズ3-1）。"""
+        市場に出ないので数えない）と、商社が輸入している財・海外の商人が売っている財（フェーズ3-1）。
+
+        海外の商人の財は、商人が持ってくる量を減らし始める（foreign_merchant.taper_from。FX-27）
+        までだけ数える。減らし始めた後は、商人の財だけを頼りに新しい工場を建てない（去っていく
+        ただ1つの売り手の原料で製油所を建て、商人が去ると動けずに残った。2026-11-02、#247 の
+        門の試験）。現実でも、ただ1つの輸入元が引き上げると分かっている原料に新しい工場は建てない。"""
         goods = EntryExit._made(island, ctx)
         goods |= trade_traders.imported(island, ctx.config)
-        goods |= {g for g, _, _ in merchant.offers(island, ctx.defs, ctx.config, ctx.turn)}
+        if merchant.taper(island, ctx.config, ctx.turn) >= 1:
+            goods |= {g for g, _, _ in merchant.offers(island, ctx.defs, ctx.config, ctx.turn)}
         return goods
 
     @staticmethod
