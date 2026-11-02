@@ -252,7 +252,7 @@ def test_workers_quit_little_by_little_while_wages_go_unpaid(game, warmed):
         for f in sorted(island.facilities, key=lambda f: f.id)
         if f.owner == OWNER_PRIVATE
         and f.built
-        and f.workers > 0
+        and f.workers >= 20  # 少しずつ辞めるのが見える人数（世界の歩みで小さな施設もある）
         and "foreclosed" not in f.economy
         and f.economy.get("loss_streak", 0) == 0
         and f.economy.get("ebitda", [0])[-1] > 0

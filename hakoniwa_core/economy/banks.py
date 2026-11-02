@@ -36,6 +36,7 @@ from hakoniwa_core.units import BASIS, money_of, part, to_basis
 WORKING = "working"  # 運転資金
 CONSTRUCTION = "construction"  # 建設資金
 MORTGAGE = "mortgage"  # 住宅ローン（家計の層が借りる。回3）
+PLEDGE = "pledge"  # 株を担保にした借入（資本家階級が借りる。2026-11-03）
 
 FINANCE_VERSION = 2  # economy.finance["version"]: 2 はフェーズ2-2 の金融が始まった島
 

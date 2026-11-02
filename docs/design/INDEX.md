@@ -152,7 +152,7 @@
 
 ## [4 仕事と家計](04-labor.md)
 
-決まり 40 個、うち仮の決まりの表にあるもの 3 個。
+決まり 41 個、うち仮の決まりの表にあるもの 3 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -196,10 +196,11 @@
 | LB-38 | 電気・送電網・原料が足りずに動けなかった分の働き手には、賃金の `labor.furlough_`… | 決定（回7 後半） | tests/core/test_balance_round7b.py |
 | LB-39 | 売りに出ていたのに家計が1つも買わないターンが `household.reprice_turns`… | 決定（回7 後半 | tests/core/test_balance_round7b.py |
 | LB-40 | 計画経済の島の施設の賃金は、国が決める: 物価の上がった分と人手の足りなさでは動かさず（LB-0… | 決定（2026-11-01 の価格の決まり方の見直し） | tests/core/test_pricing_fix1.py |
+| LB-41 | 資本家階級は所得のうち使う割合も、財産から取り崩す割合も働く層より小さい（上位1%は所得の5割ほ… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
 
 ## [5 施設と企業](05-firms.md)
 
-決まり 54 個、うち仮の決まりの表にあるもの 0 個。
+決まり 56 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -257,6 +258,8 @@
 | FM-52 | 民営の農場の集約（W-190）: 作り方を見直す周期（`recipe_turns`）ごとに、次の… | 決定・実装済み（W-190 回3） | tests/core/test_farm_grades.py、tests/core/test_stage7_fixes.py |
 | FM-53 | 肥料ありの作り方の農場は、肥料（化学品）が手元にない割合の畑を、同じ作物の肥料なしの作り方で動か… | 決定（2026-11-02） | tests/core/test_farm_grades.py |
 | FM-54 | 企業の立て直しは、企業の施設に閉鎖の途中のものがあるあいだは次を閉めず、島でただ1つの作り手で変… | 決定（2026-11-02） | tests/core/test_balance_round7b.py |
+| FM-55 | 創業融資: 実績のない会社（資本家階級が新しく起こす会社と、建国の後にできて決めたターン数たたな… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
+| FM-56 | 資本家階級の預金で新しい会社の出資に足りなければ、持っている民営の会社の株（会社の預金と施設の純… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
 
 ## [6 国の財政と政策](06-finance.md)
 
@@ -294,7 +297,7 @@
 
 ## [7 お金と銀行](07-banking.md)
 
-決まり 48 個、うち仮の決まりの表にあるもの 1 個。
+決まり 49 個、うち仮の決まりの表にあるもの 1 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -346,6 +349,7 @@
 | BK-48 | 中央銀行の買いが値幅の中で買いきれなければ、値幅を越えて利回りを下げて買う（W-193 | 決定（回3） | tests/core/test_recession_round3.py |
 | BK-45 | 直近 1 年の利益がマイナスの銀行は、職員の下限 `banking.staff_floor` を… | 決定（回7 後半） | tests/core/test_balance_round7b.py、tests/core/test_playtest5_fixes.py |
 | BK-46 | 破綻の前の合併: 直近 1 年の利益がマイナスで、自己資本比率が「規制＋`banking.ris`… | 決定（回7 後半） | tests/core/test_balance_round7b.py |
+| BK-49 | 資本家階級の株を担保にした借入（2026-11-03）: 新しい会社の出資に足りない分を、株の値… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
 
 ## [8 インフラと教育](08-infrastructure.md)
 
