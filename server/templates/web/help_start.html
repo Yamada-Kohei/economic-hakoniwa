@@ -3,7 +3,7 @@
 {% block content %}
 <h1>{% translate "手引き：入門" %}</h1>
 
-<p>{% translate "初めて遊ぶ人向けの短い手引きです。仕組みの細かい決まりは" %} <a href="{% url 'help' %}">{% translate "手引き：詳しい仕組み" %}</a> {% translate "にあります。従来の箱庭を遊んだ方は" %} <a href="{% url 'help_hakoniwa' %}">{% translate "箱庭民向けの手引き" %}</a> {% translate "もどうぞ。" %}</p>
+<p>{% translate "初めて遊ぶ人向けの短い手引きです。仕組みの細かい決まりは" %} <a href="{% url 'help' %}">{% translate "手引き：詳しい仕組み" %}</a> {% translate "にあります。従来の箱庭を遊んだ方は" %} <a href="{% url 'help_hakoniwa' %}">{% translate "箱庭民向けの手引き" %}</a> {% translate "もどうぞ。AI（Claude や ChatGPT など）に遊ばせる方は" %} <a href="{% url 'help_ai' %}">{% translate "手引き：AI で遊ぶ" %}</a> {% translate "へ。" %}</p>
 
 <nav class="panel" aria-label="{% translate '入門の目次' %}">
   <h2>{% translate "目次" %}</h2>

@@ -585,6 +585,31 @@ def terms_page(request):
     )
 
 
+# AI で遊ぶの手引きが hk.py の取り方として出す場所（リポジトリは公開）
+HK_PY_URL = (
+    "https://raw.githubusercontent.com/Yamada-Kohei/economic-hakoniwa/main/tools/playtest/hk.py"
+)
+
+
+def help_ai_page(request):
+    """AI（Claude・ChatGPT など）で遊ぶ人向けの手引き: 鍵の作り方・AI ごとのつなぎ方・頼み方。"""
+    interval_minutes = get_game().config.get("turn.interval_minutes")
+    base_url = request.build_absolute_uri("/").rstrip("/")
+    return render(
+        request,
+        "web/help_ai.html",
+        {
+            "base_url": base_url,
+            "mcp_url": base_url + "/mcp",
+            "hk_url": HK_PY_URL,
+            "interval_hours": f"{interval_minutes / 60:g}" if interval_minutes else "",
+            "calls_per_minute": django_settings.HAKONIWA_AI_CALLS_PER_MINUTE,
+            "mark_turns": keys.MARK_TURNS,
+            "max_keys": keys.MAX_KEYS,
+        },
+    )
+
+
 def help_hakoniwa_page(request):
     """箱庭を遊んだことのある人向けの手引き。数は同じ手引きの変数を使う。"""
     return render(request, "web/help_hakoniwa.html", _help_context())
