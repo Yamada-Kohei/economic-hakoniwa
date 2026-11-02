@@ -6,7 +6,8 @@ from django.urls import reverse
 
 from server.world.models import Island
 
-# 画面（URL の名前）と、その画面を説明する手引きの節。help_start は入門、help は詳しい仕組み
+# 画面（URL の名前）と、その画面を説明する手引きの節。help_start は入門、help は詳しい仕組み、
+# help_ai は AI で遊ぶ人向け
 SCREEN_HELP = {
     "top": ("help_start", ""),
     "found": ("help_start", "regimes"),
@@ -39,7 +40,7 @@ SCREEN_HELP = {
     "board_forum": ("help", "board"),
     "board_log": ("help", "board"),
     "board_thread": ("help", "board"),
-    "api_keys": ("help", "ai"),
+    "api_keys": ("help_ai", ""),
 }
 
 

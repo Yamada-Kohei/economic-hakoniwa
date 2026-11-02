@@ -24,6 +24,7 @@ urlpatterns = [
     path("help/", views.help_page, name="help"),
     path("help/hakoniwa/", views.help_hakoniwa_page, name="help_hakoniwa"),
     path("help/start/", views.help_start_page, name="help_start"),
+    path("help/ai/", views.help_ai_page, name="help_ai"),
     path("terms/", views.terms_page, name="terms"),
     path("islands/<int:island_id>/", views.island_page, name="island"),
     path("islands/<int:island_id>/log/", views.turn_log, name="turn_log"),
