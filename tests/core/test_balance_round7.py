@@ -230,12 +230,17 @@ def test_default_of_one_plant_bankrupts_the_firms_borrowers(game, base):
     """企業の1つの工場の返済の遅れが限度に届くと、同じ企業の借入のある工場もみな倒産する
     （クロスデフォルト）。帳簿は合う。"""
     world = copy.deepcopy(base)
-    island = market_island(world)
-    borrowers = [
-        f
-        for f in private_members(game, island)
-        if banks.loans_by_borrower(island, facility_entity(f.id))
-    ]
+    # 借入のある民営の施設が2つ以上ある島（市場経済から。どの島になるかは世界の歩みしだい）
+    for island in sorted(world.islands.values(), key=lambda i: i.regime.get("economy") != "market"):
+        if not island.has_economy:
+            continue
+        borrowers = [
+            f
+            for f in private_members(game, island)
+            if banks.loans_by_borrower(island, facility_entity(f.id))
+        ]
+        if len(borrowers) >= 2:
+            break
     a, b = borrowers[:2]
     merge(island, a, b)
     ctx = context(game, world)

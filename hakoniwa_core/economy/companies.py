@@ -303,35 +303,45 @@ def _relation(defs: Defs, kinds: set[str], kind: str) -> int:
 
 
 def established(island: IslandState, config: GameConfig, number: int, turn: int) -> bool:
-    """企業に融資の実績があるか（創業融資の見方。2026-11-03）: 建国のときからある企業（founded が 1
-    以下。建国の前から続く会社とみる）と、できて firms.track_record_turns ターン以上たった企業。
-    現実の銀行は決算書が2〜3期そろうまで、新しい会社に担保と自己資金を多く求める。"""
+    """企業に融資の実績があるか（創業融資の見方。2026-11-03）: 建国のときからある企業（島を建国した
+    ターンの次のターンまでにできた企業。建国の前から続く会社とみる）と、できて
+    firms.track_record_turns ターン以上たった企業。現実の銀行は決算書が2〜3期そろうまで、新しい
+    会社に担保と自己資金を多く求める。"""
     rec = record(island, number)
     if rec is None:
         return False
     founded = rec.get(FOUNDED, 0)
-    return founded <= 1 or turn - founded >= config.get("firms.track_record_turns")
-
-
-def firm_value(island: IslandState, number: int) -> int:
-    """民営の企業の株の値打ち（株を担保にした借入の担保。2026-11-03）: 企業の預金（未払いの税を
-    引く）と、施設の純資産（設備の帳簿の値打ち + 預金 + 在庫 − 借入 − 未払い）の和。株の市場が
-    ないので、非上場の会社の株と同じく純資産で値をつける。"""
-    from hakoniwa_core.economy import banks, facility_entity
-
-    total = spare(island, number)
-    for f in members(island, number):
-        total += banks.net_assets(island, f, facility_entity(f.id))
-    return total
+    start = island.ext.get("founded_turn")
+    first = int(start) + 1 if start else 1  # サーバーの世界は途中のターンで建国する
+    return founded <= first or turn - founded >= config.get("firms.track_record_turns")
 
 
 def owners_collateral(island: IslandState) -> int:
-    """資本家階級が持つ民営の企業の株の値打ちの合計（株を担保にした借入の担保）。"""
-    return sum(
-        firm_value(island, int(key))
-        for key, rec in sorted(island.economy.firms.items(), key=lambda kv: int(kv[0]))
-        if rec[OWNER] == OWNER_PRIVATE
-    )
+    """資本家階級が持つ民営の企業の株の値打ちの合計（株を担保にした借入の担保。2026-11-03）。
+
+    株の市場がないので、非上場の会社の株と同じく純資産で値をつける: 企業ごとに、企業の預金（未払い
+    の税を引く）と施設の純資産（設備の帳簿の値打ち + 預金 + 在庫 − 借入 − 未払いの賃金と税。債務
+    超過の施設はマイナスのまま足す）の和で、企業ごとに 0 で止める。施設と融資は一度だけなめる。"""
+    from hakoniwa_core.economy import arrears, banks, facility_entity
+
+    debt: dict[str, int] = {}
+    for loan in island.loans:
+        debt[loan.borrower] = debt.get(loan.borrower, 0) + banks.outstanding(island, loan)
+    worth: dict[int, int] = {}
+    for f in island.facilities:
+        number = firm_of(f)
+        if number is None:
+            continue
+        name = facility_entity(f.id)
+        unpaid = arrears.total(island, name) + arrears.total(island, name, arrears.TAX_ARREARS)
+        value = banks.assets_of(island, f, name) - debt.get(name, 0) - unpaid
+        worth[number] = worth.get(number, 0) + value
+    total = 0
+    for key, rec in island.economy.firms.items():
+        if rec[OWNER] == OWNER_PRIVATE:
+            number = int(key)
+            total += max(0, spare(island, number) + worth.get(number, 0))
+    return total
 
 
 def choose_investor(

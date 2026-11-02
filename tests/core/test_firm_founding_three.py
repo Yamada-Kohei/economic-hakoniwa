@@ -92,6 +92,12 @@ def test_firms_without_a_track_record(game, base):
     assert not co.established(island, config, number, ctx.turn)
     rec[co.FOUNDED] = ctx.turn - config.get("firms.track_record_turns")
     assert co.established(island, config, number, ctx.turn)
+    # 途中のターンで建国した島（サーバーの世界）は、建国の次のターンまでにできた企業が実績あり
+    island.ext["founded_turn"] = ctx.turn - 3
+    rec[co.FOUNDED] = ctx.turn - 2
+    assert co.established(island, config, number, ctx.turn)
+    rec[co.FOUNDED] = ctx.turn - 1
+    assert not co.established(island, config, number, ctx.turn)
 
 
 def test_new_firms_put_up_more_equity_than_firms_with_a_track_record(game, base):
@@ -141,10 +147,12 @@ def test_capitalists_borrow_on_their_shares_to_found_a_firm(game, base):
     assert island.scratch["entry_investor"] == (household(OWNERS), None)
     pledge = island.scratch[ENTRY_PLEDGE]
     have = funds.available(island, Payer(household(OWNERS)))
-    assert sum(p for _, p, _ in pledge) == amount - sum(p for _, p, _ in plan) - have
+    need = amount - sum(p for _, p, _ in plan)
+    keep = EntryExit._pledge_keep(island, ctx, need, pledge)
+    assert sum(p for _, p, _ in pledge) == need - have + keep  # 次の返済の分を手元に残す
     EntryExit._borrow_on_shares(island, ctx, household(OWNERS))
     assert _pledged(island) - before == sum(p for _, p, _ in pledge) > 0
-    assert ledger.money(island, household(OWNERS)) >= amount - sum(p for _, p, _ in plan)
+    assert ledger.money(island, household(OWNERS)) == need + keep
     assert ENTRY_PLEDGE not in island.scratch
     books_ok(game, island)
 
@@ -178,3 +186,20 @@ def test_margin_call_and_write_off(game, base):
     assert island.stats["loans.pledge_write_off"] == amount
     assert Banking._margin_call(island, ctx) == 0
     books_ok(game, island)
+
+
+def test_pledges_are_settled_when_the_owners_layer_goes(game, base):
+    """計画経済に移って資産を持つ層をまとめる前に、株を担保にした借入を預金で返し、返しきれない
+    分を銀行の損として消す（借り手のいない借入を残さない）。"""
+    from hakoniwa_core.modules.politics import _settle_pledges
+
+    world, island, ctx, f, number, other = _setup(game, base)
+    owners = household(OWNERS)
+    bank = banks.active_banks(island)[0]
+    open_books(island)
+    banks.lend(island, bank, owners, 5_000_000, banks.PLEDGE, 60, ctx.turn, 300)
+    _set_owners(island, 1_000_000)
+    _settle_pledges(island, ctx)
+    assert _pledged(island) == 0
+    assert ledger.money(island, owners) == 0
+    assert island.stats["loans.pledge_write_off"] >= 4_000_000

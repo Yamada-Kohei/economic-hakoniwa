@@ -1419,15 +1419,20 @@ class EntryExit(IslandStage):
         pledge_plan: list[tuple[str, int, int]] = []
         investor: tuple[str, int | None] | None = None
         if target is not None:  # 建て増し: 出資するのは建て増す施設の持ち主（手元は _build で見る）
-            loan = loan_for(companies.private_firm_of(island, target))
+            number = companies.private_firm_of(island, target)
+            loan = capacity if number is None else loan_for(number)
             have = max(have, amount - loan)
         elif kind:
             # 出資するのは、お金のある企業か、新しい企業を起こす資本家階級（回7。
             # economy/companies.py）。資本家階級の預金で足りなければ、持っている会社の株を担保に
             # 借りて足す（2026-11-03）
+            keep = 0  # 株を担保に借りたあと、資本家階級の手元に残す返済の分
+
             def pledge_room() -> int:
+                nonlocal keep
                 pledge_plan[:] = self._pledge_plan(island, ctx, offers, self._trim(pieces, startup))
-                return sum(p for _, p, _ in pledge_plan)
+                keep = self._pledge_keep(island, ctx, amount - startup, pledge_plan)
+                return sum(p for _, p, _ in pledge_plan) - keep
 
             investor = companies.choose_investor(
                 island, ctx.defs, kind, lambda n: amount - loan_for(n), pledge_room
@@ -1435,7 +1440,7 @@ class EntryExit(IslandStage):
             loan = startup if investor is None else loan_for(investor[1])
             if investor is not None:
                 if investor[1] is None and have < amount - loan:
-                    pledge_plan = self._trim(pledge_plan, amount - loan - have)
+                    pledge_plan = self._trim(pledge_plan, amount - loan - have + keep)
                 else:
                     pledge_plan = []
                 have = max(have, amount - loan)
@@ -1477,6 +1482,25 @@ class EntryExit(IslandStage):
             banks.lend(island, bank, payer, piece, banks.PLEDGE, turns, ctx.turn, rate)
             stats = island.stats
             stats["loans.pledge_new"] = stats.get("loans.pledge_new", 0) + piece
+
+    @staticmethod
+    def _pledge_keep(
+        island: IslandState, ctx: StageContext, equity: int, plan: list[tuple[str, int, int]]
+    ) -> int:
+        """株を担保に借りて出資したあと、資本家階級が手元に残す額: 株を担保にした借入の返済（今の
+        借入と、出資 equity を全部借りたときの新しい借入の利子と元金）の firms.operating_turns
+        ターン分。配当は銀行の段より後に入るので、預金を全部出資に入れると次の月の返済が遅れる。"""
+        config = ctx.config
+        borrower = household(OWNERS)
+        service = sum(
+            ledger.interest(banks.outstanding(island, x), x.rate)
+            + min(banks.outstanding(island, x), x.installment)
+            for x in banks.loans_by_borrower(island, borrower)
+            if x.purpose == banks.PLEDGE
+        )
+        rate = max((r for _, _, r in plan), default=island.policy.policy_rate)
+        service += ledger.interest(equity, rate) + -(-equity // config.get("firms.pledge_turns"))
+        return service * config.get("firms.operating_turns")
 
     @staticmethod
     def _trim(pieces: list[Any], total: int) -> list[Any]:
