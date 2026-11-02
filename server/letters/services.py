@@ -10,10 +10,12 @@ from __future__ import annotations
 from datetime import timedelta
 
 from django.conf import settings
+from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
-from server.letters.models import Letter
+from server.accounts import keys as account_keys
+from server.letters.models import Letter, PushOutbox, PushSubscription
 from server.turns.models import TurnLog
 from server.world.models import Island
 
@@ -75,6 +77,7 @@ def open_letter(user, letter: Letter) -> None:
     Letter.objects.filter(pk=letter.pk, read_at__isnull=True).update(read_at=letter.read_at)
 
 
+@transaction.atomic
 def send_letter(user, sender: Island, to: int, subject: str, body: str) -> Letter:
     """自分の島（sender）から、番号 to の島へ送る。送れなければ LetterError。"""
     subject, body = subject.strip(), body.strip()
@@ -121,6 +124,10 @@ def send_letter(user, sender: Island, to: int, subject: str, body: str) -> Lette
             "subject": subject,
         },
     )
+    if PushSubscription.objects.filter(
+        user_id=recipient.owner_id
+    ).exists() and not account_keys.is_ai_island(recipient):
+        PushOutbox.objects.create(user_id=recipient.owner_id, letter=letter)
     return letter
 
 

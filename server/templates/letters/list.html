@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% load i18n calendar_tags %}
+{% extends "base.html" %}{% load i18n static calendar_tags %}
 {% block title %}{% if box == "inbox" %}{% translate "届いた公電" %}{% else %}{% translate "送った公電" %}{% endif %} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 <h1>{% translate "外交" %} <span class="page-title">{{ island.name }}</span></h1>
@@ -8,6 +8,21 @@
   <label><input type="checkbox" id="letter-notice-enabled" checked> {% translate "届いたときに画面の隅で知らせる" %}</label>
   <small class="hint">{% translate "このブラウザに設定を覚えます。" %}</small>
 </p>
+{% if box == "inbox" and push_public_key %}
+<div id="letter-push" data-key="{{ push_public_key }}" data-url="{% url 'api_letters_push' %}"
+     data-unsupported="{% translate 'このブラウザは通知に対応していません。iPhone・iPad はホーム画面に追加して開いてください。' %}"
+     data-insecure="{% translate 'ブラウザ通知には HTTPS で開いてください（localhost でも試せます）。' %}"
+     data-denied="{% translate '通知が許可されていません。ブラウザの設定で許可すると使えます。' %}"
+     data-error="{% translate '通知の設定を保存できませんでした。もう一度お試しください。' %}"
+     data-enabled="{% translate 'このブラウザに公電の到着を知らせます。' %}"
+     data-disabled="{% translate 'ブラウザへの知らせをやめました。' %}">
+  {% csrf_token %}
+  <button type="button" data-push-enable hidden>{% translate "このブラウザに知らせる" %}</button>
+  <button type="button" data-push-disable hidden>{% translate "知らせをやめる" %}</button>
+  <p role="status" data-push-status></p>
+</div>
+<script src="{% static 'js/letter-push.js' %}" defer></script>
+{% endif %}
 <div class="table-scroll">
 <table class="letters">
   <thead><tr>
