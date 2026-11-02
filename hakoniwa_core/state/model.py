@@ -225,6 +225,11 @@ class Policy:
     # 財 → 1ターンの輸入の上限（1000分の1）
     import_quotas: dict[str, int] = field(default_factory=dict)
     embargoes: dict[str, list[str]] = field(default_factory=dict)  # 相手の島 → 財（空はすべての財）
+    # 海運業の空いている船を、圏の市場のほかの国の荷のために貸すか（タブ 9 FX-56。2026-11-02）
+    lend_ships: bool = True
+    # 戦争の相手の荷を運ぶ中立国の船を、封鎖と見張りの艦が沈めるか（false は追い返す。
+    # タブ 15 MI-34。2026-11-02）
+    sink_neutral_ships: bool = False
     capital_controls: str = ""  # 資本取引: free・official・closed（"" は経済体制の既定）
     fx_intervention: dict[str, int] = field(default_factory=dict)  # 通貨 → 中央銀行が毎ターン買う額
     fx_peg: dict[str, int] = field(default_factory=dict)  # 通貨 → 固定したレート（× 1万分の1）

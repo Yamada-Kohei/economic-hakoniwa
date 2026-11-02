@@ -79,10 +79,12 @@ def release(f: Facility, shipment: int) -> None:
 def ships_wanted(config: GameConfig, f: Facility, turn: int) -> int:
     """海運業が市場で買う輸送船（1000 分の 1 隻。買って船団に入れる前の船があれば、その分を引く）。
 
-    - 直近 trade.cost_turns ターンの半分以上で、船が足りずに輸入を減らしていたら 1 隻。
+    - 直近 trade.cost_turns ターンの半分以上で、船が足りずに荷を残していたら 1 隻（S2: 圏の市場や
+      契約で約定した荷が、どの船にも載らなかったとき。前は空いている船を商社の狙う量と比べていた）。
     - 先回りの買い替え（回6。Codex E31）: 寿命まで trade.ship_order_turns ターン以内の船があれば、
       直近 trade.cost_turns ターンに一番多く航海に出ていた船の数から、寿命の来ない船の数を引いた
-      分を、寿命の来る船の数まで買う（使っていない船は替えない）。
+      分を、寿命の来る船の数まで買う（使っていない船は替えない。S1 の後は、ほかの国に貸して航海に
+      出た船も数える）。
     """
     want = 0
     history = f.economy.get("ships_short", [])

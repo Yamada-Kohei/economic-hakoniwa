@@ -40,6 +40,7 @@ from hakoniwa_core import ledger, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.diplomacy import treaties as diplomacy_treaties
+from hakoniwa_core.diplomacy import war
 from hakoniwa_core.economy import SUBSIDIES, Payer, books, entity_of, funds
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
@@ -83,7 +84,6 @@ from hakoniwa_core.units import (
     QUANTITY_SCALE,
     money_of,
     part,
-    qty_for,
     round_money,
     to_basis,
 )
@@ -103,6 +103,7 @@ WHY_SELLERS = "sellers"  # 圏の売りが足りないか、売りの指値が�
 WHY_BUYERS = "buyers"  # 圏の買いが足りないか、買いの指値が安い（輸出）
 WHY_FUNDS = "funds"  # 払うお金（商社の預金）が足りない（決済通貨が自国の通貨のとき）
 WHY_QUOTA = "quota"  # 輸入の割り当て（フェーズ3-3）の上限まで買った
+WHY_BLOCKADE = "blockade"  # 封鎖で船出を断られた（MI-34。船が足りないのとは分ける。W-187）
 
 
 def gov_payer() -> Payer:
@@ -141,6 +142,8 @@ class _IslandTurn:
     trips: int = 2  # 輸入の往復の見込みのターン数（燃料の見積もり）
     shipments: list[int] = field(default_factory=list)
     turnover: dict[int, int] = field(default_factory=dict)  # 通貨 → 島の主体が払い・受け取った額
+    # (圏, 財) → [借りた船の運賃（決済通貨）, 買った量]（次のターンの外貨の見込みに使う）
+    charter: dict[tuple[int, str], list[int]] = field(default_factory=dict)
 
     def settled(self, currency: int, amount: int) -> None:
         self.turnover[currency] = self.turnover.get(currency, 0) + amount
@@ -255,36 +258,57 @@ class _Round:
             where = naval.position(self.world, s, self.turn)
             if island is None or where is None:
                 continue
+            carrier = self._carrier_of(s)
             if outcome == naval.TURNED:
                 s["arrive"] += 1
                 s["delay"] = s.get("delay", 0) + 1
                 args = {"good": s["good"]}
-                island.log.append(LogEntry("cargo_turned_back", args))
+                if carrier is not None and carrier.id != island.id:
+                    # 借りた中立国の船は、戦っている国の艦にも沈められず追い返される
+                    args["country"] = carrier.name
+                    island.log.append(LogEntry("chartered_turned_back", args))
+                else:
+                    island.log.append(LogEntry("cargo_turned_back", args))
             elif where[1]:
                 self._sink_cargo(island, s)
                 gone.add(s["id"])
-            elif shipping_of(island, self.config) is not None:
+            elif carrier is not None and shipping_of(carrier, self.config) is not None:
                 self._sink_ship(island, s)
                 s["arrive"] += s["oneway"]
                 s["delay"] = s.get("delay", 0) + s["oneway"]
         if gone:
             self.state["shipments"] = [s for s in self.state["shipments"] if s["id"] not in gone]
 
+    def _carrier_of(self, s: dict[str, Any]) -> IslandState | None:
+        """S1: 荷を運んでいる船の島（ほかの国の船を借りた荷はその国。ほかは買い手の島）。"""
+        return self.world.islands.get(s.get("carrier", s["to"]))
+
     def _lose_ships(self, island: IslandState, s: dict[str, Any], release: bool = True) -> int:
         """沈んだ船を船団から除き、傷みと同じ費用に数える（運賃に乗る）。除いた隻数（1000 分の 1）を
-        返す。行きで沈んだときは release=False（代わりの船が同じ荷の分を使い続ける）。"""
-        shipping = shipping_of(island, self.config)
-        if shipping is None:
+        返す。行きで沈んだときは release=False（代わりの船が同じ荷の分を使い続ける）。S1: 船は荷を
+        運んでいた国の船団から除く。"""
+        carrier = self._carrier_of(s)
+        shipping = shipping_of(carrier, self.config) if carrier is not None else None
+        if carrier is None or shipping is None:
             return 0
         if release:
             ships.release(shipping, s["id"])
         lost = max(1, ships.ships_of_load(self.config, s["load"]))
-        return ships.lose_ships(island, self.config, shipping, lost)
+        return ships.lose_ships(carrier, self.config, shipping, lost)
 
     def _sink_ship(self, island: IslandState, s: dict[str, Any]) -> None:
         count = self._lose_ships(island, s, release=False)
-        island.stats["trade.ships_sunk"] = island.stats.get("trade.ships_sunk", 0) + count
-        island.log.append(LogEntry("ship_sunk_out", {"ships": count / QUANTITY_SCALE}))
+        # 船を失ったのは運んでいた国（借りた船ならその国）
+        owner = self._carrier_of(s) or island
+        owner.stats["trade.ships_sunk"] = owner.stats.get("trade.ships_sunk", 0) + count
+        ships_ = count / QUANTITY_SCALE
+        if owner.id == island.id:
+            owner.log.append(LogEntry("ship_sunk_out", {"ships": ships_}))
+            return
+        owner.log.append(LogEntry("lent_ship_sunk", {"ships": ships_, "country": island.name}))
+        island.log.append(
+            LogEntry("chartered_ship_sunk_out", {"ships": ships_, "country": owner.name})
+        )
 
     def _sink_cargo(self, island: IslandState, s: dict[str, Any]) -> None:
         """帰りの航海で沈んだ船の荷（沈んで失った荷として突き合わせに入れる）。"""
@@ -298,11 +322,18 @@ class _Round:
         count = self._lose_ships(island, s)
         unloaded = self.cargo["unloaded"]
         unloaded[good] = unloaded.get(good, 0) + qty
+        owner = self._carrier_of(s) or island  # 船は運んでいた国の数、荷は買い手の数
+        owner.stats["trade.ships_sunk"] = owner.stats.get("trade.ships_sunk", 0) + count
         stats = island.stats
-        stats["trade.ships_sunk"] = stats.get("trade.ships_sunk", 0) + count
         stats["trade.cargo_sunk"] = stats.get("trade.cargo_sunk", 0) + qty
         args = {"ships": count / QUANTITY_SCALE, "good": good, "amount": qty / QUANTITY_SCALE}
-        island.log.append(LogEntry("ship_sunk_cargo", args))
+        if owner.id == island.id:
+            island.log.append(LogEntry("ship_sunk_cargo", args))
+            return
+        owner.log.append(
+            LogEntry("lent_ship_sunk", {"ships": args["ships"], "country": island.name})
+        )
+        island.log.append(LogEntry("chartered_ship_sunk_cargo", {**args, "country": owner.name}))
 
     # --- 1. 荷下ろし -------------------------------------------------------------------
 
@@ -362,7 +393,8 @@ class _Round:
             self._pay_fee(island, gov_payer(), port, fee, None)
         here.port_used += s["load"]
         here.handled += s["load"]
-        shipping = shipping_of(island, self.config)
+        carrier = self._carrier_of(s)  # S1: 借りた船は、運んだ国の船団に戻す
+        shipping = shipping_of(carrier, self.config) if carrier is not None else None
         if shipping is not None:
             ships.release(shipping, s["id"])
         unloaded = self.cargo["unloaded"]
@@ -396,10 +428,15 @@ class _Round:
         return amount
 
     def _lost(self, s: dict[str, Any]) -> None:
-        """届け先の島がなくなった荷（記録の上で、下ろしたことにして消す）。"""
+        """届け先の島がなくなった荷（記録の上で、下ろしたことにして消す）。S1: 借りた船は、運んで
+        いた国の船団に戻す（その国はまだある）。"""
         qty = sum(q for _, q in s["batches"])
         unloaded = self.cargo["unloaded"]
         unloaded[s["good"]] = unloaded.get(s["good"], 0) + qty
+        carrier = self._carrier_of(s)
+        shipping = shipping_of(carrier, self.config) if carrier is not None else None
+        if shipping is not None:
+            ships.release(shipping, s["id"])
 
     # --- 港の使用料と船の運賃 -----------------------------------------------------------
 
@@ -854,6 +891,10 @@ class _Round:
         qty = max(0, qty)
         if qty < want:
             why = min(limits, key=lambda k: limits[k])
+            if why == "ships" and port_of(buyer, self.config) is not None:
+                # S2: 船が足りずに荷を残した（海運業が船を買う見込みに入れる。港のない島は
+                # 船では直らないので数えない）
+                self.islands[buyer.id].ship_short = True
             missing = want - qty
             record = self.contract_fx.get((buyer.id, currency)) if why == "fx" else None
             fx = record.values() if record is not None else None
@@ -911,20 +952,190 @@ class _Round:
         """買い手の島の空いている船と燃料で、seller から運べる量（1000 分の 1 単位）。"""
         if unit_weight(self.defs, good) <= 0:
             return 10**15  # 船は自分で航海して届く
-        f = shipping_of(buyer, self.config)
-        if f is None or port_of(buyer, self.config) is None:
+        if port_of(buyer, self.config) is None:
             return 0
         if naval.blocked(self.world, self.defs, self.config, self.turn, buyer.id, seller.id, good):
             return 0  # 封鎖に止められた（出入りする船を止める）
-        here = self.islands[buyer.id]
-        free = ships.free(self.config, f) - here.ships_used
+        return self._room_on(buyer, buyer, seller, good)
+
+    def _room_on(
+        self, carrier: IslandState, buyer: IslandState, seller: IslandState, good: str
+    ) -> int:
+        """carrier の島の空いている船と燃料で、seller から buyer へ運べる量（1000 分の 1 単位）。
+        S1: 出した船は ships.occupy で使っている重さに入るので、空きは ships.free だけで数える（前は
+        このターンに出した重さをもう一度引いていた）。"""
+        f = shipping_of(carrier, self.config)
+        if f is None or port_of(carrier, self.config) is None:
+            return 0
         oneway = one_way_turns(self.config, buyer, seller)
         trip = 2 * oneway
-        room = min(free, ships.fuel_room(self.config, f, trip))
+        room = min(ships.free(self.config, f), ships.fuel_room(self.config, f, trip))
         # 船は走る時間の分だけ使う（_ship）ので、運べる重さは、空いている船の重さ ×（片道の
         # ターン数 × 船の速さ ÷ 区画）。近い島へは、1ターンに何度も行き来できる
         room = room * oneway * self.config.get("trade.ship_speed") // route_cells(buyer, seller)
         return max(0, room) * QUANTITY_SCALE // unit_weight(self.defs, good)
+
+    def _reach(self, buyer: IslandState, bloc: dict[str, Any], good: str) -> int:
+        """買い手の島の船と、圏のほかの加盟国の空いた船の全部で運べる量の上限（板寄せの前の
+        見込み。売り手はまだ決まらないので、一番近いほかの加盟国から運ぶとして数える。借りられない
+        国（船を貸さない国、買い手と戦っている国、買い手との間でその財を禁輸している国）は除く）。"""
+        if unit_weight(self.defs, good) <= 0:
+            return 10**15
+        if port_of(buyer, self.config) is None:
+            return 0
+        others = [
+            self.world.islands[m] for m in bloc["members"] if m in self.islands and m != buyer.id
+        ]
+        if not others:
+            return 0
+        source = min(others, key=lambda o: (route_cells(buyer, o), o.id))
+        carriers = [buyer] + [
+            o
+            for o in others
+            if o.policy.lend_ships
+            and not war.fighting(self.world, o.id, buyer.id, self.turn)
+            and not policy.blocked(self.world, o.id, buyer.id, good)
+        ]
+        return sum(self._room_on(c, buyer, source, good) for c in carriers)
+
+    def _carriage(
+        self, bloc: dict[str, Any], buyer: IslandState, seller: IslandState, good: str, qty: int
+    ) -> list[tuple[IslandState, int]]:
+        """S1: 圏の市場で約定した荷を運ぶ船を、買い手の島の船、売り手の島の船（積む港にいる）、圏の
+        ほかの加盟国の船（売り手に近い順）の順に、空いている分から割り当てる（ほかの国の船は借りて、
+        運賃を決済通貨で払う）。[(運ぶ国の島, 量)] を返す。どの船にも載らない分は入れない。"""
+        if unit_weight(self.defs, good) <= 0:
+            return [(buyer, qty)]  # 船は自分で航海して届く
+        if port_of(buyer, self.config) is None:
+            return []
+        # 売り手の船もほかの国の船も、貸す国（命令 set_ship_lending で止めていない国）のものだけ
+        carriers = (
+            [buyer] if seller.id == buyer.id or not seller.policy.lend_ships else [buyer, seller]
+        )
+        ends = (buyer.id, seller.id)
+        others = [
+            self.world.islands[m]
+            for m in bloc["members"]
+            if m in self.islands
+            and m not in ends
+            and self.world.islands[m].policy.lend_ships
+            # 戦っている相手の港へは船を出さず、禁輸している相手の荷は運ばない
+            and not any(war.fighting(self.world, m, x, self.turn) for x in ends)
+            and not any(policy.blocked(self.world, m, x, good) for x in ends)
+        ]
+        others.sort(key=lambda o: (route_cells(o, seller), o.id))
+        parts: list[tuple[IslandState, int]] = []
+        left = qty
+        for carrier in [*carriers, *others]:
+            if left <= 0:
+                break
+            take = min(left, self._room_on(carrier, buyer, seller, good))
+            if take > 0:
+                parts.append((carrier, take))
+                left -= take
+        return parts
+
+    def _freight(
+        self, carrier: IslandState, buyer: IslandState, seller: IslandState, load: int
+    ) -> int:
+        """carrier の島の船で seller から buyer へ重さ load を運ぶ運賃（carrier の通貨。戦争の危険の
+        上乗せを含む）。"""
+        rate = ships.freight_rate(carrier, self.config, shipping_of(carrier, self.config))
+        freight = rate * load * route_cells(buyer, seller) // QUANTITY_SCALE
+        return self._war_risk(freight, buyer, seller)
+
+    def _foreign_freight(
+        self,
+        carrier: IslandState,
+        buyer: IslandState,
+        seller: IslandState,
+        good: str,
+        qty: int,
+        currency: int,
+    ) -> int:
+        """S1: ほかの国の船を借りて運ぶときに払う運賃（決済通貨）。買い手の島の船なら 0。"""
+        if carrier.id == buyer.id or unit_weight(self.defs, good) <= 0:
+            return 0
+        freight = self._freight(carrier, buyer, seller, weight(self.defs, good, qty))
+        return freight if carrier.id == currency else fxrates.to_foreign(carrier, currency, freight)
+
+    def _settle_cost(
+        self,
+        buyer: IslandState,
+        seller: IslandState,
+        good: str,
+        qty: int,
+        carrier: IslandState,
+        price: int,
+        currency: int,
+        payer: Payer | None,
+    ) -> int:
+        """約定した qty を carrier の船で運ぶときに、決済通貨で払う額（品物の代金と、ほかの国の船の
+        運賃。決済通貨の島（payer がある）は、自分の船の運賃も同じお金から払うので足す）。"""
+        cost = money_of(price, qty)
+        if carrier.id != buyer.id:
+            return cost + self._foreign_freight(carrier, buyer, seller, good, qty, currency)
+        if payer is not None and unit_weight(self.defs, good) > 0:
+            return cost + self._freight(buyer, buyer, seller, weight(self.defs, good, qty))
+        return cost
+
+    def _pay_carrier(
+        self,
+        buyer: IslandState,
+        carrier: IslandState,
+        shipping: Facility,
+        entity: str,
+        f: Facility | None,
+        freight: int,
+        currency: int,
+    ) -> int:
+        """S1: 借りたほかの国の船の運賃を、決済通貨で運んだ国の海運業に払う（払えるだけ。
+        サービスの輸入と輸出。国際収支の shipping_freight）。払った額（買い手の自国通貨。外貨は
+        帳簿の値打ち）を返す。"""
+        if freight <= 0:
+            return 0
+        amount = freight
+        if carrier.id != currency:
+            amount = fxrates.to_foreign(carrier, currency, freight)
+        payer = Payer(entity) if buyer.id == currency else None
+        if payer is not None:
+            have = funds.available(buyer, payer)
+        else:
+            have = fxmoney.holding(buyer, entity, currency)
+        value = freight
+        if have < amount:
+            short = amount - have
+            self.islands[buyer.id].unpaid += (
+                short if buyer.id == currency else fxrates.to_own(buyer, currency, short)
+            )
+            value = freight * have // max(1, amount)
+            amount = have
+        if amount <= 0:
+            return 0
+        cost = fxmoney.transfer(
+            self.world,
+            currency,
+            (buyer.id, entity),
+            (carrier.id, entity_of(self.config, shipping)),
+            amount,
+            "shipping_freight",
+            value,
+            payer=payer,
+        )
+        books.add(carrier, shipping.id, books.SALES, value)
+        books.add_sector(carrier, books.TRADE, "exports", value)
+        # 貸した船の運賃の収入（船の国の通貨）と、借りた船に払った運賃（買い手の通貨）
+        carrier.stats["trade.charter_income"] = carrier.stats.get("trade.charter_income", 0) + value
+        buyer.stats["trade.charter_paid"] = buyer.stats.get("trade.charter_paid", 0) + cost
+        if f is not None:
+            books.add(buyer, f.id, books.FREIGHT, cost)
+            traders.spent_abroad(f, currency, amount)
+        else:
+            books.add_sector(buyer, books.GOVERNMENT, "freight", cost)
+        books.add_sector(buyer, books.TRADE, "imports", cost)
+        self.islands[carrier.id].settled(currency, amount)
+        self.islands[buyer.id].settled(currency, amount)
+        return cost
 
     def _port_room(self, island: IslandState, good: str) -> int:
         """島の港でこのターンにまだ積める量（1000 分の 1 単位）。港がなければ 0。"""
@@ -955,9 +1166,13 @@ class _Round:
         delivery: str | None = None,
         price: int | None = None,
         currency: int | None = None,
+        carrier: IslandState | None = None,
     ) -> None:
         """荷を買い手の島の船に積んで出す。積む港の使用料（売り手が払う）、船の運賃（買い手が自国の
-        海運業に払う）、燃料を払い、運ぶ途中の荷を記録する（契約の荷は届いた物の行き先も）。"""
+        海運業に払う）、燃料を払い、運ぶ途中の荷を記録する（契約の荷は届いた物の行き先も）。S1:
+        carrier を渡すと、その国の船に積み、運賃を決済通貨でその国の海運業に払う
+        （_pay_carrier）。"""
+        carrier = carrier or buyer
         qty = sum(q for _, q in batches)
         load = weight(self.defs, good, qty)
         oneway = one_way_turns(self.config, buyer, seller)
@@ -970,7 +1185,7 @@ class _Round:
         self.islands[seller.id].port_used += load
         self.islands[seller.id].handled += load
         # 船（重さのない財は、自分で航海して届く船など）
-        shipping = shipping_of(buyer, self.config)
+        shipping = shipping_of(carrier, self.config)
         arrive = self.turn + oneway
         if load > 0 and shipping is not None:
             arrive = self.turn + 2 * oneway
@@ -979,16 +1194,17 @@ class _Round:
             # 区画で払うので、近い島への航海の運賃が、船員の賃金と燃料より安くならない
             held = max(1, load * span // (oneway * self.config.get("trade.ship_speed")))
             ships.occupy(shipping, shipment_id, held)
-            here = self.islands[buyer.id]
+            here = self.islands[carrier.id]
             here.ships_used += held
-            here.fuel_value += ships.burn(buyer, self.config, shipping, held, 2 * oneway)
+            here.fuel_value += ships.burn(carrier, self.config, shipping, held, 2 * oneway)
             here.carried += load * span
-            freight = (
-                ships.freight_rate(buyer, self.config, shipping) * load * span // QUANTITY_SCALE
-            )
-            freight = self._war_risk(freight, buyer, seller)
-            payer = Payer(entity) if f is not None else gov_payer()
-            paid = self._pay_freight(buyer, payer, freight, f)
+            freight = self._freight(carrier, buyer, seller, load)
+            if carrier.id == buyer.id:
+                payer = Payer(entity) if f is not None else gov_payer()
+                paid = self._pay_freight(buyer, payer, freight, f)
+            else:
+                assert currency is not None  # 借りた船は圏の市場の荷だけ
+                paid = self._pay_carrier(buyer, carrier, shipping, entity, f, freight, currency)
             if f is not None:
                 traders.add_cost(f, good, paid)
         self.state["shipments"].append(
@@ -1006,6 +1222,7 @@ class _Round:
                 "arrive": arrive,
                 "ship": load > 0 and shipping is not None,
                 "oneway": oneway,
+                **({"carrier": carrier.id} if carrier.id != buyer.id else {}),
                 **({"delivery": delivery} if delivery is not None else {}),
                 # 圏の市場の約定の値段と決済通貨（荷を下ろすときの関税。フェーズ3-3）
                 **({"price": price, "currency": currency} if price is not None else {}),
@@ -1078,9 +1295,13 @@ class _Round:
                     if got < order.quantity and "why" not in item:
                         item["why"] = WHY_BUYERS
                 volume = 0
+                settled: dict[int, int] = {}  # 買い注文の番号 → 払って船に積んだ量
                 if result.volume > 0:
-                    volume = self._settle_bloc(bloc, good, result.price, result, bids, asks)
-                got = {id(o): n for o, n in zip(buys, result.bought, strict=True)}
+                    volume, settled = self._settle_bloc(
+                        bloc, good, result.price, result, bids, asks
+                    )
+                # 取り置きは、払って積んだ量のほかを戻す（船や決済通貨で減らした分も戻す）
+                got = {id(buys[b]): n for b, n in settled.items()}
                 self._refund(bloc, good, placed, got, result.price, budgets, money_left)
                 self._record_bloc(bloc, good, price, result, volume)
                 unmet[key] = result.demand - volume
@@ -1116,36 +1337,14 @@ class _Round:
         )
 
     def _plan_imports(self) -> None:
-        """島ごとに、輸入の注文に回せる船の割合（空いている船 ÷ 商社の輸入したい重さ）と、往復の
-        見込みのターン数を決める（契約の分は先に使った後）。"""
+        """S1: 港のある島は、輸入の注文を船の数で前もって減らさない。圏の市場の荷は、約定した後に
+        買い手・売り手・圏のほかの加盟国の空いている船に割り当て（_carriage）、どの船にも載らない分
+        だけを減らす。S2: 船が足りないと数えるのも、そのとき（荷を残したとき）だけ。前は、空いている
+        船の重さを商社の狙う量（実際に運ぶ量よりずっと多い）と比べ、ほとんどの島で毎ターン「船が
+        足りない」になって、使わない船を買い続けていた。"""
         for i in self.ids:
-            island = self.world.islands[i]
-            here = self.islands[i]
-            shipping = shipping_of(island, self.config)
-            if shipping is None or port_of(island, self.config) is None:
-                here.import_share = 0.0
-                continue
-            want = 0
-            for f in traders_of(island, self.config, self.turn):
-                for good, item in traders.goods_of(f).items():
-                    if item.get("dir") == traders.IMPORT:
-                        left = item["m"] - item["held"][0]
-                        if left > 0:
-                            want += weight(self.defs, good, left)
-            views = traders.views(island)
-            trips = [2] + [
-                2 * max(1, -(-v.get("cells", 1) // self.config.get("trade.ship_speed")))
-                for v in views.values()
-            ]
-            here.trips = max(trips)
-            idle = ships.free(self.config, shipping) - here.ships_used
-            free = min(idle, ships.fuel_room(self.config, shipping, here.trips))
-            if want <= 0:
-                here.import_share = 1.0
-            else:
-                here.import_share = max(0.0, min(1.0, free / want))
-                # 空いた船が1隻もなく、注文を出せない（約定で見られない）ときは足りないと数える
-                here.ship_short = idle <= 0
+            port = port_of(self.world.islands[i], self.config)
+            self.islands[i].import_share = 1.0 if port is not None else 0.0
 
     def _bloc_orders(
         self,
@@ -1186,8 +1385,16 @@ class _Round:
                     if qty <= 0:
                         continue
                     limit = None
-                    # 計画経済（フェーズ3-4）の輸出は、売れ残った物を値段によらず売る
-                    if item["age"] < clearance and not traders.is_planned(island):
+                    if traders.is_planned(island):
+                        # F8: 計画経済（フェーズ3-4）の国の商社は、売れ残った物を国内の値段に
+                        # よらず輸出するが、圏の今の値段で売る（値段を受け入れる側。国内の値段との
+                        # 差は国庫が持つ。FX-52）。指値なしの売りは、買いが値幅の上端にそろう圏で
+                        # 売れる量を増やさず、値段だけを毎ターン値幅ずつ下げ、圏の石炭の値段が作る
+                        # 費用の 1/15 まで崩れた
+                        limit = blocs.fixed_price(bloc, good) or blocs.reference(
+                            self.world, bloc, good
+                        )
+                    elif item["age"] < clearance:
                         own = traders.unit_cost(f, good)
                         own = max(1, own + part(own, cut) + fee_unit - subsidy)  # 輸出補助を見込む
                         limit = max(1, -(-own * BASIS // max(1, e)))
@@ -1264,9 +1471,16 @@ class _Round:
             return None
         why = None
         if unit > 0:
-            share = self.islands[island.id].import_share
-            if int(want * share) < want:
-                want, why = int(want * share), WHY_SHIPS
+            if self.islands[island.id].import_share <= 0:  # 港がない
+                want, why = 0, WHY_SHIPS
+            # 板寄せの前に、自分の船と圏で借りられる空いた船の全部でも運べない分は注文しない
+            # （載らない注文が板寄せに残って値段を上げないように）。それでも足りなければ、本当に
+            # 船が足りない（S2）
+            reach = self._reach(island, bloc, good)
+            if reach < want:
+                want, why = reach, WHY_SHIPS
+                if port_of(island, self.config) is not None:
+                    self.islands[island.id].ship_short = True
             room = left * QUANTITY_SCALE // unit
             if room < want:
                 want, why = room, WHY_CAPACITY
@@ -1355,10 +1569,14 @@ class _Round:
         result: auction.Result,
         bids: list[_Bid],
         asks: list[_Bid],
-    ) -> int:
-        """約定を、近い島の組から割り当てて払う（禁輸の組は割り当てない）。割り当てた量を返す。"""
+    ) -> tuple[int, dict[int, int]]:
+        """約定を、近い島の組から割り当てて払う（禁輸の組は割り当てない）。割り当てた量と、買い注文の
+        番号ごとの払って船に積んだ量を返す。S1: 荷は _carriage で買い手・売り手・圏のほかの加盟国の
+        空いている船に割り当て、どの船にも載らない分は買わない（S2: 買い手の島の「船が足りない」に
+        数える）。ほかの国の船の運賃も決済通貨で払うので、払える分までにする。"""
         currency = bloc["currency"]
         matched = 0
+        settled: dict[int, int] = {}
 
         def distance(b: int, s: int) -> int:
             here = self.world.islands[bids[b].island]
@@ -1373,12 +1591,44 @@ class _Round:
             buyer = self.world.islands[bid.island]
             seller = self.world.islands[ask.island]
             payer = Payer(bid.entity) if buyer.id == currency else None
+            if unit_weight(self.defs, good) > 0 and naval.blocked(
+                self.world, self.defs, self.config, self.turn, buyer.id, seller.id, good
+            ):  # 封鎖に止められた船出（MI-34）。船が足りないのとは分けて数える（W-187）
+                traders.entry(bid.facility, good)["why"] = WHY_BLOCKADE
+                continue
+            parts = self._carriage(bloc, buyer, seller, good, qty)
+            carried = sum(q for _, q in parts)
+            # 決済通貨の島の商社は、運賃と使用料も同じお金から払う。注文のときの運賃は見込み
+            # なので、前の約定の運賃（遠い売り手など）を払った後の残りまでにする。S1: ほかの国の
+            # 船の運賃も決済通貨で払うので、品物の代金と合わせて払える分までにする（決済通貨の
+            # 島は、自分の船の運賃も同じお金から払うので足す）
             if payer is not None:
-                # 決済通貨の島の商社は、運賃と使用料も同じお金から払う。注文のときの運賃は見込み
-                # なので、前の約定の運賃（遠い売り手など）を払った後の残りまでにする
-                qty = min(qty, qty_for(funds.available(buyer, payer), price))
-                if qty <= 0:
-                    continue
+                have = funds.available(buyer, payer)
+            else:
+                have = fxmoney.holding(buyer, bid.entity, currency)
+            need = sum(
+                self._settle_cost(buyer, seller, good, q, carrier, price, currency, payer)
+                for carrier, q in parts
+            )
+            if need > have:
+                parts = [(carrier, q * max(0, have) // need) for carrier, q in parts]
+                why = WHY_FUNDS if payer is not None else WHY_MONEY
+                traders.entry(bid.facility, good)["why"] = why
+            elif carried < qty:  # S2: 払えるのに、どの船にも載らない分があった
+                if port_of(buyer, self.config) is not None:  # 港のない島は船では直らない
+                    self.islands[buyer.id].ship_short = True
+                traders.entry(bid.facility, good)["why"] = WHY_SHIPS
+            parts = [(carrier, q) for carrier, q in parts if q > 0]
+            qty = sum(q for _, q in parts)
+            if qty <= 0:
+                continue
+            # 借りた船の運賃を、次のターンの外貨の見込みに入れる（1 単位あたりにして圏の様子へ）
+            seen = self.islands[buyer.id].charter.setdefault((bloc["id"], good), [0, 0])
+            seen[0] += sum(
+                self._foreign_freight(carrier, buyer, seller, good, q, currency)
+                for carrier, q in parts
+            )
+            seen[1] += qty
             amount = money_of(price, qty)
             value = amount if seller.id == currency else fxrates.to_own(seller, currency, amount)
             cost = fxmoney.transfer(
@@ -1391,10 +1641,11 @@ class _Round:
                 value,
                 payer=payer,
             )
-            # 売り手: 港の倉庫から出し、売上と輸出に数える
+            # 売り手: 港の倉庫から出し、売上と輸出に数える（S1: 運ぶ船の国ごとに分けて出す）
             sf, bf = ask.facility, bid.facility
-            batches = stock.take_batches(sf.stock, good, qty)
-            moved = sum(q for _, q in batches)
+            loads = [(carrier, stock.take_batches(sf.stock, good, q)) for carrier, q in parts]
+            moved = sum(q for _, batches in loads for _, q in batches)
+            settled[b] = settled.get(b, 0) + moved
             books.stock_moved(seller, sf.id, good, -moved)
             books.add(seller, sf.id, books.SALES, value)
             books.add_sector(seller, books.TRADE, "exports", value)
@@ -1418,21 +1669,25 @@ class _Round:
             traders.spent_abroad(bf, currency, amount)
             self.islands[buyer.id].imports += cost
             self.islands[buyer.id].settled(currency, amount)
-            self._ship(
-                seller,
-                buyer,
-                good,
-                batches,
-                bf,
-                bid.entity,
-                "bloc",
-                bloc["id"],
-                seller_payer=Payer(ask.entity),
-                seller_facility=sf,
-                price=price,
-                currency=currency,
-            )
-        return matched
+            for carrier, batches in loads:
+                if not batches:
+                    continue
+                self._ship(
+                    seller,
+                    buyer,
+                    good,
+                    batches,
+                    bf,
+                    bid.entity,
+                    "bloc",
+                    bloc["id"],
+                    seller_payer=Payer(ask.entity),
+                    seller_facility=sf,
+                    price=price,
+                    currency=currency,
+                    carrier=carrier,
+                )
+        return matched, settled
 
     def _export_subsidy(
         self, island: IslandState, f: Facility, entity: str, good: str, qty: int
@@ -1473,8 +1728,7 @@ class _Round:
             fxrates.keep_turnover(island, self.config, here.turnover)
             state = island_state(island)
             state["blocs"] = {
-                str(b["id"]): blocs.view_of(self.world, b, i)
-                for b in blocs.member_of(self.world, i)
+                str(b["id"]): self._view(b, i, here) for b in blocs.member_of(self.world, i)
             }
             state["contracts"] = [
                 contract_view(c, i, self.turn) for c in contracts.of_island(self.world, i)
@@ -1484,6 +1738,19 @@ class _Round:
                 history = [*shipping.economy.get("ships_short", []), int(here.ship_short)]
                 shipping.economy["ships_short"] = history[-self.config.get("trade.cost_turns") :]
             self._stats(island, here)
+
+    def _view(self, bloc: dict[str, Any], island_id: int, here: _IslandTurn) -> dict[str, Any]:
+        """圏の様子に、このターンに借りた船の運賃（財ごとに、買った 1 単位あたりの決済通貨。自分の
+        船で運んだ分も買った量に入れた平均）を足す（次のターンの外貨の見込み。traders.import_needs）。"""
+        view = blocs.view_of(self.world, bloc, island_id)
+        charter = {
+            good: freight * QUANTITY_SCALE // qty
+            for (b, good), (freight, qty) in sorted(here.charter.items())
+            if b == bloc["id"] and freight > 0 and qty > 0
+        }
+        if charter:
+            view["charter"] = charter
+        return view
 
     def _site(self, island: IslandState) -> None:
         """商社の島の中の運賃を、港のマスから、扱う財で数えるようにする（economy/freight.py）。"""
@@ -1524,6 +1791,8 @@ class _Round:
         stats["fx.swap.lent"] = swap.claims_value(island, foreign_only=False)
         stats.setdefault("trade.merchant", 0)
         stats.setdefault("trade.merchant_sold", 0)
+        stats.setdefault("trade.charter_income", 0)
+        stats.setdefault("trade.charter_paid", 0)
         abroad.keep_rates(island)  # 外国の国債の求める利回りに使う値下がりの率（フェーズ3-3）
 
 

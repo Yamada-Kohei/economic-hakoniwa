@@ -396,8 +396,8 @@ def _all_facilities(world):
 
 
 def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
-    """船を全部失った島: 帳簿と国際収支が合ったままターンが回り、輸出は買い手の船で続く。船が
-    足りない月が続くと海運業が船を買いに出て、手元の資金で足りない代金は持ち主が出す（船は運賃で
+    """船を全部失った島: 帳簿と国際収支が合ったままターンが回り、輸出は買い手の船で続く。ほかの国が
+    船を貸さず、船が足りない月が続くと海運業が船を買いに出て、手元の資金で足りない代金は持ち主が出す（船は運賃で
     稼ぐ前に買うので、変動費の利益を見ない）。どの島も船を作っていなければ、標準の計画が造船所を
     建てる。"""
     world = copy.deepcopy(base)
@@ -406,6 +406,11 @@ def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
     )
     f = shipping_of(island, game.config)
     f.economy["fleet"] = []
+    # 圏のほかの国が船を貸すと、荷はその船で運べて船が足りないと数えない（FX-56・FX-57）。ここでは
+    # 船を買いに出るところを見るので、ほかの国は貸さない（命令 set_ship_lending）
+    for other in world.islands.values():
+        if other.id != island.id:
+            other.policy.lend_ships = False
     good = game.config.get("trade.ship_good")
     exports, wanted = [], []
 

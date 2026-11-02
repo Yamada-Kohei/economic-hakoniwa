@@ -642,8 +642,9 @@ def import_needs(
     probe: dict[int, int] | None = None,
 ) -> dict[int, list[tuple[int, int]]]:
     """次の turns ターンの輸入に要る決済通貨（通貨ごとに [(額, 引き合う一番高いレート)]。圏の前の
-    値段で）。今のレートで輸入の見込みがある財だけを数え、初めのターンは手元と運ぶ途中の荷の分を
-    引く（売れ残っている間は買わないので）。
+    値段と、前のターンに借りたほかの国の船の運賃（圏の様子の charter。1 単位あたり）で）。今の
+    レートで輸入の見込みがある財だけを数え、初めのターンは手元と運ぶ途中の荷の分を引く（売れ残って
+    いる間は買わないので）。
 
     通貨ごとの合計は、turns ×「直近に輸入に払った額の平均の FX_MARGIN 倍か、probe（通貨ごと。
     手元の自国通貨の一部を直したもの）の大きいほう」までに縮める（輸入できていないのに外貨を
@@ -658,7 +659,7 @@ def import_needs(
         view = views_.get(str(item["bm"]))
         if view is None:
             continue
-        price = view.get("prices", {}).get(good, 0)
+        price = view.get("prices", {}).get(good, 0) + view.get("charter", {}).get(good, 0)
         qty = max(0, item["m"] - item["held"][0]) + item["m"] * max(0, turns - 1)
         amount = price * qty // QUANTITY_SCALE
         if amount > 0:

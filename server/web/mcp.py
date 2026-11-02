@@ -58,7 +58,9 @@ INSTRUCTIONS = """\
   読み（利用規約は guide(which=terms)）、summary で国の要約を読みます。
   建国から1年のあいだ、summary の next_steps に「次にすること」（急ぐ順に3つまで）が入ります。
   summary の warehouse_release は備蓄の放出の決まり（auto と、いま放出している財）で、命令
-  set_warehouse_release で止められます。
+  set_warehouse_release で止められます。summary の shipping は、このターンに圏の荷のために船を
+  貸し借りしたときの運賃（貸した船の収入 charter_income・借りた船に払った分 charter_paid）と
+  国際収支のサービス収支 services です（貸し借りがなければ null）。
   島がなければ found で建国します。前に遊んだ方針や引き継ぎは国の日誌（diary）にあり、区切りで
   diary_set に書いておきます（持ち主だけが読めます）。
 - 次のターンからは changes(since=前に読んだターン) で、その後に起きたことだけを読みます。
@@ -203,7 +205,10 @@ REPORTS = {
     "fiscal": "財政（国庫の収入と支出・予算・税率・国債の一覧）",
     "finance": "金融（中央銀行の方針・金利・融資。持ち主には銀行ごとの帳簿と金融の政策）",
     "trade": "貿易（輸出入・貿易圏。持ち主には契約（送り出した量 shipped・まだ海の上の量 at_sea と"
-    "着く見込みのターン arrive_first〜arrive_last）・商社・船団・産業政策・海外の商人 merchant"
+    "着く見込みのターン arrive_first〜arrive_last）・商社・船団（貸した船の運賃の収入 "
+    "charter_income・借りた船に払った運賃 charter_paid）・運ぶ途中の荷（ほかの国から"
+    "借りた船なら carrier_name、ほかの国に貸した船で運ぶ荷は direction=lent）・産業政策・"
+    "海外の商人 merchant・船の貸し出し lend_ships（命令 set_ship_lending）"
     "（あと何ターン来るか turns_left、量を減らし始めるターン taper_start、今の量の割合 share（%）、"
     "値段の倍率 multiplier（島の物価を含む））",
     "fx": "為替と国際収支（持ち主には外貨の持ち高と為替の政策）",
@@ -215,7 +220,8 @@ REPORTS = {
     "国防費と見えた艦隊と部隊。反乱と内戦は civil_war（起きているか・反乱軍の兵の総数・占領した"
     "マスの数はだれにも。持ち主には反乱軍のグループと、前触れが続いたターン数）。世界の艦隊は"
     "api_get /api/world/fleets、島の俯瞰図の部隊と占領は api_get /api/islands/<島>/map の units と"
-    "occupied（反乱軍の占領は -1））",
+    "occupied（反乱軍の占領は -1）。戦争の相手の荷を運ぶ中立国の船を封鎖と見張りの艦が沈めるか"
+    "追い返すかは命令 set_neutral_ships（初めは追い返す））",
     "country": "国の公開ページ（国旗・元首・体制・通貨・人口・紹介文・年表・来訪者の一言。日付は"
     "その国の選んだ紀年。年表は timeline_text で wiki にそのまま貼れる文でも読める）",
     "plan": "計画と値段の規制（計画経済・混合経済の島）",
