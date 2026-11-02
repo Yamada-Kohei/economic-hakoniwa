@@ -245,7 +245,7 @@
 | FM-41 | 作物替えの途中で前の作物の畑の肥料が手元になければ、その畑は肥料なしの作り方で動く | 決定 | tests/core/test_balance_round7.py |
 | FM-42 | 民営の企業の施設が返済か未払いの賃金・税に足りないとき、企業の預金で足りない分は、同じ企業のほか… | 決定（回7 後半） | tests/core/test_balance_round7b.py |
 | FM-43 | 自動車は部品工場（鋼鉄・アルミ・化学品・衣料・機械・電力 → 自動車部品）と組み立て工場（部品・… | 決定（回7 後半 | tests/core/test_balance_round6.py、tests/core/test_balance_round7b.py |
-| FM-44 | 組の参入: 原料が島で作られていなくても、島にある原料で作れる民営の施設があれば、その施設を先に… | 決定（回7 後半） | tests/core/test_balance_round7b.py |
+| FM-44 | 組の参入: 原料が島で作られていなくても、島にある原料で作れる民営の施設があれば、その施設を先に… | 決定（回7 後半、2026-11-02） | tests/core/test_balance_round7b.py |
 | FM-45 | 水力発電所の出力は、集水域（半径 4 マス | 決定（W-148） | tests/core/test_hydro.py |
 | FM-46 | 施設と企業の自動の名前は、生まれたときに一度だけ決めて残す（民営の企業は創業者の姓か生まれた地名… | 決定（仮: 創業者と地元の出資の割合） | tests/core/test_company_names.py |
 | FM-47 | 施設の規模（段6 A3、W-85）: 同じ施設の建っているマスに同じ施設を建てる命令は、建て増し… | 決定 | tests/core/test_scale.py |

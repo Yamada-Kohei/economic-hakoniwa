@@ -226,6 +226,64 @@ def test_assembler_invests_in_its_parts_supplier_first(game, base):
     assert co._relation(game.defs, {"farm"}, "auto_parts_plant") == 3
 
 
+def test_maker_of_a_short_input_joins_the_entry(game, base):
+    """原料が品切れ続きで参入できない工場のために、原料の工場を候補にする（売れる見込みは「足りない
+    量の平均 ＋ 新しい工場の使う量」÷ 原料の工場の全力の産出）。原料の工場が建っている途中の原料と、
+    原料の工場の原料も品切れ続きなら候補にしない。2026-11-02。"""
+    world = copy.deepcopy(base)
+    island = market_island(world)
+    ctx = context(game, world)
+    defs, settings = game.defs, game.config.get("firms")
+    recipe = defs.facilities["automobile_plant"]["recipes"]["default"]
+    use = recipe["inputs"]["auto_parts"]
+    made = defs.facilities["auto_parts_plant"]["recipes"]["aluminium"]["outputs"]["auto_parts"]
+    turns = settings["price_turns"]
+    shortages = {"auto_parts": [use] * turns}
+    every = set(defs.goods)
+    assert EntryExit._inputs_short(recipe, shortages, settings) == "auto_parts"
+    found = EntryExit()._short_makers(island, ctx, recipe, 0.1, shortages, every, set())
+    assert found == [("auto_parts_plant", "aluminium", min(1.0, (use + use * 0.1) / made))]
+    # 作る工場が建っている途中
+    assert not EntryExit()._short_makers(island, ctx, recipe, 0.1, shortages, every, {"auto_parts"})
+    # 部品工場の原料（鋼鉄）も品切れ続きなら部品工場は候補にしない（自動車工場も使う鋼鉄の工場は
+    # 候補になる）
+    steel = defs.facilities["auto_parts_plant"]["recipes"]["aluminium"]["inputs"]["steel"]
+    shortages["steel"] = [steel] * turns
+    found = EntryExit()._short_makers(island, ctx, recipe, 0.1, shortages, every, set())
+    assert [k for k, _, _ in found] == ["steel_mill"]
+
+
+def test_capitalists_found_a_new_firm_outside_the_firms_trades(game, base):
+    """同じ種類の施設を持つ企業がなければ、資本家階級が新しい企業を起こす（預金で出せるとき）。
+    同じ種類の施設を持つ企業と資本家階級は、出資に使える預金の多い方が出す。資本家階級の預金で
+    足りなければ、預金のある企業が出す（系列・垂直統合・財閥）。2026-11-02。"""
+    world = copy.deepcopy(base)
+    island = market_island(world)
+    f = private_members(game, island)[0]
+    number = co.firm_of(f)
+    owners = household(OWNERS)
+    have = ledger.money(island, owners)
+    assert have > 0
+    kinds = {m.kind for x in island.economy.firms for m in co.members(island, int(x))}
+    other = next(k for k in sorted(game.defs.facilities) if k not in kinds)
+    firm = co.entity(number)
+    ledger.pay(island, firm, ledger.GOV, ledger.money(island, firm), "subsidy")
+    ledger.pay(island, ledger.GOV, firm, have // 2, "subsidy")
+    # 同業の企業より資本家階級の預金が多い: 同業の新しい企業を起こす
+    assert co.choose_investor(island, game.defs, f.kind, have // 4) == (owners, None)
+    assert co.choose_investor(island, game.defs, other, have // 4) == (owners, None)
+    # 資本家階級の預金では足りないが、同業の企業は出せる
+    ledger.pay(island, ledger.GOV, firm, have, "subsidy")
+    assert co.choose_investor(island, game.defs, f.kind, have + 1) == (firm, number)
+    # 同業の企業の預金のほうが多い: 同業の企業が工場を増やす
+    assert co.choose_investor(island, game.defs, f.kind, have // 4) == (firm, number)
+    # つながりのない業種は、資本家階級が出せるかぎり新しい企業
+    assert co.choose_investor(island, game.defs, other, have // 4) == (owners, None)
+    # 資本家階級の預金で足りなければ、預金のある企業が出す
+    payer, chosen = co.choose_investor(island, game.defs, other, have + 1)
+    assert chosen is not None and payer == co.entity(chosen)
+
+
 def test_old_aluminium_recipe_moves_to_assembly(game, base):
     world = copy.deepcopy(base)
     island = market_island(world)
