@@ -1067,6 +1067,12 @@ class _Round:
                     item = traders.entry(bid.facility, good)
                     if got < order.quantity and "why" not in item:
                         item["why"] = WHY_SELLERS
+                    elif got >= order.quantity and item.get("why") == WHY_SHIPS:
+                        # 船が足りないと数えるのは、船のために減らした注文が全部約定した（船が
+                        # あればもっと買えた）ときだけ（2026-11-02。前は商社の狙う量と空いた船を
+                        # 比べたので、売り手がいなくて約定しない分のために船を買い続け、国営の
+                        # 海運業が国のお金で1隻 6 億を超える値段の船を買い続けた）
+                        self.islands[bid.island].ship_short = True
                 for order, ask, got in zip(sells, asks, result.sold, strict=True):
                     item = traders.entry(ask.facility, good)
                     if got < order.quantity and "why" not in item:
@@ -1132,13 +1138,14 @@ class _Round:
                 for v in views.values()
             ]
             here.trips = max(trips)
-            free = ships.free(self.config, shipping) - here.ships_used
-            free = min(free, ships.fuel_room(self.config, shipping, here.trips))
+            idle = ships.free(self.config, shipping) - here.ships_used
+            free = min(idle, ships.fuel_room(self.config, shipping, here.trips))
             if want <= 0:
                 here.import_share = 1.0
             else:
                 here.import_share = max(0.0, min(1.0, free / want))
-                here.ship_short = free < want
+                # 空いた船が1隻もなく、注文を出せない（約定で見られない）ときは足りないと数える
+                here.ship_short = idle <= 0
 
     def _bloc_orders(
         self,

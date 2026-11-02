@@ -5,6 +5,7 @@
 - 船は実際に走る時間の分だけ使う（FX-08）
 - 買い手のいない物の値段を下げるかは、売り手の作る費用で見る（FX-21）
 - 運転資金の借入は配当に出さない（タブ 5 FM-06）
+- 船が足りないと数えるのは、船のために減らした注文が全部約定したときだけ（FX-55）
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.trade import port_of, shipping_of, ships, traders, traders_of, world_state
 from hakoniwa_core.trade.setup import place_shipping
 from hakoniwa_core.units import QUANTITY_SCALE, money_of, to_basis, to_milli
-from tests.core.test_trade import _context, game, traded  # noqa: F401
+from tests.core.test_trade import _context, game, run, traded  # noqa: F401
 
 
 def test_unfilled_bloc_bids_give_back_money_and_room(game, traded):  # noqa: F811
@@ -144,3 +145,22 @@ def test_working_loans_are_not_paid_out_as_dividends(game, traded, monkeypatch):
 
     assert paid(0) > 0
     assert paid(50 * QUANTITY_SCALE) == paid(0)
+
+
+def test_bids_that_find_no_sellers_do_not_count_as_short_of_ships(game, traded):  # noqa: F811
+    """商社の狙う量が空いた船より多くても、注文が売り手やお金の足りなさで全部は約定しないなら、
+    船が足りないと数えない（FX-55。前は狙う量と空いた船を比べたので、約定しない分のために海運業が
+    船を買い続け、国営の海運業が国のお金で値上がりした船を買い続けた）。"""
+    world = copy.deepcopy(traded[0])
+    island = world.islands[1]
+    shipping = shipping_of(island, game.config)
+    assert ships.fleet(shipping) > 0
+    raised = 0
+    for f in traders_of(island, game.config, world.turn):
+        for item in traders.goods_of(f).values():
+            if item.get("dir") == traders.IMPORT:
+                item["m"] = item["m"] * 50 + 200 * QUANTITY_SCALE  # 船にもお金にも収まらない量
+                raised += 1
+    assert raised > 0
+    run(game, world, 1)
+    assert shipping_of(island, game.config).economy["ships_short"][-1] == 0
