@@ -304,11 +304,21 @@ def _relation(defs: Defs, kinds: set[str], kind: str) -> int:
 def choose_investor(
     island: IslandState, defs: Defs, kind: str, equity: int
 ) -> tuple[str, int | None] | None:
-    """新しい施設（kind）の出資 equity を出す者: 企業の預金で出せる民営の企業のうち、同じ種類の
-    施設を持つ企業 → 売り先の施設を持つ企業（系列。回7 後半）→ 原料の施設を持つ企業（垂直統合）→
-    ほかの企業（産業をまたぐ財閥）の順、
-    同じなら預金の多い順・番号の順。どこも出せなければ資本家階級が新しい企業を起こす（その預金で
-    出せるとき）。(払う主体, 企業の番号か None) を返し、誰も出せなければ None。"""
+    """新しい施設（kind）の出資 equity を出す者。
+
+    1. 同じ種類の施設を持つ民営の企業（チェーンの出店・同じ業種の増設。作り方を知っている会社）と、
+       新しい企業を起こす資本家階級のうち、出資に使える預金の多い方（同じなら企業）。お金を多く
+       持つ方が投資の機会をつかむ: 儲けをためた大手は工場を増やし、大手の手元が薄くて資本家の
+       預金が多ければ、同業の新しい会社が生まれる（現実の会社の拡大と起業）。
+    2. どちらも出せなければ、企業の預金で出せる企業のうち、売り先の施設を持つ企業（系列）→
+       原料の施設を持つ企業（垂直統合）→ ほかの企業（産業をまたぐ財閥）の順。
+
+    企業の中では預金の多い順・番号の順。(払う主体, 企業の番号か None) を返し、誰も出せなければ
+    None。
+
+    前は預金で出せる企業があれば、業種がつながらなくても（2 の財閥）その企業が出し、資本家階級が
+    新しい企業を起こすのはどの企業も出せないときだけだったので、建国の後に新しい企業がほとんど
+    生まれなかった（公開の世界のターン 34 で 0 社。2026-11-02 の調べ）。"""
     from hakoniwa_core.economy import OWNERS, Payer, funds, household
 
     best: tuple[tuple[int, int, int], int] | None = None
@@ -326,12 +336,15 @@ def choose_investor(
         score = (rank, -cash, number)
         if best is None or score < best[0]:
             best = (score, number)
+    owners = 0
+    if OWNERS in island.economy.households:
+        owners = funds.available(island, Payer(household(OWNERS)))
+    if best is not None and best[0][0] == 0 and (owners < equity or -best[0][1] >= owners):
+        return entity(best[1]), best[1]
+    if OWNERS in island.economy.households and owners >= equity:
+        return household(OWNERS), None
     if best is not None:
         return entity(best[1]), best[1]
-    if OWNERS not in island.economy.households:
-        return None
-    if funds.available(island, Payer(household(OWNERS))) >= equity:
-        return household(OWNERS), None
     return None
 
 
