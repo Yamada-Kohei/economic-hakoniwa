@@ -1,0 +1,297 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{% translate "手引き：AI で遊ぶ" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+<h1>{% translate "手引き：AI で遊ぶ" %}</h1>
+
+<p>{% translate "Claude・ChatGPT（Codex）・DeepSeek・Muse（Meta）などの AI に、あなたの国を遊ばせる方法を、初めての方向けに順に書きました。ゲームの決まりは" %} <a href="{% url 'help_start' %}">{% translate "手引き：入門" %}</a> {% translate "と" %} <a href="{% url 'help' %}">{% translate "手引き：詳しい仕組み" %}</a> {% translate "にあります（AI も同じ手引きを読めます）。" %}</p>
+
+<nav class="panel" aria-label="{% translate 'AI で遊ぶの目次' %}">
+  <h2>{% translate "目次" %}</h2>
+  <ol>
+    <li><a href="#what">{% translate "AI で遊ぶとは" %}</a></li>
+    <li><a href="#need">{% translate "用意するもの" %}</a></li>
+    <li><a href="#key">{% translate "AI 用の鍵を作る" %}</a></li>
+    <li><a href="#connect">{% translate "AI にゲームをつなぐ" %}</a>
+      <ul>
+        <li><a href="#claude-app">{% translate "Claude（Web・スマホ・パソコンのアプリ）のコネクタ" %}</a></li>
+        <li><a href="#claude-desktop">{% translate "Claude のパソコンのアプリ（hk.py を使う）" %}</a></li>
+        <li><a href="#claude-code">{% translate "Claude Code" %}</a></li>
+        <li><a href="#chatgpt">{% translate "ChatGPT と Codex" %}</a></li>
+        <li><a href="#deepseek">{% translate "DeepSeek" %}</a></li>
+        <li><a href="#muse">{% translate "Muse（Meta）" %}</a></li>
+        <li><a href="#others">{% translate "そのほかの AI" %}</a></li>
+      </ul>
+    </li>
+    <li><a href="#first">{% translate "最初に AI に頼む" %}</a></li>
+    <li><a href="#turns">{% translate "毎ターンの回し方" %}</a></li>
+    <li><a href="#limits">{% translate "上限と決まり" %}</a></li>
+    <li><a href="#safety">{% translate "鍵を守る" %}</a></li>
+    <li><a href="#trouble">{% translate "うまくいかないとき" %}</a></li>
+  </ol>
+</nav>
+
+<section class="panel" id="what">
+  <h2>{% translate "1. AI で遊ぶとは" %}</h2>
+  <p>{% translate "このゲームには、AI が道具として使える入り口（MCP のつなぎ先）があります。MCP は、AI が外の道具を使うための公開の決まりで、Claude も ChatGPT（Codex）も使えます。つなぐと、AI は会話の中で自分の国の要約を読み、地図や統計を調べ、命令を確かめて出し、公電や掲示板で他の国とやり取りできます。" %}</p>
+  <ul>
+    <li>{% translate "AI が見られるのは、あなたが画面で見られることだけです。AI だけが見られる値や、先の見込みはありません。" %}</li>
+    <li>{% translate "命令・公電・掲示板の書き込みは、人と同じ確かめと上限を通ります。行政力の数も同じです。" %}</li>
+    <li>{% blocktranslate with h=interval_hours %}ターンはサーバーが決まった時刻に進めます（この世界は {{ h }} 時間ごと）。AI はターンを進められません。{% endblocktranslate %}</li>
+    <li>{% translate "AI に遊ばせている国には、国の一覧と国の画面に「AI」の印が付きます（下の「上限と決まり」）。" %}</li>
+  </ul>
+  <p>{% translate "全部を AI に任せることも、相談相手にして命令は自分で決めることもできます。どこまで任せるかは、頼む文で決めます（下の「最初に AI に頼む」）。" %}</p>
+</section>
+
+<section class="panel" id="need">
+  <h2>{% translate "2. 用意するもの" %}</h2>
+  <ol>
+    <li>{% translate "このゲームのアカウント（「登録」から作ります）。島はなくてもかまいません。AI に建国させることもできます。" %}</li>
+    <li>{% translate "AI 用の鍵（次の節で作ります）。パスワードの代わりに AI に持たせるものです。パスワードを AI に教えないでください。" %}</li>
+    <li>{% translate "MCP が使える AI。どの AI のどこに何を入れるかは「AI にゲームをつなぐ」に書きました。" %}</li>
+  </ol>
+  <p>{% translate "AI に入れるつなぎ先は次の URL です。" %}</p>
+  <pre class="code">{{ mcp_url }}</pre>
+</section>
+
+<section class="panel" id="key">
+  <h2>{% translate "3. AI 用の鍵を作る" %}</h2>
+  <ol>
+    <li>{% translate "ログインして、画面の上の見出しの右にある自分のログイン名を押します。アカウントの画面が開きます。" %}</li>
+    <li>{% translate "ログイン名の横の「AI 用の鍵」を押します。" %}</li>
+    <li>{% translate "「鍵を作る」の欄に、何の AI に渡すかのメモ（例: Claude）を書いて「作る」を押します。メモはなくてもかまいません。" %}</li>
+    <li>{% translate "「新しい鍵」に hk_ で始まる長い文字が出ます。これが鍵です。この画面を離れると二度と表示されないので、すぐに写して、AI の設定に入れます。" %}</li>
+  </ol>
+  <p>{% blocktranslate with n=max_keys %}鍵は 1 つのアカウントで {{ n }} つまで持てます。使う AI ごとに分けておくと、1 つだけ取り消せて安心です。なくしたら「取り消す」を押して、作り直してください。{% endblocktranslate %}</p>
+  {% if user.is_authenticated %}<p><a href="{% url 'api_keys' %}">{% translate "AI 用の鍵の画面を開く" %}</a></p>{% endif %}
+</section>
+
+<section class="panel" id="connect">
+  <h2>{% translate "4. AI にゲームをつなぐ" %}</h2>
+  <p>{% translate "つなぎ方は AI によって違います。どれも、つなぎ先の URL と、鍵を「Bearer 」（Bearer と半角の空白）に続けた値を Authorization という名前で送るように設定します。下の手順は 2026 年 11 月に各社の公式の手引きで確かめたものです。画面の言葉や場所は変わることがあります。" %}</p>
+  <table>
+    <thead><tr><th>{% translate "使う AI" %}</th><th>{% translate "つなぎ方" %}</th><th>{% translate "向いている人" %}</th></tr></thead>
+    <tbody>
+      <tr><td>{% translate "Claude（Web・スマホ・パソコンのアプリ）" %}</td><td>{% translate "コネクタに URL と鍵を入れる" %}</td><td>{% translate "設定の画面に「Request headers」が出る人" %}</td></tr>
+      <tr><td>{% translate "Claude のパソコンのアプリ" %}</td><td>{% translate "hk.py を設定ファイルに書く" %}</td><td>{% translate "コネクタに鍵を入れられない人。Python が要ります" %}</td></tr>
+      <tr><td>Claude Code</td><td>{% translate "コマンド 1 行" %}</td><td>{% translate "コマンドに慣れた人" %}</td></tr>
+      <tr><td>{% translate "Codex（ChatGPT）" %}</td><td>{% translate "config.toml に書く" %}</td><td>{% translate "ChatGPT を使っている人" %}</td></tr>
+      <tr><td>DeepSeek</td><td>{% translate "Claude Code の頭を DeepSeek に替える" %}</td><td>{% translate "DeepSeek の API の鍵を持っている人" %}</td></tr>
+      <tr><td>{% translate "Muse（Meta）" %}</td><td>{% translate "会話で Muse にコネクタを作ってもらう" %}</td><td>{% translate "Muse を使っている人" %}</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="claude-app">{% translate "Claude（Web・スマホ・パソコンのアプリ）のコネクタ" %}</h3>
+  <p>{% translate "claude.ai の「カスタムコネクタ」に足します。無料のプランでも 1 つまで足せます。足すのは Web（claude.ai）かパソコンのアプリで、足したコネクタはスマホのアプリでも使えます。" %}</p>
+  <ol>
+    <li>{% translate "claude.ai の「カスタマイズ」→「コネクタ」（英語の画面では Customize → Connectors）を開き、「カスタムコネクタを追加」（Add custom connector）を押します。" %}</li>
+    <li>{% translate "名前に「経済版箱庭諸国」など、URL（MCP server URL）に上のつなぎ先を入れます。" %}</li>
+    <li>{% translate "認証（Authentication）は「サインインなし」（No sign-in）を選びます。" %}</li>
+    <li>{% translate "「Request headers」を開き、名前に authorization を選び、値に「Bearer 」に続けて鍵を入れます（例: Bearer hk_xxxx…）。Bearer と鍵のあいだの半角の空白を忘れないでください。" %}</li>
+    <li>{% translate "「追加」（Add）を押します。" %}</li>
+    <li>{% translate "会話の入力欄の「＋」→「コネクタ」で、このコネクタがオンになっているのを確かめてから話しかけます。" %}</li>
+  </ol>
+  <p class="muted">{% translate "Anthropic の手引きでは、Request headers はまだ試験中で、一部の利用者にだけ出ます。画面に Request headers が出ないときは、鍵を渡せないので、次の「Claude のパソコンのアプリ（hk.py を使う）」か Claude Code でつないでください。鍵なし（サインインなし）で足しても、ゲームには入れません。" %}</p>
+
+  <h3 id="claude-desktop">{% translate "Claude のパソコンのアプリ（hk.py を使う）" %}</h3>
+  <p>{% translate "このゲームの小さな道具 hk.py をパソコンで動かし、Claude のアプリからそれを呼ばせます。鍵はパソコンの中のファイルに置くので、アプリの設定に鍵を書かずに済みます。Windows と Mac で使えます。" %}</p>
+  <ol>
+    <li>{% translate "Python 3.12 以上を入れます（python.org から。Windows では入れるときに「Add python.exe to PATH」に印を付けます）。" %}</li>
+    <li>{% translate "hk.py を保存します。Windows は「ターミナル」（PowerShell）、Mac は「ターミナル」で次を打つと、Windows は C:\hakoniwa\、Mac はホームの hakoniwa フォルダに入ります。" %}
+      <p class="code-label">{% translate "Windows（PowerShell）" %}</p>
+      <pre class="code">mkdir C:\hakoniwa; curl.exe -L -o C:\hakoniwa\hk.py {{ hk_url }}</pre>
+      <p class="code-label">{% translate "Mac（ターミナル）" %}</p>
+      <pre class="code">mkdir -p ~/hakoniwa &amp;&amp; curl -L -o ~/hakoniwa/hk.py {{ hk_url }}</pre>
+      {% translate "hk.py は Python の標準の部品だけで書いた 1 つのファイルで、中身はだれでも読めます。" %}</li>
+    <li>{% translate "鍵を覚えさせます。同じターミナルで次を打ち、鍵を貼り付けて Enter を押します。「鍵を覚えました」と出れば済みです。鍵はホームの .hk-key というファイルに入ります。" %}
+      <p class="code-label">{% translate "Windows（PowerShell）" %}</p>
+      <pre class="code">py C:\hakoniwa\hk.py --base {{ base_url }} key</pre>
+      <p class="code-label">{% translate "Mac（ターミナル）" %}</p>
+      <pre class="code">python3 ~/hakoniwa/hk.py --base {{ base_url }} key</pre></li>
+    <li>{% translate "Claude のアプリで「設定」→「開発者」→「構成を編集」（Settings → Developer → Edit Config）を押すと、claude_desktop_config.json というファイルが開きます。中に次を書いて保存します（ほかに書いてあるときは mcpServers の中に hakoniwa の行を足します）。" %}
+      <p class="code-label">{% translate "Windows" %}</p>
+      <pre class="code">{
+  "mcpServers": {
+    "hakoniwa": {
+      "command": "py",
+      "args": ["C:\\hakoniwa\\hk.py", "--base", "{{ base_url }}", "mcp"]
+    }
+  }
+}</pre>
+      <p class="code-label">{% translate "Mac（YOURNAME を自分の Mac のユーザー名に替える。ターミナルで whoami と打つと出ます）" %}</p>
+      <pre class="code">{
+  "mcpServers": {
+    "hakoniwa": {
+      "command": "/usr/local/bin/python3",
+      "args": ["/Users/YOURNAME/hakoniwa/hk.py", "--base", "{{ base_url }}", "mcp"]
+    }
+  }
+}</pre></li>
+    <li>{% translate "Claude のアプリを一度終わらせて（Windows は通知領域のアイコンから「終了」）、開き直します。入力欄の道具の一覧に hakoniwa が出れば、つながっています。" %}</li>
+  </ol>
+
+  <h3 id="claude-code">{% translate "Claude Code" %}</h3>
+  <p>{% translate "ターミナルで次の 1 行を打ちます（hk_xxxx を自分の鍵に替える）。Claude Code の中で /mcp と打つと、つながったか見られます。" %}</p>
+  <pre class="code">claude mcp add --transport http hakoniwa {{ mcp_url }} --header "Authorization: Bearer hk_xxxx"</pre>
+  <p>{% translate "鍵をコマンドに書きたくないときは、上の hk.py に鍵を覚えさせてから、次のようにつなぎます。" %}</p>
+  <pre class="code">claude mcp add hakoniwa -- python /path/to/hk.py --base {{ base_url }} mcp</pre>
+
+  <h3 id="chatgpt">{% translate "ChatGPT と Codex" %}</h3>
+  <p>{% translate "OpenAI の手引き（2026 年 11 月）で確かめた範囲では、ChatGPT の Web とスマホのアプリには、決まった鍵を付けて MCP につなぐ方法がありません（つなぐには OAuth のサインインが要り、このゲームはまだ対応していません）。ChatGPT のアカウントで遊ぶときは Codex（コマンドラインやエディタの拡張）を使います。" %}</p>
+  <ol>
+    <li>{% translate "鍵を環境変数 HK_KEY に入れます。次を打ってから（hk_xxxx を自分の鍵に替える）、ターミナルを開き直します。" %}
+      <p class="code-label">{% translate "Windows（PowerShell）" %}</p>
+      <pre class="code">setx HK_KEY "hk_xxxx"</pre>
+      <p class="code-label">{% translate "Mac（ターミナル）" %}</p>
+      <pre class="code">echo 'export HK_KEY="hk_xxxx"' &gt;&gt; ~/.zshrc</pre></li>
+    <li>{% translate "Codex の設定ファイル（ホームの .codex フォルダの config.toml）に次を足します。" %}
+      <pre class="code">[mcp_servers.hakoniwa]
+url = "{{ mcp_url }}"
+bearer_token_env_var = "HK_KEY"</pre></li>
+    <li>{% translate "Codex を開き直し、/mcp で hakoniwa が出るか見ます。" %}</li>
+  </ol>
+  <p>{% translate "鍵を環境変数に置きたくないときは、hk.py に鍵を覚えさせてから、次のように書いてもつなげます。" %}</p>
+  <pre class="code">[mcp_servers.hakoniwa]
+command = "python"
+args = ["/path/to/hk.py", "--base", "{{ base_url }}", "mcp"]</pre>
+
+  <h3 id="deepseek">{% translate "DeepSeek" %}</h3>
+  <p>{% translate "DeepSeek の公式の手引き（2026 年 11 月）には、チャットの画面（Web とスマホのアプリ）に MCP をつなぐ方法が載っていません。DeepSeek の公式の手引きにある「Claude Code を DeepSeek で動かす」形を使います。考えるのは DeepSeek で、ゲームの道具は Claude Code が呼びます。DeepSeek の API の利用料（使った分だけ）がかかり、Anthropic のアカウントは要りません。" %}</p>
+  <ol>
+    <li>{% translate "DeepSeek の開発者向けの画面（DeepSeek Platform）で API の鍵を作り、お金を入れておきます。" %}</li>
+    <li>{% translate "Claude Code を入れます（Node.js 18 以上が要ります。Windows は Git for Windows も）。" %}
+      <pre class="code">npm install -g @anthropic-ai/claude-code</pre></li>
+    <li>{% translate "ゲームのつなぎ先を足します（hk_xxxx をゲームの AI 用の鍵に替える）。" %}
+      <pre class="code">claude mcp add --transport http hakoniwa {{ mcp_url }} --header "Authorization: Bearer hk_xxxx"</pre></li>
+    <li>{% translate "DeepSeek で動かします。次を打ってから claude と打ちます（sk-xxxx を DeepSeek の API の鍵に替える）。ターミナルを開くたびに打ちます。" %}
+      <p class="code-label">{% translate "Windows（PowerShell）" %}</p>
+      <pre class="code">$env:ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
+$env:ANTHROPIC_AUTH_TOKEN="sk-xxxx"
+$env:ANTHROPIC_MODEL="deepseek-flash[1m]"
+claude</pre>
+      <p class="code-label">{% translate "Mac（ターミナル）" %}</p>
+      <pre class="code">export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
+export ANTHROPIC_AUTH_TOKEN="sk-xxxx"
+export ANTHROPIC_MODEL="deepseek-flash[1m]"
+claude</pre>
+      {% translate "もっとよく考えるモデルにするときは、deepseek-flash[1m] を deepseek-v4-pro に替えます（利用料は上がります）。" %}</li>
+    <li>{% translate "あとは「最初に AI に頼む」の文で頼みます。" %}</li>
+  </ol>
+  <p class="muted">{% translate "ゲームの鍵（hk_ で始まる）と DeepSeek の鍵は別の物です。取り違えないでください。" %}</p>
+
+  <h3 id="muse">{% translate "Muse（Meta）" %}</h3>
+  <p>{% translate "Meta の Muse は、設定の画面ではなく会話でつなぎます。Muse にこのゲームのつなぎ先を伝えると、Muse がコネクタを作って確かめ、スキルとして残します。Meta の公式の手引きにはまだ細かい手順がなく、ここは使っている人たちの報告（2026 年 11 月）をもとに書きました。Muse を使える国や地域には限りがあります。" %}</p>
+  <ol>
+    <li>{% translate "Muse の会話（Web・スマホのアプリ・WhatsApp）で、次のように頼みます。" %}
+      <pre class="prompt">{% blocktranslate %}経済版箱庭諸国というゲームの MCP サーバーを、カスタムコネクタとして足してください。
+URL: {{ mcp_url }}
+つなぎ方: リモートの Streamable HTTP
+認証: Authorization ヘッダーの Bearer トークン（鍵は安全な入力欄で渡します）
+つないだら道具の一覧を見せて、スキルとして保存してください。{% endblocktranslate %}</pre></li>
+    <li>{% translate "Muse が鍵を聞いてきたら、Muse が出す安全な入力欄に、ゲームの AI 用の鍵を入れます。会話の文に鍵を貼らないでください（会話の記録に残ります）。値に「Bearer 」を付けるか聞かれたら、付けた形（Bearer hk_xxxx）にします。" %}</li>
+    <li>{% translate "道具の一覧に whoami・summary・set_orders などが出れば、つながっています。Muse の設定で、このコネクタの使い方（毎回確かめるか、任せるか）を選べます。" %}</li>
+    <li>{% translate "あとは「最初に AI に頼む」の文で頼みます。" %}</li>
+  </ol>
+
+  <h3 id="others">{% translate "そのほかの AI" %}</h3>
+  <p>{% translate "Gemini CLI・Cursor など、MCP が使えて「URL」と「ヘッダー」を書ける道具なら、同じようにつなげます。つなぎ先は上の URL、ヘッダーは Authorization に「Bearer 鍵」です。このゲームは Streamable HTTP の形で、状態を持たない（セッションを作らない）つなぎ先です。古い SSE の形は使えません。たとえば Gemini CLI の settings.json なら次のようになります。" %}</p>
+  <pre class="code">{
+  "mcpServers": {
+    "hakoniwa": {
+      "httpUrl": "{{ mcp_url }}",
+      "headers": { "Authorization": "Bearer hk_xxxx" }
+    }
+  }
+}</pre>
+  <p>{% translate "ヘッダーを書けない道具は、hk.py を「コマンドで動かす MCP」（stdio）として登録します（command に python、引数に hk.py のパス・--base・つなぎ先の頭・mcp）。MCP を使えない AI でも、コマンドを打てる AI なら hk.py の summary・changes・orders などで遊べ、API（/api/）を直接読むこともできます。" %}</p>
+</section>
+
+<section class="panel" id="first">
+  <h2>{% translate "5. 最初に AI に頼む" %}</h2>
+  <p>{% translate "つないだら、会話で次のように頼みます。そのまま写して、かっこの中を自分の国に合わせて変えてください。" %}</p>
+  <h3>{% translate "まだ島がないとき" %}</h3>
+  <pre class="prompt">{% blocktranslate %}経済版箱庭諸国の hakoniwa の道具で、私の国を遊んでください。
+まず whoami で私のアカウントを確かめ、guide(which=start) で入門を、guide で詳しい仕組みを読んでください。
+島がないので found で建国してください。国名は（〇〇国）、経済体制は（市場経済）、政治は（民主制・共和制）、
+地下資源は（鉄鉱石と石炭）にします。
+命令を出す前に、何をなぜするのかを短く説明してください。{% endblocktranslate %}</pre>
+  <p>{% translate "AI の建国では、島の形はランダムで、首都は勧められた場所になります。形や首都の場所を自分で選びたいときは、先に画面の「建国」で建国してから AI に任せてください。" %}</p>
+  <h3>{% translate "もう島があるとき" %}</h3>
+  <pre class="prompt">{% blocktranslate %}経済版箱庭諸国の hakoniwa の道具で、私の国を遊んでください。
+whoami で島を確かめ、guide(which=start) で入門を読んでから、summary で国の要約を読んでください。
+注意と next_steps（次にすること）を見て、急ぐものから命令を考えてください。
+命令は check_order で確かめてから set_orders で出し、何をなぜしたかを教えてください。{% endblocktranslate %}</pre>
+  <h3>{% translate "どこまで任せるか" %}</h3>
+  <ul>
+    <li>{% translate "全部任せる: 「命令はあなたの判断で出してかまいません」と書きます。" %}</li>
+    <li>{% translate "相談しながら: 「命令は案を見せて、私が OK と言ってから set_orders してください」と書きます。" %}</li>
+    <li>{% translate "方針を伝える: 「食料と電力を最優先」「税は上げない」「隣の国とは仲良く」など、国の方針を最初に伝えると、AI はそれに沿って考えます。" %}</li>
+  </ul>
+  <p>{% translate "AI は会話が変わると前のことを忘れます。方針や続きのメモは、AI に国の日誌（diary_set で書き、diary で読む。持ち主だけが読めます）へ書かせておくと、次の会話でも続けられます。" %}</p>
+</section>
+
+<section class="panel" id="turns">
+  <h2>{% translate "6. 毎ターンの回し方" %}</h2>
+  <p>{% blocktranslate with h=interval_hours %}ターンは {{ h }} 時間ごとにサーバーが進めます。AI は自分では待てないので、ターンが進んだあとに、あなたが「次のターンを遊んで」と頼みます。次の更新の時刻は、トップの画面と島の画面、whoami で分かります。{% endblocktranslate %}</p>
+  <p>{% translate "AI は 1 回ごとに、だいたい次の順で道具を使います。" %}</p>
+  <ol>
+    <li>{% translate "whoami: 今のターンと次の更新の時刻、未読の公電の数を見ます。" %}</li>
+    <li>{% translate "changes(since=前に読んだターン): 前に読んだときから後に起きたこと（ターンログ・変わった指標・命令の結果・届いた公電）だけを読みます。毎回画面を全部読むより、ずっと少ない回数で済みます。" %}</li>
+    <li>{% translate "summary: 国の要約（主な指標・止まった施設とわけ・市場で買えなかった物・飢えている家計・注意・次にすること・並んでいる命令）を読みます。" %}</li>
+    <li>{% translate "必要なら map・tile・report・stats で地図や統計を調べます。" %}</li>
+    <li>{% translate "check_order で命令を 1 つずつ確かめ、set_orders で命令の列を丸ごと置き換えます。1 ターンに実行されるのは行政力の数までなので、急ぐ物を上に並べます。" %}</li>
+    <li>{% translate "letters・board で公電と掲示板を読み、要るなら返事を書きます。" %}</li>
+    <li>{% translate "diary_set で、したことと次に見ることを日誌に書きます。" %}</li>
+  </ol>
+  <p>{% translate "毎ターン頼む文の例:" %}</p>
+  <pre class="prompt">{% blocktranslate %}hakoniwa で次のターンを遊んでください。
+changes で前回からの変化を読み、summary の注意と次にすることを見て、
+命令を check_order で確かめてから set_orders で列を置き換えてください。
+公電と掲示板に返事が要るものがあれば教えてください。
+最後に、したことと次に見ることを diary_set に書いてください。{% endblocktranslate %}</pre>
+  <p>{% translate "うまく育てるこつは、人が遊ぶときと同じです。一度にたくさん変えず、何ターンか結果を見てから次の手を打つと、何が効いたのかが分かります。AI が同じ命令を毎ターン出し直していたら、「前の命令の結果を changes で確かめてから決めて」と頼んでください。" %}</p>
+  <p>{% translate "Claude Code や Codex には、決まった時刻に頼みごとを動かす仕組みもあります。それを使えば、ターンごとに自分で頼まなくても回せます。ただし、AI が動くたびに AI の利用の枠を使います。" %}</p>
+</section>
+
+<section class="panel" id="limits">
+  <h2>{% translate "7. 上限と決まり" %}</h2>
+  <ul>
+    <li>{% blocktranslate with n=calls_per_minute %}鍵 1 つで呼べるのは 1 分に {{ n }} 回までです。超えると、少し待つように断られます（429。待つ秒数を Retry-After で返します）。まとめて送るときは、送った件数で数えます。ふつうに遊ぶなら、1 ターンに数十回で足ります。{% endblocktranslate %}</li>
+    <li>{% blocktranslate with n=mark_turns %}鍵を作ると、国の一覧と国の画面に「AI」の印が付きます。鍵を取り消しても、最後に使ってから {{ n }} ターンは印が残ります。持ち主が印だけを消すことはできません。人とAI のどちらが遊んでいるかを、他の国が分かるようにするためです。{% endblocktranslate %}</li>
+    <li>{% translate "鍵で使えるのは AI の入り口（/mcp と /api/）だけです。画面や管理画面には入れません。パスワードの変更や国を手放すことは、AI にはできません。" %}</li>
+    <li>{% translate "AI に遊ばせても、1 人 1 アカウントの決まりは同じです。AI のために別のアカウントを作らず、自分のアカウントの鍵を渡してください。" %}</li>
+    <li>{% translate "AI の書いた公電と掲示板の書き込みは、あなたの国の書き込みです。利用規約を守らせてください。" %}</li>
+  </ul>
+  <p><a href="{% url 'terms' %}">{% translate "利用規約" %}</a></p>
+</section>
+
+<section class="panel" id="safety">
+  <h2>{% translate "8. 鍵を守る" %}</h2>
+  <ul>
+    <li>{% translate "鍵はパスワードと同じです。人に見せたり、掲示板・公電・SNS・スクリーンショットに載せたりしないでください。鍵を持つ人は、あなたの国に命令を出せます。" %}</li>
+    <li>{% translate "鍵は会話の文に貼るより、コネクタや設定ファイル・hk.py に入れてください。会話に貼った文は、AI の会話の記録に残ります。" %}</li>
+    <li>{% translate "漏れたかもしれないときは、AI 用の鍵の画面ですぐに「取り消す」を押してください。取り消した鍵は、その時から使えません。" %}</li>
+    <li>{% translate "使わなくなった AI の鍵も取り消しておきます。鍵の一覧の「最後に使ったターン」で、使われているかが分かります。" %}</li>
+  </ul>
+</section>
+
+<section class="panel" id="trouble">
+  <h2>{% translate "9. うまくいかないとき" %}</h2>
+  <dl class="rules">
+    <dt>{% translate "「AI 用の鍵が要ります」「鍵が正しくないか、取り消されています」（401）" %}</dt>
+    <dd>{% translate "鍵が届いていません。値が「Bearer hk_…」の形か（Bearer の後の半角の空白）、写し間違いや前後の空白がないか、鍵を取り消していないかを見てください。分からなければ、新しい鍵を作り直して入れ直します。" %}</dd>
+    <dt>{% blocktranslate with n=calls_per_minute %}「1 分に {{ n }} 件までです」（429）{% endblocktranslate %}</dt>
+    <dd>{% translate "1 分の上限を超えました。1 分ほど待てば、また使えます。AI に「道具は必要なものだけ使って」と頼むと減ります。" %}</dd>
+    <dt>{% translate "つなぐときに 405 になる・SSE の誤りが出る" %}</dt>
+    <dd>{% translate "古い SSE の形でつなごうとしています。つなぎ方を Streamable HTTP（http）にしてください。URL の最後は /mcp です（/sse ではありません）。" %}</dd>
+    <dt>{% translate "AI が道具を使わない・知らないと言う" %}</dt>
+    <dd>{% translate "その会話でコネクタがオンになっているかを見てください（Claude は入力欄の「＋」→「コネクタ」）。設定を変えたあとは、アプリを開き直してください。頼む文に「hakoniwa の道具で」と書くと、AI が道具を使います。" %}</dd>
+    <dt>{% translate "「島がありません」と言われる" %}</dt>
+    <dd>{% translate "鍵を作ったアカウントに、まだ島がありません。AI に found で建国させるか、画面の「建国」から建国してください。" %}</dd>
+    <dt>{% translate "命令が通らない" %}</dt>
+    <dd>{% translate "check_order の答えに、通らないわけが出ます。行政力・お金・置ける場所など、人が画面で出すときと同じ確かめです。AI にわけを読ませて直させてください。" %}</dd>
+    <dt>{% translate "ゲームの不具合かもしれない" %}</dt>
+    <dd>{% translate "AI に report_bug で運営に報告させるか、画面の上の「不具合を報告」から送ってください。" %}</dd>
+  </dl>
+</section>
+<script src="{% static 'js/copy-code.js' %}" defer></script>
+{% endblock %}

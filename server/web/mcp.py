@@ -496,8 +496,13 @@ def _api_get(request, args):
 
 
 def _guide(request, args):
-    """手引きを文字にして、find の見出しから、または offset から length 字（which で3種を選ぶ）。"""
-    paths = {"hakoniwa": "/help/hakoniwa/", "start": "/help/start/", "terms": "/terms/"}
+    """手引きを文字にして、find の見出しから、または offset から length 字（which で選ぶ）。"""
+    paths = {
+        "hakoniwa": "/help/hakoniwa/",
+        "start": "/help/start/",
+        "ai": "/help/ai/",
+        "terms": "/terms/",
+    }
     path = paths.get(args.get("which"), "/help/")
     page = call_ok(request, "GET", path)
     text = _html_text(page)
@@ -754,15 +759,16 @@ TOOLS = [
         "ゲームの中の手引き（/help/、詳しい仕組み）を文字で読む。遊び始める前に全部読む。"
         "find で見出しや言葉から、offset で続きから読める。which=start なら入門"
         "（/help/start/。最初の1年・困ったとき・施設の状態の言葉）、which=hakoniwa なら"
-        "従来の箱庭を遊んだ人向けの手引き（/help/hakoniwa/）、"
+        "従来の箱庭を遊んだ人向けの手引き（/help/hakoniwa/）、which=ai なら AI で遊ぶ人向けの"
+        "手引き（/help/ai/。鍵・つなぎ方・毎ターンの回し方・上限）、"
         "which=terms なら利用規約（/terms/）。",
         _guide,
         {
             "which": {
                 "type": "string",
-                "enum": ["general", "start", "hakoniwa", "terms"],
+                "enum": ["general", "start", "hakoniwa", "ai", "terms"],
                 "description": "general（既定）は詳しい仕組み、start は入門、"
-                "hakoniwa は従来の箱庭との違い、terms は利用規約",
+                "hakoniwa は従来の箱庭との違い、ai は AI で遊ぶ人向け、terms は利用規約",
             },
             "find": {"type": "string", "description": "この言葉から読み始める"},
             "offset": {"type": "integer", "minimum": 0, "description": "読み始める字数"},
@@ -1272,6 +1278,7 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "help": ("guide",),
     "help_hakoniwa": ("guide",),
     "help_start": ("guide",),
+    "help_ai": ("guide",),  # guide(which=ai)
     "terms": ("guide",),  # 利用規約は guide(which=terms)
     "island": ("summary", "map", "tile"),  # 地図の重ね表示は map の overlay
     "turn_log": ("turn_log", "changes"),
