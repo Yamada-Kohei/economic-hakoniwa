@@ -449,7 +449,9 @@ def test_foreign_currency_contract_larger_than_the_depth_is_delivered(game, trad
     good = "steel"
     price = seller.economy.prices[good]
     floor = fxrates.depth(buyer, seller.id, game.config)
-    qty = max(1, round(floor * 1.6 / price))  # 1ターンの代金が厚みの下限の 1.6 倍ほど
+    # 1ターンの代金が厚みの下限をちょうど超える数（前は下限の 1.6 倍ほどにしていたが、2026-11-03
+    # の資本家の消費の下げで世界の道筋が変わり、四捨五入で2つになって借りられる残りを超えた）
+    qty = floor // price + 1
     # 島2の中央銀行が売る島1の通貨は、中央銀行どうしの融通で借りる。借りられる残り（島1の年の GDP
     # の割合まで）が尽きれば外貨を買えずに届かないのが正しいので、ここでは厚みを見るため、残りの
     # 3/4 に収まるターン数にする（ほかの買いの分も借りる。回6 で世界の道筋が変わり、島1の GDP が
