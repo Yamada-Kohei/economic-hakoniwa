@@ -16,7 +16,7 @@ import pytest
 
 from hakoniwa_core import autoplan, ledger, stock, trade
 from hakoniwa_core import facilities as fac
-from hakoniwa_core.economy import equipment, facility_entity
+from hakoniwa_core.economy import OWNERS, equipment, facility_entity, household
 from hakoniwa_core.economy.prices import initial_prices
 from hakoniwa_core.modules.accounts import Accounts
 from hakoniwa_core.modules.events import Events
@@ -412,6 +412,10 @@ def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
         if other.id != island.id:
             other.policy.lend_ships = False
     good = game.config.get("trade.ship_good")
+    # 持ち主（資本家階級）が手元にお金を持っている島で見る。株式市場がない間（W-53）は、資本家階級は
+    # 株の値打ちも合わせた財産から使い、はじめのうちは手元の預金が尽きやすい（LB-41。2026-11-03）
+    price = island.economy.prices[good]
+    ledger.pay(island, ledger.GOV, household(OWNERS), money_of(price, 5 * QUANTITY_SCALE), "grant")
     exports, wanted = [], []
 
     def each(w):

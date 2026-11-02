@@ -847,10 +847,31 @@ def _merge_owners(island: IslandState, ctx: StageContext) -> None:
     if OWNERS not in households:
         return
     persons = households[OWNERS]["persons"]
+    _settle_pledges(island, ctx)
     money = ledger.money(island, household(OWNERS))
     ledger.pay(island, household(OWNERS), household(GENERAL), money, "layer_transfer")
     del households[OWNERS]
     households[GENERAL]["persons"] += persons
+
+
+def _settle_pledges(island: IslandState, ctx: StageContext) -> None:
+    """計画経済に移って資産を持つ層をまとめる前に、株を担保にした借入を預金（国有化の代金を含む）
+    で返し、返しきれない分を銀行の損として消す（担保の株は国有化で国に移り、借り手の層もなくなる。
+    2026-11-03）。"""
+    from hakoniwa_core.economy import banks
+
+    borrower = household(OWNERS)
+    for loan in sorted(banks.loans_by_borrower(island, borrower), key=lambda x: x.id):
+        if loan.purpose != banks.PLEDGE:
+            continue
+        left = banks.outstanding(island, loan)
+        paid = min(left, ledger.money(island, borrower))
+        banks.repay(island, loan, paid)
+        if left - paid > 0:
+            banks.write_off(island, loan, left - paid)
+            stats = island.stats
+            stats["loans.pledge_write_off"] = stats.get("loans.pledge_write_off", 0) + left - paid
+    banks.drop_settled(island)
 
 
 def _add_owners(island: IslandState, ctx: StageContext) -> None:

@@ -26,7 +26,11 @@
   loans.construction_turns ターンで返す）。金利の低い銀行から順に、自己資本比率の規制と大口融資の規
   制（1つの借り手への残高は自己資本 × banking.large_exposure まで）の残りの分ずつ借り、借りきれない
   分は資産を持つ層が多く出資する。資産を持つ層の預金が足りないか、審査に通らなければ建たない。工事の
-  資材と賃金は施設が自分の預金から払う。
+  資材と賃金は施設が自分の預金から払う。実績のない会社（資本家階級が新しく起こす会社と、できて
+  firms.track_record_turns ターンたたない会社）は、借りるのを建設費の
+  (1 − firms.startup_equity_share) までにする（創業融資）。資本家階級の預金で新しい会社の出資に
+  足りなければ、持っている会社の株を担保に firms.pledge_ratio の分まで借りて足す（2026-11-03。
+  economy/companies.py choose_investor）。
 - 差し押さえ中の同じ施設があれば、その売り値を建設費として新しく建てる案と比べ、良い方を選ぶ（買い取
   るときも、動き出すときの支払いを合わせて調達し、元金を据え置く）。
 
@@ -128,6 +132,10 @@ from hakoniwa_core.trade import setup as trade_setup
 from hakoniwa_core.trade import traders as trade_traders
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE, money_of, part, round_money, to_basis
+
+# island.scratch: 参入の出資の足りない分を資本家階級が株を担保に借りる組み立て [(銀行, 額, 金利)]
+# （_finance が作り、_build と _buy_foreclosed が借りる。2026-11-03）
+ENTRY_PLEDGE = "entry_pledge"
 
 NOT_PRIVATE = (
     "admin",
@@ -1369,6 +1377,7 @@ class EntryExit(IslandStage):
         今の残高を足して見て（exposure_room）、返済の余裕もその施設の今の返済と利益を足して見る
         （W-186 回3）。"""
         config = ctx.config
+        island.scratch.pop(ENTRY_PLEDGE, None)
         want = amount - round_money(amount * config.get("firms.equity_share"))
         owners = Payer(household(OWNERS))
         if OWNERS not in island.economy.households:
@@ -1395,19 +1404,56 @@ class EntryExit(IslandStage):
             if piece > 0:
                 pieces.append((bank, piece))
                 left -= piece
-        loan = want - left
-        have = funds.available(island, owners)
-        # 出資するのは、お金のある企業か、新しい企業を起こす資本家階級（回7。economy/companies.py）
-        investor = (
-            companies.choose_investor(island, ctx.defs, kind, amount - loan) if kind else None
+        capacity = want - left  # 実績のある会社が借りられる額
+        # 創業融資（2026-11-03）: 実績のない会社は建設費の (1 − firms.startup_equity_share) まで
+        startup = min(
+            capacity, amount - round_money(amount * config.get("firms.startup_equity_share"))
         )
-        island.scratch["entry_investor"] = investor
-        if investor is not None:
+
+        def loan_for(number: int | None) -> int:
+            if number is not None and companies.established(island, config, number, ctx.turn):
+                return capacity
+            return startup
+
+        have = funds.available(island, owners)
+        pledge_plan: list[tuple[str, int, int]] = []
+        investor: tuple[str, int | None] | None = None
+        if target is not None:  # 建て増し: 出資するのは建て増す施設の持ち主（手元は _build で見る）
+            number = companies.private_firm_of(island, target)
+            loan = capacity if number is None else loan_for(number)
             have = max(have, amount - loan)
+        elif kind:
+            # 出資するのは、お金のある企業か、新しい企業を起こす資本家階級（回7。
+            # economy/companies.py）。資本家階級の預金で足りなければ、持っている会社の株を担保に
+            # 借りて足す（2026-11-03）
+            keep = 0  # 株を担保に借りたあと、資本家階級の手元に残す返済の分
+
+            def pledge_room() -> int:
+                nonlocal keep
+                pledge_plan[:] = self._pledge_plan(island, ctx, offers, self._trim(pieces, startup))
+                keep = self._pledge_keep(island, ctx, amount - startup, pledge_plan)
+                return sum(p for _, p, _ in pledge_plan) - keep
+
+            investor = companies.choose_investor(
+                island, ctx.defs, kind, lambda n: amount - loan_for(n), pledge_room
+            )
+            loan = startup if investor is None else loan_for(investor[1])
+            if investor is not None:
+                if investor[1] is None and have < amount - loan:
+                    pledge_plan = self._trim(pledge_plan, amount - loan - have + keep)
+                else:
+                    pledge_plan = []
+                have = max(have, amount - loan)
+        else:  # 出資する者を選ばない呼び方（試験）: 実績のある会社と同じに借りる
+            loan = capacity
+        island.scratch["entry_investor"] = investor
+        pieces = self._trim(pieces, loan)
         if have < amount - loan:
             if stopped and loan == 0:
                 return ("credit_crunch", {"turn": min(stopped) - 1})
-            return ("owners_short", {"need": amount - loan, "have": have, "loan": loan})
+            pledged = sum(p for _, p, _ in pledge_plan)
+            args = {"need": amount - loan, "have": have, "loan": loan, "pledge": pledged}
+            return ("owners_short", args)
         turns = config.get("loans.construction_turns")
         leverage = to_basis(config.get("banking.rho")) * loan // max(1, amount)
         plan = []
@@ -1422,6 +1468,86 @@ class EntryExit(IslandStage):
         if earnings < coverage * service:  # 何倍の余裕が要るかも書く（試し遊びで分からなかった）
             args = {"earnings": earnings, "service": service, "coverage": coverage}
             return ("loan_short_of_coverage", args)
+        island.scratch[ENTRY_PLEDGE] = pledge_plan
+        return plan
+
+    @staticmethod
+    def _borrow_on_shares(island: IslandState, ctx: StageContext, payer: str) -> None:
+        """_finance の組み立てどおり、資本家階級が株を担保に銀行から借りる（出資の足りない分）。"""
+        plan = island.scratch.pop(ENTRY_PLEDGE, None) or []
+        if payer != household(OWNERS):
+            return
+        turns = ctx.config.get("firms.pledge_turns")
+        for bank, piece, rate in plan:
+            banks.lend(island, bank, payer, piece, banks.PLEDGE, turns, ctx.turn, rate)
+            stats = island.stats
+            stats["loans.pledge_new"] = stats.get("loans.pledge_new", 0) + piece
+
+    @staticmethod
+    def _pledge_keep(
+        island: IslandState, ctx: StageContext, equity: int, plan: list[tuple[str, int, int]]
+    ) -> int:
+        """株を担保に借りて出資したあと、資本家階級が手元に残す額: 株を担保にした借入の返済（今の
+        借入と、出資 equity を全部借りたときの新しい借入の利子と元金）の firms.operating_turns
+        ターン分。配当は銀行の段より後に入るので、預金を全部出資に入れると次の月の返済が遅れる。"""
+        config = ctx.config
+        borrower = household(OWNERS)
+        service = sum(
+            ledger.interest(banks.outstanding(island, x), x.rate)
+            + min(banks.outstanding(island, x), x.installment)
+            for x in banks.loans_by_borrower(island, borrower)
+            if x.purpose == banks.PLEDGE
+        )
+        rate = max((r for _, _, r in plan), default=island.policy.policy_rate)
+        service += ledger.interest(equity, rate) + -(-equity // config.get("firms.pledge_turns"))
+        return service * config.get("firms.operating_turns")
+
+    @staticmethod
+    def _trim(pieces: list[Any], total: int) -> list[Any]:
+        """銀行ごとの借りる額の並び（(銀行, 額, ...)）を、前から合計 total までに切る。"""
+        out = []
+        for piece in pieces:
+            if total <= 0:
+                break
+            take = min(piece[1], total)
+            out.append((piece[0], take, *piece[2:]))
+            total -= take
+        return out
+
+    @staticmethod
+    def _pledge_plan(
+        island: IslandState,
+        ctx: StageContext,
+        offers: list[tuple[int, str]],
+        pieces: list[tuple[str, int]],
+    ) -> list[tuple[str, int, int]]:
+        """資本家階級が株を担保に借りられる額の組み立て: [(銀行, 額, 金利)]（2026-11-03）。
+
+        担保は資本家階級が持つ民営の企業の株の値打ち（companies.owners_collateral）で、借りられる
+        のはその firms.pledge_ratio（掛け目）から、今の株を担保にした借入の残高を引いた分まで。
+        金利の低い銀行から順に、この参入の建設資金（pieces）を貸した後の自己資本比率の規制の残り
+        と、資本家階級への大口融資の規制の残りの分ずつ借りる。"""
+        config = ctx.config
+        borrower = household(OWNERS)
+        held = sum(
+            banks.outstanding(island, x)
+            for x in banks.loans_by_borrower(island, borrower)
+            if x.purpose == banks.PLEDGE
+        )
+        cover = int(companies.owners_collateral(island) * config.get("firms.pledge_ratio"))
+        left = cover - held
+        used = dict(pieces)
+        rate_of = ctx.formula("loan_rate")
+        plan = []
+        for _, bank in sorted(offers):
+            if left <= 0:
+                break
+            room = banks.capital_room(island, config, bank, ctx.turn) - used.get(bank, 0)
+            room = min(room, banks.exposure_room(island, config, bank, borrower, ctx.turn))
+            piece = min(left, room)
+            if piece > 0:
+                plan.append((bank, piece, rate_of(island, ctx, bank, borrower)))
+                left -= piece
         return plan
 
     def _build(
@@ -1476,7 +1602,8 @@ class EntryExit(IslandStage):
                     invest(island, household(OWNERS), payer, top)
                     have = share
             if have < share:
-                return ("owners_short", {"need": share, "have": have, "loan": amount - share})
+                args = {"need": share, "have": have, "loan": amount - share, "pledge": 0}
+                return ("owners_short", args)
         tileless = retail.is_shop(defs, kind) or target is not None
         at = retail.tileless_position(island) if tileless else pos
         f = Facility(
@@ -1504,6 +1631,8 @@ class EntryExit(IslandStage):
             assign_serial(island, f)
         island.facilities.append(f)
         entity = facility_entity(f.id)
+        if target is None:
+            self._borrow_on_shares(island, ctx, payer)
         invest(island, payer, entity, amount - sum(p for _, p, _ in plan))
         if target is None:
             companies.invested(island, firm, f, ctx.turn)
@@ -1577,6 +1706,7 @@ class EntryExit(IslandStage):
             payer, firm = island.scratch.pop("entry_investor", None) or (household(OWNERS), None)
             close_foreclosure(island, f)
             entity = facility_entity(f.id)
+            self._borrow_on_shares(island, ctx, payer)
             invest(island, payer, entity, amount - sum(p for _, p, _ in plan))
             turns = config.get("loans.construction_turns")
             grace = ctx.turn + 1 + config.get("loans.grace_turns")
