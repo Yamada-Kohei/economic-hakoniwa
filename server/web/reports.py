@@ -293,6 +293,14 @@ def stat_label(name: str) -> tuple[str, str]:
     if head == "infra" and rest in defs.infrastructure:
         return f"{defs.name('infrastructure', rest)}の平均の整備度", "percent"
     if head == "loans":
+        for suffix, template in (
+            ("_write_off", "貸し倒れ（{}、1ターン）"),
+            ("_new", "新しく借りた額（{}、1ターン）"),
+        ):
+            if rest.endswith(suffix):
+                return template.format(
+                    display.message("loan_" + rest.removesuffix(suffix))
+                ), "money"
         return f"融資の残高（{display.message('loan_' + rest)}）", "money"
     if head == "layer":
         layer, _, field = rest.partition(".")

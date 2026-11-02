@@ -171,12 +171,28 @@ def test_a_fleet_cannot_sail_without_fuel_nor_off_the_map(game, world):
     }
 
 
-def test_a_docked_fleet_burns_only_a_share_of_the_fuel(game, world):
+def test_a_docked_fleet_burns_only_a_share_of_the_fuel(game, world, monkeypatch):
+    """港につないだ艦隊が倉庫から取る燃料は、航海中の分より少ない。倉庫の燃料はほかの段（政府の
+    売り）でも動くので、艦隊の段が取った量だけを数える。"""
+    import types
+
+    import hakoniwa_core.modules.operations as operations
+
     island, fleet = ready_fleet(game, world, kind="frigate", ships=1, fuel=20)
-    before = stock.total(island.warehouse, "fuel")
     spec = game.defs.army["frigate"]
+    taken = []
+
+    def take(where, good, *args, **kwargs):
+        got = stock.take(where, good, *args, **kwargs)
+        if where is island.warehouse and good == "fuel":
+            taken.append(got)
+        return got
+
+    proxy = types.SimpleNamespace(**{k: getattr(stock, k) for k in dir(stock) if not k[:2] == "__"})
+    proxy.take = take
+    monkeypatch.setattr(operations, "stock", proxy)
     step(game, world)
-    used = before - stock.total(island.warehouse, "fuel")
+    used = sum(taken)
     assert 0 < used <= sea.fuel_need(spec, fleet, game.config, port=False)
 
 

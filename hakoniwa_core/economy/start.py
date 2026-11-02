@@ -36,7 +36,7 @@ from hakoniwa_core.economy import (
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.banks import FINANCE_VERSION
 from hakoniwa_core.economy.debt import traded, underwrite
-from hakoniwa_core.economy.households import init_layers, propensity
+from hakoniwa_core.economy.households import init_layers, propensity, wealth_propensity
 from hakoniwa_core.economy.prices import construction_cost, initial_prices
 from hakoniwa_core.economy.stats import BASE_CPI
 from hakoniwa_core.geo import within
@@ -351,7 +351,7 @@ def founding_deposit(config: GameConfig) -> int:
     （banking.deposit_rate）で物価が動かないときの値とみる（一般の層で約1年分）。
     """
     c1 = propensity(config, GENERAL, config.get("banking.deposit_rate"))
-    c2 = config.get("household.c2")
+    c2 = wealth_propensity(config, GENERAL)
     return round((1 - c1) / c2 * config.get("household.base_income"))
 
 

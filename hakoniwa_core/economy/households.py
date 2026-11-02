@@ -247,12 +247,22 @@ def propensity(config: GameConfig, layer: str, real_rate: float) -> float:
     return layers(config)[layer]["c1"] - max(-limit, min(limit, shift))
 
 
+def wealth_propensity(config: GameConfig, layer: str) -> float:
+    """層の c2（預金から毎ターン使う割合）: 層に c2 を書いていればその値、なければ household.c2。
+
+    資本家階級（上位1%）は財産から年3〜5%しか取り崩さないので、働く層（household.c2）と分ける
+    （2026-11-03）。"""
+    spec = layers(config)[layer]
+    return spec["c2"] if "c2" in spec else config.get("household.c2")
+
+
 def consumption(island: IslandState, layer: str, config: GameConfig, inflation: float) -> int:
     """層が使う額: C = c1 × Ȳ + c2 × M（名前付きの式 consumption の既定）。
 
-    Ȳ は直近のターンの可処分所得の平均（記録がなければこのターンの所得）、M は層の預金。
+    Ȳ は直近のターンの可処分所得の平均（記録がなければこのターンの所得）、M は層の財産（wealth。
+    働く層は預金、資本家階級は預金 + 株の値打ち − 株を担保にした借入）。
     c1 は預金の実質金利（預金金利 − 物価上昇率）が1%高いごとに c1_rate_effect 下げる
-    （既定の値から ± c1_range）。
+    （既定の値から ± c1_range）。c2 は層ごと（wealth_propensity）。
     """
     settings = config.get("household")
     h = island.economy.households[layer]
@@ -262,5 +272,32 @@ def consumption(island: IslandState, layer: str, config: GameConfig, inflation: 
     else:
         income = island.scratch.get("income", {}).get(layer, 0)
     c1 = propensity(config, layer, island.policy.deposit_rate / BASIS - inflation)
+    c2 = wealth_propensity(config, layer)
+    return max(0, round_money(c1 * max(0.0, income) + c2 * wealth(island, config, layer)))
+
+
+# island.scratch: このターンの資産を持つ層の株の値打ち − 株を担保にした借入
+SHARES_WORTH = "owners_shares_worth"
+
+
+def wealth(island: IslandState, config: GameConfig, layer: str) -> int:
+    """層が取り崩すもとの財産: 預金。資産を持つ層（share を書いた層。資本家階級）は、持っている
+    民営の企業の株の値打ち（純資産。companies.owners_collateral）から株を担保にした借入の残高を
+    引いた分も足す（現実の資本家も財産全体から取り崩す。2026-11-03）。株の値打ちはターンに一度
+    だけ数える。"""
     deposits = ledger.money(island, household(layer))
-    return max(0, round_money(c1 * max(0.0, income) + settings["c2"] * deposits))
+    if "share" not in layers(config)[layer]:
+        return deposits
+    shares = island.scratch.get(SHARES_WORTH)
+    if shares is None:
+        from hakoniwa_core.economy import banks
+        from hakoniwa_core.economy.companies import owners_collateral
+
+        pledged = sum(
+            banks.outstanding(island, x)
+            for x in banks.loans_by_borrower(island, household(layer))
+            if x.purpose == banks.PLEDGE
+        )
+        shares = owners_collateral(island) - pledged
+        island.scratch[SHARES_WORTH] = shares
+    return max(0, deposits + shares)

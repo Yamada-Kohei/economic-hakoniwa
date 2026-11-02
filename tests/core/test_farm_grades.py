@@ -230,10 +230,12 @@ def test_private_farm_raises_its_own_grade_when_it_pays(game):
     ledger.pay(island, ledger.GOV, household(OWNERS), 20_000_000, "subsidy")
     every = game.config.get("firms.recipe_turns")
     ctx = replace(ctx, turn=ctx.turn + (-(ctx.turn + farm.id)) % every)
-    EntryExit()._raise_grades(island, ctx)
     site = next((f for f in island.facilities if fac.expansion_of(f) == farm.id), None)
+    if site is None:  # 世界の歩みしだいで、40 ターンのうちに自分で上げ始めていることもある
+        EntryExit()._raise_grades(island, ctx)
+        site = next((f for f in island.facilities if fac.expansion_of(f) == farm.id), None)
+        assert any(e.kind == "grade_started" for e in island.log)
     assert site is not None and site.ext[fac.GRADE_TO] == 1 and site.ext.get("private_entry")
-    assert any(e.kind == "grade_started" for e in island.log)
     # 資材は市場で買う。この島の鋼鉄は海外の商人だけが売る高値なので、手元に置いて工事を進める
     for good, qty in fac.materials_of(game.defs, site).items():
         stock.add(site.stock, good, qty, 0, game.defs.goods)
