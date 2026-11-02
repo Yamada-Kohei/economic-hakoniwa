@@ -616,6 +616,19 @@ class EntryExit(IslandStage):
             )
             candidates.append((estimate * fill, kind, rname, capital, fill, rate, subsidy))
 
+        def viable(kind: str, rname: str, recipe: dict[str, Any], fill: float) -> bool:
+            """新しい工場の工事の資材が島で手に入り、見込みの利益率 × 売れる見込みの割合が参入に
+            要る利益率を超えるか。"""
+            materials = defs.facilities[kind]["construction"].get("materials", {})
+            if set(materials) - supplied - on_sale:
+                return False
+            full = round_money(construction_cost(defs, kind, prices, wage))
+            capital = full - min(part(full, capital_subsidy(island, kind, recipe)), room)
+            estimate = ctx.formula("entry_return")(
+                island, ctx, kind, rname, prices, typical, capital
+            )
+            return estimate * fill > self._threshold(island, ctx)
+
         for kind, fdef in sorted(defs.facilities.items()):
             if not private_allowed(defs, island, kind):
                 continue
@@ -646,6 +659,19 @@ class EntryExit(IslandStage):
                     continue
                 short = self._inputs_short(recipe, shortages, settings)
                 if short:  # 原料が品切れ続きで、新しい工場は原料を買えない
+                    # 新しい工場が採算に合うなら、原料の工場もいっしょに候補にする（組の参入を
+                    # 品切れにも。2026-11-02）
+                    if viable(kind, rname, recipe, fill):
+                        # 国営も含めて原料の工場が工事中の原料は待つ（coming）
+                        for mkind, mname, mfill in self._short_makers(
+                            island, ctx, recipe, fill, shortages, supplied, busy | coming
+                        ):
+                            mrecipe = defs.facilities[mkind]["recipes"][mname]
+                            if self._inputs_capped(
+                                island, ctx, mrecipe, capacity, uses, demand, expandable
+                            ):
+                                continue  # 原料の工場の原料に空きがなく、作り手も増やせない
+                            add(mkind, mname, mrecipe, mfill)
                     blocks.append((0.0, kind, "inputs_short", {"good": short}))
                     continue
                 capped = self._inputs_capped(
@@ -1011,12 +1037,57 @@ class EntryExit(IslandStage):
     ) -> str | None:
         """直近 firms.price_turns ターンのうち firms.shortage_turns ターン以上、新しい工場の全力の
         使う量の firms.entry_gap 倍以上足りなかった原料（なければ None）。"""
+        goods = EntryExit._short_goods(recipe, shortages, settings)
+        return goods[0] if goods else None
+
+    @staticmethod
+    def _short_goods(
+        recipe: dict[str, Any], shortages: dict[str, list[int]], settings: dict[str, Any]
+    ) -> list[str]:
+        """_inputs_short の決まりで品切れ続きの原料のすべて（名前の順）。"""
+        found = []
         for g, qty in sorted(recipe.get("inputs", {}).items()):
             gap = settings["entry_gap"] * qty
             short = sum(1 for amount in shortages.get(g, []) if amount >= gap)
             if short >= settings["shortage_turns"]:
-                return g
-        return None
+                found.append(g)
+        return found
+
+    def _short_makers(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        recipe: dict[str, Any],
+        fill: float,
+        shortages: dict[str, list[int]],
+        supplied: set[str],
+        busy: set[str],
+    ) -> list[tuple[str, str, float]]:
+        """原料が品切れ続きで参入できない工場（作り方 recipe、売れる見込みの割合 fill）のために、
+        品切れの原料を作る民営の施設を参入の候補にする（施設, 作り方, 売れる見込みの割合）の一覧。
+
+        原料の工場の売れる見込みは「直近の足りない量の平均 ＋ 新しい工場が使う量（全力の使う量 ×
+        fill）」÷ 原料の工場の全力の産出（1まで）。原料の工場は、自分の品切れの合図（足りない量が
+        自分の全力の産出の firms.entry_gap 倍）だけを見るので、新しい工場の使う量の entry_gap 倍は
+        足りないが原料の工場1つ分には届かない隙間で、下流も上流も建たなかった（2026-11-02 の調べ。
+        500 ターンで島×ターンの 2 割余りが inputs_short）。現実では、作りたい会社の注文の見込みが
+        原料の会社の増産の決め手になる。作る施設が建っている途中・動き出したばかりの原料と、自分の
+        原料も品切れ続きの作り方は候補にしない（品切れを上流へ移すだけなので）。"""
+        settings = ctx.config.get("firms")
+        found = []
+        for good in self._short_goods(recipe, shortages, settings):
+            makers = self._makers(island, ctx, [good], supplied, busy)
+            if makers is None:
+                continue
+            mkind, mname = makers[good]
+            mrecipe = ctx.defs.facilities[mkind]["recipes"][mname]
+            if self._inputs_short(mrecipe, shortages, settings):
+                continue
+            history = shortages.get(good, [])
+            gap = sum(history) / len(history) if history else 0.0
+            need = gap + recipe["inputs"][good] * fill
+            found.append((mkind, mname, min(1.0, need / max(1, mrecipe["outputs"][good]))))
+        return found
 
     @staticmethod
     def _inputs_capped(
@@ -1162,10 +1233,16 @@ class EntryExit(IslandStage):
     @staticmethod
     def _supplied(island: IslandState, ctx: StageContext) -> set[str]:
         """島で手に入る財: 動いている施設が作っている財（国の倉庫の物は、政府が売りに出さなければ
-        市場に出ないので数えない）と、商社が輸入している財・海外の商人が売っている財（フェーズ3-1）。"""
+        市場に出ないので数えない）と、商社が輸入している財・海外の商人が売っている財（フェーズ3-1）。
+
+        海外の商人の財は、商人が持ってくる量を減らし始める（foreign_merchant.taper_from。FX-27）
+        までだけ数える。減らし始めた後は、商人の財だけを頼りに新しい工場を建てない（去っていく
+        ただ1つの売り手の原料で製油所を建て、商人が去ると動けずに残った。2026-11-02、#247 の
+        門の試験）。現実でも、ただ1つの輸入元が引き上げると分かっている原料に新しい工場は建てない。"""
         goods = EntryExit._made(island, ctx)
         goods |= trade_traders.imported(island, ctx.config)
-        goods |= {g for g, _, _ in merchant.offers(island, ctx.defs, ctx.config, ctx.turn)}
+        if merchant.taper(island, ctx.config, ctx.turn) >= 1:
+            goods |= {g for g, _, _ in merchant.offers(island, ctx.defs, ctx.config, ctx.turn)}
         return goods
 
     @staticmethod

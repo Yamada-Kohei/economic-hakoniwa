@@ -214,7 +214,7 @@ def test_losses_carry_within_the_firm():
 
 
 def test_investor_prefers_firm_with_same_kind(game, base):
-    """新しい施設の出資は、預金で出せる企業のうち同じ種類の施設を持つ企業が先に出す。"""
+    """新しい施設の出資は、同じ種類の施設を持ち、資本家階級より多く出せる企業が出す。"""
     world = copy.deepcopy(base)
     island = market_island(world)
     f = private_members(game, island)[0]
