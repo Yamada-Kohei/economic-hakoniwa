@@ -40,7 +40,10 @@ PUSH_MARGIN より上回るときは、島の市場の買いたい量より多�
 
 計画経済の島（フェーズ3-4。公定価格のある島）の商社は、値段の差ではなく、島の市場で買えなかった
 量（行列）のある財を、圏の値段で一番安い圏から輸入し、島の売り手の売れ残った財を輸出します（貿易の
-独占）。島では
+独占）。輸出する量は、市場経済の島の商社と同じく、圏で売れた量と圏の買えなかった量の分け前（売り
+切ったら多めに）を狙い、島の売れ残りを輸出する商社で分けた分までです（売れ残りをぜんぶ狙うと、
+圏に買い手のない物の島での買いに扱える重さと預金を使い切り、圏に買い手のいる物を輸出できなかった）。
+島では
 公定価格で売り買いし（輸入した物は仕入れ値によらず売り、輸出する物は公定価格で買う）、圏では輸出の
 荷を指値なしで売り、輸入は圏の値幅の上端まで買います。輸入に使えるのは商社が輸出で得て持っている
 外貨だけで（為替で外貨を買わない）、余った外貨は売りません（modules/trade の為替）。
@@ -493,8 +496,9 @@ def update_targets(
                 if _probing(item["x"], sold_bloc.get(good, 0), stock.total(f.stock, good)):
                     want_x = max(want_x, item["x"] + probe)
                 want_x = min(want_x, supply)
-                if planned:  # 売れ残った量を、輸出する商社で分ける
-                    want_x = sold_bloc.get(good, 0) + left_over // max(1, exporters.get(good, 1))
+                if planned:  # 圏で売れる量まで。売れ残りを輸出する商社で分けた分を超えない
+                    plan_x = sold_bloc.get(good, 0) + left_over // max(1, exporters.get(good, 1))
+                    want_x = min(want_x, plan_x)
             if direction == IMPORT and can_import:
                 assert record is not None
                 unmet = max(0, record.demand - record.volume)
@@ -638,8 +642,9 @@ def import_needs(
     probe: dict[int, int] | None = None,
 ) -> dict[int, list[tuple[int, int]]]:
     """次の turns ターンの輸入に要る決済通貨（通貨ごとに [(額, 引き合う一番高いレート)]。圏の前の
-    値段で）。今のレートで輸入の見込みがある財だけを数え、初めのターンは手元と運ぶ途中の荷の分を
-    引く（売れ残っている間は買わないので）。
+    値段と、前のターンに借りたほかの国の船の運賃（圏の様子の charter。1 単位あたり）で）。今の
+    レートで輸入の見込みがある財だけを数え、初めのターンは手元と運ぶ途中の荷の分を引く（売れ残って
+    いる間は買わないので）。
 
     通貨ごとの合計は、turns ×「直近に輸入に払った額の平均の FX_MARGIN 倍か、probe（通貨ごと。
     手元の自国通貨の一部を直したもの）の大きいほう」までに縮める（輸入できていないのに外貨を
@@ -654,7 +659,7 @@ def import_needs(
         view = views_.get(str(item["bm"]))
         if view is None:
             continue
-        price = view.get("prices", {}).get(good, 0)
+        price = view.get("prices", {}).get(good, 0) + view.get("charter", {}).get(good, 0)
         qty = max(0, item["m"] - item["held"][0]) + item["m"] * max(0, turns - 1)
         amount = price * qty // QUANTITY_SCALE
         if amount > 0:

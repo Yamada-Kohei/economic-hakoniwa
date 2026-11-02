@@ -160,6 +160,7 @@ class Employment(IslandStage):
             settle_arrears(island)
         for f in island.facilities:
             fac.refresh_fuel(defs, f)  # 燃料の足りない機械の畑は手作業で（FM-51）
+            fac.refresh_fertilizer(defs, f)  # 肥料の足りない畑は肥料なしで（FM-53）
         share = fac.labor_share(defs, island)
         labor = {
             (t.x, t.y): fac.labor_force(defs, island, t, share)

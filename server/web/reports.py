@@ -150,6 +150,8 @@ _EXTRA_STATS = [
         "money",
     ),
     ("trade.unpaid", "お金が足りず払えなかった運賃と港の使用料", "money"),
+    ("trade.charter_income", "貸した船の運賃の収入（1ターン）", "money"),
+    ("trade.charter_paid", "借りた船に払った運賃（1ターン）", "money"),
     ("ships", "輸送船", " 隻"),
     ("ships.busy", "航海に出ている輸送船", " 隻"),
     ("freight.ship_rate", "船の運賃（荷 1 トン・1 区画あたり）", "money"),

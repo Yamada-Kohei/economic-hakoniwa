@@ -632,6 +632,27 @@ def services_brief(stats: dict[str, float], currency: str) -> dict[str, Any] | N
     return out
 
 
+SHIPPING_STATS = [
+    ("charter_income", "trade.charter_income"),
+    ("charter_paid", "trade.charter_paid"),
+    ("services", "bop.services"),
+]
+
+
+def shipping_brief(stats: dict[str, float], currency: str) -> dict[str, Any] | None:
+    """圏の荷を運ぶ船の貸し借り（貸した船の運賃の収入・借りた船に払った運賃）と、国際収支の
+    サービス収支（運賃と港の使用料）。このターンに貸し借りがなければ None。"""
+    if not stats.get("trade.charter_income") and not stats.get("trade.charter_paid"):
+        return None
+    out: dict[str, Any] = {}
+    for key, name in SHIPPING_STATS:
+        if name in stats:
+            _, unit = reports.stat_label(name)
+            out[key] = stats[name]
+            out[f"{key}_text"] = display.stat_text(name, stats[name], unit, currency)
+    return out
+
+
 RETAIL_STATS = [
     ("need", "retail.need"),
     ("sold", "retail.sold"),
@@ -717,6 +738,7 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
         "facilities": facilities,
         "goods": goods,
         "services": services_brief(latest, currency),
+        "shipping": shipping_brief(latest, currency),
         "firms": firms_brief(island, latest, mine),
         "retail": retail_brief(island, latest, currency),
         "population_changes": population_changes(latest),

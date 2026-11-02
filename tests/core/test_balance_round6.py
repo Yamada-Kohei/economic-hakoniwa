@@ -396,8 +396,8 @@ def _all_facilities(world):
 
 
 def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
-    """船を全部失った島: 帳簿と国際収支が合ったままターンが回り、輸出は買い手の船で続く。船が
-    足りない月が続くと海運業が船を買いに出て、手元の資金で足りない代金は持ち主が出す（船は運賃で
+    """船を全部失った島: 帳簿と国際収支が合ったままターンが回り、輸出は買い手の船で続く。ほかの国が
+    船を貸さず、船が足りない月が続くと海運業が船を買いに出て、手元の資金で足りない代金は持ち主が出す（船は運賃で
     稼ぐ前に買うので、変動費の利益を見ない）。どの島も船を作っていなければ、標準の計画が造船所を
     建てる。"""
     world = copy.deepcopy(base)
@@ -406,6 +406,11 @@ def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
     )
     f = shipping_of(island, game.config)
     f.economy["fleet"] = []
+    # 圏のほかの国が船を貸すと、荷はその船で運べて船が足りないと数えない（FX-56・FX-57）。ここでは
+    # 船を買いに出るところを見るので、ほかの国は貸さない（命令 set_ship_lending）
+    for other in world.islands.values():
+        if other.id != island.id:
+            other.policy.lend_ships = False
     good = game.config.get("trade.ship_good")
     exports, wanted = [], []
 
@@ -414,8 +419,9 @@ def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
         wanted.append(f.economy.get("ships_wanted", 0))
 
     # 船の作り手がいない間を見る（造船所ができると、その船を買って船団が戻る。試し遊び1回目の直しで
-    # 流れが変わり、36 ターンのうちに標準の計画の造船所が動き出すようになった）
-    for _ in range(36):
+    # 流れが変わり、36 ターンのうちに標準の計画の造船所が動き出すようになった。持ち主の出資は
+    # 何ターンかに分けて入り、2026-11-02 の飢饉の直し PO-57 の後は代金に届くのが 2 ターン遅れた）
+    for _ in range(40):
         if any(x.kind == "shipyard" and x.built for x in _all_facilities(world)):
             break
         run_checked(game, world, 1, each)

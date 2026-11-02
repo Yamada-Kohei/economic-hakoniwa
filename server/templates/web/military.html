@@ -127,7 +127,13 @@
   </dl>
 </section>
 <section class="panel" id="units"><h2>{% translate "陸の部隊" %}</h2><div data-table="units"><p>{% translate "読み込み中…" %}</p></div><p class="hint"><a href="{% url 'island' island.id %}">{% translate "移動の行き先は島の地図で部隊のマスを選んで指定できます。" %}</a></p></section>
-<section class="panel" id="fleets"><h2>{% translate "艦隊" %}</h2><div data-table="fleets"><p>{% translate "読み込み中…" %}</p></div><p class="hint"><a href="{% url 'world' %}">{% translate "世界マップで艦隊を選び、航海先を指定できます。" %}</a></p></section>
+<section class="panel" id="fleets"><h2>{% translate "艦隊" %}</h2><div data-table="fleets"><p>{% translate "読み込み中…" %}</p></div><p class="hint"><a href="{% url 'world' %}">{% translate "世界マップで艦隊を選び、航海先を指定できます。" %}</a></p>
+  <form class="actions military-form" data-order="set_neutral_ships">
+    <h3>{% if island.policy.sink_neutral_ships %}{% translate "中立国の船の扱い（今: 沈める）" %}{% else %}{% translate "中立国の船の扱い（今: 追い返す）" %}{% endif %}</h3>
+    <p class="hint">{% translate "戦争の相手の荷を、戦争に加わっていない国から借りた船で運んでいるとき、封鎖と見張りの艦がその船を沈めるか、沈めずに追い返すか（1 ターン遅れる）を決めます。" %}</p>
+    <label><select name="sink"><option value="false">{% translate "追い返す" %}</option><option value="true">{% translate "沈める" %}</option></select></label>
+    <button type="submit">{% translate "命令に追加" %}</button><p class="order-notice" role="status"></p>
+  </form></section>
 <section class="panel" id="bases"><h2>{% translate "基地と陣地" %}</h2><div data-table="bases"><p>{% translate "読み込み中…" %}</p></div><h3>{% translate "陣地のあるマス" %}</h3><ul>{% for t in m.trenches %}<li><a href="{% url 'island' island.id %}?x={{ t.x }}&amp;y={{ t.y }}">({{ t.x }}, {{ t.y }})</a></li>{% empty %}<li>{% translate "陣地はありません。" %}</li>{% endfor %}</ul></section>
 {% include "web/military_commands.html" %}
 {% else %}

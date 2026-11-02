@@ -88,9 +88,13 @@ def test_islands_sell_to_merchants_with_balanced_books(game, base):
     def keep(w):
         sold.append(sum(i.stats.get("trade.merchant_sold", 0) for i in w.islands.values()))
 
-    run_checked(
-        game, world, 14, keep
-    )  # 商人の買いはとぎれとぎれ（買わない間が 6 ターン続くことがある）
+    # 商人の買いはとぎれとぎれ（島の値段が商人の指値より高い間は買わない。2026-11-02 の飢饉の直し
+    # PO-57 の後は 23 ターン、船の貸し借り FX-56 の後は 27 ターン買わない間が続いた）ので、
+    # 買うまで回す
+    for _ in range(60):
+        run_checked(game, world, 1, keep)
+        if sold[-1]:
+            break
     assert sum(sold) > 0
     for island in world.islands.values():
         s = island.stats

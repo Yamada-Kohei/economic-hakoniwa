@@ -418,6 +418,8 @@ ISLAND_KEYS = ("currency", "approve", "to", "partner")  # 命令の中身のう�
             "二国間契約を受ける: 契約 4 番（届いた物は市場に出す）",
         ),
         ("cancel_contract", {"contract": 4}, "二国間契約をやめる: 契約 4 番"),
+        ("set_ship_lending", {"lend": False}, "船の貸し出し: 貸さない"),
+        ("set_ship_lending", {"lend": True}, "船の貸し出し: 貸す"),
     ],
 )
 def test_describe_trade_orders(world, kind, payload, text):
@@ -499,3 +501,30 @@ def test_stat_labels_for_trade_and_fx(world):
     assert reports.stat_label("fx.unknown") == ("fx.unknown", "")
     assert display.stat_text("fx.2", 1.5, "fx") == "1.5000"
     assert display.stat_text("ships", 2.0, " 隻") == "2 隻"
+
+
+def test_chartered_and_lent_ships_on_the_trade_page(world):
+    """運ぶ途中の荷に、ほかの国から借りた船ならその国を出し、ほかの国に貸した船で運ぶ荷は「貸した
+    船」の行にする。船の貸し借りの運賃は統計の名前を持つ。"""
+    islands = trade_views.directory(m.World.objects.get())
+    a, b, c = sorted(islands)[:3]
+    s = {
+        "id": 7,
+        "from": a,
+        "to": b,
+        "carrier": c,
+        "kind": "bloc",
+        "good": "coal",
+        "batches": [[0, 1000]],
+        "load": 1000,
+        "loaded": 1,
+        "arrive": 3,
+    }
+    [incoming] = trade_views.shipment_rows([s], b, islands)
+    assert incoming["direction_name"] == "輸入" and incoming["carrier_name"] == islands[c]["name"]
+    [lent] = trade_views.shipment_rows([s], c, islands)
+    assert lent["direction"] == "lent" and lent["partner"] == b and not lent["carrier_name"]
+    [outgoing] = trade_views.shipment_rows([{**s, "carrier": b}], a, islands)
+    assert outgoing["direction_name"] == "輸出" and not outgoing["carrier_name"]
+    assert reports.stat_label("trade.charter_income")[1] == "money"
+    assert reports.stat_label("trade.charter_paid")[1] == "money"

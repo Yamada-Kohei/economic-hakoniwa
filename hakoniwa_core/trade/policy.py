@@ -312,8 +312,19 @@ def set_foreign_bonds(island: IslandState, payload: dict[str, Any], ctx: StageCo
     note(island, kind if amount else "foreign_bonds_stopped", args)
 
 
+def check_ship_lending(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    _check_economy(island)
+
+
+def set_ship_lending(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
+    """海運業の空いている船を、圏の市場のほかの国の荷のために貸すか（タブ 9 FX-56）。"""
+    island.policy.lend_ships = bool(payload["lend"])
+    island.log.append(LogEntry("ship_lending_on" if payload["lend"] else "ship_lending_off", {}))
+
+
 ORDERS = {
     "set_tariff": (set_tariff, check_tariff),
+    "set_ship_lending": (set_ship_lending, check_ship_lending),
     "set_export_subsidy": (set_export_subsidy, check_export_subsidy),
     "set_import_quota": (set_import_quota, check_import_quota),
     "set_embargo": (set_embargo, check_embargo),

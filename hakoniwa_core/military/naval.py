@@ -231,18 +231,29 @@ def shipment_outcome(
     groups: dict[Cell, dict[int, int]],
 ) -> str | None:
     """貿易の船がこのターンの区画で、沈む・追い返される・何もないのどれか。沈む（SUNK）のは、荷が
-    船の上にあれば荷ごと、なければ船だけ（結果に aboard は別に持つ）。"""
+    船の上にあれば荷ごと、なければ船だけ（結果に aboard は別に持つ）。
+
+    ほかの国から借りた船（s["carrier"]）で運ぶ荷は、船の国が襲う国と戦っていなければ、襲う国が
+    命令 set_neutral_ships で「沈める」にしていない限り、沈めずに追い返す（TURNED。2026-11-02）。"""
     where = position(world, s, turn)
     if where is None:
         return None
     cell, _ = where
     victim = s["to"]
+    carrier = s.get("carrier", victim)
+
+    def hit(attacker: int) -> str:
+        if carrier == victim or war.fighting(world, attacker, carrier, turn):
+            return SUNK
+        owner = world.islands.get(attacker)
+        return SUNK if owner is not None and owner.policy.sink_neutral_ships else TURNED
+
     rng = random.Random(f"{world.seed}:{turn}:convoy:{s['id']}")
     for owner, ships in sorted(groups.get(cell, {}).items()):
         if owner == victim:
             continue
         if rng.random() < blockade_share(config, ships):
-            return SUNK if war.fighting(world, owner, victim, turn) else TURNED
+            return hit(owner) if war.fighting(world, owner, victim, turn) else TURNED
     near = [h for h in watchers if war.fighting(world, h["fleet"]["owner"], victim, turn)]
     near = [h for h in near if _covers(h, cell)]
     if not near:
@@ -258,7 +269,7 @@ def shipment_outcome(
             sink_ships(world, defs, biggest["fleet"], 1, turn)
     near = [h for h in near if h["fleet"]["ships"] > 0 and army.find(world, h["fleet"]["id"])]
     if near and rng.random() < _found(near):
-        return SUNK
+        return hit(min(h["fleet"]["owner"] for h in near))
     return None
 
 
