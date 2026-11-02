@@ -414,8 +414,9 @@ def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
         wanted.append(f.economy.get("ships_wanted", 0))
 
     # 船の作り手がいない間を見る（造船所ができると、その船を買って船団が戻る。試し遊び1回目の直しで
-    # 流れが変わり、36 ターンのうちに標準の計画の造船所が動き出すようになった）
-    for _ in range(36):
+    # 流れが変わり、36 ターンのうちに標準の計画の造船所が動き出すようになった。持ち主の出資は
+    # 何ターンかに分けて入り、2026-11-02 の飢饉の直し PO-57 の後は代金に届くのが 2 ターン遅れた）
+    for _ in range(40):
         if any(x.kind == "shipyard" and x.built for x in _all_facilities(world)):
             break
         run_checked(game, world, 1, each)
