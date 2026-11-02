@@ -183,6 +183,8 @@ table.letters tr.unread td { font-weight: bold; }
 /* 手引き */
 .rules dt { font-weight: bold; margin-top: 8px; }
 .rules dd { margin: 2px 0 0 1em; }
+pre { overflow-x: auto; max-width: 100%; }
+pre.prompt { white-space: pre-wrap; overflow-wrap: anywhere; }
 /* 画面の上の「この画面の手引き」。浮かせると下の枠（トップの題字の枠や見出しの帯）に重なるので、
    1行に置いて右に寄せ、小さな札の形にする */
 .screen-help { display: flex; justify-content: flex-end; margin: 6px 0; font-size: 0.85em; line-height: 1.4; }

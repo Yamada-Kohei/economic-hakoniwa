@@ -152,14 +152,14 @@ args = ["/path/to/hk.py", "--base", "{{ base_url }}", "mcp"]</pre>
   <h2>{% translate "5. 最初に AI に頼む" %}</h2>
   <p>{% translate "つないだら、会話で次のように頼みます。そのまま写して、かっこの中を自分の国に合わせて変えてください。" %}</p>
   <h3>{% translate "まだ島がないとき" %}</h3>
-  <pre>{% blocktranslate %}経済版箱庭諸国の hakoniwa の道具で、私の国を遊んでください。
+  <pre class="prompt">{% blocktranslate %}経済版箱庭諸国の hakoniwa の道具で、私の国を遊んでください。
 まず whoami で私のアカウントを確かめ、guide(which=start) で入門を、guide で詳しい仕組みを読んでください。
 島がないので found で建国してください。国名は（〇〇国）、経済体制は（市場経済）、政治は（民主制・共和制）、
 地下資源は（鉄鉱石と石炭）にします。
 命令を出す前に、何をなぜするのかを短く説明してください。{% endblocktranslate %}</pre>
   <p>{% translate "AI の建国では、島の形はランダムで、首都は勧められた場所になります。形や首都の場所を自分で選びたいときは、先に画面の「建国」で建国してから AI に任せてください。" %}</p>
   <h3>{% translate "もう島があるとき" %}</h3>
-  <pre>{% blocktranslate %}経済版箱庭諸国の hakoniwa の道具で、私の国を遊んでください。
+  <pre class="prompt">{% blocktranslate %}経済版箱庭諸国の hakoniwa の道具で、私の国を遊んでください。
 whoami で島を確かめ、guide(which=start) で入門を読んでから、summary で国の要約を読んでください。
 注意と next_steps（次にすること）を見て、急ぐものから命令を考えてください。
 命令は check_order で確かめてから set_orders で出し、何をなぜしたかを教えてください。{% endblocktranslate %}</pre>
@@ -186,7 +186,7 @@ whoami で島を確かめ、guide(which=start) で入門を読んでから、sum
     <li>{% translate "diary_set で、したことと次に見ることを日誌に書きます。" %}</li>
   </ol>
   <p>{% translate "毎ターン頼む文の例:" %}</p>
-  <pre>{% blocktranslate %}hakoniwa で次のターンを遊んでください。
+  <pre class="prompt">{% blocktranslate %}hakoniwa で次のターンを遊んでください。
 changes で前回からの変化を読み、summary の注意と次にすることを見て、
 命令を check_order で確かめてから set_orders で列を置き換えてください。
 公電と掲示板に返事が要るものがあれば教えてください。
