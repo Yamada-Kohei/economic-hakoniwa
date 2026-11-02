@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 postgres = ["psycopg[binary]>=3.1"]
+push = ["pywebpush>=2"]
 dev = [
     "pytest>=8",
     "pytest-django>=4.8",

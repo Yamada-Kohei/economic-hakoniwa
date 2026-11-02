@@ -44,3 +44,32 @@ class Letter(models.Model):
 
     def __str__(self) -> str:
         return f"{self.sender} → {self.recipient}: {self.subject}"
+
+
+class PushSubscription(models.Model):
+    """持ち主が通知を許したブラウザ。endpoint は秘密として扱う。"""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    endpoint = models.CharField(max_length=2048, unique=True)
+    p256dh = models.CharField(max_length=128)
+    auth = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_ok_at = models.DateTimeField(null=True, blank=True)
+    # 一部のブラウザだけが失敗したとき、成功したブラウザに同じ予定を再送しない。
+    last_outbox_id = models.PositiveBigIntegerField(default=0)
+
+    def __str__(self) -> str:
+        return f"通知の購読 {self.pk}（user={self.user_id}）"
+
+
+class PushOutbox(models.Model):
+    """公電の通知の予定。外への送信は管理コマンドだけが行う。"""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    letter = models.ForeignKey(Letter, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    sent_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+
+    def __str__(self) -> str:
+        return f"通知の予定 {self.pk}（user={self.user_id}）"

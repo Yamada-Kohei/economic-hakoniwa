@@ -12,7 +12,8 @@ from django.core.paginator import Paginator
 from django.http import Http404
 from django.shortcuts import redirect, render
 
-from server.letters import services
+from server.accounts import keys as account_keys
+from server.letters import push, services
 from server.world.models import Island
 
 
@@ -57,7 +58,20 @@ def _box(request, box: str):
         return _no_island(request)
     rows = services.inbox(island) if box == "inbox" else services.sent_box(island)
     page = Paginator(rows, services.PAGE_SIZE).get_page(request.GET.get("page"))
-    return render(request, "letters/list.html", {"island": island, "box": box, "page": page})
+    return render(
+        request,
+        "letters/list.html",
+        {
+            "island": island,
+            "box": box,
+            "page": page,
+            "push_public_key": (
+                settings.HAKONIWA_VAPID_PUBLIC_KEY
+                if push.configured() and not account_keys.is_ai_island(island)
+                else ""
+            ),
+        },
+    )
 
 
 @login_required
