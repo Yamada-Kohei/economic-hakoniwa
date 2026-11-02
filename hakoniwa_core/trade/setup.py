@@ -127,8 +127,23 @@ def place_shipping(island: IslandState, defs: Defs, config: GameConfig, turn: in
     init_facility(island, defs, config, f, dict(prices), wage)
     good = settings["ship_good"]
     count = to_milli(settings["start_ships"])
-    ships.add_ships(f, count, turn)
-    f.economy["capital"] = money_of(prices.get(good, 0), count)
+    # 建国の船団は、使い始めた年の違う船にする（実際の国の船団と同じ。みな同じターンに使い始めた
+    # 船にすると、世界じゅうの船が同じターンに寿命で消えた）。n 隻の年を、寿命の
+    # trade.start_ship_spread の割合の中で n 等分ずつずらし（寿命いっぱいにずらすと、早く寿命の来る
+    # 船が多くて船が早く減った）、ずらしの初めは島ごとに変える（島の番号 × 黄金比の端数。乱数は
+    # 使わない）。帳簿は、その年数だけ前に今の値段で買って、減価償却してきたのと同じにする
+    span = settings["ship_life"] * settings["start_ship_spread"]
+    n = max(1, round(settings["start_ships"]))
+    phase = island.id * 0.6180339887 % 1.0
+    value = money_of(prices.get(good, 0), count)
+    years = config.get("firms.depreciation_turns")
+    done = 0
+    for k in range(n):
+        age = int((k + phase) * span / n)
+        ships.add_ships(f, count // n + (count % n if k == n - 1 else 0), turn - age)
+        done += value // n * min(age, years) // years
+    f.economy["capital"] = value
+    f.economy["depreciated"] = done
     for g, qty in sorted(settings["start_fuel"].items()):
         stock.add(f.stock, g, to_milli(qty), turn, defs.goods)
     per_turn = ships.crew_wanted(config, f) * wage

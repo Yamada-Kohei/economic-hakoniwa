@@ -346,8 +346,16 @@ class Accounts(IslandStage):
             cost = next_payments(island, ctx.defs, ctx.config, f)
             keep = settings["operating_turns"] * cost
             cash = funds.available(island, payer)
-            if cash > settings["cash_turns"] * cost and profit - tax > 0:
-                dividend = max(dividend, cash - settings["cash_turns"] * cost)
+            # 手元の資金の余りを配当に回すときは、運転資金の借入（短い借入）の残りを残す（売りに
+            # 出ていない船を買うために借りた運転資金が、注文をやめたターンに余りとして配当に出て、
+            # 次のターンから返済が遅れて倒産し、船団が消えた）
+            borrowed = sum(
+                banks.outstanding(island, x)
+                for x in banks.loans_by_borrower(island, payer.entity)
+                if x.purpose == banks.WORKING
+            )
+            if cash > settings["cash_turns"] * cost + borrowed and profit - tax > 0:
+                dividend = max(dividend, cash - settings["cash_turns"] * cost - borrowed)
             dividend = min(dividend, max(0, cash - keep))
         if arrears.total(island, payer.entity) or arrears.total(
             island, payer.entity, arrears.TAX_ARREARS

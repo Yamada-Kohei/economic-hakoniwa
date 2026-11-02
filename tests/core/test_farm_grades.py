@@ -1,4 +1,4 @@
-"""農場の段階（W-190。FM-50・FM-51）: 手作業 → 機械化 → 近代化。"""
+"""農場の段階（W-190。FM-50・FM-51）: 手作業 → 機械化 → 近代化。肥料のない畑（FM-53）。"""
 
 from __future__ import annotations
 
@@ -384,3 +384,39 @@ def test_mechanized_fields_without_fuel_work_by_hand_instead_of_stalling(game, w
     fac.refresh_fuel(game.defs, farm)
     assert fac.FUEL_SHARE not in farm.economy
     assert fac.recipe_of(game.defs, farm)["inputs"][fac.FUEL] == need
+
+
+def test_fields_without_fertilizer_grow_the_plain_crop_instead_of_stalling(game, world):
+    """肥料ありの作り方の農場は、肥料（化学品）が手元にない割合の畑を同じ作物の肥料なしの作り方で
+    動かし、止まらない（FM-53。近代化の畑は機械化の肥料なしになる）。肥料は全部の畑の分を買い続ける。"""
+    island, farm = _state_farm(world)
+    for grade, recipe, plain in (
+        (0, "fertilized", "default"),
+        (2, "fertilized_modern", "default_mechanized"),
+    ):
+        farm.ext[fac.GRADE] = grade
+        if grade == 0:
+            farm.ext.pop(fac.GRADE)
+        farm.recipe = recipe
+        farm.economy.pop(fac.FIELDS, None)
+        farm.economy["target"] = fac.FULL
+        farm.stock.pop(fac.FERTILIZER, None)
+        stock.add(farm.stock, fac.FUEL, 10**6, 0, game.defs.goods)
+        fac.refresh_fuel(game.defs, farm)
+        fac.refresh_fertilizer(game.defs, farm)
+        assert farm.economy[fac.FERTILIZER_SHARE] == 0
+        now = fac.recipe_of(game.defs, farm)
+        assert fac.FERTILIZER not in now["inputs"]
+        recipes = game.defs.facilities["farm"]["recipes"]
+        assert now["outputs"]["grain"] == recipes[plain]["outputs"]["grain"]
+        power = game.config.get("power.good")
+        assert fac.input_ratio(game.defs, farm, power)[0] == fac.FULL
+        need = fac.recipe_of(game.defs, farm, fuelled=False)["inputs"][fac.FERTILIZER]
+        assert need == recipes[recipe]["inputs"][fac.FERTILIZER]  # 買う量は全部の畑の分
+        stock.add(farm.stock, fac.FERTILIZER, need // 2, 0, game.defs.goods)
+        fac.refresh_fertilizer(game.defs, farm)
+        assert fac.FULL // 2 - 1 <= farm.economy[fac.FERTILIZER_SHARE] <= fac.FULL // 2
+        stock.add(farm.stock, fac.FERTILIZER, need, 0, game.defs.goods)
+        fac.refresh_fertilizer(game.defs, farm)
+        assert fac.FERTILIZER_SHARE not in farm.economy
+        assert fac.recipe_of(game.defs, farm)["inputs"][fac.FERTILIZER] == need

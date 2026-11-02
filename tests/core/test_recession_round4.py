@@ -89,8 +89,9 @@ def test_islands_sell_to_merchants_with_balanced_books(game, base):
         sold.append(sum(i.stats.get("trade.merchant_sold", 0) for i in w.islands.values()))
 
     run_checked(
-        game, world, 14, keep
-    )  # 商人の買いはとぎれとぎれ（買わない間が 6 ターン続くことがある）
+        game, world, 26, keep
+    )  # 商人の買いはとぎれとぎれ（買わない間が 23 ターン続くことがある。2026-11-02 の飢饉の直し
+    # PO-57 の後、島の建材の値段が商人の指値より高い間が続いた）
     assert sum(sold) > 0
     for island in world.islands.values():
         s = island.stats

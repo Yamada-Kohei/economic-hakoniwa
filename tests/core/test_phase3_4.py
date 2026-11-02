@@ -32,6 +32,7 @@ from hakoniwa_core.state import (
     OrderState,
 )
 from hakoniwa_core.state.generate import generate_world
+from hakoniwa_core.units import QUANTITY_SCALE
 from tests.core.test_finance import books_ok, context, open_books
 from tests.core.test_trade import run
 
@@ -795,3 +796,43 @@ def test_planned_traders_export_unsold_goods_whatever_the_price(game, base):
     # 国内で売れ残った物は、値段によらず輸出の向きにする（ボーキサイトの島の製錬所が動くように）
     items = [trade_traders.goods_of(f).get(good) for f in sellers]
     assert any(item and item.get("dir") == trade_traders.EXPORT for item in items), good
+
+
+def test_planned_traders_export_only_what_the_bloc_takes(game, base):
+    """計画経済の島の商社が輸出を狙う量は、圏で売れる量（売れた量と圏の買えなかった量の分け前）まで
+    で、島の売れ残りを輸出する商社で分けた分を超えない（タブ 9 FX-54。売れ残りをぜんぶ狙うと、圏に
+    買い手のない物に扱える重さと預金を使い切っていた）。"""
+    from hakoniwa_core.trade import traders as trade_traders
+    from hakoniwa_core.trade import traders_of
+
+    world = copy.deepcopy(base)
+    island = island_of(world, "planned")
+    found = trade_traders.prospects(island, game.defs, game.config)
+    prices = island.economy.prices
+    good, p = next(
+        (g, p)
+        for g, p in sorted(found.items())
+        if p.export_bloc is not None and not trade_traders.exportable(p, prices.get(g, 0))
+    )
+    sellers = traders_of(island, game.config)
+    unsold = 500 * QUANTITY_SCALE
+
+    def targets(unmet: int) -> int:
+        for f in sellers:
+            trade_traders.goods_of(f).pop(good, None)
+        island.markets = [m for m in island.markets if m.good != good]
+        island.markets.append(
+            MarketRecord(good=good, price=prices[good], volume=0, demand=0, supply=unsold)
+        )
+        island.scratch.get(trade_traders.FOREIGN_SUPPLY, {}).pop(good, None)
+        key = (p.export_bloc, good)
+        trade_traders.update_targets(island, game.defs, game.config, {key: unmet}, {key: 1})
+        items = [trade_traders.goods_of(f).get(good) or {} for f in sellers]
+        assert any(item.get("dir") == trade_traders.EXPORT for item in items)
+        return sum(item.get("x", 0) for item in items if item.get("dir") == trade_traders.EXPORT)
+
+    assert targets(0) < unsold // 10  # 圏で買い手がいなければ、試しの量だけ
+    assert targets(30 * QUANTITY_SCALE) <= 30 * QUANTITY_SCALE * len(
+        sellers
+    )  # 圏の買えなかった量まで
+    assert targets(10 * unsold) <= unsold  # 売れ残りより多くは狙わない

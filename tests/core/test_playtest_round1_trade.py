@@ -10,7 +10,7 @@ from hakoniwa_core import ledger, stock
 from hakoniwa_core.log import format_log
 from hakoniwa_core.modules.trade import check
 from hakoniwa_core.state import MarketRecord
-from hakoniwa_core.trade import contracts, traders, traders_of
+from hakoniwa_core.trade import contracts, swap, traders, traders_of
 from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.trade import money as fxmoney
 from hakoniwa_core.units import QUANTITY_SCALE, money_of
@@ -78,7 +78,7 @@ def test_contract_is_paid_from_the_central_bank_reserves_first(game, traded):
     assert check(world) == []
 
 
-def test_contract_short_of_foreign_currency_tells_where_it_came_from(game, traded):
+def test_contract_short_of_foreign_currency_tells_where_it_came_from(game, traded, monkeypatch):
     """中央銀行の外貨と為替の市場で足りないときは、政府の手持ち・中央銀行から・為替の市場で用意できた
     額と足りない額を、ログと契約の記録（fx）に残す。わけの文は為替介入に触れる。"""
     world = copy.deepcopy(traded[0])
@@ -94,6 +94,16 @@ def test_contract_short_of_foreign_currency_tells_where_it_came_from(game, trade
     depth = fxrates.depth(buyer, seller.id, game.config)
     price = had + reserve + 20 * depth
     c = _contract(world, buyer, seller, good, 1, price, 2)
+    # 為替の後に、ほかの島へ融通した外貨の利子を受け取ることがある（中央銀行の外貨の持ち高に入る）
+    interest = []
+    transfer = fxmoney.transfer
+
+    def counted(world, currency, source, target, amount, kind, *args, **kwargs):
+        if (currency, target, kind) == (seller.id, (buyer.id, ledger.CB), swap.INTEREST):
+            interest.append(amount)
+        return transfer(world, currency, source, target, amount, kind, *args, **kwargs)
+
+    monkeypatch.setattr(fxmoney, "transfer", counted)
     run_world(game, world, 1)
     fx = c["fx"]
     assert fx["turn"] == world.turn and fx["need"] == price
@@ -107,7 +117,7 @@ def test_contract_short_of_foreign_currency_tells_where_it_came_from(game, trade
     assert f"中央銀行の外貨から {reserve:,}" in text and f"{fx['short']:,} 足りません" in text
     assert "為替介入" in text
     # 中央銀行の外貨は使い切った（受け身の売りとして数える）
-    assert fxmoney.holding(buyer, ledger.CB, seller.id) <= fx["market"]
+    assert fxmoney.holding(buyer, ledger.CB, seller.id) <= fx["market"] + sum(interest)
     assert buyer.stats[f"fx.dealt.{seller.id}"] <= -reserve
     assert check(world) == []
 
