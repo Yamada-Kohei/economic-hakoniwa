@@ -1,0 +1,10 @@
+[Unit]
+Description=経済版箱庭諸国 公電のブラウザ通知を 1 分ごとに
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
