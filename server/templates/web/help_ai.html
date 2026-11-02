@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% load i18n %}
+{% extends "base.html" %}{% load i18n static %}
 {% block title %}{% translate "手引き：AI で遊ぶ" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 <h1>{% translate "手引き：AI で遊ぶ" %}</h1>
@@ -48,7 +48,7 @@
     <li>{% translate "MCP が使える AI。どの AI のどこに何を入れるかは「AI にゲームをつなぐ」に書きました。" %}</li>
   </ol>
   <p>{% translate "AI に入れるつなぎ先は次の URL です。" %}</p>
-  <pre>{{ mcp_url }}</pre>
+  <pre class="code">{{ mcp_url }}</pre>
 </section>
 
 <section class="panel" id="key">
@@ -93,14 +93,19 @@
   <ol>
     <li>{% translate "Python 3.12 以上を入れます（python.org から。Windows では入れるときに「Add python.exe to PATH」に印を付けます）。" %}</li>
     <li>{% translate "hk.py を保存します。Windows は「ターミナル」（PowerShell）、Mac は「ターミナル」で次を打つと、Windows は C:\hakoniwa\、Mac はホームの hakoniwa フォルダに入ります。" %}
-      <pre>mkdir C:\hakoniwa; curl.exe -L -o C:\hakoniwa\hk.py {{ hk_url }}      (Windows)
-mkdir -p ~/hakoniwa &amp;&amp; curl -L -o ~/hakoniwa/hk.py {{ hk_url }}      (Mac)</pre>
+      <p class="code-label">{% translate "Windows（PowerShell）" %}</p>
+      <pre class="code">mkdir C:\hakoniwa; curl.exe -L -o C:\hakoniwa\hk.py {{ hk_url }}</pre>
+      <p class="code-label">{% translate "Mac（ターミナル）" %}</p>
+      <pre class="code">mkdir -p ~/hakoniwa &amp;&amp; curl -L -o ~/hakoniwa/hk.py {{ hk_url }}</pre>
       {% translate "hk.py は Python の標準の部品だけで書いた 1 つのファイルで、中身はだれでも読めます。" %}</li>
     <li>{% translate "鍵を覚えさせます。同じターミナルで次を打ち、鍵を貼り付けて Enter を押します。「鍵を覚えました」と出れば済みです。鍵はホームの .hk-key というファイルに入ります。" %}
-      <pre>py C:\hakoniwa\hk.py --base {{ base_url }} key          (Windows)
-python3 ~/hakoniwa/hk.py --base {{ base_url }} key    (Mac)</pre></li>
+      <p class="code-label">{% translate "Windows（PowerShell）" %}</p>
+      <pre class="code">py C:\hakoniwa\hk.py --base {{ base_url }} key</pre>
+      <p class="code-label">{% translate "Mac（ターミナル）" %}</p>
+      <pre class="code">python3 ~/hakoniwa/hk.py --base {{ base_url }} key</pre></li>
     <li>{% translate "Claude のアプリで「設定」→「開発者」→「構成を編集」（Settings → Developer → Edit Config）を押すと、claude_desktop_config.json というファイルが開きます。中に次を書いて保存します（ほかに書いてあるときは mcpServers の中に hakoniwa の行を足します）。" %}
-      <pre>{
+      <p class="code-label">{% translate "Windows" %}</p>
+      <pre class="code">{
   "mcpServers": {
     "hakoniwa": {
       "command": "py",
@@ -108,36 +113,46 @@ python3 ~/hakoniwa/hk.py --base {{ base_url }} key    (Mac)</pre></li>
     }
   }
 }</pre>
-      {% translate "Mac では command を「/usr/local/bin/python3」（python.org の Python を入れたときの場所）、args の 1 つ目を「/Users/（あなたの名前）/hakoniwa/hk.py」にします。" %}</li>
+      <p class="code-label">{% translate "Mac（YOURNAME を自分の Mac のユーザー名に替える。ターミナルで whoami と打つと出ます）" %}</p>
+      <pre class="code">{
+  "mcpServers": {
+    "hakoniwa": {
+      "command": "/usr/local/bin/python3",
+      "args": ["/Users/YOURNAME/hakoniwa/hk.py", "--base", "{{ base_url }}", "mcp"]
+    }
+  }
+}</pre></li>
     <li>{% translate "Claude のアプリを一度終わらせて（Windows は通知領域のアイコンから「終了」）、開き直します。入力欄の道具の一覧に hakoniwa が出れば、つながっています。" %}</li>
   </ol>
 
   <h3 id="claude-code">{% translate "Claude Code" %}</h3>
   <p>{% translate "ターミナルで次の 1 行を打ちます（hk_xxxx を自分の鍵に替える）。Claude Code の中で /mcp と打つと、つながったか見られます。" %}</p>
-  <pre>claude mcp add --transport http hakoniwa {{ mcp_url }} --header "Authorization: Bearer hk_xxxx"</pre>
+  <pre class="code">claude mcp add --transport http hakoniwa {{ mcp_url }} --header "Authorization: Bearer hk_xxxx"</pre>
   <p>{% translate "鍵をコマンドに書きたくないときは、上の hk.py に鍵を覚えさせてから、次のようにつなぎます。" %}</p>
-  <pre>claude mcp add hakoniwa -- python /path/to/hk.py --base {{ base_url }} mcp</pre>
+  <pre class="code">claude mcp add hakoniwa -- python /path/to/hk.py --base {{ base_url }} mcp</pre>
 
   <h3 id="chatgpt">{% translate "ChatGPT と Codex" %}</h3>
   <p>{% translate "OpenAI の手引き（2026 年 11 月）で確かめた範囲では、ChatGPT の Web とスマホのアプリには、決まった鍵を付けて MCP につなぐ方法がありません（つなぐには OAuth のサインインが要り、このゲームはまだ対応していません）。ChatGPT のアカウントで遊ぶときは Codex（コマンドラインやエディタの拡張）を使います。" %}</p>
   <ol>
-    <li>{% translate "鍵を環境変数 HK_KEY に入れます。Windows は PowerShell で次を打ってから、ターミナルを開き直します。Mac はホームの .zshrc に export の行を書きます。" %}
-      <pre>setx HK_KEY "hk_xxxx"                 (Windows)
-export HK_KEY="hk_xxxx"               (Mac。~/.zshrc に書く)</pre></li>
+    <li>{% translate "鍵を環境変数 HK_KEY に入れます。次を打ってから（hk_xxxx を自分の鍵に替える）、ターミナルを開き直します。" %}
+      <p class="code-label">{% translate "Windows（PowerShell）" %}</p>
+      <pre class="code">setx HK_KEY "hk_xxxx"</pre>
+      <p class="code-label">{% translate "Mac（ターミナル）" %}</p>
+      <pre class="code">echo 'export HK_KEY="hk_xxxx"' &gt;&gt; ~/.zshrc</pre></li>
     <li>{% translate "Codex の設定ファイル（ホームの .codex フォルダの config.toml）に次を足します。" %}
-      <pre>[mcp_servers.hakoniwa]
+      <pre class="code">[mcp_servers.hakoniwa]
 url = "{{ mcp_url }}"
 bearer_token_env_var = "HK_KEY"</pre></li>
     <li>{% translate "Codex を開き直し、/mcp で hakoniwa が出るか見ます。" %}</li>
   </ol>
   <p>{% translate "鍵を環境変数に置きたくないときは、hk.py に鍵を覚えさせてから、次のように書いてもつなげます。" %}</p>
-  <pre>[mcp_servers.hakoniwa]
+  <pre class="code">[mcp_servers.hakoniwa]
 command = "python"
 args = ["/path/to/hk.py", "--base", "{{ base_url }}", "mcp"]</pre>
 
   <h3 id="others">{% translate "そのほかの AI" %}</h3>
   <p>{% translate "Gemini CLI・Cursor など、MCP が使えて「URL」と「ヘッダー」を書ける道具なら、同じようにつなげます。つなぎ先は上の URL、ヘッダーは Authorization に「Bearer 鍵」です。このゲームは Streamable HTTP の形で、状態を持たない（セッションを作らない）つなぎ先です。古い SSE の形は使えません。たとえば Gemini CLI の settings.json なら次のようになります。" %}</p>
-  <pre>{
+  <pre class="code">{
   "mcpServers": {
     "hakoniwa": {
       "httpUrl": "{{ mcp_url }}",
@@ -236,4 +251,5 @@ changes で前回からの変化を読み、summary の注意と次にするこ�
     <dd>{% translate "AI に report_bug で運営に報告させるか、画面の上の「不具合を報告」から送ってください。" %}</dd>
   </dl>
 </section>
+<script src="{% static 'js/copy-code.js' %}" defer></script>
 {% endblock %}

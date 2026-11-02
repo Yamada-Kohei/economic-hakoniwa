@@ -23,6 +23,19 @@ def test_ai_guide_shows_the_endpoint_and_the_limits(client, world):
 
 
 @pytest.mark.django_db
+def test_ai_guide_code_can_be_copied_as_is(client, world):
+    """コードの枠に「コピー」ボタンの JS が付き、枠の中に Windows などの書き添えを混ぜない。"""
+    import re
+
+    page = client.get("/help/ai/").content.decode()
+    assert "js/copy-code.js" in page
+    blocks = re.findall(r'<pre class="(?:code|prompt)">(.*?)</pre>', page, flags=re.S)
+    assert len(blocks) >= 10
+    for block in blocks:
+        assert "(Windows)" not in block and "(Mac" not in block
+
+
+@pytest.mark.django_db
 def test_ai_guide_is_linked_from_the_other_guides_and_the_key_screen(
     client, world, django_user_model
 ):
