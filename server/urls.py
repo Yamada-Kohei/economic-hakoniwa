@@ -1,9 +1,13 @@
 from django.contrib import admin
 from django.urls import include, path
 
+from server.letters import push_views
 from server.web import server_status
 
 urlpatterns = [
+    # 画面ではなくブラウザ用のファイル。ルートの scope で worker を動かす。
+    path("sw.js", push_views.service_worker),
+    path("manifest.webmanifest", push_views.manifest),
     # 管理者だけの「サーバーの様子」。/admin/ の下に置き、管理画面と同じ守りに入れる
     path("admin/server/", admin.site.admin_view(server_status.view), name="server_status"),
     path("admin/", admin.site.urls),
