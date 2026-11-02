@@ -196,7 +196,7 @@
 | LB-38 | 電気・送電網・原料が足りずに動けなかった分の働き手には、賃金の `labor.furlough_`… | 決定（回7 後半） | tests/core/test_balance_round7b.py |
 | LB-39 | 売りに出ていたのに家計が1つも買わないターンが `household.reprice_turns`… | 決定（回7 後半 | tests/core/test_balance_round7b.py |
 | LB-40 | 計画経済の島の施設の賃金は、国が決める: 物価の上がった分と人手の足りなさでは動かさず（LB-0… | 決定（2026-11-01 の価格の決まり方の見直し） | tests/core/test_pricing_fix1.py |
-| LB-41 | 資本家階級は所得のうち使う割合も、預金から取り崩す割合も働く層より小さい（上位1%は所得の3〜5… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
+| LB-41 | 資本家階級は所得のうち使う割合も、財産から取り崩す割合も働く層より小さい（上位1%は所得の5割ほ… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
 
 ## [5 施設と企業](05-firms.md)
 

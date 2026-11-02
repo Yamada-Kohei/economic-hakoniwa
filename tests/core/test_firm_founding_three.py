@@ -73,13 +73,37 @@ def _set_owners(island, amount):
 
 
 def test_capitalists_spend_less_of_their_income_and_wealth(game):
-    """資本家階級は所得の3〜5割を使い、財産から年3〜5%を取り崩す。働く層は今までどおり。"""
+    """資本家階級は所得の5割ほどを使い、財産から年3〜5%を取り崩す。財産は所得の10〜12年分ほどで
+    釣り合う（現実の上位1%）。働く層は今までどおり。"""
     config = game.config
     owners, general = layers(config)[OWNERS], layers(config)[GENERAL]
     assert wealth_propensity(config, OWNERS) == owners["c2"] < config.get("household.c2")
     assert 0.03 <= wealth_propensity(config, OWNERS) * 12 <= 0.05
     assert wealth_propensity(config, GENERAL) == config.get("household.c2")
     assert 0.3 <= owners["c1"] <= 0.5 < general["c1"]
+    months = (1 - owners["c1"]) / owners["c2"]
+    assert 10 * 12 <= months <= 12 * 12
+
+
+def test_capitalists_draw_on_their_shares_too(game, base):
+    """資本家階級が取り崩すもとは、預金と持ち株の値打ちから株を担保にした借入を引いた分。働く層は
+    預金だけ。"""
+    from hakoniwa_core.economy.households import SHARES_WORTH, wealth
+
+    world, island, ctx, f, number, other = _setup(game, base)
+    config = game.config
+    owners = household(OWNERS)
+    island.scratch.pop(SHARES_WORTH, None)  # 写した世界に前のターンの値が残っている
+    shares = co.owners_collateral(island) - _pledged(island)
+    assert shares > 0
+    assert wealth(island, config, OWNERS) == ledger.money(island, owners) + shares
+    assert wealth(island, config, GENERAL) == ledger.money(island, household(GENERAL))
+    # 株を担保に借りた分は財産から引く（株の値打ちはターンに一度だけ数える）
+    island.scratch.pop(SHARES_WORTH, None)
+    open_books(island)
+    bank = banks.active_banks(island)[0]
+    banks.lend(island, bank, owners, 1_000_000, banks.PLEDGE, 60, ctx.turn, 300)
+    assert wealth(island, config, OWNERS) == ledger.money(island, owners) + shares - 1_000_000
 
 
 def test_firms_without_a_track_record(game, base):
