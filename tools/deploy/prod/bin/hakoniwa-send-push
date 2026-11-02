@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# 1 分ごとのタイマーが呼ぶ。公電のブラウザ通知（Web Push、設計書タブ 11 UI-59）の予定を送る。
+# 鍵（HAKONIWA_VAPID_*）がなければ send_push は何もしない。反映・ターンの更新と同じ鍵を使い、重ならない
+# （そのあいだの予定は次の分に送る）。失敗は記録だけにする（毎分の知らせにしない）。
+set -uo pipefail
+# shellcheck source=lib.sh
+source "${HAKONIWA_LIB:-/usr/local/lib/hakoniwa}/lib.sh"
+load_env
+
+exec 9>"$LOCK_FILE"
+flock -n 9 || exit 0
+
+out="$(manage send_push 2>&1)"
+rc=$?
+if ((rc != 0)); then
+  log "公電の通知の送信に失敗: $out"
+  exit 1
+fi
