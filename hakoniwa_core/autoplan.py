@@ -1383,7 +1383,7 @@ def _power_line(island: IslandState, defs: Defs, pos: tuple[int, int]) -> list[t
 
 # --- 貿易（フェーズ3-1） ---------------------------------------------------------------
 
-BLOC_NAMES = ("北の貿易圏", "南の貿易圏")
+BLOC_NAMES = ("世界の貿易圏",)  # 貿易の始まった島ぜんぶで1つ
 
 
 def plan_trade(
@@ -1391,9 +1391,9 @@ def plan_trade(
 ) -> dict[int, list[tuple[str, dict]]]:
     """貿易圏の標準の計画（島ごとの命令）。島ごとの plan_turn の後に、世界を見て並べる。
 
-    貿易の始まった島を世界マップの縦の位置で北と南に分け（真ん中の行の島は両方）、どちらにも圏が
-    なければ、その側で人口の一番多い島が誰でも入れる圏を作ります（決済通貨はその島の通貨）。圏が
-    できたら、その側の島で入っていないものが加盟します。契約は結びません。
+    貿易の始まった島ぜんぶで1つの圏にします。圏がなければ、人口の一番多い島が誰でも
+    入れる圏を作ります（決済通貨はその島の通貨）。圏ができたら、入っていない島が加盟します。契約は
+    結びません。
     """
     ready = [
         i
@@ -1402,12 +1402,9 @@ def plan_trade(
     ]
     if len(ready) < 2:
         return {}
-    rows = sorted(world.islands[i].wy for i in ready)
-    middle = rows[len(rows) // 2]
-    sides = (
-        [i for i in ready if world.islands[i].wy <= middle],
-        [i for i in ready if world.islands[i].wy >= middle],
-    )
+    # 北と南に分けず、貿易の始まった島ぜんぶで1つの誰でも入れる圏（作るのは人口の一番多い島）。
+    # 圏が2つだと、同じ財の売りと買いが別の圏に分かれて約定しなかった
+    sides = (ready,)
     existing = {b["name"]: b for b in trade_blocs.blocs(world)}
     waiting = {  # 前の加盟の命令がまだ済んでいない島（行政力が足りず繰り越したときなど）
         i

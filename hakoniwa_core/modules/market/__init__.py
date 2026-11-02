@@ -99,7 +99,13 @@ from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
 from hakoniwa_core.military import forces
 from hakoniwa_core.modules import infrastructure
-from hakoniwa_core.modules.population import FED, FOOD_ORDERS, HUNGER, layer_food_needs
+from hakoniwa_core.modules.population import (
+    FED,
+    FOOD_ORDERS,
+    HUNGER,
+    jobless_family,
+    layer_food_needs,
+)
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import (
     OWNER_PRIVATE,
@@ -210,6 +216,20 @@ def seller_limit(ask: int, freight: int, high: int) -> int:
     （希望価格は1ターンに値幅ずつ動く）。
     """
     return min(high, -(-ask * BASIS // max(1, BASIS - freight)))
+
+
+def _lowest_ask(ctx, island: IslandState, order: Order, party: Party, good: str) -> int:
+    """売りの注文の売り手が受け入れる一番安い値段: 施設が作った物なら、作る費用（unit_floor）
+    に運賃を足した額（指値より高くはしない）。費用のわからない売り手（国の倉庫・商社など）は指値。"""
+    f = party.facility
+    assert order.limit is not None
+    if f is None:
+        return order.limit
+    wage = f.economy.get("wage", 0)
+    floor = unit_floor(ctx.defs, ctx.config, f, good, island.economy.prices, wage, party.freight)
+    if floor <= 0:
+        return order.limit
+    return min(order.limit, -(-floor * BASIS // max(1, BASIS - party.freight)))
 
 
 def floored_limit(ask: int, floor: int, freight: int, high: int) -> int:
@@ -2041,18 +2061,41 @@ class Market(IslandStage):
             for good, qty in sorted(ideal.items()):
                 if offered.get(good, 0) <= 0:
                     wanted[good] = wanted.get(good, 0) + qty
-            if desire is not None and need > 0:
-                # 計画経済: 売りに出ていない食料は、それだけで足りるほど売りに出ていたら（ほかは
-                # 今のまま）買った量を数える。どれも売りに出ていたとした理想の献立で数えると、
-                # 質の高い魚で足りていて買わない穀物まで行列と生産目標に入り、作った分が腐った
+            wish = need
+            if hungry and desire is None and layer == GENERAL:
+                # 食べ物が買えずに畑に戻った働き手とその家族（modules/employment の back_to_fields）
+                # も、食べ物が売りに出ていれば買って仕事に戻る（2026-11-02。みなが畑に戻ると市場で
+                # 買いたい人がいなくなり、漁港も農場も建たないまま飢えが続いた）
+                back = island.stats.get("labor.back_to_fields", 0) * jobless_family(defs, island)
+                wish += to_milli(back * config.get("population.food_per_person"))
+            if (desire is not None or hungry) and wish > 0:
+                # 売りに出ていない食料を、それだけで足りるほど売りに出ていたら（ほかは今のまま）
+                # 買った量
+                alone = {}
                 for good in foods:
                     if offered.get(good, 0) > 0:
                         continue
-                    enough = -(-need * QUANTITY_SCALE // nutritions[good])
-                    maybe = food_orders(need, {**caps, good: enough}, menu, food_budget, budget)
+                    enough = -(-wish * QUANTITY_SCALE // nutritions[good])
+                    maybe = food_orders(wish, {**caps, good: enough}, menu, food_budget, budget)
                     qty = maybe.get(good, (0, 0))[0]
                     if qty > 0:
+                        alone[good] = qty
+                if desire is not None:
+                    # 計画経済: その量を行列と生産目標に数える。どれも売りに出ていたとした理想の
+                    # 献立で数えると、質の高い魚で足りていて買わない穀物まで行列と生産目標に入り、
+                    # 作った分が腐った
+                    for good, qty in sorted(alone.items()):
                         desire[good] = desire.get(good, 0) + qty
+                else:
+                    # 飢えている家計は、売りに出ていない食料のどれでも、それだけ売りに出ていれば
+                    # 買った量まで買いたい（2026-11-02。理想の献立は預金があると質の高い加工食品
+                    # だけになり、島で作れない加工食品しか買いたい量に出なかった。漁港と農場が
+                    # 倒産でなくなると、魚と穀物の値段が上がらず参入もなく、飢えが 100 ターン
+                    # 以上続いた）
+                    for good, qty in sorted(alone.items()):
+                        extra = qty - (ideal.get(good, 0) if offered.get(good, 0) <= 0 else 0)
+                        if extra > 0:
+                            wanted[good] = wanted.get(good, 0) + extra
             food_cost = sum(gross_cost(lim, q, rate, tax) for q, lim in plan.values())
             if tiers:  # 飢えた家計は食費を先に取る（食料に使い切らなかった分は預金に残る）
                 food_cost = min(budget, sum(gross_cost(lim, q, rate, tax) for _, q, lim in tiers))
@@ -3456,7 +3499,16 @@ class Market(IslandStage):
                 continue
             if result.demand > Market._out_of_money(books_by_good[good], result):
                 continue
-            asks = [o.limit for o, _ in books_by_good[good].sells if o.limit is not None]
+            # 売り手が受け入れる一番安い値段は、指値でなく作る費用（unit_floor に運賃を足した額）。
+            # 指値は前の値段の値幅の中に縛られるので、輸出が引き合う値段が島の値段の値幅の下端より
+            # 安いと、作る費用で引き合う輸出があっても島の値段がいつまでも下がらなかった（造船所
+            # の売れ残った船。島に買い手がなく、島の値段が費用の 2〜3 倍のまま 100 ターン以上
+            # 止まった）
+            asks = [
+                _lowest_ask(ctx, island, o, party, good)
+                for o, party in books_by_good[good].sells
+                if o.limit is not None
+            ]
             if asks:
                 idle[good] = min(asks)
         found: dict[str, traders.Prospect] = {}
@@ -3540,12 +3592,14 @@ class Market(IslandStage):
         for f in island.facilities:
             if not f.built or not fac.on_map(f):
                 continue
+            # 閉鎖の途中か差し押さえ中の施設は作らない（2026-11-02。差し押さえた漁港の変動費が
+            # 値段のすぐ下にあると、作らないのに魚の値段が上がらず、飢えが続いた）
+            if "closing" in f.economy or "foreclosed" in f.economy:
+                continue
             wage = f.economy.get("wage", 0)
             rate = rates.get(f.id, 0)
             if fac.recipe_of(defs, f)["outputs"].get(good):
                 floors.append(unit_floor(defs, config, f, good, prices, wage, rate))
-                continue
-            if "closing" in f.economy or "foreclosed" in f.economy:
                 continue
             now: int | None = None
             for name, recipe in sorted(defs.facilities[f.kind]["recipes"].items()):

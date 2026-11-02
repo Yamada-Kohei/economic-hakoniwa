@@ -105,11 +105,10 @@ def test_trade_is_set_up_on_every_island(game, traded):
 def test_blocs_form_and_goods_are_shipped(game, traded):
     world, _, _ = traded
     made = blocs.blocs(world)
-    assert len(made) == 2  # 北と南（真ん中の行の島は両方）
-    for bloc in made:
-        assert len(bloc["members"]) >= 2
-        assert bloc["currency"] in bloc["members"]
-        assert bloc["volume"] or any(bloc["history"].values())
+    [bloc] = made  # 貿易の始まった島ぜんぶで1つ（北と南に分けると、売りと買いが別の圏に分かれた）
+    assert sorted(bloc["members"]) == sorted(world.island_ids())
+    assert bloc["currency"] in bloc["members"]
+    assert bloc["volume"] or any(bloc["history"].values())
     cargo = world_state(world)["cargo"]
     assert sum(cargo["loaded"].values()) > 0
     assert sum(cargo["unloaded"].values()) > 0
@@ -542,7 +541,13 @@ def test_trade_facilities_hiring_for_their_cargo_are_not_short_of_workers(game, 
         for f in [port, *traders_of(island, game.config)]:
             seen = f
             if f is port:
-                seen = replace(f, economy={**f.economy, "handled": f.economy["handled"][:-1]})
+                handled = f.economy["handled"][:-1]
+                if len(handled) + 1 >= game.config.get("trade.cost_turns"):
+                    # 残す月の数がいっぱいなら、雇ったときに見ていた一番古い月はもう消えているので、
+                    # その月を 0 にして比べる（雇いたい人数の下限。貿易の直しで荷が増え続け、消えた
+                    # 月を数えないと1人多く見えた）
+                    handled = [0, *handled]
+                seen = replace(f, economy={**f.economy, "handled": handled})
             else:  # 商社も同じ: 雇ったときに見た前の月までの量で比べる
                 state = traders.state_of(f)
                 if len(state["volume"]) >= game.config.get("trade.entry_turns"):

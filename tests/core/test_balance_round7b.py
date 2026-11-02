@@ -10,6 +10,7 @@ import copy
 
 import pytest
 
+import hakoniwa_core.modules.companies as companies
 from hakoniwa_core import autoplan, ledger
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.economy import OWNERS, banks, facility_entity, household
@@ -23,6 +24,7 @@ from hakoniwa_core.modules.labor import furlough_share
 from hakoniwa_core.modules.upgrade import fix_recipes
 from hakoniwa_core.state import OWNER_PRIVATE, Facility, MarketRecord
 from hakoniwa_core.state.generate import generate_world
+from hakoniwa_core.state.model import FacilityBook
 from hakoniwa_core.units import BASIS
 from tests.core.test_balance_round7 import market_island, private_members
 from tests.core.test_balance_round7 import merge as join
@@ -115,6 +117,47 @@ def test_pool_count_resets_when_not_supported(game, base):
     b.economy[co.POOLED_AT] = ctx.turn - 1
     FirmsFunds().run_island(island, ctx)
     assert co.POOLED not in b.economy
+
+
+def test_restructuring_waits_while_a_plant_is_closing(game, base, monkeypatch):
+    """連結の現金収支が赤字続きでも、企業の施設に閉鎖の途中のものがあれば、次の施設を閉めない
+    （FM-54。閉める施設の赤字がまだ連結に数えられていて、島でただ1つの漁港まで閉めた）。"""
+    world = copy.deepcopy(base)
+    island, a, b = two_plants(game, world)
+    ctx = context(game, world)
+    island.books = [FacilityBook(a.id, {"profit": -(10**12)})]
+    rec = co.record(island, co.firm_of(a))
+    closed = []
+    monkeypatch.setattr(FirmsFunds, "_close_worst", lambda *args: closed.append(args[3]))
+    rec[co.RED] = game.config.get("firms.restructure_turns")
+    FirmsFunds().run_island(island, ctx)
+    assert closed  # 閉鎖の途中のものがなければ立て直す
+    closed.clear()
+    rec[co.RED] = game.config.get("firms.restructure_turns")
+    b.economy["closing"] = ctx.turn
+    FirmsFunds().run_island(island, ctx)
+    assert not closed
+
+
+def test_restructuring_keeps_the_only_profitable_maker(game, base, monkeypatch):
+    """立て直しで閉める施設に、島でただ1つの作り手で変動費の利益が出ている施設は選ばない（FM-54。
+    閉めても企業の現金収支は良くならず、島からその物が消える）。"""
+    world = copy.deepcopy(base)
+    island, a, b = two_plants(game, world)
+    ctx = context(game, world)
+    outputs = set(fac.recipe_of(game.defs, b)["outputs"])
+    for f in island.facilities:  # b をその物のただ1つの作り手にする
+        if f.id not in (a.id, b.id) and outputs & set(fac.recipe_of(game.defs, f)["outputs"]):
+            f.economy["closing"] = ctx.turn
+    assert not set(fac.recipe_of(game.defs, a)["outputs"]) & outputs  # 試験の準備
+
+    monkeypatch.setattr(companies, "variable_profit", lambda *args: 1000)
+    number = co.firm_of(a)
+    FirmsFunds._close_worst(island, ctx, number, [b])
+    assert "closing" not in b.economy  # 前は候補がこれだけなら閉めた
+    monkeypatch.setattr(companies, "variable_profit", lambda *args: -1000)
+    FirmsFunds._close_worst(island, ctx, number, [b])
+    assert "closing" in b.economy  # 赤字なら閉める
 
 
 # --- 休業 -------------------------------------------------------------------------

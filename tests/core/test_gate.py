@@ -153,9 +153,9 @@ def test_supply_chain_runs_for_300_turns(game, seed):
     merchant = game.config.get("foreign_merchant")
     leave = island.ext["trade"]["merchant_from"] + merchant["turns"]
     tail = (merchant["turns"] - merchant["taper_from"]) // 10
-    # 商人が去った後、島で一度も作られていない商人の品目（燃料など）は、閉じた施設の残りの在庫を
-    # 国が売りに出すと、ほんの少しが品切れの値段で売れることがある（#247 の世界で、閉じた農場の燃料
-    # 1 単位が初めの 5.6 倍で売れた）。売り手のない品目のたまの売り買いなので、値段を見ない
+    # 商人が去った後、島で作っていない品目は、施設に残った少しの荷（燃料 0.001 など）を施設どうしで
+    # 売り買いするだけで、値段は商人の最後の値段のまま残る。その値段は見ない（FM-54 で立て直しが
+    # 閉める施設が変わり、残りの荷を売る時が静かな間の後にずれた）
     unmade = {g for g in game.defs.goods if produced.get(g, 0) <= 0}
     after = [
         m

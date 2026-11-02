@@ -57,6 +57,9 @@ FUEL = "fuel"  # 機械化した畑が毎ターン使う燃料の財
 FUEL_SHARE = (
     "fuel_share"  # economy: 機械の畑のうち、燃料が手元にある割合（1000 分の 1。なければ全部）
 )
+FERTILIZER = "chemicals"  # 肥料ありの畑が使う財
+# economy: 肥料ありの畑のうち、肥料が手元にある割合（1000 分の 1。なければ全部。FM-53）
+FERTILIZER_SHARE = "fertilizer_share"
 
 
 def short_of_inputs(status: str) -> bool:
@@ -228,18 +231,22 @@ def recipe_of(defs: Defs, f: Facility, fuelled: bool = True) -> Mapping[str, Any
     作り方を割合で混ぜた作り方（蒔いて育っている畑は何も出さず、何も使わない）。
 
     機械化した農場は、機械の傷みと燃料の手元の割合（FUEL_SHARE）の小さいほうだけ、その割合の畑が
-    手作業で動く（FM-51）。fuelled=False は燃料の手元を見ない作り方で、燃料を買う量を決めるのに使う
-    （手元が足りないからと買う量を減らすと、いつまでも手作業のままになる）。"""
+    手作業で動く（FM-51）。肥料ありの畑は、肥料の手元の割合（FERTILIZER_SHARE）だけ肥料ありで、残りは
+    肥料なしの作り方で動く（FM-53）。fuelled=False は燃料と肥料の手元を見ない作り方で、燃料と肥料を
+    買う量を決めるのに使う（手元が足りないからと買う量を減らすと、いつまでも手作業のままになる）。"""
     fields = f.economy.get(FIELDS)
     share = machine_ratio(f) if GRADE in f.ext else FULL
     if fuelled and GRADE in f.ext:
         share = min(share, f.economy.get(FUEL_SHARE, FULL))
-    if fields is None and share >= FULL:
+    fertilized = f.economy.get(FERTILIZER_SHARE, FULL) if fuelled else FULL
+    if fields is None and share >= FULL and fertilized >= FULL:
         recipe = defs.facilities[f.kind]["recipes"][f.recipe]
     else:
         table = {f.recipe: FULL} if fields is None else dict(fields)
         if share < FULL:
             table = _worn(defs, f.kind, table, share)
+        if fertilized < FULL:
+            table = _unfertilized(defs, f.kind, table, fertilized)
         recipe = _blend(defs, f.kind, f.recipe, tuple(sorted(table.items())))
     size = size_of(f)
     return recipe if size == 1 else _sized(recipe, size)
@@ -284,6 +291,63 @@ def refresh_fuel(defs: Defs, f: Facility) -> None:
         f.economy.pop(FUEL_SHARE, None)
     else:
         f.economy[FUEL_SHARE] = have
+
+
+def refresh_fertilizer(defs: Defs, f: Facility) -> None:
+    """肥料ありの作り方の畑のうち、肥料（化学品）が手元にある割合を決める（雇用の段の初め。前の
+    ターンの市場で買った分）。足りない割合の畑は同じ作物の肥料なしの作り方で動き、収量が下がるだけで
+    農場は止まらない（FM-53。FM-41 の作物替えの途中の畑と FM-51 の燃料と同じ形）。今の操業目標で
+    使う分に足りるかを見る。"""
+    if not f.built or grow_turns(defs, f.kind, f.recipe) <= 0:
+        f.economy.pop(FERTILIZER_SHARE, None)
+        return
+    need = scale(
+        recipe_of(defs, f, fuelled=False)["inputs"].get(FERTILIZER, 0),
+        f.economy.get("target", FULL),
+    )
+    have = ratio(stock.total(f.stock, FERTILIZER), need) if need > 0 else FULL
+    if have >= FULL:
+        f.economy.pop(FERTILIZER_SHARE, None)
+    else:
+        f.economy[FERTILIZER_SHARE] = have
+
+
+def unfertilized_recipe(defs: Defs, kind: str, name: str) -> str | None:
+    """肥料ありの作り方 name の、同じ作物で肥料を使わない作り方（段階は同じか、なければ一番近い下の
+    段階。近代化の作り方はみな肥料を使うので、機械化の肥料なしになる）。肥料を使わない作り方なら
+    None。"""
+    recipes = defs.facilities[kind]["recipes"]
+    recipe = recipes[name]
+    if FERTILIZER not in recipe["inputs"]:
+        return None
+    crop = crop_of(defs, kind, name)
+    grade = recipe.get("grade", 0)
+    rest = set(recipe["inputs"]) - {FERTILIZER}
+    found = [
+        (r.get("grade", 0), sum(r["outputs"].values()), other)
+        for other, r in sorted(recipes.items())
+        if crop_of(defs, kind, other) == crop
+        and FERTILIZER not in r["inputs"]
+        and r.get("grade", 0) <= grade
+        and set(r["inputs"]) <= rest
+        and grow_turns(defs, kind, other) > 0
+    ]
+    return max(found)[2] if found else None
+
+
+def _unfertilized(defs: Defs, kind: str, table: dict[str, int], share: int) -> dict[str, int]:
+    """畑の割合 table のうち、肥料が手元にある割合が share しかないぶん、肥料ありの畑を肥料なしの
+    作り方の畑にした割合（FM-53）。"""
+    out: dict[str, int] = {}
+    for name, part in table.items():
+        plain = unfertilized_recipe(defs, kind, name)
+        if plain is None:
+            out[name] = out.get(name, 0) + part
+            continue
+        kept = part * share // FULL
+        out[name] = out.get(name, 0) + kept
+        out[plain] = out.get(plain, 0) + part - kept
+    return {name: part for name, part in out.items() if part > 0}
 
 
 def _worn(defs: Defs, kind: str, table: dict[str, int], share: int) -> dict[str, int]:
