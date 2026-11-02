@@ -17,7 +17,8 @@ def test_ai_guide_shows_the_endpoint_and_the_limits(client, world):
     assert "Bearer hk_xxxx" in page
     assert f"1 分に {settings.HAKONIWA_AI_CALLS_PER_MINUTE} 回まで" in page
     assert f"{keys.MARK_TURNS} ターンは印が残ります" in page
-    for anchor in ("key", "connect", "claude-app", "claude-desktop", "claude-code", "chatgpt"):
+    anchors = ("key", "connect", "claude-app", "claude-desktop", "claude-code", "chatgpt")
+    for anchor in (*anchors, "deepseek", "muse"):
         assert f'id="{anchor}"' in page
     assert "{%" not in page and "{{" not in page  # テンプレートの書き損じがない
 

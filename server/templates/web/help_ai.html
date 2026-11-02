@@ -3,7 +3,7 @@
 {% block content %}
 <h1>{% translate "手引き：AI で遊ぶ" %}</h1>
 
-<p>{% translate "Claude や ChatGPT（Codex）などの AI に、あなたの国を遊ばせる方法を、初めての方向けに順に書きました。ゲームの決まりは" %} <a href="{% url 'help_start' %}">{% translate "手引き：入門" %}</a> {% translate "と" %} <a href="{% url 'help' %}">{% translate "手引き：詳しい仕組み" %}</a> {% translate "にあります（AI も同じ手引きを読めます）。" %}</p>
+<p>{% translate "Claude・ChatGPT（Codex）・DeepSeek・Muse（Meta）などの AI に、あなたの国を遊ばせる方法を、初めての方向けに順に書きました。ゲームの決まりは" %} <a href="{% url 'help_start' %}">{% translate "手引き：入門" %}</a> {% translate "と" %} <a href="{% url 'help' %}">{% translate "手引き：詳しい仕組み" %}</a> {% translate "にあります（AI も同じ手引きを読めます）。" %}</p>
 
 <nav class="panel" aria-label="{% translate 'AI で遊ぶの目次' %}">
   <h2>{% translate "目次" %}</h2>
@@ -17,6 +17,8 @@
         <li><a href="#claude-desktop">{% translate "Claude のパソコンのアプリ（hk.py を使う）" %}</a></li>
         <li><a href="#claude-code">{% translate "Claude Code" %}</a></li>
         <li><a href="#chatgpt">{% translate "ChatGPT と Codex" %}</a></li>
+        <li><a href="#deepseek">{% translate "DeepSeek" %}</a></li>
+        <li><a href="#muse">{% translate "Muse（Meta）" %}</a></li>
         <li><a href="#others">{% translate "そのほかの AI" %}</a></li>
       </ul>
     </li>
@@ -73,6 +75,8 @@
       <tr><td>{% translate "Claude のパソコンのアプリ" %}</td><td>{% translate "hk.py を設定ファイルに書く" %}</td><td>{% translate "コネクタに鍵を入れられない人。Python が要ります" %}</td></tr>
       <tr><td>Claude Code</td><td>{% translate "コマンド 1 行" %}</td><td>{% translate "コマンドに慣れた人" %}</td></tr>
       <tr><td>{% translate "Codex（ChatGPT）" %}</td><td>{% translate "config.toml に書く" %}</td><td>{% translate "ChatGPT を使っている人" %}</td></tr>
+      <tr><td>DeepSeek</td><td>{% translate "Claude Code の頭を DeepSeek に替える" %}</td><td>{% translate "DeepSeek の API の鍵を持っている人" %}</td></tr>
+      <tr><td>{% translate "Muse（Meta）" %}</td><td>{% translate "会話で Muse にコネクタを作ってもらう" %}</td><td>{% translate "Muse を使っている人" %}</td></tr>
     </tbody>
   </table>
 
@@ -149,6 +153,44 @@ bearer_token_env_var = "HK_KEY"</pre></li>
   <pre class="code">[mcp_servers.hakoniwa]
 command = "python"
 args = ["/path/to/hk.py", "--base", "{{ base_url }}", "mcp"]</pre>
+
+  <h3 id="deepseek">{% translate "DeepSeek" %}</h3>
+  <p>{% translate "DeepSeek の公式の手引き（2026 年 11 月）には、チャットの画面（Web とスマホのアプリ）に MCP をつなぐ方法が載っていません。DeepSeek の公式の手引きにある「Claude Code を DeepSeek で動かす」形を使います。考えるのは DeepSeek で、ゲームの道具は Claude Code が呼びます。DeepSeek の API の利用料（使った分だけ）がかかり、Anthropic のアカウントは要りません。" %}</p>
+  <ol>
+    <li>{% translate "DeepSeek の開発者向けの画面（DeepSeek Platform）で API の鍵を作り、お金を入れておきます。" %}</li>
+    <li>{% translate "Claude Code を入れます（Node.js 18 以上が要ります。Windows は Git for Windows も）。" %}
+      <pre class="code">npm install -g @anthropic-ai/claude-code</pre></li>
+    <li>{% translate "ゲームのつなぎ先を足します（hk_xxxx をゲームの AI 用の鍵に替える）。" %}
+      <pre class="code">claude mcp add --transport http hakoniwa {{ mcp_url }} --header "Authorization: Bearer hk_xxxx"</pre></li>
+    <li>{% translate "DeepSeek で動かします。次を打ってから claude と打ちます（sk-xxxx を DeepSeek の API の鍵に替える）。ターミナルを開くたびに打ちます。" %}
+      <p class="code-label">{% translate "Windows（PowerShell）" %}</p>
+      <pre class="code">$env:ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
+$env:ANTHROPIC_AUTH_TOKEN="sk-xxxx"
+$env:ANTHROPIC_MODEL="deepseek-flash[1m]"
+claude</pre>
+      <p class="code-label">{% translate "Mac（ターミナル）" %}</p>
+      <pre class="code">export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
+export ANTHROPIC_AUTH_TOKEN="sk-xxxx"
+export ANTHROPIC_MODEL="deepseek-flash[1m]"
+claude</pre>
+      {% translate "もっとよく考えるモデルにするときは、deepseek-flash[1m] を deepseek-v4-pro に替えます（利用料は上がります）。" %}</li>
+    <li>{% translate "あとは「最初に AI に頼む」の文で頼みます。" %}</li>
+  </ol>
+  <p class="muted">{% translate "ゲームの鍵（hk_ で始まる）と DeepSeek の鍵は別の物です。取り違えないでください。" %}</p>
+
+  <h3 id="muse">{% translate "Muse（Meta）" %}</h3>
+  <p>{% translate "Meta の Muse は、設定の画面ではなく会話でつなぎます。Muse にこのゲームのつなぎ先を伝えると、Muse がコネクタを作って確かめ、スキルとして残します。Meta の公式の手引きにはまだ細かい手順がなく、ここは使っている人たちの報告（2026 年 11 月）をもとに書きました。Muse を使える国や地域には限りがあります。" %}</p>
+  <ol>
+    <li>{% translate "Muse の会話（Web・スマホのアプリ・WhatsApp）で、次のように頼みます。" %}
+      <pre class="prompt">{% blocktranslate %}経済版箱庭諸国というゲームの MCP サーバーを、カスタムコネクタとして足してください。
+URL: {{ mcp_url }}
+つなぎ方: リモートの Streamable HTTP
+認証: Authorization ヘッダーの Bearer トークン（鍵は安全な入力欄で渡します）
+つないだら道具の一覧を見せて、スキルとして保存してください。{% endblocktranslate %}</pre></li>
+    <li>{% translate "Muse が鍵を聞いてきたら、Muse が出す安全な入力欄に、ゲームの AI 用の鍵を入れます。会話の文に鍵を貼らないでください（会話の記録に残ります）。値に「Bearer 」を付けるか聞かれたら、付けた形（Bearer hk_xxxx）にします。" %}</li>
+    <li>{% translate "道具の一覧に whoami・summary・set_orders などが出れば、つながっています。Muse の設定で、このコネクタの使い方（毎回確かめるか、任せるか）を選べます。" %}</li>
+    <li>{% translate "あとは「最初に AI に頼む」の文で頼みます。" %}</li>
+  </ol>
 
   <h3 id="others">{% translate "そのほかの AI" %}</h3>
   <p>{% translate "Gemini CLI・Cursor など、MCP が使えて「URL」と「ヘッダー」を書ける道具なら、同じようにつなげます。つなぎ先は上の URL、ヘッダーは Authorization に「Bearer 鍵」です。このゲームは Streamable HTTP の形で、状態を持たない（セッションを作らない）つなぎ先です。古い SSE の形は使えません。たとえば Gemini CLI の settings.json なら次のようになります。" %}</p>
