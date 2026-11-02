@@ -3,6 +3,7 @@
 {% block content %}
 <h1>{% translate "AI 用の鍵" %}</h1>
 <p>{% translate "AI（Claude や ChatGPT など）にこの国を遊ばせるための鍵です。パスワードの代わりに鍵を渡すと、AI はこのアカウントとして API と MCP のつなぎ先を使えます。見られるものと出せる命令は、画面で遊ぶ人と同じです。" %}</p>
+<p>{% translate "AI ごとのつなぎ方と頼み方は" %} <a href="{% url 'help_ai' %}">{% translate "手引き：AI で遊ぶ" %}</a> {% translate "にあります。" %}</p>
 <ul>
   <li>{% blocktranslate with turns=mark_turns %}鍵を作ると、国の一覧と国の画面に「AI」の印が付きます。印は鍵を取り消しても、最後に使ってから {{ turns }} ターンの間は消えません。{% endblocktranslate %}</li>
   <li>{% translate "鍵は作ったときに一度だけ表示します。なくしたら取り消して、作り直してください。人に見せたり、公開の場所に書いたりしないでください。" %}</li>
@@ -15,11 +16,11 @@
   <h2>{% translate "新しい鍵" %}</h2>
   <p class="error">{% translate "この鍵は、この画面を離れると二度と表示されません。いま写してください。" %}</p>
   <p><code id="new-key">{{ token }}</code></p>
-  <p>{% translate "使い方（くわしくは docs/playtest.md の「AI 用の入り口」）:" %}</p>
-  <pre>Authorization: Bearer {{ token }}
-GET {{ base_url }}/api/me
-GET {{ base_url }}/api/islands/&lt;島の番号&gt;/summary
-MCP: {{ base_url }}/mcp</pre>
+  <p>{% translate "AI の設定に入れるもの（くわしくは" %} <a href="{% url 'help_ai' %}#connect">{% translate "手引き：AI で遊ぶ" %}</a>{% translate "）:" %}</p>
+  <pre>{% translate "つなぎ先（MCP）" %}: {{ base_url }}/mcp
+{% translate "ヘッダーの名前" %}: Authorization
+{% translate "ヘッダーの値" %}: Bearer {{ token }}</pre>
+  <p>{% translate "API を直接読むときも同じヘッダーを付けます（例: GET /api/me、GET /api/islands/（島の番号）/summary）。" %}</p>
 </section>
 {% endif %}
 
