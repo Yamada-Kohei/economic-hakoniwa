@@ -307,6 +307,7 @@ def test_hungry_villagers_feed_themselves_instead_of_working(game, warmed):
     world = copy.deepcopy(warmed)
     calm = copy.deepcopy(world)
     island = island_of(world, "market")
+    before = sum(f.workers for f in island.facilities if f.kind == "farm")
     island.economy.households[GENERAL][FED] = 500
     run(game, world, 1)
     run(game, calm, 1)
@@ -314,10 +315,12 @@ def test_hungry_villagers_feed_themselves_instead_of_working(game, warmed):
     assert island.stats["labor.back_to_fields"] > 0
     assert island.stats["subsistence"] > usual["subsistence"]
     assert island.stats["employed"] < usual["employed"]
+    # 農場は畑に戻った人の分を減らさない。比べるのは前のターンの人数か、飢えのない世界の人数の
+    # 少ない方（飢えのない世界で農場がちょうど人を増やすターンだと、飢えた世界では畑に戻った村の人
+    # の代わりに、賃金の高い工場が町の失業者を先に雇い、農場は増やせない。#247 の世界）
+    calm_farms = sum(f.workers for f in island_of(calm, "market").facilities if f.kind == "farm")
     farms = sum(f.workers for f in island.facilities if f.kind == "farm")
-    assert farms >= 0.9 * sum(
-        f.workers for f in island_of(calm, "market").facilities if f.kind == "farm"
-    )
+    assert farms >= 0.9 * min(before, calm_farms)
 
 
 def test_people_back_from_their_fields_do_not_carry_the_market_hunger(game):
