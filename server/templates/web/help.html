@@ -189,6 +189,7 @@
 <section class="panel" id="goods">
   <h2>{% translate "品目と自然条件" %}</h2>
   <p class="muted">{% translate "品目ごとの作った量・使った量・輸出入と、止まっている工場が待っているものは、島の「産業の鎖」の画面で見られます。" %}</p>
+  <p>{% translate "どの品目がどの品目の材料になるかは、" %}<a href="{% url 'help_chain' %}">{% translate "手引き：産業のつながり" %}</a>{% translate "の図で見られます。品目を押すと、原料をさかのぼる道と使う先が光ります。" %}</p>
   <dl class="rules">
     <dt>{% translate "品目と産業の鎖" %}</dt>
     <dd>
@@ -725,6 +726,7 @@
 
 <section class="panel" id="facilities">
   <h2>{% translate "施設" %}</h2>
+  <p>{% translate "品目どうしのつながりを図で見るには" %} <a href="{% url 'help_chain' %}">{% translate "手引き：産業のつながり" %}</a>{% translate "。" %}</p>
   <p>{% translate "民営の鉱山を銅鉱石の生産方式へ替えることはできません。鉱山には鉄鉱石・石炭・ボーキサイト・銅鉱石・ウラン鉱石の方式がありますが、国営でも掘る鉱業資源の違う方式には変更できません。銅を自作するには、銅鉱石のある国で、鉱山の数の上限を確かめて国営の鉱山を「銅鉱石」の方式で建て、銅の精錬所で加工します。銅鉱石のない国は輸入を検討してください。" %}</p>
   <div class="table-scroll">
   <table class="facilities">

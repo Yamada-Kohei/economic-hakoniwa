@@ -1,0 +1,52 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{% translate "手引き：産業のつながり" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'css/help-chain.css' %}">
+<div class="chain-page">
+<h1>{% translate "手引き：産業のつながり" %}</h1>
+<p>{% translate "どの施設が何を使って何を作るかを、ゲームの定義データからそのまま並べました。量は施設1つが全力で1か月（1ターン）に使う・作る量で、ほかの画面と同じ単位です。気候・肥沃度・教育・交通・経験などで実際の量は変わります。品目を押すと、その原料をさかのぼる道（赤）と、それを使う先（青）が光ります。" %}</p>
+<p class="small">{% translate "文の説明は" %} <a href="{% url 'help' %}#goods">{% translate "手引き：詳しい仕組み の「品目と自然条件」" %}</a>{% translate "、自分の島で何が足りないかは島の「産業の鎖」の画面で見られます。" %}</p>
+
+<section class="panel" id="map">
+  <h2>{% translate "つながりの図" %}</h2>
+  <p class="hint">{% translate "左から右へ、原料 → 加工 → 組み立て → 最後に使う所。線は「左の物が右の物の材料になる」です。" %}</p>
+  <div class="controls">
+    <label><input type="checkbox" id="chain-arms"> {% translate "兵器も出す" %}</label>
+    <label><input type="checkbox" id="chain-power"> {% translate "電力の線も出す" %}</label>
+    <label><input type="checkbox" id="chain-auto"> {% translate "自動化（電子機器）の線も出す" %}</label>
+    <button type="button" id="chain-fit">{% translate "画面の幅に合わせる" %}</button>
+    <button type="button" id="chain-clear">{% translate "選ぶのをやめる" %}</button>
+  </div>
+  <div class="legend">
+    <span><i class="sw" style="background:var(--raw-bg);border-color:var(--raw)"></i>{% translate "原料" %}</span>
+    <span><i class="sw" style="background:var(--mid-bg);border-color:var(--mid)"></i>{% translate "中間財" %}</span>
+    <span><i class="sw" style="background:var(--fin-bg);border-color:var(--fin)"></i>{% translate "最終財" %}</span>
+    <span><i class="sw" style="background:var(--sink-bg);border-color:var(--sink);border-style:dashed"></i>{% translate "使い道" %}</span>
+    <span><i class="ln"></i>{% translate "必ず要る" %}</span>
+    <span><i class="ln d"></i>{% translate "作り方しだい（肥料・別の作り方など）" %}</span>
+    <span><i class="ln p"></i>{% translate "電力" %}</span>
+    <span><i class="ln u"></i>{% translate "さかのぼる原料" %}</span>
+    <span><i class="ln w"></i>{% translate "使う先" %}</span>
+    <span><b style="color:var(--power)">⚡</b>{% translate "作るのに電力が要る" %}</span>
+  </div>
+  <div class="chart" id="chain-chart"></div>
+  <p class="hint">{% translate "スマホでは図を横にずらして見られます。" %}</p>
+  <div class="panel chain-panel" id="chain-panel" aria-live="polite"></div>
+</section>
+
+<section class="panel" id="table">
+  <h2>{% translate "産業ごとの表" %}</h2>
+  <p class="hint">{% translate "施設ごとの作り方。人手は全力で動かすときの人数（うち技術者）。「場所」は建てられるマス、「建てる」は工期と資材です。品目の名前を押すと上の図でその品目を選びます。" %}</p>
+  <div class="grid" id="chain-table"></div>
+</section>
+
+<section class="panel" id="sinks">
+  <h2>{% translate "最後に使う所" %}</h2>
+  <p class="hint">{% translate "工場の材料にならず、ここで使い切られる物です。" %}</p>
+  <div class="sinklist" id="chain-sinks"></div>
+</section>
+<noscript><p>{% translate "図と表は JavaScript で描きます。施設ごとの作り方の表は" %} <a href="{% url 'help' %}#facilities">{% translate "手引き：詳しい仕組み の「施設」" %}</a>{% translate "にもあります。" %}</p></noscript>
+</div>
+{{ chain|json_script:"chain-data" }}
+<script src="{% static 'js/help-chain.js' %}" defer></script>
+{% endblock %}

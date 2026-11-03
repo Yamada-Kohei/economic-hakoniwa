@@ -1290,6 +1290,7 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "help_hakoniwa": ("guide",),
     "help_start": ("guide",),
     "help_ai": ("guide",),  # guide(which=ai)
+    "help_chain": ("defs",),  # 産業のつながりの元は施設の作り方: defs(section="facilities")
     "terms": ("guide",),  # 利用規約は guide(which=terms)
     "island": ("summary", "map", "tile"),  # 地図の重ね表示は map の overlay
     "turn_log": ("turn_log", "changes"),

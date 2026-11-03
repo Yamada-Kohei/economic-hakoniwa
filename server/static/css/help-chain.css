@@ -1,0 +1,80 @@
+/* 手引き「産業のつながり」（/help/chain/）。色は site.css の青基調と、手引きの図（tools/help_diagrams）の
+   原料・中間財・最終財の色にそろえる */
+.chain-page {
+  --raw: #8a4b00; --raw-bg: #fff1d0;
+  --mid: #1f4fa8; --mid-bg: #f4f8ff;
+  --fin: #1b6b2f; --fin-bg: #e2f4e5;
+  --sink: #5a6a90; --sink-bg: #eef1f8;
+  --up: #c62f12; --down: #0a63d6; --power: #a87a00; --muted: #5a6a90;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.chain-page .controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.chain-page .controls label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.chain-page .controls input { width: 18px; height: 18px; }
+.chain-page .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.9em; color: var(--muted); align-items: center; }
+.chain-page .legend span { display: inline-flex; gap: 6px; align-items: center; }
+.chain-page .sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid; }
+.chain-page .ln { display: inline-block; width: 26px; height: 0; border-top: 2px solid var(--muted); }
+.chain-page .ln.d { border-top-style: dashed; }
+.chain-page .ln.p { border-top-color: var(--power); }
+.chain-page .ln.u { border-top-color: var(--up); border-top-width: 3px; }
+.chain-page .ln.w { border-top-color: var(--down); border-top-width: 3px; }
+.chain-page .chart { background: #fff; border: 1px solid var(--border); overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.chain-page .chart svg { display: block; }
+.chain-page .chart.fit svg { width: 100%; height: auto; }
+.chain-page .hint { font-size: 0.9em; color: var(--muted); margin: 0; }
+.chain-page svg text { fill: var(--fg); font-family: inherit; }
+.chain-page .node { cursor: pointer; }
+.chain-page .node rect { stroke-width: 1.5; }
+.chain-page .node.raw rect { fill: var(--raw-bg); stroke: var(--raw); }
+.chain-page .node.mid rect { fill: var(--mid-bg); stroke: var(--mid); }
+.chain-page .node.fin rect { fill: var(--fin-bg); stroke: var(--fin); }
+.chain-page .node.sink rect { fill: var(--sink-bg); stroke: var(--sink); stroke-dasharray: 4 3; }
+.chain-page .node.sel rect { stroke-width: 3.5; }
+.chain-page .node.up rect { stroke: var(--up); stroke-width: 2.5; }
+.chain-page .node.down rect { stroke: var(--down); stroke-width: 2.5; }
+.chain-page .node .bolt { fill: var(--power); font-size: 11px; }
+.chain-page .node:focus-visible rect { stroke: var(--down); stroke-width: 3; }
+.chain-page .dim .node:not(.sel):not(.up):not(.down):not(.hit) { opacity: 0.22; }
+.chain-page .edge { fill: none; stroke: var(--muted); stroke-width: 1.3; opacity: 0.55; }
+.chain-page .edge.opt { stroke-dasharray: 5 4; }
+.chain-page .edge.pow { stroke: var(--power); opacity: 0.45; }
+.chain-page .edge.sinkE { stroke: var(--sink); opacity: 0; }
+.chain-page .dim .edge { opacity: 0.07; }
+.chain-page .dim .edge.up { stroke: var(--up); opacity: 0.95; stroke-width: 2.4; }
+.chain-page .dim .edge.down { stroke: var(--down); opacity: 0.95; stroke-width: 2.4; }
+.chain-page .dim .edge.sinkE.on { stroke: var(--sink); opacity: 0.8; stroke-width: 1.8; }
+.chain-page .colhead { font-size: 12px; fill: var(--muted); }
+.chain-page .chain-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.chain-page .chain-panel .title { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+.chain-page .chain-panel .title b { font-size: 1.25em; }
+.chain-page .tag { font-size: 0.8em; padding: 1px 8px; border-radius: 99px; border: 1px solid; }
+.chain-page .tag.raw { color: var(--raw); } .chain-page .tag.mid { color: var(--mid); }
+.chain-page .tag.fin { color: var(--fin); } .chain-page .tag.sink { color: var(--sink); }
+.chain-page .kv { display: grid; grid-template-columns: 9em 1fr; gap: 6px 12px; }
+.chain-page .kv > div:nth-child(odd) { color: var(--muted); }
+.chain-page .kv ul { margin: 0; padding-left: 1.1em; }
+@media (max-width: 560px) { .chain-page .kv { grid-template-columns: 1fr; } .chain-page .kv > div:nth-child(odd) { margin-top: 6px; } }
+.chain-page .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chain-page .chip { font: inherit; font-size: 0.88em; padding: 2px 9px; border-radius: 4px; border: 1px solid var(--rule); background: #fff; cursor: pointer; color: var(--fg); }
+.chain-page .chip.raw { border-color: var(--raw); background: var(--raw-bg); }
+.chain-page .chip.mid { border-color: var(--mid); background: var(--mid-bg); }
+.chain-page .chip.fin { border-color: var(--fin); background: var(--fin-bg); }
+.chain-page .num { font-variant-numeric: tabular-nums; }
+.chain-page .small { font-size: 0.88em; color: var(--muted); }
+.chain-page .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.chain-page .ind { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.chain-page .ind > h3 { margin: 0; font-size: 1em; border-bottom: 2px solid var(--accent); }
+.chain-page .card { background: #fff; border: 1px solid var(--border); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.chain-page .card .head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.chain-page .meta { font-size: 0.85em; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.chain-page .rec { border-top: 1px dashed var(--rule); padding-top: 6px; display: flex; flex-direction: column; gap: 2px; }
+.chain-page .rec .rn { font-size: 0.82em; color: var(--muted); }
+.chain-page .flow { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
+.chain-page .flow .arrow { color: var(--muted); }
+.chain-page .g { white-space: nowrap; }
+.chain-page .g.e { color: var(--power); }
+.chain-page details summary { cursor: pointer; font-size: 0.88em; color: var(--muted); }
+.chain-page .sinklist { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.chain-page .sinklist > div { background: #fff; border: 1px solid var(--border); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+@media (prefers-reduced-motion: no-preference) { .chain-page .edge, .chain-page .node rect, .chain-page .node { transition: opacity 0.18s, stroke 0.18s; } }
