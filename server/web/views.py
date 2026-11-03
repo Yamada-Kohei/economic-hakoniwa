@@ -18,6 +18,7 @@ from server.game import get_game
 from server.turns.models import TurnLog
 from server.web import (
     chain,
+    chain_map,
     counter,
     country,
     diplomacy,
@@ -608,6 +609,11 @@ def help_ai_page(request):
             "max_keys": keys.MAX_KEYS,
         },
     )
+
+
+def help_chain_page(request):
+    """産業のつながりの手引き: 施設の作り方から品目どうしのつながりを図と表で見せる（UI-61）。"""
+    return render(request, "web/help_chain.html", {"chain": chain_map.chain_data()})
 
 
 def help_hakoniwa_page(request):
