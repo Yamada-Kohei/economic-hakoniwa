@@ -246,7 +246,7 @@ export class OrderQueue {
   }
 
   /**
-   * 国の政策の命令（税率・予算・最低賃金と失業手当・国の倉庫の売買・公共料金の上限）の入力欄。
+   * 国の政策の命令（税率・予算・最低賃金と失業手当・国の倉庫の売り買い・公共料金の上限）の入力欄。
    * 命令の種類 → 入力欄の HTML。
    */
   policyForms() {
@@ -300,7 +300,7 @@ export class OrderQueue {
         </form>`,
       warehouse_trade: `
         <form class="actions" data-form="warehouse_trade">
-          <strong>国の倉庫の売買</strong>
+          <strong>国の倉庫のこのターンの売り買い</strong>
           <p class="hint">このターンの市場に、指値で売り・買いの注文を出します。売れるのは、国の工事・インフラの維持・設備の直しが倉庫の物を先に使った残りまでです。買いは年の予算の「国の倉庫の買い入れ費」の範囲で注文します。</p>
           <label>資源 <select name="good">${goods}</select></label>
           <label><select name="side"><option value="sell">売る</option><option value="buy">買う</option></select></label>
@@ -324,7 +324,7 @@ export class OrderQueue {
       set_warehouse_release: `
         <form class="actions" data-form="set_warehouse_release">
           <strong>備蓄の放出の決まり（今: ${p.warehouse_release ? "動いている" : "止めている"}）</strong>
-          <p class="hint">島のどの施設も作っていない物（石炭の出ない島の石炭など）を、施設が市場で買えなかったら、国の倉庫の余りを施設が要る量までいつもの値段で売りに出します。工事の資材・軍の備蓄・穀物の備蓄は出しません。止めると、倉庫の物は「国の倉庫の売買」で売るときだけ市場に出ます。</p>
+          <p class="hint">島のどの施設も作っていない物（石炭の出ない島の石炭など）を、施設が市場で買えなかったら、国の倉庫の余りを施設が要る量までいつもの値段で売りに出します。工事の資材・軍の備蓄・穀物の備蓄は出しません。止めると、倉庫の物は「国の倉庫のこのターンの売り買い」か「国の倉庫の決まった売り買い」で売るときだけ市場に出ます。</p>
           <label><select name="auto"><option value="true">始める</option><option value="false">止める</option></select></label>
           <button type="submit">命令に追加</button>
         </form>`,

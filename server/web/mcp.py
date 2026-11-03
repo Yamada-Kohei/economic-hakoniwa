@@ -200,7 +200,7 @@ REPORTS = {
     "none 未観測。約定でない値段は売買量 0 で、observed_turn が最後に約定したターン）・売買量・"
     "買えなかった量・国の倉庫の在庫。持ち主には国の倉庫から国営の施設に渡した量 to_state と、"
     "止まった施設の国営・民営 owner_name。good を決めるとその財の推移と約定（穀物の政府の組には"
-    "備蓄の入れ替えなどの note）。画面と同じく、その財の国の倉庫の売買 warehouse_trade と"
+    "備蓄の入れ替えなどの note）。画面と同じく、その財の国の倉庫の売り買い warehouse_trade と"
     "決まった売り買い warehouse_standing と、資源ごとの補助金 set_subsidy は set_orders で出す。"
     "決まった売り買いの設定・前の結果は品目ごとの warehouse_standing に入る）",
     "facilities": "施設（町ごとの労働力・失業と買いに行く店の場所 towns、産業ごとの従業者数 "

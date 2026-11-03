@@ -14,7 +14,7 @@
           <thead><tr>
             <th>{% translate "資源" %}</th><th>{% translate "値段（1単位）" %}</th><th>{% translate "前ターン比" %}</th>
             <th>{% translate "売買量" %}</th><th>{% translate "買い注文" %}</th><th>{% translate "売り注文" %}</th>
-            <th>{% translate "買えなかった量" %}</th><th>{% translate "生産量" %}</th><th>{% translate "国の倉庫" %}</th>{% if mine %}<th>{% translate "倉庫から国営の施設へ" %}</th><th>{% translate "国の倉庫の売買" %}</th>{% endif %}<th>{% translate "単位" %}</th>
+            <th>{% translate "買えなかった量" %}</th><th>{% translate "生産量" %}</th><th>{% translate "国の倉庫" %}</th>{% if mine %}<th>{% translate "倉庫から国営の施設へ" %}</th><th>{% translate "国の倉庫の売り買い" %}</th>{% endif %}<th>{% translate "単位" %}</th>
           </tr></thead>
           <tbody>
             {% for r in rows %}
@@ -51,7 +51,7 @@
   </div>
   <div data-slot="latest"></div>
   {% if mine %}
-  <p><a href="#orders">{% translate "この資源の命令（国の倉庫の売買・補助金）へ" %}</a></p>
+  <p><a href="#orders">{% translate "この資源の命令（国の倉庫の売り買い・補助金）へ" %}</a></p>
   <h3>{% translate "直近のターンの約定（買い手と売り手の組ごと）" %}</h3>
   <div data-slot="trades" class="table-scroll"><p class="muted">{% translate "読み込み中…" %}</p></div>
   <h3>{% translate "この資源を買えずに止まった施設" %}</h3>
