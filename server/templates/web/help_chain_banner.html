@@ -1,0 +1,11 @@
+{% load i18n %}{# 手引き「産業のつながり」への目立つ入口（手引きのページの上と、島の「産業の鎖」の画面に出す） #}<a class="help-chain-banner" href="{% url 'help_chain' %}">
+  <svg class="help-chain-banner-icon" viewBox="0 0 64 40" width="64" height="40" aria-hidden="true">
+    <path d="M18 9 C26 9 26 20 34 20 M18 31 C26 31 26 20 34 20 M46 20 L50 20" fill="none" stroke="#5a6a90" stroke-width="2"/>
+    <rect x="2" y="3" width="16" height="12" rx="2" fill="#fff1d0" stroke="#8a4b00" stroke-width="1.5"/>
+    <rect x="2" y="25" width="16" height="12" rx="2" fill="#fff1d0" stroke="#8a4b00" stroke-width="1.5"/>
+    <rect x="34" y="14" width="12" height="12" rx="2" fill="#f4f8ff" stroke="#1f4fa8" stroke-width="1.5"/>
+    <rect x="50" y="14" width="12" height="12" rx="2" fill="#e2f4e5" stroke="#1b6b2f" stroke-width="1.5"/>
+  </svg>
+  <span><strong>{% translate "産業のつながりの図" %}</strong>
+  <span class="help-chain-banner-text">{{ banner_text|default:_("どの品目が何の材料になるかを、原料から完成品まで図で見られます。品目を押すと、さかのぼる原料と使う先が光ります。") }}</span></span>
+</a>

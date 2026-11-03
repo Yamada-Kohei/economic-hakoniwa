@@ -2,6 +2,7 @@
 {% block title %}{% translate "箱庭民向けの手引き" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 <h1>{% translate "箱庭民向けの手引き" %}</h1>
+{% include "web/help_guides.html" with current="help_hakoniwa" %}
 <p>{% translate "従来の箱庭諸国・箱庭諸島を遊んだ方のための入口です。版や派生によって違う所があるので、ここでは基本の遊び方を手がかりに、このゲームへの読み替えを案内します。" %}</p>
 <p><a href="{% url 'help_start' %}">{% translate "初めて遊ぶ方は、入門の手引きへ" %}</a> ・ <a href="{% url 'help' %}">{% translate "詳しい決まりを知りたい方は、詳しい仕組みの手引きへ" %}</a></p>
 

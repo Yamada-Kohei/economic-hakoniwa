@@ -2,6 +2,7 @@
 {% block title %}{% translate "手引き：入門" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 <h1>{% translate "手引き：入門" %}</h1>
+{% include "web/help_guides.html" with current="help_start" %}
 
 <p>{% translate "初めて遊ぶ人向けの短い手引きです。仕組みの細かい決まりは" %} <a href="{% url 'help' %}">{% translate "手引き：詳しい仕組み" %}</a> {% translate "にあります。従来の箱庭を遊んだ方は" %} <a href="{% url 'help_hakoniwa' %}">{% translate "箱庭民向けの手引き" %}</a> {% translate "もどうぞ。AI（Claude や ChatGPT など）に遊ばせる方は" %} <a href="{% url 'help_ai' %}">{% translate "手引き：AI で遊ぶ" %}</a> {% translate "へ。" %}</p>
 
@@ -79,7 +80,7 @@
     <tr><th>{% translate "地図" %}</th><td>{% translate "マスを押すと地形・人口・施設の様子。命令の列もここ。「重ねて表示」で人口・電力・インフラなどを色で見る" %}</td></tr>
     <tr><th>{% translate "経済" %}</th><td>{% translate "GDP・物価・失業率などの推移" %}</td></tr>
     <tr><th>{% translate "市場" %}</th><td>{% translate "財ごとの値段と売買の量、買えなかった量" %}</td></tr>
-    <tr><th>{% translate "産業の鎖" %}</th><td>{% translate "品目ごとの作った量・使った量・輸出入と、止まった工場が待っている物" %}</td></tr>
+    <tr><th>{% translate "産業の鎖" %}</th><td>{% translate "品目ごとの作った量・使った量・輸出入と、止まった工場が待っている物。どの品目が何の材料になるかは" %} <a href="{% url 'help_chain' %}">{% translate "手引き：産業のつながり" %}</a></td></tr>
     <tr><th>{% translate "施設" %}</th><td>{% translate "施設ごとの状態と収支、企業、町ごとの働き手" %}</td></tr>
     <tr><th>{% translate "財政・金融" %}</th><td>{% translate "国庫・予算・税、銀行・国債・金利" %}</td></tr>
     <tr><th>{% translate "貿易・為替" %}</th><td>{% translate "港・商社・船・契約、通貨と外貨" %}</td></tr>
