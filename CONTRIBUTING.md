@@ -11,9 +11,24 @@ ruff check . && ruff format --check .
 pytest
 ```
 
-PostgreSQL でも確かめるときは `DATABASE_URL=postgres://... pytest`。CI は SQLite と PostgreSQL の両方で回ります。
+PostgreSQL でも確かめるときは `DATABASE_URL=postgres://... pytest`。
 `pytest -n auto` で、試験を頭の数だけ同時に回せます（pytest-xdist。CI はこの形で4つ同時に回します）。
-変えたファイルが `docs/` の下だけの PR では、CI は lint とゲームの試験を飛ばし、文書の確かめ（`tools/spec/design_index.py check` と docs/ を読む試験）だけを回します。
+
+## CI で回る試験
+
+CI（`.github/workflows/ci.yml`）は、変えたファイルに要る試験だけを回します。
+
+| 変えたファイル | 回るもの |
+|---|---|
+| `docs/` だけ | 文書の確かめ（`tools/spec/design_index.py check` と docs/ を読む試験） |
+| `tools/deploy/`・`tools/nightly/`・`tools/perf/`・`tools/regime_cmp/`、上の階の説明（README など） | 上に加えて lint（ruff・shellcheck・定義データ・移行ファイルの作り忘れ） |
+| `server/`・`tests/server/`・`manage.py`、画面の道具（`tools/playtest/` など） | 上に加えて画面の試験（`tests/server` と `tests/core/test_dates.py`）。`server/static/js/` なら JavaScript の試験も |
+| それ以外（`hakoniwa_core/`・`packs/`・`schemas/`・`game.yaml`・`pyproject.toml`・`tests/core/`・CI 自身など） | すべての試験 |
+
+- PR では、本番と同じ PostgreSQL・Python 3.12 の1組で回します。同じ PR に続けて push すると、前の回は取り消します。
+- main への push では、LAN の世界と同じ SQLite・Python 3.12 の1組で回します。範囲は、前に main の CI が通った commit からの差で決めます（通らなかった変更は次の push でもう一度試します）。核を変えたときは 50 島 × 30 ターンの試し回しも回します。
+- 手動（Actions の「Run workflow」）では、SQLite・PostgreSQL × Python 3.12・3.13 の4組ですべてを回します。
+- release への PR（本番へ出す PR）は、main への push の CI が通っていることと起動の最小確認だけを見ます。
 
 ## コードの決まり
 
