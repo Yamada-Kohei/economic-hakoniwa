@@ -152,6 +152,9 @@ founding:
 
 # 国の穀物の備蓄（W-186 の直し 回1。hakoniwa_core/economy/reserve.py）。飢饉の備えを余分の農場でなく国の
 # 倉庫の穀物で持つ。現実の国の備蓄は年の消費の1〜2か月分ほど（日本の米は約1.5か月分）
+warehouse:
+  standing_priority: -1  # 決まった売り買いは、割り当てでほかの注文より後にする
+
 food_reserve:
   good: grain
   turns: 2              # 目安: 住民の食べる量の何ターン分か（建国のときに国の倉庫に入れておく。作られたターンは日持ちの間にならす）

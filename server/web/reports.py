@@ -389,7 +389,11 @@ def stat_choices(island: m.Island, mine: bool) -> list[dict[str, str]]:
     return sorted(rows, key=lambda r: r["label"])
 
 
-PRIVATE_PREFIXES = ("bank.", "warehouse.to_state.")  # 持ち主だけに見せる統計の名前の頭
+PRIVATE_PREFIXES = (
+    "bank.",
+    "warehouse.to_state.",
+    "warehouse.food_refill",
+)  # 持ち主だけに見せる統計
 PUBLIC_MILITARY_STATS = ("military.soldiers",)  # 国全体の兵の数は誰にでも（MI-55）
 
 
@@ -638,13 +642,14 @@ def market_table(
         for r in records:
             (now if r.turn == turn else before)[r.good] = r
     traded = last_trades(island)
+    standing = display.warehouse_standing(island) if mine else {}
     rows = []
     for good in defs.goods:
         record = now.get(good)
         made = stats.get(f"production.{good}", 0)
         stock = stats.get(f"stock.{good}", 0)
         to_state = stats.get(f"warehouse.to_state.{good}", 0) if mine else 0
-        if record is None and not made and not stock and not to_state:
+        if record is None and not made and not stock and not to_state and good not in standing:
             continue
         kind = price_kind(record, before.get(good))
         row: dict[str, Any] = {
@@ -659,6 +664,8 @@ def market_table(
         }
         if mine:
             row["to_state"] = display.shown(good, to_state)
+            if good in standing:
+                row["warehouse_standing"] = standing[good]
         if record is not None:
             row.update(
                 price=display.price_text(good, record.price, currency),
@@ -730,6 +737,7 @@ def market_series(
         turn = latest.turn if latest is not None else None
         data["trades"] = trades(island, state, good, turn) if turn is not None else []
         data["short"] = short_facilities(island, state, good)
+        data["warehouse_standing"] = display.warehouse_standing(island).get(good)
     return data
 
 

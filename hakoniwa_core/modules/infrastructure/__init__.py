@@ -446,9 +446,15 @@ def wants(
 def supply_from_warehouse(island: IslandState, ctx: StageContext, upkeep: bool) -> None:
     """次のターンの仕事に要る資材を、国の倉庫にある分から工事の資材に移す。役所が並べた工事の
     資材は倉庫から使わない（市場で買う。倉庫は遊ぶ人の備え）。"""
+    from hakoniwa_core.economy import standing
+
     held = works_stock(island)
     for good, qty in sorted(wants(island, ctx, upkeep, ordered_only=True).items()):
-        stock.put_batches(held, good, stock.take_batches(island.warehouse, good, qty))
+        stock.put_batches(
+            held,
+            good,
+            stock.take_batches(island.warehouse, good, standing.available(island, good, qty)),
+        )
 
 
 def received(island: IslandState, good: str, batches: list[list[int]]) -> None:

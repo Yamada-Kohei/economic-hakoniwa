@@ -21,7 +21,7 @@ function budgetHint(guide) {
   if (!guide) return "";
   const limit = guide.limit === "—" ? "" : `・使い切れない額の目安 ${guide.limit}`;
   const title = guide.note ? ` title="${escapeHtml(guide.note)}"` : "";
-  return `<small class="budget-hint"${title}>去年 ${escapeHtml(guide.last_year)}・最大の月の年換算 ${escapeHtml(guide.peak_year)}${escapeHtml(limit)}</small>`;
+  return `<small class="budget-hint"${title}>去年 ${escapeHtml(guide.last_year)}・最大の月の年換算 ${escapeHtml(guide.peak_year)}${escapeHtml(limit)}${guide.standing_year ? `・決まった買い（1年）${escapeHtml(guide.standing_year)}・穀物の買い足し（去年）${escapeHtml(guide.food_refill_year)}` : ""}</small>`;
 }
 
 export class OrderQueue {
@@ -188,6 +188,17 @@ export class OrderQueue {
     } else if (button.dataset.stopSubsidy) {
       const s = this.policy?.subsidies?.[Number(button.dataset.stopSubsidy)];
       if (s) this.add("set_subsidy", s.stop);
+    } else if (button.dataset.stopStanding) {
+      const payload = { good: button.dataset.stopStanding };
+      payload.kind = "stop";
+      this.add("set_warehouse_standing", payload);
+    } else if (button.dataset.editStanding) {
+      const item = this.policy?.warehouse_standing?.[button.dataset.editStanding];
+      const form = this.el.querySelector('[data-form="set_warehouse_standing"]');
+      if (item && form) {
+        for (const key of ["good", "kind", "quantity", "limit", "release"]) form.elements[key].value = item[key] ?? "";
+        form.elements.turns.value = item.remaining ?? "";
+      }
     }
   }
 
@@ -252,6 +263,13 @@ export class OrderQueue {
     );
     const power = this.defs.goods[this.powerGood];
     const cap = p.price_cap[this.powerGood] || 0;
+    const standing = Object.values(p.warehouse_standing || {})
+      .filter((s) => !this.good || s.good === this.good)
+      .map((s) => {
+        const last = s.last;
+        const result = last ? `<p>前のターン: 出した量 ${escapeHtml(last.offered)}・約定 ${escapeHtml(last.filled)}・使ったお金 ${escapeHtml(last.spent)}${last.reason_name ? `・減らしたわけ ${escapeHtml(last.reason_name)}` : ""}${last.paused ? `・休止（${last.paused === "manual" ? "同じ品目の命令" : "逆の向きの注文"}）` : ""}</p>` : "";
+        return `<div><p>${escapeHtml(s.text)}</p>${result}<button type="button" data-edit-standing="${escapeHtml(s.good)}">変更する</button><button type="button" data-stop-standing="${escapeHtml(s.good)}">止める命令</button></div>`;
+      }).join("");
     return {
       set_taxes: `
         <form class="actions" data-form="set_taxes">
@@ -288,6 +306,19 @@ export class OrderQueue {
           <label><select name="side"><option value="sell">売る</option><option value="buy">買う</option></select></label>
           <label>量 <input name="quantity" type="number" min="0.1" step="0.1" required></label>
           <label>指値（1単位、買いは必須） <input name="limit" type="number" min="0" step="any"></label>
+          <button type="submit">命令に追加</button>
+        </form>`,
+      set_warehouse_standing: `
+        <form class="actions" data-form="set_warehouse_standing">
+          <strong>国の倉庫の決まった売り買い</strong>
+          ${standing || '<p class="muted">設定はありません。</p>'}
+          <p class="hint">品目ごとに1つ。置き直すと入れ替わります。買いは穀物の備蓄の後に予算の残りを使い、足りなければ比例で減らします。備蓄は安いときに目安まで買い、高いときに放出します。</p>
+          <label>資源 <select name="good">${goods}</select></label>
+          <label>種類 <select name="kind"><option value="buy">買う</option><option value="sell">売る</option><option value="reserve">備蓄</option><option value="stop">やめる</option></select></label>
+          <label>毎ターンの量（備蓄は目安） <input name="quantity" type="number" min="0" step="any"></label>
+          <label>指値（買い・備蓄は必須） <input name="limit" type="number" min="0" step="any"></label>
+          <label>放出の値段（備蓄は指値より高く） <input name="release" type="number" min="0" step="any"></label>
+          <label>続けるターン数（空欄なら止めるまで） <input name="turns" type="number" min="1" step="1"></label>
           <button type="submit">命令に追加</button>
         </form>`,
       set_warehouse_release: `

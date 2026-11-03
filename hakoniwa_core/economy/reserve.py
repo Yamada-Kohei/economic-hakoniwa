@@ -28,6 +28,7 @@ from __future__ import annotations
 from hakoniwa_core import stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
+from hakoniwa_core.economy import standing
 from hakoniwa_core.state import IslandState
 from hakoniwa_core.units import to_milli
 
@@ -35,6 +36,9 @@ from hakoniwa_core.units import to_milli
 def target(island: IslandState, defs: Defs, config: GameConfig) -> int:
     """備蓄の目安の量（1000 分の 1 単位）: 住民の食べる量の food_reserve.turns ターン分。"""
     spec = config.get("food_reserve")
+    item = standing.settings(island).get(spec["good"], {})
+    if item.get("kind") == "reserve":
+        return item["quantity"]
     if spec["turns"] <= 0:
         return 0
     population = sum(t.population for t in island.tiles)
