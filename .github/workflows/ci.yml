@@ -4,48 +4,125 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch: # 手動: すべての試験を SQLite・PostgreSQL × Python 3.12・3.13 の4組で
 
 permissions:
   contents: read
-  actions: read # release 向けの PR で、main での CI の結果を読む
+  actions: read # main での CI の結果を読む（試す範囲の起点と、release 向けの PR の確かめ）
+
+# 同じ PR に続けて push したら、前の回を取り消す（main への push は取り消さない）
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # 変えたファイルが docs/ の下だけの PR か。そのときは lint とゲームの試験を飛ばし、
-  # 下の design（文書の確かめ）だけを回す。main への push では毎回すべて回す。
-  # 飛ばした仕事は「skipped」になり、GitHub では成功と同じに扱われるので、PR は待ちにならない。
+  # 変えたファイルから、回す試験を決める（決まりは CONTRIBUTING.md の「CI で回る試験」）。
+  #   docs/ だけ                → design だけ
+  #   tools/deploy/ などの台本・道具、上の階の .md だけ → lint（ruff・shellcheck）と design
+  #   server/・tests/server/ など画面の側だけ → lint・design と、画面の試験（tests/server）
+  #   hakoniwa_core/・packs/・schemas/・game.yaml・pyproject.toml・CI 自身などそれ以外 → すべての試験
+  # pytest は PR では本番と同じ PostgreSQL・Python 3.12 の1組、main への push では LAN の世界と同じ
+  # SQLite・Python 3.12 の1組で回す。main への push は、前に main の CI が通った commit からの差で決める
+  # （通らなかった変更は、次の push でもう一度試す）。飛ばした仕事は「skipped」で、成功と同じに扱われる。
   changes:
     runs-on: ubuntu-latest
     outputs:
-      docs_only: ${{ steps.diff.outputs.docs_only }}
       release: ${{ steps.diff.outputs.release }}
+      lint: ${{ steps.diff.outputs.lint }}
+      js: ${{ steps.diff.outputs.js }}
+      pytest: ${{ steps.diff.outputs.pytest }}
+      matrix: ${{ steps.diff.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
-        if: github.event_name == 'pull_request'
+        if: github.event_name != 'workflow_dispatch'
         with:
-          fetch-depth: 2
+          fetch-depth: 0
       - id: diff
         name: 変えたファイルを調べる
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          docs_only=false
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            # PR の checkout は main との合わせ（merge）の commit なので、1つ目の親との差が PR の変更
-            files=$(git diff --name-only HEAD^1 HEAD)
-            echo "$files"
-            if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qv '^docs/'; then
-              docs_only=true
-            fi
-          fi
-          echo "docs_only=$docs_only" | tee -a "$GITHUB_OUTPUT"
-          # release への PR（本番へ出す PR）か。中身は main で全部の試験を通っているので、
+          set -euo pipefail
+          # release への PR（本番へ出す PR）か。中身は main で試験を通っているので、
           # 重い試験は回さず、下の release-check（軽い確かめ）だけにする。
           release=false
-          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.base_ref }}" = "release" ]; then
+          if [ "$EVENT" = pull_request ] && [ "$BASE_REF" = release ]; then
             release=true
           fi
-          echo "release=$release" | tee -a "$GITHUB_OUTPUT"
+          all=false
+          files=""
+          case "$EVENT" in
+            pull_request)
+              # PR の checkout は main との合わせ（merge）の commit なので、1つ目の親との差が PR の変更
+              files=$(git diff --name-only HEAD^1 HEAD) ;;
+            push)
+              # 起点: main への push の CI が成功した commit のうち、いまの先頭の祖先で一番新しいもの
+              base=""
+              for sha in $(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?event=push&branch=main&status=success&per_page=30" \
+                             --jq '.workflow_runs[].head_sha'); do
+                if git merge-base --is-ancestor "$sha" HEAD 2>/dev/null; then
+                  base=$sha
+                  break
+                fi
+              done
+              if [ -n "$base" ]; then
+                echo "起点: ${base:0:7}（main の CI が成功した commit）"
+                files=$(git diff --name-only "$base" HEAD)
+              else
+                all=true
+              fi ;;
+            *)
+              all=true ;;
+          esac
+          printf '%s\n' "$files"
+
+          lint=false js=false pytest=none
+          if [ "$all" = true ]; then
+            lint=true js=true pytest=all
+          fi
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            case "$f" in
+              docs/*) continue ;; # design が見る
+            esac
+            lint=true
+            case "$f" in
+              # 試験が読まない台本・道具・説明。ruff と shellcheck だけ
+              tools/deploy/* | tools/nightly/* | tools/perf/* | tools/regime_cmp/* | \
+                README.md | CONTRIBUTING.md | AGENTS.md | THIRD_PARTY.md | LICENSE | .gitignore | .gitattributes) ;;
+              server/static/js/* | tests/js/*)
+                js=true
+                [ "$pytest" = all ] || pytest=server ;;
+              # 画面の側。tests/server と、server/ の書き方を見る tests/core/test_dates.py で足りる
+              server/* | tests/server/* | manage.py | \
+                tools/playtest/* | tools/sprites/* | tools/help_diagrams/* | tools/screens/*)
+                [ "$pytest" = all ] || pytest=server ;;
+              # ゲームの核・定義データ・設定・CI 自身など。画面の試験も核を使うので、すべて回す
+              *)
+                pytest=all ;;
+            esac
+          done <<<"$files"
+
+          case "$EVENT" in
+            pull_request) matrix='[{"db":"postgres","python":"3.12"}]' ;;
+            push) matrix='[{"db":"sqlite","python":"3.12"}]' ;;
+            *) matrix='[{"db":"sqlite","python":"3.12"},{"db":"sqlite","python":"3.13"},{"db":"postgres","python":"3.12"},{"db":"postgres","python":"3.13"}]' ;;
+          esac
+          if [ "$release" = true ]; then
+            lint=false js=false pytest=none
+          fi
+          {
+            echo "release=$release"
+            echo "lint=$lint"
+            echo "js=$js"
+            echo "pytest=$pytest"
+            echo "matrix=$matrix"
+          } | tee -a "$GITHUB_OUTPUT"
 
   # 文書の確かめ。設計書の索引と本文のずれ（tools/spec/design_index.py check）と、
-  # docs/ を読む試験だけを回す。release への PR のほかは、どの PR でも回る。
+  # docs/ を読む試験だけを回す。release への PR のほかは、いつも回る（20 秒ほど）。
   design:
     needs: changes
     if: needs.changes.outputs.release != 'true'
@@ -63,7 +140,7 @@ jobs:
 
   lint:
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.release != 'true'
+    if: needs.changes.outputs.lint == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -85,7 +162,7 @@ jobs:
   # 画面の JavaScript（server/static/js/）の試験。Node の標準の試験の道具だけで動く（package.json は要らない）
   js:
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.release != 'true'
+    if: needs.changes.outputs.js == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -97,23 +174,24 @@ jobs:
 
   test:
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.release != 'true'
+    if: needs.changes.outputs.pytest != 'none'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        db: [sqlite, postgres]
-        python-version: ["3.12", "3.13"]
+        include: ${{ fromJSON(needs.changes.outputs.matrix) }}
+    name: test (${{ matrix.db }}, ${{ matrix.python }}, ${{ needs.changes.outputs.pytest }})
     services:
       postgres:
-        image: postgres:16
+        # SQLite の組では入れ物を立てない（image が空なら起こさない）
+        image: ${{ matrix.db == 'postgres' && 'postgres:16' || '' }}
         env:
           POSTGRES_USER: hakoniwa
           POSTGRES_PASSWORD: hakoniwa
           POSTGRES_DB: hakoniwa
         ports: ["5432:5432"]
         options: >-
-          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+          --health-cmd "pg_isready -U hakoniwa" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: ${{ matrix.db == 'postgres' && 'postgres://hakoniwa:hakoniwa@localhost:5432/hakoniwa' || 'sqlite:///db.sqlite3' }}
       # 文字コードを書かない読み書きを見つける（Windows では cp932 になる。tests/conftest.py で誤りにする）
@@ -122,22 +200,29 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ matrix.python }}
       - run: pip install -e ".[dev,postgres]"
       # 試験を頭の数（GitHub の入れ物は4つ）だけ同時に回す（pytest-xdist）。
       # PostgreSQL の組は、pytest-django が回し手ごとに別の DB（名前に gw0 などが付く）を作る。
-      - name: 自動テスト
-        # -rs: 飛ばした試験とそのわけを最後に並べる（黙って何も確かめていない試験に気づくため）
+      # -rs: 飛ばした試験とそのわけを最後に並べる（黙って何も確かめていない試験に気づくため）
+      - name: 自動テスト（すべて）
+        if: needs.changes.outputs.pytest == 'all'
         run: pytest -n auto --durations=15 -rs
+      - name: 自動テスト（画面の側だけ）
+        if: needs.changes.outputs.pytest == 'server'
+        run: pytest -n auto --durations=15 -rs tests/server tests/core/test_dates.py
+      # 50島×30ターンの試し回し（落ちないことと1ターンの時間を見る）。PR では回さず、
+      # 核を変えたものが main に入ったときと手動のときだけ
       - name: 一括シミュレーション（50島）
+        if: needs.changes.outputs.pytest == 'all' && github.event_name != 'pull_request'
         run: python -m hakoniwa_core.simulate --islands 50 --turns 30
 
   # release への PR（本番へ出す PR）だけの軽い確かめ。
   #   1. PR の先頭が main に入っている commit で、main への push の CI がそこで成功している
   #   2. 合わせた後の中身が main の先頭と同じ（main で試していない変更が本番に混ざらない）
   #   3. 起動の最小確認（設定の検査・空の DB への migrate・数ターンの一括シミュレーション）
-  # 1 は、main の先頭が PR のマージで、中身がその PR の先頭と同じなら、PR で成功した CI で足りるとする
-  # （マージの直後でも待たない）。そうでなく main の CI がまだ動いているときは、終わるまで待つ（最大およそ 50 分）。
+  # 1 は main への push の CI を見る（PR の CI は変えた所の試験だけで、SQLite の組は main への push で回るため）。
+  # main の CI がまだ動いているときは、終わるまで待つ（最大およそ 50 分）。
   release-check:
     needs: changes
     if: needs.changes.outputs.release == 'true'
@@ -166,17 +251,6 @@ jobs:
           fi
       - name: main での CI の結果
         run: |
-          ok() {  # ci.yml の run で、event と head_sha が合い、成功したものがあるか
-            gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?event=$1&head_sha=$2" \
-              --jq '[.workflow_runs[] | select(.conclusion == "success")] | length > 0' | grep -qx true
-          }
-          # 早道: 先頭が PR のマージで、マージ後の中身がその PR の先頭と同じなら、PR で通った CI を
-          # そのまま使う（同じ中身をもう一度試すだけなので、main の CI の終わりを待たない）
-          second=$(git rev-parse -q --verify "$HEAD_SHA^2" || true)
-          if [ -n "$second" ] && git diff --quiet "$second" "$HEAD_SHA" && ok pull_request "$second"; then
-            echo "マージした PR の先頭 ${second:0:7} の CI が成功済みで、中身も同じ"
-            exit 0
-          fi
           for i in $(seq 1 100); do
             runs=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?event=push&branch=main&head_sha=$HEAD_SHA" \
               --jq '[.workflow_runs[] | {status, conclusion}]')
