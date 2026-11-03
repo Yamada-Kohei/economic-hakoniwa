@@ -30,7 +30,7 @@
 | PO-08 | 首都は建国で選ぶ。候補は中央省庁を建てられる地形で、周りの陸地が多く、海から `founding.capital_margin` 以上離れたマスを優先する | 決定 | `founding.capital_margin` | tests/core/test_founding.py::test_start_island |
 | PO-09 | 首都のマスには中央省庁が建ち、政治体制に応じた建物の見た目になる。体制を変えると、建て替えが済むまで前の体制の建物のまま | 決定 | （`regimes.yaml` の capital_building） | tests/server/test_web.py::test_map_api_capital_buildings, tests/core/test_phase3_4.py::test_amendment_starts_a_transition_and_rebuilds_the_capital |
 | PO-10 | 政治体制（2 軸）と経済体制（市場・混合・計画）を建国で選び、初めの施設の持ち主を経済体制に合わせる（`regimes.yaml` の owner と state_owned） | 決定 |  | tests/core/test_founding.py::test_owner_follows_economy |
-| PO-11 | 国名・首都名・通貨名と記号・国家元首の名前は建国で入れ（長さの上限は `founding.name_max`）、地名の作風を 8 つから選ぶ（既定は `naming.place_style`） | 決定 | `founding.name_max.country`, `founding.name_max.capital`, `founding.name_max.currency`, `founding.name_max.currency_symbol`, `founding.name_max.leader`, `naming.place_style` | tests/core/test_founding.py::test_place_names_follow_style_and_capital |
+| PO-11 | 国名・首都名・通貨名と記号・国家元首の名前は建国で入れ（長さの上限は `founding.name_max`）、地名の作風を 22 から選ぶ（既定は `naming.place_style`） | 決定 | `founding.name_max.country`, `founding.name_max.capital`, `founding.name_max.currency`, `founding.name_max.currency_symbol`, `founding.name_max.leader`, `naming.place_style` | tests/core/test_founding.py::test_place_names_follow_style_and_capital |
 | PO-12 | 地名は島を `naming.place_block` マス四方の区画に分けて作風で自動で付け、首都の区画は首都名。命令で変えられ行政力を使わない。町には名前を付けない | 決定 | `naming.place_block` | tests/core/test_rules.py::test_rename_place, tests/core/test_orders.py::test_renames_do_not_use_admin_power, tests/core/test_founding.py::test_housing_has_no_name_and_admin_has_no_place |
 | PO-13 | 建国直後の島は `start_island.yaml` に従い、首都の町・周りの村・初めの施設・送電線・倉庫の資材と国の穀物の備蓄を置き、初めの施設には最初のターンに全力で動ける投入財を倉庫から渡す（発電所の燃料は `founding.power_fuel_turns` ターン分） | 決定 | `food_reserve.turns`, `founding.power_fuel_turns` | tests/core/test_founding.py::test_start_island |
 | PO-14 | 初めの施設のうち `fit` を書いたものは、数を要る量に合わせる: 食料は建国の住民の食べる量、原料はそれより前に置いた施設が全力で使う量で、その島の生産性（気候・肥沃度・経験と、建国の後に置く道路・教育の初めの値）の見込みの産出から、残りが施設 1 つの産出の `founding.fit_share`（食料は 0 で切り上げ、原料は 0.5 で四捨五入）以上ある間だけ置く。飢饉の備えは余分の農場でなく国の穀物の備蓄（タブ 6 FS-15） | 決定 | `founding.fit_share` | tests/core/test_founding.py::test_start_island, tests/core/test_recession_round1.py::test_start_facilities_fit_the_need |
@@ -117,7 +117,7 @@
 
 首都は必ずあり、首都のマスには中央省庁（`government_office`）が建ちます。首都の建物の見た目は政治体制で決まり（`regimes.yaml` の capital_building。6 通りの描き分けはタブ 11）、体制を変えると中央省庁を建てるときの資材で建て替え、そろうまでは前の体制の建物のままです（手順はタブ 10）。首都の町は町の段階から始まり、育つほど公務員を雇いやすくなります。行政力（1 ターンの命令の数）は中央省庁の公務員の数で決まります（タブ 6）。
 
-国名・首都名・通貨名と記号・国家元首の名前は建国でプレイヤーが決めます（通貨名は後から通貨改革として変えられる。タブ 7）。地名は島を `naming.place_block` マス四方の区画に分け、建国で選んだ作風（日本風・イギリス風・アメリカ風・ドイツ風・ロシア風・スペイン風・フランス風・イタリア風。材料は `naming.yaml`）で区画ごとに自動で付け、首都のある区画は首都名にします。地名は命令「地名の変更」で付け直せ、名前の変更の命令は行政力を使いません。町（住宅）には名前を付けず、段階の表示名（村・町・都市・大都市）で呼びます。首都の名前はマスを押すと出ます。政府の建物は地名なしの「中央省庁」です。施設の自動の名前の作り方はタブ 5（作り直しはベータ版の前）。
+国名・首都名・通貨名と記号・国家元首の名前は建国でプレイヤーが決めます（通貨名は後から通貨改革として変えられる。タブ 7）。地名は島を `naming.place_block` マス四方の区画に分け、建国で選んだ作風（日本風・イギリス風・アメリカ風・ドイツ風・ロシア風・スペイン風・フランス風・イタリア風・中国風・韓国風・インド風・タイ風・マレー・インドネシア風・トルコ風・アラビア風・ペルシャ風・北欧風・オランダ風・ポーランド風・ギリシャ風・ブラジル・ポルトガル風・スワヒリ風。どれも実在の地名をそのまま使わず、その土地によくある頭と尾をつないで作る。材料は `naming.yaml`。作風ごとに民営の会社の名前の材料（創業者の姓と会社の形）も持つ）で区画ごとに自動で付け、首都のある区画は首都名にします。地名は命令「地名の変更」で付け直せ、名前の変更の命令は行政力を使いません。町（住宅）には名前を付けず、段階の表示名（村・町・都市・大都市）で呼びます。首都の名前はマスを押すと出ます。政府の建物は地名なしの「中央省庁」です。施設の自動の名前の作り方はタブ 5（作り直しはベータ版の前）。
 
 ### 建国直後の島と初期値
 

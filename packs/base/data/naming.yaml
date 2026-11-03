@@ -38,6 +38,65 @@ ja:
       label: イタリア風
       first: [モンテ, カステル, ポルト, ヴィラ, ロッカ, ヴァル, ボルゴ, ポッジョ, ピエトラ, ブオン]
       second: [フランコ, ベッロ, ヴェルデ, ロッソ, アルト, ヌオーヴォ, マーレ, ソーレ, フィオーレ, ルーナ, セレーノ, キアーロ, ドーロ, グランデ, マリーナ]
+    chinese:
+      label: 中国風
+      first: [安, 永, 寧, 嘉, 泰, 昌, 興, 恵, 徳, 華, 雲, 洛, 汾, 撫, 宜, 漢, 湘, 晋, 臨, 瀋]
+      second: [州, 陽, 口, 鎮, 城, 寧, 安, 江, 沙, 門, 渓, 昌, 源, 興, 坪]
+    korean:
+      label: 韓国風
+      first: [アン, クァン, チョン, ナム, ハン, ソン, ヨン, キム, モク, ウル, テ, ミル, チャン, コン, ヨ, ポ, ヤン, カン, ホン, ムン]
+      second: [ジュ, チョン, サン, ウォン, ポ, ヤン, ソン, ジン, ヘ, リョン, ドン, ゴク, ナム, ハ, チャン]
+    indian:
+      label: インド風
+      first: [ラーム, シヴァ, クリシュナ, ラージ, ハリ, チャンドラ, ナーラーヤン, ゴーヴィンド, スーリヤ, デーヴ, マハー, シャクティ, ラクシュミ, ガネーシュ, ヴィジャイ, アマル, インドラ, ソーマ, ジャイ, モーティ]
+      second: [プル, ナガル, ガル, アーバード, ガンジ, プラ, ガオン, コート, ガート, パトナム, ワーディ, ドゥルグ, パッリ]
+    thai:
+      label: タイ風
+      first: [チャンタ, ラーチャ, カンチャナ, スパン, プラチン, ペッチャ, ノンタ, サワン, ロップ, シー, スラ, ウドン, チャイヤ, プラ, ナコーン]
+      second: [ブリー, タニー, ナコーン, サワン, チャイ, プーム, ラート, ブーン, シット, ワーリー]
+    malay:
+      label: マレー・インドネシア風
+      joiner: ・
+      first: [コタ, スンガイ, バトゥ, タンジュン, クアラ, ブキット, ラブハン, パダン, テルック, ペカン, ムアラ]
+      second: [ジャヤ, バル, インダ, ムリア, プティ, ティンギ, ラヤ, ブサール, マス, ハラパン, ウタラ, スラタン, ブンガ, ルスタリ, サリ]
+    turkish:
+      label: トルコ風
+      first: [イェニ, エスキ, アク, カラ, ギョク, サル, ユルドゥズ, デミル, ギュル, クズル, ビュユク, キュチュク, オルタ, ソウク, ウル]
+      second: [キョイ, ヒサル, シェヒル, ダー, オヴァ, ピナル, テペ, カレ, ブルン, デレ, ヤカ, パザル, チャイ]
+    arabic:
+      label: アラビア風
+      joiner: ・
+      first: [アル, ラス, ウンム, ワーディ, ジャバル, カスル, アイン, ダール, マディーナト, スーク]
+      second: [ハムラ, ヌール, サラーム, ザハラ, ファジュル, ハディーカ, ラフマ, バイダー, ハリージュ, ナフル, ジャディーダ, カビール, ワーハ, シャムス, ミナー]
+    persian:
+      label: ペルシャ風
+      first: [ホッラム, ゴル, ジャハーン, ヌール, ファルフ, ラヒーム, カリーム, ミール, シャムス, サブズ, アーザード, バハール, シーリーン, ネイ, ダリヤー]
+      second: [アーバード, シャフル, ダシュト, スターン, バーグ, ルード, クーフ, ザール, カンド, ガルド]
+    nordic:
+      label: 北欧風
+      first: [ストール, リル, ノル, ヴェスター, エステル, ビョルク, リンド, ヘル, ファル, ウルリクス, フレデリクス, エーケ, オーセ, グレン, ハーゲ, モー, ソール]
+      second: [ホルム, ボリ, ヴィーク, ショーピング, スタッド, ハムン, ルンド, ダール, ハウグ, スンド, ネス, ストランド, ベリ]
+    dutch:
+      label: オランダ風
+      first: [ローゼン, ノールト, オースト, ウェスト, ザイデル, ブルーメン, フェーン, ハイデ, エイク, ザント, リンデン, ブルック, ホーヘ, ニウ, ステーン, ファルケン]
+      second: [ダム, ドルプ, フェルト, ホーフェン, ヴァイク, ベルフ, ドレヒト, メール, ホルスト, ハーフェン, ボス, ヴォルデ]
+    polish:
+      label: ポーランド風
+      first: [カト, グリ, ミシュ, ボレ, ヴワディ, スタニ, カジミ, ヤロ, ラド, ズビ, ミロ, ヴォイ, ソビ, ドブロ, ビャウォ, ジェロノ, スタロ, ヴィエル, オストロ]
+      second: [ヴィツェ, スワフ, グラ, ポレ, ストク, ヴィエツ, ニツァ, ミェシュ, ゴシチ, ブジェク, クフ]
+    greek:
+      label: ギリシャ風
+      first: [ネア, パレオ, カロ, メガロ, アスプロ, クリソ, アクロ, エレフテロ, ゼフィロ, スタヴロ, テオ, リゾ]
+      second: [ポリ, ホリオ, カストロ, リマニ, ホーラ, ヴーニ, ピルゴス, ポタモス, ニキ, ラコス, ペトラ, キポス]
+    portuguese:
+      label: ブラジル・ポルトガル風
+      joiner: ・
+      first: [サン, サンタ, ポルト, ヴィラ, リオ, ボア, ノヴァ, カンポ, セーハ, プライア, ベロ, ヴォルタ]
+      second: [アレグレ, ヴィスタ, ブランコ, グランデ, ヴェルデ, エスペランサ, ジョアン, ルジア, クルス, ドラード, フォルモーザ, レドンダ, オウロ, セグーロ, ボニート]
+    swahili:
+      label: スワヒリ風
+      first: [キリ, マリ, ムワ, キス, ブコ, ニェ, タボ, ムト, ナク, キゴ, ルブ, ムベ, ドド, キベ, モロ]
+      second: [ンディ, ンザ, ンガ, ムブ, ニ, ラ, バ, ワ, マ, ンジ, ゴロ, モヤ, ンバ, ジ, ティ]
   numbers: [一, 二, 三, 四, 五, 六, 七, 八, 九, 十, 十一, 十二, 十三, 十四, 十五, 十六, 十七, 十八, 十九, 二十]
   industries:
     farm: {short: 農産, long: 農場}
@@ -155,3 +214,99 @@ ja:
       late: ["{surname}{short}社", "{surname}・エ・コンパーニャ", "{surname}・インドゥストリエ"]
       local: ["{place}{short}社", "{place}{short}会社"]
       industries: {steel_mill: {short: シデルルジーア}, machinery_plant: {short: メッカニカ}, bank: {short: バンカ}, food_factory: {short: アリメンターリ}, trading: {short: コンメルチョ}, textile_mill: {short: テッスィーリ}, automobile_plant: {short: アウトモービリ}, shipyard: {short: カンティエーレ}}
+    chinese:
+      surnames: [王, 李, 張, 劉, 陳, 楊, 趙, 黄, 周, 呉, 徐, 孫, 胡, 朱, 高, 林, 何, 郭, 馬, 羅, 梁, 宋, 鄭, 謝, 韓, 唐, 馮, 董, 蕭, 葉]
+      early: ["{surname}記商行", "{surname}記号", "{surname}氏商号"]
+      late: ["{surname}氏{short}公司", "{surname}記{short}公司", "{surname}氏実業公司"]
+      local: ["{place}{short}廠", "{place}{short}公司", "{place}実業公司"]
+      industries: {steel_mill: {short: 鋼鉄}, machinery_plant: {short: 機械}, bank: {short: 銀行}, food_factory: {short: 食品}, trading: {short: 貿易}, textile_mill: {short: 紡織}, automobile_plant: {short: 汽車}, shipyard: {short: 造船}}
+    korean:
+      joiner: ・
+      surnames: [キム, パク, チェ, チョン, カン, チョ, ユン, チャン, イム, ハン, シン, クォン, ファン, アン, ソン, ホン, ムン, ペク, ナム, オム, ヤン, ハム, ミン, ピョン, ウォン]
+      early: ["{surname}商会", "{surname}商店", "{surname}兄弟商会"]
+      late: ["{surname}{short}", "{surname}産業", "{surname}物産"]
+      local: ["{place}{short}", "{place}産業", "{place}{short}工業"]
+    indian:
+      joiner: ・
+      surnames: [シャルマ, ヴェルマ, グプタ, メヘラ, カプール, ナイル, ラオ, レッディ, アイヤル, ジョシ, デサイ, パテル, シン, バネルジー, ムカルジー, チャタジー, メノン, ピッライ, クルカルニ, セティ, マルホートラ, ドーシ]
+      early: ["{surname}商会", "{surname}・アンド・サンズ", "{surname}・ブラザーズ"]
+      late: ["{surname}・インダストリーズ", "{surname}・{short}社", "{surname}・エンタープライズ"]
+      local: ["{place}・{short}社", "{place}・{short}会社"]
+      industries: {steel_mill: {short: スティール}, machinery_plant: {short: エンジニアリング}, bank: {short: バンク}, food_factory: {short: フーズ}, trading: {short: トレーディング}, textile_mill: {short: ミルズ}, automobile_plant: {short: モーターズ}, shipyard: {short: シップヤード}}
+    thai:
+      joiner: ・
+      surnames: [スワンナチャイ, ブンミー, チャイヤポン, シーサワット, ウォンチャイ, ラッタナクン, ポンパニット, サクチャイ, ティラワット, チャルンスック, ケーオマニー, スクサワット, パッタナクン, ルアンシー, インタラ, タナポン, ワンナシリ, キッティクン]
+      early: ["{surname}商会", "{surname}商店", "{surname}兄弟商会"]
+      late: ["{surname}・{short}社", "{surname}・インダストリー", "{surname}・コーポレーション"]
+      local: ["{place}・{short}社", "{place}・{short}会社"]
+      industries: {steel_mill: {short: スチール}, food_factory: {short: フード}, trading: {short: トレーディング}, textile_mill: {short: テキスタイル}, automobile_plant: {short: モーター}}
+    malay:
+      joiner: ・
+      surnames: [ハルタント, スティアワン, グナワン, クスマ, サントソ, ハリム, プラタマ, ヌグロホ, ワフユディ, スサント, ハディ, ラフマン, イスマイル, ユスフ, ハムザ, アジズ, スレイマン, ハッサン, ザイナル]
+      early: ["{surname}商会", "{surname}商店", "{surname}兄弟商会"]
+      late: ["{surname}・{short}社", "{surname}・インダストリ", "{surname}・ジャヤ"]
+      local: ["{place}・{short}社", "{place}・{short}会社"]
+      industries: {steel_mill: {short: バジャ}, machinery_plant: {short: ムシン}, bank: {short: バンク}, food_factory: {short: マカナン}, trading: {short: ダガン}, textile_mill: {short: テクスティル}, automobile_plant: {short: モトル}, shipyard: {short: ガランガン}}
+    turkish:
+      joiner: ・
+      surnames: [ユルドゥズ, アイドゥン, オズテュルク, アルスラン, ケスキン, チェリク, シャーヒン, クルト, オズデミル, ポラト, アクソイ, ギュネシュ, カラジャ, トプラク, ウナル, ジャン, エルテキン, タシュ, オズカン, コルクマズ]
+      early: ["{surname}商会", "{surname}兄弟商会", "{surname}・ヴェ・オウッラル"]
+      late: ["{surname}・{short}社", "{surname}・ホールディング", "{surname}・サナイ"]
+      local: ["{place}・{short}社", "{place}・{short}会社"]
+      industries: {steel_mill: {short: チェリキ}, machinery_plant: {short: マキネ}, bank: {short: バンカス}, food_factory: {short: ギダ}, trading: {short: ティジャレット}, textile_mill: {short: テクスティル}, automobile_plant: {short: オトモティヴ}, shipyard: {short: テルサネ}}
+    arabic:
+      joiner: ・
+      surnames: [ハッダード, ナッジャール, ハイヤート, サッバーグ, ハムダーン, マンスール, ラシード, ハティーブ, アッタール, ジャッバール, ファーリス, カマール, サーレハ, ユーニス, ザイダーン, ナーセル, ムフタール, ダッバーグ, ハラビー, シャーミー]
+      early: ["{surname}商会", "{surname}兄弟商会", "{surname}・ワ・アウラードゥフ"]
+      late: ["{surname}・{short}社", "{surname}・グループ", "{surname}・インダストリーズ"]
+      local: ["{place}・{short}社", "{place}・{short}会社"]
+      industries: {steel_mill: {short: ハディード}, machinery_plant: {short: アーラート}, bank: {short: マスラフ}, food_factory: {short: アグズィヤ}, trading: {short: ティジャーラ}, textile_mill: {short: ナスィージュ}, automobile_plant: {short: サイヤーラート}}
+    persian:
+      joiner: ・
+      surnames: [ラフマーニー, カリーミー, ホセイニー, モハンマディー, ジャアファリー, レザーイー, サーデギー, ソルターニー, ターヘリー, モラーディー, ナザリー, ゴラーミー, アフマディー, ヤズダーニー, シャリーフィー, バーゲリー, ザマーニー, エマーミー, カーゼミー, ナーデリー]
+      early: ["{surname}商会", "{surname}兄弟商会", "{surname}商店"]
+      late: ["{surname}・{short}社", "シェルカテ・{surname}", "{surname}工業"]
+      local: ["{place}・{short}社", "{place}・{short}会社"]
+      industries: {steel_mill: {short: フーラード}, machinery_plant: {short: マーシーンサーズィー}, bank: {short: バーンク}, trading: {short: テジャーラト}, textile_mill: {short: ナッサージー}, automobile_plant: {short: ホドロ}, shipyard: {short: キャシュティサーズィー}}
+    nordic:
+      joiner: ・
+      surnames: [リンドクヴィスト, ベリストレム, サンドベリ, ホルムグレン, ニルソン, ヘグルンド, ロヴグレン, ショーベリ, エングストレム, ルンドグレン, ハンセン, ペーデルセン, ラーセン, ヨハンセン, ハウゲン, ブレッケ, ストランドベリ, ダールベリ, ヴィクストレム, ノルドストレム, エクルンド]
+      early: ["{surname}商会", "{surname}・オク・セーネル", "{surname}工房"]
+      late: ["{surname}・{short}社", "{surname}・インドゥストリ", "{surname}・オク・コンパニ"]
+      local: ["{place}・{short}社", "{place}{short}ヴェルク"]
+      industries: {steel_mill: {short: スタール}, machinery_plant: {short: メカニスカ}, bank: {short: バンク}, food_factory: {short: リヴスメデル}, trading: {short: ハンデル}, textile_mill: {short: テクスティル}, shipyard: {short: ヴァーヴ}}
+    dutch:
+      joiner: ・
+      surnames: [ファン・ダイク, デ・フリース, ファン・デル・ベルフ, ヤンセン, バッカー, フィッセル, スミット, デ・ボーア, ムルダー, デ・フロート, フォス, ペータース, ヘンドリクス, ファン・レーウェン, ブラウエル, デッケル, ファン・ベーク, コイペル, ホーフストラ]
+      early: ["{surname}商会", "{surname}・エン・ゾーネン", "{surname}工房"]
+      late: ["{surname}・{short}社", "{surname}・エン・コー", "{surname}・インドゥストリー"]
+      local: ["{place}・{short}社", "{place}・{short}会社"]
+      industries: {steel_mill: {short: スタール}, machinery_plant: {short: マシーネファブリーク}, bank: {short: バンク}, food_factory: {short: フーディング}, trading: {short: ハンデル}, textile_mill: {short: テクスティール}, shipyard: {short: ウェルフ}}
+    polish:
+      joiner: ・
+      surnames: [コヴァルスキ, ヴィシニェフスキ, カミンスキ, ジェリンスキ, シマンスキ, ヴォイチク, カチマレク, マズル, クラフチク, ピョトロフスキ, グラボフスキ, ノヴァコフスキ, パヴウォフスキ, ミハルスキ, ノヴァク, ヤブウォンスキ, ヴルブレフスキ, ザヨンツ, ヴィチョレク, クビャク]
+      early: ["{surname}商会", "{surname}・イ・スィノヴィエ", "{surname}工房"]
+      late: ["{surname}・{short}社", "{surname}・イ・スプウカ", "{surname}工業"]
+      local: ["{place}・{short}社", "{place}{short}ザクワディ"]
+      industries: {steel_mill: {short: フタ}, bank: {short: バンク}, trading: {short: ハンデル}, textile_mill: {short: テクスティリア}, shipyard: {short: ストチニャ}}
+    greek:
+      joiner: ・
+      surnames: [パパドプロス, ゲオルギウ, ディミトリウ, コンスタンティヌ, ニコラウ, ヴラホス, アンゲロプロス, カラヤニス, ミハイリディス, ステファニディス, パパニコラウ, アレクシウ, ヴァシリウ, ツァカロス, マヴロマティス, カツァロス, ペトリディス, ラザリディス, フラングリス]
+      early: ["{surname}商会", "{surname}兄弟商会", "{surname}・ケ・イイ"]
+      late: ["{surname}・{short}社", "{surname}・ケ・シア", "{surname}工業"]
+      local: ["{place}・{short}社", "{place}・{short}会社"]
+      industries: {steel_mill: {short: ハリヴルギア}, bank: {short: トラペザ}, food_factory: {short: トロフィマ}, trading: {short: エンボリキ}, shipyard: {short: ナフピギア}}
+    portuguese:
+      joiner: ・
+      surnames: [シルヴァ, オリヴェイラ, ソウザ, ペレイラ, コスタ, フェヘイラ, アウヴェス, ゴメス, マルチンス, アラウージョ, カルヴァーリョ, ハモス, ヒベイロ, ピント, テイシェイラ, ノゲイラ, モンテイロ, ブランダン, メデイロス, ドゥアルテ]
+      early: ["{surname}商会", "{surname}・イ・フィーリョス", "{surname}・イルマンス"]
+      late: ["{surname}・{short}社", "{surname}・イ・シア", "{surname}・インドゥストリアス"]
+      local: ["{place}・{short}社", "{place}・{short}会社"]
+      industries: {steel_mill: {short: シデルルジカ}, machinery_plant: {short: メカニカ}, bank: {short: バンコ}, food_factory: {short: アリメントス}, trading: {short: コメルシオ}, shipyard: {short: エスタレイロ}}
+    swahili:
+      joiner: ・
+      surnames: [ムワンギ, オティエノ, キプロノ, カマウ, オウマ, ムトゥア, ンジョロゲ, キマニ, ムサ, ハッサニ, ジュマ, バラカ, オニャンゴ, チェルイヨット, ワフラ, キロンゾ, シャバニ, ムチリ, ンデグワ]
+      early: ["{surname}商会", "{surname}兄弟商会", "{surname}商店"]
+      late: ["{surname}・{short}社", "{surname}・エンタープライゼズ", "{surname}・インダストリーズ"]
+      local: ["{place}・{short}社", "{place}・{short}会社"]
+      industries: {steel_mill: {short: チュマ}, bank: {short: ベンキ}, food_factory: {short: チャクラ}, trading: {short: ビアシャラ}}
