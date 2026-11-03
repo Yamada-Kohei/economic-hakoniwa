@@ -144,7 +144,7 @@ def test_market_page_table(client, world):
 
 
 def test_market_page_has_orders_for_the_chosen_good(client, world):
-    """市場の画面から、選んだ資源の国の倉庫の売買と補助金の命令を出せる（持ち主だけ）。"""
+    """市場の画面から、選んだ資源の国の倉庫の売り買いと補助金の命令を出せる（持ち主だけ）。"""
     island = _own_island(client)
     _market(island)
     html = client.get(f"/islands/{island.id}/market/?good=food").content.decode()
