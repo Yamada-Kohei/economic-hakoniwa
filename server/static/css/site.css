@@ -424,3 +424,15 @@ figure.diagram summary { cursor: pointer; color: var(--accent); }
 .step-link:hover { background: var(--head); }
 .next-steps > p { margin: 4px 10px 0; }
 .next-steps .hint { font-size: 0.85em; color: #6a7aa0; }
+/* 手引きのページの上の手引きの一覧と、産業のつながりの図への入口（web/help_guides.html・help_chain_banner.html） */
+.help-guides { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin: 6px 0 10px; padding: 6px 10px;
+  background: var(--pale); border: 1px solid var(--rule); }
+.help-guides-label { font-weight: bold; color: var(--navy); }
+.help-guides strong { color: var(--navy); border-bottom: 2px solid var(--accent); }
+.help-chain-banner, .help-chain-banner:visited { display: flex; gap: 12px; align-items: center; margin: 8px 0 12px; padding: 10px 14px;
+  background: #fff; border: 2px solid var(--accent); color: var(--fg); text-decoration: none; }
+.help-chain-banner:hover { background: var(--pale); }
+.help-chain-banner:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.help-chain-banner strong { display: block; color: #0000ee; text-decoration: underline; }
+.help-chain-banner-text { display: block; font-size: 0.9em; }
+.help-chain-banner-icon { flex: none; }

@@ -2,6 +2,7 @@
 {% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 {% include "web/report_header.html" %}
+{% translate "足りない物の原料をさかのぼりたいときは、どの品目が何の材料になるかを図で見られます。" as banner_text %}{% include "web/help_chain_banner.html" with banner_text=banner_text %}
 
 {% if chain %}
 <section class="panel">

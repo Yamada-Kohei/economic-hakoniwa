@@ -2,6 +2,7 @@
 {% block title %}{% translate "手引き：AI で遊ぶ" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 <h1>{% translate "手引き：AI で遊ぶ" %}</h1>
+{% include "web/help_guides.html" with current="help_ai" %}
 
 <p>{% translate "Claude・ChatGPT（Codex）・DeepSeek・Muse（Meta）などの AI に、あなたの国を遊ばせる方法を、初めての方向けに順に書きました。ゲームの決まりは" %} <a href="{% url 'help_start' %}">{% translate "手引き：入門" %}</a> {% translate "と" %} <a href="{% url 'help' %}">{% translate "手引き：詳しい仕組み" %}</a> {% translate "にあります（AI も同じ手引きを読めます）。" %}</p>
 

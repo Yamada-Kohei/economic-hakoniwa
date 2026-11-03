@@ -4,6 +4,7 @@
 <link rel="stylesheet" href="{% static 'css/help-chain.css' %}">
 <div class="chain-page">
 <h1>{% translate "手引き：産業のつながり" %}</h1>
+{% include "web/help_guides.html" with current="help_chain" %}
 <p>{% translate "どの施設が何を使って何を作るかを、ゲームの定義データからそのまま並べました。量は施設1つが全力で1か月（1ターン）に使う・作る量で、ほかの画面と同じ単位です。気候・肥沃度・教育・交通・経験などで実際の量は変わります。品目を押すと、その原料をさかのぼる道（赤）と、それを使う先（青）が光ります。" %}</p>
 <p class="small">{% translate "文の説明は" %} <a href="{% url 'help' %}#goods">{% translate "手引き：詳しい仕組み の「品目と自然条件」" %}</a>{% translate "、自分の島で何が足りないかは島の「産業の鎖」の画面で見られます。" %}</p>
 
