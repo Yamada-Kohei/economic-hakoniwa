@@ -35,6 +35,7 @@ class Engine:
         self.defs = defs
         self.config = config
         self.registry = registry
+        registry.config = config
         self.stages: list[Stage] = []
         for name in config.stages:
             if name not in registry.stages:

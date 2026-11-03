@@ -39,6 +39,11 @@ def check_order(
             handler.check(island, payload, defs)
         except OrderFailed as e:
             return OrderCheck(False, e.reason, e.args_)
+    if handler.check_settings is not None and registry.config is not None:
+        try:
+            handler.check_settings(island, payload, defs, registry.config)
+        except OrderFailed as e:
+            return OrderCheck(False, e.reason, e.args_)
     return OrderCheck(True)
 
 

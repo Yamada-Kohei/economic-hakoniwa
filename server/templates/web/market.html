@@ -14,7 +14,7 @@
           <thead><tr>
             <th>{% translate "資源" %}</th><th>{% translate "値段（1単位）" %}</th><th>{% translate "前ターン比" %}</th>
             <th>{% translate "売買量" %}</th><th>{% translate "買い注文" %}</th><th>{% translate "売り注文" %}</th>
-            <th>{% translate "買えなかった量" %}</th><th>{% translate "生産量" %}</th><th>{% translate "国の倉庫" %}</th>{% if mine %}<th>{% translate "倉庫から国営の施設へ" %}</th>{% endif %}<th>{% translate "単位" %}</th>
+            <th>{% translate "買えなかった量" %}</th><th>{% translate "生産量" %}</th><th>{% translate "国の倉庫" %}</th>{% if mine %}<th>{% translate "倉庫から国営の施設へ" %}</th><th>{% translate "国の倉庫の売買" %}</th>{% endif %}<th>{% translate "単位" %}</th>
           </tr></thead>
           <tbody>
             {% for r in rows %}
@@ -23,7 +23,7 @@
               <td>{{ r.price|default:"-" }}{% if r.price_kind != "trade" %}<br><small class="muted">{{ r.price_kind_name }}{% if r.observed_turn is not None %}{% blocktranslate with t=r.observed_turn|turn_date %}（最後の約定 {{ t }}）{% endblocktranslate %}{% else %}{% translate "（約定なし）" %}{% endif %}</small>{% endif %}</td><td>{{ r.change|default:"" }}</td>
               <td>{{ r.volume|default:"-" }}</td><td>{{ r.demand|default:"-" }}</td><td>{{ r.supply|default:"-" }}</td>
               <td{% if r.unmet %} class="warning-cell"{% endif %}>{{ r.unmet|default:"" }}</td>
-              <td>{{ r.production }}</td><td>{{ r.stock }}</td>{% if mine %}<td>{{ r.to_state|default:"" }}</td>{% endif %}<td>{{ r.unit }}</td>
+              <td>{{ r.production }}</td><td>{{ r.stock }}</td>{% if mine %}<td>{{ r.to_state|default:"" }}</td><td>{% if r.warehouse_standing %}{{ r.warehouse_standing.text }}{% with last=r.warehouse_standing.last %}{% if last %}<br><small>前のターン: 出した量 {{ last.offered }}・約定 {{ last.filled }}・使ったお金 {{ last.spent }} {{ currency }}{% if last.reason_name %}・{{ last.reason_name }}{% endif %}</small>{% endif %}{% endwith %}{% endif %}<br><a href="?good={{ r.good }}#orders">{% translate "置く・変える・止める" %}</a></td>{% endif %}<td>{{ r.unit }}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -78,7 +78,7 @@
 
   {% if mine %}
   <aside id="orders" class="panel report-orders" data-url="{% url 'api_orders' island.id %}" data-defs="{% url 'api_defs' %}"
-         data-forms="warehouse_trade,set_subsidy" data-good="{{ good }}"
+         data-forms="warehouse_trade,set_warehouse_standing,set_subsidy" data-good="{{ good }}"
          data-heading="{% translate '市場の命令' %}"></aside>
   {% endif %}
 </div>

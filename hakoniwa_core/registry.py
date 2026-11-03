@@ -74,6 +74,7 @@ class OrderHandler:
     kind: str
     execute: Callable[[IslandState, dict[str, Any], StageContext], None]
     check: Callable[[IslandState, dict[str, Any], Defs], None] | None = None
+    check_settings: Callable[[IslandState, dict[str, Any], Defs, GameConfig], None] | None = None
 
 
 class RegistryError(Exception):
@@ -82,6 +83,7 @@ class RegistryError(Exception):
 
 class Registry:
     def __init__(self) -> None:
+        self.config: GameConfig | None = None
         self.stages: dict[str, Stage] = {}
         self.orders: dict[str, OrderHandler] = {}
         self.formulas: dict[str, Callable[..., Any]] = {}

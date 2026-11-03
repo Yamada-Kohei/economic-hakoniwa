@@ -993,7 +993,7 @@ def _orders_view(island: m.Island, mine: bool = True) -> dict[str, Any]:
         "policy": (
             budget_guide.attach(display.policy_view(island), island)
             if mine
-            else display.policy_view(island)
+            else display.policy_view(island, mine=False)
         ),
         "power_good": get_game().config.get("power.good"),
         "orders": [

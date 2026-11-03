@@ -58,7 +58,11 @@ INSTRUCTIONS = """\
   読み（利用規約は guide(which=terms)）、summary で国の要約を読みます。
   建国から1年のあいだ、summary の next_steps に「次にすること」（急ぐ順に3つまで）が入ります。
   summary の warehouse_release は備蓄の放出の決まり（auto と、いま放出している財）で、命令
-  set_warehouse_release で止められます。summary の shipping は、このターンに圏の荷のために船を
+  set_warehouse_release で止められます。warehouse_standing は品目ごとの決まった売り買いの設定と
+  前のターンの結果です（持ち主だけ。changes にも同じ中身）。set_warehouse_standing の kind は
+  buy・sell・reserve・stop、quantity は毎ターンの量（reserve は目安）、limit は買い入れの上限か
+  売りの下限、release は reserve の放出価格、turns は省けば止めるまで続きます。量と値段は画面と
+  同じ単位です。summary の shipping は、このターンに圏の荷のために船を
   貸し借りしたときの運賃（貸した船の収入 charter_income・借りた船に払った分 charter_paid）と
   国際収支のサービス収支 services です（貸し借りがなければ null）。
   島がなければ found で建国します。前に遊んだ方針や引き継ぎは国の日誌（diary）にあり、区切りで
@@ -197,7 +201,8 @@ REPORTS = {
     "買えなかった量・国の倉庫の在庫。持ち主には国の倉庫から国営の施設に渡した量 to_state と、"
     "止まった施設の国営・民営 owner_name。good を決めるとその財の推移と約定（穀物の政府の組には"
     "備蓄の入れ替えなどの note）。画面と同じく、その財の国の倉庫の売買 warehouse_trade と"
-    "資源ごとの補助金 set_subsidy は set_orders で出す）",
+    "決まった売り買い warehouse_standing と、資源ごとの補助金 set_subsidy は set_orders で出す。"
+    "決まった売り買いの設定・前の結果は品目ごとの warehouse_standing に入る）",
     "facilities": "施設（町ごとの労働力・失業と買いに行く店の場所 towns、産業ごとの従業者数 "
     "industry_workers。持ち主には施設ごとの"
     "状態・人手・損益・預金・借入と、畑を作り替えている農場の内訳と企業の帳簿 table.firms、"

@@ -149,7 +149,8 @@ def test_market_page_has_orders_for_the_chosen_good(client, world):
     _market(island)
     html = client.get(f"/islands/{island.id}/market/?good=food").content.decode()
     assert 'id="orders"' in html
-    assert 'data-forms="warehouse_trade,set_subsidy"' in html and 'data-good="food"' in html
+    assert 'data-forms="warehouse_trade,set_warehouse_standing,set_subsidy"' in html
+    assert 'data-good="food"' in html
     _login(client, "other")
     assert 'id="orders"' not in client.get(f"/islands/{island.id}/market/").content.decode()
 

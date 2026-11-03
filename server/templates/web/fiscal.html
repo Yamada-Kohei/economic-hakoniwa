@@ -37,7 +37,8 @@
       {% if mine %}<p class="hint">{% translate "年の予算を決める目安です。「去年の合計」は直近12ターンに使った額、「最大の月の年換算」はその中でいちばん使った月が1年続いた額です。「使い切れない目安」は、これより積んでも使い道がない額で、予算の命令の入力欄にも出ます。" %}</p>
       <ul class="budget-guide">
         {% for b in fiscal.budget %}{% if b.limit != "—" %}<li><strong>{{ b.name }}</strong>: {{ b.note }}{% if b.parts %}<br><small class="muted">{{ b.parts }}。{% translate "命令で新しい工事を足すと増えます。" %}</small>{% endif %}</li>{% endif %}{% endfor %}
-        <li>{% translate "補助金・国の倉庫・国防費は、使い道が命令や軍の状態で決まるため、去年の実績だけを出しています。" %}</li>
+          {% for b in fiscal.budget %}{% if b.item == "warehouse" %}<li>{{ b.parts }}</li>{% endif %}{% endfor %}
+          <li>{% translate "補助金・国防費は、使い道が命令や軍の状態で決まるため、去年の実績だけを出しています。" %}</li>
       </ul>{% endif %}
     </section>
 
