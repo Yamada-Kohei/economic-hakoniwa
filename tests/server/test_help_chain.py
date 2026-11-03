@@ -41,3 +41,25 @@ def test_chain_guide_page_carries_the_data_and_is_linked(client, world):
     assert "js/help-chain.js" in page
     assert "{%" not in page and "{{" not in page
     assert "/help/chain/" in client.get("/help/").content.decode()
+
+
+@pytest.mark.django_db
+def test_every_guide_and_the_island_chain_screen_lead_to_the_chain_guide(client, world):
+    """入口が奥に隠れないように、どの手引きの上にも、島の「産業の鎖」の画面にも入口を出す。"""
+    for url in ("/help/start/", "/help/", "/help/ai/", "/help/hakoniwa/"):
+        page = client.get(url).content.decode()
+        assert 'class="help-chain-banner" href="/help/chain/"' in page, url
+        assert 'class="help-guides"' in page, url
+    from server.web.context import SCREEN_HELP
+
+    assert SCREEN_HELP["island_chain"] == ("help_chain", "")
+
+
+@pytest.mark.django_db
+def test_island_chain_screen_shows_the_way_to_the_chain_guide(client, world):
+    from tests.server.test_phase3_2 import _own_island
+
+    island = _own_island(client)
+    page = client.get(f"/islands/{island.id}/chain/").content.decode()
+    assert 'class="help-chain-banner" href="/help/chain/"' in page
+    assert "品目ごとの鎖" in page

@@ -3,6 +3,7 @@
 {% block content %}
 <link rel="stylesheet" href="{% static 'css/military.css' %}">
 <h1>{% translate "手引き：詳しい仕組み" %}</h1>
+{% include "web/help_guides.html" with current="help" %}
 
 <p>{% translate "仕組みの決まりをすべて書いた手引きです。初めて遊ぶ方は、先に" %} <a href="{% url 'help_start' %}">{% translate "手引き：入門" %}</a> {% translate "（最初の1年・困ったとき・施設の状態の言葉）を読んでください。" %}</p>
 
@@ -19,6 +20,7 @@
     <li><a href="#island">{% translate "仕組み" %}</a></li>
     <li><a href="#infrastructure">{% translate "インフラと教育" %}</a></li>
     <li><a href="#goods">{% translate "品目と自然条件" %}</a></li>
+    <li><a href="{% url 'help_chain' %}">{% translate "産業のつながりの図（別のページ）" %}</a></li>
     <li><a href="#money">{% translate "金融と企業" %}</a></li>
     <li><a href="#trade">{% translate "貿易と為替" %}</a></li>
     <li><a href="#letters">{% translate "外交と公電" %}</a></li>
