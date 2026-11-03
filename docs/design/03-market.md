@@ -58,7 +58,7 @@
 | MK-36 | 消費財の指値に物価の見通しを足す。作られていない物の値段は、商社の輸入か品切れの値段のせり上げで出る（家計の側はタブ 4 LB-36、お金の側はタブ 7） | 決定（回5 で作る） |  | （未確認） |
 | MK-37 | 家計は電気と町の資材を除く品物に、代金に見合う小売りを店から一緒に買う。店で買いきれない分は小さな店と屋台から割高に買う（タブ 5 FM-38） | 決定 | `retail.*` | tests/core/test_balance_round7.py::test_households_buy_retail_from_shops_then_direct |
 | MK-38 | 国営の施設（学校と大学も）は、市場で買いきれなかった次のターンの投入財を国の倉庫から使う。今の値段で政府に払い、倉庫が売ったのと同じに数える（運賃なし）。工事・インフラ・設備の直しの資材（国の工事の備え）・軍の備蓄・国の穀物の備蓄・今夜捨てられる組は使わない。民営の施設は使えない | 決定 |  | tests/core/test_state_inputs_from_warehouse.py::test_state_power_plant_burns_the_warehouse_coal, ::test_private_power_plant_does_not_take_from_the_warehouse |
-| MK-39 | 備蓄の放出の決まり: 島のどの施設も作っていない物を、前のターンに市場で買えなかった施設があれば、国の倉庫の余りを施設がいま要る量までいつもの値段で売りに出す。始めた物は、施設が要る間は続けて出す。工事・インフラ・設備の直しの資材・軍の備蓄・国の穀物の備蓄・そのターンに命令で売り買いする物は出さない。命令 `set_warehouse_release` で止められる（初めは動く） | 決定 | `household.usual_price_turns` | tests/core/test_state_inputs_from_warehouse.py::test_private_power_plant_buys_the_released_coal, ::test_private_power_plant_does_not_take_from_the_warehouse |
+| MK-39 | 備蓄の放出の決まり: 島のどの施設も作っていない物を、前のターンに市場で買えなかった施設があれば、国の倉庫の余りを施設がいま要る量までいつもの値段で売りに出す。始めた物は、施設が要る間は続けて出す。工事・インフラ・設備の直しの資材・軍の備蓄・国の穀物の備蓄・そのターンに命令で売り買いする物・決まった売り買いの設定（タブ 6 FS-28）を置いた物は出さない。命令 `set_warehouse_release` で止められる（初めは動く） | 決定 | `household.usual_price_turns` | tests/core/test_state_inputs_from_warehouse.py::test_private_power_plant_buys_the_released_coal, ::test_private_power_plant_does_not_take_from_the_warehouse, tests/core/test_warehouse_standing.py::test_imported_sales_suspend_standing_buys_and_mk39_skips_settings |
 
 ### 仮の決まり
 

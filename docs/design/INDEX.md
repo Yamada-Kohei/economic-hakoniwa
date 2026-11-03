@@ -148,7 +148,7 @@
 | MK-36 | 消費財の指値に物価の見通しを足す | 決定（回5 で作る） | （未確認） |
 | MK-37 | 家計は電気と町の資材を除く品物に、代金に見合う小売りを店から一緒に買う | 決定 | tests/core/test_balance_round7.py |
 | MK-38 | 国営の施設（学校と大学も）は、市場で買いきれなかった次のターンの投入財を国の倉庫から使う | 決定 | tests/core/test_state_inputs_from_warehouse.py |
-| MK-39 | 備蓄の放出の決まり: 島のどの施設も作っていない物を、前のターンに市場で買えなかった施設があれば… | 決定 | tests/core/test_state_inputs_from_warehouse.py |
+| MK-39 | 備蓄の放出の決まり: 島のどの施設も作っていない物を、前のターンに市場で買えなかった施設があれば… | 決定 | tests/core/test_state_inputs_from_warehouse.py、tests/core/test_warehouse_standing.py |
 
 ## [4 仕事と家計](04-labor.md)
 
@@ -263,7 +263,7 @@
 
 ## [6 国の財政と政策](06-finance.md)
 
-決まり 27 個、うち仮の決まりの表にあるもの 0 個。
+決まり 29 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -294,6 +294,8 @@
 | FS-25 | 国の穀物の備蓄: 目安は住民の食べる量の決めたターン数分で、建国のときに国の倉庫に入れる | 決定 | tests/core/test_recession_round1.py |
 | FS-26 | 住宅費（W-190・W-202）: 国が町の床を足す資材（命令「住宅を建てる」と、計画経済の国の… | 決定（命令の工事と計画経済の町は回2 で作った | tests/core/test_public_housing.py、tests/core/test_stage7_fixes.py |
 | FS-27 | 公営住宅の家賃（W-190・W-202）: 国の床に住む層は、床 1 人分ごとに命令で決める名目… | 決定（家賃の徴収は回2 で作った | tests/core/test_public_housing.py |
+| FS-28 | 国の倉庫の決まった売り買い（W-235）: 命令 `set_warehouse_standing`… | 決定（2026-11-03 実装） | tests/core/test_warehouse_standing.py |
+| FS-29 | 備蓄の設定: 目安の量・買い入れの上限の値段・放出の値段（買い入れの上限より高く）を決める | 決定（2026-11-03 実装） | tests/core/test_warehouse_standing.py |
 
 ## [7 お金と銀行](07-banking.md)
 
@@ -516,7 +518,7 @@
 
 ## [11 画面と統計](11-ui.md)
 
-決まり 59 個、うち仮の決まりの表にあるもの 0 個。
+決まり 60 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -579,6 +581,7 @@
 | UI-57 | 利用規約の画面（`/terms/`）: 無料の試験公開であること・1 人 1 アカウント・しては… | 決定（2026-11-01、W-215） | tests/server/test_terms.py |
 | UI-58 | AI で遊ぶ人向けの手引き（`/help/ai/`）: AI で遊ぶとは・用意するもの・鍵の作り… | 決定（2026-11-02、本人「AI でのプレイ方法」「かなり詳しく書いてほしい」「コピペしや… | tests/server/test_help_ai.py |
 | UI-59 | 公電が届いたときのブラウザの通知（Web Push）: 公電の画面の「このブラウザに知らせる」を… | 決定（2026-11-03、W-39） | tests/server/test_letters_push.py |
+| UI-60 | 国の倉庫の決まった売り買い（W-235、タブ 6 FS-28・FS-29）の画面: 市場の画面の… | 決定（2026-11-03 実装） | tests/server/test_warehouse_standing.py |
 
 ## [12 確かめ方](12-checks.md)
 

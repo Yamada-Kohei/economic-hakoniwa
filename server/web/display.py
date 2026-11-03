@@ -785,6 +785,7 @@ def goods_list(amounts: dict[str, int]) -> list[dict[str, Any]]:
 ORDER_UNITS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = {
     "set_price_cap": ("good", (), ("price",)),
     "warehouse_trade": ("good", ("quantity",), ("limit",)),
+    "set_warehouse_standing": ("good", ("quantity",), ("limit", "release")),
     "propose_contract": ("good", ("quantity",), ("price",)),
     "set_export_subsidy": ("good", (), ("amount",)),
     "set_import_quota": ("good", ("quantity",), ()),
@@ -930,6 +931,24 @@ def describe_order(kind: str, payload: dict[str, Any]) -> str:
             label = message(_POLICY_LABELS.get(k, f"budget_{k}"))
             parts.append(f"{label} {v:g}%" if k in _PERCENT else f"{label} {v:,}")
         return f"{name}: " + "・".join(parts)
+    if kind == "set_warehouse_standing":
+        good = payload.get("good", "")
+        action = {
+            "buy": "毎ターン買う",
+            "sell": "毎ターン売る",
+            "reserve": "備蓄する",
+            "stop": "決まった売り買いをやめる",
+        }.get(payload.get("kind"), "")
+        text = f"{name}: {defs.name('goods', good)}を{action}"
+        if payload.get("kind") != "stop":
+            text += f" {payload.get('quantity', 0):g} {defs.unit_name(good)}"
+            if payload.get("limit"):
+                text += f"（指値 {payload['limit']:,}）"
+            if payload.get("release"):
+                text += f"（放出 {payload['release']:,}）"
+            if payload.get("turns"):
+                text += f" {payload['turns']}ターン"
+        return text
     if kind == "warehouse_trade":
         good = payload.get("good", "")
         side = message("side_" + payload.get("side", ""))
@@ -1335,7 +1354,46 @@ _POLICY_LABELS = {
 }
 
 
-def policy_view(island) -> dict[str, Any]:
+def warehouse_standing(island) -> dict[str, Any]:
+    """設定と前ターンの結果を画面・AI 共通の単位に直す。持ち主だけに渡す。"""
+    from hakoniwa_core.units import from_milli
+
+    state = (island.economy or {}).get("ext", {}).get("warehouse_standing", {})
+    out = {}
+    reasons = {
+        "budget": "予算",
+        "treasury": "国庫",
+        "stock": "倉庫にない（工事の資材を含む）",
+        "military": "軍の備え",
+    }
+    for good, item in sorted(state.items()):
+        payload = {
+            "good": good,
+            "kind": item["kind"],
+            "quantity": from_milli(item["quantity"]),
+            "limit": item["limit"],
+            "release": item["release"],
+        }
+        row = order_payload("set_warehouse_standing", payload, to_game=False)
+        row["remaining"] = (
+            max(0, item["expires"] - island.world.turn) if item.get("expires") is not None else None
+        )
+        row["name"] = get_game().defs.name("goods", good)
+        row["text"] = describe_order("set_warehouse_standing", payload)
+        row["text"] += (
+            f"・残り {row['remaining']}ターン" if row["remaining"] is not None else "・止めるまで"
+        )
+        if "last" in item:
+            last = dict(item["last"])
+            for key in ("offered", "filled"):
+                last[key] = amount(last[key], good)
+            last["reason_name"] = reasons.get(last.get("reason"), "")
+            row["last"] = last
+        out[good] = row
+    return out
+
+
+def policy_view(island, mine: bool = True) -> dict[str, Any]:
     """島の今の政策（税率と失業手当は %、予算と最低賃金はお金）。命令の入力の初めの値に使う。"""
     policy = island.policy or {}
     budget_items = get_game().config.get("fiscal.budget_items")
@@ -1354,6 +1412,7 @@ def policy_view(island) -> dict[str, Any]:
         "public_works_auto": not (island.economy or {}).get("infra", {}).get("auto_off"),
         # 備蓄の放出の決まり（2026-10-31。命令 set_warehouse_release で止めていなければ動く）
         "warehouse_release": policy.get("warehouse_release", True),
+        **({"warehouse_standing": warehouse_standing(island)} if mine else {}),
         # 公共料金の上限は見せる単位 1 つあたり（W-30）
         "price_cap": {g: price(g, p) for g, p in policy.get("price_cap", {}).items()},
         **finance_policy_view(island),
@@ -1456,7 +1515,9 @@ def visible_logs(logs, mine: bool, island=None):
     （MI-62）の行も持ち主だけ。"""
     if mine:
         return logs
-    logs = logs.exclude(kind__in=(*PRIVATE_LOGS, LETTER_LOG))
+    from hakoniwa_core.economy.standing import PRIVATE_LOGS as STANDING_LOGS
+
+    logs = logs.exclude(kind__in=(*PRIVATE_LOGS, *STANDING_LOGS, LETTER_LOG))
     if island is not None:
         for x, y in hidden_places(island):
             # x・y のキーが無い行は残す（キー無しは NULL になり、単純な exclude では消えてしまう）

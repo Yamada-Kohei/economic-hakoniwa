@@ -78,6 +78,7 @@ from hakoniwa_core.economy import (
     reserve,
     retail,
     services,
+    standing,
     trucks,
 )
 from hakoniwa_core.economy import freight as freight_rates
@@ -760,6 +761,7 @@ class Market(IslandStage):
             return
         defs, config = ctx.defs, ctx.config
         # 計画経済の公定価格（フェーズ3-4）: 見直しのターンなら解き直し、基準の値段にする
+        standing.expire(island, ctx.turn)
         official = planning.prepare(island, defs, config, ctx.turn)
         retail.prepare(island, config)
         island.scratch[retail.UNRETAILED] = (services.good_of(config), retail.good_of(config))
@@ -1065,6 +1067,10 @@ class Market(IslandStage):
                     tier, layer = planning.HOUSEHOLDS, party.layer
                 elif party.kind == STORE and order.priority == CONTRACT_PRIORITY:
                     tier = planning.EXPORTS  # 二国間契約で売る分
+                elif party.kind == STORE and order.priority == ctx.config.get(
+                    "warehouse.standing_priority"
+                ):
+                    tier = order.priority  # 決まった買いは配給・国営施設・輸出の後
                 elif f is not None and f.id in traders_:
                     tier = planning.EXPORTS  # 商社の輸出
                 elif party.kind == MERCHANT:
@@ -1311,7 +1317,9 @@ class Market(IslandStage):
             if f.owner == OWNER_PRIVATE:
                 continue
             for good, want in equipment.wants(ctx.defs, ctx.config, f).items():
-                batches = stock.take_batches(island.warehouse, good, want)
+                batches = stock.take_batches(
+                    island.warehouse, good, standing.available(island, good, want)
+                )
                 taken = sum(q for _, q in batches)
                 cost = money_of(prices.get(good, 0), taken)
                 equipment.install(ctx.defs, f, good, taken, cost)
@@ -1325,7 +1333,9 @@ class Market(IslandStage):
                 want = qty - stock.total(f.stock, good)
                 if want <= 0:
                     continue
-                batches = stock.take_batches(island.warehouse, good, want)
+                batches = stock.take_batches(
+                    island.warehouse, good, standing.available(island, good, want)
+                )
                 stock.put_batches(f.stock, good, batches)
                 taken = sum(q for _, q in batches)
                 if taken:
@@ -1377,6 +1387,9 @@ class Market(IslandStage):
                 keep = dict(autoplan._military_keep(island, config))
                 grain = config.get("food_reserve")["good"]  # 国の穀物の備蓄は飢饉の備え
                 keep[grain] = keep.get(grain, 0) + reserve.target(island, defs, config)
+                for good in standing.settings(island):
+                    if good != grain:
+                        keep[good] = keep.get(good, 0) + standing.protected(island, good)
             payer = payer_of(defs, config, f)
             party = Party(FACILITY, facility_entity(f.id), payer, 0, 0, f)
             party.public = is_public_service(defs, f)
@@ -2676,13 +2689,15 @@ class Market(IslandStage):
         # ログに出す（軍の買い入れは軍の状態にも書く）
         placed: list[tuple[str, str, int, Order | None, str, bool]] = []
 
-        def sell(good: str, qty: int, limit: int | None, layer: str | None = None) -> Order | None:
+        def sell(
+            good: str, qty: int, limit: int | None, layer: str | None = None, priority: int = 0
+        ) -> Order | None:
             qty = min(qty, stock.total(island.warehouse, good) - offered.get(good, 0))
             if qty <= 0:
                 return None
             offered[good] = offered.get(good, 0) + qty
             party = Party(STORE, ledger.GOV, Payer(ledger.GOV, WAREHOUSE), layer=layer)
-            order = Order(qty, limit)
+            order = Order(qty, limit, priority)
             self._add(books_by_good, good, "sell", order, party)
             return order
 
@@ -2713,9 +2728,136 @@ class Market(IslandStage):
             else:
                 cut = "treasury"
             placed.append((good, "buy", qty, order, cut, military))
-        self._release_orders(island, ctx, sell, {item["good"] for item in orders})
-        self._reserve_orders(island, ctx, books_by_good, sell, offered)
+        manual = {item["good"] for item in orders if not item.get("military")}
+        grain = ctx.config.get("food_reserve.good")
+        grain_standing = standing.settings(island).get(grain, {}).get("kind") == "reserve"
+        if grain_standing:
+            if grain in manual:
+                # 設定の注文を休めても、FS-25 の飢餓時放出と古い組の入れ替えは残す。
+                self._reserve_orders(
+                    island, ctx, books_by_good, sell, offered, maintenance_only=True
+                )
+            self._standing_orders(
+                island, ctx, books_by_good, sell, offered, manual, grain_only=True
+            )
+        else:
+            self._reserve_orders(island, ctx, books_by_good, sell, offered)
+        self._standing_orders(island, ctx, books_by_good, sell, offered, manual, grain_only=False)
+        self._release_orders(
+            island, ctx, sell, {item["good"] for item in orders} | set(standing.settings(island))
+        )
         island.scratch[WAREHOUSE_PLACED] = placed
+
+    def _standing_orders(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        books_by_good: dict[str, Book],
+        sell: Any,
+        offered: dict[str, int],
+        manual: set[str],
+        grain_only: bool,
+    ) -> None:
+        """穀物の備蓄を先に取り置き、ほかの決まった買いをまとめて比例で減らす。"""
+        priority = ctx.config.get("warehouse.standing_priority")
+        grain = ctx.config.get("food_reserve.good")
+        official = planning.official(island)
+        buyer = Payer(ledger.GOV, WAREHOUSE)
+        plans: dict[str, tuple[int, int]] = {}
+        placed = island.scratch.setdefault(standing.PLACED, [])
+
+        def remember(good: str, side: str, want: int, order: Order | None, reason: str) -> None:
+            placed.append((good, side, want, order, reason))
+
+        for good, item in sorted(standing.settings(island).items()):
+            is_grain = good == grain and item["kind"] == "reserve"
+            if is_grain != grain_only:
+                continue
+            item["last"] = {"turn": ctx.turn, "offered": 0, "filled": 0, "spent": 0, "reason": None}
+            if island.policy.budget.get(WAREHOUSE, 0) // YEAR > 0:
+                item["no_budget"] = False
+            if good in manual:
+                item["last"]["paused"] = "manual"
+                if item["kind"] == "reserve":
+                    standing.note_release(island, good, item, False)
+                continue
+            book = books_by_good.get(good, Book())
+            buying = any(p.kind == STORE and o.quantity > 0 for o, p in book.buys)
+            selling = offered.get(good, 0) > 0
+            kind = item["kind"]
+            releasing = kind == "reserve" and standing.release(island, ctx, good, item)
+            hungry = is_grain and self._anyone_hungry(island, ctx)
+            releasing = releasing or hungry
+            side = "sell" if kind == "sell" or releasing else "buy"
+            if (side == "buy" and selling) or (side == "sell" and buying):
+                item["last"]["paused"] = "opposite"
+                if kind == "reserve":
+                    standing.note_release(island, good, item, False)
+                continue
+            limit = official.get(good) or item["limit"]
+            if kind == "reserve":
+                standing.note_release(island, good, item, releasing)
+                old = standing.rotating(island, ctx, good)
+                if old:
+                    spare, cut = standing.sellable(island, ctx, good)
+                    order = sell(
+                        good,
+                        min(old, spare),
+                        official.get(good) or island.economy.prices.get(good),
+                        priority=priority,
+                    )
+                    remember(good, "sell", old, order, cut)
+                if releasing:
+                    spare, cut = standing.sellable(island, ctx, good)
+                    if spare <= 0:
+                        item["last"]["reason"] = cut
+                    ask = official.get(good) or item["release"]
+                    if hungry:
+                        ask = official.get(good) or usual_price(
+                            island, good, ctx.config.get("household.usual_price_turns")
+                        )
+                    order = sell(good, max(0, spare - offered.get(good, 0)), ask, priority=priority)
+                    remember(
+                        good, "sell", max(0, stock.total(island.warehouse, good) - old), order, cut
+                    )
+                    continue
+                held = stock.total(island.warehouse, good)
+                short = max(0, item["quantity"] - held)
+                refill = ctx.config.get("food_reserve.refill") if is_grain else 1
+                renew = min(old, offered.get(good, 0))
+                want = max(0, min(int(short * refill) + renew, item["quantity"] - held + renew))
+            elif kind == "sell":
+                spare, cut = standing.sellable(island, ctx, good)
+                order = sell(
+                    good,
+                    max(0, min(item["quantity"], spare - offered.get(good, 0))),
+                    official.get(good) or item["limit"] or None,
+                    priority=priority,
+                )
+                remember(good, "sell", item["quantity"], order, cut)
+                continue
+            else:
+                want = item["quantity"]
+            if want > 0:
+                plans[good] = (want, limit)
+
+        capped = funds.available(island, buyer) < funds.available(island, buyer, capped=False)
+        affordable = self._afford(island, buyer, plans, 0, 0)
+        for good, (want, _) in plans.items():
+            q, limit = affordable.get(good, (0, plans[good][1]))
+            item = standing.settings(island)[good]
+            zero = island.policy.budget.get(WAREHOUSE, 0) // YEAR <= 0
+            if zero and not item.get("no_budget"):
+                island.log.append(LogEntry("standing_no_budget", {"good": good}))
+            item["no_budget"] = zero
+            order = None
+            if q > 0:
+                party = Party(STORE, ledger.GOV, buyer)
+                party.reserved = gross_cost(limit, q, 0, 0)
+                funds.commit(island, buyer, party.reserved)
+                order = Order(q, limit, priority)
+                self._add(books_by_good, good, "buy", order, party)
+            remember(good, "buy", want, order, "budget" if capped or zero else "treasury")
 
     def _release_orders(
         self, island: IslandState, ctx: StageContext, sell: Any, ordered: set[str]
@@ -2732,7 +2874,7 @@ class Market(IslandStage):
             return
         defs, config = ctx.defs, ctx.config
         made = {g for f in island.facilities if f.built for g in fac.recipe_of(defs, f)["outputs"]}
-        skip = self._construction_goods(defs) | made | ordered
+        skip = self._construction_goods(defs) | made | ordered | set(standing.settings(island))
         skip.add(config.get("food_reserve")["good"])
         # 前のターンに原料を買えなかった施設（_record_shortages の short）が、いま要る量。放出を
         # 始めた物は、買えた施設にも続けて出す（出すのをやめると、次のターンにまた買えなくなる）
@@ -2772,6 +2914,7 @@ class Market(IslandStage):
         books_by_good: dict[str, Book],
         sell: Any,
         offered: dict[str, int],
+        maintenance_only: bool = False,
     ) -> None:
         """国の穀物の備蓄（economy/reserve.py）の入れ替え・放出・買い足し。命令の売りの後に出す
         （命令で売ると決めた分は、もう売りに出ている）。offered: 倉庫がこのターンに売りに出した量。
@@ -2788,9 +2931,11 @@ class Market(IslandStage):
             sell(good, old, price or None)
         hungry = self._anyone_hungry(island, ctx)
         high = scale_price(usual, 1 + spec["release"])
-        release = usual > 0 and (hungry or price >= high)
+        release = usual > 0 and (hungry or (not maintenance_only and price >= high))
         if release:
             sell(good, stock.total(island.warehouse, good), usual if hungry else high)
+        if maintenance_only:
+            return
         # 目安に足りない分の refill の割合と、入れ替えで売りに出した分（新しい組と入れ替える）
         short = reserve.target(island, ctx.defs, ctx.config) - stock.total(island.warehouse, good)
         renew = min(old, stock.total(island.warehouse, good))
@@ -2805,7 +2950,9 @@ class Market(IslandStage):
             party = Party(STORE, ledger.GOV, buyer)
             party.reserved = gross_cost(lim, q, 0, 0)
             funds.commit(island, buyer, party.reserved)
-            self._add(books_by_good, g, "buy", Order(q, lim), party)
+            order = Order(q, lim)
+            self._add(books_by_good, g, "buy", order, party)
+            island.scratch.setdefault("food_reserve_buys", []).append((g, order))
 
     @staticmethod
     def _anyone_hungry(island: IslandState, ctx: StageContext) -> bool:
@@ -2826,6 +2973,45 @@ class Market(IslandStage):
         """命令で出した国の倉庫の売り買いの結果（約定した量と、足りなかったわけ）をログに出す。軍の
         買い入れ（兵の食べ物・弾薬・装備。W-184）は、足りなかったときだけ、軍の状態の purchases に
         書いてログに出す（持ち主だけが読む）。"""
+        for good, side, want, order, cut in island.scratch.pop(standing.PLACED, []):
+            item = standing.settings(island)[good]
+            last = item["last"]
+            book, result = books_by_good.get(good), results.get(good)
+            filled = 0
+            if order is not None and book is not None and result is not None:
+                rows = book.buys if side == "buy" else book.sells
+                done = result.bought if side == "buy" else result.sold
+                filled = next((done[i] for i, (o, _) in enumerate(rows) if o is order), 0)
+            qty = order.quantity if order is not None else 0
+            last["offered"] += qty
+            last["filled"] += filled
+            if side == "buy" and result is not None:
+                # 約定の組ごとに丸めて払うので、合計量×値段で計算し直さず取り置きの減りを読む。
+                party = next((p for o, p in book.buys if o is order), None) if book else None
+                if order is not None and party is not None:
+                    last["spent"] += gross_cost(order.limit, order.quantity, 0, 0) - party.reserved
+                if (
+                    order is not None
+                    and good == ctx.config.get("food_reserve.good")
+                    and item["kind"] == "reserve"
+                ):
+                    island.scratch.setdefault("food_reserve_buys", []).append((good, order))
+            if qty < want:
+                last["reason"] = cut
+        for good, item in standing.settings(island).items():
+            result = results.get(good)
+            missed = max(0, result.demand - result.volume) if result else 0
+            missed += island.scratch.get("unplaced", {}).get(good, 0)
+            desire = island.scratch.get(planning.DESIRE, {}).get(good, 0)
+            bought = island.scratch.get("household_bought", {}).get(good, 0)
+            item["unmet"] = max(missed, desire - bought)
+        for good, order in island.scratch.pop("food_reserve_buys", []):
+            result = results.get(good)
+            if result is not None:
+                party = next(p for o, p in books_by_good[good].buys if o is order)
+                paid = gross_cost(order.limit, order.quantity, 0, 0) - party.reserved
+                key = "warehouse.food_refill"
+                island.stats[key] = island.stats.get(key, 0) + paid
         for good, side, wanted, order, cut, military in island.scratch.pop(WAREHOUSE_PLACED, []):
             book, result = books_by_good.get(good), results.get(good)
             filled = 0
@@ -3819,3 +4005,11 @@ def register(registry: Registry) -> None:
     )
     registry.add_order(OrderHandler("set_price_cap", execute=set_price_cap, check=check_price_cap))
     registry.add_order(OrderHandler("set_warehouse_release", execute=set_warehouse_release))
+    registry.add_order(
+        OrderHandler(
+            "set_warehouse_standing",
+            execute=standing.execute,
+            check=standing.check,
+            check_settings=standing.check_settings,
+        )
+    )

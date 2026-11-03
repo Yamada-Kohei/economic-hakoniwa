@@ -20,10 +20,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.db.models import Max, Sum
+
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra
 from hakoniwa_core.dates import TURNS_PER_YEAR
-from hakoniwa_core.economy import equipment
+from hakoniwa_core.economy import equipment, standing
 from hakoniwa_core.economy import public_housing as pub
 from hakoniwa_core.state import OWNER_STATE, Tile
 from hakoniwa_core.units import money_of
@@ -153,6 +155,27 @@ def guide(island: m.Island) -> dict[str, dict[str, Any]]:
         }
     if not state.has_economy:
         return out
+    annual = 0
+    held = {
+        r["good"]: r["quantity"]
+        for r in island.stocks.filter(facility__isnull=True)
+        .values("good")
+        .annotate(quantity=Sum("quantity"))
+    }
+    for good, item in standing.settings(state).items():
+        want = item["quantity"]
+        if item["kind"] == "reserve":
+            want = max(0, want - held.get(good, 0))
+        if item["kind"] in ("buy", "reserve"):
+            annual += money_of(item["limit"], want) * TURNS_PER_YEAR
+    last = island.stats.aggregate(turn=Max("turn"))["turn"] or 0
+    grain = (
+        island.stats.filter(name="warehouse.food_refill", turn__gt=last - TURNS_PER_YEAR).aggregate(
+            total=Sum("value")
+        )["total"]
+        or 0
+    )
+    out["warehouse"].update(standing_year=annual, food_refill_year=round(grain))
     works = _works_left(state, defs, prices, wage, band)
     queued, upkeep = _infra_costs(island, state, defs, prices, wage, band)
     repairs = round(
@@ -210,6 +233,13 @@ def texts(g: dict[str, Any], currency: str) -> dict[str, str]:
         out["parts"] = (
             f"命令の住宅の工事の残りの資材 {money(g['housing_works'])}"
             f"・国の床の手入れ（1年） {money(g['housing_upkeep'])}"
+        )
+    if "standing_year" in g:
+        out["standing_year"] = money(g["standing_year"])
+        out["food_refill_year"] = money(g["food_refill_year"])
+        out["parts"] = (
+            f"決まった買いと備蓄の1年の見込み {out['standing_year']}"
+            f"・穀物の備蓄の買い足し（去年） {out['food_refill_year']}"
         )
     return out
 

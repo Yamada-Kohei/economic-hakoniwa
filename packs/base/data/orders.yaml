@@ -225,6 +225,21 @@ set_price_cap:
       good: {type: string}
       price: {type: integer, minimum: 0}  # 0 で上限をなくす
 
+set_warehouse_standing:
+  admin_cost: 1
+  secret: {kind: buy}
+  payload:
+    type: object
+    required: [good, kind]
+    additionalProperties: false
+    properties:
+      good: {type: string}
+      kind: {enum: [buy, sell, reserve, stop]}
+      quantity: {type: number, exclusiveMinimum: 0}
+      limit: {type: integer, minimum: 0}
+      release: {type: integer, minimum: 0}
+      turns: {type: integer, minimum: 1}
+
 warehouse_trade:
   admin_cost: 1
   # 備蓄の放出（売り）は前もって発表し、買い入れは実行まで伏せる（現実の備蓄米・石油備蓄と同じ）

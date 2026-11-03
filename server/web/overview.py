@@ -777,6 +777,7 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
             "auto": (island.policy or {}).get("warehouse_release", True),
             "releasing": [get_game().defs.name("goods", g) for g in released],
         }
+        data["warehouse_standing"] = display.warehouse_standing(island)
     return data
 
 
@@ -880,4 +881,5 @@ def changes(
             for x in received[:50]
         ]
         data["board"] = {"unread_replies": _board_unread(island)}
+        data["warehouse_standing"] = display.warehouse_standing(island)
     return data
