@@ -8,6 +8,7 @@
 | 名前 | 用途 | ライセンス | 出典 |
 |---|---|---|---|
 | Django | サーバー | BSD-3-Clause | https://www.djangoproject.com/ |
+| pywebpush（任意） | 公電の Web Push 通知 | MPL-2.0 | https://github.com/web-push-libs/pywebpush |
 | PyYAML | 定義データの読み込み | MIT | https://pyyaml.org/ |
 | jsonschema | 定義データの検証 | MIT | https://github.com/python-jsonschema/jsonschema |
 | gunicorn（公開サーバー用） | ゲームの本体を動かす | MIT | https://gunicorn.org/ |
@@ -20,6 +21,9 @@
 
 psycopg は LGPL ですが、ライブラリとして import して使うだけで、コードを取り込んだり改変したりはしないため、
 このプロジェクトを MIT で公開することとは衝突しません。PostgreSQL を使うときだけ入れます。
+
+pywebpush は任意の外部ライブラリとして import し、ソースは取り込まず改変しません。
+ブラウザ通知を送る環境だけ `pip install ".[push]"` で入れます。
 
 ## 公開サーバーで使う道具（OS の部品として入れるもの。リポジトリには含めません）
 
@@ -45,6 +49,7 @@ AI で作った絵は、作った道具の名前と、依頼した人を書き�
 | パス | 作った人 | ライセンス | 出典 |
 |---|---|---|---|
 | server/static/themes/default/sprites | Claude（tools/sprites/silhouette.py で生成。依頼: セビーリャ） | MIT | このリポジトリ |
+| server/static/img/push/icon-192.png・icon-512.png | OpenAI Codex が既存の官邸の SVG を PNG に変換（新しい絵の制作なし）。依頼: Claude | MIT | このリポジトリの server/static/themes/default/sprites/capital/official_residence-palace.svg |
 | server/static/themes/default/sprites/facility/barracks.svg | OpenAI Codex（幾何の形で作成）を Claude が直した（窓・軍艦。tools/sprites/silhouette.py で生成）。依頼: セビーリャ | MIT | このリポジトリ |
 | server/static/themes/default/sprites/facility/naval_base.svg | OpenAI Codex（幾何の形で作成）を Claude が直した（窓・軍艦。tools/sprites/silhouette.py で生成）。依頼: セビーリャ | MIT | このリポジトリ |
 | server/static/themes/default/sprites/facility/naval_base@sw.svg | OpenAI Codex（幾何の形で作成）を Claude が直した（窓・軍艦。tools/sprites/silhouette.py で生成）。依頼: セビーリャ | MIT | このリポジトリ |

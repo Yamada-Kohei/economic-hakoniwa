@@ -31,6 +31,8 @@
 - HAKONIWA_LOGIN_POST_WINDOW_SECONDS: 上の回数を数える区切りの秒（既定 60）
 - HAKONIWA_THROTTLE_KEEP_HOURS: 回数の記録（失敗と区切りごとの数）を消すまでの時間（既定 24）
 - HAKONIWA_LETTERS_PER_DAY: 1つの島が 24 時間に送れる手紙の数（既定 50。送りすぎの歯止め）
+- HAKONIWA_VAPID_PUBLIC_KEY / HAKONIWA_VAPID_PRIVATE_KEY: ブラウザ通知の鍵（未設定なら無効）
+- HAKONIWA_VAPID_CONTACT: 通知の連絡先（mailto: か https://ホスト名。末尾の / は送れない）
 - HAKONIWA_HALL_PER_DAY: 1つの島が 24 時間に国際会議場に出せる声明の数（既定 10。出しすぎの歯止め）
 - HAKONIWA_BUG_REPORTS_PER_DAY: 1人が 24 時間に送れる不具合の報告の数（既定 10。送りすぎの歯止め）
 - HAKONIWA_VERSION: ゲームの版（既定は git のコミットの頭 12 字）。不具合の報告に添え、
@@ -61,6 +63,24 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+HAKONIWA_VAPID_PUBLIC_KEY = os.environ.get("HAKONIWA_VAPID_PUBLIC_KEY", "").strip()
+HAKONIWA_VAPID_PRIVATE_KEY = os.environ.get("HAKONIWA_VAPID_PRIVATE_KEY", "").strip()
+HAKONIWA_VAPID_CONTACT = os.environ.get("HAKONIWA_VAPID_CONTACT", "").strip()
+if HAKONIWA_VAPID_CONTACT:
+    contact = urlparse(HAKONIWA_VAPID_CONTACT)
+    if not (
+        (contact.scheme == "mailto" and "@" in contact.path)
+        or (
+            contact.scheme == "https"
+            and contact.hostname
+            and not (contact.path or contact.query or contact.fragment)
+        )
+    ) or any(ord(c) <= 32 for c in HAKONIWA_VAPID_CONTACT):
+        # pywebpush（py_vapid）は https の連絡先にホスト名だけを許す（末尾の / でも送れない）
+        raise RuntimeError(
+            "HAKONIWA_VAPID_CONTACT は mailto: か https://ホスト名（末尾の / なし）にしてください"
+        )
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")

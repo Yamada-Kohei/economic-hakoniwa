@@ -42,6 +42,8 @@ Django（server/）……保存・アカウント・命令の受付・ターン�
 
 ## 1回のターン更新
 
+公電のブラウザ通知は、タイマー（公開サーバーでは hakoniwa-notify.timer → `hakoniwa-send-push`）から 1 分ごとに `manage.py send_push` を呼び、通知の予定を持ち主ごとにまとめて送ります（送信済みの予定は 7 日で削除）。
+
 1. cron などが `manage.py run_turn` を呼ぶ。次の更新時刻になっていなければ何もしない。
 2. 更新中の印を立てる（その後に届いた命令は次のターンに回り、更新中は命令の列の書き換えを断る）。強制終了で残った古い印は、PostgreSQL では世界の行の鎖が空いていれば（印を立てた直後の `LOCK_GRACE` を過ぎたら）、SQLite では `HAKONIWA_UPDATE_STALE_MINUTES` より古ければ外して、管理者にメールする。
 3. DB から世界全体を `WorldState` に読み込み、写しをバックアップに取る。フェーズ1のままの島（お金の
