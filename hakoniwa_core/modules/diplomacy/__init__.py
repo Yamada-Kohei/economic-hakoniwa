@@ -1,7 +1,7 @@
 """外交の段（diplomacy。フェーズ4-1。世界の段）と、外交の命令。
 
 宣戦布告・条約（提案・署名・断り・取り下げ・予告つきの破棄）の命令は、命令の段で島の申し送りに積み、
-この段が島の番号の順に決めます（貿易と同じ形）。民主主義の島の宣戦・署名・破棄は、命令の段の議会の
+この段が署名を先に、残りを島の番号の順に決めます。民主主義の島の宣戦・署名・破棄は、命令の段の議会の
 採決を通ったものだけが申し送りに積まれます。そのあと、流れた提案・予告のターンがたった破棄・講和の
 賠償の期日を見張ります（hakoniwa_core/diplomacy/treaties.py）。
 
@@ -42,9 +42,16 @@ class Diplomacy(WorldStage):
         assert ctx.before is not None
         world = ctx.before
         world_state(world)
-        for i in world.island_ids():
-            island = world.islands[i]
-            for req, order_id in take_deferred(island, REQUESTS):
+        tr.remove_missing_parties(world, ctx.turn)
+        pending = [
+            (world.islands[i], req, order_id)
+            for i in world.island_ids()
+            for req, order_id in take_deferred(world.islands[i], REQUESTS)
+        ]
+        for signing in (True, False):
+            for island, req, order_id in pending:
+                if (req["kind"] == "sign_treaty") != signing:
+                    continue
                 reason = _handle(world, ctx, island, req)
                 if reason is not None:
                     fail_deferred(island, order_id, reason)
@@ -90,9 +97,13 @@ def _declare(
         return "reason_war_target"
     if is_inactive(other):
         return "reason_war_inactive"  # 休止中の島に宣戦はできない（停戦と講和は結べる。W-96）
-    if war.open_war(world, island.id, target) is not None:
-        return "reason_war_exists"
-    w = war.declare(world, island.id, target, ctx.turn)
+    w = war.open_war(world, island.id, target)
+    if w is not None:
+        if w["declared"] != ctx.turn or w["defender"] != island.id or w.get("mutual", False):
+            return "reason_war_exists"
+        w["mutual"] = True
+    else:
+        w = war.declare(world, island.id, target, ctx.turn)
     tr.on_war_declared(world, ctx.config, island.id, target, ctx.turn)
     args: dict[str, Any] = {"turn": w["start"], "war": w["id"]}
     reason = (req.get("reason") or "").strip()[:200]

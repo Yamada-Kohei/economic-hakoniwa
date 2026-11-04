@@ -54,6 +54,21 @@ def _near(a: tuple[int, int], b: tuple[int, int]) -> bool:
     return max(abs(a[0] - b[0]), abs(a[1] - b[1])) <= 1
 
 
+def update_places(world: WorldState, turn: int) -> None:
+    """隠した施設があった期間を残す。古い保存の施設はターン 0 から隠す。"""
+    for island in world.islands.values():
+        active = {(f.x, f.y) for f in island.facilities if is_hidden(f)}
+        if not active and "hidden_places" not in island.ext:
+            continue
+        places = island.ext.setdefault("hidden_places", [])
+        opened = {(p["x"], p["y"]) for p in places if "until" not in p}
+        for x, y in sorted(active - opened):
+            places.append({"x": x, "y": y, "from": 0})
+        for p in places:
+            if "until" not in p and (p["x"], p["y"]) not in active:
+                p["until"] = turn
+
+
 def discover(world: WorldState) -> list[tuple[int, int, int]]:
     """部隊が隣に来た・占領されたことで見つかった隠した施設を記録する。
     (持ち主の島, 見つけた島, 施設) の組を返す。"""

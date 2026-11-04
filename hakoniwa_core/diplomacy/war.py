@@ -94,6 +94,7 @@ def declare(world: WorldState, attacker: int, defender: int, turn: int) -> dict[
         "attacker": attacker,
         "defender": defender,
         "declared": turn,
+        "mutual": False,
         "start": turn + 1,
         "state": WAR,
         "ceasefire": None,

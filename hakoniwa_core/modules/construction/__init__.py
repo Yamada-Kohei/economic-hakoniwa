@@ -106,6 +106,7 @@ def build(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> No
     if payload.get("hidden"):  # 地下に造る: 工期が延び、資材が増える。ほかの国には見えない（MI-62）
         hide = ctx.defs.facilities[kind]["hide"]
         f.ext["hidden"] = True
+        island.ext.setdefault("hidden_places", []).append({"x": x, "y": y, "from": ctx.turn})
         f.ext["materials_factor"] = hide["materials_factor"]
         f.ext["build_total"] = max(f.ext.get("build_total", 0), round(hide["turns"] * fac.FULL))
     if shop:

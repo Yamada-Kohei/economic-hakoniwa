@@ -110,7 +110,7 @@ def _log(
             "clauses": kinds(treaty),
             **extra,
         }
-        if hall and i == treaty["parties"][0]:
+        if hall and i == next(p for p in treaty["parties"] if p in world.islands):
             args["hall"] = True
             args["a"] = _name(world, treaty["parties"][0])
             args["b"] = _name(world, treaty["parties"][1])
@@ -423,6 +423,23 @@ def _settled(clause: dict[str, Any]) -> bool:
 # --- 毎ターンの見張り -------------------------------------------------------------------------
 
 
+def remove_missing_parties(world: WorldState, turn: int) -> None:
+    """消えた島の戦争と条約を、違反を記録せず終える。"""
+    for w in war.wars(world):
+        if w["state"] == war.ENDED or all(
+            i in world.islands for i in (w["attacker"], w["defender"])
+        ):
+            continue
+        w.update(state=war.ENDED, ended=turn, ended_reason="island_removed", ceasefire=None)
+        for i in (w["attacker"], w["defender"]):
+            if i in world.islands:
+                world.islands[i].log.append(LogEntry("war_island_removed", {"war": w["id"]}))
+    for t in treaties(world):
+        if t["state"] in LIVE and any(i not in world.islands for i in t["parties"]):
+            t.update(state=ENDED, end=turn, end_reason="party_removed")
+            _log(world, t, "treaty_party_removed", hall=True)
+
+
 def upkeep(world: WorldState, config: GameConfig, turn: int) -> None:
     """流れた提案・予告のターンがたった破棄・講和の賠償の期日・済んだ条約の始末（番号の順）。"""
     _adopt_old_surrenders(world, config, turn)
@@ -481,7 +498,7 @@ def _reparations(world: WorldState, config: GameConfig, treaty: dict[str, Any], 
                 clause["type"],
                 "reparations",
                 turn,
-                weight=1,
+                weight=max(0.0, min(1.0, (rep["amount"] - rep["paid"]) / rep["amount"])),
             )
 
 
@@ -530,13 +547,15 @@ def violate(
     clause: str,
     reason: str,
     turn: int,
-    weight: int = 1,
+    weight: float = 1,
 ) -> None:
     """条約の違反を記録し、破った国の信用に傷を付ける（credit.py）。当事国のログと国際会議場に出す。"""
     treaty["violations"].append({"turn": turn, "by": by, "clause": clause, "reason": reason})
     island = world.islands.get(by)
     if island is not None:
-        credit.record(island, turn, treaty["id"], clause, weight, reason, config)
+        credit.record(
+            island, turn, treaty["id"], clause, weight, reason, config, title=treaty["title"]
+        )
     _log(
         world,
         treaty,

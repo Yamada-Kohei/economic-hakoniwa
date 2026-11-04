@@ -26,6 +26,7 @@ TITLE_MAX = Statement._meta.get_field("title").max_length
 BODY_MAX = Statement._meta.get_field("body").max_length
 PAGE_SIZE = 30  # 一覧の 1 ページの数
 SCAN = 300  # 並びに入れる、声明と出来事のそれぞれの新しい方の数
+MODERATED_TEXT = "運営が非表示にしました"
 
 __all__ = ["HallError", "own_island", "post_statement", "timeline"]
 
@@ -70,7 +71,10 @@ def post_statement(user, island: Island, title: str, body: str) -> Statement:
 
 def event_text(log: TurnLog) -> str:
     game = get_game()
-    return format_log(game.defs, f"hall_{log.kind}", log.args or {}, calendar=game.calendar)
+    args = log.args or {}
+    if args.get("moderated"):
+        args = {**args, "text": MODERATED_TEXT, "title": MODERATED_TEXT}
+    return format_log(game.defs, f"hall_{log.kind}", args, calendar=game.calendar)
 
 
 def timeline(world: World) -> list[dict[str, Any]]:

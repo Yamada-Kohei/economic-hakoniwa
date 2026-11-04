@@ -643,6 +643,7 @@ class Production(IslandStage):
     def _spread_pollution(island: IslandState, ctx: StageContext) -> None:
         """汚染: 施設のマスで一番濃く、radius マス先に向かって薄くなる。"""
         totals: dict[tuple[int, int], int] = {}
+        hidden: dict[tuple[int, int], dict[str, float]] = {}
         for f in island.facilities:
             pollution = ctx.defs.facilities[f.kind].get("pollution")
             if not pollution or not f.built or f.operating_rate <= 0 or not fac.on_map(f):
@@ -653,9 +654,16 @@ class Production(IslandStage):
             for pos in within(island, (f.x, f.y), radius):
                 share = amount * (radius + 1 - distance(pos, (f.x, f.y))) // (radius + 1)
                 totals[pos] = totals.get(pos, 0) + share
+                if f.ext.get("hidden"):
+                    hidden.setdefault(pos, {})[str(f.id)] = from_milli(share)
         for tile in island.tiles:
             left = nature.decay_fallout(tile, ctx.config)  # 核の汚染が年月をかけて薄れる（MI-46）
             tile.pollution = round(from_milli(totals.get((tile.x, tile.y), 0) + left))
+            sources = hidden.get((tile.x, tile.y))
+            if sources:
+                tile.ext["hidden_pollution"] = sources
+            else:
+                tile.ext.pop("hidden_pollution", None)
 
 
 # --- 命令 -------------------------------------------------------------------------

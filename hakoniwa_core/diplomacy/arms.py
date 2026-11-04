@@ -15,17 +15,20 @@ from hakoniwa_core import stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.diplomacy import clauses as cl
 from hakoniwa_core.diplomacy import treaties as tr
+from hakoniwa_core.military import hidden
 from hakoniwa_core.state import IslandState, WorldState
 
 FACILITY = "nuclear_facility"
 WARHEAD = "nuclear_warhead"
 
 
-def holds(island: IslandState) -> bool:
+def holds(island: IslandState, viewer: int | None = None) -> bool:
     """島が核の備え（建ち終わった核施設か核弾頭）を持っているか。"""
     if stock.total(island.warehouse, WARHEAD) > 0:
         return True
     for f in island.facilities:
+        if viewer is not None and not hidden.visible_to(f, island.id, viewer):
+            continue
         if f.built and f.kind == FACILITY:
             return True
         if stock.total(f.stock, WARHEAD) > 0:
@@ -60,7 +63,7 @@ def watch(world: WorldState, config: GameConfig, turn: int) -> None:
             island = world.islands.get(party)
             if island is None:
                 continue
-            if holds(island):
+            if holds(island, tr.partner_of(t, party)):
                 if party not in flagged:
                     flagged.append(party)
                     tr.violate(world, config, t, party, cl.NO_NUCLEAR, "nuclear_held", turn, weight)
