@@ -383,8 +383,7 @@ def _admit(
     views: dict[int, View],
     flows: list[Flow],
 ) -> None:
-    """行き先の受け入れの上限と町の空きで、移りたい人を減らす（帰る人は町の空きだけで、
-    先に入る）。"""
+    """帰る人、戦争の難民、ふだんの移民の順に町へ入れ、ふだんの移民だけ受け入れの上限を見る。"""
     defs = ctx.defs
     for d in ids:
         island = world.islands[d]
@@ -395,7 +394,10 @@ def _admit(
         back = [f for f in coming if f.returning]
         _scale(back, room)
         room -= sum(f.persons for f in back)
-        new = [f for f in coming if not f.returning]
+        refugees = [f for f in coming if f.war and not f.returning]
+        _scale(refugees, room)
+        room -= sum(f.persons for f in refugees)
+        new = [f for f in coming if not f.returning and not f.war]
         if not new:
             continue
         cap = island.policy.immigration_cap or settings["default_cap"]

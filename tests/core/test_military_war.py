@@ -125,6 +125,106 @@ def test_no_battle_unless_at_war(game, world):
     assert not logs(world, 1, "battle")
 
 
+@pytest.mark.parametrize("mutual", [False, True, None])
+def test_mutual_war_has_no_surprise_bonus(game, world, monkeypatch, mutual):
+    start_war(game, world)
+    w = war.wars(world)[0]
+    if mutual is None:
+        w.pop("mutual")  # 古い保存は一方からの宣戦
+    else:
+        w["mutual"] = mutual
+    tile = plain_tiles(world.islands[2], 1)[0]
+    attacker = put_unit(game, world, 1, "infantry", tile.x, tile.y, at=2)
+    defender = put_unit(game, world, 2, "infantry", tile.x, tile.y)
+    attacker["entered"] = defender["entered"] = w["start"]
+    powers = []
+    monkeypatch.setattr(battle, "unit_power", lambda *args: 100.0)
+
+    def loss(cfg, foe, own):
+        powers.append(own)
+        return 0.0
+
+    monkeypatch.setattr(battle, "_loss", loss)
+    battle._fight(
+        world, _ctx(game, world), world.islands[2], tile.x, tile.y, 1, [attacker], 2, [defender]
+    )
+    expected = 100 if mutual else 100 * game.config.get("military.combat.surprise")
+    assert powers[:2] == [expected, 100]
+
+
+def test_ceasefire_holds_foreign_movement_and_resumes_the_order(game, world):
+    from hakoniwa_core.modules.operations import _act
+
+    start_war(game, world)
+    home, abroad = world.islands[1], world.islands[2]
+    for tile in abroad.tiles:
+        tile.terrain = "plain"
+    unit = put_unit(game, world, 1, "infantry", 1, 1, at=2)
+    unit["order"] = {"type": "move", "x": 20, "y": 1}
+    w = war.wars(world)[0]
+    war.begin_ceasefire(w, 1)
+    ctx = _ctx(game, world)
+    for _ in range(2):
+        _act(world, ctx, home, unit)
+        ctx.turn += 1
+    assert (unit["x"], unit["y"]) == (1, 1) and unit["order"]
+    assert len(logs(world, 1, "unit_ceasefire_hold")) == 1
+    war.resume(w)
+    _act(world, ctx, home, unit)
+    assert unit["x"] > 1 and not unit.get("ceasefire_hold")
+    war.begin_ceasefire(w, 1)
+    _act(world, ctx, home, unit)
+    assert len(logs(world, 1, "unit_ceasefire_hold")) == 2
+    saved_order = unit["order"]
+    unit["order"] = None
+    war.resume(w)
+    _act(world, ctx, home, unit)
+    assert "ceasefire_hold" not in unit
+    unit["order"] = saved_order
+    war.begin_ceasefire(w, 1)
+    _act(world, ctx, home, unit)
+    assert len(logs(world, 1, "unit_ceasefire_hold")) == 3
+
+
+@pytest.mark.parametrize(
+    "status,soldiers,blocked",
+    [(army.READY, 100, True), (army.FORMING, 100, False), (army.READY, 0, False)],
+)
+def test_ceasefire_movement_stops_before_the_opponents_neighbours(
+    game, world, status, soldiers, blocked
+):
+    from hakoniwa_core.modules.operations import _act
+
+    start_war(game, world)
+    home = world.islands[1]
+    for tile in home.tiles:
+        tile.terrain = "plain"
+    unit = put_unit(game, world, 1, "infantry", 1, 1)
+    foe = put_unit(game, world, 2, "infantry", 3, 1, at=1)
+    foe.update(status=status, soldiers=soldiers)
+    unit["order"] = {"type": "move", "x": 20, "y": 1}
+    war.begin_ceasefire(war.wars(world)[0], 1)
+    _act(world, _ctx(game, world), home, unit)
+    assert (unit["x"] == 1) is blocked
+    assert unit["order"]
+
+
+def test_removed_island_units_disappear_and_visitors_return_to_households(game, world):
+    from hakoniwa_core.modules.operations import Operations
+
+    home = world.islands[1]
+    unit = put_unit(game, world, 1, "infantry", 1, 1, at=2)
+    removed = put_unit(game, world, 2, "infantry", 1, 1, at=1)
+    soldiers = unit["soldiers"]
+    before = sum(t.population for t in home.tiles)
+    del world.islands[2]
+    Operations().resolve({}, _ctx(game, world))
+    assert army.find(world, unit["id"]) is None and army.find(world, removed["id"]) is None
+    assert sum(t.population for t in home.tiles) == before + soldiers
+    assert forces.soldiers(home) == 0
+    assert logs(world, 1, "unit_demobilized_abroad")
+
+
 def test_equal_armies_lose_about_the_same_and_the_attacker_pays_for_terrain(game, world):
     start_war(game, world)
     isl2 = world.islands[2]

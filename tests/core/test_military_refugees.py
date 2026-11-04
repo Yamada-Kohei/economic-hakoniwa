@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import copy
 
+import pytest
+
 from hakoniwa_core.military import battle, naval
 from hakoniwa_core.modules import migration
 from tests.core.test_migration import _ctx, _pair
@@ -76,3 +78,24 @@ def test_a_pool_with_nowhere_to_go_is_not_carried_over(game, base, monkeypatch):
     monkeypatch.setattr(migration, "active", lambda island: island is poor)  # 移民の相手がいない
     migration.run(world, _ctx(game, world))
     assert "war" not in poor.ext["migration"]
+
+
+@pytest.mark.parametrize("room,expected", [(1000, (20, 300, 1)), (120, (20, 100, 0))])
+def test_war_refugees_skip_the_cap_after_returnees_and_before_migrants(
+    game, base, monkeypatch, room, expected
+):
+    world = copy.deepcopy(base)
+    poor, rich = _pair(world)
+    rich.policy.immigration = migration.JOBS
+    rich.policy.immigration_cap = 1
+    ctx, ids, views = pool(game, world)
+    monkeypatch.setattr(migration, "_room", lambda *args: room)
+    monkeypatch.setattr(migration, "vacancies_of", lambda *args: [(None, None, 100000)])
+    views[rich.id].population = 120000
+    flows = [
+        migration.Flow(poor.id, "general", rich.id, 20, returning=True),
+        migration.Flow(poor.id, "general", rich.id, 300, war=True),
+        migration.Flow(poor.id, "general", rich.id, 100),
+    ]
+    migration._admit(world, ctx, ctx.config.get("migration"), ids, views, flows)
+    assert [f.persons for f in flows] == list(expected)

@@ -318,6 +318,16 @@ def island_map(request, island_id: int):
     """
     island = get_object_or_404(m.Island, pk=island_id)
     columns = ["terrain", "population", "zone", "infra", "pollution", "ext"]
+    mine = _mine(request, island)
+    viewer = letter_services.own_island(request.user)
+    facility_rows = list(island.facilities.filter(x__gte=0).order_by("number"))
+    unseen = [
+        f
+        for f in facility_rows
+        if not display.sees_facility(f, mine, viewer.id if viewer else None)
+    ]
+    visible = {str(f.number) for f in facility_rows if f not in unseen}
+    hidden_places = {(f.x, f.y) for f in unseen}
     data: dict[str, Any] = {
         "terrain": [],
         "population": [],
@@ -331,9 +341,10 @@ def island_map(request, island_id: int):
         "power": [],
         "infra": {kind: [] for kind in get_game().defs.infrastructure},
     }
-    for terrain, population, zone, infra, pollution, ext in island.tiles.order_by(
-        "y", "x"
-    ).values_list(*columns):
+    for index, (terrain, population, zone, infra, pollution, ext) in enumerate(
+        island.tiles.order_by("y", "x").values_list(*columns)
+    ):
+        concealed = (index % island.size, index // island.size) in hidden_places
         data["terrain"].append(terrain)
         data["population"].append(population)
         data["zone"].append(zone)
@@ -343,9 +354,9 @@ def island_map(request, island_id: int):
         data["fallout"].append(
             round((ext or {}).get("fallout", 0) / 1000, 1)
         )  # 核の汚染の濃さ（点）
-        data["pollution"].append(pollution)
-        data["happiness"].append((ext or {}).get("happiness"))
-        data["power"].append((ext or {}).get("power"))
+        data["pollution"].append(display.visible_pollution(pollution, ext or {}, visible, mine))
+        data["happiness"].append(None if concealed else (ext or {}).get("happiness"))
+        data["power"].append(None if concealed else (ext or {}).get("power"))
         for kind, level in display.infra_levels(infra).items():
             data["infra"][kind].append(level)
     works = (island.economy or {}).get("infra", {})
@@ -353,11 +364,9 @@ def island_map(request, island_id: int):
     data["infra_why"] = display.works_why(island.economy)
     if request.GET.get("freight"):
         data.update(_freight(island))
-    mine = request.user.is_authenticated and island.owner_id == request.user.id
     # 部隊の印は、見ている国に見えるものだけ（自分の部隊と、見える範囲に入った相手の部隊。
     # 陣地と占領は誰にでも見える）
     data["units"] = military_views.island_units(island, letter_services.own_island(request.user))
-    viewer = letter_services.own_island(request.user)
     facilities = [
         {
             "number": f.number,
@@ -370,7 +379,7 @@ def island_map(request, island_id: int):
             "rate": f.operating_rate,
             **({"hidden": True} if (f.ext or {}).get("hidden") else {}),
         }
-        for f in island.facilities.filter(x__gte=0).order_by("number")  # マスを持つ施設だけ
+        for f in facility_rows  # マスを持つ施設だけ
         # 隠した施設（MI-62）は、持ち主と、見つけた国（と同盟国）にだけ見える
         if display.sees_facility(f, mine, viewer.id if viewer else None)
     ]
@@ -443,6 +452,17 @@ def tile(request, island_id: int, x: int, y: int):
             for b in _capital_buildings(island.regime, island.ext, d)
         ]
     f = m.Facility.objects.filter(island_id=island_id, x=x, y=y).first()
+    viewer = letter_services.own_island(request.user)
+    mine = _mine(request, row.island)
+    visible = {
+        str(facility.number)
+        for facility in row.island.facilities.all()
+        if display.sees_facility(facility, mine, viewer.id if viewer else None)
+    }
+    data["pollution"] = display.visible_pollution(row.pollution, ext, visible, mine)
+    if f is not None and not display.sees_facility(f, mine, viewer.id if viewer else None):
+        data.update(employed=0, happiness=None, power=None)
+        f = None
     if f is not None:
         data["facility"] = display.facility_info(f, island, _mine(request, row.island))
     water = _water(row, f)

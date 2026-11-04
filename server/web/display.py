@@ -1499,15 +1499,30 @@ def finance_policy_view(island) -> dict[str, Any]:
     }
 
 
-def hidden_places(island) -> list[tuple[int, int]]:
-    """隠して建てた施設（MI-62）のマス。持ち主以外には、見つかった後も出さない。"""
-    return [(f.x, f.y) for f in island.facilities.filter(x__gte=0) if (f.ext or {}).get("hidden")]
+def hidden_places(island) -> list[dict[str, int]]:
+    """隠した施設があったマスと期間。古い保存はターン 0 から隠す。"""
+    places = list((island.ext or {}).get("hidden_places", []))
+    opened = {(p["x"], p["y"]) for p in places if "until" not in p}
+    for f in island.facilities.filter(x__gte=0):
+        if (f.ext or {}).get("hidden") and (f.x, f.y) not in opened:
+            places.append({"x": f.x, "y": f.y, "from": 0})
+    return places
 
 
 def sees_facility(row, mine: bool, viewer: int | None) -> bool:
     """施設の行が、見る人に見えるか。隠した施設（MI-62）は、持ち主と、見つけた国（と同盟国）だけ。"""
     ext = row.ext or {}
     return mine or not ext.get("hidden") or (viewer is not None and viewer in ext.get("found", ()))
+
+
+def visible_pollution(pollution: int, ext: dict, visible: set[str], mine: bool) -> int:
+    """見る国に見えない施設の汚染だけを、マスの表示から引く。"""
+    sources = ext.get("hidden_pollution", {})
+    if mine:
+        return pollution
+    return max(
+        0, round(pollution - sum(amount for key, amount in sources.items() if key not in visible))
+    )
 
 
 def visible_logs(logs, mine: bool, island=None):
@@ -1519,11 +1534,13 @@ def visible_logs(logs, mine: bool, island=None):
 
     logs = logs.exclude(kind__in=(*PRIVATE_LOGS, *STANDING_LOGS, LETTER_LOG))
     if island is not None:
-        for x, y in hidden_places(island):
+        for place in hidden_places(island):
             # x・y のキーが無い行は残す（キー無しは NULL になり、単純な exclude では消えてしまう）
-            logs = logs.exclude(
-                Q(args__has_key="x") & Q(args__has_key="y") & Q(args__x=x) & Q(args__y=y)
-            )
+            where = Q(args__has_key="x") & Q(args__has_key="y")
+            where &= Q(args__x=place["x"], args__y=place["y"], turn__gte=place["from"])
+            if "until" in place:
+                where &= Q(turn__lte=place["until"])
+            logs = logs.exclude(where)
     return logs
 
 

@@ -141,3 +141,89 @@ def test_firing_from_a_hidden_base_gives_its_place_away(game, world):
     req = {"base": base.id, "island": 2, "x": 1, "y": 1, "count": 1}
     assert missiles.launch(world, ctx, a, req) is None
     assert hidden.visible_to(base, 1, 2) and not hidden.visible_to(base, 1, 3)
+
+
+def test_hidden_places_keep_construction_and_removal_periods(game, world):
+    from hakoniwa_core.modules.construction import build
+
+    island = world.islands[1]
+    tile = free_tiles(island, 1)[0]
+    ctx = ctx_of(game, world)
+    ctx.turn = 7
+    build(island, {"facility": "missile_base", "x": tile.x, "y": tile.y, "hidden": True}, ctx)
+    assert island.ext["hidden_places"] == [{"x": tile.x, "y": tile.y, "from": 7}]
+    f = island.facility_at(tile.x, tile.y)
+    island.facilities.remove(f)
+    hidden.update_places(world, 9)
+    assert island.ext["hidden_places"][0]["until"] == 9
+    ctx.turn = 11
+    build(island, {"facility": "missile_base", "x": tile.x, "y": tile.y, "hidden": True}, ctx)
+    assert [p["from"] for p in island.ext["hidden_places"]] == [7, 11]
+
+
+def test_old_hidden_facilities_get_a_history_from_turn_zero(game, world):
+    island = world.islands[1]
+    f = secret_base(island, built=False)
+    hidden.update_places(world, 8)
+    hidden.update_places(world, 9)
+    assert island.ext["hidden_places"] == [{"x": f.x, "y": f.y, "from": 0}]
+
+
+def test_hidden_pollution_records_each_source_and_clears_when_it_stops(game, world):
+    from hakoniwa_core.modules.production import Production
+
+    island = world.islands[1]
+    for f in island.facilities:
+        f.operating_rate = 0
+    f = secret_base(island, "nuclear_facility")
+    f.operating_rate = 10000
+    ctx = ctx_of(game, world)
+    Production._spread_pollution(island, ctx)
+    expected = {(t.x, t.y): t.pollution for t in island.tiles}
+    sources = {(t.x, t.y): t.ext.get("hidden_pollution") for t in island.tiles}
+    assert sources[(f.x, f.y)][str(f.id)] > 0
+    assert any(pos != (f.x, f.y) and values for pos, values in sources.items())
+    f.ext.pop("hidden")
+    Production._spread_pollution(island, ctx)
+    assert {(t.x, t.y): t.pollution for t in island.tiles} == expected
+    assert all("hidden_pollution" not in t.ext for t in island.tiles)
+    f.ext["hidden"] = True
+    f.operating_rate = 0
+    Production._spread_pollution(island, ctx)
+    assert all("hidden_pollution" not in t.ext for t in island.tiles)
+
+
+@pytest.mark.parametrize(
+    "kind,warehouse", [("nuclear_facility", False), ("missile_base", False), ("missile_base", True)]
+)
+def test_no_nuclear_promise_counts_hidden_arms_only_after_discovery(game, world, kind, warehouse):
+    from hakoniwa_core.diplomacy import arms, treaties
+
+    island = world.islands[1]
+    assert (
+        treaties.propose(
+            world, game.config, island, {"partner": 2, "clauses": [{"type": "no_nuclear"}]}, 1
+        )
+        is None
+    )
+    treaty = treaties.treaties(world)[0]
+    assert treaties.sign(world, game.config, world.islands[2], treaty, 2) is None
+    f = secret_base(island, kind)
+    if kind == "missile_base":
+        stock.add(
+            island.warehouse if warehouse else f.stock,
+            "nuclear_warhead",
+            QUANTITY_SCALE,
+            3,
+            game.defs.goods,
+        )
+    arms.watch(world, game.config, 3)
+    assert len(treaty["violations"]) == int(warehouse)
+    hidden.reveal(world, f, 3)  # 約束していない国に見つかっても、相手にはまだ見えない
+    arms.watch(world, game.config, 4)
+    assert len(treaty["violations"]) == int(warehouse)
+    hidden.reveal(world, f, 2)
+    arms.watch(world, game.config, 5)
+    arms.watch(world, game.config, 6)
+    assert len(treaty["violations"]) == 1
+    assert treaty["violations"][0]["turn"] == (3 if warehouse else 5)
