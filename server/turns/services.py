@@ -284,6 +284,9 @@ def rollback(to_turn: int) -> WorldState:
             TurnLog.objects.filter(island_id=island_id, turn=turn).update(turn=to_turn)
             m.StatRecord.objects.filter(island_id=island_id, turn=turn).update(turn=to_turn)
     TurnLog.objects.filter(island__world=world, turn__gt=to_turn).delete()
+    from server.hall.models import Statement
+
+    Statement.objects.filter(world=world, turn__gt=to_turn).update(turn=to_turn)
     m.StatRecord.objects.filter(island__world=world, turn__gt=to_turn).delete()
     delete_records_after(world, to_turn)
     Backup.objects.filter(world=world, turn__gt=to_turn).delete()

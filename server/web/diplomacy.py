@@ -78,12 +78,14 @@ def _war_row(w: dict[str, Any], names: dict[int, str], turn: int) -> dict[str, A
         "attacker": _ref(names, w["attacker"]),
         "defender": _ref(names, w["defender"]),
         "declared": w["declared"],
+        "mutual": w.get("mutual", False),
         "start": w["start"],
         "state": state,
         "state_name": STATE_NAMES[state],
         "ceasefire": w.get("ceasefire"),
         "ended": w.get("ended"),
         "ended_by": w.get("ended_by"),
+        "ended_reason": w.get("ended_reason"),
     }
 
 
@@ -197,8 +199,11 @@ def diplomacy_data(island: m.Island, mine: bool) -> dict[str, Any]:
         "violations": [
             {
                 **v,
-                "treaty_title": next(
-                    (t["title"] for t in raw.get("treaties", []) if t["id"] == v["treaty"]), ""
+                "treaty_title": v.get(
+                    "title",
+                    next(
+                        (t["title"] for t in raw.get("treaties", []) if t["id"] == v["treaty"]), ""
+                    ),
                 ),
                 "clause_name": display.message(f"clause_{v['clause']}"),
                 "reason_name": display.message(f"why_{v['reason']}"),
@@ -278,6 +283,7 @@ def brief(island: m.Island, mine: bool) -> dict[str, Any]:
                 "with": w["defender"] if w["attacker"]["id"] == island.id else w["attacker"],
                 "state": w["state"],
                 "state_name": w["state_name"],
+                "mutual": w["mutual"],
             }
             for w in data["wars"]
         ],

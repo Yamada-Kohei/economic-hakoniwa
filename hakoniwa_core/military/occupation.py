@@ -185,7 +185,11 @@ def surrender(
     from hakoniwa_core.modules import politics as politics_stage
 
     treaties.surrender(world, ctx.config, loser.id, winner.id, ctx.turn)
-    loser.log.append(LogEntry("surrendered", {"country": winner.name}))
+    loser.log.append(
+        LogEntry(
+            "surrendered", {"country": winner.name, "hall": True, "a": loser.name, "b": winner.name}
+        )
+    )
     winner.log.append(LogEntry("enemy_surrendered", {"country": loser.name}))
     politics_stage.lose_regime(loser, ctx, "surrender", winner.id)
 

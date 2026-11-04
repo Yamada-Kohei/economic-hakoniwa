@@ -286,7 +286,12 @@ def _fight(
             total += police_power(ctx, u) if u.get("police") else unit_power(world, ctx, u, terrain)
         if defending:
             total *= shield
-        if w is not None and w["start"] == turn and w["attacker"] == owner:
+        if (
+            w is not None
+            and not w.get("mutual", False)
+            and w["start"] == turn
+            and w["attacker"] == owner
+        ):
             total *= cfg["surprise"]
         return total
 

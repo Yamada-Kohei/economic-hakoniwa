@@ -25,7 +25,7 @@ from typing import Any
 from hakoniwa_core import monuments, stock
 from hakoniwa_core.diplomacy import war
 from hakoniwa_core.military import army, battle, forces, occupation, sea
-from hakoniwa_core.state import LogEntry, WorldState
+from hakoniwa_core.state import IslandState, LogEntry, WorldState
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE, part, to_basis, to_milli
 
@@ -146,6 +146,26 @@ def _eat(world: WorldState, ctx: StageContext, unit: dict[str, Any]) -> None:
             army.remove(world, unit)  # 兵が 0 の部隊は消える
 
 
+def _demobilize_abroad(world: WorldState, owner: IslandState, unit: dict[str, Any]) -> None:
+    """外国の島の部隊を除隊し、自国の家計に戻す。"""
+    forces.lose(owner, unit["soldiers"])
+    forces.return_people(owner, unit["soldiers"])
+    _left_abroad(owner, unit["soldiers"])
+    owner.log.append(
+        LogEntry("unit_demobilized_abroad", {"unit": unit["id"], "count": unit["soldiers"]})
+    )
+    army.remove(world, unit)
+
+
+def remove_missing_islands(world: WorldState) -> None:
+    """消えた島の部隊を消し、消えた島にいた他国の部隊は除隊する。"""
+    for unit in list(army.world_state(world)["units"]):
+        if unit["owner"] not in world.islands:
+            army.remove(world, unit)
+        elif not army.is_sea(unit) and army.where(unit) not in world.islands:
+            _demobilize_abroad(world, world.islands[unit["owner"]], unit)
+
+
 def recall(world: WorldState, ctx: StageContext) -> None:
     """講和で戦争が終わった相手の島の部隊のうち、引き揚げの期限を過ぎたものを国に帰す（W-192）。
     自国の輸送船団（母港で使える）に空きがあれば、部隊は船団に乗って帰国し、母港の軍港のマスに戻る
@@ -165,15 +185,7 @@ def recall(world: WorldState, ctx: StageContext) -> None:
                 owner = world.islands[unit["owner"]]
                 if _ship_home(world, ctx, owner, unit, room):
                     break
-                forces.lose(owner, unit["soldiers"])
-                forces.return_people(owner, unit["soldiers"])
-                _left_abroad(owner, unit["soldiers"])
-                owner.log.append(
-                    LogEntry(
-                        "unit_demobilized_abroad", {"unit": unit["id"], "count": unit["soldiers"]}
-                    )
-                )
-                army.remove(world, unit)
+                _demobilize_abroad(world, owner, unit)
                 break
 
 

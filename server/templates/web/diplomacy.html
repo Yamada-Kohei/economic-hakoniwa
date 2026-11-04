@@ -33,7 +33,7 @@
     <p class="order-notice" role="status"></p>
   </details>
   {% endif %}
-  {% if d.past_wars %}<details class="diplomacy-history"><summary>{% translate "終わった戦争" %}（{{ d.past_wars|length }}）</summary><ul class="plain-list">{% for w in d.past_wars reversed %}<li>{% blocktranslate with a=w.attacker.name b=w.defender.name s=w.declared|turn_date e=w.ended|turn_date %}{{ a }}と{{ b }}（{{ s }}に布告。{{ e }}に講和）{% endblocktranslate %}</li>{% endfor %}</ul></details>{% endif %}
+  {% if d.past_wars %}<details class="diplomacy-history"><summary>{% translate "終わった戦争" %}（{{ d.past_wars|length }}）</summary><ul class="plain-list">{% for w in d.past_wars reversed %}<li>{% if w.ended_reason == "island_removed" %}{% blocktranslate with a=w.attacker.name b=w.defender.name e=w.ended|turn_date %}{{ a }}と{{ b }}（{{ e }}に国の削除で終結）{% endblocktranslate %}{% else %}{% blocktranslate with a=w.attacker.name b=w.defender.name s=w.declared|turn_date e=w.ended|turn_date %}{{ a }}と{{ b }}（{{ s }}に布告。{{ e }}に講和）{% endblocktranslate %}{% endif %}{% if w.mutual %} ・ {% translate "互いの宣戦" %}{% endif %}</li>{% endfor %}</ul></details>{% endif %}
 </section>
 <section class="panel" id="treaties">
   <h2>{% translate "効いている条約" %}</h2>
