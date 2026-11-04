@@ -84,6 +84,73 @@ def test_declared_war_starts_next_turn(game, world):
     assert "hall" not in on.args
 
 
+@pytest.mark.parametrize("proposer", [1, 2])
+def test_signatures_win_over_withdrawals_and_precede_declarations(game, world, proposer):
+    partner = 3 - proposer
+    t = propose(game, world, proposer, partner, [{"type": "non_aggression"}])
+    step(
+        game,
+        world,
+        {
+            proposer: [
+                ("withdraw_treaty", {"treaty": t["id"]}),
+                ("declare_war", {"target": partner}),
+            ],
+            partner: [("sign_treaty", {"treaty": t["id"]})],
+        },
+    )
+    assert t["state"] == treaties.IN_FORCE
+    assert [v["by"] for v in t["violations"]] == [proposer]
+    assert (
+        logs(world, proposer, "diplomacy_request_failed")[0].args["reason"]
+        == "reason_treaty_closed"
+    )
+
+
+def test_mutual_declarations_record_both_treaty_violations(game, world):
+    t = propose(game, world, 1, 2, [{"type": "non_aggression"}, {"type": "alliance"}])
+    sign(game, world, t["id"], 2)
+    step(game, world, {1: [("declare_war", {"target": 2})], 2: [("declare_war", {"target": 1})]})
+    assert len(war.wars(world)) == 1 and war.wars(world)[0]["mutual"] is True
+    assert {(v["by"], v["clause"]) for v in t["violations"]} == {
+        (i, clause) for i in (1, 2) for clause in (cl.NON_AGGRESSION, cl.ALLIANCE)
+    }
+    assert len(hall_entries(world, "war_declared")) == 2
+    assert not logs(world, 1, "diplomacy_request_failed")
+    assert not logs(world, 2, "diplomacy_request_failed")
+
+
+def test_removed_island_ends_live_wars_and_treaties_without_a_violation(game, world):
+    t = propose(game, world, 2, 1, [{"type": "non_aggression"}])
+    sign(game, world, t["id"], 1)
+    pending = propose(game, world, 2, 3, [{"type": "alliance"}])
+    w = war.declare(world, 2, 3, world.turn)
+    del world.islands[2]
+    step(game, world)
+    assert w["state"] == war.ENDED and w["ended_reason"] == "island_removed"
+    for treaty in (t, pending):
+        assert treaty["state"] == treaties.ENDED and treaty["end_reason"] == "party_removed"
+        assert treaty["violations"] == []
+    assert logs(world, 3, "war_island_removed")
+    assert logs(world, 1, "treaty_party_removed")[0].args["hall"] is True
+
+
+@pytest.mark.parametrize("paid,weight", [(0, 1.0), (500, 0.5), (1000, 0.0)])
+def test_reparation_weight_is_the_unpaid_share_and_keeps_the_title(game, world, paid, weight):
+    t = peace_with_reparations(game, world)
+    rep = t["clauses"][0]["reparations"]
+    rep["paid"] = paid
+    treaties.upkeep(world, game.config, rep["due"] + 1)
+    rows = world.islands[2].ext.get("diplomacy", {}).get("violations", [])
+    if weight:
+        assert rows[-1]["weight"] == weight and rows[-1]["title"] == t["title"]
+    else:
+        assert rows == []
+    assert credit.premium(world.islands[2], rep["due"] + 1, game.config) == pytest.approx(
+        game.config.get("diplomacy.violation_premium") * weight
+    )
+
+
 def test_cannot_declare_twice_or_on_self(game, world):
     step(game, world, {1: [("declare_war", {"target": 2})]})
     step(game, world, {2: [("declare_war", {"target": 1})]})

@@ -97,6 +97,174 @@ def test_war_shows_in_the_hall_and_summaries(world):
     assert any("宣戦を布告されました" in e["text"] for e in changes["log"])
 
 
+def test_mutual_war_is_visible_in_the_api_screens_summary_and_mcp(world):
+    (ca, a), (cb, b), _ = _players(world)
+    _orders(ca, a, ("declare_war", {"target": b.id}))
+    _orders(cb, b, ("declare_war", {"target": a.id}))
+    run_turn(force=True)
+    assert ca.get(f"/api/islands/{a.id}/diplomacy").json()["wars"][0]["mutual"] is True
+    assert ca.get(f"/api/islands/{a.id}/summary").json()["diplomacy"]["wars"][0]["mutual"] is True
+    assert "互いの宣戦" in ca.get(f"/islands/{a.id}/diplomacy/").content.decode()
+    assert "互いの宣戦" in ca.get("/hall/").content.decode()
+    assert "互いの宣戦" in ca.get("/help/").content.decode()
+    from server.web.mcp import REPORTS
+
+    assert "互いの宣戦" in REPORTS["diplomacy"]
+    a.world.refresh_from_db()
+    a.world.ext["diplomacy"]["wars"][0].pop("mutual")
+    a.world.save()
+    assert ca.get(f"/api/islands/{a.id}/diplomacy").json()["wars"][0]["mutual"] is False
+
+
+def test_removed_country_finishes_war_in_the_api_and_screen(world):
+    (ca, a), (_, b), _ = _players(world)
+    _orders(ca, a, ("declare_war", {"target": b.id}))
+    run_turn(force=True)
+    b.delete()
+    run_turn(force=True)
+    data = ca.get(f"/api/islands/{a.id}/diplomacy").json()
+    assert data["wars"] == []
+    assert data["past_wars"][0]["ended_reason"] == "island_removed"
+    assert "国の削除で終結" in ca.get(f"/islands/{a.id}/diplomacy/").content.decode()
+
+
+def test_violation_title_survives_treaty_pruning_and_old_records_fall_back(world):
+    (ca, a), _, _ = _players(world)
+    a.ext["diplomacy"] = {
+        "violations": [
+            {
+                "turn": 1,
+                "treaty": 91,
+                "clause": "peace",
+                "weight": 0.5,
+                "reason": "reparations",
+                "title": "残す題名",
+            },
+            {"turn": 1, "treaty": 92, "clause": "peace", "weight": 1, "reason": "reparations"},
+            {"turn": 1, "treaty": 93, "clause": "peace", "weight": 1, "reason": "reparations"},
+        ]
+    }
+    a.save()
+    a.world.ext = {"diplomacy": {"treaties": [{"id": 92, "title": "古い題名", "parties": []}]}}
+    a.world.save()
+    rows = ca.get(f"/api/islands/{a.id}/diplomacy").json()["violations"]
+    assert [r["treaty_title"] for r in rows] == ["残す題名", "古い題名", ""]
+
+
+def test_admin_can_hide_hall_words_and_the_treaty_text(world):
+    from server.turns.models import TurnLog
+
+    players = _players(world)
+    ca, a, cb, b = _treaty(players)
+    treaty = cb.get(f"/api/islands/{b.id}/diplomacy").json()["incoming"][0]["id"]
+    _orders(cb, b, ("sign_treaty", {"treaty": treaty}))
+    run_turn(force=True)
+    log = TurnLog.objects.get(kind="treaty_in_force", args__hall=True)
+    declared = TurnLog.objects.create(
+        island=a,
+        turn=2,
+        kind="war_declared",
+        args={
+            "hall": True,
+            "a": a.name,
+            "b": b.name,
+            "turn": 3,
+            "text": "隠す理由",
+        },
+    )
+    private = TurnLog.objects.create(island=a, turn=2, kind="facility_started", args={})
+    # 同じ条約のほかの出来事（選んでいない）と違反の記録の題名も隠れる
+    later = TurnLog.objects.create(
+        island=b,
+        turn=2,
+        kind="treaty_violated",
+        args={**log.args, "by": b.name, "clause": "clause_non_aggression", "why": "why_x"},
+    )
+    b.refresh_from_db()
+    b.ext = {
+        **(b.ext or {}),
+        "diplomacy": {
+            "violations": [
+                {
+                    "turn": 2,
+                    "treaty": treaty,
+                    "clause": "non_aggression",
+                    "weight": 1,
+                    "reason": "war_declared",
+                    "title": "不可侵条約",
+                }
+            ]
+        },
+    }
+    b.save()
+    admin = Client()
+    admin.force_login(User.objects.create_superuser("moderator", password="a-long-pass-123"))
+    response = admin.post(
+        "/admin/turns/turnlog/",
+        {
+            "action": "moderate_hall_text",
+            "_selected_action": [log.pk, declared.pk, private.pk],
+        },
+    )
+    assert response.status_code == 302
+    for event in (log, declared, later):
+        event.refresh_from_db()
+        assert event.args["moderated"] is True
+    private.refresh_from_db()
+    assert "moderated" not in private.args
+    hall = ca.get("/api/hall").json()
+    events = [e for e in hall["entries"] if e["type"] == "event"]
+    assert all("運営が非表示にしました" in e["text"] for e in events)
+    assert all("隠す理由" not in e["text"] and "不可侵条約" not in e["text"] for e in events)
+    shown = hall["treaties"][0]
+    assert shown["title"] == shown["text"] == "運営が非表示にしました"
+    b.refresh_from_db()
+    assert b.ext["diplomacy"]["violations"][0]["title"] == "運営が非表示にしました"
+
+
+def test_rollback_keeps_later_statements_at_the_restored_turn(world):
+    (ca, a), _, _ = _players(world)
+    run_turn(force=True)
+    run_turn(force=True)
+    statement = Statement.objects.create(
+        world=a.world, island=a, author=a.owner, title="残る声明", body="本文", turn=2
+    )
+    rollback(0)
+    statement.refresh_from_db()
+    assert statement.turn == 0 and statement.title == "残る声明"
+    assert ca.get("/api/hall").json()["entries"][0]["turn"] == 0
+
+
+def test_surrender_is_an_event_in_the_hall(world):
+    from hakoniwa_core.military import occupation
+    from hakoniwa_core.turn.context import StageContext
+    from server.game import get_game
+    from server.turns.models import TurnLog
+    from server.world.repository import WorldRepository
+
+    (ca, a), (_, b), _ = _players(world)
+    _orders(ca, a, ("declare_war", {"target": b.id}))
+    run_turn(force=True)
+    game = get_game()
+    state = WorldRepository(m.World.objects.get(pk=a.world_id)).load()
+    ctx = StageContext(
+        defs=game.defs,
+        config=game.config,
+        registry=game.registry,
+        formulas={},
+        turn=state.turn,
+        seed=state.seed,
+        stage="operations",
+        before=state,
+    )
+    occupation.surrender(state, ctx, state.islands[b.id], state.islands[a.id])
+    entry = next(e for e in state.islands[b.id].log if e.kind == "surrendered")
+    TurnLog.objects.create(island=b, turn=state.turn, kind=entry.kind, args=entry.args)
+    event = next(e for e in ca.get("/api/hall").json()["entries"] if e.get("kind") == "surrendered")
+    assert f"{b.name}が首都を占領され、{a.name}に降伏しました" in event["text"]
+    assert "降伏文書" in event["text"]
+
+
 def test_hall_events_disappear_with_a_rollback(world):
     (ca, a), (_, b), _ = _players(world)
     _orders(ca, a, ("declare_war", {"target": b.id}))

@@ -919,3 +919,9 @@ reason_standing_release: "放出の値段は買い入れの上限より高くし
 reason_standing_cap: "放出の値段がこの財の値段の上限を超えています。"
 reason_standing_floor: "買いの指値がこの財の値段の下限を下回っています。"
 reason_standing_life: "日持ちが入れ替えの間隔の 2 倍未満の財には、備蓄を設定できません。"
+
+hall_surrendered: "{a}が首都を占領され、{b}に降伏しました。停戦の『降伏文書』が効きます"
+unit_ceasefire_hold: "部隊 {unit} 番は停戦のため、その場で待機します（動きの命令は残ります）"
+war_island_removed: "戦争 {war} 番は、相手の国がなくなったため終わりました"
+treaty_party_removed: "条約「{title}」は、相手の国がなくなったため終わりました"
+hall_treaty_party_removed: "{a}と{b}の条約「{title}」は、当事国がなくなったため終わりました"

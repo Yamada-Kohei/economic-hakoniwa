@@ -21,15 +21,17 @@ def record(
     turn: int,
     treaty: int,
     clause: str,
-    weight: int,
+    weight: float,
     reason: str,
     config: GameConfig,
+    title: str = "",
 ) -> dict[str, Any]:
     """島の違反の記録に1件足す。古くて傷が消えた分は捨てる。"""
     decay = config.get("diplomacy.violation_decay_turns")
     rows = island_state(island)["violations"]
     rows[:] = [v for v in rows if turn - v["turn"] < decay]
     row = {"turn": turn, "treaty": treaty, "clause": clause, "weight": weight, "reason": reason}
+    row["title"] = title
     rows.append(row)
     return row
 

@@ -23,6 +23,87 @@ def _player():
     return client, island
 
 
+def test_hidden_tile_values_and_nearby_pollution_follow_each_viewers_discovery(world):
+    client, island = _player()
+    other = m.Island.objects.exclude(pk=island.pk).order_by("id").first()
+    other.owner = User.objects.create_user("observer", password="a-long-pass-123")
+    other.save()
+    observer = Client()
+    observer.force_login(other.owner)
+    free = [
+        t
+        for t in island.tiles.order_by("y", "x")
+        if not island.facilities.filter(x=t.x, y=t.y).exists()
+    ]
+    tile, nearby = free[:2]
+    secret = m.Facility.objects.create(
+        island=island,
+        number=901,
+        kind="nuclear_facility",
+        x=tile.x,
+        y=tile.y,
+        built=True,
+        ext={"hidden": True},
+    )
+    for row in (tile, nearby):
+        row.pollution = 12
+        row.ext = {"hidden_pollution": {"901": 10}, "employed": 25, "power": 0.8, "happiness": 65}
+        row.infra = {"power": 1}
+        row.save()
+    detail_url = f"/api/islands/{island.id}/tiles/{tile.x},{tile.y}"
+    map_url = f"/api/islands/{island.id}/map"
+    for who in (observer, Client()):
+        detail = who.get(detail_url).json()
+        assert "facility" not in detail
+        assert (detail["pollution"], detail["employed"], detail["power"], detail["happiness"]) == (
+            2,
+            0,
+            None,
+            None,
+        )
+        image = who.get(map_url).json()
+        for row in (tile, nearby):
+            assert image["pollution"][row.y * island.size + row.x] == 2
+        index = tile.y * island.size + tile.x
+        assert image["power"][index] is None and image["happiness"][index] is None
+        assert image["power_line"][index] == 1
+    mine = client.get(detail_url).json()
+    assert mine["facility"]["kind"] == "nuclear_facility"
+    assert (mine["pollution"], mine["employed"], mine["power"], mine["happiness"]) == (
+        12,
+        25,
+        0.8,
+        65,
+    )
+    secret.ext["found"] = [other.id]
+    secret.save()
+    assert observer.get(detail_url).json()["pollution"] == 12
+    assert observer.get(detail_url).json()["employed"] == 25
+    assert Client().get(detail_url).json()["pollution"] == 2
+    secret.delete()  # 生産の後に壊れても、残った汚染から施設の場所を漏らさない
+    assert Client().get(detail_url).json()["pollution"] == 2
+    assert client.get(detail_url).json()["pollution"] == 12
+
+
+def test_hidden_site_logs_stay_private_after_removal_only_during_its_lifetime(world):
+    from server.turns.models import TurnLog
+
+    client, island = _player()
+    island.ext["hidden_places"] = [
+        {"x": 1, "y": 1, "from": 3, "until": 5},
+        {"x": 1, "y": 1, "from": 8},
+    ]
+    island.save()
+    for turn in (2, 3, 5, 6, 8, 9):
+        TurnLog.objects.create(
+            island=island, turn=turn, kind="construction_started", args={"x": 1, "y": 1}
+        )
+    rows = TurnLog.objects.filter(island=island, kind="construction_started")
+    public = display.visible_logs(rows, False, island)
+    assert list(public.order_by("turn").values_list("turn", flat=True)) == [2, 6]
+    assert display.visible_logs(rows, True, island).count() == 6
+
+
 def test_summary_shows_the_army_to_its_owner_only(world):
     client, island = _player()
     body = {

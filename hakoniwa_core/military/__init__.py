@@ -23,6 +23,7 @@ PRIVATE_LOGS = (
     "unit_arrived",
     "unit_blocked",
     "unit_no_fuel",
+    "unit_ceasefire_hold",
     "unit_order_failed",
     "trench_built",
     "fleet_forming",

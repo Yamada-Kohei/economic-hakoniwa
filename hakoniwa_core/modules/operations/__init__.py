@@ -59,6 +59,8 @@ class Operations(WorldStage):
         assert ctx.before is not None
         world = ctx.before
         army.world_state(world)
+        supply.remove_missing_islands(world)
+        hidden.update_places(world, ctx.turn)
         for i in world.island_ids():
             island = world.islands[i]
             for req, order_id in take_deferred(island, REQUESTS):
@@ -76,6 +78,7 @@ class Operations(WorldStage):
         occupation.update(world, ctx)
         missiles.run(world, ctx)
         hidden.discover(world)
+        hidden.update_places(world, ctx.turn)
         missiles.restock(world, ctx)
         nuclear.watch(world, ctx)
         supply.run(world, ctx)
@@ -526,6 +529,12 @@ def _act(world: WorldState, ctx: StageContext, island: IslandState, unit: dict[s
         if unit["status"] == army.READY:
             _act_fleet(ctx, island, unit)
         return
+    ceasefire = (
+        army.abroad(unit)
+        and war.status(world, island.id, army.where(unit), ctx.turn) == war.CEASEFIRE
+    )
+    if not ceasefire:
+        unit.pop("ceasefire_hold", None)
     order = unit["order"]
     if not order or unit["status"] != army.READY or "aboard" in unit:
         return
@@ -534,6 +543,11 @@ def _act(world: WorldState, ctx: StageContext, island: IslandState, unit: dict[s
         if order["left"] == 0:
             _finish_trench(ctx, island, unit)
     elif order["type"] == "move":
+        if ceasefire:
+            if not unit.get("ceasefire_hold"):
+                island.log.append(LogEntry("unit_ceasefire_hold", {"unit": unit["id"]}))
+            unit["ceasefire_hold"] = True
+            return
         _move(world, ctx, island, unit, order)
 
 
@@ -624,6 +638,14 @@ def _move(
     per_tile = vehicles * to_milli(ctx.config.get("military.move.fuel_per_tile"))
     for step in route:
         if left <= 0:
+            break
+        if any(
+            other["status"] == army.READY
+            and other["soldiers"] > 0
+            and war.status(world, unit["owner"], other["owner"], ctx.turn) == war.CEASEFIRE
+            and max(abs(other["x"] - step[0]), abs(other["y"] - step[1])) <= 1
+            for other in army.on_land(world, army.where(unit))
+        ):
             break
         if per_tile and battle._have(world, unit, FUEL) < per_tile:
             unit["no_fuel"] = True  # 軍の画面に出す印（次に進めたときに消す）
