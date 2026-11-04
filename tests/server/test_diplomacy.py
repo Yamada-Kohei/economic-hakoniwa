@@ -173,6 +173,30 @@ def test_admin_can_hide_hall_words_and_the_treaty_text(world):
         },
     )
     private = TurnLog.objects.create(island=a, turn=2, kind="facility_started", args={})
+    # 同じ条約のほかの出来事（選んでいない）と違反の記録の題名も隠れる
+    later = TurnLog.objects.create(
+        island=b,
+        turn=2,
+        kind="treaty_violated",
+        args={**log.args, "by": b.name, "clause": "clause_non_aggression", "why": "why_x"},
+    )
+    b.refresh_from_db()
+    b.ext = {
+        **(b.ext or {}),
+        "diplomacy": {
+            "violations": [
+                {
+                    "turn": 2,
+                    "treaty": treaty,
+                    "clause": "non_aggression",
+                    "weight": 1,
+                    "reason": "war_declared",
+                    "title": "不可侵条約",
+                }
+            ]
+        },
+    }
+    b.save()
     admin = Client()
     admin.force_login(User.objects.create_superuser("moderator", password="a-long-pass-123"))
     response = admin.post(
@@ -183,7 +207,7 @@ def test_admin_can_hide_hall_words_and_the_treaty_text(world):
         },
     )
     assert response.status_code == 302
-    for event in (log, declared):
+    for event in (log, declared, later):
         event.refresh_from_db()
         assert event.args["moderated"] is True
     private.refresh_from_db()
@@ -192,8 +216,10 @@ def test_admin_can_hide_hall_words_and_the_treaty_text(world):
     events = [e for e in hall["entries"] if e["type"] == "event"]
     assert all("運営が非表示にしました" in e["text"] for e in events)
     assert all("隠す理由" not in e["text"] and "不可侵条約" not in e["text"] for e in events)
-    treaty = hall["treaties"][0]
-    assert treaty["title"] == treaty["text"] == "運営が非表示にしました"
+    shown = hall["treaties"][0]
+    assert shown["title"] == shown["text"] == "運営が非表示にしました"
+    b.refresh_from_db()
+    assert b.ext["diplomacy"]["violations"][0]["title"] == "運営が非表示にしました"
 
 
 def test_rollback_keeps_later_statements_at_the_restored_turn(world):
