@@ -18,6 +18,7 @@ from django.urls import reverse
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import politics as core_politics
 from hakoniwa_core.economy import books, retail
+from hakoniwa_core.modules.population import still_hungry
 from hakoniwa_core.naming import facility_name
 from hakoniwa_core.state import ACCOUNTING_SELF, OWNER_STATE, ZONE_INDUSTRIAL
 from hakoniwa_core.trade import island_state as trade_state
@@ -273,8 +274,8 @@ FOOD_SHORT_TEXTS = {
 
 
 def hunger(island: m.Island, stats: dict[str, float], currency: str) -> list[dict[str, Any]]:
-    """飢えている家計の層（食べられた割合が 1 未満か、飢えの蓄えが残っている層）。層の名前、市場で
-    食料を買う人の数、食べられた割合、買えなかったわけ（お金がないのか、売りが足りないのか）、
+    """飢えている家計の層（食べられた割合が 1 未満か、回復にまだかかる蓄えがある層）。層の名前、
+    市場で食料を買う人の数、食べられた割合、買えなかったわけ（お金がないのか、売りが足りないのか）、
     1人あたりの所得、飢えの蓄え（栄養の不足の月数）、亡くなる人が出始める蓄え、いまの蓄えで亡くなる
     割合、このターンに飢えで亡くなった人。値は人口の段が層の状態と統計に残したもの
     （modules/population）。10-17 のカード「知らせて回7」。家族や村の支え合いは回7 で入れる。"""
@@ -284,8 +285,10 @@ def hunger(island: m.Island, stats: dict[str, float], currency: str) -> list[dic
     for name, h in sorted((island.economy or {}).get("households", {}).items()):
         fed = h.get("fed")
         months = h.get("hunger", 0.0)
-        # 飢えの蓄えがなく、不足が体の持ちこたえる分（tolerance）までなら飢えていない
-        if fed is None or (months <= 0 and 1 - fed / fac.FULL <= settings["tolerance"]):
+        # 次に全部食べれば蓄えが戻り、不足も体の持ちこたえる分までなら飢えていない（PO-58）
+        if fed is None or (
+            not still_hungry(months, settings) and 1 - fed / fac.FULL <= settings["tolerance"]
+        ):
             continue
         persons = h.get("food_buyers", h.get("persons", 0))
         if persons <= 0:
