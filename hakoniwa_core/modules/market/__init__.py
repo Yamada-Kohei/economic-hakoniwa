@@ -106,6 +106,7 @@ from hakoniwa_core.modules.population import (
     HUNGER,
     jobless_family,
     layer_food_needs,
+    still_hungry,
 )
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import (
@@ -2004,12 +2005,12 @@ class Market(IslandStage):
             received = island.scratch.get(SUPPORT, {}).get(layer, 0)
             if received > 0:
                 budget = min(available, budget + received)
-            # 飢えている家計（回3。前のターンに食べきれなかったか、飢えの蓄えが残っている）: 預金を
-            # 崩してでも食料を先に買い、ほかの層の分にも手を伸ばして、値幅の上端を超えて買い上がる
-            # （お金のない家計から買えなくなる）
+            # 飢えている家計（回3。前のターンに食べきれなかったか、回復にまだかかる蓄えがある）:
+            # 預金を崩してでも食料を先に買い、ほかの層の分にも手を伸ばして値幅の上端を超えて
+            # 買い上がる（お金のない家計から買えなくなる）
             state = island.economy.households[layer]
             hungry = state.get(FED, fac.FULL) < to_milli(hungry_settings["threshold"])
-            hungry = hungry or state.get(HUNGER, 0) > 0
+            hungry = hungry or still_hungry(state.get(HUNGER, 0), config.get("population.hunger"))
             if hungry:
                 extra = part(
                     ledger.money(island, household(layer)), to_basis(hungry_settings["savings"])
@@ -2959,7 +2960,8 @@ class Market(IslandStage):
         """前のターンに食べきれなかった家計の層があるか（飢えた家計の買い上がりと同じ見方）。"""
         threshold = to_milli(ctx.config.get("household.hungry.threshold"))
         return any(
-            state.get(FED, fac.FULL) < threshold or state.get(HUNGER, 0) > 0
+            state.get(FED, fac.FULL) < threshold
+            or still_hungry(state.get(HUNGER, 0), ctx.config.get("population.hunger"))
             for state in island.economy.households.values()
         )
 

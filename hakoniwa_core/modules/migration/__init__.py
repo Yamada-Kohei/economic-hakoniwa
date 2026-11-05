@@ -69,6 +69,7 @@ from hakoniwa_core.modules.population import (
     layer_tiles,
     remove_dead,
     spread_over,
+    still_hungry,
     vacancies_of,
 )
 from hakoniwa_core.registry import OrderFailed, OrderHandler, Registry, WorldStage
@@ -183,7 +184,9 @@ def view_of(island: IslandState, ctx: StageContext) -> View:
         engineer_jobs=max(0.0, 1 - engineer_unemployment(island)),
         fed={n: h.get("fed", FULL) / FULL for n, h in households.items()},
         hungry={
-            n: h.get("fed", FULL) < FULL or h.get(HUNGER, 0) > 0 for n, h in households.items()
+            n: h.get("fed", FULL) < FULL
+            or still_hungry(h.get(HUNGER, 0), ctx.config.get("population.hunger"))
+            for n, h in households.items()
         },
         persons={n: h["persons"] for n, h in households.items()},
     )

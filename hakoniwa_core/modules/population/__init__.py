@@ -467,6 +467,11 @@ def hunger_step(stock: float, shortfall: float, settings: dict[str, float]) -> f
     return max(0.0, value)
 
 
+def still_hungry(stock: float, settings: dict[str, float]) -> bool:
+    """次のターンに全部食べても、飢えの蓄えが残るか（PO-58）。"""
+    return hunger_step(stock, 0.0, settings) > 0
+
+
 def _move_to_fields(h: dict[str, Any], market: int, settings: dict[str, float]) -> None:
     """一般の層の、市場で食料を買う人と村で自給の農業をしている人の間を移った人の飢えの蓄えを、
     移った先の蓄えに人数で混ぜ、畑で食べている人の蓄えを1ターン進める（回4）。

@@ -9,9 +9,13 @@ from __future__ import annotations
 
 import copy
 
+import pytest
+
 from hakoniwa_core.economy import GENERAL, retail
+from hakoniwa_core.modules import market
 from hakoniwa_core.modules.market import Market
-from hakoniwa_core.modules.population import FED, jobless_family
+from hakoniwa_core.modules.migration import view_of
+from hakoniwa_core.modules.population import FED, HUNGER, jobless_family, still_hungry
 from hakoniwa_core.units import to_milli
 from tests.core.test_finance import context, island_of
 from tests.core.test_finance import game as game  # noqa: F401
@@ -46,3 +50,51 @@ def test_hungry_households_want_any_staple_when_no_food_is_on_sale(game, warmed)
     extra = to_milli(back * jobless_family(game.defs, island) * per_person)
     nutrition = game.defs.goods["fish"]["food"]["nutrition"]
     assert more["fish"] - hungry["fish"] >= 0.5 * extra / nutrition
+
+
+@pytest.mark.parametrize("stock, hungry", [(0.0001, False), (0.125, False), (0.5, True)])
+def test_hunger_stock_controls_market_and_migration(game, warmed, monkeypatch, stock, hungry):  # noqa: F811
+    """食べられている家計の極小の残りでは預金を崩さず買い上がらず、移民も飢えと見ない。"""
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    for state in island.economy.households.values():
+        state[FED] = 1000
+        state[HUNGER] = 0.0
+    original = copy.deepcopy(island)
+    ctx = context(game, world, "market")
+    calls = []
+    original_orders = market.hungry_food_orders
+
+    def record_orders(*args, **kwargs):
+        calls.append(True)
+        return original_orders(*args, **kwargs)
+
+    monkeypatch.setattr(market, "hungry_food_orders", record_orders)
+
+    def orders(target):
+        target.scratch.clear()
+        target.scratch["freight_household"] = 0
+        retail.prepare(target, game.config)
+        Market()._household_orders(target, ctx, {}, 0, {"grain": 10**12})
+        return target.scratch["household_budget"][GENERAL]
+
+    usual = orders(original)
+    assert not calls
+    island.economy.households[GENERAL][HUNGER] = stock
+    budget = orders(island)
+    assert bool(calls) is hungry
+    if hungry:
+        assert budget > usual
+    else:
+        assert budget == usual
+    assert Market._anyone_hungry(island, ctx) is hungry
+    assert view_of(island, ctx).hungry[GENERAL] is hungry
+
+
+@pytest.mark.parametrize(
+    "stock, hungry", [(0.0, False), (0.0001, False), (0.125, False), (0.126, True), (0.5, True)]
+)
+def test_still_hungry_uses_recovery_settings(game, stock, hungry):
+    """回復の境目は設定の式から決まり、新しい固定の閾値を持たない。"""
+    assert still_hungry(stock, game.config.get("population.hunger")) is hungry
+    assert not still_hungry(0.5, {"tolerance": 0.3, "recovery": 0.5})
