@@ -77,6 +77,7 @@
 | PO-55 | 国の命令「住宅を建てる」（W-190）: 町のマスか空いた平地を選び、足す床（次の段階まで、または床の数）を決めると、国が住宅費（タブ 6 FS-26）で資材を市場で買って床を足す（公営住宅）。国の床は国の持ち分として持ち、所得の低い層から（失業 → 一般）望む広さに足りない分を埋める形で割り当て、住む層は家賃（FS-27）を国庫に払う。手入れは国が住宅費から。開発を止めたマスと指定したマスには建てない | 決定（W-190 の回2 で作った。家賃を命令で決めることは次の回） | `fiscal.budget.housing`, `housing.public_rent` | tests/core/test_public_housing.py::test_build_housing_checks_the_site_and_the_target, tests/core/test_public_housing.py::test_build_housing_on_empty_land_founds_a_town_of_public_floor, tests/core/test_public_housing.py::test_a_high_rise_order_ignores_the_empty_land_rule_but_still_needs_water |
 | PO-56 | 計画経済の国営住宅（W-202）: 計画経済の国では家計は住宅の資材を買わず住宅ローンも借りない。町ができる・床を足す・手入れの資材は国が住宅費で買い、床は国の床として層の人数に比例して割り当て、住む層は家賃を払う。住宅費が足りなければ町は育たず、空きがなければ過密になる（ソ連の住宅の待ち列）。体制が変わっても床の持ち主はそのまま（払い下げは後回し W-207）。前からある計画経済の世界の家計の床は家計のまま | 決定（W-190 の回2 で作った。標準の計画の住宅費と、0 のまま町が要るときの知らせは次の回） | `fiscal.budget.housing`, `fiscal.budget_planned.housing`, `housing.public_rent` | tests/core/test_public_housing.py::test_public_builds_use_the_state_stock_and_a_new_village_is_public, tests/core/test_public_housing.py::test_in_a_planned_country_households_buy_no_housing_but_in_a_market_one_they_do |
 | PO-57 | 飢えている家計（前のターンに食べきれなかったか飢えの蓄えが残る層）は、売りに出ていない食料のそれぞれを、それだけ売りに出ていれば買った量まで「買いたい量」に出す。一般の層は、食べ物が買えずに畑に戻った働き手とその家族（PO-28）の分も足す。差し押さえ中か閉鎖の途中の施設は、品切れの値段の上がりを止める「作り始める値段」に数えない | 決定（2026-11-02） | `population.food_per_person` | tests/core/test_famine_recovery.py::test_hungry_households_want_any_staple_when_no_food_is_on_sale |
+| PO-58 | 飢えの蓄えが、次のターンに全部食べれば 0 に戻る大きさ（`hunger_step(S,0)=0`）なら、知らせ・市場の買い上がり・移民の見方では飢えていないとみなす。幸福度の減点は量のまま | 決定（2026-11-05） | `population.hunger.tolerance`, `population.hunger.recovery` | tests/core/test_famine_recovery.py::test_hunger_stock_controls_market_and_migration, tests/core/test_famine_recovery.py::test_still_hungry_uses_recovery_settings, tests/server/test_codex_turn300_fixes.py::test_hunger_notice_ignores_recovered_stock |
 
 ### 仮の決まり
 
@@ -174,6 +175,8 @@
 人は毎ターン少しずつ島の中を移ります。仕事のない人のうち `population.migration_rate` の割合が、人手の足りない施設の通勤圏にある空いた町へ移ります。行き先は、人手の足りない所に近い町から、同じなら幸福度の高い町です。住む所の上限を超えた人（生まれたマスに空きがなかった人も）は、空いている町へ入れ、入れなければ消えずに元のマスに詰めて住みます（過密）。ただし自給の村が村のままでいられる人数を超える分は、いちばん近い町（人数でも町と見られる住宅地。なければ建った段階が町の住宅地）へ出ます（土地の足りない農村からあふれた人が町へ出る。村が人数で町と見られて村じゅうが一度に自給をやめないように）。住む所のないマスの人はいちばん近い住宅地へ移り、島に住宅地が 1 つもなければ国を出ます。町が育つのは、この移り住みで町の人数が上限に近づくからです。
 
 ### 食料と飢えの蓄え
+
+次のターンに全部食べれば飢えの蓄えが 0 に戻る大きさ（`hunger_step(S,0)=0`）なら、知らせ・市場の買い上がり・移民の見方では飢えていないとみなし、幸福度の減点は蓄えの量のまま計算する（PO-58）。
 
 住民は 1 人 1 ターンに `population.food_per_person` の食料（栄養）を要り、家計の層ごとに前のターンの値段と売りに出ていた量を見て市場で買います（買い方・食べ物の質・買い上がりはタブ 3 と 4）。食べられた割合が幸福度と飢えの蓄えに効き、食事の質が幸福度と亡くなる割合に効きます。
 

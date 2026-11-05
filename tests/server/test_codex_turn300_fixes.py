@@ -6,11 +6,13 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.economy import GENERAL
 from hakoniwa_core.state import Facility
 from server.accounts import keys
-from server.web import display, reports
+from server.web import display, overview, reports
 from server.world.models import Island
 from tests.server.test_ai_players import _hk, _keyed, _tool
 from tests.server.test_ai_players import played as played  # noqa: F401  （試験の部品を使い回す）
@@ -134,3 +136,19 @@ def test_hk_json_remembers_the_turn(tmp_path, monkeypatch):
     assert hk.load_state() == {"http://hakoniwa.test|4": 7}
     assert hk.cmd_changes(c, SimpleNamespace(island=4, json=True, since=None)) == 0
     assert asked[-1] == "/api/islands/4/changes?since=7"
+
+
+@pytest.mark.parametrize(
+    "stock, fed, hungry",
+    [(0.0001, 1000, False), (0.125, 1000, False), (0.5, 1000, True), (0.0001, 800, True)],
+)
+def test_hunger_notice_ignores_recovered_stock(stock, fed, hungry):
+    """次に全部食べれば戻る蓄えは知らせず、まだ戻らない蓄えや今の食料不足は知らせる。"""
+    island = SimpleNamespace(
+        economy={"households": {GENERAL: {"persons": 100, "fed": fed, "hunger": stock}}}
+    )
+    rows = overview.hunger(island, {}, "")
+    assert bool(rows) is hungry
+    if hungry:
+        assert rows[0]["months"] == stock
+        assert "飢えています" in overview.hunger_text(rows[0])
