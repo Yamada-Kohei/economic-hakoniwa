@@ -330,7 +330,7 @@
 | BK-24 | 国債の期間は3つ（1・5・10年） | 決定 | tests/core/test_codex_turn300_fixes.py、tests/core/test_playtest4_fixes.py |
 | BK-25 | 発行はすべて市中銀行の入札に出す | 決定 | tests/core/test_balance_round5.py |
 | BK-26 | 市場の利回りは式 `bond_yield`（政策金利＋期間・返す力・物価・不履行の上乗せ−独立の… | 決定 | tests/core/test_balance_round5.py、tests/core/test_finance.py |
-| BK-27 | 利回りには上限があり、張り付いても何も起きない | 仮（仮の決まりの表あり） | （未確認） |
+| BK-27 | 利回りには上限があり、張り付いても何も起きない（張り付いたことは財政の画面と「注意」で知らせる | 仮（仮の決まりの表あり） | （未確認） |
 | BK-28 | 新しい発行の売れ残りは、「引き受ける」の政策で中央銀行が独立していなければ中央銀行が同じ利回りで… | 決定 | tests/core/test_finance.py、tests/core/test_playtest3_fixes.py |
 | BK-29 | 満期の国債の中央銀行の持ち分は同じ期間の国債に乗り換え、借り換えの売れ残りは独立していても中央銀… | 決定 | tests/core/test_rules.py |
 | BK-30 | 国債の売買の市場は残りの期間の4区分ごとの、利回りを値段にした板寄せ | 決定 | tests/core/test_playtest_fixes.py |
@@ -520,7 +520,7 @@
 
 ## [11 画面と統計](11-ui.md)
 
-決まり 61 個、うち仮の決まりの表にあるもの 0 個。
+決まり 69 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -585,6 +585,14 @@
 | UI-59 | 公電が届いたときのブラウザの通知（Web Push）: 公電の画面の「このブラウザに知らせる」を… | 決定（2026-11-03、W-39） | tests/server/test_letters_push.py |
 | UI-60 | 国の倉庫の決まった売り買い（W-235、タブ 6 FS-28・FS-29）の画面: 市場の画面の… | 決定（2026-11-03 実装） | tests/server/test_warehouse_standing.py |
 | UI-61 | 手引き「産業のつながり」（`/help/chain/`）: 施設の作り方から、品目どうしの材料の… | 決定（2026-11-03、本人「産業ごとに必要な資源の表というか図を作った方が良さそう」「関係… | tests/server/test_help_chain.py |
+| UI-62 | 島の画面の「前のターンからの主な変化」はサーバーが選ぶ | 決定（2026-11-08） | tests/server/test_screens_notices.py |
+| UI-63 | ターンログは出来事の種類と施設の種類で絞れる | 決定（2026-11-08） | tests/server/test_screens_notices.py |
+| UI-64 | 不具合の報告を送った人に、扱いを見せる | 決定（2026-11-08） | tests/server/test_feedback.py |
+| UI-65 | 産業の鎖の画面は誰にでも見せる | 決定（2026-11-08、本人 2026-10-25「産業の鎖は他の人も見れていいかな」） | tests/server/test_screens_notices.py |
+| UI-66 | 休止を解いた国に、休止の間に代わりに結んだ停戦と講和（PL-56）を知らせる | 決定（2026-11-08） | tests/server/test_screens_notices.py |
+| UI-67 | 国債の利回りが上限（`bonds.max_yield`）に張り付いたら知らせる | 決定（2026-11-08） | tests/server/test_screens_notices.py |
+| UI-68 | 貿易の画面の海運業の船は、隻の小数（「0.5 隻分」）でなく積める量で出す: 輸送船の数と 1 … | 決定（2026-11-08、掲示板 #20・#22 倭国さん） | tests/server/test_screens_notices.py |
+| UI-69 | 島の地図の元のデータか画面の部品を読み込めなかったら、地図の上に「地図を読み込めませんでした | 決定（2026-11-08） | tests/server/test_screens_notices.py |
 
 ## [12 確かめ方](12-checks.md)
 
