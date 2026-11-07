@@ -90,6 +90,8 @@ from hakoniwa_core.economy.prices import (
     adapt_usual,
     input_limit,
     material_limit,
+    production_subsidy_rate,
+    subsidized_floor,
     unit_floor,
     usual_price,
     variable_profit,
@@ -228,7 +230,9 @@ def _lowest_ask(ctx, island: IslandState, order: Order, party: Party, good: str)
     if f is None:
         return order.limit
     wage = f.economy.get("wage", 0)
-    floor = unit_floor(ctx.defs, ctx.config, f, good, island.economy.prices, wage, party.freight)
+    floor = subsidized_floor(
+        island, ctx.defs, ctx.config, f, good, island.economy.prices, wage, party.freight, ctx.turn
+    )
     if floor <= 0:
         return order.limit
     return min(order.limit, -(-floor * BASIS // max(1, BASIS - party.freight)))
@@ -608,7 +612,8 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
     wage = f.economy.get("wage", 0)
     profitable = True
     if is_self_supporting(f):
-        profitable = variable_profit(ctx.defs, ctx.config, f, prices, wage, rate) > 0
+        subsidy = production_subsidy_rate(island, ctx.defs, ctx.config, f, ctx.turn)
+        profitable = variable_profit(ctx.defs, ctx.config, f, prices, wage, rate, subsidy) > 0
     plan = 0
     for good, full in sorted(outputs.items()):
         offered, sold, priced_out = f.economy.get("sales", {}).get(good, [0, 0, 0])
@@ -616,7 +621,21 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
         unmet = record.demand - record.volume if record is not None else 0
         before = expected.get(good, fac.scale(full, target))
         held = stock.total(f.stock, good)
-        floor = unit_floor(ctx.defs, ctx.config, f, good, prices, wage, rate)
+        floor = subsidized_floor(
+            island, ctx.defs, ctx.config, f, good, prices, wage, rate, ctx.turn
+        )
+        cap = island.policy.price_cap.get(good)
+        if (
+            is_self_supporting(f)
+            and politics.trait(island, ctx.defs, "price_controls", False)
+            and not (planning.is_planned(island, ctx.defs) and good in planning.official(island))
+            and cap
+            and prices.get(good, 0) >= cap
+            and cap < floor
+        ):
+            # 在庫を売れた量は、費用を回収できない新しい生産の見込みに数えない。
+            expected[good] = 0
+            continue
         # 売れ残りを変動費より安く投げ売りした分は、下回った幅に応じて少なく数える
         weight = late_weight(prices.get(good, 0), floor, settings["band"])
         late_offered, late_sold = f.economy.get("late_sales", {}).get(good, [0, 0])
@@ -1466,6 +1485,9 @@ class Market(IslandStage):
         prices = island.economy.prices
         width = to_basis(config.get("market.band"))
         official = planning.official(island) if planning.is_planned(island, defs) else {}
+        caps = (
+            island.policy.price_cap if politics.trait(island, defs, "price_controls", False) else {}
+        )
         for f in sorted(island.facilities, key=lambda f: f.id):
             if not f.built or fac.is_housing(config, f) or not fac.located(f):
                 continue
@@ -1480,6 +1502,7 @@ class Market(IslandStage):
             payer = payer_of(defs, config, f)
             name = facility_entity(f.id)
             seller = Party(FACILITY, name, Payer(entity_of(config, f), payer.item), rate, 0, f)
+            subsidy = production_subsidy_rate(island, defs, config, f, ctx.turn)
             for good in sorted(recipe["outputs"]):
                 if good == power:
                     continue
@@ -1487,7 +1510,9 @@ class Market(IslandStage):
                 if total <= 0:
                     continue
                 ask = f.economy.get("ask", {}).get(good, prices.get(good, 0))
-                floor = unit_floor(defs, config, f, good, prices, f.economy.get("wage", 0), rate)
+                floor = subsidized_floor(
+                    island, defs, config, f, good, prices, f.economy.get("wage", 0), rate, ctx.turn
+                )
                 ask = max(ask, floor)
                 if good in official:  # 計画経済: 費用に届かなくても公定価格で売る（フェーズ3-4）
                     ask = 0
@@ -1495,7 +1520,9 @@ class Market(IslandStage):
                 if expiring:
                     self._add(books_by_good, good, "sell", Order(expiring), seller)
                 if total - expiring > 0:
-                    _, high = auction.band(prices.get(good, 1), width)
+                    _, high = auction.band(
+                        prices.get(good, 1), width, caps.get(good) if good not in official else None
+                    )
                     order = Order(total - expiring, seller_limit(ask, rate, high))
                     self._add(books_by_good, good, "sell", order, seller)
             # 作り方を替えて使わなくなった物（フェーズ3-2）は、値幅の下端を指値に売る。ただし同じ
@@ -1510,11 +1537,14 @@ class Market(IslandStage):
                 if total - expiring <= 0:
                     continue
                 low, high = auction.band(prices.get(good, 1), width)
-                floor = self._leftover_floor(defs, config, f, good, prices, rate)
+                floor = self._leftover_floor(defs, config, f, good, prices, rate, subsidy)
                 if good in official:  # 計画経済: 公定価格で売る（3 の作った物と同じ）
                     order = Order(total - expiring, 0)
                 else:
-                    order = Order(total - expiring, floored_limit(low, floor, rate, high))
+                    limit = floored_limit(low, floor, rate, high)
+                    if caps.get(good):
+                        limit = min(limit, caps[good])
+                    order = Order(total - expiring, limit)
                 self._add(books_by_good, good, "sell", order, seller)
             needs = self._input_needs(ctx, f, power)
             outbid = {g for g, why in f.economy.pop("short", {}).items() if why == "price"}
@@ -1525,7 +1555,7 @@ class Market(IslandStage):
                 f.economy["input_plan"] = self._input_plan(ctx, f)
             if not needs:
                 continue
-            bids = {g: self._bid(ctx, f, g, prices, rate, g in official) for g, _ in needs}
+            bids = {g: self._bid(ctx, f, g, prices, rate, g in official, subsidy) for g, _ in needs}
             plan = {g: (q, net_limit(bids[g][0], rate, 0)) for g, q in needs}
             plan = self._afford(island, payer, plan, rate, 0)
             short = {g: "funds" for g, q in needs if plan.get(g, (0, 0))[0] < q}
@@ -1566,6 +1596,7 @@ class Market(IslandStage):
         prices: dict[str, int],
         rate: int,
         fixed: bool = False,
+        subsidy: int = 0,
     ) -> tuple[int, int]:
         """投入財の買いの指値（運賃込み）の（ふだん, いちばん高く）。
 
@@ -1584,14 +1615,20 @@ class Market(IslandStage):
         if fixed or is_public_service(ctx.defs, f):  # 学校と大学は今の値段の band 増しまで買う
             return usual, usual
         wage = f.economy.get("wage", 0)
-        limit = input_limit(ctx.defs, ctx.config, f, good, prices, wage, rate)
+        limit = input_limit(ctx.defs, ctx.config, f, good, prices, wage, rate, subsidy=subsidy)
         if not is_self_supporting(f):
             limit = max(limit, price + part(price, rate))
         return min(usual, limit), limit
 
     @staticmethod
     def _leftover_floor(
-        defs: Defs, config: GameConfig, f: Facility, good: str, prices: dict[str, int], rate: int
+        defs: Defs,
+        config: GameConfig,
+        f: Facility,
+        good: str,
+        prices: dict[str, int],
+        rate: int,
+        subsidy: int = 0,
     ) -> int:
         """作り方を替えて使わなくなった物の売り値の下限: 同じ施設のほかの作り方でその物を作る費用
         （unit_floor。作り方が複数あれば安いほう）。農場は今の段階の作り方でしか作れない。作れない物
@@ -1607,7 +1644,8 @@ class Market(IslandStage):
             for name, recipe in sorted(defs.facilities[f.kind]["recipes"].items())
             if recipe["outputs"].get(good, 0) > 0 and recipe.get("grade", 0) == fac.grade_of(f)
         ]
-        return min(floors) if floors else 0
+        # 補助は今の施設の売上に付く率で見る。残品の作り方を使った仮の施設では対象を判定しない。
+        return round_money(min(floors) * BASIS / (BASIS + subsidy)) if floors else 0
 
     @staticmethod
     def _step_up(usual: int, most: int, last: int | None, width: int) -> int:
@@ -3901,7 +3939,17 @@ class Market(IslandStage):
                     ask = min(ask, max(before, ceiling * (BASIS - rate) // BASIS))
                 ask = max(low, min(high, ask))
                 wage = f.economy.get("wage", 0)
-                floor = unit_floor(ctx.defs, ctx.config, f, good, island.economy.prices, wage, rate)
+                floor = subsidized_floor(
+                    island,
+                    ctx.defs,
+                    ctx.config,
+                    f,
+                    good,
+                    island.economy.prices,
+                    wage,
+                    rate,
+                    ctx.turn,
+                )
                 asks[good] = max(ask, floor)
 
 

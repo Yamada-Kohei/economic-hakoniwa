@@ -78,6 +78,7 @@
 | FM-54 | 企業の立て直しは、企業の施設に閉鎖の途中のものがあるあいだは次を閉めず、島でただ1つの作り手で変動費の利益が出ている施設は閉める候補にしない（閉めても企業の現金収支は良くならず、島からその物が消える）。前は閉まる途中の農場の赤字で、島にただ1つの儲かる漁港まで閉め、島から食べ物が消えて飢饉になった | 決定（2026-11-02） |  | tests/core/test_balance_round7b.py::test_restructuring_waits_while_a_plant_is_closing, ::test_restructuring_keeps_the_only_profitable_maker |
 | FM-55 | 創業融資: 実績のない会社（資本家階級が新しく起こす会社と、建国の後にできて決めたターン数たたない会社）は、銀行が建設費の (1 − 出資の割合) までしか貸さず、実績のある会社より多く出資する。建国のときからある会社は実績のある会社とみる | 決定（2026-11-03） | `firms.startup_equity_share`, `firms.track_record_turns`, `firms.equity_share` | tests/core/test_firm_founding_three.py::test_firms_without_a_track_record, ::test_new_firms_put_up_more_equity_than_firms_with_a_track_record |
 | FM-56 | 資本家階級の預金で新しい会社の出資に足りなければ、持っている民営の会社の株（会社の預金と施設の純資産）を担保に、掛け目の分まで銀行から借りて足す（BK-49）。同じ種類の施設を持つ会社が預金で出せるならその会社が先、借りても足りなければ系列 → 垂直統合 → 財閥の会社 | 決定（2026-11-03） | `firms.pledge_ratio`, `firms.pledge_turns` | tests/core/test_firm_founding_three.py::test_capitalists_borrow_on_their_shares_to_found_a_firm, ::test_no_pledge_when_the_owners_have_enough |
+| FM-57 | 生産補助（売上の率 r）を受ける施設の売り値の下限は、1単位の変動費 ÷ (1 + r)（補助の分だけ安く売れる）。救済補助・設備投資補助は下限に入れない | 決定（2026-11-07） | `fiscal.budget.subsidies` | tests/core/test_phase3_4.py::test_production_subsidy_lowers_seller_floor, ::test_production_subsidy_raises_power_fuel_bid |
 
 ### 仮の決まり
 
@@ -170,7 +171,7 @@ R = \frac{12 \times \left(P_{\mathrm{out}} Q - \sum P_{\mathrm{in}} q_{\mathrm{i
 ### 補助金と工業団地
 
 - 補助金は命令で決め、「補助金」の予算（タブ 6）から払う。予算が足りなければ比例で減らす。
-  - 生産補助: 品目か工業団地のマスを指定し、売上の決めた割合を払う。民営と国営の独立採算が受け取る。
+  - 生産補助: 品目か工業団地のマスを指定し、売上の決めた割合を払う。民営と国営の独立採算が受け取る。期限内の生産補助の率 r を合計し、売り値の下限と操業の判断は1単位の変動費 ÷ (1 + r)、投入財に払える指値は産出の値段 × (1 + r) の売上で見る（予算不足による比例減は見込まず、救済補助・設備投資補助は入れない。FM-57）。
   - 設備投資補助: 品目を指定し、建設費の決めた割合を払う（民営の参入では参入のときに先に出す）。
   - 救済補助: 施設を指定し、赤字を決めたターン数だけ埋める。
 - 民間は参入の判断で生産補助（S）と設備投資補助（K が下がる）を見込むので、補助金で工場を呼び込める。輸出補助と産業政策はタブ 6・9。
