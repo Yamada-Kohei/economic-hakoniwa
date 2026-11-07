@@ -220,7 +220,7 @@
 | FM-13 | 民営工場の参入は参入と撤退の段で決める | 決定 | tests/core/test_finance.py |
 | FM-14 | 参入の合図は、その財が品切れ続き（足りない量が新しい工場の全力の決めた割合以上のターンが、直近の… | 決定 | tests/core/test_finance.py |
 | FM-15 | 原料のどれかが島で作られていない作り方、工事の資材が島で作られず売りにも出ていない、原料が品切れ… | 決定 | tests/core/test_finance.py |
-| FM-16 | 民営工場が建つのは空いた工業団地のマスだけ（土地で営む施設 = 農場・漁港・林業場・採石場・鉱山・油井・牧場は、指定のない人の住んでいないマスにも建つ | 決定 | tests/core/test_balance_round6.py、tests/core/test_finance.py |
+| FM-16 | 民営工場が建つのは空いた工業団地のマスだけ（土地で営む施設 = 農場・漁港・林業場・採石場・鉱山… | 決定 | tests/core/test_balance_round6.py、tests/core/test_finance.py |
 | FM-17 | 建設費（1割増しと動き出しの支払い分を足す）の決めた割合を資本家階級が出資し、残りを銀行の建設資… | 決定 | tests/core/test_playtest3_fixes.py |
 | FM-18 | 設備投資補助のある参入では、補助を参入のときに補助金の予算から先に出す | 決定 | tests/core/test_playtest_fixes.py |
 | FM-19 | 民営工場と民間銀行が建たないわけ（工業団地がない・働き手がいない・出資が足りない・融資が断られた… | 決定 | tests/core/test_playtest_fixes.py |
