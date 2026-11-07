@@ -47,7 +47,7 @@
 | BK-24 | 国債の期間は3つ（1・5・10年）。自動の発行の期間の割合・売れ残りの扱い・追加の発行・直接の引き受けは命令 `set_bond_policy` で決める | 決定 | `bonds.auto_terms` | tests/core/test_codex_turn300_fixes.py::test_bond_terms_given_with_fractions_become_whole_shares, ::test_bond_terms_refuse_values_that_cannot_be_shares, tests/core/test_playtest4_fixes.py::test_bond_policy_log_names_only_what_changed |
 | BK-25 | 発行はすべて市中銀行の入札に出す。各銀行は準備預金のうち、最低限と手元に残す分と借りている額を超えた分を何段かに分け、段ごとにその段まで買ったときの偏りで求める利回りで注文し、発行額が売れるいちばん低い利回りで全員が買う | 決定 | `banking.liquidity_share`, `banking.auction_steps` | tests/core/test_balance_round5.py::test_bank_bids_all_spare_reserves_at_rising_yields |
 | BK-26 | 市場の利回りは式 `bond_yield`（政策金利＋期間・返す力・物価・不履行の上乗せ−独立の割引）。返す力は「中央銀行以外に払う利子÷国債と中央銀行からのお金を除く国の収入」（年）で、中央銀行の持ち分は市場の外 | 決定 | `bonds.burden_threshold`, `bonds.burden_sigma`, `bonds.kappa`, `bonds.independence_discount` | tests/core/test_finance.py::test_bond_default_raises_yields_and_hits_bank_capital, tests/core/test_balance_round5.py::test_yield_counts_only_interest_paid_outside_the_central_bank |
-| BK-27 | 利回りには上限があり、張り付いても何も起きない | 仮 | `bonds.max_yield` | （未確認） |
+| BK-27 | 利回りには上限があり、張り付いても何も起きない（張り付いたことは財政の画面と「注意」で知らせる。タブ 11 UI-67） | 仮 | `bonds.max_yield` | （未確認） |
 | BK-28 | 新しい発行の売れ残りは、「引き受ける」の政策で中央銀行が独立していなければ中央銀行が同じ利回りで引き受け、そうでなければ発行せず支出が削られる | 決定 |  | tests/core/test_finance.py::test_unsold_bonds_cut_spending_instead_of_underwriting, tests/core/test_playtest3_fixes.py::test_closed_auction_is_underwritten_or_cut |
 | BK-29 | 満期の国債の中央銀行の持ち分は同じ期間の国債に乗り換え、借り換えの売れ残りは独立していても中央銀行が買い支える | 決定 |  | tests/core/test_rules.py::test_central_bank_rolls_over_its_maturing_bonds, ::test_maturing_bonds_are_refinanced_in_their_turn |
 | BK-30 | 国債の売買の市場は残りの期間の4区分ごとの、利回りを値段にした板寄せ。銀行は持ち高を、偏りで求める利回りが今の利回りと等しくなる額に近づけ、準備預金の足りない銀行は指値なしで売る。独立していない中央銀行は命令の額を指値なしで出す | 決定 | `bonds.buckets`, `bonds.bucket_terms`, `bonds.trade_band`, `banking.bond_concentration`, `banking.sell_premium` | tests/core/test_playtest_fixes.py::test_central_bank_bond_trade_result_is_logged |
@@ -75,7 +75,7 @@
 
 | 番号 | 何の代わりか | いつ外すか |
 | --- | --- | --- |
-| BK-27 | 借金が返せる見込みを失った国の通貨の信用の崩れ（外貨や物への逃避・為替の暴落・買いだめ）。今は利回りが上限に張り付いても、中央銀行が引き受け続けて何も起きない。張り付いたことは画面と知らせで分かるようにする（回5） | フェーズ4かベータ版の後 |
+| BK-27 | 借金が返せる見込みを失った国の通貨の信用の崩れ（外貨や物への逃避・為替の暴落・買いだめ）。今は利回りが上限に張り付いても、中央銀行が引き受け続けて何も起きない。張り付いたことは画面と「注意」で知らせる（タブ 11 UI-67） | フェーズ4かベータ版の後 |
 
 ## 仕組み
 
