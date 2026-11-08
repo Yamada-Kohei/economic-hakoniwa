@@ -269,7 +269,7 @@ def test_island_and_economy_pages_show_strengths_and_titles(client, world):
     html = client.get(f"/islands/{island.id}/economy/").content.decode()
     assert "得意産業と称号" in html and "鋼都" in html and "経験 36 ターン分" in html
     html = client.get(f"/islands/{island.id}/").content.decode()
-    assert "得意産業" in html and "鉄鋼・繊維" in html and "鋼都" in html
+    assert "得意産業" in html and "鉄鋼業・繊維" in html and "鋼都" in html
 
 
 # --- 命令の説明と統計の表示名 -------------------------------------------------------------
@@ -385,9 +385,9 @@ def test_stat_labels_for_phase3_3(world):
     ):
         assert reports.stat_label(name)[0] != name, name
     assert reports.stat_label("experience.steel") == (
-        "鉄鋼の経験（標準の施設が全力で動いたターン数）",
+        "鉄鋼業の経験（標準の施設が全力で動いたターン数）",
         "",
     )
-    assert reports.stat_label("experience_rank.steel") == ("鉄鋼の経験の世界の順位", " 位")
+    assert reports.stat_label("experience_rank.steel") == ("鉄鋼業の経験の世界の順位", " 位")
     assert reports.stat_label("experience.unknown") == ("experience.unknown", "")
     assert reports.stat_label(f"fx.intervened.{island.id}")[0].startswith("介入と固定相場")

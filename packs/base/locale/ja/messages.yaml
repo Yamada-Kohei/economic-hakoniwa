@@ -205,9 +205,9 @@ expansion_dropped: "({x}, {y}) の{facility}の建て増しをやめ、資材を
 construction_no_workers: "({x}, {y}) の{facility}の工事は、通勤圏で労働者を雇えないため進んでいません"
 construction_no_materials: "({x}, {y}) の{facility}の工事は、資材（{goods}）が手に入らないため進んでいません"
 construction_no_funds: "({x}, {y}) の{facility}の工事は、公共事業費が足りず資材（{goods}）を買えないため進んでいません"
-construction_no_wages: "({x}, {y}) の{facility}の工事は、公共事業費が足りず作業員を雇えないため進んでいません"
+construction_no_wages: "({x}, {y}) の{facility}の工事は、今月の公共事業費（年の予算の月割り）を使い切ったため、作業員を雇えず進んでいません。財政の画面で公共事業費を上げると進みます"
 construction_no_funds_private: "({x}, {y}) の{facility}の工事は、会社の資金が足りず資材（{goods}）を買えないため進んでいません"
-construction_no_wages_private: "({x}, {y}) の{facility}の工事は、会社の資金が足りず作業員を雇えないため進んでいません"
+construction_no_wages_private: "({x}, {y}) の{facility}の工事は、会社の資金が足りないため、作業員を雇えず進んでいません。会社の資金が増えると進みます"
 facility_started: "({x}, {y}) の{facility}が稼働を開始しました"
 facility_restarted: "({x}, {y}) の{facility}が稼働を再開しました"
 facility_stopped_workers: "({x}, {y}) の{facility}が労働者不足で停止しました"
@@ -340,8 +340,8 @@ contract_short_fx_bought: "買う国が{currency}を必要なだけ用意でき�
 contract_short_ships: "空いた輸送船が足りません"
 contract_short_blockade: "戦争の相手の艦隊に港が封鎖され、船出を止められました（封鎖は契約と物の援助の荷も止めます）"
 contract_short_port: "港の扱える量が足りません"
-trade_request_sent: "命令「{order}」を貿易の段に回しました（このターンの貿易で行います）"
-trade_request_failed: "命令「{order}」を貿易の段で行えませんでした（{reason}）"
+trade_request_sent: "命令「{order}」を貿易の処理に回しました（このターンの貿易で行います）"
+trade_request_failed: "命令「{order}」を貿易の処理で行えませんでした（{reason}）"
 
 # 経験・集積と称号（フェーズ3-3）
 experience_faded: "{industry}の生産がこの1年ほとんどなく、経験が薄れはじめています"

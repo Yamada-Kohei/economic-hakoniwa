@@ -19,11 +19,13 @@ export function formatValue(value, unit, currency = "", exact = false) {
   const number = exact ? (Math.abs(value) >= 1000 ? whole : fine) : compact;
   if (unit?.startsWith("money:")) {
     // ほかの国の通貨の額（為替の売買量など。money:<記号>。W-70）
-    return `${value < 0 ? "-" : ""}${unit.slice(6)}${number.format(Math.abs(value))}`;
+    currency = unit.slice(6);
+    unit = "money";
   }
+  const prefix = /[A-Za-z0-9]$/.test(currency) ? `${currency} ` : currency;
   switch (unit) {
     case "money":
-      return `${value < 0 ? "-" : ""}${currency}${number.format(Math.abs(value))}`;
+      return `${value < 0 ? "-" : ""}${prefix}${number.format(Math.abs(value))}`;
     case "fx":
       return value.toFixed(exact ? 4 : 3);
     case "%":
