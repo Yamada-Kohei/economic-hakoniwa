@@ -290,6 +290,37 @@ def test_farms_and_fishing_ports_open_on_land_with_no_use_set(game, base):
     assert EntryExit()._site(island, ctx, "farm", "default") == "no_zone"
 
 
+def test_land_based_facilities_open_on_land_with_no_use_set(game, base):
+    """林業場・牧場など土地で営む施設も、工業団地がなければ指定のない人の住んでいないマスに建つ
+    （2026-11-08。現実の林業・牧畜は町の工業地の指定を待たない。公開世界で工業団地を指定しない国に
+    民間の林業場・牧場が建たず、木材と肉が作られないままだった）。食品工場などの工場は工業団地だけ
+    のまま。開発を止めるマスにはどれも建たない。"""
+    world = copy.deepcopy(base)
+    island = next(i for i in world.islands.values() if i.has_economy)
+    for tile in island.tiles:
+        if tile.zone == ZONE_INDUSTRIAL:
+            tile.zone = ZONE_NONE
+    ctx = context(game, world)
+    assert {"lumber_camp", "ranch"} <= set(game.config.get("firms.open_land"))
+    for kind in ("lumber_camp", "ranch"):
+        site = EntryExit()._site(island, ctx, kind, "default")
+        # 合うマスはある（雇える人が足りなければ no_workers。工業団地がないせいでは止まらない）
+        assert site != "no_zone", kind
+        if not isinstance(site, str):
+            tile = island.tile(*site[0])
+            assert tile.zone == ZONE_NONE and tile.population == 0
+    # 工場は空き地に新しく建たない（同じ民営の工場の建て増しのマスだけは返る）
+    occupied = island.facilities_by_tile()
+    for kind in ("food_factory", "steel_mill"):
+        site = EntryExit()._site(island, ctx, kind, "default")
+        assert site == "no_zone" or occupied.get(site[0]) is not None, kind
+    for t in island.tiles:
+        if t.zone == ZONE_NONE and t.population == 0:
+            t.zone = ZONE_NO_DEVELOPMENT
+    for kind in ("lumber_camp", "ranch"):
+        assert EntryExit()._site(island, ctx, kind, "default") == "no_zone", kind
+
+
 def test_a_disaster_does_not_shorten_a_longer_halt(game, base):
     """暴動などでもっと長く止まっている施設は、災害に遭っても早く動き出さない。"""
     world = copy.deepcopy(base)
