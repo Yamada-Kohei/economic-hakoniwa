@@ -3,7 +3,7 @@
 家計は品物を、店の売り場を通して買います（電力と町の資材を除く。食べ物も）。
 
 - 小売り: 品目 ``retail``（持ち越せず、島の外へ運べない。量は売り場の人1人の1ターンの
-  働き）。家計は品物を買うと、代金を物価指数で割った額 ``retail.value_per_unit`` ごとに
+  働き）。家計は品物を買うと、量 × 島の初めの値段の額 ``retail.value_per_unit`` ごとに
   小売り1人月を買います。品物は工場から家計へ直接動き、小売りの代金が店の売上になります
   （現実の統計の数え方と同じく、小売業の産出は売買の差額）。家計は使う額のうち小売りの分を
   先に取り分け、品物の市場の後に小売りの市場で買います（modules/market）。
@@ -43,7 +43,8 @@ LARGE_STORE = (NONE, PERMIT, BAN)
 NEED = "retail_need"  # island.scratch: 層ごとの、このターンに買う小売りの量（1000 分の 1）
 DEMAND = "retail_demand"  # economy.finance: 直近のターンの、家計の小売りの要る量（1000 分の 1）
 DIRECT = "retail_direct"  # island.scratch: 店で買いきれず直売・屋台で買った量（1000 分の 1）と代金
-SPENT = "retail_spent"  # island.scratch: 層ごとの、小売りを通して買った品物の代金
+SPENT = "retail_spent"  # island.scratch: 層ごとの、買った量を島の初めの値段で評価した額
+BASE_PRICES = "retail_base_prices"  # island.scratch: 島の初めの値段（そのターン中は使い回す）
 RESERVE = "retail_reserve"  # island.scratch: 層ごとの、小売りの代金に取り置いた額
 PLANNED = "retail_planned"  # island.scratch: 層ごとの、このターンの使う額
 PAID = "retail_paid"  # island.scratch: 層ごとの、このターンに小売りに払った額（税込み）
@@ -74,17 +75,26 @@ def cpi(island: IslandState) -> float:
 
 
 def units_for(island: IslandState, config: GameConfig, value: int) -> int:
-    """品物の代金 value に見合う小売りの量（1000 分の 1）。"""
+    """品物の量を初めの値段で評価した額 value に見合う小売りの量（1000 分の 1）。"""
     if value <= 0:
         return 0
-    return to_milli(value / cpi(island) / settings(config)["value_per_unit"])
+    return to_milli(value / settings(config)["value_per_unit"])
 
 
 def margin(island: IslandState, config: GameConfig, price: int, tax: int) -> int:
-    """品物の代金 1 あたりの小売りの代金（1万分の1。消費税込み）。家計が使う額から先に取り分ける割合
-    に使う。"""
-    per = settings(config)["value_per_unit"] * cpi(island)
+    """品物を初めの値段で評価した額1あたりの小売りの代金（1万分の1。消費税込み）。
+    最初の予算の取り分けに使い、後は実際に払った割合に近づける。"""
+    per = settings(config)["value_per_unit"]
     return round_money(price * (10000 + tax) / per) if per > 0 else 0
+
+
+def base_prices(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, int]:
+    """品物の量を数える基準の値段。初めの値段の解は資源ごとにキャッシュされる。"""
+    from hakoniwa_core.economy.prices import initial_prices
+
+    if BASE_PRICES not in island.scratch:
+        island.scratch[BASE_PRICES] = initial_prices(defs, config, island.resources)
+    return island.scratch[BASE_PRICES]
 
 
 def initial_price(config: GameConfig, wage: float) -> int:

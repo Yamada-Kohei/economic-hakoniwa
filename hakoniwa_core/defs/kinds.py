@@ -53,6 +53,7 @@ def _normalize_facility(entry: dict[str, Any]) -> dict[str, Any]:
         name: {
             **recipe,
             "inputs": _milli_map(recipe.get("inputs", {})),
+            "optional_inputs": entry.get("optional_inputs", []),
             "outputs": _milli_map(recipe.get("outputs", {})),
             "factors": dict(recipe.get("factors", entry.get("factors", {}))),
             # 経験と集積（フェーズ3-3）で、作り方から施設の産業と分類を引けるようにする
@@ -166,6 +167,9 @@ def _goods(
 
 
 def _check_facility(fid: str, entry: Mapping[str, Any], tables: Tables) -> Iterator[Problem]:
+    yield from _goods(
+        "facilities", fid, ("optional_inputs",), entry.get("optional_inputs", ()), tables
+    )
     for kind in entry["staff"]:
         if kind not in tables["workers"]:
             message = f"労働者の種類 {kind} は定義されていません"

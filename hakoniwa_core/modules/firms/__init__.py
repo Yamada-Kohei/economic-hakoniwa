@@ -233,7 +233,10 @@ def entry_price(island: IslandState, ctx: StageContext, good: str) -> int | None
         for rname, recipe in sorted(fdef["recipes"].items()):
             if is_variant(rname, recipe) or not recipe["outputs"].get(good):
                 continue
-            if not set(recipe.get("inputs", {})) <= supplied:
+            if (
+                not set(recipe.get("inputs", {})) - set(recipe.get("optional_inputs", ()))
+                <= supplied
+            ):
                 continue
             if fac.recipe_problem(defs, island, kind, rname) is not None:
                 continue
@@ -654,7 +657,12 @@ class EntryExit(IslandStage):
                 fill = self._fill(recipe, shortages, demand, capacity, prices, cost, settings)
                 if fill <= 0:
                     continue  # 参入の合図（品切れか高い値段）がない
-                missing = sorted(set(recipe.get("inputs", {})) - supplied - coming)
+                missing = sorted(
+                    set(recipe.get("inputs", {}))
+                    - set(recipe.get("optional_inputs", ()))
+                    - supplied
+                    - coming
+                )  # 店の包装などの消耗品は、なくても動くので待たない（FM-58）
                 if missing:  # 原料が島で作られていない
                     # 島で作れる原料なら、先に原料の工場を建てる（組の参入。回7 後半）
                     makers = self._makers(island, ctx, missing, supplied, busy)
@@ -1056,6 +1064,8 @@ class EntryExit(IslandStage):
         """_inputs_short の決まりで品切れ続きの原料のすべて（名前の順）。"""
         found = []
         for g, qty in sorted(recipe.get("inputs", {}).items()):
+            if g in recipe.get("optional_inputs", ()):
+                continue  # なくても動く消耗品の品切れでは参入を止めない（FM-58）
             gap = settings["entry_gap"] * qty
             short = sum(1 for amount in shortages.get(g, []) if amount >= gap)
             if short >= settings["shortage_turns"]:
@@ -1113,6 +1123,8 @@ class EntryExit(IslandStage):
         れない原料（鉱山の数の上限など。expandable に財ごとの答えをためる。なければ None）。"""
         gap = ctx.config.get("firms.entry_gap")
         for g, qty in sorted(recipe.get("inputs", {}).items()):
+            if g in recipe.get("optional_inputs", ()):
+                continue
             wanted = demand.get(g, [])
             used = max(uses.get(g, 0), sum(wanted) / len(wanted) if wanted else 0)
             spare = capacity.get(g, 0) - used

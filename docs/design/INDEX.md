@@ -147,7 +147,7 @@
 | MK-34 | 計画経済の島は公定価格（値幅なし）で、混合経済の島は財ごとの値段の規制で、同じ板寄せを使う（決め… | 決定 | tests/core/test_phase3_4.py |
 | MK-35 | 消費財の原価が家計の注文の一番上の段を超えると売れない件は「難しさとして残す」（注文の段はタブ … | 決定 | tests/core/test_economy.py |
 | MK-36 | 消費財の指値に物価の見通しを足す | 決定（回5 で作る） | （未確認） |
-| MK-37 | 家計は電気と町の資材を除く品物に、代金に見合う小売りを店から一緒に買う | 決定 | tests/core/test_balance_round7.py |
+| MK-37 | 家計は電気と町の資材を除く品物に、量に見合う小売り（量 × 島の初めの値段から数える | 決定 | tests/core/test_balance_round7.py、tests/core/test_retail_fix.py |
 | MK-38 | 国営の施設（学校と大学も）は、市場で買いきれなかった次のターンの投入財を国の倉庫から使う | 決定 | tests/core/test_state_inputs_from_warehouse.py |
 | MK-39 | 備蓄の放出の決まり: 島のどの施設も作っていない物を、前のターンに市場で買えなかった施設があれば… | 決定 | tests/core/test_state_inputs_from_warehouse.py、tests/core/test_warehouse_standing.py |
 | MK-40 | 混合経済で値段の上限を付けた財は、施設の在庫を上限の値段で売る（作った費用は払い済み） | 決定（2026-11-07） | tests/core/test_phase3_4.py |
@@ -202,7 +202,7 @@
 
 ## [5 施設と企業](05-firms.md)
 
-決まり 57 個、うち仮の決まりの表にあるもの 0 個。
+決まり 59 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -243,7 +243,7 @@
 | FM-35 | 商業・サービス業（島に1つの店）は倒産と撤退をせず、持ち主は経済体制の既定（細部はタブ 4 LB… | 置き換え（回7 | tests/core/test_balance_round4.py |
 | FM-36 | 施設の束としての企業を主体にする | 決定 | tests/core/test_balance_round7.py |
 | FM-37 | 店を企業の施設として作り直す | 決定 | tests/core/test_balance_round7.py |
-| FM-38 | 家計は電気と町の資材を除く品物を店を通して買う | 決定 | tests/core/test_balance_round7.py |
+| FM-38 | 家計は電気と町の資材を除く品物を店を通して買う | 決定 | tests/core/test_balance_round7.py、tests/core/test_retail_fix.py |
 | FM-39 | 百貨店の出店の規制は「規制なし・許可制・禁止」 | 決定 | tests/core/test_balance_round7.py |
 | FM-40 | 企業の1つの施設が倒産すると、同じ企業の借入のある施設もみな倒産する（クロスデフォルト） | 決定 | tests/core/test_balance_round7.py |
 | FM-41 | 作物替えの途中で前の作物の畑の肥料が手元になければ、その畑は肥料なしの作り方で動く | 決定 | tests/core/test_balance_round7.py |
@@ -263,6 +263,8 @@
 | FM-55 | 創業融資: 実績のない会社（資本家階級が新しく起こす会社と、建国の後にできて決めたターン数たたな… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
 | FM-56 | 資本家階級の預金で新しい会社の出資に足りなければ、持っている民営の会社の株（会社の預金と施設の純… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
 | FM-57 | 生産補助（売上の率 r）を受ける施設の売り値の下限は、1単位の変動費 ÷ (1 + r)（補助の… | 決定（2026-11-07） | tests/core/test_phase3_4.py |
+| FM-58 | 店（商店と百貨店）は包装などの消耗品（`optional_inputs`）が手元になくても動き、… | 決定（2026-11-04） | tests/core/test_retail_fix.py |
+| FM-59 | 商店と百貨店の建設費は、働く人1人あたりで製造業より軽くする | 決定（2026-11-08） | tests/core/test_retail_fix.py |
 
 ## [6 国の財政と政策](06-finance.md)
 

@@ -936,7 +936,7 @@ class Market(IslandStage):
         results: dict[str, auction.Result],
         stale: dict[str, dict[int, int]],
     ) -> None:
-        """品物の市場の後に、家計の層が買った品物の代金に見合う小売りを、商店と百貨店から買う。
+        """品物の市場の後に、家計の買った量を初めの値段で評価し、見合う小売りを店から買う。
         店に届くお客の割合（retail.reach）で、店ごとに売れる量に上限を付ける。店で買いきれなかった
         分は、商業・サービス業（小さな店と屋台）から小売りの値段の 1 + retail.direct_premium 倍で
         買う（直売・屋台）。"""
@@ -1429,7 +1429,7 @@ class Market(IslandStage):
                 taken = sum(q for _, q in batches)
                 amount = money_of(price, taken)
                 funds.pay(island, payer, ledger.GOV, amount, "sale")
-                self._give_to_buyer(island, good, party, batches, amount, 0, 0, {})
+                self._give_to_buyer(island, good, party, batches, amount, 0, 0, {}, ctx)
                 books.add_sector(island, books.WAREHOUSE, "sales", amount)
                 if taken >= want:
                     f.economy.get("short", {}).pop(good, None)
@@ -3416,7 +3416,9 @@ class Market(IslandStage):
                 spoiling = sum(q for made, q in batches if made <= expiry)
                 if spoiling:
                     stale[b] = stale.get(b, 0) + spoiling
-            self._give_to_buyer(island, good, buyer, batches, amount, buyer_freight, tax, bought)
+            self._give_to_buyer(
+                island, good, buyer, batches, amount, buyer_freight, tax, bought, ctx
+            )
             if seller.facility is not None:
                 books.add(island, seller.facility.id, books.SALES, amount)
                 books.add(island, seller.facility.id, books.FREIGHT, seller_freight)
@@ -3534,6 +3536,7 @@ class Market(IslandStage):
         freight: int,
         tax: int,
         bought: dict[str, int],
+        ctx: StageContext,
     ) -> None:
         qty = sum(q for _, q in batches)
         if buyer.kind in MATERIAL_BUYERS and qty > 0:
@@ -3591,9 +3594,11 @@ class Market(IslandStage):
             layer_goods[good] = layer_goods.get(good, 0) + qty
             bought[good] = bought.get(good, 0) + qty
             free = Market._unretailed(island)
-            if good not in free:  # 小売りを通す品物の代金（回7）
+            if good not in free:  # 小売りを通す品物の量を、島の初めの値段で数える（FM-38）
                 spent = island.scratch.setdefault(retail.SPENT, {})
-                spent[buyer.layer] = spent.get(buyer.layer, 0) + amount
+                prices = retail.base_prices(island, ctx.defs, ctx.config)
+                price = prices.get(good, ctx.config.get("market.initial_prices.default"))
+                spent[buyer.layer] = spent.get(buyer.layer, 0) + money_of(price, qty)
             elif free and good == free[-1]:  # 小売りに払った額
                 paid = island.scratch.setdefault(retail.PAID, {})
                 paid[buyer.layer] = paid.get(buyer.layer, 0) + amount + tax

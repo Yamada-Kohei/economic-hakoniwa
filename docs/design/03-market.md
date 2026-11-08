@@ -56,7 +56,7 @@
 | MK-34 | 計画経済の島は公定価格（値幅なし）で、混合経済の島は財ごとの値段の規制で、同じ板寄せを使う（決め方はタブ 10） | 決定 | `planning.review_turns`, `planning.review_band`, `planning.held_goods` | tests/core/test_phase3_4.py::test_planned_market_clears_at_the_official_prices, ::test_price_floor_keeps_the_market_price_up |
 | MK-35 | 消費財の原価が家計の注文の一番上の段を超えると売れない件は「難しさとして残す」（注文の段はタブ 4 LB-23） | 決定 | `household.consumer_goods_tiers`, `household.consumer_goods_low_tiers`, `household.usual_price_turns` | tests/core/test_economy.py::test_consumer_tiers_spend_about_the_budget |
 | MK-36 | 消費財の指値に物価の見通しを足す。作られていない物の値段は、商社の輸入か品切れの値段のせり上げで出る（家計の側はタブ 4 LB-36、お金の側はタブ 7） | 決定（回5 で作る） |  | （未確認） |
-| MK-37 | 家計は電気と町の資材を除く品物に、代金に見合う小売りを店から一緒に買う。店で買いきれない分は小さな店と屋台から割高に買う（タブ 5 FM-38） | 決定 | `retail.*` | tests/core/test_balance_round7.py::test_households_buy_retail_from_shops_then_direct |
+| MK-37 | 家計は電気と町の資材を除く品物に、量に見合う小売り（量 × 島の初めの値段から数える。2026-11-04）を店から一緒に買う。店で買いきれない分は小さな店と屋台から割高に買う（タブ 5 FM-38） | 決定 | `retail.*` | tests/core/test_balance_round7.py::test_households_buy_retail_from_shops_then_direct, tests/core/test_retail_fix.py::test_retail_quantity_ignores_food_price_and_doubles_with_volume, ::test_initial_retail_reserve_uses_quantity_basis, ::test_retail_uses_default_when_base_price_is_missing |
 | MK-38 | 国営の施設（学校と大学も）は、市場で買いきれなかった次のターンの投入財を国の倉庫から使う。今の値段で政府に払い、倉庫が売ったのと同じに数える（運賃なし）。工事・インフラ・設備の直しの資材（国の工事の備え）・軍の備蓄・国の穀物の備蓄・今夜捨てられる組は使わない。民営の施設は使えない | 決定 |  | tests/core/test_state_inputs_from_warehouse.py::test_state_power_plant_burns_the_warehouse_coal, ::test_private_power_plant_does_not_take_from_the_warehouse |
 | MK-39 | 備蓄の放出の決まり: 島のどの施設も作っていない物を、前のターンに市場で買えなかった施設があれば、国の倉庫の余りを施設がいま要る量までいつもの値段で売りに出す。始めた物は、施設が要る間は続けて出す。工事・インフラ・設備の直しの資材・軍の備蓄・国の穀物の備蓄・そのターンに命令で売り買いする物・決まった売り買いの設定（タブ 6 FS-28）を置いた物は出さない。命令 `set_warehouse_release` で止められる（初めは動く） | 決定 | `household.usual_price_turns` | tests/core/test_state_inputs_from_warehouse.py::test_private_power_plant_buys_the_released_coal, ::test_private_power_plant_does_not_take_from_the_warehouse, tests/core/test_warehouse_standing.py::test_imported_sales_suspend_standing_buys_and_mk39_skips_settings |
 | MK-40 | 混合経済で値段の上限を付けた財は、施設の在庫を上限の値段で売る（作った費用は払い済み）。独立採算の施設は、上限が1単位の変動費（生産補助を引いた後）より低い間は新しく作らず、国庫直轄は上限で作り続ける | 決定（2026-11-07） |  | tests/core/test_phase3_4.py::test_price_cap_sells_facility_stock_below_cost, ::test_price_cap_lowers_only_self_financing_targets, ::test_price_cap_removal_restarts_production |
@@ -127,7 +127,7 @@
 
 ### 小売り（回7）
 
-- 家計は、電気と町を育てる資材を除く品物を買うとき、代金に見合う財「小売り」を店（商店・百貨店）から一緒に買う。小売りは持ち越せない。品物の市場が決まった後に、店ごとの届くお客の割合までを買い、買いきれない分は商業・サービス業の小さな店と屋台から割高に買う（タブ 5「店と小売り」）。
+- 家計は、電気と町を育てる資材を除く品物を買うとき、その量に見合う財「小売り」を店（商店・百貨店）から一緒に買う（量 × 島の初めの値段 ÷ `retail.value_per_unit`。2026-11-04。前は代金 ÷ 物価指数で、食べ物の高騰で小売りの要る量が増えていた）。小売りは持ち越せない。品物の市場が決まった後に、店ごとの届くお客の割合までを買い、買いきれない分は商業・サービス業の小さな店と屋台から割高に買う（タブ 5「店と小売り」）。
 - 家計が品物の予算から取り分ける小売りの分は、前のターンに払った割合（`retail_share`）で、初めは値段から見積もる。
 
 ### 電力の市場

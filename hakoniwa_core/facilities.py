@@ -776,10 +776,11 @@ def input_ratio(defs: Defs, f: Facility, power: str) -> tuple[int, str | None]:
     """手元の原料で今のターンにどれだけ動けるか（1000 分の 1）と、一番足りない原料。
 
     電力（power）は在庫を持たず、生産の段で送電網から買うので数えない。
+    optional_inputs の消耗品も操業を制限しない（FM-58）。
     """
     found, short = FULL, None
     for good, qty in sorted(recipe_of(defs, f)["inputs"].items()):
-        if good == power:
+        if good == power or good in defs.facilities[f.kind].get("optional_inputs", ()):
             continue
         r = ratio(stock.total(f.stock, good), qty)
         if r < found:

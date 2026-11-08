@@ -59,7 +59,7 @@
 | FM-35 | 商業・サービス業（島に1つの店）は倒産と撤退をせず、持ち主は経済体制の既定（細部はタブ 4 LB-29） | 置き換え（回7。FM-37・FM-38） | `services.facility` | tests/core/test_balance_round4.py::test_every_money_island_has_one_services_firm_owned_by_regime |
 | FM-36 | 施設の束としての企業を主体にする。企業は預金・借入・株主を持ち、産業をまたいで何でも持てる（財閥も許す）。投資・閉鎖を企業が選ぶ。国の工場は国営企業の下にまとめ、国有化と民営化は企業ごとでも工場ごとでもできる | 決定 | `firms.payout`, `firms.idle_cash_years`, `firms.firm_cash_turns`, `firms.restructure_turns` | tests/core/test_balance_round7.py::test_firm_sweeps_extra_cash_and_supports_short_plant, ::test_nationalize_and_privatize_whole_firm |
 | FM-37 | 店を企業の施設として作り直す。賃金で人を取り合い、電力・食料・消費財を少し使い、建設費と減価償却があり、民営は採算で参入・撤退・倒産する。小さな店は町の中、大きな店は指定した商業地のマスに建つ（タブ 4 LB-34） | 決定 | `settlements.*.shops` | tests/core/test_balance_round7.py::test_shop_goes_into_town_slots_only, ::test_department_store_needs_commercial_zone |
-| FM-38 | 家計は電気と町の資材を除く品物を店を通して買う。品物の代金に見合う小売りを商店と百貨店から買い、店の売れる上限は届くお客の割合まで。買いきれない分は小さな店と屋台から割高に買う | 決定 | `retail.value_per_unit`, `retail.direct_premium`, `retail.persons_per_car` | tests/core/test_balance_round7.py::test_households_buy_retail_from_shops_then_direct, ::test_department_store_reaches_car_owners_island_wide |
+| FM-38 | 家計は電気と町の資材を除く品物を店を通して買う。品物の量に見合う小売り（品物ごとに量 × 島の初めの値段から数える。2026-11-04）を商店と百貨店から買い、店の売れる上限は届くお客の割合まで。買いきれない分は小さな店と屋台から割高に買う | 決定 | `retail.value_per_unit`, `retail.direct_premium`, `retail.persons_per_car` | tests/core/test_balance_round7.py::test_households_buy_retail_from_shops_then_direct, ::test_department_store_reaches_car_owners_island_wide, tests/core/test_retail_fix.py::test_retail_quantity_ignores_food_price_and_doubles_with_volume, ::test_initial_retail_reserve_uses_quantity_basis, ::test_retail_uses_default_when_base_price_is_missing |
 | FM-39 | 百貨店の出店の規制は「規制なし・許可制・禁止」。許可制は企業の申請（1件、期限つき）を国が許すまで建たない。町の商店は規制しない | 決定 | `retail.permit_turns` | tests/core/test_balance_round7.py::test_large_store_ban_and_permit |
 | FM-40 | 企業の1つの施設が倒産すると、同じ企業の借入のある施設もみな倒産する（クロスデフォルト）。分け方は施設ごと | 決定 |  | tests/core/test_balance_round7.py::test_default_of_one_plant_bankrupts_the_firms_borrowers |
 | FM-41 | 作物替えの途中で前の作物の畑の肥料が手元になければ、その畑は肥料なしの作り方で動く。島でただ1つ食べ物を作る施設は作物を替えない。畑が育つ間は撤退の動かない月に数えない | 決定 |  | tests/core/test_balance_round7.py::test_fields_without_fertilizer_fall_back_instead_of_stopping_the_farm, ::test_only_grain_farm_does_not_switch_crops |
@@ -79,6 +79,8 @@
 | FM-55 | 創業融資: 実績のない会社（資本家階級が新しく起こす会社と、建国の後にできて決めたターン数たたない会社）は、銀行が建設費の (1 − 出資の割合) までしか貸さず、実績のある会社より多く出資する。建国のときからある会社は実績のある会社とみる | 決定（2026-11-03） | `firms.startup_equity_share`, `firms.track_record_turns`, `firms.equity_share` | tests/core/test_firm_founding_three.py::test_firms_without_a_track_record, ::test_new_firms_put_up_more_equity_than_firms_with_a_track_record |
 | FM-56 | 資本家階級の預金で新しい会社の出資に足りなければ、持っている民営の会社の株（会社の預金と施設の純資産）を担保に、掛け目の分まで銀行から借りて足す（BK-49）。同じ種類の施設を持つ会社が預金で出せるならその会社が先、借りても足りなければ系列 → 垂直統合 → 財閥の会社 | 決定（2026-11-03） | `firms.pledge_ratio`, `firms.pledge_turns` | tests/core/test_firm_founding_three.py::test_capitalists_borrow_on_their_shares_to_found_a_firm, ::test_no_pledge_when_the_owners_have_enough |
 | FM-57 | 生産補助（売上の率 r）を受ける施設の売り値の下限は、1単位の変動費 ÷ (1 + r)（補助の分だけ安く売れる）。救済補助・設備投資補助は下限に入れない | 決定（2026-11-07） | `fiscal.budget.subsidies` | tests/core/test_phase3_4.py::test_production_subsidy_lowers_seller_floor, ::test_production_subsidy_raises_power_fuel_bid |
+| FM-58 | 店（商店と百貨店）は包装などの消耗品（`optional_inputs`）が手元になくても動き、手に入った分だけ使う。消耗品の品切れでは店の参入を止めない | 決定（2026-11-04） | facilities.yaml の optional_inputs | tests/core/test_retail_fix.py::test_optional_packaging_does_not_limit_shop_production, ::test_packaging_shortage_does_not_block_department_store_entry |
+| FM-59 | 商店と百貨店の建設費は、働く人1人あたりで製造業より軽くする。商店は製鉄所の4割ほど、百貨店は商店の1.4倍ほど（上場企業の労働装備率の中央値は小売業 1,055 万円、鉄鋼 2,553 万円、食料品 2,117 万円。小売りはパートを除いた人数で割るので、実際はもっと軽い）。前は商店が製鉄所より重く、百貨店は製鉄所の4倍だった | 決定（2026-11-08） | facilities.yaml の shop・department_store の construction | tests/core/test_retail_fix.py::test_shops_are_lighter_than_factories_per_worker |
 
 ### 仮の決まり
 
@@ -216,7 +218,10 @@ R = \frac{12 \times \left(P_{\mathrm{out}} Q - \sum P_{\mathrm{in}} q_{\mathrm{i
 - 商店: 町の中に入る小さな店（八百屋・衣料品店・雑貨店・スーパー）。マスを取らず、町のマスに属し、町の段階で入る数が決まります（`settlements.yaml` の `shops`。町 2、市 5、大都市 10）。プレイヤーはマスの欄の町から建て、民間は空きのある町のうち人の多い町に建てます。お客は通勤圏に住む人だけです。
 - 百貨店: 指定した商業地のマス（命令 `set_zone` の commercial）に建つ大きな店で、働く人が多く、1人あたりの量が商店より多い（規模の経済）。電力を多く使います。企業が採算で建て、計画経済では標準の計画が国営で建てます（標準の計画は、いちばん大きな町が市になったら隣に商業地を指定する）。お客は、車を持つ家計（1台に `retail.persons_per_car` 人）は島じゅうから、ない家計は通勤圏の人です。
 - 出店の規制（命令 `set_retail_policy`）: 百貨店の出店を「規制なし」「許可制」「禁止」にできます。許可制では、建てたい企業が申請を出し（ターンログで知らせる）、国が許すまで建ちません。申請は1件だけ、`retail.permit_turns` ターンで切れます。町の商店は規制しません（現実の大規模小売店舗法の型）。
+- 要る量（2026-11-04、FM-38）: 品物ごとに、買った量 × 島の初めの値段（建国のときの値段の解き方。タブ 3）÷ `retail.value_per_unit` を足した量です。前は代金 ÷ 物価指数で数えていたので、食べ物だけが高騰すると、食べ物の量が減っているのに小売りの要る量と店の人手が増えていました（2026-11-03 の測りで、食べ物が 1.5 倍を超えたターンに量 0.8〜0.96 倍、小売りの要る量 1.06〜1.33 倍）。現実の店の取り分は扱う量と手間で決まり、仕入れ値が跳ねても1個あたりは粘るので、値上がりの家計への転嫁は 1 より小さくなります。
 - 買い方: 家計は品物の予算のうち前のターンの小売りの割合を取り分け、品物の市場が決まった後に、店ごとの売れる上限（届くお客の割合 × 島の要る量）までを買います。値段の上限は、小さな店と屋台から買うときの値段（サービスの値段 × (1 + `retail.direct_premium`)）です。
+- 消耗品（2026-11-04、FM-58）: 商店と百貨店の消費財（包装・袋など）は `optional_inputs` です。手元になくても店は動き、手に入った分だけ使います。消耗品の品切れでは店の参入を止めません。前は消費財が品切れの島では店が止まり、百貨店はほとんどの島で `inputs_short` のまま建ちませんでした（現実の店は袋が足りなくても売る）。
+- 建設費（2026-11-08、FM-59）: 商店と百貨店の建設費は、働く人1人あたりで製造業より軽くしています（商店は製鉄所の 0.43 倍、百貨店は 0.6 倍）。現実の小売りの設備は製造業より軽く、上場企業の労働装備率の中央値では小売業が鉄鋼の 0.41 倍、食料品の 0.5 倍です。前は商店が製鉄所より重く、百貨店は製鉄所の4倍で、店の増え方を速める試し（2026-11-08 の比べ）では店が銀行の貸せる枠と資本家の手元を吸い、住宅ローンや船の買い付けを押し出しました。
 - 小さな店と屋台: 店で買いきれなかった分は、商業・サービス業（島に1つの店の集まり）から割高に買います。その分の働く人は小売りに回り、サービスを出しません（`retail_seats`）。店が足りない島では、屋台と小さな店が先に埋め、店が開く合図になります（戦後の闇市・屋台の型）。
 - 統計: 小売りの要る量・店の販売量・小さな店と屋台から買った量と額。国の要約（API・MCP）に店の数と出店の規制・申請も出します。
 
