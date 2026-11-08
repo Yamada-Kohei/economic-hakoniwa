@@ -78,7 +78,7 @@
 | PO-30 | 生まれる割合は式 `birth_rate`（`population.births`）で、学んだ人… | 決定 | tests/core/test_balance_round4.py |
 | PO-31 | 亡くなる割合は式 `death_rate`（`population.deaths`）で、食事の質… | 決定 | tests/core/test_balance_round4.py |
 | PO-32 | 生まれたマスに住む所がなければ島の空いた町へ移り、どこにも空きがなければ消えずに詰めて住む（過密… | 決定 | tests/core/test_round5_village.py |
-| PO-33 | 人口の増減は家計の層の人数に比例して割り振り、資本家階級は割合を保つ | 決定 | （未確認） |
+| PO-33 | 人口の増減は家計の層の人数に比例して割り振り、資本家階級は割合を上限に、暮らせる人数まで（タブ … | 決定 | （未確認） |
 | PO-34 | 幸福度は式 `happiness`（`population.happiness`）で層ごとに出し… | 決定 | tests/core/test_phase3_4.py、tests/core/test_playtest3_fixes.py |
 | PO-35 | 前のフェーズから移し替えた島は、幸福度の重みをその時の重みから `population.blen`… | 決定 | tests/core/test_playtest3_fixes.py |
 | PO-36 | 汚染は施設が稼働率に応じて `facilities.yaml` の pollution の量を … | 決定 | tests/core/test_phase3_2.py |
@@ -154,7 +154,7 @@
 
 ## [4 仕事と家計](04-labor.md)
 
-決まり 41 個、うち仮の決まりの表にあるもの 3 個。
+決まり 42 個、うち仮の決まりの表にあるもの 3 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -192,17 +192,18 @@
 | LB-32 | 店の雇う人数の目安は直近の売上（買えなかった分も足す）× 人件費の割合 ÷ 賃金で、前のターンか… | 作り直し予定（回7） | tests/core/test_balance_round4.py |
 | LB-33 | 店の運転資金は銀行から借り（審査は目安の人数での売上 − 賃金）、借りられなければ持ち主が出資す… | 決定 | （未確認） |
 | LB-34 | 店は企業の施設として作り直す: 賃金で人を取り合い、電力・食料・消費財を少し使い、建設費と減価償… | 決定（自営は、商業・サービス業が店で買いきれない品物を割高に売る屋台の席で表した | tests/core/test_balance_round7.py |
-| LB-35 | 家族や村の支え合い（働いている家族の稼ぎの一部が、仕事も手当もない家族の食べ物に回る）を入れる | 決定 | tests/core/test_balance_round7.py |
+| LB-35 | 家族や村の支え合い（働いている家族の稼ぎの一部が、仕事も手当もない家族の食べ物に回る）を入れる | 決定 | tests/core/test_balance_round7.py、tests/core/test_owners_cap.py |
 | LB-36 | 家計が預金から使う割合を物価上昇率と実質金利で動かし、消費財の指値に物価の見通しを足し、失業が多… | 決定（回5 で作る） | （未確認） |
 | LB-37 | 統計に、層ごとの人数・可処分所得・預金・幸福度、平均賃金（一般）と技術者の賃金、実質賃金、失業率… | 決定 | tests/server/test_reports.py |
 | LB-38 | 電気・送電網・原料が足りずに動けなかった分の働き手には、賃金の `labor.furlough_`… | 決定（回7 後半） | tests/core/test_balance_round7b.py |
 | LB-39 | 売りに出ていたのに家計が1つも買わないターンが `household.reprice_turns`… | 決定（回7 後半 | tests/core/test_balance_round7b.py |
 | LB-40 | 計画経済の島の施設の賃金は、国が決める: 物価の上がった分と人手の足りなさでは動かさず（LB-0… | 決定（2026-11-01 の価格の決まり方の見直し） | tests/core/test_pricing_fix1.py |
 | LB-41 | 資本家階級は所得のうち使う割合も、財産から取り崩す割合も働く層より小さい（上位1%は所得の5割ほ… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
+| LB-42 | 資本家階級の人数の上限を、人口の段で亡くなった人を引いた後に数え直して層に持ち、人数を割り振るど… | 決定（2026-11-08） | tests/core/test_owners_cap.py |
 
 ## [5 施設と企業](05-firms.md)
 
-決まり 57 個、うち仮の決まりの表にあるもの 0 個。
+決まり 58 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -263,6 +264,7 @@
 | FM-55 | 創業融資: 実績のない会社（資本家階級が新しく起こす会社と、建国の後にできて決めたターン数たたな… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
 | FM-56 | 資本家階級の預金で新しい会社の出資に足りなければ、持っている民営の会社の株（会社の預金と施設の純… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
 | FM-57 | 生産補助（売上の率 r）を受ける施設の売り値の下限は、1単位の変動費 ÷ (1 + r)（補助の… | 決定（2026-11-07） | tests/core/test_phase3_4.py |
+| FM-58 | 民営の参入（FM-17・FM-56 の後）と民営化（FM-26）の出資や代金が資本家階級の預金で… | 決定（2026-11-08） | tests/core/test_owners_cap.py |
 
 ## [6 国の財政と政策](06-finance.md)
 
@@ -482,7 +484,7 @@
 | PL-17 | 君主制は R を足し、君主の年齢をデータで持つ | 決定（出来事は後から） | （未確認） |
 | PL-18 | 憲法改正と経済体制の変更は重い命令（民主主義では議会の3分の2） | 決定 | tests/core/test_phase3_4.py |
 | PL-19 | 政治体制を変えると首都の建物を建て替える | 決定 | tests/core/test_phase3_4.py、tests/server/test_phase3_4.py |
-| PL-20 | 計画経済に移ると、民営の施設と民間銀行は帳簿の純資産を国債で払って国有化する | 決定 | tests/core/test_phase3_4.py |
+| PL-20 | 計画経済に移ると、民営の施設と民間銀行は帳簿の純資産を国債で払って国有化する | 決定 | tests/core/test_owners_cap.py、tests/core/test_phase3_4.py |
 | PL-21 | 体制の特色: 民主主義は政情が下がる動きが遅く R が正、権威主義は行政力 ＋1 と国の工事の工… | 仮（仮の決まりの表あり） | tests/core/test_phase3_4.py |
 | PL-22 | 経済体制の特色: 計画経済はぜいたく品の種類の満足が少ない（重点産業の工期と経験の倍率は 202… | 仮（仮の決まりの表あり） | （未確認） |
 | PL-23 | 労働の動員（全体主義の命令）: 失業者を国営施設に最低賃金（なければ平均賃金の決めた割合）で割り… | 決定 | tests/core/test_phase3_4.py |

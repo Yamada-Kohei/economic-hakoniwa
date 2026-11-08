@@ -357,27 +357,43 @@ class Payroll(IslandStage):
         上限に、所得の割合で分けて送る。送った額は送った側の所得から引き、受けた側の所得に足し、受けた側は
         その額を市場の段で食べ物に先に使う（island.scratch の SUPPORT）。働く家計の買い物はその分
         減る。手当が厚い国ほど送らなくて済む（現実の途上国では、親せきへの仕送りが世帯の所得の数%〜
-        1割ほど）。資本家階級は別の家族として送らない。
+        1割ほど）。資本家階級は別の家族として送らないが、株はあっても預金が尽きて飢えている
+        （前のターンに食べきれなかったか、飢えの蓄えが残る）ときは受け取る（LB-35・LB-42）。
+        受け取る層が2つなら、送る額は足りない額の割合で分ける。
         """
-        layer = jobless_layer(island)
+        from hakoniwa_core.economy import OWNERS
+        from hakoniwa_core.modules.population import FED, HUNGER, still_hungry
+
         households = island.economy.households
-        state = households.get(layer)
-        if state is None or state["persons"] <= 0:
-            return
         config = ctx.config
-        cost = food_cost(island, ctx, state["persons"])
-        if cost <= 0:
-            return
-        planned = consumption(island, layer, config, inflation(island.economy))
-        planned = min(planned, ledger.money(island, household(layer)))
-        short = cost - planned
-        if short <= 0:
+        recipients = [jobless_layer(island)]
+        owners = households.get(OWNERS)
+        if owners is not None and owners["persons"] > 0:
+            threshold = to_milli(config.get("household.hungry.threshold"))
+            hungry = owners.get(FED, fac.FULL) < threshold or still_hungry(
+                owners.get(HUNGER, 0), config.get("population.hunger")
+            )
+            if hungry:
+                recipients.append(OWNERS)
+        shorts: dict[str, int] = {}
+        for layer in recipients:
+            state = households.get(layer)
+            if state is None or state["persons"] <= 0:
+                continue
+            cost = food_cost(island, ctx, state["persons"])
+            if cost <= 0:
+                continue
+            planned = consumption(island, layer, config, inflation(island.economy))
+            planned = min(planned, ledger.money(island, household(layer)))
+            if cost - planned > 0:
+                shorts[layer] = cost - planned
+        if not shorts:
             return
         income = island.scratch.get("income", {})
         share = to_basis(config.get("household.support.share"))
         room = {}
         for donor in (GENERAL, ENGINEERS):
-            if donor not in households or donor == layer:
+            if donor not in households or donor in shorts:
                 continue
             cap = part(max(0, income.get(donor, 0)), share)
             cap = min(cap, ledger.money(island, household(donor)))
@@ -386,18 +402,22 @@ class Payroll(IslandStage):
         total = sum(room.values())
         if total <= 0:
             return
+        short = sum(shorts.values())
         sent = min(short, total)
-        given = 0
+        received: dict[str, int] = {}
         for donor, cap in sorted(room.items()):
             amount = min(cap, sent * cap // total)
-            if amount > 0:
-                ledger.pay(island, household(donor), household(layer), amount, "family_support")
-                add_income(island, donor, -amount)
-                given += amount
-        if given > 0:
-            add_income(island, layer, given)
-            island.scratch[SUPPORT] = {layer: given}
-            island.stats["households.support"] = given
+            for layer, need in sorted(shorts.items()):
+                piece = amount * need // short
+                if piece > 0:
+                    ledger.pay(island, household(donor), household(layer), piece, "family_support")
+                    add_income(island, donor, -piece)
+                    received[layer] = received.get(layer, 0) + piece
+        if received:
+            for layer, given in received.items():
+                add_income(island, layer, given)
+            island.scratch[SUPPORT] = received
+            island.stats["households.support"] = sum(received.values())
 
 
 # --- 命令 -------------------------------------------------------------------------

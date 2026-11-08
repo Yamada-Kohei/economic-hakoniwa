@@ -43,6 +43,7 @@ from hakoniwa_core.economy.households import (
     move_people,
     recount_engineers,
     split_persons,
+    update_owners_cap,
 )
 from hakoniwa_core.economy.stats import inflation, real_wage_change
 from hakoniwa_core.geo import distance, within
@@ -812,7 +813,9 @@ class Population(IslandStage):
             for name, count in _round_shares(natural, died_by_layer).items():
                 deaths[name] = deaths.get(name, 0) + count
             remove_dead(island, defs, deaths)
-            changes = split_persons(island, defs, sum(t.population for t in island.tiles))
+            population = sum(t.population for t in island.tiles)
+            update_owners_cap(island, ctx.config, population)
+            changes = split_persons(island, defs, population)
             move_people(island, changes)
             if island.economy.happiness_blend > 0:
                 _blend_notice(island, ctx)
