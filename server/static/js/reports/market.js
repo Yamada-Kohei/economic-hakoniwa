@@ -80,7 +80,7 @@ if (detail) {
     if (!list.length) return `<p class="muted">ありません。</p>`;
     const base = detail.dataset.islandUrl;
     return `<ul class="plain-list">${list
-      .map((f) => `<li><a href="${base}?x=${f.x}&amp;y=${f.y}">${escapeHtml(f.name)}</a>（${escapeHtml(f.owner_name)}） ・ ${escapeHtml(f.status_text)}</li>`)
+      .map((f) => `<li><a href="${base}?x=${f.x}&amp;y=${f.y}">${escapeHtml(f.name)}</a>（${escapeHtml(f.owner_name)}） ・ ${escapeHtml(f.status_text)}${f.hint ? `<br><small class="hint">${escapeHtml(f.hint)}</small>` : ""}</li>`)
       .join("")}</ul>`;
   }
 

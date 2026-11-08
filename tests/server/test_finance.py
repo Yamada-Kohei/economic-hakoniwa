@@ -127,8 +127,8 @@ def test_summary_shows_finance_stats():
     rows = {r["key"]: r["text"] for r in display.summary(stats, "H")}
     assert rows == {
         "deposit_rate": "1.00%",
-        "loans": "H12,345",
-        "loans.arrears": "H0",
+        "loans": "H 12,345",
+        "loans.arrears": "H 0",
         "banks": "2",
         "firms.bankrupt": "1",
     }

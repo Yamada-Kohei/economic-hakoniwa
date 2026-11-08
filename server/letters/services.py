@@ -11,7 +11,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import QuerySet
+from django.db.models import F, QuerySet
 from django.utils import timezone
 
 from server.accounts import keys as account_keys
@@ -81,6 +81,9 @@ def open_letter(user, letter: Letter) -> None:
 def send_letter(user, sender: Island, to: int, subject: str, body: str) -> Letter:
     """自分の島（sender）から、番号 to の島へ送る。送れなければ LetterError。"""
     subject, body = subject.strip(), body.strip()
+    # 同じ島からの送信を直列にする。最初に書き込みのロックを取り、SQLite でも
+    # 2件が同時に重複の検査を通らないようにする（持ち主の値は変えない）。
+    Island.objects.filter(pk=sender.pk).update(owner_id=F("owner_id"))
     if to == sender.id:
         raise LetterError("自分の島には送れません")
     recipient = Island.objects.filter(pk=to, world=sender.world).first()
@@ -97,7 +100,16 @@ def send_letter(user, sender: Island, to: int, subject: str, body: str) -> Lette
     if len(body) > BODY_MAX:
         raise LetterError(f"本文は {BODY_MAX} 字までです（いまは {len(body)} 字）")
     limit = settings.HAKONIWA_LETTERS_PER_DAY
-    since = timezone.now() - timedelta(days=1)
+    now = timezone.now()
+    if Letter.objects.filter(
+        sender=sender,
+        recipient=recipient,
+        subject=subject,
+        body=body,
+        sent_at__gte=now - timedelta(minutes=1),
+    ).exists():
+        raise LetterError("同じ公電を続けて送ろうとしています", status=409)
+    since = now - timedelta(days=1)
     if Letter.objects.filter(sender=sender, sent_at__gte=since).count() >= limit:
         raise LetterError(
             f"1つの島から送れる公電は 24 時間に {limit} 通までです。"

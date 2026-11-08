@@ -49,7 +49,9 @@ def _subscribe(user, endpoint=ENDPOINT):
 def _queue(world, n=1):
     (alice, bob, _), (a, b, _) = _players(world)
     subscription = _subscribe(bob)
-    letters = [services.send_letter(alice, a, b.pk, "秘密の件名", "秘密の本文") for _ in range(n)]
+    letters = [
+        services.send_letter(alice, a, b.pk, f"秘密の件名{i}", "秘密の本文") for i in range(n)
+    ]
     return subscription, letters
 
 
@@ -194,7 +196,7 @@ def test_push_outbox_only_for_subscribed_owner(world):
     services.send_letter(alice, a, b.pk, "件名", "本文")
     assert not PushOutbox.objects.exists()
     _subscribe(bob)
-    letter = services.send_letter(alice, a, b.pk, "件名", "本文")
+    letter = services.send_letter(alice, a, b.pk, "購読後の件名", "本文")
     assert PushOutbox.objects.get().letter == letter
     assert PushOutbox.objects.get().user == bob
 

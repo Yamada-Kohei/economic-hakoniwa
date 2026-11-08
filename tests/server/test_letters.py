@@ -134,8 +134,8 @@ def test_daily_limit(client, world, settings):
     (alice, bob, _), (a, b, _) = _players(world)
     client.force_login(alice)
     assert _send(client, b.id).status_code == 201
-    assert _send(client, b.id).status_code == 201
-    res = _send(client, b.id)
+    assert _send(client, b.id, subject="別のご相談").status_code == 201
+    res = _send(client, b.id, subject="上限を超えるご相談")
     assert res.status_code == 429 and "2 通まで" in res.json()["error"]
     client.force_login(bob)  # 上限は島ごと
     assert _send(client, a.id).status_code == 201

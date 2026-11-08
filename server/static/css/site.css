@@ -67,7 +67,9 @@ table.info th { font-weight: normal; color: var(--navy); background: var(--pale)
 table.goods thead th, table.facilities thead th, table.letters thead th { background: var(--head); color: var(--navy); }
 table.goods tbody tr:nth-child(even), table.facilities tbody tr:nth-child(even) { background: var(--pale); }
 table.goods td:nth-child(n+2), table.goods th:nth-child(n+2) { text-align: right; }
-.table-scroll { overflow-x: auto; }
+.table-scroll { overflow-x: auto; max-width: 100%; }
+.table-scroll th { white-space: nowrap; }
+table.market-table th, table.market-table td { white-space: nowrap; }
 
 /* 島の画面 */
 .island-header h1 { margin-bottom: 0; }
@@ -247,7 +249,10 @@ figure.chart select { max-width: 100%; }
 .pie-legend li { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; border-bottom: 1px solid #f0ede6; }
 .pie-legend .pie-value { white-space: nowrap; text-align: right; }
 .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
-td.num, th.num { text-align: right; white-space: nowrap; }
+table td.num, table th.num { text-align: right; white-space: nowrap; }
+table td.numeric-with-note { white-space: normal; }
+.numeric-value { white-space: nowrap; }
+table.info.money-table td { white-space: nowrap; }
 .loss { color: #c62828; }
 .warning-cell { color: #b26a00; }
 /* 産業の鎖（フェーズ3-2） */
@@ -283,16 +288,14 @@ table.titles-table td:nth-child(-n+4), table.titles-table th:nth-child(-n+4),
 table.foreign-bonds-table td:nth-child(2), table.foreign-bonds-table th:nth-child(2) { text-align: left; }
 table.ranking-table td:nth-child(3), table.titles-table th, table.titles-table td { white-space: nowrap; }
 .plain-list { padding-left: 1.2em; margin: 4px 0; }
-.report-layout.with-orders { display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: auto 1fr; gap: 12px; align-items: start; }
-/* 命令の欄の上に写す次の更新予定の行（reports/orders.js）は右の列の1段目に。本文は2段にまたがる */
-.report-layout.with-orders > .report-main { grid-row: span 2; }
+/* 統計と命令を縦に並べ、横長の表は表の中だけ横に送る。 */
+.report-layout { min-width: 0; }
+.report-main { min-width: 0; }
+.report-orders:empty { display: none; }
+table.facilities .facility-hint { display: block; max-width: 30em; white-space: normal; }
 .report-orders { margin-top: 12px; }
 .bank-action { margin-top: 8px; }
 .bank-action h3 { font-size: 1em; }
-
-@media (max-width: 900px) {
-  .report-layout.with-orders { display: block; }
-}
 
 @media (max-width: 760px) {
   /* マスの情報の窓は、画面の下から出す板にする（狭くて横に出せないため）。上半分で地図を押せる */

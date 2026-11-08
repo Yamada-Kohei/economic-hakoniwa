@@ -839,6 +839,7 @@ def short_facilities(
                 "good": wanted,
                 "good_name": game.defs.name("goods", wanted),
                 "status_text": display.status_text(f),
+                "hint": display.status_hint(f),
                 # 国営か民営か（国営は国の倉庫から自動で引き出せる分を使い切ったあと止まる。W-225）
                 "owner": f.owner,
                 "owner_name": display.message(f"owner_{f.owner}"),
@@ -885,6 +886,7 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
             "expands": fac.expansion_of(f),  # 建て増しの工事なら、建て増す施設の番号
             "built": f.built,
             "status_text": display.status_text(f),
+            "hint": display.status_hint(f),
             "workers": f.workers,
             "workers_needed": (fac.workers_of(game.defs, f) if fdef else 0)
             if f.built

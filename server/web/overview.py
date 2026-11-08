@@ -201,7 +201,14 @@ def facility_state(
                     "y": y,
                     "status_text": text,
                     # 国営か民営か（持ち主だけ。市場の画面の止まった施設と同じ。W-225）
-                    **({"owner_name": display.message(f"owner_{f.owner}")} if mine else {}),
+                    **(
+                        {
+                            "owner_name": display.message(f"owner_{f.owner}"),
+                            "hint": display.status_hint(f),
+                        }
+                        if mine
+                        else {}
+                    ),
                 }
             )
         elif row.operating_rate < fac.FULL and text:
@@ -609,12 +616,23 @@ def next_steps(
         )
     block = (island.economy or {}).get("finance", {}).get("entry_block") or {}
     no_zone = not island.tiles.filter(zone=ZONE_INDUSTRIAL).exists()
-    if not planned and (no_zone or block.get("reason") == "no_zone"):
+    if not planned and no_zone:
         out.append(
             _step(
                 "industrial_zone",
                 "民営の工場は工業団地のマスにしか建ちません。地図で首都の近くの空いた平地を選び、"
                 "「工業団地の指定」をすると、民間の会社が採算を見て工場を建てます",
+                "map",
+                island,
+            )
+        )
+    elif not planned and block.get("reason") == "no_zone":
+        name = defs.name("facilities", block.get("facility", ""))
+        out.append(
+            _step(
+                "industrial_zone",
+                f"工業団地に、民営の{name}に合う空いたマスがありません（地形・資源・通勤圏）。"
+                "合うマスを工業団地にしてください",
                 "map",
                 island,
             )

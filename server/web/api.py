@@ -270,6 +270,16 @@ def _facility_def(fid: str, f: Any) -> dict[str, Any]:
                 # 電子機器を使う作り方（MI-43）は少ない人手で同じだけ作り、学校は育ちが上がる
                 "labor": r.get("labor", 1.0),
                 "workers": fac.workers_needed(d, fid, rid),
+                **(
+                    {
+                        "build_hint": "選んだ生産方式で操業を始めますが、"
+                        "農場の段階は手作業のままで、"
+                        "段階を上げるには完成後に同じマスへ農場の建設を命令します"
+                        "（工期・建設労働者・資材は手作業と同じです）。"
+                    }
+                    if r.get("grade", 0)
+                    else {}
+                ),
                 **({"education_scale": r["education_scale"]} if "education_scale" in r else {}),
             }
             for rid, r in f["recipes"].items()
