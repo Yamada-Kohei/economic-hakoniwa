@@ -53,3 +53,18 @@ def test_figure_sizes_in_the_guides_match_the_svg(client, world):
         ):
             svg = (FIGURES / f"{src}.svg").read_text(encoding="utf-8")
             assert f'viewBox="0 0 {width} {height}"' in svg, (url, src)
+
+
+@pytest.mark.django_db
+def test_food_table_comes_from_the_goods_data(client, world):
+    """食べ物の表は品目の定義（何人前・質・日持ち）から出す。質の低い順に並ぶ。"""
+    page = client.get("/help/").content.decode()
+    section = page[page.index('id="food"') : page.index("自動車（耐久消費財）")]
+    cell = r"</t[hd]><td>([\d.]+)"
+    rows = re.findall(rf"<tr><th>([^<]+){cell}{cell}{cell}</td></tr>", section)
+    assert rows == [
+        ("穀物", "1", "0.2", "24"),
+        ("魚", "1", "0.4", "2"),
+        ("肉", "1.2", "0.8", "3"),
+        ("食品", "1.5", "1", "6"),
+    ]

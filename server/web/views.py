@@ -757,6 +757,20 @@ def _goods_help(game) -> dict:
             "share": percent(config.get("records.shortage.share")),
             "turns": config.get("records.shortage.turns"),
         },
+        # 食べ物の表: 1 単位で何人前か・食事の質・日持ち（質の低い順）
+        "foods": [
+            {
+                "name": defs.name("goods", g),
+                "nutrition": f"{gdef['food']['nutrition']:g}",
+                "quality": f"{gdef['food'].get('quality', 0):g}",
+                "shelf_life": gdef.get("shelf_life"),
+            }
+            for g, gdef in sorted(
+                ((g, d) for g, d in defs.goods.items() if d.get("food")),
+                key=lambda item: (item[1]["food"].get("quality", 0), item[0]),
+            )
+        ],
+        "food_reserve_turns": config.get("food_reserve.turns"),
     }
 
 

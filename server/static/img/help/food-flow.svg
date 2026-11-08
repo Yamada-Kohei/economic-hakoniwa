@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 576" width="480" height="576" font-family='"Noto Sans JP","Hiragino Kaku Gothic ProN","Meiryo","WenQuanYi Zen Hei",sans-serif' role="img" aria-labelledby="t d">
+<title id="t">食べ物の作られ方と食べ方</title><desc id="d">農場が穀物を、漁港が魚を作る。牧場は穀物を餌に肉を、食品工場は穀物と電力から食品を作る。穀物・魚・肉・食品の4つは島の市場で売り買いされ、住民はどれでも食べ、兵は食品を食べ、国の倉庫は穀物を蓄える。売れ残りは日持ちを過ぎると捨てられる。</desc>
+<rect width="480" height="576" fill="#ffffff"/>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<rect x="40" y="36" width="140" height="46" rx="6" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="110.0" y="54.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">農場</text>
+<text x="110.0" y="73.8" font-size="13" text-anchor="middle" fill="#102a6b">平地で穀物を育てる</text>
+<rect x="320" y="36" width="150" height="46" rx="6" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="395.0" y="54.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">漁港</text>
+<text x="395.0" y="73.8" font-size="13" text-anchor="middle" fill="#102a6b">海沿いで魚をとる</text>
+<rect x="40" y="112" width="140" height="46" rx="6" fill="#fff1d0" stroke="#8a4b00" stroke-width="1.5"/>
+<text x="110.0" y="130.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">穀物</text>
+<text x="110.0" y="149.8" font-size="13" text-anchor="middle" fill="#102a6b">質は低く日持ちが長い</text>
+<rect x="320" y="112" width="150" height="46" rx="6" fill="#fff1d0" stroke="#8a4b00" stroke-width="1.5"/>
+<text x="395.0" y="130.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">魚</text>
+<text x="395.0" y="149.8" font-size="13" text-anchor="middle" fill="#102a6b">日持ちが短い</text>
+<rect x="10" y="196" width="130" height="46" rx="6" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="75.0" y="214.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">牧場</text>
+<text x="75.0" y="233.8" font-size="13" text-anchor="middle" fill="#102a6b">穀物を餌に育てる</text>
+<rect x="160" y="196" width="130" height="46" rx="6" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="225.0" y="214.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">食品工場</text>
+<text x="225.0" y="233.8" font-size="13" text-anchor="middle" fill="#102a6b">穀物と電力から</text>
+<rect x="10" y="274" width="130" height="46" rx="6" fill="#fff1d0" stroke="#8a4b00" stroke-width="1.5"/>
+<text x="75.0" y="292.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">肉</text>
+<text x="75.0" y="311.8" font-size="13" text-anchor="middle" fill="#102a6b">質が高い</text>
+<rect x="160" y="274" width="130" height="46" rx="6" fill="#fff1d0" stroke="#8a4b00" stroke-width="1.5"/>
+<text x="225.0" y="292.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">食品</text>
+<text x="225.0" y="311.8" font-size="13" text-anchor="middle" fill="#102a6b">質が一番高い</text>
+<line x1="110" y1="82" x2="110" y2="112" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="395" y1="82" x2="395" y2="112" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="80" y1="158" x2="75" y2="196" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="150" y1="158" x2="210" y2="196" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="75" y1="242" x2="75" y2="274" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="225" y1="242" x2="225" y2="274" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<path d="M180,135 L305,135 L305,350" fill="none" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="75" y1="320" x2="75" y2="350" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="225" y1="320" x2="225" y2="350" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="395" y1="158" x2="395" y2="350" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="10" y="352" width="460" height="36" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="240.0" y="375.3" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">島の市場で売り買いする</text>
+<line x1="83" y1="388" x2="83" y2="420" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="240" y1="388" x2="240" y2="420" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="397" y1="388" x2="397" y2="420" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="10" y="420" width="146" height="80" rx="6" fill="#e2f4e5" stroke="#1b6b2f" stroke-width="1.5"/>
+<text x="83.0" y="437.0" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">住民（家計）</text>
+<text x="83.0" y="455.9" font-size="13" text-anchor="middle" fill="#102a6b">4つのどれでも</text>
+<text x="83.0" y="474.8" font-size="13" text-anchor="middle" fill="#102a6b">お金に合わせて</text>
+<text x="83.0" y="493.7" font-size="13" text-anchor="middle" fill="#102a6b">質の高い物へ</text>
+<rect x="167" y="420" width="146" height="80" rx="6" fill="#e2f4e5" stroke="#1b6b2f" stroke-width="1.5"/>
+<text x="240.0" y="446.4" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">兵</text>
+<text x="240.0" y="465.3" font-size="13" text-anchor="middle" fill="#102a6b">食品を食べる</text>
+<text x="240.0" y="484.2" font-size="13" text-anchor="middle" fill="#102a6b">国の倉庫に蓄える</text>
+<rect x="324" y="420" width="146" height="80" rx="6" fill="#e2f4e5" stroke="#1b6b2f" stroke-width="1.5"/>
+<text x="397.0" y="437.0" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">国の倉庫</text>
+<text x="397.0" y="455.9" font-size="13" text-anchor="middle" fill="#102a6b">穀物を蓄え</text>
+<text x="397.0" y="474.8" font-size="13" text-anchor="middle" fill="#102a6b">値上がりや飢えのとき</text>
+<text x="397.0" y="493.7" font-size="13" text-anchor="middle" fill="#102a6b">売りに出す</text>
+<rect x="10" y="514" width="460" height="50" rx="6" fill="#fde7e7" stroke="#a32020" stroke-width="1.5"/>
+<text x="240.0" y="535.2" font-size="13" text-anchor="middle" fill="#102a6b">売れ残りは、日持ちを過ぎると捨てられます</text>
+<text x="240.0" y="552.7" font-size="13" text-anchor="middle" fill="#102a6b">魚と肉は日持ちが短く、すぐ傷みます</text>
+</svg>
