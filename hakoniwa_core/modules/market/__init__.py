@@ -3193,18 +3193,25 @@ class Market(IslandStage):
                     party.reserved = gross_cost(limit, qty, hh_rate, 0)
                     funds.commit(island, payer, party.reserved)
                     self._add(books_by_good, good, "buy", Order(qty, limit), party)
-        # 二国間契約で売る分のうち、国の倉庫に足りない分を政府が買う
-        needs: dict[str, int] = {}
-        for c in trade.island_state(island).get("contracts", []):
-            if c.get("side") == "sell" and c.get("active"):
-                needs[c["good"]] = needs.get(c["good"], 0) + c["qty"]
-        payer = Payer(ledger.GOV, GOV_TRADE)
-        plan = {}
-        for good, qty in sorted(needs.items()):
-            missing = qty - stock.total(island.warehouse, good)
-            if missing > 0:
-                plan[good] = (missing, auction.band(prices.get(good, 1), width)[1])
-        for good, (qty, limit) in sorted(self._afford(island, payer, plan, 0, 0).items()):
+        # 二国間契約で売る分のうち、国の倉庫に足りない分を政府が買う。代金は予算の段で国債の利払いの
+        # 次に取り置いた項目から（FX-24・FS-09）。減らしたターンはログに出す（報告 #9）
+        payer = Payer(ledger.GOV, traders.CONTRACT_SUPPLY)
+        plan = traders.contract_supply_plan(island, ctx.config)
+        affordable = self._afford(island, payer, plan, 0, 0)
+        for good, (want, _) in sorted(plan.items()):
+            placed_qty = affordable.get(good, (0, 0))[0]
+            if placed_qty < want:
+                island.log.append(
+                    LogEntry(
+                        "contract_supply_short",
+                        {
+                            "good": good,
+                            "amount": from_milli(want),
+                            "placed": from_milli(placed_qty),
+                        },
+                    )
+                )
+        for good, (qty, limit) in sorted(affordable.items()):
             party = Party(STORE, ledger.GOV, payer, site=site)
             party.reserved = gross_cost(limit, qty, 0, 0)
             funds.commit(island, payer, party.reserved)

@@ -331,6 +331,7 @@ contract_started: "{seller}から{buyer}へ{good}を毎ターン {amount:g} {uni
 contract_cancelled: "契約（{contract}番。{seller}から{buyer}への{good}）の解約を申し入れました（{turns} ターン後に終わります）"
 contract_ended: "契約（{contract}番。{seller}から{buyer}への{good}）が終わりました"
 contract_short: "契約（{contract}番。{seller}から{buyer}への{good}）で、このターンは {missing:g} {unit}届けられませんでした（{reason}）"
+contract_supply_short: "契約で売る{good}が国の倉庫に足りない分 {amount:g} {unit}のうち、国庫が足りず {placed:g} {unit}だけ買いに出しました"
 contract_short_goods: "売る国の倉庫に品物が足りません"
 contract_short_money: "買う国の払うお金が足りません"
 contract_short_fx: "買う国が決済の通貨を必要なだけ買えませんでした（1ターンに為替の市場で買える量を超えています）"
