@@ -1545,7 +1545,7 @@ def visible_logs(logs, mine: bool, island=None):
 
 
 def log_entries(logs) -> list[dict[str, Any]]:
-    """ターンログの行を、文面とリンク先のマス付きで。"""
+    """公開してよいターンログの行を、文面・施設の種類・リンク先のマス付きで。"""
     game = get_game()
     out = []
     for log in logs:
@@ -1554,6 +1554,9 @@ def log_entries(logs) -> list[dict[str, Any]]:
             args = {**args, "title": title_name(args["industry"])}
         text = format_log(game.defs, log.kind, args, calendar=game.calendar)
         entry = {"turn": log.turn, "kind": log.kind, "text": text}
+        facility = args.get("facility")
+        if isinstance(facility, str) and facility in game.defs.facilities:
+            entry.update(facility=facility, facility_name=game.defs.name("facilities", facility))
         if "x" in args and "y" in args:
             entry["tile"] = (args["x"], args["y"])
         out.append(entry)

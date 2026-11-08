@@ -231,7 +231,10 @@ REPORTS = {
     "country": "国の公開ページ（国旗・元首・体制・通貨・人口・紹介文・年表・来訪者の一言。日付は"
     "その国の選んだ紀年。年表は timeline_text で wiki にそのまま貼れる文でも読める）",
     "plan": "計画と値段の規制（計画経済・混合経済の島）",
-    "chain": "産業の鎖（自分の島だけ。品目ごとの作った量・使った量と、止まっている工場のわけ）",
+    "chain": (
+        "産業の鎖（誰にでも。品目ごとの作った量・使った量と、止まっている工場のわけ。"
+        "見えない隠した施設は除く）"
+    ),
     "orders": "命令の列・行政力・今の政策（税・予算・金融）・最近の命令の結果",
 }
 
@@ -265,7 +268,9 @@ def _changes(request, args):
 
 def _turn_log(request, args):
     path = f"/api/islands/{_island_id(request, args)}/log"
-    return call_ok(request, "GET", path, query={"from": args.get("from"), "to": args.get("to")})
+    return call_ok(
+        request, "GET", path, query={k: args.get(k) for k in ("from", "to", "kind", "facility")}
+    )
 
 
 def _tile(request, args):
@@ -818,9 +823,16 @@ TOOLS = [
     Tool(
         "turn_log",
         "ターンログ",
-        "ターンログ（from〜to、24 ターン分まで。省くと最後のターン）。",
+        "ターンログ（from〜to、24 ターン分まで。省くと最後のターン）。"
+        "kind で出来事の種類、facility で施設の種類を絞れます。公開してよい行だけを返します。",
         _turn_log,
-        {"island": ISLAND, "from": TURN, "to": TURN},
+        {
+            "island": ISLAND,
+            "from": TURN,
+            "to": TURN,
+            "kind": {"type": "string", "description": "出来事の種類（ログの kind）"},
+            "facility": {"type": "string", "description": "施設の種類（例 transport）"},
+        },
     ),
     Tool(
         "map",
@@ -1012,7 +1024,7 @@ TOOLS = [
     Tool(
         "bug_reports",
         "送った不具合の報告の状態",
-        "自分が送った不具合の報告の一覧（新しい順。状態は未読・対応中・済み）。",
+        "自分が送った不具合の報告の一覧（新しい順。未読・読んだ・対応中・済みの状態、返事と返事を書いた時刻）。",
         _bug_reports,
     ),
     Tool(

@@ -343,12 +343,13 @@
       <table class="info">
         {% with s=trade.fleet.shipping %}
         {% if s %}
-        <tr><th>{% translate "輸送船" %}</th><td>{% blocktranslate with n=s.ships|floatformat:"-2" c=trade.fleet.ship_capacity %}{{ n }} 隻（1隻で1航海 {{ c }} トン）{% endblocktranslate %}</td></tr>
-        <tr><th>{% translate "航海に出ている船" %}</th><td>{% blocktranslate with n=s.busy|floatformat:"-2" %}{{ n }} 隻分{% endblocktranslate %}</td></tr>
-        <tr><th>{% translate "空いている船" %}</th><td>{% blocktranslate with n=s.free|floatformat:"-2" %}{{ n }} 隻分{% endblocktranslate %}{% if s.short_turns %}<small class="warning">{% blocktranslate with n=s.short_turns m=s.short_of %}直近 {{ m }} ターンのうち {{ n }} ターンは、船が足りずに輸入を減らしました。{% endblocktranslate %}</small>{% endif %}</td></tr>
+        <tr><th>{% translate "輸送船" %}</th><td>{% blocktranslate with n=s.ships|floatformat:"-2" c=s.capacity_tons|floatformat:"-1g" %}{{ n }} 隻（1航海で合計 {{ c }} トン積めます）{% endblocktranslate %}</td></tr>
+        <tr><th>{% translate "航海に使っている量" %}</th><td>{{ s.busy_tons|floatformat:"-1g" }} {% translate "トン" %}（{% widthratio s.busy_share 1 100 %}%）</td></tr>
+        <tr><th>{% translate "空いている量" %}</th><td>{{ s.free_tons|floatformat:"-1g" }} {% translate "トン" %}{% if s.short_turns %}<small class="warning">{% blocktranslate with n=s.short_turns m=s.short_of %}直近 {{ m }} ターンのうち {{ n }} ターンは、船が足りずに輸入を減らしました。{% endblocktranslate %}</small>{% endif %}</td></tr>
+        <tr><td colspan="2" class="hint">{% translate "積める量は航路の数の上限ではありません。荷の量に合わせて船の積める量を分けて使い、空で売り手の港へ行き積んで戻る往復の間（走っている時間の分）だけ、その量がふさがります。近い港へは1ターンに何度も行き来できます。" %}</td></tr>
         <tr><th>{% translate "船の運賃" %}</th><td>{% blocktranslate with r=s.freight_rate|floatformat:"-1g" %}荷 1 トン・1 区画あたり {{ currency }}{{ r }}{% endblocktranslate %}</td></tr>
         {% if s.charter_income or s.charter_paid %}<tr><th>{% translate "船の貸し借りの運賃（1ターン）" %}</th><td>{% blocktranslate with a=s.charter_income|floatformat:"0g" b=s.charter_paid|floatformat:"0g" %}貸した船の収入 {{ currency }}{{ a }}・借りた船に払った分 {{ currency }}{{ b }}{% endblocktranslate %}</td></tr>{% endif %}
-        {% for g in s.fuel %}<tr><th>{% blocktranslate with name=g.name %}燃料（{{ name }}）{% endblocktranslate %}</th><td>{{ g.amount }} {{ g.unit }}{% if g.turns is not None %} <small class="muted">{% blocktranslate with n=g.turns %}船を全部出して {{ n }} ターン分{% endblocktranslate %}</small>{% endif %}</td></tr>{% endfor %}
+        {% for g in s.fuel %}<tr><th>{% blocktranslate with name=g.name %}船の燃料: {{ name }}{% endblocktranslate %}</th><td>{{ g.amount }} {{ g.unit }}{% if g.turns is not None %} <small class="muted">{% blocktranslate with n=g.turns %}船を全部出して {{ n }} ターン分{% endblocktranslate %}</small>{% endif %}</td></tr>{% endfor %}
         {% else %}
         <tr><th>{% translate "輸送船" %}</th><td class="muted">{% translate "海運業がありません" %}</td></tr>
         {% endif %}

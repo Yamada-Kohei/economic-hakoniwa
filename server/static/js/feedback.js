@@ -57,6 +57,39 @@ if (dialog) {
   const form = dialog.querySelector("form");
   const status = dialog.querySelector(".bug-report-status");
   const send = form.querySelector('button[type="submit"]');
+  const history = dialog.querySelector("[data-bug-history]");
+
+  const loadReports = async () => {
+    history.textContent = "読み込んでいます…";
+    try {
+      const res = await fetch(dialog.dataset.url, { credentials: "same-origin" });
+      if (!res.ok) throw new Error(String(res.status));
+      const data = await res.json();
+      const rows = data.reports.slice(0, 10);
+      history.replaceChildren();
+      if (!rows.length) {
+        history.textContent = "送った報告はありません";
+        return;
+      }
+      const list = document.createElement("ul");
+      for (const report of rows) {
+        const item = document.createElement("li");
+        const heading = document.createElement("p");
+        heading.textContent = `#${report.id} ・ ${new Date(report.created_at).toLocaleDateString("ja-JP")} ・ ${report.status_name}`;
+        item.append(heading);
+        if (report.reply) {
+          const reply = document.createElement("p");
+          reply.textContent = report.reply;
+          reply.style.whiteSpace = "pre-wrap";
+          item.append(reply);
+        }
+        list.append(item);
+      }
+      history.append(list);
+    } catch {
+      history.textContent = "送った報告を読み込めませんでした。通信を確かめて、もう一度開いてください。";
+    }
+  };
 
   const close = () => (dialog.close ? dialog.close() : dialog.removeAttribute("open"));
   const open = () => {
@@ -64,6 +97,7 @@ if (dialog) {
     if (dialog.showModal) dialog.showModal();
     else dialog.setAttribute("open", "");
     form.elements.what.focus();
+    loadReports();
   };
   document.addEventListener("click", (e) => {
     if (e.target.closest("[data-bug-open]")) open();
@@ -100,6 +134,7 @@ if (dialog) {
       }
       status.textContent = data.message || "ありがとうございます。";
       form.reset();
+      loadReports();
       setTimeout(close, 1800);
     } catch {
       status.textContent = "送れませんでした。通信を確かめてください。";

@@ -63,6 +63,10 @@
       <p class="bug-report-status" role="status"></p>
       <div class="bug-report-buttons"><button type="submit" class="primary" value="send">{% translate "送る" %}</button><button type="button" data-bug-close>{% translate "閉じる" %}</button></div>
     </form>
+    <section aria-labelledby="bug-report-history-heading">
+      <h3 id="bug-report-history-heading">{% translate "送った報告" %}</h3>
+      <div data-bug-history aria-live="polite"></div>
+    </section>
   </dialog>
   {% endif %}
 </body>

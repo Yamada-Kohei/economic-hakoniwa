@@ -19,7 +19,7 @@
       <h2>{% if stats_turn is not None %}{% translate "金利・お金・融資" %} <small class="heading-date">{{ stats_turn|turn_date }}</small>{% else %}{% translate "金利・お金・融資" %}{% endif %}</h2>
       {% if stats %}
       <table class="info">
-        {% for row in stats %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
+        {% for row in stats %}<tr><th>{{ row.label }}</th><td>{{ row.text }}{% if row.yield_capped %} <strong class="warning">{% translate "上限" %}</strong>{% endif %}</td></tr>{% endfor %}
       </table>
       {% else %}
       <p class="muted">{% translate "未集計です。" %}</p>

@@ -1,7 +1,7 @@
 """不具合の報告の JSON API。送れるのはログインした人（画面と AI の入り口で同じ）。
 
 POST /api/bug-reports  {"text", "kind"?, "url"?, "client"?}  → 201 {"id": 報告番号, ...}
-GET  /api/bug-reports  自分が送った報告の一覧（状態つき）
+GET  /api/bug-reports  自分が送った報告の一覧（状態・返事・返事を書いた時刻つき）
 書き込み（POST）には、ほかの API と同じく Django の CSRF の印が要る（AI 用の鍵は要らない）。
 """
 

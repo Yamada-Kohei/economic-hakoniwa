@@ -1,22 +1,28 @@
 import { getJson } from "./api.js";
 
-// 既存の要約が返す前後の表示値を使う。変化の大きさや原因は推定しない。
+// サーバーが目安の幅で選んだ変化を、同じ表示値と行き先で並べる。
 export async function mountRecentChanges() {
   const root = document.getElementById("recent-changes");
   if (!root) return;
-  const routes = { unemployment: "facilities", "food.ratio": "market", "power.capacity": "facilities", "power.demand": "facilities", happiness: "economy", gdp: "economy" };
   try {
     const data = await getJson(root.dataset.url);
-    const changed = Object.keys(routes).flatMap((key) => data.indicators.filter((r) => r.key === key && r.before != null)).slice(0, 3);
+    const changed = data.notable_changes;
+    const list = root.querySelector("ul");
+    list.replaceChildren();
     for (const row of changed) {
       const li = document.createElement("li");
       const link = document.createElement("a");
-      link.href = `/islands/${data.island.id}/${routes[row.key]}/`;
+      link.href = `/islands/${data.island.id}/${row.page}/`;
       link.textContent = `${row.label}: ${row.before} → ${row.now}（詳しく調べる）`;
       li.append(link);
-      root.querySelector("ul").append(li);
+      list.append(li);
     }
-    root.hidden = !changed.length;
+    if (!changed.length) {
+      const li = document.createElement("li");
+      li.textContent = "目安を超えた変化はありません";
+      list.append(li);
+    }
+    root.hidden = false;
   } catch {
     root.hidden = false;
     root.querySelector("ul").textContent = "前のターンとの比較を読み込めませんでした。各画面で確認してください。";

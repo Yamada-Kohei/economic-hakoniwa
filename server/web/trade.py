@@ -646,7 +646,7 @@ def trader_rows(
 
 
 def fleet_view(island: m.Island, here: IslandState, stats: dict[str, float]) -> dict[str, Any]:
-    """海運業の船団（船の数・航海に出ている船・空いている船・運賃・燃料）と港（使用料・積み下ろしの
+    """海運業の船団（船の数・積める量・航海に使っている量・運賃・燃料）と港（使用料・積み下ろしの
     量と上限）。"""
     game = get_game()
     defs, config = game.defs, game.config
@@ -661,7 +661,9 @@ def fleet_view(island: m.Island, here: IslandState, stats: dict[str, float]) -> 
     }
     f = shipping_of(here, config)
     if f is not None:
-        need = ships.fuel_per_turn(config, ships.capacity(config, f))
+        total = ships.capacity(config, f)
+        busy = ships.busy(f)
+        need = ships.fuel_per_turn(config, total)
         have = dict(
             m.Stock.objects.filter(island=island, facility__number=f.id)
             .values("good")
@@ -674,7 +676,11 @@ def fleet_view(island: m.Island, here: IslandState, stats: dict[str, float]) -> 
             "ships": from_milli(ships.fleet(f)),
             "busy": round(ships.busy(f) / QUANTITY_SCALE / capacity, 2),
             "free": round(ships.free(config, f) / QUANTITY_SCALE / capacity, 2),
-            "capacity": display.tons(ships.capacity(config, f)),  # 全部の船で1航海に運べるトン
+            "capacity": display.tons(total),  # 全部の船で1航海に運べるトン
+            "capacity_tons": display.tons(total),
+            "busy_tons": display.tons(busy),
+            "free_tons": display.tons(ships.free(config, f)),
+            "busy_share": busy / total if total else 0,
             "freight_rate": display.weight_price(ships.freight_rate(here, config, f)),
             "workers": f.workers,
             # 直近の、船が足りずに輸入を減らしたターンの数（数えたターンのうち）

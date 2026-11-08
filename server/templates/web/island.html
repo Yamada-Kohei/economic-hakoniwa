@@ -57,17 +57,21 @@
 <section class="panel alerts">
   <h2>{% translate "注意" %}</h2>
   <ul>{% for a in alerts %}<li>{{ a }}</li>{% endfor %}</ul>
-  <p><a href="{% url 'island_market' island.id %}">{% translate "市場で不足を調べる" %}</a> ・ <a href="{% url 'island_facilities' island.id %}">{% translate "施設の状態を調べる" %}</a> ・ <a href="{% url 'island_fiscal' island.id %}">{% translate "財政と失業手当" %}</a>{% if mine %} ・ <a href="{% url 'island_chain' island.id %}">{% translate "産業の鎖" %}</a>{% endif %}</p>
+  <p><a href="{% url 'island_market' island.id %}">{% translate "市場で不足を調べる" %}</a> ・ <a href="{% url 'island_facilities' island.id %}">{% translate "施設の状態を調べる" %}</a> ・ <a href="{% url 'island_fiscal' island.id %}">{% translate "財政と失業手当" %}</a> ・ <a href="{% url 'island_chain' island.id %}">{% translate "産業の鎖" %}</a></p>
 </section>
 {% endif %}
 <section class="panel" id="recent-changes" hidden data-url="{% url 'api_island_summary' island.id %}">
   <h2>{% translate "前のターンからの主な変化" %}</h2>
   <ul aria-live="polite"></ul>
-  <p class="hint">{% translate "変化した指標を最大3件表示します。数字だけでは原因は分かりません。リンク先で施設の状態・市場・家計を確かめてください。" %}</p>
+  <p class="hint">{% translate "目安を超えて変わった指標を、大きい順に最大3件表示します。数字だけでは原因は分かりません。リンク先で施設の状態・市場・家計を確かめてください。" %}</p>
 </section>
 
 <div class="island-layout">
   <section class="map-column">
+    <div id="map-load-notice" class="error" role="alert" hidden>
+      <p>{% translate "地図を読み込めませんでした。再読み込みしてください" %}</p>
+      <button type="button" id="map-reload">{% translate "再読み込み" %}</button>
+    </div>
     <div class="map-tools">
       <label>{% translate "重ねて表示" %}
         <select id="overlay"><option value="">{% translate "なし" %}</option></select>
@@ -146,5 +150,16 @@
   <p><a href="{% url 'turn_log' island.id %}">{% translate "ターンログをすべて見る" %}</a></p>
 </section>
 
+<script>
+  (() => {
+    const canvas = document.getElementById("island-map");
+    const notice = document.getElementById("map-load-notice");
+    document.getElementById("map-reload").addEventListener("click", () => location.reload());
+    // モジュールそのものを読み込めない場合も、待ち続けずに知らせる。
+    setTimeout(() => {
+      if (canvas.dataset.ready !== "1") notice.hidden = false;
+    }, 15000);
+  })();
+</script>
 <script type="module" src="{% static 'js/map/main.js' %}"></script>
 {% endblock %}

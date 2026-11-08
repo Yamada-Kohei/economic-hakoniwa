@@ -327,7 +327,7 @@ def test_screen_apis_show_the_same_as_screens(played):
     assert "short" not in other.get(f"/api/islands/{a.id}/market").json()
 
     assert owner.get(f"/api/islands/{a.id}/chain").json()["tiers"]
-    assert other.get(f"/api/islands/{a.id}/chain").status_code == 403
+    assert other.get(f"/api/islands/{a.id}/chain").status_code == 200
 
     ranks = other.get("/api/rankings").json()
     assert ranks["turn"] == world.turn and ranks["categories"]

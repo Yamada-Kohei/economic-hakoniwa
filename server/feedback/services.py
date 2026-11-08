@@ -164,4 +164,8 @@ def view(report: BugReport) -> dict[str, Any]:
         "text": report.text,
         "version": report.version,
         "created_at": report.created_at.isoformat(timespec="seconds"),
+        "reply": report.reply,
+        "replied_at": (
+            report.replied_at.isoformat(timespec="seconds") if report.replied_at else None
+        ),
     }
