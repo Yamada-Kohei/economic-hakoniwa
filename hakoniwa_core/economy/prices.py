@@ -21,10 +21,10 @@ from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.defs.kinds import is_variant
-from hakoniwa_core.economy import equipment, experience
+from hakoniwa_core.economy import equipment, experience, is_bank, is_self_supporting
 from hakoniwa_core.market import auction
 from hakoniwa_core.state import Facility, IslandState
-from hakoniwa_core.units import QUANTITY_SCALE, money_of, part, round_money, scale_price
+from hakoniwa_core.units import BASIS, QUANTITY_SCALE, money_of, part, round_money, scale_price
 
 Prices = Mapping[str, int]
 
@@ -178,13 +178,20 @@ def _solve_prices(
 
 
 def variable_profit(
-    defs: Defs, config: GameConfig, f: Facility, prices: Prices, wage: int, freight: int
+    defs: Defs,
+    config: GameConfig,
+    f: Facility,
+    prices: Prices,
+    wage: int,
+    freight: int,
+    subsidy: int = 0,
 ) -> int:
     """全力で1ターン動いたときの変動費の利益（売上 − 投入財 − 賃金 − 電気代 − 運賃）。
     賃金は一般の賃金 wage と、施設の技術者の賃金（facilities.labor_cost）。
 
     freight は施設の運賃の率（1万分の1）。電力は送電網で送るので運賃がかからない。産出は
     生産性（インフラ・教育・汚染の係数）を掛けた量で見る。
+    subsidy は売上に付く生産補助の率（1万分の1）。投入財の買いと操業判断では補助も売上に足す。
 
     商業・サービス業（game.yaml の services）はレシピを持たないので、雇う人数の目安の分だけ
     人を雇ったときの売上 − 賃金で見る（銀行の審査と持ち主の出資の判断に使う）。
@@ -200,6 +207,7 @@ def variable_profit(
     for good, qty in fac.outputs_of(defs, f).items():
         amount = money_of(prices.get(good, 0), qty)
         value += amount if good == power else amount - part(amount, freight)
+        value += part(amount, subsidy)
     for good, qty in recipe["inputs"].items():
         amount = money_of(prices.get(good, 0), qty)
         value -= amount if good == power else amount + part(amount, freight)
@@ -215,6 +223,7 @@ def input_limit(
     wage: int,
     freight: int,
     ahead: float = 0.0,
+    subsidy: int = 0,
 ) -> int:
     """投入財 good に払える一番高い値段: 変動費の利益が0になる値段（0以上）。
 
@@ -223,6 +232,8 @@ def input_limit(
     今より値幅の分高く売れると見ていたので、原料の買い手が自分の製品の値上がりを先取りして買い
     上がり、つながった財が一緒に上がった）。電力は運賃がかからないので、電力のときは freight を
     見ない。
+
+    subsidy は施設の売上に付く生産補助の率（1万分の1）。産出の売上にこの率の補助を加えて見る。
 
     ahead は、産出物が今の値段のその割合だけ高く売れると見る分（電力の買いだけ。生産の段で1度だけ
     買い上がりなしで買うので、今までどおり market.band を渡す。仮: 電力を料金表で買う形の代わり）。
@@ -256,8 +267,41 @@ def input_limit(
     if ahead:
         for g in recipe["outputs"]:
             seen[g] = scale_price(prices.get(g, 0), 1 + ahead)
-    room = variable_profit(defs, config, steady, seen, wage, freight) + amount
+    room = variable_profit(defs, config, steady, seen, wage, freight, subsidy) + amount
     return max(0, room * QUANTITY_SCALE // qty)
+
+
+def production_subsidy_rate(
+    island: IslandState, defs: Defs, config: GameConfig, f: Facility, turn: int
+) -> int:
+    """会計の生産補助と同じ対象・期限で、施設の売上に付く率（1万分の1）を合計する。"""
+    if not is_self_supporting(f) or is_bank(config, f):
+        return 0
+    outputs = fac.recipe_of(defs, f)["outputs"]
+    return sum(
+        s["rate"]
+        for s in island.policy.subsidies
+        if s["kind"] == "production"
+        and s.get("until", 0) >= turn
+        and (s.get("good") in outputs or (s.get("x"), s.get("y")) == (f.x, f.y))
+    )
+
+
+def subsidized_floor(
+    island: IslandState,
+    defs: Defs,
+    config: GameConfig,
+    f: Facility,
+    good: str,
+    prices: Prices,
+    wage: int,
+    freight: int,
+    turn: int,
+) -> int:
+    """生産補助を受け取った後に、1単位の変動費を取り戻せる売り値。"""
+    floor = unit_floor(defs, config, f, good, prices, wage, freight)
+    subsidy = production_subsidy_rate(island, defs, config, f, turn)
+    return round_money(floor * BASIS / (BASIS + subsidy))
 
 
 def unit_floor(

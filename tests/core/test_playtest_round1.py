@@ -344,14 +344,19 @@ def test_leftover_crops_are_not_sold_below_what_they_cost_to_grow(game, warmed):
     farm = next(f for f in island.facilities if f.kind == "farm" and f.built)
     # 手作業の穀物の農場（機械化した農場の下限は、機械化の作り方の中で決まる。W-190）
     farm = replace(farm, recipe="default", ext={})
-    other = next(
-        n for n, r in sorted(recipes.items()) if n != farm.recipe and r["outputs"].get("cotton")
-    )
+    # 同じ段階で綿を作る作り方が複数あれば、安いほうの費用（肥料の値段で入れ替わる）
+    others = [
+        n
+        for n, r in sorted(recipes.items())
+        if n != farm.recipe and r["outputs"].get("cotton") and r.get("grade", 0) == 0
+    ]
+    assert others
     prices = dict(island.economy.prices)
     floor = Market._leftover_floor(game.defs, game.config, farm, "cotton", prices, 0)
     wage = farm.economy.get("wage", 0)
-    cost = unit_floor(
-        game.defs, game.config, replace(farm, recipe=other), "cotton", prices, wage, 0
+    cost = min(
+        unit_floor(game.defs, game.config, replace(farm, recipe=n), "cotton", prices, wage, 0)
+        for n in others
     )
     assert floor == cost > 0
     assert Market._leftover_floor(game.defs, game.config, farm, "chemicals", prices, 0) == 0

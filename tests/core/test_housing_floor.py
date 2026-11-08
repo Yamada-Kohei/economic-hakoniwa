@@ -14,6 +14,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import stock
 from hakoniwa_core.economy import GENERAL, JOBLESS, OWNERS, banks, household
 from hakoniwa_core.log import format_log
+from hakoniwa_core.modules import population
 from hakoniwa_core.modules.population import (
     Housing,
     _next_floor,
@@ -181,8 +182,14 @@ def _lacking_village(game, world):
     return island, pos, home
 
 
-def test_layers_short_of_floor_add_it_a_little_each_turn_from_bought_materials(game, base):
+def test_layers_short_of_floor_add_it_a_little_each_turn_from_bought_materials(
+    game, base, monkeypatch
+):
     world = copy.deepcopy(base)
+    # 住み替えの分だけを見る: 人手の足りない施設の近くの町の育ち（床を段階の幅の floor_step ずつ
+    # 足す）は止める（2026-11-08 の商人の値段の直しの後、この村の近くの施設の人手が足りなくなり、
+    # 育ちの分が足されて住み替えの分が見えなくなった）
+    monkeypatch.setattr(population, "vacancies_of", lambda *args, **kwargs: [])
     island, pos, home = _lacking_village(game, world)
     spec = game.config.get("housing.space")
     before = fac.floor_of(game.defs, home)

@@ -57,7 +57,7 @@ from hakoniwa_core.economy import (
     productivity,
 )
 from hakoniwa_core.economy import plan as planning
-from hakoniwa_core.economy.prices import input_limit, unit_floor
+from hakoniwa_core.economy.prices import input_limit, production_subsidy_rate, subsidized_floor
 from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.geo import components, distance, within
 from hakoniwa_core.market import auction
@@ -401,7 +401,9 @@ class Production(IslandStage):
                 if has_money:  # 1単位の変動費（燃料の運賃を含む）より安くは売らない（国庫直轄も）
                     wage = run.f.economy.get("wage", 0)
                     rate = rates_of.get(run.f.id, 0)
-                    floor = unit_floor(defs, config, run.f, power, economy.prices, wage, rate)
+                    floor = subsidized_floor(
+                        island, defs, config, run.f, power, economy.prices, wage, rate, ctx.turn
+                    )
                     ask = max(ask, floor)
                 sell_orders.append(Order(capacity, min(ask, high)))  # 上端より高くては売れない
             buy_orders = []
@@ -451,8 +453,10 @@ class Production(IslandStage):
                 if b.run is not None:
                     rates[b.run.f.id] = fac.scale(b.run.rate, fac.ratio(got, b.need))
             for (run, out), sold in zip(sellers, result.sold, strict=True):
-                rates[run.f.id] = fac.ratio(sold, out)
-                if sold <= 0 < fac.scale(out, run.rate) and result.unfilled_demand > 0:
+                offered = fac.scale(out, run.rate)
+                # 全量売れたときは、産出量を整数にした分で元の稼働率を下げない。
+                rates[run.f.id] = run.rate if sold == offered else fac.ratio(sold, out)
+                if sold <= 0 < offered and result.unfilled_demand > 0:
                     unsold[run.f.id] = "power_price"
             home_got = sum(got for b, got in zip(buyers, result.bought, strict=True) if b.layer)
             home_rate = fac.ratio(home_got, home_need) if home_need else 0
@@ -516,7 +520,10 @@ class Production(IslandStage):
             rate = freight.facility_rates(island, ctx.defs, config).get(f.id, 0)
             wage = f.economy.get("wage", island.economy.average_wage)
             prices, band = island.economy.prices, config.get("market.band")
-            limit = input_limit(ctx.defs, config, f, power, prices, wage, rate, band)
+            subsidy = production_subsidy_rate(island, ctx.defs, config, f, ctx.turn)
+            limit = input_limit(
+                ctx.defs, config, f, power, prices, wage, rate, band, subsidy=subsidy
+            )
             return limit if is_self_supporting(f) else max(limit, reference)
         assert b.layer is not None
         budget = ctx.formula("consumption")(island, b.layer, config, inflation(island.economy))
