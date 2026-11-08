@@ -79,6 +79,7 @@
 | FM-55 | 創業融資: 実績のない会社（資本家階級が新しく起こす会社と、建国の後にできて決めたターン数たたない会社）は、銀行が建設費の (1 − 出資の割合) までしか貸さず、実績のある会社より多く出資する。建国のときからある会社は実績のある会社とみる | 決定（2026-11-03） | `firms.startup_equity_share`, `firms.track_record_turns`, `firms.equity_share` | tests/core/test_firm_founding_three.py::test_firms_without_a_track_record, ::test_new_firms_put_up_more_equity_than_firms_with_a_track_record |
 | FM-56 | 資本家階級の預金で新しい会社の出資に足りなければ、持っている民営の会社の株（会社の預金と施設の純資産）を担保に、掛け目の分まで銀行から借りて足す（BK-49）。同じ種類の施設を持つ会社が預金で出せるならその会社が先、借りても足りなければ系列 → 垂直統合 → 財閥の会社 | 決定（2026-11-03） | `firms.pledge_ratio`, `firms.pledge_turns` | tests/core/test_firm_founding_three.py::test_capitalists_borrow_on_their_shares_to_found_a_firm, ::test_no_pledge_when_the_owners_have_enough |
 | FM-57 | 生産補助（売上の率 r）を受ける施設の売り値の下限は、1単位の変動費 ÷ (1 + r)（補助の分だけ安く売れる）。救済補助・設備投資補助は下限に入れない | 決定（2026-11-07） | `fiscal.budget.subsidies` | tests/core/test_phase3_4.py::test_production_subsidy_lowers_seller_floor, ::test_production_subsidy_raises_power_fuel_bid |
+| FM-58 | 民営の参入（FM-17・FM-56 の後）と民営化（FM-26）の出資や代金が資本家階級の預金で足りなければ、足りない分を一般の労働者の層の預金から出し、出した額 ÷ 一般の層の1人あたりの預金の人数が、その預金と一緒に資本家階級へ移る（働く人の貯蓄からの起業。資本家階級の人数の上限 LB-42 の中で）。資本家階級が0人の島でも、断りの理由は「資本家階級の預金が足りない」を一般の層の預金も合わせて判定する | 決定（2026-11-08） | `household.layers.owners.share` | （実装の回で） |
 
 ### 仮の決まり
 
