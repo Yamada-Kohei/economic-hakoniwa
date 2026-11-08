@@ -107,6 +107,8 @@ def test_goods_nobody_buys_fall_to_what_exports_at_cost(game, traded, monkeypatc
     mine = next(f for f in island.facilities if f.built and f.x >= 0)  # 作る費用は下で決める
     seller = market.Party(market.FACILITY, f"fac:{mine.id}", Payer(f"fac:{mine.id}"), facility=mine)
     monkeypatch.setattr(market, "unit_floor", lambda *args: cost)
+    # 売り手の下限は生産補助を引いた費用（FM-57）。補助のないこの鉱山では unit_floor と同じ
+    monkeypatch.setattr(market, "subsidized_floor", lambda *args: cost)
 
     def record(export_limit, party):
         island.economy.prices[good] = price
