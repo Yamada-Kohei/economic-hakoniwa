@@ -251,7 +251,7 @@ def test_screens_show_nothing_the_ai_cannot_read(played, monkeypatch):
             res = browser.get(url.get(screen) or f"/islands/{island.id}/{page}/")
             assert res.status_code == 200, screen
             text, is_error = _call(ai, tool, island=island.id, **arguments)
-            answer = {} if is_error else json.loads(text)  # 持ち主だけの中身（他国の産業の鎖）
+            answer = {} if is_error else json.loads(text)  # 持ち主だけの中身は空として比べる
             who = "自国" if island == own else "他国"
             problems += [f"{who}の {screen}: {gap}" for gap in _gaps(screen, captured, answer)]
     assert not problems, (

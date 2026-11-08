@@ -32,7 +32,7 @@ from hakoniwa_core.modules.population import subsistence_persons, tile_jobless
 from hakoniwa_core.naming import facility_name, place_of
 from hakoniwa_core.state import OWNER_PRIVATE, IslandState, Tile
 from hakoniwa_core.trade import abroad
-from hakoniwa_core.units import from_milli
+from hakoniwa_core.units import from_milli, to_basis
 from server.economy.models import Account, FacilityBook, MarketRecord, Trade
 from server.game import get_game
 from server.web import budget_guide, display
@@ -1159,6 +1159,23 @@ def facility_book(
 # --- 財政 -----------------------------------------------------------------------------
 
 
+def yield_data(island: m.Island) -> dict[str, Any]:
+    """保存された国債の区分ごとの利回りと、上限に張り付いた区分（誰にでも）。"""
+    maximum = to_basis(get_game().config.get("bonds.max_yield"))
+    values = (island.economy or {}).get("finance", {}).get("yields", [])
+    rows = [
+        {
+            "bucket": bucket,
+            "name": bucket_name(bucket),
+            "rate": display.rate_text(value),
+            "yield_capped": value == maximum,
+        }
+        for bucket, value in enumerate(values)
+    ]
+    capped = [r["bucket"] for r in rows if r["yield_capped"]]
+    return {"yields": rows, "yield_capped": bool(capped), "yield_capped_buckets": capped}
+
+
 def fiscal_view(
     island: m.Island, stats: dict[str, float], currency: str, mine: bool = False
 ) -> dict[str, Any]:
@@ -1212,6 +1229,7 @@ def fiscal_view(
         if name.startswith("spent.") and name.removeprefix("spent.") not in items
     ]
     return {
+        **yield_data(island),
         "revenue": [{**r, "text": money(r["amount"])} for r in revenue],
         "spending": [{**r, "text": money(r["amount"])} for r in spending],
         "financing": [{**r, "text": money(r["sign"] * r["amount"])} for r in financing],
@@ -1388,6 +1406,7 @@ def finance_data(island: m.Island, mine: bool, currency: str) -> dict[str, Any]:
     turn, stats = display.latest_stats(island)
     names = finance_stats(stats)
     data: dict[str, Any] = {
+        **yield_data(island),
         "island": island.id,
         "mine": mine,
         "turn": turn,

@@ -7,10 +7,11 @@
   <label>{% translate "最初のターン" %}<input name="from" type="number" min="0" step="1" required></label>
   <label>{% translate "最後のターン" %}<input name="to" type="number" min="0" step="1" required></label>
   <label>{% translate "出来事の種類（代表の文）" %}<select name="kind"><option value="">{% translate "すべて" %}</option></select></label>
+  <label>{% translate "施設の種類" %}<select name="facility"><option value="">{% translate "すべて" %}</option></select></label>
   <label>{% translate "施設のマス X" %}<input name="x" type="number" min="0" step="1" max="{{ island.size|add:'-1' }}"></label>
   <label>{% translate "Y" %}<input name="y" type="number" min="0" step="1" max="{{ island.size|add:'-1' }}"></label>
   <button type="submit">{% translate "この範囲を読む" %}</button>
-  <p class="hint">{% translate "一度に24ターンまで読みます。種類と施設のマスは読み込んだ範囲を絞り込みます。マスの情報がない出来事は、施設を指定すると含まれません。" %}</p>
+  <p class="hint">{% translate "一度に24ターンまで読みます。出来事の種類・施設の種類・施設のマスは読み込んだ範囲を絞り込みます。種類やマスの情報がない出来事は、その条件を指定すると含まれません。" %}</p>
   <p data-status role="status"></p>
 </form>
 <p><a href="{% url 'turn_log' island.id %}">{% translate "通常のページ表示へ戻る" %}</a></p>

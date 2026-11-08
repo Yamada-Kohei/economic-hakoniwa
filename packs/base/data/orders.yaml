@@ -1088,7 +1088,7 @@ unload_unit:                              # 載せた部隊を降ろす（自分
       y: {type: integer, minimum: 0, description: "降ろすマスの y"}
       island: {type: integer, minimum: 1, description: "揚陸する戦争の相手の島の番号（自分の島に降ろすなら書かない）"}
 
-load_supplies:                            # 輸送船団に補給（食べ物・弾薬・燃料）を積む（母港の区画につないだ船団だけ。国の倉庫から。船の重さの上限に数える）
+load_supplies:                            # 輸送船団に補給（食べ物・弾薬・石油燃料）を積む（母港の区画につないだ船団だけ。国の倉庫から。船の重さの上限に数える）
   admin_cost: 0
   secret: always
   payload:
@@ -1097,7 +1097,7 @@ load_supplies:                            # 輸送船団に補給（食べ物・
     additionalProperties: false
     properties:
       fleet: {type: integer, minimum: 1, description: "輸送船団の番号"}
-      good: {type: string, enum: [food, ammunition, fuel], description: "積む物（食べ物 food・弾薬 ammunition・燃料 fuel）"}
+      good: {type: string, enum: [food, ammunition, fuel], description: "積む物（食べ物 food・弾薬 ammunition・石油燃料 fuel）"}
       quantity: {type: number, exclusiveMinimum: 0, description: "積む量（トン）"}
 
 set_requisition:                          # 占領したマスの在庫を補給に取り立てるかを部隊ごとに決める（初めは取り立てる）

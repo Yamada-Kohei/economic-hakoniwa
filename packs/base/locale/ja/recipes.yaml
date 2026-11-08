@@ -23,7 +23,7 @@ farm_fertilized_modern: 穀物（近代化）
 farm_cotton_fertilized_modern: 綿（近代化）
 farm_luxury_crop_fertilized_modern: 嗜好品（近代化）
 thermal_power_plant_default: 石炭で発電
-thermal_power_plant_fuel: 燃料で発電
+thermal_power_plant_fuel: 石油燃料で発電
 automobile_plant_default: 部品を組み立て
 auto_parts_plant_default: 鋼鉄から製造
 auto_parts_plant_aluminium: 鋼鉄とアルミから製造

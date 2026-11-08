@@ -15,6 +15,7 @@ from server.country import png as flag_png
 from server.country import services as country_services
 from server.country.models import Flag, MonumentImage
 from server.game import get_game
+from server.letters.services import own_island
 from server.turns.models import TurnLog
 from server.web import (
     chain,
@@ -177,12 +178,12 @@ def market_page(request, island_id: int):
 
 def chain_page(request, island_id: int):
     """産業の鎖（フェーズ3-2）: 品目ごとの作った量・使った量・輸出入・値段の動きと、作る施設と使う
-    施設、止まっている工場が待っているもの。自国だけ。"""
+    施設、止まっている工場が待っているもの。ほかの国には見える施設だけ。"""
     island, context, stats = _report(request, island_id, "chain", "産業の鎖")
-    if context["mine"]:
-        context["chain"] = chain.chain_view(island, stats, context["currency"])
-    else:
-        context["note"] = "産業の鎖は、島の持ち主だけが見られます。"
+    viewer = own_island(request.user)
+    context["chain"] = chain.chain_view(
+        island, stats, context["currency"], context["mine"], viewer.id if viewer else None
+    )
     return render(request, "web/chain.html", context)
 
 
@@ -244,6 +245,10 @@ def finance_page(request, island_id: int):
     )
     if not context["mine"]:
         context["note"] = OTHERS_NOTE
+    for row in context["stats"]:
+        if row["key"].startswith("yield."):
+            bucket = int(row["key"].removeprefix("yield."))
+            row["yield_capped"] = bucket in data["yield_capped_buckets"]
     return render(request, "web/finance.html", context)
 
 
@@ -546,6 +551,7 @@ def help_start_page(request):
             ],
             "commute": game.config.get("labor.commute_radius"),
             "base_admin": game.config.get("orders.base_admin_power"),
+            "power_fuel_turns": game.config.get("founding.power_fuel_turns"),
         },
     )
 
@@ -659,6 +665,7 @@ def _help_context() -> dict:
         "interval_hours": f"{interval_minutes / 60:g}" if interval_minutes else "",
         "base_admin": game.config.get("orders.base_admin_power"),
         "max_admin": game.config.get("orders.max_admin_power"),
+        "power_fuel_turns": game.config.get("founding.power_fuel_turns"),
         "admin_per_office": _admin_people(defs),
         # 金融と企業（フェーズ2-2）の説明に出す数
         "arrears_limit": game.config.get("loans.arrears_limit"),

@@ -34,9 +34,12 @@ def _records(island: m.Island, good: str, rows: list[tuple[int, int, int, int]])
 
 
 def test_chain_page_is_only_for_the_owner(client, world):
+    """設計書の旧試験名を保ち、UI-65 による公開後の表示を確かめる。"""
     island = m.Island.objects.order_by("id").first()
     page = client.get(f"/islands/{island.id}/chain/").content.decode()
-    assert "産業の鎖は、島の持ち主だけが見られます。" in page
+    assert "品目ごとの鎖" in page
+    assert "止まっている工場と待っているもの" in page
+    assert client.get(f"/api/islands/{island.id}/chain").status_code == 200
     island = _own_island(client)
     page = client.get(f"/islands/{island.id}/chain/").content.decode()
     assert "品目ごとの鎖" in page

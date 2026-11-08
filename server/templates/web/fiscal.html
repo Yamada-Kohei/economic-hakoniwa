@@ -67,6 +67,14 @@
     </section>
 
     <section class="panel">
+      <h2>{% translate "国債の利回り" %}</h2>
+      <table class="info">
+        {% for y in fiscal.yields %}<tr><th>{{ y.name }}</th><td>{{ y.rate }}{% if y.yield_capped %} <strong class="warning">{% translate "上限" %}</strong>{% endif %}</td></tr>
+        {% empty %}<tr><td class="muted">{% translate "未集計です。" %}</td></tr>{% endfor %}
+      </table>
+    </section>
+
+    <section class="panel">
       <h2>{% blocktranslate count n=bonds|length %}国債の一覧（{{ n }} 銘柄）{% plural %}国債の一覧（{{ n }} 銘柄）{% endblocktranslate %}</h2>
       {% if bonds %}
       <div class="table-scroll">

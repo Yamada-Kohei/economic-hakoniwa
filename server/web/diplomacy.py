@@ -164,6 +164,8 @@ def _treaty_row(t: dict[str, Any], names: dict[int, str]) -> dict[str, Any]:
         ),
         "violations": [{**v, "by": _ref(names, v["by"])} for v in t.get("violations", [])],
         "surrender": _ref(names, t["surrender"]) if t.get("surrender") else None,  # 降伏文書
+        "caretaker": t.get("caretaker"),
+        "caretaker_text": "休止中に代わりに結んだ" if t.get("caretaker") else "",
     }
 
 
@@ -294,6 +296,8 @@ def brief(island: m.Island, mine: bool) -> dict[str, Any]:
                 "with": next(p for p in t["parties"] if p["id"] != island.id),
                 "clauses": [c.get("detail") or c["name"] for c in t["clauses"]],
                 "notice": t["notice"],
+                "caretaker": t["caretaker"],
+                "caretaker_text": t["caretaker_text"],
             }
             for t in data["treaties"]
         ],

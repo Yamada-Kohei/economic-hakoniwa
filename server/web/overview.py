@@ -59,6 +59,55 @@ def _stats_at(island: m.Island, turn: int | None) -> dict[str, float]:
 
 INDICATORS = [key for key, _, _ in display.SUMMARY_STATS] + ["fiscal.balance"]
 
+# 比べ方・目安の幅・行き先。割合の統計は 0〜1、幸福度は画面に出す数のまま。
+NOTABLE = {
+    "population": ("relative", 0.01, "economy"),
+    "unemployment": ("points", 0.01, "facilities"),
+    "food.ratio": ("points", 0.05, "market"),
+    "power.shortage": ("points", 0.05, "facilities"),
+    "happiness": ("points", 3, "economy"),
+    "gdp": ("relative", 0.05, "economy"),
+    "inflation": ("points", 0.02, "economy"),
+    "treasury": ("balance", 0.10, "fiscal"),
+    "debt": ("balance", 0.10, "fiscal"),
+    "firms.bankrupt": ("points", 1, "facilities"),
+}
+
+
+def notable_changes(now: dict[str, float], before: dict[str, float], currency: str) -> list[dict]:
+    """観測済みの指標の変化を目安の幅で比べ、大きい順に3件まで返す（UI-62）。"""
+    ranked = []
+    for key, (mode, width, page) in NOTABLE.items():
+        if key not in now or key not in before:
+            continue
+        change = abs(now[key] - before[key])
+        if not change:
+            continue
+        base = 1
+        if mode == "relative":
+            base = abs(before[key])
+        elif mode == "balance":
+            base = max(abs(before[key]), abs(now.get("gdp", 0)))
+        threshold = width * base
+        size = change / threshold if threshold else math.inf
+        if size < 1 and not math.isclose(size, 1, rel_tol=1e-12):
+            continue
+        label, unit = reports.stat_label(key)
+        ranked.append(
+            (
+                size,
+                {
+                    "key": key,
+                    "label": label,
+                    "before": display.stat_text(key, before[key], unit, currency),
+                    "now": display.stat_text(key, now[key], unit, currency),
+                    "page": page,
+                },
+            )
+        )
+    ranked.sort(key=lambda row: -row[0])
+    return [row for _, row in ranked[:3]]
+
 
 def indicators(now: dict[str, float], before: dict[str, float], currency: str) -> list[dict]:
     """主な指標（島の画面の国勢と財政の収支）の今の値の文と、before から変わったものは前の値の文。
@@ -347,9 +396,16 @@ def _alerts(
     bonds: list[dict[str, Any]],
     hungry: list[dict[str, Any]],
     turn: int,
+    yields: dict[str, Any] | None = None,
 ) -> list[str]:
     """気をつけたほうがよいこと（画面の値を言葉にしただけ。先の見込みは入れない）。"""
     out = []
+    if yields and yields["yield_capped"]:
+        maximum = get_game().config.get("bonds.max_yield") * 100
+        out.append(
+            f"国債の利回りが上限の {maximum:g}% に張り付いています。"
+            "市場が求める利回りはこれより高いかもしれません"
+        )
     if politics.get("level") and politics["level"] != core_politics.CALM:
         out.append(f"政情は「{politics['level_name']}」です")
     food = stats.get("food.ratio")
@@ -390,6 +446,25 @@ def _mine_alerts(
         out.append(f"読んでいない公電が {unread} 通あります")
     if replies:
         out.append(f"掲示板で自分の書き込みへの返信が {replies} 件あります")
+    ext = island.ext or {}
+    resumed = ext.get("resumed_turn")
+    inactive_from = ext.get("inactive_from")
+    if (
+        not island.inactive
+        and resumed is not None
+        and inactive_from is not None
+        and 0 <= island.world.turn - resumed < GUIDE_TURNS
+    ):
+        treaties = ((island.world.ext or {}).get("diplomacy") or {}).get("treaties", [])
+        count = sum(
+            t.get("caretaker") == island.id
+            and island.id in t.get("parties", [])
+            and t.get("start") is not None
+            and inactive_from <= t["start"] <= resumed
+            for t in treaties
+        )
+        if count:
+            out.append(f"休止の間に、停戦・講和を代わりに {count} 件結んでいます（外交の画面）")
     return out
 
 
@@ -450,6 +525,7 @@ def island_alerts(island: m.Island, mine: bool) -> tuple[list[str], list[dict[st
         _bonds_due(island, world.turn, currency),
         hungry,
         world.turn,
+        reports.yield_data(island),
     )
     steps: list[dict[str, Any]] = []
     if mine:
@@ -733,6 +809,8 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
         "turn_schedule": display.turn_schedule(world),
         "stats_turn": stats_turn,
         "indicators": indicators(stats, before, currency),
+        "notable_changes": notable_changes(stats, before, currency),
+        **reports.yield_data(island),
         "politics": politics,
         "diplomacy": diplomacy.brief(island, mine),
         "military": military.brief(island, mine, viewer),
@@ -754,7 +832,16 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
         ]
         if log_turn is not None
         else [],
-        "alerts": _alerts(stats, politics, facilities, goods, bonds, hungry, world.turn),
+        "alerts": _alerts(
+            stats,
+            politics,
+            facilities,
+            goods,
+            bonds,
+            hungry,
+            world.turn,
+            reports.yield_data(island),
+        ),
     }
     if mine:
         losing = losing_facilities(island, currency)
@@ -821,12 +908,24 @@ def _result(o: Order) -> dict[str, Any]:
     }
 
 
-def log_range(island: m.Island, start: int, end: int, mine: bool) -> list[dict[str, Any]]:
+def log_range(
+    island: m.Island,
+    start: int,
+    end: int,
+    mine: bool,
+    kind: str | None = None,
+    facility: str | None = None,
+) -> list[dict[str, Any]]:
     """ターン start〜end のターンログ（古いターンから）。軍の行は持ち主だけ（MI-55）。"""
     rows = display.visible_logs(
         TurnLog.objects.filter(island=island, turn__gte=start, turn__lte=end), mine, island
     )
-    return display.log_entries(rows.order_by("turn", "id"))
+    entries = display.log_entries(rows.order_by("turn", "id"))
+    return [
+        row
+        for row in entries
+        if (not kind or row["kind"] == kind) and (not facility or row.get("facility") == facility)
+    ]
 
 
 def changes(
@@ -855,6 +954,9 @@ def changes(
         "stats_turn": stats_turn,
         "log_from": log_from,
         "truncated": log_from > since + 1,
+        "notable_changes": notable_changes(
+            reports.with_fiscal(latest), _stats_at(island, since), currency
+        ),
         "log": log_range(island, log_from, world.turn, mine),
         "indicators": [
             row

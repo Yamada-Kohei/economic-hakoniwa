@@ -751,18 +751,23 @@ def market_table(request, island_id: int):
 
 @require_GET
 def chain(request, island_id: int):
-    """産業の鎖の画面（島の持ち主だけ。ほかは 403）。"""
+    """産業の鎖（誰にでも。見えない隠した施設は数えない）。"""
     island = get_object_or_404(m.Island, pk=island_id)
-    if not _mine(request, island):
-        return _json({"error": "産業の鎖は島の持ち主だけが見られます"}, status=403)
+    mine = _mine(request, island)
+    viewer = letter_services.own_island(request.user)
     _, stats = display.latest_stats(island)
-    return _json(chain_views.chain_view(island, stats, _currency(island)))
+    return _json(
+        chain_views.chain_view(
+            island, stats, _currency(island), mine, viewer.id if viewer else None
+        )
+    )
 
 
 @require_GET
 def turn_log(request, island_id: int):
     """ターンログ（誰にでも。画面と同じ）。?from=&to=（ターン）。決めなければ、記録のある最後の
-    ターンだけ。1回に返すのは LOG_TURNS_MAX ターン分まで（新しいほうを残す）。"""
+    ターンだけ。1回に返すのは LOG_TURNS_MAX ターン分まで（新しいほうを残す）。
+    kind と facility で、公開してよい行から出来事・施設の種類を絞る。"""
     island = get_object_or_404(m.Island, pk=island_id)
     last = island.logs.aggregate(t=Max("turn"))["t"]
     if last is None:
@@ -775,7 +780,14 @@ def turn_log(request, island_id: int):
             "island": island.id,
             "from": start,
             "to": end,
-            "entries": overview.log_range(island, start, end, _mine(request, island)),
+            "entries": overview.log_range(
+                island,
+                start,
+                end,
+                _mine(request, island),
+                request.GET.get("kind"),
+                request.GET.get("facility"),
+            ),
         }
     )
 

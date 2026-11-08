@@ -1,4 +1,4 @@
-"""産業の鎖の画面（フェーズ3-2、自国だけ）の中身の組み立て。
+"""産業の鎖の画面の中身の組み立て。見える施設と国全体の統計を誰にでも見せる。
 
 品目ごとに、作った量・施設が使った量・市場で売買された量・輸入と輸出の量・値段の動きと、島で作る
 施設と使う施設を並べ、品不足の品目を目立たせます。売りに出ているのに買い手の指値と合わずに売れ残った
@@ -59,15 +59,27 @@ CAUSE_NAMES = {
 CAUSE_ORDER = ["materials", "power", "workers", "engineers", "unsold", "other", "construction"]
 
 
-def chain_view(island: m.Island, stats: dict[str, float], currency: str) -> dict[str, Any]:
-    """自国の産業の鎖: 品目の段（原料・中間財・最終財）ごとの品目と、止まっている工場のまとめ。"""
+def chain_view(
+    island: m.Island,
+    stats: dict[str, float],
+    currency: str,
+    mine: bool = False,
+    viewer: int | None = None,
+) -> dict[str, Any]:
+    """品目の段ごとの品目と、見える施設だけの作り手・使い手・止まっている工場のまとめ。"""
     game = get_game()
     defs, config = game.defs, game.config
     power = config.get("power.good")
     share = config.get("records.shortage.share")
     state = display.island_for_naming(island)
-    rows = [r for r in island.facilities.order_by("number") if r.kind in defs.facilities]
+    rows = [
+        r
+        for r in island.facilities.order_by("number")
+        if r.kind in defs.facilities and display.sees_facility(r, mine, viewer)
+    ]
     facilities = [(r, facility_from_row(r)) for r in rows]
+    # 自動の施設名に付く同種の番号からも、見えない施設の存在を漏らさない。
+    state.facilities = [f for _, f in facilities]
     traders = {f"fac:{r.number}" for r in rows if r.kind == config.get("trade.trader_facility")}
 
     makers: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(lambda: [0, 0, 0]))
