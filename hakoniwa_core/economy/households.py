@@ -21,6 +21,8 @@ jobless を書いた層（失業している家計）は、一般の労働者の
 - fed: 前のターンに食べられた割合（1000 分の 1。人口の段が書く）。足りなかった層は、次の市場で
   値幅の上を買い上がる（modules/market）
 - hunger: 飢えの蓄え（栄養の不足が何か月分たまったか。人口の段）
+- cap: 資産を持つ層の人数の上限（財産と所得で暮らせる人数。LB-42）。人口の段で数え直し、人数を
+  割り振るどの場面でも「住民の割合」とこの上限の小さいほうにする。ないときは上限なし
 """
 
 from __future__ import annotations
@@ -33,9 +35,10 @@ from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import GENERAL, JOBLESS, household, layers
 from hakoniwa_core.facilities import ENGINEER
 from hakoniwa_core.state import OWNER_PRIVATE, IslandState
-from hakoniwa_core.units import BASIS, round_money
+from hakoniwa_core.units import BASIS, round_money, to_basis
 
 SUPPORT = "family_support"  # island.scratch: 層 → 支え合いで受け取り、食べ物に先に使う額（回7）
+CAP = "cap"  # 資産を持つ層の人数の上限（LB-42）
 
 
 def has_private_owners(defs: Defs, island: IslandState) -> bool:
@@ -139,7 +142,9 @@ def split_persons(island: IslandState, defs: Defs, population: int) -> dict[str,
             persons = min(max(0, population - fixed), family_of(defs, kind, count))
             h["share"] = persons / population if population > 0 else 0.0
         elif "share" in h:
-            persons = round_money(population * h["share"] + 0.5)
+            persons = share_target(h, population)
+            if h.get(CAP) is not None:
+                persons = min(persons, h[CAP])
         else:
             continue
         changes[name] = persons - h["persons"]
@@ -156,6 +161,155 @@ def split_persons(island: IslandState, defs: Defs, population: int) -> dict[str,
     changes[GENERAL] = population - fixed - general["persons"]
     general["persons"] = population - fixed
     return changes
+
+
+def share_target(h: dict[str, Any], population: int) -> int:
+    """share を書いた層の、住民の割合どおりの人数。"""
+    return round_money(population * h["share"] + 0.5)
+
+
+def pledged(island: IslandState, layer: str) -> int:
+    """層が株を担保に借りている額の残高。"""
+    from hakoniwa_core.economy import banks
+
+    return sum(
+        banks.outstanding(island, x)
+        for x in banks.loans_by_borrower(island, household(layer))
+        if x.purpose == banks.PLEDGE
+    )
+
+
+def owners_room(
+    island: IslandState, config: GameConfig, layer: str, income: float | None = None
+) -> int | None:
+    """資産を持つ層が財産と所得で暮らせる人数（LB-42）。上限がなければ None。
+
+    1人が使える額（層の所得の直近の平均 I + 取り崩す割合 c2 × 財産、の1人あたり）が、一般の層の
+    1人あたりの所得の直近の平均 g に届く人数。層を出る人は預金だけを1人あたりで持ち出し、株と株を
+    担保にした借入 P は層に残る。預金のうち借入の返済の取り置き R = min(預金, P) も層に残るので、
+    持ち出せる1人あたりの預金を m とすると、釣り合う人数 = (I + c2 × (株の値打ち − P + R)) ÷
+    (g − c2 × m)。層が0人のときの m は、戻ってくる一般の層の1人あたりの預金。分母が 0 以下
+    （預金の取り崩しだけで一般の所得に届く）なら上限なし。income を渡さなければ層の所得の記録の
+    平均で、記録がなければ（建国のターン）上限なし。
+    """
+    from hakoniwa_core.economy.companies import owners_collateral
+
+    households = island.economy.households
+    h = households[layer]
+    keep = config.get("household.income_turns")
+    if income is None:
+        history = h["income"][-keep:]
+        if not history:
+            return None
+        income = sum(history) / len(history)
+    general = households.get(GENERAL)
+    if general is None or general["persons"] <= 0:
+        return None
+    general_history = general["income"][-keep:]
+    if not general_history:
+        return None
+    per_general = sum(general_history) / len(general_history) / general["persons"]
+    c2 = wealth_propensity(config, layer)
+    deposits = ledger.money(island, household(layer))
+    debt = pledged(island, layer)
+    kept = min(deposits, debt)
+    if h["persons"] > 0:
+        movable = (deposits - kept) / h["persons"]
+    else:
+        movable = ledger.money(island, household(GENERAL)) / general["persons"]
+    denominator = per_general - c2 * movable
+    if denominator <= 0:
+        return None
+    numerator = income + c2 * (owners_collateral(island) - debt + kept)
+    return max(0, int(numerator // denominator))
+
+
+def update_owners_cap(island: IslandState, config: GameConfig, population: int) -> None:
+    """人口の段で、資産を持つ層の人数の上限（CAP）を数え直す（LB-42。亡くなった人を引いた後、
+    人数を割り振り直す前に呼ぶ）。
+
+    暮らせる人数が今の人数より少なければ、上限をその人数にする（多い人はこの段で一般の層へ移る）。
+    上限がある間に暮らせる人数が今の人数より多くなれば、住民の割合の人数までの差の
+    household.layers.<層>.regrow ずつ上限を上げ（事業を起こし株を買い増すには時間がかかる。行き来で
+    預金が漏れないように少しずつ）、住民の割合に届いたら上限を外す。上限のない層は、暮らせる人数が
+    住民の割合を下回るまで上限を持たない。
+    """
+    for name, spec in layers(config).items():
+        h = island.economy.households.get(name)
+        if h is None or "share" not in h:
+            continue
+        # 計画経済から移ったばかりで所得の記録がまだない層（上限を持って置いた。politics の
+        # _add_owners）は、所得 0 として数える
+        income = 0 if h.get(CAP) is not None and not h["income"] else None
+        room = owners_room(island, config, name, income)
+        target = share_target(h, population)
+        if room is None:
+            h.pop(CAP, None)
+            continue
+        persons = h["persons"]
+        if room < persons:
+            h[CAP] = room
+            continue
+        if h.get(CAP) is None:
+            if room >= target:
+                continue
+            h[CAP] = persons
+        goal = min(room, target)
+        step = -(-max(0, goal - persons) * to_basis(spec.get("regrow", 1.0)) // BASIS)
+        cap = persons + step
+        if cap >= target:
+            h.pop(CAP, None)
+        else:
+            h[CAP] = cap
+
+
+def draw_founders(island: IslandState, need: int, available: int) -> int:
+    """資産を持つ層の出資に使える額 available が need に足りなければ、足りない分を一般の層の預金
+    から出す人を、その預金と一緒に資産を持つ層へ移す（働く人の貯蓄からの起業。FM-58）。移る人は
+    住民の割合の人数まで（founders_room）。移した人数を返す。"""
+    from hakoniwa_core.economy import OWNERS
+
+    short = need - available
+    households = island.economy.households
+    if short <= 0 or OWNERS not in households:
+        return 0
+    owners, general = households[OWNERS], households[GENERAL]
+    if general["persons"] <= 0:
+        return 0
+    per = ledger.money(island, household(GENERAL)) // general["persons"]
+    if per <= 0:
+        return 0
+    population = sum(x["persons"] for x in households.values())
+    room = min(general["persons"], max(0, share_target(owners, population) - owners["persons"]))
+    moved = min(room, -(-short // per))
+    if moved <= 0:
+        return 0
+    owners["persons"] += moved
+    general["persons"] -= moved
+    if owners.get(CAP) is not None:
+        owners[CAP] = max(owners[CAP], owners["persons"])
+    move_people(island, {OWNERS: moved})
+    return moved
+
+
+def founders_room(island: IslandState) -> int:
+    """一般の層から資産を持つ層へ移って出資できる預金（FM-58。住民の割合の人数まで、1人あたりの
+    預金で）。"""
+    from hakoniwa_core.economy import OWNERS, Payer, funds
+
+    households = island.economy.households
+    if OWNERS not in households:
+        return 0
+    owners, general = households[OWNERS], households[GENERAL]
+    if general["persons"] <= 0:
+        return 0
+    population = sum(x["persons"] for x in households.values())
+    room = min(general["persons"], max(0, share_target(owners, population) - owners["persons"]))
+    if room <= 0:
+        return 0
+    money = ledger.money(island, household(GENERAL))
+    spare = funds.available(island, Payer(household(GENERAL)))
+    return min(spare, money * room // general["persons"])
 
 
 def set_workers(island: IslandState, defs: Defs, kind: str, count: int) -> None:
@@ -197,7 +351,11 @@ def move_people(island: IslandState, changes: dict[str, int]) -> None:
         if persons <= 0:
             continue
         payer = household(source)
-        amount = ledger.money(island, payer) * abs(moved) // persons
+        money = ledger.money(island, payer)
+        if "share" in households[source]:
+            # 資産を持つ層を出る人は、株を担保にした借入の返済の取り置きを残す（LB-42）
+            money -= min(money, pledged(island, source))
+        amount = money * abs(moved) // persons
         ledger.pay(island, payer, household(target), amount, "layer_transfer")
         from hakoniwa_core.economy import banks  # 住宅ローンも一緒に移す（回3）
 
@@ -266,6 +424,8 @@ def consumption(island: IslandState, layer: str, config: GameConfig, inflation: 
     """
     settings = config.get("household")
     h = island.economy.households[layer]
+    if h["persons"] <= 0:  # 0人の層（資本家階級。LB-42）は物を買わない
+        return 0
     history = h["income"][-settings["income_turns"] :]
     if history:
         income = sum(history) / len(history)
@@ -290,14 +450,8 @@ def wealth(island: IslandState, config: GameConfig, layer: str) -> int:
         return deposits
     shares = island.scratch.get(SHARES_WORTH)
     if shares is None:
-        from hakoniwa_core.economy import banks
         from hakoniwa_core.economy.companies import owners_collateral
 
-        pledged = sum(
-            banks.outstanding(island, x)
-            for x in banks.loans_by_borrower(island, household(layer))
-            if x.purpose == banks.PLEDGE
-        )
-        shares = owners_collateral(island) - pledged
+        shares = owners_collateral(island) - pledged(island, layer)
         island.scratch[SHARES_WORTH] = shares
     return max(0, deposits + shares)
