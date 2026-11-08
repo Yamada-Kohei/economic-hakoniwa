@@ -66,7 +66,7 @@
   {% if short %}
   <ul class="plain-list">
     {% for f in short %}
-    <li><a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a>（{{ f.owner_name }}） ・ {{ f.status_text }}</li>
+    <li><a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a>（{{ f.owner_name }}） ・ {{ f.status_text }}{% if f.hint %}<br><small class="hint">{{ f.hint }}</small>{% endif %}</li>
     {% endfor %}
   </ul>
   {% else %}
@@ -77,6 +77,7 @@
   </div>
 
   {% if mine %}
+  <noscript><p class="hint">{% translate "国の倉庫の決まった売り買いの量は「1ターンの売り買いの量／備蓄の目標量」です。設定は置いた次のターンから動きます。命令の入力欄を使うには JavaScript を有効にしてください。" %}</p></noscript>
   <aside id="orders" class="panel report-orders" data-url="{% url 'api_orders' island.id %}" data-defs="{% url 'api_defs' %}"
          data-forms="warehouse_trade,set_warehouse_standing,set_subsidy" data-good="{{ good }}"
          data-heading="{% translate '市場の命令' %}"></aside>

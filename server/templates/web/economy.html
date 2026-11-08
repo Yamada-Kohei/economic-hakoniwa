@@ -61,7 +61,7 @@
 <details class="panel">
   <summary>{% translate "国勢の一覧" %} <small class="heading-date">{{ stats_turn|turn_date }}</small></summary>
   <table class="info">
-    {% for row in summary %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
+    {% for row in summary %}<tr><th>{{ row.label }}</th><td class="num">{{ row.text }}</td></tr>{% endfor %}
   </table>
 </details>
 {% endif %}

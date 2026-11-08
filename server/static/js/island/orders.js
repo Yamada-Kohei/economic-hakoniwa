@@ -46,6 +46,9 @@ export class OrderQueue {
     this.saving = Promise.resolve();
     el.addEventListener("click", (e) => this.handleClick(e));
     el.addEventListener("submit", (e) => this.handleSubmit(e));
+    el.addEventListener("change", (e) => {
+      if (e.target.form?.dataset.form === "set_warehouse_standing") this.standingQuantityLabel(e.target.form);
+    });
     // 政策の欄を開いたままにする（列を描き直しても閉じないように）
     el.addEventListener("toggle", (e) => {
       const key = e.target.dataset?.policy;
@@ -171,6 +174,13 @@ export class OrderQueue {
         <summary>最近の命令の結果</summary>
         <ul class="recent">${recent.join("") || `<li class="muted">なし</li>`}</ul>
       </details>`;
+    const standing = this.el.querySelector('[data-form="set_warehouse_standing"]');
+    if (standing) this.standingQuantityLabel(standing);
+  }
+
+  standingQuantityLabel(form) {
+    const labels = { buy: "1ターンに買う量", sell: "1ターンに売る量", reserve: "備蓄の目標量" };
+    form.querySelector("[data-standing-quantity]").textContent = labels[form.elements.kind.value] || "1ターンの売り買いの量／備蓄の目標量";
   }
 
   handleClick(e) {
@@ -198,6 +208,7 @@ export class OrderQueue {
       if (item && form) {
         for (const key of ["good", "kind", "quantity", "limit", "release"]) form.elements[key].value = item[key] ?? "";
         form.elements.turns.value = item.remaining ?? "";
+        this.standingQuantityLabel(form);
       }
     }
   }
@@ -312,10 +323,10 @@ export class OrderQueue {
         <form class="actions" data-form="set_warehouse_standing">
           <strong>国の倉庫の決まった売り買い</strong>
           ${standing || '<p class="muted">設定はありません。</p>'}
-          <p class="hint">品目ごとに1つ。置き直すと入れ替わります。買いは穀物の備蓄の後に予算の残りを使い、足りなければ比例で減らします。備蓄は安いときに目安まで買い、高いときに放出します。</p>
+          <p class="hint">品目ごとに1つ。置き直すと入れ替わります。置いた次のターンから動き、結果は市場の画面に出ます。買いは穀物の備蓄の後に予算の残りを使い、足りなければ比例で減らします。備蓄は安いときに目安まで買い、高いときに放出します。</p>
           <label>資源 <select name="good">${goods}</select></label>
           <label>種類 <select name="kind"><option value="buy">買う</option><option value="sell">売る</option><option value="reserve">備蓄</option><option value="stop">やめる</option></select></label>
-          <label>毎ターンの量（備蓄は目安） <input name="quantity" type="number" min="0" step="any"></label>
+          <label><span data-standing-quantity>1ターンの売り買いの量／備蓄の目標量</span> <input name="quantity" type="number" min="0" step="any"></label>
           <label>指値（買い・備蓄は必須） <input name="limit" type="number" min="0" step="any"></label>
           <label>放出の値段（備蓄は指値より高く） <input name="release" type="number" min="0" step="any"></label>
           <label>続けるターン数（空欄なら止めるまで） <input name="turns" type="number" min="1" step="1"></label>

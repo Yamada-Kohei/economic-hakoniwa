@@ -6,9 +6,10 @@
 同じ割合で直線に減らし、foreign_merchant.turns ターンで 0 になって去ります（2026-11-01 本人の
 カード「0まで減らして去る」。前は 120 ターンで急に去り、最後に値段を上げていた）。
 
-- 値段: 初めの値段（定義のレシピの原価 + 1 割。どの島も同じ）× foreign_merchant.multiplier × 島の
+- 値段: その島の初めの値段（島で使える作り方の原価 + 1 割）× foreign_merchant.multiplier × 島の
   物価（小売りの物価指数。建国のとき 1）。島の物価が上がれば、商人の値段も同じだけ上がります（外国
   の値段は島の物価と為替で動くが、商人には為替がないので、島の物価で代える。W-203 の一番小さい形）。
+  島で作れない財は、どの島でも同じ初めの値段を使います。
 - 品目: foreign_merchant.goods。1ターンの上限は、その財を作る標準の施設（定義の作り方のうち一番
   多く作るもの）1つの全力の産出に、減らす割合（taper）を掛けた量です。
 - 売りの代金は自国通貨で払い、島の外に出て消えます（仕訳の種類 merchant。お金が消える場面に数え、
@@ -89,7 +90,7 @@ def offers(
     """このターンに商人が売りに出すもの（財, 量, 値段）。来ていなければ空。"""
     if not active(island, config, turn):
         return []
-    base = initial_prices(defs, config)
+    base = initial_prices(defs, config, island.resources)
     factor = multiplier(island, config, turn)
     share = taper(island, config, turn)
     out = []
@@ -113,7 +114,7 @@ def bids(
         return []
     factor *= retail.cpi(island)  # 買い値も島の物価に合わせる（売り値と同じ）
     share = taper(island, config, turn)
-    base = initial_prices(defs, config)
+    base = initial_prices(defs, config, island.resources)
     out = []
     for good in sorted(config.get("foreign_merchant.goods")):
         if good not in defs.goods:

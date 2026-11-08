@@ -1,6 +1,7 @@
 import random
 
 from django.contrib import admin, messages
+from django.db import transaction
 from django.db.models import OuterRef, Subquery
 
 from server.orders.models import Order
@@ -119,7 +120,7 @@ class IslandAdmin(admin.ModelAdmin):
     )
     def make_inactive(self, request, queryset):
         at_war = self._at_war(queryset)
-        n = queryset.update(inactive=True)
+        n = self._set_inactive(queryset, True)
         self.message_user(request, f"{n} 島を休止中にしました")
         if at_war:
             self.message_user(
@@ -147,8 +148,31 @@ class IslandAdmin(admin.ModelAdmin):
 
     @admin.action(description="選んだ島の休止を解く")
     def make_active(self, request, queryset):
-        n = queryset.update(inactive=False)
+        n = self._set_inactive(queryset, False)
         self.message_user(request, f"{n} 島の休止を解きました")
+
+    @staticmethod
+    @transaction.atomic
+    def _set_inactive(queryset, inactive: bool) -> int:
+        """実際に切り替えた島のターンを残す。同じ操作の繰り返しでは起点を動かさない。"""
+        # ターン更新も ext 全体を書き戻すため、同じ順序で世界→島の鎖を取る。
+        world_ids = set(queryset.values_list("world_id", flat=True))
+        worlds = {
+            world.pk: world
+            for world in m.World.objects.filter(pk__in=world_ids).order_by("pk").select_for_update()
+        }
+        count = 0
+        for island in queryset.select_related("world").select_for_update(of=("self",)):
+            if island.inactive == inactive:
+                continue
+            island.inactive = inactive
+            island.ext = dict(island.ext or {})
+            island.ext["inactive_from" if inactive else "resumed_turn"] = worlds[
+                island.world_id
+            ].turn
+            island.save(update_fields=["inactive", "ext"])
+            count += 1
+        return count
 
     @admin.action(description="選んだ島を無人の島にする（持ち主を外す。島は残る）")
     def release_owner(self, request, queryset):

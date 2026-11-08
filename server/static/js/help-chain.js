@@ -186,7 +186,7 @@ function bindChips(root){root.querySelectorAll('.chip[data-g],.g-link').forEach(
 }));}
 
 // 産業ごとの表
-const ORDER=['農業','鉱業','エネルギー','鉄鋼','非鉄','石油','食品','繊維','消費財','機械','電子機器','自動車','造船','兵器','商業','教育'];
+const ORDER=['農業','鉱業','エネルギー','鉄鋼業','非鉄','石油','食品','繊維','消費財','機械','電子機器','自動車','造船','兵器','商業','教育'];
 const groupOf=f=>f.ind||({commerce:'商業',education:'教育'})[f.cat]||'その他';
 function renderTable(){
   const groups=new Map();

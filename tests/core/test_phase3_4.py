@@ -26,6 +26,7 @@ from hakoniwa_core.modules.politics import Politics, parliament_gate
 from hakoniwa_core.registry import OrderFailed
 from hakoniwa_core.state import (
     ACCOUNTING_SELF,
+    ACCOUNTING_TREASURY,
     OWNER_PRIVATE,
     OWNER_STATE,
     MarketRecord,
@@ -726,6 +727,179 @@ def test_price_floor_keeps_the_market_price_up(game, base):
     assert now >= price * 3
 
 
+@pytest.fixture
+def price_cap_case(game):
+    world = generate_world(1, 3, game.config, game.defs)
+    island = island_of(world, "mixed")
+    f = next(f for f in island.facilities if f.kind == "lumber_camp")
+    f.economy["wage"] = game.config.get("labor.initial_wage")
+    return world, island, f
+
+
+@pytest.mark.parametrize("accounting", [ACCOUNTING_SELF, ACCOUNTING_TREASURY])
+def test_price_cap_sells_facility_stock_below_cost(game, price_cap_case, accounting):
+    """費用を割る上限でも、施設が持つ木材は上限で約定する。"""
+    from hakoniwa_core import stock
+    from hakoniwa_core.economy.prices import unit_floor
+
+    world, island, f = price_cap_case
+    island.facilities = [f]
+    f.accounting = accounting
+    ctx = context(game, world)
+    floor = unit_floor(
+        game.defs, game.config, f, "wood", island.economy.prices, f.economy["wage"], 0
+    )
+    cap = max(1, floor // 2)
+    island.policy.price_cap["wood"] = cap
+    island.economy.prices["wood"] = cap
+    stock.add(f.stock, "wood", 10 * QUANTITY_SCALE, ctx.turn, game.defs.goods)
+    books = {}
+    market_mod.Market()._facility_orders(island, ctx, books, {})
+    book = books["wood"]
+    buy = auction.Order(20 * QUANTITY_SCALE, cap)
+    book.buys.append((buy, market_mod.Party("test", "gov", market_mod.Payer("gov"), 0, 0)))
+    bounds, _ = market_mod.Market._limits(island, ctx, "wood", book, {}, {})
+    result = auction.clear([buy], [o for o, _ in book.sells], cap, bounds=bounds)
+    assert result.volume > 0 and result.price == cap
+    assert all(o.limit <= cap for o, _ in book.sells if o.limit is not None)
+    # 作り方に使わない残品も、費用の下限を上限より優先しない。
+    farm = dataclasses.replace(
+        f, kind="farm", recipe="cotton", stock={}, economy={"wage": f.economy["wage"]}
+    )
+    island.facilities = [farm]
+    island.policy.price_cap["grain"] = island.economy.prices["grain"] = 1
+    stock.add(farm.stock, "grain", QUANTITY_SCALE, ctx.turn, game.defs.goods)
+    books = {}
+    market_mod.Market()._facility_orders(island, ctx, books, {})
+    assert all(o.limit <= 1 for o, _ in books["grain"].sells if o.limit is not None)
+
+
+@pytest.mark.parametrize(
+    "owner,accounting",
+    [
+        (OWNER_PRIVATE, ACCOUNTING_SELF),
+        (OWNER_STATE, ACCOUNTING_SELF),
+        (OWNER_STATE, ACCOUNTING_TREASURY),
+    ],
+)
+def test_price_cap_lowers_only_self_financing_targets(game, price_cap_case, owner, accounting):
+    """売り切れて需要があっても独立採算は減産し、国庫直轄は作り続ける。"""
+    world, island, f = price_cap_case
+    f.owner, f.accounting = owner, accounting
+    f.economy["target"] = fac.FULL
+    full = fac.outputs_of(game.defs, f)["wood"]
+    island.policy.price_cap["wood"] = island.economy.prices["wood"] = 1
+    island.markets = [MarketRecord("wood", 1, full, full * 2, full)]
+    f.economy["sales"] = {"wood": [full, full, 0]}
+    targets = []
+    for _ in range(6):
+        before = f.economy["target"]
+        after = market_mod.operating_target(island, f, context(game, world))
+        assert abs(after - before) <= round(
+            game.config.get("market.max_target_change") * fac.FULL + 0.5
+        )
+        f.economy["target"] = after
+        targets.append(after)
+    if accounting == ACCOUNTING_SELF:
+        assert targets[0] < fac.FULL and targets[-1] == 0
+    else:
+        assert targets[-1] > 0
+
+
+def test_price_cap_removal_restarts_production(game, price_cap_case):
+    world, island, f = price_cap_case
+    f.economy.update(target=0, expected={"wood": 0}, sales={})
+    f.stock.clear()
+    island.policy.price_cap["wood"] = island.economy.prices["wood"] = 1
+    island.markets = [MarketRecord("wood", 1, 0, 100 * QUANTITY_SCALE, 0)]
+    ctx = context(game, world)
+    assert market_mod.operating_target(island, f, ctx) == 0
+    island.policy.price_cap.clear()
+    assert market_mod.operating_target(island, f, ctx) > 0
+
+
+def test_production_subsidy_lowers_seller_floor(game, price_cap_case):
+    """品目とマスの補助率を合計し、期限切れ・救済・設備投資は数えない。"""
+    from hakoniwa_core import stock
+    from hakoniwa_core.economy.prices import subsidized_floor, unit_floor
+    from hakoniwa_core.units import round_money
+
+    world, island, f = price_cap_case
+    ctx = context(game, world)
+    prices = island.economy.prices
+    wage = f.economy["wage"]
+    floor = unit_floor(game.defs, game.config, f, "wood", prices, wage, 0)
+    assert (
+        subsidized_floor(island, game.defs, game.config, f, "wood", prices, wage, 0, ctx.turn)
+        == floor
+    )
+    island.policy.subsidies = [
+        {"kind": "production", "good": "wood", "rate": 2500, "until": ctx.turn},
+        {"kind": "production", "x": f.x, "y": f.y, "rate": 2500, "until": ctx.turn + 1},
+        {"kind": "production", "good": "wood", "rate": 9000, "until": ctx.turn - 1},
+        {"kind": "production", "good": "steel", "rate": 9000, "until": ctx.turn},
+        {"kind": "bailout", "x": f.x, "y": f.y, "rate": 9000, "until": ctx.turn},
+        {"kind": "capital", "good": "wood", "rate": 9000, "until": ctx.turn},
+    ]
+    expected = round_money(floor / 1.5)
+    assert (
+        subsidized_floor(island, game.defs, game.config, f, "wood", prices, wage, 0, ctx.turn)
+        == expected
+    )
+    island.facilities = [f]
+    f.economy["ask"] = {"wood": 1}
+    stock.add(f.stock, "wood", QUANTITY_SCALE, ctx.turn, game.defs.goods)
+    books = {}
+    market_mod.Market()._facility_orders(island, ctx, books, {})
+    order, party = books["wood"].sells[0]
+    assert order.limit == expected
+    assert market_mod._lowest_ask(ctx, island, order, party, "wood") == expected
+    # 補助で費用を回収できる上限なら、独立採算も需要に応じて再開する。
+    island.policy.price_cap["wood"] = prices["wood"] = expected + 1
+    f.stock.clear()
+    f.economy.update(target=0, expected={"wood": 0}, sales={})
+    island.markets = [MarketRecord("wood", expected + 1, 0, 10 * QUANTITY_SCALE, 0)]
+    assert market_mod.operating_target(island, f, ctx) > 0
+
+
+def test_production_subsidy_raises_power_fuel_bid(game):
+    from hakoniwa_core.economy.prices import input_limit, production_subsidy_rate, variable_profit
+    from hakoniwa_core.units import money_of, part
+
+    world = generate_world(1, 3, game.config, game.defs)
+    island = island_of(world, "mixed")
+    f = next(f for f in island.facilities if f.kind == "thermal_power_plant")
+    f.owner, f.accounting = OWNER_PRIVATE, ACCOUNTING_SELF
+    # 売上の補助分が燃料の指値に現れるよう、賃金だけで売上を使い切らない条件にする。
+    f.economy["wage"] = game.config.get("labor.initial_wage") // 100
+    prices = island.economy.prices
+    prices["electricity"] = 1000
+    ctx = context(game, world)
+    wage = f.economy["wage"]
+    plain = input_limit(game.defs, game.config, f, "coal", prices, wage, 0)
+    island.policy.subsidies = [
+        {"kind": "production", "good": "electricity", "rate": 10000, "until": ctx.turn}
+    ]
+    subsidy = production_subsidy_rate(island, game.defs, game.config, f, ctx.turn)
+    limit = input_limit(game.defs, game.config, f, "coal", prices, wage, 0, subsidy=subsidy)
+    assert limit > plain
+    revenue = money_of(prices["electricity"], fac.outputs_of(game.defs, f)["electricity"])
+    assert variable_profit(game.defs, game.config, f, prices, wage, 0, subsidy) == variable_profit(
+        game.defs, game.config, f, prices, wage, 0
+    ) + part(revenue, subsidy)
+    island.facilities = [f]
+    f.stock.clear()
+    books = {}
+    market_mod.Market()._facility_orders(island, ctx, books, {})
+    assert market_mod.Market._bid(ctx, f, "coal", prices, 0, subsidy=subsidy)[1] == limit
+    # 品切れが続けば、通常の市場入口でも補助込みの買い上がり余地を使う。
+    f.economy["short"] = {"coal": "price"}
+    f.economy[market_mod.BIDS] = {"turn": ctx.turn - 1, "limits": {"coal": limit}}
+    books = {}
+    market_mod.Market()._facility_orders(island, ctx, books, {})
+    assert max(o.limit for o, _ in books["coal"].buys) > plain
+
+
 def test_half_price_plan_queues_and_saves_but_keeps_producing(game, base):
     """揺さぶり: 計画経済の島で消費財の公定価格を原価の半分にすると、行列と強制貯蓄は増えるが、
     生産は止まらない。"""
@@ -865,3 +1039,32 @@ def test_planned_traders_sell_at_the_bloc_price(game, base):
     _, sells, _, asks = r._bloc_orders(bloc, members, good, {}, {})
     [order] = [o for o, a in zip(sells, asks, strict=True) if a.facility is f]
     assert order.limit == 1234
+
+
+def test_power_plant_selling_all_output_keeps_worker_shortage(game, monkeypatch):
+    """人手が足りない発電所が全量売れたら、産出量の切り捨てで稼働率と理由を変えない。"""
+    from hakoniwa_core import stock
+    from hakoniwa_core.modules import production
+
+    world = generate_world(1, 1, game.config, game.defs)
+    island = world.islands[1]
+    plant = next(f for f in island.facilities if f.kind == "thermal_power_plant")
+    plant.owner, plant.accounting = OWNER_PRIVATE, ACCOUNTING_SELF
+    plant.workers = fac.workers_of(game.defs, plant) // 3 + 1
+    plant.economy["target"] = fac.FULL
+    stock.add(plant.stock, "coal", 100 * QUANTITY_SCALE, world.turn, game.defs.goods)
+    island.policy.price_cap["electricity"] = 1  # 家計の買いが供給を超え、全量売れる
+
+    def fractional_output(island, defs, config, f):
+        f.economy["productivity"] = 1001
+
+    monkeypatch.setattr(production.productivity, "update", fractional_output)
+    expected = fac.labor_ratio(game.defs, plant)
+    out = fac.scale(fac.recipe_of(game.defs, plant)["outputs"]["electricity"], 1001)
+    assert fac.ratio(fac.scale(out, expected), out) < expected  # 元の逆算で1下がる条件
+    production.Production().run_island(island, context(game, world, "production"))
+    offered, sold, _ = plant.economy["sales"]["electricity"]
+    assert offered == sold > 0
+    assert island.stats["power.demand"] > island.stats["power.capacity"]
+    assert plant.operating_rate == expected
+    assert plant.status == "workers"

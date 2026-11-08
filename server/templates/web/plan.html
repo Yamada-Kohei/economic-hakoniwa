@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% load i18n static calendar_tags %}
+{% extends "base.html" %}{% load i18n static calendar_tags display_tags %}
 {% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 {% include "web/report_header.html" %}
@@ -39,8 +39,8 @@
         {% for r in p.rows %}
         <tr>
           <td><a href="{% url 'island_market' island.id %}?good={{ r.good }}">{{ r.name }}</a>{% if r.held %} <small class="muted">{% translate "（据え置く財）" %}</small>{% endif %}</td>
-          <td>{{ currency }}{{ r.price|floatformat:"-1g" }}{% if r.manual %} <small class="muted">{% translate "（命令で決めた値段）" %}</small>{% endif %}</td>
-          <td>{% if r.cost %}{{ currency }}{{ r.cost|floatformat:"-1g" }}{% endif %}</td>
+          <td>{{ currency|currency_prefix }}{{ r.price|floatformat:"-1g" }}{% if r.manual %} <small class="muted">{% translate "（命令で決めた値段）" %}</small>{% endif %}</td>
+          <td>{% if r.cost %}{{ currency|currency_prefix }}{{ r.cost|floatformat:"-1g" }}{% endif %}</td>
           <td>{% if r.gap is not None %}{% if r.outside %}<span class="warning">{% endif %}{% if r.gap > 0 %}+{% endif %}{{ r.gap }}%{% if r.outside %}</span>{% endif %}{% endif %}</td>
           <td>{% if r.goal is not None %}{{ r.goal|floatformat:"1g" }} {{ r.unit }}{% endif %}</td>
           <td>{% if r.made %}{{ r.made|floatformat:"1g" }} {{ r.unit }}{% endif %}</td>
@@ -99,8 +99,8 @@
     <table class="goods">
       <thead><tr><th>{% translate "財" %}</th><th>{% translate "上限" %}</th><th>{% translate "下限" %}</th><th>{% translate "今の値段" %}</th></tr></thead>
       <tbody>
-        {% for r in p.caps %}<tr><td>{{ r.name }}</td><td>{{ currency }}{{ r.price|floatformat:"-1g" }}</td><td></td><td>{% if r.market is not None %}{{ currency }}{{ r.market|floatformat:"-1g" }}{% endif %}</td></tr>{% endfor %}
-        {% for r in p.floors %}<tr><td>{{ r.name }}</td><td></td><td>{{ currency }}{{ r.price|floatformat:"-1g" }}</td><td>{% if r.market is not None %}{{ currency }}{{ r.market|floatformat:"-1g" }}{% endif %}</td></tr>{% endfor %}
+        {% for r in p.caps %}<tr><td>{{ r.name }}</td><td>{{ currency|currency_prefix }}{{ r.price|floatformat:"-1g" }}</td><td></td><td>{% if r.market is not None %}{{ currency|currency_prefix }}{{ r.market|floatformat:"-1g" }}{% endif %}</td></tr>{% endfor %}
+        {% for r in p.floors %}<tr><td>{{ r.name }}</td><td></td><td>{{ currency|currency_prefix }}{{ r.price|floatformat:"-1g" }}</td><td>{% if r.market is not None %}{{ currency|currency_prefix }}{{ r.market|floatformat:"-1g" }}{% endif %}</td></tr>{% endfor %}
         {% if not p.caps and not p.floors %}<tr><td colspan="4" class="muted">{% translate "決めていません。" %}</td></tr>{% endif %}
       </tbody>
     </table>

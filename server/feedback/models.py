@@ -2,7 +2,7 @@
 
 書いてもらうのは「何が起きたか」の 1 欄だけ（種類は任意）。世界・島・ターン・開いていた画面の URL・
 ブラウザと画面の大きさ・ゲームの版・直前に出した命令・画面で起きた JavaScript のエラーは、
-送るときに自動で添える（services.py）。管理画面で一覧・状態・メモを扱う。
+送るときに自動で添える（services.py）。管理画面で一覧・状態・本人への返事・メモを扱う。
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from server.world.models import Island
 
 
 class BugReport(models.Model):
-    STATUS_CHOICES = [("new", "未読"), ("working", "対応中"), ("done", "済み")]
+    STATUS_CHOICES = [("new", "未読"), ("read", "読んだ"), ("working", "対応中"), ("done", "済み")]
     KIND_CHOICES = [
         ("bug", "動かない・おかしい"),
         ("display", "表示・使いにくさ"),
@@ -42,6 +42,8 @@ class BugReport(models.Model):
     text = models.TextField("何が起きたか", max_length=2000)
     status = models.CharField("状態", max_length=16, choices=STATUS_CHOICES, default="new")
     note = models.TextField("メモ（管理者だけが読む）", blank=True, default="")
+    reply = models.TextField("返事（送った人に見せる）", blank=True, default="")
+    replied_at = models.DateTimeField("返事を書いた時刻", null=True, blank=True)
     url = models.CharField("開いていた画面", max_length=300, blank=True, default="")
     version = models.CharField("ゲームの版", max_length=40, blank=True, default="")
     via = models.CharField("送った入り口", max_length=8, default="web")

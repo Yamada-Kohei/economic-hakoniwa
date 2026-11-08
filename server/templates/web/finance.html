@@ -8,7 +8,7 @@
     <section class="panel" id="central-bank">
       <h2>{% translate "中央銀行" %}</h2>
       <table class="info">
-        <tr><th>{% translate "政策金利" %}</th><td>{{ central_bank.policy_rate|floatformat:2 }}%</td></tr>
+        <tr><th>{% translate "政策金利" %}</th><td class="num">{{ central_bank.policy_rate|floatformat:2 }}%</td></tr>
         <tr><th>{% translate "独立" %}</th><td>{% if central_bank.independent %}{% translate "独立（政策金利は中央銀行が物価と失業率を見て決めます）" %}{% else %}{% translate "政府の下（政策金利と国債の売買を政府が決めます）" %}{% endif %}{% if central_bank.unlock_turn %}<br><small>{% blocktranslate with t=central_bank.unlock_turn|turn_date %}{{ t }}までは切り替えられません{% endblocktranslate %}</small>{% endif %}</td></tr>
         <tr><th>{% translate "国債の売買の方針" %}</th><td>{{ central_bank.bond_trade_text }}</td></tr>
       </table>
@@ -19,7 +19,7 @@
       <h2>{% if stats_turn is not None %}{% translate "金利・お金・融資" %} <small class="heading-date">{{ stats_turn|turn_date }}</small>{% else %}{% translate "金利・お金・融資" %}{% endif %}</h2>
       {% if stats %}
       <table class="info">
-        {% for row in stats %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
+        {% for row in stats %}<tr><th>{{ row.label }}</th><td class="num">{{ row.text }}{% if row.yield_capped %} <strong class="warning">{% translate "上限" %}</strong>{% endif %}</td></tr>{% endfor %}
       </table>
       {% else %}
       <p class="muted">{% translate "未集計です。" %}</p>

@@ -137,6 +137,57 @@ def test_admin_lists_and_changes_the_status(world):
     assert res.status_code == 302 and BugReport.objects.get(pk=number).status == "working"
 
 
+def test_reporter_sees_status_and_reply(world):
+    """一覧では未読のまま、管理者が開くと既読になり、本人だけが返事を読める。"""
+    client, user, _ = _player(world)
+    number = _post(client, text="返事を読みたい").json()["id"]
+    report = BugReport.objects.get(pk=number)
+    assert client.get(URL).json()["reports"][0]["replied_at"] is None
+    admin = User.objects.create_superuser("reply-boss", password="a-long-pass-123")
+    boss = Client()
+    boss.force_login(admin)
+    boss.get("/admin/feedback/bugreport/")
+    report.refresh_from_db()
+    assert report.status == "new"
+    change_url = f"/admin/feedback/bugreport/{number}/change/"
+    assert boss.get(change_url).status_code == 200
+    report.refresh_from_db()
+    assert report.status == "read"
+    assert client.get(URL).json()["reports"][0]["status_name"] == "読んだ"
+
+    reply = "PR #123 で直しました。\n次の更新で反映します。"
+    res = boss.post(change_url, {"status": "working", "reply": reply, "note": "内部のメモ"})
+    assert res.status_code == 302
+    report.refresh_from_db()
+    replied_at = report.replied_at
+    assert replied_at is not None
+    row = client.get(URL).json()["reports"][0]
+    assert row["reply"] == reply and row["status_name"] == "対応中"
+    assert row["replied_at"] == replied_at.isoformat(timespec="seconds")
+    assert "note" not in row and "内部のメモ" not in json.dumps(row, ensure_ascii=False)
+
+    # メモや状態だけの編集・再閲覧で返事の時刻と状態を戻さない
+    assert boss.get(change_url).status_code == 200
+    boss.post(change_url, {"status": "done", "reply": reply, "note": "調査完了"})
+    report.refresh_from_db()
+    assert report.status == "done" and report.replied_at == replied_at
+    _, token = keys.issue(user)
+    text, error = _tool(_keyed(token), "bug_reports")
+    assert not error and json.loads(text)["reports"] == client.get(URL).json()["reports"]
+
+    other = User.objects.create_user("other-reporter", password="a-long-pass-123")
+    other_client = Client()
+    other_client.force_login(other)
+    assert other_client.get(URL).json()["reports"] == []
+    assert other_client.get(change_url).status_code == 302
+    html = client.get("/").content.decode()
+    assert "送った報告" in html and "data-bug-history" in html
+
+    boss.post(change_url, {"status": "done", "reply": "", "note": "返事を取り下げた"})
+    report.refresh_from_db()
+    assert report.reply == "" and report.replied_at is None
+
+
 def test_nul_characters_are_dropped(world):
     """PostgreSQL は文字列の中の NUL を受けないので、報告の文・URL・添え物から除く。"""
     client, _, _ = _player(world)

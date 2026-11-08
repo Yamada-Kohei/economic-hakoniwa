@@ -22,7 +22,7 @@
         <tr data-facility-state="{% if not f.built %}{% translate '建設中' %}{% else %}{{ f.status_text|default:'稼働中' }}{% endif %}">
           <td>{% if f.on_map %}<a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a>{% else %}{{ f.name }}{% endif %}<br><small class="muted">{{ f.kind_name }}{% if f.size > 1 %} {% blocktranslate with size=f.size %}規模 {{ size }}{% endblocktranslate %}{% endif %}{% if f.grade_name and not f.grading %} {{ f.grade_name }}{% endif %}{% if f.grading %} {% blocktranslate with grade=f.grading %}（{{ grade }}にする工事）{% endblocktranslate %}{% elif f.expands %} {% translate "（建て増し）" %}{% endif %}</small></td>
           <td>{{ f.owner_name }}<br><small class="muted">{{ f.accounting_name }}</small>{% if f.firm_name %}<br><small>{{ f.firm_name }}</small>{% endif %}</td>
-          <td>{% if not f.built %}{% translate "建設中" %}{% if f.status_text and f.status_text != "建設中" %}<br><small>{{ f.status_text }}</small>{% endif %}{% else %}{{ f.status_text|default:"稼働中" }}{% if f.transition %}<br><small>{{ f.transition }}</small>{% endif %}{% endif %}</td>
+          <td>{% if not f.built %}{% translate "建設中" %}{% if f.status_text and f.status_text != "建設中" %}<br><small>{{ f.status_text }}</small>{% endif %}{% else %}{{ f.status_text|default:"稼働中" }}{% if f.transition %}<br><small>{{ f.transition }}</small>{% endif %}{% endif %}{% if f.hint %}<small class="hint facility-hint">{{ f.hint }}</small>{% endif %}</td>
           <td class="num">{{ f.workers }}{% if f.workers_needed %} / {{ f.workers_needed }}{% endif %}</td>
           <td class="num">{% if f.engineers_needed %}{{ f.engineers }} / {{ f.engineers_needed }}{% elif f.engineers_general %}{{ f.engineers_general }}{% endif %}</td>
           <td class="num">{% if f.operating_rate is not None %}{{ f.operating_rate }}%{% endif %}</td>
@@ -181,7 +181,7 @@
   <h2>{% translate "国全体の施設の統計" %}</h2>
   {% if stats %}
   <table class="info">
-    {% for row in stats %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
+    {% for row in stats %}<tr><th>{{ row.label }}</th><td class="num">{{ row.text }}</td></tr>{% endfor %}
   </table>
   {% else %}
   <p class="muted">{% translate "未集計です。" %}</p>

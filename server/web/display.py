@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import replace
 from typing import Any
 
@@ -126,7 +127,7 @@ def price_text(good: str, value: float, currency: str = "") -> str:
     """財 good の 1 単位あたりの値段を、見せる単位 1 つあたりの値段の文に（安ければ小数も）。"""
     shown_price = price(good, value)
     if isinstance(shown_price, float) and not shown_price.is_integer():
-        return f"{'-' if shown_price < 0 else ''}{currency}{abs(shown_price):,.1f}"
+        return f"{'-' if shown_price < 0 else ''}{currency_prefix(currency)}{abs(shown_price):,.1f}"
     return money_text(int(shown_price), currency)
 
 
@@ -190,6 +191,8 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
     }
     if not fdef:
         return info
+    if mine:
+        info["hint"] = status_hint(f)
     from server.web import monuments  # 記念碑の碑文は display を使うので、ここで読み込む
 
     note = monuments.detail(row.island, row)  # 記念碑なら、碑文と自作の絵
@@ -694,8 +697,13 @@ BOOK_ITEMS = [
 BOOK_TURNS = 10  # 損益の合計を出すターン数
 
 
+def currency_prefix(currency: str) -> str:
+    """英数字で終わる通貨記号と金額の間に半角空白を置く。"""
+    return currency + " " if re.search(r"[A-Za-z0-9]$", currency) else currency
+
+
 def money_text(amount: int, currency: str = "") -> str:
-    return f"{'-' if amount < 0 else ''}{currency}{abs(int(amount)):,}"
+    return f"{'-' if amount < 0 else ''}{currency_prefix(currency)}{abs(int(amount)):,}"
 
 
 def facility_books(row: m.Facility, f: Facility, currency: str = "") -> dict[str, Any] | None:
@@ -765,6 +773,89 @@ def status_text(f: Facility) -> str:
     if good:
         text += f"（{get_game().defs.name('goods', good)}）"
     return text
+
+
+# 生産の止まり・調整のわけに合わせ、今ある命令で行える手を案内する。
+STATUS_HINTS = {
+    "starting": "次の更新で動き出します。原料と電力の供給を確かめてください。",
+    "workers": "「移民の受け入れ」や「住宅の建設（国の床）」で通勤圏の人手を増やせます。",
+    "wages": (
+        "「補助金の変更」で救済補助を出せます。"
+        "国庫直轄の施設は国庫と「予算の変更」の該当費目も確かめてください。"
+    ),
+    "input": (
+        "「二国間契約の申し込み」で原料を輸入するか、"
+        "「国の倉庫のこのターンの売り買い」で原料を売り出せます。"
+    ),
+    "input_price": (
+        "原料の「値段の上限（公共料金など）の変更」を見直すか、"
+        "「二国間契約の申し込み」で原料を輸入できます。"
+    ),
+    "funds": (
+        "「補助金の変更」で生産補助を出すか、"
+        "国営なら「国営施設の会計方式の変更」で国庫直轄にできます。"
+    ),
+    "public_price": (
+        "「予算の変更」で教育費を増やすか、「二国間契約の申し込み」で教材を輸入できます。"
+    ),
+    "power": (
+        "「施設の建設」で発電所を増やし、「送電線の敷設」でつなげられます。"
+        "発電所の原料も確かめてください。"
+    ),
+    "no_grid": "「送電線の敷設」で発電所と施設をつなげられます。",
+    "halted": "停止期間が終わるのを待ち、原料と電力の供給を確かめてください。",
+    "riot": "「予算の変更」で治安費を見直し、食料や失業などの不満の原因を減らせます。",
+    "no_demand": "「送電線の敷設」で電力を使う町や施設につなげられます。",
+    "power_price": (
+        "電力の「値段の上限（公共料金など）の変更」を見直すか、"
+        "「補助金の変更」で生産補助を出せます。"
+    ),
+    "target": (
+        "「国の倉庫のこのターンの売り買い」で買い取る・「二国間契約の申し込み」で輸出する・"
+        "「補助金の変更」で生産補助を出すことができます。"
+    ),
+    "engineers": "「施設の建設」で大学を増やすか、「移民の受け入れ」で技術者を受け入れられます。",
+    "equipment": (
+        "「二国間契約の申し込み」で補修に要る財を輸入するか、"
+        "「国の倉庫のこのターンの売り買い」で売り出せます。"
+        "国営なら「予算の変更」で公共事業費も確保してください。"
+    ),
+    "recipe_change": (
+        "切り替えたターンは稼働が下がります。次の更新まで待ち、新しい方式の原料を確かめてください。"
+    ),
+    "cargo": "「二国間契約の申し込み」で貿易する荷を増やせます。",
+    "business": "「銀行の政策の変更」や「金融政策の変更」で融資の条件を見直せます。",
+    "construction": "工事に要る資材と人手がそろえば進みます。",
+    "repair": "「予算の変更」で公共事業費を確保し、修理の資材を供給できます。",
+    "no_zone": (
+        "「工業団地・オフィス街の指定」で地形・資源・通勤圏の合う空き地を工業団地にできます。"
+    ),
+}
+
+
+def status_hint(f: Facility) -> str:
+    """施設の状態に対応する持ち主向けの手。画面・API・国の要約で共用する。"""
+    if not f.built:
+        if f.ext.get("short_funds") or f.ext.get("short_wages"):
+            if f.ext.get("private_entry"):
+                return (
+                    "会社の資金を待つ間に、「二国間契約の申し込み」で工事の資材を輸入し、"
+                    "資材不足を減らせます。"
+                )
+            return "「予算の変更」で公共事業費を増やし、国庫の残高も確かめてください。"
+        if f.ext.get("waiting"):
+            return STATUS_HINTS["input"]
+        if f.ext.get("no_workers_turns"):
+            return STATUS_HINTS["workers"]
+        return STATUS_HINTS["repair" if f.ext.get("repair") else "construction"]
+    kind = f.status.partition(":")[0]
+    if kind == "halted":
+        reason = f.ext.get("halt_reason")
+        if reason in HALT_REASONS:
+            return (
+                "外交の画面で戦争と占領の状況を確かめ、「条約の提案」で停戦や講和を申し込めます。"
+            )
+    return STATUS_HINTS.get(kind, "")
 
 
 def goods_list(amounts: dict[str, int]) -> list[dict[str, Any]]:
@@ -1545,15 +1636,26 @@ def visible_logs(logs, mine: bool, island=None):
 
 
 def log_entries(logs) -> list[dict[str, Any]]:
-    """ターンログの行を、文面とリンク先のマス付きで。"""
+    """公開してよいターンログの行を、文面・施設の種類・リンク先のマス付きで。"""
     game = get_game()
     out = []
     for log in logs:
         args = log.args or {}
         if log.kind in TITLE_LOGS and isinstance(args.get("industry"), str):
             args = {**args, "title": title_name(args["industry"])}
+        if log.kind in {"grade_started", "grade_done"} and isinstance(args.get("grade"), str):
+            grade = args["grade"]
+            args = {**args, "grade": grade if grade.startswith("grade_") else f"grade_{grade}"}
+        facility, recipe = args.get("facility"), args.get("recipe")
+        if isinstance(facility, str) and isinstance(recipe, str):
+            name = recipe.removeprefix(f"{facility}_")
+            if name in game.defs.facilities.get(facility, {}).get("recipes", {}):
+                args = {**args, "recipe": game.defs.recipe_name(facility, name)}
         text = format_log(game.defs, log.kind, args, calendar=game.calendar)
         entry = {"turn": log.turn, "kind": log.kind, "text": text}
+        facility = args.get("facility")
+        if isinstance(facility, str) and facility in game.defs.facilities:
+            entry.update(facility=facility, facility_name=game.defs.name("facilities", facility))
         if "x" in args and "y" in args:
             entry["tile"] = (args["x"], args["y"])
         out.append(entry)
@@ -1685,7 +1787,8 @@ def stat_text(key: str, value: float, unit: str, currency: str = "") -> str:
         return money_text(round(value), unit.removeprefix("money:"))
     if unit == "money":
         if abs(value) < 100 and not float(value).is_integer() and _per_unit(key):
-            return f"{'-' if value < 0 else ''}{currency}{abs(value):,.1f}"  # 安い 1 単位の値段
+            # 安い 1 単位の値段
+            return f"{'-' if value < 0 else ''}{currency_prefix(currency)}{abs(value):,.1f}"
         return money_text(round(value), currency)
     if unit == "fx":
         return f"{value:.4f}"

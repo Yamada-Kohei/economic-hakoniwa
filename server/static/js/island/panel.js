@@ -252,6 +252,7 @@ export class TilePanel {
     }
     if (f.priority != null) rows.push(["優先度", `${f.priority}${f.priority_changed ? "（変更済み）" : ""}`]);
     if (f.status_text) rows.push(["状態", f.status_text]);
+    if (f.hint) rows.push(["できること", f.hint]);
     if (f.halted_until != null) rows.push(["停止期間", `${turnDate(f.halted_until)}まで`]);
     if (f.closing != null) rows.push(["閉鎖", `${turnDate(f.closing)}から閉鎖中（在庫を売り切ったら借入を返してマスを空けます）`]);
     if (f.foreclosed) {
@@ -545,19 +546,20 @@ export class TilePanel {
     return `原料の${names}は国内では作れず、輸入が必要です。貿易での入手先・外貨・船と港を確かめてください。国内で作れないことだけでは、操業できないとは限りません。`;
   }
 
-  buildInfo(facility) {
+  buildInfo(facility, recipe) {
     const d = this.defs.facilities[facility];
     if (!d) return "";
+    const r = d.recipes?.[recipe] || Object.values(d.recipes || {})[0] || {};
     const c = d.construction;
     const bits = [`工期 ${c.turns} ターン`];
     if (c.labor) bits.push(`建設労働者 ${c.labor.toLocaleString()} 人`);
-    if (!d.monument) bits.push(`完成後の従業者 ${d.workers.toLocaleString()} 人`);
+    if (!d.monument) bits.push(`完成後の従業者 ${(r.workers ?? d.workers).toLocaleString()} 人`);
     const materials = Object.entries(c.materials);
     if (materials.length) bits.push(`建設資材 ${materials.map(([g, q]) => `${this.goodName(g)} ${q} ${this.unitName(g)}`).join("・")}`);
     if (d.coastal) bits.push("海に面したマスのみ");
     if (d.near_capital != null) bits.push(`首都から ${d.near_capital} マス以内`);
     if (d.max_per_island != null) bits.push(`1国 ${d.max_per_island} か所まで`);
-    return escapeHtml(bits.join(" ／ "));
+    return escapeHtml(bits.join(" ／ ")) + (r.build_hint ? `<br>${escapeHtml(r.build_hint)}` : "");
   }
 
   /** 地下建設の数値は定義の hide からだけ読む。API にない間は指定を送らない。 */
@@ -657,10 +659,10 @@ export class TilePanel {
     if (form?.dataset.form !== "build") return;
     if (e.target.name === "facility") {
       form.querySelector("[data-slot=recipe]").innerHTML = this.recipeSelect(e.target.value);
-      form.querySelector("[data-slot=build-info]").innerHTML = this.buildInfo(e.target.value);
       form.querySelector("[data-slot=note]").innerHTML = this.noteField(e.target.value);
       form.querySelector("[data-slot=hide]").innerHTML = this.hideField(e.target.value);
     }
+    form.querySelector("[data-slot=build-info]").innerHTML = this.buildInfo(form.elements.facility.value, form.elements.recipe?.value);
     this.checkBuild();
   }
 
@@ -740,6 +742,8 @@ export class TilePanel {
   async checkBuild() {
     const payload = this.buildPayload();
     if (!payload) return;
+    const estimate = this.el.querySelector("[data-slot=build-info]");
+    if (estimate) estimate.innerHTML = this.buildInfo(payload.facility, payload.recipe);
     const request = this.request;
     const res = await sendJson(this.el.dataset.checkUrl, "POST", { kind: "build", payload });
     const slot = this.el.querySelector("[data-slot=check]");

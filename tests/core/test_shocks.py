@@ -298,8 +298,14 @@ def test_power_outage_moves_price_within_band_and_recovers(game, base, control):
         if previous and price:
             assert price <= previous * (1 + band) + 1  # 値幅の上端で止まる
     assert max(p for p in prices[:halt] if p) > before  # 停電の間は上がる
-    end, base_end = rows[-1]["prices"][power], control[-1]["prices"][power]
-    assert 0.5 * base_end <= end <= 2 * base_end  # 停電の後に戻る
+    # 停電の後に戻る: 発電所が動き出してから2年目の平均を、揺さぶりのない島の同じターンと比べる。
+    # 前は 120 ターン目の値段で比べていたが、2026-11-08 の商人の値段の直しの後、民営の火力発電所が
+    # 差し押さえで取り壊されて水力の工事が終わる前の電力不足が 120 ターン目に重なった（揺さぶりの
+    # ない島でも 110 ターン目に同じ取り壊しがある。後回しの W-254）
+    span = range(halt + 12, halt + 24)
+    after = sum(rows[i]["prices"][power] for i in span) / len(span)
+    base_after = sum(control[i]["prices"][power] for i in span) / len(span)
+    assert 0.5 * base_after <= after <= 2 * base_after
 
 
 # --- 計画経済 ---------------------------------------------------------------------

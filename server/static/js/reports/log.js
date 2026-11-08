@@ -18,6 +18,7 @@ let loadedRange = [];
 
 function render() {
   const rows = entries.filter((e) => (!fields.kind.value || e.kind === fields.kind.value) &&
+    (!fields.facility.value || e.facility === fields.facility.value) &&
     (fields.x.value === "" || (e.tile?.[0] === fields.x.valueAsNumber && e.tile?.[1] === fields.y.valueAsNumber)));
   output.replaceChildren();
   const groups = new Map();
@@ -58,6 +59,7 @@ async function load() {
   }
   const serial = ++request;
   const oldKind = fields.kind.value || params.get("kind") || "";
+  const oldFacility = fields.facility.value || params.get("facility") || "";
   status.textContent = "読み込み中…";
   try {
     const data = await getJson(`${form.dataset.url}?${new URLSearchParams({ from: start, to: end })}`);
@@ -69,11 +71,15 @@ async function load() {
     const kinds = new Map(entries.map((e) => [e.kind, e.text]));
     for (const [kind, text] of kinds) fields.kind.add(new Option(text, kind));
     fields.kind.value = kinds.has(oldKind) ? oldKind : "";
+    fields.facility.replaceChildren(new Option("すべて", ""));
+    const facilities = new Map(entries.filter((e) => e.facility).map((e) => [e.facility, e.facility_name]));
+    for (const [facility, name] of facilities) fields.facility.add(new Option(name, facility));
+    fields.facility.value = facilities.has(oldFacility) ? oldFacility : "";
     output.hidden = false;
     document.getElementById("paged-log").hidden = true;
     render();
     const query = new URLSearchParams({ from: start, to: end });
-    for (const key of ["kind", "x", "y"]) if (fields[key].value !== "") query.set(key, fields[key].value);
+    for (const key of ["kind", "facility", "x", "y"]) if (fields[key].value !== "") query.set(key, fields[key].value);
     history.replaceState(null, "", `?${query}`);
   } catch {
     if (serial === request) status.textContent = "読み込めませんでした。直前の表示はそのままです。範囲を確かめて読み直してください。";
@@ -81,4 +87,5 @@ async function load() {
 }
 form.addEventListener("submit", (event) => { event.preventDefault(); load(); });
 fields.kind.addEventListener("change", () => { if (loaded) render(); });
+fields.facility.addEventListener("change", () => { if (loaded) render(); });
 if (params.has("from") || params.has("to")) load();

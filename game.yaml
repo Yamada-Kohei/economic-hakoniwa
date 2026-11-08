@@ -408,8 +408,9 @@ firms:
   # 超えて売れ行きに追いつかないと設備を増やす）
   invest_turns: 6
   invest_use: 0.9
-  # 工業団地のほかに、指定のない人の住んでいないマスにも建つ施設（回6。開墾は国の用途の指定を待たない）
-  open_land: [farm, fishing_port]
+  # 工業団地のほかに、指定のない人の住んでいないマスにも建つ施設（回6。開墾は国の用途の指定を待たない。2026-11-08 に
+  # 土地で営む林業場・採石場・鉱山・油井・牧場を足した。現実の林業・鉱業・牧畜は町の工業地の指定を待たない）
+  open_land: [farm, fishing_port, lumber_camp, quarry, mine, oil_well, ranch]
   equity_share: 0.3     # 建設費のうち資産を持つ層が出資する割合（残りは建設資金の融資）
   # 創業融資（2026-11-03）: 実績のない会社（資本家階級が新しく起こす会社と、建国の後にできて track_record_turns
   # ターンたたない会社）は、銀行が貸すのを建設費の (1 − startup_equity_share) までにし、残りを出資で用意する
@@ -544,7 +545,8 @@ fiscal:
   # arrears は前のターンまでの未払い賃金（回3。お金が入れば先に払う）
   # 支払いの順番。[ ] の組の中は、国庫が足りなければ見積もりに同じ割合を掛けて取り置く（今月の人件費と
   # 運営費。回5）。昔の未払い賃金（arrears）は失業手当の後に残ったお金で払う
-  payment_order: [bonds, [civil_servants, state_facilities, education, security, defense_personnel], unemployment, arrears, construction, housing, defense_procurement, subsidies, warehouse]
+  # contract_supply は売りの二国間契約で国の倉庫に足りない分の買い（外国との約束なので利払いの次。FX-24）
+  payment_order: [bonds, contract_supply, [civil_servants, state_facilities, education, security, defense_personnel], unemployment, arrears, construction, housing, defense_procurement, subsidies, warehouse]
   # 銀行の救済と預金保護（支出の項目の外）は、この項目の入った組までの次のターンの支払いを国庫に残した額から出す
   rescue_after: civil_servants
   # 年の予算を命令で決める項目（毎ターン予算の12分の1まで使う）。construction は公共事業費

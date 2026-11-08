@@ -13,6 +13,7 @@ from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
 from hakoniwa_core.modules import infrastructure as works
 from hakoniwa_core.modules.market import MERCHANT, Book, Market, Party
+from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.trade import island_state, merchant
 from hakoniwa_core.units import QUANTITY_SCALE, scale_price
 from tests.core.test_finance import context
@@ -30,7 +31,7 @@ def test_merchant_bids_for_the_same_goods_below_the_selling_price(game, base):
     island = copy.deepcopy(base.islands[1])
     turn = _trading(island, base.turn)
     config, defs = game.config, game.defs
-    prices = initial_prices(defs, config)
+    prices = initial_prices(defs, config, island.resources)
     bids = {g: (q, p) for g, q, p in merchant.bids(island, defs, config, turn)}
     offers = {g: (q, p) for g, q, p in merchant.offers(island, defs, config, turn)}
     assert set(bids) == set(game.config.get("foreign_merchant.goods"))
@@ -44,6 +45,34 @@ def test_merchant_bids_for_the_same_goods_below_the_selling_price(game, base):
         assert qty == offers[good][0] == merchant.cap_of(defs, good)
     # 来ている間だけ
     assert merchant.bids(island, defs, config, turn + config.get("foreign_merchant.turns")) == []
+
+
+def test_merchant_prices_use_the_islands_initial_prices(game):
+    """石材がない島の商人の建材も、その島で使える作り方の原価から値付けする。"""
+    defs, config = game.defs, game.config
+    island = generate_world(1, 1, config, defs).islands[1]
+    turn = _trading(island, 1)
+    island.economy.cpi_history = [100.0]
+    world_prices = initial_prices(defs, config)
+    material_prices = []
+    for resources in (["stone"], []):
+        island.resources = resources
+        prices = initial_prices(defs, config, resources)
+        offers = {g: p for g, _, p in merchant.offers(island, defs, config, turn)}
+        bids = {g: p for g, _, p in merchant.bids(island, defs, config, turn)}
+        for good in offers:
+            assert offers[good] == scale_price(
+                prices[good], config.get("foreign_merchant.multiplier")
+            )
+            assert bids[good] == scale_price(
+                prices[good], config.get("foreign_merchant.buy_multiplier")
+            )
+        material_prices.append(prices["building_materials"])
+        if resources:
+            assert prices["building_materials"] == world_prices["building_materials"]
+        else:
+            assert prices["stone"] == world_prices["stone"]  # 島で作れない財は世界の値段
+    assert material_prices[1] > material_prices[0]
 
 
 def test_blockaded_port_gets_fewer_merchants(game, base):

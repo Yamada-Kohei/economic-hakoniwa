@@ -107,7 +107,7 @@
 
 ## [3 物と市場と値段](03-market.md)
 
-決まり 39 個、うち仮の決まりの表にあるもの 2 個。
+決まり 40 個、うち仮の決まりの表にあるもの 2 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -150,6 +150,7 @@
 | MK-37 | 家計は電気と町の資材を除く品物に、代金に見合う小売りを店から一緒に買う | 決定 | tests/core/test_balance_round7.py |
 | MK-38 | 国営の施設（学校と大学も）は、市場で買いきれなかった次のターンの投入財を国の倉庫から使う | 決定 | tests/core/test_state_inputs_from_warehouse.py |
 | MK-39 | 備蓄の放出の決まり: 島のどの施設も作っていない物を、前のターンに市場で買えなかった施設があれば… | 決定 | tests/core/test_state_inputs_from_warehouse.py、tests/core/test_warehouse_standing.py |
+| MK-40 | 混合経済で値段の上限を付けた財は、施設の在庫を上限の値段で売る（作った費用は払い済み） | 決定（2026-11-07） | tests/core/test_phase3_4.py |
 
 ## [4 仕事と家計](04-labor.md)
 
@@ -201,7 +202,7 @@
 
 ## [5 施設と企業](05-firms.md)
 
-決まり 56 個、うち仮の決まりの表にあるもの 0 個。
+決まり 57 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -220,7 +221,7 @@
 | FM-13 | 民営工場の参入は参入と撤退の段で決める | 決定 | tests/core/test_finance.py |
 | FM-14 | 参入の合図は、その財が品切れ続き（足りない量が新しい工場の全力の決めた割合以上のターンが、直近の… | 決定 | tests/core/test_finance.py |
 | FM-15 | 原料のどれかが島で作られていない作り方、工事の資材が島で作られず売りにも出ていない、原料が品切れ… | 決定 | tests/core/test_finance.py |
-| FM-16 | 民営工場が建つのは空いた工業団地のマスだけ（農場と漁港は、指定のない人の住んでいないマスにも建つ | 決定 | tests/core/test_balance_round6.py、tests/core/test_finance.py |
+| FM-16 | 民営工場が建つのは空いた工業団地のマスだけ（土地で営む施設 = 農場・漁港・林業場・採石場・鉱山… | 決定 | tests/core/test_balance_round6.py、tests/core/test_finance.py |
 | FM-17 | 建設費（1割増しと動き出しの支払い分を足す）の決めた割合を資本家階級が出資し、残りを銀行の建設資… | 決定 | tests/core/test_playtest3_fixes.py |
 | FM-18 | 設備投資補助のある参入では、補助を参入のときに補助金の予算から先に出す | 決定 | tests/core/test_playtest_fixes.py |
 | FM-19 | 民営工場と民間銀行が建たないわけ（工業団地がない・働き手がいない・出資が足りない・融資が断られた… | 決定 | tests/core/test_playtest_fixes.py |
@@ -261,10 +262,11 @@
 | FM-54 | 企業の立て直しは、企業の施設に閉鎖の途中のものがあるあいだは次を閉めず、島でただ1つの作り手で変… | 決定（2026-11-02） | tests/core/test_balance_round7b.py |
 | FM-55 | 創業融資: 実績のない会社（資本家階級が新しく起こす会社と、建国の後にできて決めたターン数たたな… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
 | FM-56 | 資本家階級の預金で新しい会社の出資に足りなければ、持っている民営の会社の株（会社の預金と施設の純… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
+| FM-57 | 生産補助（売上の率 r）を受ける施設の売り値の下限は、1単位の変動費 ÷ (1 + r)（補助の… | 決定（2026-11-07） | tests/core/test_phase3_4.py |
 
 ## [6 国の財政と政策](06-finance.md)
 
-決まり 29 個、うち仮の決まりの表にあるもの 0 個。
+決まり 30 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -276,7 +278,7 @@
 | FS-06 | 予算の項目（公共事業費・住宅費・教育費・治安費・補助金・国の倉庫の買い入れ | 決定 | （未確認） |
 | FS-07 | 建国のときの予算は、住民1人あたりの決めた額（教育費は学校の運営の決めた年数分、住宅費は計画経済… | 決定 | tests/core/test_public_housing.py |
 | FS-08 | ターンの初めに、前のターンの実績から各項目の支払いを多めに見積もり、国庫の残高を支払いの順番に取… | 決定 | （未確認） |
-| FS-09 | 支払いの順番は、国債の利払い →〔公務員・国庫直轄の施設・教育・治安〕→ 失業手当 → 昔の未払… | 決定 | tests/core/test_balance_round5.py |
+| FS-09 | 支払いの順番は、国債の利払い → 売りの二国間契約で倉庫に足りない分の買い（FX-24）→〔公務… | 決定 | tests/core/test_balance_round5.py |
 | FS-10 | 払えなかった賃金は未払い賃金として政府の負債に残し、お金が入れば新しく雇う前に先に払う | 決定 | tests/core/test_balance_round3.py |
 | FS-11 | 国庫が空で人を雇えない施設は、人手不足ではなく「賃金が払えない」で止まったと出す | 決定 | tests/core/test_playtest_fixes.py |
 | FS-12 | 国債の段が毎ターン「次のターンの支払いの見込み＋手元に残す額−国庫の残高」を自動で発行して国庫を… | 決定 | tests/core/test_finance.py |
@@ -297,6 +299,7 @@
 | FS-27 | 公営住宅の家賃（W-190・W-202）: 国の床に住む層は、床 1 人分ごとに命令で決める名目… | 決定（家賃の徴収は回2 で作った | tests/core/test_public_housing.py |
 | FS-28 | 国の倉庫の決まった売り買い（W-235）: 命令 `set_warehouse_standing`… | 決定（2026-11-03 実装） | tests/core/test_warehouse_standing.py |
 | FS-29 | 備蓄の設定: 目安の量・買い入れの上限の値段・放出の値段（買い入れの上限より高く）を決める | 決定（2026-11-03 実装） | tests/core/test_warehouse_standing.py |
+| FS-30 | 閉じた施設から国が引き取った在庫（FM-22 の後）は、国が持つと決めた分を倉庫に残し、残りだけ… | 決定（2026-11-08 実装） | tests/core/test_report9_warehouse_contract.py |
 
 ## [7 お金と銀行](07-banking.md)
 
@@ -330,7 +333,7 @@
 | BK-24 | 国債の期間は3つ（1・5・10年） | 決定 | tests/core/test_codex_turn300_fixes.py、tests/core/test_playtest4_fixes.py |
 | BK-25 | 発行はすべて市中銀行の入札に出す | 決定 | tests/core/test_balance_round5.py |
 | BK-26 | 市場の利回りは式 `bond_yield`（政策金利＋期間・返す力・物価・不履行の上乗せ−独立の… | 決定 | tests/core/test_balance_round5.py、tests/core/test_finance.py |
-| BK-27 | 利回りには上限があり、張り付いても何も起きない | 仮（仮の決まりの表あり） | （未確認） |
+| BK-27 | 利回りには上限があり、張り付いても何も起きない（張り付いたことは財政の画面と「注意」で知らせる | 仮（仮の決まりの表あり） | （未確認） |
 | BK-28 | 新しい発行の売れ残りは、「引き受ける」の政策で中央銀行が独立していなければ中央銀行が同じ利回りで… | 決定 | tests/core/test_finance.py、tests/core/test_playtest3_fixes.py |
 | BK-29 | 満期の国債の中央銀行の持ち分は同じ期間の国債に乗り換え、借り換えの売れ残りは独立していても中央銀… | 決定 | tests/core/test_rules.py |
 | BK-30 | 国債の売買の市場は残りの期間の4区分ごとの、利回りを値段にした板寄せ | 決定 | tests/core/test_playtest_fixes.py |
@@ -390,7 +393,7 @@
 
 ## [9 貿易と為替](09-trade.md)
 
-決まり 58 個、うち仮の決まりの表にあるもの 3 個。
+決まり 59 個、うち仮の決まりの表にあるもの 3 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -417,7 +420,7 @@
 | FX-21 | 島で買い手がいるのに売りに出ていない物は、前のターンに圏の市場に売りがあった財だけ、輸入が引き合… | 決定 | tests/core/test_phase3_2.py、tests/core/test_trade.py |
 | FX-22 | 民営の商社は、島の商社の扱った重さの平均が上限の決めた割合を超え、空いたオフィス街があり、資本家… | 決定 | tests/core/test_trade.py |
 | FX-23 | 二国間契約は一方の政府が「相手・財・1ターンの量・値段・通貨（どちらかの国）・期間」を示し、相手… | 決定 | tests/core/test_trade.py |
-| FX-24 | 売り手の国は国の倉庫から出し、足りなければ島の市場で優先して買う | 決定 | tests/core/test_trade.py |
+| FX-24 | 売り手の国は国の倉庫から出し、足りなければ島の市場で優先して買う | 決定 | tests/core/test_report9_warehouse_contract.py、tests/core/test_trade.py |
 | FX-25 | 契約で届いた物の行き先は買い手が契約ごとに選ぶ: 市場に出す（既定 | 決定 | tests/core/test_playtest5_fixes.py、tests/core/test_trade.py |
 | FX-26 | 物の援助は値段0で相手の承諾の要らない片道の契約として船で運び、お金の援助は国庫から一度だけ送る | 決定 | tests/core/test_phase3_3.py |
 | FX-27 | 海外の商人は、貿易の仕組みを置いたターン（建国か移し替え）から `foreign_merchan`… | 仮（仮の決まりの表あり） | tests/core/test_trade.py |
@@ -452,6 +455,7 @@
 | FX-56 | 圏の市場で約定した荷を運ぶ船は、買い手の島の船、売り手の島の船、圏のほかの加盟国の船（売り手に近… | 決定（2026-11-02） | tests/core/test_trade_charter.py |
 | FX-57 | 海運業の「船が足りない」（船を買う見込み）は、約定した荷か板寄せの前の注文が、どの国の船にも載ら… | 決定（2026-11-02 | tests/core/test_trade_charter.py |
 | FX-58 | 計画経済の島の商社の圏での売りの指値は、圏の公定の値段があればそれ、なければ圏の今の値段（前の約… | 決定（2026-11-02） | tests/core/test_phase3_4.py |
+| FX-59 | 海外の商人の売り値・買い値は、その島の初めの値段（島で使える作り方の原価＋1割）を元に決める | 決定（2026-11-07） | tests/core/test_recession_round4.py |
 
 ## [10 政治と体制](10-politics.md)
 
@@ -520,7 +524,7 @@
 
 ## [11 画面と統計](11-ui.md)
 
-決まり 61 個、うち仮の決まりの表にあるもの 0 個。
+決まり 70 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -585,6 +589,15 @@
 | UI-59 | 公電が届いたときのブラウザの通知（Web Push）: 公電の画面の「このブラウザに知らせる」を… | 決定（2026-11-03、W-39） | tests/server/test_letters_push.py |
 | UI-60 | 国の倉庫の決まった売り買い（W-235、タブ 6 FS-28・FS-29）の画面: 市場の画面の… | 決定（2026-11-03 実装） | tests/server/test_warehouse_standing.py |
 | UI-61 | 手引き「産業のつながり」（`/help/chain/`）: 施設の作り方から、品目どうしの材料の… | 決定（2026-11-03、本人「産業ごとに必要な資源の表というか図を作った方が良さそう」「関係… | tests/server/test_help_chain.py |
+| UI-62 | 島の画面の「前のターンからの主な変化」はサーバーが選ぶ | 決定（2026-11-08） | tests/server/test_screens_notices.py |
+| UI-63 | ターンログは出来事の種類と施設の種類で絞れる | 決定（2026-11-08） | tests/server/test_screens_notices.py |
+| UI-64 | 不具合の報告を送った人に、扱いを見せる | 決定（2026-11-08） | tests/server/test_feedback.py |
+| UI-65 | 産業の鎖の画面は誰にでも見せる | 決定（2026-11-08、本人 2026-10-25「産業の鎖は他の人も見れていいかな」） | tests/server/test_screens_notices.py |
+| UI-66 | 休止を解いた国に、休止の間に代わりに結んだ停戦と講和（PL-56）を知らせる | 決定（2026-11-08） | tests/server/test_screens_notices.py |
+| UI-67 | 国債の利回りが上限（`bonds.max_yield`）に張り付いたら知らせる | 決定（2026-11-08） | tests/server/test_screens_notices.py |
+| UI-68 | 貿易の画面の海運業の船は、隻の小数（「0.5 隻分」）でなく積める量で出す: 輸送船の数と 1 … | 決定（2026-11-08、掲示板 #20・#22 倭国さん） | tests/server/test_screens_notices.py |
+| UI-69 | 島の地図の元のデータか画面の部品を読み込めなかったら、地図の上に「地図を読み込めませんでした | 決定（2026-11-08） | tests/server/test_screens_notices.py |
+| UI-70 | 遊ぶ人の声からの画面と文言の直し（2026-11-08） | 決定（2026-11-08） | tests/server/test_screens_notices.py |
 
 ## [12 確かめ方](12-checks.md)
 

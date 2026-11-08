@@ -117,7 +117,4 @@ python manage.py migrate
 - 計算の式を差し替える・新しい仕組みを足す: [docs/modules.md](docs/modules.md)
 - 変えた後に壊れていないかを夜のうちに確かめる: [docs/nightly.md](docs/nightly.md)
 - 決まりごとと PR の出し方: [CONTRIBUTING.md](CONTRIBUTING.md)
-
-## ライセンス
-
-[MIT](LICENSE)。使っている外部のものは [THIRD_PARTY.md](THIRD_PARTY.md) にまとめています。
+- 使っている外部のもの: [THIRD_PARTY.md](THIRD_PARTY.md)

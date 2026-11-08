@@ -98,6 +98,7 @@ from hakoniwa_core.economy import (
     productivity,
     retail,
     services,
+    standing,
 )
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.prices import construction_cost, unit_cost, variable_profit
@@ -1887,11 +1888,17 @@ def remove_facility(island: IslandState, ctx: StageContext, f: Facility) -> None
 def take_over_stock(island: IslandState, ctx: StageContext, f: Facility) -> None:
     """取り除く施設の在庫を国の倉庫に移し、売れるまで島の市場の値段で売りに出す（回6。閉じた製材所の
     木材が国の倉庫に眠り、木材を作る人がいなくなった島で、漁港や農場が設備を直せずに飢饉になった。
-    国が引き取った在庫は、国が持つと決めた備蓄ではないので、市場に戻す）。"""
+    国が引き取った在庫は、国が持つと決めた備蓄ではないので、市場に戻す）。国が決まった買い・備蓄・
+    売りの契約で持つと決めた品目は、その分を倉庫に残して残りだけ売りに出す（FS-30。報告 #9: 全部を
+    売りに出すと、同じ品目の決まった買いが「逆の向きの注文」で休み、倉庫が尽きて契約が届かなかった）。"""
+    held = {good: stock.total(island.warehouse, good) for good in f.stock}
     moved = stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
     for good, qty in sorted(moved.items()):
-        if qty > 0:
-            send_to_market(island, good, qty)
+        if qty <= 0:
+            continue
+        sell = qty - standing.kept_on_take_over(island, good, held.get(good, 0), qty)
+        if sell > 0:
+            send_to_market(island, good, sell)
 
 
 def pay_seller(island: IslandState, payer: str, seized: dict[str, Any], price: int) -> None:

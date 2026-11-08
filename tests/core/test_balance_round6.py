@@ -290,6 +290,37 @@ def test_farms_and_fishing_ports_open_on_land_with_no_use_set(game, base):
     assert EntryExit()._site(island, ctx, "farm", "default") == "no_zone"
 
 
+def test_land_based_facilities_open_on_land_with_no_use_set(game, base):
+    """林業場・牧場など土地で営む施設も、工業団地がなければ指定のない人の住んでいないマスに建つ
+    （2026-11-08。現実の林業・牧畜は町の工業地の指定を待たない。公開世界で工業団地を指定しない国に
+    民間の林業場・牧場が建たず、木材と肉が作られないままだった）。食品工場などの工場は工業団地だけ
+    のまま。開発を止めるマスにはどれも建たない。"""
+    world = copy.deepcopy(base)
+    island = next(i for i in world.islands.values() if i.has_economy)
+    for tile in island.tiles:
+        if tile.zone == ZONE_INDUSTRIAL:
+            tile.zone = ZONE_NONE
+    ctx = context(game, world)
+    assert {"lumber_camp", "ranch"} <= set(game.config.get("firms.open_land"))
+    for kind in ("lumber_camp", "ranch"):
+        site = EntryExit()._site(island, ctx, kind, "default")
+        # 合うマスはある（雇える人が足りなければ no_workers。工業団地がないせいでは止まらない）
+        assert site != "no_zone", kind
+        if not isinstance(site, str):
+            tile = island.tile(*site[0])
+            assert tile.zone == ZONE_NONE and tile.population == 0
+    # 工場は空き地に新しく建たない（同じ民営の工場の建て増しのマスだけは返る）
+    occupied = island.facilities_by_tile()
+    for kind in ("food_factory", "steel_mill"):
+        site = EntryExit()._site(island, ctx, kind, "default")
+        assert site == "no_zone" or occupied.get(site[0]) is not None, kind
+    for t in island.tiles:
+        if t.zone == ZONE_NONE and t.population == 0:
+            t.zone = ZONE_NO_DEVELOPMENT
+    for kind in ("lumber_camp", "ranch"):
+        assert EntryExit()._site(island, ctx, kind, "default") == "no_zone", kind
+
+
 def test_a_disaster_does_not_shorten_a_longer_halt(game, base):
     """暴動などでもっと長く止まっている施設は、災害に遭っても早く動き出さない。"""
     world = copy.deepcopy(base)
@@ -442,17 +473,27 @@ def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
     # うちに工事が始まるようになった）。造船所の機械をこの島で作っておらず貿易でも手に入らなければ、
     # 機械の工場の工事が先（W-186 回2 で流れが変わり、この世界では機械の工場の工事が石の品切れで
     # 遅れる: 会社の立て直しで島に1つの石切り場が閉じ、通勤圏に雇える人がいなくて次が建たない。
-    # 2026-11-01 の価格の直しの後は、ほかの島の機械の工場が先に動くが、この島にはまだ届かない）
+    # 2026-11-01 の価格の直しの後は、ほかの島の機械の工場が先に動くが、この島にはまだ届かない）。
+    # 2026-11-08 に商人の値段を島の初めの値段にそろえた後は、石材のないこの島の機械の工場の工事が
+    # 40 ターンの後になったので、標準の計画が造船所の前に機械の工場を候補に挙げることも見る
     made = {g for x in island.facilities for g in fac.recipe_of(game.defs, x)["outputs"]}
     at_hand = made | autoplan._traded(island, game.config)
+    makes_machinery = {
+        kind
+        for kind, fdef in game.defs.facilities.items()
+        if any("machinery" in r["outputs"] for r in fdef["recipes"].values())
+    }
     assert (
         any(kind == "shipyard" for kind, _ in planned)
         or any(x.kind == "shipyard" for x in island.facilities)
         or (
             "machinery" not in at_hand
-            and any(
-                "machinery" in fac.recipe_of(game.defs, x)["outputs"] and not x.built
-                for x in _all_facilities(world)
+            and (
+                any(kind in makes_machinery for kind, _ in planned)
+                or any(
+                    "machinery" in fac.recipe_of(game.defs, x)["outputs"] and not x.built
+                    for x in _all_facilities(world)
+                )
             )
         )
     )

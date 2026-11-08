@@ -27,10 +27,20 @@ const narrow = window.matchMedia("(max-width: 760px)"); // 狭い画面では窓
 const POPOVER_GAP = 12; // マスと窓の間（ピクセル）
 const MAP_EDGE = 8; // 窓を地図の端からこれだけ離す（右は拡大縮小のボタンを避ける）
 
-const [defs, map] = await Promise.all([
-  fetch(canvas.dataset.defs).then((r) => r.json()),
-  fetch(canvas.dataset.api).then((r) => r.json()),
-]);
+function showLoadFailure() {
+  document.getElementById("map-load-notice").hidden = false;
+}
+
+let defs, map;
+try {
+  [defs, map] = await Promise.all([
+    getJson(canvas.dataset.defs),
+    getJson(canvas.dataset.api),
+  ]);
+} catch (error) {
+  showLoadFailure();
+  throw error;
+}
 const theme = defs.theme;
 const view = { scale: 1, offsetX: 0, offsetY: 0, dpr: window.devicePixelRatio || 1 };
 const state = { selected: null, marked: new Set(), overlay: null, sprites: new Map(), undergroundLabel: words().hidden };
@@ -45,9 +55,15 @@ function redraw() {
   pending = true;
   requestAnimationFrame(() => {
     pending = false;
-    drawIsland(ctx, map, defs, view, state);
-    if (minimap) drawMinimap(minimap, map, defs, state.selected);
-    placePopover();
+    try {
+      drawIsland(ctx, map, defs, view, state);
+      if (minimap) drawMinimap(minimap, map, defs, state.selected);
+      placePopover();
+      canvas.dataset.ready = "1";
+      document.getElementById("map-load-notice").hidden = true;
+    } catch {
+      showLoadFailure();
+    }
   });
 }
 

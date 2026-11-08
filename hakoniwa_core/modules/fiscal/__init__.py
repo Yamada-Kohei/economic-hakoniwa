@@ -18,8 +18,9 @@ from hakoniwa_core.economy.debt import due
 from hakoniwa_core.modules import military
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import IslandState, LogEntry
+from hakoniwa_core.trade import traders
 from hakoniwa_core.turn.context import StageContext
-from hakoniwa_core.units import BASIS, part, to_basis
+from hakoniwa_core.units import BASIS, money_of, part, to_basis
 
 TAXES = ("income_tax", "corporate_tax", "consumption_tax")
 
@@ -41,6 +42,11 @@ class Budget(IslandStage):
         # 前のターンまでの未払い賃金は、今月の人件費と失業手当の後に残ったお金で払う（回5。雇用の
         # 段の初めに払う。今月の分を止めてまで先に返さない）
         estimates[arrears.ARREARS] = arrears.total(island, ledger.GOV)
+        # 売りの二国間契約で国の倉庫に足りない分の買い（FX-24）。外国との約束なので国債の利払いの次
+        estimates[traders.CONTRACT_SUPPLY] = sum(
+            money_of(limit, qty)
+            for qty, limit in traders.contract_supply_plan(island, ctx.config).values()
+        )
         caps = {item: island.policy.budget.get(item, 0) // YEAR for item in fiscal["budget_items"]}
         for item, amount in military.planned(
             island, ctx.config

@@ -96,6 +96,29 @@ def is_planned(island: IslandState) -> bool:
 
 
 GOV_TRADE = "trade"  # 政府が貿易に払う項目（どの項目にも取り置いていない国庫から）
+# 売りの二国間契約で国の倉庫に足りない分を政府が島の市場で買う項目（FX-24・FS-09。国債の利払い
+# の次に取り置く。報告 #9: 取り置きの外の国庫から払うと、予算を大きく決めた国では残りがなく
+# 買えなかった）
+CONTRACT_SUPPLY = "contract_supply"
+
+
+def contract_supply_plan(island: IslandState, config: GameConfig) -> dict[str, tuple[int, int]]:
+    """売りの二国間契約のこのターンの量のうち、国の倉庫に足りない分（財 → (量, 指値)）。指値は
+    島の値段の値幅の上端。市場の段の買いと、予算の段の取り置きの見積もりの両方で使う。"""
+    needs: dict[str, int] = {}
+    for c in island.ext.get("trade", {}).get("contracts", []):
+        if c.get("side") == "sell" and c.get("active"):
+            needs[c["good"]] = needs.get(c["good"], 0) + c["qty"]
+    width = to_basis(config.get("market.band"))
+    prices = island.economy.prices
+    plan = {}
+    for good, qty in sorted(needs.items()):
+        missing = qty - stock.total(island.warehouse, good)
+        if missing > 0:
+            plan[good] = (missing, auction.band(prices.get(good, 1), width)[1])
+    return plan
+
+
 PRICE_GAPS = "trade.price_gap_subsidies"  # 統計: 政府が国営の商社に払った価格差の補給金（1ターン）
 
 
