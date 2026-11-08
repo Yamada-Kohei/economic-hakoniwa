@@ -265,10 +265,7 @@ def test_default_of_one_plant_bankrupts_the_firms_borrowers(game, base):
 def test_nationalize_and_privatize_whole_firm(game, base):
     """企業の国有化: 政府が企業の預金と施設の純資産の和を資本家階級に払い、施設は国営企業に入る。
     国営企業の民営化: 資本家階級が純資産を払い、施設は1つの新しい民営の企業に入る。帳簿は合う。"""
-    from hakoniwa_core.economy import Payer, funds
     from hakoniwa_core.modules.firms import (
-        _firm_price,
-        _working_members,
         check_nationalize_firm,
         check_privatize_firm,
         nationalize_firm,
@@ -280,11 +277,6 @@ def test_nationalize_and_privatize_whole_firm(game, base):
     f = private_members(game, island)[0]
     number = co.firm_of(f)
     ctx = context(game, world)
-    # 市場の展開による国庫額によらず、所有権と帳簿の移し替えを確かめる。
-    price = _firm_price(island, number, _working_members(island, number))
-    short = price - funds.available(island, Payer(ledger.GOV))
-    if short > 0:
-        ledger.create(island, ledger.GOV, ledger.TREASURY, ledger.CB, short, "test_top_up")
     open_books(island)
     check_nationalize_firm(island, {"firm": number}, game.defs)
     owners_before = ledger.money(island, household(OWNERS))
@@ -300,15 +292,12 @@ def test_nationalize_and_privatize_whole_firm(game, base):
     books_ok(game, island)
 
     # 国営企業には、機械化した農場のように値打ちの大きい施設も入っている。資本家の預金が足りなければ
-    # 買い取りに要る分だけ準備する（資金不足の確かめは、この試験の見たいことではない）。
+    # 一般の層の預金から移す（買い取りの値段の確かめは、この試験の見たいことではない）
     sold = [m for m in island.facilities if m.owner == "state" and m.built]
     price = sum(banks.net_assets(island, m, facility_entity(m.id)) for m in sold)
     short = price - ledger.money(island, household(OWNERS))
     if short > 0:
-        owner = household(OWNERS)
-        ledger.create(
-            island, owner, ledger.DEPOSIT, ledger.bank_of(island, owner), short, "test_top_up"
-        )
+        ledger.pay(island, household(GENERAL), household(OWNERS), short, "test_top_up")
     open_books(island)
     check_privatize_firm(island, {"firm": state}, game.defs)
     privatize_firm(island, {"firm": state}, ctx)

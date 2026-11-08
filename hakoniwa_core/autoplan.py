@@ -1003,11 +1003,26 @@ def _candidates(
     ship = config.get("trade.ship_good")
     record = markets.get(ship)
     if record is not None and record.supply < record.demand and _count(island, "shipyard") == 0:
-        yield from (
-            c
-            for c in _producers(defs, config, island, ship)
-            if _inputs_at_hand(defs, config, *c, at_hand)
-        )
+        yards = list(_producers(defs, config, island, ship))
+        yield from (c for c in yards if _inputs_at_hand(defs, config, *c, at_hand))
+        # 造船所の投入財（機械など）を島で作っておらず貿易でも手に入らなければ、それを作る施設を
+        # 先に（2026-11-08。商人の値段を島の初めの値段にそろえた後、石材のない島で機械の工場が
+        # 遅れ、船を全部失った海運業の島で造船所が候補に挙がらなかった）。どの作り方にも欠ける
+        # 物だけ見る（アルミを使う作り方のためにアルミの工場を建てない）
+        missing = [
+            {
+                g
+                for g in defs.facilities[kind]["recipes"][rname]["inputs"]
+                if g != power and g not in at_hand
+            }
+            for kind, rname in yards
+        ]
+        for good in sorted(set.intersection(*missing) if missing else set()):
+            yield from (
+                c
+                for c in _producers(defs, config, island, good)
+                if _inputs_at_hand(defs, config, *c, at_hand)
+            )
 
     # 人手の足りない施設が多いか、雇える人（失業者と店で働く人）が少ないうちは増やさない
     # （住宅が育って人が移ってくるのを待つ）

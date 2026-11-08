@@ -188,8 +188,10 @@ def test_furloughed_workers_stay_and_books_balance(game, base):
     """停電の島でターンを回しても帳簿が合い、休んだ人を数える。"""
     world = copy.deepcopy(base)
     island = market_island(world)
+    # 工事中の発電所も止める（2 ターンのうちにでき上がると停電にならない。2026-11-08 の商人の値段の
+    # 直しの後、この島の水力発電所がちょうどでき上がった）
     for f in island.facilities:
-        if f.built and f.kind.endswith("power_plant"):
+        if f.kind.endswith("power_plant"):
             f.ext["halted_until"] = world.turn + 3
     run_checked(game, world, 2)
     assert island.stats.get("labor.furloughed", 0) > 0
