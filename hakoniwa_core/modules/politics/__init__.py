@@ -61,7 +61,13 @@ from hakoniwa_core.economy import (
 )
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy.debt import underwrite
-from hakoniwa_core.economy.households import move_people, split_persons
+from hakoniwa_core.economy.households import (
+    CAP,
+    blend_hunger,
+    move_people,
+    owners_room,
+    split_persons,
+)
 from hakoniwa_core.economy.stats import inflation, real_wage_change
 from hakoniwa_core.geo import within
 from hakoniwa_core.modules.population import subsistence_persons
@@ -842,7 +848,7 @@ def _nationalize_all(island: IslandState, ctx: StageContext) -> None:
 
 
 def _merge_owners(island: IslandState, ctx: StageContext) -> None:
-    """資産を持つ層を一般の層にまとめる（預金も一緒に移す）。"""
+    """資産を持つ層を一般の層にまとめる（預金・住宅ローン・飢えの蓄えも一緒に移す。PL-20）。"""
     households = island.economy.households
     if OWNERS not in households:
         return
@@ -850,8 +856,12 @@ def _merge_owners(island: IslandState, ctx: StageContext) -> None:
     _settle_pledges(island, ctx)
     money = ledger.money(island, household(OWNERS))
     ledger.pay(island, household(OWNERS), household(GENERAL), money, "layer_transfer")
+    # 住宅ローンは全部（1人あたりの額 × 全員）を一般の層へ付け替える
+    banks.move_mortgages(island, household(OWNERS), household(GENERAL), 1, 1)
+    general = households[GENERAL]
+    general["persons"] += persons
+    blend_hunger(households[OWNERS], general, persons)
     del households[OWNERS]
-    households[GENERAL]["persons"] += persons
 
 
 def _settle_pledges(island: IslandState, ctx: StageContext) -> None:
@@ -883,6 +893,11 @@ def _add_owners(island: IslandState, ctx: StageContext) -> None:
     if spec is None or "share" not in spec:
         return
     households[OWNERS] = {"persons": 0, "share": spec["share"], "income": []}
+    # 計画経済の間は株も配当もないので、財産と所得で暮らせる人数（LB-42）から始める。所得の記録が
+    # まだないので、所得 0 として数える（ふつうは 0 人。出資は一般の層の預金からも出せる。FM-58）
+    room = owners_room(island, ctx.config, OWNERS, income=0)
+    if room is not None:
+        households[OWNERS][CAP] = room
     population = sum(h["persons"] for h in households.values())
     move_people(island, split_persons(island, ctx.defs, population))
 

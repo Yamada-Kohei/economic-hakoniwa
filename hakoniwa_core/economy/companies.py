@@ -402,6 +402,13 @@ def choose_investor(
         return household(OWNERS), None
     if best is not None:
         return entity(best[1]), best[1]
+    # 4. 誰も出せなければ、一般の層の預金から出す人が資本家階級へ移って新しい企業を起こす
+    #    （働く人の貯蓄からの起業。資本家階級が住民の割合より少ない島だけ。FM-58）
+    if has_owners:
+        from hakoniwa_core.economy.households import founders_room
+
+        if owners + founders_room(island) >= equity:
+            return household(OWNERS), None
     return None
 
 

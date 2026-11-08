@@ -101,6 +101,7 @@ from hakoniwa_core.economy import (
     standing,
 )
 from hakoniwa_core.economy import freight as freight_rates
+from hakoniwa_core.economy.households import draw_founders, founders_room
 from hakoniwa_core.economy.prices import construction_cost, unit_cost, variable_profit
 from hakoniwa_core.economy.start import (
     fund_facility,
@@ -1634,6 +1635,7 @@ class EntryExit(IslandStage):
         entity = facility_entity(f.id)
         if target is None:
             self._borrow_on_shares(island, ctx, payer)
+            _owners_ready(island, payer, amount - sum(p for _, p, _ in plan))
         invest(island, payer, entity, amount - sum(p for _, p, _ in plan))
         if target is None:
             companies.invested(island, firm, f, ctx.turn)
@@ -1708,6 +1710,7 @@ class EntryExit(IslandStage):
             close_foreclosure(island, f)
             entity = facility_entity(f.id)
             self._borrow_on_shares(island, ctx, payer)
+            _owners_ready(island, payer, amount - sum(p for _, p, _ in plan))
             invest(island, payer, entity, amount - sum(p for _, p, _ in plan))
             turns = config.get("loans.construction_turns")
             grace = ctx.turn + 1 + config.get("loans.grace_turns")
@@ -1796,8 +1799,9 @@ class EntryExit(IslandStage):
         if OWNERS not in island.economy.households:
             return ("no_owners", {})
         have = funds.available(island, owners)
-        if have < capital or capital <= 0:
+        if have + founders_room(island) < capital or capital <= 0:
             return ("owners_short", {"need": capital, "have": have})
+        draw_founders(island, capital, have)
         finance.pop("bank_license", None)
         bank = open_bank(island, ctx, spot, OWNER_PRIVATE)
         invest(island, household(OWNERS), ledger.bank_entity(bank.id), capital)
@@ -2022,6 +2026,13 @@ def nationalize(island: IslandState, payload: dict[str, Any], ctx: StageContext)
     )
 
 
+def _owners_ready(island: IslandState, payer: str, equity: int) -> None:
+    """資本家階級が出資するとき、預金で足りない分を一般の層の預金から出す人を資本家階級へ移す
+    （FM-58。出資する者を選ぶとき companies.choose_investor が founders_room で見込んだ分）。"""
+    if payer == household(OWNERS):
+        draw_founders(island, equity, funds.available(island, Payer(household(OWNERS))))
+
+
 def check_privatize(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
     f = _owned_facility(island, payload, defs)
     if f.owner != OWNER_STATE or "foreclosed" in f.economy:
@@ -2033,7 +2044,7 @@ def check_privatize(island: IslandState, payload: dict[str, Any], defs: Defs) ->
     # 議会にかける前に、資本家の預金で今の純資産を払えるかを見る（国庫直轄の施設は実行のときに
     # 運転資金を出資するので、値段はそのぶん高くなる。実行のときに見直す）
     price = banks.net_assets(island, f, facility_entity(f.id))
-    if funds.available(island, Payer(household(OWNERS))) < price:
+    if funds.available(island, Payer(household(OWNERS))) + founders_room(island) < price:
         raise OrderFailed("reason_owners_short", amount=price)
 
 
@@ -2050,14 +2061,16 @@ def privatize(island: IslandState, payload: dict[str, Any], ctx: StageContext) -
     # 払えないときは、会計を変えて出資する前に断る（断った後に独立採算のまま残さない）
     extra = operating_capital(island, ctx.defs, ctx.config, f, capital) if treasury else 0
     price = banks.net_assets(island, f, entity, extra)
-    if funds.available(island, owners) < price:
+    if funds.available(island, owners) + founders_room(island) < price:
         raise OrderFailed("reason_owners_short", amount=price)
     if treasury:
         f.accounting = ACCOUNTING_SELF
         fund_facility(island, ctx.defs, ctx.config, f, capital)
     price = banks.net_assets(island, f, entity)
-    if funds.available(island, owners) < price:
+    if funds.available(island, owners) + founders_room(island) < price:
         raise OrderFailed("reason_owners_short", amount=price)
+    # 資本家階級の預金で足りない分は、一般の層の預金から出す人が資本家階級へ移って払う（FM-58）
+    draw_founders(island, price, funds.available(island, owners))
     funds.pay(island, owners, ledger.GOV, price, "privatization")
     _move_equity(island, entity, ledger.GOV, household(OWNERS))
     f.owner = OWNER_PRIVATE
