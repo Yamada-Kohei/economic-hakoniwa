@@ -31,6 +31,25 @@ def protected(island: IslandState, good: str) -> int:
     return item.get("quantity", 0) if item.get("kind") == "reserve" else 0
 
 
+def kept_on_take_over(island: IslandState, good: str, held: int, qty: int) -> int:
+    """閉じた施設から引き取る在庫 qty のうち、売りに出さずに倉庫に残す量（FS-30。報告 #9）。
+
+    国が持つと決めた分だけ残す: 「買う」の設定なら全部、それ以外は、「備蓄」の目安と売りの
+    二国間契約の 2 ターン分を合わせた量に、引き取る前の倉庫の量 held で足りない分。"""
+    item = settings(island).get(good, {})
+    if item.get("kind") == "buy":
+        return qty
+    from hakoniwa_core import trade
+
+    contract = sum(
+        c["qty"]
+        for c in trade.island_state(island).get("contracts", [])
+        if c.get("side") == "sell" and c.get("active") and c.get("good") == good
+    )
+    target = protected(island, good) + 2 * contract
+    return max(0, min(qty, target - held))
+
+
 def available(island: IslandState, good: str, want: int) -> int:
     return max(0, min(want, stock.total(island.warehouse, good) - protected(island, good)))
 
