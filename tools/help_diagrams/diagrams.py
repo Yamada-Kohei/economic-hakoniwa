@@ -721,6 +721,80 @@ def bonds():
     return s
 
 
+def food():
+    s = Svg(
+        480,
+        576,
+        "食べ物の作られ方と食べ方",
+        "農場が穀物を、漁港が魚を作る。牧場は穀物を餌に肉を、食品工場は穀物と電力から食品を作る。穀物・魚・肉・食品の4つは島の市場で売り買いされ、住民はどれでも食べ、兵は食品を食べ、国の倉庫は穀物を蓄える。売れ残りは日持ちを過ぎると捨てられる。",
+    )
+    s.box(40, 36, 140, 46, ["農場", "平地で穀物を育てる"], fill=HEAD, size=14)
+    s.box(320, 36, 150, 46, ["漁港", "海沿いで魚をとる"], fill=HEAD, size=14)
+    s.box(40, 112, 140, 46, ["穀物", "質は低く日持ちが長い"], fill=WARM_BG, stroke=WARM, size=14)
+    s.box(320, 112, 150, 46, ["魚", "日持ちが短い"], fill=WARM_BG, stroke=WARM, size=14)
+    s.box(10, 196, 130, 46, ["牧場", "穀物を餌に育てる"], fill=HEAD, size=14)
+    s.box(160, 196, 130, 46, ["食品工場", "穀物と電力から"], fill=HEAD, size=14)
+    s.box(10, 274, 130, 46, ["肉", "質が高い"], fill=WARM_BG, stroke=WARM, size=14)
+    s.box(160, 274, 130, 46, ["食品", "質が一番高い"], fill=WARM_BG, stroke=WARM, size=14)
+    s.arrow(110, 82, 110, 112)
+    s.arrow(395, 82, 395, 112)
+    s.arrow(80, 158, 75, 196)
+    s.arrow(150, 158, 210, 196)
+    s.arrow(75, 242, 75, 274)
+    s.arrow(225, 242, 225, 274)
+    # 穀物はそのままでも市場に出る
+    s.path("M180,135 L305,135 L305,350", head=True)
+    s.arrow(75, 320, 75, 350)
+    s.arrow(225, 320, 225, 350)
+    s.arrow(395, 158, 395, 350)
+    s.box(10, 352, 460, 36, ["島の市場で売り買いする"], fill=PALE, size=14)
+    s.arrow(83, 388, 83, 420)
+    s.arrow(240, 388, 240, 420)
+    s.arrow(397, 388, 397, 420)
+    s.box(
+        10,
+        420,
+        146,
+        80,
+        ["住民（家計）", "4つのどれでも", "お金に合わせて", "質の高い物へ"],
+        fill=GOOD_BG,
+        stroke=GOOD,
+        size=14,
+    )
+    s.box(
+        167,
+        420,
+        146,
+        80,
+        ["兵", "食品を食べる", "国の倉庫に蓄える"],
+        fill=GOOD_BG,
+        stroke=GOOD,
+        size=14,
+    )
+    s.box(
+        324,
+        420,
+        146,
+        80,
+        ["国の倉庫", "穀物を蓄え", "値上がりや飢えのとき", "売りに出す"],
+        fill=GOOD_BG,
+        stroke=GOOD,
+        size=14,
+    )
+    s.box(
+        10,
+        514,
+        460,
+        50,
+        ["売れ残りは、日持ちを過ぎると捨てられます", "魚と肉は日持ちが短く、すぐ傷みます"],
+        fill=BAD_BG,
+        stroke=BAD,
+        size=13,
+        first_bold=False,
+    )
+    return s
+
+
 DIAGRAMS = {
     "overview": overview,
     "turn-flow": turn,
@@ -732,6 +806,7 @@ DIAGRAMS = {
     "politics-stages": politics,
     "trade-routes": trade,
     "bond-issue": bonds,
+    "food-flow": food,
 }
 
 

@@ -211,6 +211,20 @@
       <p>{% blocktranslate with share=necessity.share floor=necessity.floor %}家計は、まず電力・食べ物・衣料を買い、残りからサービス、ぜいたく品（消費財・嗜好品・自動車）へ予算を配ります。必需品に使う上限は豊かになるほど下がります（建国のころの労働者階級で {{ share }}%、下限 {{ floor }}%）。食べ物は豊かになるほど質の高い食品・肉へ移ります。ぜいたく品の種類が多いほど幸福度が上がり、衣料が足りないと幸福度が下がります。{% endblocktranslate %}</p>
       <p>{% translate "消費財の買い値の目安になる「いつもの値段」は、直近の期間のうち家計が買ったターンの値段だけの平均です。一度も買っていなければ今の値段を使います。売りに出ていても買わない月が続くと値上がりに少しずつ慣れ、目安を引き上げることがあります。計画経済では公定価格が目安です。" %}</p>
     </dd>
+    <dt id="food">{% translate "食べ物" %}</dt>
+    <dd>
+      <p>{% translate "食べ物は穀物・魚・肉・食品の4つです。農場が穀物を、漁港が魚を作り、牧場は穀物を餌に肉を、食品工場は穀物と電力から食品を作ります。住民はどれでも食べ、まず安い組み合わせで要る量をそろえ、食費に回せるお金が多いほど質の高い肉・食品へ移ります。食事の質が高いほど幸福度が上がり、亡くなる人が減ります。" %}</p>
+      {% translate "食べ物の作られ方と食べ方" as fig_title %}{% translate "農場が穀物を、漁港が魚を作ります。牧場は穀物を餌に肉を、食品工場は穀物と電力から食品を作ります。穀物はそのままでも売られます。4つの食べ物は島の市場で売り買いされ、住民（家計）は4つのどれでも食べ、お金に合わせて質の高い物へ移ります。兵は食品を食べ、国の倉庫に蓄えます。国の倉庫は穀物を蓄え、値上がりや飢えのときに売りに出します。売れ残りは日持ちを過ぎると捨てられ、魚と肉は日持ちが短いのですぐ傷みます。" as fig_text %}
+      {% include "web/help_figure.html" with src="img/help/food-flow.svg" width=480 height=576 title=fig_title text=fig_text %}
+      <div class="table-scroll">
+      <table class="info">
+        <caption>{% translate "何人前は1単位で何人が1か月食べられるか、質は食事の質（0〜1）、日持ちは捨てられるまでのターン数です。" %}</caption>
+        <tr><th>{% translate "食べ物" %}</th><th>{% translate "何人前" %}</th><th>{% translate "質" %}</th><th>{% translate "日持ち" %}</th></tr>
+        {% for f in foods %}<tr><th>{{ f.name }}</th><td>{{ f.nutrition }}</td><td>{{ f.quality }}</td><td>{{ f.shelf_life }}</td></tr>{% endfor %}
+      </table>
+      </div>
+      <p>{% blocktranslate with turns=food_reserve_turns %}日持ちを過ぎた分は捨てられます。その月に捨てられる分は、売り手が値段を問わず売りに出します。国の倉庫には建国のとき住民の {{ turns }} ターン分ほどの穀物が入っていて、傷む前に古い分から売って買い直します。兵の食べ物（食品）は国防費で買い、国の倉庫に置きます。{% endblocktranslate %}</p>
+    </dd>
     <dt>{% translate "自動車（耐久消費財）" %}</dt>
     <dd>{% blocktranslate with wear=cars.wear share=cars.share %}家計は階級ごとに自動車を持ち、所得に応じた欲しい台数に足りない分を少しずつ買います（資本家階級が先に、労働者階級は豊かになってから）。自動車は年 {{ wear }}% ずつ傷んで使えなくなり、買うのはぜいたく品の予算の {{ share }}% までです。持っている自動車は毎ターン石油燃料を使います。{% endblocktranslate %}</dd>
     <dt>{% translate "トラック" %}</dt>
