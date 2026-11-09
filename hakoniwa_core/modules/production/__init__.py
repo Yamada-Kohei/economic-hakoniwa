@@ -520,14 +520,16 @@ class Production(IslandStage):
     ) -> str:
         """施設が電力を要る分だけ買えなかったわけ（財の市場の _record_shortages と同じ見方）。
 
-        指値が約定価格（売り買いがなければ気配）より安かったか、指値より高い売りが残っていたのは
-        price（電気料金が高くて採算が合わない）。注文した分は買えたが、お金が足りずに要る分より
-        少なく注文したのは funds。どちらでもなければ supply（発電が足りない。電力不足）。"""
+        電力が売れ残ったのに、指値が約定価格（売り買いがなければ気配）より安かったか、指値より
+        高い売りが残っていたのは price（電気料金が高くて採算が合わない）。注文した分は買えたが、
+        お金が足りずに要る分より少なく注文したのは funds。どちらでもなければ supply（発電が
+        足りない。電力不足）。発電が全部売れたときは、値段が上がって買い負けても電力不足のまま（国庫直轄の
+        施設は指値が今の電気料金なので、停電で値段が上がるといつも買い負ける）。"""
         limit = auction.buy_limit(order, result.high)
         left = [o.limit for o, sold in zip(sells, result.sold, strict=True) if o.quantity > sold]
         cheapest = min((p for p in left if p is not None), default=None)
-        if (result.supply > 0 and limit < result.price) or (
-            cheapest is not None and limit < cheapest
+        if result.volume < result.supply and (
+            limit < result.price or (cheapest is not None and limit < cheapest)
         ):
             return "price"
         if got >= order.quantity and order.quantity < b.need:

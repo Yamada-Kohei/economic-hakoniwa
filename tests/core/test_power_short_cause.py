@@ -68,3 +68,34 @@ def test_factory_short_of_money_is_not_short_of_power(game):
     run(game, island, ["production"])
     assert 0 < user.operating_rate < 1000
     assert user.status == "funds:electricity"
+
+
+def test_outbid_when_every_plant_sold_out_is_still_short_of_power():
+    """発電が全部売れたときは、値段が上がって買い負けた施設も電力不足（見直し役が挙げた場面。国庫
+    直轄の施設は指値が今の電気料金なので、停電で値段が上がるといつも買い負ける）。"""
+    from hakoniwa_core.market import auction
+    from hakoniwa_core.market.auction import Order
+    from hakoniwa_core.modules.production import Production, _Buyer
+
+    sells = [Order(50, 95)]
+    buys = [Order(50, 110), Order(50, 100)]
+    result = auction.clear(buys, sells, 100)
+    assert (result.volume, result.supply) == (50, 50)
+    buyer = _Buyer("fac:2", None, 50)  # type: ignore[arg-type]
+    assert Production._short_power(buyer, buys[1], result.bought[1], result, sells) == "supply"
+    # 高い発電所の売りが残り、指値がそれより安い施設は割高
+    sells = [Order(50, 95), Order(50, 120)]
+    result = auction.clear(buys, sells, 100)
+    assert result.volume < result.supply
+    assert Production._short_power(buyer, buys[1], result.bought[1], result, sells) == "price"
+
+
+def test_autoplan_looks_at_the_rate_of_factories_that_will_not_pay_for_power():
+    """電気料金が合わずに止まった施設は、電力不足と同じく稼働率で見る（同じ施設を建て増さない）。"""
+    from types import SimpleNamespace
+
+    from hakoniwa_core.autoplan import _waits_for_input
+
+    assert not _waits_for_input(SimpleNamespace(status="input_price:electricity"), "electricity")
+    assert not _waits_for_input(SimpleNamespace(status="funds:electricity"), "electricity")
+    assert _waits_for_input(SimpleNamespace(status="input_price:coal"), "electricity")
