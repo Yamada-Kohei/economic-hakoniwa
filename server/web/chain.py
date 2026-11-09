@@ -17,6 +17,7 @@ from typing import Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.dates import TURNS_PER_YEAR
+from hakoniwa_core.modules.records import shortfall
 from hakoniwa_core.naming import facility_name
 from server.economy.models import MarketRecord, Trade
 from server.game import get_game
@@ -124,7 +125,8 @@ def chain_view(
     def short(record: MarketRecord | None) -> bool:
         if record is None or record.demand <= 0:
             return False
-        return record.demand - record.volume >= record.demand * share
+        # 売れ残りのある分は品不足に数えない（ターンログの知らせと同じ見方。records.shortfall）
+        return shortfall(record) >= record.demand * share
 
     goods = []
     for good, gdef in defs.goods.items():
