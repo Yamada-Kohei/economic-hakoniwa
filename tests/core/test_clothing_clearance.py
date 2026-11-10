@@ -16,7 +16,7 @@ from hakoniwa_core.modules.market import (
     elastic_orders,
     inventory_turns,
 )
-from hakoniwa_core.units import BASIS, QUANTITY_SCALE, scale_price
+from hakoniwa_core.units import BASIS, QUANTITY_SCALE, round_money, scale_price
 from tests.core.test_finance import context, island_of
 from tests.core.test_finance import game as game  # noqa: F401  （試験の部品を使い回す）
 from tests.core.test_finance import warmed as warmed  # noqa: F401
@@ -223,7 +223,9 @@ def test_excess_stock_is_sold_off_step_by_step_down_to_half_the_cost(game, warme
         entry["offered"], entry["sold"] = cut.quantity, 0
         last, _ = _clearance_order(game, world, island, f, good)
     # 変動費の clearance_floor 倍で止まる
-    assert last.limit == -(-round(floor * config.get("market.clearance_floor")) * BASIS // BASIS)
+    # （コードと同じく切り捨て。round だと変動費が奇数のとき 1 ずれる）
+    least = round_money(floor * config.get("market.clearance_floor"))
+    assert last.limit == -(-least * BASIS // BASIS)
     # 売れた月は下げない
     entry = f.economy[CLEARANCE][good]
     entry["offered"] = entry["sold"] = cut.quantity
