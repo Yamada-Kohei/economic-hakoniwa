@@ -224,6 +224,7 @@ class Employment(IslandStage):
                     )
                 f.economy.pop(dismissal.HELD, None)
                 f.economy.pop(dismissal.CARRY, None)
+                f.economy.pop(dismissal.NEEDS, None)
                 f.workers = 0
                 f.ext.pop("short_wages", None)
                 continue
@@ -1083,12 +1084,18 @@ class Employment(IslandStage):
             return max(need, self._kept(ctx, f)), BOUND_PLAN
         if not dismissal.covered(island, defs, config, f, ctx.turn):
             f.economy.pop(dismissal.CARRY, None)
+            f.economy.pop(dismissal.NEEDS, None)
             return need, ""
         prior = f.workers - f.economy.get("mobilized", 0)
         least, carry = dismissal.floor(island, defs, config, f, prior)
-        if need >= least:  # 減らす速さの上限にかからない
+        # 手当の月数のうちにまた要る人は解雇せずに抱える（雇い直すより安い）
+        hold = min(prior, dismissal.recent_peak(island, defs, config, f, need))
+        if need >= max(least, hold):  # 減らす速さの上限にも、抱える人数にもかからない
             f.economy.pop(dismissal.CARRY, None)
             return need, BOUND_DISMISSAL
+        if hold >= least:  # 抱える人数で決まる（減らす速さの端数は残さない）
+            f.economy.pop(dismissal.CARRY, None)
+            return hold, BOUND_DISMISSAL
         f.economy[dismissal.CARRY] = round(carry, 4)
         return least, BOUND_DISMISSAL
 
