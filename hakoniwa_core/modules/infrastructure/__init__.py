@@ -42,6 +42,7 @@ from hakoniwa_core import infra, politics, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import CONSTRUCTION, Payer, funds
+from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.facilities import is_land, producible_goods
 from hakoniwa_core.geo import NEIGHBORS8, within
 from hakoniwa_core.ledger import GOV
@@ -56,6 +57,11 @@ MATERIALS = "works_materials"  # island.scratch: 種類ごとに、決まった�
 AUTO = "auto"  # economy.infra: 役所が並べた工事 [種類, x, y]（命令の工事の後に進める）
 AUTO_OFF = "auto_off"  # economy.infra: 命令 set_public_works で役所の決まった事業を止めている
 REACH = "reach"  # economy.infra: 前のターンに作業員を雇いに行ったときの失業者の数（取り置きの目安）
+STAFF = (
+    "staff"  # economy.infra: 前のターンの作業員（マス "x,y" → 人数。計画経済は雇い続ける。PL-59）
+)
+UPKEEP_PRIORITY = "upkeep_priority"  # economy.infra: 維持の優先度（命令 set_public_works。PL-59）
+BUILD_PRIORITY = "build_priority"  # economy.infra: 新しい工事の優先度
 PAYER = Payer(GOV, CONSTRUCTION)
 # 新しい工事が進まないまま、このターン数続いたらわけをログで知らせる（その後は進むまで出さない）
 STALL_TURNS = 2
@@ -220,14 +226,35 @@ def _scale(works: Works, item: Item, amount: int) -> Item:
 # --- 雇用の段から -------------------------------------------------------------------
 
 
-def plan(island: IslandState, ctx: StageContext, upkeep: bool, wage: int) -> int:
+def priority(island: IslandState, config: GameConfig, upkeep: bool) -> int:
+    """維持（upkeep）か新しい工事の優先度。命令 set_public_works で国ごとに変えられ、決めて
+    いなければ
+    infrastructure.upkeep_priority・build_priority。資材の買い注文の順と、計画経済の島で作業員を雇う
+    位置（PL-59）に使う。"""
+    key = UPKEEP_PRIORITY if upkeep else BUILD_PRIORITY
+    found = works_state(island).get(key)
+    return found if found is not None else config.get(f"infrastructure.{key}")
+
+
+def kept_staff(island: IslandState) -> dict[tuple[int, int], int]:
+    """前のターンの作業員（マスごと）。"""
+    out = {}
+    for key, n in works_state(island).get(STAFF, {}).items():
+        x, y = key.split(",")
+        out[(int(x), int(y))] = n
+    return out
+
+
+def plan(island: IslandState, ctx: StageContext, upkeep: bool, wage: int, keep: int = 0) -> int:
     """雇用の段: このターンの維持（upkeep）か新しい工事の量を、手元の工事の資材と公共事業費で決め、
     作業員の賃金と、次のターンに市場で買う資材の代金の見込みを取り置く。取り置いた見込みは市場の段で
     戻す（_holds）。雇いたい人数を返す。
 
     賃金を取り置くのは、前のターンに公共事業が雇いに行ったときに残っていた失業者の数（economy.infra
     の reach）までです。雇えない作業員の賃金で公共事業費の月割りを埋めて、後ろの施設の工事と新しい
-    工事を止めないように。それを超えて雇えた分は、雇うとき（hire）に残っているお金で払います。"""
+    工事を止めないように。それを超えて雇えた分は、雇うとき（hire）に残っているお金で払います。
+    keep は雇い続ける前のターンの作業員の数（計画経済の島。PL-59）で、賃金はその分まで必ず取り置く
+    （reach がそれより少なくても）。"""
     if not island.has_economy:
         return 0
     works = Works(island, ctx)
@@ -244,13 +271,15 @@ def plan(island: IslandState, ctx: StageContext, upkeep: bool, wage: int) -> int
     )
     have = state["have"]
     cap = state["reach"]
+    if cap is not None and keep:
+        cap = state["reach"] = max(cap, keep)
 
     def holdable(labor: int) -> int:  # labor（1000 分の 1 人）を雇うのに賃金を取り置く人数
         workers = -(-labor // 1000)
         return workers if cap is None else min(workers, cap)
 
     left = funds.available(island, PAYER)
-    planned = state["labor"]
+    planned = before = state["labor"]
     held = state["held"]
     why = ""
     candidates = works.upkeep() if upkeep else works.build()
@@ -288,7 +317,11 @@ def plan(island: IslandState, ctx: StageContext, upkeep: bool, wage: int) -> int
     state["held"] = held + hold
     workers = -(-planned // 1000) - -(-state["labor"] // 1000)
     state["labor"] = planned
-    if not upkeep:
+    if upkeep:
+        # 維持の分（hire を維持と新しい工事に分けて呼ぶとき）。新しい工事を先に見た（計画経済で
+        # 新しい工事の優先度が高い）ときも、維持で足した分だけを数える
+        state["upkeep_labor"] = state.get("upkeep_labor", 0) + planned - before
+    else:
         state["why"] = why
     hold = min(_material_cost(island, ctx, works, upkeep, have), funds.available(island, PAYER))
     funds.commit(island, PAYER, hold)
@@ -342,10 +375,17 @@ def hire(
     order: list,
     poach: Callable[[int], dict[tuple[int, int], int]] | None = None,
     poachable: int = 0,
+    goal: int | None = None,
+    final: bool = True,
+    kept: dict[tuple[int, int], int] | None = None,
 ) -> dict:
     """雇用の段（施設の後、店の前）: 残った失業者から、島のどこからでも作業員を雇う。足りなければ
     poach(足りない人数) で店から引き抜く（ほかの施設と同じく、店の働き手は国の工事に回せる。
     引き抜けるのは poachable 人まで）。
+
+    計画経済の島（PL-59）は、維持と新しい工事をそれぞれの優先度の位置で分けて呼ぶ（先の呼び出しは
+    goal にそこまでの人数を渡し final を偽にする）。kept（雇い続けた前のターンの作業員。keep）は
+    初めの呼び出しで渡す。人数とお金は呼び出しをまたいで足していき、final の呼び出しで締める。
 
     賃金を取り置いた人数を超えて雇えるのは、まだ使える公共事業費の分まで。雇えなかった分の取り置きを
     戻し、雇いに行けた人数（失業者と引き抜ける人）を次のターンの取り置きの目安（reach）に残し、
@@ -356,21 +396,26 @@ def hire(
     if not state:
         return {}
     want = -(-state["labor"] // 1000)
+    goal = want if goal is None else min(goal, want)
     wage = state["wage"]
-    held = state.get("held", want)
-    target = want
-    if want > held and wage > 0:
-        target = min(want, held + funds.available(island, PAYER) // wage)
+    staff: dict[tuple[int, int], int] = state.setdefault("staff", {})
+    for pos, n in (kept or {}).items():
+        staff[pos] = staff.get(pos, 0) + n
+        state["hired"] = state.get("hired", 0) + n
+    hired = state.get("hired", 0)
+    paid = state.setdefault("paid", state.get("held", want))  # 賃金を取り置いた人数
+    target = goal
+    if goal > paid and wage > 0:
+        target = min(goal, paid + funds.available(island, PAYER) // wage)
     pool = sum(free.get(pos, 0) for pos in order)
-    reach = pool + poachable
-    staff: dict[tuple[int, int], int] = {}
-    left = target
+    state["reach_now"] = max(state.get("reach_now", 0), hired + pool + poachable)
+    left = target - hired
     for pos in order:
         if left <= 0:
             break
         take = min(free.get(pos, 0), left)
         if take > 0:
-            staff[pos] = take
+            staff[pos] = staff.get(pos, 0) + take
             free[pos] -= take
             left -= take
     if left > 0 and poach is not None:
@@ -378,16 +423,56 @@ def hire(
             staff[pos] = staff.get(pos, 0) + take
             left -= take
     hired = target - left
-    works_state(island)[REACH] = reach
     state["hired"] = hired
-    state["staff"] = staff
-    if hired > held:
-        funds.commit(island, PAYER, (hired - held) * wage)
-    elif hired < held:
-        funds.release(island, PAYER, (held - hired) * wage)
+    if hired > paid:
+        funds.commit(island, PAYER, (hired - paid) * wage)
+        paid = hired
+    state["paid"] = paid
+    if not final:
+        return dict(staff)
+    if hired < paid:
+        funds.release(island, PAYER, (paid - hired) * wage)
+        state["paid"] = hired
+    reach = state["reach_now"]
+    works_state(island)[REACH] = reach
+    kept_now = {f"{x},{y}": n for (x, y), n in sorted(staff.items()) if n > 0}
+    if kept_now:
+        works_state(island)[STAFF] = kept_now
+    else:
+        works_state(island).pop(STAFF, None)
     if hired < want:  # 人が足りなければ、お金で止めたかにかかわらず人手
         state["why"] = "workers" if hired < target or reach < want else "funds"
-    return staff
+    return dict(staff)
+
+
+def split(island: IslandState) -> tuple[int, int]:
+    """このターンの公共事業の (維持の作業員の人数, 全部の人数)。"""
+    state = island.scratch.get(WORKS) or {}
+    return -(-state.get("upkeep_labor", 0) // 1000), -(-state.get("labor", 0) // 1000)
+
+
+def keep(island: IslandState, free: dict[tuple[int, int], int]) -> dict[tuple[int, int], int]:
+    """計画経済の島（PL-59）: 前のターンの作業員を、このターンに要る人数まで、賃金を払える分だけ
+    雇い続ける（free から取る。マスの y, x の順）。雇い続けた人数をマスごとに返し、hire の kept に
+    渡す。今までは毎月失業者に戻り、人手の足りない施設が先に雇って抱え、工事に戻らなかった。"""
+    state = island.scratch.get(WORKS)
+    if not state:
+        return {}
+    want = -(-state["labor"] // 1000)
+    wage = state["wage"]
+    room = want
+    if wage > 0:
+        room = min(want, state.get("held", 0) + funds.available(island, PAYER) // wage)
+    out: dict[tuple[int, int], int] = {}
+    for pos, n in sorted(kept_staff(island).items(), key=lambda kv: (kv[0][1], kv[0][0])):
+        if room <= 0:
+            break
+        take = min(n, free.get(pos, 0), room)
+        if take > 0:
+            out[pos] = take
+            free[pos] -= take
+            room -= take
+    return out
 
 
 def holds(island: IslandState) -> list[int]:
@@ -446,15 +531,18 @@ def progress(island: IslandState, ctx: StageContext) -> None:
     ]
     _forget_auto(island)
     forget_upkeep(island)
-    _watch(island, state, bool(queue), built > 0)
+    _watch(island, state, bool(queue), built > 0, planning.is_planned(island, ctx.defs))
     if done_any:
         from hakoniwa_core.economy import freight
 
         freight.forget(island)  # 道のりが変わるので、運賃の率を計算し直す
 
 
-def _watch(island: IslandState, state: dict[str, Any], waiting: bool, moved: bool) -> None:
-    """並んだ工事が進まないまま続いたら、わけをログで知らせる（1度だけ）。"""
+def _watch(
+    island: IslandState, state: dict[str, Any], waiting: bool, moved: bool, planned: bool = False
+) -> None:
+    """並んだ工事が進まないまま続いたら、わけをログで知らせる（1度だけ）。計画経済の島で人手が
+    足りないときは、人員計画で人を空けられることも知らせる（PL-59）。"""
     works = works_state(island)
     if not waiting or moved:
         works.pop("stalled", None)
@@ -476,6 +564,8 @@ def _watch(island: IslandState, state: dict[str, Any], waiting: bool, moved: boo
         island.log.append(LogEntry(f"infrastructure_stalled_{why}", {}))
         if why == "funds":  # 年の予算と国庫のどちらで止まっているか
             island.log.append(LogEntry(f"funds_limit_{funds.limit_of(island, PAYER)}", {}))
+        if why == "workers" and planned:
+            island.log.append(LogEntry("infrastructure_stalled_staff_plan", {}))
 
 
 # --- 市場の段から -------------------------------------------------------------------
@@ -772,14 +862,26 @@ def lay(island: IslandState, defs: Defs, kind: str, tiles: list[tuple[int, int]]
 
 
 def set_public_works(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
-    """役所の決まった事業を始める・止める（止めても、もう並べた工事はそのまま進める）。"""
+    """役所の決まった事業を始める・止める（止めても、もう並べた工事はそのまま進める）。維持と新しい
+    工事の優先度（upkeep_priority・build_priority）も書いたものだけ変える（PL-59。資材の買い注文の
+    順と、計画経済の島で作業員を雇う位置）。"""
     state = works_state(island)
-    if payload["auto"]:
-        state.pop(AUTO_OFF, None)
-        island.log.append(LogEntry("public_works_on", {}))
-    else:
-        state[AUTO_OFF] = True
-        island.log.append(LogEntry("public_works_off", {}))
+    if "auto" in payload:
+        if payload["auto"]:
+            state.pop(AUTO_OFF, None)
+            island.log.append(LogEntry("public_works_on", {}))
+        else:
+            state[AUTO_OFF] = True
+            island.log.append(LogEntry("public_works_off", {}))
+    for key in (UPKEEP_PRIORITY, BUILD_PRIORITY):
+        if key in payload:
+            state[key] = payload[key]
+    if UPKEEP_PRIORITY in payload or BUILD_PRIORITY in payload:
+        args = {
+            "upkeep": priority(island, ctx.config, True),
+            "build": priority(island, ctx.config, False),
+        }
+        island.log.append(LogEntry("public_works_priority", args))
 
 
 def register(registry: Registry) -> None:

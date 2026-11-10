@@ -15,16 +15,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from hakoniwa_core import politics
+from hakoniwa_core import facilities as fac
+from hakoniwa_core import naming, politics
 from hakoniwa_core.economy import plan as planning
-from hakoniwa_core.modules import migration
+from hakoniwa_core.modules import infrastructure, migration
+from hakoniwa_core.modules import plan as plan_orders
 from hakoniwa_core.modules import politics as politics_orders
 from hakoniwa_core.registry import OrderFailed
 from hakoniwa_core.state import IslandState
 from server.game import get_game
 from server.web import display
 from server.world import models as m
-from server.world.repository import island_from_row
+from server.world.repository import facility_from_row, island_from_row
 
 # 政情の目標の内訳（hakoniwa_core/modules/politics の式 stability）の表示名
 PART_NAMES = {
@@ -306,8 +308,50 @@ def plan_data(island: m.Island, mine: bool, stats: dict[str, float]) -> dict[str
         priority=[{"id": i, "name": defs.name("industries", i)} for i in priority],
         industries=[{"id": i, "name": defs.name("industries", i)} for i in defs.industries()],
         max_priority=config.get("planning.max_priority"),
+        staff=staff_plan_rows(island, core),
+        works=works_staff(core),
     )
     return data
+
+
+def staff_plan_rows(island: m.Island, core: IslandState) -> list[dict[str, Any]]:
+    """人員計画（PL-59）の表: 枠を決められる施設ごとに、今の人数・生産目標に要る人数・全力の人数・
+    枠と、枠で人が足りないか。マスのある施設は座標、マスを持たない施設は種類で命令に指す。"""
+    game = get_game()
+    defs, config = game.defs, game.config
+    core.facilities = [facility_from_row(f) for f in island.facilities.order_by("number")]
+    rows = []
+    for f in core.facilities:
+        if not plan_orders.staff_plannable(defs, config, f):
+            continue
+        row: dict[str, Any] = {
+            "number": f.id,
+            "name": naming.facility_name(defs, config, core, f),
+            "kind": f.kind,
+            "kind_name": defs.name("facilities", f.kind),
+            "workers": f.workers,
+            "needed": f.economy.get("wanted", 0),
+            "full": fac.workers_of(defs, f),
+            "cap": f.ext.get(planning.STAFF_CAP),
+            "capped": bool(f.ext.get(planning.STAFF_CAPPED)),
+            "priority": fac.priority_of(defs, config, f),
+            "target": {"x": f.x, "y": f.y} if fac.on_map(f) else {"kind": f.kind},
+        }
+        rows.append(row)
+    rows.sort(key=lambda r: (-r["priority"], -r["workers"], r["number"]))
+    return rows
+
+
+def works_staff(core: IslandState) -> dict[str, Any]:
+    """公共事業の作業員（前のターン）と、維持と新しい工事の優先度（人員計画の画面に並べる）。"""
+    config = get_game().config
+    state = infrastructure.works_state(core)
+    return {
+        "workers": sum(state.get(infrastructure.STAFF, {}).values()),
+        "queue": len(state.get("queue", [])),
+        "upkeep_priority": infrastructure.priority(core, config, True),
+        "build_priority": infrastructure.priority(core, config, False),
+    }
 
 
 def _price_limits(limits: dict[str, int], stats: dict[str, float]) -> list[dict[str, Any]]:
