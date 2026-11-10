@@ -186,6 +186,8 @@ class Employment(IslandStage):
                     self._record_dismissals(
                         island, ctx, f, (prior, f.economy.get("engineers", 0)), 0, 0, {}
                     )
+                f.economy.pop(dismissal.HELD, None)
+                f.economy.pop(dismissal.CARRY, None)
                 f.workers = 0
                 f.ext.pop("short_wages", None)
                 continue
@@ -387,7 +389,10 @@ class Employment(IslandStage):
                 f.economy.pop("arrears_months", None)
             self._record_dismissals(island, ctx, f, before[f.id], wanted[f.id], seats[f.id], quits)
             if bounds[f.id] == BOUND_DISMISSAL:
-                held = max(0, f.workers - mobilized.get(f.id, 0) - needs[f.id])
+                # 抱えた人は操業目標に要る人数を超えた人（原料や電力が届かずに休んでいる人は、休業
+                # 手当の人で、抱えた人に数えない）
+                goal = fac.labor_demand(defs, f, ctx.turn)
+                held = max(0, f.workers - mobilized.get(f.id, 0) - max(needs[f.id], goal))
                 f.economy[dismissal.HELD] = held
                 island.stats["labor.held"] = island.stats.get("labor.held", 0) + held
             else:

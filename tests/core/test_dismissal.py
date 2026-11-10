@@ -123,7 +123,7 @@ def test_held_wages_lower_the_actual_profit():
     f.economy.update(target=500, wage=100)
     assert dismissal.actual_profit(f, 10_000) == 10_000  # 抱えていなければそのまま
     f.economy[dismissal.HELD] = 30
-    assert dismissal.actual_profit(f, 10_000) == 5_000 - 3_000
+    assert dismissal.actual_profit(f, 10_000) == 10_000 - 3_000
 
 
 def test_policy_order_sets_the_rule_and_logs_it(game):

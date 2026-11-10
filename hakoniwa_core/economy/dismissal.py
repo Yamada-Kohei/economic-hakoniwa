@@ -94,7 +94,7 @@ def floor(
 
 def natural_leavers(config: GameConfig, before: int) -> int:
     """前のターンの人数 before のうち、自然に辞める人（手当を払わない）。"""
-    return int(before * config.get("labor.attrition"))
+    return round(before * config.get("labor.attrition"))
 
 
 def pay(
@@ -121,6 +121,8 @@ def pay(
         amount = round(count * monthly * months)
         if amount <= 0:
             continue
+        # 国庫直轄の施設は年の予算の月割りの残りで払い、残りは未払い賃金（次のターンに国庫の
+        # 未払い賃金の項目から先に払う）
         paid = max(0, min(amount, funds.available(island, payer)))
         if paid:
             funds.pay(island, payer, household(layer), paid, SEVERANCE)
@@ -151,10 +153,11 @@ def on_removal(island: IslandState, defs: Defs, config: GameConfig, f: Facility,
 
 
 def actual_profit(f: Facility, profit: int) -> int:
-    """全力で動いたときの変動費の利益 profit を、人を抱えている施設では、操業目標の分の利益から
-    抱えた人の賃金を引いた額にする（撤退 FM-20 と管財人の運転資金の審査 BK-50 が見る。LB-43）。
+    """全力で動いたときの変動費の利益 profit を、人を抱えている施設では、抱えた人の賃金を引いた
+    額にする（撤退 FM-20 と管財人の運転資金の審査 BK-50 が見る。LB-43）。
     抱えた人の賃金を見ないと、余った人の賃金で撤退が早まらず、お金が尽きて倒産するだけになる。"""
     held = f.economy.get(HELD, 0)
     if held <= 0:
         return profit
-    return fac.scale(profit, f.economy.get("target", fac.FULL)) - held * f.economy.get("wage", 0)
+    # 全力の利益から抱えた人の賃金を引く（抱えた人が 0 人のときと続いた値で、下げる向きだけ）
+    return profit - held * f.economy.get("wage", 0)
