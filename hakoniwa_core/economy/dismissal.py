@@ -23,13 +23,16 @@ dismissal、決めていなければ weak）の段ごとの割合（labor.dismis
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from hakoniwa_core import facilities as fac
+from hakoniwa_core import ledger
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     ENGINEERS,
+    Payer,
     arrears,
     books,
     funds,
@@ -47,6 +50,7 @@ WEAK, NORMAL, STRONG = "weak", "normal", "strong"
 LEVELS = (WEAK, NORMAL, STRONG)
 HELD = "held"  # f.economy: 操業目標に要る人数を超えて抱えている人（解雇の決まり）
 CARRY = "dismissal_carry"  # f.economy: 減らせる人数の端数（次のターンに足す）
+NEEDS = "dismissal_needs"  # f.economy: 直近の月の雇いたい人数（新しい月が後ろ。手当の月数分）
 SEVERANCE = "severance"  # 仕訳の種類（解雇手当。施設・政府 → 家計）
 
 
@@ -92,6 +96,23 @@ def floor(
     return max(0, min(full, before - int(allowed))), allowed - int(allowed)
 
 
+def recent_peak(island: IslandState, defs: Defs, config: GameConfig, f: Facility, need: int) -> int:
+    """直近の手当の月数（端数は切り上げ）のうちに雇いたかった人数の一番多い月の人数。このターンの
+    雇いたい人数 need を覚えて、次のターンからの分にする。手当のない段（弱い）は 0。
+
+    解雇して手当を払い、また同じ人数を雇い直すより、要らない月の賃金を払って抱えておくほうが安い
+    間は解雇しない（手当の月数分の賃金と、抱えておく月の賃金が釣り合う）。売れ行きの上下で操業
+    目標が月ごとに行き来する施設が、毎月解雇しては雇い直して手当を払い続けないようにする。
+    現実: 解雇に費用のかかる国の企業は、一時の落ち込みでは人を減らさず抱える（労働の保蔵）。"""
+    months = math.ceil(terms(island, defs, config)["months"])
+    if months <= 0:
+        f.economy.pop(NEEDS, None)
+        return 0
+    past = list(f.economy.get(NEEDS, []))[-months:]
+    f.economy[NEEDS] = (past + [need])[-months:]
+    return max(past, default=0)
+
+
 def natural_leavers(config: GameConfig, before: int) -> int:
     """前のターンの人数 before のうち、自然に辞める人（手当を払わない）。"""
     return round(before * config.get("labor.attrition"))
@@ -121,11 +142,16 @@ def pay(
         amount = round(count * monthly * months)
         if amount <= 0:
             continue
-        # 国庫直轄の施設は年の予算の月割りの残りで払い、残りは未払い賃金（次のターンに国庫の
-        # 未払い賃金の項目から先に払う）
-        paid = max(0, min(amount, funds.available(island, payer)))
+        # 国庫直轄の施設は、年の予算の月割りの残りで払い、足りない分はどの項目にも取り置いて
+        # いない国庫のお金から払う（法で決まった手当は、予算の項目の上限で止めない義務的な支出）。
+        # それでも払えない分は未払い賃金（次のターンに先に払う）
+        paid = 0
+        for source in _sources(payer):
+            part = max(0, min(amount - paid, funds.available(island, source)))
+            if part:
+                funds.pay(island, source, household(layer), part, SEVERANCE)
+                paid += part
         if paid:
-            funds.pay(island, payer, household(layer), paid, SEVERANCE)
             # 退職の所得は控除が大きく、ほとんど税がかからないので差し引かない
             add_income(island, layer, paid)
         if amount > paid:
@@ -137,6 +163,14 @@ def pay(
         stats = island.stats
         stats["labor.severance"] = stats.get("labor.severance", 0) + total
     return total
+
+
+def _sources(payer: Payer) -> tuple[Payer, ...]:
+    """解雇手当を払うお金の出どころ（先の順）。国庫直轄の施設は、施設の予算の項目の後に、どの項目
+    にも取り置いていない国庫のお金。"""
+    if payer.entity == ledger.GOV and payer.item:
+        return payer, Payer(ledger.GOV)
+    return (payer,)
 
 
 def on_removal(island: IslandState, defs: Defs, config: GameConfig, f: Facility, turn: int) -> None:
