@@ -18,6 +18,7 @@ from hakoniwa_core.economy import (
     banks,
     facility_entity,
     household,
+    receivership,
 )
 from hakoniwa_core.modules import failures
 from hakoniwa_core.modules.firms import remove_facility
@@ -337,7 +338,8 @@ def test_bankruptcy_pays_unpaid_wages_before_the_lenders(game, warmed):
     before = ledger.money(island, general)
     debt = banks.debt_of(island, entity)
     failures.bankrupt(island, context(game, world, "failures"), f)
-    assert ledger.money(island, entity) == 0
+    # 手元に残るのは、管財人として動かすために差し押さえた銀行が貸した運転資金だけ（BK-50）
+    assert ledger.money(island, entity) == receivership.owed(island, f)
     assert ledger.money(island, general) > before  # 預金はまず働き手へ
     seized = f.economy["foreclosed"]
     claims = seized["claims"]

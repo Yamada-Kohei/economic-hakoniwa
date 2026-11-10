@@ -254,10 +254,16 @@ export class TilePanel {
     if (f.status_text) rows.push(["状態", f.status_text]);
     if (f.hint) rows.push(["できること", f.hint]);
     if (f.halted_until != null) rows.push(["停止期間", `${turnDate(f.halted_until)}まで`]);
-    if (f.closing != null) rows.push(["閉鎖", `${turnDate(f.closing)}から閉鎖中（在庫を売り切ったら借入を返してマスを空けます）`]);
+    if (f.closing != null) {
+      const c = f.closing_sale;
+      const sale = c ? `居抜きで売りに出しています（売り値 ${c.price}）。${turnDate(c.until)}までに売れなければ借入を返してマスを空けます` : "在庫を売っています";
+      rows.push(["閉鎖", `${turnDate(f.closing)}から閉鎖中。${sale}`]);
+    }
     if (f.foreclosed) {
       const s = f.foreclosed;
-      rows.push(["差し押さえ", `${s.bank}が差し押さえ中。売り値 ${s.price}。${turnDate(s.until)}までに売れなければ取り壊します`]);
+      const run = s.running ? "管財人として動かしながら売りに出しています" : "止めたまま売りに出しています";
+      const cut = s.next_cut != null ? `売れなければ${turnDate(s.next_cut)}に下げます` : "売り値は下限です";
+      rows.push(["管財人", `${s.bank}が${run}。売り値 ${s.price}（${cut}）。売れないまま動かない・赤字・設備の傷みが続けば取り壊します`]);
     }
     if (f.stock.length) rows.push(["施設在庫", goodsText(f.stock)]);
     const parts = [`<h3>${escapeHtml(f.name)}</h3>${table(rows)}`];
