@@ -35,8 +35,7 @@ Q = QUANTITY_SCALE
 
 @pytest.fixture
 def clearance_on(game, monkeypatch):
-    """値引き（MK-41）は 2026-11-10 から止めている（clearance_ratio 0）。値引きの試験は、止める前の
-    線（ふだんの在庫の 2 倍）で動かして見る。"""
+    """値引き（MK-41）の試験は、線をふだんの在庫の 2 倍にして見る（設定が変わっても同じ線）。"""
     monkeypatch.setitem(game.config.get("market"), "clearance_ratio", 2)
 
 
@@ -318,8 +317,9 @@ def test_island_price_ignores_the_bargain_sale(game, warmed, clearance_on):
     assert record.price <= before
 
 
-def test_selling_off_is_off_by_default(game, warmed):
-    """値引きは止めている: 在庫が目安を大きく超えても、値引きの売りを出さない。"""
+def test_selling_off_stops_when_the_ratio_is_zero(game, warmed, monkeypatch):
+    """market.clearance_ratio が 0 なら、在庫が目安を大きく超えても値引きの売りを出さない。"""
+    monkeypatch.setitem(game.config.get("market"), "clearance_ratio", 0)
     world = copy.deepcopy(warmed)
     island = island_of(world, "market")
     f, good = _stocked_seller(game, island)
