@@ -6,8 +6,9 @@ import pytest
 
 from hakoniwa_core import autoplan, infra, stock
 from hakoniwa_core import facilities as fac
-from hakoniwa_core.economy import EDUCATION, freight, groundwork, productivity
+from hakoniwa_core.economy import EDUCATION, freight, funds, groundwork, productivity
 from hakoniwa_core.economy.households import family_of, set_workers
+from hakoniwa_core.modules import infrastructure as public_works
 from hakoniwa_core.modules.infrastructure import Works
 from hakoniwa_core.orders import check_order
 from hakoniwa_core.turn.context import StageContext
@@ -110,6 +111,92 @@ def test_roads_wear_and_are_kept_up(game):
     # 維持の工事が、傷んだ分を毎ターン目標まで戻す（そのターンの終わりにまた傷む）
     assert infra.level(tile, ROAD) == 600 - wear(game, ROAD)
     assert stock.total(island.warehouse, "building_materials") < 10_000
+
+
+def _works_state(game, island, labor: int, held: int, reach=None) -> dict:
+    """雇用の段の途中（公共事業の量を決め、held 人分の賃金を取り置いた後）の状態を作る。"""
+    wage = island.economy.average_wage
+    funds.commit(island, public_works.PAYER, held * wage)
+    state = {
+        "items": [],
+        "labor": labor * 1000,
+        "held": held,
+        "wage": wage,
+        "have": {},
+        "reach": reach,
+        "why": "",
+    }
+    island.scratch[public_works.WORKS] = state
+    return state
+
+
+def test_works_with_no_one_to_hire_say_workers_and_give_back_the_wages(game):
+    # 人手不足なのに「公共事業費が足りず」と出していた（むすび四角騎士団領の苦情）
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    with_economy(game, island)
+    before = funds.available(island, public_works.PAYER)
+    state = _works_state(game, island, labor=5, held=5)
+    staff = public_works.hire(island, {}, [(5, 6)])
+    assert staff == {}
+    assert state["hired"] == 0
+    assert state["why"] == "workers"
+    assert funds.available(island, public_works.PAYER) == before  # 取り置きは戻る
+    assert public_works.works_state(island)["reach"] == 0
+
+
+def test_works_take_shop_workers_when_no_one_is_jobless(game):
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    with_economy(game, island)
+    state = _works_state(game, island, labor=5, held=5)
+    asked = []
+
+    def poach(missing):
+        asked.append(missing)
+        return {(5, 6): 3}
+
+    staff = public_works.hire(island, {(5, 6): 1}, [(5, 6)], poach=poach, poachable=3)
+    assert asked == [4]  # 失業者 1 人を雇った残り
+    assert staff == {(5, 6): 4}
+    assert state["hired"] == 4
+    assert state["why"] == "workers"
+    assert public_works.works_state(island)["reach"] == 1 + 3
+
+
+def test_works_hold_wages_only_for_the_workers_they_could_reach(game):
+    # 雇えない作業員の賃金で公共事業費の月割りを埋めない（後ろの工事を止めない）
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    with_economy(game, island)
+    without_roads(island)
+    stock.add(island.warehouse, "building_materials", 10_000, 0, game.defs.goods)
+    infra.enqueue(island, ROAD, [(3, 3), (4, 3)])
+    run(game, island, WORKS)  # 国の倉庫から工事の資材が移る
+    public_works.works_state(island)["reach"] = 2
+    island.scratch.pop(public_works.WORKS, None)
+    ctx = StageContext(
+        defs=game.defs,
+        config=game.config,
+        registry=game.registry,
+        formulas=game.engine.formulas,
+        turn=2,
+        seed=0,
+        stage="employment",
+        before=None,
+    )
+    wage = island.economy.average_wage
+    before = funds.available(island, public_works.PAYER)
+    wanted = public_works.plan(island, ctx, upkeep=False, wage=wage)
+    state = island.scratch[public_works.WORKS]
+    assert wanted > 2
+    assert state["held"] == 2
+    holds = sum(state["holds"])
+    assert before - funds.available(island, public_works.PAYER) == 2 * wage + holds
+    # 雇うときに人がいれば、残っている公共事業費で取り置きを超えて雇う
+    staff = public_works.hire(island, {(5, 6): 10_000}, [(5, 6)])
+    assert sum(staff.values()) == wanted
+    assert state.get("why") == ""
 
 
 # --- 効き目 ---------------------------------------------------------------------------

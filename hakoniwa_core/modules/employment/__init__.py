@@ -18,8 +18,11 @@ facilities.engineer_cap）。3 の後に余った技術者は、まだ埋まら�
 島のどこへでも就きます（賃金は一般のもの）。
 
 インフラの公共事業（modules/infrastructure）は、維持の分を施設より先に、新しい工事の分を施設の
-後に、作業員の賃金と次のターンの資材の代金の見込みを取り置き、作業員は施設が雇った後に残った
-失業者から、島のどこからでも雇います（引き抜かない）。
+後に、作業員の賃金と次のターンの資材の代金の見込みを取り置きます。賃金を取り置くのは、前のターンに
+雇いに行けた人数（infrastructure の reach）までです（雇えない作業員の賃金で公共事業費を埋めて、
+後ろの工事を止めないように）。作業員は、施設が雇った後、店が雇う前に、残った失業者から島のどこから
+でも雇い、足りなければ店の働き手を引き抜きます（_hire_works。ほかの施設と同じく、1つの店から
+1ターンに labor.poach_limit まで）。
 
 工事の作業員と公務員は前のターンの島の平均賃金で雇います。工事は、作業員の賃金に続けて、この
 ターンの市場で買う資材の代金の見込みも取り置きます（公共事業費は、賃金と資材の両方に優先度の高い
@@ -323,7 +326,13 @@ class Employment(IslandStage):
                     room -= take
                     if missing <= 0 or room <= 0:
                         break
-        # 店は、ほかの施設が雇った後に残った失業者を雇う（引き抜かれた分を数え直してから）
+
+        # 国の公共事業（インフラの工事と維持）の作業員を雇う（店より先に）
+        shop_ids = [fid for _, fid in sorted((w, f.id) for f, w in plans if f.id in shops)]
+        employed = self._hire_works(
+            island, free, everywhere, staff, shop_ids, start, poached, limit
+        )
+        # 店は、ほかの施設と公共事業が雇った後に残った失業者を雇う（引き抜かれた分を数え直してから）
         for fid, plan in shops.items():
             shop, _ = by_id[fid]
             if poached.get(fid):
@@ -331,9 +340,7 @@ class Employment(IslandStage):
             services.hire(island, config, shop, plan, staff[fid], free)
         # 4. 余った技術者を、まだ埋まらない一般の席に島のどこからでも就かせる
         spare = self._spare_engineers(island, plans, general, staff, engineers)
-        # 5. インフラの作業員を、残った失業者から島のどこからでも雇う
-        employed: dict[Pos, int] = dict(infrastructure.hire(island, free, everywhere))
-        # 6. 労働の動員（全体主義）: 残った失業者を、国営の施設の空いた席に島のどこからでも
+        # 5. 労働の動員（全体主義）: 残った失業者を、国営の施設の空いた席に島のどこからでも
         #    割り当てる
         mobilized = self._mobilize(island, ctx, plans, staff, engineers, spare, free, employed)
         # 雇えなかった分の賃金の取り置きを戻し、結果を書く
@@ -400,6 +407,51 @@ class Employment(IslandStage):
         island.scratch["arrears_share"] = unpaid_total / employed_total if employed_total else 0.0
         if unpaid_total:
             island.stats["arrears.workers"] = unpaid_total
+
+    # --- 公共事業の作業員 ----------------------------------------------------------
+
+    @staticmethod
+    def _hire_works(
+        island: IslandState,
+        free: dict[Pos, int],
+        everywhere: list[Pos],
+        staff: dict[int, dict[Pos, int]],
+        shop_ids: list[int],
+        start: dict[int, int],
+        poached: dict[int, int],
+        limit: float,
+    ) -> dict[Pos, int]:
+        """公共事業の作業員を、残った失業者から島のどこからでも雇い、足りなければ店（安い店から順に
+        shop_ids）の働き手を引き抜く。施設の後、店が雇う前に呼ぶ（撤去などで空いた人を店が先に
+        雇って、国の工事が止まらないように）。ほかの施設と同じく、1つの店から1ターンに引き抜けるのは
+        前のターンの働き手の labor.poach_limit まで。マスごとの作業員の人数を返す。"""
+
+        def room(fid: int) -> int:
+            return max(0, int(start.get(fid, 0) * limit) - poached.get(fid, 0))
+
+        def from_shops(missing: int) -> dict[Pos, int]:
+            taken: dict[Pos, int] = {}
+            for fid in shop_ids:
+                left = room(fid)
+                for pos in sorted(staff[fid], key=lambda p: (p[1], p[0])):
+                    take = min(staff[fid][pos], missing, left)
+                    if take <= 0:
+                        continue
+                    staff[fid][pos] -= take
+                    taken[pos] = taken.get(pos, 0) + take
+                    poached[fid] = poached.get(fid, 0) + take
+                    missing -= take
+                    left -= take
+                    if missing <= 0 or left <= 0:
+                        break
+                if missing <= 0:
+                    break
+            return taken
+
+        poachable = sum(room(fid) for fid in shop_ids)
+        return dict(
+            infrastructure.hire(island, free, everywhere, poach=from_shops, poachable=poachable)
+        )
 
     # --- 労働の動員（フェーズ3-4） -----------------------------------------------------
 

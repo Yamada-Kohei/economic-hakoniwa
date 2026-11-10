@@ -376,7 +376,7 @@
 | IN-01 | インフラは道路・鉄道・上下水道・送電網の4種で、マスごとに種類ごとの整備度と維持で戻す目標を持つ | 決定 | tests/server/test_reports.py |
 | IN-02 | 工事は命令 `build_infrastructure`（行政力1）で種類と決めた数までのマスを… | 決定 | tests/server/test_reports.py |
 | IN-03 | 公共事業は島に1つにまとめて動かす | 決定 | tests/core/test_infrastructure.py |
-| IN-04 | 作業員は施設が雇った後の失業者から、通勤圏を見ずに島のどこからでも島の平均賃金で雇う（引き抜かな… | 決定 | （未確認） |
+| IN-04 | 作業員は施設が雇った後、店が雇う前に、残った失業者から通勤圏を見ずに島のどこからでも島の平均賃金… | 決定 | （未確認） |
 | IN-05 | 資材は国の倉庫の分を先に使い、足りない分を市場で買う | 決定 | tests/core/test_infrastructure.py |
 | IN-06 | 島で手に入らない資材を使う種類は、代わりの資材（`fallback`）で工事する | 決定 | tests/core/test_infrastructure.py |
 | IN-07 | 工事は雇えた人手とそろった資材の少ない方の割合だけ進む | 決定 | （未確認） |
