@@ -227,6 +227,7 @@ export class TilePanel {
       this.defs.facilities[f.kind]?.recipes?.[f.recipe], f.recipe_name)]);
     if (!f.built) {
       if (f.private_site) rows.push(["建設", "民間の資本が自分の資金で建設中"]);
+      if (f.site_work) rows.push(["造成", "工業団地の外の空き地を造成して建てています（工期・人手・資材が多くかかります）"]);
       rows.push(["建設進捗", `${Math.round(f.progress * 100)}%（工期 ${f.turns} ターン）`]);
       rows.push(["建設労働者", `${f.workers.toLocaleString()} / ${f.workers_needed.toLocaleString()} 人`]);
       if (f.materials.length) rows.push(["建設資材", goodsText(f.materials)]);

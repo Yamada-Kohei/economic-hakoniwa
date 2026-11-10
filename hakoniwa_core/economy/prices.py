@@ -38,6 +38,17 @@ def construction_cost(defs: Defs, kind: str, prices: Prices, wage: float) -> flo
     return materials + construction.get("labor", 0) * construction["turns"] * wage
 
 
+def site_cost(defs: Defs, config: GameConfig, kind: str, prices: Prices, wage: float) -> float:
+    """空き地に建てる工場の造成で増える建設費（FM-61）: 造成の資材の代金と、工期を延ばした分の
+    人手（施設の人手 × 造成のターン数）と造成の作業員（工期の全部）の賃金。"""
+    site = config.get("firms.site_work")
+    construction = defs.facilities[kind]["construction"]
+    materials = sum(prices.get(g, 0) * q / QUANTITY_SCALE for g, q in site["materials"].items())
+    turns = construction["turns"] + site["turns"]
+    labor = construction.get("labor", 0) * site["turns"] + site["labor"] * turns
+    return materials + labor * wage
+
+
 def capital_cost(defs: Defs, config: GameConfig, kind: str, prices: Prices, wage: float) -> float:
     """1ターンの設備の費用: 建設費の利子と、設備の傷み（回6。economy/equipment.py。設備を持たない
     施設は建設費を firms.depreciation_turns ターンで割った分）。"""

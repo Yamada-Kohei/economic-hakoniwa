@@ -728,7 +728,8 @@ class SiteFunds:
         defs, config = self.ctx.defs, self.ctx.config
         cdef = defs.facilities[f.kind]["construction"]
         total = fac.total_progress(defs, f)
-        rate = min(fac.ratio(workers, cdef.get("labor", 0)), fac.material_ratio(defs, f))
+        labor = cdef.get("labor", 0) + fac.site_labor(f)
+        rate = min(fac.ratio(workers, labor), fac.material_ratio(defs, f))
         after = min(f.progress + rate, total)
         width = to_basis(config.get("market.band"))
         amount = 0

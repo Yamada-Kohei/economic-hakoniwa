@@ -73,6 +73,7 @@ from typing import Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, politics, stock, trade
+from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.defs.kinds import is_variant
@@ -107,7 +108,12 @@ from hakoniwa_core.economy import (
 )
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.households import draw_founders, founders_room
-from hakoniwa_core.economy.prices import construction_cost, unit_cost, variable_profit
+from hakoniwa_core.economy.prices import (
+    construction_cost,
+    site_cost,
+    unit_cost,
+    variable_profit,
+)
 from hakoniwa_core.economy.start import (
     fund_facility,
     init_facility,
@@ -168,6 +174,24 @@ def private_allowed(defs: Defs, island: IslandState, kind: str) -> bool:
     return rule == "any"
 
 
+def _open_tile(tile: Any) -> bool:
+    """指定のない人の住んでいないマス（空き地）か。"""
+    return tile.zone == ZONE_NONE and tile.population == 0
+
+
+def needs_site_work(
+    island: IslandState, defs: Defs, config: GameConfig, kind: str, pos: tuple[int, int]
+) -> bool:
+    """民営の施設 kind を pos に建てるとき、造成（firms.site_work）が要るか（FM-61）: 工業団地に
+    建てる工場（firms.open_land でない、用途の決まりのない施設。町の中の店でない）を、空いた
+    施設のない空き地に建てるとき。"""
+    if kind in config.get("firms.open_land") or defs.facilities[kind].get("zone"):
+        return False
+    if retail.is_shop(defs, kind) or island.facility_at(*pos) is not None:
+        return False
+    return _open_tile(island.tile(*pos))
+
+
 def average_prices(island: IslandState, turns: int) -> dict[str, int]:
     """直近 turns ターンの値段の平均（記録がなければ今の値段）。"""
     out = dict(island.economy.prices)
@@ -213,7 +237,8 @@ def entry_price(island: IslandState, ctx: StageContext, good: str) -> int | None
     値段（W-186 回2。market の _record が、売りに出ない財の値段を上げる先に使う）。
 
     参入の候補（_try_enter と同じ: 民営で建てられ、資源と気候が合い、原料が島で手に入る作り方）
-    ごとに、建てる場所（_site）の生産性と運賃で、ほかの値段は今のまま good の値段だけを動かした
+    ごとに、建てる場所（_site。空き地なら造成の費用を足した建設費。FM-61）の生産性と運賃で、
+    ほかの値段は今のまま good の値段だけを動かした
     ときの見込みの利益率（式 entry_return。値段に1次）に売れると見込む割合（_fill）を掛けて、
     要る利益率に届く値段を2点から解く。候補がない・
     建てる場所がない・銀行がない（参入できない）なら None。作れず輸入もない財は上がらない（前は
@@ -247,6 +272,9 @@ def entry_price(island: IslandState, ctx: StageContext, good: str) -> int | None
             if isinstance(site, str):
                 continue  # 建てる場所がない
             pos, freight = site
+            built = capital
+            if needs_site_work(island, defs, config, kind, pos):  # 空き地の造成（FM-61）
+                built += round_money(site_cost(defs, config, kind, prices, wage))
             # 新しい施設が売れると見込む割合（_fill。品切れの量 ÷ 全力の産出）だけ見込みが減る
             cost = unit_cost(defs, config, kind, recipe, prices, wage)
             fill = EntryExit._fill(recipe, shortages, demand, capacity, prices, cost, settings)
@@ -254,7 +282,7 @@ def entry_price(island: IslandState, ctx: StageContext, good: str) -> int | None
                 continue
             low = max(1, prices.get(good, 1))
             r1, r2 = (
-                estimate(island, ctx, kind, rname, {**prices, good: p}, freight, capital, pos)
+                estimate(island, ctx, kind, rname, {**prices, good: p}, freight, built, pos)
                 for p in (low, 2 * low)
             )
             if r2 <= r1:
@@ -749,6 +777,15 @@ class EntryExit(IslandStage):
                 blocks.append((estimate, kind, site, {}))
                 continue
             pos, freight = site
+            if needs_site_work(island, defs, config, kind, pos):
+                # 空き地に造成して建てる（FM-61）: 造成の資材が手に入り、造成の費用を足した建設費で
+                # 見込みの利益率が要る利益率を超えるか
+                works = config.get("firms.site_work")["materials"]
+                unavailable = sorted(set(works) - supplied - on_sale)
+                if unavailable:
+                    blocks.append((estimate, kind, "materials", {"goods": unavailable}))
+                    continue
+                capital += round_money(site_cost(defs, config, kind, prices, wage))
             r = ctx.formula("entry_return")(island, ctx, kind, rname, prices, freight, capital, pos)
             if r * fill <= threshold:
                 args = {"rate": r * fill * 100, "need": threshold * 100}
@@ -1314,7 +1351,12 @@ class EntryExit(IslandStage):
 
         農場と漁港（firms.open_land）は、工業団地のほかに、指定のない人の住んでいないマスにも建つ
         （回6。現実の開墾は国が土地の用途を決めるのを待たない。命令を出さない国では工業団地が
-        埋まると魚が何倍に値上がりしても漁港が建たず、人が増えて飢饉になった）。"""
+        埋まると魚が何倍に値上がりしても漁港が建たず、人が増えて飢饉になった）。
+
+        ほかの工場も、空いた工業団地のマスにも建て増しの場所にも建てられなければ、指定のない人の
+        住んでいないマスに建つ（FM-61。2026-11-10）。そのマスでは造成の費用（firms.site_work）を
+        足す（needs_site_work）。前は工業団地を指定しない国で建材工場と食品工場が建たず、木材や
+        穀物が増えてもその先が作られなかった（X870 の quick で島×ターン 5,436 と 1,387）。"""
         defs, config = ctx.defs, ctx.config
         need = fac.workers_needed(defs, kind)
         radius = fac.commute_radius(defs, config, kind)
@@ -1333,24 +1375,27 @@ class EntryExit(IslandStage):
                     continue
             elif (tile.x, tile.y) in occupied:
                 continue
-            elif tile.zone != zone and not (
-                open_land and tile.zone == ZONE_NONE and tile.population == 0
-            ):
+            elif tile.zone != zone and not (open_land and _open_tile(tile)):
                 continue
             if fac.placement_problem(defs, island, kind, tile.x, tile.y, rname) is not None:
                 continue
             fitting += 1
-            idle = 0
-            for x, y in within(island, (tile.x, tile.y), radius):
-                t = island.tile(x, y)
-                if t.population:
-                    idle += max(0, fac.labor_force(defs, island, t) - t.ext.get("employed", 0))
-                    idle += shop.get((x, y), 0)
-            if idle * 2 >= need:
+            if self._idle_near(island, defs, (tile.x, tile.y), radius, shop) * 2 >= need:
                 spots.append((tile.x, tile.y))
         if not spots and not retail.is_shop(defs, kind):
             # 空いたマスがなければ、同じ作り方の民営の同じ施設を建て増す（段6 A3）
             spots = self._expansion_spots(island, ctx, kind, rname, need, radius, shop)
+        industrial = zone == ZONE_INDUSTRIAL and not open_land
+        if not spots and industrial and not retail.is_shop(defs, kind):
+            # それもなければ、工業団地の外の指定のない人の住んでいないマスに造成して建つ（FM-61）
+            for tile in island.tiles:
+                if (tile.x, tile.y) in occupied or not _open_tile(tile):
+                    continue
+                if fac.placement_problem(defs, island, kind, tile.x, tile.y, rname) is not None:
+                    continue
+                fitting += 1
+                if self._idle_near(island, defs, (tile.x, tile.y), radius, shop) * 2 >= need:
+                    spots.append((tile.x, tile.y))
         if not spots:
             if fitting:
                 return "no_workers"
@@ -1363,6 +1408,23 @@ class EntryExit(IslandStage):
         rates = freight_rates.candidate_rates(island, defs, config, kind, rname, spots)
         best = min(spots, key=lambda p: (rates[p], p[1], p[0]))
         return best, rates[best]
+
+    @staticmethod
+    def _idle_near(
+        island: IslandState,
+        defs: Defs,
+        pos: tuple[int, int],
+        radius: int,
+        shop: dict[tuple[int, int], int],
+    ) -> int:
+        """pos の通勤圏で雇える人（失業者と、商業・サービス業の店で働く人。回4）。"""
+        idle = 0
+        for x, y in within(island, pos, radius):
+            t = island.tile(x, y)
+            if t.population:
+                idle += max(0, fac.labor_force(defs, island, t) - t.ext.get("employed", 0))
+                idle += shop.get((x, y), 0)
+        return idle
 
     @staticmethod
     def _expansion_spots(
@@ -1386,13 +1448,7 @@ class EntryExit(IslandStage):
                 continue
             if fac.size_of(f) + fac.pending_expansions(island, f) >= limit:
                 continue
-            idle = 0
-            for x, y in within(island, (f.x, f.y), radius):
-                t = island.tile(x, y)
-                if t.population:
-                    idle += max(0, fac.labor_force(defs, island, t) - t.ext.get("employed", 0))
-                    idle += shop.get((x, y), 0)
-            if idle * 2 >= need:
+            if EntryExit._idle_near(island, defs, (f.x, f.y), radius, shop) * 2 >= need:
                 spots.append((f.x, f.y))
         return spots
 
@@ -1658,6 +1714,15 @@ class EntryExit(IslandStage):
         )
         if retail.is_shop(defs, kind) or target is not None:
             f.ext[fac.SITE] = [pos[0], pos[1]]
+        elif grade is None and needs_site_work(island, defs, config, kind, pos):
+            # 工業団地の外の空き地: 造成の資材と作業員を足し、工期を延ばす（FM-61）
+            works = config.get("firms.site_work")
+            f.ext[fac.SITE_WORK] = {
+                "labor": int(works["labor"]),
+                "materials": {g: int(q) for g, q in works["materials"].items()},
+            }
+            turns = defs.facilities[kind]["construction"]["turns"] + works["turns"]
+            f.ext["build_total"] = turns * fac.FULL
         if target is not None:
             f.ext[fac.EXPANDS] = target.id
             if grade is not None:
