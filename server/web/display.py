@@ -280,7 +280,9 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
             info["transition"] = crop_transition(f)
     else:
         construction = fdef["construction"]
-        info["workers_needed"] = construction.get("labor", 0)
+        info["workers_needed"] = construction.get("labor", 0) + fac.site_labor(f)
+        if f.ext.get(fac.SITE_WORK):
+            info["site_work"] = True  # 工業団地の外の空き地を造成して建てている（FM-61）
         # 工事全体のうち進んだ割合（progress は 1000 で1ターン分）
         total = fac.total_progress(defs, f)
         info["progress"] = f.progress / total

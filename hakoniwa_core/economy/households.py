@@ -360,6 +360,25 @@ def move_people(island: IslandState, changes: dict[str, int]) -> None:
         from hakoniwa_core.economy import banks  # 住宅ローンも一緒に移す（回3）
 
         banks.move_mortgages(island, payer, household(target), abs(moved), persons)
+        _move_bought(island, source, target, abs(moved), persons)
+
+
+def _move_bought(island: IslandState, source: str, target: str, moved: int, persons: int) -> None:
+    """このターンに市場の段で買った物（island.scratch の household_goods）のうち、層を移った
+    moved 人の分を、元の層の1人あたりの量で移った先へ移す（2026-11-10）。市場の段の後に層を移った
+    人（参入の段で資本家階級へ移って出資した人、人口の段で一般の層へ戻った人）の食べ物が元の層に
+    残り、移った先の層だけが食べられない（飢えの蓄えがたまる）ことがあった。persons は移る前の
+    元の層の人数。"""
+    bought = island.scratch.get("household_goods")
+    if not bought or source not in bought or persons <= 0:
+        return
+    goods = bought[source]
+    into = bought.setdefault(target, {})
+    for good in sorted(goods):
+        qty = goods[good] * moved // persons
+        if qty > 0:
+            goods[good] -= qty
+            into[good] = into.get(good, 0) + qty
 
 
 def blend_hunger(source: dict[str, Any], target: dict[str, Any], moved: int) -> None:

@@ -183,12 +183,12 @@ def test_hungry_households_bid_above_the_band_by_how_much_they_lack(game):
 
 
 def test_hungry_bids_stay_within_the_food_budget(game):
-    """どの段も、食費の限り（預金を崩す分を含む）に収まる分までしか買わない。お金のない家計から
-    買えなくなる。"""
+    """どの段も、食費の限り（預金を崩す分を含む）に収まる分までしか買わない。今の値幅の上端でも
+    要る量を買えないお金のない家計は、要る量の一部しか買えない。"""
     settings = game.config.get("household.hungry")
     menu = _menu()
     need = 100 * QUANTITY_SCALE
-    budget = 30_000
+    budget = 5_000  # 値幅の上端（100）で要る量を買う額 10,000 の半分
     orders = hungry_food_orders(
         need,
         {"grain": need},
@@ -204,6 +204,28 @@ def test_hungry_bids_stay_within_the_food_budget(game):
     assert 0 < cost <= budget
     assert sum(q for _, q, _ in orders) < need
     assert hungry_food_orders(need, {}, {}, menu, {}, 0, 0, settings["steps"], 0.5) == []
+
+
+def test_hungry_households_that_can_pay_the_band_order_all_they_need(game):
+    """飢えた家計の食費の限りが、全部の段を上乗せした指値で取り置くには足りないが、今の値幅の上端で
+    なら要る量を全部買えるときは、上乗せを縮めて要る量の全部を注文する（2026-11-10。前は最初の段を
+    数倍の指値で取り置いて食費を使い切り、ふだんの値段の 3 倍の食費があっても要る量の半分ほどしか
+    注文しなかった。資本家階級が預金を持ったまま飢えた）。指値は値幅の上端より下げず、急ぐ段ほど
+    高いまま。"""
+    settings = game.config.get("household.hungry")
+    steps, elasticity = settings["steps"], settings["elasticity"]
+    menu = _menu()
+    need = 100 * QUANTITY_SCALE
+    budget = 30_000  # 値幅の上端で要る量を買う額 10,000 の 3 倍
+    orders = hungry_food_orders(
+        need, {"grain": need}, {"grain": need}, menu, {"grain": 100}, 0, budget, steps, elasticity
+    )
+    cost = sum(gross_cost(limit, q, menu.rate, menu.tax) for _, q, limit in orders)
+    assert cost <= budget
+    assert sum(q for _, q, _ in orders) == need
+    limits = [limit for _, _, limit in orders]
+    assert limits == sorted(limits, reverse=True)
+    assert limits[0] > 100 and limits[-1] >= 100
 
 
 # --- 賃金の遅配 ---------------------------------------------------------------------------

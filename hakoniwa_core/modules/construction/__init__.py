@@ -277,9 +277,10 @@ class Construction(IslandStage):
                 continue
             cdef = defs.facilities[f.kind]["construction"]
             materials = fac.material_ratio(defs, f)
-            self._watch_workers(island, f, stalled=materials > 0 and cdef.get("labor", 0) > 0)
+            labor = cdef.get("labor", 0) + fac.site_labor(f)  # 空き地の工場は造成の分（FM-61）
+            self._watch_workers(island, f, stalled=materials > 0 and labor > 0)
             self._watch_materials(island, f, defs, materials)
-            rate = min(fac.ratio(f.workers, cdef.get("labor", 0)), materials)
+            rate = min(fac.ratio(f.workers, labor), materials)
             if rate <= 0:
                 # 進まなかったターン数（わけを問わない）。民営の工事は firms.abandon_turns でやめる
                 f.ext["stalled_turns"] = f.ext.get("stalled_turns", 0) + 1
@@ -348,7 +349,14 @@ class Construction(IslandStage):
         f.built = True
         f.workers = 0
         f.status = fac.STATUS_STARTING
-        for key in ("waiting", "short_funds", "short_wages", "build_total", "materials_factor"):
+        for key in (
+            "waiting",
+            "short_funds",
+            "short_wages",
+            "build_total",
+            "materials_factor",
+            fac.SITE_WORK,
+        ):
             f.ext.pop(key, None)
         for key in ("no_materials_turns", "no_workers_turns", "stalled_turns"):
             f.ext.pop(key, None)

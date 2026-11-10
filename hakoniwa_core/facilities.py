@@ -52,6 +52,7 @@ EXPANDS = "expands"
 # 機械の設備の割合（MACHINES。economy。1000 分の 1）が下がった分だけ、その割合の畑が手作業で動く
 GRADE = "grade"
 GRADE_TO = "grade_to"
+SITE_WORK = "site_work"  # ext: 空き地に建てる民営の工場の造成 {labor, materials}（FM-61）
 MACHINES = "machines"
 FUEL = "fuel"  # 機械化した畑が毎ターン使う燃料の財
 FUEL_SHARE = (
@@ -741,15 +742,30 @@ def total_progress(defs: Defs, f: Facility) -> int:
 
 
 def materials_of(defs: Defs, f: Facility) -> dict[str, int]:
-    """工事 f の資材の合計。隠して建てる施設（ext["materials_factor"]。MI-62）は定義より多い。"""
+    """工事 f の資材の合計。隠して建てる施設（ext["materials_factor"]。MI-62）は定義より多い。
+    空き地の工場（FM-61）は造成の資材（ext["site_work"]）を足す。"""
     materials = defs.facilities[f.kind]["construction"].get("materials", {})
     if GRADE_TO in f.ext:  # 農場の段階を上げる工事（W-190）は、その段階の資材
         materials = grade_steps(defs, f.kind)[int(f.ext[GRADE_TO]) - 1]["materials"]
     # 建て増した施設の直し（戦争・暴動で壊れた後）は規模の分だけ資材が要る（段6 A3）
     factor = f.ext.get("materials_factor", 1) * size_of(f)
-    if factor == 1:
-        return dict(materials)
-    return {good: round(qty * factor) for good, qty in materials.items()}
+    out = dict(materials) if factor == 1 else {g: round(q * factor) for g, q in materials.items()}
+    site = f.ext.get(SITE_WORK)
+    if site:
+        for good, qty in site.get("materials", {}).items():
+            out[good] = out.get(good, 0) + int(qty)
+    return out
+
+
+def site_labor(f: Facility) -> int:
+    """空き地の工場の造成の作業員（FM-61。造成のない工事は 0）。"""
+    site = f.ext.get(SITE_WORK)
+    return int(site.get("labor", 0)) if site else 0
+
+
+def construction_labor(defs: Defs, f: Facility) -> int:
+    """工事 f の1ターンの人手（規模の分。空き地の工場は造成の作業員を足す。FM-61）。"""
+    return defs.facilities[f.kind]["construction"].get("labor", 0) * size_of(f) + site_labor(f)
 
 
 def step_materials(defs: Defs, f: Facility, progress: int | None = None) -> dict[str, int]:
@@ -794,9 +810,8 @@ def labor_demand(defs: Defs, f: Facility, turn: int, power: str | None = None) -
     お金の経済の施設は、power（電力の財）を渡すと、手元の原料で動ける分までにする（原料が届く
     まで、動けない人を雇って賃金だけ払わない。工事中の資材と同じ）。
     """
-    fdef = defs.facilities[f.kind]
     if not f.built:
-        labor = fdef["construction"].get("labor", 0) * size_of(f)  # 直しは規模の分（段6 A3）
+        labor = construction_labor(defs, f)  # 直しは規模の分（段6 A3）
         return -(-labor * material_ratio(defs, f) // FULL)  # 切り上げ
     if is_halted(f, turn):
         return 0
