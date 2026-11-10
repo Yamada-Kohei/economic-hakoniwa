@@ -1063,7 +1063,11 @@ class Market(IslandStage):
         if any(p.clearance for _, p in book.sells):
             # 売れ残りの値引き（MK-41）があれば、値引きの売りを除いて決まった値段を島の値段として
             # 残す（_record）。約定は値引きを含めた値段でするが、在庫処分の安値でほかの売り手の
-            # 次のターンの指値・採算の見方・家計のいつもの値段を引き下げない（ふだんの値段は残る）
+            # 次のターンの指値・採算の見方・家計のいつもの値段を引き下げない（ふだんの値段は残る）。
+            # ただし除いた値段が前の値段より高いときは、前の値段で止める（約定の値段が上がった
+            # ときだけ上がる）。値引きで買い手が満たされたのに、満たされなかったことにした
+            # 値段を残すと、値引きが続くあいだ島の値段が毎ターン値幅ずつ上がり続けた
+            # （full の比べ。11-10）
             normal = [s for (_, p), s in zip(book.sells, sells, strict=True) if not p.clearance]
             ref = auction.clear(
                 [o for o, _ in book.buys],
@@ -1076,7 +1080,8 @@ class Market(IslandStage):
                 if ref.volume <= 0:
                     lo, hi = auction.band(reference, to_basis(ctx.config.get("market.band")))
                     ref.price = max(bounds[0], min(bounds[1], max(lo, min(hi, ref.price))))
-                island.scratch.setdefault(CLEARANCE, {})[good] = max(ref.price, result.price)
+                kept = max(result.price, min(ref.price, reference))
+                island.scratch.setdefault(CLEARANCE, {})[good] = kept
             else:  # 値引きのほかに売りがなければ、島の値段は動かさない
                 island.scratch.setdefault(CLEARANCE, {})[good] = max(reference, result.price)
         self._late_to_eaters(book, result)

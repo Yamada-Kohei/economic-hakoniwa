@@ -296,3 +296,6 @@ def test_island_price_ignores_the_bargain_sale(game, warmed):
     assert record.price == island.economy.prices[good]
     assert record.price >= auction.band(before, 1000)[0]
     assert island.economy.prices[good] >= auction.band(before, 1000)[0]
+    # 値引きの売りで買い手が満たされたので、島の値段は前の値段より上がらない（値引きを除くと
+    # 買い手が満たされないことになり、値引きのあいだ毎ターン値幅ずつ上がっていた。11-10）
+    assert record.price <= before
