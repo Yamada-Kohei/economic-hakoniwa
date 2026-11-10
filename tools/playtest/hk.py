@@ -1136,6 +1136,8 @@ def print_summary(d: dict) -> None:
     )
     for x in f["stopped"]:
         print(f"  止まった ({x['x']},{x['y']}) #{x['number']} {x['name']} {x['status_text']}")
+    for x in f.get("on_sale", []):
+        print(f"  売りに出し中 ({x['x']},{x['y']}) #{x['number']} {x['name']} {x['sale_text']}")
     if f["partial"]:
         partial = _rows(f["partial"], lambda r: f"{r['status_text']} {r['count']}")
         print(f"  満たない稼働のわけ: {partial}")

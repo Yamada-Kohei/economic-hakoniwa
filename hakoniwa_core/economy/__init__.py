@@ -93,9 +93,30 @@ def is_self_supporting(f: Facility) -> bool:
     return f.built and f.accounting == ACCOUNTING_SELF
 
 
+SEIZED = "foreclosed"  # f.economy: 倒産して銀行が差し押さえ、売りに出している印（差し押さえの記録）
+
+
+def is_seized(f: Facility) -> bool:
+    """倒産して銀行が差し押さえ、売りに出している施設か（管財人のもと。動かしているかは問わない）。"""
+    return SEIZED in f.economy
+
+
+def in_receivership(f: Facility) -> bool:
+    """管財人（差し押さえた銀行）が動かしている施設か（FM-59。2026-11-10）。閉鎖の途中で倒産した
+    施設は動かさない（run が偽）。"""
+    seized = f.economy.get(SEIZED)
+    return isinstance(seized, dict) and bool(seized.get("run"))
+
+
 def is_stopped(f: Facility) -> bool:
-    """閉鎖の途中か差し押さえ中で、人を雇わず物を作らない施設か（フェーズ2-2）。"""
-    return "closing" in f.economy or "foreclosed" in f.economy
+    """閉鎖の途中か、差し押さえて管財人が動かしていない施設で、人を雇わず物を作らない施設か（フェーズ
+    2-2）。管財人が動かしている施設（FM-59）は止まった施設に入れない。"""
+    return "closing" in f.economy or (SEIZED in f.economy and not in_receivership(f))
+
+
+def is_on_sale(f: Facility) -> bool:
+    """居抜きで売りに出している施設か（差し押さえ中か閉鎖の途中。FM-60）。"""
+    return SEIZED in f.economy or "closing" in f.economy
 
 
 def is_private_site(f: Facility) -> bool:

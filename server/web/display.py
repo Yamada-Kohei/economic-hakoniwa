@@ -19,9 +19,11 @@ from hakoniwa_core.economy import (
     entity_of,
     equipment,
     facility_entity,
+    in_receivership,
     is_bank,
     is_private_site,
     is_self_supporting,
+    receivership,
     retail,
 )
 from hakoniwa_core.economy import public_housing as pub
@@ -530,16 +532,24 @@ def facility_finance(
     game = get_game()
     config = game.config
     out: dict[str, Any] = {}
+    turn = row.island.world.turn + 1  # 次の更新で売るときの売り値（ターンの処理と同じ数え方）
     if f.economy.get("closing") is not None:
         out["closing"] = f.economy["closing"]  # 閉鎖に入ったターン
+        # 居抜きで売りに出している売り値と、売れなければマスを空けるターン（FM-60）
+        out["closing_sale"] = {
+            "price": money_text(receivership.asking_price(config, f, turn) or 0, currency),
+            "until": f.economy["closing"] + config.get("firms.sale_turns"),
+        }
     seized = f.economy.get("foreclosed")
     if seized:
-        until = seized.get("since", 0) + config.get("firms.foreclosure_turns")
+        book, since = receivership.sale_terms(f, config) or (0, 0)
         out["foreclosed"] = {
             "bank": bank_name(row.island_id, island, seized.get("bank")),
             "since": seized.get("since"),
-            "until": until,
-            "price": money_text(seized.get("price", 0), currency),
+            "price": money_text(receivership.asking_price(config, f, turn) or 0, currency),
+            # 管財人が動かしているか（FM-59）と、次に売り値を下げるターン（下限なら None）
+            "running": in_receivership(f),
+            "next_cut": receivership.next_cut(config, book, since, turn),
         }
     if is_self_supporting(f) and not is_bank(config, f):
         # 補助金は独立採算の施設にだけ出る（銀行を除く）。出ている補助金は公表された政策
@@ -598,6 +608,25 @@ def facility_loans(
         }
         for x, name in zip(loans, names, strict=True)
     ]
+
+
+def sale_text(row: m.Facility, f: Facility, island: IslandState, currency: str = "") -> str:
+    """売りに出している施設の短い説明（管財人のもと・閉鎖に入り売りに出している。FM-59・FM-60）。
+    国の要約と MCP の地図の施設の行に出す。売りに出していなければ空。"""
+    info = facility_finance(row, f, island, currency)
+    seized = info.get("foreclosed")
+    if seized:
+        how = "動かしながら" if seized["running"] else "止めたまま"
+        cut = seized.get("next_cut")
+        later = f"、{turn_text(cut)}に値下げ" if cut is not None else "、下限"
+        return f"管財人（{seized['bank']}）が{how}売りに出し中: 売り値 {seized['price']}{later}"
+    sale = info.get("closing_sale")
+    if sale:
+        return (
+            f"閉鎖に入り売りに出し中: 売り値 {sale['price']}、"
+            f"{turn_text(sale['until'])}まで売れなければマスを空ける"
+        )
+    return ""
 
 
 def bank_name(island_id: int, island: IslandState, bank: str | None) -> str:

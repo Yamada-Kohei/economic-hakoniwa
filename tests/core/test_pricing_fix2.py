@@ -67,6 +67,45 @@ def test_sites_re_estimate_to_the_cheapest_seller_after_waiting(game):
     assert good not in island.economy.ext.get(SITE_USUAL, {})
 
 
+def test_sites_re_estimate_to_the_foreign_merchant_when_no_one_else_sells(game):
+    """島に作り手がなく海外の商人しか売らない財も、工事は商人の売り値で積算し直す（2026-11-10。
+    前は商人を数えず、商人の値段が上がると売りがあるのに工事が1年近く買えなかった）。島の売り手が
+    商人より安ければ、そちらに合わせる。"""
+    from hakoniwa_core.economy import Payer
+    from hakoniwa_core.market.auction import Order
+    from hakoniwa_core.modules.market import MERCHANT, SITE, Book, Market, Party
+    from tests.core.test_recession_round1 import context
+
+    island = make_island(game)
+    with_economy(game, island)
+    config, ctx = game.config, context(game)
+    width = to_basis(config.get("market.band"))
+    good = "building_materials"
+    turns = config.get("household.reprice_turns")
+    usual = material_limit(island, config, good, width)
+    ask = usual * 15 // 10  # 商人の値段が工事の指値の 1.5 倍
+
+    def book_with(*sellers):
+        site = Party(SITE, "site", Payer("gov", "public_works"))
+        book = Book(buys=[(Order(1000, usual), site)])
+        for kind, limit in sellers:
+            book.sells.append((Order(1000, limit), Party(kind, kind, Payer("cb", "x"))))
+        return {good: book}
+
+    for _ in range(turns - 1):
+        Market._adapt_materials(island, ctx, book_with((MERCHANT, ask)))
+        assert material_limit(island, config, good, width) == usual  # まだ待つ
+    Market._adapt_materials(island, ctx, book_with((MERCHANT, ask)))
+    assert material_limit(island, config, good, width) == ask  # 商人の売り値まで積算し直す
+
+    # 商人より安い島の売り手がいれば、そちらの指値
+    island.economy.ext.pop(SITE_USUAL, None)
+    cheaper = usual * 12 // 10
+    for _ in range(turns):
+        Market._adapt_materials(island, ctx, book_with((MERCHANT, ask), ("facility", cheaper)))
+    assert material_limit(island, config, good, width) == cheaper
+
+
 def test_only_cars_that_can_be_paid_for_count_as_wanted(game):
     from hakoniwa_core.modules.market import Market
     from tests.core.test_recession_round1 import context

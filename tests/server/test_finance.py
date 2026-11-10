@@ -304,19 +304,35 @@ def test_tile_api_ownership_and_seizure(client, world):
     assert client.get(url).json()["facility"]["ownership_target"] == "privatize"
 
     bank = island.facilities.filter(kind="bank").first()
+    config = get_game().config
+    turn = island.world.turn
     farm.owner = "private"
+    plain = dict(farm.economy)
+    # 管財人のもと（FM-59）: 銀行・今の売り値・次に売り値を下げるターン
     farm.economy = {
-        **farm.economy,
-        "closing": 3,
-        "foreclosed": {"bank": f"bank:{bank.number}", "since": 2, "price": 1500},
+        **plain,
+        "foreclosed": {
+            "bank": f"bank:{bank.number}",
+            "since": turn,
+            "price": 1500,
+            "book": 3000,
+            "run": True,
+        },
     }
     farm.save()
     info = client.get(url).json()["facility"]
-    assert info["closing"] == 3
-    until = 2 + get_game().config.get("firms.foreclosure_turns")
-    assert info["foreclosed"]["since"] == 2 and info["foreclosed"]["until"] == until
-    assert info["foreclosed"]["price"].endswith("1,500")
-    assert info["foreclosed"]["bank"]
+    seized = info["foreclosed"]
+    assert seized["since"] == turn and seized["running"] is True
+    assert seized["price"].endswith("1,500")  # 帳簿の値打ち 3,000 × firms.foreclosure_price
+    assert seized["next_cut"] == turn + config.get("firms.sale_cut_turns")
+    assert seized["bank"]
+    # 閉鎖に入り売りに出している（FM-60）: 売り値と、売れなければマスを空けるターン
+    farm.economy = {**plain, "closing": turn, "sale_book": 3000}
+    farm.save()
+    info = client.get(url).json()["facility"]
+    assert info["closing"] == turn
+    assert info["closing_sale"]["price"].endswith("1,500")
+    assert info["closing_sale"]["until"] == turn + config.get("firms.sale_turns")
 
 
 def test_loans_round_trip_and_show_on_tile(client, world):
