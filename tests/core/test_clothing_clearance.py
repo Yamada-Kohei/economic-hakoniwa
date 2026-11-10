@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import copy
 
+import pytest
+
 from hakoniwa_core import stock
 from hakoniwa_core.economy import GENERAL, is_self_supporting, needs, retail
 from hakoniwa_core.economy.households import move_people
@@ -22,6 +24,14 @@ from tests.core.test_finance import game as game  # noqa: F401  （試験の部�
 from tests.core.test_finance import warmed as warmed  # noqa: F401
 
 Q = QUANTITY_SCALE
+
+
+@pytest.fixture
+def clearance_on(game, monkeypatch):
+    """値引き（MK-41）は 2026-11-10 から止めている（clearance_ratio 0）。値引きの試験は、止める前の
+    線（ふだんの在庫の 2 倍）で動かして見る。"""
+    monkeypatch.setitem(game.config.get("market"), "clearance_ratio", 2)
+
 
 # --- 衣料は持ち物（LB-44） --------------------------------------------------------------
 
@@ -183,7 +193,7 @@ def _clearance_order(game, world, island, f, good):
     return cut[0][0] if cut else None, [o for o, p in mine if not p.clearance]
 
 
-def test_excess_stock_is_sold_off_step_by_step_down_to_half_the_cost(game, warmed):
+def test_excess_stock_is_sold_off_step_by_step_down_to_half_the_cost(game, warmed, clearance_on):
     world = copy.deepcopy(warmed)
     island = island_of(world, "market")
     f, good = _stocked_seller(game, island)
@@ -241,7 +251,7 @@ def test_excess_stock_is_sold_off_step_by_step_down_to_half_the_cost(game, warme
     assert cut is None and CLEARANCE not in f.economy
 
 
-def test_state_run_and_price_fixed_sellers_do_not_sell_off(game, warmed):
+def test_state_run_and_price_fixed_sellers_do_not_sell_off(game, warmed, clearance_on):
     world = copy.deepcopy(warmed)
     island = island_of(world, "market")
     f, good = _stocked_seller(game, island)
@@ -253,7 +263,7 @@ def test_state_run_and_price_fixed_sellers_do_not_sell_off(game, warmed):
         assert _clearance_order(game, world, island, f, good)[0] is None
 
 
-def test_selling_off_keeps_the_line_it_started_with(game, warmed):
+def test_selling_off_keeps_the_line_it_started_with(game, warmed, clearance_on):
     """値引きの売りに先を越されてふだんの分が売れず、売れ行きの見込みが縮んでも、値引きに回す量は
     始めたときの線を超えた分のまま（在庫が全部値引きに回らない）。"""
     world = copy.deepcopy(warmed)
@@ -272,7 +282,7 @@ def test_selling_off_keeps_the_line_it_started_with(game, warmed):
     )
 
 
-def test_island_price_ignores_the_bargain_sale(game, warmed):
+def test_island_price_ignores_the_bargain_sale(game, warmed, clearance_on):
     """値引きの売りは約定には入るが、島の値段は値引きを除いて決まった値段を残す（ふだんの値段は
     残る。ほかの売り手の指値・採算の見方・家計のいつもの値段を在庫処分の安値で引き下げない）。"""
     world = copy.deepcopy(warmed)
@@ -299,3 +309,17 @@ def test_island_price_ignores_the_bargain_sale(game, warmed):
     # 値引きの売りで買い手が満たされたので、島の値段は前の値段より上がらない（値引きを除くと
     # 買い手が満たされないことになり、値引きのあいだ毎ターン値幅ずつ上がっていた。11-10）
     assert record.price <= before
+
+
+def test_selling_off_is_off_by_default(game, warmed):
+    """値引きは止めている: 在庫が目安を大きく超えても、値引きの売りを出さない。"""
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    f, good = _stocked_seller(game, island)
+    f.economy.setdefault("expected", {})[good] = 10 * Q
+    f.economy.pop(CLEARANCE, None)
+    f.stock.clear()
+    stock.add(f.stock, good, 100 * Q, world.turn, game.defs.goods)
+    for _ in range(game.config.get("market.clearance_turns") + 1):
+        assert _clearance_order(game, world, island, f, good)[0] is None
+    assert CLEARANCE not in f.economy
