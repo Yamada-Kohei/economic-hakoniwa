@@ -258,7 +258,8 @@ def plan(island: IslandState, ctx: StageContext, upkeep: bool, wage: int) -> int
         amount = _fit(item, have)
         if amount < item.amount and not why:
             why = "materials"
-            state["short_materials"] = True
+            if not upkeep:  # 資材を待っている新しい工事がある（人手やお金で止まっても残す）
+                state["short_materials"] = True
         if amount <= 0:
             continue
         item = _scale(works, item, amount)
@@ -271,8 +272,13 @@ def plan(island: IslandState, ctx: StageContext, upkeep: bool, wage: int) -> int
             if amount <= 0:
                 break
             item = _scale(works, item, amount)
+        # 手元の資材は、雇える見込みの人手で進められる分だけ使う見込みにする（雇えない仕事に資材を
+        # 割り当てて、後ろの工事を「資材が足りない」にしないように。実際の進みは工事の段で決まる）
+        share = 1.0
+        if cap is not None and item.labor > 0:
+            share = min(1.0, max(0, cap * 1000 - planned) / item.labor)
         for good, qty in item.materials.items():
-            have[good] = have.get(good, 0) - qty
+            have[good] = have.get(good, 0) - math.ceil(qty * share)
         state["items"].append(item)
         planned += item.labor
         if why == "funds":
@@ -354,6 +360,7 @@ def hire(
     if want > held and wage > 0:
         target = min(want, held + funds.available(island, PAYER) // wage)
     pool = sum(free.get(pos, 0) for pos in order)
+    reach = pool + poachable
     staff: dict[tuple[int, int], int] = {}
     left = target
     for pos in order:
@@ -369,15 +376,15 @@ def hire(
             staff[pos] = staff.get(pos, 0) + take
             left -= take
     hired = target - left
-    works_state(island)[REACH] = pool + poachable
+    works_state(island)[REACH] = reach
     state["hired"] = hired
     state["staff"] = staff
     if hired > held:
         funds.commit(island, PAYER, (hired - held) * wage)
     elif hired < held:
         funds.release(island, PAYER, (held - hired) * wage)
-    if hired < want:
-        state["why"] = "workers" if hired < target else "funds"
+    if hired < want:  # 人が足りなければ、お金で止めたかにかかわらず人手
+        state["why"] = "workers" if hired < target or reach < want else "funds"
     return staff
 
 
