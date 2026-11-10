@@ -27,7 +27,7 @@
 | LB-05 | 賃金は施設ごと・労働者の種類ごとに毎ターン見直す（式 `wage_update`）。物価の上がった分の決めた割合を追い、人手が足りなければ足りなさに応じて上げ、通勤圏の失業率がふつうより高ければ下げる向きに動く。1ターンの変化には上限があり、最低賃金より下がらない。施設の月（施設の番号で12か月にばらす）には、生産性（タブ 5 FM の経験・集積・インフラ・教育・汚染の積）がそれまでに賃金に乗せた一番高い値から伸びた割合だけ上げる（上げ幅の上限の外。W-186 回2） | 決定 | `labor.indexation`, `labor.wage_speed`, `labor.slack_speed`, `labor.natural_unemployment`, `labor.max_raise`, `labor.max_cut`, `fiscal.minimum_wage` | tests/core/test_recession_round2.py::test_wages_follow_productivity_once_a_year_on_the_facility_month |
 | LB-06 | 独立採算の施設は、今の値段で変動費の利益が 0 になる賃金より上げない。商業・サービス業はサービスの値段 × 1人の量まで | 決定 | `services.per_worker` | tests/core/test_balance_round4.py::test_shops_hire_and_the_price_covers_wages |
 | LB-07 | 技術者の賃金は初め一般の決めた倍率で、同じ式で動く。人手の足りなさは技術者の席の埋まらなかった割合、失業率は島の技術者の失業率で見て、施設の一般の賃金より下げない | 決定 | `labor.engineer_wage_ratio` | （未確認） |
-| LB-08 | 工事の作業員・公務員・教員・警察官は前のターンの島の平均賃金で雇う。作業員は施設が雇った後に残った失業者から島のどこからでも雇い（引き抜かない）、賃金は工事の持ち主（国の工事は公共事業費）が払う。公務員・教員・警察官は国庫が払う | 決定 |  | tests/core/test_rules.py::test_urgent_site_materials_come_before_other_sites_wages |
+| LB-08 | 工事の作業員・公務員・教員・警察官は前のターンの島の平均賃金で雇う。インフラの作業員は施設が雇った後、店の前に、残った失業者から島のどこからでも雇い（足りなければ店から引き抜く。IN-04）、賃金は工事の持ち主（国の工事は公共事業費）が払う。公務員・教員・警察官は国庫が払う | 決定 |  | tests/core/test_rules.py::test_urgent_site_materials_come_before_other_sites_wages |
 | LB-09 | 賃金の段で賃金を払い、所得税を差し引いて政府に払う。市場の段より先に払うので、家計はそのターンの賃金で食料を買える | 決定 | `fiscal.income_tax` | tests/core/test_rules.py::test_market_sells_food_to_households |
 | LB-10 | 失業手当は「失業者1人に平均賃金の決めた割合」を国庫から失業している家計の層に払う（失業した技術者にも）。建国のときから払い、命令 `set_labor_policy` で変える | 決定 | `fiscal.unemployment_benefit` | tests/server/test_economy.py::test_policy_orders_from_the_island_page |
 | LB-11 | 最低賃金は命令 `set_labor_policy` で決める（決めなければなし）。労働の動員（全体主義。タブ 10）の賃金は最低賃金、なければ平均賃金の決めた割合 | 決定 | `fiscal.minimum_wage`, `politics.mobilization.wage` | tests/core/test_phase3_4.py::test_mobilization_puts_the_unemployed_to_work_in_state_factories |
@@ -40,7 +40,7 @@
 | LB-18 | 層が使う額（式 `consumption`）は、直近の可処分所得の平均に層ごとの割合を掛けた分と、預金の層ごとの割合の和。割合は預金の実質金利が高いほど下がる。残りは預金に残る | 決定 | `household.layers.general.c1`, `household.layers.engineers.c1`, `household.layers.owners.c1`, `household.layers.jobless.c1`, `household.c2`, `household.layers.owners.c2`, `household.income_turns`, `household.c1_rate_effect`, `household.c1_range` | （未確認） |
 | LB-19 | 使う順は、電気代（生産の段で払った分を差し引く）→ 必需品（食料・衣料。所得が上がるほど割合が下がる上限の中で）→ サービス → ぜいたく品（消費財・嗜好品）と自動車 → 町の資材。売りに出ていない物は買いたい量だけ記録する | 決定 | `power.household_share`, `household.necessity.share`, `household.necessity.fall`, `household.necessity.floor`, `household.base_income`, `household.targets.clothing`, `household.consumer_goods_share`, `household.luxury_weights.consumer_goods`, `household.luxury_weights.luxury_crop`, `household.cars.share`, `household.housing_share` | tests/core/test_phase3_2.py::test_necessity_share_falls_as_real_income_grows, ::test_luxury_budget_moves_past_goods_that_are_not_on_sale, ::test_cars_are_wanted_by_income_and_bought_a_little_at_a_time |
 | LB-20 | 食料は必要な量を、質を足した栄養あたりの値段の安い順に財ごとに割り振り、前のターンに売りに出ていた量を上限に、前の値段の `market.band` 増しを指値に注文する。ただし要る量の累積の割合 `household.hungry.steps` の段に分け、段 F までの量の指値はその ÷ F にする（値段が上がれば同じ食費で買える量まで減らす。取り置きは全体で1つ）。予算が足りなければ量を減らし、所得が上がれば質の高い食料に替える | 決定 | `population.food_per_person`, `household.food_elasticity` | tests/core/test_economy.py::test_food_split_prefers_cheap_goods_within_offers, ::test_upgrade_food_mixes_within_budget |
-| LB-21 | 前のターンに食べきれなかったか飢えの蓄えが残る家計は、預金の一部を足して食費の限りにし、要る量の段ごとにもっと高く買い上がる（お金のない家計から買えなくなる）。段の量は累積の量の差で決め、合計がちょうど要る量になる | 決定 | `household.hungry.threshold`, `household.hungry.savings`, `household.hungry.steps`, `household.hungry.elasticity` | tests/core/test_balance_round3.py::test_hungry_households_bid_above_the_band_by_how_much_they_lack, ::test_hungry_bids_stay_within_the_food_budget |
+| LB-21 | 前のターンに食べきれなかったか飢えの蓄えが残る家計は、預金の一部を足して食費の限りにし、要る量の段ごとにもっと高く買い上がる（お金のない家計から買えなくなる）。段の量は累積の量の差で決め、合計がちょうど要る量になる。全部の段を上乗せした指値で取り置くと食費の限りを超えても、今の値幅の上端でなら要る量を全部買えるなら、どの段も上乗せを同じ割合で縮めて要る量の全部を注文する（2026-11-10） | 決定 | `household.hungry.threshold`, `household.hungry.savings`, `household.hungry.steps`, `household.hungry.elasticity` | tests/core/test_balance_round3.py::test_hungry_households_bid_above_the_band_by_how_much_they_lack, ::test_hungry_bids_stay_within_the_food_budget, ::test_hungry_households_that_can_pay_the_band_order_all_they_need |
 | LB-22 | 食料が足りないときは、食費のうち足りない割合の分をサービスにもぜいたく品にも使わず手元に残す。買い上がりの取り置きはサービスとぜいたく品の予算から引かない（少しの人が飢えただけで層の全員が買わなくならない） | 決定 |  | tests/core/test_balance_round4.py::test_a_few_hungry_people_do_not_stop_a_whole_layer_buying_services |
 | LB-23 | 消費財の注文は「いつもの値段」（家計が買ったターンだけの直近の平均）の段に分けた指値で出し、今の値段が一番下の段より安ければ今の値段の段を足す。一番上の段より高ければ買わずに預金に残す | 仮 | `household.usual_price_turns`, `household.consumer_goods_tiers`, `household.consumer_goods_low_tiers` | tests/core/test_economy.py::test_consumer_tiers_spend_about_the_budget, tests/core/test_playtest5_fixes.py::test_usual_price_counts_only_turns_households_bought |
 | LB-24 | 消費税は家計が市場で買う物（食料・衣料・ぜいたく品・サービス）と電気に、代金に上乗せして政府に払う。家計の指値は税込みの予算から税抜きに直して出す（運賃も同じ） | 決定 | `fiscal.consumption_tax` | （未確認） |
@@ -90,7 +90,7 @@
 
 技術者は 2 の前に、前のターンの技術者を雇い続けたうえで、技術者の賃金の高い施設から順に席に割り当てます。席は定義の技術者数に雇いたい人数の割合を掛けた分で、埋まらない席は一般の席にし、足りない分だけ稼働率の上限が下がります（`labor.engineer_floor`）。3 の後に余った技術者は、まだ埋まらない一般の席に賃金の高い施設から島のどこへでも就き、賃金は一般のものです。
 
-工事の作業員は施設が雇った後に残った失業者から、通勤圏を見ずに島のどこからでも、前のターンの島の平均賃金で雇います（引き抜かない）。インフラの維持の分は施設より先に、新しい工事の分は施設の後に、作業員の賃金と資材の代金を公共事業費から取り置きます（タブ 8）。運送業・港・海運業・商社は運ぶ荷の量に合わせて雇います（タブ 3・9）。店は 2 と 3 の後に、場所ごとの通勤圏に残った失業者を雇います（下の「サービスの仕事と店」）。労働の動員をしている島では、最後に残った失業者を国営の施設の空いた席に動員の賃金で割り当てます（タブ 10）。
+インフラの工事の作業員は、施設が雇った後、店が雇う前に、残った失業者から通勤圏を見ずに島のどこからでも、前のターンの島の平均賃金で雇い、足りなければ店の働き手を引き抜きます（施設からは引き抜かない）。インフラの維持の分は施設より先に、新しい工事の分は施設の後に、作業員の賃金（前のターンに雇いに行けた人数まで）と資材の代金を公共事業費から取り置きます（タブ 8 IN-04）。運送業・港・海運業・商社は運ぶ荷の量に合わせて雇います（タブ 3・9）。店は 2 と 3 の後に、場所ごとの通勤圏に残った失業者を雇います（下の「サービスの仕事と店」）。労働の動員をしている島では、最後に残った失業者を国営の施設の空いた席に動員の賃金で割り当てます（タブ 10）。
 
 計画経済の島では、国が人員計画で施設ごとの人数の枠を決められます（タブ 10 PL-59）。枠を超えた施設は月に決めた割合ずつ人を手放し、2 の失業者を雇う順は賃金でなく優先度の高い順になり、公共事業の作業員も優先度の位置で雇います。
 
@@ -164,7 +164,7 @@
 
 収入は、働く層が賃金・失業手当・預金の利子、資本家階級が配当と預金の利子です。民営の施設と民間銀行への出資は資本家階級の預金から出し、配当と出資の払い戻し、国有化の代金もこの層に入り、民営化で施設を買うのもこの層です（タブ 5・7）。
 
-人の移り変わり: 大学が育てた技術者は一般の層から技術者の層へ、引退した技術者は一般の層へ移ります。人口の増減と移動は層の人数に比例して割り振り、資本家階級は決めた割合に保ちます。人が層を移るときは、元の層の1人あたりの預金と飢えの蓄えを一緒に移します（仕訳で付け替える）。
+人の移り変わり: 大学が育てた技術者は一般の層から技術者の層へ、引退した技術者は一般の層へ移ります。人口の増減と移動は層の人数に比例して割り振り、資本家階級は決めた割合に保ちます。人が層を移るときは、元の層の1人あたりの預金と飢えの蓄えを一緒に移します（仕訳で付け替える）。市場の段の後に移った人（参入の段で出資して資本家階級へ移った人など）は、そのターンに買った食べ物と品物も1人あたりの量で持って移ります（2026-11-10。前は元の層に残り、移った先の層だけが食べられずに飢えた）。
 
 格差は、統計に資本家階級と一般の労働者の層の1人あたり可処分所得の比を残し、政情には3層の所得から出したジニ係数が効きます（タブ 10）。
 

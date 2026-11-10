@@ -272,7 +272,8 @@ def test_ships_are_replaced_before_they_retire(game, base):
 
 def test_farms_and_fishing_ports_open_on_land_with_no_use_set(game, base):
     """工業団地がなくても、民営の農場と漁港は指定のない人の住んでいないマスに建つ（開墾は国の用途の
-    指定を待たない）。ほかの工場は工業団地にしか建たず、開発を止めるマスにはどれも建たない。"""
+    指定を待たない）。ほかの工場も工業団地がなければ空き地に造成して建つ（FM-61）が、開発を止める
+    マスにはどれも建たない。"""
     world = copy.deepcopy(base)
     island = next(i for i in world.islands.values() if i.has_economy)
     for tile in island.tiles:
@@ -283,18 +284,19 @@ def test_farms_and_fishing_ports_open_on_land_with_no_use_set(game, base):
     assert not isinstance(site, str)
     tile = island.tile(*site[0])
     assert tile.zone == ZONE_NONE and tile.population == 0
-    assert EntryExit()._site(island, ctx, "steel_mill", "default") == "no_zone"
+    assert EntryExit()._site(island, ctx, "steel_mill", "default") != "no_zone"
     for t in island.tiles:
         if t.zone == ZONE_NONE and t.population == 0:
             t.zone = ZONE_NO_DEVELOPMENT
     assert EntryExit()._site(island, ctx, "farm", "default") == "no_zone"
+    assert EntryExit()._site(island, ctx, "steel_mill", "default") in ("no_zone", "no_workers")
 
 
 def test_land_based_facilities_open_on_land_with_no_use_set(game, base):
     """林業場・牧場など土地で営む施設も、工業団地がなければ指定のない人の住んでいないマスに建つ
     （2026-11-08。現実の林業・牧畜は町の工業地の指定を待たない。公開世界で工業団地を指定しない国に
-    民間の林業場・牧場が建たず、木材と肉が作られないままだった）。食品工場などの工場は工業団地だけ
-    のまま。開発を止めるマスにはどれも建たない。"""
+    民間の林業場・牧場が建たず、木材と肉が作られないままだった）。開発を止めるマスにはどれも建た
+    ない。"""
     world = copy.deepcopy(base)
     island = next(i for i in world.islands.values() if i.has_economy)
     for tile in island.tiles:
@@ -309,11 +311,6 @@ def test_land_based_facilities_open_on_land_with_no_use_set(game, base):
         if not isinstance(site, str):
             tile = island.tile(*site[0])
             assert tile.zone == ZONE_NONE and tile.population == 0
-    # 工場は空き地に新しく建たない（同じ民営の工場の建て増しのマスだけは返る）
-    occupied = island.facilities_by_tile()
-    for kind in ("food_factory", "steel_mill"):
-        site = EntryExit()._site(island, ctx, kind, "default")
-        assert site == "no_zone" or occupied.get(site[0]) is not None, kind
     for t in island.tiles:
         if t.zone == ZONE_NONE and t.population == 0:
             t.zone = ZONE_NO_DEVELOPMENT
