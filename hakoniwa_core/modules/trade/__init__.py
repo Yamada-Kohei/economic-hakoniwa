@@ -78,6 +78,7 @@ from hakoniwa_core.trade import (
 from hakoniwa_core.trade import cells as route_cells
 from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.trade import money as fxmoney
+from hakoniwa_core.trade import orders as ship_orders
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import (
     BASIS,
@@ -135,6 +136,8 @@ class _IslandTurn:
     fuel_value: int = 0
     ships_used: int = 0  # このターンに出した船の重さ（1000 分の 1 トン）
     ship_short: bool = False  # 船が足りずに輸入を減らした
+    # 載せられなかった荷を運ぶのに要った船の重さ（1000 分の 1 トン。船の前注文の隻数。FX-60）
+    ship_short_load: int = 0
     exports: int = 0
     imports: int = 0
     unpaid: int = 0  # お金が足りずに払えなかった運賃と使用料
@@ -895,6 +898,7 @@ class _Round:
                 # S2: 船が足りずに荷を残した（海運業が船を買う見込みに入れる。港のない島は
                 # 船では直らないので数えない）
                 self.islands[buyer.id].ship_short = True
+                self._short_load(buyer, seller, good, want - qty)
             missing = want - qty
             record = self.contract_fx.get((buyer.id, currency)) if why == "fx" else None
             fx = record.values() if record is not None else None
@@ -983,12 +987,12 @@ class _Round:
             return 10**15
         if port_of(buyer, self.config) is None:
             return 0
+        source = self._nearest_member(buyer, bloc)
+        if source is None:
+            return 0
         others = [
             self.world.islands[m] for m in bloc["members"] if m in self.islands and m != buyer.id
         ]
-        if not others:
-            return 0
-        source = min(others, key=lambda o: (route_cells(buyer, o), o.id))
         carriers = [buyer] + [
             o
             for o in others
@@ -997,6 +1001,26 @@ class _Round:
             and not policy.blocked(self.world, o.id, buyer.id, good)
         ]
         return sum(self._room_on(c, buyer, source, good) for c in carriers)
+
+    def _nearest_member(self, buyer: IslandState, bloc: dict[str, Any]) -> IslandState | None:
+        """圏のほかの加盟国のうち、buyer に一番近い国（なければ None）。"""
+        others = [
+            self.world.islands[m] for m in bloc["members"] if m in self.islands and m != buyer.id
+        ]
+        if not others:
+            return None
+        return min(others, key=lambda o: (route_cells(buyer, o), o.id))
+
+    def _short_load(self, buyer: IslandState, seller: IslandState, good: str, missing: int) -> None:
+        """船が足りずに載せられなかった荷 missing（1000 分の 1 単位）を運ぶのに要った船の重さを足す
+        （FX-60）。1ターンの船出は往復の間（片道の 2 倍）、荷の重さ × 区画 ÷（片道のターン数 × 船の
+        速さ）の船をふさぐので、毎ターン同じだけ荷が出るなら、荷の重さ × 2 × 区画 ÷ 船の速さの船が
+        要る。"""
+        if missing <= 0:
+            return
+        load = weight(self.defs, good, missing)
+        need = load * 2 * route_cells(buyer, seller) // max(1, self.config.get("trade.ship_speed"))
+        self.islands[buyer.id].ship_short_load += need
 
     def _carriage(
         self, bloc: dict[str, Any], buyer: IslandState, seller: IslandState, good: str, qty: int
@@ -1478,9 +1502,14 @@ class _Round:
             # 船が足りない（S2）
             reach = self._reach(island, bloc, good)
             if reach < want:
-                want, why = reach, WHY_SHIPS
                 if port_of(island, self.config) is not None:
                     self.islands[island.id].ship_short = True
+                    # 載せられなかった荷は、商社が扱える重さまで（それより多い分は船では直らない）
+                    source = self._nearest_member(island, bloc)
+                    room = left * QUANTITY_SCALE // unit
+                    if source is not None:
+                        self._short_load(island, source, good, min(want, room) - reach)
+                want, why = reach, WHY_SHIPS
             room = left * QUANTITY_SCALE // unit
             if room < want:
                 want, why = room, WHY_CAPACITY
@@ -1617,6 +1646,7 @@ class _Round:
             elif carried < qty:  # S2: 払えるのに、どの船にも載らない分があった
                 if port_of(buyer, self.config) is not None:  # 港のない島は船では直らない
                     self.islands[buyer.id].ship_short = True
+                    self._short_load(buyer, seller, good, qty - carried)
                 traders.entry(bid.facility, good)["why"] = WHY_SHIPS
             parts = [(carrier, q) for carrier, q in parts if q > 0]
             qty = sum(q for _, q in parts)
@@ -1735,8 +1765,11 @@ class _Round:
             ]
             shipping = shipping_of(island, self.config)
             if shipping is not None:
+                keep = self.config.get("trade.cost_turns")
                 history = [*shipping.economy.get("ships_short", []), int(here.ship_short)]
-                shipping.economy["ships_short"] = history[-self.config.get("trade.cost_turns") :]
+                shipping.economy["ships_short"] = history[-keep:]
+                loads = [*shipping.economy.get(ship_orders.SHORT_LOAD, []), here.ship_short_load]
+                shipping.economy[ship_orders.SHORT_LOAD] = loads[-keep:]
             self._stats(island, here)
 
     def _view(self, bloc: dict[str, Any], island_id: int, here: _IslandTurn) -> dict[str, Any]:

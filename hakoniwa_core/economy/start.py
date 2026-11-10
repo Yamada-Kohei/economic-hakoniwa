@@ -197,12 +197,16 @@ def _ships_to_buy(island: IslandState, config: GameConfig, f: Facility) -> int:
     次の支払いに足し、手元の資金で足りなければ運転資金を借りるか持ち主が出し、配当で外に出さない
     （回6。船の傷みの分を運賃で集めても、手元の資金の目安を超えた分は配当で出ていき、寿命の船を
     買い替えられなかった）。"""
-    want = f.economy.get("ships_wanted", 0)
-    if want <= 0 or f.kind != config.get("trade.shipping_facility"):
+    if f.kind != config.get("trade.shipping_facility"):
         return 0
+    # 船の前注文の次のターンの代金と、払えずに注文できなかった手付け（FX-60。trade/orders.py）
+    ordered = f.economy.get("ship_order_due", 0)
+    want = f.economy.get("ships_wanted", 0)
+    if want <= 0:
+        return ordered
     # 買い注文の指値（値幅の上端）で見る
     price = island.economy.prices.get(config.get("trade.ship_good"), 0)
-    return money_of(price + part(price, to_basis(config.get("market.band"))), want)
+    return ordered + money_of(price + part(price, to_basis(config.get("market.band"))), want)
 
 
 # --- 銀行と運送業 -----------------------------------------------------------------

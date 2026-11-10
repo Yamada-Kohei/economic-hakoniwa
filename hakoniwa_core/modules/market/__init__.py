@@ -124,6 +124,7 @@ from hakoniwa_core.state import (
 )
 from hakoniwa_core.state.model import PRICE_CARRY, PRICE_QUOTE, PRICE_TRADE
 from hakoniwa_core.trade import balance, merchant, ships, traders
+from hakoniwa_core.trade import orders as ship_orders
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import (
     BASIS,
@@ -649,7 +650,7 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
         record = records.get(good)
         unmet = record.demand - record.volume if record is not None else 0
         before = expected.get(good, fac.scale(full, target))
-        held = stock.total(f.stock, good)
+        held = stock.total(f.stock, good) - ship_orders.reserved(ctx.config, f, good)
         floor = subsidized_floor(
             island, ctx.defs, ctx.config, f, good, prices, wage, rate, ctx.turn
         )
@@ -819,6 +820,9 @@ class Market(IslandStage):
         hh_rate = island.scratch["freight_household"]
         island.economy.freight["household"] = hh_rate  # 次のターンの公共事業の資材の見積もりに使う
         self._switch_recipes(island, ctx)
+        # 船の前注文（FX-60）: 取り消し・作った船の取り置き・代金の支払い・引き渡し（造船所が売りに
+        # 出す前に、注文の分を取り置く）
+        ship_orders.run(island, defs, config, ctx.turn)
         self._supply_sites_from_warehouse(island, ctx)
         books_by_good: dict[str, Book] = {}
         self._warehouse_orders(island, ctx, books_by_good)
@@ -888,6 +892,9 @@ class Market(IslandStage):
                     if goal is None:
                         goal = ctx.formula("operating_target")(island, f, ctx)
                         record_missed(island, f, ctx)
+                    # 造船所は前注文の残りを先に作る（FX-60）
+                    before = f.economy.get("target", fac.FULL)
+                    goal = ship_orders.production_goal(defs, config, f, goal, before)
                     f.economy["target"] = goal
         services.plan(
             island,
@@ -1537,7 +1544,8 @@ class Market(IslandStage):
             for good in sorted(recipe["outputs"]):
                 if good == power:
                     continue
-                total = stock.total(f.stock, good)
+                # 造船所が前注文のために取り置いた船は売らない（FX-60）
+                total = stock.total(f.stock, good) - ship_orders.reserved(config, f, good)
                 if total <= 0:
                     continue
                 ask = f.economy.get("ask", {}).get(good, prices.get(good, 0))
@@ -1560,6 +1568,7 @@ class Market(IslandStage):
             # 施設のほかの作り方で作れる物は、作る費用より安くは売らない（_leftover_floor）
             used = set(recipe["outputs"]) | set(recipe["inputs"])
             for good, total in sorted(stock.totals(f.stock).items()):
+                total -= ship_orders.reserved(config, f, good)
                 if good in used or good == power or total <= 0:
                     continue
                 expiring = stock.expiring(f.stock, good, ctx.turn, defs.goods)
@@ -3209,7 +3218,12 @@ class Market(IslandStage):
             for good, qty in sorted(ships.fuel_wanted(island, config, shipping).items()):
                 fuel[good] = (qty, auction.band(prices.get(good, 1), width)[1])
             vessels = {}
-            want = ships.ships_wanted(config, shipping, ctx.turn)
+            # 島に造船所があれば、船は造船所に前もって注文する（FX-60。差し押さえた海運業は注文
+            # しない）。なければ市場で買う
+            placed = -1
+            if not is_seized(shipping):
+                placed = ship_orders.place(island, defs, config, shipping, ctx.turn)
+            want = ships.ships_wanted(config, shipping, ctx.turn) if placed < 0 else 0
             # 買いたい船の代金を次の支払いに数え、足りなければ運転資金か持ち主の出資で賄う（回6）
             shipping.economy["ships_wanted"] = want
             if want > 0:

@@ -42,6 +42,7 @@ from hakoniwa_core.modules import infrastructure
 from hakoniwa_core.naming import assign_serial
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE, Facility, IslandState, LogEntry
+from hakoniwa_core.trade import orders as ship_orders
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import part, to_basis
 
@@ -214,6 +215,7 @@ def demolish(island: IslandState, payload: dict[str, Any], ctx: StageContext) ->
     if fac.is_housing(ctx.config, f):
         shops = [s for s in island.facilities if s.ext.get(fac.SITE) == [x, y]]
     for gone in [*shops, f]:
+        ship_orders.cancel_all(island, ctx.config, gone)  # 造船所の前注文（FX-60）
         sell_leftover_stock(island, gone)
         close_accounts(island, gone)
         stock.move_to_warehouse(gone.stock, island.warehouse, ctx.turn, ctx.defs.goods)

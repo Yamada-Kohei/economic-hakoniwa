@@ -142,6 +142,7 @@ from hakoniwa_core.state import (
     LogEntry,
 )
 from hakoniwa_core.trade import merchant, send_to_market
+from hakoniwa_core.trade import orders as ship_orders
 from hakoniwa_core.trade import setup as trade_setup
 from hakoniwa_core.trade import traders as trade_traders
 from hakoniwa_core.turn.context import StageContext
@@ -618,6 +619,8 @@ class EntryExit(IslandStage):
             )
             if not self._exit_signal(island, ctx, f, rates.get(f.id, 0)):
                 continue
+            # 造船所の前注文は取り消し、返しきれない前払いは請求に足す（FX-60）
+            ship_orders.cancel_all(island, config, f)
             # 残った在庫は国が市場の値段で引き取り、その代金も同じ順で分ける（回3。E25）
             arrears.sell_stock_to_state(island, facility_entity(f.id), f.stock)
             close_foreclosure(island, f)
@@ -2068,6 +2071,7 @@ def remove_facility(island: IslandState, ctx: StageContext, f: Facility) -> None
     順に払って残りを出資者に返し、出資を消して、在庫を国の倉庫に移して取り除く。"""
     from hakoniwa_core.modules.construction import close_accounts, sell_leftover_stock
 
+    ship_orders.cancel_all(island, ctx.config, f)  # 造船所の前注文は取り消し、前払いを返す（FX-60）
     sell_leftover_stock(island, f)
     close_accounts(island, f)
     take_over_stock(island, ctx, f)

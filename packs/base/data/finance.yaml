@@ -7,6 +7,8 @@ capital_injection:    {type: journal}   # 出資（持ち主 → 施設・銀行
 equity_return:        {type: journal}   # 出資の払い戻し（施設 → 持ち主）
 # 売り買い
 sale:                 {type: journal}   # 物の代金（買い手 → 売り手）
+ship_order:           {type: journal}   # 船の前注文の代金（海運業 → 造船所。手付け・建造の間・引き渡し。FX-60）
+ship_order_refund:    {type: journal}   # 船の前注文の前払いの返金（造船所 → 海運業。届かずに取り消した注文）
 electricity:          {type: journal}   # 電気代（使う施設と家計 → 発電所）
 freight:              {type: journal}   # 運賃（売り手と買い手 → 運送業）
 # 賃金と税
