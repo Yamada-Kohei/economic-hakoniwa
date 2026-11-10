@@ -989,7 +989,7 @@ def _candidates(
             record = markets.get(good)
             short = record is not None and record.supply < record.demand * MARKET_SHORT
             # 1人あたりの目安（衣料・消費財・嗜好品。household.targets。フェーズ3-2）
-            target = people * needs.target_of(config, good)
+            target = people * needs.per_turn_target(defs, config, good)
             few = target > 0 and supply.get(good, 0) < to_milli(target * CONSUMER_MARGIN)
             if short or few:
                 # 島でまだ作っていない物は、投入財に余裕がなくても1つ目を建てる（投入財の工場は、

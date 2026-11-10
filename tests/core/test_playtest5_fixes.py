@@ -135,7 +135,7 @@ def _small_bank(game, world):
     return island, private
 
 
-def test_small_bank_hires_for_its_business(game, warmed):
+def test_small_bank_hires_for_its_business(game, warmed, monkeypatch):
     world = copy.deepcopy(warmed)
     island, private = _small_bank(game, world)
     f = banks.facility_of(island, private)
@@ -156,8 +156,21 @@ def test_small_bank_hires_for_its_business(game, warmed):
     if banks.deposits_of(island, big) >= full:  # 大きい銀行は定義の人数のまま
         f_big = banks.facility_of(island, big)
         assert banks.staff_wanted(island, game.config, game.defs, f_big) == need
-    # 雇いたい分を雇えていれば、労働者不足ではなく規模に合わせた操業
+    # 雇いたい分を雇えていれば、労働者不足ではなく規模に合わせた操業。雇う人数は、そのターンに
+    # 雇うときの規模で決まる（ターンの初めに利息などで預金が動くので、回す前の人数とは限らない）
+    seen = []
+    staff_wanted = banks.staff_wanted
+
+    def spy(island, config, defs, facility):
+        value = staff_wanted(island, config, defs, facility)
+        if facility is f:
+            seen.append(value)
+        return value
+
+    monkeypatch.setattr(banks, "staff_wanted", spy)
     run_world_turns(game, world, 1)
+    monkeypatch.undo()
+    wanted = seen[0]  # 雇う段で見た人数
     assert f.workers <= wanted
     if f.workers == wanted:
         assert f.status == "business"

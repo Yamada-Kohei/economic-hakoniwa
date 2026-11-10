@@ -57,6 +57,7 @@ from hakoniwa_core.economy import (
     funds,
     household,
     layers,
+    needs,
     owner_entity,
 )
 from hakoniwa_core.economy import plan as planning
@@ -864,6 +865,7 @@ def _merge_owners(island: IslandState, ctx: StageContext) -> None:
     general = households[GENERAL]
     general["persons"] += persons
     blend_hunger(households[OWNERS], general, persons)
+    needs.move_clothes(households[OWNERS], general, persons, persons)  # 衣料も持って移る（LB-44）
     del households[OWNERS]
 
 

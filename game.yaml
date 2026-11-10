@@ -209,6 +209,13 @@ market:
   sales_smoothing: 0.5  # 売れ行きの見込みを、前のターンに売れた量へ近づける割合
   inventory_turns: 2    # 産出物の在庫の目安（売れ行きの見込みの何ターン分）
   inventory_adjust: 0.25 # 在庫と目安の差を、1ターンに埋める割合
+  # 売れ残りの値引き（MK-41）: 独立採算の売り手の作り終えた在庫が、ふだん持っておく在庫（売れ行きの見込み ×
+  # inventory_turns）の clearance_ratio 倍を超えたまま clearance_turns 続いたら、超えた分だけを変動費から、
+  # 売れ残るターンごとに band ずつ下げた指値で売り、変動費の clearance_floor 倍で止める（在庫処分は原価の
+  # 半分ほどまで）。値引きで売れた分は売れ行きの見込みに数えない
+  clearance_ratio: 2
+  clearance_turns: 3
+  clearance_floor: 0.5
   target_step: 0.1      # 売り切れたときに多めに見る量（全力の産出に対する割合）。発電所の余裕
   expand_margin: 0.2    # 売り切れて、値段が変動費よりこの割合以上高いときに増産する
   max_target_change: 0.2  # 操業目標を1ターンに変える幅の上限（全力に対する割合）
@@ -341,8 +348,18 @@ household:
   # 売りに出ていたのに家計が1つも買わなかったターンがこの数続いた財は、いつもの値段をその間の売りの一番安い
   # 指値との半ばまで上げる（値上がりに少しずつ慣れる。回7 後半。W-77。economy/prices.py の adapt_usual）
   reprice_turns: 3
-  # 1人1ターンあたりの目安（幸福度。フェーズ3-2）。衣料はこの量を必需品として買う
-  targets: {clothing: 0.00004, consumer_goods: 0.0005, luxury_crop: 0.0002, services: 0.05}
+  # 1人1ターンあたりの目安（幸福度。フェーズ3-2）。衣料だけは1人あたりの持つ量の目安（LB-44。前の
+  # 毎月買う量 0.00004 × 着る期間 30 か月。ふだんの買う量は前と同じ）
+  targets: {clothing: 0.0012, consumer_goods: 0.0005, luxury_crop: 0.0002, services: 0.05}
+  # 衣料は持ち物（LB-44。hakoniwa_core/economy/needs.py）。持つ量は毎年 wear の割合が傷み（数年で着替える
+  # 半耐久財）、買う量は「傷んだ分 ＋ 目安との差 × catch_up」を値段の曲線（price_elasticity）で減らした量。
+  # 払う額は必需品の予算（necessity）の share まで（日本の家計の被服費は消費の約 3.5%、必需品の約 1 割）
+  clothing: {wear: 0.4, catch_up: 0.1, share: 0.1}
+  # 値段の弾力性（財ごと。値段が 1% 高いと買う量が何 % 減るか）。真ん中の値段（いつもの値段。お金を刷り
+  # 放題の件の回3 からは見通しの値段）の price_curve の倍率の段ごとに「(倍率)^(−弾力性)」の量を買う。
+  # 現実の衣料は −0.5〜−1。回3 で消費財・嗜好品・燃料の値をここに足す
+  price_elasticity: {clothing: 0.7}
+  price_curve: [0.5, 0.7, 0.85, 1.0, 1.2, 1.5, 2.0, 3.0]
   # サービス（商店・飲食・理美容・娯楽・修理など。hakoniwa_core/economy/services.py）に使う割合。必需品
   # （食料・衣料）を買った残りのうち、実質の使う額が base_income のとき share、倍になるごとに rise ずつ
   # 増え、半分になるごとに減る（floor〜max）。所得が上がるほどサービスに多く使う（バランス調整）

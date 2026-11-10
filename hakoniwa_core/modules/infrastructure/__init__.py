@@ -354,6 +354,8 @@ def _material_cost(
     for f in island.facilities:
         for good, entry in f.economy.get("sales", {}).items():
             supply[good] = supply.get(good, 0) + entry[0]
+        for good, cut in f.economy.get("clearance", {}).items():  # 値引きで出した量（MK-41）
+            supply[good] = supply.get(good, 0) + cut.get("offered", 0)
     width = to_basis(ctx.config.get("market.band"))
     rate = island.economy.freight.get("household", 0)
     total = 0
