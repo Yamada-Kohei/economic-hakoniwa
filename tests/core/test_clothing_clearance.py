@@ -290,5 +290,7 @@ def test_island_price_ignores_the_bargain_sale(game, warmed):
     entry = f.economy.get(CLEARANCE, {}).get(good)
     record = next(m for m in island.markets if m.good == good)
     assert entry is not None and entry["sold"] > 0  # 値引きの分が売れた
-    assert record.price < island.economy.prices[good]  # 約定は安値、島の値段はふだんの値段
+    # 市場の値段（記録と島の値段）は、値引きの売りを除いて決まった値段
+    assert record.price == island.economy.prices[good]
+    assert record.price >= auction.band(before, 1000)[0]
     assert island.economy.prices[good] >= auction.band(before, 1000)[0]

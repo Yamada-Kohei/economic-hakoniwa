@@ -3923,15 +3923,15 @@ class Market(IslandStage):
             own = result.demand - Market._out_of_money(books_by_good.get(good), result)
             demand = own + (wanted.get(good, 0) if result.supply <= 0 else 0)
             demand += island.scratch.get("unplaced", {}).get(good, 0)
+            # 値引きの売りがあったときは、それを除いて決まった値段を市場の値段とする（MK-41。
+            # _clear。在庫処分の安値は相場に数えない）
+            price = island.scratch.get(CLEARANCE, {}).get(good, result.price)
             island.markets.append(
-                MarketRecord(
-                    good, result.price, result.volume, demand, result.supply, _kind(result)
-                )
+                MarketRecord(good, price, result.volume, demand, result.supply, _kind(result))
             )
             supply[good] = result.supply
             if own > 0 and result.supply > 0:  # 約定しなくても気配で値段が動く
-                # 値引きの売りがあったときは、それを除いて決まった値段（MK-41。_clear）
-                prices[good] = island.scratch.get(CLEARANCE, {}).get(good, result.price)
+                prices[good] = price
             elif own > 0:
                 wanted[good] = wanted.get(good, 0) + own
         from hakoniwa_core.modules.firms import entry_price  # firms は market を読むので、ここで
