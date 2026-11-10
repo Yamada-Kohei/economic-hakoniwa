@@ -94,16 +94,27 @@ def test_contract_short_of_foreign_currency_tells_where_it_came_from(game, trade
     depth = fxrates.depth(buyer, seller.id, game.config)
     price = had + reserve + 20 * depth
     c = _contract(world, buyer, seller, good, 1, price, 2)
-    # 為替の後に、ほかの島へ融通した外貨の利子を受け取ることがある（中央銀行の外貨の持ち高に入る）
-    interest = []
+    # 為替の後に、ほかの島へ融通した外貨の利子と返済を受け取ることがある（中央銀行の外貨の持ち高に
+    # 入る。融通の利払いと返済 swap.service の中で受け取った分を数える）
+    returned = []
     transfer = fxmoney.transfer
+    service = swap.service
+    servicing = []
 
     def counted(world, currency, source, target, amount, kind, *args, **kwargs):
-        if (currency, target, kind) == (seller.id, (buyer.id, ledger.CB), swap.INTEREST):
-            interest.append(amount)
+        if servicing and (currency, target) == (seller.id, (buyer.id, ledger.CB)):
+            returned.append(amount)
         return transfer(world, currency, source, target, amount, kind, *args, **kwargs)
 
+    def serviced(*args, **kwargs):
+        servicing.append(True)
+        try:
+            return service(*args, **kwargs)
+        finally:
+            servicing.pop()
+
     monkeypatch.setattr(fxmoney, "transfer", counted)
+    monkeypatch.setattr(swap, "service", serviced)
     run_world(game, world, 1)
     fx = c["fx"]
     assert fx["turn"] == world.turn and fx["need"] == price
@@ -117,7 +128,7 @@ def test_contract_short_of_foreign_currency_tells_where_it_came_from(game, trade
     assert f"中央銀行の外貨から {reserve:,}" in text and f"{fx['short']:,} 足りません" in text
     assert "為替介入" in text
     # 中央銀行の外貨は使い切った（受け身の売りとして数える）
-    assert fxmoney.holding(buyer, ledger.CB, seller.id) <= fx["market"] + sum(interest)
+    assert fxmoney.holding(buyer, ledger.CB, seller.id) <= fx["market"] + sum(returned)
     assert buyer.stats[f"fx.dealt.{seller.id}"] <= -reserve
     assert check(world) == []
 

@@ -52,11 +52,13 @@ def test_short_checks_pass():
 def test_turn_scripts_with_many_turns_are_stopped(tmp_path):
     guard = _guard()
     script = tmp_path / "trace.py"
-    script.write_text("for _ in range(int(sys.argv[1])):\n    game.engine.run_turn(world)\n")
+    script.write_text(
+        "for _ in range(int(sys.argv[1])):\n    game.engine.run_turn(world)\n", encoding="utf-8"
+    )
     assert guard.problem(f"python {script} 300 1")
     assert guard.problem(f"python {script} 24 1") is None
     fixed = tmp_path / "long.py"
-    fixed.write_text("for _ in range(300):\n    game.engine.run_turn(world)\n")
+    fixed.write_text("for _ in range(300):\n    game.engine.run_turn(world)\n", encoding="utf-8")
     assert guard.problem(f"python {fixed}")
     # パスの中の数字はターン数に数えない
     assert guard.problem(f"python {script} 24 1 > /tmp/x-7360/out.json") is None
@@ -71,6 +73,7 @@ def test_only_in_the_cloud():
             input=payload,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             env={"PATH": "/usr/bin:/bin", **env},
         )
         assert done.returncode == code, (env, done.stderr)

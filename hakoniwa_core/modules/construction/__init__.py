@@ -26,6 +26,7 @@ from hakoniwa_core.economy import (
     banks,
     books,
     default_accounting,
+    dismissal,
     facility_entity,
     freight,
     funds,
@@ -215,6 +216,8 @@ def demolish(island: IslandState, payload: dict[str, Any], ctx: StageContext) ->
     if fac.is_housing(ctx.config, f):
         shops = [s for s in island.facilities if s.ext.get(fac.SITE) == [x, y]]
     for gone in [*shops, f]:
+        # まだ働いている人は全員解雇し、手当を払う（預金の分け方より先。LB-43）
+        dismissal.on_removal(island, ctx.defs, ctx.config, gone, ctx.turn)
         ship_orders.cancel_all(island, ctx.config, gone)  # 造船所の前注文（FX-60）
         sell_leftover_stock(island, gone)
         close_accounts(island, gone)

@@ -230,6 +230,12 @@ food_factory:
     default:
       inputs: {grain: 12, electricity: 1}
       outputs: {food: 10}
+    # 魚から作る（W-249。FM-62、2026-11-10）: 魚の重さの約3分の2が食品になり、栄養の量は加工で増えも減りもしない
+    # （魚の栄養 1 × 15 ＝ 食品の栄養 1.5 × 10）。すり身・缶詰・冷凍の加工に当たる。魚は2か月で傷むので、
+    # 漁港で余って捨てる魚を半年もつ食品にできる。電子機器で自動化した作り方は穀物の作り方からだけ
+    fish:
+      inputs: {fish: 15, electricity: 1}
+      outputs: {food: 10}
   sprite: food_factory
 
 thermal_power_plant:

@@ -44,6 +44,8 @@ steel_mill_automated: 電子機器で自動化して製造
 building_materials_plant_automated: 電子機器で自動化して製造
 machinery_plant_automated: 電子機器で自動化して製造
 food_factory_automated: 電子機器で自動化して製造
+food_factory_default: 穀物から製造
+food_factory_fish: 魚から製造
 consumer_goods_factory_automated: 電子機器で自動化して製造
 refinery_automated: 電子機器で自動化して精製
 aluminium_smelter_automated: 電子機器で自動化して精錬

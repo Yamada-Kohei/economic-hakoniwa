@@ -187,9 +187,13 @@ def next_payments(island: IslandState, defs: Defs, config: GameConfig, f: Facili
         )
     rate = freight_rates.facility_rates(island, defs, config).get(f.id, 0)
     cost = operating_cost(defs, config, f, island.economy.prices, wage, rate)
-    return max(
-        fac.scale(cost, f.economy.get("target", fac.FULL)), f.economy.get("wanted", 0) * wage
-    ) + _ships_to_buy(island, config, f)
+    # 解雇の決まりで抱えている人（LB-43。economy/dismissal.py の HELD）の賃金も払う
+    held = f.economy.get("held", 0) * wage
+    return (
+        max(fac.scale(cost, f.economy.get("target", fac.FULL)), f.economy.get("wanted", 0) * wage)
+        + held
+        + _ships_to_buy(island, config, f)
+    )
 
 
 def _ships_to_buy(island: IslandState, config: GameConfig, f: Facility) -> int:

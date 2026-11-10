@@ -758,6 +758,7 @@ def change_economy(island: IslandState, payload: dict[str, Any], ctx: StageConte
         planning.stop(island)
         _add_owners(island, ctx)
     island.policy.bank_entry = ""  # 民間銀行の参入は新しい経済体制の既定
+    island.policy.dismissal = ""  # 解雇の決まりも新しい経済体制の既定（LB-43）
     args = {"before": before or "", "economy": payload["economy"]}
     island.log.append(LogEntry("economy_changed", args))
 

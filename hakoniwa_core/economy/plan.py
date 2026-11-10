@@ -43,6 +43,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -101,6 +102,54 @@ def hoards(island: IslandState, defs: Defs, f: Facility) -> bool:
     一般の働き手を解雇せず（辞める人の分 planning.attrition ずつ減る）、作る量は操業目標までに
     抑える（余った人は隠れた失業）。現実のソ連・東欧の国営企業は解雇せず人を抱え込んだ。"""
     return f.owner == OWNER_STATE and f.built and is_planned(island, defs)
+
+
+# --- 人員計画（PL-59） ---------------------------------------------------------------
+
+# f.ext: 人員計画の枠（一般の労働者・技術者・動員した人を合わせた人数の上限）
+STAFF_CAP = "staff_cap"
+STAFF_CAPPED = "staff_capped"  # f.ext: 人員の枠で、生産目標に要る人を雇えなかった
+
+
+def staff_cap(island: IslandState, defs: Defs, f: Facility) -> int | None:
+    """施設 f の人員の枠（命令 set_staff_plan）。計画経済の島の建て終わった国営施設だけ。決めて
+    いなければ None。暴動などで壊れて直している間は枠をかけない（直す工事の作業員を縛らない。
+    直し終わると枠が戻る）。"""
+    cap = f.ext.get(STAFF_CAP)
+    if cap is None or not f.built or f.owner != OWNER_STATE or not is_planned(island, defs):
+        return None
+    return int(cap)
+
+
+def staff_limit(
+    island: IslandState,
+    defs: Defs,
+    config: GameConfig,
+    f: Facility,
+    prior: int | None = None,
+) -> int | None:
+    """このターンに施設 f が雇える人数の上限（人員の枠と、枠に向けて減らす速さ）。枠がなければ
+    None。
+
+    前のターンの人数 prior（動員した人を除く）が枠以下なら枠まで。枠より多い施設は、前のターンに
+    働いていなかった人（前のターンの稼働率で要った人数を超える人: 抱えられた余りの人と休業中の人）を
+    その月に枠まで手放し、それでも多ければ働いていた人を前のターンの人数の planning.staff_release
+    （端数は切り上げ）まで減らす。店（商業・サービス業）は雇った人がみな働いている。"""
+    cap = staff_cap(island, defs, f)
+    if cap is None:
+        return None
+    if prior is None:
+        prior = f.workers - f.economy.get("mobilized", 0)
+    if prior <= cap:
+        return cap
+    full = fac.workers_of(defs, f)
+    worked = prior
+    if full > 0 and f.kind != config.get("services.facility"):
+        worked = min(prior, -(-full * max(0, f.operating_rate) // fac.FULL))
+    left = max(cap, worked)
+    if left > cap:
+        left = max(cap, left - math.ceil(prior * config.get("planning.staff_release")))
+    return left
 
 
 def build_factor(island: IslandState, defs: Defs) -> float:
@@ -376,6 +425,58 @@ def capacities(island: IslandState, defs: Defs, config: GameConfig) -> dict[str,
     return found
 
 
+def staff_ratio(island: IslandState, defs: Defs, config: GameConfig, f: Facility) -> int:
+    """人員の枠（PL-59）のある施設が、その月に残す人数で動ける稼働率の上限（1000 分の 1）。枠に
+    向けて減らしている途中は、その月に手放した後の人数で見る。枠がなければ 1000。"""
+    limit = staff_limit(island, defs, config, f)
+    if limit is None:
+        return fac.FULL
+    return fac.ratio(limit, fac.workers_of(defs, f))
+
+
+def fill_share(island: IslandState, defs: Defs, config: GameConfig, good: str) -> int | None:
+    """財 good の生産目標を同じ財を作る国営施設に割り振るときの、枠のない施設の稼働率
+    （1000 分の 1）。
+
+    どの施設も同じ割合 s で動き、人員の枠のある施設は残す人数で動ける割合（staff_ratio）までで止め、
+    その残りを枠のない施設に回す（Σ min(s, 枠の割合) × 全力の産出 = 目標）。回す先がなければ全力の
+    1000 を返す（その財は足りなくなり、行列が伸びる）。需要の記録がなければ None。このターンの値を
+    scratch に置く。"""
+    cache = island.scratch.setdefault("plan_fill", {})
+    if good in cache:
+        return cache[good]
+    goal = goal_of(island, config, good)
+    if goal is None:
+        cache[good] = None
+        return None
+    power = config.get("power.good")
+    units = []
+    for f in island.facilities:
+        if not f.built or f.owner != OWNER_STATE or fac.is_housing(config, f):
+            continue
+        qty = fac.outputs_of(defs, f).get(good, 0)
+        if good == power or qty <= 0:
+            continue
+        units.append((staff_ratio(island, defs, config, f), fac.scale(qty, fac.equipment_cap(f))))
+    rest = sum(full for _, full in units)
+    if rest <= 0:
+        cache[good] = fac.FULL
+        return fac.FULL
+    left = goal
+    share = fac.FULL
+    for cap, full in sorted(units):
+        share = fac.ratio(max(0, left), rest)
+        if share <= cap:
+            break
+        left -= fac.scale(full, cap)
+        rest -= full
+        share = fac.FULL
+        if rest <= 0:
+            break
+    cache[good] = share
+    return share
+
+
 def goal_of(island: IslandState, config: GameConfig, good: str) -> int | None:
     """財 good の次のターンの生産目標（量）。需要の記録がなければ None。"""
     history = island.ext.get(KEY, {}).get("demand", {}).get(good)
@@ -392,15 +493,15 @@ def target(island: IslandState, f: Facility, defs: Defs, config: GameConfig) -> 
     合計」の割合で動く。産出が複数なら一番多く要る財に合わせる。1ターンに変えるのは全力の
     market.max_target_change まで（人の出入りと仕入れを急に変えない）。"""
     power = config.get("power.good")
-    caps = capacities(island, defs, config)
+    own = staff_ratio(island, defs, config, f)
     plan = None
     for good, full in sorted(fac.outputs_of(defs, f).items()):
         if good == power or full <= 0:
             continue
-        goal = goal_of(island, config, good)
-        if goal is None:
+        share = fill_share(island, defs, config, good)
+        if share is None:
             continue
-        share = fac.ratio(goal, caps.get(good, full))
+        share = min(share, own)
         plan = share if plan is None else max(plan, share)
     if plan is None:
         return None
