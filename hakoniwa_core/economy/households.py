@@ -32,7 +32,7 @@ from typing import Any
 from hakoniwa_core import ledger
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import GENERAL, JOBLESS, household, layers
+from hakoniwa_core.economy import GENERAL, JOBLESS, household, layers, needs
 from hakoniwa_core.facilities import ENGINEER
 from hakoniwa_core.state import OWNER_PRIVATE, IslandState
 from hakoniwa_core.units import BASIS, round_money, to_basis
@@ -361,6 +361,7 @@ def move_people(island: IslandState, changes: dict[str, int]) -> None:
 
         banks.move_mortgages(island, payer, household(target), abs(moved), persons)
         _move_bought(island, source, target, abs(moved), persons)
+        needs.move_clothes(households[source], households[target], abs(moved), persons)
 
 
 def _move_bought(island: IslandState, source: str, target: str, moved: int, persons: int) -> None:
