@@ -189,6 +189,8 @@ def test_excess_stock_is_sold_off_step_by_step_down_to_half_the_cost(game, warme
     f, good = _stocked_seller(game, island)
     ctx = context(game, world)
     config = game.config
+    # 温めた世界で、もう値引きを始めている施設もある（数え始めからにする）
+    f.economy.pop(CLEARANCE, None)
     f.economy.setdefault("expected", {})[good] = 10 * Q
     f.stock.clear()
     stock.add(f.stock, good, 100 * Q, world.turn, game.defs.goods)
