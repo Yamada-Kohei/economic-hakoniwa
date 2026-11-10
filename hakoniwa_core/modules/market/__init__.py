@@ -46,6 +46,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -87,6 +88,7 @@ from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy import public_housing as pub
 from hakoniwa_core.economy.households import SUPPORT, consumption
 from hakoniwa_core.economy.prices import (
+    SITE_USUAL,
     adapt_materials,
     adapt_usual,
     input_limit,
@@ -450,6 +452,11 @@ def hungry_food_orders(
     まで買える段は、飢えていないときと同じく上端より安くはしない。どの段も、前の段までの取り置きと
     合わせて食費の限り budget（預金を崩す分を含む）に収まる分までにする（お金のない家計から買えなく
     なり、値段は買える人の分まで上がって止まる）。
+    全部の段をその指値で取り置くと食費の限りを超えるが、今の値幅の上端（段の指値のほうが低ければ
+    その指値）でなら全部を買えるときは、どの段も上乗せ（指値 − 上端）を同じ割合で縮めて、要る量の
+    全部を食費の限りに収める（2026-11-10。前は最初の段を飢える前の値段の数倍で取り置いて食費を使い
+    切り、ふだんの値段の何倍もの食費がある層でも要る量の半分しか注文せずに飢えた。約定は板寄せの
+    値段なので、指値を高く置いても払う額は変わらず、取り置きだけが注文の量を削っていた）。
     """
     if need <= 0 or budget <= 0:
         return []
@@ -471,9 +478,8 @@ def hungry_food_orders(
     whole = sum(gross_cost(menu.limits[g], q, menu.rate, menu.tax) for g, q in basket.items())
     if nutrition(basket) <= 0 or whole <= 0:
         return []
-    orders: list[tuple[str, int, int]] = []
-    done, reserved = 0.0, 0
-    placed = dict.fromkeys(basket, 0)  # 財ごとに、前の段までに注文した量
+    stages: list[tuple[float, float, dict[str, int]]] = []  # (段の始め, 段の終わり, 指値)
+    done = 0.0
     for upto in steps:
         portion = upto - done
         start, done = done, upto
@@ -485,6 +491,28 @@ def hungry_food_orders(
         for g in basket:
             limit = scale_price(anchors.get(g, menu.limits[g]), scale)
             limits[g] = max(limit, menu.limits[g]) if floor else limit
+        stages.append((start, upto, limits))
+
+    def total(pick: Callable[[dict[str, int], str], int]) -> int:
+        return sum(
+            gross_cost(pick(limits, g), round_money(q * (end - begin)), menu.rate, menu.tax)
+            for begin, end, limits in stages
+            for g, q in basket.items()
+        )
+
+    full = total(lambda limits, g: limits[g])
+    low = total(lambda limits, g: min(limits[g], menu.limits[g]))
+    if low < budget < full:  # 上乗せを同じ割合で縮めて、要る量の全部を食費の限りに収める
+        keep = (budget - low) / (full - low)
+        for _, _, limits in stages:
+            for g in basket:
+                base = min(limits[g], menu.limits[g])
+                limits[g] = base + int((limits[g] - base) * keep)
+    orders: list[tuple[str, int, int]] = []
+    reserved = 0
+    placed = dict.fromkeys(basket, 0)  # 財ごとに、前の段までに注文した量
+    for start, upto, limits in stages:
+        portion = upto - start
         cost = sum(gross_cost(limits[g], q, menu.rate, menu.tax) for g, q in basket.items())
         fit = min(portion, (budget - reserved) / cost) if cost > 0 else 0.0
         if fit <= 0:
@@ -1603,8 +1631,9 @@ class Market(IslandStage):
     ) -> tuple[int, int]:
         """投入財の買いの指値（運賃込み）の（ふだん, いちばん高く）。
 
-        ふだんは今の値段の market.band 増しまで、いちばん高くは変動費の利益が0になる値段まで
-        （国庫直轄は、今の値段まではいつも買う）。ふだんの指値も、利益が0になる値段を超えない。
+        独立採算はふだん今の値段の market.band 増しまで、国庫直轄は今の値段まで。
+        買い上がるのはいずれも変動費の利益が0になる値段まで。国庫直轄は採算を割っていても
+        今の値段では買うが、その買いだけで次のターンの値段を押し上げない。
         公定価格の財（fixed。フェーズ3-4）と学校・大学は、どちらも今の値段の market.band 増し
         （約定は公定価格か、予算で買う）。
 
@@ -1620,7 +1649,7 @@ class Market(IslandStage):
         wage = f.economy.get("wage", 0)
         limit = input_limit(ctx.defs, ctx.config, f, good, prices, wage, rate, subsidy=subsidy)
         if not is_self_supporting(f):
-            limit = max(limit, price + part(price, rate))
+            return price + part(price, rate), limit
         return min(usual, limit), limit
 
     @staticmethod
@@ -1653,15 +1682,16 @@ class Market(IslandStage):
     @staticmethod
     def _step_up(usual: int, most: int, last: int | None, width: int) -> int:
         """買い負けた財の次の指値: 前のターンの指値 last の market.band 増しまで（ふだんの指値より
-        低くはせず、利益が0になる値段 most を超えない）。買い負けていなければ（last が None）ふだん
-        の指値のまま。
+        低くはせず、追加の買い上がりは利益が0になる値段 most まで）。買い負けていなければ
+        （last が None）ふだんの指値のまま。
 
         品切れのたびに利益が0になる値段まで一度に買い上がると、石炭の値段が1ターンで3倍半に跳ね、
         売り手が1割ずつ下げて戻ってはまた跳ねた（1つの島の 300 ターンの試験）。買い手も売り手と
         同じく、買えなかったのを見てから少しずつ上げる（相手の払える値段は分からないので）。"""
         if last is None:
             return usual
-        return min(most, max(usual, last + max(1, part(last, width))))
+        # 国庫直轄は採算の上限 most が今の値段 usual を下回っていても、今の値段では買う。
+        return max(usual, min(most, last + max(1, part(last, width))))
 
     @classmethod
     def _raise_bids(
@@ -3199,9 +3229,8 @@ class Market(IslandStage):
         # 二国間契約で売る分のうち、国の倉庫に足りない分を政府が買う。代金は予算の段で国債の利払いの
         # 次に取り置いた項目から（FX-24・FS-09）。減らしたターンはログに出す（報告 #9）
         payer = Payer(ledger.GOV, traders.CONTRACT_SUPPLY)
-        plan = traders.contract_supply_plan(island, ctx.config)
-        affordable = self._afford(island, payer, plan, 0, 0)
-        for good, (want, _) in sorted(plan.items()):
+        for good, want, limit in traders.contract_supply_plan(island):
+            affordable = self._afford(island, payer, {good: (want, limit)}, 0, 0)
             placed_qty = affordable.get(good, (0, 0))[0]
             if placed_qty < want:
                 island.log.append(
@@ -3214,11 +3243,11 @@ class Market(IslandStage):
                         },
                     )
                 )
-        for good, (qty, limit) in sorted(affordable.items()):
-            party = Party(STORE, ledger.GOV, payer, site=site)
-            party.reserved = gross_cost(limit, qty, 0, 0)
-            funds.commit(island, payer, party.reserved)
-            self._add(books_by_good, good, "buy", Order(qty, limit, CONTRACT_PRIORITY), party)
+            for good, (qty, limit) in sorted(affordable.items()):
+                party = Party(STORE, ledger.GOV, payer, site=site)
+                party.reserved = gross_cost(limit, qty, 0, 0)
+                funds.commit(island, payer, party.reserved)
+                self._add(books_by_good, good, "buy", Order(qty, limit, CONTRACT_PRIORITY), party)
 
     def _transport_orders(
         self,
@@ -3803,6 +3832,31 @@ class Market(IslandStage):
             asks[good] = min(limits) if limits else 0
         width = to_basis(ctx.config.get("market.band"))
         adapt_materials(island, ctx.config, width, asks, bought)
+        # 積算し直した後の待ち時間を、実際に買いを出した工事ごとに表示する。
+        for f in island.facilities:
+            f.ext.pop("material_price_wait", None)
+        turns = ctx.config.get("household.reprice_turns")
+        table = island.economy.ext.get(SITE_USUAL, {})
+        for good, book in sorted(books_by_good.items()):
+            ask = asks.get(good, 0)
+            # 指値なしの売りは、その工事の指値以下でも買える。
+            if ask <= 0 or any(o.limit is None and o.quantity > 0 for o, _ in book.sells):
+                continue
+            for order, party in book.buys:
+                f = party.facility
+                if party.kind != SITE or f is None or order.limit is None or order.limit >= ask:
+                    continue
+                if stock.total(f.stock, good) >= fac.step_materials(ctx.defs, f).get(good, 0):
+                    continue
+                left = max(0, turns - table.get(good, {}).get("stall", 0))
+                if material_limit(island, ctx.config, good, width) >= ask:
+                    left = 0
+                f.ext.setdefault("material_price_wait", {})[good] = left
+                f.ext["waiting"] = sorted(
+                    g
+                    for g, qty in fac.step_materials(ctx.defs, f).items()
+                    if stock.total(f.stock, g) < qty
+                )
 
     @staticmethod
     def _supply_floors(

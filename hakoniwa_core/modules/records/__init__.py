@@ -275,10 +275,15 @@ def _holdings(island: IslandState) -> dict[str, float]:
 
 def _finances(island: IslandState) -> dict[str, float]:
     """国庫・国債の残高・政策金利。"""
+    treasury = funds.government_money(island)
+    outstanding = total_debt(island)
+    central_bank = sum(debt.holdings_of(island, ledger.CB).values())
     return {
-        "treasury": funds.government_money(island),  # 市中銀行に預けた政府の預金も数える（回5）
+        "treasury": treasury,  # 市中銀行に預けた政府の預金も数える（回5）
         "treasury.deposited": sum(funds.deposited(island).values()),
-        "debt": total_debt(island),
+        "debt": outstanding,
+        "bonds.central_bank": central_bank,
+        "net_public_debt": outstanding - central_bank - treasury,
         "policy_rate": island.policy.policy_rate * 100 / BASIS,
     }
 

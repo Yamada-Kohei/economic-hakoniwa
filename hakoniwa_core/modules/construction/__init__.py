@@ -36,6 +36,7 @@ from hakoniwa_core.economy import (
     retail,
 )
 from hakoniwa_core.economy import plan as planning
+from hakoniwa_core.economy.prices import site_material_cost
 from hakoniwa_core.economy.start import fund_facility, init_facility, operating_capital
 from hakoniwa_core.modules import infrastructure
 from hakoniwa_core.naming import assign_serial
@@ -114,6 +115,8 @@ def build(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> No
     if monuments.is_monument(ctx.defs, kind):
         monuments.stamp(ctx.defs, island, f, ctx.turn, payload.get("note", ""))
     assign_serial(island, f)
+    if island.has_economy:
+        f.ext["material_estimate"] = site_material_cost(island, ctx.defs, ctx.config, f)
     island.facilities.append(f)
     island.log.append(LogEntry("construction_started", {"facility": kind, "x": x, "y": y}))
 
@@ -147,6 +150,8 @@ def start_expansion(
     factor = planning.build_factor(island, ctx.defs)
     if factor != 1.0 or steps:
         f.ext["build_total"] = max(fac.FULL, round(turns * factor * fac.FULL))
+    if island.has_economy:
+        f.ext["material_estimate"] = site_material_cost(island, ctx.defs, ctx.config, f)
     island.facilities.append(f)
     if steps:
         island.log.append(
@@ -314,6 +319,7 @@ class Construction(IslandStage):
         （ext["short_funds"]）は、そのわけで知らせる。"""
         if materials >= fac.FULL:
             f.ext.pop("waiting", None)
+            f.ext.pop("material_price_wait", None)
             f.ext.pop("no_materials_turns", None)
             return
         f.ext["waiting"] = sorted(

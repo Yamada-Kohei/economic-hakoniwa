@@ -351,7 +351,6 @@ def choose_investor(
     equity_of: int | Callable[[int | None], int],
     pledge: Callable[[], int] | None = None,
     exclude: int | None = None,
-    config: Any = None,
 ) -> tuple[str, int | None] | None:
     """新しい施設（kind）の出資を出す者。equity_of(企業の番号) はその企業が出すときの出資の額、
     equity_of(None) は資本家階級が新しい企業を起こすときの出資の額（創業融資で多め。2026-11-03）。
@@ -399,10 +398,6 @@ def choose_investor(
             best = (score, number)
     has_owners = OWNERS in island.economy.households
     owners = funds.available(island, Payer(household(OWNERS))) if has_owners else 0
-    if has_owners and config is not None:  # 暮らしの分は出資に回さない（households.investable）
-        from hakoniwa_core.economy.households import investable
-
-        owners = investable(island, config)
     equity = equity_of(None)
     if best is not None and best[0][0] == 0 and (owners < equity or -best[0][1] >= owners):
         return entity(best[1]), best[1]
