@@ -387,7 +387,8 @@ export class TilePanel {
         `<option value="${p}"${p === f.priority ? " selected" : ""}>${p}</option>`).join("");
       parts.push(`
         <form class="actions" data-form="priority">
-          <h4>優先度（値の大きい施設から労働者・資材・電力を配分）</h4>
+          <h4>優先度</h4>
+          <p class="hint">${escapeHtml(f.priority_hint || "")}</p>
           <select name="priority">${options}</select>
           <button type="submit">命令に追加</button>
         </form>`);

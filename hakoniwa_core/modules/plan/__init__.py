@@ -7,6 +7,10 @@
 - set_official_price_rules: 公定価格の決まり（計画経済だけ）。見直す幅（%）と、原価を下回っても
   据え置いて補助金で埋める財。
 - set_priority_industries: 重点産業（産業の分類。planning.max_priority まで。計画経済だけ）。
+- set_staff_plan: 人員計画（計画経済だけ。PL-59）。国営施設ごとの人数の枠（上限）を、何施設分でも
+  1つの命令で決める。枠を空（null）にするとその施設の枠を外す。マスのある施設は座標で、マスを
+  持たない施設（商業・サービス業）は種類で指す。効き方は economy/plan.py の staff_limit と
+  modules/employment。
 - set_price_floor: 値段の下限（混合経済だけ。農産物の支えなど）。0 で下限をなくす。上限は今の
   set_price_cap（混合経済はどの財にも、ほかの体制は電気料金だけ。modules/market）。
 
@@ -18,11 +22,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from hakoniwa_core import facilities as fac
 from hakoniwa_core import politics
+from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
+from hakoniwa_core.economy import is_bank, is_transport, services
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.registry import OrderFailed, OrderHandler, Registry
-from hakoniwa_core.state import IslandState, LogEntry
+from hakoniwa_core.state import OWNER_STATE, Facility, IslandState, LogEntry
+from hakoniwa_core.trade import staff
 from hakoniwa_core.turn.context import StageContext
 
 
@@ -97,6 +105,68 @@ def set_priority(island: IslandState, payload: dict[str, Any], ctx: StageContext
     island.log.append(LogEntry("priority_industries_set", {"industries": chosen}))
 
 
+# --- 人員計画（PL-59） ---------------------------------------------------------------
+
+
+def staff_plannable(defs: Defs, config: GameConfig, f: Facility) -> bool:
+    """人員の枠を決められる施設か: 建て終わった国営の、物を作る施設・公共サービス（役所・学校・警察
+    など。働く人の数が行政力・教育・治安の効き目に出る）・商業・サービス業。人数を荷や預金で決める
+    施設（運送業・港・海運業・商社・銀行）は外す（人数を絞っても荷が減らず、運賃の割り増しだけが
+    残る）。軍の施設は働く人の数が効き目に出ないので外す。住宅と人のいらない施設も外す。"""
+    if not f.built or f.owner != OWNER_STATE or fac.is_housing(config, f):
+        return False
+    if defs.facilities[f.kind].get("category") == "military":
+        return False
+    if is_transport(config, f) or is_bank(config, f) or staff.wanted(config, defs, f) is not None:
+        return False
+    return services.is_services(config, f) or fac.workers_of(defs, f) > 0
+
+
+def staff_plan_target(island: IslandState, entry: dict[str, Any]) -> Facility | None:
+    """人員計画の1行が指す施設（マスのある施設は座標、マスを持たない施設は種類）。"""
+    if "x" in entry and "y" in entry:
+        return island.facility_at(entry["x"], entry["y"])
+    kind = entry.get("kind")
+    return next((f for f in island.facilities if f.kind == kind and not fac.on_map(f)), None)
+
+
+def check_staff_plan(
+    island: IslandState, payload: dict[str, Any], defs: Defs, config: GameConfig
+) -> None:
+    _check_planned(island, defs)
+    seen: set[int] = set()
+    for entry in payload["plans"]:
+        f = staff_plan_target(island, entry)
+        if f is None:
+            raise OrderFailed("reason_no_facility")
+        if not staff_plannable(defs, config, f):
+            raise OrderFailed(
+                "reason_not_staff_plannable", facility=defs.name("facilities", f.kind)
+            )
+        if f.id in seen:
+            raise OrderFailed(
+                "reason_duplicate_staff_plan", facility=defs.name("facilities", f.kind)
+            )
+        seen.add(f.id)
+
+
+def set_staff_plan(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
+    """人員計画: 施設ごとの人数の枠を決める（null で外す）。次のターンの雇用の段から効く。"""
+    count = 0
+    for entry in payload["plans"]:
+        f = staff_plan_target(island, entry)
+        if f is None or not staff_plannable(ctx.defs, ctx.config, f):
+            continue  # 命令を出した後に撤去・民営化された
+        cap = entry.get("cap")
+        if cap is None:
+            f.ext.pop(planning.STAFF_CAP, None)
+            f.ext.pop(planning.STAFF_CAPPED, None)
+        else:
+            f.ext[planning.STAFF_CAP] = int(cap)
+        count += 1
+    island.log.append(LogEntry("staff_plan_set", {"count": count}))
+
+
 def check_price_floor(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
     good, price = payload["good"], payload["price"]
     if good not in defs.goods:
@@ -135,4 +205,7 @@ def register(registry: Registry) -> None:
     )
     registry.add_order(
         OrderHandler("set_price_floor", execute=set_price_floor, check=check_price_floor)
+    )
+    registry.add_order(
+        OrderHandler("set_staff_plan", execute=set_staff_plan, check_settings=check_staff_plan)
     )

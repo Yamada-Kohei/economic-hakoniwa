@@ -64,7 +64,10 @@ INSTRUCTIONS = """\
   売りの下限、release は reserve の放出価格、turns は省けば止めるまで続きます。量と値段は画面と
   同じ単位です。summary の shipping は、このターンに圏の荷のために船を
   貸し借りしたときの運賃（貸した船の収入 charter_income・借りた船に払った分 charter_paid）と
-  国際収支のサービス収支 services です（貸し借りがなければ null）。
+  国際収支のサービス収支 services です（貸し借りがなければ null）。summary の dismissal は解雇の
+  決まり（level・1か月に減らせる割合 rate %・解雇手当の月数 months と、そのターンに抱えていた
+  余った人 held・解雇した人 dismissed・解雇手当 severance）で、命令 set_labor_policy の dismissal
+  で変えます。
   島がなければ found で建国します。前に遊んだ方針や引き継ぎは国の日誌（diary）にあり、区切りで
   diary_set に書いておきます（持ち主だけが読めます）。
 - 次のターンからは changes(since=前に読んだターン) で、その後に起きたことだけを読みます。

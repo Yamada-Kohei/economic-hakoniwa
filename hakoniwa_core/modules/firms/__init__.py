@@ -87,6 +87,7 @@ from hakoniwa_core.economy import (
     banks,
     companies,
     default_accounting,
+    dismissal,
     equipment,
     facility_entity,
     funds,
@@ -540,6 +541,7 @@ class EntryExit(IslandStage):
         wage = f.economy.get("wage", 0)
         prices = island.economy.prices
         profit = variable_profit(ctx.defs, ctx.config, f, prices, wage, rate)
+        profit = dismissal.actual_profit(f, profit)  # 抱えた人の賃金も入れて見る（LB-43）
         sales = sum(money_of(prices.get(g, 0), q) for g, q in outputs.items())
         # 値段が変動費ちょうどの売り手は、端数でマイナスになることがあるので少し見逃す
         margin = part(sales, to_basis(settings["exit_loss_margin"]))
@@ -2068,6 +2070,8 @@ def remove_facility(island: IslandState, ctx: StageContext, f: Facility) -> None
     順に払って残りを出資者に返し、出資を消して、在庫を国の倉庫に移して取り除く。"""
     from hakoniwa_core.modules.construction import close_accounts, sell_leftover_stock
 
+    # まだ働いている人は全員解雇し、手当を払う（預金の分け方より先。LB-43）
+    dismissal.on_removal(island, ctx.defs, ctx.config, f, ctx.turn)
     sell_leftover_stock(island, f)
     close_accounts(island, f)
     take_over_stock(island, ctx, f)

@@ -40,6 +40,8 @@ CAUSES = {
     "no_grid": "power",
     "workers": "workers",
     "wages": "workers",
+    "budget": "workers",
+    "staff_plan": "workers",
     "engineers": "engineers",
     "target": "unsold",
     "no_demand": "unsold",

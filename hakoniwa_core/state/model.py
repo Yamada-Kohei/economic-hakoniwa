@@ -247,6 +247,8 @@ class Policy:
     large_store: str = "none"
     # 備蓄の放出の決まり（島で作っていない物が買えなかったら国の倉庫の余りを売りに出す。2026-10-31）
     warehouse_release: bool = True
+    # 解雇の決まり（LB-43。2026-11-10）: weak・normal・strong（"" は経済体制の既定）
+    dismissal: str = ""
 
 
 @dataclass

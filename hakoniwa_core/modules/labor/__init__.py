@@ -35,6 +35,7 @@ from hakoniwa_core.economy import (
     Payer,
     arrears,
     books,
+    dismissal,
     freight,
     funds,
     household,
@@ -303,6 +304,12 @@ class Payroll(IslandStage):
                 books.add(island, f.id, books.WAGES, amount)
         if skilled_workers:
             island.scratch["engineer_wage"] = skilled_paid // skilled_workers
+        # 解雇した人に解雇手当を払う（LB-43。雇用の段の economy["dismissed"]）
+        for f in sorted(island.facilities, key=lambda f: f.id):
+            general = f.economy.pop("dismissed", 0)
+            skilled = f.economy.pop("dismissed_engineers", 0)
+            if general or skilled:
+                dismissal.pay(island, defs, config, f, general, skilled)
         hired, wage = infrastructure.payroll(island)  # インフラの作業員
         if hired > 0:
             amount = hired * wage
@@ -439,8 +446,20 @@ def check_labor_policy(island: IslandState, payload: dict[str, Any], defs: Defs)
 
 
 def set_labor_policy(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
-    """最低賃金（0 で決めない）と失業手当（平均賃金に対する % ）を決める。"""
+    """最低賃金（0 で決めない）・失業手当（平均賃金に対する % ）・解雇の決まり（LB-43。弱い・
+    ふつう・強い。次のターンの雇用の段から効く）を決める。"""
     policy = island.policy
+    if "dismissal" in payload:
+        policy.dismissal = payload["dismissal"]
+        terms = dismissal.terms(island, ctx.defs, ctx.config)
+        args = {
+            "dismissal": f"dismissal_{policy.dismissal}",
+            "rate": round(terms["rate"] * 100, 1),
+            "months": terms["months"],
+        }
+        island.log.append(LogEntry("dismissal_policy_set", args))
+    if "minimum_wage" not in payload and "unemployment_benefit" not in payload:
+        return
     if "minimum_wage" in payload:
         policy.minimum_wage = payload["minimum_wage"]
     if "unemployment_benefit" in payload:

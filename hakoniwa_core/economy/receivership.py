@@ -232,12 +232,14 @@ def claims_since(island: IslandState, f: Facility, seized: dict[str, Any]) -> No
 
 def viable(island: IslandState, ctx: Any, f: Facility) -> bool:
     """今の値段で変動費の利益が出ているか（出ていなければ管財人は運転資金を借りない）。"""
+    from hakoniwa_core.economy import dismissal
     from hakoniwa_core.economy import freight as freight_rates
     from hakoniwa_core.economy.prices import variable_profit
 
     rate = freight_rates.facility_rates(island, ctx.defs, ctx.config).get(f.id, 0)
     wage = f.economy.get("wage", 0)
-    return variable_profit(ctx.defs, ctx.config, f, island.economy.prices, wage, rate) > 0
+    profit = variable_profit(ctx.defs, ctx.config, f, island.economy.prices, wage, rate)
+    return dismissal.actual_profit(f, profit) > 0  # 抱えた人の賃金も入れて見る（LB-43）
 
 
 def fund(island: IslandState, ctx: Any, f: Facility) -> int:
