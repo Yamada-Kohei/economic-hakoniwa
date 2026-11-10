@@ -181,6 +181,13 @@ def engineer_wage_update(island: IslandState, f: Facility, ctx: StageContext) ->
 FURLOUGH = ("power", "no_grid", "input")  # 休業手当にする status（外から物が来ずに動けない）
 
 
+def _furloughed(config: Any, status: str) -> bool:
+    """休業手当にする status か（FURLOUGH と、電力の割高・資金不足）。"""
+    kind, _, good = status.partition(":")
+    power = config.get("power.good")
+    return kind in FURLOUGH or (kind in ("input_price", "funds") and good == power)
+
+
 def furlough_share(defs: Defs, config: Any, f: Facility) -> int:
     """このターンの賃金のうち払う割合（1万分の1。回7 後半）。
 
@@ -188,8 +195,11 @@ def furlough_share(defs: Defs, config: Any, f: Facility) -> int:
     の休業手当は平均賃金の 6 割）だけ払い、ほかは満額。働き手は辞めずに残るので、物が戻ればすぐ
     動ける。
     原料が高い・買うお金がない（input_price・funds）のは施設の都合なので満額。操業目標を自分で
-    下げた分や、工事中の施設も満額（雇う人数を目標に合わせているので）。"""
-    if not f.built or f.status.partition(":")[0] not in FURLOUGH:
+    下げた分や、工事中の施設も満額（雇う人数を目標に合わせているので）。
+    ただし電力が高い・買うお金がない（input_price・funds の電力）は、電力不足と同じ休業手当のまま
+    （PR #303 で「電力不足」の誤表示を分けたときに、賃金の扱いは変えないことにした。満額にすると、
+    電気代も払えない施設の差し押さえが早まり、測りで企業の連鎖の差し押さえが増えた）。"""
+    if not f.built or not _furloughed(config, f.status):
         return BASIS
     able = fac.labor_ratio(defs, f)
     if able <= 0:
