@@ -26,6 +26,7 @@ from hakoniwa_core.economy import (
     receivership,
     retail,
 )
+from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy import public_housing as pub
 from hakoniwa_core.economy.prices import site_material_cost
 from hakoniwa_core.log import format_log, format_turn
@@ -176,6 +177,7 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         "size": fac.size_of(f),  # 規模（段6 A3。建て増した数 + 1）
         "expanding": fac.pending_expansions(island, f),
         "priority": fac.priority_of(defs, config, f) if fdef else None,
+        "priority_hint": priority_hint(island),
         "priority_changed": f.priority is not None,
         "status": f.status,
         "status_text": status_text(f),
@@ -788,6 +790,18 @@ def facility_books(row: m.Facility, f: Facility, currency: str = "") -> dict[str
 HALT_REASONS = ("war", "missile", "occupied")
 
 
+def priority_hint(island: IslandState) -> str:
+    """施設のパネルの優先度の説明（体制で出し分ける。PL-59）。"""
+    if planning.is_planned(island, get_game().defs):
+        return (
+            "値の大きい施設から、空いた人・資材・電力を配る。今いる人を出すには計画の画面の人員計画"
+        )
+    return (
+        "同じ賃金なら値の大きい施設から雇う。資材と電力は値幅の端で足りないときに値の大きい順。"
+        "国庫の同じ項目の予算が足りないときは値の大きい施設から分ける"
+    )
+
+
 def status_text(f: Facility) -> str:
     if not f.built:
         # 民営の工事でお金が足りないのは、公共事業費ではなく会社の資金
@@ -817,6 +831,8 @@ def status_text(f: Facility) -> str:
         text = message(f"halt_reason_{reason}")
     else:
         text = message(f"status_{kind}")
+    if kind == "budget" and good:  # 年の予算の月割りが足りない（項目の名前。LB-45）
+        return text + f"（{message(f'budget_{good}')}）"
     if good:
         text += f"（{get_game().defs.name('goods', good)}）"
     return text
@@ -830,6 +846,11 @@ STATUS_HINTS = {
         "「補助金の変更」で救済補助を出せます。"
         "国庫直轄の施設は国庫と「予算の変更」の該当費目も確かめてください。"
     ),
+    "budget": (
+        "「予算の変更」でその項目の年の予算を上げられます。同じ優先度の施設は予算を同じ割合で"
+        "分けるので、1つに集めたいときは「優先度の変更」で差を付けます。"
+    ),
+    "staff_plan": "「人員計画」でこの施設の人数の枠を上げるか外せます。",
     "input": (
         "「二国間契約の申し込み」で原料を輸入するか、"
         "「国の倉庫のこのターンの売り買い」で原料を売り出せます。"
@@ -1358,6 +1379,17 @@ def _describe_politics(kind: str, payload: dict[str, Any], name: str) -> str:
     if kind == "set_priority_industries":
         names = [defs.name("industries", i) for i in payload.get("industries", [])]
         return f"{name}: " + ("・".join(names) or "なし")
+    if kind == "set_staff_plan":
+        rows = []
+        for entry in payload.get("plans", []):
+            where = (
+                defs.name("facilities", entry["kind"])
+                if "kind" in entry
+                else f"({entry.get('x')}, {entry.get('y')})"
+            )
+            cap = entry.get("cap")
+            rows.append(f"{where} {'枠を外す' if cap is None else f'{cap:,} 人'}")
+        return f"{name}: " + "、".join(rows)
     return ""
 
 
@@ -1458,7 +1490,16 @@ def _describe_finance(kind: str, payload: dict[str, Any], name: str, where: str)
         return f"{name}: " + "・".join(parts) if parts else name
     if kind == "set_bond_payment":
         return f"{name}: " + ("止める（債務不履行）" if payload.get("stop") else "再開する")
-    if kind in ("set_public_works", "set_warehouse_release"):
+    if kind == "set_public_works":
+        parts = []
+        if "auto" in payload:
+            parts.append("役所の決まった事業を" + ("始める" if payload["auto"] else "止める"))
+        if "upkeep_priority" in payload:
+            parts.append(f"維持の優先度 {payload['upkeep_priority']}")
+        if "build_priority" in payload:
+            parts.append(f"新しい工事の優先度 {payload['build_priority']}")
+        return f"{name}: " + "・".join(parts)
+    if kind == "set_warehouse_release":
         return f"{name}: " + ("始める" if payload.get("auto") else "止める")
     if kind == "set_bank_policy":
         parts = []
