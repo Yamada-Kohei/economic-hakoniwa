@@ -517,6 +517,41 @@ def test_island_price_keeps_the_first_price_unless_the_outlet_filled_every_buyer
     assert island.scratch[CLEARANCE][good] == settled[0][1].price
 
 
+def test_outlet_keeps_pooled_household_tiers_within_what_they_reserved(game, warmed):
+    """家計の値段の曲線の段（取り置きを分け合う）は、1回目に高い段を払った残りの取り置きで、
+    2回目にどの値段で約定しても払える量まで減らして出し直す（取り置きより多く払わない）。"""
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    _, good = _stocked_seller(game, island)
+    island.economy.prices[good] = 100
+    tiers = [(Q, 100), (Q, 90)]
+    head = Party("household", "hh:general", Payer("hh:general"), layer=GENERAL)
+    head.reserved = curve_cost(tiers, 0, 0)  # どれか1つの値段で約定したときの上限（180）
+    member = Party("household", "hh:general", Payer("hh:general"), layer=GENERAL, pool=head)
+    shop = Party(FACILITY, "fac:a", Payer("fac:a"))
+    cut = Party(FACILITY, "fac:b", Payer("fac:b"), clearance=True)
+    book = Book(
+        [(Order(Q, 100), head), (Order(Q, 90), member)],
+        [(Order(Q, 100), shop), (Order(5 * Q, 85), cut)],
+    )
+    market, paid = Market(), []
+
+    def settle(island, ctx, good, book, result, *rest):  # 払った分だけ取り置きを減らす
+        for i, (_, party) in enumerate(book.buys):
+            cost = money_of(result.price, result.bought[i])
+            (party.pool or party).reserved -= cost
+            paid.append(cost)
+        return {}
+
+    market._settle = settle  # type: ignore[method-assign]
+    island.scratch[CLEARING] = (None, None)
+    results = {}
+    market._clear(island, context(game, world), good, {good: book}, {}, {}, results, {})
+    assert results[good].bought[0] == Q  # 1回目に高い段を 100 で買った
+    assert 0 < results[good].bought[1] < Q  # 2回目（85）は残りの取り置き（80）で買える分だけ
+    assert head.reserved >= 0 and sum(paid) <= curve_cost(tiers, 0, 0)
+
+
 def test_outlet_asks_do_not_lower_the_usual_price_or_the_materials_estimate(game, warmed):
     """(4) 値引きの売りの指値で、家計のいつもの値段と工事の資材の積算が下がらない（ふだんの売りの
     指値なら下がる）。"""

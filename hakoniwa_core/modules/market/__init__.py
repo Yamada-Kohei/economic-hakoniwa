@@ -1115,15 +1115,10 @@ class Market(IslandStage):
         値引きを除いた値段を残した形の full の比べ。2026-11-10）。1回目に売りがなければ前の値段。"""
         reference = island.economy.prices.get(good, 1)
         top = first.price if first.supply > 0 else reference
-        rest = [k for k, (o, _) in enumerate(book.buys) if o.quantity > first.bought[k]]
+        left = self._outlet_left(book, first, top)
+        rest = [k for k in range(len(book.buys)) if left[k] > 0]
         second = Book(
-            [
-                (
-                    replace(book.buys[k][0], quantity=book.buys[k][0].quantity - first.bought[k]),
-                    book.buys[k][1],
-                )
-                for k in rest
-            ],
+            [(replace(book.buys[k][0], quantity=left[k]), book.buys[k][1]) for k in rest],
             [book.sells[k] for k in outlet],
         )
         late = auction.clear(
@@ -1177,6 +1172,38 @@ class Market(IslandStage):
             kept = reference
         island.scratch.setdefault(CLEARANCE, {})[good] = kept
         return result
+
+    @staticmethod
+    def _outlet_left(book: Book, first: auction.Result, top: int) -> list[int]:
+        """2回目（アウトレット）に出し直す買い注文ごとの量: 1回目で買えなかった残り。
+
+        取り置きを分け合う段の注文（家計の値段の曲線の段。Party.pool）は、取り置きが「どれか1つの
+        値段で約定したとき」の上限（curve_cost）なので、1回目に高い段を1回目の値段で払った後、
+        2回目に低い段を2回目の値段で払うと足りなくなることがある。そのときは、残った取り置きで
+        2回目にどの値段で約定しても払えるまで、その組の段を同じ割合で減らす（家計は1回目に使った
+        分だけ、アウトレットで買える量が減る。_household_curve の、お金が足りないときと同じ）。"""
+        left = [o.quantity - first.bought[k] for k, (o, _) in enumerate(book.buys)]
+        leaders = {id(p.pool) for _, p in book.buys if p.pool is not None}
+        groups: dict[int, tuple[Party, list[int]]] = {}
+        for k, (_, party) in enumerate(book.buys):
+            head = party.pool or party
+            if left[k] > 0 and id(head) in leaders:
+                groups.setdefault(id(head), (head, []))[1].append(k)
+        for head, members in groups.values():
+            members.sort(key=lambda k: -auction.buy_limit(book.buys[k][0], top))
+
+            def cost(members: list[int] = members, head: Party = head) -> int:
+                orders = [(left[k], auction.buy_limit(book.buys[k][0], top)) for k in members]
+                return curve_cost(orders, head.freight, head.tax)
+
+            need, money = cost(), max(0, head.reserved)
+            while need > money:
+                for k in members:
+                    left[k] = left[k] * money // need if need > 0 else 0
+                need = cost()
+                if need > money and money > 0:  # 切り捨ての端数で届かないときは 1 ずつ減らす
+                    money -= 1
+        return left
 
     # --- 小売り（回7。economy/retail.py） ------------------------------------------------------
 
