@@ -87,9 +87,10 @@ def test_chartered_freight_is_paid_in_the_settlement_currency(game, traded):  # 
         assert check(w) == []
         assert fxmoney.reconcile(w) == []
 
-    # 2 ターン目までは輸入するかどうかが世界の道筋で変わる（2026-11-10 に飢えた家計の買い方を
-    # 直した後は、1 ターン目に島 2 が輸入しなかった）ので、借りた船に載せたターンで見る
-    run_world(game, world, 2, each)
+    # 輸入するかどうかと、いつ載せるかは世界の道筋で変わる（2026-11-10 に飢えた家計の買い方を
+    # 直した後は、1 ターン目に島 2 が輸入しなかった。売れ残りの値引きを止めた後は 2 ターンのうちに
+    # 載せなかった）ので、半年回して、借りた船に載せたターンで見る
+    run_world(game, world, 6, each)
     assert chartered and 2 not in chartered
     assert paid and all(p > 0 and income > 0 for p, income in paid)
     assert world.islands[2].stats["trade.charter_income"] == 0
