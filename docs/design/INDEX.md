@@ -151,7 +151,7 @@
 | MK-38 | 国営の施設（学校と大学も）は、市場で買いきれなかった次のターンの投入財を国の倉庫から使う | 決定 | tests/core/test_state_inputs_from_warehouse.py |
 | MK-39 | 備蓄の放出の決まり: 島のどの施設も作っていない物を、前のターンに市場で買えなかった施設があれば… | 決定 | tests/core/test_state_inputs_from_warehouse.py、tests/core/test_warehouse_standing.py |
 | MK-40 | 混合経済で値段の上限を付けた財は、施設の在庫を上限の値段で売る（作った費用は払い済み） | 決定（2026-11-07） | tests/core/test_phase3_4.py |
-| MK-41 | 売れ残りの値引き（2026-11-10、W-245）: 独立採算の売り手は、在庫がふだん持ってお… | 決定（2026-11-10） | tests/core/test_clothing_clearance.py |
+| MK-41 | 売れ残りの値引き（2026-11-10、W-245 | 決定（2026-11-10） | tests/core/test_clothing_clearance.py |
 
 ## [4 仕事と家計](04-labor.md)
 

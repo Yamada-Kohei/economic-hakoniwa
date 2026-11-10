@@ -770,7 +770,10 @@ def clearance_sale(
     expected = f.economy.get("expected", {}).get(good)
     life = ctx.defs.goods[good].get("shelf_life")
     line = None
-    if eligible and life is None and expected is not None and floor > 0:
+    # clearance_ratio が 0 なら値引きしない（2026-11-10 から止めている。値引きの売りは1つの値段の
+    # 板寄せで、ふだんの値段で売れていた分まで安値に置き換え、倒産の連鎖が増えた）
+    on = bool(settings["clearance_ratio"])
+    if on and eligible and life is None and expected is not None and floor > 0:
         # 値引きを始めた後は、始めたときの線のまま見る（値引きの売りに先を越されて、ふだんの指値の
         # 分が売れず、売れ行きの見込みが縮んで線が下がり、在庫が全部値引きに回らないように）
         line = state.get(good, {}).get("line")

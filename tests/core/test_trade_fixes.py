@@ -33,6 +33,8 @@ def test_unfilled_bloc_bids_give_back_money_and_room(game, traded):  # noqa: F81
     island = world.islands[1]
     [f, *_] = traders_of(island, game.config)
     entity = entity_of(game.config, f)
+    # 戻す額は手元までなので、商社に手元のお金を持たせる（回した世界で商社の手元が 0 のことがある）
+    ledger.pay(island, ledger.GOV, entity, money_of(1000, 2000), "capital_injection")
     stage = trade_stage._Round(world, _context(game, world))
     bloc = {"id": 1, "currency": island.id}
     good = "coal"
