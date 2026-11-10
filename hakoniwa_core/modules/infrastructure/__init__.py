@@ -6,8 +6,11 @@
 掛けた分です。
 
 - 雇用の段（modules/employment）: 維持の分は施設より先に、工事の分は施設の後に、作業員の賃金と
-  次のターンの資材の代金の見込みを公共事業費（construction）から取り置く。作業員は施設が雇った
-  後に残った失業者から、通勤圏を見ずに島のどこからでも、島の平均賃金で雇う（引き抜かない）。
+  次のターンの資材の代金の見込みを公共事業費（construction）から取り置く（賃金は前のターンに雇いに
+  行けた人数 reach まで）。作業員は施設が雇った後、店が雇う前に、残った失業者から通勤圏を見ずに
+  島のどこからでも、島の平均賃金で雇い、足りなければ店の働き手を引き抜く。取り置いた人数を超えて
+  雇えた分は、そのとき残っている公共事業費で払う。雇いたい人数に届かなければ、わけ（人手・
+  公共事業費）を工事の状況に出す。
 - 工事の段（modules/construction）: 雇えた人手と手元の資材の少ない方の割合だけ整備度を上げる。
   進まないまま2ターン続いたら、わけ（公共事業費・人手・資材）をログで知らせる。
 - 賃金の段（modules/labor）: 作業員の賃金を国庫から払う。
@@ -30,6 +33,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -51,6 +55,7 @@ UPKEEP = "works_upkeep"  # island.scratch: 維持の仕事の一覧（整備度�
 MATERIALS = "works_materials"  # island.scratch: 種類ごとに、決まった資材（True）か代わりの資材か
 AUTO = "auto"  # economy.infra: 役所が並べた工事 [種類, x, y]（命令の工事の後に進める）
 AUTO_OFF = "auto_off"  # economy.infra: 命令 set_public_works で役所の決まった事業を止めている
+REACH = "reach"  # economy.infra: 前のターンに作業員を雇いに行ったときの失業者の数（取り置きの目安）
 PAYER = Payer(GOV, CONSTRUCTION)
 # 新しい工事が進まないまま、このターン数続いたらわけをログで知らせる（その後は進むまで出さない）
 STALL_TURNS = 2
@@ -218,44 +223,70 @@ def _scale(works: Works, item: Item, amount: int) -> Item:
 def plan(island: IslandState, ctx: StageContext, upkeep: bool, wage: int) -> int:
     """雇用の段: このターンの維持（upkeep）か新しい工事の量を、手元の工事の資材と公共事業費で決め、
     作業員の賃金と、次のターンに市場で買う資材の代金の見込みを取り置く。取り置いた見込みは市場の段で
-    戻す（_holds）。雇いたい人数を返す。"""
+    戻す（_holds）。雇いたい人数を返す。
+
+    賃金を取り置くのは、前のターンに公共事業が雇いに行ったときに残っていた失業者の数（economy.infra
+    の reach）までです。雇えない作業員の賃金で公共事業費の月割りを埋めて、後ろの施設の工事と新しい
+    工事を止めないように。それを超えて雇えた分は、雇うとき（hire）に残っているお金で払います。"""
     if not island.has_economy:
         return 0
     works = Works(island, ctx)
     state = island.scratch.setdefault(
         WORKS,
-        {"items": [], "labor": 0, "wage": wage, "have": stock.totals(works_stock(island))},
+        {
+            "items": [],
+            "labor": 0,
+            "held": 0,
+            "wage": wage,
+            "have": stock.totals(works_stock(island)),
+            "reach": works_state(island).get(REACH),
+        },
     )
     have = state["have"]
+    cap = state["reach"]
+
+    def holdable(labor: int) -> int:  # labor（1000 分の 1 人）を雇うのに賃金を取り置く人数
+        workers = -(-labor // 1000)
+        return workers if cap is None else min(workers, cap)
+
     left = funds.available(island, PAYER)
     planned = state["labor"]
-    hired_before = -(-planned // 1000)
+    held = state["held"]
     why = ""
     candidates = works.upkeep() if upkeep else works.build()
     for item in candidates:
         amount = _fit(item, have)
         if amount < item.amount and not why:
             why = "materials"
+            if not upkeep:  # 資材を待っている新しい工事がある（人手やお金で止まっても残す）
+                state["short_materials"] = True
         if amount <= 0:
             continue
         item = _scale(works, item, amount)
-        workers = -(-(planned + item.labor) // 1000) - hired_before
-        if workers * wage > left:  # 公共事業費が足りなければ、払える人数の分まで
-            room = (hired_before + left // max(1, wage)) * 1000 - planned
+        if (holdable(planned + item.labor) - held) * wage > left:
+            # 公共事業費が足りなければ、払える人数の分まで
+            room = (held + left // max(1, wage)) * 1000 - planned
             labor = works.defs.infrastructure[item.kind]["labor"]
             amount = min(amount, room // labor) if labor > 0 else amount
             why = "funds"
             if amount <= 0:
                 break
             item = _scale(works, item, amount)
+        # 手元の資材は、雇える見込みの人手で進められる分だけ使う見込みにする（雇えない仕事に資材を
+        # 割り当てて、後ろの工事を「資材が足りない」にしないように。実際の進みは工事の段で決まる）
+        share = 1.0
+        if cap is not None and item.labor > 0:
+            share = min(1.0, max(0, cap * 1000 - planned) / item.labor)
         for good, qty in item.materials.items():
-            have[good] = have.get(good, 0) - qty
+            have[good] = have.get(good, 0) - math.ceil(qty * share)
         state["items"].append(item)
         planned += item.labor
         if why == "funds":
             break
-    workers = -(-planned // 1000) - hired_before
-    funds.commit(island, PAYER, workers * wage)
+    hold = holdable(planned) - held
+    funds.commit(island, PAYER, hold * wage)
+    state["held"] = held + hold
+    workers = -(-planned // 1000) - -(-state["labor"] // 1000)
     state["labor"] = planned
     if not upkeep:
         state["why"] = why
@@ -305,17 +336,35 @@ def _material_cost(
     return total
 
 
-def hire(island: IslandState, free: dict[tuple[int, int], int], order: list) -> dict:
-    """雇用の段の終わり: 施設が雇った後に残った失業者から、島のどこからでも作業員を雇う。
+def hire(
+    island: IslandState,
+    free: dict[tuple[int, int], int],
+    order: list,
+    poach: Callable[[int], dict[tuple[int, int], int]] | None = None,
+    poachable: int = 0,
+) -> dict:
+    """雇用の段（施設の後、店の前）: 残った失業者から、島のどこからでも作業員を雇う。足りなければ
+    poach(足りない人数) で店から引き抜く（ほかの施設と同じく、店の働き手は国の工事に回せる。
+    引き抜けるのは poachable 人まで）。
 
-    雇えなかった分の賃金の取り置きを戻し、マスごとの人数を返す。
+    賃金を取り置いた人数を超えて雇えるのは、まだ使える公共事業費の分まで。雇えなかった分の取り置きを
+    戻し、雇いに行けた人数（失業者と引き抜ける人）を次のターンの取り置きの目安（reach）に残し、
+    マスごとの人数を返す。雇いたい人数に届かなければ、わけ（人手か公共事業費か）を工事の状況に書く
+    （資材の足りない工事もあれば、それも残す。materials_waited）。
     """
     state = island.scratch.get(WORKS)
     if not state:
         return {}
     want = -(-state["labor"] // 1000)
+    wage = state["wage"]
+    held = state.get("held", want)
+    target = want
+    if want > held and wage > 0:
+        target = min(want, held + funds.available(island, PAYER) // wage)
+    pool = sum(free.get(pos, 0) for pos in order)
+    reach = pool + poachable
     staff: dict[tuple[int, int], int] = {}
-    left = want
+    left = target
     for pos in order:
         if left <= 0:
             break
@@ -324,10 +373,20 @@ def hire(island: IslandState, free: dict[tuple[int, int], int], order: list) -> 
             staff[pos] = take
             free[pos] -= take
             left -= take
-    hired = want - left
+    if left > 0 and poach is not None:
+        for pos, take in poach(left).items():
+            staff[pos] = staff.get(pos, 0) + take
+            left -= take
+    hired = target - left
+    works_state(island)[REACH] = reach
     state["hired"] = hired
     state["staff"] = staff
-    funds.release(island, PAYER, left * state["wage"])
+    if hired > held:
+        funds.commit(island, PAYER, (hired - held) * wage)
+    elif hired < held:
+        funds.release(island, PAYER, (held - hired) * wage)
+    if hired < want:  # 人が足りなければ、お金で止めたかにかかわらず人手
+        state["why"] = "workers" if hired < target or reach < want else "funds"
     return staff
 
 
@@ -400,6 +459,7 @@ def _watch(island: IslandState, state: dict[str, Any], waiting: bool, moved: boo
     if not waiting or moved:
         works.pop("stalled", None)
         works.pop("why", None)
+        works.pop("short_materials", None)
         return
     why = state.get("why") or ""
     if not why:
@@ -408,6 +468,10 @@ def _watch(island: IslandState, state: dict[str, Any], waiting: bool, moved: boo
     turns = works.get("stalled", 0) + 1
     works["stalled"] = turns
     works["why"] = why
+    if state.get("short_materials"):  # 人手や公共事業費で止まっていても、資材の足りない工事がある
+        works["short_materials"] = True
+    else:
+        works.pop("short_materials", None)
     if turns == STALL_TURNS:
         island.log.append(LogEntry(f"infrastructure_stalled_{why}", {}))
         if why == "funds":  # 年の予算と国庫のどちらで止まっているか
@@ -524,7 +588,8 @@ def materials_waited(island: IslandState, goods: set[str]) -> bool:
     if any(not f.built and goods & set(f.ext.get("waiting", ())) for f in island.facilities):
         return True
     works = island.economy.infra
-    return works.get("why") == "materials" and works.get("stalled", 0) > 0
+    waiting = works.get("why") == "materials" or works.get("short_materials")
+    return bool(waiting) and works.get("stalled", 0) > 0
 
 
 def road_tiles(
