@@ -104,6 +104,9 @@ def test_owners_without_income_or_wealth_move_to_workers(game, base, monkeypatch
     # 株を全部手放したとみなす（株の値打ちを数えない）
     monkeypatch.setattr(co, "owners_collateral", lambda _island: 0)
     open_books(island)
+    # 持って出る預金を持たせる（2026-11-10 に工事が海外の商人からも資材を買うようにした後は、この
+    # 島の資本家階級は 24 ターン目までに預金のほとんどを出資と借金の担保に回している）
+    ledger.pay(island, ledger.GOV, household(OWNERS), 5_000_000, "grant")
     total = population(island)
     before = ledger.money(island, household(GENERAL))
     update_owners_cap(island, config, total)
