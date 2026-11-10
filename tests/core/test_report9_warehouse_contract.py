@@ -72,7 +72,16 @@ def _contract_island(world, good, qty):
     island = island_of(world, "market")
     state = trade.island_state(island)
     state["contracts"] = [
-        {"side": "sell", "active": True, "good": good, "qty": qty, "id": 99, "partner": 1}
+        {
+            "side": "sell",
+            "active": True,
+            "good": good,
+            "qty": qty,
+            "id": 99,
+            "partner": 1,
+            "price": island.economy.prices[good],
+            "currency": island.id,
+        }
     ]
     island.warehouse.pop(good, None)
     return island

@@ -44,8 +44,7 @@ class Budget(IslandStage):
         estimates[arrears.ARREARS] = arrears.total(island, ledger.GOV)
         # 売りの二国間契約で国の倉庫に足りない分の買い（FX-24）。外国との約束なので国債の利払いの次
         estimates[traders.CONTRACT_SUPPLY] = sum(
-            money_of(limit, qty)
-            for qty, limit in traders.contract_supply_plan(island, ctx.config).values()
+            money_of(limit, qty) for _, qty, limit in traders.contract_supply_plan(island)
         )
         caps = {item: island.policy.budget.get(item, 0) // YEAR for item in fiscal["budget_items"]}
         for item, amount in military.planned(

@@ -107,7 +107,7 @@ _EXTRA_STATS = [
     ("bonds.traded", "国債の売買（1ターン）", "money"),
     ("bonds.cb_bought", "中央銀行が買った国債（1ターン）", "money"),
     ("bonds.cb_sold", "中央銀行が売った国債（1ターン）", "money"),
-    ("bonds.central_bank", "中央銀行が持つ国債", "money"),
+    ("bonds.central_bank", "中央銀行が持つ国債（刷ったお金）", "money"),
     ("inequality", "格差（資本家階級と労働者階級の1人あたりの所得の比）", "ratio"),
     ("profit", "事業所の損益合計（1ターン）", "money"),
     ("freight.surcharge", "運賃の割り増し（運送業の人手不足）", "ratio"),
@@ -1242,7 +1242,11 @@ def fiscal_view(
         "budget": budget_rows,
         "other_spent": other_spent,
         "taxes": stat_rows_policy(policy, currency),
-        "position": stat_rows(stats, ["treasury", "debt", "debt_ratio"], currency),
+        "position": stat_rows(
+            stats,
+            ["treasury", "debt", "bonds.central_bank", "net_public_debt", "debt_ratio"],
+            currency,
+        ),
     }
 
 

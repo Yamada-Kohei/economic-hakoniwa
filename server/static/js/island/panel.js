@@ -230,6 +230,10 @@ export class TilePanel {
       rows.push(["建設進捗", `${Math.round(f.progress * 100)}%（工期 ${f.turns} ターン）`]);
       rows.push(["建設労働者", `${f.workers.toLocaleString()} / ${f.workers_needed.toLocaleString()} 人`]);
       if (f.materials.length) rows.push(["建設資材", goodsText(f.materials)]);
+      if (f.material_estimate != null) {
+        rows.push(["見積り（着工時の資材費）", f.material_estimate.toLocaleString()]);
+        rows.push(["今の値段での残りの費用（資材費）", f.remaining_material_cost.toLocaleString()]);
+      }
     } else if (f.workers_needed != null && !f.monument) {
       rows.push(["従業者", `${f.workers.toLocaleString()} / ${f.workers_needed.toLocaleString()} 人`]);
       rows.push(["稼働率", `${Math.round(f.operating_rate * 100)}%`]);

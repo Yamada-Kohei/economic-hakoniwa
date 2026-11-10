@@ -107,7 +107,12 @@ from hakoniwa_core.economy import (
 )
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.households import draw_founders, founders_room
-from hakoniwa_core.economy.prices import construction_cost, unit_cost, variable_profit
+from hakoniwa_core.economy.prices import (
+    construction_cost,
+    site_material_cost,
+    unit_cost,
+    variable_profit,
+)
 from hakoniwa_core.economy.start import (
     fund_facility,
     init_facility,
@@ -1668,6 +1673,7 @@ class EntryExit(IslandStage):
                 f.economy["firm"] = target.economy["firm"]
         else:
             assign_serial(island, f)
+        f.ext["material_estimate"] = site_material_cost(island, defs, config, f)
         island.facilities.append(f)
         entity = facility_entity(f.id)
         if target is None:

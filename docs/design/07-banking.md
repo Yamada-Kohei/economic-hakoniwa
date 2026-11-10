@@ -53,7 +53,7 @@
 | BK-30 | 国債の売買の市場は残りの期間の4区分ごとの、利回りを値段にした板寄せ。銀行は持ち高を、偏りで求める利回りが今の利回りと等しくなる額に近づけ、準備預金の足りない銀行は指値なしで売る。独立していない中央銀行は命令の額を指値なしで出す | 決定 | `bonds.buckets`, `bonds.bucket_terms`, `bonds.trade_band`, `banking.bond_concentration`, `banking.sell_premium` | tests/core/test_playtest_fixes.py::test_central_bank_bond_trade_result_is_logged |
 | BK-31 | 国債は時価で持つ。損益に入れるのは売った・償還された・切り下げられた分の実現損益だけで、評価損益は自己資本にだけ数える。評価損で自己資本がマイナスになった銀行は破綻する | 決定 |  | tests/core/test_bond_gains.py::test_selling_a_bond_realizes_the_gain, ::test_unrealized_losses_still_fail_a_bank, tests/core/test_playtest3_fixes.py::test_bonds_issued_after_valuation_are_not_counted_as_gains |
 | BK-32 | 資本取引を認めた国の銀行は、外国の利回りが値下がりの見込みを超えて高い通貨の外貨と国債を、預金の決めた割合まで持つ（タブ 9） | 決定 | `banking.foreign_share`, `banking.foreign_step`, `banking.foreign_margin` | tests/core/test_phase3_3.py::test_banks_plan_foreign_currency_only_when_it_pays_and_capital_is_free |
-| BK-33 | 債務不履行は命令 `set_bond_payment` で支払いを止めたときだけ、すべての銘柄を一度に。額面を決めた割合だけ切り下げ、残りを同じ期間で出し直す | 決定 | `bonds.haircut` | tests/core/test_shocks.py::test_bond_default_raises_yields_and_hits_holders, tests/core/test_phase3_3.py::test_default_cuts_foreign_holders_too, tests/server/test_finance.py::test_bond_payment_needs_bonds |
+| BK-33 | 債務不履行は命令 `set_bond_payment` で支払いを止めたときだけ、すべての銘柄を一度に。中央銀行以外の額面を決めた割合だけ切り下げ、残りを同じ期間で出し直す。中央銀行の持ち分は残す。実際の切り下げ額が0なら新たな不履行の罰は付けない | 決定 | `bonds.haircut` | tests/core/test_shocks.py::test_bond_default_raises_yields_and_hits_holders, tests/core/test_phase3_3.py::test_default_cuts_foreign_holders_too, tests/server/test_finance.py::test_bond_payment_needs_bonds |
 | BK-34 | 不履行の罰は3つ: 利回りの上乗せ（だんだん減る）、決めたターン数は銀行が国債を買わない、損をした銀行は新しい融資を止めて借り換えだけ（計画経済の島と、不履行の後に建った銀行を除く） | 決定 | `bonds.default_premium`, `bonds.default_decay_turns`, `bonds.default_exclusion_turns`, `banking.default_crunch_turns` | tests/core/test_playtest3_fixes.py::test_default_closes_the_bond_market_and_stops_lending, ::test_bond_market_reopens_and_lending_resumes, ::test_stopped_bank_only_rolls_over_principal, ::test_planned_island_banks_keep_lending_after_default, ::test_private_entry_waits_for_lending, tests/server/test_finance.py::test_help_describes_default_penalties |
 | BK-35 | 自己資本がマイナスか資金繰りが破綻した銀行は破綻し、新しい融資と預金の受け入れを止める。処理は命令 `resolve_bank` で救済・引き継ぎ・清算から選ぶ（行政力を使わない） | 決定 |  | tests/core/test_finance.py::test_resolve_bank_order_needs_failed_bank, tests/core/test_playtest5_fixes.py::test_failed_bank_keeps_the_reason_it_was_logged_with |
 | BK-36 | 次のターンまでに選ばなければ引き継ぎにし、引き継いでも規制を下回らない銀行がなければ救済にする | 決定 |  | tests/core/test_shocks.py::test_bank_failure_is_resolved_without_cascade |
@@ -201,7 +201,7 @@ y = r_P + \lambda_T + \sigma \cdot \max\left(0, \frac{I}{R} - \theta\right) + \k
 ### 債務不履行
 
 - 不履行は、命令 `set_bond_payment` で支払いを止めたときだけで、すべての銘柄を一度に不履行にする。自国通貨の国債の不履行は、発行できないから起きるのではなく、制度と政府の選び方で起きるため。
-- 不履行の銘柄は額面を `bonds.haircut` だけ切り下げ（持ち手の損。外国の持ち手も同じ）、残りを同じ期間で出し直す。区分の利回りが跳ね上がり、時価も下がる。自己資本が尽きた銀行は破綻する。
+- 不履行の銘柄は中央銀行以外の持ち分の額面を `bonds.haircut` だけ切り下げ（市中銀行・外国の持ち手の損）、残りを同じ期間で出し直す。中央銀行の持ち分は政府と合わせた財布の内側にあるため切り下げない。ログの金額は実際に切り下げた額だけ。切り下げ額が0の場合は金額0の不履行ログを残し、新たな市場閉鎖・利回り上乗せ・銀行の融資停止を付けず、既存の罰はそのまま期限に従う。区分の利回りが跳ね上がり、時価も下がる。自己資本が尽きた銀行は破綻する。
 - 罰は3つ（支払いを止めると借金が減る分だけ得な手になっていたため）。
   - 利回りに上乗せ δ（`bonds.default_premium`。`bonds.default_decay_turns` かけて 0 に減る）。借金の多い国はすぐ上限に届く。
   - 不履行から `bonds.default_exclusion_turns` は、銀行が国債を買わない（入札に来ず、売買の市場でも買わない。売りはする）。新しい発行の売れ残りは政策どおり中央銀行が引き受けるか支出を削る。期間が終わるターンにログで知らせる。
