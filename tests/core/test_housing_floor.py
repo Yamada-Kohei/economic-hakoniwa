@@ -240,6 +240,10 @@ def test_a_floor_never_exceeds_the_top_level_and_a_dry_town_waits_for_water(game
     fac.set_floor(game.defs, home, top)
     assert home.ext["level"] == game.defs.settlement_levels()[-1]
     island.economy.housing["stock"] = {}
+    # 回した世界のこのマスには、前のターンまでにためた住み替えの分が残っていることがある（床が
+    # 望みに足りる家は住み替えを見ないので、残りは消さない）。ここで見るのは、上限の床に新しく
+    # ためないこと
+    home.ext.pop(fac.FLOOR_DUE, None)
     Housing().run_island(island, context(game, world))
     assert fac.floor_of(game.defs, home) == top
     assert fac.FLOOR_DUE not in home.ext
