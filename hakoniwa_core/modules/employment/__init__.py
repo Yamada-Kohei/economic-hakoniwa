@@ -153,6 +153,8 @@ def _pos(key: str) -> Pos:
 
 ATTRITION = "attrition"  # f.economy: 人を抱える施設の、辞める人の端数（W-198）
 STAFF_CAPPED = planning.STAFF_CAPPED  # f.ext: 人員の枠で、生産目標に要る人を雇えなかった（PL-59）
+SHORT_MATERIALS = funds.SHORT_MATERIALS
+PENDING_MATERIALS = "pending_material_holds"  # island.scratch: 雇用の段の終わりに取り置く材料の代金
 STAFF_LIMITS = "staff_limits"  # island.scratch: 施設の番号 → このターンの人員の枠の人数（動員も）
 
 
@@ -168,6 +170,7 @@ class _Terms:
     kept: int  # 払えないときに遅配で残る人の上限
     engineers: int  # 全力の技術者の数
     per_worker: int  # 1人あたりの賃金・電気代・技術者の上乗せ
+    power: int = 0  # 1人あたりの電気代（per_worker の中。取り置かず、材料の取り置きから残す）
     want: int = 0  # 賃金を取り置いた人数
     unpaid: int = 0  # 払えないまま働き続ける人（賃金の遅配。回3）
     quits: int = 0  # 遅配が続いて自分から辞める人
@@ -189,9 +192,14 @@ class Employment(IslandStage):
         defs, config = ctx.defs, ctx.config
         if island.has_economy:
             settle_arrears(island)
+        planned_now = planning.is_planned(island, defs)
         for f in island.facilities:
             fac.refresh_fuel(defs, f)  # 燃料の足りない機械の畑は手作業で（FM-51）
             fac.refresh_fertilizer(defs, f)  # 肥料の足りない畑は肥料なしで（FM-53）
+            if planning.STAFF_CAP in f.ext and (not planned_now or f.owner != OWNER_STATE):
+                # 計画経済をやめた・民営化したら人員の枠は消える（雇わない施設の枠も。PL-59）
+                f.ext.pop(planning.STAFF_CAP, None)
+                f.ext.pop(STAFF_CAPPED, None)
         share = fac.labor_share(defs, island)
         labor = {
             (t.x, t.y): fac.labor_force(defs, island, t, share)
@@ -255,6 +263,7 @@ class Employment(IslandStage):
                 kept,
                 engineers,
                 wage + power + extra,
+                power,
             )
         # 賃金（と工事の資材・国庫の施設の材料）を取り置く。順は _reserve_steps
         self._reserve_all(island, ctx, plans, terms, planned, works_wage)
@@ -444,6 +453,8 @@ class Employment(IslandStage):
             else:
                 f.economy.pop("unpaid", None)
                 f.economy.pop("arrears_months", None)
+        # 国庫の項目の組の材料の代金は、賃金と遅配を埋めた後に取り置く（LB-45）
+        self._hold_materials(island)
         for tile in island.tiles:
             count = employed.get((tile.x, tile.y), 0)
             if count:
@@ -580,6 +591,8 @@ class Employment(IslandStage):
         payer = group[0].payer
         money = funds.available(island, payer)
         treasury = money >= funds.available(island, payer, capped=False)
+        for t in group:
+            t.f.ext.pop(SHORT_MATERIALS, None)
         materials = {
             t.f.id: input_cost(island, ctx, t.f, rates.get(t.f.id, 0)) if t.need > 0 else 0
             for t in group
@@ -629,13 +642,34 @@ class Employment(IslandStage):
         asks = [(fid, amount) for fid, amount in asks if amount > 0]
         if not asks:
             return
-        avail = funds.available(island, payer)
-        squeezed = rationed or sum(a for _, a in asks) > avail
+        # 材料の取り置きは、雇用の段の終わり（遅配を埋めた後）にする（_hold_materials）。賃金を先に
+        power = sum(t.want * t.power for t in group)
+        pending = island.scratch.setdefault(PENDING_MATERIALS, [])
+        pending.append((payer, asks, rationed, power, budget, {t.f.id: t.f for t in group}))
+
+    @staticmethod
+    def _hold_materials(island: IslandState) -> None:
+        """国庫の項目の組の材料の代金の見込みを取り置く（LB-45。市場の段でその施設の買い注文の直前に
+        戻す）。遅配を埋めた後の使えるお金から、雇った人の電気代（生産の段で買う）を残した分を、
+        要る額に比例して分ける。年の予算の月割りで材料を削った施設は、原料が足りないわけに項目の
+        名前を出す（short_materials）。"""
+        pending = island.scratch.pop(PENDING_MATERIALS, [])
+        power: dict[Payer, int] = {}
+        for payer, _, _, watts, _, _ in pending:
+            power[payer] = power.get(payer, 0) + watts
         holds = island.scratch.setdefault(FACILITY_HOLDS, {})
-        for fid, amount in proportional(avail, asks).items():
-            if amount > 0:
-                funds.commit(island, payer, amount)
-                holds[fid] = (payer, amount, squeezed)
+        for payer, asks, rationed, watts, budget, members in pending:
+            avail = max(0, funds.available(island, payer) - power[payer])
+            power[payer] -= watts
+            squeezed = rationed or sum(a for _, a in asks) > avail
+            for fid, amount in proportional(avail, asks).items():
+                if amount > 0:
+                    funds.commit(island, payer, amount)
+                    holds[fid] = (payer, amount, squeezed)
+            for fid, ask in asks:
+                got = holds.get(fid, (payer, 0, False))[1]
+                if budget and got < ask:
+                    members[fid].ext[SHORT_MATERIALS] = budget
 
     def _settle(
         self,

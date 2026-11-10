@@ -339,6 +339,10 @@ class Production(IslandStage):
         （economy["short"]。hakoniwa_core/modules/market の _record_shortages）で決める。
         学校と大学には採算がないので、教材が高くて買えなかったときは public_price にする
         （「採算が合わない」と出ていた）。"""
+        budget = f.ext.get(funds.SHORT_MATERIALS)
+        if budget and f.economy.get("short", {}).get(good, "supply") == "supply":
+            # 品不足でなく、年の予算の月割りが足りず材料の取り置きを削った（LB-45）
+            return f"{STATUS_BUDGET}:{budget}"
         reason = f.economy.get("short", {}).get(good, "supply")
         if reason == "price" and is_public_service(defs, f):
             return f"{PUBLIC_PRICE}:{good}"

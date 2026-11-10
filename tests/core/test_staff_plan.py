@@ -5,7 +5,8 @@ from __future__ import annotations
 import pytest
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core.economy import funds
+from hakoniwa_core import infra, stock
+from hakoniwa_core.economy import funds, payer_of
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.modules import infrastructure
 from hakoniwa_core.modules import plan as plan_orders
@@ -14,7 +15,7 @@ from hakoniwa_core.modules.market import FACILITY_HOLDS
 from hakoniwa_core.registry import OrderFailed
 from hakoniwa_core.state import OWNER_STATE
 from tests.core.test_recession_round1 import context
-from tests.core.test_rules import add, home, make_island, with_economy
+from tests.core.test_rules import add, home, make_island, run, with_economy
 from tests.core.test_rules import game as game  # noqa: F401  （試験の部品を使い回す）
 
 
@@ -164,3 +165,63 @@ def test_public_works_priority_can_be_set_by_order(game):
     assert infrastructure.priority(island, game.config, True) == 9
     assert infrastructure.priority(island, game.config, False) == 6
     assert island.log[-1].kind == "public_works_priority"
+
+
+def test_materials_leave_the_power_bill_and_come_after_the_arrears(game):
+    island, first, second = _schools(game)
+    ctx = context(game)
+    full = fac.workers_of(game.defs, first)
+    wage = island.economy.average_wage
+    _open(island, game, {})  # 月割りはない: 国庫の残りで止まる
+    payer = payer_of(game.defs, game.config, first)
+    # 国庫の残りを学校1つ半の賃金だけにする
+    funds.commit(island, payer, funds.available(island, payer) - full * wage * 3 // 2)
+    Employment().run_island(island, ctx)
+    power = Employment._power_per_worker(island, ctx, first)
+    hired = first.workers + second.workers
+    # 材料の取り置きは、遅配を埋めて、雇った人の電気代（生産の段で買う）を残した後のお金から
+    assert not first.economy.get("unpaid") and not second.economy.get("unpaid")
+    assert funds.available(island, payer) >= hired * power
+
+
+def test_build_priority_above_upkeep_keeps_the_upkeep_count_apart(game):
+    island, _ = _planned(game)
+    ctx = context(game)
+    infrastructure.set_public_works(island, {"upkeep_priority": 3, "build_priority": 8}, ctx)
+    run(game, island, ["infrastructure"])  # 町の道路が傷む（維持の仕事）
+    infra.enqueue(island, "road", [(3, 3)])  # 新しい工事
+    materials = infrastructure.works_stock(island)
+    stock.add(materials, "building_materials", 10_000, 0, game.defs.goods)
+    stock.add(materials, "stone", 10_000, 0, game.defs.goods)
+    wage = island.economy.average_wage
+    infrastructure.plan(island, ctx, upkeep=False, wage=wage)
+    built = island.scratch[infrastructure.WORKS]["labor"]
+    infrastructure.plan(island, ctx, upkeep=True, wage=wage)
+    state = island.scratch[infrastructure.WORKS]
+    # 維持の人数は維持で足した分だけ（先に見た新しい工事の分を含めない）
+    assert built > 0 and state["labor"] > built  # 両方に仕事がある
+    assert state.get("upkeep_labor", 0) == state["labor"] - built
+
+
+def test_a_damaged_facility_is_not_held_to_its_staff_cap(game):
+    island, mill = _planned(game)
+    mill.ext[planning.STAFF_CAP] = 0
+    assert planning.staff_cap(island, game.defs, mill) == 0
+    mill.built = False  # 暴動で壊れて直している
+    assert planning.staff_cap(island, game.defs, mill) is None
+    # 計画経済をやめたら、雇わない施設の枠も消える
+    island.regime["economy"] = "mixed"
+    mill.built = True
+    Employment().run_island(island, context(game))
+    assert planning.STAFF_CAP not in mill.ext
+
+
+def test_budget_squeezed_materials_show_the_budget_as_the_cause(game):
+    from hakoniwa_core.modules.production import Production
+
+    island, first, _ = _schools(game)
+    good = next(iter(fac.recipe_of(game.defs, first)["inputs"]))
+    first.ext[funds.SHORT_MATERIALS] = "education"
+    assert Production._short(first, good, game.defs) == "budget:education"
+    first.economy["short"] = {good: "price"}  # 市場で高くて買えなかったなら、そのわけ
+    assert Production._short(first, good, game.defs) != "budget:education"

@@ -279,7 +279,7 @@ def plan(island: IslandState, ctx: StageContext, upkeep: bool, wage: int, keep: 
         return workers if cap is None else min(workers, cap)
 
     left = funds.available(island, PAYER)
-    planned = state["labor"]
+    planned = before = state["labor"]
     held = state["held"]
     why = ""
     candidates = works.upkeep() if upkeep else works.build()
@@ -318,7 +318,9 @@ def plan(island: IslandState, ctx: StageContext, upkeep: bool, wage: int, keep: 
     workers = -(-planned // 1000) - -(-state["labor"] // 1000)
     state["labor"] = planned
     if upkeep:
-        state["upkeep_labor"] = planned  # 維持の分（hire を維持と新しい工事に分けて呼ぶとき）
+        # 維持の分（hire を維持と新しい工事に分けて呼ぶとき）。新しい工事を先に見た（計画経済で
+        # 新しい工事の優先度が高い）ときも、維持で足した分だけを数える
+        state["upkeep_labor"] = state.get("upkeep_labor", 0) + planned - before
     else:
         state["why"] = why
     hold = min(_material_cost(island, ctx, works, upkeep, have), funds.available(island, PAYER))

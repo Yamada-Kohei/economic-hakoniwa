@@ -112,10 +112,11 @@ STAFF_CAPPED = "staff_capped"  # f.ext: 人員の枠で、生産目標に要る�
 
 
 def staff_cap(island: IslandState, defs: Defs, f: Facility) -> int | None:
-    """施設 f の人員の枠（命令 set_staff_plan）。計画経済の島の国営施設だけ。決めていなければ
-    None。"""
+    """施設 f の人員の枠（命令 set_staff_plan）。計画経済の島の建て終わった国営施設だけ。決めて
+    いなければ None。暴動などで壊れて直している間は枠をかけない（直す工事の作業員を縛らない。
+    直し終わると枠が戻る）。"""
     cap = f.ext.get(STAFF_CAP)
-    if cap is None or f.owner != OWNER_STATE or not is_planned(island, defs):
+    if cap is None or not f.built or f.owner != OWNER_STATE or not is_planned(island, defs):
         return None
     return int(cap)
 
