@@ -103,6 +103,12 @@ def test_owners_without_income_or_wealth_move_to_workers(game, base, monkeypatch
     hh[OWNERS]["income"] = [0, 0, 0]
     # 株を全部手放したとみなす（株の値打ちを数えない）
     monkeypatch.setattr(co, "owners_collateral", lambda _island: 0)
+    # 資本家階級に、株を担保にした借入の取り置き（LB-42）を超える預金を持たせる（道筋によっては、
+    # 閉じた施設の出資が戻る前で、預金がみな取り置きになっている。2026-11-10 の FM-60 で閉鎖が
+    # 売りに出す間だけ延びた）
+    spare = pledged(island, OWNERS) + 1_000_000 - ledger.money(island, household(OWNERS))
+    if spare > 0:
+        ledger.pay(island, household(GENERAL), household(OWNERS), spare, "layer_transfer")
     open_books(island)
     total = population(island)
     before = ledger.money(island, household(GENERAL))
