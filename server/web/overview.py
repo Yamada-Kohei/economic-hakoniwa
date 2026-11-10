@@ -804,6 +804,29 @@ def retail_brief(island: m.Island, stats: dict[str, float], currency: str) -> di
     return out
 
 
+def dismissal_brief(island: m.Island, stats: dict[str, float], currency: str) -> dict[str, Any]:
+    """解雇の決まり（LB-43）: 今の段（決めていなければ経済体制の既定）と、そのターンに抱えていた
+    余った人・解雇した人・解雇手当。"""
+    view = display.dismissal_view(island)
+    level = view["dismissal"] or view["dismissal_default"]
+    out: dict[str, Any] = {
+        "level": level,
+        "level_text": view["dismissal_choices"].get(level, level),
+        "regime_default": not view["dismissal"],
+        **view["dismissal_terms"].get(level, {}),
+    }
+    for key, name in (
+        ("held", "labor.held"),
+        ("dismissed", "labor.dismissed"),
+        ("severance", "labor.severance"),
+    ):
+        value = stats.get(name, 0)
+        _, unit = reports.stat_label(name)
+        out[key] = value
+        out[f"{key}_text"] = display.stat_text(name, value, unit, currency)
+    return out
+
+
 def firms_brief(island: m.Island, stats: dict[str, float], mine: bool) -> dict[str, Any] | None:
     """企業（回7）: 民営の企業の数・施設が2つ以上の企業の数・一番大きい企業の施設の割合
     （誰にでも）と、施設の多い順の企業の一覧（施設の画面の企業の表と同じ中身。他国にはお金の数字を
@@ -857,6 +880,7 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
         "services": services_brief(latest, currency),
         "shipping": shipping_brief(latest, currency),
         "firms": firms_brief(island, latest, mine),
+        "dismissal": dismissal_brief(island, latest, currency),
         "retail": retail_brief(island, latest, currency),
         "population_changes": population_changes(latest),
         "hunger": hungry,

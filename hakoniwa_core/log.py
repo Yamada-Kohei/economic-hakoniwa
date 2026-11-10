@@ -24,6 +24,7 @@ _ARG_KINDS = {
     "item": "messages",
     "term": "finance",
     "entry": "messages",
+    "dismissal": "messages",
     "unsold": "messages",
     "unsold_before": "messages",
     "method": "messages",

@@ -55,6 +55,7 @@ from hakoniwa_core.economy import (
     Payer,
     arrears,
     banks,
+    dismissal,
     freight,
     funds,
     is_bank,
@@ -145,6 +146,8 @@ def _pos(key: str) -> Pos:
 
 
 ATTRITION = "attrition"  # f.economy: 人を抱える施設の、辞める人の端数（W-198）
+BOUND_PLAN = "plan"  # 雇いたい人数の下限: 計画経済の国営施設の抱え込み（PL-57）
+BOUND_DISMISSAL = "dismissal"  # 雇いたい人数の下限: 解雇の決まり（LB-43）
 
 
 def staff_of(f: Facility) -> dict[Pos, int]:
@@ -177,6 +180,12 @@ class Employment(IslandStage):
         for f in island.facilities:
             wage = self._wage(island, ctx, f)
             if wage is None:
+                if is_stopped(f):
+                    # 閉鎖に入った・動かさない差し押さえ: 割合によらず全員を解雇する（LB-43）
+                    prior = f.workers - f.economy.get("mobilized", 0)
+                    self._record_dismissals(
+                        island, ctx, f, (prior, f.economy.get("engineers", 0)), 0, 0, {}
+                    )
                 f.workers = 0
                 f.ext.pop("short_wages", None)
                 continue
@@ -201,14 +210,22 @@ class Employment(IslandStage):
         # 雇いたい人数を決め、その賃金を取り置く（高い賃金の施設から）
         unpaid: dict[int, int] = {}  # 払えないまま働き続ける人（賃金の遅配。回3）
         needs: dict[int, int] = {}  # 操業目標などに要る人数（抱える人を足す前）
+        bounds: dict[int, str] = {}  # 雇いたい人数にかけた下限の種類（_bounds）
+        quits: dict[int, int] = {}  # 賃金の遅配が続いて自分から辞める人（解雇手当を払わない）
+        before: dict[int, tuple[int, int]] = {}  # 前のターンの人数（動員を除く）と技術者の席の人数
         quit_rate = config.get("labor.arrears_quit")
         for f, wage in plans:
-            demand = self._wanted(island, ctx, f, wage)
-            # 人を抱える施設（W-198）は前のターンの人を抱える。技術者の席と、賃金の式が見る人手の
-            # 足りなさ（economy["wanted"]）は、操業目標に要る人数（needs）のまま
-            needs[f.id] = demand
-            if self._hoards(island, ctx, f):
-                demand = max(demand, self._kept(ctx, f))
+            before[f.id] = (
+                f.workers - f.economy.get("mobilized", 0),
+                f.economy.get("engineers", 0),
+            )
+            # 技術者の席と、賃金の式が見る人手の足りなさ（economy["wanted"]）は、操業目標に要る人数
+            # （needs）のまま（解雇の決まりで抱える施設の技術者の席は、抱えた人数で見る）
+            needs[f.id] = self._wanted(island, ctx, f, wage)
+            demand, bounds[f.id] = self._bounds(island, ctx, f, needs[f.id])
+            # 払えないときに遅配で残る人の上限: 人を抱える計画経済の国営施設（PL-57）は抱えた人を
+            # 遅配にせず手放す。解雇の決まりの施設（LB-43）は、割合の上限までは遅配で残す
+            kept = demand if bounds[f.id] == BOUND_DISMISSAL else needs[f.id]
             payer = payer_of(defs, config, f)
             engineers, extra = self._engineer_terms(island, ctx, f, wage)
             per_worker = wage + self._power_per_worker(island, ctx, f) + extra
@@ -223,14 +240,15 @@ class Employment(IslandStage):
             if want < demand and short and f.built and island.has_economy:
                 # 前のターンに働いていた人は、払えない分もすぐには辞めない（未払いが続いた月数に
                 # 応じて辞める）。抱えた人（W-198）は遅配にせず手放す（国が払えなければ抱えない）
-                stay = max(0, min(needs[f.id], sum(staff_of(f).values())) - want)
+                stay = max(0, min(kept, sum(staff_of(f).values())) - want)
                 share = min(1.0, quit_rate * (f.economy.get("arrears_months", 0) + 1))
-                unpaid[f.id] = stay - min(stay, math.ceil(stay * share))
+                quits[f.id] = min(stay, math.ceil(stay * share))
+                unpaid[f.id] = stay - quits[f.id]
             wanted[f.id] = want + unpaid[f.id]
             seats[f.id] = 0
             if engineers:
                 need = fac.workers_of(defs, f)
-                seats[f.id] = engineers * min(want, needs[f.id]) // need
+                seats[f.id] = engineers * min(want, kept) // need
             if seats[f.id]:
                 f.economy["engineer_wage"] = fac.engineer_wage_of(config, f, wage)
             cost = want * wage + seats[f.id] * (fac.engineer_wage_of(config, f, wage) - wage)
@@ -367,6 +385,13 @@ class Employment(IslandStage):
             else:
                 f.economy.pop("unpaid", None)
                 f.economy.pop("arrears_months", None)
+            self._record_dismissals(island, ctx, f, before[f.id], wanted[f.id], seats[f.id], quits)
+            if bounds[f.id] == BOUND_DISMISSAL:
+                held = max(0, f.workers - mobilized.get(f.id, 0) - needs[f.id])
+                f.economy[dismissal.HELD] = held
+                island.stats["labor.held"] = island.stats.get("labor.held", 0) + held
+            else:
+                f.economy.pop(dismissal.HELD, None)
             employed_total += f.workers
             for pos, n in mine.items():
                 employed[pos] = employed.get(pos, 0) + n
@@ -601,6 +626,59 @@ class Employment(IslandStage):
         if f.built and is_bank(config, f):  # 銀行は預金と融資の大きさに合わせて
             return banks.staff_wanted(island, config, ctx.defs, f)
         return fac.labor_demand(ctx.defs, f, ctx.turn, config.get("power.good"))
+
+    def _bounds(
+        self, island: IslandState, ctx: StageContext, f: Facility, need: int
+    ) -> tuple[int, str]:
+        """雇いたい人数 need に下限（と上限）をかける所（1か所にまとめる）。かけた後の人数と、下限の
+        種類（BOUND_PLAN・BOUND_DISMISSAL・""）を返す。
+
+        - 計画経済の島の国営施設（PL-57）: 前のターンの人から辞める人の分だけ減らす（抱え込み）。
+        - それ以外の解雇の決まりにかかる施設（LB-43）: 前のターンの人数から、決まりの割合と自然に
+          辞める人の分までしか減らさない（economy/dismissal.py）。閉鎖に入った施設は雇わない（_wage）。
+        計画経済の人員の枠（PL-59）の上限も、ここでかける。"""
+        defs, config = ctx.defs, ctx.config
+        if self._hoards(island, ctx, f):
+            return max(need, self._kept(ctx, f)), BOUND_PLAN
+        if not dismissal.covered(island, defs, config, f, ctx.turn):
+            f.economy.pop(dismissal.CARRY, None)
+            return need, ""
+        prior = f.workers - f.economy.get("mobilized", 0)
+        least, carry = dismissal.floor(island, defs, config, f, prior)
+        if need >= least:  # 減らす速さの上限にかからない
+            f.economy.pop(dismissal.CARRY, None)
+            return need, BOUND_DISMISSAL
+        f.economy[dismissal.CARRY] = round(carry, 4)
+        return least, BOUND_DISMISSAL
+
+    @staticmethod
+    def _record_dismissals(
+        island: IslandState,
+        ctx: StageContext,
+        f: Facility,
+        before: tuple[int, int],
+        kept: int,
+        seats: int,
+        quits: dict[int, int],
+    ) -> None:
+        """解雇の決まりにかかる施設が、自然に辞める人と遅配で辞める人を超えて減らした人（解雇した人）を
+        economy["dismissed"]（技術者の席の人は ["dismissed_engineers"]）に残す。手当は賃金の段で払う
+        （LB-43）。kept は施設が雇い続けるつもりだった人数（引き抜かれた人は解雇でない）。"""
+        defs, config = ctx.defs, ctx.config
+        f.economy.pop("dismissed", None)
+        f.economy.pop("dismissed_engineers", None)
+        prior, prior_engineers = before
+        if prior <= 0 or not dismissal.covered(island, defs, config, f, ctx.turn):
+            return
+        cut = prior - dismissal.natural_leavers(config, prior) - quits.get(f.id, 0) - kept
+        if cut <= 0:
+            return
+        skilled = prior_engineers - dismissal.natural_leavers(config, prior_engineers) - seats
+        skilled = max(0, min(cut, skilled))
+        f.economy["dismissed"] = cut - skilled
+        if skilled:
+            f.economy["dismissed_engineers"] = skilled
+        island.stats["labor.dismissed"] = island.stats.get("labor.dismissed", 0) + cut
 
     @staticmethod
     def _hoards(island: IslandState, ctx: StageContext, f: Facility) -> bool:

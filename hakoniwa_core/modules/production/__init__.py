@@ -57,6 +57,7 @@ from hakoniwa_core.economy import (
     productivity,
 )
 from hakoniwa_core.economy import plan as planning
+from hakoniwa_core.economy.dismissal import HELD
 from hakoniwa_core.economy.prices import input_limit, production_subsidy_rate, subsidized_floor
 from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.geo import components, distance, within
@@ -304,8 +305,9 @@ class Production(IslandStage):
         if short is not None and have < rate:
             rate, cause = have, Production._short(f, short, ctx.defs)
         target = f.economy.get("target", fac.FULL)
-        if target < rate and planning.hoards(island, ctx.defs, f):
-            # 人を抱える国営の施設（W-198）は、抱えた人で操業目標より多く作らない（隠れた失業）
+        if target < rate and (planning.hoards(island, ctx.defs, f) or f.economy.get(HELD)):
+            # 人を抱える国営の施設（W-198）と、解雇の決まりで人を抱える施設（LB-43）は、抱えた人で
+            # 操業目標より多く作らない（隠れた失業）
             rate, cause = target, "target"
         cap = fac.engineer_cap(ctx.config, f)  # 技術者が足りなければ、稼働率の上限が下がる
         if cap < rate:

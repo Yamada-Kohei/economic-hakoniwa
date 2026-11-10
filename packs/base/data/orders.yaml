@@ -203,6 +203,7 @@ set_labor_policy:
     properties:
       minimum_wage: {type: integer, minimum: 0}                     # 0 で決めない
       unemployment_benefit: {type: number, minimum: 0, maximum: 100, description: "平均賃金に対する %"}
+      dismissal: {enum: [weak, normal, strong]}                     # 解雇の決まり（LB-43）: 弱い・ふつう・強い
 
 set_retail_policy:        # 小売りの政策（回7）: 大きな店（百貨店）の出店の規制と、許可制の申請を許す
   admin_cost: 1

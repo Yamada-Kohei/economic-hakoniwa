@@ -1079,6 +1079,9 @@ def describe_order(kind: str, payload: dict[str, Any]) -> str:
         parts = []
         for k, v in payload.items():
             label = message(_POLICY_LABELS.get(k, f"budget_{k}"))
+            if k == "dismissal":  # 解雇の決まり（LB-43）は段の名前
+                parts.append(f"{label} {message(f'dismissal_{v}')}")
+                continue
             parts.append(f"{label} {v:g}%" if k in _PERCENT else f"{label} {v:,}")
         return f"{name}: " + "・".join(parts)
     if kind == "set_warehouse_standing":
@@ -1501,6 +1504,7 @@ _POLICY_LABELS = {
     "consumption_tax": "policy_consumption_tax",
     "minimum_wage": "policy_minimum_wage",
     "unemployment_benefit": "policy_unemployment_benefit",
+    "dismissal": "policy_dismissal",
 }
 
 
@@ -1554,6 +1558,7 @@ def policy_view(island, mine: bool = True) -> dict[str, Any]:
         "consumption_tax": policy.get("consumption_tax", 0) / 100,
         "minimum_wage": policy.get("minimum_wage", 0),
         "unemployment_benefit": policy.get("unemployment_benefit", 0) / 100,
+        **dismissal_view(island),
         "budget": {
             item: {"name": message(f"budget_{item}"), "amount": budget.get(item, 0)}
             for item in budget_items
@@ -1566,6 +1571,25 @@ def policy_view(island, mine: bool = True) -> dict[str, Any]:
         # 公共料金の上限は見せる単位 1 つあたり（W-30）
         "price_cap": {g: price(g, p) for g, p in policy.get("price_cap", {}).items()},
         **finance_policy_view(island),
+    }
+
+
+def dismissal_view(island) -> dict[str, Any]:
+    """解雇の決まり（LB-43）: 決めた段（"" は経済体制の既定）・既定の段・段ごとの名前と決まり
+    （1か月に減らせる割合 %・解雇手当の月数）。"""
+    game = get_game()
+    chosen = (island.policy or {}).get("dismissal", "")
+    regime = game.defs.regimes.get((island.regime or {}).get("economy", ""), {})
+    default = str(regime.get("dismissal", "weak"))
+    table = game.config.get("labor.dismissal")
+    return {
+        "dismissal": chosen,
+        "dismissal_default": default,
+        "dismissal_choices": {k: message(f"dismissal_{k}") for k in table},
+        "dismissal_terms": {
+            k: {"rate": round(v["rate"] * 100, 1), "months": v["months"]} for k, v in table.items()
+        },
+        "dismissal_attrition": round(game.config.get("labor.attrition") * 100, 1),
     }
 
 
