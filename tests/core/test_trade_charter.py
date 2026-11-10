@@ -71,23 +71,27 @@ def test_chartered_freight_is_paid_in_the_settlement_currency(game, traded):  # 
     paid = []
 
     def each(w):
-        chartered.extend(
+        carriers = [
             s["carrier"]
             for s in world_state(w)["shipments"]
             if s["loaded"] == w.turn and s["to"] == 2 and s.get("carrier", 2) != 2
-        )
-        paid.append(
-            (
-                w.islands[2].stats["trade.charter_paid"],
-                sum(w.islands[i].stats["trade.charter_income"] for i in (1, 3, 4)),
+        ]
+        chartered.extend(carriers)
+        if carriers:  # 借りた船に載せたターンは、運賃を払い、船の国が受け取っている
+            paid.append(
+                (
+                    w.islands[2].stats["trade.charter_paid"],
+                    sum(w.islands[i].stats["trade.charter_income"] for i in (1, 3, 4)),
+                )
             )
-        )
         assert check(w) == []
         assert fxmoney.reconcile(w) == []
 
+    # 2 ターン目までは輸入するかどうかが世界の道筋で変わる（2026-11-10 に飢えた家計の買い方を
+    # 直した後は、1 ターン目に島 2 が輸入しなかった）ので、借りた船に載せたターンで見る
     run_world(game, world, 2, each)
     assert chartered and 2 not in chartered
-    assert all(p > 0 and income > 0 for p, income in paid)
+    assert paid and all(p > 0 and income > 0 for p, income in paid)
     assert world.islands[2].stats["trade.charter_income"] == 0
 
 

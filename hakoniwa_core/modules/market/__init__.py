@@ -46,6 +46,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -451,6 +452,11 @@ def hungry_food_orders(
     まで買える段は、飢えていないときと同じく上端より安くはしない。どの段も、前の段までの取り置きと
     合わせて食費の限り budget（預金を崩す分を含む）に収まる分までにする（お金のない家計から買えなく
     なり、値段は買える人の分まで上がって止まる）。
+    全部の段をその指値で取り置くと食費の限りを超えるが、今の値幅の上端（段の指値のほうが低ければ
+    その指値）でなら全部を買えるときは、どの段も上乗せ（指値 − 上端）を同じ割合で縮めて、要る量の
+    全部を食費の限りに収める（2026-11-10。前は最初の段を飢える前の値段の数倍で取り置いて食費を使い
+    切り、ふだんの値段の何倍もの食費がある層でも要る量の半分しか注文せずに飢えた。約定は板寄せの
+    値段なので、指値を高く置いても払う額は変わらず、取り置きだけが注文の量を削っていた）。
     """
     if need <= 0 or budget <= 0:
         return []
@@ -472,9 +478,8 @@ def hungry_food_orders(
     whole = sum(gross_cost(menu.limits[g], q, menu.rate, menu.tax) for g, q in basket.items())
     if nutrition(basket) <= 0 or whole <= 0:
         return []
-    orders: list[tuple[str, int, int]] = []
-    done, reserved = 0.0, 0
-    placed = dict.fromkeys(basket, 0)  # 財ごとに、前の段までに注文した量
+    stages: list[tuple[float, float, dict[str, int]]] = []  # (段の始め, 段の終わり, 指値)
+    done = 0.0
     for upto in steps:
         portion = upto - done
         start, done = done, upto
@@ -486,6 +491,28 @@ def hungry_food_orders(
         for g in basket:
             limit = scale_price(anchors.get(g, menu.limits[g]), scale)
             limits[g] = max(limit, menu.limits[g]) if floor else limit
+        stages.append((start, upto, limits))
+
+    def total(pick: Callable[[dict[str, int], str], int]) -> int:
+        return sum(
+            gross_cost(pick(limits, g), round_money(q * (end - begin)), menu.rate, menu.tax)
+            for begin, end, limits in stages
+            for g, q in basket.items()
+        )
+
+    full = total(lambda limits, g: limits[g])
+    low = total(lambda limits, g: min(limits[g], menu.limits[g]))
+    if low < budget < full:  # 上乗せを同じ割合で縮めて、要る量の全部を食費の限りに収める
+        keep = (budget - low) / (full - low)
+        for _, _, limits in stages:
+            for g in basket:
+                base = min(limits[g], menu.limits[g])
+                limits[g] = base + int((limits[g] - base) * keep)
+    orders: list[tuple[str, int, int]] = []
+    reserved = 0
+    placed = dict.fromkeys(basket, 0)  # 財ごとに、前の段までに注文した量
+    for start, upto, limits in stages:
+        portion = upto - start
         cost = sum(gross_cost(limits[g], q, menu.rate, menu.tax) for g, q in basket.items())
         fit = min(portion, (budget - reserved) / cost) if cost > 0 else 0.0
         if fit <= 0:
@@ -729,7 +756,8 @@ class SiteFunds:
         defs, config = self.ctx.defs, self.ctx.config
         cdef = defs.facilities[f.kind]["construction"]
         total = fac.total_progress(defs, f)
-        rate = min(fac.ratio(workers, cdef.get("labor", 0)), fac.material_ratio(defs, f))
+        labor = cdef.get("labor", 0) + fac.site_labor(f)
+        rate = min(fac.ratio(workers, labor), fac.material_ratio(defs, f))
         after = min(f.progress + rate, total)
         width = to_basis(config.get("market.band"))
         amount = 0

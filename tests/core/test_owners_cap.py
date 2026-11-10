@@ -207,3 +207,22 @@ def test_change_to_planned_moves_owners_mortgages_and_hunger(game, base):
     ]
     expected = (held * general + 2.0 * persons) / (general + persons)
     assert hh[GENERAL]["hunger"] == pytest.approx(expected, rel=0.01, abs=1e-4)
+
+
+def test_people_who_change_layers_carry_the_food_they_bought(game, base):
+    """市場の段の後に層を移った人（参入の段で出資して資本家階級へ移った人など）は、このターンに
+    買った食べ物を1人あたりの量で持って移る（2026-11-10。前は元の層に残り、移った先の層だけが
+    食べられずに飢えの蓄えがたまった）。島の食べ物の合計は変わらない。"""
+    world = copy.deepcopy(base)
+    island = island_of(world, "mixed")
+    hh = island.economy.households
+    persons = hh[GENERAL]["persons"]
+    moved = persons // 10
+    island.scratch["household_goods"] = {GENERAL: {"grain": 10_000, "fish": 5_000}}
+    hh[GENERAL]["persons"] -= moved
+    hh[OWNERS]["persons"] += moved
+    move_people(island, {OWNERS: moved})
+    bought = island.scratch["household_goods"]
+    for good, total in (("grain", 10_000), ("fish", 5_000)):
+        assert bought[OWNERS][good] == total * moved // persons
+        assert bought[GENERAL][good] + bought[OWNERS][good] == total
