@@ -669,7 +669,8 @@ def _help_context() -> dict:
         "admin_per_office": _admin_people(defs),
         # 金融と企業（フェーズ2-2）の説明に出す数
         "arrears_limit": game.config.get("loans.arrears_limit"),
-        "foreclosure_turns": game.config.get("firms.foreclosure_turns"),
+        "sale_turns": game.config.get("firms.sale_turns"),
+        "sale_cut_turns": game.config.get("firms.sale_cut_turns"),
         "cb_lock_turns": game.config.get("central_bank.switch_lock_turns"),
         # 国債の債務不履行の罰
         "default_premium": f"{game.config.get('bonds.default_premium') * 100:g}",

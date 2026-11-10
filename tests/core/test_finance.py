@@ -12,7 +12,16 @@ import pytest
 
 from hakoniwa_core import ledger
 from hakoniwa_core.autoplan import plan_turn, queue_orders
-from hakoniwa_core.economy import GENERAL, OWNERS, Payer, banks, facility_entity, funds, household
+from hakoniwa_core.economy import (
+    GENERAL,
+    OWNERS,
+    Payer,
+    banks,
+    facility_entity,
+    funds,
+    household,
+    in_receivership,
+)
 from hakoniwa_core.economy.start import invest
 from hakoniwa_core.game import load_game
 from hakoniwa_core.modules import failures
@@ -229,11 +238,14 @@ def test_arrears_bankrupt_private_facility(game, warmed):
         for e in island.log
     )
     assert sold or f.economy["foreclosed"]["bank"] == bank
-    assert f.workers == 0
-    # 返せなかった融資は消える（売れたなら、残る借入は買い手が買うために借りた分だけ）
+    # 倒産しても止めず、管財人（差し押さえた銀行）が働き手を残して動かす（FM-59）
+    assert f.workers > 0
+    assert sold or in_receivership(f)
+    # 返せなかった融資は消える（売れたなら、残る借入は買い手が買うために借りた分だけ。売れていな
+    # ければ、残る借入は管財人の運転資金だけ。BK-50）
     left = banks.loans_by_borrower(island, entity)
     assert all(x.id != loan.id for x in left)
-    assert sold or banks.debt_of(island, entity) == 0
+    assert sold or all(x.purpose == banks.RECEIVER for x in left)
 
 
 # --- 銀行の破綻処理 ---------------------------------------------------------------

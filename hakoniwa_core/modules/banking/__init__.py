@@ -49,9 +49,11 @@ from hakoniwa_core.economy import (
     facility_entity,
     funds,
     household,
+    in_receivership,
     is_bank,
     is_self_supporting,
     owner_entity,
+    receivership,
 )
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.households import add_income, layer_of
@@ -159,6 +161,9 @@ class Banking(IslandStage):
                 continue
             loan.rate = rate_of(island, ctx, loan.lender, loan.borrower)
             interest = ledger.interest(balance, loan.rate)
+            if loan.purpose == banks.RECEIVER:
+                self._accrue(island, loan, interest)
+                continue
             installment = loan.installment
             if loan.purpose == banks.MORTGAGE:  # 残り ÷ 残りの期間で出し直す
                 installment = -(-balance // banks.remaining_turns(loan, ctx.turn))
@@ -192,6 +197,19 @@ class Banking(IslandStage):
                 self._pay_loan(island, loan, interest, principal)
                 if loan.purpose in (banks.MORTGAGE, banks.PLEDGE):
                     self._write_off_mortgage(island, ctx, loan)
+
+    @staticmethod
+    def _accrue(island: IslandState, loan: Loan, interest: int) -> None:
+        """管財人の運転資金の利子は払わずに残高に足す（BK-50。分割で返さず、売れたときか取り壊すときに
+        元金と合わせて先に返す。遅れにならない）。銀行の収入には数える。"""
+        if interest <= 0:
+            return
+        borrower = loan.borrower
+        ledger.create(
+            island, loan.lender, ledger.loan_item(loan.id), borrower, interest, "interest_loan"
+        )
+        books.add(island, int(borrower.split(":")[1]), books.INTEREST, -interest)
+        books.add(island, banks.bank_number(loan.lender), books.INTEREST, interest)
 
     @staticmethod
     def _margin_call(island: IslandState, ctx: StageContext) -> int:
@@ -293,6 +311,11 @@ class Banking(IslandStage):
         足す。"""
         planned = is_planned(ctx.defs, island)
         for f in sorted(island.facilities, key=lambda f: f.id):
+            if in_receivership(f):
+                # 管財人の施設は、管財人の運転資金だけを借りる（BK-50。変動費の利益が出ている
+                # 間だけ）
+                receivership.fund(island, ctx, f)
+                continue
             if not is_self_supporting(f) or is_bank(ctx.config, f) or not in_business(f):
                 continue
             entity = facility_entity(f.id)

@@ -69,6 +69,7 @@ from hakoniwa_core.economy import (
     funds,
     household,
     is_public_service,
+    is_seized,
     is_self_supporting,
     is_stopped,
     is_transport,
@@ -1198,7 +1199,8 @@ class Market(IslandStage):
         rates = freight_rates.facility_rates(island, defs, config)
         found: list[tuple[Facility, int | None, dict[str, int]]] = []
         for f in sorted(island.facilities, key=lambda f: f.id):
-            if not equipment.has_equipment(defs, config, f) or is_stopped(f):
+            # 管財人のもとの施設は設備を直さない（FM-59。直すのは買い手）
+            if not equipment.has_equipment(defs, config, f) or is_stopped(f) or is_seized(f):
                 continue
             if not equipment.needs_repair(defs, config, f):
                 continue
@@ -3825,9 +3827,11 @@ class Market(IslandStage):
         for f in island.facilities:
             if not f.built or not fac.on_map(f):
                 continue
-            # 閉鎖の途中か差し押さえ中の施設は作らない（2026-11-02。差し押さえた漁港の変動費が
-            # 値段のすぐ下にあると、作らないのに魚の値段が上がらず、飢えが続いた）
-            if "closing" in f.economy or "foreclosed" in f.economy:
+            # 閉鎖の途中か、差し押さえて止めている施設は作らない（2026-11-02。差し押さえた漁港の
+            # 変動費が
+            # 値段のすぐ下にあると、作らないのに魚の値段が上がらず、飢えが続いた）。管財人が動かして
+            # いる施設は作るので入れる（FM-59）
+            if is_stopped(f):
                 continue
             wage = f.economy.get("wage", 0)
             rate = rates.get(f.id, 0)

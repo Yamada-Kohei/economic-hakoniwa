@@ -37,6 +37,10 @@ WORKING = "working"  # 運転資金
 CONSTRUCTION = "construction"  # 建設資金
 MORTGAGE = "mortgage"  # 住宅ローン（家計の層が借りる。回3）
 PLEDGE = "pledge"  # 株を担保にした借入（資本家階級が借りる。2026-11-03）
+# 管財人の運転資金（共益債権。BK-50、2026-11-10）: 差し押さえた施設を動かす支払いの足りない分。
+# 分割で
+# 返さず、施設が売れたとき・取り壊すとき・国に移るときに、ほかの請求より先に一度に返す
+RECEIVER = "receiver"
 
 FINANCE_VERSION = 2  # economy.finance["version"]: 2 はフェーズ2-2 の金融が始まった島
 
@@ -303,8 +307,8 @@ def impaired(island: IslandState, loan: Loan) -> bool:
     中・稼働率0、工事なら資材が買えずに止まっている）。家計の住宅ローンは遅れだけで見る。"""
     if loan.arrears > 0:
         return True
-    if layer_of(loan.borrower) is not None:
-        return False
+    if layer_of(loan.borrower) is not None or loan.purpose == RECEIVER:
+        return False  # 管財人の運転資金は先に返るので、おそれの大きい融資に入れない（BK-50）
     f = borrower_facility(island, loan.borrower)
     if f is None or "closing" in f.economy or "foreclosed" in f.economy:
         return True
@@ -317,7 +321,7 @@ def defaulting(island: IslandState, loan: Loan) -> bool:
     """返済が遅れているか、借り手が倒産した（いない・差し押さえ中の）融資。"""
     if loan.arrears > 0:
         return True
-    if layer_of(loan.borrower) is not None:
+    if layer_of(loan.borrower) is not None or loan.purpose == RECEIVER:
         return False
     f = borrower_facility(island, loan.borrower)
     return f is None or "foreclosed" in f.economy
@@ -351,8 +355,11 @@ def exposure(island: IslandState, bank: str, borrower: str) -> int:
     from hakoniwa_core.economy.companies import group_borrowers
 
     group = group_borrowers(island, borrower)
+    # 管財人の運転資金は先に返るので数えない（BK-50）
     return sum(
-        outstanding(island, x) for x in island.loans if x.lender == bank and x.borrower in group
+        outstanding(island, x)
+        for x in island.loans
+        if x.lender == bank and x.borrower in group and x.purpose != RECEIVER
     )
 
 
@@ -556,7 +563,7 @@ def debt_service(island: IslandState, borrower: str, turn: int) -> int:
     for loan in loans_by_borrower(island, borrower):
         balance = outstanding(island, loan)
         total += ledger.interest(balance, loan.rate)
-        if turn + 1 >= loan.repay_from and loan.purpose != WORKING:
+        if turn + 1 >= loan.repay_from and loan.purpose not in (WORKING, RECEIVER):
             total += min(balance, loan.installment)
     return total
 

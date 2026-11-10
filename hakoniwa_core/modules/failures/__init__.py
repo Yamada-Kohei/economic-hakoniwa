@@ -1,10 +1,12 @@
 """破綻の段（フェーズ2-2）: 返済の遅れが続いた施設の倒産と、銀行の破綻・破綻処理。
 
 施設の倒産（計画経済の島では起きない）: 融資の返済が loans.arrears_limit ターン続けて遅れた施設は倒
-産し、止まって労働者は失業する。預金は貸し手に借入の割合で返し、返しきれない分は貸し手の損失（貸し倒
-れ）、出資は 0 になる。施設はいちばん多く貸していた銀行が差し押さえ（economy["foreclosed"]）、
-firms.foreclosure_turns ターンの間、帳簿の設備の値打ちの firms.foreclosure_price で売りに出す（買う
-のは参入する民間か、国有化する政府。参入と撤退の段）。
+産する。預金は貸し手に借入の割合で返し、返しきれない分は貸し手の損失（貸し倒れ）、出資は 0 に
+なる。施設はいちばん多く貸していた銀行が差し押さえ（economy["foreclosed"]）、管財人として働き手と
+操業目標をそのまま引き継いで動かしながら、帳簿の設備の値打ちの firms.foreclosure_price から売り値を
+下げて売りに
+出す（FM-59。2026-11-10。economy/receivership.py。買うのは資本家階級か、国有化する政府。参入と撤退の
+段）。閉鎖の途中で倒産した施設は動かさない。
 
 銀行の破綻: 自己資本がマイナスになった銀行と、資金繰りが破綻した銀行（中央銀行の段）は破綻し、新しい
 融資と預金の受け入れを止める。プレイヤーは命令 resolve_bank で処理を選ぶ（行政力を使わない）。次の
@@ -46,6 +48,7 @@ from hakoniwa_core import ledger, stock
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
+    SEIZED,
     Payer,
     arrears,
     banks,
@@ -55,6 +58,7 @@ from hakoniwa_core.economy import (
     facility_entity,
     funds,
     owner_entity,
+    receivership,
     services,
 )
 from hakoniwa_core.modules.banking import is_planned
@@ -184,13 +188,19 @@ def cross_default(island: IslandState, ctx: StageContext, f: Facility) -> None:
         stats["firms.cascade"] = stats.get("firms.cascade", 0) + len(group)
 
 
-def bankrupt(island: IslandState, ctx: StageContext, f: Facility) -> None:
+def bankrupt(island: IslandState, ctx: StageContext, f: Facility, run: bool | None = None) -> None:
     """施設を倒産させ、いちばん多く貸していた銀行が差し押さえる。
 
     施設の預金は、未払い賃金 → 未払いの税 → 貸し手（借入の割合）の順に払い、返しきれない借入は
     貸し倒れにする（回3。Codex E24）。払いきれなかった請求は差し押さえの記録（claims）に残し、後で
     設備が売れたときや取り壊したときに同じ順で分ける（distribute）。
+
+    施設は止めず、差し押さえた銀行が管財人として、働き手と操業目標をそのまま引き継いで動かしながら
+    売りに出す（FM-59。2026-11-10。economy/receivership.py）。閉鎖の途中で倒産した施設（run が偽。
+    指定がなければ閉鎖の途中かで決める）は、採算が合わないから閉じた施設なので動かさない。
     """
+    if run is None:
+        run = "closing" not in f.economy
     entity = facility_entity(f.id)
     arrears.settle(island, Payer(entity))
     loans = sorted(banks.loans_by_borrower(island, entity), key=lambda x: x.id)
@@ -216,27 +226,36 @@ def bankrupt(island: IslandState, ctx: StageContext, f: Facility) -> None:
     left = ledger.money(island, entity)
     owner = owner_entity(f)
     ledger.pay(island, entity, owner, left, "equity_return")
-    _cancel_equity(island, entity)
+    cancel_equity(island, entity)
     lender = max(lender_totals, key=lambda b: (lender_totals[b], b)) if lender_totals else None
-    price = part(banks.book_capital(f), to_basis(ctx.config.get("firms.foreclosure_price")))
-    f.economy["foreclosed"] = {
+    book = banks.book_capital(f)
+    f.economy[SEIZED] = {
         "bank": lender,
         "since": ctx.turn,
-        "price": price,
+        "price": receivership.first_price(ctx.config, book),
+        "book": book,  # 売り値のもと（差し押さえの間も減価償却で帳簿の値打ちは減るので覚えておく）
         "claims": claims,
         "owner": owner,
+        "run": run,
     }
-    f.economy["target"] = 0
-    f.workers = 0
     companies.leave(island, f)
-    for key in ("unpaid", "arrears_months"):
+    # 撤退の数え（動かない・赤字）は管財人のもとで数え直す。融資の審査と買い手の値踏みに使う稼ぎの
+    # 記録も、管財人のもとの稼ぎから取り直す
+    for key in ("unpaid", "arrears_months", "closing", receivership.SALE_BOOK, "idle_turns"):
         f.economy.pop(key, None)
+    for key in ("loss_streak", "ebitda"):
+        f.economy.pop(key, None)
+    if run:
+        receivership.fund(island, ctx, f)  # 次のターンの賃金と仕入れの分を、差し押さえた銀行が貸す
+    else:
+        f.economy["target"] = 0
+        f.workers = 0
     island.log.append(LogEntry("facility_bankrupt", {"facility": f.kind, "x": f.x, "y": f.y}))
     stats = island.stats
     stats["firms.bankrupt"] = stats.get("firms.bankrupt", 0) + 1
 
 
-def _cancel_equity(island: IslandState, entity: str) -> None:
+def cancel_equity(island: IslandState, entity: str) -> None:
     """entity への出資をすべて消す（持ち主の損）。"""
     suffix = f"/{ledger.EQUITY}/{entity}"
     for name, value in sorted(island.accounts.items()):
@@ -274,12 +293,23 @@ def distribute(
         ledger.pay(island, payer, seized.get("owner") or ledger.GOV, left, "equity_return")
 
 
-def close_foreclosure(island: IslandState, f: Facility) -> dict[str, Any]:
-    """差し押さえを終え、施設に残ったお金を決まった順で分ける（distribute）。差し押さえの記録を
-    返す（続けて売却の代金を分けるときに渡す）。"""
-    seized = f.economy.pop("foreclosed", None) or {}
+def close_foreclosure(
+    island: IslandState, f: Facility, pool: int | None = None, kind: str = "foreclosure_recovery"
+) -> dict[str, Any]:
+    """差し押さえを終え、施設のお金のうち pool（指定がなければ全部。売れたときは、施設の預金と
+    買い手が払い込んだ売り値の和）を分ける。管財人の運転資金（BK-50）を先に返し、返しきれなければ
+    貸し手の損にして、残りを決まった順（未払い賃金 → 未払いの税 → 貸し手）で分ける（distribute）。
+    差し押さえの後にたまった未払い賃金と税も、同じ請求に足して分ける。差し押さえの記録を返す。"""
     entity = facility_entity(f.id)
-    distribute(island, entity, ledger.money(island, entity), seized, "foreclosure_recovery")
+    seized = f.economy.get(SEIZED) or {}
+    if pool is None:
+        pool = ledger.money(island, entity)
+    if isinstance(seized, dict) and seized:
+        receivership.claims_since(island, f, seized)
+        pool -= receivership.repay(island, f, pool)
+        receivership.write_off(island, f)
+    f.economy.pop(SEIZED, None)
+    distribute(island, entity, min(pool, ledger.money(island, entity)), seized, kind)
     return seized
 
 
@@ -405,7 +435,7 @@ def bailout(island: IslandState, ctx: StageContext, bank: str) -> None:
     worth -= banks.impaired_discount(island, config, bank)
     want = banks.capital_target(island, config, bank) - worth
     want = max(0, want) + _liquidity_need(island, ctx, f)
-    _cancel_equity(island, bank)
+    cancel_equity(island, bank)
     paid = _government_pays(island, ctx, bank, want, "bank_bailout")
     if paid > 0:
         ledger.create(island, ledger.GOV, ledger.EQUITY, bank, paid, "bank_bailout")
@@ -454,7 +484,7 @@ def resolve_in_place(island: IslandState, ctx: StageContext, bank: str) -> None:
     worth = banks.net_worth(island, config, bank, ctx.turn)
     worth -= banks.impaired_discount(island, config, bank)
     loss = max(0, -worth)
-    _cancel_equity(island, bank)
+    cancel_equity(island, bank)
     cut = _cut_uninsured(island, bank, loss)
     cover = loss - cut
     paid = _government_pays(island, ctx, bank, cover, "deposit_insurance")
@@ -496,7 +526,7 @@ def transfer(
     paid = _government_pays(island, ctx, bank, cover, "deposit_insurance")
     deposits = banks.deposits_of(island, bank)
     cut_total += _cut_all(island, bank, cover - paid)  # 政府も払えない分は、残りの預金から削る
-    _cancel_equity(island, bank)
+    cancel_equity(island, bank)
     _absorb(island, ctx, f, bank, target)
     kind = "bank_liquidated" if liquidation else "bank_transferred"
     t = banks.facility_of(island, target)
@@ -607,7 +637,7 @@ def merge(island: IslandState, ctx: StageContext, bank: str, target: str, price:
         amount = price - paid if i == len(holders) - 1 else price * value // max(1, total)
         funds.pay(island, Payer(target), holder, amount, "bank_merger")
         paid += amount
-    _cancel_equity(island, bank)
+    cancel_equity(island, bank)
     _absorb(island, ctx, f, bank, target)
     island.economy.finance[MERGED] = ctx.turn
     island.log.append(
@@ -644,6 +674,10 @@ def _move_everything(island: IslandState, bank: str, target: str) -> None:
     for loan in island.loans:
         if loan.lender == bank:
             loan.lender = target
+    for f in island.facilities:  # 差し押さえた施設の管財人も引き継ぐ（BK-50）
+        seized = f.economy.get(SEIZED)
+        if isinstance(seized, dict) and seized.get("bank") == bank:
+            seized["bank"] = target
     reserves = banks.reserves_of(island, bank)
     if reserves > 0:
         ledger.post(island, ledger.reserve(target), ledger.reserve(bank), reserves, "bank_transfer")

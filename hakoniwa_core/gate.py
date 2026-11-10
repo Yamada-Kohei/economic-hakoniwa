@@ -44,6 +44,7 @@ from hakoniwa_core.economy import (
     companies,
     debt,
     experience,
+    is_seized,
     is_stopped,
     retail,
     services,
@@ -413,7 +414,10 @@ class Recorder:
                     switched[f.kind] += 1
                 recipes[f.id] = f.recipe
             working = d.get("workers", 0) > 0 and d.get("category") != "housing" and located(f)
-            silent = not is_stopped(f) and f.operating_rate <= 0 and not f.status
+            # 管財人のもとの施設は、採算が合わない間は運転資金を借りずに止まる（FM-59）
+            silent = (
+                not is_stopped(f) and not is_seized(f) and f.operating_rate <= 0 and not f.status
+            )
             if working:
                 w.held("silent_stop", str(f.id), silent, turn, SILENT_TURNS, f.kind)
         w.recipes = recipes
