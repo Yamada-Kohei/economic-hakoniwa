@@ -684,6 +684,10 @@ def _map(request, args):
         worn = display.equipment_info(game.defs, game.config, f) if row.built else {}
         if worn and worn["equipment"] < 1:  # 設備が傷んでいれば割合も（回6）
             rate += f" 設備 {round(worn['equipment'] * 100)}%"
+        if row.built and island.economy:  # 管財人のもと・閉鎖に入り売りに出している（FM-59・FM-60）
+            sale = display.sale_text(row, f, state, (state.names or {}).get("currency_symbol", ""))
+            if sale:
+                state_text = f"{state_text} {sale}".strip()
         name = facility_name(game.defs, game.config, state, f)
         kind = game.defs.name("facilities", row.kind)
         lines.append(f"{where} #{row.number} {name}（{kind}）{rate} {state_text}".rstrip())

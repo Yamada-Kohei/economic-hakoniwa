@@ -169,9 +169,23 @@ def facility_state(
     reasons: dict[str, int] = defaultdict(int)
     rows = [r for r in _facility_rows(island) if display.sees_facility(r, mine, viewer)]
     starting = 0
+    on_sale = []
+    currency = (state.names or {}).get("currency_symbol", "")
     for row in rows:
         f = facility_from_row(row)
         text = display.status_text(f)
+        sale = display.sale_text(row, f, state, currency) if row.built and island.economy else ""
+        if sale:  # 管財人のもと・閉鎖に入り売りに出している施設（FM-59・FM-60）
+            on_sale.append(
+                {
+                    "number": row.number,
+                    "name": facility_name(game.defs, game.config, state, f),
+                    "kind_name": game.defs.name("facilities", row.kind),
+                    "x": fac.position(f)[0],
+                    "y": fac.position(f)[1],
+                    "sale_text": sale,
+                }
+            )
         x, y = fac.position(f)  # 町の中の店は町のマス（施設の行の位置は負）
         if row.built and row.status == fac.STATUS_STARTING:
             # 工事が済んでまだ動いたことがない。次の更新で動き出すので止まりと分ける（W-219）
@@ -222,6 +236,8 @@ def facility_state(
         "partial": [
             {"status_text": t, "count": n} for t, n in sorted(reasons.items(), key=lambda r: -r[1])
         ],
+        "on_sale_count": len(on_sale),
+        "on_sale": on_sale[:LIST_MAX],
         "construction_count": len(works),
         "construction": works[:LIST_MAX],
         "infra_works": len(infra.get("queue", [])),
@@ -425,6 +441,8 @@ def _alerts(
         out.append(f"電力が足りていません（不足率 {math.ceil(shortage * 1000) / 10:.1f}%）")
     if facilities["stopped_count"]:
         out.append(f"止まっている施設が {facilities['stopped_count']} か所あります")
+    if facilities.get("on_sale_count"):
+        out.append(f"倒産・閉鎖で売りに出している施設が {facilities['on_sale_count']} か所あります")
     unmet = [g["name"] for g in goods if g.get("unmet")]
     if unmet:
         out.append("買いたい量に売りが届かなかった財: " + "・".join(unmet))

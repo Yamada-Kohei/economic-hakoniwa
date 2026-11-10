@@ -29,6 +29,8 @@ equity_loss: 出資の取り消し
 equity_transfer: 出資の付け替え
 foreclosure_sale: 差し押さえ施設の売却
 foreclosure_recovery: 差し押さえ施設の残り
+receiver_advance: 管財人の運転資金（政府）
+receiver_repayment: 管財人の運転資金の返済
 bank_transfer: 銀行の引き継ぎ
 bank_merger: 銀行の合併の代金
 bank_bailout: 公的資金

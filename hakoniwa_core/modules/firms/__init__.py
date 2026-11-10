@@ -31,20 +31,21 @@
   (1 − firms.startup_equity_share) までにする（創業融資）。資本家階級の預金で新しい会社の出資に
   足りなければ、持っている会社の株を担保に firms.pledge_ratio の分まで借りて足す（2026-11-03。
   economy/companies.py choose_investor）。
-- 差し押さえ中の同じ施設があれば、その売り値を建設費として新しく建てる案と比べ、良い方を選ぶ（買い取
-  るときも、動き出すときの支払いを合わせて調達し、元金を据え置く）。
+- 居抜きの売り（FM-60。2026-11-10）: 新しく建てる前に、差し押さえた施設と閉鎖に入った施設を、
+  資本家階級（元の企業を除く）が「年の利益 ÷（売り値 ＋ 直す代金 ＋ 在庫）」で値踏みして買う
+  （_sell_on_sale）。新しく建てる参入と合わせて firms.entries_per_turn 件まで。
 
 撤退: 民営の独立採算の施設は、動かない（稼働率0で、売る在庫もない）まま firms.exit_idle_turns
 ターン続くか、変動費の利益が firms.exit_loss_turns ターン続けてマイナス（全力の売上の
 firms.exit_loss_margin を超える損）なら閉鎖に入る（economy["closing"]）。人を雇わず仕入れず、
-在庫を売る。在庫がなくなるか
-firms.foreclosure_turns ターンたったら、借入を預金で返し、残りを出資者に返してマスを空ける（工業団地
-の指定は残る）。返しきれなければ倒産と同じ扱い（差し押さえ）にする。民営の工事が資材を買えずに
-firms.abandon_turns ターン進まなければ、工事をやめる（建設資金は預金で返し、返しきれない分は貸し倒
-れ、買ってあった資材は国の倉庫へ）。
+在庫を売りながら居抜きで売りに出す。売れないまま firms.sale_turns ターンたったら、借入を預金で返し、
+残りを出資者に返してマスを空ける（工業団地の指定は残る）。返しきれなければ倒産（動かさない差し押さえ）
+にする。民営の工事が資材を買えずに firms.abandon_turns ターン進まなければ、工事をやめる（建設資金は
+預金で返し、返しきれない分は貸し倒れ、買ってあった資材は国の倉庫へ）。
 
-差し押さえた施設は firms.foreclosure_turns ターン売れなければ取り壊す（在庫は国の倉庫へ、預金は差し
-押さえた銀行の回収）。
+差し押さえた施設（FM-59）は、管財人の銀行が動かしながら売り値を firms.sale_cut_turns ごとに下げて
+売りに出し、売れないまま撤退の決まり（動かない・赤字が続く・設備が傷みきる）に当たったら取り壊す（在庫
+は国の倉庫へ、お金は管財人の運転資金を先に返してから請求の順に分ける）。
 
 商社（フェーズ3-1）: 民営の商社が入れる島（計画経済でない島）では、島の商社の扱った重さが直近
 trade.entry_turns ターンの平均で上限の trade.entry_threshold を超え、空いたオフィス街のマスがあり、
@@ -77,6 +78,7 @@ from hakoniwa_core.defs import Defs
 from hakoniwa_core.defs.kinds import is_variant
 from hakoniwa_core.economy import (
     OWNERS,
+    SEIZED,
     STATE_FACILITIES,
     SUBSIDIES,
     Payer,
@@ -88,7 +90,9 @@ from hakoniwa_core.economy import (
     facility_entity,
     funds,
     household,
+    in_receivership,
     is_bank,
+    is_on_sale,
     is_private_site,
     is_public_service,
     is_self_supporting,
@@ -96,6 +100,7 @@ from hakoniwa_core.economy import (
     is_transport,
     owner_entity,
     productivity,
+    receivership,
     retail,
     services,
     standing,
@@ -112,7 +117,7 @@ from hakoniwa_core.economy.start import (
 )
 from hakoniwa_core.geo import within
 from hakoniwa_core.modules.banking import entry_policy, is_planned
-from hakoniwa_core.modules.failures import bankrupt, close_foreclosure, distribute
+from hakoniwa_core.modules.failures import bankrupt, cancel_equity, close_foreclosure
 from hakoniwa_core.modules.market import MISSED
 from hakoniwa_core.naming import assign_serial
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
@@ -279,7 +284,10 @@ class EntryExit(IslandStage):
         self._exits(island, ctx)
         self._foreclosures(island, ctx)
         if not is_planned(ctx.defs, island):
-            for _ in range(ctx.config.get("firms.entries_per_turn")):
+            # 居抜きの売り（FM-60）を先に。新しく建てる参入と合わせて firms.entries_per_turn 件まで
+            slots = ctx.config.get("firms.entries_per_turn")
+            slots -= self._sell_on_sale(island, ctx, slots)
+            for _ in range(slots):
                 if not self._enter(island, ctx):
                     break
             self._invest(island, ctx)
@@ -344,8 +352,7 @@ class EntryExit(IslandStage):
                 or f.owner != OWNER_PRIVATE
                 or not f.built
                 or not fac.on_map(f)
-                or "closing" in f.economy
-                or "foreclosed" in f.economy
+                or is_stopped(f)  # 管財人が動かしている施設は見直す（FM-59）
                 or fac.RECIPE_NEXT in f.ext
                 or ((ctx.turn + f.id) % settings["recipe_turns"] and not urgent)
             ):
@@ -474,42 +481,50 @@ class EntryExit(IslandStage):
             if "closing" in f.economy:
                 self._finish_closing(island, ctx, f)
                 continue
-            outputs = fac.recipe_of(ctx.defs, fac.steady(f))["outputs"]
-            # 在庫を売っている間は、作るのを止めていても動かないとは数えない（回6。売れ行きの
-            # 何十ターン分も作った機械工場が、在庫を売りながら 12 ターンで閉じ、島の機械が消えた）
-            selling = any(stock.total(f.stock, g) > 0 for g in outputs)
-            # 蒔き直した畑が育っている間も数えない（回7。W-20。作りすぎの月に人を減らした農場が、
-            # 次の作物の収穫を待たずに閉じた）
-            growing = bool(f.economy.get(fac.SOWN))
-            idle = (
-                f.economy.get("idle_turns", 0) + 1
-                if f.operating_rate <= 0 and not selling and not growing
-                else 0
-            )
-            wage = f.economy.get("wage", 0)
-            prices = island.economy.prices
-            profit = variable_profit(ctx.defs, ctx.config, f, prices, wage, rates.get(f.id, 0))
-            sales = sum(money_of(prices.get(g, 0), q) for g, q in outputs.items())
-            # 値段が変動費ちょうどの売り手は、端数でマイナスになることがあるので少し見逃す
-            margin = part(sales, to_basis(settings["exit_loss_margin"]))
-            losing = f.economy.get("loss_streak", 0) + 1 if profit < -margin else 0
-            f.economy["idle_turns"] = idle
-            f.economy["loss_streak"] = losing
-            # 直す採算が合わないまま設備が傷みきった（回6。economy/equipment.py）
-            scrap = round(ctx.config.get("equipment.scrap") * fac.FULL)
-            worn_out = equipment.condition(f) < scrap and not equipment.worthwhile(
-                ctx.defs, ctx.config, f, profit, prices
-            )
-            if (
-                idle >= settings["exit_idle_turns"]
-                or losing >= settings["exit_loss_turns"]
-                or worn_out
-            ):
+            if self._exit_signal(island, ctx, f, rates.get(f.id, 0)):
                 f.economy["closing"] = ctx.turn
                 f.economy["target"] = 0
+                # 閉鎖に入った施設も居抜きで売りに出す。売り値のもとは今の帳簿の値打ち（FM-60）
+                f.economy[receivership.SALE_BOOK] = banks.book_capital(f)
                 island.log.append(
                     LogEntry("facility_closing", {"facility": f.kind, "x": f.x, "y": f.y})
                 )
+
+    @staticmethod
+    def _exit_signal(island: IslandState, ctx: StageContext, f: Facility, rate: int) -> bool:
+        """撤退の決まりに当たったか（動かない・変動費の赤字が続く・直す採算の合わないまま設備が傷み
+        きる）。動かないターンと赤字のターンを数え直す。民営の撤退と、管財人のもとの施設の取り壊し
+        （FM-59）が使う。"""
+        settings = ctx.config.get("firms")
+        outputs = fac.recipe_of(ctx.defs, fac.steady(f))["outputs"]
+        # 在庫を売っている間は、作るのを止めていても動かないとは数えない（回6。売れ行きの
+        # 何十ターン分も作った機械工場が、在庫を売りながら 12 ターンで閉じ、島の機械が消えた）
+        selling = any(stock.total(f.stock, g) > 0 for g in outputs)
+        # 蒔き直した畑が育っている間も数えない（回7。W-20。作りすぎの月に人を減らした農場が、
+        # 次の作物の収穫を待たずに閉じた）
+        growing = bool(f.economy.get(fac.SOWN))
+        idle = (
+            f.economy.get("idle_turns", 0) + 1
+            if f.operating_rate <= 0 and not selling and not growing
+            else 0
+        )
+        wage = f.economy.get("wage", 0)
+        prices = island.economy.prices
+        profit = variable_profit(ctx.defs, ctx.config, f, prices, wage, rate)
+        sales = sum(money_of(prices.get(g, 0), q) for g, q in outputs.items())
+        # 値段が変動費ちょうどの売り手は、端数でマイナスになることがあるので少し見逃す
+        margin = part(sales, to_basis(settings["exit_loss_margin"]))
+        losing = f.economy.get("loss_streak", 0) + 1 if profit < -margin else 0
+        f.economy["idle_turns"] = idle
+        f.economy["loss_streak"] = losing
+        # 直す採算が合わないまま設備が傷みきった（回6。economy/equipment.py）
+        scrap = round(ctx.config.get("equipment.scrap") * fac.FULL)
+        worn_out = equipment.condition(f) < scrap and not equipment.worthwhile(
+            ctx.defs, ctx.config, f, profit, prices
+        )
+        return (
+            idle >= settings["exit_idle_turns"] or losing >= settings["exit_loss_turns"] or worn_out
+        )
 
     @staticmethod
     def _abandon(island: IslandState, ctx: StageContext, f: Facility) -> None:
@@ -530,40 +545,61 @@ class EntryExit(IslandStage):
 
     @staticmethod
     def _finish_closing(island: IslandState, ctx: StageContext, f: Facility) -> None:
+        """閉鎖に入った施設は、在庫を売りながら居抜きで売りに出し（FM-60。買い手は参入の段の
+        _sell_on_sale が探す）、売れないまま firms.sale_turns たてば、借入を預金で返し、残りを出資者
+        に返してマスを空ける。返しきれなければ倒産（動かさない差し押さえ）にする。"""
         f.economy["target"] = 0
-        held = sum(stock.totals(f.stock).values())
         waited = ctx.turn - f.economy["closing"]
-        if held > 0 and waited < ctx.config.get("firms.foreclosure_turns"):
-            return
         entity = facility_entity(f.id)
+        # 次の返済を預金で払えなくなったら、売りに出すのをやめて今たたむ（売上のない施設が返済の
+        # 遅れを重ねて、同じ企業の施設まで巻き込んで倒産しないように。前の閉鎖も、在庫を売り切れば
+        # すぐたたんでいた）
+        servable = ledger.money(island, entity) >= banks.debt_service(island, entity, ctx.turn)
+        if waited < ctx.config.get("firms.sale_turns") and servable:
+            return
         for loan in sorted(banks.loans_by_borrower(island, entity), key=lambda x: x.id):
             amount = min(banks.outstanding(island, loan), ledger.money(island, entity))
             banks.repay(island, loan, amount)
         banks.drop_settled(island)
         if banks.debt_of(island, entity) > 0:
-            f.economy.pop("closing", None)
-            bankrupt(island, ctx, f)
+            bankrupt(island, ctx, f, run=False)
             return
         remove_facility(island, ctx, f)
         island.log.append(LogEntry("facility_closed", {"facility": f.kind, "x": f.x, "y": f.y}))
         stats = island.stats
         stats["firms.closed"] = stats.get("firms.closed", 0) + 1
 
-    @staticmethod
-    def _foreclosures(island: IslandState, ctx: StageContext) -> None:
-        turns = ctx.config.get("firms.foreclosure_turns")
+    def _foreclosures(self, island: IslandState, ctx: StageContext) -> None:
+        """差し押さえた施設（管財人のもと。FM-59）の売り値を下げ、撤退の決まりに当たった施設を取り
+        壊す。売り値は差し押さえたときの帳簿の値打ちから firms.sale_cut_turns ごとに下げ、下限で
+        止める（economy/receivership.py）。取り壊すのは、売れないまま、動かない・変動費の赤字が
+        続く・直す採算の合わないまま設備が傷みきる、のどれかに当たったときだけ（動かしていない施設は動かない
+        ターンが続けば当たる）。"""
+        config = ctx.config
+        rates = freight_rates.facility_rates(island, ctx.defs, config)
         for f in sorted(island.facilities, key=lambda f: f.id):
-            seized = f.economy.get("foreclosed")
-            if seized and ctx.turn - seized["since"] >= turns:
-                # 残った在庫は国が市場の値段で引き取り、その代金も同じ順で分ける（回3。E25）
-                arrears.sell_stock_to_state(island, facility_entity(f.id), f.stock)
-                close_foreclosure(island, f)
-                take_over_stock(island, ctx, f)
-                fac.vacate(island, f)
-                freight_rates.forget(island)
-                island.log.append(
-                    LogEntry("foreclosure_demolished", {"facility": f.kind, "x": f.x, "y": f.y})
-                )
+            seized = f.economy.get(SEIZED)
+            if not isinstance(seized, dict):
+                continue
+            if "book" not in seized:  # 管財人の前の差し押さえ: 売り値から帳簿の値打ちを戻す
+                share = config.get("firms.foreclosure_price")
+                seized["book"] = round(seized.get("price", 0) / share) if share else 0
+            seized["price"] = receivership.price_at(
+                config, seized["book"], seized["since"], ctx.turn
+            )
+            if not self._exit_signal(island, ctx, f, rates.get(f.id, 0)):
+                continue
+            # 残った在庫は国が市場の値段で引き取り、その代金も同じ順で分ける（回3。E25）
+            arrears.sell_stock_to_state(island, facility_entity(f.id), f.stock)
+            close_foreclosure(island, f)
+            take_over_stock(island, ctx, f)
+            fac.vacate(island, f)
+            freight_rates.forget(island)
+            island.log.append(
+                LogEntry("foreclosure_demolished", {"facility": f.kind, "x": f.x, "y": f.y})
+            )
+            stats = island.stats
+            stats["firms.demolished"] = stats.get("firms.demolished", 0) + 1
 
     # --- 民営工場の参入 ---------------------------------------------------------------
 
@@ -703,8 +739,6 @@ class EntryExit(IslandStage):
                     args = {"rate": estimate * 100, "need": threshold * 100}
                     blocks.append((estimate, kind, "unprofitable", args))
                 break
-            if self._buy_foreclosed(island, ctx, kind, rname, prices, threshold, estimate, fill):
-                return True
             materials = defs.facilities[kind]["construction"].get("materials", {})
             unavailable = sorted(set(materials) - supplied - on_sale)
             if unavailable:  # 工事の資材が島で作られておらず、売りに出てもいない
@@ -1370,6 +1404,7 @@ class EntryExit(IslandStage):
         earnings: int,
         kind: str = "",
         target: Facility | None = None,
+        exclude: int | None = None,
     ) -> list[tuple[str, int, int]] | tuple[str, dict[str, Any]]:
         """出資と建設資金の融資の組み立て: [(銀行, 借りる額, 金利)]（出資は amount − 借りる額の合
         計）。資産を持つ層が出資しきれないか、審査に通らなければ、そのわけ（わけと引数の組）。
@@ -1377,7 +1412,9 @@ class EntryExit(IslandStage):
 
         建て増し（target）は、融資が済んだ後に建て増す施設へ移るので、大口融資の上限はその施設への
         今の残高を足して見て（exposure_room）、返済の余裕もその施設の今の返済と利益を足して見る
-        （W-186 回3）。"""
+        （W-186 回3）。
+
+        exclude は出資させない企業の番号（居抜きの売りで、売りに出した施設の元の企業。FM-60）。"""
         config = ctx.config
         island.scratch.pop(ENTRY_PLEDGE, None)
         want = amount - round_money(amount * config.get("firms.equity_share"))
@@ -1437,7 +1474,7 @@ class EntryExit(IslandStage):
                 return sum(p for _, p, _ in pledge_plan) - keep
 
             investor = companies.choose_investor(
-                island, ctx.defs, kind, lambda n: amount - loan_for(n), pledge_room
+                island, ctx.defs, kind, lambda n: amount - loan_for(n), pledge_room, exclude
             )
             loan = startup if investor is None else loan_for(investor[1])
             if investor is not None:
@@ -1673,61 +1710,143 @@ class EntryExit(IslandStage):
         stats["firms.entered"] = stats.get("firms.entered", 0) + 1
         return None
 
-    def _buy_foreclosed(
+    def _sell_on_sale(self, island: IslandState, ctx: StageContext, slots: int) -> int:
+        """居抜きの売り（FM-60。2026-11-10）: 差し押さえた施設（管財人のもと）と閉鎖に入った施設を、
+        資本家階級（同業の企業を先に。元の企業は買い手にしない）が、新しく建てる参入と同じ物差しで
+        買う。「年の利益 ÷（売り値 ＋ 傷んだ設備を直す代金 ＋ 在庫の値打ち）」が参入に要る利益率を
+        超える施設を、見込みの大きい順に slots 件まで買う。売れた件数を返す。
+
+        年の利益は、管財人が動かしている施設なら直近 firms.ebitda_turns の実際の稼ぎ（売れ行きと
+        抱えた人の賃金の入った営業の現金収支）から、止まった施設と閉鎖に入った施設なら新しく建てる
+        参入と同じ見込みの利益 × 売れる見込みの割合（参入の合図がなければ 0 で、買わない）から出す
+        （どちらも設備の年の傷みと法人税を引く。式 entry_return と同じ形）。全力の利益で見ると、
+        売れずに閉じた施設が買われてはまた閉じるくり返しになる。民営の参入が許されない施設（混合
+        経済の基幹産業）は、国有化でだけ買える。"""
+        defs, config = ctx.defs, ctx.config
+        threshold = self._threshold(island, ctx)
+        if slots <= 0 or threshold == float("inf"):
+            return 0
+        settings = config.get("firms")
+        prices = average_prices(island, settings["price_turns"])
+        wage = island.economy.average_wage
+        rates = freight_rates.facility_rates(island, defs, config)
+        shortages = island.economy.finance.get("shortages", {})
+        demand = island.economy.finance.get("demand", {})
+        capacity = self._capacity(island, ctx)
+        supplied = self._supplied(island, ctx)
+        tax = island.policy.corporate_tax / BASIS
+        keep = settings["ebitda_turns"]
+        offers = []
+        for f in sorted(island.facilities, key=lambda f: f.id):
+            if not is_on_sale(f) or not f.built or not fac.on_map(f):
+                continue
+            if f.owner != OWNER_PRIVATE or not private_allowed(defs, island, f.kind):
+                continue
+            price = receivership.asking_price(config, f, ctx.turn)
+            if price is None:
+                continue
+            recipe = fac.recipe_of(defs, f)
+            rate = rates.get(f.id, 0)
+            profit = variable_profit(defs, config, f, prices, wage, rate)
+            scrap = round(config.get("equipment.scrap") * fac.FULL)
+            if equipment.condition(f) < scrap and not equipment.worthwhile(
+                defs, config, f, profit, prices
+            ):
+                # 直す採算の合わないまま傷みきった施設は、買っても直さずすぐまた閉じるので買わない
+                continue
+            repair = equipment.value(equipment.shortfall(defs, f), prices)
+            held = banks.inventory_value(island, f)
+            capital = price + repair + held
+            if in_receivership(f):
+                history = banks.ebitda(f)[-keep:]
+                if len(history) < keep:
+                    continue  # 管財人のもとの稼ぎを見てから値を付ける
+                worn = equipment.yearly_wear(defs, config, f.kind, prices)
+                r = (YEAR * sum(history) / len(history) - worn) * (1 - tax) / max(1, capital)
+            else:
+                if set(recipe.get("inputs", {})) - supplied or self._inputs_short(
+                    recipe, shortages, settings
+                ):
+                    continue  # 原料が島で手に入らない
+                cost = unit_cost(defs, config, f.kind, recipe, prices, wage)
+                fill = self._fill(recipe, shortages, demand, capacity, prices, cost, settings)
+                if fill <= 0:
+                    continue  # 参入の合図（品切れか高い値段）がない
+                estimate = ctx.formula("entry_return")(
+                    island, ctx, f.kind, f.recipe, prices, rate, capital, (f.x, f.y)
+                )
+                r = estimate * fill
+            if r > threshold:
+                offers.append((r, f.id))
+        sold = 0
+        for _, fid in sorted(offers, key=lambda o: (-o[0], o[1])):
+            if sold >= slots:
+                break
+            f = island.facility(fid)
+            if f is not None and self._buy_on_sale(island, ctx, f, prices, wage, rates):
+                sold += 1
+        return sold
+
+    def _buy_on_sale(
         self,
         island: IslandState,
         ctx: StageContext,
-        kind: str,
-        rname: str,
+        f: Facility,
         prices: dict[str, int],
-        threshold: float,
-        estimate: float,
-        fill: float,
+        wage: int,
+        rates: dict[int, int],
     ) -> bool:
-        """差し押さえ中の同じ施設を、新しく建てるより利益率が高ければ買い取る。"""
+        """売りに出ている施設 f を、資本家階級（元の企業は除く）が買う。代金（売り値 ＋ 在庫の
+        値打ち）と動き出すときの支払いを、参入と同じく出資と建設資金の融資で集める（FM-17・
+        FM-55・FM-56）。
+        管財人の施設は、代金と施設の預金から管財人の運転資金を先に返し、残りを倒産の分け方で分ける。
+        閉鎖に入った施設は、代金と預金で未払い賃金・税と借入を返し（返しきれない借入は貸し倒れ）、
+        前の出資を消して残りを持ち主に返す。"""
         config = ctx.config
-        rates = freight_rates.facility_rates(island, ctx.defs, config)
-        wage = island.economy.average_wage
-        for f in sorted(island.facilities, key=lambda f: f.id):
-            seized = f.economy.get("foreclosed")
-            if not seized or f.kind != kind or f.recipe != rname:
-                continue
-            price = max(1, seized["price"])
-            rate = rates.get(f.id, 0)
-            # 傷んだ設備を新品まで直す代金も、買う値段に入れて比べる（回6）
-            repair = equipment.value(equipment.shortfall(ctx.defs, f), prices)
-            capital = price + repair
-            r = ctx.formula("entry_return")(island, ctx, kind, rname, prices, rate, capital) * fill
-            if r <= max(threshold, estimate):
-                continue
-            earnings = variable_profit(ctx.defs, config, f, prices, wage, rate)
-            start = operating_cost(ctx.defs, config, f, prices, wage, rate)
-            amount = price + start * config.get("firms.operating_turns")
-            plan = self._finance(island, ctx, amount, earnings, kind)
-            if isinstance(plan, tuple):
-                continue
-            payer, firm = island.scratch.pop("entry_investor", None) or (household(OWNERS), None)
-            close_foreclosure(island, f)
-            entity = facility_entity(f.id)
-            self._borrow_on_shares(island, ctx, payer)
-            _owners_ready(island, payer, amount - sum(p for _, p, _ in plan))
-            invest(island, payer, entity, amount - sum(p for _, p, _ in plan))
-            turns = config.get("loans.construction_turns")
-            grace = ctx.turn + 1 + config.get("loans.grace_turns")
-            for bank, loan, loan_rate in plan:
-                purpose = banks.CONSTRUCTION
-                banks.lend(island, bank, entity, loan, purpose, turns, ctx.turn, loan_rate, grace)
-            pay_seller(island, entity, seized, price)
-            restart(island, ctx, f, OWNER_PRIVATE, price)
-            companies.invested(island, firm, f, ctx.turn)
-            f.economy["entered"] = ctx.turn
-            island.log.append(
-                LogEntry(
-                    "foreclosure_sold", {"facility": f.kind, "x": f.x, "y": f.y, "price": price}
-                )
-            )
-            return True
-        return False
+        price = receivership.asking_price(config, f, ctx.turn) or 1
+        paid = price + banks.inventory_value(island, f)
+        rate = rates.get(f.id, 0)
+        earnings = variable_profit(ctx.defs, config, f, prices, wage, rate)
+        start = operating_cost(ctx.defs, config, f, prices, wage, rate)
+        amount = paid + start * config.get("firms.operating_turns")
+        seized = f.economy.get(SEIZED)
+        before = seized.get("owner") if isinstance(seized, dict) else owner_entity(f)
+        exclude = (
+            int(before[5:]) if isinstance(before, str) and before.startswith("firm:") else None
+        )
+        plan = self._finance(island, ctx, amount, earnings, f.kind, exclude=exclude)
+        if isinstance(plan, tuple):
+            return False
+        payer, firm = island.scratch.pop("entry_investor", None) or (household(OWNERS), None)
+        entity = facility_entity(f.id)
+        running = in_receivership(f)
+        own = ledger.money(island, entity)
+        old_loans = [x.id for x in banks.loans_by_borrower(island, entity)]
+        if not seized:
+            # 閉鎖に入った施設: 前の持ち主の出資を消し、企業を抜ける（買い手の出資と分けるため）
+            cancel_equity(island, entity)
+            companies.leave(island, f)
+        self._borrow_on_shares(island, ctx, payer)
+        _owners_ready(island, payer, amount - sum(p for _, p, _ in plan))
+        invest(island, payer, entity, amount - sum(p for _, p, _ in plan))
+        turns = config.get("loans.construction_turns")
+        grace = ctx.turn + 1 + config.get("loans.grace_turns")
+        for bank, loan, loan_rate in plan:
+            purpose = banks.CONSTRUCTION
+            banks.lend(island, bank, entity, loan, purpose, turns, ctx.turn, loan_rate, grace)
+        if seized:
+            close_foreclosure(island, f, own + paid, "foreclosure_sale")
+        else:
+            settle_closing(island, f, own + paid, old_loans, before)
+        restart(island, ctx, f, OWNER_PRIVATE, price, running)
+        companies.invested(island, firm, f, ctx.turn)
+        f.economy["entered"] = ctx.turn
+        island.log.append(
+            LogEntry("foreclosure_sold", {"facility": f.kind, "x": f.x, "y": f.y, "price": paid})
+        )
+        stats = island.stats
+        stats["firms.resold"] = stats.get("firms.resold", 0) + 1
+        return True
 
     # --- 民間銀行の参入 ---------------------------------------------------------------
 
@@ -1905,18 +2024,55 @@ def take_over_stock(island: IslandState, ctx: StageContext, f: Facility) -> None
             send_to_market(island, good, sell)
 
 
-def pay_seller(island: IslandState, payer: str, seized: dict[str, Any], price: int) -> None:
-    """差し押さえた施設の代金を、差し押さえの記録 seized の請求の順（未払い賃金 → 未払いの税 →
-    貸し手の割合）に払い、余りを元の持ち主に返す（回3。Codex E24）。"""
-    distribute(island, payer, price, seized, "foreclosure_sale")
+def settle_closing(
+    island: IslandState, f: Facility, pool: int, old_loans: list[int], owner: str
+) -> None:
+    """閉鎖に入って売れた施設の代金と預金 pool を、未払い賃金 → 未払いの税 → 前からの借入
+    （old_loans。残りの割合で）の順に払い、返しきれない借入は貸し倒れにして、残りを前の持ち主
+    owner に返す（FM-60）。"""
+    entity = facility_entity(f.id)
+    pool = min(pool, ledger.money(island, entity))
+    claims = arrears.write_off(island, entity)
+    left = arrears.pay_claims(island, entity, pool, claims, lambda _bank, _value: None)
+    loans = [x for x in banks.loans_by_borrower(island, entity) if x.id in set(old_loans)]
+    owed = {x.id: banks.outstanding(island, x) for x in loans}
+    total = sum(owed.values())
+    use = min(left, total)
+    paid = 0
+    for i, loan in enumerate(loans):
+        share = use - paid if i == len(loans) - 1 else use * owed[loan.id] // max(1, total)
+        share = min(share, owed[loan.id])
+        banks.repay(island, loan, share)
+        paid += share
+    for loan in loans:
+        banks.write_off(island, loan, banks.outstanding(island, loan))
+    banks.drop_settled(island)
+    left -= paid
+    if left > 0:
+        ledger.pay(island, entity, owner, left, "equity_return")
 
 
-def restart(island: IslandState, ctx: StageContext, f: Facility, owner: str, price: int) -> None:
-    """売れた施設を新しい持ち主の下で動き出させる（設備の額は買った値段にする）。"""
+def restart(
+    island: IslandState,
+    ctx: StageContext,
+    f: Facility,
+    owner: str,
+    price: int,
+    running: bool = False,
+) -> None:
+    """売れた施設を新しい持ち主の下で動き出させる（設備の額は買った値段にする）。管財人が動かして
+    いた施設（running）は、働き手・操業目標・賃金をそのまま引き継いで動き続ける（FM-60）。止まって
+    いた施設は、少しずつ動き出す。"""
     f.owner = owner
     f.accounting = default_accounting(ctx.defs, island, f.kind, owner)
-    for key in ("closing", "idle_turns", "loss_streak", "loss_turns", "ebitda"):
+    for key in ("closing", "idle_turns", "loss_streak", "loss_turns", "ebitda", SEIZED):
         f.economy.pop(key, None)
+    f.economy.pop(receivership.SALE_BOOK, None)
+    if running:
+        f.economy["capital"] = price
+        f.economy["depreciated"] = 0
+        freight_rates.forget(island)
+        return
     worn = equipment.keep(f)  # 設備は傷んだまま引き継ぐ（回6）
     init_facility(
         island, ctx.defs, ctx.config, f, dict(island.economy.prices), island.economy.average_wage
@@ -2006,10 +2162,11 @@ def nationalize(island: IslandState, payload: dict[str, Any], ctx: StageContext)
     if funds.available(island, payer) < price:
         raise OrderFailed("reason_treasury_short", amount=price)
     if seized:
-        close_foreclosure(island, f)
+        running = in_receivership(f)
+        own = ledger.money(island, entity)
         funds.pay(island, payer, entity, price, "nationalization")
-        pay_seller(island, entity, seized, price)
-        restart(island, ctx, f, OWNER_STATE, price)
+        close_foreclosure(island, f, own + price, "foreclosure_sale")
+        restart(island, ctx, f, OWNER_STATE, price, running)
         if is_self_supporting(f):
             fund_facility(island, ctx.defs, ctx.config, f, Payer(ledger.GOV, STATE_FACILITIES))
     else:
