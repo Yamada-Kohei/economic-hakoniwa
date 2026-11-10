@@ -181,3 +181,19 @@ def test_treasury_facility_severance_uses_the_unreserved_treasury(game):
     assert dismissal.pay(island, game.defs, game.config, mill, 10) == 10 * 10 * 2
     assert arrears.total(island, ledger.GOV) == 0
     assert ledger.money(island, household(jobless_layer(island))) == before + 200
+
+
+def test_short_handed_facilities_hire_the_held_workers_first(game):
+    """抱えている余った人は、人手の足りない施設が賃金の差によらず先に雇える（自分から移るので解雇
+    でなく、手当はない）。抱えた人が働かずにいる横で、ほかの施設が人を雇えないことはない。"""
+    island, mill, full = _mill(game)
+    island.tile(5, 6).population = full  # 失業者はいない（全員が製鉄所で働いている）
+    mill.economy[dismissal.NEEDS] = [full]  # 先月は全員が要った: 今月は解雇せずに抱える
+    other = add(island, "quarry", 4, 6, owner=OWNER_PRIVATE, accounting=ACCOUNTING_SELF)
+    other.economy["target"] = 1000
+    ledger.pay(island, ledger.GOV, facility_entity(other.id), 10**9, "capital_injection")
+    other.economy["wage"] = mill.economy.get("wage", 0)  # 賃金の差はない
+    run(game, island, ["employment"])
+    assert other.workers > 0
+    assert mill.economy.get("dismissed", 0) == 0
+    assert mill.workers + other.workers <= full

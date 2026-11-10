@@ -241,6 +241,8 @@ class Employment(IslandStage):
         bounds: dict[int, str] = {}  # 雇いたい人数にかけた下限の種類（_bounds）
         before: dict[int, tuple[int, int]] = {}  # 前のターンの人数（動員を除く）と技術者の席の人数
         terms: dict[int, _Terms] = {}
+        # 解雇の決まりで、操業目標に要る人数を超えて雇い続けている（抱えている）人数
+        spare: dict[int, int] = {}
         for f, wage in plans:
             before[f.id] = (
                 f.workers - f.economy.get("mobilized", 0),
@@ -253,6 +255,8 @@ class Employment(IslandStage):
             # 払えないときに遅配で残る人の上限: 人を抱える計画経済の国営施設（PL-57）は抱えた人を
             # 遅配にせず手放す。解雇の決まりの施設（LB-43）は、割合の上限までは遅配で残す
             kept = demand if bounds[f.id] == BOUND_DISMISSAL else min(needs[f.id], demand)
+            if bounds[f.id] == BOUND_DISMISSAL and demand > needs[f.id]:
+                spare[f.id] = demand - needs[f.id]
             engineers, extra = self._engineer_terms(island, ctx, f, wage)
             power = self._power_per_worker(island, ctx, f)
             terms[f.id] = _Terms(
@@ -343,6 +347,35 @@ class Employment(IslandStage):
             reach = set(area)
             # 計画経済の島では、賃金の差で引き抜けるのは優先度が相手以上の施設だけ（PL-59）
             mine = fac.priority_of(defs, config, f)
+            # 抱えている余った人（解雇の決まり）は、人手の足りない施設が賃金の差によらず先に雇える。
+            # 仕事のない席にいる人は、ほかに仕事があれば自分から移る（手当はない）。抱えた人が
+            # 働かずにいる横で、ほかの施設が人を雇えず、足りない品を島の外から買っていた（X870 の
+            # 比べの銀行の救済。2026-11-11）。現実の在籍出向・人手の足りない所への移り
+            for _, vid in sorted(
+                (other_wage, other.id)
+                for other, other_wage in plans
+                if spare.get(other.id, 0) > 0
+                and other.id != f.id
+                and (not planned or mine >= fac.priority_of(defs, config, other))
+            ):
+                if missing <= 0:
+                    break
+                for pos in sorted(
+                    (p for p in staff[vid] if p in reach),
+                    key=lambda p: (self._dist(f, p), p[1], p[0]),
+                ):
+                    take = min(staff[vid][pos], missing, spare[vid])
+                    if take <= 0:
+                        continue
+                    staff[vid][pos] -= take
+                    staff[f.id][pos] = staff[f.id].get(pos, 0) + take
+                    poached[vid] = poached.get(vid, 0) + take
+                    spare[vid] -= take
+                    missing -= take
+                    if missing <= 0 or spare[vid] <= 0:
+                        break
+            if missing <= 0:
+                continue
             victims = sorted(
                 (
                     (other_wage, other.id)
