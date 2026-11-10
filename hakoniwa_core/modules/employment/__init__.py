@@ -243,7 +243,7 @@ class Employment(IslandStage):
             demand, bounds[f.id] = self._bounds(island, ctx, f, needs[f.id], planned)
             # 払えないときに遅配で残る人の上限: 人を抱える計画経済の国営施設（PL-57）は抱えた人を
             # 遅配にせず手放す。解雇の決まりの施設（LB-43）は、割合の上限までは遅配で残す
-            kept = demand if bounds[f.id] == BOUND_DISMISSAL else needs[f.id]
+            kept = demand if bounds[f.id] == BOUND_DISMISSAL else min(needs[f.id], demand)
             engineers, extra = self._engineer_terms(island, ctx, f, wage)
             power = self._power_per_worker(island, ctx, f)
             terms[f.id] = _Terms(
