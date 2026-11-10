@@ -64,6 +64,7 @@ from hakoniwa_core.economy import (
 from hakoniwa_core.modules.banking import is_planned
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import OWNER_STATE, Facility, IslandState, LogEntry
+from hakoniwa_core.trade import orders as ship_orders
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import part, to_basis
 
@@ -223,6 +224,9 @@ def bankrupt(island: IslandState, ctx: StageContext, f: Facility, run: bool | No
     banks.drop_settled(island)
     claims = arrears.write_off(island, entity)
     claims[arrears.LOANS] = {b: v for b, v in sorted(lost.items()) if v > 0}
+    refunds = ship_orders.claims_on_bankruptcy(f)  # 造船所の返しきれない前注文の前払い（FX-60）
+    if refunds:
+        claims[arrears.ORDERS] = refunds
     left = ledger.money(island, entity)
     owner = owner_entity(f)
     ledger.pay(island, entity, owner, left, "equity_return")

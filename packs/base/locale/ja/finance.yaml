@@ -2,6 +2,8 @@ grant: 建国の給付
 capital_injection: 出資
 equity_return: 出資の払い戻し
 sale: 代金
+ship_order: 船の前注文の代金
+ship_order_refund: 船の前注文の返金
 electricity: 電気代
 freight: 運賃
 wage: 賃金

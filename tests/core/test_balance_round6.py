@@ -29,7 +29,7 @@ from hakoniwa_core.state import (
     ZONE_NONE,
 )
 from hakoniwa_core.state.generate import generate_world
-from hakoniwa_core.trade import blocs, shipping_of, ships
+from hakoniwa_core.trade import blocs, orders, shipping_of, ships
 from hakoniwa_core.units import QUANTITY_SCALE, money_of
 from tests.core.test_finance import context
 from tests.core.test_phase3_3 import run_checked
@@ -461,11 +461,18 @@ def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
         run_checked(game, world, 1, each)
     assert ships.fleet(f) == 0  # どの島も造船所をまだ持っていない
     assert sum(exports) > 0  # 輸出は買い手の島の船で運ぶ
-    assert wanted[0] == 0 and wanted[-1] == QUANTITY_SCALE  # 足りない月が続いてから1隻
-    price = island.economy.prices[good]
-    assert ledger.money(island, facility_entity(f.id)) >= money_of(price, wanted[-1])
-    market = next(m for m in island.markets if m.good == good)
-    assert market.demand >= QUANTITY_SCALE // 2 and market.supply == 0
+    # 最後のターンにこの島の造船所ができたなら、海運業はそのターンから市場で買う代わりに、その造船所
+    # に船を前もって注文する（FX-60。2026-11-10）。その前のターンまでは市場で1隻ずつ買いに出ていた
+    ordered = orders.on_order(island, f)
+    bought = wanted[-2] if ordered else wanted[-1]
+    assert wanted[0] == 0 and bought == QUANTITY_SCALE  # 足りない月が続いてから1隻
+    if ordered:
+        assert wanted[-1] == 0 and ordered >= QUANTITY_SCALE
+    else:
+        price = island.economy.prices[good]
+        assert ledger.money(island, facility_entity(f.id)) >= money_of(price, wanted[-1])
+        market = next(m for m in island.markets if m.good == good)
+        assert market.demand >= QUANTITY_SCALE // 2 and market.supply == 0
     turn = world.turn
     planned = list(autoplan._candidates(island, game.defs, game.config, turn))
     # 標準の計画が造船所を候補に挙げるか、もう建て始めている（回7 の企業で流れが変わり、36 ターンの
