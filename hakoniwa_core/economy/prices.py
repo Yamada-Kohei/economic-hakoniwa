@@ -17,6 +17,7 @@ from dataclasses import replace
 from typing import Any
 
 from hakoniwa_core import facilities as fac
+from hakoniwa_core import stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
@@ -24,7 +25,15 @@ from hakoniwa_core.defs.kinds import is_variant
 from hakoniwa_core.economy import equipment, experience, is_bank, is_self_supporting
 from hakoniwa_core.market import auction
 from hakoniwa_core.state import Facility, IslandState
-from hakoniwa_core.units import BASIS, QUANTITY_SCALE, money_of, part, round_money, scale_price
+from hakoniwa_core.units import (
+    BASIS,
+    QUANTITY_SCALE,
+    money_of,
+    part,
+    round_money,
+    scale_price,
+    to_basis,
+)
 
 Prices = Mapping[str, int]
 
@@ -426,6 +435,20 @@ def material_limit(island: IslandState, config: GameConfig, good: str, width: in
         return limit
     ref = island.economy.ext.get(SITE_USUAL, {}).get(good, {}).get("ref", 0)
     return max(limit, ref)
+
+
+def site_material_cost(
+    island: IslandState, defs: Defs, config: GameConfig, f: Facility, *, remaining: bool = False
+) -> int:
+    """着工の見積りと、現在の買い値による未調達資材の代金。運賃と賃金は含めない。"""
+    width = to_basis(config.get("market.band"))
+    total = fac.total_progress(defs, f)
+    cost = 0
+    for good, qty in fac.materials_of(defs, f).items():
+        if remaining:
+            qty = max(0, qty - qty * f.progress // total - stock.total(f.stock, good))
+        cost += money_of(material_limit(island, config, good, width), qty)
+    return cost
 
 
 def adapt_materials(

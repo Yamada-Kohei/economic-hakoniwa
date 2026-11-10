@@ -10,7 +10,8 @@
    売れ残った分は、独立した中央銀行も、売れ残りを引き受けない政策の国も、中央銀行が買い支える
    （バランス調整。借り換えの売れ残りだけで不履行にしない）。
 5. 銘柄ごとに利子を払い、満期の銘柄は額面を返して消す。不履行は命令 set_bond_payment で選んだとき
-   だけ: 額面を bonds.haircut だけ切り下げ（持ち手の損）、残りを同じ期間で出し直す。不履行の記録は
+   だけ: 中央銀行以外の額面を bonds.haircut だけ切り下げ（持ち手の損）、残りを同じ期間で出し直す。
+   切り下げた額が 0 なら新しい罰は付けない。不履行の記録は
    利回りに δ を上乗せし（bonds.default_premium。bonds.default_decay_turns ターンかけて 0 に減る）、
    区分の利回りも同じだけ跳ね上がる。不履行から bonds.default_exclusion_turns ターンは、銀行が国債
    を買わない（入札で売れず、新しい発行の売れ残りは政策どおり中央銀行が引き受けるか支出を減らす。
@@ -413,7 +414,7 @@ class Bonds(WorldStage):
     def _default(
         self, island: IslandState, ctx: StageContext, bonds: Sequence[Bond], kind: str
     ) -> None:
-        """銘柄を不履行にする: 額面を切り下げ（持ち手の損。外国の持ち手も同じ）、残りを同じ期間で
+        """銘柄を不履行にする: 中央銀行以外の額面を切り下げ（外国の持ち手も同じ）、残りを同じ期間で
         出し直す。
 
         罰として、銀行はしばらく国債を買わなくなり（market_closed）、損をした銀行は新しい融資を
@@ -426,6 +427,8 @@ class Bonds(WorldStage):
         for bond in bonds:
             item = ledger.bond_item(bond.id)
             for holder, face in sorted(debt.holders(island, bond).items()):
+                if holder == ledger.CB:
+                    continue
                 cut = part(face, haircut)
                 if abroad.parse_holder(holder) is not None:
                     abroad.write_down(self._world(), island, holder, cut)
@@ -437,12 +440,14 @@ class Bonds(WorldStage):
                     hit.add(holder)
             bond.issued = ctx.turn
             bond.face = debt.outstanding(island, bond)
+        island.log.append(LogEntry(kind, {"amount": lost, "count": len(bonds)}))
+        if lost == 0:
+            return  # 市中・外国の債権者に損がなければ、新しい不履行の罰は付けない
         finance = island.economy.finance
         finance["default_turn"] = ctx.turn
         top = to_basis(config.get("bonds.max_yield"))
         jump = to_basis(config.get("bonds.default_premium"))
         finance["yields"] = [min(top, y + jump) for y in finance.get("yields") or []]
-        island.log.append(LogEntry(kind, {"amount": lost, "count": len(bonds)}))
         crunch = ctx.turn + config.get("banking.default_crunch_turns")
         if is_planned(ctx.defs, island):
             hit = set()  # 計画経済の国営銀行は政府の決めたとおりに貸す

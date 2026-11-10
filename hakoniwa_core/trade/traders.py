@@ -102,20 +102,23 @@ GOV_TRADE = "trade"  # 政府が貿易に払う項目（どの項目にも取り
 CONTRACT_SUPPLY = "contract_supply"
 
 
-def contract_supply_plan(island: IslandState, config: GameConfig) -> dict[str, tuple[int, int]]:
-    """売りの二国間契約のこのターンの量のうち、国の倉庫に足りない分（財 → (量, 指値)）。指値は
-    島の値段の値幅の上端。市場の段の買いと、予算の段の取り置きの見積もりの両方で使う。"""
-    needs: dict[str, int] = {}
+def contract_supply_plan(island: IslandState) -> list[tuple[str, int, int]]:
+    """売りの二国間契約ごとの、倉庫に足りない分（財, 量, 自国通貨の指値）。
+
+    指値は契約の値段まで。倉庫の在庫は履行と同じ契約の順に充て、同じ財でも契約の値段が違えば
+    注文を分ける。市場の買いと、予算の取り置きの見積もりの両方で使う。
+    """
+    available = stock.totals(island.warehouse)
+    plan = []
     for c in island.ext.get("trade", {}).get("contracts", []):
-        if c.get("side") == "sell" and c.get("active"):
-            needs[c["good"]] = needs.get(c["good"], 0) + c["qty"]
-    width = to_basis(config.get("market.band"))
-    prices = island.economy.prices
-    plan = {}
-    for good, qty in sorted(needs.items()):
-        missing = qty - stock.total(island.warehouse, good)
+        if c.get("side") != "sell" or not c.get("active"):
+            continue
+        good = c["good"]
+        held = min(c["qty"], available.get(good, 0))
+        available[good] = available.get(good, 0) - held
+        missing = c["qty"] - held
         if missing > 0:
-            plan[good] = (missing, auction.band(prices.get(good, 1), width)[1])
+            plan.append((good, missing, fxrates.to_own(island, c["currency"], c["price"])))
     return plan
 
 

@@ -11,6 +11,7 @@ from dataclasses import replace
 
 from hakoniwa_core import ledger
 from hakoniwa_core.economy import (
+    GENERAL,
     OWNERS,
     banks,
     facility_entity,
@@ -140,6 +141,10 @@ def test_receivership_is_resold_to_another_firm(game, warmed):  # noqa: F811
     # 管財人のもとで、売り値に比べて十分に稼いだ記録
     f.economy["ebitda"] = [max(1, f.economy["foreclosed"]["price"])] * keep
     ctx = context(game, world, "entry_exit")
+    # 買い手の資本家階級に代金を持たせる（どの施設が選ばれるかは世界の道筋で変わり、発電所のように
+    # 大きい施設だと預金が足りない。買い手の預金の多さは、この試験の見たいことではない）
+    price = receivership.asking_price(game.config, f, ctx.turn)
+    ledger.pay(island, household(GENERAL), household(OWNERS), 2 * price, "test_top_up")
     sold = EntryExit()._sell_on_sale(island, ctx, 1)
     assert sold == 1
     assert "foreclosed" not in f.economy

@@ -27,6 +27,7 @@ from hakoniwa_core.economy import (
     retail,
 )
 from hakoniwa_core.economy import public_housing as pub
+from hakoniwa_core.economy.prices import site_material_cost
 from hakoniwa_core.log import format_log, format_turn
 from hakoniwa_core.military import PRIVATE_LOGS
 from hakoniwa_core.modules.banking import ENTRY as BANK_ENTRY
@@ -287,6 +288,15 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         if f.ext.get("repair"):
             info["repair"] = True  # 暴動で壊れて直している（フェーズ3-4）
         info["materials"] = goods_list(fac.materials_of(defs, f))  # 段階の工事は、その段階の資材
+        if mine and "material_estimate" in f.ext and not f.ext.get("repair"):
+            info["material_estimate"] = f.ext["material_estimate"]
+            stored = (
+                row.stocks.values("good").annotate(qty=Sum("quantity")).values_list("good", "qty")
+            )
+            f.stock = {good: [[0, qty]] for good, qty in stored}
+            info["remaining_material_cost"] = site_material_cost(
+                island, defs, config, f, remaining=True
+            )
     if f.ext.get("halted_until") is not None:
         info["halted_until"] = f.ext["halted_until"]
     if is_private_site(f):
@@ -781,6 +791,12 @@ def status_text(f: Facility) -> str:
         # 民営の工事でお金が足りないのは、公共事業費ではなく会社の資金
         private = "_private" if f.ext.get("private_entry") else ""
         if f.ext.get("waiting"):  # 資材が足りない（市場に売りに出ていない、お金が足りないなど）
+            price_wait = f.ext.get("material_price_wait", {})
+            if not f.ext.get("short_funds") and price_wait:
+                goods = "・".join(get_game().defs.name("goods", g) for g in sorted(price_wait))
+                left = max(price_wait.values())
+                retry = f"積算し直しまであと {left} ターン" if left else "積算し直し済み"
+                return f"建設中（{goods}の買い値が売り値に届かない。{retry}）"
             key = "funds" + private if f.ext.get("short_funds") else "materials"
             return message(f"status_construction_{key}", goods=f.ext["waiting"])
         if f.ext.get("short_wages"):  # 公共事業費（民営は会社の資金）が足りず、作業員を雇いきれない
@@ -1730,6 +1746,7 @@ SUMMARY_STATS = [
     ("wage.average", "平均賃金（1人1ターン）", "money"),
     ("treasury", "国庫", "money"),
     ("debt", "国債の残高", "money"),
+    ("net_public_debt", "政府と中央銀行を合わせた借り", "money"),
     ("policy_rate", "政策金利", "rate"),
     ("deposit_rate", "預金金利（銀行の平均）", "rate"),
     ("interbank_rate", "銀行間の金利", "rate"),
