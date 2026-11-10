@@ -15,9 +15,11 @@ from hakoniwa_core.economy import (
     ENGINEERS,
     GENERAL,
     OWNERS,
+    Payer,
     arrears,
     banks,
     facility_entity,
+    funds,
     household,
     is_stopped,
 )
@@ -266,6 +268,7 @@ def test_nationalize_and_privatize_whole_firm(game, base):
     """企業の国有化: 政府が企業の預金と施設の純資産の和を資本家階級に払い、施設は国営企業に入る。
     国営企業の民営化: 資本家階級が純資産を払い、施設は1つの新しい民営の企業に入る。帳簿は合う。"""
     from hakoniwa_core.modules.firms import (
+        _firm_price,
         check_nationalize_firm,
         check_privatize_firm,
         nationalize_firm,
@@ -277,6 +280,13 @@ def test_nationalize_and_privatize_whole_firm(game, base):
     f = private_members(game, island)[0]
     number = co.firm_of(f)
     ctx = context(game, world)
+    # 国庫が企業の値段を払えるようにしておく（この試験が見るのはお金の動きと帳簿。24 ターン目の
+    # 国庫の額は世界の歩みしだいで、企業の値段に足りないことがある）
+    working = [m for m in co.members(island, number) if m.built and "foreclosed" not in m.economy]
+    price = _firm_price(island, number, working)
+    short = price - funds.available(island, Payer(ledger.GOV))
+    if short > 0:
+        ledger.pay(island, household(GENERAL), ledger.GOV, short, "tax_income")
     open_books(island)
     check_nationalize_firm(island, {"firm": number}, game.defs)
     owners_before = ledger.money(island, household(OWNERS))

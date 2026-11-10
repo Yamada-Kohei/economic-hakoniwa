@@ -13,7 +13,7 @@ import pytest
 from hakoniwa_core import ledger
 from hakoniwa_core.economy import GENERAL, OWNERS, Payer, banks, funds, household, layers
 from hakoniwa_core.economy import companies as co
-from hakoniwa_core.economy.households import wealth_propensity
+from hakoniwa_core.economy.households import investable, wealth_propensity
 from hakoniwa_core.modules.banking import Banking
 from hakoniwa_core.modules.firms import ENTRY_PLEDGE, EntryExit
 from hakoniwa_core.state.generate import generate_world
@@ -170,13 +170,15 @@ def test_capitalists_borrow_on_their_shares_to_found_a_firm(game, base):
     assert isinstance(plan, list)
     assert island.scratch["entry_investor"] == (household(OWNERS), None)
     pledge = island.scratch[ENTRY_PLEDGE]
-    have = funds.available(island, Payer(household(OWNERS)))
+    # 出資に回せる預金は、次のターンの暮らしの分を除いた額（households.investable）
+    have = investable(island, config)
+    living = funds.available(island, Payer(household(OWNERS))) - have
     need = amount - sum(p for _, p, _ in plan)
     keep = EntryExit._pledge_keep(island, ctx, need, pledge)
     assert sum(p for _, p, _ in pledge) == need - have + keep  # 次の返済の分を手元に残す
     EntryExit._borrow_on_shares(island, ctx, household(OWNERS))
     assert _pledged(island) - before == sum(p for _, p, _ in pledge) > 0
-    assert ledger.money(island, household(OWNERS)) == need + keep
+    assert ledger.money(island, household(OWNERS)) == need + keep + living
     assert ENTRY_PLEDGE not in island.scratch
     books_ok(game, island)
 

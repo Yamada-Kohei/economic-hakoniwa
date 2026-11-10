@@ -267,7 +267,7 @@
 | FM-55 | 創業融資: 実績のない会社（資本家階級が新しく起こす会社と、建国の後にできて決めたターン数たたな… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
 | FM-56 | 資本家階級の預金で新しい会社の出資に足りなければ、持っている民営の会社の株（会社の預金と施設の純… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
 | FM-57 | 生産補助（売上の率 r）を受ける施設の売り値の下限は、1単位の変動費 ÷ (1 + r)（補助の… | 決定（2026-11-07） | tests/core/test_phase3_4.py |
-| FM-58 | 民営の参入（FM-17・FM-56 の後）と民営化（FM-26）の出資や代金が資本家階級の預金で… | 決定（2026-11-08） | tests/core/test_owners_cap.py |
+| FM-58 | 民営の参入（FM-17・FM-56 の後）と民営化（FM-26）の出資や代金が資本家階級の預金で… | 決定（2026-11-08、暮らしの分 2026-11-10） | tests/core/test_owners_cap.py |
 | FM-59 | 管財人（W-18・W-200・W-254 の直し）: 倒産した施設は、差し押さえた銀行が管財人と… | 決定（2026-11-10） | tests/core/test_receivership.py |
 | FM-60 | 居抜きの売り（W-18・W-200 の直し）: 差し押さえた施設と閉鎖に入った施設は、売りに出て… | 決定（2026-11-10） | tests/core/test_receivership.py |
 | FM-61 | 工業団地のない国の工場（W-256）: 民営の工場（`firms.open_land` でない施… | 決定（2026-11-10） | tests/core/test_balance_round6.py、tests/core/test_open_land_factory.py |

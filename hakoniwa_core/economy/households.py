@@ -436,6 +436,22 @@ def consumption(island: IslandState, layer: str, config: GameConfig, inflation: 
     return max(0, round_money(c1 * max(0.0, income) + c2 * wealth(island, config, layer)))
 
 
+def investable(island: IslandState, config: GameConfig) -> int:
+    """資本家階級が出資に回せる預金: 使えるお金から、次のターンの暮らしの分（式 consumption の
+    既定と同じ C = c1 × Ȳ + c2 × M）を除いた額（2026-11-10）。前は預金を全部出資に回せたので、
+    新しい会社を起こしたターンに預金が尽き、次のターンに食べ物を買えずに飢えることがあった
+    （計画経済から混合経済へ移った島で、預金 30 万のうち 29.9 万を農場に出して飢えの蓄えが 1 を
+    超えた）。現実の資本家も、暮らしのお金までは事業に入れない。"""
+    from hakoniwa_core.economy import OWNERS, Payer, funds
+    from hakoniwa_core.economy.stats import inflation
+
+    if OWNERS not in island.economy.households:
+        return 0
+    have = funds.available(island, Payer(household(OWNERS)))
+    living = consumption(island, OWNERS, config, inflation(island.economy))
+    return max(0, have - living)
+
+
 # island.scratch: このターンの資産を持つ層の株の値打ち − 株を担保にした借入
 SHARES_WORTH = "owners_shares_worth"
 

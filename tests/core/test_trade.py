@@ -554,8 +554,12 @@ def test_trade_facilities_hiring_for_their_cargo_are_not_short_of_workers(game, 
                     # 残す月の数がいっぱいなら、雇ったときに見ていた一番古い月はもう消えているので、
                     # 雇いたい人数は比べ直せない（操業の知らせだけ見る。W-186 回4 で量が変わり、
                     # 消えた月の量で雇いたい人数が変わる島が出た）。賃金が払えずに減らした
-                    # （wages）のは人手の足りなさではないのでよい
-                    assert f.status in ("", "cargo", "wages")
+                    # （wages）のは人手の足りなさではないのでよい。今の量で見ても雇いたい人数に
+                    # 届いていなければ、「労働者不足」も正しい（失業のほぼない島では、商社も1人
+                    # 足りないことがある。2026-11-10 の資本家階級の暮らしの分の直しの後、島2で
+                    # 失業率 0.7%・雇いたい 5 人に 4 人）
+                    short = f.workers < staff.wanted(game.config, game.defs, f)
+                    assert f.status in ("", "cargo", "wages") or (f.status == "workers" and short)
                     continue
                 seen = replace(
                     f, economy={**f.economy, "trade": {**state, "volume": state["volume"][:-1]}}

@@ -22,6 +22,7 @@ from hakoniwa_core.economy import (
     household,
     in_receivership,
 )
+from hakoniwa_core.economy.households import investable
 from hakoniwa_core.economy.start import invest
 from hakoniwa_core.game import load_game
 from hakoniwa_core.modules import failures
@@ -476,7 +477,7 @@ def test_construction_loan_is_split_across_banks_within_the_limit(game, warmed):
     # 資産を持つ層が、銀行が貸せる上限の合計まで出資できるようにしておく（政府の補助で）
     short = sum(limits.values()) - funds.available(island, Payer(household(OWNERS)))
     ledger.pay(island, ledger.GOV, household(OWNERS), max(0, short), "grant")
-    owners = funds.available(island, Payer(household(OWNERS)))
+    owners = investable(island, config)  # 出資に回せる預金（暮らしの分を除く）
     # 銀行が貸せる上限の合計を超え、資産を持つ層が残りを出せる額
     amount = sum(limits.values()) + min(sum(limits.values()), owners)
     plan = EntryExit()._finance(island, ctx, amount, 10**12)
