@@ -198,6 +198,9 @@ SERIES_STATS = (
     "migration.trapped",
     "migration.remittance_in",
     "migration.abroad",
+    "labor.held",  # 解雇の決まりで抱えている余った人（LB-43）
+    "labor.dismissed",
+    "labor.severance",
 )
 
 
