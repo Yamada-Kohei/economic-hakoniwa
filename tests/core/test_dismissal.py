@@ -5,12 +5,20 @@ from __future__ import annotations
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger
-from hakoniwa_core.economy import arrears, dismissal, facility_entity, household
+from hakoniwa_core.economy import (
+    Payer,
+    arrears,
+    dismissal,
+    facility_entity,
+    funds,
+    household,
+    payer_of,
+)
 from hakoniwa_core.economy.households import jobless_layer
 from hakoniwa_core.modules.employment import Employment
 from hakoniwa_core.modules.labor import set_labor_policy
 from hakoniwa_core.modules.production import Production
-from hakoniwa_core.state import ACCOUNTING_SELF, OWNER_PRIVATE, OWNER_STATE
+from hakoniwa_core.state import ACCOUNTING_SELF, ACCOUNTING_TREASURY, OWNER_PRIVATE, OWNER_STATE
 from tests.core.test_recession_round1 import context
 from tests.core.test_rules import add, home, make_island, run, with_economy
 from tests.core.test_rules import game as game  # noqa: F401  （試験の部品を使い回す）
@@ -133,3 +141,43 @@ def test_policy_order_sets_the_rule_and_logs_it(game):
     assert [e.kind for e in island.log][-1] == "dismissal_policy_set"
     # 体制を変えると、新しい経済体制の既定に戻る
     assert dismissal.level(island, game.defs) == dismissal.STRONG
+
+
+def test_a_facility_keeps_the_people_it_needed_within_the_severance_months(game):
+    """操業目標が一時に下がっただけなら、手当の月数のうちに要った人数までは解雇せずに抱える
+    （解雇して手当を払い、翌月また雇い直すより安い）。手当のない弱い段は抱えない。"""
+    island, mill, full = _mill(game)
+    ctx = context(game)
+    employment = Employment()
+    assert dismissal.terms(island, game.defs, game.config)["months"] == 2  # ふつう
+    employment._bounds(island, ctx, mill, full)  # 先月は全員が要った
+    least, _ = employment._bounds(island, ctx, mill, 0)
+    assert least == full  # 割合の上限より多く残す
+    employment._bounds(island, ctx, mill, 0)
+    least, _ = employment._bounds(island, ctx, mill, 0)  # 2 か月続けて要らなかった
+    rate = game.config.get("labor.dismissal")["normal"]["rate"] + game.config.get("labor.attrition")
+    assert least == full - int(full * rate)
+    # 弱い段は抱えない
+    island.policy.dismissal = dismissal.WEAK
+    employment._bounds(island, ctx, mill, full)
+    least, _ = employment._bounds(island, ctx, mill, 0)
+    assert least < full
+    assert dismissal.NEEDS not in mill.economy
+
+
+def test_treasury_facility_severance_uses_the_unreserved_treasury(game):
+    """国庫直轄の施設の手当は、施設の予算の項目の月割りを使い切っていても、どの項目にも取り置いて
+    いない国庫のお金から払う（法で決まった手当は義務的な支出。未払い賃金にしない）。"""
+    island, mill, full = _mill(game)
+    mill.owner, mill.accounting = OWNER_STATE, ACCOUNTING_TREASURY
+    mill.economy["wage"] = 10
+    payer = payer_of(game.defs, game.config, mill)
+    assert payer.entity == ledger.GOV and payer.item
+    state = funds.fiscal_state(island)
+    state["caps"][payer.item] = state["used"].get(payer.item, 0)  # 月割りを使い切った
+    assert funds.available(island, payer) == 0
+    assert funds.available(island, Payer(ledger.GOV)) >= 200
+    before = ledger.money(island, household(jobless_layer(island)))
+    assert dismissal.pay(island, game.defs, game.config, mill, 10) == 10 * 10 * 2
+    assert arrears.total(island, ledger.GOV) == 0
+    assert ledger.money(island, household(jobless_layer(island))) == before + 200
