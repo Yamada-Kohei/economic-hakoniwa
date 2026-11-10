@@ -1,13 +1,13 @@
 // 政治と計画の画面（フェーズ3-4）: 推移のグラフと、持ち主には政治の命令（報道と集会・労働の動員・
 // 議会の解散・国家元首の名前・移民の受け入れと出国の扱い・憲法改正・経済体制の変更）と計画の命令（公定価格・公定価格の改定と
-// 決まり・重点産業・値段の上限と下限）。表の下の小さな入力欄（form[data-order]）から、命令の列（右の欄。島の画面と同じ列）の
+// 決まり・重点産業・人員計画と公共事業の優先度・値段の上限と下限）。表の下の小さな入力欄（form[data-order]）から、命令の列（右の欄。島の画面と同じ列）の
 // 後ろに足す。
 
 import { mountCharts } from "./common.js";
 import { mountOrders } from "./orders.js";
 
 // 入力欄の名前ごとの値の形（ほかは文字）。PERCENT_FIELDS は % で入れ、命令には1万分の1で渡す
-const INT_FIELDS = new Set(["band"]);
+const INT_FIELDS = new Set(["band", "upkeep_priority", "build_priority"]);
 // 値段は見せる単位で小数も書ける（W-30。サーバーが計算の単位に直して丸める）
 const NUMBER_FIELDS = new Set(["price"]);
 const PERCENT_FIELDS = new Set(["cap", "quota"]);
@@ -36,6 +36,23 @@ function payloadOf(form) {
   return payload;
 }
 
+/** 人員計画（PL-59）の表から命令の中身を作る: 枠を書いた行と「枠を外す」の行（外すは null）。 */
+function staffPlanOf(form) {
+  const target = (el) =>
+    el.dataset.kind ? { kind: el.dataset.kind } : { x: Number(el.dataset.x), y: Number(el.dataset.y) };
+  const plans = [];
+  for (const box of form.querySelectorAll('input[name="clear"]:checked')) {
+    plans.push({ ...target(box), cap: null });
+  }
+  for (const input of form.querySelectorAll('input[name="cap"]')) {
+    if (input.value === "") continue;
+    const t = target(input);
+    if (plans.some((p) => p.kind === t.kind && p.x === t.x && p.y === t.y)) continue;
+    plans.push({ ...t, cap: Math.round(Number(input.value)) });
+  }
+  return { plans };
+}
+
 document.addEventListener("submit", async (e) => {
   const form = e.target.closest("form[data-order]");
   if (!form || !orders) return;
@@ -43,6 +60,11 @@ document.addEventListener("submit", async (e) => {
   if (!form.reportValidity()) return;
   if (form.dataset.confirm && !confirm(form.dataset.confirm)) return;
   const notice = form.closest("section")?.querySelector(".order-notice");
-  await orders.add(form.dataset.order, payloadOf(form));
+  const payload = "staffPlan" in form.dataset ? staffPlanOf(form) : payloadOf(form);
+  if ("staffPlan" in form.dataset && !payload.plans.length) {
+    if (notice) notice.textContent = "枠を書くか「枠を外す」を選んでください。";
+    return;
+  }
+  await orders.add(form.dataset.order, payload);
   if (notice) notice.textContent = orders.message;
 });

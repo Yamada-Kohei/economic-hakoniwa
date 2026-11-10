@@ -294,6 +294,8 @@ def stat_label(name: str) -> tuple[str, str]:
         return f"{'収入' if side == 'in' else '支出'}・{flow_name(side, kind)}", "money"
     if head == "spent":
         return f"使った額・{budget_name(rest)}", "money"
+    if head == "budget_share":  # LB-45: 国庫の項目の予算が足りず、要る額に対して分けた割合
+        return f"要る額に対して分けた割合・{budget_name(rest)}", "%"
     if head == "infra" and rest in defs.infrastructure:
         return f"{defs.name('infrastructure', rest)}の平均の整備度", "percent"
     if head == "loans":

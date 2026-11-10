@@ -730,6 +730,30 @@ def record_missed(island: IslandState, f: Facility, ctx: StageContext) -> None:
 # --- 工事の資材の代金の取り置き ------------------------------------------------------
 
 SITE_HOLDS = "site_holds"  # island.scratch: 雇用の段で取り置いた資材の代金の (支払い手, 額)
+# island.scratch: 雇用の段で国庫の項目から取り置いた施設の材料の代金（LB-45）。施設の番号 →
+# (支払い手, 額, 項目の予算を比例で分けたか)。市場の段でその施設の買い注文の直前に戻す
+FACILITY_HOLDS = "facility_holds"
+
+
+def input_cost(island: IslandState, ctx: StageContext, f: Facility, rate: int) -> int:
+    """施設 f が市場の段で次のターンの材料に払う額の見込み（LB-45）。市場の段の買い方と同じ量
+    （次のターンに使う分から手元の在庫を引いた量。学校と大学の積み増しは除く）と、ふだんの指値と
+    運賃 rate で。雇用の段で、国庫の同じ項目から払う施設が予算を分けるときの要る額に足す。"""
+    defs, config = ctx.defs, ctx.config
+    power = config.get("power.good")
+    needs = Market._input_needs(ctx, f, power, stockpile=False)
+    if not needs:
+        return 0
+    official = planning.official(island) if planning.is_planned(island, defs) else {}
+    subsidy = production_subsidy_rate(island, defs, config, f, ctx.turn)
+    prices = island.economy.prices
+    total = 0
+    for good, qty in needs:
+        usual, _ = Market._bid(ctx, f, good, prices, rate, good in official, subsidy)
+        limit = net_limit(usual, rate, 0)
+        if limit > 0:
+            total += gross_cost(limit, qty, rate, 0)
+    return total
 
 
 class SiteFunds:
@@ -1519,7 +1543,16 @@ class Market(IslandStage):
         caps = (
             island.policy.price_cap if politics.trait(island, defs, "price_controls", False) else {}
         )
+        holds = island.scratch.pop(FACILITY_HOLDS, {})
         for f in sorted(island.facilities, key=lambda f: f.id):
+            # 雇用の段で取り置いた材料の代金を、この施設の買い注文の直前に戻す（LB-45）。項目の
+            # 予算を比例で分けたターンは、買い注文と指値の引き上げに使えるのを分けられた額までにする
+            cap = None
+            if f.id in holds:
+                hold_payer, amount, rationed = holds.pop(f.id)
+                funds.release(island, hold_payer, amount)
+                if rationed:
+                    cap = amount
             if not f.built or fac.is_housing(config, f) or not fac.located(f):
                 continue
             if f.ext.get("occupied"):  # 占領されたマスの在庫は元の国の市場に出せない（W-112）
@@ -1588,7 +1621,7 @@ class Market(IslandStage):
                 continue
             bids = {g: self._bid(ctx, f, g, prices, rate, g in official, subsidy) for g, _ in needs}
             plan = {g: (q, net_limit(bids[g][0], rate, 0)) for g, q in needs}
-            plan = self._afford(island, payer, plan, rate, 0)
+            plan = self._afford(island, payer, plan, rate, 0, cap)
             short = {g: "funds" for g, q in needs if plan.get(g, (0, 0))[0] < q}
             if short:  # 取り置けるお金が足りず、要る分を注文できなかった
                 f.economy["short"] = short
@@ -1602,7 +1635,7 @@ class Market(IslandStage):
                     )
                     for g, b in bids.items()
                 }
-                plan = self._raise_bids(island, payer, plan, most, rate)
+                plan = self._raise_bids(island, payer, plan, most, rate, cap)
             f.economy[BIDS] = {
                 "turn": ctx.turn,
                 "limits": {g: lim for g, (_, lim) in sorted(plan.items())},
@@ -1618,6 +1651,8 @@ class Market(IslandStage):
                 party.reserved = gross_cost(limit, qty, rate, 0)
                 funds.commit(island, payer, party.reserved)
                 self._add(books_by_good, good, "buy", Order(qty, limit, priority), party)
+        for hold_payer, amount, _ in holds.values():  # 施設がなくなっていた分
+            funds.release(island, hold_payer, amount)
 
     @staticmethod
     def _bid(
@@ -1701,12 +1736,16 @@ class Market(IslandStage):
         plan: dict[str, tuple[int, int]],
         most: dict[str, int],
         freight: int,
+        cap: int | None = None,
     ) -> dict[str, tuple[int, int]]:
         """ふだんの指値で取り置いた後に残るお金で、指値を上げたい指値 most（_step_up）の方へ上げる
         （どの財も同じ割合。量は減らさない）。品切れが続くときに、採算の合う値段まで買い上がれる
-        ように。"""
+        ように。cap は使えるお金の上限（LB-45 で分けられた額）。"""
         cost = sum(gross_cost(lim, q, freight, 0) for q, lim in plan.values())
-        spare = funds.available(island, payer) - cost
+        money = funds.available(island, payer)
+        if cap is not None:
+            money = min(money, cap)
+        spare = money - cost
         extra = sum(
             gross_cost(most[g], q, freight, 0) - gross_cost(lim, q, freight, 0)
             for g, (q, lim) in plan.items()
@@ -1741,18 +1780,20 @@ class Market(IslandStage):
         return min(fac.FULL, worn, target + change)
 
     @staticmethod
-    def _input_needs(ctx: StageContext, f: Facility, power: str) -> list[tuple[str, int]]:
+    def _input_needs(
+        ctx: StageContext, f: Facility, power: str, stockpile: bool = True
+    ) -> list[tuple[str, int]]:
         """次のターンに要る投入財のうち手元にない分。
 
         操業目標はこの段の終わりに見直すので、上がる分（market.max_target_change まで）も先に
         買っておく（目標を上げた次のターンに原料が足りず、人を雇えないまま目標を下げ直して、
         のこぎりの歯のように増えたり減ったりしないように）。雇いたいだけ雇えなかった施設は、
         今の人手より少し多い分（market.target_step）まで。学校と大学は market.public_stock_turns
-        ターン分。
+        ターン分（stockpile が偽なら、積み増しを除いた次のターンの分だけ。LB-45 の要る額の見込み）。
         """
         settings = ctx.config.get("market")
         expected = Market._input_plan(ctx, f)
-        if is_public_service(ctx.defs, f):
+        if stockpile and is_public_service(ctx.defs, f):
             # 学校と大学は教材を数ターン分持っておく（消費財が1、2ターン買えないだけで休校に
             # ならないように）
             expected *= settings["public_stock_turns"]
@@ -1777,10 +1818,13 @@ class Market(IslandStage):
         plan: dict[str, tuple[int, int]],
         freight: int,
         tax: int,
+        cap: int | None = None,
     ) -> dict[str, tuple[int, int]]:
-        """取り置けるお金に収まるように、どの財の量も同じ割合で減らす。"""
+        """取り置けるお金（cap があればそれまで）に収まるように、どの財の量も同じ割合で減らす。"""
         cost = sum(gross_cost(limit, qty, freight, tax) for qty, limit in plan.values())
         money = funds.available(island, payer)
+        if cap is not None:
+            money = min(money, cap)
         if cost <= money:
             return {g: v for g, v in plan.items() if v[0] > 0}
         out = {}
@@ -1986,8 +2030,7 @@ class Market(IslandStage):
             qty = self._room(island, offered, claimed, payer, good, qty)
             if qty > 0:
                 plan[good] = (qty, material_limit(island, ctx.config, good, width))
-        key = "infrastructure.upkeep_priority" if upkeep else "infrastructure.build_priority"
-        priority = ctx.config.get(key)
+        priority = infrastructure.priority(island, ctx.config, upkeep)  # 命令で変えられる（PL-59）
         afforded = self._afford(island, payer, plan, rate, 0)
         self._unfunded(island, plan, afforded)
         for good, (qty, limit) in sorted(afforded.items()):

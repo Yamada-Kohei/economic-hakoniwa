@@ -77,6 +77,46 @@
   <p class="order-notice" aria-live="polite"></p>
 </section>
 
+<section class="panel" id="staff-plan">
+  <h2>{% translate "人員計画" %}</h2>
+  <p class="hint">{% translate "国営施設ごとに雇う人数の枠（上限）を決め、1つの命令でまとめて出します（行政力は命令1つ分）。枠を超えた施設は、働いていない人（生産調整で抱えた余りの人・休業中の人）をその月に枠まで手放し、働いている人は月に前の人数の1割ずつ手放します。手放された人は同じ月に、優先度の高い施設と公共事業から順に雇われます（手当のいらない配置換え）。計画経済では、空いた人を雇う順は賃金でなく優先度の順で、公共事業は維持と新しい工事の優先度の位置で雇います。枠は外すまで残ります。" %}</p>
+  <p>{% blocktranslate with w=p.works.workers q=p.works.queue u=p.works.upkeep_priority b=p.works.build_priority %}公共事業の作業員 {{ w }} 人（工事の列 {{ q }} マス）。優先度は維持 {{ u }}・新しい工事 {{ b }}。{% endblocktranslate %}</p>
+  {% if p.staff %}
+  <form class="actions" data-order="set_staff_plan" data-staff-plan>
+    <div class="table-scroll">
+      <table class="goods plan-table">
+        <thead><tr>
+          <th>{% translate "施設" %}</th><th>{% translate "優先度" %}</th><th>{% translate "今の人数" %}</th><th>{% translate "生産目標に要る人数" %}</th><th>{% translate "全力の人数" %}</th><th>{% translate "枠（空欄は変えない）" %}</th><th>{% translate "枠を外す" %}</th>
+        </tr></thead>
+        <tbody>
+          {% for r in p.staff %}
+          <tr>
+            <td>{{ r.name }}{% if r.capped %} <span class="warning">{% translate "（人員の枠で人が足りない）" %}</span>{% endif %}</td>
+            <td>{{ r.priority }}</td>
+            <td>{{ r.workers }}</td>
+            <td>{{ r.needed }}</td>
+            <td>{{ r.full }}</td>
+            <td><input type="number" min="0" step="1" name="cap" {% if r.target.kind %}data-kind="{{ r.target.kind }}"{% else %}data-x="{{ r.target.x }}" data-y="{{ r.target.y }}"{% endif %}{% if r.cap is not None %} placeholder="{{ r.cap }}"{% endif %}></td>
+            <td>{% if r.cap is not None %}<input type="checkbox" name="clear" {% if r.target.kind %}data-kind="{{ r.target.kind }}"{% else %}data-x="{{ r.target.x }}" data-y="{{ r.target.y }}"{% endif %}>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  {% else %}
+  <p class="muted">{% translate "枠を決められる国営施設がありません。" %}</p>
+  {% endif %}
+  <form class="actions" data-order="set_public_works">
+    <strong>{% translate "公共事業の優先度（資材の買い注文の順と、作業員を雇う位置）" %}</strong>
+    <label>{% translate "維持" %} <input name="upkeep_priority" type="number" min="0" max="9" step="1" placeholder="{{ p.works.upkeep_priority }}"></label>
+    <label>{% translate "新しい工事" %} <input name="build_priority" type="number" min="0" max="9" step="1" placeholder="{{ p.works.build_priority }}"></label>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  <p class="order-notice" aria-live="polite"></p>
+</section>
+
 <section class="panel" id="priority">
   <h2>{% translate "重点産業" %}</h2>
   <p>{% for i in p.priority %}{{ i.name }}{% if not forloop.last %}・{% endif %}{% empty %}<span class="muted">{% translate "決めていません。" %}</span>{% endfor %}</p>

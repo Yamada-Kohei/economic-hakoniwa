@@ -116,6 +116,9 @@ def available(island: IslandState, payer: Payer, capped: bool = True) -> int:
 
 BUDGET_LIMIT = "budget"  # 年の予算の月割りで止まっている
 TREASURY_LIMIT = "treasury"  # 国庫のお金が足りない
+# f.ext: 年の予算の月割りが足りず、材料の代金の取り置きを削った項目の名前（LB-45。雇用の段が
+# 書き、生産の段が原料の足りないわけに出す）
+SHORT_MATERIALS = "short_materials"
 
 
 def limit_of(island: IslandState, payer: Payer) -> str:

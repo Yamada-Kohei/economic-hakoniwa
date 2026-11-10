@@ -93,6 +93,8 @@ from hakoniwa_core.units import (
 SHORT_STATUS = {"supply": "input", "price": "input_price", "funds": "funds"}
 STATUS_CARGO = "cargo"  # 港・商社が扱う荷に合わせて少なく雇っている（フェーズ3-1）
 STATUS_BUSINESS = "business"  # 小さい銀行が、預金と融資の大きさに合わせて少なく雇っている
+STATUS_BUDGET = "budget"  # 年の予算の月割りが足りず雇う人を減らした（"budget:項目"。LB-45）
+STATUS_STAFF_PLAN = "staff_plan"  # 人員計画の枠で、生産目標に要る人を雇えない（PL-59）
 PUBLIC_PRICE = "public_price"  # 学校と大学の教材が高くて買えない
 
 
@@ -278,11 +280,9 @@ class Production(IslandStage):
         recipe = fac.recipe_of(ctx.defs, f)
         if fac.is_halted(f, ctx.turn):  # 災害か暴動（フェーズ3-4）で止まっている
             return _Run(f, recipe, 0, "riot" if f.ext.get("halt_reason") == "riot" else "halted")
-        # 雇いたい分を雇えなかった: 賃金を払うお金が足りなかったか、人がいなかったか
-        rate, cause = (
-            fac.labor_ratio(ctx.defs, f),
-            "wages" if f.ext.get("short_wages") else "workers",
-        )
+        # 雇いたい分を雇えなかった: 賃金を払うお金が足りなかったか（年の予算の月割りなら項目の名前。
+        # LB-45）、人員の枠で止めたか（PL-59）、人がいなかったか
+        rate, cause = fac.labor_ratio(ctx.defs, f), Production._labor_cause(f)
         have, short = fac.input_ratio(ctx.defs, f, power)
         cargo, few = staff.wanted(ctx.config, ctx.defs, f), STATUS_CARGO
         if cargo is None and is_bank(ctx.config, f):
@@ -322,11 +322,27 @@ class Production(IslandStage):
         return _Run(f, recipe, rate, cause if rate < fac.FULL else "")
 
     @staticmethod
+    def _labor_cause(f: Facility) -> str:
+        """雇いたい分を雇えなかったわけ（施設の status）。"""
+        short = f.ext.get("short_wages")
+        if isinstance(short, str):  # 年の予算の月割りが足りない（項目の名前。LB-45）
+            return f"{STATUS_BUDGET}:{short}"
+        if short:
+            return "wages"
+        if f.ext.get(planning.STAFF_CAPPED):  # 人員の枠（PL-59）
+            return STATUS_STAFF_PLAN
+        return "workers"
+
+    @staticmethod
     def _short(f: Facility, good: str, defs: Defs) -> str:
         """原料 good が足りない理由（施設の status）。前のターンの市場で買えなかったわけ
         （economy["short"]。hakoniwa_core/modules/market の _record_shortages）で決める。
         学校と大学には採算がないので、教材が高くて買えなかったときは public_price にする
         （「採算が合わない」と出ていた）。"""
+        budget = f.ext.get(funds.SHORT_MATERIALS)
+        if budget and f.economy.get("short", {}).get(good, "supply") == "supply":
+            # 品不足でなく、年の予算の月割りが足りず材料の取り置きを削った（LB-45）
+            return f"{STATUS_BUDGET}:{budget}"
         reason = f.economy.get("short", {}).get(good, "supply")
         if reason == "price" and is_public_service(defs, f):
             return f"{PUBLIC_PRICE}:{good}"
