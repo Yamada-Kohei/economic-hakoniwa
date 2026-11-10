@@ -3788,15 +3788,15 @@ class Market(IslandStage):
     def _adapt_materials(
         island: IslandState, ctx: StageContext, books_by_good: dict[str, Book]
     ) -> None:
-        """工事・インフラ・設備の直し・公営住宅・建て直しが買いを出した財の、島の売り手（海外の商人を
-        除く）の一番安い指値と約定した量で、工事の資材の値段を積算し直す（economy/prices.py の
+        """工事・インフラ・設備の直し・公営住宅・建て直しが買いを出した財の、売り手（海外の商人を
+        含む）の一番安い指値と約定した量で、工事の資材の値段を積算し直す（economy/prices.py の
         adapt_materials）。"""
         bought = island.scratch.get(SITE_BOUGHT, {})
         asks = {}
         for good, book in sorted(books_by_good.items()):
             if not any(party.kind in MATERIAL_BUYERS for _, party in book.buys):
                 continue
-            limits = [o.limit for o, p in book.sells if o.limit is not None and p.kind != MERCHANT]
+            limits = [o.limit for o, _ in book.sells if o.limit is not None]
             asks[good] = min(limits) if limits else 0
         width = to_basis(ctx.config.get("market.band"))
         adapt_materials(island, ctx.config, width, asks, bought)

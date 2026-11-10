@@ -66,7 +66,10 @@ def test_the_standard_plan_does_not_dig_the_vein_resources(game):
     world = make_world(game, 7, ["coal", "iron_ore"])
     island = world.islands[1]
     island.resources = sorted([*island.resources, "copper_ore"])
-    run_with_plan(game, world, 80)
+    # 2026-11-10 に工事が海外の商人からも資材を買うようにした後は、この島では国の水力発電所の
+    # 工事が商人の建材で公共事業費を使い、鉄鉱石の鉱山と製鉄所が 80 ターンより後に建つ（120 ターン
+    # では建つ。X870 の full の比べでは、世界全体の工事と GDP はわずかに増えた）
+    run_with_plan(game, world, 120)
     kinds = [f.kind for f in island.facilities]
     assert "copper_smelter" not in kinds
     assert any(f.kind == "mine" and f.recipe == "iron_ore" for f in island.facilities)
