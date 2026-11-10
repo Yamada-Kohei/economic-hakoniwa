@@ -770,8 +770,9 @@ def clearance_sale(
     expected = f.economy.get("expected", {}).get(good)
     life = ctx.defs.goods[good].get("shelf_life")
     line = None
-    # clearance_ratio が 0 なら値引きしない（2026-11-10 から止めている。値引きの売りは1つの値段の
-    # 板寄せで、ふだんの値段で売れていた分まで安値に置き換え、倒産の連鎖が増えた）
+    # clearance_ratio が 0 なら値引きしない（2026-11-10 から止めている。はじめの形は値引きの売りを
+    # 1つの値段の板寄せに入れ、ふだんの値段で売れていた分まで安値に置き換えて倒産の連鎖が増えた。
+    # 2026-11-11 からはアウトレット形: Market._outlet）
     on = bool(settings["clearance_ratio"])
     if on and eligible and life is None and expected is not None and floor > 0:
         # 値引きを始めた後は、始めたときの線のまま見る（値引きの売りに先を越されて、ふだんの指値の
@@ -1048,17 +1049,24 @@ class Market(IslandStage):
         results: dict[str, auction.Result],
         stale: dict[str, dict[int, int]],
     ) -> None:
-        """財 good の板寄せをして、約定を払い物を移す。"""
+        """財 good の板寄せをして、約定を払い物を移す。
+
+        売れ残りの値引き（MK-41）の売りがあれば、それを除いてふだんの板寄せ（1回目）をし、その後に
+        1回目で買えなかった買い注文の残りと値引きの売りだけで2回目の板寄せ（アウトレット）をする
+        （_outlet）。値引きの売りがなければ1回だけ。"""
         book = books_by_good[good]
         reference = island.economy.prices.get(good, 1)
-        bounds, allocate = self._limits(island, ctx, good, book, official, persons)
+        outlet = [k for k, (_, p) in enumerate(book.sells) if p.clearance]
+        shop = [k for k, (_, p) in enumerate(book.sells) if not p.clearance]
+        first = Book(book.buys, [book.sells[k] for k in shop]) if outlet else book
+        bounds, allocate = self._limits(island, ctx, good, first, official, persons)
         # 値段を問わない売り（腐る物・倉庫から出す物）の付け値は、前の値段の market.band 引き。
         # 値幅をなくしても、売りが買いより多いだけで値段が 1 まで落ちないように（2026-10-20）
         low, _ = auction.band(reference, to_basis(ctx.config.get("market.band")))
         default = min(low, bounds[1])
-        sells = [o if o.limit is not None else replace(o, limit=default) for o, _ in book.sells]
+        sells = [o if o.limit is not None else replace(o, limit=default) for o, _ in first.sells]
         result = auction.clear(
-            [o for o, _ in book.buys],
+            [o for o, _ in first.buys],
             sells,
             reference,
             bounds=bounds,
@@ -1070,35 +1078,99 @@ class Market(IslandStage):
             # 売りに出すことになる。見直し役が挙げた場面）
             lo, hi = auction.band(reference, to_basis(ctx.config.get("market.band")))
             result.price = max(bounds[0], min(bounds[1], max(lo, min(hi, result.price))))
-        if any(p.clearance for _, p in book.sells):
-            # 売れ残りの値引き（MK-41）があれば、値引きの売りを除いて決まった値段を島の値段として
-            # 残す（_record）。約定は値引きを含めた値段でするが、在庫処分の安値でほかの売り手の
-            # 次のターンの指値・採算の見方・家計のいつもの値段を引き下げない（ふだんの値段は残る）。
-            # ただし除いた値段が前の値段より高いときは、前の値段で止める（約定の値段が上がった
-            # ときだけ上がる）。値引きで買い手が満たされたのに、満たされなかったことにした
-            # 値段を残すと、値引きが続くあいだ島の値段が毎ターン値幅ずつ上がり続けた
-            # （full の比べ。11-10）
-            normal = [s for (_, p), s in zip(book.sells, sells, strict=True) if not p.clearance]
-            ref = auction.clear(
-                [o for o, _ in book.buys],
-                normal,
-                reference,
-                bounds=bounds,
-                allocate_buys=allocate,
-            )
-            if normal and ref.supply > 0:
-                if ref.volume <= 0:
-                    lo, hi = auction.band(reference, to_basis(ctx.config.get("market.band")))
-                    ref.price = max(bounds[0], min(bounds[1], max(lo, min(hi, ref.price))))
-                kept = max(result.price, min(ref.price, reference))
-                island.scratch.setdefault(CLEARANCE, {})[good] = kept
-            else:  # 値引きのほかに売りがなければ、島の値段は動かさない
-                island.scratch.setdefault(CLEARANCE, {})[good] = max(reference, result.price)
-        self._late_to_eaters(book, result)
-        results[good] = result
+        self._late_to_eaters(first, result)
         transport, routes = island.scratch[CLEARING]
         bought: dict[str, int] = island.scratch.setdefault("household_bought", {})
-        stale[good] = self._settle(island, ctx, good, book, result, transport, bought, routes)
+        stale[good] = self._settle(island, ctx, good, first, result, transport, bought, routes)
+        if outlet:
+            result = self._outlet(island, ctx, good, book, result, shop, outlet, allocate, stale)
+        results[good] = result
+
+    def _outlet(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        good: str,
+        book: Book,
+        first: auction.Result,
+        shop: list[int],
+        outlet: list[int],
+        allocate: auction.Allocate | None,
+        stale: dict[str, dict[int, int]],
+    ) -> auction.Result:
+        """売れ残りの値引き（MK-41）の2回目の板寄せ（アウトレット）。1回目（first、値引きの売りを
+        除いたふだんの板寄せ。払い済み）で買えなかった買い注文の残り（指値・優先順位・取り置きは
+        そのまま）と、値引きの売り（book.sells の outlet 番目）だけで板寄せし、その回の値段で払う。
+        値段の範囲は 1 から1回目の値段まで（1回目に売りがなければ前の値段まで）。アウトレットは
+        ふだんの値段より高く売らない。
+
+        返すのは2回をまとめた1つの結果（もとの注文の並び）: 約定量は2回の合計、売りの量は値引きの
+        分を含めた合計、買いの量はもとのまま（2回目に出し直した分を2度数えない）、値段は1回目の
+        値段。品切れの記録・希望価格の見直し・国の倉庫の結果などは、今どおりこれを読む。
+
+        島の値段と市場の記録の値段（scratch[CLEARANCE]。_record）は1回目の値段。ただし1回目の値段が
+        前の値段より高く、2回目の後に1回目の値段以上の指値で買えなかった買い手が残らない（1回目の
+        品薄を値引きの分がみな満たした）ときは、前の値段のまま。値引きで満たされた買い手を満たされ
+        なかったことにすると、値引きのあいだ島の値段が毎ターン値幅ずつ上がった（1つの値段の板寄せで
+        値引きを除いた値段を残した形の full の比べ。2026-11-10）。1回目に売りがなければ前の値段。"""
+        reference = island.economy.prices.get(good, 1)
+        top = first.price if first.supply > 0 else reference
+        rest = [k for k, (o, _) in enumerate(book.buys) if o.quantity > first.bought[k]]
+        second = Book(
+            [
+                (
+                    replace(book.buys[k][0], quantity=book.buys[k][0].quantity - first.bought[k]),
+                    book.buys[k][1],
+                )
+                for k in rest
+            ],
+            [book.sells[k] for k in outlet],
+        )
+        late = auction.clear(
+            [o for o, _ in second.buys],
+            [o for o, _ in second.sells],
+            top,
+            bounds=(1, top),
+            allocate_buys=allocate,
+        )
+        if late.volume > 0:
+            transport, routes = island.scratch[CLEARING]
+            bought: dict[str, int] = island.scratch.setdefault("household_bought", {})
+            spoiled = self._settle(island, ctx, good, second, late, transport, bought, routes)
+            here = stale[good]
+            for j, qty in spoiled.items():
+                here[rest[j]] = here.get(rest[j], 0) + qty
+            # 測りのために、値引きで売れた量と代金を残す（画面にはまだ出さない）
+            island.stats[f"clearance.sold.{good}"] = from_milli(late.volume)
+            island.stats[f"clearance.paid.{good}"] = money_of(late.price, late.volume)
+        filled = list(first.bought)
+        for j, k in enumerate(rest):
+            filled[k] += late.bought[j]
+        sold = [0] * len(book.sells)
+        for j, k in enumerate(shop):
+            sold[k] = first.sold[j]
+        for j, k in enumerate(outlet):
+            sold[k] = late.sold[j]
+        result = auction.Result(
+            price=first.price,
+            volume=first.volume + late.volume,
+            demand=first.demand,
+            supply=first.supply + late.supply,
+            low=first.low,
+            high=first.high,
+            bought=filled,
+            sold=sold,
+        )
+        kept = first.price
+        if first.supply <= 0:
+            kept = reference
+        elif first.price > reference and not any(
+            filled[k] < o.quantity and auction.buy_limit(o, first.high) >= first.price
+            for k, (o, _) in enumerate(book.buys)
+        ):
+            kept = reference
+        island.scratch.setdefault(CLEARANCE, {})[good] = kept
+        return result
 
     # --- 小売り（回7。economy/retail.py） ------------------------------------------------------
 
@@ -3988,8 +4060,8 @@ class Market(IslandStage):
             own = result.demand - Market._out_of_money(books_by_good.get(good), result)
             demand = own + (wanted.get(good, 0) if result.supply <= 0 else 0)
             demand += island.scratch.get("unplaced", {}).get(good, 0)
-            # 値引きの売りがあったときは、それを除いて決まった値段を市場の値段とする（MK-41。
-            # _clear。在庫処分の安値は相場に数えない）
+            # 値引きの売りがあったときは、ふだんの板寄せ（1回目）の値段を市場の値段とする（MK-41。
+            # _outlet。在庫処分の安値は相場に数えない）
             price = island.scratch.get(CLEARANCE, {}).get(good, result.price)
             island.markets.append(
                 MarketRecord(good, price, result.volume, demand, result.supply, _kind(result))
@@ -4020,10 +4092,11 @@ class Market(IslandStage):
             # 安いと、作る費用で引き合う輸出があっても島の値段がいつまでも下がらなかった（造船所
             # の売れ残った船。島に買い手がなく、島の値段が費用の 2〜3 倍のまま 100 ターン以上
             # 止まった）
+            # 値引きの売り（MK-41）は数えない（在庫処分の安値で輸出の値段まで下げない）
             asks = [
                 _lowest_ask(ctx, island, o, party, good)
                 for o, party in books_by_good[good].sells
-                if o.limit is not None
+                if o.limit is not None and not party.clearance
             ]
             if asks:
                 idle[good] = min(asks)
@@ -4059,11 +4132,16 @@ class Market(IslandStage):
         island: IslandState, ctx: StageContext, books_by_good: dict[str, Book]
     ) -> None:
         """家計が買う財の、売りの一番安い指値（店に並んだ値段）で、いつもの値段を値上がりに慣らす
-        （economy/prices.py の adapt_usual。回7 後半）。指値なしの売りは見ない。"""
+        （economy/prices.py の adapt_usual。回7 後半）。指値なしの売りと、売れ残りの値引きの売り
+        （MK-41。アウトレットの安値で、いつもの値段を引き下げない）は見ない。"""
         asks = {}
         for good in island.economy.bought_history:
             book = books_by_good.get(good)
-            limits = [o.limit for o, _ in book.sells if o.limit is not None] if book else []
+            limits = (
+                [o.limit for o, p in book.sells if o.limit is not None and not p.clearance]
+                if book
+                else []
+            )
             asks[good] = min(limits) if limits else 0
         adapt_usual(island, ctx.config, asks)
 
@@ -4073,13 +4151,14 @@ class Market(IslandStage):
     ) -> None:
         """工事・インフラ・設備の直し・公営住宅・建て直しが買いを出した財の、売り手（海外の商人を
         含む）の一番安い指値と約定した量で、工事の資材の値段を積算し直す（economy/prices.py の
-        adapt_materials）。"""
+        adapt_materials）。売れ残りの値引きの売り（MK-41）の指値は見ない（アウトレットの安値で資材の
+        見積もりを引き下げない）。"""
         bought = island.scratch.get(SITE_BOUGHT, {})
         asks = {}
         for good, book in sorted(books_by_good.items()):
             if not any(party.kind in MATERIAL_BUYERS for _, party in book.buys):
                 continue
-            limits = [o.limit for o, _ in book.sells if o.limit is not None]
+            limits = [o.limit for o, p in book.sells if o.limit is not None and not p.clearance]
             asks[good] = min(limits) if limits else 0
         width = to_basis(ctx.config.get("market.band"))
         adapt_materials(island, ctx.config, width, asks, bought)
