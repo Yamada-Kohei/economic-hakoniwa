@@ -347,32 +347,38 @@ class Employment(IslandStage):
             reach = set(area)
             # 計画経済の島では、賃金の差で引き抜けるのは優先度が相手以上の施設だけ（PL-59）
             mine = fac.priority_of(defs, config, f)
-            # 抱えている余った人（解雇の決まり）は、人手の足りない施設が賃金の差によらず先に雇える。
-            # 仕事のない席にいる人は、ほかに仕事があれば自分から移る（手当はない）。抱えた人が
-            # 働かずにいる横で、ほかの施設が人を雇えず、足りない品を島の外から買っていた（X870 の
-            # 比べの銀行の救済。2026-11-11）。現実の在籍出向・人手の足りない所への移り
+            # 抱えている余った人（解雇の決まり）は、人手の足りない施設が賃金の差がなくても先に
+            # 雇える。仕事のない席にいる人は、同じか高い賃金の仕事があれば自分から移る（手当は
+            # ない）。安い所へは移らず、1 か月に移るのは引き抜きと同じ上限（labor.poach_limit）
+            # まで。抱えた人が働かずにいる横で、ほかの施設が人を雇えず、足りない品を島の外から
+            # 買っていた（X870 の比べの銀行の救済。2026-11-11）
             for _, vid in sorted(
                 (other_wage, other.id)
                 for other, other_wage in plans
                 if spare.get(other.id, 0) > 0
                 and other.id != f.id
+                and other_wage <= wage
                 and (not planned or mine >= fac.priority_of(defs, config, other))
             ):
                 if missing <= 0:
                     break
+                room = int(start.get(vid, 0) * limit) - poached.get(vid, 0)
+                if room <= 0:
+                    continue
                 for pos in sorted(
                     (p for p in staff[vid] if p in reach),
                     key=lambda p: (self._dist(f, p), p[1], p[0]),
                 ):
-                    take = min(staff[vid][pos], missing, spare[vid])
+                    take = min(staff[vid][pos], missing, spare[vid], room)
                     if take <= 0:
                         continue
                     staff[vid][pos] -= take
                     staff[f.id][pos] = staff[f.id].get(pos, 0) + take
                     poached[vid] = poached.get(vid, 0) + take
                     spare[vid] -= take
+                    room -= take
                     missing -= take
-                    if missing <= 0 or spare[vid] <= 0:
+                    if missing <= 0 or spare[vid] <= 0 or room <= 0:
                         break
             if missing <= 0:
                 continue
