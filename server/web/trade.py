@@ -45,6 +45,7 @@ from hakoniwa_core.trade import (
 from hakoniwa_core.trade import contracts as contract_states
 from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.trade import money as fxmoney
+from hakoniwa_core.trade import orders as ship_orders
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE, from_milli
 from server.economy.models import Account
 from server.game import get_game
@@ -686,6 +687,8 @@ def fleet_view(island: m.Island, here: IslandState, stats: dict[str, float]) -> 
             # 直近の、船が足りずに輸入を減らしたターンの数（数えたターンのうち）
             "short_turns": sum(f.economy.get("ships_short", [])),
             "short_of": len(f.economy.get("ships_short", [])),
+            # 島の造船所に注文して、まだ届いていない輸送船（船の前注文。FX-60）
+            "on_order": from_milli(ship_orders.on_order(here, f)),
             # 圏の荷を運ぶ船の貸し借り（1ターンの運賃）
             "charter_income": stats.get("trade.charter_income", 0),
             "charter_paid": stats.get("trade.charter_paid", 0),

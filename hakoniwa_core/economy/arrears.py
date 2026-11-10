@@ -33,6 +33,8 @@ TAX_ARREARS = "tax_arrears"
 ARREARS = "arrears"  # 政府の支出の項目（未払い賃金の支払い。fiscal.payment_order の失業手当の後）
 
 WAGES, TAXES, LOANS = "wages", "taxes", "loans"  # 差し押さえの記録に残す請求の種類
+# 造船所が返しきれなかった船の前注文の前払い（払い先 → 額。貸し手と同じ順のふつうの請求。FX-60）
+ORDERS = "orders"
 
 
 def total(island: IslandState, issuer: str, item: str = WAGE_ARREARS) -> int:
@@ -127,7 +129,8 @@ def pay_claims(
 ) -> int:
     """payer のお金 amount を、請求の記録 claims に決まった順（未払い賃金 → 未払いの税 → 貸し手の
     割合）で払い、claims を払った分だけ減らす。貸し手への支払いは lender_paid(銀行, 額) が払う
-    （回収の帳簿付けは呼ぶ側）。払い残したお金を返す。"""
+    （回収の帳簿付けは呼ぶ側）。造船所の返しきれなかった前注文の前払い（ORDERS）は、貸し手と同じ
+    順で額の割合に入れて払い先に返す（FX-60）。払い残したお金を返す。"""
     left = amount
     wages: dict[str, int] = claims.get(WAGES, {})
     for holder, share in _shares(left, wages).items():
@@ -142,11 +145,21 @@ def pay_claims(
         claims[TAXES] -= tax
         left -= tax
     loans: dict[str, int] = claims.get(LOANS, {})
-    for bank, share in _shares(left, loans).items():
-        lender_paid(bank, share)
-        loans[bank] -= share
+    orders: dict[str, int] = claims.get(ORDERS, {})
+    pool = {f"{LOANS}|{b}": v for b, v in loans.items()}
+    pool.update({f"{ORDERS}|{h}": v for h, v in orders.items()})
+    for key, share in _shares(left, pool).items():
+        kind, name = key.split("|", 1)
+        if kind == LOANS:
+            lender_paid(name, share)
+            loans[name] -= share
+        else:
+            ledger.pay(island, payer, name, share, "ship_order_refund")
+            orders[name] -= share
         left -= share
     claims[LOANS] = {b: v for b, v in loans.items() if v > 0}
+    if ORDERS in claims:
+        claims[ORDERS] = {h: v for h, v in orders.items() if v > 0}
     return left
 
 
