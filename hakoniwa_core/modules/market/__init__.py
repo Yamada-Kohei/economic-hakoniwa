@@ -1129,7 +1129,7 @@ class Market(IslandStage):
         late = auction.clear(
             [o for o, _ in second.buys],
             [o for o, _ in second.sells],
-            top,
+            reference,
             bounds=(1, top),
             allocate_buys=allocate,
         )
@@ -1161,13 +1161,19 @@ class Market(IslandStage):
             bought=filled,
             sold=sold,
         )
+
+        def short(got: list[int]) -> bool:  # 1回目の値段以上の指値で買えなかった買い手がいるか
+            return any(
+                got[k] < o.quantity and auction.buy_limit(o, first.high) >= first.price
+                for k, (o, _) in enumerate(book.buys)
+            )
+
         kept = first.price
         if first.supply <= 0:
             kept = reference
-        elif first.price > reference and not any(
-            filled[k] < o.quantity and auction.buy_limit(o, first.high) >= first.price
-            for k, (o, _) in enumerate(book.buys)
-        ):
+        elif first.price > reference and short(first.bought) and not short(filled):
+            # 1回目の品薄を値引きの分がみな満たした。品薄のないまま1回目の値段が上がったとき
+            # （売り手の指値が上がった・約定せず気配が上がった）は、値引きのないときと同じく上げる
             kept = reference
         island.scratch.setdefault(CLEARANCE, {})[good] = kept
         return result

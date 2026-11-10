@@ -8,6 +8,7 @@ import pytest
 
 from hakoniwa_core import stock
 from hakoniwa_core.economy import GENERAL, Payer, facility_entity, is_self_supporting, needs, retail
+from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.households import move_people
 from hakoniwa_core.economy.prices import SITE_USUAL, USUAL, subsidized_floor
 from hakoniwa_core.market import auction
@@ -447,19 +448,39 @@ def _force_clearance(game, world, island, f, good):
 def test_island_price_does_not_climb_while_the_outlet_fills_the_shortage(
     game, warmed, clearance_on
 ):
-    """(3) 値引きが続く何ターンかで、2回目が品薄を満たしているあいだ、島の値段は上がり続けない
-    （1回目の値段が上がっても、品薄を値引きの分がみな満たせば前の値段のまま）。"""
+    """(3) 値引きが続く何ターンかで、2回目が品薄を満たしているあいだ、島の値段は品薄で上がり続け
+    ない（1回目の値段が上がっても、品薄を値引きの分がみな満たせば前の値段のまま）。上がってよい
+    のは、ふだんの売りの指値そのもの（作る費用）が前の値段より上がったときだけ（値引きのないとき
+    と同じ）。"""
     world = copy.deepcopy(warmed)
     island = island_of(world, "market")
     f, good = _stocked_seller(game, island)
-    before = island.economy.prices.get(good)
+    held = 0
     for _ in range(4):
         _force_clearance(game, world, island, f, good)
+        # ふだんの売りの希望価格は島の値段のまま（品薄で売り手が指値を上げた分は見ない）
+        rate = freight_rates.facility_rates(island, game.defs, game.config).get(f.id, 0)
+        before = island.economy.prices[good]
+        f.economy.setdefault("ask", {})[good] = before * (BASIS - rate) // BASIS
+        cost = subsidized_floor(
+            island,
+            game.defs,
+            game.config,
+            f,
+            good,
+            island.economy.prices,
+            f.economy.get("wage", 0),
+            rate,
+            world.turn + 1,
+        )
+        ask = -(-cost * BASIS // (BASIS - rate))  # 費用で決まるふだんの売りの指値
         game.engine.run_turn(world)
         record = next(m for m in island.markets if m.good == good)
         assert island.stats.get(f"clearance.sold.{good}", 0) > 0
         assert record.price == island.economy.prices[good]
-        assert island.economy.prices[good] <= before
+        assert island.economy.prices[good] <= max(before, ask)
+        held += island.economy.prices[good] == before
+    assert held >= 1  # 品薄を値引きで満たし、前の値段のままのターンがある
 
 
 def test_island_price_keeps_the_first_price_unless_the_outlet_filled_every_buyer(game, warmed):
@@ -480,6 +501,19 @@ def test_island_price_keeps_the_first_price_unless_the_outlet_filled_every_buyer
     book.sells[1] = (Order(5 * Q, order.limit), party)
     settled, merged = _clear_captured(game, world, island, good, book)
     assert merged.bought[0] < book.buys[0][0].quantity
+    assert island.scratch[CLEARANCE][good] == settled[0][1].price
+    # 品薄がないまま1回目の値段が上がった（売り手の指値が上がった）ときは、値引きの売りがあっても
+    # 値引きのないときと同じく上がる（2回目で何も売れない）
+    island.scratch.clear()
+    shop = Party(FACILITY, "fac:a", Payer("fac:a"))
+    cut = Party(FACILITY, "fac:b", Payer("fac:b"), clearance=True)
+    buyer = Party(FACILITY, "fac:x", Payer("fac:x"))
+    book = Book(
+        [(Order(5 * Q, 120), buyer), (Order(3 * Q, 95), buyer)],
+        [(Order(10 * Q, 110), shop), (Order(10 * Q, 105), cut)],
+    )
+    settled, merged = _clear_captured(game, world, island, good, book)
+    assert len(settled) == 1 and settled[0][1].price > 100  # 2回目は約定しない
     assert island.scratch[CLEARANCE][good] == settled[0][1].price
 
 
