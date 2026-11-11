@@ -7,11 +7,14 @@ capital_injection:    {type: journal}   # 出資（持ち主 → 施設・銀行
 equity_return:        {type: journal}   # 出資の払い戻し（施設 → 持ち主）
 # 売り買い
 sale:                 {type: journal}   # 物の代金（買い手 → 売り手）
+ship_order:           {type: journal}   # 船の前注文の代金（海運業 → 造船所。手付け・建造の間・引き渡し。FX-60）
+ship_order_refund:    {type: journal}   # 船の前注文の前払いの返金（造船所 → 海運業。届かずに取り消した注文）
 electricity:          {type: journal}   # 電気代（使う施設と家計 → 発電所）
 freight:              {type: journal}   # 運賃（売り手と買い手 → 運送業）
 # 賃金と税
 wage:                 {type: journal}   # 賃金（施設・政府・銀行 → 家計）
 unemployment_benefit: {type: journal}   # 失業手当（政府 → 家計）
+severance:            {type: journal}   # 解雇手当（施設・政府 → 家計。LB-43）
 family_support: {type: journal}         # 家計の支え合い（働く家計 → 失業している家計。回7）
 tax_income:           {type: journal}   # 所得税（家計 → 政府）
 tax_consumption:      {type: journal}   # 消費税（家計 → 政府）
@@ -40,6 +43,8 @@ firm_sweep:           {type: journal}   # 施設の手元の余りを企業へ�
 firm_support:         {type: journal}   # 企業の預金から施設へ回す（回7。内部補助）
 foreclosure_sale:     {type: journal}   # 差し押さえた施設の売却の代金（買い手 → 銀行）
 foreclosure_recovery: {type: journal}   # 差し押さえた施設を取り壊したときの残りのお金（施設 → 銀行）
+receiver_advance:     {type: journal}   # 管財人の運転資金を銀行がない島で政府が出す（政府 → 施設。BK-50）
+receiver_repayment:   {type: journal}   # 管財人の運転資金の返済（施設 → 銀行・政府。売れたとき・取り壊すとき。BK-50）
 bank_transfer:        {type: journal}   # 破綻した銀行の預金・融資・国債の引き継ぎ（銀行 → 銀行）
 bank_merger:          {type: journal}   # 銀行の合併の代金（引き取る銀行 → 弱った銀行の株主。回7 後半）
 bank_bailout:         {type: journal}   # 破綻した銀行への公的資金（政府 → 銀行）

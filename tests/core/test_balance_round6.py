@@ -29,7 +29,7 @@ from hakoniwa_core.state import (
     ZONE_NONE,
 )
 from hakoniwa_core.state.generate import generate_world
-from hakoniwa_core.trade import blocs, shipping_of, ships
+from hakoniwa_core.trade import blocs, orders, shipping_of, ships
 from hakoniwa_core.units import QUANTITY_SCALE, money_of
 from tests.core.test_finance import context
 from tests.core.test_phase3_3 import run_checked
@@ -272,7 +272,8 @@ def test_ships_are_replaced_before_they_retire(game, base):
 
 def test_farms_and_fishing_ports_open_on_land_with_no_use_set(game, base):
     """工業団地がなくても、民営の農場と漁港は指定のない人の住んでいないマスに建つ（開墾は国の用途の
-    指定を待たない）。ほかの工場は工業団地にしか建たず、開発を止めるマスにはどれも建たない。"""
+    指定を待たない）。ほかの工場も工業団地がなければ空き地に造成して建つ（FM-61）が、開発を止める
+    マスにはどれも建たない。"""
     world = copy.deepcopy(base)
     island = next(i for i in world.islands.values() if i.has_economy)
     for tile in island.tiles:
@@ -283,18 +284,19 @@ def test_farms_and_fishing_ports_open_on_land_with_no_use_set(game, base):
     assert not isinstance(site, str)
     tile = island.tile(*site[0])
     assert tile.zone == ZONE_NONE and tile.population == 0
-    assert EntryExit()._site(island, ctx, "steel_mill", "default") == "no_zone"
+    assert EntryExit()._site(island, ctx, "steel_mill", "default") != "no_zone"
     for t in island.tiles:
         if t.zone == ZONE_NONE and t.population == 0:
             t.zone = ZONE_NO_DEVELOPMENT
     assert EntryExit()._site(island, ctx, "farm", "default") == "no_zone"
+    assert EntryExit()._site(island, ctx, "steel_mill", "default") in ("no_zone", "no_workers")
 
 
 def test_land_based_facilities_open_on_land_with_no_use_set(game, base):
     """林業場・牧場など土地で営む施設も、工業団地がなければ指定のない人の住んでいないマスに建つ
     （2026-11-08。現実の林業・牧畜は町の工業地の指定を待たない。公開世界で工業団地を指定しない国に
-    民間の林業場・牧場が建たず、木材と肉が作られないままだった）。食品工場などの工場は工業団地だけ
-    のまま。開発を止めるマスにはどれも建たない。"""
+    民間の林業場・牧場が建たず、木材と肉が作られないままだった）。開発を止めるマスにはどれも建た
+    ない。"""
     world = copy.deepcopy(base)
     island = next(i for i in world.islands.values() if i.has_economy)
     for tile in island.tiles:
@@ -309,11 +311,6 @@ def test_land_based_facilities_open_on_land_with_no_use_set(game, base):
         if not isinstance(site, str):
             tile = island.tile(*site[0])
             assert tile.zone == ZONE_NONE and tile.population == 0
-    # 工場は空き地に新しく建たない（同じ民営の工場の建て増しのマスだけは返る）
-    occupied = island.facilities_by_tile()
-    for kind in ("food_factory", "steel_mill"):
-        site = EntryExit()._site(island, ctx, kind, "default")
-        assert site == "no_zone" or occupied.get(site[0]) is not None, kind
     for t in island.tiles:
         if t.zone == ZONE_NONE and t.population == 0:
             t.zone = ZONE_NO_DEVELOPMENT
@@ -444,9 +441,11 @@ def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
             other.policy.lend_ships = False
     good = game.config.get("trade.ship_good")
     # 持ち主（資本家階級）が手元にお金を持っている島で見る。株式市場がない間（W-53）は、資本家階級は
-    # 株の値打ちも合わせた財産から使い、はじめのうちは手元の預金が尽きやすい（LB-41。2026-11-03）
+    # 株の値打ちも合わせた財産から使い、はじめのうちは手元の預金が尽きやすい（LB-41。2026-11-03）。
+    # 2026-11-10 に工事が海外の商人の売り値でも資材を買うようにした後は、この島で民営の製鉄所が
+    # 早く建ち始め、持ち主がそちらに 4 千万ほど出すので、船の 10 隻分を渡しておく
     price = island.economy.prices[good]
-    ledger.pay(island, ledger.GOV, household(OWNERS), money_of(price, 5 * QUANTITY_SCALE), "grant")
+    ledger.pay(island, ledger.GOV, household(OWNERS), money_of(price, 10 * QUANTITY_SCALE), "grant")
     exports, wanted = [], []
 
     def each(w):
@@ -462,11 +461,18 @@ def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
         run_checked(game, world, 1, each)
     assert ships.fleet(f) == 0  # どの島も造船所をまだ持っていない
     assert sum(exports) > 0  # 輸出は買い手の島の船で運ぶ
-    assert wanted[0] == 0 and wanted[-1] == QUANTITY_SCALE  # 足りない月が続いてから1隻
-    price = island.economy.prices[good]
-    assert ledger.money(island, facility_entity(f.id)) >= money_of(price, wanted[-1])
-    market = next(m for m in island.markets if m.good == good)
-    assert market.demand >= QUANTITY_SCALE // 2 and market.supply == 0
+    # 最後のターンにこの島の造船所ができたなら、海運業はそのターンから市場で買う代わりに、その造船所
+    # に船を前もって注文する（FX-60。2026-11-10）。その前のターンまでは市場で1隻ずつ買いに出ていた
+    ordered = orders.on_order(island, f)
+    bought = wanted[-2] if ordered else wanted[-1]
+    assert wanted[0] == 0 and bought == QUANTITY_SCALE  # 足りない月が続いてから1隻
+    if ordered:
+        assert wanted[-1] == 0 and ordered >= QUANTITY_SCALE
+    else:
+        price = island.economy.prices[good]
+        assert ledger.money(island, facility_entity(f.id)) >= money_of(price, wanted[-1])
+        market = next(m for m in island.markets if m.good == good)
+        assert market.demand >= QUANTITY_SCALE // 2 and market.supply == 0
     turn = world.turn
     planned = list(autoplan._candidates(island, game.defs, game.config, turn))
     # 標準の計画が造船所を候補に挙げるか、もう建て始めている（回7 の企業で流れが変わり、36 ターンの

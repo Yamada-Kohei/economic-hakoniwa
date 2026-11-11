@@ -60,16 +60,33 @@ def test_veins_are_placed_once_by_seed_and_island_number_only(game):
 
 def test_the_standard_plan_does_not_dig_the_vein_resources(game):
     """買い手が軍だけの間は、標準の計画は銅を掘らない（買い手のいない精錬所と鉱山が建ち、鉱山の
-    上限で鉄鉱石の鉱山が建たなくなるため）。"""
+    上限で鉄鉱石の鉱山が建たなくなるため）。
+
+    見るのは、銅の精錬所と銅の鉱山がどのターンにも建たず、鉱山の上限に鉄鉱石の鉱山の分が残ること。
+    鉄鉱石の鉱山が建つ時期そのものは見ない。標準の計画は、人手の足りない工事と施設が多い間は
+    製鉄所（鉄鉱石の買い手）を建てずに待つので、時期は島の人手の具合で動く。この島では、
+    2026-11-10 に工事が海外の商人からも資材を買うようにした後に、製鉄所が 89 ターン・鉱山が
+    100 ターンになった。倒産した施設を管財人が動かし続けるようにした後（FM-59・FM-60）は、
+    企業の立て直しで閉じた建材工場が居抜きで売れて動き続け、倒産した火力発電所も 300 人ほどを
+    雇ったまま動く。失業がほぼない島で計画が人手を待ち、製鉄所が 116 ターン、鉄鉱石の鉱山が
+    134 ターン（民間）になった。"""
     from tests.core.test_gate import make_world, run_with_plan
 
     world = make_world(game, 7, ["coal", "iron_ore"])
     island = world.islands[1]
     island.resources = sorted([*island.resources, "copper_ore"])
-    run_with_plan(game, world, 80)
-    kinds = [f.kind for f in island.facilities]
-    assert "copper_smelter" not in kinds
-    assert any(f.kind == "mine" and f.recipe == "iron_ore" for f in island.facilities)
+    limit = game.defs.facilities["mine"]["max_per_island"]
+    dug = []
+
+    def check(island):
+        for f in island.facilities:
+            if f.kind == "copper_smelter" or (f.kind == "mine" and f.recipe == "copper_ore"):
+                dug.append((world.turn, f.kind, f.recipe))
+
+    run_with_plan(game, world, 120, check)
+    assert not dug
+    mines = [f for f in island.facilities if f.kind == "mine" and fac.EXPANDS not in f.ext]
+    assert any(f.recipe == "iron_ore" for f in mines) or len(mines) < limit
 
 
 def test_uranium_veins_come_with_version_two_and_leave_the_copper_alone(game):

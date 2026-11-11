@@ -554,14 +554,26 @@ def test_trade_facilities_hiring_for_their_cargo_are_not_short_of_workers(game, 
                     # 残す月の数がいっぱいなら、雇ったときに見ていた一番古い月はもう消えているので、
                     # 雇いたい人数は比べ直せない（操業の知らせだけ見る。W-186 回4 で量が変わり、
                     # 消えた月の量で雇いたい人数が変わる島が出た）。賃金が払えずに減らした
-                    # （wages）のは人手の足りなさではないのでよい
-                    assert f.status in ("", "cargo", "wages")
+                    # （wages）のは人手の足りなさではないのでよい。島に失業者がいなくて本当に
+                    # 雇いたい人数に届かなかった（雇えた人が雇いたい人数より少ない）ときの「労働者
+                    # 不足」も正しい知らせ（解雇の決まりで工場が人を抱えると、島の働き手が減る）
+                    if f.status == "workers":
+                        assert f.workers < f.economy["wanted"]
+                    else:
+                        assert f.status in ("", "cargo", "wages")
                     continue
                 seen = replace(
                     f, economy={**f.economy, "trade": {**state, "volume": state["volume"][:-1]}}
                 )
-            assert f.workers >= staff.wanted(game.config, game.defs, seen)
-            assert f.status in ("", "cargo")
+            # 雇うときに雇いたい人数に届かなかった（島の通勤圏に失業者がいなかった）ときの「労働者
+            # 不足」は正しい知らせ（解雇の決まりで工場が人を抱えたり、決まりを止めて世界の道が
+            # 変わったりすると、島の働き手が足りない月がある）。そろっていれば「労働者不足」と
+            # 出さない
+            if f.status == "workers":
+                assert f.workers < f.economy["wanted"]
+            else:
+                assert f.workers >= staff.wanted(game.config, game.defs, seen)
+                assert f.status in ("", "cargo")
     assert format_log(game.defs, "status_cargo", {}) == "扱う荷に合わせて操業"
 
 

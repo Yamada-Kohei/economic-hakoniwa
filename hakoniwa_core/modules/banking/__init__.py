@@ -24,8 +24,8 @@
    国債の債務不履行で損をした銀行は、banking.default_crunch_turns ターンのあいだ新しく貸さず、返す元
    金の借り換えだけを貸す（計画経済の島を除く。止める期間が終わったらログで知らせる）。
 5. 家計の層は、預金の banking.switch_share までを「預金金利 − 危なさ」の高い銀行へ移す。自己資本比率
-   が規制を下回った銀行と、中央銀行から借りている銀行からは banking.run_share が流れ出す（取り付
-   け）。
+   が規制を下回った銀行からは banking.run_share が流れ出す（取り付け）。中央銀行から借りているだけ
+   では流れ出さない（預金者に見えない）。
 6. 銀行ごとに預金金利と利ざやを見直す。預金金利は「政策金利 − banking.deposit_spread」へ近づけ、準備
    預金が足りない銀行と、開業して預金を集めている銀行は政策金利へ近づける。島の預金金利
    （policy.deposit_rate）は銀行の預金金利の平均。
@@ -49,9 +49,11 @@ from hakoniwa_core.economy import (
     facility_entity,
     funds,
     household,
+    in_receivership,
     is_bank,
     is_self_supporting,
     owner_entity,
+    receivership,
 )
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.households import add_income, layer_of
@@ -159,6 +161,9 @@ class Banking(IslandStage):
                 continue
             loan.rate = rate_of(island, ctx, loan.lender, loan.borrower)
             interest = ledger.interest(balance, loan.rate)
+            if loan.purpose == banks.RECEIVER:
+                self._accrue(island, loan, interest)
+                continue
             installment = loan.installment
             if loan.purpose == banks.MORTGAGE:  # 残り ÷ 残りの期間で出し直す
                 installment = -(-balance // banks.remaining_turns(loan, ctx.turn))
@@ -192,6 +197,19 @@ class Banking(IslandStage):
                 self._pay_loan(island, loan, interest, principal)
                 if loan.purpose in (banks.MORTGAGE, banks.PLEDGE):
                     self._write_off_mortgage(island, ctx, loan)
+
+    @staticmethod
+    def _accrue(island: IslandState, loan: Loan, interest: int) -> None:
+        """管財人の運転資金の利子は払わずに残高に足す（BK-50。分割で返さず、売れたときか取り壊すときに
+        元金と合わせて先に返す。遅れにならない）。銀行の収入には数える。"""
+        if interest <= 0:
+            return
+        borrower = loan.borrower
+        ledger.create(
+            island, loan.lender, ledger.loan_item(loan.id), borrower, interest, "interest_loan"
+        )
+        books.add(island, int(borrower.split(":")[1]), books.INTEREST, -interest)
+        books.add(island, banks.bank_number(loan.lender), books.INTEREST, interest)
 
     @staticmethod
     def _margin_call(island: IslandState, ctx: StageContext) -> int:
@@ -293,6 +311,11 @@ class Banking(IslandStage):
         足す。"""
         planned = is_planned(ctx.defs, island)
         for f in sorted(island.facilities, key=lambda f: f.id):
+            if in_receivership(f):
+                # 管財人の施設は、管財人の運転資金だけを借りる（BK-50。変動費の利益が出ている
+                # 間だけ）
+                receivership.fund(island, ctx, f)
+                continue
             if not is_self_supporting(f) or is_bank(ctx.config, f) or not in_business(f):
                 continue
             entity = facility_entity(f.id)
@@ -309,9 +332,13 @@ class Banking(IslandStage):
             owner = owner_entity(f)
             if owner == ledger.GOV:
                 payer = Payer(owner, STATE_FACILITIES)
-            elif self._viable(island, ctx, f) or f.economy.get("ships_wanted", 0) > 0:
-                # 船を買いたい海運業は、船がなければ稼げないので、変動費の利益を見ずに出資する
-                # （回6）
+            elif (
+                self._viable(island, ctx, f)
+                or f.economy.get("ships_wanted", 0) > 0
+                or f.economy.get("ship_order_due", 0) > 0
+            ):
+                # 船を買いたい（造船所に注文した）海運業は、船がなければ稼げないので、変動費の
+                # 利益を見ずに出資する（回6・FX-60）
                 payer = Payer(owner)
             else:
                 continue
@@ -451,14 +478,13 @@ class Banking(IslandStage):
         config = ctx.config
         scores = {b: self._score(island, ctx, b) for b in active}
         best = max(active, key=lambda b: (scores[b], banks.deposits_of(island, b), b))
+        # 取り付けは体力（自己資本比率）が規制を下回った銀行からだけ。中央銀行からの借り入れは
+        # 預金者に見えない（日銀や FRB の貸し先は公表されないか、ずっと後に出る。2026-11-11）
         runs = [
             b
             for b in active
             if b != best
-            and (
-                banks.capital_ratio(island, config, b, ctx.turn) < banks.regulatory(config)
-                or banks.cb_borrowed(island, b) > 0
-            )
+            and banks.capital_ratio(island, config, b, ctx.turn) < banks.regulatory(config)
         ]
         switch = to_basis(config.get("banking.switch_share"))
         run = to_basis(config.get("banking.run_share"))

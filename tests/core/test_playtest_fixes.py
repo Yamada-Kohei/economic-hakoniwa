@@ -162,7 +162,16 @@ def test_entry_block_is_recorded_and_logged_once(game, warmed):
     # 町に建つ店（工業団地の要らない参入）の合図（品切れと高い値段の買いたい量）も消す（店が建つと
     # わけが残らない。2026-11-01 の価格の決まり方の直し 第2弾で、40 ターン目の島に店が建つ道筋に
     # なった）
-    for good in game.defs.facilities["shop"]["recipes"]["default"]["outputs"]:
+    # 空き地に建つ施設（firms.open_land。農場など）の作る物の合図も消す（2026-11-10 の LB-44・
+    # MK-41 で道筋が変わり、40 ターン目の島に空き地の農場が建つようになった）
+    kinds = ["shop", *game.config.get("firms.open_land")]
+    goods = {
+        g
+        for kind in kinds
+        for recipe in game.defs.facilities[kind]["recipes"].values()
+        for g in recipe["outputs"]
+    }
+    for good in goods:
         for key in ("shortages", "demand"):
             island.economy.finance.get(key, {}).pop(good, None)
     island.log.clear()  # 前のターンのログも

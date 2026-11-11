@@ -70,6 +70,7 @@ from hakoniwa_core.economy import (
     funds,
     is_bank,
     is_public_service,
+    is_seized,
     is_self_supporting,
     owner_entity,
 )
@@ -361,6 +362,8 @@ class Accounts(IslandStage):
             island, payer.entity, arrears.TAX_ARREARS
         ):
             dividend = 0  # 賃金や税を払えていない間は配当しない
+        if is_seized(f):
+            dividend = 0  # 管財人のもとでは配当せず、稼ぎは施設にためる（FM-59）
         owner = owner_entity(f)
         funds.pay(island, payer, owner, dividend, "dividend")
         if owner.startswith("hh:"):

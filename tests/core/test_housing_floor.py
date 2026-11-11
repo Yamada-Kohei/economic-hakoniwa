@@ -240,6 +240,10 @@ def test_a_floor_never_exceeds_the_top_level_and_a_dry_town_waits_for_water(game
     fac.set_floor(game.defs, home, top)
     assert home.ext["level"] == game.defs.settlement_levels()[-1]
     island.economy.housing["stock"] = {}
+    # 回した世界のこのマスには、前のターンまでにためた住み替えの分が残っていることがある（床が
+    # 望みに足りる家は住み替えを見ないので、残りは消さない）。ここで見るのは、上限の床に新しく
+    # ためないこと
+    home.ext.pop(fac.FLOOR_DUE, None)
     Housing().run_island(island, context(game, world))
     assert fac.floor_of(game.defs, home) == top
     assert fac.FLOOR_DUE not in home.ext
@@ -309,6 +313,12 @@ def test_owners_buy_floor_with_their_own_savings_and_mortgage(game, base):
     # 資産を持つ層が、市場に出ている資材をたくさん買いたい
     island.economy.housing["move"] = {OWNERS: {g: q // 100 for g, q in wanted.items()}}
     island.economy.housing["stock"] = {}
+    # 資産を持つ層の手元の預金は、出資の直後などに使う額で尽きることがある（40 ターンの世界の道筋
+    # 次第。2026-11-10 の LB-44・MK-41 で道筋が変わり、手元が尽きたターンに当たった）。住宅の買いを
+    # 確かめるので、一般の層から預金を移して手元を持たせる
+    from hakoniwa_core import ledger
+
+    ledger.pay(island, household(GENERAL), owners, 5_000_000, "layer_transfer")
     run(game, world, 1)
     after = sum(
         banks.outstanding(island, x)

@@ -577,6 +577,13 @@ def _price_cap_order(
 # --- 何を建てるか ---------------------------------------------------------------
 
 
+def _waits_for_input(f, power: str) -> bool:
+    """施設が電力を除く投入財を待って止まっているか。電気料金が割高・資金不足で電力を買えない施設
+    （「原料が割高（電力）」など）は、電力不足と同じく稼働率で見る（同じ施設を建て増しても、
+    同じく電気料金が合わない）。"""
+    return fac.short_of_inputs(f.status) and f.status.partition(":")[2] != power
+
+
 def _underused(island: IslandState, defs: Defs, config: GameConfig, kind: str, recipe: str) -> bool:
     """同じ物を作る施設に、動ききっていない（稼働率が UNDERUSED 未満の）ものがあるか。
 
@@ -591,7 +598,7 @@ def _underused(island: IslandState, defs: Defs, config: GameConfig, kind: str, r
     made = _made(island, defs)
     for f in island.facilities:
         if f.built and outputs & set(fac.recipe_of(defs, f)["outputs"]):
-            if fac.short_of_inputs(f.status):
+            if _waits_for_input(f, power):
                 # 島で作っていない（輸入に頼る）投入財を待っているなら、同じ投入財を使う施設を
                 # 増やしても役に立たない（フェーズ3-2）
                 short = f.status.split(":", 1)[1]
@@ -618,7 +625,7 @@ def _flows(island: IslandState, defs: Defs, config: GameConfig) -> tuple[dict, d
         if fac.is_housing(config, f):
             continue
         recipe = fac.recipe_of(defs, f)
-        stuck = f.built and fac.short_of_inputs(f.status)
+        stuck = f.built and _waits_for_input(f, power)
         imports = frozenset() if power in recipe["outputs"] else traded
         stuck = stuck or not _recipe_ok(defs, island, recipe, frozenset(), imports)
         water = nature.water_spec(recipe)
@@ -982,7 +989,7 @@ def _candidates(
             record = markets.get(good)
             short = record is not None and record.supply < record.demand * MARKET_SHORT
             # 1人あたりの目安（衣料・消費財・嗜好品。household.targets。フェーズ3-2）
-            target = people * needs.target_of(config, good)
+            target = people * needs.per_turn_target(defs, config, good)
             few = target > 0 and supply.get(good, 0) < to_milli(target * CONSUMER_MARGIN)
             if short or few:
                 # 島でまだ作っていない物は、投入財に余裕がなくても1つ目を建てる（投入財の工場は、

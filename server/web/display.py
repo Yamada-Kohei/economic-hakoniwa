@@ -19,12 +19,16 @@ from hakoniwa_core.economy import (
     entity_of,
     equipment,
     facility_entity,
+    in_receivership,
     is_bank,
     is_private_site,
     is_self_supporting,
+    receivership,
     retail,
 )
+from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy import public_housing as pub
+from hakoniwa_core.economy.prices import site_material_cost
 from hakoniwa_core.log import format_log, format_turn
 from hakoniwa_core.military import PRIVATE_LOGS
 from hakoniwa_core.modules.banking import ENTRY as BANK_ENTRY
@@ -173,6 +177,7 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         "size": fac.size_of(f),  # 規模（段6 A3。建て増した数 + 1）
         "expanding": fac.pending_expansions(island, f),
         "priority": fac.priority_of(defs, config, f) if fdef else None,
+        "priority_hint": priority_hint(island),
         "priority_changed": f.priority is not None,
         "status": f.status,
         "status_text": status_text(f),
@@ -277,7 +282,9 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
             info["transition"] = crop_transition(f)
     else:
         construction = fdef["construction"]
-        info["workers_needed"] = construction.get("labor", 0)
+        info["workers_needed"] = construction.get("labor", 0) + fac.site_labor(f)
+        if f.ext.get(fac.SITE_WORK):
+            info["site_work"] = True  # 工業団地の外の空き地を造成して建てている（FM-61）
         # 工事全体のうち進んだ割合（progress は 1000 で1ターン分）
         total = fac.total_progress(defs, f)
         info["progress"] = f.progress / total
@@ -285,6 +292,15 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         if f.ext.get("repair"):
             info["repair"] = True  # 暴動で壊れて直している（フェーズ3-4）
         info["materials"] = goods_list(fac.materials_of(defs, f))  # 段階の工事は、その段階の資材
+        if mine and "material_estimate" in f.ext and not f.ext.get("repair"):
+            info["material_estimate"] = f.ext["material_estimate"]
+            stored = (
+                row.stocks.values("good").annotate(qty=Sum("quantity")).values_list("good", "qty")
+            )
+            f.stock = {good: [[0, qty]] for good, qty in stored}
+            info["remaining_material_cost"] = site_material_cost(
+                island, defs, config, f, remaining=True
+            )
     if f.ext.get("halted_until") is not None:
         info["halted_until"] = f.ext["halted_until"]
     if is_private_site(f):
@@ -530,16 +546,24 @@ def facility_finance(
     game = get_game()
     config = game.config
     out: dict[str, Any] = {}
+    turn = row.island.world.turn + 1  # 次の更新で売るときの売り値（ターンの処理と同じ数え方）
     if f.economy.get("closing") is not None:
         out["closing"] = f.economy["closing"]  # 閉鎖に入ったターン
+        # 居抜きで売りに出している売り値と、売れなければマスを空けるターン（FM-60）
+        out["closing_sale"] = {
+            "price": money_text(receivership.asking_price(config, f, turn) or 0, currency),
+            "until": f.economy["closing"] + config.get("firms.sale_turns"),
+        }
     seized = f.economy.get("foreclosed")
     if seized:
-        until = seized.get("since", 0) + config.get("firms.foreclosure_turns")
+        book, since = receivership.sale_terms(f, config) or (0, 0)
         out["foreclosed"] = {
             "bank": bank_name(row.island_id, island, seized.get("bank")),
             "since": seized.get("since"),
-            "until": until,
-            "price": money_text(seized.get("price", 0), currency),
+            "price": money_text(receivership.asking_price(config, f, turn) or 0, currency),
+            # 管財人が動かしているか（FM-59）と、次に売り値を下げるターン（下限なら None）
+            "running": in_receivership(f),
+            "next_cut": receivership.next_cut(config, book, since, turn),
         }
     if is_self_supporting(f) and not is_bank(config, f):
         # 補助金は独立採算の施設にだけ出る（銀行を除く）。出ている補助金は公表された政策
@@ -598,6 +622,25 @@ def facility_loans(
         }
         for x, name in zip(loans, names, strict=True)
     ]
+
+
+def sale_text(row: m.Facility, f: Facility, island: IslandState, currency: str = "") -> str:
+    """売りに出している施設の短い説明（管財人のもと・閉鎖に入り売りに出している。FM-59・FM-60）。
+    国の要約と MCP の地図の施設の行に出す。売りに出していなければ空。"""
+    info = facility_finance(row, f, island, currency)
+    seized = info.get("foreclosed")
+    if seized:
+        how = "動かしながら" if seized["running"] else "止めたまま"
+        cut = seized.get("next_cut")
+        later = f"、{turn_text(cut)}に値下げ" if cut is not None else "、下限"
+        return f"管財人（{seized['bank']}）が{how}売りに出し中: 売り値 {seized['price']}{later}"
+    sale = info.get("closing_sale")
+    if sale:
+        return (
+            f"閉鎖に入り売りに出し中: 売り値 {sale['price']}、"
+            f"{turn_text(sale['until'])}まで売れなければマスを空ける"
+        )
+    return ""
 
 
 def bank_name(island_id: int, island: IslandState, bank: str | None) -> str:
@@ -747,11 +790,29 @@ def facility_books(row: m.Facility, f: Facility, currency: str = "") -> dict[str
 HALT_REASONS = ("war", "missile", "occupied")
 
 
+def priority_hint(island: IslandState) -> str:
+    """施設のパネルの優先度の説明（体制で出し分ける。PL-59）。"""
+    if planning.is_planned(island, get_game().defs):
+        return (
+            "値の大きい施設から、空いた人・資材・電力を配る。今いる人を出すには計画の画面の人員計画"
+        )
+    return (
+        "同じ賃金なら値の大きい施設から雇う。資材と電力は値幅の端で足りないときに値の大きい順。"
+        "国庫の同じ項目の予算が足りないときは値の大きい施設から分ける"
+    )
+
+
 def status_text(f: Facility) -> str:
     if not f.built:
         # 民営の工事でお金が足りないのは、公共事業費ではなく会社の資金
         private = "_private" if f.ext.get("private_entry") else ""
         if f.ext.get("waiting"):  # 資材が足りない（市場に売りに出ていない、お金が足りないなど）
+            price_wait = f.ext.get("material_price_wait", {})
+            if not f.ext.get("short_funds") and price_wait:
+                goods = "・".join(get_game().defs.name("goods", g) for g in sorted(price_wait))
+                left = max(price_wait.values())
+                retry = f"積算し直しまであと {left} ターン" if left else "積算し直し済み"
+                return f"建設中（{goods}の買い値が売り値に届かない。{retry}）"
             key = "funds" + private if f.ext.get("short_funds") else "materials"
             return message(f"status_construction_{key}", goods=f.ext["waiting"])
         if f.ext.get("short_wages"):  # 公共事業費（民営は会社の資金）が足りず、作業員を雇いきれない
@@ -770,6 +831,8 @@ def status_text(f: Facility) -> str:
         text = message(f"halt_reason_{reason}")
     else:
         text = message(f"status_{kind}")
+    if kind == "budget" and good:  # 年の予算の月割りが足りない（項目の名前。LB-45）
+        return text + f"（{message(f'budget_{good}')}）"
     if good:
         text += f"（{get_game().defs.name('goods', good)}）"
     return text
@@ -783,6 +846,11 @@ STATUS_HINTS = {
         "「補助金の変更」で救済補助を出せます。"
         "国庫直轄の施設は国庫と「予算の変更」の該当費目も確かめてください。"
     ),
+    "budget": (
+        "「予算の変更」でその項目の年の予算を上げられます。同じ優先度の施設は予算を同じ割合で"
+        "分けるので、1つに集めたいときは「優先度の変更」で差を付けます。"
+    ),
+    "staff_plan": "「人員計画」でこの施設の人数の枠を上げるか外せます。",
     "input": (
         "「二国間契約の申し込み」で原料を輸入するか、"
         "「国の倉庫のこのターンの売り買い」で原料を売り出せます。"
@@ -806,6 +874,14 @@ STATUS_HINTS = {
     "halted": "停止期間が終わるのを待ち、原料と電力の供給を確かめてください。",
     "riot": "「予算の変更」で治安費を見直し、食料や失業などの不満の原因を減らせます。",
     "no_demand": "「送電線の敷設」で電力を使う町や施設につなげられます。",
+    "input_price_power": (
+        "電気料金が高く、払うと赤字になるので電力を買っていません。電力の「値段の上限（公共料金など）の"
+        "変更」を見直すか、「補助金の変更」で生産補助を出せます。発電所を増やすと電気料金が下がります。"
+    ),
+    "funds_power": (
+        "電気代を払うお金が足りません。「補助金の変更」で生産補助を出すか、"
+        "国営なら「国営施設の会計方式の変更」で国庫直轄にできます。"
+    ),
     "power_price": (
         "電力の「値段の上限（公共料金など）の変更」を見直すか、"
         "「補助金の変更」で生産補助を出せます。"
@@ -855,6 +931,10 @@ def status_hint(f: Facility) -> str:
             return (
                 "外交の画面で戦争と占領の状況を確かめ、「条約の提案」で停戦や講和を申し込めます。"
             )
+    if kind in ("input_price", "funds") and f.status.partition(":")[2] == get_game().config.get(
+        "power.good"
+    ):
+        return STATUS_HINTS[f"{kind}_power"]  # 電力は輸入できない
     return STATUS_HINTS.get(kind, "")
 
 
@@ -1020,6 +1100,9 @@ def describe_order(kind: str, payload: dict[str, Any]) -> str:
         parts = []
         for k, v in payload.items():
             label = message(_POLICY_LABELS.get(k, f"budget_{k}"))
+            if k == "dismissal":  # 解雇の決まり（LB-43）は段の名前
+                parts.append(f"{label} {message(f'dismissal_{v}')}")
+                continue
             parts.append(f"{label} {v:g}%" if k in _PERCENT else f"{label} {v:,}")
         return f"{name}: " + "・".join(parts)
     if kind == "set_warehouse_standing":
@@ -1296,6 +1379,17 @@ def _describe_politics(kind: str, payload: dict[str, Any], name: str) -> str:
     if kind == "set_priority_industries":
         names = [defs.name("industries", i) for i in payload.get("industries", [])]
         return f"{name}: " + ("・".join(names) or "なし")
+    if kind == "set_staff_plan":
+        rows = []
+        for entry in payload.get("plans", []):
+            where = (
+                defs.name("facilities", entry["kind"])
+                if "kind" in entry
+                else f"({entry.get('x')}, {entry.get('y')})"
+            )
+            cap = entry.get("cap")
+            rows.append(f"{where} {'枠を外す' if cap is None else f'{cap:,} 人'}")
+        return f"{name}: " + "、".join(rows)
     return ""
 
 
@@ -1396,7 +1490,16 @@ def _describe_finance(kind: str, payload: dict[str, Any], name: str, where: str)
         return f"{name}: " + "・".join(parts) if parts else name
     if kind == "set_bond_payment":
         return f"{name}: " + ("止める（債務不履行）" if payload.get("stop") else "再開する")
-    if kind in ("set_public_works", "set_warehouse_release"):
+    if kind == "set_public_works":
+        parts = []
+        if "auto" in payload:
+            parts.append("役所の決まった事業を" + ("始める" if payload["auto"] else "止める"))
+        if "upkeep_priority" in payload:
+            parts.append(f"維持の優先度 {payload['upkeep_priority']}")
+        if "build_priority" in payload:
+            parts.append(f"新しい工事の優先度 {payload['build_priority']}")
+        return f"{name}: " + "・".join(parts)
+    if kind == "set_warehouse_release":
         return f"{name}: " + ("始める" if payload.get("auto") else "止める")
     if kind == "set_bank_policy":
         parts = []
@@ -1442,6 +1545,7 @@ _POLICY_LABELS = {
     "consumption_tax": "policy_consumption_tax",
     "minimum_wage": "policy_minimum_wage",
     "unemployment_benefit": "policy_unemployment_benefit",
+    "dismissal": "policy_dismissal",
 }
 
 
@@ -1495,6 +1599,7 @@ def policy_view(island, mine: bool = True) -> dict[str, Any]:
         "consumption_tax": policy.get("consumption_tax", 0) / 100,
         "minimum_wage": policy.get("minimum_wage", 0),
         "unemployment_benefit": policy.get("unemployment_benefit", 0) / 100,
+        **dismissal_view(island),
         "budget": {
             item: {"name": message(f"budget_{item}"), "amount": budget.get(item, 0)}
             for item in budget_items
@@ -1507,6 +1612,25 @@ def policy_view(island, mine: bool = True) -> dict[str, Any]:
         # 公共料金の上限は見せる単位 1 つあたり（W-30）
         "price_cap": {g: price(g, p) for g, p in policy.get("price_cap", {}).items()},
         **finance_policy_view(island),
+    }
+
+
+def dismissal_view(island) -> dict[str, Any]:
+    """解雇の決まり（LB-43）: 決めた段（"" は経済体制の既定）・既定の段・段ごとの名前と決まり
+    （1か月に減らせる割合 %・解雇手当の月数）。"""
+    game = get_game()
+    chosen = (island.policy or {}).get("dismissal", "")
+    regime = game.defs.regimes.get((island.regime or {}).get("economy", ""), {})
+    default = str(regime.get("dismissal", "weak"))
+    table = game.config.get("labor.dismissal")
+    return {
+        "dismissal": chosen,
+        "dismissal_default": default,
+        "dismissal_choices": {k: message(f"dismissal_{k}") for k in table},
+        "dismissal_terms": {
+            k: {"rate": round(v["rate"] * 100, 1), "months": v["months"]} for k, v in table.items()
+        },
+        "dismissal_attrition": round(game.config.get("labor.attrition") * 100, 1),
     }
 
 
@@ -1689,6 +1813,7 @@ SUMMARY_STATS = [
     ("wage.average", "平均賃金（1人1ターン）", "money"),
     ("treasury", "国庫", "money"),
     ("debt", "国債の残高", "money"),
+    ("net_public_debt", "政府と中央銀行を合わせた借り", "money"),
     ("policy_rate", "政策金利", "rate"),
     ("deposit_rate", "預金金利（銀行の平均）", "rate"),
     ("interbank_rate", "銀行間の金利", "rate"),

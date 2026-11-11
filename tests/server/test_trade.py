@@ -528,3 +528,29 @@ def test_chartered_and_lent_ships_on_the_trade_page(world):
     assert outgoing["direction_name"] == "輸出" and not outgoing["carrier_name"]
     assert reports.stat_label("trade.charter_income")[1] == "money"
     assert reports.stat_label("trade.charter_paid")[1] == "money"
+
+
+def test_ships_on_order_show_on_the_trade_page_and_api(client, world):
+    """島の造船所に前注文した輸送船（FX-60）は、持ち主の船団の欄と API に出る（LAN の世界では
+    造船所のある島で船が足りなくなる時期に当たらないと出ないので、注文を置いて見る）。"""
+    own, _, _ = _trading_world(client)
+    config = get_game().config
+    shipping = m.Facility.objects.get(island=own, kind=config.get("trade.shipping_facility"))
+    used = set(m.Facility.objects.filter(island=own).values_list("x", "y"))
+    x, y = next((x, y) for x in range(own.size) for y in range(own.size) if (x, y) not in used)
+    number = m.Facility.objects.filter(island=own).order_by("-number").first().number + 1
+    order = {"buyer": shipping.number, "payer": f"fac:{shipping.number}", "item": "", "qty": 2000}
+    order.update({"built": 0, "price": 1000, "paid": 400, "placed": 1, "due": 9})
+    m.Facility.objects.create(
+        island=own,
+        number=number,
+        kind="shipyard",
+        x=x,
+        y=y,
+        built=True,
+        economy={"ship_orders": [order]},
+    )
+    data = client.get(f"/api/islands/{own.id}/trade").json()
+    assert data["fleet"]["shipping"]["on_order"] == 2
+    html = client.get(f"/islands/{own.id}/trade/").content.decode()
+    assert "島の造船所に 2 隻を注文しています。" in html

@@ -277,6 +277,12 @@ def test_nationalize_and_privatize_whole_firm(game, base):
     f = private_members(game, island)[0]
     number = co.firm_of(f)
     ctx = context(game, world)
+    # 国庫に買い取りの代金を持たせる（そのターンの国庫の残りは世界の道筋で上下する。国庫の多さは、
+    # この試験の見たいことではない）
+    working = [m for m in co.members(island, number) if m.built]
+    price = sum(banks.net_assets(island, m, facility_entity(m.id)) for m in working)
+    price += ledger.money(island, co.entity(number))
+    ledger.pay(island, household(GENERAL), ledger.GOV, price, "test_top_up")
     open_books(island)
     check_nationalize_firm(island, {"firm": number}, game.defs)
     owners_before = ledger.money(island, household(OWNERS))

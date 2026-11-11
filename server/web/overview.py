@@ -18,6 +18,7 @@ from django.urls import reverse
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import politics as core_politics
 from hakoniwa_core.economy import books, retail
+from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.modules.population import still_hungry
 from hakoniwa_core.naming import facility_name
 from hakoniwa_core.state import ACCOUNTING_SELF, OWNER_STATE, ZONE_INDUSTRIAL
@@ -169,9 +170,23 @@ def facility_state(
     reasons: dict[str, int] = defaultdict(int)
     rows = [r for r in _facility_rows(island) if display.sees_facility(r, mine, viewer)]
     starting = 0
+    on_sale = []
+    currency = (state.names or {}).get("currency_symbol", "")
     for row in rows:
         f = facility_from_row(row)
         text = display.status_text(f)
+        sale = display.sale_text(row, f, state, currency) if row.built and island.economy else ""
+        if sale:  # 管財人のもと・閉鎖に入り売りに出している施設（FM-59・FM-60）
+            on_sale.append(
+                {
+                    "number": row.number,
+                    "name": facility_name(game.defs, game.config, state, f),
+                    "kind_name": game.defs.name("facilities", row.kind),
+                    "x": fac.position(f)[0],
+                    "y": fac.position(f)[1],
+                    "sale_text": sale,
+                }
+            )
         x, y = fac.position(f)  # 町の中の店は町のマス（施設の行の位置は負）
         if row.built and row.status == fac.STATUS_STARTING:
             # 工事が済んでまだ動いたことがない。次の更新で動き出すので止まりと分ける（W-219）
@@ -222,6 +237,8 @@ def facility_state(
         "partial": [
             {"status_text": t, "count": n} for t, n in sorted(reasons.items(), key=lambda r: -r[1])
         ],
+        "on_sale_count": len(on_sale),
+        "on_sale": on_sale[:LIST_MAX],
         "construction_count": len(works),
         "construction": works[:LIST_MAX],
         "infra_works": len(infra.get("queue", [])),
@@ -425,6 +442,8 @@ def _alerts(
         out.append(f"電力が足りていません（不足率 {math.ceil(shortage * 1000) / 10:.1f}%）")
     if facilities["stopped_count"]:
         out.append(f"止まっている施設が {facilities['stopped_count']} か所あります")
+    if facilities.get("on_sale_count"):
+        out.append(f"倒産・閉鎖で売りに出している施設が {facilities['on_sale_count']} か所あります")
     unmet = [g["name"] for g in goods if g.get("unmet")]
     if unmet:
         out.append("買いたい量に売りが届かなかった財: " + "・".join(unmet))
@@ -786,6 +805,63 @@ def retail_brief(island: m.Island, stats: dict[str, float], currency: str) -> di
     return out
 
 
+def dismissal_brief(island: m.Island, stats: dict[str, float], currency: str) -> dict[str, Any]:
+    """解雇の決まり（LB-43）: 今の段（決めていなければ経済体制の既定）と、そのターンに抱えていた
+    余った人・解雇した人・解雇手当。"""
+    view = display.dismissal_view(island)
+    level = view["dismissal"] or view["dismissal_default"]
+    out: dict[str, Any] = {
+        "level": level,
+        "level_text": view["dismissal_choices"].get(level, level),
+        "regime_default": not view["dismissal"],
+        **view["dismissal_terms"].get(level, {}),
+    }
+    for key, name in (
+        ("held", "labor.held"),
+        ("dismissed", "labor.dismissed"),
+        ("severance", "labor.severance"),
+    ):
+        value = stats.get(name, 0)
+        _, unit = reports.stat_label(name)
+        out[key] = value
+        out[f"{key}_text"] = display.stat_text(name, value, unit, currency)
+    return out
+
+
+def staff_plan_brief(island: m.Island, mine: bool) -> dict[str, Any] | None:
+    """人員計画（PL-59。計画経済の島の持ち主だけ）: 人員の枠で人が足りない施設と、枠を決めた施設、
+    公共事業の作業員と優先度。枠を決められる施設の全部は計画の画面（report の plan）の staff。"""
+    if not mine:
+        return None
+    core = island_from_row(island)
+    if not planning.is_planned(core, get_game().defs):
+        return None
+    rows = politics_views.staff_plan_rows(island, core)
+    return {
+        "short": [r for r in rows if r["capped"]][:LIST_MAX],
+        "caps": [r for r in rows if r["cap"] is not None][:LIST_MAX],
+        "works": politics_views.works_staff(core),
+    }
+
+
+def budget_shares(stats: dict[str, float]) -> list[dict[str, Any]]:
+    """国庫の項目の予算が足りず、同じ優先度の施設に要る額の割合で分けた項目（LB-45）と、要る額に
+    対して分けた割合。"""
+    out = []
+    for name, value in sorted(stats.items()):
+        if name.startswith("budget_share."):
+            label, unit = reports.stat_label(name)
+            out.append(
+                {
+                    "item": name.removeprefix("budget_share."),
+                    "label": label,
+                    "share": value,
+                    "text": display.stat_text(name, value, unit, ""),
+                }
+            )
+    return out
+
+
 def firms_brief(island: m.Island, stats: dict[str, float], mine: bool) -> dict[str, Any] | None:
     """企業（回7）: 民営の企業の数・施設が2つ以上の企業の数・一番大きい企業の施設の割合
     （誰にでも）と、施設の多い順の企業の一覧（施設の画面の企業の表と同じ中身。他国にはお金の数字を
@@ -839,6 +915,9 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
         "services": services_brief(latest, currency),
         "shipping": shipping_brief(latest, currency),
         "firms": firms_brief(island, latest, mine),
+        "dismissal": dismissal_brief(island, latest, currency),
+        "staff_plan": staff_plan_brief(island, mine),
+        "budget_shares": budget_shares(latest),
         "retail": retail_brief(island, latest, currency),
         "population_changes": population_changes(latest),
         "hunger": hungry,

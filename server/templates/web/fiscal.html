@@ -48,6 +48,7 @@
         {% for r in fiscal.taxes %}<tr><th>{{ r.label }}</th><td>{{ r.text }}</td></tr>{% endfor %}
         {% for r in fiscal.position %}<tr><th>{{ r.label }}</th><td>{{ r.text }}</td></tr>{% endfor %}
       </table>
+      <p class="hint">{% translate "政府と中央銀行を合わせた借りは、市中と外国が持つ国債から、国庫と市中銀行にある政府の預金を引いた額です。" %}</p>
     </section>
 
     <section class="panel">

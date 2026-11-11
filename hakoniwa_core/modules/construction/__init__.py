@@ -26,6 +26,7 @@ from hakoniwa_core.economy import (
     banks,
     books,
     default_accounting,
+    dismissal,
     facility_entity,
     freight,
     funds,
@@ -36,11 +37,13 @@ from hakoniwa_core.economy import (
     retail,
 )
 from hakoniwa_core.economy import plan as planning
+from hakoniwa_core.economy.prices import site_material_cost
 from hakoniwa_core.economy.start import fund_facility, init_facility, operating_capital
 from hakoniwa_core.modules import infrastructure
 from hakoniwa_core.naming import assign_serial
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE, Facility, IslandState, LogEntry
+from hakoniwa_core.trade import orders as ship_orders
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import part, to_basis
 
@@ -114,6 +117,8 @@ def build(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> No
     if monuments.is_monument(ctx.defs, kind):
         monuments.stamp(ctx.defs, island, f, ctx.turn, payload.get("note", ""))
     assign_serial(island, f)
+    if island.has_economy:
+        f.ext["material_estimate"] = site_material_cost(island, ctx.defs, ctx.config, f)
     island.facilities.append(f)
     island.log.append(LogEntry("construction_started", {"facility": kind, "x": x, "y": y}))
 
@@ -147,6 +152,8 @@ def start_expansion(
     factor = planning.build_factor(island, ctx.defs)
     if factor != 1.0 or steps:
         f.ext["build_total"] = max(fac.FULL, round(turns * factor * fac.FULL))
+    if island.has_economy:
+        f.ext["material_estimate"] = site_material_cost(island, ctx.defs, ctx.config, f)
     island.facilities.append(f)
     if steps:
         island.log.append(
@@ -209,6 +216,9 @@ def demolish(island: IslandState, payload: dict[str, Any], ctx: StageContext) ->
     if fac.is_housing(ctx.config, f):
         shops = [s for s in island.facilities if s.ext.get(fac.SITE) == [x, y]]
     for gone in [*shops, f]:
+        # まだ働いている人は全員解雇し、手当を払う（預金の分け方より先。LB-43）
+        dismissal.on_removal(island, ctx.defs, ctx.config, gone, ctx.turn)
+        ship_orders.cancel_all(island, ctx.config, gone)  # 造船所の前注文（FX-60）
         sell_leftover_stock(island, gone)
         close_accounts(island, gone)
         stock.move_to_warehouse(gone.stock, island.warehouse, ctx.turn, ctx.defs.goods)
@@ -272,9 +282,10 @@ class Construction(IslandStage):
                 continue
             cdef = defs.facilities[f.kind]["construction"]
             materials = fac.material_ratio(defs, f)
-            self._watch_workers(island, f, stalled=materials > 0 and cdef.get("labor", 0) > 0)
+            labor = cdef.get("labor", 0) + fac.site_labor(f)  # 空き地の工場は造成の分（FM-61）
+            self._watch_workers(island, f, stalled=materials > 0 and labor > 0)
             self._watch_materials(island, f, defs, materials)
-            rate = min(fac.ratio(f.workers, cdef.get("labor", 0)), materials)
+            rate = min(fac.ratio(f.workers, labor), materials)
             if rate <= 0:
                 # 進まなかったターン数（わけを問わない）。民営の工事は firms.abandon_turns でやめる
                 f.ext["stalled_turns"] = f.ext.get("stalled_turns", 0) + 1
@@ -313,6 +324,7 @@ class Construction(IslandStage):
         （ext["short_funds"]）は、そのわけで知らせる。"""
         if materials >= fac.FULL:
             f.ext.pop("waiting", None)
+            f.ext.pop("material_price_wait", None)
             f.ext.pop("no_materials_turns", None)
             return
         f.ext["waiting"] = sorted(
@@ -342,7 +354,14 @@ class Construction(IslandStage):
         f.built = True
         f.workers = 0
         f.status = fac.STATUS_STARTING
-        for key in ("waiting", "short_funds", "short_wages", "build_total", "materials_factor"):
+        for key in (
+            "waiting",
+            "short_funds",
+            "short_wages",
+            "build_total",
+            "materials_factor",
+            fac.SITE_WORK,
+        ):
             f.ext.pop(key, None)
         for key in ("no_materials_turns", "no_workers_turns", "stalled_turns"):
             f.ext.pop(key, None)

@@ -165,14 +165,16 @@ def test_restructuring_keeps_the_only_profitable_maker(game, base, monkeypatch):
 
 def test_furlough_pays_part_of_the_wage_only_for_power_and_input_shortages(game, base):
     """電気・送電網・原料が足りずに動けなかった分の働き手には、賃金の labor.furlough_pay だけ払う。
-    原料が高い・買うお金がないのは施設の都合なので満額。"""
+    原料が高い・買うお金がないのは施設の都合なので満額。電力が高い・買うお金がない（PR #303 で
+    「電力不足」から分けたわけ）は、電力不足と同じ休業手当。"""
     world = copy.deepcopy(base)
     island = market_island(world)
     f = private_members(game, island)[0]
     able = fac.labor_ratio(game.defs, f)
     f.operating_rate = 0
     pay = round(game.config.get("labor.furlough_pay") * BASIS)
-    for status in ("power", "no_grid", "input:steel"):
+    furloughed = ("power", "no_grid", "input:steel", "input_price:electricity", "funds:electricity")
+    for status in furloughed:
         f.status = status
         assert furlough_share(game.defs, game.config, f) == pay
     f.operating_rate = able // 2

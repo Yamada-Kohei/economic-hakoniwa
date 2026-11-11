@@ -2,10 +2,13 @@ grant: 建国の給付
 capital_injection: 出資
 equity_return: 出資の払い戻し
 sale: 代金
+ship_order: 船の前注文の代金
+ship_order_refund: 船の前注文の返金
 electricity: 電気代
 freight: 運賃
 wage: 賃金
 unemployment_benefit: 失業手当
+severance: 解雇手当
 family_support: 家計の支え合い
 tax_income: 所得税
 tax_consumption: 消費税
@@ -29,6 +32,8 @@ equity_loss: 出資の取り消し
 equity_transfer: 出資の付け替え
 foreclosure_sale: 差し押さえ施設の売却
 foreclosure_recovery: 差し押さえ施設の残り
+receiver_advance: 管財人の運転資金（政府）
+receiver_repayment: 管財人の運転資金の返済
 bank_transfer: 銀行の引き継ぎ
 bank_merger: 銀行の合併の代金
 bank_bailout: 公的資金

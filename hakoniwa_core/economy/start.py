@@ -187,9 +187,13 @@ def next_payments(island: IslandState, defs: Defs, config: GameConfig, f: Facili
         )
     rate = freight_rates.facility_rates(island, defs, config).get(f.id, 0)
     cost = operating_cost(defs, config, f, island.economy.prices, wage, rate)
-    return max(
-        fac.scale(cost, f.economy.get("target", fac.FULL)), f.economy.get("wanted", 0) * wage
-    ) + _ships_to_buy(island, config, f)
+    # 解雇の決まりで抱えている人（LB-43。economy/dismissal.py の HELD）の賃金も払う
+    held = f.economy.get("held", 0) * wage
+    return (
+        max(fac.scale(cost, f.economy.get("target", fac.FULL)), f.economy.get("wanted", 0) * wage)
+        + held
+        + _ships_to_buy(island, config, f)
+    )
 
 
 def _ships_to_buy(island: IslandState, config: GameConfig, f: Facility) -> int:
@@ -197,12 +201,16 @@ def _ships_to_buy(island: IslandState, config: GameConfig, f: Facility) -> int:
     次の支払いに足し、手元の資金で足りなければ運転資金を借りるか持ち主が出し、配当で外に出さない
     （回6。船の傷みの分を運賃で集めても、手元の資金の目安を超えた分は配当で出ていき、寿命の船を
     買い替えられなかった）。"""
-    want = f.economy.get("ships_wanted", 0)
-    if want <= 0 or f.kind != config.get("trade.shipping_facility"):
+    if f.kind != config.get("trade.shipping_facility"):
         return 0
+    # 船の前注文の次のターンの代金と、払えずに注文できなかった手付け（FX-60。trade/orders.py）
+    ordered = f.economy.get("ship_order_due", 0)
+    want = f.economy.get("ships_wanted", 0)
+    if want <= 0:
+        return ordered
     # 買い注文の指値（値幅の上端）で見る
     price = island.economy.prices.get(config.get("trade.ship_good"), 0)
-    return money_of(price + part(price, to_basis(config.get("market.band"))), want)
+    return ordered + money_of(price + part(price, to_basis(config.get("market.band"))), want)
 
 
 # --- 銀行と運送業 -----------------------------------------------------------------

@@ -16,6 +16,21 @@ const INT_FIELDS = ["minimum_wage", "bond_trade", "issue", "underwrite", "deposi
 // 中身のない命令（項目を入れなくても足せる）
 const EMPTY_OK = new Set(["grant_bank_license"]);
 
+/** 解雇の決まり（LB-43）の選ぶ欄: 今の段（決めていなければ経済体制の既定）と、段ごとの決まり。 */
+function dismissalField(p) {
+  if (!p.dismissal_choices) return "";
+  const now = p.dismissal || p.dismissal_default;
+  const name = `${p.dismissal_choices[now] || now}${p.dismissal ? "" : "・経済体制の既定"}`;
+  const choices = Object.entries(p.dismissal_choices)
+    .map(([k, label]) => {
+      const t = p.dismissal_terms[k];
+      return `<option value="${escapeHtml(k)}">${escapeHtml(label)}（月 ${t.rate}% まで・手当 ${t.months} か月分）</option>`;
+    })
+    .join("");
+  return `<label>解雇の決まり（今: ${escapeHtml(name)}） <select name="dismissal"><option value="">変えない</option>${choices}</select></label>
+          <p class="hint">売れ行きが落ちても、施設が1か月に減らせる人は前の月の決まった割合と、自然に辞める人（月 ${p.dismissal_attrition}%）まで。余った人は雇ったまま賃金を払い、作る量だけ落とします。強いほど不況で失業が増えにくい代わりに、余った人の賃金と解雇手当で会社の採算が悪くなります。計画経済の国営施設、運送業・港・海運業・商社・銀行・店、畑の農場は外です。次のターンの雇用から効きます。</p>`;
+}
+
 /** 予算の入力欄に添える目安（去年に使った額・いちばん使った月の年換算・使い切れない額の目安）。 */
 function budgetHint(guide) {
   if (!guide) return "";
@@ -307,6 +322,7 @@ export class OrderQueue {
           <strong>賃金と失業手当</strong>
           <label>最低賃金（0 で決めない） ${num("minimum_wage", p.minimum_wage, 'step="1"')}</label>
           <label>失業手当（平均賃金の %） ${num("unemployment_benefit", p.unemployment_benefit, 'max="100" step="1"')}</label>
+          ${dismissalField(p)}
           <button type="submit">命令に追加</button>
         </form>`,
       warehouse_trade: `

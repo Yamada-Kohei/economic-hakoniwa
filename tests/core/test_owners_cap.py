@@ -103,7 +103,16 @@ def test_owners_without_income_or_wealth_move_to_workers(game, base, monkeypatch
     hh[OWNERS]["income"] = [0, 0, 0]
     # 株を全部手放したとみなす（株の値打ちを数えない）
     monkeypatch.setattr(co, "owners_collateral", lambda _island: 0)
+    # 資本家階級に、株を担保にした借入の取り置き（LB-42）を超える預金を持たせる（道筋によっては、
+    # 閉じた施設の出資が戻る前で、預金がみな取り置きになっている。2026-11-10 の FM-60 で閉鎖が
+    # 売りに出す間だけ延びた）
+    spare = pledged(island, OWNERS) + 1_000_000 - ledger.money(island, household(OWNERS))
+    if spare > 0:
+        ledger.pay(island, household(GENERAL), household(OWNERS), spare, "layer_transfer")
     open_books(island)
+    # 持って出る預金を持たせる（2026-11-10 に工事が海外の商人からも資材を買うようにした後は、この
+    # 島の資本家階級は 24 ターン目までに預金のほとんどを出資と借金の担保に回している）
+    ledger.pay(island, ledger.GOV, household(OWNERS), 5_000_000, "grant")
     total = population(island)
     before = ledger.money(island, household(GENERAL))
     update_owners_cap(island, config, total)
@@ -198,3 +207,22 @@ def test_change_to_planned_moves_owners_mortgages_and_hunger(game, base):
     ]
     expected = (held * general + 2.0 * persons) / (general + persons)
     assert hh[GENERAL]["hunger"] == pytest.approx(expected, rel=0.01, abs=1e-4)
+
+
+def test_people_who_change_layers_carry_the_food_they_bought(game, base):
+    """市場の段の後に層を移った人（参入の段で出資して資本家階級へ移った人など）は、このターンに
+    買った食べ物を1人あたりの量で持って移る（2026-11-10。前は元の層に残り、移った先の層だけが
+    食べられずに飢えの蓄えがたまった）。島の食べ物の合計は変わらない。"""
+    world = copy.deepcopy(base)
+    island = island_of(world, "mixed")
+    hh = island.economy.households
+    persons = hh[GENERAL]["persons"]
+    moved = persons // 10
+    island.scratch["household_goods"] = {GENERAL: {"grain": 10_000, "fish": 5_000}}
+    hh[GENERAL]["persons"] -= moved
+    hh[OWNERS]["persons"] += moved
+    move_people(island, {OWNERS: moved})
+    bought = island.scratch["household_goods"]
+    for good, total in (("grain", 10_000), ("fish", 5_000)):
+        assert bought[OWNERS][good] == total * moved // persons
+        assert bought[GENERAL][good] + bought[OWNERS][good] == total

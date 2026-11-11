@@ -28,7 +28,7 @@
 | BK-05 | 金額は通貨の最小単位の整数、金利は年率の1万分の1で持つ。1ターンの利子は「残高×金利÷12」の切り捨て | 決定 |  | （未確認） |
 | BK-06 | 市中銀行はオフィス街のマスに入る施設で職員を雇う。預金と融資が少ない銀行は少なく雇う。職員が足りない割合だけ新しい融資を絞る | 決定 | `banking.facility`, `banking.staff_volume`, `banking.staff_floor` | tests/core/test_playtest5_fixes.py::test_small_bank_hires_for_its_business |
 | BK-07 | 国営銀行はプレイヤーが建設の命令で建てる。民間銀行は参入の政策（自由・許可制・禁止）に従い、預金と利益の見込みが立てば資本家階級の出資で開業する。計画経済は国営銀行だけ | 決定 | `banking.max_banks`, `banking.entry_capital`, `banking.entry_deposits`, `banking.entry_roe_margin` | tests/core/test_finance.py::test_planned_economy_cannot_privatize_or_license_banks, tests/core/test_playtest5_fixes.py::test_bank_does_not_open_when_it_cannot_raise_its_deposit_rate, tests/core/test_playtest_fixes.py::test_bank_entry_block_names_missing_office |
-| BK-08 | 家計の層は毎ターン預金の一部を「預金金利−危なさ」の高い銀行へ移す。規制を下回った銀行と中央銀行に頼る銀行からは取り付けで流れ出す | 決定 | `banking.switch_share`, `banking.run_share`, `banking.risk_buffer`, `banking.risk_weight` | （未確認） |
+| BK-08 | 家計の層は毎ターン預金の一部を「預金金利−危なさ」の高い銀行へ移す。規制を下回った銀行からは取り付けで流れ出す（中央銀行から借りているだけでは流れ出さない。2026-11-11） | 決定 | `banking.switch_share`, `banking.run_share`, `banking.risk_buffer`, `banking.risk_weight` | tests/core/test_bank_runs.py::test_borrowing_from_the_central_bank_does_not_start_a_run, ::test_a_bank_below_the_regulatory_ratio_still_sees_a_run |
 | BK-09 | 預金金利は「政策金利−差」へ少しずつ近づけ、手元の流動性（準備預金の余りと国債の額面）が足りない銀行と開業して預金を集めている銀行は政策金利へ近づける | 決定 | `banking.deposit_rate`, `banking.deposit_spread`, `banking.liquidity_target`, `banking.rate_step` | tests/core/test_shocks.py::test_rate_hike_raises_deposit_and_lending_rates |
 | BK-10 | 融資は建設資金（据え置きの後に均等に返す）と運転資金（短く返し、貸し手と借り手ごとに1本で回す）、家計の住宅ローン（BK-47）、資本家階級の株を担保にした借入（BK-49）。金利は毎ターン式 `loan_rate` で計算し直す変動金利 | 決定 | `loans.construction_turns`, `loans.grace_turns`, `loans.working_turns`, `banking.margin`, `banking.margin_range`, `banking.rho` | tests/core/test_finance.py::test_working_loans_merge_per_lender_and_borrower, ::test_construction_loans_wait_for_grace |
 | BK-11 | 審査は、現金で見た営業の利益が返済の決めた倍以上で、借入が資産の決めた割合以下。利益で返せなくても在庫の担保の分は運転資金を貸す | 決定 | `loans.coverage`, `loans.max_leverage`, `loans.inventory_ratio` | （未確認） |
@@ -53,7 +53,7 @@
 | BK-30 | 国債の売買の市場は残りの期間の4区分ごとの、利回りを値段にした板寄せ。銀行は持ち高を、偏りで求める利回りが今の利回りと等しくなる額に近づけ、準備預金の足りない銀行は指値なしで売る。独立していない中央銀行は命令の額を指値なしで出す | 決定 | `bonds.buckets`, `bonds.bucket_terms`, `bonds.trade_band`, `banking.bond_concentration`, `banking.sell_premium` | tests/core/test_playtest_fixes.py::test_central_bank_bond_trade_result_is_logged |
 | BK-31 | 国債は時価で持つ。損益に入れるのは売った・償還された・切り下げられた分の実現損益だけで、評価損益は自己資本にだけ数える。評価損で自己資本がマイナスになった銀行は破綻する | 決定 |  | tests/core/test_bond_gains.py::test_selling_a_bond_realizes_the_gain, ::test_unrealized_losses_still_fail_a_bank, tests/core/test_playtest3_fixes.py::test_bonds_issued_after_valuation_are_not_counted_as_gains |
 | BK-32 | 資本取引を認めた国の銀行は、外国の利回りが値下がりの見込みを超えて高い通貨の外貨と国債を、預金の決めた割合まで持つ（タブ 9） | 決定 | `banking.foreign_share`, `banking.foreign_step`, `banking.foreign_margin` | tests/core/test_phase3_3.py::test_banks_plan_foreign_currency_only_when_it_pays_and_capital_is_free |
-| BK-33 | 債務不履行は命令 `set_bond_payment` で支払いを止めたときだけ、すべての銘柄を一度に。額面を決めた割合だけ切り下げ、残りを同じ期間で出し直す | 決定 | `bonds.haircut` | tests/core/test_shocks.py::test_bond_default_raises_yields_and_hits_holders, tests/core/test_phase3_3.py::test_default_cuts_foreign_holders_too, tests/server/test_finance.py::test_bond_payment_needs_bonds |
+| BK-33 | 債務不履行は命令 `set_bond_payment` で支払いを止めたときだけ、すべての銘柄を一度に。中央銀行以外の額面を決めた割合だけ切り下げ、残りを同じ期間で出し直す。中央銀行の持ち分は残す。実際の切り下げ額が0なら新たな不履行の罰は付けない | 決定 | `bonds.haircut` | tests/core/test_shocks.py::test_bond_default_raises_yields_and_hits_holders, tests/core/test_phase3_3.py::test_default_cuts_foreign_holders_too, tests/server/test_finance.py::test_bond_payment_needs_bonds |
 | BK-34 | 不履行の罰は3つ: 利回りの上乗せ（だんだん減る）、決めたターン数は銀行が国債を買わない、損をした銀行は新しい融資を止めて借り換えだけ（計画経済の島と、不履行の後に建った銀行を除く） | 決定 | `bonds.default_premium`, `bonds.default_decay_turns`, `bonds.default_exclusion_turns`, `banking.default_crunch_turns` | tests/core/test_playtest3_fixes.py::test_default_closes_the_bond_market_and_stops_lending, ::test_bond_market_reopens_and_lending_resumes, ::test_stopped_bank_only_rolls_over_principal, ::test_planned_island_banks_keep_lending_after_default, ::test_private_entry_waits_for_lending, tests/server/test_finance.py::test_help_describes_default_penalties |
 | BK-35 | 自己資本がマイナスか資金繰りが破綻した銀行は破綻し、新しい融資と預金の受け入れを止める。処理は命令 `resolve_bank` で救済・引き継ぎ・清算から選ぶ（行政力を使わない） | 決定 |  | tests/core/test_finance.py::test_resolve_bank_order_needs_failed_bank, tests/core/test_playtest5_fixes.py::test_failed_bank_keeps_the_reason_it_was_logged_with |
 | BK-36 | 次のターンまでに選ばなければ引き継ぎにし、引き継いでも規制を下回らない銀行がなければ救済にする | 決定 |  | tests/core/test_shocks.py::test_bank_failure_is_resolved_without_cascade |
@@ -70,6 +70,7 @@
 | BK-45 | 直近 1 年の利益がマイナスの銀行は、職員の下限 `banking.staff_floor` を外し、預金と融資の量に見合う人数まで減らす（経費の切り詰め）。利益がプラスのまま `banking.lean_turns` ターン続けば戻す | 決定（回7 後半） | `banking.staff_floor`, `banking.lean_turns` | tests/core/test_balance_round7b.py::test_losing_bank_cuts_staff_below_the_floor_until_it_earns_again, tests/core/test_playtest5_fixes.py::test_small_bank_hires_for_its_business |
 | BK-46 | 破綻の前の合併: 直近 1 年の利益がマイナスで、自己資本比率が「規制＋`banking.risk_buffer`」を下回り、危ない融資を安く見た後の自己資本がまだプラスの銀行は、同じ持ち主の区分で直近 1 年の利益がプラスの健全な銀行（引き取った後も「規制＋`banking.risk_buffer`」以上、準備預金が最低限に足りる。預金の多い順）が引き取る。値段（安く見た後の自己資本）を株主に払い、すべてを引き継ぐ。1 ターンに 1 つ、計画経済の島ではしない。合併の後 1 年は新しい銀行が入らない | 決定（回7 後半） | `banking.risk_buffer` | tests/core/test_balance_round7b.py::test_merger_pays_shareholders_and_moves_everything |
 | BK-49 | 資本家階級の株を担保にした借入（2026-11-03）: 新しい会社の出資に足りない分を、株の値打ち × 掛け目から今の残高を引いた分まで、金利の低い銀行から自己資本比率の規制（同じ参入の建設資金を貸した後の残り）と大口融資の規制（資本家階級を1つの借り手とみる）の残りずつ借りる。金利は政策金利＋銀行の利ざや、決めたターン数で均等に返す。残高が担保 × 掛け目を超えたら超えた分をその月の返済に足し（追い証）、返済が決めた回数続けて遅れたら残りを銀行の損として消す（担保の株を取って売る道は入れない） | 決定（2026-11-03） | `firms.pledge_ratio`, `firms.pledge_turns`, `loans.arrears_limit`, `banking.large_exposure` | tests/core/test_firm_founding_three.py::test_capitalists_borrow_on_their_shares_to_found_a_firm, ::test_margin_call_and_write_off |
+| BK-50 | 管財人の運転資金（2026-11-10、FM-59）: 倒産した施設を動かす支払いに施設の預金が足りなければ、差し押さえた銀行が管財人の運転資金を貸す。ふつうの運転資金と分けた使い道で、分割で返さず、施設が売れたとき・取り壊すとき・国に移るときに一度に、前からの請求（未払い賃金・税・貸し手）より先に返す（遅れにも借り換えにもならない）。審査は「直近の変動費の利益が出ているか」だけで見る。自己資本比率の規制と準備の最低限にはかけ、貸せなければ島のほかの銀行が預金の多い順に貸す。先に返るので大口融資の規制には数えず、破綻処理と自己資本の計算で「返ってこないおそれの大きい融資」にも入れない。破綻処理の引き継ぎでは、差し押さえの記録の銀行と一緒に移す。引き継ぐ銀行がなければ政府が出資で入れ、同じ順で返してもらう。破綻から処理までのターンは新しく貸さない | 決定（2026-11-10） |  | tests/core/test_receivership.py::test_bankrupt_facility_keeps_working_under_the_receiver, ::test_receivership_repays_its_loan_first_when_sold |
 
 ### 仮の決まり
 
@@ -114,7 +115,7 @@
 ### 預金と預金金利
 
 - 家計の各層は預金を銀行ごとに分けて持ち、毎ターン預金の `banking.switch_share` までを「預金金利−危なさ」が高い銀行へ移す。危なさは、自己資本比率が「規制＋`banking.risk_buffer`」を下回った分に `banking.risk_weight` を掛けた値。
-- 取り付け: 自己資本比率が規制を下回った銀行と、中央銀行から借りている銀行からは、毎ターン預金の `banking.run_share` がほかの銀行へ流れ出す。
+- 取り付け: 自己資本比率が規制を下回った銀行からは、毎ターン預金の `banking.run_share` がほかの銀行へ流れ出す。中央銀行から借りているだけでは流れ出さない。日銀や FRB がどの銀行に貸したかは預金者に見えない（公表しないか、ずっと後に出る）。前の決まりは「中央銀行から借りている銀行」からも流れ出すとしていたが、中央銀行からの借り入れは銀行の段の初めに返してから乗り換えを見るので、実際には一度も働いていなかった（X870 の比べで、外す前と後の結果が全く同じ。2026-11-11）。
 - 施設の預金は取引銀行（借りている銀行、なければ島でいちばん大きい銀行）に置く。払うときは取引銀行の預金から先に使う。
 - 預金金利は銀行ごとに、毎ターン `banking.rate_step` ずつ「政策金利−`banking.deposit_spread`」へ近づける。準備預金の余りと国債の額面（流通市場ですぐ売れるので流動性に数える。回5 から）が `banking.liquidity_target` を下回る銀行と、開業して預金を集めている銀行は政策金利へ近づける。初めの値は `banking.deposit_rate`。島の預金金利は銀行の平均。
 - 預金を使う割合と消費の式はタブ 4。
@@ -200,7 +201,7 @@ y = r_P + \lambda_T + \sigma \cdot \max\left(0, \frac{I}{R} - \theta\right) + \k
 ### 債務不履行
 
 - 不履行は、命令 `set_bond_payment` で支払いを止めたときだけで、すべての銘柄を一度に不履行にする。自国通貨の国債の不履行は、発行できないから起きるのではなく、制度と政府の選び方で起きるため。
-- 不履行の銘柄は額面を `bonds.haircut` だけ切り下げ（持ち手の損。外国の持ち手も同じ）、残りを同じ期間で出し直す。区分の利回りが跳ね上がり、時価も下がる。自己資本が尽きた銀行は破綻する。
+- 不履行の銘柄は中央銀行以外の持ち分の額面を `bonds.haircut` だけ切り下げ（市中銀行・外国の持ち手の損）、残りを同じ期間で出し直す。中央銀行の持ち分は政府と合わせた財布の内側にあるため切り下げない。ログの金額は実際に切り下げた額だけ。切り下げ額が0の場合は金額0の不履行ログを残し、新たな市場閉鎖・利回り上乗せ・銀行の融資停止を付けず、既存の罰はそのまま期限に従う。区分の利回りが跳ね上がり、時価も下がる。自己資本が尽きた銀行は破綻する。
 - 罰は3つ（支払いを止めると借金が減る分だけ得な手になっていたため）。
   - 利回りに上乗せ δ（`bonds.default_premium`。`bonds.default_decay_turns` かけて 0 に減る）。借金の多い国はすぐ上限に届く。
   - 不履行から `bonds.default_exclusion_turns` は、銀行が国債を買わない（入札に来ず、売買の市場でも買わない。売りはする）。新しい発行の売れ残りは政策どおり中央銀行が引き受けるか支出を削る。期間が終わるターンにログで知らせる。

@@ -209,6 +209,10 @@ def test_expansion_is_dropped_when_the_owner_changes(game, world):
     assert order(game, world, island, "build", payload).status == "done"
     site = next(f for f in island.facilities if fac.expansion_of(f) == plant.id)
     site.owner = "private"  # 工事の間に持ち主が替わったのと同じ（国営の工事と民営の施設）
+    # 済む直前にして、済んだときの持ち主の比べを見る（前は資材が買えずに止まった民営の工事が
+    # firms.abandon_turns でやめになり、比べの前に消えていた。2026-11-10 に工事が海外の商人からも
+    # 資材を買うようにした後は工事が進み、30 ターンでは済まない）
+    site.progress = fac.total_progress(game.defs, site) - 1
     _finish(game, world, island, site)
     assert fac.size_of(plant) == 1  # 工事は取り除かれ、規模は上がらない
 

@@ -57,6 +57,7 @@ from hakoniwa_core.economy import (
     funds,
     household,
     layers,
+    needs,
     owner_entity,
 )
 from hakoniwa_core.economy import plan as planning
@@ -758,6 +759,7 @@ def change_economy(island: IslandState, payload: dict[str, Any], ctx: StageConte
         planning.stop(island)
         _add_owners(island, ctx)
     island.policy.bank_entry = ""  # 民間銀行の参入は新しい経済体制の既定
+    island.policy.dismissal = ""  # 解雇の決まりも新しい経済体制の既定（LB-43）
     args = {"before": before or "", "economy": payload["economy"]}
     island.log.append(LogEntry("economy_changed", args))
 
@@ -788,9 +790,10 @@ def _start_transition(island: IslandState, ctx: StageContext, kind: str) -> None
 def _nationalize_all(island: IslandState, ctx: StageContext) -> None:
     """民営の施設と民間銀行を帳簿の純資産で国有化する。代金の合計は、中央銀行が引き受ける国債で
     国庫に用意してから払う。民営工場の工事は取りやめる（参入の工事の取りやめと同じ）。"""
+    from hakoniwa_core.economy import in_receivership
     from hakoniwa_core.modules.construction import close_accounts
     from hakoniwa_core.modules.failures import close_foreclosure
-    from hakoniwa_core.modules.firms import EntryExit, _move_equity, pay_seller, restart
+    from hakoniwa_core.modules.firms import EntryExit, _move_equity, restart
 
     defs, config = ctx.defs, ctx.config
     owners = household(OWNERS)
@@ -819,10 +822,11 @@ def _nationalize_all(island: IslandState, ctx: StageContext) -> None:
     for f, entity, price in prices:
         seized = f.economy.get("foreclosed")
         if seized:
-            close_foreclosure(island, f)
+            running = in_receivership(f)
+            own = ledger.money(island, entity)
             funds.pay(island, payer, entity, price, "nationalization")
-            pay_seller(island, entity, seized, price)
-            restart(island, ctx, f, OWNER_STATE, price)
+            close_foreclosure(island, f, own + price, "foreclosure_sale")
+            restart(island, ctx, f, OWNER_STATE, price, running)
         else:
             seller = owner_entity(f) if f.kind != config.get("banking.facility") else owners
             funds.pay(island, payer, seller, price, "nationalization")
@@ -861,6 +865,7 @@ def _merge_owners(island: IslandState, ctx: StageContext) -> None:
     general = households[GENERAL]
     general["persons"] += persons
     blend_hunger(households[OWNERS], general, persons)
+    needs.move_clothes(households[OWNERS], general, persons, persons)  # 衣料も持って移る（LB-44）
     del households[OWNERS]
 
 

@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import math
+from typing import Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
@@ -274,10 +275,15 @@ def _holdings(island: IslandState) -> dict[str, float]:
 
 def _finances(island: IslandState) -> dict[str, float]:
     """国庫・国債の残高・政策金利。"""
+    treasury = funds.government_money(island)
+    outstanding = total_debt(island)
+    central_bank = sum(debt.holdings_of(island, ledger.CB).values())
     return {
-        "treasury": funds.government_money(island),  # 市中銀行に預けた政府の預金も数える（回5）
+        "treasury": treasury,  # 市中銀行に預けた政府の預金も数える（回5）
         "treasury.deposited": sum(funds.deposited(island).values()),
-        "debt": total_debt(island),
+        "debt": outstanding,
+        "bonds.central_bank": central_bank,
+        "net_public_debt": outstanding - central_bank - treasury,
         "policy_rate": island.policy.policy_rate * 100 / BASIS,
     }
 
@@ -341,16 +347,31 @@ def register(registry: Registry) -> None:
     registry.add_stage(Records())
 
 
+def shortfall(record: Any) -> int:
+    """市場の記録の、売りに出た量で足りなかった分（買いたい量 − 売りに出た量。品不足の量）。
+
+    売りが売れ残ったのに買えなかった分は数えない。それは売り手の値段が買い手の指値より高くて
+    約定しなかった分で、物はある（公開世界の島2 で、穀物が 40,346t 出回り、買いたい量 25,638t より
+    多いのに「品不足が3ターン続く（84%）」と出ていた）。会社の参入の見方（modules/firms の
+    shortages）と同じ数え方。"""
+    return max(0, record.demand - record.supply)
+
+
+def is_short(record: Any, share: int) -> bool:
+    """品不足か: 品不足の量が買いたい量の share（1万分の1）以上。"""
+    return record.demand > 0 and shortfall(record) * BASIS >= record.demand * share
+
+
 def _shortages(island: IslandState, config) -> None:
-    """市場で買いたい量の records.shortage.share 以上を買えなかった財を数え、records.shortage.turns
-    ターン続いたらターンログで知らせる（続いている間は1度だけ。産業の鎖の画面。フェーズ3-2）。"""
+    """市場で買いたい量の records.shortage.share 以上が、売りに出た量で足りなかった財（is_short）を
+    数え、records.shortage.turns ターン続いたらターンログで知らせる（続いている間は1度だけ。産業の
+    鎖の画面。フェーズ3-2）。"""
     settings = config.get("records.shortage")
     share = to_basis(settings["share"])
     before = island.economy.ext.get(SHORTAGE, {})
     now = {}
     for record in sorted(island.markets, key=lambda r: r.good):
-        unmet = record.demand - record.volume
-        if record.demand <= 0 or unmet * BASIS < record.demand * share:
+        if not is_short(record, share):
             continue
         turns = before.get(record.good, 0) + 1
         now[record.good] = turns

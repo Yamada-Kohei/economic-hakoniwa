@@ -449,6 +449,29 @@ def test_shortage_is_logged_once_after_three_turns(game, warmed):
     assert records.SHORTAGE not in island.economy.ext
 
 
+def test_unsold_goods_are_not_a_shortage(game, warmed):
+    """売りが売れ残ったのに買えなかった分は、品不足に数えない（公開世界の島2 の穀物: 出回り
+    40,346t、買いたい量 25,638t、売買 21,724t で「品不足が3ターン続く（84%）」と出ていた）。
+    売り手の値段が買い手の指値より高くて約定しなかった分で、物はある。"""
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    config = game.config
+    island.economy.ext.pop(records.SHORTAGE, None)
+    island.log.clear()
+    island.markets = [MarketRecord("grain", 1028, 21724, 25638, 40346)]
+    for _ in range(4):
+        records._shortages(island, config)
+    assert not [e for e in island.log if e.kind == "shortage_continued"]
+    assert records.SHORTAGE not in island.economy.ext
+    # 売りに出た量が買いたい量より少なければ、売れ残りがあっても足りない分は品不足
+    island.markets = [MarketRecord("grain", 1028, 30, 100, 40)]
+    for _ in range(3):
+        records._shortages(island, config)
+    assert [e.args for e in island.log if e.kind == "shortage_continued"] == [
+        {"good": "grain", "turns": 3, "share": 30}
+    ]
+
+
 # --- 貿易: 輸入が引き合う値段と標準の計画 ----------------------------------------------
 
 

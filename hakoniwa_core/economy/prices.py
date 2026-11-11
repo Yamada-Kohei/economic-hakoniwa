@@ -17,6 +17,7 @@ from dataclasses import replace
 from typing import Any
 
 from hakoniwa_core import facilities as fac
+from hakoniwa_core import stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
@@ -24,7 +25,15 @@ from hakoniwa_core.defs.kinds import is_variant
 from hakoniwa_core.economy import equipment, experience, is_bank, is_self_supporting
 from hakoniwa_core.market import auction
 from hakoniwa_core.state import Facility, IslandState
-from hakoniwa_core.units import BASIS, QUANTITY_SCALE, money_of, part, round_money, scale_price
+from hakoniwa_core.units import (
+    BASIS,
+    QUANTITY_SCALE,
+    money_of,
+    part,
+    round_money,
+    scale_price,
+    to_basis,
+)
 
 Prices = Mapping[str, int]
 
@@ -36,6 +45,17 @@ def construction_cost(defs: Defs, kind: str, prices: Prices, wage: float) -> flo
         prices.get(g, 0) * q / QUANTITY_SCALE for g, q in construction.get("materials", {}).items()
     )
     return materials + construction.get("labor", 0) * construction["turns"] * wage
+
+
+def site_cost(defs: Defs, config: GameConfig, kind: str, prices: Prices, wage: float) -> float:
+    """空き地に建てる工場の造成で増える建設費（FM-61）: 造成の資材の代金と、工期を延ばした分の
+    人手（施設の人手 × 造成のターン数）と造成の作業員（工期の全部）の賃金。"""
+    site = config.get("firms.site_work")
+    construction = defs.facilities[kind]["construction"]
+    materials = sum(prices.get(g, 0) * q / QUANTITY_SCALE for g, q in site["materials"].items())
+    turns = construction["turns"] + site["turns"]
+    labor = construction.get("labor", 0) * site["turns"] + site["labor"] * turns
+    return materials + labor * wage
 
 
 def capital_cost(defs: Defs, config: GameConfig, kind: str, prices: Prices, wage: float) -> float:
@@ -428,6 +448,20 @@ def material_limit(island: IslandState, config: GameConfig, good: str, width: in
     return max(limit, ref)
 
 
+def site_material_cost(
+    island: IslandState, defs: Defs, config: GameConfig, f: Facility, *, remaining: bool = False
+) -> int:
+    """着工の見積りと、現在の買い値による未調達資材の代金。運賃と賃金は含めない。"""
+    width = to_basis(config.get("market.band"))
+    total = fac.total_progress(defs, f)
+    cost = 0
+    for good, qty in fac.materials_of(defs, f).items():
+        if remaining:
+            qty = max(0, qty - qty * f.progress // total - stock.total(f.stock, good))
+        cost += money_of(material_limit(island, config, good, width), qty)
+    return cost
+
+
 def adapt_materials(
     island: IslandState,
     config: GameConfig,
@@ -437,8 +471,8 @@ def adapt_materials(
 ) -> None:
     """工事の資材の積算のし直し（市場の段の終わり。2026-11-01 の価格の決まり方の直し 第2弾）。
 
-    asks は、このターンに工事・インフラ・設備の直し・公営住宅・建て直しが買いを出した財の、島の
-    売り手（海外の商人を除く）の一番安い指値（売りがなければ 0）。bought はそのうち約定した量。
+    asks は、このターンに工事・インフラ・設備の直し・公営住宅・建て直しが買いを出した財の、売り手
+    （海外の商人を含む）の一番安い指値（売りがなければ 0）。bought はそのうち約定した量。
     売りが出ていたのに工事の買いが1つも約定しないターンが household.reprice_turns 続いたら、
     積算し直した値段 ref を、その間の一番安い売りの指値にする（公共工事の入札が不調なら、今の
     相場で積算し直す）。売りのないターンは数えない。工事が買えたら数え直し、ref は今の一番安い
@@ -447,7 +481,13 @@ def adapt_materials(
     前は工事の指値が「値幅の上端」と「12 ターン平均の 1.05 倍」の安い方に止まり、作り手の費用が
     上がって売りの指値がそれより高くなると、売り手も買い手もいるのに機械の取引が何十ターンも
     止まった（W-180）。積算し直すと、作り手の費用の上がった分は工事の値段に乗る（費用までで、
-    売り手の指値より高くは買わない）。海外の商人の値段（初めの値段の何倍か）は島の相場に数えない。
+    売り手の指値より高くは買わない）。
+
+    海外の商人の売りも数える（2026-11-10）。前は商人の値段（初めの値段の何倍か）を島の相場に数え
+    なかったので、島に作り手がなく商人しか売らない財は、商人の値段が上がると（2026-11-08 に島で
+    作る費用から決める形にして、石材のない島で建材が約 1.5 倍）、売りがあるのに工事が1年近く買えず、
+    公開世界の半分の国で公共事業が止まった。現実の役所も、国内に作り手がなければ輸入品の値段で
+    積算し直す。商人より安い島の売り手がいれば、一番安い方になる。
     """
     turns = config.get("household.reprice_turns")
     if turns <= 0:

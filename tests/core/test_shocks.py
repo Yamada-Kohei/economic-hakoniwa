@@ -181,7 +181,11 @@ def test_rate_hike_raises_deposit_and_lending_rates(game, base, control):
 @pytest.mark.parametrize("method", ["bailout", "transfer", "liquidation"])
 def test_bank_failure_is_resolved_without_cascade(game, base, method):
     """融資の2割を貸し倒れにする。それで債務超過にならない（融資の少ない）銀行は、配当の払い
-    すぎで預金の5%の穴を開けて、必ず破綻させる。"""
+    すぎで預金の5%の穴を開けて、必ず破綻させる。
+
+    確かめるのは「ほかの銀行へ連鎖しない」こと。救済した同じ銀行が、後で貸し先の倒産でもう一度
+    傾くことは許す（救済は資本を戻すだけで、残った不良な融資の損は後から出る。main でも同じ銀行が
+    35 ターン目ごろに際どくなる。11-10 本人の判断）。"""
     world = only(base, "mixed")  # 銀行が2つある島
     island = next(iter(world.islands.values()))
     bank = max(banks.active_banks(island), key=lambda b: banks.loans_of(island, b))
@@ -194,10 +198,13 @@ def test_bank_failure_is_resolved_without_cascade(game, base, method):
     f = banks.facility_of(island, bank)
 
     deposits = []
+    others = []  # ターンごとに、破綻させた銀行のほかに破綻した銀行の場所
 
     def keep(island):
         deposits.append(sum(banks.deposits_of(island, b) for b in banks.bank_list(island)))
-        if any(e.kind.startswith("bank_failed") for e in island.log):
+        failed_here = [e.args for e in island.log if e.kind.startswith("bank_failed")]
+        others.append([(a["x"], a["y"]) for a in failed_here if (a["x"], a["y"]) != (f.x, f.y)])
+        if failed_here:
             # 標準の計画の命令に行政力を使い切られないように、命令の列の先頭に置く
             order = OrderState(
                 id=max((o.id for o in island.orders), default=0) + 1,
@@ -218,7 +225,7 @@ def test_bank_failure_is_resolved_without_cascade(game, base, method):
     resolved = next(i for i, kinds in enumerate(logs) if done in kinds)
     # 連鎖しない: 破綻処理の後 CASCADE_TURNS ターンのうちに、ほかの銀行が破綻しない
     assert failed[0] < resolved
-    assert not [i for i in failed[1:] if i <= resolved + CASCADE_TURNS]
+    assert not [i for i, where in enumerate(others) if where and i <= resolved + CASCADE_TURNS]
     # 預金は消えない（保護されない預金が削られても、島の預金の合計は大きく減らない）
     assert deposits[resolved] > deposits[failed[0]] * 0.9
 

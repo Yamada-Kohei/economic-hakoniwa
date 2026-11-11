@@ -107,7 +107,7 @@ _EXTRA_STATS = [
     ("bonds.traded", "国債の売買（1ターン）", "money"),
     ("bonds.cb_bought", "中央銀行が買った国債（1ターン）", "money"),
     ("bonds.cb_sold", "中央銀行が売った国債（1ターン）", "money"),
-    ("bonds.central_bank", "中央銀行が持つ国債", "money"),
+    ("bonds.central_bank", "中央銀行が持つ国債（刷ったお金）", "money"),
     ("inequality", "格差（資本家階級と労働者階級の1人あたりの所得の比）", "ratio"),
     ("profit", "事業所の損益合計（1ターン）", "money"),
     ("freight.surcharge", "運賃の割り増し（運送業の人手不足）", "ratio"),
@@ -247,6 +247,10 @@ _EXTRA_STATS = [
     # 回7 後半: 企業の中のお金の融通・休業・銀行の合併
     ("firms.pooled", "企業の中でほかの施設の手元から回したお金（1ターン）", "money"),
     ("labor.furloughed", "電気や原料が足りず休業した人（1ターン）", "人"),
+    # 解雇の決まり（LB-43）
+    ("labor.held", "解雇の決まりで抱えている余った人（1ターン）", "人"),
+    ("labor.dismissed", "解雇した人（1ターン）", "人"),
+    ("labor.severance", "解雇手当（1ターン）", "money"),
     ("banks.merged", "銀行の合併（1ターン）", ""),
     ("households.support", "家計の支え合いで送ったお金（1ターン）", "money"),
     ("retail.need", "家計の小売りの要る量（1ターン）", "good:retail"),
@@ -290,6 +294,8 @@ def stat_label(name: str) -> tuple[str, str]:
         return f"{'収入' if side == 'in' else '支出'}・{flow_name(side, kind)}", "money"
     if head == "spent":
         return f"使った額・{budget_name(rest)}", "money"
+    if head == "budget_share":  # LB-45: 国庫の項目の予算が足りず、要る額に対して分けた割合
+        return f"要る額に対して分けた割合・{budget_name(rest)}", "%"
     if head == "infra" and rest in defs.infrastructure:
         return f"{defs.name('infrastructure', rest)}の平均の整備度", "percent"
     if head == "loans":
@@ -1241,13 +1247,19 @@ def fiscal_view(
         "deficit": total_in < total_out,
         "budget": budget_rows,
         "other_spent": other_spent,
-        "taxes": stat_rows_policy(policy, currency),
-        "position": stat_rows(stats, ["treasury", "debt", "debt_ratio"], currency),
+        "taxes": stat_rows_policy(policy, currency, display.dismissal_view(island)),
+        "position": stat_rows(
+            stats,
+            ["treasury", "debt", "bonds.central_bank", "net_public_debt", "debt_ratio"],
+            currency,
+        ),
     }
 
 
-def stat_rows_policy(policy: dict[str, Any], currency: str) -> list[dict[str, str]]:
-    """税率・最低賃金・失業手当の表の行。"""
+def stat_rows_policy(
+    policy: dict[str, Any], currency: str, dismissal: dict[str, Any] | None = None
+) -> list[dict[str, str]]:
+    """税率・最低賃金・失業手当（と、dismissal を渡せば解雇の決まり）の表の行。"""
     rows = []
     for key in ("income_tax", "corporate_tax", "consumption_tax"):
         rows.append(
@@ -1267,6 +1279,18 @@ def stat_rows_policy(policy: dict[str, Any], currency: str) -> list[dict[str, st
             "text": f"平均賃金の {benefit:g}%" if benefit else "なし",
         }
     )
+    if dismissal:  # 解雇の決まり（LB-43。display.dismissal_view）
+        level = dismissal["dismissal"] or dismissal["dismissal_default"]
+        terms = dismissal["dismissal_terms"].get(level, {})
+        default = "" if dismissal["dismissal"] else "・経済体制の既定"
+        rows.append(
+            {
+                "label": display.message("policy_dismissal"),
+                "text": f"{dismissal['dismissal_choices'].get(level, level)}{default}"
+                f"（1か月に減らせる人は {terms.get('rate', 0):g}% と自然に辞める分まで、"
+                f"解雇手当は賃金の {terms.get('months', 0):g} か月分）",
+            }
+        )
     return rows
 
 

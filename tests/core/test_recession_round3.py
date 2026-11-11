@@ -215,7 +215,9 @@ def test_houses_wear_and_lose_room_only_below_the_livable_line(game, base):
         stock.add(island.economy.housing["stock"], good, qty, world.turn, game.defs.goods)
     stage.run_island(island, ctx)
     assert home.economy[fac.HOUSING_CONDITION] > full * 99 // 100
-    assert fac.housing_capacity(game.defs, home) == nominal
+    # 傷みの分は戻る（直したあとの残りの資材で、住み替えの床が少し足されることはある）
+    after = fac.nominal_housing_capacity(game.defs, home)
+    assert fac.housing_capacity(game.defs, home) == after >= nominal
 
 
 def test_households_borrow_for_new_towns_and_the_books_balance(game, base):

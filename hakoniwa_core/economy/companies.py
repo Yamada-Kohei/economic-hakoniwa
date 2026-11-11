@@ -350,11 +350,14 @@ def choose_investor(
     kind: str,
     equity_of: int | Callable[[int | None], int],
     pledge: Callable[[], int] | None = None,
+    exclude: int | None = None,
 ) -> tuple[str, int | None] | None:
     """新しい施設（kind）の出資を出す者。equity_of(企業の番号) はその企業が出すときの出資の額、
     equity_of(None) は資本家階級が新しい企業を起こすときの出資の額（創業融資で多め。2026-11-03）。
     数を渡すと、誰が出すときも同じ額。
     pledge() は資本家階級が株を担保に借りられる額（呼ぶのは預金で足りないときだけ）。
+    exclude の企業は出さない（居抜きの売りで、倒産・閉鎖した施設の元の企業。わざと倒産させて安く
+    買い戻せないように。FM-60）。
 
     1. 同じ種類の施設を持つ民営の企業（チェーンの出店・同じ業種の増設。作り方を知っている会社）と、
        新しい企業を起こす資本家階級のうち、出資に使える預金の多い方（同じなら企業）。お金を多く
@@ -381,6 +384,8 @@ def choose_investor(
         if rec[OWNER] != OWNER_PRIVATE:
             continue
         number = int(key)
+        if number == exclude:
+            continue
         cash = spare(island, number)
         if cash < max(1, equity_of(number)):
             continue

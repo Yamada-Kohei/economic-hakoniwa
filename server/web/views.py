@@ -569,6 +569,8 @@ STATUS_HELP = (
     ("power", "発電量が足りません。発電所の燃料か、発電所の数を見ます。"),
     ("no_grid", "発電所のある送電網につながっていません。送電線か送電網の工事でつなぎます。"),
     ("target", "売れ行きに合わせて作る量を減らしています。不具合ではありません。"),
+    ("budget", "国庫の同じ項目の年の予算が足りません。予算を増やすか、優先度を上げます。"),
+    ("staff_plan", "人員計画で決めた人数の枠で人が足りません。計画の画面で枠を見直します。"),
     ("equipment", "設備が傷んで作れる量が減っています。国営なら公共事業費で直します。"),
     ("halted", "災害で一時止まっています。時間がたつと戻ります。"),
     ("public_price", "学校・大学の教材が高く、教育費で買えません。教育費を見直します。"),
@@ -669,7 +671,9 @@ def _help_context() -> dict:
         "admin_per_office": _admin_people(defs),
         # 金融と企業（フェーズ2-2）の説明に出す数
         "arrears_limit": game.config.get("loans.arrears_limit"),
-        "foreclosure_turns": game.config.get("firms.foreclosure_turns"),
+        "sale_turns": game.config.get("firms.sale_turns"),
+        "sale_cut_turns": game.config.get("firms.sale_cut_turns"),
+        "site_turns": game.config.get("firms.site_work")["turns"],
         "cb_lock_turns": game.config.get("central_bank.switch_lock_turns"),
         # 国債の債務不履行の罰
         "default_premium": f"{game.config.get('bonds.default_premium') * 100:g}",
@@ -749,6 +753,17 @@ def _goods_help(game) -> dict:
             "wear": percent(config.get("household.cars.wear")),
             "share": percent(config.get("household.cars.share")),
         },
+        # 衣料は持ち物（LB-44）: 1年に傷む割合と、必需品の予算に対する上限
+        "clothing": {
+            "wear": percent(config.get("household.clothing.wear")),
+            "share": percent(config.get("household.clothing.share")),
+        },
+        # 売れ残りの値引き（MK-41。アウトレット）
+        "clearance": {
+            "ratio": f"{config.get('market.clearance_ratio'):g}",
+            "turns": config.get("market.clearance_turns"),
+            "floor": percent(config.get("market.clearance_floor")),
+        },
         "trucks": {
             "drivers": config.get("freight.trucks.drivers"),
             "share": percent(config.get("freight.trucks.max_share")),
@@ -757,6 +772,20 @@ def _goods_help(game) -> dict:
             "share": percent(config.get("records.shortage.share")),
             "turns": config.get("records.shortage.turns"),
         },
+        # 食べ物の表: 1 単位で何人前か・食事の質・日持ち（質の低い順）
+        "foods": [
+            {
+                "name": defs.name("goods", g),
+                "nutrition": f"{gdef['food']['nutrition']:g}",
+                "quality": f"{gdef['food'].get('quality', 0):g}",
+                "shelf_life": gdef.get("shelf_life"),
+            }
+            for g, gdef in sorted(
+                ((g, d) for g, d in defs.goods.items() if d.get("food")),
+                key=lambda item: (item[1]["food"].get("quality", 0), item[0]),
+            )
+        ],
+        "food_reserve_turns": config.get("food_reserve.turns"),
     }
 
 
@@ -822,6 +851,10 @@ def _trade_help(game) -> dict:
         "merchant_buy_multiplier": f"{settings.get('buy_multiplier', 0):g}",
         "merchant_goods": "・".join(defs.name("goods", g) for g in settings["goods"]),
         "tradable": "・".join(defs.name("goods", g) for g in tradable_goods(defs)),
+        # 船の前注文（FX-60）: 手付け・建造の間に払う割合と、取り消すまでの遅れ
+        "order_deposit": f"{config.get('trade.order_deposit') * 100:g}",
+        "order_progress": f"{config.get('trade.order_progress') * 100:g}",
+        "order_late_turns": config.get("trade.order_late_turns"),
     }
 
 
