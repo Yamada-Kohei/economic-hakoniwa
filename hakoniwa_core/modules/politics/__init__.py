@@ -59,6 +59,7 @@ from hakoniwa_core.economy import (
     layers,
     needs,
     owner_entity,
+    power_fuel,
 )
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy.debt import underwrite
@@ -833,6 +834,7 @@ def _nationalize_all(island: IslandState, ctx: StageContext) -> None:
             _move_equity(island, entity, seller, ledger.GOV)
             f.economy.pop("firm", None)
             f.owner = OWNER_STATE
+            power_fuel.reset_book(defs, f, island.economy.prices)
             for key in ("closing", "idle_turns", "loss_streak"):
                 f.economy.pop(key, None)
         count += 1

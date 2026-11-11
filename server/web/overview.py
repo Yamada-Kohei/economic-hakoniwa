@@ -17,7 +17,7 @@ from django.urls import reverse
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import politics as core_politics
-from hakoniwa_core.economy import books, retail
+from hakoniwa_core.economy import books, is_seized, is_stopped, power_fuel_notice, retail
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.modules.population import still_hungry
 from hakoniwa_core.naming import facility_name
@@ -494,6 +494,22 @@ def _mine_alerts(
     return out
 
 
+def _fuel_alerts(island: m.Island, mine: bool, viewer: int | None = None) -> list[str]:
+    """市場の段が残した燃料の注意を、島の画面と国の要約に同じ文で出す。"""
+    out = []
+    for row in _facility_rows(island):
+        if not display.sees_facility(row, mine, viewer):
+            continue
+        f = facility_from_row(row)
+        if not f.built or is_stopped(f) or is_seized(f) or fac.is_halted(f, island.world.turn):
+            continue
+        for entry in f.economy.get(power_fuel_notice.NOTICES, {}).get("active", []):
+            if entry["kind"] == power_fuel_notice.PRICE and f.status == "power_price":
+                continue
+            out.append(display.message(entry["kind"], **entry["args"]))
+    return out
+
+
 MERCHANT_NOTICE_TURNS = 24  # 海外の商人が量を減らし始める何ターン前から注意を出すか
 
 
@@ -553,6 +569,7 @@ def island_alerts(island: m.Island, mine: bool) -> tuple[list[str], list[dict[st
         world.turn,
         reports.yield_data(island),
     )
+    out += _fuel_alerts(island, mine)
     steps: list[dict[str, Any]] = []
     if mine:
         losing = losing_facilities(island, currency)
@@ -911,6 +928,7 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
         "country": country.brief(island, mine),
         "strengths": rankings.island_strengths(island, latest),
         "facilities": facilities,
+        "fuel_reserves": display.fuel_reserves(island, mine, viewer),
         "goods": goods,
         "services": services_brief(latest, currency),
         "shipping": shipping_brief(latest, currency),
@@ -940,6 +958,7 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
             reports.yield_data(island),
         ),
     }
+    data["alerts"] += _fuel_alerts(island, mine, viewer)
     if mine:
         losing = losing_facilities(island, currency)
         data["losing"] = losing[:LIST_MAX]

@@ -644,6 +644,10 @@ power:
   household_use: 0.0005 # 住民1人あたりの電力
   household_priority: 4 # 家庭への送電の優先順位（施設の優先順位と比べる）
   household_share: 0.3  # 家計が電気代に使う額の上限（使う額に対する割合）。これを超える電気料金では買わない
+  fuel_stock_turns: 3   # 火力発電所が備える燃料の月数。米国の石炭火力は構内に2〜4か月分を積む
+  fuel_restock: 0.2     # 使う見込みの燃料に対して、1ターンに買い足す割合
+  fuel_notice_turns: 1.5 # 燃料不足を知らせる残りの月数。fuel_stock_turns の半分以下
+  notice_reset: 0.9     # 燃料の現価で見た売り値の下限が電力価格のこの割合を下回ると、再び採算の注意を出せる
 
 population:
   food_per_person: 0.002 # 1人1ターンあたりの食料

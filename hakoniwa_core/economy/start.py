@@ -31,6 +31,7 @@ from hakoniwa_core.economy import (
     is_self_supporting,
     is_transport,
     owner_entity,
+    power_fuel,
     services,
 )
 from hakoniwa_core.economy import freight as freight_rates
@@ -141,6 +142,7 @@ def init_facility(
         }
     if firm is not None:
         f.economy["firm"] = firm
+    power_fuel.ensure_book(defs, f, prices)
 
 
 def operating_cost(
