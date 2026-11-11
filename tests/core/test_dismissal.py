@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger
 from hakoniwa_core.economy import (
@@ -19,9 +21,17 @@ from hakoniwa_core.modules.employment import Employment
 from hakoniwa_core.modules.labor import set_labor_policy
 from hakoniwa_core.modules.production import Production
 from hakoniwa_core.state import ACCOUNTING_SELF, ACCOUNTING_TREASURY, OWNER_PRIVATE, OWNER_STATE
+from tests.core.dismissal_rules import dismissal_rules
 from tests.core.test_recession_round1 import context
 from tests.core.test_rules import add, home, make_island, run, with_economy
 from tests.core.test_rules import game as game  # noqa: F401  （試験の部品を使い回す）
+
+
+@pytest.fixture(autouse=True)
+def _rules(game):
+    """決まりを一時止めている間も、決まりそのものを試す（tests/core/dismissal_rules.py）。"""
+    with dismissal_rules(game.config):
+        yield
 
 
 def _mill(game, regime="mixed"):
