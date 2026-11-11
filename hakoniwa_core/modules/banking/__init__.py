@@ -24,8 +24,8 @@
    国債の債務不履行で損をした銀行は、banking.default_crunch_turns ターンのあいだ新しく貸さず、返す元
    金の借り換えだけを貸す（計画経済の島を除く。止める期間が終わったらログで知らせる）。
 5. 家計の層は、預金の banking.switch_share までを「預金金利 − 危なさ」の高い銀行へ移す。自己資本比率
-   が規制を下回った銀行と、中央銀行から借りている銀行からは banking.run_share が流れ出す（取り付
-   け）。
+   が規制を下回った銀行からは banking.run_share が流れ出す（取り付け）。中央銀行から借りているだけ
+   では流れ出さない（預金者に見えない）。
 6. 銀行ごとに預金金利と利ざやを見直す。預金金利は「政策金利 − banking.deposit_spread」へ近づけ、準備
    預金が足りない銀行と、開業して預金を集めている銀行は政策金利へ近づける。島の預金金利
    （policy.deposit_rate）は銀行の預金金利の平均。
@@ -478,14 +478,14 @@ class Banking(IslandStage):
         config = ctx.config
         scores = {b: self._score(island, ctx, b) for b in active}
         best = max(active, key=lambda b: (scores[b], banks.deposits_of(island, b), b))
+        # 取り付けは体力（自己資本比率）が規制を下回った銀行からだけ。中央銀行からの借り入れは
+        # 預金者に見えない（日銀や FRB の貸し先は公表されないか、ずっと後に出る）。前は借りた
+        # だけで毎月逃げ、短い借り入れが半年を越えていた（銀行の救済。2026-11-11）
         runs = [
             b
             for b in active
             if b != best
-            and (
-                banks.capital_ratio(island, config, b, ctx.turn) < banks.regulatory(config)
-                or banks.cb_borrowed(island, b) > 0
-            )
+            and banks.capital_ratio(island, config, b, ctx.turn) < banks.regulatory(config)
         ]
         switch = to_basis(config.get("banking.switch_share"))
         run = to_basis(config.get("banking.run_share"))

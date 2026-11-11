@@ -28,7 +28,7 @@
 | BK-05 | 金額は通貨の最小単位の整数、金利は年率の1万分の1で持つ。1ターンの利子は「残高×金利÷12」の切り捨て | 決定 |  | （未確認） |
 | BK-06 | 市中銀行はオフィス街のマスに入る施設で職員を雇う。預金と融資が少ない銀行は少なく雇う。職員が足りない割合だけ新しい融資を絞る | 決定 | `banking.facility`, `banking.staff_volume`, `banking.staff_floor` | tests/core/test_playtest5_fixes.py::test_small_bank_hires_for_its_business |
 | BK-07 | 国営銀行はプレイヤーが建設の命令で建てる。民間銀行は参入の政策（自由・許可制・禁止）に従い、預金と利益の見込みが立てば資本家階級の出資で開業する。計画経済は国営銀行だけ | 決定 | `banking.max_banks`, `banking.entry_capital`, `banking.entry_deposits`, `banking.entry_roe_margin` | tests/core/test_finance.py::test_planned_economy_cannot_privatize_or_license_banks, tests/core/test_playtest5_fixes.py::test_bank_does_not_open_when_it_cannot_raise_its_deposit_rate, tests/core/test_playtest_fixes.py::test_bank_entry_block_names_missing_office |
-| BK-08 | 家計の層は毎ターン預金の一部を「預金金利−危なさ」の高い銀行へ移す。規制を下回った銀行と中央銀行に頼る銀行からは取り付けで流れ出す | 決定 | `banking.switch_share`, `banking.run_share`, `banking.risk_buffer`, `banking.risk_weight` | （未確認） |
+| BK-08 | 家計の層は毎ターン預金の一部を「預金金利−危なさ」の高い銀行へ移す。規制を下回った銀行からは取り付けで流れ出す（中央銀行から借りているだけでは流れ出さない。2026-11-11） | 決定 | `banking.switch_share`, `banking.run_share`, `banking.risk_buffer`, `banking.risk_weight` | tests/core/test_bank_runs.py::test_borrowing_from_the_central_bank_does_not_start_a_run, ::test_a_bank_below_the_regulatory_ratio_still_sees_a_run |
 | BK-09 | 預金金利は「政策金利−差」へ少しずつ近づけ、手元の流動性（準備預金の余りと国債の額面）が足りない銀行と開業して預金を集めている銀行は政策金利へ近づける | 決定 | `banking.deposit_rate`, `banking.deposit_spread`, `banking.liquidity_target`, `banking.rate_step` | tests/core/test_shocks.py::test_rate_hike_raises_deposit_and_lending_rates |
 | BK-10 | 融資は建設資金（据え置きの後に均等に返す）と運転資金（短く返し、貸し手と借り手ごとに1本で回す）、家計の住宅ローン（BK-47）、資本家階級の株を担保にした借入（BK-49）。金利は毎ターン式 `loan_rate` で計算し直す変動金利 | 決定 | `loans.construction_turns`, `loans.grace_turns`, `loans.working_turns`, `banking.margin`, `banking.margin_range`, `banking.rho` | tests/core/test_finance.py::test_working_loans_merge_per_lender_and_borrower, ::test_construction_loans_wait_for_grace |
 | BK-11 | 審査は、現金で見た営業の利益が返済の決めた倍以上で、借入が資産の決めた割合以下。利益で返せなくても在庫の担保の分は運転資金を貸す | 決定 | `loans.coverage`, `loans.max_leverage`, `loans.inventory_ratio` | （未確認） |
@@ -115,7 +115,7 @@
 ### 預金と預金金利
 
 - 家計の各層は預金を銀行ごとに分けて持ち、毎ターン預金の `banking.switch_share` までを「預金金利−危なさ」が高い銀行へ移す。危なさは、自己資本比率が「規制＋`banking.risk_buffer`」を下回った分に `banking.risk_weight` を掛けた値。
-- 取り付け: 自己資本比率が規制を下回った銀行と、中央銀行から借りている銀行からは、毎ターン預金の `banking.run_share` がほかの銀行へ流れ出す。
+- 取り付け: 自己資本比率が規制を下回った銀行からは、毎ターン預金の `banking.run_share` がほかの銀行へ流れ出す。中央銀行から借りているだけでは流れ出さない。日銀や FRB がどの銀行に貸したかは預金者に見えない（公表しないか、ずっと後に出る）。前は借りただけで毎月 2 割が逃げ、短い借り入れが半年を越えて銀行の救済（関門の目安）になっていた（X870 の比べ、open 種1 の島 47。2026-11-11）。
 - 施設の預金は取引銀行（借りている銀行、なければ島でいちばん大きい銀行）に置く。払うときは取引銀行の預金から先に使う。
 - 預金金利は銀行ごとに、毎ターン `banking.rate_step` ずつ「政策金利−`banking.deposit_spread`」へ近づける。準備預金の余りと国債の額面（流通市場ですぐ売れるので流動性に数える。回5 から）が `banking.liquidity_target` を下回る銀行と、開業して預金を集めている銀行は政策金利へ近づける。初めの値は `banking.deposit_rate`。島の預金金利は銀行の平均。
 - 預金を使う割合と消費の式はタブ 4。
