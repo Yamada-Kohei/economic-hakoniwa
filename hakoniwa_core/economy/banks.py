@@ -424,6 +424,8 @@ def assets_of(island: IslandState, f: Facility, entity: str) -> int:
     if "trade" in f.economy:  # 商社（trade/traders.py の state_of）
         from hakoniwa_core.trade import traders  # trade は economy を読むので、ここで読む
 
+        if traders.is_planned(island):  # 計画経済の島の商社は前のまま
+            return total
         _, transit, fx_value = traders.trade_collateral(island, f)
         total += transit + fx_value
     return total

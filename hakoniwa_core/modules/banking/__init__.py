@@ -84,6 +84,9 @@ def in_business(f: Facility) -> bool:
 
 class Banking(IslandStage):
     name = "banking"
+    # この施設の運転資金のうち、銀行の体力（自己資本比率・大口融資の規制・新しく貸さない期間）で
+    # 断った額（_room が足し、_working_capital が商社ごとに見る。FX-62）
+    _walled = 0
 
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
         if not island.has_economy:
@@ -331,11 +334,11 @@ class Banking(IslandStage):
             short -= companies.draw(island, f, short)
             if short <= 0:
                 continue
-            refused = sum(r for _, r in lent.values())
+            self._walled = 0
             trader_planned = planned and (imports == 0 or traders.is_planned(island))
             short = self._borrow(island, ctx, f, short, lent, trader_planned)
-            if imports > 0 and sum(r for _, r in lent.values()) > refused:
-                # 銀行の体力（自己資本比率・大口融資の規制・新しく貸さない期間）で断られた
+            if imports > 0 and short > 0 and self._walled > 0:
+                # 銀行の体力（自己資本比率・大口融資の規制・新しく貸さない期間）で借りきれなかった
                 # （FX-62 の取り逃した儲けに数えない）
                 traders.state_of(f)["bank_wall"] = ctx.turn
             short = min(short, max(0, payments - imports - ledger.money(island, entity)))
@@ -443,13 +446,14 @@ class Banking(IslandStage):
             if x.purpose == banks.WORKING
         )
         room = part(collateral, to_basis(ctx.config.get("loans.trade_ratio"))) - working
-        piece = min(amount, room)
-        if piece <= 0:
-            return 0
-        settings = ctx.config.get("loans")
-        debt_after = banks.debt_of(island, entity) + piece
-        assets = banks.assets_of(island, f, entity) + piece
-        return piece if debt_after <= settings["max_leverage"] * assets else 0
+        # 借入の割合の審査（借入 ≦ 資産 × loans.max_leverage。借りた分は預金として資産にも入る）
+        # に通る分まで
+        leverage = ctx.config.get("loans.max_leverage")
+        debt = banks.debt_of(island, entity)
+        assets = banks.assets_of(island, f, entity)
+        if leverage < 1:
+            room = min(room, int((leverage * assets - debt) / (1 - leverage)))
+        return max(0, min(amount, room))
 
     @staticmethod
     def _creditworthy(
@@ -490,8 +494,8 @@ class Banking(IslandStage):
         assets = banks.assets_of(island, f, entity) + amount
         return debt_after <= settings["max_leverage"] * assets
 
-    @staticmethod
     def _room(
+        self,
         island: IslandState,
         ctx: StageContext,
         f: Facility,
@@ -516,6 +520,7 @@ class Banking(IslandStage):
             want = min(want, room)
         piece = min(want, banks.capital_room(island, config, bank, ctx.turn))
         lent[bank][1] += want - piece
+        self._walled += amount - piece  # 銀行の体力で断った分（FX-62。_working_capital）
         return piece
 
     @staticmethod

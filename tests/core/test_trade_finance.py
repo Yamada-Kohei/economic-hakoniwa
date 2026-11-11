@@ -370,3 +370,22 @@ def test_the_world_keeps_its_books_with_trade_finance(game, traded):
         for f in traders_of(island, game.config)
     ]
     assert any(needs)
+
+
+def test_later_turns_share_the_trading_capacity_between_goods(game, traded):
+    """2 ターン目からの見込みも、扱える重さを財の間で分ける（運べない分の外貨を寝かせない）。"""
+    world = copy.deepcopy(traded)
+    island, f, _ = _importer(game, world)
+    cap = game.config.get("trade.trader_capacity") * 1000
+    goods = []
+    for good, item in sorted(traders.goods_of(f).items()):
+        if item.get("dir") == traders.IMPORT and trade_stage.unit_weight(game.defs, good) > 0:
+            item["m"] = 10**9  # どの財も扱える重さを超えて狙う
+            goods.append(good)
+    r = _round(game, world)
+    plan = r._import_plan(island, f, {}, ships_now=False)
+    keep = game.config.get("fx.keep_turns")
+    later = 0
+    for good, (_, first, total, _, _) in zip(sorted(goods), plan, strict=False):
+        later += trade_stage.weight(game.defs, good, (total - first) // max(1, keep - 1))
+    assert later <= cap
