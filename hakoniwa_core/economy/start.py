@@ -167,8 +167,10 @@ def operating_cost(
 def next_payments(island: IslandState, defs: Defs, config: GameConfig, f: Facility) -> int:
     """独立採算の施設が次のターンに払う見込み（操業目標の分の支払い。運送業は運賃の収入から
     充てる賃金。雇えた人数の賃金で見ると、初めに手元の資金がない運送業はずっと人を雇えない）。
-    商社は、賃金に、島の市場で輸出する物を買う額と、圏の市場で輸入に払う外貨（今のレートで
-    自国通貨に直す）の直近の平均を足す（フェーズ3-1）。海運業は、買いたい輸送船の代金も足す（回6）。"""
+    商社は、賃金に、島の市場で輸出する物を買う額の直近の平均と、次のターンの1ターン分の輸入の見込み
+    のうち持っている外貨で足りない分（今のレートで自国通貨に直す。FX-61・BK-51）を足す。計画経済の
+    島の商社（公定価格のある島）は外貨を買わないので、前のとおり圏の市場で輸入に払った外貨の直近の
+    平均を足す（フェーズ3-1）。海運業は、買いたい輸送船の代金も足す（回6）。"""
     wage = f.economy.get("wage", 0)
     if is_transport(config, f):
         return max(f.economy.get("wanted", 0) * wage, freight_rates.payroll(island, config))
@@ -178,10 +180,13 @@ def next_payments(island: IslandState, defs: Defs, config: GameConfig, f: Facili
         from hakoniwa_core.trade import fx, traders  # trade は economy を読むので、ここで読む
 
         spent = f.economy["trade"].get("spent", [])
-        abroad = sum(
-            fx.to_own(island, int(c), traders.abroad_average(f, int(c)))
-            for c in f.economy["trade"].get("abroad", {})
-        )
+        if traders.is_planned(island):
+            abroad = sum(
+                fx.to_own(island, int(c), traders.abroad_average(f, int(c)))
+                for c in f.economy["trade"].get("abroad", {})
+            )
+        else:
+            abroad = traders.import_need_own(island, f)
         return (
             f.economy.get("wanted", 0) * wage + (sum(spent) // len(spent) if spent else 0) + abroad
         )
