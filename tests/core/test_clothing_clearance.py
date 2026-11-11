@@ -25,30 +25,12 @@ from hakoniwa_core.modules.market import (
     elastic_orders,
     inventory_turns,
 )
-from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE, money_of, round_money, scale_price
-from tests.core.dismissal_rules import dismissal_rules
-from tests.core.test_finance import WARMUP, context, island_of, run
+from tests.core.test_finance import context, island_of
 from tests.core.test_finance import game as game  # noqa: F401  （試験の部品を使い回す）
+from tests.core.test_finance import warmed as warmed  # noqa: F401
 
 Q = QUANTITY_SCALE
-
-
-@pytest.fixture(scope="module")
-def warmed(game):
-    """test_finance の warmed と同じ世界を、解雇の決まりを入れて作る。この試験は書いたときの
-    世界の道（決まりのある世界）に頼るので、決まりを一時止めている間も同じ道で見る
-    （tests/core/dismissal_rules.py）。"""
-    with dismissal_rules(game.config):
-        world = generate_world(1, 3, game.config, game.defs)
-        run(game, world, WARMUP)
-    return world
-
-
-@pytest.fixture(autouse=True)
-def _rules(game):
-    with dismissal_rules(game.config):
-        yield
 
 
 @pytest.fixture
@@ -496,11 +478,28 @@ def test_island_price_does_not_climb_while_the_outlet_fills_the_shortage(
             world.turn + 1,
         )
         ask = -(-cost * BASIS // (BASIS - rate))  # 費用で決まるふだんの売りの指値
+        prices = dict(island.economy.prices)
         game.engine.run_turn(world)
+        # 指値の費用は、このターンの雇用の段で決まった賃金で見る（賃金が上がれば費用も上がる）
+        rate = freight_rates.facility_rates(island, game.defs, game.config).get(f.id, 0)
+        cost = subsidized_floor(
+            island,
+            game.defs,
+            game.config,
+            f,
+            good,
+            prices,
+            f.economy.get("wage", 0),
+            rate,
+            world.turn,
+        )
+        ask = max(ask, -(-cost * BASIS // (BASIS - rate)))
         record = next(m for m in island.markets if m.good == good)
         assert island.stats.get(f"clearance.sold.{good}", 0) > 0
         assert record.price == island.economy.prices[good]
-        assert island.economy.prices[good] <= max(before, ask)
+        # 守るのは品薄で値幅（market.band）ずつ上がること。段の途中で費用が少し動いた分は見る
+        top = max(before, ask)
+        assert island.economy.prices[good] <= top + top * game.config.get("market.band") / 100
         held += island.economy.prices[good] == before
     assert held >= 1  # 品薄を値引きで満たし、前の値段のままのターンがある
 
