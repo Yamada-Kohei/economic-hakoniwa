@@ -274,7 +274,7 @@
 | FM-61 | 工業団地のない国の工場（W-256）: 民営の工場（`firms.open_land` でない施… | 決定（2026-11-10） | tests/core/test_balance_round6.py、tests/core/test_open_land_factory.py |
 | FM-62 | 食品工場の作り方（2026-11-10、W-249）: 食品工場は穀物の作り方のほかに、魚の作り… | 決定（2026-11-10 | tests/core/test_food_factory_fish.py |
 | FM-63 | 火力発電所の燃料の備え（2026-11-11、掲示板 #25 の 45 番）: 動いている火力発… | 決定 | tests/core/test_power_fuel_reserve.py |
-| FM-64 | 火力発電所の電力の売り値の下限（MK-24 の1単位の変動費）の燃料の分は、在庫の燃料の取得原価… | 決定 | tests/core/test_power_fuel_cost.py |
+| FM-64 | 火力発電所の電力の売り値の下限（MK-24 の1単位の変動費）と撤退の判断の変動費の利益（FM-… | 決定 | tests/core/test_power_fuel_cost.py |
 
 ## [6 国の財政と政策](06-finance.md)
 
