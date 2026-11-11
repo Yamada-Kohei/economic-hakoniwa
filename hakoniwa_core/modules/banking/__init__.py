@@ -85,7 +85,7 @@ def in_business(f: Facility) -> bool:
 class Banking(IslandStage):
     name = "banking"
     # この施設の運転資金のうち、銀行の体力（自己資本比率・大口融資の規制・新しく貸さない期間）で
-    # 断った額（_room が足し、_working_capital が商社ごとに見る。FX-62）
+    # 断った額（_borrow が足し、_working_capital が商社ごとに見る。FX-62）
     _walled = 0
 
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
@@ -416,6 +416,7 @@ class Banking(IslandStage):
             if not planned:
                 due = (repaying or {}).get(bank, 0)
                 piece = self._room(island, ctx, f, bank, left, lent, due)
+                self._walled += left - piece  # 銀行の体力で断った分（FX-62。_working_capital）
             if piece <= 0:
                 continue
             banks.lend(island, bank, entity, piece, banks.WORKING, turns, ctx.turn, rate)
@@ -494,8 +495,8 @@ class Banking(IslandStage):
         assets = banks.assets_of(island, f, entity) + amount
         return debt_after <= settings["max_leverage"] * assets
 
+    @staticmethod
     def _room(
-        self,
         island: IslandState,
         ctx: StageContext,
         f: Facility,
@@ -520,7 +521,6 @@ class Banking(IslandStage):
             want = min(want, room)
         piece = min(want, banks.capital_room(island, config, bank, ctx.turn))
         lent[bank][1] += want - piece
-        self._walled += amount - piece  # 銀行の体力で断った分（FX-62。_working_capital）
         return piece
 
     @staticmethod
