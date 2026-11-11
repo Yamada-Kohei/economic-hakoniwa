@@ -43,7 +43,7 @@
 | MK-21 | 農場の作付けは畑の割合で持ち、1ターンに畑の一部ずつ蒔き直す。蒔いた畑は作物の育つ期間（facilities.yaml の `grow_turns`）何も出さない。蒔き直しの途中も前の作物の在庫は売る | 決定 |  | tests/core/test_balance_round3.py::test_farm_moves_its_fields_to_a_new_crop_little_by_little, tests/core/test_phase3_2.py::test_change_recipe_of_a_farm_resows_the_fields_little_by_little |
 | MK-22 | 2つの物を作る施設（製油所など）の原価は、初めの値段の比で分ける | 決定 |  | tests/core/test_phase3_2.py::test_joint_products_split_their_cost_by_the_world_prices |
 | MK-23 | 電力は生産の段で送電網ごとに同じ板寄せで売り買いする。売りは発電所（希望価格）、買いは施設と家計（指値なし、優先順位つき）。値幅の上端でも足りなければ優先順位の低い所から停電する | 決定 | `power.household_priority`, `power.household_use`, `power.household_share` | tests/core/test_rules.py::test_power_market_serves_by_priority_and_needs_grid, tests/core/test_shocks.py::test_power_outage_moves_price_within_band_and_recovers |
-| MK-24 | 発電所の売り値の下限（1単位の変動費）には燃料の運賃を入れる。政府が公共料金の上限を決めると、電力の値幅の上端がそこで止まる | 決定 |  | （未確認） |
+| MK-24 | 発電所の売り値の下限（1単位の変動費）には燃料の運賃を入れる。火力発電所の燃料の分は在庫の取得原価の平均と今の値段の安いほうで見る（タブ 5 FM-64）。政府が公共料金の上限を決めると、電力の値幅の上端がそこで止まる | 決定 |  | （未確認） |
 | MK-25 | 島の中の運賃は、売り手と買い手がそれぞれ「約定価格×自分の運賃の率」を運送業に払う。約定は道のりの近い組から割り当て、指値は率で割り戻してから出す。電力とサービスにはかからない | 決定 | `freight.per_step`, `freight.max_rate` | tests/core/test_rules.py::test_market_pairs_nearest_buyers_and_sellers |
 | MK-26 | 運賃の率は施設ごとの見込み。取引の相手になりうる所を近い順に自分の量に届くまで数えた平均の道のりから出し、相手で埋まらない分は拠点（首都・都市以上の町・港）までの道のりで数える | 決定 | `freight.per_step`, `freight.max_rate`, `freight.hub_level` | tests/core/test_rules.py::test_freight_depends_on_distance_to_trading_partners, tests/core/test_infrastructure.py::test_roads_shorten_freight |
 | MK-27 | 運送業は島に1つ（マスを持たない施設）。前のターンの運賃の決めた割合を賃金で割った人数の運転手を島のどこからでも雇い、人手が足りない割合だけ次の率を割り増す。参入・撤退・倒産はしない | 決定 | `freight.facility`, `freight.labor_share`, `freight.max_surcharge` | tests/core/test_rules.py::test_transport_keeps_freight_income_to_hire_drivers |
@@ -151,7 +151,7 @@
 
 - 電力は生産の段で、送電網ごとに同じ板寄せで売り買いし、その場で代金を払う。売りは発電所（動ける量、希望価格）、買いは施設と家計（指値なし）で、基準の値段は島の前のターンの電気料金。
 - 値幅の上端でも足りなければ、優先順位の低い所から停電する。家計の優先順位は `power.household_priority`、施設は施設の優先順位。家計が電気代に使う額には上限 `power.household_share` がある。
-- 発電所の売り値の下限（変動費）には燃料の運賃を入れる（入れないと遠くから燃料を買う発電所が赤字で売り続けて閉鎖し、停電が起きた）。
+- 発電所の売り値の下限（変動費）には燃料の運賃を入れる（入れないと遠くから燃料を買う発電所が赤字で売り続けて閉鎖し、停電が起きた）。火力発電所は燃料を数か月分持ち（タブ 5 FM-63）、下限の燃料の分は在庫の取得原価の平均と今の値段の安いほうで見る（FM-64。燃料が急に上がっても在庫のある間は止まらない）。
 - 政府が公共料金の上限を決めると、値幅の上端がそこで止まる。上限が発電の費用より低ければ発電所は赤字になり、民営の発電所は建たない。
 - 全部の発電所が止まると売り手がいなくなり、電気料金は前の値のまま。送電網の作り方はタブ 8。
 
