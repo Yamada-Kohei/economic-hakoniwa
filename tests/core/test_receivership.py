@@ -20,6 +20,8 @@ from hakoniwa_core.economy import (
     is_stopped,
     receivership,
 )
+from hakoniwa_core.economy import freight as freight_rates
+from hakoniwa_core.economy.prices import variable_profit
 from hakoniwa_core.modules import failures
 from hakoniwa_core.modules.banking import Banking
 from hakoniwa_core.modules.firms import EntryExit
@@ -29,10 +31,12 @@ from tests.core.test_finance import game as game  # noqa: F401  （試験の部�
 from tests.core.test_finance import warmed as warmed  # noqa: F401
 
 
-def _working(game, world, island):
-    """人を雇って動いている民営の施設（銀行・商業・サービス業・差し押さえ中・閉鎖の途中を除く）。"""
+def _working(game, world, island, earning=False):
+    """人を雇って動いている民営の施設（銀行・商業・サービス業・差し押さえ中・閉鎖の途中を除く）。
+    earning なら、そのうち今の値段で変動費の利益がいちばん大きいもの（買い手が建設資金を借りられる
+    施設。どの施設が選ばれるかは世界の道筋で変わり、利益の薄い施設だと融資の返済の見込みが足りない）。"""
     ctx = context(game, world)
-    return next(
+    found = (
         f
         for f in sorted(island.facilities, key=lambda f: f.id)
         if f.owner == OWNER_PRIVATE
@@ -43,6 +47,14 @@ def _working(game, world, island):
         and "foreclosed" not in f.economy
         and "closing" not in f.economy
         and receivership.viable(island, ctx, f)
+    )
+    if not earning:
+        return next(found)
+    prices, wage = island.economy.prices, island.economy.average_wage
+    rates = freight_rates.facility_rates(island, game.defs, game.config)
+    return max(
+        found,
+        key=lambda f: variable_profit(game.defs, game.config, f, prices, wage, rates.get(f.id, 0)),
     )
 
 
@@ -134,7 +146,7 @@ def test_receivership_is_resold_to_another_firm(game, warmed):  # noqa: F811
     """管財人が動かして稼いでいる施設は、元の企業でない資本家階級が実際の稼ぎで値踏みして居抜きで
     買い、働き手を残したまま新しい持ち主のもとで動き続ける（FM-60）。"""
     world, island = _setup(game, warmed)
-    f = _working(game, world, island)
+    f = _working(game, world, island, earning=True)
     failures.bankrupt(island, context(game, world, "failures"), f)
     workers = f.workers
     keep = game.config.get("firms.ebitda_turns")
