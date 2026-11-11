@@ -247,3 +247,25 @@ def test_fixed_terms_become_permanent_after_the_months(game):
     assert dismissal.fixed_term(f) == 5  # 初めの 30 人は月数を過ぎた
     dismissal.track_fixed_term(config, f, 135, 135)
     assert dismissal.fixed_term(f) == 0
+
+
+def test_facilities_short_of_inputs_furlough_instead_of_dismissing(game):
+    """原料が届かずに動けない施設は、操業目標に要る人を解雇せずに休ませる（休業手当は賃金の段で
+    賃金の labor.furlough_pay）。原料が高い・買うお金がない（施設の都合）なら決まりの割合で減る。"""
+    island, mill, full = _mill(game)
+    config = game.config
+    mill.economy["target"] = 1000  # 売れ行きはある
+    mill.stock.clear()  # 原料がない: 手元の原料で動ける人は 0
+    mill.status = "input:iron_ore"
+    run(game, island, ["employment"])
+    assert mill.workers == full - dismissal.natural_leavers(config, full)
+    assert "dismissed" not in mill.economy
+    assert mill.economy[dismissal.HELD] == 0  # 休んでいる人は抱えた人に数えない
+    # 施設の都合（原料が高い）は休業でない: 決まりの割合で減る
+    island, mill, full = _mill(game)
+    mill.economy["target"] = 1000
+    mill.stock.clear()
+    mill.status = "input_price:iron_ore"
+    run(game, island, ["employment"])
+    rate = config.get("labor.dismissal")["normal"]["rate"] + config.get("labor.attrition")
+    assert mill.workers == full - int(full * rate)
