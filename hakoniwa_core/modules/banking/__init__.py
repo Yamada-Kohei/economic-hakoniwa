@@ -479,8 +479,7 @@ class Banking(IslandStage):
         scores = {b: self._score(island, ctx, b) for b in active}
         best = max(active, key=lambda b: (scores[b], banks.deposits_of(island, b), b))
         # 取り付けは体力（自己資本比率）が規制を下回った銀行からだけ。中央銀行からの借り入れは
-        # 預金者に見えない（日銀や FRB の貸し先は公表されないか、ずっと後に出る）。前は借りた
-        # だけで毎月逃げ、短い借り入れが半年を越えていた（銀行の救済。2026-11-11）
+        # 預金者に見えない（日銀や FRB の貸し先は公表されないか、ずっと後に出る。2026-11-11）
         runs = [
             b
             for b in active
