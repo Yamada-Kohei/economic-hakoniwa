@@ -53,7 +53,7 @@ CI（`.github/workflows/ci.yml`）は、変えたファイルに要る試験だ�
 次の順で入れます（設計書のタブ 12 GT-44）。
 
 1. 新しい決まりは `game.yaml` の設定で切れるように作り、既定は「切」（今の動きのまま）で main に入れます。
-2. 決まりの試験は、設定の値を試験の中で入れて場面を組み立てます（例 `tests/core/dismissal_rules.py`）。
+2. 決まりの試験は、設定の値を試験の中で入れて場面を組み立てます（例 `tests/core/test_clothing_clearance.py` の `monkeypatch.setitem(game.config.get("market"), "clearance_ratio", 2)`）。
    既定を切り替えても落ちないようにするためです。何十ターンも回した世界の結果に頼る試験にはしません（GT-35）。
 3. 既定を「入」にする PR は別に出し、同じコードで「切」と「入」を `measure compare` で比べた崩れの表を本文に貼ります。
    崩れが増えたら既定にしません。1 つの PR で既定を変える決まりは 1 つにします。
