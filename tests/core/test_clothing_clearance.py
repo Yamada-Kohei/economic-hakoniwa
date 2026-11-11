@@ -496,7 +496,25 @@ def test_island_price_does_not_climb_while_the_outlet_fills_the_shortage(
             world.turn + 1,
         )
         ask = -(-cost * BASIS // (BASIS - rate))  # 費用で決まるふだんの売りの指値
+        seen = dict(island.economy.prices)
         game.engine.run_turn(world)
+        # 電気料金は市場の段の前（生産の段）にそのターンの約定で決まるので、売り手が市場の段で見る
+        # 費用はその電気料金で数える（燃料の備え FM-63・FM-64 の後、この世界では電気料金が
+        # 1 ターンに1割ほど動き、前のターンの電気料金で見た費用を少し超えることがある）
+        power = game.config.get("power.good")
+        seen[power] = island.economy.prices[power]
+        cost = subsidized_floor(
+            island,
+            game.defs,
+            game.config,
+            f,
+            good,
+            seen,
+            f.economy.get("wage", 0),
+            rate,
+            world.turn,
+        )
+        ask = max(ask, -(-cost * BASIS // (BASIS - rate)))
         record = next(m for m in island.markets if m.good == good)
         assert island.stats.get(f"clearance.sold.{good}", 0) > 0
         assert record.price == island.economy.prices[good]
