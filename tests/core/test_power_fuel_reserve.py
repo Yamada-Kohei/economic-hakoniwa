@@ -93,32 +93,44 @@ def _set_cash(island: IslandState, entity: str, amount: int) -> None:
 
 
 def test_reserve_accumulates_by_a_fifth_and_stops_at_target(game: Game) -> None:
-    """生産を挟まず、買い足しの各注文の上限と目標での停止を確かめる。"""
+    """動きながら、買い足しで使った分を埋め、毎ターン使う分の2割ずつ増えて目標で止まる。
+
+    注文の合計は min(目標 − 手元, 使う分 × 1.2)。手元が使う分以上なので使う分の注文は出ず、
+    使った分の補充も買い足しの側で出る。"""
     island, plant, use = _plant(game)
     target = round_money(use * game.config.get("power.fuel_stock_turns"))
     step = round_money(use * game.config.get("power.fuel_restock"))
-    stock.add(island.warehouse, "coal", target, 0, game.defs.goods)
-    turns = -(-(target - use) // step)
-    for turn in range(1, turns + 1):
+    stock.add(island.warehouse, "coal", target * 10, 0, game.defs.goods)
+    levels = []
+    for turn in range(1, 30):
         before = stock.total(plant.stock, "coal")
-        book = _orders(game, island, turn)["coal"]
-        assert sum(order.quantity for order, _ in book.buys) == min(step, target - before)
-        seller = Party(STORE, ledger.GOV, Payer(ledger.GOV, WAREHOUSE))
-        book.sells.append((auction.Order(step, 100), seller))
-        result = auction.clear([o for o, _ in book.buys], [o for o, _ in book.sells], 100)
-        Market()._settle(
-            island,
-            context(game, turn),
-            "coal",
-            book,
-            result,
-            (ledger.GOV, None),
-            {},
-            Routes(island, game.defs),
-        )
-        assert stock.total(plant.stock, "coal") == before + result.volume <= target
-    assert stock.total(plant.stock, "coal") == target
-    assert not _orders(game, island, turns + 1)
+        book = _orders(game, island, turn).get("coal")
+        want = min(use + step, target - before)
+        if want <= 0:
+            assert book is None
+        else:
+            assert sum(order.quantity for order, _ in book.buys) == want
+            seller = Party(STORE, ledger.GOV, Payer(ledger.GOV, WAREHOUSE))
+            book.sells.append((auction.Order(want, 100), seller))
+            result = auction.clear([o for o, _ in book.buys], [o for o, _ in book.sells], 100)
+            Market()._settle(
+                island,
+                context(game, turn),
+                "coal",
+                book,
+                result,
+                (ledger.GOV, None),
+                {},
+                Routes(island, game.defs),
+            )
+        after = stock.total(plant.stock, "coal")
+        assert after <= target
+        levels.append(after)
+        stock.take(plant.stock, "coal", use)  # 次のターンに使う
+    # 買った後の手元は 2割ずつ増え、3か月分に着いたらそのまま（使った分だけを買う）
+    assert levels[0] == 2 * use + step  # 初めに1か月分ある
+    assert levels[1] == levels[0] + step
+    assert levels[-1] == levels[-2] == target
 
 
 def test_reserve_is_separate_from_use_orders_and_their_bid_record(game: Game) -> None:
@@ -142,20 +154,21 @@ def test_reserve_is_separate_from_use_orders_and_their_bid_record(game: Game) ->
     assert input_cost(island, ctx, plant, 0) == normal_cost
 
 
-def test_restock_after_consumption_is_limited_to_a_fifth_of_expected_use(game: Game) -> None:
-    """通常の買いは手元で足りない分だけなので、生産した月の純増とは区別する。"""
+def test_reserve_at_target_replaces_what_was_burned(game: Game) -> None:
+    """目標に着いた後は、使った分（使う見込み1か月分）を買い足しの側で買い直す。"""
     island, plant, use = _plant(game)
     target = round_money(use * game.config.get("power.fuel_stock_turns"))
-    stock.add(plant.stock, "coal", target - use, 0, game.defs.goods)
-    stock.take(plant.stock, "coal", use)
+    stock.add(
+        plant.stock, "coal", target - use - stock.total(plant.stock, "coal"), 0, game.defs.goods
+    )
     books: dict[str, Book] = {}
     market = Market()
     market._facility_orders(island, context(game), books, {})
     assert not books.get("coal", Book()).buys
     market._fuel_orders(island, context(game), books, {})
     reserve = sum(o.quantity for o, p in books["coal"].buys if p.fuel_reserve)
-    assert reserve == round_money(use * game.config.get("power.fuel_restock"))
-    assert stock.total(plant.stock, "coal") + reserve < target
+    assert reserve == use
+    assert stock.total(plant.stock, "coal") + reserve == target
 
 
 @pytest.mark.parametrize("stop", ["closing", "foreclosed", "receiver", "disaster", "zero", "site"])
@@ -232,9 +245,7 @@ def test_households_receive_fuel_before_reserve_orders(
         0,
         (auction.Order(reserve.quantity, 100, 0), Party(HOUSEHOLD, hh, Payer(hh), layer="general")),
     )
-    bounds, allocate = Market._limits(
-        island, context(game), "coal", book, official, {"general": 1}
-    )
+    bounds, allocate = Market._limits(island, context(game), "coal", book, official, {"general": 1})
     result = auction.clear(
         [o for o, _ in book.buys],
         [auction.Order(reserve.quantity, 100)],
@@ -264,6 +275,7 @@ def test_existing_inventory_keeps_production_prepared_when_fuel_cannot_be_bought
     game: Game, reason: str
 ) -> None:
     island, plant, _ = _plant(game)
+    plant.workers = fac.workers_of(game.defs, plant)  # 技術者も入れて人手は足りている
     plant.economy["short"] = {"coal": reason}
     prepared = Production._prepare(island, plant, context(game), game.config.get("power.good"))
     assert prepared.rate == fac.FULL

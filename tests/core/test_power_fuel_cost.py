@@ -80,9 +80,10 @@ def test_power_floor_weights_only_fuel_needed_for_next_operation(game):
     prices = {"coal": 400, "fuel": 200}
     f.economy["input_plan"] = fac.FULL // 2
     assert power_fuel.input_prices(game.defs, game.config, f, prices)["coal"] == 100
-    assert power_fuel.input_prices(
-        game.defs, game.config, f, prices, utilization=fac.FULL
-    )["coal"] == 250
+    assert (
+        power_fuel.input_prices(game.defs, game.config, f, prices, utilization=fac.FULL)["coal"]
+        == 250
+    )
     prices["coal"] = 50
     assert power_fuel.input_prices(game.defs, game.config, f, prices)["coal"] == 50
 
@@ -109,16 +110,19 @@ def test_power_plant_sells_with_old_fuel_after_a_price_spike(game):
     power = game.config.get("power.good")
     old_value = f.economy[power_fuel.BOOK]["coal"]["value"]
     island.economy.prices["coal"] *= 100
-    assert unit_floor(
-        game.defs,
-        game.config,
-        f,
-        power,
-        island.economy.prices,
-        f.economy["wage"],
-        0,
-        fuel_prices={},
-    ) > island.economy.prices[power]
+    assert (
+        unit_floor(
+            game.defs,
+            game.config,
+            f,
+            power,
+            island.economy.prices,
+            f.economy["wage"],
+            0,
+            fuel_prices={},
+        )
+        > island.economy.prices[power]
+    )
     run(game, island, ["employment", "production"])
     assert f.operating_rate > 0
     assert f.economy["sales"][power][1] > 0

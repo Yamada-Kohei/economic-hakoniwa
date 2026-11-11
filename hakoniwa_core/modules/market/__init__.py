@@ -2003,16 +2003,23 @@ class Market(IslandStage):
             for good in sorted(power_fuel.fuel_goods(defs, f)):
                 use = fac.scale(inputs[good], expected)
                 goal = round_money(use * settings["fuel_stock_turns"])
-                book = books_by_good.get(good, Book())
-                ordered = sum(
-                    order.quantity
-                    for order, party in book.buys
-                    if party.facility is f and not party.fuel_reserve and party.kind == FACILITY
-                )
-                want = min(
-                    goal - stock.total(f.stock, good) - ordered,
-                    round_money(use * settings["fuel_restock"]),
-                )
+                # 注文の合計は min(目標 − 手元, 使う分 + 使う分 × fuel_restock)。そのうち使う分の
+                # 注文（手元で足りない分）はふだんの順位で出ているので、残りを買い足しにする。手元が
+                # 使う分以上なら、使った分の補充も買い足しの側で出る（目標まで毎ターン2割ずつ増え、
+                # 目標に着いたら使った分だけを買う）。国庫直轄の2巡目は、1巡目と MK-38 で手に
+                # 入れた分がもう手元にあるので、このターンに手に入れた量を使う分の注文に数える。
+                if treasury:
+                    ordered = power_fuel.acquired(f, good, ctx.turn)
+                else:
+                    book = books_by_good.get(good, Book())
+                    ordered = sum(
+                        order.quantity
+                        for order, party in book.buys
+                        if party.facility is f and not party.fuel_reserve and party.kind == FACILITY
+                    )
+                have = stock.total(f.stock, good)
+                total = min(goal - have, use + round_money(use * settings["fuel_restock"]))
+                want = total - ordered
                 if want <= 0:
                     continue
                 limit = official.get(good, prices.get(good, 0))
@@ -2021,9 +2028,7 @@ class Market(IslandStage):
                     f.economy.setdefault("fuel_restock_short", {})[good] = "funds"
                 if qty <= 0 or limit <= 0:
                     continue
-                party = Party(
-                    FACILITY, facility_entity(f.id), payer, rate, 0, f, fuel_reserve=True
-                )
+                party = Party(FACILITY, facility_entity(f.id), payer, rate, 0, f, fuel_reserve=True)
                 party.reserved = cost
                 funds.commit(island, payer, cost)
                 money -= cost
@@ -2057,13 +2062,12 @@ class Market(IslandStage):
                     held = party.facility.stock if party.facility is not None else island.warehouse
                     remaining[party.name] = min(remaining[party.name], stock.total(held, good))
             sellers: list[int] = []
-            by_price = sorted(
-                enumerate(book.sells), key=lambda row: auction.sell_limit(row[1][0])
-            )
+            by_price = sorted(enumerate(book.sells), key=lambda row: auction.sell_limit(row[1][0]))
             for i, (order, party) in by_price:
                 qty = min(order.quantity - sold[i], remaining.get(party.name, 0))
                 if party.kind == MERCHANT and party.gap > 0:
-                    # MK-38 の前には通常注文の取り置きを戻す。2巡目の公定価格との差は改めて残りから。
+                    # MK-38 の前には通常注文の取り置きを戻す。2巡目の公定価格との差は
+                    # 改めて残りから。
                     qty = min(qty, qty_for(funds.available(island, MERCHANT_GAP), party.gap))
                 if qty <= 0:
                     continue
@@ -3615,7 +3619,7 @@ class Market(IslandStage):
                 last["reason"] = cut
         for good, item in standing.settings(island).items():
             result = results.get(good)
-            signal = self._consumption_result(books_by_good.get(good), result) if result else None
+            signal = Market._consumption_result(books_by_good.get(good), result) if result else None
             missed = max(0, signal.unfilled_demand) if signal else 0
             missed += island.scratch.get("unplaced", {}).get(good, 0)
             desire = island.scratch.get(planning.DESIRE, {}).get(good, 0)

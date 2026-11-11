@@ -99,6 +99,14 @@ def acquire(defs: Defs, f: Facility, good: str, qty: int, price: int, turn: int)
     flow["value"][good] = flow["value"].get(good, 0) + value
 
 
+def acquired(f: Facility, good: str, turn: int) -> int:
+    """このターンに市場と国の倉庫から手に入れた燃料の量（買い足しの2巡目の前に読む）。"""
+    flow = f.economy.get(FLOW)
+    if flow is None or flow.get("turn") != turn:
+        return 0
+    return flow["acquired"].get(good, 0)
+
+
 def consume(defs: Defs, f: Facility, good: str, qty: int, turn: int) -> int:
     """在庫から取り出す前に平均取得原価で減らし、使った額を返す。"""
     if qty <= 0 or good not in fuel_goods(defs, f, all_recipes=True):
