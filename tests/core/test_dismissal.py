@@ -181,3 +181,32 @@ def test_treasury_facility_severance_uses_the_unreserved_treasury(game):
     assert dismissal.pay(island, game.defs, game.config, mill, 10) == 10 * 10 * 2
     assert arrears.total(island, ledger.GOV) == 0
     assert ledger.money(island, household(jobless_layer(island))) == before + 200
+
+
+def _short_handed(game, wage_change):
+    """製鉄所が先月の人数を抱え、横の採石場が人手を探す島（失業者はいない）。"""
+    island, mill, full = _mill(game)
+    island.tile(5, 6).population = full  # 失業者はいない（全員が製鉄所で働いている）
+    mill.economy[dismissal.NEEDS] = [full]  # 先月は全員が要った: 今月は解雇せずに抱える
+    other = add(island, "quarry", 4, 6, owner=OWNER_PRIVATE, accounting=ACCOUNTING_SELF)
+    other.economy["target"] = 1000
+    ledger.pay(island, ledger.GOV, facility_entity(other.id), 10**9, "capital_injection")
+    other.economy["wage"] = mill.economy.get("wage", 0) + wage_change
+    run(game, island, ["employment"])
+    return mill, other, full
+
+
+def test_short_handed_facilities_hire_the_held_workers_first(game):
+    """抱えている余った人は、同じ賃金なら人手の足りない施設へ自分から移る（解雇でなく、手当は
+    ない）。1 か月に移るのは引き抜きと同じ上限（labor.poach_limit）まで。"""
+    mill, other, full = _short_handed(game, 0)
+    assert other.workers > 0
+    assert other.workers <= int(full * game.config.get("labor.poach_limit"))
+    assert mill.economy.get("dismissed", 0) == 0
+    assert mill.workers + other.workers <= full
+
+
+def test_held_workers_do_not_move_to_a_lower_wage(game):
+    """抱えた人は、賃金の安い施設へは移らない（席にいれば元の賃金がもらえる）。"""
+    mill, other, full = _short_handed(game, -1)
+    assert other.workers == 0
