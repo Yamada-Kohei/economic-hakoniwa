@@ -22,7 +22,7 @@ from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.defs.kinds import is_variant
-from hakoniwa_core.economy import equipment, experience, is_bank, is_self_supporting
+from hakoniwa_core.economy import equipment, experience, is_bank, is_self_supporting, power_fuel
 from hakoniwa_core.market import auction
 from hakoniwa_core.state import Facility, IslandState
 from hakoniwa_core.units import (
@@ -205,6 +205,7 @@ def variable_profit(
     wage: int,
     freight: int,
     subsidy: int = 0,
+    fuel_prices: Prices | None = None,
 ) -> int:
     """全力で1ターン動いたときの変動費の利益（売上 − 投入財 − 賃金 − 電気代 − 運賃）。
     賃金は一般の賃金 wage と、施設の技術者の賃金（facilities.labor_cost）。
@@ -223,13 +224,15 @@ def variable_profit(
     power = config.get("power.good")
     f = fac.steady(f)  # 畑を作り替えている途中なら、今の作物で見る（回3）
     recipe = fac.recipe_of(defs, f)
+    if fuel_prices is None:
+        fuel_prices = power_fuel.input_prices(defs, config, f, prices)
     value = 0
     for good, qty in fac.outputs_of(defs, f).items():
         amount = money_of(prices.get(good, 0), qty)
         value += amount if good == power else amount - part(amount, freight)
         value += part(amount, subsidy)
     for good, qty in recipe["inputs"].items():
-        amount = money_of(prices.get(good, 0), qty)
+        amount = money_of(fuel_prices.get(good, prices.get(good, 0)), qty)
         value -= amount if good == power else amount + part(amount, freight)
     return value - fac.labor_cost(defs, config, f.kind, wage, f)
 
@@ -287,7 +290,9 @@ def input_limit(
     if ahead:
         for g in recipe["outputs"]:
             seen[g] = scale_price(prices.get(g, 0), 1 + ahead)
-    room = variable_profit(defs, config, steady, seen, wage, freight, subsidy) + amount
+    room = (
+        variable_profit(defs, config, steady, seen, wage, freight, subsidy, fuel_prices={}) + amount
+    )
     return max(0, room * QUANTITY_SCALE // qty)
 
 
@@ -317,15 +322,23 @@ def subsidized_floor(
     wage: int,
     freight: int,
     turn: int,
+    fuel_prices: Prices | None = None,
 ) -> int:
     """生産補助を受け取った後に、1単位の変動費を取り戻せる売り値。"""
-    floor = unit_floor(defs, config, f, good, prices, wage, freight)
+    floor = unit_floor(defs, config, f, good, prices, wage, freight, fuel_prices)
     subsidy = production_subsidy_rate(island, defs, config, f, turn)
     return round_money(floor * BASIS / (BASIS + subsidy))
 
 
 def unit_floor(
-    defs: Defs, config: GameConfig, f: Facility, good: str, prices: Prices, wage: int, freight: int
+    defs: Defs,
+    config: GameConfig,
+    f: Facility,
+    good: str,
+    prices: Prices,
+    wage: int,
+    freight: int,
+    fuel_prices: Prices | None = None,
 ) -> int:
     """独立採算の売り手が出せる一番安い希望価格: 1単位あたりの変動費（投入財の運賃を含む）と、
     全力で動いたときの1単位あたりの設備の傷み（回6）。
@@ -343,8 +356,10 @@ def unit_floor(
     if good not in outputs or outputs[good] <= 0:
         return 0
     cost = fac.labor_cost(defs, config, f.kind, wage, f)
+    if fuel_prices is None:
+        fuel_prices = power_fuel.input_prices(defs, config, f, prices)
     for g, qty in recipe["inputs"].items():
-        amount = money_of(prices.get(g, 0), qty)
+        amount = money_of(fuel_prices.get(g, prices.get(g, 0)), qty)
         cost += amount if g == power else amount + part(amount, freight)
     # 設備が1か月に傷む値打ち（回6）。使わなくても傷むが、売り値で取り戻さなければ直せない（国の
     # 水力発電所が賃金だけの値段で売り、電気料金が初めの 0.3 倍まで下がって火力発電所が閉じた）

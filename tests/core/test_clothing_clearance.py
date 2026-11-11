@@ -482,6 +482,9 @@ def test_island_price_does_not_climb_while_the_outlet_fills_the_shortage(
         game.engine.run_turn(world)
         # 指値の費用は、このターンの雇用の段で決まった賃金で見る（賃金が上がれば費用も上がる）
         rate = freight_rates.facility_rates(island, game.defs, game.config).get(f.id, 0)
+        # 電気料金も市場の段の前（生産の段）にそのターンの約定で決まるので、その電気料金で見る
+        power = game.config.get("power.good")
+        prices[power] = island.economy.prices[power]
         cost = subsidized_floor(
             island,
             game.defs,

@@ -271,6 +271,10 @@ export class TilePanel {
       rows.push(["管財人", `${s.bank}が${run}。売り値 ${s.price}（${cut}）。売れないまま動かない・赤字・設備の傷みが続けば取り壊します`]);
     }
     if (f.stock.length) rows.push(["施設在庫", goodsText(f.stock)]);
+    for (const fuel of f.fuel_reserves || []) {
+      const months = fuel.months == null ? "使用量未観測" : `約 ${fuel.months.toFixed(1)} か月分`;
+      rows.push([`${fuel.name}の備え`, `${fuel.amount} ${fuel.unit}（${months}）。目標 ${fuel.target_amount} ${fuel.unit}（使う見込みの ${fuel.target_months} か月分）`]);
+    }
     const parts = [`<h3>${escapeHtml(f.name)}</h3>${table(rows)}`];
     if (f.owner === "private" && Object.keys(this.defs.facilities[f.kind]?.recipes || {}).length > 1) {
       parts.push(`<p class="hint">${escapeHtml(recipeWords().ownershipHint)}</p>`);

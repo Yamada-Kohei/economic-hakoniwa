@@ -136,6 +136,28 @@
 </section>
 {% endif %}
 
+{% if fuel_reserves %}
+<section class="panel">
+  <h2>{% translate "火力発電所の燃料の備え" %}</h2>
+  <div class="table-scroll">
+    <table class="report-table">
+      <thead><tr><th>{% translate "施設" %}</th><th>{% translate "燃料" %}</th><th>{% translate "在庫" %}</th><th>{% translate "在庫の月数" %}</th><th>{% translate "目標" %}</th></tr></thead>
+      <tbody>
+        {% for plant in fuel_reserves %}{% for fuel in plant.fuels %}
+        <tr>
+          <td><a href="{% url 'island' island.id %}?x={{ plant.x }}&amp;y={{ plant.y }}">{{ plant.name }}</a></td>
+          <td>{{ fuel.name }}</td>
+          <td class="num">{{ fuel.amount }} {{ fuel.unit }}</td>
+          <td class="num">{% if fuel.months is not None %}{% blocktranslate with months=fuel.months|floatformat:1 %}約 {{ months }} か月分{% endblocktranslate %}{% else %}{% translate "使用量未観測" %}{% endif %}</td>
+          <td class="num">{{ fuel.target_amount }} {{ fuel.unit }}<br><small>{% blocktranslate with months=fuel.target_months %}使う見込みの {{ months }} か月分{% endblocktranslate %}</small></td>
+        </tr>
+        {% endfor %}{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
 {% if industry_workers %}
 <section class="panel">
   <h2>{% translate "産業ごとの従業者数" %} <small class="heading-date">{% translate "今" %}</small></h2>

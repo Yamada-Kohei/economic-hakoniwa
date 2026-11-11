@@ -44,7 +44,7 @@ from __future__ import annotations
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import nature, politics, veins
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import groundwork, services
+from hakoniwa_core.economy import groundwork, power_fuel, services
 from hakoniwa_core.economy.households import ensure_jobless
 from hakoniwa_core.economy.prices import add_missing_prices
 from hakoniwa_core.modules.bonds import whole_terms
@@ -71,6 +71,8 @@ class Upgrade(IslandStage):
                 economy.happiness_blend = ctx.config.get("population.blend_turns")
                 economy.ext["happiness_from"] = "happiness_phase2"
         add_missing_prices(island, ctx.defs, ctx.config)
+        for f in island.facilities:
+            power_fuel.ensure_book(ctx.defs, f, economy.prices)
         ensure_jobless(island, ctx.config)
         services.prepare(island, ctx.defs, ctx.config)
         whole_terms(island)
