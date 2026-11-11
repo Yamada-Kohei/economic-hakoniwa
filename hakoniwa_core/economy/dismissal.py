@@ -19,6 +19,14 @@ dismissal、決めていなければ weak）の段ごとの割合（labor.dismis
 現実: 米国（弱い）は予告と手当の決まりがほとんどなく、売れ行きに合わせてすぐ減らせる。日本（ふつう）
 は 30 日前の予告と整理解雇の要件があり、不況でも人を抱えて操業を落とす（雇用調整助成金のころ）。
 南欧（強い）は協議と手厚い手当が要り、減らすのに 1 年ほどかかる。
+
+入って labor.fixed_term か月までの人は有期（月ごとに更新する契約）です。減らすときは新しい人から
+で、有期の人は割合の上限にも手当にもかからず、更新しないで辞めてもらいます（解雇に数えない）。月数
+を過ぎた人は期間の定めのない雇用になり、決まりにかかります（fixed_term・track_fixed_term）。
+現実: 日本の企業は先の見えない増産を有期・派遣で雇い、売れ行きが落ちるとまずそこを減らす（2008 年
+の派遣切り）。正社員は試用の後に本採用。欧州でも有期の守りは弱く、景気の上下は有期の人が受ける。
+決まりだけだと、売り切れて試しに雇った人を翌月減らすたびに手当がかかり、企業の連鎖倒産と銀行の
+救済が増えた（解雇の約半分が入って半年以内の人だった。2026-11-11 の比べ）。
 """
 
 from __future__ import annotations
@@ -51,6 +59,7 @@ LEVELS = (WEAK, NORMAL, STRONG)
 HELD = "held"  # f.economy: 操業目標に要る人数を超えて抱えている人（解雇の決まり）
 CARRY = "dismissal_carry"  # f.economy: 減らせる人数の端数（次のターンに足す）
 NEEDS = "dismissal_needs"  # f.economy: 直近の月の雇いたい人数（新しい月が後ろ。手当の月数分）
+FIXED_TERM = "fixed_term"  # f.economy: 有期の人数（入った月ごと。新しい月が後ろ）
 SEVERANCE = "severance"  # 仕訳の種類（解雇手当。施設・政府 → 家計）
 
 
@@ -111,6 +120,31 @@ def recent_peak(island: IslandState, defs: Defs, config: GameConfig, f: Facility
     past = list(f.economy.get(NEEDS, []))[-months:]
     f.economy[NEEDS] = (past + [need])[-months:]
     return max(past, default=0)
+
+
+def fixed_term(f: Facility) -> int:
+    """有期の人数（入って labor.fixed_term か月までの人）。"""
+    return sum(f.economy.get(FIXED_TERM, []))
+
+
+def track_fixed_term(config: GameConfig, f: Facility, before: int, after: int) -> None:
+    """月の終わりに有期の人数を見直す。前のターンの人数 before から after に減った分は新しい人から
+    抜き（辞めるのも、辞めてもらうのも新しい人から）、増えた分はこの月に入った有期の人にする。
+    labor.fixed_term か月を過ぎた月の人は、期間の定めのない雇用に変わる（並びから落ちる）。"""
+    months = int(config.get("labor.fixed_term"))
+    terms_ = list(f.economy.get(FIXED_TERM, []))
+    gone = max(0, before - after)
+    for i in range(len(terms_) - 1, -1, -1):  # 月の並びは残す（後ろから数えた位置が入った月）
+        take = min(gone, terms_[i])
+        terms_[i] -= take
+        gone -= take
+    terms_ = (terms_ + [max(0, after - before)])[-months:] if months > 0 else []
+    while terms_ and not terms_[0]:
+        terms_.pop(0)
+    if terms_:
+        f.economy[FIXED_TERM] = terms_
+    else:
+        f.economy.pop(FIXED_TERM, None)
 
 
 def natural_leavers(config: GameConfig, before: int) -> int:
@@ -179,7 +213,8 @@ def on_removal(island: IslandState, defs: Defs, config: GameConfig, f: Facility,
     if f.workers <= 0 or not covered(island, defs, config, f, turn):
         return
     engineers = f.economy.get("engineers", 0)
-    general = f.workers - engineers - f.economy.get("mobilized", 0)
+    # 有期の人は契約を終える（手当はない）
+    general = f.workers - engineers - f.economy.get("mobilized", 0) - fixed_term(f)
     count = max(0, general) + engineers
     pay(island, defs, config, f, max(0, general), engineers)
     stats = island.stats

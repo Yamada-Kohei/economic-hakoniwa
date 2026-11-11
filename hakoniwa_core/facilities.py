@@ -68,6 +68,17 @@ def short_of_inputs(status: str) -> bool:
     return status.partition(":")[0] in INPUT_SHORT
 
 
+FURLOUGH = ("power", "no_grid", "input")  # 休業手当にする status（外から物が来ずに動けない）
+
+
+def furloughed(config: Any, status: str) -> bool:
+    """休業手当にする status か（FURLOUGH と、電力の割高・資金不足。回7 後半、modules/labor の
+    furlough_share）。原料が高い・買うお金がないのは施設の都合なので外す。"""
+    kind, _, good = status.partition(":")
+    power = config.get("power.good")
+    return kind in FURLOUGH or (kind in ("input_price", "funds") and good == power)
+
+
 def ratio(have: int, need: int) -> int:
     """have / need を 1000 分の 1 で（上限 1000）。need が 0 なら 1000。"""
     if need <= 0:
