@@ -225,6 +225,7 @@ class Employment(IslandStage):
                 f.economy.pop(dismissal.HELD, None)
                 f.economy.pop(dismissal.CARRY, None)
                 f.economy.pop(dismissal.NEEDS, None)
+                f.economy.pop(dismissal.FIXED_TERM, None)
                 f.workers = 0
                 f.ext.pop("short_wages", None)
                 continue
@@ -468,6 +469,9 @@ class Employment(IslandStage):
                 held = max(0, f.workers - mobilized.get(f.id, 0) - max(needs[f.id], goal))
                 f.economy[dismissal.HELD] = held
                 island.stats["labor.held"] = island.stats.get("labor.held", 0) + held
+                dismissal.track_fixed_term(
+                    config, f, before[f.id][0], f.workers - mobilized.get(f.id, 0)
+                )
             else:
                 f.economy.pop(dismissal.HELD, None)
             employed_total += f.workers
@@ -1124,11 +1128,14 @@ class Employment(IslandStage):
         if not dismissal.covered(island, defs, config, f, ctx.turn):
             f.economy.pop(dismissal.CARRY, None)
             f.economy.pop(dismissal.NEEDS, None)
+            f.economy.pop(dismissal.FIXED_TERM, None)
             return need, ""
         prior = f.workers - f.economy.get("mobilized", 0)
-        least, carry = dismissal.floor(island, defs, config, f, prior)
-        # 手当の月数のうちにまた要る人は解雇せずに抱える（雇い直すより安い）
-        hold = min(prior, dismissal.recent_peak(island, defs, config, f, need))
+        # 有期の人は割合の上限の外（全員を更新しないでよい）。決まりは期間の定めのない人にかける
+        regular = max(0, prior - dismissal.fixed_term(f))
+        least, carry = dismissal.floor(island, defs, config, f, regular)
+        # 手当の月数のうちにまた要る人は解雇せずに抱える（雇い直すより安い。有期の人は抱えない）
+        hold = min(regular, dismissal.recent_peak(island, defs, config, f, need))
         if need >= max(least, hold):  # 減らす速さの上限にも、抱える人数にもかからない
             f.economy.pop(dismissal.CARRY, None)
             return need, BOUND_DISMISSAL
@@ -1158,6 +1165,11 @@ class Employment(IslandStage):
         if prior <= 0 or not dismissal.covered(island, defs, config, f, ctx.turn):
             return
         cut = prior - dismissal.natural_leavers(config, prior) - quits.get(f.id, 0) - kept
+        # 有期の人（新しい人から）は更新しないで辞めてもらう（解雇でなく、手当もない）
+        ended = max(0, min(cut, dismissal.fixed_term(f)))
+        if ended:
+            island.stats["labor.term_ended"] = island.stats.get("labor.term_ended", 0) + ended
+            cut -= ended
         if cut <= 0:
             return
         skilled = prior_engineers - dismissal.natural_leavers(config, prior_engineers) - seats

@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger
 from hakoniwa_core.economy import (
@@ -21,17 +19,9 @@ from hakoniwa_core.modules.employment import Employment
 from hakoniwa_core.modules.labor import set_labor_policy
 from hakoniwa_core.modules.production import Production
 from hakoniwa_core.state import ACCOUNTING_SELF, ACCOUNTING_TREASURY, OWNER_PRIVATE, OWNER_STATE
-from tests.core.dismissal_rules import dismissal_rules
 from tests.core.test_recession_round1 import context
 from tests.core.test_rules import add, home, make_island, run, with_economy
 from tests.core.test_rules import game as game  # noqa: F401  （試験の部品を使い回す）
-
-
-@pytest.fixture(autouse=True)
-def _rules(game):
-    """決まりを一時止めている間も、決まりそのものを試す（tests/core/dismissal_rules.py）。"""
-    with dismissal_rules(game.config):
-        yield
 
 
 def _mill(game, regime="mixed"):
@@ -220,3 +210,40 @@ def test_held_workers_do_not_move_to_a_lower_wage(game):
     """抱えた人は、賃金の安い施設へは移らない（席にいれば元の賃金がもらえる）。"""
     mill, other, full = _short_handed(game, -1)
     assert other.workers == 0
+
+
+def test_new_hires_on_fixed_terms_leave_first_without_the_cap_or_severance(game):
+    """入って labor.fixed_term か月までの人は有期: 減らすときは新しい人から、割合の上限にも手当にも
+    かからずに更新しないで辞めてもらう（解雇に数えない）。決まりは期間の定めのない人にかける。"""
+    island, mill, full = _mill(game)
+    config = game.config
+    newcomers = full // 2
+    mill.economy[dismissal.FIXED_TERM] = [newcomers]
+    mill.economy["wage"] = 1000
+    run(game, island, ["employment", "payroll"])
+    regular = full - newcomers
+    rate = config.get("labor.dismissal")["normal"]["rate"] + config.get("labor.attrition")
+    assert mill.workers == regular - int(regular * rate)
+    cut = full - dismissal.natural_leavers(config, full) - mill.workers
+    assert island.stats["labor.term_ended"] == newcomers
+    assert island.stats["labor.dismissed"] == cut - newcomers
+    assert island.stats["labor.severance"] == round((cut - newcomers) * 1000 * 2)
+    assert dismissal.FIXED_TERM not in mill.economy  # 有期の人はもういない
+
+
+def test_fixed_terms_become_permanent_after_the_months(game):
+    """有期の人は labor.fixed_term か月の後に期間の定めのない雇用に変わる。辞めるのは新しい人から"""
+    from hakoniwa_core.state import Facility
+
+    config = game.config
+    months = config.get("labor.fixed_term")
+    f = Facility(id=1, kind="steel_mill", x=0, y=0, recipe="default", built=True)
+    dismissal.track_fixed_term(config, f, 100, 130)  # 30 人が入った
+    dismissal.track_fixed_term(config, f, 130, 140)  # 翌月 10 人
+    dismissal.track_fixed_term(config, f, 140, 135)  # 5 人減った: 新しい月の人から
+    assert f.economy[dismissal.FIXED_TERM] == [30, 5, 0]
+    for _ in range(months - 2):
+        dismissal.track_fixed_term(config, f, 135, 135)
+    assert dismissal.fixed_term(f) == 5  # 初めの 30 人は月数を過ぎた
+    dismissal.track_fixed_term(config, f, 135, 135)
+    assert dismissal.fixed_term(f) == 0
