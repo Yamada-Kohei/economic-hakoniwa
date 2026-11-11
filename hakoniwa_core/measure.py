@@ -201,6 +201,7 @@ SERIES_STATS = (
     "labor.held",  # 解雇の決まりで抱えている余った人（LB-43）
     "labor.dismissed",
     "labor.severance",
+    "labor.term_ended",  # 有期の人が更新されずに辞めた人数（LB-43）
 )
 
 
