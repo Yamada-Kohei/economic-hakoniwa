@@ -25,12 +25,30 @@ from hakoniwa_core.modules.market import (
     elastic_orders,
     inventory_turns,
 )
+from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE, money_of, round_money, scale_price
-from tests.core.test_finance import context, island_of
+from tests.core.dismissal_rules import dismissal_rules
+from tests.core.test_finance import WARMUP, context, island_of, run
 from tests.core.test_finance import game as game  # noqa: F401  （試験の部品を使い回す）
-from tests.core.test_finance import warmed as warmed  # noqa: F401
 
 Q = QUANTITY_SCALE
+
+
+@pytest.fixture(scope="module")
+def warmed(game):
+    """test_finance の warmed と同じ世界を、解雇の決まりを入れて作る。この試験は書いたときの
+    世界の道（決まりのある世界）に頼るので、決まりを一時止めている間も同じ道で見る
+    （tests/core/dismissal_rules.py）。"""
+    with dismissal_rules(game.config):
+        world = generate_world(1, 3, game.config, game.defs)
+        run(game, world, WARMUP)
+    return world
+
+
+@pytest.fixture(autouse=True)
+def _rules(game):
+    with dismissal_rules(game.config):
+        yield
 
 
 @pytest.fixture

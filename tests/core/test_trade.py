@@ -565,12 +565,14 @@ def test_trade_facilities_hiring_for_their_cargo_are_not_short_of_workers(game, 
                 seen = replace(
                     f, economy={**f.economy, "trade": {**state, "volume": state["volume"][:-1]}}
                 )
-            assert f.workers >= staff.wanted(game.config, game.defs, seen)
             # 雇うときに雇いたい人数に届かなかった（島の通勤圏に失業者がいなかった）ときの「労働者
-            # 不足」は正しい知らせ（解雇の決まりで工場が人を抱えると、島の働き手が減る）
+            # 不足」は正しい知らせ（解雇の決まりで工場が人を抱えたり、決まりを止めて世界の道が
+            # 変わったりすると、島の働き手が足りない月がある）。そろっていれば「労働者不足」と
+            # 出さない
             if f.status == "workers":
                 assert f.workers < f.economy["wanted"]
             else:
+                assert f.workers >= staff.wanted(game.config, game.defs, seen)
                 assert f.status in ("", "cargo")
     assert format_log(game.defs, "status_cargo", {}) == "扱う荷に合わせて操業"
 
