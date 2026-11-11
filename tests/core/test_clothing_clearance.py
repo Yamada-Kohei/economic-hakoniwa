@@ -217,7 +217,8 @@ def test_excess_stock_is_sold_off_step_by_step_down_to_half_the_cost(game, warme
         assert _clearance_order(game, world, island, f, good)[0] is None
     cut, rest = _clearance_order(game, world, island, f, good)
     assert cut is not None and cut.quantity == 100 * Q - line  # 超えた分だけ
-    assert sum(o.quantity for o in rest) == line  # ふだんの在庫の分は今の指値のまま
+    # 在庫はみな今の指値でふだんの板寄せに出す（値引きの売りは、売れ残った超えた分の出し直し）
+    assert sum(o.quantity for o in rest) == 100 * Q
     floor = subsidized_floor(
         island,
         game.defs,
@@ -283,9 +284,7 @@ def test_selling_off_keeps_the_line_it_started_with(game, warmed, clearance_on):
         cut, _ = _clearance_order(game, world, island, f, good)
     f.economy["expected"][good] = Q  # 見込みが縮んだ
     again, rest = _clearance_order(game, world, island, f, good)
-    assert (
-        again.quantity == cut.quantity and sum(o.quantity for o in rest) == 100 * Q - cut.quantity
-    )
+    assert again.quantity == cut.quantity and sum(o.quantity for o in rest) == 100 * Q
 
 
 def test_island_price_ignores_the_bargain_sale(game, warmed, clearance_on):
@@ -336,16 +335,19 @@ def test_selling_off_stops_when_the_ratio_is_zero(game, warmed, monkeypatch):
 
 
 def _outlet_book(normal_only=False):
-    """買い 2 つ（指値 120 と 90）、ふだんの売り（指値 100）、値引きの売り（指値 60）の板。"""
+    """買い 2 つ（指値 120 の 100 と 90 の 50）、売り手 a（指値 100 で 80）、売り手 b（在庫 40 を
+    みな指値 130 で出し、超えた 30 を値引きの指値 60 で出し直す）の板。1回目は 120 で a が売り切れ、
+    b は売れ残る。指値 120 の 20 と指値 90 の 50 が買えずに残る。"""
     shop = Party(FACILITY, "fac:a", Payer("fac:a"))
+    dear = Party(FACILITY, "fac:b", Payer("fac:b"))
     cut = Party(FACILITY, "fac:b", Payer("fac:b"), clearance=True)
     buyers = [Party(FACILITY, f"fac:{n}", Payer(f"fac:{n}")) for n in ("x", "y")]
     book = Book(
         [(Order(100 * Q, 120), buyers[0]), (Order(50 * Q, 90), buyers[1])],
-        [(Order(80 * Q, 100), shop)],
+        [(Order(80 * Q, 100), shop), (Order(40 * Q, 130), dear)],
     )
     if not normal_only:
-        book.sells.append((Order(60 * Q, 60), cut))
+        book.sells.append((Order(30 * Q, 60), cut))
     return book
 
 
@@ -384,7 +386,7 @@ def test_outlet_leaves_the_normal_market_as_it_was_without_the_sale(game, warmed
         alone.sold,
     )
     # まとめた結果の値段は1回目の値段、ふだんの売りの約定量も同じ
-    assert merged.price == alone.price and merged.sold[0] == alone.sold[0]
+    assert merged.price == alone.price and merged.sold[:2] == alone.sold
 
 
 def test_outlet_sells_only_to_the_buyers_left_over_at_or_below_the_first_price(game, warmed):
@@ -409,8 +411,10 @@ def test_outlet_sells_only_to_the_buyers_left_over_at_or_below_the_first_price(g
     # まとめた結果（もとの注文の並び）
     assert merged.volume == first.volume + second.volume
     assert merged.demand == sum(o.quantity for o, _ in book.buys)
-    assert merged.supply == sum(o.quantity for o, _ in book.sells)
-    assert merged.sold == [first.sold[0], second.sold[0]]
+    # 売りの量は1回目に出した在庫（値引きの出し直しを2度数えない）
+    assert merged.supply == sum(o.quantity for o, p in book.sells if not p.clearance)
+    assert merged.sold == [*first.sold, second.sold[0]]
+    assert merged.sold[1] + merged.sold[2] <= book.sells[1][0].quantity  # b の在庫まで
     assert sum(merged.bought) == merged.volume
     assert all(merged.bought[i] <= o.quantity for i, (o, _) in enumerate(book.buys))
 
@@ -497,8 +501,8 @@ def test_island_price_keeps_the_first_price_unless_the_outlet_filled_every_buyer
     # 値引きの分が少なく、指値 120 の買い手が残る
     island.scratch.clear()
     book = _outlet_book()
-    order, party = book.sells[1]
-    book.sells[1] = (Order(5 * Q, order.limit), party)
+    order, party = book.sells[2]
+    book.sells[2] = (Order(5 * Q, order.limit), party)
     settled, merged = _clear_captured(game, world, island, good, book)
     assert merged.bought[0] < book.buys[0][0].quantity
     assert island.scratch[CLEARANCE][good] == settled[0][1].price
@@ -506,11 +510,12 @@ def test_island_price_keeps_the_first_price_unless_the_outlet_filled_every_buyer
     # 値引きのないときと同じく上がる（2回目で何も売れない）
     island.scratch.clear()
     shop = Party(FACILITY, "fac:a", Payer("fac:a"))
+    dear = Party(FACILITY, "fac:b", Payer("fac:b"))
     cut = Party(FACILITY, "fac:b", Payer("fac:b"), clearance=True)
     buyer = Party(FACILITY, "fac:x", Payer("fac:x"))
     book = Book(
         [(Order(5 * Q, 120), buyer), (Order(3 * Q, 95), buyer)],
-        [(Order(10 * Q, 110), shop), (Order(10 * Q, 105), cut)],
+        [(Order(10 * Q, 110), shop), (Order(10 * Q, 140), dear), (Order(10 * Q, 105), cut)],
     )
     settled, merged = _clear_captured(game, world, island, good, book)
     assert len(settled) == 1 and settled[0][1].price > 100  # 2回目は約定しない
@@ -529,10 +534,11 @@ def test_outlet_keeps_pooled_household_tiers_within_what_they_reserved(game, war
     head.reserved = curve_cost(tiers, 0, 0)  # どれか1つの値段で約定したときの上限（180）
     member = Party("household", "hh:general", Payer("hh:general"), layer=GENERAL, pool=head)
     shop = Party(FACILITY, "fac:a", Payer("fac:a"))
+    dear = Party(FACILITY, "fac:b", Payer("fac:b"))
     cut = Party(FACILITY, "fac:b", Payer("fac:b"), clearance=True)
     book = Book(
         [(Order(Q, 100), head), (Order(Q, 90), member)],
-        [(Order(Q, 100), shop), (Order(5 * Q, 85), cut)],
+        [(Order(Q, 100), shop), (Order(5 * Q, 200), dear), (Order(5 * Q, 85), cut)],
     )
     market, paid = Market(), []
 

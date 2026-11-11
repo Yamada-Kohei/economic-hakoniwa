@@ -964,7 +964,8 @@ class Market(IslandStage):
         self._services_orders(island, ctx, books_by_good, official)
         self._trade_orders(island, ctx, books_by_good, rates, hh_rate)
         offered = {  # 買い手は、いま売りに出ている量を見て注文する（ない物にお金を取り置かない）
-            good: sum(order.quantity for order, _ in book.sells)
+            # 値引きの売り（MK-41）は、ふだんの売りに出した在庫の出し直しなので数えない
+            good: sum(order.quantity for order, party in book.sells if not party.clearance)
             for good, book in books_by_good.items()
         }
         self._site_orders(island, ctx, books_by_good, rates, offered, hh_rate)
@@ -1104,9 +1105,8 @@ class Market(IslandStage):
         値段の範囲は 1 から1回目の値段まで（1回目に売りがなければ前の値段まで）。アウトレットは
         ふだんの値段より高く売らない。
 
-        返すのは2回をまとめた1つの結果（もとの注文の並び）: 約定量は2回の合計、売りの量は値引きの
-        分を含めた合計、買いの量はもとのまま（2回目に出し直した分を2度数えない）、値段は1回目の
-        値段。品切れの記録・希望価格の見直し・国の倉庫の結果などは、今どおりこれを読む。
+        返すのは2回をまとめた1つの結果（もとの注文の並び）: 約定量は2回の合計、売りの量と買いの量は
+        もとのまま（2回目に出し直した分を2度数えない）、値段は1回目の値段。品切れの記録・希望価格の見直し・国の倉庫の結果などは、今どおりこれを読む。
 
         島の値段と市場の記録の値段（scratch[CLEARANCE]。_record）は1回目の値段。ただし1回目の値段が
         前の値段より高く、2回目の後に1回目の値段以上の指値で買えなかった買い手が残らない（1回目の
@@ -1115,11 +1115,25 @@ class Market(IslandStage):
         値引きを除いた値段を残した形の full の比べ。2026-11-10）。1回目に売りがなければ前の値段。"""
         reference = island.economy.prices.get(good, 1)
         top = first.price if first.supply > 0 else reference
+        # 値引きの売りは、同じ売り手がふだんの指値で1回目に出して売れ残った量までに減らす（在庫は
+        # みな1回目に出しているので、1回目は値引きのないときと同じ。売れ残った超えた分だけを安く
+        # 出し直す）。減らした量は book に書き戻す（値引きの値下げの段の数え: _update_prices）
+        unsold: dict[str, int] = {}
+        for j, k in enumerate(shop):
+            order, party = book.sells[k]
+            if order.limit is not None:
+                unsold[party.name] = unsold.get(party.name, 0) + order.quantity - first.sold[j]
+        for k in outlet:
+            order, party = book.sells[k]
+            qty = min(order.quantity, max(0, unsold.get(party.name, 0)))
+            unsold[party.name] = unsold.get(party.name, 0) - qty
+            book.sells[k] = (replace(order, quantity=qty), party)
+        cuts = [k for k in outlet if book.sells[k][0].quantity > 0]
         left = self._outlet_left(book, first, top)
         rest = [k for k in range(len(book.buys)) if left[k] > 0]
         second = Book(
             [(replace(book.buys[k][0], quantity=left[k]), book.buys[k][1]) for k in rest],
-            [book.sells[k] for k in outlet],
+            [book.sells[k] for k in cuts],
         )
         late = auction.clear(
             [o for o, _ in second.buys],
@@ -1144,13 +1158,13 @@ class Market(IslandStage):
         sold = [0] * len(book.sells)
         for j, k in enumerate(shop):
             sold[k] = first.sold[j]
-        for j, k in enumerate(outlet):
+        for j, k in enumerate(cuts):
             sold[k] = late.sold[j]
         result = auction.Result(
             price=first.price,
             volume=first.volume + late.volume,
             demand=first.demand,
-            supply=first.supply + late.supply,
+            supply=first.supply,  # 値引きの売りは1回目に出した在庫の出し直し
             low=first.low,
             high=first.high,
             bought=filled,
@@ -1848,7 +1862,8 @@ class Market(IslandStage):
                         party = replace(seller, clearance=True)
                         order = Order(qty, min(limit, cut))
                         self._add(books_by_good, good, "sell", order, party)
-                        held -= qty
+                    # 在庫はみな、ふだんの指値でふだんの板寄せ（1回目）に出す。値引きの売りは、
+                    # 1回目で売れ残った分のうち超えた分だけを2回目に出し直すもの（_outlet）
                     if held > 0:
                         self._add(books_by_good, good, "sell", Order(held, limit), seller)
             # 作り方を替えて使わなくなった物（フェーズ3-2）は、値幅の下端を指値に売る。ただし同じ
