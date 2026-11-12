@@ -242,7 +242,6 @@ _EXTRA_STATS = [
     ("firms.largest_share", "一番大きい企業の施設の割合", "percent"),
     ("firms.support", "企業の中で施設に回したお金（1ターン）", "money"),
     ("firms.cash", "民営の企業の預金の合計", "money"),
-    ("firms.cascade", "企業ごとの倒産で差し押さえた施設（1ターン）", ""),
     ("firms.restructured", "企業の立て直しで閉めた施設（1ターン）", ""),
     # 回7 後半: 企業の中のお金の融通・休業・銀行の合併
     ("firms.pooled", "企業の中でほかの施設の手元から回したお金（1ターン）", "money"),
