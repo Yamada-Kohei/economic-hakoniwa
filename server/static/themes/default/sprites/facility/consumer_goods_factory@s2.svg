@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+<g transform="translate(0 32)" stroke-linejoin="round" stroke-width="0.4">
+<polygon points="21.76,8.32 35.20,15.04 35.20,-18.96 21.76,-25.68" fill="#c1bcb1" stroke="#c1bcb1"/>
+<polygon points="45.44,9.92 35.20,15.04 35.20,-18.96 45.44,-24.08" fill="#9b978f" stroke="#9b978f"/>
+<polygon points="32.00,-30.80 45.44,-24.08 35.20,-18.96 21.76,-25.68" fill="#b57fb3" stroke="#b57fb3"/>
+<polygon points="5.76,16.32 32.00,29.44 32.00,13.44 5.76,0.32" fill="#bdb5bd" stroke="#bdb5bd"/>
+<polygon points="48.00,21.44 32.00,29.44 32.00,13.44 48.00,5.44" fill="#989298" stroke="#989298"/>
+<polygon points="21.76,-7.68 48.00,5.44 32.00,13.44 5.76,0.32" fill="#b57fb3" stroke="#b57fb3"/>
+<polygon points="17.92,-0.64 21.12,0.96 21.12,-3.04 17.92,-4.64" fill="#8b9095" stroke="#8b9095"/>
+<polygon points="24.32,-0.64 21.12,0.96 21.12,-3.04 24.32,-4.64" fill="#707478" stroke="#707478"/>
+<polygon points="21.12,-6.24 24.32,-4.64 21.12,-3.04 17.92,-4.64" fill="#aab0b6" stroke="#aab0b6"/>
+<polygon points="24.32,2.56 27.52,4.16 27.52,0.16 24.32,-1.44" fill="#8b9095" stroke="#8b9095"/>
+<polygon points="30.72,2.56 27.52,4.16 27.52,0.16 30.72,-1.44" fill="#707478" stroke="#707478"/>
+<polygon points="27.52,-3.04 30.72,-1.44 27.52,0.16 24.32,-1.44" fill="#aab0b6" stroke="#aab0b6"/>
+<polygon points="30.72,5.76 33.92,7.36 33.92,3.36 30.72,1.76" fill="#8b9095" stroke="#8b9095"/>
+<polygon points="37.12,5.76 33.92,7.36 33.92,3.36 37.12,1.76" fill="#707478" stroke="#707478"/>
+<polygon points="33.92,0.16 37.12,1.76 33.92,3.36 30.72,1.76" fill="#aab0b6" stroke="#aab0b6"/>
+</g>
+</svg>
