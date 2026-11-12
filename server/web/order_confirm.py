@@ -324,6 +324,14 @@ def _official_price(ctx: Context, p: dict[str, Any]) -> list[str]:
     )
 
 
+def _retail_price(ctx: Context, p: dict[str, Any]) -> list[str]:
+    good, price = p.get("good"), p.get("price")
+    return _keep(
+        price_note(ctx, good, "buy", price, what="小売の値段")
+        or price_note(ctx, good, "sell", price, what="小売の値段")
+    )
+
+
 def _export_subsidy(ctx: Context, p: dict[str, Any]) -> list[str]:
     good, amount = p.get("good"), p.get("amount")
     market = ctx.market(good) if isinstance(good, str) else None
@@ -404,6 +412,7 @@ RULES = {
     "set_price_cap": _price_cap,
     "set_price_floor": _price_floor,
     "set_official_price": _official_price,
+    "set_retail_price": _retail_price,
     "set_export_subsidy": _export_subsidy,
     "demolish": _demolish,
     "disband_unit": _disband_unit,
@@ -418,7 +427,7 @@ RULES = {
     "change_economy": _fixed("経済体制を変えます。混乱期間に入ります。"),
     "review_official_prices": _fixed(
         "選んだ財（選ばなければ、命令で決めた値段のない財すべて）の公定価格を今の原価に改めます。"
-        "値上げは支持率と政情に響きます。"
+        "選んだ据え置く財は小売の値段も改めます。値上げは支持率と政情に響きます。"
     ),
 }
 

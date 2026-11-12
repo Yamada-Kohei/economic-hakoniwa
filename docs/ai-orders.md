@@ -146,6 +146,12 @@ MCP は `saved: false`）。読んでよければ、同じ列に `"confirm": tru
 {"kind":"set_official_price","payload":{"good":"grain","price":100}}
 ```
 
+計画経済では、家計が払う小売の値段も上書きできます（PL-60。`price: 0` で上書きを解除。卸の値段の `planning.retail.floor` より安くはできず、据え置く財の小売を上げるときは議会の採決が要ります。行政力 2）。
+
+```json
+{"kind":"set_retail_price","payload":{"good":"grain","price":110}}
+```
+
 電力1 MWh の料金の上限を指定する例です。`price: 0` で上限をなくします。
 
 ```json
@@ -174,6 +180,9 @@ MCP は `saved: false`）。読んでよければ、同じ列に `"confirm": tru
 ```json
 {"kind":"propose_contract","payload":{"partner":5,"side":"buy","good":"grain","quantity":10,"price":100,"currency":5,"turns":12,"delivery":"market"}}
 ```
+
+期間の代わりに `"indefinite": true` を書くと無期限の契約になります（`turns` は書きません）。
+満期がなく、どちらかが `cancel_contract` を出してから `trade.contract_cancel_turns` ターン後に終わります。
 
 相手の提案を買い手として受ける例です。契約番号は `get api/islands/4/trade` で確認します。
 提案した命令と同時に、まだ存在しない契約番号を指定してはいけません。

@@ -909,7 +909,7 @@ def placement_problem(
         return ("reason_office_zone" if tile.zone == ZONE_OFFICE else "reason_commercial_zone", {})
     if fdef.get("coastal") and not is_coastal(island, (x, y), lambda t: is_land(defs, t)):
         return ("reason_not_coastal", {"facility": kind})
-    limit = fdef.get("max_per_island")
+    limit = island_limit(defs, island, kind)
     if (
         limit is not None
         and sum(1 for f in island.facilities if f.kind == kind and EXPANDS not in f.ext) >= limit
@@ -927,6 +927,9 @@ def placement_problem(
             return ("reason_recipe_required", {"facility": kind})
     if recipe not in recipes:
         return ("reason_unknown_recipe", {"facility": kind})
+    beyond = extra_slot_problem(defs, island, kind, recipe)
+    if beyond is not None:
+        return beyond
     problem = recipe_problem(defs, island, kind, recipe)
     water = nature.water_spec(recipes[recipe])
     if problem is None and water is not None:
@@ -936,6 +939,44 @@ def placement_problem(
             args = {"facility": kind, "percent": round(got * 100), "min": round(water["min"] * 100)}
             return ("reason_dry_site", args)
     return problem
+
+
+def island_limit(defs: Defs, island: IslandState, kind: str) -> int | None:
+    """1つの国が持てる kind の数（工事中も数える。None は上限なし）。
+
+    鉱山のように定義に ``limit_by_resources`` のある施設は、``max_per_island`` と、島が持つ
+    鉱業資源（鉱脈を含む）のうちその施設の作り方で使えるものの数の大きい方（FM-66、W-241）。
+    """
+    fdef = defs.facilities[kind]
+    limit = fdef.get("max_per_island")
+    if limit is None or not fdef.get("limit_by_resources"):
+        return limit
+    usable = {r["requires_resource"] for r in fdef["recipes"].values() if "requires_resource" in r}
+    return max(limit, len(usable & set(island.resources)))
+
+
+def extra_slot_problem(
+    defs: Defs, island: IslandState, kind: str, recipe: str
+) -> tuple[str, dict[str, Any]] | None:
+    """``max_per_island`` を超えて建てる鉱山が、島の鉱山の掘っている資源を掘るなら (理由, 引数)。
+
+    資源の数で増えた枠は、まだ掘っていない資源のためのもの（FM-66。石炭の 3 つ目には使えない）。
+    """
+    fdef = defs.facilities[kind]
+    if not fdef.get("limit_by_resources") or fdef.get("max_per_island") is None:
+        return None
+    mine = [f for f in island.facilities if f.kind == kind and EXPANDS not in f.ext]
+    if len(mine) < fdef["max_per_island"]:
+        return None
+    resource = fdef["recipes"][recipe].get("requires_resource")
+    dug = {
+        fdef["recipes"][f.recipe].get("requires_resource")
+        for f in mine
+        if f.recipe in fdef["recipes"]
+    }
+    if resource in dug:
+        return ("reason_extra_slot_dug", {"facility": kind, "good": resource})
+    return None
 
 
 def recipe_problem(

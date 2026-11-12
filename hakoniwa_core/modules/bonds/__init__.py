@@ -56,6 +56,7 @@ from hakoniwa_core import ledger
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.diplomacy import credit
 from hakoniwa_core.economy import BONDS, Payer, banks, books, debt, funds
+from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
@@ -303,12 +304,14 @@ class Bonds(WorldStage):
     ) -> int:
         """国庫に残す額: このターンの国債以外の政府の支出（次のターンの見込み）×（1 +
         bonds.buffer_turns）＋ 次のターンの利払い。spent は支出の項目ごとの額（既定はこのターンに
-        使った額）。"""
+        使った額）。計画経済の価格の補助の未払いも足す。"""
         if spent is None:
             spent = funds.spent(island)
         spending = sum(v for k, v in spent.items() if k != BONDS)
         buffer = ctx.config.get("bonds.buffer_turns")
-        return spending * (1 + buffer) + debt.due(island, ctx.turn + 1, redemptions=False)
+        # 計画経済の価格の補助で払いきれなかった国の未払い（PL-60。次のターンに先に払う）
+        owed = planning.owed_total(island)
+        return spending * (1 + buffer) + debt.due(island, ctx.turn + 1, redemptions=False) + owed
 
     # --- 利回り -----------------------------------------------------------------------
 

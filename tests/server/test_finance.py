@@ -465,3 +465,12 @@ def test_bank_books_separate_realized_and_unrealized_bond_gains(client, world):
     assert labels.index("国債の売却・償還の損益") < labels.index("損益")
     assert labels[-1].startswith("国債の評価損益（売るまで損益に入れず")
     assert rows[-1]["text"].endswith("9,000")
+
+
+def test_help_says_only_the_collateral_facility_is_seized(client, world):
+    """手引きの倒産と差し押さえ（FM-65）: 差し押さえは担保の施設だけで、倒産を出した企業の実績の
+    ターン数を設定から出す。"""
+    html = client.get("/help/").content.decode()
+    turns = get_game().config.get("firms.track_record_turns")
+    assert "貸し手が差し押さえるのもその施設だけです" in html
+    assert f"それから {turns} ターンのあいだ、融資の実績がない企業" in html
