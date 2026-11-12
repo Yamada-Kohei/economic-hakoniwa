@@ -553,8 +553,34 @@ def help_start_page(request):
             "commute": game.config.get("labor.commute_radius"),
             "base_admin": game.config.get("orders.base_admin_power"),
             "power_fuel_turns": game.config.get("founding.power_fuel_turns"),
+            "careful": _careful_help(game.config),
         },
     )
+
+
+def _careful_help(config) -> dict:
+    """入門の「軽く動かさないほうがいい数値」に出す数（W-255）。"""
+
+    def percent(name: str) -> str:
+        return f"{config.get(name) * 100:g}"
+
+    return {
+        "indexation": percent("labor.indexation"),
+        "max_raise": percent("labor.max_raise"),
+        "haircut": percent("bonds.haircut"),
+        "default_premium": percent("bonds.default_premium"),
+        "default_decay": config.get("bonds.default_decay_turns"),
+        "default_exclusion": config.get("bonds.default_exclusion_turns"),
+        "default_crunch": config.get("banking.default_crunch_turns"),
+        "default_stability": -config.get("politics.events.default"),
+        "default_stability_turns": config.get("politics.events.default_turns"),
+        "exit_turns": config.get("firms.exit_loss_turns"),
+        "entries": config.get("firms.entries_per_turn"),
+        "cb_lock_turns": config.get("central_bank.switch_lock_turns"),
+        "transition_turns": config.get("politics.transition.turns"),
+        "working_years": config.get("education.working_years"),
+        "grievance_max": config.get("politics.press.grievance_max"),
+    }
 
 
 # 入門の「施設の状態の言葉」（名前は messages.yaml の status_<key> から引く）
@@ -623,6 +649,38 @@ def help_ai_page(request):
 def help_chain_page(request):
     """産業のつながりの手引き: 施設の作り方から品目どうしのつながりを図と表で見せる（UI-61）。"""
     return render(request, "web/help_chain.html", {"chain": chain_map.chain_data()})
+
+
+def help_fx_page(request):
+    """為替の効き方と打てる手の手引き（W-252）。数は game.yaml の fx・banking などから。"""
+    config = get_game().config
+
+    def percent(name: str) -> str:
+        return f"{config.get(name) * 100:g}"
+
+    return render(
+        request,
+        "web/help_fx.html",
+        {
+            "fx": {
+                "band": percent("fx.band"),
+                # 毎ターン同じ向きに値幅いっぱい動いたときの 1 年（12 ターン）の動き
+                "band_year": f"{((1 + config.get('fx.band')) ** 12 - 1) * 100:.0f}",
+                "keep_turns": config.get("fx.keep_turns"),
+                "reserve_share": percent("fx.reserve_share"),
+                "swap_quota": percent("fx.swap_quota"),
+                "swap_issuer_share": percent("fx.swap_issuer_share"),
+                "swap_spread": percent("fx.swap_spread"),
+                "peg_band": percent("fx.peg_band"),
+                "bank_share": percent("banking.foreign_share"),
+                "bank_step": percent("banking.foreign_step"),
+                "bank_margin": percent("banking.foreign_margin"),
+                "trader_cut": percent("trade.trader_cut"),
+                "merchant_turns": config.get("foreign_merchant.turns"),
+                "cb_lock_turns": config.get("central_bank.switch_lock_turns"),
+            },
+        },
+    )
 
 
 def help_hakoniwa_page(request):
