@@ -271,8 +271,10 @@ function drawFacility(ctx, f, map, defs, px, ground, theme, sprites) {
 }
 
 /** 止まっている施設には赤い印（絵の上にも描く）。top は印を置くひし形の上の頂点。
- * 稼働準備中（まだ動いたことがなく、次の更新で動き出す）は止まりではないので描かない（W-219）。 */
-function drawStopped(ctx, f, defs, px, top, hh) {
+ * 稼働準備中（まだ動いたことがなく、次の更新で動き出す）は止まりではないので描かない（W-219）。
+ * 売れ行きに合わせて 0 まで下げて止まった施設（生産停止中（買い注文不足））にも描き、下げても
+ * 作り続けている生産調整中には描かない（UI-84）。 */
+export function drawStopped(ctx, f, defs, px, top, hh) {
   if (f.kind === defs.housing || f.rate !== 0 || !f.status || f.status === "starting") return;
   ctx.fillStyle = "#e53935";
   ctx.beginPath();

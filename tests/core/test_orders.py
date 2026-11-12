@@ -89,3 +89,62 @@ def test_log_formatting():
     assert floor == "穀物の値段の下限を 1トンあたり 1,000 にしました"
     cars = format_log(defs, "cargo_arrived", {"good": "automobile", "amount": 3})
     assert cars == "自動車 3 台が船で港に着きました"
+
+
+def test_unused_admin_power_is_banked_and_used_up_to_the_burst():
+    """使わなかった行政力はためておき、1ターンに使えるのは行政力の burst 倍まで（W-265）。"""
+    from hakoniwa_core.modules.planning import ADMIN_BANK
+
+    game, world, island = setup([])
+    config = game.config
+    power = config.get("orders.base_admin_power")
+    burst = int(power * config.get("orders.burst"))
+    game.engine.run_turn(world)  # 命令がないターン: 行政力をためる
+    game.engine.run_turn(world)
+    assert island.ext[ADMIN_BANK] == 2 * power
+    assert island.stats["admin_bank"] == 2 * power
+    assert island.stats["admin_usable"] == burst
+    tiles = _land_tiles(island, burst + 2)
+    island.orders = [
+        OrderState(id=i + 1, seq=i + 1, kind="build_power_line", payload={"tiles": [list(p)]})
+        for i, p in enumerate(tiles)
+    ]
+    game.engine.run_turn(world)
+    statuses = [o.status for o in island.orders]
+    assert statuses.count(ORDER_DONE) == burst  # 行政力の burst 倍まで
+    assert island.ext.get(ADMIN_BANK, 0) == 2 * power - (burst - power)
+
+
+def test_admin_bank_is_capped():
+    from hakoniwa_core.modules.planning import ADMIN_BANK
+
+    game, world, island = setup([])
+    config = game.config
+    power = config.get("orders.base_admin_power")
+    cap = power * config.get("orders.bank_turns")
+    island.ext[ADMIN_BANK] = cap
+    game.engine.run_turn(world)
+    assert island.ext[ADMIN_BANK] == cap
+
+
+def test_heavy_order_does_not_eat_the_bank():
+    """1ターンの行政力より重い命令は、ためた分を使わずにそのターンの行政力だけを使う（W-265）。"""
+    from hakoniwa_core.modules.planning import ADMIN_BANK, bank_admin
+
+    game, world, island = setup([])
+    power = game.config.get("orders.base_admin_power")
+    island.ext[ADMIN_BANK] = 5 * power
+    bank_admin(island, game.config, power, power)  # 行政力をちょうど使い切ったターン
+    assert island.ext[ADMIN_BANK] == 5 * power
+
+
+def test_bank_is_not_cut_when_admin_power_drops():
+    from hakoniwa_core.modules.planning import ADMIN_BANK, bank_admin
+
+    game, _, island = setup([])
+    turns = game.config.get("orders.bank_turns")
+    island.ext[ADMIN_BANK] = 3 * turns  # 行政力 3 で上限までためた
+    bank_admin(island, game.config, 2, 0)  # デモで行政力が 2 に下がり、何も使わなかった
+    assert island.ext[ADMIN_BANK] == 3 * turns
+    bank_admin(island, game.config, 2, 3)  # 1 だけ借りて使った
+    assert island.ext[ADMIN_BANK] == 3 * turns - 1

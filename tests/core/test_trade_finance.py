@@ -175,7 +175,10 @@ def test_wages_and_export_purchases_are_not_turned_into_fx(game, traded, monkeyp
     keep = game.config.get("fx.keep_turns")
     wage = island.economy.average_wage or game.config.get("labor.initial_wage")
     wages = traders.workers_wanted(game.config, game.defs, f) * wage * keep
-    reserve = wages + traders.spend_estimate(f) * keep
+    # 残す見込みは貿易の段（FX-61）と同じ: fx.keep_turns ターン分の賃金か、次のターンより後の分の
+    # 賃金と仕入れの大きいほう。仕入れの見込みのある商社でも、世界の道筋によらず同じ手元にする
+    later = (wages // keep + traders.spend_estimate(f)) * (keep - 1)
+    reserve = max(wages, later)
     money = ledger.money(island, entity)
     if money > reserve:  # 余りを持ち主へ移して、手元を見込みちょうどにする
         ledger.pay(island, entity, ledger.GOV, money - reserve, "capital_injection")
