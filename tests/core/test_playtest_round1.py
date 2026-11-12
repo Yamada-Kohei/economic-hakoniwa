@@ -260,7 +260,7 @@ def test_small_hungry_layers_order_all_they_need(game):
     orders = hungry_food_orders(
         8, {"grain": 8}, {"grain": 8}, menu, anchors, 0, budget, steps, elasticity
     )
-    assert 0 < sum(gross_cost(lim, q, menu.rate, menu.tax) for _, q, lim in orders) <= budget
+    assert 0 < sum(gross_cost(lim, q, menu.rate, menu.tax[g]) for g, q, lim in orders) <= budget
     # 取り分の切り捨てで数単位欠けただけなら、「物がない」ではなく「買い負けた」
     summary = {"need": 1000, "ordered": 999, "offered": 998, "cost": 10, "budget": 1000}
     assert food_short_reason(summary) == "outbid"

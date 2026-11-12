@@ -87,8 +87,11 @@ class Failures(IslandStage):
                     continue
                 entity = facility_entity(f.id)
                 limit = ctx.config.get("loans.arrears_limit")
+                # 倒れるのは返済の遅れが限度に届いた施設だけで、貸し手はその施設（借入の担保）だけを
+                # 差し押さえる。同じ企業のほかの施設の借入は早めない（FM-65。前は FM-40 の
+                # クロスデフォルトで、同じ企業の借入のある施設もみな倒れていた）
                 if any(x.arrears >= limit for x in banks.loans_by_borrower(island, entity)):
-                    cross_default(island, ctx, f)
+                    bankrupt(island, ctx, f)
         before = funds.government_money(island)  # 政府の預金からの引き出しは使った額に数えない
         spent = dict(funds.spent(island))  # 救済の前の支出（救済の額は次のターンの見込みでない）
         resolved = self._resolve(island, ctx)
@@ -158,37 +161,6 @@ def _can_absorb(island: IslandState, ctx: StageContext, target: str, bank: str) 
 # --- 施設の倒産 -------------------------------------------------------------------
 
 
-def cross_default(island: IslandState, ctx: StageContext, f: Facility) -> None:
-    """返済の遅れが続いた施設を倒産させる。民営の企業の施設なら、企業の預金で回せなくなったという
-    ことなので、同じ企業の借入のある施設もみな倒産させる（企業ごとの倒産。現実の融資の契約の
-    クロスデフォルト条項で、1つの借入の不履行がほかの借入の期限を早める）。借入のない施設は企業に
-    残る（回7）。"""
-    number = companies.private_firm_of(island, f)
-    group = [f]
-    if number is not None:
-        group += [
-            m
-            for m in companies.members(island, number)
-            if m.id != f.id
-            and "foreclosed" not in m.economy
-            and banks.loans_by_borrower(island, facility_entity(m.id))
-        ]
-    for m in group:
-        bankrupt(island, ctx, m)
-    if len(group) > 1:
-        island.log.append(
-            LogEntry(
-                "firm_bankrupt",
-                {
-                    "firm": companies.display_name(island, ctx.defs, number),
-                    "count": len(group),
-                },
-            )
-        )
-        stats = island.stats
-        stats["firms.cascade"] = stats.get("firms.cascade", 0) + len(group)
-
-
 def bankrupt(island: IslandState, ctx: StageContext, f: Facility, run: bool | None = None) -> None:
     """施設を倒産させ、いちばん多く貸していた銀行が差し押さえる。
 
@@ -232,6 +204,11 @@ def bankrupt(island: IslandState, ctx: StageContext, f: Facility, run: bool | No
     ledger.pay(island, entity, owner, left, "equity_return")
     cancel_equity(island, entity)
     lender = max(lender_totals, key=lambda b: (lender_totals[b], b)) if lender_totals else None
+    number = companies.private_firm_of(island, f)
+    if number is not None:  # 倒産を出した企業は、しばらく融資の実績がないとみる（FM-65）
+        rec = companies.record(island, number)
+        assert rec is not None
+        rec[companies.DEFAULTED] = ctx.turn
     book = banks.book_capital(f)
     f.economy[SEIZED] = {
         "bank": lender,
@@ -314,6 +291,12 @@ def close_foreclosure(
         receivership.write_off(island, f)
     f.economy.pop(SEIZED, None)
     distribute(island, entity, min(pool, ledger.money(island, entity)), seized, kind)
+    # 売っても取り壊しても返しきれなかった借入は、元の持ち主の企業への担保のない債権にする
+    # （FM-65。工場ごとの担保の融資の担保割れの不足は会社への債権になる）
+    owner = seized.get("owner") if isinstance(seized, dict) else None
+    loans = (seized.get("claims") or {}).get(arrears.LOANS, {}) if isinstance(seized, dict) else {}
+    if owner and companies.is_firm(owner) and loans:
+        companies.owe(island, companies.number_of(owner), loans)
     return seized
 
 

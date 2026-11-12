@@ -350,6 +350,68 @@ def test_a_mine_cannot_switch_to_another_deposit(game, warmed):
     assert fac.switch_problem(defs, island, farm, "fertilized") is None
 
 
+def test_mines_are_limited_by_the_mineable_resources_of_the_island(game, warmed):
+    """鉱山の数の上限（FM-66、W-241）: 2 と、島が持つ鉱山で掘れる鉱業資源の数の大きい方。
+    石炭・鉄鉱石・銅の島は 3 つ目を建てられ、4 つ目は建てられない。油井は今のまま 2 つまで。"""
+    defs = game.defs
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    island.resources = ["coal", "crude_oil"]
+    assert fac.island_limit(defs, island, "mine") == 2
+    assert fac.island_limit(defs, island, "oil_well") == 2
+    island.resources = ["coal", "iron_ore", "copper_ore"]
+    assert fac.island_limit(defs, island, "mine") == 3
+    assert fac.island_limit(defs, island, "farm") is None
+
+    island.facilities = [f for f in island.facilities if f.kind != "mine"]
+    used = {(f.x, f.y) for f in island.facilities}
+    free = [t for t in island.tiles if t.terrain == "mountain" and (t.x, t.y) not in used]
+    recipes = ["coal", "iron_ore", "copper_ore", "coal"]
+    for n, recipe in enumerate(recipes[:3]):
+        tile = free[n]
+        island.facilities.append(
+            Facility(
+                id=90_000 + n, kind="mine", x=tile.x, y=tile.y, recipe=recipe, owner=OWNER_STATE
+            )
+        )
+        if n == 1:  # 2 つ建てた後も、3 つ目は数の上限では断らない
+            x, y = free[3].x, free[3].y
+            problem = fac.placement_problem(defs, island, "mine", x, y, "copper_ore")
+            assert problem is None or problem[0] != "reason_too_many"
+    problem = fac.placement_problem(defs, island, "mine", free[3].x, free[3].y, "coal")
+    assert problem == ("reason_too_many", {"facility": "mine", "max": 3})
+
+
+def test_a_third_mine_must_dig_a_resource_no_mine_digs_yet(game, warmed):
+    """資源の数で増えた枠（FM-66）は、まだ掘っていない資源のためのもの: 石炭の鉱山 2 つの島は、
+    3 つ目に石炭を掘れないが、銅なら建てられる（数の上限では断らない）。"""
+    defs = game.defs
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    island.resources = ["coal", "iron_ore", "copper_ore"]
+    island.facilities = [f for f in island.facilities if f.kind != "mine"]
+    used = {(f.x, f.y) for f in island.facilities}
+    free = [t for t in island.tiles if t.terrain == "mountain" and (t.x, t.y) not in used]
+    for n in range(2):
+        island.facilities.append(
+            Facility(
+                id=90_100 + n,
+                kind="mine",
+                x=free[n].x,
+                y=free[n].y,
+                recipe="coal",
+                owner=OWNER_STATE,
+            )
+        )
+    x, y = free[2].x, free[2].y
+    assert fac.placement_problem(defs, island, "mine", x, y, "coal") == (
+        "reason_extra_slot_dug",
+        {"facility": "mine", "good": "coal"},
+    )
+    problem = fac.placement_problem(defs, island, "mine", x, y, "copper_ore")
+    assert problem is None or problem[0] not in ("reason_too_many", "reason_extra_slot_dug")
+
+
 def test_change_recipe_switches_at_the_market_and_halves_the_next_turn(game, warmed):
     """畑でない施設（火力発電所）は、次の市場の段で一度に替え、次のターンは稼働率が半分。"""
     KIND = "thermal_power_plant"
