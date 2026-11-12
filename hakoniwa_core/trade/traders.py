@@ -109,9 +109,8 @@ def contract_supply_plan(island: IslandState, config: GameConfig) -> dict[str, t
 
     上限は島の値段の値幅の上端（契約は外国との約束なので、国内の値段が契約の値段より高くても、
     損を出して買う。2026-11-12 に戻した。11-10 から 11-12 は契約の値段までで、国内が少しでも
-    高いと売りが余っていても買えず、契約が届かなかった。掲示板 #31）。市場の段は、この上限の中で
-    売りの安い順に要る量までの値段を指値にする（Market._tender_limit。上端で買い続けて値段を毎ターン
-    押し上げない）。予算の段の取り置きの見積もりは上限で数える。"""
+    高いと売りが余っていても買えず、契約が届かなかった。掲示板 #31）。市場の段の買いと、予算の段の
+    取り置きの見積もりの両方で使う。"""
     needs: dict[str, int] = {}
     for c in island.ext.get("trade", {}).get("contracts", []):
         if c.get("side") == "sell" and c.get("active"):
