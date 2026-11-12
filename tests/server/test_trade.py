@@ -336,7 +336,9 @@ def test_island_pages_link_to_trade_and_fx(client, world):
     for url in (f"/islands/{island.id}/", f"/islands/{island.id}/finance/"):
         html = client.get(url).content.decode()
         assert f'href="/islands/{island.id}/trade/"' in html
-        assert f'href="/islands/{island.id}/fx/"' in html
+    # 為替は入口「貿易」の中のタブ（UI-71）
+    html = client.get(f"/islands/{island.id}/trade/").content.decode()
+    assert f'href="/islands/{island.id}/fx/"' in html
     assert client.get(f"/islands/{island.id}/trade/").status_code == 200
     assert client.get(f"/islands/{island.id}/fx/").status_code == 200
     # 島を作った時点で港と商社が置かれるので、最初の更新の前から貿易は始まっている（W-140）
@@ -478,7 +480,8 @@ def test_trade_orders_are_accepted(client, world):
         ("accept_contract", {"contract": 1}),
         ("cancel_contract", {"contract": 1}),
     ]
-    body = {"orders": [{"kind": k, "payload": p} for k, p in orders]}
+    # 圏を抜ける・契約をやめるは戻せない命令なので、確かめた印を付ける（UI-75）
+    body = {"orders": [{"kind": k, "payload": p} for k, p in orders], "confirm": True}
     res = client.put(f"/api/islands/{island.id}/orders", body, content_type="application/json")
     assert res.status_code == 200, res.content.decode()
     assert res.json()["warnings"] == []

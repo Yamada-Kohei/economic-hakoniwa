@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% load i18n static %}
+{% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+{% include "web/report_header.html" %}
+{% csrf_token %}
+<section id="orders-page" class="panel" data-url="{% url 'api_orders' island.id %}" data-defs="{% url 'api_defs' %}"
+         data-heading="{% if mine %}{% translate '命令の列（次のターンに上から実行）' %}{% else %}{% translate '待っている命令' %}{% endif %}"></section>
+<p class="hint">{% blocktranslate %}命令は地図・市場・財政などの各ページの右の欄から足します。ここでは並べ替え・取り消しと、前のターンまでの結果を見ます。保存は 1 件ずつなので、ほかの画面で同時に足した命令も消えません。{% endblocktranslate %}</p>
+<script type="module" src="{% static 'js/reports/orders-page.js' %}"></script>
+{% endblock %}

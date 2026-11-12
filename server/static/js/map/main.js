@@ -7,15 +7,14 @@ import { drawMinimap, minimapTile } from "./minimap.js";
 import { overlayList } from "./overlays/index.js";
 import { lift, tileToWorld, worldToTile } from "./projection.js";
 import { drawIsland } from "./renderer.js";
+import { drawRuler } from "./ruler.js";
 import { loadSprites } from "./sprites.js";
 import { OrderQueue } from "../island/orders.js";
 import { TilePanel } from "../island/panel.js";
 import { MissileTarget } from "../island/missiles.js";
 import { words } from "../military/common.js";
 import { getJson } from "../island/api.js";
-import { mountRecentChanges } from "../island/recent-changes.js";
 
-mountRecentChanges();
 
 const canvas = document.getElementById("island-map");
 const ctx = canvas.getContext("2d");
@@ -57,6 +56,7 @@ function redraw() {
     pending = false;
     try {
       drawIsland(ctx, map, defs, view, state);
+      drawRuler(ctx, map, view, theme);
       if (minimap) drawMinimap(minimap, map, defs, state.selected);
       placePopover();
       canvas.dataset.ready = "1";
@@ -158,12 +158,62 @@ async function select(tile) {
   if (tile && narrow.matches && state.selected === tile) revealAboveSheet(tile);
 }
 
+// 地図の拡大の大きさと位置をブラウザに覚え、次に開いたときに戻す（UI-85）。位置は地図の真ん中に
+// 見えている所（拡大前の位置）で覚えるので、窓の大きさが変わってもだいたい同じ所が出る
+const VIEW_KEY = `hakoniwa:map-view:${canvas.dataset.island}`;
+let saveTimer = null;
+
+function saveView() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    const r = canvas.getBoundingClientRect();
+    const center = { px: (r.width / 2 - view.offsetX) / view.scale, py: (r.height / 2 - view.offsetY) / view.scale };
+    try {
+      localStorage.setItem(VIEW_KEY, JSON.stringify({ scale: view.scale, ...center }));
+    } catch {
+      // 覚えられない（プライベートの窓など）ときは毎回島の全体を出す
+    }
+  }, 300);
+}
+
+/** 覚えた拡大と位置に戻す。覚えていなければ false。 */
+function restoreView() {
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(VIEW_KEY) || "null");
+  } catch {
+    return false;
+  }
+  if (!saved || ![saved.scale, saved.px, saved.py].every(Number.isFinite) || saved.scale <= 0) return false;
+  const r = canvas.getBoundingClientRect();
+  view.scale = saved.scale;
+  view.offsetX = r.width / 2 - saved.px * view.scale;
+  view.offsetY = r.height / 2 - saved.py * view.scale;
+  return true;
+}
+
+// 指（カーソル）の下のマスの座標を地図の隅に出す（UI-85）
+const coord = document.getElementById("map-coord");
+function tileAtScreen(sx, sy) {
+  return worldToTile((sx - view.offsetX) / view.scale, (sy - view.offsetY) / view.scale, map, heightOf, theme);
+}
+if (coord) {
+  canvas.addEventListener("pointermove", (e) => {
+    const r = canvas.getBoundingClientRect();
+    const tile = tileAtScreen(e.clientX - r.left, e.clientY - r.top);
+    coord.hidden = !tile;
+    if (tile) coord.textContent = `(${tile.x}, ${tile.y})`;
+  });
+  canvas.addEventListener("pointerleave", () => (coord.hidden = true));
+}
+
 const controls = attachControls(canvas, view, {
-  onChange: redraw,
+  onChange() {
+    saveView();
+    redraw();
+  },
   onTap(sx, sy) {
-    const px = (sx - view.offsetX) / view.scale;
-    const py = (sy - view.offsetY) / view.scale;
-    const tile = worldToTile(px, py, map, heightOf, theme);
+    const tile = tileAtScreen(sx, sy);
     if (tile && panel.marking) {
       panel.toggleMark(tile);
       return;
@@ -210,6 +260,7 @@ if (minimap) {
     const tile = minimapTile(minimap, map, e.clientX, e.clientY);
     if (!tile) return;
     centerOn(tile.x + 0.5, tile.y + 0.5);
+    saveView();
     if (panel.marking) {
       panel.toggleMark(tile);
       return;
@@ -235,7 +286,7 @@ new ResizeObserver(() => placePopover()).observe(popover);
 narrow.addEventListener("change", () => placePopover());
 
 window.addEventListener("resize", resize);
-fit();
+if (!restoreView()) fit();
 resize();
 
 // 地図の API にない反乱軍の位置は、持ち主だけが軍の要約から読む。

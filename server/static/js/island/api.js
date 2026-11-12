@@ -29,6 +29,16 @@ export async function sendJson(url, method, body) {
   return { ok: res.ok, status: res.status, data };
 }
 
+/**
+ * 命令の打ち間違いの確かめ（UI-75）: 命令の列を送ったときにサーバーが返した確かめ（asks: 命令ごとの
+ * text と notes）を見せ、このまま並べるかを聞く。確かめの目安はサーバー（server/web/order_confirm.py）
+ * が持ち、画面・API・MCP で同じ文を出す。
+ */
+export function confirmOrders(asks) {
+  const lines = asks.map((a) => [`・${a.text}`, ...a.notes.map((n) => `　${n}`)].join("\n"));
+  return confirm(`次の命令を確かめてください。\n\n${lines.join("\n\n")}\n\nこのまま命令に追加しますか？`);
+}
+
 /** 文字を HTML に入れても安全な形にする。 */
 export function escapeHtml(text) {
   return String(text ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);

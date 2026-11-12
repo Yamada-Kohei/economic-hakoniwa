@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from server.web import display
 from server.web.context import SCREEN_HELP
-from server.web.views import STATUS_HELP
+from server.web.views import STATUS_HELP, status_help_name
 
 
 @pytest.mark.django_db
@@ -19,7 +19,10 @@ def test_start_guide_links_both_ways_and_names_the_statuses(client, world):
     general = client.get("/help/").content.decode()
     assert 'href="/help/"' in start and 'href="/help/start/"' in general
     for key, _text in STATUS_HELP:
-        assert display.message(f"status_{key}") in start
+        assert status_help_name(key) in start
+    # 作る量を 0 まで下げて止まったときの言葉も、画面と同じ名前で出す（UI-84）
+    assert display.message("stop_target") == "生産停止中（買い注文不足）"
+    assert display.message("stop_target") in start
     assert "工業団地・オフィス街の指定" in start  # 市場・混合経済の最初の命令
     assert 'href="/help/start/"' in client.get("/").content.decode()  # 見出しの「手引き」は入門へ
 
@@ -49,3 +52,10 @@ def test_mcp_guide_reads_the_start_guide(client, world):
     from server.web import mcp
 
     assert "start" in mcp.TOOLS_BY_NAME["guide"].properties["which"]["enum"]
+
+
+@pytest.mark.django_db
+def test_start_guide_says_facility_art_shows_grade_and_size(client, world):
+    """入門の地図の行（#368 の絵）: 施設の絵が段階・作り方・規模で変わることを書く。"""
+    start = client.get("/help/start/").content.decode()
+    assert "施設の絵は、農場の段階（手作業・機械化・近代化）と作物" in start

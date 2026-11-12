@@ -30,7 +30,8 @@ def _players(world):
 
 
 def _orders(client, island, *orders):
-    body = {"orders": [{"kind": k, "payload": p} for k, p in orders]}
+    # 宣戦などの戻せない命令は確かめが要るので、確かめた印（confirm）を付けて送る（UI-75）
+    body = {"orders": [{"kind": k, "payload": p} for k, p in orders], "confirm": True}
     res = client.put(f"/api/islands/{island.id}/orders", body, content_type="application/json")
     assert res.status_code == 200, res.content
     return res.json()
