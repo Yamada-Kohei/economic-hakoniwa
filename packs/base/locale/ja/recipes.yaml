@@ -27,6 +27,7 @@ thermal_power_plant_fuel: 石油燃料で発電
 automobile_plant_default: 部品を組み立て
 auto_parts_plant_default: 鋼鉄から製造
 auto_parts_plant_aluminium: 鋼鉄とアルミから製造
+electronics_plant_aluminium: 銅の代わりにアルミで製造
 shipyard_default: 鋼鉄から建造
 shipyard_aluminium: 鋼鉄とアルミから建造
 mine_copper_ore: 銅鉱石採掘

@@ -1125,6 +1125,8 @@ def describe_order(kind: str, payload: dict[str, Any]) -> str:
         if recipe and payload.get("facility") in defs.facilities:
             facility += f"・{defs.recipe_name(payload['facility'], recipe)}"
         return f"{name}: {facility} {where}"
+    if kind == "explore":
+        return f"{name}: {defs.name('goods', payload.get('resource', ''))} {where}"
     if kind == "build_housing":
         if "level" in payload:
             return f"{name}: {where} {defs.name('settlements', payload['level'])}まで"

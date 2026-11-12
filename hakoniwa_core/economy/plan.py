@@ -54,6 +54,7 @@ from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import STATE_FACILITIES, Payer, books, entity_of, funds
 from hakoniwa_core.economy.prices import cost_prices
+from hakoniwa_core.exploration import base_resources
 from hakoniwa_core.state import OWNER_STATE, Facility, IslandState, LogEntry
 from hakoniwa_core.units import money_of, round_money
 
@@ -199,7 +200,7 @@ def solve_costs(island: IslandState, defs: Defs, config: GameConfig) -> dict[str
     before = state.get("wage") or wage
     old = state.get("costs") or state.get("prices", {})
     fixed = {g: max(1, round_money(p * wage / before)) for g, p in old.items()}
-    solved = cost_prices(defs, config, island.resources, wage, fixed)
+    solved = cost_prices(defs, config, base_resources(island), wage, fixed)
     state["costs"] = {g: int(solved[g]) for g in sorted(defs.goods) if solved.get(g)}
     state["wage"] = wage
     return state["costs"]

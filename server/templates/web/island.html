@@ -13,6 +13,8 @@
     {% if capital_name %} ・ {% translate "首都" %}: {{ capital_name }}{% endif %}
     {% for r in regime %} ・ {{ r.axis }}: {{ r.name }}{% endfor %}
     {% if resources %} ・ {% translate "地下資源" %}: {{ resources|join:"、" }}{% endif %}
+    {% if exploration.current %} ・ {% blocktranslate with good=exploration.current.name percent=exploration.current.percent %}{{ good }}を探鉱中（{{ percent }}%）{% endblocktranslate %}{% endif %}
+    {% if exploration.none %} ・ {% translate "探鉱で見つからなかった資源" %}: {{ exploration.none|join:"、" }}{% endif %}
     {% if climate %} ・ {% translate "気候" %}: {{ climate }}{% endif %}
     {% if stats_turn is not None %} ・ {% blocktranslate with turn=stats_turn|turn_date %}{{ turn }}の時点{% endblocktranslate %}{% endif %}
   </p>
@@ -105,6 +107,7 @@
              data-monument-edit="{% translate '絵を差し替える（国のページ）' %}"
              data-check-url="{% url 'api_order_check' island.id %}"
              data-resources="{{ resource_ids|join:',' }}" data-producible="{{ producible|join:',' }}" aria-live="polite"></div>
+        {% if mine and exploration %}{{ exploration|json_script:"explore-choices" }}{% endif %}
       </div>
     </div>
   </section>

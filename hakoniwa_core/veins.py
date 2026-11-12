@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+import random
+
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.state import IslandState
 from hakoniwa_core.turn.rng import make_rng
@@ -34,12 +36,7 @@ def place(island: IslandState, config: GameConfig, seed: int) -> list[str]:
     most = config.get("founding.max_resources") + 1  # 鉱脈を足しても、資源はここまで
     placed = []
     for version in range(have + 1, VERSION + 1):
-        # 版 1 の乱数は 4-2 のまま（銅の結果を変えない）。版 2 からは版を乱数の種に足す
-        rng = (
-            make_rng(seed, 0, KEY, island.id)
-            if version == 1
-            else make_rng(seed, 0, f"{KEY}:{version}", island.id)
-        )
+        rng = _rng(seed, version, island.id)
         # 置く置かないにかかわらず名前の順に1つずつ引く
         for good in sorted(RESOURCES[version]):
             roll = rng.random()
@@ -49,3 +46,24 @@ def place(island: IslandState, config: GameConfig, seed: int) -> list[str]:
                 placed.append(good)
     island.ext[KEY] = VERSION
     return placed
+
+
+def _rng(seed: int, version: int, island_id: int) -> random.Random:
+    """版 version の鉱脈の乱数。版 1 の乱数は 4-2 のまま（銅の結果を変えない）。版 2 からは版を
+    乱数の種に足す。"""
+    if version == 1:
+        return make_rng(seed, 0, KEY, island_id)
+    return make_rng(seed, 0, f"{KEY}:{version}", island_id)
+
+
+def roll(seed: int, island_id: int, good: str) -> float:
+    """島の地質の数（0 以上 1 未満。探鉱 MI-68）。鉱脈の資源は place が引くのと同じ数で、鉱脈の
+    割合より下なら鉱脈。鉱脈のない資源は、世界の種と島の番号と資源で別に 1 つ引く。"""
+    for version, goods in sorted(RESOURCES.items()):
+        if good in goods:
+            rng = _rng(seed, version, island_id)
+            for name in sorted(goods):  # place と同じく名前の順に引く
+                value = rng.random()
+                if name == good:
+                    return value
+    return make_rng(seed, 0, f"geology:{good}", island_id).random()

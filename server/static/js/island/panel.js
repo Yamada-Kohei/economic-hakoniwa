@@ -67,6 +67,9 @@ export class TilePanel {
     this.map = map;
     this.resources = idSet(el.dataset.resources);
     this.producible = el.dataset.producible == null ? null : idSet(el.dataset.producible);
+    // 探鉱（MI-68）: 持ち主の島で探鉱を始められる資源と、探鉱隊を置ける地形（島の画面が json_script で渡す）
+    const explore = document.getElementById("explore-choices");
+    this.exploration = explore ? JSON.parse(explore.textContent || "{}") : {};
     this.orders = options.orders || null;
     this.marked = options.marked || new Set();
     this.onMarkedChange = options.onMarkedChange || (() => {});
@@ -330,7 +333,7 @@ export class TilePanel {
     if (!f) {
       if (!this.defs.terrain[t.terrain]?.land) return "";
       const choices = this.buildChoices(t.terrain);
-      if (!choices.length) return `<p class="muted">この地形に建設できる施設はありません。</p>${placeForm}`;
+      if (!choices.length) return `<p class="muted">この地形に建設できる施設はありません。</p>${this.exploreForm(t.terrain)}${placeForm}`;
       const options = choices
         .map(([id, d]) => {
           const note = this.facilityNote(id, d);
@@ -349,7 +352,7 @@ export class TilePanel {
           <p class="hint" data-slot="commute"></p>
           <p class="warning" data-slot="check" aria-live="polite"></p>
           <button type="submit">命令に追加</button>
-        </form>${this.housingForm(null)}${placeForm}`;
+        </form>${this.exploreForm(t.terrain)}${this.housingForm(null)}${placeForm}`;
     }
     const isHousing = f.kind === this.defs.housing;
     const parts = [];
@@ -585,6 +588,21 @@ export class TilePanel {
     return escapeHtml(bits.join(" ／ ")) + (r.build_hint ? `<br>${escapeHtml(r.build_hint)}` : "");
   }
 
+  /** 探鉱の命令の欄（MI-68）。このマスの地形で探せる資源がなければ空。 */
+  exploreForm(terrain) {
+    if (!this.orders) return "";
+    const goods = (this.exploration.explorable || []).filter((c) => c.terrains.includes(terrain));
+    if (!goods.length) return "";
+    const options = goods.map((c) => `<option value="${escapeHtml(c.good)}">${escapeHtml(c.name)}</option>`).join("");
+    return `
+        <form class="actions" data-form="explore">
+          <h4>探鉱</h4>
+          <label>探す資源 <select name="resource">${options}</select></label>
+          <p class="hint">このマスに探鉱隊を置き、まだ島にない鉱業資源を探します（国営・1 度に 1 つ）。賃金と機械・燃料は公共事業費から払い、全力で動いて ${escapeHtml(this.exploration.turns)} ターンで終わります（人手や物が足りない月は遅れます）。島の地質に鉱床があれば資源に加わり、なければその資源はもう探せません。払ったお金は戻りません。</p>
+          <button type="submit">命令に追加</button>
+        </form>`;
+  }
+
   /** 地下建設の数値は定義の hide からだけ読む。API にない間は指定を送らない。 */
   hideField(kind) {
     const w = words();
@@ -710,6 +728,8 @@ export class TilePanel {
       const note = String(data.get("note") ?? "").trim();
       if (note) payload.note = note;
       this.addOrder("build", payload);
+    } else if (form.dataset.form === "explore") {
+      this.addOrder("explore", { resource: data.get("resource"), x, y });
     } else if (form.dataset.form === "expand") {
       this.addOrder("build", { facility: data.get("facility"), x, y });
     } else if (form.dataset.form === "shop") {
