@@ -557,3 +557,10 @@ def test_ships_on_order_show_on_the_trade_page_and_api(client, world):
     assert data["fleet"]["shipping"]["on_order"] == 2
     html = client.get(f"/islands/{own.id}/trade/").content.decode()
     assert "島の造船所に 2 隻を注文しています。" in html
+
+
+def test_help_explains_how_traders_price_imported_goods(client, world):
+    """手引き（FX-63〜FX-67）: 輸入した物の売り値の下限・持つ量・持ちすぎの分の値下げを書く。"""
+    html = client.get("/help/").content.decode()
+    assert "今仕入れ直したときの値" in html
+    assert "「持つ量」（貿易の画面の商社の表）" in html
