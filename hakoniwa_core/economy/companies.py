@@ -47,6 +47,10 @@ SUPPORTED = "supported"  # このターンに施設へ回した額
 # 施設の economy: ほかの施設の手元から回してもらったターンの続いた数（回7 後半）
 POOLED = "pooled_turns"
 POOLED_AT = "pooled_at"  # 施設の economy: 最後にほかの施設の手元から回してもらったターン
+# 担保割れの不足（FM-65）: 差し押さえた施設が売れた・取り壊した後も返しきれなかった借入を、企業への
+# 担保のない債権として残す {銀行: 額}。企業は配当と新しい出資より先に預金から返す
+DEFICIENCY = "deficiency"
+DEFAULTED = "defaulted"  # 施設の倒産を出した最後のターン（融資の実績を数え直す。FM-65）
 
 
 def entity(number: int) -> str:
@@ -253,6 +257,47 @@ def _pool(island: IslandState, ctx: Any, number: int, f: Facility, amount: int) 
     return moved
 
 
+def owe(island: IslandState, number: int, loans: dict[str, int]) -> None:
+    """企業 number に担保割れの不足 loans（{銀行: 額}）を足す（FM-65）。企業がなければ何もしない
+    （貸し倒れは施設の倒産のターンに済んでいる）。"""
+    rec = record(island, number)
+    if rec is None:
+        return
+    owed = rec.setdefault(DEFICIENCY, {})
+    for bank, value in sorted(loans.items()):
+        if value > 0:
+            owed[bank] = owed.get(bank, 0) + value
+
+
+def pay_deficiency(island: IslandState, number: int, limit: int) -> int:
+    """企業 number の預金から担保割れの不足を limit まで、銀行ごとの残りの割合で返す（FM-65）。
+    返った分は貸し手の貸し倒れの戻り（破綻した銀行の分は政府へ）。返した額を返す。"""
+    from hakoniwa_core.economy import arrears, banks, books
+
+    rec = record(island, number)
+    owed: dict[str, int] = (rec or {}).get(DEFICIENCY, {})
+    amount = min(limit, ledger.money(island, entity(number)), sum(owed.values()))
+    if amount <= 0:
+        return 0
+    name = entity(number)
+
+    def to_lender(bank: str, value: int) -> None:
+        if banks.is_failed(island, bank):
+            ledger.pay(island, name, ledger.GOV, value, "foreclosure_recovery")
+            return
+        ledger.pay(island, name, bank, value, "foreclosure_recovery")
+        books.add(island, banks.bank_number(bank), books.WRITE_OFF, -value)
+
+    claims = {arrears.LOANS: dict(owed)}
+    left = arrears.pay_claims(island, name, amount, claims, to_lender)
+    assert rec is not None
+    if claims[arrears.LOANS]:
+        rec[DEFICIENCY] = claims[arrears.LOANS]
+    else:
+        rec.pop(DEFICIENCY, None)
+    return amount - left
+
+
 def group_borrowers(island: IslandState, borrower: str) -> set[str]:
     """大口融資の規制で1つの借り手と見る主体（民営の企業の施設なら、その企業の施設すべて）。"""
     from hakoniwa_core.economy import facility_entity
@@ -310,10 +355,15 @@ def established(island: IslandState, config: GameConfig, number: int, turn: int)
     rec = record(island, number)
     if rec is None:
         return False
+    track = config.get("firms.track_record_turns")
+    # 施設の倒産を出した企業は、そのターンから track_record_turns の間は実績がないとみる（FM-65。
+    # 銀行は延滞を出した会社に担保と自己資金を多く求める）
+    if DEFAULTED in rec and turn - rec[DEFAULTED] < track:
+        return False
     founded = rec.get(FOUNDED, 0)
     start = island.ext.get("founded_turn")
     first = int(start) + 1 if start else 1  # サーバーの世界は途中のターンで建国する
-    return founded <= first or turn - founded >= config.get("firms.track_record_turns")
+    return founded <= first or turn - founded >= track
 
 
 def owners_collateral(island: IslandState) -> int:

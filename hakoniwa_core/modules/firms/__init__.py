@@ -1219,7 +1219,7 @@ class EntryExit(IslandStage):
         defs = ctx.defs
         occupied = island.facilities_by_tile()
         for kind, fdef in sorted(defs.facilities.items()):
-            limit = fdef.get("max_per_island")
+            limit = fac.island_limit(defs, island, kind)
             if limit is not None and sum(1 for f in island.facilities if f.kind == kind) >= limit:
                 continue
             for rname, recipe in sorted(fdef["recipes"].items()):

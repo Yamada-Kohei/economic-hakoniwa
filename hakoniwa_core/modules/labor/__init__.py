@@ -218,16 +218,18 @@ def food_cost(island: IslandState, ctx: StageContext, persons: int) -> int:
     defs = ctx.defs
     need = to_milli(persons * ctx.config.get("population.food_per_person"))
     prices = island.economy.prices
+    rate = island.economy.freight.get("household", 0)
     best = 0
     for good, gdef in sorted(defs.goods.items()):
         if "food" not in gdef or prices.get(good, 0) <= 0:
             continue
         qty = -(-need * QUANTITY_SCALE // to_milli(gdef["food"]["nutrition"]))
-        amount = money_of(prices[good], qty)
+        # 計画経済の島は家計が払う小売の値段で（PL-60。ほかの島は消費税の率）
+        tax = planning.rate_of(island, ctx.config, good)
+        amount = money_of(prices[good], qty) * (BASIS + rate + tax) // BASIS
         if best == 0 or amount < best:
             best = amount
-    rate = island.economy.freight.get("household", 0)
-    return best * (BASIS + rate + island.policy.consumption_tax) // BASIS
+    return best
 
 
 class Payroll(IslandStage):

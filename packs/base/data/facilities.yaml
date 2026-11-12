@@ -107,6 +107,8 @@ mine:
   industry: mining
   terrain: [mountain]
   max_per_island: 2       # 1つの国が持てる数（工事中も数える）
+  # 持っている鉱業資源のうち鉱山で掘れるものが 3 種なら 3 つまで（FM-66。2 と大きい方）
+  limit_by_resources: true
   construction: {turns: 4, labor: 400, materials: {wood: 10, building_materials: 5}}
   workers: 800
   priority: 5

@@ -200,7 +200,7 @@ def test_hungry_bids_stay_within_the_food_budget(game):
         settings["steps"],
         settings["elasticity"],
     )
-    cost = sum(gross_cost(limit, q, menu.rate, menu.tax) for _, q, limit in orders)
+    cost = sum(gross_cost(limit, q, menu.rate, menu.tax[g]) for g, q, limit in orders)
     assert 0 < cost <= budget
     assert sum(q for _, q, _ in orders) < need
     assert hungry_food_orders(need, {}, {}, menu, {}, 0, 0, settings["steps"], 0.5) == []
@@ -220,7 +220,7 @@ def test_hungry_households_that_can_pay_the_band_order_all_they_need(game):
     orders = hungry_food_orders(
         need, {"grain": need}, {"grain": need}, menu, {"grain": 100}, 0, budget, steps, elasticity
     )
-    cost = sum(gross_cost(limit, q, menu.rate, menu.tax) for _, q, limit in orders)
+    cost = sum(gross_cost(limit, q, menu.rate, menu.tax[g]) for g, q, limit in orders)
     assert cost <= budget
     assert sum(q for _, q, _ in orders) == need
     limits = [limit for _, _, limit in orders]

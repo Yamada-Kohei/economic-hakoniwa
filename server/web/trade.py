@@ -564,6 +564,7 @@ def contract_rows(
                 "currency_name": _currency(islands, view["currency"]),
                 "currency_symbol": islands.get(view["currency"], {}).get("symbol", ""),
                 "turns": c.get("turns"),
+                "indefinite": view["indefinite"],  # 無期限の契約（FX-68）
                 "start": view["start"] or None,
                 "end": view["end"] or None,
                 "active": view["active"],
@@ -589,7 +590,10 @@ def contract_rows(
                 "can_accept": proposed and view["proposer"] != island_id,
                 # 有効な契約は、やめる命令を出してもまだ先に終わる予定のときだけ
                 "can_cancel": proposed
-                or (state == contract_states.ACTIVE and view["end"] > turn + 1 + wait),
+                or (
+                    state == contract_states.ACTIVE
+                    and (view["end"] is None or view["end"] > turn + 1 + wait)
+                ),
             }
         )
     order = {contract_states.PROPOSED: 0, contract_states.ACTIVE: 1, contract_states.ENDED: 2}

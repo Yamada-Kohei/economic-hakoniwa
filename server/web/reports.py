@@ -74,6 +74,7 @@ SPENT_NAMES = {
     "civil_servants": "公務員の賃金",
     "unemployment": "失業手当",
     "state_facilities": "国営施設の運転資金",
+    "price_subsidy": "価格の補助（取引税で埋まらない分）",
     "bonds": "国債の利払いと償還",
 }
 # 国庫の出入りのうち、借入と返済（財政の収支に数えない）
@@ -83,7 +84,7 @@ FLOW_NAMES = {
     ("in", "sale"): "物の売り渡しの代金（国の倉庫など）",
     ("out", "sale"): "物の買い入れの代金（資材・教材など）",
     ("out", "wage"): "賃金（公務員・作業員・教員など）",
-    ("out", "subsidy"): "据え置きの補助金で国庫から出た現金（独立採算の施設の分）",
+    ("out", "subsidy"): "補助金で国庫から出た現金（計画経済の価格の補助は独立採算の施設などの分）",
 }
 
 # 名前で決まる統計（display.SUMMARY_STATS に足す分）。単位は display.stat_text と同じ
@@ -211,12 +212,18 @@ _EXTRA_STATS = [
     ("politics.halted", "暴動による操業停止（1ターン）", ""),
     ("politics.destroyed", "暴動による損壊（1ターン）", ""),
     ("labor.mobilized", "労働動員の従事者数", "人"),
-    ("plan.queue", "行列（家計が配給で買えなかった割合。公定価格の額で）", "%"),
+    ("plan.queue", "行列（家計が配給で買えなかった割合。小売の値段の額で）", "%"),
     ("plan.forced_saving", "強制貯蓄（配給で買えずに残ったお金。1ターン）", "money"),
-    # 据え置きの補助金は帳簿の上の額（独立採算の施設への補助に加え、国庫直轄の施設の分も含む。
-    # 国庫直轄の分は国庫の中で付け替えるだけ）。国庫から出た現金は fiscal.out.subsidy
-    ("plan.subsidy", "据え置きの補助金（帳簿の上の額。国庫直轄の分も。1ターン）", "money"),
-    ("plan.subsidy_unpaid", "国庫が足りず払えなかった据え置きの補助金", "money"),
+    # 計画経済の二重の値段（PL-60）: 家計の買い物の 小売 − 卸 の差。価格の補助は帳簿の上の額
+    # （国庫直轄の施設と国の倉庫の分も含む。国庫の中で付け替えるだけ）。国庫から出た現金は
+    # fiscal.out.subsidy
+    ("plan.turnover_tax", "取引税（家計の買い物の小売と卸の差のうちプラスの分。1ターン）", "money"),
+    (
+        "plan.subsidy",
+        "価格の補助（小売が卸より安い財を家計に売った分。国庫直轄の分も。1ターン）",
+        "money",
+    ),
+    ("plan.subsidy_unpaid", "国庫が足りず払えなかった価格の補助（国の未払い）", "money"),
     ("trade.merchant_gap", "海外の商人に政府が払った、公定価格との差（1ターン）", "money"),
     (
         "trade.price_gap_subsidies",
@@ -245,7 +252,6 @@ _EXTRA_STATS = [
     ("firms.largest_share", "一番大きい企業の施設の割合", "percent"),
     ("firms.support", "企業の中で施設に回したお金（1ターン）", "money"),
     ("firms.cash", "民営の企業の預金の合計", "money"),
-    ("firms.cascade", "企業ごとの倒産で差し押さえた施設（1ターン）", ""),
     ("firms.restructured", "企業の立て直しで閉めた施設（1ターン）", ""),
     # 回7 後半: 企業の中のお金の融通・休業・銀行の合併
     ("firms.pooled", "企業の中でほかの施設の手元から回したお金（1ターン）", "money"),
