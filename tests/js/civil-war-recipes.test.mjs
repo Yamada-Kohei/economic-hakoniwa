@@ -1,5 +1,5 @@
 // node --test tests/js/*.test.mjs
-// 反乱軍の閲覧範囲と描画、施設の定義から表示する効果と既存の命令を確かめる。
+// 反乱軍の閲覧範囲と描画と、施設の定義から表示する効果を確かめる。
 import test from "node:test";
 import assert from "node:assert/strict";
 import { drawIsland } from "../../server/static/js/map/renderer.js";
@@ -42,40 +42,26 @@ test("作り方の効果は定義の値を使い、省略された人手は基�
   assert.equal(recipeLabel("basic", undefined, "基本"), "基本");
 });
 
-test("建設と国営の切り替え候補に効果と電子機器の注意を出し、名前をエスケープする", () => {
+test("建設の候補に効果と電子機器の注意を出し、名前をエスケープする", () => {
   const panel = panelWithRecipes();
   const build = panel.recipeSelect("factory");
   assert.match(build, /自動化&lt;工場&gt;・人手 6.5 割/);
   assert.match(build, /基本の作り方に戻ります/);
   assert.ok(build.indexOf("毎ターン") < build.indexOf("<select"));
+  assert.match(panel.recipeSelect("school"), /電子教材・育ち \+20%/);
+  // 国営の施設の切り替えは施設のページで出す（UI-78。地図の窓には欄を出さない）
   const factory = { kind: "factory", recipe_name: "基本", recipe_choices: [
     { recipe: "automated", name: "自動化<工場>", inputs: [{ name: "電子機器", amount: 1 }], outputs: [] },
   ] };
-  const change = panel.actionsHtml({ facility: factory });
-  assert.match(change, /value="automated">自動化&lt;工場&gt;・人手 6.5 割（電子機器 1 → なし）/);
-  assert.match(change, /民営の工場は企業が採算を見て/);
-  assert.ok(change.indexOf("毎ターン") < change.indexOf('name="recipe"'));
-  assert.match(panel.recipeSelect("school"), /電子教材・育ち \+20%/);
-  const school = panel.actionsHtml({ facility: { kind: "school", recipe_choices: [
-    { recipe: "digital", name: "電子教材", inputs: [], outputs: [] },
-  ] } });
-  assert.match(school, /value="digital">電子教材・育ち \+20%/);
+  assert.doesNotMatch(panel.actionsHtml({ facility: factory }), /data-form="recipe"/);
 });
 
-test("民営には作り方の切り替えを出さず、国営は従来の change_recipe を送る", () => {
+test("民営の施設の窓には、作り方は企業が替えると出す", () => {
   const panel = panelWithRecipes();
   const privateFacility = { kind: "factory", owner: "private", recipe: "automated", recipe_name: "自動化",
     name: "工場", built: true, stock: [] };
   assert.match(panel.facilityHtml(privateFacility), /画面からは替えられません/);
   assert.doesNotMatch(panel.actionsHtml({ facility: privateFacility }), /data-form="recipe"/);
-  const oldFormData = globalThis.FormData;
-  const sent = [];
-  panel.addOrder = (kind, payload) => sent.push({ kind, payload });
-  globalThis.FormData = class { get(key) { return key === "recipe" ? "automated" : ""; } };
-  try {
-    panel.submit({ dataset: { form: "recipe" }, reportValidity: () => true });
-    assert.deepEqual(sent, [{ kind: "change_recipe", payload: { x: 0, y: 1, recipe: "automated" } }]);
-  } finally { globalThis.FormData = oldFormData; }
 });
 
 test("反乱軍を部隊と同じ基準点で描き、兵の数を添え、他国には描かない", () => {

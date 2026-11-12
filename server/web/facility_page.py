@@ -129,6 +129,34 @@ def settings_rows(info: dict[str, Any]) -> list[str]:
     return out
 
 
+def recipe_label(kind: str, recipe: str, name: str) -> str:
+    """生産方式の名前に効果を添える（人手の割合・教材の育ち）。地図の建設の欄（static/js/island/
+    recipes.js の recipeLabel）と同じ書き方。"""
+    r = get_game().defs.facilities[kind]["recipes"].get(recipe, {})
+    parts = [name]
+    labor = r.get("labor", 1.0)
+    if labor < 1:
+        parts.append(f"人手 {round(labor * 100) / 10:g} 割")
+    if recipe == "digital" and r.get("education_scale") is not None:
+        parts.append(f"育ち +{round((r['education_scale'] - 1) * 1000) / 10:g}%")
+    return "・".join(parts)
+
+
+def _recipe_form(info: dict[str, Any], kind: str) -> dict[str, Any]:
+    """生産方式の切り替えの欄に出す候補（効果を添えた名前）と、添える注意（電子機器を使う作り方が
+    あるか・民営で画面から替えられないか）。"""
+    recipes = get_game().defs.facilities[kind]["recipes"]
+    return {
+        "choices": [
+            {**c, "label": recipe_label(kind, c["recipe"], c["name"])}
+            for c in info.get("recipe_choices") or []
+        ],
+        "electronics": any("electronics" in (r.get("inputs") or {}) for r in recipes.values()),
+        # 民営の施設は持ち主の企業が替える（画面からは替えられない）
+        "private": info.get("owner") == "private" and len(recipes) > 1,
+    }
+
+
 def _actions(info: dict[str, Any], f: Any, capital: Any) -> list[str]:
     """この施設に今出せる命令の種類（FACILITY_ORDERS の順）。マスを持たない施設は出せない。"""
     if not fac.on_map(f):
@@ -222,5 +250,6 @@ def facility_data(
         results=results,
         logs=_logs_here(island, x, y) if data["on_map"] else [],
         actions=_actions(info, f, state.capital),
+        recipe_form=_recipe_form(info, row.kind),
     )
     return data
