@@ -518,6 +518,11 @@ def vote_rule(island: IslandState, order: OrderState, ctx: StageContext) -> str 
     rule = ctx.defs.orders.get(order.kind, {}).get("parliament")
     if rule is None:
         return None
+    if order.kind == "set_retail_price":  # 据え置く財の小売を上げるときだけ（PL-26・PL-60）
+        from hakoniwa_core.modules.plan import raises_held_retail
+
+        if not raises_held_retail(island, order.payload, ctx.config):
+            return None
     if order.kind == "set_taxes":
         points = ctx.config.get("politics.parliament.tax_points")
         policy = island.policy

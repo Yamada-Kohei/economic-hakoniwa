@@ -46,7 +46,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -462,7 +462,7 @@ class FoodMenu:
     unit: dict[str, int]  # 1単位の見込みの値段（運賃と税を含む）
     limits: dict[str, int]  # 指値（値幅の上端）
     rate: int  # 運賃の率
-    tax: int  # 消費税の率
+    tax: dict[str, int]  # 財ごとの消費税の率（計画経済の島は小売 ÷ 卸 − 1。PL-60）
     elasticity: float
 
 
@@ -480,7 +480,7 @@ def food_orders(
     best = food_by_quality(need, menu.qualities, menu.values, menu.nutritions, caps)
     amounts = upgrade_food(cheap, best, menu.unit, food_budget)
     plan = {g: (q, menu.limits[g]) for g, q in sorted(amounts.items())}
-    cost = sum(gross_cost(lim, q, menu.rate, menu.tax) for q, lim in plan.values())
+    cost = sum(gross_cost(lim, q, menu.rate, menu.tax[g]) for g, (q, lim) in plan.items())
     if cost > budget and cost > 0:
         plan = {g: (q * budget // cost, lim) for g, (q, lim) in plan.items()}
     return plan
@@ -532,7 +532,7 @@ def hungry_food_orders(
         basket[good] = basket.get(good, 0) + qty
         short -= qty * menu.nutritions[good] // QUANTITY_SCALE
     basket = {g: q for g, q in sorted(basket.items()) if q > 0}
-    whole = sum(gross_cost(menu.limits[g], q, menu.rate, menu.tax) for g, q in basket.items())
+    whole = sum(gross_cost(menu.limits[g], q, menu.rate, menu.tax[g]) for g, q in basket.items())
     if nutrition(basket) <= 0 or whole <= 0:
         return []
     stages: list[tuple[float, float, dict[str, int]]] = []  # (段の始め, 段の終わり, 指値)
@@ -552,7 +552,7 @@ def hungry_food_orders(
 
     def total(pick: Callable[[dict[str, int], str], int]) -> int:
         return sum(
-            gross_cost(pick(limits, g), round_money(q * (end - begin)), menu.rate, menu.tax)
+            gross_cost(pick(limits, g), round_money(q * (end - begin)), menu.rate, menu.tax[g])
             for begin, end, limits in stages
             for g, q in basket.items()
         )
@@ -570,7 +570,7 @@ def hungry_food_orders(
     placed = dict.fromkeys(basket, 0)  # 財ごとに、前の段までに注文した量
     for start, upto, limits in stages:
         portion = upto - start
-        cost = sum(gross_cost(limits[g], q, menu.rate, menu.tax) for g, q in basket.items())
+        cost = sum(gross_cost(limits[g], q, menu.rate, menu.tax[g]) for g, q in basket.items())
         fit = min(portion, (budget - reserved) / cost) if cost > 0 else 0.0
         if fit <= 0:
             break
@@ -582,13 +582,13 @@ def hungry_food_orders(
             # 差にすると切り捨ての 1 単位が戻るので、食費の限りを超える分は削る
             while (
                 amount > 0
-                and reserved + gross_cost(limits[good], amount, menu.rate, menu.tax) > budget
+                and reserved + gross_cost(limits[good], amount, menu.rate, menu.tax[good]) > budget
             ):
                 amount -= 1
             if amount > 0:
                 placed[good] += amount
                 orders.append((good, amount, limits[good]))
-                reserved += gross_cost(limits[good], amount, menu.rate, menu.tax)
+                reserved += gross_cost(limits[good], amount, menu.rate, menu.tax[good])
         if fit < portion:
             break
     return orders
@@ -1275,7 +1275,7 @@ class Market(IslandStage):
         good = retail.good_of(config)
         if good not in defs.goods:
             return
-        tax = island.policy.consumption_tax
+        tax = planning.rate_of(island, config, good)
         width = to_basis(config.get("market.band"))
         price = island.economy.prices.get(good, 1)
         _, high = auction.band(price, width)
@@ -1354,7 +1354,7 @@ class Market(IslandStage):
         if shop is None or not shop.built or "foreclosed" in shop.economy or shop.workers <= 0:
             return
         unit = Market._direct_unit(island, config)
-        tax = island.policy.consumption_tax
+        tax = planning.rate_of(island, config, good)
         seller = entity_of(config, shop)
         qty_total = paid_total = 0
         for layer, qty in sorted(wanted.items()):
@@ -1369,14 +1369,16 @@ class Market(IslandStage):
                 amount = money_of(unit, short)
             if short <= 0 or amount <= 0:
                 continue
-            levy = part(amount, tax)
+            gap = part(amount, tax)
+            levy, short = planning.split_gap(gap)  # 計画経済の島は取引税か価格の補助（PL-60）
             paid = island.scratch.setdefault(retail.PAID, {})
-            paid[layer] = paid.get(layer, 0) + amount + levy
-            funds.pay(island, payer, seller, amount, "sale")
+            paid[layer] = paid.get(layer, 0) + amount + gap
+            funds.pay(island, payer, seller, amount - short, "sale")
             funds.pay(island, payer, ledger.GOV, levy, "tax_consumption")
+            planning.note_gap(island, levy, short, seller, shop.id)
             books.add(island, shop.id, books.SALES, amount)
             books.add_sector(island, books.HOUSEHOLDS, "goods", amount)
-            books.add_sector(island, books.HOUSEHOLDS, "tax", levy)
+            books.add_sector(island, books.HOUSEHOLDS, "tax", gap)
             qty_total += short
             paid_total += amount
         island.scratch[retail.DIRECT] = (qty_total, paid_total)
@@ -1492,7 +1494,8 @@ class Market(IslandStage):
                 # 家計が買いたかったのに売りに出ていなかった分も、需要に数える
                 demand[good] = max(demand.get(good, 0), want)
         planning.record(island, ctx.config, demand, household_)
-        planning.pay_subsidies(island, ctx.config)  # 据え置いた財の補助金（電力の分も）
+        # 取引税と価格の補助を差し引き、補助を売り手に払う（電力と直売・屋台の分も。PL-60）
+        planning.pay_price_subsidies(island, ctx.config, ctx.turn)
 
     # --- 注文 ---------------------------------------------------------------------
 
@@ -2513,7 +2516,10 @@ class Market(IslandStage):
         defs, config = ctx.defs, ctx.config
         settings = config.get("household")
         width = to_basis(config.get("market.band"))
-        tax = island.policy.consumption_tax
+        # 財ごとの消費税の率（計画経済の島は小売 ÷ 卸 − 1。家計の比べ・予算・指値は小売で行い、
+        # 板寄せの指値だけ卸に直す。PL-60）
+        taxes = planning.rates(island, config, defs.goods)
+        dual = planning.is_dual(island)
         prices = island.economy.prices
         priority = config.get("market.household_priority")
         pi = inflation(island.economy)
@@ -2524,8 +2530,9 @@ class Market(IslandStage):
         foods = sorted(g for g, d in defs.goods.items() if "food" in d)
         nutritions = {g: to_milli(defs.goods[g]["food"]["nutrition"]) for g in foods}
         qualities = {g: defs.goods[g]["food"].get("quality", 0) for g in foods}
-        values = {  # 質を足した栄養あたりの値段
-            g: prices.get(g, 1) / (defs.goods[g]["food"]["nutrition"] * (1 + qualities[g]))
+        values = {  # 質を足した栄養あたりの値段（計画経済の島は小売の値段で比べる）
+            g: (prices.get(g, 1) * (BASIS + taxes[g]) / BASIS if dual else prices.get(g, 1))
+            / (defs.goods[g]["food"]["nutrition"] * (1 + qualities[g]))
             for g in foods
         }
         clothing = needs.clothing_goods(defs, config)
@@ -2541,10 +2548,10 @@ class Market(IslandStage):
             values=values,
             nutritions=nutritions,
             qualities=qualities,
-            unit={g: prices.get(g, 1) * (BASIS + rate + tax) // BASIS for g in foods},
+            unit={g: prices.get(g, 1) * (BASIS + rate + taxes[g]) // BASIS for g in foods},
             limits={g: auction.band(prices.get(g, 1), width)[1] for g in foods},
             rate=rate,
-            tax=tax,
+            tax={g: taxes[g] for g in foods},
             elasticity=settings["food_elasticity"],
         )
         planned_of = {
@@ -2557,7 +2564,9 @@ class Market(IslandStage):
         for layer in sorted(island.economy.households):
             payer = Payer(household(layer))
             # 品物に付く小売りの代金（回7）を先に取り分け、残りで品物とサービスを買う
-            keep = self._retail_keep(island, ctx, layer, planned_of[layer], tax)
+            keep = self._retail_keep(
+                island, ctx, layer, planned_of[layer], taxes.get(retail.good_of(config), 0)
+            )
             planned = planned_of[layer] - keep
             paid = power_paid.get(layer, 0)
             available = funds.available(island, payer)
@@ -2602,12 +2611,13 @@ class Market(IslandStage):
                 if offered.get(good, 0) <= 0:
                     # 買いたい量は、衣料の分の予算で真ん中の値段で払える量まで（W-176 の車と同じ）
                     centre = needs.centre_price(island, config, good)
+                    tax = taxes[good]
                     qty = min(qty, qty_for(wear_budget * BASIS // (BASIS + rate + tax), centre))
                     wanted[good] = wanted.get(good, 0) + qty
                     if desire is not None:
                         desire[good] = desire.get(good, 0) + qty
                     continue
-                spent = sum(curve_cost(t, rate, tax) for t in wear.values())
+                spent = sum(curve_cost(t, rate, taxes[g]) for g, t in wear.items())
                 wear[good] = elastic_orders(
                     qty,
                     full,
@@ -2617,9 +2627,9 @@ class Market(IslandStage):
                     auction.band(prices.get(good, 1), width),
                     max(0, wear_budget - spent),
                     rate,
-                    tax,
+                    taxes[good],
                 )
-            wear_cost = sum(curve_cost(t, rate, tax) for t in wear.values())
+            wear_cost = sum(curve_cost(t, rate, taxes[g]) for g, t in wear.items())
             # 2. 食料: 売りに出ている量と値段で財ごとに割り振り、必需品の上限に余裕があれば質の
             #    高い物に替える。値幅の上端を指値にする
             need = needs_by_layer.get(layer, 0)
@@ -2692,12 +2702,14 @@ class Market(IslandStage):
                         extra = qty - (ideal.get(good, 0) if offered.get(good, 0) <= 0 else 0)
                         if extra > 0:
                             wanted[good] = wanted.get(good, 0) + extra
-            food_cost = sum(gross_cost(lim, q, rate, tax) for q, lim in plan.values())
+            food_cost = sum(gross_cost(lim, q, rate, taxes[g]) for g, (q, lim) in plan.items())
             if tiers:  # 飢えた家計は食費を先に取る（食料に使い切らなかった分は預金に残る）
-                food_cost = min(budget, sum(gross_cost(lim, q, rate, tax) for _, q, lim in tiers))
+                food_cost = min(
+                    budget, sum(gross_cost(lim, q, rate, taxes[g]) for g, q, lim in tiers)
+                )
                 for good, qty, limit in tiers:
                     self._household_buy(
-                        island, books_by_good, good, qty, limit, rate, tax, layer, priority
+                        island, books_by_good, good, qty, limit, rate, taxes[good], layer, priority
                     )
             left = budget - food_cost
             if wear_cost > left and wear_cost > 0:
@@ -2705,14 +2717,15 @@ class Market(IslandStage):
                     g: [(q * max(0, left) // wear_cost, lim) for q, lim in t]
                     for g, t in wear.items()
                 }
-                wear_cost = sum(curve_cost(t, rate, tax) for t in wear.values())
+                wear_cost = sum(curve_cost(t, rate, taxes[g]) for g, t in wear.items())
             for good, (qty, limit) in sorted(plan.items()):
+                tax = taxes[good]
                 self._household_food(
                     island, books_by_good, good, qty, limit, rate, tax, layer, priority, steps
                 )
             for good, curve in sorted(wear.items()):
                 self._household_curve(
-                    island, books_by_good, good, curve, rate, tax, layer, priority
+                    island, books_by_good, good, curve, rate, taxes[good], layer, priority
                 )
             # 3. 必需品の残りのうち、所得に応じた割合をサービスに使う（バランス調整）。食料が
             #    足りないとき（売りに出ている量で足りないか、前のターンに食べきれなかったとき）は、
@@ -2736,7 +2749,9 @@ class Market(IslandStage):
                 "budget": budget,
             }
             short = fac.FULL - min(fac.ratio(fed, need), state.get(FED, fac.FULL))
-            food_usual = sum(gross_cost(menu.limits[g], q, rate, tax) for g, q in basket.items())
+            food_usual = sum(
+                gross_cost(menu.limits[g], q, rate, taxes[g]) for g, q in basket.items()
+            )
             usual_food_budget = max(0, cap - paid - wear_cost)
             hold = max(0, usual_food_budget - food_usual) * short // fac.FULL
             # 支え合いで受け取った額で買った分は、ふだんの使う額から引かない
@@ -2749,7 +2764,7 @@ class Market(IslandStage):
                 layer,
                 rest,
                 income,
-                tax,
+                taxes,
                 offered,
             )
             # 4. 残りの決めた割合を、自動車の燃料、自動車、ぜいたく品の順に使う
@@ -2763,7 +2778,7 @@ class Market(IslandStage):
                 income,
                 spend,
                 rate,
-                tax,
+                taxes,
                 offered,
                 plans,
                 (planned, all_planned),
@@ -2791,7 +2806,7 @@ class Market(IslandStage):
                     scale_price(usual[g], max(tiers)),
                     layer_share(offered[g], planned, all_planned),
                     rate,
-                    tax,
+                    taxes[g],
                 )
                 for g in open_goods
             }
@@ -2806,12 +2821,13 @@ class Market(IslandStage):
                 extra = int(ideal) - portions[good]
                 if extra > 0:
                     top = scale_price(usual[good], max(tiers))
-                    qty = qty_for(extra * BASIS // (BASIS + rate + tax), top)
+                    qty = qty_for(extra * BASIS // (BASIS + rate + taxes[good]), top)
                     unplaced[good] = unplaced.get(good, 0) + qty
             for good in open_goods:
                 price = usual[good]
                 now = prices.get(good, 0)
                 portion = portions[good]
+                tax = taxes[good]
                 for qty, limit in consumer_tiers(portion, price, tiers, rate, tax, now, low):
                     self._household_buy(
                         island, books_by_good, good, qty, limit, rate, tax, layer, priority
@@ -2826,7 +2842,7 @@ class Market(IslandStage):
         layer: str,
         rest: int,
         income: float,
-        tax: int,
+        taxes: Mapping[str, int],
         offered: dict[str, int],
     ) -> int:
         """家計の層 layer が、必需品の残り rest のうち所得に応じた割合（economy/services.py の
@@ -2841,6 +2857,7 @@ class Market(IslandStage):
         amount = round_money(rest * services.budget_share(config, income))
         if amount <= 0 or good not in ctx.defs.goods:
             return 0
+        tax = taxes[good]
         usual = usual_price(island, good, settings["usual_price_turns"], settings["reprice_turns"])
         tiers = settings["consumer_goods_tiers"]
         top = scale_price(usual, max(tiers))
@@ -2927,7 +2944,7 @@ class Market(IslandStage):
         income: float,
         spend: int,
         rate: int,
-        tax: int,
+        taxes: Mapping[str, int],
         offered: dict[str, int],
         plans: dict[str, Any],
         portion: tuple[int, int],
@@ -2965,6 +2982,7 @@ class Market(IslandStage):
                 auction.band(prices.get(good, 1), width)[1],
                 scale_price(usual, max(settings["consumer_goods_tiers"])),
             )
+            tax = taxes[good]
             cost = gross_cost(limit, qty, rate, tax)
             if cost > spend - used:
                 qty = qty * max(0, spend - used) // cost if cost > 0 else 0
@@ -2981,6 +2999,7 @@ class Market(IslandStage):
         price = usual_price(island, car, settings["usual_price_turns"], settings["reprice_turns"])
         room = min(round_money((spend - used) * settings["cars"]["share"]), spend - used)
         top = scale_price(price, max(settings["consumer_goods_tiers"]))
+        tax = taxes[car]
         one = gross_cost(top, QUANTITY_SCALE, rate, tax)
         if one > 0:
             want = min(want, max(0, room) * QUANTITY_SCALE // one)
@@ -3994,13 +4013,20 @@ class Market(IslandStage):
             buyer_freight = part(amount, buyer.freight)
             seller_freight = part(amount, seller.freight)
             tax = part(amount, buyer.tax)
+            # 計画経済の島の家計の買い物は、小売 − 卸 の差が取引税（国庫へ）か価格の補助（売り手に
+            # 足りない分。市場の段の終わりにまとめて払う）になる（PL-60）
+            levy, short = planning.split_gap(tax)
             paid = amount + buyer_freight + tax
             kind = "merchant" if seller.kind == MERCHANT else "sale"
             if buyer.kind == MERCHANT:
                 kind = "merchant_export"
-            funds.pay(island, buyer.payer, seller.payer.entity, amount, kind, committed=True)
+            entity = seller.payer.entity
+            funds.pay(island, buyer.payer, entity, amount - short, kind, committed=True)
             funds.pay(island, buyer.payer, carrier, buyer_freight, "freight", committed=True)
-            funds.pay(island, buyer.payer, ledger.GOV, tax, "tax_consumption", committed=True)
+            funds.pay(island, buyer.payer, ledger.GOV, levy, "tax_consumption", committed=True)
+            if buyer.kind == HOUSEHOLD:
+                number = seller.facility.id if seller.facility is not None else None
+                planning.note_gap(island, levy, short, entity, number)
             (buyer.pool or buyer).reserved -= paid
             # 売り手の運賃は、いま受け取った代金から払う
             ledger.pay(island, seller.payer.entity, carrier, seller_freight, "freight")
@@ -4027,7 +4053,6 @@ class Market(IslandStage):
             if seller.facility is not None:
                 books.add(island, seller.facility.id, books.SALES, amount)
                 books.add(island, seller.facility.id, books.FREIGHT, seller_freight)
-                planning.note_sale(island, ctx.config, good, seller.facility, qty, price)
             elif seller.kind == MERCHANT:  # 海外の商人の代金は島の外に出る（輸入）
                 # 計画経済の島で公定価格との差を政府が払った分は、商人に払った額と国際収支に
                 # 入れる（GDP の輸入は、島の買い手が払った額のまま。生産の側と合わせる）

@@ -294,6 +294,7 @@ def fx_page(request, island_id: int):
 PLAN_STATS = [
     "plan.queue",
     "plan.forced_saving",
+    "plan.turnover_tax",
     "plan.subsidy",
     "plan.subsidy_unpaid",
     "trade.merchant_gap",
