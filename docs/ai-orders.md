@@ -152,6 +152,12 @@ MCP は `saved: false`）。読んでよければ、同じ列に `"confirm": tru
 {"kind":"set_official_price","payload":{"good":"grain","price":100}}
 ```
 
+計画経済では、家計が払う小売の値段も上書きできます（PL-60。`price: 0` で上書きを解除。卸の値段の `planning.retail.floor` より安くはできず、据え置く財の小売を上げるときは議会の採決が要ります。行政力 2）。
+
+```json
+{"kind":"set_retail_price","payload":{"good":"grain","price":110}}
+```
+
 電力1 MWh の料金の上限を指定する例です。`price: 0` で上限をなくします。
 
 ```json
