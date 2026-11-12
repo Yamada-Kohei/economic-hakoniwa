@@ -28,6 +28,7 @@ from hakoniwa_core.economy import (
     services,
 )
 from hakoniwa_core.modules.failures import METHODS as RESOLUTION_METHODS
+from hakoniwa_core.modules.market import BUYER_GROUPS
 from hakoniwa_core.modules.population import subsistence_persons, tile_jobless
 from hakoniwa_core.naming import facility_name, place_of
 from hakoniwa_core.state import OWNER_PRIVATE, IslandState, Tile
@@ -751,8 +752,50 @@ def market_series(
         turn = latest.turn if latest is not None else None
         data["trades"] = trades(island, state, good, turn) if turn is not None else []
         data["short"] = short_facilities(island, state, good)
+        data["groups"] = market_groups(good, latest)
         data["warehouse_standing"] = display.warehouse_standing(island).get(good)
     return data
+
+
+# 市場の記録の買い手と売り手の別の名前（W-72・W-258。並びは hakoniwa_core.modules.market の
+# BUYER_GROUPS）
+GROUP_NAMES = {
+    "state": "国営の施設",
+    "private": "民営の施設",
+    "trader": "商社（輸出入）",
+    "merchant": "海外の商人",
+    "household": "家計",
+    "warehouse": "国の倉庫",
+    "government": "政府の工事",
+}
+
+
+def market_groups(good: str, record: MarketRecord | None) -> list[dict[str, Any]]:
+    """直近のターンの市場の、買い手と売り手の別ごとの注文の量と約定した量（W-72・W-258）。誰が
+    買えなかったか・誰が売れ残したかを見る。買い手と売り手のどちらにも出なかった別は除く。別を
+    残す前の記録は空。施設の工事と修理の資材は、その施設の国営・民営に数える。"""
+    if record is None:
+        return []
+    buyers, sellers = record.buyers or {}, record.sellers or {}
+    rows = []
+    for group in BUYER_GROUPS:
+        buy, sell = buyers.get(group), sellers.get(group)
+        if not buy and not sell:
+            continue
+        ordered, bought = buy or (0, 0)
+        offered, sold = sell or (0, 0)
+        rows.append(
+            {
+                "group": group,
+                "name": GROUP_NAMES[group],
+                "buy": _qty(good, ordered),
+                "bought": _qty(good, bought),
+                "unfilled": _qty(good, max(0, ordered - bought)),
+                "sell": _qty(good, offered),
+                "sold": _qty(good, sold),
+            }
+        )
+    return rows
 
 
 def _qty(good: str, milli: int) -> float:

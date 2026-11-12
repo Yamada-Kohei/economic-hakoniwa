@@ -47,7 +47,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -208,6 +208,58 @@ class Book:
 
     buys: list[tuple[Order, Party]] = field(default_factory=list)
     sells: list[tuple[Order, Party]] = field(default_factory=list)
+
+
+# 市場の記録に残す、注文を出した者の別（W-72・W-258。画面の品目のページで、誰が買えなかったかを
+# 見せる。計算には使わない）。施設は国営と民営に分け、商社と海外の商人は輸出入として分ける
+GROUP_STATE = "state"  # 国営の施設（その工事・修理の資材を含む）
+GROUP_PRIVATE = "private"  # 民営の施設（同上）
+GROUP_TRADER = "trader"  # 商社（輸出の買いと輸入の売り）
+GROUP_MERCHANT = "merchant"  # 海外の商人
+GROUP_HOUSEHOLD = "household"  # 家計
+GROUP_WAREHOUSE = "warehouse"  # 国の倉庫（契約で売る分を政府が買う注文を含む）
+GROUP_GOVERNMENT = "government"  # 政府の工事（公共事業・国の住宅・首都の建て替え）
+BUYER_GROUPS = (
+    GROUP_STATE,
+    GROUP_PRIVATE,
+    GROUP_TRADER,
+    GROUP_MERCHANT,
+    GROUP_HOUSEHOLD,
+    GROUP_WAREHOUSE,
+    GROUP_GOVERNMENT,
+)
+
+
+def party_group(config: GameConfig, party: Party) -> str:
+    """注文を出した者の別（BUYER_GROUPS のどれか）。"""
+    if party.kind == HOUSEHOLD:
+        return GROUP_HOUSEHOLD
+    if party.kind == STORE:
+        return GROUP_WAREHOUSE
+    if party.kind == MERCHANT:
+        return GROUP_MERCHANT
+    f = party.facility
+    if f is None:  # 公共事業・国の住宅・首都の建て替え
+        return GROUP_GOVERNMENT
+    if trade.is_trader(config, f):
+        return GROUP_TRADER
+    return GROUP_PRIVATE if f.owner == OWNER_PRIVATE else GROUP_STATE
+
+
+def _by_group(
+    config: GameConfig, orders: Sequence[tuple[Order, Party]], filled: Sequence[int]
+) -> dict[str, list[int]]:
+    """注文の量と約定した量を、注文を出した者の別ごとに足す（[注文した量, 約定した量]）。
+
+    売れ残りの値引きの売り（MK-41）は、1回目に出して売れ残った分の出し直しなので、注文の量に
+    2度数えず、約定した量だけ足す（市場の記録の supply と同じ数え方）。"""
+    out: dict[str, list[int]] = {}
+    for k, (order, party) in enumerate(orders):
+        row = out.setdefault(party_group(config, party), [0, 0])
+        if not party.clearance:
+            row[0] += order.quantity
+        row[1] += filled[k] if k < len(filled) else 0
+    return out
 
 
 def per_good(taxes: int | Mapping[str, int]) -> Any:
@@ -4374,9 +4426,12 @@ class Market(IslandStage):
             # 値引きの売りがあったときは、ふだんの板寄せ（1回目）の値段を市場の値段とする（MK-41。
             # _outlet。在庫処分の安値は相場に数えない）
             price = island.scratch.get(CLEARANCE, {}).get(good, result.price)
-            island.markets.append(
-                MarketRecord(good, price, result.volume, demand, result.supply, _kind(result))
-            )
+            record = MarketRecord(good, price, result.volume, demand, result.supply, _kind(result))
+            book = books_by_good.get(good)
+            if book is not None:
+                record.buyers = _by_group(ctx.config, book.buys, result.bought)
+                record.sellers = _by_group(ctx.config, book.sells, result.sold)
+            island.markets.append(record)
             supply[good] = result.supply
             if own > 0 and result.supply > 0:  # 約定しなくても気配で値段が動く
                 prices[good] = price
