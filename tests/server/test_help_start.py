@@ -52,3 +52,10 @@ def test_mcp_guide_reads_the_start_guide(client, world):
     from server.web import mcp
 
     assert "start" in mcp.TOOLS_BY_NAME["guide"].properties["which"]["enum"]
+
+
+@pytest.mark.django_db
+def test_start_guide_says_facility_art_shows_grade_and_size(client, world):
+    """入門の地図の行（#368 の絵）: 施設の絵が段階・作り方・規模で変わることを書く。"""
+    start = client.get("/help/start/").content.decode()
+    assert "施設の絵は、農場の段階（手作業・機械化・近代化）と作物" in start

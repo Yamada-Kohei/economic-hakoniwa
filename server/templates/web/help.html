@@ -23,6 +23,8 @@
     <li><a href="{% url 'help_chain' %}">{% translate "産業のつながりの図（別のページ）" %}</a></li>
     <li><a href="#money">{% translate "金融と企業" %}</a></li>
     <li><a href="#trade">{% translate "貿易と為替" %}</a></li>
+    <li><a href="{% url 'help_fx' %}">{% translate "為替の効き方と打てる手（別のページ）" %}</a></li>
+    <li><a href="{% url 'help_start' %}#careful">{% translate "軽く動かさないほうがいい数値（入門）" %}</a></li>
     <li><a href="#letters">{% translate "外交と公電" %}</a></li>
     <li><a href="#diplomacy">{% translate "外交と条約" %}</a></li>
     <li><a href="#board">{% translate "掲示板" %}</a></li>
@@ -437,6 +439,7 @@
       <p>{% translate "政府と中央銀行は「外国の国債の売り買い」で持っている外貨を使います。自由な国の市中銀行は利回りと為替の値下がりを比べて外国の国債を買うことがあります。国債は発行国の通貨建てで、利子もその通貨で受け取り、不履行なら外国の持ち手も損をします。" %}</p>
     </dd>
   </dl>
+  <p>{% translate "為替がゲームにどう効くかと打てる手は、別のページにまとめました。" %} <a href="{% url 'help_fx' %}">{% translate "手引き：為替の効き方と打てる手" %}</a></p>
   <h3>{% translate "収支と国どうしの比較" %}</h3>
   <dl class="rules">
     <dt>{% translate "貿易収支" %}</dt>

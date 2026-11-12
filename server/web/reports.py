@@ -333,6 +333,8 @@ FX_KINDS = {
     "volume": "為替の売買量（{currency}の額）",
     "dealt": "中央銀行が買った外貨（{currency}の額。売りはマイナス）",
     "intervened": "介入と固定相場で中央銀行が買った外貨（{currency}の額。売りはマイナス）",
+    "offered": "為替の市場で売りに出ていた外貨（{currency}の額。中央銀行の注文を除く）",
+    "wanted": "為替の市場で買いに出ていた外貨（{currency}の額。中央銀行の注文を除く）",
 }
 
 
@@ -650,7 +652,7 @@ def market_table(
     traded = last_trades(island)
     standing = display.warehouse_standing(island) if mine else {}
     rows = []
-    for good in defs.goods:
+    for good in display.goods_in_order(defs):
         record = now.get(good)
         made = stats.get(f"production.{good}", 0)
         stock = stats.get(f"stock.{good}", 0)
