@@ -22,14 +22,14 @@
 | 番号 | 決まり（一行） | 状態 | 設定の名前 | 試験 |
 | --- | --- | --- | --- | --- |
 | FS-01 | 政府のお金は中央銀行にある国庫の口座だけ。足りない分は国債で借りる（国債の発行と入札はタブ 7） | 決定 |  | tests/core/test_economy.py::test_ledger_passes_for_proper_payments |
-| FS-02 | 収入は、所得税・法人税・消費税・関税、国庫直轄の施設の売上、国営の独立採算の施設と国営銀行の納付、中央銀行の納付、国の倉庫の売上、国債の発行 | 決定 | `fiscal.income_tax`, `fiscal.corporate_tax`, `fiscal.consumption_tax` | （未確認） |
+| FS-02 | 収入は、所得税・法人税・消費税（計画経済の島は取引税。タブ 10 PL-60）・関税、国庫直轄の施設の売上、国営の独立採算の施設と国営銀行の納付、中央銀行の納付、国の倉庫の売上、国債の発行 | 決定 | `fiscal.income_tax`, `fiscal.corporate_tax`, `fiscal.consumption_tax` | （未確認） |
 | FS-03 | 所得税は賃金の段で賃金から差し引き、消費税は家計の買い物と電気の代金に上乗せし（タブ 4）、法人税は施設と銀行の利益にかける。赤字は決めたターン数まで繰り越す。まだ売っていない国債の評価益には法人税をかけない | 決定 | `fiscal.income_tax`, `fiscal.consumption_tax`, `fiscal.corporate_tax`, `firms.loss_carry_turns` | tests/core/test_bond_gains.py::test_unrealized_gains_are_not_taxed_or_paid_out |
 | FS-04 | 税率は命令で変え、次の段から効く。民主主義の国で、どれかの税を決めた幅より大きく変えるときは議会の賛成が要る（タブ 10） | 決定 | `politics.parliament.tax_points` | tests/core/test_phase3_4.py::test_only_big_tax_changes_need_a_vote |
-| FS-05 | 支出は、公務員・教員・警察官の賃金、失業手当、国庫直轄の施設の費用、公共事業、教育、治安、補助金、国の倉庫の買い入れ、国債の利払いと償還、国有化の代金、銀行の救済と預金保護 | 決定 |  | （未確認） |
+| FS-05 | 支出は、公務員・教員・警察官の賃金、失業手当、国庫直轄の施設の費用、公共事業、教育、治安、補助金、計画経済の価格の補助（取引税と差し引いた残り。タブ 10 PL-60）、国の倉庫の買い入れ、国債の利払いと償還、国有化の代金、銀行の救済と預金保護 | 決定 |  | （未確認） |
 | FS-06 | 予算の項目（公共事業費・住宅費・教育費・治安費・補助金・国の倉庫の買い入れ。住宅費は W-190 の回で作る）は命令で年の額を決め、毎ターンその12分の1まで使う。使い残しは持ち越さない | 決定 | `fiscal.budget_items` | （未確認） |
 | FS-07 | 建国のときの予算は、住民1人あたりの決めた額（教育費は学校の運営の決めた年数分、住宅費は計画経済の国だけ。W-190 の回から）。公務員の賃金・失業手当・国庫直轄の施設・国債は予算を決めず、要るだけ払う | 決定 | `fiscal.budget.construction`, `fiscal.budget.housing`, `fiscal.budget_planned.housing`, `fiscal.budget.security`, `fiscal.budget.subsidies`, `fiscal.budget.warehouse`, `education.start_budget_years` | tests/core/test_public_housing.py::test_planned_islands_start_with_public_floor_and_a_housing_budget |
 | FS-08 | ターンの初めに、前のターンの実績から各項目の支払いを多めに見積もり、国庫の残高を支払いの順番に取り置く。各段は取り置いた額を上限に払い、取り置けなかった項目はそのターン削られる | 決定 | `fiscal.reserve_margin` | （未確認） |
-| FS-09 | 支払いの順番は、国債の利払い → 売りの二国間契約で倉庫に足りない分の買い（FX-24）→〔公務員・国庫直轄の施設・教育・治安〕→ 失業手当 → 昔の未払い賃金 → 公共事業（維持が先）→ 住宅費（手入れが先。W-190 の回から）→ 補助金 → 国の倉庫の買い入れ。〔 〕の組は、足りなければ見積もりに同じ割合を掛けて取り置く | 決定 | `fiscal.payment_order`, `fiscal.rescue_after` | tests/core/test_balance_round5.py::test_payroll_group_is_cut_in_proportion_and_old_arrears_wait, ::test_rescue_keeps_the_whole_payroll_group |
+| FS-09 | 支払いの順番は、国債の利払い → 売りの二国間契約で倉庫に足りない分の買い（FX-24）→〔公務員・国庫直轄の施設・教育・治安・計画経済の価格の補助のうち取引税で埋まらない分（PL-60。年の予算の項目「補助金」とは別で、前のターンの不足に余裕を足して見積もる）〕→ 失業手当 → 昔の未払い賃金 → 公共事業（維持が先）→ 住宅費（手入れが先。W-190 の回から）→ 補助金 → 国の倉庫の買い入れ。〔 〕の組は、足りなければ見積もりに同じ割合を掛けて取り置く | 決定 | `fiscal.payment_order`, `fiscal.rescue_after` | tests/core/test_balance_round5.py::test_payroll_group_is_cut_in_proportion_and_old_arrears_wait, ::test_rescue_keeps_the_whole_payroll_group |
 | FS-10 | 払えなかった賃金は未払い賃金として政府の負債に残し、お金が入れば新しく雇う前に先に払う。働く人は未払いの続く月数に応じて少しずつ辞め、未払いの間は幸福度と政情が下がる | 決定 | `fiscal.payment_order`, `labor.arrears_quit`, `population.happiness.arrears` | tests/core/test_balance_round3.py::test_unpaid_wages_stay_owed_and_are_paid_first_when_money_comes, ::test_workers_quit_little_by_little_while_wages_go_unpaid |
 | FS-11 | 国庫が空で人を雇えない施設は、人手不足ではなく「賃金が払えない」で止まったと出す | 決定 |  | tests/core/test_playtest_fixes.py::test_facility_without_wage_money_says_wages |
 | FS-12 | 国債の段が毎ターン「次のターンの支払いの見込み＋手元に残す額−国庫の残高」を自動で発行して国庫を空にしない。満期の償還は足りない分をその場で発行して充てる。売れ残りの扱いは命令で決める（タブ 7） | 決定 |  | tests/core/test_finance.py::test_unsold_bonds_cut_spending_instead_of_underwriting |
@@ -60,11 +60,11 @@
 | --- | --- |
 | 所得税（`fiscal.income_tax`。賃金から差し引く） | 公務員・教員・警察官の賃金 |
 | 法人税（`fiscal.corporate_tax`。施設と銀行の利益。赤字は `firms.loss_carry_turns` 繰り越せる） | 失業手当（`fiscal.unemployment_benefit`） |
-| 消費税（`fiscal.consumption_tax`。家計の買い物と電気） | 国庫直轄の施設の費用（仕入れ・賃金・電気代・運賃） |
+| 消費税（`fiscal.consumption_tax`。家計の買い物と電気。計画経済の島は小売と卸の差の取引税、タブ 10 PL-60） | 国庫直轄の施設の費用（仕入れ・賃金・電気代・運賃） |
 | 関税 | 公共事業（工事と維持の資材と賃金） |
 | 国庫直轄の施設の売上 | 教育（学校と大学の教員の賃金と教材） |
 | 国営の独立採算の施設と国営銀行の納付 | 治安（警察官の賃金） |
-| 中央銀行の納付（利益の全額） | 補助金と輸出補助 |
+| 中央銀行の納付（利益の全額） | 補助金と輸出補助、計画経済の価格の補助（取引税で埋まらない分） |
 | 国の倉庫の売上 | 国債の利払いと償還 |
 | 国債の発行 | 国有化の代金、銀行の救済と預金保護、国の倉庫の買い入れ |
 
@@ -84,7 +84,7 @@
 ### お金が足りないときの順番と遅配
 
 - ターンの初めに、前のターンの実績から各項目の支払いを `fiscal.reserve_margin` だけ多めに見積もり、国庫の残高を `fiscal.payment_order` の順に取り置く。各段は取り置いた額を上限に払う。
-- 順番は、国債の利払い（償還は借り換えで払う。払えなければ債務不履行。タブ 7）→ 今月の人件費と運営費の組（公務員・国庫直轄の施設・教育・治安）→ 失業手当 → 昔の未払い賃金 → 公共事業（維持が先、新しい工事が後）→ 住宅費（手入れが先）→ 補助金 → 国の倉庫の買い入れ。
+- 順番は、国債の利払い（償還は借り換えで払う。払えなければ債務不履行。タブ 7）→ 売りの二国間契約で倉庫に足りない分の買い（FX-24）→ 今月の人件費と運営費の組（公務員・国庫直轄の施設・教育・治安・計画経済の価格の補助のうち取引税で埋まらない分。補助は売り場での約束なので、払いきれない分は売り手への国の未払いにして国債の段の発行で埋め、次のターンに先に払う。タブ 10 PL-60）→ 失業手当 → 昔の未払い賃金 → 公共事業（維持が先、新しい工事が後）→ 住宅費（手入れが先）→ 補助金 → 国の倉庫の買い入れ。
 - 組の中は、国庫が見積もりの合計に足りなければ、見積もりに同じ割合を掛けて取り置く。国営の穀物の農場だけが押し出されることはなく、どこも同じ割合で遅配になる。昔の未払いは今月の分と失業手当の後に残ったお金で返す（今月の給料を止めてまで先に返さない）。救済に出せる額（`fiscal.rescue_after`）は、その項目の入った組までを国庫に残す。
 - 取り置けなかった項目はそのターン削られる（工事が止まる、国庫直轄の施設が仕入れられない、など）。賃金は削らずに未払いとして負債に残す（遅配）。
 - 遅配: 払えなかった賃金は未払い賃金として政府の負債に残し、お金が入ったら新しく雇う前に払う（政府は上の順番で取り置けた分だけ）。働く人はすぐ全員は辞めず、未払いの続く月数に応じて少しずつ辞める（`labor.arrears_quit`）。未払いの間は幸福度と政情が下がる。現実の例は1990年代のロシアで、公務員や工場の賃金の遅配が数か月続き、多くの人は働き続けた。
