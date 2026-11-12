@@ -265,6 +265,8 @@ _EXTRA_STATS = [
     ("retail.direct", "店で買いきれず直売・屋台で買った小売り（1ターン）", "good:retail"),
     ("retail.direct_sales", "直売・屋台の小売りの売上（1ターン）", "money"),
     ("population.overcrowded", "過密居住者数（住宅の上限を超えて住む人）", "人"),
+    ("export.freight", "輸出・他国に貸した船の運賃", "money"),
+    ("import.freight", "輸入・他国の船を借りた運賃", "money"),
 ]
 _STATS = {key: (label, unit) for key, label, unit in [*display.SUMMARY_STATS, *_EXTRA_STATS]}
 # 名前の頭が財のもの（後ろに財の名前が続く）
@@ -276,6 +278,9 @@ _GOODS_STATS = {
     "stock.": ("{good}の国の倉庫の在庫", "good"),
     "works.stock.": ("公共事業の資材の在庫（{good}）", "good"),
     "warehouse.to_state.": ("国の倉庫から国営の施設に渡した{good}（1ターン）", "good"),
+    # 品目ごとの輸出と輸入の額（W-72）。円グラフは頭の「輸出・」をそろえて外し、品目の名前で出す
+    "export.": ("輸出・{good}", "money"),
+    "import.": ("輸入・{good}", "money"),
 }
 # 計算で作る系列（統計の表にはなく、ほかの統計から作る）。層の1人あたりの所得は
 # layer.<層>.income_per_person

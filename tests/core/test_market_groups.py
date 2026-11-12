@@ -28,3 +28,18 @@ def test_groups_add_up_to_the_market_record(game, warmed):
             assert all(0 <= b <= o for o, b in r.buyers.values()), r.good
             groups |= set(r.buyers)
     assert seen > 0 and {GROUP_HOUSEHOLD, GROUP_STATE} <= groups
+
+
+def test_trade_by_good_adds_up_to_the_trade_totals(game, warmed):
+    """品目ごとの輸出と輸入の額（export.<財>・import.<財>。W-72）の合計は、輸出と輸入の額
+    （trade.exports・trade.imports）に合う。"""
+    world = copy.deepcopy(warmed)
+    run(game, world, 2)
+    traded = 0
+    for island in world.islands.values():
+        stats = island.stats
+        for side in ("export", "import"):
+            parts = sum(v for k, v in stats.items() if k.startswith(f"{side}."))
+            assert parts == stats.get(f"trade.{side}s", 0), (island.id, side)
+            traded += parts
+    assert traded > 0

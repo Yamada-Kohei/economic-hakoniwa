@@ -4134,7 +4134,7 @@ class Market(IslandStage):
                 gap = money_of(seller.gap, qty)
                 funds.pay(island, MERCHANT_GAP, seller.payer.entity, gap, kind, committed=True)
                 seller.reserved -= gap
-                books.add_sector(island, books.TRADE, "imports", amount)
+                books.add_trade(island, "imports", good, amount)
                 paid_out = amount + gap
                 island.stats["trade.merchant"] = island.stats.get("trade.merchant", 0) + paid_out
                 if gap:
@@ -4149,7 +4149,7 @@ class Market(IslandStage):
                 gap = money_of(buyer.gap, qty)
                 funds.pay(island, buyer.payer, ledger.GOV, gap, kind, committed=True)
                 buyer.reserved -= gap
-                books.add_sector(island, books.TRADE, "exports", amount)
+                books.add_trade(island, "exports", good, amount)
                 received = amount + gap
                 stats = island.stats
                 stats["trade.merchant_sold"] = stats.get("trade.merchant_sold", 0) + received
