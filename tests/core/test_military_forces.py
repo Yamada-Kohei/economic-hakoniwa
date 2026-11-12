@@ -289,6 +289,11 @@ def test_food_is_bought_before_wages_when_the_budget_is_short(game, world):
         play(game, world, 1)
         state = island.ext["military"]
         assert not state["hungry"]
-        assert island.ext["military"]["purchases"]["food"]["why"] is None  # 食べ物は買えた
+        # 食べ物は買えた。月割りが食べ物にも足りないターン（買いだめの初めの月に、食べ物の値段が
+        # 高い道筋。2026-11-12 に工事の列の維持を直した後）は、賃金を払わずに食べ物へ回している
+        food = state["purchases"]["food"]
+        assert food["why"] is None or (
+            food["why"] == "budget_defense_personnel" and island.stats["military.wages"] == 0
+        )
     assert island.stats["military.wages_unpaid"] > 0  # 賃金は食べ物の残りで払うので遅れる
     assert "military.starved" not in island.stats

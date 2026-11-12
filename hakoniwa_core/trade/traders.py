@@ -63,7 +63,7 @@ from typing import Any
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import Payer, books, funds, owner_entity
+from hakoniwa_core.economy import Payer, books, facility_entity, funds, owner_entity
 from hakoniwa_core.market import auction
 from hakoniwa_core.state import Facility, IslandState, MarketRecord
 from hakoniwa_core.trade import fx as fxrates
@@ -76,13 +76,15 @@ from hakoniwa_core.trade import (
     traders_of,
     unit_weight,
 )
+from hakoniwa_core.trade import money as fxmoney
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE, part, round_money, to_basis
 
 EXPORT = "x"
 IMPORT = "m"
 PROBE = 0.1  # 値段の差があって売り切ったときに、多めに狙う量（全力に対する割合）
-FX_MARGIN = 1.5  # 持っておく外貨は、直近の輸入に払った額の平均のこの倍まで
-FX_PROBE = 0.05  # 輸入を始めるときに外貨に換える、手元の自国通貨の割合（1ターン分）
+# 商社の状態: 次のターンの1ターン分の輸入の見込み（決済通貨の番号の文字列 → 額。FX-61。貿易の段の
+# 記録で書き、銀行の段の次の支払いの見込みが読む）
+IMPORT_NEED = "import_need"
 # 島の値段が輸入の原価（取り分を含む）をこの割合より上回るときは、買い手の量より多めに入れる
 PUSH_MARGIN = 0.2
 # 売れ残った輸入の荷を値幅の下端まで下げて売るときも、仕入れ値のこの割合より安くは売らない
@@ -608,6 +610,8 @@ def _keep_history(config: GameConfig, f: Facility, turn: dict[str, Any]) -> None
     state = state_of(f)
     state["volume"] = [*state.get("volume", []), turn.get("volume", 0)][-keep:]
     state["spent"] = [*state.get("spent", []), turn.get("spent", 0)][-keep:]
+    # 取り逃した輸入の儲けと仕入れ（FX-62。貿易の段の _keep_missed）
+    state["missed"] = [*state.get("missed", []), turn.get("missed", [0, 0])][-keep:]
     abroad = state.setdefault("abroad", {})
     spent = turn.get("abroad", {})
     for key in sorted(set(abroad) | set(spent)):
@@ -648,6 +652,17 @@ def volume_share(config: GameConfig, f: Facility) -> float:
     return sum(history) / len(history) / (config.get("trade.trader_capacity") * QUANTITY_SCALE)
 
 
+def missed_average(f: Facility) -> tuple[int, int]:
+    """直近 trade.entry_turns ターンに取り逃した輸入の儲けと仕入れの平均（自国通貨。FX-62）。"""
+    history = state_of(f).get("missed", [])
+    if not history:
+        return 0, 0
+    return (
+        sum(p for p, _ in history) // len(history),
+        sum(c for _, c in history) // len(history),
+    )
+
+
 def spend_estimate(f: Facility) -> int:
     """次のターンに島の市場で輸出する物に使う見込み（直近の平均）。"""
     history = state_of(f).get("spent", [])
@@ -662,44 +677,42 @@ def workers_wanted(config: GameConfig, defs: Defs, f: Facility) -> int:
     return max(1, round_money(full * share + 0.5))
 
 
-def import_needs(
-    f: Facility,
-    views_: dict[str, dict[str, Any]],
-    found: dict[str, Prospect],
-    turns: int,
-    probe: dict[int, int] | None = None,
-) -> dict[int, list[tuple[int, int]]]:
-    """次の turns ターンの輸入に要る決済通貨（通貨ごとに [(額, 引き合う一番高いレート)]。圏の前の
-    値段と、前のターンに借りたほかの国の船の運賃（圏の様子の charter。1 単位あたり）で）。今の
-    レートで輸入の見込みがある財だけを数え、初めのターンは手元と運ぶ途中の荷の分を引く（売れ残って
-    いる間は買わないので）。
+def import_need_own(island: IslandState, f: Facility) -> int:
+    """次のターンの1ターン分の輸入の見込みのうち、持っている外貨で足りない分（自国通貨。今の
+    レートで直す。FX-61・BK-51）。島の通貨の圏の分はそのまま足す。"""
+    entity = facility_entity(f.id)
+    total = 0
+    for key, amount in sorted(state_of(f).get(IMPORT_NEED, {}).items()):
+        currency = int(key)
+        if currency == island.id:
+            total += amount
+            continue
+        missing = amount - fxmoney.holding(island, entity, currency)
+        if missing > 0:
+            total += fxrates.to_own(island, currency, missing)
+    return total
 
-    通貨ごとの合計は、turns ×「直近に輸入に払った額の平均の FX_MARGIN 倍か、probe（通貨ごと。
-    手元の自国通貨の一部を直したもの）の大きいほう」までに縮める（輸入できていないのに外貨を
-    寝かせて、賃金や仕入れのお金が尽きないように）。"""
-    out: dict[int, list[tuple[int, int]]] = {}
+
+def trade_collateral(island: IslandState, f: Facility) -> tuple[int, int, int]:
+    """商社の荷と外貨の値打ち（自国通貨。BK-51）: (手元の輸入の荷, 運ぶ途中の荷, 外貨の持ち高)。
+    荷は仕入れ値と島の値段の低い方（足りない島の高い値段で担保を膨らませない）、外貨は今の
+    レートと買ったときのレート（帳簿の値打ち）の低い方で見る。"""
+    prices = island.economy.prices
+    held = transit = 0
     for good, item in sorted(goods_of(f).items()):
-        if item.get("dir") != IMPORT or not item["m"] or item.get("bm") is None:
+        if item.get("dir") != IMPORT:
             continue
-        p = found.get(good)
-        if p is None or not importable(p) or p.import_bloc != item["bm"]:
-            continue
-        view = views_.get(str(item["bm"]))
-        if view is None:
-            continue
-        price = view.get("prices", {}).get(good, 0) + view.get("charter", {}).get(good, 0)
-        qty = max(0, item["m"] - item["held"][0]) + item["m"] * max(0, turns - 1)
-        amount = price * qty // QUANTITY_SCALE
+        cost = unit_cost(f, good)
+        price = prices.get(good, 0)
+        unit = min(cost, price) if cost > 0 else price
+        held += unit * stock.total(f.stock, good) // QUANTITY_SCALE
+        transit += unit * item.get("transit", 0) // QUANTITY_SCALE
+    entity = facility_entity(f.id)
+    fx_value = 0
+    for key, (amount, book) in sorted(fxmoney.holdings(island).get(entity, {}).items()):
         if amount > 0:
-            out.setdefault(view["currency"], []).append((amount, p.import_rate))
-    for currency, items in out.items():
-        total = sum(a for a, _ in items)
-        cap = turns * max(
-            round_money(abroad_average(f, currency) * FX_MARGIN), (probe or {}).get(currency, 0)
-        )
-        if 0 < cap < total:
-            out[currency] = [(a * cap // total, r) for a, r in items]
-    return out
+            fx_value += min(fxrates.to_own(island, int(key), amount), max(0, book))
+    return held, transit, fx_value
 
 
 def export_floors(f: Facility, found: dict[str, Prospect]) -> dict[int, int]:

@@ -72,7 +72,7 @@ from dataclasses import replace
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger, politics, stock, trade
+from hakoniwa_core import ledger, stock, trade
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
@@ -1337,16 +1337,7 @@ class EntryExit(IslandStage):
     def _threshold(island: IslandState, ctx: StageContext) -> float:
         """参入に要る利益率: 借りる金利（建設費の7割を借りたとき）+ firms.entry_margin（体制の特色
         entry_margin があればそちら。市場経済。フェーズ3-4）。"""
-        config = ctx.config
-        active = banks.active_banks(island)
-        if not active:
-            return float("inf")
-        margin = min(banks.margin_of(island, config, b) for b in active)
-        debt_share = 1 - config.get("firms.equity_share")
-        rate = island.policy.policy_rate / BASIS + margin / BASIS
-        rate += config.get("banking.rho") * debt_share
-        found = politics.trait(island, ctx.defs, "entry_margin")
-        return rate + (config.get("firms.entry_margin") if found is None else found)
+        return banks.entry_rate(island, ctx.defs, ctx.config)
 
     def _site(
         self, island: IslandState, ctx: StageContext, kind: str, rname: str
