@@ -168,7 +168,7 @@ def test_accounting_order_from_the_island_page(client, world):
     assert res.status_code == 200, res.content.decode()
     assert res.json()["warnings"] == []
     text = res.json()["orders"][0]["text"]
-    assert text == f"国営施設の会計方式の変更: ({plant.x}, {plant.y}) → 国庫直轄"
+    assert text == f"国営施設の会計方式の変更: 火力発電所 ({plant.x}, {plant.y}) → 国庫直轄"
     order = Order.objects.get(island=island)
     assert (order.kind, order.payload) == ("set_accounting", payload)
 
