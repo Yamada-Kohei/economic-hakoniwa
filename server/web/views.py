@@ -765,6 +765,8 @@ def _help_context() -> dict:
         "arrears_limit": game.config.get("loans.arrears_limit"),
         "sale_turns": game.config.get("firms.sale_turns"),
         "sale_cut_turns": game.config.get("firms.sale_cut_turns"),
+        # 倒産を出した企業の実績（FM-65）
+        "track_record_turns": game.config.get("firms.track_record_turns"),
         "site_turns": game.config.get("firms.site_work")["turns"],
         "cb_lock_turns": game.config.get("central_bank.switch_lock_turns"),
         # 国債の債務不履行の罰
