@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="{% static 'css/site.css' %}">
   {% calendar_script %}
   <script src="{% static 'js/feedback.js' %}" defer></script>
+  <script src="{% static 'js/table-sort.js' %}" defer></script>
   {% if user.is_authenticated and own_island %}
   <script type="module" src="{% static 'js/letter-notice.js' %}"></script>
   {% endif %}

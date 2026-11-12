@@ -65,7 +65,7 @@ def defs(request):
             "facilities": {fid: _facility_def(fid, f) for fid, f in d.facilities.items()},
             "goods": {
                 gid: {"name": d.name("goods", gid), "tier": g.get("tier"), "unit": d.unit_name(gid)}
-                for gid, g in d.goods.items()
+                for gid, g in ((gid, d.goods[gid]) for gid in display.goods_in_order(d))
             },
             "orders": {
                 oid: {"name": d.name("orders", oid), "admin_cost": o["admin_cost"]}
