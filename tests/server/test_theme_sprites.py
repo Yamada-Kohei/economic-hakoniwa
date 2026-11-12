@@ -17,6 +17,7 @@ import pytest
 import yaml
 from django.conf import settings
 
+from hakoniwa_core.facilities import max_size
 from hakoniwa_core.game import load_game
 
 THEMES = settings.BASE_DIR / "server" / "static" / "themes"
@@ -79,8 +80,20 @@ def _allowed_keys(theme: dict | None = None) -> set[str]:
         for fid, gs in grades.items()
         for g in gs[1:]
     }
+    # 建て増しできる施設は規模の段の絵 facility/<名>@s2〜（size_tiers の数 + 1 段まで）
+    tiers = range(2, len((theme or {}).get("size_tiers") or []) + 2)
+    sizes = {
+        fid: ["", *(f"@s{t}" for t in tiers)]
+        for fid, f in d.facilities.items()
+        if max_size(d, fid) > 1
+    }
+    sized = {
+        f"facility/{d.facilities[fid].get('sprite', fid)}{s}"
+        for fid, ss in sizes.items()
+        for s in ss[1:]
+    }
     # 作り方で分ける絵（theme.yaml の sprite_looks）は facility/<名>+<財>
-    # （段階のある施設は @g<段階> も）。
+    # （段階・規模の段のある施設は @g<段階>・@s<段> も）。
     # 財はその施設のどれかの作り方の産出か投入にあること
     looks = set()
     for fid, goods in ((theme or {}).get("sprite_looks") or {}).items():
@@ -90,7 +103,9 @@ def _allowed_keys(theme: dict | None = None) -> set[str]:
         for good in goods:
             assert good in used, f"sprite_looks の {fid} の {good}: どの作り方にも出てきません"
             looks |= {
-                f"facility/{d.facilities[fid].get('sprite', fid)}+{good}{g}" for g in grades[fid]
+                f"facility/{d.facilities[fid].get('sprite', fid)}+{good}{g}{s}"
+                for g in grades[fid]
+                for s in sizes.get(fid, [""])
             }
     return (
         {f"terrain/{t}" for t in d.terrain}
@@ -98,6 +113,7 @@ def _allowed_keys(theme: dict | None = None) -> set[str]:
         | {f"facility/{s}@{side}" for s in coastal for side in ("sw", "ne", "nw")}
         | graded
         | looks
+        | sized
         | {f"capital/{s}" for s in sprites}
         | {f"capital/{c}" for c in _capital_combos()}
         | {f"housing/{s}" for s in d.settlements}

@@ -181,20 +181,27 @@ function facilitySprite(f, defs, map, isCapital, sprites, theme) {
 }
 
 /**
- * 作り方と段階で分けた絵（docs/map-art.md）。theme.sprite_looks の財が作り方の産出か投入にあれば
- * facility/<名>+<財>（綿の畑・銅の鉱山・油の火力など）、段階（農場の FM-50）があれば後ろに @g<段階>。
- * 合う絵の順: 財と段階 → 財だけ → 段階だけ。どれもなければ null（名前のままの絵）。
+ * 作り方・段階・規模で分けた絵（docs/map-art.md）。theme.sprite_looks の財が作り方の産出か投入にあれば
+ * +<財>（綿の畑・銅の鉱山・油の火力など）、段階（農場の FM-50）があれば @g<段階>、建て増しの規模（FM-47）が
+ * theme.size_tiers の区切りを超えれば @s<段>を、この順に名前の後ろに付ける（facility/thermal_power_plant+fuel@s3 など）。
+ * 付けられる物を全部付けた名前から順に、後ろの物を外しながら探し、どれもなければ null（名前のままの絵）。
  */
 function lookSprite(f, defs, theme, name, sprites) {
   const recipe = defs.facilities[f.kind]?.recipes?.[f.recipe];
   const goods = theme?.sprite_looks?.[f.kind] || [];
   const look = recipe ? goods.find((g) => g in recipe.outputs || g in recipe.inputs) : undefined;
-  const grade = f.grade ? `@g${f.grade}` : "";
-  const names = look ? [`${name}+${look}${grade}`, `${name}+${look}`] : [];
-  if (grade) names.push(`${name}${grade}`);
-  for (const n of names) {
-    const sprite = sprites.get(`facility/${n}`);
-    if (sprite) return sprite;
+  const tier = 1 + (theme?.size_tiers || []).filter((n) => (f.size || 1) >= n).length;
+  const looks = look ? [`+${look}`, ""] : [""];
+  const grades = f.grade ? [`@g${f.grade}`, ""] : [""];
+  const sizes = tier > 1 ? [`@s${tier}`, ""] : [""];
+  for (const l of looks) {
+    for (const g of grades) {
+      for (const s of sizes) {
+        if (!l && !g && !s) continue;
+        const sprite = sprites.get(`facility/${name}${l}${g}${s}`);
+        if (sprite) return sprite;
+      }
+    }
   }
   return null;
 }

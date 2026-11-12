@@ -55,7 +55,8 @@ def test_map_api_capital_buildings(client, world):
 
 
 def test_map_api_farm_grade(client, world):
-    """地図は農場の段階（FM-50）と作り方を返し、段階ごとの絵（facility/farm@g1 など）をそれで選ぶ。
+    """地図は農場の段階（FM-50）・作り方・規模を返し、段階ごとの絵（facility/farm@g1 など）を
+    それで選ぶ。
     段階 0（手作業）と段階のない施設は grade が空。"""
     island = Island.objects.first()
     farm = island.facilities.filter(kind="farm").first()
@@ -69,6 +70,13 @@ def test_map_api_farm_grade(client, world):
     data = client.get(f"/api/islands/{island.id}/map").json()
     row = next(f for f in data["facilities"] if f["number"] == farm.number)
     assert row["grade"] == 2 and row["recipe"] == "cotton_fertilized_modern"
+    # 建て増しの規模（FM-47）も返し、規模の段の絵（facility/steel_mill@s3 など）を選ぶ。
+    # 建て増していなければ 1
+    assert row["size"] == 1
+    farm.ext = {**farm.ext, "size": 6}
+    farm.save()
+    data = client.get(f"/api/islands/{island.id}/map").json()
+    assert next(f for f in data["facilities"] if f["number"] == farm.number)["size"] == 6
 
 
 def test_tile_api(client, world):
