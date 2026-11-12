@@ -301,6 +301,7 @@ PLAN_STATS = [
     "trade.merchant_premium",
     "trade.price_gap_subsidies",
     "labor.mobilized",
+    "labor.guaranteed",
 ]
 
 
