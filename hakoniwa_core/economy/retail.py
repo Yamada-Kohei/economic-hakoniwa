@@ -3,7 +3,7 @@
 家計は品物を、店の売り場を通して買います（電力と町の資材を除く。食べ物も）。
 
 - 小売り: 品目 ``retail``（持ち越せず、島の外へ運べない。量は売り場の人1人の1ターンの
-  働き）。家計は品物を買うと、代金を物価指数で割った額 ``retail.value_per_unit`` ごとに
+  働き）。家計は品物を買うと、量 × 島の初めの値段の額 ``retail.value_per_unit`` ごとに
   小売り1人月を買います。品物は工場から家計へ直接動き、小売りの代金が店の売上になります
   （現実の統計の数え方と同じく、小売業の産出は売買の差額）。家計は使う額のうち小売りの分を
   先に取り分け、品物の市場の後に小売りの市場で買います（modules/market）。
@@ -14,6 +14,11 @@
   割合」で上限を付けます（現実と違う形）。商店は通勤圏に住む人の割合、百貨店は車を持つ人
   （``retail.persons_per_car`` 人で1台）の割合に、車のない人のうち通勤圏に住む人の割合を
   足した割合。
+- 店の付け値（MK-42。2026-11-12、W-261）: 小売りは持ち越せないので、値段を付けずに売りに出すと、
+  店が少し余るだけで値段が値幅の下端へ飛び、足りなければ屋台の値段まで上がりました。市場経済と混合
+  経済の島の独立採算の店は、1 単位の変動費 ×（1 ＋ ``retail.markup``）の付け値で売りに出し
+  （上限は屋台の値段 × ``retail.posted_cap``）、家計は店の付け値の最高より高くは店に払いません。
+  前の版から続く島の店は、上乗せを今の値段 ÷ 変動費 − 1 から ``retail.markup_step`` ずつ寄せます。
 - 店が足りないとき: 店で買いきれなかった小売りは、商業・サービス業（小さな店と屋台の
   集まり。economy/services.py）から、小売りの値段の ``1 + retail.direct_premium`` 倍で
   買います（直売・屋台）。その売上で商業・サービス業が人を増やし（自営の受け皿）、店が
@@ -33,7 +38,7 @@ from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import needs
 from hakoniwa_core.geo import within
 from hakoniwa_core.state import Facility, IslandState
-from hakoniwa_core.units import round_money, to_milli
+from hakoniwa_core.units import BASIS, part, round_money, to_basis, to_milli
 
 Pos = tuple[int, int]
 SITE = fac.SITE
@@ -43,12 +48,17 @@ LARGE_STORE = (NONE, PERMIT, BAN)
 NEED = "retail_need"  # island.scratch: 層ごとの、このターンに買う小売りの量（1000 分の 1）
 DEMAND = "retail_demand"  # economy.finance: 直近のターンの、家計の小売りの要る量（1000 分の 1）
 DIRECT = "retail_direct"  # island.scratch: 店で買いきれず直売・屋台で買った量（1000 分の 1）と代金
-SPENT = "retail_spent"  # island.scratch: 層ごとの、小売りを通して買った品物の代金
+SPENT = "retail_spent"  # island.scratch: 層ごとの、買った量を島の初めの値段で評価した額
+BASE_PRICES = "retail_base_prices"  # island.scratch: 島の初めの値段（そのターン中は使い回す）
 RESERVE = "retail_reserve"  # island.scratch: 層ごとの、小売りの代金に取り置いた額
 PLANNED = "retail_planned"  # island.scratch: 層ごとの、このターンの使う額
 PAID = "retail_paid"  # island.scratch: 層ごとの、このターンに小売りに払った額（税込み）
 SHARE = "retail_share"  # 家計の層の状態: 使う額のうち小売りに取り分ける割合（1万分の1）
 UNRETAILED = "retail_free"  # island.scratch: 小売りを通さない物（サービスと小売り）
+MARKUP = "retail_markup"  # f.economy: 店の付け値の上乗せ（1万分の1。MK-42）
+LEGACY = -1  # MARKUP の印: 付け値の前の版から続く店（今の値段から寄せ始める）
+POSTED = "retail_posted"  # economy.ext: 店の付け値の版（移し替えの段で前の版の店に印を付けた）
+POSTED_VERSION = 1
 
 
 def settings(config: GameConfig) -> dict[str, Any]:
@@ -74,17 +84,26 @@ def cpi(island: IslandState) -> float:
 
 
 def units_for(island: IslandState, config: GameConfig, value: int) -> int:
-    """品物の代金 value に見合う小売りの量（1000 分の 1）。"""
+    """品物の量を初めの値段で評価した額 value に見合う小売りの量（1000 分の 1）。"""
     if value <= 0:
         return 0
-    return to_milli(value / cpi(island) / settings(config)["value_per_unit"])
+    return to_milli(value / settings(config)["value_per_unit"])
 
 
 def margin(island: IslandState, config: GameConfig, price: int, tax: int) -> int:
-    """品物の代金 1 あたりの小売りの代金（1万分の1。消費税込み）。家計が使う額から先に取り分ける割合
-    に使う。"""
-    per = settings(config)["value_per_unit"] * cpi(island)
+    """品物を初めの値段で評価した額1あたりの小売りの代金（1万分の1。消費税込み）。
+    最初の予算の取り分けに使い、後は実際に払った割合に近づける。"""
+    per = settings(config)["value_per_unit"]
     return round_money(price * (10000 + tax) / per) if per > 0 else 0
+
+
+def base_prices(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, int]:
+    """品物の量を数える基準の値段。初めの値段の解は資源ごとにキャッシュされる。"""
+    from hakoniwa_core.economy.prices import initial_prices
+
+    if BASE_PRICES not in island.scratch:
+        island.scratch[BASE_PRICES] = initial_prices(defs, config, island.resources)
+    return island.scratch[BASE_PRICES]
 
 
 def initial_price(config: GameConfig, wage: float) -> int:
@@ -104,6 +123,46 @@ def prepare(island: IslandState, config: GameConfig) -> None:
     island.economy.price_history[good] = [price]
 
 
+# --- 店の付け値（MK-42） -------------------------------------------------------------------
+
+
+def mark_legacy(island: IslandState, defs: Defs, config: GameConfig) -> None:
+    """付け値の前の版から続く島の店に印を付ける（移し替えの段で1度だけ）。印の付いた店は、上乗せを
+    今の値段から retail.markup へ寄せる（切り替えの日に小売りの値段が一度に下がらないように）。"""
+    if island.economy.ext.get(POSTED, 0) >= POSTED_VERSION:
+        return
+    for f in island.facilities:
+        if f.built and sells_retail(defs, config, f) and MARKUP not in f.economy:
+            f.economy[MARKUP] = LEGACY
+    island.economy.ext[POSTED] = POSTED_VERSION
+
+
+def posted_price(
+    island: IslandState, config: GameConfig, f: Facility, floor: int, stall: int
+) -> int:
+    """独立採算の店の付け値: 1 単位の変動費 floor ×（1 ＋ 上乗せ）。上限は屋台の値段 stall ×
+    retail.posted_cap（変動費より低くても上限で売り、続けば赤字で閉じる）。上乗せは店ごとに持ち、
+    前の版から続く店は今の値段 ÷ 変動費 − 1 から、ターンごとに retail.markup_step ずつ
+    retail.markup へ寄せる。変動費がまだ分からない（0 の）店は今の値段で出す。"""
+    s = settings(config)
+    target = to_basis(s["markup"])
+    cap = max(1, part(stall, to_basis(s["posted_cap"])))
+    price = island.economy.prices.get(good_of(config), 1)
+    if floor <= 0:
+        return max(1, min(cap, price))
+    now = f.economy.get(MARKUP)
+    if now is None:
+        now = target
+    elif now == LEGACY:
+        now = max(target, price * BASIS // floor - BASIS)
+    elif now > target:
+        now = max(target, now - to_basis(s["markup_step"]))
+    else:
+        now = target
+    f.economy[MARKUP] = now
+    return max(1, min(cap, floor + part(floor, now)))
+
+
 # --- 店の場所 ---------------------------------------------------------------------------
 
 
@@ -119,9 +178,10 @@ def shops_at(island: IslandState, pos: Pos) -> int:
     return fac.shops_at(island, pos)
 
 
-def town_slots(defs: Defs, town: Facility) -> int:
-    """町のマスに入る商店の数（settlements.yaml の shops）。"""
-    return fac.shop_slots(defs, town)
+def town_slots(defs: Defs, town: Facility, island: IslandState | None = None) -> int:
+    """町のマスに入る商店の数（settlements.yaml の shops と、住む人 ÷ people_per_shop の大きい方。
+    FM-70）。"""
+    return fac.shop_slots(defs, town, island)
 
 
 def free_towns(island: IslandState, defs: Defs, config: GameConfig) -> list[tuple[Pos, int]]:
@@ -130,7 +190,7 @@ def free_towns(island: IslandState, defs: Defs, config: GameConfig) -> list[tupl
     for f in island.facilities:
         if not fac.is_housing(config, f) or not fac.on_map(f):
             continue
-        free = town_slots(defs, f) - shops_at(island, (f.x, f.y))
+        free = town_slots(defs, f, island) - shops_at(island, (f.x, f.y))
         if free > 0:
             out.append(((f.x, f.y), free, island.tile(f.x, f.y).population))
     out.sort(key=lambda r: (-r[2], r[0][1], r[0][0]))

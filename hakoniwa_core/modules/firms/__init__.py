@@ -268,7 +268,10 @@ def entry_price(island: IslandState, ctx: StageContext, good: str) -> int | None
         for rname, recipe in sorted(fdef["recipes"].items()):
             if is_variant(rname, recipe) or not recipe["outputs"].get(good):
                 continue
-            if not set(recipe.get("inputs", {})) <= supplied:
+            if (
+                not set(recipe.get("inputs", {})) - set(recipe.get("optional_inputs", ()))
+                <= supplied
+            ):
                 continue
             if fac.recipe_problem(defs, island, kind, rname) is not None:
                 continue
@@ -320,8 +323,9 @@ class EntryExit(IslandStage):
             slots = ctx.config.get("firms.entries_per_turn")
             slots -= self._sell_on_sale(island, ctx, slots)
             for _ in range(slots):
-                if not self._enter(island, ctx):
+                if not self._enter(island, ctx, shops=False):
                     break
+            self._enter(island, ctx, shops=True)  # 店は工場と別に1島1ターン1店まで（FM-69）
             self._invest(island, ctx)
             self._raise_grades(island, ctx)
         self._bank_entry(island, ctx)
@@ -638,11 +642,16 @@ class EntryExit(IslandStage):
 
     # --- 民営工場の参入 ---------------------------------------------------------------
 
-    def _enter(self, island: IslandState, ctx: StageContext) -> bool:
+    def _enter(self, island: IslandState, ctx: StageContext, shops: bool | None = None) -> bool:
         """民営工場を1つ参入させる。建たなかったときは、いちばん見込みのあった作り方の建たないわけを
-        economy.finance["entry_block"] に残し、わけが変わったらログで知らせる。"""
+        economy.finance["entry_block"] に残し、わけが変わったらログで知らせる。
+
+        shops が偽なら小売りを売る店のほか、真なら店だけを見る（店の参入は工場と別に数える。
+        FM-69）。店だけの回は、工場の回の建たないわけを消さない。"""
         blocks: list[tuple[float, str, str, dict[str, Any]]] = []  # (見込み, 施設, わけ, 引数)
-        entered = self._try_enter(island, ctx, blocks)
+        entered = self._try_enter(island, ctx, blocks, shops)
+        if shops:
+            return entered
         finance = island.economy.finance
         if entered or not blocks:
             finance.pop("entry_block", None)
@@ -668,9 +677,13 @@ class EntryExit(IslandStage):
         island: IslandState,
         ctx: StageContext,
         blocks: list[tuple[float, str, str, dict[str, Any]]],
+        shops: bool | None = None,
     ) -> bool:
+        """shops が None なら店も工場も、偽なら店のほか、真なら小売りを売る店だけを候補にする
+        （FM-69）。"""
         defs, config = ctx.defs, ctx.config
         settings = config.get("firms")
+        shelf = retail.good_of(config)
         prices = average_prices(island, settings["price_turns"])
         wage = island.economy.average_wage
         rates = freight_rates.facility_rates(island, defs, config)
@@ -688,6 +701,8 @@ class EntryExit(IslandStage):
         coming = self._coming(island, ctx)
 
         def add(kind: str, rname: str, recipe: dict[str, Any], fill: float) -> None:
+            if shops is not None and (shelf in recipe["outputs"]) != shops:
+                return  # 店の参入と工場の参入は別の回で数える（FM-69）
             full = round_money(construction_cost(defs, kind, prices, wage))
             rate = capital_subsidy(island, kind, recipe)
             subsidy = min(part(full, rate), room)  # 先に払える分だけを補助として見る
@@ -723,10 +738,20 @@ class EntryExit(IslandStage):
                 ):
                     continue  # 電子機器を使う作り方は、建ててから見直しで選ぶ
                 cost = unit_cost(defs, config, kind, recipe, prices, wage)
-                fill = self._fill(recipe, shortages, demand, capacity, prices, cost, settings)
+                if shelf in recipe["outputs"]:  # 店は小売りの合図だけで見る（FM-69）
+                    fill = self._shop_fill(
+                        island, ctx, recipe, shortages, demand, capacity, prices, cost
+                    )
+                else:
+                    fill = self._fill(recipe, shortages, demand, capacity, prices, cost, settings)
                 if fill <= 0:
                     continue  # 参入の合図（品切れか高い値段）がない
-                missing = sorted(set(recipe.get("inputs", {})) - supplied - coming)
+                missing = sorted(
+                    set(recipe.get("inputs", {}))
+                    - set(recipe.get("optional_inputs", ()))
+                    - supplied
+                    - coming
+                )  # 店の包装などの消耗品は、なくても動くので待たない（FM-67）
                 if missing:  # 原料が島で作られていない
                     # 島で作れる原料なら、先に原料の工場を建てる（組の参入。回7 後半）
                     makers = self._makers(island, ctx, missing, supplied, busy)
@@ -1109,12 +1134,70 @@ class EntryExit(IslandStage):
         return total
 
     @staticmethod
+    def _shop_pending(island: IslandState, ctx: StageContext) -> tuple[int, int]:
+        """小売りを売る店のうち、工事中と開いて firms.price_turns ターンたたない店の全力の量の
+        合計と、そのうち工事中の店の分（1000 分の 1）。国営も数える。"""
+        recent = ctx.turn - ctx.config.get("firms.price_turns")
+        good = retail.good_of(ctx.config)
+        pending = building = 0
+        for f in island.facilities:
+            if is_stopped(f) or not retail.sells_retail(ctx.defs, ctx.config, f):
+                continue
+            qty = fac.recipe_of(ctx.defs, f)["outputs"][good]
+            if not f.built:
+                pending += qty
+                building += qty
+            elif (
+                max(f.economy.get("entered", -(10**9)), f.ext.get(fac.FINISHED, -(10**9))) > recent
+            ):
+                pending += qty
+        return pending, building
+
+    @staticmethod
+    def _shop_fill(
+        island: IslandState,
+        ctx: StageContext,
+        recipe: dict[str, Any],
+        shortages: dict[str, list[int]],
+        demand: dict[str, list[int]],
+        capacity: dict[str, int],
+        prices: dict[str, int],
+        cost: int,
+    ) -> float:
+        """新しい店が売れると見込む割合（FM-69。0 なら参入の合図がない）。同じ財の店の工事や開店を
+        待たず、合図から工事中と開いて間もない店の分を引く。
+
+        値段が原価の firms.cost_ratio 倍を超えていれば、（直近の買いたい量の平均 − 動いている店の
+        全力 − 工事中の店の全力）÷ 新しい店の全力。足りない量（屋台と小さな店から買った量）が
+        合図なら、ターンごとの足りない量から工事中と開いて間もない店の全力を引いた残りが、
+        firms.shortage_turns ターン以上 新しい店の全力の firms.entry_gap 倍を超えたとき、その平均 ÷
+        新しい店の全力。
+        どちらも 1 まで。合図は小売りの財だけで見る（店のサービスは見ない）。"""
+        settings = ctx.config.get("firms")
+        good = retail.good_of(ctx.config)
+        qty = recipe["outputs"][good]
+        pending, building = EntryExit._shop_pending(island, ctx)
+        best = 0.0
+        wanted = demand.get(good, [])
+        if prices.get(good, 0) > settings["cost_ratio"] * cost and wanted:
+            share = (sum(wanted) / len(wanted) - capacity.get(good, 0) - building) / qty
+            best = max(best, min(1.0, share))
+        history = [max(0, q - pending) for q in shortages.get(good, [])]
+        gap = settings["entry_gap"] * qty
+        if history and sum(1 for q in history if q >= gap) >= settings["shortage_turns"]:
+            best = max(best, min(1.0, sum(history) / len(history) / qty))
+        return best
+
+    @staticmethod
     def _pipeline(island: IslandState, ctx: StageContext) -> set[str]:
         """新しい民営工場が建てている途中か、動き出して firms.price_turns ターンたたない財
-        （その工場が売り出した後の値段と品切れを見てから、次の参入を決める）。"""
+        （その工場が売り出した後の値段と品切れを見てから、次の参入を決める）。小売りを売る店は
+        待たせない（工事中と開いて間もない店の分は _shop_fill が合図から引く。FM-69）。"""
         recent = ctx.turn - ctx.config.get("firms.price_turns")
         goods: set[str] = set()
         for f in island.facilities:
+            if retail.sells_retail(ctx.defs, ctx.config, f):
+                continue
             if is_private_site(f) or f.economy.get("entered", -(10**9)) > recent:
                 goods |= set(ctx.defs.facilities[f.kind]["recipes"][f.recipe]["outputs"])
         return goods
@@ -1135,6 +1218,8 @@ class EntryExit(IslandStage):
         """_inputs_short の決まりで品切れ続きの原料のすべて（名前の順）。"""
         found = []
         for g, qty in sorted(recipe.get("inputs", {}).items()):
+            if g in recipe.get("optional_inputs", ()):
+                continue  # なくても動く消耗品の品切れでは参入を止めない（FM-67）
             gap = settings["entry_gap"] * qty
             short = sum(1 for amount in shortages.get(g, []) if amount >= gap)
             if short >= settings["shortage_turns"]:
@@ -1192,6 +1277,8 @@ class EntryExit(IslandStage):
         れない原料（鉱山の数の上限など。expandable に財ごとの答えをためる。なければ None）。"""
         gap = ctx.config.get("firms.entry_gap")
         for g, qty in sorted(recipe.get("inputs", {}).items()):
+            if g in recipe.get("optional_inputs", ()):
+                continue
             wanted = demand.get(g, [])
             used = max(uses.get(g, 0), sum(wanted) / len(wanted) if wanted else 0)
             spare = capacity.get(g, 0) - used

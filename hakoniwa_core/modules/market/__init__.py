@@ -1267,7 +1267,7 @@ class Market(IslandStage):
         results: dict[str, auction.Result],
         stale: dict[str, dict[int, int]],
     ) -> None:
-        """品物の市場の後に、家計の層が買った品物の代金に見合う小売りを、商店と百貨店から買う。
+        """品物の市場の後に、家計の買った量を初めの値段で評価し、見合う小売りを店から買う。
         店に届くお客の割合（retail.reach）で、店ごとに売れる量に上限を付ける。店で買いきれなかった
         分は、商業・サービス業（小さな店と屋台）から小売りの値段の 1 + retail.direct_premium 倍で
         買う（直売・屋台）。"""
@@ -1303,6 +1303,11 @@ class Market(IslandStage):
                     order = Order(min(order.quantity, cap), order.limit, order.priority)
                 capped.append((order, party))
             book.sells[:] = [(o, p) for o, p in capped if o.quantity > 0]
+            # 店の付け値（MK-42）: 家計は店の付け値の最高より高くは店に払わない（足りない分は
+            # 屋台へ）
+            asks = [o.limit for o, _ in book.sells if o.limit is not None]
+            if asks and good not in official:
+                high = min(high, max(asks))
         if (book is None or not book.sells) and total > 0:
             # 売りに出ていなければ、買いたい量を記録する（店が開く合図。_record）
             record = island.scratch.setdefault("wanted", {})
@@ -1764,7 +1769,7 @@ class Market(IslandStage):
                 amount = money_of(price, taken)
                 funds.pay(island, payer, ledger.GOV, amount, "sale")
                 power_fuel.acquire(defs, f, good, taken, price, ctx.turn)
-                self._give_to_buyer(island, good, party, batches, amount, 0, 0, {})
+                self._give_to_buyer(island, good, party, batches, amount, 0, 0, {}, ctx)
                 books.add_sector(island, books.WAREHOUSE, "sales", amount)
                 if taken >= want:
                     f.economy.get("short", {}).pop(good, None)
@@ -1824,6 +1829,8 @@ class Market(IslandStage):
             island.policy.price_cap if politics.trait(island, defs, "price_controls", False) else {}
         )
         holds = island.scratch.pop(FACILITY_HOLDS, {})
+        shelf = retail.good_of(config)
+        stall = self._direct_unit(island, config)
         for f in sorted(island.facilities, key=lambda f: f.id):
             # 雇用の段で取り置いた材料の代金を、この施設の買い注文の直前に戻す（LB-45）。項目の
             # 予算を比例で分けたターンは、買い注文と指値の引き上げに使えるのを分けられた額までにする
@@ -1861,6 +1868,15 @@ class Market(IslandStage):
                 ask = max(ask, floor)
                 if good in official:  # 計画経済: 費用に届かなくても公定価格で売る（フェーズ3-4）
                     ask = 0
+                if good == shelf and good not in official and is_self_supporting(f):
+                    # 店の付け値（MK-42）: 持ち越せない小売りも値段なしで出さず、変動費に上乗せして
+                    # 売りに出す（上限は屋台の値段 × retail.posted_cap）
+                    posted = retail.posted_price(island, config, f, floor, stall)
+                    f.economy.setdefault("ask", {})[good] = posted
+                    _, high = auction.band(prices.get(good, 1), width, caps.get(good))
+                    order = Order(total, seller_limit(posted, rate, high))
+                    self._add(books_by_good, good, "sell", order, seller)
+                    continue
                 expiring = stock.expiring(f.stock, good, ctx.turn, defs.goods)
                 if expiring:
                     self._add(books_by_good, good, "sell", Order(expiring), seller)
@@ -4023,7 +4039,9 @@ class Market(IslandStage):
                     stale[b] = stale.get(b, 0) + spoiling
             if buyer.kind == FACILITY and buyer.facility is not None:
                 power_fuel.acquire(ctx.defs, buyer.facility, good, qty, price, ctx.turn)
-            self._give_to_buyer(island, good, buyer, batches, amount, buyer_freight, tax, bought)
+            self._give_to_buyer(
+                island, good, buyer, batches, amount, buyer_freight, tax, bought, ctx
+            )
             if seller.facility is not None:
                 books.add(island, seller.facility.id, books.SALES, amount)
                 books.add(island, seller.facility.id, books.FREIGHT, seller_freight)
@@ -4141,6 +4159,7 @@ class Market(IslandStage):
         freight: int,
         tax: int,
         bought: dict[str, int],
+        ctx: StageContext,
     ) -> None:
         qty = sum(q for _, q in batches)
         if buyer.kind in MATERIAL_BUYERS and qty > 0:
@@ -4198,9 +4217,11 @@ class Market(IslandStage):
             layer_goods[good] = layer_goods.get(good, 0) + qty
             bought[good] = bought.get(good, 0) + qty
             free = Market._unretailed(island)
-            if good not in free:  # 小売りを通す品物の代金（回7）
+            if good not in free:  # 小売りを通す品物の量を、島の初めの値段で数える（FM-38）
                 spent = island.scratch.setdefault(retail.SPENT, {})
-                spent[buyer.layer] = spent.get(buyer.layer, 0) + amount
+                prices = retail.base_prices(island, ctx.defs, ctx.config)
+                price = prices.get(good, ctx.config.get("market.initial_prices.default"))
+                spent[buyer.layer] = spent.get(buyer.layer, 0) + money_of(price, qty)
             elif free and good == free[-1]:  # 小売りに払った額
                 paid = island.scratch.setdefault(retail.PAID, {})
                 paid[buyer.layer] = paid.get(buyer.layer, 0) + amount + tax

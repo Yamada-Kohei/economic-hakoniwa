@@ -603,10 +603,17 @@ def shops_at(island: IslandState, pos: tuple[int, int]) -> int:
     return sum(1 for f in island.facilities if f.ext.get(SITE) == key and EXPANDS not in f.ext)
 
 
-def shop_slots(defs: Defs, town: Facility) -> int:
-    """町のマスに入る店の数（settlements.yaml の shops）。"""
+def shop_slots(defs: Defs, town: Facility, island: IslandState | None = None) -> int:
+    """町のマスに入る店の数: 町の段階の数（settlements.yaml の shops）と、住む人 ÷ その段階の
+    people_per_shop（国の大きさの倍を掛けてある）の大きい方（FM-70。2026-11-12、W-261）。段階の数が
+    0 の村には入らない。island がなければ段階の数だけ。"""
     level = town.ext.get("level") or defs.settlement_levels()[0]
-    return int(defs.settlements.get(level, {}).get("shops", 0))
+    spec = defs.settlements.get(level, {})
+    slots = int(spec.get("shops", 0))
+    per = spec.get("people_per_shop", 0)
+    if island is None or slots <= 0 or per <= 0 or not island.in_bounds(town.x, town.y):
+        return slots
+    return max(slots, int(island.tile(town.x, town.y).population // per))
 
 
 def vacate(island: IslandState, f: Facility) -> None:
@@ -803,10 +810,11 @@ def input_ratio(defs: Defs, f: Facility, power: str) -> tuple[int, str | None]:
     """手元の原料で今のターンにどれだけ動けるか（1000 分の 1）と、一番足りない原料。
 
     電力（power）は在庫を持たず、生産の段で送電網から買うので数えない。
+    optional_inputs の消耗品も操業を制限しない（FM-67）。
     """
     found, short = FULL, None
     for good, qty in sorted(recipe_of(defs, f)["inputs"].items()):
-        if good == power:
+        if good == power or good in defs.facilities[f.kind].get("optional_inputs", ()):
             continue
         r = ratio(stock.total(f.stock, good), qty)
         if r < found:
@@ -860,8 +868,9 @@ def placement_problem(
         town = island.facility_at(x, y)
         if town is None or defs.facilities[town.kind].get("category") != "housing":
             return ("reason_shop_needs_town", {"facility": kind})
-        if shops_at(island, (x, y)) >= shop_slots(defs, town):
-            return ("reason_shop_slots", {"facility": kind, "max": shop_slots(defs, town)})
+        slots = shop_slots(defs, town, island)
+        if shops_at(island, (x, y)) >= slots:
+            return ("reason_shop_slots", {"facility": kind, "max": slots})
         if wrong_zone is not None:
             return wrong_zone
     else:

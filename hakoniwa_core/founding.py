@@ -24,6 +24,7 @@ from hakoniwa_core.economy import (
     productivity,
     public_housing,
     reserve,
+    retail,
     services,
 )
 from hakoniwa_core.economy.start import start_economy
@@ -340,6 +341,7 @@ def found_island(
     start_economy(island, defs, config, turn)
     island.economy.ext["nature"] = nature.VERSION  # 自然条件は建国のときに置いた（移し替えない）
     island.economy.ext["housing"] = fac.HOUSING_VERSION  # 住まいの広さも建国のときから
+    island.economy.ext[retail.POSTED] = retail.POSTED_VERSION  # 店の付け値も建国のときから（MK-42）
     return island
 
 
