@@ -818,6 +818,34 @@ def test_price_cap_removal_restarts_production(game, price_cap_case):
     assert market_mod.operating_target(island, f, ctx) > 0
 
 
+def test_cost_floor_is_recorded_for_screens_only(game, price_cap_case):
+    """操業目標の見直しは、産出物ごとの1単位の費用の下限（生産補助の後）を cost_floor に残す
+    （画面の生産調整中のわけ W-250 に見せるだけ）。残した値は次の見直しの計算に使わない。"""
+    from hakoniwa_core.economy import freight
+    from hakoniwa_core.economy.prices import subsidized_floor
+
+    world, island, f = price_cap_case
+    ctx = context(game, world)
+    island.policy.subsidies = [
+        {"kind": "production", "good": "wood", "rate": 2500, "until": ctx.turn},
+    ]
+    full = fac.outputs_of(game.defs, f)["wood"]
+    island.markets = [MarketRecord("wood", 100, full // 2, full // 2, full)]
+    f.economy.update(target=fac.FULL, sales={"wood": [full, full // 2, 0]})
+    before = copy.deepcopy(f.economy)
+    first = market_mod.operating_target(island, f, ctx)
+    rate = freight.facility_rates(island, game.defs, game.config).get(f.id, 0)
+    prices, wage = island.economy.prices, f.economy["wage"]
+    floor = subsidized_floor(
+        island, game.defs, game.config, f, "wood", prices, wage, rate, ctx.turn
+    )
+    assert f.economy[market_mod.COST_FLOOR] == {"wood": floor}
+    for recorded in ({"wood": 1}, {"wood": floor * 100}):
+        f.economy = copy.deepcopy(before)
+        f.economy[market_mod.COST_FLOOR] = recorded
+        assert market_mod.operating_target(island, f, ctx) == first
+
+
 def test_production_subsidy_lowers_seller_floor(game, price_cap_case):
     """品目とマスの補助率を合計し、期限切れ・救済・設備投資は数えない。"""
     from hakoniwa_core import stock
