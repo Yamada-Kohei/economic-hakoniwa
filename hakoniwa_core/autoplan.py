@@ -788,9 +788,9 @@ def _reserved_materials(
     reserved: dict[str, int] = {}
     for f in island.facilities:
         if not f.built and f.owner == owner:
-            construction = defs.facilities[f.kind]["construction"]
             done = f.progress / fac.total_progress(defs, f)
-            for good, qty in construction.get("materials", {}).items():
+            # 段階の作り方の農場や段階を上げる工事の資材も含める（materials_of。W-257）
+            for good, qty in fac.materials_of(defs, f).items():
                 left = qty - int(qty * done) - stock.total(f.stock, good)
                 reserved[good] = reserved.get(good, 0) + max(0, left)
     return reserved

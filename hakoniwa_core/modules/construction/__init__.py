@@ -101,10 +101,16 @@ def build(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> No
         name=payload.get("name", "").strip(),
         economy={"capital": 0},
     )
+    # 段階の作り方（機械化・近代化）を選んだ農場は、初めからその段階で建ち、その段階までの工事の
+    # 工期と資材を足す（W-257。手作業のまま機械化の作り方で動かさない）
+    grade = fac.build_grade(ctx.defs, kind, f.recipe)
+    turns = fac.build_spec(ctx.defs, kind, f.recipe)[0]
+    if grade:
+        f.ext[fac.GRADE] = grade
+        f.ext[fac.GRADE_BUILD] = grade
     # 体制（権威主義の公共事業）で工期を変える（フェーズ3-4）
     factor = planning.build_factor(island, ctx.defs)
-    if factor != 1.0:
-        turns = ctx.defs.facilities[kind]["construction"]["turns"]
+    if factor != 1.0 or grade:
         f.ext["build_total"] = max(fac.FULL, round(turns * factor * fac.FULL))
     if payload.get("hidden"):  # 地下に造る: 工期が延び、資材が増える。ほかの国には見えない（MI-62）
         hide = ctx.defs.facilities[kind]["hide"]
@@ -367,6 +373,7 @@ class Construction(IslandStage):
             "build_total",
             "materials_factor",
             fac.SITE_WORK,
+            fac.GRADE_BUILD,
         ):
             f.ext.pop(key, None)
         for key in ("no_materials_turns", "no_workers_turns", "stalled_turns"):
