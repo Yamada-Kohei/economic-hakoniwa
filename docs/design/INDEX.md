@@ -644,8 +644,8 @@
 | UI-86 | 品目を並べる表と選ぶ欄は、品目の段（`tier`: 原料・中間財・最終財）の順にそろえ、同じ段の… | 決定 | （未確認） |
 | UI-87 | 発電所が止まる前の知らせ（2026-11-11、掲示板 #25 の 45 番）: 動いている火力… | 決定 | tests/core/test_power_fuel_notice.py、tests/server/test_power_fuel_ui.py |
 | UI-88 | 施設の種類の表示名に、方式で変わる作る物を添える（W-262、掲示板 #25 の 21 番）: … | 決定 | tests/server/test_facility_product_label.py |
-| UI-89 | 建国の地下資源を選ぶ欄に、ほかの国（休止中を除く）がもう選んだ資源ごとの国の数を添え、「選ぶ国の… | 決定 | tests/server/test_founding_resource_counts.py |
 | UI-89 | 家計が電気料金を払えないときの知らせ（2026-11-12、停電の調べの案 3）: 生産の段は、… | 決定 |  |
+| UI-90 | 建国の地下資源を選ぶ欄に、ほかの国（休止中を除く）がもう選んだ資源ごとの国の数を添え、「選ぶ国の… | 決定 | tests/server/test_founding_resource_counts.py |
 
 ## [12 確かめ方](12-checks.md)
 
