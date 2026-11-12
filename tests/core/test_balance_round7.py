@@ -433,7 +433,8 @@ def test_households_buy_retail_from_shops_then_direct(game, base, monkeypatch):
             assert direct <= short + 1
         else:
             assert direct == pytest.approx(short, abs=1)
-        assert stats["retail.direct_sales"] > 0
+        # 店が足りた島では屋台に回る分がない（店の参入が待たなくなった後。FM-69）
+        assert (stats["retail.direct_sales"] > 0) == (direct > 0)
         sold_somewhere = sold_somewhere or sold > 0
     assert sold_somewhere, "どの島でも店が売れていない"
 
