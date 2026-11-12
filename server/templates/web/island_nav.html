@@ -1,18 +1,8 @@
-{% load i18n %}<nav class="island-nav" aria-label="{% translate '島の画面' %}">
-  <a href="{% url 'island' island.id %}"{% if page == "island" %} aria-current="page"{% endif %}>{% translate "地図" %}</a>
-  <a href="{% url 'island_economy' island.id %}"{% if page == "economy" %} aria-current="page"{% endif %}>{% translate "経済" %}</a>
-  <a href="{% url 'island_market' island.id %}"{% if page == "market" %} aria-current="page"{% endif %}>{% translate "市場" %}</a>
-  <a href="{% url 'island_chain' island.id %}"{% if page == "chain" %} aria-current="page"{% endif %}>{% translate "産業の鎖" %}</a>
-  <a href="{% url 'island_facilities' island.id %}"{% if page == "facilities" %} aria-current="page"{% endif %}>{% translate "施設" %}</a>
-  <a href="{% url 'island_fiscal' island.id %}"{% if page == "fiscal" %} aria-current="page"{% endif %}>{% translate "財政" %}</a>
-  <a href="{% url 'island_finance' island.id %}"{% if page == "finance" %} aria-current="page"{% endif %}>{% translate "金融" %}</a>
-  <a href="{% url 'island_trade' island.id %}"{% if page == "trade" %} aria-current="page"{% endif %}>{% translate "貿易" %}</a>
-  <a href="{% url 'island_fx' island.id %}"{% if page == "fx" %} aria-current="page"{% endif %}>{% translate "為替" %}</a>
-  <a href="{% url 'island_politics' island.id %}"{% if page == "politics" %} aria-current="page"{% endif %}>{% translate "政治" %}</a>
-  <a href="{% url 'island_diplomacy' island.id %}"{% if page == "diplomacy" %} aria-current="page"{% endif %}>{% translate "外交の状態" %}</a>
-  <a href="{% url 'island_military' island.id %}"{% if page == "military" %} aria-current="page"{% endif %}>{% translate "軍" %}</a>
-  <a href="{% url 'island_country' island.id %}"{% if page == "country" %} aria-current="page"{% endif %}>{% translate "国の紹介" %}</a>
-  {% if plan_label %}<a href="{% url 'island_plan' island.id %}"{% if page == "plan" %} aria-current="page"{% endif %}>{{ plan_label }}</a>{% endif %}
-  {% if mine %}<a href="{% url 'diary' island.id %}"{% if page == "diary" %} aria-current="page"{% endif %}>{% translate "日誌" %}</a>{% endif %}
-  <a href="{% url 'turn_log' island.id %}"{% if page == "log" %} aria-current="page"{% endif %}>{% translate "ターンログ" %}</a>
+{% load i18n %}{# 島の画面の入口（UI-71）。中身は server/web/island_nav.py。display_tags の island_nav で入れる #}<nav class="island-nav" aria-label="{% translate '島の画面' %}">
+  {% for g in groups %}<a href="{{ g.url }}"{% if g.current %} aria-current="page"{% endif %}>{{ g.name }}</a>
+  {% endfor %}
 </nav>
+{% if tabs %}<nav class="island-subnav" aria-label="{% translate '入口の中のタブ' %}">
+  {% for t in tabs %}<a href="{{ t.url }}"{% if t.current %} aria-current="page"{% endif %}>{{ t.name }}</a>
+  {% endfor %}
+</nav>{% endif %}

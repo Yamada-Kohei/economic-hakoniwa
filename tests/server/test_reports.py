@@ -270,8 +270,9 @@ def test_fiscal_page_balance_excludes_bonds(client, world):
 
 
 def test_island_page_links_to_reports(client, world):
+    """経済の入口の画面から、統計の画面へ 1 回で行ける（入口の帯と、経済の中のタブ。UI-71）。"""
     island = m.Island.objects.order_by("id").first()
-    html = client.get(f"/islands/{island.id}/").content.decode()
+    html = client.get(f"/islands/{island.id}/economy/").content.decode()
     for page in PAGES:
         assert f'href="/islands/{island.id}/{page}/"' in html
 

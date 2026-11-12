@@ -268,7 +268,7 @@ def test_island_and_economy_pages_show_strengths_and_titles(client, world):
     w.save()
     html = client.get(f"/islands/{island.id}/economy/").content.decode()
     assert "得意産業と称号" in html and "鋼都" in html and "経験 36 ターン分" in html
-    html = client.get(f"/islands/{island.id}/").content.decode()
+    html = client.get(f"/islands/{island.id}/home/").content.decode()  # 国勢はホーム（UI-71）
     assert "得意産業" in html and "鉄鋼業・繊維" in html and "鋼都" in html
 
 

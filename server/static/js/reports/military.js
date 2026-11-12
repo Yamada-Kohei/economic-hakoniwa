@@ -92,10 +92,8 @@ try {
   const slot = document.getElementById("unit-commands");
   if (slot) slot.innerHTML = (units.length ? ["dig_trench", "stop_unit", "disband_unit"].map((kind) => {
     const label = { dig_trench: w.dig, stop_unit: w.stop, disband_unit: w.disband }[kind];
-    const html = orderForm(kind, `<h3>${escapeHtml(label)}</h3>` + field("unit", w.unit,
+    return orderForm(kind, `<h3>${escapeHtml(label)}</h3>` + field("unit", w.unit,
       options(units.map((u) => [u.id, `#${u.id} ${armyName(u, defs)} ${coord(u)}`]))));
-    return kind === "disband_unit" ? html.replace('data-order="disband_unit"',
-      `data-order="disband_unit" data-confirm="${escapeHtml(w.confirm)}"`) : html;
   }).join("") : `<p class="hint">${escapeHtml(w.empty)}</p>`) + ((military.units || []).length ?
     `<h3>${escapeHtml(w.requisition)}</h3>` + orderForm("set_requisition",
       field("unit", w.unit, options(military.units.map((u) => [u.id, `#${u.id} ${armyName(u, defs)}`]))) +

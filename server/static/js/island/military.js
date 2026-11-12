@@ -48,8 +48,7 @@ export class MilitaryTile {
       const choices = field("unit", w.unit, options([[u.id, `#${u.id}`]]));
       const commands = ["dig_trench", "stop_unit", "disband_unit"].map((kind) => {
         const label = { dig_trench: w.dig, stop_unit: w.stop, disband_unit: w.disband }[kind];
-        const confirm = kind === "disband_unit" ? ` data-confirm="${escapeHtml(w.confirm)}"` : "";
-        return `<form class="actions military-form" data-order="${kind}"${confirm}>
+        return `<form class="actions military-form" data-order="${kind}">
           <input type="hidden" name="unit" value="${u.id}"><button type="submit">${escapeHtml(label)}</button>
           <p class="order-notice" role="status"></p></form>`;
       }).join("");

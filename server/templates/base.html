@@ -19,21 +19,23 @@
     <a class="brand" href="{% url 'top' %}">{% translate "経済版箱庭諸国" %}</a>
     <nav>
       {% if own_island %}
-        <a href="{% url 'island' own_island.id %}">{% translate "自国" %}</a>
-        <a id="letters-link" href="{% url 'letters' %}">{% translate "外交" %}{% if letters_unread %} <span class="badge">{% blocktranslate with n=letters_unread %}未読の公電 {{ n }}{% endblocktranslate %}</span>{% endif %}</a>
+        <a href="{% url 'home' own_island.id %}">{% translate "自国" %}</a>
       {% else %}
         <a href="{% url 'found' %}">{% translate "建国" %}</a>
       {% endif %}
-      <a href="{% url 'world' %}">{% translate "世界マップ" %}</a>
-      <a href="{% url 'rankings' %}">{% translate "順位" %}</a>
-      <a href="{% url 'news' %}">{% translate "世界の近況" %}</a>
-      <a href="{% url 'hall' %}">{% translate "国際会議場" %}</a>
+      <a href="{% url 'world' %}">{% translate "世界" %}</a>
+      {% if own_island %}<a id="letters-link" href="{% url 'letters' %}">{% translate "公電" %}{% if letters_unread %} <span class="badge">{% blocktranslate with n=letters_unread %}未読の公電 {{ n }}{% endblocktranslate %}</span>{% endif %}</a>{% endif %}
       <a href="{% url 'board' %}">{% translate "掲示板" %}{% if board_unread %} <span class="badge">{% blocktranslate with n=board_unread %}返信 {{ n }}{% endblocktranslate %}</span>{% endif %}</a>
       <a href="{% url 'help_start' %}">{% translate "手引き" %}</a>
       {% if user.is_authenticated %}
-        <button type="button" class="bug-report-open" data-bug-open>{% translate "不具合を報告" %}</button>
-        <a class="muted" href="{% url 'account' %}" title="{% translate 'アカウント' %}">{{ user.username }}</a>
-        <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}<button type="submit">{% translate "ログアウト" %}</button></form>
+        <details class="account-menu">
+          <summary title="{% translate 'アカウント' %}"><span aria-hidden="true">⚙</span> {{ user.username }}</summary>
+          <div class="account-menu-items">
+            <a href="{% url 'account' %}">{% translate "アカウント" %}</a>
+            <button type="button" class="bug-report-open" data-bug-open>{% translate "不具合を報告" %}</button>
+            <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}<button type="submit">{% translate "ログアウト" %}</button></form>
+          </div>
+        </details>
       {% else %}
         <a href="{% url 'login' %}">{% translate "ログイン" %}</a>
         <a href="{% url 'signup' %}">{% translate "登録" %}</a>
