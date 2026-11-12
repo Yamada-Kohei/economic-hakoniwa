@@ -149,8 +149,9 @@ class Works:
         """維持の仕事（整備度が目標より低いマス）。施設と町のマスとその隣から先に、y, x の順。
 
         ahead なら、次のターンの分（このターンの終わりの傷みを足した分）を見積もる。工事の列に
-        並んでいるマスと種類は、新しい工事の方で上げるので数えない。整備度か工事の列が変わるまでは
-        同じなので、island.scratch に置いて使い回す（forget_upkeep で捨てる）。
+        並んでいるマスと種類も、ほかのマスと同じく目標までは維持で戻す（新しい工事が受け持つのは目標
+        から 100% までの分。IN-28）。整備度か工事の列が変わるまでは同じなので、island.scratch に
+        置いて使い回す（forget_upkeep で捨てる）。
         """
         island = self.island
         cache = island.scratch.setdefault(UPKEEP, {})
@@ -161,13 +162,12 @@ class Works:
             if fac.on_map(f):
                 near.add((f.x, f.y))
                 near.update((f.x + dx, f.y + dy) for dx, dy in NEIGHBORS8)
-        queued = {(k, x, y) for k, x, y in infra.queue(island)}
         items = []
         for tile in island.tiles:
             if not tile.infra:
                 continue
             for kind in sorted(tile.infra):
-                if kind not in self.defs.infrastructure or (kind, tile.x, tile.y) in queued:
+                if kind not in self.defs.infrastructure:
                     continue
                 target = infra.keep(tile, kind)
                 now = infra.level(tile, kind)
@@ -185,7 +185,9 @@ class Works:
 
         ahead なら、次のターンの分（このターンの終わりの傷みを足した分）を見積もる。傷みの分を
         買い足さないと、仕上がりの近いマスが毎ターン傷みの分だけ足りずに 100% に届かない。
-        ordered_only なら、命令で並べた工事だけ。
+        ordered_only なら、命令で並べた工事だけ。受け持つのは維持の目標から 100% までの分で、目標
+        までは維持の仕事（upkeep）が戻す（IN-28。0% から引くマスは目標が 0 なので全部）。1マスが
+        1ターンに上がるのは、維持と合わせて step まで。
         """
         items = []
         auto = {tuple(e) for e in works_state(self.island).get(AUTO, [])}
@@ -196,11 +198,14 @@ class Works:
         for kind, x, y in ordered:
             if kind not in self.defs.infrastructure:
                 continue
-            now = infra.level(self.island.tile(x, y), kind)
+            tile = self.island.tile(x, y)
+            now = infra.level(tile, kind)
             if ahead and now > 0:
                 now = max(0, now - self.wear(kind))
-            if now < infra.FULL:
-                amount = min(infra.FULL - now, self.step(kind))
+            keep = infra.keep(tile, kind)
+            step = self.step(kind)
+            amount = min(infra.FULL - max(now, keep), step - min(step, max(0, keep - now)))
+            if amount > 0:
                 items.append(self.cost(Item(kind, x, y, amount, False)))
         return items
 
@@ -287,7 +292,9 @@ def plan(island: IslandState, ctx: StageContext, upkeep: bool, wage: int, keep: 
         amount = _fit(item, have)
         if amount < item.amount and not why:
             why = "materials"
-            if not upkeep:  # 資材を待っている新しい工事がある（人手やお金で止まっても残す）
+            if not upkeep or infra.queued(island, item.kind, item.x, item.y):
+                # 資材を待っている並んだ工事がある（人手やお金で止まっても残す。並んだマスの
+                # 目標までの分は維持の仕事。IN-28）
                 state["short_materials"] = True
         if amount <= 0:
             continue
@@ -499,12 +506,22 @@ def progress(island: IslandState, ctx: StageContext) -> None:
     labor = state.get("hired", 0) * 1000
     built = done_any = 0
     works = Works(island, ctx)
+    queued = {(k, x, y) for k, x, y in infra.queue(island)}
+    raised: set[tuple[str, int, int]] = set()  # このターンに新しい工事が上げたマス
     for item in state["items"]:
-        share = item.amount
-        if item.labor > 0:
-            got = min(item.labor, labor)
+        tile = island.tile(item.x, item.y)
+        key = (item.kind, item.x, item.y)
+        before = infra.level(tile, item.kind)
+        # 同じマスの維持と新しい工事（IN-28）: 維持は目標まで。新しい工事が先に進んで目標より下を
+        # 埋めた（計画経済で新しい工事の優先度が高い）マスは、後の維持が残りを 100% へ上げる。
+        # 人手と資材は、上げられる分だけ使う
+        up = item.upkeep and key not in raised
+        room = (infra.keep(tile, item.kind) if up else infra.FULL) - before
+        share = min(item.amount, max(0, room))
+        if item.labor > 0 and share > 0:
+            got = min(-(-item.labor * share // item.amount), labor)
             labor -= got
-            share = item.amount * got // item.labor
+            share = min(share, item.amount * got // item.labor)
         for good, qty in item.materials.items():
             if qty > 0:
                 share = min(share, stock.total(held, good) * item.amount // qty)
@@ -513,12 +530,13 @@ def progress(island: IslandState, ctx: StageContext) -> None:
         used = _scale(works, item, share).materials
         for good, qty in sorted(used.items()):
             stock.take(held, good, qty)
-        tile = island.tile(item.x, item.y)
-        before = infra.level(tile, item.kind)
-        if item.upkeep:
+        if up:
             infra.set_level(tile, item.kind, min(infra.keep(tile, item.kind), before + share))
         else:
             infra.set_level(tile, item.kind, before + share)
+            if not item.upkeep:
+                raised.add(key)
+        if not item.upkeep or key in queued:  # 並んだマスが進んだ（維持の分でも）
             built += 1
         done_any += 1
     queue = infra.queue(island)
@@ -548,6 +566,8 @@ def _watch(
         works.pop("short_materials", None)
         return
     why = state.get("why") or ""
+    if not why and state.get("short_materials"):  # 並んだマスの維持の資材が足りない（IN-28）
+        why = "materials"
     if not why:
         wanted = -(-state.get("labor", 0) // 1000)
         why = "workers" if state.get("hired", 0) < wanted else "funds"
@@ -746,8 +766,8 @@ def _auto_works(island: IslandState, ctx: StageContext) -> None:
 
     残り = 月割り − このターンに公共事業費から使った額 − 並んだ工事と維持の次のターンの見込み
     （作業員はこのターンの賃金、資材は工事の資材に持っていない分を今の値段で）。1か所分（その町の
-    マスか、施設・町のまわりのマス）のうち、0% から仕上げるまでの費用を工期で割った1ターン分が
-    残りに収まるマスまでを、順に並べる。"""
+    マスか、施設・町のまわりのマス）のうち、維持の目標から仕上げるまでの費用（目標までは維持の工事が
+    戻すので数えない。IN-28）を工期で割った1ターン分が残りに収まるマスまでを、順に並べる。"""
     state = works_state(island)
     if state.get(AUTO_OFF):
         return
@@ -785,7 +805,10 @@ def _auto_works(island: IslandState, ctx: StageContext) -> None:
     for kind, tiles in sites:
         picked = []
         for x, y in tiles:
-            left = infra.FULL - infra.level(island.tile(x, y), kind)
+            tile = island.tile(x, y)
+            left = infra.FULL - max(infra.level(tile, kind), infra.keep(tile, kind))
+            if left <= 0:  # 目標が 100% のマスは、維持の工事が戻す
+                continue
             whole = works.cost(Item(kind, x, y, left, False))
             monthly = _cost(island, works, whole, wage) * works.step(kind) // infra.FULL
             if monthly > room:

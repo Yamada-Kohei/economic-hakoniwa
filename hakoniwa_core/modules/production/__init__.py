@@ -54,6 +54,7 @@ from hakoniwa_core.economy import (
     is_self_supporting,
     is_stopped,
     payer_of,
+    power_fuel,
     productivity,
 )
 from hakoniwa_core.economy import plan as planning
@@ -164,6 +165,7 @@ class Production(IslandStage):
         for f in island.facilities:
             self._fall_back(island, f, ctx)
         for f in island.facilities:  # このターンに売りに出した量と売れた量（電力とこの後の市場）
+            power_fuel.reconcile_book(defs, f, island.economy.prices, ctx.turn)
             f.economy.pop("sales", None)
             f.economy.pop("late_sales", None)
             fac.step_fields(defs, f, ctx.turn)  # 畑の作付けを進める（回3）
@@ -205,6 +207,7 @@ class Production(IslandStage):
             public = is_public_service(defs, f)  # 学校の教材は、買ったときに政府の消費に数える
             for good, need in sorted(run.recipe["inputs"].items()):
                 if good != power:
+                    power_fuel.consume(defs, f, good, fac.scale(need, rate), ctx.turn)
                     used = stock.take(f.stock, good, fac.scale(need, rate))
                     used_up[good] = used_up.get(good, 0) + used
                     if not public:
@@ -373,6 +376,12 @@ class Production(IslandStage):
         economy = island.economy
         has_money = island.has_economy
         reference = economy.prices.get(power, 1)
+        # 網の連番はつなぎ替えで変わるため、地点が前のターンに属した網の約定価格を持つ。
+        previous_grid_prices = economy.ext.get("power_grid_prices", {})
+        grid_prices: dict[str, int] = {}
+        grid_positions: dict[int, list[tuple[int, int]]] = {}
+        for pos, grid in grid_of.items():
+            grid_positions.setdefault(grid, []).append(pos)
         width = to_basis(config.get("market.band"))
         cap = island.policy.price_cap.get(power) if has_money else None
         # 計画経済は公定価格で値幅 0 にし、足りなければ割当の順位と配給で分ける（フェーズ3-4）
@@ -428,8 +437,20 @@ class Production(IslandStage):
                 if has_money:  # 1単位の変動費（燃料の運賃を含む）より安くは売らない（国庫直轄も）
                     wage = run.f.economy.get("wage", 0)
                     rate = rates_of.get(run.f.id, 0)
+                    fuel_prices = power_fuel.input_prices(
+                        defs, config, run.f, economy.prices, utilization=run.rate
+                    )
                     floor = subsidized_floor(
-                        island, defs, config, run.f, power, economy.prices, wage, rate, ctx.turn
+                        island,
+                        defs,
+                        config,
+                        run.f,
+                        power,
+                        economy.prices,
+                        wage,
+                        rate,
+                        ctx.turn,
+                        fuel_prices,
                     )
                     ask = max(ask, floor)
                 sell_orders.append(Order(capacity, min(ask, high)))  # 上端より高くては売れない
@@ -474,6 +495,15 @@ class Production(IslandStage):
                 bounds=bounds,
                 allocate_buys=allocate,
             )
+            for x, y in grid_positions[grid]:
+                key = f"{x},{y}"
+                previous = previous_grid_prices.get(key, reference)
+                grid_prices[key] = result.price if result.volume else previous
+            for run, _ in sellers:
+                if power_fuel.is_thermal(defs, run.f):
+                    key = f"{run.f.x},{run.f.y}"
+                    run.f.economy["power_previous_price"] = previous_grid_prices.get(key, reference)
+                    run.f.economy["power_grid_price"] = grid_prices[key]
             if has_money:
                 self._settle(island, ctx, result, buyers, sellers, power)
             for b, order, got in zip(buyers, buy_orders, result.bought, strict=True):
@@ -517,6 +547,7 @@ class Production(IslandStage):
         for key, amount in totals.items():
             island.stats[f"power.{key}"] = from_milli(amount)
         if has_money:
+            economy.ext["power_grid_prices"] = grid_prices
             price = fixed or (unit_price(value, volume) if volume else reference)
             island.markets.append(
                 MarketRecord(

@@ -72,7 +72,7 @@ from dataclasses import replace
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger, politics, stock, trade
+from hakoniwa_core import ledger, stock, trade
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
@@ -101,6 +101,7 @@ from hakoniwa_core.economy import (
     is_stopped,
     is_transport,
     owner_entity,
+    power_fuel,
     productivity,
     receivership,
     retail,
@@ -1336,16 +1337,7 @@ class EntryExit(IslandStage):
     def _threshold(island: IslandState, ctx: StageContext) -> float:
         """参入に要る利益率: 借りる金利（建設費の7割を借りたとき）+ firms.entry_margin（体制の特色
         entry_margin があればそちら。市場経済。フェーズ3-4）。"""
-        config = ctx.config
-        active = banks.active_banks(island)
-        if not active:
-            return float("inf")
-        margin = min(banks.margin_of(island, config, b) for b in active)
-        debt_share = 1 - config.get("firms.equity_share")
-        rate = island.policy.policy_rate / BASIS + margin / BASIS
-        rate += config.get("banking.rho") * debt_share
-        found = politics.trait(island, ctx.defs, "entry_margin")
-        return rate + (config.get("firms.entry_margin") if found is None else found)
+        return banks.entry_rate(island, ctx.defs, ctx.config)
 
     def _site(
         self, island: IslandState, ctx: StageContext, kind: str, rname: str
@@ -2140,6 +2132,7 @@ def restart(
     いた施設は、少しずつ動き出す。"""
     f.owner = owner
     f.accounting = default_accounting(ctx.defs, island, f.kind, owner)
+    power_fuel.reset_book(ctx.defs, f, island.economy.prices)
     for key in ("closing", "idle_turns", "loss_streak", "loss_turns", "ebitda", SEIZED):
         f.economy.pop(key, None)
     f.economy.pop(receivership.SALE_BOOK, None)
@@ -2253,6 +2246,7 @@ def nationalize(island: IslandState, payload: dict[str, Any], ctx: StageContext)
         f.owner = OWNER_STATE
         for key in ("closing", "idle_turns", "loss_streak"):
             f.economy.pop(key, None)
+    power_fuel.reset_book(ctx.defs, f, island.economy.prices)
     island.log.append(
         LogEntry("nationalized", {"facility": f.kind, "x": f.x, "y": f.y, "price": price})
     )
@@ -2306,6 +2300,7 @@ def privatize(island: IslandState, payload: dict[str, Any], ctx: StageContext) -
     funds.pay(island, owners, ledger.GOV, price, "privatization")
     _move_equity(island, entity, ledger.GOV, household(OWNERS))
     f.owner = OWNER_PRIVATE
+    power_fuel.reset_book(ctx.defs, f, island.economy.prices)
     island.log.append(
         LogEntry("privatized", {"facility": f.kind, "x": f.x, "y": f.y, "price": price})
     )
@@ -2376,6 +2371,7 @@ def nationalize_firm(island: IslandState, payload: dict[str, Any], ctx: StageCon
             _move_equity(island, entity, name, ledger.GOV)
             companies.leave(island, f)
             f.owner = OWNER_STATE
+            power_fuel.reset_book(ctx.defs, f, island.economy.prices)
             for key in ("closing", "idle_turns", "loss_streak"):
                 f.economy.pop(key, None)
             f.economy[companies.FIRM] = companies.state_firm(island, ctx.defs, f.kind, ctx.turn)
@@ -2450,6 +2446,7 @@ def privatize_firm(island: IslandState, payload: dict[str, Any], ctx: StageConte
     for f in sold:
         _move_equity(island, facility_entity(f.id), ledger.GOV, household(OWNERS))
         f.owner = OWNER_PRIVATE
+        power_fuel.reset_book(ctx.defs, f, island.economy.prices)
         companies.leave(island, f)
         companies.join(island, f, firm)
     island.log.append(

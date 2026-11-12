@@ -715,6 +715,7 @@ def facilities(request, island_id: int):
         "stats": reports.stat_rows(stats, pages.FACILITY_STATS, _currency(island)),
         "towns": reports.town_rows(island),
         "industry_workers": reports.industry_workers(island),
+        "fuel_reserves": display.fuel_reserves(island) if mine else [],
     }
     if mine:
         data["table"] = reports.facility_rows(island, _currency(island))

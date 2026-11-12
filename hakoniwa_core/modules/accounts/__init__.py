@@ -51,7 +51,7 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger, stock
+from hakoniwa_core import ledger
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
@@ -73,6 +73,7 @@ from hakoniwa_core.economy import (
     is_seized,
     is_self_supporting,
     owner_entity,
+    power_fuel,
 )
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.households import add_income
@@ -167,9 +168,7 @@ class Accounts(IslandStage):
                     items={k: v for k, v in sorted(items.items()) if v},
                     deposit=ledger.money(island, entity) if entity != ledger.GOV else 0,
                     debt=banks.debt_of(island, facility_entity(f.id)),
-                    inventory=sum(
-                        money_of(prices.get(g, 0), q) for g, q in stock.totals(f.stock).items()
-                    ),
+                    inventory=power_fuel.inventory_value(ctx.defs, f, prices),
                 )
             )
         cb_realized = realized.get(ledger.CB, 0)
@@ -183,11 +182,18 @@ class Accounts(IslandStage):
         prices = island.economy.prices
         rates: dict[int, int] | None = None
         out = {}
+        for f in island.facilities:
+            power_fuel.reconcile_book(ctx.defs, f, prices, ctx.turn)
         for facility, goods in books.stock_flows(island).items():
             f = island.facility(facility)
             outputs = fac.recipe_of(ctx.defs, f)["outputs"] if f is not None and f.built else {}
             value = 0
+            fuel_flow = f.economy.get(power_fuel.FLOW, {}) if f is not None else {}
+            fuel_value = fuel_flow.get("value", {}) if fuel_flow.get("turn") == ctx.turn else {}
             for good, qty in sorted(goods.items()):
+                if good in fuel_value:
+                    value += fuel_value[good]
+                    continue
                 price = prices.get(good, 0)
                 if good in outputs and f is not None:
                     if rates is None:

@@ -23,6 +23,8 @@ from hakoniwa_core.economy import (
     is_bank,
     is_private_site,
     is_self_supporting,
+    power_fuel,
+    power_fuel_notice,
     receivership,
     retail,
 )
@@ -154,6 +156,54 @@ def _firm_name(island: IslandState, defs: Any, f: Facility) -> str:
     return companies.display_name(island, defs, int(number))
 
 
+def fuel_stock_info(f: Facility) -> list[dict[str, Any]]:
+    """施設の燃料在庫と目標を、画面・JSON・要約で同じ形にする。"""
+    game = get_game()
+    out = []
+    for row in power_fuel_notice.stock_status(game.defs, game.config, f):
+        good = row["good"]
+        out.append(
+            {
+                **row,
+                "name": game.defs.name("goods", good),
+                "amount": amount(row["quantity"], good),
+                "target_amount": amount(row["target"], good),
+                "unit": game.defs.unit_name(good),
+                "months": round(row["months"], 1) if row["months"] is not None else None,
+            }
+        )
+    return out
+
+
+def fuel_reserves(
+    island: m.Island, mine: bool = True, viewer: int | None = None
+) -> list[dict[str, Any]]:
+    """見える火力発電所の燃料。民営と国営の両方を同じ表示で出す。"""
+    game = get_game()
+    state = island_for_naming(island)
+    rows = []
+    for row in island.facilities.filter(built=True).order_by("number"):
+        f = facility_from_row(row)
+        if (
+            f.kind not in game.defs.facilities
+            or not power_fuel.is_thermal(game.defs, f)
+            or not sees_facility(row, mine, viewer)
+        ):
+            continue
+        stored = row.stocks.values("good").annotate(qty=Sum("quantity"))
+        f.stock = {good: [[0, qty]] for good, qty in stored.values_list("good", "qty")}
+        rows.append(
+            {
+                "number": f.id,
+                "name": facility_name(game.defs, game.config, state, f),
+                "x": f.x,
+                "y": f.y,
+                "fuels": fuel_stock_info(f),
+            }
+        )
+    return rows
+
+
 def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> dict[str, Any]:
     """マスの欄の施設。だれにでも見える姿（種類・人手・稼働率・状態・在庫・補助金・閉鎖と差し押さえ）
     と、持ち主にだけ帳簿・借入・銀行の帳簿と、命令の入力に使う値（mine のとき）。"""
@@ -196,6 +246,10 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
     }
     if not fdef:
         return info
+    if power_fuel.is_thermal(defs, f):
+        stored = row.stocks.values("good").annotate(qty=Sum("quantity"))
+        f.stock = {good: [[0, qty]] for good, qty in stored.values_list("good", "qty")}
+        info["fuel_reserves"] = fuel_stock_info(f)
     if mine:
         info["hint"] = status_hint(f)
     from server.web import monuments  # 記念碑の碑文は display を使うので、ここで読み込む
