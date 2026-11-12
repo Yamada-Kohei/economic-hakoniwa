@@ -46,6 +46,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -207,6 +208,14 @@ class Book:
 
     buys: list[tuple[Order, Party]] = field(default_factory=list)
     sells: list[tuple[Order, Party]] = field(default_factory=list)
+
+
+def per_good(taxes: int | Mapping[str, int]) -> Any:
+    """財ごとの消費税の率（1つの率なら、どの財にもその率）。"""
+    if isinstance(taxes, Mapping):
+        return taxes
+    rate = int(taxes)
+    return defaultdict(lambda: rate)
 
 
 def gross_cost(net: int, qty: int, freight: int, tax: int) -> int:
@@ -464,6 +473,9 @@ class FoodMenu:
     rate: int  # 運賃の率
     tax: dict[str, int]  # 財ごとの消費税の率（計画経済の島は小売 ÷ 卸 − 1。PL-60）
     elasticity: float
+
+    def __post_init__(self) -> None:
+        self.tax = per_good(self.tax)
 
 
 def food_orders(
@@ -2844,7 +2856,7 @@ class Market(IslandStage):
         layer: str,
         rest: int,
         income: float,
-        taxes: Mapping[str, int],
+        taxes: int | Mapping[str, int],
         offered: dict[str, int],
     ) -> int:
         """家計の層 layer が、必需品の残り rest のうち所得に応じた割合（economy/services.py の
@@ -2859,7 +2871,7 @@ class Market(IslandStage):
         amount = round_money(rest * services.budget_share(config, income))
         if amount <= 0 or good not in ctx.defs.goods:
             return 0
-        tax = taxes[good]
+        tax = per_good(taxes)[good]
         usual = usual_price(island, good, settings["usual_price_turns"], settings["reprice_turns"])
         tiers = settings["consumer_goods_tiers"]
         top = scale_price(usual, max(tiers))
@@ -2946,7 +2958,7 @@ class Market(IslandStage):
         income: float,
         spend: int,
         rate: int,
-        taxes: Mapping[str, int],
+        taxes: int | Mapping[str, int],
         offered: dict[str, int],
         plans: dict[str, Any],
         portion: tuple[int, int],
@@ -2966,6 +2978,7 @@ class Market(IslandStage):
         priority = config.get("market.household_priority")
         wanted = island.scratch.setdefault("wanted", {})
         car = settings["cars"]["good"]
+        taxes = per_good(taxes)
         owned = needs.cars_owned(island, layer)
         desired = needs.desired_cars(config, layer, persons, income)
         fuel = needs.car_fuel(config, owned)

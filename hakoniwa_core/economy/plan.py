@@ -176,17 +176,19 @@ PRICE_SUBSIDY = "price_subsidy"  # 政府の支出の項目（価格の補助。
 SAFE_RATE = -9000  # 小売 ÷ 卸 − 1 の下限（1万分の1）。指値の割り戻しが壊れないための守り
 
 
-def start(island: IslandState, config: GameConfig, turn: int) -> None:
-    """公定価格を今の値段から始める（計画経済に移ったときと、移し替え）。市場の段の初めに原価を
-    解いて、卸の値段を今の原価に、小売の値段を卸 ×（1 ＋ 消費税の率）にする（PL-60。移ったときの
-    価格の補助は 0）。見直しの確かめは planning.review_turns ターン後から。"""
+def start(island: IslandState, config: GameConfig, turn: int, moved: bool = False) -> None:
+    """公定価格を今の値段から始める（計画経済に移ったときと、建国・移し替え）。小売の値段は卸 ×
+    （1 ＋ 消費税の率）から始める（移ったときの価格の補助は 0）。計画経済に移ったとき（moved）は、
+    市場の段の初めに原価を解いて卸の値段を今の原価にする（PL-60。建国の値段はもともと原価から解いて
+    ある）。見直しの確かめは planning.review_turns ターン後から。"""
     state = state_of(island)
     state["prices"] = {g: p for g, p in sorted(island.economy.prices.items()) if p > 0}
     state.setdefault("manual", {})
     for key in ("costs", RETAIL, RETAIL_MANUAL, OWED, "started"):
         state.pop(key, None)
     state[DUAL] = True
-    state[FRESH] = True
+    if moved:
+        state[FRESH] = True
     state["review"] = turn + config.get("planning.review_turns")
     state["wage"] = island.economy.average_wage
     state.setdefault("priority", [])
@@ -559,7 +561,8 @@ def pay_price_subsidies(island: IslandState, config: GameConfig, turn: int) -> N
         state.pop("subsidy_lost", None)
         state.pop("subsidy_short", None)
     if subsidy > levy and not state.get("subsidy_over"):
-        island.log.append(LogEntry("plan_subsidy_over", {"subsidy": subsidy, "tax": levy}))
+        args = {"paid": subsidy, "levied": levy}
+        island.log.append(LogEntry("plan_subsidy_over", args))
         state["subsidy_over"] = True
     elif levy >= subsidy:
         state.pop("subsidy_over", None)

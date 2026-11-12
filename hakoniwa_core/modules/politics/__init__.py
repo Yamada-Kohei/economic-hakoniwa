@@ -760,7 +760,7 @@ def change_economy(island: IslandState, payload: dict[str, Any], ctx: StageConte
         end_for_planned(island, ctx)  # 国立銀行は政府の一部に戻る（国有化の代金を引き受ける）
         _nationalize_all(island, ctx)
         _merge_owners(island, ctx)
-        planning.start(island, ctx.config, ctx.turn)
+        planning.start(island, ctx.config, ctx.turn, moved=True)
     else:
         planning.stop(island)
         _add_owners(island, ctx)

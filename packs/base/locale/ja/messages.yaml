@@ -661,7 +661,7 @@ official_prices_reformed: "公定価格を改定しました（今の原価に�
 official_price_rules_set: "公定価格の決まりを変えました（見直す幅 ±{band}%、小売の値段を据え置く財: {goods}）"
 plan_subsidy_short: "国庫が足りず、価格の補助を {amount:,} 払えませんでした（売り手への国の未払いになり、国債を出して次のターンに先に払います）"
 plan_subsidy_lost: "国債が売れず、価格の補助を {amount:,} 払えませんでした（売った施設の赤字になります）"
-plan_subsidy_over: "価格の補助（{subsidy:,}）が取引税（{tax:,}）を上回り、差を国庫から払い始めました（据え置いた財の小売が卸の値段より安いため）"
+plan_subsidy_over: "価格の補助（{paid:,}）が取引税（{levied:,}）を上回り、差を国庫から払い始めました（据え置いた財の小売が卸の値段より安いため）"
 retail_price_set: "{good}の小売の値段を 1{unit}あたり {price:,} にしました"
 retail_price_auto: "{good}の小売の値段の上書きをやめました"
 official_price_set: "{good}の公定価格を 1{unit}あたり {price:,} にしました"
