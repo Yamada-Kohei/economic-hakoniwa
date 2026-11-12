@@ -1,0 +1,157 @@
+{% extends "web/trade_layout.html" %}{% load i18n static calendar_tags display_tags %}
+{% block layout_class %}{% if mine %} with-orders{% endif %}{% endblock %}
+{% block orders %}{% if mine %}
+  <aside id="orders" class="panel report-orders" data-url="{% url 'api_orders' island.id %}" data-defs="{% url 'api_defs' %}"
+         data-forms="" data-heading="{% translate '貿易の命令' %}"></aside>
+{% endif %}{% endblock %}
+{% block trade_main %}
+    <section class="panel" id="blocs">
+      <h2>{% translate "加盟している貿易圏" %}</h2>
+      {% for b in trade.blocs %}
+      <div class="bloc">
+        <h3>{{ b.name }}</h3>
+        <table class="info">
+          <tr><th>{% translate "代表" %}</th><td>{{ b.rep_name }}{% if b.is_rep %} {% translate "（この国）" %}{% endif %}</td></tr>
+          <tr><th>{% translate "加盟国" %}</th><td>{% for x in b.members %}<a href="{% url 'island_trade' x.id %}">{{ x.name }}</a>{% if not forloop.last %}・{% endif %}{% endfor %}</td></tr>
+          <tr><th>{% translate "加盟" %}</th><td>{% if b.open %}{% translate "誰でも入れる" %}{% else %}{% translate "代表の承認が要る" %}{% endif %}</td></tr>
+          <tr><th>{% translate "決済通貨" %}</th><td>{{ b.currency_name }}{% if mine and b.currency != island.id %}<br><small>{% blocktranslate with c=b.currency_name r=b.rate|floatformat:4 %}今のレート: {{ c }} 1 = 自国通貨 {{ r }}{% endblocktranslate %}</small>{% endif %}</td></tr>
+          <tr><th>{% translate "圏内の関税" %}</th><td>{% if b.no_tariff %}{% translate "なし（圏の市場で買った荷に関税をかけない決まり）" %}{% else %}{% translate "加盟国が決める" %}{% endif %}</td></tr>
+          {% if b.fixed %}<tr><th>{% translate "圏内の固定価格" %}</th><td>{% for f in b.fixed %}{{ f.name }} {{ b.currency_symbol|currency_prefix }}{{ f.price|floatformat:"-1g" }}/{{ f.unit }}{% if not forloop.last %}・{% endif %}{% endfor %}</td></tr>{% endif %}
+          {% if b.leaving %}<tr><th></th><td class="warning">{% translate "次のターンに抜けます（運ぶ途中の荷はそのまま届きます）。" %}</td></tr>{% endif %}
+        </table>
+
+        {% if mine %}
+        {% if b.goods %}
+        <div class="table-scroll">
+          <table class="goods bloc-table">
+            <thead><tr>
+              <th>{% translate "資源" %}</th><th>{% translate "圏の値段（決済通貨）" %}</th><th>{% translate "前ターン比" %}</th>
+              <th>{% translate "自国通貨に直すと" %}</th><th>{% translate "島の値段" %}</th><th>{% translate "島との差" %}</th>
+              <th>{% translate "約定した量" %}</th><th>{% translate "買い注文" %}</th><th>{% translate "売り注文" %}</th><th>{% translate "単位" %}</th>
+            </tr></thead>
+            <tbody>
+              {% for g in b.goods %}
+              <tr>
+                <td><a href="{% url 'market_good' island.id g.good %}">{{ g.name }}</a></td>
+                <td>{{ b.currency_symbol|currency_prefix }}{{ g.price|floatformat:"-1g" }}</td>
+                <td>{% if g.change is not None %}{{ g.change|floatformat:1 }}%{% endif %}</td>
+                <td>{{ currency|currency_prefix }}{{ g.price_own|floatformat:"-1g" }}</td>
+                <td>{% if g.home_price %}{{ currency|currency_prefix }}{{ g.home_price|floatformat:"-1g" }}{% else %}-{% endif %}</td>
+                <td>{% if g.gap is not None %}{{ g.gap|floatformat:1 }}%{% endif %}</td>
+                <td>{{ g.volume }}</td><td>{{ g.demand }}</td><td>{{ g.supply }}</td><td>{{ g.unit }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="hint">{% translate "島との差は、圏の値段を今のレートで自国通貨に直したものが島の値段より何 % 高いかです。差が商社の取り分と運賃・港の使用料を超える財を、商社が自動で輸出（圏が高いとき）か輸入（島が高いとき）します。" %}</p>
+        {% else %}
+        <p class="muted">{% translate "圏の市場の値段はまだありません（次の更新で決まります）。" %}</p>
+        {% endif %}
+
+        {% if b.is_rep %}
+        <form class="actions" data-order="bloc_settings">
+          <strong>{% translate "圏の設定（代表）" %}</strong>
+          <input type="hidden" name="bloc" value="{{ b.id }}">
+          <label>{% translate "加盟" %} <select name="open">
+            <option value="">{% translate "変えない" %}</option>
+            <option value="true">{% translate "誰でも入れる" %}</option>
+            <option value="false">{% translate "代表の承認が要る" %}</option>
+          </select></label>
+          <label>{% translate "決済通貨（加盟国の通貨から）" %} <select name="currency">
+            <option value="">{% translate "変えない" %}</option>
+            {% for x in b.members %}<option value="{{ x.id }}">{{ x.name }}{% if x.id == b.currency %} {% translate "（今）" %}{% endif %}</option>{% endfor %}
+          </select></label>
+          <label>{% translate "圏内の関税" %} <select name="no_tariff">
+            <option value="">{% translate "変えない" %}</option>
+            <option value="true">{% translate "なくす" %}</option>
+            <option value="false">{% translate "加盟国に任せる" %}</option>
+          </select></label>
+          <label>{% translate "固定価格の資源" %} <select name="fixed_good">
+            <option value="">{% translate "変えない" %}</option>
+            {% for g in trade.goods %}<option value="{{ g.good }}">{{ g.name }}（{{ g.unit }}）</option>{% endfor %}
+          </select></label>
+          <label>{% translate "固定価格（決済通貨。0 でやめる）" %} <input name="fixed_price" type="number" min="0" step="any"></label>
+          <p class="hint">{% translate "決済通貨を変えると、圏の値段は今のレートで新しい通貨に直されます。固定価格を決めた資源は、圏の市場がその値段で売り買いし、買いと売りの多い側は割り当てで減らします。" %}</p>
+          <button type="submit">{% translate "命令に追加" %}</button>
+        </form>
+        {% if b.applicants %}
+        <div class="actions">
+          <strong>{% translate "加盟の申し込み" %}</strong>
+          <ul class="plain-list">
+            {% for x in b.applicants %}
+            <li>{{ x.name }}
+              <form class="inline" data-order="bloc_settings"><input type="hidden" name="bloc" value="{{ b.id }}"><input type="hidden" name="approve" value="{{ x.id }}"><button type="submit">{% translate "承認する（命令に追加）" %}</button></form>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+        {% if b.members|length > 1 %}
+        <form class="actions" data-order="transfer_bloc">
+          <strong>{% translate "代表を譲る" %}</strong>
+          <input type="hidden" name="bloc" value="{{ b.id }}">
+          <label>{% translate "譲る加盟国" %} <select name="to" required>
+            {% for x in b.members %}{% if x.id != island.id %}<option value="{{ x.id }}">{{ x.name }}</option>{% endif %}{% endfor %}
+          </select></label>
+          <button type="submit">{% translate "命令に追加" %}</button>
+        </form>
+        {% endif %}
+        {% endif %}
+        {% if b.rep_inactive %}
+        <form class="actions" data-order="take_over_bloc">
+          <strong>{% translate "代表を引き継ぐ" %}</strong>
+          <p class="hint">{% blocktranslate with name=b.rep_name %}代表の{{ name }}は休止中です。加盟国はこの命令で代表を引き継げます。{% endblocktranslate %}</p>
+          <input type="hidden" name="bloc" value="{{ b.id }}">
+          <button type="submit">{% translate "引き継ぐ（命令に追加）" %}</button>
+        </form>
+        {% endif %}
+        {% if not b.leaving %}
+        <form class="actions" data-order="leave_bloc">
+          <input type="hidden" name="bloc" value="{{ b.id }}">
+          <button type="submit">{% translate "この圏を抜ける（命令に追加）" %}</button>
+        </form>
+        {% endif %}
+        {% endif %}
+      </div>
+      {% empty %}
+      <p class="muted">{% translate "どの貿易圏にも入っていません。" %}</p>
+      {% endfor %}
+      <p class="trade-notice" aria-live="polite"></p>
+    </section>
+
+    {% if mine %}
+    <section class="panel" id="other-blocs">
+      <h2>{% translate "ほかの貿易圏" %}</h2>
+      {% if trade.other_blocs %}
+      <div class="table-scroll">
+        <table class="goods other-blocs-table">
+          <thead><tr><th>{% translate "名前" %}</th><th>{% translate "代表" %}</th><th>{% translate "加盟国" %}</th><th>{% translate "決済通貨" %}</th><th>{% translate "加盟" %}</th><th></th></tr></thead>
+          <tbody>
+            {% for b in trade.other_blocs %}
+            <tr>
+              <td>{{ b.name }}</td><td>{{ b.rep_name }}</td><td>{{ b.members }}</td><td>{{ b.currency_name }}</td>
+              <td>{% if b.open %}{% translate "誰でも" %}{% else %}{% translate "承認制" %}{% endif %}</td>
+              <td>{% if b.applied %}<span class="muted">{% translate "申し込み中" %}</span>{% else %}<form class="inline" data-order="join_bloc"><input type="hidden" name="bloc" value="{{ b.id }}"><button type="submit">{% if b.open %}{% translate "加盟する" %}{% else %}{% translate "申し込む" %}{% endif %}</button></form>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="muted">{% translate "ほかの貿易圏はありません。" %}</p>
+      {% endif %}
+      <form class="actions" data-order="create_bloc">
+        <strong>{% translate "貿易圏を作る" %}</strong>
+        <p class="hint">{% translate "作った国が代表になり、決済通貨は初めは自国の通貨です。2か国以上が入ると、商社が圏の市場で売り買いを始めます。" %}</p>
+        <label>{% translate "名前" %} <input name="name" maxlength="32" required></label>
+        <label>{% translate "加盟" %} <select name="open">
+          <option value="true">{% translate "誰でも入れる" %}</option>
+          <option value="false">{% translate "代表の承認が要る" %}</option>
+        </select></label>
+        <button type="submit">{% translate "命令に追加" %}</button>
+      </form>
+      <p class="trade-notice" aria-live="polite"></p>
+    </section>
+    {% endif %}
+{% endblock %}

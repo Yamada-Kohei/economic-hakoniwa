@@ -1,0 +1,9 @@
+{% comment %}今月すべきことの行（ホームと、貿易の概要の「いますべきこと」。rows は todo.rows の行）{% endcomment %}<ol class="next-steps-list todo-list">{% for t in rows %}
+    <li class="todo-{{ t.kind }}{% if forloop.first %} first{% endif %}">
+      <span class="step-no" aria-hidden="true">{{ forloop.counter }}</span>
+      <div class="step-body">
+        <p>{{ t.text }}</p>
+        {% if t.url %}<a class="step-link" href="{{ t.url }}">{{ t.link_text }} →</a>{% endif %}
+      </div>
+    </li>{% endfor %}
+  </ol>

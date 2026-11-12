@@ -21,15 +21,34 @@ if (stateFilter) {
   filter();
 }
 
-// 企業の表の国有化・民営化（回7）: 押すと命令の列に足す
+/**
+ * 施設のページ（UI-73）の打てる手の箱の入力欄から、命令の中身を作る。施設のマスは箱の data-x・data-y。
+ * 数の欄（type=number・data-int）は数にし、data-int は整数に丸める。空欄は送らない（data-keep-empty は送る）。
+ */
+function facilityPayload(form, box) {
+  const payload = { x: Number(box.dataset.x), y: Number(box.dataset.y) };
+  for (const el of form.elements) {
+    if (!el.name || ((el.type === "radio" || el.type === "checkbox") && !el.checked)) continue;
+    const value = el.value.trim();
+    if (value === "" && !("keepEmpty" in el.dataset)) continue;
+    if ("int" in el.dataset) payload[el.name] = Math.round(Number(value));
+    else if (el.type === "number") payload[el.name] = Number(value);
+    else payload[el.name] = value;
+  }
+  return payload;
+}
+
+// 企業の表の国有化・民営化（回7）と、施設のページの打てる手（UI-73）: 押すと命令の列に足す
 const firmOrders = await mountOrders();
-const firmNotice = document.querySelector(".firm-notice");
 document.addEventListener("submit", async (e) => {
-  const form = e.target.closest("form.firm-action");
+  const form = e.target.closest("form.firm-action, form.facility-action");
   if (!form || !firmOrders) return;
   e.preventDefault();
-  await firmOrders.add(form.dataset.order, { firm: Number(form.dataset.firm) });
-  if (firmNotice) firmNotice.textContent = firmOrders.message;
+  const box = form.closest("#actions");
+  const payload = box ? facilityPayload(form, box) : { firm: Number(form.dataset.firm) };
+  await firmOrders.add(form.dataset.order, payload);
+  const notice = document.querySelector(".firm-notice, .facility-notice");
+  if (notice) notice.textContent = firmOrders.message;
 });
 
 // 帳簿の推移のグラフに描く収支の項目（帳簿の額は支出も正の数）
@@ -67,10 +86,12 @@ if (detail) {
     if (request !== state.request) return;
     const kind = data.kind_name && data.kind_name !== data.name ? `（${data.kind_name}）` : "";
     slot("title").textContent = `${data.name}${kind}の帳簿`;
-    // 今の生産調整中・生産停止中のわけと打てる手（W-250）
+    // 今の生産調整中・生産停止中のわけと打てる手（W-250）。施設のページは見る所に出すので欄がない
     const why = slot("slowdown");
-    why.innerHTML = data.slowdown ? slowdownHtml(data.slowdown) : "";
-    why.hidden = !data.slowdown;
+    if (why) {
+      why.innerHTML = data.slowdown ? slowdownHtml(data.slowdown) : "";
+      why.hidden = !data.slowdown;
+    }
     // 表と同じく、支出は負の数で描く（損益と同じ向きにそろえる）
     const flows = FLOW_ITEMS.filter((k) => k in data.items).map((k) => ({
       key: k,
@@ -119,6 +140,12 @@ if (detail) {
     load();
     detail.scrollIntoView({ behavior: "smooth", block: "start" });
   });
+
+  // 施設のページ（UI-72）は、その施設の帳簿をはじめから出す
+  if (detail.dataset.number) {
+    state.number = Number(detail.dataset.number);
+    load();
+  }
 
   attachRange(detail, (range) => {
     state.range = range;
