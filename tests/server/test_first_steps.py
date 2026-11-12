@@ -33,19 +33,19 @@ def test_fresh_island_says_what_to_do_first_and_does_not_call_starting_facilitie
     steps = data["next_steps"]
     assert [s["key"] for s in steps] == ["first_update", "industrial_zone", "orders"]
     assert f"{starting} か所" in steps[0]["text"]
-    assert steps[1]["url"].endswith("#island-map") and steps[2]["url"].endswith("#orders")
+    assert steps[1]["url"].endswith("#island-map") and steps[2]["url"].endswith("/orders/")
     text, error = _tool(_keyed(token), "summary")
     assert not error and json.loads(text)["next_steps"] == steps
 
     client.force_login(alice)
-    page = client.get(f"/islands/{a.id}/").content.decode()
+    page = client.get(f"/islands/{a.id}/home/").content.decode()
     assert "次にすること" in page and "工業団地の指定" in page
     assert "止まっている施設が" not in page
 
     _, other = keys.issue(bob)
     assert "next_steps" not in _keyed(other).get(f"/api/islands/{a.id}/summary").json()
     client.force_login(bob)
-    assert "次にすること" not in client.get(f"/islands/{a.id}/").content.decode()
+    assert "次にすること" not in client.get(f"/islands/{a.id}/home/").content.decode()
 
 
 def test_next_steps_follow_the_island_and_stop_after_the_first_year(world):

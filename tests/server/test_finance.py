@@ -235,7 +235,7 @@ def test_bond_payment_needs_bonds(client, world):
     """国債の利払いの停止は、国債の銘柄があるときだけ通る（命令の確かめは国債も読む）。"""
     island = _own_island(client)
     url = f"/api/islands/{island.id}/orders"
-    body = {"orders": [{"kind": "set_bond_payment", "payload": {"stop": True}}]}
+    body = {"orders": [{"kind": "set_bond_payment", "payload": {"stop": True}}], "confirm": True}
     island.bonds.all().delete()
     warnings = client.put(url, body, content_type="application/json").json()["warnings"]
     assert warnings == [{"index": 0, "text": "国債がありません"}]

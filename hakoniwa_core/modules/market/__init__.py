@@ -661,6 +661,11 @@ def inventory_turns(ctx, good: str) -> float:
     return turns if life is None else max(0.0, min(turns, (life - 1) / 2))
 
 
+# 施設の economy: 操業目標を見直したときの、産出物ごとの1単位の費用の下限（生産補助の後。
+# 財 → 値段）。画面で「生産調整中」のわけ（W-250）を出すためだけに残す記録で、計算には使わない
+COST_FLOOR = "cost_floor"
+
+
 def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int:
     """操業目標（1000 分の 1）の見直し: 見込みの売れ行きと、在庫を目安に戻す分だけ作る。
 
@@ -702,6 +707,7 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
         subsidy = production_subsidy_rate(island, ctx.defs, ctx.config, f, ctx.turn)
         profitable = variable_profit(ctx.defs, ctx.config, f, prices, wage, rate, subsidy) > 0
     plan = 0
+    floors: dict[str, int] = {}  # 画面の生産調整中のわけに見せるだけ（COST_FLOOR）
     for good, full in sorted(outputs.items()):
         offered, sold, priced_out = f.economy.get("sales", {}).get(good, [0, 0, 0])
         record = records.get(good)
@@ -711,6 +717,7 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
         floor = subsidized_floor(
             island, ctx.defs, ctx.config, f, good, prices, wage, rate, ctx.turn
         )
+        floors[good] = floor
         cap = island.policy.price_cap.get(good)
         if (
             is_self_supporting(f)
@@ -745,6 +752,7 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
         gap = round_money(estimate * inventory_turns(ctx, good)) - held
         amount = estimate + round_money(gap * settings["inventory_adjust"])
         plan = max(plan, fac.ratio(max(0, amount), full))
+    f.economy[COST_FLOOR] = floors
     if fac.short_of_inputs(f.status) or f.status in ("power", "no_grid"):  # 仕入れか電力が足りない
         plan = min(plan, f.operating_rate + step)
     limit = round_money(settings["max_target_change"] * fac.FULL + 0.5)

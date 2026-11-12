@@ -178,7 +178,8 @@ def test_chain_is_public_without_hidden_facilities(world):
         assert f'"{field}"' not in json.dumps(public)
     page = Client().get(f"/islands/{island.id}/chain/").content.decode()
     assert "品目ごとの鎖" in page and "隠した農場" not in page
-    assert f"/islands/{island.id}/chain/" in Client().get(f"/islands/{island.id}/").content.decode()
+    facilities = Client().get(f"/islands/{island.id}/facilities/").content.decode()
+    assert f"/islands/{island.id}/chain/" in facilities
     _, token = keys.issue(visitor)
     ai = _keyed(token)
     discovered = ai.get(f"/api/islands/{island.id}/chain").json()
@@ -238,7 +239,7 @@ def test_resumed_island_is_told_about_caretaker_treaties(world, monkeypatch):
     assert notice not in Client().get(f"/api/islands/{island.id}/summary").json()["alerts"]
     browser = Client()
     browser.force_login(owner)
-    assert notice in browser.get(f"/islands/{island.id}/").content.decode()
+    assert notice in browser.get(f"/islands/{island.id}/home/").content.decode()
     diplomacy = ai.get(f"/api/islands/{island.id}/diplomacy").json()
     assert diplomacy["treaties"][0]["caretaker"]
     assert _answer(ai, "report", island=island.id, page="diplomacy") == diplomacy
@@ -271,7 +272,7 @@ def test_capped_yield_is_marked_and_alerted(world):
         "市場が求める利回りはこれより高いかもしれません"
     )
     assert notice in summary["alerts"]
-    assert notice in public.get(f"/islands/{island.id}/").content.decode()
+    assert notice in public.get(f"/islands/{island.id}/home/").content.decode()
     assert "上限" in public.get(f"/islands/{island.id}/fiscal/").content.decode()
     _, token = keys.issue(visitor)
     ai = _keyed(token)

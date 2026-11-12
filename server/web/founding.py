@@ -166,8 +166,27 @@ def world_cells(request):
         if zone in rows
     ]
     return JsonResponse(
-        {"free": [list(c) for c in free_cells(world)], "rows": rows, "zones": zones}, **JSON
+        {
+            "free": [list(c) for c in free_cells(world)],
+            "rows": rows,
+            "zones": zones,
+            **chosen_resources(world),
+        },
+        **JSON,
     )
+
+
+def chosen_resources(world: m.World) -> dict[str, Any]:
+    """ほかの国がもう選んだ地下資源の、資源ごとの国の数（休止中の国を除く。W-248、掲示板 #24 の
+    11 番）。選べる資源はどれも 0 から数え、nations に数えた国の数を添える。"""
+    counts = {good: 0 for good in get_game().defs.mining_resources()}
+    nations = 0
+    for resources in world.islands.filter(inactive=False).values_list("resources", flat=True):
+        nations += 1
+        for good in set(resources or []):
+            if good in counts:
+                counts[good] += 1
+    return {"resource_counts": counts, "nations": nations}
 
 
 def climate_text(zone: str) -> str:

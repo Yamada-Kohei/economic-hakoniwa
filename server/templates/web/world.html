@@ -4,6 +4,7 @@
 <link rel="stylesheet" href="{% static 'css/military.css' %}">
 {% include "web/military_text.html" %}
 <h1>{% translate "世界マップ" %}</h1>
+{% include "web/world_nav.html" with current="world" %}
 {% if world %}
   <p class="muted">{% blocktranslate with turn=world.turn|turn_date %}{{ turn }}。島の形と町・施設を1マス1点で描いています。区画を押すとその島の画面へ移ります。{% endblocktranslate %}</p>
   <div id="world-grid" class="world-grid" style="--grid: {{ rows|length }}"

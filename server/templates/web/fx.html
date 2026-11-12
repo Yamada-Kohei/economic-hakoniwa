@@ -5,6 +5,19 @@
 
 <div class="report-layout{% if mine %} with-orders{% endif %}">
   <div class="report-main">
+{% if mine %}{% with s=fx.swaps %}
+<section class="panel fx-head" id="swap-room">
+  <h2>{% translate "中央銀行どうしの融通の残り" %}</h2>
+  <table class="info">
+    <tr><th>{% translate "借りている額" %}</th><td class="num">{{ currency|currency_prefix }}{{ s.borrowed|floatformat:"0g" }}{% if s.borrowed_change is not None %} <small class="muted">{% blocktranslate with v=s.borrowed_change|floatformat:"0g" %}1ターンで {{ v }}{% endblocktranslate %}</small>{% endif %}</td></tr>
+    <tr><th>{% translate "借りられる限度額" %}</th><td class="num">{% if s.limit is not None %}{{ currency|currency_prefix }}{{ s.limit|floatformat:"0g" }} <small class="muted">{% blocktranslate with q=s.quota|floatformat:"0" %}（年の GDP の {{ q }}%）{% endblocktranslate %}</small>{% else %}<span class="muted">{% translate "まだ GDP の記録がなく、上限はありません" %}</span>{% endif %}</td></tr>
+    <tr><th>{% translate "まだ借りられる額" %}</th><td class="num">{% if s.room is not None %}<strong>{{ currency|currency_prefix }}{{ s.room|floatformat:"0g" }}</strong>{% else %}<span class="muted">{% translate "上限なし" %}</span>{% endif %}</td></tr>
+    <tr><th>{% translate "貸している額" %}</th><td class="num">{{ currency|currency_prefix }}{{ s.lent_total|floatformat:"0g" }}{% if s.lent_change is not None %} <small class="muted">{% blocktranslate with v=s.lent_change|floatformat:"0g" %}1ターンで {{ v }}{% endblocktranslate %}</small>{% endif %}</td></tr>
+    {% if s.issuer_room is not None %}<tr><th>{% translate "自国の通貨を作って貸せる残り" %}</th><td class="num">{{ currency|currency_prefix }}{{ s.issuer_room|floatformat:"0g" }} <small class="muted">{% blocktranslate with q=s.issuer_share|floatformat:"0" %}（年の GDP の {{ q }}% まで）{% endblocktranslate %}</small></td></tr>{% endif %}
+  </table>
+  <p class="hint">{% translate "借りられる残りが 0 になると、中央銀行は受け身の売りを止め、通貨が安くなります。内訳は下の「中央銀行どうしの融通」にあります。" %} <a href="#swaps">{% translate "内訳へ" %}</a></p>
+</section>
+{% endwith %}{% endif %}
 <section class="panel" id="rates">
   <h2>{% if stats_turn is not None %}{% translate "為替レート" %} <small class="heading-date">{{ stats_turn|turn_date }}</small>{% else %}{% translate "為替レート" %}{% endif %}</h2>
   <p class="hint">{% blocktranslate with c=fx.currency_name b=band %}自国の通貨は「{{ c }}」です。変動相場で、自国通貨と相手の通貨の組ごとに、商社と政府の売り買いの板寄せで毎ターン決まり、1ターンに {{ b }}% までしか動きません。中央銀行は少しの偏りを受け身の売り買いで引き受けます（前のレートより安ければ外貨を買い、高ければ持っている外貨を売る）。相手の通貨を発行した国の中央銀行も同じように売り買いするので、島の誰も持っていない通貨も買えます。{% endblocktranslate %}</p>
@@ -29,6 +42,7 @@
     </table>
   </div>
   <p class="hint">{% translate "前ターン比がプラスなら、相手の通貨が高くなった（自国通貨が安くなった）ことを表します。" %}</p>
+  <p class="hint fx-effect">{% translate "自国通貨が安くなると、商社の輸出は外国で売りやすくなり、輸入の値段は上がります。高くなるとその逆です。" %} <a href="{% url 'help_fx' %}">{% translate "為替の効き方と打てる手" %}</a></p>
   {% else %}
   <p class="muted">{% translate "使っている外国の通貨はまだありません。貿易圏に入る（決済通貨がほかの国の通貨のとき）か、ほかの国の通貨で契約を結ぶと、その通貨とのレートが決まります。" %}</p>
   {% endif %}
@@ -85,9 +99,26 @@
   </table>
   <p class="hint">{% blocktranslate with b=p.peg_band|floatformat:"-2" %}介入は、中央銀行が毎ターン決めた額の外貨を値幅の端の値段で買う（売る）命令です。買う代金は自国通貨を作って払います。固定相場は、決めたレートの ±{{ b }}% の間にレートを保つように、中央銀行が下の端で限りなく買い、上の端で持っている外貨を売ります。通貨安の圧力で外貨準備が尽きると固定は外れ、変動相場に戻ります。{% endblocktranslate %}</p>
   {% if not p.cb_independent and p.currencies %}
-  <form class="actions" data-order="set_fx_intervention">
+  <div class="table-scroll">
+    <table class="goods fx-market-table">
+      <thead><tr><th>{% translate "通貨" %}</th><th>{% translate "前のターンに売りに出ていた量" %}</th><th>{% translate "買いに出ていた量" %}</th><th>{% translate "融通で借りられる残り（その通貨に直すと）" %}</th></tr></thead>
+      <tbody>
+        {% for c in p.currencies %}
+        <tr>
+          <td>{{ c.name }}</td>
+          <td class="num">{% if c.offered is not None %}{{ c.offered|floatformat:"0g" }}{% else %}<span class="muted">{% translate "記録なし" %}</span>{% endif %}</td>
+          <td class="num">{% if c.wanted is not None %}{{ c.wanted|floatformat:"0g" }}{% else %}<span class="muted">{% translate "記録なし" %}</span>{% endif %}</td>
+          <td class="num">{% if c.swap_room is not None %}{{ c.swap_room|floatformat:"0g" }}{% else %}<span class="muted">{% translate "上限なし" %}</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="hint">{% translate "売りに出ていた量と買いに出ていた量は、商社と政府の注文の量です（中央銀行の注文を除く）。介入で買えるのは売りに出ている分だけ、売れるのは買いに出ている分だけなので、相手のいない通貨に介入しても行政力を使うだけになります。" %}</p>
+  <form class="actions" data-order="set_fx_intervention" data-market-check>
     <strong>{% translate "為替の介入" %}</strong>
-    <label>{% translate "通貨" %} <select name="currency" required>{% for c in p.currencies %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
+    <p class="hint order-caution">{% translate "注意:" %} {{ p.intervention_caution }}</p>
+    <label>{% translate "通貨" %} <select name="currency" required>{% for c in p.currencies %}<option value="{{ c.id }}"{% if c.offered is not None %} data-offered="{{ c.offered|floatformat:0 }}"{% endif %}{% if c.wanted is not None %} data-wanted="{{ c.wanted|floatformat:0 }}"{% endif %}>{{ c.name }}</option>{% endfor %}</select></label>
     <label>{% translate "毎ターン" %} <select name="side"><option value="buy">{% translate "買う" %}</option><option value="sell">{% translate "売る" %}</option></select></label>
     <label>{% translate "額（その通貨。0 でやめる）" %} <input name="amount" type="number" min="0" step="1" required></label>
     <button type="submit">{% translate "命令に追加" %}</button>

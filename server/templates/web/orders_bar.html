@@ -1,0 +1,6 @@
+{% load i18n order_tags %}{% if mine %}{% orders_bar island as bar %}
+<a class="orders-bar" href="{% url 'island_orders' island.id %}"{% if page == "orders" %} aria-current="page"{% endif %}>
+  <strong>{% translate "命令の列" %}</strong>
+  <span data-orders-bar-text>{{ bar.text }}</span>
+  <span class="orders-bar-go">{% translate "並べ替え・取り消し・前のターンの結果 →" %}</span>
+</a>{% endif %}
