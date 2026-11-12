@@ -251,6 +251,14 @@ def clear(
     # 動かさない）
     demand = sum(o.quantity for o, entity, _ in book.buys if entity not in _DEALERS)
     supply = sum(o.quantity for o, entity, _ in book.sells if entity not in _DEALERS)
+    # 中央銀行の注文（受け身と介入）を除いて売りと買いに出ていた外貨の量（為替の介入の欄の目安。
+    # UI-80。統計だけで計算には使わない）
+    # 0 のときは書かない（統計の行を増やしすぎないため。記録したターンは貿易の段が fx.book を 1 に）
+    others = (*_DEALERS, INTERVENE)
+    for name, side in (("offered", book.sells), ("wanted", book.buys)):
+        amount = sum(o.quantity for o, entity, _ in side if entity not in others)
+        if amount:
+            island.stats[f"fx.{name}.{currency}"] = amount
     if result.demand > 0 and result.supply <= 0:  # 売りがなければ、一番高い買いの指値の方へ上がる
         target = min(result.high, max(reference, max(o.limit or result.high for o in buys)))
         price = _step(reference, target, demand, book.depth)

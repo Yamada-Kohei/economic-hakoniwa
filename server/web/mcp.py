@@ -219,7 +219,11 @@ REPORTS = {
     "海外の商人 merchant・船の貸し出し lend_ships（命令 set_ship_lending）"
     "（あと何ターン来るか turns_left、量を減らし始めるターン taper_start、今の量の割合 share（%）、"
     "値段の倍率 multiplier（島の物価を含む））",
-    "fx": "為替と国際収支（持ち主には外貨の持ち高と為替の政策）",
+    "fx": "為替と国際収支（レートごとに前のターンに市場で売りと買いに出ていた外貨の量 offered・"
+    "wanted（中央銀行の注文を除く。介入で買えるのは売りに出ている分だけ）。持ち主には外貨の持ち高と"
+    "為替の政策と、中央銀行どうしの融通 swaps（借りている額 borrowed・限度額 limit・まだ借りられる"
+    "額 room・貸している額 lent_total と 1 ターンの増加 borrowed_change・lent_change）。"
+    "為替の効き方は guide(which=fx)）",
     "politics": "政治（体制・政情・支持率・議席・選挙。持ち主には政情の内訳と命令の選択肢）",
     "diplomacy": "外交（戦争の状態・効いている条約・終わった条約・条約の違反の記録。持ち主には"
     "返事待ちの条約の提案と、宣戦・条約の命令の選択肢。経済の条項は terms に中身が出る。"
@@ -521,6 +525,7 @@ def _guide(request, args):
         "hakoniwa": "/help/hakoniwa/",
         "start": "/help/start/",
         "ai": "/help/ai/",
+        "fx": "/help/fx/",
         "terms": "/terms/",
     }
     path = paths.get(args.get("which"), "/help/")
@@ -786,13 +791,13 @@ TOOLS = [
         "find で見出しや言葉から、offset で続きから読める。which=start なら入門"
         "（/help/start/。最初の1年・困ったとき・施設の状態の言葉）、which=hakoniwa なら"
         "従来の箱庭を遊んだ人向けの手引き（/help/hakoniwa/）、which=ai なら AI で遊ぶ人向けの"
-        "手引き（/help/ai/。鍵・つなぎ方・毎ターンの回し方・上限）、"
-        "which=terms なら利用規約（/terms/）。",
+        "手引き（/help/ai/。鍵・つなぎ方・毎ターンの回し方・上限）、which=fx なら為替の効き方と"
+        "打てる手（/help/fx/）、which=terms なら利用規約（/terms/）。",
         _guide,
         {
             "which": {
                 "type": "string",
-                "enum": ["general", "start", "hakoniwa", "ai", "terms"],
+                "enum": ["general", "start", "hakoniwa", "ai", "fx", "terms"],
                 "description": "general（既定）は詳しい仕組み、start は入門、"
                 "hakoniwa は従来の箱庭との違い、ai は AI で遊ぶ人向け、terms は利用規約",
             },
@@ -1313,6 +1318,7 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "help_hakoniwa": ("guide",),
     "help_start": ("guide",),
     "help_ai": ("guide",),  # guide(which=ai)
+    "help_fx": ("guide",),  # guide(which=fx)
     "help_chain": ("defs",),  # 産業のつながりの元は施設の作り方: defs(section="facilities")
     "terms": ("guide",),  # 利用規約は guide(which=terms)
     "island": ("summary", "map", "tile"),  # 地図の重ね表示は map の overlay
