@@ -39,6 +39,7 @@ from hakoniwa_core.economy import (
     freight,
     funds,
     household,
+    is_contractor,
     is_public_service,
     is_self_supporting,
     is_transport,
@@ -57,6 +58,7 @@ from hakoniwa_core.economy.prices import variable_profit
 from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.modules import infrastructure
 from hakoniwa_core.modules.employment import unemployment_rate
+from hakoniwa_core.modules.infrastructure import contracts
 from hakoniwa_core.modules.population import jobless_persons, tile_jobless
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import Facility, IslandState, LogEntry
@@ -138,6 +140,10 @@ def wage_update(island: IslandState, f: Facility, ctx: StageContext) -> int:
         price = island.economy.prices.get(services.good_of(ctx.config), 0)
         cap = int(price * services.settings(ctx.config)["per_worker"])
         new = min(new, max(wage, cap))
+    elif new > wage and is_self_supporting(f) and is_contractor(ctx.config, f):
+        # 土木業者は、1 人が届ける工事の代金（予定価格まで）を超えて賃金を上げない（LB-06）
+        top = contracts.ceiling(island, ctx.config) * contracts.per_worker(ctx.config) // 1000
+        new = min(new, max(wage, top))
     elif new > wage and is_self_supporting(f) and not is_transport(ctx.config, f):
         workers = fac.workers_of(ctx.defs, f)
         rate = freight.facility_rates(island, ctx.defs, ctx.config).get(f.id, 0)
@@ -146,6 +152,11 @@ def wage_update(island: IslandState, f: Facility, ctx: StageContext) -> int:
         if workers > 0 and fac.recipe_of(ctx.defs, fac.steady(f))["outputs"]:
             cap = variable_profit(ctx.defs, ctx.config, f, prices, 0, rate) // workers
             new = min(new, max(wage, cap))
+    if is_contractor(ctx.config, f):
+        # 土木業者の賃金は島の平均賃金より下げない（公共工事の労務単価。IN-30。受けた注文の分だけ
+        # 雇うので人手の足りなさでは上がらず、平均の 6 割ほどのまま工事の代金との差が持ち主に回って
+        # いた）
+        new = max(new, contracts.wage_floor(island, ctx.config, f))
     return max(new, island.policy.minimum_wage, 1)
 
 
@@ -235,6 +246,8 @@ class Payroll(IslandStage):
         defs, config = ctx.defs, ctx.config
         # 雇用の段の結果で、失業している家計の人数を数え直す（仕事を失った人は預金を持って移る）
         set_jobless(island, jobless_persons(defs, island))
+        # 土木業者に届けた工事の代金を、業者の賃金より先に払う（IN-32）
+        contracts.settle(island, config)
         worker = household(GENERAL)
         paid = workers = 0  # 一般の賃金（島の平均賃金）
         skilled_paid = skilled_workers = 0  # 技術者の席の賃金
@@ -293,6 +306,9 @@ class Payroll(IslandStage):
             else:
                 if is_public_service(defs, f):
                     books.add_sector(island, books.GOVERNMENT, "wages", amount)
+                elif is_contractor(config, f) and not is_self_supporting(f):
+                    # 国庫直轄の土木業者の賃金は、直営の作業員と同じ工事の部門の賃金（IN-36）
+                    books.add_sector(island, books.CONSTRUCTION, "wages", amount)
                 books.add(island, f.id, books.WAGES, amount)
         if skilled_workers:
             island.scratch["engineer_wage"] = skilled_paid // skilled_workers

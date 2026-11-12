@@ -935,6 +935,8 @@ def _goods_help(game) -> dict:
             "drivers": config.get("freight.trucks.drivers"),
             "share": percent(config.get("freight.trucks.max_share")),
         },
+        # 土木業者（W-270）: 予定価格の上乗せ（島の平均賃金に対する %）
+        "contractor": {"margin": percent(config.get("contractor.margin"))},
         "shortage": {
             "share": percent(config.get("records.shortage.share")),
             "turns": config.get("records.shortage.turns"),

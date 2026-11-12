@@ -108,6 +108,7 @@ from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
 from hakoniwa_core.military import forces
 from hakoniwa_core.modules import infrastructure
+from hakoniwa_core.modules.infrastructure import contracts
 from hakoniwa_core.modules.population import (
     FED,
     FOOD_ORDERS,
@@ -1054,6 +1055,7 @@ class Market(IslandStage):
         self._adapt_usual(island, ctx, books_by_good)
         self._adapt_materials(island, ctx, books_by_good)
         self._update_prices(island, ctx, books_by_good, results)
+        contracts.review_prices(island, defs, config)  # 土木業者の単価（IN-33）
         power = config.get("power.good")
         if official:
             self._plan_record(island, ctx, books_by_good, official, bought)

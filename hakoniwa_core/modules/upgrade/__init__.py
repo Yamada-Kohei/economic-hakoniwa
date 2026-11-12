@@ -31,6 +31,10 @@
 
 フェーズ4-2 からは、銅の鉱脈を一部の島に 1 度だけ置きます（veins.py。経済のない島にも）。
 
+W-270 からは、お金の経済のある島にまだ土木業者を置いていなければ、首都の近くの空いた平地に 1 つ
+置きます（modules/infrastructure/contracts.py の prepare。建国したばかりの島も、最初の更新で
+ここを通る）。
+
 W-201 からは、住まいの広さを幸福度に入れていない島の幸福度の重みを、基礎の点から住まいの広さの
 項目へ population.blend_turns ターンかけて移します（町の床は今の段階の上限のまま。モジュール
 population の dwelling_status）。
@@ -49,6 +53,7 @@ from hakoniwa_core.economy.households import ensure_jobless
 from hakoniwa_core.economy.prices import add_missing_prices
 from hakoniwa_core.modules.bonds import whole_terms
 from hakoniwa_core.modules.central_bank import end_for_planned
+from hakoniwa_core.modules.infrastructure import contracts
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import IslandState, LogEntry
 from hakoniwa_core.trade import setup as trade_setup
@@ -78,6 +83,7 @@ class Upgrade(IslandStage):
         whole_terms(island)
         if not trade_started(island):
             trade_setup.prepare(island, ctx.defs, ctx.config, ctx.turn)
+        contracts.prepare(island, ctx.defs, ctx.config)  # 土木業者（W-270。1 度だけ）
         if economy.ext.get("nature", 0) < nature.VERSION:
             nature.migrate(island, ctx.config)
             economy.happiness_blend = ctx.config.get("population.blend_turns")

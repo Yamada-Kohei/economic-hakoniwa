@@ -107,7 +107,8 @@ def test_the_import_need_is_the_targets_valued_at_the_bloc_bid(game, traded):
     1.5 倍の頭打ちはない）。fx.keep_turns ターン分は、2 ターン目から狙う量の分を足す。"""
     world = copy.deepcopy(traded)
     island, f, _ = _importer(game, world)
-    _want_more(f)
+    # 船と扱える重さで縮まない量にする（5 単位では、試しの世界の船の空きで縮むことがある）
+    _want_more(f, 1_000)
     traders.state_of(f)["abroad"] = {}  # 前の輸入額がなくても見込みは出る
     r, plan = _plan(game, world, island, f)
     assert plan
@@ -115,7 +116,7 @@ def test_the_import_need_is_the_targets_valued_at_the_bloc_bid(game, traded):
     most = max(item["m"] for item in traders.goods_of(f).values())
     _, step = r._import_needs(island, f, {})
     for _, first, total, limit, _ in plan:
-        assert first == 5_000
+        assert first == 1_000
         assert first <= total <= first + most * (keep - 1)
         assert limit > 0
     assert sum(step.values()) == sum(money_of(limit, first) for _, first, _, limit, _ in plan)

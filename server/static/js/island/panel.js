@@ -223,6 +223,13 @@ export class TilePanel {
       // 設備の傷み（回6）: 傷んだ分は作れない
       if (f.equipment != null) rows.push(["設備", `${Math.round(f.equipment * 100)}%${f.equipment < 1 ? "（傷んだ分は作れません）" : ""}`]);
       if (f.wage != null) rows.push(["賃金（1人1ターン）", f.wage.toLocaleString()]);
+      // 土木業者（W-270）: 受けた工事・届けた工事・全力（直営の作業員の人数に直した単位）と単価
+      if (f.contract) {
+        const c = f.contract;
+        rows.push(["受けた工事", `維持 ${c.upkeep.toLocaleString()}・新しい工事 ${c.build.toLocaleString()}（届けた ${c.delivered.toLocaleString()} / 全力 ${c.full.toLocaleString()}。直営の作業員の人数に直して）`]);
+        rows.push(["工事の単価", c.treasury ? "国庫直轄（代金のやり取りはなく、賃金を公共事業費から払います）"
+          : `${c.price.toLocaleString()}（予定価格 ${c.ceiling.toLocaleString()}。直営の作業員1人・1ターン分あたり）`]);
+      }
       if (f.engineers_needed) {
         const seats = f.engineers_wanted !== f.engineers_needed ? `（技術者の席 ${f.engineers_wanted.toLocaleString()}）` : "";
         rows.push(["うち技術者", `${f.engineers.toLocaleString()} / ${f.engineers_needed.toLocaleString()} 人${seats}`]);
