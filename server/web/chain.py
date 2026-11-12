@@ -131,7 +131,8 @@ def chain_view(
         return shortfall(record) >= record.demand * share
 
     goods = []
-    for good, gdef in defs.goods.items():
+    for good in display.goods_in_order(defs):
+        gdef = defs.goods[good]
         by_turn = records.get(good, {})
         now = by_turn.get(turn) if turn is not None else None
         made = stats.get(f"production.{good}", 0.0)

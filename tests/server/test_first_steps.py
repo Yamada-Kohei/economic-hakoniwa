@@ -33,7 +33,7 @@ def test_fresh_island_says_what_to_do_first_and_does_not_call_starting_facilitie
     steps = data["next_steps"]
     assert [s["key"] for s in steps] == ["first_update", "industrial_zone", "orders"]
     assert f"{starting} か所" in steps[0]["text"]
-    assert steps[1]["url"].endswith("#island-map") and steps[2]["url"].endswith("#orders")
+    assert steps[1]["url"].endswith("#island-map") and steps[2]["url"].endswith("/orders/")
     text, error = _tool(_keyed(token), "summary")
     assert not error and json.loads(text)["next_steps"] == steps
 

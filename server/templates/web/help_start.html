@@ -14,6 +14,7 @@
     <li><a href="#regimes">{% translate "経済体制で変わること" %}</a></li>
     <li><a href="#screens">{% translate "画面の見取り" %}</a></li>
     <li><a href="#trouble">{% translate "困ったとき" %}</a></li>
+    <li><a href="#careful">{% translate "軽く動かさないほうがいい数値" %}</a></li>
     <li><a href="#status">{% translate "施設の状態の言葉" %}</a></li>
   </ul>
 </nav>
@@ -31,7 +32,7 @@
     <dd>
       <p>{% translate "首都と町、村、初めの農場・漁港・発電所・工場、学校、銀行、置ける場所があれば港と商社がそろっています。初めの施設は「稼働準備中」で、最初の更新で動き出します。止まっているわけではありません。" %}</p>
       <p>{% translate "市場経済・混合経済では、最初の命令に「工業団地・オフィス街の指定」をおすすめします。民営の工場は工業団地のマスにしか建たず、建国の島には工業団地がありません。地図で首都の近くの空いた平地を選び、工業団地に指定すると、民間の会社が採算を見て工場を建てます。計画経済では民間の会社はないので、工場は国が「施設の建設」で建てます。" %}</p>
-      <p>{% blocktranslate with n=base_admin %}1ターンに実行できる命令は行政力の分だけで、初めはふつう {{ n }} つで、権威主義の国は1つ多くあります（命令ごとに重さが違います）。急ぐものから命令の列の上に並べます。{% endblocktranslate %}</p>
+      <p>{% blocktranslate with n=base_admin turns=admin_bank_turns %}1ターンに実行できる命令は行政力の分だけで、初めはふつう {{ n }} つで、権威主義の国は1つ多くあります（命令ごとに重さが違います）。急ぐものから命令の列の上に並べます。使わなかった行政力は {{ turns }} ターン分までためておけます。{% endblocktranslate %}</p>
     </dd>
     <dt>{% translate "最初の数か月" %}</dt>
     <dd>
@@ -77,7 +78,7 @@
   <p>{% translate "島の画面の上の帯から開きます。どの画面にも、上に「この画面の手引き」のリンクがあります。" %}</p>
   <div class="table-scroll">
   <table class="info">
-    <tr><th>{% translate "地図" %}</th><td>{% translate "マスを押すと地形・人口・施設の様子。命令の列もここ。「重ねて表示」で人口・電力・インフラなどを色で見る" %}</td></tr>
+    <tr><th>{% translate "地図" %}</th><td>{% translate "マスを押すと地形・人口・施設の様子。命令の列もここ。「重ねて表示」で人口・電力・インフラなどを色で見る。施設の絵は、農場の段階（手作業・機械化・近代化）と作物、鉱山の掘る物、火力発電所の燃料、建て増しした工場の規模で変わる" %}</td></tr>
     <tr><th>{% translate "経済" %}</th><td>{% translate "GDP・物価・失業率などの推移" %}</td></tr>
     <tr><th>{% translate "市場" %}</th><td>{% translate "財ごとの値段と売買の量、買えなかった量" %}</td></tr>
     <tr><th>{% translate "産業の鎖" %}</th><td>{% translate "品目ごとの作った量・使った量・輸出入と、止まった工場が待っている物。どの品目が何の材料になるかは" %} <a href="{% url 'help_chain' %}">{% translate "手引き：産業のつながり" %}</a></td></tr>
@@ -109,6 +110,29 @@
     </tbody>
   </table>
   </div>
+</section>
+
+<section class="panel" id="careful">
+  <h2>{% translate "軽く動かさないほうがいい数値" %}</h2>
+  <p>{% translate "命令で動かせる数値の中には、上げてから元に戻しても、島が元に戻らないものがあります。「できる」ことと「試しにやってよい」ことは別です。次の数値は、効き方を読んでから動かしてください。どれも現実の経済と同じ仕組みです。" %}</p>
+  <p>{% blocktranslate with a=careful.indexation r=careful.max_raise %}土台にあるのは「賃金は下がらない」ことです。施設の賃金は、人手が足りなければ1か月に {{ r }}% まで上がり、物価が上がればこの1年の上がり方の {{ a }}% を追って上がりますが、失業が多くても物価が戻っても下がりません（現実の賃金の下方硬直）。そのため、賃金や物価を一度押し上げる命令は、戻しても上がった賃金を残し、原料と製品の値段を高いままにします。{% endblocktranslate %}</p>
+  <div class="table-scroll">
+  <table class="info">
+    <thead><tr><th>{% translate "数値（画面）" %}</th><th>{% translate "動かすと" %}</th><th>{% translate "戻しても戻らないもの" %}</th><th>{% translate "代わりに・気をつけること" %}</th></tr></thead>
+    <tbody>
+      <tr><th>{% translate "最低賃金（財政の「賃金と失業手当」）" %}</th><td>{% translate "最低賃金より安い施設の賃金が、すべて最低賃金まで上がります。" %}</td><td>{% translate "最低賃金を下げても、上がった賃金は下がりません。原料が高いまま工場が採算割れで止まり、戻らないことがあります（公開の世界で、最低賃金を少し上げただけで木材と建材が戻らなくなった例があります）。" %}</td><td>{% translate "暮らしを支えたいなら、失業手当や予算の方が戻しやすい手です。上げるなら少しずつ、施設の収支を見ながら。" %}</td></tr>
+      <tr><th>{% translate "お金を増やす命令（金融の政策金利を下げる・中央銀行の国債の買い入れ、為替の介入の買い）" %}</th><td>{% translate "お金が増えて物価が上がります。" %}</td><td>{% translate "金利やお金の量は戻せますが、その間の物価の上昇で上がった賃金は残ります。" %}</td><td>{% translate "物価の推移を見ながら小さく動かします。" %}</td></tr>
+      <tr><th>{% translate "値段の上限・下限・公定価格（混合経済は「値段の規制」、計画経済は「計画」。電気料金の上限は財政）" %}</th><td>{% translate "上限が作る費用より低いと、民営の施設が赤字になります。下限は物価を押し上げます。" %}</td><td>{% blocktranslate with t=careful.exit_turns n=careful.entries %}赤字や止まりが {{ t }} ターン続いた施設は閉じ、売れなければ取り壊しか倒産です。上限を外しても閉じた施設は戻らず、新しい施設は採算が合うときに島で1ターンに {{ n }} つずつしか建たず、工事にも時間がかかります。下限で上がった賃金も残ります。{% endblocktranslate %}</td><td>{% translate "上限は作る費用より上に。品切れが続いていないかを「市場」で見ます。" %}</td></tr>
+      <tr><th>{% translate "国債の支払いを止める（財政）" %}</th><td>{% blocktranslate with h=careful.haircut %}その月にすべての国債が債務不履行になり、中央銀行以外が持つ額面の {{ h }}% が消えます（国債を全部中央銀行が持っていれば、下の罰は付きません）。{% endblocktranslate %}</td><td>{% blocktranslate with p=careful.default_premium d=careful.default_decay x=careful.default_exclusion c=careful.default_crunch s=careful.default_stability st=careful.default_stability_turns %}次の月に再開しても取り消せません。国債の利回りに年 {{ p }} ポイントの上乗せが付いて {{ d }} ターンかけて消え、銀行は {{ x }} ターン国債を買わず、損をした銀行は {{ c }} ターン新しく貸しません（計画経済を除く）。政情も {{ s }} 下がり、{{ st }} ターンかけて戻ります。{% endblocktranslate %}</td><td>{% translate "最後の手です。先に予算と税を見直します。" %}</td></tr>
+      <tr><th>{% translate "固定相場（為替）" %}</th><td>{% translate "中央銀行が外貨を売り買いしてレートを守ります。" %}</td><td>{% translate "通貨安の圧力で外貨を全部売っても足りなくなると固定が外れ、使った外貨準備は戻りません。" %}</td><td><a href="{% url 'help_fx' %}#levers">{% translate "為替の効き方の「打てる手」" %}</a></td></tr>
+      <tr><th>{% translate "中央銀行の独立（金融）" %}</th><td>{% translate "政策金利を中央銀行が自動で決め、政府は介入・固定相場・中央銀行の外国の国債を決められなくなります。" %}</td><td>{% blocktranslate with t=careful.cb_lock_turns %}切り替えてから {{ t }} ターンは戻せません。独立させたときに消えた介入・固定相場・外国の国債の命令と、0 に戻った中央銀行の国債の買い入れは、独立をやめても戻らないので、出し直します。国債の売れ残りを中央銀行が引き受ける決まりも「支出を減らす」に変わります（こちらは独立をやめると戻ります）。{% endblocktranslate %}</td><td>{% translate "為替の命令を出している国は、先に為替の画面を確かめます。" %}</td></tr>
+      <tr><th>{% translate "経済体制の変更（政治）" %}</th><td>{% blocktranslate with t=careful.transition_turns %}{{ t }} ターンの混乱期間になり、生産性と政情が下がります。その間はもう一度変えられません。{% endblocktranslate %}</td><td>{% translate "計画経済に移ると民営の施設と銀行はすべて国有になり、資本家の層もなくなります。市場経済に戻しても国営の施設はそのまま残り、民営の施設はまた少しずつしか建ちません。" %}</td><td>{% translate "体制は国の形そのものです。試しに変えないでください。" %}</td></tr>
+      <tr><th>{% translate "教育費（財政の予算）" %}</th><td>{% translate "削ると学校の稼働が下がり、子どもの学ぶ割合が下がります。" %}</td><td>{% blocktranslate with y=careful.working_years %}働き手の教育水準は、働く人が {{ y }} 年で入れ替わる速さでしか動かないので、予算を戻しても何十年もかけてしか戻りません。教育水準は生産性に効きます。{% endblocktranslate %}</td><td>{% translate "国庫が苦しくても、教育費は最後に削ります。" %}</td></tr>
+      <tr><th>{% translate "報道と集会の統制（政治）" %}</th><td>{% translate "強めた分だけ、その場で政情が上がります。" %}</td><td>{% blocktranslate with m=careful.grievance_max %}統制している間、不満が少しずつたまり（{{ m }} まで）、ゆるめた月か、政情が暴動の境を下回った月に、まとめて政情から引かれます。{% endblocktranslate %}</td><td>{% translate "政情は幸福度・失業・物価の元から直します。" %}</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>{% translate "ほかの数値（税率・失業手当・予算の多くなど）は、戻せば元の流れに戻ります。ただし、民主主義の国では税率を大きく変える・資本取引・移民の扱い・中央銀行の独立を変えるのに議会の賛成が要り、戻す採決が通らないこともあります。" %}</p>
 </section>
 
 <section class="panel" id="status">

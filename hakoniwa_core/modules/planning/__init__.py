@@ -6,6 +6,10 @@
 
 実行する直前に、モジュールが足した関所（Registry.add_order_gate。議会の採決など）を通す。関所で
 止められた命令も行政力を使う。
+
+使わなかった行政力はためておき（island.ext の admin_bank。その島の行政力の orders.bank_turns
+ターン分まで）、次からのターンに足して使える。1ターンに使えるのは行政力の orders.burst 倍まで
+（W-265。数日遊べなかった人が、戻ってまとめて命令を出せるように）。
 """
 
 from __future__ import annotations
@@ -46,20 +50,52 @@ def admin_power(island: IslandState, ctx: StageContext) -> int:
     return politics.adjust_admin(island, ctx.defs, ctx.config, power, low, high)
 
 
+ADMIN_BANK = "admin_bank"  # island.ext: ためた行政力（W-265）
+
+
+def usable_admin(island: IslandState, config: Any, power: int) -> int:
+    """行政力 power の島が、ためた分を足してこのターンに使える行政力（power の orders.burst 倍
+    まで）。"""
+    bank = int(island.ext.get(ADMIN_BANK, 0))
+    return max(power, min(power + bank, int(power * config.get("orders.burst"))))
+
+
+def bank_admin(island: IslandState, config: Any, power: int, used: int) -> None:
+    """このターンの行政力 power のうち使わなかった分をためる（使った分が power を超えたら、ためた分
+    から引く）。ためられるのは power の orders.bank_turns ターン分まで。"""
+    old = int(island.ext.get(ADMIN_BANK, 0))
+    # 上限で止めるのは新しくためる分だけ（政情などで行政力が下がったターンに、前からためた分を
+    # 削らない。使った分は引く）
+    cap = max(power * int(config.get("orders.bank_turns")), old - max(0, used - power))
+    bank = max(0, min(old + power - used, cap))
+    if bank:
+        island.ext[ADMIN_BANK] = bank
+    else:
+        island.ext.pop(ADMIN_BANK, None)
+
+
 class ExecuteOrders(IslandStage):
     name = "execute_orders"
 
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
+        granted = ctx.formula("admin_power")(island, ctx)
+        power = usable_admin(island, ctx.config, granted)
+        remaining = self._run(island, ctx, power, granted)
+        bank_admin(island, ctx.config, granted, power - remaining)
+
+    def _run(self, island: IslandState, ctx: StageContext, power: int, granted: int) -> int:
+        """行政力 power（ためた分を足した値。granted はそのターンの行政力）の範囲で命令を上から
+        実行し、残った行政力を返す。"""
         registry = ctx.registry
-        power = ctx.formula("admin_power")(island, ctx)
         remaining = power
         pending = sorted(
             (o for o in island.orders if o.status == ORDER_PENDING), key=lambda o: (o.seq, o.id)
         )
         for order in pending:
             cost = ctx.defs.orders[order.kind]["admin_cost"] if order.kind in ctx.defs.orders else 0
-            if cost > power and remaining == power:
-                cost = power  # 1ターンの行政力を超える命令は、そのターンの行政力をすべて使う
+            if cost > granted and remaining == power:
+                # 1ターンの行政力を超える命令は、そのターンの行政力（ためた分は除く）をすべて使う
+                cost = granted
             if cost > remaining:
                 island.log.append(LogEntry("order_postponed", {"order": order.kind}))
                 break
@@ -81,6 +117,7 @@ class ExecuteOrders(IslandStage):
                 island.scratch.pop(CURRENT, None)
             order.status = ORDER_DONE
             island.log.append(LogEntry("order_done", {"order": order.kind}))
+        return remaining
 
     @staticmethod
     def _fail(island: IslandState, order: OrderState, reason: str, args: dict[str, Any]) -> None:

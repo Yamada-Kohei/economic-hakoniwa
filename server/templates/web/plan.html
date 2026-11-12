@@ -62,7 +62,7 @@
     <label>{% translate "値段（1単位。0 で上書きをやめる）" %} <input name="price" type="number" min="0" step="any" required></label>
     <button type="submit">{% translate "命令に追加" %}</button>
   </form>
-  <form class="actions" data-order="review_official_prices" data-list="goods" data-confirm="{% translate '選んだ財（選ばなければ、命令で決めた値段のない財すべて）の公定価格を今の原価に改めます。値上げは支持率と政情に響きます。よろしいですか。' %}">
+  <form class="actions" data-order="review_official_prices" data-list="goods">
     <strong>{% translate "公定価格を改定する（政治の決断。行政力 2、議会のある国は採決）" %}</strong>
     {% for r in p.rows %}<label><input type="checkbox" name="goods" value="{{ r.good }}"> {{ r.name }}</label>{% endfor %}
     <button type="submit">{% translate "命令に追加" %}</button>

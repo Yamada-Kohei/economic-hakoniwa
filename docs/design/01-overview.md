@@ -49,6 +49,7 @@
 | OV-26 | ベータ版は家に置く専用の機械 1 台で動かし（10-25 に VPS から変更）、世界を複数動かすときは DB とサービスを世界ごとに分ける。写しはゲームの中と、毎晩の DB（機械の中の HDD に 30 日分）の 2 重（10-26 に家の外の写しをやめた） | 決定 | `backups.keep` | （未確認） |
 | OV-28 | 更新が走っている間は、命令の列の書き換えを受け付けない（409。更新が読んだ列と食い違わせない）。強制終了などで印だけが残ったときは、次の呼び出しが印を外して更新をやり直し、管理者にメールする。見分けは、PostgreSQL では世界の行の鎖（走っている更新が持つ。印を立てた直後の短い猶予だけ待つ）、鎖のない SQLite では印の古さ | 決定 | `HAKONIWA_UPDATE_STALE_MINUTES`（環境変数） | tests/server/test_turns.py::test_leftover_updating_mark_is_cleared_after_the_stale_limit, ::test_orders_are_refused_while_an_update_is_running, ::test_row_lock_tells_a_running_update_from_a_leftover_mark |
 | OV-29 | JSON を受ける入り口は、壊れた本文・オブジェクトでない本文・NaN や Infinity・項目の型違い・ありえない値を送られても 500 にせず、400 台で断る | 決定 | | tests/server/test_bad_input.py |
+| OV-30 | 使わなかった行政力はためておく（島の ext の `admin_bank`）。ためられるのはその島のそのターンの行政力の `orders.bank_turns` ターン分まで、1 ターンに使えるのは行政力の `orders.burst` 倍まで。使った分が行政力を超えたら、超えた分をためた分から引く。行政力が下がったターンも、前からためた分は上限で削らない（新しくためる分だけを止める）。1 ターンの行政力より重い命令は、ためた分を使わずにそのターンの行政力だけを使う（OV-20 の重い命令の決まり）。命令の列の画面・API・国の要約の「次ターンの行政力」は、ためた分を足した値（統計 `admin_usable`。ためた分は `admin_bank`）。数日遊べなかった人が戻ってまとめて命令を出せるように（W-265、掲示板 #25 の 37・38 番） | 決定 | `orders.bank_turns`, `orders.burst` | tests/core/test_orders.py::test_unused_admin_power_is_banked_and_used_up_to_the_burst, ::test_admin_bank_is_capped, ::test_heavy_order_does_not_eat_the_bank, ::test_bank_is_not_cut_when_admin_power_drops |
 | OV-27 | 登録は誰でもできる。守りは同じ接続元から登録できる数、パスワードの試しすぎの上限、管理画面での非表示 | 決定 | `accounts.signups_per_ip`, `accounts.remember_days` | tests/server/test_web.py |
 
 ### 仮の決まり

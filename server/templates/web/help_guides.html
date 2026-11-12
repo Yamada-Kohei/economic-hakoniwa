@@ -3,6 +3,7 @@
   {% if current == "help_start" %}<strong aria-current="page">{% translate "入門" %}</strong>{% else %}<a href="{% url 'help_start' %}">{% translate "入門" %}</a>{% endif %}
   {% if current == "help" %}<strong aria-current="page">{% translate "詳しい仕組み" %}</strong>{% else %}<a href="{% url 'help' %}">{% translate "詳しい仕組み" %}</a>{% endif %}
   {% if current == "help_chain" %}<strong aria-current="page">{% translate "産業のつながり" %}</strong>{% else %}<a href="{% url 'help_chain' %}">{% translate "産業のつながり" %}</a>{% endif %}
+  {% if current == "help_fx" %}<strong aria-current="page">{% translate "為替の効き方" %}</strong>{% else %}<a href="{% url 'help_fx' %}">{% translate "為替の効き方" %}</a>{% endif %}
   {% if current == "help_ai" %}<strong aria-current="page">{% translate "AI で遊ぶ" %}</strong>{% else %}<a href="{% url 'help_ai' %}">{% translate "AI で遊ぶ" %}</a>{% endif %}
   {% if current == "help_hakoniwa" %}<strong aria-current="page">{% translate "箱庭民向け" %}</strong>{% else %}<a href="{% url 'help_hakoniwa' %}">{% translate "箱庭民向け" %}</a>{% endif %}
 </nav>

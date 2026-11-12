@@ -47,6 +47,7 @@
         <button type="button" data-zoom="out" aria-label="{% translate '縮小' %}">－</button>
       </div>
       <canvas id="minimap" width="128" height="128" aria-label="{% translate '小さな地図' %}"></canvas>
+      <p id="map-coord" class="map-coord" aria-hidden="true" hidden></p>
       {% if mine %}<p id="order-notice" class="map-notice" aria-live="polite"></p>{% endif %}
       {# マスの情報は、押したマスのそばに出す小さな窓（狭い画面では下から出す板）。右上の × と Esc で閉じる #}
       <div id="tile-popover" class="tile-popover" role="dialog" aria-label="{% translate 'マスの情報' %}" hidden>

@@ -39,7 +39,7 @@
   <p class="hint">{% translate "目安を超えて変わった指標を、大きい順に最大3件表示します。数字だけでは原因は分かりません。リンク先で施設の状態・市場・家計を確かめてください。" %}</p>
 </section>
 
-{% if mine %}<p class="home-orders"><a href="{% url 'island' island.id %}#orders">{% translate "命令の列を見る（地図）" %}</a></p>{% endif %}
+{% if mine %}<p class="home-orders"><a href="{% url 'island_orders' island.id %}">{% translate "命令の列を見る" %}</a></p>{% endif %}
 <div class="island-stats">
   <section class="panel">
     <h2>{% translate "国勢" %}</h2>

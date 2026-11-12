@@ -58,7 +58,6 @@ document.addEventListener("submit", async (e) => {
     if (notice) notice.textContent = problem;
     return;
   }
-  if (form.dataset.confirm && !confirm(form.dataset.confirm)) return;
   await orders.add(kind, payload);
   if (notice) notice.textContent = orders.message;
 });

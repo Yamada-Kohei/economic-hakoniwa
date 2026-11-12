@@ -122,7 +122,8 @@ def test_politics_orders_are_accepted_and_described(client, world):
         ("set_priority_industries", {"industries": ["steel"]}),
         ("amend_constitution", {"politics": "authoritarian"}),
     ]
-    body = {"orders": [{"kind": k, "payload": p} for k, p in orders]}
+    # 憲法改正・公定価格の改定は戻せない命令なので、確かめた印を付ける（UI-75）
+    body = {"orders": [{"kind": k, "payload": p} for k, p in orders], "confirm": True}
     res = client.put(f"/api/islands/{island.id}/orders", body, content_type="application/json")
     assert res.status_code == 200, res.content.decode()
     texts = [o["text"] for o in res.json()["orders"]]
@@ -194,7 +195,8 @@ def test_plan_orders_for_official_price_rules_are_accepted(client, world):
         ("set_official_price_rules", {"band": 10, "held": ["grain", "electricity"]}),
         ("review_official_prices", {"goods": ["coal"]}),  # 行政力 2（足りなければ次のターン）
     ]
-    body = {"orders": [{"kind": k, "payload": p} for k, p in orders]}
+    # 憲法改正・公定価格の改定は戻せない命令なので、確かめた印を付ける（UI-75）
+    body = {"orders": [{"kind": k, "payload": p} for k, p in orders], "confirm": True}
     res = client.put(f"/api/islands/{island.id}/orders", body, content_type="application/json")
     assert res.status_code == 200, res.content.decode()
     texts = [o["text"] for o in res.json()["orders"]]

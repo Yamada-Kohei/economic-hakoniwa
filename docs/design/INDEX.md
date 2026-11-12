@@ -6,7 +6,7 @@
 
 ## [1 全体とターンの流れ](01-overview.md)
 
-決まり 29 個、うち仮の決まりの表にあるもの 1 個。
+決まり 30 個、うち仮の決まりの表にあるもの 1 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -38,6 +38,7 @@
 | OV-26 | ベータ版は家に置く専用の機械 1 台で動かし（10-25 に VPS から変更）、世界を複数動か… | 決定 | （未確認） |
 | OV-28 | 更新が走っている間は、命令の列の書き換えを受け付けない（409 | 決定 | tests/server/test_turns.py |
 | OV-29 | JSON を受ける入り口は、壊れた本文・オブジェクトでない本文・NaN や Infinity・項… | 決定 | tests/server/test_bad_input.py |
+| OV-30 | 使わなかった行政力はためておく（島の ext の `admin_bank`） | 決定 | tests/core/test_orders.py |
 | OV-27 | 登録は誰でもできる | 決定 | tests/server/test_web.py |
 
 ## [2 島と町と人口](02-population.md)
@@ -209,7 +210,7 @@
 
 ## [5 施設と企業](05-firms.md)
 
-決まり 64 個、うち仮の決まりの表にあるもの 0 個。
+決まり 65 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -277,6 +278,7 @@
 | FM-62 | 食品工場の作り方（2026-11-10、W-249）: 食品工場は穀物の作り方のほかに、魚の作り… | 決定（2026-11-10 | tests/core/test_food_factory_fish.py |
 | FM-63 | 火力発電所の燃料の備え（2026-11-11、掲示板 #25 の 45 番）: 動いている火力発… | 決定 | tests/core/test_power_fuel_reserve.py |
 | FM-64 | 火力発電所の電力の売り値の下限（MK-24 の1単位の変動費）と撤退の判断の変動費の利益（FM-… | 決定 | tests/core/test_power_fuel_cost.py |
+| FM-65 | 段階の作り方で建てる農場（W-257）: 機械化・近代化の作り方を選んで農場を建てる命令は、初め… | 決定 | tests/core/test_farm_build_grade.py、tests/server/test_migration.py |
 
 ## [6 国の財政と政策](06-finance.md)
 
@@ -552,7 +554,7 @@
 
 ## [11 画面と統計](11-ui.md)
 
-決まり 89 個、うち仮の決まりの表にあるもの 0 個。
+決まり 93 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -629,22 +631,26 @@
 | UI-71 | 島の画面の入口は 7 つ（ホーム・地図・施設・「資源・市場」・貿易・経済・国）にまとめ、それぞれ… | 決定 | tests/server/test_island_nav.py |
 | UI-72 | 品目と施設は 1 つずつのページを持つ | 決定 | tests/server/test_facility_page.py、tests/server/test_good_page.py |
 | UI-73 | 1 つのページの中で、上を「見る」所、下を「打てる手」の箱に分ける | 決定 | tests/server/test_facility_page.py、tests/server/test_good_page.py |
-| UI-74 | 命令の列は、持ち主のどのページにも上に帯（次のターンの命令の数と行政力）で出し、押すと命令のペー… | 決定 | （未確認） |
-| UI-75 | 命令を足すとき、打ち間違いに見えるものだけ確かめを出す（W-264） | 決定 | （未確認） |
+| UI-74 | 命令の列は、持ち主のどのページにも上に帯（次のターンの命令の数と行政力）で出し、押すと命令のペー… | 決定 | tests/server/test_order_queue.py |
+| UI-75 | 命令を足すとき、打ち間違いに見えるものだけ確かめを出す（W-264） | 決定 | tests/server/test_order_confirm.py |
 | UI-76 | ホームは「今月すべきこと」を急ぐ順に並べ、各行から打てる手のある所へ 1 回で飛べるようにする | 決定 | （未確認） |
 | UI-77 | 欄と命令の置き場所は「打てる手があるか」「大事か」「よく使うか」で決める | 決定 | （未確認） |
 | UI-78 | 地図は今の俯瞰図と絵・拡大縮小・小さな地図をそのまま使う | 決定 | tests/server/test_facility_page.py |
 | UI-79 | 重ね表示は、マスの上に半透明の角柱（棒）を立てる形を既定にし、今の塗り分けにも切り替えられる | 決定 | （未確認） |
-| UI-80 | 為替のタブの頭に、中央銀行どうしの融通の貸しと借りの限度額・残り・1 ターンの増加を出す | 決定 | （未確認） |
+| UI-80 | 為替のタブの頭に、中央銀行どうしの融通の貸しと借りの限度額・残り・1 ターンの増加を出す | 決定 | tests/server/test_fx_guide_and_cautions.py |
 | UI-81 | 画面の構成の作り直し（UI-71〜UI-80）は計算を変えない | 決定 | （未確認） |
 | UI-82 | 財政の画面に「中央銀行が持つ国債（刷ったお金）」と「政府と中央銀行を合わせた借り」を並べる | 決定 | tests/server/test_reports.py |
 | UI-83 | 3 段を作ったあとの見直し（4〜5 段目）の指針: 各ページには打てる手に要る情報だけを見やすく… | 決定 | （未確認） |
-| UI-84 | 施設の状態は、売れ行きに合わせて作る量を下げても作り続けているときは「生産調整中」、0 まで下げ… | 決定 | （未確認） |
-| UI-85 | 島の地図は、拡大の大きさと位置をブラウザに覚え、次に開いたときに戻す | 決定 | （未確認） |
-| UI-86 | 品目を並べる表と選ぶ欄は、品目の段（`tier`: 原料・中間財・最終財）の順にそろえ、同じ段の… | 決定 | （未確認） |
+| UI-84 | 施設の状態は、売れ行きに合わせて作る量を下げても作り続けているときは「生産調整中」、0 まで下げ… | 決定 | tests/server/test_help_start.py、tests/server/test_slowdown_reasons.py |
+| UI-85 | 島の地図は、拡大の大きさと位置をブラウザに覚え、次に開いたときに戻す | 決定 | tests/server/test_tier_order_and_map_tools.py |
+| UI-86 | 品目を並べる表と選ぶ欄は、品目の段（`tier`: 原料・中間財・最終財）の順にそろえ、同じ段の… | 決定 | tests/server/test_tier_order_and_map_tools.py |
 | UI-87 | 発電所が止まる前の知らせ（2026-11-11、掲示板 #25 の 45 番）: 動いている火力… | 決定 | tests/core/test_power_fuel_notice.py、tests/server/test_power_fuel_ui.py |
 | UI-88 | 施設の種類の表示名に、方式で変わる作る物を添える（W-262、掲示板 #25 の 21 番）: … | 決定 | tests/server/test_facility_product_label.py |
 | UI-89 | 家計が電気料金を払えないときの知らせ（2026-11-12、停電の調べの案 3）: 生産の段は、… | 決定 |  |
+| UI-90 | 建国の地下資源を選ぶ欄に、ほかの国（休止中を除く）がもう選んだ資源ごとの国の数を添え、「選ぶ国の… | 決定 | tests/server/test_founding_resource_counts.py |
+| UI-91 | 為替の効き方と打てる手の手引き（W-252）は手引きの別のページ（/help/fx/「手引き：為… | 決定 | tests/server/test_fx_guide_and_cautions.py、tests/server/test_help_fx.py |
+| UI-92 | 動かせるが軽く動かすと戻らない・効きの大きい命令（最低賃金 `set_labor_policy`… | 決定 | tests/server/test_fx_guide_and_cautions.py、tests/server/test_help_start.py |
+| UI-93 | 生産調整中のわけ（W-250、2026-11-12）: 施設の状態が売れ行きの調整（target… | 決定 | tests/core/test_phase3_4.py、tests/server/test_screens_notices.py、tests/server/test_slowdown_reasons.py |
 
 ## [12 確かめ方](12-checks.md)
 
