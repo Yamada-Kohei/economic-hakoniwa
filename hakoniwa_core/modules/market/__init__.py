@@ -976,7 +976,8 @@ class Market(IslandStage):
         self._supply_sites_from_warehouse(island, ctx)
         books_by_good: dict[str, Book] = {}
         if trade.started(island):  # 物がないときの海外の食料商人が来るか（FX-73。W-239）
-            food_merchant.decide(island, self._anyone_hungry(island, ctx), ctx.turn)
+            hungry = self._anyone_hungry(island, ctx)
+            food_merchant.decide(island, hungry, ctx.turn, config.get("foreign_merchant.enabled"))
         self._warehouse_orders(island, ctx, books_by_good)
         self._facility_orders(island, ctx, books_by_good, rates)
         self._services_orders(island, ctx, books_by_good, official)
@@ -3621,7 +3622,9 @@ class Market(IslandStage):
         floor = p.import_floor if p is not None else 0
         if floor <= 0:
             return usual
-        limit = max(usual, floor)
+        # 輸入が引き合う値段ちょうどだと、商社の買いの指値は通貨の換算の切り捨てで圏の値段に届かない
+        # ことがある（圏の通貨が島の通貨と違うとき）。千分の1だけ上に置く（丸めの分）
+        limit = max(usual, floor + -(-floor // 1000))
         ext[traders.RESERVE_IMPORT] = limit
         return limit
 
@@ -3761,8 +3764,9 @@ class Market(IslandStage):
         order = Order(qty, ask) if qty > 0 else None
         if order is not None:
             self._add(books_by_good, good, "sell", order, party)
-            args = {"good": good, "amount": qty / QUANTITY_SCALE, "price": price}
-            island.log.append(LogEntry("food_merchant_came", args))
+            if food_merchant.state_of(island).get("since") == ctx.turn:  # 来始めたターンに知らせる
+                args = {"good": good, "amount": qty / QUANTITY_SCALE, "price": price}
+                island.log.append(LogEntry("food_merchant_came", args))
         if cut:
             island.log.append(
                 LogEntry("food_merchant_cut", {"good": good, "amount": qty / QUANTITY_SCALE})

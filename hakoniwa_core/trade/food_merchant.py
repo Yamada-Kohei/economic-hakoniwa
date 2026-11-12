@@ -56,16 +56,16 @@ def active(island: IslandState) -> bool:
     return bool(island_state(island).get(KEY, {}).get("active"))
 
 
-def decide(island: IslandState, hungry: bool, turn: int) -> bool:
+def decide(island: IslandState, hungry: bool, turn: int, enabled: bool = True) -> bool:
     """市場の段の始めに、このターンに来るかを決めて状態に書く。hungry は前のターンに飢えた家計が
-    あったか。"""
+    あったか。enabled は foreign_merchant.enabled（海外の商人を来させない設定なら来ない）。"""
     state = state_of(island)
     seen = state.get("seen", {})
     clear = not seen.get("others_unsold", True)  # 記録のない島（初めのターン）は来ない
     came = bool(state.get("active"))
     stay = came and seen.get("sold", 0) > 0
     start = hungry and seen.get("unmet", 0) > 0
-    now = clear and (stay or start)
+    now = bool(enabled) and clear and (stay or start)
     if now and not came:
         state["since"] = turn
         state["cpi"] = seen.get("cpi", 1.0)  # 来始めたターンの前の物価で止める

@@ -85,8 +85,9 @@ def test_reserve_imports_grain_when_no_island_seller_fills_the_refill(game, warm
     floor = trade_traders.prospects(island, game.defs, game.config, only="grain")["grain"]
     assert floor.import_floor > usual  # 輸入の原価のほうが高い島
     ((order, _),) = books_by_good["grain"].buys
-    assert order.limit == floor.import_floor
-    assert island.economy.ext[trade_traders.RESERVE_IMPORT] == floor.import_floor
+    bid = floor.import_floor + -(-floor.import_floor // 1000)  # 丸めの分だけ上
+    assert order.limit == bid
+    assert island.economy.ext[trade_traders.RESERVE_IMPORT] == bid
     # 商社は倉庫の指値を島の値段として見て、輸入が引き合う
     assert trade_traders.home_price(island, game.config, "grain") >= floor.import_floor
     found = trade_traders.prospects(island, game.defs, game.config)["grain"]
@@ -94,13 +95,34 @@ def test_reserve_imports_grain_when_no_island_seller_fills_the_refill(game, warm
     # 一度入ったら、島の売り手に売れ残りが出るまで続ける（買い足しが埋まっても）
     island.economy.ext[RESERVE_SEEN] = {"short": False, "home_unsold": 0}
     _, books_by_good = _reserve_orders(game, world, island)
-    assert books_by_good["grain"].buys[0][0].limit == floor.import_floor
+    assert books_by_good["grain"].buys[0][0].limit == bid
     # 島の売り手（施設と倉庫）に穀物の売れ残りがあれば、いつもの値段に戻す
     island.economy.ext[RESERVE_SEEN] = {"short": True, "home_unsold": 1}
     _, books_by_good = _reserve_orders(game, world, island)
     assert books_by_good["grain"].buys[0][0].limit == usual
     assert trade_traders.RESERVE_IMPORT not in island.economy.ext
     assert trade_traders.home_price(island, game.config, "grain") == island.economy.prices["grain"]
+
+
+def test_reserve_import_bid_clears_rounding_with_another_currency(game, warmed):
+    """圏の通貨が島の通貨と違い、レートが 1 でなくても、輸入で積む形の指値なら商社は輸入する
+    （輸入が引き合う値段ちょうどだと、通貨の換算の切り捨てで買いの指値が圏の値段に届かない）。"""
+    usual_now = initial_prices(game.defs, game.config)["grain"]
+    world, island = _grain_island(game, warmed, 1)
+    other = next(i for i in world.islands if i != island.id)
+    view = island_state(island)["blocs"]["1"]
+    view["currency"] = other
+    for rate in (3333, 7777, 9999, 12345, 18888, 27001):
+        for price in range(usual_now * 2, usual_now * 2 + 40, 7):
+            view["prices"]["grain"] = price
+            island_state(island).setdefault("rates", {})[str(other)] = rate
+            island.economy.ext.pop(trade_traders.RESERVE_IMPORT, None)
+            island.economy.ext[RESERVE_SEEN] = {"short": True, "home_unsold": 0}
+            island.economy.prices["grain"] = 1
+            _reserve_orders(game, world, island)
+            found = trade_traders.prospects(island, game.defs, game.config)["grain"]
+            assert found.import_floor > 0, (rate, price)
+            assert trade_traders.importable(found), (rate, price)
 
 
 def test_reserve_does_not_import_without_a_seller_in_the_bloc(game, warmed):
