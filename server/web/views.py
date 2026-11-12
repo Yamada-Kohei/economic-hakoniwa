@@ -881,6 +881,8 @@ def _placement_notes(f) -> str:
         notes.append("海に面したマスのみ")
     if f.get("near_capital") is not None:
         notes.append(f"首都から {f['near_capital']} マス以内")
-    if f.get("max_per_island") is not None:
+    if f.get("max_per_island") is not None and f.get("limit_by_resources"):
+        notes.append(f"1国 {f['max_per_island']} か所まで（掘れる鉱業資源が多ければその数まで）")
+    elif f.get("max_per_island") is not None:
         notes.append(f"1国 {f['max_per_island']} か所まで")
     return "・".join(notes)

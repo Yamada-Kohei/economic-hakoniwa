@@ -292,7 +292,7 @@ document.getElementById("shape-hint").textContent =
 function drawResources() {
   document.getElementById("resource-hint").textContent =
     `${config.max_resources} 種類まで選べます。選んだ資源だけを山の鉱山・採石場で採掘できます` +
-    `（鋼鉄には鉄鉱石と石炭の両方が必要です。鉱山は1国 ${defs.facilities.mine?.max_per_island ?? "-"} か所まで）。`;
+    `（鋼鉄には鉄鉱石と石炭の両方が必要です。鉱山は1国 ${defs.facilities.mine?.max_per_island ?? "-"} か所まで。鉱脈で掘れる資源が増えればその数まで）。`;
   document.getElementById("resources").innerHTML = Object.entries(defs.mining)
     .map(([id, name]) => `<label><input type="checkbox" value="${id}"> ${escapeHtml(name)}</label>`)
     .join("");
