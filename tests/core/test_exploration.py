@@ -180,7 +180,7 @@ def test_a_deposit_is_found_after_the_full_turns_and_the_team_leaves(game, world
     assert "bauxite" in island.resources
     assert exploration.explored(island) == {"bauxite": exploration.FOUND}
     assert [e.kind for e in island.log][-1] == "explore_found"
-    # 鉱山の上限も 1 つ増える（FM-66）
+    # 鉱山で掘る資源が 3 種類になったので、鉱山の上限は 3（FM-66。2 と掘れる資源の数の大きい方）
     assert fac.island_limit(game.defs, island, "mine") == max(mines, 3)
     # 始めの値段の基準は建国のときの資源のまま
     assert exploration.base_resources(island) == ["coal", "iron_ore"]
