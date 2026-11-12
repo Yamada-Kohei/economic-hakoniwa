@@ -133,7 +133,7 @@
 | MK-20 | 島で品切れの財を作れる民営の施設は、見直しの順番を待たずに見直し、買いたい量が少なくても避けない | 決定 | tests/core/test_balance_round4.py |
 | MK-21 | 農場の作付けは畑の割合で持ち、1ターンに畑の一部ずつ蒔き直す | 決定 | tests/core/test_balance_round3.py、tests/core/test_phase3_2.py |
 | MK-22 | 2つの物を作る施設（製油所など）の原価は、初めの値段の比で分ける | 決定 | tests/core/test_phase3_2.py |
-| MK-23 | 電力は生産の段で送電網ごとに同じ板寄せで売り買いする | 決定（家計の段の注文は設定 `power.household_curve` で切れるように入れ、… | tests/core/test_rules.py、tests/core/test_shocks.py |
+| MK-23 | 電力は生産の段で送電網ごとに同じ板寄せで売り買いする | 決定（家計の段の注文は設定 `power.household_curve`（既定は切）で入れた | tests/core/test_household_power_curve.py、tests/core/test_rules.py、tests/core/test_shocks.py |
 | MK-24 | 発電所の売り値の下限（1単位の変動費）には燃料の運賃を入れる | 決定 | （未確認） |
 | MK-25 | 島の中の運賃は、売り手と買い手がそれぞれ「約定価格×自分の運賃の率」を運送業に払う | 決定 | tests/core/test_rules.py |
 | MK-26 | 運賃の率は施設ごとの見込み | 決定 | tests/core/test_infrastructure.py、tests/core/test_rules.py |
@@ -206,7 +206,7 @@
 | LB-44 | 衣料は持ち物（2026-11-10、W-26 の直し）: 家計の層は衣料を1人あたりの持つ量（``… | 決定（2026-11-10 | tests/core/test_clothing_clearance.py |
 | LB-45 | 国庫の項目の予算が足りないときの分け方（2026-11-10 | 決定（2026-11-10 | tests/core/test_staff_plan.py |
 | LB-46 | 雇用の保障（2026-11-12、W-231 の日々の仕事の割り当て | 後回し（今の main の計画経済の島の失業を測り、摩擦的な失業を超えて残れば入れる） | （未確認） |
-| LB-47 | 家計は電気を買える分だけ買う（2026-11-12、停電の調べの案 3）: 家計の層は生産の段の… | 決定（実装で設定 `power.household_curve`（切／入）・`power.hou`… |  |
+| LB-47 | 家計は電気を買える分だけ買う（2026-11-12、停電の調べの案 3）: 家計の層は生産の段の… | 決定（設定 `power.household_curve` で切／入 | tests/core/test_household_power_curve.py |
 
 ## [5 施設と企業](05-firms.md)
 
@@ -667,7 +667,7 @@
 | UI-86 | 品目を並べる表と選ぶ欄は、品目の段（`tier`: 原料・中間財・最終財）の順にそろえ、同じ段の… | 決定 | tests/server/test_tier_order_and_map_tools.py |
 | UI-87 | 発電所が止まる前の知らせ（2026-11-11、掲示板 #25 の 45 番）: 動いている火力… | 決定 | tests/core/test_power_fuel_notice.py、tests/server/test_power_fuel_ui.py |
 | UI-88 | 施設の種類の表示名に、方式で変わる作る物を添える（W-262、掲示板 #25 の 21 番）: … | 決定 | tests/server/test_facility_product_label.py |
-| UI-89 | 家計が電気料金を払えないときの知らせ（2026-11-12、停電の調べの案 3）: 生産の段は、… | 決定 |  |
+| UI-89 | 家計が電気料金を払えないときの知らせ（2026-11-12、停電の調べの案 3）: 生産の段は、… | 決定 | tests/core/test_household_power_curve.py、tests/server/test_household_power_notice.py |
 | UI-90 | 建国の地下資源を選ぶ欄に、ほかの国（休止中を除く）がもう選んだ資源ごとの国の数を添え、「選ぶ国の… | 決定 | tests/server/test_founding_resource_counts.py |
 | UI-91 | 為替の効き方と打てる手の手引き（W-252）は手引きの別のページ（/help/fx/「手引き：為… | 決定 | tests/server/test_fx_guide_and_cautions.py、tests/server/test_help_fx.py |
 | UI-92 | 動かせるが軽く動かすと戻らない・効きの大きい命令（最低賃金 `set_labor_policy`… | 決定 | tests/server/test_fx_guide_and_cautions.py、tests/server/test_help_start.py |
