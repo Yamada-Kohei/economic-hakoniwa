@@ -666,6 +666,7 @@ power:
   fuel_restock: 0.2     # 使う見込みの燃料に対して、1ターンに買い足す割合
   fuel_notice_turns: 1.5 # 燃料不足を知らせる残りの月数。fuel_stock_turns の半分以下
   notice_reset: 0.9     # 燃料の現価で見た売り値の下限が電力価格のこの割合を下回ると、再び採算の注意を出せる
+  price_notice_turns: 6 # 採算の注意を出す残りの月数（直近の使用量で）。fuel_stock_turns 以上。燃料費の値動きが料金に届くのは3〜5か月
 
 population:
   food_per_person: 0.002 # 1人1ターンあたりの食料

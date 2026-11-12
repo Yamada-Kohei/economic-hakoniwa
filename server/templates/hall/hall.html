@@ -4,6 +4,7 @@
 <link rel="stylesheet" href="{% static 'css/diplomacy.css' %}">
 <div class="diplomacy-page">
 <h1>{% translate "国際会議場" %}</h1>
+{% include "web/world_nav.html" with current="hall" %}
 <p class="hint">{% translate "国どうしの公開の声明と、戦争・条約の出来事が載る場所です。誰でも読めます。" %}</p>
 <nav class="diplomacy-links" aria-label="{% translate '国際会議場の項目' %}">
   <a href="#statements">{% translate "声明と出来事" %}</a><a href="#wars">{% translate "戦争の状態" %}</a><a href="#treaties">{% translate "条約" %}</a>{% if treaty_island %}<a href="#propose">{% translate "条約を提案" %}</a>{% endif %}{% if form %}<a href="#post">{% translate "声明を出す" %}</a>{% endif %}{% if own_island %}<a href="{% url 'island_diplomacy' own_island.id %}">{% translate "自国の外交" %}</a>{% endif %}<a href="{% url 'help' %}#diplomacy">{% translate "外交と条約の手引き" %}</a>
