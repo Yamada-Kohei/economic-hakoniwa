@@ -124,7 +124,10 @@ _EXTRA_STATS = [
     ("engineers.trained", "技術者の新規養成数（1ターン）", "人"),
     ("engineers.retired", "技術者の退職者数（1ターン）", "人"),
     ("infra.queued", "インフラの工事の列のマス", " マス"),
-    ("works.workers", "公共事業の従事者数", "人"),
+    ("works.workers", "公共事業の従事者数（直営と土木業者）", "人"),
+    ("works.direct", "公共事業の直営の作業員", "人"),
+    ("works.contracted", "土木業者が届けた工事（直営の作業員の人数に直して）", "人"),
+    ("contractor.price", "土木業者の工事の単価（届けた量で重みをつけた平均）", "money"),
     ("firms.private_sites", "民間の建設中の事業所数", ""),
     ("firms.abandoned", "民間の建設中止件数（1ターン）", ""),
     ("fiscal.revenue", "財政の収入（国債の発行を除く）", "money"),
@@ -1251,6 +1254,12 @@ def fiscal_view(
         "position": stat_rows(
             stats,
             ["treasury", "debt", "bonds.central_bank", "net_public_debt", "debt_ratio"],
+            currency,
+        ),
+        # 公共事業の人手（W-270）: 直営の作業員・土木業者が届けた工事・業者の単価
+        "works": stat_rows(
+            stats,
+            ["works.workers", "works.direct", "works.contracted", "contractor.price"],
             currency,
         ),
     }

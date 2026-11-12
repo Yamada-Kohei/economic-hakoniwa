@@ -765,6 +765,28 @@ def services_brief(stats: dict[str, float], currency: str) -> dict[str, Any] | N
     return out
 
 
+WORKS_STATS = [
+    ("workers", "works.workers"),
+    ("direct", "works.direct"),
+    ("contracted", "works.contracted"),
+    ("contractor_price", "contractor.price"),
+]
+
+
+def works_brief(stats: dict[str, float], currency: str) -> dict[str, Any] | None:
+    """公共事業の人手（W-270）: 従事者（直営と土木業者）・直営の作業員・業者が届けた工事・業者の
+    単価。統計がなければ None。"""
+    if "works.direct" not in stats:
+        return None
+    out: dict[str, Any] = {}
+    for key, name in WORKS_STATS:
+        if name in stats:
+            label, unit = reports.stat_label(name)
+            out[key] = stats[name]
+            out[f"{key}_text"] = display.stat_text(name, stats[name], unit, currency)
+    return out
+
+
 SHIPPING_STATS = [
     ("charter_income", "trade.charter_income"),
     ("charter_paid", "trade.charter_paid"),
@@ -931,6 +953,7 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
         "fuel_reserves": display.fuel_reserves(island, mine, viewer),
         "goods": goods,
         "services": services_brief(latest, currency),
+        "public_works": works_brief(latest, currency),
         "shipping": shipping_brief(latest, currency),
         "firms": firms_brief(island, latest, mine),
         "dismissal": dismissal_brief(island, latest, currency),

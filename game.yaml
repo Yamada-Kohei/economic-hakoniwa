@@ -251,6 +251,21 @@ freight:
     catch_up: 0.1       # 欲しい台数に足りない分のうち、1ターンに買う割合
     fuel_turns: 3       # 持っておく燃料（持っているトラックの何ターン分）
 
+# 土木業者（W-270。hakoniwa_core/modules/infrastructure/contracts.py）。公共事業の工事と維持の人手は、まず島の
+# 土木業者に請け負わせ、埋まらない分だけ直営で雇う。売る「工事」の 1 単位は直営の作業員 1 人・ターン分の工事
+contractor:
+  facility: contractor  # 土木業者の施設
+  output_per_worker: 1.0  # 業者の 1 人が 1 ターンに届ける工事の単位
+  # 予定価格 = 島の平均賃金 ×（1 + margin）。現実の公共工事の予定価格は労務単価に現場管理費・一般管理費
+  # （合わせて労務費の 1〜2 割ほど）を積み上げ、それを超える入札は落とせない
+  margin: 0.15
+  start: 1              # 建国と移し替えで首都の近くに置く数
+  capital_turns: 3      # 独立採算の業者に持ち主が出資する運転資金（全力の賃金の何ターン分）
+  # 民間の参入: 直近 entry_turns ターンの埋まらなかった工事（要った量 − 届いた量 − 直営）の平均が、新しい
+  # 業者の全力の entry_share 以上で、予定価格で賃金を払えるとき
+  entry_turns: 6
+  entry_share: 0.5
+
 # 貿易（フェーズ3-1）。量は財の重さ（goods.yaml の freight_weight。トン）で数えます。
 trade:
   port_facility: port   # 港の施設

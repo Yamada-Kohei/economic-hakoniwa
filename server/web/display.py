@@ -21,6 +21,7 @@ from hakoniwa_core.economy import (
     facility_entity,
     in_receivership,
     is_bank,
+    is_contractor,
     is_private_site,
     is_self_supporting,
     power_fuel,
@@ -338,6 +339,8 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         info["accounting_target_name"] = message(f"accounting_{target}")
     if f.economy.get("wage"):
         info["wage"] = f.economy["wage"]
+    if f.built and is_contractor(config, f):
+        info["contract"] = contract_info(island, f)
     info.update(engineers_info(f, fdef))
     info.update(equipment_info(defs, config, f))
     if fdef.get("education"):
@@ -391,6 +394,27 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         if island.has_economy:
             info.update(facility_finance(row, f, island, currency, mine))
     return info
+
+
+def contract_info(island: IslandState, f: Facility) -> dict[str, Any]:
+    """土木業者（W-270）の欄: このターンに受けた工事（維持・新しい工事）・届けた工事・全力（直営の
+    作業員の人数に直した単位）・単価と予定価格（工事 1 単位）・国庫直轄か。"""
+    from hakoniwa_core.modules.infrastructure import contracts
+
+    game = get_game()
+    defs, config = game.defs, game.config
+    orders = f.economy.get(contracts.ORDERS, [0, 0])
+    out: dict[str, Any] = {
+        "upkeep": round(orders[contracts.UPKEEP] / 1000, 1),
+        "build": round(orders[contracts.BUILD] / 1000, 1),
+        "delivered": round(f.economy.get(contracts.DELIVERED, 0) / 1000, 1),
+        "full": round(contracts.full(defs, config, f) / 1000, 1),
+        "treasury": contracts.treasury(f),
+    }
+    if not contracts.treasury(f) and island.has_economy:
+        out["price"] = contracts.price_of(island, config, f)
+        out["ceiling"] = contracts.ceiling(island, config)
+    return out
 
 
 def expand_info(defs, island: IslandState, f: Facility) -> dict[str, Any] | None:
