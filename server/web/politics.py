@@ -277,11 +277,14 @@ def plan_data(island: m.Island, mine: bool, stats: dict[str, float]) -> dict[str
     achieved = state.get("achieved", {})
     queues = state.get("queues", {})
     band, held = planning.rules(core, config)
+    retail_manual = state.get(planning.RETAIL_MANUAL, {})
     rows = []
     for good in display.goods_in_order(defs):
         if good not in prices:
             continue
         cost = costs.get(good)
+        # 小売の値段（PL-60。家計が払う値段。卸との差が取引税か価格の補助）
+        retail = planning.retail_price(core, config, good) if planning.is_dual(core) else None
         rows.append(
             {
                 "good": good,
@@ -294,6 +297,12 @@ def plan_data(island: m.Island, mine: bool, stats: dict[str, float]) -> dict[str
                 "gap": round((prices[good] - cost) * 100 / cost) if cost else None,
                 "outside": bool(cost) and planning.outside(prices[good], cost, band),
                 "held": good in held,
+                "retail": display.price(good, retail) if retail else None,
+                "retail_manual": good in retail_manual,
+                # 小売と卸の差（卸に対する %。+ は取引税、- は価格の補助）
+                "retail_gap": round((retail - prices[good]) * 100 / prices[good])
+                if retail and prices[good]
+                else None,
                 "goal": display.amount(goals[good], good) if good in goals else None,
                 "made": display.shown(good, stats.get(f"production.{good}", 0)),
                 "achieved": round(achieved[good] * 100) if good in achieved else None,
@@ -305,6 +314,8 @@ def plan_data(island: m.Island, mine: bool, stats: dict[str, float]) -> dict[str
         rows=rows,
         review=state.get("review"),
         band=round(band * 100),
+        turnover_rate=round(core.policy.consumption_tax * 100 / 10000, 2),
+        retail_floor=round(config.get("planning.retail.floor") * 100),
         held=[
             {"id": g, "name": defs.name("goods", g)}
             for g in display.goods_in_order(defs)
