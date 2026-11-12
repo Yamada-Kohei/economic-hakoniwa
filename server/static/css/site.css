@@ -439,3 +439,14 @@ figure.diagram summary { cursor: pointer; color: var(--accent); }
 .help-chain-banner strong { display: block; color: #0000ee; text-decoration: underline; }
 .help-chain-banner-text { display: block; font-size: 0.9em; }
 .help-chain-banner-icon { flex: none; }
+
+/* 表の並べ替え（UI-86。table-sort.js）: 列の頭の字を押せるようにし、今の順を矢印で出す */
+th > button.sort-head { all: unset; cursor: pointer; text-decoration: underline dotted; }
+th > button.sort-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+th[aria-sort="ascending"] > button.sort-head::after { content: " ▲"; font-size: 0.8em; }
+th[aria-sort="descending"] > button.sort-head::after { content: " ▼"; font-size: 0.8em; }
+
+/* 指の下のマスの座標（UI-85）: 地図の右下の隅 */
+.map-coord { position: absolute; right: 8px; bottom: 8px; margin: 0; padding: 2px 8px; font-size: 0.9em;
+  color: #fff; background: rgba(10, 30, 60, 0.75); border-radius: 4px; pointer-events: none;
+  font-variant-numeric: tabular-nums; }
