@@ -28,6 +28,7 @@ from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import retail
 from hakoniwa_core.economy.prices import initial_prices
+from hakoniwa_core.exploration import base_resources
 from hakoniwa_core.state import IslandState
 from hakoniwa_core.trade import island_state
 from hakoniwa_core.units import BASIS, scale_price
@@ -90,7 +91,7 @@ def offers(
     """このターンに商人が売りに出すもの（財, 量, 値段）。来ていなければ空。"""
     if not active(island, config, turn):
         return []
-    base = initial_prices(defs, config, island.resources)
+    base = initial_prices(defs, config, base_resources(island))
     factor = multiplier(island, config, turn)
     share = taper(island, config, turn)
     out = []
@@ -114,7 +115,7 @@ def bids(
         return []
     factor *= retail.cpi(island)  # 買い値も島の物価に合わせる（売り値と同じ）
     share = taper(island, config, turn)
-    base = initial_prices(defs, config, island.resources)
+    base = initial_prices(defs, config, base_resources(island))
     out = []
     for good in sorted(config.get("foreign_merchant.goods")):
         if good not in defs.goods:

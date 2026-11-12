@@ -15,13 +15,20 @@ from typing import Any
 from django.db.models import Max, Q
 from django.urls import reverse
 
+from hakoniwa_core import exploration
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import politics as core_politics
 from hakoniwa_core.economy import books, is_seized, is_stopped, power_fuel_notice, retail
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.modules.population import still_hungry
 from hakoniwa_core.naming import facility_name
-from hakoniwa_core.state import ACCOUNTING_SELF, OWNER_STATE, ZONE_INDUSTRIAL, IslandState
+from hakoniwa_core.state import (
+    ACCOUNTING_SELF,
+    OWNER_STATE,
+    ZONE_INDUSTRIAL,
+    IslandState,
+    Tile,
+)
 from hakoniwa_core.trade import island_state as trade_state
 from hakoniwa_core.trade import merchant
 from server.accounts import keys
@@ -37,7 +44,7 @@ from server.web import politics as politics_views
 from server.web.todo import Alert
 from server.web.trade import food_merchant_view
 from server.world import models as m
-from server.world.repository import facility_from_row, island_from_row
+from server.world.repository import TILE_FIELDS, facility_from_row, island_from_row
 
 LIST_MAX = 30  # 要約の一覧（止まった施設・工事・赤字の施設）に出す数
 BONDS_DUE_TURNS = 12  # このターン数のうちに満期になる国債を出す
@@ -153,6 +160,49 @@ def island_head(island: m.Island) -> dict[str, Any]:
         "producible": sorted(fac.producible_goods(defs, island.resources or [])),
         "climate": defs.name("climate", zone) if zone else "",
         "founded_turn": (island.ext or {}).get("founded_turn", 0),
+        # 探鉱（MI-68）: 探せる資源・探鉱中の資源と進み・探し終えた資源
+        "exploration": exploration_brief(island),
+    }
+
+
+def exploration_brief(island: m.Island) -> dict[str, Any] | None:
+    """探鉱のようす（MI-68。島の画面の見出しと国の要約で同じ）。お金の経済の前の島は None。
+
+    explorable は探鉱を始められる資源と、探鉱隊を置ける地形（その資源を掘る施設の建つ地形）。"""
+    game = get_game()
+    defs, config = game.defs, game.config
+    state = island_from_row(island)
+    if not state.has_economy:
+        return None
+    for x, y, *rest in island.tiles.values_list("x", "y", *TILE_FIELDS):
+        state.tiles[y * state.size + x] = Tile(x, y, **dict(zip(TILE_FIELDS, rest, strict=True)))
+    kind = exploration.facility_kind(config)
+    state.facilities = [facility_from_row(f) for f in island.facilities.filter(kind=kind)]
+    now = exploration.status(state, defs, config)
+    current = now["current"]
+    if current is not None:
+        current = {
+            "good": current["good"],
+            "name": defs.name("goods", current["good"]),
+            "x": current["x"],
+            "y": current["y"],
+            "built": current["built"],
+            "percent": round(current["progress"] * 100),
+        }
+    done = now["explored"]
+    return {
+        "explorable": [
+            {
+                "good": g,
+                "name": defs.name("goods", g),
+                "terrains": sorted(exploration.miner_terrains(defs, g)),
+            }
+            for g in now["explorable"]
+        ],
+        "current": current,
+        "found": [defs.name("goods", g) for g, r in done.items() if r == exploration.FOUND],
+        "none": [defs.name("goods", g) for g, r in done.items() if r == exploration.NONE],
+        "turns": now["turns"],
     }
 
 
