@@ -1308,6 +1308,9 @@ class Market(IslandStage):
             asks = [o.limit for o, _ in book.sells if o.limit is not None]
             if asks and good not in official:
                 high = min(high, max(asks))
+            # 混合経済の値段の下限（PL-32）は付け値より先に効く: 家計も下限までは店に払う
+            if politics.trait(island, defs, "price_controls", False):
+                high = max(high, island.policy.price_floor.get(good, 0))
         if (book is None or not book.sells) and total > 0:
             # 売りに出ていなければ、買いたい量を記録する（店が開く合図。_record）
             record = island.scratch.setdefault("wanted", {})
@@ -1825,9 +1828,9 @@ class Market(IslandStage):
         prices = island.economy.prices
         width = to_basis(config.get("market.band"))
         official = planning.official(island) if planning.is_planned(island, defs) else {}
-        caps = (
-            island.policy.price_cap if politics.trait(island, defs, "price_controls", False) else {}
-        )
+        controlled = politics.trait(island, defs, "price_controls", False)
+        caps = island.policy.price_cap if controlled else {}
+        floors = island.policy.price_floor if controlled else {}
         holds = island.scratch.pop(FACILITY_HOLDS, {})
         shelf = retail.good_of(config)
         stall = self._direct_unit(island, config)
@@ -1868,14 +1871,17 @@ class Market(IslandStage):
                 ask = max(ask, floor)
                 if good in official:  # 計画経済: 費用に届かなくても公定価格で売る（フェーズ3-4）
                     ask = 0
-                if good == shelf and good not in official and is_self_supporting(f):
+                if good == shelf and good not in official:
                     # 店の付け値（MK-42）: 持ち越せない小売りも値段なしで出さず、変動費に上乗せして
-                    # 売りに出す（上限は屋台の値段 × retail.posted_cap）
-                    posted = retail.posted_price(island, config, f, floor, stall)
+                    # 売りに出す（国営の店も。上限は運賃込みで屋台の値段 × retail.posted_cap、
+                    # 変動費は下回らない）。混合経済の値段の上限と下限はその後に効かせる
+                    posted = retail.posted_price(island, config, f, floor, stall, rate)
                     f.economy.setdefault("ask", {})[good] = posted
                     _, high = auction.band(prices.get(good, 1), width, caps.get(good))
-                    order = Order(total, seller_limit(posted, rate, high))
-                    self._add(books_by_good, good, "sell", order, seller)
+                    limit = seller_limit(posted, rate, high)
+                    if floors.get(good):
+                        limit = max(limit, floors[good])
+                    self._add(books_by_good, good, "sell", Order(total, limit), seller)
                     continue
                 expiring = stock.expiring(f.stock, good, ctx.turn, defs.goods)
                 if expiring:

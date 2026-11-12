@@ -16,9 +16,10 @@
   足した割合。
 - 店の付け値（MK-42。2026-11-12、W-261）: 小売りは持ち越せないので、値段を付けずに売りに出すと、
   店が少し余るだけで値段が値幅の下端へ飛び、足りなければ屋台の値段まで上がりました。市場経済と混合
-  経済の島の独立採算の店は、1 単位の変動費 ×（1 ＋ ``retail.markup``）の付け値で売りに出し
-  （上限は屋台の値段 × ``retail.posted_cap``）、家計は店の付け値の最高より高くは店に払いません。
-  前の版から続く島の店は、上乗せを今の値段 ÷ 変動費 − 1 から ``retail.markup_step`` ずつ寄せます。
+  経済の島の店（国営も）は、1 単位の変動費 ×（1 ＋ ``retail.markup``）の付け値で売りに出し
+  （上限は運賃込みで屋台の値段 × ``retail.posted_cap``、ただし変動費は下回らない。混合経済の値段の
+  下限と上限が先に効く）、家計は店の付け値の最高より高くは店に払いません。前の版から続く島の店は、
+  上乗せを今の値段 ÷ 変動費 − 1（変動費より安ければ 0）から ``retail.markup_step`` ずつ寄せます。
 - 店が足りないとき: 店で買いきれなかった小売りは、商業・サービス業（小さな店と屋台の
   集まり。economy/services.py）から、小売りの値段の ``1 + retail.direct_premium`` 倍で
   買います（直売・屋台）。その売上で商業・サービス業が人を増やし（自営の受け皿）、店が
@@ -138,15 +139,21 @@ def mark_legacy(island: IslandState, defs: Defs, config: GameConfig) -> None:
 
 
 def posted_price(
-    island: IslandState, config: GameConfig, f: Facility, floor: int, stall: int
+    island: IslandState, config: GameConfig, f: Facility, floor: int, stall: int, freight: int = 0
 ) -> int:
-    """独立採算の店の付け値: 1 単位の変動費 floor ×（1 ＋ 上乗せ）。上限は屋台の値段 stall ×
-    retail.posted_cap（変動費より低くても上限で売り、続けば赤字で閉じる）。上乗せは店ごとに持ち、
-    前の版から続く店は今の値段 ÷ 変動費 − 1 から、ターンごとに retail.markup_step ずつ
-    retail.markup へ寄せる。変動費がまだ分からない（0 の）店は今の値段で出す。"""
+    """店の付け値（運賃を払った後に手元に残る額。MK-42）: 1 単位の変動費 floor ×（1 ＋ 上乗せ）。
+
+    上限は屋台の値段 stall × retail.posted_cap で、百貨店の運賃（率 freight、1万分の1）は上限の内に
+    含める（運賃を足した指値が上限を超えない）。ただし付け値は変動費を下回らない（屋台がそれより
+    安ければ客は屋台へ移り、店は赤字で閉じる）。上乗せは店ごとに持ち、前の版から続く店は今の値段 ÷
+    変動費 − 1（変動費より安ければ 0）から、ターンごとに retail.markup_step ずつ retail.markup へ
+    寄せる。変動費がまだ分からない（0 の）店は今の値段で出す。混合経済の値段の下限と上限は、
+    指値にした後に市場の側で効かせる。"""
     s = settings(config)
     target = to_basis(s["markup"])
+    step = to_basis(s["markup_step"])
     cap = max(1, part(stall, to_basis(s["posted_cap"])))
+    cap = max(1, cap * (BASIS - freight) // BASIS)  # 運賃は上限の内
     price = island.economy.prices.get(good_of(config), 1)
     if floor <= 0:
         return max(1, min(cap, price))
@@ -154,13 +161,13 @@ def posted_price(
     if now is None:
         now = target
     elif now == LEGACY:
-        now = max(target, price * BASIS // floor - BASIS)
+        now = max(0, price * BASIS // floor - BASIS)
     elif now > target:
-        now = max(target, now - to_basis(s["markup_step"]))
-    else:
-        now = target
+        now = max(target, now - step)
+    elif now < target:
+        now = min(target, now + step)
     f.economy[MARKUP] = now
-    return max(1, min(cap, floor + part(floor, now)))
+    return max(1, floor, min(cap, floor + part(floor, now)))
 
 
 # --- 店の場所 ---------------------------------------------------------------------------

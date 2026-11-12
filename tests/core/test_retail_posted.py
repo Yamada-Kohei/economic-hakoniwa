@@ -30,7 +30,7 @@ def shop_of(island):
 
 def test_posted_price_marks_up_the_variable_cost_below_the_stall(game, sample):
     """付け値は 1 単位の変動費 ×（1 ＋ retail.markup）。屋台の値段 × retail.posted_cap を超えない
-    （変動費より低くなっても上限で出す）。変動費が分からなければ今の値段。"""
+    （百貨店の運賃も上限の内）が、変動費は下回らない。変動費が分からなければ今の値段。"""
     island, _ = sample
     shop = shop_of(island)
     shop.economy.pop(retail.MARKUP, None)
@@ -39,8 +39,10 @@ def test_posted_price_marks_up_the_variable_cost_below_the_stall(game, sample):
     assert retail.posted_price(island, game.config, shop, 1000, stall) == 1000 * (1 + s["markup"])
     assert shop.economy[retail.MARKUP] == to_basis(s["markup"])
     cap = stall * s["posted_cap"]
-    assert retail.posted_price(island, game.config, shop, 9000, stall) == cap
-    assert retail.posted_price(island, game.config, shop, 20_000, stall) == cap
+    assert retail.posted_price(island, game.config, shop, 8000, stall) == cap
+    assert retail.posted_price(island, game.config, shop, 20_000, stall) == 20_000  # 変動費まで
+    # 運賃 1 割の百貨店: 運賃を足した指値が上限に収まる
+    assert retail.posted_price(island, game.config, shop, 8000, stall, 1000) == cap * 0.9
     island.economy.prices[retail.good_of(game.config)] = 1234
     assert retail.posted_price(island, game.config, shop, 0, stall) == 1234
 
@@ -68,15 +70,21 @@ def test_legacy_shops_ease_the_markup_from_todays_price(game, sample):
     # 2回目の移し替えでは印を付け直さない
     retail.mark_legacy(island, game.defs, game.config)
     assert shop.economy[retail.MARKUP] == to_basis(s["markup"])
-    # 今の値段が目標より安い前の版の店は、目標から始める
+    # 今の値段が目標より安い前の版の店は、今の値段から上乗せを寄せ上げる。変動費より安ければ
+    # 上乗せ 0（変動費）から
     other = copy.deepcopy(shop)
     other.economy[retail.MARKUP] = retail.LEGACY
     island.economy.prices[good] = 1100
-    assert retail.posted_price(island, game.config, other, 1000, 10**6) == 1500
+    assert retail.posted_price(island, game.config, other, 1000, 10**6) == 1100
+    assert retail.posted_price(island, game.config, other, 1000, 10**6) == 1150
+    other.economy[retail.MARKUP] = retail.LEGACY
+    island.economy.prices[good] = 400
+    assert retail.posted_price(island, game.config, other, 1000, 10**6) == 1000
+    assert other.economy[retail.MARKUP] == 0
 
 
 def test_households_pay_shops_no_more_than_the_highest_posted_price(game, base, monkeypatch):
-    """市場経済と混合経済の島では、独立採算の店が小売りに付け値を付け、家計の店への指値は付け値の
+    """市場経済と混合経済の島では、店（国営も）が小売りに付け値を付け、家計の店への指値は付け値の
     最高を超えない。計画経済の島の店には付け値の上乗せを持たせない。"""
     world = copy.deepcopy(base)
     good = retail.good_of(game.config)
@@ -127,7 +135,7 @@ def test_shop_entry_does_not_wait_for_shops_being_built(game, sample):
     building.built = False
     island.facilities.append(building)
     assert good not in EntryExit._pipeline(island, ctx)  # 店の工事は参入を止めない
-    assert EntryExit._shop_pending(island, ctx) == (qty, qty)
+    assert EntryExit._shop_pending(island, ctx) == [(qty, None)]
     turns = game.config.get("firms.price_turns")
     big = {good: [qty * 3] * turns}
     fill = EntryExit._shop_fill(island, ctx, recipe, big, {}, {}, {}, 1)
@@ -185,3 +193,35 @@ def test_town_shop_slots_grow_with_people_but_villages_get_none(game, base):
     village = copy.deepcopy(town)
     village.ext["level"] = game.defs.settlement_levels()[0]
     assert fac.shop_slots(game.defs, village, island) == 0
+
+
+def test_price_floor_of_a_mixed_economy_holds_the_posted_price_up(game, base, monkeypatch):
+    """混合経済の値段の下限（PL-32）は付け値より先に効く: 店の指値は下限を下回らず、家計の店への
+    指値も下限に届くので、下限のある島でも店で売れる。"""
+    from hakoniwa_core import politics
+
+    world = copy.deepcopy(base)
+    good = retail.good_of(game.config)
+    island = next(
+        world.islands[i]
+        for i in world.island_ids()
+        if world.islands[i].has_economy
+        and politics.trait(world.islands[i], game.defs, "price_controls", False)
+        and any(f.kind == "shop" and f.built for f in world.islands[i].facilities)
+    )
+    floor = 10 * island.economy.prices[good]
+    island.policy.price_floor[good] = floor
+    seen = []
+    buy = Market._household_buy
+
+    def spy(self, isl, books_by_good, g, qty, limit, *args):
+        if g == good and isl is island:
+            seen.append((limit, [o.limit for o, _ in books_by_good[good].sells]))
+        return buy(self, isl, books_by_good, g, qty, limit, *args)
+
+    monkeypatch.setattr(Market, "_household_buy", spy)
+    run_checked(game, world, 1)
+    assert seen
+    limit, asks = seen[0]
+    assert asks and min(asks) >= floor
+    assert limit >= floor

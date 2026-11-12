@@ -325,7 +325,8 @@ class EntryExit(IslandStage):
             for _ in range(slots):
                 if not self._enter(island, ctx, shops=False):
                     break
-            self._enter(island, ctx, shops=True)  # 店は工場と別に1島1ターン1店まで（FM-69）
+            if ctx.config.get("firms.entries_per_turn") > 0:
+                self._enter(island, ctx, shops=True)  # 店は工場と別に1島1ターン1店まで（FM-69）
             self._invest(island, ctx)
             self._raise_grades(island, ctx)
         self._bank_entry(island, ctx)
@@ -650,9 +651,9 @@ class EntryExit(IslandStage):
         FM-69）。店だけの回は、工場の回の建たないわけを消さない。"""
         blocks: list[tuple[float, str, str, dict[str, Any]]] = []  # (見込み, 施設, わけ, 引数)
         entered = self._try_enter(island, ctx, blocks, shops)
-        if shops:
-            return entered
         finance = island.economy.finance
+        if shops and (entered or "entry_block" in finance):
+            return entered  # 工場の回の建たないわけ（このターンのもの）を残す
         if entered or not blocks:
             finance.pop("entry_block", None)
             return entered
@@ -737,6 +738,8 @@ class EntryExit(IslandStage):
                     or busy & set(recipe["outputs"])
                 ):
                     continue  # 電子機器を使う作り方は、建ててから見直しで選ぶ
+                if shops is not None and (shelf in recipe["outputs"]) != shops:
+                    continue  # 店と工場は別の回で見る（FM-69）
                 cost = unit_cost(defs, config, kind, recipe, prices, wage)
                 if shelf in recipe["outputs"]:  # 店は小売りの合図だけで見る（FM-69）
                     fill = self._shop_fill(
@@ -1134,24 +1137,23 @@ class EntryExit(IslandStage):
         return total
 
     @staticmethod
-    def _shop_pending(island: IslandState, ctx: StageContext) -> tuple[int, int]:
-        """小売りを売る店のうち、工事中と開いて firms.price_turns ターンたたない店の全力の量の
-        合計と、そのうち工事中の店の分（1000 分の 1）。国営も数える。"""
+    def _shop_pending(island: IslandState, ctx: StageContext) -> list[tuple[int, int | None]]:
+        """小売りを売る店のうち、工事中と開いて firms.price_turns ターンたたない店の、全力の量
+        （1000 分の 1）と開いたターン（工事中は None）。国営も数える。"""
         recent = ctx.turn - ctx.config.get("firms.price_turns")
         good = retail.good_of(ctx.config)
-        pending = building = 0
+        out: list[tuple[int, int | None]] = []
         for f in island.facilities:
             if is_stopped(f) or not retail.sells_retail(ctx.defs, ctx.config, f):
                 continue
             qty = fac.recipe_of(ctx.defs, f)["outputs"][good]
             if not f.built:
-                pending += qty
-                building += qty
-            elif (
-                max(f.economy.get("entered", -(10**9)), f.ext.get(fac.FINISHED, -(10**9))) > recent
-            ):
-                pending += qty
-        return pending, building
+                out.append((qty, None))
+                continue
+            opened = max(f.economy.get("entered", -(10**9)), f.ext.get(fac.FINISHED, -(10**9)))
+            if opened > recent:
+                out.append((qty, opened))
+        return out
 
     @staticmethod
     def _shop_fill(
@@ -1169,20 +1171,26 @@ class EntryExit(IslandStage):
 
         値段が原価の firms.cost_ratio 倍を超えていれば、（直近の買いたい量の平均 − 動いている店の
         全力 − 工事中の店の全力）÷ 新しい店の全力。足りない量（屋台と小さな店から買った量）が
-        合図なら、ターンごとの足りない量から工事中と開いて間もない店の全力を引いた残りが、
-        firms.shortage_turns ターン以上 新しい店の全力の firms.entry_gap 倍を超えたとき、その平均 ÷
-        新しい店の全力。
-        どちらも 1 まで。合図は小売りの財だけで見る（店のサービスは見ない）。"""
+        合図なら、ターンごとの足りない量から、工事中の店と、そのターンにはまだ開いていなかった店の
+        全力を引いた残りが、firms.shortage_turns ターン以上 新しい店の全力の firms.entry_gap 倍を
+        超えたとき、その平均 ÷ 新しい店の全力（開いた後のターンの足りない量には、その店の売った分が
+        もう入っているので引かない）。どちらも 1 まで。合図は小売りの財だけで見る。"""
         settings = ctx.config.get("firms")
         good = retail.good_of(ctx.config)
         qty = recipe["outputs"][good]
-        pending, building = EntryExit._shop_pending(island, ctx)
+        pending = EntryExit._shop_pending(island, ctx)
+        building = sum(q for q, opened in pending if opened is None)
         best = 0.0
         wanted = demand.get(good, [])
         if prices.get(good, 0) > settings["cost_ratio"] * cost and wanted:
             share = (sum(wanted) / len(wanted) - capacity.get(good, 0) - building) / qty
             best = max(best, min(1.0, share))
-        history = [max(0, q - pending) for q in shortages.get(good, [])]
+        raw = shortages.get(good, [])
+        history = []
+        for k, short in enumerate(raw):
+            turn = ctx.turn - (len(raw) - 1 - k)  # 足りない量を記録したターン（最後が今のターン）
+            coming = sum(q for q, opened in pending if opened is None or opened >= turn)
+            history.append(max(0, short - coming))
         gap = settings["entry_gap"] * qty
         if history and sum(1 for q in history if q >= gap) >= settings["shortage_turns"]:
             best = max(best, min(1.0, sum(history) / len(history) / qty))
@@ -1915,12 +1923,18 @@ class EntryExit(IslandStage):
                 worn = equipment.yearly_wear(defs, config, f.kind, prices)
                 r = (YEAR * sum(history) / len(history) - worn) * (1 - tax) / max(1, capital)
             else:
-                if set(recipe.get("inputs", {})) - supplied or self._inputs_short(
+                optional = set(recipe.get("optional_inputs", ()))  # 店の包装は待たない（FM-67）
+                if set(recipe.get("inputs", {})) - optional - supplied or self._inputs_short(
                     recipe, shortages, settings
                 ):
                     continue  # 原料が島で手に入らない
                 cost = unit_cost(defs, config, f.kind, recipe, prices, wage)
-                fill = self._fill(recipe, shortages, demand, capacity, prices, cost, settings)
+                if retail.sells_retail(defs, config, f):  # 店は小売りの合図だけで見る（FM-69）
+                    fill = self._shop_fill(
+                        island, ctx, recipe, shortages, demand, capacity, prices, cost
+                    )
+                else:
+                    fill = self._fill(recipe, shortages, demand, capacity, prices, cost, settings)
                 if fill <= 0:
                     continue  # 参入の合図（品切れか高い値段）がない
                 estimate = ctx.formula("entry_return")(
