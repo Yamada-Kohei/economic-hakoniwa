@@ -10,7 +10,7 @@
 2. 飢えている層・食料の不足
 3. 戦争・停戦、体制の選び直し待ち
 4. 破綻した銀行の処理待ち、条約の返事待ち、申し込まれた契約、次のターンに満期の国債
-5. 電力の不足、止まった施設、品不足、買えなかった財、失業の急な増え
+5. 電力の不足、家計が電気料金を払えない、止まった施設、品不足、買えなかった財、失業の急な増え
 6. 政情・混乱期間・燃料・売りに出した施設・赤字の施設・海外の商人・国債の利回りの上限・
    休止の間の条約
 7. 貿易圏への加盟の申し込み（代表のとき）、最初の 1 年の手順（工業団地・民営の参入・命令の列）
@@ -58,6 +58,7 @@ ORDER = [
     "contract",
     "bonds_due",
     "power",
+    "power_bill",
     "stopped",
     "shortage",
     "unmet",
@@ -88,6 +89,7 @@ LINKS: dict[str, tuple[str, str, str]] = {
     "treaty": ("island_diplomacy", "#proposals", "外交の画面へ"),
     "bonds_due": ("island_fiscal", "", "財政の画面へ"),
     "power": ("island_facilities", "", "施設の状態を見る"),
+    "power_bill": ("island_orders", "", "命令のページへ"),
     "stopped": ("island_facilities", "", "施設の状態を見る"),
     "unmet": ("island_market", "", "市場を見る"),
     "politics": ("island_politics", "", "政治の画面へ"),
