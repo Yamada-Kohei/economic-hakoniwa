@@ -4,40 +4,31 @@
 {% include "web/island_head.html" %}
 
 
-{% if mine and show_guide %}
-<section class="next-steps" aria-labelledby="next-steps-title">
-  <h2 id="next-steps-title">{% translate "次にすること" %} <small>{% translate "建国から1年のあいだ" %}</small></h2>
-  {% if next_steps %}
-  <ol class="next-steps-list">{% for s in next_steps %}
-    <li{% if forloop.first %} class="first"{% endif %}>
+{% if mine %}
+<section class="next-steps home-todo" id="todo" aria-labelledby="todo-title">
+  <h2 id="todo-title">{% translate "今月すべきこと" %} <small>{% translate "急ぐ順" %}</small></h2>
+  {% if todo %}
+  <ol class="next-steps-list todo-list">{% for t in todo %}
+    <li class="todo-{{ t.kind }}{% if forloop.first %} first{% endif %}">
       <span class="step-no" aria-hidden="true">{{ forloop.counter }}</span>
       <div class="step-body">
-        {% if forloop.first %}<span class="step-tag">{% translate "まずはここから" %}</span>{% endif %}
-        <p>{{ s.text }}</p>
-        {% if s.url %}<a class="step-link" href="{{ s.url }}">{{ s.link_text }} →</a>{% endif %}
+        <p>{{ t.text }}</p>
+        {% if t.url %}<a class="step-link" href="{{ t.url }}">{{ t.link_text }} →</a>{% endif %}
       </div>
     </li>{% endfor %}
   </ol>
   {% else %}
-  <p>{% translate "今すぐ手を付けることはありません。更新のたびに、下の「注意」と「前のターンからの主な変化」を見ます。" %}</p>
+  <p>{% translate "今すぐ手を付けることはありません。更新のたびに、ここと下の「前のターンからの主な変化」を見ます。" %}</p>
   {% endif %}
-  <p class="hint">{% translate "島の今の状態から、急ぐ順に出します。" %} <a href="{% url 'help_start' %}#first-year">{% translate "最初の1年（手引き：入門）" %}</a></p>
+  <p class="hint">{% translate "注意・止まった施設・申し込まれた契約・品不足・失業の急な増え・破綻した銀行・返事待ちの条約をここにまとめます。" %}{% if show_guide %} {% translate "建国から1年のあいだは「次にすること」も入ります。" %} <a href="{% url 'help_start' %}#first-year">{% translate "最初の1年（手引き：入門）" %}</a>{% endif %}</p>
 </section>
-{% endif %}
-
-
-{% if alerts %}
+{% elif alerts %}
 <section class="panel alerts">
   <h2>{% translate "注意" %}</h2>
   <ul>{% for a in alerts %}<li>{{ a }}</li>{% endfor %}</ul>
   <p><a href="{% url 'island_market' island.id %}">{% translate "市場で不足を調べる" %}</a> ・ <a href="{% url 'island_facilities' island.id %}">{% translate "施設の状態を調べる" %}</a> ・ <a href="{% url 'island_fiscal' island.id %}">{% translate "財政と失業手当" %}</a> ・ <a href="{% url 'island_chain' island.id %}">{% translate "産業の鎖" %}</a></p>
 </section>
 {% endif %}
-<section class="panel" id="recent-changes" hidden data-url="{% url 'api_island_summary' island.id %}">
-  <h2>{% translate "前のターンからの主な変化" %}</h2>
-  <ul aria-live="polite"></ul>
-  <p class="hint">{% translate "目安を超えて変わった指標を、大きい順に最大3件表示します。数字だけでは原因は分かりません。リンク先で施設の状態・市場・家計を確かめてください。" %}</p>
-</section>
 
 {% if mine %}<p class="home-orders"><a href="{% url 'island_orders' island.id %}">{% translate "命令の列を見る" %}</a></p>{% endif %}
 <div class="island-stats">
@@ -47,6 +38,7 @@
     {% if summary %}
       <table class="info">
         {% for row in summary %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
+        {% if trade %}<tr><th>{% translate "貿易（1ターン）" %}</th><td>{{ trade.text }} <a href="{% url 'island_trade' island.id %}">{% translate "貿易の画面へ" %}</a></td></tr>{% endif %}
         {% if strengths.strengths %}<tr><th>{% translate "得意産業" %}</th><td>{% for x in strengths.strengths %}{{ x.name }}{% if x.rank %} <small class="muted">{% blocktranslate with r=x.rank %}世界 {{ r }} 位{% endblocktranslate %}</small>{% endif %}{% if not forloop.last %}・{% endif %}{% endfor %}</td></tr>{% endif %}
         {% if strengths.titles %}<tr><th>{% translate "称号" %}</th><td>{{ strengths.titles|join:"・" }}</td></tr>{% endif %}
       </table>
@@ -68,6 +60,12 @@
     {% endif %}
   </section>
 </div>
+
+<section class="panel" id="recent-changes" hidden data-url="{% url 'api_island_summary' island.id %}">
+  <h2>{% translate "前のターンからの主な変化" %}</h2>
+  <ul aria-live="polite"></ul>
+  <p class="hint">{% translate "目安を超えて変わった指標を、大きい順に最大3件表示します。数字だけでは原因は分かりません。リンク先で施設の状態・市場・家計を確かめてください。" %}</p>
+</section>
 
 <section class="panel">
   <h2>{% if log_turn is not None %}{% blocktranslate with turn=log_turn|turn_date %}{{ turn }}の出来事{% endblocktranslate %}{% else %}{% translate "出来事" %}{% endif %}</h2>

@@ -219,7 +219,7 @@ URL: {{ mcp_url }}
   <h3>{% translate "もう島があるとき" %}</h3>
   <pre class="prompt">{% blocktranslate %}経済版箱庭諸国の hakoniwa の道具で、私の国を遊んでください。
 whoami で島を確かめ、guide(which=start) で入門を読んでから、summary で国の要約を読んでください。
-注意と next_steps（次にすること）を見て、急ぐものから命令を考えてください。
+todo（今月すべきこと。急ぐ順で、注意と次にすることも入ります）を見て、急ぐものから命令を考えてください。
 命令は check_order で確かめてから set_orders で出し、何をなぜしたかを教えてください。{% endblocktranslate %}</pre>
   <h3>{% translate "どこまで任せるか" %}</h3>
   <ul>
@@ -237,7 +237,7 @@ whoami で島を確かめ、guide(which=start) で入門を読んでから、sum
   <ol>
     <li>{% translate "whoami: 今のターンと次の更新の時刻、未読の公電の数を見ます。" %}</li>
     <li>{% translate "changes(since=前に読んだターン): 前に読んだときから後に起きたこと（ターンログ・変わった指標・命令の結果・届いた公電）だけを読みます。毎回画面を全部読むより、ずっと少ない回数で済みます。" %}</li>
-    <li>{% translate "summary: 国の要約（主な指標・止まった施設とわけ・市場で買えなかった物・飢えている家計・注意・次にすること・並んでいる命令）を読みます。" %}</li>
+    <li>{% translate "summary: 国の要約（今月すべきこと・主な指標・止まった施設とわけ・市場で買えなかった物・飢えている家計・注意・次にすること・並んでいる命令）を読みます。" %}</li>
     <li>{% translate "必要なら map・tile・report・stats で地図や統計を調べます。" %}</li>
     <li>{% translate "check_order で命令を 1 つずつ確かめ、set_orders で命令の列を丸ごと置き換えます。1 ターンに実行されるのは行政力の数までなので、急ぐ物を上に並べます。打ち間違いに見える命令（相場から離れた指値・1 ターンの生産より多い量など）や取り壊しなど戻せない命令は、並べずに確かめの文が返るので、よければ confirm: true を付けて出し直します。1 つだけ足す・消すなら add_order・remove_order が使えます。" %}</li>
     <li>{% translate "letters・board で公電と掲示板を読み、要るなら返事を書きます。" %}</li>
@@ -245,7 +245,7 @@ whoami で島を確かめ、guide(which=start) で入門を読んでから、sum
   </ol>
   <p>{% translate "毎ターン頼む文の例:" %}</p>
   <pre class="prompt">{% blocktranslate %}hakoniwa で次のターンを遊んでください。
-changes で前回からの変化を読み、summary の注意と次にすることを見て、
+changes で前回からの変化を読み、summary の今月すべきこと（todo）を見て、
 命令を check_order で確かめてから set_orders で列を置き換えてください。
 公電と掲示板に返事が要るものがあれば教えてください。
 最後に、したことと次に見ることを diary_set に書いてください。{% endblocktranslate %}</pre>

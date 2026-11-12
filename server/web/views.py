@@ -75,8 +75,8 @@ def island_page(request, island_id: int):
 
 
 def island_home_page(request, island_id: int):
-    """島のホーム（UI-71 の入口「ホーム」）: 次にすること・注意・前のターンからの主な変化・国勢・
-    資源・出来事。"""
+    """島のホーム（UI-71 の入口「ホーム」）: 持ち主には今月すべきこと（UI-76）、ほかの人には注意。
+    その下に国勢（貿易の 1 行を含む）・資源・前のターンからの主な変化・出来事。"""
     return render(request, "web/island_home.html", _island_context(request, island_id, "home"))
 
 
@@ -100,7 +100,7 @@ def _island_context(request, island_id: int, page: str) -> dict:
         for r in (island.regime or {}).values()
         if r in defs.regimes
     ]
-    alerts, next_steps = overview.island_alerts(island, mine)
+    alerts, next_steps, todo = overview.home_lists(island, mine)
     context = {
         "island": island,
         "mine": mine,
@@ -126,6 +126,11 @@ def _island_context(request, island_id: int, page: str) -> dict:
         "page": page,
         "plan_label": politics_views.page_label(island),
     }
+    if page == "home":
+        # 持ち主の「今月すべきこと」（急ぐ順。国の要約の todo と同じ。UI-76）と、国のまとめの貿易の
+        # 1 行（国の要約の trade と同じ。W-247 (8)）
+        context["todo"] = todo
+        context["trade"] = overview.trade_brief(stats, currency)
     return context
 
 
