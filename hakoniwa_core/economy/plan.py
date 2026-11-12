@@ -199,6 +199,7 @@ def stop(island: IslandState) -> None:
     state = island.ext.get(KEY)
     if state and state.get(DUAL):
         _chain_cpi(island, {g: p for g, p in state.get("prices", {}).items() if p > 0})
+        _write_off(island, state.pop(OWED, {}))  # 払っていない価格の補助は売った施設の赤字に
     island.ext.pop(KEY, None)
 
 
@@ -306,8 +307,9 @@ def _chain_cpi(island: IslandState, now: Mapping[str, int]) -> None:
     paid = island.economy.ext.get(PAID)
     if paid is None:
         return
+    # まだ約定の記録のない財も（初めて約定したターンに段差が出ない）
     for good, price in now.items():
-        if good in paid and price > 0:
+        if price > 0:
             paid[good] = price
 
 
@@ -386,14 +388,17 @@ def retail_price(island: IslandState, config: GameConfig, good: str) -> int:
     whole = state.get("prices", {}).get(good, 0)
     if whole <= 0:
         return 0
+    # 卸の値段の確かめで卸だけが上がり続けても、小売 ÷ 卸 − 1 は SAFE_RATE より下げない（家計の
+    # 注文の率と、画面・物価の指数の小売の値段を食い違わせない）
+    least = math.ceil(whole * (BASIS + SAFE_RATE) / BASIS)
     manual = state.get(RETAIL_MANUAL, {}).get(good)
     if manual:
-        return int(manual)
+        return max(least, int(manual))
     fixed = state.get(RETAIL, {}).get(good)
     if fixed:
         _, held = rules(island, config)
         if good in held:
-            return int(fixed)
+            return max(least, int(fixed))
     return taxed(island, whole)
 
 
@@ -470,6 +475,19 @@ def _payable(island: IslandState, config: GameConfig, turn: int) -> bool:
     return policy.bond_unsold == "underwrite" and not policy.cb_independent
 
 
+def _write_off(island: IslandState, owed: Mapping[str, int]) -> int:
+    """払えない価格の補助を、売った施設の損にする（受け取った補助金をマイナスで付ける。売上は付加
+    価値なので触らない）。取り壊した施設と施設でない売り手の分は帳簿に付けない。合計の額を返す。"""
+    total = 0
+    found = {f.id for f in island.facilities}
+    for key, amount in owed.items():
+        number = key.split("|", 1)[1]
+        if number and int(number) in found:
+            books.add(island, int(number), books.SUBSIDY, -amount)
+        total += amount
+    return total
+
+
 def pay_price_subsidies(island: IslandState, config: GameConfig, turn: int) -> None:
     """市場の段の終わり: 取引税と価格の補助を差し引き、補助を売り手に払う（PL-60）。
 
@@ -480,6 +498,7 @@ def pay_price_subsidies(island: IslandState, config: GameConfig, turn: int) -> N
     埋まった分は項目の支出に数えない（次のターンの取り置きは差し引いた不足に余裕を足した額）。"""
     state = island.ext.get(KEY)
     gap = island.scratch.pop(GAP, None) or {"tax": 0, "owed": {}}
+    # 経済体制の変更は命令の段（生産と市場の前）なので、数えた差が体制の外で残ることはない
     if not state or not state.get(DUAL):
         return
     levy = gap["tax"]
@@ -507,9 +526,13 @@ def pay_price_subsidies(island: IslandState, config: GameConfig, turn: int) -> N
                 unpaid[key] = amount - paid
             if is_now:
                 paid_now += paid
-    used = funds.fiscal_state(island)["used"]
-    if used.get(PRICE_SUBSIDY):  # 取引税で埋まった分は項目の支出に数えない
-        used[PRICE_SUBSIDY] -= min(used[PRICE_SUBSIDY], levy, paid_now)
+    fiscal = funds.fiscal_state(island)
+    used, reserved = fiscal["used"], fiscal["reserved"]
+    covered = min(used.get(PRICE_SUBSIDY, 0), levy, paid_now)
+    if covered > 0:  # 取引税で埋まった分は項目の支出に数えない（取り置きも同じだけ外し、残りの
+        # 取り置きの額を変えない）
+        used[PRICE_SUBSIDY] -= covered
+        reserved[PRICE_SUBSIDY] = max(0, reserved.get(PRICE_SUBSIDY, 0) - covered)
     subsidy = sum(now.values())
     short = sum(unpaid.values())
     stats = island.stats
@@ -522,11 +545,13 @@ def pay_price_subsidies(island: IslandState, config: GameConfig, turn: int) -> N
         if not state.get("subsidy_short"):
             island.log.append(LogEntry("plan_subsidy_short", {"amount": short}))
         state["subsidy_short"] = True
-    elif unpaid:  # 国債で埋められない: 売った施設の赤字にする（売上から引く）
-        for key, amount in unpaid.items():
-            number = key.split("|", 1)[1]
-            if number:
-                books.add(island, int(number), books.SALES, -amount)
+    elif unpaid:  # 国債で埋められない: 施設の売り手の分は売った施設の赤字にする
+        mine = {k: v for k, v in unpaid.items() if k.split("|", 1)[1]}
+        _write_off(island, mine)
+        # 施設でない売り手（海外の商人の売りを受け取る中央銀行）の分は持ち越して、払えるときに払う
+        others = {k: v for k, v in unpaid.items() if k not in mine}
+        if others:
+            state[OWED] = others
         if not state.get("subsidy_lost"):
             island.log.append(LogEntry("plan_subsidy_lost", {"amount": short}))
         state["subsidy_lost"] = True

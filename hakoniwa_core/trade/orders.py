@@ -398,8 +398,6 @@ def _deliver(
 ) -> None:
     """作り上げて代金を払い終えた注文の船を海運業に渡す（次の貿易の段で船団に入る）。帳簿には、
     渡したときに注文の値段で売り買いしたとして付ける。"""
-    from hakoniwa_core.economy import plan as planning
-
     good = config.get("trade.ship_good")
     buyer = island.facility(o["buyer"])
     assert buyer is not None
@@ -414,7 +412,6 @@ def _deliver(
     books.add(island, yard.id, books.SALES, value)
     books.stock_moved(island, buyer.id, good, qty)
     books.add(island, buyer.id, books.PURCHASES, value)
-    planning.note_sale(island, config, good, yard, qty, o["price"])
     # 届いた船で様子が変わるので、船が足りなかった記録は数え直す（数えたままだと、同じ不足で
     # また注文する）
     buyer.economy.pop("ships_short", None)

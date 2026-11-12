@@ -1032,6 +1032,8 @@ class Market(IslandStage):
         power = config.get("power.good")
         if official:
             self._plan_record(island, ctx, books_by_good, official, bought)
+        else:  # 公定価格がまだない計画経済の島も、電気の差と持ち越した未払いを払う（PL-60）
+            planning.pay_price_subsidies(island, config, ctx.turn)
         for f in island.facilities:
             outputs = fac.recipe_of(defs, f)["outputs"]
             if f.built and "target" in f.economy and any(g != power for g in outputs):
@@ -1370,12 +1372,12 @@ class Market(IslandStage):
             if short <= 0 or amount <= 0:
                 continue
             gap = part(amount, tax)
-            levy, short = planning.split_gap(gap)  # 計画経済の島は取引税か価格の補助（PL-60）
+            levy, subsidy = planning.split_gap(gap)  # 計画経済の島は取引税か価格の補助（PL-60）
             paid = island.scratch.setdefault(retail.PAID, {})
             paid[layer] = paid.get(layer, 0) + amount + gap
-            funds.pay(island, payer, seller, amount - short, "sale")
+            funds.pay(island, payer, seller, amount - subsidy, "sale")
             funds.pay(island, payer, ledger.GOV, levy, "tax_consumption")
-            planning.note_gap(island, levy, short, seller, shop.id)
+            planning.note_gap(island, levy, subsidy, seller, shop.id)
             books.add(island, shop.id, books.SALES, amount)
             books.add_sector(island, books.HOUSEHOLDS, "goods", amount)
             books.add_sector(island, books.HOUSEHOLDS, "tax", gap)
@@ -2999,7 +3001,7 @@ class Market(IslandStage):
         price = usual_price(island, car, settings["usual_price_turns"], settings["reprice_turns"])
         room = min(round_money((spend - used) * settings["cars"]["share"]), spend - used)
         top = scale_price(price, max(settings["consumer_goods_tiers"]))
-        tax = taxes[car]
+        tax = taxes.get(car, island.policy.consumption_tax)
         one = gross_cost(top, QUANTITY_SCALE, rate, tax)
         if one > 0:
             want = min(want, max(0, room) * QUANTITY_SCALE // one)

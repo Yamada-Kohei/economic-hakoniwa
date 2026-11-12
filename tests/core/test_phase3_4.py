@@ -783,6 +783,13 @@ def test_retail_price_order(game, base):
     assert plan_orders.raises_held_retail(island, {"good": "grain", "price": grain + 1}, config)
     assert not plan_orders.raises_held_retail(island, {"good": "grain", "price": grain}, config)
     assert not plan_orders.raises_held_retail(island, {"good": "steel", "price": whole * 2}, config)
+    # 卸だけが上がり続けても、小売は卸の 1 割より下げない（家計の注文の率と食い違わせない）
+    state = planning.state_of(island)
+    state[planning.RETAIL]["grain"] = 1
+    whole_grain = planning.official(island)["grain"]
+    assert planning.retail_price(island, config, "grain") >= whole_grain // 10
+    assert planning.rate_of(island, config, "grain") >= planning.SAFE_RATE
+    state[planning.RETAIL]["grain"] = grain
     # 改定で据え置く財を名指しすると、小売も卸 ×（1 ＋ 標準の率）に改める
     plan_orders.review_official_prices(island, {"goods": ["grain"]}, ctx)
     cost = planning.official(island)["grain"]
