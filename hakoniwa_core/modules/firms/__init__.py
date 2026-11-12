@@ -1156,6 +1156,16 @@ class EntryExit(IslandStage):
         return out
 
     @staticmethod
+    def _shop_stalled(island: IslandState, ctx: StageContext) -> bool:
+        """小売りを売る店の工事のうち、資材が足りないか前のターンに進まなかったものがあるか。"""
+        return any(
+            not f.built
+            and retail.sells_retail(ctx.defs, ctx.config, f)
+            and (f.ext.get("waiting") or f.ext.get("stalled_turns"))
+            for f in island.facilities
+        )
+
+    @staticmethod
     def _shop_fill(
         island: IslandState,
         ctx: StageContext,
@@ -1178,6 +1188,8 @@ class EntryExit(IslandStage):
         settings = ctx.config.get("firms")
         good = retail.good_of(ctx.config)
         qty = recipe["outputs"][good]
+        if EntryExit._shop_stalled(island, ctx):
+            return 0.0  # 資材が入らず止まった店の工事があれば、次の店は着工しない
         pending = EntryExit._shop_pending(island, ctx)
         building = sum(q for q, opened in pending if opened is None)
         best = 0.0

@@ -140,6 +140,10 @@ def test_shop_entry_does_not_wait_for_shops_being_built(game, sample):
     big = {good: [qty * 3] * turns}
     fill = EntryExit._shop_fill(island, ctx, recipe, big, {}, {}, {}, 1)
     assert fill == pytest.approx(1.0)  # 足りない 3 店分から工事中の 1 店を引いても 2 店分残る
+    # 資材が入らず止まった店の工事があれば、次の店は着工しない
+    building.ext["waiting"] = ["building_materials"]
+    assert EntryExit._shop_fill(island, ctx, recipe, big, {}, {}, {}, 1) == 0
+    building.ext.pop("waiting")
     small = {good: [qty] * turns}
     assert EntryExit._shop_fill(island, ctx, recipe, small, {}, {}, {}, 1) == 0
     # 値段の合図: 買いたい量から動いている店と工事中の店の全力を引いた残り
