@@ -7,7 +7,7 @@ from django.urls import reverse
 from server.world.models import Island
 
 # 画面（URL の名前）と、その画面を説明する手引きの節。help_start は入門、help は詳しい仕組み、
-# help_ai は AI で遊ぶ人向け
+# help_ai は AI で遊ぶ人向け、help_fx は為替の効き方
 SCREEN_HELP = {
     "top": ("help_start", ""),
     "found": ("help_start", "regimes"),
@@ -23,7 +23,7 @@ SCREEN_HELP = {
     "island_fiscal": ("help", "money"),
     "island_finance": ("help", "money"),
     "island_trade": ("help", "trade"),
-    "island_fx": ("help", "trade"),
+    "island_fx": ("help_fx", ""),
     "island_politics": ("help", "politics"),
     "island_plan": ("help", "politics"),
     "island_diplomacy": ("help", "diplomacy"),

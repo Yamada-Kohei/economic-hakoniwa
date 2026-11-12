@@ -22,7 +22,7 @@
     <li><a href="#goods">{% translate "品目と自然条件" %}</a></li>
     <li><a href="{% url 'help_chain' %}">{% translate "産業のつながりの図（別のページ）" %}</a></li>
     <li><a href="#money">{% translate "金融と企業" %}</a></li>
-    <li><a href="#trade">{% translate "貿易と為替" %}</a></li>
+    <li><a href="#trade">{% translate "貿易と為替" %}</a>（<a href="{% url 'help_fx' %}">{% translate "為替の効き方は別のページ" %}</a>）</li>
     <li><a href="#letters">{% translate "外交と公電" %}</a></li>
     <li><a href="#diplomacy">{% translate "外交と条約" %}</a></li>
     <li><a href="#board">{% translate "掲示板" %}</a></li>
@@ -362,6 +362,7 @@
   {% translate "貿易の2つの道" as fig_title %}{% translate "貿易には2つの道があります。(1)貿易圏を通す道: 商社が自動で、島の市場と貿易圏の市場の値段の差が、取り分と運賃を超えるときに、港と船で運んで売り買いします。値段は為替のレートで自国の通貨と決済通貨を替えて比べます。(2)二国間契約: 売る国が国の倉庫から（足りなければ市場で買って）出し、船で運び、買う国の市場に出す（既定）か国の倉庫に置きます。代金は約束した通貨で、買う国が払います。荷が動くには、港と船（燃料を使い、古くなります）と代金の通貨が要ります。電力は運べません。" as fig_text %}
   {% include "web/help_figure.html" with src="img/help/trade-routes.svg" width=480 height=436 title=fig_title text=fig_text %}
   <p class="muted">{% translate "貿易の命令は島の「貿易」の画面から出します。レートと国際収支は「為替」の画面、貿易圏と航路は世界マップで見られます。" %}</p>
+  <p>{% translate "為替がどう効くか、何をすればよいかは" %} <a href="{% url 'help_fx' %}">{% translate "手引き：為替の効き方" %}</a> {% translate "にまとめています。" %}</p>
   <h3>{% translate "物を運び、取引を始める" %}</h3>
   <dl class="rules">
     <dt>{% translate "港と船" %}</dt>
