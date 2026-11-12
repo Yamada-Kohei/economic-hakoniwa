@@ -205,3 +205,22 @@ def test_low_fuel_line_uses_the_same_recent_use_as_the_months_in_the_text(game) 
     entries = [e for e in island.log if e.kind == LOW]
     assert len(entries) == 1
     assert entries[0].args["months"] == 1
+
+
+def test_price_notice_waits_until_the_stock_runs_out_within_the_line(game) -> None:
+    """採算の注意も直近の使用量で見て、在庫が尽きるのが線より先なら知らせない。
+
+    LAN の世界の試し回しで、ほとんど動いていない発電所に「残り約 416 か月」と出た外れ。
+    """
+    island, f, need = _price_rise(game)
+    line = game.config.get("power.price_notice_turns")
+    used = need * 2 // int(line * 2)  # 在庫（need の2倍）が直近の使用の線の倍の月数分
+    _flow(f, used)
+    after_market(island, context(game))
+    assert not any(e.kind == PRICE for e in island.log)
+    assert not f.economy[NOTICES]["active"]
+    _flow(f, -(-need * 2 // line))  # 線の内側で知らせる
+    after_market(island, context(game))
+    entries = [e for e in island.log if e.kind == PRICE]
+    assert len(entries) == 1
+    assert entries[0].args["months"] <= line
