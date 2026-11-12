@@ -437,8 +437,12 @@ def test_farm_selected_recipe_build_estimate_and_standing_labels(world):
     assert manual["workers"] == 500
     assert mechanized["workers"] == fac.workers_needed(game.defs, "farm", "luxury_crop_mechanized")
     assert mechanized["workers"] < manual["workers"]
-    assert "農場の段階は手作業のまま" in mechanized["build_hint"]
-    assert "工期・建設労働者・資材は手作業と同じ" in mechanized["build_hint"]
+    # 段階の作り方は初めからその段階で建ち、段階までの工事の工期と資材を足す（W-257）
+    assert "初めから機械化の段階で建ちます" in mechanized["build_hint"]
+    turns, materials = fac.build_spec(game.defs, "farm", "luxury_crop_mechanized")
+    assert mechanized["construction"]["turns"] == turns
+    assert mechanized["construction"]["materials"] == api._shown_amounts(materials)
+    assert "construction" not in manual
     panel = Path("server/static/js/island/panel.js").read_text(encoding="utf-8")
     assert "this.buildInfo(form.elements.facility.value, form.elements.recipe?.value)" in panel
     orders = Path("server/static/js/island/orders.js").read_text(encoding="utf-8")

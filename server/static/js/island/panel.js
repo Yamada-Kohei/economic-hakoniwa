@@ -566,7 +566,8 @@ export class TilePanel {
     const d = this.defs.facilities[facility];
     if (!d) return "";
     const r = d.recipes?.[recipe] || Object.values(d.recipes || {})[0] || {};
-    const c = d.construction;
+    // 段階の作り方の農場は、その段階までの工事を足した工期と資材（W-257）
+    const c = { ...d.construction, ...(r.construction || {}) };
     const bits = [`工期 ${c.turns} ターン`];
     if (c.labor) bits.push(`建設労働者 ${c.labor.toLocaleString()} 人`);
     if (!d.monument) bits.push(`完成後の従業者 ${(r.workers ?? d.workers).toLocaleString()} 人`);

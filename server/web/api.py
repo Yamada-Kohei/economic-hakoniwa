@@ -270,20 +270,25 @@ def _facility_def(fid: str, f: Any) -> dict[str, Any]:
                 # 電子機器を使う作り方（MI-43）は少ない人手で同じだけ作り、学校は育ちが上がる
                 "labor": r.get("labor", 1.0),
                 "workers": fac.workers_needed(d, fid, rid),
-                **(
-                    {
-                        "build_hint": "選んだ生産方式で操業を始めますが、"
-                        "農場の段階は手作業のままで、"
-                        "段階を上げるには完成後に同じマスへ農場の建設を命令します"
-                        "（工期・建設労働者・資材は手作業と同じです）。"
-                    }
-                    if r.get("grade", 0)
-                    else {}
-                ),
+                **(_graded_build(fid, rid) if fac.build_grade(d, fid, rid) else {}),
                 **({"education_scale": r["education_scale"]} if "education_scale" in r else {}),
             }
             for rid, r in f["recipes"].items()
         },
+    }
+
+
+def _graded_build(fid: str, rid: str) -> dict[str, Any]:
+    """段階の作り方（機械化・近代化）で新しく建てる農場の工期と資材（W-257）。手作業の農場の工事に、
+    その段階までの工事を足した分。"""
+    d = get_game().defs
+    turns, materials = fac.build_spec(d, fid, rid)
+    grade = fac.build_grade(d, fid, rid)
+    name = display.message(fac.grade_name(d, fid, grade))
+    return {
+        "construction": {"turns": turns, "materials": _shown_amounts(materials)},
+        "build_hint": f"初めから{name}の段階で建ちます。手作業の農場の工事に、{name}までの"
+        "工事の工期と資材（機械など）を足した分がかかります。",
     }
 
 
