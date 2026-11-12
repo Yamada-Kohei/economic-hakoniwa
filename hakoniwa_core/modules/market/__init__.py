@@ -3602,9 +3602,10 @@ class Market(IslandStage):
     def _reserve_limit(island: IslandState, ctx: StageContext, good: str, usual: int) -> int:
         """国の穀物の備蓄の買い足しの指値（FS-25。W-239）。
 
-        ふだんはいつもの値段。前のターンの買い足しが埋まらず（輸入で積む形の間は続けて）、島の売り手
-        （施設と国の倉庫。商社と海外の商人は除く）に穀物の売れ残りがなく、圏の市場に前のターンに
-        穀物の売りがあった（輸入が引き合う値段がある）ときは、いつもの値段と輸入が引き合う値段の
+        ふだんはいつもの値段。前のターンの買い足しが埋まらず（輸入で積む形の間は続けて）、島の施設
+        （商社を除く）が穀物を売りに出さず（穀物を作らない島）、島の売り手（施設と国の倉庫。商社と
+        海外の商人は除く）に穀物の売れ残りがなく、圏の市場に前のターンに穀物の売りがあった（輸入が
+        引き合う値段がある）ときは、いつもの値段と輸入が引き合う値段の
         高いほう（輸入で積む形）。この形の間は指値を economy.ext に書き、商社はそれを島の値段として
         輸入を決める（traders.home_price）。穀物を作らない島（漁港だけの島など）は、いつもの値段の
         指値では島に売り手がなく、入れ替えのたびに減って建国の備蓄が2年ほどでなくなっていた。
@@ -3613,6 +3614,8 @@ class Market(IslandStage):
         seen = ext.get(RESERVE_SEEN, {})
         was = ext.pop(traders.RESERVE_IMPORT, None) is not None
         if usual <= 0 or not (was or seen.get("short")) or seen.get("home_unsold", 1) > 0:
+            return usual
+        if seen.get("made", 1) > 0:  # 島の施設が穀物を売りに出している島は、島の売り手から買う
             return usual
         if good in planning.official(island):
             return usual
@@ -3800,9 +3803,15 @@ class Market(IslandStage):
         refill = island.scratch.pop(RESERVE_REFILL, None)
         short = refill is not None and filled(grain, refill) < refill.quantity
         record = next((m for m in island.markets if m.good == grain), None)
+        book = books_by_good.get(grain)
+        made = 0  # 島の施設（商社を除く）が売りに出した穀物
+        for o, p in book.sells if book else ():
+            if p.kind == FACILITY and p.facility is not None:
+                made += 0 if trade.is_trader(config, p.facility) else o.quantity
         island.economy.ext[RESERVE_SEEN] = {
             "short": short,
             "home_unsold": traders.home_supply(island, record)[1],
+            "made": made,
         }
         if not trade.started(island):
             return

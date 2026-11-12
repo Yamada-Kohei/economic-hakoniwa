@@ -75,12 +75,13 @@ def _usual(game, island):
 
 
 def test_reserve_imports_grain_when_no_island_seller_fills_the_refill(game, warmed):
-    """前のターンの買い足しが埋まらず、島の売り手に穀物の売れ残りがなく、圏に穀物の売りがあれば、
+    """前のターンの買い足しが埋まらず、島の施設が穀物を売りに出さず、島の売り手に穀物の売れ残りが
+    なく、圏に穀物の売りがあれば、
     買い足しの指値を輸入が引き合う値段まで上げ、商社はそれを島の値段として輸入する（W-239）。"""
     usual_now = initial_prices(game.defs, game.config)["grain"]
     world, island = _grain_island(game, warmed, usual_now * 3)
     usual = _usual(game, island)
-    island.economy.ext[RESERVE_SEEN] = {"short": True, "home_unsold": 0}
+    island.economy.ext[RESERVE_SEEN] = {"short": True, "home_unsold": 0, "made": 0}
     _, books_by_good = _reserve_orders(game, world, island)
     floor = trade_traders.prospects(island, game.defs, game.config, only="grain")["grain"]
     assert floor.import_floor > usual  # 輸入の原価のほうが高い島
@@ -93,11 +94,16 @@ def test_reserve_imports_grain_when_no_island_seller_fills_the_refill(game, warm
     found = trade_traders.prospects(island, game.defs, game.config)["grain"]
     assert trade_traders.importable(found)
     # 一度入ったら、島の売り手に売れ残りが出るまで続ける（買い足しが埋まっても）
-    island.economy.ext[RESERVE_SEEN] = {"short": False, "home_unsold": 0}
+    island.economy.ext[RESERVE_SEEN] = {"short": False, "home_unsold": 0, "made": 0}
     _, books_by_good = _reserve_orders(game, world, island)
     assert books_by_good["grain"].buys[0][0].limit == bid
+    # 島の施設が穀物を売りに出していれば（穀物を作る島）、島の売り手から買う（いつもの値段）
+    island.economy.ext[RESERVE_SEEN] = {"short": True, "home_unsold": 0, "made": 1}
+    _, books_by_good = _reserve_orders(game, world, island)
+    assert books_by_good["grain"].buys[0][0].limit == usual
+    assert trade_traders.RESERVE_IMPORT not in island.economy.ext
     # 島の売り手（施設と倉庫）に穀物の売れ残りがあれば、いつもの値段に戻す
-    island.economy.ext[RESERVE_SEEN] = {"short": True, "home_unsold": 1}
+    island.economy.ext[RESERVE_SEEN] = {"short": True, "home_unsold": 1, "made": 0}
     _, books_by_good = _reserve_orders(game, world, island)
     assert books_by_good["grain"].buys[0][0].limit == usual
     assert trade_traders.RESERVE_IMPORT not in island.economy.ext
@@ -117,7 +123,7 @@ def test_reserve_import_bid_clears_rounding_with_another_currency(game, warmed):
             view["prices"]["grain"] = price
             island_state(island).setdefault("rates", {})[str(other)] = rate
             island.economy.ext.pop(trade_traders.RESERVE_IMPORT, None)
-            island.economy.ext[RESERVE_SEEN] = {"short": True, "home_unsold": 0}
+            island.economy.ext[RESERVE_SEEN] = {"short": True, "home_unsold": 0, "made": 0}
             island.economy.prices["grain"] = 1
             _reserve_orders(game, world, island)
             found = trade_traders.prospects(island, game.defs, game.config)["grain"]
@@ -129,7 +135,7 @@ def test_reserve_does_not_import_without_a_seller_in_the_bloc(game, warmed):
     """圏の市場に前のターンに穀物の売りがなければ、いつもの値段のまま（輸入が引き合う値段がない）。"""
     world, island = _grain_island(game, warmed, 1)
     island_state(island)["blocs"]["1"]["supply"] = []
-    island.economy.ext[RESERVE_SEEN] = {"short": True, "home_unsold": 0}
+    island.economy.ext[RESERVE_SEEN] = {"short": True, "home_unsold": 0, "made": 0}
     _, books_by_good = _reserve_orders(game, world, island)
     assert books_by_good["grain"].buys[0][0].limit == _usual(game, island)
     assert trade_traders.RESERVE_IMPORT not in island.economy.ext
@@ -142,7 +148,7 @@ def test_release_line_follows_the_import_bid(game, warmed):
     world, island = _grain_island(game, warmed, usual_now * 3)
     usual = _usual(game, island)
     release = game.config.get("food_reserve.release")
-    island.economy.ext[RESERVE_SEEN] = {"short": True, "home_unsold": 0}
+    island.economy.ext[RESERVE_SEEN] = {"short": True, "home_unsold": 0, "made": 0}
     island.economy.prices["grain"] = scale_price(usual, 1 + release)  # いつもの値段の線の上
     sells, _ = _reserve_orders(game, world, island)
     limit = island.economy.ext[trade_traders.RESERVE_IMPORT]
