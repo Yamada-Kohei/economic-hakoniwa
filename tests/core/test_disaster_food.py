@@ -11,11 +11,12 @@ from __future__ import annotations
 import copy
 
 from hakoniwa_core import stock
-from hakoniwa_core.economy import funds
+from hakoniwa_core.economy import funds, retail
 from hakoniwa_core.economy.prices import initial_prices, usual_price
 from hakoniwa_core.log import format_log
-from hakoniwa_core.modules.market import RESERVE_SEEN, Market
-from hakoniwa_core.modules.population import FED
+from hakoniwa_core.market import auction
+from hakoniwa_core.modules.market import FACILITY, RESERVE_SEEN, Book, Market, Party, Payer
+from hakoniwa_core.modules.population import FED, FOOD_ORDERS
 from hakoniwa_core.trade import food_merchant, island_state, merchant
 from hakoniwa_core.trade import traders as trade_traders
 from hakoniwa_core.units import QUANTITY_SCALE, scale_price
@@ -234,6 +235,37 @@ def test_food_merchant_stays_while_its_grain_sells_and_leaves_when_food_is_back(
     food_merchant.decide(island, True, turn)
     food_merchant.remember(island, 0, False, 0, 2.0, (800, 100), False)
     assert not food_merchant.decide(island, False, turn + 1)
+
+
+def test_food_merchant_counts_only_unsold_food_cheaper_than_its_own(game, warmed):
+    """ほかの売り手の売れ残りは、栄養あたりで商人の値段より安い売りだけ数える。物価の高い島で
+    加工した食料が高すぎて売れ残っていても、お金のある家計が食べられなければ商人は来る（島47 の
+    飢饉）。安い食料が売れ残っていれば来ない。"""
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    defs, config = game.defs, game.config
+    ctx = context(game, world)
+    food_merchant.state_of(island).clear()
+    line = food_merchant.line(island, defs, config, retail.cpi(island))
+    nut = food_merchant.nutrition(defs, "food")
+    seller = Party(FACILITY, "fac:1", Payer("x"))
+
+    def remember(ask):
+        sell = auction.Order(10 * QUANTITY_SCALE, ask)
+        books = {"food": Book(sells=[(sell, seller)])}
+        results = {"food": auction.Result(ask, 0, 0, sell.quantity, 0, 0, [], [0])}
+        island.scratch[FOOD_ORDERS] = {
+            "general": {"need": 100 * QUANTITY_SCALE, "ordered": 0, "offered": 0}
+            | {"cost": 0, "budget": 1}
+        }
+        island.scratch["household_goods"] = {}
+        Market()._remember_food(island, ctx, books, results)
+        return food_merchant.state_of(island)["seen"]
+
+    dear = line * nut // QUANTITY_SCALE + 1  # 栄養あたりで商人より高い
+    seen = remember(dear)
+    assert not seen["others_unsold"] and seen["unmet"] == 100 * QUANTITY_SCALE
+    assert remember(dear - 2)["others_unsold"]
 
 
 def test_food_merchant_sells_on_the_market_after_the_food_runs_out(game, warmed):
