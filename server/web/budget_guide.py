@@ -185,13 +185,16 @@ def guide(island: m.Island) -> dict[str, dict[str, Any]]:
             if f.owner == OWNER_STATE and equipment.has_equipment(defs, config, f)
         )
     )
+    # 公共事業費で賃金と仕入れを払う公務の施設（探鉱隊。MI-68）を全力で動かす 1 年の費用
+    explore = _staffed_cost(state, defs, config, "construction", wage, prices, band)
     out["construction"].update(
-        limit=works + queued + upkeep + repairs,
+        limit=works + queued + upkeep + repairs + explore,
         works=works,
         queued=queued,
         upkeep=upkeep,
         repairs=repairs,
-        note="進んでいる国の工事の残り＋インフラの工事の列の残り＋1年の維持と設備の修理",
+        exploration=explore,
+        note="進んでいる国の工事の残り＋インフラの工事の列の残り＋1年の維持と設備の修理＋探鉱隊の1年",
     )
     if pub.HOUSING in out:
         left, upkeep = _housing_costs(state, defs, config, prices, band)
@@ -229,6 +232,8 @@ def texts(g: dict[str, Any], currency: str) -> dict[str, str]:
             f"・インフラの維持（1年） {money(g['upkeep'])}"
             f"・国の施設の設備の修理（1年） {money(g['repairs'])}"
         )
+        if g.get("exploration"):
+            out["parts"] += f"・探鉱隊（1年） {money(g['exploration'])}"
     if "housing_works" in g:
         out["parts"] = (
             f"命令の住宅の工事の残りの資材 {money(g['housing_works'])}"

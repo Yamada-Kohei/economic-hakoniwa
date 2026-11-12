@@ -222,14 +222,20 @@ def demolish(island: IslandState, payload: dict[str, Any], ctx: StageContext) ->
     if fac.is_housing(ctx.config, f):
         shops = [s for s in island.facilities if s.ext.get(fac.SITE) == [x, y]]
     for gone in [*shops, f]:
-        # まだ働いている人は全員解雇し、手当を払う（預金の分け方より先。LB-43）
-        dismissal.on_removal(island, ctx.defs, ctx.config, gone, ctx.turn)
-        ship_orders.cancel_all(island, ctx.config, gone)  # 造船所の前注文（FX-60）
-        sell_leftover_stock(island, gone)
-        close_accounts(island, gone)
-        stock.move_to_warehouse(gone.stock, island.warehouse, ctx.turn, ctx.defs.goods)
-        island.facilities.remove(gone)
+        remove(island, gone, ctx)
     island.log.append(LogEntry("facility_demolished", {"facility": f.kind, "x": x, "y": y}))
+
+
+def remove(island: IslandState, f: Facility, ctx: StageContext) -> None:
+    """施設を島から取り除く（取り壊しと、終わった探鉱隊。MI-68）。働いている人は解雇し、在庫は国の
+    倉庫に戻し、独立採算の施設の預金は持ち主に返す。"""
+    # まだ働いている人は全員解雇し、手当を払う（預金の分け方より先。LB-43）
+    dismissal.on_removal(island, ctx.defs, ctx.config, f, ctx.turn)
+    ship_orders.cancel_all(island, ctx.config, f)  # 造船所の前注文（FX-60）
+    sell_leftover_stock(island, f)
+    close_accounts(island, f)
+    stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
+    island.facilities.remove(f)
 
 
 def close_accounts(island: IslandState, f: Facility) -> None:
