@@ -444,7 +444,7 @@
 | FX-21 | 島で買い手がいるのに売りに出ていない物は、前のターンに圏の市場に売りがあった財だけ、輸入が引き合… | 決定 | tests/core/test_phase3_2.py、tests/core/test_trade.py |
 | FX-22 | 民営の商社は、島の商社の扱った重さの平均が上限の決めた割合を超えるか、取り逃した輸入の儲けが参入… | 決定 | tests/core/test_trade.py |
 | FX-23 | 二国間契約は一方の政府が「相手・財・1ターンの量・値段・通貨（どちらかの国）・期間」を示し、相手… | 決定 | tests/core/test_trade.py |
-| FX-24 | 売り手の国は国の倉庫から出し、足りなければ島の市場で優先して買う | 決定 | tests/core/test_report9_warehouse_contract.py、tests/core/test_trade.py |
+| FX-24 | 売り手の国は国の倉庫から出し、足りなければ島の市場で優先して買う | 決定 | tests/core/test_contract_supply_prices.py、tests/core/test_report9_warehouse_contract.py、tests/core/test_trade.py |
 | FX-25 | 契約で届いた物の行き先は買い手が契約ごとに選ぶ: 市場に出す（既定 | 決定 | tests/core/test_playtest5_fixes.py、tests/core/test_trade.py |
 | FX-26 | 物の援助は値段0で相手の承諾の要らない片道の契約として船で運び、お金の援助は国庫から一度だけ送る | 決定 | tests/core/test_phase3_3.py |
 | FX-27 | 海外の商人は、貿易の仕組みを置いたターン（建国か移し替え）から `foreign_merchan`… | 仮（仮の決まりの表あり） | tests/core/test_trade.py |
