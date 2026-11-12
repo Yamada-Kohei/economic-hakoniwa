@@ -328,6 +328,7 @@ def elastic_orders(
     budget: int,
     freight: int,
     tax: int,
+    extra: tuple[int, ...] = (),
 ) -> list[tuple[int, int]]:
     """値段が高いほど少なく買う曲線の注文（量, 指値）の段（高い指値から。LB-44、回3 の家計の予算の
     買い方と同じ形）。
@@ -339,9 +340,13 @@ def elastic_orders(
     p の段のとき買う量は p 以上の段の量の和（累積の量）になる。前の値段の値幅の下端 low より安い段は
     出さない（そのターンには約定しないのに、市場の記録で買えなかった量に数えられ、売り手が品不足と
     見て作りすぎる。計画経済では生産目標に入る）。band は前の値段の値幅（low, high）。
+
+    extra は倍率の段のほかに置く値段の段（家計の電気は前の電気料金の値幅の中に等しい間隔で置く。
+    LB-47）。上端より高い段は上端に、下端より安い段は出さないのは倍率の段と同じ。
     """
     low, high = band
-    levels = sorted({max(1, min(high, scale_price(centre, m))) for m in multiples})
+    prices = [scale_price(centre, m) for m in multiples] + list(extra)
+    levels = sorted({max(1, min(high, p)) for p in prices})
     levels = [p for p in levels if p >= low]
     out: list[tuple[int, int]] = []
     placed = 0

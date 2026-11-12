@@ -1,7 +1,7 @@
-// 貿易の画面: 輸出・輸入と船のグラフと、貿易の命令（貿易圏を作る・入る・抜ける・設定・代表を譲る・
-// 引き継ぐ、二国間契約の申し込み・受ける・やめる、フェーズ3-3 の関税・輸出補助・輸入の割り当て・
-// 禁輸・援助）。表の中の小さな入力欄（form[data-order]）から、命令の列（右の欄。島の画面と同じ列）の
-// 後ろに足す。
+// 貿易の画面（概要と、契約・貿易圏・船と港・海外の商人のタブ）: 輸出・輸入と船のグラフと、
+// 貿易の命令（貿易圏を作る・入る・抜ける・設定・代表を譲る・引き継ぐ、二国間契約の申し込み・
+// 受ける・やめる、フェーズ3-3 の関税・輸出補助・輸入の割り当て・禁輸・援助）。表の中の小さな
+// 入力欄（form[data-order]）から、命令の列（右の欄か打てる手の箱。島の画面と同じ列）の後ろに足す。
 
 import { mountCharts } from "./common.js";
 import { mountOrders } from "./orders.js";
@@ -11,6 +11,14 @@ const INT_FIELDS = new Set(["bloc", "currency", "approve", "to", "contract", "pa
 // 値段と輸出補助は見せる単位で小数も書ける（W-30。サーバーが計算の単位に直して丸める）
 const NUMBER_FIELDS = new Set(["quantity", "rate", "price", "amount", "fixed_price"]);
 const FLAG_FIELDS = new Set(["open", "no_tariff", "lift", "indefinite"]); // "true" / "false"
+
+// 前の URL（概要の #contracts などの欄）は、欄が移ったタブへ（W-247。#以降はサーバーに届かないので
+// ここで送る）。開いた欄が畳んだ欄（産業政策と援助）なら開く
+const moved = document.getElementById("trade-overview")?.dataset.moved;
+const target = location.hash && moved ? JSON.parse(moved)[location.hash] : null;
+if (target) location.replace(target + location.hash);
+const folded = location.hash ? document.getElementById(location.hash.slice(1)) : null;
+if (folded instanceof HTMLDetailsElement) folded.open = true;
 
 mountCharts();
 const orders = await mountOrders();
@@ -57,7 +65,7 @@ document.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!form.reportValidity()) return;
   const kind = form.dataset.order;
-  const notice = form.closest("section")?.querySelector(".trade-notice");
+  const notice = form.closest("section, details")?.querySelector(".trade-notice");
   const [payload, problem] = payloadOf(kind, form);
   if (!payload) {
     if (notice) notice.textContent = problem;
