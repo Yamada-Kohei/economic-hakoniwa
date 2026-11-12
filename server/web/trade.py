@@ -223,7 +223,7 @@ def bloc_goods(bloc: dict[str, Any]) -> list[dict[str, Any]]:
     """圏の市場の財ごとの値段（決済通貨）・前のターンからの変わり方・約定した量・買い・売り。"""
     defs = get_game().defs
     rows = []
-    for good in defs.goods:
+    for good in display.goods_in_order(defs):
         price = bloc.get("prices", {}).get(good)
         if not price:
             continue
@@ -410,6 +410,7 @@ def trade_data(
         if i != island.id
     ]
     defs = get_game().defs
+    allowed = set(contract_goods(defs))
     data["goods"] = [
         {
             "good": g,
@@ -417,7 +418,8 @@ def trade_data(
             "unit": defs.unit_name(g),
             "home_price": _price_or_none(g, here.economy.prices.get(g)),
         }
-        for g in contract_goods(defs)
+        for g in display.goods_in_order(defs)
+        if g in allowed
     ]
     data["cancel_turns"] = config.get("trade.contract_cancel_turns")
     data["policy"] = policy_view(world, here, islands)
@@ -441,7 +443,8 @@ def policy_view(
     defs = get_game().defs
     rules = here.policy
     goods = []
-    for good in tradable_goods(defs):
+    tradable = set(tradable_goods(defs))
+    for good in (g for g in display.goods_in_order(defs) if g in tradable):
         tariff = policy.tariff_rate(here, good)
         subsidy = policy.export_subsidy(here, good)
         quota = policy.quota(here, good)
@@ -905,6 +908,11 @@ def fx_data(
         before = previous.get(f"fx.{key}")
         if before:
             row["change"] = _percent(e / BASIS, before, 2)
+        # 前のターンに市場で売りと買いに出ていた外貨の量（中央銀行の注文を除く。UI-80。記録の
+        # 前のターンは None）
+        recorded = 0 if "fx.book" in stats else None  # 0 は書かないので、記録したターンなら 0
+        row["offered"] = stats.get(f"fx.offered.{key}", recorded)
+        row["wanted"] = stats.get(f"fx.wanted.{key}", recorded)
         rates.append(row)
     world_view = WorldState(
         turn=world.turn,
@@ -945,17 +953,51 @@ def fx_data(
     if mine:
         data["holdings"] = holding_rows(here, islands)
         data["nonresident"] = nonresident_rows(island, here, islands)
-        data["policy"] = fx_policy_view(here, islands, trading)
+        data["swaps"] = swap_view(world_view, here, islands, _previous_swaps(island, turn, stats))
+        data["policy"] = fx_policy_view(here, islands, trading, rates, data["swaps"]["room"])
         data["foreign_bonds"] = foreign_bond_rows(here, islands)
-        data["swaps"] = swap_view(world_view, here, islands)
     return data
 
 
+def _previous_swaps(
+    island: m.Island, turn: int | None, stats: dict[str, float]
+) -> dict[str, float | None]:
+    """融通で借りている額と貸している額の、1 ターンの増加（自国通貨。前のターンの記録がなければ
+    None）。"""
+    names = ("fx.swap.borrowed", "fx.swap.lent")
+    if turn is None:
+        return dict.fromkeys(names)
+    rows = dict(island.stats.filter(turn=turn - 1, name__in=names).values_list("name", "value"))
+    return {
+        name: stats[name] - rows[name] if name in rows and name in stats else None for name in names
+    }
+
+
 def fx_policy_view(
-    here: IslandState, islands: dict[int, dict[str, Any]], trading: dict[int, IslandState]
+    here: IslandState,
+    islands: dict[int, dict[str, Any]],
+    trading: dict[int, IslandState],
+    rates: list[dict[str, Any]] | None = None,
+    room: int | None = None,
 ) -> dict[str, Any]:
     """為替と資本取引の政策（フェーズ3-3）: 資本取引の制限、中央銀行の介入と固定相場、外国の国債の
-    売り買いの命令。命令の入力に使う一覧（相手の通貨と、国債を出している国）も返す。"""
+    売り買いの命令。命令の入力に使う一覧（相手の通貨と、国債を出している国）も返す。通貨の一覧には
+    前のターンに市場で売りと買いに出ていた量（rates の offered・wanted）と、融通で借りられる残り
+    （room。自国通貨）をその通貨に直した額を添える（介入の欄の目安と確かめ。UI-80）。"""
+    market = {r["currency"]: r for r in rates or []}
+
+    def currency_row(key: str) -> dict[str, Any]:
+        cid = int(key)
+        row = market.get(cid, {})
+        e = fxrates.rate(here, cid)
+        return {
+            "id": cid,
+            "name": _currency(islands, cid),
+            "offered": row.get("offered"),
+            "wanted": row.get("wanted"),
+            "swap_room": room * BASIS // e if room is not None and e > 0 else None,
+        }
+
     defs = get_game().defs
     config = get_game().config
     rules = here.policy
@@ -988,6 +1030,8 @@ def fx_policy_view(
             for key, rate in sorted(rules.fx_peg.items(), key=lambda kv: int(kv[0]))
         ],
         "peg_band": peg_band * 100,  # 固定相場の幅（%）
+        # 介入の効き方の注意（W-255。命令の定義の caution と同じ）
+        "intervention_caution": display.ORDER_CAUTIONS["set_fx_intervention"],
         "bond_orders": [
             {
                 "holder": holder,
@@ -1002,9 +1046,7 @@ def fx_policy_view(
             for key, amount in sorted(issuers.items(), key=lambda kv: int(kv[0]))
         ],
         "currencies": [
-            {"id": int(key), "name": _currency(islands, int(key))}
-            for key in sorted(fxrates.rates(here), key=int)
-            if int(key) != here.id
+            currency_row(key) for key in sorted(fxrates.rates(here), key=int) if int(key) != here.id
         ],
         "issuers": [
             {"id": i, "name": _name(islands, i), "currency_name": _currency(islands, i)}
@@ -1045,11 +1087,15 @@ def foreign_bond_rows(
 
 
 def swap_view(
-    world_view: WorldState, here: IslandState, islands: dict[int, dict[str, Any]]
+    world_view: WorldState,
+    here: IslandState,
+    islands: dict[int, dict[str, Any]],
+    changes: dict[str, float | None] | None = None,
 ) -> dict[str, Any]:
     """中央銀行どうしの融通（フェーズ3-3 の続き。hakoniwa_core/trade/swap.py）: 借りている相手と
     貸している相手ごとの額（その通貨と、自国通貨に直した額）と金利（年率 %）、まだ借りられる額と、
-    決済通貨を発行した国なら、まだ新しく作って貸せる額。上限の割合は %。"""
+    決済通貨を発行した国なら、まだ新しく作って貸せる額。上限の割合は %。為替のタブの頭に出す
+    借りの限度額（limit）と貸している額（lent）、1 ターンの増加（changes。UI-80）も。"""
     config = get_game().config
     view = swap.view(world_view, here, config)
     for field, rows in (("lender", view["owed"]), ("borrower", view["lent"])):
@@ -1064,6 +1110,11 @@ def swap_view(
             row["rate"] = row["rate"] * 100 / BASIS
     view["quota"] = config.get("fx.swap_quota") * 100
     view["issuer_share"] = config.get("fx.swap_issuer_share") * 100
+    view["limit"] = view["borrowed"] + view["room"] if view["room"] is not None else None
+    view["lent_total"] = sum(row["own"] for row in view["lent"])
+    changes = changes or {}
+    view["borrowed_change"] = changes.get("fx.swap.borrowed")
+    view["lent_change"] = changes.get("fx.swap.lent")
     return view
 
 

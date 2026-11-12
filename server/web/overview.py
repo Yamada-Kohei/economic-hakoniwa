@@ -32,7 +32,7 @@ from server.hall import services as hall
 from server.letters import services as letters
 from server.orders.models import Order
 from server.turns.models import TurnLog
-from server.web import country, diplomacy, display, military, rankings, reports
+from server.web import country, diplomacy, display, military, rankings, reports, slowdown
 from server.web import politics as politics_views
 from server.web.trade import food_merchant_view
 from server.world import models as m
@@ -164,10 +164,13 @@ def facility_state(
     island: m.Island, mine: bool = True, viewer: int | None = None
 ) -> dict[str, Any]:
     """止まった施設、満たない稼働のわけごとの数、工事中の施設、稼働準備中（まだ動いたことがない）の
-    施設の数（地図の施設の状態と同じ。誰にでも。隠した施設は持ち主と見つけた国だけ。MI-62）。"""
+    施設の数（地図の施設の状態と同じ。誰にでも。隠した施設は持ち主と見つけた国だけ。MI-62）。
+    持ち主には、生産調整中の施設ごとの目標を下げたわけと打てる手（W-250）も出す（止まった施設の
+    行にも slowdown を付ける）。"""
     game = get_game()
     state = display.island_for_naming(island)
-    stopped, works = [], []
+    facts = slowdown.Facts(island, state) if mine else None
+    stopped, works, slowed = [], [], []
     reasons: dict[str, int] = defaultdict(int)
     rows = [r for r in _facility_rows(island) if display.sees_facility(r, mine, viewer)]
     starting = 0
@@ -182,7 +185,7 @@ def facility_state(
                 {
                     "number": row.number,
                     "name": facility_name(game.defs, game.config, state, f),
-                    "kind_name": game.defs.name("facilities", row.kind),
+                    "kind_name": display.facility_label(f),
                     "x": fac.position(f)[0],
                     "y": fac.position(f)[1],
                     "sale_text": sale,
@@ -196,7 +199,7 @@ def facility_state(
         if not row.built:
             works.append(
                 {
-                    "kind_name": game.defs.name("facilities", row.kind),
+                    "kind_name": display.facility_label(f),
                     "x": x,
                     "y": y,
                     "progress": round(row.progress / 1000, 1),
@@ -207,12 +210,13 @@ def facility_state(
                 }
             )
             continue
+        why = slowdown.explain(facts, f) if facts is not None else None
         if row.operating_rate <= 0 and row.status:  # 地図の止まった印（赤い点）と同じ
             stopped.append(
                 {
                     "number": row.number,
                     "name": facility_name(game.defs, game.config, state, f),
-                    "kind_name": game.defs.name("facilities", row.kind),
+                    "kind_name": display.facility_label(f),
                     "x": x,
                     "y": y,
                     "status_text": text,
@@ -220,15 +224,28 @@ def facility_state(
                     **(
                         {
                             "owner_name": display.message(f"owner_{f.owner}"),
-                            "hint": display.status_hint(f),
+                            "hint": why["hint"] if why and why["hint"] else display.status_hint(f),
                         }
                         if mine
                         else {}
                     ),
+                    **({"slowdown": why} if why is not None else {}),
                 }
             )
         elif row.operating_rate < fac.FULL and text:
             reasons[text] += 1
+            if why is not None:  # 生産調整中（作り続けている）のわけ
+                slowed.append(
+                    {
+                        "number": row.number,
+                        "name": facility_name(game.defs, game.config, state, f),
+                        "kind_name": game.defs.name("facilities", row.kind),
+                        "x": x,
+                        "y": y,
+                        "operating_rate": round(row.operating_rate * 100 / fac.FULL),
+                        "slowdown": why,
+                    }
+                )
     infra = (island.economy or {}).get("infra", {})
     return {
         "facilities": len(rows),
@@ -238,6 +255,7 @@ def facility_state(
         "partial": [
             {"status_text": t, "count": n} for t, n in sorted(reasons.items(), key=lambda r: -r[1])
         ],
+        **({"slowdown_count": len(slowed), "slowdown": slowed[:LIST_MAX]} if mine else {}),
         "on_sale_count": len(on_sale),
         "on_sale": on_sale[:LIST_MAX],
         "construction_count": len(works),
@@ -597,7 +615,7 @@ def island_alerts(island: m.Island, mine: bool) -> tuple[list[str], list[dict[st
 
 STEP_LINKS = {
     "map": "地図へ",
-    "orders": "命令の欄へ",
+    "orders": "命令のページへ",
     "market": "市場を見る",
     "facilities": "施設の状態を見る",
     "chain": "産業の鎖を見る",
@@ -605,9 +623,9 @@ STEP_LINKS = {
 
 
 def _step(key: str, text: str, page: str, island: m.Island) -> dict[str, Any]:
-    """「次にすること」の1行。page は行き先の画面（map・orders は島の画面の中の地図と命令の欄）。"""
-    if page in ("map", "orders"):
-        url = reverse("island", args=[island.id]) + ("#island-map" if page == "map" else "#orders")
+    """「次にすること」の1行。page は行き先の画面（map は島の画面の中の地図）。"""
+    if page == "map":
+        url = reverse("island", args=[island.id]) + "#island-map"
     elif page:
         url = reverse(f"island_{page}", args=[island.id])
     else:
@@ -1011,29 +1029,33 @@ def orders_brief(island: m.Island) -> dict[str, Any]:
     pending = island.orders.filter(status="pending").order_by("seq", "id")
     done = island.orders.exclude(status="pending")
     last = done.aggregate(t=Max("executed_turn"))["t"]
+    labels = display.facility_labels(island)  # 施設への命令の文に種類と作る物を（W-262）
     return {
         "admin_power": int(admin_power),
         "pending": [
             {
+                "id": o.id,  # 1 件ずつ消すときの番号（remove_order・DELETE .../items/<番号>）
                 "kind": o.kind,
                 "payload": display.order_payload(o.kind, o.payload, to_game=False),
                 "cost": d.orders[o.kind]["admin_cost"] if o.kind in d.orders else 0,
-                "text": display.describe_order(o.kind, o.payload),
+                "text": display.describe_order(o.kind, o.payload, labels),
             }
             for o in pending
         ],
         "last_turn": last,
-        "last_results": [_result(o) for o in done.filter(executed_turn=last).order_by("seq")]
+        "last_results": [
+            _result(o, labels) for o in done.filter(executed_turn=last).order_by("seq")
+        ]
         if last is not None
         else [],
     }
 
 
-def _result(o: Order) -> dict[str, Any]:
+def _result(o: Order, labels: dict[tuple[int, int], str] | None = None) -> dict[str, Any]:
     return {
         "turn": o.executed_turn,
         "status": o.status,
-        "text": display.describe_order(o.kind, o.payload),
+        "text": display.describe_order(o.kind, o.payload, labels),
         "reason": display.message(o.reason, **(o.reason_args or {})) if o.reason else "",
     }
 
@@ -1076,6 +1098,7 @@ def changes(
     if not mine:
         results = results.exclude(Q(status="failed") & secret_orders)
         results = results.exclude(hidden_orders)
+    labels = display.facility_labels(island)  # 施設への命令の文に種類と作る物を（W-262）
     data: dict[str, Any] = {
         "island": island.id,
         "since": since,
@@ -1093,7 +1116,7 @@ def changes(
             for row in indicators(reports.with_fiscal(latest), _stats_at(island, since), currency)
             if "before" in row
         ],
-        "orders": [_result(o) for o in results.order_by("executed_turn", "seq")],
+        "orders": [_result(o, labels) for o in results.order_by("executed_turn", "seq")],
     }
     data["hall"] = hall.entries_since(world, since)[-LOG_TURNS_MAX:]  # 国際会議場（誰にでも）
     if mine:

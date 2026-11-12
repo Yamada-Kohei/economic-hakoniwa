@@ -35,7 +35,7 @@ from hakoniwa_core.trade import abroad
 from hakoniwa_core.units import from_milli, to_basis
 from server.economy.models import Account, FacilityBook, MarketRecord, Trade
 from server.game import get_game
-from server.web import budget_guide, display
+from server.web import budget_guide, display, slowdown
 from server.world import models as m
 from server.world.repository import bond_from_row, facility_from_row, load_money
 
@@ -333,6 +333,8 @@ FX_KINDS = {
     "volume": "為替の売買量（{currency}の額）",
     "dealt": "中央銀行が買った外貨（{currency}の額。売りはマイナス）",
     "intervened": "介入と固定相場で中央銀行が買った外貨（{currency}の額。売りはマイナス）",
+    "offered": "為替の市場で売りに出ていた外貨（{currency}の額。中央銀行の注文を除く）",
+    "wanted": "為替の市場で買いに出ていた外貨（{currency}の額。中央銀行の注文を除く）",
 }
 
 
@@ -650,7 +652,7 @@ def market_table(
     traded = last_trades(island)
     standing = display.warehouse_standing(island) if mine else {}
     rows = []
-    for good in defs.goods:
+    for good in display.goods_in_order(defs):
         record = now.get(good)
         made = stats.get(f"production.{good}", 0)
         stock = stats.get(f"stock.{good}", 0)
@@ -839,7 +841,7 @@ def short_facilities(
             {
                 "number": row.number,
                 "name": facility_name(game.defs, game.config, state, f),
-                "kind_name": game.defs.name("facilities", row.kind),
+                "kind_name": display.facility_label(f),
                 "x": x,
                 "y": y,
                 "good": wanted,
@@ -874,6 +876,7 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
     rows = []
     total = 0
     shops: list[dict[str, Any]] = []
+    facts = slowdown.Facts(island, state)  # 生産調整中のわけ（W-250）に使う数
     for row in island.facilities.exclude(kind=housing).order_by("number"):
         f = facility_from_row(row)
         fdef = defs.facilities.get(f.kind, {})
@@ -882,7 +885,7 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
         item: dict[str, Any] = {
             "number": f.id,
             "name": facility_name(defs, config, state, f) if fdef else f.kind,
-            "kind_name": defs.name("facilities", f.kind),
+            "kind_name": display.kind_label(defs, f.kind, f.recipe),
             "owner_name": display.message(f"owner_{f.owner}"),
             "accounting_name": display.message(f"accounting_{f.accounting}"),
             "x": f.x,
@@ -900,6 +903,10 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
             "operating_rate": round(f.operating_rate * 100 / fac.FULL) if f.built else None,
             "has_books": bool(books_of),
         }
+        why = slowdown.explain(facts, f) if fdef else None
+        if why is not None:  # 生産調整中・生産停止中のわけと、わけに合わせた打てる手（W-250）
+            item["slowdown"] = why
+            item["hint"] = why["hint"] or item["hint"]
         item.update(display.engineers_info(f, fdef) if fdef else {})
         if fdef and fac.grade_steps(defs, f.kind):  # 農場の段階（W-190）。工事なら上げる先の段階
             item["grade_name"] = display.message(fac.grade_name(defs, f.kind, fac.grade_of(f)))
@@ -1139,11 +1146,14 @@ def facility_book(
         return None
     name = f"施設（{number} 番）"
     kind_name = ""
+    why = None
     if row is not None:
         f = facility_from_row(row)
         if f.kind in game.defs.facilities:
-            name = facility_name(game.defs, game.config, display.island_for_naming(island), f)
-        kind_name = game.defs.name("facilities", f.kind)
+            state = display.island_for_naming(island)
+            name = facility_name(game.defs, game.config, state, f)
+            why = slowdown.explain(slowdown.Facts(island, state), f)
+        kind_name = display.kind_label(game.defs, f.kind, f.recipe)
     used = [key for key, _, _ in display.BOOK_ITEMS if any(r.items.get(key) for r in records)]
     return {
         "island": island.id,
@@ -1161,6 +1171,8 @@ def facility_book(
         "deposit": [r.deposit for r in records],
         "debt": [r.debt for r in records],
         "inventory": [r.inventory for r in records],
+        # 今の生産調整中・生産停止中のわけと打てる手（W-250。状態が売れ行きの調整でなければ None）
+        "slowdown": why,
     }
 
 

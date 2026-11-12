@@ -224,7 +224,7 @@ def test_finance_orders_are_accepted(client, world):
         assert warnings.get(index, start).startswith(start)
     texts = [o["text"] for o in data["orders"]]
     assert texts[0] == "工業団地・オフィス街の指定: 工業団地 1 マス"
-    assert texts[11] == f"銀行への緊急の貸し出し: ({bank.x}, {bank.y}) 上限 10,000"
+    assert texts[11] == f"銀行への緊急の貸し出し: 銀行 ({bank.x}, {bank.y}) 上限 10,000"
 
     # 形の誤りは受け付けない
     bad = {"orders": [{"kind": "set_bank_policy", "payload": {"entry": "anyone"}}]}
@@ -235,7 +235,7 @@ def test_bond_payment_needs_bonds(client, world):
     """国債の利払いの停止は、国債の銘柄があるときだけ通る（命令の確かめは国債も読む）。"""
     island = _own_island(client)
     url = f"/api/islands/{island.id}/orders"
-    body = {"orders": [{"kind": "set_bond_payment", "payload": {"stop": True}}]}
+    body = {"orders": [{"kind": "set_bond_payment", "payload": {"stop": True}}], "confirm": True}
     island.bonds.all().delete()
     warnings = client.put(url, body, content_type="application/json").json()["warnings"]
     assert warnings == [{"index": 0, "text": "国債がありません"}]

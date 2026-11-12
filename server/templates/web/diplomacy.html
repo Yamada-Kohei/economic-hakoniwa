@@ -25,7 +25,7 @@
   <details class="diplomacy-compose">
     <summary>{% translate "宣戦布告の命令" %}</summary>
     <p class="hint">{% translate "戦争は布告の次のターンから始まります。不可侵・同盟の予告期間が終わる前の宣戦は、条約違反になります。" %}</p>
-    <form class="actions diplomacy-form" data-order="declare_war" data-confirm="{% translate '宣戦を命令に追加します。実行すると次のターンから戦争になります。よろしいですか。' %}">
+    <form class="actions diplomacy-form" data-order="declare_war">
       <label>{% translate "宣戦する相手" %}<select name="target" required><option value="">{% translate "（国を選んでください）" %}</option>{% for p in d.choices.partners %}<option value="{{ p.id }}">{{ p.name }}（{{ p.id }}）</option>{% endfor %}</select></label>
       <label>{% translate "理由（任意）" %}<input name="reason" maxlength="200"></label>
       <button type="submit">{% translate "宣戦を命令に追加" %}</button>
@@ -41,7 +41,7 @@
   <article class="diplomacy-card" id="treaty-{{ t.id }}">
     {% include "hall/treaty_details.html" with proposal_turns=d.rules.proposal_turns %}
     {% if mine and not t.notice %}{% if t.clauses.0.type != "peace" or t.clauses|length > 1 %}
-    <form class="actions" data-order="denounce_treaty" data-confirm="{% translate '条約の破棄の予告を命令に追加します。条約に定めた予告期間の後に終わります。よろしいですか。' %}">
+    <form class="actions" data-order="denounce_treaty">
       <input type="hidden" name="treaty" value="{{ t.id }}"><button type="submit"{% for c in t.clauses %}{% if c.type == "peace" and c.reparations and c.reparations.state != "paid" and c.reparations.state != "defaulted" %} disabled{% endif %}{% endfor %}>{% translate "破棄の予告を命令に追加" %}</button>
       <p class="hint">{% translate "上にある条項の予告期間が適用されます。複数あるときは最も長い期間です。講和の賠償が未決着の間は破棄できません。" %}</p>
     </form><p class="order-notice" role="status"></p>

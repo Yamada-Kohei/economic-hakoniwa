@@ -281,7 +281,7 @@ def test_military_api_shows_reserve_cargo_and_capacity_in_shown_units(client, wo
 def test_an_order_refused_in_a_later_stage_shows_as_failed_with_the_reason(client, world):
     island = _own_island(client)
     url = f"/api/islands/{island.id}/orders"
-    body = {"orders": [{"kind": "denounce_treaty", "payload": {"treaty": 999}}]}
+    body = {"orders": [{"kind": "denounce_treaty", "payload": {"treaty": 999}}], "confirm": True}
     assert client.put(url, body, content_type="application/json").status_code == 200
     run_turn(force=True)
     saved = island.orders.get()
