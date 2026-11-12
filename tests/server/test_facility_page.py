@@ -15,7 +15,7 @@ from django.test import Client
 
 from server.orders.models import Order
 from server.turns.services import run_turn
-from server.web import mcp
+from server.web import facility_page, mcp
 from server.world import models as m
 from tests.server.test_phase1 import _own_island
 
@@ -138,3 +138,62 @@ def test_facility_names_link_to_the_page(client, owned):
     panel = (REPO / "server/static/js/island/panel.js").read_text(encoding="utf-8")
     assert "${this.facilityLink(f)}" in panel and "施設のページを開く" in panel
     assert mcp.SCREENS["facility_page"] == ("api_get", "tile", "set_orders")
+
+
+# 地図のマスの窓から施設のページへ移した、施設ごとの細かい命令（UI-78）
+MOVED_FROM_MAP = (
+    "set_priority",
+    "change_recipe",
+    "set_accounting",
+    "nationalize",
+    "privatize",
+    "set_subsidy",
+    "emergency_loan",
+    "resolve_bank",
+    "rename_facility",
+    "demolish",
+)
+
+
+def test_facility_orders_moved_from_the_map_are_on_the_page(client, owned):
+    """地図の窓から外した命令は、どれも施設のページの打てる手の箱に入力欄がある（UI-77・UI-78）。"""
+    island, _, _ = owned
+    template = (REPO / "server/templates/web/facility.html").read_text(encoding="utf-8")
+    for kind in MOVED_FROM_MAP:
+        assert kind in facility_page.FACILITY_ORDERS
+        assert f'"{kind}" in actions' in template or kind in ("nationalize", "privatize")
+    # 地図の窓には施設ごとの入力欄を残さず、施設のページへのリンクを出す
+    panel = (REPO / "server/static/js/island/panel.js").read_text(encoding="utf-8")
+    for form in ("rename", "priority", "accounting", "recipe", "ownership", "subsidy"):
+        assert f'data-form="{form}"' not in panel
+    for form in ("emergency", "resolve", "build", "expand", "housing", "shop", "place"):
+        assert (f'data-form="{form}"' in panel) is (form not in ("emergency", "resolve"))
+    assert "施設のページで命令を出す" in panel
+    # 出せる命令（actions）には、どの施設でも箱に入力欄がある
+    seen = set()
+    for row in island.facilities.exclude(kind="housing").filter(x__gte=0).order_by("number"):
+        html = client.get(f"/islands/{island.id}/facilities/{row.number}/").content.decode()
+        box = html.split('class="panel action-box"')[1]
+        data = client.get(f"/api/islands/{island.id}/facilities/{row.number}").json()
+        for kind in data["actions"]:
+            assert f'data-order="{kind}"' in box, (row.kind, kind)
+        seen |= set(data["actions"])
+    assert {"set_priority", "change_recipe", "nationalize", "set_subsidy", "emergency_loan"} <= seen
+    assert {"set_accounting", "rename_facility", "demolish"} <= seen
+
+
+def test_recipe_form_on_the_page_names_the_effects(client, owned):
+    """生産方式の切り替えの候補は、地図の建設の欄と同じく効果を添え、電子機器の注意を出す。"""
+    island, _, _ = owned
+    school = island.facilities.filter(kind="school", owner="state").first()
+    html = client.get(f"/islands/{island.id}/facilities/{school.number}/").content.decode()
+    form = html.split('data-order="change_recipe"')[1].split("</form>")[0]
+    assert re.search(r'value="digital">[^<]*・育ち \+20%', form)
+    assert "手元にないまま続くと基本の作り方に戻ります" in form
+    data = client.get(f"/api/islands/{island.id}/facilities/{school.number}").json()
+    assert data["recipe_form"]["choices"][0]["label"].endswith("育ち +20%")
+    # 民営の施設は企業が替えるので、画面からは替えられないとだけ出す
+    farm = _farm(island)
+    html = client.get(f"/islands/{island.id}/facilities/{farm.number}/").content.decode()
+    assert 'data-order="change_recipe"' not in html and "画面からは替えられません" in html
+    assert facility_page.recipe_label("school", "basic", "基本") == "基本"

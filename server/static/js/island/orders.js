@@ -521,7 +521,7 @@ export class OrderQueue {
       .join("");
     forms.set_subsidy = `<form class="actions" data-form="set_subsidy">
         <strong>資源ごとの補助金</strong>
-        <p class="hint">生産補助はその資源を作る施設に売上の割合を、設備投資補助はその資源を作る民営工場が新しく建つときに建設費の割合を、補助金の予算から出します。施設ごとの補助金は、地図で施設を選んで出します。</p>
+        <p class="hint">生産補助はその資源を作る施設に売上の割合を、設備投資補助はその資源を作る民営工場が新しく建つときに建設費の割合を、補助金の予算から出します。施設ごとの補助金は、施設のページ（地図の施設のマスの窓や施設の一覧から開きます）で出します。</p>
         ${current ? `<ul>${current}</ul>` : ""}
         <label>種類 <select name="kind">${options(p.subsidy_kinds)}</select></label>
         <label>資源 <select name="good">${goods}</select></label>

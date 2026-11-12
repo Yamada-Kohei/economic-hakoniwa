@@ -45,7 +45,6 @@ document.addEventListener("submit", async (e) => {
   if (!form || !firmOrders) return;
   e.preventDefault();
   const box = form.closest("#actions");
-  if (form.dataset.confirm && !confirm(form.dataset.confirm)) return;
   const payload = box ? facilityPayload(form, box) : { firm: Number(form.dataset.firm) };
   await firmOrders.add(form.dataset.order, payload);
   const notice = document.querySelector(".firm-notice, .facility-notice");
@@ -87,10 +86,12 @@ if (detail) {
     if (request !== state.request) return;
     const kind = data.kind_name && data.kind_name !== data.name ? `（${data.kind_name}）` : "";
     slot("title").textContent = `${data.name}${kind}の帳簿`;
-    // 今の生産調整中・生産停止中のわけと打てる手（W-250）
+    // 今の生産調整中・生産停止中のわけと打てる手（W-250）。施設のページは見る所に出すので欄がない
     const why = slot("slowdown");
-    why.innerHTML = data.slowdown ? slowdownHtml(data.slowdown) : "";
-    why.hidden = !data.slowdown;
+    if (why) {
+      why.innerHTML = data.slowdown ? slowdownHtml(data.slowdown) : "";
+      why.hidden = !data.slowdown;
+    }
     // 表と同じく、支出は負の数で描く（損益と同じ向きにそろえる）
     const flows = FLOW_ITEMS.filter((k) => k in data.items).map((k) => ({
       key: k,
