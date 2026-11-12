@@ -117,9 +117,9 @@ def test_blocs_form_and_goods_are_shipped(game, traded):
 
 
 def test_freight_rate_is_per_ton_and_cell(game, traded):
-    """運賃は荷 1 トン × 区画 1 つあたり: （1 + 上乗せ）×（運航費 + 資本費 × 4u）÷ 1 隻を全部使った
-    ときに運ぶ量（FX-74）。船を半分使ったとき（u = 0.5）は前の決め方（費用 ÷ 船を半分使った量）と
-    同じ値で、船が余れば運航費まで下がり、足りなければ上がる。"""
+    """運賃は荷 1 トン × 区画 1 つあたり: （1 + 上乗せ）×（運航費 + 資本費 × min(1, 2u)）÷ 1 隻を
+    全部使ったときに運ぶ量（FX-74）。船が余れば運航費まで下がり、半分より多く使えば船の傷みまで
+    回収する全部の費用で止まる（足りないときの割増は付けない）。"""
     world = copy.deepcopy(traded[0])
     island = world.islands[1]
     f = shipping_of(island, game.config)
@@ -135,14 +135,13 @@ def test_freight_rate_is_per_ton_and_cell(game, traded):
         carried = round(ships.fleet(f) * full * use)  # 1000 分の 1
         ships.close_turn(island, game.config, carried, 0)
         capital = f.economy["capital_costs"][-1] * QUANTITY_SCALE / ships.fleet(f)
-        expected = (run_cost + capital * 4 * min(1, use)) / full * markup
+        expected = (run_cost + capital * min(1, 2 * use)) / full * markup
         assert abs(f.economy["rate"] - expected) <= 1
         rates[use] = f.economy["rate"]
         assert abs(capital - wear) <= 1
-    assert rates[0] < rates[0.5] < rates[1] == rates[2]
-    # u = 0.5 で前の決め方（船を半分使った量で費用を割る）と同じ
-    half = (run_cost / 2 + wear) / (full / 2) * markup
-    assert abs(rates[0.5] - half) <= 1
+    assert rates[0] < rates[0.5] == rates[1] == rates[2]
+    # 半分より多く使えば全部の費用（運航費 + 傷み）
+    assert abs(rates[1] - (run_cost + wear) / full * markup) <= 1
 
 
 def test_scrapping_a_ship_keeps_the_rate_and_writes_off_its_capital(game, traded):
