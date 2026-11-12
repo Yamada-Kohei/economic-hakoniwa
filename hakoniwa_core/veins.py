@@ -58,7 +58,10 @@ def _rng(seed: int, version: int, island_id: int) -> random.Random:
 
 def roll(seed: int, island_id: int, good: str) -> float:
     """島の地質の数（0 以上 1 未満。探鉱 MI-68）。鉱脈の資源は place が引くのと同じ数で、鉱脈の
-    割合より下なら鉱脈。鉱脈のない資源は、世界の種と島の番号と資源で別に 1 つ引く。"""
+    割合より下なら鉱脈。鉱脈のない資源は、世界の種と島の番号と資源で別に 1 つ引く。
+
+    版を足して今は鉱脈のない資源に鉱脈を置くときは、その資源の鉱脈も geology の数で決める（数の
+    出どころが変わると、探鉱で調べ終えた島の地質と食い違う）。"""
     for version, goods in sorted(RESOURCES.items()):
         if good in goods:
             rng = _rng(seed, version, island_id)

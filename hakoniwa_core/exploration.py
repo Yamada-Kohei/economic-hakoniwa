@@ -39,7 +39,8 @@ def explored(island: IslandState) -> dict[str, str]:
 
 
 def base_resources(island: IslandState) -> list[str]:
-    """始めの値段（商人の値段・公定価格の基準）に使う資源: 探鉱で見つけた資源を除く。"""
+    """始めの値段（商人の値段・公定価格の基準）に使う資源: 探鉱で見つけた資源を除く（鉱脈の資源は
+    前から基準に入っているので、そのまま入れる）。"""
     found = {g for g, r in explored(island).items() if r == FOUND}
     return [g for g in island.resources if g not in found]
 

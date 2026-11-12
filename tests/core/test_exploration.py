@@ -282,3 +282,29 @@ def test_an_island_without_copper_can_make_electronics_from_bauxite(game):
     base = initial_prices(game.defs, game.config)
     island = initial_prices(game.defs, game.config, ["coal", "iron_ore", "bauxite", "crude_oil"])
     assert island["electronics"] > base["electronics"]
+
+
+def test_a_wrecked_team_starts_over_and_a_finished_team_leaves_the_grid(game, world, monkeypatch):
+    """攻撃や暴動で壊れて直す工事になった探鉱隊は、進みが 0 に戻る。終わった探鉱隊のマスには送電網を
+    残す（まわりの施設の送電網が切れないように）。"""
+    from hakoniwa_core import infra
+
+    island = world.islands[1]
+    team = start(game, world, "stone")
+    advance(game, world, team, 4)
+    team.ext["repair"] = True
+    team.built = False
+    Exploration().run_island(island, ctx_of(game, world))
+    assert team.ext[exploration.EXPLORE]["progress"] == 0
+    team.ext.pop("repair")
+    monkeypatch.setitem(game.config.raw["explore"], "turns", 2)
+    advance(game, world, team, 2)
+    assert team not in island.facilities
+    assert infra.level(island.tile(team.x, team.y), infra.POWER) == infra.FULL
+
+
+def test_the_last_month_of_wages_is_paid_before_the_team_leaves(game, world, monkeypatch):
+    """探鉱の段は賃金と市場の段の後: 終わる月に働いた人の賃金を払ってから探鉱隊を取り除く。"""
+    stages = list(game.config.stages)
+    assert stages.index("exploration") > stages.index("payroll")
+    assert stages.index("exploration") > stages.index("market")

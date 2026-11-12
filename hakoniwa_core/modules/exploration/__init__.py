@@ -3,19 +3,20 @@
 - 命令 explore: 島がまだ持っていない鉱業資源を 1 つ選び、それを掘る施設（鉱山・採石場・油井）の建つ
   地形のマスに探鉱隊を置く（工事は建設の命令と同じに進む。国営だけ・島に 1 つ）。探鉱隊は公務の施設
   で、賃金と仕入れ（機械と燃料）は予算の公共事業費から払う（学校と同じ形。施設の定義の budget）。
-- 段 exploration（工事の段の後）: 建った探鉱隊の進みに、このターンの稼働率を足す。全力で
-  explore.turns ターン分たまると、島の地質に鉱床があれば鉱業資源に足し、なければ「見つからなかった」
-  と覚える。どちらでも探鉱隊は取り壊し、マスは空く。探鉱中にその資源の鉱脈が出たり、鉱脈で島の
-  鉱業資源が上限に届いたりしたら、見つけずに終わる。
-- やめるときは取り壊しの命令（払ったお金は戻らず、進みも消える）。災害や攻撃で探鉱隊がなくなっても
-  進みは消える（進みは施設が持つ）。
+- 段 exploration（市場の段の後。その月の賃金と仕入れを払ってから取り除くため）: 建った探鉱隊の
+  進みに、このターンの稼働率を足す。全力で explore.turns ターン分たまると、島の地質に鉱床があれば
+  鉱業資源に足し、なければ「見つからなかった」と覚える。どちらでも探鉱隊は取り壊し、マスは空く
+  （送電網は残す）。探鉱中にその資源の鉱脈が出たり、鉱脈で島の鉱業資源が上限に届いたりしたら、
+  見つけずに終わる。
+- やめるときは取り壊しの命令（払ったお金は戻らず、進みも消える）。災害や攻撃で探鉱隊がなくなっても、
+  壊れて直す工事になっても、進みは消える（進みは施設が持つ）。
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from hakoniwa_core import exploration
+from hakoniwa_core import exploration, infra
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
@@ -66,6 +67,8 @@ class Exploration(IslandStage):
                 # 探している資源の鉱脈が出たか、鉱脈で島の鉱業資源が上限に届いた
                 self._finish(island, f, ctx, "explore_stopped", {"good": good})
                 continue
+            if f.ext.get("repair"):  # 攻撃や暴動で壊れた: 調べた記録も失い、直してから始め直す
+                spec["progress"] = 0
             if not f.built or f.ext.get("occupied"):
                 continue
             spec["progress"] += f.operating_rate
@@ -86,6 +89,9 @@ class Exploration(IslandStage):
         island: IslandState, f: Facility, ctx: StageContext, kind: str, args: dict[str, Any]
     ) -> None:
         construction.remove(island, f, ctx)
+        # 施設のマスは送電網の一部なので、送電網を残して、まわりの施設の送電網が切れないようにする
+        # （閉鎖や倒産で施設を除くときと同じ。facilities.vacate）
+        infra.set_level(island.tile(f.x, f.y), infra.POWER, infra.FULL)
         island.log.append(LogEntry(kind, args))
 
 
