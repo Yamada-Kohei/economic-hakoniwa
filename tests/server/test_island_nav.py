@@ -58,7 +58,7 @@ def test_home_and_map_are_split(client, world):
     island = _own_island(client)
     home = client.get(f"/islands/{island.id}/home/").content.decode()
     assert "国勢" in home and 'id="recent-changes"' in home and 'id="island-map"' not in home
-    assert f'href="/islands/{island.id}/#orders"' in home
+    assert f'href="/islands/{island.id}/orders/"' in home  # 命令のページ（UI-74）
     page = client.get(f"/islands/{island.id}/").content.decode()
     assert 'id="island-map"' in page and 'id="orders"' in page and "国勢" not in page
 
