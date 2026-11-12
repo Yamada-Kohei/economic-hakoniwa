@@ -411,7 +411,7 @@
 | IN-31 | 注文: 雇用の段の初め（施設が雇いたい人数を決める前）に、公共事業が維持・命令の工事・役所の工事… | 決定（2026-11-12 実装） | tests/core/test_contractors.py |
 | IN-32 | 業者が届けられなかった分と注文できなかった分は直営で雇う | 決定（2026-11-12 実装） | tests/core/test_contractors.py |
 | IN-33 | 単価は業者ごとに持ち、市場の段で売り手の希望価格と同じ形で動かす: 注文が全力に届けば上げ、手が… | 決定（2026-11-12 実装） | tests/core/test_contractors.py |
-| IN-34 | 重機: 業者は機械を重機として買い、1 台を人手 `contractor.machines.wo`… | 決定（W-270 で作る） | （未確認） |
+| IN-34 | 重機: 業者は機械を重機として買い、1 台を人手 `contractor.machines.wo`… | 決定（2026-11-13 実装） | tests/core/test_contractors.py |
 | IN-35 | 土木業者の持ち主: 遊ぶ人は命令で建て（国営）、民間は採算が合えば参入する（見込みは直近の埋まら… | 決定（2026-11-12 実装） | tests/core/test_contractors.py |
 | IN-36 | 業者への代金は業者の売上と、工事の部門の請負の項目（GDP の支出の側の投資）に記帳する（業者の… | 決定（2026-11-12 実装） | tests/core/test_contractors.py |
 | IN-37 | 計画経済の島の業者は、受けた注文の種類ごとに、その工事の優先度の位置で雇う（維持の分は `inf`… | 決定（2026-11-12 実装） | tests/core/test_contractors.py |

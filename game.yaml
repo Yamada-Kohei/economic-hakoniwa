@@ -265,6 +265,17 @@ contractor:
   # 業者の全力の entry_share 以上で、予定価格で賃金を払えるとき
   entry_turns: 6
   entry_share: 0.5
+  # 重機（IN-34。hakoniwa_core/modules/infrastructure/machines.py）: 機械 1 台を作業員 workers 人分と数える。
+  # 運送業のトラック（freight.trucks）と同じ形。機械 1 台は作業員の賃金の約 2700 ターン分の値段の大きな
+  # 機械なので、1 台を初めの賃金で替えられる人数を、使う費用より少し多い 40 人にする（賃金が上がるほど使う）
+  machines:
+    good: machinery
+    workers: 40           # 重機 1 台を、作業員何人分の工事として数えるか
+    fuel: {fuel: 0.01}    # 1 台が 1 ターンに使う燃料
+    wear: 0.1             # 1 年に傷んで使えなくなる割合
+    max_share: 0.5        # 受けた注文に要る人数のうち、重機で替えられる割合の上限
+    catch_up: 0.1         # 欲しい台数に足りない分のうち、1 ターンに買う割合
+    fuel_turns: 3         # 持っておく燃料（持っている重機の何ターン分）
 
 # 貿易（フェーズ3-1）。量は財の重さ（goods.yaml の freight_weight。トン）で数えます。
 trade:

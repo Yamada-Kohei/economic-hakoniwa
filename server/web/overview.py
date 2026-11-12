@@ -788,6 +788,8 @@ WORKS_STATS = [
     ("direct", "works.direct"),
     ("contracted", "works.contracted"),
     ("contractor_price", "contractor.price"),
+    ("machines", "contractor.machines"),
+    ("machines_working", "contractor.machines_working"),
 ]
 
 

@@ -250,6 +250,7 @@ export class TilePanel {
         rows.push(["受けた工事", `維持 ${c.upkeep.toLocaleString()}・新しい工事 ${c.build.toLocaleString()}（届けた ${c.delivered.toLocaleString()} / 全力 ${c.full.toLocaleString()}。直営の作業員の人数に直して）`]);
         rows.push(["工事の単価", c.treasury ? "国庫直轄（代金のやり取りはなく、賃金を公共事業費から払います）"
           : `${c.price.toLocaleString()}（予定価格 ${c.ceiling.toLocaleString()}。直営の作業員1人・1ターン分あたり）`]);
+        if (c.machines) rows.push(["重機", `${c.machines.toLocaleString()} 台（このターン動いた ${c.machines_working.toLocaleString()} 台）`]);
       }
       if (f.engineers_needed) {
         const seats = f.engineers_wanted !== f.engineers_needed ? `（技術者の席 ${f.engineers_wanted.toLocaleString()}）` : "";

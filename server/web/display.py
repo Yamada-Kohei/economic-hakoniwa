@@ -409,7 +409,7 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
 def contract_info(island: IslandState, f: Facility) -> dict[str, Any]:
     """土木業者（W-270）の欄: このターンに受けた工事（維持・新しい工事）・届けた工事・全力（直営の
     作業員の人数に直した単位）・単価と予定価格（工事 1 単位）・国庫直轄か。"""
-    from hakoniwa_core.modules.infrastructure import contracts
+    from hakoniwa_core.modules.infrastructure import contracts, machines
 
     game = get_game()
     defs, config = game.defs, game.config
@@ -420,6 +420,8 @@ def contract_info(island: IslandState, f: Facility) -> dict[str, Any]:
         "delivered": round(f.economy.get(contracts.DELIVERED, 0) / 1000, 1),
         "full": round(contracts.full(defs, config, f) / 1000, 1),
         "treasury": contracts.treasury(f),
+        "machines": round(machines.owned(f) / machines.MILLI, 2),
+        "machines_working": round(f.economy.get(machines.WORKING, 0) / machines.MILLI, 2),
     }
     if not contracts.treasury(f) and island.has_economy:
         out["price"] = contracts.price_of(island, config, f)
