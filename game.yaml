@@ -379,7 +379,8 @@ household:
   # 値段の弾力性（財ごと。値段が 1% 高いと買う量が何 % 減るか）。真ん中の値段（いつもの値段。お金を刷り
   # 放題の件の回3 からは見通しの値段）の price_curve の倍率の段ごとに「(倍率)^(−弾力性)」の量を買う。
   # 現実の衣料は −0.5〜−1。回3 で消費財・嗜好品・燃料の値をここに足す
-  price_elasticity: {clothing: 0.7}
+  # 家庭の電気は短い間で −0.1〜−0.3、数年で −0.3〜−0.7。真ん中のいつもの値段が1年で慣れるので短い側（LB-47）
+  price_elasticity: {clothing: 0.7, electricity: 0.2}
   price_curve: [0.5, 0.7, 0.85, 1.0, 1.2, 1.5, 2.0, 3.0]
   # サービス（商店・飲食・理美容・娯楽・修理など。hakoniwa_core/economy/services.py）に使う割合。必需品
   # （食料・衣料）を買った残りのうち、実質の使う額が base_income のとき share、倍になるごとに rise ずつ
@@ -663,7 +664,14 @@ power:
   good: electricity     # 電力の財
   household_use: 0.0005 # 住民1人あたりの電力
   household_priority: 4 # 家庭への送電の優先順位（施設の優先順位と比べる）
-  household_share: 0.3  # 家計が電気代に使う額の上限（使う額に対する割合）。これを超える電気料金では買わない
+  household_share: 0.3  # 家計が電気代に使う額の上限（使う額に対する割合、消費税込み）。household_curve が切ならこれを超える電気料金では層の全員が買わない
+  # 家計は電気を買える分だけ買う（LB-47）: 入なら、家計の層はいつもの電気料金を真ん中に、高い段ほど少なく
+  # 買う段の注文（household.price_curve の倍率と、前の電気料金の値幅の中に等しい間隔で置く household_band_steps
+  # の段。上端の段はいつも出す）を出し、household_share（と使う額から食べ物の見込みを除いた残り）で払える分を
+  # 買う。弾力性は household.price_elasticity の electricity。切なら前の1本の注文。X870 で比べてから既定を入にする
+  household_curve: false
+  household_band_steps: 5 # 値幅の中の段の数（下端から上端まで。奇数なら前の電気料金にも段が来る）
+  household_notice: 0.05  # 発電が余っているのに家計が要る電気のこの割合以上を払えずに使えないとき、注意を出す（UI-89）
   fuel_stock_turns: 3   # 火力発電所が備える燃料の月数。米国の石炭火力は構内に2〜4か月分を積む
   fuel_restock: 0.2     # 使う見込みの燃料に対して、1ターンに買い足す割合
   fuel_notice_turns: 1.5 # 燃料不足を知らせる残りの月数。fuel_stock_turns の半分以下

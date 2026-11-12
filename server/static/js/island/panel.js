@@ -1,8 +1,9 @@
 // マスの情報の欄: 選んだマスと、そこにある施設の詳しい情報を出す（インフラの整備度と並んでいる工事、
 // 施設の技術者、学校と大学の働きを含む）。
-// 島の持ち主には、そのマスへの命令（建設・撤去・名称・地名・優先度・会計方式・国有化と民営化・
-// 補助金・銀行への緊急の貸し出しと破綻処理）と、地図でマスを選んで出す命令（インフラの工事・送電線・
-// 開発禁止区域・工業団地とオフィス街）の入口も出す。
+// 島の持ち主には、場所を見て決める命令（建設・建て増し・国の住宅と商店・地名・部隊の移動）と、地図で
+// マスを選んで出す命令（インフラの工事・送電線・開発禁止区域・工業団地とオフィス街）の入口も出す。
+// 施設ごとの細かい命令（優先度・生産方式・会計方式・国有化と民営化・補助金・銀行への緊急の貸し出しと
+// 破綻処理・施設名・撤去）は施設のページ（server/templates/web/facility.html）で出す（UI-78）。
 // 欄は押したマスのそばに出す小さな窓の中にある（狭い画面では下から出す板。窓の開け閉めと位置は
 // map/main.js）。地図でマスを選んで出す命令の入口と選んでいる途中の欄は、窓の外の地図の上（tools）に
 // 出し、窓を閉じても続けられるようにする。命令を足した結果は地図のそばに出す。
@@ -15,31 +16,6 @@ import { recipeLabel, recipeWords } from "./recipes.js";
 import { slowdownHtml } from "./slowdown.js";
 
 const MAX_TILES = 64; // 1つの命令で選べるマスの数（orders.yaml の maxItems と同じ）
-
-// 会計方式を変えたときに起きること（変えた先の会計方式ごと）
-const ACCOUNTING_HINTS = {
-  self_supporting: "政府が運転資金を出資し、施設が自分の預金で売上と費用を出し入れします。利益から法人税と国庫への納付を払います。",
-  treasury: "施設の預金は国庫に戻り、売上も費用も国庫で出し入れします。",
-};
-
-// 国有化・民営化で起きること
-const OWNERSHIP_HINTS = {
-  nationalize: "純資産（資産 − 借入）の額で政府が買い取り、借入も引き継ぎます。差し押さえ中の施設は、銀行から売り値で買います。国庫が足りなければ実行できません。",
-  privatize: "純資産の額で資本家階級に売ります。国庫直轄の施設は、先に運転資金を出資して独立採算にします。",
-};
-
-// 施設ごとの補助金の種類
-const SUBSIDY_KINDS = {
-  production: { name: "生産補助", hint: "売上の割合を、補助金の予算から毎ターン出します。" },
-  bailout: { name: "救済補助", hint: "赤字の分を、補助金の予算から毎ターン埋めます（割合は 0 でやめる、ほかの値はどれも同じです）。" },
-};
-
-// 破綻した銀行の処理（hakoniwa_core/modules/failures）
-const RESOLUTION_HINTS = {
-  bailout: "政府が自己資本を規制の値まで（資金繰りの破綻なら足りない準備預金も）注入し、国営銀行として残します。",
-  transfer: "預金・融資・国債・銀行間の貸し借りを、健全な銀行のうち預金の最も多い銀行に移します。損失は保護されない預金と、この銀行に貸していた銀行が同じ割合で負い、足りない分を政府が払います（預金保険）。",
-  liquidation: "融資を額面より安く健全な銀行に売ったとして損失を数え、引き継ぎと同じく移します。損失は引き継ぎより大きくなります。",
-};
 
 // 地図でマスを選んで出す命令（infrastructure は、選んだインフラの種類 kind も送る）
 const MARK_MODES = {
@@ -264,6 +240,9 @@ export class TilePanel {
       if (f.transition) rows.push(["作付けの切り替え", f.transition.text.replace(/^作り替えの途中: /, "")]);
     }
     if (f.priority != null) rows.push(["優先度", `${f.priority}${f.priority_changed ? "（変更済み）" : ""}`]);
+    // 命令で出した切り替えと補助金（命令の欄は施設のページ。UI-78）
+    if (f.recipe_next_name) rows.push([recipeWords().change, recipeWords().next.replace("{name}", f.recipe_next_name)]);
+    if (f.subsidies?.length) rows.push(["補助金", f.subsidies.join("、")]);
     if (f.status_text) rows.push(["状態", f.status_text]);
     // 生産調整中・生産停止中は、わけと一緒に打てる手を下の欄に出す（W-250）
     if (f.hint && !f.slowdown) rows.push(["できること", f.hint]);
@@ -284,7 +263,7 @@ export class TilePanel {
       const months = fuel.months == null ? "使用量未観測" : `約 ${fuel.months.toFixed(1)} か月分`;
       rows.push([`${fuel.name}の備え`, `${fuel.amount} ${fuel.unit}（${months}）。目標 ${fuel.target_amount} ${fuel.unit}（使う見込みの ${fuel.target_months} か月分）`]);
     }
-    const parts = [`<h3>${escapeHtml(f.name)}</h3>${table(rows)}`];
+    const parts = [`<h3>${escapeHtml(f.name)}</h3>${this.facilityLink(f)}${table(rows)}`];
     if (f.slowdown) parts.push(slowdownHtml(f.slowdown));
     if (f.owner === "private" && Object.keys(this.defs.facilities[f.kind]?.recipes || {}).length > 1) {
       parts.push(`<p class="hint">${escapeHtml(recipeWords().ownershipHint)}</p>`);
@@ -294,6 +273,29 @@ export class TilePanel {
     parts.push(this.booksHtml(f.books));
     if (f.loans?.length) parts.push(loansHtml(f.loans));
     return parts.join("");
+  }
+
+  /** 施設のページ（UI-72・UI-78）の URL（渡されていない画面と、番号のない施設は ""）。 */
+  facilityUrl(f) {
+    const base = this.el?.dataset.facilityUrl;
+    if (!base || f.number == null) return "";
+    return base.replace(/\/0\/$/, `/${encodeURIComponent(f.number)}/`);
+  }
+
+  /** 施設のページへのリンク。施設ごとの細かい命令と帳簿の推移はそこにある（UI-78）。 */
+  facilityLink(f) {
+    const url = this.facilityUrl(f);
+    if (!url) return "";
+    const text = this.orders ? "施設のページで命令を出す" : "施設のページを開く";
+    return `<p class="facility-page-link"><a href="${escapeHtml(url)}">${text}</a></p>`;
+  }
+
+  /** 命令の欄の、施設のページで出す命令の案内（地図に残るのは建設・建て増し・地名など場所の命令）。 */
+  facilityPageNote(f) {
+    const url = this.facilityUrl(f);
+    if (!url) return "";
+    return `<p class="hint facility-page-note">優先度・生産方式・会計方式・国有化と民営化・補助金・施設名・撤去など、この施設への命令は施設のページで出します。
+      <a href="${escapeHtml(url)}#actions">施設のページで命令を出す</a></p>`;
   }
 
   /** 記念碑の碑文（自動の文と、足した文）と、自作の記念碑の絵。 */
@@ -388,93 +390,11 @@ export class TilePanel {
           <button type="submit">命令に追加</button>
         </form>`);
     }
-    if (!isHousing) {
-      parts.push(`
-        <form class="actions" data-form="rename">
-          <h4>施設名の変更</h4>
-          <input name="name" maxlength="32" value="${escapeHtml(f.custom_name || "")}" placeholder="空欄なら自動の名称">
-          <button type="submit">命令に追加</button>
-        </form>`);
-    }
-    if (f.priority != null && !isHousing) {
-      const options = Array.from({ length: 10 }, (_, p) =>
-        `<option value="${p}"${p === f.priority ? " selected" : ""}>${p}</option>`).join("");
-      parts.push(`
-        <form class="actions" data-form="priority">
-          <h4>優先度</h4>
-          <p class="hint">${escapeHtml(f.priority_hint || "")}</p>
-          <select name="priority">${options}</select>
-          <button type="submit">命令に追加</button>
-        </form>`);
-    }
-    if (f.accounting_target) {
-      // 命令が通る施設（国営で、公務の施設でない）だけに出す。変えられる先は今と違う方だけ
-      parts.push(`
-        <form class="actions" data-form="accounting">
-          <h4>会計方式の変更（現在: ${escapeHtml(f.accounting_name)}）</h4>
-          <p class="hint">${escapeHtml(ACCOUNTING_HINTS[f.accounting_target] || "")}</p>
-          <input type="hidden" name="accounting" value="${escapeHtml(f.accounting_target)}">
-          <button type="submit">${escapeHtml(f.accounting_target_name)}に変更（命令に追加）</button>
-        </form>`);
-    }
-    if (f.recipe_choices?.length || f.recipe_next_name) {
-      // 生産方式の切り替え（国営の施設だけ。次のターンの市場の段で切り替わり、そのターンは稼働率が半分）
-      const w = recipeWords();
-      const amounts = (list) => list.map((g) => `${escapeHtml(g.name)} ${g.amount}`).join("・") || escapeHtml(w.none);
-      const options = (f.recipe_choices || [])
-        .map((r) => `<option value="${escapeHtml(r.recipe)}">${escapeHtml(recipeLabel(r.recipe,
-          this.defs.facilities[f.kind]?.recipes?.[r.recipe], r.name))}（${amounts(r.inputs)} → ${amounts(r.outputs)}）</option>`)
-        .join("");
-      const pending = f.recipe_next_name
-        ? `<p class="hint">${escapeHtml(w.next.replace("{name}", f.recipe_next_name))}</p>` : "";
-      const form = options ? `
-          <select class="recipe-select" name="recipe" aria-label="${escapeHtml(w.method)}">${options}</select>
-          <p class="hint">${escapeHtml(w.transition)}</p>
-          <button type="submit">${escapeHtml(w.add)}</button>` : "";
-      parts.push(`
-        <form class="actions" data-form="recipe">
-          <h4>${escapeHtml(w.change)}（${escapeHtml(w.current)}: ${escapeHtml(f.recipe_name || "")}）</h4>
-          ${this.recipeHint(f.kind)}${pending}${form}
-        </form>`);
-    }
-    if (f.ownership_target) {
-      // 命令が通る施設（民営なら国有化、民営にできる国営なら民営化）だけに出す
-      parts.push(`
-        <form class="actions" data-form="ownership">
-          <h4>${escapeHtml(f.ownership_target_name)}（現在: ${escapeHtml(f.owner_name)}）</h4>
-          <p class="hint">${escapeHtml(OWNERSHIP_HINTS[f.ownership_target] || "")}</p>
-          <input type="hidden" name="kind" value="${escapeHtml(f.ownership_target)}">
-          <button type="submit">${escapeHtml(f.ownership_target_name)}（命令に追加）</button>
-        </form>`);
-    }
-    if (f.subsidy_target) parts.push(this.subsidyForm(f));
-    if (f.emergency_loan) {
-      const now = f.bank?.emergency ? `（今の上限: ${escapeHtml(f.bank.emergency)}）` : "";
-      parts.push(`
-        <form class="actions" data-form="emergency">
-          <h4>緊急の貸し出し${now}</h4>
-          <p class="hint">準備預金が足りないとき、中央銀行が担保の足りない分も毎ターンこの額まで貸します。0 で取り消します。</p>
-          <label>上限額 <input name="amount" type="number" min="0" step="1" required></label>
-          <button type="submit">命令に追加</button>
-        </form>`);
-    }
-    if (f.resolve_methods) {
-      const methods = Object.entries(f.resolve_methods)
-        .map(([id, name]) => `
-          <label><input type="radio" name="method" value="${escapeHtml(id)}"${id === "transfer" ? " checked" : ""}>
-            ${escapeHtml(name)}: <span class="hint">${escapeHtml(RESOLUTION_HINTS[id] || "")}</span></label>`)
-        .join("");
-      parts.push(`
-        <form class="actions" data-form="resolve">
-          <h4>破綻した銀行の処理（行政力を使いません）</h4>
-          <p class="hint">次のターンまでに選ばなければ「引き継ぎ」（引き継ぐ銀行がなければ「救済」）になります。</p>
-          ${methods}
-          <button type="submit">命令に追加</button>
-        </form>`);
-    }
-    if (!t.capital) {
+    if (isHousing && !t.capital) {
+      // 町（住宅地）は施設のページを持たないので、撤去は地図に残す（UI-77）
       parts.push(`<p class="actions"><button type="button" data-action="demolish">撤去（命令に追加）</button></p>`);
     }
+    if (!isHousing) parts.push(this.facilityPageNote(f));
     parts.push(placeForm);
     return parts.join("");
   }
@@ -487,24 +407,6 @@ export class TilePanel {
         <h4>${heading}</h4>
         <p class="hint">国が住宅費の予算で資材を市場で買い、毎月少しずつ床を足します。住む人は国の床の家賃を国庫に払います。通勤圏に空いた平地があっても、高層の段階まで育てられます。</p>
         <label>足す床（最低の広さで住める人数） <input name="floors" type="number" min="1" step="1" required></label>
-        <button type="submit">命令に追加</button>
-      </form>`;
-  }
-
-  /** この施設への補助金（生産補助・救済補助）の入力欄。 */
-  subsidyForm(f) {
-    const current = f.subsidies?.length ? `<p class="hint">今の補助金: ${escapeHtml(f.subsidies.join("、"))}</p>` : "";
-    const kinds = Object.entries(SUBSIDY_KINDS);
-    const options = kinds.map(([id, k]) => `<option value="${id}">${k.name}</option>`).join("");
-    const hints = kinds.map(([, k]) => `<li>${k.name}: ${k.hint}</li>`).join("");
-    return `
-      <form class="actions" data-form="subsidy">
-        <h4>この施設への補助金</h4>
-        ${current}
-        <label>種類 <select name="kind">${options}</select></label>
-        <ul class="hint">${hints}</ul>
-        <label>割合（%、0 でやめる） <input name="rate" type="number" min="0" max="100" step="0.1" required></label>
-        <label>期間（ターン） <input name="turns" type="number" min="1" max="1200" step="1" value="12" required></label>
         <button type="submit">命令に追加</button>
       </form>`;
   }
@@ -583,7 +485,8 @@ export class TilePanel {
     const d = this.defs.facilities[facility];
     if (!d) return "";
     const r = d.recipes?.[recipe] || Object.values(d.recipes || {})[0] || {};
-    const c = d.construction;
+    // 段階の作り方の農場は、その段階までの工事を足した工期と資材（W-257）
+    const c = { ...d.construction, ...(r.construction || {}) };
     const bits = [`工期 ${c.turns} ターン`];
     if (c.labor) bits.push(`建設労働者 ${c.labor.toLocaleString()} 人`);
     if (!d.monument) bits.push(`完成後の従業者 ${(r.workers ?? d.workers).toLocaleString()} 人`);
@@ -724,27 +627,10 @@ export class TilePanel {
       const payload = { facility: "shop", x, y };
       if (name) payload.name = name;
       this.addOrder("build", payload);
-    } else if (form.dataset.form === "rename") {
-      this.addOrder("rename_facility", { x, y, name });
     } else if (form.dataset.form === "place") {
       if (name) this.addOrder("rename_place", { x, y, name });
-    } else if (form.dataset.form === "priority") {
-      this.addOrder("set_priority", { x, y, priority: Number(data.get("priority")) });
-    } else if (form.dataset.form === "accounting") {
-      this.addOrder("set_accounting", { x, y, accounting: data.get("accounting") });
-    } else if (form.dataset.form === "recipe") {
-      this.addOrder("change_recipe", { x, y, recipe: data.get("recipe") });
-    } else if (form.dataset.form === "ownership") {
-      this.addOrder(data.get("kind"), { x, y });
-    } else if (form.dataset.form === "subsidy") {
-      const payload = { kind: data.get("kind"), x, y, rate: Number(data.get("rate")) };
-      this.addOrder("set_subsidy", { ...payload, turns: Math.round(Number(data.get("turns"))) });
     } else if (form.dataset.form === "housing") {
       this.addOrder("build_housing", { x, y, floors: Math.round(Number(data.get("floors"))) });
-    } else if (form.dataset.form === "emergency") {
-      this.addOrder("emergency_loan", { x, y, amount: Math.round(Number(data.get("amount"))) });
-    } else if (form.dataset.form === "resolve") {
-      this.addOrder("resolve_bank", { x, y, method: data.get("method") });
     }
   }
 

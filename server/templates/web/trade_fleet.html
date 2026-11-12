@@ -1,0 +1,116 @@
+{% extends "web/trade_layout.html" %}{% load i18n static calendar_tags display_tags %}
+{% block layout_class %}{% if mine %} with-orders{% endif %}{% endblock %}
+{% block orders %}{% if mine %}
+  <aside id="orders" class="panel report-orders" data-url="{% url 'api_orders' island.id %}" data-defs="{% url 'api_defs' %}"
+         data-forms="" data-heading="{% translate '貿易の命令' %}"></aside>
+{% endif %}{% endblock %}
+{% block trade_main %}
+    {% if mine %}
+    <section class="panel" id="traders">
+      <h2>{% translate "商社" %}</h2>
+      <p class="hint">{% translate "商社は加盟している圏の値段と島の値段を見て、財ごとに輸出か輸入を自動で選び、狙う量を少しずつ見直します。輸出する物は島の市場で買って港の倉庫に置き、輸入した物は届いてから島の市場で売ります。" %}</p>
+      {% for f in trade.traders %}
+      <h3><a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a> <small class="muted">({{ f.x }}, {{ f.y }})・{{ f.owner_name }}{% if f.built %}・{% blocktranslate with n=f.workers %}{{ n }} 人{% endblocktranslate %}{% else %}・{% translate "建設中" %}{% endif %}{% if f.status_text %}・{{ f.status_text }}{% endif %}</small></h3>
+      {% if f.goods %}
+      <div class="table-scroll">
+        <table class="goods traders-table">
+          <thead><tr>
+            <th>{% translate "資源" %}</th><th>{% translate "向き" %}</th><th>{% translate "使う圏" %}</th><th>{% translate "1ターンに狙う量" %}</th>
+            <th>{% translate "港の倉庫" %}</th><th>{% translate "運ぶ途中" %}</th><th>{% translate "仕入れ値（1単位）" %}</th><th>{% translate "売れ残り" %}</th><th>{% translate "単位" %}</th><th>{% translate "狙う量を買えなかったわけ" %}</th>
+          </tr></thead>
+          <tbody>
+            {% for g in f.goods %}
+            <tr>
+              <td>{{ g.name }}</td><td>{{ g.direction_name }}</td><td>{{ g.bloc_name|default:"-" }}</td><td>{{ g.target }}</td>
+              <td>{{ g.held }}</td><td>{{ g.transit }}</td>
+              <td>{% if g.unit_cost is not None %}{{ currency|currency_prefix }}{{ g.unit_cost|floatformat:"-1g" }}{% else %}-{% endif %}</td>
+              <td>{% if g.age %}{% blocktranslate with n=g.age %}{{ n }} ターン{% endblocktranslate %}{% endif %}</td><td>{{ g.unit }}</td>
+              <td>{% if g.why %}<small class="warning">{{ g.why }}</small>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="muted">{% translate "扱っている資源はありません（値段の差のある財がないか、まだ圏に入っていません）。" %}</p>
+      {% endif %}
+      {% empty %}
+      <p class="muted">{% translate "商社はありません。" %}</p>
+      {% endfor %}
+    </section>
+
+    <section class="panel" id="fleet">
+      <h2>{% translate "船団と港" %}</h2>
+      <table class="info">
+        {% with s=trade.fleet.shipping %}
+        {% if s %}
+        <tr><th>{% translate "輸送船" %}</th><td>{% blocktranslate with n=s.ships|floatformat:"-2" c=s.capacity_tons|floatformat:"-1g" %}{{ n }} 隻（1航海で合計 {{ c }} トン積めます）{% endblocktranslate %}{% if s.on_order %}<small class="muted">{% blocktranslate with k=s.on_order|floatformat:"-2" %}島の造船所に {{ k }} 隻を注文しています。{% endblocktranslate %}</small>{% endif %}</td></tr>
+        <tr><th>{% translate "航海に使っている量" %}</th><td>{{ s.busy_tons|floatformat:"-1g" }} {% translate "トン" %}（{% widthratio s.busy_share 1 100 %}%）</td></tr>
+        <tr><th>{% translate "空いている量" %}</th><td>{{ s.free_tons|floatformat:"-1g" }} {% translate "トン" %}{% if s.short_turns %}<small class="warning">{% blocktranslate with n=s.short_turns m=s.short_of %}直近 {{ m }} ターンのうち {{ n }} ターンは、船が足りずに輸入を減らしました。{% endblocktranslate %}</small>{% endif %}</td></tr>
+        <tr><td colspan="2" class="hint">{% translate "積める量は航路の数の上限ではありません。荷の量に合わせて船の積める量を分けて使い、空で売り手の港へ行き積んで戻る往復の間（走っている時間の分）だけ、その量がふさがります。近い港へは1ターンに何度も行き来できます。" %}</td></tr>
+        <tr><th>{% translate "船の運賃" %}</th><td>{% blocktranslate with currency=currency|currency_prefix r=s.freight_rate|floatformat:"-1g" %}荷 1 トン・1 区画あたり {{ currency }}{{ r }}{% endblocktranslate %}</td></tr>
+        {% if s.charter_income or s.charter_paid %}<tr><th>{% translate "船の貸し借りの運賃（1ターン）" %}</th><td>{% blocktranslate with currency=currency|currency_prefix a=s.charter_income|floatformat:"0g" b=s.charter_paid|floatformat:"0g" %}貸した船の収入 {{ currency }}{{ a }}・借りた船に払った分 {{ currency }}{{ b }}{% endblocktranslate %}</td></tr>{% endif %}
+        {% for g in s.fuel %}<tr><th>{% blocktranslate with name=g.name %}船の燃料: {{ name }}{% endblocktranslate %}</th><td>{{ g.amount }} {{ g.unit }}{% if g.turns is not None %} <small class="muted">{% blocktranslate with n=g.turns %}船を全部出して {{ n }} ターン分{% endblocktranslate %}</small>{% endif %}</td></tr>{% endfor %}
+        {% else %}
+        <tr><th>{% translate "輸送船" %}</th><td class="muted">{% translate "海運業がありません" %}</td></tr>
+        {% endif %}
+        {% endwith %}
+        {% with p=trade.fleet.port %}
+        {% if p %}
+        <tr><th>{% translate "港" %}</th><td><a href="{% url 'island' island.id %}?x={{ p.x }}&amp;y={{ p.y }}">{{ p.name }}</a> <small class="muted">({{ p.x }}, {{ p.y }})</small></td></tr>
+        <tr><th>{% translate "港の使用料" %}</th><td>{% blocktranslate with currency=currency|currency_prefix f=p.fee|floatformat:"-1g" %}荷 1 トンあたり {{ currency }}{{ f }}{% endblocktranslate %}</td></tr>
+        <tr><th>{% translate "積み下ろした荷（1ターン）" %}</th><td>{% blocktranslate with h=p.handled|default:0|floatformat:"-1g" c=p.capacity %}{{ h }} トン（1ターンに {{ c }} トンまで）{% endblocktranslate %}</td></tr>
+        {% else %}
+        <tr><th>{% translate "港" %}</th><td class="warning">{% if trade.fleet.port_stopped %}{% translate "港が工事中か止まっています" %}{% else %}{% translate "港がありません" %}{% endif %}</td></tr>
+        {% endif %}
+        {% endwith %}
+      </table>
+      {% if mine %}
+      <form class="actions" data-order="set_ship_lending">
+        <strong>{% if trade.fleet.lend_ships %}{% translate "船の貸し出し（今: 貸している）" %}{% else %}{% translate "船の貸し出し（今: 貸していない）" %}{% endif %}</strong>
+        <p class="hint">{% translate "海運業の空いている船を、圏の市場のほかの国の荷のために貸し、運賃を決済通貨で受け取ります。自分の国の荷は先に自分の船に積みます。" %}</p>
+        <label><select name="lend"><option value="true">{% translate "貸す" %}</option><option value="false">{% translate "貸さない" %}</option></select></label>
+        <button type="submit">{% translate "命令に追加" %}</button>
+      </form>
+      {% endif %}
+      <h3>{% translate "運ぶ途中の荷" %}</h3>
+      {% if trade.shipments %}
+      <div class="table-scroll">
+        <table class="goods shipments-table">
+          <thead><tr><th>{% translate "向き" %}</th><th>{% translate "相手" %}</th><th>{% translate "資源" %}</th><th>{% translate "量" %}</th><th>{% translate "重さ" %}</th><th>{% translate "積んだ" %}</th><th>{% translate "着く" %}</th><th>{% translate "取引" %}</th></tr></thead>
+          <tbody>
+            {% for s in trade.shipments %}
+            <tr>
+              <td>{{ s.direction_name }}</td><td>{{ s.partner_name }}</td><td>{{ s.name }}</td><td>{{ s.amount }} {{ s.unit }}</td>
+              <td>{% blocktranslate with t=s.load %}{{ t }} トン{% endblocktranslate %}</td>
+              <td>{{ s.loaded|turn_date }}</td><td>{{ s.arrive|turn_date }}</td>
+              <td>{{ s.kind_name }}{% if s.bloc_name %}（{{ s.bloc_name }}）{% endif %}{% if s.carrier_name %} <small class="muted">{% blocktranslate with c=s.carrier_name %}{{ c }}の船{% endblocktranslate %}</small>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="hint">{% translate "荷は買う国の船で運びます。圏の市場の荷は、買う国の船が足りなければ、売る国や圏のほかの国の空いた船を借りて運び、運賃を決済通貨で払います（空いた船は、ほかの国の荷のためにも貸し出されます）。" %}</p>
+      {% else %}
+      <p class="muted">{% translate "運ぶ途中の荷はありません。" %}</p>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="section-head">
+        <h2>{% translate "推移" %}</h2>
+        {% include "web/chart_range.html" %}
+      </div>
+      <div class="charts" id="charts" data-url="{% url 'api_island_economy' island.id %}"
+           data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
+        <figure class="chart" data-names="port.handled"><figcaption>{% translate "港で積み下ろした荷" %}</figcaption></figure>
+        <figure class="chart" data-names="freight.ship_rate"><figcaption>{% translate "船の運賃（荷 1 トン・1 区画あたり）" %}</figcaption></figure>
+      </div>
+    </section>
+    {% else %}
+    <section class="panel">
+      <p class="muted">{% translate "このタブの中身は島の持ち主だけが見られます。" %}</p>
+      <p><a href="{% url 'island_trade' island.id %}">{% translate "貿易の概要へ" %}</a></p>
+    </section>
+    {% endif %}
+{% endblock %}

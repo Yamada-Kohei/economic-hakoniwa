@@ -52,14 +52,16 @@ def test_trade_page_shows_policy_and_aid_forms_to_the_owner(client, world):
         {"partner": second.id, "partner_name": second.name, "goods": []}
     ]
     assert {"no_tariff", "fixed"} <= set(data["blocs"][0])
-    html = client.get(f"/islands/{own.id}/trade/").content.decode()
+    html = client.get(f"/islands/{own.id}/trade/contracts/").content.decode()
     for kind in ("set_tariff", "set_export_subsidy", "set_import_quota", "set_embargo", "send_aid"):
         assert f'data-order="{kind}"' in html
-    assert "この国に禁輸している国" in html and "圏内の関税" in html
+    assert "この国に禁輸している国" in html
+    assert 'id="trade-policy"' in html and "<details" in html  # 奥に畳む（W-247 (7)）
+    assert "圏内の関税" in client.get(f"/islands/{own.id}/trade/blocs/").content.decode()
     client.logout()
     data = client.get(f"/api/islands/{own.id}/trade").json()
     assert "policy" not in data
-    html = client.get(f"/islands/{own.id}/trade/").content.decode()
+    html = client.get(f"/islands/{own.id}/trade/contracts/").content.decode()
     assert 'id="trade-policy"' not in html
 
 
@@ -73,12 +75,12 @@ def test_bloc_rules_show_to_members_and_the_representative_sets_them(client, wor
     view = client.get("/api/world/trade").json()["blocs"][0]
     assert view["no_tariff"] is True
     assert view["fixed"] == [{"good": "coal", "name": "石炭", "unit": "トン", "price": 25.6}]
-    html = client.get(f"/islands/{own.id}/trade/").content.decode()
+    html = client.get(f"/islands/{own.id}/trade/blocs/").content.decode()
     assert "圏の市場で買った荷に関税をかけない決まり" in html and "石炭" in html
     # 代表は、圏内の関税と固定価格を決める欄を持つ
     second.owner = _login(client, "rep")
     second.save()
-    html = client.get(f"/islands/{second.id}/trade/").content.decode()
+    html = client.get(f"/islands/{second.id}/trade/blocs/").content.decode()
     assert 'name="no_tariff"' in html and 'name="fixed_good"' in html
 
 
@@ -94,7 +96,7 @@ def test_goods_aid_contract_is_marked(client, world):
     contracts = client.get(f"/api/islands/{own.id}/trade").json()["contracts"]
     aid = [c for c in contracts if c["aid"]]
     assert aid and aid[0]["price"] == 0 and aid[0]["side"] == "buy"
-    assert "物の援助" in client.get(f"/islands/{own.id}/trade/").content.decode()
+    assert "物の援助" in client.get(f"/islands/{own.id}/trade/contracts/").content.decode()
 
 
 # --- 為替の画面 ---------------------------------------------------------------------------

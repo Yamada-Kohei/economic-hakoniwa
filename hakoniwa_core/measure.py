@@ -185,6 +185,11 @@ SERIES_STATS = (
     "loans.arrears",
     "money.deposits",
     "power.shortage",
+    "power.capacity",
+    "power.used",
+    "power.short_supply",  # 発電が全部売れて届かなかった割合（UI-89）
+    "power.household_unaffordable",  # 発電が売れ残ったのに家計が払えなかった割合（UI-89）
+    "price.electricity",
     "population.starved",
     "population.births",
     "population.deaths",
@@ -639,6 +644,9 @@ RATES = frozenset(
         "debt_ratio",
         "policy_rate",
         "power.shortage",
+        "power.short_supply",
+        "power.household_unaffordable",
+        "price.electricity",
     )
 )
 
