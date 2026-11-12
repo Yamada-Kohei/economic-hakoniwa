@@ -1,5 +1,7 @@
 // 描画: 奥のマスから手前のマスへ（x + y の小さい順に）描き、高いものが奥を自然に隠すようにする。
+// 重ね表示の棒（UI-79）は島を描いたあとにもう一度奥から手前へ描き、建物に隠れず、半透明で奥の棒も透けて見える。
 
+import { barPixels, barsBackToFront, drawsBars, solidColor } from "./overlays/bars.js";
 import { lift, tileToWorld } from "./projection.js";
 import { drawSprite } from "./sprites.js";
 
@@ -7,6 +9,7 @@ import { drawSprite } from "./sprites.js";
  * 島を描く。
  * options: selected（選んだマス {x, y}）、marked（印を付けるマスの Set "x,y"）、
  *          overlay（重ねて表示する情報。overlays/ のモジュール）、
+ *          overlayMode（"bars" で量のある重ね表示を棒にする。ほかは塗り分け。UI-79）、
  *          sprites（sprites.js の loadSprites が返す絵。ないものは色の箱で描く）
  */
 export function drawIsland(ctx, map, defs, view, options = {}) {
@@ -17,6 +20,8 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
   ctx.setTransform(view.scale * view.dpr, 0, 0, view.scale * view.dpr, view.offsetX * view.dpr, view.offsetY * view.dpr);
 
   const sprites = options.sprites || new Map();
+  const bars = drawsBars(options.overlay, options.overlayMode);
+  const fill = options.overlay && !bars ? options.overlay : null;
   const n = map.size;
   const facilityAt = new Map();
   for (const f of map.facilities || []) facilityAt.set(f.y * n + f.x, f);
@@ -41,8 +46,8 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       // 施設のあるマスは地形の絵（木や山）を描かず、上面の色だけにする。施設の絵と重ならないように
       drawBlock(ctx, px, py, h, colors, theme, f ? null : sprites.get(`terrain/${terrain}`));
       drawFallout(ctx, map.fallout?.[i], sprites.get("overlay/contaminated"), px, top, theme);
-      if (options.overlay) {
-        const color = options.overlay.color(map, i, defs);
+      if (fill) {
+        const color = fill.color(map, i, defs);
         if (color) {
           ctx.fillStyle = color;
           diamondPath(ctx, px, top, theme.tile_width / 2, theme.tile_height / 2);
@@ -72,6 +77,58 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
         outlineTop(ctx, px, top, theme, "#ffeb3b");
       }
     }
+  }
+  if (bars) drawBars(ctx, map, defs, options.overlay, options.selected);
+}
+
+// 棒の透け具合（上面と側面）。側面は黒を重ねて暗くし、角柱に見せる
+const BAR_TOP_ALPHA = 0.7;
+const BAR_SIDE_ALPHA = 0.55;
+const BAR_SHADE_LEFT = "rgba(0, 0, 0, 0.18)";
+const BAR_SHADE_RIGHT = "rgba(0, 0, 0, 0.36)";
+const BAR_EDGE = "rgba(0, 0, 0, 0.45)";
+const BAR_FOOT = 0.55; // 棒の足元の大きさ（マスに対する割合）。周りの地面と隣の棒が見えるように
+
+/**
+ * 重ね表示の棒: マスの上面の真ん中に、高さを重ね表示ごとの物差し（height）で決めた半透明の角柱を立てる。
+ * 奥から手前へ描くので、手前の高い棒が奥の棒を覆っても、半透明なので奥の棒が透けて見える。
+ * 選んだマスの枠は棒の上にも描き直す。
+ */
+function drawBars(ctx, map, defs, overlay, selected) {
+  const theme = defs.theme;
+  const hw = (theme.tile_width / 2) * BAR_FOOT;
+  const hh = (theme.tile_height / 2) * BAR_FOOT;
+  ctx.save();
+  ctx.lineWidth = 0.75;
+  ctx.strokeStyle = BAR_EDGE;
+  for (const { x, y, i, value } of barsBackToFront(map, overlay, defs)) {
+    const color = solidColor(overlay.color(map, i, defs) || "hsl(0, 0%, 50%)");
+    const { px, py } = tileToWorld(x, y, theme);
+    const ground = py - lift(defs.terrain[map.terrain[i]]?.height ?? 0, theme);
+    // 足元のひし形の上の頂点（マスの真ん中に置く）と、棒の上面の上の頂点
+    const base = ground + theme.tile_height / 2 - hh;
+    const top = base - barPixels(value, theme);
+    ctx.globalAlpha = BAR_SIDE_ALPHA;
+    sides(ctx, px, top, base, hw, hh, color, color);
+    sides(ctx, px, top, base, hw, hh, BAR_SHADE_LEFT, BAR_SHADE_RIGHT);
+    ctx.globalAlpha = BAR_TOP_ALPHA;
+    ctx.fillStyle = color;
+    diamondPath(ctx, px, top, hw, hh);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    for (const dx of [-hw, 0, hw]) {
+      const dy = dx === 0 ? 2 * hh : hh;
+      ctx.moveTo(px + dx, top + dy);
+      ctx.lineTo(px + dx, base + dy);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+  if (selected) {
+    const i = selected.y * map.size + selected.x;
+    const { px, py } = tileToWorld(selected.x, selected.y, theme);
+    outlineTop(ctx, px, py - lift(defs.terrain[map.terrain[i]]?.height ?? 0, theme), theme, "#ffeb3b");
   }
 }
 

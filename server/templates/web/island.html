@@ -12,6 +12,7 @@
   <ol>
     <li>{% translate "地図のマスを押すと、地形・人口・施設の状況がそのマスのそば（狭い画面では下）の小さな窓に表示されます。窓は右上の × で閉じ、ほかのマスを押すとそのマスの情報に替わります。赤い点は止まっている施設です。" %}</li>
     <li>{% translate "空いている平地を選択し「建設」で命令を追加します。命令は次のターンの更新時に上から実行されます。" %}</li>
+    <li>{% translate "施設のマスの窓の「施設のページで命令を出す」から施設のページを開き、優先度・生産方式・会計方式・補助金・施設名・撤去など、その施設への命令を出します。建て増し・地名・区域・送電線など場所を見て決める命令は地図で出します。" %}</li>
     <li>{% translate "工場には労働者・原料・電力が必要です。発電所と施設を送電線（または施設同士の隣接）で接続してください。" %}</li>
     <li>{% translate "労働者は町から近くの施設に通勤します。町は働き口の近くに自然に形成され、形成・発展には木材・建材などの資源を使います。" %}</li>
     <li>{% translate "1ターンに実行できる命令の数（行政力）は原則1つです。中央省庁の公務員が増えると増え、最大5つまでです。名称・地名の変更は数に含みません。" %}</li>
@@ -29,6 +30,8 @@
       <label>{% translate "重ねて表示" %}
         <select id="overlay"><option value="">{% translate "なし" %}</option></select>
       </label>
+      {# 量のある重ね表示を、マスの上の半透明の棒で見せるか、マスの塗り分けで見せるか（UI-79。選んだ形はブラウザに覚える） #}
+      <label><input type="checkbox" id="overlay-bars" checked> {% translate "棒で表示" %}</label>
       <span id="overlay-legend" class="hint" aria-live="polite"></span>
     </div>
     <p id="map-help" class="hint">{% translate "地図はドラッグで移動、Ctrl＋ホイールか＋－ボタンで拡大縮小できます。スマートフォンでは2本指で拡大縮小できます。通常のホイールはページをスクロールします。" %}</p>
@@ -55,6 +58,7 @@
         <div id="tile-panel" data-tile-url="{% url 'api_tile' island.id 0 0 %}"
              {% if mine %}data-military-url="{% url 'api_island_military' island.id %}"{% endif %}
              data-country-url="{% url 'island_country' island.id %}"
+             data-facility-url="{% url 'facility_page' island.id 0 %}"
              data-monument-inscription="{% translate '碑文' %}" data-monument-built="{% translate '建立' %}"
              data-monument-edit="{% translate '絵を差し替える（国のページ）' %}"
              data-check-url="{% url 'api_order_check' island.id %}"

@@ -50,6 +50,7 @@ h1 { margin: 16px 0 8px; color: var(--navy); text-shadow: 2px 2px 0 #b7c9f0; }
 h2 { font-size: 1.15em; margin: 0 0 8px; }
 /* 本文の見出しは濃い青の帯（当時の個人サイトの見出し） */
 main h2 { background: var(--accent); color: #fff; padding: 3px 8px; border-left: 8px solid var(--navy); font-size: 1.05em; }
+main .action-box > h2 { background: none; border-left: 0; padding-left: 0; }
 main h2 a, main h2 a:visited { color: #fff; }
 main h2 .muted, main h2 .heading-date, main h2 small { color: #dce8ff; }
 main h3 { color: var(--navy); border-bottom: 1px dotted var(--border); }
@@ -326,6 +327,20 @@ table.facilities .slowdown-reason { display: block; max-width: 30em; white-space
 .report-orders { margin-top: 12px; }
 .bank-action { margin-top: 8px; }
 .bank-action h3 { font-size: 1em; }
+/* 品目や施設のページの「打てる手」の箱（UI-73）。見る所と分けて 1 色の枠でそろえる */
+.action-box { border: 2px solid var(--accent); }
+.action-box > h2 { color: var(--accent); }
+.action-box h3 { font-size: 1em; margin: 12px 0 4px; }
+/* 貿易の概要（W-247）: 奥に畳んだ欄（産業政策と援助）と、全部の数を開く欄 */
+details.trade-back > summary { cursor: pointer; }
+details.trade-back > summary h2 { display: inline; }
+details.trade-more { margin-top: 8px; }
+details.trade-more > summary { cursor: pointer; color: var(--accent); }
+table.trade-overview td { white-space: normal; }
+/* 品目のページの今の数（名前と値の 2 列） */
+dl.good-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 4px 0; }
+dl.good-facts dt { font-weight: bold; }
+dl.good-facts dd { margin: 0; }
 
 @media (max-width: 760px) {
   /* マスの情報の窓は、画面の下から出す板にする（狭くて横に出せないため）。上半分で地図を押せる */
@@ -457,6 +472,11 @@ figure.diagram summary { cursor: pointer; color: var(--accent); }
 .step-link:hover { background: var(--head); }
 .next-steps > p { margin: 4px 10px 0; }
 .next-steps .hint { font-size: 0.85em; color: #6a7aa0; }
+/* ホームの「今月すべきこと」（UI-76）: 次にすることと同じ枠で、行を詰める */
+.home-todo .next-steps-list li { padding: 6px 0; }
+.home-todo .next-steps-list li.first { padding: 6px 10px; }
+.home-todo .step-body p { margin: 0 0 4px; }
+.home-todo .step-link, .home-todo .step-link:visited { min-height: 28px; line-height: 20px; padding: 3px 10px; }
 /* 手引きのページの上の手引きの一覧と、産業のつながりの図への入口（web/help_guides.html・help_chain_banner.html） */
 .help-guides { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin: 6px 0 10px; padding: 6px 10px;
   background: var(--pale); border: 1px solid var(--rule); }
