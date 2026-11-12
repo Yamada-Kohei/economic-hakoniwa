@@ -12,6 +12,7 @@ SCREEN_HELP = {
     "top": ("help_start", ""),
     "found": ("help_start", "regimes"),
     "island": ("help_start", "first-year"),
+    "home": ("help_start", "first-year"),
     "world": ("help", "trade"),
     "rankings": ("help", "statistics"),
     "news": ("help", "country-pages"),

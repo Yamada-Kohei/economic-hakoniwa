@@ -1,0 +1,13 @@
+{% load i18n calendar_tags display_tags %}{# 島のホームと地図の見出し（国名・持ち主・体制・入口） #}<div class="island-header">
+  <h1>{{ island.name }}{% if ai %} {% include "web/ai_mark.html" %}{% endif %}</h1>
+  <p class="muted">
+    {% if island.owner %}{{ island.owner.username }}{% else %}{% translate "持ち主なし" %}{% endif %}
+    {% if own_island and not mine and island.owner %} ・ <a href="{% url 'letter_new' %}?to={{ island.id }}">{% translate "この国に公電を送る" %}</a>{% endif %}
+    {% if capital_name %} ・ {% translate "首都" %}: {{ capital_name }}{% endif %}
+    {% for r in regime %} ・ {{ r.axis }}: {{ r.name }}{% endfor %}
+    {% if resources %} ・ {% translate "地下資源" %}: {{ resources|join:"、" }}{% endif %}
+    {% if climate %} ・ {% translate "気候" %}: {{ climate }}{% endif %}
+    {% if stats_turn is not None %} ・ {% blocktranslate with turn=stats_turn|turn_date %}{{ turn }}の時点{% endblocktranslate %}{% endif %}
+  </p>
+  {% island_nav %}
+</div>

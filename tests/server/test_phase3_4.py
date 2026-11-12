@@ -65,7 +65,7 @@ def test_politics_forms_follow_the_regime(client, world):
 
 def test_plan_page_for_a_planned_economy(client, world):
     island = _own(client, "planned")
-    nav = client.get(f"/islands/{island.id}/").content.decode()
+    nav = client.get(f"/islands/{island.id}/diplomacy/").content.decode()  # 国の入口のタブ
     assert f'href="/islands/{island.id}/plan/"' in nav and ">計画<" in nav
     data = client.get(f"/api/islands/{island.id}/plan").json()
     assert data["planned"] and data["rows"]
@@ -107,7 +107,7 @@ def test_plan_page_for_a_mixed_economy_shows_price_controls(client, world):
 
 def test_market_economy_has_no_plan_link(client, world):
     island = _own(client, "market")
-    html = client.get(f"/islands/{island.id}/").content.decode()
+    html = client.get(f"/islands/{island.id}/diplomacy/").content.decode()  # 国の入口のタブ
     assert f"/islands/{island.id}/plan/" not in html
     assert f"/islands/{island.id}/politics/" in html
 

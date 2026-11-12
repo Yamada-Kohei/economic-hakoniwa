@@ -23,6 +23,7 @@ pytestmark = pytest.mark.django_db
 # 島の番号だけで開ける画面と API（名前 → 追加の引数）。
 ISLAND_PAGES = [
     "island",
+    "home",
     "turn_log",
     "island_economy",
     "island_market",

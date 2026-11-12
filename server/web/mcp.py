@@ -1329,6 +1329,7 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "help_chain": ("defs",),  # 産業のつながりの元は施設の作り方: defs(section="facilities")
     "terms": ("guide",),  # 利用規約は guide(which=terms)
     "island": ("summary", "map", "tile"),  # 地図の重ね表示は map の overlay
+    "home": ("summary",),  # 次にすること・注意・主な変化・国勢・資源・出来事
     "turn_log": ("turn_log", "changes"),
     "island_economy": ("report", "stats"),
     "island_market": ("report",),

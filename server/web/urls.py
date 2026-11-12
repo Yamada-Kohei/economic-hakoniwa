@@ -29,6 +29,7 @@ urlpatterns = [
     path("help/fx/", views.help_fx_page, name="help_fx"),
     path("terms/", views.terms_page, name="terms"),
     path("islands/<int:island_id>/", views.island_page, name="island"),
+    path("islands/<int:island_id>/home/", views.island_home_page, name="home"),
     path("islands/<int:island_id>/log/", views.turn_log, name="turn_log"),
     path("islands/<int:island_id>/economy/", views.economy_page, name="island_economy"),
     path("islands/<int:island_id>/market/", views.market_page, name="island_market"),
