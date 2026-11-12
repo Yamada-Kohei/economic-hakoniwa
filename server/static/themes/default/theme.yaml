@@ -85,6 +85,8 @@ sprites:
   facility/building_materials_plant: sprites/facility/building_materials_plant.svg
   facility/consumer_goods_factory: sprites/facility/consumer_goods_factory.svg
   facility/farm: sprites/facility/farm.svg
+  facility/farm@g1: sprites/facility/farm@g1.svg
+  facility/farm@g2: sprites/facility/farm@g2.svg
   facility/department_store: sprites/facility/department_store.svg
   facility/fishing_port: {file: sprites/facility/fishing_port.svg, anchor: [32, 48]}
   facility/fishing_port@sw: {file: sprites/facility/fishing_port@sw.svg, anchor: [32, 48]}

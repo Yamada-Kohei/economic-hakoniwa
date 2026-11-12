@@ -160,7 +160,8 @@ function drawBlock(ctx, px, py, h, colors, theme, sprite) {
 }
 
 /**
- * 施設の絵の名前。住宅は住宅地の段階ごと。首都の官庁は、体制で決まる建物の組み合わせの絵
+ * 施設の絵の名前。住宅は住宅地の段階ごと。農場のように段階のある施設は段階の絵（facility/farm@g1 など。
+ * 段階 0 と、段階の絵がないときは名前のままの絵）。首都の官庁は、体制で決まる建物の組み合わせの絵
  * （capital/議事堂-王宮 など。map.capital_buildings を軸の順に "-" でつなぐ）、なければ capital/ の絵。
  */
 function facilitySprite(f, defs, map, isCapital, sprites) {
@@ -170,7 +171,8 @@ function facilitySprite(f, defs, map, isCapital, sprites) {
     return sprites.get(`housing/${level}`);
   }
   const name = defs.facilities[f.kind]?.sprite || f.kind;
-  if (!isCapital) return coastalSprite(f, defs, map, name, sprites) || sprites.get(`facility/${name}`);
+  const graded = f.grade ? sprites.get(`facility/${name}@g${f.grade}`) : null;
+  if (!isCapital) return coastalSprite(f, defs, map, name, sprites) || graded || sprites.get(`facility/${name}`);
   const buildings = defs.facilities[f.kind]?.category === "admin" ? map.capital_buildings || [] : [];
   const regime = buildings.length ? sprites.get(`capital/${buildings.join("-")}`) : null;
   return regime || sprites.get(`capital/${name}`) || sprites.get(`facility/${name}`);

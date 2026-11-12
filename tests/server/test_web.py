@@ -54,6 +54,21 @@ def test_map_api_capital_buildings(client, world):
     assert data["capital_buildings"] == ["party_headquarters", "palace"]
 
 
+def test_map_api_farm_grade(client, world):
+    """地図は農場の段階（FM-50）を返し、段階ごとの絵（facility/farm@g1 など）をそれで選ぶ。
+    段階 0（手作業）と段階のない施設は grade が空。"""
+    island = Island.objects.first()
+    farm = island.facilities.filter(kind="farm").first()
+    data = client.get(f"/api/islands/{island.id}/map").json()
+    row = next(f for f in data["facilities"] if f["number"] == farm.number)
+    assert row["grade"] is None
+    farm.ext = {**(farm.ext or {}), "grade": 2}
+    farm.save()
+    data = client.get(f"/api/islands/{island.id}/map").json()
+    row = next(f for f in data["facilities"] if f["number"] == farm.number)
+    assert row["grade"] == 2
+
+
 def test_tile_api(client, world):
     island = Island.objects.first()
     data = client.get(f"/api/islands/{island.id}/tiles/0,0").json()

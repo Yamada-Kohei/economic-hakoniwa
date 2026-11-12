@@ -69,10 +69,17 @@ def _allowed_keys() -> set[str]:
     d = _defs()
     sprites = {f.get("sprite", fid) for fid, f in d.facilities.items() if not f.get("tileless")}
     coastal = {f.get("sprite", fid) for fid, f in d.facilities.items() if f.get("coastal")}
+    # 段階のある施設（農場。FM-50）は段階 1 からの絵 facility/<名>@g<段階>
+    graded = {
+        f"facility/{f.get('sprite', fid)}@g{n}"
+        for fid, f in d.facilities.items()
+        for n in range(1, len(f.get("grade_steps", ())) + 1)
+    }
     return (
         {f"terrain/{t}" for t in d.terrain}
         | {f"facility/{s}" for s in sprites}
         | {f"facility/{s}@{side}" for s in coastal for side in ("sw", "ne", "nw")}
+        | graded
         | {f"capital/{s}" for s in sprites}
         | {f"capital/{c}" for c in _capital_combos()}
         | {f"housing/{s}" for s in d.settlements}

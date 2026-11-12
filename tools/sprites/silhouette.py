@@ -45,6 +45,10 @@ TRUNK = "#6b4a2b"
 WOOD = "#9a7347"
 SOIL = "#9b7a4c"
 CROP = "#d9bf5a"
+CROP_GREEN = "#7fa84a"  # 育ち途中の作物
+CROP_LUSH = "#4f9a3c"  # 近代化した農場の青々とした作物
+STRAW = "#e2c77a"  # 干し草
+GRAIN_BIN = "#c3c8cc"  # 金属の穀物ビン
 ROCK = "#9c917f"
 STONE = "#c4bcad"
 GLASS = "#9db6c7"
@@ -504,6 +508,65 @@ def sawtooth(
         end = Face("left", wall, [iso(u0, v1, z0), iso(u1, v1, z0), iso(u0, v1, zt)])
         slope = "slope_r"
     return [Prim((u0, v0, u1, v1), z0 + 0.1, [Face(slope, c, roof), Face(slope, glass, sky), end])]
+
+
+def field(
+    u0: float,
+    v0: float,
+    u1: float,
+    v1: float,
+    n: int,
+    c: str,
+    along: str = "u",
+    h: float = 1.2,
+) -> list[Prim]:
+    """畑: 土の板と、その上の作物の畝 n 本（along の向きに通る）。"""
+    out = [box(u0, v0, u1, v1, 0, 0.8, SOIL)]
+    if along == "u":
+        w = (v1 - v0) / n
+        out += [
+            box(u0 + 0.01, v0 + i * w + w * 0.2, u1 - 0.01, v0 + i * w + w * 0.75, 0.8, h, c)
+            for i in range(n)
+        ]
+    else:
+        w = (u1 - u0) / n
+        out += [
+            box(u0 + i * w + w * 0.2, v0 + 0.01, u0 + i * w + w * 0.75, v1 - 0.01, 0.8, h, c)
+            for i in range(n)
+        ]
+    return out
+
+
+def haystack(u: float, v: float, r: float, h: float) -> list[Prim]:
+    """手で積んだ干し草の山: 低い円柱の上に円すい。"""
+    return [cylinder(u, v, r, 0, h * 0.3, c=STRAW), cone(u, v, r, h * 0.38, h * 0.3, c=STRAW)]
+
+
+def tractor(u: float, v: float, k: float = 1.6) -> list[Prim]:
+    """トラクター（u の向きに長い）: 大きな後輪・小さな前輪、赤い車体、運転台。
+
+    (u, v) は足元の奥の角、k は大きさの倍。"""
+
+    def part(a0: float, b0: float, a1: float, b1: float, z0: float, h: float, c: str, top=None):
+        return box(u + a0 * k, v + b0 * k, u + a1 * k, v + b1 * k, z0, h, c, top)
+
+    return [
+        part(0.0, 0.0, 0.05, 0.014, 0, 3.6, TIRE),
+        part(0.075, 0.01, 0.11, 0.022, 0, 2.2, TIRE),
+        part(0.0, 0.014, 0.12, 0.066, 1.2, 2.4, RED),
+        part(0.005, 0.02, 0.05, 0.06, 3.6, 3.6, GLASS2, RED),
+        part(0.0, 0.066, 0.05, 0.08, 0, 3.6, TIRE),
+        part(0.075, 0.058, 0.11, 0.07, 0, 2.2, TIRE),
+    ]
+
+
+def pivot(v: float, u0: float, u1: float, z: float = 6) -> list[Prim]:
+    """畑をまたぐ散水管（センターピボット）: 細い管と、二本脚の塔 4 つ（u の向きに通る）。"""
+    out = [box(u0, v - 0.006, u1, v + 0.006, z, 0.8, WHITE)]
+    for u in [u0 + (u1 - u0) * i / 3 for i in range(4)]:
+        out.append(box(u - 0.006, v - 0.03, u + 0.006, v - 0.018, 0.8, z - 0.8, METAL))
+        out.append(box(u - 0.006, v + 0.018, u + 0.006, v + 0.03, 0.8, z - 0.8, METAL))
+    return out
 
 
 def car(u: float, v: float, c: str, z0: float = 0, along: str = "u") -> list[Prim]:
@@ -1291,11 +1354,45 @@ SHAPES: dict[str, list[Prim]] = {
         *tree(0.9, 0.42, 0.06, 11),
         *tree(0.56, 0.9, 0.06, 10),
     ],
+    # 農場は段階（FM-50）ごとに絵を分ける。名前のままは手作業、@g1 は機械化、@g2 は近代化
     "facility/farm": [
-        box(0.08, 0.08, 0.92, 0.54, 0, 1, SOIL),
-        *[box(0.1, v, 0.9, v + 0.06, 1, 2, CROP) for v in (0.1, 0.22, 0.34, 0.46)],
-        *house(0.55, 0.58, 0.85, 0.88, 8, 6, "v", BRICK, DARK),
-        cylinder(0.25, 0.75, 0.08, 0, 18, cap="dome", cap_c=ROOF_SLATE),
+        # 手作業: 小さく区切った畑（作物の色がまちまち）、耕しただけの区画、干し草の山、木の家
+        *field(0.08, 0.08, 0.36, 0.34, 3, CROP_GREEN),
+        *field(0.4, 0.08, 0.66, 0.34, 3, CROP, along="v"),
+        *field(0.7, 0.08, 0.92, 0.34, 2, CROP_GREEN, along="v"),
+        *field(0.08, 0.38, 0.36, 0.62, 3, CROP, along="v"),
+        box(0.4, 0.38, 0.6, 0.6, 0, 0.8, SOIL),
+        *haystack(0.14, 0.76, 0.06, 9),
+        *haystack(0.3, 0.86, 0.06, 9),
+        *haystack(0.36, 0.72, 0.05, 7),
+        *house(0.66, 0.66, 0.86, 0.86, 5, 5, "v", WOOD, ROOF_BROWN),
+    ],
+    "facility/farm@g1": [
+        # 機械化: 1 枚の大きな畑、トラクター、鉄の農機庫、サイロ、れんがの家
+        *field(0.06, 0.06, 0.94, 0.56, 7, CROP),
+        *tractor(0.66, 0.2),
+        cylinder(0.14, 0.8, 0.075, 0, 20, cap="dome", cap_c=ROOF_SLATE),
+        box(0.3, 0.64, 0.62, 0.9, 0, 6, METAL),
+        gable(0.3, 0.64, 0.62, 0.9, 6, 4, "u", ROOF_STEEL, METAL),
+        *house(0.72, 0.7, 0.9, 0.88, 5, 5, "v", BRICK, DARK),
+    ],
+    "facility/farm@g2": [
+        # 近代化（灌漑・改良品種）: 奥の用水路、青々とした畑、畑をまたぐ散水管、穀物ビン 3 基、
+        # 肥料のタンク、農機庫
+        box(0.04, 0.04, 0.96, 0.1, 0, 0.6, CONCRETE, WATER),
+        *field(0.06, 0.12, 0.94, 0.6, 8, CROP_LUSH, h=1.6),
+        *tiered(2, *pivot(0.36, 0.1, 0.9)),
+        *[
+            prim
+            for u, v in ((0.14, 0.72), (0.14, 0.88), (0.32, 0.8))
+            for prim in (
+                cylinder(u, v, 0.085, 0, 9, c=GRAIN_BIN),
+                cone(u, v, 0.085, 3.5, 9, c=METAL),
+            )
+        ],
+        cylinder(0.52, 0.78, 0.05, 0, 7, c=WHITE),
+        box(0.66, 0.68, 0.92, 0.9, 0, 6, WALL),
+        gable(0.66, 0.68, 0.92, 0.9, 6, 4, "u", ROOF_STEEL, WALL),
     ],
     "facility/lumber_camp": [
         *tree(0.25, 0.22, 0.1, 30),
