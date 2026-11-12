@@ -39,6 +39,7 @@ from server.web import budget_guide, display, order_confirm, overview, rankings,
 from server.web import chain as chain_views
 from server.web import country as country_views
 from server.web import diplomacy as diplomacy_views
+from server.web import facility_page as facility_views
 from server.web import military as military_views
 from server.web import news as news_views
 from server.web import politics as politics_views
@@ -613,6 +614,21 @@ def facility_book(request, island_id: int, number: int):
 
 
 @require_GET
+def facility(request, island_id: int, number: int):
+    """施設のページ（UI-72）と同じ中身。持ち主には帳簿・借入・この施設に出ている命令・前のターンの
+    結果・出せる命令（actions）も。ほかの人には地図のマスの窓と同じ公開の中身。見えない施設は
+    404。"""
+    island = get_object_or_404(m.Island.objects.select_related("world"), pk=island_id)
+    viewer = letter_services.own_island(request.user)
+    data = facility_views.facility_data(
+        island, number, _mine(request, island), viewer.id if viewer else None
+    )
+    if data is None:
+        raise Http404
+    return _json({"island": island.id, **data})
+
+
+@require_GET
 def finance(request, island_id: int):
     """金融の統計と中央銀行の方針。持ち主には銀行ごとの帳簿と金融の政策も。"""
     island = get_object_or_404(m.Island, pk=island_id)
@@ -881,7 +897,8 @@ def me(request):
 @require_GET
 def summary(request, island_id: int):
     """国の要約: 主な指標と前のターンからの変化、政情、止まった施設と工事、財の値段と品切れ、
-    満期の近い国債、直近のターンの出来事、注意。持ち主には赤字の施設・命令の列と結果・公電も。"""
+    満期の近い国債、直近のターンの出来事、注意、貿易の 1 行。持ち主には今月すべきこと（todo）・
+    赤字の施設・命令の列と結果・公電も。"""
     island = get_object_or_404(m.Island.objects.select_related("owner", "world"), pk=island_id)
     viewer = letter_services.own_island(request.user)
     return _json(overview.summary(island, _mine(request, island), viewer.id if viewer else None))

@@ -315,7 +315,7 @@ def test_shipping_shows_tons_and_fuel_heading(world):
     assert _answer(ai, "report", island=island.id, page="trade")["fleet"]["shipping"] == row
     browser = Client()
     browser.force_login(owner)
-    page = browser.get(f"/islands/{island.id}/trade/").content.decode()
+    page = browser.get(f"/islands/{island.id}/trade/fleet/").content.decode()
     assert "航海に使っている量" in page and "空いている量" in page and "25%" in page
     assert "隻分" not in page
     assert "船の燃料: 石炭" in page and "船の燃料: 石油燃料" in page
@@ -452,7 +452,7 @@ def test_warehouse_standing_noscript_label_and_start_explanation(world):
     (owner, _, _), (island, _, _) = _players(world)
     mine = Client()
     mine.force_login(owner)
-    page = mine.get(f"/islands/{island.id}/market/").content.decode()
+    page = mine.get(f"/islands/{island.id}/market/grain/").content.decode()  # 品目のページの箱
     fallback = re.search(r"<noscript>(.*?)</noscript>", page, re.S).group(1)
     assert "1ターンの売り買いの量／備蓄の目標量" in fallback
     assert "置いた次のターンから動きます" in fallback

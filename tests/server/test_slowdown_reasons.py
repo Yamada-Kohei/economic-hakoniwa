@@ -196,3 +196,17 @@ def test_slowdown_matches_screen_json_summary_and_mcp(slowed):
     assert "slowdown" not in tile["facility"]
     assert "slowdown" not in overview.facility_state(island, False)
     cache.clear()
+
+
+def test_the_facility_page_shows_the_slowdown_reasons(slowed):
+    """施設のページ（UI-72）にも、地図の窓と同じ生産調整中のわけを出す（持ち主だけ）。"""
+    island, row, _, browser, _ = slowed
+    html = browser.get(f"/islands/{island.id}/facilities/{row.number}/").content.decode()
+    why = slowdown.explain(slowdown.Facts(island), facility_from_row(row))
+    assert 'id="slowdown"' in html and "生産調整中のわけ" in html
+    assert all(r["text"] in html for r in why["reasons"])
+    other = Client()
+    assert (
+        'id="slowdown"'
+        not in other.get(f"/islands/{island.id}/facilities/{row.number}/").content.decode()
+    )
