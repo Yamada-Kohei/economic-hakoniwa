@@ -7,8 +7,9 @@ from __future__ import annotations
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, ledger, stock
 from hakoniwa_core.economy import CONSTRUCTION, books, facility_entity, funds, household
-from hakoniwa_core.modules.infrastructure import contracts
+from hakoniwa_core.modules.infrastructure import contracts, machines
 from hakoniwa_core.state import ACCOUNTING_SELF, ACCOUNTING_TREASURY, OWNER_PRIVATE
+from hakoniwa_core.units import QUANTITY_SCALE
 from tests.core.test_recession_round1 import context
 from tests.core.test_rules import add, home, make_island, run, with_economy, without_roads
 from tests.core.test_rules import game as game  # noqa: F401  （試験の部品を使い回す）
@@ -232,3 +233,59 @@ def test_planned_contractor_hires_at_the_priority_of_its_orders(game):
     assert Employment._priority(island, ctx, f) == 2
     f.economy[contracts.ORDERS] = [1000, 1000]
     assert Employment._priority(island, ctx, f) == 9
+
+
+def test_contractor_buys_machines_when_they_cost_less_than_workers(game):
+    # IN-34: 重機 1 台を使う費用が替える作業員の賃金より安いときだけ、要る人数の半分まで買う
+    island = market_island(game)
+    config = game.config
+    f = private_contractor(game, island)
+    f.economy["wage"] = 2000
+    island.economy.prices["machinery"] = 2_000_000
+    island.economy.prices["fuel"] = 200_000
+    assert machines.pays(island, config, 2000)
+    # 欲しいのは 400 人 × 半分 ÷ 40 人 = 5 台、その 1 割
+    assert machines.orders(island, config, f, 400) == {"machinery": 500}
+    island.economy.prices["machinery"] = 20_000_000  # 高ければ人を雇う
+    assert not machines.pays(island, config, 2000)
+    assert "machinery" not in machines.orders(island, config, f, 400)
+
+
+def test_machines_replace_workers_only_while_they_have_fuel(game):
+    island = market_island(game)
+    config = game.config
+    f = private_contractor(game, island)
+    f.economy["wage"] = 2000
+    stock.add(f.stock, "machinery", 2 * QUANTITY_SCALE, 0, game.defs.goods)
+    before = contracts.full(game.defs, config, f)
+    assert machines.commission(island, config, f) == 2 * QUANTITY_SCALE
+    # 全力に重機の分（2 台 × 40 人）を足す
+    assert contracts.full(game.defs, config, f) == before + 80 * contracts.per_worker(config)
+    assert machines.drive(island, config, f, 200) == 0  # 燃料がなければ動かない
+    stock.add(f.stock, "fuel", 10, 0, game.defs.goods)  # 1 台分の燃料
+    assert machines.drive(island, config, f, 200) == 40
+    assert stock.total(f.stock, "fuel") == 0
+    stock.add(f.stock, "fuel", 1000, 0, game.defs.goods)
+    assert machines.drive(island, config, f, 100) == 50  # 要る人数の半分まで（1.25 台）
+    assert machines.replaced(f) == 50
+    # 単価の下限は、重機の変動費と賃金を届けた人数で平均する（賃金だけより安い）
+    f.workers = 60
+    assert contracts.floor(config, f) < 2000 * 1000 // contracts.per_worker(config)
+
+
+def test_machines_deliver_works_with_the_staff(game):
+    island = market_island(game)
+    f = private_contractor(game, island)
+    queue_road(game, island)
+    run(game, island, WORKS)
+    stock.add(f.stock, "machinery", QUANTITY_SCALE, 0, game.defs.goods)
+    stock.add(f.stock, "fuel", 1000, 0, game.defs.goods)
+    run(game, island, WORKS)
+    assert machines.owned(f) > 0
+    assert f.economy.get(machines.WORKING, 0) > 0
+    done = f.economy[contracts.DELIVERED]
+    assert done == min(
+        sum(f.economy[contracts.ORDERS]),
+        (f.workers + machines.replaced(f)) * contracts.per_worker(game.config),
+    )
+    assert island.stats["contractor.machines"] > 0

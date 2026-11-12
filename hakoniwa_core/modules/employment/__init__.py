@@ -75,7 +75,7 @@ from hakoniwa_core.economy import (
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.geo import distance, within
 from hakoniwa_core.modules import infrastructure
-from hakoniwa_core.modules.infrastructure import contracts
+from hakoniwa_core.modules.infrastructure import contracts, machines
 from hakoniwa_core.modules.market import FACILITY_HOLDS, SITE_HOLDS, SiteFunds, input_cost
 from hakoniwa_core.modules.population import FED, subsistence_persons
 from hakoniwa_core.registry import IslandStage, Registry
@@ -1139,7 +1139,10 @@ class Employment(IslandStage):
         if services.is_services(config, f):  # 商業・サービス業は売上に合わせて（バランス調整）
             return f.economy.get(services.SEATS, 0)
         if f.built and contracts.is_contractor(config, f):  # 土木業者は受けた工事に合わせて
-            return contracts.wanted(island, config, f)
+            # 燃料のある重機（IN-34）で替えた作業員の分は雇わない
+            crew = contracts.wanted(island, config, f)
+            machines.commission(island, config, f)
+            return crew - machines.drive(island, config, f, crew)
         cargo = staff.wanted(config, ctx.defs, f)  # 港・海運業・商社は扱う荷に合わせて（3-1）
         if cargo is not None:
             return cargo

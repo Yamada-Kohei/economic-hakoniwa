@@ -56,6 +56,8 @@ from hakoniwa_core.geo import within
 from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE, Facility, IslandState, LogEntry
 from hakoniwa_core.units import money_of, part, round_money, to_basis, to_milli
 
+from . import machines
+
 CONTRACTS = "contracts"  # island.scratch: このターンの注文・取り置き・届いた量
 PRICE = "contract_price"  # f.economy: 工事 1 単位の単価
 REACH = "contract_reach"  # f.economy: 前のターンに通勤圏で雇い足せた見込み（失業者の数）
@@ -118,9 +120,10 @@ def working(island: IslandState, config: GameConfig, turn: int) -> list[Facility
 
 
 def full(defs: Defs, config: GameConfig, f: Facility) -> int:
-    """全力で届けられる工事（規模 × 定義の人数 × 1 人あたりの量。設備の傷んだ分を除く）。"""
+    """全力で届けられる工事（規模 × 定義の人数 × 1 人あたりの量。設備の傷んだ分を除く。持っている
+    重機の分を足す。IN-34）。"""
     workers = fac.scale(fac.workers_of(defs, f), fac.equipment_cap(f))
-    return workers * per_worker(config)
+    return (workers + machines.persons(config, machines.owned(f))) * per_worker(config)
 
 
 def ceiling(island: IslandState, config: GameConfig) -> int:
@@ -139,8 +142,14 @@ def wage_floor(island: IslandState, config: GameConfig, f: Facility) -> int:
 
 
 def floor(config: GameConfig, f: Facility) -> int:
-    """単価の下限（工事 1 単位の変動費）: 業者の賃金 ÷ 1 人あたりの量（切り上げ）。"""
+    """単価の下限（工事 1 単位の変動費）: 業者の賃金 ÷ 1 人あたりの量（切り上げ）。
+    前のターンに重機が動いていれば、重機の燃料と傷み（作業員 1 人分に直した額）と賃金を、
+    届けた人数で平均する。"""
     wage = f.economy.get("wage", 0)
+    people, crew = f.workers, machines.replaced(f)
+    if crew > 0 and people + crew > 0:
+        cost = f.economy.get(machines.UNIT_COST, wage)
+        wage = -(-(wage * people + cost * crew) // (people + crew))
     return -(-wage * 1000 // per_worker(config))
 
 
@@ -180,7 +189,8 @@ def capacity(defs: Defs, config: GameConfig, f: Facility) -> int:
     reach = f.economy.get(REACH)
     if reach is None:
         return whole
-    return min(whole, (f.workers + reach) * per_worker(config))
+    crew = f.workers + machines.persons(config, machines.owned(f)) + reach
+    return min(whole, crew * per_worker(config))
 
 
 # --- 雇用の段 -----------------------------------------------------------------------
@@ -324,7 +334,7 @@ def finish_hiring(
     firms = contractors(island, config)
     if not firms:
         return
-    deliver(island, config, {f.id: f.workers for f in firms})
+    deliver(island, config, {f.id: f.workers + machines.replaced(f) for f in firms})
     state = island.scratch.get(CONTRACTS) or {}
     radius_of = fac.commute_radius
     for f in firms:
@@ -440,8 +450,15 @@ def stats(island: IslandState, config: GameConfig, direct: int) -> None:
     _, total = delivered(island)
     island.stats["works.contracted"] = round(total / 1000, 3)
     island.stats["works.direct"] = direct
-    if contractors(island, config):
+    firms = contractors(island, config)
+    if firms:
         island.stats["contractor.price"] = average_price(island, config)
+        island.stats["contractor.machines"] = round(
+            sum(machines.owned(f) for f in firms) / machines.MILLI, 3
+        )
+        island.stats["contractor.machines_working"] = round(
+            sum(f.economy.get(machines.WORKING, 0) for f in firms) / machines.MILLI, 3
+        )
 
 
 # --- 建国と移し替え -------------------------------------------------------------------
