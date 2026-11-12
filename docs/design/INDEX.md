@@ -415,7 +415,7 @@
 | IN-27 | 役所が並べた工事は、命令で並べた工事の後に進め、資材は国の倉庫から使わずに市場で買う（倉庫は遊ぶ… | 決定（回4） | tests/core/test_recession_round4.py |
 | IN-28 | 工事の列に並んだマスも、維持の目標までは維持の工事で戻す（優先度・雇う順・資材の注文も維持の位置… | 決定（2026-11-12） | tests/core/test_infrastructure.py、tests/core/test_recession_round4.py |
 | IN-29 | 土木業者（W-270）: 公共事業の工事と維持の人手は、まず島の土木業者（施設 `contrac`… | 決定（2026-11-12 実装） | tests/core/test_contractors.py |
-| IN-30 | 土木業者は一般の労働者だけを、自分の賃金（LB-05・LB-06）で通勤圏から雇い、前のターンの… | 決定（2026-11-12 実装） | tests/core/test_contractors.py |
+| IN-30 | 土木業者は一般の労働者だけを、自分の賃金（LB-05・LB-06 | 決定（2026-11-12 実装） | tests/core/test_contractors.py |
 | IN-31 | 注文: 雇用の段の初め（施設が雇いたい人数を決める前）に、公共事業が維持・命令の工事・役所の工事… | 決定（2026-11-12 実装） | tests/core/test_contractors.py |
 | IN-32 | 業者が届けられなかった分と注文できなかった分は直営で雇う | 決定（2026-11-12 実装） | tests/core/test_contractors.py |
 | IN-33 | 単価は業者ごとに持ち、市場の段で売り手の希望価格と同じ形で動かす: 注文が全力に届けば上げ、手が… | 決定（2026-11-12 実装） | tests/core/test_contractors.py |
