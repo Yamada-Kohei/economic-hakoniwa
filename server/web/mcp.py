@@ -807,8 +807,10 @@ TOOLS = [
         "国の今の状態を1回で: 主な指標と前のターンからの変化、政情、止まった施設と工事、財の値段と"
         "買えなかった量と国の倉庫の在庫（stock）、商業・サービス業の店（services）、人口の増減のわけ（population_changes）、"
         "飢えている家計の層とそのわけ（hunger）、火力発電所の燃料在庫の月数と目標（fuel_reserves）、"
-        "満期の近い国債、直近のターンの出来事、燃料が尽きる前の知らせを含む注意。"
-        "自分の島なら赤字の施設・命令の列と、直近に命令を実行したターン（last_turn）の結果・"
+        "満期の近い国債、直近のターンの出来事、燃料が尽きる前の知らせを含む注意、"
+        "貿易の 1 行（trade。輸出・輸入と海外の商人に払った額）。"
+        "自分の島なら今月すべきこと（todo。ホームと同じ急ぐ順の行で、kind・text・行き先の url）・"
+        "赤字の施設・命令の列と、直近に命令を実行したターン（last_turn）の結果・"
         "未読の公電、軍（military。兵の数・士気・練度・賃金の遅れ・国防費・"
         "国として買った食べ物や弾薬の結果 purchases・体制の選び直し待ち reselect"
         "（until までに choose_regime を出さないと今の体制のまま固まる）。"
@@ -1316,7 +1318,7 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "help_chain": ("defs",),  # 産業のつながりの元は施設の作り方: defs(section="facilities")
     "terms": ("guide",),  # 利用規約は guide(which=terms)
     "island": ("summary", "map", "tile"),  # 地図の重ね表示は map の overlay
-    "home": ("summary",),  # 次にすること・注意・主な変化・国勢・資源・出来事
+    "home": ("summary",),  # 今月すべきこと（todo）・注意・主な変化・国勢と貿易の 1 行・資源・出来事
     "turn_log": ("turn_log", "changes"),
     "island_economy": ("report", "stats"),
     "island_market": ("report",),

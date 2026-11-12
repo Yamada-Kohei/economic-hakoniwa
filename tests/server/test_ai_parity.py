@@ -59,9 +59,11 @@ ALIASES = {
     },
     "turn_log": {"groups": "entries"},
 }
+ALIASES["home"] = ALIASES["island"]  # ホームは地図と同じ値に、今月すべきこと（todo）と貿易の 1 行
 # 画面（URL の名前）→ 同じ中身を読む道具と引数（島の番号は後で足す）
 READS = {
     "island": ("summary", {}),
+    "home": ("summary", {}),
     "turn_log": ("turn_log", {}),
     **{f"island_{page}": ("report", {"page": page}) for page in mcp.REPORTS if page != "orders"},
 }
@@ -247,7 +249,11 @@ def test_screens_show_nothing_the_ai_cannot_read(played, monkeypatch):
     for island in (own, other):
         for screen, (tool, arguments) in READS.items():
             page = screen.removeprefix("island_") if screen.startswith("island_") else ""
-            url = {"island": f"/islands/{island.id}/", "turn_log": f"/islands/{island.id}/log/"}
+            url = {
+                "island": f"/islands/{island.id}/",
+                "home": f"/islands/{island.id}/home/",
+                "turn_log": f"/islands/{island.id}/log/",
+            }
             res = browser.get(url.get(screen) or f"/islands/{island.id}/{page}/")
             assert res.status_code == 200, screen
             text, is_error = _call(ai, tool, island=island.id, **arguments)

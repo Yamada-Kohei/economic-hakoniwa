@@ -881,7 +881,8 @@ def me(request):
 @require_GET
 def summary(request, island_id: int):
     """国の要約: 主な指標と前のターンからの変化、政情、止まった施設と工事、財の値段と品切れ、
-    満期の近い国債、直近のターンの出来事、注意。持ち主には赤字の施設・命令の列と結果・公電も。"""
+    満期の近い国債、直近のターンの出来事、注意、貿易の 1 行。持ち主には今月すべきこと（todo）・
+    赤字の施設・命令の列と結果・公電も。"""
     island = get_object_or_404(m.Island.objects.select_related("owner", "world"), pk=island_id)
     viewer = letter_services.own_island(request.user)
     return _json(overview.summary(island, _mine(request, island), viewer.id if viewer else None))

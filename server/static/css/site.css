@@ -451,6 +451,11 @@ figure.diagram summary { cursor: pointer; color: var(--accent); }
 .step-link:hover { background: var(--head); }
 .next-steps > p { margin: 4px 10px 0; }
 .next-steps .hint { font-size: 0.85em; color: #6a7aa0; }
+/* ホームの「今月すべきこと」（UI-76）: 次にすることと同じ枠で、行を詰める */
+.home-todo .next-steps-list li { padding: 6px 0; }
+.home-todo .next-steps-list li.first { padding: 6px 10px; }
+.home-todo .step-body p { margin: 0 0 4px; }
+.home-todo .step-link, .home-todo .step-link:visited { min-height: 28px; line-height: 20px; padding: 3px 10px; }
 /* 手引きのページの上の手引きの一覧と、産業のつながりの図への入口（web/help_guides.html・help_chain_banner.html） */
 .help-guides { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin: 6px 0 10px; padding: 6px 10px;
   background: var(--pale); border: 1px solid var(--rule); }
