@@ -499,6 +499,8 @@ def test_facility_hires_only_for_inputs_on_hand(game):
     plant = add(island, "building_materials_plant", 6, 6, recipe="wood")
     add(island, "hydro_power_plant", 7, 6)  # 送電網でつながった発電所（原料がいらない）
     with_economy(game, island)
+    # 計画経済の島は残った失業者を国営の施設の空いた席に配る（雇用の保障 LB-46）ので、市場の島で見る
+    island.regime["economy"] = "mixed"
     run(game, island, ["employment", "production"])
     assert plant.workers == 0
     assert (plant.operating_rate, plant.status) == (0, "input:wood")
