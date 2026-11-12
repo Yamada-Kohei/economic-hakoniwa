@@ -30,6 +30,8 @@
       <label>{% translate "重ねて表示" %}
         <select id="overlay"><option value="">{% translate "なし" %}</option></select>
       </label>
+      {# 量のある重ね表示を、マスの上の半透明の棒で見せるか、マスの塗り分けで見せるか（UI-79。選んだ形はブラウザに覚える） #}
+      <label><input type="checkbox" id="overlay-bars" checked> {% translate "棒で表示" %}</label>
       <span id="overlay-legend" class="hint" aria-live="polite"></span>
     </div>
     <p id="map-help" class="hint">{% translate "地図はドラッグで移動、Ctrl＋ホイールか＋－ボタンで拡大縮小できます。スマートフォンでは2本指で拡大縮小できます。通常のホイールはページをスクロールします。" %}</p>
