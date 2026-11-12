@@ -183,3 +183,25 @@ def test_stock_status_uses_last_consumption_and_planned_target(game) -> None:
     assert row["months"] == need / (need // 4)
     assert row["expected"] == fac.scale(need, fac.FULL // 2)
     assert row["target"] == row["expected"] * game.config.get("power.fuel_stock_turns")
+
+
+def test_low_fuel_line_uses_the_same_recent_use_as_the_months_in_the_text(game) -> None:
+    """見込みが実際の使用より大きくても、残りの月数が線より多ければ知らせない。
+
+    LAN の世界の試し回しで「残り約5か月で買えていない」が出た外れ。
+    """
+    island, f, need = _plant(game)
+    used = need // 4
+    notice = game.config.get("power.fuel_notice_turns")
+    # 見込み（全力）の 1.5 か月分は切るが、直近の使用では 2.5 か月分ある
+    f.stock = {"coal": [[0, int(used * notice) + used]]}
+    power_fuel.reset_book(game.defs, f, island.economy.prices)
+    f.economy["short"] = {"coal": "funds"}
+    _flow(f, used)
+    after_market(island, context(game))
+    assert not any(e.kind == LOW for e in island.log)
+    f.stock = {"coal": [[0, used]]}
+    after_market(island, context(game))
+    entries = [e for e in island.log if e.kind == LOW]
+    assert len(entries) == 1
+    assert entries[0].args["months"] == 1
