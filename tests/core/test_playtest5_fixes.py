@@ -454,7 +454,7 @@ def test_fx_depth_covers_the_contracts_due_this_turn(game, traded):
     assert fxrates.depth(island, currency, game.config, base // 2) == base
 
 
-def test_foreign_currency_contract_larger_than_the_depth_is_delivered(game, traded):
+def test_foreign_currency_contract_larger_than_the_depth_is_delivered(game, traded, monkeypatch):
     """1ターンの代金が市場の厚みの下限を超える外貨建ての契約も、ほぼ全部届く。レートは1ターンに
     値幅より動かない。"""
     world = copy.deepcopy(traded[0])
@@ -462,17 +462,18 @@ def test_foreign_currency_contract_larger_than_the_depth_is_delivered(game, trad
     good = "steel"
     price = seller.economy.prices[good]
     floor = fxrates.depth(buyer, seller.id, game.config)
-    # 1ターンの代金が厚みの下限をちょうど超える数（前は下限の 1.6 倍ほどにしていたが、2026-11-03
-    # の資本家の消費の下げで世界の道筋が変わり、四捨五入で2つになって借りられる残りを超えた）
+    # 1ターンの代金が厚みの下限をちょうど超える数
     qty = floor // price + 1
-    # 島2の中央銀行が売る島1の通貨は、中央銀行どうしの融通で借りる。借りられる残り（島1の年の GDP
-    # の割合まで）が尽きれば外貨を買えずに届かないのが正しいので、ここでは厚みを見るため、残りの
-    # 3/4 に収まるターン数にする（ほかの買いの分も借りる。回6 で世界の道筋が変わり、島1の GDP が
-    # 下がって6ターン分に足りなくなった。2026-11-01 の価格の直しで世界の道筋が変わり、3ターン分にも
-    # 足りなくなった。2ターンでもレートの動きと届いた量は確かめられる）
+    # 島2の中央銀行が売る島1の通貨は、中央銀行どうしの融通で借りる。借りられる残り（年の GDP の
+    # 割合まで）が尽きて届かないのは正しい動きだが、ここで見たいのは厚みとレートなので、融通の上限を
+    # 試験の中で大きくして、回した世界の GDP によらず残りが足りるようにする（GT-35・GT-44。前は
+    # 残りからターン数を決めていて、世界の道筋が変わるたびに 6→3→2 ターンと直していた）
+    fx_config = game.config.get("fx")
+    monkeypatch.setitem(fx_config, "swap_quota", fx_config["swap_quota"] * 100)
+    monkeypatch.setitem(fx_config, "swap_issuer_share", fx_config["swap_issuer_share"] * 100)
+    turns = 4
     room = swap.available(world, game.config, buyer.id, seller.id)
-    turns = min(6, room * 3 // 4 // money_of(price, qty * QUANTITY_SCALE))
-    assert turns >= 2
+    assert room >= money_of(price, qty * QUANTITY_SCALE) * turns * 4
     stock.add(seller.warehouse, good, (qty * 8 + 5) * QUANTITY_SCALE, world.turn, game.defs.goods)
     ledger.pay(buyer, ledger.CB, ledger.GOV, 10**12, "trade")  # 国庫の自国通貨は足りている
     payload = {

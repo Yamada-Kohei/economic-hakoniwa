@@ -649,7 +649,7 @@ def market_table(
     traded = last_trades(island)
     standing = display.warehouse_standing(island) if mine else {}
     rows = []
-    for good in defs.goods:
+    for good in display.goods_in_order(defs):
         record = now.get(good)
         made = stats.get(f"production.{good}", 0)
         stock = stats.get(f"stock.{good}", 0)
