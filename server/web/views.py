@@ -552,6 +552,7 @@ def help_start_page(request):
             ],
             "commute": game.config.get("labor.commute_radius"),
             "base_admin": game.config.get("orders.base_admin_power"),
+            "admin_bank_turns": game.config.get("orders.bank_turns"),
             "power_fuel_turns": game.config.get("founding.power_fuel_turns"),
         },
     )
@@ -668,6 +669,8 @@ def _help_context() -> dict:
         "interval_hours": f"{interval_minutes / 60:g}" if interval_minutes else "",
         "base_admin": game.config.get("orders.base_admin_power"),
         "max_admin": game.config.get("orders.max_admin_power"),
+        "admin_bank_turns": game.config.get("orders.bank_turns"),
+        "admin_burst": f"{game.config.get('orders.burst'):g}",
         "power_fuel_turns": game.config.get("founding.power_fuel_turns"),
         "admin_per_office": _admin_people(defs),
         # 金融と企業（フェーズ2-2）の説明に出す数

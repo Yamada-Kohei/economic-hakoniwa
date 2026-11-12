@@ -72,7 +72,9 @@ INSTRUCTIONS = """\
   diary_set に書いておきます（持ち主だけが読めます）。
 - 次のターンからは changes(since=前に読んだターン) で、その後に起きたことだけを読みます。
 - 命令は check_order で確かめてから、set_orders で命令の列を丸ごと置き換えます（今の列は summary の
-  orders.pending）。中身の形は defs(section="orders")。1ターンに実行されるのは行政力の数までです。
+  orders.pending）。中身の形は defs(section="orders")。1ターンに実行されるのは行政力の数までです
+  （使わなかった行政力はためておけ、1ターンにふだんの2倍まで使えます。summary の orders の
+  admin_power はためた分を足した次のターンの行政力、admin_bank はためた分）。
 - ターンはサーバーが決まった時刻に進めます。ほかの国との連絡は公電（letters・send_letter）と
   掲示板（板・番号付きのレス・>>返信・名無しか国名か・返信の知らせ・検索）です。国際会議場（hall）
   には公開の声明と、戦争・条約の出来事が載ります。
@@ -331,7 +333,7 @@ def _set_orders(request, args):
     )
     if status >= 400:
         raise ToolError(f"{status}: {data if isinstance(data, str) else _dump(data)}")
-    keep = ("admin_power", "orders", "warnings")
+    keep = ("admin_power", "admin_bank", "orders", "warnings")
     return {k: data[k] for k in keep if k in data}
 
 

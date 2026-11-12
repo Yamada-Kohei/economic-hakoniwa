@@ -33,6 +33,7 @@ from hakoniwa_core.economy.debt import annual_gdp, total_debt
 from hakoniwa_core.economy.households import close_income
 from hakoniwa_core.economy.stats import inflation, update_cpi
 from hakoniwa_core.military.forces import soldiers as military_soldiers
+from hakoniwa_core.modules import planning
 from hakoniwa_core.modules.labor import engineer_unemployment, has_own_wage
 from hakoniwa_core.modules.population import subsistence_persons
 from hakoniwa_core.registry import IslandStage, Registry
@@ -111,7 +112,11 @@ class Records(IslandStage):
             stats["power.shortage"] = max(0.0, 1 - stats.get("power.used", 0) / demand)
         stats.update(_holdings(island))
         # 次のターンの初めに使える行政力（官庁の人手はこのターンに雇えた人数で決まる）
-        stats["admin_power"] = ctx.formula("admin_power")(island, ctx)
+        power = ctx.formula("admin_power")(island, ctx)
+        stats["admin_power"] = power
+        # ためた行政力と、それを足して次のターンに使える行政力（W-265）
+        stats["admin_bank"] = int(island.ext.get(planning.ADMIN_BANK, 0))
+        stats["admin_usable"] = planning.usable_admin(island, ctx.config, power)
 
     # --- お金 ---------------------------------------------------------------------
 

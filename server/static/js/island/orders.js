@@ -56,6 +56,7 @@ export class OrderQueue {
     this.items = [];
     this.recent = [];
     this.adminPower = 0;
+    this.adminBank = 0;
     this.warnings = new Map(); // 列の位置 → 文
     this.message = "";
     this.saving = Promise.resolve();
@@ -90,6 +91,9 @@ export class OrderQueue {
     this.items = data.orders.map((o) => ({ kind: o.kind, payload: o.payload, cost: o.cost, text: o.text }));
     this.recent = data.recent || this.recent;
     this.adminPower = data.admin_power;
+    this.adminBank = data.admin_bank || 0;
+    this.adminGranted = data.admin_granted ?? data.admin_power;
+    this.adminBurst = data.admin_burst || 1;
     this.warnings = new Map((data.warnings || []).map((w) => [w.index, w.text]));
   }
 
@@ -154,7 +158,8 @@ export class OrderQueue {
     let cut = false;
     const rows = this.items.map((o, i) => {
       // 1ターンの行政力を超える命令も、先頭ならそのターンの行政力をすべて使って実行される
-      const cost = used === 0 ? Math.min(o.cost, this.adminPower) : o.cost;
+      // （ためた行政力は使わない。W-265）
+      const cost = used === 0 ? Math.min(o.cost, this.adminGranted ?? this.adminPower) : o.cost;
       used += cost;
       const late = used > this.adminPower;
       const divider = late && !cut ? `<li class="divider">以下は行政力が不足するため、次のターン以降に実行されます</li>` : "";
@@ -181,7 +186,7 @@ export class OrderQueue {
     const empty = this.forms ? "命令はありません。" : "命令はありません。地図でマスを選択して命令を追加してください。";
     this.el.innerHTML = `
       <h2>${escapeHtml(this.heading)}</h2>
-      <p>次ターンの行政力（実行できる命令数）: <strong>${this.adminPower}</strong> ／ 予定の命令: ${total}</p>
+      <p>次ターンの行政力（実行できる命令数）: <strong>${this.adminPower}</strong> ／ 予定の命令: ${total}${this.adminBank ? `<br><small class="muted">ためた行政力 ${this.adminBank}（使わなかった分をためておき、1ターンにふだんの${this.adminBurst}倍まで使えます）</small>` : ""}</p>
       <ol class="order-list">${rows.join("") || `<li class="muted">${empty}</li>`}</ol>
       <p class="message" aria-live="polite">${escapeHtml(this.message)}</p>
       ${this.forms ? this.chosenForms() : this.islandForms()}

@@ -57,6 +57,10 @@ orders:
   base_admin_power: 1   # どの国でも1ターンに実行できる命令の数
   max_admin_power: 5    # 強大な国でもこれまで
   max_queue: 30         # 前もって並べておける命令の数
+  # 使わなかった行政力はためておける（W-265）: ためられるのはそのターンの行政力の bank_turns ターン分
+  # まで、1ターンに使えるのは行政力の burst 倍まで（数日遊べなかった人が、戻ってまとめて命令を出せる）
+  bank_turns: 10
+  burst: 2
 
 world:
   cells_per_island: 2   # 世界マップの区画数は島数のおよそこの倍

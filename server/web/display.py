@@ -1935,7 +1935,9 @@ SUMMARY_STATS = [
     ("farm.grade", "農場の段階の平均（0 手作業・1 機械化・2 近代化）", ""),
     ("power.capacity", "発電量", "good:electricity"),
     ("power.demand", "電力需要", "good:electricity"),
-    ("admin_power", "行政力（次ターンの命令実行数）", ""),
+    ("admin_power", "行政力（1ターンに増える命令実行数）", ""),
+    ("admin_bank", "ためた行政力", ""),
+    ("admin_usable", "次ターンに使える行政力（ためた分を足して）", ""),
     ("facilities", "施設数", ""),
     ("construction", "建設中の施設", ""),
     ("gdp", "GDP（1ターン）", "money"),
@@ -1971,6 +1973,15 @@ SUMMARY_STATS = [
     ("migration.arrived", "入国者数（移住。帰国者を含む。1ターン）", "人"),
     ("migration.left", "出国者数（移住。1ターン）", "人"),
 ]
+
+
+def usable_admin(stats: dict[str, float]) -> int:
+    """次のターンに使える行政力: ためた分を足した値（W-265）。記録の前の島は行政力、それもなければ
+    最低の行政力。"""
+    found = stats.get("admin_usable", stats.get("admin_power"))
+    if found is None:
+        found = get_game().config.get("orders.base_admin_power")
+    return int(found)
 
 
 def latest_stats(island: m.Island) -> tuple[int | None, dict[str, float]]:

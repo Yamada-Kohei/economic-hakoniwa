@@ -991,15 +991,17 @@ def orders_brief(island: m.Island) -> dict[str, Any]:
     """命令の列と行政力、直近に実行したターンの命令の結果（持ち主だけ）。"""
     d = get_game().defs
     _, stats = display.latest_stats(island)
-    admin_power = stats.get("admin_power")
-    if admin_power is None:
-        admin_power = get_game().config.get("orders.base_admin_power")
+    admin_power = display.usable_admin(stats)
     pending = island.orders.filter(status="pending").order_by("seq", "id")
     done = island.orders.exclude(status="pending")
     last = done.aggregate(t=Max("executed_turn"))["t"]
     labels = display.facility_labels(island)  # 施設への命令の文に種類と作る物を（W-262）
     return {
-        "admin_power": int(admin_power),
+        "admin_power": admin_power,
+        "admin_bank": int(stats.get("admin_bank", 0)),  # ためた行政力（W-265）
+        # ためる前の 1 ターンの行政力（重い命令はこれだけを使う）と、使える倍率
+        "admin_granted": int(stats.get("admin_power", admin_power)),
+        "admin_burst": get_game().config.get("orders.burst"),
         "pending": [
             {
                 "kind": o.kind,

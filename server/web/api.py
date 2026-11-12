@@ -1034,13 +1034,15 @@ def _orders_view(island: m.Island, mine: bool = True) -> dict[str, Any]:
         recent = recent.exclude(Q(status="failed") & secret).exclude(_hidden_orders())
     pending = pending.order_by("seq", "id")
     turn, stats = display.latest_stats(island)
-    admin_power = stats.get("admin_power")
-    if admin_power is None:
-        admin_power = get_game().config.get("orders.base_admin_power")
+    admin_power = display.usable_admin(stats)
     recent = recent.order_by("-executed_turn", "-seq")[:20]
     labels = display.facility_labels(island)  # 施設への命令の文に種類と作る物を（W-262）
     return {
-        "admin_power": int(admin_power),
+        "admin_power": admin_power,
+        "admin_bank": int(stats.get("admin_bank", 0)),  # ためた行政力（W-265）
+        # ためる前の 1 ターンの行政力（重い命令はこれだけを使う）と、使える倍率
+        "admin_granted": int(stats.get("admin_power", admin_power)),
+        "admin_burst": get_game().config.get("orders.burst"),
         "policy": (
             budget_guide.attach(display.policy_view(island), island)
             if mine
