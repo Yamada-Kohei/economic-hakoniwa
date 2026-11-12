@@ -34,7 +34,6 @@ document.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!form.reportValidity()) return;
   const notice = form.closest("section")?.querySelector(".fx-notice");
-  if (form.dataset.confirm && !confirm(form.dataset.confirm)) return;
   const empty = marketWarning(form);
   if (empty && !confirm(empty)) return;
   await orders.add(form.dataset.order, payloadOf(form));

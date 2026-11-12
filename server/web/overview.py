@@ -601,7 +601,7 @@ def island_alerts(island: m.Island, mine: bool) -> tuple[list[str], list[dict[st
 
 STEP_LINKS = {
     "map": "地図へ",
-    "orders": "命令の欄へ",
+    "orders": "命令のページへ",
     "market": "市場を見る",
     "facilities": "施設の状態を見る",
     "chain": "産業の鎖を見る",
@@ -609,9 +609,9 @@ STEP_LINKS = {
 
 
 def _step(key: str, text: str, page: str, island: m.Island) -> dict[str, Any]:
-    """「次にすること」の1行。page は行き先の画面（map・orders は島の画面の中の地図と命令の欄）。"""
-    if page in ("map", "orders"):
-        url = reverse("island", args=[island.id]) + ("#island-map" if page == "map" else "#orders")
+    """「次にすること」の1行。page は行き先の画面（map は島の画面の中の地図）。"""
+    if page == "map":
+        url = reverse("island", args=[island.id]) + "#island-map"
     elif page:
         url = reverse(f"island_{page}", args=[island.id])
     else:
@@ -1020,6 +1020,7 @@ def orders_brief(island: m.Island) -> dict[str, Any]:
         "admin_power": int(admin_power),
         "pending": [
             {
+                "id": o.id,  # 1 件ずつ消すときの番号（remove_order・DELETE .../items/<番号>）
                 "kind": o.kind,
                 "payload": display.order_payload(o.kind, o.payload, to_game=False),
                 "cost": d.orders[o.kind]["admin_cost"] if o.kind in d.orders else 0,
