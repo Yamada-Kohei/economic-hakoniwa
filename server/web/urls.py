@@ -26,6 +26,7 @@ urlpatterns = [
     path("help/start/", views.help_start_page, name="help_start"),
     path("help/ai/", views.help_ai_page, name="help_ai"),
     path("help/chain/", views.help_chain_page, name="help_chain"),
+    path("help/fx/", views.help_fx_page, name="help_fx"),
     path("terms/", views.terms_page, name="terms"),
     path("islands/<int:island_id>/", views.island_page, name="island"),
     path("islands/<int:island_id>/home/", views.island_home_page, name="home"),

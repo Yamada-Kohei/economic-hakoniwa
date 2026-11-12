@@ -65,10 +65,14 @@ def defs(request):
             "facilities": {fid: _facility_def(fid, f) for fid, f in d.facilities.items()},
             "goods": {
                 gid: {"name": d.name("goods", gid), "tier": g.get("tier"), "unit": d.unit_name(gid)}
-                for gid, g in d.goods.items()
+                for gid, g in ((gid, d.goods[gid]) for gid in display.goods_in_order(d))
             },
             "orders": {
-                oid: {"name": d.name("orders", oid), "admin_cost": o["admin_cost"]}
+                oid: {
+                    "name": d.name("orders", oid),
+                    "admin_cost": o["admin_cost"],
+                    **_caution(oid),
+                }
                 for oid, o in d.orders.items()
             },
             "settlements": {
@@ -143,11 +147,18 @@ def order_defs(request):
                     **({"units": ORDER_UNITS_NOTE} if display.order_has_units(oid) else {}),
                     **({"parliament": o["parliament"]} if o.get("parliament") else {}),
                     **({"secret": _plain(o["secret"])} if o.get("secret") else {}),
+                    **_caution(oid),
                 }
                 for oid, o in d.orders.items()
             }
         }
     )
+
+
+def _caution(kind: str) -> dict[str, str]:
+    """軽く動かすと戻らない命令の注意（W-255）。ない命令は空。"""
+    text = display.ORDER_CAUTIONS.get(kind)
+    return {"caution": text} if text else {}
 
 
 ORDER_UNITS_NOTE = (

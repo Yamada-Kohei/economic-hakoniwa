@@ -24,7 +24,7 @@ SCREEN_HELP = {
     "island_fiscal": ("help", "money"),
     "island_finance": ("help", "money"),
     "island_trade": ("help", "trade"),
-    "island_fx": ("help", "trade"),
+    "island_fx": ("help_fx", ""),
     "island_politics": ("help", "politics"),
     "island_plan": ("help", "politics"),
     "island_diplomacy": ("help", "diplomacy"),

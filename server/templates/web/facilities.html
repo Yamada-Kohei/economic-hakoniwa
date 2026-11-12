@@ -22,7 +22,7 @@
         <tr data-facility-state="{% if not f.built %}{% translate '建設中' %}{% else %}{{ f.status_text|default:'稼働中' }}{% endif %}">
           <td>{% if f.on_map %}<a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a>{% else %}{{ f.name }}{% endif %}<br><small class="muted">{{ f.kind_name }}{% if f.size > 1 %} {% blocktranslate with size=f.size %}規模 {{ size }}{% endblocktranslate %}{% endif %}{% if f.grade_name and not f.grading %} {{ f.grade_name }}{% endif %}{% if f.grading %} {% blocktranslate with grade=f.grading %}（{{ grade }}にする工事）{% endblocktranslate %}{% elif f.expands %} {% translate "（建て増し）" %}{% endif %}</small></td>
           <td>{{ f.owner_name }}<br><small class="muted">{{ f.accounting_name }}</small>{% if f.firm_name %}<br><small>{{ f.firm_name }}</small>{% endif %}</td>
-          <td>{% if not f.built %}{% translate "建設中" %}{% if f.status_text and f.status_text != "建設中" %}<br><small>{{ f.status_text }}</small>{% endif %}{% else %}{{ f.status_text|default:"稼働中" }}{% if f.transition %}<br><small>{{ f.transition }}</small>{% endif %}{% endif %}{% if f.hint %}<small class="hint facility-hint">{{ f.hint }}</small>{% endif %}</td>
+          <td>{% if not f.built %}{% translate "建設中" %}{% if f.status_text and f.status_text != "建設中" %}<br><small>{{ f.status_text }}</small>{% endif %}{% else %}{{ f.status_text|default:"稼働中" }}{% if f.transition %}<br><small>{{ f.transition }}</small>{% endif %}{% if f.slowdown %}<br><small class="slowdown-reason">{% blocktranslate with target=f.slowdown.target %}目標 {{ target }}%{% endblocktranslate %}: {{ f.slowdown.text }}</small>{% endif %}{% endif %}{% if f.hint %}<small class="hint facility-hint">{{ f.hint }}</small>{% endif %}</td>
           <td class="num">{{ f.workers }}{% if f.workers_needed %} / {{ f.workers_needed }}{% endif %}</td>
           <td class="num">{% if f.engineers_needed %}{{ f.engineers }} / {{ f.engineers_needed }}{% elif f.engineers_general %}{{ f.engineers_general }}{% endif %}</td>
           <td class="num">{% if f.operating_rate is not None %}{{ f.operating_rate }}%{% endif %}</td>
@@ -104,6 +104,7 @@
     <h2 data-slot="title">{% translate "帳簿の推移" %}</h2>
     {% include "web/chart_range.html" %}
   </div>
+  <div data-slot="slowdown" class="slowdown" hidden></div>
   <div class="charts">
     <figure class="chart" data-chart="flows"><figcaption>{% translate "収支（1ターン）" %}</figcaption></figure>
     <figure class="chart" data-chart="balance"><figcaption>{% translate "預金・借入・在庫の値打ち" %}</figcaption></figure>

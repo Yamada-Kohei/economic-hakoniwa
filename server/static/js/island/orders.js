@@ -247,6 +247,12 @@ export class OrderQueue {
   }
 
   /** 資源の選択肢。選んでいる資源（this.good）に印を付ける。 */
+  /** 軽く動かすと戻らない命令の注意（W-255。/api/defs の orders の caution）。ない命令は空。 */
+  caution(kind) {
+    const text = this.defs.orders?.[kind]?.caution;
+    return text ? `<p class="hint order-caution">注意: ${escapeHtml(text)}</p>` : "";
+  }
+
   goodOptions(entries, label) {
     return entries
       .map(([g, d]) => `<option value="${g}"${g === this.good ? " selected" : ""}>${escapeHtml(label(d))}</option>`)
@@ -320,6 +326,7 @@ export class OrderQueue {
       set_labor_policy: `
         <form class="actions" data-form="set_labor_policy">
           <strong>賃金と失業手当</strong>
+          ${this.caution("set_labor_policy")}
           <label>最低賃金（0 で決めない） ${num("minimum_wage", p.minimum_wage, 'step="1"')}</label>
           <label>失業手当（平均賃金の %） ${num("unemployment_benefit", p.unemployment_benefit, 'max="100" step="1"')}</label>
           ${dismissalField(p)}
@@ -358,6 +365,7 @@ export class OrderQueue {
       set_price_cap: power ? `
         <form class="actions" data-form="set_price_cap">
           <strong>公共料金の上限</strong>
+          ${this.caution("set_price_cap")}
           <label>${escapeHtml(power.name)}（1${escapeHtml(power.unit)}あたり、0 で上限なし）
             <input name="price" type="number" min="0" step="any" placeholder="${cap}" required></label>
           <button type="submit">命令に追加</button>
