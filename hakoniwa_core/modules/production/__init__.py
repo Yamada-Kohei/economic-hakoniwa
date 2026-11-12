@@ -424,7 +424,7 @@ class Production(IslandStage):
                 for layer in sorted(persons):
                     need = home_need * persons[layer] // population
                     payer = Payer(household(layer))
-                    tax = island.policy.consumption_tax
+                    tax = planning.rate_of(island, config, power)  # 計画経済は小売の値段（PL-60）
                     buyers.append(_Buyer(household(layer), payer, need, layer=layer, tax=tax))
             sellers = plants.get(grid, [])
             sell_orders = []
@@ -630,12 +630,14 @@ class Production(IslandStage):
             plant = sellers[s_index][0].f
             amount = money_of(result.price, qty)
             tax = part(amount, buyer.tax)
+            levy, short = planning.split_gap(tax)  # 取引税か価格の補助（PL-60）
             seller = entity_of(config, plant)
-            funds.pay(island, buyer.payer, seller, amount, "electricity", committed=True)
-            funds.pay(island, buyer.payer, ledger.GOV, tax, "tax_consumption", committed=True)
+            funds.pay(island, buyer.payer, seller, amount - short, "electricity", committed=True)
+            funds.pay(island, buyer.payer, ledger.GOV, levy, "tax_consumption", committed=True)
+            if buyer.layer is not None:
+                planning.note_gap(island, levy, short, seller, plant.id)
             buyer.reserved -= amount + tax
             books.add(island, plant.id, books.SALES, amount)
-            planning.note_sale(island, config, power, plant, qty, result.price)
             if buyer.run is not None:
                 books.add(island, buyer.run.f.id, books.ELECTRICITY, amount)
             else:
