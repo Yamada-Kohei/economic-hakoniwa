@@ -164,7 +164,6 @@ document.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (form.dataset.order === "propose_treaty") syncProposal(form);
   if (!form.reportValidity()) return;
-  if (form.dataset.confirm && !confirm(form.dataset.confirm)) return;
   const notice = form.closest(".diplomacy-card, details, section")?.querySelector(".order-notice");
   const button = e.submitter;
   if (button) button.disabled = true;

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import string
+from collections import Counter
 from collections.abc import Mapping
 from functools import cache
 from typing import Any
@@ -32,7 +35,7 @@ from server.game import get_game
 from server.letters import services as letter_services
 from server.orders.models import Order
 from server.turns import services as turn_services
-from server.web import budget_guide, display, overview, rankings, reports
+from server.web import budget_guide, display, order_confirm, overview, rankings, reports
 from server.web import chain as chain_views
 from server.web import country as country_views
 from server.web import diplomacy as diplomacy_views
@@ -66,10 +69,14 @@ def defs(request):
             "facilities": {fid: _facility_def(fid, f) for fid, f in d.facilities.items()},
             "goods": {
                 gid: {"name": d.name("goods", gid), "tier": g.get("tier"), "unit": d.unit_name(gid)}
-                for gid, g in d.goods.items()
+                for gid, g in ((gid, d.goods[gid]) for gid in display.goods_in_order(d))
             },
             "orders": {
-                oid: {"name": d.name("orders", oid), "admin_cost": o["admin_cost"]}
+                oid: {
+                    "name": d.name("orders", oid),
+                    "admin_cost": o["admin_cost"],
+                    **_caution(oid),
+                }
                 for oid, o in d.orders.items()
             },
             "settlements": {
@@ -144,11 +151,18 @@ def order_defs(request):
                     **({"units": ORDER_UNITS_NOTE} if display.order_has_units(oid) else {}),
                     **({"parliament": o["parliament"]} if o.get("parliament") else {}),
                     **({"secret": _plain(o["secret"])} if o.get("secret") else {}),
+                    **_caution(oid),
                 }
                 for oid, o in d.orders.items()
             }
         }
     )
+
+
+def _caution(kind: str) -> dict[str, str]:
+    """軽く動かすと戻らない命令の注意（W-255）。ない命令は空。"""
+    text = display.ORDER_CAUTIONS.get(kind)
+    return {"caution": text} if text else {}
 
 
 ORDER_UNITS_NOTE = (
@@ -271,20 +285,25 @@ def _facility_def(fid: str, f: Any) -> dict[str, Any]:
                 # 電子機器を使う作り方（MI-43）は少ない人手で同じだけ作り、学校は育ちが上がる
                 "labor": r.get("labor", 1.0),
                 "workers": fac.workers_needed(d, fid, rid),
-                **(
-                    {
-                        "build_hint": "選んだ生産方式で操業を始めますが、"
-                        "農場の段階は手作業のままで、"
-                        "段階を上げるには完成後に同じマスへ農場の建設を命令します"
-                        "（工期・建設労働者・資材は手作業と同じです）。"
-                    }
-                    if r.get("grade", 0)
-                    else {}
-                ),
+                **(_graded_build(fid, rid) if fac.build_grade(d, fid, rid) else {}),
                 **({"education_scale": r["education_scale"]} if "education_scale" in r else {}),
             }
             for rid, r in f["recipes"].items()
         },
+    }
+
+
+def _graded_build(fid: str, rid: str) -> dict[str, Any]:
+    """段階の作り方（機械化・近代化）で新しく建てる農場の工期と資材（W-257）。手作業の農場の工事に、
+    その段階までの工事を足した分。"""
+    d = get_game().defs
+    turns, materials = fac.build_spec(d, fid, rid)
+    grade = fac.build_grade(d, fid, rid)
+    name = display.message(fac.grade_name(d, fid, grade))
+    return {
+        "construction": {"turns": turns, "materials": _shown_amounts(materials)},
+        "build_hint": f"初めから{name}の段階で建ちます。手作業の農場の工事に、{name}までの"
+        "工事の工期と資材（機械など）を足した分がかかります。",
     }
 
 
@@ -909,10 +928,20 @@ def _check_order(state, kind: Any, payload: Any):
 
 @require_http_methods(["GET", "PUT"])
 def orders(request, island_id: int):
-    """GET: 待っている命令の列と行政力。PUT: 列を丸ごと置き換える（島の持ち主だけ）。"""
+    """GET: 待っている命令の列と行政力。PUT: 列を丸ごと置き換える（島の持ち主だけ）。
+
+    PUT に version（GET の答えの版）を付けると、その後にほかの画面や道具で列が変わっていれば
+    置き換えずに 409 を返す（古い列で上書きして、足した命令を消さないため。UI-74）。画面は
+    1 件ずつの API（order_items・order_item・order_sequence）を使う。
+    新しく足す命令に打ち間違いに見えるものか戻せないものがあれば、送りに confirm: true が
+    付いていない限り並べずに、確かめの文を 428 で返す（UI-75。order_confirm）。"""
     island = get_object_or_404(m.Island, pk=island_id)
     if request.method == "GET":
-        return _json(_orders_view(island, _mine(request, island)))
+        mine = _mine(request, island)
+        data = _orders_view(island, mine)
+        if mine and request.GET.get("check") == "1":  # 命令のページ: 今は実行できない命令の警告も
+            data["warnings"] = _queue_warnings(island, load_island(island))
+        return _json(data)
     if not request.user.is_authenticated or island.owner_id != request.user.id:
         return _json({"error": "この島の命令は持ち主だけが変えられます"}, status=403)
     try:
@@ -948,10 +977,19 @@ def orders(request, island_id: int):
             warnings.append({"index": i, "text": text})
     if errors:
         return _json({"errors": errors}, status=400)
+    if body.get("confirm") is not True:
+        asks = _confirmations(island, state, items)
+        if asks:
+            return _json(
+                {"error": order_confirm.CONFIRM_TEXT, "confirm": asks},
+                status=order_confirm.CONFIRM_STATUS,
+            )
     with transaction.atomic():
         if turn_services.update_running():
-            text = "いま更新中か、別の書き換えと重なりました。数秒おいてもう一度送ってください"
-            return _json({"error": text}, status=409)
+            return _json({"error": BUSY_TEXT}, status=409)
+        stale = _stale(island, body.get("version"))
+        if stale is not None:
+            return stale
         Order.objects.filter(island=island, status="pending").delete()
         Order.objects.bulk_create(
             [
@@ -960,6 +998,191 @@ def orders(request, island_id: int):
             ]
         )
     return _json({**_orders_view(island), "warnings": warnings})
+
+
+BUSY_TEXT = "いま更新中か、別の書き換えと重なりました。数秒おいてもう一度送ってください"
+STALE_TEXT = (
+    "命令の列が、読んだ後にほかの画面か道具で変わりました。読み直してから送ってください"
+    "（version は今の版）"
+)
+GONE_TEXT = "その命令はもうありません（実行されたか、ほかの画面で消されました）"
+
+
+def queue_version(island: m.Island) -> str:
+    """待っている命令の列の版（命令の番号と順番から作る）。足す・消す・並べ替える・実行するたびに
+    変わるので、古い列を元にした丸ごとの置き換えを見分けられる（UI-74）。"""
+    rows = island.orders.filter(status="pending").order_by("seq", "id").values_list("id", "seq")
+    text = ",".join(f"{i}:{s}" for i, s in rows)
+    return hashlib.sha1(text.encode()).hexdigest()[:12]
+
+
+def _stale(island: m.Island, version: Any) -> JsonResponse | None:
+    """送られた版（省けば見ない）が今の列の版と違えば 409 の答え。"""
+    if version is None:
+        return None
+    current = queue_version(island)
+    if version == current:
+        return None
+    return _json({"error": STALE_TEXT, "version": current}, status=409)
+
+
+def _owner_only(request, island: m.Island) -> JsonResponse | None:
+    if _mine(request, island):
+        return None
+    return _json({"error": "この島の命令は持ち主だけが変えられます"}, status=403)
+
+
+def _queue_warnings(island: m.Island, state) -> list[dict[str, Any]]:
+    """待っている命令のうち、今の島では実行できないもの（列の位置・命令の番号・わけ）。"""
+    out = []
+    pending = island.orders.filter(status="pending").order_by("seq", "id")
+    for i, o in enumerate(pending):
+        result = _check_order(state, o.kind, o.payload)
+        if not result.ok:
+            text = display.message(result.reason or "reason_unknown_order", **result.args)
+            out.append({"index": i, "id": o.id, "text": text})
+    return out
+
+
+def _changed(island: m.Island, state=None, **extra: Any) -> JsonResponse:
+    """1 件ずつの書き換えの答え: 今の列（版つき）と、今は実行できない命令の警告。"""
+    state = state if state is not None else load_island(island)
+    view = _orders_view(island)
+    return _json({**view, "warnings": _queue_warnings(island, state), **extra})
+
+
+@require_http_methods(["POST"])
+def order_items(request, island_id: int):
+    """命令を 1 つ、列の最後に足す（島の持ち主だけ。UI-74）。本文は {kind, payload}。
+
+    今の列を読み直さずにサーバーが最後に足すので、2 つの画面や道具で同時に足しても消えない。
+    形の誤りは 400、確かめの要る命令（UI-75）は confirm: true が付いていなければ 428 と確かめの文、
+    今の島では実行できない命令は警告（warning）を付けて受け付ける。答えは今の列と、足した命令の
+    番号（added）。"""
+    island = get_object_or_404(m.Island, pk=island_id)
+    refused = _owner_only(request, island)
+    if refused is not None:
+        return refused
+    try:
+        body = jsonbody.loads(request.body or b"{}")
+    except ValueError:
+        return HttpResponseBadRequest("JSON で送ってください")
+    if not isinstance(body, dict) or not isinstance(body.get("payload", {}), dict):
+        return HttpResponseBadRequest("命令は1つずつ {kind, payload} の形で送ってください")
+    limit = get_game().config.get("orders.max_queue")
+    if island.orders.filter(status="pending").count() >= limit:
+        return _json({"error": f"命令は {limit} 個まで並べられます"}, status=400)
+    state = load_island(island)
+    kind = body.get("kind")
+    payload = display.order_payload(kind, body.get("payload", {}), to_game=True)
+    result = _check_order(state, kind, payload)
+    warning = ""
+    if not result.ok:
+        text = display.message(result.reason or "reason_unknown_order", **result.args)
+        if result.reason in ("reason_unknown_order", "reason_invalid_payload"):
+            return _json({"error": text, "details": list(result.details)}, status=400)
+        warning = text  # 前の命令が済めば実行できることがあるので受け付ける
+    if body.get("confirm") is not True:
+        notes = order_confirm.confirmations(order_confirm.Context(island, state), kind, payload)
+        if notes:
+            text = display.describe_order(kind, payload)
+            ask = {"index": 0, "kind": kind, "text": text, "notes": notes}
+            return _json(
+                {"error": order_confirm.CONFIRM_TEXT, "confirm": [ask]},
+                status=order_confirm.CONFIRM_STATUS,
+            )
+    with transaction.atomic():
+        if turn_services.update_running():
+            return _json({"error": BUSY_TEXT}, status=409)
+        top = island.orders.filter(status="pending").aggregate(top=Max("seq"))["top"] or 0
+        order = Order.objects.create(island=island, seq=top + 1, kind=kind, payload=payload)
+    return _changed(island, state, added=order.id, warning=warning)
+
+
+@require_http_methods(["DELETE"])
+def order_item(request, island_id: int, order_id: int):
+    """待っている命令を 1 つ消す（島の持ち主だけ。UI-74）。もうなければ 404 と今の列。"""
+    island = get_object_or_404(m.Island, pk=island_id)
+    refused = _owner_only(request, island)
+    if refused is not None:
+        return refused
+    with transaction.atomic():
+        if turn_services.update_running():
+            return _json({"error": BUSY_TEXT}, status=409)
+        deleted, _ = island.orders.filter(pk=order_id, status="pending").delete()
+    if not deleted:
+        return _json({**_orders_view(island), "error": GONE_TEXT}, status=404)
+    return _changed(island)
+
+
+@require_http_methods(["POST"])
+def order_sequence(request, island_id: int):
+    """待っている命令を並べ替える（島の持ち主だけ。UI-74）。本文は {"ids": [命令の番号を上から]}。
+
+    もうない番号（実行された・ほかの画面で消された）は飛ばし、ids にない命令（ほかの画面で足した
+    命令）は、今の順のまま後ろに置く。version（列の版）を付けると、変わっていれば 409。"""
+    island = get_object_or_404(m.Island, pk=island_id)
+    refused = _owner_only(request, island)
+    if refused is not None:
+        return refused
+    try:
+        body = jsonbody.loads(request.body or b"{}")
+        ids = body["ids"]
+        if not isinstance(ids, list) or not all(
+            isinstance(i, int) and not isinstance(i, bool) for i in ids
+        ):
+            raise TypeError
+    except (ValueError, KeyError, TypeError):
+        return HttpResponseBadRequest("ids に命令の番号の一覧を JSON で送ってください")
+    with transaction.atomic():
+        if turn_services.update_running():
+            return _json({"error": BUSY_TEXT}, status=409)
+        stale = _stale(island, body.get("version"))
+        if stale is not None:
+            return stale
+        pending = list(island.orders.filter(status="pending").order_by("seq", "id"))
+        by_id = {o.id: o for o in pending}
+        chosen = list(dict.fromkeys(i for i in ids if i in by_id))
+        ordered = [by_id[i] for i in chosen] + [o for o in pending if o.id not in set(chosen)]
+        for seq, o in enumerate(ordered, 1):
+            o.seq = seq
+        Order.objects.bulk_update(ordered, ["seq"])
+    return _changed(island)
+
+
+def _order_key(kind: Any, payload: Any) -> str:
+    """同じ命令かを比べる鍵（中身は計算の単位。小数の丸めの差は見ない）。"""
+
+    def plain(value: Any) -> Any:
+        if isinstance(value, float):
+            return round(value, 6)
+        if isinstance(value, dict):
+            return {k: plain(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [plain(v) for v in value]
+        return value
+
+    return json.dumps([kind, plain(payload)], sort_keys=True, ensure_ascii=False, default=str)
+
+
+def _confirmations(island: m.Island, state, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """新しく足す命令（今の列になかった命令）の確かめの文（UI-75）。並べ替えと消すだけなら空。
+
+    列を丸ごと送る作りなので、今待っている命令と同じ種類と中身の命令は数の分だけ足したものに
+    数えない。"""
+    waiting = Counter(_order_key(o.kind, o.payload) for o in island.orders.filter(status="pending"))
+    ctx = order_confirm.Context(island, state)
+    asks = []
+    for i, item in enumerate(items):
+        key = _order_key(item.get("kind"), item.get("payload"))
+        if waiting[key] > 0:
+            waiting[key] -= 1
+            continue
+        texts = order_confirm.confirmations(ctx, item.get("kind"), item.get("payload"))
+        if texts:
+            text = display.describe_order(item["kind"], item.get("payload") or {})
+            asks.append({"index": i, "kind": item["kind"], "text": text, "notes": texts})
+    return asks
 
 
 @require_http_methods(["POST"])
@@ -980,6 +1203,12 @@ def check(request, island_id: int):
     result = _check_order(state, body.get("kind"), payload)
     text = "" if result.ok else display.message(result.reason or "", **result.args)
     data = {"ok": result.ok, "text": text, "details": list(result.details)}
+    # 打ち間違いに見えるか、戻せない命令なら、並べるときに聞く確かめの文も先に返す（UI-75）
+    asks = order_confirm.confirmations(
+        order_confirm.Context(island, state), body.get("kind"), payload
+    )
+    if asks:
+        data["confirm"] = asks
     if result.ok:  # どう読んだか（率の % や量の単位）を見られるように、命令の列と同じ説明を添える
         data["summary"] = display.describe_order(
             body["kind"], payload or {}, display.facility_labels(island)
@@ -1051,13 +1280,15 @@ def _orders_view(island: m.Island, mine: bool = True) -> dict[str, Any]:
         recent = recent.exclude(Q(status="failed") & secret).exclude(_hidden_orders())
     pending = pending.order_by("seq", "id")
     turn, stats = display.latest_stats(island)
-    admin_power = stats.get("admin_power")
-    if admin_power is None:
-        admin_power = get_game().config.get("orders.base_admin_power")
+    admin_power = display.usable_admin(stats)
     recent = recent.order_by("-executed_turn", "-seq")[:20]
     labels = display.facility_labels(island)  # 施設への命令の文に種類と作る物を（W-262）
     return {
-        "admin_power": int(admin_power),
+        "admin_power": admin_power,
+        "admin_bank": int(stats.get("admin_bank", 0)),  # ためた行政力（W-265）
+        # ためる前の 1 ターンの行政力（重い命令はこれだけを使う）と、使える倍率
+        "admin_granted": int(stats.get("admin_power", admin_power)),
+        "admin_burst": get_game().config.get("orders.burst"),
         "policy": (
             budget_guide.attach(display.policy_view(island), island)
             if mine
@@ -1066,6 +1297,7 @@ def _orders_view(island: m.Island, mine: bool = True) -> dict[str, Any]:
         "power_good": get_game().config.get("power.good"),
         "orders": [
             {
+                **({"id": o.id} if mine else {}),
                 "kind": o.kind,
                 "payload": display.order_payload(o.kind, o.payload, to_game=False),
                 "cost": d.orders[o.kind]["admin_cost"] if o.kind in d.orders else 0,
@@ -1073,6 +1305,8 @@ def _orders_view(island: m.Island, mine: bool = True) -> dict[str, Any]:
             }
             for o in pending
         ],
+        # 列の版（持ち主だけ。丸ごとの置き換えと並べ替えで、古い列を元にしていないかを見る。UI-74）
+        **({"version": queue_version(island)} if mine else {}),
         "recent": [
             {
                 "turn": o.executed_turn,

@@ -30,7 +30,7 @@
 </section>
 {% endif %}
 
-{% if mine %}<p class="home-orders"><a href="{% url 'island' island.id %}#orders">{% translate "命令の列を見る（地図）" %}</a></p>{% endif %}
+{% if mine %}<p class="home-orders"><a href="{% url 'island_orders' island.id %}">{% translate "命令の列を見る" %}</a></p>{% endif %}
 <div class="island-stats">
   <section class="panel">
     <h2>{% translate "国勢" %}</h2>

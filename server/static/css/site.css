@@ -213,6 +213,15 @@ pre.prompt { white-space: pre-wrap; overflow-wrap: anywhere; }
 .island-nav a:hover { background: var(--pale); }
 .island-nav a:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }
 .island-nav a[aria-current="page"] { background: var(--accent); color: #fff; }
+/* 命令の列の帯（UI-74）: 持ち主のページの上に、次のターンの命令の数と行政力。押すと命令のページ */
+.orders-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 4px 0; padding: 8px 12px;
+  min-height: 40px; border: 1px solid var(--border); border-left: 6px solid var(--accent); background: var(--pale);
+  color: var(--fg); text-decoration: none; }
+.orders-bar:hover { background: #e3edff; }
+.orders-bar:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.orders-bar[aria-current="page"] { background: var(--head); }
+.orders-bar-go { margin-left: auto; color: var(--accent); white-space: nowrap; }
+.orders-brief { font-size: 0.9em; }
 /* 入口の中の小さなタブ（UI-71）: 入口の帯の下に、下線で今のタブを示す */
 .island-subnav { display: flex; flex-wrap: nowrap; gap: 4px; overflow-x: auto; max-width: 100%;
   margin: 0 0 6px; border-bottom: 1px solid var(--border); }
@@ -309,6 +318,12 @@ table.ranking-table td:nth-child(3), table.titles-table th, table.titles-table t
 .report-main { min-width: 0; }
 .report-orders:empty { display: none; }
 table.facilities .facility-hint { display: block; max-width: 30em; white-space: normal; }
+/* 生産調整中・生産停止中のわけ（W-250）: 地図の窓・施設の一覧・帳簿 */
+table.facilities .slowdown-reason { display: block; max-width: 30em; white-space: normal; }
+.slowdown { margin: 8px 0; }
+.slowdown h4 { margin: 6px 0 4px; }
+.slowdown-reasons { margin: 0 0 4px; padding-left: 1.2em; }
+.slowdown-reasons li { margin: 2px 0; }
 .report-orders { margin-top: 12px; }
 .bank-action { margin-top: 8px; }
 .bank-action h3 { font-size: 1em; }
@@ -468,3 +483,14 @@ figure.diagram summary { cursor: pointer; color: var(--accent); }
 .help-chain-banner strong { display: block; color: #0000ee; text-decoration: underline; }
 .help-chain-banner-text { display: block; font-size: 0.9em; }
 .help-chain-banner-icon { flex: none; }
+
+/* 表の並べ替え（UI-86。table-sort.js）: 列の頭の字を押せるようにし、今の順を矢印で出す */
+th > button.sort-head { all: unset; cursor: pointer; text-decoration: underline dotted; }
+th > button.sort-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+th[aria-sort="ascending"] > button.sort-head::after { content: " ▲"; font-size: 0.8em; }
+th[aria-sort="descending"] > button.sort-head::after { content: " ▼"; font-size: 0.8em; }
+
+/* 指の下のマスの座標（UI-85）: 地図の右下の隅 */
+.map-coord { position: absolute; right: 8px; bottom: 8px; margin: 0; padding: 2px 8px; font-size: 0.9em;
+  color: #fff; background: rgba(10, 30, 60, 0.75); border-radius: 4px; pointer-events: none;
+  font-variant-numeric: tabular-nums; }

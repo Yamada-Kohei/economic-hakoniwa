@@ -26,6 +26,7 @@ urlpatterns = [
     path("help/start/", views.help_start_page, name="help_start"),
     path("help/ai/", views.help_ai_page, name="help_ai"),
     path("help/chain/", views.help_chain_page, name="help_chain"),
+    path("help/fx/", views.help_fx_page, name="help_fx"),
     path("terms/", views.terms_page, name="terms"),
     path("islands/<int:island_id>/", views.island_page, name="island"),
     path("islands/<int:island_id>/home/", views.island_home_page, name="home"),
@@ -50,6 +51,7 @@ urlpatterns = [
     path("islands/<int:island_id>/military/", views.military_page, name="island_military"),
     path("islands/<int:island_id>/country/", views.country_page, name="island_country"),
     path("islands/<int:island_id>/diary/", views.diary_page, name="diary"),
+    path("islands/<int:island_id>/orders/", views.orders_page, name="island_orders"),
     path("islands/<int:island_id>/flag", views.island_flag, name="island_flag"),
     path(
         "islands/<int:island_id>/monuments/<int:number>/image",
@@ -109,6 +111,17 @@ urlpatterns = [
     path("api/islands/<int:island_id>/chain", api.chain, name="api_island_chain"),
     path("api/islands/<int:island_id>/orders", api.orders, name="api_orders"),
     path("api/islands/<int:island_id>/orders/check", api.check, name="api_order_check"),
+    path("api/islands/<int:island_id>/orders/items", api.order_items, name="api_order_items"),
+    path(
+        "api/islands/<int:island_id>/orders/items/<int:order_id>",
+        api.order_item,
+        name="api_order_item",
+    ),
+    path(
+        "api/islands/<int:island_id>/orders/sequence",
+        api.order_sequence,
+        name="api_order_sequence",
+    ),
     path("api/founding/cells", founding.world_cells, name="api_founding_cells"),
     path("api/founding/random-shape", founding.random_shape, name="api_founding_shape"),
     path("api/founding/terrain", founding.terrain, name="api_founding_terrain"),

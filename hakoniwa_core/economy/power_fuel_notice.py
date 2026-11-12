@@ -144,9 +144,13 @@ def after_market(island: IslandState, ctx: StageContext) -> None:
         burned = [r for r in rows if used.get(r["good"], 0) > 0]
         if f.status == "power_price" or not burned or current_floor <= reference:
             continue
+        months = min(r["quantity"] / used[r["good"]] for r in burned)
+        # ①と同じく直近の使用量で見て、在庫が尽きるのが `power.price_notice_turns` より先なら
+        # まだ知らせない。ほとんど動いていない発電所に「残り約 416 か月」と出た外れ（LAN の試し）
+        if months > config.get("power.price_notice_turns"):
+            continue
         stored_floor = subsidized_floor(
             island, defs, config, f, power, island.economy.prices, wage, rate, ctx.turn
         )
         if stored_floor < current_floor and stored_floor <= reference:
-            months = min(r["quantity"] / used[r["good"]] for r in burned)
             _record(island, f, state, PRICE, "price_notified", months=months)
