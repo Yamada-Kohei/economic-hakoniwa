@@ -123,12 +123,17 @@ def stop_text(f: Facility) -> str | None:
     return display.message("stop_target_closed" if is_stopped(f) else "stop_target")
 
 
+def applies(f: Facility) -> bool:
+    """わけを出す施設か（建ち終わり、状態が売れ行きの調整 target）。Facts を作る前に見る。"""
+    return bool(f.built) and f.status.partition(":")[0] == TARGET
+
+
 def explain(facts: Facts, f: Facility) -> dict[str, Any] | None:
     """施設 f の生産調整中（止まったときは生産停止中）のわけ。状態が target でなければ None。
 
     答え: stopped（0 まで下げて止まった）、target（操業目標 %）、good と good_name（目標を決めた
     産出物）、reasons（わけの文。初めが主なわけ）、text（主なわけ）、hint（打てる手の一言）。"""
-    if not f.built or f.status.partition(":")[0] != TARGET:
+    if not applies(f):
         return None
     game = get_game()
     defs, config = game.defs, game.config

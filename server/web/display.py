@@ -280,7 +280,10 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         from server.web import slowdown  # slowdown は display を使うので、ここで読み込む
 
         # 生産調整中・生産停止中のわけと打てる手（W-250）。打てる手は、わけに合わせたものにする
-        why = slowdown.explain(slowdown.Facts(row.island, island), f)
+        # 市場の記録を読むのは、わけを出す施設のときだけ（ほかの施設の窓を重くしない）
+        why = (
+            slowdown.explain(slowdown.Facts(row.island, island), f) if slowdown.applies(f) else None
+        )
         if why is not None:
             info["slowdown"] = why
             info["hint"] = why["hint"] or info["hint"]
