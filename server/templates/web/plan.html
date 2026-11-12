@@ -38,7 +38,7 @@
       <tbody>
         {% for r in p.rows %}
         <tr>
-          <td><a href="{% url 'island_market' island.id %}?good={{ r.good }}">{{ r.name }}</a>{% if r.held %} <small class="muted">{% translate "（据え置く財）" %}</small>{% endif %}</td>
+          <td><a href="{% url 'market_good' island.id r.good %}">{{ r.name }}</a>{% if r.held %} <small class="muted">{% translate "（据え置く財）" %}</small>{% endif %}</td>
           <td>{{ currency|currency_prefix }}{{ r.price|floatformat:"-1g" }}{% if r.manual %} <small class="muted">{% translate "（命令で決めた値段）" %}</small>{% endif %}</td>
           <td>{% if r.cost %}{{ currency|currency_prefix }}{{ r.cost|floatformat:"-1g" }}{% endif %}</td>
           <td>{% if r.gap is not None %}{% if r.outside %}<span class="warning">{% endif %}{% if r.gap > 0 %}+{% endif %}{{ r.gap }}%{% if r.outside %}</span>{% endif %}{% endif %}</td>

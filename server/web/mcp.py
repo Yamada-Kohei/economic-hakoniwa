@@ -1320,6 +1320,7 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "turn_log": ("turn_log", "changes"),
     "island_economy": ("report", "stats"),
     "island_market": ("report",),
+    "market_good": ("report", "api_get"),  # 品目のページ: 市場の report と品目の API
     "island_chain": ("report",),
     "island_facilities": ("report", "api_get"),  # 施設の帳簿の推移は api_get
     "island_fiscal": ("report",),

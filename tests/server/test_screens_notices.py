@@ -452,7 +452,7 @@ def test_warehouse_standing_noscript_label_and_start_explanation(world):
     (owner, _, _), (island, _, _) = _players(world)
     mine = Client()
     mine.force_login(owner)
-    page = mine.get(f"/islands/{island.id}/market/").content.decode()
+    page = mine.get(f"/islands/{island.id}/market/grain/").content.decode()  # 品目のページの箱
     fallback = re.search(r"<noscript>(.*?)</noscript>", page, re.S).group(1)
     assert "1ターンの売り買いの量／備蓄の目標量" in fallback
     assert "置いた次のターンから動きます" in fallback

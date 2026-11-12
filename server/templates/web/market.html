@@ -3,87 +3,66 @@
 {% block content %}
 {% include "web/report_header.html" %}
 
-<div class="report-layout{% if mine %} with-orders{% endif %}">
+<div class="report-layout">
   <div class="report-main">
     <section class="panel">
       <h2>{% if market_turn is not None %}{% translate "財ごとの市場" %} <small class="heading-date">{{ market_turn|turn_date }}</small>{% else %}{% translate "財ごとの市場" %}{% endif %}</h2>
-      <p class="hint">{% translate "値段の下の小さな字は値段の種類です。印がなければ、そのターンに売買が成立した約定の値段です。「気配」は買いと売りの注文はあったが折り合わず、その間に置いた目安の値段、「持ち越し」は注文が片側だけかなく前の値段のままのもの、「未観測」は市場の記録がないものです（どれも売買量は 0 で、0 円の値段ではありません）。約定でない値段には、最後に売買が成立したターンを添えます。" %}</p>
       {% if rows %}
       <div class="table-scroll">
         <table class="goods market-table">
           <thead><tr>
             <th>{% translate "資源" %}</th><th>{% translate "値段（1単位）" %}</th><th>{% translate "前ターン比" %}</th>
             <th>{% translate "売買量" %}</th><th>{% translate "買い注文" %}</th><th>{% translate "売り注文" %}</th>
-            <th>{% translate "買えなかった量" %}</th><th>{% translate "生産量" %}</th><th>{% translate "国の倉庫" %}</th>{% if mine %}<th>{% translate "倉庫から国営の施設へ" %}</th><th>{% translate "国の倉庫の売り買い" %}</th>{% endif %}<th>{% translate "単位" %}</th>
+            <th>{% translate "買えなかった量" %}</th><th>{% translate "生産量" %}</th><th>{% translate "国の倉庫" %}</th>{% if mine %}<th>{% translate "倉庫から国営の施設へ" %}</th><th>{% translate "国の倉庫の決まった売り買い" %}</th>{% endif %}<th>{% translate "単位" %}</th>
           </tr></thead>
           <tbody>
             {% for r in rows %}
-            <tr data-good="{{ r.good }}"{% if r.good == good %} class="chosen"{% endif %}>
-              <td><a href="?good={{ r.good }}" data-good-link="{{ r.good }}">{{ r.name }}</a></td>
-              <td>{{ r.price|default:"-" }}{% if r.price_kind != "trade" %}<br><small class="muted">{{ r.price_kind_name }}{% if r.observed_turn is not None %}{% blocktranslate with t=r.observed_turn|turn_date %}（最後の約定 {{ t }}）{% endblocktranslate %}{% else %}{% translate "（約定なし）" %}{% endif %}</small>{% endif %}</td><td>{{ r.change|default:"" }}</td>
+            <tr data-good="{{ r.good }}">
+              <td><a href="{% url 'market_good' island.id r.good %}">{{ r.name }}</a></td>
+              <td>{{ r.price|default:"-" }}{% if r.price_kind != "trade" %}<sup class="muted" title="{{ r.price_kind_name }}">*</sup>{% endif %}</td><td>{{ r.change|default:"" }}</td>
               <td>{{ r.volume|default:"-" }}</td><td>{{ r.demand|default:"-" }}</td><td>{{ r.supply|default:"-" }}</td>
               <td{% if r.unmet %} class="warning-cell"{% endif %}>{{ r.unmet|default:"" }}</td>
-              <td>{{ r.production }}</td><td>{{ r.stock }}</td>{% if mine %}<td>{{ r.to_state|default:"" }}</td><td>{% if r.warehouse_standing %}{{ r.warehouse_standing.text }}{% with last=r.warehouse_standing.last %}{% if last %}<br><small>前のターン: 出した量 {{ last.offered }}・約定 {{ last.filled }}・使ったお金 {{ last.spent }} {{ currency }}{% if last.reason_name %}・{{ last.reason_name }}{% endif %}</small>{% endif %}{% endwith %}{% endif %}<br><a href="?good={{ r.good }}#orders">{% translate "置く・変える・止める" %}</a></td>{% endif %}<td>{{ r.unit }}</td>
+              <td>{{ r.production }}</td><td>{{ r.stock }}</td>{% if mine %}<td>{{ r.to_state|default:"" }}</td><td>{% if r.warehouse_standing %}{{ r.warehouse_standing.text }}{% with last=r.warehouse_standing.last %}{% if last %}<br><small>前のターン: 出した量 {{ last.offered }}・約定 {{ last.filled }}・使ったお金 {{ last.spent }} {{ currency }}{% if last.reason_name %}・{{ last.reason_name }}{% endif %}</small>{% endif %}{% endwith %}<br>{% endif %}<a href="{% url 'market_good' island.id r.good %}#actions">{% if r.warehouse_standing %}{% translate "変える・止める" %}{% else %}{% translate "置く" %}{% endif %}</a></td>{% endif %}<td>{{ r.unit }}</td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
-  </div>
-  <p class="hint">{% translate "買い注文・売り注文は、そのターンに買いたかった量と売りたかった量の合計です（値段が折り合わず約定しなかった分を含みます）。資源名を押すと推移を表示します。" %}</p>
-  {% if mine %}<p class="hint">{% translate "「倉庫から国営の施設へ」は、国営の施設が市場で買う前に国の倉庫から自動で引き出した原料の量です（そのターン。市場の売買量には入りません。この国の持ち主だけに見えます）。" %}</p>{% endif %}
-  <p class="hint">{% translate "量は実物に近い単位で出します（重さの財はトンで、1 人が 1 か月に食べる食料は 0.05 トンほど）。値段はその単位 1 つあたりです。" %}</p>
-  {% else %}
-  <p class="muted">{% translate "記録がありません。" %}</p>
-  {% endif %}
-</section>
+      </div>
+      <p class="hint">{% translate "資源名を押すと、その資源のページ（値段と量の推移・作る施設と使う施設・命令）を開きます。買い注文・売り注文は、そのターンに買いたかった量と売りたかった量の合計です（約定しなかった分を含みます）。* の値段は約定の値段ではありません（下の「約定しなかった資源」）。" %}</p>
+      {% if mine %}<p class="hint">{% translate "「倉庫から国営の施設へ」は、国営の施設が市場で買う前に国の倉庫から引き出した量です。「決まった売り買い」は毎ターン買う・売る・備蓄する設定で、" %}<a href="{% url 'help' %}#standing">{% translate "手引き" %}</a>{% translate "に決まりがあります。" %}</p>{% endif %}
+      <p class="hint">{% translate "量は実物に近い単位で出します（重さの財はトンで、1 人が 1 か月に食べる食料は 0.05 トンほど）。値段はその単位 1 つあたりです。" %}</p>
+      {% else %}
+      <p class="muted">{% translate "記録がありません。" %}</p>
+      {% endif %}
+    </section>
 
-{% if good %}
-<section class="panel" id="market-detail" data-good="{{ good }}" data-mine="{{ mine|yesno:'1,0' }}"
-         data-url="{% url 'api_island_market' island.id 'GOOD' %}" data-island-url="{% url 'island' island.id %}"
-         data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
-  <div class="section-head">
-    <h2 data-slot="title">{% translate "資源の推移" %}</h2>
-    {% include "web/chart_range.html" %}
-  </div>
-  <div class="charts">
-    <figure class="chart" data-chart="price"><figcaption>{% translate "値段（1単位）" %}</figcaption></figure>
-    <figure class="chart" data-chart="volume"><figcaption>{% translate "売買量と注文の量" %}</figcaption></figure>
-  </div>
-  <div data-slot="latest"></div>
-  {% if mine %}
-  <p><a href="#orders">{% translate "この資源の命令（国の倉庫の売り買い・補助金）へ" %}</a></p>
-  <h3>{% translate "直近のターンの約定（買い手と売り手の組ごと）" %}</h3>
-  <div data-slot="trades" class="table-scroll"><p class="muted">{% translate "読み込み中…" %}</p></div>
-  <h3>{% translate "この資源を買えずに止まった施設" %}</h3>
-  <div data-slot="short"></div>
-  {% endif %}
-</section>
-{% endif %}
+    {% if rows %}
+    <section class="panel" id="unsettled">
+      <h2>{% translate "約定しなかった資源" %}</h2>
+      <p class="hint">{% translate "「気配」は買いと売りの注文はあったが折り合わず、その間に置いた目安の値段、「持ち越し」は注文が片側だけかなく前の値段のままのもの、「未観測」は市場の記録がないものです（どれも売買量は 0 で、0 円の値段ではありません）。" %}</p>
+      <ul class="plain-list">
+        {% for r in rows %}{% if r.price_kind != "trade" %}
+        <li data-good="{{ r.good }}"><a href="{% url 'market_good' island.id r.good %}">{{ r.name }}</a> ・ {{ r.price_kind_name }}{% if r.price %} {{ r.price }}{% endif %} ・ {% if r.observed_turn is not None %}{% blocktranslate with t=r.observed_turn|turn_date %}最後の約定 {{ t }}{% endblocktranslate %}{% else %}{% translate "約定なし" %}{% endif %}</li>
+        {% endif %}{% endfor %}
+      </ul>
+    </section>
+    {% endif %}
 
-{% if mine %}
-<section class="panel">
-  <h2>{% translate "原料を買えずに止まった施設" %}</h2>
-  {% if short %}
-  <ul class="plain-list">
-    {% for f in short %}
-    <li><a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a>（{{ f.owner_name }}） ・ {{ f.status_text }}{% if f.hint %}<br><small class="hint">{{ f.hint }}</small>{% endif %}</li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <p class="muted">{% translate "ありません。" %}</p>
-  {% endif %}
-</section>
-{% endif %}
+    {% if mine %}
+    <section class="panel">
+      <h2>{% translate "原料を買えずに止まった施設" %}</h2>
+      {% if short %}
+      <ul class="plain-list">
+        {% for f in short %}
+        <li><a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a>（{{ f.owner_name }}） ・ {{ f.status_text }}{% if f.good %} ・ <a href="{% url 'market_good' island.id f.good %}">{{ f.good_name }}</a>{% endif %}{% if f.hint %}<br><small class="hint">{{ f.hint }}</small>{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="muted">{% translate "ありません。" %}</p>
+      {% endif %}
+    </section>
+    {% endif %}
   </div>
-
-  {% if mine %}
-  <noscript><p class="hint">{% translate "国の倉庫の決まった売り買いの量は「1ターンの売り買いの量／備蓄の目標量」です。設定は置いた次のターンから動きます。命令の入力欄を使うには JavaScript を有効にしてください。" %}</p></noscript>
-  <aside id="orders" class="panel report-orders" data-url="{% url 'api_orders' island.id %}" data-defs="{% url 'api_defs' %}"
-         data-forms="warehouse_trade,set_warehouse_standing,set_subsidy" data-good="{{ good }}"
-         data-heading="{% translate '市場の命令' %}"></aside>
-  {% endif %}
 </div>
 
-{% csrf_token %}
-<script type="module" src="{% static 'js/reports/market.js' %}"></script>
 {% endblock %}

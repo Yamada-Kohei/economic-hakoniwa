@@ -19,6 +19,7 @@ SCREEN_HELP = {
     "turn_log": ("help", "flow"),
     "island_economy": ("help", "statistics"),
     "island_market": ("help", "island"),
+    "market_good": ("help", "standing"),
     "island_chain": ("help_chain", ""),
     "island_facilities": ("help_start", "status"),
     "island_fiscal": ("help", "money"),
