@@ -1431,10 +1431,11 @@ def _describe_trade(kind: str, payload: dict[str, Any], name: str) -> str:
         side = SIDES.get(payload.get("side", ""), "")
         currency = currency_name(payload["currency"]) if "currency" in payload else "自国通貨"
         delivery = DELIVERIES.get(payload.get("delivery", ""), "")
+        period = "無期限" if payload.get("indefinite") else f"{payload.get('turns', 0)} ターン"
         return (
             f"{name}: {island_name(payload.get('partner'))}に{defs.name('goods', good)}を"
             f"毎ターン {payload.get('quantity', 0):g} {unit}{side}"
-            f"（1{unit} {payload.get('price', 0):,}・{currency}・{payload.get('turns', 0)} ターン"
+            f"（1{unit} {payload.get('price', 0):,}・{currency}・{period}"
             f"{'・' + delivery if delivery else ''}）"
         )
     if kind == "accept_contract" and payload.get("delivery") in DELIVERIES:

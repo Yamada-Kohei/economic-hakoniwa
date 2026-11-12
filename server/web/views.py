@@ -766,6 +766,8 @@ def _help_context() -> dict:
         "arrears_limit": game.config.get("loans.arrears_limit"),
         "sale_turns": game.config.get("firms.sale_turns"),
         "sale_cut_turns": game.config.get("firms.sale_cut_turns"),
+        # 倒産を出した企業の実績（FM-65）
+        "track_record_turns": game.config.get("firms.track_record_turns"),
         "site_turns": game.config.get("firms.site_work")["turns"],
         "cb_lock_turns": game.config.get("central_bank.switch_lock_turns"),
         # 国債の債務不履行の罰
@@ -973,6 +975,8 @@ def _placement_notes(f) -> str:
         notes.append("海に面したマスのみ")
     if f.get("near_capital") is not None:
         notes.append(f"首都から {f['near_capital']} マス以内")
-    if f.get("max_per_island") is not None:
+    if f.get("max_per_island") is not None and f.get("limit_by_resources"):
+        notes.append(f"1国 {f['max_per_island']} か所まで（掘れる鉱業資源が多ければその数まで）")
+    elif f.get("max_per_island") is not None:
         notes.append(f"1国 {f['max_per_island']} か所まで")
     return "・".join(notes)

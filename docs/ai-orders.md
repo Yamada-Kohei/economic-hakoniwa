@@ -181,6 +181,9 @@ MCP は `saved: false`）。読んでよければ、同じ列に `"confirm": tru
 {"kind":"propose_contract","payload":{"partner":5,"side":"buy","good":"grain","quantity":10,"price":100,"currency":5,"turns":12,"delivery":"market"}}
 ```
 
+期間の代わりに `"indefinite": true` を書くと無期限の契約になります（`turns` は書きません）。
+満期がなく、どちらかが `cancel_contract` を出してから `trade.contract_cancel_turns` ターン後に終わります。
+
 相手の提案を買い手として受ける例です。契約番号は `get api/islands/4/trade` で確認します。
 提案した命令と同時に、まだ存在しない契約番号を指定してはいけません。
 
