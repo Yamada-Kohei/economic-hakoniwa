@@ -52,6 +52,9 @@ EXPANDS = "expands"
 # 機械の設備の割合（MACHINES。economy。1000 分の 1）が下がった分だけ、その割合の畑が手作業で動く
 GRADE = "grade"
 GRADE_TO = "grade_to"
+# 段階の作り方で新しく建てる農場の工事（W-257）: ext に建つ段階を持ち、その段階までの工事の資材も
+# 使う。直しの前から工事中だった農場（移行で段階だけそろえた）は持たず、手作業の資材で建つ
+GRADE_BUILD = "grade_build"
 SITE_WORK = "site_work"  # ext: 空き地に建てる民営の工場の造成 {labor, materials}（FM-61）
 MACHINES = "machines"
 FUEL = "fuel"  # 機械化した畑が毎ターン使う燃料の財
@@ -159,6 +162,28 @@ def machine_goods(defs: Defs, f: Facility) -> set[str]:
         if step["machines"]
         for good in step["materials"]
     }
+
+
+def build_grade(defs: Defs, kind: str, recipe: str | None) -> int:
+    """作り方 recipe で新しく建てる農場の段階（W-257）。段階の作り方（機械化・近代化）を選んで建てる
+    農場は、初めからその段階で建つ。段階のない施設と手作業の作り方は 0。"""
+    if not recipe or not grade_steps(defs, kind):
+        return 0
+    return int(defs.facilities[kind]["recipes"].get(recipe, {}).get("grade", 0))
+
+
+def build_spec(defs: Defs, kind: str, recipe: str | None) -> tuple[int, dict[str, int]]:
+    """作り方 recipe で新しく建てるときの工期（ターン）と資材（1000 分の 1）。段階の作り方の農場は、
+    手作業の農場の工事に、その段階までの工事の工期と資材（機械・用水路の建材）を足す（W-257。
+    手作業で建ててから段階を上げるのと同じだけかかる。機械を払わずに機械化の作り方で動かさない）。"""
+    construction = defs.facilities[kind]["construction"]
+    turns = int(construction["turns"])
+    materials = dict(construction.get("materials", {}))
+    for step in grade_steps(defs, kind)[: build_grade(defs, kind, recipe)]:
+        turns += int(step["turns"])
+        for good, qty in step["materials"].items():
+            materials[good] = materials.get(good, 0) + qty
+    return turns, materials
 
 
 def regrade(defs: Defs, kind: str, recipe: str, grade: int) -> str:
@@ -758,6 +783,9 @@ def materials_of(defs: Defs, f: Facility) -> dict[str, int]:
     materials = defs.facilities[f.kind]["construction"].get("materials", {})
     if GRADE_TO in f.ext:  # 農場の段階を上げる工事（W-190）は、その段階の資材
         materials = grade_steps(defs, f.kind)[int(f.ext[GRADE_TO]) - 1]["materials"]
+    elif GRADE_BUILD in f.ext and not f.built and not f.ext.get("repair"):
+        # 段階の作り方で新しく建てる農場（W-257）は、その段階までの工事の資材も足す
+        materials = build_spec(defs, f.kind, f.recipe)[1]
     # 建て増した施設の直し（戦争・暴動で壊れた後）は規模の分だけ資材が要る（段6 A3）
     factor = f.ext.get("materials_factor", 1) * size_of(f)
     out = dict(materials) if factor == 1 else {g: round(q * factor) for g, q in materials.items()}
