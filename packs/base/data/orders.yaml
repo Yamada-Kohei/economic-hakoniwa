@@ -766,10 +766,21 @@ set_official_price_rules:                 # 公定価格の決まり（計画経
     additionalProperties: false
     properties:
       band: {type: integer, minimum: 0, maximum: 100, description: "%"}  # 原価との差がこの % を超えたら見直す
-      held:                               # 原価を下回っても据え置き、差を補助金で埋める財
+      held:                               # 小売の値段を据え置く財（卸より安くなった分は家計への売りにだけ価格の補助）
         type: array
         uniqueItems: true
         items: {type: string}
+
+set_retail_price:                         # 小売の値段の上書き（計画経済だけ。PL-60）
+  admin_cost: 2                           # 公定価格の改定と同じ（据え置く財の小売を上げるときは議会の採決も）
+  parliament: majority                    # 据え置く財の小売を上げるときだけ採決する（modules/politics の vote_rule）
+  payload:
+    type: object
+    required: [good, price]
+    additionalProperties: false
+    properties:
+      good: {type: string}
+      price: {type: integer, minimum: 0}  # 0 で上書きをやめる（据え置く財は据え置いた値段、ほかは卸 ×（1 ＋ 取引税の標準の率））
 
 set_priority_industries:                  # 重点産業（計画経済だけ。planning.max_priority まで）
   admin_cost: 1
