@@ -27,8 +27,8 @@
   決済通貨に直した値段を指値に買う。
   量は「狙う量 ＋（持つ量 − 手元と運ぶ途中の輸入の荷）× market.inventory_adjust」（FX-66）で、空いて
   いる船、持っている決済通貨、商社の扱える重さ（trade.trader_capacity）で頭打ちになる。決済通貨と
-  扱える重さが足りなければ、財の名前の順でなく注文の割合で分ける（FX-67）。運賃の見込みは、圏の
-  加盟国のうち近い半分までの平均の距離で見る。
+  扱える重さが足りなければ、財の名前の順でなく、1 単位のお金あたりの儲けの大きい財から配る
+  （FX-67）。運賃の見込みは、圏の加盟国のうち近い半分までの平均の距離で見る。
 
 島の市場で前のターンに買い手のいなかった物は輸入せず、島の売り手が売りに出していなかった物は輸出
 しません。狙う量は島の市場の買いたい量（輸入）と、島の売り手の売りたい量（輸出）までです。島の売り手
@@ -824,23 +824,28 @@ def import_want(config: GameConfig, item: dict[str, Any], planned: bool = False)
     return max(0, m + round_money(gap * config.get("market.inventory_adjust")))
 
 
-def share_out(flows: list[int], fills: list[int], units: list[int], budget: int) -> list[int]:
-    """足りない budget を、注文の割合で割り振る（FX-67）: 量 flows（1ターンに流れる分）と fills
-    （足りない分を埋める分）の注文ごとに、1 単位あたりの使う量 units（1000 単位あたり）。まず
-    flows を同じ割合で、余りを fills に同じ割合で配る。足りていればそのまま。割り振った量を返す。"""
-
-    def used(qty: list[int]) -> int:
-        return sum(q * u // QUANTITY_SCALE for q, u in zip(qty, units, strict=True))
-
+def share_by_rank(
+    flows: list[int], fills: list[int], units: list[int], budget: int, ranks: list[float]
+) -> list[int]:
+    """足りない budget を、儲けの大きい注文から配る（FX-67）: まず 1 ターンに流れる分 flows を
+    ranks（1 単位のお金あたりの儲け）の大きい順に、余りを足りない分を埋める注文 fills に同じ順に。
+    同じ値の注文は並びの順。足りていればそのまま。割り振った量を返す。"""
     budget = max(0, budget)
-    need_flow = used(flows)
-    if need_flow >= budget:
-        return [q * budget // need_flow if need_flow > 0 else 0 for q in flows]
-    rest = budget - need_flow
-    need_fill = used(fills)
-    if need_fill <= rest:
-        return [a + b for a, b in zip(flows, fills, strict=True)]
-    return [a + b * rest // need_fill for a, b in zip(flows, fills, strict=True)]
+    got = [0] * len(flows)
+    order = sorted(range(len(flows)), key=lambda k: -ranks[k])
+    for qty in (flows, fills):
+        for k in order:
+            if qty[k] <= 0 or budget <= 0:
+                continue
+            need = qty[k] * units[k] // QUANTITY_SCALE
+            if need <= budget:
+                got[k] += qty[k]
+                budget -= need
+            else:
+                part_qty = budget * QUANTITY_SCALE // max(1, units[k])
+                got[k] += part_qty
+                budget = 0
+    return got
 
 
 def keep_lead(config: GameConfig, item: dict[str, Any], turns: int) -> None:

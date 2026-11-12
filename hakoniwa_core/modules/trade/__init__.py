@@ -830,14 +830,22 @@ class _Round:
                 continue
             # 外貨の見込みは、品物の代金に決済通貨で払う借りた船の運賃を足す
             price = terms.limit + terms.charter
-            rows.append((good, bloc["currency"], first, each, price, p.import_rate, item["m"]))
+            rank = terms.profit / max(1, terms.cost)
+            rows.append(
+                (good, bloc["currency"], first, each, price, p.import_rate, item["m"], rank)
+            )
         units = [unit_weight(self.defs, r[0]) for r in rows]
-        firsts = traders.share_out(
-            [min(r[2], r[6]) for r in rows], [max(0, r[2] - r[6]) for r in rows], units, left
+        ranks = [r[7] for r in rows]
+        firsts = traders.share_by_rank(
+            [min(r[2], r[6]) for r in rows],
+            [max(0, r[2] - r[6]) for r in rows],
+            units,
+            left,
+            ranks,
         )
-        eaches = traders.share_out([r[3] for r in rows], [0] * len(rows), units, left)
+        eaches = traders.share_by_rank([r[3] for r in rows], [0] * len(rows), units, left, ranks)
         out = []
-        for (good, currency, _, _, limit, rate, _), first, each in zip(
+        for (good, currency, _, _, limit, rate, _, _), first, each in zip(
             rows, firsts, eaches, strict=True
         ):
             if first <= 0 and each <= 0:
@@ -1710,13 +1718,15 @@ class _Round:
 
     def _allocate(self) -> None:
         """FX-67: 圏の市場の前に、商社ごとの輸入の注文を全部の圏・財について集め、決済通貨と扱える
-        重さが足りなければ、財の名前の順でなく注文の割合で割り振る（self.alloc）。
+        重さが足りなければ、財の名前の順でなく、儲けの割合（島の値段 − 原価）÷ 原価の大きい注文から
+        配る（self.alloc。限られた元手は一番儲かる物に回す。割合で薄く配ると、外貨の足りない島で
+        食料まで全部の財が細り、値段が何倍にもなった。2026-11-12 の full）。
 
         注文の量は FX-66 の量を、船（空いた船の全部で運べる量）と輸入の割り当てで縮めたもの。まず
         決済通貨（持ち主ごと・通貨ごとの使えるお金。_import_order と同じく、島の通貨なら賃金と輸出の
-        仕入れの見込みを残した預金から運賃と使用料も払う）で、1 ターンに流れる分を同じ割合で、余りを
-        足りない分を埋める注文に配る。外貨で縮んだ量のまま、扱える重さ（輸出の荷の分を引いた残り）を
-        同じ形で割り振る。約定しなかった分の重さは、今どおり板寄せの後に戻す（_refund）。"""
+        仕入れの見込みを残した預金から運賃と使用料も払う）で、1 ターンに流れる分をその順に、余りを
+        足りない分を埋める注文に同じ順に配る。外貨で縮んだ量のまま、扱える重さ（輸出の荷の分を引いた
+        残り）を同じ形で割り振る。約定しなかった分の重さは、今どおり板寄せの後に戻す（_refund）。"""
         self.alloc = {}
         cap = self.config.get("trade.trader_capacity") * QUANTITY_SCALE
         for i in self.ids:
@@ -1749,27 +1759,33 @@ class _Round:
                     else:  # 借りた船の運賃は決済通貨で払う
                         unit += terms.charter
                     flow = min(want, item["m"])
-                    groups.setdefault((entity, currency), []).append((f, good, want, flow, unit))
+                    rank = terms.profit / max(1, terms.cost)
+                    groups.setdefault((entity, currency), []).append(
+                        (f, good, want, flow, unit, rank)
+                    )
             money_cut: dict[tuple[int, str], tuple[int, int, str | None]] = {}
+            ranks: dict[tuple[int, str], float] = {}
             for (entity, currency), rows in sorted(groups.items()):
                 if currency == island.id:
                     reserve = self.reserve.get((i, entity), 0)
                     money = max(0, funds.available(island, Payer(entity)) - reserve)
                 else:
                     money = fxmoney.holding(island, entity, currency)
-                got = traders.share_out(
+                got = traders.share_by_rank(
                     [r[3] for r in rows],
                     [r[2] - r[3] for r in rows],
                     [r[4] for r in rows],
                     money,
+                    [r[5] for r in rows],
                 )
                 why = WHY_FUNDS if currency == island.id else WHY_MONEY
-                for (f, good, want, flow, _), qty in zip(rows, got, strict=True):
+                for (f, good, want, flow, _, rank), qty in zip(rows, got, strict=True):
                     money_cut[(f.id, good)] = (
                         qty,
                         max(0, flow - qty),
                         why if qty < want else None,
                     )
+                    ranks[(f.id, good)] = rank
             for f in traders_of(island, self.config, self.turn):
                 left = cap
                 for good, item in traders.goods_of(f).items():  # 輸出の荷も扱える重さを使う
@@ -1783,11 +1799,12 @@ class _Round:
                 if not rows2:
                     continue
                 flows = [min(qty, m) for _, qty, _, _, m in rows2]
-                got = traders.share_out(
+                got = traders.share_by_rank(
                     flows,
                     [qty - fl for (_, qty, _, _, _), fl in zip(rows2, flows, strict=True)],
                     [unit_weight(self.defs, r[0]) for r in rows2],
                     left,
+                    [ranks[(f.id, r[0])] for r in rows2],
                 )
                 for (good, qty, cut_money, why, _), fl, final in zip(
                     rows2, flows, got, strict=True
@@ -1924,7 +1941,7 @@ class _Round:
         want, why, cut_capacity = self._import_room(
             island, good, bloc, want, left, quota, flow=flow
         )
-        # 決済通貨と扱える重さは、圏の市場の前に財の間で割合で割り振った量まで（FX-67）
+        # 決済通貨と扱える重さは、圏の市場の前に財の間で儲けの大きい順に割り振った量まで（FX-67）
         plan = self.alloc.get((island.id, f.id, good))
         cut_money = 0
         if plan is not None and plan.qty < want:

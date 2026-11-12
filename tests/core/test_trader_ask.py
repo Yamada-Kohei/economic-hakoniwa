@@ -71,19 +71,19 @@ def _round(game, world):
 # --- FX-67: 割り振り -------------------------------------------------------------------------
 
 
-def test_share_out_gives_the_flow_first_then_the_rest_in_proportion():
-    units = [QUANTITY_SCALE, QUANTITY_SCALE]
+def test_share_by_rank_gives_the_most_profitable_flow_first():
+    units = [QUANTITY_SCALE, QUANTITY_SCALE, QUANTITY_SCALE]
     # 足りていればそのまま
-    assert traders.share_out([10, 20], [5, 5], units, 100) == [15, 25]
-    # 流れる分にも足りなければ、流れる分を同じ割合で（名前の順で前の財が取りきらない）
-    assert traders.share_out([100, 300], [50, 50], units, 200) == [50, 150]
-    # 流れる分を配った余りを、足りない分を埋める注文に同じ割合で
-    assert traders.share_out([10, 30], [40, 120], units, 80) == [20, 60]
-    assert traders.share_out([], [], [], 10) == []
-    assert traders.share_out([10], [0], [QUANTITY_SCALE], 0) == [0]
-
-
-# --- FX-66: 持つ量と注文の量 ----------------------------------------------------------------
+    assert traders.share_by_rank([10, 20, 5], [5, 5, 0], units, 100, [0.1, 0.5, 0.2]) == [15, 25, 5]
+    # 流れる分を儲けの大きい順に（0.5 → 0.2 → 0.1）。余りは足りない分を同じ順に
+    assert traders.share_by_rank([10, 20, 5], [5, 5, 0], units, 30, [0.1, 0.5, 0.2]) == [5, 20, 5]
+    assert traders.share_by_rank([10, 20, 5], [5, 5, 0], units, 40, [0.1, 0.5, 0.2]) == [10, 25, 5]
+    # 1 単位に使う量が違えば、その分で数える
+    assert traders.share_by_rank(
+        [10, 10], [0, 0], [2 * QUANTITY_SCALE, QUANTITY_SCALE], 15, [1, 0]
+    ) == [7, 0]
+    assert traders.share_by_rank([], [], [], 10, []) == []
+    assert traders.share_by_rank([10], [0], [QUANTITY_SCALE], 0, [1.0]) == [0]
 
 
 def test_the_import_order_closes_a_quarter_of_the_gap_to_the_holding(game):
