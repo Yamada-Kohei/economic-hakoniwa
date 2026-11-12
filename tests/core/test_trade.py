@@ -436,6 +436,72 @@ def test_contract_cannot_be_accepted_by_the_proposer(game, traded):
     assert c["end"] == world.turn + 1 + wait
 
 
+def _indefinite(world, a, b, good="coal"):
+    payload = {
+        "partner": b.id,
+        "side": "buy",
+        "good": good,
+        "quantity": 1,
+        "price": 10,
+        "indefinite": True,
+    }
+    assert contracts.propose(world, a, payload, world.turn) is None
+    c = contracts.contracts(world)[-1]
+    assert c["indefinite"] and c["turns"] is None
+    assert contracts.accept(world, b, c, world.turn) is None
+    return c
+
+
+def test_an_indefinite_contract_runs_until_a_cancel_order(game, traded):
+    """無期限の契約（FX-68）は満期がなく、やめる命令から trade.contract_cancel_turns ターン後に
+    終わる。終わりの決まっていない間の end は None（大きな数で代えない）。"""
+    world = copy.deepcopy(traded[0])
+    a, b = world.islands[1], world.islands[2]
+    c = _indefinite(world, a, b)
+    start = world.turn + 1
+    assert c["state"] == contracts.ACTIVE and c["start"] == start and c["end"] is None
+    far = start + 10_000
+    contracts.close(world, far)
+    assert c["state"] == contracts.ACTIVE
+    assert c in contracts.active(world, far)
+    view = contract_view(c, a.id, far)
+    assert view["active"] and view["indefinite"] and view["end"] is None
+    wait = game.config.get("trade.contract_cancel_turns")
+    assert contracts.cancel(world, b, c, far, wait) is None
+    assert c["end"] == far + 1 + wait and c["cancelled_by"] == b.id
+    contracts.close(world, far + wait)
+    assert c["state"] == contracts.ENDED
+    assert c not in contracts.active(world, far + wait + 1)
+
+
+def test_an_indefinite_contract_ends_when_a_party_leaves_the_world(game, traded):
+    """当事者の島が世界から消えたら、無期限の契約も終わる（記録はしばらく残る）。"""
+    world = copy.deepcopy(traded[0])
+    a, b = world.islands[1], world.islands[2]
+    c = _indefinite(world, a, b)
+    del world.islands[b.id]
+    contracts.close(world, world.turn + 1)
+    assert c["state"] == contracts.ENDED and c["end"] == world.turn + 2
+    assert any(e.kind == "contract_ended" for e in a.log)
+
+
+def test_a_contract_order_takes_turns_or_indefinite_but_not_both(game, traded):
+    from hakoniwa_core.orders import check_order
+
+    world = copy.deepcopy(traded[0])
+    island = world.islands[1]
+    base = {"partner": 2, "side": "buy", "good": "coal", "quantity": 1, "price": 10}
+
+    def ok(payload):
+        return check_order(game.defs, game.registry, island, "propose_contract", payload).ok
+
+    assert ok({**base, "turns": 3})
+    assert ok({**base, "indefinite": True})
+    assert not ok(base)
+    assert not ok({**base, "turns": 3, "indefinite": True})
+    assert not ok({**base, "indefinite": False})
+
+
 # --- 貿易圏 ---------------------------------------------------------------------------------
 
 
