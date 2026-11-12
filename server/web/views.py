@@ -119,6 +119,8 @@ def _island_context(request, island_id: int, page: str) -> dict:
         # 建設の欄で、この島で使えない施設や生産方式を見分けるため
         "resource_ids": island.resources or [],
         "producible": sorted(fac.producible_goods(defs, island.resources or [])),
+        # 探鉱（MI-68）: 見出しのようすと、建設の欄の探鉱の命令（国の要約の island.exploration）
+        "exploration": overview.exploration_brief(island),
         "capital_name": (island.names or {}).get("capital", ""),
         "logs": display.log_entries(logs.filter(turn=last_turn)) if last_turn is not None else [],
         "log_turn": last_turn,
