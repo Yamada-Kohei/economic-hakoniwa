@@ -3779,10 +3779,15 @@ class Market(IslandStage):
                     funds.commit(island, payer, party.reserved)
                     self._add(books_by_good, good, "buy", Order(qty, limit), party)
         # 二国間契約で売る分のうち、国の倉庫に足りない分を政府が買う。代金は予算の段で国債の利払いの
-        # 次に取り置いた項目から（FX-24・FS-09）。減らしたターンはログに出す（報告 #9）
+        # 次に取り置いた項目から（FX-24・FS-09）。減らしたターンはログに出す（報告 #9）。指値は
+        # 値幅の上端までのうち、売りの安い順に要る量までの値段（入札。_tender_limit）
         payer = Payer(ledger.GOV, traders.CONTRACT_SUPPLY)
-        for good, want, limit in traders.contract_supply_plan(island):
-            affordable = self._afford(island, payer, {good: (want, limit)}, 0, 0)
+        plan = {}
+        for good, (want, cap) in traders.contract_supply_plan(island, ctx.config).items():
+            low = auction.band(island.economy.prices.get(good, 1), width)[0]
+            plan[good] = (want, self._tender_limit(books_by_good.get(good), want, low, cap))
+        affordable = self._afford(island, payer, plan, 0, 0)
+        for good, (want, _) in sorted(plan.items()):
             placed_qty = affordable.get(good, (0, 0))[0]
             if placed_qty < want:
                 island.log.append(
@@ -3795,11 +3800,42 @@ class Market(IslandStage):
                         },
                     )
                 )
-            for good, (qty, limit) in sorted(affordable.items()):
-                party = Party(STORE, ledger.GOV, payer, site=site)
-                party.reserved = gross_cost(limit, qty, 0, 0)
-                funds.commit(island, payer, party.reserved)
-                self._add(books_by_good, good, "buy", Order(qty, limit, CONTRACT_PRIORITY), party)
+        for good, (qty, limit) in sorted(affordable.items()):
+            party = Party(STORE, ledger.GOV, payer, site=site)
+            party.reserved = gross_cost(limit, qty, 0, 0)
+            funds.commit(island, payer, party.reserved)
+            self._add(books_by_good, good, "buy", Order(qty, limit, CONTRACT_PRIORITY), party)
+
+    @staticmethod
+    def _tender_limit(book: Book | None, want: int, low: int, cap: int) -> int:
+        """二国間契約の不足分を買う指値（入札。2026-11-12）。
+
+        いま売りに出ている注文のうち cap（値幅の上端）以下のものを指値の安い順に並べ、要る量 want に
+        届くところの売りの指値にする。届かなければ、その中の一番高い指値（出ている分を全部買う）。
+        どちらも low（値幅の下端。下端より安い指値は板寄せに入らない）より下げない。cap 以下の売りが
+        1つもなければ cap（売りがなければ値段は動かず、買いたい量だけが需要に残る。売りが上端より
+        高ければ、気配が1ターンに値幅ずつ売りの指値に近づく）。
+
+        値幅の上端をいつも指値にすると、売りが契約の量より少ない島では、板寄せの値段が毎ターン政府の
+        指値（上端）で決まり、値段が毎ターン 1 割ずつ上がり続ける（国庫直轄の製鉄所が石炭を数百倍に
+        したのと同じ道筋。MK-16）。売り手の言い値より高くは競り上げないので、政府の買いだけで値段が上がり続けることは
+        ない。売りが余っていれば、国内の値段が契約の値段より高くても買える。
+        """
+        if book is None:
+            return cap
+        asks = sorted(
+            (auction.sell_limit(order), order.quantity)
+            for order, _ in book.sells
+            if auction.sell_limit(order) <= cap and order.quantity > 0
+        )
+        if not asks:
+            return cap
+        total = 0
+        for ask, qty in asks:
+            total += qty
+            if total >= want:
+                return max(low, ask)
+        return max(low, asks[-1][0])
 
     def _transport_orders(
         self,

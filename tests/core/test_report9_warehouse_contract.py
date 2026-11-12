@@ -7,9 +7,10 @@ import copy
 
 from hakoniwa_core import ledger, stock, trade
 from hakoniwa_core.economy import Payer, funds
+from hakoniwa_core.market.auction import Order
 from hakoniwa_core.modules.firms import take_over_stock
 from hakoniwa_core.modules.fiscal import Budget
-from hakoniwa_core.modules.market import Market
+from hakoniwa_core.modules.market import MERCHANT, Book, Market, Party
 from hakoniwa_core.trade import traders
 from tests.core.test_finance import context as world_context
 from tests.core.test_finance import island_of
@@ -88,7 +89,9 @@ def _contract_island(world, good, qty):
 
 
 def _contract_buy(game, world, island, good):
-    books: dict = {}
+    # 島に売りが出ている（契約の不足分は、いま売りに出ている物を入札の指値で買う）
+    seller = Party(MERCHANT, MERCHANT, Payer(ledger.CB))
+    books = {good: Book(sells=[(Order(10**6, island.economy.prices[good]), seller)])}
     Market()._trade_orders(island, world_context(game, world), books, {}, 0)
     buys = books[good].buys
     return sum(o.quantity for o, p in buys if p.payer.item == traders.CONTRACT_SUPPLY)
