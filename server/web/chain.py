@@ -216,7 +216,7 @@ def _stalled(defs, config, state, facilities) -> list[dict[str, Any]]:
         groups[cause].append(
             {
                 "name": facility_name(defs, config, state, f),
-                "kind_name": defs.name("facilities", row.kind),
+                "kind_name": display.kind_label(defs, f.kind, f.recipe),
                 "x": row.x,
                 "y": row.y,
                 "on_map": fac.on_map(f),
