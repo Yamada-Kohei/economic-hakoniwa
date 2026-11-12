@@ -100,6 +100,15 @@ def expiring(
     return sum(qty for made, qty in stock.get(good, ()) if turn - made >= life)
 
 
+def target_turns(turns: float, goods_defs: Mapping[str, Mapping[str, Any]], good: str) -> float:
+    """在庫の目安（売れ行きの何ターン分か）: turns（market.inventory_turns）。持ち越せる期間の短い
+    物は、その半分（(期間 − 1) ÷ 2 ターン）まで、持ち越せない物（期間 0）は 0（売れ残りを捨て
+    ない）。
+    施設の操業目標（modules/market の inventory_turns）と商社の持つ量（trade/traders.py）で同じ。"""
+    life = goods_defs.get(good, {}).get("shelf_life")
+    return turns if life is None else max(0.0, min(turns, (life - 1) / 2))
+
+
 def spoil(stock: Stock, turn: int, goods_defs: Mapping[str, Mapping[str, Any]]) -> dict[str, int]:
     """このターンの終わりに、持ち越せる期間を過ぎた組を捨てる。捨てた量を財ごとに返す。
 

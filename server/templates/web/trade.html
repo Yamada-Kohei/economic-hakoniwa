@@ -307,20 +307,20 @@
 
     <section class="panel" id="traders">
       <h2>{% translate "商社" %}</h2>
-      <p class="hint">{% translate "商社は加盟している圏の値段と島の値段を見て、財ごとに輸出か輸入を自動で選び、狙う量を少しずつ見直します。輸出する物は島の市場で買って港の倉庫に置き、輸入した物は届いてから島の市場で売ります。" %}</p>
+      <p class="hint">{% translate "商社は加盟している圏の値段と島の値段を見て、財ごとに輸出か輸入を自動で選び、狙う量を少しずつ見直します。輸出する物は島の市場で買って港の倉庫に置き、輸入した物は届いてから島の市場で売ります。輸入する物は、届くまでの分と港の倉庫の分を合わせて「持つ量」まで持ちます。" %}</p>
       {% for f in trade.traders %}
       <h3><a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a> <small class="muted">({{ f.x }}, {{ f.y }})・{{ f.owner_name }}{% if f.built %}・{% blocktranslate with n=f.workers %}{{ n }} 人{% endblocktranslate %}{% else %}・{% translate "建設中" %}{% endif %}{% if f.status_text %}・{{ f.status_text }}{% endif %}</small></h3>
       {% if f.goods %}
       <div class="table-scroll">
         <table class="goods traders-table">
           <thead><tr>
-            <th>{% translate "資源" %}</th><th>{% translate "向き" %}</th><th>{% translate "使う圏" %}</th><th>{% translate "1ターンに狙う量" %}</th>
+            <th>{% translate "資源" %}</th><th>{% translate "向き" %}</th><th>{% translate "使う圏" %}</th><th>{% translate "1ターンに狙う量" %}</th><th>{% translate "持つ量（輸入）" %}</th>
             <th>{% translate "港の倉庫" %}</th><th>{% translate "運ぶ途中" %}</th><th>{% translate "仕入れ値（1単位）" %}</th><th>{% translate "売れ残り" %}</th><th>{% translate "単位" %}</th><th>{% translate "狙う量を買えなかったわけ" %}</th>
           </tr></thead>
           <tbody>
             {% for g in f.goods %}
             <tr>
-              <td>{{ g.name }}</td><td>{{ g.direction_name }}</td><td>{{ g.bloc_name|default:"-" }}</td><td>{{ g.target }}</td>
+              <td>{{ g.name }}</td><td>{{ g.direction_name }}</td><td>{{ g.bloc_name|default:"-" }}</td><td>{{ g.target }}</td><td>{% if g.hold is not None %}{{ g.hold }}{% else %}-{% endif %}</td>
               <td>{{ g.held }}</td><td>{{ g.transit }}</td>
               <td>{% if g.unit_cost is not None %}{{ currency|currency_prefix }}{{ g.unit_cost|floatformat:"-1g" }}{% else %}-{% endif %}</td>
               <td>{% if g.age %}{% blocktranslate with n=g.age %}{{ n }} ターン{% endblocktranslate %}{% endif %}</td><td>{{ g.unit }}</td>

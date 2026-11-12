@@ -93,18 +93,23 @@ def _plan(game, world, island, f):
 
 
 def _want_more(f, extra=5_000):
-    """輸入している財の狙う量を、手元と運ぶ途中の荷より extra 多くする。"""
+    """輸入している財の狙う量（1 ターンに流れる量）を extra にし、持つ量を手元と運ぶ途中の荷より
+    extra × 4 多くする（注文は extra ＋ extra × 4 × market.inventory_adjust。FX-66）。"""
     goods = []
     for good, item in sorted(traders.goods_of(f).items()):
         if item.get("dir") == traders.IMPORT and item["m"] > 0:
-            item["m"] = item["held"][0] + extra
+            item["m"] = extra
+            item["hold"] = item["held"][0] + extra * 4
+            item.pop(traders.OUTLET, None)
+            item.pop(traders.REEXPORT, None)
             goods.append(good)
     return goods
 
 
 def test_the_import_need_is_the_targets_valued_at_the_bloc_bid(game, traded):
-    """見込みは狙う量 − 手元と運ぶ途中の荷を、圏の市場に出す指値で値を付けた額（前の輸入額の
-    1.5 倍の頭打ちはない）。fx.keep_turns ターン分は、2 ターン目から狙う量の分を足す。"""
+    """見込みは注文の量（狙う量 ＋（持つ量 − 手元と運ぶ途中の荷）× market.inventory_adjust。
+    FX-66）を、圏の市場に出す指値で値を付けた額（前の輸入額の 1.5 倍の頭打ちはない）。
+    fx.keep_turns ターン分は、2 ターン目から狙う量（1 ターンに流れる量）の分を足す。"""
     world = copy.deepcopy(traded)
     island, f, _ = _importer(game, world)
     _want_more(f)
@@ -115,7 +120,8 @@ def test_the_import_need_is_the_targets_valued_at_the_bloc_bid(game, traded):
     most = max(item["m"] for item in traders.goods_of(f).values())
     _, step = r._import_needs(island, f, {})
     for _, first, total, limit, _ in plan:
-        assert first == 5_000
+        # 扱える重さが足りなければ、財の間で注文の割合で縮む（FX-67）
+        assert 0 < first <= 5_000 + round(5_000 * 4 * game.config.get("market.inventory_adjust"))
         assert first <= total <= first + most * (keep - 1)
         assert limit > 0
     assert sum(step.values()) == sum(money_of(limit, first) for _, first, _, limit, _ in plan)
@@ -175,7 +181,8 @@ def test_wages_and_export_purchases_are_not_turned_into_fx(game, traded, monkeyp
     keep = game.config.get("fx.keep_turns")
     wage = island.economy.average_wage or game.config.get("labor.initial_wage")
     wages = traders.workers_wanted(game.config, game.defs, f) * wage * keep
-    reserve = wages + traders.spend_estimate(f) * keep
+    # 残すのは fx.keep_turns ターン分の賃金か、次のターンより後の分の賃金と仕入れの大きいほう
+    reserve = max(wages, (wages // keep + traders.spend_estimate(f)) * (keep - 1))
     money = ledger.money(island, entity)
     if money > reserve:  # 余りを持ち主へ移して、手元を見込みちょうどにする
         ledger.pay(island, entity, ledger.GOV, money - reserve, "capital_injection")
