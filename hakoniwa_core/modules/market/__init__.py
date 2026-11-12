@@ -978,6 +978,7 @@ class Market(IslandStage):
         self._transport_orders(island, ctx, books_by_good, hh_rate, offered)
         self._household_orders(island, ctx, books_by_good, hh_rate, offered)
         self._fuel_orders(island, ctx, books_by_good, rates)
+        self._contract_orders(island, ctx, books_by_good)
         transport = self._transport_entity(island, ctx)
         routes = freight_rates.Routes(island, defs)
         island.scratch[CLEARING] = (transport, routes)
@@ -3778,11 +3779,27 @@ class Market(IslandStage):
                     party.reserved = gross_cost(limit, qty, hh_rate, 0)
                     funds.commit(island, payer, party.reserved)
                     self._add(books_by_good, good, "buy", Order(qty, limit), party)
-        # 二国間契約で売る分のうち、国の倉庫に足りない分を政府が買う。代金は予算の段で国債の利払いの
-        # 次に取り置いた項目から（FX-24・FS-09）。減らしたターンはログに出す（報告 #9）
+
+    def _contract_orders(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        books_by_good: dict[str, Book],
+    ) -> None:
+        """二国間契約で売る分のうち、国の倉庫に足りない分を政府が買う（FX-24）。
+
+        代金は予算の段で国債の利払いの次に取り置いた項目から（FS-09）。減らしたターンはログに出す
+        （報告 #9）。指値は島の値段の値幅の上端（契約は約束なので、国内の値段が契約の値段より
+        高くても損を出して買う。2026-11-12 に戻した）。
+        """
+        if not trade.started(island):
+            return
+        config = ctx.config
+        site = trade.site_of(island, config)
         payer = Payer(ledger.GOV, traders.CONTRACT_SUPPLY)
-        for good, want, limit in traders.contract_supply_plan(island):
-            affordable = self._afford(island, payer, {good: (want, limit)}, 0, 0)
+        plan = traders.contract_supply_plan(island, config)
+        affordable = self._afford(island, payer, plan, 0, 0)
+        for good, (want, _) in sorted(plan.items()):
             placed_qty = affordable.get(good, (0, 0))[0]
             if placed_qty < want:
                 island.log.append(
@@ -3795,11 +3812,11 @@ class Market(IslandStage):
                         },
                     )
                 )
-            for good, (qty, limit) in sorted(affordable.items()):
-                party = Party(STORE, ledger.GOV, payer, site=site)
-                party.reserved = gross_cost(limit, qty, 0, 0)
-                funds.commit(island, payer, party.reserved)
-                self._add(books_by_good, good, "buy", Order(qty, limit, CONTRACT_PRIORITY), party)
+        for good, (qty, limit) in sorted(affordable.items()):
+            party = Party(STORE, ledger.GOV, payer, site=site)
+            party.reserved = gross_cost(limit, qty, 0, 0)
+            funds.commit(island, payer, party.reserved)
+            self._add(books_by_good, good, "buy", Order(qty, limit, CONTRACT_PRIORITY), party)
 
     def _transport_orders(
         self,
