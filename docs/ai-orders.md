@@ -50,6 +50,9 @@ HTTP が成功しても、1件でも `ok: false` なら終了コードは 1 で�
 
 JSON API からは同じ単体確認の後、`PUT /api/islands/<島>/orders` に `{"orders": [...]}` を送ります。
 MCP では `defs(section="orders")` で定義を読み、`check_order` で各命令を確認してから `set_orders` で列全体を送ります。
+新しく足す命令が打ち間違いに見えるとき（買う指値が相場の 2 倍以上・売る指値が半分以下・量が 1 ターンの生産と売買の量や
+倉庫の在庫より多いなど）と、取り壊し・宣戦などの戻せない命令は、並べずに確かめの文 `confirm` を返します（API は 428、
+MCP は `saved: false`）。読んでよければ、同じ列に `"confirm": true`（MCP は `confirm=true`）を付けて送り直します。
 最新の道具名と引数は `tools/list` を参照してください。
 
 ## よく使う命令

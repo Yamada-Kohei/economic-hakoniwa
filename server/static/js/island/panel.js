@@ -657,10 +657,8 @@ export class TilePanel {
       this.addOrder(m.kind, m.payload(tiles, this.infraKind));
       this.endMarking();
     } else if (button.dataset.action === "demolish") {
-      const f = this.info.facility;
-      if (confirm(`${f.name} を撤去する命令を追加しますか？`)) {
-        this.addOrder("demolish", { x: this.tile.x, y: this.tile.y });
-      }
+      // 戻せない命令なので、命令の列に足すときにサーバーの確かめを聞く（UI-75）
+      this.addOrder("demolish", { x: this.tile.x, y: this.tile.y });
     }
   }
 

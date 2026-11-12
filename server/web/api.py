@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import string
+from collections import Counter
 from collections.abc import Mapping
 from functools import cache
 from typing import Any
@@ -32,7 +34,7 @@ from server.game import get_game
 from server.letters import services as letter_services
 from server.orders.models import Order
 from server.turns import services as turn_services
-from server.web import budget_guide, display, overview, rankings, reports
+from server.web import budget_guide, display, order_confirm, overview, rankings, reports
 from server.web import chain as chain_views
 from server.web import country as country_views
 from server.web import diplomacy as diplomacy_views
@@ -892,7 +894,10 @@ def _check_order(state, kind: Any, payload: Any):
 
 @require_http_methods(["GET", "PUT"])
 def orders(request, island_id: int):
-    """GET: 待っている命令の列と行政力。PUT: 列を丸ごと置き換える（島の持ち主だけ）。"""
+    """GET: 待っている命令の列と行政力。PUT: 列を丸ごと置き換える（島の持ち主だけ）。
+
+    新しく足す命令に打ち間違いに見えるものか戻せないものがあれば、送りに confirm: true が
+    付いていない限り並べずに、確かめの文を 428 で返す（UI-75。order_confirm）。"""
     island = get_object_or_404(m.Island, pk=island_id)
     if request.method == "GET":
         return _json(_orders_view(island, _mine(request, island)))
@@ -931,6 +936,13 @@ def orders(request, island_id: int):
             warnings.append({"index": i, "text": text})
     if errors:
         return _json({"errors": errors}, status=400)
+    if body.get("confirm") is not True:
+        asks = _confirmations(island, state, items)
+        if asks:
+            return _json(
+                {"error": order_confirm.CONFIRM_TEXT, "confirm": asks},
+                status=order_confirm.CONFIRM_STATUS,
+            )
     with transaction.atomic():
         if turn_services.update_running():
             text = "いま更新中か、別の書き換えと重なりました。数秒おいてもう一度送ってください"
@@ -943,6 +955,41 @@ def orders(request, island_id: int):
             ]
         )
     return _json({**_orders_view(island), "warnings": warnings})
+
+
+def _order_key(kind: Any, payload: Any) -> str:
+    """同じ命令かを比べる鍵（中身は計算の単位。小数の丸めの差は見ない）。"""
+
+    def plain(value: Any) -> Any:
+        if isinstance(value, float):
+            return round(value, 6)
+        if isinstance(value, dict):
+            return {k: plain(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [plain(v) for v in value]
+        return value
+
+    return json.dumps([kind, plain(payload)], sort_keys=True, ensure_ascii=False, default=str)
+
+
+def _confirmations(island: m.Island, state, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """新しく足す命令（今の列になかった命令）の確かめの文（UI-75）。並べ替えと消すだけなら空。
+
+    列を丸ごと送る作りなので、今待っている命令と同じ種類と中身の命令は数の分だけ足したものに
+    数えない。"""
+    waiting = Counter(_order_key(o.kind, o.payload) for o in island.orders.filter(status="pending"))
+    ctx = order_confirm.Context(island, state)
+    asks = []
+    for i, item in enumerate(items):
+        key = _order_key(item.get("kind"), item.get("payload"))
+        if waiting[key] > 0:
+            waiting[key] -= 1
+            continue
+        texts = order_confirm.confirmations(ctx, item.get("kind"), item.get("payload"))
+        if texts:
+            text = display.describe_order(item["kind"], item.get("payload") or {})
+            asks.append({"index": i, "kind": item["kind"], "text": text, "notes": texts})
+    return asks
 
 
 @require_http_methods(["POST"])
@@ -963,6 +1010,12 @@ def check(request, island_id: int):
     result = _check_order(state, body.get("kind"), payload)
     text = "" if result.ok else display.message(result.reason or "", **result.args)
     data = {"ok": result.ok, "text": text, "details": list(result.details)}
+    # 打ち間違いに見えるか、戻せない命令なら、並べるときに聞く確かめの文も先に返す（UI-75）
+    asks = order_confirm.confirmations(
+        order_confirm.Context(island, state), body.get("kind"), payload
+    )
+    if asks:
+        data["confirm"] = asks
     if result.ok:  # どう読んだか（率の % や量の単位）を見られるように、命令の列と同じ説明を添える
         data["summary"] = display.describe_order(
             body["kind"], payload or {}, display.facility_labels(island)

@@ -73,6 +73,8 @@ INSTRUCTIONS = """\
 - 次のターンからは changes(since=前に読んだターン) で、その後に起きたことだけを読みます。
 - 命令は check_order で確かめてから、set_orders で命令の列を丸ごと置き換えます（今の列は summary の
   orders.pending）。中身の形は defs(section="orders")。1ターンに実行されるのは行政力の数までです。
+  打ち間違いに見える命令や戻せない命令は、set_orders が並べずに確かめの文（confirm）を返すので、
+  読んでよければ confirm: true を付けて出し直します。
 - ターンはサーバーが決まった時刻に進めます。ほかの国との連絡は公電（letters・send_letter）と
   掲示板（板・番号付きのレス・>>返信・名無しか国名か・返信の知らせ・検索）です。国際会議場（hall）
   には公開の声明と、戦争・条約の出来事が載ります。
@@ -319,6 +321,13 @@ def _check_order(request, args):
     return call_ok(request, "POST", f"/api/islands/{island}/orders/check", body=order)
 
 
+CONFIRM_HINT = (
+    "まだ並べていません。confirm の命令（index は送った列の位置）の notes を読み、このままで"
+    "よければ同じ orders に confirm: true を付けて set_orders を出し直してください。"
+    "違っていたら直して出し直してください"
+)
+
+
 def _set_orders(request, args):
     island = _own_island(request).id
     orders = args["orders"]
@@ -326,9 +335,13 @@ def _set_orders(request, args):
         isinstance(o, dict) and isinstance(o.get("payload", {}), dict) for o in orders
     ):
         raise ToolError("orders は {kind, payload} の一覧で送ってください")
-    status, data = call(
-        request, "PUT", f"/api/islands/{island}/orders", body={"orders": args["orders"]}
-    )
+    body: dict[str, Any] = {"orders": args["orders"]}
+    if args.get("confirm") is True:
+        body["confirm"] = True
+    status, data = call(request, "PUT", f"/api/islands/{island}/orders", body=body)
+    if isinstance(data, dict) and "confirm" in data:
+        # 打ち間違いに見える命令か戻せない命令（UI-75）: 並べずに、確かめの文を返す
+        return {"saved": False, "confirm": data["confirm"], "next": CONFIRM_HINT}
     if status >= 400:
         raise ToolError(f"{status}: {data if isinstance(data, str) else _dump(data)}")
     keep = ("admin_power", "orders", "warnings")
@@ -905,7 +918,9 @@ TOOLS = [
     Tool(
         "check_order",
         "命令を確かめる",
-        "命令を1つ、自分の島の今の状態で確かめる（並べる前に使う）。建設なら通勤圏の人手も返す。",
+        "命令を1つ、自分の島の今の状態で確かめる（並べる前に使う）。建設なら通勤圏の人手も返す。"
+        "打ち間違いに見える命令（相場から離れた指値・1 ターンの生産より多い量など）か戻せない"
+        "命令（取り壊しなど）なら、set_orders で聞く確かめの文を confirm に返す。",
         _check_order,
         {
             "kind": {"type": "string", "description": "命令の種類（defs section=orders の id）"},
@@ -918,7 +933,11 @@ TOOLS = [
         "命令の列を置き換える",
         "自分の島の命令の列を丸ごと置き換える（今の列は消える。足すときは今の列に足して全部送る）。"
         "次のターンの更新で上から実行され、行政力の数を超えた分は次のターンに回る。"
-        "形の誤りは受け付けず、今は実行できない命令は警告を付けて受け付ける。",
+        "形の誤りは受け付けず、今は実行できない命令は警告を付けて受け付ける。"
+        "新しく足す命令が打ち間違いに見えるとき（買う指値が相場の 2 倍以上・売る指値が半分以下・"
+        "量が 1 ターンの生産と売買の量や倉庫の在庫より多いなど）と、戻せない命令（取り壊し・宣戦・"
+        "部隊の解散など）は、並べずに saved: false と確かめの文 confirm を返す。読んでよければ"
+        "同じ orders に confirm: true を付けて出し直す。",
         _set_orders,
         {
             "orders": {
@@ -928,7 +947,11 @@ TOOLS = [
                     "properties": {"kind": {"type": "string"}, "payload": {"type": "object"}},
                     "required": ["kind", "payload"],
                 },
-            }
+            },
+            "confirm": {
+                "type": "boolean",
+                "description": "確かめの文（confirm）を読んだうえで、そのまま並べるときに true",
+            },
         },
         ("orders",),
         read_only=False,

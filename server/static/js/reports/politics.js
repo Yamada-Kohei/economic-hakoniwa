@@ -58,7 +58,6 @@ document.addEventListener("submit", async (e) => {
   if (!form || !orders) return;
   e.preventDefault();
   if (!form.reportValidity()) return;
-  if (form.dataset.confirm && !confirm(form.dataset.confirm)) return;
   const notice = form.closest("section")?.querySelector(".order-notice");
   const payload = "staffPlan" in form.dataset ? staffPlanOf(form) : payloadOf(form);
   if ("staffPlan" in form.dataset && !payload.plans.length) {

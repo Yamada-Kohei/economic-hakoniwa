@@ -156,8 +156,8 @@ DB の表は、マス（`Tile`）・施設（`Facility`）・在庫（`Stock`、
 | `GET /api/islands/<id>/log` | ターンログ（`?from=&to=`。決めなければ最後のターン。24 ターン分まで） |
 | `GET /api/islands/<id>/facilities`・`fiscal`・`market`・`chain` | 施設・財政・市場（表）・産業の鎖の画面の中身。見せる範囲は画面と同じ（産業の鎖は持ち主だけ、ほかは 403） |
 | `GET /api/islands/<id>/orders` | 待っている命令の列、次のターンの行政力、最近の命令の結果。ほかの人には、実行するまで伏せる命令（`orders.yaml` の `secret`。`true` なら種類ごと、`{side: buy}` のように書くと中身がその値の命令だけ）を待っている列から除き、そのうち失敗したものを結果からも除く |
-| `PUT /api/islands/<id>/orders` | 命令の列を丸ごと置き換える（島の持ち主だけ）。形の誤りは 400、更新が走っている間は 409（少し待ってもう一度送る）、今の島では実行できない命令は警告 |
-| `POST /api/islands/<id>/orders/check` | 命令を1つ、今の島の状態で確かめる（島の持ち主だけ。ほかは 403） |
+| `PUT /api/islands/<id>/orders` | 命令の列を丸ごと置き換える（島の持ち主だけ）。形の誤りは 400、更新が走っている間は 409（少し待ってもう一度送る）、今の島では実行できない命令は警告。新しく足す命令が打ち間違いに見えるか戻せない命令なら、`confirm: true` が付いていない限り並べずに 428 と確かめの文（`confirm`。UI-75）を返す |
+| `POST /api/islands/<id>/orders/check` | 命令を1つ、今の島の状態で確かめる（島の持ち主だけ。ほかは 403）。並べるときに聞く確かめの文があれば `confirm` に添える |
 | `GET /api/founding/cells` | 建国で選べる空いた区画 |
 | `POST /api/founding/random-shape` | ランダムな島の形 |
 | `POST /api/founding/terrain` | 描いた形から配った地形、形の問題、首都の候補 |

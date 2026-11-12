@@ -478,7 +478,8 @@ def test_trade_orders_are_accepted(client, world):
         ("accept_contract", {"contract": 1}),
         ("cancel_contract", {"contract": 1}),
     ]
-    body = {"orders": [{"kind": k, "payload": p} for k, p in orders]}
+    # 圏を抜ける・契約をやめるは戻せない命令なので、確かめた印を付ける（UI-75）
+    body = {"orders": [{"kind": k, "payload": p} for k, p in orders], "confirm": True}
     res = client.put(f"/api/islands/{island.id}/orders", body, content_type="application/json")
     assert res.status_code == 200, res.content.decode()
     assert res.json()["warnings"] == []

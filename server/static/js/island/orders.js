@@ -2,11 +2,13 @@
 // 超えた所から下は次のターンに回る。名前の変更は行政力を使わない。
 // 列を変えるたびに、列を丸ごとサーバーに送って保存する。命令を足すときは、ほかの画面（別のタブの
 // 財政・金融の画面など）で変えた分を消さないように、今の列をサーバーから読み直して後ろに足す。
+// 足した命令が打ち間違いに見えるか戻せない命令なら、サーバーが確かめの文を返すので、聞いてから
+// confirm を付けて送り直す（UI-75。どの画面から足しても、この send を通る）。
 // 島の画面では政策と金融の命令の入力欄をすべて出し、財政・金融の画面では options.forms で選んだ
 // 入力欄だけを出す。
 
 import { turnDate } from "../calendar.js";
-import { escapeHtml, getJson, sendJson } from "./api.js";
+import { confirmOrders, escapeHtml, getJson, sendJson } from "./api.js";
 
 // 政策の命令の入力欄の値の形（ほかの欄は数）
 const TEXT_FIELDS = new Set(["good", "side", "kind", "unsold", "issue_term", "underwrite_term", "entry", "large_store"]);
@@ -127,7 +129,15 @@ export class OrderQueue {
     this.saving = this.saving
       .then(async () => {
         const { items, done, added } = await prepare();
-        const res = await sendJson(this.url, "PUT", { orders: items });
+        let res = await sendJson(this.url, "PUT", { orders: items });
+        if (!res.ok && res.data.confirm) {
+          if (!confirmOrders(res.data.confirm)) {
+            this.message = "命令を追加しませんでした。";
+            await this.load();
+            return;
+          }
+          res = await sendJson(this.url, "PUT", { orders: items, confirm: true });
+        }
         if (res.ok) {
           this.apply(res.data);
           this.message = done || "保存しました。";
@@ -518,10 +528,6 @@ export class OrderQueue {
       this.message = "変える項目を入れてください。";
       this.render();
       return;
-    }
-    if (kind === "set_bond_payment" && payload.stop) {
-      const ok = confirm("国債の利払いと償還を止めると、そのターンにすべての国債が債務不履行になります。命令に追加しますか？");
-      if (!ok) return;
     }
     for (const key of [...INT_FIELDS, ...Object.keys(this.policy?.budget || {})]) {
       if (key in payload) payload[key] = Math.round(payload[key]);

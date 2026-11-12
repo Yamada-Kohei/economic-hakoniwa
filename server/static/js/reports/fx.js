@@ -33,7 +33,6 @@ document.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!form.reportValidity()) return;
   const notice = form.closest("section")?.querySelector(".fx-notice");
-  if (form.dataset.confirm && !confirm(form.dataset.confirm)) return;
   await orders.add(form.dataset.order, payloadOf(form));
   if (notice) notice.textContent = orders.message;
 });

@@ -69,7 +69,7 @@ test("補給・取り立て・務め・体制・核の指定を API の型で作
   assert.match(fleetDutyForm({ id: 3, duty: "watch" }), /value="watch" selected/);
 });
 
-test("核の確認を断ったら保存せず、通常弾は核の指定を省き、核は true を送る", async () => {
+test("通常弾は核の指定を省き、核は true を送る。核の確かめは画面で先に聞かず、サーバーの答えで聞く", async () => {
   const oldFormData = globalThis.FormData;
   const oldConfirm = globalThis.confirm;
   let handler;
@@ -95,18 +95,14 @@ test("核の確認を断ったら保存せず、通常弾は核の指定を省�
   });
   const event = { target: form, preventDefault() {} };
   try {
+    // 確かめ（UI-75）は命令の列を送ったときのサーバーの答えで聞くので、ここでは聞かない（二重に聞かない）
     globalThis.confirm = () => { confirmations++; return false; };
     await handler(event);
-    assert.equal(sent.length, 0);
-    assert.equal(confirmations, 1);
+    assert.equal(confirmations, 0);
+    assert.equal(sent[0].payload.nuclear, true);
     checkbox.checked = false;
     await handler(event);
-    assert.equal(confirmations, 1);
-    assert.equal("nuclear" in sent[0].payload, false);
-    checkbox.checked = true;
-    globalThis.confirm = () => { confirmations++; return true; };
-    await handler(event);
-    assert.equal(sent[1].payload.nuclear, true);
+    assert.equal("nuclear" in sent[1].payload, false);
     assert.equal(notice.textContent, "保存済み");
     assert.equal(button.disabled, false);
   } finally {
@@ -394,6 +390,35 @@ test("世界マップの追加は最新の列を読み、既存命令をその�
     { kind: "sail_fleet", payload: { fleet: 10, x: 0, y: 4 } },
   ] });
   assert.match(message, /燃料が足りません/);
+});
+
+test("確かめの要る命令は、サーバーの文で聞き、はいなら confirm を付けて送り直し、いいえなら並べない", async () => {
+  const oldConfirm = globalThis.confirm;
+  const asks = [{ index: 0, kind: "fire_missile", text: "ミサイル攻撃", notes: ["核を使うと……"] }];
+  let puts;
+  globalThis.fetch = async (url, init) => {
+    if (init?.method !== "PUT") return { ok: true, json: async () => ({ orders: [] }) };
+    const body = JSON.parse(init.body);
+    puts.push(body);
+    if (body.confirm) return { ok: true, status: 200, json: async () => ({ warnings: [] }) };
+    return { ok: false, status: 428, json: async () => ({ error: "確かめ", confirm: asks }) };
+  };
+  const shown = [];
+  try {
+    puts = [];
+    globalThis.confirm = (text) => { shown.push(text); return false; };
+    assert.equal(await appendOrder("/orders", "fire_missile", { base: 3, nuclear: true }), "notAdded");
+    assert.equal(puts.length, 1);
+    assert.match(shown[0], /・ミサイル攻撃\n　核を使うと……/);
+    assert.match(shown[0], /このまま命令に追加しますか？$/);
+    puts = [];
+    globalThis.confirm = () => true;
+    assert.equal(await appendOrder("/orders", "fire_missile", { base: 3, nuclear: true }), "added");
+    assert.deepEqual(puts.map((b) => b.confirm), [undefined, true]);
+    assert.deepEqual(puts[1].orders, puts[0].orders);
+  } finally {
+    globalThis.confirm = oldConfirm;
+  }
 });
 
 test("読み直しが失敗したら PUT しない。拒否された命令を成功と表示しない", async () => {
