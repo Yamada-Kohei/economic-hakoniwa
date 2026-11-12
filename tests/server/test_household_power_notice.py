@@ -33,20 +33,20 @@ UNPAID = {
 
 
 def test_unpaid_bills_are_told_apart_from_a_power_shortage():
-    texts = overview.power_alerts(UNPAID)
+    texts = [a.text for a in overview.power_alerts(UNPAID)]
     assert len(texts) == 1 and "電力が足りていません" not in texts[0]
     assert texts[0].startswith("家計が電気料金を払えず、要る電気の 56.0% を使えていません")
     assert "発電は 60.0% 売れ残っています" in texts[0]
     assert "一番使えていないのは失業者で、届いたのは要る量の 20.0%" in texts[0]
     assert "公共料金の上限" in texts[0]
-    planned = overview.power_alerts(UNPAID, planned=True)[0]
+    planned = overview.power_alerts(UNPAID, planned=True)[0].text
     assert "電気の公定価格を下げる" in planned and "公共料金の上限" not in planned
     # 発電を使い切った分は電力不足（power.shortage ではなく power.short_supply で）
-    short = overview.power_alerts({**UNPAID, "power.short_supply": 0.25})
+    short = [a.text for a in overview.power_alerts({**UNPAID, "power.short_supply": 0.25})]
     assert short[0] == "電力が足りていません（不足率 25.0%）" and len(short) == 2
     # 知らせの線より小さい払えなさは出さない。統計のない前のターンは今までどおり power.shortage
     assert overview.power_alerts({**UNPAID, "power.household_unaffordable": 0.01}) == []
-    old = overview.power_alerts({"power.shortage": 0.3})
+    old = [a.text for a in overview.power_alerts({"power.shortage": 0.3})]
     assert old == ["電力が足りていません（不足率 30.0%）"]
 
 
@@ -66,4 +66,7 @@ def test_summary_page_and_mcp_show_the_same_power_notice(client, world):
     text, error = _tool(_keyed(token), "summary")
     assert not error and told[0] in json.loads(text)["alerts"]
     client.force_login(alice)
-    assert told[0] in client.get(f"/islands/{a.id}/home/").content.decode()
+    page = client.get(f"/islands/{a.id}/home/").content.decode()
+    # 今月すべきことでは、同じ種類の「次にすること」の行が注意に代わる（todo.rows）
+    assert steps[0]["text"] in page
+    assert [r["kind"] for r in data["todo"] if r["kind"].startswith("power")] == ["power_bill"]

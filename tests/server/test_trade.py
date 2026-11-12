@@ -189,7 +189,7 @@ def test_trade_api_for_owner(client, world):
     assert contract["can_accept"] is False and contract["can_cancel"] is True
     assert contract["delivery"] == "" and contract["delivery_name"] == ""
     # 代表の島の持ち主には、自分の圏の設定（代表）の欄が出る
-    html = client.get(f"/islands/{second.id}/trade/").content.decode()
+    html = client.get(f"/islands/{second.id}/trade/blocs/").content.decode()
     assert 'data-order="bloc_settings"' in html and 'data-order="transfer_bloc"' in html
 
 
@@ -238,7 +238,8 @@ def test_representative_on_break_can_be_taken_over(client, world):
     m.Island.objects.filter(pk=second.pk).update(inactive=True)
     data = client.get(f"/api/islands/{own.id}/trade").json()
     assert data["blocs"][0]["rep_inactive"] is True
-    assert 'data-order="take_over_bloc"' in client.get(f"/islands/{own.id}/trade/").content.decode()
+    html = client.get(f"/islands/{own.id}/trade/blocs/").content.decode()
+    assert 'data-order="take_over_bloc"' in html
 
 
 # --- 為替 ---------------------------------------------------------------------------------
@@ -298,7 +299,17 @@ def test_fx_api_for_owner_and_others(client, world):
 # --- 画面 ---------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("page", ["trade", "fx"])
+# 貿易の入口のタブ（W-247）と、持ち主に出す命令の欄
+TRADE_TAB_ORDERS = {
+    "trade": ("propose_contract",),
+    "trade/contracts": ("accept_contract", "cancel_contract", "set_tariff", "send_aid"),
+    "trade/blocs": ("leave_bloc", "create_bloc"),
+    "trade/fleet": ("set_ship_lending",),
+    "trade/merchant": (),
+}
+
+
+@pytest.mark.parametrize("page", [*TRADE_TAB_ORDERS, "fx"])
 def test_trade_pages_for_owner_and_others(client, world, page):
     own, _, _ = _trading_world(client)
     url = f"/islands/{own.id}/{page}/"
@@ -306,14 +317,20 @@ def test_trade_pages_for_owner_and_others(client, world, page):
     assert res.status_code == 200 and res.context["mine"] is True
     html = res.content.decode()
     assert f'href="{url}" aria-current="page"' in html
+    if page in TRADE_TAB_ORDERS:
+        for kind in TRADE_TAB_ORDERS[page]:
+            assert f'data-order="{kind}"' in html, (page, kind)
+        if TRADE_TAB_ORDERS[page]:
+            assert 'id="orders"' in html and 'data-heading="貿易の命令"' in html
     if page == "trade":
-        assert 'id="orders"' in html and 'data-heading="貿易の命令"' in html
-        for kind in ("leave_bloc", "accept_contract", "cancel_contract", "create_bloc"):
-            assert f'data-order="{kind}"' in html
-        assert "propose_contract" in html and 'id="merchant"' in html
+        # よく使う契約の申し込みは打てる手の箱に（W-247 (7)）
+        assert 'class="panel action-box" id="actions"' in html
+    elif page == "trade/contracts":
         # 買う側として受ける契約には、届いた物の行き先を選ぶ欄が付く
         assert '<select name="delivery"' in html and "届いた物は国の倉庫に置く" in html
-    else:
+    elif page == "trade/merchant":
+        assert 'id="merchant"' in html
+    elif page == "fx":
         assert 'id="holdings"' in html and f'data-names="fx.{own.id + 1}' in html
     client.logout()
     res = client.get(url)
@@ -568,7 +585,7 @@ def test_ships_on_order_show_on_the_trade_page_and_api(client, world):
     )
     data = client.get(f"/api/islands/{own.id}/trade").json()
     assert data["fleet"]["shipping"]["on_order"] == 2
-    html = client.get(f"/islands/{own.id}/trade/").content.decode()
+    html = client.get(f"/islands/{own.id}/trade/fleet/").content.decode()
     assert "島の造船所に 2 隻を注文しています。" in html
 
 

@@ -32,7 +32,7 @@ def test_contract_shows_where_the_foreign_currency_came_from(client, world):
     w.save()
     [row] = client.get(f"/api/islands/{own.id}/trade").json()["contracts"]
     assert row["side"] == "buy" and row["fx"] == fx
-    html = client.get(f"/islands/{own.id}/trade/").content.decode()
+    html = client.get(f"/islands/{own.id}/trade/contracts/").content.decode()
     assert "の外貨の払い" in html and "中央銀行から" in html
     assert "4,000" in html and "3,500" in html
     assert "中央銀行が持っているその通貨から先に払い" in html  # 契約の欄の説明
@@ -50,7 +50,7 @@ def test_merchant_purchases_and_imports_are_told_apart(client, world):
     for names in (trade_views.TRADE_STATS, trade_views.FX_STATS):
         assert names.index("trade.merchant_gap") == names.index("trade.merchant") + 1
     own, _, _ = _trading_world(client)
-    html = client.get(f"/islands/{own.id}/trade/").content.decode()
+    html = client.get(f"/islands/{own.id}/trade/merchant/").content.decode()
     assert "海外の商人から買った額が輸入より大きくなることがあります" in html
     assert 'data-names="trade.merchant,trade.merchant_gap,' in html
     html = client.get(f"/islands/{own.id}/fx/").content.decode()

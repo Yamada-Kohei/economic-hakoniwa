@@ -1,0 +1,88 @@
+{% extends "base.html" %}{% load i18n static calendar_tags %}
+{% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+{% include "web/report_header.html" %}
+<p><a href="{% url 'island_market' island.id %}">{% translate "← 市場の一覧へ" %}</a></p>
+
+{% with r=item.row c=item.chain %}
+<section class="panel" id="good-now">
+  <h2>{% if market_turn is not None %}{% translate "今の市場" %} <small class="heading-date">{{ market_turn|turn_date }}</small>{% else %}{% translate "今の市場" %}{% endif %}</h2>
+  {% if r %}
+  <dl class="good-facts">
+    <dt>{% blocktranslate with unit=item.unit %}値段（1{{ unit }}）{% endblocktranslate %}</dt>
+    <dd>{{ r.price|default:"-" }}{% if r.change %}（{% translate "前ターン比" %} {{ r.change }}）{% endif %}{% if r.price_kind != "trade" %}<br><small class="muted">{{ r.price_kind_name }}・{% if r.observed_turn is not None %}{% blocktranslate with t=r.observed_turn|turn_date %}最後の約定 {{ t }}{% endblocktranslate %}{% else %}{% translate "約定なし" %}{% endif %}</small>{% endif %}</dd>
+    {% if r.volume is not None %}<dt>{% translate "売買量" %}</dt><dd>{{ r.volume }}（{% translate "買い注文" %} {{ r.demand }}・{% translate "売り注文" %} {{ r.supply }}）</dd>{% endif %}
+    {% if r.unmet %}<dt>{% translate "買えなかった量" %}</dt><dd class="warning">{{ r.unmet }}</dd>{% endif %}
+    <dt>{% translate "生産量" %}</dt><dd>{{ r.production }}</dd>
+    <dt>{% translate "国の倉庫" %}</dt><dd>{{ r.stock }}{% if mine and r.to_state %}（{% translate "倉庫から国営の施設へ" %} {{ r.to_state }}）{% endif %}</dd>
+  </dl>
+  <p class="hint">{% blocktranslate with unit=item.unit %}量の単位は {{ unit }}（1 ターン）です。{% endblocktranslate %}{% if r.price_kind != "trade" %} {% translate "このターンは約定しなかったので、値段は約定の値段ではありません（気配・持ち越し・未観測の意味は市場の一覧の下にあります）。" %}{% endif %}</p>
+  {% else %}
+  <p class="muted">{% translate "この島ではこの資源の市場の記録・生産・在庫がありません。" %}</p>
+  {% endif %}
+  {% if item.subsidies %}
+  <p>{% translate "出ている補助金" %}: {{ item.subsidies|join:"、" }}</p>
+  {% endif %}
+</section>
+
+{% if c %}
+<section class="panel" id="good-chain">
+  <h2>{% translate "作る施設と使う施設" %}</h2>
+  {% if c.short %}<p class="warning">{% blocktranslate count turns=c.streak %}買いたい量の多くが買えない品不足が {{ turns }} ターン続いています。{% plural %}買いたい量の多くが買えない品不足が {{ turns }} ターン続いています。{% endblocktranslate %}</p>{% endif %}
+  <dl class="good-facts">
+    <dt>{% translate "作った・使った" %}</dt><dd>{{ c.made }}・{{ c.used }}</dd>
+    {% if c.imported or c.exported %}<dt>{% translate "輸入・輸出" %}</dt><dd>{{ c.imported }}・{{ c.exported }}</dd>{% endif %}
+    <dt>{% translate "作る" %}</dt>
+    <dd>{% for k in c.makers %}{{ k.name }}×{{ k.built }}{% if k.stopped %}<span class="warning-cell">{% blocktranslate with n=k.stopped %}（止まり {{ n }}）{% endblocktranslate %}</span>{% endif %}{% if k.building %}<span class="muted">{% blocktranslate with n=k.building %}（工事中 {{ n }}）{% endblocktranslate %}</span>{% endif %}{% if not forloop.last %}、{% endif %}{% empty %}{% translate "島では作っていません。" %}{% endfor %}
+      {% if c.inputs %}<br><small class="muted">{% translate "材料" %}: {{ c.inputs|join:"・" }}</small>{% endif %}</dd>
+    {% if c.users %}<dt>{% translate "使う" %}</dt>
+    <dd>{% for k in c.users %}{{ k.name }}×{{ k.built }}{% if k.building %}<span class="muted">{% blocktranslate with n=k.building %}（工事中 {{ n }}）{% endblocktranslate %}</span>{% endif %}{% if not forloop.last %}、{% endif %}{% endfor %}</dd>{% endif %}
+  </dl>
+  <p class="hint"><a href="{% url 'island_chain' island.id %}#good-{{ item.good }}">{% translate "産業の鎖で前後の品目を見る" %}</a></p>
+</section>
+{% endif %}
+{% endwith %}
+
+<section class="panel" id="market-detail" data-good="{{ item.good }}" data-mine="{{ mine|yesno:'1,0' }}"
+         data-url="{% url 'api_island_market' island.id item.good %}" data-island-url="{% url 'island' island.id %}"
+         data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
+  <div class="section-head">
+    <h2 data-slot="title">{% blocktranslate with name=item.name %}{{ name }}の推移{% endblocktranslate %}</h2>
+    {% include "web/chart_range.html" %}
+  </div>
+  <div class="charts">
+    <figure class="chart" data-chart="price"><figcaption>{% translate "値段（1単位）" %}</figcaption></figure>
+    <figure class="chart" data-chart="volume"><figcaption>{% translate "売買量と注文の量" %}</figcaption></figure>
+  </div>
+  <div data-slot="latest"></div>
+  {% if mine %}
+  <h3>{% translate "直近のターンの約定（買い手と売り手の組ごと）" %}</h3>
+  <div data-slot="trades" class="table-scroll"><p class="muted">{% translate "読み込み中…" %}</p></div>
+  <h3>{% translate "この資源を買えずに止まった施設" %}</h3>
+  <div data-slot="short"></div>
+  {% endif %}
+</section>
+
+{% if mine %}
+<section class="panel action-box" id="actions">
+  <h2>{% blocktranslate with name=item.name %}{{ name }}に打てる手{% endblocktranslate %}</h2>
+  <h3>{% translate "この資源に出ている命令" %}</h3>
+  {% if item.orders.pending %}
+  <ul class="plain-list">{% for text in item.orders.pending %}<li>{{ text }}</li>{% endfor %}</ul>
+  {% else %}
+  <p class="muted">{% translate "ありません。" %}</p>
+  {% endif %}
+  {% if item.orders.recent %}
+  <h3>{% blocktranslate with t=item.orders.recent_turn|turn_date %}前のターンの結果（{{ t }}）{% endblocktranslate %}</h3>
+  <ul class="plain-list">{% for o in item.orders.recent %}<li class="{{ o.status }}">{% if o.status == "done" %}{% translate "実行" %}{% else %}{% translate "失敗" %}{% endif %} {{ o.text }}{% if o.reason %}: {{ o.reason }}{% endif %}</li>{% endfor %}</ul>
+  {% endif %}
+  <p class="hint">{% translate "国の倉庫の 1 回の売り買い、毎ターンの決まった売り買い（動いている設定は下の欄に出ます）、この資源の補助金をここで出せます。決まった売り買いの決まりは" %}<a href="{% url 'help' %}#standing">{% translate "手引き" %}</a>{% translate "にあります。" %}</p>
+  <noscript><p class="hint">{% translate "国の倉庫の決まった売り買いの量は「1ターンの売り買いの量／備蓄の目標量」です。設定は置いた次のターンから動きます。命令の入力欄を使うには JavaScript を有効にしてください。" %}</p></noscript>
+  <div id="orders" class="report-orders" data-url="{% url 'api_orders' island.id %}" data-defs="{% url 'api_defs' %}"
+       data-forms="warehouse_trade,set_warehouse_standing,set_subsidy" data-good="{{ item.good }}"
+       data-heading="{% translate '命令' %}"></div>
+</section>
+{% csrf_token %}
+{% endif %}
+<script type="module" src="{% static 'js/reports/good.js' %}"></script>
+{% endblock %}

@@ -54,8 +54,9 @@ def test_standing_market_orders_summary_changes_and_mcp_match(played):
     assert detail["warehouse_standing"] == shown["grain"]
     orders = json.loads(_tool(ai, "report", page="orders"))
     assert orders["policy"]["warehouse_standing"] == shown
-    html = browser.get(f"/islands/{own.id}/market/?good=grain").content.decode()
+    html = browser.get(f"/islands/{own.id}/market/").content.decode()
     assert "決まった売り買い" in html and "出した量" in html
+    assert f'href="/islands/{own.id}/market/grain/#actions"' in html
 
 
 def test_standing_is_private_and_pending_buys_are_secret(client, world):
