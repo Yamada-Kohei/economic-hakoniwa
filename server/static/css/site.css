@@ -331,6 +331,12 @@ table.facilities .slowdown-reason { display: block; max-width: 30em; white-space
 .action-box { border: 2px solid var(--accent); }
 .action-box > h2 { color: var(--accent); }
 .action-box h3 { font-size: 1em; margin: 12px 0 4px; }
+/* 貿易の概要（W-247）: 奥に畳んだ欄（産業政策と援助）と、全部の数を開く欄 */
+details.trade-back > summary { cursor: pointer; }
+details.trade-back > summary h2 { display: inline; }
+details.trade-more { margin-top: 8px; }
+details.trade-more > summary { cursor: pointer; color: var(--accent); }
+table.trade-overview td { white-space: normal; }
 /* 品目のページの今の数（名前と値の 2 列） */
 dl.good-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 4px 0; }
 dl.good-facts dt { font-weight: bold; }

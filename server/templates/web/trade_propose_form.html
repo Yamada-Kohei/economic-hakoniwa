@@ -1,0 +1,17 @@
+{% load i18n display_tags %}<form class="actions" data-order="propose_contract">
+  <strong>{% translate "契約を申し込む" %}</strong>
+  <label>{% translate "相手の国" %} <select name="partner" required>
+    {% for p in trade.partners %}<option value="{{ p.id }}">{{ p.name }}（{{ p.currency_name }}）</option>{% endfor %}
+  </select></label>
+  <label>{% translate "こちらが" %} <select name="side"><option value="sell">{% translate "売る" %}</option><option value="buy">{% translate "買う" %}</option></select></label>
+  <label>{% translate "資源" %} <select name="good" required>
+    {% for g in trade.goods %}<option value="{{ g.good }}">{{ g.name }}（{{ g.unit }}{% if g.home_price %}・{% blocktranslate with currency=currency|currency_prefix p=g.home_price|floatformat:"-1g" %}島の値段 {{ currency }}{{ p }}{% endblocktranslate %}{% endif %}）</option>{% endfor %}
+  </select></label>
+  <label>{% translate "1ターンの量" %} <input name="quantity" type="number" min="0.1" step="0.1" required></label>
+  <label>{% translate "値段（1単位、契約の通貨）" %} <input name="price" type="number" min="0" step="any" required></label>
+  <label>{% translate "契約の通貨" %} <select name="currency_of"><option value="self">{% translate "自国の通貨" %}</option><option value="partner">{% translate "相手の国の通貨" %}</option></select></label>
+  <label>{% translate "期間（ターン）" %} <input name="turns" type="number" min="1" max="600" step="1" value="12" required></label>
+  <label>{% translate "届いた物（買うとき）" %} <select name="delivery"><option value="market">{% translate "市場に出す" %}</option><option value="warehouse">{% translate "国の倉庫に置く" %}</option></select></label>
+  <p class="hint">{% translate "相手が受ける命令を出すと、その次のターンから効きます。買うときは、届いた物を島の市場の値段で売りに出すか、国の倉庫に置いておくかを選べます（傷みやすい物はどちらでもすぐ市場に出します）。" %}</p>
+  <button type="submit">{% translate "命令に追加" %}</button>
+</form>

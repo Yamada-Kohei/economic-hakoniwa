@@ -304,19 +304,50 @@ def finance_page(request, island_id: int):
     return render(request, "web/finance.html", context)
 
 
-def trade_page(request, island_id: int):
-    """貿易: 貿易圏・二国間契約・商社・船団と港・運ぶ途中の荷・海外の商人。持ち主には貿易の命令も。
-    他国は国全体の数（輸出・輸入・貿易収支・船の数）と貿易圏の加盟だけ。"""
-    island, context, stats = _report(request, island_id, "trade", "貿易")
+TRADE_OTHERS_NOTE = (
+    "他国の島のため、国全体の数と貿易圏の加盟だけを表示しています"
+    "（契約・商社・船団・荷の中身は島の持ち主だけが見られます）。"
+)
+
+
+def _trade(request, island_id: int, page: str, title: str, template: str):
+    """貿易の入口のタブ（UI-71・W-247）。どのタブも中身は JSON API の /trade と同じ trade_data で、
+    タブごとにその一部を出す。他国には国全体の数と貿易圏の加盟だけ。"""
+    island, context, stats = _report(request, island_id, page, title)
     data = trade.trade_data(island, context["mine"], context["currency"], stats)
     names = trade.TRADE_STATS if context["mine"] else trade.PUBLIC_TRADE_STATS
     context.update(trade=data, stats=reports.stat_rows(stats, names, context["currency"]))
     if not context["mine"]:
-        context["note"] = (
-            "他国の島のため、国全体の数と貿易圏の加盟だけを表示しています"
-            "（契約・商社・船団・荷の中身は島の持ち主だけが見られます）。"
-        )
-    return render(request, "web/trade.html", context)
+        context["note"] = TRADE_OTHERS_NOTE
+    return render(request, template, context)
+
+
+def trade_page(request, island_id: int):
+    """貿易の概要（W-247 (5)〜(7)）: 入っている貿易圏・輸出入と収支・運ぶ途中の荷・契約の数と、
+    持ち主には「いますべきこと」（ホームの今月すべきことの貿易の行）と、よく使う契約の申し込みを置いた
+    打てる手の箱。詳しい一覧は契約・貿易圏・船と港・海外の商人のタブに分ける。"""
+    return _trade(request, island_id, "trade", "貿易", "web/trade.html")
+
+
+def trade_contracts_page(request, island_id: int):
+    """貿易のタブ「契約」: 二国間契約の一覧と、奥に畳んだ産業政策と援助（持ち主だけ）。"""
+    return _trade(request, island_id, "trade_contracts", "二国間契約", "web/trade_contracts.html")
+
+
+def trade_blocs_page(request, island_id: int):
+    """貿易のタブ「貿易圏」: 加盟している圏（持ち主には圏の値段と代表の設定も）と、ほかの圏・圏を
+    作る欄（持ち主だけ）。"""
+    return _trade(request, island_id, "trade_blocs", "貿易圏", "web/trade_blocs.html")
+
+
+def trade_fleet_page(request, island_id: int):
+    """貿易のタブ「船と港」: 商社・船団と港・運ぶ途中の荷と船の貸し出し（持ち主だけ）。"""
+    return _trade(request, island_id, "trade_fleet", "船と港", "web/trade_fleet.html")
+
+
+def trade_merchant_page(request, island_id: int):
+    """貿易のタブ「海外の商人」: 来る期間・値段・1ターンの上限（持ち主だけ）。"""
+    return _trade(request, island_id, "trade_merchant", "海外の商人", "web/trade_merchant.html")
 
 
 def fx_page(request, island_id: int):

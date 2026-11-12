@@ -25,6 +25,9 @@
 UI-77 の「大事だがめったに使わない」物は、もとの値が要ると言っているときだけ出す: 首都が落ちて体制の
 選び直しを待っているとき（military の reselect と同じ値）、代表をしている貿易圏に加盟の申し込みが
 あるとき、どの貿易圏にも入っておらず入れる圏があるとき。
+
+貿易の画面の概要の「いますべきこと」（W-247 (6)）は、この並びのうち貿易の種類（TRADE_KINDS）の行を
+出す（trade_rows）。
 """
 
 from __future__ import annotations
@@ -92,7 +95,7 @@ LINKS: dict[str, tuple[str, str, str]] = {
     "fuel": ("island_facilities", "", "施設の状態を見る"),
     "on_sale": ("island_facilities", "", "施設の状態を見る"),
     "losing": ("island_facilities", "", "施設の状態を見る"),
-    "merchant": ("island_trade", "#merchant", "貿易の画面へ"),
+    "merchant": ("trade_merchant", "#merchant", "海外の商人のタブへ"),
     "yield_capped": ("island_fiscal", "", "財政の画面へ"),
     "caretaker": ("island_diplomacy", "", "外交の画面へ"),
 }
@@ -259,7 +262,7 @@ def _treaties(island: m.Island, dip: dict[str, Any], pending: set) -> list[dict[
 def _contracts(
     island: m.Island, state: dict[str, list], names: dict, pending: set
 ) -> list[dict[str, Any]]:
-    url = reverse("island_trade", args=[island.id]) + "#contracts"
+    url = reverse("trade_contracts", args=[island.id]) + "#contracts"
     offered = [
         c
         for c in trade.contract_rows(state["contracts"], island.id, island.world.turn, names)
@@ -273,12 +276,12 @@ def _contracts(
             f"{display.currency_prefix(c['currency_symbol'])}{c['price']:,g}）。"
             "受けるか断るかを選びます",
             url,
-            "貿易の画面へ",
+            "契約のタブへ",
         )
         for c in offered
     ]
     more = "ほかに申し込まれた契約が {n} 件あります"
-    return _capped(rows, len(rows), "contract", more, url, "貿易の画面へ")
+    return _capped(rows, len(rows), "contract", more, url, "契約のタブへ")
 
 
 def _regime(island: m.Island) -> list[dict[str, Any]]:
@@ -295,7 +298,7 @@ def _regime(island: m.Island) -> list[dict[str, Any]]:
 
 def _blocs(island: m.Island, state: dict[str, list]) -> list[dict[str, Any]]:
     """代表をしている圏への加盟の申し込みと、どの圏にも入っていないこと（入れる圏があるとき）。"""
-    url = reverse("island_trade", args=[island.id])
+    url = reverse("trade_blocs", args=[island.id])
     rows = []
     member = [b for b in state["blocs"] if island.id in b["members"]]
     for b in member:
@@ -306,7 +309,7 @@ def _blocs(island: m.Island, state: dict[str, list]) -> list[dict[str, Any]]:
                     f"貿易圏「{b['name']}」に加盟の申し込みが {len(b['applicants'])} 件あります"
                     "（代表の承認を待っています）",
                     url + "#blocs",
-                    "貿易の画面へ",
+                    "貿易圏のタブへ",
                 )
             )
     if member or "since" not in ((island.ext or {}).get(TRADE_KEY) or {}):
@@ -318,10 +321,28 @@ def _blocs(island: m.Island, state: dict[str, list]) -> list[dict[str, Any]]:
                 "bloc",
                 f"どの貿易圏にも入っていません。入れる貿易圏が {len(joinable)} あります",
                 url + "#other-blocs",
-                "貿易の画面へ",
+                "貿易圏のタブへ",
             )
         )
     return rows
+
+
+# 貿易の画面の「いますべきこと」に出す種類（W-247 (6)）
+TRADE_KINDS = ("contract", "merchant", "bloc_applicants", "bloc")
+
+
+def trade_rows(island: m.Island, alerts: list[Alert]) -> list[dict[str, Any]]:
+    """今月すべきことのうち、貿易の種類（TRADE_KINDS）の行だけ（貿易の画面の「いますべきこと」）。
+    rows と同じ作り方で、貿易の行だけを作る（次にすることに貿易の種類はなく、貿易の行が代わる
+    「注意」もないので、rows の答えから TRADE_KINDS の行を抜いたものと同じになる）。alerts は
+    持ち主の「注意」（海外の商人の行だけを使う）。"""
+    pending = _pending(island)
+    state = trade.world_state(island.world)
+    names = trade.directory(island.world) if state["contracts"] else {}
+    out = _contracts(island, state, names, pending["contract"]) + _blocs(island, state)
+    out += [_alert_row(island, a) for a in alerts if a.kind in TRADE_KINDS]
+    out.sort(key=lambda r: RANK.get(r["kind"], len(ORDER)))
+    return out
 
 
 def rows(

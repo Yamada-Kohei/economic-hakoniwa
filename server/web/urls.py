@@ -44,6 +44,19 @@ urlpatterns = [
     path("islands/<int:island_id>/fiscal/", views.fiscal_page, name="island_fiscal"),
     path("islands/<int:island_id>/finance/", views.finance_page, name="island_finance"),
     path("islands/<int:island_id>/trade/", views.trade_page, name="island_trade"),
+    # 貿易の入口の中のタブ（W-247。中身は JSON API の /trade と同じ）
+    path(
+        "islands/<int:island_id>/trade/contracts/",
+        views.trade_contracts_page,
+        name="trade_contracts",
+    ),
+    path("islands/<int:island_id>/trade/blocs/", views.trade_blocs_page, name="trade_blocs"),
+    path("islands/<int:island_id>/trade/fleet/", views.trade_fleet_page, name="trade_fleet"),
+    path(
+        "islands/<int:island_id>/trade/merchant/",
+        views.trade_merchant_page,
+        name="trade_merchant",
+    ),
     path("islands/<int:island_id>/fx/", views.fx_page, name="island_fx"),
     path("islands/<int:island_id>/politics/", views.politics_page, name="island_politics"),
     path("islands/<int:island_id>/plan/", views.plan_page, name="island_plan"),
