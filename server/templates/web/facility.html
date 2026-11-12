@@ -175,7 +175,7 @@
   </form>
   {% endif %}
   {% if "demolish" in actions %}
-  <form class="actions facility-action" data-order="demolish" data-confirm="{% blocktranslate %}{{ name }} を撤去する命令を追加しますか？{% endblocktranslate %}">
+  <form class="actions facility-action" data-order="demolish">
     <h3>{% translate "撤去" %}</h3>
     <p class="hint">{% translate "施設を取り壊してマスを空けます。戻せません。" %}</p>
     <button type="submit">{% translate "撤去（命令に追加）" %}</button>

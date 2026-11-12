@@ -45,7 +45,6 @@ document.addEventListener("submit", async (e) => {
   if (!form || !firmOrders) return;
   e.preventDefault();
   const box = form.closest("#actions");
-  if (form.dataset.confirm && !confirm(form.dataset.confirm)) return;
   const payload = box ? facilityPayload(form, box) : { firm: Number(form.dataset.firm) };
   await firmOrders.add(form.dataset.order, payload);
   const notice = document.querySelector(".firm-notice, .facility-notice");
