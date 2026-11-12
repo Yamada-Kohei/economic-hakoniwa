@@ -194,7 +194,7 @@ def test_orders_put_get_and_run(client, world):
     assert res.status_code == 200, res.content.decode()
     data = res.json()
     assert [o["kind"] for o in data["orders"]] == ["rename_island", "build"]
-    assert "農場 (0, 0)" in data["orders"][1]["text"]
+    assert "農場（穀物） (0, 0)" in data["orders"][1]["text"]  # 作る物を添える（W-262）
     # 海には建てられないが、前の命令しだいで変わることもあるので警告だけにする
     assert [w["index"] for w in data["warnings"]] == [1]
     assert client.get(url).json()["admin_power"] > 0

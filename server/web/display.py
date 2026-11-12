@@ -204,6 +204,31 @@ def fuel_reserves(
     return rows
 
 
+def product_of(defs: Any, kind: str, recipe: str | None) -> str:
+    """作る物が方式で変わる施設（農場・鉱山など）の、作り方 recipe で作る物の名前（W-262）。
+    方式を変えても作る物が同じ施設（食品工場など）や、作り方の分からない施設は ""。"""
+    recipes = defs.facilities.get(kind, {}).get("recipes", {})
+    if recipe not in recipes:
+        return ""
+    outputs = {tuple(sorted(r.get("outputs", {}))) for r in recipes.values()}
+    if len(outputs) < 2:
+        return ""
+    return "・".join(defs.name("goods", g) for g in recipes[recipe].get("outputs", {}))
+
+
+def kind_label(defs: Any, kind: str, recipe: str | None = None) -> str:
+    """施設の種類の表示名に、方式で変わる作る物を添えた名前（「農場（穀物）」「鉱山（銅鉱石）」。
+    W-262、掲示板 #25 の 21 番）。作る物が変わらない施設は種類の名前だけ。"""
+    name = defs.name("facilities", kind)
+    product = product_of(defs, kind, recipe)
+    return f"{name}（{product}）" if product else name
+
+
+def facility_label(f: Facility) -> str:
+    """施設 f の種類の表示名（作る物を添える。kind_label）。"""
+    return kind_label(get_game().defs, f.kind, f.recipe)
+
+
 def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> dict[str, Any]:
     """マスの欄の施設。だれにでも見える姿（種類・人手・稼働率・状態・在庫・補助金・閉鎖と差し押さえ）
     と、持ち主にだけ帳簿・借入・銀行の帳簿と、命令の入力に使う値（mine のとき）。"""
@@ -214,7 +239,7 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
     info: dict[str, Any] = {
         "number": f.id,
         "kind": f.kind,
-        "kind_name": defs.name("facilities", f.kind),
+        "kind_name": kind_label(defs, f.kind, f.recipe),
         "name": facility_name(defs, config, island, f) if fdef else f.kind,
         "custom_name": f.name,
         "owner": f.owner,
@@ -1112,18 +1137,70 @@ def order_payload(kind: Any, payload: Any, to_game: bool) -> Any:
     return out
 
 
-def describe_order(kind: str, payload: dict[str, Any]) -> str:
-    """命令の列に出す、命令の中身の短い説明（量と値段は見せる単位で）。"""
+# マスの施設に出す命令（命令の文に、施設の種類と作る物を添える。W-262）
+FACILITY_ORDERS = frozenset(
+    {
+        "rename_facility",
+        "demolish",
+        "set_priority",
+        "change_recipe",
+        "set_accounting",
+        "nationalize",
+        "privatize",
+        "emergency_loan",
+        "resolve_bank",
+    }
+)
+
+
+def facility_labels(island: m.Island) -> dict[tuple[int, int], str]:
+    """島のマスごとの施設の種類の表示名（作る物を添える。町は除く）。命令の文に使う（W-262）。"""
+    defs = get_game().defs
+    housing = fac.housing_kind(get_game().config)
+    return {
+        (x, y): kind_label(defs, kind, recipe)
+        for kind, recipe, x, y in island.facilities.exclude(kind=housing)
+        .filter(x__gte=0, y__gte=0)
+        .values_list("kind", "recipe", "x", "y")
+    }
+
+
+def _build_label(defs: Any, kind: str, recipe: str | None) -> str:
+    """建設の命令の文の施設（「農場（穀物・肥料あり）」「鉱山（銅鉱石）」「食品工場・魚から製造」）。"""
+    if kind not in defs.facilities:
+        return defs.name("facilities", kind)
+    recipes = defs.facilities[kind]["recipes"]
+    recipe = recipe or ("default" if "default" in recipes else None)  # 書かなければ既定の作り方
+    if not recipe or len(recipes) < 2:
+        return defs.name("facilities", kind)
+    label = kind_label(defs, kind, recipe)
+    product = product_of(defs, kind, recipe)
+    shown = defs.recipe_name(kind, recipe)
+    if not product:  # 作る物は同じで作り方だけ違う（食品工場など）
+        return f"{label}・{shown}"
+    if shown.startswith(f"{product}（") and shown.endswith("）"):  # 「穀物（肥料あり）」
+        return f"{defs.name('facilities', kind)}（{product}・{shown[len(product) + 1 : -1]}）"
+    return label
+
+
+def describe_order(
+    kind: str,
+    payload: dict[str, Any],
+    labels: dict[tuple[int, int], str] | None = None,
+) -> str:
+    """命令の列に出す、命令の中身の短い説明（量と値段は見せる単位で）。labels（facility_labels）を
+    渡すと、施設への命令の文に施設の種類と作る物を添える（W-262）。"""
     defs = get_game().defs
     stored = payload  # 条約の条項の説明（clause_summary）は、計算の単位の条項を受け取る
     payload = order_payload(kind, payload, to_game=False)
     name = defs.name("orders", kind)
     where = f"({payload['x']}, {payload['y']})" if "x" in payload and "y" in payload else ""
+    if where and kind in FACILITY_ORDERS and labels:
+        label = labels.get((payload["x"], payload["y"]))
+        if label:
+            where = f"{label} {where}"
     if kind == "build":
-        facility = defs.name("facilities", payload.get("facility", ""))
-        recipe = payload.get("recipe")
-        if recipe and payload.get("facility") in defs.facilities:
-            facility += f"・{defs.recipe_name(payload['facility'], recipe)}"
+        facility = _build_label(defs, payload.get("facility", ""), payload.get("recipe"))
         return f"{name}: {facility} {where}"
     if kind == "build_housing":
         if "level" in payload:
