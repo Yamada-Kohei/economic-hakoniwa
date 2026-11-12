@@ -154,8 +154,8 @@ def test_planned_islands_hire_by_priority_not_wage(game):
     mill.priority, other.priority = 9, 5
     key = Employment._hire_key
     # 計画経済: 賃金が安くても優先度の高い施設が先（PL-59）。ほかの体制は賃金の高い順
-    assert key(ctx, True, (mill, 900)) < key(ctx, True, (other, 2000))
-    assert key(ctx, False, (mill, 900)) > key(ctx, False, (other, 2000))
+    assert key(island, ctx, True, (mill, 900)) < key(island, ctx, True, (other, 2000))
+    assert key(island, ctx, False, (mill, 900)) > key(island, ctx, False, (other, 2000))
 
 
 def test_public_works_priority_can_be_set_by_order(game):
