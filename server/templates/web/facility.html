@@ -17,6 +17,12 @@
       {% if hint %}<tr><th>{% translate "できること" %}</th><td>{{ hint }}</td></tr>{% endif %}
     </table>
   </div>
+  {% with s=facility.slowdown %}{% if s %}
+  <section class="slowdown" id="slowdown">
+    <h3>{% if s.stopped %}{% translate "生産を止めたわけ" %}{% else %}{% translate "生産調整中のわけ" %}{% endif %}{% if s.good_name %}（{{ s.good_name }}）{% endif %} <small class="muted">{% blocktranslate with t=s.target %}操業目標 {{ t }}%{% endblocktranslate %}</small></h3>
+    <ul class="slowdown-reasons">{% for r in s.reasons %}<li>{{ r.text }}</li>{% endfor %}</ul>
+  </section>
+  {% endif %}{% endwith %}
 </section>
 
 {% if mine %}
