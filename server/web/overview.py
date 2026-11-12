@@ -439,8 +439,10 @@ def _alerts(
     hungry: list[dict[str, Any]],
     turn: int,
     yields: dict[str, Any] | None = None,
+    planned: bool = False,
 ) -> list[str]:
-    """気をつけたほうがよいこと（画面の値を言葉にしただけ。先の見込みは入れない）。"""
+    """気をつけたほうがよいこと（画面の値を言葉にしただけ。先の見込みは入れない）。planned は
+    計画経済の島（電気の打てる手が公定価格になる）。"""
     out = []
     if yields and yields["yield_capped"]:
         maximum = get_game().config.get("bonds.max_yield") * 100
@@ -455,9 +457,7 @@ def _alerts(
         # 99.9% を 100% と出さない（切り捨て。Codex の試し遊び）
         out.append(f"食料が足りていません（充足率 {math.floor(food * 1000) / 10:.1f}%）")
     out += [hunger_text(row) for row in hungry]
-    shortage = stats.get("power.shortage")
-    if shortage:
-        out.append(f"電力が足りていません（不足率 {math.ceil(shortage * 1000) / 10:.1f}%）")
+    out += power_alerts(stats, planned)
     if facilities["stopped_count"]:
         out.append(f"止まっている施設が {facilities['stopped_count']} か所あります")
     if facilities.get("on_sale_count"):
@@ -471,6 +471,69 @@ def _alerts(
     if politics.get("transition"):
         out.append(f"体制を変えた後の混乱期間です（ターン {politics['transition']['until']} まで）")
     return out
+
+
+def _short_supply(stats: dict[str, float]) -> float:
+    """発電を使い切って届かなかった電力の割合（UI-89 の power.short_supply。その統計のない前の
+    ターンは、今までの power.shortage）。"""
+    if "power.short_supply" in stats:
+        return stats["power.short_supply"]
+    return stats.get("power.shortage", 0.0)
+
+
+def unaffordable_power(stats: dict[str, float]) -> float:
+    """家計が発電の売れ残りがあるのに電気料金を払えずに使えなかった電力の割合（知らせの線
+    power.household_notice より小さければ 0。UI-89）。"""
+    share = stats.get("power.household_unaffordable", 0.0)
+    return share if share >= get_game().config.get("power.household_notice") else 0.0
+
+
+def power_alerts(stats: dict[str, float], planned: bool = False) -> list[str]:
+    """電力の注意（UI-89）: 発電を使い切って届かなかったときは「電力が足りていません」、発電が売れ
+    残っているのに家計が払えないときは「家計が電気料金を払えない」と打てる手。"""
+    out = []
+    short = _short_supply(stats)
+    if short:
+        out.append(f"電力が足りていません（不足率 {math.ceil(short * 1000) / 10:.1f}%）")
+    unpaid = unaffordable_power(stats)
+    if unpaid:
+        percent = math.ceil(unpaid * 1000) / 10
+        text = f"家計が電気料金を払えず、要る電気の {percent:.1f}% を使えていません"
+        notes = []
+        capacity = stats.get("power.capacity", 0.0)
+        if capacity > 0:
+            left = max(0.0, 1 - stats.get("power.used", 0.0) / capacity)
+            notes.append(f"発電は {math.floor(left * 1000) / 10:.1f}% 売れ残っています")
+        layers = {
+            k.removeprefix("power.household."): v
+            for k, v in stats.items()
+            if k.startswith("power.household.")
+        }
+        if layers:
+            worst = min(sorted(layers), key=lambda k: layers[k])
+            name = reports.LAYER_NAMES.get(worst, worst)
+            notes.append(
+                f"一番使えていないのは{name}で、届いたのは要る量の "
+                f"{math.floor(layers[worst] * 1000) / 10:.1f}%"
+            )
+        if notes:
+            text += "（" + "。".join(notes) + "）"
+        out.append(text + "。打てる手: " + _power_remedies(planned))
+    return out
+
+
+def _power_remedies(planned: bool) -> str:
+    """家計が電気料金を払えないときに打てる手（UI-89）。"""
+    if planned:
+        return "電気の公定価格を下げる・失業手当を出す"
+    return "所得税・消費税を下げる・失業手当を出す・電気料金に公共料金の上限を付ける"
+
+
+def _is_planned(island: m.Island) -> bool:
+    """国が持つ経済体制（計画経済）の島か。"""
+    defs = get_game().defs
+    economy = (island.regime or {}).get("economy", "")
+    return defs.regimes.get(economy, {}).get("owner") == OWNER_STATE
 
 
 def _board_unread(island: m.Island) -> int:
@@ -586,6 +649,7 @@ def island_alerts(island: m.Island, mine: bool) -> tuple[list[str], list[dict[st
         hungry,
         world.turn,
         reports.yield_data(island),
+        planned=_is_planned(island),
     )
     out += _fuel_alerts(island, mine)
     steps: list[dict[str, Any]] = []
@@ -634,9 +698,7 @@ def next_steps(
     if island.world.turn - founded >= GUIDE_TURNS:
         return []
     defs = get_game().defs
-    planned = (
-        defs.regimes.get((island.regime or {}).get("economy", ""), {}).get("owner") == OWNER_STATE
-    )
+    planned = _is_planned(island)
     out = []
     if island.world.turn <= founded:  # まだ一度も更新されていない
         starting = facilities.get("starting_count", 0)
@@ -659,12 +721,23 @@ def next_steps(
                 island,
             )
         )
-    if stats.get("power.shortage"):
+    if _short_supply(stats):
         out.append(
             _step(
                 "power",
                 "電力が足りていません。発電所の燃料と、送電線でつながっている範囲を確かめます",
                 "facilities",
+                island,
+            )
+        )
+    elif unaffordable_power(stats):
+        out.append(
+            _step(
+                "power_bill",
+                "家計が電気料金を払えず、電気を控えています（発電は売れ残っています）。命令の欄で、"
+                + _power_remedies(planned)
+                + "を考えます",
+                "orders",
                 island,
             )
         )
@@ -974,6 +1047,7 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
             hungry,
             world.turn,
             reports.yield_data(island),
+            planned=_is_planned(island),
         ),
     }
     data["alerts"] += _fuel_alerts(island, mine, viewer)

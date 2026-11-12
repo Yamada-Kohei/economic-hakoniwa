@@ -53,6 +53,7 @@ from hakoniwa_core.economy import (
     is_public_service,
     is_self_supporting,
     is_stopped,
+    needs,
     payer_of,
     power_fuel,
     productivity,
@@ -64,6 +65,8 @@ from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.geo import components, distance, within
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
+from hakoniwa_core.modules.market import curve_cost, elastic_orders
+from hakoniwa_core.modules.population import layer_food_needs
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import (
     OWNER_STATE,
@@ -120,6 +123,8 @@ class _Buyer:
     layer: str | None = None
     tax: int = 0
     reserved: int = 0
+    # 家計の段の注文（LB-47）で、予算の縛りのない値段の曲線（量, 指値）。払えない量を数える（UI-89）
+    curve: list[tuple[int, int]] | None = None
 
 
 def output_rate(island: IslandState, f: Facility, rate: int, ctx: StageContext) -> int:
@@ -409,17 +414,38 @@ class Production(IslandStage):
                 homes.setdefault(grid_of[(f.x, f.y)], []).append((f.x, f.y))
         persons = {n: h["persons"] for n, h in economy.households.items()}
         population = sum(persons.values())
+        grids = sorted(set(plants) | set(users) | set(homes))
+        home_needs = {
+            grid: to_milli(
+                sum(island.tile(x, y).population for x, y in homes.get(grid, ()))
+                * household_use
+                * climate_power
+            )
+            for grid in grids
+        }
+        # 家計の段の注文（LB-47）: 計画経済の公定価格の島とお金の経済の前の島は今のまま
+        curve = has_money and not fixed and bool(config.get("power.household_curve"))
+        layer_needs = {
+            layer: sum(n * persons[layer] // population for n in home_needs.values())
+            for layer in persons
+            if population
+        }
+        budgets = self._household_budgets(island, ctx) if curve else {}
+        band_low, _ = bounds or auction.band(reference, width, cap)
         rates: dict[int, int] = {}
         totals = {"capacity": 0, "demand": 0, "used": 0}
+        # 家計が届いた電力（UI-89）: 要る量・届いた量（層ごと）、払えなかった量、能力を使い切った
+        # 網で届かなかった量
+        notice = {"home": 0, "unaffordable": 0, "short": 0}
+        layer_got: dict[str, int] = {}
         volume = value = 0
-        for grid in sorted(set(plants) | set(users) | set(homes)):
+        for grid in grids:
             buyers: list[_Buyer] = []
             for run in users.get(grid, []):
                 need = fac.scale(run.recipe["inputs"][power], run.rate)
                 payer = payer_of(defs, config, run.f)
                 buyers.append(_Buyer(f"fac:{run.f.id}", payer, need, run=run))
-            home_people = sum(island.tile(x, y).population for x, y in homes.get(grid, ()))
-            home_need = to_milli(home_people * household_use * climate_power)
+            home_need = home_needs[grid]
             if home_need and population:
                 for layer in sorted(persons):
                     need = home_need * persons[layer] // population
@@ -455,8 +481,20 @@ class Production(IslandStage):
                     ask = max(ask, floor)
                 sell_orders.append(Order(capacity, min(ask, high)))  # 上端より高くては売れない
             buy_orders = []
+            # 注文ごとの買い手（buyers の番号）。家計の段の注文は1人が何本も出す
+            owners: list[int] = []
+            first: list[int] = []  # 買い手ごとの最初の注文の番号
             tiers: list[int] = []
-            for b in buyers:
+            for i, b in enumerate(buyers):
+                first.append(len(buy_orders))
+                if curve and b.layer:
+                    budget = budgets.get(b.layer, 0) * b.need // max(1, layer_needs[b.layer])
+                    for qty, limit in self._household_steps(
+                        island, ctx, b, budget, (band_low, high), power
+                    ):
+                        buy_orders.append(Order(qty, limit, config.get("power.household_priority")))
+                        owners.append(i)
+                    continue
                 qty, limit = b.need, None
                 if fixed:
                     limit = fixed
@@ -482,9 +520,10 @@ class Production(IslandStage):
                     else fac.priority_of(defs, config, b.run.f)  # type: ignore[union-attr]
                 )
                 buy_orders.append(Order(qty, limit, priority))
+                owners.append(i)
             allocate = None
             if fixed:
-                layers = [b.layer for b in buyers]
+                layers = [buyers[o].layer for o in owners]
                 allocate = planning.allocator(tiers, layers, persons)
             result = auction.clear(
                 buy_orders,
@@ -505,9 +544,14 @@ class Production(IslandStage):
                     run.f.economy["power_previous_price"] = previous_grid_prices.get(key, reference)
                     run.f.economy["power_grid_price"] = grid_prices[key]
             if has_money:
-                self._settle(island, ctx, result, buyers, sellers, power)
-            for b, order, got in zip(buyers, buy_orders, result.bought, strict=True):
+                self._settle(island, ctx, result, buyers, owners, sellers, power)
+            got_of = [0] * len(buyers)
+            for o, got in zip(owners, result.bought, strict=True):
+                got_of[o] += got
+            for i, b in enumerate(buyers):
+                got = got_of[i]
                 if b.run is not None:
+                    order = buy_orders[first[i]]
                     rates[b.run.f.id] = fac.scale(b.run.rate, fac.ratio(got, b.need))
                     if got < b.need:
                         short[b.run.f.id] = self._short_power(b, order, got, result, sell_orders)
@@ -517,7 +561,8 @@ class Production(IslandStage):
                 rates[run.f.id] = run.rate if sold == offered else fac.ratio(sold, out)
                 if sold <= 0 < offered and result.unfilled_demand > 0:
                     unsold[run.f.id] = "power_price"
-            home_got = sum(got for b, got in zip(buyers, result.bought, strict=True) if b.layer)
+            home_got = sum(got_of[i] for i, b in enumerate(buyers) if b.layer)
+            self._note_homes(notice, layer_got, buyers, owners, buy_orders, got_of, result)
             home_rate = fac.ratio(home_got, home_need) if home_need else 0
             for x, y in homes.get(grid, ()):
                 tile = island.tile(x, y)
@@ -546,6 +591,7 @@ class Production(IslandStage):
             value += money_of(result.price, result.volume)
         for key, amount in totals.items():
             island.stats[f"power.{key}"] = from_milli(amount)
+        self._home_stats(island, totals, notice, layer_needs, layer_got)
         if has_money:
             economy.ext["power_grid_prices"] = grid_prices
             price = fixed or (unit_price(value, volume) if volume else reference)
@@ -586,6 +632,137 @@ class Production(IslandStage):
         return "supply"
 
     @staticmethod
+    def _household_budgets(island: IslandState, ctx: StageContext) -> dict[str, int]:
+        """家計の層ごとの電気の予算（消費税込み。LB-47）: 使う額 × power.household_share と、使う額
+        から食べ物の見込み額（要る栄養を前のターンの一番安い食料の値段で買う額、税込み）を除いた残りの
+        少ないほう。電気代は食べ物より先に払うので、食べ物を先に取っておく（貧しい家も食べ物を先に
+        買い、電気を削る）。"""
+        config, defs = ctx.config, ctx.defs
+        prices = island.economy.prices
+        tax = island.policy.consumption_tax
+        pi = inflation(island.economy)
+        food_needs = layer_food_needs(island, ctx)
+        foods = {
+            g: to_milli(d["food"]["nutrition"])
+            for g, d in defs.goods.items()
+            if "food" in d and g in prices and d["food"]["nutrition"] > 0
+        }
+        out = {}
+        for layer in sorted(island.economy.households):
+            spend = ctx.formula("consumption")(island, layer, config, pi)
+            need = food_needs.get(layer, 0)
+            food = min(
+                (money_of(prices[g], -(-need * QUANTITY_SCALE // n)) for g, n in foods.items()),
+                default=0,
+            )
+            food += part(food, tax)
+            share = round_money(spend * config.get("power.household_share"))
+            out[layer] = max(0, min(share, spend - food))
+        return out
+
+    @staticmethod
+    def _household_steps(
+        island: IslandState,
+        ctx: StageContext,
+        b: _Buyer,
+        budget: int,
+        band: tuple[int, int],
+        power: str,
+    ) -> list[tuple[int, int]]:
+        """家計の層の電気の段の注文（量, 指値。高い指値から。LB-47）。
+
+        真ん中はいつもの電気料金（needs.centre_price）、段は household.price_curve の倍率と、前の
+        電気料金の値幅 band の中に等しい間隔で置く power.household_band_steps の段（上端の段は
+        いつも出す）。段 p で買う量（累積）は「要る量 ×（p ÷ 真ん中）^(−弾力性)」と予算 budget
+        （税込み）で払える量の少ないほうで、要る量より多くは買わない。どの値段で約定しても払う額は
+        curve_cost を超えないので、その額を1つ取り置く。使えるお金が足りなければどの段も同じ割合で
+        減らす（衣料の _household_curve と同じ）。b.curve に予算の縛りのない曲線を残す（UI-89）。
+        """
+        config = ctx.config
+        low, high = band
+        steps = max(1, int(config.get("power.household_band_steps")))
+        extra = tuple(
+            low + (high - low) * k // (steps - 1) if steps > 1 else high for k in range(steps)
+        )
+        centre = needs.centre_price(island, config, power)
+        elasticity = needs.elasticity_of(config, power)
+        multiples = config.get("household.price_curve")
+
+        def orders(money: int) -> list[tuple[int, int]]:
+            return elastic_orders(
+                b.need, b.need, centre, elasticity, multiples, band, money, 0, b.tax, extra
+            )
+
+        b.curve = orders(10**18)  # 予算の縛りのない曲線
+        out = orders(budget) if budget > 0 else []
+        cost = curve_cost(out, 0, b.tax)
+        money = funds.available(island, b.payer)
+        if cost > money:
+            out = [(q * money // cost, lim) for q, lim in out] if cost > 0 else []
+            out = [(q, lim) for q, lim in out if q > 0]
+            cost = curve_cost(out, 0, b.tax)
+        if cost > 0:
+            b.reserved = cost
+            funds.commit(island, b.payer, cost)
+        return out
+
+    @staticmethod
+    def _note_homes(
+        notice: dict[str, int],
+        layer_got: dict[str, int],
+        buyers: list[_Buyer],
+        owners: list[int],
+        orders: list[Order],
+        got_of: list[int],
+        result: auction.Result,
+    ) -> None:
+        """送電網の家計に届いた電力を数える（UI-89。計算には使わない）。
+
+        売りに出た発電が売れ残った網では、家計が予算の縛りで買えなかった量（値段の曲線がその値段で
+        買う量 − 予算の中で出した注文のうちその値段で約定する量。値段が高くて控えた分は入れない）を
+        unaffordable に、発電が全部売れた網（発電所のない網を含む）では、届かなかった量を short に
+        足す。発電所の操業目標は家計の要る量で決まる（MK-23）ので、売りに出た量は動ける能力から
+        燃料・人手の足りない分を除いた量になり、人手が足りずに全部売れた網は電力不足に数える。"""
+        spare = result.supply > result.volume
+        ordered = [0] * len(buyers)
+        for o, order in zip(owners, orders, strict=True):
+            if auction.buy_limit(order, result.high) >= result.price:
+                ordered[o] += order.quantity
+        for i, b in enumerate(buyers):
+            got = got_of[i]
+            if b.layer:
+                notice["home"] += b.need
+                layer_got[b.layer] = layer_got.get(b.layer, 0) + got
+            if not spare:
+                notice["short"] += max(0, b.need - got)
+            elif b.layer:
+                wanted = b.need
+                if b.curve is not None:
+                    wanted = sum(q for q, lim in b.curve if lim >= result.price)
+                notice["unaffordable"] += max(0, min(b.need, wanted) - ordered[i])
+
+    @staticmethod
+    def _home_stats(
+        island: IslandState,
+        totals: dict[str, int],
+        notice: dict[str, int],
+        layer_needs: dict[str, int],
+        layer_got: dict[str, int],
+    ) -> None:
+        """家計が電気を使えたかの統計（UI-89）: power.household_unaffordable（家計の要る量のうち、
+        発電が売れ残っているのに電気料金を払えずに使えなかった割合）、power.short_supply（要る量の
+        うち、発電が全部売れて届かなかった割合。本当の電力不足）、power.household.<層>（層に届いた
+        割合）。power.shortage（records）は意味を変えない。"""
+        stats = island.stats
+        if totals["demand"]:
+            stats["power.short_supply"] = notice["short"] / totals["demand"]
+        if notice["home"]:
+            stats["power.household_unaffordable"] = notice["unaffordable"] / notice["home"]
+        for layer, need in sorted(layer_needs.items()):
+            if need > 0:
+                stats[f"power.household.{layer}"] = min(1.0, layer_got.get(layer, 0) / need)
+
+    @staticmethod
     def _power_limit(
         island: IslandState, ctx: StageContext, b: _Buyer, reference: int, power: str
     ) -> int:
@@ -618,15 +795,16 @@ class Production(IslandStage):
         ctx: StageContext,
         result: auction.Result,
         buyers: list[_Buyer],
+        owners: list[int],
         sellers: list[tuple[_Run, int]],
         power: str,
     ) -> None:
-        """電気代を払う（買い手 → 発電所。家計は消費税も）。"""
+        """電気代を払う（買い手 → 発電所。家計は消費税も）。owners は注文ごとの買い手の番号。"""
         config = ctx.config
         paid_by_layer = island.scratch.setdefault("household_power", {})
         bought = island.scratch.setdefault("household_bought", {})
         for b_index, s_index, qty in auction.match(result.bought, result.sold):
-            buyer = buyers[b_index]
+            buyer = buyers[owners[b_index]]
             plant = sellers[s_index][0].f
             amount = money_of(result.price, qty)
             tax = part(amount, buyer.tax)
