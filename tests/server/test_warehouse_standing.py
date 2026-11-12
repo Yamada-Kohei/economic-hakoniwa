@@ -104,7 +104,11 @@ def test_standing_unit_roundtrip_budget_forecast_and_ai_orders(played):
     assert display.order_payload("set_warehouse_standing", raw, to_game=False) == payload
     check = json.loads(_tool(ai, "check_order", kind="set_warehouse_standing", payload=payload))
     assert check["ok"] and "備蓄する" in check["summary"]
-    _tool(ai, "set_orders", orders=[{"kind": "set_warehouse_standing", "payload": payload}])
+    order = {"kind": "set_warehouse_standing", "payload": payload}
+    # 相場から離れた指値なので確かめが出る（UI-75）。確かめた印を付けて出し直す
+    asked = json.loads(_tool(ai, "set_orders", orders=[order]))
+    assert asked["saved"] is False and asked["confirm"][0]["index"] == 0
+    _tool(ai, "set_orders", orders=[order], confirm=True)
     assert browser.get(f"/api/islands/{own.id}/orders").json()["orders"][0]["payload"] == payload
     guide = budget_guide.guide(own)["warehouse"]
     assert guide["standing_year"] == 200 * 10000 * 12

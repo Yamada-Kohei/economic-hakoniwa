@@ -1,44 +1,11 @@
-{% extends "base.html" %}{% load i18n static calendar_tags %}
+{% extends "base.html" %}{% load i18n static calendar_tags display_tags %}
 {% block title %}{{ island.name }} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="{% static 'css/military.css' %}">
 {% include "web/military_text.html" %}
 {% include "web/recipe_text.html" %}
 {% csrf_token %}
-<div class="island-header">
-  <h1>{{ island.name }}{% if ai %} {% include "web/ai_mark.html" %}{% endif %}</h1>
-  <p class="muted">
-    {% if island.owner %}{{ island.owner.username }}{% else %}{% translate "持ち主なし" %}{% endif %}
-    {% if own_island and not mine and island.owner %} ・ <a href="{% url 'letter_new' %}?to={{ island.id }}">{% translate "この国に公電を送る" %}</a>{% endif %}
-    {% if capital_name %} ・ {% translate "首都" %}: {{ capital_name }}{% endif %}
-    {% for r in regime %} ・ {{ r.axis }}: {{ r.name }}{% endfor %}
-    {% if resources %} ・ {% translate "地下資源" %}: {{ resources|join:"、" }}{% endif %}
-    {% if climate %} ・ {% translate "気候" %}: {{ climate }}{% endif %}
-    {% if stats_turn is not None %} ・ {% blocktranslate with turn=stats_turn|turn_date %}{{ turn }}の時点{% endblocktranslate %}{% endif %}
-  </p>
-  {% include "web/island_nav.html" %}
-</div>
-
-{% if mine and show_guide %}
-<section class="next-steps" aria-labelledby="next-steps-title">
-  <h2 id="next-steps-title">{% translate "次にすること" %} <small>{% translate "建国から1年のあいだ" %}</small></h2>
-  {% if next_steps %}
-  <ol class="next-steps-list">{% for s in next_steps %}
-    <li{% if forloop.first %} class="first"{% endif %}>
-      <span class="step-no" aria-hidden="true">{{ forloop.counter }}</span>
-      <div class="step-body">
-        {% if forloop.first %}<span class="step-tag">{% translate "まずはここから" %}</span>{% endif %}
-        <p>{{ s.text }}</p>
-        {% if s.url %}<a class="step-link" href="{{ s.url }}">{{ s.link_text }} →</a>{% endif %}
-      </div>
-    </li>{% endfor %}
-  </ol>
-  {% else %}
-  <p>{% translate "今すぐ手を付けることはありません。更新のたびに、下の「注意」と「前のターンからの主な変化」を見ます。" %}</p>
-  {% endif %}
-  <p class="hint">{% translate "島の今の状態から、急ぐ順に出します。" %} <a href="{% url 'help_start' %}#first-year">{% translate "最初の1年（手引き：入門）" %}</a></p>
-</section>
-{% endif %}
+{% include "web/island_head.html" %}
 {% if mine %}
 <details class="guide">
   <summary>{% translate "画面の使い方" %}</summary>
@@ -52,20 +19,6 @@
   <p><a href="{% url 'help_start' %}">{% translate "手引きをもっと読む" %}</a></p>
 </details>
 {% endif %}
-
-{% if alerts %}
-<section class="panel alerts">
-  <h2>{% translate "注意" %}</h2>
-  <ul>{% for a in alerts %}<li>{{ a }}</li>{% endfor %}</ul>
-  <p><a href="{% url 'island_market' island.id %}">{% translate "市場で不足を調べる" %}</a> ・ <a href="{% url 'island_facilities' island.id %}">{% translate "施設の状態を調べる" %}</a> ・ <a href="{% url 'island_fiscal' island.id %}">{% translate "財政と失業手当" %}</a> ・ <a href="{% url 'island_chain' island.id %}">{% translate "産業の鎖" %}</a></p>
-</section>
-{% endif %}
-<section class="panel" id="recent-changes" hidden data-url="{% url 'api_island_summary' island.id %}">
-  <h2>{% translate "前のターンからの主な変化" %}</h2>
-  <ul aria-live="polite"></ul>
-  <p class="hint">{% translate "目安を超えて変わった指標を、大きい順に最大3件表示します。数字だけでは原因は分かりません。リンク先で施設の状態・市場・家計を確かめてください。" %}</p>
-</section>
-
 <div class="island-layout">
   <section class="map-column">
     <div id="map-load-notice" class="error" role="alert" hidden>
@@ -94,6 +47,7 @@
         <button type="button" data-zoom="out" aria-label="{% translate '縮小' %}">－</button>
       </div>
       <canvas id="minimap" width="128" height="128" aria-label="{% translate '小さな地図' %}"></canvas>
+      <p id="map-coord" class="map-coord" aria-hidden="true" hidden></p>
       {% if mine %}<p id="order-notice" class="map-notice" aria-live="polite"></p>{% endif %}
       {# マスの情報は、押したマスのそばに出す小さな窓（狭い画面では下から出す板）。右上の × と Esc で閉じる #}
       <div id="tile-popover" class="tile-popover" role="dialog" aria-label="{% translate 'マスの情報' %}" hidden>
@@ -114,41 +68,6 @@
 {% include "web/turn_schedule.html" with world=island.world %}
 <section id="orders" class="panel" data-url="{% url 'api_orders' island.id %}"></section>
 {% endif %}
-
-<div class="island-stats">
-  <section class="panel">
-    <h2>{% translate "国勢" %}</h2>
-    {% include "web/stat_definitions.html" %}
-    {% if summary %}
-      <table class="info">
-        {% for row in summary %}<tr><th>{{ row.label }}</th><td>{{ row.text }}</td></tr>{% endfor %}
-        {% if strengths.strengths %}<tr><th>{% translate "得意産業" %}</th><td>{% for x in strengths.strengths %}{{ x.name }}{% if x.rank %} <small class="muted">{% blocktranslate with r=x.rank %}世界 {{ r }} 位{% endblocktranslate %}</small>{% endif %}{% if not forloop.last %}・{% endif %}{% endfor %}</td></tr>{% endif %}
-        {% if strengths.titles %}<tr><th>{% translate "称号" %}</th><td>{{ strengths.titles|join:"・" }}</td></tr>{% endif %}
-      </table>
-    {% else %}
-      <p class="muted">{% translate "未集計です。最初のターンの更新後に表示されます。" %}</p>
-    {% endif %}
-  </section>
-  <section class="panel">
-    <h2>{% translate "資源（国の倉庫の在庫・当ターンの生産量と市場）" %}</h2>
-    {% if goods %}
-      <table class="goods">
-        <thead><tr><th>{% translate "資源" %}</th><th>{% translate "在庫" %}</th><th>{% translate "生産量" %}</th><th>{% translate "売買量" %}</th><th>{% translate "単位" %}</th><th>{% translate "値段（1単位）" %}</th></tr></thead>
-        <tbody>
-          {% for g in goods %}<tr><td>{{ g.name }}</td><td>{{ g.stock }}</td><td>{{ g.production }}</td><td>{{ g.volume }}</td><td>{{ g.unit }}</td><td>{{ g.price|default:"-" }}{% if g.price_kind_name != "約定" %} <small class="muted">{{ g.price_kind_name }}</small>{% endif %}</td></tr>{% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <p class="muted">{% translate "記録がありません。" %}</p>
-    {% endif %}
-  </section>
-</div>
-
-<section class="panel">
-  <h2>{% if log_turn is not None %}{% blocktranslate with turn=log_turn|turn_date %}{{ turn }}の出来事{% endblocktranslate %}{% else %}{% translate "出来事" %}{% endif %}</h2>
-  {% include "web/log_entries.html" with entries=logs island=island %}
-  <p><a href="{% url 'turn_log' island.id %}">{% translate "ターンログをすべて見る" %}</a></p>
-</section>
 
 <script>
   (() => {

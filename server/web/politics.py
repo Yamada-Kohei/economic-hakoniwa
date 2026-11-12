@@ -264,7 +264,8 @@ def plan_data(island: m.Island, mine: bool, stats: dict[str, float]) -> dict[str
     data["caps"] = _price_limits(policy.get("price_cap", {}), stats)
     data["floors"] = _price_limits(policy.get("price_floor", {}), stats)
     data["goods"] = [
-        {"id": g, "name": defs.name("goods", g), "unit": defs.unit_name(g)} for g in defs.goods
+        {"id": g, "name": defs.name("goods", g), "unit": defs.unit_name(g)}
+        for g in display.goods_in_order(defs)
     ]
     if not planned:
         return data
@@ -277,7 +278,7 @@ def plan_data(island: m.Island, mine: bool, stats: dict[str, float]) -> dict[str
     queues = state.get("queues", {})
     band, held = planning.rules(core, config)
     rows = []
-    for good in defs.goods:
+    for good in display.goods_in_order(defs):
         if good not in prices:
             continue
         cost = costs.get(good)
@@ -304,7 +305,11 @@ def plan_data(island: m.Island, mine: bool, stats: dict[str, float]) -> dict[str
         rows=rows,
         review=state.get("review"),
         band=round(band * 100),
-        held=[{"id": g, "name": defs.name("goods", g)} for g in defs.goods if g in held],
+        held=[
+            {"id": g, "name": defs.name("goods", g)}
+            for g in display.goods_in_order(defs)
+            if g in held
+        ],
         priority=[{"id": i, "name": defs.name("industries", i)} for i in priority],
         industries=[{"id": i, "name": defs.name("industries", i)} for i in defs.industries()],
         max_priority=config.get("planning.max_priority"),

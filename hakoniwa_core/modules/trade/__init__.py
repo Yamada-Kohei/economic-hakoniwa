@@ -2326,6 +2326,9 @@ class _Round:
             stats["freight.ship_rate"] = ships.freight_rate(island, self.config, shipping)
         stats["port.handled"] = here.handled / QUANTITY_SCALE
         stats["trade.unpaid"] = here.unpaid
+        if fxrates.rates(island):
+            # 為替の板の売りと買いの量（fx.offered・fx.wanted。0 は書かない）を記録したターンの印
+            stats["fx.book"] = 1
         for key, e in sorted(fxrates.rates(island).items()):
             stats[f"fx.{key}"] = e / BASIS
             # 売り買いのなかったターンも 0 を残す（推移のグラフが途切れないように）
