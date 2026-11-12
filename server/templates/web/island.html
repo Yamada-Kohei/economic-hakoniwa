@@ -17,6 +17,7 @@
     {% if stats_turn is not None %} ・ {% blocktranslate with turn=stats_turn|turn_date %}{{ turn }}の時点{% endblocktranslate %}{% endif %}
   </p>
   {% include "web/island_nav.html" %}
+  {% include "web/orders_bar.html" %}
 </div>
 
 {% if mine and show_guide %}

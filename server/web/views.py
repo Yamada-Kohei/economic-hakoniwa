@@ -362,6 +362,13 @@ def country_page(request, island_id: int):
     return render(request, "web/country.html", context)
 
 
+def orders_page(request, island_id: int):
+    """命令のページ（UI-74）: 待っている命令の列の並べ替え・取り消しと、前のターンまでの結果。
+    ほかの国の人には、待っている命令のうち前もって公表する物だけを見せる（UI-04。中身は API）。"""
+    _, context, _ = _report(request, island_id, "orders", "命令")
+    return render(request, "web/orders.html", context)
+
+
 def diary_page(request, island_id: int):
     """国の日誌（W-37）: 持ち主だけが読み書きする非公開のメモ欄。ほかの人には 404。"""
     island, context, _ = _report(request, island_id, "diary", "日誌")

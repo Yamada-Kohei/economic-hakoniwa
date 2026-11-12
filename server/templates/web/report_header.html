@@ -5,6 +5,7 @@
     {% if stats_turn is not None %} ・ {% blocktranslate with turn=stats_turn|turn_date %}{{ turn }}の時点{% endblocktranslate %}{% endif %}
   </p>
   {% include "web/island_nav.html" %}
+  {% include "web/orders_bar.html" %}
   {% if note %}<p class="hint">{{ note }}</p>{% endif %}
 </div>
 {% include "web/turn_schedule.html" with world=island.world %}

@@ -73,8 +73,9 @@ INSTRUCTIONS = """\
 - 次のターンからは changes(since=前に読んだターン) で、その後に起きたことだけを読みます。
 - 命令は check_order で確かめてから、set_orders で命令の列を丸ごと置き換えます（今の列は summary の
   orders.pending）。中身の形は defs(section="orders")。1ターンに実行されるのは行政力の数までです。
-  打ち間違いに見える命令や戻せない命令は、set_orders が並べずに確かめの文（confirm）を返すので、
-  読んでよければ confirm: true を付けて出し直します。
+  1 つだけ足す・消すなら add_order・remove_order（番号は orders.pending の id）を使います。
+  打ち間違いに見える命令や戻せない命令は、set_orders・add_order が並べずに確かめの文（confirm）を
+  返すので、読んでよければ confirm: true を付けて出し直します。
 - ターンはサーバーが決まった時刻に進めます。ほかの国との連絡は公電（letters・send_letter）と
   掲示板（板・番号付きのレス・>>返信・名無しか国名か・返信の知らせ・検索）です。国際会議場（hall）
   には公開の声明と、戦争・条約の出来事が載ります。
@@ -328,6 +329,12 @@ CONFIRM_HINT = (
 )
 
 
+ADD_CONFIRM_HINT = (
+    "まだ足していません。confirm の notes を読み、このままでよければ同じ kind と payload に "
+    "confirm: true を付けて add_order を出し直してください"
+)
+
+
 def _set_orders(request, args):
     island = _own_island(request).id
     orders = args["orders"]
@@ -344,6 +351,35 @@ def _set_orders(request, args):
         return {"saved": False, "confirm": data["confirm"], "next": CONFIRM_HINT}
     if status >= 400:
         raise ToolError(f"{status}: {data if isinstance(data, str) else _dump(data)}")
+    keep = ("admin_power", "orders", "warnings")
+    return {k: data[k] for k in keep if k in data}
+
+
+def _add_order(request, args):
+    """命令を 1 つ、列の最後に足す（UI-74）。確かめの要る命令は set_orders と同じに答える。"""
+    island = _own_island(request).id
+    body: dict[str, Any] = {"kind": args["kind"], "payload": args.get("payload") or {}}
+    if args.get("confirm") is True:
+        body["confirm"] = True
+    status, data = call(request, "POST", f"/api/islands/{island}/orders/items", body=body)
+    if isinstance(data, dict) and "confirm" in data:
+        return {"saved": False, "confirm": data["confirm"], "next": ADD_CONFIRM_HINT}
+    if status >= 400:
+        raise ToolError(f"{status}: {data if isinstance(data, str) else _dump(data)}")
+    keep = ("added", "warning", "admin_power", "orders", "warnings")
+    return {k: data[k] for k in keep if k in data}
+
+
+def _remove_order(request, args):
+    """待っている命令を 1 つ、番号（summary の orders.pending の id）で消す（UI-74）。"""
+    island = _own_island(request).id
+    order = args["id"]
+    if not isinstance(order, int) or isinstance(order, bool):
+        raise ToolError("id は命令の番号（summary の orders.pending の id）です")
+    status, data = call(request, "DELETE", f"/api/islands/{island}/orders/items/{order}")
+    if status >= 400:
+        text = data.get("error") if isinstance(data, dict) else data
+        raise ToolError(f"{status}: {text}")
     keep = ("admin_power", "orders", "warnings")
     return {k: data[k] for k in keep if k in data}
 
@@ -958,6 +994,37 @@ TOOLS = [
         destructive=True,
     ),
     Tool(
+        "add_order",
+        "命令を1つ足す",
+        "自分の島の命令の列の最後に命令を 1 つ足す（今の列はそのまま。列を読み直して丸ごと送らなく"
+        "てよいので、画面と同時に足しても消えない）。形の誤りは受け付けず、今は実行できない命令は "
+        "warning を付けて受け付ける。打ち間違いに見える命令と戻せない命令は set_orders と同じく、"
+        "足さずに saved: false と確かめの文 confirm を返すので、よければ confirm: true で出し直す。"
+        "答えの added は足した命令の番号。",
+        _add_order,
+        {
+            "kind": {"type": "string", "description": "命令の種類（defs section=orders の id）"},
+            "payload": {"type": "object", "description": "命令の中身"},
+            "confirm": {
+                "type": "boolean",
+                "description": "確かめの文（confirm）を読んだうえで、そのまま足すときに true",
+            },
+        },
+        ("kind", "payload"),
+        read_only=False,
+    ),
+    Tool(
+        "remove_order",
+        "命令を1つ消す",
+        "自分の島の待っている命令を 1 つ、番号（summary の orders.pending の id）で消す。もうない"
+        "（実行された・消された）ときは誤りを返す。並べ替えは set_orders で列を送る。",
+        _remove_order,
+        {"id": {"type": "integer", "description": "命令の番号（summary の orders.pending の id）"}},
+        ("id",),
+        read_only=False,
+        destructive=True,
+    ),
+    Tool(
         "world",
         "世界",
         "世界の島の一覧（番号・国名・持ち主・自分の島か・AI の印・気候・世界マップの位置）と、"
@@ -1354,6 +1421,9 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "island_military": ("report",),
     "island_country": ("report", "country_set", "flag_set", "monument_image_set", "country_note"),
     "diary": ("diary", "diary_set"),
+    # 命令のページ（UI-74）: 列は summary の orders。足す・消す・並べ替えは
+    # add_order・remove_order・set_orders
+    "island_orders": ("summary", "add_order", "remove_order", "set_orders"),
     "news": ("news",),
     "hall": ("hall", "hall_post"),
     "board": ("board_boards", "board_replies"),

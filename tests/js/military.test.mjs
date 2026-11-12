@@ -185,8 +185,8 @@ test("ミサイルの地図選択は自国の基地だけを使い、確認後�
   const oldFormData = globalThis.FormData;
   globalThis.fetch = async (url, init) => {
     urls.push(url);
-    if (init?.method === "PUT") sent.push(init.body);
-    return { ok: true, json: async () => url === "/own-orders" ? { orders: [{ kind: "stop_unit", payload: { unit: 9 } }], warnings: [] }
+    if (init?.method === "POST") sent.push(init.body);
+    return { ok: true, json: async () => url === "/own-orders/items" ? { added: 3, warning: "", orders: [] }
       : url === "/own-military" ? { military: { bases: [base] } }
       : { islands: [{ id: 1, mine: true }, { id: 2, name: "相手", mine: false }] } };
   };
@@ -226,11 +226,11 @@ test("ミサイルの地図選択は自国の基地だけを使い、確認後�
     assert.match(target.textContent, /\(0, 0\)/);
     assert.equal(sent.length, 0);
     await listeners.submit[0]({ target: form, preventDefault() {} });
-    assert.deepEqual(urls.slice(-2), ["/own-orders", "/own-orders"]);
-    assert.deepEqual(JSON.parse(sent[0]), { orders: [
-      { kind: "stop_unit", payload: { unit: 9 } },
-      { kind: "fire_missile", payload: { base: 5, island: 2, x: 0, y: 0, count: 1 } },
-    ] });
+    // 1 件ずつ足す API に送る（今の列を読み直して丸ごと送らない。UI-74）
+    assert.deepEqual(urls.slice(-1), ["/own-orders/items"]);
+    assert.deepEqual(JSON.parse(sent[0]), {
+      kind: "fire_missile", payload: { base: 5, island: 2, x: 0, y: 0, count: 1 },
+    });
     picker.select(null);
     assert.equal(button.disabled, true);
     assert.equal(form.elements.x.value, "");
@@ -370,25 +370,17 @@ test("島の移動先選択はそろった未乗船部隊だけ。マスを押�
   assert.equal(panel.marked.size, 0);
 });
 
-test("世界マップの追加は最新の列を読み、既存命令をそのまま残して警告も返す", async () => {
+test("世界マップの追加は 1 件ずつ足す API に送り、今の列を読み直して上書きしない。警告も返す", async () => {
   const calls = [];
   globalThis.fetch = async (url, init) => {
     calls.push({ url, init });
-    const data = init.method === "PUT"
-      ? { warnings: [{ index: 2, text: "燃料が足りません" }] }
-      : { orders: [
-        { kind: "stop_unit", payload: { unit: 9 }, text: "旧画面になかった命令" },
-        { kind: "recruit", payload: { count: 7 }, cost: 1 },
-      ] };
-    return { ok: true, json: async () => data };
+    return { ok: true, json: async () => ({ added: 7, warning: "燃料が足りません", orders: [] }) };
   };
   const message = await appendOrder("/orders", "sail_fleet", { fleet: 10, x: 0, y: 4 });
-  assert.equal(calls.length, 2);
-  assert.deepEqual(JSON.parse(calls[1].init.body), { orders: [
-    { kind: "stop_unit", payload: { unit: 9 } },
-    { kind: "recruit", payload: { count: 7 } },
-    { kind: "sail_fleet", payload: { fleet: 10, x: 0, y: 4 } },
-  ] });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "/orders/items");
+  assert.equal(calls[0].init.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].init.body), { kind: "sail_fleet", payload: { fleet: 10, x: 0, y: 4 } });
   assert.match(message, /燃料が足りません/);
 });
 
@@ -397,10 +389,9 @@ test("確かめの要る命令は、サーバーの文で聞き、はいなら c
   const asks = [{ index: 0, kind: "fire_missile", text: "ミサイル攻撃", notes: ["核を使うと……"] }];
   let puts;
   globalThis.fetch = async (url, init) => {
-    if (init?.method !== "PUT") return { ok: true, json: async () => ({ orders: [] }) };
     const body = JSON.parse(init.body);
     puts.push(body);
-    if (body.confirm) return { ok: true, status: 200, json: async () => ({ warnings: [] }) };
+    if (body.confirm) return { ok: true, status: 200, json: async () => ({ added: 1, warning: "" }) };
     return { ok: false, status: 428, json: async () => ({ error: "確かめ", confirm: asks }) };
   };
   const shown = [];
@@ -415,21 +406,14 @@ test("確かめの要る命令は、サーバーの文で聞き、はいなら c
     globalThis.confirm = () => true;
     assert.equal(await appendOrder("/orders", "fire_missile", { base: 3, nuclear: true }), "added");
     assert.deepEqual(puts.map((b) => b.confirm), [undefined, true]);
-    assert.deepEqual(puts[1].orders, puts[0].orders);
+    assert.deepEqual(puts[1].payload, puts[0].payload);
   } finally {
     globalThis.confirm = oldConfirm;
   }
 });
 
-test("読み直しが失敗したら PUT しない。拒否された命令を成功と表示しない", async () => {
-  let count = 0;
-  globalThis.fetch = async () => { count++; return { ok: false, status: 503 }; };
-  await assert.rejects(appendOrder("/orders", "sail_fleet", { fleet: 10, x: 0, y: 0 }));
-  assert.equal(count, 1);
-  globalThis.fetch = async (url, init) => ({
-    ok: init.method !== "PUT", status: init.method === "PUT" ? 400 : 200,
-    json: async () => init.method === "PUT" ? { errors: [{ text: "艦隊がありません" }] } : { orders: [] },
-  });
+test("拒否された命令を成功と表示しない", async () => {
+  globalThis.fetch = async () => ({ ok: false, status: 400, json: async () => ({ error: "艦隊がありません" }) });
   assert.equal(await appendOrder("/orders", "sail_fleet", { fleet: 10, x: 0, y: 0 }), "艦隊がありません");
 });
 
@@ -478,8 +462,8 @@ test("世界マップで選ぶ間だけ島への遷移を止め、海の座標�
   const sent = [];
   globalThis.fetch = async (url, init) => {
     const data = url === "/military" ? { military }
-      : init.method === "PUT" ? { warnings: [] } : { orders: [] };
-    if (init.method === "PUT") sent.push(JSON.parse(init.body));
+      : init.method === "POST" ? { added: 1, warning: "" } : { orders: [] };
+    if (init.method === "POST") sent.push(JSON.parse(init.body));
     return { ok: true, json: async () => data };
   };
   try {
@@ -504,7 +488,7 @@ test("世界マップで選ぶ間だけ島への遷移を止め、海の座標�
     const destination = event(sea);
     await grid.listeners.click(destination);
     assert.equal(destination.prevented, true);
-    assert.deepEqual(sent, [{ orders: [{ kind: "sail_fleet", payload: { fleet: 10, x: 0, y: 3 } }] }]);
+    assert.deepEqual(sent, [{ kind: "sail_fleet", payload: { fleet: 10, x: 0, y: 3 } }]);
     assert.equal(classes.has("fleet-picking"), false);
     sail.listeners.click();
     cancel.listeners.click();

@@ -38,6 +38,7 @@ ISLAND_PAGES = [
     "island_military",
     "island_country",
     "diary",
+    "island_orders",
 ]
 ISLAND_APIS = [
     "api_island_map",
@@ -71,6 +72,9 @@ ISLAND_WRITES = [
     "api_country_note_hide",
     "api_orders",
     "api_order_check",
+    "api_order_items",
+    "api_order_item",
+    "api_order_sequence",
 ]
 # 持ち主ではない人には断ってよい道（この名前だけは 403 と 404 を許す）
 OWNER_ONLY = {"diary", "api_country_diary", "api_island_chain", "api_facility_book"}

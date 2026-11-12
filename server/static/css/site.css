@@ -212,6 +212,15 @@ pre.prompt { white-space: pre-wrap; overflow-wrap: anywhere; }
 .island-nav a:hover { background: var(--pale); }
 .island-nav a:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }
 .island-nav a[aria-current="page"] { background: var(--accent); color: #fff; }
+/* 命令の列の帯（UI-74）: 持ち主のページの上に、次のターンの命令の数と行政力。押すと命令のページ */
+.orders-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 4px 0; padding: 8px 12px;
+  min-height: 40px; border: 1px solid var(--border); border-left: 6px solid var(--accent); background: var(--pale);
+  color: var(--fg); text-decoration: none; }
+.orders-bar:hover { background: #e3edff; }
+.orders-bar:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.orders-bar[aria-current="page"] { background: var(--head); }
+.orders-bar-go { margin-left: auto; color: var(--accent); white-space: nowrap; }
+.orders-brief { font-size: 0.9em; }
 .page-title { font-size: 0.7em; font-weight: normal; color: #4f62a0; margin-left: 4px; }
 /* 見出しに添える日付（箱庭暦） */
 .heading-date { font-size: 0.75em; font-weight: normal; color: #6a7aa0; margin-left: 4px; }
