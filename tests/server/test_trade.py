@@ -557,3 +557,10 @@ def test_ships_on_order_show_on_the_trade_page_and_api(client, world):
     assert data["fleet"]["shipping"]["on_order"] == 2
     html = client.get(f"/islands/{own.id}/trade/").content.decode()
     assert "島の造船所に 2 隻を注文しています。" in html
+
+
+def test_help_explains_the_food_merchant_for_a_famine(client, world):
+    """手引き（W-239）: 備蓄を輸入で積むことと、物がないときの海外の食料商人（FX-73）を書く。"""
+    html = client.get("/help/").content.decode()
+    assert "商社の輸入で備蓄を積み増します" in html
+    assert "貿易圏に入っていない島にも、上の期間を過ぎた後にも来ます" in html
