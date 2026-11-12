@@ -10,6 +10,7 @@ from hakoniwa_core.economy import CONSTRUCTION, books, facility_entity, funds, h
 from hakoniwa_core.modules.infrastructure import contracts, machines
 from hakoniwa_core.state import ACCOUNTING_SELF, ACCOUNTING_TREASURY, OWNER_PRIVATE
 from hakoniwa_core.units import QUANTITY_SCALE
+from tests.core.test_recession_round1 import context
 from tests.core.test_rules import add, home, make_island, run, with_economy, without_roads
 from tests.core.test_rules import game as game  # noqa: F401  （試験の部品を使い回す）
 
@@ -73,6 +74,23 @@ def test_contractor_without_cash_hires_on_the_order_money(game):
     assert f.workers > 0 and island.stats["works.contracted"] > 0
     assert ledger.money(island, facility_entity(f.id)) >= 0
     assert not f.economy.get("unpaid")
+
+
+def test_contractor_wage_does_not_fall_below_the_island_average(game):
+    # IN-30: 業者の賃金は島の平均賃金（公共工事の労務単価）より下げない
+    island = market_island(game)
+    f = private_contractor(game, island)
+    average = island.economy.average_wage
+    f.economy["wage"] = average // 2
+    f.economy["wanted"] = f.workers  # 人手は足りている（足りなさでは上がらない）
+    update = game.engine.formulas["wage_update"]
+    assert update(island, f, context(game, 2)) == average
+    assert contracts.floor(game.config, f) <= contracts.ceiling(island, game.config)
+    # 国庫直轄の業者も同じ
+    state = add(island, "contractor", 9, 9, accounting=ACCOUNTING_TREASURY)
+    state.economy["wage"] = average // 2
+    state.economy["wanted"] = state.workers
+    assert update(island, state, context(game, 2)) == average
 
 
 def test_order_goes_to_the_cheapest_contractor_and_skips_one_above_the_ceiling(game):

@@ -132,6 +132,15 @@ def ceiling(island: IslandState, config: GameConfig) -> int:
     return wage + part(wage, to_basis(config.get("contractor.margin")))
 
 
+def wage_floor(island: IslandState, config: GameConfig, f: Facility) -> int:
+    """業者の賃金の下限（IN-30）: 島の平均賃金（公共工事の労務単価。直営の作業員と同じ）。独立採算の
+    業者は、1 人が届ける工事の予定価格の代金までに。"""
+    wage = island.economy.average_wage or config.get("labor.initial_wage")
+    if is_self_supporting(f):
+        wage = min(wage, ceiling(island, config) * per_worker(config) // 1000)
+    return wage
+
+
 def floor(config: GameConfig, f: Facility) -> int:
     """単価の下限（工事 1 単位の変動費）: 業者の賃金 ÷ 1 人あたりの量（切り上げ）。
     前のターンに重機が動いていれば、重機の燃料と傷み（作業員 1 人分に直した額）と賃金を、

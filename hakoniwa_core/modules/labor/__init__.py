@@ -152,6 +152,11 @@ def wage_update(island: IslandState, f: Facility, ctx: StageContext) -> int:
         if workers > 0 and fac.recipe_of(ctx.defs, fac.steady(f))["outputs"]:
             cap = variable_profit(ctx.defs, ctx.config, f, prices, 0, rate) // workers
             new = min(new, max(wage, cap))
+    if is_contractor(ctx.config, f):
+        # 土木業者の賃金は島の平均賃金より下げない（公共工事の労務単価。IN-30。受けた注文の分だけ
+        # 雇うので人手の足りなさでは上がらず、平均の 6 割ほどのまま工事の代金との差が持ち主に回って
+        # いた）
+        new = max(new, contracts.wage_floor(island, ctx.config, f))
     return max(new, island.policy.minimum_wage, 1)
 
 

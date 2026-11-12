@@ -6,6 +6,8 @@
     {% if capital_name %} ・ {% translate "首都" %}: {{ capital_name }}{% endif %}
     {% for r in regime %} ・ {{ r.axis }}: {{ r.name }}{% endfor %}
     {% if resources %} ・ {% translate "地下資源" %}: {{ resources|join:"、" }}{% endif %}
+    {% if exploration.current %} ・ {% blocktranslate with good=exploration.current.name percent=exploration.current.percent %}{{ good }}を探鉱中（{{ percent }}%）{% endblocktranslate %}{% endif %}
+    {% if exploration.none %} ・ {% translate "探鉱で見つからなかった資源" %}: {{ exploration.none|join:"、" }}{% endif %}
     {% if climate %} ・ {% translate "気候" %}: {{ climate }}{% endif %}
     {% if stats_turn is not None %} ・ {% blocktranslate with turn=stats_turn|turn_date %}{{ turn }}の時点{% endblocktranslate %}{% endif %}
   </p>

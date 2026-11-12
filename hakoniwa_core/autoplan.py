@@ -96,6 +96,7 @@ from hakoniwa_core.defs.kinds import is_variant
 from hakoniwa_core.economy import arrears, equipment, needs, services
 from hakoniwa_core.economy import public_housing as pub
 from hakoniwa_core.economy.prices import initial_prices, unit_cost
+from hakoniwa_core.exploration import base_resources
 from hakoniwa_core.geo import components, distance, shortest_path, within
 from hakoniwa_core.modules import infrastructure as public_works
 from hakoniwa_core.modules.firms import private_allowed
@@ -301,7 +302,7 @@ def _warehouse_sales(island: IslandState, defs: Defs, config: GameConfig) -> lis
         reserved[good] = reserved.get(good, 0) + qty
     for good, qty in _military_keep(island, config).items():
         reserved[good] = reserved.get(good, 0) + qty
-    initial = initial_prices(defs, config, island.resources)
+    initial = initial_prices(defs, config, base_resources(island))
     orders = []
     sold: dict[str, int] = {}
     for good, qty in sorted(need.items()):
@@ -568,7 +569,7 @@ def _price_cap_order(
     power = config.get("power.good")
     if not island.has_economy or power in island.policy.price_cap:
         return None
-    initial = initial_prices(defs, config, island.resources).get(power, 0)
+    initial = initial_prices(defs, config, base_resources(island)).get(power, 0)
     if initial <= 0 or island.economy.prices.get(power, 0) <= initial * POWER_CAP:
         return None
     return ("set_price_cap", {"good": power, "price": int(initial * POWER_CAP)})
@@ -733,7 +734,7 @@ def _prices_wage(island: IslandState, defs: Defs, config: GameConfig) -> tuple[d
     """原価の見込みに使う値段と賃金（建国の前は初めの値段）。"""
     if island.has_economy:
         return island.economy.prices, island.economy.average_wage
-    return initial_prices(defs, config, island.resources), config.get("labor.initial_wage")
+    return initial_prices(defs, config, base_resources(island)), config.get("labor.initial_wage")
 
 
 def _feasible(
@@ -787,9 +788,9 @@ def _reserved_materials(
     reserved: dict[str, int] = {}
     for f in island.facilities:
         if not f.built and f.owner == owner:
-            construction = defs.facilities[f.kind]["construction"]
             done = f.progress / fac.total_progress(defs, f)
-            for good, qty in construction.get("materials", {}).items():
+            # 段階の作り方の農場や段階を上げる工事の資材も含める（materials_of。W-257）
+            for good, qty in fac.materials_of(defs, f).items():
                 left = qty - int(qty * done) - stock.total(f.stock, good)
                 reserved[good] = reserved.get(good, 0) + max(0, left)
     return reserved
@@ -941,7 +942,7 @@ def _candidates(
     # 初めの PRICE_HIGH 倍を超えていれば、作る施設を増やす（工事の資材の使う量は上の流れに数えない
     # ため。フェーズ3-2: 消費財工場が鋼鉄を使う作り方に替わって木材の施設が増えず、工事の木材で
     # 値段が初めの4倍を超えた）
-    initial = initial_prices(defs, config, island.resources)
+    initial = initial_prices(defs, config, base_resources(island))
     for good in sorted(markets, key=lambda g: (defs.goods[g].get("tier", 9), g)):
         record = markets[good]
         if (
@@ -1047,7 +1048,9 @@ def _candidates(
     # 鉱脈の資源（銅など。world.veins）は、買い手が軍だけの間は掘らない（設計書 MI-44。掘ると
     # 買い手のいない精錬所と鉱山が建ち、鉱山の上限を使って鉄鉱石の鉱山が建たなくなる）
     veins = set(config.get("world.veins"))
-    for resource in sorted(set(island.resources) - used - veins):
+    # 探鉱で見つけた資源（MI-68）にも、自分からは施設を建てない（鉱脈の資源と同じ扱い）
+    found = set(island.resources) - set(base_resources(island))
+    for resource in sorted(set(island.resources) - used - veins - found):
         yield from (c for c in _users(defs, config, island, resource) if spare(*c))
     # 貿易圏で買いたい人が残った物を、島の中だけで作れるなら作る（輸出向け）
     short = _bloc_short(island) - {power}

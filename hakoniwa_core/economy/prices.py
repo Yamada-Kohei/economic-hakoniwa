@@ -23,6 +23,7 @@ from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.defs.kinds import is_variant
 from hakoniwa_core.economy import equipment, experience, is_bank, is_self_supporting, power_fuel
+from hakoniwa_core.exploration import base_resources
 from hakoniwa_core.market import auction
 from hakoniwa_core.state import Facility, IslandState
 from hakoniwa_core.units import (
@@ -544,7 +545,7 @@ def add_missing_prices(island: IslandState, defs: Defs, config: GameConfig) -> l
     missing = sorted(set(defs.goods) - set(prices))
     if not missing:
         return []
-    base = initial_prices(defs, config, island.resources)
+    base = initial_prices(defs, config, base_resources(island))
     history = island.economy.cpi_history
     level = history[-1] / BASE_CPI if history and history[-1] > 0 else 1.0
     for good in missing:

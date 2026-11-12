@@ -133,7 +133,7 @@
 | MK-20 | 島で品切れの財を作れる民営の施設は、見直しの順番を待たずに見直し、買いたい量が少なくても避けない | 決定 | tests/core/test_balance_round4.py |
 | MK-21 | 農場の作付けは畑の割合で持ち、1ターンに畑の一部ずつ蒔き直す | 決定 | tests/core/test_balance_round3.py、tests/core/test_phase3_2.py |
 | MK-22 | 2つの物を作る施設（製油所など）の原価は、初めの値段の比で分ける | 決定 | tests/core/test_phase3_2.py |
-| MK-23 | 電力は生産の段で送電網ごとに同じ板寄せで売り買いする | 決定（家計の段の注文は設定 `power.household_curve` で切れるように入れ、… | tests/core/test_rules.py、tests/core/test_shocks.py |
+| MK-23 | 電力は生産の段で送電網ごとに同じ板寄せで売り買いする | 決定（家計の段の注文は設定 `power.household_curve`（既定は切）で入れた | tests/core/test_household_power_curve.py、tests/core/test_rules.py、tests/core/test_shocks.py |
 | MK-24 | 発電所の売り値の下限（1単位の変動費）には燃料の運賃を入れる | 決定 | （未確認） |
 | MK-25 | 島の中の運賃は、売り手と買い手がそれぞれ「約定価格×自分の運賃の率」を運送業に払う | 決定 | tests/core/test_rules.py |
 | MK-26 | 運賃の率は施設ごとの見込み | 決定 | tests/core/test_infrastructure.py、tests/core/test_rules.py |
@@ -206,11 +206,11 @@
 | LB-44 | 衣料は持ち物（2026-11-10、W-26 の直し）: 家計の層は衣料を1人あたりの持つ量（``… | 決定（2026-11-10 | tests/core/test_clothing_clearance.py |
 | LB-45 | 国庫の項目の予算が足りないときの分け方（2026-11-10 | 決定（2026-11-10 | tests/core/test_staff_plan.py |
 | LB-46 | 雇用の保障（2026-11-12、W-231 の日々の仕事の割り当て | 後回し（今の main の計画経済の島の失業を測り、摩擦的な失業を超えて残れば入れる） | （未確認） |
-| LB-47 | 家計は電気を買える分だけ買う（2026-11-12、停電の調べの案 3）: 家計の層は生産の段の… | 決定（実装で設定 `power.household_curve`（切／入）・`power.hou`… |  |
+| LB-47 | 家計は電気を買える分だけ買う（2026-11-12、停電の調べの案 3）: 家計の層は生産の段の… | 決定（設定 `power.household_curve` で切／入 | tests/core/test_household_power_curve.py |
 
 ## [5 施設と企業](05-firms.md)
 
-決まり 70 個、うち仮の決まりの表にあるもの 0 個。
+決まり 71 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -284,6 +284,7 @@
 | FM-68 | 商店と百貨店の建設費は、働く人1人あたりで製造業より軽くする | 決定（2026-11-12、本人のカード「推しの全部」 |  |
 | FM-69 | 店の参入（2026-11-12、W-261）: 民営の店の参入は、工場の参入と別に1島1ターン1… | 決定（2026-11-12、本人のカード「推しの全部」 |  |
 | FM-70 | 町の店の枠（2026-11-12、W-261）: 町に入る商店の数は、町の段階の数（`settl`… | 決定（2026-11-12、本人のカード「推しの全部」 |  |
+| FM-71 | 段階の作り方で建てる農場（W-257）: 機械化・近代化の作り方を選んで農場を建てる命令は、初め… | 決定 | tests/core/test_farm_build_grade.py、tests/server/test_migration.py |
 
 ## [6 国の財政と政策](06-finance.md)
 
@@ -414,7 +415,7 @@
 | IN-27 | 役所が並べた工事は、命令で並べた工事の後に進め、資材は国の倉庫から使わずに市場で買う（倉庫は遊ぶ… | 決定（回4） | tests/core/test_recession_round4.py |
 | IN-28 | 工事の列に並んだマスも、維持の目標までは維持の工事で戻す（優先度・雇う順・資材の注文も維持の位置… | 決定（2026-11-12） | tests/core/test_infrastructure.py、tests/core/test_recession_round4.py |
 | IN-29 | 土木業者（W-270）: 公共事業の工事と維持の人手は、まず島の土木業者（施設 `contrac`… | 決定（2026-11-12 実装） | tests/core/test_contractors.py |
-| IN-30 | 土木業者は一般の労働者だけを、自分の賃金（LB-05・LB-06）で通勤圏から雇い、前のターンの… | 決定（2026-11-12 実装） | tests/core/test_contractors.py |
+| IN-30 | 土木業者は一般の労働者だけを、自分の賃金（LB-05・LB-06 | 決定（2026-11-12 実装） | tests/core/test_contractors.py |
 | IN-31 | 注文: 雇用の段の初め（施設が雇いたい人数を決める前）に、公共事業が維持・命令の工事・役所の工事… | 決定（2026-11-12 実装） | tests/core/test_contractors.py |
 | IN-32 | 業者が届けられなかった分と注文できなかった分は直営で雇う | 決定（2026-11-12 実装） | tests/core/test_contractors.py |
 | IN-33 | 単価は業者ごとに持ち、市場の段で売り手の希望価格と同じ形で動かす: 注文が全力に届けば上げ、手が… | 決定（2026-11-12 実装） | tests/core/test_contractors.py |
@@ -649,17 +650,17 @@
 | UI-68 | 貿易の画面の海運業の船は、隻の小数（「0.5 隻分」）でなく積める量で出す: 輸送船の数と 1 … | 決定（2026-11-08、掲示板 #20・#22 倭国さん） | tests/server/test_screens_notices.py |
 | UI-69 | 島の地図の元のデータか画面の部品を読み込めなかったら、地図の上に「地図を読み込めませんでした | 決定（2026-11-08） | tests/server/test_screens_notices.py |
 | UI-70 | 遊ぶ人の声からの画面と文言の直し（2026-11-08） | 決定（2026-11-08） | tests/server/test_screens_notices.py |
-| UI-71 | 島の画面の入口は 7 つ（ホーム・地図・施設・「資源・市場」・貿易・経済・国）にまとめ、それぞれ… | 決定 | tests/server/test_island_nav.py |
-| UI-72 | 品目と施設は 1 つずつのページを持つ | 決定 | （未確認） |
-| UI-73 | 1 つのページの中で、上を「見る」所、下を「打てる手」の箱に分ける | 決定 | （未確認） |
+| UI-71 | 島の画面の入口は 7 つ（ホーム・地図・施設・「資源・市場」・貿易・経済・国）にまとめ、それぞれ… | 決定 | tests/server/test_island_nav.py、tests/server/test_trade_overview.py |
+| UI-72 | 品目と施設は 1 つずつのページを持つ | 決定 | tests/server/test_facility_page.py、tests/server/test_good_page.py |
+| UI-73 | 1 つのページの中で、上を「見る」所、下を「打てる手」の箱に分ける | 決定 | tests/server/test_facility_page.py、tests/server/test_good_page.py、tests/server/test_trade_overview.py |
 | UI-74 | 命令の列は、持ち主のどのページにも上に帯（次のターンの命令の数と行政力）で出し、押すと命令のペー… | 決定 | tests/server/test_order_queue.py |
 | UI-75 | 命令を足すとき、打ち間違いに見えるものだけ確かめを出す（W-264） | 決定 | tests/server/test_order_confirm.py |
-| UI-76 | ホームは「今月すべきこと」を急ぐ順に並べ、各行から打てる手のある所へ 1 回で飛べるようにする | 決定 | （未確認） |
-| UI-77 | 欄と命令の置き場所は「打てる手があるか」「大事か」「よく使うか」で決める | 決定 | （未確認） |
-| UI-78 | 地図は今の俯瞰図と絵・拡大縮小・小さな地図をそのまま使う | 決定 | （未確認） |
-| UI-79 | 重ね表示は、マスの上に半透明の角柱（棒）を立てる形を既定にし、今の塗り分けにも切り替えられる | 決定 | （未確認） |
+| UI-76 | ホームは「今月すべきこと」を急ぐ順に並べ、各行から打てる手のある所へ 1 回で飛べるようにする | 決定 | tests/server/test_home_todo.py、tests/server/test_trade_overview.py |
+| UI-77 | 欄と命令の置き場所は「打てる手があるか」「大事か」「よく使うか」で決める | 決定 | tests/server/test_trade_overview.py |
+| UI-78 | 地図は今の俯瞰図と絵・拡大縮小・小さな地図をそのまま使う | 決定 | tests/server/test_facility_page.py |
+| UI-79 | 重ね表示は、マスの上に半透明の角柱（棒）を立てる形を既定にし、今の塗り分けにも切り替えられる | 決定 | tests/js/map-overlay-bars.test.mjs |
 | UI-80 | 為替のタブの頭に、中央銀行どうしの融通の貸しと借りの限度額・残り・1 ターンの増加を出す | 決定 | tests/server/test_fx_guide_and_cautions.py |
-| UI-81 | 画面の構成の作り直し（UI-71〜UI-80）は計算を変えない | 決定 | （未確認） |
+| UI-81 | 画面の構成の作り直し（UI-71〜UI-80）は計算を変えない | 決定 | tests/server/test_ai_parity.py、tests/server/test_reports.py |
 | UI-82 | 財政の画面に「中央銀行が持つ国債（刷ったお金）」と「政府と中央銀行を合わせた借り」を並べる | 決定 | tests/server/test_reports.py |
 | UI-83 | 3 段を作ったあとの見直し（4〜5 段目）の指針: 各ページには打てる手に要る情報だけを見やすく… | 決定 | （未確認） |
 | UI-84 | 施設の状態は、売れ行きに合わせて作る量を下げても作り続けているときは「生産調整中」、0 まで下げ… | 決定 | tests/server/test_help_start.py、tests/server/test_slowdown_reasons.py |
@@ -667,7 +668,7 @@
 | UI-86 | 品目を並べる表と選ぶ欄は、品目の段（`tier`: 原料・中間財・最終財）の順にそろえ、同じ段の… | 決定 | tests/server/test_tier_order_and_map_tools.py |
 | UI-87 | 発電所が止まる前の知らせ（2026-11-11、掲示板 #25 の 45 番）: 動いている火力… | 決定 | tests/core/test_power_fuel_notice.py、tests/server/test_power_fuel_ui.py |
 | UI-88 | 施設の種類の表示名に、方式で変わる作る物を添える（W-262、掲示板 #25 の 21 番）: … | 決定 | tests/server/test_facility_product_label.py |
-| UI-89 | 家計が電気料金を払えないときの知らせ（2026-11-12、停電の調べの案 3）: 生産の段は、… | 決定 |  |
+| UI-89 | 家計が電気料金を払えないときの知らせ（2026-11-12、停電の調べの案 3）: 生産の段は、… | 決定 | tests/core/test_household_power_curve.py、tests/server/test_household_power_notice.py |
 | UI-90 | 建国の地下資源を選ぶ欄に、ほかの国（休止中を除く）がもう選んだ資源ごとの国の数を添え、「選ぶ国の… | 決定 | tests/server/test_founding_resource_counts.py |
 | UI-91 | 為替の効き方と打てる手の手引き（W-252）は手引きの別のページ（/help/fx/「手引き：為… | 決定 | tests/server/test_fx_guide_and_cautions.py、tests/server/test_help_fx.py |
 | UI-92 | 動かせるが軽く動かすと戻らない・効きの大きい命令（最低賃金 `set_labor_policy`… | 決定 | tests/server/test_fx_guide_and_cautions.py、tests/server/test_help_start.py |
@@ -796,6 +797,6 @@
 | MI-44 | 標準の計画は自分から宣戦せず、核施設を建てない（使われていない鉱業資源に施設を建てる方針から核施… | 決定（4-3 の①で守りを作り、段6 A2 で警察署を足した | tests/core/test_security_plan.py |
 | MI-45 | 戦争・部隊・艦隊・占領・見張り・ミサイルの命令と状態は、画面と同じものを JSON API・MC… | 決定（4-2 の③'で艦隊の分を作った |  |
 | MI-67 | 陸の部隊の大きさは国の大きさの倍（PO-49）に合わせる: 部隊 1 つの兵・装備・重さを倍にし… | 決定 | tests/core/test_scale.py |
-| MI-68 | 探鉱（2026-11-12、W-234）: 国は命令 `explore` で、まだ持っていない鉱… | 決定 |  |
-| MI-69 | 代わりの材料（2026-11-12、W-234）: 電子機器工場に、銅の代わりにアルミを使う作り… | 決定 |  |
+| MI-68 | 探鉱（2026-11-12、W-234）: 国は命令 `explore` で、まだ持っていない鉱… | 決定 | test_exploration |
+| MI-69 | 代わりの材料（2026-11-12、W-234）: 電子機器工場に、銅の代わりにアルミを使う作り… | 決定 | test_exploration |
 

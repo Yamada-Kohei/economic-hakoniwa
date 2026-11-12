@@ -4,6 +4,7 @@
 
 import { attachControls } from "./controls.js";
 import { drawMinimap, minimapTile } from "./minimap.js";
+import { BARS, FILL, overlayLegend, readOverlayMode, writeOverlayMode } from "./overlays/bars.js";
 import { overlayList } from "./overlays/index.js";
 import { lift, tileToWorld, worldToTile } from "./projection.js";
 import { drawIsland } from "./renderer.js";
@@ -20,7 +21,8 @@ const canvas = document.getElementById("island-map");
 const ctx = canvas.getContext("2d");
 const minimap = document.getElementById("minimap");
 const overlaySelect = document.getElementById("overlay");
-const overlayLegend = document.getElementById("overlay-legend");
+const legendBox = document.getElementById("overlay-legend");
+const barsToggle = document.getElementById("overlay-bars");
 const popover = document.getElementById("tile-popover");
 const narrow = window.matchMedia("(max-width: 760px)"); // 狭い画面では窓を下から出す板にする（site.css）
 const POPOVER_GAP = 12; // マスと窓の間（ピクセル）
@@ -42,7 +44,18 @@ try {
 }
 const theme = defs.theme;
 const view = { scale: 1, offsetX: 0, offsetY: 0, dpr: window.devicePixelRatio || 1 };
-const state = { selected: null, marked: new Set(), overlay: null, sprites: new Map(), undergroundLabel: words().hidden };
+// 重ね表示の表し方（棒か塗り分けか。UI-79）はブラウザに覚える。覚えていなければ棒
+const storage = (() => {
+  try {
+    return window.localStorage;
+  } catch {
+    return null; // 覚えられない窓では毎回棒に戻る
+  }
+})();
+const state = {
+  selected: null, marked: new Set(), overlay: null, overlayMode: readOverlayMode(storage),
+  sprites: new Map(), undergroundLabel: words().hidden,
+};
 let pending = false;
 
 function heightOf(x, y) {
@@ -229,22 +242,26 @@ document.querySelectorAll("[data-zoom]").forEach((button) => {
   });
 });
 
+function showLegend(text) {
+  if (legendBox) legendBox.textContent = text;
+}
+
 /** 重ね表示を切り替える。要るデータ（運賃の率など）は、初めて選んだときに地図の API から読む。 */
 async function showOverlay(id) {
   const overlay = overlays.find((o) => o.id === id) || null;
   if (overlaySelect) overlaySelect.value = overlay ? overlay.id : "";
-  if (overlayLegend) overlayLegend.textContent = overlay?.legend || "";
+  showLegend(overlayLegend(overlay, state.overlayMode));
   if (overlay?.query && overlay.fields.some((f) => map[f] === undefined)) {
-    if (overlayLegend) overlayLegend.textContent = "読み込み中…";
+    showLegend("読み込み中…");
     try {
       const extra = await fetch(`${canvas.dataset.api}?${overlay.query}`).then((r) => r.json());
       for (const f of overlay.fields) map[f] = extra[f];
     } catch {
-      if (overlayLegend) overlayLegend.textContent = "読み込めませんでした。";
+      showLegend("読み込めませんでした。");
       return;
     }
     if (overlaySelect && overlaySelect.value !== overlay.id) return; // 待つ間に別のものが選ばれた
-    if (overlayLegend) overlayLegend.textContent = overlay.legend || "";
+    showLegend(overlayLegend(overlay, state.overlayMode));
   }
   state.overlay = overlay;
   redraw();
@@ -253,6 +270,17 @@ async function showOverlay(id) {
 if (overlaySelect) {
   for (const o of overlays) overlaySelect.add(new Option(o.label, o.id));
   overlaySelect.addEventListener("change", () => showOverlay(overlaySelect.value));
+}
+
+// 棒と塗り分けの切り替え（UI-79）。選んだ表し方は覚え、次に開いたときも使う
+if (barsToggle) {
+  barsToggle.checked = state.overlayMode === BARS;
+  barsToggle.addEventListener("change", () => {
+    state.overlayMode = barsToggle.checked ? BARS : FILL;
+    writeOverlayMode(storage, state.overlayMode);
+    if (state.overlay) showLegend(overlayLegend(state.overlay, state.overlayMode));
+    redraw();
+  });
 }
 
 if (minimap) {
