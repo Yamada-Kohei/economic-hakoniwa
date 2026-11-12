@@ -91,13 +91,15 @@ def after_market(island: IslandState, ctx: StageContext) -> None:
         used = flow.get("used", {}) if flow.get("turn") == ctx.turn else {}
         acquired = flow.get("acquired", {}) if flow.get("turn") == ctx.turn else {}
         notice = config.get("power.fuel_notice_turns")
-        if all(r["quantity"] >= r["expected"] * notice * 2 for r in rows):
+        # 線も残りの月数（N）と同じ直近の使用量で見る。操業の見込みが実際より大きい月に、
+        # 「残り約5か月で買えていない」のような知らせを出さないため。使わなかった月は見込みで。
+        if all(r["quantity"] >= (used.get(r["good"]) or r["expected"]) * notice * 2 for r in rows):
             state["low_notified"] = False
         low = [
             r
             for r in rows
-            if r["quantity"] < r["expected"] * notice
-            and used.get(r["good"], 0) > acquired.get(r["good"], 0)
+            if used.get(r["good"], 0) > acquired.get(r["good"], 0)
+            and r["quantity"] < used[r["good"]] * notice
         ]
         if low:
             row = min(low, key=lambda r: r["quantity"] / used[r["good"]])
