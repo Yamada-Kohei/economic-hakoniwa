@@ -68,6 +68,18 @@ def top(request):
 
 
 def island_page(request, island_id: int):
+    """島の地図（UI-71 の入口「地図」）: 俯瞰図・重ね表示・マスの窓・命令の列。"""
+    return render(request, "web/island.html", _island_context(request, island_id, "island"))
+
+
+def island_home_page(request, island_id: int):
+    """島のホーム（UI-71 の入口「ホーム」）: 次にすること・注意・前のターンからの主な変化・国勢・
+    資源・出来事。"""
+    return render(request, "web/island_home.html", _island_context(request, island_id, "home"))
+
+
+def _island_context(request, island_id: int, page: str) -> dict:
+    """島のホームと地図に共通の値。"""
     island = get_object_or_404(Island.objects.select_related("owner", "world"), pk=island_id)
     defs = get_game().defs
     turn, stats = display.latest_stats(island)
@@ -109,10 +121,10 @@ def island_page(request, island_id: int):
         "logs": display.log_entries(logs.filter(turn=last_turn)) if last_turn is not None else [],
         "log_turn": last_turn,
         "show_guide": island.world.turn - founded < overview.GUIDE_TURNS,
-        "page": "island",
+        "page": page,
         "plan_label": politics_views.page_label(island),
     }
-    return render(request, "web/island.html", context)
+    return context
 
 
 def _climate_name(island: Island) -> str:

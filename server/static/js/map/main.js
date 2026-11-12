@@ -13,9 +13,7 @@ import { TilePanel } from "../island/panel.js";
 import { MissileTarget } from "../island/missiles.js";
 import { words } from "../military/common.js";
 import { getJson } from "../island/api.js";
-import { mountRecentChanges } from "../island/recent-changes.js";
 
-mountRecentChanges();
 
 const canvas = document.getElementById("island-map");
 const ctx = canvas.getContext("2d");

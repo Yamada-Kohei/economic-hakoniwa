@@ -1,0 +1,6 @@
+{% load i18n %}{# ヘッダーの「世界」の中のタブ（UI-71）。current に今のページの URL の名前 #}<nav class="island-subnav world-nav" aria-label="{% translate '世界の画面' %}">
+  <a href="{% url 'world' %}"{% if current == "world" %} aria-current="page"{% endif %}>{% translate "世界マップ" %}</a>
+  <a href="{% url 'rankings' %}"{% if current == "rankings" %} aria-current="page"{% endif %}>{% translate "順位" %}</a>
+  <a href="{% url 'news' %}"{% if current == "news" %} aria-current="page"{% endif %}>{% translate "世界の近況" %}</a>
+  <a href="{% url 'hall' %}"{% if current == "hall" %} aria-current="page"{% endif %}>{% translate "国際会議場" %}</a>
+</nav>

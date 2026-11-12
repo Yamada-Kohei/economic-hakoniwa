@@ -138,7 +138,7 @@ def test_founding_creates_one_island_per_user(client, world):
     # 最初の更新の前から、人口・国の倉庫・国庫が島の画面に出る
     stats = dict(island.stats.values_list("name", "value"))
     assert stats["population"] > 0 and stats["treasury"] > 0 and stats["stock.wood"] > 0
-    page = client.get(f"/islands/{island.id}/").content.decode()
+    page = client.get(f"/islands/{island.id}/home/").content.decode()
     assert "国庫" in page and "未集計です" not in page and "記録がありません" not in page
     # 2つ目は作れない。建国の画面は自分の島へ移る
     again = client.post("/api/founding", _plan(client, 6), content_type="application/json")
@@ -272,7 +272,8 @@ def test_pages_render(client, world):
     log = client.get(f"/islands/{island.id}/log/").content.decode()
     assert "ターン 1" in log
     page = client.get(f"/islands/{island.id}/").content.decode()
-    assert 'id="orders"' not in page and "国勢" in page
+    assert 'id="orders"' not in page
+    assert "国勢" in client.get(f"/islands/{island.id}/home/").content.decode()
     assert 'id="order-notice"' not in page
     _own_island(client)
     page = client.get(f"/islands/{island.id}/").content.decode()
