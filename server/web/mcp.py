@@ -75,6 +75,9 @@ INSTRUCTIONS = """\
   orders.pending）。中身の形は defs(section="orders")。1ターンに実行されるのは行政力の数までです
   （使わなかった行政力はためておけ、1ターンにふだんの2倍まで使えます。summary の orders の
   admin_power はためた分を足した次のターンの行政力、admin_bank はためた分）。
+  1 つだけ足す・消すなら add_order・remove_order（番号は orders.pending の id）を使います。
+  打ち間違いに見える命令や戻せない命令は、set_orders・add_order が並べずに確かめの文（confirm）を
+  返すので、読んでよければ confirm: true を付けて出し直します。
 - ターンはサーバーが決まった時刻に進めます。ほかの国との連絡は公電（letters・send_letter）と
   掲示板（板・番号付きのレス・>>返信・名無しか国名か・返信の知らせ・検索）です。国際会議場（hall）
   には公開の声明と、戦争・条約の出来事が載ります。
@@ -210,7 +213,8 @@ REPORTS = {
     "決まった売り買いの設定・前の結果は品目ごとの warehouse_standing に入る）",
     "facilities": "施設（町ごとの労働力・失業と買いに行く店の場所 towns、産業ごとの従業者数 "
     "industry_workers。持ち主には火力発電所の燃料在庫の月数と目標 fuel_reserves、施設ごとの"
-    "状態・人手・損益・預金・借入と、畑を作り替えている農場の内訳と企業の帳簿 table.firms、"
+    "状態・人手・損益・預金・借入、生産調整中・生産停止中の施設の目標を下げたわけと打てる手 "
+    "slowdown、畑を作り替えている農場の内訳と企業の帳簿 table.firms、"
     "他国には企業の名前・所有・施設の数と種類・働く人 firms）",
     "fiscal": "財政（国庫の収入と支出・予算・税率・国債の一覧）",
     "finance": "金融（中央銀行の方針・金利・融資。持ち主には銀行ごとの帳簿と金融の政策）",
@@ -221,7 +225,11 @@ REPORTS = {
     "海外の商人 merchant・船の貸し出し lend_ships（命令 set_ship_lending）"
     "（あと何ターン来るか turns_left、量を減らし始めるターン taper_start、今の量の割合 share（%）、"
     "値段の倍率 multiplier（島の物価を含む））",
-    "fx": "為替と国際収支（持ち主には外貨の持ち高と為替の政策）",
+    "fx": "為替と国際収支（レートごとに前のターンに市場で売りと買いに出ていた外貨の量 offered・"
+    "wanted（中央銀行の注文を除く。介入で買えるのは売りに出ている分だけ）。持ち主には外貨の持ち高と"
+    "為替の政策と、中央銀行どうしの融通 swaps（借りている額 borrowed・限度額 limit・まだ借りられる"
+    "額 room・貸している額 lent_total と 1 ターンの増加 borrowed_change・lent_change）。"
+    "為替の効き方は guide(which=fx)）",
     "politics": "政治（体制・政情・支持率・議席・選挙。持ち主には政情の内訳と命令の選択肢）",
     "diplomacy": "外交（戦争の状態・効いている条約・終わった条約・条約の違反の記録。持ち主には"
     "返事待ちの条約の提案と、宣戦・条約の命令の選択肢。経済の条項は terms に中身が出る。"
@@ -321,6 +329,19 @@ def _check_order(request, args):
     return call_ok(request, "POST", f"/api/islands/{island}/orders/check", body=order)
 
 
+CONFIRM_HINT = (
+    "まだ並べていません。confirm の命令（index は送った列の位置）の notes を読み、このままで"
+    "よければ同じ orders に confirm: true を付けて set_orders を出し直してください。"
+    "違っていたら直して出し直してください"
+)
+
+
+ADD_CONFIRM_HINT = (
+    "まだ足していません。confirm の notes を読み、このままでよければ同じ kind と payload に "
+    "confirm: true を付けて add_order を出し直してください"
+)
+
+
 def _set_orders(request, args):
     island = _own_island(request).id
     orders = args["orders"]
@@ -328,11 +349,44 @@ def _set_orders(request, args):
         isinstance(o, dict) and isinstance(o.get("payload", {}), dict) for o in orders
     ):
         raise ToolError("orders は {kind, payload} の一覧で送ってください")
-    status, data = call(
-        request, "PUT", f"/api/islands/{island}/orders", body={"orders": args["orders"]}
-    )
+    body: dict[str, Any] = {"orders": args["orders"]}
+    if args.get("confirm") is True:
+        body["confirm"] = True
+    status, data = call(request, "PUT", f"/api/islands/{island}/orders", body=body)
+    if isinstance(data, dict) and "confirm" in data:
+        # 打ち間違いに見える命令か戻せない命令（UI-75）: 並べずに、確かめの文を返す
+        return {"saved": False, "confirm": data["confirm"], "next": CONFIRM_HINT}
     if status >= 400:
         raise ToolError(f"{status}: {data if isinstance(data, str) else _dump(data)}")
+    keep = ("admin_power", "admin_bank", "orders", "warnings")
+    return {k: data[k] for k in keep if k in data}
+
+
+def _add_order(request, args):
+    """命令を 1 つ、列の最後に足す（UI-74）。確かめの要る命令は set_orders と同じに答える。"""
+    island = _own_island(request).id
+    body: dict[str, Any] = {"kind": args["kind"], "payload": args.get("payload") or {}}
+    if args.get("confirm") is True:
+        body["confirm"] = True
+    status, data = call(request, "POST", f"/api/islands/{island}/orders/items", body=body)
+    if isinstance(data, dict) and "confirm" in data:
+        return {"saved": False, "confirm": data["confirm"], "next": ADD_CONFIRM_HINT}
+    if status >= 400:
+        raise ToolError(f"{status}: {data if isinstance(data, str) else _dump(data)}")
+    keep = ("added", "warning", "admin_power", "admin_bank", "orders", "warnings")
+    return {k: data[k] for k in keep if k in data}
+
+
+def _remove_order(request, args):
+    """待っている命令を 1 つ、番号（summary の orders.pending の id）で消す（UI-74）。"""
+    island = _own_island(request).id
+    order = args["id"]
+    if not isinstance(order, int) or isinstance(order, bool):
+        raise ToolError("id は命令の番号（summary の orders.pending の id）です")
+    status, data = call(request, "DELETE", f"/api/islands/{island}/orders/items/{order}")
+    if status >= 400:
+        text = data.get("error") if isinstance(data, dict) else data
+        raise ToolError(f"{status}: {text}")
     keep = ("admin_power", "admin_bank", "orders", "warnings")
     return {k: data[k] for k in keep if k in data}
 
@@ -523,6 +577,7 @@ def _guide(request, args):
         "hakoniwa": "/help/hakoniwa/",
         "start": "/help/start/",
         "ai": "/help/ai/",
+        "fx": "/help/fx/",
         "terms": "/terms/",
     }
     path = paths.get(args.get("which"), "/help/")
@@ -788,13 +843,13 @@ TOOLS = [
         "find で見出しや言葉から、offset で続きから読める。which=start なら入門"
         "（/help/start/。最初の1年・困ったとき・施設の状態の言葉）、which=hakoniwa なら"
         "従来の箱庭を遊んだ人向けの手引き（/help/hakoniwa/）、which=ai なら AI で遊ぶ人向けの"
-        "手引き（/help/ai/。鍵・つなぎ方・毎ターンの回し方・上限）、"
-        "which=terms なら利用規約（/terms/）。",
+        "手引き（/help/ai/。鍵・つなぎ方・毎ターンの回し方・上限）、which=fx なら為替の効き方と"
+        "打てる手（/help/fx/）、which=terms なら利用規約（/terms/）。",
         _guide,
         {
             "which": {
                 "type": "string",
-                "enum": ["general", "start", "hakoniwa", "ai", "terms"],
+                "enum": ["general", "start", "hakoniwa", "ai", "fx", "terms"],
                 "description": "general（既定）は詳しい仕組み、start は入門、"
                 "hakoniwa は従来の箱庭との違い、ai は AI で遊ぶ人向け、terms は利用規約",
             },
@@ -806,7 +861,9 @@ TOOLS = [
     Tool(
         "summary",
         "国の要約",
-        "国の今の状態を1回で: 主な指標と前のターンからの変化、政情、止まった施設と工事、財の値段と"
+        "国の今の状態を1回で: 主な指標と前のターンからの変化、政情、止まった施設と工事"
+        "（自分の島なら生産調整中の施設ごとの目標を下げたわけと打てる手 facilities.slowdown）、"
+        "財の値段と"
         "買えなかった量と国の倉庫の在庫（stock）、商業・サービス業の店（services）、人口の増減のわけ（population_changes）、"
         "飢えている家計の層とそのわけ（hunger）、火力発電所の燃料在庫の月数と目標（fuel_reserves）、"
         "満期の近い国債、直近のターンの出来事、燃料が尽きる前の知らせを含む注意。"
@@ -864,7 +921,9 @@ TOOLS = [
         "マス",
         "1マスの中身（地形・人口・インフラの整備度・工事）と、そこの施設の詳しい情報。"
         "自分の島なら施設の帳簿と命令に使う値も。施設の expand は、同じマスに同じ施設を建てる"
-        "命令 build（建て増し・農場の次の段階への工事）の資材と工期、今は通らないわけ problem。",
+        "命令 build（建て増し・農場の次の段階への工事）の資材と工期、今は通らないわけ problem。"
+        "自分の施設が生産調整中・生産停止中なら、目標を下げたわけ（在庫の何ターン分か・売れ残り・"
+        "付け値と費用・安い輸入）と打てる手 slowdown。",
         _tile,
         {"x": {"type": "integer"}, "y": {"type": "integer"}, "island": ISLAND},
         ("x", "y"),
@@ -907,7 +966,9 @@ TOOLS = [
     Tool(
         "check_order",
         "命令を確かめる",
-        "命令を1つ、自分の島の今の状態で確かめる（並べる前に使う）。建設なら通勤圏の人手も返す。",
+        "命令を1つ、自分の島の今の状態で確かめる（並べる前に使う）。建設なら通勤圏の人手も返す。"
+        "打ち間違いに見える命令（相場から離れた指値・1 ターンの生産より多い量など）か戻せない"
+        "命令（取り壊しなど）なら、set_orders で聞く確かめの文を confirm に返す。",
         _check_order,
         {
             "kind": {"type": "string", "description": "命令の種類（defs section=orders の id）"},
@@ -920,7 +981,11 @@ TOOLS = [
         "命令の列を置き換える",
         "自分の島の命令の列を丸ごと置き換える（今の列は消える。足すときは今の列に足して全部送る）。"
         "次のターンの更新で上から実行され、行政力の数を超えた分は次のターンに回る。"
-        "形の誤りは受け付けず、今は実行できない命令は警告を付けて受け付ける。",
+        "形の誤りは受け付けず、今は実行できない命令は警告を付けて受け付ける。"
+        "新しく足す命令が打ち間違いに見えるとき（買う指値が相場の 2 倍以上・売る指値が半分以下・"
+        "量が 1 ターンの生産と売買の量や倉庫の在庫より多いなど）と、戻せない命令（取り壊し・宣戦・"
+        "部隊の解散など）は、並べずに saved: false と確かめの文 confirm を返す。読んでよければ"
+        "同じ orders に confirm: true を付けて出し直す。",
         _set_orders,
         {
             "orders": {
@@ -930,9 +995,44 @@ TOOLS = [
                     "properties": {"kind": {"type": "string"}, "payload": {"type": "object"}},
                     "required": ["kind", "payload"],
                 },
-            }
+            },
+            "confirm": {
+                "type": "boolean",
+                "description": "確かめの文（confirm）を読んだうえで、そのまま並べるときに true",
+            },
         },
         ("orders",),
+        read_only=False,
+        destructive=True,
+    ),
+    Tool(
+        "add_order",
+        "命令を1つ足す",
+        "自分の島の命令の列の最後に命令を 1 つ足す（今の列はそのまま。列を読み直して丸ごと送らなく"
+        "てよいので、画面と同時に足しても消えない）。形の誤りは受け付けず、今は実行できない命令は "
+        "warning を付けて受け付ける。打ち間違いに見える命令と戻せない命令は set_orders と同じく、"
+        "足さずに saved: false と確かめの文 confirm を返すので、よければ confirm: true で出し直す。"
+        "答えの added は足した命令の番号。",
+        _add_order,
+        {
+            "kind": {"type": "string", "description": "命令の種類（defs section=orders の id）"},
+            "payload": {"type": "object", "description": "命令の中身"},
+            "confirm": {
+                "type": "boolean",
+                "description": "確かめの文（confirm）を読んだうえで、そのまま足すときに true",
+            },
+        },
+        ("kind", "payload"),
+        read_only=False,
+    ),
+    Tool(
+        "remove_order",
+        "命令を1つ消す",
+        "自分の島の待っている命令を 1 つ、番号（summary の orders.pending の id）で消す。もうない"
+        "（実行された・消された）ときは誤りを返す。並べ替えは set_orders で列を送る。",
+        _remove_order,
+        {"id": {"type": "integer", "description": "命令の番号（summary の orders.pending の id）"}},
+        ("id",),
         read_only=False,
         destructive=True,
     ),
@@ -1265,7 +1365,9 @@ TOOLS = [
         "found",
         "建国",
         "ランダムな形の島と勧められた首都で建国する（1人1島。島がないときだけ）。"
-        "resources は地下資源 2 つまで（stone・iron_ore・coal など。鋼鉄には iron_ore と coal）。",
+        "resources は地下資源 2 つまで（stone・iron_ore・coal など。鋼鉄には iron_ore と coal）。"
+        "ほかの国がもう選んだ資源の数は api_get /api/founding/cells の resource_counts"
+        "（nations は数えた国の数）。",
         _found,
         {
             "name": {"type": "string", "description": "国名"},
@@ -1315,9 +1417,11 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "help_hakoniwa": ("guide",),
     "help_start": ("guide",),
     "help_ai": ("guide",),  # guide(which=ai)
+    "help_fx": ("guide",),  # guide(which=fx)
     "help_chain": ("defs",),  # 産業のつながりの元は施設の作り方: defs(section="facilities")
     "terms": ("guide",),  # 利用規約は guide(which=terms)
     "island": ("summary", "map", "tile"),  # 地図の重ね表示は map の overlay
+    "home": ("summary",),  # 次にすること・注意・主な変化・国勢・資源・出来事
     "turn_log": ("turn_log", "changes"),
     "island_economy": ("report", "stats"),
     "island_market": ("report",),
@@ -1333,6 +1437,9 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "island_military": ("report",),
     "island_country": ("report", "country_set", "flag_set", "monument_image_set", "country_note"),
     "diary": ("diary", "diary_set"),
+    # 命令のページ（UI-74）: 列は summary の orders。足す・消す・並べ替えは
+    # add_order・remove_order・set_orders
+    "island_orders": ("summary", "add_order", "remove_order", "set_orders"),
     "news": ("news",),
     "hall": ("hall", "hall_post"),
     "board": ("board_boards", "board_replies"),

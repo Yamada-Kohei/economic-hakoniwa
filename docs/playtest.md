@@ -148,6 +148,8 @@ $H log --from 100 --to 110                 # ターンログ（24 ターン分�
 
 つないだら、`whoami` → `guide`（手引き）→ `summary` から始め、次からは `changes` で差分だけを読みます。
 命令は `check_order` で確かめてから `set_orders` で列を丸ごと置き換えます（今の列は `summary` の `orders.pending`）。
+打ち間違いに見える命令や戻せない命令は並べずに確かめの文（`confirm`）が返るので、よければ `confirm: true` を付けて出し直します。
+1 つだけ足す・消すなら `add_order`・`remove_order`（番号は `orders.pending` の `id`）が使えます。
 `hk.py check <島> @orders.json` なら列の全件を順に個別確認できます。1件でも失敗すると終了コードは 1 です。
 前の命令の効果を反映する予行演習ではなく、確認だけでは列を保存しません。
 

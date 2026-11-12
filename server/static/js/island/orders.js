@@ -1,12 +1,15 @@
 // 命令の列: 次のターンに上から実行する命令を並べる。行政力（1ターンに実行できる命令の数）を
 // 超えた所から下は次のターンに回る。名前の変更は行政力を使わない。
-// 列を変えるたびに、列を丸ごとサーバーに送って保存する。命令を足すときは、ほかの画面（別のタブの
-// 財政・金融の画面など）で変えた分を消さないように、今の列をサーバーから読み直して後ろに足す。
+// 保存は 1 件ずつ（足す・消す・並べ替える。UI-74）。サーバーが列の最後に足し、消すのも番号で 1 つ
+// だけなので、2 つの画面で開いても片方で足した命令は消えない。各ページの右の欄は命令を足す入力欄
+// だけで、列の並べ替え・取り消し・前のターンの結果は命令のページ（/islands/<島>/orders/）1 か所。
+// 足した命令が打ち間違いに見えるか戻せない命令なら、サーバーが確かめの文を返すので、聞いてから
+// confirm を付けて送り直す（UI-75。どの画面から足しても、この add を通る）。
 // 島の画面では政策と金融の命令の入力欄をすべて出し、財政・金融の画面では options.forms で選んだ
 // 入力欄だけを出す。
 
 import { turnDate } from "../calendar.js";
-import { escapeHtml, getJson, sendJson } from "./api.js";
+import { confirmOrders, escapeHtml, getJson, sendJson } from "./api.js";
 
 // 政策の命令の入力欄の値の形（ほかの欄は数）
 const TEXT_FIELDS = new Set(["good", "side", "kind", "unsold", "issue_term", "underwrite_term", "entry", "large_store"]);
@@ -39,17 +42,52 @@ function budgetHint(guide) {
   return `<small class="budget-hint"${title}>去年 ${escapeHtml(guide.last_year)}・最大の月の年換算 ${escapeHtml(guide.peak_year)}${escapeHtml(limit)}${guide.standing_year ? `・決まった買い（1年）${escapeHtml(guide.standing_year)}・穀物の買い足し（去年）${escapeHtml(guide.food_refill_year)}` : ""}</small>`;
 }
 
+/** 書き換えが断られたときの文（形の誤り・数の上限・更新中など）。 */
+function failure(res) {
+  const details = res.data.details?.length ? `（${res.data.details.join("、")}）` : "";
+  return `${res.data.error || "保存に失敗しました。"}${details}`;
+}
+
+/**
+ * 命令の列の数と行政力の短い文（帯と右の欄の 1 行。サーバーの帯 web/orders_bar.html と同じ数え方）。
+ * 先頭の命令は、1 ターンの行政力を超えてもそのターンの行政力をすべて使って実行される。
+ */
+export function queueSummary(items, adminPower, granted = adminPower) {
+  let used = 0;
+  let late = 0;
+  for (const o of items) {
+    // 先頭の命令が使えるのはそのターンに増える行政力まで（ためた行政力は使わない。W-265）
+    used += used === 0 ? Math.min(o.cost, granted) : o.cost;
+    if (used > adminPower) late++;
+  }
+  const total = items.reduce((s, o) => s + o.cost, 0);
+  const rest = late ? `・${late} 件は次のターン以降に回ります` : "";
+  return `次のターンの命令 ${items.length} 件（行政力 ${total}／${adminPower}）${rest}`;
+}
+
+/** ページの上の帯（data-orders-bar-text）の数を、今の列に合わせる。 */
+export function updateBar(items, adminPower, granted = adminPower) {
+  const text = queueSummary(items, adminPower, granted);
+  for (const el of globalThis.document?.querySelectorAll?.("[data-orders-bar-text]") || []) el.textContent = text;
+}
+
 export class OrderQueue {
   /**
-   * el: 欄の要素（data-url に命令の列の API の URL）
+   * el: 欄の要素（data-url に命令の列の API の URL、data-page に命令のページの URL）
    * options: forms（出す入力欄の命令の種類の並び。なければ島の画面の並び）、heading（見出し）、
-   *   good（資源を選ぶ欄で初めに選んでおく資源。市場の画面で選んだ資源）
+   *   good（資源を選ぶ欄で初めに選んでおく資源。市場の画面で選んだ資源）、
+   *   page（true なら命令のページ: 列の全部・並べ替え・取り消し・前のターンの結果を出し、入力欄は
+   *   出さない。省けば各ページの右の欄: 入力欄と列の数の 1 行だけ。UI-74）
    */
   constructor(el, defs, map, options = {}) {
     this.el = el;
     this.defs = defs;
     this.map = map;
     this.url = el.dataset.url;
+    this.itemsUrl = `${this.url}/items`;
+    this.sequenceUrl = `${this.url}/sequence`;
+    this.pageUrl = el.dataset.page || `${this.url.replace("/api/islands/", "/islands/")}/`;
+    this.page = Boolean(options.page);
     this.forms = options.forms || null;
     this.heading = options.heading || "命令";
     this.good = options.good || "";
@@ -57,7 +95,8 @@ export class OrderQueue {
     this.recent = [];
     this.adminPower = 0;
     this.adminBank = 0;
-    this.warnings = new Map(); // 列の位置 → 文
+    this.mine = true;
+    this.warnings = new Map(); // 命令の番号 → 文
     this.message = "";
     this.saving = Promise.resolve();
     el.addEventListener("click", (e) => this.handleClick(e));
@@ -78,7 +117,7 @@ export class OrderQueue {
 
   async load() {
     try {
-      this.apply(await getJson(this.url));
+      this.apply(await getJson(this.page ? `${this.url}?check=1` : this.url));
     } catch {
       this.message = "命令一覧を取得できませんでした。";
     }
@@ -88,62 +127,70 @@ export class OrderQueue {
   apply(data) {
     this.policy = data.policy || this.policy;
     this.powerGood = data.power_good || this.powerGood;
-    this.items = data.orders.map((o) => ({ kind: o.kind, payload: o.payload, cost: o.cost, text: o.text }));
+    this.items = data.orders.map((o) => ({ id: o.id, kind: o.kind, payload: o.payload, cost: o.cost, text: o.text }));
+    this.mine = this.items.every((o) => o.id != null);
     this.recent = data.recent || this.recent;
     this.adminPower = data.admin_power;
     this.adminBank = data.admin_bank || 0;
     this.adminGranted = data.admin_granted ?? data.admin_power;
     this.adminBurst = data.admin_burst || 1;
-    this.warnings = new Map((data.warnings || []).map((w) => [w.index, w.text]));
+    if (data.warnings) this.warnings = new Map(data.warnings.map((w) => [w.id, w.text]));
+    updateBar(this.items, this.adminPower, this.adminGranted);
   }
 
   /**
-   * 命令を列の最後に足して保存する。保存が済むと解決する Promise を返す（結果は this.message）。
-   * 今の列をサーバーから読み直して後ろに足し、足した命令が今の島で実行できなければ、そのわけも
-   * this.message に入れる（列を保存するときに、島の画面と同じ確かめをサーバーがする）。
+   * 命令を 1 つ、列の最後に足して保存する（POST .../orders/items。UI-74）。保存が済むと解決する
+   * Promise を返す（結果は this.message）。サーバーが最後に足すので、ほかの画面で足した命令は消えない。
+   * 打ち間違いに見えるか戻せない命令なら、サーバーが返す確かめの文で聞き、はいなら confirm を付けて
+   * 送り直す（UI-75）。今の島で実行できなければ、そのわけも this.message に入れる。
    */
   add(kind, payload) {
     const name = this.defs.orders[kind]?.name || kind;
-    const cost = this.defs.orders[kind]?.admin_cost ?? 0;
-    this.items.push({ kind, payload, cost, text: `${name}（保存中）` });
+    this.message = `「${name}」を保存中です。`;
     this.render();
-    const shown = this.items.slice(0, -1).map(({ kind, payload }) => ({ kind, payload }));
     return this.send(async () => {
-      let current = shown;
-      try {
-        current = (await getJson(this.url)).orders.map(({ kind, payload }) => ({ kind, payload }));
-      } catch {
-        // 読み直せなければ、画面に出ている列の後ろに足す
+      let res = await sendJson(this.itemsUrl, "POST", { kind, payload });
+      if (!res.ok && res.data.confirm) {
+        if (!confirmOrders(res.data.confirm)) return { message: "命令を追加しませんでした。" };
+        res = await sendJson(this.itemsUrl, "POST", { kind, payload, confirm: true });
       }
-      return { items: [...current, { kind, payload }], done: `「${name}」を命令に追加しました。`, added: current.length };
+      if (!res.ok) return { message: failure(res), reload: true };
+      const warning = res.data.warning ? `（現状では実行できません: ${res.data.warning}）` : "";
+      return { data: res.data, message: `「${name}」を命令に追加しました。${warning}` };
     });
   }
 
-  /** 画面の列（並べ替え・消した後）を保存する。 */
-  save(done) {
-    const items = this.items.map(({ kind, payload }) => ({ kind, payload }));
-    this.render();
-    return this.send(async () => ({ items, done }));
+  /** 列の i 番目の命令を消す（DELETE .../orders/items/<番号>）。 */
+  remove(i) {
+    const order = this.items[i];
+    if (!order) return this.saving;
+    return this.send(async () => {
+      const res = await sendJson(`${this.itemsUrl}/${order.id}`, "DELETE");
+      if (res.ok) return { data: res.data, message: "命令を消しました。" };
+      return { data: res.data.orders ? res.data : null, message: failure(res), reload: !res.data.orders };
+    });
   }
 
-  /** 列を送る。保存は1つずつ順に送る（先に送った列が後で上書きしないように）。 */
-  send(prepare) {
+  /** 列の i 番目と j 番目を入れ替える（POST .../orders/sequence に上からの命令の番号を送る）。 */
+  move(i, j) {
+    if (j < 0 || j >= this.items.length) return this.saving;
+    const ids = this.items.map((o) => o.id);
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    return this.send(async () => {
+      const res = await sendJson(this.sequenceUrl, "POST", { ids });
+      if (res.ok) return { data: res.data, message: "順番を変えました。" };
+      return { message: failure(res), reload: true };
+    });
+  }
+
+  /** 書き換えを 1 つずつ順に送る（先に押した操作の答えが後から来て上書きしないように）。 */
+  send(task) {
     this.saving = this.saving
       .then(async () => {
-        const { items, done, added } = await prepare();
-        const res = await sendJson(this.url, "PUT", { orders: items });
-        if (res.ok) {
-          this.apply(res.data);
-          this.message = done || "保存しました。";
-          const warning = added != null ? this.warnings.get(added) : null;
-          if (warning) this.message += `（現状では実行できません: ${warning}）`;
-        } else if (res.data.errors) {
-          this.message = res.data.errors.map((e) => `${e.index + 1} 番目: ${e.text}`).join(" ");
-          await this.load();
-        } else {
-          this.message = res.data.error || "保存に失敗しました。";
-          await this.load();
-        }
+        const { data, message, reload } = await task();
+        if (data) this.apply(data);
+        this.message = message;
+        if (reload) await this.load();
         this.render();
       })
       .catch(() => {
@@ -154,6 +201,18 @@ export class OrderQueue {
   }
 
   render() {
+    const summary = escapeHtml(queueSummary(this.items, this.adminPower, this.adminGranted));
+    if (!this.page) {
+      // 各ページの右の欄: 命令を足す入力欄と、列の数の 1 行だけ（並べ替え・取り消しは命令のページ）
+      this.el.innerHTML = `
+        <h2>${escapeHtml(this.heading)}</h2>
+        <p class="orders-brief">${summary} <a href="${escapeHtml(this.pageUrl)}">命令のページで並べ替え・取り消し・前のターンの結果を見る</a></p>
+        <p class="message" aria-live="polite">${escapeHtml(this.message)}</p>
+        ${this.forms ? this.chosenForms() : this.islandForms()}`;
+      const standing = this.el.querySelector('[data-form="set_warehouse_standing"]');
+      if (standing) this.standingQuantityLabel(standing);
+      return;
+    }
     let used = 0;
     let cut = false;
     const rows = this.items.map((o, i) => {
@@ -164,16 +223,17 @@ export class OrderQueue {
       const late = used > this.adminPower;
       const divider = late && !cut ? `<li class="divider">以下は行政力が不足するため、次のターン以降に実行されます</li>` : "";
       if (late) cut = true;
-      const warning = this.warnings.get(i);
-      return `${divider}
-        <li class="${late ? "late" : ""}">
-          <span class="order-text">${i + 1}. ${escapeHtml(o.text)} <small>（行政力 ${o.cost}）</small></span>
-          ${warning ? `<span class="warning">現状では実行できません: ${escapeHtml(warning)}</span>` : ""}
+      const warning = this.warnings.get(o.id);
+      const buttons = this.mine ? `
           <span class="order-buttons">
             <button type="button" data-move="-1" data-index="${i}" aria-label="上へ"${i === 0 ? " disabled" : ""}>↑</button>
             <button type="button" data-move="1" data-index="${i}" aria-label="下へ"${i === this.items.length - 1 ? " disabled" : ""}>↓</button>
             <button type="button" data-remove="${i}" aria-label="消す">×</button>
-          </span>
+          </span>` : "";
+      return `${divider}
+        <li class="${late ? "late" : ""}">
+          <span class="order-text">${i + 1}. ${escapeHtml(o.text)} <small>（行政力 ${o.cost}）</small></span>
+          ${warning ? `<span class="warning">現状では実行できません: ${escapeHtml(warning)}</span>` : ""}${buttons}
         </li>`;
     });
     const recent = this.recent.map((o) => {
@@ -182,20 +242,14 @@ export class OrderQueue {
       const when = o.turn != null ? escapeHtml(turnDate(o.turn)) : "-";
       return `<li class="${o.status}">${when} ${mark} ${escapeHtml(o.text)}${reason}</li>`;
     });
-    const total = this.items.reduce((s, o) => s + o.cost, 0);
-    const empty = this.forms ? "命令はありません。" : "命令はありません。地図でマスを選択して命令を追加してください。";
+    const empty = "命令はありません。命令は地図・市場・財政などの各ページの右の欄から足します。";
     this.el.innerHTML = `
       <h2>${escapeHtml(this.heading)}</h2>
-      <p>次ターンの行政力（実行できる命令数）: <strong>${this.adminPower}</strong> ／ 予定の命令: ${total}${this.adminBank ? `<br><small class="muted">ためた行政力 ${this.adminBank}（使わなかった分をためておき、1ターンにふだんの${this.adminBurst}倍まで使えます）</small>` : ""}</p>
+      <p>${summary}${this.adminBank ? `<br><small class="muted">ためた行政力 ${this.adminBank}（使わなかった分をためておき、1ターンにふだんの${this.adminBurst}倍まで使えます）</small>` : ""}</p>
       <ol class="order-list">${rows.join("") || `<li class="muted">${empty}</li>`}</ol>
       <p class="message" aria-live="polite">${escapeHtml(this.message)}</p>
-      ${this.forms ? this.chosenForms() : this.islandForms()}
-      <details>
-        <summary>最近の命令の結果</summary>
-        <ul class="recent">${recent.join("") || `<li class="muted">なし</li>`}</ul>
-      </details>`;
-    const standing = this.el.querySelector('[data-form="set_warehouse_standing"]');
-    if (standing) this.standingQuantityLabel(standing);
+      <h3>前のターンまでの命令の結果</h3>
+      <ul class="recent">${recent.join("") || `<li class="muted">なし</li>`}</ul>`;
   }
 
   standingQuantityLabel(form) {
@@ -208,13 +262,9 @@ export class OrderQueue {
     if (!button) return;
     if (button.dataset.move) {
       const i = Number(button.dataset.index);
-      const j = i + Number(button.dataset.move);
-      if (j < 0 || j >= this.items.length) return;
-      [this.items[i], this.items[j]] = [this.items[j], this.items[i]];
-      this.save("順番を変えました。");
+      this.move(i, i + Number(button.dataset.move));
     } else if (button.dataset.remove) {
-      this.items.splice(Number(button.dataset.remove), 1);
-      this.save("命令を消しました。");
+      this.remove(Number(button.dataset.remove));
     } else if (button.dataset.stopSubsidy) {
       const s = this.policy?.subsidies?.[Number(button.dataset.stopSubsidy)];
       if (s) this.add("set_subsidy", s.stop);
@@ -252,6 +302,12 @@ export class OrderQueue {
   }
 
   /** 資源の選択肢。選んでいる資源（this.good）に印を付ける。 */
+  /** 軽く動かすと戻らない命令の注意（W-255。/api/defs の orders の caution）。ない命令は空。 */
+  caution(kind) {
+    const text = this.defs.orders?.[kind]?.caution;
+    return text ? `<p class="hint order-caution">注意: ${escapeHtml(text)}</p>` : "";
+  }
+
   goodOptions(entries, label) {
     return entries
       .map(([g, d]) => `<option value="${g}"${g === this.good ? " selected" : ""}>${escapeHtml(label(d))}</option>`)
@@ -325,6 +381,7 @@ export class OrderQueue {
       set_labor_policy: `
         <form class="actions" data-form="set_labor_policy">
           <strong>賃金と失業手当</strong>
+          ${this.caution("set_labor_policy")}
           <label>最低賃金（0 で決めない） ${num("minimum_wage", p.minimum_wage, 'step="1"')}</label>
           <label>失業手当（平均賃金の %） ${num("unemployment_benefit", p.unemployment_benefit, 'max="100" step="1"')}</label>
           ${dismissalField(p)}
@@ -363,6 +420,7 @@ export class OrderQueue {
       set_price_cap: power ? `
         <form class="actions" data-form="set_price_cap">
           <strong>公共料金の上限</strong>
+          ${this.caution("set_price_cap")}
           <label>${escapeHtml(power.name)}（1${escapeHtml(power.unit)}あたり、0 で上限なし）
             <input name="price" type="number" min="0" step="any" placeholder="${cap}" required></label>
           <button type="submit">命令に追加</button>
@@ -523,10 +581,6 @@ export class OrderQueue {
       this.message = "変える項目を入れてください。";
       this.render();
       return;
-    }
-    if (kind === "set_bond_payment" && payload.stop) {
-      const ok = confirm("国債の利払いと償還を止めると、そのターンにすべての国債が債務不履行になります。命令に追加しますか？");
-      if (!ok) return;
     }
     for (const key of [...INT_FIELDS, ...Object.keys(this.policy?.budget || {})]) {
       if (key in payload) payload[key] = Math.round(payload[key]);

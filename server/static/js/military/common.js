@@ -1,5 +1,5 @@
 // 軍の画面・島・世界マップで共用する表示と、命令の中身を作る小さな関数。
-import { escapeHtml, getJson, sendJson } from "../island/api.js";
+import { confirmOrders, escapeHtml, sendJson } from "../island/api.js";
 
 export const words = () => document.getElementById("military-text")?.dataset || {};
 export const coord = (row) => `(${row.x}, ${row.y})`;
@@ -146,8 +146,6 @@ export function bindOrderForms(root, add) {
     if (!form) return;
     event.preventDefault();
     if (form.dataset.busy || !form.reportValidity()) return;
-    const confirmation = form.elements.namedItem("nuclear")?.checked ? words().nuclearConfirm : form.dataset.confirm;
-    if (confirmation && !confirm(confirmation)) return;
     const notice = form.querySelector(".order-notice");
     form.dataset.busy = "true";
     const button = form.querySelector('[type="submit"]');
@@ -169,16 +167,17 @@ export function bindOrderForms(root, add) {
   });
 }
 
-/** 世界マップでは読み直しに失敗したら保存しない。手元の古い列で上書きしないため。 */
+/**
+ * 世界マップとミサイルの欄から命令を 1 つ足す（POST .../orders/items。UI-74）。サーバーが列の最後に
+ * 足すので、ほかの画面で足した命令を消さない。
+ */
 export async function appendOrder(url, kind, payload) {
-  const current = await getJson(url);
-  const orders = current.orders.map(({ kind, payload }) => ({ kind, payload }));
-  const index = orders.length;
-  orders.push({ kind, payload });
-  const result = await sendJson(url, "PUT", { orders });
-  if (!result.ok) {
-    return result.data.error || result.data.errors?.map((e) => e.text).join(" ") || words().saveError;
+  let result = await sendJson(`${url}/items`, "POST", { kind, payload });
+  if (!result.ok && result.data.confirm) {
+    // 核攻撃など戻せない命令は、サーバーの確かめを聞いてから送り直す（UI-75）
+    if (!confirmOrders(result.data.confirm)) return words().notAdded;
+    result = await sendJson(`${url}/items`, "POST", { kind, payload, confirm: true });
   }
-  const warning = result.data.warnings?.find((w) => w.index === index);
-  return `${words().added}${warning ? ` ${warning.text}` : ""}`;
+  if (!result.ok) return result.data.error || words().saveError;
+  return `${words().added}${result.data.warning ? ` ${result.data.warning}` : ""}`;
 }

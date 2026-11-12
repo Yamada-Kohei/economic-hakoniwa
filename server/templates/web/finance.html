@@ -13,6 +13,7 @@
         <tr><th>{% translate "国債の売買の方針" %}</th><td>{{ central_bank.bond_trade_text }}</td></tr>
       </table>
       <p class="hint">{% translate "量的緩和（中央銀行の国債の買い入れ）は、売りたい銀行がいる分だけ買えます。決めた額より実際に買えた額が少ないことがあります。直近の買い入れ額・売却額は、下の「金利・お金・融資」で確認できます。" %}</p>
+      {% if mine %}<p class="hint">{% translate "外貨準備と、中央銀行どうしの融通（外貨の借りと貸し、まだ借りられる額）は為替の画面にあります。" %} <a href="{% url 'island_fx' island.id %}#swap-room">{% translate "為替と融通の残り" %}</a></p>{% endif %}
     </section>
 
     <section class="panel">
