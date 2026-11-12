@@ -657,7 +657,7 @@
 | UI-76 | ホームは「今月すべきこと」を急ぐ順に並べ、各行から打てる手のある所へ 1 回で飛べるようにする | 決定 | tests/server/test_home_todo.py、tests/server/test_trade_overview.py |
 | UI-77 | 欄と命令の置き場所は「打てる手があるか」「大事か」「よく使うか」で決める | 決定 | tests/server/test_trade_overview.py |
 | UI-78 | 地図は今の俯瞰図と絵・拡大縮小・小さな地図をそのまま使う | 決定 | tests/server/test_facility_page.py |
-| UI-79 | 重ね表示は、マスの上に半透明の角柱（棒）を立てる形を既定にし、今の塗り分けにも切り替えられる | 決定 | （未確認） |
+| UI-79 | 重ね表示は、マスの上に半透明の角柱（棒）を立てる形を既定にし、今の塗り分けにも切り替えられる | 決定 | tests/js/map-overlay-bars.test.mjs |
 | UI-80 | 為替のタブの頭に、中央銀行どうしの融通の貸しと借りの限度額・残り・1 ターンの増加を出す | 決定 | tests/server/test_fx_guide_and_cautions.py |
 | UI-81 | 画面の構成の作り直し（UI-71〜UI-80）は計算を変えない | 決定 | （未確認） |
 | UI-82 | 財政の画面に「中央銀行が持つ国債（刷ったお金）」と「政府と中央銀行を合わせた借り」を並べる | 決定 | tests/server/test_reports.py |
