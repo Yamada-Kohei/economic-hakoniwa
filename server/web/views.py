@@ -25,12 +25,14 @@ from server.web import (
     diplomacy,
     display,
     founding,
+    good_page,
     military,
     overview,
     rankings,
     reports,
     trade,
 )
+from server.web import facility_page as facility_views
 from server.web import (
     news as news_views,
 )
@@ -73,8 +75,8 @@ def island_page(request, island_id: int):
 
 
 def island_home_page(request, island_id: int):
-    """島のホーム（UI-71 の入口「ホーム」）: 次にすること・注意・前のターンからの主な変化・国勢・
-    資源・出来事。"""
+    """島のホーム（UI-71 の入口「ホーム」）: 持ち主には今月すべきこと（UI-76）、ほかの人には注意。
+    その下に国勢（貿易の 1 行を含む）・資源・前のターンからの主な変化・出来事。"""
     return render(request, "web/island_home.html", _island_context(request, island_id, "home"))
 
 
@@ -98,7 +100,7 @@ def _island_context(request, island_id: int, page: str) -> dict:
         for r in (island.regime or {}).values()
         if r in defs.regimes
     ]
-    alerts, next_steps = overview.island_alerts(island, mine)
+    alerts, next_steps, todo = overview.home_lists(island, mine)
     context = {
         "island": island,
         "mine": mine,
@@ -126,6 +128,11 @@ def _island_context(request, island_id: int, page: str) -> dict:
         "page": page,
         "plan_label": politics_views.page_label(island),
     }
+    if page == "home":
+        # 持ち主の「今月すべきこと」（急ぐ順。国の要約の todo と同じ。UI-76）と、国のまとめの貿易の
+        # 1 行（国の要約の trade と同じ。W-247 (8)）
+        context["todo"] = todo
+        context["trade"] = overview.trade_brief(stats, currency)
     return context
 
 
@@ -174,13 +181,13 @@ def economy_page(request, island_id: int):
 
 def market_page(request, island_id: int):
     """市場: 財ごとの値段と売買の量、選んだ財の推移とこのターンの約定、買えなかった施設。"""
+    chosen = request.GET.get("good")
+    if chosen in get_game().defs.goods:  # 前の「?good=」の URL は品目のページへ（UI-81）
+        return redirect("market_good", island_id, chosen)
     island, context, stats = _report(request, island_id, "market", "市場")
     rows = reports.market_table(island, stats, context["currency"], context["mine"])
-    goods = [r["good"] for r in rows]
-    chosen = request.GET.get("good")
     context.update(
         rows=rows,
-        good=chosen if chosen in goods else (goods[0] if goods else ""),
         market_turn=reports.market_turn(island),
     )
     if context["mine"]:
@@ -188,6 +195,21 @@ def market_page(request, island_id: int):
     else:
         context["note"] = "約定の相手と、原料を買えずに止まった施設は、島の持ち主だけが見られます。"
     return render(request, "web/market.html", context)
+
+
+def market_good_page(request, island_id: int, good: str):
+    """品目のページ（UI-72・UI-73）: 上に値段と量・作る施設と使う施設・推移、下に打てる手の箱。"""
+    if good not in get_game().defs.goods:
+        raise Http404
+    island, context, stats = _report(request, island_id, "market", "")
+    viewer = own_island(request.user)
+    view = good_page.good_view(
+        island, good, stats, context["currency"], context["mine"], viewer.id if viewer else None
+    )
+    context.update(item=view, title=view["name"], market_turn=reports.market_turn(island))
+    if not context["mine"]:
+        context["note"] = "約定の相手と、原料を買えずに止まった施設は、島の持ち主だけが見られます。"
+    return render(request, "web/market_good.html", context)
 
 
 def chain_page(request, island_id: int):
@@ -237,6 +259,23 @@ def facilities_page(request, island_id: int):
     return render(request, "web/facilities.html", context)
 
 
+def facility_page(request, island_id: int, number: int):
+    """施設のページ（UI-72・UI-73）: 上に「見る」所（状態・人手・投入と産出・収支と借入・
+    帳簿の推移・前のターンの結果）、下に「打てる手」の箱（この施設に出せる命令・出ている
+    命令・動いている設定）。ほかの人には地図のマスの窓と同じ公開の中身だけ。見えない施設は 404。"""
+    island, context, _ = _report(request, island_id, "facilities", "施設")
+    viewer = own_island(request.user)
+    data = facility_views.facility_data(
+        island, number, context["mine"], viewer.id if viewer else None
+    )
+    if data is None:
+        raise Http404
+    context.update(data, title=data["name"])
+    if not context["mine"]:
+        context["note"] = "他国の施設のため、地図のマスの窓と同じ中身だけを表示しています。"
+    return render(request, "web/facility.html", context)
+
+
 def fiscal_page(request, island_id: int):
     """財政: 国庫の収入と支出、予算と使った額、税率、国債の一覧。持ち主には命令の入力も。"""
     island, context, stats = _report(request, island_id, "fiscal", "財政")
@@ -267,19 +306,50 @@ def finance_page(request, island_id: int):
     return render(request, "web/finance.html", context)
 
 
-def trade_page(request, island_id: int):
-    """貿易: 貿易圏・二国間契約・商社・船団と港・運ぶ途中の荷・海外の商人。持ち主には貿易の命令も。
-    他国は国全体の数（輸出・輸入・貿易収支・船の数）と貿易圏の加盟だけ。"""
-    island, context, stats = _report(request, island_id, "trade", "貿易")
+TRADE_OTHERS_NOTE = (
+    "他国の島のため、国全体の数と貿易圏の加盟だけを表示しています"
+    "（契約・商社・船団・荷の中身は島の持ち主だけが見られます）。"
+)
+
+
+def _trade(request, island_id: int, page: str, title: str, template: str):
+    """貿易の入口のタブ（UI-71・W-247）。どのタブも中身は JSON API の /trade と同じ trade_data で、
+    タブごとにその一部を出す。他国には国全体の数と貿易圏の加盟だけ。"""
+    island, context, stats = _report(request, island_id, page, title)
     data = trade.trade_data(island, context["mine"], context["currency"], stats)
     names = trade.TRADE_STATS if context["mine"] else trade.PUBLIC_TRADE_STATS
     context.update(trade=data, stats=reports.stat_rows(stats, names, context["currency"]))
     if not context["mine"]:
-        context["note"] = (
-            "他国の島のため、国全体の数と貿易圏の加盟だけを表示しています"
-            "（契約・商社・船団・荷の中身は島の持ち主だけが見られます）。"
-        )
-    return render(request, "web/trade.html", context)
+        context["note"] = TRADE_OTHERS_NOTE
+    return render(request, template, context)
+
+
+def trade_page(request, island_id: int):
+    """貿易の概要（W-247 (5)〜(7)）: 入っている貿易圏・輸出入と収支・運ぶ途中の荷・契約の数と、
+    持ち主には「いますべきこと」（ホームの今月すべきことの貿易の行）と、よく使う契約の申し込みを置いた
+    打てる手の箱。詳しい一覧は契約・貿易圏・船と港・海外の商人のタブに分ける。"""
+    return _trade(request, island_id, "trade", "貿易", "web/trade.html")
+
+
+def trade_contracts_page(request, island_id: int):
+    """貿易のタブ「契約」: 二国間契約の一覧と、奥に畳んだ産業政策と援助（持ち主だけ）。"""
+    return _trade(request, island_id, "trade_contracts", "二国間契約", "web/trade_contracts.html")
+
+
+def trade_blocs_page(request, island_id: int):
+    """貿易のタブ「貿易圏」: 加盟している圏（持ち主には圏の値段と代表の設定も）と、ほかの圏・圏を
+    作る欄（持ち主だけ）。"""
+    return _trade(request, island_id, "trade_blocs", "貿易圏", "web/trade_blocs.html")
+
+
+def trade_fleet_page(request, island_id: int):
+    """貿易のタブ「船と港」: 商社・船団と港・運ぶ途中の荷と船の貸し出し（持ち主だけ）。"""
+    return _trade(request, island_id, "trade_fleet", "船と港", "web/trade_fleet.html")
+
+
+def trade_merchant_page(request, island_id: int):
+    """貿易のタブ「海外の商人」: 来る期間・値段・1ターンの上限（持ち主だけ）。"""
+    return _trade(request, island_id, "trade_merchant", "海外の商人", "web/trade_merchant.html")
 
 
 def fx_page(request, island_id: int):

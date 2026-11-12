@@ -32,6 +32,10 @@ ISLAND_PAGES = [
     "island_fiscal",
     "island_finance",
     "island_trade",
+    "trade_contracts",
+    "trade_blocs",
+    "trade_fleet",
+    "trade_merchant",
     "island_fx",
     "island_politics",
     "island_plan",
@@ -62,8 +66,9 @@ ISLAND_APIS = [
     "api_island_chain",
     "api_country_diary",
 ]
-# 引数の要る API（下の `_extra_urls` が開く）
-ISLAND_APIS_WITH_ARGS = ["api_tile", "api_island_market", "api_facility_book"]
+# 引数の要る画面と API（下の `_extra_urls` が開く）
+ISLAND_PAGES_WITH_ARGS = ["market_good", "facility_page"]
+ISLAND_APIS_WITH_ARGS = ["api_tile", "api_island_market", "api_facility_book", "api_facility"]
 # 画像など、中身を JSON や HTML で確かめない島の下の道
 ISLAND_IMAGES = ["island_flag", "monument_image", "api_country_flag", "api_monument_image"]
 # 書き込む道（GET では開かない）
@@ -80,7 +85,14 @@ ISLAND_WRITES = [
 # 持ち主ではない人には断ってよい道（この名前だけは 403 と 404 を許す）
 OWNER_ONLY = {"diary", "api_country_diary", "api_island_chain", "api_facility_book"}
 
-KNOWN = set(ISLAND_PAGES + ISLAND_APIS + ISLAND_APIS_WITH_ARGS + ISLAND_IMAGES + ISLAND_WRITES)
+KNOWN = set(
+    ISLAND_PAGES
+    + ISLAND_PAGES_WITH_ARGS
+    + ISLAND_APIS
+    + ISLAND_APIS_WITH_ARGS
+    + ISLAND_IMAGES
+    + ISLAND_WRITES
+)
 
 
 def _names_under_islands() -> set[str]:
@@ -117,7 +129,7 @@ def _clients(kinds: dict[str, int]) -> dict[str, dict[str, Client]]:
 
 
 def _extra_urls(island: m.Island) -> list[tuple[str, str]]:
-    """引数の要る読む API の URL（名前, URL）。首都・占領されたマス・反乱軍のマスのマスを開く。"""
+    """引数の要る画面と読む API の URL（名前, URL）。首都・占領されたマス・反乱軍のマスを開く。"""
     urls = []
     middle = island.size // 2
     cells = {(0, 0), (middle, middle)}
@@ -127,11 +139,19 @@ def _extra_urls(island: m.Island) -> list[tuple[str, str]]:
     for cell in sorted(cells)[:6]:
         urls.append(("api_tile", reverse("api_tile", args=[island.id, cell[0], cell[1]])))
     urls.append(("api_island_market", reverse("api_island_market", args=[island.id, "food"])))
+    for good in ("food", "uranium_ore"):  # 品目のページ（記録のある品目と、無いかもしれない品目）
+        urls.append(("market_good", reverse("market_good", args=[island.id, good])))
     first = island.facilities.order_by("number").first()
     if first is not None:
         urls.append(
             ("api_facility_book", reverse("api_facility_book", args=[island.id, first.number]))
         )
+    # 施設のページ（UI-72）: マスのある施設と、マスを持たない施設（海運業など）
+    facilities = island.facilities.exclude(kind="housing")
+    for row in (facilities.filter(x__gte=0).first(), facilities.filter(x__lt=0).first()):
+        if row is not None:
+            for name in ("facility_page", "api_facility"):
+                urls.append((name, reverse(name, args=[island.id, row.number])))
     return urls
 
 
@@ -144,7 +164,10 @@ def _check(res, name: str, viewer: str) -> str | None:
             return None
         if name in ISLAND_IMAGES and res.status_code == 404:
             return None
-        if name in ("api_tile", "api_facility_book") and res.status_code == 404:
+        if (
+            name in ("api_tile", "api_facility_book", "api_facility", "facility_page")
+            and res.status_code == 404
+        ):
             return None  # 外のマスや見えない施設は 404 でよい
         return f"status {res.status_code}"
     if name in ISLAND_IMAGES:

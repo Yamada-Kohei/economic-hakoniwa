@@ -143,16 +143,21 @@ def test_market_page_table(client, world):
     assert rows["food"]["change"] == "+10.0%"
 
 
-def test_market_page_has_orders_for_the_chosen_good(client, world):
-    """市場の画面から、選んだ資源の国の倉庫の売り買いと補助金の命令を出せる（持ち主だけ）。"""
+def test_good_page_has_orders_for_the_good(client, world):
+    """品目のページの打てる手の箱から、その資源の国の倉庫の売り買いと補助金の命令を出せる（持ち主
+    だけ）。市場の一覧は見るだけで、命令の欄を置かない（UI-73）。前の「?good=」は品目のページへ。"""
     island = _own_island(client)
     _market(island)
-    html = client.get(f"/islands/{island.id}/market/?good=food").content.decode()
-    assert 'id="orders"' in html
+    html = client.get(f"/islands/{island.id}/market/food/").content.decode()
+    assert 'id="actions"' in html and 'id="orders"' in html
     assert 'data-forms="warehouse_trade,set_warehouse_standing,set_subsidy"' in html
     assert 'data-good="food"' in html
-    _login(client, "other")
     assert 'id="orders"' not in client.get(f"/islands/{island.id}/market/").content.decode()
+    old = client.get(f"/islands/{island.id}/market/?good=food")
+    assert old.status_code == 302 and old["Location"] == f"/islands/{island.id}/market/food/"
+    _login(client, "other")
+    html = client.get(f"/islands/{island.id}/market/food/").content.decode()
+    assert 'id="actions"' not in html and 'id="orders"' not in html
 
 
 # --- 施設の帳簿 -----------------------------------------------------------------------------

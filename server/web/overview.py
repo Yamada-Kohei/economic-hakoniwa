@@ -33,8 +33,9 @@ from server.hall import services as hall
 from server.letters import services as letters
 from server.orders.models import Order
 from server.turns.models import TurnLog
-from server.web import country, diplomacy, display, military, rankings, reports, slowdown
+from server.web import country, diplomacy, display, military, rankings, reports, slowdown, todo
 from server.web import politics as politics_views
+from server.web.todo import Alert
 from server.world import models as m
 from server.world.repository import TILE_FIELDS, facility_from_row, island_from_row
 
@@ -64,7 +65,7 @@ INDICATORS = [key for key, _, _ in display.SUMMARY_STATS] + ["fiscal.balance"]
 # 比べ方・目安の幅・行き先。割合の統計は 0〜1、幸福度は画面に出す数のまま。
 NOTABLE = {
     "population": ("relative", 0.01, "economy"),
-    "unemployment": ("points", 0.01, "facilities"),
+    "unemployment": ("points", todo.UNEMPLOYMENT_RISE, "facilities"),
     "food.ratio": ("points", 0.05, "market"),
     "power.shortage": ("points", 0.05, "facilities"),
     "happiness": ("points", 3, "economy"),
@@ -483,38 +484,111 @@ def _alerts(
     hungry: list[dict[str, Any]],
     turn: int,
     yields: dict[str, Any] | None = None,
-) -> list[str]:
-    """気をつけたほうがよいこと（画面の値を言葉にしただけ。先の見込みは入れない）。"""
+    planned: bool = False,
+) -> list[Alert]:
+    """気をつけたほうがよいこと（画面の値を言葉にしただけ。先の見込みは入れない）。種類は今月
+    すべきことの並べ方と行き先に使う（todo.ORDER）。planned は計画経済の島（電気の打てる手が
+    公定価格になる）。"""
     out = []
     if yields and yields["yield_capped"]:
         maximum = get_game().config.get("bonds.max_yield") * 100
         out.append(
-            f"国債の利回りが上限の {maximum:g}% に張り付いています。"
-            "市場が求める利回りはこれより高いかもしれません"
+            Alert(
+                "yield_capped",
+                f"国債の利回りが上限の {maximum:g}% に張り付いています。"
+                "市場が求める利回りはこれより高いかもしれません",
+            )
         )
     if politics.get("level") and politics["level"] != core_politics.CALM:
-        out.append(f"政情は「{politics['level_name']}」です")
+        out.append(Alert("politics", f"政情は「{politics['level_name']}」です"))
     food = stats.get("food.ratio")
     if food is not None and food < 1:
         # 99.9% を 100% と出さない（切り捨て。Codex の試し遊び）
-        out.append(f"食料が足りていません（充足率 {math.floor(food * 1000) / 10:.1f}%）")
-    out += [hunger_text(row) for row in hungry]
-    shortage = stats.get("power.shortage")
-    if shortage:
-        out.append(f"電力が足りていません（不足率 {math.ceil(shortage * 1000) / 10:.1f}%）")
+        ratio = math.floor(food * 1000) / 10
+        out.append(Alert("food", f"食料が足りていません（充足率 {ratio:.1f}%）"))
+    out += [Alert("hunger", hunger_text(row)) for row in hungry]
+    out += power_alerts(stats, planned)
     if facilities["stopped_count"]:
-        out.append(f"止まっている施設が {facilities['stopped_count']} か所あります")
+        out.append(
+            Alert("stopped", f"止まっている施設が {facilities['stopped_count']} か所あります")
+        )
     if facilities.get("on_sale_count"):
-        out.append(f"倒産・閉鎖で売りに出している施設が {facilities['on_sale_count']} か所あります")
+        count = facilities["on_sale_count"]
+        out.append(Alert("on_sale", f"倒産・閉鎖で売りに出している施設が {count} か所あります"))
     unmet = [g["name"] for g in goods if g.get("unmet")]
     if unmet:
-        out.append("買いたい量に売りが届かなかった財: " + "・".join(unmet))
+        out.append(Alert("unmet", "買いたい量に売りが届かなかった財: " + "・".join(unmet)))
     due = [b for b in bonds if b["maturity"] <= turn + 1]
     if due:
-        out.append(f"次のターンに満期になる国債が {len(due)} 本あります")
+        out.append(Alert("bonds_due", f"次のターンに満期になる国債が {len(due)} 本あります"))
     if politics.get("transition"):
-        out.append(f"体制を変えた後の混乱期間です（ターン {politics['transition']['until']} まで）")
+        until = politics["transition"]["until"]
+        out.append(Alert("transition", f"体制を変えた後の混乱期間です（ターン {until} まで）"))
     return out
+
+
+def _short_supply(stats: dict[str, float]) -> float:
+    """発電を使い切って届かなかった電力の割合（UI-89 の power.short_supply。その統計のない前の
+    ターンは、今までの power.shortage）。"""
+    if "power.short_supply" in stats:
+        return stats["power.short_supply"]
+    return stats.get("power.shortage", 0.0)
+
+
+def unaffordable_power(stats: dict[str, float]) -> float:
+    """家計が発電の売れ残りがあるのに電気料金を払えずに使えなかった電力の割合（知らせの線
+    power.household_notice より小さければ 0。UI-89）。"""
+    share = stats.get("power.household_unaffordable", 0.0)
+    return share if share >= get_game().config.get("power.household_notice") else 0.0
+
+
+def power_alerts(stats: dict[str, float], planned: bool = False) -> list[Alert]:
+    """電力の注意（UI-89）: 発電を使い切って届かなかったときは「電力が足りていません」、発電が売れ
+    残っているのに家計が払えないときは「家計が電気料金を払えない」と打てる手。"""
+    out = []
+    short = _short_supply(stats)
+    if short:
+        ratio = math.ceil(short * 1000) / 10
+        out.append(Alert("power", f"電力が足りていません（不足率 {ratio:.1f}%）"))
+    unpaid = unaffordable_power(stats)
+    if unpaid:
+        percent = math.ceil(unpaid * 1000) / 10
+        text = f"家計が電気料金を払えず、要る電気の {percent:.1f}% を使えていません"
+        notes = []
+        capacity = stats.get("power.capacity", 0.0)
+        if capacity > 0:
+            left = max(0.0, 1 - stats.get("power.used", 0.0) / capacity)
+            notes.append(f"発電は {math.floor(left * 1000) / 10:.1f}% 売れ残っています")
+        layers = {
+            k.removeprefix("power.household."): v
+            for k, v in stats.items()
+            if k.startswith("power.household.")
+        }
+        if layers:
+            worst = min(sorted(layers), key=lambda k: layers[k])
+            name = reports.LAYER_NAMES.get(worst, worst)
+            notes.append(
+                f"一番使えていないのは{name}で、届いたのは要る量の "
+                f"{math.floor(layers[worst] * 1000) / 10:.1f}%"
+            )
+        if notes:
+            text += "（" + "。".join(notes) + "）"
+        out.append(Alert("power_bill", text + "。打てる手: " + _power_remedies(planned)))
+    return out
+
+
+def _power_remedies(planned: bool) -> str:
+    """家計が電気料金を払えないときに打てる手（UI-89）。"""
+    if planned:
+        return "電気の公定価格を下げる・失業手当を出す"
+    return "所得税・消費税を下げる・失業手当を出す・電気料金に公共料金の上限を付ける"
+
+
+def _is_planned(island: m.Island) -> bool:
+    """国が持つ経済体制（計画経済）の島か。"""
+    defs = get_game().defs
+    economy = (island.regime or {}).get("economy", "")
+    return defs.regimes.get(economy, {}).get("owner") == OWNER_STATE
 
 
 def _board_unread(island: m.Island) -> int:
@@ -524,16 +598,18 @@ def _board_unread(island: m.Island) -> int:
 
 def _mine_alerts(
     island: m.Island, losing: list[dict[str, Any]], unread: int, replies: int = 0
-) -> list[str]:
+) -> list[Alert]:
     """持ち主にだけ出す注意（赤字の施設・未読の公電・掲示板の返信）。"""
     out = []
     if losing:
         turns = display.BOOK_TURNS
-        out.append(f"直近 {turns} ターンの損益が赤字の施設が {len(losing)} か所あります")
+        out.append(
+            Alert("losing", f"直近 {turns} ターンの損益が赤字の施設が {len(losing)} か所あります")
+        )
     if unread:
-        out.append(f"読んでいない公電が {unread} 通あります")
+        out.append(Alert("letters", f"読んでいない公電が {unread} 通あります"))
     if replies:
-        out.append(f"掲示板で自分の書き込みへの返信が {replies} 件あります")
+        out.append(Alert("board", f"掲示板で自分の書き込みへの返信が {replies} 件あります"))
     ext = island.ext or {}
     resumed = ext.get("resumed_turn")
     inactive_from = ext.get("inactive_from")
@@ -552,11 +628,12 @@ def _mine_alerts(
             for t in treaties
         )
         if count:
-            out.append(f"休止の間に、停戦・講和を代わりに {count} 件結んでいます（外交の画面）")
+            text = f"休止の間に、停戦・講和を代わりに {count} 件結んでいます（外交の画面）"
+            out.append(Alert("caretaker", text))
     return out
 
 
-def _fuel_alerts(island: m.Island, mine: bool, viewer: int | None = None) -> list[str]:
+def _fuel_alerts(island: m.Island, mine: bool, viewer: int | None = None) -> list[Alert]:
     """市場の段が残した燃料の注意を、島の画面と国の要約に同じ文で出す。"""
     out = []
     for row in _facility_rows(island):
@@ -568,14 +645,14 @@ def _fuel_alerts(island: m.Island, mine: bool, viewer: int | None = None) -> lis
         for entry in f.economy.get(power_fuel_notice.NOTICES, {}).get("active", []):
             if entry["kind"] == power_fuel_notice.PRICE and f.status == "power_price":
                 continue
-            out.append(display.message(entry["kind"], **entry["args"]))
+            out.append(Alert("fuel", display.message(entry["kind"], **entry["args"])))
     return out
 
 
 MERCHANT_NOTICE_TURNS = 24  # 海外の商人が量を減らし始める何ターン前から注意を出すか
 
 
-def _merchant_alerts(island: m.Island) -> list[str]:
+def _merchant_alerts(island: m.Island) -> list[Alert]:
     """持ち主にだけ出す海外の商人の注意（量を減らし始める前と、減っている間。タブ 9 FX-27）。
     商人は次のターンの市場で売り買いするので、次のターンで見る（貿易の画面と同じ）。"""
     config = get_game().config
@@ -587,36 +664,76 @@ def _merchant_alerts(island: m.Island) -> list[str]:
     share = merchant.taper(here, config, coming)
     if share < 1:
         return [
-            f"海外の商人が持ってくる量と買っていく量が減っています"
-            f"（今は初めの {round(share * 100)}%。あと {left} ターン来て、その後は来なくなります）"
+            Alert(
+                "merchant",
+                f"海外の商人が持ってくる量と買っていく量が減っています"
+                f"（今は初めの {round(share * 100)}%。あと {left} ターン来て、"
+                "その後は来なくなります）",
+            )
         ]
     # 量が減る初めのターン（来てから taper_from ターンを過ぎたターン）まで、今から何ターンか
     start = trade_state(here)["merchant_from"] + config.get("foreign_merchant.taper_from") + 1
     soon = start - island.world.turn
     if soon <= MERCHANT_NOTICE_TURNS:
         return [
-            f"海外の商人は {soon} ターン後から持ってくる量と買っていく量を減らし始めます"
-            f"（あと {left} ターン来て、その後は来なくなります）"
+            Alert(
+                "merchant",
+                f"海外の商人は {soon} ターン後から持ってくる量と買っていく量を減らし始めます"
+                f"（あと {left} ターン来て、その後は来なくなります）",
+            )
         ]
     return []
 
 
-def _diplomacy_alerts(brief: dict[str, Any]) -> list[str]:
+def _diplomacy_alerts(brief: dict[str, Any]) -> list[Alert]:
     """持ち主にだけ出す外交の注意（返事待ちの条約の提案・戦争・破棄の予告）。"""
     out = []
     if brief.get("to_answer"):
-        out.append(f"返事をしていない条約の提案が {len(brief['to_answer'])} 件あります")
+        count = len(brief["to_answer"])
+        out.append(Alert("treaty", f"返事をしていない条約の提案が {count} 件あります"))
     for w in brief["wars"]:
-        out.append(f"{w['with']['name']}と{w['state_name']}です")
+        out.append(Alert("war", f"{w['with']['name']}と{w['state_name']}です"))
     return out
 
 
-def island_alerts(island: m.Island, mine: bool) -> tuple[list[str], list[dict[str, Any]]]:
-    """島の画面の「注意」（国の要約の alerts と同じ文）と、持ち主の「次にすること」
-    （国の要約の next_steps と同じ）。"""
+def trade_todo(island: m.Island) -> list[dict[str, Any]]:
+    """貿易の画面の「いますべきこと」（W-247 (6)）: 今月すべきことの貿易の種類の行
+    （持ち主だけ）。"""
+    return todo.trade_rows(island, _merchant_alerts(island))
+
+
+def _owner_lists(
+    island: m.Island,
+    public: list[Alert],
+    stats: dict[str, float],
+    before: dict[str, float],
+    facilities: dict[str, Any],
+    goods: list[dict[str, Any]],
+    hungry: list[dict[str, Any]],
+    dip: dict[str, Any],
+    losing: list[dict[str, Any]],
+    unread: int,
+    replies: int,
+) -> tuple[list[Alert], list[dict[str, Any]], list[dict[str, Any]]]:
+    """持ち主の「注意」（public は誰にでも出す注意。持ち主にだけ出す注意を足す）・「次にすること」・
+    「今月すべきこと」（島のホームと国の要約で同じ値から作る。stats は直近の統計、before はその
+    前のターンの統計）。"""
+    alerts = public + _mine_alerts(island, losing, unread, replies)
+    alerts += _merchant_alerts(island)
+    alerts += _diplomacy_alerts(dip)
+    steps = next_steps(island, stats, facilities, goods, hungry, losing)
+    rows = todo.rows(island, alerts, steps, facilities, goods, dip, stats, before)
+    return alerts, steps, rows
+
+
+def home_lists(
+    island: m.Island, mine: bool
+) -> tuple[list[str], list[dict[str, Any]], list[dict[str, Any]]]:
+    """島のホームの「注意」（国の要約の alerts と同じ文）と、持ち主の「次にすること」・
+    「今月すべきこと」（国の要約の next_steps・todo と同じ）。"""
     world = island.world
     currency = _currency(island)
-    _, latest = display.latest_stats(island)
+    stats_turn, latest = display.latest_stats(island)
     stats = reports.with_fiscal(latest)
     facilities = facility_state(island, mine)
     goods = _goods(island, latest, currency, mine)
@@ -630,17 +747,28 @@ def island_alerts(island: m.Island, mine: bool) -> tuple[list[str], list[dict[st
         hungry,
         world.turn,
         reports.yield_data(island),
+        planned=_is_planned(island),
     )
     out += _fuel_alerts(island, mine)
     steps: list[dict[str, Any]] = []
+    todo_rows: list[dict[str, Any]] = []
     if mine:
+        before = _stats_at(island, stats_turn - 1) if stats_turn is not None else {}
         losing = losing_facilities(island, currency)
         unread = letters.inbox(island).filter(read_at__isnull=True).count()
-        out += _mine_alerts(island, losing, unread, _board_unread(island))
-        out += _merchant_alerts(island)
-        out += _diplomacy_alerts(diplomacy.brief(island, mine))
-        steps = next_steps(island, latest, facilities, goods, hungry, losing)
-    return out, steps
+        dip = diplomacy.brief(island, mine)
+        replies = _board_unread(island)
+        out, steps, todo_rows = _owner_lists(
+            island, out, latest, before, facilities, goods, hungry, dip, losing, unread, replies
+        )
+    return [a.text for a in out], steps, todo_rows
+
+
+def island_alerts(island: m.Island, mine: bool) -> tuple[list[str], list[dict[str, Any]]]:
+    """島の画面の「注意」（国の要約の alerts と同じ文）と、持ち主の「次にすること」
+    （国の要約の next_steps と同じ）。"""
+    alerts, steps, _ = home_lists(island, mine)
+    return alerts, steps
 
 
 STEP_LINKS = {
@@ -678,9 +806,7 @@ def next_steps(
     if island.world.turn - founded >= GUIDE_TURNS:
         return []
     defs = get_game().defs
-    planned = (
-        defs.regimes.get((island.regime or {}).get("economy", ""), {}).get("owner") == OWNER_STATE
-    )
+    planned = _is_planned(island)
     out = []
     if island.world.turn <= founded:  # まだ一度も更新されていない
         starting = facilities.get("starting_count", 0)
@@ -703,12 +829,23 @@ def next_steps(
                 island,
             )
         )
-    if stats.get("power.shortage"):
+    if _short_supply(stats):
         out.append(
             _step(
                 "power",
                 "電力が足りていません。発電所の燃料と、送電線でつながっている範囲を確かめます",
                 "facilities",
+                island,
+            )
+        )
+    elif unaffordable_power(stats):
+        out.append(
+            _step(
+                "power_bill",
+                "家計が電気料金を払えず、電気を控えています（発電は売れ残っています）。命令の欄で、"
+                + _power_remedies(planned)
+                + "を考えます",
+                "orders",
                 island,
             )
         )
@@ -845,6 +982,30 @@ def shipping_brief(stats: dict[str, float], currency: str) -> dict[str, Any] | N
             _, unit = reports.stat_label(name)
             out[key] = stats[name]
             out[f"{key}_text"] = display.stat_text(name, stats[name], unit, currency)
+    return out
+
+
+TRADE_LINE = [
+    ("exports", "trade.exports"),
+    ("imports", "trade.imports"),
+    ("merchant", "trade.merchant"),
+]
+
+
+def trade_brief(stats: dict[str, float], currency: str) -> dict[str, Any] | None:
+    """国のまとめの貿易の 1 行（W-247 (8)。誰にでも）: 輸出・輸入の額と、そのうち海外の商人に
+    払った額（為替の画面と同じ統計）。輸出も輸入もなければ None。"""
+    if not stats.get("trade.exports") and not stats.get("trade.imports"):
+        return None
+    out: dict[str, Any] = {}
+    for key, name in TRADE_LINE:
+        _, unit = reports.stat_label(name)
+        out[key] = stats.get(name, 0.0)
+        out[f"{key}_text"] = display.stat_text(name, out[key], unit, currency)
+    out["text"] = (
+        f"輸出 {out['exports_text']}・輸入 {out['imports_text']}"
+        f"（うち海外の商人に払った額 {out['merchant_text']}）"
+    )
     return out
 
 
@@ -1009,18 +1170,21 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
         ]
         if log_turn is not None
         else [],
-        "alerts": _alerts(
-            stats,
-            politics,
-            facilities,
-            goods,
-            bonds,
-            hungry,
-            world.turn,
-            reports.yield_data(island),
-        ),
+        "trade": trade_brief(latest, currency),
     }
-    data["alerts"] += _fuel_alerts(island, mine, viewer)
+    alerts = _alerts(
+        stats,
+        politics,
+        facilities,
+        goods,
+        bonds,
+        hungry,
+        world.turn,
+        reports.yield_data(island),
+        planned=_is_planned(island),
+    )
+    alerts += _fuel_alerts(island, mine, viewer)
+    data["alerts"] = [a.text for a in alerts]
     if mine:
         losing = losing_facilities(island, currency)
         data["losing"] = losing[:LIST_MAX]
@@ -1034,11 +1198,20 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
             ],
         }
         data["board"] = {"unread_replies": _board_unread(island)}
-        data["alerts"] += _mine_alerts(
-            island, losing, data["letters"]["unread"], data["board"]["unread_replies"]
+        alerts, data["next_steps"], data["todo"] = _owner_lists(
+            island,
+            alerts,
+            latest,
+            before,
+            facilities,
+            goods,
+            hungry,
+            data["diplomacy"],
+            losing,
+            data["letters"]["unread"],
+            data["board"]["unread_replies"],
         )
-        data["alerts"] += _diplomacy_alerts(data["diplomacy"])
-        data["next_steps"] = next_steps(island, latest, facilities, goods, hungry, losing)
+        data["alerts"] = [a.text for a in alerts]
         # 備蓄の放出の決まり（市場 MK-39。命令 set_warehouse_release）と、いま放出している財
         released = (island.economy or {}).get("ext", {}).get("warehouse_released", [])
         data["warehouse_release"] = {
