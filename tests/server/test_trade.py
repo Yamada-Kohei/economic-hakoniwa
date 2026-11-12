@@ -336,7 +336,9 @@ def test_island_pages_link_to_trade_and_fx(client, world):
     for url in (f"/islands/{island.id}/", f"/islands/{island.id}/finance/"):
         html = client.get(url).content.decode()
         assert f'href="/islands/{island.id}/trade/"' in html
-        assert f'href="/islands/{island.id}/fx/"' in html
+    # 為替は入口「貿易」の中のタブ（UI-71）
+    html = client.get(f"/islands/{island.id}/trade/").content.decode()
+    assert f'href="/islands/{island.id}/fx/"' in html
     assert client.get(f"/islands/{island.id}/trade/").status_code == 200
     assert client.get(f"/islands/{island.id}/fx/").status_code == 200
     # 島を作った時点で港と商社が置かれるので、最初の更新の前から貿易は始まっている（W-140）

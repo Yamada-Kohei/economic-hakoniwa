@@ -2,6 +2,7 @@
 
 import { turnDate } from "../calendar.js";
 import { getJson } from "../island/api.js";
+import { slowdownHtml } from "../island/slowdown.js";
 import { attachRange, escapeHtml, formatValue, makeChart, mountCharts, mountStaticPies, rangeQuery } from "./common.js";
 import { mountOrders } from "./orders.js";
 
@@ -66,6 +67,10 @@ if (detail) {
     if (request !== state.request) return;
     const kind = data.kind_name && data.kind_name !== data.name ? `（${data.kind_name}）` : "";
     slot("title").textContent = `${data.name}${kind}の帳簿`;
+    // 今の生産調整中・生産停止中のわけと打てる手（W-250）
+    const why = slot("slowdown");
+    why.innerHTML = data.slowdown ? slowdownHtml(data.slowdown) : "";
+    why.hidden = !data.slowdown;
     // 表と同じく、支出は負の数で描く（損益と同じ向きにそろえる）
     const flows = FLOW_ITEMS.filter((k) => k in data.items).map((k) => ({
       key: k,

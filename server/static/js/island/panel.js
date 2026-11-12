@@ -12,6 +12,7 @@ import { escapeHtml, getJson, sendJson } from "./api.js";
 import { MilitaryTile } from "./military.js";
 import { words } from "../military/common.js";
 import { recipeLabel, recipeWords } from "./recipes.js";
+import { slowdownHtml } from "./slowdown.js";
 
 const MAX_TILES = 64; // 1つの命令で選べるマスの数（orders.yaml の maxItems と同じ）
 
@@ -257,7 +258,8 @@ export class TilePanel {
     }
     if (f.priority != null) rows.push(["優先度", `${f.priority}${f.priority_changed ? "（変更済み）" : ""}`]);
     if (f.status_text) rows.push(["状態", f.status_text]);
-    if (f.hint) rows.push(["できること", f.hint]);
+    // 生産調整中・生産停止中は、わけと一緒に打てる手を下の欄に出す（W-250）
+    if (f.hint && !f.slowdown) rows.push(["できること", f.hint]);
     if (f.halted_until != null) rows.push(["停止期間", `${turnDate(f.halted_until)}まで`]);
     if (f.closing != null) {
       const c = f.closing_sale;
@@ -276,6 +278,7 @@ export class TilePanel {
       rows.push([`${fuel.name}の備え`, `${fuel.amount} ${fuel.unit}（${months}）。目標 ${fuel.target_amount} ${fuel.unit}（使う見込みの ${fuel.target_months} か月分）`]);
     }
     const parts = [`<h3>${escapeHtml(f.name)}</h3>${table(rows)}`];
+    if (f.slowdown) parts.push(slowdownHtml(f.slowdown));
     if (f.owner === "private" && Object.keys(this.defs.facilities[f.kind]?.recipes || {}).length > 1) {
       parts.push(`<p class="hint">${escapeHtml(recipeWords().ownershipHint)}</p>`);
     }

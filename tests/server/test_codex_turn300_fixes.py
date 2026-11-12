@@ -54,7 +54,7 @@ def test_summary_and_island_screen_tell_who_is_hungry_and_why(client, played):
     assert alert in seen["alerts"]
     text, error = _tool(_keyed(token), "summary")
     assert not error and json.loads(text)["hunger"] == data["hunger"]
-    page = client.get(f"/islands/{a.id}/").content.decode()
+    page = client.get(f"/islands/{a.id}/home/").content.decode()
     assert "注意" in page and "お金が足りず買えません" in page
     # 体の持ちこたえる分（population.hunger.tolerance）までの不足で、蓄えもなければ飢えていない
     economy = a.economy

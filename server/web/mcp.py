@@ -211,7 +211,8 @@ REPORTS = {
     "決まった売り買いの設定・前の結果は品目ごとの warehouse_standing に入る）",
     "facilities": "施設（町ごとの労働力・失業と買いに行く店の場所 towns、産業ごとの従業者数 "
     "industry_workers。持ち主には火力発電所の燃料在庫の月数と目標 fuel_reserves、施設ごとの"
-    "状態・人手・損益・預金・借入と、畑を作り替えている農場の内訳と企業の帳簿 table.firms、"
+    "状態・人手・損益・預金・借入、生産調整中・生産停止中の施設の目標を下げたわけと打てる手 "
+    "slowdown、畑を作り替えている農場の内訳と企業の帳簿 table.firms、"
     "他国には企業の名前・所有・施設の数と種類・働く人 firms）",
     "fiscal": "財政（国庫の収入と支出・予算・税率・国債の一覧）",
     "finance": "金融（中央銀行の方針・金利・融資。持ち主には銀行ごとの帳簿と金融の政策）",
@@ -222,7 +223,11 @@ REPORTS = {
     "海外の商人 merchant・船の貸し出し lend_ships（命令 set_ship_lending）"
     "（あと何ターン来るか turns_left、量を減らし始めるターン taper_start、今の量の割合 share（%）、"
     "値段の倍率 multiplier（島の物価を含む））",
-    "fx": "為替と国際収支（持ち主には外貨の持ち高と為替の政策）",
+    "fx": "為替と国際収支（レートごとに前のターンに市場で売りと買いに出ていた外貨の量 offered・"
+    "wanted（中央銀行の注文を除く。介入で買えるのは売りに出ている分だけ）。持ち主には外貨の持ち高と"
+    "為替の政策と、中央銀行どうしの融通 swaps（借りている額 borrowed・限度額 limit・まだ借りられる"
+    "額 room・貸している額 lent_total と 1 ターンの増加 borrowed_change・lent_change）。"
+    "為替の効き方は guide(which=fx)）",
     "politics": "政治（体制・政情・支持率・議席・選挙。持ち主には政情の内訳と命令の選択肢）",
     "diplomacy": "外交（戦争の状態・効いている条約・終わった条約・条約の違反の記録。持ち主には"
     "返事待ちの条約の提案と、宣戦・条約の命令の選択肢。経済の条項は terms に中身が出る。"
@@ -570,6 +575,7 @@ def _guide(request, args):
         "hakoniwa": "/help/hakoniwa/",
         "start": "/help/start/",
         "ai": "/help/ai/",
+        "fx": "/help/fx/",
         "terms": "/terms/",
     }
     path = paths.get(args.get("which"), "/help/")
@@ -835,13 +841,13 @@ TOOLS = [
         "find で見出しや言葉から、offset で続きから読める。which=start なら入門"
         "（/help/start/。最初の1年・困ったとき・施設の状態の言葉）、which=hakoniwa なら"
         "従来の箱庭を遊んだ人向けの手引き（/help/hakoniwa/）、which=ai なら AI で遊ぶ人向けの"
-        "手引き（/help/ai/。鍵・つなぎ方・毎ターンの回し方・上限）、"
-        "which=terms なら利用規約（/terms/）。",
+        "手引き（/help/ai/。鍵・つなぎ方・毎ターンの回し方・上限）、which=fx なら為替の効き方と"
+        "打てる手（/help/fx/）、which=terms なら利用規約（/terms/）。",
         _guide,
         {
             "which": {
                 "type": "string",
-                "enum": ["general", "start", "hakoniwa", "ai", "terms"],
+                "enum": ["general", "start", "hakoniwa", "ai", "fx", "terms"],
                 "description": "general（既定）は詳しい仕組み、start は入門、"
                 "hakoniwa は従来の箱庭との違い、ai は AI で遊ぶ人向け、terms は利用規約",
             },
@@ -853,7 +859,9 @@ TOOLS = [
     Tool(
         "summary",
         "国の要約",
-        "国の今の状態を1回で: 主な指標と前のターンからの変化、政情、止まった施設と工事、財の値段と"
+        "国の今の状態を1回で: 主な指標と前のターンからの変化、政情、止まった施設と工事"
+        "（自分の島なら生産調整中の施設ごとの目標を下げたわけと打てる手 facilities.slowdown）、"
+        "財の値段と"
         "買えなかった量と国の倉庫の在庫（stock）、商業・サービス業の店（services）、人口の増減のわけ（population_changes）、"
         "飢えている家計の層とそのわけ（hunger）、火力発電所の燃料在庫の月数と目標（fuel_reserves）、"
         "満期の近い国債、直近のターンの出来事、燃料が尽きる前の知らせを含む注意。"
@@ -911,7 +919,9 @@ TOOLS = [
         "マス",
         "1マスの中身（地形・人口・インフラの整備度・工事）と、そこの施設の詳しい情報。"
         "自分の島なら施設の帳簿と命令に使う値も。施設の expand は、同じマスに同じ施設を建てる"
-        "命令 build（建て増し・農場の次の段階への工事）の資材と工期、今は通らないわけ problem。",
+        "命令 build（建て増し・農場の次の段階への工事）の資材と工期、今は通らないわけ problem。"
+        "自分の施設が生産調整中・生産停止中なら、目標を下げたわけ（在庫の何ターン分か・売れ残り・"
+        "付け値と費用・安い輸入）と打てる手 slowdown。",
         _tile,
         {"x": {"type": "integer"}, "y": {"type": "integer"}, "island": ISLAND},
         ("x", "y"),
@@ -1353,7 +1363,9 @@ TOOLS = [
         "found",
         "建国",
         "ランダムな形の島と勧められた首都で建国する（1人1島。島がないときだけ）。"
-        "resources は地下資源 2 つまで（stone・iron_ore・coal など。鋼鉄には iron_ore と coal）。",
+        "resources は地下資源 2 つまで（stone・iron_ore・coal など。鋼鉄には iron_ore と coal）。"
+        "ほかの国がもう選んだ資源の数は api_get /api/founding/cells の resource_counts"
+        "（nations は数えた国の数）。",
         _found,
         {
             "name": {"type": "string", "description": "国名"},
@@ -1403,9 +1415,11 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "help_hakoniwa": ("guide",),
     "help_start": ("guide",),
     "help_ai": ("guide",),  # guide(which=ai)
+    "help_fx": ("guide",),  # guide(which=fx)
     "help_chain": ("defs",),  # 産業のつながりの元は施設の作り方: defs(section="facilities")
     "terms": ("guide",),  # 利用規約は guide(which=terms)
     "island": ("summary", "map", "tile"),  # 地図の重ね表示は map の overlay
+    "home": ("summary",),  # 次にすること・注意・主な変化・国勢・資源・出来事
     "turn_log": ("turn_log", "changes"),
     "island_economy": ("report", "stats"),
     "island_market": ("report",),

@@ -3,6 +3,7 @@
 {% block content %}
 <div class="news-page">
 <h1>{% translate "世界の近況" %}</h1>
+{% include "web/world_nav.html" with current="news" %}
 <p class="hint">{% translate "全部の国の主な出来事です（建国・選挙・憲法の改正・災害・倒産・称号・条約・戦争など）。国の名前から、その国の年表と紹介のページへ行けます。" %}</p>
 <p><a href="{% url 'top' %}#awards">{% translate "世界の賞と受賞国を見る" %}</a></p>
 

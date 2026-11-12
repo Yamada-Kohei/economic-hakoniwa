@@ -32,7 +32,7 @@ from server.hall import services as hall
 from server.letters import services as letters
 from server.orders.models import Order
 from server.turns.models import TurnLog
-from server.web import country, diplomacy, display, military, rankings, reports
+from server.web import country, diplomacy, display, military, rankings, reports, slowdown
 from server.web import politics as politics_views
 from server.world import models as m
 from server.world.repository import facility_from_row, island_from_row
@@ -163,10 +163,13 @@ def facility_state(
     island: m.Island, mine: bool = True, viewer: int | None = None
 ) -> dict[str, Any]:
     """止まった施設、満たない稼働のわけごとの数、工事中の施設、稼働準備中（まだ動いたことがない）の
-    施設の数（地図の施設の状態と同じ。誰にでも。隠した施設は持ち主と見つけた国だけ。MI-62）。"""
+    施設の数（地図の施設の状態と同じ。誰にでも。隠した施設は持ち主と見つけた国だけ。MI-62）。
+    持ち主には、生産調整中の施設ごとの目標を下げたわけと打てる手（W-250）も出す（止まった施設の
+    行にも slowdown を付ける）。"""
     game = get_game()
     state = display.island_for_naming(island)
-    stopped, works = [], []
+    facts = slowdown.Facts(island, state) if mine else None
+    stopped, works, slowed = [], [], []
     reasons: dict[str, int] = defaultdict(int)
     rows = [r for r in _facility_rows(island) if display.sees_facility(r, mine, viewer)]
     starting = 0
@@ -206,6 +209,7 @@ def facility_state(
                 }
             )
             continue
+        why = slowdown.explain(facts, f) if facts is not None else None
         if row.operating_rate <= 0 and row.status:  # 地図の止まった印（赤い点）と同じ
             stopped.append(
                 {
@@ -219,15 +223,28 @@ def facility_state(
                     **(
                         {
                             "owner_name": display.message(f"owner_{f.owner}"),
-                            "hint": display.status_hint(f),
+                            "hint": why["hint"] if why and why["hint"] else display.status_hint(f),
                         }
                         if mine
                         else {}
                     ),
+                    **({"slowdown": why} if why is not None else {}),
                 }
             )
         elif row.operating_rate < fac.FULL and text:
             reasons[text] += 1
+            if why is not None:  # 生産調整中（作り続けている）のわけ
+                slowed.append(
+                    {
+                        "number": row.number,
+                        "name": facility_name(game.defs, game.config, state, f),
+                        "kind_name": game.defs.name("facilities", row.kind),
+                        "x": x,
+                        "y": y,
+                        "operating_rate": round(row.operating_rate * 100 / fac.FULL),
+                        "slowdown": why,
+                    }
+                )
     infra = (island.economy or {}).get("infra", {})
     return {
         "facilities": len(rows),
@@ -237,6 +254,7 @@ def facility_state(
         "partial": [
             {"status_text": t, "count": n} for t, n in sorted(reasons.items(), key=lambda r: -r[1])
         ],
+        **({"slowdown_count": len(slowed), "slowdown": slowed[:LIST_MAX]} if mine else {}),
         "on_sale_count": len(on_sale),
         "on_sale": on_sale[:LIST_MAX],
         "construction_count": len(works),

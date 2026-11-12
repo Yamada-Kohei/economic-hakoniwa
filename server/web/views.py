@@ -68,6 +68,18 @@ def top(request):
 
 
 def island_page(request, island_id: int):
+    """島の地図（UI-71 の入口「地図」）: 俯瞰図・重ね表示・マスの窓・命令の列。"""
+    return render(request, "web/island.html", _island_context(request, island_id, "island"))
+
+
+def island_home_page(request, island_id: int):
+    """島のホーム（UI-71 の入口「ホーム」）: 次にすること・注意・前のターンからの主な変化・国勢・
+    資源・出来事。"""
+    return render(request, "web/island_home.html", _island_context(request, island_id, "home"))
+
+
+def _island_context(request, island_id: int, page: str) -> dict:
+    """島のホームと地図に共通の値。"""
     island = get_object_or_404(Island.objects.select_related("owner", "world"), pk=island_id)
     defs = get_game().defs
     turn, stats = display.latest_stats(island)
@@ -109,10 +121,10 @@ def island_page(request, island_id: int):
         "logs": display.log_entries(logs.filter(turn=last_turn)) if last_turn is not None else [],
         "log_turn": last_turn,
         "show_guide": island.world.turn - founded < overview.GUIDE_TURNS,
-        "page": "island",
+        "page": page,
         "plan_label": politics_views.page_label(island),
     }
-    return render(request, "web/island.html", context)
+    return context
 
 
 def _climate_name(island: Island) -> str:
@@ -554,17 +566,43 @@ def help_start_page(request):
         "web/help_start.html",
         {
             "statuses": [
-                {"name": display.message(f"status_{key}"), "text": text}
-                for key, text in STATUS_HELP
+                {"name": status_help_name(key), "text": text} for key, text in STATUS_HELP
             ],
             "commute": game.config.get("labor.commute_radius"),
             "base_admin": game.config.get("orders.base_admin_power"),
             "power_fuel_turns": game.config.get("founding.power_fuel_turns"),
+            "careful": _careful_help(game.config),
         },
     )
 
 
-# 入門の「施設の状態の言葉」（名前は messages.yaml の status_<key> から引く）
+def _careful_help(config) -> dict:
+    """入門の「軽く動かさないほうがいい数値」に出す数（W-255）。"""
+
+    def percent(name: str) -> str:
+        return f"{config.get(name) * 100:g}"
+
+    return {
+        "indexation": percent("labor.indexation"),
+        "max_raise": percent("labor.max_raise"),
+        "haircut": percent("bonds.haircut"),
+        "default_premium": percent("bonds.default_premium"),
+        "default_decay": config.get("bonds.default_decay_turns"),
+        "default_exclusion": config.get("bonds.default_exclusion_turns"),
+        "default_crunch": config.get("banking.default_crunch_turns"),
+        "default_stability": -config.get("politics.events.default"),
+        "default_stability_turns": config.get("politics.events.default_turns"),
+        "exit_turns": config.get("firms.exit_loss_turns"),
+        "entries": config.get("firms.entries_per_turn"),
+        "cb_lock_turns": config.get("central_bank.switch_lock_turns"),
+        "transition_turns": config.get("politics.transition.turns"),
+        "working_years": config.get("education.working_years"),
+        "grievance_max": config.get("politics.press.grievance_max"),
+    }
+
+
+# 入門の「施設の状態の言葉」（名前は messages.yaml の status_<key> から引く。stop_ で始まるものは
+# そのままの名前。UI-84）
 STATUS_HELP = (
     ("starting", "建ったばかりで、次の更新で動き出します。止まっているわけではありません。"),
     ("construction", "工事中です。人手・資材・お金が足りないと、かっこの中にわけが出ます。"),
@@ -576,7 +614,16 @@ STATUS_HELP = (
     ("wages", "賃金を払うお金が足りません。売上と賃金・仕入れの釣り合いを見ます。"),
     ("power", "発電量が足りません。発電所の燃料か、発電所の数を見ます。"),
     ("no_grid", "発電所のある送電網につながっていません。送電線か送電網の工事でつなぎます。"),
-    ("target", "売れ行きに合わせて作る量を減らしています。不具合ではありません。"),
+    (
+        "target",
+        "売れ行きに合わせて作る量を減らしながら作り続けています。不具合ではありません。"
+        "地図の窓に、目標を下げたわけと打てる手が出ます。",
+    ),
+    (
+        "stop_target",
+        "売れ行きに合わせて作る量を 0 まで下げ、止まっています（地図に赤い点）。"
+        "地図の窓に、わけと打てる手が出ます。",
+    ),
     ("budget", "国庫の同じ項目の年の予算が足りません。予算を増やすか、優先度を上げます。"),
     ("staff_plan", "人員計画で決めた人数の枠で人が足りません。計画の画面で枠を見直します。"),
     ("equipment", "設備が傷んで作れる量が減っています。国営なら公共事業費で直します。"),
@@ -588,6 +635,11 @@ STATUS_HELP = (
     ("cargo", "運送業・海運業が、運ぶ荷の量に合わせて動いています。不具合ではありません。"),
     ("business", "銀行が、預金と融資の大きさに合わせて動いています。不具合ではありません。"),
 )
+
+
+def status_help_name(key: str) -> str:
+    """入門の施設の状態の言葉の名前（画面と同じ文。stop_ で始まるものは止まったときの文）。"""
+    return display.message(key if key.startswith("stop_") else f"status_{key}")
 
 
 def terms_page(request):
@@ -630,6 +682,38 @@ def help_ai_page(request):
 def help_chain_page(request):
     """産業のつながりの手引き: 施設の作り方から品目どうしのつながりを図と表で見せる（UI-61）。"""
     return render(request, "web/help_chain.html", {"chain": chain_map.chain_data()})
+
+
+def help_fx_page(request):
+    """為替の効き方と打てる手の手引き（W-252）。数は game.yaml の fx・banking などから。"""
+    config = get_game().config
+
+    def percent(name: str) -> str:
+        return f"{config.get(name) * 100:g}"
+
+    return render(
+        request,
+        "web/help_fx.html",
+        {
+            "fx": {
+                "band": percent("fx.band"),
+                # 毎ターン同じ向きに値幅いっぱい動いたときの 1 年（12 ターン）の動き
+                "band_year": f"{((1 + config.get('fx.band')) ** 12 - 1) * 100:.0f}",
+                "keep_turns": config.get("fx.keep_turns"),
+                "reserve_share": percent("fx.reserve_share"),
+                "swap_quota": percent("fx.swap_quota"),
+                "swap_issuer_share": percent("fx.swap_issuer_share"),
+                "swap_spread": percent("fx.swap_spread"),
+                "peg_band": percent("fx.peg_band"),
+                "bank_share": percent("banking.foreign_share"),
+                "bank_step": percent("banking.foreign_step"),
+                "bank_margin": percent("banking.foreign_margin"),
+                "trader_cut": percent("trade.trader_cut"),
+                "merchant_turns": config.get("foreign_merchant.turns"),
+                "cb_lock_turns": config.get("central_bank.switch_lock_turns"),
+            },
+        },
+    )
 
 
 def help_hakoniwa_page(request):
@@ -700,7 +784,7 @@ def _help_context() -> dict:
         ],
         "units": [
             {"name": defs.name("goods", g), "unit": defs.unit_name(g)}
-            for g in defs.goods
+            for g in display.goods_in_order(defs)
             if defs.unit_name(g)
         ],
         "grades": _grade_help(game),

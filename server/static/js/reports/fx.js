@@ -4,6 +4,7 @@
 
 import { mountCharts } from "./common.js";
 import { mountOrders } from "./orders.js";
+import { marketWarning } from "./fx-check.js";
 
 // 入力欄の名前ごとの値の形（ほかは文字）
 const INT_FIELDS = new Set(["currency", "issuer", "amount"]);
@@ -33,6 +34,8 @@ document.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!form.reportValidity()) return;
   const notice = form.closest("section")?.querySelector(".fx-notice");
+  const empty = marketWarning(form);
+  if (empty && !confirm(empty)) return;
   await orders.add(form.dataset.order, payloadOf(form));
   if (notice) notice.textContent = orders.message;
 });
