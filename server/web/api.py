@@ -385,7 +385,9 @@ def island_map(request, island_id: int):
             "y": f.y,
             "built": f.built,
             "level": (f.ext or {}).get("level"),
-            "grade": (f.ext or {}).get("grade"),  # 農場の段階（FM-50）。地図が絵を選ぶ
+            # 地図が絵を選ぶ: 作り方（綿の畑・銅の鉱山など）と農場の段階（FM-50）
+            "recipe": f.recipe,
+            "grade": (f.ext or {}).get("grade"),
             "status": f.status,
             "rate": f.operating_rate,
             **({"hidden": True} if (f.ext or {}).get("hidden") else {}),

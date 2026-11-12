@@ -65,21 +65,39 @@ def _defs():
     return load_game(settings.HAKONIWA_GAME_CONFIG).defs
 
 
-def _allowed_keys() -> set[str]:
+def _allowed_keys(theme: dict | None = None) -> set[str]:
     d = _defs()
     sprites = {f.get("sprite", fid) for fid, f in d.facilities.items() if not f.get("tileless")}
     coastal = {f.get("sprite", fid) for fid, f in d.facilities.items() if f.get("coastal")}
     # 段階のある施設（農場。FM-50）は段階 1 からの絵 facility/<名>@g<段階>
-    graded = {
-        f"facility/{f.get('sprite', fid)}@g{n}"
+    grades = {
+        fid: ["", *(f"@g{n}" for n in range(1, len(f.get("grade_steps", ())) + 1))]
         for fid, f in d.facilities.items()
-        for n in range(1, len(f.get("grade_steps", ())) + 1)
     }
+    graded = {
+        f"facility/{d.facilities[fid].get('sprite', fid)}{g}"
+        for fid, gs in grades.items()
+        for g in gs[1:]
+    }
+    # 作り方で分ける絵（theme.yaml の sprite_looks）は facility/<名>+<財>
+    # （段階のある施設は @g<段階> も）。
+    # 財はその施設のどれかの作り方の産出か投入にあること
+    looks = set()
+    for fid, goods in ((theme or {}).get("sprite_looks") or {}).items():
+        used = {
+            g for r in d.facilities[fid]["recipes"].values() for g in (*r["outputs"], *r["inputs"])
+        }
+        for good in goods:
+            assert good in used, f"sprite_looks の {fid} の {good}: どの作り方にも出てきません"
+            looks |= {
+                f"facility/{d.facilities[fid].get('sprite', fid)}+{good}{g}" for g in grades[fid]
+            }
     return (
         {f"terrain/{t}" for t in d.terrain}
         | {f"facility/{s}" for s in sprites}
         | {f"facility/{s}@{side}" for s in coastal for side in ("sw", "ne", "nw")}
         | graded
+        | looks
         | {f"capital/{s}" for s in sprites}
         | {f"capital/{c}" for c in _capital_combos()}
         | {f"housing/{s}" for s in d.settlements}
@@ -141,7 +159,7 @@ def test_sprite_entries(theme_dir: Path) -> None:
     # 使う施設や描く仕組みがまだ入っていない絵（先に置いたもの）。名前の一覧との照合だけ省く
     pending = _entries(theme, "pending_sprites")
     assert not entries.keys() & pending.keys(), "sprites と pending_sprites に同じ名前があります"
-    allowed = _allowed_keys()
+    allowed = _allowed_keys(theme)
     third_party = THIRD_PARTY.read_text(encoding="utf-8")
     for key, spec in {**entries, **pending}.items():
         scale = spec.get("scale", theme.get("sprite_scale", 1))

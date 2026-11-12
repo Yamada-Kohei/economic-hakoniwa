@@ -160,22 +160,43 @@ function drawBlock(ctx, px, py, h, colors, theme, sprite) {
 }
 
 /**
- * 施設の絵の名前。住宅は住宅地の段階ごと。農場のように段階のある施設は段階の絵（facility/farm@g1 など。
- * 段階 0 と、段階の絵がないときは名前のままの絵）。首都の官庁は、体制で決まる建物の組み合わせの絵
+ * 施設の絵の名前。住宅は住宅地の段階ごと。作り方や段階で絵を分ける施設は lookSprite の絵。
+ * 首都の官庁は、体制で決まる建物の組み合わせの絵
  * （capital/議事堂-王宮 など。map.capital_buildings を軸の順に "-" でつなぐ）、なければ capital/ の絵。
  */
-function facilitySprite(f, defs, map, isCapital, sprites) {
+function facilitySprite(f, defs, map, isCapital, sprites, theme) {
   if (!f.built) return sprites.get("construction");
   if (f.kind === defs.housing) {
     const level = defs.settlements[f.level] ? f.level : Object.keys(defs.settlements)[0];
     return sprites.get(`housing/${level}`);
   }
   const name = defs.facilities[f.kind]?.sprite || f.kind;
-  const graded = f.grade ? sprites.get(`facility/${name}@g${f.grade}`) : null;
-  if (!isCapital) return coastalSprite(f, defs, map, name, sprites) || graded || sprites.get(`facility/${name}`);
+  if (!isCapital) {
+    return coastalSprite(f, defs, map, name, sprites) || lookSprite(f, defs, theme, name, sprites)
+      || sprites.get(`facility/${name}`);
+  }
   const buildings = defs.facilities[f.kind]?.category === "admin" ? map.capital_buildings || [] : [];
   const regime = buildings.length ? sprites.get(`capital/${buildings.join("-")}`) : null;
   return regime || sprites.get(`capital/${name}`) || sprites.get(`facility/${name}`);
+}
+
+/**
+ * 作り方と段階で分けた絵（docs/map-art.md）。theme.sprite_looks の財が作り方の産出か投入にあれば
+ * facility/<名>+<財>（綿の畑・銅の鉱山・油の火力など）、段階（農場の FM-50）があれば後ろに @g<段階>。
+ * 合う絵の順: 財と段階 → 財だけ → 段階だけ。どれもなければ null（名前のままの絵）。
+ */
+function lookSprite(f, defs, theme, name, sprites) {
+  const recipe = defs.facilities[f.kind]?.recipes?.[f.recipe];
+  const goods = theme?.sprite_looks?.[f.kind] || [];
+  const look = recipe ? goods.find((g) => g in recipe.outputs || g in recipe.inputs) : undefined;
+  const grade = f.grade ? `@g${f.grade}` : "";
+  const names = look ? [`${name}+${look}${grade}`, `${name}+${look}`] : [];
+  if (grade) names.push(`${name}${grade}`);
+  for (const n of names) {
+    const sprite = sprites.get(`facility/${n}`);
+    if (sprite) return sprite;
+  }
+  return null;
 }
 
 // 海沿いの施設の絵の向き: 海のあるマスの向きと、その絵の名前に付ける印（docs/map-art.md）。
@@ -200,7 +221,7 @@ function coastalSprite(f, defs, map, name, sprites) {
 /** 施設: 絵があれば絵、なければ色付きの箱。住宅の高さは住宅地の段階、工事中は枠だけ。 */
 function drawFacility(ctx, f, map, defs, px, ground, theme, sprites) {
   const isCapital = map.capital && map.capital[0] === f.x && map.capital[1] === f.y;
-  const sprite = facilitySprite(f, defs, map, isCapital, sprites);
+  const sprite = facilitySprite(f, defs, map, isCapital, sprites, theme);
   if (sprite) {
     drawSprite(ctx, sprite, px, ground + theme.tile_height);
     if (f.built) drawStopped(ctx, f, defs, px, ground, theme.tile_height / 2);

@@ -510,33 +510,6 @@ def sawtooth(
     return [Prim((u0, v0, u1, v1), z0 + 0.1, [Face(slope, c, roof), Face(slope, glass, sky), end])]
 
 
-def field(
-    u0: float,
-    v0: float,
-    u1: float,
-    v1: float,
-    n: int,
-    c: str,
-    along: str = "u",
-    h: float = 1.2,
-) -> list[Prim]:
-    """畑: 土の板と、その上の作物の畝 n 本（along の向きに通る）。"""
-    out = [box(u0, v0, u1, v1, 0, 0.8, SOIL)]
-    if along == "u":
-        w = (v1 - v0) / n
-        out += [
-            box(u0 + 0.01, v0 + i * w + w * 0.2, u1 - 0.01, v0 + i * w + w * 0.75, 0.8, h, c)
-            for i in range(n)
-        ]
-    else:
-        w = (u1 - u0) / n
-        out += [
-            box(u0 + i * w + w * 0.2, v0 + 0.01, u0 + i * w + w * 0.75, v1 - 0.01, 0.8, h, c)
-            for i in range(n)
-        ]
-    return out
-
-
 def haystack(u: float, v: float, r: float, h: float) -> list[Prim]:
     """手で積んだ干し草の山: 低い円柱の上に円すい。"""
     return [cylinder(u, v, r, 0, h * 0.3, c=STRAW), cone(u, v, r, h * 0.38, h * 0.3, c=STRAW)]
@@ -567,6 +540,124 @@ def pivot(v: float, u0: float, u1: float, z: float = 6) -> list[Prim]:
         out.append(box(u - 0.006, v - 0.03, u + 0.006, v - 0.018, 0.8, z - 0.8, METAL))
         out.append(box(u - 0.006, v + 0.018, u + 0.006, v + 0.03, 0.8, z - 0.8, METAL))
     return out
+
+
+# 農場の作物ごとの畝の色: (段階 0・1 の畝, 上面, 近代化の畝, 上面, 畝の高さ,
+#   段階 0 の小さい区画の畝, 上面)
+FARM_CROPS = {
+    "grain": (CROP, None, CROP_LUSH, None, 1.2, CROP_GREEN, None),
+    "cotton": ("#6f9a48", "#d9dcc6", "#5c9442", "#dfe1cc", 1.4, "#6f9a48", "#d9dcc6"),
+    "luxury_crop": ("#3d6e35", "#4f8a40", "#356a2f", "#4a8a3c", 2.4, "#3d6e35", "#4f8a40"),
+}
+
+
+def field(
+    u0: float,
+    v0: float,
+    u1: float,
+    v1: float,
+    n: int,
+    c: str,
+    along: str = "u",
+    h: float = 1.2,
+    top: str | None = None,
+) -> list[Prim]:
+    """畑: 土の板と、その上の作物の畝 n 本（along の向きに通る）。top は畝の上面の色。"""
+    out = [box(u0, v0, u1, v1, 0, 0.8, SOIL)]
+    if along == "u":
+        w = (v1 - v0) / n
+        out += [
+            box(u0 + 0.01, v0 + i * w + w * 0.2, u1 - 0.01, v0 + i * w + w * 0.75, 0.8, h, c, top)
+            for i in range(n)
+        ]
+    else:
+        w = (u1 - u0) / n
+        out += [
+            box(u0 + i * w + w * 0.2, v0 + 0.01, u0 + i * w + w * 0.75, v1 - 0.01, 0.8, h, c, top)
+            for i in range(n)
+        ]
+    return out
+
+
+def farm_yard(crop: str) -> list[Prim]:
+    """手作業の農場の庭: 穀物は干し草の山、綿は摘んだ綿の袋、嗜好品は茶葉などを干す小屋。"""
+    if crop == "grain":
+        return [
+            *haystack(0.14, 0.76, 0.06, 9),
+            *haystack(0.3, 0.86, 0.06, 9),
+            *haystack(0.36, 0.72, 0.05, 7),
+        ]
+    if crop == "cotton":
+        return [
+            box(u, v, u + 0.07, v + 0.06, 0, 3, "#efede4")
+            for u, v in ((0.1, 0.74), (0.2, 0.8), (0.12, 0.86), (0.3, 0.72))
+        ]
+    return house(0.1, 0.7, 0.4, 0.9, 4, 4, "u", WOOD, ROOF_BROWN)
+
+
+def farm_store(crop: str, grade: int) -> list[Prim]:
+    """作物をしまう建物: 穀物はサイロ（機械化）と穀物ビン 3 基（近代化）、
+    ほかは作業の建屋（綿繰り・加工）。"""
+    if crop == "grain" and grade == 1:
+        return [cylinder(0.14, 0.8, 0.075, 0, 20, cap="dome", cap_c=ROOF_SLATE)]
+    if crop == "grain":
+        return [
+            prim
+            for u, v in ((0.14, 0.72), (0.14, 0.88), (0.32, 0.8))
+            for prim in (
+                cylinder(u, v, 0.085, 0, 9, c=GRAIN_BIN),
+                cone(u, v, 0.085, 3.5, 9, c=METAL),
+            )
+        ]
+    if grade == 1:
+        return [
+            box(0.06, 0.64, 0.24, 0.94, 0, 9, WALL),
+            gable(0.06, 0.64, 0.24, 0.94, 9, 4, "v", ROOF_TILE, WALL),
+        ]
+    return [
+        box(0.06, 0.66, 0.42, 0.94, 0, 8, WALL),
+        gable(0.06, 0.66, 0.42, 0.94, 8, 4, "u", ROOF_TILE, WALL),
+    ]
+
+
+def farm(grade: int, crop: str) -> list[Prim]:
+    """農場（FM-50 の段階 grade、作物 crop）。
+
+    手作業: 小さく区切った畑（作物の色がまちまち）、耕しただけの区画、庭（farm_yard）、木の家。
+    機械化: 1 枚の大きな畑、トラクター（嗜好品は手で摘むのでなし）、作物の建物、鉄の農機庫、
+    れんがの家。
+    近代化（灌漑・改良品種）: 奥の用水路、青々とした畑、畑をまたぐ散水管（嗜好品は点滴の灌漑なので
+    なし）、作物の建物、肥料のタンク、農機庫。
+    """
+    c, top, c2, top2, h, alt, alt_top = FARM_CROPS[crop]
+    if grade == 0:
+        return [
+            *field(0.08, 0.08, 0.36, 0.34, 3, alt, h=h, top=alt_top),
+            *field(0.4, 0.08, 0.66, 0.34, 3, c, "v", h, top),
+            *field(0.7, 0.08, 0.92, 0.34, 2, alt, "v", h, alt_top),
+            *field(0.08, 0.38, 0.36, 0.62, 3, c, "v", h, top),
+            box(0.4, 0.38, 0.6, 0.6, 0, 0.8, SOIL),
+            *farm_yard(crop),
+            *house(0.66, 0.66, 0.86, 0.86, 5, 5, "v", WOOD, ROOF_BROWN),
+        ]
+    if grade == 1:
+        return [
+            *field(0.06, 0.06, 0.94, 0.56, 7, c, h=h, top=top),
+            *(tractor(0.66, 0.2) if crop != "luxury_crop" else []),
+            *farm_store(crop, 1),
+            box(0.3, 0.64, 0.62, 0.9, 0, 6, METAL),
+            gable(0.3, 0.64, 0.62, 0.9, 6, 4, "u", ROOF_STEEL, METAL),
+            *house(0.72, 0.7, 0.9, 0.88, 5, 5, "v", BRICK, DARK),
+        ]
+    return [
+        box(0.04, 0.04, 0.96, 0.1, 0, 0.6, CONCRETE, WATER),
+        *field(0.06, 0.12, 0.94, 0.6, 8, c2, h=max(h, 1.6), top=top2),
+        *(tiered(2, *pivot(0.36, 0.1, 0.9)) if crop != "luxury_crop" else []),
+        *farm_store(crop, 2),
+        cylinder(0.52, 0.78, 0.05, 0, 7, c=WHITE),
+        box(0.66, 0.68, 0.92, 0.9, 0, 6, WALL),
+        gable(0.66, 0.68, 0.92, 0.9, 6, 4, "u", ROOF_STEEL, WALL),
+    ]
 
 
 def car(u: float, v: float, c: str, z0: float = 0, along: str = "u") -> list[Prim]:
@@ -1354,46 +1445,6 @@ SHAPES: dict[str, list[Prim]] = {
         *tree(0.9, 0.42, 0.06, 11),
         *tree(0.56, 0.9, 0.06, 10),
     ],
-    # 農場は段階（FM-50）ごとに絵を分ける。名前のままは手作業、@g1 は機械化、@g2 は近代化
-    "facility/farm": [
-        # 手作業: 小さく区切った畑（作物の色がまちまち）、耕しただけの区画、干し草の山、木の家
-        *field(0.08, 0.08, 0.36, 0.34, 3, CROP_GREEN),
-        *field(0.4, 0.08, 0.66, 0.34, 3, CROP, along="v"),
-        *field(0.7, 0.08, 0.92, 0.34, 2, CROP_GREEN, along="v"),
-        *field(0.08, 0.38, 0.36, 0.62, 3, CROP, along="v"),
-        box(0.4, 0.38, 0.6, 0.6, 0, 0.8, SOIL),
-        *haystack(0.14, 0.76, 0.06, 9),
-        *haystack(0.3, 0.86, 0.06, 9),
-        *haystack(0.36, 0.72, 0.05, 7),
-        *house(0.66, 0.66, 0.86, 0.86, 5, 5, "v", WOOD, ROOF_BROWN),
-    ],
-    "facility/farm@g1": [
-        # 機械化: 1 枚の大きな畑、トラクター、鉄の農機庫、サイロ、れんがの家
-        *field(0.06, 0.06, 0.94, 0.56, 7, CROP),
-        *tractor(0.66, 0.2),
-        cylinder(0.14, 0.8, 0.075, 0, 20, cap="dome", cap_c=ROOF_SLATE),
-        box(0.3, 0.64, 0.62, 0.9, 0, 6, METAL),
-        gable(0.3, 0.64, 0.62, 0.9, 6, 4, "u", ROOF_STEEL, METAL),
-        *house(0.72, 0.7, 0.9, 0.88, 5, 5, "v", BRICK, DARK),
-    ],
-    "facility/farm@g2": [
-        # 近代化（灌漑・改良品種）: 奥の用水路、青々とした畑、畑をまたぐ散水管、穀物ビン 3 基、
-        # 肥料のタンク、農機庫
-        box(0.04, 0.04, 0.96, 0.1, 0, 0.6, CONCRETE, WATER),
-        *field(0.06, 0.12, 0.94, 0.6, 8, CROP_LUSH, h=1.6),
-        *tiered(2, *pivot(0.36, 0.1, 0.9)),
-        *[
-            prim
-            for u, v in ((0.14, 0.72), (0.14, 0.88), (0.32, 0.8))
-            for prim in (
-                cylinder(u, v, 0.085, 0, 9, c=GRAIN_BIN),
-                cone(u, v, 0.085, 3.5, 9, c=METAL),
-            )
-        ],
-        cylinder(0.52, 0.78, 0.05, 0, 7, c=WHITE),
-        box(0.66, 0.68, 0.92, 0.9, 0, 6, WALL),
-        gable(0.66, 0.68, 0.92, 0.9, 6, 4, "u", ROOF_STEEL, WALL),
-    ],
     "facility/lumber_camp": [
         *tree(0.25, 0.22, 0.1, 30),
         *tree(0.5, 0.15, 0.09, 26),
@@ -1420,7 +1471,7 @@ SHAPES: dict[str, list[Prim]] = {
         *[box(u, v, u + 0.06, v + 0.06, 0, 34, IRON) for u in (0.18, 0.36) for v in (0.18, 0.36)],
         box(0.15, 0.15, 0.45, 0.45, 34, 4, RUST),
         *house(0.5, 0.45, 0.88, 0.85, 12, 7, "u", WALL, ROOF_SLATE),
-        cone(0.25, 0.72, 0.13, 9, c=COAL),
+        cone(0.2, 0.76, 0.17, 12, c=COAL),
     ],
     "facility/steel_mill": [
         # 熱風炉 3 基・高炉・鋳床の建屋・煙突
@@ -3581,6 +3632,37 @@ def skyscraper() -> list[Prim]:
         parts += curtain(u0, 0.53, u0 + 0.24, 0.89, zb, h, steps=2)
     return parts
 
+
+# 農場は段階（FM-50）と作物ごとに絵を分ける。名前のままは穀物の手作業、@g1 は機械化、@g2 は近代化、
+# +cotton・+luxury_crop は綿・嗜好品の畑（theme.yaml の sprite_looks）
+for _crop in FARM_CROPS:
+    for _grade in range(3):
+        _look = "" if _crop == "grain" else f"+{_crop}"
+        _suffix = f"@g{_grade}" if _grade else ""
+        SHAPES[f"facility/farm{_look}{_suffix}"] = farm(_grade, _crop)
+
+# 鉱山は掘る物ごとに鉱石の山の色を変える（名前のままは石炭。theme.yaml の sprite_looks）
+MINE_ORES = {
+    "iron_ore": "#7a4434",
+    "bauxite": "#c27848",
+    "copper_ore": "#5f8a72",
+    "uranium_ore": "#8f8b7c",
+}
+for _ore, _c in MINE_ORES.items():
+    SHAPES[f"facility/mine+{_ore}"] = [
+        *SHAPES["facility/mine"][:-1],
+        cone(0.2, 0.76, 0.17, 12, c=_c),
+    ]
+# ウラン鉱石は黄色いドラム缶（精錬前の粉を詰めて送る）
+SHAPES["facility/mine+uranium_ore"] += [
+    cylinder(u, v, 0.025, 0, 4, c=YELLOW) for u, v in ((0.93, 0.56), (0.93, 0.63), (0.93, 0.7))
+]
+# 火力発電所は燃料ごと: 名前のままは石炭の山、+fuel は油のタンク 2 基
+SHAPES["facility/thermal_power_plant+fuel"] = [
+    *[p for p in SHAPES["facility/thermal_power_plant"] if p.faces[0].color != COAL],
+    cylinder(0.64, 0.76, 0.075, 0, 10, c=WHITE),
+    cylinder(0.84, 0.66, 0.075, 0, 10, c=WHITE),
+]
 
 SHAPES["housing/high_rise"] = high_rise()
 SHAPES["housing/skyscraper"] = skyscraper()
