@@ -25,6 +25,7 @@ from server.web import (
     diplomacy,
     display,
     founding,
+    good_page,
     military,
     overview,
     rankings,
@@ -172,13 +173,13 @@ def economy_page(request, island_id: int):
 
 def market_page(request, island_id: int):
     """市場: 財ごとの値段と売買の量、選んだ財の推移とこのターンの約定、買えなかった施設。"""
+    chosen = request.GET.get("good")
+    if chosen in get_game().defs.goods:  # 前の「?good=」の URL は品目のページへ（UI-81）
+        return redirect("market_good", island_id, chosen)
     island, context, stats = _report(request, island_id, "market", "市場")
     rows = reports.market_table(island, stats, context["currency"], context["mine"])
-    goods = [r["good"] for r in rows]
-    chosen = request.GET.get("good")
     context.update(
         rows=rows,
-        good=chosen if chosen in goods else (goods[0] if goods else ""),
         market_turn=reports.market_turn(island),
     )
     if context["mine"]:
@@ -186,6 +187,21 @@ def market_page(request, island_id: int):
     else:
         context["note"] = "約定の相手と、原料を買えずに止まった施設は、島の持ち主だけが見られます。"
     return render(request, "web/market.html", context)
+
+
+def market_good_page(request, island_id: int, good: str):
+    """品目のページ（UI-72・UI-73）: 上に値段と量・作る施設と使う施設・推移、下に打てる手の箱。"""
+    if good not in get_game().defs.goods:
+        raise Http404
+    island, context, stats = _report(request, island_id, "market", "")
+    viewer = own_island(request.user)
+    view = good_page.good_view(
+        island, good, stats, context["currency"], context["mine"], viewer.id if viewer else None
+    )
+    context.update(item=view, title=view["name"], market_turn=reports.market_turn(island))
+    if not context["mine"]:
+        context["note"] = "約定の相手と、原料を買えずに止まった施設は、島の持ち主だけが見られます。"
+    return render(request, "web/market_good.html", context)
 
 
 def chain_page(request, island_id: int):

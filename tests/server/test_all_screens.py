@@ -62,7 +62,8 @@ ISLAND_APIS = [
     "api_island_chain",
     "api_country_diary",
 ]
-# 引数の要る API（下の `_extra_urls` が開く）
+# 引数の要る画面と API（下の `_extra_urls` が開く）
+ISLAND_PAGES_WITH_ARGS = ["market_good"]
 ISLAND_APIS_WITH_ARGS = ["api_tile", "api_island_market", "api_facility_book"]
 # 画像など、中身を JSON や HTML で確かめない島の下の道
 ISLAND_IMAGES = ["island_flag", "monument_image", "api_country_flag", "api_monument_image"]
@@ -80,7 +81,14 @@ ISLAND_WRITES = [
 # 持ち主ではない人には断ってよい道（この名前だけは 403 と 404 を許す）
 OWNER_ONLY = {"diary", "api_country_diary", "api_island_chain", "api_facility_book"}
 
-KNOWN = set(ISLAND_PAGES + ISLAND_APIS + ISLAND_APIS_WITH_ARGS + ISLAND_IMAGES + ISLAND_WRITES)
+KNOWN = set(
+    ISLAND_PAGES
+    + ISLAND_PAGES_WITH_ARGS
+    + ISLAND_APIS
+    + ISLAND_APIS_WITH_ARGS
+    + ISLAND_IMAGES
+    + ISLAND_WRITES
+)
 
 
 def _names_under_islands() -> set[str]:
@@ -117,7 +125,7 @@ def _clients(kinds: dict[str, int]) -> dict[str, dict[str, Client]]:
 
 
 def _extra_urls(island: m.Island) -> list[tuple[str, str]]:
-    """引数の要る読む API の URL（名前, URL）。首都・占領されたマス・反乱軍のマスのマスを開く。"""
+    """引数の要る画面と読む API の URL（名前, URL）。首都・占領されたマス・反乱軍のマスを開く。"""
     urls = []
     middle = island.size // 2
     cells = {(0, 0), (middle, middle)}
@@ -127,6 +135,8 @@ def _extra_urls(island: m.Island) -> list[tuple[str, str]]:
     for cell in sorted(cells)[:6]:
         urls.append(("api_tile", reverse("api_tile", args=[island.id, cell[0], cell[1]])))
     urls.append(("api_island_market", reverse("api_island_market", args=[island.id, "food"])))
+    for good in ("food", "uranium_ore"):  # 品目のページ（記録のある品目と、無いかもしれない品目）
+        urls.append(("market_good", reverse("market_good", args=[island.id, good])))
     first = island.facilities.order_by("number").first()
     if first is not None:
         urls.append(

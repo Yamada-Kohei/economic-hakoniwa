@@ -48,7 +48,7 @@
             <tbody>
               {% for g in b.goods %}
               <tr>
-                <td><a href="{% url 'island_market' island.id %}?good={{ g.good }}">{{ g.name }}</a></td>
+                <td><a href="{% url 'market_good' island.id g.good %}">{{ g.name }}</a></td>
                 <td>{{ b.currency_symbol|currency_prefix }}{{ g.price|floatformat:"-1g" }}</td>
                 <td>{% if g.change is not None %}{{ g.change|floatformat:1 }}%{% endif %}</td>
                 <td>{{ currency|currency_prefix }}{{ g.price_own|floatformat:"-1g" }}</td>

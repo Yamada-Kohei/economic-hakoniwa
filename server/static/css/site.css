@@ -50,6 +50,7 @@ h1 { margin: 16px 0 8px; color: var(--navy); text-shadow: 2px 2px 0 #b7c9f0; }
 h2 { font-size: 1.15em; margin: 0 0 8px; }
 /* 本文の見出しは濃い青の帯（当時の個人サイトの見出し） */
 main h2 { background: var(--accent); color: #fff; padding: 3px 8px; border-left: 8px solid var(--navy); font-size: 1.05em; }
+main .action-box > h2 { background: none; border-left: 0; padding-left: 0; }
 main h2 a, main h2 a:visited { color: #fff; }
 main h2 .muted, main h2 .heading-date, main h2 small { color: #dce8ff; }
 main h3 { color: var(--navy); border-bottom: 1px dotted var(--border); }
@@ -326,6 +327,14 @@ table.facilities .slowdown-reason { display: block; max-width: 30em; white-space
 .report-orders { margin-top: 12px; }
 .bank-action { margin-top: 8px; }
 .bank-action h3 { font-size: 1em; }
+/* 品目や施設のページの「打てる手」の箱（UI-73）。見る所と分けて 1 色の枠でそろえる */
+.action-box { border: 2px solid var(--accent); }
+.action-box > h2 { color: var(--accent); }
+.action-box h3 { font-size: 1em; margin: 12px 0 4px; }
+/* 品目のページの今の数（名前と値の 2 列） */
+dl.good-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 4px 0; }
+dl.good-facts dt { font-weight: bold; }
+dl.good-facts dd { margin: 0; }
 
 @media (max-width: 760px) {
   /* マスの情報の窓は、画面の下から出す板にする（狭くて横に出せないため）。上半分で地図を押せる */

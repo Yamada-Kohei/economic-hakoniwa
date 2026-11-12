@@ -10,7 +10,7 @@
   <p class="hint">{% blocktranslate with share=chain.share %}原料から中間財、最終財へと並べています。市場で買いたい量の {{ share }}% 以上が買えなかった品目は赤く出し、続いたターン数を付けます（3 ターン続くとターンログでも知らせます）。輸入は商社と海外の商人が島の市場で売った量、輸出は商社が買った量です。値段の動きは 12 ターン前との比べです。量は実物に近い単位です。{% endblocktranslate %}</p>
   {% if chain.short %}
   <p class="chain-alert">{% translate "品不足" %}:
-    {% for g in chain.short %}<a href="{% url 'island_market' island.id %}?good={{ g.good }}">{{ g.name }}</a>{% blocktranslate count turns=g.streak %}（{{ turns }} ターン）{% plural %}（{{ turns }} ターン）{% endblocktranslate %}{% if not forloop.last %}、{% endif %}{% endfor %}
+    {% for g in chain.short %}<a href="{% url 'market_good' island.id g.good %}">{{ g.name }}</a>{% blocktranslate count turns=g.streak %}（{{ turns }} ターン）{% plural %}（{{ turns }} ターン）{% endblocktranslate %}{% if not forloop.last %}、{% endif %}{% endfor %}
   </p>
   {% endif %}
   <div class="chain-tiers">
@@ -20,7 +20,7 @@
       {% for g in tier.goods %}
       <article class="chain-good{% if g.short %} short{% endif %}" id="good-{{ g.good }}">
         <header>
-          <a href="{% url 'island_market' island.id %}?good={{ g.good }}"><strong>{{ g.name }}</strong></a>
+          <a href="{% url 'market_good' island.id g.good %}"><strong>{{ g.name }}</strong></a>
           {% if g.price %}<span class="muted">{{ g.price }}{% if g.change %}（{{ g.change }}）{% endif %}</span>{% endif %}
           {% if g.short %}<span class="chain-badge">{% blocktranslate count turns=g.streak %}不足 {{ turns }} ターン{% plural %}不足 {{ turns }} ターン{% endblocktranslate %}</span>{% endif %}
         </header>
@@ -64,7 +64,7 @@
         {% for f in group.rows %}
         <tr>
           <td>{% if f.on_map %}<a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a>{% else %}{{ f.name }}{% endif %}<br><small class="muted">{{ f.kind_name }}</small></td>
-          <td>{{ f.status_text }}{% if f.good %} <a href="{% url 'island_market' island.id %}?good={{ f.good }}">{% translate "市場" %}</a>{% endif %}</td>
+          <td>{{ f.status_text }}{% if f.good %} <a href="{% url 'market_good' island.id f.good %}">{% translate "市場" %}</a>{% endif %}</td>
           <td class="num">{% if f.rate is not None %}{{ f.rate }}%{% endif %}</td>
         </tr>
         {% endfor %}
