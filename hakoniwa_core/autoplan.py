@@ -787,9 +787,9 @@ def _reserved_materials(
     reserved: dict[str, int] = {}
     for f in island.facilities:
         if not f.built and f.owner == owner:
-            construction = defs.facilities[f.kind]["construction"]
             done = f.progress / fac.total_progress(defs, f)
-            for good, qty in construction.get("materials", {}).items():
+            # 段階の作り方の農場や段階を上げる工事の資材も含める（materials_of。W-257）
+            for good, qty in fac.materials_of(defs, f).items():
                 left = qty - int(qty * done) - stock.total(f.stock, good)
                 reserved[good] = reserved.get(good, 0) + max(0, left)
     return reserved
@@ -1045,7 +1045,7 @@ def _candidates(
     # 島の鉱業資源を、島のどの施設（工事中を含む）も使っていなければ、使う施設を1つ（輸出向け）
     used = {g for f in island.facilities for g in fac.recipe_of(defs, f)["inputs"]}
     # 鉱脈の資源（銅など。world.veins）は、買い手が軍だけの間は掘らない（設計書 MI-44。掘ると
-    # 買い手のいない精錬所と鉱山が建ち、鉱山の上限 2 を使って鉄鉱石の鉱山が建たなくなる）
+    # 買い手のいない精錬所と鉱山が建ち、鉱山の上限を使って鉄鉱石の鉱山が建たなくなる）
     veins = set(config.get("world.veins"))
     for resource in sorted(set(island.resources) - used - veins):
         yield from (c for c in _users(defs, config, island, resource) if spare(*c))

@@ -94,7 +94,9 @@ class FirmsFunds(IslandStage):
         members = [f for f in co.members(island, number) if "foreclosed" not in f.economy]
         built = [f for f in members if f.built]
         keep: dict[int, int] = {}
-        troubled = False
+        # 担保割れの不足を返し終わるまでと、差し押さえた施設の請求が残る間は配当しない（FM-65）
+        troubled = bool(rec.get(co.DEFICIENCY)) or _seized_claims_left(island, name)
+        rates: dict[int, int] | None = None
         for f in built:
             entity = facility_entity(f.id)
             keep[f.id] = next_payments(island, ctx.defs, config, f) * settings[
@@ -127,7 +129,19 @@ class FirmsFunds(IslandStage):
             service = banks.debt_service(island, entity, ctx.turn)
             short = service + owed - ledger.money(island, entity)
             if short > 0:
-                co.draw(island, f, short, ctx)
+                # 兄弟の手元から回すのは、今の値段で変動費の利益が出ている施設だけ（FM-65。採算の
+                # 合わない施設に兄弟の手元を注ぎ続けて、倒れるのが遅れるだけにしない）
+                if rates is None:
+                    rates = freight_rates.facility_rates(island, ctx.defs, config)
+                profit = variable_profit(
+                    ctx.defs,
+                    config,
+                    f,
+                    island.economy.prices,
+                    f.economy.get("wage", 0),
+                    rates.get(f.id, 0),
+                )
+                co.draw(island, f, short, ctx if profit > 0 else None)
             if f.economy.get(co.POOLED_AT) != ctx.turn:
                 f.economy.pop(co.POOLED, None)
         # 4. 連結の法人税
@@ -140,6 +154,9 @@ class FirmsFunds(IslandStage):
         arrears.add_tax(island, name, owed_tax - tax)
         cash_flow = profit + depreciation
         rec[co.RED] = rec.get(co.RED, 0) + 1 if cash_flow < 0 else 0
+        # 担保割れの不足は、配当と新しい出資より先に企業の預金から返す（FM-65）
+        if rec.get(co.DEFICIENCY):
+            co.pay_deficiency(island, number, co.spare(island, number))
         # 5. 配当
         dividend = 0
         if not troubled and rec[co.RED] == 0 and owed_tax == tax:
@@ -275,6 +292,16 @@ def enroll(island: IslandState, ctx: StageContext) -> None:
             co.join(island, f, co.new_firm(island, OWNER_PRIVATE, ctx.turn))
 
 
+def _seized_claims_left(island: IslandState, name: str) -> bool:
+    """企業 name が元の持ち主の、差し押さえ中の施設に貸し手の請求が残っているか。"""
+    for f in island.facilities:
+        seized = f.economy.get("foreclosed")
+        if isinstance(seized, dict) and seized.get("owner") == name:
+            if (seized.get("claims") or {}).get(arrears.LOANS):
+                return True
+    return False
+
+
 def dissolve(island: IslandState, ctx: StageContext) -> None:
     """施設がなく、差し押さえの残りもない企業を消す（民営は預金を株主に返し、株を消す）。"""
     held = {co.firm_of(f) for f in island.facilities}
@@ -293,6 +320,8 @@ def dissolve(island: IslandState, ctx: StageContext) -> None:
             holder = co.shareholder(island, number)
             arrears.settle(island, Payer(name))
             arrears.write_off(island, name)
+            # 担保割れの不足を預金で返せるだけ返し、残りは消える（FM-65。会社の清算）
+            co.pay_deficiency(island, number, ledger.money(island, name))
             left = ledger.money(island, name)
             ledger.pay(island, name, holder, left, "equity_return")
             if left > 0 and holder.startswith("hh:"):

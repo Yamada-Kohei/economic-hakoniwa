@@ -56,6 +56,7 @@
     "near_capital": {"type": "integer", "minimum": 0, "description": "首都のマスからこのマス数以内にだけ建てられる"},
     "private": {"const": false, "description": "民間が建てられず持てない施設（体制によらず国営だけ。民営工場の参入と民営化の命令で除く）。書かなければ体制の決まりどおり"},
     "max_per_island": {"type": "integer", "minimum": 1, "description": "1つの国が持てる数（工事中も数える）。書かなければ上限なし"},
+    "limit_by_resources": {"type": "boolean", "description": "真なら、1つの国が持てる数は max_per_island と、島が持つ鉱業資源のうち作り方で使えるものの数の大きい方（FM-66）"},
     "max_size": {"type": "integer", "minimum": 1, "description": "1 マスに建て増せる規模の上限（段6 A3）。書かなければ hakoniwa_core/facilities.py の DEFAULT_MAX_SIZE。1 は建て増せない"},
     "buildable": {"type": "boolean", "description": "命令で建てられるか。false は自動で建つもの（町など）。書かなければ true"},
     "zone": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "このマスの指定（office など）があるマスにだけ建つ"},

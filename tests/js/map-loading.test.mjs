@@ -41,6 +41,7 @@ function environment({ failedUrl, failedDraw = false } = {}) {
         : { size: 1, terrain: ["plain"], mine: false };
     },
     words: () => ({ hidden: "非公開" }), overlayList: () => [],
+    BARS: "bars", FILL: "fill", overlayLegend: () => "", readOverlayMode: () => "bars", writeOverlayMode() {},
     tileToWorld: () => ({ px: 0, py: 0 }), lift: () => 0,
     attachControls: () => ({}),
     MissileTarget: class {}, TilePanel: class {},

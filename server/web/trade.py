@@ -381,6 +381,7 @@ def trade_data(
         "blocs": [bloc_view(b, islands, goods=False) for b in member],
     }
     if not mine:
+        data["overview"] = overview(data, stats, currency)
         return data
     data["blocs"] = [_member_bloc(b, here, islands) for b in member]
     data["other_blocs"] = [
@@ -422,7 +423,86 @@ def trade_data(
     ]
     data["cancel_turns"] = config.get("trade.contract_cancel_turns")
     data["policy"] = policy_view(world, here, islands)
+    data["overview"] = overview(data, stats, currency)
+    data["orders"] = trade_orders(island)
+    # いますべきこと（ホームの今月すべきことの貿易の行。overview は todo を通してこのモジュールを
+    # 読むので、ここで読む）
+    from server.web.overview import trade_todo
+
+    data["todo"] = trade_todo(island)
     return data
+
+
+# 貿易の概要に出す統計（誰にでも。W-247 (5)）
+OVERVIEW_STATS = ["trade.exports", "trade.imports", "trade.balance"]
+# 貿易の命令（概要の打てる手の箱に、出ている命令と前のターンの結果を出す種類）
+TRADE_ORDERS = (
+    "propose_contract",
+    "accept_contract",
+    "cancel_contract",
+    "create_bloc",
+    "join_bloc",
+    "leave_bloc",
+    "bloc_settings",
+    "transfer_bloc",
+    "take_over_bloc",
+    "set_tariff",
+    "set_export_subsidy",
+    "set_import_quota",
+    "set_embargo",
+    "send_aid",
+    "set_ship_lending",
+)
+
+
+def overview(data: dict[str, Any], stats: dict[str, float], currency: str) -> dict[str, Any]:
+    """貿易の概要（W-247 (5)）: 入っている貿易圏・輸出と輸入と貿易収支と、持ち主には運ぶ途中の荷の
+    重さと契約の数。trade_data の値を数えただけで、新しい計算はしない。"""
+    out: dict[str, Any] = {
+        "blocs": [
+            {"id": b["id"], "name": b["name"], "is_rep": b["rep"] == data["island"]}
+            for b in data["blocs"]
+        ],
+        "rows": reports.stat_rows(stats, OVERVIEW_STATS, currency),
+    }
+    if not data["mine"]:
+        return out
+    contracts = data["contracts"]
+    proposed = [c for c in contracts if c["state"] == contract_states.PROPOSED]
+    active = [c for c in contracts if c["state"] == contract_states.ACTIVE]
+    moving = [s for s in data["shipments"] if s["direction"] != "lent"]
+    out["contracts"] = {
+        "active": len(active),
+        "offered": sum(1 for c in proposed if c["can_accept"]),  # 相手からの申し込み
+        "waiting": sum(1 for c in proposed if c["proposed_by_me"]),  # 相手の返事待ち
+        "short": sum(1 for c in active if c["short_any"]),  # 直近に届けきれなかった契約
+    }
+    out["shipments"] = {
+        "count": len(moving),
+        "export_tons": round(sum(s["load"] for s in moving if s["direction"] == traders.EXPORT), 1),
+        "import_tons": round(sum(s["load"] for s in moving if s["direction"] == traders.IMPORT), 1),
+    }
+    return out
+
+
+def trade_orders(island: m.Island) -> dict[str, Any]:
+    """貿易の命令のうち、待っている列にあるものと、直近に実行したターンの結果（持ち主だけ。品目の
+    ページの打てる手の箱と同じ形）。"""
+    pending = [
+        display.describe_order(o.kind, o.payload)
+        for o in island.orders.filter(status="pending", kind__in=TRADE_ORDERS).order_by("seq", "id")
+    ]
+    done = island.orders.exclude(status="pending").filter(kind__in=TRADE_ORDERS)
+    last = done.order_by("-executed_turn").values_list("executed_turn", flat=True).first()
+    recent = [
+        {
+            "text": display.describe_order(o.kind, o.payload),
+            "status": o.status,
+            "reason": display.message(o.reason, **(o.reason_args or {})) if o.reason else "",
+        }
+        for o in done.filter(executed_turn=last).order_by("seq")
+    ]
+    return {"pending": pending, "recent": recent, "recent_turn": last if recent else None}
 
 
 def _amount(good: str, milli: int) -> float:
@@ -564,6 +644,7 @@ def contract_rows(
                 "currency_name": _currency(islands, view["currency"]),
                 "currency_symbol": islands.get(view["currency"], {}).get("symbol", ""),
                 "turns": c.get("turns"),
+                "indefinite": view["indefinite"],  # 無期限の契約（FX-68）
                 "start": view["start"] or None,
                 "end": view["end"] or None,
                 "active": view["active"],
@@ -589,7 +670,10 @@ def contract_rows(
                 "can_accept": proposed and view["proposer"] != island_id,
                 # 有効な契約は、やめる命令を出してもまだ先に終わる予定のときだけ
                 "can_cancel": proposed
-                or (state == contract_states.ACTIVE and view["end"] > turn + 1 + wait),
+                or (
+                    state == contract_states.ACTIVE
+                    and (view["end"] is None or view["end"] > turn + 1 + wait)
+                ),
             }
         )
     order = {contract_states.PROPOSED: 0, contract_states.ACTIVE: 1, contract_states.ENDED: 2}

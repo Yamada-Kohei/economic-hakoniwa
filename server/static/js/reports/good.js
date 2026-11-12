@@ -1,13 +1,13 @@
-// 市場の画面: 選んだ資源の値段と量の推移（市場の API）と、直近のターンの約定・買えずに止まった施設
-// （島の持ち主だけ）。表の資源名を押すと、画面を読み直さずに資源を切り替える。
-// 持ち主には市場の命令の欄（国の倉庫の売り買い・資源ごとの補助金）も出し、選んだ資源を初めから選んでおく。
+// 品目のページ（UI-72）: その資源の値段と量の推移（市場の API）と、直近のターンの約定・買えずに止まった
+// 施設（島の持ち主だけ）。持ち主には打てる手の箱に命令の欄（国の倉庫の売り買い・決まった売り買い・
+// 資源ごとの補助金）も出し、この資源を初めから選んでおく。
 
 import { turnDate } from "../calendar.js";
 import { getJson } from "../island/api.js";
 import { attachRange, escapeHtml, formatValue, makeChart, rangeQuery } from "./common.js";
 import { mountOrders } from "./orders.js";
 
-const ordersReady = mountOrders();
+mountOrders();
 
 const detail = document.getElementById("market-detail");
 
@@ -38,7 +38,7 @@ if (detail) {
       if (request === state.request) slot("title").textContent = "読み込めませんでした";
       return;
     }
-    if (request !== state.request) return; // 待つ間に別の資源が選ばれた
+    if (request !== state.request) return; // 待つ間に期間が変わった
     const unit = data.unit ? ` ${data.unit}` : "";
     slot("title").textContent = `${data.name}の推移`;
     freshChart("price", "money", `${data.name}の値段`).setData(data.turns, [
@@ -83,21 +83,6 @@ if (detail) {
       .map((f) => `<li><a href="${base}?x=${f.x}&amp;y=${f.y}">${escapeHtml(f.name)}</a>（${escapeHtml(f.owner_name)}） ・ ${escapeHtml(f.status_text)}${f.hint ? `<br><small class="hint">${escapeHtml(f.hint)}</small>` : ""}</li>`)
       .join("")}</ul>`;
   }
-
-  // 表の資源名で切り替える（URL の ?good= も変え、読み直しても同じ資源を出す）
-  document.addEventListener("click", (e) => {
-    const link = e.target.closest("a[data-good-link]");
-    if (!link) return;
-    e.preventDefault();
-    state.good = link.dataset.goodLink;
-    for (const row of document.querySelectorAll("tr[data-good]")) {
-      row.classList.toggle("chosen", row.dataset.good === state.good);
-    }
-    history.replaceState(null, "", `?good=${encodeURIComponent(state.good)}`);
-    ordersReady.then((orders) => orders?.setGood(state.good));
-    load();
-    detail.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
 
   attachRange(detail, (range) => {
     state.range = range;

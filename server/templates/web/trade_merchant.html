@@ -1,0 +1,50 @@
+{% extends "web/trade_layout.html" %}{% load i18n static calendar_tags display_tags %}
+{% block trade_main %}
+    {% if mine %}
+    <section class="panel" id="merchant">
+      <h2>{% translate "海外の商人" %}</h2>
+      {% with mc=trade.merchant %}
+      {% if not mc.enabled %}
+      <p class="muted">{% translate "海外の商人は来ません。" %}</p>
+      {% elif mc.active %}
+      <p>{% blocktranslate with n=mc.turns_left t=mc.until|turn_date %}{{ t }}まで、あと <strong>{{ n }}</strong> ターン来ます。{% endblocktranslate %}
+        {% if mc.tapering %}<span class="warning">{% blocktranslate with p=mc.share %}持ってくる量を減らしています（今は初めの {{ p }}%。来なくなるまでに少しずつ 0 になります）。{% endblocktranslate %}</span>
+        {% else %}{% blocktranslate with t=mc.taper_start|turn_date %}{{ t }}の後は、持ってくる量と買っていく量が少しずつ減っていきます。{% endblocktranslate %}{% endif %}
+        {% blocktranslate with x=mc.multiplier %}値段は初めの値段の {{ x }} 倍です（島の物価に合わせて動きます）。{% endblocktranslate %}</p>
+      <div class="table-scroll">
+        <table class="goods merchant-table">
+          <thead><tr><th>{% translate "資源" %}</th><th>{% translate "売る値段（1単位）" %}</th><th>{% translate "買う値段（1単位）" %}</th><th>{% translate "島の値段" %}</th><th>{% translate "1ターンの上限" %}</th><th>{% translate "単位" %}</th></tr></thead>
+          <tbody>
+            {% for g in mc.goods %}
+            <tr><td>{{ g.name }}</td><td>{{ currency|currency_prefix }}{{ g.price|floatformat:"-1g" }}</td><td>{% if g.buy_price %}{{ currency|currency_prefix }}{{ g.buy_price|floatformat:"-1g" }}{% else %}-{% endif %}</td><td>{% if g.home_price %}{{ currency|currency_prefix }}{{ g.home_price|floatformat:"-1g" }}{% else %}-{% endif %}</td><td>{{ g.quantity|floatformat:"-2g" }}</td><td>{{ g.unit }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if mc.blockaded %}<p class="warning">{% translate "港が封鎖されているため、商人はその強さの分だけ少なく来ます。" %}</p>{% endif %}
+      <p class="hint">{% translate "島の市場で、決まった値段と1ターンの上限で売ります。同じ品目を、安い決まった値段（初めの値段の" %} {{ mc.buy_multiplier }} {% translate "倍）と同じ上限で、施設の売りから買いもします（国の倉庫からは買いません）。港も船も外貨も要りません。売った代金は島の外に出て輸入に、買った代金は島の外から入って輸出に数えます。公定価格のある国（計画経済）では、島の買い手は公定価格で払い、商人の値段との差は政府が払います。輸入と貿易収支は島の買い手が払った額で数え、「海外の商人から買った額」と国際収支は政府が払った差も含めるので、海外の商人から買った額が輸入より大きくなることがあります。" %}</p>
+      {% elif mc.until is not None %}
+      <p class="muted">{% blocktranslate with t=mc.until|turn_date %}海外の商人はもう来ません。{{ t }}まで来ていました。{% endblocktranslate %}</p>
+      {% else %}
+      <p class="muted">{% blocktranslate with n=mc.turns %}貿易が始まったターンから {{ n }} ターンのあいだ来ます。{% endblocktranslate %}</p>
+      {% endif %}
+      {% endwith %}
+    </section>
+
+    <section class="panel">
+      <div class="section-head">
+        <h2>{% translate "推移" %}</h2>
+        {% include "web/chart_range.html" %}
+      </div>
+      <div class="charts" id="charts" data-url="{% url 'api_island_economy' island.id %}"
+           data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
+        <figure class="chart" data-names="trade.merchant,trade.merchant_gap,trade.merchant_sold,trade.merchant_premium"><figcaption>{% translate "海外の商人との売り買いの額（1ターン）" %}</figcaption></figure>
+      </div>
+    </section>
+    {% else %}
+    <section class="panel">
+      <p class="muted">{% translate "このタブの中身は島の持ち主だけが見られます。" %}</p>
+      <p><a href="{% url 'island_trade' island.id %}">{% translate "貿易の概要へ" %}</a></p>
+    </section>
+    {% endif %}
+{% endblock %}

@@ -2362,8 +2362,9 @@ def contract_view(c: dict[str, Any], island_id: int, turn: int) -> dict[str, Any
         "currency": c["currency"],
         "state": c["state"],
         "start": c["start"],
-        "end": c["end"],
-        "active": c["state"] == contracts.ACTIVE and c["start"] <= turn + 1 < c["end"],
+        "end": c["end"],  # 無期限で終わりの決まっていない契約は None（FX-68）
+        "indefinite": bool(c.get("indefinite")),
+        "active": contracts.running(c, turn + 1),
         "delivered": c["delivered"],
         "short": c["short"],
         "short_why": c.get("short_why") if c["short"] > 0 else None,  # 直近の不足のわけ
@@ -2451,7 +2452,13 @@ def check_contract(island: IslandState, payload: dict[str, Any], defs: Defs) -> 
         raise OrderFailed("reason_contract_partner")
     if payload.get("side") not in ("sell", "buy"):
         raise OrderFailed("reason_invalid_payload")
-    if payload.get("quantity", 0) <= 0 or payload.get("turns", 0) <= 0:
+    if payload.get("quantity", 0) <= 0:
+        raise OrderFailed("reason_invalid_payload")
+    # 期間か無期限（FX-68）のどちらか一方
+    if payload.get("indefinite"):
+        if "turns" in payload:
+            raise OrderFailed("reason_invalid_payload")
+    elif payload.get("turns", 0) <= 0:
         raise OrderFailed("reason_invalid_payload")
     if payload.get("price", -1) < 0:
         raise OrderFailed("reason_invalid_payload")
