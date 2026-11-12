@@ -693,6 +693,8 @@ def _map(request, args):
                 state_text = f"{state_text} {sale}".strip()
         name = facility_name(game.defs, game.config, state, f)
         kind = game.defs.name("facilities", row.kind)
+        product = display.product_of(game.defs, f.kind, f.recipe)  # 作る物（W-262）
+        kind = f"{kind}・{product}" if product else kind
         lines.append(f"{where} #{row.number} {name}（{kind}）{rate} {state_text}".rstrip())
     if data.get("capital"):
         cx, cy = data["capital"]

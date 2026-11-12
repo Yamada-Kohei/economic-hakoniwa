@@ -966,7 +966,9 @@ def check(request, island_id: int):
     text = "" if result.ok else display.message(result.reason or "", **result.args)
     data = {"ok": result.ok, "text": text, "details": list(result.details)}
     if result.ok:  # どう読んだか（率の % や量の単位）を見られるように、命令の列と同じ説明を添える
-        data["summary"] = display.describe_order(body["kind"], payload or {})  # 計算の単位で渡す
+        data["summary"] = display.describe_order(
+            body["kind"], payload or {}, display.facility_labels(island)
+        )  # 計算の単位で渡す
     if result.ok and body.get("kind") == "build":
         # 建てても人手が集まるかを見られるように、通勤圏の労働者の数を添える
         payload = body["payload"]
@@ -1038,6 +1040,7 @@ def _orders_view(island: m.Island, mine: bool = True) -> dict[str, Any]:
     if admin_power is None:
         admin_power = get_game().config.get("orders.base_admin_power")
     recent = recent.order_by("-executed_turn", "-seq")[:20]
+    labels = display.facility_labels(island)  # 施設への命令の文に種類と作る物を（W-262）
     return {
         "admin_power": int(admin_power),
         "policy": (
@@ -1051,7 +1054,7 @@ def _orders_view(island: m.Island, mine: bool = True) -> dict[str, Any]:
                 "kind": o.kind,
                 "payload": display.order_payload(o.kind, o.payload, to_game=False),
                 "cost": d.orders[o.kind]["admin_cost"] if o.kind in d.orders else 0,
-                "text": display.describe_order(o.kind, o.payload),
+                "text": display.describe_order(o.kind, o.payload, labels),
             }
             for o in pending
         ],
@@ -1059,7 +1062,7 @@ def _orders_view(island: m.Island, mine: bool = True) -> dict[str, Any]:
             {
                 "turn": o.executed_turn,
                 "status": o.status,
-                "text": display.describe_order(o.kind, o.payload),
+                "text": display.describe_order(o.kind, o.payload, labels),
                 "reason": display.message(o.reason, **(o.reason_args or {})) if o.reason else "",
             }
             for o in recent

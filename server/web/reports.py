@@ -838,7 +838,7 @@ def short_facilities(
             {
                 "number": row.number,
                 "name": facility_name(game.defs, game.config, state, f),
-                "kind_name": game.defs.name("facilities", row.kind),
+                "kind_name": display.facility_label(f),
                 "x": x,
                 "y": y,
                 "good": wanted,
@@ -881,7 +881,7 @@ def facility_rows(island: m.Island, currency: str) -> dict[str, Any]:
         item: dict[str, Any] = {
             "number": f.id,
             "name": facility_name(defs, config, state, f) if fdef else f.kind,
-            "kind_name": defs.name("facilities", f.kind),
+            "kind_name": display.kind_label(defs, f.kind, f.recipe),
             "owner_name": display.message(f"owner_{f.owner}"),
             "accounting_name": display.message(f"accounting_{f.accounting}"),
             "x": f.x,
@@ -1142,7 +1142,7 @@ def facility_book(
         f = facility_from_row(row)
         if f.kind in game.defs.facilities:
             name = facility_name(game.defs, game.config, display.island_for_naming(island), f)
-        kind_name = game.defs.name("facilities", f.kind)
+        kind_name = display.kind_label(game.defs, f.kind, f.recipe)
     used = [key for key, _, _ in display.BOOK_ITEMS if any(r.items.get(key) for r in records)]
     return {
         "island": island.id,

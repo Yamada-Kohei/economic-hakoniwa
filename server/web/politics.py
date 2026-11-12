@@ -328,7 +328,7 @@ def staff_plan_rows(island: m.Island, core: IslandState) -> list[dict[str, Any]]
             "number": f.id,
             "name": naming.facility_name(defs, config, core, f),
             "kind": f.kind,
-            "kind_name": defs.name("facilities", f.kind),
+            "kind_name": display.kind_label(defs, f.kind, f.recipe),
             "workers": f.workers,
             "needed": f.economy.get("wanted", 0),
             "full": fac.workers_of(defs, f),

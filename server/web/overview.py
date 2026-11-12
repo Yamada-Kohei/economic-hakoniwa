@@ -225,7 +225,7 @@ def facility_state(
                 {
                     "number": row.number,
                     "name": facility_name(game.defs, game.config, state, f),
-                    "kind_name": game.defs.name("facilities", row.kind),
+                    "kind_name": display.facility_label(f),
                     "x": fac.position(f)[0],
                     "y": fac.position(f)[1],
                     "sale_text": sale,
@@ -239,7 +239,7 @@ def facility_state(
         if not row.built:
             works.append(
                 {
-                    "kind_name": game.defs.name("facilities", row.kind),
+                    "kind_name": display.facility_label(f),
                     "x": x,
                     "y": y,
                     "progress": round(row.progress / 1000, 1),
@@ -255,7 +255,7 @@ def facility_state(
                 {
                     "number": row.number,
                     "name": facility_name(game.defs, game.config, state, f),
-                    "kind_name": game.defs.name("facilities", row.kind),
+                    "kind_name": display.facility_label(f),
                     "x": x,
                     "y": y,
                     "status_text": text,
@@ -1041,6 +1041,7 @@ def orders_brief(island: m.Island) -> dict[str, Any]:
     pending = island.orders.filter(status="pending").order_by("seq", "id")
     done = island.orders.exclude(status="pending")
     last = done.aggregate(t=Max("executed_turn"))["t"]
+    labels = display.facility_labels(island)  # 施設への命令の文に種類と作る物を（W-262）
     return {
         "admin_power": int(admin_power),
         "pending": [
@@ -1048,22 +1049,24 @@ def orders_brief(island: m.Island) -> dict[str, Any]:
                 "kind": o.kind,
                 "payload": display.order_payload(o.kind, o.payload, to_game=False),
                 "cost": d.orders[o.kind]["admin_cost"] if o.kind in d.orders else 0,
-                "text": display.describe_order(o.kind, o.payload),
+                "text": display.describe_order(o.kind, o.payload, labels),
             }
             for o in pending
         ],
         "last_turn": last,
-        "last_results": [_result(o) for o in done.filter(executed_turn=last).order_by("seq")]
+        "last_results": [
+            _result(o, labels) for o in done.filter(executed_turn=last).order_by("seq")
+        ]
         if last is not None
         else [],
     }
 
 
-def _result(o: Order) -> dict[str, Any]:
+def _result(o: Order, labels: dict[tuple[int, int], str] | None = None) -> dict[str, Any]:
     return {
         "turn": o.executed_turn,
         "status": o.status,
-        "text": display.describe_order(o.kind, o.payload),
+        "text": display.describe_order(o.kind, o.payload, labels),
         "reason": display.message(o.reason, **(o.reason_args or {})) if o.reason else "",
     }
 
@@ -1106,6 +1109,7 @@ def changes(
     if not mine:
         results = results.exclude(Q(status="failed") & secret_orders)
         results = results.exclude(hidden_orders)
+    labels = display.facility_labels(island)  # 施設への命令の文に種類と作る物を（W-262）
     data: dict[str, Any] = {
         "island": island.id,
         "since": since,
@@ -1123,7 +1127,7 @@ def changes(
             for row in indicators(reports.with_fiscal(latest), _stats_at(island, since), currency)
             if "before" in row
         ],
-        "orders": [_result(o) for o in results.order_by("executed_turn", "seq")],
+        "orders": [_result(o, labels) for o in results.order_by("executed_turn", "seq")],
     }
     data["hall"] = hall.entries_since(world, since)[-LOG_TURNS_MAX:]  # 国際会議場（誰にでも）
     if mine:
