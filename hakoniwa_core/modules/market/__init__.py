@@ -978,6 +978,7 @@ class Market(IslandStage):
         self._transport_orders(island, ctx, books_by_good, hh_rate, offered)
         self._household_orders(island, ctx, books_by_good, hh_rate, offered)
         self._fuel_orders(island, ctx, books_by_good, rates)
+        self._contract_orders(island, ctx, books_by_good, official)
         transport = self._transport_entity(island, ctx)
         routes = freight_rates.Routes(island, defs)
         island.scratch[CLEARING] = (transport, routes)
@@ -3778,14 +3779,38 @@ class Market(IslandStage):
                     party.reserved = gross_cost(limit, qty, hh_rate, 0)
                     funds.commit(island, payer, party.reserved)
                     self._add(books_by_good, good, "buy", Order(qty, limit), party)
-        # 二国間契約で売る分のうち、国の倉庫に足りない分を政府が買う。代金は予算の段で国債の利払いの
-        # 次に取り置いた項目から（FX-24・FS-09）。減らしたターンはログに出す（報告 #9）。指値は
-        # 値幅の上端までのうち、売りの安い順に要る量までの値段（入札。_tender_limit）
+
+    def _contract_orders(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        books_by_good: dict[str, Book],
+        official: dict[str, int],
+    ) -> None:
+        """二国間契約で売る分のうち、国の倉庫に足りない分を政府が買う（FX-24）。
+
+        代金は予算の段で国債の利払いの次に取り置いた項目から（FS-09）。減らしたターンはログに出す
+        （報告 #9）。指値は値幅の上端までの入札（_tender_limit）。ほかの買い手の注文が出そろった
+        後に出す（出そろう前に指値を決めると、高く買うほかの買い手に売りを取られ、上端の中に売れ
+        残りがあっても買えなかった）。
+        """
+        if not trade.started(island):
+            return
+        config = ctx.config
+        width = to_basis(config.get("market.band"))
+        site = trade.site_of(island, config)
         payer = Payer(ledger.GOV, traders.CONTRACT_SUPPLY)
         plan = {}
-        for good, (want, cap) in traders.contract_supply_plan(island, ctx.config).items():
+        for good, (want, cap) in traders.contract_supply_plan(island, config).items():
+            if good in official:  # 公定価格の財は値段が動かないので、前と同じく上端で
+                plan[good] = (want, cap)
+                continue
             low = auction.band(island.economy.prices.get(good, 1), width)[0]
-            plan[good] = (want, self._tender_limit(books_by_good.get(good), want, low, cap))
+            limit = self._tender_limit(books_by_good.get(good), want, low, cap)
+            floor = island.policy.price_floor.get(good)  # 混合経済の下限より安くは約定しない
+            if floor and politics.trait(island, ctx.defs, "price_controls", False):
+                limit = max(limit, min(floor, cap))
+            plan[good] = (want, limit)
         affordable = self._afford(island, payer, plan, 0, 0)
         for good, (want, _) in sorted(plan.items()):
             placed_qty = affordable.get(good, (0, 0))[0]
@@ -3810,32 +3835,41 @@ class Market(IslandStage):
     def _tender_limit(book: Book | None, want: int, low: int, cap: int) -> int:
         """二国間契約の不足分を買う指値（入札。2026-11-12）。
 
-        いま売りに出ている注文のうち cap（値幅の上端）以下のものを指値の安い順に並べ、要る量 want に
-        届くところの売りの指値にする。届かなければ、その中の一番高い指値（出ている分を全部買う）。
-        どちらも low（値幅の下端。下端より安い指値は板寄せに入らない）より下げない。cap 以下の売りが
-        1つもなければ cap（売りがなければ値段は動かず、買いたい量だけが需要に残る。売りが上端より
-        高ければ、気配が1ターンに値幅ずつ売りの指値に近づく）。
+        いま出ている売り（国の倉庫の売りと値引きの売りは除く。倉庫の分は足りない量からもう引いて
+        あり、値引きの売りはふだんの売りの出し直し）のうち cap（値幅の上端）以下の指値を安い順に
+        見て、その値段までの売りから、その値段でも買うほかの買い手の量を引いた残りが要る量 want に
+        届く一番安い売りの指値にする。届かなければ cap 以下の一番高い売りの指値（出ている分を
+        ほかの買い手と分ける）。指値なしの売りは low（前の値段の値幅の下端。板寄せでの付け値）と
+        見る。cap 以下の売りが1つもなければ cap（売りがなければ値段は動かず、買いたい量だけが
+        需要に残る。売りが上端より高ければ、気配が1ターンに値幅ずつ売りの指値に近づく）。
 
         値幅の上端をいつも指値にすると、売りが契約の量より少ない島では、板寄せの値段が毎ターン政府の
         指値（上端）で決まり、値段が毎ターン 1 割ずつ上がり続ける（国庫直轄の製鉄所が石炭を数百倍に
-        したのと同じ道筋。MK-16）。売り手の言い値より高くは競り上げないので、政府の買いだけで値段が上がり続けることは
-        ない。売りが余っていれば、国内の値段が契約の値段より高くても買える。
+        したのと同じ道筋。MK-16）。出ている売りの指値より高くは出さないので、政府の買いだけで値段が
+        上がり続けることはない。売りが余っていれば、国内の値段が契約の値段より高くても買える。
         """
         if book is None:
             return cap
         asks = sorted(
-            (auction.sell_limit(order), order.quantity)
-            for order, _ in book.sells
-            if auction.sell_limit(order) <= cap and order.quantity > 0
+            (low if order.limit is None else order.limit, order.quantity)
+            for order, party in book.sells
+            if party.kind != STORE and not party.clearance and order.quantity > 0
         )
+        asks = [(ask, qty) for ask, qty in asks if ask <= cap]
         if not asks:
             return cap
-        total = 0
-        for ask, qty in asks:
-            total += qty
-            if total >= want:
-                return max(low, ask)
-        return max(low, asks[-1][0])
+        bids = [auction.buy_limit(order, cap) for order, _ in book.buys]
+        supply = 0
+        for k, (ask, qty) in enumerate(asks):
+            supply += qty
+            if k + 1 < len(asks) and asks[k + 1][0] == ask:
+                continue
+            others = sum(
+                o.quantity for (o, _), bid in zip(book.buys, bids, strict=True) if bid >= ask
+            )
+            if supply - others >= want:
+                return max(1, ask)
+        return max(1, asks[-1][0])
 
     def _transport_orders(
         self,

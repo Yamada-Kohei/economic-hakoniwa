@@ -92,7 +92,7 @@ def _contract_buy(game, world, island, good):
     # 島に売りが出ている（契約の不足分は、いま売りに出ている物を入札の指値で買う）
     seller = Party(MERCHANT, MERCHANT, Payer(ledger.CB))
     books = {good: Book(sells=[(Order(10**6, island.economy.prices[good]), seller)])}
-    Market()._trade_orders(island, world_context(game, world), books, {}, 0)
+    Market()._contract_orders(island, world_context(game, world), books, {})
     buys = books[good].buys
     return sum(o.quantity for o, p in buys if p.payer.item == traders.CONTRACT_SUPPLY)
 

@@ -11,7 +11,15 @@ from hakoniwa_core.economy import Payer, funds
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
 from hakoniwa_core.modules.fiscal import Budget
-from hakoniwa_core.modules.market import CONTRACT_PRIORITY, Book, Market, Party
+from hakoniwa_core.modules.market import (
+    CONTRACT_PRIORITY,
+    HOUSEHOLD,
+    MERCHANT,
+    STORE,
+    Book,
+    Market,
+    Party,
+)
 from hakoniwa_core.trade import traders
 from hakoniwa_core.units import money_of
 from tests.core.test_recession_round1 import context
@@ -31,11 +39,13 @@ def _contract(island, price, qty=1000, currency=None, **kw):
     }
 
 
-def _book(*asks):
-    """売りの指値と量の組から、財の注文の板を作る（売り手は誰でもよい）。"""
+def _book(*asks, buys=()):
+    """売りの指値と量の組（と、ほかの買い手の量と指値の組）から、財の注文の板を作る。"""
     book = Book()
     for limit, qty in asks:
-        book.sells.append((Order(qty, limit), Party("merchant", "merchant", Payer(ledger.CB))))
+        book.sells.append((Order(qty, limit), Party(MERCHANT, MERCHANT, Payer(ledger.CB))))
+    for qty, limit in buys:
+        book.buys.append((Order(qty, limit), Party(HOUSEHOLD, "hh:general", Payer(ledger.CB))))
     return book
 
 
@@ -64,12 +74,32 @@ def test_tender_bids_the_ask_that_covers_the_need():
     # 足りない: 上端以下の売りの一番高い指値（上端より高い売りは数えない）
     book = _book((9500, 300), (10200, 300), (12000, 5000))
     assert Market._tender_limit(book, 1000, 9000, 11000) == 10200
-    # 値幅の下端より安い売り（指値なしの売りを含む）だけなら下端（下端より安い買いは約定しない）
+    # 指値なしの売りは、板寄せでの付け値（前の値段の値幅の下端）と見る
     assert Market._tender_limit(_book((None, 2000)), 1000, 9000, 11000) == 9000
     # 上端以下の売りがない・売りがない: 上端（前と同じ）
     assert Market._tender_limit(_book((12000, 5000)), 1000, 9000, 11000) == 11000
     assert Market._tender_limit(Book(), 1000, 9000, 11000) == 11000
     assert Market._tender_limit(None, 1000, 9000, 11000) == 11000
+
+
+def test_tender_leaves_room_for_buyers_who_bid_higher():
+    """見直し役の場面: 売り A 100@100・B 100@108、家計が 100@110。政府が A だけを見て 100 で出すと、
+    高く買う家計に A を取られ、上端の中に B が売れ残っていても政府は買えない。"""
+    book = _book((100, 100), (108, 100), buys=[(100, 110)])
+    limit = Market._tender_limit(book, 100, 90, 110)
+    assert limit == 108
+    sells = [o for o, _ in book.sells]
+    buys = [o for o, _ in book.buys] + [Order(100, limit, CONTRACT_PRIORITY)]
+    result = auction.clear(buys, sells, 100, bounds=(1, 110))
+    assert result.price == 108 and result.bought == [100, 100]
+
+
+def test_tender_skips_the_states_own_and_clearance_sells():
+    """国の倉庫の売り（倉庫の分は足りない量からもう引いてある）と値引きの売りは数えない。"""
+    book = _book((105, 1000))
+    book.sells.append((Order(600, 90), Party(STORE, ledger.GOV, Payer(ledger.GOV, "warehouse"))))
+    book.sells.append((Order(600, 80), Party(MERCHANT, MERCHANT, Payer(ledger.CB), clearance=True)))
+    assert Market._tender_limit(book, 400, 90, 110) == 105
 
 
 def test_contract_buys_when_the_home_price_is_above_the_contract_price(game):
@@ -83,7 +113,7 @@ def test_contract_buys_when_the_home_price_is_above_the_contract_price(game):
     # 取り置きは上限（値幅の上端）で見積もる
     assert funds.fiscal_state(island)["reserved"][traders.CONTRACT_SUPPLY] == money_of(11000, 2000)
     books = {"coal": _book((10100, 5000))}
-    Market()._trade_orders(island, context(game), books, {}, 0)
+    Market()._contract_orders(island, context(game), books, {})
     assert _contract_orders(books, payer) == [(2000, 10100)]
     assert not any(e.kind == "contract_supply_short" for e in island.log)
 
@@ -108,5 +138,18 @@ def test_goods_aid_is_bought_at_home_again(game):
     trade.island_state(island)["contracts"] = [_contract(island, 0, aid=True)]
     Budget().run_island(island, context(game))
     books = {"coal": _book((10000, 5000))}
-    Market()._trade_orders(island, context(game), books, {}, 0)
+    Market()._contract_orders(island, context(game), books, {})
     assert _contract_orders(books, Payer(ledger.GOV, traders.CONTRACT_SUPPLY)) == [(1000, 10000)]
+
+
+def test_official_prices_keep_the_band_top(game):
+    """見直し役の場面: 計画経済の公定価格の財は板寄せの値幅が公定価格 1 点なので、国営施設の売り
+    （指値 0）から入札の指値を作ると公定価格に届かず買えない。値段は動かないので前と同じ上端で。"""
+    island = island_for(game)
+    island.economy.prices["coal"] = 10000
+    trade.island_state(island)["since"] = 1
+    trade.island_state(island)["contracts"] = [_contract(island, 9000)]
+    Budget().run_island(island, context(game))
+    books = {"coal": _book((0, 5000))}
+    Market()._contract_orders(island, context(game), books, {"coal": 10000})
+    assert _contract_orders(books, Payer(ledger.GOV, traders.CONTRACT_SUPPLY)) == [(1000, 11000)]
