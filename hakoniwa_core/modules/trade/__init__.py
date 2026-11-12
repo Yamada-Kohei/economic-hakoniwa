@@ -789,8 +789,8 @@ class _Round:
         ships_now: bool = True,
     ) -> list[tuple[int, int, int, int, int]]:
         """商社の輸入の見込み（FX-61）: 輸入している財ごとに (決済通貨, 1 ターン分の量,
-        fx.keep_turns ターン分の量, 指値, 輸入が引き合う一番高いレート)。量は「狙う量 − 手元と運ぶ
-        途中の荷」を、圏の市場の注文と同じ頭打ち（輸入の割り当ての残り・圏の船で運べる量・扱える
+        fx.keep_turns ターン分の量, 指値, 輸入が引き合う一番高いレート)。量は注文の量（FX-66）を
+        狙う量までにしたものを、圏の市場の注文と同じ頭打ち（輸入の割り当ての残り・圏の船で運べる量・扱える
         重さの残り）で縮める。2 ターン目からは狙う量を、割り当てと扱える重さ（財の間で分ける）で
         縮めた分（空いた船の数は次のターンには変わるので見ない）。ships_now でなければ 1 ターン分も
         空いた船の数で縮めない（_import_room）。quota_used（財 → 島のほかの商社が見込んだ量）に、
@@ -820,7 +820,11 @@ class _Round:
             if quota is not None:
                 quota = max(0, quota - quota_used.get(good, 0))
             big = 10**18  # 扱える重さは下で財の間に割り振る（FX-67）
-            want = traders.import_want(self.config, item)  # 注文の量（FX-66）
+            # 外貨は 1 ターンに流れる分（狙う量）までしか前もって買わない。持つ量を埋める分
+            # （FX-66）は、持っている外貨の余りで買う（埋める分まで外貨を買うと、外貨の足りない島で
+            # 埋まらないまま毎ターン自国通貨を売り続け、通貨が前の 2〜9 倍の速さで下がり、食料も
+            # 輸入できなくなった。2026-11-12 の full と調べ 2・3）
+            want = min(traders.import_want(self.config, item), item["m"])
             first, _, _ = self._import_room(island, good, bloc, want, big, quota, False, ships_now)
             # 2 ターン目からは 1 ターンに流れる分（狙う量）で数える（FX-66）
             each, _, _ = self._import_room(

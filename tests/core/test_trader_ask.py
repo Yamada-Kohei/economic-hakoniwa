@@ -101,6 +101,26 @@ def test_the_import_order_closes_a_quarter_of_the_gap_to_the_holding(game):
     assert traders.import_want(game.config, {**busy, traders.OUTLET: None, "reexport": 5}) == 0
 
 
+def test_foreign_currency_is_bought_ahead_only_for_the_flow(game, traded):
+    """外貨の見込み（FX-61）は 1 ターンに流れる分まで。持つ量を埋める分（FX-66）のためには外貨を
+    前もって買わない（外貨の足りない島で埋まらないまま自国通貨を売り続け、通貨が下がり続けたため）。"""
+    world = copy.deepcopy(traded)
+    island, f, _, _ = _importer(game, world)
+    r = _round(game, world)
+    r.found[island.id] = traders.prospects(island, game.defs, game.config)
+    flows = 0
+    for item in traders.goods_of(f).values():
+        if item.get("dir") == traders.IMPORT and item.get("m"):
+            item["hold"], item["held"] = item["m"] * 10, [0, 0]
+            assert traders.import_want(game.config, item) > item["m"]
+            flows += item["m"]
+    plan = r._import_plan(island, f, {})
+    assert plan, "外貨の見込みがない"
+    keep = game.config.get("fx.keep_turns")
+    assert sum(first for _, first, _, _, _ in plan) <= flows
+    assert sum(total for _, _, total, _, _ in plan) <= flows * keep
+
+
 def test_lead_turns_start_from_the_round_trip_and_follow_the_record(game, traded):
     world = copy.deepcopy(traded)
     island, _, _, item = _importer(game, world)

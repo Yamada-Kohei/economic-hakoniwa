@@ -379,20 +379,30 @@ def test_the_world_keeps_its_books_with_trade_finance(game, traded):
     assert any(needs)
 
 
-def test_later_turns_share_the_trading_capacity_between_goods(game, traded):
+def test_later_turns_share_the_trading_capacity_between_goods(game, traded, monkeypatch):
     """2 ターン目からの見込みも、扱える重さを財の間で分ける（運べない分の外貨を寝かせない）。"""
     world = copy.deepcopy(traded)
     island, f, _ = _importer(game, world)
     cap = game.config.get("trade.trader_capacity") * 1000
-    goods = []
     for good, item in sorted(traders.goods_of(f).items()):
         if item.get("dir") == traders.IMPORT and trade_stage.unit_weight(game.defs, good) > 0:
             item["m"] = 10**9  # どの財も扱える重さを超えて狙う
-            goods.append(good)
     r = _round(game, world)
+    shared = []  # 2 ターン目からの分の割り振り（足りない分を埋める注文がない呼び出し）
+    share = traders.share_by_rank
+
+    def spy(flows, fills, units, budget, ranks):
+        got = share(flows, fills, units, budget, ranks)
+        if not any(fills):
+            shared.append((got, units))
+        return got
+
+    monkeypatch.setattr(traders, "share_by_rank", spy)
     plan = r._import_plan(island, f, {}, ships_now=False)
     keep = game.config.get("fx.keep_turns")
-    later = 0
-    for good, (_, first, total, _, _) in zip(sorted(goods), plan, strict=False):
-        later += trade_stage.weight(game.defs, good, (total - first) // max(1, keep - 1))
-    assert later <= cap
+    assert plan and shared
+    got, units = shared[-1]
+    assert sum(q * u // 1000 for q, u in zip(got, units, strict=True)) <= cap
+    # 見込みの 2 ターン目からの量は、割り振った量のまま
+    later = sorted((total - first) // max(1, keep - 1) for _, first, total, _, _ in plan)
+    assert later == sorted(q for q in got if q > 0)
