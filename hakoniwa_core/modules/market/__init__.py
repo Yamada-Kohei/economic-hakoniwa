@@ -4234,7 +4234,9 @@ class Market(IslandStage):
                 f = party.facility
                 if party.kind == MERCHANT or (f is not None and trade.is_trader(config, f)):
                     entry = out.setdefault(good, [0, 0])
-                    entry[0] += order.quantity
+                    # 値引きの売り（FX-64）は、ふだんの売りに出した荷の出し直し（売れた量だけ）
+                    if not party.clearance:
+                        entry[0] += order.quantity
                     entry[1] += result.sold[i]
         return out
 

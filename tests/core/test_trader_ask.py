@@ -254,7 +254,6 @@ def test_only_stock_beyond_the_line_is_marked_down_step_by_step(game, traded):
     item["m"] = 1000
     item.pop(traders.OUTLET, None)
     item.pop(traders.REEXPORT, None)
-    turns = game.defs.goods[good].get("shelf_life")
     shelf = traders.stock.target_turns(config.get("market.inventory_turns"), game.defs.goods, good)
     line = round(1000 * shelf * config.get("market.clearance_ratio"))
     clearance = config.get("trade.clearance_turns")
@@ -283,8 +282,8 @@ def test_only_stock_beyond_the_line_is_marked_down_step_by_step(game, traded):
     # 止まりの値で 2 × clearance_turns ターン売れ残れば、超えた分を輸出の荷に替える
     assert traders.OUTLET not in item
     assert item[traders.REEXPORT] == offer - line
+    assert item[traders.REEXPORT_BLOC] == item["bm"]
     assert traders.surplus(item)
-    del turns
 
 
 def test_the_markdown_stops_at_the_export_value_when_that_is_higher(game, traded):
@@ -292,12 +291,47 @@ def test_the_markdown_stops_at_the_export_value_when_that_is_higher(game, traded
     _, _, good, item = _importer(game, world)
     config = game.config
     item[traders.OUTLET] = {"turns": 5, "line": 0, "start": 900, "steps": 30}
-    p = traders.Prospect(good, export_bloc=1, export_limit=700)
+    item.pop(traders.REEXPORT_BLOC, None)
+    item["bm"] = 1
+    # 輸出補助の入った輸出の見込み（export_limit）ではなく、荷を買う圏で輸出し直して手元に残る値
+    p = traders.Prospect(good, export_bloc=2, export_limit=900)
+    p.resale[1] = 700
     _, limit = traders._clearance_order(config, item, p, 1000, 900, 100)
     assert limit == 700  # ほかの商社が島で買って輸出し直す値より下げない
-    p.export_bloc = None
+    p.resale.clear()
     _, limit = traders._clearance_order(config, item, p, 1000, 900, 100)
     assert limit == round(1000 * config.get("market.clearance_floor"))
+
+
+def test_reexported_cargo_returns_to_the_island_when_the_bloc_does_not_buy(game):
+    config = game.config
+    clearance = config.get("trade.clearance_turns")
+    item = {"bm": None, "bx": None, traders.OUTLET: {"turns": 9, "line": 0, "stuck": 99}}
+    item.update(m=1000, held=[5000, 0], dir=traders.IMPORT)
+    assert traders.resale_bloc(item) is None
+    # 輸出し直す圏がなければ、止まりの値で島に出し続ける（輸出の荷にしない）
+    item["bx"] = 3
+    assert traders.resale_bloc(item) == 3
+    item[traders.REEXPORT], item[traders.REEXPORT_BLOC] = 4000, 3
+    traders.keep_reexport(config, item, 1000, 5000)  # 圏で売れた
+    assert item[traders.REEXPORT_AGE] == 0
+    for _ in range(2 * clearance - 1):
+        traders.keep_reexport(config, item, 0, 5000)
+        assert item[traders.REEXPORT] == 4000
+    traders.keep_reexport(config, item, 0, 5000)  # 圏でも長く売れなければ島に戻す
+    assert traders.REEXPORT not in item and traders.REEXPORT_BLOC not in item
+    item[traders.REEXPORT] = 4000
+    traders.keep_reexport(config, item, 0, 0)  # 荷がなくなれば外す
+    assert traders.REEXPORT not in item
+    # 荷より多くは輸出し直さない
+    item[traders.REEXPORT] = 9000
+    traders.keep_reexport(config, item, 0, 2500)
+    assert item[traders.REEXPORT] == 2500
+
+
+def test_planned_traders_order_as_before(game):
+    item = {"m": 1000, "hold": 9000, "held": [300, 0]}
+    assert traders.import_want(game.config, item, planned=True) == 700
 
 
 def test_markdowns_stop_when_stock_falls_back_and_planned_islands_never_mark_down(game, traded):
