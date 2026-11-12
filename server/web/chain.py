@@ -215,6 +215,7 @@ def _stalled(defs, config, state, facilities) -> list[dict[str, Any]]:
                 continue
         groups[cause].append(
             {
+                "number": row.number,
                 "name": facility_name(defs, config, state, f),
                 "kind_name": display.kind_label(defs, f.kind, f.recipe),
                 "x": row.x,

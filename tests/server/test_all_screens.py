@@ -62,8 +62,8 @@ ISLAND_APIS = [
     "api_country_diary",
 ]
 # 引数の要る画面と API（下の `_extra_urls` が開く）
-ISLAND_PAGES_WITH_ARGS = ["market_good"]
-ISLAND_APIS_WITH_ARGS = ["api_tile", "api_island_market", "api_facility_book"]
+ISLAND_PAGES_WITH_ARGS = ["market_good", "facility_page"]
+ISLAND_APIS_WITH_ARGS = ["api_tile", "api_island_market", "api_facility_book", "api_facility"]
 # 画像など、中身を JSON や HTML で確かめない島の下の道
 ISLAND_IMAGES = ["island_flag", "monument_image", "api_country_flag", "api_monument_image"]
 # 書き込む道（GET では開かない）
@@ -138,6 +138,12 @@ def _extra_urls(island: m.Island) -> list[tuple[str, str]]:
         urls.append(
             ("api_facility_book", reverse("api_facility_book", args=[island.id, first.number]))
         )
+    # 施設のページ（UI-72）: マスのある施設と、マスを持たない施設（海運業など）
+    facilities = island.facilities.exclude(kind="housing")
+    for row in (facilities.filter(x__gte=0).first(), facilities.filter(x__lt=0).first()):
+        if row is not None:
+            for name in ("facility_page", "api_facility"):
+                urls.append((name, reverse(name, args=[island.id, row.number])))
     return urls
 
 
@@ -150,7 +156,10 @@ def _check(res, name: str, viewer: str) -> str | None:
             return None
         if name in ISLAND_IMAGES and res.status_code == 404:
             return None
-        if name in ("api_tile", "api_facility_book") and res.status_code == 404:
+        if (
+            name in ("api_tile", "api_facility_book", "api_facility", "facility_page")
+            and res.status_code == 404
+        ):
             return None  # 外のマスや見えない施設は 404 でよい
         return f"status {res.status_code}"
     if name in ISLAND_IMAGES:

@@ -275,7 +275,7 @@ export class TilePanel {
       const months = fuel.months == null ? "使用量未観測" : `約 ${fuel.months.toFixed(1)} か月分`;
       rows.push([`${fuel.name}の備え`, `${fuel.amount} ${fuel.unit}（${months}）。目標 ${fuel.target_amount} ${fuel.unit}（使う見込みの ${fuel.target_months} か月分）`]);
     }
-    const parts = [`<h3>${escapeHtml(f.name)}</h3>${table(rows)}`];
+    const parts = [`<h3>${escapeHtml(f.name)}</h3>${this.facilityLink(f)}${table(rows)}`];
     if (f.owner === "private" && Object.keys(this.defs.facilities[f.kind]?.recipes || {}).length > 1) {
       parts.push(`<p class="hint">${escapeHtml(recipeWords().ownershipHint)}</p>`);
     }
@@ -284,6 +284,15 @@ export class TilePanel {
     parts.push(this.booksHtml(f.books));
     if (f.loans?.length) parts.push(loansHtml(f.loans));
     return parts.join("");
+  }
+
+  /** 施設のページ（UI-72・UI-78）へのリンク。施設ごとの細かい命令と帳簿の推移はそこにある。 */
+  facilityLink(f) {
+    const base = this.el?.dataset.facilityUrl;
+    if (!base || f.number == null) return "";
+    const url = base.replace(/\/0\/$/, `/${encodeURIComponent(f.number)}/`);
+    const text = this.orders ? "施設のページを開く（命令と帳簿の推移）" : "施設のページを開く";
+    return `<p class="facility-page-link"><a href="${escapeHtml(url)}">${text}</a></p>`;
   }
 
   /** 記念碑の碑文（自動の文と、足した文）と、自作の記念碑の絵。 */

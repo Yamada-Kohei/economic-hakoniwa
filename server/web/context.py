@@ -22,6 +22,7 @@ SCREEN_HELP = {
     "market_good": ("help", "standing"),
     "island_chain": ("help_chain", ""),
     "island_facilities": ("help_start", "status"),
+    "facility_page": ("help_start", "status"),
     "island_fiscal": ("help", "money"),
     "island_finance": ("help", "money"),
     "island_trade": ("help", "trade"),

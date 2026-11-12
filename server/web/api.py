@@ -36,6 +36,7 @@ from server.web import budget_guide, display, overview, rankings, reports
 from server.web import chain as chain_views
 from server.web import country as country_views
 from server.web import diplomacy as diplomacy_views
+from server.web import facility_page as facility_views
 from server.web import military as military_views
 from server.web import news as news_views
 from server.web import politics as politics_views
@@ -594,6 +595,21 @@ def facility_book(request, island_id: int, number: int):
     if data is None:
         raise Http404
     return _json(data)
+
+
+@require_GET
+def facility(request, island_id: int, number: int):
+    """施設のページ（UI-72）と同じ中身。持ち主には帳簿・借入・この施設に出ている命令・前のターンの
+    結果・出せる命令（actions）も。ほかの人には地図のマスの窓と同じ公開の中身。見えない施設は
+    404。"""
+    island = get_object_or_404(m.Island.objects.select_related("world"), pk=island_id)
+    viewer = letter_services.own_island(request.user)
+    data = facility_views.facility_data(
+        island, number, _mine(request, island), viewer.id if viewer else None
+    )
+    if data is None:
+        raise Http404
+    return _json({"island": island.id, **data})
 
 
 @require_GET

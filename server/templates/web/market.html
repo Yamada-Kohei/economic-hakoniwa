@@ -54,7 +54,7 @@
       {% if short %}
       <ul class="plain-list">
         {% for f in short %}
-        <li><a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a>（{{ f.owner_name }}） ・ {{ f.status_text }}{% if f.good %} ・ <a href="{% url 'market_good' island.id f.good %}">{{ f.good_name }}</a>{% endif %}{% if f.hint %}<br><small class="hint">{{ f.hint }}</small>{% endif %}</li>
+        <li><a href="{% url 'facility_page' island.id f.number %}">{{ f.name }}</a>（{{ f.owner_name }}） ・ {{ f.status_text }}{% if f.good %} ・ <a href="{% url 'market_good' island.id f.good %}">{{ f.good_name }}</a>{% endif %}{% if f.hint %}<br><small class="hint">{{ f.hint }}</small>{% endif %}</li>
         {% endfor %}
       </ul>
       {% else %}

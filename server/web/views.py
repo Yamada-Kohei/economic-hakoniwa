@@ -32,6 +32,7 @@ from server.web import (
     reports,
     trade,
 )
+from server.web import facility_page as facility_views
 from server.web import (
     news as news_views,
 )
@@ -249,6 +250,23 @@ def facilities_page(request, island_id: int):
             island, display.island_for_naming(island), context["currency"], mine=False
         )
     return render(request, "web/facilities.html", context)
+
+
+def facility_page(request, island_id: int, number: int):
+    """施設のページ（UI-72・UI-73）: 上に「見る」所（状態・人手・投入と産出・収支と借入・
+    帳簿の推移・前のターンの結果）、下に「打てる手」の箱（この施設に出せる命令・出ている
+    命令・動いている設定）。ほかの人には地図のマスの窓と同じ公開の中身だけ。見えない施設は 404。"""
+    island, context, _ = _report(request, island_id, "facilities", "施設")
+    viewer = own_island(request.user)
+    data = facility_views.facility_data(
+        island, number, context["mine"], viewer.id if viewer else None
+    )
+    if data is None:
+        raise Http404
+    context.update(data, title=data["name"])
+    if not context["mine"]:
+        context["note"] = "他国の施設のため、地図のマスの窓と同じ中身だけを表示しています。"
+    return render(request, "web/facility.html", context)
 
 
 def fiscal_page(request, island_id: int):
