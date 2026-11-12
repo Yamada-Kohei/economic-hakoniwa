@@ -373,7 +373,7 @@
 
 ## [8 インフラと教育](08-infrastructure.md)
 
-決まり 27 個、うち仮の決まりの表にあるもの 0 個。
+決まり 28 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -403,6 +403,7 @@
 | IN-24 | 技術者は島全体の人数で、通勤圏を見ずに島のどこへでも通う | 決定 | tests/core/test_infrastructure.py、tests/core/test_playtest3_fixes.py |
 | IN-26 | 役所の決まった事業: 命令の工事がなくても、役所が上下水道の足りない町（育たない町と、人が密に住… | 決定（回4） | tests/core/test_recession_round4.py |
 | IN-27 | 役所が並べた工事は、命令で並べた工事の後に進め、資材は国の倉庫から使わずに市場で買う（倉庫は遊ぶ… | 決定（回4） | tests/core/test_recession_round4.py |
+| IN-28 | 工事の列に並んだマスも、維持の目標までは維持の工事で戻す（優先度・雇う順・資材の注文も維持の位置… | 決定（2026-11-12） | tests/core/test_infrastructure.py、tests/core/test_recession_round4.py |
 | IN-25 | 島の地図の重ね表示に、インフラの整備度（種類ごと）・運賃の率・工事中の印を出す | 決定 | tests/server/test_reports.py |
 
 ## [9 貿易と為替](09-trade.md)
