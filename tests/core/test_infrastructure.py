@@ -113,6 +113,78 @@ def test_roads_wear_and_are_kept_up(game):
     assert stock.total(island.warehouse, "building_materials") < 10_000
 
 
+def _ctx(game, stage: str = "employment") -> StageContext:
+    return StageContext(
+        defs=game.defs,
+        config=game.config,
+        registry=game.registry,
+        formulas=game.engine.formulas,
+        turn=2,
+        seed=0,
+        stage=stage,
+        before=None,
+    )
+
+
+def _queued_worn_road(game):
+    """維持の目標 60% から 50% まで傷んだ道路を、工事の列に並べた島（IN-28）。"""
+    island = make_island(game)
+    home(game, island, 5, 6, 6000)
+    with_economy(game, island)
+    tile = island.tile(5, 6)
+    infra.set_level(tile, ROAD, 500, 600)
+    infra.enqueue(island, ROAD, [(5, 6)])
+    return island, tile
+
+
+def test_queued_tiles_are_kept_up_to_the_target_and_new_works_take_the_rest(game):
+    # 並んだマスを維持から外していたので、新しい工事の順番を待つ間ずっと傷んだ（島 22 の (18,11)）
+    island, tile = _queued_worn_road(game)
+    works = Works(island, _ctx(game))
+    upkeep = [i for i in works.upkeep() if (i.x, i.y) == (5, 6) and i.kind == ROAD]
+    build = [i for i in works.build() if (i.x, i.y) == (5, 6)]
+    assert [i.amount for i in upkeep] == [100]  # 目標まで
+    assert [i.amount for i in build] == [400]  # 目標から 100% まで（step の上限は今どおり）
+    # 次のターンの見積もりでも、同じマスを二重に数えない（傷みの分は維持の方）
+    ahead_up = [i for i in works.upkeep(ahead=True) if (i.x, i.y) == (5, 6) and i.kind == ROAD]
+    ahead_build = [i for i in works.build(ahead=True) if (i.x, i.y) == (5, 6)]
+    assert ahead_up[0].amount + ahead_build[0].amount == infra.FULL - (500 - wear(game, ROAD))
+    assert ahead_build[0].amount == 400
+
+
+def _progress_with(game, island, items, workers: int, stock_qty: int = 10_000) -> None:
+    stock.add(public_works.works_stock(island), "building_materials", stock_qty, 0, game.defs.goods)
+    island.scratch[public_works.WORKS] = {"items": items, "hired": workers}
+    public_works.progress(island, _ctx(game, "construction"))
+
+
+def test_a_queued_tile_with_only_upkeep_hands_goes_back_to_the_target(game):
+    island, tile = _queued_worn_road(game)
+    works = Works(island, _ctx(game))
+    upkeep = [i for i in works.upkeep() if (i.x, i.y) == (5, 6) and i.kind == ROAD]
+    build = [i for i in works.build() if (i.x, i.y) == (5, 6)]
+    # 雇えたのは維持の分だけ（新しい工事に人が回らない）
+    _progress_with(game, island, upkeep + build, workers=-(-upkeep[0].labor // 1000))
+    assert infra.level(tile, ROAD) == 600
+    assert infra.keep(tile, ROAD) == 600
+    assert infra.queued(island, ROAD, 5, 6)  # 改良の工事は列に残る
+
+
+def test_new_works_ahead_of_upkeep_fill_below_the_target_without_waste(game):
+    # 計画経済で新しい工事の優先度が高いと、新しい工事が先に進む。目標より下の分をまず埋め、
+    # 後の維持は上げる分がなければ人手も資材も使わない
+    island, tile = _queued_worn_road(game)
+    works = Works(island, _ctx(game))
+    upkeep = [i for i in works.upkeep() if (i.x, i.y) == (5, 6) and i.kind == ROAD]
+    build = [i for i in works.build() if (i.x, i.y) == (5, 6)]
+    per = game.defs.infrastructure[ROAD]["fallback"]["building_materials"]
+    workers = -(-build[0].labor // 1000)  # 新しい工事の分（400）だけの人手
+    _progress_with(game, island, build + upkeep, workers=workers, stock_qty=10_000)
+    assert infra.level(tile, ROAD) == 900  # 50% から 400 上がる
+    used = 10_000 - stock.total(public_works.works_stock(island), "building_materials")
+    assert used == -(-per * 400 // infra.FULL)  # 維持の分の資材は使っていない
+
+
 def _works_state(game, island, labor: int, held: int, reach=None) -> dict:
     """雇用の段の途中（公共事業の量を決め、held 人分の賃金を取り置いた後）の状態を作る。"""
     wage = island.economy.average_wage
