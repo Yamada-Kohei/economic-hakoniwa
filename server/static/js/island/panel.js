@@ -425,9 +425,16 @@ export class TilePanel {
     return "";
   }
 
+  /** 1国が持てる数。鉱山は 2 と、島が持つ掘れる鉱業資源の数の大きい方（FM-66）。 */
+  islandLimit(d) {
+    if (!d.limit_by_resources) return d.max_per_island;
+    const usable = new Set(Object.values(d.recipes).map((r) => r.requires_resource).filter(Boolean));
+    return Math.max(d.max_per_island, [...usable].filter((g) => this.resources.has(g)).length);
+  }
+
   /** 建てられない施設に付ける注記（数の上限に達した、どの生産方式もこの島で使えない。建てられれば ""）。 */
   facilityNote(id, d) {
-    if (d.max_per_island != null && this.facilityCount(id) >= d.max_per_island) return "上限に達しています";
+    if (d.max_per_island != null && this.facilityCount(id) >= this.islandLimit(d)) return "上限に達しています";
     const problems = Object.values(d.recipes).map((r) => this.recipeProblem(r));
     if (problems.some((p) => !p)) return "";
     return problems.includes("原料は輸入が必要") ? "原料は輸入が必要" : "地下資源なし";
@@ -479,7 +486,7 @@ export class TilePanel {
     if (materials.length) bits.push(`建設資材 ${materials.map(([g, q]) => `${this.goodName(g)} ${q} ${this.unitName(g)}`).join("・")}`);
     if (d.coastal) bits.push("海に面したマスのみ");
     if (d.near_capital != null) bits.push(`首都から ${d.near_capital} マス以内`);
-    if (d.max_per_island != null) bits.push(`1国 ${d.max_per_island} か所まで`);
+    if (d.max_per_island != null) bits.push(`1国 ${this.islandLimit(d)} か所まで`);
     return escapeHtml(bits.join(" ／ ")) + (r.build_hint ? `<br>${escapeHtml(r.build_hint)}` : "");
   }
 

@@ -430,6 +430,19 @@ ISLAND_KEYS = ("currency", "approve", "to", "partner")  # 命令の中身のう�
             "二国間契約の申し込み: サンプル島2に石炭を毎ターン 25 トン買う"
             "（1トン 36・自国通貨・6 ターン・届いた物は国の倉庫に置く）",
         ),
+        (
+            "propose_contract",
+            {
+                "partner": 2,
+                "side": "buy",
+                "good": "coal",
+                "quantity": 1,
+                "price": 900,
+                "indefinite": True,
+            },
+            "二国間契約の申し込み: サンプル島2に石炭を毎ターン 25 トン買う"
+            "（1トン 36・自国通貨・無期限）",
+        ),
         ("accept_contract", {"contract": 4}, "二国間契約を受ける: 契約 4 番"),
         (
             "accept_contract",
@@ -574,3 +587,35 @@ def test_ships_on_order_show_on_the_trade_page_and_api(client, world):
     assert data["fleet"]["shipping"]["on_order"] == 2
     html = client.get(f"/islands/{own.id}/trade/fleet/").content.decode()
     assert "島の造船所に 2 隻を注文しています。" in html
+
+
+def test_an_indefinite_contract_row_can_be_cancelled_and_shows_no_end():
+    """無期限の契約（FX-68）の行: 終わりのターンは出さず、いつでもやめられる。やめる命令の後は
+    終わりのターンが出て、もうやめる命令は出せない。"""
+    islands = {1: {"name": "A", "currency": "a"}, 2: {"name": "B", "currency": "b"}}
+    c = {
+        "id": 7,
+        "seller": 2,
+        "buyer": 1,
+        "proposer": 1,
+        "good": "coal",
+        "qty": 1000,
+        "price": 10,
+        "currency": 1,
+        "turns": None,
+        "indefinite": True,
+        "state": "active",
+        "created": 3,
+        "start": 4,
+        "end": None,
+        "delivered": 0,
+        "paid": 0,
+        "short": 0,
+        "delivery": "market",
+    }
+    [row] = trade_views.contract_rows([c], 1, 500, islands)
+    assert row["indefinite"] and row["end"] is None and row["turns"] is None
+    assert row["active"] and row["can_cancel"]
+    c["end"] = 504
+    [row] = trade_views.contract_rows([c], 1, 500, islands)
+    assert row["end"] == 504 and not row["can_cancel"]

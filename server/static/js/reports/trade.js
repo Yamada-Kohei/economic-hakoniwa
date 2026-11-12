@@ -10,7 +10,7 @@ import { mountOrders } from "./orders.js";
 const INT_FIELDS = new Set(["bloc", "currency", "approve", "to", "contract", "partner", "turns"]);
 // 値段と輸出補助は見せる単位で小数も書ける（W-30。サーバーが計算の単位に直して丸める）
 const NUMBER_FIELDS = new Set(["quantity", "rate", "price", "amount", "fixed_price"]);
-const FLAG_FIELDS = new Set(["open", "no_tariff", "lift"]); // "true" / "false"
+const FLAG_FIELDS = new Set(["open", "no_tariff", "lift", "indefinite"]); // "true" / "false"
 
 // 前の URL（概要の #contracts などの欄）は、欄が移ったタブへ（W-247。#以降はサーバーに届かないので
 // ここで送る）。開いた欄が畳んだ欄（産業政策と援助）なら開く
@@ -41,6 +41,11 @@ function payloadOf(kind, form) {
   }
   if (kind === "bloc_settings" && ("fixed_good" in payload) !== ("fixed_price" in payload)) {
     return [null, "固定価格は、資源と値段の両方を入れてください。"];
+  }
+  if (kind === "propose_contract" && payload.indefinite) {
+    delete payload.turns; // 無期限の契約は期間を書かない（FX-68）
+  } else if (kind === "propose_contract" && !payload.turns) {
+    return [null, "期間を入れるか、無期限を選んでください。"];
   }
   if (kind === "propose_contract" && payload.side !== "buy") {
     delete payload.delivery; // 届いた物の行き先は、買う側が決める

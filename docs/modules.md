@@ -66,7 +66,7 @@
 | `market` | `set_priority`（優先度）・`warehouse_trade`（国の倉庫の売り買い）・`set_price_cap`（値段の上限。市場経済は電気料金だけ、混合経済はどの財も） |
 | `politics` | `set_press`（報道と集会の統制）・`dissolve_parliament`（議会の解散）・`rename_leader`（元首の名前。共和制）・`mobilize_labor`（労働の動員。全体主義）・`amend_constitution`（憲法改正）・`change_economy`（経済体制の変更）。議会の要る命令（`orders.yaml` の `parliament`）は、実行の前に命令の関門（`add_order_gate`）で採決する |
 | `migration` | `set_immigration`（移民の受け入れ: だれでも・人手の足りない分まで・技術者だけ・難民だけ・受け入れない、と1年の上限）・`set_emigration`（出国の扱い: 自由・許可制・禁止。政治の仕組みの `exit_control` まで）。バランス調整の回3 |
-| `plan` | `set_official_price`（公定価格の上書き。計画経済）・`review_official_prices`（公定価格の改定。計画経済。行政力 2、議会のある体制は採決）・`set_official_price_rules`（公定価格の決まり: 見直す幅と、原価を下回っても据え置いて補助金で埋める財。計画経済）・`set_priority_industries`（重点産業。計画経済）・`set_price_floor`（値段の下限。混合経済） |
+| `plan` | `set_official_price`（公定価格の上書き。計画経済）・`review_official_prices`（公定価格の改定。計画経済。行政力 2、議会のある体制は採決）・`set_official_price_rules`（公定価格の決まり: 見直す幅と、小売の値段を据え置く財。計画経済）・`set_retail_price`（小売の値段の上書き。計画経済。行政力 2、据え置く財の小売を上げるときは採決。PL-60）・`set_priority_industries`（重点産業。計画経済）・`set_price_floor`（値段の下限。混合経済） |
 | `banking` | `set_bank_policy`（民間銀行の参入・預金保護）・`grant_bank_license`（銀行の免許） |
 | `bonds` | `set_bond_policy`（期間の割合・売れ残りの扱い・追加の発行・直接の引き受け）・`set_bond_payment`（国債の利払いを止める） |
 | `central_bank` | `set_monetary_policy`（政策金利・国債の売買）・`set_central_bank_independence`（中央銀行の独立。独立すると介入・固定相場・中央銀行の外国の国債の命令をやめる）・`emergency_loan`（銀行への緊急の貸し出し） |

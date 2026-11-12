@@ -261,6 +261,8 @@ def _facility_def(fid: str, f: Any) -> dict[str, Any]:
         "coastal": f.get("coastal", False),
         "near_capital": f.get("near_capital"),
         "max_per_island": f.get("max_per_island"),
+        # 真なら、上限は max_per_island と島の使える鉱業資源の数の大きい方（FM-66）
+        "limit_by_resources": bool(f.get("limit_by_resources")),
         "workers": f["workers"],
         "staff": dict(f.get("staff", {})),
         "priority": f.get("priority"),

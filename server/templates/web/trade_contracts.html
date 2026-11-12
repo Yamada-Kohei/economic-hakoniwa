@@ -26,7 +26,7 @@
               <td>{{ c.good_name }}</td>
               <td>{{ c.quantity|floatformat:"-1g" }} {{ c.unit }}</td>
               <td>{{ c.currency_symbol|currency_prefix }}{{ c.price|floatformat:"-1g" }}<br><small class="muted">{{ c.currency_name }}</small></td>
-              <td>{% if c.start %}{% blocktranslate with s=c.start|turn_date e=c.end|add:"-1"|turn_date %}{{ s }}〜{{ e }}{% endblocktranslate %}{% else %}{% blocktranslate with n=c.turns %}{{ n }} ターン{% endblocktranslate %}{% endif %}</td>
+              <td>{% if c.start and c.end %}{% blocktranslate with s=c.start|turn_date e=c.end|add:"-1"|turn_date %}{{ s }}〜{{ e }}{% endblocktranslate %}{% elif c.start %}{% blocktranslate with s=c.start|turn_date %}{{ s }}〜（無期限）{% endblocktranslate %}{% elif c.indefinite %}{% translate "無期限" %}{% else %}{% blocktranslate with n=c.turns %}{{ n }} ターン{% endblocktranslate %}{% endif %}</td>
               <td>{{ c.shipped|floatformat:"-3g" }}</td>
               <td>{% if c.at_sea %}{{ c.at_sea|floatformat:"-3g" }}<br><small class="muted">{% if c.arrive_first == c.arrive_last %}{% blocktranslate with t=c.arrive_first|turn_date %}{{ t }}に着く見込み{% endblocktranslate %}{% else %}{% blocktranslate with a=c.arrive_first|turn_date b=c.arrive_last|turn_date %}{{ a }}〜{{ b }}に着く見込み{% endblocktranslate %}{% endif %}{% if c.port_wait %}{% translate "（港の荷下ろしの空き待ち）" %}{% endif %}</small>{% else %}-{% endif %}</td>
               <td>{{ c.delivery_name|default:"-" }}</td>
@@ -40,7 +40,7 @@
           </tbody>
         </table>
       </div>
-      <p class="hint">{% blocktranslate with t=trade.cancel_turns %}売る国は国の倉庫から出し（足りなければ島の市場で優先して買い）、買う国は国庫から払って国の倉庫に受け取ります。届いた物は、買う国が決めたとおり、売り切れるまで島の市場の値段で売りに出すか、国の倉庫に置いておきます（傷みやすい物はどちらでもすぐ市場に出します）。相手の国の通貨で払う契約は、中央銀行が持っているその通貨から先に払い、足りない分を政府が為替の市場で買います（1ターンに買えるのは値幅の上端までに売りに出た分だけなので、為替介入で中央銀行に買わせておくと足ります）。物・お金・外貨・船・港が足りないターンは届けられるだけ届け、不足をログに残します。「送り出した量」は売る国の港で積んで代金を払った量の合計で、まだ海の上の荷を含みます（買う国の倉庫や市場に入るのは船が着いてから）。やめる命令から {{ t }} ターン後に終わります。{% endblocktranslate %}</p>
+      <p class="hint">{% blocktranslate with t=trade.cancel_turns %}売る国は国の倉庫から出し（足りなければ島の市場で優先して買い）、買う国は国庫から払って国の倉庫に受け取ります。届いた物は、買う国が決めたとおり、売り切れるまで島の市場の値段で売りに出すか、国の倉庫に置いておきます（傷みやすい物はどちらでもすぐ市場に出します）。相手の国の通貨で払う契約は、中央銀行が持っているその通貨から先に払い、足りない分を政府が為替の市場で買います（1ターンに買えるのは値幅の上端までに売りに出た分だけなので、為替介入で中央銀行に買わせておくと足ります）。物・お金・外貨・船・港が足りないターンは届けられるだけ届け、不足をログに残します。「送り出した量」は売る国の港で積んで代金を払った量の合計で、まだ海の上の荷を含みます（買う国の倉庫や市場に入るのは船が着いてから）。やめる命令から {{ t }} ターン後に終わります。無期限の契約は満期がなく、どちらかがやめる命令を出すまで続きます。{% endblocktranslate %}</p>
       {% else %}
       <p class="muted">{% translate "契約はありません。" %}</p>
       {% endif %}
@@ -115,7 +115,8 @@
         <label>{% translate "相手の国" %} <select name="partner" required>{% for p in trade.partners %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select></label>
         <label>{% translate "資源" %} <select name="good" required>{% for g in trade.goods %}<option value="{{ g.good }}">{{ g.name }}（{{ g.unit }}）</option>{% endfor %}</select></label>
         <label>{% translate "1ターンの量" %} <input name="quantity" type="number" min="0.1" step="0.1" required></label>
-        <label>{% translate "期間（ターン）" %} <input name="turns" type="number" min="1" max="600" step="1" value="12" required></label>
+        <label>{% translate "期間（ターン）" %} <input name="turns" type="number" min="1" max="600" step="1" value="12"></label>
+        <label><input name="indefinite" type="checkbox" value="true"> {% translate "無期限（どちらかがやめるまで続く）" %}</label>
         <p class="hint">{% translate "値段 0 の片道の契約として、次のターンから国の倉庫の物（足りなければ島の市場で買った物）を、相手の国の船で届けます。相手の承諾は要りません。届いた物は相手の島の市場に出ます。送った国の島の値段で、輸出と移転に入ります。契約の一覧から、どちらの国もやめられます。" %}</p>
         <button type="submit">{% translate "命令に追加" %}</button>
       </form>
