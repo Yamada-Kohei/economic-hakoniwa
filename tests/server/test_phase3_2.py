@@ -44,8 +44,8 @@ def test_chain_page_is_only_for_the_owner(client, world):
     page = client.get(f"/islands/{island.id}/chain/").content.decode()
     assert "品目ごとの鎖" in page
     assert "止まっている工場と待っているもの" in page
-    island_page = client.get(f"/islands/{island.id}/").content.decode()
-    assert f"/islands/{island.id}/chain/" in island_page  # 島の画面の案内に出る
+    island_page = client.get(f"/islands/{island.id}/facilities/").content.decode()
+    assert f"/islands/{island.id}/chain/" in island_page  # 施設の入口のタブに出る（UI-71）
 
 
 def test_chain_view_marks_shortages_and_counts_imports(client, world):

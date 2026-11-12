@@ -277,6 +277,16 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         info["fuel_reserves"] = fuel_stock_info(f)
     if mine:
         info["hint"] = status_hint(f)
+        from server.web import slowdown  # slowdown は display を使うので、ここで読み込む
+
+        # 生産調整中・生産停止中のわけと打てる手（W-250）。打てる手は、わけに合わせたものにする
+        # 市場の記録を読むのは、わけを出す施設のときだけ（ほかの施設の窓を重くしない）
+        why = (
+            slowdown.explain(slowdown.Facts(row.island, island), f) if slowdown.applies(f) else None
+        )
+        if why is not None:
+            info["slowdown"] = why
+            info["hint"] = why["hint"] or info["hint"]
     from server.web import monuments  # 記念碑の碑文は display を使うので、ここで読み込む
 
     note = monuments.detail(row.island, row)  # 記念碑なら、碑文と自作の絵
@@ -908,6 +918,11 @@ def status_text(f: Facility) -> str:
     # 戦争・ミサイル・占領で止まったのは災害ではない
     if kind == "halted" and reason in HALT_REASONS:
         text = message(f"halt_reason_{reason}")
+    elif kind == "target" and f.operating_rate <= 0:
+        # 作る量を 0 まで下げて止まった（UI-84）。作り続けている間の「生産調整中」と分ける
+        from server.web import slowdown  # slowdown は display を使うので、ここで読み込む
+
+        return slowdown.stop_text(f) or message("status_target")
     else:
         text = message(f"status_{kind}")
     if kind == "budget" and good:  # 年の予算の月割りが足りない（項目の名前。LB-45）
@@ -1053,6 +1068,25 @@ ORDER_NESTED_UNITS: dict[str, tuple[str, tuple[str, tuple[str, ...], tuple[str, 
 }
 # 項目の下に「財 → 量」の表を持つ命令（W-182）。種類 → 項目。備蓄の目標（food などの補給も財）
 ORDER_GOOD_MAPS: dict[str, str] = {"set_defense": "reserve"}
+
+
+# 動かせるが、軽く動かすと戻らない・効きの大きい命令の注意（W-255。手引きの「軽く動かさない数値」と
+# 同じ中身）。画面の命令の欄と、命令の定義の API（AI のプレイヤー向け）に出す
+ORDER_CAUTIONS = {
+    "set_labor_policy": (
+        "最低賃金を上げると、それより低い施設の賃金がそこまで上がります。施設の賃金は人手が足りないと"
+        "上がり、一度上がると下がらないので、最低賃金を後で戻しても上がった賃金は戻りません。原料や"
+        "資材の値段が高いままになり、止まった工場が動き出さないことがあります。"
+    ),
+    "set_price_cap": (
+        "上限を作る費用より低くすると、作る施設が赤字になって作る量を減らし、足りなくなります。"
+        "上限を外すと、値段は 1 ターンに値幅ずつしか戻りません。"
+    ),
+    "set_fx_intervention": (
+        "外貨を買う介入は、自国通貨を作って払うのでお金が増え、物価に響きます。前のターンに市場で"
+        "売りに出ていなかった通貨は買えず、行政力だけを使います。"
+    ),
+}
 
 
 def order_has_units(kind: str) -> bool:
