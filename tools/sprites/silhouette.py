@@ -45,6 +45,10 @@ TRUNK = "#6b4a2b"
 WOOD = "#9a7347"
 SOIL = "#9b7a4c"
 CROP = "#d9bf5a"
+CROP_GREEN = "#7fa84a"  # 育ち途中の作物
+CROP_LUSH = "#4f9a3c"  # 近代化した農場の青々とした作物
+STRAW = "#e2c77a"  # 干し草
+GRAIN_BIN = "#c3c8cc"  # 金属の穀物ビン
 ROCK = "#9c917f"
 STONE = "#c4bcad"
 GLASS = "#9db6c7"
@@ -504,6 +508,156 @@ def sawtooth(
         end = Face("left", wall, [iso(u0, v1, z0), iso(u1, v1, z0), iso(u0, v1, zt)])
         slope = "slope_r"
     return [Prim((u0, v0, u1, v1), z0 + 0.1, [Face(slope, c, roof), Face(slope, glass, sky), end])]
+
+
+def haystack(u: float, v: float, r: float, h: float) -> list[Prim]:
+    """手で積んだ干し草の山: 低い円柱の上に円すい。"""
+    return [cylinder(u, v, r, 0, h * 0.3, c=STRAW), cone(u, v, r, h * 0.38, h * 0.3, c=STRAW)]
+
+
+def tractor(u: float, v: float, k: float = 1.6) -> list[Prim]:
+    """トラクター（u の向きに長い）: 大きな後輪・小さな前輪、赤い車体、運転台。
+
+    (u, v) は足元の奥の角、k は大きさの倍。"""
+
+    def part(a0: float, b0: float, a1: float, b1: float, z0: float, h: float, c: str, top=None):
+        return box(u + a0 * k, v + b0 * k, u + a1 * k, v + b1 * k, z0, h, c, top)
+
+    return [
+        part(0.0, 0.0, 0.05, 0.014, 0, 3.6, TIRE),
+        part(0.075, 0.01, 0.11, 0.022, 0, 2.2, TIRE),
+        part(0.0, 0.014, 0.12, 0.066, 1.2, 2.4, RED),
+        part(0.005, 0.02, 0.05, 0.06, 3.6, 3.6, GLASS2, RED),
+        part(0.0, 0.066, 0.05, 0.08, 0, 3.6, TIRE),
+        part(0.075, 0.058, 0.11, 0.07, 0, 2.2, TIRE),
+    ]
+
+
+def pivot(v: float, u0: float, u1: float, z: float = 6) -> list[Prim]:
+    """畑をまたぐ散水管（センターピボット）: 細い管と、二本脚の塔 4 つ（u の向きに通る）。"""
+    out = [box(u0, v - 0.006, u1, v + 0.006, z, 0.8, WHITE)]
+    for u in [u0 + (u1 - u0) * i / 3 for i in range(4)]:
+        out.append(box(u - 0.006, v - 0.03, u + 0.006, v - 0.018, 0.8, z - 0.8, METAL))
+        out.append(box(u - 0.006, v + 0.018, u + 0.006, v + 0.03, 0.8, z - 0.8, METAL))
+    return out
+
+
+# 農場の作物ごとの畝の色: (段階 0・1 の畝, 上面, 近代化の畝, 上面, 畝の高さ,
+#   段階 0 の小さい区画の畝, 上面)
+FARM_CROPS = {
+    "grain": (CROP, None, CROP_LUSH, None, 1.2, CROP_GREEN, None),
+    "cotton": ("#6f9a48", "#d9dcc6", "#5c9442", "#dfe1cc", 1.4, "#6f9a48", "#d9dcc6"),
+    "luxury_crop": ("#3d6e35", "#4f8a40", "#356a2f", "#4a8a3c", 2.4, "#3d6e35", "#4f8a40"),
+}
+
+
+def field(
+    u0: float,
+    v0: float,
+    u1: float,
+    v1: float,
+    n: int,
+    c: str,
+    along: str = "u",
+    h: float = 1.2,
+    top: str | None = None,
+) -> list[Prim]:
+    """畑: 土の板と、その上の作物の畝 n 本（along の向きに通る）。top は畝の上面の色。"""
+    out = [box(u0, v0, u1, v1, 0, 0.8, SOIL)]
+    if along == "u":
+        w = (v1 - v0) / n
+        out += [
+            box(u0 + 0.01, v0 + i * w + w * 0.2, u1 - 0.01, v0 + i * w + w * 0.75, 0.8, h, c, top)
+            for i in range(n)
+        ]
+    else:
+        w = (u1 - u0) / n
+        out += [
+            box(u0 + i * w + w * 0.2, v0 + 0.01, u0 + i * w + w * 0.75, v1 - 0.01, 0.8, h, c, top)
+            for i in range(n)
+        ]
+    return out
+
+
+def farm_yard(crop: str) -> list[Prim]:
+    """手作業の農場の庭: 穀物は干し草の山、綿は摘んだ綿の袋、嗜好品は茶葉などを干す小屋。"""
+    if crop == "grain":
+        return [
+            *haystack(0.14, 0.76, 0.06, 9),
+            *haystack(0.3, 0.86, 0.06, 9),
+            *haystack(0.36, 0.72, 0.05, 7),
+        ]
+    if crop == "cotton":
+        return [
+            box(u, v, u + 0.07, v + 0.06, 0, 3, "#efede4")
+            for u, v in ((0.1, 0.74), (0.2, 0.8), (0.12, 0.86), (0.3, 0.72))
+        ]
+    return house(0.1, 0.7, 0.4, 0.9, 4, 4, "u", WOOD, ROOF_BROWN)
+
+
+def farm_store(crop: str, grade: int) -> list[Prim]:
+    """作物をしまう建物: 穀物はサイロ（機械化）と穀物ビン 3 基（近代化）、
+    ほかは作業の建屋（綿繰り・加工）。"""
+    if crop == "grain" and grade == 1:
+        return [cylinder(0.14, 0.8, 0.075, 0, 20, cap="dome", cap_c=ROOF_SLATE)]
+    if crop == "grain":
+        return [
+            prim
+            for u, v in ((0.14, 0.72), (0.14, 0.88), (0.32, 0.8))
+            for prim in (
+                cylinder(u, v, 0.085, 0, 9, c=GRAIN_BIN),
+                cone(u, v, 0.085, 3.5, 9, c=METAL),
+            )
+        ]
+    if grade == 1:
+        return [
+            box(0.06, 0.64, 0.24, 0.94, 0, 9, WALL),
+            gable(0.06, 0.64, 0.24, 0.94, 9, 4, "v", ROOF_TILE, WALL),
+        ]
+    return [
+        box(0.06, 0.66, 0.42, 0.94, 0, 8, WALL),
+        gable(0.06, 0.66, 0.42, 0.94, 8, 4, "u", ROOF_TILE, WALL),
+    ]
+
+
+def farm(grade: int, crop: str) -> list[Prim]:
+    """農場（FM-50 の段階 grade、作物 crop）。
+
+    手作業: 小さく区切った畑（作物の色がまちまち）、耕しただけの区画、庭（farm_yard）、木の家。
+    機械化: 1 枚の大きな畑、トラクター（嗜好品は手で摘むのでなし）、作物の建物、鉄の農機庫、
+    れんがの家。
+    近代化（灌漑・改良品種）: 奥の用水路、青々とした畑、畑をまたぐ散水管（嗜好品は点滴の灌漑なので
+    なし）、作物の建物、肥料のタンク、農機庫。
+    """
+    c, top, c2, top2, h, alt, alt_top = FARM_CROPS[crop]
+    if grade == 0:
+        return [
+            *field(0.08, 0.08, 0.36, 0.34, 3, alt, h=h, top=alt_top),
+            *field(0.4, 0.08, 0.66, 0.34, 3, c, "v", h, top),
+            *field(0.7, 0.08, 0.92, 0.34, 2, alt, "v", h, alt_top),
+            *field(0.08, 0.38, 0.36, 0.62, 3, c, "v", h, top),
+            box(0.4, 0.38, 0.6, 0.6, 0, 0.8, SOIL),
+            *farm_yard(crop),
+            *house(0.66, 0.66, 0.86, 0.86, 5, 5, "v", WOOD, ROOF_BROWN),
+        ]
+    if grade == 1:
+        return [
+            *field(0.06, 0.06, 0.94, 0.56, 7, c, h=h, top=top),
+            *(tractor(0.66, 0.2) if crop != "luxury_crop" else []),
+            *farm_store(crop, 1),
+            box(0.3, 0.64, 0.62, 0.9, 0, 6, METAL),
+            gable(0.3, 0.64, 0.62, 0.9, 6, 4, "u", ROOF_STEEL, METAL),
+            *house(0.72, 0.7, 0.9, 0.88, 5, 5, "v", BRICK, DARK),
+        ]
+    return [
+        box(0.04, 0.04, 0.96, 0.1, 0, 0.6, CONCRETE, WATER),
+        *field(0.06, 0.12, 0.94, 0.6, 8, c2, h=max(h, 1.6), top=top2),
+        *(tiered(2, *pivot(0.36, 0.1, 0.9)) if crop != "luxury_crop" else []),
+        *farm_store(crop, 2),
+        cylinder(0.52, 0.78, 0.05, 0, 7, c=WHITE),
+        box(0.66, 0.68, 0.92, 0.9, 0, 6, WALL),
+        gable(0.66, 0.68, 0.92, 0.9, 6, 4, "u", ROOF_STEEL, WALL),
+    ]
 
 
 def car(u: float, v: float, c: str, z0: float = 0, along: str = "u") -> list[Prim]:
@@ -1291,12 +1445,6 @@ SHAPES: dict[str, list[Prim]] = {
         *tree(0.9, 0.42, 0.06, 11),
         *tree(0.56, 0.9, 0.06, 10),
     ],
-    "facility/farm": [
-        box(0.08, 0.08, 0.92, 0.54, 0, 1, SOIL),
-        *[box(0.1, v, 0.9, v + 0.06, 1, 2, CROP) for v in (0.1, 0.22, 0.34, 0.46)],
-        *house(0.55, 0.58, 0.85, 0.88, 8, 6, "v", BRICK, DARK),
-        cylinder(0.25, 0.75, 0.08, 0, 18, cap="dome", cap_c=ROOF_SLATE),
-    ],
     "facility/lumber_camp": [
         *tree(0.25, 0.22, 0.1, 30),
         *tree(0.5, 0.15, 0.09, 26),
@@ -1323,7 +1471,7 @@ SHAPES: dict[str, list[Prim]] = {
         *[box(u, v, u + 0.06, v + 0.06, 0, 34, IRON) for u in (0.18, 0.36) for v in (0.18, 0.36)],
         box(0.15, 0.15, 0.45, 0.45, 34, 4, RUST),
         *house(0.5, 0.45, 0.88, 0.85, 12, 7, "u", WALL, ROOF_SLATE),
-        cone(0.25, 0.72, 0.13, 9, c=COAL),
+        cone(0.2, 0.76, 0.17, 12, c=COAL),
     ],
     "facility/steel_mill": [
         # 熱風炉 3 基・高炉・鋳床の建屋・煙突
@@ -3485,6 +3633,37 @@ def skyscraper() -> list[Prim]:
     return parts
 
 
+# 農場は段階（FM-50）と作物ごとに絵を分ける。名前のままは穀物の手作業、@g1 は機械化、@g2 は近代化、
+# +cotton・+luxury_crop は綿・嗜好品の畑（theme.yaml の sprite_looks）
+for _crop in FARM_CROPS:
+    for _grade in range(3):
+        _look = "" if _crop == "grain" else f"+{_crop}"
+        _suffix = f"@g{_grade}" if _grade else ""
+        SHAPES[f"facility/farm{_look}{_suffix}"] = farm(_grade, _crop)
+
+# 鉱山は掘る物ごとに鉱石の山の色を変える（名前のままは石炭。theme.yaml の sprite_looks）
+MINE_ORES = {
+    "iron_ore": "#7a4434",
+    "bauxite": "#c27848",
+    "copper_ore": "#5f8a72",
+    "uranium_ore": "#8f8b7c",
+}
+for _ore, _c in MINE_ORES.items():
+    SHAPES[f"facility/mine+{_ore}"] = [
+        *SHAPES["facility/mine"][:-1],
+        cone(0.2, 0.76, 0.17, 12, c=_c),
+    ]
+# ウラン鉱石は黄色いドラム缶（精錬前の粉を詰めて送る）
+SHAPES["facility/mine+uranium_ore"] += [
+    cylinder(u, v, 0.025, 0, 4, c=YELLOW) for u, v in ((0.93, 0.56), (0.93, 0.63), (0.93, 0.7))
+]
+# 火力発電所は燃料ごと: 名前のままは石炭の山、+fuel は油のタンク 2 基
+SHAPES["facility/thermal_power_plant+fuel"] = [
+    *[p for p in SHAPES["facility/thermal_power_plant"] if p.faces[0].color != COAL],
+    cylinder(0.64, 0.76, 0.075, 0, 10, c=WHITE),
+    cylinder(0.84, 0.66, 0.075, 0, 10, c=WHITE),
+]
+
 SHAPES["housing/high_rise"] = high_rise()
 SHAPES["housing/skyscraper"] = skyscraper()
 SHAPES["housing/city"] = city_slabs()
@@ -3498,6 +3677,720 @@ ALTERNATES.update(
         "housing/metropolis_tiers": metropolis_tiers(),
     }
 )
+
+
+# ---- 建て増しの規模の絵（FM-47）----
+# 工場は規模（1〜10）を 4 段に分けて描く: 段 1 は名前のままの絵、@s2 は規模 2〜4、
+# @s3 は 5〜7、@s4 は 8〜10（区切りは theme.yaml の size_tiers）。マスの広さは変わらないので、
+# 段が上がるほど空き地を建物で埋め、炉・塔・煙突の数を増やし、背を高くする。
+BM_WALL, BM_ROOF = "#d8c7a8", "#c49a6c"
+FOOD_ROOF = "#e08e5a"
+CG_ROOF, CG_WALL = "#b57fb3", "#e6dde6"
+TP_WALL, TP_ROOF = "#7a8088", "#7d838b"
+
+
+def blast_furnace(u, v, k=1.0):
+    """高炉: 太い基部、すぼまる炉体、炉頂。"""
+    return [
+        cylinder(u, v, 0.17 * k, 0, 10, c=IRON),
+        cylinder(u, v, 0.13 * k, 10, 26 * k, r_top=0.09 * k, c=RUST),
+        cylinder(u, v, 0.05 * k, 10 + 26 * k, 12, c=IRON),
+    ]
+
+
+def stoves(points, h=32):
+    return [cylinder(u, v, 0.06, 0, h, cap="dome", c=METAL) for u, v in points]
+
+
+def steel_mill(t):
+    if t == 2:
+        return [
+            *stoves(((0.12, 0.3), (0.2, 0.18), (0.33, 0.12))),
+            cylinder(0.86, 0.1, 0.035, 0, 60, c=BRICK),
+            box(0.5, 0.15, 0.9, 0.5, 0, 18, CONCRETE),
+            gable(0.5, 0.15, 0.9, 0.5, 18, 6, "u", RUST, CONCRETE),
+            *blast_furnace(0.28, 0.62, 0.9),
+            *blast_furnace(0.72, 0.76, 0.9),
+        ]
+    if t == 3:
+        return [
+            *stoves(((0.12, 0.3), (0.2, 0.18), (0.33, 0.12), (0.52, 0.08), (0.62, 0.08))),
+            *[cylinder(u, 0.08, 0.035, 0, 70, c=BRICK) for u in (0.78, 0.9)],
+            box(0.5, 0.18, 0.94, 0.5, 0, 22, CONCRETE),
+            gable(0.5, 0.18, 0.94, 0.5, 22, 7, "u", RUST, CONCRETE),
+            *blast_furnace(0.26, 0.62, 1.0),
+            *blast_furnace(0.72, 0.76, 1.0),
+        ]
+    # 段 4: 高炉 2 基を大きく、熱風炉 6 基、煙突 3 本、大きな建屋
+    return [
+        *stoves(
+            ((0.1, 0.3), (0.18, 0.18), (0.3, 0.1), (0.44, 0.08), (0.54, 0.08), (0.64, 0.08)), 38
+        ),
+        *[cylinder(u, 0.08, 0.035, 0, 82, c=BRICK) for u in (0.76, 0.84, 0.92)],
+        box(0.5, 0.18, 0.96, 0.52, 0, 28, CONCRETE),
+        gable(0.5, 0.18, 0.96, 0.52, 28, 8, "u", RUST, CONCRETE),
+        *blast_furnace(0.24, 0.62, 1.1),
+        *blast_furnace(0.72, 0.76, 1.1),
+        box(0.24, 0.6, 0.72, 0.64, 50, 2, IRON),
+    ]
+
+
+def machinery_plant(t):
+    if t == 2:
+        return [
+            *[cylinder(u, 0.12, 0.04, 0, 48, c=BRICK) for u in (0.2, 0.36)],
+            box(0.06, 0.24, 0.94, 0.94, 0, 18, WALL),
+            *[
+                gable(0.06, v, 0.94, v + 0.14, 18, 7, "u", ROOF_STEEL)
+                for v in (0.24, 0.38, 0.52, 0.66, 0.8)
+            ],
+        ]
+    if t == 3:
+        return [
+            *[cylinder(u, 0.1, 0.045, 0, 60, c=BRICK) for u in (0.12, 0.26)],
+            box(0.04, 0.2, 0.62, 0.96, 0, 24, WALL),
+            *[
+                gable(0.04, v, 0.62, v + 0.152, 24, 8, "u", ROOF_STEEL)
+                for v in (0.2, 0.352, 0.504, 0.656, 0.808)
+            ],
+            box(0.66, 0.08, 0.96, 0.44, 0, 34, "#d6d2c8", ROOF_STEEL),
+            box(0.66, 0.52, 0.96, 0.96, 0, 14, CONCRETE),
+            gable(0.66, 0.52, 0.96, 0.96, 14, 5, "v", ROOF_STEEL, CONCRETE),
+        ]
+    return [
+        *[cylinder(u, 0.06, 0.045, 0, 72, c=BRICK) for u in (0.1, 0.22, 0.34)],
+        box(0.04, 0.14, 0.62, 0.96, 0, 30, WALL),
+        *[
+            gable(0.04, v, 0.62, v + 0.137, 30, 8, "u", ROOF_STEEL)
+            for v in (0.14, 0.277, 0.414, 0.551, 0.688, 0.825)
+        ],
+        box(0.66, 0.06, 0.96, 0.42, 0, 48, "#d6d2c8", ROOF_STEEL),
+        box(0.66, 0.48, 0.96, 0.96, 0, 22, CONCRETE),
+        gable(0.66, 0.48, 0.96, 0.96, 22, 6, "v", ROOF_STEEL, CONCRETE),
+    ]
+
+
+def building_materials_plant(t):
+    def silo(u, v, h):
+        return cylinder(u, v, 0.07, 0, h, cap="cone", c=METAL)
+
+    if t == 2:
+        return [
+            *[silo(u, 0.16, 34) for u in (0.14, 0.28, 0.42, 0.56)],
+            box(0.08, 0.36, 0.92, 0.9, 0, 16, BM_WALL, BM_ROOF),
+            box(0.58, 0.42, 0.88, 0.72, 16, 10, BM_WALL, BM_ROOF),
+        ]
+    if t == 3:
+        return [
+            *[silo(u, 0.14, 38) for u in (0.12, 0.26, 0.4, 0.54)],
+            box(0.7, 0.08, 0.9, 0.3, 0, 52, BM_WALL, BM_ROOF),  # 予熱の塔
+            box(0.08, 0.36, 0.92, 0.92, 0, 18, BM_WALL, BM_ROOF),
+            box(0.56, 0.4, 0.9, 0.74, 18, 12, BM_WALL, BM_ROOF),
+        ]
+    return [
+        *[silo(u, v, 42) for u in (0.1, 0.24, 0.38, 0.52) for v in (0.12, 0.28)],
+        box(0.7, 0.06, 0.92, 0.3, 0, 64, BM_WALL, BM_ROOF),
+        box(0.08, 0.42, 0.92, 0.94, 0, 22, BM_WALL, BM_ROOF),
+        box(0.54, 0.46, 0.9, 0.78, 22, 14, BM_WALL, BM_ROOF),
+    ]
+
+
+def food_factory(t):
+    def tank(u, v, h):
+        return cylinder(u, v, 0.1, 0, h, cap="dome", c=WHITE)
+
+    if t == 2:
+        return [
+            *[tank(u, v, 24) for u, v in ((0.2, 0.22), (0.42, 0.16), (0.64, 0.16))],
+            box(0.1, 0.42, 0.92, 0.92, 0, 16, WALL, FOOD_ROOF),
+            box(0.6, 0.52, 0.88, 0.82, 16, 5, METAL),
+        ]
+    if t == 3:
+        return [
+            *[tank(u, v, 30) for u, v in ((0.16, 0.2), (0.36, 0.14), (0.56, 0.14), (0.76, 0.14))],
+            box(0.08, 0.4, 0.94, 0.94, 0, 18, WALL, FOOD_ROOF),
+            box(0.4, 0.46, 0.9, 0.86, 18, 8, WALL, FOOD_ROOF),
+            box(0.6, 0.56, 0.84, 0.78, 26, 4, METAL),
+        ]
+    return [
+        *[tank(u, v, 34) for u in (0.14, 0.34, 0.54, 0.74) for v in (0.12,)],
+        *[tank(u, 0.32, 26) for u in (0.14, 0.34)],
+        box(0.48, 0.3, 0.94, 0.56, 0, 30, WALL, FOOD_ROOF),  # 冷蔵の倉庫
+        box(0.08, 0.6, 0.94, 0.94, 0, 18, WALL, FOOD_ROOF),
+        box(0.6, 0.66, 0.86, 0.88, 18, 5, METAL),
+    ]
+
+
+def consumer_goods_factory(t):
+    if t == 2:
+        return [
+            box(0.1, 0.1, 0.52, 0.42, 0, 34, WALL, CG_ROOF),
+            box(0.1, 0.42, 0.92, 0.92, 0, 16, CG_WALL, CG_ROOF),
+            *[box(u, 0.6, u + 0.1, 0.7, 16, 4, METAL) for u in (0.26, 0.46, 0.66)],
+        ]
+    if t == 3:
+        return [
+            box(0.08, 0.08, 0.42, 0.38, 0, 40, WALL, CG_ROOF),
+            box(0.5, 0.08, 0.84, 0.32, 0, 30, WALL, CG_ROOF),
+            box(0.08, 0.42, 0.94, 0.94, 0, 18, CG_WALL, CG_ROOF),
+            *[box(u, 0.6, u + 0.1, 0.7, 18, 4, METAL) for u in (0.24, 0.44, 0.64)],
+        ]
+    return [
+        box(0.06, 0.06, 0.38, 0.36, 0, 50, WALL, CG_ROOF),
+        box(0.44, 0.06, 0.72, 0.3, 0, 40, WALL, CG_ROOF),
+        box(0.76, 0.06, 0.96, 0.3, 0, 30, WALL, CG_ROOF),
+        box(0.06, 0.4, 0.96, 0.96, 0, 22, CG_WALL, CG_ROOF),
+        *[
+            box(u, v, u + 0.1, v + 0.1, 22, 4, METAL)
+            for u in (0.24, 0.44, 0.64)
+            for v in (0.52, 0.74)
+        ],
+    ]
+
+
+def chimneys(points, h, top=14):
+    return [
+        *[cylinder(u, v, 0.045, 0, h, c=WHITE) for u, v in points],
+        *[cylinder(u, v, 0.045, h, top, c=RED) for u, v in points],
+    ]
+
+
+def thermal_power_plant(t, fuel=False):
+    yard = (
+        [cylinder(0.62, 0.78, 0.075, 0, 10, c=WHITE), cylinder(0.84, 0.7, 0.075, 0, 10, c=WHITE)]
+        if fuel
+        else [cone(0.7, 0.76, 0.15, 9, c=COAL)]
+    )
+    if t == 2:
+        return [
+            box(0.08, 0.1, 0.28, 0.44, 0, 44, TP_WALL, DARK),
+            box(0.31, 0.1, 0.5, 0.44, 0, 40, TP_WALL, DARK),
+            box(0.52, 0.18, 0.92, 0.56, 0, 22, WALL, TP_ROOF),
+            *chimneys(((0.62, 0.08), (0.8, 0.08)), 58),
+            *yard,
+            *(
+                [cylinder(0.28, 0.8, 0.075, 0, 10, c=WHITE)]
+                if fuel
+                else [cone(0.3, 0.76, 0.14, 8, c=COAL)]
+            ),
+        ]
+    if t == 3:
+        return [
+            *[box(u, 0.1, u + 0.19, 0.42, 0, 50, TP_WALL, DARK) for u in (0.06, 0.29)],
+            box(0.06, 0.42, 0.48, 0.6, 0, 24, WALL, TP_ROOF),
+            box(0.52, 0.2, 0.94, 0.56, 0, 24, WALL, TP_ROOF),
+            *chimneys(((0.58, 0.08), (0.74, 0.08), (0.9, 0.08)), 66, 16),
+            *yard,
+            *(
+                [cylinder(0.26, 0.8, 0.08, 0, 11, c=WHITE)]
+                if fuel
+                else [cone(0.28, 0.78, 0.16, 10, c=COAL)]
+            ),
+        ]
+    return [
+        *[
+            box(u, 0.08, u + 0.17, 0.4, 0, h, TP_WALL, DARK)
+            for u, h in ((0.04, 58), (0.24, 54), (0.44, 58))
+        ],
+        box(0.04, 0.4, 0.64, 0.6, 0, 26, WALL, TP_ROOF),
+        box(0.66, 0.24, 0.96, 0.58, 0, 26, WALL, TP_ROOF),
+        *chimneys(((0.76, 0.08), (0.92, 0.08)), 80, 18),
+        *yard,
+        *(
+            [cylinder(0.2, 0.8, 0.08, 0, 11, c=WHITE), cylinder(0.4, 0.82, 0.08, 0, 11, c=WHITE)]
+            if fuel
+            else [cone(0.22, 0.8, 0.15, 10, c=COAL), cone(0.46, 0.86, 0.1, 7, c=COAL)]
+        ),
+    ]
+
+
+REF_GREEN = "#8c8f6a"
+AL_WALL, AL_TOP = "#cfd5da", "#e4e8eb"
+TEX_WALL = "#d8aab5"
+AUTO_ROOF = "#4a6fa5"
+
+
+def pad():
+    return box(0.04, 0.04, 0.96, 0.96, 0, 1, CONCRETE, PAVEMENT)
+
+
+def ftank(u, v, r=0.12, h=11):
+    return cylinder(u, v, r, 1, h, c=WHITE, cap_c="#cfcac0")
+
+
+def flare(u, v, h=48):
+    return [
+        cylinder(u, v, 0.018, 1, h, c=METAL),
+        cylinder(u, v, 0.022, h + 1, 4, c=RED),
+        flame(u, v, h + 5, 9),
+    ]
+
+
+def refinery(t):
+    if t == 2:
+        return [
+            pad(),
+            *column(0.16, 0.22, 0.05, 54),
+            *column(0.32, 0.14, 0.045, 46),
+            *column(0.12, 0.42, 0.04, 38),
+            *column(0.44, 0.1, 0.035, 34),
+            box(0.48, 0.2, 0.74, 0.46, 1, 18, REF_GREEN, DARK),
+            box(0.52, 0.24, 0.7, 0.42, 19, 6, REF_GREEN, DARK),
+            *flare(0.88, 0.1, 52),
+            *[ftank(u, v) for u, v in ((0.24, 0.76), (0.5, 0.8), (0.76, 0.8), (0.84, 0.56))],
+        ]
+    if t == 3:
+        return [
+            pad(),
+            *column(0.14, 0.2, 0.055, 60),
+            *column(0.3, 0.12, 0.05, 52),
+            *column(0.1, 0.4, 0.045, 44),
+            *column(0.46, 0.08, 0.04, 40),
+            *column(0.28, 0.32, 0.035, 34),
+            box(0.5, 0.18, 0.78, 0.46, 1, 22, REF_GREEN, DARK),
+            box(0.54, 0.22, 0.74, 0.42, 23, 8, REF_GREEN, DARK),
+            *flare(0.86, 0.08, 58),
+            *flare(0.92, 0.2, 50),
+            *[
+                ftank(u, v, 0.1)
+                for u, v in (
+                    (0.16, 0.66),
+                    (0.16, 0.86),
+                    (0.38, 0.72),
+                    (0.38, 0.9),
+                    (0.6, 0.76),
+                    (0.82, 0.76),
+                )
+            ],
+        ]
+    return [
+        pad(),
+        *column(0.12, 0.18, 0.06, 68),
+        *column(0.28, 0.1, 0.055, 60),
+        *column(0.08, 0.38, 0.05, 50),
+        *column(0.44, 0.08, 0.045, 46),
+        *column(0.26, 0.3, 0.04, 40),
+        *column(0.58, 0.08, 0.04, 36),
+        box(0.48, 0.2, 0.8, 0.48, 1, 26, REF_GREEN, DARK),
+        box(0.52, 0.24, 0.76, 0.44, 27, 10, REF_GREEN, DARK),
+        *flare(0.86, 0.08, 66),
+        *flare(0.92, 0.2, 56),
+        *[ftank(u, v, 0.09, 12) for u in (0.14, 0.34, 0.54, 0.74) for v in (0.66, 0.86)],
+        ftank(0.88, 0.5, 0.08, 12),
+    ]
+
+
+def potline(v, h, u0=0.06, u1=0.94, w=0.18):
+    return [
+        box(u0, v, u1, v + w, 1, h, AL_WALL, ROOF_STEEL),
+        box(u0, v + w / 3, u1, v + 2 * w / 3, 1 + h, 4, AL_TOP, "#8f9aa4"),
+    ]
+
+
+def aluminium_smelter(t):
+    def silo(u, v, h):
+        return cylinder(u, v, 0.075, 1, h, c="#e2e5e8")
+
+    if t == 2:
+        return [
+            pad(),
+            *potline(0.06, 16),
+            *potline(0.28, 16),
+            *potline(0.5, 14, 0.06, 0.6),
+            *[silo(u, 0.82, 30) for u in (0.16, 0.34)],
+            *[box(u, 0.74, u + 0.08, 0.82, 1, 7, DARK) for u in (0.68, 0.82)],
+        ]
+    if t == 3:
+        return [
+            pad(),
+            *potline(0.06, 18),
+            *potline(0.26, 18),
+            *potline(0.46, 18),
+            *[silo(u, 0.8, 34) for u in (0.12, 0.28, 0.44)],
+            *[box(u, 0.72, u + 0.08, 0.8, 1, 8, DARK) for u in (0.66, 0.8)],
+            *[box(u, 0.86, u + 0.02, 0.88, 1, 24, METAL) for u in (0.62, 0.9)],
+            box(0.62, 0.86, 0.92, 0.88, 23, 2, METAL),
+        ]
+    return [
+        pad(),
+        *[p for v in (0.05, 0.23, 0.41, 0.59) for p in potline(v, 20, w=0.16)],
+        *[silo(u, 0.86, 40) for u in (0.12, 0.28, 0.44)],
+        *[box(u, 0.8, u + 0.08, 0.88, 1, 9, DARK) for u in (0.64, 0.78)],
+    ]
+
+
+def textile_mill(t):
+    def hall(u0, v0, u1, v1, h, n):
+        w = (u1 - u0) / n
+        return [
+            box(u0, v0, u1, v1, 0, h, TEX_WALL),
+            *[
+                p
+                for i in range(n)
+                for p in sawtooth(
+                    u0 + i * w, v0, u0 + (i + 1) * w, v1, h, 8, "v", ROOF_SLATE, "#d4e4ee", TEX_WALL
+                )
+            ],
+        ]
+
+    if t == 2:
+        return [
+            cylinder(0.14, 0.14, 0.04, 0, 48, c=BRICK),
+            box(0.28, 0.06, 0.62, 0.24, 0, 16, BRICK, ROOF_SLATE),
+            *[box(u, 0.1, u + 0.08, 0.2, 0, 4, WHITE) for u in (0.7, 0.8)],
+            *hall(0.06, 0.3, 0.94, 0.94, 12, 5),
+        ]
+    if t == 3:
+        return [
+            *[cylinder(u, 0.12, 0.04, 0, 54, c=BRICK) for u in (0.12, 0.24)],
+            box(0.34, 0.06, 0.66, 0.24, 0, 18, BRICK, ROOF_SLATE),
+            box(0.72, 0.06, 0.94, 0.24, 0, 24, TEX_WALL, ROOF_SLATE),
+            *hall(0.06, 0.3, 0.94, 0.94, 14, 5),
+            box(0.06, 0.3, 0.4, 0.6, 14, 0.1, TEX_WALL),
+        ]
+    return [
+        *[cylinder(u, 0.1, 0.045, 0, 62, c=BRICK) for u in (0.1, 0.22)],
+        box(0.3, 0.05, 0.62, 0.22, 0, 20, BRICK, ROOF_SLATE),
+        box(0.66, 0.05, 0.96, 0.4, 0, 30, TEX_WALL, ROOF_SLATE),  # 紡績の棟（4 階）
+        *hall(0.04, 0.28, 0.62, 0.96, 16, 3),
+        *hall(0.66, 0.46, 0.96, 0.96, 12, 2),
+    ]
+
+
+def automobile_plant(t):
+    def cars(us, vs):
+        return [
+            p
+            for i, u in enumerate(us)
+            for j, v in enumerate(vs)
+            for p in car(u, v, CAR_COLORS[(i * 2 + j) % len(CAR_COLORS)], 1)
+        ]
+
+    if t == 2:
+        return [
+            pad(),
+            box(0.06, 0.06, 0.94, 0.6, 1, 20, WALL, AUTO_ROOF),
+            *[box(0.3, v, 0.92, v + 0.04, 21, 1.5, GLASS) for v in (0.12, 0.24, 0.36, 0.48)],
+            box(0.06, 0.06, 0.28, 0.3, 21, 10, WALL, AUTO_ROOF),
+            box(0.08, 0.66, 0.3, 0.92, 1, 14, GLASS, WHITE),
+            *cars((0.4, 0.52, 0.64, 0.76), (0.68, 0.8)),
+        ]
+    if t == 3:
+        return [
+            pad(),
+            box(0.06, 0.06, 0.94, 0.62, 1, 24, WALL, AUTO_ROOF),
+            *[box(0.32, v, 0.92, v + 0.04, 25, 1.5, GLASS) for v in (0.12, 0.24, 0.36, 0.48)],
+            box(0.06, 0.06, 0.3, 0.34, 25, 14, WALL, AUTO_ROOF),
+            box(0.08, 0.68, 0.34, 0.94, 1, 18, GLASS, WHITE),
+            box(0.4, 0.68, 0.6, 0.94, 1, 10, WALL, AUTO_ROOF),
+            *cars((0.66, 0.78), (0.7, 0.8, 0.9)),
+        ]
+    return [
+        pad(),
+        box(0.04, 0.04, 0.6, 0.62, 1, 28, WALL, AUTO_ROOF),
+        box(0.6, 0.04, 0.96, 0.44, 1, 22, WALL, AUTO_ROOF),
+        *[box(0.08, v, 0.56, v + 0.04, 29, 1.5, GLASS) for v in (0.1, 0.22, 0.34, 0.46)],
+        box(0.04, 0.04, 0.26, 0.3, 29, 16, WALL, AUTO_ROOF),
+        box(0.06, 0.68, 0.32, 0.96, 1, 22, GLASS, WHITE),
+        box(0.36, 0.68, 0.6, 0.96, 1, 12, WALL, AUTO_ROOF),
+        *cars((0.66, 0.78), (0.54, 0.64, 0.74, 0.84)),
+    ]
+
+
+def auto_parts_plant(t):
+    def hall(u0, v0, u1, v1, h, n):
+        w = (v1 - v0) / n
+        return [
+            box(u0, v0, u1, v1, 1, h, WALL),
+            *[
+                p
+                for i in range(n)
+                for p in sawtooth(
+                    u0, v0 + i * w, u1, v0 + (i + 1) * w, h + 1, 7, "u", PARTS_BLUE, GLASS, WALL
+                )
+            ],
+        ]
+
+    def tires(pts):
+        return [cylinder(u, v, 0.04, 1 + 1.8 * k, 1.5, c=TIRE) for u, v, n in pts for k in range(n)]
+
+    if t == 2:
+        return [
+            pad(),
+            *hall(0.06, 0.06, 0.66, 0.94, 14, 5),
+            box(0.66, 0.1, 0.74, 0.5, 1, 3, CONCRETE, PAVEMENT),
+            box(0.76, 0.12, 0.9, 0.36, 1, 9, WHITE, "#dfe3e8"),
+            box(0.76, 0.4, 0.9, 0.64, 1, 9, WHITE, "#dfe3e8"),
+            *tires(((0.76, 0.74, 4), (0.86, 0.74, 3), (0.76, 0.86, 3), (0.86, 0.86, 2))),
+        ]
+    if t == 3:
+        return [
+            pad(),
+            *hall(0.06, 0.06, 0.62, 0.94, 16, 5),
+            *hall(0.66, 0.06, 0.94, 0.5, 12, 2),
+            box(0.7, 0.56, 0.84, 0.8, 1, 9, WHITE, "#dfe3e8"),
+            *tires(((0.88, 0.62, 4), (0.88, 0.74, 3), (0.74, 0.88, 3), (0.86, 0.88, 2))),
+        ]
+    return [
+        pad(),
+        *hall(0.04, 0.04, 0.62, 0.96, 20, 6),
+        *hall(0.66, 0.04, 0.96, 0.62, 16, 3),
+        box(0.68, 0.68, 0.82, 0.92, 1, 9, WHITE, "#dfe3e8"),
+        box(0.84, 0.66, 0.92, 0.8, 1, 6, PARTS_BLUE, GLASS2),
+        *tires(((0.88, 0.86, 4), (0.88, 0.94, 3))),
+    ]
+
+
+def mpad(c=CONCRETE, top=PAVEMENT):
+    return tiered(0, box(0.04, 0.04, 0.96, 0.96, 0, 0.5, c, top))
+
+
+def arms_plant(t):
+    def hall(u0, v0, u1, v1, h):
+        n = max(2, round((u1 - u0) / 0.17))
+        w = (u1 - u0) / n
+        return [
+            box(u0, v0, u1, v1, 0.5, h, MILITARY, MILITARY_DARK),
+            *[
+                box(
+                    u0 + 0.05 + i * w,
+                    v0 + 0.08,
+                    u0 + 0.05 + i * w + 0.08,
+                    v1 - 0.08,
+                    0.5 + h,
+                    1.8,
+                    METAL,
+                )
+                for i in range(n)
+            ],
+            *pane_row("v", v1, u0 + 0.06, u1 - 0.06, [0.5], h * 0.7, 2, 0.17, COAL),
+        ]
+
+    crates = [
+        box(0.62, 0.86, 0.74, 0.94, 0.5, 1.8, WOOD),
+        box(0.64, 0.88, 0.72, 0.92, 2.3, 1.8, WOOD),
+    ]
+    if t == 2:
+        return [
+            *mpad(),
+            *hall(0.06, 0.06, 0.8, 0.42, 10),
+            cylinder(0.88, 0.16, 0.045, 0.5, 22, c=IRON, cap_c=COAL),
+            *earth_bunker(0.06, 0.5, 0.52, 0.66),
+            *earth_bunker(0.06, 0.72, 0.52, 0.88),
+            box(0.6, 0.5, 0.92, 0.78, 0.5, 7, MILITARY, MILITARY_DARK),
+            *crates,
+        ]
+    if t == 3:
+        return [
+            *mpad(),
+            *hall(0.06, 0.06, 0.94, 0.38, 12),
+            *[cylinder(u, 0.46, 0.045, 0.5, 26, c=IRON, cap_c=COAL) for u in (0.86,)],
+            box(0.56, 0.44, 0.78, 0.74, 0.5, 9, MILITARY, MILITARY_DARK),
+            *earth_bunker(0.06, 0.44, 0.48, 0.58),
+            *earth_bunker(0.06, 0.62, 0.48, 0.76),
+            *earth_bunker(0.06, 0.8, 0.48, 0.94),
+            *crates,
+        ]
+    return [
+        *mpad(),
+        *hall(0.12, 0.04, 0.96, 0.34, 14),
+        *hall(0.5, 0.4, 0.96, 0.7, 10),
+        cylinder(0.06, 0.1, 0.035, 0.5, 30, c=IRON, cap_c=COAL),
+        *earth_bunker(0.04, 0.4, 0.44, 0.53),
+        *earth_bunker(0.04, 0.57, 0.44, 0.7),
+        *earth_bunker(0.04, 0.74, 0.44, 0.87),
+        box(0.52, 0.78, 0.64, 0.9, 0.5, 1.8, WOOD),
+        box(0.66, 0.78, 0.78, 0.9, 0.5, 1.8, WOOD),
+    ]
+
+
+def copper_smelter(t):
+    def hall(u0, v0, u1, v1, h):
+        return [
+            box(u0, v0, u1, v1, 0.5, h, CONCRETE, "#cfc7b9"),
+            gable(u0, v0, u1, v1, h + 0.5, 6, "u", COPPER_ROOF, CONCRETE),
+            *pane_row("v", v1, u0 + 0.06, u1 - 0.05, [h * 0.58], 4, 4, 0.05, GLASS),
+        ]
+
+    def stack(u, v, h):
+        return [
+            box(u - 0.08, v - 0.08, u + 0.08, v + 0.08, 0.5, 4, CONCRETE, STONE),
+            cylinder(u, v, 0.065, 4.5, h, r_top=0.05, c="#8f8a82", cap_c=COAL),
+        ]
+
+    def ingots(pts):
+        return [
+            p
+            for u, v in pts
+            for p in (
+                box(u, v, u + 0.15, v + 0.07, 0.5, 2.2, COPPER_ROOF, "#d49a72"),
+                box(u + 0.01, v + 0.005, u + 0.14, v + 0.065, 2.7, 2.2, COPPER_ROOF, "#d49a72"),
+            )
+        ]
+
+    def furnace(u, v):
+        return cylinder(u, v, 0.12, 0.5, 12, cap="dome", c=IRON, cap_c=COPPER_ROOF)
+
+    if t == 2:
+        return [
+            *mpad(),
+            *hall(0.08, 0.14, 0.6, 0.74, 20),
+            *stack(0.8, 0.2, 40),
+            furnace(0.78, 0.5),
+            furnace(0.78, 0.76),
+            *ingots(((0.1, 0.82), (0.28, 0.82), (0.1, 0.9))),
+        ]
+    if t == 3:
+        return [
+            *mpad(),
+            *hall(0.06, 0.1, 0.56, 0.5, 22),
+            *hall(0.06, 0.54, 0.56, 0.82, 16),
+            *stack(0.8, 0.18, 48),
+            furnace(0.76, 0.48),
+            furnace(0.76, 0.74),
+            *ingots(((0.1, 0.87), (0.28, 0.87))),
+        ]
+    return [
+        *mpad(),
+        *hall(0.04, 0.06, 0.6, 0.46, 26),
+        *hall(0.04, 0.5, 0.6, 0.8, 20),
+        *stack(0.8, 0.18, 60),
+        furnace(0.76, 0.56),
+        furnace(0.76, 0.82),
+        *ingots(((0.08, 0.86), (0.26, 0.86), (0.44, 0.86))),
+    ]
+
+
+def electronics_plant(t):
+    def wing(u0, v0, u1, v1, h):
+        return [
+            box(u0, v0, u1, v1, 0.5, h, WHITE, PAVEMENT),
+            *pane_row(
+                "u",
+                u1,
+                v0 + 0.04,
+                v1 - 0.04,
+                [h * 0.2, h * 0.6],
+                4,
+                max(2, round((v1 - v0) / 0.1)),
+                0.07,
+                "#7fb3d1",
+            ),
+            *pane_row(
+                "v",
+                v1,
+                u0 + 0.04,
+                u1 - 0.04,
+                [h * 0.2, h * 0.6],
+                4,
+                max(2, round((u1 - u0) / 0.1)),
+                0.075,
+                "#7fb3d1",
+            ),
+        ]
+
+    def clean(u0, v0, u1, v1, h):
+        return [
+            box(u0, v0, u1, v1, 0.5, h, "#a9cde0", WHITE),
+            *pane_row("v", v1, u0 + 0.04, u1 - 0.04, [3, h * 0.5], 5.4, 3, 0.06, WHITE),
+            *pane_row("u", u1, v0 + 0.04, v1 - 0.04, [3, h * 0.5], 5.4, 3, 0.06, WHITE),
+        ]
+
+    if t == 2:
+        return [
+            *mpad(),
+            *wing(0.06, 0.06, 0.94, 0.5, 15),
+            *clean(0.06, 0.56, 0.44, 0.94, 22),
+            cylinder(0.66, 0.76, 0.07, 0.5, 12, c=METAL, cap_c=PAVEMENT),
+            cylinder(0.84, 0.66, 0.05, 0.5, 9, c=METAL, cap_c=PAVEMENT),
+            *car(0.56, 0.86, "#4f8fb8"),
+        ]
+    if t == 3:
+        return [
+            *mpad(),
+            *wing(0.06, 0.06, 0.94, 0.46, 18),
+            *clean(0.06, 0.52, 0.42, 0.94, 26),
+            *clean(0.48, 0.52, 0.76, 0.8, 18),
+            cylinder(0.86, 0.66, 0.06, 0.5, 12, c=METAL, cap_c=PAVEMENT),
+            cylinder(0.86, 0.86, 0.06, 0.5, 12, c=METAL, cap_c=PAVEMENT),
+        ]
+    return [
+        *mpad(),
+        *wing(0.04, 0.04, 0.96, 0.4, 24),
+        *clean(0.04, 0.46, 0.4, 0.96, 32),
+        *clean(0.46, 0.46, 0.78, 0.78, 24),
+        *[
+            cylinder(u, v, 0.055, 0.5, 14, c=METAL, cap_c=PAVEMENT)
+            for u, v in ((0.88, 0.56), (0.88, 0.74), (0.88, 0.9), (0.62, 0.9))
+        ],
+    ]
+
+
+def missile_plant(t):
+    def hall(u0, v0, u1, v1, h):
+        return [
+            box(u0, v0, u1, v1, 0.5, h, MILITARY, MILITARY_DARK),
+            gable(u0, v0, u1, v1, h + 0.5, 3, "v", MILITARY_DARK, MILITARY),
+            *pane_row("v", v1, u0 + 0.04, u1 - 0.04, [h * 0.7], 3.6, 4, 0.05, GLASS),
+            *pane_row("v", v1, u0 + 0.1, u0 + 0.3, [0.5], h * 0.8, 1, 0.16, COAL),
+        ]
+
+    if t == 2:
+        return [
+            *mpad(),
+            *hall(0.06, 0.1, 0.5, 0.74, 26),
+            box(0.56, 0.08, 0.92, 0.3, 0.5, 10, MILITARY, MILITARY_DARK),
+            box(0.56, 0.36, 0.94, 0.9, 0.5, 1.0, CONCRETE, PAVEMENT),
+            *gantry_tower(0.84, 0.46, 32),
+            *standing_missile(0.66, 0.6, 1.5, 22),
+            *standing_missile(0.7, 0.82, 1.5, 22),
+        ]
+    if t == 3:
+        return [
+            *mpad(),
+            *hall(0.06, 0.06, 0.46, 0.62, 30),
+            *hall(0.06, 0.66, 0.46, 0.94, 18),
+            box(0.52, 0.06, 0.94, 0.3, 0.5, 12, MILITARY, MILITARY_DARK),
+            box(0.52, 0.36, 0.94, 0.94, 0.5, 1.0, CONCRETE, PAVEMENT),
+            *gantry_tower(0.86, 0.46, 36),
+            *standing_missile(0.6, 0.5, 1.5, 24),
+            *standing_missile(0.66, 0.82, 1.5, 24),
+        ]
+    return [
+        *mpad(),
+        *hall(0.04, 0.04, 0.44, 0.6, 36),
+        *hall(0.04, 0.64, 0.44, 0.96, 22),
+        *hall(0.5, 0.04, 0.96, 0.3, 18),
+        box(0.5, 0.36, 0.96, 0.96, 0.5, 1.0, CONCRETE, PAVEMENT),
+        *gantry_tower(0.88, 0.44, 42),
+        *standing_missile(0.58, 0.46, 1.5, 28),
+        *standing_missile(0.62, 0.84, 1.5, 26),
+        *standing_missile(0.86, 0.8, 1.5, 22),
+    ]
+
+
+SIZE_TIERS = {
+    "steel_mill": steel_mill,
+    "machinery_plant": machinery_plant,
+    "building_materials_plant": building_materials_plant,
+    "food_factory": food_factory,
+    "consumer_goods_factory": consumer_goods_factory,
+    "thermal_power_plant": thermal_power_plant,
+    "refinery": refinery,
+    "aluminium_smelter": aluminium_smelter,
+    "textile_mill": textile_mill,
+    "automobile_plant": automobile_plant,
+    "auto_parts_plant": auto_parts_plant,
+    "arms_plant": arms_plant,
+    "copper_smelter": copper_smelter,
+    "electronics_plant": electronics_plant,
+    "missile_plant": missile_plant,
+}
+for _name, _tiers in SIZE_TIERS.items():
+    for _t in (2, 3, 4):
+        SHAPES[f"facility/{_name}@s{_t}"] = _tiers(_t)
+for _t in (2, 3, 4):
+    SHAPES[f"facility/thermal_power_plant+fuel@s{_t}"] = thermal_power_plant(_t, fuel=True)
 
 
 def render(
