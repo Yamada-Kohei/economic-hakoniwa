@@ -427,6 +427,43 @@ def test_the_market_records_true_shortages_and_trader_sales(game, traded):
             assert 0 < qty <= record.demand - record.volume
 
 
+def test_trader_export_buys_left_unfilled_are_not_a_shortage(game, traded):
+    """商社の輸出の買い残し（島の外の引き合い）は本当の品不足に入れない（FX-65。輸出する財を同じ島が
+    輸入で積み増さないように）。家計の買い残しは入れる。"""
+    from hakoniwa_core.economy import Payer
+    from hakoniwa_core.market.auction import Order, Result
+    from hakoniwa_core.modules import market as market_stage
+
+    world = copy.deepcopy(traded)
+    island = next(i for i in world.islands.values() if traders_of(i, game.config))
+    f = traders_of(island, game.config)[0]
+    good = "grain"
+    island.markets = [MarketRecord(good, 1000, 40, 100, 40, "trade")]
+    book = market_stage.Book(
+        buys=[
+            (Order(50, None), market_stage.Party(market_stage.HOUSEHOLD, "hh", Payer("hh"))),
+            (
+                Order(50, 1500),
+                market_stage.Party(market_stage.FACILITY, "fac", Payer("f"), facility=f),
+            ),
+        ]
+    )
+    result = Result(1000, 40, 100, 40, 900, 1100, bought=[30, 10], sold=[40])
+    ctx = StageContext(
+        defs=game.defs,
+        config=game.config,
+        registry=game.registry,
+        formulas=game.engine.formulas,
+        turn=world.turn + 1,
+        seed=world.seed,
+        stage="market",
+        before=world,
+    )
+    market_stage.Market._trader_sales(island, ctx, {good: book}, {good: result})
+    # 買えなかった 60 のうち、商社の輸出の買い残し 40 を除いた 20（家計の買い残し）
+    assert island.scratch[traders.TRUE_SHORT] == {good: 20}
+
+
 def test_targets_hold_still_while_the_cargo_is_beyond_the_line(game, traded):
     world = copy.deepcopy(traded)
     island, f, good, item = _importer(game, world)

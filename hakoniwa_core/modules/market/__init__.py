@@ -4269,21 +4269,30 @@ class Market(IslandStage):
         売れ残りは、商社ごと・財ごとに、ふだんの指値で出した量と売れた量、値引き（アウトレット）で
         出した量と売れた量（傷みかけの指値なしの売りは数えない。traders.record_home_sales）。本当の
         品不足は、買いたい量 − 約定した量（市場の記録）から、指値が約定の値段より安くて買えなかった
-        量を除いた量（売り手の指値が高くて買わなかった分を品不足に数えない）。"""
+        量と、商社の輸出の買い残しを除いた量（売り手の指値が高くて買わなかった分と、島の外の引き合いを
+        品不足に数えない）。"""
         config = ctx.config
         records = {m.good: m for m in island.markets}
         short: dict[str, int] = {}
         for good, record in records.items():
             unmet = max(0, record.demand - record.volume)
             book, result = books_by_good.get(good), results.get(good)
-            if unmet > 0 and book is not None and result is not None and result.supply > 0:
+            if unmet > 0 and book is not None and result is not None:
                 below = sum(
                     order.quantity - result.bought[i]
                     for i, (order, party) in enumerate(book.buys)
                     if not party.fuel_reserve
                     and party.kind != MERCHANT
                     and result.bought[i] < order.quantity
-                    and auction.buy_limit(order, result.high) < result.price
+                    and (
+                        # 商社の輸出の買い残しは国内の品不足ではない（輸出する財を同じ島が輸入で
+                        # 積み増さないように。値段によらず除く）
+                        (party.facility is not None and trade.is_trader(config, party.facility))
+                        or (
+                            result.supply > 0
+                            and auction.buy_limit(order, result.high) < result.price
+                        )
+                    )
                 )
                 unmet = max(0, unmet - below)
             if unmet > 0:
