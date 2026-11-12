@@ -1,7 +1,8 @@
 """家計は電気を買える分だけ買う（LB-47、power.household_curve）と、払えない電力の統計（UI-89）。
 
 前は家計の層ごとに1本の注文で、指値は「使う額 × power.household_share ÷ 要る量」だった。電気料金が
-これを少しでも超えると層の全員が1つも買わなかった（LAN の世界 8003 の島3 で停電 98% が約 50 ターン）。
+これを少しでも超えると層の全員が1つも買わなかった（LAN の世界 8003 の島3 で停電 98% が約 50
+ターン）。
 """
 
 from __future__ import annotations
@@ -108,12 +109,13 @@ def test_band_steps_fill_the_gap_and_the_top_step_is_always_there():
     """値幅の中の段で、倍率の段の間の値段でも払える分を取りこぼさない。上端の段はいつも出す。"""
     want = 10_000
     band = (900, 1100)
-    plain = elastic_orders(want, want, 1000, 0.2, [0.5, 1.0, 2.0], band, 10**12, 0, 0)
+    plain = elastic_orders(want, want, 900, 0.2, [0.5, 1.0, 2.0], band, 10**12, 0, 0)
     steps = elastic_orders(
-        want, want, 1000, 0.2, [0.5, 1.0, 2.0], band, 10**12, 0, 0, (900, 1000, 1100)
+        want, want, 900, 0.2, [0.5, 1.0, 2.0], band, 10**12, 0, 0, (900, 1000, 1100)
     )
-    assert [lim for _, lim in plain] == [1100, 1000]  # 2 倍の段は上端にまとまる
-    assert [lim for _, lim in steps] == [1100, 1000, 900] or [lim for _, lim in steps][0] == 1100
+    assert [lim for _, lim in plain] == [1100, 900]  # 2 倍の段は上端にまとまる
+    assert [lim for _, lim in steps] == [1100, 1000, 900]  # 1000 で約定しても曲線どおり買う
+    assert sum(q for q, lim in steps if lim >= 1000) == round(want * (1000 / 900) ** -0.2)
     # 真ん中がずっと安くても、上端の段は出る（電気は持ち越せない）
     top = elastic_orders(want, want, 100, 0.2, [0.5, 1.0, 3.0], band, 10**12, 0, 0, (900, 1100))
     assert top and top[0][1] == 1100 and 0 < top[0][0] < want
