@@ -117,23 +117,59 @@ def test_blocs_form_and_goods_are_shipped(game, traded):
 
 
 def test_freight_rate_is_per_ton_and_cell(game, traded):
-    """運賃は荷 1 トン × 区画 1 つあたり: 運んだ量（1000 分の 1）と下限（船を半分使った量）を同じ
-    単位で数える。"""
+    """運賃は荷 1 トン × 区画 1 つあたり: （1 + 上乗せ）×（運航費 + 資本費 × 4u）÷ 1 隻を全部使った
+    ときに運ぶ量（FX-74）。船を半分使ったとき（u = 0.5）は前の決め方（費用 ÷ 船を半分使った量）と
+    同じ値で、船が余れば運航費まで下がり、足りなければ上がる。"""
     world = copy.deepcopy(traded[0])
     island = world.islands[1]
     f = shipping_of(island, game.config)
-    for key in ("costs", "carried", "used"):
-        f.economy.pop(key, None)
-    f.workers = 0
     settings = game.config.get("trade")
-    half = ships.fleet(f) * settings["ship_capacity"] * settings["ship_speed"] // 4  # 1000 分の 1
-    for carried in (half // 10, 2 * half):
-        f.economy.pop("costs", None)
-        f.economy.pop("carried", None)
+    markup = 1 + settings["cost_markup"]
+    full = settings["ship_capacity"] * settings["ship_speed"] / 2  # 1 隻 1 ターン（トン × 区画）
+    run_cost = ships._ship_run_cost(island, game.config)
+    wear = ships._ship_wear(island, game.config)
+    rates = {}
+    for use in (0, 0.5, 1, 2):
+        for key in ("costs", "carried", "used", "capital_costs", "fleets"):
+            f.economy.pop(key, None)
+        carried = round(ships.fleet(f) * full * use)  # 1000 分の 1
         ships.close_turn(island, game.config, carried, 0)
-        cost = f.economy["costs"][-1]
-        tons = max(carried, half) / QUANTITY_SCALE
-        assert abs(f.economy["rate"] - cost / tons * (1 + settings["cost_markup"])) <= 1
+        capital = f.economy["capital_costs"][-1] * QUANTITY_SCALE / ships.fleet(f)
+        expected = (run_cost + capital * 4 * min(1, use)) / full * markup
+        assert abs(f.economy["rate"] - expected) <= 1
+        rates[use] = f.economy["rate"]
+        assert abs(capital - wear) <= 1
+    assert rates[0] < rates[0.5] < rates[1] == rates[2]
+    # u = 0.5 で前の決め方（船を半分使った量で費用を割る）と同じ
+    half = (run_cost / 2 + wear) / (full / 2) * markup
+    assert abs(rates[0.5] - half) <= 1
+
+
+def test_scrapping_a_ship_keeps_the_rate_and_writes_off_its_capital(game, traded):
+    """寿命で解体した船は、その割合だけ設備の額と償却済みの額から除き、運賃は解体の後も跳ねない
+    （延べ隻数はその時の船団で数える。FX-74）。船がなくなっても 0 で割らない。"""
+    world = copy.deepcopy(traded[0])
+    island = world.islands[1]
+    f = shipping_of(island, game.config)
+    for key in ("costs", "carried", "used", "capital_costs", "fleets"):
+        f.economy.pop(key, None)
+    life = game.config.get("trade.ship_life")
+    turn = world.turn
+    f.economy["fleet"] = [[turn - life, 1000], [turn, 1000]]  # 1 隻は寿命
+    f.economy["capital"], f.economy["depreciated"] = 4000, 1000
+    for _ in range(3):
+        ships.close_turn(island, game.config, 0, 0)
+    before = f.economy["rate"]
+    assert ships.scrap(island, game.config, turn) == 1000
+    assert (f.economy["capital"], f.economy["depreciated"]) == (2000, 500)
+    ships.close_turn(island, game.config, 0, 0)
+    assert abs(f.economy["rate"] - before) <= 1
+    f.economy["fleet"] = []
+    f.economy["fleets"] = [0]
+    f.economy["capital_costs"] = [0]
+    f.economy["carried"] = [0]
+    ships.close_turn(island, game.config, 0, 0)
+    assert f.economy["rate"] >= 1
 
 
 def test_shipping_keeps_its_ship_shortages_apart(game, traded):
