@@ -293,6 +293,12 @@ table.ranking-table td:nth-child(3), table.titles-table th, table.titles-table t
 .report-main { min-width: 0; }
 .report-orders:empty { display: none; }
 table.facilities .facility-hint { display: block; max-width: 30em; white-space: normal; }
+/* 生産調整中・生産停止中のわけ（W-250）: 地図の窓・施設の一覧・帳簿 */
+table.facilities .slowdown-reason { display: block; max-width: 30em; white-space: normal; }
+.slowdown { margin: 8px 0; }
+.slowdown h4 { margin: 6px 0 4px; }
+.slowdown-reasons { margin: 0 0 4px; padding-left: 1.2em; }
+.slowdown-reasons li { margin: 2px 0; }
 .report-orders { margin-top: 12px; }
 .bank-action { margin-top: 8px; }
 .bank-action h3 { font-size: 1em; }

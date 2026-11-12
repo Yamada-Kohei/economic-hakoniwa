@@ -277,6 +277,16 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         info["fuel_reserves"] = fuel_stock_info(f)
     if mine:
         info["hint"] = status_hint(f)
+        from server.web import slowdown  # slowdown は display を使うので、ここで読み込む
+
+        # 生産調整中・生産停止中のわけと打てる手（W-250）。打てる手は、わけに合わせたものにする
+        # 市場の記録を読むのは、わけを出す施設のときだけ（ほかの施設の窓を重くしない）
+        why = (
+            slowdown.explain(slowdown.Facts(row.island, island), f) if slowdown.applies(f) else None
+        )
+        if why is not None:
+            info["slowdown"] = why
+            info["hint"] = why["hint"] or info["hint"]
     from server.web import monuments  # 記念碑の碑文は display を使うので、ここで読み込む
 
     note = monuments.detail(row.island, row)  # 記念碑なら、碑文と自作の絵
@@ -908,6 +918,11 @@ def status_text(f: Facility) -> str:
     # 戦争・ミサイル・占領で止まったのは災害ではない
     if kind == "halted" and reason in HALT_REASONS:
         text = message(f"halt_reason_{reason}")
+    elif kind == "target" and f.operating_rate <= 0:
+        # 作る量を 0 まで下げて止まった（UI-84）。作り続けている間の「生産調整中」と分ける
+        from server.web import slowdown  # slowdown は display を使うので、ここで読み込む
+
+        return slowdown.stop_text(f) or message("status_target")
     else:
         text = message(f"status_{kind}")
     if kind == "budget" and good:  # 年の予算の月割りが足りない（項目の名前。LB-45）

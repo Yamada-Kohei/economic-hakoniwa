@@ -547,8 +547,7 @@ def help_start_page(request):
         "web/help_start.html",
         {
             "statuses": [
-                {"name": display.message(f"status_{key}"), "text": text}
-                for key, text in STATUS_HELP
+                {"name": status_help_name(key), "text": text} for key, text in STATUS_HELP
             ],
             "commute": game.config.get("labor.commute_radius"),
             "base_admin": game.config.get("orders.base_admin_power"),
@@ -583,7 +582,8 @@ def _careful_help(config) -> dict:
     }
 
 
-# 入門の「施設の状態の言葉」（名前は messages.yaml の status_<key> から引く）
+# 入門の「施設の状態の言葉」（名前は messages.yaml の status_<key> から引く。stop_ で始まるものは
+# そのままの名前。UI-84）
 STATUS_HELP = (
     ("starting", "建ったばかりで、次の更新で動き出します。止まっているわけではありません。"),
     ("construction", "工事中です。人手・資材・お金が足りないと、かっこの中にわけが出ます。"),
@@ -595,7 +595,16 @@ STATUS_HELP = (
     ("wages", "賃金を払うお金が足りません。売上と賃金・仕入れの釣り合いを見ます。"),
     ("power", "発電量が足りません。発電所の燃料か、発電所の数を見ます。"),
     ("no_grid", "発電所のある送電網につながっていません。送電線か送電網の工事でつなぎます。"),
-    ("target", "売れ行きに合わせて作る量を減らしています。不具合ではありません。"),
+    (
+        "target",
+        "売れ行きに合わせて作る量を減らしながら作り続けています。不具合ではありません。"
+        "地図の窓に、目標を下げたわけと打てる手が出ます。",
+    ),
+    (
+        "stop_target",
+        "売れ行きに合わせて作る量を 0 まで下げ、止まっています（地図に赤い点）。"
+        "地図の窓に、わけと打てる手が出ます。",
+    ),
     ("budget", "国庫の同じ項目の年の予算が足りません。予算を増やすか、優先度を上げます。"),
     ("staff_plan", "人員計画で決めた人数の枠で人が足りません。計画の画面で枠を見直します。"),
     ("equipment", "設備が傷んで作れる量が減っています。国営なら公共事業費で直します。"),
@@ -607,6 +616,11 @@ STATUS_HELP = (
     ("cargo", "運送業・海運業が、運ぶ荷の量に合わせて動いています。不具合ではありません。"),
     ("business", "銀行が、預金と融資の大きさに合わせて動いています。不具合ではありません。"),
 )
+
+
+def status_help_name(key: str) -> str:
+    """入門の施設の状態の言葉の名前（画面と同じ文。stop_ で始まるものは止まったときの文）。"""
+    return display.message(key if key.startswith("stop_") else f"status_{key}")
 
 
 def terms_page(request):
