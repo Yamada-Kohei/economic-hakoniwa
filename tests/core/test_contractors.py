@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, ledger, stock
 from hakoniwa_core.economy import CONSTRUCTION, books, facility_entity, funds, household
 from hakoniwa_core.modules.infrastructure import contracts
@@ -177,6 +178,13 @@ def test_private_contractor_enters_after_unfilled_works(game):
     assert ledger.money(island, facility_entity(f.id)) > 0
     assert contracts.entry(island, game.defs, game.config, False) is None  # 動き出すのを待つ
     assert contracts.entry(island, game.defs, game.config, True) is None  # 計画経済は開かない
+    # 今の業者がまだ人を増やせる大きさなら、埋まらないのは人手のため。新しい業者は開かない
+    f.ext.pop("contract_new")
+    island.economy.infra[contracts.UNFILLED] = [whole] * turns
+    f.workers = 1
+    assert contracts.entry(island, game.defs, game.config, False) is None
+    f.workers = fac.workers_of(game.defs, f)
+    assert contracts.entry(island, game.defs, game.config, False) is not None
 
 
 def test_contractor_exits_after_losses_or_idleness(game):

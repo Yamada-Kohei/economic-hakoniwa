@@ -531,8 +531,8 @@ def prepare(island: IslandState, defs: Defs, config: GameConfig) -> None:
 
 def entry(island: IslandState, defs: Defs, config: GameConfig, planned: bool) -> Facility | None:
     """民間の参入: 直近の埋まらなかった工事の平均が新しい業者の全力の contractor.entry_share
-    以上で、予定価格で賃金を払え、資産を持つ層が出資でき、空いた平地があれば 1 つ開く（計画経済の
-    島は開かない）。"""
+    以上で、今の業者がどれも定義の人数のその割合まで人を抱え、予定価格で賃金を払え、資産を持つ層が
+    出資でき、空いた平地があれば 1 つ開く（計画経済の島は開かない）。"""
     kind = config.get("contractor.facility")
     if planned or kind not in defs.facilities or OWNERS not in island.economy.households:
         return None
@@ -546,13 +546,18 @@ def entry(island: IslandState, defs: Defs, config: GameConfig, planned: bool) ->
         return None
     if any(not f.built or "contract_new" in f.ext for f in current):
         return None  # 前に開いた業者が動き出して見込みが変わるのを待つ
+    share = config.get("contractor.entry_share")
+    if any(f.workers < fac.workers_of(defs, f) * share for f in current if not is_stopped(f)):
+        # 今の業者がまだ人を増やせる大きさなら、埋まらないのは人手が集まらないため。同じ通勤圏に
+        # 開く新しい業者も人を集められないので、参入しない
+        return None
     turns = config.get("contractor.entry_turns")
     history = island.economy.infra.get(UNFILLED, [])[-turns:]
     if len(history) < turns:
         return None
     probe = Facility(id=0, kind=kind, x=-1, y=-1, owner=OWNER_PRIVATE, built=True)
     whole = fac.workers_of(defs, probe) * per_worker(config)
-    if sum(history) // turns < whole * config.get("contractor.entry_share"):
+    if sum(history) // turns < whole * share:
         return None
     wage = island.economy.average_wage or config.get("labor.initial_wage")
     if ceiling(island, config) * per_worker(config) // 1000 <= wage:
