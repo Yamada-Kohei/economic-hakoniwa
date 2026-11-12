@@ -29,6 +29,7 @@ from hakoniwa_core.economy import (
     is_transport,
     trucks,
 )
+from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy.debt import annual_gdp, total_debt
 from hakoniwa_core.economy.households import close_income
 from hakoniwa_core.economy.stats import inflation, update_cpi
@@ -121,6 +122,9 @@ class Records(IslandStage):
         prices = economy.prices
         bought = island.scratch.get("household_bought", {})
         traded = {r.good: r.price for r in island.markets if r.volume > 0}
+        if planning.is_dual(island):  # 計画経済の島の物価は家計が払う小売の値段で数える（PL-60）
+            retail_prices = planning.retail_prices(island, config)
+            traded = {g: retail_prices.get(g) or p for g, p in traded.items()}
         cpi = update_cpi(economy, defs, config, prices, bought, traded)
         stats["cpi"] = cpi
         stats["inflation"] = inflation(economy)

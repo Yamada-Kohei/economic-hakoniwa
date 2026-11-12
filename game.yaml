@@ -609,7 +609,7 @@ fiscal:
   # 支払いの順番。[ ] の組の中は、国庫が足りなければ見積もりに同じ割合を掛けて取り置く（今月の人件費と
   # 運営費。回5）。昔の未払い賃金（arrears）は失業手当の後に残ったお金で払う
   # contract_supply は売りの二国間契約で国の倉庫に足りない分の買い（外国との約束なので利払いの次。FX-24）
-  payment_order: [bonds, contract_supply, [civil_servants, state_facilities, education, security, defense_personnel], unemployment, arrears, construction, housing, defense_procurement, subsidies, warehouse]
+  payment_order: [bonds, contract_supply, [civil_servants, state_facilities, education, security, defense_personnel, price_subsidy], unemployment, arrears, construction, housing, defense_procurement, subsidies, warehouse]
   # 銀行の救済と預金保護（支出の項目の外）は、この項目の入った組までの次のターンの支払いを国庫に残した額から出す
   rescue_after: civil_servants
   # 年の予算を命令で決める項目（毎ターン予算の12分の1まで使う）。construction は公共事業費
@@ -856,12 +856,17 @@ politics:
 
 # 計画経済（フェーズ3-4。hakoniwa_core/economy/plan.py）
 planning:
-  # 公定価格は原則据え置き。review_turns ごとに原価（原価＋1割を今の平均賃金で解く）を確かめ、
-  # 公定価格との差が review_band（割合）を超えた財だけ原価に改める。held_goods（食料）は原価を
-  # 下回っても据え置き、差を補助金で埋める（ソ連の小売価格の据え置きに寄せた既定。命令で変えられる）
+  # 公定価格（卸の値段）は原則据え置き。review_turns ごとに原価（原価＋1割を今の平均賃金で解く）を
+  # 確かめ、公定価格との差が review_band（割合）を超えた財だけ原価に改める（据え置く財の卸も）。
+  # held_goods（食料）は小売の値段を据え置き、卸より安くなった分は家計への売りにだけ価格の補助で埋める
+  # （PL-60。ソ連の小売価格の据え置きに寄せた既定。命令で変えられる）。ほかの財の小売は卸 ×（1 ＋ 消費税の率）
   review_turns: 12      # 原価との差を確かめる間隔
   review_band: 0.2      # 見直す幅（±20%）
-  held_goods: [grain, fish, meat, food]  # 原価を下回っても据え置く財
+  held_goods: [grain, fish, meat, food]  # 小売の値段を据え置く財
+  # 小売の値段の上書き（命令 set_retail_price）の下限: 卸の値段のこの割合（ソ連末期の肉と牛乳の小売は、
+  # 国の買い上げの値段の 3 分の 1 ほどまで下がっていた）
+  retail:
+    floor: 0.3
   demand_turns: 12      # 生産目標に使う需要の履歴のターン数
   target_markup: 0.1    # 生産目標 = 需要の平均 ×（1 + これ）
   max_priority: 3       # 重点産業の数の上限

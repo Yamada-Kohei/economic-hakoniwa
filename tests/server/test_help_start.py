@@ -59,3 +59,18 @@ def test_start_guide_says_facility_art_shows_grade_and_size(client, world):
     """入門の地図の行（#368 の絵）: 施設の絵が段階・作り方・規模で変わることを書く。"""
     start = client.get("/help/start/").content.decode()
     assert "施設の絵は、農場の段階（手作業・機械化・近代化）と作物" in start
+
+
+@pytest.mark.django_db
+def test_guides_follow_the_seven_entries_of_the_island_screens(client, world):
+    """手引き（UI-71）: 画面の見取りは 7 つの入口と命令の列の帯で並べ、上のメニューの名前は
+    今の名前（公電・世界）で書く。"""
+    start = client.get("/help/start/").content.decode()
+    general = client.get("/help/").content.decode()
+    hakoniwa = client.get("/help/hakoniwa/").content.decode()
+    for entry in ("ホーム", "地図", "施設", "資源・市場", "貿易", "経済", "国", "命令の列"):
+        assert f"<tr><th>{entry}</th>" in start, entry
+    assert "ホーム・地図・施設・「資源・市場」・貿易・経済・国の7つの入口" in general
+    for page in (start, general, hakoniwa):
+        assert "上の「外交」" not in page and "メニューの「外交」" not in page
+        assert "島の画面の上" not in page
