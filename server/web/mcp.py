@@ -218,7 +218,10 @@ REPORTS = {
     "他国には企業の名前・所有・施設の数と種類・働く人 firms）",
     "fiscal": "財政（国庫の収入と支出・予算・税率・国債の一覧）",
     "finance": "金融（中央銀行の方針・金利・融資。持ち主には銀行ごとの帳簿と金融の政策）",
-    "trade": "貿易（輸出入・貿易圏。持ち主には契約（送り出した量 shipped・まだ海の上の量 at_sea と"
+    "trade": "貿易（概要 overview（入っている貿易圏・輸出入と収支、持ち主には運ぶ途中の荷の重さと"
+    "契約の数）・輸出入・貿易圏。持ち主には、いますべきこと todo（summary の todo の貿易の行）・"
+    "貿易の命令の待っている列と前のターンの結果 orders・契約（送り出した量 shipped・"
+    "まだ海の上の量 at_sea と"
     "着く見込みのターン arrive_first〜arrive_last）・商社・船団（貸した船の運賃の収入 "
     "charter_income・借りた船に払った運賃 charter_paid）・運ぶ途中の荷（ほかの国から"
     "借りた船なら carrier_name、ほかの国に貸した船で運ぶ荷は direction=lent）・産業政策・"
@@ -1434,7 +1437,12 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "facility_page": ("api_get", "tile", "set_orders"),
     "island_fiscal": ("report",),
     "island_finance": ("report",),
-    "island_trade": ("report",),
+    "island_trade": ("report",),  # 概要（overview）と、いますべきこと（todo）・貿易の命令（orders）
+    # 貿易のタブ（契約・貿易圏・船と港・海外の商人）は、どれも report の page=trade の一部
+    "trade_contracts": ("report",),
+    "trade_blocs": ("report",),
+    "trade_fleet": ("report",),
+    "trade_merchant": ("report",),
     "island_fx": ("report",),
     "island_politics": ("report",),
     "island_plan": ("report",),

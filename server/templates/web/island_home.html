@@ -8,15 +8,7 @@
 <section class="next-steps home-todo" id="todo" aria-labelledby="todo-title">
   <h2 id="todo-title">{% translate "今月すべきこと" %} <small>{% translate "急ぐ順" %}</small></h2>
   {% if todo %}
-  <ol class="next-steps-list todo-list">{% for t in todo %}
-    <li class="todo-{{ t.kind }}{% if forloop.first %} first{% endif %}">
-      <span class="step-no" aria-hidden="true">{{ forloop.counter }}</span>
-      <div class="step-body">
-        <p>{{ t.text }}</p>
-        {% if t.url %}<a class="step-link" href="{{ t.url }}">{{ t.link_text }} →</a>{% endif %}
-      </div>
-    </li>{% endfor %}
-  </ol>
+  {% include "web/todo_rows.html" with rows=todo %}
   {% else %}
   <p>{% translate "今すぐ手を付けることはありません。更新のたびに、ここと下の「前のターンからの主な変化」を見ます。" %}</p>
   {% endif %}

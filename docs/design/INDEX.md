@@ -628,13 +628,13 @@
 | UI-68 | 貿易の画面の海運業の船は、隻の小数（「0.5 隻分」）でなく積める量で出す: 輸送船の数と 1 … | 決定（2026-11-08、掲示板 #20・#22 倭国さん） | tests/server/test_screens_notices.py |
 | UI-69 | 島の地図の元のデータか画面の部品を読み込めなかったら、地図の上に「地図を読み込めませんでした | 決定（2026-11-08） | tests/server/test_screens_notices.py |
 | UI-70 | 遊ぶ人の声からの画面と文言の直し（2026-11-08） | 決定（2026-11-08） | tests/server/test_screens_notices.py |
-| UI-71 | 島の画面の入口は 7 つ（ホーム・地図・施設・「資源・市場」・貿易・経済・国）にまとめ、それぞれ… | 決定 | tests/server/test_island_nav.py |
+| UI-71 | 島の画面の入口は 7 つ（ホーム・地図・施設・「資源・市場」・貿易・経済・国）にまとめ、それぞれ… | 決定 | tests/server/test_island_nav.py、tests/server/test_trade_overview.py |
 | UI-72 | 品目と施設は 1 つずつのページを持つ | 決定 | tests/server/test_facility_page.py、tests/server/test_good_page.py |
-| UI-73 | 1 つのページの中で、上を「見る」所、下を「打てる手」の箱に分ける | 決定 | tests/server/test_facility_page.py、tests/server/test_good_page.py |
+| UI-73 | 1 つのページの中で、上を「見る」所、下を「打てる手」の箱に分ける | 決定 | tests/server/test_facility_page.py、tests/server/test_good_page.py、tests/server/test_trade_overview.py |
 | UI-74 | 命令の列は、持ち主のどのページにも上に帯（次のターンの命令の数と行政力）で出し、押すと命令のペー… | 決定 | tests/server/test_order_queue.py |
 | UI-75 | 命令を足すとき、打ち間違いに見えるものだけ確かめを出す（W-264） | 決定 | tests/server/test_order_confirm.py |
-| UI-76 | ホームは「今月すべきこと」を急ぐ順に並べ、各行から打てる手のある所へ 1 回で飛べるようにする | 決定 | tests/server/test_home_todo.py |
-| UI-77 | 欄と命令の置き場所は「打てる手があるか」「大事か」「よく使うか」で決める | 決定 | （未確認） |
+| UI-76 | ホームは「今月すべきこと」を急ぐ順に並べ、各行から打てる手のある所へ 1 回で飛べるようにする | 決定 | tests/server/test_home_todo.py、tests/server/test_trade_overview.py |
+| UI-77 | 欄と命令の置き場所は「打てる手があるか」「大事か」「よく使うか」で決める | 決定 | tests/server/test_trade_overview.py |
 | UI-78 | 地図は今の俯瞰図と絵・拡大縮小・小さな地図をそのまま使う | 決定 | tests/server/test_facility_page.py |
 | UI-79 | 重ね表示は、マスの上に半透明の角柱（棒）を立てる形を既定にし、今の塗り分けにも切り替えられる | 決定 | （未確認） |
 | UI-80 | 為替のタブの頭に、中央銀行どうしの融通の貸しと借りの限度額・残り・1 ターンの増加を出す | 決定 | tests/server/test_fx_guide_and_cautions.py |

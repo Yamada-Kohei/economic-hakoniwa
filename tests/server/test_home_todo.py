@@ -126,7 +126,7 @@ def test_each_signal_is_a_row_in_urgency_order_with_a_link_to_act(world):
     assert "破綻" in by_kind["bank"][0]["text"]
     assert by_kind["treaty"][0]["url"] == f"{base}/diplomacy/#proposals"
     assert "不可侵条約" in by_kind["treaty"][0]["text"]
-    assert by_kind["contract"][0]["url"] == f"{base}/trade/#contracts"
+    assert by_kind["contract"][0]["url"] == f"{base}/trade/contracts/#contracts"
     assert other.name in by_kind["contract"][0]["text"]
     assert (
         "木材" in by_kind["contract"][0]["text"]
@@ -244,12 +244,12 @@ def test_rare_but_important_things_are_surfaced_when_needed(world):
     rows = {r["kind"]: r for r in _summary(token, island)["todo"]}
     assert rows["regime"]["url"] == f"/islands/{island.id}/military/"
     assert "体制を選び直します" in rows["regime"]["text"]
-    assert rows["bloc_applicants"]["url"] == f"/islands/{island.id}/trade/#blocs"
+    assert rows["bloc_applicants"]["url"] == f"/islands/{island.id}/trade/blocs/#blocs"
     assert "南の海" in rows["bloc_applicants"]["text"] and "1 件" in rows["bloc_applicants"]["text"]
     assert "bloc" not in rows  # 圏に入っている
     _, third_token = keys.issue(third_owner)
     third_rows = {r["kind"]: r for r in _summary(third_token, third)["todo"]}
-    assert third_rows["bloc"]["url"] == f"/islands/{third.id}/trade/#other-blocs"
+    assert third_rows["bloc"]["url"] == f"/islands/{third.id}/trade/blocs/#other-blocs"
     assert "regime" not in third_rows and "bloc_applicants" not in third_rows
     # 体制の選び直し待ちは飢え・戦争の次、圏の案内はいちばん下の方
     assert todo.RANK["regime"] < todo.RANK["bank"] < todo.RANK["bloc"]

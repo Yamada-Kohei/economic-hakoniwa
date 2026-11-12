@@ -589,6 +589,12 @@ def _diplomacy_alerts(brief: dict[str, Any]) -> list[Alert]:
     return out
 
 
+def trade_todo(island: m.Island) -> list[dict[str, Any]]:
+    """貿易の画面の「いますべきこと」（W-247 (6)）: 今月すべきことの貿易の種類の行
+    （持ち主だけ）。"""
+    return todo.trade_rows(island, _merchant_alerts(island))
+
+
 def _owner_lists(
     island: m.Island,
     public: list[Alert],
