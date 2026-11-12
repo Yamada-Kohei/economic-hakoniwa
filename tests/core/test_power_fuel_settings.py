@@ -34,6 +34,15 @@ def test_fuel_notice_above_half_the_target_is_rejected(tmp_path: Path) -> None:
         load_config(path)
 
 
+@pytest.mark.parametrize("line", [3, 6])
+def test_price_notice_line_at_least_the_target_loads(tmp_path: Path, line: int) -> None:
+    path = tmp_path / "game.yaml"
+    path.write_text(
+        f"power:\n  fuel_stock_turns: 3\n  price_notice_turns: {line}\n", encoding="utf-8"
+    )
+    assert load_config(path).get("power.price_notice_turns") == line
+
+
 def test_price_notice_line_shorter_than_the_target_is_rejected(tmp_path: Path) -> None:
     """線が備えの月数より短いと、全力で動く発電所が在庫を積み終えても採算の注意を出せない。"""
     path = tmp_path / "game.yaml"

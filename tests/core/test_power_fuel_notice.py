@@ -214,13 +214,14 @@ def test_price_notice_waits_until_the_stock_runs_out_within_the_line(game) -> No
     """
     island, f, need = _price_rise(game)
     line = game.config.get("power.price_notice_turns")
-    used = need * 2 // int(line * 2)  # 在庫（need の2倍）が直近の使用の線の倍の月数分
-    _flow(f, used)
+    used = need // 4
+    f.stock = {"coal": [[0, used * line]]}  # 取得原価（帳簿）はそのまま、量だけ線ちょうど
+    _flow(f, used // 2)  # 直近の使用では線の倍の月数分
     after_market(island, context(game))
     assert not any(e.kind == PRICE for e in island.log)
     assert not f.economy[NOTICES]["active"]
-    _flow(f, -(-need * 2 // line))  # 線の内側で知らせる
+    _flow(f, used)  # 線ちょうどで知らせる
     after_market(island, context(game))
     entries = [e for e in island.log if e.kind == PRICE]
     assert len(entries) == 1
-    assert entries[0].args["months"] <= line
+    assert entries[0].args["months"] == line
