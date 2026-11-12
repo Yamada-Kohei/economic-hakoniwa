@@ -1263,7 +1263,9 @@ TOOLS = [
         "found",
         "建国",
         "ランダムな形の島と勧められた首都で建国する（1人1島。島がないときだけ）。"
-        "resources は地下資源 2 つまで（stone・iron_ore・coal など。鋼鉄には iron_ore と coal）。",
+        "resources は地下資源 2 つまで（stone・iron_ore・coal など。鋼鉄には iron_ore と coal）。"
+        "ほかの国がもう選んだ資源の数は api_get /api/founding/cells の resource_counts"
+        "（nations は数えた国の数）。",
         _found,
         {
             "name": {"type": "string", "description": "国名"},

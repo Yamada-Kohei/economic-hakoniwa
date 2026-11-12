@@ -694,7 +694,7 @@ def _help_context() -> dict:
         ],
         "units": [
             {"name": defs.name("goods", g), "unit": defs.unit_name(g)}
-            for g in defs.goods
+            for g in display.goods_in_order(defs)
             if defs.unit_name(g)
         ],
         "grades": _grade_help(game),

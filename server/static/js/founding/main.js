@@ -293,9 +293,21 @@ function drawResources() {
   document.getElementById("resource-hint").textContent =
     `${config.max_resources} 種類まで選べます。選んだ資源だけを山の鉱山・採石場で採掘できます` +
     `（鋼鉄には鉄鉱石と石炭の両方が必要です。鉱山は1国 ${defs.facilities.mine?.max_per_island ?? "-"} か所まで）。`;
+  // ほかの国がもう選んだ資源の数（W-248、掲示板 #24 の 11 番）
+  const counts = cells.resource_counts || {};
+  const nations = cells.nations || 0;
+  const checked = state.resources;
   document.getElementById("resources").innerHTML = Object.entries(defs.mining)
-    .map(([id, name]) => `<label><input type="checkbox" value="${id}"> ${escapeHtml(name)}</label>`)
+    .map(([id, name]) => {
+      const n = counts[id] ?? 0;
+      const count = nations ? ` <small class="muted resource-count">（${n} 国）</small>` : "";
+      return `<label><input type="checkbox" value="${id}"${checked.has(id) ? " checked" : ""}> ${escapeHtml(name)}${count}</label>`;
+    })
     .join("");
+  document.getElementById("resource-others").textContent = nations
+    ? `（ ）はいま ${nations} 国のうち、その資源を選んだ国の数です。選ぶ国の少ない資源は、作れる国が少ないぶん輸出で存在感を出せます。` +
+      "選ぶ国の多い資源は、市場が厚く売り買いの相手を見つけやすい、手堅い選び方です。"
+    : "";
 }
 
 document.getElementById("resources").addEventListener("change", (e) => {
@@ -380,6 +392,7 @@ document.getElementById("found-button").addEventListener("click", async () => {
   if (res.status === 400) {
     // 区画が先に取られたときのために、空いている区画を読み直す
     Object.assign(cells, await getJson(root.dataset.cells));
+    drawResources();
     if (state.cell && !cells.free.some(([x, y]) => `${x},${y}` === state.cell)) state.cell = null;
     drawCells();
   }

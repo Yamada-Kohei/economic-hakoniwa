@@ -2099,6 +2099,14 @@ def price_kind(record: MarketRecord | None, previous: MarketRecord | None = None
     return "carry"
 
 
+def goods_in_order(defs: Any = None) -> list[str]:
+    """品目を、段（goods.yaml の tier: 原料・中間財・最終財）の順に、同じ段の中は定義の順に並べる
+    （UI-86、掲示板 #25 の 45 番）。品目を並べる表と選ぶ欄はこの順にそろえる。"""
+    defs = defs or get_game().defs
+    order = list(defs.goods)
+    return sorted(order, key=lambda g: (defs.goods[g].get("tier") or 99, order.index(g)))
+
+
 def goods_table(
     stats: dict[str, float], markets: dict[str, Any] | None = None, currency: str = ""
 ) -> list[dict[str, Any]]:
@@ -2109,7 +2117,8 @@ def goods_table(
     defs = get_game().defs
     markets = markets or {}
     rows = []
-    for good, gdef in defs.goods.items():
+    for good in goods_in_order(defs):
+        gdef = defs.goods[good]
         stock = stats.get(f"stock.{good}", 0)
         made = stats.get(f"production.{good}", 0)
         record = markets.get(good)
