@@ -474,3 +474,9 @@ def test_help_says_only_the_collateral_facility_is_seized(client, world):
     turns = get_game().config.get("firms.track_record_turns")
     assert "貸し手が差し押さえるのもその施設だけです" in html
     assert f"それから {turns} ターンのあいだ、融資の実績がない企業" in html
+
+
+def test_help_ties_the_mine_limit_to_exploration(client, world):
+    """手引き（MI-68・FM-66）: 探鉱で見つけた資源も鉱山の上限に数える。"""
+    html = client.get("/help/").content.decode()
+    assert "鉱脈や探鉱で見つけた分と合わせて3種類になれば3つ" in html
