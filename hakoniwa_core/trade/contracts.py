@@ -11,11 +11,14 @@ warehouse_trade で売るか使う）にします。傷みやすい物はどち�
 セビーリャさんの決定「国の契約だけ」。modules/trade の _from_reserve）。物かお金が足りないターンは
 払える分だけ履行し、不足を両方のログと契約の記録に残します（罰はない。外貨が足りなかったときは、
 どこからいくら用意できたかを fx に残す）。どちらからでも命令でやめられ、やめるのは
-trade.contract_cancel_turns ターン後です。
+trade.contract_cancel_turns ターン後です。期間の代わりに無期限（indefinite。FX-68、W-266）を
+選んだ契約は満期がなく、やめる命令から同じターン数の後か、当事者の島が世界から消えたら終わります。
 
 契約は ``world.ext["trade"]["contracts"]`` に辞書で持ちます: id・seller・buyer（島）・proposer・
 good・qty（1ターンの量。1000 分の 1 単位）・price（1 単位の値段。契約の通貨）・currency・
-turns（期間）・state（proposed・active・ended）・start・end（このターンの前まで効く）・
+turns（期間。無期限なら None）・indefinite（無期限の契約は True）・
+state（proposed・active・ended）・start・end（このターンの前まで効く。無期限で有効な間は None、
+終わると決まったらそのターン）・
 delivered・paid・short（直近の不足の量）・delivery（届いた物の行き先。ない契約は market）・
 aid（物の援助。フェーズ3-3。値段 0 で、相手の承諾なしに次のターンから効く）・
 treaty（条約の契約の条項から始まった契約の、条約の番号。フェーズ4-1 の②。条約が効いたターンの次の
@@ -49,6 +52,16 @@ def delivery_of(c: dict[str, Any]) -> str:
     return c.get("delivery") or MARKET
 
 
+def running(c: dict[str, Any], turn: int) -> bool:
+    """turn に効いている契約か（無期限で終わりの決まっていない契約は、始まった後ずっと）。"""
+    return c["state"] == ACTIVE and c["start"] <= turn and (c["end"] is None or turn < c["end"])
+
+
+def _end_after(turn: int, c: dict[str, Any]) -> int | None:
+    """受けたターン turn の契約の終わり（無期限なら None）。"""
+    return None if c.get("indefinite") else turn + 1 + c["turns"]
+
+
 def contracts(world: WorldState) -> list[dict[str, Any]]:
     return world_state(world)["contracts"]
 
@@ -62,7 +75,7 @@ def find(world: WorldState, contract_id: int) -> dict[str, Any] | None:
 
 def active(world: WorldState, turn: int) -> list[dict[str, Any]]:
     """このターンに履行する契約（番号の順）。"""
-    return [c for c in contracts(world) if c["state"] == ACTIVE and c["start"] <= turn < c["end"]]
+    return [c for c in contracts(world) if running(c, turn)]
 
 
 def of_island(world: WorldState, island_id: int) -> list[dict[str, Any]]:
@@ -90,7 +103,8 @@ def propose(
         "qty": round(payload["quantity"] * QUANTITY_SCALE),
         "price": payload["price"],
         "currency": currency,
-        "turns": payload["turns"],
+        "turns": None if payload.get("indefinite") else payload["turns"],
+        "indefinite": bool(payload.get("indefinite")),
         "state": PROPOSED,
         "created": turn,
         "start": 0,
@@ -158,7 +172,7 @@ def accept(
         contract["delivery"] = delivery
     contract["state"] = ACTIVE
     contract["start"] = turn + 1
-    contract["end"] = turn + 1 + contract["turns"]
+    contract["end"] = _end_after(turn, contract)
     for side in ("seller", "buyer"):
         other = world.islands[contract[side]]
         if other.id != contract["currency"]:
@@ -177,9 +191,9 @@ def cancel(
         contract["end"] = turn
     elif contract["state"] == ACTIVE:
         new_end = turn + 1 + wait
-        if (
-            new_end < contract["end"]
-        ):  # 早く終わらせる解約だけ、解約した島を残す（条約の見張りが読む）
+        # 早く終わらせる解約だけ、解約した島を残す（条約の見張りが読む）。
+        # 無期限の契約は、やめる命令で初めて終わりのターンが決まる
+        if contract["end"] is None or new_end < contract["end"]:
             contract["end"] = new_end
             contract.setdefault("cancelled_by", island.id)
     else:
@@ -225,10 +239,14 @@ def start_from_treaty(
 
 
 def close(world: WorldState, turn: int) -> None:
-    """期間の終わった契約を終わりにし、終わってしばらくたった契約を消す。"""
+    """期間の終わった契約を終わりにし、終わってしばらくたった契約を消す。当事者の島が世界から消えた
+    有効な契約も終わりにする（無期限の契約が残り続けないように。FX-68）。"""
     keep = []
     for c in contracts(world):
-        if c["state"] == ACTIVE and turn + 1 >= c["end"]:
+        gone = c["seller"] not in world.islands or c["buyer"] not in world.islands
+        if c["state"] == ACTIVE and gone and (c["end"] is None or turn + 1 < c["end"]):
+            c["end"] = turn + 1
+        if c["state"] == ACTIVE and c["end"] is not None and turn + 1 >= c["end"]:
             c["state"] = ENDED
             for side in ("seller", "buyer"):
                 island = world.islands.get(c[side])
