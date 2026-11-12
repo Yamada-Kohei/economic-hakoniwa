@@ -63,7 +63,7 @@
       <tbody>
         {% for f in group.rows %}
         <tr>
-          <td>{% if f.on_map %}<a href="{% url 'island' island.id %}?x={{ f.x }}&amp;y={{ f.y }}">{{ f.name }}</a>{% else %}{{ f.name }}{% endif %}<br><small class="muted">{{ f.kind_name }}</small></td>
+          <td><a href="{% url 'facility_page' island.id f.number %}">{{ f.name }}</a><br><small class="muted">{{ f.kind_name }}</small></td>
           <td>{{ f.status_text }}{% if f.good %} <a href="{% url 'market_good' island.id f.good %}">{% translate "市場" %}</a>{% endif %}</td>
           <td class="num">{% if f.rate is not None %}{{ f.rate }}%{% endif %}</td>
         </tr>

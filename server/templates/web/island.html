@@ -55,6 +55,7 @@
         <div id="tile-panel" data-tile-url="{% url 'api_tile' island.id 0 0 %}"
              {% if mine %}data-military-url="{% url 'api_island_military' island.id %}"{% endif %}
              data-country-url="{% url 'island_country' island.id %}"
+             data-facility-url="{% url 'facility_page' island.id 0 %}"
              data-monument-inscription="{% translate '碑文' %}" data-monument-built="{% translate '建立' %}"
              data-monument-edit="{% translate '絵を差し替える（国のページ）' %}"
              data-check-url="{% url 'api_order_check' island.id %}"

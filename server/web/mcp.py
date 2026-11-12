@@ -1392,7 +1392,7 @@ TOOLS = [
         "api_get",
         "API を読む",
         "ほかの道具にない JSON API を読む（GET。/api/ で始まる場所だけ）。例: "
-        "/api/islands/4/facilities/12/book（施設の帳簿の推移）、/api/world/trade（世界の貿易）、/api/world/fleets（世界の艦隊）、/api/islands/4/military（軍。ほかの国には兵の総数と見えた艦隊）。",
+        "/api/islands/4/facilities/12（施設のページ）、/api/islands/4/facilities/12/book（施設の帳簿の推移）、/api/world/trade（世界の貿易）、/api/world/fleets（世界の艦隊）、/api/islands/4/military（軍。ほかの国には兵の総数と見えた艦隊）。",
         _api_get,
         {"path": {"type": "string", "description": "/api/ で始まる場所（?の後ろも書ける）"}},
         ("path",),
@@ -1426,6 +1426,8 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "market_good": ("report", "api_get"),  # 品目のページ: 市場の report と品目の API
     "island_chain": ("report",),
     "island_facilities": ("report", "api_get"),  # 施設の帳簿の推移は api_get
+    # 施設のページは api_get /api/islands/<島>/facilities/<番号>（出せる命令は actions）
+    "facility_page": ("api_get", "tile", "set_orders"),
     "island_fiscal": ("report",),
     "island_finance": ("report",),
     "island_trade": ("report",),

@@ -36,6 +36,11 @@ urlpatterns = [
     path("islands/<int:island_id>/market/<str:good>/", views.market_good_page, name="market_good"),
     path("islands/<int:island_id>/chain/", views.chain_page, name="island_chain"),
     path("islands/<int:island_id>/facilities/", views.facilities_page, name="island_facilities"),
+    path(
+        "islands/<int:island_id>/facilities/<int:number>/",
+        views.facility_page,
+        name="facility_page",
+    ),
     path("islands/<int:island_id>/fiscal/", views.fiscal_page, name="island_fiscal"),
     path("islands/<int:island_id>/finance/", views.finance_page, name="island_finance"),
     path("islands/<int:island_id>/trade/", views.trade_page, name="island_trade"),
@@ -75,6 +80,11 @@ urlpatterns = [
         "api/islands/<int:island_id>/facilities/<int:number>/book",
         api.facility_book,
         name="api_facility_book",
+    ),
+    path(
+        "api/islands/<int:island_id>/facilities/<int:number>",
+        api.facility,
+        name="api_facility",
     ),
     path("api/islands/<int:island_id>/finance", api.finance, name="api_island_finance"),
     path("api/islands/<int:island_id>/trade", api.trade, name="api_island_trade"),
