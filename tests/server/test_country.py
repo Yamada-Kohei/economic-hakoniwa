@@ -598,8 +598,9 @@ def test_diary_is_private_to_the_owner(players, settings):
     page = f"/islands/{a.id}/diary/"
     assert "港を広げる" in ca.get(page).content.decode()
     assert cb.get(page).status_code == 404
-    assert f'href="{page}"' in ca.get(f"/islands/{a.id}/").content.decode()  # 見出しのタブ
-    assert f'href="{page}"' not in cb.get(f"/islands/{a.id}/").content.decode()
+    country = f"/islands/{a.id}/diplomacy/"  # 国の入口のタブ（UI-71）
+    assert f'href="{page}"' in ca.get(country).content.decode()
+    assert f'href="{page}"' not in cb.get(country).content.decode()
     res = ca.post(page, {"text": "画面から書いた"})
     assert res.status_code == 302 and ca.get(url).json()["text"] == "画面から書いた"
 
