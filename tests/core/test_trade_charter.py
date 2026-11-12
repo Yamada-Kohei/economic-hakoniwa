@@ -92,7 +92,10 @@ def test_chartered_freight_is_paid_in_the_settlement_currency(game, traded):  # 
     # 載せなかった）ので、半年回して、借りた船に載せたターンで見る
     run_world(game, world, 6, each)
     assert chartered and 2 not in chartered
-    assert paid and all(p > 0 and income > 0 for p, income in paid)
+    # 運賃が 1 ほどの小さな荷は、買い手の通貨に直すと 0 に丸まる（2026-11-12 に工事の列の維持を
+    # 直した後の道筋で、(0, 1) のターンがあった）。外貨と帳簿の突き合わせは毎ターン上で見ている
+    assert paid and all(income > 0 and (p > 0 or income <= 1) for p, income in paid)
+    assert sum(p for p, _ in paid) > 0
     assert world.islands[2].stats["trade.charter_income"] == 0
 
 

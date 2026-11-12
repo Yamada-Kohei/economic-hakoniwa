@@ -243,6 +243,23 @@ def deposit_rate_of(island: IslandState, bank: str) -> int:
     return f.economy.get("deposit_rate", island.policy.deposit_rate)
 
 
+def entry_rate(island: IslandState, defs: Any, config: GameConfig) -> float:
+    """参入に要る利益率（年）: 借りる金利（建設費の firms.equity_share の残りを借りたとき）+
+    firms.entry_margin（体制の特色 entry_margin があればそちら。市場経済。フェーズ3-4）。民営工場の
+    参入と、取り逃した儲けでの商社の参入（FX-62）で同じ線を使う。銀行がなければ無限大。"""
+    from hakoniwa_core import politics  # politics は economy を読むので、ここで読む
+
+    active = active_banks(island)
+    if not active:
+        return float("inf")
+    margin = min(margin_of(island, config, b) for b in active)
+    debt_share = 1 - config.get("firms.equity_share")
+    rate = island.policy.policy_rate / BASIS + margin / BASIS
+    rate += config.get("banking.rho") * debt_share
+    found = politics.trait(island, defs, "entry_margin")
+    return rate + (config.get("firms.entry_margin") if found is None else found)
+
+
 def margin_of(island: IslandState, config: GameConfig, bank: str) -> int:
     f = facility_of(island, bank)
     if f is None:
@@ -401,8 +418,17 @@ def inventory_value(island: IslandState, f: Facility) -> int:
 
 
 def assets_of(island: IslandState, f: Facility, entity: str) -> int:
-    """施設の資産（設備の値打ち + 預金 + 在庫）。"""
-    return book_capital(f) + ledger.money(island, entity) + inventory_value(island, f)
+    """施設の資産（設備の値打ち + 預金 + 在庫）。商社は、運ぶ途中の輸入の荷と外貨の持ち高も入れる
+    （仕入れ値と島の値段の低い方、今のレートと買ったときのレートの低い方。BK-51）。"""
+    total = book_capital(f) + ledger.money(island, entity) + inventory_value(island, f)
+    if "trade" in f.economy:  # 商社（trade/traders.py の state_of）
+        from hakoniwa_core.trade import traders  # trade は economy を読むので、ここで読む
+
+        if traders.is_planned(island):  # 計画経済の島の商社は前のまま
+            return total
+        _, transit, fx_value = traders.trade_collateral(island, f)
+        total += transit + fx_value
+    return total
 
 
 def net_assets(island: IslandState, f: Facility, entity: str, extra: int = 0) -> int:
