@@ -222,7 +222,7 @@ def bloc_goods(bloc: dict[str, Any]) -> list[dict[str, Any]]:
     """圏の市場の財ごとの値段（決済通貨）・前のターンからの変わり方・約定した量・買い・売り。"""
     defs = get_game().defs
     rows = []
-    for good in defs.goods:
+    for good in display.goods_in_order(defs):
         price = bloc.get("prices", {}).get(good)
         if not price:
             continue
@@ -409,6 +409,7 @@ def trade_data(
         if i != island.id
     ]
     defs = get_game().defs
+    allowed = set(contract_goods(defs))
     data["goods"] = [
         {
             "good": g,
@@ -416,7 +417,8 @@ def trade_data(
             "unit": defs.unit_name(g),
             "home_price": _price_or_none(g, here.economy.prices.get(g)),
         }
-        for g in contract_goods(defs)
+        for g in display.goods_in_order(defs)
+        if g in allowed
     ]
     data["cancel_turns"] = config.get("trade.contract_cancel_turns")
     data["policy"] = policy_view(world, here, islands)
@@ -440,7 +442,8 @@ def policy_view(
     defs = get_game().defs
     rules = here.policy
     goods = []
-    for good in tradable_goods(defs):
+    tradable = set(tradable_goods(defs))
+    for good in (g for g in display.goods_in_order(defs) if g in tradable):
         tariff = policy.tariff_rate(here, good)
         subsidy = policy.export_subsidy(here, good)
         quota = policy.quota(here, good)
