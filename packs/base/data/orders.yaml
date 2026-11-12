@@ -55,6 +55,17 @@ build:  # 国営の施設が建つマスに同じ施設を建てると、建て�
       note: {type: string, maxLength: 81}   # 記念碑の碑文に足す文（2 行まで。1 行 40 字まで）
       hidden: {type: boolean}               # true で地下に造る（ミサイル基地と核施設だけ。工期と資材が増え、ほかの国には見えない）
 
+explore:  # 探鉱（MI-68）: 島がまだ持っていない鉱業資源を 1 つ選び、それを掘る施設の建つ地形のマスに探鉱隊を置く
+  admin_cost: 1
+  payload:
+    type: object
+    required: [resource, x, y]
+    additionalProperties: false
+    properties:
+      resource: {type: string}
+      x: {type: integer, minimum: 0}
+      y: {type: integer, minimum: 0}
+
 build_housing:
   admin_cost: 1
   payload:

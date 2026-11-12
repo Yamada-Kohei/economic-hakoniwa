@@ -63,6 +63,7 @@
              data-monument-edit="{% translate '絵を差し替える（国のページ）' %}"
              data-check-url="{% url 'api_order_check' island.id %}"
              data-resources="{{ resource_ids|join:',' }}" data-producible="{{ producible|join:',' }}" aria-live="polite"></div>
+        {% if mine and exploration %}{{ exploration|json_script:"explore-choices" }}{% endif %}
       </div>
     </div>
   </section>
