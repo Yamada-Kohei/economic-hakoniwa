@@ -14,6 +14,7 @@ from hakoniwa_core import ledger
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import BONDS, arrears, funds
+from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy.debt import due
 from hakoniwa_core.modules import military
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
@@ -47,6 +48,12 @@ class Budget(IslandStage):
             money_of(limit, qty)
             for qty, limit in traders.contract_supply_plan(island, ctx.config).values()
         )
+        # 計画経済の価格の補助（PL-60）: 前のターンの差し引き後の不足に余裕を足した額（上の
+        # 見積もり）に、払いきれずに持ち越した国の未払いを足す（次のターンに先に払う）
+        owed = planning.owed_total(island)
+        if owed:
+            item = planning.PRICE_SUBSIDY
+            estimates[item] = estimates.get(item, 0) + owed
         caps = {item: island.policy.budget.get(item, 0) // YEAR for item in fiscal["budget_items"]}
         for item, amount in military.planned(
             island, ctx.config

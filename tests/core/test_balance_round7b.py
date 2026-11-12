@@ -109,6 +109,31 @@ def test_plant_supported_by_siblings_too_long_is_closed(game, base):
     assert "closing" not in a.economy
 
 
+def test_a_plant_losing_money_at_todays_prices_gets_no_sibling_cash(game, base, monkeypatch):
+    """今の値段で変動費の利益が出ない施設には、返済の不足をほかの施設の手元から回さない（企業の
+    預金からだけ。FM-65。採算の合わない施設に兄弟の手元を注いで倒れるのを遅らせない）。"""
+    world = copy.deepcopy(base)
+    island, a, b = two_plants(game, world)
+    ctx = context(game, world)
+    calls: dict[int, object] = {}
+    real = co.draw
+
+    def draw(island_, f, amount, ctx_=None):
+        if ctx_ is not None or f.id not in calls:
+            calls[f.id] = ctx_
+        return real(island_, f, amount, ctx_)
+
+    monkeypatch.setattr(co, "draw", draw)
+    monkeypatch.setattr(
+        companies, "variable_profit", lambda defs, config, f, *rest: -1 if f.id == b.id else 1
+    )
+    eb = facility_entity(b.id)
+    ledger.pay(island, eb, ledger.GOV, ledger.money(island, eb), "subsidy")
+    monkeypatch.setattr(banks, "debt_service", lambda island_, entity, turn: 1000)
+    FirmsFunds().run_island(island, ctx)
+    assert b.id in calls and calls[b.id] is None
+
+
 def test_pool_count_resets_when_not_supported(game, base):
     world = copy.deepcopy(base)
     island, a, b = two_plants(game, world)

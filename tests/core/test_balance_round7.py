@@ -24,8 +24,9 @@ from hakoniwa_core.economy import (
 from hakoniwa_core.economy import companies as co
 from hakoniwa_core.economy.households import SUPPORT, jobless_layer
 from hakoniwa_core.economy.start import next_payments
+from hakoniwa_core.modules import failures
 from hakoniwa_core.modules.companies import FirmsFunds, _carry_losses
-from hakoniwa_core.modules.failures import cross_default
+from hakoniwa_core.modules.failures import Failures
 from hakoniwa_core.modules.labor import Payroll, food_cost
 from hakoniwa_core.state import OWNER_PRIVATE
 from hakoniwa_core.state.generate import generate_world
@@ -226,9 +227,10 @@ def test_investor_prefers_firm_with_same_kind(game, base):
     assert co.choose_investor(island, game.defs, f.kind, cash * 10**6) is None
 
 
-def test_default_of_one_plant_bankrupts_the_firms_borrowers(game, base):
-    """企業の1つの工場の返済の遅れが限度に届くと、同じ企業の借入のある工場もみな倒産する
-    （クロスデフォルト）。帳簿は合う。"""
+def test_default_of_one_plant_forecloses_only_that_plant(game, base):
+    """企業の1つの工場の返済の遅れが限度に届くと、倒れるのはその工場だけで、貸し手はその工場
+    （借入の担保）だけを差し押さえる。同じ企業の借入のある工場は、返済が続く限り企業に残る
+    （FM-65、W-238。前は FM-40 のクロスデフォルトでみな倒れた）。帳簿は合う。"""
     world = copy.deepcopy(base)
     # 借入のある民営の施設が2つ以上ある島（市場経済から。どの島になるかは世界の歩みしだい）
     for island in sorted(world.islands.values(), key=lambda i: i.regime.get("economy") != "market"):
@@ -243,22 +245,87 @@ def test_default_of_one_plant_bankrupts_the_firms_borrowers(game, base):
             break
     a, b = borrowers[:2]
     merge(island, a, b)
+    number = co.firm_of(a)
     ctx = context(game, world)
     open_books(island)
-    loan = banks.loans_by_borrower(island, facility_entity(a.id))[0]
-    loan.arrears = game.config.get("loans.arrears_limit")
-    cascades = island.stats.get("firms.cascade", 0)  # 準備の世界のそのターンに数えた分
-    # a の企業に前から借入のある施設がほかにあれば、それも一緒に倒れる（世界の歩みしだい）
-    group = [
-        m
-        for m in co.members(island, co.firm_of(a))
-        if banks.loans_by_borrower(island, facility_entity(m.id))
-    ]
-    assert a in group and b in group
-    cross_default(island, ctx, a)
-    assert all("foreclosed" in m.economy and co.firm_of(m) is None for m in group)
-    assert any(e.kind == "firm_bankrupt" for e in island.log)
-    assert island.stats["firms.cascade"] - cascades == len(group)
+    limit = game.config.get("loans.arrears_limit")
+    for m in co.members(island, number):  # a のほかは返済が続いている
+        for loan in banks.loans_by_borrower(island, facility_entity(m.id)):
+            loan.arrears = limit if m is a else 0
+    Failures().run_island(island, ctx)
+    assert "foreclosed" in a.economy and co.firm_of(a) is None
+    assert "foreclosed" not in b.economy and co.firm_of(b) == number
+    assert not any(e.kind == "firm_bankrupt" for e in island.log)
+    # 倒産を出した企業は、しばらく融資の実績がないとみる（FM-65）
+    assert co.record(island, number)[co.DEFAULTED] == ctx.turn
+    assert not co.established(island, game.config, number, ctx.turn)
+    track = game.config.get("firms.track_record_turns")
+    assert co.established(island, game.config, number, ctx.turn + track)
+    books_ok(game, island)
+
+
+def test_deficiency_of_a_seized_plant_is_owed_by_the_firm(game, base):
+    """差し押さえた工場を売っても返しきれなかった借入は、元の持ち主の企業への担保のない債権になる。
+    企業はそれを返し終わるまで配当せず、預金から返した分は銀行の貸し倒れの戻りになる（FM-65）。
+    帳簿は合う。"""
+    world = copy.deepcopy(base)
+    for island in sorted(world.islands.values(), key=lambda i: i.regime.get("economy") != "market"):
+        if not island.has_economy:
+            continue
+        borrowers = [
+            f
+            for f in private_members(game, island)
+            if banks.loans_by_borrower(island, facility_entity(f.id))
+        ]
+        if len(borrowers) >= 2:
+            break
+    a, b = borrowers[:2]
+    merge(island, a, b)
+    number = co.firm_of(a)
+    name = co.entity(number)
+    ctx = context(game, world)
+    entity = facility_entity(a.id)
+    for loan in banks.loans_by_borrower(island, entity):
+        loan.arrears = game.config.get("loans.arrears_limit")
+    ledger.pay(island, entity, ledger.GOV, ledger.money(island, entity), "test_top_up")
+    open_books(island)  # 試験の足し引きの後から帳簿を見る
+    Failures().run_island(island, ctx)
+    seized = a.economy["foreclosed"]
+    lost = dict(seized["claims"][arrears.LOANS])
+    assert lost and seized["owner"] == name
+    # 売れずに取り壊した（分けるお金がない）とする
+    ledger.pay(island, entity, ledger.GOV, ledger.money(island, entity), "test_top_up")
+    open_books(island)  # 試験の足し引きの後から帳簿を見る
+    failures.close_foreclosure(island, a, 0)
+    owed = co.record(island, number)[co.DEFICIENCY]
+    assert sum(owed.values()) == sum(lost.values())
+    # 預金があれば、配当より先に返す
+    total = sum(owed.values())
+    # 未払いの税は預金に残す（co.spare）ので、その分も足す
+    taxes = arrears.total(island, name, arrears.TAX_ARREARS)
+    ledger.pay(island, household(GENERAL), name, total + taxes + 1, "test_top_up")
+    open_books(island)  # 試験の足し引きの後から帳簿を見る
+    before = ledger.money(island, name)
+    paid = co.pay_deficiency(island, number, co.spare(island, number))
+    assert paid == total and co.DEFICIENCY not in co.record(island, number)
+    assert before - ledger.money(island, name) == total
+    books_ok(game, island)
+
+
+def test_a_firm_owing_a_deficiency_pays_no_dividend(game, base):
+    """担保割れの不足が残る企業は、預金から返せるだけ返し、黒字でも配当しない（FM-65）。"""
+    world = copy.deepcopy(base)
+    island = market_island(world)
+    f = private_members(game, island)[0]
+    number = co.firm_of(f)
+    ctx = context(game, world)
+    open_books(island)
+    huge = 10**15
+    co.owe(island, number, {banks.active_banks(island)[0]: huge})
+    FirmsFunds().run_island(island, ctx)
+    rec = co.record(island, number)
+    assert rec["dividend"] == 0
+    assert 0 < sum(rec[co.DEFICIENCY].values()) <= huge
     books_ok(game, island)
 
 

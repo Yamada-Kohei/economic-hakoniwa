@@ -1086,6 +1086,7 @@ ORDER_UNITS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = {
     "send_aid": ("good", ("quantity",), ()),
     "bloc_settings": ("fixed_good", (), ("fixed_price",)),
     "set_official_price": ("good", (), ("price",)),
+    "set_retail_price": ("good", (), ("price",)),
     "set_price_floor": ("good", (), ("price",)),
     "load_supplies": ("good", ("quantity",), ()),
 }
@@ -1459,10 +1460,11 @@ def _describe_trade(kind: str, payload: dict[str, Any], name: str) -> str:
         side = SIDES.get(payload.get("side", ""), "")
         currency = currency_name(payload["currency"]) if "currency" in payload else "自国通貨"
         delivery = DELIVERIES.get(payload.get("delivery", ""), "")
+        period = "無期限" if payload.get("indefinite") else f"{payload.get('turns', 0)} ターン"
         return (
             f"{name}: {island_name(payload.get('partner'))}に{defs.name('goods', good)}を"
             f"毎ターン {payload.get('quantity', 0):g} {unit}{side}"
-            f"（1{unit} {payload.get('price', 0):,}・{currency}・{payload.get('turns', 0)} ターン"
+            f"（1{unit} {payload.get('price', 0):,}・{currency}・{period}"
             f"{'・' + delivery if delivery else ''}）"
         )
     if kind == "accept_contract" and payload.get("delivery") in DELIVERIES:
@@ -1551,13 +1553,11 @@ def _describe_politics(kind: str, payload: dict[str, Any], name: str) -> str:
         return f"{name}を{'始める' if payload.get('on') else 'やめる'}"
     if kind == "rename_leader":
         return f"{name}: 「{payload.get('name', '')}」"
-    if kind in ("set_official_price", "set_price_floor"):
+    if kind in ("set_official_price", "set_retail_price", "set_price_floor"):
         good = defs.name("goods", payload.get("good", ""))
         price = payload.get("price", 0)
         if not price:
-            return (
-                f"{name}: {good}を{'上書きをやめる' if kind == 'set_official_price' else 'なくす'}"
-            )
+            return f"{name}: {good}を{'なくす' if kind == 'set_price_floor' else '上書きをやめる'}"
         return f"{name}: {good} {price:,}"
     if kind == "review_official_prices":
         goods = [defs.name("goods", g) for g in payload.get("goods", [])]
@@ -1568,7 +1568,7 @@ def _describe_politics(kind: str, payload: dict[str, Any], name: str) -> str:
             parts.append(f"見直す幅 ±{payload['band']}%")
         if "held" in payload:
             held = "・".join(defs.name("goods", g) for g in payload["held"]) or "なし"
-            parts.append(f"据え置く財 {held}")
+            parts.append(f"小売を据え置く財 {held}")
         return f"{name}: " + "、".join(parts)
     if kind == "set_priority_industries":
         names = [defs.name("industries", i) for i in payload.get("industries", [])]
