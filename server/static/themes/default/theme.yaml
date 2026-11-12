@@ -62,6 +62,15 @@ no_development: "rgba(255, 255, 255, 0.45)"  # 開発を止めたマスの斜線
 office: "rgba(90, 120, 200, 0.35)"           # オフィス街のマス
 industrial: "rgba(230, 140, 40, 0.45)"       # 工業団地のマス
 commercial: "rgba(220, 70, 150, 0.35)"       # 商業地のマス
+# 作り方で絵を分ける施設: 作り方の産出か投入にこの財があれば facility/<名>+<財> の絵（段階のある施設は
+# facility/<名>+<財>@g<段階>）。どれもなければ名前のままの絵（農場は穀物、鉱山と火力は石炭）
+sprite_looks:
+  farm: [cotton, luxury_crop]                                 # 作物
+  mine: [iron_ore, bauxite, copper_ore, uranium_ore]          # 掘る物
+  thermal_power_plant: [fuel]                                 # 燃料
+# 建て増しの規模（FM-47）の絵の区切り: 規模がこの数以上なら facility/<名>@s2・@s3・@s4 の絵
+# （規模 1 は名前のままの絵。2〜4・5〜7・8〜10 の 4 段）
+size_tiers: [2, 5, 8]
 # 絵（スプライト）。名前 → このフォルダからのファイル名。ここにないものは上の色で描きます。
 # 名前は terrain/<地形>、facility/<施設の sprite>、housing/<住宅地の段階>、capital/<施設の sprite>（首都の建物）、
 # construction（工事中）。大きさ・基準点などの決まりは docs/map-art.md を見てください。
@@ -85,6 +94,14 @@ sprites:
   facility/building_materials_plant: sprites/facility/building_materials_plant.svg
   facility/consumer_goods_factory: sprites/facility/consumer_goods_factory.svg
   facility/farm: sprites/facility/farm.svg
+  facility/farm@g1: sprites/facility/farm@g1.svg
+  facility/farm@g2: sprites/facility/farm@g2.svg
+  facility/farm+cotton: sprites/facility/farm+cotton.svg
+  facility/farm+cotton@g1: sprites/facility/farm+cotton@g1.svg
+  facility/farm+cotton@g2: sprites/facility/farm+cotton@g2.svg
+  facility/farm+luxury_crop: sprites/facility/farm+luxury_crop.svg
+  facility/farm+luxury_crop@g1: sprites/facility/farm+luxury_crop@g1.svg
+  facility/farm+luxury_crop@g2: sprites/facility/farm+luxury_crop@g2.svg
   facility/department_store: sprites/facility/department_store.svg
   facility/fishing_port: {file: sprites/facility/fishing_port.svg, anchor: [32, 48]}
   facility/fishing_port@sw: {file: sprites/facility/fishing_port@sw.svg, anchor: [32, 48]}
@@ -96,6 +113,10 @@ sprites:
   facility/lumber_camp: sprites/facility/lumber_camp.svg
   facility/machinery_plant: sprites/facility/machinery_plant.svg
   facility/mine: sprites/facility/mine.svg
+  facility/mine+iron_ore: sprites/facility/mine+iron_ore.svg
+  facility/mine+bauxite: sprites/facility/mine+bauxite.svg
+  facility/mine+copper_ore: sprites/facility/mine+copper_ore.svg
+  facility/mine+uranium_ore: sprites/facility/mine+uranium_ore.svg
   facility/oil_well: sprites/facility/oil_well.svg
   facility/police: sprites/facility/police.svg
   facility/monument_monolith: sprites/facility/monument_monolith.svg
@@ -124,6 +145,7 @@ sprites:
   facility/steel_mill: sprites/facility/steel_mill.svg
   facility/textile_mill: sprites/facility/textile_mill.svg
   facility/thermal_power_plant: sprites/facility/thermal_power_plant.svg
+  facility/thermal_power_plant+fuel: sprites/facility/thermal_power_plant+fuel.svg
   facility/trading: sprites/facility/trading.svg
   facility/university: sprites/facility/university.svg
   housing/city: sprites/housing/city.svg
@@ -165,6 +187,55 @@ sprites:
   fleet/corvette: {file: sprites/fleet/corvette.svg, anchor: [10, 9]}
   fleet/submarine: {file: sprites/fleet/submarine.svg, anchor: [11, 7]}
   fleet/transport: {file: sprites/fleet/transport.svg, anchor: [12, 10]}
+  # 建て増しの規模の絵（FM-47。size_tiers）
+  facility/aluminium_smelter@s2: sprites/facility/aluminium_smelter@s2.svg
+  facility/aluminium_smelter@s3: sprites/facility/aluminium_smelter@s3.svg
+  facility/aluminium_smelter@s4: sprites/facility/aluminium_smelter@s4.svg
+  facility/arms_plant@s2: sprites/facility/arms_plant@s2.svg
+  facility/arms_plant@s3: sprites/facility/arms_plant@s3.svg
+  facility/arms_plant@s4: sprites/facility/arms_plant@s4.svg
+  facility/auto_parts_plant@s2: sprites/facility/auto_parts_plant@s2.svg
+  facility/auto_parts_plant@s3: sprites/facility/auto_parts_plant@s3.svg
+  facility/auto_parts_plant@s4: sprites/facility/auto_parts_plant@s4.svg
+  facility/automobile_plant@s2: sprites/facility/automobile_plant@s2.svg
+  facility/automobile_plant@s3: sprites/facility/automobile_plant@s3.svg
+  facility/automobile_plant@s4: sprites/facility/automobile_plant@s4.svg
+  facility/building_materials_plant@s2: sprites/facility/building_materials_plant@s2.svg
+  facility/building_materials_plant@s3: sprites/facility/building_materials_plant@s3.svg
+  facility/building_materials_plant@s4: sprites/facility/building_materials_plant@s4.svg
+  facility/consumer_goods_factory@s2: sprites/facility/consumer_goods_factory@s2.svg
+  facility/consumer_goods_factory@s3: sprites/facility/consumer_goods_factory@s3.svg
+  facility/consumer_goods_factory@s4: sprites/facility/consumer_goods_factory@s4.svg
+  facility/copper_smelter@s2: sprites/facility/copper_smelter@s2.svg
+  facility/copper_smelter@s3: sprites/facility/copper_smelter@s3.svg
+  facility/copper_smelter@s4: sprites/facility/copper_smelter@s4.svg
+  facility/electronics_plant@s2: sprites/facility/electronics_plant@s2.svg
+  facility/electronics_plant@s3: sprites/facility/electronics_plant@s3.svg
+  facility/electronics_plant@s4: sprites/facility/electronics_plant@s4.svg
+  facility/food_factory@s2: sprites/facility/food_factory@s2.svg
+  facility/food_factory@s3: sprites/facility/food_factory@s3.svg
+  facility/food_factory@s4: sprites/facility/food_factory@s4.svg
+  facility/machinery_plant@s2: sprites/facility/machinery_plant@s2.svg
+  facility/machinery_plant@s3: sprites/facility/machinery_plant@s3.svg
+  facility/machinery_plant@s4: sprites/facility/machinery_plant@s4.svg
+  facility/missile_plant@s2: sprites/facility/missile_plant@s2.svg
+  facility/missile_plant@s3: sprites/facility/missile_plant@s3.svg
+  facility/missile_plant@s4: sprites/facility/missile_plant@s4.svg
+  facility/refinery@s2: sprites/facility/refinery@s2.svg
+  facility/refinery@s3: sprites/facility/refinery@s3.svg
+  facility/refinery@s4: sprites/facility/refinery@s4.svg
+  facility/steel_mill@s2: sprites/facility/steel_mill@s2.svg
+  facility/steel_mill@s3: sprites/facility/steel_mill@s3.svg
+  facility/steel_mill@s4: sprites/facility/steel_mill@s4.svg
+  facility/textile_mill@s2: sprites/facility/textile_mill@s2.svg
+  facility/textile_mill@s3: sprites/facility/textile_mill@s3.svg
+  facility/textile_mill@s4: sprites/facility/textile_mill@s4.svg
+  facility/thermal_power_plant+fuel@s2: sprites/facility/thermal_power_plant+fuel@s2.svg
+  facility/thermal_power_plant+fuel@s3: sprites/facility/thermal_power_plant+fuel@s3.svg
+  facility/thermal_power_plant+fuel@s4: sprites/facility/thermal_power_plant+fuel@s4.svg
+  facility/thermal_power_plant@s2: sprites/facility/thermal_power_plant@s2.svg
+  facility/thermal_power_plant@s3: sprites/facility/thermal_power_plant@s3.svg
+  facility/thermal_power_plant@s4: sprites/facility/thermal_power_plant@s4.svg
 
 # 絵のファイルは置いたが、使う施設や描く仕組みがまだ入っていないもの（軍事の絵。docs/map-art.md）。
 # ゲームの描画は読まない。入ったら、その行を上の sprites へ移す（海沿いの anchor はここに書いてある値のまま）

@@ -224,7 +224,7 @@ def test_finance_orders_are_accepted(client, world):
         assert warnings.get(index, start).startswith(start)
     texts = [o["text"] for o in data["orders"]]
     assert texts[0] == "工業団地・オフィス街の指定: 工業団地 1 マス"
-    assert texts[11] == f"銀行への緊急の貸し出し: ({bank.x}, {bank.y}) 上限 10,000"
+    assert texts[11] == f"銀行への緊急の貸し出し: 銀行 ({bank.x}, {bank.y}) 上限 10,000"
 
     # 形の誤りは受け付けない
     bad = {"orders": [{"kind": "set_bank_policy", "payload": {"entry": "anyone"}}]}
