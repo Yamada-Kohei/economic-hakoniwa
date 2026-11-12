@@ -21,7 +21,7 @@ from hakoniwa_core.economy import books, is_seized, is_stopped, power_fuel_notic
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.modules.population import still_hungry
 from hakoniwa_core.naming import facility_name
-from hakoniwa_core.state import ACCOUNTING_SELF, OWNER_STATE, ZONE_INDUSTRIAL
+from hakoniwa_core.state import ACCOUNTING_SELF, OWNER_STATE, ZONE_INDUSTRIAL, IslandState
 from hakoniwa_core.trade import island_state as trade_state
 from hakoniwa_core.trade import merchant
 from server.accounts import keys
@@ -34,6 +34,7 @@ from server.orders.models import Order
 from server.turns.models import TurnLog
 from server.web import country, diplomacy, display, military, rankings, reports
 from server.web import politics as politics_views
+from server.web.trade import food_merchant_view
 from server.world import models as m
 from server.world.repository import facility_from_row, island_from_row
 
@@ -519,15 +520,16 @@ def _merchant_alerts(island: m.Island) -> list[str]:
     config = get_game().config
     here = island_from_row(island)
     coming = island.world.turn + 1
+    food = _food_merchant_alerts(here)
     if not merchant.active(here, config, coming):
-        return []
+        return food
     left = merchant.turns_left(here, config, coming)
     share = merchant.taper(here, config, coming)
     if share < 1:
         return [
             f"海外の商人が持ってくる量と買っていく量が減っています"
             f"（今は初めの {round(share * 100)}%。あと {left} ターン来て、その後は来なくなります）"
-        ]
+        ] + food
     # 量が減る初めのターン（来てから taper_from ターンを過ぎたターン）まで、今から何ターンか
     start = trade_state(here)["merchant_from"] + config.get("foreign_merchant.taper_from") + 1
     soon = start - island.world.turn
@@ -535,8 +537,20 @@ def _merchant_alerts(island: m.Island) -> list[str]:
         return [
             f"海外の商人は {soon} ターン後から持ってくる量と買っていく量を減らし始めます"
             f"（あと {left} ターン来て、その後は来なくなります）"
-        ]
-    return []
+        ] + food
+    return food
+
+
+def _food_merchant_alerts(here: IslandState) -> list[str]:
+    """物がないときの海外の食料商人（FX-73。W-239）が来ていれば、その注意（貿易の画面と同じ値）。"""
+    food = food_merchant_view(here)
+    if food is None:
+        return []
+    return [
+        f"食料が足りず、海外の商人が{food['name']}を割高で売りに来ています"
+        f"（このターンは {food['quantity']:g} {food['unit']}のうち"
+        f" {food['sold']:g} {food['unit']}が売れました。島の食べ物が戻ると来なくなります）"
+    ]
 
 
 def _diplomacy_alerts(brief: dict[str, Any]) -> list[str]:

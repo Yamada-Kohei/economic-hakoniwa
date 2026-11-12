@@ -195,6 +195,23 @@ def entry(f: Facility, good: str) -> dict[str, Any]:
     return item
 
 
+# economy.ext: 国の穀物の備蓄を輸入で積む形（W-239。FS-25。modules/market の _reserve_limit）の
+# 買い足しの指値
+RESERVE_IMPORT = "reserve_import"
+
+
+def home_price(island: IslandState, config: GameConfig, good: str) -> int:
+    """商社が輸入・輸出を決めるときに見る島の値段。国の穀物の備蓄を輸入で積む形の間は、穀物は島の
+    値段と倉庫の買い足しの指値の高いほう（W-239。政府の決まった買いがあれば、輸入業者はその値段で
+    仕入れる。売りのない財の島の値段は作り始める値段の中で一番低いものまでしか上がらないので、農場の
+    参入の値段が輸入の原価より安い島では、島の値段だけを見ると輸入されなかった）。"""
+    home = island.economy.prices.get(good, 0)
+    bid = island.economy.ext.get(RESERVE_IMPORT, 0)
+    if bid and good == config.get("food_reserve.good"):
+        return max(home, bid)
+    return home
+
+
 def views(island: IslandState) -> dict[str, dict[str, Any]]:
     """島が入っている貿易圏の、前のターンの様子（貿易の段が書く。圏の番号の文字列 → 様子）。"""
     return island_state(island).get("blocs", {})
@@ -209,24 +226,25 @@ def capacity_units(defs: Defs, config: GameConfig, good: str) -> int:
     return cap * QUANTITY_SCALE // unit
 
 
-def prospects(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, Prospect]:
-    """財ごとの輸出と輸入の見込み。港がないか、圏に入っていなければ空。"""
+def prospects(
+    island: IslandState, defs: Defs, config: GameConfig, only: str | None = None
+) -> dict[str, Prospect]:
+    """財ごとの輸出と輸入の見込み。港がないか、圏に入っていなければ空。only を渡すとその財だけ。"""
     if port_of(island, config) is None or not views(island):
         return {}
     cut = to_basis(config.get("trade.trader_cut"))
     fee = ships.port_fee(island, config)
     freight = ships.freight_rate(island, config)
-    prices = island.economy.prices
     planned = is_planned(island)
     bloc_band = to_basis(config.get("trade.bloc_band"))
     listed = _listed_exports(island, config)
     out: dict[str, Prospect] = {}
-    for good in tradable_goods(defs):
+    for good in [only] if only is not None else tradable_goods(defs):
         p = Prospect(good)
         export_rank: tuple[bool, int] | None = None  # 輸出の圏の選び方（荷を出した圏か, 指値）
         unit = unit_weight(defs, good)
         fee_unit = fee * unit // QUANTITY_SCALE
-        home = prices.get(good, 0)
+        home = home_price(island, config, good)
         subsidy = policy.export_subsidy(island, good)  # 輸出補助（フェーズ3-3）
         tariff = policy.tariff_rate(island, good)  # 関税（フェーズ3-3）
         best: tuple[bool, float] | None = None  # 輸入の圏の選び方（売りがあったか, 指値との開き）
@@ -452,7 +470,6 @@ def update_targets(
         for good, item in goods_of(f).items():
             if item.get("dir") == IMPORT:
                 importers[good] = importers.get(good, 0) + 1
-    prices = island.economy.prices
     planned = is_planned(island)
     exporters: dict[str, int] = {}
     for f in traders:
@@ -471,7 +488,7 @@ def update_targets(
             continue
         for good in tradable_goods(defs):
             p = found.get(good)
-            home = prices.get(good, 0)
+            home = home_price(island, config, good)
             record = records.get(good)
             supply, left_over = home_supply(island, record)
             # 計画経済の島は、売れ残った物を値段によらず輸出する。公定価格は圏の値段より高いことが

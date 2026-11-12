@@ -218,7 +218,8 @@ REPORTS = {
     "借りた船なら carrier_name、ほかの国に貸した船で運ぶ荷は direction=lent）・産業政策・"
     "海外の商人 merchant・船の貸し出し lend_ships（命令 set_ship_lending）"
     "（あと何ターン来るか turns_left、量を減らし始めるターン taper_start、今の量の割合 share（%）、"
-    "値段の倍率 multiplier（島の物価を含む））",
+    "値段の倍率 multiplier（島の物価を含む）。物がないときの食料の商人が来ていれば merchant.food に"
+    "来始めたターン since・売りに出した量 quantity・売れた量 sold・値段 price）",
     "fx": "為替と国際収支（持ち主には外貨の持ち高と為替の政策）",
     "politics": "政治（体制・政情・支持率・議席・選挙。持ち主には政情の内訳と命令の選択肢）",
     "diplomacy": "外交（戦争の状態・効いている条約・終わった条約・条約の違反の記録。持ち主には"

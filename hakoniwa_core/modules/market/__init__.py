@@ -111,6 +111,7 @@ from hakoniwa_core.modules.population import (
     FED,
     FOOD_ORDERS,
     HUNGER,
+    food_short_reason,
     jobless_family,
     layer_food_needs,
     still_hungry,
@@ -125,7 +126,7 @@ from hakoniwa_core.state import (
     TradeRecord,
 )
 from hakoniwa_core.state.model import PRICE_CARRY, PRICE_QUOTE, PRICE_TRADE
-from hakoniwa_core.trade import balance, merchant, ships, traders
+from hakoniwa_core.trade import balance, food_merchant, merchant, ships, traders
 from hakoniwa_core.trade import orders as ship_orders
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import (
@@ -178,6 +179,15 @@ MERCHANT_GAP = Payer(ledger.GOV, GOV_TRADE)  # 計画経済の島で、海外の
 MORTGAGE_DRAWN = "mortgage_drawn"
 CLEARING = "market_clearing"  # island.scratch: 板寄せの払いに使う（運送業, 道のり）
 IMPORTED = "imported"  # 国の倉庫に届いた腐る物の売り（Party.layer）
+# economy.ext: 国の穀物の備蓄を輸入で積む形（W-239。FS-25）の買い足しの指値。商社はこの指値を島の
+# 値段として輸入を決める（trade/traders.py の prospects）
+RESERVE_IMPORT = "reserve_import"
+# economy.ext: 前のターンの国の穀物の備蓄の様子（{"short": 買い足しが埋まらなかったか,
+# "home_unsold": 島の売り手の穀物の売れ残り}）。輸入で積む形に入るかを決める
+RESERVE_SEEN = "reserve_seen"
+RESERVE_REFILL = "food_reserve_refill"  # island.scratch: このターンの穀物の備蓄の買い足しの注文
+# island.scratch: 物がないときの海外の食料商人の売り（注文, 削ったか, 商人の値段）
+FOOD_MERCHANT = "food_merchant"
 
 
 @dataclass
@@ -965,6 +975,8 @@ class Market(IslandStage):
         ship_orders.run(island, defs, config, ctx.turn)
         self._supply_sites_from_warehouse(island, ctx)
         books_by_good: dict[str, Book] = {}
+        if trade.started(island):  # 物がないときの海外の食料商人が来るか（FX-73。W-239）
+            food_merchant.decide(island, self._anyone_hungry(island, ctx), ctx.turn)
         self._warehouse_orders(island, ctx, books_by_good)
         self._facility_orders(island, ctx, books_by_good, rates)
         self._services_orders(island, ctx, books_by_good, official)
@@ -1026,6 +1038,7 @@ class Market(IslandStage):
         self._spoil(island, ctx)
         self._imports_left(island, sold)
         self._record(island, ctx, books_by_good, results, bought)
+        self._remember_food(island, ctx, books_by_good, results)
         self._adapt_usual(island, ctx, books_by_good)
         self._adapt_materials(island, ctx, books_by_good)
         self._update_prices(island, ctx, books_by_good, results)
@@ -3351,6 +3364,7 @@ class Market(IslandStage):
         grain = ctx.config.get("food_reserve.good")
         grain_standing = standing.settings(island).get(grain, {}).get("kind") == "reserve"
         if grain_standing:
+            island.economy.ext.pop(traders.RESERVE_IMPORT, None)  # 輸入で積む形は既定の備蓄だけ
             if grain in manual:
                 # 設定の注文を休めても、FS-25 の飢餓時放出と古い組の入れ替えは残す。
                 self._reserve_orders(
@@ -3445,6 +3459,8 @@ class Market(IslandStage):
                 refill = ctx.config.get("food_reserve.refill") if is_grain else 1
                 renew = min(old, offered.get(good, 0))
                 want = max(0, min(int(short * refill) + renew, item["quantity"] - held + renew))
+                if is_grain and food_merchant.active(island):
+                    want = 0  # 海外の食料商人が来ている間は買い足さない（FX-73。W-239）
             elif kind == "sell":
                 spare, cut = standing.sellable(island, ctx, good)
                 order = sell(
@@ -3540,6 +3556,8 @@ class Market(IslandStage):
         """
         spec = ctx.config.get("food_reserve")
         good = spec["good"]
+        if spec["turns"] <= 0 or maintenance_only:
+            island.economy.ext.pop(traders.RESERVE_IMPORT, None)
         if spec["turns"] <= 0:
             return
         selling = offered.get(good, 0)  # 契約の輸入や命令で、もう売りに出している量
@@ -3549,7 +3567,11 @@ class Market(IslandStage):
         if old > 0:  # 傷む前に、今の値段で売る
             sell(good, old, price or None)
         hungry = self._anyone_hungry(island, ctx)
-        high = scale_price(usual, 1 + spec["release"])
+        # 買い足しの指値: ふだんはいつもの値段。穀物を作らない島では輸入が引き合う値段まで（W-239）
+        limit = usual if maintenance_only else self._reserve_limit(island, ctx, good, usual)
+        # 輸入で積む形の間は、放出の線を買い足しの指値から数える（輸入の値段で買うと島の値段がその
+        # 値段になり、いつもの値段の線ではすぐ放出して買い直すことを繰り返すため）
+        high = scale_price(limit, 1 + spec["release"])
         release = usual > 0 and (hungry or (not maintenance_only and price >= high))
         if release:
             sell(good, stock.total(island.warehouse, good), usual if hungry else high)
@@ -3560,11 +3582,12 @@ class Market(IslandStage):
         renew = min(old, stock.total(island.warehouse, good))
         want = min(int(max(0, short) * spec["refill"]) + renew, short + renew)  # 目安まで
         # 放出するターンと、輸入や命令で倉庫が穀物を売りに出しているターンは買わない（自分の売りを
-        # 買わない。入れ替えの売りは少しずつなので、同じ板で一部を買い戻すことはある）
-        if selling > 0 or release or want <= 0 or usual <= 0:
+        # 買わない。入れ替えの売りは少しずつなので、同じ板で一部を買い戻すことはある）。海外の
+        # 食料商人が来ている間も買わない（商人の穀物を備蓄に買わない。FX-73）
+        if selling > 0 or release or want <= 0 or usual <= 0 or food_merchant.active(island):
             return
         buyer = Payer(ledger.GOV, WAREHOUSE)
-        plan = self._afford(island, buyer, {good: (want, usual)}, 0, 0)
+        plan = self._afford(island, buyer, {good: (want, limit)}, 0, 0)
         for g, (q, lim) in plan.items():
             party = Party(STORE, ledger.GOV, buyer)
             party.reserved = gross_cost(lim, q, 0, 0)
@@ -3572,6 +3595,35 @@ class Market(IslandStage):
             order = Order(q, lim)
             self._add(books_by_good, g, "buy", order, party)
             island.scratch.setdefault("food_reserve_buys", []).append((g, order))
+            island.scratch[RESERVE_REFILL] = order
+
+    @staticmethod
+    def _reserve_limit(island: IslandState, ctx: StageContext, good: str, usual: int) -> int:
+        """国の穀物の備蓄の買い足しの指値（FS-25。W-239）。
+
+        ふだんはいつもの値段。前のターンの買い足しが埋まらず（輸入で積む形の間は続けて）、島の売り手
+        （施設と国の倉庫。商社と海外の商人は除く）に穀物の売れ残りがなく、圏の市場に前のターンに
+        穀物の売りがあった（輸入が引き合う値段がある）ときは、いつもの値段と輸入が引き合う値段の
+        高いほう（輸入で積む形）。この形の間は指値を economy.ext に書き、商社はそれを島の値段として
+        輸入を決める（traders.home_price）。穀物を作らない島（漁港だけの島など）は、いつもの値段の
+        指値では島に売り手がなく、入れ替えのたびに減って建国の備蓄が2年ほどでなくなっていた。
+        公定価格のある財（計画経済）は今のまま（公定価格で買い、商社は行列を見て輸入する）。"""
+        ext = island.economy.ext
+        seen = ext.get(RESERVE_SEEN, {})
+        was = ext.pop(traders.RESERVE_IMPORT, None) is not None
+        if usual <= 0 or not (was or seen.get("short")) or seen.get("home_unsold", 1) > 0:
+            return usual
+        if good in planning.official(island):
+            return usual
+        if not traders.traders_of(island, ctx.config, ctx.turn):
+            return usual
+        p = traders.prospects(island, ctx.defs, ctx.config, only=good).get(good)
+        floor = p.import_floor if p is not None else 0
+        if floor <= 0:
+            return usual
+        limit = max(usual, floor)
+        ext[traders.RESERVE_IMPORT] = limit
+        return limit
 
     @staticmethod
     def _anyone_hungry(island: IslandState, ctx: StageContext) -> bool:
@@ -3676,6 +3728,116 @@ class Market(IslandStage):
 
     # --- 貿易（フェーズ3-1） -----------------------------------------------------------
 
+    def _food_merchant_order(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        books_by_good: dict[str, Book],
+        site: tuple[int, int] | None,
+        official: dict[str, int],
+    ) -> None:
+        """物がないときの海外の食料商人の売り（FX-73。W-239。trade/food_merchant.py）。量は、国の倉庫
+        がこのターンに売りに出した穀物（備蓄の放出と入れ替え）の分を引く。計画経済の島では、今の
+        海外の商人と同じく公定価格との差を政府が払い、払えない分は量を削って知らせる。"""
+        grain = food_merchant.good_of(ctx.config)
+        book = books_by_good.get(grain)
+        released = sum(o.quantity for o, p in book.sells if p.kind == STORE) if book else 0
+        found = food_merchant.offer(island, ctx.defs, ctx.config, released)
+        if found is None:
+            return
+        good, qty, price = found
+        party = Party(MERCHANT, MERCHANT, Payer(ledger.CB), site=site)
+        ask, cut = price, False
+        fixed = official.get(good)
+        if fixed and price > fixed:
+            party.gap = price - fixed
+            room = qty_for(funds.available(island, MERCHANT_GAP), party.gap)
+            if room < qty:
+                cut, qty = True, room
+            if qty > 0:
+                party.reserved = money_of(party.gap, qty)
+                funds.commit(island, MERCHANT_GAP, party.reserved)
+            ask = fixed
+        order = Order(qty, ask) if qty > 0 else None
+        if order is not None:
+            self._add(books_by_good, good, "sell", order, party)
+            args = {"good": good, "amount": qty / QUANTITY_SCALE, "price": price}
+            island.log.append(LogEntry("food_merchant_came", args))
+        if cut:
+            island.log.append(
+                LogEntry("food_merchant_cut", {"good": good, "amount": qty / QUANTITY_SCALE})
+            )
+        island.scratch[FOOD_MERCHANT] = (order, cut, price)
+
+    def _remember_food(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        books_by_good: dict[str, Book],
+        results: dict[str, auction.Result],
+    ) -> None:
+        """市場の段の終わりに、次のターンの国の穀物の備蓄（FS-25 の輸入で積む形）と海外の食料商人
+        （FX-73）の見方を書く（W-239）。"""
+        defs, config = ctx.defs, ctx.config
+        grain = config.get("food_reserve.good")
+
+        def filled(good: str, order: Order) -> int:
+            book, result = books_by_good.get(good), results.get(good)
+            if book is None or result is None:
+                return 0
+            for i, (o, _) in enumerate(book.buys):
+                if o is order:
+                    return result.bought[i]
+            for i, (o, _) in enumerate(book.sells):
+                if o is order:
+                    return result.sold[i]
+            return 0
+
+        refill = island.scratch.pop(RESERVE_REFILL, None)
+        short = refill is not None and filled(grain, refill) < refill.quantity
+        record = next((m for m in island.markets if m.good == grain), None)
+        island.economy.ext[RESERVE_SEEN] = {
+            "short": short,
+            "home_unsold": traders.home_supply(island, record)[1],
+        }
+        if not trade.started(island):
+            return
+        order, cut, price = island.scratch.pop(FOOD_MERCHANT, (None, False, 0))
+        sold = filled(grain, order) if order is not None else 0
+        # 商人のほかの売り手（島の施設・国の倉庫・商社・契約の荷）の食料の売れ残り（栄養）
+        unsold = 0
+        for good, result in results.items():
+            if "food" not in defs.goods.get(good, {}):
+                continue
+            left = max(0, result.supply - result.volume)
+            if good == grain and order is not None:
+                left = max(0, left - (order.quantity - sold))
+            unsold += left * food_merchant.nutrition(defs, good) // QUANTITY_SCALE
+        # お金のある買いが食料を買えなかった栄養（食費を使い切った層は除く。お金のない飢えでは
+        # 商人は来ない）
+        orders = island.scratch.get(FOOD_ORDERS, {})
+        eaten_by = island.scratch.get("household_goods", {})
+        unmet = need = 0
+        for layer, summary in sorted(orders.items()):
+            need += summary["need"]
+            if food_short_reason(summary) == "money":
+                continue
+            eaten = sum(
+                q * food_merchant.nutrition(defs, g) // QUANTITY_SCALE
+                for g, q in eaten_by.get(layer, {}).items()
+                if "food" in defs.goods.get(g, {})
+            )
+            unmet += max(0, summary["need"] - eaten)
+        food_merchant.remember(
+            island,
+            unmet,
+            unsold > need * food_merchant.UNSOLD_SLACK,
+            sold,
+            retail.cpi(island),
+            (order.quantity, price) if order is not None else None,
+            cut,
+        )
+
     def _trade_orders(
         self,
         island: IslandState,
@@ -3706,6 +3868,7 @@ class Market(IslandStage):
                 funds.commit(island, MERCHANT_GAP, party.reserved)
                 price = fixed
             self._add(books_by_good, good, "sell", Order(qty, price), party)
+        self._food_merchant_order(island, ctx, books_by_good, site, official)
         # 海外の商人の買い（島の外への輸出。W-186 回4）: 指値の買い注文で、順位は商社の輸出と同じ
         # 一番下（値幅の端で止まったときと計画経済の配給では、島の買い手が先）。計画経済の島では、
         # 商人は自分の指値で払い、公定価格との差は政府（貿易の項目）が受け取る（売りの差を政府が

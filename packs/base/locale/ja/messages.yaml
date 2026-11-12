@@ -312,6 +312,8 @@ state_facility_losses: "({x}, {y}) の国営の{facility}は赤字が続いて�
 
 # 貿易と為替（フェーズ3-1）
 trade_started: "港と海運業ができ、ほかの国との貿易が始まりました（輸送船 {ships} 隻。海外の商人が {turns} ターンのあいだ来ます）"
+food_merchant_came: "食料が足りず、海外の商人が{good} {amount:g} {unit}を 1{unit}あたり {price:,} で売りに来ました（物がないときの食料の商人）"
+food_merchant_cut: "海外の商人の{good}の値段と公定価格の差を払う貿易の予算が足りず、商人の{good}を {amount:g} {unit}に減らしました"
 port_placed: "({x}, {y}) に港を開きました"
 port_not_placed: "港を置ける海辺の空いた平地がなく、港を開けませんでした（港を建てると貿易ができます）"
 trader_not_placed: "商社を置ける空いたオフィス街がなく、商社を開けませんでした"

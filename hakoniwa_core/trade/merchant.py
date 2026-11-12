@@ -69,7 +69,7 @@ def taper(island: IslandState, config: GameConfig, turn: int) -> float:
 BLOCKADE = "merchant_blockade"  # 島の貿易の状態: 封鎖で商人が来なくなる割合（1万分の1）
 
 
-def _reach(island: IslandState, qty: int) -> int:
+def reach(island: IslandState, qty: int) -> int:
     """封鎖で減らした、商人が持ってくる・持ち帰る量。"""
     share = island_state(island).get(BLOCKADE, 0)
     return qty * max(0, BASIS - share) // BASIS
@@ -97,7 +97,7 @@ def offers(
     for good in sorted(config.get("foreign_merchant.goods")):
         if good not in defs.goods:
             continue
-        qty = int(_reach(island, cap_of(defs, good)) * share)
+        qty = int(reach(island, cap_of(defs, good)) * share)
         if qty > 0:
             out.append((good, qty, scale_price(base.get(good, 1), factor)))
     return out
@@ -119,7 +119,7 @@ def bids(
     for good in sorted(config.get("foreign_merchant.goods")):
         if good not in defs.goods:
             continue
-        qty = int(_reach(island, cap_of(defs, good)) * share)
+        qty = int(reach(island, cap_of(defs, good)) * share)
         if qty > 0:
             out.append((good, qty, scale_price(base.get(good, 1), factor)))
     return out

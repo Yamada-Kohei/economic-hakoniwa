@@ -306,7 +306,7 @@
 | FS-22 | 国庫が払えないとき、国債の利払いは先頭のまま払い、支払いを止めるかはプレイヤーの命令 `set_`… | 決定 | tests/core/test_balance_round5.py |
 | FS-23 | 国営の施設の設備は国が予算から直す（回6 | 決定（回6 で作る） | （未確認） |
 | FS-24 | 国庫のうち「支出の `bonds.buffer_turns`+1 ターン分と次の利払い」を超えた… | 決定（回5） | tests/core/test_balance_round5.py |
-| FS-25 | 国の穀物の備蓄: 目安は住民の食べる量の決めたターン数分で、建国のときに国の倉庫に入れる | 決定 | tests/core/test_recession_round1.py |
+| FS-25 | 国の穀物の備蓄: 目安は住民の食べる量の決めたターン数分で、建国のときに国の倉庫に入れる | 決定 | tests/core/test_disaster_food.py、tests/core/test_recession_round1.py |
 | FS-26 | 住宅費（W-190・W-202）: 国が町の床を足す資材（命令「住宅を建てる」と、計画経済の国の… | 決定（命令の工事と計画経済の町は回2 で作った | tests/core/test_public_housing.py、tests/core/test_stage7_fixes.py |
 | FS-27 | 公営住宅の家賃（W-190・W-202）: 国の床に住む層は、床 1 人分ごとに命令で決める名目… | 決定（家賃の徴収は回2 で作った | tests/core/test_public_housing.py |
 | FS-28 | 国の倉庫の決まった売り買い（W-235）: 命令 `set_warehouse_standing`… | 決定（2026-11-03 実装） | tests/core/test_warehouse_standing.py |
@@ -474,7 +474,7 @@
 | FX-60 | 船の前注文（2026-11-10、W-244）: 島に造船所があれば、海運業は船を市場で買う代わ… | 決定（2026-11-10 | tests/core/test_balance_round6.py、tests/core/test_ship_orders.py |
 | FX-61 | 商社の外貨の見込みと貿易金融（2026-11-11、W-269）: 商社は財ごとに「狙う量 − … | 決定（2026-11-11） | tests/core/test_trade_finance.py |
 | FX-62 | 取り逃した儲けでの商社の参入（2026-11-11、W-269）: 商社が自分の担保・出資の枠か… | 決定（2026-11-11） | tests/core/test_trade_finance.py |
-| FX-73 | 物がないときの海外の食料商人（W-239）: 前のターンに飢えた家計（タブ 2 PO-58）があ… | 仮（2026-11-12 設計、作る回で）（仮の決まりの表あり） |  |
+| FX-73 | 物がないときの海外の食料商人（W-239）: 前のターンに飢えた家計（タブ 2 PO-58）があ… | 仮（仮の決まりの表あり） | tests/core/test_disaster_food.py |
 
 ## [10 政治と体制](10-politics.md)
 
