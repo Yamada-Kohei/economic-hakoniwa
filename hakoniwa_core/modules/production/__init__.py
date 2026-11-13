@@ -50,6 +50,7 @@ from hakoniwa_core.economy import (
     funds,
     household,
     is_bank,
+    is_contractor,
     is_public_service,
     is_self_supporting,
     is_stopped,
@@ -65,6 +66,7 @@ from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.geo import components, distance, within
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
+from hakoniwa_core.modules.infrastructure import contracts
 from hakoniwa_core.modules.market import curve_cost, elastic_orders
 from hakoniwa_core.modules.population import layer_food_needs
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
@@ -97,6 +99,7 @@ from hakoniwa_core.units import (
 SHORT_STATUS = {"supply": "input", "price": "input_price", "funds": "funds"}
 STATUS_CARGO = "cargo"  # 港・商社が扱う荷に合わせて少なく雇っている（フェーズ3-1）
 STATUS_BUSINESS = "business"  # 小さい銀行が、預金と融資の大きさに合わせて少なく雇っている
+STATUS_ORDERS = "orders"  # 土木業者が、受けた工事に合わせて少なく雇っている（W-270）
 STATUS_BUDGET = "budget"  # 年の予算の月割りが足りず雇う人を減らした（"budget:項目"。LB-45）
 STATUS_STAFF_PLAN = "staff_plan"  # 人員計画の枠で、生産目標に要る人を雇えない（PL-59）
 PUBLIC_PRICE = "public_price"  # 学校と大学の教材が高くて買えない
@@ -295,6 +298,12 @@ class Production(IslandStage):
         cargo, few = staff.wanted(ctx.config, ctx.defs, f), STATUS_CARGO
         if cargo is None and is_bank(ctx.config, f):
             cargo, few = banks.staff_wanted(island, ctx.config, ctx.defs, f), STATUS_BUSINESS
+        if cargo is None and is_contractor(ctx.config, f):
+            # 土木業者は受けた工事に合わせて雇う。稼働率は届けた工事 ÷ 全力（W-270）
+            cargo, few = contracts.wanted(island, ctx.config, f), STATUS_ORDERS
+            whole = contracts.full(ctx.defs, ctx.config, f)
+            done = f.economy.get(contracts.DELIVERED, 0)
+            rate = min(rate, done * fac.FULL // whole if whole > 0 else 0)
         if cargo is not None and f.workers >= cargo:
             # 港・商社は扱う荷に、小さい銀行は預金と融資に合わせて少なく雇う（定義の人数に足りなく
             # ても労働者不足ではない）
