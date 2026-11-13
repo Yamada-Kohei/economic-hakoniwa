@@ -33,6 +33,7 @@ facilities:
   port:                     {color: "#c8473a", height: 2.5}   # フェーズ3-1
   shipyard:                 {color: "#d9a62a", height: 3}
   trading:                  {color: "#9db6c7", height: 3}
+  contractor:               {color: "#e0a03a", height: 1.5}   # 土木業者（W-270）
   oil_well:                 {color: "#2f2f2f", height: 2}     # フェーズ3-2
   refinery:                 {color: "#8c8f6a", height: 3}
   aluminium_smelter:        {color: "#a9b4bd", height: 3}

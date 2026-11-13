@@ -11,6 +11,7 @@ ship_order:           {type: journal}   # 船の前注文の代金（海運業 �
 ship_order_refund:    {type: journal}   # 船の前注文の前払いの返金（造船所 → 海運業。届かずに取り消した注文）
 electricity:          {type: journal}   # 電気代（使う施設と家計 → 発電所）
 freight:              {type: journal}   # 運賃（売り手と買い手 → 運送業）
+contract:             {type: journal}   # 公共事業の請負の代金（政府 → 土木業者。届けた工事の出来高。W-270）
 # 賃金と税
 wage:                 {type: journal}   # 賃金（施設・政府・銀行 → 家計）
 unemployment_benefit: {type: journal}   # 失業手当（政府 → 家計）

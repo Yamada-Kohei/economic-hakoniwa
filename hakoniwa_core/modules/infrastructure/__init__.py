@@ -51,6 +51,8 @@ from hakoniwa_core.state import IslandState, LogEntry
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import from_milli, money_of
 
+from . import contracts
+
 WORKS = "works"  # island.scratch: このターンの公共事業の計画と雇えた人手
 UPKEEP = "works_upkeep"  # island.scratch: 維持の仕事の一覧（整備度か工事の列が変わったら捨てる）
 MATERIALS = "works_materials"  # island.scratch: 種類ごとに、決まった資材（True）か代わりの資材か
@@ -231,6 +233,33 @@ def _scale(works: Works, item: Item, amount: int) -> Item:
 # --- 雇用の段から -------------------------------------------------------------------
 
 
+def needs(island: IslandState, ctx: StageContext) -> list[int]:
+    """このターンの維持と新しい工事に要る人手 [維持, 工事]（1000 分の 1 人）。手元の工事の資材で進め
+    られる分だけ（維持の分が先に使う）で、公共事業費では削らない（土木業者への注文の量。IN-31）。"""
+    works = Works(island, ctx)
+    have = stock.totals(works_stock(island))
+    out = [0, 0]
+    for kind, items in ((contracts.UPKEEP, works.upkeep()), (contracts.BUILD, works.build())):
+        for item in items:
+            amount = _fit(item, have)
+            if amount <= 0:
+                continue
+            item = _scale(works, item, amount)
+            for good, qty in item.materials.items():
+                have[good] = have.get(good, 0) - qty
+            out[kind] += item.labor
+    return out
+
+
+def order_contracts(island: IslandState, ctx: StageContext) -> None:
+    """雇用の段の初め（施設が雇いたい人数を決める前）: 要る人手を土木業者に注文する（IN-31）。"""
+    if not island.has_economy:
+        return
+    if not contracts.working(island, ctx.config, ctx.turn):
+        return
+    contracts.place(island, ctx.defs, ctx.config, ctx.turn, needs(island, ctx))
+
+
 def priority(island: IslandState, config: GameConfig, upkeep: bool) -> int:
     """維持（upkeep）か新しい工事の優先度。命令 set_public_works で国ごとに変えられ、決めて
     いなければ
@@ -278,16 +307,30 @@ def plan(island: IslandState, ctx: StageContext, upkeep: bool, wage: int, keep: 
     cap = state["reach"]
     if cap is not None and keep:
         cap = state["reach"] = max(cap, keep)
+    candidates = works.upkeep() if upkeep else works.build()
+    # 土木業者が受け持つ分（IN-29・IN-31）: 注文の代金を先に取り置き、残りを直営で雇う
+    probe = dict(have)
+    labor_all = 0
+    for item in candidates:
+        amount = _fit(item, probe)
+        if amount <= 0:
+            continue
+        scaled = _scale(works, item, amount)
+        for good, qty in scaled.materials.items():
+            probe[good] = probe.get(good, 0) - qty
+        labor_all += scaled.labor
+    covered = state["covered"] = state.get("covered", 0) + contracts.reserve(
+        island, ctx.config, upkeep, labor_all
+    )
 
     def holdable(labor: int) -> int:  # labor（1000 分の 1 人）を雇うのに賃金を取り置く人数
-        workers = -(-labor // 1000)
+        workers = -(-max(0, labor - covered) // 1000)
         return workers if cap is None else min(workers, cap)
 
     left = funds.available(island, PAYER)
     planned = before = state["labor"]
     held = state["held"]
     why = ""
-    candidates = works.upkeep() if upkeep else works.build()
     for item in candidates:
         amount = _fit(item, have)
         if amount < item.amount and not why:
@@ -301,7 +344,7 @@ def plan(island: IslandState, ctx: StageContext, upkeep: bool, wage: int, keep: 
         item = _scale(works, item, amount)
         if (holdable(planned + item.labor) - held) * wage > left:
             # 公共事業費が足りなければ、払える人数の分まで
-            room = (held + left // max(1, wage)) * 1000 - planned
+            room = (held + left // max(1, wage)) * 1000 + covered - planned
             labor = works.defs.infrastructure[item.kind]["labor"]
             amount = min(amount, room // labor) if labor > 0 else amount
             why = "funds"
@@ -312,7 +355,7 @@ def plan(island: IslandState, ctx: StageContext, upkeep: bool, wage: int, keep: 
         # 割り当てて、後ろの工事を「資材が足りない」にしないように。実際の進みは工事の段で決まる）
         share = 1.0
         if cap is not None and item.labor > 0:
-            share = min(1.0, max(0, cap * 1000 - planned) / item.labor)
+            share = min(1.0, max(0, cap * 1000 + covered - planned) / item.labor)
         for good, qty in item.materials.items():
             have[good] = have.get(good, 0) - math.ceil(qty * share)
         state["items"].append(item)
@@ -320,6 +363,14 @@ def plan(island: IslandState, ctx: StageContext, upkeep: bool, wage: int, keep: 
         if why == "funds":
             break
     hold = holdable(planned) - held
+    if upkeep:
+        # 前のターンに業者が届けられなかった維持の量を見込みに、直営の賃金も施設より先に取り置く
+        # （業者が雇いきれなかった分を直営で埋める。IN-32）
+        short = min(works_state(island).get(contracts.SHORT_UPKEEP, 0), covered)
+        more = -(-short // 1000)
+        if cap is not None:
+            more = min(more, max(0, cap - held - hold))
+        hold += min(more, max(0, funds.available(island, PAYER) // max(1, wage) - hold))
     funds.commit(island, PAYER, hold * wage)
     state["held"] = held + hold
     workers = -(-planned // 1000) - -(-state["labor"] // 1000)
@@ -400,7 +451,8 @@ def hire(
     state = island.scratch.get(WORKS)
     if not state:
         return {}
-    want = -(-state["labor"] // 1000)
+    # 土木業者が届ける分を除いた人数を直営で雇う（IN-32）
+    want = -(-max(0, state["labor"] - state.get("contracted", 0)) // 1000)
     goal = want if goal is None else min(goal, want)
     wage = state["wage"]
     staff: dict[tuple[int, int], int] = state.setdefault("staff", {})
@@ -451,9 +503,19 @@ def hire(
 
 
 def split(island: IslandState) -> tuple[int, int]:
-    """このターンの公共事業の (維持の作業員の人数, 全部の人数)。"""
+    """このターンの公共事業の直営の (維持の作業員の人数, 全部の人数)（業者が届ける分を除く）。"""
     state = island.scratch.get(WORKS) or {}
-    return -(-state.get("upkeep_labor", 0) // 1000), -(-state.get("labor", 0) // 1000)
+    upkeep_done, done = contracts.delivered(island)
+    upkeep = max(0, state.get("upkeep_labor", 0) - upkeep_done)
+    return -(-upkeep // 1000), -(-max(0, state.get("labor", 0) - done) // 1000)
+
+
+def contracted(island: IslandState, ctx: StageContext, workers: dict[int, int]) -> None:
+    """直営を雇う前に、土木業者が雇えた人 workers（業者の番号 → 人数）で届ける量を決める。"""
+    state = island.scratch.get(WORKS)
+    if state is None:
+        return
+    state["contracted"] = contracts.deliver(island, ctx.config, workers)
 
 
 def keep(island: IslandState, free: dict[tuple[int, int], int]) -> dict[tuple[int, int], int]:
@@ -463,7 +525,7 @@ def keep(island: IslandState, free: dict[tuple[int, int], int]) -> dict[tuple[in
     state = island.scratch.get(WORKS)
     if not state:
         return {}
-    want = -(-state["labor"] // 1000)
+    want = -(-max(0, state["labor"] - state.get("covered", 0)) // 1000)
     wage = state["wage"]
     room = want
     if wage > 0:
@@ -503,7 +565,8 @@ def progress(island: IslandState, ctx: StageContext) -> None:
         return
     state = island.scratch.get(WORKS) or {"items": [], "hired": 0}
     held = works_stock(island)
-    labor = state.get("hired", 0) * 1000
+    # 直営の作業員と、土木業者が届けた工事（1 単位は直営の 1 人分。IN-29）を合わせて進める
+    labor = state.get("hired", 0) * 1000 + contracts.delivered(island)[1]
     built = done_any = 0
     works = Works(island, ctx)
     queued = {(k, x, y) for k, x, y in infra.queue(island)}
@@ -569,7 +632,7 @@ def _watch(
     if not why and state.get("short_materials"):  # 並んだマスの維持の資材が足りない（IN-28）
         why = "materials"
     if not why:
-        wanted = -(-state.get("labor", 0) // 1000)
+        wanted = -(-max(0, state.get("labor", 0) - contracts.delivered(island)[1]) // 1000)
         why = "workers" if state.get("hired", 0) < wanted else "funds"
     turns = works.get("stalled", 0) + 1
     works["stalled"] = turns
@@ -668,7 +731,13 @@ class Infrastructure(IslandStage):
             island.stats[f"infra.{kind}"] = round(total / land / 10, 2) if land else 0.0
         island.stats["infra.queued"] = len(infra.queue(island))
         hired, _ = payroll(island)
-        island.stats["works.workers"] = hired
+        done = contracts.delivered(island)[1]
+        # 公共事業に働いた人（直営と、業者が届けた工事を人数に直した分）
+        island.stats["works.workers"] = hired + done // 1000
+        contracts.stats(island, ctx.config, hired)
+        if island.has_economy:
+            planned = (island.scratch.get(WORKS) or {}).get("labor", 0)
+            contracts.remember(island, works_state(island), planned, hired * 1000)
         held = stock.totals(works_stock(island))
         for good, qty in held.items():
             island.stats[f"works.stock.{good}"] = from_milli(qty)
@@ -784,7 +853,12 @@ def _auto_works(island: IslandState, ctx: StageContext) -> None:
     for upkeep in (True, False):
         for good, qty in wants(island, ctx, upkeep).items():
             buying += money_of(prices.get(good, 1), qty)
-    room = cap - used - labor * wage // 1000 - buying
+    # 人手は業者の分を今の単価で、直営の分をこのターンの賃金で見積もる（業者は全力まで）
+    firms = contracts.working(island, config, ctx.turn)
+    by_contract = min(labor, sum(contracts.full(defs, config, f) for f in firms))
+    price = contracts.average_price(island, config) if by_contract else 0
+    labor_cost = money_of(price, by_contract) + (labor - by_contract) * wage // 1000
+    room = cap - used - labor_cost - buying
     if room <= 0:
         return
     sites: list[tuple[str, list[tuple[int, int]]]] = []

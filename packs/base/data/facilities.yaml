@@ -709,6 +709,20 @@ transport:
   recipes:
     default: {}
 
+# 土木業者（W-270）。公共事業（インフラの工事と維持）を請け負い、自分の社員で工事をします。注文の分だけ
+# 一般の労働者を通勤圏から雇い、工事は島のどのマスでもします（現場へ通う）。売るのは持ち越せない「工事」で、
+# 市場には出さず公共事業との請負で売ります（hakoniwa_core/modules/infrastructure/contracts.py）。
+contractor:
+  max_size: 1
+  category: construction
+  terrain: [plain]
+  max_per_island: 5
+  construction: {turns: 2, labor: 150, materials: {building_materials: 6, machinery: 1}}
+  workers: 150
+  priority: 5
+  recipes:
+    default: {}
+
 # 港（フェーズ3-1）。島の外との物の出入りはすべて港を通ります。国が建て（民営では建たない）、島に1つ。
 # 荷の積み下ろしは 1 ターンに game.yaml の trade.port_capacity トンまで。働く人は扱った荷の量に合わせて
 # 雇い（trade.port_labor）、荷 1 トンごとに使用料を受け取ります。
