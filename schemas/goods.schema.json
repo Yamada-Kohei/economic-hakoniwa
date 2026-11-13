@@ -24,6 +24,7 @@
     "arms": {"type": "boolean", "description": "軍事品か（フェーズ4-2）。貿易圏の市場と商社には出さず、国どうしの契約と物の援助でだけ動く（買うのは国だけ）"},
     "consumer": {"type": "boolean", "description": "家計が買う財か（物価指数に入れる）"},
     "freight_weight": {"type": "number", "minimum": 0, "description": "船で運ぶときの 1 単位の重さ（トン。フェーズ3-1）。書かない財は島の外へ運べない。0 は自分で航海して届く物（輸送船）"},
+    "fx_priority": {"type": "integer", "minimum": 1, "maximum": 4, "description": "計画経済の国営の商社が少ない外貨を使う順（1 が先。FX-76）。1 燃料と主食、2 設備、3 原料と部品、4 消費財。島の外へ運べる財に書く。書かなければ 3"},
     "need": {"enum": ["necessity", "luxury", "durable", "service", "retail"], "description": "家計にとっての種類（フェーズ3-2）。necessity 必需品、luxury ぜいたく品、durable 耐久消費財（ぜいたく品の種類にも数える）、service サービス（ぜいたく品の種類にも数える。バランス調整）、retail 小売り（品物を買うときに代金に見合う量を一緒に買う。回7）"},
     "override": {"const": true}
   }
