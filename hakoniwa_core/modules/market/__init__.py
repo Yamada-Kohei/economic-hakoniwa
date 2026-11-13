@@ -735,9 +735,7 @@ def inventory_turns(ctx, good: str) -> float:
     持ち越せない物（期間 0。サービス・小売・電力）は 0（在庫を持たない。式のままだと −0.5 ターン分に
     なり、1単位の売れ残りで値下げし、作る量も見込みより少なくなっていた。2026-11-01）。
     """
-    turns = ctx.config.get("market.inventory_turns")
-    life = ctx.defs.goods[good].get("shelf_life")
-    return turns if life is None else max(0.0, min(turns, (life - 1) / 2))
+    return stock.target_turns(ctx.config.get("market.inventory_turns"), ctx.defs.goods, good)
 
 
 # 施設の economy: 操業目標を見直したときの、産出物ごとの1単位の費用の下限（生産補助の後。
@@ -1118,6 +1116,7 @@ class Market(IslandStage):
         self._spoil(island, ctx)
         self._imports_left(island, sold)
         self._record(island, ctx, books_by_good, results, bought)
+        self._trader_sales(island, ctx, books_by_good, results)
         self._remember_food(island, ctx, books_by_good, results)
         self._adapt_usual(island, ctx, books_by_good)
         self._adapt_materials(island, ctx, books_by_good)
@@ -1363,7 +1362,7 @@ class Market(IslandStage):
         results: dict[str, auction.Result],
         stale: dict[str, dict[int, int]],
     ) -> None:
-        """品物の市場の後に、家計の層が買った品物の代金に見合う小売りを、商店と百貨店から買う。
+        """品物の市場の後に、家計の買った量を初めの値段で評価し、見合う小売りを店から買う。
         店に届くお客の割合（retail.reach）で、店ごとに売れる量に上限を付ける。店で買いきれなかった
         分は、商業・サービス業（小さな店と屋台）から小売りの値段の 1 + retail.direct_premium 倍で
         買う（直売・屋台）。"""
@@ -1399,6 +1398,14 @@ class Market(IslandStage):
                     order = Order(min(order.quantity, cap), order.limit, order.priority)
                 capped.append((order, party))
             book.sells[:] = [(o, p) for o, p in capped if o.quantity > 0]
+            # 店の付け値（MK-42）: 家計は店の付け値の最高より高くは店に払わない（足りない分は
+            # 屋台へ）
+            asks = [o.limit for o, _ in book.sells if o.limit is not None]
+            if asks and good not in official:
+                high = min(high, max(asks))
+            # 混合経済の値段の下限（PL-32）は付け値より先に効く: 家計も下限までは店に払う
+            if politics.trait(island, defs, "price_controls", False):
+                high = max(high, island.policy.price_floor.get(good, 0))
         if (book is None or not book.sells) and total > 0:
             # 売りに出ていなければ、買いたい量を記録する（店が開く合図。_record）
             record = island.scratch.setdefault("wanted", {})
@@ -1863,7 +1870,7 @@ class Market(IslandStage):
                 amount = money_of(price, taken)
                 funds.pay(island, payer, ledger.GOV, amount, "sale")
                 power_fuel.acquire(defs, f, good, taken, price, ctx.turn)
-                self._give_to_buyer(island, good, party, batches, amount, 0, 0, {})
+                self._give_to_buyer(island, good, party, batches, amount, 0, 0, {}, ctx)
                 books.add_sector(island, books.WAREHOUSE, "sales", amount)
                 if taken >= want:
                     f.economy.get("short", {}).pop(good, None)
@@ -1919,10 +1926,12 @@ class Market(IslandStage):
         prices = island.economy.prices
         width = to_basis(config.get("market.band"))
         official = planning.official(island) if planning.is_planned(island, defs) else {}
-        caps = (
-            island.policy.price_cap if politics.trait(island, defs, "price_controls", False) else {}
-        )
+        controlled = politics.trait(island, defs, "price_controls", False)
+        caps = island.policy.price_cap if controlled else {}
+        floors = island.policy.price_floor if controlled else {}
         holds = island.scratch.pop(FACILITY_HOLDS, {})
+        shelf = retail.good_of(config)
+        stall = self._direct_unit(island, config)
         for f in sorted(island.facilities, key=lambda f: f.id):
             # 雇用の段で取り置いた材料の代金を、この施設の買い注文の直前に戻す（LB-45）。項目の
             # 予算を比例で分けたターンは、買い注文と指値の引き上げに使えるのを分けられた額までにする
@@ -1960,6 +1969,18 @@ class Market(IslandStage):
                 ask = max(ask, floor)
                 if good in official:  # 計画経済: 費用に届かなくても公定価格で売る（フェーズ3-4）
                     ask = 0
+                if good == shelf and good not in official:
+                    # 店の付け値（MK-42）: 持ち越せない小売りも値段なしで出さず、変動費に上乗せして
+                    # 売りに出す（国営の店も。上限は運賃込みで屋台の値段 × retail.posted_cap、
+                    # 変動費は下回らない）。混合経済の値段の上限と下限はその後に効かせる
+                    posted = retail.posted_price(island, config, f, floor, stall, rate)
+                    f.economy.setdefault("ask", {})[good] = posted
+                    _, high = auction.band(prices.get(good, 1), width, caps.get(good))
+                    limit = seller_limit(posted, rate, high)
+                    if floors.get(good):
+                        limit = max(limit, floors[good])
+                    self._add(books_by_good, good, "sell", Order(total, limit), seller)
+                    continue
                 expiring = stock.expiring(f.stock, good, ctx.turn, defs.goods)
                 if expiring:
                     self._add(books_by_good, good, "sell", Order(expiring), seller)
@@ -4005,6 +4026,8 @@ class Market(IslandStage):
             _, high = auction.band(prices.get(order.good, 1), width)
             if order.side == "sell":
                 limit = None if order.limit is None else seller_limit(order.limit, rate, high)
+                if order.clearance:  # 持ちすぎの分の値下げ（FX-64）: アウトレットに出す
+                    party = replace(party, clearance=True)
                 self._add(books_by_good, order.good, "sell", Order(order.qty, limit), party)
                 continue
             # 輸出の買いは、ふだんの買い手と同じく前の値段の market.band 増しまで（引き合う値段まで
@@ -4346,7 +4369,9 @@ class Market(IslandStage):
                     stale[b] = stale.get(b, 0) + spoiling
             if buyer.kind == FACILITY and buyer.facility is not None:
                 power_fuel.acquire(ctx.defs, buyer.facility, good, qty, price, ctx.turn)
-            self._give_to_buyer(island, good, buyer, batches, amount, buyer_freight, tax, bought)
+            self._give_to_buyer(
+                island, good, buyer, batches, amount, buyer_freight, tax, bought, ctx
+            )
             if seller.facility is not None:
                 books.add(island, seller.facility.id, books.SALES, amount)
                 books.add(island, seller.facility.id, books.FREIGHT, seller_freight)
@@ -4463,6 +4488,7 @@ class Market(IslandStage):
         freight: int,
         tax: int,
         bought: dict[str, int],
+        ctx: StageContext,
     ) -> None:
         qty = sum(q for _, q in batches)
         if buyer.kind in MATERIAL_BUYERS and qty > 0:
@@ -4520,9 +4546,11 @@ class Market(IslandStage):
             layer_goods[good] = layer_goods.get(good, 0) + qty
             bought[good] = bought.get(good, 0) + qty
             free = Market._unretailed(island)
-            if good not in free:  # 小売りを通す品物の代金（回7）
+            if good not in free:  # 小売りを通す品物の量を、島の初めの値段で数える（FM-38）
                 spent = island.scratch.setdefault(retail.SPENT, {})
-                spent[buyer.layer] = spent.get(buyer.layer, 0) + amount
+                prices = retail.base_prices(island, ctx.defs, ctx.config)
+                price = prices.get(good, ctx.config.get("market.initial_prices.default"))
+                spent[buyer.layer] = spent.get(buyer.layer, 0) + money_of(price, qty)
             elif free and good == free[-1]:  # 小売りに払った額
                 paid = island.scratch.setdefault(retail.PAID, {})
                 paid[buyer.layer] = paid.get(buyer.layer, 0) + amount + tax
@@ -4572,9 +4600,75 @@ class Market(IslandStage):
                 f = party.facility
                 if party.kind == MERCHANT or (f is not None and trade.is_trader(config, f)):
                     entry = out.setdefault(good, [0, 0])
-                    entry[0] += order.quantity
+                    # 値引きの売り（FX-64）は、ふだんの売りに出した荷の出し直し（売れた量だけ）
+                    if not party.clearance:
+                        entry[0] += order.quantity
                     entry[1] += result.sold[i]
         return out
+
+    @staticmethod
+    def _trader_sales(
+        island: IslandState,
+        ctx: StageContext,
+        books_by_good: dict[str, Book],
+        results: dict[str, auction.Result],
+    ) -> None:
+        """商社の輸入した荷の売れ残り（FX-64）と、島の市場の本当の品不足（FX-65）を残す。
+
+        売れ残りは、商社ごと・財ごとに、ふだんの指値で出した量と売れた量、値引き（アウトレット）で
+        出した量と売れた量（傷みかけの指値なしの売りは数えない。traders.record_home_sales）。本当の
+        品不足は、買いたい量 − 約定した量（市場の記録）から、指値が約定の値段より安くて買えなかった
+        量と、商社の輸出の買い残しを除いた量（売り手の指値が高くて買わなかった分と、島の外の引き合いを
+        品不足に数えない）。"""
+        config = ctx.config
+        records = {m.good: m for m in island.markets}
+        short: dict[str, int] = {}
+        for good, record in records.items():
+            unmet = max(0, record.demand - record.volume)
+            book, result = books_by_good.get(good), results.get(good)
+            if unmet > 0 and book is not None and result is not None:
+                below = sum(
+                    order.quantity - result.bought[i]
+                    for i, (order, party) in enumerate(book.buys)
+                    if not party.fuel_reserve
+                    and party.kind != MERCHANT
+                    and result.bought[i] < order.quantity
+                    and (
+                        # 商社の輸出の買い残しは国内の品不足ではない（輸出する財を同じ島が輸入で
+                        # 積み増さないように。値段によらず除く）
+                        (party.facility is not None and trade.is_trader(config, party.facility))
+                        or (
+                            result.supply > 0
+                            and auction.buy_limit(order, result.high) < result.price
+                        )
+                    )
+                )
+                unmet = max(0, unmet - below)
+            if unmet > 0:
+                short[good] = unmet
+        island.scratch[traders.TRUE_SHORT] = short
+        traders_ = trade.traders_of(island, config)
+        if not traders_:
+            return
+        sales: dict[tuple[int, str], list[int]] = {}
+        for good, book in books_by_good.items():
+            result = results.get(good)
+            if result is None:
+                continue
+            for i, (order, party) in enumerate(book.sells):
+                f = party.facility
+                if f is None or order.limit is None or not trade.is_trader(config, f):
+                    continue
+                entry = sales.setdefault((f.id, good), [0, 0, 0, 0])
+                at = 2 if party.clearance else 0
+                entry[at] += order.quantity
+                entry[at + 1] += result.sold[i]
+        for f in traders_:
+            for good in sorted(traders.goods_of(f)):
+                found = sales.get((f.id, good), [0, 0, 0, 0])
+                traders.record_home_sales(
+                    island, ctx.defs, config, f, good, (found[0], found[1], found[2], found[3])
+                )
 
     @staticmethod
     def _imports_left(island: IslandState, sold: dict[str, int]) -> None:

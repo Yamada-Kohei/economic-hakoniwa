@@ -93,18 +93,23 @@ def _plan(game, world, island, f):
 
 
 def _want_more(f, extra=5_000):
-    """輸入している財の狙う量を、手元と運ぶ途中の荷より extra 多くする。"""
+    """輸入している財の狙う量（1 ターンに流れる量）を extra にし、持つ量を手元と運ぶ途中の荷より
+    extra × 4 多くする（注文は extra ＋ extra × 4 × market.inventory_adjust。FX-66）。"""
     goods = []
     for good, item in sorted(traders.goods_of(f).items()):
         if item.get("dir") == traders.IMPORT and item["m"] > 0:
-            item["m"] = item["held"][0] + extra
+            item["m"] = extra
+            item["hold"] = item["held"][0] + extra * 4
+            item.pop(traders.OUTLET, None)
+            item.pop(traders.REEXPORT, None)
             goods.append(good)
     return goods
 
 
 def test_the_import_need_is_the_targets_valued_at_the_bloc_bid(game, traded):
-    """見込みは狙う量 − 手元と運ぶ途中の荷を、圏の市場に出す指値で値を付けた額（前の輸入額の
-    1.5 倍の頭打ちはない）。fx.keep_turns ターン分は、2 ターン目から狙う量の分を足す。"""
+    """見込みは注文の量（狙う量 ＋（持つ量 − 手元と運ぶ途中の荷）× market.inventory_adjust。
+    FX-66）を、圏の市場に出す指値で値を付けた額（前の輸入額の 1.5 倍の頭打ちはない）。
+    fx.keep_turns ターン分は、2 ターン目から狙う量（1 ターンに流れる量）の分を足す。"""
     world = copy.deepcopy(traded)
     island, f, _ = _importer(game, world)
     # 船と扱える重さで縮まない量にする（5 単位では、試しの世界の船の空きで縮むことがある）
@@ -116,6 +121,7 @@ def test_the_import_need_is_the_targets_valued_at_the_bloc_bid(game, traded):
     most = max(item["m"] for item in traders.goods_of(f).values())
     _, step = r._import_needs(island, f, {})
     for _, first, total, limit, _ in plan:
+        # 外貨の見込みは 1 ターンに流れる分（狙う量）まで（FX-66）
         assert first == 1_000
         assert first <= total <= first + most * (keep - 1)
         assert limit > 0
@@ -176,7 +182,8 @@ def test_wages_and_export_purchases_are_not_turned_into_fx(game, traded, monkeyp
     keep = game.config.get("fx.keep_turns")
     wage = island.economy.average_wage or game.config.get("labor.initial_wage")
     wages = traders.workers_wanted(game.config, game.defs, f) * wage * keep
-    reserve = wages + traders.spend_estimate(f) * keep
+    # 残すのは fx.keep_turns ターン分の賃金か、次のターンより後の分の賃金と仕入れの大きいほう
+    reserve = max(wages, (wages // keep + traders.spend_estimate(f)) * (keep - 1))
     money = ledger.money(island, entity)
     if money > reserve:  # 余りを持ち主へ移して、手元を見込みちょうどにする
         ledger.pay(island, entity, ledger.GOV, money - reserve, "capital_injection")
@@ -373,20 +380,30 @@ def test_the_world_keeps_its_books_with_trade_finance(game, traded):
     assert any(needs)
 
 
-def test_later_turns_share_the_trading_capacity_between_goods(game, traded):
+def test_later_turns_share_the_trading_capacity_between_goods(game, traded, monkeypatch):
     """2 ターン目からの見込みも、扱える重さを財の間で分ける（運べない分の外貨を寝かせない）。"""
     world = copy.deepcopy(traded)
     island, f, _ = _importer(game, world)
     cap = game.config.get("trade.trader_capacity") * 1000
-    goods = []
     for good, item in sorted(traders.goods_of(f).items()):
         if item.get("dir") == traders.IMPORT and trade_stage.unit_weight(game.defs, good) > 0:
             item["m"] = 10**9  # どの財も扱える重さを超えて狙う
-            goods.append(good)
     r = _round(game, world)
+    shared = []  # 2 ターン目からの分の割り振り（足りない分を埋める注文がない呼び出し）
+    share = traders.share_by_rank
+
+    def spy(flows, fills, units, budget, ranks):
+        got = share(flows, fills, units, budget, ranks)
+        if not any(fills):
+            shared.append((got, units))
+        return got
+
+    monkeypatch.setattr(traders, "share_by_rank", spy)
     plan = r._import_plan(island, f, {}, ships_now=False)
     keep = game.config.get("fx.keep_turns")
-    later = 0
-    for good, (_, first, total, _, _) in zip(sorted(goods), plan, strict=False):
-        later += trade_stage.weight(game.defs, good, (total - first) // max(1, keep - 1))
-    assert later <= cap
+    assert plan and shared
+    got, units = shared[-1]
+    assert sum(q * u // 1000 for q, u in zip(got, units, strict=True)) <= cap
+    # 見込みの 2 ターン目からの量は、割り振った量のまま
+    later = sorted((total - first) // max(1, keep - 1) for _, first, total, _, _ in plan)
+    assert later == sorted(q for q in got if q > 0)
