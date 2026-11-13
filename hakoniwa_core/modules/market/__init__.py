@@ -735,9 +735,7 @@ def inventory_turns(ctx, good: str) -> float:
     持ち越せない物（期間 0。サービス・小売・電力）は 0（在庫を持たない。式のままだと −0.5 ターン分に
     なり、1単位の売れ残りで値下げし、作る量も見込みより少なくなっていた。2026-11-01）。
     """
-    turns = ctx.config.get("market.inventory_turns")
-    life = ctx.defs.goods[good].get("shelf_life")
-    return turns if life is None else max(0.0, min(turns, (life - 1) / 2))
+    return stock.target_turns(ctx.config.get("market.inventory_turns"), ctx.defs.goods, good)
 
 
 # 施設の economy: 操業目標を見直したときの、産出物ごとの1単位の費用の下限（生産補助の後。
@@ -1118,6 +1116,7 @@ class Market(IslandStage):
         self._spoil(island, ctx)
         self._imports_left(island, sold)
         self._record(island, ctx, books_by_good, results, bought)
+        self._trader_sales(island, ctx, books_by_good, results)
         self._remember_food(island, ctx, books_by_good, results)
         self._adapt_usual(island, ctx, books_by_good)
         self._adapt_materials(island, ctx, books_by_good)
@@ -4027,6 +4026,8 @@ class Market(IslandStage):
             _, high = auction.band(prices.get(order.good, 1), width)
             if order.side == "sell":
                 limit = None if order.limit is None else seller_limit(order.limit, rate, high)
+                if order.clearance:  # 持ちすぎの分の値下げ（FX-64）: アウトレットに出す
+                    party = replace(party, clearance=True)
                 self._add(books_by_good, order.good, "sell", Order(order.qty, limit), party)
                 continue
             # 輸出の買いは、ふだんの買い手と同じく前の値段の market.band 増しまで（引き合う値段まで
@@ -4599,9 +4600,75 @@ class Market(IslandStage):
                 f = party.facility
                 if party.kind == MERCHANT or (f is not None and trade.is_trader(config, f)):
                     entry = out.setdefault(good, [0, 0])
-                    entry[0] += order.quantity
+                    # 値引きの売り（FX-64）は、ふだんの売りに出した荷の出し直し（売れた量だけ）
+                    if not party.clearance:
+                        entry[0] += order.quantity
                     entry[1] += result.sold[i]
         return out
+
+    @staticmethod
+    def _trader_sales(
+        island: IslandState,
+        ctx: StageContext,
+        books_by_good: dict[str, Book],
+        results: dict[str, auction.Result],
+    ) -> None:
+        """商社の輸入した荷の売れ残り（FX-64）と、島の市場の本当の品不足（FX-65）を残す。
+
+        売れ残りは、商社ごと・財ごとに、ふだんの指値で出した量と売れた量、値引き（アウトレット）で
+        出した量と売れた量（傷みかけの指値なしの売りは数えない。traders.record_home_sales）。本当の
+        品不足は、買いたい量 − 約定した量（市場の記録）から、指値が約定の値段より安くて買えなかった
+        量と、商社の輸出の買い残しを除いた量（売り手の指値が高くて買わなかった分と、島の外の引き合いを
+        品不足に数えない）。"""
+        config = ctx.config
+        records = {m.good: m for m in island.markets}
+        short: dict[str, int] = {}
+        for good, record in records.items():
+            unmet = max(0, record.demand - record.volume)
+            book, result = books_by_good.get(good), results.get(good)
+            if unmet > 0 and book is not None and result is not None:
+                below = sum(
+                    order.quantity - result.bought[i]
+                    for i, (order, party) in enumerate(book.buys)
+                    if not party.fuel_reserve
+                    and party.kind != MERCHANT
+                    and result.bought[i] < order.quantity
+                    and (
+                        # 商社の輸出の買い残しは国内の品不足ではない（輸出する財を同じ島が輸入で
+                        # 積み増さないように。値段によらず除く）
+                        (party.facility is not None and trade.is_trader(config, party.facility))
+                        or (
+                            result.supply > 0
+                            and auction.buy_limit(order, result.high) < result.price
+                        )
+                    )
+                )
+                unmet = max(0, unmet - below)
+            if unmet > 0:
+                short[good] = unmet
+        island.scratch[traders.TRUE_SHORT] = short
+        traders_ = trade.traders_of(island, config)
+        if not traders_:
+            return
+        sales: dict[tuple[int, str], list[int]] = {}
+        for good, book in books_by_good.items():
+            result = results.get(good)
+            if result is None:
+                continue
+            for i, (order, party) in enumerate(book.sells):
+                f = party.facility
+                if f is None or order.limit is None or not trade.is_trader(config, f):
+                    continue
+                entry = sales.setdefault((f.id, good), [0, 0, 0, 0])
+                at = 2 if party.clearance else 0
+                entry[at] += order.quantity
+                entry[at + 1] += result.sold[i]
+        for f in traders_:
+            for good in sorted(traders.goods_of(f)):
+                found = sales.get((f.id, good), [0, 0, 0, 0])
+                traders.record_home_sales(
+                    island, ctx.defs, config, f, good, (found[0], found[1], found[2], found[3])
+                )
 
     @staticmethod
     def _imports_left(island: IslandState, sold: dict[str, int]) -> None:
