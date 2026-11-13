@@ -11,7 +11,7 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, ledger
+from hakoniwa_core import infra, ledger, politics
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.economy import (
     books,
@@ -2054,6 +2054,21 @@ def latest_stats(island: m.Island) -> tuple[int | None, dict[str, float]]:
         return None, {}
     rows = island.stats.filter(turn=last).values_list("name", "value")
     return last, dict(rows)
+
+
+def admin_power(island: m.Island, stats: dict[str, float]) -> int:
+    """次のターンの行政力（画面・API・MCP に出す値）。
+
+    更新の後は記録（統計の admin_power）をそのまま使う。建国してから最初の更新の前は記録が無いので、
+    コアの計算（planning の admin_power）と同じく、最低の行政力に体制（権威主義 +1）と政情の
+    足し引きをした値を出す（建国の島の官庁にはまだ働く人がいない）。
+    """
+    if "admin_power" in stats:
+        return int(stats["admin_power"])
+    config = get_game().config
+    low = config.get("orders.base_admin_power")
+    high = config.get("orders.max_admin_power")
+    return politics.adjust_admin(island_from_row(island), get_game().defs, config, low, low, high)
 
 
 def summary(stats: dict[str, float], currency: str = "") -> list[dict[str, Any]]:
