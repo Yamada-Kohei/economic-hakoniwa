@@ -155,6 +155,8 @@ def test_release_line_follows_the_import_bid(game, warmed):
     assert limit > island.economy.prices["grain"]
     assert not any(qty for g, qty, lim in sells if lim == scale_price(usual, 1 + release))
     island.economy.prices["grain"] = scale_price(limit, 1 + release)
+    if stock.total(island.warehouse, "grain") <= 0:  # 放出する備蓄（温めた世界で空のことがある）
+        stock.add(island.warehouse, "grain", 10 * QUANTITY_SCALE, world.turn, game.defs.goods)
     sells, _ = _reserve_orders(game, world, island)
     assert any(lim == scale_price(limit, 1 + release) for _, _, lim in sells)
 
