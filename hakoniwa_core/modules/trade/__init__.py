@@ -1849,12 +1849,18 @@ class _Round:
 
     def _fx_ahead(self, key: tuple[int, str, int], good: str) -> int:
         """FX-76: 財 good を買う前に取り置く決済通貨（外貨を使う順で good より先で、まだ板寄せの来て
-        いない財の見込みの和）。3・4 段（原料と部品・消費財）の財は、輸出の計画の外貨の蓄えの目標
-        （PL-62、本人の B）の分も残す（蓄えは燃料と主食・設備の資材のためのもの。国営施設の設備
-        に使う財は 3 段でも残さない）。"""
+        いない財の見込みの和）。取り置くのは順が `trade.plan_fx_reserved` までの財だけ（設備の機械の
+        ように、要る額が稼ぎの何十倍もある財まで取り置くと、原料が買えなくなった）。3・4 段（原料と
+        部品・消費財）の財は、輸出の計画の外貨の蓄えの目標（PL-62、本人の B）の分も残す（蓄えは
+        燃料と主食・設備の資材のためのもの。国営施設の設備に使う財は 3 段でも残さない）。"""
         queue = self.fx_queue.get(key) or {}
         rank = fx_priority(self.defs, good)
-        ahead = sum(v for g, v in queue.items() if fx_priority(self.defs, g) < rank)
+        kept = self.config.get("trade.plan_fx_reserved")
+        ahead = sum(
+            v
+            for g, v in queue.items()
+            if fx_priority(self.defs, g) < rank and fx_priority(self.defs, g) <= kept
+        )
         island = self.world.islands[key[0]]
         if rank >= 3 and not export_plan.essential(island, good):  # 設備の資材（木材など）は使える
             reserve = export_plan.reserve_of(island, self.config, key[1], key[2], self.turn)

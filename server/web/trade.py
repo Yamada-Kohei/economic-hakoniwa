@@ -30,6 +30,7 @@ from hakoniwa_core.trade import (
     blocs,
     contract_goods,
     currency_labels,
+    food_merchant,
     is_port,
     is_trader,
     merchant,
@@ -899,6 +900,28 @@ def merchant_view(here: IslandState, turn: int) -> dict[str, Any]:
             }
             for good, qty, price in merchant.offers(here, defs, config, coming)
         ],
+        "food": food_merchant_view(here),
+    }
+
+
+def food_merchant_view(here: IslandState) -> dict[str, Any] | None:
+    """物がないときの海外の食料商人（FX-73。W-239）: このターンに来ていれば、来始めたターン・売りに
+    出した量・売れた量・値段・計画経済の差額の予算で量を削ったか。来ていなければ None。"""
+    defs = get_game().defs
+    state = here.ext.get(KEY, {}).get(food_merchant.KEY, {})
+    last = state.get("last")
+    if not state.get("active") or not last:
+        return None
+    good = get_game().config.get("food_reserve.good")
+    return {
+        "good": good,
+        "name": defs.name("goods", good),
+        "unit": defs.unit_name(good),
+        "since": state.get("since"),
+        "quantity": _amount(good, last["qty"]),
+        "sold": _amount(good, last["sold"]),
+        "price": display.price(good, last["price"]),
+        "cut": bool(last.get("cut")),
     }
 
 
