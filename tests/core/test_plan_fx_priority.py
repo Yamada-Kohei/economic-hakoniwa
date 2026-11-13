@@ -28,9 +28,14 @@ BASE_TURNS = 30
 
 @pytest.fixture(scope="module")
 def game():
+    """取り置きを 1 段（燃料と主食）にした設定。既定の game.yaml は 0（取り置かない。4 通りの比べで
+    輸出の計画だけの方が停電・家計・崩れのどれもよかった）。load_game は毎回読み直すので、この組の
+    中だけで変わる。"""
     from hakoniwa_core.game import load_game
 
-    return load_game()
+    game = load_game()
+    game.config.raw["trade"]["plan_fx_reserved"] = 1
+    return game
 
 
 @pytest.fixture(scope="module")
@@ -264,3 +269,23 @@ def test_only_the_first_ranks_are_kept(game, base):
     assert r.fx_queue[key]["machinery"] > 0
     assert game.config.get("trade.plan_fx_reserved") == 1
     assert r._fx_ahead(key, "automobile") == 0
+
+
+def test_nothing_is_kept_by_default(game, base):
+    """既定（game.yaml の trade.plan_fx_reserved: 0）では、燃料と主食の分も取り置かない。"""
+    from hakoniwa_core.config import default_config_path, load_config
+
+    assert load_config(default_config_path()).get("trade.plan_fx_reserved") == 0
+    world = copy.deepcopy(base)
+    island = island_of(world, "planned")
+    want = 20 * QUANTITY_SCALE
+    bloc, _, key = _importing(game, world, island, {"automobile": want, "coal": want})
+    r = trade_stage._Round(world, _context(game, world))
+    members = [m for m in bloc["members"] if m in r.islands]
+    r.fx_queue = r._plan_fx_queue(bloc, members)
+    assert r.fx_queue[key]["coal"] > 0
+    game.config.raw["trade"]["plan_fx_reserved"] = 0
+    try:
+        assert r._fx_ahead(key, "automobile") == 0
+    finally:
+        game.config.raw["trade"]["plan_fx_reserved"] = 1
