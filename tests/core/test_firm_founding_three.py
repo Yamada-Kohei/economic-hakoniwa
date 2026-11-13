@@ -205,9 +205,11 @@ def test_margin_call_and_write_off(game, base):
     loan = banks.lend(island, bank, owners, amount, banks.PLEDGE, 60, ctx.turn, 300)
     assert Banking._margin_call(island, ctx) == 1000
     loan.arrears = config.get("loans.arrears_limit")
+    # 世界の道筋で、前のターンまでに消した分が残っていることがある
+    before = island.stats.get("loans.pledge_write_off", 0)
     Banking._write_off_mortgage(island, ctx, loan)
     assert banks.outstanding(island, loan) == 0
-    assert island.stats["loans.pledge_write_off"] == amount
+    assert island.stats["loans.pledge_write_off"] - before == amount
     assert Banking._margin_call(island, ctx) == 0
     books_ok(game, island)
 
