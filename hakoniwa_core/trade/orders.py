@@ -814,9 +814,14 @@ def run_abroad(
 def _place_abroad(
     world: WorldState, defs: Defs, config: GameConfig, turn: int, plan: dict[str, Any]
 ) -> None:
-    """plan_abroad で決めた注文を出し、手付けを払う（払える分の隻数だけ。払えなかった分の手付けは
-    次の支払いの見込みに足す）。"""
-    from hakoniwa_core.trade import fx as fxrates
+    """plan_abroad で決めた注文を出し、手付けを払う（持っている外貨で払える分の隻数だけ）。
+
+    払えなかった分の手付けは、次の支払いの見込み（DUE）に足さない。足すと運転資金を借りるか持ち主が
+    出して自国通貨が海運業にたまるのに、外貨は前のレートまでしか買わないので注文が出ないまま、
+    次のターンも同じ額（通貨が下がると膨らむ額）を借り、お金が増えて通貨がさらに下がった
+    （2026-11-13 の測り: plan 種 2 で海運業の手元のお金が 500T に 1700 億、通貨が 90 倍に
+    下がった）。
+    手付けは、海運業が運賃で集めた自分のお金で外貨を買ってためる。"""
     from hakoniwa_core.trade import ships
 
     deposit = config.get("trade.order_deposit")
@@ -845,11 +850,6 @@ def _place_abroad(
         qty = p["qty"]
         if per_ship > 0:
             qty = min(qty, _available(world, o) // per_ship * MILLI)
-        if qty < p["qty"]:
-            short = per_ship * (p["qty"] - qty) // MILLI
-            if p["currency"] != i:
-                short = fxrates.to_own(island, p["currency"], short)
-            f.economy[DUE] = f.economy.get(DUE, 0) + short
         if qty <= 0:
             continue
         o["qty"] = qty

@@ -158,14 +158,12 @@ def test_bloc_yard_order_is_paid_delivered_and_booked_as_an_export(game, base):
     assert ships.PAID not in f.economy
 
 
-def test_without_foreign_money_the_order_waits_and_the_deposit_is_counted_as_due(game, base):
+def test_without_foreign_money_the_order_waits_without_borrowing_for_the_deposit(game, base):
     world, buyer_island, yard_island, f, yard = _setup(game, base, holdings=0)
     _step(game, world, world.turn + 1)
     assert orders.ORDERS not in yard.economy
-    price = yard_island.economy.prices[GOOD]
-    deposit = round(money_of(price, 2 * MILLI) * game.config.get("trade.order_deposit"))
-    expected = fxrates.to_own(buyer_island, yard_island.id, deposit)
-    assert abs(f.economy[orders.DUE] - expected) <= 2  # 運転資金を借りる見込みに入れる
+    # 払えない手付けは運転資金を借りる見込み（DUE）に入れない（自分のお金で外貨をためる）
+    assert not f.economy.get(orders.DUE)
 
 
 def test_embargo_cancels_the_bloc_order_and_the_refund_reaches_the_buyer_next_turn(game, base):
