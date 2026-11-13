@@ -44,7 +44,8 @@
 - held: 据え置く財（命令で決めたときだけ。ないときは planning.held_goods）
 - subsidy_short・subsidy_lost・subsidy_over: 価格の補助の知らせ（続いている間に1度だけ）
 - priority: 重点産業（産業の分類。planning.max_priority まで）
-- demand: 財ごとの直近の需要の履歴、goals: 次のターンの財ごとの生産目標（量）
+- demand: 財ごとの直近の需要の履歴、goals: 次のターンの財ごとの生産目標（量。輸出の計画の量を含む）
+- export: 輸出の計画（PL-62。中身は economy/export_plan.py）
 - achieved: このターンの財ごとの達成率（作った量 ÷ 目標）、queues: 財ごとの行列（0〜1）
 """
 
@@ -76,6 +77,9 @@ EXPORTS = 0  # 輸出（商社・二国間契約）
 UNMET = "plan_unmet"  # island.scratch: 財 → 家計が買えなかった量（このターン）
 FORCED = "plan_forced"  # island.scratch: 家計が買えずに使わなかったお金（このターン）
 DESIRE = "plan_desire"  # island.scratch: 財 → 家計が買いたかった量（売りに出ている分を超えた分も）
+# island.scratch: 財 → 商社が輸出の計画（PL-62）の分として島の市場に出した買いの量（需要から除く）
+EXPORT_ORDERED = "plan_export_ordered"
+EXPORT = "export"  # 状態: 輸出の計画（PL-62。economy/export_plan.py）
 
 
 def is_planned(island: IslandState, defs: Defs) -> bool:
@@ -711,13 +715,28 @@ def fill_share(island: IslandState, defs: Defs, config: GameConfig, good: str) -
     return share
 
 
-def goal_of(island: IslandState, config: GameConfig, good: str) -> int | None:
-    """財 good の次のターンの生産目標（量）。需要の記録がなければ None。"""
+def export_planned(island: IslandState, good: str) -> int:
+    """財 good の輸出の計画の量（PL-62。economy/export_plan.py が貿易の段の終わりに決める）。"""
+    return island.ext.get(KEY, {}).get(EXPORT, {}).get("plan", {}).get(good, 0)
+
+
+def domestic_goal(island: IslandState, config: GameConfig, good: str) -> int | None:
+    """財 good の国内の分の生産目標（需要の平均に上乗せした量）。需要の記録がなければ None。"""
     history = island.ext.get(KEY, {}).get("demand", {}).get(good)
     if not history:
         return None
     average = sum(history) / len(history)
     return round_money(average * (1 + config.get("planning.target_markup")))
+
+
+def goal_of(island: IslandState, config: GameConfig, good: str) -> int | None:
+    """財 good の次のターンの生産目標（量）: 国内の分 ＋ 輸出の計画の量（PL-62）。需要の記録が
+    なければ輸出の計画の量だけ（それもなければ None）。"""
+    export = export_planned(island, good)
+    domestic = domestic_goal(island, config, good)
+    if domestic is None:
+        return export or None
+    return domestic + export
 
 
 def target(island: IslandState, f: Facility, defs: Defs, config: GameConfig) -> int | None:
@@ -772,7 +791,7 @@ def record(
             achieved[good] = round(made * 1000 / goal, 3)
     state["achieved"] = achieved
     goals = {}
-    for good in sorted(history):
+    for good in sorted(set(history) | set(state.get(EXPORT, {}).get("plan", {}))):
         goal = goal_of(island, config, good)
         if goal:
             goals[good] = goal

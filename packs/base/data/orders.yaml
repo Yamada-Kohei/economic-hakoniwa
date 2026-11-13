@@ -828,6 +828,23 @@ set_staff_plan:                           # 人員計画（計画経済だけ。
             kind: {type: string}              # マスを持たない施設（商業・サービス業）は種類で
             cap: {type: [integer, "null"], minimum: 0}  # 人数の枠（一般の労働者・技術者・動員した人の合計）。null で外す
 
+set_export_plan:                          # 輸出の計画（計画経済だけ。PL-62）: 財ごとに1ターンの量か、輸出しない（0）を名指し。表をまるごと置き換え、空の表で名指しをやめる
+  admin_cost: 1
+  payload:
+    type: object
+    required: [plans]
+    additionalProperties: false
+    properties:
+      plans:
+        type: array
+        items:
+          type: object
+          required: [good, quantity]
+          additionalProperties: false
+          properties:
+            good: {type: string}
+            quantity: {type: number, minimum: 0}  # 1ターンの量。0 は輸出しない
+
 set_price_floor:                          # 値段の下限（混合経済だけ。農産物の支えなど）
   admin_cost: 1
   payload:

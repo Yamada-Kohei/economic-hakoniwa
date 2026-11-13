@@ -201,6 +201,8 @@ class Party:
     pool: Party | None = None
     clearance: bool = False  # 施設の売れ残りの値引きの売り（MK-41。売れ行きの見込みに数えない）
     fuel_reserve: bool = False  # 火力発電所の燃料の買い足し（需要・品不足・買い上がりから除く）
+    # 計画経済の商社の輸出の計画の分の買い（PL-62。配る順は国営施設と同じ、生産目標の需要から除く）
+    export_plan: bool = False
 
 
 @dataclass
@@ -1503,13 +1505,17 @@ class Market(IslandStage):
                 elif party.kind == HOUSEHOLD and party.layer != "housing":
                     tier, layer = planning.HOUSEHOLDS, party.layer
                 elif party.kind == STORE and order.priority == CONTRACT_PRIORITY:
-                    tier = planning.EXPORTS  # 二国間契約で売る分
+                    # 二国間契約で売る分: 外国との約束なので、食料も国営施設と同じ順位
+                    # （PL-62、本人の表の 1-2）
+                    tier = planning.STATE
                 elif party.kind == STORE and order.priority == ctx.config.get(
                     "warehouse.standing_priority"
                 ):
                     tier = order.priority  # 決まった買いは配給・国営施設・輸出の後
                 elif f is not None and f.id in traders_:
-                    tier = planning.EXPORTS  # 商社の輸出
+                    # 商社の輸出: 輸出の計画の分（PL-62）は食料も国営施設と同じ順位、売れ残りの
+                    # 分は一番後
+                    tier = planning.STATE if party.export_plan else planning.EXPORTS
                 elif party.kind == MERCHANT:
                     tier = planning.EXPORTS  # 海外の商人の買い（W-186 回4）
                 elif f is not None and planning.is_priority(island, ctx.defs, f):
@@ -1548,6 +1554,11 @@ class Market(IslandStage):
         demand = {
             g: m.demand for g, m in records.items() if g in official and g != power and m.demand
         }
+        # 輸出の計画の分の商社の買い（PL-62）は、約定しなかった分も含めて注文の量で除く（除かないと
+        # 輸出の買いが次のターンの需要に入り、生産目標が毎ターン膨らむ）
+        for good, qty in island.scratch.get(planning.EXPORT_ORDERED, {}).items():
+            if good in demand:
+                demand[good] = max(0, demand[good] - qty)
         # 国の工事の資材は、公共事業費で買えなかった分も建設計画の需要に数える
         for good, qty in island.scratch.get(UNFUNDED, {}).items():
             if good in official and good != power:
@@ -3850,6 +3861,10 @@ class Market(IslandStage):
             for good, (qty, limit) in plan.items():
                 party.reserved = gross_cost(limit, qty, rate, 0)
                 funds.commit(island, payer, party.reserved)
+                if order.plan:  # 輸出の計画の分（PL-62）: 生産目標の需要から除くために量を残す
+                    party.export_plan = True
+                    ordered = island.scratch.setdefault(planning.EXPORT_ORDERED, {})
+                    ordered[good] = ordered.get(good, 0) + qty
                 self._add(books_by_good, good, "buy", Order(qty, limit, TRADER_PRIORITY), party)
         # 海運業の燃料と輸送船
         shipping = trade.shipping_of(island, config)

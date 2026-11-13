@@ -68,6 +68,7 @@ from hakoniwa_core.market import auction
 from hakoniwa_core.state import Facility, IslandState, MarketRecord
 from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.trade import (
+    fx_priority,
     island_state,
     policy,
     port_of,
@@ -81,6 +82,8 @@ from hakoniwa_core.units import BASIS, QUANTITY_SCALE, part, round_money, to_bas
 
 EXPORT = "x"
 IMPORT = "m"
+# 財の状態: 輸出の計画（PL-62）でこの商社が受け持つ量（計画経済の島。economy/export_plan.py）
+PLAN_X = "px"
 PROBE = 0.1  # 値段の差があって売り切ったときに、多めに狙う量（全力に対する割合）
 # 商社の状態: 次のターンの1ターン分の輸入の見込み（決済通貨の番号の文字列 → 額。FX-61。貿易の段の
 # 記録で書き、銀行の段の次の支払いの見込みが読む）
@@ -126,6 +129,7 @@ def contract_supply_plan(island: IslandState, config: GameConfig) -> dict[str, t
 
 
 PRICE_GAPS = "trade.price_gap_subsidies"  # 統計: 政府が国営の商社に払った価格差の補給金（1ターン）
+PRICE_GAP_SHORT = "price_gap_short"  # island.scratch: このターンに価格差の補給金を払いきれなかった
 
 
 def cover_price_gap(
@@ -144,6 +148,8 @@ def cover_price_gap(
         return
     payer = Payer(ledger.GOV, GOV_TRADE)
     paid = min(gap, funds.available(island, payer))
+    if paid < gap:  # 払いきれなかった（輸出の計画は次のターンに稼ぐ額を上げない。PL-62）
+        island.scratch[PRICE_GAP_SHORT] = True
     if paid <= 0:
         return
     funds.pay(island, payer, entity, paid, "price_gap_subsidy")
@@ -314,6 +320,7 @@ class HomeOrder:
     side: str
     qty: int
     limit: int | None
+    plan: bool = False  # 計画経済の輸出の計画の分の買い（PL-62。配る順が国営施設と同じ）
 
 
 def home_orders(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> list[HomeOrder]:
@@ -330,6 +337,10 @@ def home_orders(island: IslandState, defs: Defs, config: GameConfig, turn: int) 
     out: list[HomeOrder] = []
     for f in traders:
         budget = config.get("trade.trader_capacity") * QUANTITY_SCALE  # 扱える重さの残り
+        if (
+            planned
+        ):  # 輸出の荷より先に、1 段の財（燃料と主食）の輸入の見込みの重さを取り置く（FX-77）
+            budget -= first_import_weight(defs, f)
         for good, item in sorted(goods_of(f).items()):
             held = stock.total(f.stock, good)
             low, high = auction.band(prices.get(good, 1), width)
@@ -362,9 +373,10 @@ def home_orders(island: IslandState, defs: Defs, config: GameConfig, turn: int) 
                 continue
             assert p is not None
             unit = unit_weight(defs, good)
-            want = min(item["x"], capacity_units(defs, config, good)) - item["held"][0]
+            planned_x = item.get(PLAN_X, 0) if planned else 0
+            want = min(item["x"] + planned_x, capacity_units(defs, config, good)) - item["held"][0]
             if unit > 0:
-                want = min(want, budget * QUANTITY_SCALE // unit)
+                want = min(want, max(0, budget) * QUANTITY_SCALE // unit)
             if want <= 0:
                 continue
             # 計画経済は値幅の上端（公定価格）に運賃の上限を足した額まで払う
@@ -373,9 +385,30 @@ def home_orders(island: IslandState, defs: Defs, config: GameConfig, turn: int) 
                 if planned
                 else p.export_limit
             )
-            out.append(HomeOrder(f, good, "buy", want, limit))
+            # 輸出の計画の分（PL-62）と売れ残りの分は、配る順が違うので別の注文にする（FX-77）
+            plan_qty = min(want, planned_x)
+            if plan_qty > 0:
+                out.append(HomeOrder(f, good, "buy", plan_qty, limit, plan=True))
+            if want - plan_qty > 0:
+                out.append(HomeOrder(f, good, "buy", want - plan_qty, limit))
             budget -= want * unit // QUANTITY_SCALE
-    return out
+    # 輸出の計画の分（PL-62）を先に出す: 市場の段は注文の順に商社のお金を取り置くので、後に回すと
+    # 売れ残りの輸出の買いにお金を先に取られ、計画の分を買えなかった
+    return sorted(out, key=lambda o: not o.plan)
+
+
+def first_import_weight(defs: Defs, f: Facility) -> int:
+    """商社が輸入している 1 段の財（外貨を使う順の 1。燃料と主食。FX-76）の、狙う量の残りの重さ
+    （1000 分の 1 トン）。計画経済の島で輸出の荷より先に取り置く（FX-77。重くて安い鉄鉱石や石の
+    輸出で扱える重さが埋まり、石炭が入らなくならないように）。"""
+    total = 0
+    for good, item in goods_of(f).items():
+        if item.get("dir") != IMPORT or fx_priority(defs, good) != 1:
+            continue
+        want = item["m"] - item["held"][0]
+        if want > 0:
+            total += want * unit_weight(defs, good) // QUANTITY_SCALE
+    return total
 
 
 def bought_home(f: Facility, good: str, qty: int, cost: int) -> None:
@@ -637,10 +670,17 @@ def add_volume(f: Facility, load: int) -> None:
     record["volume"] = record.get("volume", 0) + load
 
 
-def exported(f: Facility, good: str, qty: int) -> None:
-    """このターンに圏で売った量を足す（狙う量の見直しに使う）。"""
-    record = state_of(f).setdefault("turn", {}).setdefault("exported", {})
+def exported(
+    f: Facility, good: str, qty: int, currency: int | None = None, amount: int = 0
+) -> None:
+    """このターンに圏で売った量を足す（狙う量の見直しに使う）。currency と amount は受け取った決済
+    通貨と額（計画経済の輸出の計画が、売れ残りの輸出の稼ぎを数えるのに使う。PL-62）。"""
+    turn = state_of(f).setdefault("turn", {})
+    record = turn.setdefault("exported", {})
     record[good] = record.get(good, 0) + qty
+    if currency is not None and amount > 0:
+        got = turn.setdefault("proceeds", {}).setdefault(good, {})
+        got[str(currency)] = got.get(str(currency), 0) + amount
 
 
 def volume_share(config: GameConfig, f: Facility) -> float:
@@ -660,6 +700,18 @@ def missed_average(f: Facility) -> tuple[int, int]:
         sum(p for p, _ in history) // len(history),
         sum(c for _, c in history) // len(history),
     )
+
+
+def plan_spend(island: IslandState, f: Facility) -> int:
+    """輸出の計画（PL-62）でこの商社が受け持つ量を、島の今の値段（公定価格）で買う代金（自国通貨）。
+    手元の輸出の荷は除く。"""
+    prices = island.economy.prices
+    total = 0
+    for good, item in goods_of(f).items():
+        want = item.get(PLAN_X, 0) + item.get("x", 0) - item.get("held", [0, 0])[0]
+        if item.get(PLAN_X, 0) > 0 and want > 0:
+            total += want * prices.get(good, 0) // QUANTITY_SCALE
+    return total
 
 
 def spend_estimate(f: Facility) -> int:
