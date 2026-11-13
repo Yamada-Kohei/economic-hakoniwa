@@ -30,13 +30,11 @@ def orders_bar(island: m.Island) -> dict[str, Any]:
     """帯に出す値: 待っている命令の数・要る行政力と、次のターンの行政力。"""
     game = get_game()
     _, stats = display.latest_stats(island)
-    admin_power = stats.get("admin_power")
-    if admin_power is None:
-        admin_power = game.config.get("orders.base_admin_power")
+    admin_power = display.admin_power(island, stats)
     costs = [
         game.defs.orders[kind]["admin_cost"] if kind in game.defs.orders else 0
         for kind in island.orders.filter(status="pending")
         .order_by("seq", "id")
         .values_list("kind", flat=True)
     ]
-    return {"count": len(costs), "text": bar_text(costs, int(admin_power))}
+    return {"count": len(costs), "text": bar_text(costs, admin_power)}

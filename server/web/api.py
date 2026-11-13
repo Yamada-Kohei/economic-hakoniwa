@@ -1282,13 +1282,11 @@ def _orders_view(island: m.Island, mine: bool = True) -> dict[str, Any]:
         recent = recent.exclude(Q(status="failed") & secret).exclude(_hidden_orders())
     pending = pending.order_by("seq", "id")
     turn, stats = display.latest_stats(island)
-    admin_power = stats.get("admin_power")
-    if admin_power is None:
-        admin_power = get_game().config.get("orders.base_admin_power")
+    admin_power = display.admin_power(island, stats)
     recent = recent.order_by("-executed_turn", "-seq")[:20]
     labels = display.facility_labels(island)  # 施設への命令の文に種類と作る物を（W-262）
     return {
-        "admin_power": int(admin_power),
+        "admin_power": admin_power,
         "policy": (
             budget_guide.attach(display.policy_view(island), island)
             if mine
