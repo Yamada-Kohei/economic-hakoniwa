@@ -354,6 +354,22 @@ def test_planned_traders_order_as_before(game):
     assert traders.import_want(game.config, item, planned=True) == 700
 
 
+def test_planned_traders_are_not_allocated_by_margin(game, traded):
+    """計画経済の島の商社は、儲けの順の割り振り（FX-67）もしない（公定価格が原価より安い原料・部品が
+    後回しになり、工場が止まって品切れが増えたため。注文は前のまま）。"""
+    world = copy.deepcopy(traded)
+    island, _, _, _ = _importer(game, world)
+    r = _round(game, world)
+    r._allocate()
+    before = {k for k in r.alloc if k[0] == island.id}
+    island.ext.setdefault("plan", {})["prices"] = dict(island.economy.prices)  # 公定価格がある島
+    assert traders.is_planned(island)
+    r = _round(game, world)
+    r._allocate()
+    assert before, "割り振りの行がない"
+    assert not [k for k in r.alloc if k[0] == island.id]
+
+
 def test_markdowns_stop_when_stock_falls_back_and_planned_islands_never_mark_down(game, traded):
     world = copy.deepcopy(traded)
     island, f, good, item = _importer(game, world)

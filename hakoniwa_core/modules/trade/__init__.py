@@ -1730,11 +1730,17 @@ class _Round:
         決済通貨（持ち主ごと・通貨ごとの使えるお金。_import_order と同じく、島の通貨なら賃金と輸出の
         仕入れの見込みを残した預金から運賃と使用料も払う）で、1 ターンに流れる分をその順に、余りを
         足りない分を埋める注文に同じ順に配る。外貨で縮んだ量のまま、扱える重さ（輸出の荷の分を引いた
-        残り）を同じ形で割り振る。約定しなかった分の重さは、今どおり板寄せの後に戻す（_refund）。"""
+        残り）を同じ形で割り振る。約定しなかった分の重さは、今どおり板寄せの後に戻す（_refund）。
+        計画経済の島の商社は割り振らない（注文は前のまま）。"""
         self.alloc = {}
         cap = self.config.get("trade.trader_capacity") * QUANTITY_SCALE
         for i in self.ids:
             island = self.world.islands[i]
+            if traders.is_planned(island):
+                # 計画経済の島の商社は前のまま（儲けの順で配ると、公定価格が輸入の原価より安い原料・
+                # 部品が後回しになり、化学品・自動車の工場が止まって品切れが増えた。2026-11-13 の
+                # full と部分ごとに外した比べで、増えた品切れの半分が計画経済の島だった）
+                continue
             # 持ち主・通貨ごとの注文: (商社, 財, 量, 流れる分, 1 単位のお金)
             groups: dict[tuple[str, int], list[tuple[Facility, str, int, int, int]]] = {}
             for f in traders_of(island, self.config, self.turn):
