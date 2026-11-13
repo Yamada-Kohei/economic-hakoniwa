@@ -233,6 +233,30 @@ def test_merchant_tapering_on_trade_page_and_alerts(client, world):
     assert data["active"] is False and data["goods"] == [] and alerts == []
 
 
+def test_food_merchant_on_merchant_page_and_alerts(client, world):
+    """物がないときの海外の食料商人（FX-73。W-239）が来ていると、貿易の「海外の商人」のタブと持ち主の
+    国の要約の注意に出る。"""
+    from hakoniwa_core.trade import KEY
+    from server.web import overview
+
+    own = _own_island(client)
+    run_turn(force=True)
+    own.refresh_from_db()
+    turn = m.World.objects.get().turn
+    own.ext[KEY]["food_merchant"] = {
+        "active": True,
+        "since": turn,
+        "last": {"qty": 5000, "price": 90000, "sold": 4000, "cut": False},
+    }
+    own.save()
+    html = client.get(f"/islands/{own.id}/trade/merchant/").content.decode()
+    assert "食料が足りないため" in html and "運んできています" in html
+    alerts = [a for a in overview.island_alerts(own, True)[0] if "海外の商人" in a]
+    assert any("割高で売りに来ています" in a for a in alerts)
+    data = client.get(f"/api/islands/{own.id}/trade").json()["merchant"]
+    assert data["food"]["since"] == turn and data["food"]["cut"] is False
+
+
 def test_representative_on_break_can_be_taken_over(client, world):
     own, second, _ = _trading_world(client)
     m.Island.objects.filter(pk=second.pk).update(inactive=True)
@@ -587,6 +611,13 @@ def test_ships_on_order_show_on_the_trade_page_and_api(client, world):
     assert data["fleet"]["shipping"]["on_order"] == 2
     html = client.get(f"/islands/{own.id}/trade/fleet/").content.decode()
     assert "島の造船所に 2 隻を注文しています。" in html
+
+
+def test_help_explains_the_food_merchant_for_a_famine(client, world):
+    """手引き（W-239）: 備蓄を輸入で積むことと、物がないときの海外の食料商人（FX-73）を書く。"""
+    html = client.get("/help/").content.decode()
+    assert "商社の輸入で備蓄を積み増します" in html
+    assert "貿易圏に入っていない島にも、上の期間を過ぎた後にも来ます" in html
 
 
 def test_an_indefinite_contract_row_can_be_cancelled_and_shows_no_end():
