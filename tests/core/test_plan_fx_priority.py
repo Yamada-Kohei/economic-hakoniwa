@@ -67,6 +67,7 @@ def _importing(game, world, island, goods):
         item.update({"dir": trade_traders.IMPORT, "bm": bloc["id"], "m": qty})
         bloc["prices"].setdefault(good, 1000)
         bloc.setdefault("supply", {})[good] = 10 * qty
+        bloc.setdefault("volume", {})[good] = qty
     key = (island.id, entity_of(game.config, f), bloc["currency"])
     return bloc, f, key
 
@@ -96,18 +97,86 @@ def test_planned_trader_keeps_fx_for_coal_before_buying_cars(game, base):
     assert _bought(r, bloc, members, "automobile", f, key, coal) > 0
 
 
-def test_no_fx_is_kept_for_goods_nobody_sold_last_turn(game, base):
-    """前のターンに圏で売りに出なかった財のためには外貨を寝かせない。"""
+def test_cut_for_the_queue_is_shown_as_its_own_reason(game, base):
+    """取り置きがなければ買えた分は「外貨が足りない」でなく取り置きのわけを出す（貿易の画面）。"""
     world = copy.deepcopy(base)
     island = island_of(world, "planned")
     want = 20 * QUANTITY_SCALE
     bloc, f, key = _importing(game, world, island, {"automobile": want, "coal": want})
-    bloc["supply"].pop("coal")
+    r = trade_stage._Round(world, _context(game, world))
+    members = [m for m in bloc["members"] if m in r.islands]
+    r.fx_queue = r._plan_fx_queue(bloc, members)
+    _bought(r, bloc, members, "automobile", f, key, 10**15)
+    assert "why" not in trade_traders.goods_of(f)["automobile"]
+    # 自動車の全部の分はあるが、石炭の取り置きを引くと足りない
+    car, _ = r._import_terms(island, "automobile", bloc)
+    money = money_of(car.limit, want) + r.fx_queue[key]["coal"] // 2
+    _bought(r, bloc, members, "automobile", f, key, money)
+    assert trade_traders.goods_of(f)["automobile"]["why"] == trade_stage.WHY_PRIORITY
+    # 取り置きを引かなくても足りなければ、今までどおり外貨が足りない
+    _bought(r, bloc, members, "automobile", f, key, money_of(car.limit, want) // 2)
+    assert trade_traders.goods_of(f)["automobile"]["why"] in (
+        trade_stage.WHY_MONEY,
+        trade_stage.WHY_FUNDS,
+    )
+
+
+@pytest.mark.parametrize("case", ["no_trade", "no_offer", "blockade"])
+def test_no_fx_is_kept_for_goods_that_did_not_come_in(game, base, case):
+    """前のターンに圏で約定がなかった・売りがなかった財と、封鎖で船出を断られた財のためには
+    外貨を寝かせない。"""
+    world = copy.deepcopy(base)
+    island = island_of(world, "planned")
+    want = 20 * QUANTITY_SCALE
+    bloc, f, key = _importing(game, world, island, {"automobile": want, "coal": want})
+    if case == "no_trade":
+        bloc["volume"].pop("coal")
+    elif case == "no_offer":
+        bloc["supply"].pop("coal")
+    else:
+        trade_traders.goods_of(f)["coal"]["why"] = trade_stage.WHY_BLOCKADE
     r = trade_stage._Round(world, _context(game, world))
     members = [m for m in bloc["members"] if m in r.islands]
     r.fx_queue = r._plan_fx_queue(bloc, members)
     assert "coal" not in r.fx_queue.get(key, {})
     assert r._fx_ahead(key, "automobile") == 0
+
+
+def test_goods_of_the_same_rank_keep_nothing_for_each_other(game, base):
+    """同じ順の財（石炭と燃料）は互いに取り置かない（名前の順のまま）。"""
+    world = copy.deepcopy(base)
+    island = island_of(world, "planned")
+    want = 20 * QUANTITY_SCALE
+    bloc, _, key = _importing(game, world, island, {"coal": want, "fuel": want})
+    r = trade_stage._Round(world, _context(game, world))
+    members = [m for m in bloc["members"] if m in r.islands]
+    r.fx_queue = r._plan_fx_queue(bloc, members)
+    assert r.fx_queue[key]["fuel"] > 0
+    assert r._fx_ahead(key, "coal") == 0
+
+
+def test_queue_is_capped_by_what_the_bloc_offered(game, base):
+    """見込みは前のターンに圏で売りに出た量まで。"""
+    world = copy.deepcopy(base)
+    island = island_of(world, "planned")
+    want = 20 * QUANTITY_SCALE
+    bloc, _, key = _importing(game, world, island, {"coal": want})
+    bloc["supply"]["coal"] = want // 4
+    r = trade_stage._Round(world, _context(game, world))
+    members = [m for m in bloc["members"] if m in r.islands]
+    terms, _ = r._import_terms(island, "coal", bloc)
+    assert r._plan_fx_queue(bloc, members)[key]["coal"] == money_of(terms.limit, want // 4)
+
+
+def test_bloc_round_clears_the_queue(game, base):
+    """圏の市場を回し終えたら、取り置きは残らない（どの財の板寄せも済んだ）。"""
+    world = copy.deepcopy(base)
+    island = island_of(world, "planned")
+    want = 20 * QUANTITY_SCALE
+    _importing(game, world, island, {"automobile": want, "coal": want})
+    r = trade_stage._Round(world, _context(game, world))
+    r._blocs()
+    assert all(not queue for queue in r.fx_queue.values())
 
 
 def test_market_and_mixed_traders_keep_no_fx(game, base):
@@ -154,3 +223,30 @@ def test_worn_facility_shows_equipment_not_sales(game):
     plant.workers = fac.labor_demand(game.defs, plant, ctx.turn, "electricity")
     run_ = production.Production._prepare(island, plant, ctx, "electricity")
     assert run_.cause == "target"
+
+
+def test_worn_facility_buying_less_by_plan_shows_sales(game):
+    """原料を計画どおり少なく買って、原料が設備の割合より少ないなら、縛ったのは売れ行き。"""
+    world = generate_world(1, 1, game.config, game.defs)
+    island = world.islands[1]
+    plant = next(f for f in island.facilities if f.kind == "thermal_power_plant")
+    plant.stock.clear()
+    need = fac.recipe_of(game.defs, plant)["inputs"]["coal"]
+    stock.add(plant.stock, "coal", fac.scale(need, fac.FULL // 4), world.turn, game.defs.goods)
+    plant.economy["target"] = fac.FULL
+    plant.economy["condition"] = fac.FULL // 2
+    have, short = fac.input_ratio(game.defs, plant, "electricity")
+    assert short is not None and have < fac.FULL // 2
+    plant.economy["input_plan"] = have
+    ctx = context(game, world, "production")
+    plant.workers = fac.labor_demand(game.defs, plant, ctx.turn, "electricity")
+    run_ = production.Production._prepare(island, plant, ctx, "electricity")
+    assert run_.cause == "target"
+
+
+def test_measure_counts_worn_equipment_on_its_own():
+    """測りの稼働の内訳は、設備の傷みを止まった施設と分けて数える。"""
+    from hakoniwa_core import measure
+
+    assert measure.CAUSES["equipment"] == "equipment"
+    assert "equipment" in measure.CAUSE_GROUPS

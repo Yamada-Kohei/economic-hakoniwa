@@ -105,6 +105,7 @@ WHY_BUYERS = "buyers"  # 圏の買いが足りないか、買いの指値が安�
 WHY_FUNDS = "funds"  # 払うお金（商社の預金）が足りない（決済通貨が自国の通貨のとき）
 WHY_QUOTA = "quota"  # 輸入の割り当て（フェーズ3-3）の上限まで買った
 WHY_BLOCKADE = "blockade"  # 封鎖で船出を断られた（MI-34。船が足りないのとは分ける。W-187）
+WHY_PRIORITY = "fx_priority"  # 計画経済の商社が、外貨を使う順で先の財に外貨を取り置いた（FX-76）
 
 
 def gov_payer() -> Payer:
@@ -1778,13 +1779,16 @@ class _Round:
                 money_left[key] = max(0, funds.available(island, Payer(entity)) - reserve)
             else:
                 money_left[key] = fxmoney.holding(island, entity, currency)
-        money = max(0, money_left[key] - self._fx_ahead(key, good))
+        ahead = self._fx_ahead(key, good)
+        money = max(0, money_left[key] - ahead)
         if island.id == currency:  # 運賃と使用料も同じお金から払う
             unit_extra = (terms.freight_unit + terms.fee_unit) * BASIS // max(1, limit)
             money = money * BASIS // (BASIS + unit_extra)
         cut_money = 0
         if money * QUANTITY_SCALE // limit < want:
             short = WHY_FUNDS if island.id == currency else WHY_MONEY
+            if ahead > 0 and money_left[key] * QUANTITY_SCALE // limit >= want:
+                short = WHY_PRIORITY  # 取り置きがなければ買えた（FX-76）
             cut_money = want - money * QUANTITY_SCALE // limit
             want, why = money * QUANTITY_SCALE // limit, short
         self._note_missed(island, f, entity, good, terms, cut_capacity, cut_money, currency)
@@ -1798,16 +1802,20 @@ class _Round:
     def _plan_fx_queue(
         self, bloc: dict[str, Any], members: list[int]
     ) -> dict[tuple[int, str, int], dict[str, int]]:
-        """FX-76: 計画経済の島の国営の商社が、圏 bloc で財ごとに輸入に要る決済通貨の見込み（狙う
-        量の残りを輸入の割り当てと扱える重さで縮め、指値 _import_terms で値を付けたもの）。前の
-        ターンに圏で売りに出た量までにする（売り手のいない財のために外貨を寝かせない）。圏の市場は
-        財の名前の順に回るので、名前の順で先に来る財を買うとき、外貨を使う順（goods.yaml の
+        """FX-76: 計画経済の島の国営の商社が、圏 bloc で財ごとに輸入に要る決済通貨の見込み。圏の
+        市場は財の名前の順に回るので、名前の順で先に来る財を買うとき、外貨を使う順（goods.yaml の
         fx_priority）で先の財の分をこの見込みから取り置く（_fx_ahead）。市場経済・混合経済の島は
-        数えない。"""
+        数えない。
+
+        見込みは、島・主体ごとに狙う量の残りを足し、前のターンに圏で売りに出た量と輸入の割り当てで
+        縮め、空いた船と扱える重さで縮めて、圏の市場に出す指値（_import_terms）で値を付けた額。前の
+        ターンに圏で約定がなかった財（売りの値段が値幅に入らない・船が出ないなど）と、前のターンに
+        封鎖で船出を断られた財は数えない（入らない財のために外貨を寝かせない）。"""
         currency = bloc["currency"]
         cap = self.config.get("trade.trader_capacity") * QUANTITY_SCALE
         supply = bloc.get("supply", {})
-        out: dict[tuple[int, str, int], dict[str, int]] = {}
+        volume = bloc.get("volume", {})
+        wants: dict[tuple[int, str, int], dict[str, list[int]]] = {}  # 鍵 → 財 → [量, 扱える重さ]
         for m in members:
             island = self.world.islands[m]
             if not traders.is_planned(island):
@@ -1817,19 +1825,26 @@ class _Round:
                 for good, item in sorted(traders.goods_of(f).items()):
                     if item.get("dir") != traders.IMPORT or item.get("bm") != bloc["id"]:
                         continue
-                    want = min(item["m"] - item["held"][0], supply.get(good, 0))
-                    if want <= 0:
+                    if item.get("why") == WHY_BLOCKADE or volume.get(good, 0) <= 0:
                         continue
-                    terms, _ = self._import_terms(island, good, bloc)
-                    if terms is None:
-                        continue
-                    quota = self.quota_left.get((m, good), policy.quota(island, good))
-                    want, _, _ = self._import_room(
-                        island, good, bloc, want, cap, quota, effects=False, ships_now=False
-                    )
+                    want = item["m"] - item["held"][0]
                     if want > 0:
-                        queue = out.setdefault((m, entity, currency), {})
-                        queue[good] = queue.get(good, 0) + money_of(terms.limit, want)
+                        row = wants.setdefault((m, entity, currency), {}).setdefault(good, [0, 0])
+                        row[0] += want
+                        row[1] += cap
+        out: dict[tuple[int, str, int], dict[str, int]] = {}
+        for key, goods in sorted(wants.items()):
+            island = self.world.islands[key[0]]
+            for good, (want, room) in sorted(goods.items()):
+                terms, _ = self._import_terms(island, good, bloc)
+                if terms is None:
+                    continue
+                quota = self.quota_left.get((key[0], good), policy.quota(island, good))
+                want, _, _ = self._import_room(
+                    island, good, bloc, min(want, supply.get(good, 0)), room, quota, effects=False
+                )
+                if want > 0:
+                    out.setdefault(key, {})[good] = money_of(terms.limit, want)
         return out
 
     def _fx_ahead(self, key: tuple[int, str, int], good: str) -> int:

@@ -317,7 +317,12 @@ class Production(IslandStage):
             target = f.economy.get("target", fac.FULL)
             planned = have >= f.economy.get("input_plan", fac.FULL + 1)
             cause = (
-                ("equipment" if fac.equipment_cap(f) < target else "target")
+                (
+                    "equipment"
+                    if fac.equipment_cap(f) < target
+                    and (short is None or fac.equipment_cap(f) <= have)
+                    else "target"
+                )
                 if short is None or have >= target or planned
                 else Production._short(f, short, ctx.defs)
             )

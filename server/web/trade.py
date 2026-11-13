@@ -136,6 +136,7 @@ WHY_NAMES = {
     trade_stage.WHY_FUNDS: "払うお金（商社の預金）が足りない",
     trade_stage.WHY_QUOTA: "輸入の割り当ての上限まで買った",
     trade_stage.WHY_BLOCKADE: "封鎖で船出を断られた",
+    trade_stage.WHY_PRIORITY: "外貨を、燃料・主食や設備など先に使う物に取り置いた（計画経済）",
 }
 SHIPMENT_KINDS = {"bloc": "貿易圏", "contract": "二国間契約"}
 # 外貨の持ち高と非居住者の預金の持ち手（施設はまとめて「商社など」）
