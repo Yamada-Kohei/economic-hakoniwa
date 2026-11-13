@@ -427,7 +427,7 @@
 
 ## [9 貿易と為替](09-trade.md)
 
-決まり 75 個、うち仮の決まりの表にあるもの 4 個。
+決まり 76 個、うち仮の決まりの表にあるもの 4 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -506,10 +506,11 @@
 | FX-73 | 物がないときの海外の食料商人（W-239）: 前のターンに飢えた家計（タブ 2 PO-58）があ… | 仮（仮の決まりの表あり） | tests/core/test_disaster_food.py |
 | FX-74 | 運賃を船の使われ方で決める（2026-11-12、W-233 | 決定（2026-11-12、本人のカード「推しの 1〜4 を全部」） | tests/core/test_trade.py |
 | FX-75 | 海運業が船と燃料を買う指値は今のまま値幅の上端にする（2026-11-12、W-233 | 決定（2026-11-12、本人のカード「推しの 1〜4 を全部」） |  |
+| FX-77 | 計画経済の島の商社は、輸出の計画（タブ 10 PL-62）のある財を、島の売れ残りがなくても輸出… | 決定（2026-11-13、本人の表の 1-2・2-2 | （実装で足す） |
 
 ## [10 政治と体制](10-politics.md)
 
-決まり 60 個、うち仮の決まりの表にあるもの 2 個。
+決まり 61 個、うち仮の決まりの表にあるもの 2 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -543,7 +544,7 @@
 | PL-28 | 配給: 家計の中はお金の多さでなく1人あたり同じ量まで | 決定 | tests/core/test_phase3_4.py |
 | PL-29 | 生産目標: 国営施設ごとに、直近の公定価格での需要（買えなかった分と、国の工事とインフラの資材の… | 決定 | tests/core/test_phase3_4.py |
 | PL-30 | 重点産業は命令で産業の分類を決めた数まで選ぶ | 決定 | tests/core/test_phase3_4.py |
-| PL-31 | 計画経済の貿易は国営の商社の独占: 行列のある財を輸入し、売れ残った財を値段によらず輸出する | 決定 | tests/core/test_phase3_4.py |
+| PL-31 | 計画経済の貿易は国営の商社の独占: 行列のある財を輸入し、売れ残った財と輸出の計画の財（PL-6… | 決定 | tests/core/test_phase3_4.py |
 | PL-32 | 混合経済はどの財にも値段の上限と下限を決められる | 決定 | tests/core/test_phase3_4.py、tests/server/test_phase3_4.py |
 | PL-33 | 闇市は入れない | 決定（後から） | （未確認） |
 | PL-34 | 移民の出国の政策は政治の仕組みで上限がある: 民主主義は自由だけ、権威主義は許可制まで、全体主義… | 決定 | tests/core/test_migration.py |
@@ -573,10 +574,11 @@
 | PL-58 | 管理画面で島を消すと、その島の終わっていない戦争と条約は次のターンの外交の段で終わる（戦争は ``… | 決定（2026-11-04 W-88） | tests/core/test_diplomacy.py、tests/core/test_military_war.py、tests/server/test_diplomacy.py |
 | PL-59 | 人員計画（2026-11-10 | 決定（2026-11-10 | tests/core/test_staff_plan.py |
 | PL-60 | 二重の値段（2026-11-12、W-231 | 決定（2026-11-12 | tests/core/test_phase3_4.py |
+| PL-62 | 輸出の計画（2026-11-13、計画経済の電気不足の案 3）: 国が、外貨を使う順の 1 段の… | 決定（2026-11-13、本人の表の 1-2・2-2・3-1 と B | （実装で足す） |
 
 ## [11 画面と統計](11-ui.md)
 
-決まり 93 個、うち仮の決まりの表にあるもの 0 個。
+決まり 95 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -673,6 +675,8 @@
 | UI-91 | 為替の効き方と打てる手の手引き（W-252）は手引きの別のページ（/help/fx/「手引き：為… | 決定 | tests/server/test_fx_guide_and_cautions.py、tests/server/test_help_fx.py |
 | UI-92 | 動かせるが軽く動かすと戻らない・効きの大きい命令（最低賃金 `set_labor_policy`… | 決定 | tests/server/test_fx_guide_and_cautions.py、tests/server/test_help_start.py |
 | UI-93 | 生産調整中のわけ（W-250、2026-11-12）: 施設の状態が売れ行きの調整（target… | 決定 | tests/core/test_phase3_4.py、tests/server/test_screens_notices.py、tests/server/test_slowdown_reasons.py |
+| UI-94 | 市場の記録に、買い手と売り手の別（国営の施設・民営の施設・商社・海外の商人・家計・国の倉庫・政府… | 決定 | tests/core/test_market_groups.py、tests/server/test_good_page.py |
+| UI-95 | 品目ごとの輸出と輸入の額を統計 `export.<財>`・`import.<財>` に残す（W-… | 決定 | tests/core/test_market_groups.py、tests/server/test_trade_overview.py |
 
 ## [12 確かめ方](12-checks.md)
 

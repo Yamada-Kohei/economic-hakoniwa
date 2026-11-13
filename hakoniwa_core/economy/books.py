@@ -54,6 +54,10 @@ GOVERNMENT = "government"  # 項目: wages（公務員）、goods・freight（�
 # valuation（国債のまだ売っていない評価損益の増減）
 CENTRAL_BANK = "central_bank"
 TRADE = "trade"  # 項目: exports（輸出）、imports（輸入）。フェーズ3-1
+# TRADE の品目ごとの内訳（W-72）。項目: exports.<財>・imports.<財>。他国の船を借りた運賃の収入は
+# 財でないので exports.freight
+TRADE_GOODS = "trade_goods"
+FREIGHT_ITEM = "freight"
 FX_REALIZED = "fx_realized"  # 施設の外貨を売った損益（為替の実現損益。フェーズ3-1）
 
 
@@ -72,6 +76,12 @@ def add_sector(island: IslandState, sector: str, item: str, amount: int) -> None
     if amount:
         items = _flows(island)["sectors"].setdefault(sector, {})
         items[item] = items.get(item, 0) + amount
+
+
+def add_trade(island: IslandState, item: str, good: str, amount: int) -> None:
+    """貿易（TRADE）の項目 item（exports・imports）と、その品目ごとの内訳（TRADE_GOODS）に足す。"""
+    add_sector(island, TRADE, item, amount)
+    add_sector(island, TRADE_GOODS, f"{item}.{good}", amount)
 
 
 def stock_moved(island: IslandState, facility: int, good: str, qty: int) -> None:

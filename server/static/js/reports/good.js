@@ -58,8 +58,22 @@ if (detail) {
       : `<p class="muted">この資源の市場の記録はありません。</p>`;
     if (mine) {
       slot("trades").innerHTML = tradesHtml(data, unit);
+      slot("groups").innerHTML = groupsHtml(data.groups || [], unit);
       slot("short").innerHTML = shortHtml(data.short || []);
     }
+  }
+
+  // 買い手と売り手の別ごとの注文と約定（W-72・W-258）。誰が買えなかったかを見る
+  function groupsHtml(rows, unit) {
+    if (!rows.length) return `<p class="muted">記録はありません。</p>`;
+    const q = (v) => escapeHtml(formatValue(v, unit, "", true));
+    const body = rows
+      .map((r) => `<tr><td>${escapeHtml(r.name)}</td><td>${q(r.buy)}</td><td>${q(r.bought)}</td>
+        <td${r.unfilled > 0 ? ' class="warning"' : ""}>${q(r.unfilled)}</td><td>${q(r.sell)}</td><td>${q(r.sold)}</td></tr>`)
+      .join("");
+    return `<table class="goods groups-table">
+      <thead><tr><th>別</th><th>買い注文</th><th>買えた量</th><th>買えなかった量</th><th>売り注文</th><th>売れた量</th></tr></thead>
+      <tbody>${body}</tbody></table>`;
   }
 
   function tradesHtml(data, unit) {
