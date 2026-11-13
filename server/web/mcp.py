@@ -206,7 +206,9 @@ REPORTS = {
     "none 未観測。約定でない値段は売買量 0 で、observed_turn が最後に約定したターン）・売買量・"
     "買えなかった量・国の倉庫の在庫。持ち主には国の倉庫から国営の施設に渡した量 to_state と、"
     "止まった施設の国営・民営 owner_name。good を決めるとその財の推移と約定（穀物の政府の組には"
-    "備蓄の入れ替えなどの note）。画面と同じく、その財の国の倉庫の売り買い warehouse_trade と"
+    "備蓄の入れ替えなどの note）と、持ち主には買い手と売り手の別（国営・民営の施設・商社・海外の"
+    "商人・家計・国の倉庫・政府の工事）ごとの注文・約定・買えなかった量 groups。"
+    "画面と同じく、その財の国の倉庫の売り買い warehouse_trade と"
     "決まった売り買い warehouse_standing と、資源ごとの補助金 set_subsidy は set_orders で出す。"
     "決まった売り買いの設定・前の結果は品目ごとの warehouse_standing に入る）",
     "facilities": "施設（町ごとの労働力・失業と買いに行く店の場所 towns、産業ごとの従業者数 "
@@ -225,7 +227,8 @@ REPORTS = {
     "借りた船なら carrier_name、ほかの国に貸した船で運ぶ荷は direction=lent）・産業政策・"
     "海外の商人 merchant・船の貸し出し lend_ships（命令 set_ship_lending）"
     "（あと何ターン来るか turns_left、量を減らし始めるターン taper_start、今の量の割合 share（%）、"
-    "値段の倍率 multiplier（島の物価を含む））",
+    "値段の倍率 multiplier（島の物価を含む）。物がないときの食料の商人が来ていれば merchant.food に"
+    "来始めたターン since・売りに出した量 quantity・売れた量 sold・値段 price）",
     "fx": "為替と国際収支（レートごとに前のターンに市場で売りと買いに出ていた外貨の量 offered・"
     "wanted（中央銀行の注文を除く。介入で買えるのは売りに出ている分だけ）。持ち主には外貨の持ち高と"
     "為替の政策と、中央銀行どうしの融通 swaps（借りている額 borrowed・限度額 limit・まだ借りられる"

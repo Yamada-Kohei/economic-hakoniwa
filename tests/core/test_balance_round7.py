@@ -301,9 +301,9 @@ def test_deficiency_of_a_seized_plant_is_owed_by_the_firm(game, base):
     assert sum(owed.values()) == sum(lost.values())
     # 預金があれば、配当より先に返す
     total = sum(owed.values())
-    # 未払いの税は spare が残すので、その分も足す（世界の道筋で企業に未払いの税が付くことがある）
-    tax_owed = arrears.total(island, name, arrears.TAX_ARREARS)
-    ledger.pay(island, household(GENERAL), name, total + tax_owed + 1, "test_top_up")
+    # 未払いの税は預金に残す（co.spare）ので、その分も足す
+    taxes = arrears.total(island, name, arrears.TAX_ARREARS)
+    ledger.pay(island, household(GENERAL), name, total + taxes + 1, "test_top_up")
     open_books(island)  # 試験の足し引きの後から帳簿を見る
     before = ledger.money(island, name)
     paid = co.pay_deficiency(island, number, co.spare(island, number))

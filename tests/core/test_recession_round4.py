@@ -175,6 +175,8 @@ def test_ministry_counts_the_works_from_the_target_to_full(game, base, monkeypat
     island = world.islands[1]
     ctx = context(game, world)
     _empty_queue(island)
+    # 土木業者のいない島で見る（人手を直営の賃金で見積もる。業者の単価で見るのは W-270 の試験）
+    island.facilities = [f for f in island.facilities if f.kind != "contractor"]
     monkeypatch.setattr(works, "water_tiles", lambda *a: [])
     for key in ("why", "short_materials", "stalled"):  # 資材を待つ工事はない
         island.economy.infra.pop(key, None)

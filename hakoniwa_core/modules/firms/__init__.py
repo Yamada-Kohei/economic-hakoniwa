@@ -127,6 +127,7 @@ from hakoniwa_core.economy.start import (
 from hakoniwa_core.geo import within
 from hakoniwa_core.modules.banking import entry_policy, is_planned
 from hakoniwa_core.modules.failures import bankrupt, cancel_equity, close_foreclosure
+from hakoniwa_core.modules.infrastructure import contracts
 from hakoniwa_core.modules.market import MISSED
 from hakoniwa_core.naming import assign_serial
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
@@ -331,6 +332,9 @@ class EntryExit(IslandStage):
             self._raise_grades(island, ctx)
         self._bank_entry(island, ctx)
         trade_setup.entry(island, ctx.defs, ctx.config, is_planned(ctx.defs, island), ctx.turn)
+        # 土木業者の参入（W-270。埋まらなかった工事が続けば、資産を持つ層が出資して開く。IN-35）
+        contracts.settle_new(island, ctx.config)
+        contracts.entry(island, ctx.defs, ctx.config, is_planned(ctx.defs, island))
         private = [
             f
             for f in island.facilities
@@ -518,7 +522,12 @@ class EntryExit(IslandStage):
             if "closing" in f.economy:
                 self._finish_closing(island, ctx, f)
                 continue
-            if self._exit_signal(island, ctx, f, rates.get(f.id, 0)):
+            if contracts.is_contractor(ctx.config, f):
+                # 土木業者は売上で賃金を払えない赤字か、注文も人もないのが続けば撤退する（IN-35）
+                signal = contracts.exit_signal(island, ctx.config, f)
+            else:
+                signal = self._exit_signal(island, ctx, f, rates.get(f.id, 0))
+            if signal:
                 f.economy["closing"] = ctx.turn
                 f.economy["target"] = 0
                 # 閉鎖に入った施設も居抜きで売りに出す。売り値のもとは今の帳簿の値打ち（FM-60）

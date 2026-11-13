@@ -4,6 +4,10 @@
     <section class="panel" id="merchant">
       <h2>{% translate "海外の商人" %}</h2>
       {% with mc=trade.merchant %}
+      {% if mc.food %}
+      <p class="warning">{% blocktranslate with t=mc.food.since|turn_date n=mc.food.name q=mc.food.quantity|floatformat:"-2g" s=mc.food.sold|floatformat:"-2g" u=mc.food.unit c=currency|currency_prefix p=mc.food.price|floatformat:"-1g" %}食料が足りないため、{{ t }}から海外の商人が{{ n }}を運んできています（このターンは {{ q }} {{ u }}を 1{{ u }}あたり {{ c }}{{ p }} で売りに出し、{{ s }} {{ u }}が売れました）。島の食べ物が戻り、商人の{{ n }}が売れなくなると来なくなります。{% endblocktranslate %}
+        {% if mc.food.cut %}{% translate "公定価格との差を払う貿易の予算が足りず、商人の持ってくる量を減らしました。" %}{% endif %}</p>
+      {% endif %}
       {% if not mc.enabled %}
       <p class="muted">{% translate "海外の商人は来ません。" %}</p>
       {% elif mc.active %}

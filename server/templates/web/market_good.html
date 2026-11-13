@@ -58,6 +58,8 @@
   {% if mine %}
   <h3>{% translate "直近のターンの約定（買い手と売り手の組ごと）" %}</h3>
   <div data-slot="trades" class="table-scroll"><p class="muted">{% translate "読み込み中…" %}</p></div>
+  <h3>{% translate "買い手と売り手の別（直近のターン）" %}</h3>
+  <div data-slot="groups" class="table-scroll"></div>
   <h3>{% translate "この資源を買えずに止まった施設" %}</h3>
   <div data-slot="short"></div>
   {% endif %}

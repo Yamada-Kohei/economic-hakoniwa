@@ -346,7 +346,7 @@ def found_island(
 
 
 def open_for_business(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> None:
-    """建国した島に、港・海運業・商社と商業・サービス業を、建国の瞬間に置く（W-140）。
+    """建国した島に、港・海運業・商社と商業・サービス業と土木業者を、建国の瞬間に置く（W-140）。
 
     次の更新の移し替えの段（modules/upgrade）が同じ順で置くので、呼ばなくても動くが、建国から最初の
     更新まで（最長4時間）貿易の施設のない島が見えていた。置き終えた島は、移し替えの段では何もしない。
@@ -355,6 +355,9 @@ def open_for_business(island: IslandState, defs: Defs, config: GameConfig, turn:
     """
     services.prepare(island, defs, config)
     trade_setup.prepare(island, defs, config, turn)
+    from hakoniwa_core.modules.infrastructure import contracts
+
+    contracts.prepare(island, defs, config)  # 土木業者（W-270）
 
 
 def refound(island: IslandState, turn: int, defs: Defs) -> None:
