@@ -539,14 +539,3 @@ def test_imports_aim_no_higher_than_the_island_demand(game, traded, monkeypatch)
     assert 0 < item["m"] <= demand
     turns = traders.holding_turns(island, game.defs, game.config, item, good)
     assert item["hold"] == pytest.approx(item["m"] * turns, abs=2)
-
-
-def test_food_imports_get_money_before_more_profitable_goods(game):
-    """外貨が足りないときは、食べ物の輸入に儲けの順より先に配る（FX-67。外貨の足りない島で嗜好作物に
-    外貨を先に使い、食料の輸入が止まって兵が飢えた。2026-11-13 の 8 回目の full と調べ 5）。"""
-    food = traders.import_rank(game.defs, "food", 10, 100)
-    luxury = traders.import_rank(game.defs, "luxury_crop", 90, 100)
-    grain = traders.import_rank(game.defs, "grain", 20, 100)
-    assert food > luxury and grain > food  # 食べ物どうしは儲けの順
-    got = traders.share_by_rank([100, 100], [0, 0], [1000, 1000], 100, [luxury, food])
-    assert got == [0, 100]

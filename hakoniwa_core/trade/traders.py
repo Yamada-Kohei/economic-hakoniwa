@@ -839,19 +839,6 @@ def import_want(config: GameConfig, item: dict[str, Any], planned: bool = False)
     return max(0, m + round_money(gap * config.get("market.inventory_adjust")))
 
 
-# 食べ物（goods の food）の輸入は、儲けの順より先に外貨と扱える重さを配る（FX-67）
-FOOD_FIRST = 1e12
-
-
-def import_rank(defs: Defs, good: str, profit: int, cost: int) -> float:
-    """輸入の注文に外貨と扱える重さを配る順（FX-67。大きい方が先）: 1 単位のお金あたりの儲け
-    profit ÷ cost。食べ物は儲けによらず先（外貨の足りない島で、儲けの大きい嗜好作物に外貨を先に
-    使い、食料の輸入が止まって兵が飢えた。2026-11-13 の 8 回目の full と調べ 5。現実にも外貨の
-    足りない国は食料の輸入に先に外貨を回す）。"""
-    rank = profit / max(1, cost)
-    return rank + FOOD_FIRST if defs.goods.get(good, {}).get("food") else rank
-
-
 def share_by_rank(
     flows: list[int], fills: list[int], units: list[int], budget: int, ranks: list[float]
 ) -> list[int]:
