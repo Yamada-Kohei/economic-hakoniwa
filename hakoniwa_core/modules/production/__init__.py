@@ -312,10 +312,17 @@ class Production(IslandStage):
             # 原料のある分しか雇わなかったなら原料、そうでなければ売れ行きに合わせた。前のターン
             # に買うつもりだった原料（economy["input_plan"] の稼働率の分）はそろっているなら、
             # 原料が少ないのは売れ行きに合わせて少なく買ったため
+            # 雇う人数は設備の割合までなので、設備が操業目標より傷んでいれば、縛ったのは売れ行きで
+            # なく設備（傷んだ発電所が「売れ行きに合わせた」と出ていた。2026-11-13）
             target = f.economy.get("target", fac.FULL)
             planned = have >= f.economy.get("input_plan", fac.FULL + 1)
             cause = (
-                "target"
+                (
+                    "equipment"
+                    if fac.equipment_cap(f) < target
+                    and (short is None or fac.equipment_cap(f) <= have)
+                    else "target"
+                )
                 if short is None or have >= target or planned
                 else Production._short(f, short, ctx.defs)
             )

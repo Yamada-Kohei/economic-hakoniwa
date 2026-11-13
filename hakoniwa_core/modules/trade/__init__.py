@@ -55,6 +55,7 @@ from hakoniwa_core.trade import (
     blocs,
     contracts,
     currency_label,
+    fx_priority,
     is_trader,
     island_state,
     merchant,
@@ -104,6 +105,7 @@ WHY_BUYERS = "buyers"  # 圏の買いが足りないか、買いの指値が安�
 WHY_FUNDS = "funds"  # 払うお金（商社の預金）が足りない（決済通貨が自国の通貨のとき）
 WHY_QUOTA = "quota"  # 輸入の割り当て（フェーズ3-3）の上限まで買った
 WHY_BLOCKADE = "blockade"  # 封鎖で船出を断られた（MI-34。船が足りないのとは分ける。W-187）
+WHY_PRIORITY = "fx_priority"  # 計画経済の商社が、外貨を使う順で先の財に外貨を取り置いた（FX-76）
 
 
 def gov_payer() -> Payer:
@@ -242,6 +244,8 @@ class _Round:
         self.fx_limited: dict[int, set[str]] = {}
         # (島, 商社) → 財 → (取り逃した量, 1 単位の儲け, 1 単位の原価)（FX-62）
         self.missed: dict[tuple[int, int], dict[str, tuple[int, int, int]]] = {}
+        # (島, 主体, 通貨) → 財 → 計画経済の国営の商社が、その財のために取り置いている外貨（FX-76）
+        self.fx_queue: dict[tuple[int, str, int], dict[str, int]] = {}
         # (島, 商社, 財) → 輸入の注文に割り振った量（FX-67。圏の市場の前に _allocate が決める）
         self.alloc: dict[tuple[int, int, str], _Allocated] = {}
 
@@ -1522,8 +1526,11 @@ class _Round:
         money_left: dict[tuple[int, str, int], int] = {}  # (島, 主体, 通貨) → 使える額の残り
         for bloc in list(blocs.blocs(self.world)):
             members = [m for m in bloc["members"] if m in self.islands]
+            self.fx_queue = self._plan_fx_queue(bloc, members)
             for good in tradable_goods(self.defs):
                 key = (bloc["id"], good)
+                for queue in self.fx_queue.values():  # この財の板寄せで、取り置きは要らなくなる
+                    queue.pop(good, None)
                 buys, sells, bids, asks = self._bloc_orders(
                     bloc, members, good, budgets, money_left
                 )
@@ -1966,7 +1973,8 @@ class _Round:
                 money_left[key] = max(0, funds.available(island, Payer(entity)) - reserve)
             else:
                 money_left[key] = fxmoney.holding(island, entity, currency)
-        money = money_left[key]
+        ahead = self._fx_ahead(key, good)
+        money = max(0, money_left[key] - ahead)
         if island.id == currency:  # 運賃と使用料も同じお金から払う
             unit_extra = (terms.freight_unit + terms.fee_unit) * BASIS // max(1, limit)
             money = money * BASIS // (BASIS + unit_extra)
@@ -1974,6 +1982,8 @@ class _Round:
             money = money * BASIS // (BASIS + terms.charter * BASIS // max(1, limit))
         if money * QUANTITY_SCALE // limit < want:
             short = WHY_FUNDS if island.id == currency else WHY_MONEY
+            if ahead > 0 and money_left[key] * QUANTITY_SCALE // limit >= want:
+                short = WHY_PRIORITY  # 取り置きがなければ買えた（FX-76）
             cut_money += want - money * QUANTITY_SCALE // limit
             want, why = money * QUANTITY_SCALE // limit, short
         cut_capacity = min(cut_capacity, flow)
@@ -1985,6 +1995,69 @@ class _Round:
             return None
         money_left[key] -= money_of(limit, want)
         return Order(want, limit)
+
+    def _plan_fx_queue(
+        self, bloc: dict[str, Any], members: list[int]
+    ) -> dict[tuple[int, str, int], dict[str, int]]:
+        """FX-76: 計画経済の島の国営の商社が、圏 bloc で財ごとに輸入に要る決済通貨の見込み。圏の
+        市場は財の名前の順に回るので、名前の順で先に来る財を買うとき、外貨を使う順（goods.yaml の
+        fx_priority）で先の財の分をこの見込みから取り置く（_fx_ahead）。市場経済・混合経済の島は
+        数えない。
+
+        見込みは、島・主体ごとに狙う量の残りを足し、前のターンに圏で売りに出た量と輸入の割り当てで
+        縮め、空いた船と扱える重さで縮めて、圏の市場に出す指値（_import_terms）で値を付けた額。前の
+        ターンに圏で約定がなかった財（売りの値段が値幅に入らない・船が出ないなど）と、前のターンに
+        封鎖で船出を断られた財は数えない（入らない財のために外貨を寝かせない）。"""
+        currency = bloc["currency"]
+        cap = self.config.get("trade.trader_capacity") * QUANTITY_SCALE
+        supply = bloc.get("supply", {})
+        volume = bloc.get("volume", {})
+        wants: dict[tuple[int, str, int], dict[str, list[int]]] = {}  # 鍵 → 財 → [量, 扱える重さ]
+        for m in members:
+            island = self.world.islands[m]
+            if not traders.is_planned(island):
+                continue
+            for f in traders_of(island, self.config, self.turn):
+                entity = entity_of(self.config, f)
+                for good, item in sorted(traders.goods_of(f).items()):
+                    if item.get("dir") != traders.IMPORT or item.get("bm") != bloc["id"]:
+                        continue
+                    if item.get("why") == WHY_BLOCKADE or volume.get(good, 0) <= 0:
+                        continue
+                    want = item["m"] - item["held"][0]
+                    if want > 0:
+                        row = wants.setdefault((m, entity, currency), {}).setdefault(good, [0, 0])
+                        row[0] += want
+                        row[1] += cap
+        out: dict[tuple[int, str, int], dict[str, int]] = {}
+        for key, goods in sorted(wants.items()):
+            island = self.world.islands[key[0]]
+            for good, (want, room) in sorted(goods.items()):
+                terms, _ = self._import_terms(island, good, bloc)
+                if terms is None:
+                    continue
+                quota = self.quota_left.get((key[0], good), policy.quota(island, good))
+                want, _, _ = self._import_room(
+                    island, good, bloc, min(want, supply.get(good, 0)), room, quota, effects=False
+                )
+                if want > 0:
+                    out.setdefault(key, {})[good] = money_of(terms.limit, want)
+        return out
+
+    def _fx_ahead(self, key: tuple[int, str, int], good: str) -> int:
+        """FX-76: 財 good を買う前に取り置く決済通貨（外貨を使う順で good より先で、まだ板寄せの来て
+        いない財の見込みの和）。取り置くのは順が `trade.plan_fx_reserved` までの財だけ（設備の機械の
+        ように、要る額が稼ぎの何十倍もある財まで取り置くと、原料が買えなくなった）。"""
+        queue = self.fx_queue.get(key)
+        if not queue:
+            return 0
+        rank = fx_priority(self.defs, good)
+        kept = self.config.get("trade.plan_fx_reserved")
+        return sum(
+            v
+            for g, v in queue.items()
+            if fx_priority(self.defs, g) < rank and fx_priority(self.defs, g) <= kept
+        )
 
     def _refund(
         self,
