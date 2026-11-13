@@ -124,6 +124,29 @@ def test_bar_on_owner_pages_and_the_orders_page(client, world):
     assert "orders-bar" not in client.get(f"/islands/{island.id}/market/").content.decode()
 
 
+def test_first_turn_admin_power_counts_the_regime(client, world):
+    """最初の更新の前（統計が無い）も、行政力は実際の計算と同じく体制の分を足す: 権威主義は
+    最低 + 1。帯・命令の API・国の要約（MCP の summary）で同じ値（公開世界の掲示板 #32）。"""
+    island = _own_island(client)
+    island.stats.all().delete()
+    island.regime = {**island.regime, "politics": "authoritarian"}
+    island.save()
+    expect = get_game().config.get("orders.base_admin_power") + 1
+    _post(client, _url(island, "/items"), RENAME)
+    html = client.get(f"/islands/{island.id}/").content.decode()
+    assert f"data-orders-bar-text>次のターンの命令 1 件（行政力 0／{expect}）" in html
+    assert client.get(_url(island)).json()["admin_power"] == expect
+    summary = client.get(f"/api/islands/{island.id}/summary").json()
+    assert summary["orders"]["admin_power"] == expect
+
+    # デモの最中は −1（最低は割らない）。更新の後は記録の値をそのまま出す
+    island.ext = {**island.ext, "politics": {"level": "demo"}}
+    island.save()
+    assert client.get(_url(island)).json()["admin_power"] == expect - 1
+    island.stats.create(turn=1, name="admin_power", value=5)
+    assert client.get(_url(island)).json()["admin_power"] == 5
+
+
 def test_bar_text_matches_the_screen():
     """帯の文はサーバーと画面（orders.js の queueSummary）で同じ数え方。"""
     text = "次のターンの命令 2 件（行政力 4／2）・1 件は次のターン以降に回ります"
