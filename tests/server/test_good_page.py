@@ -86,3 +86,29 @@ def test_links_from_chain_plan_and_trade_go_to_the_good_page(client, world):
     chain = client.get(f"/islands/{island.id}/chain/").content.decode()
     assert f'/islands/{island.id}/market/food/"' in chain
     assert "?good=" not in chain
+
+
+def test_buyer_and_seller_groups_show_who_could_not_buy(client, world):
+    """市場の記録の買い手と売り手の別（W-72・W-258）を、品目のページの持ち主の欄と市場の API に
+    出す。買えなかった量は注文した量から買えた量を引いた分。ほかの国には出さない。"""
+    from server.economy.models import MarketRecord
+
+    island = _own_island(client)
+    _market(island)
+    MarketRecord.objects.filter(island=island, turn=4).update(
+        buyers={"household": [2000, 1500], "state": [1000, 500]},
+        sellers={"private": [2000, 2000]},
+    )
+    data = client.get(f"/api/islands/{island.id}/market/food").json()
+    rows = {r["group"]: r for r in data["groups"]}
+    assert [r["group"] for r in data["groups"]] == ["state", "private", "household"]
+    assert rows["state"]["name"] == "国営の施設"
+    assert rows["state"]["unfilled"] == rows["state"]["buy"] - rows["state"]["bought"] > 0
+    assert rows["private"]["sell"] == rows["private"]["sold"] > 0
+    assert rows["private"]["buy"] == 0
+    html = client.get(f"/islands/{island.id}/market/food/").content.decode()
+    assert 'data-slot="groups"' in html
+    _login(client, "other")
+    assert "groups" not in client.get(f"/api/islands/{island.id}/market/food").json()
+    html = client.get(f"/islands/{island.id}/market/food/").content.decode()
+    assert 'data-slot="groups"' not in html
