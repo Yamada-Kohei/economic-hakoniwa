@@ -1049,7 +1049,12 @@ def _placement_notes(f) -> str:
             for level, s in defs.settlements.items()
             if s.get("shops")
         ]
-        notes.append(f"町のマスに入る（1つの町に{'・'.join(shops)}まで）")
+        per = next(
+            (s["people_per_shop"] for s in defs.settlements.values() if s.get("people_per_shop")),
+            None,
+        )
+        more = f"。住む人 {per:,.0f} 人ごとに1つまで増える" if per else ""  # FM-70
+        notes.append(f"町のマスに入る（1つの町に{'・'.join(shops)}まで{more}）")
     if f.get("coastal"):
         notes.append("海に面したマスのみ")
     if f.get("near_capital") is not None:
