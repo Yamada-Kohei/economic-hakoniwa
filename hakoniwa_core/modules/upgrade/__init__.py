@@ -35,6 +35,9 @@ W-270 からは、お金の経済のある島にまだ土木業者を置いて�
 置きます（modules/infrastructure/contracts.py の prepare。建国したばかりの島も、最初の更新で
 ここを通る）。
 
+W-261 からは、店の付け値（MK-42）の前の版から続く島の店に印を付け、上乗せを今の値段から
+retail.markup へ寄せます（economy/retail.py の mark_legacy）。
+
 W-201 からは、住まいの広さを幸福度に入れていない島の幸福度の重みを、基礎の点から住まいの広さの
 項目へ population.blend_turns ターンかけて移します（町の床は今の段階の上限のまま。モジュール
 population の dwelling_status）。
@@ -48,7 +51,7 @@ from __future__ import annotations
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import nature, politics, veins
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import groundwork, power_fuel, services
+from hakoniwa_core.economy import groundwork, power_fuel, retail, services
 from hakoniwa_core.economy.households import ensure_jobless
 from hakoniwa_core.economy.prices import add_missing_prices
 from hakoniwa_core.modules.bonds import whole_terms
@@ -80,6 +83,7 @@ class Upgrade(IslandStage):
             power_fuel.ensure_book(ctx.defs, f, economy.prices)
         ensure_jobless(island, ctx.config)
         services.prepare(island, ctx.defs, ctx.config)
+        retail.mark_legacy(island, ctx.defs, ctx.config)  # 店の付け値の前の版の店（MK-42）
         whole_terms(island)
         if not trade_started(island):
             trade_setup.prepare(island, ctx.defs, ctx.config, ctx.turn)

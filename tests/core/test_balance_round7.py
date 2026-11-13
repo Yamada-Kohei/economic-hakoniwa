@@ -370,7 +370,16 @@ def test_nationalize_and_privatize_whole_firm(game, base):
     price = sum(banks.net_assets(island, m, facility_entity(m.id)) for m in sold)
     short = price - ledger.money(island, household(OWNERS))
     if short > 0:
-        ledger.pay(island, household(GENERAL), household(OWNERS), short, "test_top_up")
+        # 国営企業の値打ちは世界の道筋で大きく変わる（国営の水力発電所が建つと島の家計の預金の合計を
+        # 超える）ので、一般の層の預金で足りない分は資本家階級の預金を作る（試験のためのお金）
+        take = max(0, min(short, ledger.money(island, household(GENERAL))))
+        if take > 0:
+            ledger.pay(island, household(GENERAL), household(OWNERS), take, "test_top_up")
+        if short > take:
+            bank = ledger.bank_of(island, household(OWNERS))
+            ledger.create(
+                island, household(OWNERS), ledger.DEPOSIT, bank, short - take, "test_top_up"
+            )
     open_books(island)
     check_privatize_firm(island, {"firm": state}, game.defs)
     privatize_firm(island, {"firm": state}, ctx)
@@ -426,7 +435,8 @@ def test_households_buy_retail_from_shops_then_direct(game, base, monkeypatch):
             assert direct <= short + 1
         else:
             assert direct == pytest.approx(short, abs=1)
-        assert stats["retail.direct_sales"] > 0
+        # 店が足りた島では屋台に回る分がない（店の参入が待たなくなった後。FM-69）
+        assert (stats["retail.direct_sales"] > 0) == (direct > 0)
         sold_somewhere = sold_somewhere or sold > 0
     assert sold_somewhere, "どの島でも店が売れていない"
 
@@ -450,7 +460,7 @@ def test_shop_goes_into_town_slots_only(game, base):
         if island.facility_at(t.x, t.y) is None and game.defs.terrain[t.terrain].get("land")
     )
     assert fac.placement_problem(game.defs, island, "shop", *empty)[0] == "reason_shop_needs_town"
-    slots = fac.shop_slots(game.defs, town)
+    slots = fac.shop_slots(game.defs, town, island)  # 住む人で増えた枠も（FM-70）
     for f in [f for f in island.facilities if f.ext.get(fac.SITE) == [x, y]]:
         island.facilities.remove(f)
     assert fac.placement_problem(game.defs, island, "shop", x, y) is None
