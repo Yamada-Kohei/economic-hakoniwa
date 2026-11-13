@@ -2059,7 +2059,9 @@ class _Round:
             if fx_priority(self.defs, g) < rank and fx_priority(self.defs, g) <= kept
         )
         island = self.world.islands[key[0]]
-        if rank >= 3 and not export_plan.essential(island, good):  # 設備の資材（木材など）は使える
+        guarded = self.config.get("planning.export.reserve_rank")
+        # 設備の資材（木材など）は使える
+        if rank >= guarded and not export_plan.essential(island, good):
             reserve = export_plan.reserve_of(island, self.config, key[1], key[2], self.turn)
             ahead = max(ahead, reserve)
         return ahead

@@ -932,6 +932,9 @@ planning:
   export:
     reserve_turns: 3
     draw_turns: 6
+    # 蓄えが目標より少ない間に、蓄えを使わない輸入の段（外貨を使う順。この段から下）。4 なら消費財だけで、
+    # 国営工場の原料（3 段。綿花・鋼材など）は止めない（3 だと戦争の世界で衣類の工場の綿花が止まった）
+    reserve_rank: 4
 
 # 外交（フェーズ4-1。hakoniwa_core/diplomacy と hakoniwa_core/modules/diplomacy）
 diplomacy:
