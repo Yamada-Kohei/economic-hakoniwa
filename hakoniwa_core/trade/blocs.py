@@ -288,7 +288,8 @@ def view_of(world: WorldState, bloc: dict[str, Any], island_id: int) -> dict[str
     cells は、運賃の見込みに使う距離: ほかの加盟国を近い順に並べた前半分の平均（区画）。supply は、
     前のターンの圏の市場に売りに出ていた財（標準の計画が、輸入で手に入る物として見る。フェーズ3-2）。
     short は、前のターンの圏の市場で買いたい量の一部しか買えなかった財（標準の計画が、輸出向けに
-    作る物として見る。フェーズ3-2）。
+    作る物として見る。フェーズ3-2）。near は一番近いほかの加盟国までの区画、traded は前のターンに
+    約定した財（商社の荷の持ち方と仕入れ直しの値。FX-63・FX-66）。
     """
     here = world.islands[island_id]
     others = sorted(cells(here, world.islands[m]) for m in bloc["members"] if m != island_id)
@@ -299,7 +300,11 @@ def view_of(world: WorldState, bloc: dict[str, Any], island_id: int) -> dict[str
         "members": len(bloc["members"]),
         "rep": bloc["rep"],
         "cells": max(1, round(sum(near) / len(near))),
+        # 一番近いほかの加盟国までの区画（商社の荷が届くまでのターン数の見込み。FX-66）
+        "near": others[0] if others else 1,
         "prices": dict(bloc["prices"]),
+        # 前のターンの圏の市場で約定した財（その値段で仕入れ直しの値を出す。FX-63）
+        "traded": sorted(g for g, q in bloc.get("volume", {}).items() if q > 0),
         "supply": sorted(g for g, q in bloc.get("supply", {}).items() if q > 0),
         "short": sorted(
             g for g, q in bloc.get("demand", {}).items() if q > bloc.get("volume", {}).get(g, 0)

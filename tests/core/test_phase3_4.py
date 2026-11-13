@@ -13,7 +13,7 @@ import pytest
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, politics
-from hakoniwa_core.economy import OWNERS
+from hakoniwa_core.economy import OWNERS, household
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.log import format_log
 from hakoniwa_core.market import auction
@@ -441,9 +441,12 @@ def test_change_from_planned_keeps_state_facilities_and_lets_firms_in(game, base
     assert {f.id for f in island.facilities if f.owner == OWNER_STATE} == state_owned
     assert planning.KEY not in island.ext
     assert OWNERS in island.economy.households
-    kinds = set()
-    run(game, world, 24, lambda w: kinds.update(e.kind for e in island.log))
-    assert island.economy.households[OWNERS]["persons"] > 0
+    assert not ledger.holdings(island, household(OWNERS), ledger.EQUITY)
+    run(game, world, 24)
+    # 民間が参入し、資本家階級が出資する（FM-58）。出資した人の人数は、出資が軽い店だけだと財産で
+    # 暮らせる人数（LB-42）が 0 のまま次のターンに一般の層へ戻ることがあるので、株の持ち主で見る
+    assert any(f.ext.get("private_entry") for f in island.facilities)
+    assert sum(ledger.holdings(island, household(OWNERS), ledger.EQUITY).values()) > 0
 
 
 # --- 計画経済 ---------------------------------------------------------------------------

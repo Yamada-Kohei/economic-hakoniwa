@@ -643,6 +643,7 @@ def help_start_page(request):
             ],
             "commute": game.config.get("labor.commute_radius"),
             "base_admin": game.config.get("orders.base_admin_power"),
+            "max_queue": game.config.get("orders.max_queue"),  # 前もって並べられる命令の数
             "power_fuel_turns": game.config.get("founding.power_fuel_turns"),
             "careful": _careful_help(game.config),
         },
@@ -832,6 +833,7 @@ def _help_context() -> dict:
         "interval_hours": f"{interval_minutes / 60:g}" if interval_minutes else "",
         "base_admin": game.config.get("orders.base_admin_power"),
         "max_admin": game.config.get("orders.max_admin_power"),
+        "max_queue": game.config.get("orders.max_queue"),  # 前もって並べられる命令の数
         "power_fuel_turns": game.config.get("founding.power_fuel_turns"),
         "admin_per_office": _admin_people(defs),
         # 金融と企業（フェーズ2-2）の説明に出す数
@@ -1050,7 +1052,12 @@ def _placement_notes(f) -> str:
             for level, s in defs.settlements.items()
             if s.get("shops")
         ]
-        notes.append(f"町のマスに入る（1つの町に{'・'.join(shops)}まで）")
+        per = next(
+            (s["people_per_shop"] for s in defs.settlements.values() if s.get("people_per_shop")),
+            None,
+        )
+        more = f"。住む人 {per:,.0f} 人ごとに1つまで増える" if per else ""  # FM-70
+        notes.append(f"町のマスに入る（1つの町に{'・'.join(shops)}まで{more}）")
     if f.get("coastal"):
         notes.append("海に面したマスのみ")
     if f.get("near_capital") is not None:

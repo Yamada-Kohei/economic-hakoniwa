@@ -331,7 +331,7 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
             info["space_wanted"] = round(here.want / population, 1)
         # 町の商店（回7）: 入っている数と、町の段階で入る数
         info["shops"] = fac.shops_at(island, fac.position(f))
-        info["shop_slots"] = fac.shop_slots(defs, f)
+        info["shop_slots"] = fac.shop_slots(defs, f, full)
         levels = defs.settlement_levels()
         if levels.index(level) + 1 < len(levels):
             following = levels[levels.index(level) + 1]
