@@ -834,7 +834,7 @@ class _Round:
                 continue
             # 外貨の見込みは、品物の代金に決済通貨で払う借りた船の運賃を足す
             price = terms.limit + terms.charter
-            rank = terms.profit / max(1, terms.cost)
+            rank = traders.import_rank(self.defs, good, terms.profit, terms.cost)
             rows.append(
                 (good, bloc["currency"], first, each, price, p.import_rate, item["m"], rank)
             )
@@ -1769,7 +1769,7 @@ class _Round:
                     else:  # 借りた船の運賃は決済通貨で払う
                         unit += terms.charter
                     flow = min(want, item["m"])
-                    rank = terms.profit / max(1, terms.cost)
+                    rank = traders.import_rank(self.defs, good, terms.profit, terms.cost)
                     groups.setdefault((entity, currency), []).append(
                         (f, good, want, flow, unit, rank)
                     )
