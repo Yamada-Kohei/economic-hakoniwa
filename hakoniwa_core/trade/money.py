@@ -26,6 +26,11 @@ from hakoniwa_core.state import IslandState, WorldState
 from hakoniwa_core.trade import balance, island_state
 from hakoniwa_core.units import BASIS
 
+# island_state: 島ごとの段（世界をまたげない）で、外国の主体に自国通貨で払った分（[持ち主の島, 主体,
+# 額, 前払いを返したか]）。帳簿の非居住者の預金はもう増えていて、持ち主の島の外貨の持ち高には次の
+# 貿易の段の初めに足す（settle_pending）
+PENDING = "pending_abroad"
+
 
 def holdings(island: IslandState) -> dict[str, dict[str, list[int]]]:
     """島の主体ごとの外貨の持ち高（主体 → 通貨の番号の文字列 → [量, 帳簿の値打ち]）。"""
@@ -110,6 +115,44 @@ def transfer(
     return spent
 
 
+def pend(issuer: IslandState, payee: str, amount: int, prepaid: bool = False) -> None:
+    """島ごとの段で、発行した島 issuer の帳簿の非居住者 payee（nr:<島>:<主体>）の預金に amount を
+    払った後に呼ぶ（払いは呼ぶ側が ledger で済ませる）。持ち主の島の外貨の持ち高には、次の貿易の段の
+    初めに settle_pending で足す（それまでは世界の確かめで持ち高に数える）。国際収支は、発行した島の
+    負債（非居住者の預金）に今足し、持ち主の島の資産（外貨）には足すときに足す。prepaid は前払いの
+    返金（船の前注文。FX-78）で、受けた前払いの負債を減らす。"""
+    if amount <= 0:
+        return
+    _, island_id, entity = payee.split(":", 2)
+    island_state(issuer).setdefault(PENDING, []).append([int(island_id), entity, amount, prepaid])
+    balance.add(issuer, "liabilities.deposits", amount)
+    if prepaid:
+        balance.add(issuer, "liabilities.orders", -amount)
+
+
+def settle_pending(world: WorldState) -> None:
+    """島ごとの段で外国の主体に払った分（pend）を、持ち主の島の外貨の持ち高に足す（貿易の段の
+    初め）。"""
+    for currency in world.island_ids():
+        issuer = world.islands[currency]
+        state = island_state(issuer)
+        left = []
+        for island_id, entity, amount, prepaid in state.pop(PENDING, []):
+            holder = world.islands.get(island_id)
+            if holder is None:
+                left.append([island_id, entity, amount, prepaid])
+                continue
+            value = balance.value_of(world, holder, currency, amount)
+            _add(holder, entity, currency, amount, value)
+            balance.add(holder, "assets.fx", value)
+            moved = holder.scratch.setdefault(balance.MOVED, {})
+            moved[str(currency)] = moved.get(str(currency), 0) + amount
+            if prepaid:
+                balance.add(holder, "assets.orders", -value)
+        if left:
+            state[PENDING] = left
+
+
 def _name(currency: int, island_id: int, entity: str) -> str:
     """通貨 currency の島の帳簿での、島 island_id の主体 entity の名前。"""
     return entity if island_id == currency else ledger.nonresident(island_id, entity)
@@ -143,6 +186,10 @@ def reconcile(world: WorldState) -> list[str]:
                 if amount < 0:
                     problems.append(f"島 {island_id} の {entity} の通貨 {key} の持ち高がマイナス")
                 held[(int(key), island_id, entity)] = amount
+    for currency in world.island_ids():  # 島ごとの段で払い、まだ持ち高に足していない分
+        for island_id, entity, amount, _ in island_state(world.islands[currency]).get(PENDING, []):
+            key = (currency, island_id, entity)
+            held[key] = held.get(key, 0) + amount
     booked: dict[tuple[int, int, str], int] = {}
     for currency in world.island_ids():
         for owner, entities in nonresident_deposits(world.islands[currency]).items():

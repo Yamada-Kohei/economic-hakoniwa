@@ -6,12 +6,15 @@
 1. 届いた荷を買い手の港で下ろす（下ろす港の使用料。港の積み下ろしの余裕を超えた荷は次のターンへ）。
    国の倉庫に入る腐る物（契約で買った食品など）と、契約で「市場に出す」と決めた物は、次のターンからの
    市場の段が売りに出す
-2. 海運業の船: 使えるターン数を過ぎた船を解体し、市場で買った船を船団に入れる
+2. 海運業の船: 市場で買った船と前注文で届いた船を船団に入れ、寿命を過ぎた船を代わりが足りる分だけ
+   解体する（FX-79）
 3. 圏の作成・加盟・設定、契約の申し込み・受け入れ・やめる（命令の段の申し送りを、島の番号の順に）
 4. 為替の板寄せ（島の通貨と、その島が使う決済通貨の組ごと。hakoniwa_core/trade/fx.py）。外貨建ての
    契約で政府がこのターンに払う外貨は、板寄せの前に中央銀行が持っている外貨から先に政府へ回し、
    足りない分だけ板で買う。中央銀行の受け身の売りに足りない外貨は中央銀行どうしの融通で借り、
-   全部の板の後に融通の利払いと返済をする（hakoniwa_core/trade/swap.py）
+   全部の板の後に融通の利払いと返済をする（hakoniwa_core/trade/swap.py）。島に造船所のない海運業が
+   圏の造船所に払う船の前注文の代金の外貨も、ここで買う。板の後に、圏の造船所への前注文の取り消し・
+   払い・引き渡しと新しい注文をする（FX-78。hakoniwa_core/trade/orders.py）
 5. 二国間契約の履行（船と港の余裕は契約が先に使う）
 6. 圏×財の板寄せ（値幅 trade.bloc_band）。約定は近い島の組から割り当て、代金はその場で決済通貨の
    島の帳簿の上で払う。荷は買い手の島の船で運び、往復の間（片道の 2 倍）船はほかに使えない
@@ -229,16 +232,24 @@ class _Round:
         self.fx_limited: dict[int, set[str]] = {}
         # (島, 商社) → 財 → (取り逃した量, 1 単位の儲け, 1 単位の原価)（FX-62）
         self.missed: dict[tuple[int, int], dict[str, tuple[int, int, int]]] = {}
+        self.ship_plan: dict[str, Any] = {}  # 圏の造船所への船の前注文の見込み（FX-78）
 
     def run(self) -> None:
         self._intercept()
         self._unload()
-        for i in self.ids:
+        for i in self.ids:  # 在庫の船を船団に入れてから、寿命の船を解体する（FX-79）
             island = self.world.islands[i]
-            ships.scrap(island, self.config, self.turn)
             ships.commission(island, self.defs, self.config, self.turn)
+            ships.scrap(island, self.config, self.turn)
         self._requests()
+        # 圏の造船所への船の前注文（FX-78）: 払う外貨の見込みを為替の前に決め、為替の後に払う
+        self.ship_plan = ship_orders.plan_abroad(
+            self.world, self.defs, self.config, self.turn, self.ids
+        )
         self._fx()
+        ship_orders.run_abroad(
+            self.world, self.defs, self.config, self.turn, self.ids, self.ship_plan
+        )
         self._contracts()
         bloc_unmet, bloc_sellers = self._blocs()
         blocs.settle_leaves(self.world)
@@ -695,6 +706,7 @@ class _Round:
             needs[ledger.GOV] = gov_need
             payers[ledger.GOV] = gov_payer()
             self._capital_needs(island, needs, floors, payers, width)
+            ship_orders.fx_needs(island, self.ship_plan, needs, payers)
             currencies = set(blocs.currencies_of(self.world, i))
             for entity_needs in needs.values():
                 currencies |= set(entity_needs)

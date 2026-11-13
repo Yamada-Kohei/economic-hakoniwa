@@ -1027,6 +1027,9 @@ def _trade_help(game) -> dict:
         "order_deposit": f"{config.get('trade.order_deposit') * 100:g}",
         "order_progress": f"{config.get('trade.order_progress') * 100:g}",
         "order_late_turns": config.get("trade.order_late_turns"),
+        # 寿命を過ぎた船を使い続ける上限（FX-79）と、目標の混み具合（FX-80）
+        "ship_life_max": round(config.get("trade.ship_life") * config.get("trade.ship_life_limit")),
+        "ship_target_use": f"{config.get('trade.ship_target_use') * 100:g}",
     }
 
 

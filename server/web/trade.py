@@ -775,8 +775,10 @@ def fleet_view(island: m.Island, here: IslandState, stats: dict[str, float]) -> 
             # 直近の、船が足りずに輸入を減らしたターンの数（数えたターンのうち）
             "short_turns": sum(f.economy.get("ships_short", [])),
             "short_of": len(f.economy.get("ships_short", [])),
-            # 島の造船所に注文して、まだ届いていない輸送船（船の前注文。FX-60）
-            "on_order": from_milli(ship_orders.on_order(here, f)),
+            # 造船所に注文して、まだ届いていない輸送船（船の前注文。FX-60。圏のほかの国の造船所への
+            # 注文 FX-78 も）
+            "on_order": from_milli(ship_orders.all_on_order(here, f)),
+            "on_order_abroad": from_milli(f.economy.get(ships.ABROAD, 0)),
             # 圏の荷を運ぶ船の貸し借り（1ターンの運賃）
             "charter_income": stats.get("trade.charter_income", 0),
             "charter_paid": stats.get("trade.charter_paid", 0),

@@ -33,6 +33,24 @@
   造船所の取り壊しでは、返しきれない分を請求に足してから分ける）。
 造船所が倒産しても、管財人のもとで動き続けて注文の船を作り続け、居抜きで買った会社が注文を引き継ぐ
 （施設はそのままなので、注文もそのまま残る）。
+
+圏の造船所への注文（FX-78。2026-11-13）: 島に注文を受けられる造船所がない海運業は、貿易の段で、圏の
+加盟国の造船所のうち届く見込み（前の注文を作り終えてから全力で作る見込み ＋ 走る片道のターン）の一番
+早い所に注文する（戦っている国・輸送船を禁輸している国は除く）。注文は造船所の ``ship_orders`` に、
+買い手の島（"island"）・主体・決済通貨（"currency"。両方が入っている圏の決済通貨）・値段（注文のときの
+造船所の島の値段を決済通貨に直して固定）を持たせて置く。
+- 払い（手付け・建造の間・引き渡しの残り。割合は同じ）と引き渡しは貿易の段で、決済通貨で払う
+  （money.transfer）。海運業は払う外貨を為替の段で買う（計画経済の島の国営の海運業は政府の外貨）。
+  払いは前払い（国際収支の assets.orders・liabilities.orders）で、引き渡しのときに財の輸出入
+  （GDP・国際収支・関税）に振り替える。届いた船の設備の額は払った額。輸入の割り当てを超える船は
+  引き渡さずに待つ。
+- 造船所は島の中の注文を先に取り置き、先に作る。
+- 戦争・禁輸・圏を抜けて決済通貨の圏が共通でなくなったら、注文を取り消して前払いを返す。返金は
+  造船所の島の通貨（払った決済通貨の額を今のレートで直した額）で、買い手の非居住者の預金に返す
+  （島ごとの段で返した分は、次の貿易の段で買い手の外貨の持ち高に入る。money.pend）。返しきれない分は
+  島の中の注文と同じく造船所の借り・差し押さえの請求になる。
+- 注文済みで届いていない隻数は、貿易の段で海運業の ``economy["ships_on_order_abroad"]`` に数え、
+  市場で買う量と次の注文から引く。
 """
 
 from __future__ import annotations
@@ -53,7 +71,7 @@ from hakoniwa_core.economy import (
     is_stopped,
     payer_of,
 )
-from hakoniwa_core.state import Facility, IslandState, LogEntry
+from hakoniwa_core.state import Facility, IslandState, LogEntry, WorldState
 from hakoniwa_core.trade import shipping_of
 from hakoniwa_core.units import QUANTITY_SCALE, from_milli, money_of, round_money
 
@@ -104,9 +122,26 @@ def reserved(config: GameConfig, f: Facility, good: str) -> int:
     return sum(o["built"] for o in orders_of(f))
 
 
+def is_abroad(o: dict[str, Any]) -> bool:
+    """ほかの島の海運業からの注文か（FX-78）。"""
+    return "island" in o
+
+
 def on_order(island: IslandState, buyer: Facility) -> int:
-    """海運業 buyer が注文して、まだ届いていない船（1000 分の 1 隻）。"""
-    return sum(o["qty"] for f in island.facilities for o in orders_of(f) if o["buyer"] == buyer.id)
+    """海運業 buyer が島の造船所に注文して、まだ届いていない船（1000 分の 1 隻）。"""
+    return sum(
+        o["qty"]
+        for f in island.facilities
+        for o in orders_of(f)
+        if o["buyer"] == buyer.id and not is_abroad(o)
+    )
+
+
+def all_on_order(island: IslandState, buyer: Facility) -> int:
+    """島の造船所と圏のほかの島の造船所に注文して、まだ届いていない船（1000 分の 1 隻）。"""
+    from hakoniwa_core.trade import ships
+
+    return on_order(island, buyer) + buyer.economy.get(ships.ABROAD, 0)
 
 
 def _value(o: dict[str, Any]) -> int:
@@ -157,15 +192,8 @@ def order_wanted(island: IslandState, config: GameConfig, f: Facility, turn: int
     """海運業 f が造船所に注文する船（1000 分の 1 隻。1隻単位）。"""
     from hakoniwa_core.trade import ships
 
-    life = config.get("trade.ship_life")
-    ahead = config.get("trade.ship_order_turns")
-    retiring = sum(q for since, q in f.economy.get("fleet", []) if turn + ahead - since >= life)
-    renew = 0
-    if retiring > 0:
-        used = ships.ships_of_load(config, max(f.economy.get("used", []), default=0))
-        renew = whole(min(retiring, used - (ships.fleet(f) - retiring)))
-    want = max(short_ships(config, f), renew)
-    have = stock.total(f.stock, config.get("trade.ship_good")) + on_order(island, f)
+    want = max(short_ships(config, f), whole(ships.renewal(config, f, turn)))
+    have = stock.total(f.stock, config.get("trade.ship_good")) + all_on_order(island, f)
     return whole(max(0, want - have))
 
 
@@ -235,6 +263,26 @@ def _collect(
     o["paid"] += max(0, owed)
 
 
+def _paid_here(island: IslandState, o: dict[str, Any]) -> int:
+    """注文 o の前払いを造船所の島の通貨に直した額（ほかの島の注文は決済通貨で払っているので、
+    今のレートで直す。FX-78）。"""
+    from hakoniwa_core.trade import fx as fxrates
+
+    if not is_abroad(o) or o["currency"] == island.id:
+        return o["paid"]
+    return fxrates.to_own(island, o["currency"], o["paid"])
+
+
+def _pay_back(island: IslandState, payer: Payer, payee: str, amount: int) -> None:
+    """前払いを返す。ほかの島の海運業（非居住者の名前）への返金は、次の貿易の段でその島の外貨の
+    持ち高に入る（money.pend）。"""
+    from hakoniwa_core.trade import money as fxmoney
+
+    funds.pay(island, payer, payee, amount, REFUND)
+    if ledger.is_nonresident(payee):
+        fxmoney.pend(island, payee, amount, prepaid=True)
+
+
 def _yard_payer(config: GameConfig, yard: Facility) -> Payer:
     entity = entity_of(config, yard)
     return Payer(entity, STATE_FACILITIES if entity == ledger.GOV else None)
@@ -256,7 +304,7 @@ def _refund(
     if amount <= 0 or payer.entity == payee:
         return
     paid = min(amount, funds.available(island, payer))
-    funds.pay(island, payer, payee, paid, REFUND)
+    _pay_back(island, payer, payee, paid)
     left = amount - paid
     if left <= 0:
         return
@@ -287,7 +335,7 @@ def _cancel(
     if not yard.economy[ORDERS]:
         yard.economy.pop(ORDERS)
     if refund:
-        _refund(island, config, yard, o["payer"], o["paid"], claims)
+        _refund(island, config, yard, o["payer"], _paid_here(island, o), claims)
     island.log.append(
         LogEntry(
             "ship_order_cancelled" if refund else "ship_order_defaulted",
@@ -334,6 +382,8 @@ def run(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> None:
             continue
         claims = _claims_of(yard)
         for o in list(orders_of(yard)):
+            if is_abroad(o):  # ほかの島の注文の払い・取り消し・引き渡しは貿易の段（run_abroad）
+                continue
             buyer = island.facility(o["buyer"])
             if buyer is None or SEIZED in buyer.economy:
                 _cancel(island, config, yard, o, False)
@@ -342,11 +392,13 @@ def run(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> None:
             elif turn > o["due"] + late:  # 作り上げたのに残りの代金が払われない
                 _cancel(island, config, yard, o, False)
         free = stock.total(yard.stock, good) - reserved(config, yard, good)
-        for o in orders_of(yard):
+        for o in _by_priority(yard):
             take = max(0, min(free, o["qty"] - o["built"]))
             o["built"] += take
             free -= take
         for o in list(orders_of(yard)):
+            if is_abroad(o):
+                continue
             if o["built"] < o["qty"]:
                 _collect(island, config, yard, o, _scheduled(config, o, o["built"]))
                 continue
@@ -369,7 +421,7 @@ def _pay_refunds(island: IslandState, config: GameConfig, yard: Facility) -> Non
     payer = _yard_payer(config, yard)
     for payee in sorted(owed):
         paid = min(owed[payee], funds.available(island, payer))
-        funds.pay(island, payer, payee, paid, REFUND)
+        _pay_back(island, payer, payee, paid)
         owed[payee] -= paid
     left = {p: v for p, v in owed.items() if v > 0}
     if left:
@@ -381,16 +433,27 @@ def _pay_refunds(island: IslandState, config: GameConfig, yard: Facility) -> Non
 def _next_due(defs: Defs, config: GameConfig, yard: Facility, buyer: int) -> int:
     """造船所が次のターンに全力で作ったときに、海運業 buyer が払う代金の見込み（今の払い残しを
     含む）。"""
+    return sum(
+        due for o, due in _next_dues(defs, config, yard) if not is_abroad(o) and o["buyer"] == buyer
+    )
+
+
+def _by_priority(yard: Facility) -> list[dict[str, Any]]:
+    """造船所が船を取り置き・作る順: 島の中の注文を先に、それぞれ古い順（FX-78）。"""
+    return sorted(orders_of(yard), key=is_abroad)
+
+
+def _next_dues(defs: Defs, config: GameConfig, yard: Facility) -> list[tuple[dict[str, Any], int]]:
+    """造船所が次のターンに全力で作ったときに、注文ごとに払う代金の見込み（今の払い残しを含む）。"""
     room = _out(defs, config, yard)
-    total = 0
-    for o in orders_of(yard):
+    out = []
+    for o in _by_priority(yard):
         add = max(0, min(room, o["qty"] - o["built"]))
         room -= add
         built = o["built"] + add
         due = _value(o) if built >= o["qty"] else _scheduled(config, o, built)
-        if o["buyer"] == buyer:
-            total += max(0, due - o["paid"])
-    return total
+        out.append((o, max(0, due - o["paid"])))
+    return out
 
 
 def _deliver(
@@ -431,3 +494,394 @@ def production_goal(defs: Defs, config: GameConfig, f: Facility, goal: int, befo
     extra = fac.ratio(min(left, full), full)
     limit = round_money(config.get("market.max_target_change") * fac.FULL + 0.5)
     return max(goal, min(fac.FULL, goal + extra, before + limit))
+
+
+# --- 圏の造船所への注文（FX-78。貿易の段） ------------------------------------------
+
+
+def _currency_between(world: WorldState, a: int, b: int) -> int | None:
+    """島 a と b が両方入っている圏の決済通貨（番号の一番小さい圏。なければ None）。"""
+    from hakoniwa_core.trade import blocs
+
+    for bloc in sorted(blocs.blocs(world), key=lambda x: x["id"]):
+        if a in bloc["members"] and b in bloc["members"]:
+            return bloc["currency"]
+    return None
+
+
+def _open_between(world: WorldState, config: GameConfig, a: int, b: int, turn: int) -> bool:
+    """島 a と b の間で輸送船を注文・引き渡しできるか（戦争と禁輸）。"""
+    from hakoniwa_core.diplomacy import war
+    from hakoniwa_core.trade import policy
+
+    good = config.get("trade.ship_good")
+    return not war.fighting(world, a, b, turn) and not policy.blocked(world, a, b, good)
+
+
+def _in_currency(world: WorldState, island: IslandState, currency: int, own: int) -> int:
+    """島の通貨の額 own を、通貨 currency に直す（レートがなければ 0）。"""
+    from hakoniwa_core.trade import fx as fxrates
+
+    if currency == island.id:
+        return own
+    if not fxrates.has_rate(island, currency):
+        return 0
+    return fxrates.to_foreign(island, currency, own)
+
+
+def _shipping_buyer(island: IslandState, config: GameConfig) -> Facility | None:
+    """圏の造船所に注文できる海運業（建っていて、止まっておらず、差し押さえられていない）。"""
+    f = shipping_of(island, config)
+    if f is None or not f.built or is_stopped(f) or SEIZED in f.economy:
+        return None
+    return f
+
+
+def plan_abroad(
+    world: WorldState, defs: Defs, config: GameConfig, turn: int, ids: list[int]
+) -> dict[str, Any]:
+    """貿易の段の初め（為替の段の前）: 島ごとの段で返した前払いを持ち高に入れ、海運業ごとの圏の
+    造船所への注文済みの隻数を数え直し、新しい注文（届く見込みの一番早い造船所と隻数）と、この
+    ターンに決済通貨で払う見込み（為替の段で買う外貨）を決める。"""
+    from hakoniwa_core.trade import money as fxmoney
+    from hakoniwa_core.trade import one_way_turns, ships
+
+    fxmoney.settle_pending(world)
+    ordered: dict[tuple[int, int], int] = {}
+    owed: dict[int, dict[str, dict[int, int]]] = {}  # 島 → 主体 → 通貨 → このターンの払い
+    for j in ids:
+        for yard in world.islands[j].facilities:
+            for o in orders_of(yard):
+                if not is_abroad(o):
+                    continue
+                key = (o["island"], o["buyer"])
+                ordered[key] = ordered.get(key, 0) + o["qty"]
+                target = _value(o) if o["built"] >= o["qty"] else _scheduled(config, o, o["built"])
+                if target > o["paid"]:
+                    mine = owed.setdefault(o["island"], {}).setdefault(o["entity"], {})
+                    mine[o["currency"]] = mine.get(o["currency"], 0) + target - o["paid"]
+    new: dict[int, dict[str, Any]] = {}
+    deposit = config.get("trade.order_deposit")
+    for i in ids:
+        island = world.islands[i]
+        f = shipping_of(island, config)
+        if f is None:
+            continue
+        if ordered.get((i, f.id), 0) > 0:
+            f.economy[ships.ABROAD] = ordered[(i, f.id)]
+        else:
+            f.economy.pop(ships.ABROAD, None)
+        f.economy.pop(ships.REACH, None)
+        if _shipping_buyer(island, config) is None or yards(island, defs, config):
+            continue
+        want = order_wanted(island, config, f, turn)
+        best: tuple[int, int, int] | None = None
+        for j in ids:
+            if j == i or _currency_between(world, i, j) is None:
+                continue
+            if not _open_between(world, config, i, j, turn):
+                continue
+            other = world.islands[j]
+            for yard in yards(other, defs, config):
+                sail = one_way_turns(config, other, island)
+                due = _due_turn(defs, config, yard, max(MILLI, want), turn) + sail
+                if best is None or (due, j, yard.id) < best:
+                    best = (due, j, yard.id)
+        if best is not None:  # 圏の造船所に注文できる（市場では買わない）
+            f.economy[ships.REACH] = True
+        if want <= 0:
+            continue
+        if best is None:
+            continue
+        due, j, yard_id = best
+        currency = _currency_between(world, i, j)
+        assert currency is not None
+        other = world.islands[j]
+        price = _in_currency(
+            world, other, currency, other.economy.prices.get(config.get("trade.ship_good"), 0)
+        )
+        if price <= 0:
+            continue
+        payer = payer_of(defs, config, f)
+        new[i] = {
+            "island": j,
+            "yard": yard_id,
+            "qty": want,
+            "currency": currency,
+            "price": price,
+            "due": due,
+            "entity": payer.entity,
+            "item": payer.item or "",
+        }
+        mine = owed.setdefault(i, {}).setdefault(payer.entity, {})
+        first = round_money(money_of(price, want) * deposit)
+        mine[currency] = mine.get(currency, 0) + first
+    return {"new": new, "owed": owed}
+
+
+def fx_needs(
+    island: IslandState,
+    plan: dict[str, Any],
+    needs: dict[str, dict[int, list[tuple[int, int | None]]]],
+    payers: dict[str, Payer],
+) -> None:
+    """為替の段: 海運業が圏の造船所に払う外貨（このターンの払いと新しい注文の手付け）を、主体の
+    外貨の見込みに足す（値幅の上端まで買う。持ち高の分は為替の段が引く）。計画経済の国営の海運業は
+    政府の主体なので、政府の外貨の見込みに入る（政府の外貨から先に払う）。"""
+    for entity, currencies in sorted(plan.get("owed", {}).get(island.id, {}).items()):
+        for currency, amount in sorted(currencies.items()):
+            if currency != island.id and amount > 0:
+                needs.setdefault(entity, {}).setdefault(currency, []).append((amount, None))
+                payers.setdefault(entity, Payer(entity))
+
+
+def _available(world: WorldState, o: dict[str, Any]) -> int:
+    """注文 o の買い手が今払える決済通貨。"""
+    from hakoniwa_core.trade import money as fxmoney
+
+    buyer_island = world.islands[o["island"]]
+    if o["currency"] == buyer_island.id:
+        return funds.available(buyer_island, _abroad_payer(o))
+    return fxmoney.holding(buyer_island, o["entity"], o["currency"])
+
+
+def _abroad_payer(o: dict[str, Any]) -> Payer:
+    return Payer(o["entity"], o.get("item") or None)
+
+
+def _collect_abroad(
+    world: WorldState, config: GameConfig, yard_island: IslandState, yard: Facility, o, due: int
+) -> None:
+    """ほかの島の注文 o の払うべき額 due まで、買い手が払える分を決済通貨で払う（前払い）。"""
+    from hakoniwa_core.trade import balance
+    from hakoniwa_core.trade import money as fxmoney
+
+    amount = min(due - o["paid"], _available(world, o))
+    if amount <= 0:
+        return
+    buyer_island = world.islands[o["island"]]
+    currency = o["currency"]
+    values = {
+        buyer_island.id: balance.value_of(world, buyer_island, currency, amount),
+        yard_island.id: balance.value_of(world, yard_island, currency, amount),
+    }
+    fxmoney.transfer(
+        world,
+        currency,
+        (buyer_island.id, o["entity"]),
+        (yard_island.id, entity_of(config, yard)),
+        amount,
+        PAYMENT,
+        values[yard_island.id],
+        payer=_abroad_payer(o) if buyer_island.id == currency else None,
+        values=values,
+    )
+    balance.add(buyer_island, "assets.orders", values[buyer_island.id])
+    balance.add(yard_island, "liabilities.orders", values[yard_island.id])
+    o["paid"] += amount
+    o["paid_buyer"] = o.get("paid_buyer", 0) + values[buyer_island.id]
+    o["paid_yard"] = o.get("paid_yard", 0) + values[yard_island.id]
+
+
+def _deliver_abroad(
+    world: WorldState,
+    config: GameConfig,
+    yard_island: IslandState,
+    yard: Facility,
+    o: dict[str, Any],
+    buyer: Facility,
+) -> None:
+    """作り上げて代金を払い終えた注文の船を、ほかの島の海運業に渡す（次の貿易の段で船団に入る）。
+    前払いを財の輸出入に振り替え、輸送船の関税を払う。"""
+    from hakoniwa_core.trade import balance, policy, ships
+    from hakoniwa_core.units import part
+
+    good = config.get("trade.ship_good")
+    buyer_island = world.islands[o["island"]]
+    yard.economy[ORDERS] = [x for x in orders_of(yard) if x is not o]
+    if not yard.economy[ORDERS]:
+        yard.economy.pop(ORDERS)
+    qty = o["qty"]
+    stock.put_batches(buyer.stock, good, stock.take_batches(yard.stock, good, qty, None))
+    sold, bought = o.get("paid_yard", 0), o.get("paid_buyer", 0)
+    books.stock_moved(yard_island, yard.id, good, -qty)
+    books.add(yard_island, yard.id, books.SALES, sold)
+    books.add_trade(yard_island, "exports", good, sold)
+    books.stock_moved(buyer_island, buyer.id, good, qty)
+    books.add(buyer_island, buyer.id, books.PURCHASES, bought)
+    books.add_trade(buyer_island, "imports", good, bought)
+    balance.add(yard_island, "goods", sold)
+    balance.add(yard_island, "liabilities.orders", -sold)
+    balance.add(buyer_island, "goods", -bought)
+    balance.add(buyer_island, "assets.orders", -bought)
+    paid = buyer.economy.get(ships.PAID, [0, 0])
+    buyer.economy[ships.PAID] = [paid[0] + qty, paid[1] + bought]
+    tariff = part(bought, policy.tariff_rate(buyer_island, good))  # 輸入の関税
+    payer = _abroad_payer(o)
+    if tariff > 0 and payer.entity != ledger.GOV:
+        tariff = min(tariff, funds.available(buyer_island, payer))
+        funds.pay(buyer_island, payer, ledger.GOV, tariff, "tariff")
+        books.add(buyer_island, buyer.id, books.TARIFF, tariff)
+        stats = buyer_island.stats
+        stats["trade.tariffs"] = stats.get("trade.tariffs", 0) + tariff
+    buyer.economy.pop("ships_short", None)
+    buyer.economy.pop(SHORT_LOAD, None)
+    count = from_milli(qty)
+    yard_island.log.append(
+        LogEntry(
+            "ship_order_exported",
+            {"count": count, "x": yard.x, "y": yard.y, "country": buyer_island.name},
+        )
+    )
+    buyer_island.log.append(
+        LogEntry("ship_order_imported", {"count": count, "country": yard_island.name})
+    )
+
+
+def run_abroad(
+    world: WorldState,
+    defs: Defs,
+    config: GameConfig,
+    turn: int,
+    ids: list[int],
+    plan: dict[str, Any],
+) -> None:
+    """貿易の段（為替の段の後）: ほかの島の注文の取り消し・払い・引き渡しと、新しい注文（手付け）。
+    海運業の次の支払いの見込み（DUE）に、次のターンの払いの見込みを足す（島の通貨に直す）。"""
+    from hakoniwa_core.trade import policy
+
+    late = config.get("trade.order_late_turns")
+    good = config.get("trade.ship_good")
+    for j in ids:
+        yard_island = world.islands[j]
+        for yard in sorted(yard_island.facilities, key=lambda f: f.id):
+            claims = _claims_of(yard)
+            for o in [x for x in orders_of(yard) if is_abroad(x)]:
+                buyer_island = world.islands.get(o["island"])
+                buyer = buyer_island.facility(o["buyer"]) if buyer_island is not None else None
+                if buyer is None or SEIZED in buyer.economy or o["island"] not in ids:
+                    _cancel(yard_island, config, yard, o, False)  # 買い手の不履行
+                elif _currency_between(world, o["island"], j) != o["currency"] or not (
+                    _open_between(world, config, o["island"], j, turn)
+                ):
+                    _cancel(yard_island, config, yard, o, True, claims)
+                    buyer_island.log.append(
+                        LogEntry(
+                            "ship_order_cancelled_abroad",
+                            {"count": from_milli(o["qty"]), "country": yard_island.name},
+                        )
+                    )
+                elif o["built"] < o["qty"] and turn > o["due"] + late:
+                    _cancel(yard_island, config, yard, o, True, claims)
+                    buyer_island.log.append(
+                        LogEntry(
+                            "ship_order_cancelled_abroad",
+                            {"count": from_milli(o["qty"]), "country": yard_island.name},
+                        )
+                    )
+                elif o["paid"] < _value(o) and turn > o["due"] + late:
+                    _cancel(yard_island, config, yard, o, False)  # 残りの代金が払われない
+            for o in [x for x in orders_of(yard) if is_abroad(x)]:
+                done = o["built"] >= o["qty"]
+                _collect_abroad(
+                    world,
+                    config,
+                    yard_island,
+                    yard,
+                    o,
+                    _value(o) if done else _scheduled(config, o, o["built"]),
+                )
+                if not done or o["paid"] < _value(o):
+                    continue
+                buyer_island = world.islands[o["island"]]
+                quota = policy.quota(buyer_island, good)
+                if quota is not None and o["qty"] > quota:  # 輸入の割り当てを超える船は待つ
+                    continue
+                buyer = buyer_island.facility(o["buyer"])
+                assert buyer is not None
+                _deliver_abroad(world, config, yard_island, yard, o, buyer)
+    _place_abroad(world, defs, config, turn, plan)
+    _abroad_dues(world, defs, config, ids)
+
+
+def _place_abroad(
+    world: WorldState, defs: Defs, config: GameConfig, turn: int, plan: dict[str, Any]
+) -> None:
+    """plan_abroad で決めた注文を出し、手付けを払う（払える分の隻数だけ。払えなかった分の手付けは
+    次の支払いの見込みに足す）。"""
+    from hakoniwa_core.trade import fx as fxrates
+    from hakoniwa_core.trade import ships
+
+    deposit = config.get("trade.order_deposit")
+    for i, p in sorted(plan.get("new", {}).items()):
+        island = world.islands[i]
+        f = _shipping_buyer(island, config)
+        yard_island = world.islands[p["island"]]
+        yard = yard_island.facility(p["yard"])
+        if f is None or yard is None or yard not in yards(yard_island, defs, config):
+            continue
+        per_ship = round_money(money_of(p["price"], MILLI) * deposit)
+        o = {
+            "buyer": f.id,
+            "island": i,
+            "entity": p["entity"],
+            "item": p["item"],
+            "payer": ledger.nonresident(i, p["entity"]) if p["island"] != i else p["entity"],
+            "currency": p["currency"],
+            "qty": p["qty"],
+            "built": 0,
+            "price": p["price"],
+            "paid": 0,
+            "placed": turn,
+            "due": p["due"],
+        }
+        qty = p["qty"]
+        if per_ship > 0:
+            qty = min(qty, _available(world, o) // per_ship * MILLI)
+        if qty < p["qty"]:
+            short = per_ship * (p["qty"] - qty) // MILLI
+            if p["currency"] != i:
+                short = fxrates.to_own(island, p["currency"], short)
+            f.economy[DUE] = f.economy.get(DUE, 0) + short
+        if qty <= 0:
+            continue
+        o["qty"] = qty
+        yard.economy.setdefault(ORDERS, []).append(o)
+        _collect_abroad(world, config, yard_island, yard, o, _scheduled(config, o, 0))
+        f.economy[ships.ABROAD] = f.economy.get(ships.ABROAD, 0) + qty
+        island.log.append(
+            LogEntry(
+                "ship_order_placed_abroad",
+                {
+                    "count": from_milli(qty),
+                    "country": yard_island.name,
+                    "x": yard.x,
+                    "y": yard.y,
+                    "turns": p["due"] - turn,
+                },
+            )
+        )
+        yard_island.log.append(
+            LogEntry(
+                "ship_order_received",
+                {"count": from_milli(qty), "country": island.name, "x": yard.x, "y": yard.y},
+            )
+        )
+
+
+def _abroad_dues(world: WorldState, defs: Defs, config: GameConfig, ids: list[int]) -> None:
+    """海運業の次の支払いの見込み（DUE）に、圏の造船所の注文の次のターンの払いを島の通貨で足す。"""
+    from hakoniwa_core.trade import fx as fxrates
+
+    for j in ids:
+        for yard in sorted(world.islands[j].facilities, key=lambda f: f.id):
+            for o, due in _next_dues(defs, config, yard):
+                if not is_abroad(o) or due <= 0:
+                    continue
+                island = world.islands.get(o["island"])
+                f = island.facility(o["buyer"]) if island is not None else None
+                if f is None:
+                    continue
+                if o["currency"] != island.id:
+                    due = fxrates.to_own(island, o["currency"], due)
+                f.economy[DUE] = f.economy.get(DUE, 0) + due
