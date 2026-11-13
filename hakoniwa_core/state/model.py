@@ -142,6 +142,10 @@ class MarketRecord:
     demand: int  # 買いたかった量（出された買い注文の合計）
     supply: int  # 売りたかった量（出された売り注文の合計）
     kind: str = ""  # 値段の種類（PRICE_TRADE・PRICE_QUOTE・PRICE_CARRY。空は種類を残す前の記録）
+    # 買い手と売り手の別ごとの注文の量と約定した量（W-72・W-258。計算には使わない記録）。
+    # 別（BUYER_GROUPS の名前）→ [注文した量, 約定した量]
+    buyers: dict[str, list[int]] = field(default_factory=dict)
+    sellers: dict[str, list[int]] = field(default_factory=dict)
 
 
 @dataclass

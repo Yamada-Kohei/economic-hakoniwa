@@ -59,7 +59,10 @@
            data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
         <figure class="chart" data-names="trade.exports,trade.imports,trade.balance"><figcaption>{% translate "輸出・輸入・貿易収支（1ターン）" %}</figcaption></figure>
         <figure class="chart" data-names="ships,ships.busy"><figcaption>{% translate "輸送船" %}</figcaption></figure>
+        <figure class="chart" data-pie="export.*"><figcaption>{% translate "輸出の品目の内訳（額、1ターン）" %}</figcaption></figure>
+        <figure class="chart" data-pie="import.*"><figcaption>{% translate "輸入の品目の内訳（額、1ターン）" %}</figcaption></figure>
       </div>
+      <p class="hint">{% translate "品目の内訳は、貿易圏の市場・二国間契約・海外の商人との売り買いの額です。他国の船を借りた運賃と貸した運賃も 1 つの切れとして入ります。" %}</p>
     </section>
 
     {% if mine %}

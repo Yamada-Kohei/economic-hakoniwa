@@ -1166,9 +1166,9 @@ class _Round:
             payer=gov_payer(),
         )
         books.add_sector(seller, books.WAREHOUSE, "sales", value)
-        books.add_sector(seller, books.TRADE, "exports", value)
+        books.add_trade(seller, "exports", good, value)
         books.add_sector(buyer, books.WAREHOUSE, "purchases", cost)
-        books.add_sector(buyer, books.TRADE, "imports", cost)
+        books.add_trade(buyer, "imports", good, cost)
         self.islands[seller.id].exports += value
         self.islands[buyer.id].imports += cost
         self.islands[seller.id].settled(currency, amount)
@@ -1388,7 +1388,7 @@ class _Round:
             payer=payer,
         )
         books.add(carrier, shipping.id, books.SALES, value)
-        books.add_sector(carrier, books.TRADE, "exports", value)
+        books.add_trade(carrier, "exports", books.FREIGHT_ITEM, value)
         # 貸した船の運賃の収入（船の国の通貨）と、借りた船に払った運賃（買い手の通貨）
         carrier.stats["trade.charter_income"] = carrier.stats.get("trade.charter_income", 0) + value
         buyer.stats["trade.charter_paid"] = buyer.stats.get("trade.charter_paid", 0) + cost
@@ -1397,7 +1397,7 @@ class _Round:
             traders.spent_abroad(f, currency, amount)
         else:
             books.add_sector(buyer, books.GOVERNMENT, "freight", cost)
-        books.add_sector(buyer, books.TRADE, "imports", cost)
+        books.add_trade(buyer, "imports", books.FREIGHT_ITEM, cost)
         self.islands[carrier.id].settled(currency, amount)
         self.islands[buyer.id].settled(currency, amount)
         return cost
@@ -2139,7 +2139,7 @@ class _Round:
             settled[b] = settled.get(b, 0) + moved
             books.stock_moved(seller, sf.id, good, -moved)
             books.add(seller, sf.id, books.SALES, value)
-            books.add_sector(seller, books.TRADE, "exports", value)
+            books.add_trade(seller, "exports", good, value)
             sold_item = traders.entry(sf, good)
             taken = traders.take_cost(sold_item, moved)
             traders.cover_price_gap(seller, sf, ask.entity, taken, value)
@@ -2158,7 +2158,7 @@ class _Round:
             matched += moved
             # 買い手: 仕入れと輸入に数え、運ぶ途中の荷も在庫に数える
             books.add(buyer, bf.id, books.PURCHASES, cost)
-            books.add_sector(buyer, books.TRADE, "imports", cost)
+            books.add_trade(buyer, "imports", good, cost)
             books.stock_moved(buyer, bf.id, good, moved)
             item = traders.entry(bf, good)
             item["held"][0] += moved
