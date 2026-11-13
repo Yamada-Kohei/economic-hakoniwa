@@ -578,7 +578,7 @@
 
 ## [11 画面と統計](11-ui.md)
 
-決まり 93 個、うち仮の決まりの表にあるもの 0 個。
+決まり 95 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -675,6 +675,8 @@
 | UI-91 | 為替の効き方と打てる手の手引き（W-252）は手引きの別のページ（/help/fx/「手引き：為… | 決定 | tests/server/test_fx_guide_and_cautions.py、tests/server/test_help_fx.py |
 | UI-92 | 動かせるが軽く動かすと戻らない・効きの大きい命令（最低賃金 `set_labor_policy`… | 決定 | tests/server/test_fx_guide_and_cautions.py、tests/server/test_help_start.py |
 | UI-93 | 生産調整中のわけ（W-250、2026-11-12）: 施設の状態が売れ行きの調整（target… | 決定 | tests/core/test_phase3_4.py、tests/server/test_screens_notices.py、tests/server/test_slowdown_reasons.py |
+| UI-94 | 市場の記録に、買い手と売り手の別（国営の施設・民営の施設・商社・海外の商人・家計・国の倉庫・政府… | 決定 | tests/core/test_market_groups.py、tests/server/test_good_page.py |
+| UI-95 | 品目ごとの輸出と輸入の額を統計 `export.<財>`・`import.<財>` に残す（W-… | 決定 | tests/core/test_market_groups.py、tests/server/test_trade_overview.py |
 
 ## [12 確かめ方](12-checks.md)
 
