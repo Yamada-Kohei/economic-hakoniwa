@@ -41,7 +41,7 @@ from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.diplomacy import treaties as diplomacy_treaties
 from hakoniwa_core.diplomacy import war
-from hakoniwa_core.economy import SUBSIDIES, Payer, books, entity_of, funds
+from hakoniwa_core.economy import SUBSIDIES, Payer, books, entity_of, export_plan, funds
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
 from hakoniwa_core.military import naval
@@ -2047,17 +2047,22 @@ class _Round:
     def _fx_ahead(self, key: tuple[int, str, int], good: str) -> int:
         """FX-76: 財 good を買う前に取り置く決済通貨（外貨を使う順で good より先で、まだ板寄せの来て
         いない財の見込みの和）。取り置くのは順が `trade.plan_fx_reserved` までの財だけ（設備の機械の
-        ように、要る額が稼ぎの何十倍もある財まで取り置くと、原料が買えなくなった）。"""
-        queue = self.fx_queue.get(key)
-        if not queue:
-            return 0
+        ように、要る額が稼ぎの何十倍もある財まで取り置くと、原料が買えなくなった）。3・4 段（原料と
+        部品・消費財）の財は、輸出の計画の外貨の蓄えの目標（PL-62、本人の B）の分も残す（蓄えは
+        燃料と主食・設備の資材のためのもの。国営施設の設備に使う財は 3 段でも残さない）。"""
+        queue = self.fx_queue.get(key) or {}
         rank = fx_priority(self.defs, good)
         kept = self.config.get("trade.plan_fx_reserved")
-        return sum(
+        ahead = sum(
             v
             for g, v in queue.items()
             if fx_priority(self.defs, g) < rank and fx_priority(self.defs, g) <= kept
         )
+        island = self.world.islands[key[0]]
+        if rank >= 3 and not export_plan.essential(island, good):  # 設備の資材（木材など）は使える
+            reserve = export_plan.reserve_of(island, self.config, key[1], key[2], self.turn)
+            ahead = max(ahead, reserve)
+        return ahead
 
     def _refund(
         self,
@@ -2216,7 +2221,7 @@ class _Round:
             sold_item = traders.entry(sf, good)
             taken = traders.take_cost(sold_item, moved)
             traders.cover_price_gap(seller, sf, ask.entity, taken, value)
-            traders.exported(sf, good, moved)
+            traders.exported(sf, good, moved, currency, money_of(price, moved))
             traders.add_volume(sf, weight(self.defs, good, moved))
             self.islands[seller.id].exports += value
             self.islands[seller.id].settled(currency, amount)
@@ -2288,22 +2293,37 @@ class _Round:
     def _close(
         self, bloc_unmet: dict[tuple[int, str], int], bloc_sellers: dict[tuple[int, str], int]
     ) -> None:
+        planned_by_bloc = export_plan.shares(self.world)  # 前のターンの輸出の計画（PL-62）
         for i in self.ids:
             island = self.world.islands[i]
             here = self.islands[i]
             ships.close_turn(island, self.config, here.carried, here.fuel_value)
             ships.close_port(island, self.config, here.handled)
             self._keep_missed(island)
+            seen = export_plan.observe(island, self.config)
             traders.update_targets(
                 island, self.defs, self.config, bloc_unmet, bloc_sellers, self.turn
             )
-            self._site(island)
             fxrates.keep_turnover(island, self.config, here.turnover)
             self._keep_charter(island, here)
             state = island_state(island)
             state["blocs"] = {
                 str(b["id"]): self._view(b, i, here) for b in blocs.member_of(self.world, i)
             }
+            # 計画経済の輸出の計画（PL-62）: 圏の様子を書いた後に、次のターンの量を決めて商社に
+            # 分ける
+            export_plan.update(
+                self.world,
+                island,
+                self.defs,
+                self.config,
+                self.turn,
+                seen,
+                bloc_unmet,
+                bloc_sellers,
+                planned_by_bloc,
+            )
+            self._site(island)
             self._keep_import_needs(island)
             state["contracts"] = [
                 contract_view(c, i, self.turn) for c in contracts.of_island(self.world, i)
@@ -2390,8 +2410,9 @@ class _Round:
                 f.economy.pop("site", None)
             goods = []
             for good, item in sorted(traders.goods_of(f).items()):
-                if item.get("dir") == traders.EXPORT and item["x"] > 0:
-                    goods.append([good, item["x"], False])
+                load = item["x"] + item.get(traders.PLAN_X, 0)  # 輸出の計画の分も（PL-62）
+                if item.get("dir") == traders.EXPORT and load > 0:
+                    goods.append([good, load, False])
                 elif item.get("dir") == traders.IMPORT and item["m"] > 0:
                     goods.append([good, item["m"], True])
             f.economy["freight_goods"] = goods

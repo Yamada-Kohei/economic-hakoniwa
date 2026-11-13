@@ -287,6 +287,7 @@ def test_import_bids_stop_at_the_band_top_and_say_why_they_fall_short(game, trad
         trade_stage.WHY_FUNDS,
         trade_stage.WHY_SELLERS,
         trade_stage.WHY_BUYERS,  # 輸出の荷の売れ残り（試し遊び1回目）
+        trade_stage.WHY_PRIORITY,  # 外貨を使う順と輸出の計画の蓄えで取り置いた（FX-76・PL-62）
     }
     assert check(world) == []
 

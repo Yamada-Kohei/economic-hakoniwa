@@ -1095,6 +1095,7 @@ ORDER_UNITS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = {
 CLAUSE_UNITS = ("good", ("quantity",), ("price",))
 ORDER_NESTED_UNITS: dict[str, tuple[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
     "propose_treaty": ("clauses", CLAUSE_UNITS),
+    "set_export_plan": ("plans", ("good", ("quantity",), ())),  # 輸出の計画（PL-62）
 }
 # 項目の下に「財 → 量」の表を持つ命令（W-182）。種類 → 項目。備蓄の目標（food などの補給も財）
 ORDER_GOOD_MAPS: dict[str, str] = {"set_defense": "reserve"}
@@ -1586,6 +1587,15 @@ def _describe_politics(kind: str, payload: dict[str, Any], name: str) -> str:
             cap = entry.get("cap")
             rows.append(f"{where} {'枠を外す' if cap is None else f'{cap:,} 人'}")
         return f"{name}: " + "、".join(rows)
+    if kind == "set_export_plan":
+        rows = []
+        for entry in payload.get("plans", []):
+            good = entry.get("good", "")
+            label = defs.name("goods", good) if good in defs.goods else good
+            qty = entry.get("quantity", 0)
+            unit = defs.unit_name(good) if good in defs.goods else ""
+            rows.append(f"{label} {'輸出しない' if not qty else f'{qty:,} {unit}'}")
+        return f"{name}: " + ("、".join(rows) or "名指しをやめる（全部の財を自動で選ぶ）")
     return ""
 
 

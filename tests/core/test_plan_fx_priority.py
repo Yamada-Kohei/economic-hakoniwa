@@ -67,6 +67,8 @@ def _importing(game, world, island, goods):
     [bloc] = blocs.member_of(world, island.id)
     [f, *_] = traders_of(island, game.config)
     trade_traders.goods_of(f).clear()
+    # 外貨を使う順だけを見る（輸出の計画の外貨の蓄え PL-62 は test_export_plan.py で見る）
+    island.ext.get("plan", {}).pop("export", None)
     for good, qty in goods.items():
         item = trade_traders.entry(f, good)
         item.update({"dir": trade_traders.IMPORT, "bm": bloc["id"], "m": qty})
