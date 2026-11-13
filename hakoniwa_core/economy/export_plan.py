@@ -7,26 +7,33 @@
 次のターンの計画を決める（update）。
 
 - 要る外貨（通貨ごと）: 外貨を使う順の 1 段の財（goods.yaml の fx_priority=1。燃料と主食）の「商社が
-  輸入できた量 ＋ 島の市場の行列」と、国営施設の設備の資材（fx_priority=2）の「輸入できた量 ＋
-  行列」を 1 ターンに傷む分までにした量を、一番安く輸入できる圏の値段で、その圏の通貨で数える
-  （本人の表の 3-1。消費財と直し残しは入れない）。自国の通貨の圏は外貨が要らないので数えない。
+  輸入できた量 ＋ 島の行列（商社自身の輸出の買いを除き、前のターンに圏で売りに出た量まで）」と、
+  国営施設の設備に使う財（外貨を使う順によらない。木材など）の同じ量を 1 ターンに傷む分までにした
+  量を、直近 planning.demand_turns ターンで平均し、一番安く輸入できる圏の値段で、その圏の通貨で
+  数える（本人の表の 3-1。消費財と直し残しは入れない）。自国の通貨の圏は外貨が要らないので数えない。
 - 稼ぐ額 ＝ 要る外貨 ＋（蓄えの目標 − 商社の持つ外貨）÷ planning.export.draw_turns − 売れ残りの輸出
   の稼ぎ（直近の平均）。蓄えの目標 ＝ 要る外貨 × planning.export.reserve_turns（本人の B）。0 未満
   は 0。前のターンに価格差の補給金を払いきれなかった島は、前のターンの計画の分の稼ぎより上げない。
-- 候補: 国営施設が作っていて余った設備（傷みを除いた全力の産出 × 前のターンの達成率 − 国内の生産
-  目標）のある財のうち、その通貨の圏で値段があり、島に行列がなく、商社が輸入していない財。圏の値段が直近
-  の平均より trade.bloc_band 以上下がっている財は外す。外貨の効率（圏の値段を自国通貨に直した額 − 作
-  るのに輸入する原料の額）÷ 原価 の高い順に、余り・圏で売れる見込み（FX-54）・残りの稼ぐ額の一番小さ
-  い量を積む。扱える重さは、1 段の財の輸入の見込みを先に取り置いた残り。
+- 候補: 国営施設が作っていて余り（傷みを除いた全力の産出 − 国内の生産目標。前のターンに目標に届か
+  なかった財は作れた量 − 国内の生産目標）のある財のうち、その通貨の圏で値段があり、島に行列がなく、
+  行列のある財の原料でもなく、商社が輸入していない財。圏の値段が直近の平均より trade.bloc_band
+  以上下がっている財は外す。外貨の効率（圏の値段を自国通貨に直した額 − 作るのに輸入する原料の額）
+  ÷ 原価 の高い順に、余り・圏で売れる見込み（直近の平均の売れた量 ＋ 圏の買えなかった量の分け前。
+  FX-54）・残りの稼ぐ額の一番小さい量を積む。扱える重さは、1 段の財の輸入の見込み（持つ外貨で
+  買える分）を先に取り置いた残り。
 - 命令 set_export_plan（本人の表の 2-2）: 財ごとに量（余りまで。稼ぐ額と売れる見込みでは縮めない）か
   輸出しない（0）を名指しできる。名指しの分の稼ぎを稼ぐ額から引いた残りを自動で選ぶ。
 - 計画の量は前のターンの量から trade.target_speed の割合だけ新しい量に近づけ（商社の狙う量と同じ
-  形）、圏で売れ残って島の市場に戻した荷の量を引く。
+  形）、圏で売れ残って島の市場に戻した荷の量を引く。値下がり・効率・稼ぐ額で選ばなかった財は同じ
+  割合で 0 へ減らし、余りがない・行列がある・輸入している・輸出しないと名指しした財はすぐ外す。
+  生産目標に足すのは、計画の量から商社がもう持っている輸出の荷を引いた量（plan.export_planned）。
 - 商社: 財ごとの計画の量を、その財を輸出している（いなければ荷の少ない）動いている商社に分け、
-  ``traders.PLAN_X`` に置く。商社は島の市場に計画の分を別の注文で出し、その注文は食料も国営施設と
-  同じ順位で配られる（本人の表の 1-2。modules/market）。生産目標の需要の履歴からは除く。
+  ``traders.PLAN_X`` に置く。どの商社にも扱える重さを超えては分けない。商社は島の市場に計画の分を
+  別の注文で出し（扱える重さは計画の分に先に充てる）、その注文は食料も国営施設と同じ順位で配られる
+  （本人の表の 1-2。modules/market）。生産目標の需要の履歴からは除く。
 - 蓄え（本人の B）: 蓄えが目標より少ない間は、外貨を使う順の 3・4 段の輸入に目標を超える分しか使わな
-  い（reserve_of。modules/trade の _fx_ahead）。
+  い（reserve_of。modules/trade の _fx_ahead）。国営施設の設備に使う財（essential）は 3 段でも
+  使える。
 - 中央銀行の外貨は使わない。
 
 島の状態は ``island.ext["plan"]["export"]``:
@@ -36,6 +43,8 @@
 - needs: 通貨 → {"fuel": 1 段の分, "equipment": 設備の分}（画面の内訳）
 - rows: 財 → {currency, price, eff, sold}（画面）、bloc: 財 → 輸出する圏の番号
 - unsold: 通貨 → 売れ残りの輸出の稼ぎの履歴、planned: 通貨 → 前のターンの計画の分の稼ぎ
+- wants: 財 → 要る外貨に数えた量の履歴、sold: 財 → 圏で売れた量の履歴、cargo: 財 → 商社の持つ
+  輸出の荷、essential: 蓄えを使ってよい設備の資材
 - idle: 稼ぐ額があるのに候補のないターンの数、noticed: そのことを知らせた
 """
 
@@ -76,10 +85,18 @@ def named(island: IslandState) -> dict[str, int]:
     return island.ext.get(planning.KEY, {}).get(KEY, {}).get("named", {})
 
 
-def reserve_of(island: IslandState, config: GameConfig, entity: str, currency: int) -> int:
+def essential(island: IslandState, good: str) -> bool:
+    """財 good が、外貨を使う順の 3 段以下でも蓄え（本人の B）を使ってよい設備の資材か（国営施設の
+    設備に使う財。木材など。本人の表の 3-1）。"""
+    return good in island.ext.get(planning.KEY, {}).get(KEY, {}).get("essential", ())
+
+
+def reserve_of(
+    island: IslandState, config: GameConfig, entity: str, currency: int, turn: int | None = None
+) -> int:
     """本人の B: 主体 entity の通貨 currency の持ち高のうち、外貨を使う順の 3・4 段の輸入に使わず
-    残す額（蓄えの目標を、島の国営の商社の持ち高の比で分けた分。持ち高まで）。計画経済でない島と
-    自国の通貨は 0。"""
+    残す額（蓄えの目標を、島の動いている国営の商社の持ち高の比で分けた分。持ち高まで）。計画経済で
+    ない島と自国の通貨は 0。"""
     if currency == island.id or not traders.is_planned(island):
         return 0
     target = island.ext.get(planning.KEY, {}).get(KEY, {}).get("reserve", {}).get(str(currency), 0)
@@ -88,14 +105,14 @@ def reserve_of(island: IslandState, config: GameConfig, entity: str, currency: i
     mine = fxmoney.holding(island, entity, currency)
     if mine <= 0:
         return 0
-    total = sum(fxmoney.holding(island, e, currency) for e in _entities(island, config))
+    total = sum(fxmoney.holding(island, e, currency) for e in _entities(island, config, turn))
     return min(mine, target * mine // max(1, total, mine))
 
 
-def _entities(island: IslandState, config: GameConfig) -> list[str]:
-    """島の国営の商社のお金を持つ主体（重なりなし）。"""
+def _entities(island: IslandState, config: GameConfig, turn: int | None = None) -> list[str]:
+    """島の国営の商社のお金を持つ主体（重なりなし。turn を渡すと動いている商社だけ）。"""
     out: list[str] = []
-    for f in traders_of(island, config):
+    for f in traders_of(island, config, turn):
         if f.owner != OWNER_STATE:
             continue
         e = entity_of(config, f)
@@ -171,9 +188,11 @@ def update(
         _assign(island, defs, config, {}, found, working)
         return
     _keep_unsold(state, config, seen)
-    needs, parts = _needs(island, defs, config, found, records, seen)
+    _keep_sold(state, config, seen)
+    needs, parts = _needs(world, island, defs, config, found, records, seen)
     held = {
-        c: sum(fxmoney.holding(island, e, int(c)) for e in _entities(island, config)) for c in needs
+        c: sum(fxmoney.holding(island, e, int(c)) for e in _entities(island, config, turn))
+        for c in needs
     }
     reserve_turns = config.get("planning.export.reserve_turns")
     draw = max(1, config.get("planning.export.draw_turns"))
@@ -188,7 +207,7 @@ def update(
         if short_gap:  # 補給金を払いきれなかった: 前のターンの計画の分の稼ぎより上げない
             value = min(value, state.get("planned", {}).get(c, 0))
         earn[c] = max(0, value)
-    goals = _choose(
+    goals, kept = _choose(
         world,
         island,
         defs,
@@ -202,22 +221,28 @@ def update(
         planned_by_bloc,
     )
     # 計画の量は前のターンの量から trade.target_speed の割合だけ近づける（名指しは近づけない）。
-    # 圏で売れ残って島に戻した荷は、次のターンの量から引く（行って戻るだけにしない）
+    # 今回選ばなかった財も、候補に残っていれば（値下がり・効率・稼ぐ額で外れただけなら）0 へ同じ
+    # 割合で減らす（作る量を1ターンで大きく変えない）。余りがない・行列がある・輸入している・
+    # 名指しで 0 の財はすぐ外す。圏で売れ残って島に戻した荷は、次のターンの量から引く（行って戻る
+    # だけにしない）
     speed = config.get("trade.target_speed")
     before = state.get("plan", {})
     names = named(island)
     plan: dict[str, int] = {}
     for good in sorted(set(before) | set(goals)):
+        if good not in goals and good not in kept:
+            continue
         goal = goals.get(good, 0)
         qty = goal if good in names else _approach(before.get(good, 0), goal, speed)
         qty -= seen["returned"].get(good, 0)
-        if qty > 0 and good in goals:
+        if qty > 0:
             plan[good] = qty
     state["plan"] = plan
     state["bloc"] = {g: found[g].export_bloc for g in plan if found[g].export_bloc is not None}
     state["need"], state["needs"], state["earn"] = needs, parts, earn
     state["reserve"], state["held"] = reserve, held
     state["planned"] = _planned_value(island, found, plan)
+    state["cargo"] = _cargo(island, config, plan)
     _notice(island, state, earn, plan)
     _assign(island, defs, config, plan, found, working)
     # 画面と達成率に使う生産目標も、新しい計画の量で書き直す
@@ -236,7 +261,19 @@ def update(
 
 def _forget(state: dict[str, Any]) -> None:
     """港がない・圏に入っていない・商社がない: 計画はなく、今までどおり売れ残りだけを輸出する。"""
-    for key in ("plan", "bloc", "need", "needs", "earn", "reserve", "held", "planned", "rows"):
+    for key in (
+        "plan",
+        "bloc",
+        "need",
+        "needs",
+        "earn",
+        "reserve",
+        "held",
+        "planned",
+        "rows",
+        "cargo",
+        "essential",
+    ):
         state.pop(key, None)
 
 
@@ -260,7 +297,35 @@ def _keep_unsold(state: dict[str, Any], config: GameConfig, seen: Mapping[str, A
             del history[c]
 
 
+def _keep_sold(state: dict[str, Any], config: GameConfig, seen: Mapping[str, Any]) -> None:
+    """財ごとの圏で売れた量の履歴（圏で売れる見込みを直近の平均で見る。1ターンの売れ方で計画を
+    跳ねさせない）。"""
+    keep = config.get("planning.demand_turns")
+    history = state.setdefault("sold", {})
+    exported = seen["exported"]
+    for good in sorted(set(history) | set(exported)):
+        history[good] = [*history.get(good, []), exported.get(good, 0)][-keep:]
+        if not any(history[good]):
+            del history[good]
+
+
+def _average(history: list[int] | None) -> int:
+    return sum(history) // len(history) if history else 0
+
+
+def _cargo(island: IslandState, config: GameConfig, plan: Mapping[str, int]) -> dict[str, int]:
+    """計画の財ごとに、商社が手元と運ぶ途中に持っている輸出の荷（生産目標から引く。もう作って
+    ある分を作り直させない）。"""
+    out: dict[str, int] = {}
+    for f in traders_of(island, config):
+        for good, item in traders.goods_of(f).items():
+            if good in plan and item.get("dir") == traders.EXPORT and item["held"][0] > 0:
+                out[good] = out.get(good, 0) + item["held"][0]
+    return out
+
+
 def _needs(
+    world: WorldState,
     island: IslandState,
     defs: Defs,
     config: GameConfig,
@@ -268,29 +333,53 @@ def _needs(
     records: Mapping[str, Any],
     seen: Mapping[str, Any],
 ) -> tuple[dict[str, int], dict[str, dict[str, int]]]:
-    """要る外貨（通貨の番号の文字列 → 額）と、その内訳（1 段の分と設備の分）。"""
+    """要る外貨（通貨の番号の文字列 → 額）と、その内訳（1 段の分と設備の分）。
+
+    財ごとの量（輸入できた量 ＋ 島の行列。行列は前のターンに圏で売りに出ていた量まで）は直近
+    planning.demand_turns ターンの平均にする（1ターンの行列の跳ねで稼ぐ額を跳ねさせない）。設備
+    の資材は、外貨を使う順によらず国営施設の設備に使う財（木材など）を 1 ターンに傷む分まで数え、
+    その財を ``essential`` に置く（蓄えを使ってよい。_fx_ahead）。"""
+    state = state_of(island)
     wear = _monthly_wear(island, defs, config)
+    keep = config.get("planning.demand_turns")
+    history = state.setdefault("wants", {})
     needs: dict[str, int] = {}
     parts: dict[str, dict[str, int]] = {}
+    essential: list[str] = []
+    wants: dict[str, int] = {}
     for good in tradable_goods(defs):
         rank = fx_priority(defs, good)
-        if rank > 2:
+        kit = good in wear
+        if rank > 2 and not kit:
             continue
         p = found.get(good)
         if p is None or p.import_bloc is None or p.import_currency in (None, island.id):
             continue
-        record = records.get(good)
-        queue = max(0, record.demand - record.volume) if record is not None else 0
+        queue = traders.home_unmet(island, records.get(good))  # 商社の輸出の買いは除く
+        bloc = blocs_.find(world, p.import_bloc)
+        if bloc is not None:
+            queue = min(queue, bloc.get("supply", {}).get(good, 0))
         qty = seen["imported"].get(good, 0) + queue
-        if rank == 2:  # 設備の資材は 1 ターンに傷む分まで（直し残しは入れない）
+        if rank != 1:  # 設備の資材は 1 ターンに傷む分まで（直し残しは入れない）
             qty = min(qty, wear.get(good, 0))
-        if qty <= 0:
+        wants[good] = qty
+        if kit and rank > 2:
+            essential.append(good)
+    for good in sorted(set(history) | set(wants)):
+        history[good] = [*history.get(good, []), wants.get(good, 0)][-keep:]
+        if not any(history[good]):
+            del history[good]
+    for good in sorted(history):
+        qty = _average(history[good])
+        p = found.get(good)
+        if qty <= 0 or p is None or p.import_currency in (None, island.id):
             continue
         value = money_of(p.import_price, qty)
         c = str(p.import_currency)
         needs[c] = needs.get(c, 0) + value
         part = parts.setdefault(c, {"fuel": 0, "equipment": 0})
-        part["fuel" if rank == 1 else "equipment"] += value
+        part["fuel" if fx_priority(defs, good) == 1 else "equipment"] += value
+    state["essential"] = essential
     return needs, parts
 
 
@@ -317,8 +406,9 @@ def _choose(
     bloc_unmet: Mapping[tuple[int, str], int],
     bloc_sellers: Mapping[tuple[int, str], int],
     planned_by_bloc: Mapping[tuple[int, str], int],
-) -> dict[str, int]:
-    """財 → このターンに決めた計画の量（近づける前）。名指しを先に、残りを効率の順に。"""
+) -> tuple[dict[str, int], set[str]]:
+    """財 → このターンに決めた計画の量（近づける前）と、候補に残った財（値下がり・効率・稼ぐ額で
+    選ばなかった財を含む。計画から外すときに 0 へ近づける）。名指しを先に、残りを効率の順に。"""
     state = state_of(island)
     plan_state = planning.state_of(island)
     queues = plan_state.get("queues", {})
@@ -332,9 +422,13 @@ def _choose(
     band = to_basis(config.get("trade.bloc_band"))
     recent = config.get("planning.demand_turns")
     weight_left = sum(
-        config.get("trade.trader_capacity") * QUANTITY_SCALE - traders.first_import_weight(defs, f)
+        config.get("trade.trader_capacity") * QUANTITY_SCALE
+        - traders.first_import_weight(island, defs, f)
         for f in working
     )
+    feeds = _queued_inputs(island, defs, queues)
+    sold_history = state.get("sold", {})
+    kept: set[str] = set()
     rows: dict[str, dict[str, Any]] = {}
     candidates: list[tuple[float, str, int, int, str]] = []  # (−効率, 財, 余り, 値段, 通貨)
     for good in tradable_goods(defs):
@@ -346,9 +440,13 @@ def _choose(
         cap = caps.get(good, 0)
         if cap <= 0:
             continue
-        rate = min(BASIS, round(achieved.get(good, 1.0) * BASIS))  # 達成率は割合（1 が 100%）
         domestic = planning.domestic_goal(island, config, good) or 0
-        room = cap * rate // BASIS - domestic
+        room = cap - domestic
+        made = island.stats.get(f"production.{good}")
+        if achieved.get(good, 1.0) < 1 and made is not None:
+            # 前のターンに目標に届かなかった（原料・人・電気が足りない）: 作れた量を上限に見る
+            # （達成率は目標に対する割合なので、全力の産出に掛けると作れる量を見誤る）
+            room = min(room, round_money(made * QUANTITY_SCALE) - domestic)
         if room <= 0:
             continue
         if good in imported:
@@ -363,10 +461,14 @@ def _choose(
         c = str(p.export_currency)
         rows[good] = {"currency": p.export_currency, "price": price, "eff": round(eff, 4)}
         if names.get(good, 0) > 0:  # 名指しした財は、行列・値下がり・効率では外さない
+            kept.add(good)
             candidates.append((-eff, good, room, price, c))
             continue
         bloc = blocs_.find(world, p.export_bloc)
-        if queues.get(good, 0) > 0 or eff <= 0:
+        if queues.get(good, 0) > 0 or good in feeds:  # 行列のある財とその原料は国内が先
+            continue
+        kept.add(good)
+        if eff <= 0:
             continue
         if bloc is not None and _fallen(bloc, good, price, band, recent):
             continue
@@ -396,7 +498,7 @@ def _choose(
             share = unmet * mine // total
         else:
             share = unmet // (bloc_sellers.get(key, 0) + 1)
-        sellable = seen["exported"].get(good, 0) + share
+        sellable = _average(sold_history.get(good)) + share
         qty = min(room, sellable, left[c] * QUANTITY_SCALE // price)
         qty = _fit(defs, good, qty, weight_left)
         if qty <= 0:
@@ -407,7 +509,19 @@ def _choose(
     for good, row in rows.items():
         row["sold"] = seen["exported"].get(good, 0)
     state["rows"] = {g: rows[g] for g in sorted(set(goals) | set(before)) if g in rows}
-    return goals
+    return goals, kept
+
+
+def _queued_inputs(island: IslandState, defs: Defs, queues: Mapping[str, int]) -> set[str]:
+    """島に行列のある財を作る国営施設の原料（輸出に回さず国内の生産に使う）。"""
+    out: set[str] = set()
+    for f in island.facilities:
+        if not f.built or f.owner != OWNER_STATE:
+            continue
+        recipe = fac.recipe_of(defs, f)
+        if any(queues.get(g, 0) > 0 for g in recipe.get("outputs", {})):
+            out.update(recipe.get("inputs", {}))
+    return out
 
 
 def _fallen(bloc: Mapping[str, Any], good: str, price: int, band: int, recent: int) -> bool:
@@ -499,37 +613,55 @@ def _assign(
     working: list[Any],
 ) -> None:
     """財ごとの計画の量を動いている商社に分ける（その財を輸出している商社で等分。いなければ輸出の
-    荷の一番軽い商社が受け持つ）。"""
+    荷の一番軽い商社が受け持つ）。どの商社にも、扱える重さ（1 段の財の輸入の見込みを取り置いた
+    残り）を超えては分けず、超えた分は荷の軽いほかの商社に回す。"""
     for f in traders_of(island, config):
         for item in traders.goods_of(f).values():
             item.pop(traders.PLAN_X, None)
     if not working:
         return
-    load = {f.id: 0 for f in working}
+    full = config.get("trade.trader_capacity") * QUANTITY_SCALE
+    room = {f.id: full - traders.first_import_weight(island, defs, f) for f in working}
     for good, qty in sorted(plan.items()):
         p = found.get(good)
         if p is None or p.export_bloc is None:
             continue
+        unit = unit_weight(defs, good)
         sellers = [
             f for f in working if traders.goods_of(f).get(good, {}).get("dir") == traders.EXPORT
         ]
-        if not sellers:
-            free = [
-                f
-                for f in working
-                if traders.goods_of(f).get(good, {}).get("dir") != traders.IMPORT
-                or traders.goods_of(f)[good]["held"][0] <= 0
-            ]
-            if not free:
+        # 輸入の荷（手元と運ぶ途中）のない商社だけが、この財を輸出の向きに替えられる
+        free = [
+            f
+            for f in working
+            if f not in sellers
+            and (
+                traders.goods_of(f).get(good, {}).get("dir") != traders.IMPORT
+                or (
+                    traders.goods_of(f)[good]["held"][0] <= 0
+                    and traders.goods_of(f)[good].get("transit", 0) <= 0
+                )
+            )
+        ]
+        free.sort(key=lambda f: (-room[f.id], f.id))
+        if not sellers and free:
+            sellers = [free.pop(0)]
+        left = qty
+        each = qty // max(1, len(sellers))
+        for i, f in enumerate([*sellers, *free]):
+            if left <= 0:
+                break
+            share = left if i >= len(sellers) - 1 else min(left, each)
+            if unit > 0:
+                share = min(share, max(0, room[f.id]) * QUANTITY_SCALE // unit)
+            if share <= 0:
                 continue
-            sellers = [min(free, key=lambda f: (load[f.id], f.id))]
-        each, rest = divmod(qty, len(sellers))
-        for i, f in enumerate(sellers):
             item = traders.entry(f, good)
             item["dir"] = traders.EXPORT
             item["bx"] = p.export_bloc
-            item[traders.PLAN_X] = each + (1 if i < rest else 0)
-            load[f.id] += item[traders.PLAN_X] * unit_weight(defs, good) // QUANTITY_SCALE
+            item[traders.PLAN_X] = share
+            room[f.id] -= share * unit // QUANTITY_SCALE
+            left -= share
 
 
 def _clear_traders(island: IslandState, config: GameConfig) -> None:

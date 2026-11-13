@@ -1103,6 +1103,7 @@ class Market(IslandStage):
         needs.close_clothes(island, config, ctx.defs)
         foreign = self._foreign_supply(config, books_by_good, results)
         island.scratch[traders.FOREIGN_SUPPLY] = foreign
+        island.scratch[traders.TRADER_SHORT] = self._trader_short(config, books_by_good, results)
         sold = self._imports_sold(books_by_good, results)
         self._spoil(island, ctx)
         self._imports_left(island, sold)
@@ -4413,6 +4414,26 @@ class Market(IslandStage):
                     entry = out.setdefault(good, [0, 0])
                     entry[0] += order.quantity
                     entry[1] += result.sold[i]
+        return out
+
+    @staticmethod
+    def _trader_short(
+        config: GameConfig, books_by_good: dict[str, Book], results: dict[str, auction.Result]
+    ) -> dict[str, int]:
+        """財 → 商社の輸出の買いのうち買えなかった量（traders.TRADER_SHORT）。島の行列（輸入が
+        要るか）を数えるときに除く（計画経済の輸出の計画 PL-62: 除かないと、輸出の買いが届かない
+        分が「輸入が要る」に数えられ、輸出の財を輸入の向きに変えていた）。"""
+        out: dict[str, int] = {}
+        for good, book in sorted(books_by_good.items()):
+            result = results.get(good)
+            if result is None:
+                continue
+            for i, (order, party) in enumerate(book.buys):
+                f = party.facility
+                if f is not None and trade.is_trader(config, f):
+                    short = order.quantity - result.bought[i]
+                    if short > 0:
+                        out[good] = out.get(good, 0) + short
         return out
 
     @staticmethod

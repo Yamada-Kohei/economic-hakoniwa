@@ -45,6 +45,37 @@ def planned_islands(world):
     return [i for i in world.islands.values() if i.regime["economy"] == "planned"]
 
 
+def room_of(island, game, good):
+    """国内の分を除いた余り（export_plan._choose と同じ: 全力の産出、前のターンに目標に届かなかった
+    財は作れた量まで）。"""
+    config = game.config
+    domestic = planning.domestic_goal(island, config, good) or 0
+    room = planning.capacities(island, game.defs, config).get(good, 0) - domestic
+    made = island.stats.get(f"production.{good}")
+    if planning.state_of(island).get("achieved", {}).get(good, 1.0) < 1 and made is not None:
+        room = min(room, round(made * QUANTITY_SCALE) - domestic)
+    return room
+
+
+def exportable(world, game, goods=("wood", "grain", "fish", "stone", "iron_ore")):
+    """余りがあり、外貨の圏へ輸出でき、行列がなく輸入もしていない (計画経済の島, 財)。"""
+    config = game.config
+    for island in planned_islands(world):
+        found = trade_traders.prospects(island, game.defs, config)
+        for g in goods:
+            p = found.get(g)
+            if (
+                p is not None
+                and p.export_bloc is not None
+                and p.export_currency != island.id
+                and room_of(island, game, g) > 0
+                and not planning.state_of(island).get("queues", {}).get(g)
+                and g not in trade_traders.imported(island, config)
+            ):
+                return island, g
+    raise AssertionError("輸出できる余りのある財がない")
+
+
 def no_seen():
     return {"imported": {}, "exported": {}, "returned": {}, "proceeds": {}}
 
@@ -93,6 +124,28 @@ def test_plan_and_unsold_exports_are_separate_orders_and_first_imports_keep_weig
         if o.facility is f and o.good == good
     ]
     assert orders == []
+    # 外貨の圏の石炭は、商社の持つ外貨で買える量の重さだけ取り置く（外貨がなければ取り置かない。
+    # 買えない石炭のために、外貨を稼ぐ輸出の荷を締め出さない）
+    view = next(
+        (
+            (int(b), v)
+            for b, v in trade_traders.views(island).items()
+            if v["currency"] != island.id and v["prices"].get("coal", 0) > 0
+        ),
+        None,
+    )
+    if view is not None:
+        coal["bm"] = view[0]
+        fxmoney.holdings(island).get(entity_of(game.config, f), {}).pop(
+            str(view[1]["currency"]), None
+        )
+        assert trade_traders.first_import_weight(island, game.defs, f) == 0
+        orders = [
+            o
+            for o in trade_traders.home_orders(island, game.defs, game.config, world.turn)
+            if o.facility is f and o.good == good
+        ]
+        assert (4000, True) in [(o.qty, o.plan) for o in orders]
 
 
 def test_export_plan_buys_are_not_counted_as_domestic_demand(game, base):
@@ -101,20 +154,18 @@ def test_export_plan_buys_are_not_counted_as_domestic_demand(game, base):
     from hakoniwa_core.modules.market import UNFUNDED
 
     world = copy.deepcopy(base)
-    island = next(
-        i
-        for i in planned_islands(world)
-        if (p := trade_traders.prospects(i, game.defs, game.config).get("wood")) is not None
-        and p.export_bloc is not None
-        and p.export_currency != i.id
-    )
-    export_plan.state_of(island)["named"] = {"wood": 20 * QUANTITY_SCALE}
-    run(game, world, 2)  # 1 ターン目の終わりに計画を決め、銀行の段が代金を見込み、2 ターン目に買う
-    ordered = island.scratch.get(planning.EXPORT_ORDERED, {}).get("wood", 0)
+    island, good = exportable(world, game)
+    qty = min(20 * QUANTITY_SCALE, room_of(island, game, good))
+    export_plan.state_of(island)["named"] = {good: qty}
+    # 計画を今決めて（作れる量はターンごとに揺れるので、余りのある今の世界で）、次のターンに買う
+    export_plan.update(world, island, game.defs, game.config, world.turn, no_seen(), {}, {}, {})
+    assert export_plan.plans(island).get(good) == qty
+    run(game, world, 1)
+    ordered = island.scratch.get(planning.EXPORT_ORDERED, {}).get(good, 0)
     assert ordered > 0, "輸出の計画の分の注文が出ていない"
-    record = next(m for m in island.markets if m.good == "wood")
-    history = planning.state_of(island)["demand"]["wood"]
-    unfunded = island.scratch.get(UNFUNDED, {}).get("wood", 0)
+    record = next(m for m in island.markets if m.good == good)
+    history = planning.state_of(island)["demand"][good]
+    unfunded = island.scratch.get(UNFUNDED, {}).get(good, 0)
     assert history[-1] == max(0, record.demand - ordered) + unfunded
 
 
@@ -176,6 +227,10 @@ def test_reserve_below_target_keeps_fx_from_consumer_goods_only(game, base):
     assert r._fx_ahead(key, "iron_ore") == holding
     assert r._fx_ahead(key, "coal") == 0
     assert r._fx_ahead(key, "machinery") == 0
+    # 国営施設の設備に使う財（木材など）は 3 段でも蓄えを使える（本人の表の 3-1）
+    export_plan.state_of(island)["essential"] = ["iron_ore"]
+    assert r._fx_ahead(key, "iron_ore") == 0
+    export_plan.state_of(island)["essential"] = []
     export_plan.state_of(island)["reserve"] = {str(currency): holding // 4}
     assert r._fx_ahead(key, "automobile") == holding // 4  # 目標を超える分は使える
     # 市場経済の島は蓄えを残さない
@@ -188,21 +243,7 @@ def test_named_goods_skip_the_sellable_cap_and_none_drops_a_good(game, base):
     外す（本人の表の 2-2）。"""
     world = copy.deepcopy(base)
     config = game.config
-    island = next(
-        i for i in planned_islands(world) if trade_traders.prospects(i, game.defs, config)
-    )
-    found = trade_traders.prospects(island, game.defs, config)
-    caps = planning.capacities(island, game.defs, config)
-    good = next(
-        g
-        for g in ("wood", "grain", "fish", "stone", "iron_ore")
-        if caps.get(g, 0) > (planning.domestic_goal(island, config, g) or 0)
-        and found.get(g) is not None
-        and found[g].export_bloc is not None
-        and found[g].export_currency != island.id
-        and not planning.state_of(island).get("queues", {}).get(g)
-        and g not in trade_traders.imported(island, config)
-    )
+    island, good = exportable(world, game)
     state = export_plan.state_of(island)
     state["named"] = {good: 1 * QUANTITY_SCALE}
     state["plan"] = {}

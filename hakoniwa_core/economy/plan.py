@@ -716,8 +716,11 @@ def fill_share(island: IslandState, defs: Defs, config: GameConfig, good: str) -
 
 
 def export_planned(island: IslandState, good: str) -> int:
-    """財 good の輸出の計画の量（PL-62。economy/export_plan.py が貿易の段の終わりに決める）。"""
-    return island.ext.get(KEY, {}).get(EXPORT, {}).get("plan", {}).get(good, 0)
+    """財 good の輸出の計画のうち、これから作る量（PL-62。economy/export_plan.py が貿易の段の終わり
+    に決める。商社がもう持っている輸出の荷は引く）。"""
+    state = island.ext.get(KEY, {}).get(EXPORT, {})
+    planned = state.get("plan", {}).get(good, 0)
+    return max(0, planned - state.get("cargo", {}).get(good, 0))
 
 
 def domestic_goal(island: IslandState, config: GameConfig, good: str) -> int | None:

@@ -1850,13 +1850,15 @@ class _Round:
     def _fx_ahead(self, key: tuple[int, str, int], good: str) -> int:
         """FX-76: 財 good を買う前に取り置く決済通貨（外貨を使う順で good より先で、まだ板寄せの来て
         いない財の見込みの和）。3・4 段（原料と部品・消費財）の財は、輸出の計画の外貨の蓄えの目標
-        （PL-62、本人の B）の分も残す（蓄えは燃料と主食・設備の資材のためのもの）。"""
+        （PL-62、本人の B）の分も残す（蓄えは燃料と主食・設備の資材のためのもの。国営施設の設備
+        に使う財は 3 段でも残さない）。"""
         queue = self.fx_queue.get(key) or {}
         rank = fx_priority(self.defs, good)
         ahead = sum(v for g, v in queue.items() if fx_priority(self.defs, g) < rank)
-        if rank >= 3:
-            island = self.world.islands[key[0]]
-            ahead = max(ahead, export_plan.reserve_of(island, self.config, key[1], key[2]))
+        island = self.world.islands[key[0]]
+        if rank >= 3 and not export_plan.essential(island, good):  # 設備の資材（木材など）は使える
+            reserve = export_plan.reserve_of(island, self.config, key[1], key[2], self.turn)
+            ahead = max(ahead, reserve)
         return ahead
 
     def _refund(
