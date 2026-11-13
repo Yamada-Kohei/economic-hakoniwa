@@ -1808,13 +1808,15 @@ class _Round:
         数えない。
 
         見込みは、島・主体ごとに狙う量の残りを足し、前のターンに圏で売りに出た量と輸入の割り当てで
-        縮め、空いた船と扱える重さで縮めて、圏の市場に出す指値（_import_terms）で値を付けた額。前の
-        ターンに圏で約定がなかった財（売りの値段が値幅に入らない・船が出ないなど）と、前のターンに
-        封鎖で船出を断られた財は数えない（入らない財のために外貨を寝かせない）。"""
+        縮め、空いた船と扱える重さで縮め、前のターンに圏で買い注文が埋まった割合（約定 ÷ 買い）を
+        掛けて、圏の市場に出す指値（_import_terms）で値を付けた額。前のターンに圏で約定が
+        なかった財（売りの値段が値幅に入らない・船が出ないなど）と、前のターンに封鎖で船出を
+        断られた財は数えない（入らない財のために外貨を寝かせない）。"""
         currency = bloc["currency"]
         cap = self.config.get("trade.trader_capacity") * QUANTITY_SCALE
         supply = bloc.get("supply", {})
         volume = bloc.get("volume", {})
+        demand = bloc.get("demand", {})
         wants: dict[tuple[int, str, int], dict[str, list[int]]] = {}  # 鍵 → 財 → [量, 扱える重さ]
         for m in members:
             island = self.world.islands[m]
@@ -1843,6 +1845,11 @@ class _Round:
                 want, _, _ = self._import_room(
                     island, good, bloc, min(want, supply.get(good, 0)), room, quota, effects=False
                 )
+                # 前のターンに圏で買い注文が埋まった割合までしか買えない見込み（買いの多い財で狙う
+                # 量の全部を取り置くと、買えない分の外貨が寝て、後の順の原料が買えなかった）
+                bought, asked = volume.get(good, 0), demand.get(good, 0)
+                if asked > bought:
+                    want = want * bought // asked
                 if want > 0:
                     out.setdefault(key, {})[good] = money_of(terms.limit, want)
         return out

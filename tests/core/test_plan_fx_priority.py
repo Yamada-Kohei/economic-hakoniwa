@@ -250,3 +250,17 @@ def test_measure_counts_worn_equipment_on_its_own():
 
     assert measure.CAUSES["equipment"] == "equipment"
     assert "equipment" in measure.CAUSE_GROUPS
+
+
+def test_queue_keeps_only_the_share_the_bloc_filled_last_turn(game, base):
+    """前のターンに圏で買い注文の 1/4 しか埋まらなかった財は、狙う量の 1/4 の分だけ取り置く
+    （買えない分の外貨を寝かせて、後の順の原料を買えなくしない）。"""
+    world = copy.deepcopy(base)
+    island = island_of(world, "planned")
+    want = 20 * QUANTITY_SCALE
+    bloc, _, key = _importing(game, world, island, {"steel": want})
+    bloc.setdefault("demand", {})["steel"] = 4 * bloc["volume"]["steel"]
+    r = trade_stage._Round(world, _context(game, world))
+    members = [m for m in bloc["members"] if m in r.islands]
+    terms, _ = r._import_terms(island, "steel", bloc)
+    assert r._plan_fx_queue(bloc, members)[key]["steel"] == money_of(terms.limit, want // 4)
