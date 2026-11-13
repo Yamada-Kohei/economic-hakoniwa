@@ -7,6 +7,7 @@ import re
 import pytest
 from django.urls import reverse
 
+from server.game import get_game
 from server.web import display
 from server.web.context import SCREEN_HELP
 from server.web.views import STATUS_HELP, status_help_name
@@ -74,3 +75,15 @@ def test_guides_follow_the_seven_entries_of_the_island_screens(client, world):
     for page in (start, general, hakoniwa):
         assert "上の「外交」" not in page and "メニューの「外交」" not in page
         assert "島の画面の上" not in page
+
+
+@pytest.mark.django_db
+def test_guides_say_orders_go_one_or_two_at_a_time_and_queue_only_for_absence(client, world):
+    """入門の「結果を見てから手を打つ」と、命令を max_queue 件まで並べられることが食い違わない
+    （ふだんは 1〜2 手ずつ、何日か見に来られないときだけ前もって並べる）。"""
+    n = get_game().config.get("orders.max_queue")
+    start = client.get("/help/start/").content.decode()
+    general = client.get("/help/").content.decode()
+    assert f"命令の列には {n} 件まで前もって並べられますが" in start
+    assert "何日か見に来られないとき" in start
+    assert f"列には {n} 件まで前もって並べられます" in general
