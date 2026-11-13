@@ -108,6 +108,7 @@ from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
 from hakoniwa_core.military import forces
 from hakoniwa_core.modules import infrastructure
+from hakoniwa_core.modules.infrastructure import contracts, machines
 from hakoniwa_core.modules.population import (
     FED,
     FOOD_ORDERS,
@@ -1014,6 +1015,7 @@ class Market(IslandStage):
         }
         self._site_orders(island, ctx, books_by_good, rates, offered, hh_rate)
         self._transport_orders(island, ctx, books_by_good, hh_rate, offered)
+        self._machine_orders(island, ctx, books_by_good, hh_rate, offered)
         self._household_orders(island, ctx, books_by_good, hh_rate, offered)
         self._fuel_orders(island, ctx, books_by_good, rates)
         self._contract_orders(island, ctx, books_by_good)
@@ -1068,6 +1070,7 @@ class Market(IslandStage):
         self._adapt_usual(island, ctx, books_by_good)
         self._adapt_materials(island, ctx, books_by_good)
         self._update_prices(island, ctx, books_by_good, results)
+        contracts.review_prices(island, defs, config)  # 土木業者の単価（IN-33）
         power = config.get("power.good")
         if official:
             self._plan_record(island, ctx, books_by_good, official, bought)
@@ -4076,6 +4079,44 @@ class Market(IslandStage):
             party.reserved = gross_cost(limit, qty, rate, 0)
             funds.commit(island, payer, party.reserved)
             self._add(books_by_good, good, "buy", Order(qty, limit), party)
+
+    def _machine_orders(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        books_by_good: dict[str, Book],
+        rate: int,
+        offered: dict[str, int],
+    ) -> None:
+        """土木業者の重機にする機械と、重機の燃料の注文（W-270 の IN-34。machines.py）。運送業の
+        トラックと同じく、値幅の上端を指値にし、燃料の指値は重機が人より安く使える値段まで。"""
+        defs, config = ctx.defs, ctx.config
+        width = to_basis(config.get("market.band"))
+        prices = island.economy.prices
+        wanted = island.scratch.setdefault("wanted", {})
+        each = contracts.per_worker(config)
+        for f in contracts.contractors(island, config):
+            if not f.built or is_stopped(f):
+                continue
+            ordered = sum(f.economy.get(contracts.ORDERS, [0, 0]))
+            crew = -(-ordered // each)
+            plan = {}
+            for good, qty in sorted(machines.orders(island, config, f, crew).items()):
+                if offered.get(good, 0) <= 0:
+                    wanted[good] = wanted.get(good, 0) + qty
+                    continue
+                limit = auction.band(prices.get(good, 1), width)[1]
+                if good != config.get("contractor.machines.good"):
+                    limit = min(limit, machines.fuel_limit(island, config, f, good))
+                if limit > 0:
+                    plan[good] = (qty, limit)
+            payer = payer_of(defs, config, f)
+            name = facility_entity(f.id)
+            for good, (qty, limit) in sorted(self._afford(island, payer, plan, rate, 0).items()):
+                party = Party(FACILITY, name, payer, rate, 0, f)
+                party.reserved = gross_cost(limit, qty, rate, 0)
+                funds.commit(island, payer, party.reserved)
+                self._add(books_by_good, good, "buy", Order(qty, limit), party)
 
     @staticmethod
     def _trade_settled(island: IslandState, ctx: StageContext, rates: dict[int, int]) -> None:

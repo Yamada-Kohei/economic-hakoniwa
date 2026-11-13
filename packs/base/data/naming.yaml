@@ -111,6 +111,7 @@ ja:
     consumer_goods_factory: {short: 日用品, long: 消費財工場}
     bank: {short: 銀行, long: 銀行}
     transport: {short: 運輸, long: 運送会社}
+    contractor: {short: 建設, long: 土木業者}
     port: {short: 港湾, long: 港}
     shipping: {short: 海運, long: 海運会社}
     shipyard: {short: 造船, long: 造船所}

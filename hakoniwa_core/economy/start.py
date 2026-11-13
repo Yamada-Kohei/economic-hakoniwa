@@ -28,6 +28,7 @@ from hakoniwa_core.economy import (
     groundwork,
     household,
     is_bank,
+    is_contractor,
     is_self_supporting,
     is_transport,
     owner_entity,
@@ -178,6 +179,8 @@ def next_payments(island: IslandState, defs: Defs, config: GameConfig, f: Facili
         return max(f.economy.get("wanted", 0) * wage, freight_rates.payroll(island, config))
     if services.is_services(config, f):  # 商業・サービス業は雇う人数の目安の賃金（バランス調整）
         return services.next_payments(f)
+    if is_contractor(config, f):  # 土木業者は雇っている人の賃金（W-270）
+        return max(f.economy.get("wanted", 0), f.workers) * wage
     if "trade" in f.economy and f.kind == config.get("trade.trader_facility"):
         from hakoniwa_core.trade import fx, traders  # trade は economy を読むので、ここで読む
 
