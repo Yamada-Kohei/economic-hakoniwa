@@ -685,7 +685,7 @@ def contract_rows(
 def trader_rows(
     here: IslandState, islands: dict[int, dict[str, Any]], blocs: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    """島の商社（工事中・閉鎖中を含む）と、財ごとの向き・狙う量・手元の荷・運ぶ途中の荷。"""
+    """島の商社（工事中・閉鎖中を含む）と、財ごとの向き・狙う量・持つ量・手元の荷・運ぶ途中の荷。"""
     game = get_game()
     defs, config = game.defs, game.config
     names = {b["id"]: b["name"] for b in blocs}
@@ -710,6 +710,10 @@ def trader_rows(
                     "target": display.amount(target if direction else 0, good),  # 1ターンに狙う量
                     "held": display.amount(max(0, held - transit), good),  # 港の倉庫にある荷
                     "transit": display.amount(transit, good),  # 船で運ぶ途中の荷
+                    # 輸入の荷の持つ量（手元と運ぶ途中を合わせて。FX-66）
+                    "hold": display.amount(item.get("hold", 0), good)
+                    if direction == traders.IMPORT
+                    else None,
                     "unit_cost": display.price(good, cost * QUANTITY_SCALE // held)
                     if held > 0
                     else None,
