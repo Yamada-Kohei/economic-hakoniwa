@@ -55,6 +55,7 @@ from typing import Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import entity_of
 from hakoniwa_core.economy import equipment as gear
@@ -68,7 +69,6 @@ from hakoniwa_core.units import BASIS, QUANTITY_SCALE, money_of, round_money, to
 
 KEY = planning.EXPORT
 IDLE_NOTICE = 3  # 稼ぐ額があるのに候補のないターンがこれだけ続いたら1度だけ知らせる
-YEAR = 12
 
 
 def state_of(island: IslandState) -> dict[str, Any]:
@@ -390,7 +390,7 @@ def _monthly_wear(island: IslandState, defs: Defs, config: GameConfig) -> dict[s
         if f.owner != OWNER_STATE or not gear.has_equipment(defs, config, f):
             continue
         for good, qty in gear.kit_of(defs, f).items():
-            out[good] = out.get(good, 0.0) + qty * gear.wear_rate(config, good) / YEAR
+            out[good] = out.get(good, 0.0) + qty * gear.wear_rate(config, good) / TURNS_PER_YEAR
     return {g: round_money(q) for g, q in out.items() if q > 0}
 
 
