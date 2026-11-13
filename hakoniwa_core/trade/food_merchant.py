@@ -7,9 +7,7 @@
 
 - 来る条件（市場の段の始めに決める）: 前のターンに飢えた家計（PO-58）があり、お金のある買いが食料を
   買えなかった量（買えなかった栄養）があり、商人のほかの売り手（島の施設・国の倉庫・商社・契約の荷）の
-  食料に、商人の値段より安い（栄養あたり）売れ残りがなかった。商人の値段より高い売れ残り（物価の
-  高い島の加工した食料など）は数えない（高くて飢えた家計が買えないため。島47 の飢饉）。
-  来ている商人は、前のターンに穀物が売れ、ほかの売り手に（同じ数え方で）売れ残りがない間は
+  食料に売れ残りがなかった。来ている商人は、前のターンに穀物が売れ、ほかの売り手に売れ残りがない間は
   来続ける（食べられたターンに去ると、次のターンにまた飢えて、来る・去るが入れ替わるため）。
   foreign_merchant.turns を過ぎても、貿易圏に入っていなくても来る。
 - 量: 前のターンの買えなかった栄養と前のターンに商人が売れた栄養の和から、このターンに国の倉庫が
@@ -98,22 +96,9 @@ def offer(
     qty = merchant.reach(island, min(qty, cap))
     if qty <= 0:
         return None
-    return good, qty, price(island, defs, config, state.get("cpi", 1.0))
-
-
-def price(island: IslandState, defs: Defs, config: GameConfig, cpi: float) -> int:
-    """商人の穀物の値段（財 1 単位）。初めの値段 × foreign_merchant.multiplier × 島の物価 cpi。"""
-    base = initial_prices(defs, config, island.resources).get(good_of(config), 1)
-    return scale_price(base, config.get("foreign_merchant.multiplier") * cpi)
-
-
-def line(island: IslandState, defs: Defs, config: GameConfig, cpi: float) -> int:
-    """ほかの売り手の売れ残りを数える値段の線（栄養 1 あたり。1000 分の 1 の栄養で割る前の値）。
-    来ていれば止めた物価、来ていなければ今の物価 cpi での商人の値段。"""
-    state = island_state(island).get(KEY, {})
-    frozen = state.get("cpi", cpi) if state.get("active") else cpi
-    unit = max(1, nutrition(defs, good_of(config)))
-    return price(island, defs, config, frozen) * QUANTITY_SCALE // unit
+    base = initial_prices(defs, config, island.resources).get(good, 1)
+    factor = config.get("foreign_merchant.multiplier") * state.get("cpi", 1.0)
+    return good, qty, scale_price(base, factor)
 
 
 def remember(

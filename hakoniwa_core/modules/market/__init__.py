@@ -3864,22 +3864,15 @@ class Market(IslandStage):
             return
         order, cut, price = island.scratch.pop(FOOD_MERCHANT, (None, False, 0))
         sold = filled(grain, order) if order is not None else 0
-        # 商人のほかの売り手（島の施設・国の倉庫・商社・契約の荷）の食料の売れ残り（栄養）。
-        # 栄養あたりで商人の値段より高い売りは数えない（飢えた家計には高くて買えない物は、
-        # ないのと同じ）
-        line = food_merchant.line(island, defs, config, retail.cpi(island))
+        # 商人のほかの売り手（島の施設・国の倉庫・商社・契約の荷）の食料の売れ残り（栄養）
         unsold = 0
         for good, result in results.items():
-            book = books_by_good.get(good)
-            if "food" not in defs.goods.get(good, {}) or book is None:
+            if "food" not in defs.goods.get(good, {}):
                 continue
-            unit = food_merchant.nutrition(defs, good)
-            for i, (o, _) in enumerate(book.sells):
-                left = o.quantity - result.sold[i]
-                ask = result.price if o.limit is None else o.limit
-                if o is order or left <= 0 or ask * QUANTITY_SCALE > line * unit:
-                    continue
-                unsold += left * unit // QUANTITY_SCALE
+            left = max(0, result.supply - result.volume)
+            if good == grain and order is not None:
+                left = max(0, left - (order.quantity - sold))
+            unsold += left * food_merchant.nutrition(defs, good) // QUANTITY_SCALE
         # お金のある買いが食料を買えなかった栄養（食費を使い切った層は除く。お金のない飢えでは
         # 商人は来ない）
         orders = island.scratch.get(FOOD_ORDERS, {})
