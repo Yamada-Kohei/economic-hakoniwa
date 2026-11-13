@@ -152,7 +152,10 @@ def test_targets_set_the_holding_to_the_flow_times_lead_and_stock_turns(game, tr
     assert held, "持つ量を持った輸入の荷がない"
     for island, _, good, item in held:
         turns = traders.holding_turns(island, game.defs, game.config, item, good)
-        assert item["hold"] == pytest.approx(item["m"] * turns, abs=2)
+        # 流れる分は狙う量と島の買いたい量の少ない方（多めに入れる分は何ターン分も持たない）
+        record = next(m for m in island.markets if m.good == good)
+        flow = min(item["m"], record.demand)
+        assert item["hold"] == pytest.approx(flow * turns, abs=2)
         assert turns > game.config.get("market.inventory_turns") or (
             game.defs.goods[good].get("shelf_life") is not None
         )
@@ -513,3 +516,30 @@ def test_targets_hold_still_while_the_cargo_is_beyond_the_line(game, traded):
     item = traders.goods_of(f).get(good)
     if item is not None and item.get("dir") == traders.IMPORT and item.get("m"):
         assert item["m"] == before
+
+
+def test_no_push_beyond_the_demand_while_island_sellers_are_left_unsold(game, traded, monkeypatch):
+    """島の値段が輸入の原価よりずっと高くても、島の売り手の売れ残りがあれば、買いたい量より多めには
+    狙わない（売りが余って値段は下がる。島の製油所の燃料が売れ残る島で燃料を積み増して値段が崩れた。
+    2026-11-13 の full と調べ 4）。持つ量も、狙う量と買いたい量の少ない方で数える。"""
+    monkeypatch.setattr(traders, "_import_margin", lambda p: 1.0)
+    got = {}
+    for unsold in (0, 5_000):
+        world = copy.deepcopy(traded)
+        island, f, good, item = _importer(game, world)
+        demand = 20_000
+        record = MarketRecord(good, 100, demand, demand, demand + unsold, "trade")
+        island.markets = [m for m in island.markets if m.good != good] + [record]
+        island.scratch[traders.TRUE_SHORT] = {good: 0}
+        island.scratch.pop(traders.FOREIGN_SUPPLY, None)
+        item["m"], item["held"], item["transit"] = demand // 2, [0, 0], 0
+        item.pop(traders.OUTLET, None)
+        item.pop(traders.REEXPORT, None)
+        f.stock.pop(good, None)
+        traders.update_targets(island, game.defs, game.config, {}, {}, world.turn)
+        item = traders.goods_of(f)[good]
+        turns = traders.holding_turns(island, game.defs, game.config, item, good)
+        assert item["hold"] == pytest.approx(min(item["m"], demand) * turns, abs=2)
+        got[unsold] = item["m"]
+    # 多めに入れるときだけ、狙う量が前（買いたい量の半分）より上がる
+    assert got[5_000] <= demand // 2 < got[0]

@@ -749,7 +749,17 @@ def update_targets(
                 pipeline = round_money(
                     record.demand * holding_turns(island, defs, config, item, good)
                 )
-                if not planned and _import_margin(p) > PUSH_MARGIN and left < pipeline:
+                # 多めに入れるのは、島の売り手が売りに出した分がみな売れたときだけ（島で作った
+                # 物が売れ残っていれば、値段は売りが余って下がる。島の製油所の燃料が売れ残って
+                # いるのに、島の値段が輸入の原価より高いのを見て燃料を買いたい量の 8 倍まで
+                # 積み、燃料の値段が崩れて製油所が原油を買えず取引が止まった。2026-11-13 の
+                # full と調べ 4）
+                if (
+                    not planned
+                    and left_over <= 0
+                    and _import_margin(p) > PUSH_MARGIN
+                    and left < pipeline
+                ):
                     # 島の値段が輸入の原価よりずっと高い: 買い手の量より多めに入れて売り値を
                     # 下げる（その値段で買われている量だけを狙うと、売りが買いに届かず値段が
                     # 下がらないため）。手元と運ぶ途中の荷は、買いたい量の持つ量と比べる（船に
@@ -762,7 +772,10 @@ def update_targets(
             # 引き合わなくなったらすぐ 0
             if direction == IMPORT and (can_import or frozen):
                 turns = holding_turns(island, defs, config, item, good)
-                item["hold"] = round_money(item["m"] * turns)
+                # 流れる分は、狙う量と島の買いたい量の少ない方（多めに入れる分は何ターン分も
+                # 持たない。持つ量が島の買いたい量の 8 倍を超え、荷がまとめて着いて値段が崩れた）
+                flow = item["m"] if record is None else min(item["m"], record.demand)
+                item["hold"] = round_money(flow * turns)
             elif direction == IMPORT:
                 item["hold"] = 0
             else:
