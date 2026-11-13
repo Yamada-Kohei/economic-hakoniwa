@@ -390,7 +390,7 @@ def test_home_orders_send_the_markdown_to_the_outlet_and_sell_the_rest_as_usual(
     island, f, good, item = _importer(game, world)
     stock_now = traders.stock.total(f.stock, good)
     if stock_now <= 0:
-        traders.stock.add(f.stock, good, 10_000, world.turn)
+        traders.stock.add(f.stock, good, 10_000, world.turn, game.defs.goods)
         item["held"][0] += 10_000
         item["held"][1] += 10_000 * 1000
     item.pop(traders.REEXPORT, None)
@@ -420,7 +420,7 @@ def test_reexport_is_offered_in_the_bloc_at_the_bloc_price(game, traded):
     world = copy.deepcopy(traded)
     island, f, good, item = _importer(game, world)
     if traders.stock.total(f.stock, good) <= 0:
-        traders.stock.add(f.stock, good, 10_000, world.turn)
+        traders.stock.add(f.stock, good, 10_000, world.turn, game.defs.goods)
     bloc = blocs.find(world, item["bm"])
     r = _round(game, world)
     item[traders.REEXPORT] = 10**12
@@ -518,28 +518,24 @@ def test_targets_hold_still_while_the_cargo_is_beyond_the_line(game, traded):
         assert item["m"] == before
 
 
-def test_no_push_beyond_the_demand_while_island_sellers_are_left_unsold(game, traded, monkeypatch):
-    """島の値段が輸入の原価よりずっと高くても、島の売り手の売れ残りがあれば、買いたい量より多めには
-    狙わない（売りが余って値段は下がる。島の製油所の燃料が売れ残る島で燃料を積み増して値段が崩れた。
-    2026-11-13 の full と調べ 4）。持つ量も、狙う量と買いたい量の少ない方で数える。"""
+def test_imports_aim_no_higher_than_the_island_demand(game, traded, monkeypatch):
+    """島の値段が輸入の原価よりずっと高く、品不足が続いても、狙う量は島の買いたい量まで（多めには
+    入れない。売りが余れば売り値の下限まで指値が下がる。島の製油所の燃料が売れ残る島で燃料を積み増して
+    値段が崩れた。2026-11-13 の 5〜7 回目の full と調べ 4）。持つ量は狙う量 × ターン数。"""
     monkeypatch.setattr(traders, "_import_margin", lambda p: 1.0)
-    got = {}
-    for unsold in (0, 5_000):
-        world = copy.deepcopy(traded)
-        island, f, good, item = _importer(game, world)
-        demand = 20_000
-        record = MarketRecord(good, 100, demand, demand, demand + unsold, "trade")
-        island.markets = [m for m in island.markets if m.good != good] + [record]
-        island.scratch[traders.TRUE_SHORT] = {good: 0}
-        island.scratch.pop(traders.FOREIGN_SUPPLY, None)
-        item["m"], item["held"], item["transit"] = demand // 2, [0, 0], 0
-        item.pop(traders.OUTLET, None)
-        item.pop(traders.REEXPORT, None)
-        f.stock.pop(good, None)
-        traders.update_targets(island, game.defs, game.config, {}, {}, world.turn)
-        item = traders.goods_of(f)[good]
-        turns = traders.holding_turns(island, game.defs, game.config, item, good)
-        assert item["hold"] == pytest.approx(min(item["m"], demand) * turns, abs=2)
-        got[unsold] = item["m"]
-    # 多めに入れるときだけ、狙う量が前（買いたい量の半分）より上がる
-    assert got[5_000] <= demand // 2 < got[0]
+    world = copy.deepcopy(traded)
+    island, f, good, item = _importer(game, world)
+    demand = 20_000
+    record = MarketRecord(good, 100, 0, demand, 0, "quote")
+    island.markets = [m for m in island.markets if m.good != good] + [record]
+    island.scratch[traders.TRUE_SHORT] = {good: demand * 3}
+    island.scratch.pop(traders.FOREIGN_SUPPLY, None)
+    item["m"], item["held"], item["transit"] = demand, [0, 0], 0
+    item.pop(traders.OUTLET, None)
+    item.pop(traders.REEXPORT, None)
+    f.stock.pop(good, None)
+    traders.update_targets(island, game.defs, game.config, {}, {}, world.turn)
+    item = traders.goods_of(f)[good]
+    assert 0 < item["m"] <= demand
+    turns = traders.holding_turns(island, game.defs, game.config, item, good)
+    assert item["hold"] == pytest.approx(item["m"] * turns, abs=2)
