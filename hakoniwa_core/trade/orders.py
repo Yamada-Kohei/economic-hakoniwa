@@ -79,7 +79,7 @@ MILLI = QUANTITY_SCALE
 ORDERS = "ship_orders"  # 造船所の economy: 受けた前注文（古い順）
 REFUNDS = "order_refunds"  # 造船所の economy: 返しきれなかった前払い（払い先 → 額）
 DUE = "ship_order_due"  # 海運業の economy: 次のターンに払う前注文の代金の見込み
-SHORT_LOAD = "ships_short_load"  # 海運業の economy: 載せられなかった荷を運ぶのに要った船の重さ
+SHORT_LOAD = "ships_short_load"  # 載せられなかった荷の船の重さ（ships.SHORT_LOAD と同じ）
 PAYMENT = "ship_order"  # 仕訳の種類: 前注文の代金
 REFUND = "ship_order_refund"  # 仕訳の種類: 前払いの返金
 
@@ -626,12 +626,19 @@ def fx_needs(
     payers: dict[str, Payer],
 ) -> None:
     """為替の段: 海運業が圏の造船所に払う外貨（このターンの払いと新しい注文の手付け）を、主体の
-    外貨の見込みに足す（値幅の上端まで買う。持ち高の分は為替の段が引く）。計画経済の国営の海運業は
-    政府の主体なので、政府の外貨の見込みに入る（政府の外貨から先に払う）。"""
+    外貨の見込みに足す。持ち高の分は為替の段が引く。計画経済の国営の海運業は政府の主体なので、
+    政府の外貨の見込みに入る（政府の外貨から先に払う）。
+
+    指値は前のレートまで（売りがあれば買う。足りなければ、買えた分を持ち高にためて次のターンに
+    払う）。値幅の上端まで、ほかの買いより先に買うと、1隻で島の輸入の何か月分にもなる船の代金が
+    毎ターン通貨を値幅いっぱい下げ、輸入を締め出した（2026-11-13 の測り）。"""
+    from hakoniwa_core.trade import fx as fxrates
+
     for entity, currencies in sorted(plan.get("owed", {}).get(island.id, {}).items()):
         for currency, amount in sorted(currencies.items()):
             if currency != island.id and amount > 0:
-                needs.setdefault(entity, {}).setdefault(currency, []).append((amount, None))
+                limit = fxrates.rate(island, currency) + 1  # 前のレートより高くは買わない
+                needs.setdefault(entity, {}).setdefault(currency, []).append((amount, limit))
                 payers.setdefault(entity, Payer(entity))
 
 

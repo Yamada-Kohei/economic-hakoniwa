@@ -102,12 +102,15 @@ def test_shipping_without_a_yard_orders_from_a_bloc_yard_in_the_settlement_curre
     entity = facility_entity(f.id)
     price = yard_island.economy.prices[GOOD]
     deposit = round(money_of(price, 2 * MILLI) * config.get("trade.order_deposit"))
-    # 為替の段で買う外貨の見込み（手付け）
+    # 為替の段で買う外貨の見込み（手付け）。指値は前のレートまで（値幅の上端まで先に買わない）
     needs: dict = {}
     orders.fx_needs(buyer_island, plan, needs, {})
-    assert needs == {entity: {yard_island.id: [(deposit, None)]}}
+    limit = fxrates.rate(buyer_island, yard_island.id) + 1
+    assert needs == {entity: {yard_island.id: [(deposit, limit)]}}
     assert f.economy[ships.REACH]  # 圏の造船所に頼めるので、市場では買わない
     assert ships.ships_wanted(config, f, turn) == 0
+    # 足りない船は残る（標準の計画は、これを見て島にも造船所を建てる）
+    assert ships.ships_needed(config, f, turn) > 0
     held = money.holding(buyer_island, entity, yard_island.id)
     orders.run_abroad(world, game.defs, config, turn, [1, 2], plan)
     (o,) = yard.economy[orders.ORDERS]
@@ -282,3 +285,18 @@ def test_plan_adds_a_yard_when_the_bloc_ships_retire_before_its_yards_can_replac
     # 圏の造船所が間に合えば足さない（造船所は全力で 1 ターンに 1/4 隻。60 ターンで 15 隻）
     yard_island.facilities.append(yard)
     assert shipyard_islands(world, game.defs, config, turn) == set()
+
+
+def test_left_cargo_keeps_the_target_fleet_above_zero_without_ships(game, base):
+    """船が 0 隻で航海の記録もなくても、載せられなかった荷があれば目標の船団は 0 にならない。"""
+    world, buyer_island, yard_island, f, yard = _setup(game, base)
+    config = game.config
+    turns = config.get("trade.cost_turns")
+    f.economy["fleet"] = []
+    f.economy["used"] = [0] * turns
+    # 1.5 隻分の荷が毎ターン残る（_setup）。目標の混み具合で割って 2 隻
+    assert ships.left_ships(config, f) == 1500
+    assert ships.fleet_target(config, f) == -(-1500 * 4 // 3)
+    assert ships.renewal(config, f, world.turn + 1) == ships.fleet_target(config, f)
+    f.economy[orders.SHORT_LOAD] = [0] * turns
+    assert ships.fleet_target(config, f) == 0

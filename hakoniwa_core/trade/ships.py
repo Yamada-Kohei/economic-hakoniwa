@@ -115,11 +115,27 @@ def retiring(config: GameConfig, f: Facility, turn: int) -> int:
     return sum(q for since, q in f.economy.get("fleet", []) if turn + ahead - since >= life)
 
 
+# 海運業の economy: 載せられなかった荷を運ぶのに要った船の重さ（orders.SHORT_LOAD と同じ）
+SHORT_LOAD = "ships_short_load"
+
+
+def left_ships(config: GameConfig, f: Facility) -> int:
+    """直近 trade.cost_turns ターンに載せられなかった荷を運ぶのに要った船の、1ターンあたりの平均
+    （1000 分の 1 隻）。荷の重さ × 往復の区画 ÷ 船の速さで数えてあるので、毎ターン同じだけ荷が残る
+    なら、これだけの船が足りない。"""
+    loads = f.economy.get(SHORT_LOAD, [])
+    if not loads:
+        return 0
+    return sum(loads) // len(loads) // max(1, config.get("trade.ship_capacity"))
+
+
 def fleet_target(config: GameConfig, f: Facility) -> int:
-    """目標の船団（1000 分の 1 隻）: 直近に航海に出ていた船 ÷ 目標の混み具合（FX-80。船主は船が
-    混んで運賃が上がると新造を頼む。使った分ちょうどしか替えないと、使う分が減るたびに船団も減って
-    戻らなかった）。"""
-    used = used_ships(config, f)
+    """目標の船団（1000 分の 1 隻）: （直近に航海に出ていた船 ＋ 載せられなかった荷の船）÷ 目標の
+    混み具合（FX-80。船主は船が混んで運賃が上がると新造を頼む。使った分ちょうどしか替えないと、使う
+    分が減るたびに船団も減って戻らなかった）。載せられなかった荷を足すので、荷が残っている間は船が
+    0 隻でも目標は 0 にならない（2026-11-13。世界の船が全部消えると、貸した船を貸し手に数える形も
+    効かず、1200T の種 13 で船が 0 から戻らなかった）。"""
+    used = used_ships(config, f) + left_ships(config, f)
     if used <= 0:
         return 0
     return -(-used * BASIS // max(1, to_basis(config.get("trade.ship_target_use"))))
@@ -131,18 +147,25 @@ def renewal(config: GameConfig, f: Facility, turn: int) -> int:
 
 
 def ships_wanted(config: GameConfig, f: Facility, turn: int) -> int:
-    """海運業が市場で買う輸送船（1000 分の 1 隻。買って船団に入れる前の船と、圏のほかの島の造船所に
+    """海運業が市場で買う輸送船（1000 分の 1 隻）。ships_needed と同じだが、圏のほかの島の造船所に
+    注文できる海運業（前の貿易の段で見た）は、市場では買わず、貿易の段で注文する（FX-78。市場の
+    買いと注文で同じ船を二重に頼まない）。"""
+    if f.economy.get(REACH):
+        return 0
+    return ships_needed(config, f, turn)
+
+
+def ships_needed(config: GameConfig, f: Facility, turn: int) -> int:
+    """海運業に足りない輸送船（1000 分の 1 隻。買って船団に入れる前の船と、圏のほかの島の造船所に
     注文して届いていない船があれば、その分を引く）。
 
     - 直近 trade.cost_turns ターンの半分以上で、船が足りずに荷を残していたら 1 隻（S2: 圏の市場や
       契約で約定した荷が、どの船にも載らなかったとき）。
     - 買い替えと買い増し（renewal。FX-11・FX-80）。
 
-    圏のほかの島の造船所に注文できる海運業（前の貿易の段で見た）は、市場では買わず、貿易の段で
-    注文する（FX-78。市場の買いと注文で同じ船を二重に頼まない）。
+    標準の計画は、島に造船所がなく、これが残っている島に造船所を建てる（autoplan。圏の造船所への
+    注文が外貨の都合で進まないときも、島で作れるように）。
     """
-    if f.economy.get(REACH):
-        return 0
     want = 0
     history = f.economy.get("ships_short", [])
     turns = config.get("trade.cost_turns")
