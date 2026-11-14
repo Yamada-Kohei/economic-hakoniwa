@@ -10,6 +10,7 @@
   {% calendar_script %}
   <script src="{% static 'js/feedback.js' %}" defer></script>
   <script src="{% static 'js/table-sort.js' %}" defer></script>
+  {% if site_news %}<script type="module" src="{% static 'js/site-news.js' %}"></script>{% endif %}
   {% if user.is_authenticated and own_island %}
   <script type="module" src="{% static 'js/letter-notice.js' %}"></script>
   {% endif %}
@@ -25,7 +26,7 @@
       {% endif %}
       <a href="{% url 'world' %}">{% translate "世界" %}</a>
       {% if own_island %}<a id="letters-link" href="{% url 'letters' %}">{% translate "公電" %}{% if letters_unread %} <span class="badge">{% blocktranslate with n=letters_unread %}未読の公電 {{ n }}{% endblocktranslate %}</span>{% endif %}</a>{% endif %}
-      <a href="{% url 'board' %}">{% translate "掲示板" %}{% if board_unread %} <span class="badge">{% blocktranslate with n=board_unread %}返信 {{ n }}{% endblocktranslate %}</span>{% endif %}</a>
+      <a href="{% url 'board' %}">{% translate "掲示板" %}{% if board_announce %} <span class="badge">{% blocktranslate with n=board_announce %}お知らせ {{ n }}{% endblocktranslate %}</span>{% endif %}{% if board_unread %} <span class="badge">{% blocktranslate with n=board_unread %}返信 {{ n }}{% endblocktranslate %}</span>{% endif %}</a>
       <a href="{% url 'help_start' %}">{% translate "手引き" %}</a>
       {% if user.is_authenticated %}
         <details class="account-menu">
@@ -53,6 +54,19 @@
       <button type="button" data-letter-notice-close>{% translate "閉じる" %}</button>
     </div>
   </div>
+  {% endif %}
+  {% if site_news %}
+  <dialog id="site-news" class="site-news" aria-labelledby="site-news-heading"
+          data-url="{% url 'api_updates_seen' %}" data-last="{{ site_news.last }}">
+    <h2 id="site-news-heading">{% translate "更新のお知らせ" %}</h2>
+    <p class="hint">{% translate "前に来られてから、次のように更新しました。" %}</p>
+    <ul class="site-news-list">
+      {% for row in site_news.rows %}<li><time datetime="{{ row.date }}">{{ row.date }}</time> {{ row.text }}</li>{% endfor %}
+    </ul>
+    {% if site_news.more %}<p class="hint">{% blocktranslate with n=site_news.more %}ほかに {{ n }} 件あります。{% endblocktranslate %}</p>{% endif %}
+    <p><a href="{% url 'top' %}#updates">{% translate "更新履歴をすべて見る" %}</a></p>
+    <form method="dialog"><button type="submit" class="primary">{% translate "閉じる" %}</button></form>
+  </dialog>
   {% endif %}
   {% if user.is_authenticated %}
   <dialog id="bug-report" class="bug-report" data-url="{% url 'api_bug_reports' %}">

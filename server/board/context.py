@@ -1,11 +1,15 @@
-"""全部の画面で使う値（見出しの「掲示板」に出す、自分の書き込みへの返信の未読の数）。"""
+"""全部の画面で使う値（見出しの「掲示板」に出す、自分の書き込みへの返信の未読の数と、
+運営からの告知の未読の数）。"""
 
 from __future__ import annotations
 
-from server.board.services import unread_count
+from server.board.services import unread_announcements, unread_count
 
 
 def unread_replies(request) -> dict:
     if not request.user.is_authenticated:
         return {}
-    return {"board_unread": unread_count(request.user)}
+    return {
+        "board_unread": unread_count(request.user),
+        "board_announce": unread_announcements(request.user),
+    }

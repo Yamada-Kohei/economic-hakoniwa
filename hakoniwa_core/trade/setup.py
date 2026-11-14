@@ -18,7 +18,7 @@ firms.operating_turns ターン分。国が出すときは、1つにつき国庫
 from __future__ import annotations
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger, stock
+from hakoniwa_core import ledger, stock, stops
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
@@ -113,7 +113,7 @@ def _new(island: IslandState, kind: str, pos: tuple[int, int], owner: str, accou
         accounting=accounting,
         built=True,
         # マスのある施設（港・商社）は、初めて動いたときに「稼働を開始しました」と出す
-        status=fac.STATUS_STARTING if pos[0] >= 0 and pos[1] >= 0 else "",
+        status=stops.STARTING if pos[0] >= 0 and pos[1] >= 0 else stops.NONE,
     )
     assign_serial(island, f)
     island.facilities.append(f)
