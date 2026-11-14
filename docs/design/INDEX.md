@@ -123,7 +123,7 @@
 | MK-10 | 持ち越せない売れ残りを翌ターンに指値なしで売った分は、値段が変動費を下回った幅が値幅に届くまで、… | 決定 | tests/core/test_economy.py |
 | MK-11 | 市場の段の後に、持ち越せる期間（goods.yaml の `shelf_life`）を過ぎた在庫… | 決定 | tests/core/test_playtest4_fixes.py、tests/core/test_rules.py |
 | MK-12 | 原料が足りずに稼働率が下がった施設は、前のターンに買うつもりだった分の原料がそろっていれば、止ま… | 決定 | tests/core/test_playtest3_fixes.py |
-| MK-13 | 品切れの財（買いたい人がいるのに売りに出なかった財）は、島で作り始められる一番安い値段が今の値段… | 決定 | tests/core/test_balance_round4.py、tests/core/test_recession_round2.py |
+| MK-13 | 品切れの財（買いたい人がいるのに売りに出なかった財）は、島で作り始められる一番安い値段が今の値段… | 決定（上限・下限の分は 2026-11-15） | tests/core/test_balance_round4.py、tests/core/test_phase3_4.py、tests/core/test_recession_round2.py |
 | MK-14 | 島に買い手がなく売りだけの財は、圏で輸出が引き合う値段まで値幅ずつ下がる | 決定 | tests/core/test_trade.py |
 | MK-15 | 家計は食料を、少ししか買えない段ほど高い指値で買う | 決定 | tests/core/test_balance_round3.py |
 | MK-16 | 値幅の上端で買い続ける買い手（家計の車の燃料、工事とインフラの資材）は、いつもの値段の一番上の段… | 仮（仮の決まりの表あり） | tests/core/test_phase3_2.py |

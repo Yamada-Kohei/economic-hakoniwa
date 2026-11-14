@@ -1199,3 +1199,40 @@ def test_power_plant_selling_all_output_keeps_worker_shortage(game, monkeypatch)
     assert island.stats["power.demand"] > island.stats["power.capacity"]
     assert plant.operating_rate == expected
     assert plant.status == "workers"
+
+
+def test_price_search_without_sellers_stops_at_the_cap(game, price_cap_case):
+    """買いたい人がいて売りに出る物がない月の値段の探り（_record）は、上限より上へ上げず、持ち越し
+    の値段も上限に収める。上限が売り手の候補の値段より低ければ、始まりの1度だけ知らせる（不具合
+    報告 #16: 魚の値段が上限 800 を見ずに 1 割ずつ上がり、1,065 になった）。"""
+    world, island, f = price_cap_case
+    island.facilities = [f]
+    ctx = context(game, world)
+    good = "wood"
+
+    def search(price: int) -> int:
+        island.markets = []
+        island.economy.prices[good] = price
+        island.scratch["wanted"] = {good: 100 * QUANTITY_SCALE}
+        market_mod.Market._record(island, ctx, {}, {}, {})
+        return island.economy.prices[good]
+
+    rates = {}
+    lowest = min(market_mod.Market._supply_floors(island, ctx, good, island.economy.prices, rates))
+    low, cap = lowest // 2, lowest * 2 // 3
+    # 上限がなければ、作り始める値段まで1ターンに値幅ずつ上がる（今までどおり）
+    assert search(low) > low
+    # 上限より上の持ち越しは上限に、上限の下からは上限まで
+    island.policy.price_cap[good] = cap
+    assert search(lowest * 3) == cap
+    assert island.markets[-1].price == cap
+    assert low < search(cap - 1) <= cap
+    notices = [e for e in island.log if e.kind == "price_cap_no_sellers"]
+    assert len(notices) == 1 and notices[0].args["cap"] == cap
+    assert notices[0].args["lowest"] > cap
+    text = format_log(game.defs, notices[0].kind, notices[0].args)
+    assert "採算が合う売り手の候補がありません" in text
+    # 上限をなくせば、また探りが上へ動き、知らせの印も消える
+    island.policy.price_cap.clear()
+    assert search(cap) > cap
+    assert market_mod.NO_SELLERS not in island.economy.ext
