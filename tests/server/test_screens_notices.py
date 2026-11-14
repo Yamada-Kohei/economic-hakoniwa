@@ -420,7 +420,9 @@ def test_report_tables_keep_full_width_and_numeric_alignment(world):
     css = Path("server/static/css/site.css").read_text(encoding="utf-8")
     assert "grid-template-columns: minmax(0, 1fr) 340px" not in css
     assert ".report-orders:empty { display: none; }" in css
-    assert "table.market-table th, table.market-table td { white-space: nowrap; }" in css
+    # 市場の表の数は折り返さず、見出しだけ折り返して表の幅を抑える（不具合報告 #5）
+    assert "table.market-table td { white-space: nowrap; }" in css
+    assert "table.market-table thead th { white-space: normal;" in css
     assert "table td.num, table th.num { text-align: right; white-space: nowrap; }" in css
     assert "table td.numeric-with-note { white-space: normal; }" in css
     assert ".numeric-value { white-space: nowrap; }" in css
