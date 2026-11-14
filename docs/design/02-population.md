@@ -5,7 +5,7 @@
 ## コードの場所と試験
 
 - 建国と地形: `hakoniwa_core/founding.py`（`auto_terrain`・`found_island`・`place_start`）、`hakoniwa_core/geo.py`、`hakoniwa_core/nature.py`、名前は `hakoniwa_core/naming.py`
-- 人口・飢え・幸福度・町: `hakoniwa_core/modules/population/`（`food_need`・`hunger_step`・`birth_rate`・`death_rate`・`happiness`、段 `population` と `housing`）
+- 人口・飢え・幸福度・町: `hakoniwa_core/modules/population/`（`food_need`・`hunger_step`・`birth_rate`・`death_rate`・`happiness`・`happiness_parts`、段 `population` と `housing`）
 - 島の中の移り住み: `hakoniwa_core/economy/households.py` の `move_people`。国をまたぐ移民: `hakoniwa_core/modules/migration/`（段 `migration`）
 - 汚染と災害: `hakoniwa_core/modules/events/`
 - 試験: tests/core/test_founding.py、tests/core/test_migration.py、tests/core/test_rules.py
@@ -78,6 +78,7 @@
 | PO-56 | 計画経済の国営住宅（W-202）: 計画経済の国では家計は住宅の資材を買わず住宅ローンも借りない。町ができる・床を足す・手入れの資材は国が住宅費で買い、床は国の床として層の人数に比例して割り当て、住む層は家賃を払う。住宅費が足りなければ町は育たず、空きがなければ過密になる（ソ連の住宅の待ち列）。体制が変わっても床の持ち主はそのまま（払い下げは後回し W-207）。前からある計画経済の世界の家計の床は家計のまま | 決定（W-190 の回2 で作った。標準の計画の住宅費と、0 のまま町が要るときの知らせは次の回） | `fiscal.budget.housing`, `fiscal.budget_planned.housing`, `housing.public_rent` | tests/core/test_public_housing.py::test_public_builds_use_the_state_stock_and_a_new_village_is_public, tests/core/test_public_housing.py::test_in_a_planned_country_households_buy_no_housing_but_in_a_market_one_they_do |
 | PO-57 | 飢えている家計（前のターンに食べきれなかったか飢えの蓄えが残る層）は、売りに出ていない食料のそれぞれを、それだけ売りに出ていれば買った量まで「買いたい量」に出す。一般の層は、食べ物が買えずに畑に戻った働き手とその家族（PO-28）の分も足す。差し押さえ中か閉鎖の途中の施設は、品切れの値段の上がりを止める「作り始める値段」に数えない | 決定（2026-11-02） | `population.food_per_person` | tests/core/test_famine_recovery.py::test_hungry_households_want_any_staple_when_no_food_is_on_sale |
 | PO-58 | 飢えの蓄えが、次のターンに全部食べれば 0 に戻る大きさ（`hunger_step(S,0)=0`）なら、知らせ・市場の買い上がり・移民の見方では飢えていないとみなす。幸福度の減点は量のまま | 決定（2026-11-05） | `population.hunger.tolerance`, `population.hunger.recovery` | tests/core/test_famine_recovery.py::test_hunger_stock_controls_market_and_migration, tests/core/test_famine_recovery.py::test_still_hungry_uses_recovery_settings, tests/server/test_codex_turn300_fixes.py::test_hunger_notice_ignores_recovered_stock |
+| PO-59 | 幸福度の内訳（W-172）: 式 `happiness` は項目ごとの点を返す式 `happiness_parts` と、点を前から順に足して丸め、0〜体制の上限に収める所に分ける（値は分ける前と同じ）。層とマスの点を幸福度と同じ人数の重みで混ぜ、統計 `happiness_part.<項目>` に書く。上限で切った分（cap）・0 まで補った分（floor）・丸めの端数（rounding）はマスごとに分けて足す（上限のマスと 0 のマスが打ち消し合わない）。内訳を全部足すと幸福度になる | 決定（2026-11-14） | `population.happiness` | tests/core/test_happiness_parts.py |
 
 ### 仮の決まり
 
@@ -211,6 +212,8 @@
 幸福度は 0〜100 で、式 `happiness` で家計の層ごとに出し、島の幸福度は人数で平均します。項目は土台 `population.happiness.base` に、食料（必要な量に対して食べられた割合）・働き口（そのマスの労働者のうち仕事のある割合。仕事のある家計は満点、失業している家計は 0、資本家階級はいつも満点）・電力（届いた割合）・食事の質・衣料・ぜいたく品（種類が多いほど高い）・上下水道（そのマスの整備度）・教育（島の教育水準）・住まいの広さ（1 人あたりの広さの望む広さに対する割合。W-190 の回で作る。重みは土台から移す）を、それぞれ足りている割合 × 重み（`population.happiness` の各項目）で足したものです。減点は、汚染 1 あたり `population.happiness.pollution_per_point`、実質賃金が 1 年前より下がった 1% ごと（上限 `population.happiness.real_wage_max`）、物価上昇率が `population.happiness.inflation_threshold` を超えた 1% ごと（上限 `population.happiness.inflation_max`）、飢えの蓄え、賃金の遅配（払われなかった働き手の割合 × `population.happiness.arrears`）です。上限は体制の happiness_cap（全体主義。タブ 10）。
 
 一般の層はマスごとに出し（働き口・電力・汚染・上下水道はマスの値）、仕事のある家計と失業している家計をマスに住む人数で混ぜた値がマスの幸福度になります（地図・町の育ち・人の移り先に使う）。ほかの層は島全体で出します。前のフェーズから移し替えた島は、重みをその時の重み（`population.happiness_phase1`・`population.happiness_phase2`・`population.happiness_phase3_1`）から `population.blend_turns` かけて移し、移し始めのターンに重みが変わることを知らせます（知らせないと、何もしていないのに幸福度が動いて見える）。幸福度は政情の目標に効きます（タブ 10）。
+
+項目ごとの点は、式 `happiness_parts` が返し、前から順に足して丸め、0〜体制の上限に収めたものが幸福度です（PO-59）。層とマスの点を幸福度と同じ重みで混ぜて統計 `happiness_part.<項目>` に残し、持ち主は経済の画面で前のターン・1 年前からの動きと一緒に見られます（UI-97）。マスごとに収めるので、上限に当たっているマスでは項目を上げても幸福度は上がらず、上げた分は「体制の上限で切った分」の行に消えます。
 
 ### 汚染と災害
 
