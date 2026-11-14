@@ -14,6 +14,7 @@
     <li><a href="#regimes">{% translate "経済体制で変わること" %}</a></li>
     <li><a href="#screens">{% translate "画面の見取り" %}</a></li>
     <li><a href="#trouble">{% translate "困ったとき" %}</a></li>
+    <li><a href="#careful">{% translate "軽く動かさないほうがいい数値" %}</a></li>
     <li><a href="#status">{% translate "施設の状態の言葉" %}</a></li>
   </ul>
 </nav>
@@ -22,6 +23,7 @@
   <h2>{% translate "このゲームでプレイヤーがすること" %}</h2>
   <p>{% translate "プレイヤーは国の政府です。工場を一つずつ動かすのではなく、施設を建て、予算・税・規制を決め、足りない物を国の倉庫や貿易で補います。働く人・会社・銀行・家計は自分で考えて動き、その結果が毎月（1ターン）の更新で出ます。" %}</p>
   <p>{% translate "命令を出さなくても島は動きます。まずは何ターンか更新を待ち、何が足りないかを見てから手を打つのが基本です。一度にたくさん変えると、どれが効いたのか分からなくなります。" %}</p>
+  <p>{% blocktranslate with n=max_queue %}命令の列には {{ n }} 件まで前もって並べられますが、毎月実行されるのは行政力の分だけで、残りは次の月へ回ります。ふだんは更新のたびに結果を見て、次の1〜2手を足します。たくさん並べておくのは、何日か見に来られないときに、その間の分（予算や工事の続きなど）を先に入れておく使い方です。{% endblocktranslate %}</p>
 </section>
 
 <section class="panel" id="first-year">
@@ -35,7 +37,7 @@
     </dd>
     <dt>{% translate "最初の数か月" %}</dt>
     <dd>
-      <p>{% translate "更新のたびに、島の画面の「注意」と「前のターンからの主な変化」、ターンログを見ます。確かめる順は次のとおりです。" %}</p>
+      <p>{% translate "更新のたびに、「ホーム」の「注意」と「前のターンからの主な変化」、ターンログを見ます。確かめる順は次のとおりです。" %}</p>
       <ol>
         <li>{% translate "食料：「市場」で穀物・魚・食品の買えなかった量を見ます。物が足りないのか、家計のお金が足りないのかで、打つ手が違います。" %}</li>
         <li>{% translate "電力：電力不足なら、発電所の燃料と、送電線でつながっている範囲を見ます。" %}</li>
@@ -51,7 +53,7 @@
     <dt>{% translate "1年ごろ" %}</dt>
     <dd>
       <p>{% blocktranslate with r=commute %}町は人手の足りない働き口の近くで、資材がそろったときに育ちます。工場を町から遠くへ建てると人が通えません（通えるのは町から {{ r }} マス以内）。道路や上下水道は「インフラの工事」で、教育は学校と大学と教育費で、何年もかけて効いてきます。{% endblocktranslate %}</p>
-      <p>{% translate "ここまで来たら、詳しい仕組みの手引きで気になる所を読み、貿易・外交・政治へ広げてください。建国から1年のあいだは、島の画面の上に「次にすること」も出ます。" %}</p>
+      <p>{% translate "ここまで来たら、詳しい仕組みの手引きで気になる所を読み、貿易・外交・政治へ広げてください。建国から1年のあいだは、「ホーム」の上に「次にすること」も出ます。" %}</p>
     </dd>
   </dl>
 </section>
@@ -74,18 +76,17 @@
 
 <section class="panel" id="screens">
   <h2>{% translate "画面の見取り" %}</h2>
-  <p>{% translate "島の画面の上の帯から開きます。どの画面にも、上に「この画面の手引き」のリンクがあります。" %}</p>
+  <p>{% translate "自国の画面は上の7つの入口から開き、入口の中は小さなタブで分かれます。どの画面にも、上に「この画面の手引き」のリンクがあります。" %}</p>
   <div class="table-scroll">
   <table class="info">
-    <tr><th>{% translate "地図" %}</th><td>{% translate "マスを押すと地形・人口・施設の様子。命令の列もここ。「重ねて表示」で人口・電力・インフラなどを色で見る" %}</td></tr>
-    <tr><th>{% translate "経済" %}</th><td>{% translate "GDP・物価・失業率などの推移" %}</td></tr>
-    <tr><th>{% translate "市場" %}</th><td>{% translate "財ごとの値段と売買の量、買えなかった量" %}</td></tr>
-    <tr><th>{% translate "産業の鎖" %}</th><td>{% translate "品目ごとの作った量・使った量・輸出入と、止まった工場が待っている物。どの品目が何の材料になるかは" %} <a href="{% url 'help_chain' %}">{% translate "手引き：産業のつながり" %}</a></td></tr>
-    <tr><th>{% translate "施設" %}</th><td>{% translate "施設ごとの状態と収支、企業、町ごとの働き手" %}</td></tr>
-    <tr><th>{% translate "財政・金融" %}</th><td>{% translate "国庫・予算・税、銀行・国債・金利" %}</td></tr>
-    <tr><th>{% translate "貿易・為替" %}</th><td>{% translate "港・商社・船・契約、通貨と外貨" %}</td></tr>
-    <tr><th>{% translate "政治・外交の状態・軍" %}</th><td>{% translate "政情・議会・移民、条約と戦争、兵と部隊" %}</td></tr>
-    <tr><th>{% translate "ターンログ" %}</th><td>{% translate "更新で起きたことと、うまくいかなかったわけ" %}</td></tr>
+    <tr><th>{% translate "ホーム" %}</th><td>{% translate "次にすること・注意・前のターンからの主な変化・国勢・資源・出来事" %}</td></tr>
+    <tr><th>{% translate "地図" %}</th><td>{% translate "マスを押すと地形・人口・施設の様子。建設・区域・送電線・地名など場所の命令もここから足す。施設ごとの命令は窓の「施設のページで命令を出す」から。「重ねて表示」で人口・電力・インフラなどを色で見る。施設の絵は、農場の段階（手作業・機械化・近代化）と作物、鉱山の掘る物、火力発電所の燃料、建て増しした工場の規模で変わる" %}</td></tr>
+    <tr><th>{% translate "施設" %}</th><td>{% translate "「施設の一覧」で施設ごとの状態と収支、企業、町ごとの働き手。「産業の鎖」で" %}{% translate "品目ごとの作った量・使った量・輸出入と、止まった工場が待っている物。どの品目が何の材料になるかは" %} <a href="{% url 'help_chain' %}">{% translate "手引き：産業のつながり" %}</a></td></tr>
+    <tr><th>{% translate "資源・市場" %}</th><td>{% translate "財ごとの値段と売買の量、買えなかった量" %}</td></tr>
+    <tr><th>{% translate "貿易" %}</th><td>{% translate "「概要」で港・商社・船・契約、「為替」で通貨と外貨" %}</td></tr>
+    <tr><th>{% translate "経済" %}</th><td>{% translate "「推移と幸福度」で GDP・物価・失業率などの推移、「財政」で国庫・予算・税、「金融」で銀行・国債・金利" %}</td></tr>
+    <tr><th>{% translate "国" %}</th><td>{% translate "外交の状態（条約と戦争）・軍（兵と部隊）・政治（政情・議会・移民）・計画か値段の規制・国の紹介・日誌・ターンログ（更新で起きたことと、うまくいかなかったわけ）" %}</td></tr>
+    <tr><th>{% translate "命令の列" %}</th><td>{% translate "自国のどのページにも上に出る帯。押すと命令の列のページで、並べ替え・取り消しと前のターンまでの結果を見る" %}</td></tr>
   </table>
   </div>
 </section>
@@ -101,7 +102,7 @@
       <tr><th>{% translate "食べ物が足りない・飢えている" %}</th><td>{% translate "「市場」で、売りが足りないのか、家計のお金が足りないのかを見ます。売りが足りなければ農場・漁港を建てるか輸入、お金が足りなければ失業手当や働き口を見直します。" %} <a href="{% url 'help' %}#island">{% translate "詳しく" %}</a></td></tr>
       <tr><th>{% translate "電力不足" %}</th><td>{% translate "発電所の燃料（石炭など）が買えているか、施設が送電網につながっているかを見ます。送電線は海を越えられません。石炭の出ない島でも、発電所は使う石炭を" %}{% blocktranslate with n=power_fuel_turns %} {{ n }} か月分持って建国し、{% endblocktranslate %}{% translate "切れたら国の倉庫の石炭を使います（国営は倉庫から直に、民営は「備蓄の放出の決まり」で市場から）。倉庫の石炭が尽きる前に、輸入か水力発電所を考えます。" %} <a href="{% url 'help' %}#island">{% translate "詳しく" %}</a></td></tr>
       <tr><th>{% translate "人手が足りない" %}</th><td>{% blocktranslate with r=commute %}町から {{ r }} マス以内に住む働き手が足りません。町は人手の足りない働き口の近くで育つので、資材（木材・建材など）がそろうのを待つか、町に近い所に建てます。技術者は大学で育ちます。{% endblocktranslate %} <a href="{% url 'help' %}#island">{% translate "詳しく" %}</a></td></tr>
-      <tr><th>{% translate "町が育たない" %}</th><td>{% translate "近くに人手の足りない働き口がない、資材が買えない、都市から上は上下水道が足りない、のどれかです。島の画面の「注意」とターンログにわけが出ます。" %} <a href="{% url 'help' %}#settlements">{% translate "詳しく" %}</a></td></tr>
+      <tr><th>{% translate "町が育たない" %}</th><td>{% translate "近くに人手の足りない働き口がない、資材が買えない、都市から上は上下水道が足りない、のどれかです。「ホーム」の「注意」とターンログにわけが出ます。" %} <a href="{% url 'help' %}#settlements">{% translate "詳しく" %}</a></td></tr>
       <tr><th>{% translate "命令が実行されない" %}</th><td>{% translate "命令は次の更新で、行政力の分だけ列の上から実行され、残りは次のターンに回ります。急ぐ命令を上に並べ替えます。" %} <a href="{% url 'help' %}#orders">{% translate "詳しく" %}</a></td></tr>
       <tr><th>{% translate "国庫が減り続ける・国債が増える" %}</th><td>{% translate "「財政」で収入と支出の内訳を見ます。予算は年の額なので、使い切れない額を積んでいないか、税率が低すぎないかを確かめます。" %} <a href="{% url 'help' %}#money">{% translate "詳しく" %}</a></td></tr>
       <tr><th>{% translate "デモや暴動が起きた" %}</th><td>{% translate "「政治」の政情の目標の内訳で、幸福度・失業・物価のどれが下げているかを見ます。" %} <a href="{% url 'help' %}#politics">{% translate "詳しく" %}</a></td></tr>
@@ -109,6 +110,29 @@
     </tbody>
   </table>
   </div>
+</section>
+
+<section class="panel" id="careful">
+  <h2>{% translate "軽く動かさないほうがいい数値" %}</h2>
+  <p>{% translate "命令で動かせる数値の中には、上げてから元に戻しても、島が元に戻らないものがあります。「できる」ことと「試しにやってよい」ことは別です。次の数値は、効き方を読んでから動かしてください。どれも現実の経済と同じ仕組みです。" %}</p>
+  <p>{% blocktranslate with a=careful.indexation r=careful.max_raise %}土台にあるのは「賃金は下がらない」ことです。施設の賃金は、人手が足りなければ1か月に {{ r }}% まで上がり、物価が上がればこの1年の上がり方の {{ a }}% を追って上がりますが、失業が多くても物価が戻っても下がりません（現実の賃金の下方硬直）。そのため、賃金や物価を一度押し上げる命令は、戻しても上がった賃金を残し、原料と製品の値段を高いままにします。{% endblocktranslate %}</p>
+  <div class="table-scroll">
+  <table class="info">
+    <thead><tr><th>{% translate "数値（画面）" %}</th><th>{% translate "動かすと" %}</th><th>{% translate "戻しても戻らないもの" %}</th><th>{% translate "代わりに・気をつけること" %}</th></tr></thead>
+    <tbody>
+      <tr><th>{% translate "最低賃金（財政の「賃金と失業手当」）" %}</th><td>{% translate "最低賃金より安い施設の賃金が、すべて最低賃金まで上がります。" %}</td><td>{% translate "最低賃金を下げても、上がった賃金は下がりません。原料が高いまま工場が採算割れで止まり、戻らないことがあります（公開の世界で、最低賃金を少し上げただけで木材と建材が戻らなくなった例があります）。" %}</td><td>{% translate "暮らしを支えたいなら、失業手当や予算の方が戻しやすい手です。上げるなら少しずつ、施設の収支を見ながら。" %}</td></tr>
+      <tr><th>{% translate "お金を増やす命令（金融の政策金利を下げる・中央銀行の国債の買い入れ、為替の介入の買い）" %}</th><td>{% translate "お金が増えて物価が上がります。" %}</td><td>{% translate "金利やお金の量は戻せますが、その間の物価の上昇で上がった賃金は残ります。" %}</td><td>{% translate "物価の推移を見ながら小さく動かします。" %}</td></tr>
+      <tr><th>{% translate "値段の上限・下限・公定価格（混合経済は「値段の規制」、計画経済は「計画」。電気料金の上限は財政）" %}</th><td>{% translate "上限が作る費用より低いと、民営の施設が赤字になります。下限は物価を押し上げます。" %}</td><td>{% blocktranslate with t=careful.exit_turns n=careful.entries %}赤字や止まりが {{ t }} ターン続いた施設は閉じ、売れなければ取り壊しか倒産です。上限を外しても閉じた施設は戻らず、新しい施設は採算が合うときに島で1ターンに {{ n }} つずつしか建たず、工事にも時間がかかります。下限で上がった賃金も残ります。{% endblocktranslate %}</td><td>{% translate "上限は作る費用より上に。品切れが続いていないかを「市場」で見ます。" %}</td></tr>
+      <tr><th>{% translate "国債の支払いを止める（財政）" %}</th><td>{% blocktranslate with h=careful.haircut %}その月にすべての国債が債務不履行になり、中央銀行以外が持つ額面の {{ h }}% が消えます（国債を全部中央銀行が持っていれば、下の罰は付きません）。{% endblocktranslate %}</td><td>{% blocktranslate with p=careful.default_premium d=careful.default_decay x=careful.default_exclusion c=careful.default_crunch s=careful.default_stability st=careful.default_stability_turns %}次の月に再開しても取り消せません。国債の利回りに年 {{ p }} ポイントの上乗せが付いて {{ d }} ターンかけて消え、銀行は {{ x }} ターン国債を買わず、損をした銀行は {{ c }} ターン新しく貸しません（計画経済を除く）。政情も {{ s }} 下がり、{{ st }} ターンかけて戻ります。{% endblocktranslate %}</td><td>{% translate "最後の手です。先に予算と税を見直します。" %}</td></tr>
+      <tr><th>{% translate "固定相場（為替）" %}</th><td>{% translate "中央銀行が外貨を売り買いしてレートを守ります。" %}</td><td>{% translate "通貨安の圧力で外貨を全部売っても足りなくなると固定が外れ、使った外貨準備は戻りません。" %}</td><td><a href="{% url 'help_fx' %}#levers">{% translate "為替の効き方の「打てる手」" %}</a></td></tr>
+      <tr><th>{% translate "中央銀行の独立（金融）" %}</th><td>{% translate "政策金利を中央銀行が自動で決め、政府は介入・固定相場・中央銀行の外国の国債を決められなくなります。" %}</td><td>{% blocktranslate with t=careful.cb_lock_turns %}切り替えてから {{ t }} ターンは戻せません。独立させたときに消えた介入・固定相場・外国の国債の命令と、0 に戻った中央銀行の国債の買い入れは、独立をやめても戻らないので、出し直します。国債の売れ残りを中央銀行が引き受ける決まりも「支出を減らす」に変わります（こちらは独立をやめると戻ります）。{% endblocktranslate %}</td><td>{% translate "為替の命令を出している国は、先に為替の画面を確かめます。" %}</td></tr>
+      <tr><th>{% translate "経済体制の変更（政治）" %}</th><td>{% blocktranslate with t=careful.transition_turns %}{{ t }} ターンの混乱期間になり、生産性と政情が下がります。その間はもう一度変えられません。{% endblocktranslate %}</td><td>{% translate "計画経済に移ると民営の施設と銀行はすべて国有になり、資本家の層もなくなります。市場経済に戻しても国営の施設はそのまま残り、民営の施設はまた少しずつしか建ちません。" %}</td><td>{% translate "体制は国の形そのものです。試しに変えないでください。" %}</td></tr>
+      <tr><th>{% translate "教育費（財政の予算）" %}</th><td>{% translate "削ると学校の稼働が下がり、子どもの学ぶ割合が下がります。" %}</td><td>{% blocktranslate with y=careful.working_years %}働き手の教育水準は、働く人が {{ y }} 年で入れ替わる速さでしか動かないので、予算を戻しても何十年もかけてしか戻りません。教育水準は生産性に効きます。{% endblocktranslate %}</td><td>{% translate "国庫が苦しくても、教育費は最後に削ります。" %}</td></tr>
+      <tr><th>{% translate "報道と集会の統制（政治）" %}</th><td>{% translate "強めた分だけ、その場で政情が上がります。" %}</td><td>{% blocktranslate with m=careful.grievance_max %}統制している間、不満が少しずつたまり（{{ m }} まで）、ゆるめた月か、政情が暴動の境を下回った月に、まとめて政情から引かれます。{% endblocktranslate %}</td><td>{% translate "政情は幸福度・失業・物価の元から直します。" %}</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>{% translate "ほかの数値（税率・失業手当・予算の多くなど）は、戻せば元の流れに戻ります。ただし、民主主義の国では税率を大きく変える・資本取引・移民の扱い・中央銀行の独立を変えるのに議会の賛成が要り、戻す採決が通らないこともあります。" %}</p>
 </section>
 
 <section class="panel" id="status">

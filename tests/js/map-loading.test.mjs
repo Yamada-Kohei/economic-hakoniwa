@@ -41,11 +41,12 @@ function environment({ failedUrl, failedDraw = false } = {}) {
         : { size: 1, terrain: ["plain"], mine: false };
     },
     words: () => ({ hidden: "非公開" }), overlayList: () => [],
+    BARS: "bars", FILL: "fill", overlayLegend: () => "", readOverlayMode: () => "bars", writeOverlayMode() {},
     tileToWorld: () => ({ px: 0, py: 0 }), lift: () => 0,
     attachControls: () => ({}),
     MissileTarget: class {}, TilePanel: class {},
     drawIsland() { if (failedDraw) throw new Error("描けません"); drawings += 1; },
-    drawMinimap() {}, loadSprites: async () => new Map(),
+    drawMinimap() {}, drawRuler() {}, loadSprites: async () => new Map(),
   };
   return { context: vm.createContext(context), element, frames, timers,
     get reloads() { return reloads; }, get drawings() { return drawings; } };

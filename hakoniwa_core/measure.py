@@ -142,8 +142,18 @@ CAUSES = {
     "wages": "funds",
     "workers": "workers",
     "engineers": "engineers",
+    "equipment": "equipment",  # 設備の傷み（2026-11-13 に分けた。前は halted に入っていた）
 }
-CAUSE_GROUPS = ("sales", "inputs", "power", "funds", "workers", "engineers", "halted")
+CAUSE_GROUPS = (
+    "sales",
+    "inputs",
+    "power",
+    "funds",
+    "workers",
+    "engineers",
+    "equipment",
+    "halted",
+)
 
 # 誰が買ったかを数える財（設備と工事の資材。回6 の材料）
 WATCH = ("machinery", "steel", "building_materials", "transport_ship", "automobile")
@@ -185,6 +195,11 @@ SERIES_STATS = (
     "loans.arrears",
     "money.deposits",
     "power.shortage",
+    "power.capacity",
+    "power.used",
+    "power.short_supply",  # 発電が全部売れて届かなかった割合（UI-89）
+    "power.household_unaffordable",  # 発電が売れ残ったのに家計が払えなかった割合（UI-89）
+    "price.electricity",
     "population.starved",
     "population.births",
     "population.deaths",
@@ -639,6 +654,9 @@ RATES = frozenset(
         "debt_ratio",
         "policy_rate",
         "power.shortage",
+        "power.short_supply",
+        "power.household_unaffordable",
+        "price.electricity",
     )
 )
 

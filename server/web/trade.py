@@ -30,6 +30,7 @@ from hakoniwa_core.trade import (
     blocs,
     contract_goods,
     currency_labels,
+    food_merchant,
     is_port,
     is_trader,
     merchant,
@@ -136,6 +137,7 @@ WHY_NAMES = {
     trade_stage.WHY_FUNDS: "払うお金（商社の預金）が足りない",
     trade_stage.WHY_QUOTA: "輸入の割り当ての上限まで買った",
     trade_stage.WHY_BLOCKADE: "封鎖で船出を断られた",
+    trade_stage.WHY_PRIORITY: "外貨を、燃料・主食や設備など先に使う物に取り置いた（計画経済）",
 }
 SHIPMENT_KINDS = {"bloc": "貿易圏", "contract": "二国間契約"}
 # 外貨の持ち高と非居住者の預金の持ち手（施設はまとめて「商社など」）
@@ -222,7 +224,7 @@ def bloc_goods(bloc: dict[str, Any]) -> list[dict[str, Any]]:
     """圏の市場の財ごとの値段（決済通貨）・前のターンからの変わり方・約定した量・買い・売り。"""
     defs = get_game().defs
     rows = []
-    for good in defs.goods:
+    for good in display.goods_in_order(defs):
         price = bloc.get("prices", {}).get(good)
         if not price:
             continue
@@ -381,6 +383,7 @@ def trade_data(
         "blocs": [bloc_view(b, islands, goods=False) for b in member],
     }
     if not mine:
+        data["overview"] = overview(data, stats, currency)
         return data
     data["blocs"] = [_member_bloc(b, here, islands) for b in member]
     data["other_blocs"] = [
@@ -409,6 +412,7 @@ def trade_data(
         if i != island.id
     ]
     defs = get_game().defs
+    allowed = set(contract_goods(defs))
     data["goods"] = [
         {
             "good": g,
@@ -416,11 +420,91 @@ def trade_data(
             "unit": defs.unit_name(g),
             "home_price": _price_or_none(g, here.economy.prices.get(g)),
         }
-        for g in contract_goods(defs)
+        for g in display.goods_in_order(defs)
+        if g in allowed
     ]
     data["cancel_turns"] = config.get("trade.contract_cancel_turns")
     data["policy"] = policy_view(world, here, islands)
+    data["overview"] = overview(data, stats, currency)
+    data["orders"] = trade_orders(island)
+    # いますべきこと（ホームの今月すべきことの貿易の行。overview は todo を通してこのモジュールを
+    # 読むので、ここで読む）
+    from server.web.overview import trade_todo
+
+    data["todo"] = trade_todo(island)
     return data
+
+
+# 貿易の概要に出す統計（誰にでも。W-247 (5)）
+OVERVIEW_STATS = ["trade.exports", "trade.imports", "trade.balance"]
+# 貿易の命令（概要の打てる手の箱に、出ている命令と前のターンの結果を出す種類）
+TRADE_ORDERS = (
+    "propose_contract",
+    "accept_contract",
+    "cancel_contract",
+    "create_bloc",
+    "join_bloc",
+    "leave_bloc",
+    "bloc_settings",
+    "transfer_bloc",
+    "take_over_bloc",
+    "set_tariff",
+    "set_export_subsidy",
+    "set_import_quota",
+    "set_embargo",
+    "send_aid",
+    "set_ship_lending",
+)
+
+
+def overview(data: dict[str, Any], stats: dict[str, float], currency: str) -> dict[str, Any]:
+    """貿易の概要（W-247 (5)）: 入っている貿易圏・輸出と輸入と貿易収支と、持ち主には運ぶ途中の荷の
+    重さと契約の数。trade_data の値を数えただけで、新しい計算はしない。"""
+    out: dict[str, Any] = {
+        "blocs": [
+            {"id": b["id"], "name": b["name"], "is_rep": b["rep"] == data["island"]}
+            for b in data["blocs"]
+        ],
+        "rows": reports.stat_rows(stats, OVERVIEW_STATS, currency),
+    }
+    if not data["mine"]:
+        return out
+    contracts = data["contracts"]
+    proposed = [c for c in contracts if c["state"] == contract_states.PROPOSED]
+    active = [c for c in contracts if c["state"] == contract_states.ACTIVE]
+    moving = [s for s in data["shipments"] if s["direction"] != "lent"]
+    out["contracts"] = {
+        "active": len(active),
+        "offered": sum(1 for c in proposed if c["can_accept"]),  # 相手からの申し込み
+        "waiting": sum(1 for c in proposed if c["proposed_by_me"]),  # 相手の返事待ち
+        "short": sum(1 for c in active if c["short_any"]),  # 直近に届けきれなかった契約
+    }
+    out["shipments"] = {
+        "count": len(moving),
+        "export_tons": round(sum(s["load"] for s in moving if s["direction"] == traders.EXPORT), 1),
+        "import_tons": round(sum(s["load"] for s in moving if s["direction"] == traders.IMPORT), 1),
+    }
+    return out
+
+
+def trade_orders(island: m.Island) -> dict[str, Any]:
+    """貿易の命令のうち、待っている列にあるものと、直近に実行したターンの結果（持ち主だけ。品目の
+    ページの打てる手の箱と同じ形）。"""
+    pending = [
+        display.describe_order(o.kind, o.payload)
+        for o in island.orders.filter(status="pending", kind__in=TRADE_ORDERS).order_by("seq", "id")
+    ]
+    done = island.orders.exclude(status="pending").filter(kind__in=TRADE_ORDERS)
+    last = done.order_by("-executed_turn").values_list("executed_turn", flat=True).first()
+    recent = [
+        {
+            "text": display.describe_order(o.kind, o.payload),
+            "status": o.status,
+            "reason": display.message(o.reason, **(o.reason_args or {})) if o.reason else "",
+        }
+        for o in done.filter(executed_turn=last).order_by("seq")
+    ]
+    return {"pending": pending, "recent": recent, "recent_turn": last if recent else None}
 
 
 def _amount(good: str, milli: int) -> float:
@@ -440,7 +524,8 @@ def policy_view(
     defs = get_game().defs
     rules = here.policy
     goods = []
-    for good in tradable_goods(defs):
+    tradable = set(tradable_goods(defs))
+    for good in (g for g in display.goods_in_order(defs) if g in tradable):
         tariff = policy.tariff_rate(here, good)
         subsidy = policy.export_subsidy(here, good)
         quota = policy.quota(here, good)
@@ -561,6 +646,7 @@ def contract_rows(
                 "currency_name": _currency(islands, view["currency"]),
                 "currency_symbol": islands.get(view["currency"], {}).get("symbol", ""),
                 "turns": c.get("turns"),
+                "indefinite": view["indefinite"],  # 無期限の契約（FX-68）
                 "start": view["start"] or None,
                 "end": view["end"] or None,
                 "active": view["active"],
@@ -586,7 +672,10 @@ def contract_rows(
                 "can_accept": proposed and view["proposer"] != island_id,
                 # 有効な契約は、やめる命令を出してもまだ先に終わる予定のときだけ
                 "can_cancel": proposed
-                or (state == contract_states.ACTIVE and view["end"] > turn + 1 + wait),
+                or (
+                    state == contract_states.ACTIVE
+                    and (view["end"] is None or view["end"] > turn + 1 + wait)
+                ),
             }
         )
     order = {contract_states.PROPOSED: 0, contract_states.ACTIVE: 1, contract_states.ENDED: 2}
@@ -596,7 +685,7 @@ def contract_rows(
 def trader_rows(
     here: IslandState, islands: dict[int, dict[str, Any]], blocs: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    """島の商社（工事中・閉鎖中を含む）と、財ごとの向き・狙う量・手元の荷・運ぶ途中の荷。"""
+    """島の商社（工事中・閉鎖中を含む）と、財ごとの向き・狙う量・持つ量・手元の荷・運ぶ途中の荷。"""
     game = get_game()
     defs, config = game.defs, game.config
     names = {b["id"]: b["name"] for b in blocs}
@@ -621,6 +710,10 @@ def trader_rows(
                     "target": display.amount(target if direction else 0, good),  # 1ターンに狙う量
                     "held": display.amount(max(0, held - transit), good),  # 港の倉庫にある荷
                     "transit": display.amount(transit, good),  # 船で運ぶ途中の荷
+                    # 輸入の荷の持つ量（手元と運ぶ途中を合わせて。FX-66）
+                    "hold": display.amount(item.get("hold", 0), good)
+                    if direction == traders.IMPORT
+                    else None,
                     "unit_cost": display.price(good, cost * QUANTITY_SCALE // held)
                     if held > 0
                     else None,
@@ -811,6 +904,28 @@ def merchant_view(here: IslandState, turn: int) -> dict[str, Any]:
             }
             for good, qty, price in merchant.offers(here, defs, config, coming)
         ],
+        "food": food_merchant_view(here),
+    }
+
+
+def food_merchant_view(here: IslandState) -> dict[str, Any] | None:
+    """物がないときの海外の食料商人（FX-73。W-239）: このターンに来ていれば、来始めたターン・売りに
+    出した量・売れた量・値段・計画経済の差額の予算で量を削ったか。来ていなければ None。"""
+    defs = get_game().defs
+    state = here.ext.get(KEY, {}).get(food_merchant.KEY, {})
+    last = state.get("last")
+    if not state.get("active") or not last:
+        return None
+    good = get_game().config.get("food_reserve.good")
+    return {
+        "good": good,
+        "name": defs.name("goods", good),
+        "unit": defs.unit_name(good),
+        "since": state.get("since"),
+        "quantity": _amount(good, last["qty"]),
+        "sold": _amount(good, last["sold"]),
+        "price": display.price(good, last["price"]),
+        "cut": bool(last.get("cut")),
     }
 
 
@@ -882,6 +997,11 @@ def fx_data(
         before = previous.get(f"fx.{key}")
         if before:
             row["change"] = _percent(e / BASIS, before, 2)
+        # 前のターンに市場で売りと買いに出ていた外貨の量（中央銀行の注文を除く。UI-80。記録の
+        # 前のターンは None）
+        recorded = 0 if "fx.book" in stats else None  # 0 は書かないので、記録したターンなら 0
+        row["offered"] = stats.get(f"fx.offered.{key}", recorded)
+        row["wanted"] = stats.get(f"fx.wanted.{key}", recorded)
         rates.append(row)
     world_view = WorldState(
         turn=world.turn,
@@ -922,17 +1042,51 @@ def fx_data(
     if mine:
         data["holdings"] = holding_rows(here, islands)
         data["nonresident"] = nonresident_rows(island, here, islands)
-        data["policy"] = fx_policy_view(here, islands, trading)
+        data["swaps"] = swap_view(world_view, here, islands, _previous_swaps(island, turn, stats))
+        data["policy"] = fx_policy_view(here, islands, trading, rates, data["swaps"]["room"])
         data["foreign_bonds"] = foreign_bond_rows(here, islands)
-        data["swaps"] = swap_view(world_view, here, islands)
     return data
 
 
+def _previous_swaps(
+    island: m.Island, turn: int | None, stats: dict[str, float]
+) -> dict[str, float | None]:
+    """融通で借りている額と貸している額の、1 ターンの増加（自国通貨。前のターンの記録がなければ
+    None）。"""
+    names = ("fx.swap.borrowed", "fx.swap.lent")
+    if turn is None:
+        return dict.fromkeys(names)
+    rows = dict(island.stats.filter(turn=turn - 1, name__in=names).values_list("name", "value"))
+    return {
+        name: stats[name] - rows[name] if name in rows and name in stats else None for name in names
+    }
+
+
 def fx_policy_view(
-    here: IslandState, islands: dict[int, dict[str, Any]], trading: dict[int, IslandState]
+    here: IslandState,
+    islands: dict[int, dict[str, Any]],
+    trading: dict[int, IslandState],
+    rates: list[dict[str, Any]] | None = None,
+    room: int | None = None,
 ) -> dict[str, Any]:
     """為替と資本取引の政策（フェーズ3-3）: 資本取引の制限、中央銀行の介入と固定相場、外国の国債の
-    売り買いの命令。命令の入力に使う一覧（相手の通貨と、国債を出している国）も返す。"""
+    売り買いの命令。命令の入力に使う一覧（相手の通貨と、国債を出している国）も返す。通貨の一覧には
+    前のターンに市場で売りと買いに出ていた量（rates の offered・wanted）と、融通で借りられる残り
+    （room。自国通貨）をその通貨に直した額を添える（介入の欄の目安と確かめ。UI-80）。"""
+    market = {r["currency"]: r for r in rates or []}
+
+    def currency_row(key: str) -> dict[str, Any]:
+        cid = int(key)
+        row = market.get(cid, {})
+        e = fxrates.rate(here, cid)
+        return {
+            "id": cid,
+            "name": _currency(islands, cid),
+            "offered": row.get("offered"),
+            "wanted": row.get("wanted"),
+            "swap_room": room * BASIS // e if room is not None and e > 0 else None,
+        }
+
     defs = get_game().defs
     config = get_game().config
     rules = here.policy
@@ -965,6 +1119,8 @@ def fx_policy_view(
             for key, rate in sorted(rules.fx_peg.items(), key=lambda kv: int(kv[0]))
         ],
         "peg_band": peg_band * 100,  # 固定相場の幅（%）
+        # 介入の効き方の注意（W-255。命令の定義の caution と同じ）
+        "intervention_caution": display.ORDER_CAUTIONS["set_fx_intervention"],
         "bond_orders": [
             {
                 "holder": holder,
@@ -979,9 +1135,7 @@ def fx_policy_view(
             for key, amount in sorted(issuers.items(), key=lambda kv: int(kv[0]))
         ],
         "currencies": [
-            {"id": int(key), "name": _currency(islands, int(key))}
-            for key in sorted(fxrates.rates(here), key=int)
-            if int(key) != here.id
+            currency_row(key) for key in sorted(fxrates.rates(here), key=int) if int(key) != here.id
         ],
         "issuers": [
             {"id": i, "name": _name(islands, i), "currency_name": _currency(islands, i)}
@@ -1022,11 +1176,15 @@ def foreign_bond_rows(
 
 
 def swap_view(
-    world_view: WorldState, here: IslandState, islands: dict[int, dict[str, Any]]
+    world_view: WorldState,
+    here: IslandState,
+    islands: dict[int, dict[str, Any]],
+    changes: dict[str, float | None] | None = None,
 ) -> dict[str, Any]:
     """中央銀行どうしの融通（フェーズ3-3 の続き。hakoniwa_core/trade/swap.py）: 借りている相手と
     貸している相手ごとの額（その通貨と、自国通貨に直した額）と金利（年率 %）、まだ借りられる額と、
-    決済通貨を発行した国なら、まだ新しく作って貸せる額。上限の割合は %。"""
+    決済通貨を発行した国なら、まだ新しく作って貸せる額。上限の割合は %。為替のタブの頭に出す
+    借りの限度額（limit）と貸している額（lent）、1 ターンの増加（changes。UI-80）も。"""
     config = get_game().config
     view = swap.view(world_view, here, config)
     for field, rows in (("lender", view["owed"]), ("borrower", view["lent"])):
@@ -1041,6 +1199,11 @@ def swap_view(
             row["rate"] = row["rate"] * 100 / BASIS
     view["quota"] = config.get("fx.swap_quota") * 100
     view["issuer_share"] = config.get("fx.swap_issuer_share") * 100
+    view["limit"] = view["borrowed"] + view["room"] if view["room"] is not None else None
+    view["lent_total"] = sum(row["own"] for row in view["lent"])
+    changes = changes or {}
+    view["borrowed_change"] = changes.get("fx.swap.borrowed")
+    view["lent_change"] = changes.get("fx.swap.lent")
     return view
 
 

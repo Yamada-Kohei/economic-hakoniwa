@@ -2,6 +2,7 @@
 {% block title %}{% translate "順位" %} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
 <h1>{% translate "統計の順位" %}</h1>
+{% include "web/world_nav.html" with current="rankings" %}
 {% if not data %}
 <p class="muted">{% translate "世界がまだありません。" %}</p>
 {% else %}

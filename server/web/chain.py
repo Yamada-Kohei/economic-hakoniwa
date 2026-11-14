@@ -131,7 +131,8 @@ def chain_view(
         return shortfall(record) >= record.demand * share
 
     goods = []
-    for good, gdef in defs.goods.items():
+    for good in display.goods_in_order(defs):
+        gdef = defs.goods[good]
         by_turn = records.get(good, {})
         now = by_turn.get(turn) if turn is not None else None
         made = stats.get(f"production.{good}", 0.0)
@@ -215,8 +216,9 @@ def _stalled(defs, config, state, facilities) -> list[dict[str, Any]]:
                 continue
         groups[cause].append(
             {
+                "number": row.number,
                 "name": facility_name(defs, config, state, f),
-                "kind_name": defs.name("facilities", row.kind),
+                "kind_name": display.kind_label(defs, f.kind, f.recipe),
                 "x": row.x,
                 "y": row.y,
                 "on_map": fac.on_map(f),

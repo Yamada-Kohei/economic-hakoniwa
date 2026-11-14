@@ -101,10 +101,16 @@ def build(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> No
         name=payload.get("name", "").strip(),
         economy={"capital": 0},
     )
+    # 段階の作り方（機械化・近代化）を選んだ農場は、初めからその段階で建ち、その段階までの工事の
+    # 工期と資材を足す（W-257。手作業のまま機械化の作り方で動かさない）
+    grade = fac.build_grade(ctx.defs, kind, f.recipe)
+    turns = fac.build_spec(ctx.defs, kind, f.recipe)[0]
+    if grade:
+        f.ext[fac.GRADE] = grade
+        f.ext[fac.GRADE_BUILD] = grade
     # 体制（権威主義の公共事業）で工期を変える（フェーズ3-4）
     factor = planning.build_factor(island, ctx.defs)
-    if factor != 1.0:
-        turns = ctx.defs.facilities[kind]["construction"]["turns"]
+    if factor != 1.0 or grade:
         f.ext["build_total"] = max(fac.FULL, round(turns * factor * fac.FULL))
     if payload.get("hidden"):  # 地下に造る: 工期が延び、資材が増える。ほかの国には見えない（MI-62）
         hide = ctx.defs.facilities[kind]["hide"]
@@ -216,14 +222,20 @@ def demolish(island: IslandState, payload: dict[str, Any], ctx: StageContext) ->
     if fac.is_housing(ctx.config, f):
         shops = [s for s in island.facilities if s.ext.get(fac.SITE) == [x, y]]
     for gone in [*shops, f]:
-        # まだ働いている人は全員解雇し、手当を払う（預金の分け方より先。LB-43）
-        dismissal.on_removal(island, ctx.defs, ctx.config, gone, ctx.turn)
-        ship_orders.cancel_all(island, ctx.config, gone)  # 造船所の前注文（FX-60）
-        sell_leftover_stock(island, gone)
-        close_accounts(island, gone)
-        stock.move_to_warehouse(gone.stock, island.warehouse, ctx.turn, ctx.defs.goods)
-        island.facilities.remove(gone)
+        remove(island, gone, ctx)
     island.log.append(LogEntry("facility_demolished", {"facility": f.kind, "x": x, "y": y}))
+
+
+def remove(island: IslandState, f: Facility, ctx: StageContext) -> None:
+    """施設を島から取り除く（取り壊しと、終わった探鉱隊。MI-68）。働いている人は解雇し、在庫は国の
+    倉庫に戻し、独立採算の施設の預金は持ち主に返す。"""
+    # まだ働いている人は全員解雇し、手当を払う（預金の分け方より先。LB-43）
+    dismissal.on_removal(island, ctx.defs, ctx.config, f, ctx.turn)
+    ship_orders.cancel_all(island, ctx.config, f)  # 造船所の前注文（FX-60）
+    sell_leftover_stock(island, f)
+    close_accounts(island, f)
+    stock.move_to_warehouse(f.stock, island.warehouse, ctx.turn, ctx.defs.goods)
+    island.facilities.remove(f)
 
 
 def close_accounts(island: IslandState, f: Facility) -> None:
@@ -361,6 +373,7 @@ class Construction(IslandStage):
             "build_total",
             "materials_factor",
             fac.SITE_WORK,
+            fac.GRADE_BUILD,
         ):
             f.ext.pop(key, None)
         for key in ("no_materials_turns", "no_workers_turns", "stalled_turns"):

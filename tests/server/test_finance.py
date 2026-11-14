@@ -224,7 +224,7 @@ def test_finance_orders_are_accepted(client, world):
         assert warnings.get(index, start).startswith(start)
     texts = [o["text"] for o in data["orders"]]
     assert texts[0] == "工業団地・オフィス街の指定: 工業団地 1 マス"
-    assert texts[11] == f"銀行への緊急の貸し出し: ({bank.x}, {bank.y}) 上限 10,000"
+    assert texts[11] == f"銀行への緊急の貸し出し: 銀行 ({bank.x}, {bank.y}) 上限 10,000"
 
     # 形の誤りは受け付けない
     bad = {"orders": [{"kind": "set_bank_policy", "payload": {"entry": "anyone"}}]}
@@ -235,7 +235,7 @@ def test_bond_payment_needs_bonds(client, world):
     """国債の利払いの停止は、国債の銘柄があるときだけ通る（命令の確かめは国債も読む）。"""
     island = _own_island(client)
     url = f"/api/islands/{island.id}/orders"
-    body = {"orders": [{"kind": "set_bond_payment", "payload": {"stop": True}}]}
+    body = {"orders": [{"kind": "set_bond_payment", "payload": {"stop": True}}], "confirm": True}
     island.bonds.all().delete()
     warnings = client.put(url, body, content_type="application/json").json()["warnings"]
     assert warnings == [{"index": 0, "text": "国債がありません"}]
@@ -465,3 +465,18 @@ def test_bank_books_separate_realized_and_unrealized_bond_gains(client, world):
     assert labels.index("国債の売却・償還の損益") < labels.index("損益")
     assert labels[-1].startswith("国債の評価損益（売るまで損益に入れず")
     assert rows[-1]["text"].endswith("9,000")
+
+
+def test_help_says_only_the_collateral_facility_is_seized(client, world):
+    """手引きの倒産と差し押さえ（FM-65）: 差し押さえは担保の施設だけで、倒産を出した企業の実績の
+    ターン数を設定から出す。"""
+    html = client.get("/help/").content.decode()
+    turns = get_game().config.get("firms.track_record_turns")
+    assert "貸し手が差し押さえるのもその施設だけです" in html
+    assert f"それから {turns} ターンのあいだ、融資の実績がない企業" in html
+
+
+def test_help_ties_the_mine_limit_to_exploration(client, world):
+    """手引き（MI-68・FM-66）: 探鉱で見つけた資源も鉱山の上限に数える。"""
+    html = client.get("/help/").content.decode()
+    assert "鉱脈や探鉱で見つけた分と合わせて3種類になれば3つ" in html

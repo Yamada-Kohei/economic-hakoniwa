@@ -13,8 +13,7 @@ import pytest
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, politics
-from hakoniwa_core.economy import OWNERS
-from hakoniwa_core.economy import books as econ_books
+from hakoniwa_core.economy import OWNERS, household
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.log import format_log
 from hakoniwa_core.market import auction
@@ -442,9 +441,12 @@ def test_change_from_planned_keeps_state_facilities_and_lets_firms_in(game, base
     assert {f.id for f in island.facilities if f.owner == OWNER_STATE} == state_owned
     assert planning.KEY not in island.ext
     assert OWNERS in island.economy.households
-    kinds = set()
-    run(game, world, 24, lambda w: kinds.update(e.kind for e in island.log))
-    assert island.economy.households[OWNERS]["persons"] > 0
+    assert not ledger.holdings(island, household(OWNERS), ledger.EQUITY)
+    run(game, world, 24)
+    # 民間が参入し、資本家階級が出資する（FM-58）。出資した人の人数は、出資が軽い店だけだと財産で
+    # 暮らせる人数（LB-42）が 0 のまま次のターンに一般の層へ戻ることがあるので、株の持ち主で見る
+    assert any(f.ext.get("private_entry") for f in island.facilities)
+    assert sum(ledger.holdings(island, household(OWNERS), ledger.EQUITY).values()) > 0
 
 
 # --- 計画経済 ---------------------------------------------------------------------------
@@ -612,8 +614,8 @@ def test_priority_industries_come_first_but_get_no_build_or_experience_multiplie
 
 
 def test_official_prices_stay_unless_the_gap_passes_the_band(game, base):
-    """公定価格は原則据え置き: 原価との差が幅の中なら確かめで変えず、幅を超えた財だけ原価に改める。
-    据え置く財（既定は食料）は原価を下回っていても据え置く。"""
+    """公定価格（卸の値段）は原則据え置き: 原価との差が幅の中なら確かめで変えず、幅を超えた財だけ
+    原価に改める。据え置く財（既定は食料）も卸の値段は改め、小売の値段だけを据え置く（PL-60）。"""
     world = copy.deepcopy(base)
     island = island_of(world, "planned")
     defs, config = game.defs, game.config
@@ -626,17 +628,19 @@ def test_official_prices_stay_unless_the_gap_passes_the_band(game, base):
         coal=inside,
         steel=round(costs["steel"] * (1 + band * 2)),  # 幅を超えて高い
         wood=round(costs["wood"] * (1 - band * 2)),  # 幅を超えて安い
-        grain=round(costs["grain"] * (1 - band * 2)),  # 据え置く財は安くても据え置く
-        fish=round(costs["fish"] * (1 + band * 2)),  # 据え置く財でも高すぎれば改める
+        grain=round(costs["grain"] * (1 - band * 2)),  # 据え置く財も卸の値段は改める
+        fish=round(costs["fish"] * (1 + band * 2)),
     )
-    grain = state["prices"]["grain"]
+    assert planning.is_dual(island)
+    grain = planning.retail_price(island, config, "grain")
     revised = planning.review(island, defs, config, world.turn)
     costs = state["costs"]
     prices = planning.official(island)
     assert prices["coal"] == inside
     assert prices["steel"] == costs["steel"] and prices["wood"] == costs["wood"]
-    assert prices["grain"] == grain and prices["fish"] == costs["fish"]
-    assert {"steel", "wood", "fish"} <= set(revised) and not {"coal", "grain"} & set(revised)
+    assert prices["grain"] == costs["grain"] and prices["fish"] == costs["fish"]
+    assert planning.retail_price(island, config, "grain") == grain  # 小売は据え置く
+    assert {"steel", "wood", "fish", "grain"} <= set(revised) and "coal" not in revised
     assert state["review"] == world.turn + config.get("planning.review_turns")
     assert island.log[-1].kind == "official_prices_revised"
     logs_ok(game, island)
@@ -681,14 +685,17 @@ def test_official_price_reform_and_rules_orders(game, base):
 
 
 def test_held_goods_below_cost_are_subsidized(game, base):
-    """据え置く財を原価より安く売ると、差を補助金で埋める: 独立採算の施設には国庫から払い、国庫
-    直轄の施設は帳簿にだけ残す。帳簿は崩れない。"""
+    """据え置く財の小売が卸の値段より安いと、家計への売りにだけ価格の補助が付く（PL-60）: 売り手は
+    卸の値段を受け取り（独立採算の施設には国庫から補助を払う）、家計は小売の値段で払い、施設どうしの
+    売りは卸の値段のまま。帳簿は崩れない。"""
     world = copy.deepcopy(base)
     island = island_of(world, "planned")
     defs, config = game.defs, game.config
-    costs = planning.solve_costs(island, defs, config)
     state = planning.state_of(island)
-    state["prices"]["grain"] = max(1, costs["grain"] // 2)
+    whole = planning.official(island)["grain"]
+    low = max(1, whole // 2)
+    state[planning.RETAIL]["grain"] = low
+    assert planning.rate_of(island, config, "grain") < 0
     farms = [
         f
         for f in island.facilities
@@ -700,20 +707,116 @@ def test_held_goods_below_cost_are_subsidized(game, base):
     where = {"x": farm.x, "y": farm.y, "accounting": ACCOUNTING_SELF}
     accounts_stage.set_accounting(island, where, context(game, world))
     books_ok(game, island)
-    seen, paid = [], []
-
-    def each(w):
-        seen.append(dict(island.stats))
-        paid.extend(
-            b.items.get(econ_books.SUBSIDY, 0) for b in island.books if b.facility == farm.id
-        )
-
-    run(game, world, 3, each)
-    assert planning.official(island)["grain"] == max(1, costs["grain"] // 2)
+    seen = []
+    run(game, world, 3, lambda w: seen.append(dict(island.stats)))
+    assert planning.retail_price(island, config, "grain") == low  # 小売は据え置いたまま
     assert any(r.get("plan.subsidy", 0) > 0 for r in seen)
     assert all(r.get("plan.subsidy_unpaid", 0) == 0 for r in seen)
-    assert any(p > 0 for p in paid)
+    assert any(r.get("fiscal.out.subsidy", 0) > 0 for r in seen)  # 独立採算の施設へ現金で
     logs_ok(game, island)
+
+
+def test_turnover_tax_and_price_subsidy_net_out(game, base):
+    """取引税（小売 − 卸 がプラス）は約定のときに国庫へ、価格の補助（マイナス）は市場の段の終わりに
+    取引税と差し引いて払う。計画経済の島は消費税をかけず、ほかの財の小売は卸 ×（1 ＋ 消費税の
+    率）。"""
+    world = copy.deepcopy(base)
+    island = island_of(world, "planned")
+    config = game.config
+    tax = island.policy.consumption_tax
+    whole = planning.official(island)["coal"]
+    assert planning.retail_price(island, config, "coal") == whole + whole * tax // 10000
+    assert abs(planning.rate_of(island, config, "coal") - tax) <= 1
+    seen = []
+    run(game, world, 2, lambda w: seen.append(dict(island.stats)))
+    assert all(r.get("plan.turnover_tax", 0) > 0 for r in seen)
+    market = island_of(world, "market")
+    assert planning.rate_of(market, config, "grain") == market.policy.consumption_tax
+    assert "plan.turnover_tax" not in market.stats
+
+
+def test_unpaid_price_subsidy_is_carried_and_paid_first(game, base):
+    """国庫で払いきれない価格の補助は売り手への国の未払いにして持ち越し（表の 2-1）、次のターンの
+    予算の見積もりと国債の発行の見込みに入れて先に払う。国債が売れず引き受けもない間だけ、売った
+    施設の赤字にする。"""
+    world = copy.deepcopy(base)
+    island = island_of(world, "planned")
+    config = game.config
+    farm = next(f for f in island.facilities if f.built and f.owner == OWNER_STATE)
+    key = f"fac:{farm.id}|{farm.id}"
+    island.scratch[planning.GAP] = {"tax": 0, "owed": {key: 10**15}}
+    planning.pay_price_subsidies(island, config, world.turn)
+    owed = planning.owed_total(island)
+    assert 0 < owed <= 10**15
+    assert island.log[-1].kind in ("plan_subsidy_short", "plan_subsidy_over")
+    assert any(e.kind == "plan_subsidy_short" for e in island.log)
+    from hakoniwa_core.modules.bonds import Bonds
+
+    ctx = context(game, world)
+    need = Bonds.treasury_need(island, ctx, {})
+    assert need >= owed
+    # 締め出しの間は持ち越さず、売った施設の赤字にする
+    island.economy.finance["default_turn"] = world.turn
+    island.policy.bond_unsold = ""
+    island.scratch[planning.GAP] = {"tax": 0, "owed": {key: 10**15}}
+    planning.pay_price_subsidies(island, config, world.turn)
+    assert planning.owed_total(island) == 0
+    assert any(e.kind == "plan_subsidy_lost" for e in island.log)
+    logs_ok(game, island)
+
+
+def test_retail_price_order(game, base):
+    """小売の値段の上書き（set_retail_price）: 卸の値段 × planning.retail.floor より安くはできず、
+    0 で上書きをやめる。据え置く財の小売を上げるときだけ議会の採決が要る。"""
+    world = copy.deepcopy(base)
+    island = island_of(world, "planned")
+    config = game.config
+    ctx = context(game, world)
+    whole = planning.official(island)["steel"]
+    floor = planning.retail_floor(island, config, "steel")
+    with pytest.raises(OrderFailed) as low:
+        plan_orders.set_retail_price(island, {"good": "steel", "price": floor - 1}, ctx)
+    assert low.value.reason == "reason_retail_below_floor"
+    plan_orders.set_retail_price(island, {"good": "steel", "price": whole}, ctx)
+    assert planning.retail_price(island, config, "steel") == whole
+    assert planning.rate_of(island, config, "steel") == 0
+    plan_orders.set_retail_price(island, {"good": "steel", "price": 0}, ctx)
+    assert planning.retail_price(island, config, "steel") == planning.taxed(island, whole)
+    grain = planning.retail_price(island, config, "grain")
+    assert plan_orders.raises_held_retail(island, {"good": "grain", "price": grain + 1}, config)
+    assert not plan_orders.raises_held_retail(island, {"good": "grain", "price": grain}, config)
+    assert not plan_orders.raises_held_retail(island, {"good": "steel", "price": whole * 2}, config)
+    # 卸だけが上がり続けても、小売は卸の 1 割より下げない（家計の注文の率と食い違わせない）
+    state = planning.state_of(island)
+    state[planning.RETAIL]["grain"] = 1
+    whole_grain = planning.official(island)["grain"]
+    assert planning.retail_price(island, config, "grain") >= whole_grain // 10
+    assert planning.rate_of(island, config, "grain") >= planning.SAFE_RATE
+    state[planning.RETAIL]["grain"] = grain
+    # 改定で据え置く財を名指しすると、小売も卸 ×（1 ＋ 標準の率）に改める
+    plan_orders.review_official_prices(island, {"goods": ["grain"]}, ctx)
+    cost = planning.official(island)["grain"]
+    assert planning.retail_price(island, config, "grain") == planning.taxed(island, cost)
+    logs_ok(game, island)
+
+
+def test_old_planned_islands_move_to_dual_prices(game, base):
+    """前の版の計画経済の島（二重の値段の前）は、家計の払う額が変わらない値段で始める: 小売 ＝ 公定
+    価格 ×（1 ＋ 消費税の率）、据え置く財の卸 ＝ 原価（前の補助を足した額）。"""
+    world = copy.deepcopy(base)
+    island = island_of(world, "planned")
+    config = game.config
+    state = planning.state_of(island)
+    for key in (planning.DUAL, planning.RETAIL, planning.RETAIL_MANUAL, "started"):
+        state.pop(key, None)
+    cost = state["costs"]["grain"]
+    state["prices"]["grain"] = max(1, cost // 2)
+    old = state["prices"]["grain"]
+    state["review"] = world.turn + 100  # 確かめのターンにしない
+    planning.prepare(island, game.defs, config, world.turn)
+    assert planning.is_dual(island)
+    assert planning.official(island)["grain"] >= cost
+    assert planning.retail_price(island, config, "grain") == planning.taxed(island, old)
 
 
 def test_price_floor_keeps_the_market_price_up(game, base):
@@ -816,6 +919,34 @@ def test_price_cap_removal_restarts_production(game, price_cap_case):
     assert market_mod.operating_target(island, f, ctx) == 0
     island.policy.price_cap.clear()
     assert market_mod.operating_target(island, f, ctx) > 0
+
+
+def test_cost_floor_is_recorded_for_screens_only(game, price_cap_case):
+    """操業目標の見直しは、産出物ごとの1単位の費用の下限（生産補助の後）を cost_floor に残す
+    （画面の生産調整中のわけ W-250 に見せるだけ）。残した値は次の見直しの計算に使わない。"""
+    from hakoniwa_core.economy import freight
+    from hakoniwa_core.economy.prices import subsidized_floor
+
+    world, island, f = price_cap_case
+    ctx = context(game, world)
+    island.policy.subsidies = [
+        {"kind": "production", "good": "wood", "rate": 2500, "until": ctx.turn},
+    ]
+    full = fac.outputs_of(game.defs, f)["wood"]
+    island.markets = [MarketRecord("wood", 100, full // 2, full // 2, full)]
+    f.economy.update(target=fac.FULL, sales={"wood": [full, full // 2, 0]})
+    before = copy.deepcopy(f.economy)
+    first = market_mod.operating_target(island, f, ctx)
+    rate = freight.facility_rates(island, game.defs, game.config).get(f.id, 0)
+    prices, wage = island.economy.prices, f.economy["wage"]
+    floor = subsidized_floor(
+        island, game.defs, game.config, f, "wood", prices, wage, rate, ctx.turn
+    )
+    assert f.economy[market_mod.COST_FLOOR] == {"wood": floor}
+    for recorded in ({"wood": 1}, {"wood": floor * 100}):
+        f.economy = copy.deepcopy(before)
+        f.economy[market_mod.COST_FLOOR] = recorded
+        assert market_mod.operating_target(island, f, ctx) == first
 
 
 def test_production_subsidy_lowers_seller_floor(game, price_cap_case):

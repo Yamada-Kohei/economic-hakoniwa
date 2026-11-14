@@ -122,7 +122,7 @@ def apply_defs(tables: dict[str, dict[str, dict[str, Any]]], k: float) -> None:
     for entry in tables.get("facilities", {}).values():
         _facility(entry, k)
     for entry in tables.get("settlements", {}).values():
-        for key in ("capacity", "min_population", "materials"):
+        for key in ("capacity", "min_population", "materials", "people_per_shop"):
             if key in entry:
                 entry[key] = _times(entry[key], k)
     for entry in tables.get("infrastructure", {}).values():

@@ -55,6 +55,17 @@ build:  # 国営の施設が建つマスに同じ施設を建てると、建て�
       note: {type: string, maxLength: 81}   # 記念碑の碑文に足す文（2 行まで。1 行 40 字まで）
       hidden: {type: boolean}               # true で地下に造る（ミサイル基地と核施設だけ。工期と資材が増え、ほかの国には見えない）
 
+explore:  # 探鉱（MI-68）: 島がまだ持っていない鉱業資源を 1 つ選び、それを掘る施設の建つ地形のマスに探鉱隊を置く
+  admin_cost: 1
+  payload:
+    type: object
+    required: [resource, x, y]
+    additionalProperties: false
+    properties:
+      resource: {type: string}
+      x: {type: integer, minimum: 0}
+      y: {type: integer, minimum: 0}
+
 build_housing:
   admin_cost: 1
   payload:
@@ -507,7 +518,7 @@ propose_contract:
   secret: true
   payload:
     type: object
-    required: [partner, side, good, quantity, price, turns]
+    required: [partner, side, good, quantity, price]
     additionalProperties: false
     properties:
       partner: {type: integer, minimum: 1}  # 相手の島の番号
@@ -516,7 +527,10 @@ propose_contract:
       quantity: {type: number, exclusiveMinimum: 0}  # 1ターンの量
       price: {type: integer, minimum: 0}    # 1 単位の値段（契約の通貨）
       currency: {type: integer, minimum: 1} # 契約の通貨（どちらかの島の番号。省くとこちらの通貨）
-      turns: {type: integer, minimum: 1, maximum: 600}
+      turns: {type: integer, minimum: 1, maximum: 600}  # 期間（無期限なら書かない）
+      # 無期限（FX-68）: 満期がなく、どちらかのやめる命令から trade.contract_cancel_turns ターン後に終わる。
+      # turns か indefinite のどちらか一方を書く
+      indefinite: {const: true}
       # 届いた物の行き先（こちらが買うときだけ。省くと market）: market は売り切れるまで島の市場の
       # 値段で売りに出す、warehouse は国の倉庫に置いておく。傷みやすい物はどちらでもすぐ市場に出す
       delivery: {enum: [market, warehouse]}
@@ -766,10 +780,21 @@ set_official_price_rules:                 # 公定価格の決まり（計画経
     additionalProperties: false
     properties:
       band: {type: integer, minimum: 0, maximum: 100, description: "%"}  # 原価との差がこの % を超えたら見直す
-      held:                               # 原価を下回っても据え置き、差を補助金で埋める財
+      held:                               # 小売の値段を据え置く財（卸より安くなった分は家計への売りにだけ価格の補助）
         type: array
         uniqueItems: true
         items: {type: string}
+
+set_retail_price:                         # 小売の値段の上書き（計画経済だけ。PL-60）
+  admin_cost: 2                           # 公定価格の改定と同じ（据え置く財の小売を上げるときは議会の採決も）
+  parliament: majority                    # 据え置く財の小売を上げるときだけ採決する（modules/politics の vote_rule）
+  payload:
+    type: object
+    required: [good, price]
+    additionalProperties: false
+    properties:
+      good: {type: string}
+      price: {type: integer, minimum: 0}  # 0 で上書きをやめる（据え置く財は据え置いた値段、ほかは卸 ×（1 ＋ 取引税の標準の率））
 
 set_priority_industries:                  # 重点産業（計画経済だけ。planning.max_priority まで）
   admin_cost: 1
@@ -802,6 +827,23 @@ set_staff_plan:                           # 人員計画（計画経済だけ。
             y: {type: integer, minimum: 0}
             kind: {type: string}              # マスを持たない施設（商業・サービス業）は種類で
             cap: {type: [integer, "null"], minimum: 0}  # 人数の枠（一般の労働者・技術者・動員した人の合計）。null で外す
+
+set_export_plan:                          # 輸出の計画（計画経済だけ。PL-62）: 財ごとに1ターンの量か、輸出しない（0）を名指し。表をまるごと置き換え、空の表で名指しをやめる
+  admin_cost: 1
+  payload:
+    type: object
+    required: [plans]
+    additionalProperties: false
+    properties:
+      plans:
+        type: array
+        items:
+          type: object
+          required: [good, quantity]
+          additionalProperties: false
+          properties:
+            good: {type: string}
+            quantity: {type: number, minimum: 0}  # 1ターンの量。0 は輸出しない
 
 set_price_floor:                          # 値段の下限（混合経済だけ。農産物の支えなど）
   admin_cost: 1

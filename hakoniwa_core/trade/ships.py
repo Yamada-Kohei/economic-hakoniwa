@@ -14,9 +14,11 @@ trade.ship_life ターン使ったら解体します。市場で買った船（�
 trade.ship_fuel に財が複数あれば、どれか1つで動きます（フェーズ3-2 から燃料と石炭）。使うときも買う
 ときも、今の値段で1隻1ターンあたりの費用が安い財から先にします。
 
-運賃は「荷 1 トン × 区画 1 つ」あたりで、直近 trade.cost_turns ターンの費用（船員の賃金・燃料・船の
-傷み）÷ 運んだ量（トン × 区画）×（1 + trade.cost_markup）です。運んだ量は、船を半分使ったときの量を
-下限にして数えます（荷の少ない間に運賃が跳ね上がらないように）。
+運賃は「荷 1 トン × 区画 1 つ」あたりで、（1 + trade.cost_markup）×（運航費 ＋ 資本費 ×
+min(1, 2u)）÷ 1 隻を 1 ターン全部使ったときに運ぶ量です（タブ 9 FX-74。2026-11-12、W-233）。運航費は
+1 隻 1 ターンの船員の賃金と一番安い燃料、資本費は直近 trade.cost_turns ターンの船の傷みと沈んだ船の
+値段 ÷ 延べ隻数、u は同じターンの運んだ量 ÷ 船団を全部使ったときの量。船が余れば運航費まで下がり、
+半分より多く使えば、船の傷みまで回収する全部の費用で止まります。
 
 港は荷の積み下ろしを 1 ターンに trade.port_capacity トンまで扱い、直近の扱った量の平均 ×
 trade.port_labor 人を雇います。使用料は荷 1 トンあたり
@@ -152,6 +154,7 @@ def scrap(island: IslandState, config: GameConfig, turn: int) -> int:
     if f is None:
         return 0
     life = config.get("trade.ship_life")
+    before = fleet(f)
     keep, gone = [], 0
     for since, qty in f.economy.get("fleet", []):
         if turn - since >= life:
@@ -160,6 +163,11 @@ def scrap(island: IslandState, config: GameConfig, turn: int) -> int:
             keep.append([since, qty])
     if gone:
         f.economy["fleet"] = keep
+        # 解体した船の割合を設備の額と償却済みの額から除く（固定資産の除却。FX-74。前は除かず、
+        # 1 隻になっても解体した船の分の減価償却が続いた）
+        capital, done = f.economy.get("capital", 0), f.economy.get("depreciated", 0)
+        f.economy["capital"] = capital - capital * gone // before
+        f.economy["depreciated"] = done - done * gone // before
         island.log.append(LogEntry("ships_scrapped", {"count": from_milli(gone)}))
     return gone
 
@@ -247,20 +255,41 @@ def freight_rate(island: IslandState, config: GameConfig, f: Facility | None = N
 
 
 def _estimate(island: IslandState, config: GameConfig, f: Facility) -> int:
-    """1 隻を半分使ったときの費用から見積もった運賃。"""
-    cost = _ship_turn_cost(island, config)
-    per_ship = config.get("trade.ship_capacity") * config.get("trade.ship_speed") / 4  # トン×区画
-    return max(1, round_money(cost / per_ship * (1 + config.get("trade.cost_markup"))))
+    """実績がないときの運賃: 船を半分使ったとき（u = 0.5）の今の値段での見積もり。船がなければ
+    資本費は 0（FX-74）。"""
+    wear = _ship_wear(island, config) if fleet(f) > 0 else 0
+    return _rate(config, _ship_run_cost(island, config), wear, 0.5)
 
 
-def _ship_turn_cost(island: IslandState, config: GameConfig) -> float:
-    """船 1 隻を1ターン使う費用（船員の賃金・燃料・船の傷み）。"""
+def _full_use(config: GameConfig) -> float:
+    """1 隻を 1 ターン全部使ったときに運ぶ量（トン × 区画）。往復で片道の 2 倍走るので、速さの
+    半分。"""
+    return config.get("trade.ship_capacity") * config.get("trade.ship_speed") / 2
+
+
+def _rate(config: GameConfig, run_cost: float, wear: float, use: float) -> int:
+    """運賃 =（1 + 上乗せ）×（運航費 + 資本費 × min(1, 2u)）÷ 1 隻を全部使ったときに運ぶ量
+    （FX-74）。船が余れば運航費まで下がり、半分より多く使えば船の傷みまで回収する全部の費用で止まる（足りない
+    ときの割増は付けない。2026-11-12 の X870 の比べで、割増が輸入を減らし、使った船の数で決める
+    買い替えが減って船が細る回り道に入った）。"""
+    cost = run_cost + wear * min(1.0, 2 * max(0.0, use))
+    return max(1, round_money(cost / _full_use(config) * (1 + config.get("trade.cost_markup"))))
+
+
+def _ship_run_cost(island: IslandState, config: GameConfig) -> float:
+    """船 1 隻を 1 ターン走らせる費用（船員の賃金と一番安い燃料。今の値段）。"""
     wage = island.economy.average_wage or config.get("labor.initial_wage")
     prices = island.economy.prices
     settings = config.get("trade.ship_fuel")
     fuel = min((prices.get(g, 0) * q for g, q in settings.items()), default=0)
-    wear = prices.get(config.get("trade.ship_good"), 0) / config.get("trade.ship_life")
-    return config.get("trade.ship_crew") * wage + fuel + wear
+    return config.get("trade.ship_crew") * wage + fuel
+
+
+def _ship_wear(island: IslandState, config: GameConfig) -> float:
+    """船 1 隻の 1 ターンの傷み（今の船の値段 ÷ 寿命）。"""
+    return island.economy.prices.get(config.get("trade.ship_good"), 0) / config.get(
+        "trade.ship_life"
+    )
 
 
 def close_turn(island: IslandState, config: GameConfig, carried: int, fuel_value: int) -> None:
@@ -270,26 +299,27 @@ def close_turn(island: IslandState, config: GameConfig, carried: int, fuel_value
         return
     keep = config.get("trade.cost_turns")
     wage_bill = f.economy.get("wage", 0) * f.workers
-    wear = round_money(
-        island.economy.prices.get(config.get("trade.ship_good"), 0)
-        * from_milli(fleet(f))
-        / config.get("trade.ship_life")
-    )
+    wear = round_money(_ship_wear(island, config) * from_milli(fleet(f)))
     sunk = f.economy.pop("sunk_value", 0)  # 沈んだ船の値段も船の傷みと同じ費用（MI-35）
     costs = [*f.economy.get("costs", []), wage_bill + fuel_value + wear + sunk][-keep:]
     f.economy["used"] = [*f.economy.get("used", []), busy(f)][-keep:]
     loads = [*f.economy.get("carried", []), carried][-keep:]
+    # 資本費（傷みと沈んだ船）と船団の数はターンごとに残す（解体の後も、その時の船団で数える）
+    capital = [*f.economy.get("capital_costs", []), wear + sunk][-keep:]
+    fleets = [*f.economy.get("fleets", []), fleet(f)][-keep:]
     f.economy["costs"] = costs
     f.economy["carried"] = loads
-    # 運んだ量も下限も 1000 分の 1（トン × 区画）で数え、運賃は 1 トン × 区画あたりにする
-    per_turn = config.get("trade.ship_capacity") * config.get("trade.ship_speed") / 4
-    floor = fleet(f) * per_turn * len(loads)
-    total = max(sum(loads), floor)
-    if total <= 0:
-        f.economy["rate"] = _estimate(island, config, f)
+    f.economy["capital_costs"] = capital
+    f.economy["fleets"] = fleets
+    ship_turns = sum(fleets) / MILLI  # 延べ隻数
+    if ship_turns <= 0:
+        f.economy["rate"] = _rate(config, _ship_run_cost(island, config), 0, 0)
         return
-    rate = sum(costs) * QUANTITY_SCALE / total * (1 + config.get("trade.cost_markup"))
-    f.economy["rate"] = max(1, round_money(rate))
+    # 運んだ量も船団を全部使ったときの量も 1000 分の 1（トン × 区画）で数える
+    use = sum(loads) / (sum(fleets) * _full_use(config))
+    f.economy["rate"] = _rate(
+        config, _ship_run_cost(island, config), sum(capital) / ship_turns, use
+    )
 
 
 def port_fee(island: IslandState, config: GameConfig) -> int:

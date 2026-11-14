@@ -4,13 +4,19 @@
   戻す。
 - review_official_prices: 公定価格の改定（計画経済だけ。政治の決断なので行政力が重く、議会のある
   体制では採決が要る）。名指しした財（空なら上書きしていない財すべて）を今の原価に改める。
-- set_official_price_rules: 公定価格の決まり（計画経済だけ）。見直す幅（%）と、原価を下回っても
-  据え置いて補助金で埋める財。
+- set_official_price_rules: 公定価格の決まり（計画経済だけ）。見直す幅（%）と、小売の値段を
+  据え置く財。
+- set_retail_price: 小売の値段の上書き（計画経済だけ。PL-60）。0 で上書きをやめる。卸の値段 ×
+  planning.retail.floor より安くはできない。据え置く財の小売を上げる上書きは、公定価格の改定と同じく
+  議会のある体制で採決が要る（modules/politics の vote_rule）。
 - set_priority_industries: 重点産業（産業の分類。planning.max_priority まで。計画経済だけ）。
 - set_staff_plan: 人員計画（計画経済だけ。PL-59）。国営施設ごとの人数の枠（上限）を、何施設分でも
   1つの命令で決める。枠を空（null）にするとその施設の枠を外す。マスのある施設は座標で、マスを
   持たない施設（商業・サービス業）は種類で指す。効き方は economy/plan.py の staff_limit と
   modules/employment。
+- set_export_plan: 輸出の計画（計画経済だけ。PL-62）。財ごとに 1 ターンの輸出の量か、輸出しない
+  （0）を名指しする。表をまるごと置き換え、空の表で名指しをやめる。名指ししない財は自動
+  （economy/export_plan.py）。
 - set_price_floor: 値段の下限（混合経済だけ。農産物の支えなど）。0 で下限をなくす。上限は今の
   set_price_cap（混合経済はどの財にも、ほかの体制は電気料金だけ。modules/market）。
 
@@ -26,12 +32,13 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import politics
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
-from hakoniwa_core.economy import is_bank, is_transport, services
+from hakoniwa_core.economy import export_plan, is_bank, is_transport, services
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.registry import OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import OWNER_STATE, Facility, IslandState, LogEntry
-from hakoniwa_core.trade import staff
+from hakoniwa_core.trade import staff, tradable_goods
 from hakoniwa_core.turn.context import StageContext
+from hakoniwa_core.units import to_milli
 
 
 def _check_planned(island: IslandState, defs: Defs) -> None:
@@ -58,6 +65,39 @@ def set_official_price(island: IslandState, payload: dict[str, Any], ctx: StageC
     else:
         manual.pop(good, None)
         island.log.append(LogEntry("official_price_auto", {"good": good}))
+
+
+def check_retail_price(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    check_official_price(island, payload, defs)
+
+
+def set_retail_price(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
+    """小売の値段を決める（確かめでも変えない。PL-60）。卸の値段より安くすると、家計への売りに
+    価格の補助が付く。卸の値段 × planning.retail.floor より安くはできない。0 で上書きをやめ、
+    据え置く財は据え置いた値段に、ほかの財は卸 ×（1 ＋ 標準の取引税の率）に戻す。"""
+    state = planning.state_of(island)
+    good, price = payload["good"], payload["price"]
+    manual = state.setdefault(planning.RETAIL_MANUAL, {})
+    if price <= 0:
+        manual.pop(good, None)
+        island.log.append(LogEntry("retail_price_auto", {"good": good}))
+        return
+    if not planning.official(island).get(good):
+        raise OrderFailed("reason_no_official_price", good=good)
+    floor = planning.retail_floor(island, ctx.config, good)
+    if price < floor:
+        raise OrderFailed("reason_retail_below_floor", good=good, floor=floor)
+    manual[good] = price
+    island.log.append(LogEntry("retail_price_set", {"good": good, "price": price}))
+
+
+def raises_held_retail(island: IslandState, payload: dict[str, Any], config: GameConfig) -> bool:
+    """小売の値段の上書きが、据え置く財の小売を上げるか（議会の採決が要る。PL-26）。"""
+    _, held = planning.rules(island, config)
+    good, price = payload.get("good"), payload.get("price", 0)
+    if good not in held or price <= 0:
+        return False
+    return price > planning.retail_price(island, config, good)
 
 
 def check_goods(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
@@ -167,6 +207,37 @@ def set_staff_plan(island: IslandState, payload: dict[str, Any], ctx: StageConte
     island.log.append(LogEntry("staff_plan_set", {"count": count}))
 
 
+# --- 輸出の計画（PL-62） ---------------------------------------------------------------
+
+
+def check_export_plan(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    """輸出の計画: 計画経済で、名指しした財がみな島の外へ運べる財で、重なりがないこと。"""
+    _check_planned(island, defs)
+    seen: set[str] = set()
+    for entry in payload["plans"]:
+        good = entry["good"]
+        if good not in defs.goods:
+            raise OrderFailed("reason_unknown_good")
+        if good not in tradable_goods(defs):
+            raise OrderFailed("reason_not_tradable", good=defs.name("goods", good))
+        if good in seen:
+            raise OrderFailed("reason_duplicate_export_plan", good=defs.name("goods", good))
+        seen.add(good)
+
+
+def set_export_plan(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
+    """輸出の計画（PL-62。本人の表の 2-2）: 財ごとに 1 ターンの量（0 は輸出しない）を名指しする。
+    表をまるごと置き換え、空の表で名指しを全部やめる（名指ししない財は自動で選ぶ）。次のターンの
+    貿易の段の終わりに計画を決めるときから効く。"""
+    table = {e["good"]: to_milli(e["quantity"]) for e in payload["plans"]}
+    state = export_plan.state_of(island)
+    if table:
+        state["named"] = dict(sorted(table.items()))
+    else:
+        state.pop("named", None)
+    island.log.append(LogEntry("export_plan_set", {"count": len(table)}))
+
+
 def check_price_floor(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
     good, price = payload["good"], payload["price"]
     if good not in defs.goods:
@@ -201,6 +272,9 @@ def register(registry: Registry) -> None:
         OrderHandler("set_official_price_rules", execute=set_rules, check=check_goods)
     )
     registry.add_order(
+        OrderHandler("set_retail_price", execute=set_retail_price, check=check_retail_price)
+    )
+    registry.add_order(
         OrderHandler("set_priority_industries", execute=set_priority, check=check_priority)
     )
     registry.add_order(
@@ -208,4 +282,7 @@ def register(registry: Registry) -> None:
     )
     registry.add_order(
         OrderHandler("set_staff_plan", execute=set_staff_plan, check_settings=check_staff_plan)
+    )
+    registry.add_order(
+        OrderHandler("set_export_plan", execute=set_export_plan, check=check_export_plan)
     )

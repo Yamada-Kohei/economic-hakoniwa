@@ -76,6 +76,7 @@ def test_supply_chain_runs_for_300_turns(game, seed):
     island = world.islands[1]
     start_population = sum(t.population for t in island.tiles)
     produced: dict[str, float] = {}
+    first_made: dict[str, int] = {}  # 島で初めて作ったターン
     machinery_built_in = 0.0  # 島で機械を作り始めた後に建った施設が、資材に使った機械
     machinery_repaired = 0.0  # 島で機械を作り始めた後に、建っている施設が設備を直すのに買った機械
     populations = [start_population]
@@ -88,6 +89,8 @@ def test_supply_chain_runs_for_300_turns(game, seed):
             if key.startswith("production."):
                 good = key.removeprefix("production.")
                 produced[good] = produced.get(good, 0) + value
+                if value > 0:
+                    first_made.setdefault(good, world.turn)
         nonlocal machinery_built_in, machinery_repaired
         for entry in island.log:
             if entry.kind == "construction_done" and produced.get("machinery", 0) > 0:
@@ -163,6 +166,19 @@ def test_supply_chain_runs_for_300_turns(game, seed):
         if not any(f"）: {g} の値段が" in m for g in unmade)
     ]
     priced = [*recorder.failures(end=leave - tail - 1), *after]
+    # 島でまだ作っていない原料（鉱山が建つ前の鉄鉱石など）は、初めの倉庫の荷が尽きると値段が上がる。
+    # 鉱山を使う工場が先に建つと起こる（標準の計画の順の弱さ、main でもある）ので、その原料の値段は
+    # 島で初めて作ってから MERCHANT_CALM ターン後まで見ない（2026-11-13 本人のカード「試験を直す」）
+    for good, turn in first_made.items():
+        if turn <= 1:
+            continue
+        mark = f"）: {good} の値段が"
+        calm = turn + MERCHANT_CALM + 1
+        priced = [m for m in priced if mark not in m]
+        if calm <= leave - tail - 1:
+            priced += [m for m in recorder.failures(start=calm, end=leave - tail - 1) if mark in m]
+        late = recorder.failures(start=max(calm, leave + MERCHANT_CALM))
+        priced += [m for m in late if mark in m]
     failures = [m for m in recorder.failures() if any(h in m for h in hard) and "の値段が" not in m]
     failures += [m for m in priced if "の値段が" in m]
     assert [m for m in failures if not any(f"）: {g} の値段が" in m for g in food)] == []
