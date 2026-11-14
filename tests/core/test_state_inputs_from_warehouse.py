@@ -49,7 +49,11 @@ def test_private_power_plant_buys_the_released_coal(game):
     国の倉庫の石炭を市場で買う。"""
     island, before, shortage = _run(game, "market", turns=12)
     assert stock.total(island.warehouse, "coal") < before
-    assert max(shortage[1:]) == 0
+    # 放出は前のターンに買えなかった施設を見て始める（MK-39）ので、建国の石炭が尽きるターンだけ
+    # 少し足りなくなることがある（1 ターン目に電気が全部売れて、石炭を早く使い切ると起きる）。
+    # その後は足りる
+    assert sum(1 for s in shortage[1:] if s > 0) <= 1 and max(shortage[1:]) < 0.1
+    assert max(shortage[-3:]) == 0
     assert any(e.kind == "warehouse_released" for e in island.log) or island.economy.ext.get(
         "warehouse_released"
     )

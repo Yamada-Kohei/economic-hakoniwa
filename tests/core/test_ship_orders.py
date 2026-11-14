@@ -17,7 +17,7 @@ from hakoniwa_core.modules.failures import bankrupt
 from hakoniwa_core.state import ACCOUNTING_SELF, OWNER_PRIVATE, Facility
 from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.trade import orders, shipping_of, ships
-from hakoniwa_core.units import QUANTITY_SCALE, money_of
+from hakoniwa_core.units import QUANTITY_SCALE, money_of, round_money
 from tests.core.test_finance import context
 from tests.core.test_trade import run
 
@@ -84,7 +84,7 @@ def test_shipping_orders_whole_ships_from_the_island_yard_and_pays_a_deposit(gam
     assert placed == 2 * MILLI  # 1.5 隻分の不足を1隻単位に切り上げる
     (order,) = yard.economy[orders.ORDERS]
     value = money_of(price, 2 * MILLI)
-    assert order["paid"] == round(value * config.get("trade.order_deposit"))
+    assert order["paid"] == round_money(value * config.get("trade.order_deposit"))  # お金は切り捨て
     assert before - _money(island, f) == order["paid"]
     # 全力で1ターンに 1/4 隻なので、2隻は8ターン後に届く見込み
     assert order["due"] == world.turn + 1 + 8
