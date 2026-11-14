@@ -385,6 +385,7 @@ PLAN_STATS = [
     "trade.merchant_premium",
     "trade.price_gap_subsidies",
     "labor.mobilized",
+    "labor.guaranteed",
 ]
 
 
@@ -676,7 +677,8 @@ def _careful_help(config) -> dict:
 
 
 # 入門の「施設の状態の言葉」（名前は messages.yaml の status_<key> から引く。stop_ で始まるものは
-# そのままの名前。UI-84）
+# そのままの名前。UI-84）。理由の表（hakoniwa_core/stops.py）のどの行にも1つずつ置く（W-34。
+# tests/core/test_stops.py が調べる）
 STATUS_HELP = (
     ("starting", "建ったばかりで、次の更新で動き出します。止まっているわけではありません。"),
     ("construction", "工事中です。人手・資材・お金が足りないと、かっこの中にわけが出ます。"),
@@ -708,6 +710,16 @@ STATUS_HELP = (
     ("recipe_change", "生産方式を切り替えている間です。終わると新しい方式で動きます。"),
     ("cargo", "運送業・海運業が、運ぶ荷の量に合わせて動いています。不具合ではありません。"),
     ("business", "銀行が、預金と融資の大きさに合わせて動いています。不具合ではありません。"),
+    ("orders", "土木業者が、受けた工事の量に合わせて動いています。不具合ではありません。"),
+    ("riot", "暴動で一時止まっています。食料や失業などの不満が減り、治安が戻ると動き出します。"),
+    (
+        "input_price_power",
+        "電気料金が高く、払うと赤字になるので電力を買っていません。休んだ人には休業手当が出ます。",
+    ),
+    (
+        "funds_power",
+        "電気代を払うお金が足りず、電力を買えません。休んだ人には休業手当が出ます。",
+    ),
 )
 
 
@@ -941,6 +953,11 @@ def _goods_help(game) -> dict:
         "contractor": {
             "margin": percent(config.get("contractor.margin")),
             "machine_workers": config.get("contractor.machines.workers"),
+        },
+        # 店の付け値（MK-42）: 変動費に乗せる粗利と、屋台の値段に対する上限
+        "retail": {
+            "markup": percent(config.get("retail.markup")),
+            "cap": percent(config.get("retail.posted_cap")),
         },
         "shortage": {
             "share": percent(config.get("records.shortage.share")),

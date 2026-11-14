@@ -61,12 +61,13 @@
 | GT-34 | 崩れた世界の写し: 崩れごとに、崩れが始まったターンの少し前（`gate.py` の `SNAPSHOT_BEFORE`）まで回して世界を写す命令を出す。写しには世界の状態と前のターンの統計・市場の記録を入れ、読み直して続けても続けて回したのと同じ指紋になる。夜の点検は崩れた島の数の段が上がったら新しいものとして印を付ける | 決定 |  | tests/core/test_collapse.py::test_a_snapshot_continues_the_same_world, ::test_nightly_summary_lists_collapses |
 | GT-35 | 試験の書き方: 仕組みの試験は、その仕組みを作った場面（足りない・0・一部だけなど）を組み立てて確かめる。世界を回す試験は、止まらない・お金が合う・崩れない、だけを見る | 決定 |  |  |
 | GT-36 | 島の種類ごとに全画面を開く試験: 建国直後・人のいない島・銀行のない島・計画経済・戦争中・占領・部隊と艦隊と基地と隠した施設・反乱軍・革命のあとの選び直し待ちの島を `tests/server/busy_world.py` が作り、持ち主・ほかの国の人・ログインしていない人の 3 人で、島の下の画面と読む API をすべて開いて、500・壊れた JSON・テンプレートの残りが出ないことを確かめる（数ターン進めながら開き直す試験もある）。島の下に道を足すと一覧に入れるまで試験が外れる。ブラウザで開く道具は `tools/screens/`（`seed.py`・`open_all.mjs`・`interact.mjs`）。やり直しの報告の I3 の 1 つ | 決定 |  | tests/server/test_all_screens.py::test_every_island_screen_opens_for_every_kind_of_island_and_viewer, ::test_the_screens_still_open_while_the_war_and_the_civil_war_go_on, ::test_every_island_url_is_listed |
-| GT-42 | 同じ形を 1 か所で作る（止まった理由を持ち主と原因の表から出す、名前と座標の文を 1 つの関数で作って重なりを調べる、お金の取り置きを 1 つの作りにして「払う額は取り置き以下、合計が合う」を調べる）。どれも `hakoniwa_core/` の作り直しなので、計算の回の空きに置く | 後回し（タブ 14 W-34） |  |  |
+| GT-42 | 施設が全力で動かなかった理由（施設の status）は、理由の表 `hakoniwa_core/stops.py` 1 つから出す。計算の判定（休業手当・解雇しないで抱える人数・原料待ち・操業目標を抑えるか・標準の計画）は status の文字と設定（電力の財の名前）だけで決め、施設の ext を見ず、組の分け方とも切り離す（`stops.rule`）。測りの `idle.*` と産業の鎖の組、地図の赤い点と止まった施設の一覧に出すか、画面の名前・ログ・打てる手・入門の説明は、表の行から引く（`stops.show`。ext は止めたわけ halt_reason の文だけに使う）。同じ名前でも財が電力なら別の行（電気料金が高い・電気代を払えないは休業手当で「電力」の組）。表にない名前は「その他」で、計算では何もせず、崩れの見張りの「理由の出ない停止」に数える。status を書く所はみな表の定数で書き、文字は保存した世界と同じものから変えない。組は 米国の稼働率の調べ（QPC）の理由に近い形に、このゲームの「お金」「災害」「戦争と暴動」「準備中」を足したもの。残り（名前と座標の文を 1 つの関数で作る、お金の取り置きを 1 つの作りにする）は後回し（タブ 14 W-34） | 決定 |  | tests/core/test_stops.py（前の判定を正解に、理由 × 財の形で突き合わせる）、tests/server/test_stop_texts.py |
 | GT-38 | 回7 の目安と見張り: 働く人のうちサービス（商業・金融・運輸・商社・公務・教育・治安）で働く割合が、1人あたりの実質の GDP に見合う幅（貧しい島 3〜4 割、豊かな島 6〜7 割）か。崩れの見張りに、企業ごとの倒産の連鎖と手当のない国の飢えを足す | 決定 | `gate.py` の `SERVICES_POOR`・`SERVICES_RICH`・`RICH_INCOME`・`CASCADE_MIN`・`FIRM_CASCADE_TURNS` | tests/core/test_balance_round7.py::test_services_band_widens_with_income, ::test_firm_cascade_watch_counts_falls_per_firm, ::test_firm_cascade_watch_skips_own_closings |
 | GT-39 | 関門の値段の幅は、サービスと小売りだけ物価指数でなく平均賃金の伸びで割って見る（賃金が物の値段より速く上がると人の手間の値段は物価に対して上がる。ボーモル効果）。幅の値（初めの 0.25〜4 倍）は変えない | 決定（回7 後半） |  | tests/core/test_gate.py::test_supply_chain_runs_for_300_turns |
 | GT-40 | 標準の計画は、島で作っていない投入財でも、作る施設の投入財が手元にあれば手に入ると見て使う施設（自動車の組み立て工場）を建て、島のどこでも作っていない投入財の工場は、余裕がなくても1つ目を建てる（組で建てる）。回7 後半の測りで、自動車工場と部品工場が互いを待ってどちらも建たず、自動車の売り買いが main の 1〜3 割になったため | 決定（回7 後半） |  | tests/core/test_balance_round7b.py::test_standard_plan_builds_assembly_and_parts_plants_together |
 | GT-41 | 測りは、計算の中身（hakoniwa_core・game.yaml・packs・schemas）の指紋が前と同じ組を回し直さず、前の結果を使えるようにする。結果の JSON に指紋を書き、`measure batch --reuse` が同じ組で指紋が同じ結果だけを写す。指紋が違う・書いていない・時系列がない・壊れているときは回す。改行の違いと Python の写しは数えない | 決定 |  | tests/core/test_measure_reuse.py |
 | GT-43 | 試験は回す場所と順によらず同じ結果になる（Linux でも Windows の X870 でも、1 本だけでも全部を並べても）。ファイルの読み書きには utf-8 を書き、置き場所は試験のファイルから決め、続けて作った物の時刻の前後に頼らない。場面が起きないときは飛ばさず、場面を組み立てて確かめる（飛ばすのは DB の種類など環境が足りないときだけ） | 決定 |  | tests/server/test_board.py::test_old_threads_fall_into_the_log, tests/server/test_theme_sprites.py, tests/core/test_playtest_fixes.py::test_capital_subsidy_is_paid_at_entry |
+| GT-44 | 経済の決まりを足す・変えるときは、同じコードで決まりを入れた世界と入れない世界を比べてから既定にする: (1) 新しい決まりや動きの大きい変更は game.yaml の設定で切れるように作り、既定は「切」（今の動きのまま）で main に入れる (2) 既定を「入」にするのは別の PR にし、X870 で同じ種の「切」と「入」を `measure compare` で比べた崩れの表（GT-33）を本文に貼る。崩れ・ターンの停止・企業の連鎖倒産・飢饉が「切」より増えたら既定にしない (3) 1 つの PR で既定を変える経済の決まりは 1 つ (4) 決まりの試験は設定の値を試験の中で入れて場面を組み立て（GT-35）、既定の切り替えで落ちないようにする（例 `tests/core/test_clothing_clearance.py` の `monkeypatch.setitem(game.config.get("market"), "clearance_ratio", 2)`）。2026-11-10〜11 に解雇の決まり（LB-43）と売れ残りの値引き（MK-41）を既定で入れてから比べ、連鎖倒産と差し押さえが増えて止める・戻すを繰り返したため | 決定 |  |  |
 
 ### 仮の決まり
 
@@ -225,6 +226,7 @@
 
 - 仕組みを変える PR は、作る前に境目の表と別の Claude の見直しを通し、長い試し回しで崩れ（島が飢饉で空になる・ターンが止まる・帳簿が合わない・品切れが続くなど）が main より増えていないことを確かめてからマージをお願いします。増えたら増えた分を直してからです（2026-10-17 02:36 のカード）。前からある崩れは PR に書いて別に直し、作業中の PR は GitHub の下書きにしておきます。
 - 比べは、main と PR の測りの結果を `measure compare` に渡し、頭の「崩れ」の表で増えた組と新しく崩れた島を見ます（GT-33）。
+- 経済の決まりを足すときは、決まりを既定で「切」にして先に入れ、同じコードの「切」と「入」を比べてから既定を「入」にする PR を別に出します（GT-44）。main との比べだけでは、ほかの PR の変更と混ざって、どの決まりが崩れを増やしたかが分かりにくいためです。
 - 手順の細部（見直しの形、反映の前に DB の写しで試すこと）は /mnt/project-files/process/thread-rules.md にあります。
 
 ## 境目の表

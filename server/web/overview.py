@@ -15,7 +15,7 @@ from typing import Any
 from django.db.models import Max, Q
 from django.urls import reverse
 
-from hakoniwa_core import exploration
+from hakoniwa_core import exploration, stops
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import politics as core_politics
 from hakoniwa_core.economy import books, is_seized, is_stopped, power_fuel_notice, retail
@@ -243,7 +243,7 @@ def facility_state(
                 }
             )
         x, y = fac.position(f)  # 町の中の店は町のマス（施設の行の位置は負）
-        if row.built and row.status == fac.STATUS_STARTING:
+        if row.built and row.status == stops.STARTING:
             # 工事が済んでまだ動いたことがない。次の更新で動き出すので止まりと分ける（W-219）
             starting += 1
             continue
@@ -262,7 +262,8 @@ def facility_state(
             )
             continue
         why = slowdown.explain(facts, f) if facts is not None else None
-        if row.operating_rate <= 0 and row.status:  # 地図の止まった印（赤い点）と同じ
+        # 地図の止まった印（赤い点）と同じ（理由の表 stops。準備中・荷や客に合わせた操業は除く）
+        if stops.stopped_mark(game.config, row.status, row.operating_rate, f.ext):
             stopped.append(
                 {
                     "number": row.number,
@@ -603,6 +604,11 @@ def _board_unread(island: m.Island) -> int:
     return board.unread_count(island.owner) if island.owner else 0
 
 
+def _board_announce(island: m.Island) -> int:
+    """持ち主の、まだ見ていない運営からの告知（掲示板の告知の板）の数。"""
+    return board.unread_announcements(island.owner) if island.owner else 0
+
+
 def _mine_alerts(
     island: m.Island, losing: list[dict[str, Any]], unread: int, replies: int = 0
 ) -> list[Alert]:
@@ -650,7 +656,7 @@ def _fuel_alerts(island: m.Island, mine: bool, viewer: int | None = None) -> lis
         if not f.built or is_stopped(f) or is_seized(f) or fac.is_halted(f, island.world.turn):
             continue
         for entry in f.economy.get(power_fuel_notice.NOTICES, {}).get("active", []):
-            if entry["kind"] == power_fuel_notice.PRICE and f.status == "power_price":
+            if entry["kind"] == power_fuel_notice.PRICE and f.status == stops.POWER_PRICE:
                 continue
             out.append(Alert("fuel", display.message(entry["kind"], **entry["args"])))
     return out
@@ -1264,7 +1270,10 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
                 for x in unread[:5]
             ],
         }
-        data["board"] = {"unread_replies": _board_unread(island)}
+        data["board"] = {
+            "unread_replies": _board_unread(island),
+            "unread_announcements": _board_announce(island),
+        }
         alerts, data["next_steps"], data["todo"] = _owner_lists(
             island,
             alerts,
@@ -1319,7 +1328,9 @@ def orders_brief(island: m.Island) -> dict[str, Any]:
     }
 
 
-def _result(o: Order, labels: dict[tuple[int, int], str] | None = None) -> dict[str, Any]:
+def _result(
+    o: Order, labels: dict[tuple[int, int], display.FacilityLabel] | None = None
+) -> dict[str, Any]:
     return {
         "turn": o.executed_turn,
         "status": o.status,
@@ -1406,6 +1417,9 @@ def changes(
             }
             for x in received[:50]
         ]
-        data["board"] = {"unread_replies": _board_unread(island)}
+        data["board"] = {
+            "unread_replies": _board_unread(island),
+            "unread_announcements": _board_announce(island),
+        }
         data["warehouse_standing"] = display.warehouse_standing(island)
     return data

@@ -48,6 +48,9 @@
       <div class="map-buttons">
         <button type="button" data-zoom="in" aria-label="{% translate '拡大' %}">＋</button>
         <button type="button" data-zoom="out" aria-label="{% translate '縮小' %}">－</button>
+        {# 縁の目盛りと指の下のマスの座標（UI-85）。既定は出さず、押すと出す。出すかどうかはブラウザに覚える #}
+        <button type="button" id="map-ruler-toggle" class="map-ruler-toggle" aria-pressed="false"
+                title="{% translate '座標の目盛りを出す・消す' %}">{% translate "座標" %}</button>
       </div>
       <canvas id="minimap" width="128" height="128" aria-label="{% translate '小さな地図' %}"></canvas>
       <p id="map-coord" class="map-coord" aria-hidden="true" hidden></p>

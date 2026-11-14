@@ -11,13 +11,13 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from django.db.models import Q
+from django.db.models import Max, Q
 from django.templatetags.static import static
 from django.utils import timezone
 
 from server.turns.models import TurnLog
 from server.web import display
-from server.web.models import SiteUpdate
+from server.web.models import SiteUpdate, UpdateMark
 from server.world import models as m
 
 RECENT = 15  # 最近の出来事に出す行の数
@@ -134,6 +134,52 @@ def updates() -> list[dict[str, Any]]:
     ]
 
 
+# 更新のお知らせ（UI-96）: 見ていない更新履歴があれば、ログインした人が最初に開いた画面に1度だけ
+# 窓で出す。どこまで見たかは UpdateMark に更新履歴の番号で持つ。まだ印のない人（この仕組みの前から
+# いる人と、新しく登録した人）には、NEW! の印が付く UPDATE_NEW_DAYS 日のうちで、登録した日より
+# 後の更新だけを出す。
+NEWS_LIMIT = 10  # 窓に出す行の数（残りはトップの更新履歴へ）
+
+
+def unseen_updates(user) -> dict[str, Any] | None:
+    """まだ見ていない更新履歴（新しい順に NEWS_LIMIT 件まで）と、見たことにする番号（last）。
+    見ていないものがなければ None。"""
+    if not user.is_authenticated:
+        return None
+    last = UpdateMark.objects.filter(user=user).values_list("last_update", flat=True).first()
+    rows = SiteUpdate.objects.filter(hidden=False)
+    if last is None:
+        today = timezone.localdate()
+        since = max(
+            today.toordinal() - UPDATE_NEW_DAYS + 1,
+            timezone.localtime(user.date_joined).date().toordinal(),
+        )
+        rows = rows.filter(date__gte=date.fromordinal(since))
+    else:
+        rows = rows.filter(id__gt=last)
+    total = rows.count()
+    if not total:
+        return None
+    shown = rows.order_by("-date", "-id")[:NEWS_LIMIT]
+    newest = SiteUpdate.objects.aggregate(m=Max("id"))["m"] or 0
+    return {
+        "rows": [{"date": r.date.isoformat(), "text": r.text} for r in shown],
+        "more": max(total - NEWS_LIMIT, 0),
+        "last": newest,
+    }
+
+
+def mark_updates_seen(user, last: int) -> int:
+    """更新履歴を last の番号まで見たことにする（戻すことはしない）。いまの印を返す。"""
+    newest = SiteUpdate.objects.aggregate(m=Max("id"))["m"] or 0
+    last = max(0, min(int(last), newest))
+    mark, _ = UpdateMark.objects.get_or_create(user=user, defaults={"last_update": last})
+    if mark.last_update < last:
+        mark.last_update = last
+        mark.save(update_fields=["last_update"])
+    return mark.last_update
+
+
 def sync_updates() -> int:
     """git の記録の「更新履歴:」の行と top.yaml の updates を、まだ写していなければ写す。
     写した数を返す。管理画面で直した・隠した行はそのまま（key で見分ける）。"""
@@ -153,7 +199,20 @@ def sync_updates() -> int:
             SiteUpdate(key=r["key"], date=date.fromisoformat(r["date"]), text=r["text"][:200])
         )
     SiteUpdate.objects.bulk_create(new, ignore_conflicts=True)
+    _apply_update_fixes()
     return len(new)
+
+
+def _apply_update_fixes() -> None:
+    """top.yaml の update_fixes: 写した行のうち、遊ぶ人に関係のない行を隠し（hide）、
+    今の動きとずれた行を直す（to）。元の文のままの行にだけ効くので、管理画面で直した行は
+    そのまま。行は key で見分けるので、直した後に同じコミットから写し直すことはない。"""
+    for fix in _yaml().get("update_fixes") or []:
+        rows = SiteUpdate.objects.filter(text=str(fix["text"]))
+        if fix.get("hide"):
+            rows.filter(hidden=False).update(hidden=True)
+        elif fix.get("to"):
+            rows.update(text=str(fix["to"])[:200])
 
 
 def git_updates() -> list[dict[str, str]]:

@@ -36,7 +36,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, ledger, nature, stock
+from hakoniwa_core import infra, ledger, nature, stock, stops
 from hakoniwa_core.dates import is_year_end
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.defs.kinds import ELECTRONICS, OPTIONAL_RECIPES
@@ -96,13 +96,8 @@ from hakoniwa_core.units import (
 
 # 原料を買えなかったわけ（economy["short"]）ごとの施設の status: 売りに出ている量が足りない、
 # 指値（採算の合う値段）より高い、取り置けるお金が足りない
-SHORT_STATUS = {"supply": "input", "price": "input_price", "funds": "funds"}
-STATUS_CARGO = "cargo"  # 港・商社が扱う荷に合わせて少なく雇っている（フェーズ3-1）
-STATUS_BUSINESS = "business"  # 小さい銀行が、預金と融資の大きさに合わせて少なく雇っている
-STATUS_ORDERS = "orders"  # 土木業者が、受けた工事に合わせて少なく雇っている（W-270）
-STATUS_BUDGET = "budget"  # 年の予算の月割りが足りず雇う人を減らした（"budget:項目"。LB-45）
-STATUS_STAFF_PLAN = "staff_plan"  # 人員計画の枠で、生産目標に要る人を雇えない（PL-59）
-PUBLIC_PRICE = "public_price"  # 学校と大学の教材が高くて買えない
+# 理由の名前は表（hakoniwa_core/stops.py）の定数で書き、ここで文字を直書きしない（W-34）
+SHORT_STATUS = {"supply": stops.INPUT, "price": stops.INPUT_PRICE, "funds": stops.FUNDS}
 
 
 @dataclass
@@ -199,19 +194,19 @@ class Production(IslandStage):
                     if unplugged is None:
                         unplugged = self._unplugged(island, ctx, power)
                     if f.id in unplugged:
-                        cause = "no_grid"
+                        cause = stops.NO_GRID
                     else:
                         # 電力が売れ残っているのに買わなかったのは、電気料金が採算に合わないか
                         # お金が足りないため（電力不足ではない。公開世界の島2 で、発電が需要より
                         # 2,000MWh 多いのに鉱山と繊維工場が「電力不足」と出ていた）
                         why = short.get(f.id, "supply")
-                        cause = "power" if why == "supply" else f"{SHORT_STATUS[why]}:{power}"
-                elif not fac.short_of_inputs(cause):
+                        cause = stops.POWER if why == "supply" else f"{SHORT_STATUS[why]}:{power}"
+                elif not stops.short_of_inputs(ctx.config, cause):
                     # 発電所は使われる分だけ動くのがふつうなので、止まったときだけ理由にする。
                     # 燃料が足りずに動ける分が少なかったなら、燃料の不足のまま（試し遊びで、石炭の
                     # 切れた火力発電所が「電力需要なし」と出ていた）。電力の買い手がいたのに売れな
                     # かったのは、電気料金が発電所の費用に届かなかったため
-                    cause = "" if rate > 0 else unsold.get(f.id, "no_demand")
+                    cause = stops.NONE if rate > 0 else unsold.get(f.id, stops.NO_DEMAND)
             public = is_public_service(defs, f)  # 学校の教材は、買ったときに政府の消費に数える
             for good, need in sorted(run.recipe["inputs"].items()):
                 if good != power:
@@ -290,17 +285,19 @@ class Production(IslandStage):
     def _prepare(island: IslandState, f: Facility, ctx: StageContext, power: str) -> _Run:
         recipe = fac.recipe_of(ctx.defs, f)
         if fac.is_halted(f, ctx.turn):  # 災害か暴動（フェーズ3-4）で止まっている
-            return _Run(f, recipe, 0, "riot" if f.ext.get("halt_reason") == "riot" else "halted")
+            return _Run(
+                f, recipe, 0, stops.RIOT if f.ext.get("halt_reason") == stops.RIOT else stops.HALTED
+            )
         # 雇いたい分を雇えなかった: 賃金を払うお金が足りなかったか（年の予算の月割りなら項目の名前。
         # LB-45）、人員の枠で止めたか（PL-59）、人がいなかったか
         rate, cause = fac.labor_ratio(ctx.defs, f), Production._labor_cause(f)
         have, short = fac.input_ratio(ctx.defs, f, power)
-        cargo, few = staff.wanted(ctx.config, ctx.defs, f), STATUS_CARGO
+        cargo, few = staff.wanted(ctx.config, ctx.defs, f), stops.CARGO
         if cargo is None and is_bank(ctx.config, f):
-            cargo, few = banks.staff_wanted(island, ctx.config, ctx.defs, f), STATUS_BUSINESS
+            cargo, few = banks.staff_wanted(island, ctx.config, ctx.defs, f), stops.BUSINESS
         if cargo is None and is_contractor(ctx.config, f):
             # 土木業者は受けた工事に合わせて雇う。稼働率は届けた工事 ÷ 全力（W-270）
-            cargo, few = contracts.wanted(island, ctx.config, f), STATUS_ORDERS
+            cargo, few = contracts.wanted(island, ctx.config, f), stops.ORDERS
             whole = contracts.full(ctx.defs, ctx.config, f)
             done = f.economy.get(contracts.DELIVERED, 0)
             rate = min(rate, done * fac.FULL // whole if whole > 0 else 0)
@@ -318,10 +315,10 @@ class Production(IslandStage):
             planned = have >= f.economy.get("input_plan", fac.FULL + 1)
             cause = (
                 (
-                    "equipment"
+                    stops.EQUIPMENT
                     if fac.equipment_cap(f) < target
                     and (short is None or fac.equipment_cap(f) <= have)
-                    else "target"
+                    else stops.TARGET
                 )
                 if short is None or have >= target or planned
                 else Production._short(f, short, ctx.defs)
@@ -332,30 +329,30 @@ class Production(IslandStage):
         if target < rate and (planning.hoards(island, ctx.defs, f) or f.economy.get(HELD)):
             # 人を抱える国営の施設（W-198）と、解雇の決まりで人を抱える施設（LB-43）は、抱えた人で
             # 操業目標より多く作らない（隠れた失業）
-            rate, cause = target, "target"
+            rate, cause = target, stops.TARGET
         cap = fac.engineer_cap(ctx.config, f)  # 技術者が足りなければ、稼働率の上限が下がる
         if cap < rate:
-            rate, cause = cap, "engineers"
+            rate, cause = cap, stops.ENGINEERS
         worn = fac.equipment_cap(f)  # 設備が傷んだ分は作れない（回6）
         if worn < rate:
-            rate, cause = worn, "equipment"
+            rate, cause = worn, stops.EQUIPMENT
         if f.ext.get(fac.RECIPE_CHANGED) == ctx.turn:  # 作り方を替えたターンは半分（フェーズ3-2）
             half = fac.scale(rate, fac.FULL // 2)
             if half < rate:
-                rate, cause = half, "recipe_change"
-        return _Run(f, recipe, rate, cause if rate < fac.FULL else "")
+                rate, cause = half, stops.RECIPE_CHANGE
+        return _Run(f, recipe, rate, cause if rate < fac.FULL else stops.NONE)
 
     @staticmethod
     def _labor_cause(f: Facility) -> str:
         """雇いたい分を雇えなかったわけ（施設の status）。"""
         short = f.ext.get("short_wages")
         if isinstance(short, str):  # 年の予算の月割りが足りない（項目の名前。LB-45）
-            return f"{STATUS_BUDGET}:{short}"
+            return f"{stops.BUDGET}:{short}"
         if short:
-            return "wages"
+            return stops.WAGES
         if f.ext.get(planning.STAFF_CAPPED):  # 人員の枠（PL-59）
-            return STATUS_STAFF_PLAN
-        return "workers"
+            return stops.STAFF_PLAN
+        return stops.WORKERS
 
     @staticmethod
     def _short(f: Facility, good: str, defs: Defs) -> str:
@@ -366,11 +363,11 @@ class Production(IslandStage):
         budget = f.ext.get(funds.SHORT_MATERIALS)
         if budget and f.economy.get("short", {}).get(good, "supply") == "supply":
             # 品不足でなく、年の予算の月割りが足りず材料の取り置きを削った（LB-45）
-            return f"{STATUS_BUDGET}:{budget}"
+            return f"{stops.BUDGET}:{budget}"
         reason = f.economy.get("short", {}).get(good, "supply")
         if reason == "price" and is_public_service(defs, f):
-            return f"{PUBLIC_PRICE}:{good}"
-        return f"{SHORT_STATUS.get(reason, 'input')}:{good}"
+            return f"{stops.PUBLIC_PRICE}:{good}"
+        return f"{SHORT_STATUS.get(reason, stops.INPUT)}:{good}"
 
     # --- 電力 ----------------------------------------------------------------
 
@@ -576,7 +573,7 @@ class Production(IslandStage):
                 # 全量売れたときは、産出量を整数にした分で元の稼働率を下げない。
                 rates[run.f.id] = run.rate if sold == offered else fac.ratio(sold, out)
                 if sold <= 0 < offered and result.unfilled_demand > 0:
-                    unsold[run.f.id] = "power_price"
+                    unsold[run.f.id] = stops.POWER_PRICE
             home_got = sum(got_of[i] for i, b in enumerate(buyers) if b.layer)
             self._note_homes(notice, layer_got, buyers, owners, buy_orders, got_of, result)
             home_rate = fac.ratio(home_got, home_need) if home_need else 0
@@ -594,7 +591,7 @@ class Production(IslandStage):
                 able = sum(
                     fac.scale(o, fac.equipment_cap(run.f))
                     for run, o in sellers
-                    if not fac.short_of_inputs(run.cause)
+                    if not stops.short_of_inputs(ctx.config, run.cause)
                 )
                 target = ctx.formula("power_target")(demand, able, ctx)
                 for run, _ in sellers:
@@ -907,9 +904,9 @@ class Production(IslandStage):
         """
         before_rate, before_status = f.operating_rate, f.status
         f.operating_rate = rate
-        f.status = cause if rate < fac.FULL else ""
+        f.status = cause if rate < fac.FULL else stops.NONE
         where = {"facility": f.kind, "x": f.x, "y": f.y}
-        stopped = rate == 0 and (before_rate > 0 or before_status == fac.STATUS_STARTING)
+        stopped = rate == 0 and (before_rate > 0 or before_status == stops.STARTING)
         if stopped:
             f.ext["stop_causes"] = []
         told = f.ext.get("stop_causes")
@@ -920,7 +917,7 @@ class Production(IslandStage):
             f.ext["stop_causes"] = [*(told or []), cause]
         elif rate > 0 and before_rate == 0:
             f.ext.pop("stop_causes", None)
-            started = before_status == fac.STATUS_STARTING
+            started = before_status == stops.STARTING
             kind = "facility_started" if started else "facility_restarted"
             island.log.append(LogEntry(kind, where))
 
