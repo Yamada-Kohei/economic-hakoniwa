@@ -15,6 +15,7 @@ function environment({ failedUrl, failedDraw = false } = {}) {
     if (!elements.has(id)) elements.set(id, {
       hidden: true, dataset: {}, style: {},
       addEventListener(event, callback) { this[event] = callback; },
+      setAttribute(name, value) { this[name] = value; },
       getBoundingClientRect: () => ({ width: 640, height: 320 }),
       getContext: () => ({}), querySelector: () => element("close"),
     });
@@ -46,7 +47,7 @@ function environment({ failedUrl, failedDraw = false } = {}) {
     attachControls: () => ({}),
     MissileTarget: class {}, TilePanel: class {},
     drawIsland() { if (failedDraw) throw new Error("描けません"); drawings += 1; },
-    drawMinimap() {}, drawRuler() {}, loadSprites: async () => new Map(),
+    drawMinimap() {}, drawRuler() {}, readRulerShown: () => false, writeRulerShown() {}, loadSprites: async () => new Map(),
   };
   return { context: vm.createContext(context), element, frames, timers,
     get reloads() { return reloads; }, get drawings() { return drawings; } };
