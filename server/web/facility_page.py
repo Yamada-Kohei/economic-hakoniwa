@@ -180,8 +180,9 @@ def _actions(info: dict[str, Any], f: Any, capital: Any) -> list[str]:
 def _orders_here(island: m.Island, f: Any) -> tuple[list[dict], list[dict]]:
     """この施設のマスを指す、待っている命令と、前のターンに実行した命令の結果。"""
     here = island.orders.filter(kind__in=FACILITY_ORDERS, payload__x=f.x, payload__y=f.y)
+    labels = display.facility_labels(island)  # 生産方式の変更の行き先を施設の種類から引く（#12）
     pending = [
-        {"kind": o.kind, "text": display.describe_order(o.kind, o.payload)}
+        {"kind": o.kind, "text": display.describe_order(o.kind, o.payload, labels)}
         for o in here.filter(status="pending").order_by("seq", "id")
     ]
     done = island.orders.exclude(status="pending")
@@ -195,7 +196,7 @@ def _orders_here(island: m.Island, f: Any) -> tuple[list[dict], list[dict]]:
                 {
                     "turn": o.executed_turn,
                     "status": o.status,
-                    "text": display.describe_order(o.kind, o.payload),
+                    "text": display.describe_order(o.kind, o.payload, labels),
                     "reason": display.message(o.reason, **(o.reason_args or {}))
                     if o.reason
                     else "",
