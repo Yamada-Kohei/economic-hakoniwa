@@ -204,7 +204,7 @@
 | LB-42 | 資本家階級の人数の上限を、人口の段で亡くなった人を引いた後に数え直して層に持ち、人数を割り振るど… | 決定（2026-11-08） | tests/core/test_owners_cap.py |
 | LB-43 | 解雇の決まり（2026-11-10、W-251）: 施設（民営・国営の独立採算・国庫直轄 | 決定（2026-11-10 | tests/core/test_dismissal.py |
 | LB-44 | 衣料は持ち物（2026-11-10、W-26 の直し）: 家計の層は衣料を1人あたりの持つ量（``… | 決定（2026-11-10 | tests/core/test_clothing_clearance.py |
-| LB-45 | 国庫の項目の予算が足りないときの分け方（2026-11-10 | 決定（2026-11-10 | tests/core/test_staff_plan.py |
+| LB-45 | 国庫の項目の予算が足りないときの分け方（2026-11-10 | 決定（2026-11-10 | tests/core/test_public_expansion.py、tests/core/test_staff_plan.py |
 | LB-46 | 雇用の保障（2026-11-12、W-231 の日々の仕事の割り当て | 後回し（今の main の計画経済の島の失業を測り、摩擦的な失業を超えて残れば入れる） | （未確認） |
 | LB-47 | 家計は電気を買える分だけ買う（2026-11-12、停電の調べの案 3）: 家計の層は生産の段の… | 決定（設定 `power.household_curve` で切／入 | tests/core/test_household_power_curve.py |
 
@@ -260,7 +260,7 @@
 | FM-44 | 組の参入: 原料が島で作られていなくても、島にある原料で作れる民営の施設があれば、その施設を先に… | 決定（回7 後半、2026-11-02） | tests/core/test_balance_round7b.py |
 | FM-45 | 水力発電所の出力は、集水域（半径 4 マス | 決定（W-148） | tests/core/test_hydro.py |
 | FM-46 | 施設と企業の自動の名前は、生まれたときに一度だけ決めて残す（民営の企業は創業者の姓か生まれた地名… | 決定（仮: 創業者と地元の出資の割合） | tests/core/test_company_names.py |
-| FM-47 | 施設の規模（段6 A3、W-85）: 同じ施設の建っているマスに同じ施設を建てる命令は、建て増し… | 決定 | tests/core/test_scale.py |
+| FM-47 | 施設の規模（段6 A3、W-85）: 同じ施設の建っているマスに同じ施設を建てる命令は、建て増し… | 決定 | tests/core/test_public_expansion.py、tests/core/test_scale.py |
 | FM-48 | 損益の在庫の増減は原価法・低価法で数える: 施設の作る物は「1 単位の原価（変動費と設備の傷み）… | 決定 | tests/core/test_recession_round1.py |
 | FM-49 | 設備投資（W-186 の直し 回3）: 民営の独立採算の施設が、直近 `firms.invest`… | 決定（回3） | tests/core/test_recession_round3.py |
 | FM-50 | 農場の段階（W-190）: 農場は規模でなく段階で集約する（max_size 1 のまま） | 決定（W-190 の回で作る） | （作る回で） |

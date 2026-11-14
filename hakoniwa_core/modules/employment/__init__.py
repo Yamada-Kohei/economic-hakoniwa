@@ -683,8 +683,21 @@ class Employment(IslandStage):
         treasury = money >= funds.available(island, payer, capped=False)
         for t in group:
             t.f.ext.pop(SHORT_MATERIALS, None)
-        materials = {
+        # 市場の段で買う材料の代金の見込み（手元の在庫で足りない分。取り置きに使う）
+        buying = {
             t.f.id: input_cost(island, ctx, t.f, rates.get(t.f.id, 0)) if t.need > 0 else 0
+            for t in group
+        }
+        # 予算を賃金と材料に分けるときの材料の見込み。公務の施設（学校・大学・探査隊）は材料を
+        # 数ターン分持つので、手元の在庫を引かず、その月に使う分の代金で分ける（在庫のあるうちは
+        # 見込みが 0 になって項目を賃金に使い切り、在庫が尽きた月に休校同然になるのを繰り返して
+        # いた）。買う量は今までどおり（数ターン分まで）で、使わなかった分は項目に残る
+        materials = {
+            t.f.id: (
+                input_cost(island, ctx, t.f, rates.get(t.f.id, 0), on_hand=False)
+                if is_public_service(ctx.defs, t.f)
+                else buying[t.f.id]
+            )
             for t in group
         }
 
@@ -728,7 +741,10 @@ class Employment(IslandStage):
             self._settle(island, ctx, t, want[t.f.id], treasury, budget)
         if not island.has_economy:
             return
-        asks = [(t.f.id, mats(t, min(t.want, t.need))) for t in group]
+        asks = [
+            (t.f.id, buying[t.f.id] * min(t.want, t.need) // t.need if t.need > 0 else 0)
+            for t in group
+        ]
         asks = [(fid, amount) for fid, amount in asks if amount > 0]
         if not asks:
             return

@@ -17,6 +17,7 @@ from typing import Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import infra, ledger, monuments, stock
+from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     CONSTRUCTION,
@@ -406,6 +407,20 @@ class Construction(IslandStage):
             fund_facility(island, ctx.defs, ctx.config, f, Payer(ledger.GOV, CONSTRUCTION))
 
 
+def rescale_target(defs: Defs, config: GameConfig, f: Facility, size: int) -> None:
+    """建て増しで規模が size になった施設 f の操業目標を割り直す（段6 A3）。
+
+    操業目標は全力に対する割合なので、規模が増えた分だけ割り直す（作る量を一度に跳ねさせず、
+    売れ行きを見ながら上げる。W-186 回3）。割り直すのは、市場の段の終わりに売れ行きで目標を
+    上げ直す施設（電気のほかの物を作る施設）だけ。物を作らない施設（学校・大学・警察・軍の施設）は
+    上げ直す道がないので割り直さず、建て増した分の人を予算の許す分だけすぐ雇う。発電所は毎ターン
+    電気の需要から目標を決め直す（power_target）ので割り直さない。"""
+    power = config.get("power.good")
+    outputs = fac.recipe_of(defs, f)["outputs"]
+    if "target" in f.economy and any(g != power for g in outputs):
+        f.economy["target"] = f.economy["target"] * (size - 1) // size
+
+
 def _merge_expansion(island: IslandState, site: Facility, ctx: StageContext) -> None:
     """建て増しの工事が済んだ（段6 A3）: 建て増す施設の規模を 1 つ上げ、工事にかかった設備の額と
     新品の設備を足し、工事の残りの資材を国の倉庫に移して、工事を取り除く。建て増す施設がもうない
@@ -441,10 +456,7 @@ def _merge_expansion(island: IslandState, site: Facility, ctx: StageContext) -> 
     if grade is None:
         size = fac.size_of(target) + 1
         target.ext[fac.SIZE] = size
-        if "target" in target.economy:
-            # 操業目標は全力に対する割合なので、規模が増えた分だけ割り直す（作る量を一度に
-            # 跳ねさせず、売れ行きを見ながら上げる。W-186 回3）
-            target.economy["target"] = target.economy["target"] * (size - 1) // size
+        rescale_target(defs, ctx.config, target, size)
     else:  # 農場の段階を上げる工事（W-190）
         size = fac.size_of(target)
         _raise_grade(island, defs, target, int(grade))

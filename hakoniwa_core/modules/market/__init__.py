@@ -936,13 +936,17 @@ SITE_HOLDS = "site_holds"  # island.scratch: 雇用の段で取り置いた資�
 FACILITY_HOLDS = "facility_holds"
 
 
-def input_cost(island: IslandState, ctx: StageContext, f: Facility, rate: int) -> int:
+def input_cost(
+    island: IslandState, ctx: StageContext, f: Facility, rate: int, on_hand: bool = True
+) -> int:
     """施設 f が市場の段で次のターンの材料に払う額の見込み（LB-45）。市場の段の買い方と同じ量
     （次のターンに使う分から手元の在庫を引いた量。学校と大学の積み増しは除く）と、ふだんの指値と
-    運賃 rate で。雇用の段で、国庫の同じ項目から払う施設が予算を分けるときの要る額に足す。"""
+    運賃 rate で。雇用の段で、国庫の同じ項目から払う施設が予算を分けるときの要る額に足す。
+    on_hand が偽なら手元の在庫を引かず、次のターンに使う分の全部の額（使った分を毎月買い足す
+    額）。"""
     defs, config = ctx.defs, ctx.config
     power = config.get("power.good")
-    needs = Market._input_needs(ctx, f, power, stockpile=False)
+    needs = Market._input_needs(ctx, f, power, stockpile=False, on_hand=on_hand)
     if not needs:
         return 0
     official = planning.official(island) if planning.is_planned(island, defs) else {}
@@ -1132,6 +1136,11 @@ class Market(IslandStage):
             planning.pay_price_subsidies(island, config, ctx.turn)
         for f in island.facilities:
             outputs = fac.recipe_of(defs, f)["outputs"]
+            if f.built and not outputs and f.economy.get("target", fac.FULL) < fac.FULL:
+                if not is_stopped(f):
+                    # 物を作らない施設は売れ行きを見ないので、操業目標はいつも全力（前の版で
+                    # 建て増した学校の目標が半分のまま残っていたのを戻す）。雇う人は予算の許す分まで
+                    f.economy["target"] = fac.FULL
             if f.built and "target" in f.economy and any(g != power for g in outputs):
                 if not is_stopped(f):
                     # 計画経済の国営施設は、採算ではなく生産目標に合わせて動く（フェーズ3-4）
@@ -2373,7 +2382,7 @@ class Market(IslandStage):
 
     @staticmethod
     def _input_needs(
-        ctx: StageContext, f: Facility, power: str, stockpile: bool = True
+        ctx: StageContext, f: Facility, power: str, stockpile: bool = True, on_hand: bool = True
     ) -> list[tuple[str, int]]:
         """次のターンに要る投入財のうち手元にない分。
 
@@ -2398,7 +2407,7 @@ class Market(IslandStage):
             have = stock.total(f.stock, good) - stock.expiring(
                 f.stock, good, ctx.turn, ctx.defs.goods
             )
-            want = fac.scale(qty, expected) - have
+            want = fac.scale(qty, expected) - (have if on_hand else 0)
             if want > 0:
                 needs.append((good, want))
         return needs
