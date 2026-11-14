@@ -79,6 +79,7 @@ def board_index(request):
         "boards": services.board_summaries(),
         "recent": services.recent_threads(),
         "unread": services.unread_count(request.user),
+        "announcements": services.announcements(request.user, mark=True),
     }
     return render(request, "board/index.html", context)
 
@@ -101,6 +102,8 @@ def board_forum(request, slug: str):
                 return redirect("board_thread", thread_id=thread.id)
     elif request.method == "POST":
         return redirect("login")
+    if board.staff_only:
+        services.mark_announcements_seen(request.user)  # 告知の板を開いたら見たことにする
     context = {
         "board": board,
         "threads": services.board_threads(board),
@@ -150,6 +153,7 @@ def board_thread(request, thread_id: int):
     can_write = not (thread.closed or thread.archived) and (
         not thread.board.staff_only or request.user.is_staff
     )
+    services.mark_thread_announcements_seen(request.user, thread)
     context = {
         "thread": thread,
         "view": services.thread_view(thread),

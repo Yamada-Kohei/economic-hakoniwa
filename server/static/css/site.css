@@ -511,3 +511,11 @@ th[aria-sort="descending"] > button.sort-head::after { content: " ▼"; font-siz
 .map-coord { position: absolute; right: 8px; bottom: 8px; margin: 0; padding: 2px 8px; font-size: 0.9em;
   color: #fff; background: rgba(10, 30, 60, 0.75); border-radius: 4px; pointer-events: none;
   font-variant-numeric: tabular-nums; }
+/* 更新のお知らせ（UI-96）。見ていない更新履歴を、画面を開いたときに1度だけ出す窓。 */
+dialog.site-news { width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow: auto;
+  padding: 12px 16px; border: 1px solid var(--border); background: var(--panel, #fff); color: var(--fg); }
+dialog.site-news::backdrop { background: rgba(0, 0, 0, 0.4); }
+dialog.site-news h2 { margin: 0 0 6px; font-size: 1.1em; }
+.site-news-list { margin: 6px 0; padding-left: 1.2em; }
+.site-news-list li { margin: 4px 0; }
+.site-news-list time { margin-right: 6px; color: #6a7aa0; font-size: 0.9em; }

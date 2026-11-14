@@ -76,6 +76,7 @@ urlpatterns = [
     path("api/me", api.me, name="api_me"),
     path("api/rankings", api.rankings_data, name="api_rankings"),
     path("api/world", api.world, name="api_world"),
+    path("api/updates/seen", api.updates_seen, name="api_updates_seen"),
     path("api/news", api.news, name="api_news"),
     path("api/world/shapes", api.world_shapes, name="api_world_shapes"),
     path("api/world/trade", api.world_trade, name="api_world_trade"),
