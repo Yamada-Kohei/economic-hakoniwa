@@ -514,7 +514,7 @@
 
 ## [10 政治と体制](10-politics.md)
 
-決まり 61 個、うち仮の決まりの表にあるもの 2 個。
+決まり 62 個、うち仮の決まりの表にあるもの 2 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -579,10 +579,11 @@
 | PL-59 | 人員計画（2026-11-10 | 決定（2026-11-10 | tests/core/test_staff_plan.py |
 | PL-60 | 二重の値段（2026-11-12、W-231 | 決定（2026-11-12 | tests/core/test_phase3_4.py |
 | PL-62 | 輸出の計画（2026-11-13、計画経済の電気不足の案 3）: 国が、外貨を使う順の 1 段の… | 決定（2026-11-13、本人の表の 1-2・2-2・3-1 と B | tests/core/test_export_plan.py |
+| PL-63 | 運営からの告知の知らせ（2026-11-15、セビーリャさん「運営からのメッセージ…赤い印を出し… | 決定 | tests/server/test_site_notices.py |
 
 ## [11 画面と統計](11-ui.md)
 
-決まり 95 個、うち仮の決まりの表にあるもの 0 個。
+決まり 96 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -681,6 +682,7 @@
 | UI-93 | 生産調整中のわけ（W-250、2026-11-12）: 施設の状態が売れ行きの調整（target… | 決定 | tests/core/test_phase3_4.py、tests/server/test_screens_notices.py、tests/server/test_slowdown_reasons.py |
 | UI-94 | 市場の記録に、買い手と売り手の別（国営の施設・民営の施設・商社・海外の商人・家計・国の倉庫・政府… | 決定 | tests/core/test_market_groups.py、tests/server/test_good_page.py |
 | UI-95 | 品目ごとの輸出と輸入の額を統計 `export.<財>`・`import.<財>` に残す（W-… | 決定 | tests/core/test_market_groups.py、tests/server/test_trade_overview.py |
+| UI-96 | 更新のお知らせ（2026-11-15、セビーリャさん「更新があった時には最初アクセスした時だけポ… | 決定 | tests/server/test_site_notices.py |
 
 ## [12 確かめ方](12-checks.md)
 

@@ -173,6 +173,7 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "server.web.context.own_island",
                 "server.web.context.screen_help",
+                "server.web.context.site_news",
                 "server.letters.context.unread_letters",
                 "server.board.context.unread_replies",
             ],

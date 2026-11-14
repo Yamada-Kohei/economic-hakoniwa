@@ -603,6 +603,11 @@ def _board_unread(island: m.Island) -> int:
     return board.unread_count(island.owner) if island.owner else 0
 
 
+def _board_announce(island: m.Island) -> int:
+    """持ち主の、まだ見ていない運営からの告知（掲示板の告知の板）の数。"""
+    return board.unread_announcements(island.owner) if island.owner else 0
+
+
 def _mine_alerts(
     island: m.Island, losing: list[dict[str, Any]], unread: int, replies: int = 0
 ) -> list[Alert]:
@@ -1264,7 +1269,10 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
                 for x in unread[:5]
             ],
         }
-        data["board"] = {"unread_replies": _board_unread(island)}
+        data["board"] = {
+            "unread_replies": _board_unread(island),
+            "unread_announcements": _board_announce(island),
+        }
         alerts, data["next_steps"], data["todo"] = _owner_lists(
             island,
             alerts,
@@ -1408,6 +1416,9 @@ def changes(
             }
             for x in received[:50]
         ]
-        data["board"] = {"unread_replies": _board_unread(island)}
+        data["board"] = {
+            "unread_replies": _board_unread(island),
+            "unread_announcements": _board_announce(island),
+        }
         data["warehouse_standing"] = display.warehouse_standing(island)
     return data
