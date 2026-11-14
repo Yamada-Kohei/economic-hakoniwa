@@ -616,6 +616,12 @@ def food_orders(
     cheap = food_cheapest(need, menu.values, menu.costs(), menu.nutritions, caps)
     best = food_split(need, menu.values, menu.nutritions, caps, menu.prefs, menu.elasticity)
     amounts = upgrade_food(cheap, best, menu.unit, food_budget)
+    # 混ぜたときの量の丸めと栄養の切り捨てで要る量に届かなければ、量の一番多い財に足す（人数の
+    # 少ない層は量が 1000 分の 1 の単位で数個しかなく、財が増えると丸めで毎ターン少し飢えた）
+    got = sum(q * menu.nutritions[g] // QUANTITY_SCALE for g, q in amounts.items())
+    if amounts and got < need:
+        good = max(amounts, key=lambda g: (amounts[g], g))
+        amounts[good] += -(-(need - got) * QUANTITY_SCALE // menu.nutritions[good])
     plan = {g: (q, menu.limits[g]) for g, q in sorted(amounts.items())}
     cost = sum(gross_cost(lim, q, menu.rate, menu.tax[g]) for g, (q, lim) in plan.items())
     if cost > budget and cost > 0:

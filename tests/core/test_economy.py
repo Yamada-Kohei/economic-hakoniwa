@@ -341,6 +341,17 @@ def test_wanted_food_matches_the_order_once_it_is_offered(game):
     assert abs(wanted - offered) <= 1
 
 
+def test_food_orders_reach_the_need_for_a_tiny_layer(game):
+    """人数の少ない層（要る栄養が 1000 分の 1 の単位で数個）でも、4 つの食料に分けた丸めで要る量を
+    割らない（資本家階級ができたばかりの島で、毎ターン少しずつ飢えた）。"""
+    menu = _start_menu(game, food_prefs(game.defs, game.config, 1.0))
+    caps = dict.fromkeys(menu.values, 1000)
+    for need in range(1, 40):
+        plan = food_orders(need, caps, menu, 10**9, 10**9)
+        got = sum(q * menu.nutritions[g] // 1000 for g, (q, _) in plan.items())
+        assert got >= need, (need, plan)
+
+
 def test_consumer_tiers_spend_about_the_budget():
     tiers = consumer_tiers(10_000, 100, [0.95, 1.0, 1.05], 0, 0)
     limits = [limit for _, limit in tiers]
