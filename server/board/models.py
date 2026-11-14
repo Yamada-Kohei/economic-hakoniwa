@@ -177,3 +177,23 @@ class Report(models.Model):
 
     def __str__(self) -> str:
         return f"{self.post} {self.reason[:20]}"
+
+
+class NoticeMark(models.Model):
+    """運営からの告知（管理者だけが書ける板の書き込み）を、どこまで見たか（書き込みの番号の印）。
+
+    見出しの「掲示板」の赤い印（未読の告知の数）の元。掲示板の一覧か告知の板を開くと、
+    そのときまでの告知を見たことにし、告知のスレッドを開くとそのスレッドの分を見たことにする。"""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="board_notice_mark"
+    )
+    last_post = models.PositiveIntegerField("見た告知の書き込みの番号（id）", default=0)
+    # last_post より後で、告知のスレッドを開いて見た書き込みの番号（id）。残りを全部見たら空に戻す
+    seen = models.JSONField("その後に見た告知", default=list, blank=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = "告知を見た印"
+
+    def __str__(self) -> str:
+        return f"{self.user} {self.last_post}"

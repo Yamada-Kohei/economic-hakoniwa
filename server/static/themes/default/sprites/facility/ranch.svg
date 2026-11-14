@@ -21,6 +21,8 @@
 <polygon points="22.40,6.04 23.04,6.36 23.04,2.36 22.40,2.04" fill="#c8c6c0" stroke="#c8c6c0"/>
 <polygon points="23.68,6.04 23.04,6.36 23.04,2.36 23.68,2.04" fill="#a19f9a" stroke="#a19f9a"/>
 <polygon points="23.04,1.72 23.68,2.04 23.04,2.36 22.40,2.04" fill="#f4f1ea" stroke="#f4f1ea"/>
+<polygon points="31.82,-1.08 58.70,12.36 59.06,11.64 32.18,-1.80" fill="#c8c6c0" stroke="#c8c6c0"/>
+<polygon points="31.82,-1.80 4.94,11.64 5.30,12.36 32.18,-1.08" fill="#c8c6c0" stroke="#c8c6c0"/>
 <polygon points="23.04,8.32 32.64,13.12 32.64,3.12 23.04,-1.68" fill="#943b30" stroke="#943b30"/>
 <polygon points="41.60,8.64 32.64,13.12 32.64,3.12 41.60,-1.36" fill="#773026" stroke="#773026"/>
 <polygon points="32.00,-6.16 41.60,-1.36 32.64,3.12 23.04,-1.68" fill="#b4483a" stroke="#b4483a"/>
@@ -33,7 +35,6 @@
 <polygon points="17.92,8.28 18.56,8.60 18.56,4.60 17.92,4.28" fill="#c8c6c0" stroke="#c8c6c0"/>
 <polygon points="19.20,8.28 18.56,8.60 18.56,4.60 19.20,4.28" fill="#a19f9a" stroke="#a19f9a"/>
 <polygon points="18.56,3.96 19.20,4.28 18.56,4.60 17.92,4.28" fill="#f4f1ea" stroke="#f4f1ea"/>
-<polygon points="31.82,-1.08 58.70,12.36 59.06,11.64 32.18,-1.80" fill="#c8c6c0" stroke="#c8c6c0"/>
 <polygon points="13.44,10.52 14.08,10.84 14.08,6.84 13.44,6.52" fill="#c8c6c0" stroke="#c8c6c0"/>
 <polygon points="14.72,10.52 14.08,10.84 14.08,6.84 14.72,6.52" fill="#a19f9a" stroke="#a19f9a"/>
 <polygon points="14.08,6.20 14.72,6.52 14.08,6.84 13.44,6.52" fill="#f4f1ea" stroke="#f4f1ea"/>
@@ -46,7 +47,6 @@
 <polygon points="4.48,15.00 5.12,15.32 5.12,11.32 4.48,11.00" fill="#c8c6c0" stroke="#c8c6c0"/>
 <polygon points="5.76,15.00 5.12,15.32 5.12,11.32 5.76,11.00" fill="#a19f9a" stroke="#a19f9a"/>
 <polygon points="5.12,10.68 5.76,11.00 5.12,11.32 4.48,11.00" fill="#f4f1ea" stroke="#f4f1ea"/>
-<polygon points="31.82,-1.80 4.94,11.64 5.30,12.36 32.18,-1.08" fill="#c8c6c0" stroke="#c8c6c0"/>
 <path d="M 44.80 11.31 A 1.58 0.79 0 0 1 43.22 10.52 L 43.22 7.02 L 44.80 7.02 Z" fill="#b29d4a" stroke="#b29d4a"/>
 <path d="M 44.80 11.31 A 1.58 0.79 0 0 0 46.38 10.52 L 46.38 7.02 L 44.80 7.02 Z" fill="#8f7e3b" stroke="#8f7e3b"/>
 <path d="M 43.22 7.02 A 1.58 0.79 0 1 0 46.38 7.02 A 1.58 0.79 0 1 0 43.22 7.02 Z" fill="#d9bf5a" stroke="#d9bf5a"/>

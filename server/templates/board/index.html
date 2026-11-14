@@ -6,6 +6,12 @@
 <h1>{% translate "掲示板" %}</h1>
 {% include "board/_nav.html" %}
 <p class="hint">{% translate "国どうしの公開の場です。ゲームの不具合は画面の上の「不具合を報告」へ、荒らしは書き込みの「通報」へ。公式の声明は国際会議場に出します。" %}</p>
+{% if announcements %}<section class="panel board-announcements">
+  <h2>{% translate "運営からのお知らせ" %} <span class="badge">{% translate "新着" %}</span></h2>
+  <ul class="thread-list">
+    {% for a in announcements %}<li><a href="{% url 'board_thread' a.thread.id %}?p={{ a.page }}#p{{ a.number }}">{{ a.thread.title }}{% if not a.first %} &gt;&gt;{{ a.number }}{% endif %}</a> <small>{{ a.created_at|date:"m-d H:i" }}</small></li>{% endfor %}
+  </ul>
+</section>{% endif %}
 {% if unread %}<p class="panel"><a href="{% url 'board_notices' %}">{% blocktranslate with n=unread %}自分の書き込みへの返信が {{ n }} 件あります。{% endblocktranslate %}</a></p>{% endif %}
 <table class="boards">
   <thead><tr><th>{% translate "板" %}</th><th>{% translate "スレッド" %}</th><th>{% translate "最後の書き込み" %}</th></tr></thead>

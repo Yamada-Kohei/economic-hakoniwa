@@ -88,7 +88,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger, nature, scale, stock, trade
+from hakoniwa_core import ledger, nature, scale, stock, stops, trade
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
@@ -294,8 +294,8 @@ def _warehouse_sales(island: IslandState, defs: Defs, config: GameConfig) -> lis
         if f.built:
             for good, qty in fac.recipe_of(defs, f)["inputs"].items():
                 need[good] = need.get(good, 0) + qty
-            if fac.short_of_inputs(f.status):
-                stuck.add(f.status.split(":", 1)[1])
+            if stops.short_of_inputs(config, f.status):
+                stuck.add(stops.short_good(f.status))
     short = {m.good for m in island.markets if m.supply < m.demand}
     reserved = _reserved_materials(island, defs)
     for good, qty in _chain_keep(island, defs, config).items():
@@ -578,11 +578,11 @@ def _price_cap_order(
 # --- 何を建てるか ---------------------------------------------------------------
 
 
-def _waits_for_input(f, power: str) -> bool:
+def _waits_for_input(config: GameConfig, f, power: str) -> bool:
     """施設が電力を除く投入財を待って止まっているか。電気料金が割高・資金不足で電力を買えない施設
     （「原料が割高（電力）」など）は、電力不足と同じく稼働率で見る（同じ施設を建て増しても、
     同じく電気料金が合わない）。"""
-    return fac.short_of_inputs(f.status) and f.status.partition(":")[2] != power
+    return stops.short_of_inputs(config, f.status) and stops.short_good(f.status) != power
 
 
 def _underused(island: IslandState, defs: Defs, config: GameConfig, kind: str, recipe: str) -> bool:
@@ -599,14 +599,14 @@ def _underused(island: IslandState, defs: Defs, config: GameConfig, kind: str, r
     made = _made(island, defs)
     for f in island.facilities:
         if f.built and outputs & set(fac.recipe_of(defs, f)["outputs"]):
-            if _waits_for_input(f, power):
+            if _waits_for_input(config, f, power):
                 # 島で作っていない（輸入に頼る）投入財を待っているなら、同じ投入財を使う施設を
                 # 増やしても役に立たない（フェーズ3-2）
-                short = f.status.split(":", 1)[1]
+                short = stops.short_good(f.status)
                 if short not in made and short in spec["inputs"]:
                     return True
                 continue
-            if f.operating_rate < fac.FULL * UNDERUSED or f.status == fac.STATUS_STARTING:
+            if f.operating_rate < fac.FULL * UNDERUSED or f.status == stops.STARTING:
                 return True
     return False
 
@@ -626,7 +626,7 @@ def _flows(island: IslandState, defs: Defs, config: GameConfig) -> tuple[dict, d
         if fac.is_housing(config, f):
             continue
         recipe = fac.recipe_of(defs, f)
-        stuck = f.built and _waits_for_input(f, power)
+        stuck = f.built and _waits_for_input(config, f, power)
         imports = frozenset() if power in recipe["outputs"] else traded
         stuck = stuck or not _recipe_ok(defs, island, recipe, frozenset(), imports)
         water = nature.water_spec(recipe)
@@ -815,8 +815,8 @@ def _material_producers(
         makers = [
             f for f in island.facilities if f.built and good in fac.recipe_of(defs, f)["outputs"]
         ]
-        if makers and all(fac.short_of_inputs(f.status) for f in makers):
-            short = {f.status.split(":", 1)[1] for f in makers}
+        if makers and all(stops.short_of_inputs(config, f.status) for f in makers):
+            short = {stops.short_good(f.status) for f in makers}
             for need in sorted(short - made):
                 yield from _producers(defs, config, island, need)
 

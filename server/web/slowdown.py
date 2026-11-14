@@ -31,7 +31,7 @@ from typing import Any
 from django.db.models import Max, Sum
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import politics
+from hakoniwa_core import politics, stops
 from hakoniwa_core.economy import is_self_supporting, is_stopped
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.modules.market import COST_FLOOR, MERCHANT, inventory_turns
@@ -41,7 +41,7 @@ from server.game import get_game
 from server.web import display
 from server.world import models as m
 
-TARGET = "target"  # 施設の status: 売れ行きに合わせて作る量を下げた
+TARGET = stops.TARGET  # 施設の status: 売れ行きに合わせて作る量を下げた（理由の表 stops）
 
 # 打てる手（今ある命令の名前で書く）。わけの種類ごとに ACTIONS の手を選び、重なりを除いてつなぐ
 ACTIONS = {
