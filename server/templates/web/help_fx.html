@@ -87,7 +87,7 @@
     <dt>{% translate "輸出と輸入の差" %}</dt>
     <dd><p>{% blocktranslate with share=fx.reserve_share %}一番大きいのは貿易です。輸出で稼いだ外貨は島で売られ、中央銀行が買い取って外貨準備が増え、通貨は高くなりやすくなります。中央銀行の受け身の買いは、外国の資産（融通で借りた分を引いた正味）が年の GDP の {{ share }}% に届くと止まり、それからは通貨が高くなる向きにそのまま動きます。{% endblocktranslate %}</p></dd>
     <dt>{% translate "外貨が尽きる" %}</dt>
-    <dd><p>{% blocktranslate with quota=fx.swap_quota issuer=fx.swap_issuer_share spread=fx.swap_spread %}輸入が多いと外貨が出ていき、中央銀行が売る外貨が減ります。足りなくなると、中央銀行は同じ圏の国の中央銀行の余りから、それでも足りなければ通貨を発行した国の中央銀行から外貨を借ります（中央銀行どうしの融通）。借りられるのは借りの合計が年の GDP の {{ quota }}% までで、発行した国が新しく作って貸すのも、その国の年の GDP の {{ issuer }}% までです。借りた外貨には、発行した国の政策金利に {{ spread }}% を足した年率の利子が毎ターンかかります。借りられなくなると支えがなくなり、外貨の買いが売りを上回る分だけ、通貨は毎ターン値幅の中で安くなっていきます。{% endblocktranslate %}</p></dd>
+    <dd><p>{% blocktranslate with quota=fx.swap_quota issuer=fx.swap_issuer_share spread=fx.swap_spread %}輸入が多いと外貨が出ていき、中央銀行が売る外貨が減ります。足りなくなると、中央銀行は同じ圏の国の中央銀行の余りから、それでも足りなければ通貨を発行した国の中央銀行から外貨を借ります（中央銀行どうしの融通）。借りられるのは借りの合計が年の GDP の {{ quota }}% までで、発行した国が新しく作って貸すのは、返していない残りが、その通貨を決済に使う国（発行した国を含む）の年の GDP の合計の {{ issuer }}% までです。借りた外貨には、発行した国の政策金利に {{ spread }}% を足した年率の利子が毎ターンかかります。借りられなくなると支えがなくなり、外貨の買いが売りを上回る分だけ、通貨は毎ターン値幅の中で安くなっていきます。{% endblocktranslate %}</p></dd>
     <dt>{% translate "金利の差と資本取引" %}</dt>
     <dd><p>{% translate "資本取引が自由な国どうしでは、市中銀行が利回りの高い国の国債を買いに外貨を買います。お金が出ていく国の通貨は安く、入る国の通貨は高くなります（下の「金利との関係」）。" %}</p></dd>
     <dt>{% translate "中央銀行の命令" %}</dt>
@@ -126,7 +126,7 @@
       <tr><th>{% translate "輸出できる産業を育て、輸入に頼る物を島で作る" %}</th><td>{% translate "施設の建設・工業団地・重点産業" %}</td><td>{% translate "外貨の稼ぎが増え、払いが減ります。一番長く効く手です。" %}</td><td>{% translate "工場が建って動くまで何か月もかかります。" %}</td></tr>
       <tr><th>{% translate "関税・輸入の割り当て・輸出補助" %}</th><td>{% translate "貿易" %}</td><td>{% translate "輸入を減らし、輸出を増やして、外貨の出入りを変えます。" %}</td><td>{% translate "関税と割り当ては島の値段を上げます。輸出補助は予算を使います。" %}</td></tr>
       <tr><th>{% translate "契約の通貨を選ぶ" %}</th><td>{% translate "二国間契約・条約" %}</td><td>{% translate "自国の通貨で約束すれば、自国は為替の動きを気にせずに済みます（相手の国が為替の動きを負います）。" %}</td><td>{% translate "相手が受けるかどうかは相手しだいです。" %}</td></tr>
-      <tr><th>{% translate "貿易圏の決済通貨を選ぶ" %}</th><td>{% translate "貿易圏の設定（代表の国）" %}</td><td>{% translate "自国の通貨を決済通貨にすれば、自国の商社はその圏で両替が要りません。" %}</td><td>{% blocktranslate with issuer=fx.swap_issuer_share %}ほかの加盟国の外貨が尽きると、発行した国の中央銀行が自国の通貨を作って貸します（年の GDP の {{ issuer }}% まで）。{% endblocktranslate %}</td></tr>
+      <tr><th>{% translate "貿易圏の決済通貨を選ぶ" %}</th><td>{% translate "貿易圏の設定（代表の国）" %}</td><td>{% translate "自国の通貨を決済通貨にすれば、自国の商社はその圏で両替が要りません。" %}</td><td>{% blocktranslate with issuer=fx.swap_issuer_share %}ほかの加盟国の外貨が尽きると、発行した国の中央銀行が自国の通貨を作って貸します（その通貨を決済に使う国の年の GDP の合計の {{ issuer }}% まで）。{% endblocktranslate %}</td></tr>
       <tr><th>{% translate "政策金利" %}</th><td>{% translate "金融" %}</td><td>{% translate "上げると資金が入り通貨が高く、下げると出ていき安くなりやすくなります（資本取引が自由な国どうし。混合経済・計画経済の既定は自由ではありません）。" %}</td><td>{% translate "国内の借り入れ・投資・国債の利払いにも効きます。中央銀行が独立していると命令できません。" %}</td></tr>
       <tr><th>{% translate "為替の介入（売り）" %}</th><td>{% translate "為替" %}</td><td>{% translate "持っている外貨を売り、通貨安を和らげます。" %}</td><td>{% translate "売れるのは持っている外貨までです。根本の赤字が続けば、外貨が減るだけです。" %}</td></tr>
       <tr><th>{% translate "為替の介入（買い）" %}</th><td>{% translate "為替" %}</td><td>{% translate "自国の通貨を作って外貨を買い、通貨高を抑えます。外貨準備も増えます。" %}</td><td>{% translate "作ったお金が島に回り、物価を押し上げます。上がった賃金は戻りません。" %}</td></tr>
