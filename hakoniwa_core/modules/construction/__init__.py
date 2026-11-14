@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, ledger, monuments, stock
+from hakoniwa_core import infra, ledger, monuments, stock, stops
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     CONSTRUCTION,
@@ -365,7 +365,7 @@ class Construction(IslandStage):
             return
         f.built = True
         f.workers = 0
-        f.status = fac.STATUS_STARTING
+        f.status = stops.STARTING
         for key in (
             "waiting",
             "short_funds",

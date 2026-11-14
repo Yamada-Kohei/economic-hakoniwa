@@ -501,6 +501,8 @@ def test_facility_hires_only_for_inputs_on_hand(game):
     plant = add(island, "building_materials_plant", 6, 6, recipe="wood")
     add(island, "hydro_power_plant", 7, 6)  # 送電網でつながった発電所（原料がいらない）
     with_economy(game, island)
+    # 計画経済の島は残った失業者を国営の施設の空いた席に配る（雇用の保障 LB-46）ので、市場の島で見る
+    island.regime["economy"] = "mixed"
     run(game, island, ["employment", "production"])
     assert plant.workers == 0
     assert (plant.operating_rate, plant.status) == (0, "input:wood")
@@ -514,7 +516,7 @@ def test_facility_hires_only_for_inputs_on_hand(game):
     stock.add(plant.stock, "wood", 3000, 0, game.defs.goods)
     run(game, island, ["employment", "production"])
     assert (plant.operating_rate, plant.status) == (250, "funds:wood")
-    assert format_log(game.defs, "status_input_price", {}) == "原料が割高"
+    assert format_log(game.defs, "status_input_price", {}) == "今の売り値では採算が合わない"
 
 
 def test_inputs_are_bought_ahead_of_a_rising_target(game):

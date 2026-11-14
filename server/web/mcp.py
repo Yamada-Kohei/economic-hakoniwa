@@ -1316,7 +1316,10 @@ TOOLS = [
     Tool(
         "board_replies",
         "返信の知らせ",
-        "自分の書き込みに付いた返信（新しい順）と未読の数。mark=true で見えたぶんを既読にする。",
+        (
+            "自分の書き込みに付いた返信（新しい順）と未読の数、まだ見ていない運営からの告知"
+            "（announcements。更新のお知らせなど全員向け）。mark=true で見えたぶんを既読にする。"
+        ),
         _board_replies,
         {"mark": {"type": "boolean"}},
         read_only=False,

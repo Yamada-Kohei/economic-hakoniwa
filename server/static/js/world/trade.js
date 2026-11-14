@@ -2,6 +2,8 @@
 // 内側に縁を重ねる）、港のある島に白い丸を付け、船で運ぶ途中の荷のある航路を線で結ぶ（太いほど船が
 // 多く、矢じりは荷の向かう先。自国の航路は黄色）。区画の上に SVG を重ね、押すのは下の区画のまま。
 // 荷の中身は API が自国の荷の分だけ返すので、航路の一覧にだけ出す。
+// 他国どうしの航路は、国が増えると線で地図が白く埋まって島が見えなくなる（不具合報告 #17）ので、
+// 既定では出さず、地図の上のボタンで出す（出すかどうかはブラウザに覚える）。自国の航路はいつも出す。
 
 import { turnDate } from "../calendar.js";
 import { COLORS } from "../chart/line.js";
@@ -11,6 +13,7 @@ const SVG = "http://www.w3.org/2000/svg";
 const RING = 0.07; // 縁の太さ（区画の 1 辺に対する割合）
 const MINE = "#ffca28"; // 自国の航路の色（site.css の自国の区画の縁の色）
 const ROUTE = "#ffffff";
+const ROUTES_KEY = "world.routes"; // 他国の航路を出すか（localStorage）
 
 function svg(name, attrs) {
   const el = document.createElementNS(SVG, name);
@@ -65,10 +68,41 @@ export function drawTrade(grid, data, section) {
       }));
     }
   }
-  for (const route of data.routes) drawRoute(layer, route, islands);
+  const others = svg("g", { "data-routes": "others" });
+  for (const route of data.routes) drawRoute(route.mine ? layer : others, route, islands);
+  layer.append(others);
   grid.append(layer);
+  mountRoutesToggle(others, data.routes.filter((r) => !r.mine).length);
   describeCells(grid, data);
   if (section) writeLegend(section, data, colors);
+}
+
+function storage() {
+  try {
+    return window.localStorage;
+  } catch {
+    return null; // 保存できないブラウザでは、毎回既定（出さない）
+  }
+}
+
+/** 他国の航路を出す・消すボタン（#world-routes-toggle）。他国の航路がなければボタンを隠す。 */
+function mountRoutesToggle(others, count) {
+  const button = document.getElementById("world-routes-toggle");
+  const shown = storage()?.getItem(ROUTES_KEY) === "1";
+  const apply = (on) => {
+    others.style.display = on ? "" : "none";
+    if (!button) return;
+    button.setAttribute("aria-pressed", String(on));
+    button.textContent = on ? "他国の航路を消す" : "他国の航路を出す";
+  };
+  apply(shown);
+  if (!button) return;
+  button.hidden = count === 0;
+  button.addEventListener("click", () => {
+    const on = button.getAttribute("aria-pressed") !== "true";
+    apply(on);
+    storage()?.setItem(ROUTES_KEY, on ? "1" : "0");
+  });
 }
 
 /** 航路を1本描く（行きと帰りが重ならないように、向きの右側へ少しずらす）。 */
@@ -83,7 +117,7 @@ function drawRoute(layer, route, islands) {
   const width = Math.min(0.22, 0.04 + 0.04 * Math.max(route.ships, 0.25));
   const line = svg("line", {
     x1: x1 + nx, y1: y1 + ny, x2: x2 + nx, y2: y2 + ny,
-    stroke: color, "stroke-width": width, "stroke-linecap": "round", opacity: 0.85,
+    stroke: color, "stroke-width": width, "stroke-linecap": "round", opacity: route.mine ? 0.85 : 0.6,
   });
   layer.append(line);
   // 荷の向かう先を指す矢じり（線の 6 割の所）

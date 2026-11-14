@@ -48,8 +48,12 @@ test("the red stop mark is drawn only when production was cut to zero", () => {
   const calls = [];
   const ctx = { beginPath() {}, arc() { calls.push("arc"); }, fill() {}, set fillStyle(v) { calls.push(v); } };
   const defs = { housing: "housing" };
-  drawStopped(ctx, { kind: "fishing_port", rate: 400, status: "target" }, defs, 0, 0, 8);
+  // 止まりかはサーバー（理由の表）が stopped で決める（W-34）
+  drawStopped(ctx, { kind: "fishing_port", rate: 400, status: "target", stopped: false }, defs, 0, 0, 8);
   assert.deepEqual(calls, []);
-  drawStopped(ctx, { kind: "fishing_port", rate: 0, status: "target" }, defs, 0, 0, 8);
+  drawStopped(ctx, { kind: "fishing_port", rate: 0, status: "target", stopped: true }, defs, 0, 0, 8);
   assert.deepEqual(calls, ["#e53935", "arc"]);
+  calls.length = 0;
+  drawStopped(ctx, { kind: "housing", rate: 0, status: "power", stopped: true }, defs, 0, 0, 8);
+  assert.deepEqual(calls, []);
 });

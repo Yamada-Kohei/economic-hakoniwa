@@ -42,7 +42,7 @@
 
 ## [2 島と町と人口](02-population.md)
 
-決まり 58 個、うち仮の決まりの表にあるもの 0 個。
+決まり 59 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -104,6 +104,7 @@
 | PO-56 | 計画経済の国営住宅（W-202）: 計画経済の国では家計は住宅の資材を買わず住宅ローンも借りない | 決定（W-190 の回2 で作った | tests/core/test_public_housing.py |
 | PO-57 | 飢えている家計（前のターンに食べきれなかったか飢えの蓄えが残る層）は、売りに出ていない食料のそれ… | 決定（2026-11-02） | tests/core/test_famine_recovery.py |
 | PO-58 | 飢えの蓄えが、次のターンに全部食べれば 0 に戻る大きさ（`hunger_step(S,0)=0`… | 決定（2026-11-05） | tests/core/test_famine_recovery.py、tests/server/test_codex_turn300_fixes.py |
+| PO-59 | 幸福度の内訳（W-172）: 式 `happiness` は項目ごとの点を返す式 `happin`… | 決定（2026-11-14） | tests/core/test_happiness_parts.py |
 
 ## [3 物と市場と値段](03-market.md)
 
@@ -206,7 +207,7 @@
 | LB-43 | 解雇の決まり（2026-11-10、W-251）: 施設（民営・国営の独立採算・国庫直轄 | 決定（2026-11-10 | tests/core/test_dismissal.py |
 | LB-44 | 衣料は持ち物（2026-11-10、W-26 の直し）: 家計の層は衣料を1人あたりの持つ量（``… | 決定（2026-11-10 | tests/core/test_clothing_clearance.py |
 | LB-45 | 国庫の項目の予算が足りないときの分け方（2026-11-10 | 決定（2026-11-10 | tests/core/test_staff_plan.py |
-| LB-46 | 雇用の保障（2026-11-12、W-231 の日々の仕事の割り当て | 後回し（今の main の計画経済の島の失業を測り、摩擦的な失業を超えて残れば入れる） | （未確認） |
+| LB-46 | 雇用の保障（2026-11-12、W-231 の日々の仕事の割り当て | 決定（2026-11-12 | tests/core/test_job_guarantee.py |
 | LB-47 | 家計は電気を買える分だけ買う（2026-11-12、停電の調べの案 3）: 家計の層は生産の段の… | 決定（設定 `power.household_curve` で切／入 | tests/core/test_household_power_curve.py |
 
 ## [5 施設と企業](05-firms.md)
@@ -515,7 +516,7 @@
 
 ## [10 政治と体制](10-politics.md)
 
-決まり 61 個、うち仮の決まりの表にあるもの 2 個。
+決まり 62 個、うち仮の決まりの表にあるもの 2 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -580,10 +581,11 @@
 | PL-59 | 人員計画（2026-11-10 | 決定（2026-11-10 | tests/core/test_staff_plan.py |
 | PL-60 | 二重の値段（2026-11-12、W-231 | 決定（2026-11-12 | tests/core/test_phase3_4.py |
 | PL-62 | 輸出の計画（2026-11-13、計画経済の電気不足の案 3）: 国が、外貨を使う順の 1 段の… | 決定（2026-11-13、本人の表の 1-2・2-2・3-1 と B | tests/core/test_export_plan.py |
+| PL-63 | 運営からの告知の知らせ（2026-11-15、セビーリャさん「運営からのメッセージ…赤い印を出し… | 決定 | tests/server/test_site_notices.py |
 
 ## [11 画面と統計](11-ui.md)
 
-決まり 95 個、うち仮の決まりの表にあるもの 0 個。
+決まり 97 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -682,6 +684,8 @@
 | UI-93 | 生産調整中のわけ（W-250、2026-11-12）: 施設の状態が売れ行きの調整（target… | 決定 | tests/core/test_phase3_4.py、tests/server/test_screens_notices.py、tests/server/test_slowdown_reasons.py |
 | UI-94 | 市場の記録に、買い手と売り手の別（国営の施設・民営の施設・商社・海外の商人・家計・国の倉庫・政府… | 決定 | tests/core/test_market_groups.py、tests/server/test_good_page.py |
 | UI-95 | 品目ごとの輸出と輸入の額を統計 `export.<財>`・`import.<財>` に残す（W-… | 決定 | tests/core/test_market_groups.py、tests/server/test_trade_overview.py |
+| UI-96 | 更新のお知らせ（2026-11-15、セビーリャさん「更新があった時には最初アクセスした時だけポ… | 決定 | tests/server/test_site_notices.py |
+| UI-97 | 幸福度の内訳（W-172、2026-11-14）: 経済の画面の「幸福度を調べる」に、持ち主だけ… | 決定 | tests/server/test_happiness_parts.py |
 
 ## [12 確かめ方](12-checks.md)
 
@@ -726,7 +730,7 @@
 | GT-34 | 崩れた世界の写し: 崩れごとに、崩れが始まったターンの少し前（`gate.py` の `SNAP`… | 決定 | tests/core/test_collapse.py |
 | GT-35 | 試験の書き方: 仕組みの試験は、その仕組みを作った場面（足りない・0・一部だけなど）を組み立てて… | 決定 |  |
 | GT-36 | 島の種類ごとに全画面を開く試験: 建国直後・人のいない島・銀行のない島・計画経済・戦争中・占領・… | 決定 | tests/server/test_all_screens.py |
-| GT-42 | 同じ形を 1 か所で作る（止まった理由を持ち主と原因の表から出す、名前と座標の文を 1 つの関数… | 後回し（タブ 14 W-34） |  |
+| GT-42 | 施設が全力で動かなかった理由（施設の status）は、理由の表 `hakoniwa_core/`… | 決定 | tests/core/test_stops.py、tests/server/test_stop_texts.py |
 | GT-38 | 回7 の目安と見張り: 働く人のうちサービス（商業・金融・運輸・商社・公務・教育・治安）で働く割… | 決定 | tests/core/test_balance_round7.py |
 | GT-39 | 関門の値段の幅は、サービスと小売りだけ物価指数でなく平均賃金の伸びで割って見る（賃金が物の値段よ… | 決定（回7 後半） | tests/core/test_gate.py |
 | GT-40 | 標準の計画は、島で作っていない投入財でも、作る施設の投入財が手元にあれば手に入ると見て使う施設（… | 決定（回7 後半） | tests/core/test_balance_round7b.py |

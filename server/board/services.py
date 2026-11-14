@@ -24,6 +24,7 @@ from server.board.models import (
     Board,
     Like,
     NgRule,
+    NoticeMark,
     Post,
     Reply,
     Report,
@@ -583,6 +584,87 @@ def notices(user, *, mark: bool = False, limit: int = 50) -> list[dict[str, Any]
     if mark:
         Reply.objects.filter(pk__in=[r.pk for r in rows], seen=False).update(seen=True)
     return shown
+
+
+# --- 運営からの告知 ---------------------------------------------------------------
+# 管理者だけが書ける板（運営からの告知）の書き込みは、全員への知らせ。見出しの「掲示板」に
+# 返信と同じ赤い印で未読の数を出し、掲示板の一覧か告知の板を開くと見たことにする。
+# 印は「見た告知の書き込みの番号」だけを持つ。まだ印のない人（新しく登録した人と、この仕組みの
+# 前からいる人）には、ANNOUNCE_DAYS 日のうちの告知だけを未読として数える。
+
+ANNOUNCE_DAYS = 14
+ANNOUNCE_LIMIT = 10  # 一覧に出す告知の数
+
+
+def _announcements(user) -> QuerySet[Post]:
+    rows = Post.objects.filter(
+        thread__board__staff_only=True, hidden=False, thread__hidden=False
+    ).exclude(author=user)
+    return rows.filter(created_at__gte=timezone.now() - timedelta(days=ANNOUNCE_DAYS))
+
+
+def _unread_announcements(user) -> QuerySet[Post]:
+    mark = NoticeMark.objects.filter(user=user).first()
+    rows = _announcements(user)
+    if mark is None:
+        return rows
+    return rows.filter(id__gt=mark.last_post).exclude(id__in=mark.seen or [])
+
+
+def unread_announcements(user) -> int:
+    """まだ見ていない、運営からの告知の書き込みの数。"""
+    if not user.is_authenticated:
+        return 0
+    return _unread_announcements(user).count()
+
+
+def announcements(user, *, mark: bool = False) -> list[dict[str, Any]]:
+    """未読の告知（新しい順に ANNOUNCE_LIMIT 件まで）。mark=True なら、いまの告知を全部見たことに
+    する（未読があるときだけ書く）。"""
+    if not user.is_authenticated:
+        return []
+    rows = list(
+        _unread_announcements(user).select_related("thread__board").order_by("-id")[:ANNOUNCE_LIMIT]
+    )
+    shown = [
+        {
+            "thread": {"id": p.thread_id, "title": p.thread.title},
+            "number": p.number,
+            "page": page_of(p.number),
+            "created_at": p.created_at,
+            "first": p.number == 1,
+        }
+        for p in rows
+    ]
+    if mark and shown:
+        mark_announcements_seen(user)
+    return shown
+
+
+def mark_thread_announcements_seen(user, thread: Thread) -> None:
+    """告知のスレッドを開いたとき: そのスレッドの未読の告知を見たことにする。ほかに未読が
+    残っていなければ、印を一番新しい告知まで進めて、見た書き込みの番号の控えを空にする。"""
+    if not user.is_authenticated or not thread.board.staff_only:
+        return
+    unread = _unread_announcements(user)
+    here = list(unread.filter(thread=thread).values_list("id", flat=True))
+    if not here:
+        return
+    if not unread.exclude(thread=thread).exists():
+        mark_announcements_seen(user)
+        return
+    mark, _ = NoticeMark.objects.get_or_create(user=user)
+    mark.seen = sorted({*(mark.seen or []), *here})
+    mark.save(update_fields=["seen"])
+
+
+def mark_announcements_seen(user) -> None:
+    if not user.is_authenticated:
+        return
+    newest = Post.objects.filter(thread__board__staff_only=True).aggregate(m=Max("id"))["m"]
+    if newest is None:
+        return
+    NoticeMark.objects.update_or_create(user=user, defaults={"last_post": newest, "seen": []})
 
 
 # --- 検索 ----------------------------------------------------------------------

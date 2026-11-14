@@ -35,7 +35,7 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger
+from hakoniwa_core import ledger, stops
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
@@ -502,7 +502,7 @@ def open_contractor(
         owner=owner,
         accounting=accounting,
         built=True,
-        status=fac.STATUS_STARTING,
+        status=stops.STARTING,
     )
     assign_serial(island, f)
     island.facilities.append(f)
