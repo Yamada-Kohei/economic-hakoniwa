@@ -68,9 +68,7 @@ def test_bids_are_hidden_and_the_winner_is_shown_to_everyone(client, world):
 
 def test_describe_tender_orders(world):
     assert display.describe_order("cancel_tender", {"tender": 3}) == "入札を取り下げる: 入札 3 番"
-    text = display.describe_order(
-        "settle_tender_default", {"contract": 5, "choice": "forgive"}
-    )
+    text = display.describe_order("settle_tender_default", {"contract": 5, "choice": "forgive"})
     assert "契約 5 番" in text and "許す" in text
     text = display.describe_order(
         "open_tender", {"good": "coal", "quantity": 2, "turns": 6, "cap": 40, "deadline": 2}
