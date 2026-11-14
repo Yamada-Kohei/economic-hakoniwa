@@ -50,6 +50,13 @@ HTTP が成功しても、1件でも `ok: false` なら終了コードは 1 で�
 
 JSON API からは同じ単体確認の後、`PUT /api/islands/<島>/orders` に `{"orders": [...]}` を送ります。
 MCP では `defs(section="orders")` で定義を読み、`check_order` で各命令を確認してから `set_orders` で列全体を送ります。
+新しく足す命令が打ち間違いに見えるとき（買う指値が相場の 2 倍以上・売る指値が半分以下・量が 1 ターンの生産と売買の量や
+倉庫の在庫より多いなど）と、取り壊し・宣戦などの戻せない命令は、並べずに確かめの文 `confirm` を返します（API は 428、
+MCP は `saved: false`）。読んでよければ、同じ列に `"confirm": true`（MCP は `confirm=true`）を付けて送り直します。
+1 つだけ足す・消すときは、`POST /api/islands/<島>/orders/items`（`{kind, payload}`）と
+`DELETE /api/islands/<島>/orders/items/<番号>`、MCP では `add_order` と `remove_order`（番号は `summary` の
+`orders.pending` の `id`）が使えます。列を読み直して丸ごと送らなくてよいので、画面で同時に足した命令を消しません。
+丸ごと送るときは、読んだ列の `version` を付けると、その後に列が変わっていれば 409 で断られます。
 最新の道具名と引数は `tools/list` を参照してください。
 
 ## よく使う命令
@@ -96,6 +103,12 @@ MCP では `defs(section="orders")` で定義を読み、`check_order` で各命
 {"kind":"build_power_line","payload":{"tiles":[[13,12],[14,12],[15,12]]}}
 ```
 
+探鉱（MI-68）は、島にない鉱業資源（ウラン鉱石を除く）を 1 つ選び、それを掘る施設（鉱山・採石場・油井）の建つ地形の空いたマスに探鉱隊を置きます。探せる資源と置ける地形は、国の要約の `island.exploration.explorable` にあります。賃金と機械・燃料は公共事業費（予算の `construction`）から払い、全力で動いて `island.exploration.turns` ターンで終わります。島の地質に鉱床があれば資源に加わり、なければその資源はもう探せません。やめるときは探鉱隊のマスに `demolish` を出します（払ったお金は戻りません）。
+
+```json
+{"kind":"explore","payload":{"resource":"bauxite","x":20,"y":9}}
+```
+
 町（住宅地）は自動でできますが、国の命令で国の床（公営住宅）を足せます。町のマスか、町を置ける空いた平地を選び、足す床の数 `floors`（最低の広さで住める人数）か、床を届かせる段階 `level`（その段階の上限まで）のどちらか1つを書きます。国が予算の `housing`（住宅費）で資材を市場で買い、1ターンに床を少しずつ足します。通勤圏に空いた平地があっても、高層の段階まで育てられます（上下水道の条件は同じ）。住む人は、国の床の家賃を国庫に払います。
 
 ```json
@@ -139,6 +152,12 @@ MCP では `defs(section="orders")` で定義を読み、`check_order` で各命
 {"kind":"set_official_price","payload":{"good":"grain","price":100}}
 ```
 
+計画経済では、家計が払う小売の値段も上書きできます（PL-60。`price: 0` で上書きを解除。卸の値段の `planning.retail.floor` より安くはできず、据え置く財の小売を上げるときは議会の採決が要ります。行政力 2）。
+
+```json
+{"kind":"set_retail_price","payload":{"good":"grain","price":110}}
+```
+
 電力1 MWh の料金の上限を指定する例です。`price: 0` で上限をなくします。
 
 ```json
@@ -167,6 +186,9 @@ MCP では `defs(section="orders")` で定義を読み、`check_order` で各命
 ```json
 {"kind":"propose_contract","payload":{"partner":5,"side":"buy","good":"grain","quantity":10,"price":100,"currency":5,"turns":12,"delivery":"market"}}
 ```
+
+期間の代わりに `"indefinite": true` を書くと無期限の契約になります（`turns` は書きません）。
+満期がなく、どちらかが `cancel_contract` を出してから `trade.contract_cancel_turns` ターン後に終わります。
 
 相手の提案を買い手として受ける例です。契約番号は `get api/islands/4/trade` で確認します。
 提案した命令と同時に、まだ存在しない契約番号を指定してはいけません。

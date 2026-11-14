@@ -25,12 +25,14 @@ from server.web import (
     diplomacy,
     display,
     founding,
+    good_page,
     military,
     overview,
     rankings,
     reports,
     trade,
 )
+from server.web import facility_page as facility_views
 from server.web import (
     news as news_views,
 )
@@ -68,6 +70,18 @@ def top(request):
 
 
 def island_page(request, island_id: int):
+    """島の地図（UI-71 の入口「地図」）: 俯瞰図・重ね表示・マスの窓・命令の列。"""
+    return render(request, "web/island.html", _island_context(request, island_id, "island"))
+
+
+def island_home_page(request, island_id: int):
+    """島のホーム（UI-71 の入口「ホーム」）: 持ち主には今月すべきこと（UI-76）、ほかの人には注意。
+    その下に国勢（貿易の 1 行を含む）・資源・前のターンからの主な変化・出来事。"""
+    return render(request, "web/island_home.html", _island_context(request, island_id, "home"))
+
+
+def _island_context(request, island_id: int, page: str) -> dict:
+    """島のホームと地図に共通の値。"""
     island = get_object_or_404(Island.objects.select_related("owner", "world"), pk=island_id)
     defs = get_game().defs
     turn, stats = display.latest_stats(island)
@@ -86,7 +100,7 @@ def island_page(request, island_id: int):
         for r in (island.regime or {}).values()
         if r in defs.regimes
     ]
-    alerts, next_steps = overview.island_alerts(island, mine)
+    alerts, next_steps, todo = overview.home_lists(island, mine)
     context = {
         "island": island,
         "mine": mine,
@@ -105,14 +119,21 @@ def island_page(request, island_id: int):
         # 建設の欄で、この島で使えない施設や生産方式を見分けるため
         "resource_ids": island.resources or [],
         "producible": sorted(fac.producible_goods(defs, island.resources or [])),
+        # 探鉱（MI-68）: 見出しのようすと、建設の欄の探鉱の命令（国の要約の island.exploration）
+        "exploration": overview.exploration_brief(island),
         "capital_name": (island.names or {}).get("capital", ""),
         "logs": display.log_entries(logs.filter(turn=last_turn)) if last_turn is not None else [],
         "log_turn": last_turn,
         "show_guide": island.world.turn - founded < overview.GUIDE_TURNS,
-        "page": "island",
+        "page": page,
         "plan_label": politics_views.page_label(island),
     }
-    return render(request, "web/island.html", context)
+    if page == "home":
+        # 持ち主の「今月すべきこと」（急ぐ順。国の要約の todo と同じ。UI-76）と、国のまとめの貿易の
+        # 1 行（国の要約の trade と同じ。W-247 (8)）
+        context["todo"] = todo
+        context["trade"] = overview.trade_brief(stats, currency)
+    return context
 
 
 def _climate_name(island: Island) -> str:
@@ -160,13 +181,13 @@ def economy_page(request, island_id: int):
 
 def market_page(request, island_id: int):
     """市場: 財ごとの値段と売買の量、選んだ財の推移とこのターンの約定、買えなかった施設。"""
+    chosen = request.GET.get("good")
+    if chosen in get_game().defs.goods:  # 前の「?good=」の URL は品目のページへ（UI-81）
+        return redirect("market_good", island_id, chosen)
     island, context, stats = _report(request, island_id, "market", "市場")
     rows = reports.market_table(island, stats, context["currency"], context["mine"])
-    goods = [r["good"] for r in rows]
-    chosen = request.GET.get("good")
     context.update(
         rows=rows,
-        good=chosen if chosen in goods else (goods[0] if goods else ""),
         market_turn=reports.market_turn(island),
     )
     if context["mine"]:
@@ -174,6 +195,21 @@ def market_page(request, island_id: int):
     else:
         context["note"] = "約定の相手と、原料を買えずに止まった施設は、島の持ち主だけが見られます。"
     return render(request, "web/market.html", context)
+
+
+def market_good_page(request, island_id: int, good: str):
+    """品目のページ（UI-72・UI-73）: 上に値段と量・作る施設と使う施設・推移、下に打てる手の箱。"""
+    if good not in get_game().defs.goods:
+        raise Http404
+    island, context, stats = _report(request, island_id, "market", "")
+    viewer = own_island(request.user)
+    view = good_page.good_view(
+        island, good, stats, context["currency"], context["mine"], viewer.id if viewer else None
+    )
+    context.update(item=view, title=view["name"], market_turn=reports.market_turn(island))
+    if not context["mine"]:
+        context["note"] = "約定の相手と、原料を買えずに止まった施設は、島の持ち主だけが見られます。"
+    return render(request, "web/market_good.html", context)
 
 
 def chain_page(request, island_id: int):
@@ -212,6 +248,7 @@ def facilities_page(request, island_id: int):
     context["chart_names"] = "facilities,construction,firms.private"
     context["towns"] = reports.town_rows(island)  # 町ごとの働く人（誰にでも。地図と同じ中身）
     context["industry_workers"] = reports.industry_workers(island)  # 円グラフ（誰にでも）
+    context["fuel_reserves"] = display.fuel_reserves(island) if context["mine"] else []
     if context["mine"]:
         context["table"] = reports.facility_rows(island, context["currency"])
     else:
@@ -220,6 +257,23 @@ def facilities_page(request, island_id: int):
             island, display.island_for_naming(island), context["currency"], mine=False
         )
     return render(request, "web/facilities.html", context)
+
+
+def facility_page(request, island_id: int, number: int):
+    """施設のページ（UI-72・UI-73）: 上に「見る」所（状態・人手・投入と産出・収支と借入・
+    帳簿の推移・前のターンの結果）、下に「打てる手」の箱（この施設に出せる命令・出ている
+    命令・動いている設定）。ほかの人には地図のマスの窓と同じ公開の中身だけ。見えない施設は 404。"""
+    island, context, _ = _report(request, island_id, "facilities", "施設")
+    viewer = own_island(request.user)
+    data = facility_views.facility_data(
+        island, number, context["mine"], viewer.id if viewer else None
+    )
+    if data is None:
+        raise Http404
+    context.update(data, title=data["name"])
+    if not context["mine"]:
+        context["note"] = "他国の施設のため、地図のマスの窓と同じ中身だけを表示しています。"
+    return render(request, "web/facility.html", context)
 
 
 def fiscal_page(request, island_id: int):
@@ -252,19 +306,50 @@ def finance_page(request, island_id: int):
     return render(request, "web/finance.html", context)
 
 
-def trade_page(request, island_id: int):
-    """貿易: 貿易圏・二国間契約・商社・船団と港・運ぶ途中の荷・海外の商人。持ち主には貿易の命令も。
-    他国は国全体の数（輸出・輸入・貿易収支・船の数）と貿易圏の加盟だけ。"""
-    island, context, stats = _report(request, island_id, "trade", "貿易")
+TRADE_OTHERS_NOTE = (
+    "他国の島のため、国全体の数と貿易圏の加盟だけを表示しています"
+    "（契約・商社・船団・荷の中身は島の持ち主だけが見られます）。"
+)
+
+
+def _trade(request, island_id: int, page: str, title: str, template: str):
+    """貿易の入口のタブ（UI-71・W-247）。どのタブも中身は JSON API の /trade と同じ trade_data で、
+    タブごとにその一部を出す。他国には国全体の数と貿易圏の加盟だけ。"""
+    island, context, stats = _report(request, island_id, page, title)
     data = trade.trade_data(island, context["mine"], context["currency"], stats)
     names = trade.TRADE_STATS if context["mine"] else trade.PUBLIC_TRADE_STATS
     context.update(trade=data, stats=reports.stat_rows(stats, names, context["currency"]))
     if not context["mine"]:
-        context["note"] = (
-            "他国の島のため、国全体の数と貿易圏の加盟だけを表示しています"
-            "（契約・商社・船団・荷の中身は島の持ち主だけが見られます）。"
-        )
-    return render(request, "web/trade.html", context)
+        context["note"] = TRADE_OTHERS_NOTE
+    return render(request, template, context)
+
+
+def trade_page(request, island_id: int):
+    """貿易の概要（W-247 (5)〜(7)）: 入っている貿易圏・輸出入と収支・運ぶ途中の荷・契約の数と、
+    持ち主には「いますべきこと」（ホームの今月すべきことの貿易の行）と、よく使う契約の申し込みを置いた
+    打てる手の箱。詳しい一覧は契約・貿易圏・船と港・海外の商人のタブに分ける。"""
+    return _trade(request, island_id, "trade", "貿易", "web/trade.html")
+
+
+def trade_contracts_page(request, island_id: int):
+    """貿易のタブ「契約」: 二国間契約の一覧と、奥に畳んだ産業政策と援助（持ち主だけ）。"""
+    return _trade(request, island_id, "trade_contracts", "二国間契約", "web/trade_contracts.html")
+
+
+def trade_blocs_page(request, island_id: int):
+    """貿易のタブ「貿易圏」: 加盟している圏（持ち主には圏の値段と代表の設定も）と、ほかの圏・圏を
+    作る欄（持ち主だけ）。"""
+    return _trade(request, island_id, "trade_blocs", "貿易圏", "web/trade_blocs.html")
+
+
+def trade_fleet_page(request, island_id: int):
+    """貿易のタブ「船と港」: 商社・船団と港・運ぶ途中の荷と船の貸し出し（持ち主だけ）。"""
+    return _trade(request, island_id, "trade_fleet", "船と港", "web/trade_fleet.html")
+
+
+def trade_merchant_page(request, island_id: int):
+    """貿易のタブ「海外の商人」: 来る期間・値段・1ターンの上限（持ち主だけ）。"""
+    return _trade(request, island_id, "trade_merchant", "海外の商人", "web/trade_merchant.html")
 
 
 def fx_page(request, island_id: int):
@@ -293,6 +378,7 @@ def fx_page(request, island_id: int):
 PLAN_STATS = [
     "plan.queue",
     "plan.forced_saving",
+    "plan.turnover_tax",
     "plan.subsidy",
     "plan.subsidy_unpaid",
     "trade.merchant_gap",
@@ -359,6 +445,13 @@ def country_page(request, island_id: int):
             return redirect("island_country", island.id)
     context["country"] = country.country_data(island, context["mine"], viewer)
     return render(request, "web/country.html", context)
+
+
+def orders_page(request, island_id: int):
+    """命令のページ（UI-74）: 待っている命令の列の並べ替え・取り消しと、前のターンまでの結果。
+    ほかの国の人には、待っている命令のうち前もって公表する物だけを見せる（UI-04。中身は API）。"""
+    _, context, _ = _report(request, island_id, "orders", "命令")
+    return render(request, "web/orders.html", context)
 
 
 def diary_page(request, island_id: int):
@@ -546,17 +639,44 @@ def help_start_page(request):
         "web/help_start.html",
         {
             "statuses": [
-                {"name": display.message(f"status_{key}"), "text": text}
-                for key, text in STATUS_HELP
+                {"name": status_help_name(key), "text": text} for key, text in STATUS_HELP
             ],
             "commute": game.config.get("labor.commute_radius"),
             "base_admin": game.config.get("orders.base_admin_power"),
+            "max_queue": game.config.get("orders.max_queue"),  # 前もって並べられる命令の数
             "power_fuel_turns": game.config.get("founding.power_fuel_turns"),
+            "careful": _careful_help(game.config),
         },
     )
 
 
-# 入門の「施設の状態の言葉」（名前は messages.yaml の status_<key> から引く）
+def _careful_help(config) -> dict:
+    """入門の「軽く動かさないほうがいい数値」に出す数（W-255）。"""
+
+    def percent(name: str) -> str:
+        return f"{config.get(name) * 100:g}"
+
+    return {
+        "indexation": percent("labor.indexation"),
+        "max_raise": percent("labor.max_raise"),
+        "haircut": percent("bonds.haircut"),
+        "default_premium": percent("bonds.default_premium"),
+        "default_decay": config.get("bonds.default_decay_turns"),
+        "default_exclusion": config.get("bonds.default_exclusion_turns"),
+        "default_crunch": config.get("banking.default_crunch_turns"),
+        "default_stability": -config.get("politics.events.default"),
+        "default_stability_turns": config.get("politics.events.default_turns"),
+        "exit_turns": config.get("firms.exit_loss_turns"),
+        "entries": config.get("firms.entries_per_turn"),
+        "cb_lock_turns": config.get("central_bank.switch_lock_turns"),
+        "transition_turns": config.get("politics.transition.turns"),
+        "working_years": config.get("education.working_years"),
+        "grievance_max": config.get("politics.press.grievance_max"),
+    }
+
+
+# 入門の「施設の状態の言葉」（名前は messages.yaml の status_<key> から引く。stop_ で始まるものは
+# そのままの名前。UI-84）
 STATUS_HELP = (
     ("starting", "建ったばかりで、次の更新で動き出します。止まっているわけではありません。"),
     ("construction", "工事中です。人手・資材・お金が足りないと、かっこの中にわけが出ます。"),
@@ -568,7 +688,16 @@ STATUS_HELP = (
     ("wages", "賃金を払うお金が足りません。売上と賃金・仕入れの釣り合いを見ます。"),
     ("power", "発電量が足りません。発電所の燃料か、発電所の数を見ます。"),
     ("no_grid", "発電所のある送電網につながっていません。送電線か送電網の工事でつなぎます。"),
-    ("target", "売れ行きに合わせて作る量を減らしています。不具合ではありません。"),
+    (
+        "target",
+        "売れ行きに合わせて作る量を減らしながら作り続けています。不具合ではありません。"
+        "地図の窓に、目標を下げたわけと打てる手が出ます。",
+    ),
+    (
+        "stop_target",
+        "売れ行きに合わせて作る量を 0 まで下げ、止まっています（地図に赤い点）。"
+        "地図の窓に、わけと打てる手が出ます。",
+    ),
     ("budget", "国庫の同じ項目の年の予算が足りません。予算を増やすか、優先度を上げます。"),
     ("staff_plan", "人員計画で決めた人数の枠で人が足りません。計画の画面で枠を見直します。"),
     ("equipment", "設備が傷んで作れる量が減っています。国営なら公共事業費で直します。"),
@@ -580,6 +709,11 @@ STATUS_HELP = (
     ("cargo", "運送業・海運業が、運ぶ荷の量に合わせて動いています。不具合ではありません。"),
     ("business", "銀行が、預金と融資の大きさに合わせて動いています。不具合ではありません。"),
 )
+
+
+def status_help_name(key: str) -> str:
+    """入門の施設の状態の言葉の名前（画面と同じ文。stop_ で始まるものは止まったときの文）。"""
+    return display.message(key if key.startswith("stop_") else f"status_{key}")
 
 
 def terms_page(request):
@@ -622,6 +756,38 @@ def help_ai_page(request):
 def help_chain_page(request):
     """産業のつながりの手引き: 施設の作り方から品目どうしのつながりを図と表で見せる（UI-61）。"""
     return render(request, "web/help_chain.html", {"chain": chain_map.chain_data()})
+
+
+def help_fx_page(request):
+    """為替の効き方と打てる手の手引き（W-252）。数は game.yaml の fx・banking などから。"""
+    config = get_game().config
+
+    def percent(name: str) -> str:
+        return f"{config.get(name) * 100:g}"
+
+    return render(
+        request,
+        "web/help_fx.html",
+        {
+            "fx": {
+                "band": percent("fx.band"),
+                # 毎ターン同じ向きに値幅いっぱい動いたときの 1 年（12 ターン）の動き
+                "band_year": f"{((1 + config.get('fx.band')) ** 12 - 1) * 100:.0f}",
+                "keep_turns": config.get("fx.keep_turns"),
+                "reserve_share": percent("fx.reserve_share"),
+                "swap_quota": percent("fx.swap_quota"),
+                "swap_issuer_share": percent("fx.swap_issuer_share"),
+                "swap_spread": percent("fx.swap_spread"),
+                "peg_band": percent("fx.peg_band"),
+                "bank_share": percent("banking.foreign_share"),
+                "bank_step": percent("banking.foreign_step"),
+                "bank_margin": percent("banking.foreign_margin"),
+                "trader_cut": percent("trade.trader_cut"),
+                "merchant_turns": config.get("foreign_merchant.turns"),
+                "cb_lock_turns": config.get("central_bank.switch_lock_turns"),
+            },
+        },
+    )
 
 
 def help_hakoniwa_page(request):
@@ -667,12 +833,15 @@ def _help_context() -> dict:
         "interval_hours": f"{interval_minutes / 60:g}" if interval_minutes else "",
         "base_admin": game.config.get("orders.base_admin_power"),
         "max_admin": game.config.get("orders.max_admin_power"),
+        "max_queue": game.config.get("orders.max_queue"),  # 前もって並べられる命令の数
         "power_fuel_turns": game.config.get("founding.power_fuel_turns"),
         "admin_per_office": _admin_people(defs),
         # 金融と企業（フェーズ2-2）の説明に出す数
         "arrears_limit": game.config.get("loans.arrears_limit"),
         "sale_turns": game.config.get("firms.sale_turns"),
         "sale_cut_turns": game.config.get("firms.sale_cut_turns"),
+        # 倒産を出した企業の実績（FM-65）
+        "track_record_turns": game.config.get("firms.track_record_turns"),
         "site_turns": game.config.get("firms.site_work")["turns"],
         "cb_lock_turns": game.config.get("central_bank.switch_lock_turns"),
         # 国債の債務不履行の罰
@@ -692,7 +861,7 @@ def _help_context() -> dict:
         ],
         "units": [
             {"name": defs.name("goods", g), "unit": defs.unit_name(g)}
-            for g in defs.goods
+            for g in display.goods_in_order(defs)
             if defs.unit_name(g)
         ],
         "grades": _grade_help(game),
@@ -767,6 +936,11 @@ def _goods_help(game) -> dict:
         "trucks": {
             "drivers": config.get("freight.trucks.drivers"),
             "share": percent(config.get("freight.trucks.max_share")),
+        },
+        # 土木業者（W-270）: 予定価格の上乗せ（島の平均賃金に対する %）
+        "contractor": {
+            "margin": percent(config.get("contractor.margin")),
+            "machine_workers": config.get("contractor.machines.workers"),
         },
         "shortage": {
             "share": percent(config.get("records.shortage.share")),
@@ -875,11 +1049,18 @@ def _placement_notes(f) -> str:
             for level, s in defs.settlements.items()
             if s.get("shops")
         ]
-        notes.append(f"町のマスに入る（1つの町に{'・'.join(shops)}まで）")
+        per = next(
+            (s["people_per_shop"] for s in defs.settlements.values() if s.get("people_per_shop")),
+            None,
+        )
+        more = f"。住む人 {per:,.0f} 人ごとに1つまで増える" if per else ""  # FM-70
+        notes.append(f"町のマスに入る（1つの町に{'・'.join(shops)}まで{more}）")
     if f.get("coastal"):
         notes.append("海に面したマスのみ")
     if f.get("near_capital") is not None:
         notes.append(f"首都から {f['near_capital']} マス以内")
-    if f.get("max_per_island") is not None:
+    if f.get("max_per_island") is not None and f.get("limit_by_resources"):
+        notes.append(f"1国 {f['max_per_island']} か所まで（掘れる鉱業資源が多ければその数まで）")
+    elif f.get("max_per_island") is not None:
         notes.append(f"1国 {f['max_per_island']} か所まで")
     return "・".join(notes)

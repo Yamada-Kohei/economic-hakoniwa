@@ -17,12 +17,14 @@ from typing import Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import naming, politics
+from hakoniwa_core.economy import export_plan
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.modules import infrastructure, migration
 from hakoniwa_core.modules import plan as plan_orders
 from hakoniwa_core.modules import politics as politics_orders
 from hakoniwa_core.registry import OrderFailed
 from hakoniwa_core.state import IslandState
+from hakoniwa_core.trade import tradable_goods
 from server.game import get_game
 from server.web import display
 from server.world import models as m
@@ -264,7 +266,8 @@ def plan_data(island: m.Island, mine: bool, stats: dict[str, float]) -> dict[str
     data["caps"] = _price_limits(policy.get("price_cap", {}), stats)
     data["floors"] = _price_limits(policy.get("price_floor", {}), stats)
     data["goods"] = [
-        {"id": g, "name": defs.name("goods", g), "unit": defs.unit_name(g)} for g in defs.goods
+        {"id": g, "name": defs.name("goods", g), "unit": defs.unit_name(g)}
+        for g in display.goods_in_order(defs)
     ]
     if not planned:
         return data
@@ -276,11 +279,14 @@ def plan_data(island: m.Island, mine: bool, stats: dict[str, float]) -> dict[str
     achieved = state.get("achieved", {})
     queues = state.get("queues", {})
     band, held = planning.rules(core, config)
+    retail_manual = state.get(planning.RETAIL_MANUAL, {})
     rows = []
-    for good in defs.goods:
+    for good in display.goods_in_order(defs):
         if good not in prices:
             continue
         cost = costs.get(good)
+        # 小売の値段（PL-60。家計が払う値段。卸との差が取引税か価格の補助）
+        retail = planning.retail_price(core, config, good) if planning.is_dual(core) else None
         rows.append(
             {
                 "good": good,
@@ -293,6 +299,12 @@ def plan_data(island: m.Island, mine: bool, stats: dict[str, float]) -> dict[str
                 "gap": round((prices[good] - cost) * 100 / cost) if cost else None,
                 "outside": bool(cost) and planning.outside(prices[good], cost, band),
                 "held": good in held,
+                "retail": display.price(good, retail) if retail else None,
+                "retail_manual": good in retail_manual,
+                # 小売と卸の差（卸に対する %。+ は取引税、- は価格の補助）
+                "retail_gap": round((retail - prices[good]) * 100 / prices[good])
+                if retail and prices[good]
+                else None,
                 "goal": display.amount(goals[good], good) if good in goals else None,
                 "made": display.shown(good, stats.get(f"production.{good}", 0)),
                 "achieved": round(achieved[good] * 100) if good in achieved else None,
@@ -304,14 +316,93 @@ def plan_data(island: m.Island, mine: bool, stats: dict[str, float]) -> dict[str
         rows=rows,
         review=state.get("review"),
         band=round(band * 100),
-        held=[{"id": g, "name": defs.name("goods", g)} for g in defs.goods if g in held],
+        turnover_rate=round(core.policy.consumption_tax * 100 / 10000, 2),
+        retail_floor=round(config.get("planning.retail.floor") * 100),
+        held=[
+            {"id": g, "name": defs.name("goods", g)}
+            for g in display.goods_in_order(defs)
+            if g in held
+        ],
         priority=[{"id": i, "name": defs.name("industries", i)} for i in priority],
         industries=[{"id": i, "name": defs.name("industries", i)} for i in defs.industries()],
         max_priority=config.get("planning.max_priority"),
         staff=staff_plan_rows(island, core),
         works=works_staff(core),
+        export=export_plan_view(island, state),
     )
     return data
+
+
+def export_plan_view(island: m.Island, state: dict[str, Any]) -> dict[str, Any]:
+    """輸出の計画（PL-62）: 通貨ごとの要る外貨（1 段と設備の内訳）・持つ外貨・蓄えの目標・稼ぐ額と、
+    財ごとの計画の量・圏で売れた量・外貨の効率・圏の値段、命令で名指しした財。量と値段は見せる
+    単位。"""
+    from server.web import trade as trade_views  # 循環を避けて中で読む
+
+    defs = get_game().defs
+    export = state.get(export_plan.KEY, {})
+    labels = trade_views.directory(island.world)
+    money = []
+    needs = export.get("needs", {})
+    for c in sorted(set(export.get("need", {})) | set(export.get("held", {})), key=int):
+        part = needs.get(c, {})
+        money.append(
+            {
+                "currency": int(c),
+                "currency_name": labels.get(int(c), {}).get("currency", c),
+                "need": export.get("need", {}).get(c, 0),
+                "fuel": part.get("fuel", 0),
+                "equipment": part.get("equipment", 0),
+                "held": export.get("held", {}).get(c, 0),
+                "reserve": export.get("reserve", {}).get(c, 0),
+                "earn": export.get("earn", {}).get(c, 0),
+            }
+        )
+    plan = export.get("plan", {})
+    rows_state = export.get("rows", {})
+    named = export.get("named", {})
+    rows = []
+    for good in display.goods_in_order(defs):
+        if good not in plan and good not in rows_state and good not in named:
+            continue
+        row = rows_state.get(good, {})
+        currency = row.get("currency")
+        rows.append(
+            {
+                "good": good,
+                "name": defs.name("goods", good),
+                "unit": defs.unit_name(good),
+                "plan": display.amount(plan.get(good, 0), good),
+                "sold": display.amount(row.get("sold", 0), good),
+                "efficiency": row.get("eff"),
+                "price": display.price(good, row["price"]) if row.get("price") else None,
+                "currency": currency,
+                "currency_name": labels.get(currency, {}).get("currency")
+                if currency is not None
+                else None,
+                "named": display.amount(named[good], good) if good in named else None,
+            }
+        )
+    tradable = set(tradable_goods(defs))
+    return {
+        "money": money,
+        "rows": rows,
+        "named": [
+            {"good": g, "name": defs.name("goods", g), "quantity": display.amount(q, g)}
+            for g, q in sorted(named.items())
+        ],
+        "goods": [
+            {
+                "id": g,
+                "name": defs.name("goods", g),
+                "unit": defs.unit_name(g),
+                "named": display.amount(named[g], g) if g in named else None,
+            }
+            for g in display.goods_in_order(defs)
+            if g in tradable
+        ],
+        "stuck": bool(export.get("noticed")),
+    }
 
 
 def staff_plan_rows(island: m.Island, core: IslandState) -> list[dict[str, Any]]:
@@ -328,7 +419,7 @@ def staff_plan_rows(island: m.Island, core: IslandState) -> list[dict[str, Any]]
             "number": f.id,
             "name": naming.facility_name(defs, config, core, f),
             "kind": f.kind,
-            "kind_name": defs.name("facilities", f.kind),
+            "kind_name": display.kind_label(defs, f.kind, f.recipe),
             "workers": f.workers,
             "needed": f.economy.get("wanted", 0),
             "full": fac.workers_of(defs, f),

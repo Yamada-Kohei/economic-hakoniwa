@@ -20,10 +20,12 @@ from __future__ import annotations
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     OWNERS,
     Payer,
+    banks,
     default_accounting,
     facility_entity,
     funds,
@@ -232,8 +234,9 @@ def entry(
     - 島に商社が1つもなくなったら（倒産など）、trade.entry_turns ターン後に、経済体制の既定の
       持ち主で1つ開く（民営で資産を持つ層が出資できなければ待つ）。
     - 民営の商社: 島の商社の扱った重さが、直近 trade.entry_turns ターンの平均で上限の
-      trade.entry_threshold を超え、商社の数が上限に届いておらず、空いたオフィス街のマスがあり、
-      資産を持つ層が出資できれば、もう1つ開く。計画経済の島では開かない。
+      trade.entry_threshold を超えるか、取り逃した輸入の儲けが参入の線を超え（FX-62。
+      _missed_pays）、商社の数が上限に届いておらず、空いたオフィス街のマスがあり、資産を持つ層が出資できれば、
+      もう1つ開く。計画経済の島では開かない。
     """
     from hakoniwa_core.trade import traders  # traders.py がこのモジュールを読まないように
 
@@ -246,7 +249,7 @@ def entry(
     if not any(f.built and not is_stopped(f) for f in current) and all(f.built for f in current):
         return _reopen(island, defs, config, turn)
     island_state(island).pop("trader_gone", None)
-    limit = defs.facilities[kind].get("max_per_island")
+    limit = fac.island_limit(defs, island, kind)
     if planned or (limit is not None and len(current) >= limit):
         return None
     if any(not f.built for f in current):
@@ -255,7 +258,9 @@ def entry(
     full = [len(traders.state_of(f).get("volume", [])) for f in traders_of(island, config)]
     if not busy or min(full) < config.get("trade.entry_turns"):
         return None
-    if sum(busy) / len(busy) <= config.get("trade.entry_threshold"):
+    if sum(busy) / len(busy) <= config.get("trade.entry_threshold") and not _missed_pays(
+        island, defs, config
+    ):
         return None
     if not owners_can_fund(island, config):
         return None
@@ -266,6 +271,26 @@ def entry(
     if f is not None:
         island.log.append(LogEntry("trader_opened", {"x": spot[0], "y": spot[1]}))
     return f
+
+
+def _missed_pays(island: IslandState, defs: Defs, config: GameConfig) -> bool:
+    """取り逃した儲けでの参入（FX-62）: 島の商社が自分の担保・出資の枠か扱える重さで買えなかった
+    引き合う輸入の儲けの直近 trade.entry_turns ターンの平均を年に直し、商社を開く出資
+    （trade.trader_capital × 平均賃金）と取り逃した仕入れの自己資金（1 − loans.trade_ratio）の和で
+    割った利回りが、民営工場の参入と同じ線（借りる金利 + firms.entry_margin）を超えるか。"""
+    from hakoniwa_core.trade import traders  # traders.py がこのモジュールを読まないように
+
+    profit = cost = 0
+    for f in traders_of(island, config):
+        p, c = traders.missed_average(f)
+        profit += p
+        cost += c
+    if profit <= 0:
+        return False
+    wage = island.economy.average_wage or config.get("labor.initial_wage")
+    own_share = 1 - config.get("loans.trade_ratio")
+    capital = wage * config.get("trade.trader_capital") + cost * own_share
+    return profit * TURNS_PER_YEAR / max(1, capital) > banks.entry_rate(island, defs, config)
 
 
 def _reopen(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> Facility | None:

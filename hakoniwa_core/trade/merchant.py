@@ -28,6 +28,7 @@ from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import retail
 from hakoniwa_core.economy.prices import initial_prices
+from hakoniwa_core.exploration import base_resources
 from hakoniwa_core.state import IslandState
 from hakoniwa_core.trade import island_state
 from hakoniwa_core.units import BASIS, scale_price
@@ -69,7 +70,7 @@ def taper(island: IslandState, config: GameConfig, turn: int) -> float:
 BLOCKADE = "merchant_blockade"  # 島の貿易の状態: 封鎖で商人が来なくなる割合（1万分の1）
 
 
-def _reach(island: IslandState, qty: int) -> int:
+def reach(island: IslandState, qty: int) -> int:
     """封鎖で減らした、商人が持ってくる・持ち帰る量。"""
     share = island_state(island).get(BLOCKADE, 0)
     return qty * max(0, BASIS - share) // BASIS
@@ -90,14 +91,14 @@ def offers(
     """このターンに商人が売りに出すもの（財, 量, 値段）。来ていなければ空。"""
     if not active(island, config, turn):
         return []
-    base = initial_prices(defs, config, island.resources)
+    base = initial_prices(defs, config, base_resources(island))
     factor = multiplier(island, config, turn)
     share = taper(island, config, turn)
     out = []
     for good in sorted(config.get("foreign_merchant.goods")):
         if good not in defs.goods:
             continue
-        qty = int(_reach(island, cap_of(defs, good)) * share)
+        qty = int(reach(island, cap_of(defs, good)) * share)
         if qty > 0:
             out.append((good, qty, scale_price(base.get(good, 1), factor)))
     return out
@@ -114,12 +115,12 @@ def bids(
         return []
     factor *= retail.cpi(island)  # 買い値も島の物価に合わせる（売り値と同じ）
     share = taper(island, config, turn)
-    base = initial_prices(defs, config, island.resources)
+    base = initial_prices(defs, config, base_resources(island))
     out = []
     for good in sorted(config.get("foreign_merchant.goods")):
         if good not in defs.goods:
             continue
-        qty = int(_reach(island, cap_of(defs, good)) * share)
+        qty = int(reach(island, cap_of(defs, good)) * share)
         if qty > 0:
             out.append((good, qty, scale_price(base.get(good, 1), factor)))
     return out

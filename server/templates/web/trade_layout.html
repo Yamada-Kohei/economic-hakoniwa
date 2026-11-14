@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% load i18n static %}
+{% comment %}貿易の入口のタブ（概要・契約・貿易圏・船と港・海外の商人。UI-71・W-247）に共通の枠。
+中身は trade（JSON API の /trade と同じ trade_data）。命令の欄（右の列）は block orders の中に置く。{% endcomment %}
+{% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+{% include "web/report_header.html" %}
+
+<div class="report-layout{% block layout_class %}{% endblock %}">
+  <div class="report-main">
+{% block trade_main %}{% endblock %}
+  </div>
+{% block orders %}{% endblock %}
+</div>
+
+{% csrf_token %}
+<script type="module" src="{% static 'js/reports/trade.js' %}"></script>
+{% endblock %}

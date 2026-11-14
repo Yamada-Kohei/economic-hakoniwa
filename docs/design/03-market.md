@@ -42,7 +42,7 @@
 | MK-20 | 島で品切れの財を作れる民営の施設は、見直しの順番を待たずに見直し、買いたい量が少なくても避けない | 決定 | `firms.price_turns`, `firms.recipe_turns`, `firms.entry_gap` | tests/core/test_balance_round4.py::test_farms_review_their_crop_at_once_when_grain_is_missing |
 | MK-21 | 農場の作付けは畑の割合で持ち、1ターンに畑の一部ずつ蒔き直す。蒔いた畑は作物の育つ期間（facilities.yaml の `grow_turns`）何も出さない。蒔き直しの途中も前の作物の在庫は売る | 決定 |  | tests/core/test_balance_round3.py::test_farm_moves_its_fields_to_a_new_crop_little_by_little, tests/core/test_phase3_2.py::test_change_recipe_of_a_farm_resows_the_fields_little_by_little |
 | MK-22 | 2つの物を作る施設（製油所など）の原価は、初めの値段の比で分ける | 決定 |  | tests/core/test_phase3_2.py::test_joint_products_split_their_cost_by_the_world_prices |
-| MK-23 | 電力は生産の段で送電網ごとに同じ板寄せで売り買いする。売りは発電所（希望価格）、買いは施設と家計（指値なし、優先順位つき）。値幅の上端でも足りなければ優先順位の低い所から停電する | 決定 | `power.household_priority`, `power.household_use`, `power.household_share` | tests/core/test_rules.py::test_power_market_serves_by_priority_and_needs_grid, tests/core/test_shocks.py::test_power_outage_moves_price_within_band_and_recovers |
+| MK-23 | 電力は生産の段で送電網ごとに同じ板寄せで売り買いする。売りは発電所（希望価格。1単位の変動費より安くは売らないが、値幅の上端（公共料金の上限）がそれより低ければ上端で売る）、買いは施設（採算の合う電気料金まで）と家計の層（2026-11-12 から、値段が高いほど少なく買う段の注文で、払う額は使う額の `power.household_share` まで。タブ 4 LB-47）。値幅の中では指値の高い買いから約定し、値幅の上端でも足りなければ優先順位の低い所から停電する | 決定（家計の段の注文は設定 `power.household_curve`（既定は切）で入れた。X870 で切と入を比べてから既定を入にする。切の間は前の形: 家計の層ごとに1本の注文で、指値は使う額の `power.household_share` ÷ 要る量。電気料金がこれを超えると層の全員が買わない） | `power.household_priority`, `power.household_use`, `power.household_share`, `power.household_curve` | tests/core/test_rules.py::test_power_market_serves_by_priority_and_needs_grid, tests/core/test_shocks.py::test_power_outage_moves_price_within_band_and_recovers, tests/core/test_household_power_curve.py |
 | MK-24 | 発電所の売り値の下限（1単位の変動費）には燃料の運賃を入れる。火力発電所の燃料の分は在庫の取得原価の平均と今の値段の安いほうで見る（タブ 5 FM-64）。政府が公共料金の上限を決めると、電力の値幅の上端がそこで止まる | 決定 |  | （未確認） |
 | MK-25 | 島の中の運賃は、売り手と買い手がそれぞれ「約定価格×自分の運賃の率」を運送業に払う。約定は道のりの近い組から割り当て、指値は率で割り戻してから出す。電力とサービスにはかからない | 決定 | `freight.per_step`, `freight.max_rate` | tests/core/test_rules.py::test_market_pairs_nearest_buyers_and_sellers |
 | MK-26 | 運賃の率は施設ごとの見込み。取引の相手になりうる所を近い順に自分の量に届くまで数えた平均の道のりから出し、相手で埋まらない分は拠点（首都・都市以上の町・港）までの道のりで数える | 決定 | `freight.per_step`, `freight.max_rate`, `freight.hub_level` | tests/core/test_rules.py::test_freight_depends_on_distance_to_trading_partners, tests/core/test_infrastructure.py::test_roads_shorten_freight |
@@ -53,20 +53,21 @@
 | MK-31 | 財は 24 品目（23 品目とサービス）。原料・中間財・最終財の段、家計にとっての種類、持ち越せる期間、栄養と質、船で運ぶ重さを `packs/base/data/goods.yaml` に持つ | 決定 |  | （未確認） |
 | MK-32 | 計算の量は島の大きさに合わせて縮め、重さの1トンは実物のおよそ 25 トン分とする。見せるときは実物に近い単位に直す（タブ 11 UI-33） | 仮 |  | tests/server/test_display_units.py |
 | MK-33 | 市場の記録に財ごとの値段・売買の量・買いたかった量・売りたかった量と、施設ごとに買えなかったわけを残す。品不足（売りに出た量が買いたい量に届かない分。売れ残りがあるのに買えなかった分は、値段が合わなかっただけで品不足に数えない）が続いたら産業の鎖の画面とターンログで知らせる | 決定 | `records.shortage.share`, `records.shortage.turns` | tests/core/test_rules.py::test_market_records_why_inputs_were_not_bought, tests/core/test_phase3_2.py::test_shortage_is_logged_once_after_three_turns, tests/core/test_phase3_2.py::test_unsold_goods_are_not_a_shortage |
-| MK-34 | 計画経済の島は公定価格（値幅なし）で、混合経済の島は財ごとの値段の規制で、同じ板寄せを使う（決め方はタブ 10） | 決定 | `planning.review_turns`, `planning.review_band`, `planning.held_goods` | tests/core/test_phase3_4.py::test_planned_market_clears_at_the_official_prices, ::test_price_floor_keeps_the_market_price_up |
+| MK-34 | 計画経済の島は公定の卸の値段（値幅なし。家計は小売の値段で払い、差は取引税か価格の補助。タブ 10 PL-60）で、混合経済の島は財ごとの値段の規制で、同じ板寄せを使う（決め方はタブ 10） | 決定 | `planning.review_turns`, `planning.review_band`, `planning.held_goods` | tests/core/test_phase3_4.py::test_planned_market_clears_at_the_official_prices, ::test_price_floor_keeps_the_market_price_up |
 | MK-35 | 消費財の原価が家計の注文の一番上の段を超えると売れない件は「難しさとして残す」（注文の段はタブ 4 LB-23） | 決定 | `household.consumer_goods_tiers`, `household.consumer_goods_low_tiers`, `household.usual_price_turns` | tests/core/test_economy.py::test_consumer_tiers_spend_about_the_budget |
 | MK-36 | 消費財の指値に物価の見通しを足す。作られていない物の値段は、商社の輸入か品切れの値段のせり上げで出る（家計の側はタブ 4 LB-36、お金の側はタブ 7） | 決定（回5 で作る） |  | （未確認） |
-| MK-37 | 家計は電気と町の資材を除く品物に、代金に見合う小売りを店から一緒に買う。店で買いきれない分は小さな店と屋台から割高に買う（タブ 5 FM-38） | 決定 | `retail.*` | tests/core/test_balance_round7.py::test_households_buy_retail_from_shops_then_direct |
+| MK-37 | 家計は電気と町の資材を除く品物に、量に見合う小売り（量 × 島の初めの値段から数える。2026-11-12、W-261）を店から一緒に買う。店で買いきれない分は小さな店と屋台から割高に買う（タブ 5 FM-38） | 決定 | `retail.*` | tests/core/test_balance_round7.py::test_households_buy_retail_from_shops_then_direct |
 | MK-38 | 国営の施設（学校と大学も）は、市場で買いきれなかった次のターンの投入財を国の倉庫から使う。今の値段で政府に払い、倉庫が売ったのと同じに数える（運賃なし）。工事・インフラ・設備の直しの資材（国の工事の備え）・軍の備蓄・国の穀物の備蓄・今夜捨てられる組は使わない。民営の施設は使えない | 決定 |  | tests/core/test_state_inputs_from_warehouse.py::test_state_power_plant_burns_the_warehouse_coal, ::test_private_power_plant_does_not_take_from_the_warehouse |
 | MK-39 | 備蓄の放出の決まり: 島のどの施設も作っていない物を、前のターンに市場で買えなかった施設があれば、国の倉庫の余りを施設がいま要る量までいつもの値段で売りに出す。始めた物は、施設が要る間は続けて出す。工事・インフラ・設備の直しの資材・軍の備蓄・国の穀物の備蓄・そのターンに命令で売り買いする物・決まった売り買いの設定（タブ 6 FS-28）を置いた物は出さない。命令 `set_warehouse_release` で止められる（初めは動く） | 決定 | `household.usual_price_turns` | tests/core/test_state_inputs_from_warehouse.py::test_private_power_plant_buys_the_released_coal, ::test_private_power_plant_does_not_take_from_the_warehouse, tests/core/test_warehouse_standing.py::test_imported_sales_suspend_standing_buys_and_mk39_skips_settings |
 | MK-40 | 混合経済で値段の上限を付けた財は、施設の在庫を上限の値段で売る（作った費用は払い済み）。独立採算の施設は、上限が1単位の変動費（生産補助を引いた後）より低い間は新しく作らず、国庫直轄は上限で作り続ける | 決定（2026-11-07） |  | tests/core/test_phase3_4.py::test_price_cap_sells_facility_stock_below_cost, ::test_price_cap_lowers_only_self_financing_targets, ::test_price_cap_removal_restarts_production |
-| MK-41 | 売れ残りの値引き（2026-11-10、W-245、2026-11-11 にアウトレット形に作り直した）: 独立採算の売り手は、在庫がふだん持っておく在庫（売れ行きの見込み × `market.inventory_turns`）の `market.clearance_ratio` 倍を超えたまま `market.clearance_turns` 続けば、超えた分だけを別の指値で売りに出す。その指値は1単位の変動費から、超えた分が売れずに残るターンごとに値幅（`market.band`）ずつ下げ、変動費の `market.clearance_floor` で止める。ふだんの在庫の分は今どおり変動費より安く出さない。**在庫はみなふだんの指値でふだんの板寄せ（1回目）に出し、1回目で売れ残った分のうち超えた分だけを値引きの指値で出し直して、1回目で買えなかった買い注文の残りだけを相手に2回目の板寄せをする（アウトレット）。2回目の値段は1回目の値段より高くしない。島の値段と市場の記録の値段は1回目の値段**（1回目の値段が前の値段より高くても、2回目の後に1回目の値段で買えなかった買い手が残らなければ前の値段のまま）。値引きの売りは2回目の板寄せのほか、希望価格・売れ行きの見込み・操業目標・いつもの値段・資材の積算・輸出の見込みに数えない。国庫直轄・計画経済の公定価格・混合経済の値段の上限と下限の財、持ち越せる期間のある物（傷みかけは MK-08・MK-10 で売る）と、商社の輸入した物（売り値の下限は輸入の費用、タブ 9）はこれまでどおり | 決定（2026-11-10、アウトレット形は 2026-11-11） | `market.inventory_turns`, `market.band`, `market.clearance_ratio`, `market.clearance_turns`, `market.clearance_floor` | tests/core/test_clothing_clearance.py::test_excess_stock_is_sold_off_step_by_step_down_to_half_the_cost, ::test_state_run_and_price_fixed_sellers_do_not_sell_off, ::test_outlet_leaves_the_normal_market_as_it_was_without_the_sale, ::test_outlet_sells_only_to_the_buyers_left_over_at_or_below_the_first_price, ::test_outlet_pays_each_round_at_its_own_price, ::test_island_price_does_not_climb_while_the_outlet_fills_the_shortage, ::test_island_price_keeps_the_first_price_unless_the_outlet_filled_every_buyer, ::test_outlet_asks_do_not_lower_the_usual_price_or_the_materials_estimate |
+| MK-41 | 売れ残りの値引き（2026-11-10、W-245、2026-11-11 にアウトレット形に作り直した）: 独立採算の売り手は、在庫がふだん持っておく在庫（売れ行きの見込み × `market.inventory_turns`）の `market.clearance_ratio` 倍を超えたまま `market.clearance_turns` 続けば、超えた分だけを別の指値で売りに出す。その指値は1単位の変動費から、超えた分が売れずに残るターンごとに値幅（`market.band`）ずつ下げ、変動費の `market.clearance_floor` で止める。ふだんの在庫の分は今どおり変動費より安く出さない。**在庫はみなふだんの指値でふだんの板寄せ（1回目）に出し、1回目で売れ残った分のうち超えた分だけを値引きの指値で出し直して、1回目で買えなかった買い注文の残りだけを相手に2回目の板寄せをする（アウトレット）。2回目の値段は1回目の値段より高くしない。島の値段と市場の記録の値段は1回目の値段**（1回目の値段が前の値段より高くても、2回目の後に1回目の値段で買えなかった買い手が残らなければ前の値段のまま）。値引きの売りは2回目の板寄せのほか、希望価格・売れ行きの見込み・操業目標・いつもの値段・資材の積算・輸出の見込みに数えない。国庫直轄・計画経済の公定価格・混合経済の値段の上限と下限の財、持ち越せる期間のある物（傷みかけは MK-08・MK-10 で売る）はこれまでどおり。商社の輸入した物は同じ形の値下げをタブ 9 の FX-64 で行う（下限は帳簿の値と仕入れ直しの値の安い方、FX-63） | 決定（2026-11-10、アウトレット形は 2026-11-11） | `market.inventory_turns`, `market.band`, `market.clearance_ratio`, `market.clearance_turns`, `market.clearance_floor` | tests/core/test_clothing_clearance.py::test_excess_stock_is_sold_off_step_by_step_down_to_half_the_cost, ::test_state_run_and_price_fixed_sellers_do_not_sell_off, ::test_outlet_leaves_the_normal_market_as_it_was_without_the_sale, ::test_outlet_sells_only_to_the_buyers_left_over_at_or_below_the_first_price, ::test_outlet_pays_each_round_at_its_own_price, ::test_island_price_does_not_climb_while_the_outlet_fills_the_shortage, ::test_island_price_keeps_the_first_price_unless_the_outlet_filled_every_buyer, ::test_outlet_asks_do_not_lower_the_usual_price_or_the_materials_estimate |
+| MK-42 | 店の付け値（2026-11-12、W-261）: 市場経済と混合経済の島の店（商店・百貨店。独立採算でない国営の店も同じ）は、持ち越せない小売りを値段なしで出さず、1 単位の変動費 ×（1 ＋ 上乗せ 0.5）の付け値で売りに出す。上限は屋台の値段 × 0.9 で、百貨店の運賃は上限の内に含める。ただし付け値は変動費を下回らない（屋台がそれより安ければ客は屋台へ移り、店は今の 12 ターンの赤字で閉じる）。混合経済の値段の下限と上限（PL-32）はこれらより先に効く。家計の店への指値は、今の上限と店の付け値の最高の小さい方。前の版から続く島は上乗せを今の値段から 0.5 へゆっくり寄せ、今の値段が変動費より安ければ上乗せ 0 から始める。公定価格の財（計画経済の島）は今のまま（実装で設定 retail.markup・retail.posted_cap を足す。タブ 5「店と小売り」） | 決定（2026-11-12、本人のカード「推しの全部」。実装の見直しの 5 点を足した版も本人のカード「この設計で進める」） | `retail.markup`, `retail.posted_cap`, `retail.markup_step`, `retail.direct_premium` | tests/core/test_retail_posted.py::test_posted_price_marks_up_the_variable_cost_below_the_stall, ::test_legacy_shops_ease_the_markup_from_todays_price, ::test_households_pay_shops_no_more_than_the_highest_posted_price, ::test_price_floor_of_a_mixed_economy_holds_the_posted_price_up |
 
 ### 仮の決まり
 
 | 番号 | 何の代わりか | いつ外すか |
 | --- | --- | --- |
-| MK-16 | 買い手が値段を見て買う量と時期を変える仕組み（工事の先送り、燃料の節約、代わりの物）。値幅の上端で買い続けると品薄の島で燃料が初めの千倍、機械と鋼鉄が数十〜数百倍になったため、いつもの値段で止めた | 未定。工事が値段で先送りされる形を入れるとき。海運業の燃料と船は W-233 と合わせて検討する。国庫直轄と二国間契約の不足分は2026-11-10に見直した |
+| MK-16 | 買い手が値段を見て買う量と時期を変える仕組み（工事の先送り、燃料の節約、代わりの物）。値幅の上端で買い続けると品薄の島で燃料が初めの千倍、機械と鋼鉄が数十〜数百倍になったため、いつもの値段で止めた | 未定。工事が値段で先送りされる形を入れるとき。海運業の燃料と船は W-233 と合わせて検討する。国庫直轄と二国間契約の不足分は2026-11-10に見直した（二国間契約は 2026-11-12 に上端へ戻した。120 ターンの試しでは上がり続けなかった。輸入でしか手に入らない島は候補に残る） |
 | MK-32 | 実物の量（島の人口と施設の大きさに合った消費・産出・値段） | 外さない。計算はこの単位のままで、見せるときだけ実物に近づける（2026-10-15、2026-10-20 の W-30） |
 
 ## 仕組み
@@ -98,6 +99,7 @@
 - 工事中の施設とインフラ: 次の 1 ターン分の資材を買う。国の工事は国の倉庫にある分を先に使う（タブ 8）。
 - 家計: 食料・衣料・ぜいたく品・自動車・サービス・町の資材を買う（タブ 4）。町の資材は、傷んだ家の手入れの分を預金から先に、町が育つ分を代金の 8 割の住宅ローンと頭金で、売りに出ている量まで注文する（回3、タブ 2 PO-19・PO-50、タブ 7 BK-47）。民営の施設ごとに、売り切れた財で買えなかった量を売れた割合で分けた売り逃しを残す（設備投資の合図。タブ 5 FM-49）。売りに出ていない物は買いたい量だけ記録し、作る施設や商社が動く合図にする。
 - 国の倉庫: 売り・買い入れの命令の分（タブ 6）。備蓄の放出の決まり（MK-39）: 島で作っていない物を施設が買えなかったら、余りを施設が要る量までいつもの値段で売りに出す（現実の国の石油の備蓄の放出と同じ形）。民営の発電所も、建国のときに倉庫にあった石炭をこれで買える。遊ぶ人は命令で止められる。撤退した施設の残りの在庫は、国が市場の値段で引き取る（タブ 5）。
+- 海外の商人: 決まった値段と1ターンの上限の売り手・買い手（タブ 9 FX-27・FX-49）。飢えた家計が出て、ほかの売り手と国の穀物の備蓄を出しても食料が売り切れて買えなかった量が残る島には、足りない分の穀物を売りに来る（FX-73。W-239）。商人の売りは島の外から来た売りで、商社が輸出を決めるときの島の売りに数えない。
 - 商社: 輸出のために買った荷と輸入した荷は、商社が自分で売り買いし、市場の段が施設の在庫として売りに出すことはない（タブ 9）。
 
 ### 希望価格と操業目標
@@ -121,7 +123,7 @@
 - 操業目標は、売れ行きの見込みと在庫の目安の差を埋める量にする。売り切れて値段が変動費より十分高ければ増産し、1 ターンに変える幅には上限がある。上がる分の投入財は先に仕入れる。
 - 持ち越せない売れ残りを翌ターンに投げ売りした分は、値段が変動費を下回った幅に応じて減らして売れ行きの見込みに数える。少し下回っただけで全く数えないと、魚の余った島でどの漁港も同時に減産して飢饉になったため。
 
-- 国庫直轄の投入財は、通常は現在価格まで買い、運賃は代金と分けて払う。買い負けて指値を上げるときだけ変動費の利益が0になる値段までとする。採算を割っていても現在価格では買う。支払いは従来どおり国営施設の項目から行う。学校と大学は今までどおり今の値段の値幅増しで買う（教育費）。二国間契約の不足分は契約ごとに、その契約価格を現在の為替で自国通貨に換えた指値まで買う。国の倉庫は履行順に一度ずつ充当し、買えない分の契約不足ログは従来どおり残す。
+- 国庫直轄の投入財は、通常は現在価格まで買い、運賃は代金と分けて払う。買い負けて指値を上げるときだけ変動費の利益が0になる値段までとする。採算を割っていても現在価格では買う。支払いは従来どおり国営施設の項目から行う。学校と大学は今までどおり今の値段の値幅増しで買う（教育費）。二国間契約の不足分は値幅の上端で買う（FX-24。2026-11-12 に契約価格までの上限を外して戻した）。買えない分の契約不足ログは従来どおり残す。
 
 ### 足りないとき・余るときの値段
 
@@ -149,8 +151,13 @@
 
 ### 電力の市場
 
-- 電力は生産の段で、送電網ごとに同じ板寄せで売り買いし、その場で代金を払う。売りは発電所（動ける量、希望価格）、買いは施設と家計（指値なし）で、基準の値段は島の前のターンの電気料金。
-- 値幅の上端でも足りなければ、優先順位の低い所から停電する。家計の優先順位は `power.household_priority`、施設は施設の優先順位。家計が電気代に使う額には上限 `power.household_share` がある。
+- 電力は生産の段で、送電網ごとに同じ板寄せで売り買いし、その場で代金を払う。売りは発電所（動ける量、希望価格）、買いは施設と家計で、基準の値段は島の前のターンの電気料金。
+- 施設の指値は、ほかの値段のままで変動費の利益が 0 になる電気料金まで（国庫直轄は今の電気料金までは必ず買う）。
+- 家計の層は、いつもの電気料金を真ん中に、値段が高いほど少なく買う段の注文を出す。どの値段で約定しても、払う額（消費税込み）は使う額の `power.household_share` を超えない。電気料金が高い島では、家計は払える分だけ買い、使う量を減らす（照明だけにする、など）。層の全員がまとめて 0 にはならない（2026-11-12、LB-47。形はタブ 4「電気の買い方」）。計画経済の公定価格の島は、家計も公定価格で要る量を注文し、足りなければ割当の順位と配給で分ける（今のまま）。
+- 値幅の中では指値の高い買いから約定する。値幅の上端でも足りなければ、優先順位の低い所から停電する。家計の優先順位は `power.household_priority`、施設は施設の優先順位。
+- 発電が足りない送電網では、家計は払える額で買える分しか買わないので、電気料金は「施設の買いと、家計が払える額で買う量の和が発電に釣り合う値段」まで値幅ずつ上がって止まる（家計の払う額は使う額の `power.household_share` を超えない）。採算の合う電気料金がそれより低い施設は先に止まる（2021〜22 年の欧州の電気の高騰で、アルミの精錬所などが操業を止めた形）。前は家計の層が指値を超えると全員抜けたので、電気料金は一般の層の指値で止まり、施設に電気が回っていた。
+- 発電所の操業目標（式 `power_target`）の需要は、今のまま施設と家計の要る量の和にする（家計の買う量に合わせて下げると、市場の記録の「買いたい量 − 売りに出た量」が品不足に見え、会社が発電所を建てに来る）。
+- 送電網の発電が売れ残っているのに家計が値段で買えなかった量と、発電が全部売れて届かなかった量を分けて数え、画面の注意で別の文にする（タブ 11 UI-89。施設の「原料が割高（電力）」と「電力不足」の分け方 MK-33 と同じ見方）。
 - 発電所の売り値の下限（変動費）には燃料の運賃を入れる（入れないと遠くから燃料を買う発電所が赤字で売り続けて閉鎖し、停電が起きた）。火力発電所は燃料を数か月分持ち（タブ 5 FM-63。国の倉庫の受け取り MK-38 と備蓄の放出 MK-39 は備えの分を入れず、使う分だけを見る）、下限の燃料の分は在庫の取得原価の平均と今の値段の安いほうで見る（FM-64。燃料が急に上がっても在庫のある間は止まらない）。
 - 政府が公共料金の上限を決めると、値幅の上端がそこで止まる。上限が発電の費用より低ければ発電所は赤字になり、民営の発電所は建たない。
 - 全部の発電所が止まると売り手がいなくなり、電気料金は前の値のまま。送電網の作り方はタブ 8。
@@ -190,12 +197,15 @@
 | --- | --- | --- | --- | --- | --- |
 | 足りない | 買えなかった量で売り手の希望価格が上がる。品切れの財は作り始められる値段まで上がる。家計は食料を同じ食費で買える量まで、飢えた家計はもっと高く買い上がり、工場は買い負けた原料を1ターンに `market.band` ずつ採算の合う値段まで買い上がる（市場の値幅はない）。民営は作り方を見直し、参入し（タブ 5）、商社が輸入する（タブ 9）。遅らせる役は在庫と国の倉庫、ずらす役は値段・作り方の替え・輸入 | 希望価格は1ターンに値幅まで。作付けは作物の育つ期間（数か月〜1年）かかる | 値上がりの売上で作り手が戻る（農場が穀物に戻る）。輸入。国の倉庫の放出の命令 | 現実の飢饉では、食料の値段が数か月で2〜5倍になる | `market.band`, `firms.recipe_turns`, `household.hungry.steps` |
 | 余る | 売れ残りは在庫に持ち、操業目標を下げる。ふだん持っておく在庫（売れ行きの見込み × 在庫の目安）までの売れ残りでは値下げせず、目安を超えた分だけ値下げする（MK-07）。変動費より安くは売らない。作り方を替えて残った前の作物も、その施設で作る費用より安くは売らずに持つ。傷む物は指値なしで投げ売りし、期間を過ぎれば捨てる。買い手のない財は輸出が引き合う値段まで下がる。遅らせる役は在庫、ずらす役は値段と輸出。国の買い入れは命令と予算があるときだけ | 在庫の目安は売れ行きの数ターン分。閉鎖は長く赤字が続いてから（タブ 5） | 値下がりで買い手が増える。作り手が減る・作り方を替える | 豊作の年の値崩れと、出荷の調整・生産調整 | `market.inventory_turns`, `market.inventory_adjust`, `market.max_target_change` |
-| 0 になる | 売り手が 0: 約定せず、値段は前のままか品切れの値段の決まりで上がる（島で作る施設がなくなっても、新しく建つ施設が見合う値段まで上がる。MK-13）。電力の売り手が 0 なら電気料金は前の値で全部停電。買い手のお金が 0: 注文を出せない（資金の裏付け）。島の作り手が 0 で輸入もない財は値段が付かない | 作り手が建つまで（参入はタブ 5） | 参入・輸入・海外の商人（初めの期間だけ。タブ 9） | 戦時の品切れ・配給 |  |
+| 0 になる | 売り手が 0: 約定せず、値段は前のままか品切れの値段の決まりで上がる（島で作る施設がなくなっても、新しく建つ施設が見合う値段まで上がる。MK-13）。電力の売り手が 0 なら電気料金は前の値で全部停電。買い手のお金が 0: 注文を出せない（資金の裏付け）。島の作り手が 0 で輸入もない財は値段が付かない | 作り手が建つまで（参入はタブ 5） | 参入・輸入・海外の商人（初めの期間と、飢えた島の穀物。タブ 9 FX-73） | 戦時の品切れ・配給 |  |
 | 一部だけ（層の中の少しの人、島の中の 1 か所） | 島の端の施設や離れ小島: 取引の相手が遠いほど運賃の率が上がる（上限まで）。拠点にも行けない離れ小島は上限の率。家計の中の少しの人の飢え: 買い上がりはその家計だけで、層の全員が買わなくはならない（タブ 4 LB-22） | 道路と鉄道を引くまで | 道路・鉄道・港を整える（タブ 8・9） | 僻地の物価が高い |  |
 | 持ち主・相手がいない | 取引の相手で埋まらない分は拠点までの道のりで数える。運送業は島に 1 つで潰れない。商社の荷は市場に出さない。撤退した施設の残りの在庫は国が市場の値段で引き取る（タブ 5） |  |  |  | `freight.hub_level` |
 | 時間がたつ（満期・寿命・一巡・育ちきった後） | 持ち越せる期間を過ぎた在庫は捨てる。蒔いた畑は育つ期間の後に収穫する。トラックは年に傷む。いつもの値段は直近の平均で入れ替わる。公定価格は決めた間隔で原価と比べる（タブ 10）。海外の商人は決めたターンで去る（タブ 9。`foreign_merchant.taper_from` ターンを過ぎると量を 0 まで少しずつ減らしていき、標準の計画はそこで商人から買っている物を作る施設を建て始める） | 物ごとの期間（goods.yaml と facilities.yaml） |  |  | `freight.trucks.wear`, `household.usual_price_turns`, `planning.review_turns` |
 | 余る（作り終えた在庫が目安を大きく超える、MK-41） | 超えた分だけを変動費から値幅ずつ下げ、ふだんの板寄せで買えなかった買い手にだけ2回目の板寄せで売る（アウトレット）。`market.clearance_floor` で止める。新しく作る分は減産で合わせる | 下限まで数か月 | 在庫が目安の倍に戻れば今の指値に戻る | 在庫処分のアウトレット・型落ちの売り場 | `market.clearance_ratio`・`market.clearance_floor` |
 | 一部だけ（同じ財の売り手の一部だけが値引き、MK-41） | ふだんの板寄せは値引きのないときと同じなので、ほかの売り手のふだんの売れ行きと島の値段は変わらない。値引きの分は、ふだんの値段では買わなかった買い手に売れる。値引きで買った買い手は次のターンに買う量が少し減る | 在庫が減るまで | 在庫がはければ値引きが終わる | 一社の在庫処分を別の売り場で売る | |
+| 足りない（発電が足りない送電網の家計の電気、MK-23・LB-47） | 電気料金が値幅ずつ上がり、家計の層は高い段ほど少なく買うので、施設の買いと家計が払える額で買う量の和が発電に釣り合う値段で止まる。皆が少しずつ使う量を減らし、採算の合う電気料金がそれより低い施設は先に止まる（前は一般の層が全員抜けて施設に回っていた。X870 の比べで GDP と止まった施設を見る）。発電所の売上は増え、民営の発電所が建つ・広げる合図になる | 値幅ずつ（数ターン） | 発電所が建つ・燃料が届く・公共料金の上限 | 2022 年の欧州のガス高で、家庭の電気の使用は 1〜2 割減った。2021 年のテキサスの寒波の計画停電は、値段で減らしきれず止めた形 | `power.household_share`, `household.price_elasticity`, `power.household_priority` |
+| 0 になる（家計の電気代を払うお金、MK-23・LB-47） | 電気が余っていても、家計の層は使う額の `power.household_share` で払える分しか買わない。所得が細ると使う量も細り、預金があっても使う額（所得と財産から決まる）を超えては払わない。注意に「家計が電気料金を払えない」と打ち手を出す（UI-89） | 続く間ずっと | 税を下げる（命令 `set_taxes`）・失業手当（`set_labor_policy`）・公共料金の上限（`set_price_cap`。発電所は費用割れでも上限で売る。MK-24）・雇用が戻る | 電気代が所得の 1 割を超える「エネルギー貧困」。サハラ以南では送電線の下でも電気をほとんど使わない家が多い。旧ソ連は家庭の電気料金を費用より安く決めて国が赤字を持った | `power.household_share` |
+| 一部だけ（層の中の一部の家だけ払えない、LB-47） | 層は1つの買い手なので、層の中の貧しい家から控えることは、段の注文の「高いほど少なく」で平均として表す（層の中の所得の差は持たない。タブ 4 の案 4 は採らなかった） | — | — | 途上国の町の勤め人の家は電気を使い、自給の農家は使わない | `household.price_elasticity` |
 
 ## 前提と依存
 

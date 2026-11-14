@@ -75,7 +75,7 @@ def test_the_standard_plan_does_not_dig_the_vein_resources(game):
     world = make_world(game, 7, ["coal", "iron_ore"])
     island = world.islands[1]
     island.resources = sorted([*island.resources, "copper_ore"])
-    limit = game.defs.facilities["mine"]["max_per_island"]
+    limit = fac.island_limit(game.defs, island, "mine")
     dug = []
 
     def check(island):

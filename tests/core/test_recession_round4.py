@@ -169,6 +169,51 @@ def test_ministry_queues_one_site_of_works_within_the_budget(game, base):
     assert infra.queue(island)
 
 
+def test_ministry_counts_the_works_from_the_target_to_full(game, base, monkeypatch):
+    # IN-28: 並んだ道路の目標までは維持の工事が戻すので、役所の見積もりは目標から 100% までの分
+    world = copy.deepcopy(base)
+    island = world.islands[1]
+    ctx = context(game, world)
+    _empty_queue(island)
+    # 土木業者のいない島で見る（人手を直営の賃金で見積もる。業者の単価で見るのは W-270 の試験）
+    island.facilities = [f for f in island.facilities if f.kind != "contractor"]
+    monkeypatch.setattr(works, "water_tiles", lambda *a: [])
+    for key in ("why", "short_materials", "stalled"):  # 資材を待つ工事はない
+        island.economy.infra.pop(key, None)
+    for f in island.facilities:
+        f.ext.pop("waiting", None)
+    place = min(
+        ((f.x, f.y) for f in island.facilities if works.fac.on_map(f) and f.built),
+        key=lambda p: (p[1], p[0]),
+    )
+    x, y = place
+    tile = island.tile(x, y)
+    infra.set_level(tile, "road", 300, 600)  # 目標 60% から 30% まで傷んだ
+    assert works.road_tiles(island, game.defs, game.config, place) == [(x, y)]
+    wage = 100
+    island.scratch[works.WORKS] = {"wage": wage}
+    plan = works.Works(island, ctx)
+    labor = sum(i.labor for i in plan.upkeep(ahead=True) + plan.build(ahead=True))
+    prices = island.economy.prices
+    buying = sum(
+        works.money_of(prices.get(g, 1), q)
+        for upkeep in (True, False)
+        for g, q in works.wants(island, ctx, upkeep).items()
+    )
+
+    def monthly(left):
+        whole = plan.cost(works.Item("road", x, y, left, False))
+        return works._cost(island, plan, whole, wage) * plan.step("road") // infra.FULL
+
+    upgrade = monthly(infra.FULL - 600)
+    assert upgrade < monthly(infra.FULL - 300)
+    state = funds.fiscal_state(island)
+    state["used"] = {"construction": 0}
+    state["caps"] = {"construction": labor * wage // 1000 + buying + upgrade}
+    works._auto_works(island, ctx)
+    assert ["road", x, y] in infra.queue(island)
+
+
 def test_ordered_works_go_before_the_ministrys(game, base):
     world = copy.deepcopy(base)
     island = world.islands[1]

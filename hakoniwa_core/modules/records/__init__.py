@@ -29,6 +29,7 @@ from hakoniwa_core.economy import (
     is_transport,
     trucks,
 )
+from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy.debt import annual_gdp, total_debt
 from hakoniwa_core.economy.households import close_income
 from hakoniwa_core.economy.stats import inflation, update_cpi
@@ -121,6 +122,9 @@ class Records(IslandStage):
         prices = economy.prices
         bought = island.scratch.get("household_bought", {})
         traded = {r.good: r.price for r in island.markets if r.volume > 0}
+        if planning.is_dual(island):  # 計画経済の島の物価は家計が払う小売の値段で数える（PL-60）
+            retail_prices = planning.retail_prices(island, config)
+            traded = {g: retail_prices.get(g) or p for g, p in traded.items()}
         cpi = update_cpi(economy, defs, config, prices, bought, traded)
         stats["cpi"] = cpi
         stats["inflation"] = inflation(economy)
@@ -160,6 +164,11 @@ class Records(IslandStage):
         stats["trade.exports"] = trade.get("exports", 0)
         stats["trade.imports"] = trade.get("imports", 0)
         stats["trade.balance"] = trade.get("exports", 0) - trade.get("imports", 0)
+        # 品目ごとの輸出と輸入の額（W-72。export.<財>・import.<財>。0 は書かない。他国の船を借りた
+        # 運賃は export.freight・import.freight）。合計は trade.exports・trade.imports に合う
+        for item, amount in books.sector(island, books.TRADE_GOODS).items():
+            side, _, good = item.partition(".")
+            stats[f"{side.removesuffix('s')}.{good}"] = amount
         balance.write_stats(island)  # 経常収支と金融収支（フェーズ3-3）
         stats.update(_finances(island))
         stats.update(_banking(island, ctx))

@@ -482,6 +482,9 @@ def test_island_price_does_not_climb_while_the_outlet_fills_the_shortage(
         game.engine.run_turn(world)
         # 指値の費用は、このターンの雇用の段で決まった賃金で見る（賃金が上がれば費用も上がる）
         rate = freight_rates.facility_rates(island, game.defs, game.config).get(f.id, 0)
+        # 電気料金も市場の段の前（生産の段）にそのターンの約定で決まるので、その電気料金で見る
+        power = game.config.get("power.good")
+        prices[power] = island.economy.prices[power]
         cost = subsidized_floor(
             island,
             game.defs,
@@ -500,8 +503,10 @@ def test_island_price_does_not_climb_while_the_outlet_fills_the_shortage(
         # 守るのは品薄で値幅（market.band）ずつ上がること。段の途中で費用が少し動いた分は見る
         top = max(before, ask)
         assert island.economy.prices[good] <= top + top * game.config.get("market.band") / 100
-        held += island.economy.prices[good] == before
-    assert held >= 1  # 品薄を値引きで満たし、前の値段のままのターンがある
+        # 品薄を値引きで満たしたターンは、値幅の分も上がらず、前の値段かふだんの売りの指値まで
+        # （作る費用が毎ターン上がる世界の道筋では、前の値段のままのターンがないことがある）
+        held += island.economy.prices[good] <= top
+    assert held >= 1  # 品薄を値引きで満たし、品薄で値幅の分は上がらないターンがある
 
 
 def test_island_price_keeps_the_first_price_unless_the_outlet_filled_every_buyer(game, warmed):

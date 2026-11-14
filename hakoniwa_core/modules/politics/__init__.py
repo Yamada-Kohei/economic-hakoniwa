@@ -59,6 +59,7 @@ from hakoniwa_core.economy import (
     layers,
     needs,
     owner_entity,
+    power_fuel,
 )
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy.debt import underwrite
@@ -517,6 +518,11 @@ def vote_rule(island: IslandState, order: OrderState, ctx: StageContext) -> str 
     rule = ctx.defs.orders.get(order.kind, {}).get("parliament")
     if rule is None:
         return None
+    if order.kind == "set_retail_price":  # 据え置く財の小売を上げるときだけ（PL-26・PL-60）
+        from hakoniwa_core.modules.plan import raises_held_retail
+
+        if not raises_held_retail(island, order.payload, ctx.config):
+            return None
     if order.kind == "set_taxes":
         points = ctx.config.get("politics.parliament.tax_points")
         policy = island.policy
@@ -754,7 +760,7 @@ def change_economy(island: IslandState, payload: dict[str, Any], ctx: StageConte
         end_for_planned(island, ctx)  # 国立銀行は政府の一部に戻る（国有化の代金を引き受ける）
         _nationalize_all(island, ctx)
         _merge_owners(island, ctx)
-        planning.start(island, ctx.config, ctx.turn)
+        planning.start(island, ctx.config, ctx.turn, moved=True)
     else:
         planning.stop(island)
         _add_owners(island, ctx)
@@ -833,6 +839,7 @@ def _nationalize_all(island: IslandState, ctx: StageContext) -> None:
             _move_equity(island, entity, seller, ledger.GOV)
             f.economy.pop("firm", None)
             f.owner = OWNER_STATE
+            power_fuel.reset_book(defs, f, island.economy.prices)
             for key in ("closing", "idle_turns", "loss_streak"):
                 f.economy.pop(key, None)
         count += 1

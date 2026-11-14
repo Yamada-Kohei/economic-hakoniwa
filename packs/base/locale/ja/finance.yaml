@@ -6,6 +6,7 @@ ship_order: 船の前注文の代金
 ship_order_refund: 船の前注文の返金
 electricity: 電気代
 freight: 運賃
+contract: 公共事業の請負の代金
 wage: 賃金
 unemployment_benefit: 失業手当
 severance: 解雇手当

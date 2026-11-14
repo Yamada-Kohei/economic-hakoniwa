@@ -1,5 +1,7 @@
 // 描画: 奥のマスから手前のマスへ（x + y の小さい順に）描き、高いものが奥を自然に隠すようにする。
+// 重ね表示の棒（UI-79）は島を描いたあとにもう一度奥から手前へ描き、建物に隠れず、半透明で奥の棒も透けて見える。
 
+import { barPixels, barsBackToFront, drawsBars, solidColor } from "./overlays/bars.js";
 import { lift, tileToWorld } from "./projection.js";
 import { drawSprite } from "./sprites.js";
 
@@ -7,6 +9,7 @@ import { drawSprite } from "./sprites.js";
  * 島を描く。
  * options: selected（選んだマス {x, y}）、marked（印を付けるマスの Set "x,y"）、
  *          overlay（重ねて表示する情報。overlays/ のモジュール）、
+ *          overlayMode（"bars" で量のある重ね表示を棒にする。ほかは塗り分け。UI-79）、
  *          sprites（sprites.js の loadSprites が返す絵。ないものは色の箱で描く）
  */
 export function drawIsland(ctx, map, defs, view, options = {}) {
@@ -17,6 +20,8 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
   ctx.setTransform(view.scale * view.dpr, 0, 0, view.scale * view.dpr, view.offsetX * view.dpr, view.offsetY * view.dpr);
 
   const sprites = options.sprites || new Map();
+  const bars = drawsBars(options.overlay, options.overlayMode);
+  const fill = options.overlay && !bars ? options.overlay : null;
   const n = map.size;
   const facilityAt = new Map();
   for (const f of map.facilities || []) facilityAt.set(f.y * n + f.x, f);
@@ -41,8 +46,8 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       // 施設のあるマスは地形の絵（木や山）を描かず、上面の色だけにする。施設の絵と重ならないように
       drawBlock(ctx, px, py, h, colors, theme, f ? null : sprites.get(`terrain/${terrain}`));
       drawFallout(ctx, map.fallout?.[i], sprites.get("overlay/contaminated"), px, top, theme);
-      if (options.overlay) {
-        const color = options.overlay.color(map, i, defs);
+      if (fill) {
+        const color = fill.color(map, i, defs);
         if (color) {
           ctx.fillStyle = color;
           diamondPath(ctx, px, top, theme.tile_width / 2, theme.tile_height / 2);
@@ -72,6 +77,58 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
         outlineTop(ctx, px, top, theme, "#ffeb3b");
       }
     }
+  }
+  if (bars) drawBars(ctx, map, defs, options.overlay, options.selected);
+}
+
+// 棒の透け具合（上面と側面）。側面は黒を重ねて暗くし、角柱に見せる
+const BAR_TOP_ALPHA = 0.7;
+const BAR_SIDE_ALPHA = 0.55;
+const BAR_SHADE_LEFT = "rgba(0, 0, 0, 0.18)";
+const BAR_SHADE_RIGHT = "rgba(0, 0, 0, 0.36)";
+const BAR_EDGE = "rgba(0, 0, 0, 0.45)";
+const BAR_FOOT = 0.55; // 棒の足元の大きさ（マスに対する割合）。周りの地面と隣の棒が見えるように
+
+/**
+ * 重ね表示の棒: マスの上面の真ん中に、高さを重ね表示ごとの物差し（height）で決めた半透明の角柱を立てる。
+ * 奥から手前へ描くので、手前の高い棒が奥の棒を覆っても、半透明なので奥の棒が透けて見える。
+ * 選んだマスの枠は棒の上にも描き直す。
+ */
+function drawBars(ctx, map, defs, overlay, selected) {
+  const theme = defs.theme;
+  const hw = (theme.tile_width / 2) * BAR_FOOT;
+  const hh = (theme.tile_height / 2) * BAR_FOOT;
+  ctx.save();
+  ctx.lineWidth = 0.75;
+  ctx.strokeStyle = BAR_EDGE;
+  for (const { x, y, i, value } of barsBackToFront(map, overlay, defs)) {
+    const color = solidColor(overlay.color(map, i, defs) || "hsl(0, 0%, 50%)");
+    const { px, py } = tileToWorld(x, y, theme);
+    const ground = py - lift(defs.terrain[map.terrain[i]]?.height ?? 0, theme);
+    // 足元のひし形の上の頂点（マスの真ん中に置く）と、棒の上面の上の頂点
+    const base = ground + theme.tile_height / 2 - hh;
+    const top = base - barPixels(value, theme);
+    ctx.globalAlpha = BAR_SIDE_ALPHA;
+    sides(ctx, px, top, base, hw, hh, color, color);
+    sides(ctx, px, top, base, hw, hh, BAR_SHADE_LEFT, BAR_SHADE_RIGHT);
+    ctx.globalAlpha = BAR_TOP_ALPHA;
+    ctx.fillStyle = color;
+    diamondPath(ctx, px, top, hw, hh);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    for (const dx of [-hw, 0, hw]) {
+      const dy = dx === 0 ? 2 * hh : hh;
+      ctx.moveTo(px + dx, top + dy);
+      ctx.lineTo(px + dx, base + dy);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+  if (selected) {
+    const i = selected.y * map.size + selected.x;
+    const { px, py } = tileToWorld(selected.x, selected.y, theme);
+    outlineTop(ctx, px, py - lift(defs.terrain[map.terrain[i]]?.height ?? 0, theme), theme, "#ffeb3b");
   }
 }
 
@@ -160,20 +217,50 @@ function drawBlock(ctx, px, py, h, colors, theme, sprite) {
 }
 
 /**
- * 施設の絵の名前。住宅は住宅地の段階ごと。首都の官庁は、体制で決まる建物の組み合わせの絵
+ * 施設の絵の名前。住宅は住宅地の段階ごと。作り方や段階で絵を分ける施設は lookSprite の絵。
+ * 首都の官庁は、体制で決まる建物の組み合わせの絵
  * （capital/議事堂-王宮 など。map.capital_buildings を軸の順に "-" でつなぐ）、なければ capital/ の絵。
  */
-function facilitySprite(f, defs, map, isCapital, sprites) {
+function facilitySprite(f, defs, map, isCapital, sprites, theme) {
   if (!f.built) return sprites.get("construction");
   if (f.kind === defs.housing) {
     const level = defs.settlements[f.level] ? f.level : Object.keys(defs.settlements)[0];
     return sprites.get(`housing/${level}`);
   }
   const name = defs.facilities[f.kind]?.sprite || f.kind;
-  if (!isCapital) return coastalSprite(f, defs, map, name, sprites) || sprites.get(`facility/${name}`);
+  if (!isCapital) {
+    return coastalSprite(f, defs, map, name, sprites) || lookSprite(f, defs, theme, name, sprites)
+      || sprites.get(`facility/${name}`);
+  }
   const buildings = defs.facilities[f.kind]?.category === "admin" ? map.capital_buildings || [] : [];
   const regime = buildings.length ? sprites.get(`capital/${buildings.join("-")}`) : null;
   return regime || sprites.get(`capital/${name}`) || sprites.get(`facility/${name}`);
+}
+
+/**
+ * 作り方・段階・規模で分けた絵（docs/map-art.md）。theme.sprite_looks の財が作り方の産出か投入にあれば
+ * +<財>（綿の畑・銅の鉱山・油の火力など）、段階（農場の FM-50）があれば @g<段階>、建て増しの規模（FM-47）が
+ * theme.size_tiers の区切りを超えれば @s<段>を、この順に名前の後ろに付ける（facility/thermal_power_plant+fuel@s3 など）。
+ * 付けられる物を全部付けた名前から順に、後ろの物を外しながら探し、どれもなければ null（名前のままの絵）。
+ */
+function lookSprite(f, defs, theme, name, sprites) {
+  const recipe = defs.facilities[f.kind]?.recipes?.[f.recipe];
+  const goods = theme?.sprite_looks?.[f.kind] || [];
+  const look = recipe ? goods.find((g) => g in recipe.outputs || g in recipe.inputs) : undefined;
+  const tier = 1 + (theme?.size_tiers || []).filter((n) => (f.size || 1) >= n).length;
+  const looks = look ? [`+${look}`, ""] : [""];
+  const grades = f.grade ? [`@g${f.grade}`, ""] : [""];
+  const sizes = tier > 1 ? [`@s${tier}`, ""] : [""];
+  for (const l of looks) {
+    for (const g of grades) {
+      for (const s of sizes) {
+        if (!l && !g && !s) continue;
+        const sprite = sprites.get(`facility/${name}${l}${g}${s}`);
+        if (sprite) return sprite;
+      }
+    }
+  }
+  return null;
 }
 
 // 海沿いの施設の絵の向き: 海のあるマスの向きと、その絵の名前に付ける印（docs/map-art.md）。
@@ -198,7 +285,7 @@ function coastalSprite(f, defs, map, name, sprites) {
 /** 施設: 絵があれば絵、なければ色付きの箱。住宅の高さは住宅地の段階、工事中は枠だけ。 */
 function drawFacility(ctx, f, map, defs, px, ground, theme, sprites) {
   const isCapital = map.capital && map.capital[0] === f.x && map.capital[1] === f.y;
-  const sprite = facilitySprite(f, defs, map, isCapital, sprites);
+  const sprite = facilitySprite(f, defs, map, isCapital, sprites, theme);
   if (sprite) {
     drawSprite(ctx, sprite, px, ground + theme.tile_height);
     if (f.built) drawStopped(ctx, f, defs, px, ground, theme.tile_height / 2);
@@ -241,8 +328,10 @@ function drawFacility(ctx, f, map, defs, px, ground, theme, sprites) {
 }
 
 /** 止まっている施設には赤い印（絵の上にも描く）。top は印を置くひし形の上の頂点。
- * 稼働準備中（まだ動いたことがなく、次の更新で動き出す）は止まりではないので描かない（W-219）。 */
-function drawStopped(ctx, f, defs, px, top, hh) {
+ * 稼働準備中（まだ動いたことがなく、次の更新で動き出す）は止まりではないので描かない（W-219）。
+ * 売れ行きに合わせて 0 まで下げて止まった施設（生産停止中（買い注文不足））にも描き、下げても
+ * 作り続けている生産調整中には描かない（UI-84）。 */
+export function drawStopped(ctx, f, defs, px, top, hh) {
   if (f.kind === defs.housing || f.rate !== 0 || !f.status || f.status === "starting") return;
   ctx.fillStyle = "#e53935";
   ctx.beginPath();

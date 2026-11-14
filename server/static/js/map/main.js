@@ -4,24 +4,25 @@
 
 import { attachControls } from "./controls.js";
 import { drawMinimap, minimapTile } from "./minimap.js";
+import { BARS, FILL, overlayLegend, readOverlayMode, writeOverlayMode } from "./overlays/bars.js";
 import { overlayList } from "./overlays/index.js";
 import { lift, tileToWorld, worldToTile } from "./projection.js";
 import { drawIsland } from "./renderer.js";
+import { drawRuler } from "./ruler.js";
 import { loadSprites } from "./sprites.js";
 import { OrderQueue } from "../island/orders.js";
 import { TilePanel } from "../island/panel.js";
 import { MissileTarget } from "../island/missiles.js";
 import { words } from "../military/common.js";
 import { getJson } from "../island/api.js";
-import { mountRecentChanges } from "../island/recent-changes.js";
 
-mountRecentChanges();
 
 const canvas = document.getElementById("island-map");
 const ctx = canvas.getContext("2d");
 const minimap = document.getElementById("minimap");
 const overlaySelect = document.getElementById("overlay");
-const overlayLegend = document.getElementById("overlay-legend");
+const legendBox = document.getElementById("overlay-legend");
+const barsToggle = document.getElementById("overlay-bars");
 const popover = document.getElementById("tile-popover");
 const narrow = window.matchMedia("(max-width: 760px)"); // 狭い画面では窓を下から出す板にする（site.css）
 const POPOVER_GAP = 12; // マスと窓の間（ピクセル）
@@ -43,7 +44,18 @@ try {
 }
 const theme = defs.theme;
 const view = { scale: 1, offsetX: 0, offsetY: 0, dpr: window.devicePixelRatio || 1 };
-const state = { selected: null, marked: new Set(), overlay: null, sprites: new Map(), undergroundLabel: words().hidden };
+// 重ね表示の表し方（棒か塗り分けか。UI-79）はブラウザに覚える。覚えていなければ棒
+const storage = (() => {
+  try {
+    return window.localStorage;
+  } catch {
+    return null; // 覚えられない窓では毎回棒に戻る
+  }
+})();
+const state = {
+  selected: null, marked: new Set(), overlay: null, overlayMode: readOverlayMode(storage),
+  sprites: new Map(), undergroundLabel: words().hidden,
+};
 let pending = false;
 
 function heightOf(x, y) {
@@ -57,6 +69,7 @@ function redraw() {
     pending = false;
     try {
       drawIsland(ctx, map, defs, view, state);
+      drawRuler(ctx, map, view, theme);
       if (minimap) drawMinimap(minimap, map, defs, state.selected);
       placePopover();
       canvas.dataset.ready = "1";
@@ -158,12 +171,62 @@ async function select(tile) {
   if (tile && narrow.matches && state.selected === tile) revealAboveSheet(tile);
 }
 
+// 地図の拡大の大きさと位置をブラウザに覚え、次に開いたときに戻す（UI-85）。位置は地図の真ん中に
+// 見えている所（拡大前の位置）で覚えるので、窓の大きさが変わってもだいたい同じ所が出る
+const VIEW_KEY = `hakoniwa:map-view:${canvas.dataset.island}`;
+let saveTimer = null;
+
+function saveView() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    const r = canvas.getBoundingClientRect();
+    const center = { px: (r.width / 2 - view.offsetX) / view.scale, py: (r.height / 2 - view.offsetY) / view.scale };
+    try {
+      localStorage.setItem(VIEW_KEY, JSON.stringify({ scale: view.scale, ...center }));
+    } catch {
+      // 覚えられない（プライベートの窓など）ときは毎回島の全体を出す
+    }
+  }, 300);
+}
+
+/** 覚えた拡大と位置に戻す。覚えていなければ false。 */
+function restoreView() {
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(VIEW_KEY) || "null");
+  } catch {
+    return false;
+  }
+  if (!saved || ![saved.scale, saved.px, saved.py].every(Number.isFinite) || saved.scale <= 0) return false;
+  const r = canvas.getBoundingClientRect();
+  view.scale = saved.scale;
+  view.offsetX = r.width / 2 - saved.px * view.scale;
+  view.offsetY = r.height / 2 - saved.py * view.scale;
+  return true;
+}
+
+// 指（カーソル）の下のマスの座標を地図の隅に出す（UI-85）
+const coord = document.getElementById("map-coord");
+function tileAtScreen(sx, sy) {
+  return worldToTile((sx - view.offsetX) / view.scale, (sy - view.offsetY) / view.scale, map, heightOf, theme);
+}
+if (coord) {
+  canvas.addEventListener("pointermove", (e) => {
+    const r = canvas.getBoundingClientRect();
+    const tile = tileAtScreen(e.clientX - r.left, e.clientY - r.top);
+    coord.hidden = !tile;
+    if (tile) coord.textContent = `(${tile.x}, ${tile.y})`;
+  });
+  canvas.addEventListener("pointerleave", () => (coord.hidden = true));
+}
+
 const controls = attachControls(canvas, view, {
-  onChange: redraw,
+  onChange() {
+    saveView();
+    redraw();
+  },
   onTap(sx, sy) {
-    const px = (sx - view.offsetX) / view.scale;
-    const py = (sy - view.offsetY) / view.scale;
-    const tile = worldToTile(px, py, map, heightOf, theme);
+    const tile = tileAtScreen(sx, sy);
     if (tile && panel.marking) {
       panel.toggleMark(tile);
       return;
@@ -179,22 +242,26 @@ document.querySelectorAll("[data-zoom]").forEach((button) => {
   });
 });
 
+function showLegend(text) {
+  if (legendBox) legendBox.textContent = text;
+}
+
 /** 重ね表示を切り替える。要るデータ（運賃の率など）は、初めて選んだときに地図の API から読む。 */
 async function showOverlay(id) {
   const overlay = overlays.find((o) => o.id === id) || null;
   if (overlaySelect) overlaySelect.value = overlay ? overlay.id : "";
-  if (overlayLegend) overlayLegend.textContent = overlay?.legend || "";
+  showLegend(overlayLegend(overlay, state.overlayMode));
   if (overlay?.query && overlay.fields.some((f) => map[f] === undefined)) {
-    if (overlayLegend) overlayLegend.textContent = "読み込み中…";
+    showLegend("読み込み中…");
     try {
       const extra = await fetch(`${canvas.dataset.api}?${overlay.query}`).then((r) => r.json());
       for (const f of overlay.fields) map[f] = extra[f];
     } catch {
-      if (overlayLegend) overlayLegend.textContent = "読み込めませんでした。";
+      showLegend("読み込めませんでした。");
       return;
     }
     if (overlaySelect && overlaySelect.value !== overlay.id) return; // 待つ間に別のものが選ばれた
-    if (overlayLegend) overlayLegend.textContent = overlay.legend || "";
+    showLegend(overlayLegend(overlay, state.overlayMode));
   }
   state.overlay = overlay;
   redraw();
@@ -205,11 +272,23 @@ if (overlaySelect) {
   overlaySelect.addEventListener("change", () => showOverlay(overlaySelect.value));
 }
 
+// 棒と塗り分けの切り替え（UI-79）。選んだ表し方は覚え、次に開いたときも使う
+if (barsToggle) {
+  barsToggle.checked = state.overlayMode === BARS;
+  barsToggle.addEventListener("change", () => {
+    state.overlayMode = barsToggle.checked ? BARS : FILL;
+    writeOverlayMode(storage, state.overlayMode);
+    if (state.overlay) showLegend(overlayLegend(state.overlay, state.overlayMode));
+    redraw();
+  });
+}
+
 if (minimap) {
   minimap.addEventListener("click", (e) => {
     const tile = minimapTile(minimap, map, e.clientX, e.clientY);
     if (!tile) return;
     centerOn(tile.x + 0.5, tile.y + 0.5);
+    saveView();
     if (panel.marking) {
       panel.toggleMark(tile);
       return;
@@ -235,7 +314,7 @@ new ResizeObserver(() => placePopover()).observe(popover);
 narrow.addEventListener("change", () => placePopover());
 
 window.addEventListener("resize", resize);
-fit();
+if (!restoreView()) fit();
 resize();
 
 // 地図の API にない反乱軍の位置は、持ち主だけが軍の要約から読む。

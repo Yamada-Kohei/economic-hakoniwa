@@ -50,6 +50,21 @@ def load_config(path: str | Path, people: float | None = None) -> GameConfig:
     path = Path(path).resolve()
     with path.open(encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
+    power = raw.get("power") or {}
+    if (
+        "fuel_notice_turns" in power
+        and "fuel_stock_turns" in power
+        and power["fuel_notice_turns"] > power["fuel_stock_turns"] / 2
+    ):
+        raise ValueError(
+            "power.fuel_notice_turns は power.fuel_stock_turns の半分以下にしてください"
+        )
+    if (
+        "price_notice_turns" in power
+        and "fuel_stock_turns" in power
+        and power["price_notice_turns"] < power["fuel_stock_turns"]
+    ):
+        raise ValueError("power.price_notice_turns は power.fuel_stock_turns 以上にしてください")
     raw = scale.apply_config(raw, people)  # 国の大きさの倍（段6 A3）
     base = path.parent
     return GameConfig(

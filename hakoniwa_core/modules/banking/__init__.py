@@ -61,6 +61,7 @@ from hakoniwa_core.economy.prices import variable_profit
 from hakoniwa_core.economy.start import next_payments
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE, Facility, IslandState, Loan, LogEntry
+from hakoniwa_core.trade import is_trader, traders
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, part, to_basis
 
@@ -83,6 +84,9 @@ def in_business(f: Facility) -> bool:
 
 class Banking(IslandStage):
     name = "banking"
+    # この施設の運転資金のうち、銀行の体力（自己資本比率・大口融資の規制・新しく貸さない期間）で
+    # 断った額（_borrow が足し、_working_capital が商社ごとに見る。FX-62）
+    _walled = 0
 
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
         if not island.has_economy:
@@ -319,14 +323,25 @@ class Banking(IslandStage):
             if not is_self_supporting(f) or is_bank(ctx.config, f) or not in_business(f):
                 continue
             entity = facility_entity(f.id)
-            short = next_payments(island, ctx.defs, ctx.config, f) - ledger.money(island, entity)
+            payments = next_payments(island, ctx.defs, ctx.config, f)
+            short = payments - ledger.money(island, entity)
             if short <= 0:
                 continue
+            # 商社の輸入の見込みの分（FX-61・BK-51）は持ち主が出資で埋めない（借りきれなければ
+            # 使えるお金の分だけ輸入する）。国営の施設の出資は賃金・仕入れの分だけ
+            imports = self._import_short(island, ctx, f)
             # 民営の企業の施設は、借りる前に企業の預金から回す（回7）
             short -= companies.draw(island, f, short)
             if short <= 0:
                 continue
-            short = self._borrow(island, ctx, f, short, lent, planned)
+            self._walled = 0
+            trader_planned = planned and (imports == 0 or traders.is_planned(island))
+            short = self._borrow(island, ctx, f, short, lent, trader_planned)
+            if imports > 0 and short > 0 and self._walled > 0:
+                # 銀行の体力（自己資本比率・大口融資の規制・新しく貸さない期間）で借りきれなかった
+                # （FX-62 の取り逃した儲けに数えない）
+                traders.state_of(f)["bank_wall"] = ctx.turn
+            short = min(short, max(0, payments - imports - ledger.money(island, entity)))
             if short <= 0:
                 continue
             owner = owner_entity(f)
@@ -354,6 +369,14 @@ class Banking(IslandStage):
             ledger.create(island, payer.entity, ledger.EQUITY, entity, amount, "capital_injection")
             books.add(island, f.id, books.CAPITAL, amount)
 
+    @staticmethod
+    def _import_short(island: IslandState, ctx: StageContext, f: Facility) -> int:
+        """商社の次の支払いの見込みのうち、輸入の見込みで持っている外貨に足りない分（FX-61）。
+        商社でなければ 0。"""
+        if not is_trader(ctx.config, f) or traders.is_planned(island):
+            return 0
+        return traders.import_need_own(island, f)
+
     def _borrow(
         self,
         island: IslandState,
@@ -377,8 +400,15 @@ class Banking(IslandStage):
             rate = rate_of(island, ctx, bank, entity, amount)
             offers.append((rate, bank))
         offers.sort()
-        if not offers or (not planned and not self._creditworthy(island, ctx, f, amount, offers)):
+        if not offers:
             return amount
+        rest = 0  # 担保の外で断った分（BK-51）
+        if not planned and not self._creditworthy(island, ctx, f, amount, offers):
+            secured = self._trade_secured(island, ctx, f, amount)
+            if secured <= 0:
+                return amount
+            rest = amount - secured
+            amount = secured
         turns = ctx.config.get("loans.working_turns")
         left = amount
         for rate, bank in offers:
@@ -386,6 +416,7 @@ class Banking(IslandStage):
             if not planned:
                 due = (repaying or {}).get(bank, 0)
                 piece = self._room(island, ctx, f, bank, left, lent, due)
+                self._walled += left - piece  # 銀行の体力で断った分（FX-62。_working_capital）
             if piece <= 0:
                 continue
             banks.lend(island, bank, entity, piece, banks.WORKING, turns, ctx.turn, rate)
@@ -393,7 +424,37 @@ class Banking(IslandStage):
             left -= piece
             if left <= 0:
                 break
-        return left
+        return left + rest
+
+    def _trade_secured(
+        self, island: IslandState, ctx: StageContext, f: Facility, amount: int
+    ) -> int:
+        """商社の輸入の運転資金（貿易金融。BK-51）: 利益で返す力の審査に通らなくても、運転資金の残高
+        が担保の値打ち × loans.trade_ratio 以内なら、その分まで貸す（amount まで。借入の割合の審査
+        は今どおり）。担保は手元と運ぶ途中の輸入の荷・持っている外貨（traders.trade_collateral）と、
+        この借りで買う荷（輸入の見込みのうち持っている外貨で足りない分。信用状で銀行が荷の書類を
+        持つのと同じ）。前のターンに借りて外貨に換わらずに残った預金は担保に入れない。商社でなく、
+        計画経済の島の商社でもないときは 0。"""
+        imports = self._import_short(island, ctx, f)
+        if imports <= 0:
+            return 0
+        entity = facility_entity(f.id)
+        held, transit, fx_value = traders.trade_collateral(island, f)
+        collateral = held + transit + fx_value + imports
+        working = sum(
+            banks.outstanding(island, x)
+            for x in banks.loans_by_borrower(island, entity)
+            if x.purpose == banks.WORKING
+        )
+        room = part(collateral, to_basis(ctx.config.get("loans.trade_ratio"))) - working
+        # 借入の割合の審査（借入 ≦ 資産 × loans.max_leverage。借りた分は預金として資産にも入る）
+        # に通る分まで
+        leverage = ctx.config.get("loans.max_leverage")
+        debt = banks.debt_of(island, entity)
+        assets = banks.assets_of(island, f, entity)
+        if leverage < 1:
+            room = min(room, int((leverage * assets - debt) / (1 - leverage)))
+        return max(0, min(amount, room))
 
     @staticmethod
     def _creditworthy(

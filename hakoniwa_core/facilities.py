@@ -52,6 +52,9 @@ EXPANDS = "expands"
 # 機械の設備の割合（MACHINES。economy。1000 分の 1）が下がった分だけ、その割合の畑が手作業で動く
 GRADE = "grade"
 GRADE_TO = "grade_to"
+# 段階の作り方で新しく建てる農場の工事（W-257）: ext に建つ段階を持ち、その段階までの工事の資材も
+# 使う。直しの前から工事中だった農場（移行で段階だけそろえた）は持たず、手作業の資材で建つ
+GRADE_BUILD = "grade_build"
 SITE_WORK = "site_work"  # ext: 空き地に建てる民営の工場の造成 {labor, materials}（FM-61）
 MACHINES = "machines"
 FUEL = "fuel"  # 機械化した畑が毎ターン使う燃料の財
@@ -159,6 +162,28 @@ def machine_goods(defs: Defs, f: Facility) -> set[str]:
         if step["machines"]
         for good in step["materials"]
     }
+
+
+def build_grade(defs: Defs, kind: str, recipe: str | None) -> int:
+    """作り方 recipe で新しく建てる農場の段階（W-257）。段階の作り方（機械化・近代化）を選んで建てる
+    農場は、初めからその段階で建つ。段階のない施設と手作業の作り方は 0。"""
+    if not recipe or not grade_steps(defs, kind):
+        return 0
+    return int(defs.facilities[kind]["recipes"].get(recipe, {}).get("grade", 0))
+
+
+def build_spec(defs: Defs, kind: str, recipe: str | None) -> tuple[int, dict[str, int]]:
+    """作り方 recipe で新しく建てるときの工期（ターン）と資材（1000 分の 1）。段階の作り方の農場は、
+    手作業の農場の工事に、その段階までの工事の工期と資材（機械・用水路の建材）を足す（W-257。
+    手作業で建ててから段階を上げるのと同じだけかかる。機械を払わずに機械化の作り方で動かさない）。"""
+    construction = defs.facilities[kind]["construction"]
+    turns = int(construction["turns"])
+    materials = dict(construction.get("materials", {}))
+    for step in grade_steps(defs, kind)[: build_grade(defs, kind, recipe)]:
+        turns += int(step["turns"])
+        for good, qty in step["materials"].items():
+            materials[good] = materials.get(good, 0) + qty
+    return turns, materials
 
 
 def regrade(defs: Defs, kind: str, recipe: str, grade: int) -> str:
@@ -603,10 +628,17 @@ def shops_at(island: IslandState, pos: tuple[int, int]) -> int:
     return sum(1 for f in island.facilities if f.ext.get(SITE) == key and EXPANDS not in f.ext)
 
 
-def shop_slots(defs: Defs, town: Facility) -> int:
-    """町のマスに入る店の数（settlements.yaml の shops）。"""
+def shop_slots(defs: Defs, town: Facility, island: IslandState | None = None) -> int:
+    """町のマスに入る店の数: 町の段階の数（settlements.yaml の shops）と、住む人 ÷ その段階の
+    people_per_shop（国の大きさの倍を掛けてある）の大きい方（FM-70。2026-11-12、W-261）。段階の数が
+    0 の村には入らない。island がなければ段階の数だけ。"""
     level = town.ext.get("level") or defs.settlement_levels()[0]
-    return int(defs.settlements.get(level, {}).get("shops", 0))
+    spec = defs.settlements.get(level, {})
+    slots = int(spec.get("shops", 0))
+    per = spec.get("people_per_shop", 0)
+    if island is None or slots <= 0 or per <= 0 or not island.in_bounds(town.x, town.y):
+        return slots
+    return max(slots, int(island.tile(town.x, town.y).population // per))
 
 
 def vacate(island: IslandState, f: Facility) -> None:
@@ -758,6 +790,9 @@ def materials_of(defs: Defs, f: Facility) -> dict[str, int]:
     materials = defs.facilities[f.kind]["construction"].get("materials", {})
     if GRADE_TO in f.ext:  # 農場の段階を上げる工事（W-190）は、その段階の資材
         materials = grade_steps(defs, f.kind)[int(f.ext[GRADE_TO]) - 1]["materials"]
+    elif GRADE_BUILD in f.ext and not f.built and not f.ext.get("repair"):
+        # 段階の作り方で新しく建てる農場（W-257）は、その段階までの工事の資材も足す
+        materials = build_spec(defs, f.kind, f.recipe)[1]
     # 建て増した施設の直し（戦争・暴動で壊れた後）は規模の分だけ資材が要る（段6 A3）
     factor = f.ext.get("materials_factor", 1) * size_of(f)
     out = dict(materials) if factor == 1 else {g: round(q * factor) for g, q in materials.items()}
@@ -803,10 +838,11 @@ def input_ratio(defs: Defs, f: Facility, power: str) -> tuple[int, str | None]:
     """手元の原料で今のターンにどれだけ動けるか（1000 分の 1）と、一番足りない原料。
 
     電力（power）は在庫を持たず、生産の段で送電網から買うので数えない。
+    optional_inputs の消耗品も操業を制限しない（FM-67）。
     """
     found, short = FULL, None
     for good, qty in sorted(recipe_of(defs, f)["inputs"].items()):
-        if good == power:
+        if good == power or good in defs.facilities[f.kind].get("optional_inputs", ()):
             continue
         r = ratio(stock.total(f.stock, good), qty)
         if r < found:
@@ -860,8 +896,9 @@ def placement_problem(
         town = island.facility_at(x, y)
         if town is None or defs.facilities[town.kind].get("category") != "housing":
             return ("reason_shop_needs_town", {"facility": kind})
-        if shops_at(island, (x, y)) >= shop_slots(defs, town):
-            return ("reason_shop_slots", {"facility": kind, "max": shop_slots(defs, town)})
+        slots = shop_slots(defs, town, island)
+        if shops_at(island, (x, y)) >= slots:
+            return ("reason_shop_slots", {"facility": kind, "max": slots})
         if wrong_zone is not None:
             return wrong_zone
     else:
@@ -881,7 +918,7 @@ def placement_problem(
         return ("reason_office_zone" if tile.zone == ZONE_OFFICE else "reason_commercial_zone", {})
     if fdef.get("coastal") and not is_coastal(island, (x, y), lambda t: is_land(defs, t)):
         return ("reason_not_coastal", {"facility": kind})
-    limit = fdef.get("max_per_island")
+    limit = island_limit(defs, island, kind)
     if (
         limit is not None
         and sum(1 for f in island.facilities if f.kind == kind and EXPANDS not in f.ext) >= limit
@@ -899,6 +936,9 @@ def placement_problem(
             return ("reason_recipe_required", {"facility": kind})
     if recipe not in recipes:
         return ("reason_unknown_recipe", {"facility": kind})
+    beyond = extra_slot_problem(defs, island, kind, recipe)
+    if beyond is not None:
+        return beyond
     problem = recipe_problem(defs, island, kind, recipe)
     water = nature.water_spec(recipes[recipe])
     if problem is None and water is not None:
@@ -908,6 +948,44 @@ def placement_problem(
             args = {"facility": kind, "percent": round(got * 100), "min": round(water["min"] * 100)}
             return ("reason_dry_site", args)
     return problem
+
+
+def island_limit(defs: Defs, island: IslandState, kind: str) -> int | None:
+    """1つの国が持てる kind の数（工事中も数える。None は上限なし）。
+
+    鉱山のように定義に ``limit_by_resources`` のある施設は、``max_per_island`` と、島が持つ
+    鉱業資源（鉱脈を含む）のうちその施設の作り方で使えるものの数の大きい方（FM-66、W-241）。
+    """
+    fdef = defs.facilities[kind]
+    limit = fdef.get("max_per_island")
+    if limit is None or not fdef.get("limit_by_resources"):
+        return limit
+    usable = {r["requires_resource"] for r in fdef["recipes"].values() if "requires_resource" in r}
+    return max(limit, len(usable & set(island.resources)))
+
+
+def extra_slot_problem(
+    defs: Defs, island: IslandState, kind: str, recipe: str
+) -> tuple[str, dict[str, Any]] | None:
+    """``max_per_island`` を超えて建てる鉱山が、島の鉱山の掘っている資源を掘るなら (理由, 引数)。
+
+    資源の数で増えた枠は、まだ掘っていない資源のためのもの（FM-66。石炭の 3 つ目には使えない）。
+    """
+    fdef = defs.facilities[kind]
+    if not fdef.get("limit_by_resources") or fdef.get("max_per_island") is None:
+        return None
+    mine = [f for f in island.facilities if f.kind == kind and EXPANDS not in f.ext]
+    if len(mine) < fdef["max_per_island"]:
+        return None
+    resource = fdef["recipes"][recipe].get("requires_resource")
+    dug = {
+        fdef["recipes"][f.recipe].get("requires_resource")
+        for f in mine
+        if f.recipe in fdef["recipes"]
+    }
+    if resource in dug:
+        return ("reason_extra_slot_dug", {"facility": kind, "good": resource})
+    return None
 
 
 def recipe_problem(
