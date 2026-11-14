@@ -3,9 +3,25 @@
 {% block content %}
 {% include "web/report_header.html" %}
 {% include "web/stat_definitions.html" %}
-<details class="panel" id="happiness-help">
+<details class="panel" id="happiness-help"{% if happiness %} open{% endif %}>
   <summary>{% translate "幸福度を調べる" %}</summary>
-  <p>{% translate "食料・衣料・電力・実質賃金などが暮らしに影響します。ここで各要因の寄与点はまだ表示できません。" %}</p>
+  {% if happiness %}{% with h=happiness %}
+  <p>{% blocktranslate with v=h.text c=h.change_text y=h.change_year_text %}幸福度 <strong>{{ v }}</strong>（前のターンから {{ c }}、1年前から {{ y }}）{% endblocktranslate %}</p>
+  {% if h.worst %}<p class="warning">{% blocktranslate with n=h.worst.name c=h.worst.change|floatformat:1 %}前のターンからいちばん下げたのは「{{ n }}」（{{ c }}）です。{% endblocktranslate %}</p>{% endif %}
+  {% if h.capped %}<p class="warning">{% blocktranslate with cap=h.cap_value %}体制の上限 {{ cap }} で頭打ちのマスがあります。そのマスでは項目を上げても幸福度は上がりません。{% endblocktranslate %}</p>{% endif %}
+  <div class="table-scroll">
+    <table class="goods" id="happiness-parts">
+      <thead><tr><th>{% translate "項目" %}</th><th>{% translate "いま" %}</th><th>{% translate "前ターン比" %}</th><th>{% translate "1年前比" %}</th><th>{% translate "満点" %}</th></tr></thead>
+      <tbody>
+        {% for r in h.rows %}<tr><td>{% if r.page %}<a href="{% url r.page island.id %}">{{ r.name }}</a>{% else %}{{ r.name }}{% endif %}</td><td class="num">{{ r.text }}</td><td class="num{% if r.down %} loss{% endif %}">{{ r.change_text }}</td><td class="num">{{ r.change_year_text }}</td><td class="num">{{ r.limit|default_if_none:"—" }}</td></tr>{% endfor %}
+        <tr><th>{% translate "幸福度（足した値）" %}</th><th class="num">{{ h.text }}</th><th class="num">{{ h.change_text }}</th><th class="num">{{ h.change_year_text }}</th><th></th></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="hint">{% translate "家計の層とマスごとの点を、幸福度と同じ人数の重みで平均した値です。全部足すと幸福度になります。マスごとに 0〜体制の上限に収めてから平均するので、項目を上げても幸福度が上がらないことがあります。「1年前比」は12ターン前との差です。「満点」は足す項目の最大の点と、下げる項目の最大の減点で、今の重みです。前の版の世界から重みを移している間は合わないことがあります。" %}</p>
+  {% endwith %}{% else %}
+  <p>{% translate "食料・衣料・電力・実質賃金などが暮らしに影響します。項目ごとの内訳は島の持ち主だけが見られます。" %}</p>
+  {% endif %}
   <p><a href="{% url 'island_market' island.id %}">{% translate "市場で食料・衣料の不足と値段を見る" %}</a> ・ <a href="{% url 'island_facilities' island.id %}">{% translate "施設で電力・雇用を調べる" %}</a> ・ <a href="{% url 'island_fiscal' island.id %}">{% translate "財政で賃金と失業手当を調べる" %}</a> ・ <a href="{% url 'help' %}#island">{% translate "暮らしの仕組み" %}</a></p>
 </details>
 

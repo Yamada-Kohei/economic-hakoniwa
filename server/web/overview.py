@@ -1295,7 +1295,31 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
             "releasing": [get_game().defs.name("goods", g) for g in released],
         }
         data["warehouse_standing"] = display.warehouse_standing(island)
+        data["happiness"] = happiness_brief(island, stats_turn, latest)
     return data
+
+
+def happiness_brief(
+    island: m.Island, turn: int | None, stats: dict[str, float]
+) -> dict[str, Any] | None:
+    """幸福度の内訳（W-172）の短い形: 前のターンから大きく動いた項目を3つまで。全部は report
+    page=economy の happiness。"""
+    view = reports.happiness_view(island, turn, stats, True)
+    if view is None:
+        return None
+    moved = [r for r in view["rows"] if r["change"] is not None and r["change_text"] != "±0"]
+    moved.sort(key=lambda r: -abs(r["change"]))
+    return {
+        "value": view["text"],
+        "change": view["change_text"],
+        "change_year": view["change_year_text"],
+        "worst": view["worst"],
+        "capped": view["capped"],
+        "moved": [
+            {"key": r["key"], "name": r["name"], "value": r["text"], "change": r["change_text"]}
+            for r in moved[:3]
+        ],
+    }
 
 
 def orders_brief(island: m.Island) -> dict[str, Any]:
