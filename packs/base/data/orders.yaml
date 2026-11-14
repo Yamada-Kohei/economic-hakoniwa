@@ -556,6 +556,58 @@ cancel_contract:
     properties:
       contract: {type: integer, minimum: 1}
 
+# 入札で結ぶ契約（W-268、FX-71・FX-72）
+open_tender:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [good, quantity, turns, cap, deadline]
+    additionalProperties: false
+    properties:
+      good: {type: string}
+      quantity: {type: number, exclusiveMinimum: 0}  # 1ターンの量
+      turns: {type: integer, minimum: 1, maximum: 600}  # 期間（無期限は選べない）
+      cap: {type: integer, minimum: 1}      # 上限の値段（1 単位。こちらの通貨で払う）
+      # 締め切り（何ターン後か。1〜trade.tender.max_open_turns）。締め切りのターンにいちばん安い札の国と結ぶ
+      deadline: {type: integer, minimum: 1}
+      # 届いた物の行き先（省くと market）: market は売り切れるまで島の市場の値段で売りに出す、
+      # warehouse は国の倉庫に置いておく
+      delivery: {enum: [market, warehouse]}
+
+bid_tender:
+  admin_cost: 1
+  secret: always   # 札は伏せる（実行した後も、札を入れた国だけに見せる。FX-71）
+  payload:
+    type: object
+    required: [tender, good]
+    additionalProperties: false
+    properties:
+      tender: {type: integer, minimum: 1}
+      good: {type: string}                  # 入札の品目（入札と違えば断る。値段の単位を決める）
+      # 1 単位の値段（出した国の通貨。上限 × trade.tender.floor の切り上げ〜上限）。省くと札を取り下げる
+      price: {type: integer, minimum: 1}
+
+cancel_tender:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [tender]
+    additionalProperties: false
+    properties:
+      tender: {type: integer, minimum: 1}   # 出した入札を締め切りまでに取り下げる
+
+settle_tender_default:
+  admin_cost: 0
+  payload:
+    type: object
+    required: [contract, choice]
+    additionalProperties: false
+    properties:
+      contract: {type: integer, minimum: 1}
+      # 入札の契約で届かなかった分のまだ決めていない罰金を、collect（取る）・forgive（許す）・
+      # terminate（取ったうえで契約を終える）から選ぶ。選ばないまま 12 ターンたつと取る
+      choice: {enum: [collect, forgive, terminate]}
+
 # --- 産業政策と国際金融（フェーズ3-3） ---------------------------------------------------
 set_tariff:
   admin_cost: 1

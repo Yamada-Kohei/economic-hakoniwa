@@ -22,7 +22,8 @@ state（proposed・active・ended）・start・end（このターンの前まで
 delivered・paid・short（直近の不足の量）・delivery（届いた物の行き先。ない契約は market）・
 aid（物の援助。フェーズ3-3。値段 0 で、相手の承諾なしに次のターンから効く）・
 treaty（条約の契約の条項から始まった契約の、条約の番号。フェーズ4-1 の②。条約が効いたターンの次の
-ターンから効く）・
+ターンから効く）・tender（入札で結んだ契約の、入札の番号。W-268。届かない分に罰金がかかる。tenders.py）・
+terminated_by（入札の契約を、損をした国が罰金を取ったうえで終えたとき、その国）・
 cancelled_by（解約を申し入れた島）・short_why・short_turn（直近の不足のわけと、不足したターン。
 条約の見張りが読む）・fx（直近のターンに
 外貨が足りず届かなかったとき、買い手の政府がその通貨をどこからいくら用意できたか。turn・need・
@@ -228,6 +229,41 @@ def start_from_treaty(
         "short": 0,
         "delivery": clause["delivery"],
         "treaty": treaty["id"],
+    }
+    contracts(world).append(contract)
+    for side in ("seller", "buyer"):
+        island = world.islands[contract[side]]
+        if island.id != contract["currency"]:
+            fxrates.ensure(world, island, contract["currency"])
+        island.log.append(LogEntry("contract_started", _args(world, contract)))
+    return contract
+
+
+def start_from_tender(
+    world: WorldState, tender: dict[str, Any], seller: int, price: int, turn: int
+) -> dict[str, Any]:
+    """入札（W-268、FX-71）を落とした国と、その値段で契約を始める（出した国が買い手、通貨は出した
+    国の通貨。次のターンから効く）。条件は変えられない（FX-70）。"""
+    contract = {
+        "id": next_id(world_state(world), "contract"),
+        "seller": seller,
+        "buyer": tender["buyer"],
+        "proposer": tender["buyer"],
+        "good": tender["good"],
+        "qty": tender["qty"],
+        "price": price,
+        "currency": tender["buyer"],
+        "turns": tender["turns"],
+        "indefinite": False,
+        "state": ACTIVE,
+        "created": turn,
+        "start": turn + 1,
+        "end": turn + 1 + tender["turns"],
+        "delivered": 0,
+        "paid": 0,
+        "short": 0,
+        "delivery": tender.get("delivery") or MARKET,
+        "tender": tender["id"],
     }
     contracts(world).append(contract)
     for side in ("seller", "buyer"):

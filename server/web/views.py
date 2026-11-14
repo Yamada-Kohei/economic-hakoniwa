@@ -1023,6 +1023,10 @@ def _trade_help(game) -> dict:
         "bloc_band": f"{config.get('trade.bloc_band') * 100:g}",
         "cancel_turns": config.get("trade.contract_cancel_turns"),
         "proposal_turns": contracts.KEEP_ENDED,
+        # 入札（W-268）: 締め切りの上限・札の下限（上限の %）・罰金の割合（%）
+        "tender_max_open_turns": config.get("trade.tender.max_open_turns"),
+        "tender_floor_percent": f"{config.get('trade.tender.floor') * 100:g}",
+        "tender_penalty_percent": f"{config.get('trade.tender.penalty_rate') * 100:g}",
         "fx_band": f"{config.get('fx.band') * 100:g}",
         "merchant_turns": settings["turns"],
         "merchant_taper_from": settings["taper_from"],

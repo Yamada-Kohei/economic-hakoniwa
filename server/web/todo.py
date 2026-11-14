@@ -56,6 +56,7 @@ ORDER = [
     "bank",
     "treaty",
     "contract",
+    "tender_claim",
     "bonds_due",
     "power",
     "power_bill",
@@ -141,11 +142,13 @@ def _capped(
 
 def _pending(island: m.Island) -> dict[str, set]:
     """命令の列に入っている返事・処理の命令（契約・条約の番号、銀行のマス）。"""
-    out: dict[str, set] = {"contract": set(), "treaty": set(), "bank": set()}
+    out: dict[str, set] = {"contract": set(), "treaty": set(), "bank": set(), "tender": set()}
     for kind, payload in island.orders.filter(status="pending").values_list("kind", "payload"):
         payload = payload or {}
         if kind in ("accept_contract", "cancel_contract"):
             out["contract"].add(payload.get("contract"))
+        elif kind == "settle_tender_default":
+            out["tender"].add(payload.get("contract"))
         elif kind in ("sign_treaty", "refuse_treaty"):
             out["treaty"].add(payload.get("treaty"))
         elif kind == "resolve_bank":
@@ -298,6 +301,26 @@ def _regime(island: m.Island) -> list[dict[str, Any]]:
     return [_row("regime", text, reverse("island_military", args=[island.id]), "軍の画面へ")]
 
 
+def _tender_claims(island: m.Island, state: dict[str, list], pending: set) -> list[dict[str, Any]]:
+    """入札の契約で届かなかった分の罰金を、取る・許す・やめるから選ぶ（W-268、FX-72）。"""
+    url = reverse("trade_contracts", args=[island.id]) + "#tenders"
+    contracts = sorted(
+        {c["contract"] for c in state["tender_claims"] if c["payee"] == island.id} - pending
+    )
+    rows = [
+        _row(
+            "tender_claim",
+            f"入札の契約 {n}番で届かなかった分の罰金を、取るか許すか契約をやめるかを選べます"
+            "（決めないと 12 ターン後に取ります）",
+            url,
+            "契約のタブへ",
+        )
+        for n in contracts
+    ]
+    more = "ほかに罰金を決める入札の契約が {n} 件あります"
+    return _capped(rows, len(rows), "tender_claim", more, url, "契約のタブへ")
+
+
 def _blocs(island: m.Island, state: dict[str, list]) -> list[dict[str, Any]]:
     """代表をしている圏への加盟の申し込みと、どの圏にも入っていないこと（入れる圏があるとき）。"""
     url = reverse("trade_blocs", args=[island.id])
@@ -330,7 +353,7 @@ def _blocs(island: m.Island, state: dict[str, list]) -> list[dict[str, Any]]:
 
 
 # 貿易の画面の「いますべきこと」に出す種類（W-247 (6)）
-TRADE_KINDS = ("contract", "merchant", "bloc_applicants", "bloc")
+TRADE_KINDS = ("contract", "tender_claim", "merchant", "bloc_applicants", "bloc")
 
 
 def trade_rows(island: m.Island, alerts: list[Alert]) -> list[dict[str, Any]]:
@@ -341,7 +364,11 @@ def trade_rows(island: m.Island, alerts: list[Alert]) -> list[dict[str, Any]]:
     pending = _pending(island)
     state = trade.world_state(island.world)
     names = trade.directory(island.world) if state["contracts"] else {}
-    out = _contracts(island, state, names, pending["contract"]) + _blocs(island, state)
+    out = (
+        _contracts(island, state, names, pending["contract"])
+        + _tender_claims(island, state, pending["tender"])
+        + _blocs(island, state)
+    )
     out += [_alert_row(island, a) for a in alerts if a.kind in TRADE_KINDS]
     out.sort(key=lambda r: RANK.get(r["kind"], len(ORDER)))
     return out
@@ -371,6 +398,7 @@ def rows(
         + _banks(island, pending["bank"])
         + _treaties(island, dip, pending["treaty"])
         + _contracts(island, state, names, pending["contract"])
+        + _tender_claims(island, state, pending["tender"])
         + _regime(island)
         + _blocs(island, state)
     )

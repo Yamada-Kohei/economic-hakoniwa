@@ -39,8 +39,8 @@ from typing import Any
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
+from hakoniwa_core.diplomacy import is_inactive, war
 from hakoniwa_core.diplomacy import treaties as diplomacy_treaties
-from hakoniwa_core.diplomacy import war
 from hakoniwa_core.economy import SUBSIDIES, Payer, books, entity_of, export_plan, funds
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
@@ -68,6 +68,7 @@ from hakoniwa_core.trade import (
     ships,
     started,
     swap,
+    tenders,
     tradable,
     tradable_goods,
     traders,
@@ -106,6 +107,10 @@ WHY_FUNDS = "funds"  # 払うお金（商社の預金）が足りない（決済
 WHY_QUOTA = "quota"  # 輸入の割り当て（フェーズ3-3）の上限まで買った
 WHY_BLOCKADE = "blockade"  # 封鎖で船出を断られた（MI-34。船が足りないのとは分ける。W-187）
 WHY_PRIORITY = "fx_priority"  # 計画経済の商社が、外貨を使う順で先の財に外貨を取り置いた（FX-76）
+
+
+# 入札（W-268）の命令（貿易の段で処理する）
+TENDER_ORDERS = ("open_tender", "bid_tender", "cancel_tender", "settle_tender_default")
 
 
 def gov_payer() -> Payer:
@@ -256,12 +261,16 @@ class _Round:
             island = self.world.islands[i]
             ships.scrap(island, self.config, self.turn)
             ships.commission(island, self.defs, self.config, self.turn)
+        self._pay_penalties()
         self._requests()
+        self._award_tenders()
+        tenders.lapse_claims(self.world, self.turn)
         self._fx()
         self._contracts()
         bloc_unmet, bloc_sellers = self._blocs()
         blocs.settle_leaves(self.world)
         contracts.close(self.world, self.turn)
+        tenders.close(self.world, self.turn)
         self._close(bloc_unmet, bloc_sellers)
         self._merchant_blockade()
 
@@ -537,44 +546,213 @@ class _Round:
 
     # --- 2. 申し送り ---------------------------------------------------------------------
 
+    # 命令の中で先に処理する取り下げ（入札の取り下げと、値段を書かない札。FX-71）
+    WITHDRAWALS = ("cancel_tender",)
+
     def _requests(self) -> None:
         cancel_wait = self.config.get("trade.contract_cancel_turns")
+        taken = {
+            i: list(take_deferred(self.world.islands[i], REQUESTS)) for i in self.world.island_ids()
+        }
+        # 入札の契約のうち、このターンの初めに有効で、まだやめると決まっていないものの終わり（やめる
+        # 罰金は、この時点から見てやめる命令が終わりを早めたかで決める。島の順番によらない。FX-01）
+        before = {
+            c["id"]: c["end"]
+            for c in contracts.contracts(self.world)
+            if c.get("tender")
+            and c["state"] == contracts.ACTIVE
+            and c.get("cancelled_by") is None
+            and c.get("terminated_by") is None
+        }
+        cancelled: dict[int, set[int]] = {}  # 入札の契約 → このターンにやめる命令を出した国
+        # 取り下げを先に全島の分（FX-71。同じターンの札と入札の取り下げで、島の順番が効かない）
+        for i in self.world.island_ids():
+            for req, order_id in taken[i]:
+                if self._withdrawal(req):
+                    self._request(self.world.islands[i], req, order_id, cancel_wait, cancelled)
         for i in self.world.island_ids():
             island = self.world.islands[i]
             policy.write_notes(self.world, island)
-            for req, order_id in take_deferred(island, REQUESTS):
-                kind = req["kind"]
-                reason = None
-                if i not in self.islands:
-                    reason = "reason_trade_not_ready"
-                elif kind == "send_aid":
-                    reason = self._aid(island, req)
-                elif kind == "create_bloc":
-                    blocs.create(self.world, island, req["name"], req.get("open", True), self.turn)
-                elif kind in ("propose_contract",):
-                    if not tradable(self.defs, req["good"]):
-                        reason = "reason_not_tradable"
-                    elif req["partner"] not in self.islands:
-                        reason = "reason_contract_partner"
-                    else:
-                        reason = contracts.propose(self.world, island, req, self.turn)
-                elif kind in ("accept_contract", "cancel_contract"):
-                    c = contracts.find(self.world, req["contract"])
-                    if c is None:
-                        reason = "reason_contract_unknown"
-                    elif kind == "accept_contract":
-                        reason = contracts.accept(
-                            self.world, island, c, self.turn, req.get("delivery")
-                        )
-                    else:
-                        reason = contracts.cancel(self.world, island, c, self.turn, cancel_wait)
-                else:
-                    reason = self._bloc_request(island, kind, req)
-                if reason is not None:
-                    fail_deferred(island, order_id, reason)
-                    island.log.append(
-                        LogEntry("trade_request_failed", {"order": kind, "reason": reason})
-                    )
+            for req, order_id in taken[i]:
+                if not self._withdrawal(req):
+                    self._request(island, req, order_id, cancel_wait, cancelled)
+        # やめる命令で抜けた国への罰金（FX-72）。両方が同じターンにやめたら合意で終わる（取らない）
+        # ほかの国の取ったうえでやめる（settle）と同じターンでも、このターンの初めから見て決める。
+        # 期間の残りが予告より短く、やめる命令で終わりが早まらない契約は取らない
+        for contract_id, by in sorted(cancelled.items()):
+            c = contracts.find(self.world, contract_id)
+            if c is None or len(by) != 1 or contract_id not in before:
+                continue
+            end = before[contract_id]
+            if end is None or self.turn + 1 + cancel_wait < end:
+                tenders.cancel_claim(self.world, self.config, c, next(iter(by)), self.turn)
+
+    def _request(
+        self,
+        island: IslandState,
+        req: dict[str, Any],
+        order_id: int,
+        cancel_wait: int,
+        cancelled: dict[int, set[int]],
+    ) -> None:
+        i = island.id
+        kind = req["kind"]
+        reason = None
+        if i not in self.islands:
+            reason = "reason_trade_not_ready"
+        elif kind == "send_aid":
+            reason = self._aid(island, req)
+        elif kind == "create_bloc":
+            blocs.create(self.world, island, req["name"], req.get("open", True), self.turn)
+        elif kind in ("propose_contract",):
+            if not tradable(self.defs, req["good"]):
+                reason = "reason_not_tradable"
+            elif req["partner"] not in self.islands:
+                reason = "reason_contract_partner"
+            else:
+                reason = contracts.propose(self.world, island, req, self.turn)
+        elif kind in ("accept_contract", "cancel_contract"):
+            c = contracts.find(self.world, req["contract"])
+            if c is None:
+                reason = "reason_contract_unknown"
+            elif kind == "accept_contract":
+                reason = contracts.accept(self.world, island, c, self.turn, req.get("delivery"))
+            else:
+                reason = contracts.cancel(self.world, island, c, self.turn, cancel_wait)
+                if reason is None and c.get("tender"):
+                    cancelled.setdefault(c["id"], set()).add(i)
+        elif kind in TENDER_ORDERS:
+            reason = self._tender_request(island, kind, req)
+        else:
+            reason = self._bloc_request(island, kind, req)
+        if reason is not None:
+            fail_deferred(island, order_id, reason)
+            # 入札の命令の失敗は持ち主だけに見せる（札を入れようとしたことが分からないように）
+            log = "tender_request_failed" if kind in TENDER_ORDERS else "trade_request_failed"
+            island.log.append(LogEntry(log, {"order": kind, "reason": reason}))
+
+    @staticmethod
+    def _withdrawal(req: dict[str, Any]) -> bool:
+        if req["kind"] in _Round.WITHDRAWALS:
+            return True
+        return req["kind"] == "bid_tender" and req.get("price") is None
+
+    # --- 入札（W-268、FX-71・FX-72） --------------------------------------------------
+
+    def _tender_request(self, island: IslandState, kind: str, req: dict[str, Any]) -> str | None:
+        if kind == "settle_tender_default":
+            c = contracts.find(self.world, req["contract"])
+            if c is None:
+                return "reason_contract_unknown"
+            return tenders.settle(self.world, island, c, req["choice"], self.turn)
+        if kind == "open_tender":
+            good = req["good"]
+            if not tradable(self.defs, good):
+                return "reason_not_tradable"
+            if req["deadline"] > self.config.get("trade.tender.max_open_turns"):
+                return "reason_tender_deadline"
+            reason = self._tender_entry(island, good)
+            if reason is None:
+                tenders.open_tender(self.world, island, req, self.turn)
+            return reason
+        t = tenders.find(self.world, req["tender"])
+        if t is None:
+            return "reason_tender_unknown"
+        if kind == "cancel_tender":
+            return tenders.withdraw(self.world, island, t, self.turn)
+        if req.get("good") != t["good"]:
+            return "reason_tender_good"
+        price = req.get("price")
+        if price is not None:
+            reason = self._tender_entry(island, t["good"])
+            if reason is not None:
+                return reason
+            if not tenders.floor_price(self.config, t["cap"]) <= price <= t["cap"]:
+                return "reason_tender_price"
+        return tenders.bid(self.world, island, t, price)
+
+    def _tender_entry(self, island: IslandState, good: str) -> str | None:
+        """入札を出す・札を入れる国の確かめ: 未払いの罰金がなく（指名停止）、重さのある財なら港が
+        ある。"""
+        if tenders.barred(self.world, island.id):
+            return "reason_tender_barred"
+        if unit_weight(self.defs, good) > 0 and port_of(island, self.config) is None:
+            return "reason_tender_port"
+        return None
+
+    def _award_tenders(self) -> None:
+        """締め切りのターンの入札を、いちばん安い札の国と結ぶ（全島の命令を済ませた後。FX-71）。事情の
+        変わった札（休止中・島がない・貿易を始めていない・禁輸・未払い・港がない）は飛ばす。"""
+        for t in sorted(tenders.tenders(self.world), key=lambda t: t["id"]):
+            if t["state"] != tenders.OPEN or t["deadline"] > self.turn:
+                continue
+            winner = None
+            if self._tender_party_ok(t["buyer"], t["good"]):
+                for bidder in tenders.ranked(self.world, t, self.turn):
+                    if (
+                        self._tender_party_ok(bidder, t["good"])
+                        and not tenders.barred(self.world, bidder)
+                        and not policy.blocked(self.world, bidder, t["buyer"], t["good"])
+                    ):
+                        winner = bidder
+                        break
+            tenders.award(self.world, t, winner, self.turn)
+
+    def _tender_party_ok(self, island_id: int, good: str) -> bool:
+        island = self.world.islands.get(island_id)
+        if island is None or island_id not in self.islands or is_inactive(island):
+            return False
+        return unit_weight(self.defs, good) <= 0 or port_of(island, self.config) is not None
+
+    def _pay_penalties(self) -> None:
+        """取ると決まった入札の罰金を、契約の履行の前に番号の順で払う（FX-72）。わけのある国が自国の
+        通貨で、予算の契約の項目（contract_supply）から払い、受ける国は外貨として受け取る（お金の援助と
+        同じ道。国際収支の移転）。払えない分は未払いとして残し、入札に加われなくする。"""
+        keep = []
+        for d in sorted(tenders.debts(self.world), key=lambda d: d["id"]):
+            payer = self.world.islands.get(d["payer"])
+            payee = self.world.islands.get(d["payee"])
+            if (
+                d["due"] > self.turn
+                or payer is None
+                or payee is None
+                or payer.id not in self.ids
+                or is_inactive(payer)  # 休止中の国からは取らない（戻ったら払う）
+            ):
+                keep.append(d)
+                continue
+            payer_funds = Payer(ledger.GOV, traders.CONTRACT_SUPPLY)
+            amount = min(d["amount"], funds.available(payer, payer_funds))
+            if amount > 0:
+                fxrates.ensure(self.world, payee, payer.id)
+                received = fxrates.to_own(payee, payer.id, amount)
+                fxmoney.transfer(
+                    self.world,
+                    payer.id,
+                    (payer.id, ledger.GOV),
+                    (payee.id, ledger.GOV),
+                    amount,
+                    tenders.PENALTY,
+                    received,
+                    payer=payer_funds,
+                    values={payer.id: amount, payee.id: received},
+                )
+                d["amount"] -= amount
+            args = {
+                "contract": d["contract"],
+                "payer": payer.name,
+                "payee": payee.name,
+                "amount": amount,
+                "left": d["amount"],
+                "currency": currency_label(self.world, payer.id),
+            }
+            kind = "tender_penalty_paid" if d["amount"] <= 0 else "tender_penalty_unpaid"
+            payer.log.append(LogEntry(kind, args))
+            payee.log.append(LogEntry(kind, args))
+            if d["amount"] > 0:
+                d["late"] = True
+                keep.append(d)
+        self.state["tender_debts"] = keep
 
     def _bloc_request(self, island: IslandState, kind: str, req: dict[str, Any]) -> str | None:
         bloc = blocs.find(self.world, req.get("bloc", -1))
@@ -1105,6 +1283,8 @@ class _Round:
                 # 禁輸（フェーズ3-3）: その国との契約は届けない（止まったターンに1度だけ知らせる）
                 c["short"] = c["qty"]
                 c["short_why"], c["short_turn"] = "embargo", self.turn
+                if c.get("tender"):  # 入札の契約: 禁輸を出した国のわけ（FX-72）
+                    tenders.record_embargo(self.world, self.config, c, self.turn)
                 if not c.get("embargoed"):
                     c["embargoed"] = True
                     args = contracts.short_args(self.world, c, c["qty"], "embargo")
@@ -1153,6 +1333,9 @@ class _Round:
             seller.log.append(LogEntry("contract_short", args))
             buyer.log.append(LogEntry("contract_short", args))
             c["short_why"], c["short_turn"] = why, self.turn  # 条約の契約の条項の見張りが読む
+            if c.get("tender"):  # 入札の契約: 届かなかった量をわけごとに分けて罰金を残す（FX-72）
+                parts = tenders.split_short(want, limits)
+                tenders.record_short(self.world, self.config, c, parts, self.turn)
         c["short"] = want - qty
         if qty <= 0:
             return
@@ -2331,6 +2514,12 @@ class _Round:
             state["contracts"] = [
                 contract_view(c, i, self.turn) for c in contracts.of_island(self.world, i)
             ]
+            # 次のターンに払う入札の罰金（予算の段が契約の項目に取り置く。FX-72）
+            due = tenders.due_of(self.world, i, self.turn + 1)
+            if due:
+                state[tenders.DUE] = due
+            else:
+                state.pop(tenders.DUE, None)
             shipping = shipping_of(island, self.config)
             if shipping is not None:
                 keep = self.config.get("trade.cost_turns")
@@ -2472,6 +2661,7 @@ def contract_view(c: dict[str, Any], island_id: int, turn: int) -> dict[str, Any
         "short": c["short"],
         "short_why": c.get("short_why") if c["short"] > 0 else None,  # 直近の不足のわけ
         "delivery": contracts.delivery_of(c),
+        "tender": c.get("tender"),  # 入札で結んだ契約の、入札の番号（W-268）
         # 外貨が足りずに届かなかったターンに、買う国がその通貨をどこからいくら用意できたか
         "fx": None if selling else c.get("fx"),
     }
@@ -2599,6 +2789,46 @@ def check_aid(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
         raise OrderFailed("reason_invalid_payload")
 
 
+def check_open_tender(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    """入札を出す（W-268、FX-71）。締め切りの上限と港・未払いは貿易の段で見る。"""
+    _check_started(island)
+    good = payload.get("good")
+    if good not in defs.goods or "freight_weight" not in defs.goods[good]:
+        raise OrderFailed("reason_not_tradable")
+    for key in ("turns", "cap", "deadline"):
+        if not isinstance(payload.get(key), int) or payload[key] <= 0:
+            raise OrderFailed("reason_invalid_payload")
+    if payload.get("quantity", 0) <= 0:
+        raise OrderFailed("reason_invalid_payload")
+    delivery = payload.get("delivery")
+    if delivery is not None and delivery not in contracts.DELIVERIES:
+        raise OrderFailed("reason_invalid_payload")
+
+
+def check_tender_ref(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    _check_started(island)
+    if not isinstance(payload.get("tender"), int):
+        raise OrderFailed("reason_invalid_payload")
+
+
+def check_bid_tender(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    """札を入れる（値段を省くと取り下げ）。値段の幅と品目は貿易の段で入札と比べる。"""
+    check_tender_ref(island, payload, defs)
+    if not isinstance(payload.get("good"), str):
+        raise OrderFailed("reason_invalid_payload")
+    price = payload.get("price")
+    if price is not None and (not isinstance(price, int) or price <= 0):
+        raise OrderFailed("reason_invalid_payload")
+
+
+def check_settle_tender(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    _check_started(island)
+    if not isinstance(payload.get("contract"), int):
+        raise OrderFailed("reason_invalid_payload")
+    if payload.get("choice") not in tenders.CHOICES:
+        raise OrderFailed("reason_invalid_payload")
+
+
 def _forward(kind: str):
     def execute(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> None:
         request(island, kind, dict(payload))
@@ -2618,6 +2848,10 @@ ORDERS = {
     "accept_contract": check_contract_ref,
     "cancel_contract": check_contract_ref,
     "send_aid": check_aid,
+    "open_tender": check_open_tender,
+    "bid_tender": check_bid_tender,
+    "cancel_tender": check_tender_ref,
+    "settle_tender_default": check_settle_tender,
 }
 
 
