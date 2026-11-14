@@ -72,7 +72,12 @@ table.goods tbody tr:nth-child(even), table.facilities tbody tr:nth-child(even) 
 table.goods td:nth-child(n+2), table.goods th:nth-child(n+2) { text-align: right; }
 .table-scroll { overflow-x: auto; max-width: 100%; }
 .table-scroll th { white-space: nowrap; }
-table.market-table th, table.market-table td { white-space: nowrap; }
+table.market-table td { white-space: nowrap; }
+/* 見出しは折り返して表の幅を抑え、資源の列は横に送っても残す（不具合報告 #5: 右の列が隠れて読みにくい） */
+table.market-table thead th { white-space: normal; vertical-align: bottom; min-width: 3.5em; }
+table.market-table tr > :first-child { position: sticky; left: 0; z-index: 1; background: var(--panel); }
+table.market-table thead tr > :first-child { background: var(--head); }
+table.market-table tbody tr:nth-child(even) > :first-child { background: var(--pale); }
 
 /* 島の画面 */
 .island-header h1 { margin-bottom: 0; }
@@ -96,6 +101,9 @@ table.market-table th, table.market-table td { white-space: nowrap; }
 .island-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
 .island-stats .panel { margin: 0; }
 .map-tools { margin: 4px 0; }
+.capacity-bar { display: block; height: 10px; margin-top: 4px; max-width: 360px; background: #cfe3c4; border: 1px solid #9bb88c; border-radius: 3px; overflow: hidden; }
+.capacity-bar .capacity-busy { display: block; height: 100%; background: var(--accent); }
+.toggle-button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 /* マスの欄から足した命令の結果。地図の左上に重ねて出し、下のマスはそのまま押せるようにする */
 .map-notice { position: absolute; z-index: 4; left: 8px; right: 56px; top: 8px; margin: 0; padding: 4px 8px; font-size: 0.9em;
   background: rgba(255, 255, 255, 0.92); border-radius: 4px; pointer-events: none; }

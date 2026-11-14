@@ -1319,7 +1319,9 @@ def orders_brief(island: m.Island) -> dict[str, Any]:
     }
 
 
-def _result(o: Order, labels: dict[tuple[int, int], str] | None = None) -> dict[str, Any]:
+def _result(
+    o: Order, labels: dict[tuple[int, int], display.FacilityLabel] | None = None
+) -> dict[str, Any]:
     return {
         "turn": o.executed_turn,
         "status": o.status,

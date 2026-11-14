@@ -1087,7 +1087,7 @@ def order_items(request, island_id: int):
     if body.get("confirm") is not True:
         notes = order_confirm.confirmations(order_confirm.Context(island, state), kind, payload)
         if notes:
-            text = display.describe_order(kind, payload)
+            text = display.describe_order(kind, payload, display.facility_labels(island))
             ask = {"index": 0, "kind": kind, "text": text, "notes": notes}
             return _json(
                 {"error": order_confirm.CONFIRM_TEXT, "confirm": [ask]},
@@ -1182,7 +1182,9 @@ def _confirmations(island: m.Island, state, items: list[dict[str, Any]]) -> list
             continue
         texts = order_confirm.confirmations(ctx, item.get("kind"), item.get("payload"))
         if texts:
-            text = display.describe_order(item["kind"], item.get("payload") or {})
+            text = display.describe_order(
+                item["kind"], item.get("payload") or {}, display.facility_labels(island)
+            )
             asks.append({"index": i, "kind": item["kind"], "text": text, "notes": texts})
     return asks
 
