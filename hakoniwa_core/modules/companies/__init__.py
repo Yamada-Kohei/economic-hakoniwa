@@ -34,6 +34,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.economy import (
+    INVEST_SHORT,
     Payer,
     arrears,
     banks,
@@ -168,6 +169,13 @@ class FirmsFunds(IslandStage):
                     dividend, co.spare(island, number) - settings["firm_cash_turns"] * payments
                 )
         dividend = max(0, min(dividend, co.spare(island, number)))
+        if config.get("firms.invest_retain") and dividend > 0:
+            # 企業の施設の建て増しの出資が足りない分だけ配当から残す（W-271。FM-49）
+            held = min(dividend, sum(f.economy.get(INVEST_SHORT, 0) for f in built))
+            if held > 0:
+                dividend -= held
+                stats = island.stats
+                stats["firms.invest_retained"] = stats.get("firms.invest_retained", 0) + held
         if dividend > 0:
             holder = co.shareholder(island, number)
             funds.pay(island, payer, holder, dividend, "dividend")

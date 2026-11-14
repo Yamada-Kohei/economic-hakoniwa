@@ -78,6 +78,7 @@ from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.defs.kinds import is_variant
 from hakoniwa_core.economy import (
+    INVEST_SHORT,
     OWNERS,
     SEIZED,
     STATE_FACILITIES,
@@ -121,6 +122,7 @@ from hakoniwa_core.economy.start import (
     fund_facility,
     init_facility,
     invest,
+    next_payments,
     operating_capital,
     operating_cost,
 )
@@ -885,6 +887,10 @@ class EntryExit(IslandStage):
         on_sale = {g for g, h in island.economy.finance.get("supply", {}).items() if any(h)}
         shop = services.staff_by_tile(island, config)
         expandable: dict[str, bool] = {}
+        power = config.get("power.good")
+        power_invest = bool(settings.get("power_invest"))
+        retain = bool(settings.get("invest_retain"))
+        short_of: dict[int, int] = {}  # 建て増しの出資の足りない分（利益を残す。W-271）
         for f in sorted(island.facilities, key=lambda x: x.id):
             history = f.economy.get(MISSED, [])
             if len(history) < turns or sum(1 for m in history if m > 0) * 2 < turns:
@@ -926,8 +932,11 @@ class EntryExit(IslandStage):
             room = funds.available(island, Payer(ledger.GOV, SUBSIDIES))
             subsidy = min(part(full, part_rate), room)
             capital = full - subsidy
+            seen = prices
+            if power_invest and power in recipe["outputs"]:
+                seen = self._power_after(defs, config, f, recipe, prices, wage, fill)
             estimate = ctx.formula("entry_return")(
-                island, ctx, f.kind, f.recipe, prices, rate, capital, (f.x, f.y)
+                island, ctx, f.kind, f.recipe, seen, rate, capital, (f.x, f.y)
             )
             if estimate * fill <= threshold:
                 continue
@@ -945,6 +954,39 @@ class EntryExit(IslandStage):
             if failure is None:
                 building |= set(recipe["outputs"])
                 island.stats["firms.invested"] = island.stats.get("firms.invested", 0) + 1
+                if power in recipe["outputs"]:
+                    island.stats["firms.power_invested"] = (
+                        island.stats.get("firms.power_invested", 0) + 1
+                    )
+            elif retain and failure[0] == "owners_short":
+                short_of[f.id] = max(0, failure[1]["need"] - failure[1]["have"])
+        if retain:
+            # 足りない分を次の決算で配当から残す。合図が消えた・建った施設は残すのをやめる
+            for f in island.facilities:
+                if f.id in short_of:
+                    f.economy[INVEST_SHORT] = short_of[f.id]
+                else:
+                    f.economy.pop(INVEST_SHORT, None)
+
+    @staticmethod
+    def _power_after(
+        defs: Defs,
+        config: GameConfig,
+        f: Facility,
+        recipe: dict[str, Any],
+        prices: dict[str, int],
+        wage: int,
+        fill: float,
+    ) -> dict[str, int]:
+        """発電所の建て増しの採算に使う値段（W-271。FM-49）: 建て増す分の産出のうち、発電能力の
+        足りない分（売り逃しの平均 fill）に収まる分は今の電気料金で、超える分は原価 ×
+        firms.cost_ratio（参入の合図の値段）まで下がって売れると見る。"""
+        power = config.get("power.good")
+        now = prices.get(power, 0)
+        cost = unit_cost(defs, config, f.kind, recipe, prices, wage)
+        low = min(now, round_money(cost * config.get("firms.cost_ratio")))
+        share = min(1.0, max(0.0, fill))
+        return {**prices, power: max(1, round_money(now * share + low * (1 - share)))}
 
     def _raise_grades(self, island: IslandState, ctx: StageContext) -> None:
         """民営の農場の集約（W-190。FM-52）: 作り方を見直す周期（firms.recipe_turns）ごとに、次の
@@ -1608,8 +1650,15 @@ class EntryExit(IslandStage):
             else:
                 borrower = facility_entity(target.id)
                 limit = banks.exposure_room(island, config, bank, borrower, ctx.turn)
-            room = min(banks.capital_room(island, config, bank, ctx.turn), limit)
+            capital_room = banks.capital_room(island, config, bank, ctx.turn)
+            room = min(capital_room, limit)
             piece = min(left, room)
+            track = config.get("firms.power_invest") or config.get("firms.invest_retain")
+            if room < left and track:
+                # どちらの枠で貸せる額が縛られたか（W-271 の測り）: 1 件あたりの上限か、総量の枠か
+                bound = "exposure" if limit < capital_room else "capital"
+                key = f"firms.loan_bound_{bound}"
+                island.stats[key] = island.stats.get(key, 0) + 1
             if piece > 0:
                 pieces.append((bank, piece))
                 left -= piece
@@ -1804,6 +1853,15 @@ class EntryExit(IslandStage):
             payer, firm = owner_entity(target), None
             share = amount - sum(p for _, p, _ in plan)
             have = ledger.money(island, payer)
+            own = 0  # 施設に残した利益のうち、まだ持ち主へ上げていない分（足りない分の見積もり用）
+            if config.get("firms.invest_retain") and have < share:
+                # 施設に残した利益（W-271）: 運転と修理に残すお金を除いた手元を、持ち主へ上げて
+                # 出資に充てる。足りる見込みのときだけ動かす
+                # （足りなければ施設に残して、たまるのを待つ）
+                own = self._retained(island, ctx, target, prices)
+                if have + own >= share:
+                    ledger.pay(island, facility_entity(target.id), payer, share - have, "dividend")
+                    have, own = share, 0
             if grade is not None and have < share and payer != household(OWNERS):
                 # 農場の企業の手元は小さいので、足りない分は資本家階級が企業に増資して出す
                 top = share - have
@@ -1811,7 +1869,7 @@ class EntryExit(IslandStage):
                     invest(island, household(OWNERS), payer, top)
                     have = share
             if have < share:
-                args = {"need": share, "have": have, "loan": amount - share, "pledge": 0}
+                args = {"need": share, "have": have + own, "loan": amount - share, "pledge": 0}
                 return ("owners_short", args)
         tileless = retail.is_shop(defs, kind) or target is not None
         at = retail.tileless_position(island) if tileless else pos
@@ -1889,6 +1947,26 @@ class EntryExit(IslandStage):
         stats = island.stats
         stats["firms.entered"] = stats.get("firms.entered", 0) + 1
         return None
+
+    @staticmethod
+    def _retained(
+        island: IslandState, ctx: StageContext, f: Facility, prices: dict[str, int]
+    ) -> int:
+        """施設の手元のうち、建て増しの出資に回せる額（W-271）。
+
+        手元から、次の支払いの firms.cash_turns ターン分と、運転資金の借入の残りと、
+        設備を直す資材の見込みの代金を除いた分。"""
+        defs, config = ctx.defs, ctx.config
+        entity = facility_entity(f.id)
+        keep = config.get("firms.cash_turns") * next_payments(island, defs, config, f)
+        keep += sum(
+            banks.outstanding(island, x)
+            for x in banks.loans_by_borrower(island, entity)
+            if x.purpose == banks.WORKING
+        )
+        if equipment.has_equipment(defs, config, f):
+            keep += equipment.value(equipment.wants(defs, config, f), prices)
+        return max(0, funds.available(island, Payer(entity)) - keep)
 
     def _sell_on_sale(self, island: IslandState, ctx: StageContext, slots: int) -> int:
         """居抜きの売り（FM-60。2026-11-10）: 差し押さえた施設（管財人のもと）と閉鎖に入った施設を、
