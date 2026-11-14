@@ -156,6 +156,12 @@ def test_private_facilities_belong_to_firms_that_hold_their_shares(game, base):
     """民営の物を作る施設はみな民営の企業に入り、企業が施設の株を、資本家階級が企業の株を持つ。"""
     world = copy.deepcopy(base)
     island = market_island(world)
+    # 企業の段の後（民営の参入の段）に建て始めた施設は、次のターンの企業の段で企業に入る（新しく
+    # 起こした企業の株の交換もそこでする）。最後のターンに参入があっても見られるよう、企業の段の
+    # 入れ方を1度通す
+    from hakoniwa_core.modules.companies import enroll
+
+    enroll(island, context(game, world))
     found = 0
     for f in island.facilities:
         if f.owner != OWNER_PRIVATE or not co.eligible(game.defs, game.config, f):
