@@ -35,7 +35,7 @@ from hakoniwa_core.economy.households import close_income
 from hakoniwa_core.economy.stats import inflation, update_cpi
 from hakoniwa_core.military.forces import soldiers as military_soldiers
 from hakoniwa_core.modules.labor import engineer_unemployment, has_own_wage
-from hakoniwa_core.modules.population import subsistence_persons
+from hakoniwa_core.modules.population import refresh_farming, subsistence_persons
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import IslandState, LogEntry
 from hakoniwa_core.trade import balance
@@ -53,6 +53,9 @@ class Records(IslandStage):
     name = "records"
 
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
+        # 人口と住宅地の段で変わったマスの、自給の農業ができる村かの印を書き直す
+        # （W-272。切なら何もしない）
+        refresh_farming(ctx.defs, ctx.config, island)
         self._people(island, ctx)
         if island.has_economy:
             self._economy(island, ctx)

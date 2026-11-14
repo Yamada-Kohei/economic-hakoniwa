@@ -95,10 +95,60 @@ def _rand_round(value: float, rng: random.Random) -> int:
     return whole + (1 if rng.random() < value - whole else 0)
 
 
+# マスの ext: 自給の農業ができる村か（W-272。population.farming_by_housing のときだけ書く）
+FARMING = "farming"
+
+
 def _farming(defs: Defs, tile: Tile) -> bool:
-    """自給の農業ができる集落（村）か。"""
+    """自給の農業ができる集落（村）か。population.farming_by_housing が入なら、雇用の段と記録の段の
+    初めに refresh_farming が決めた印（建った住宅地の段階）を使い、切ならマスの人数で決める。"""
+    known = tile.ext.get(FARMING)
+    if known is not None:
+        return bool(known)
     level = fac.settlement_of(defs, tile.population)
     return bool(defs.settlements[level].get("subsistence"))
+
+
+farming = _farming  # ほかの段（雇用の段の畑に戻る）から使う名前
+
+
+def refresh_farming(defs: Defs, config: GameConfig, island: IslandState) -> None:
+    """自給の農業ができる村かの印をマスに書く（W-272。PO-21・LB-26。
+    設定 population.farming_by_housing）。
+
+    住宅地の建ったマスは、建った段階（床を足す工事でしか変わらない）で決める。人数のわずかな
+    上下で村と町を毎ターン行き来し、仕事のない人が自給の農家と失業者を行き来しないように
+    （LAN の世界 8003 の島3 で、人口 5 万前後の 1 マスの 2.4 万人の働き手が毎ターン入れ替わり、
+    失業の層が 26 人と 4.8 万人、食べた割合が 0.97 と 0.77 を行き来した）。住宅地のないマスは
+    人数で決め、村→町は町の下限の人数で、町→村は下限の population.farming_back_ratio 倍を
+    切ったときに替える。切なら印を書かない（前に書いた印は消す）。"""
+    if not config.get("population.farming_by_housing"):
+        for tile in island.tiles:
+            if FARMING in tile.ext:
+                del tile.ext[FARMING]
+        return
+    homes = {
+        (f.x, f.y): f for f in island.facilities if fac.is_housing(config, f) and fac.on_map(f)
+    }
+    town = village_size(defs) + 1
+    back = config.get("population.farming_back_ratio")
+    for tile in island.tiles:
+        home = homes.get((tile.x, tile.y))
+        if home is not None:
+            value = _built_farming(defs, home)
+        elif tile.population <= 0:
+            tile.ext.pop(FARMING, None)
+            continue
+        else:
+            before = tile.ext.get(FARMING)
+            if before is None:
+                level = fac.settlement_of(defs, tile.population)
+                value = bool(defs.settlements[level].get("subsistence"))
+            elif before:
+                value = tile.population < town
+            else:
+                value = tile.population < town * back
+        tile.ext[FARMING] = value
 
 
 def _built_farming(defs: Defs, home: Facility) -> bool:

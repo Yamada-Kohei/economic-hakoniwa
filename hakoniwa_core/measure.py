@@ -53,7 +53,7 @@ from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy.prices import initial_prices
 from hakoniwa_core.geo import distance
 from hakoniwa_core.modules.population import subsistence_persons
-from hakoniwa_core.state import IslandState, Tile, WorldState
+from hakoniwa_core.state import OWNER_PRIVATE, IslandState, Tile, WorldState
 from hakoniwa_core.units import from_milli
 
 # 命令なしの国で関門に数える目安: 崩れないか（帳簿・値段・金利・人口・銀行の連鎖）。失業率や物価は
@@ -217,6 +217,17 @@ SERIES_STATS = (
     "labor.dismissed",
     "labor.severance",
     "labor.term_ended",  # 有期の人が更新されずに辞めた人数（LB-43）
+    # 発電所の建て増しと利益を残す切り替え（W-271）・失業の層の行き来（W-272）の比べ
+    "power.demand",
+    "firms.entered",
+    "firms.invested",
+    "firms.power_invested",
+    "firms.invest_retained",
+    "firms.loan_bound_exposure",
+    "firms.loan_bound_capital",
+    "layer.jobless.persons",
+    "layer.owners.income",
+    "layer.owners.deposits",
 )
 
 
@@ -285,7 +296,24 @@ def island_row(
     row["politics.demo"] = int(level != politics.CALM)
     row["politics.riot"] = int(level in (politics.RIOT, politics.REBELLION))
     row["cb_independent"] = int(island.policy.cb_independent)
+    row.update(power_plants(island, defs, config))
     return row
+
+
+def power_plants(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, int]:
+    """民営の発電所の数（建った分）と、工事中の発電所の数（W-271 の比べ）。"""
+    power = config.get("power.good")
+    plants = [
+        f
+        for f in island.facilities
+        if f.kind in defs.facilities
+        and not fac.is_housing(config, f)
+        and power in fac.recipe_of(defs, f)["outputs"]
+    ]
+    return {
+        "power.private_plants": sum(1 for f in plants if f.built and f.owner == OWNER_PRIVATE),
+        "power.plants_building": sum(1 for f in plants if not f.built),
+    }
 
 
 def jobs(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, float]:

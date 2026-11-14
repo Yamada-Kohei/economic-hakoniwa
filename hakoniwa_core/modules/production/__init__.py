@@ -45,6 +45,7 @@ from hakoniwa_core.economy import (
     banks,
     books,
     entity_of,
+    equipment,
     experience,
     freight,
     funds,
@@ -67,10 +68,11 @@ from hakoniwa_core.geo import components, distance, within
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
 from hakoniwa_core.modules.infrastructure import contracts
-from hakoniwa_core.modules.market import curve_cost, elastic_orders
+from hakoniwa_core.modules.market import MISSED, curve_cost, elastic_orders
 from hakoniwa_core.modules.population import layer_food_needs
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import (
+    OWNER_PRIVATE,
     OWNER_STATE,
     Facility,
     IslandState,
@@ -588,6 +590,8 @@ class Production(IslandStage):
                     tile.ext.pop("power", None)
             if has_money:
                 self._update_asks(island, ctx, sellers, result, power)
+                if not fixed and config.get("firms.power_invest"):
+                    self._record_power_missed(ctx, buyers, sellers, result)
                 demand = sum(b.need for b in buyers)
                 # 燃料が手に入らずに止まっている発電所は数えない（ほかの発電所が多めに動く）。
                 # 設備が傷んだ発電所は、傷んだ分を除いて数える（回6）
@@ -624,6 +628,37 @@ class Production(IslandStage):
             if volume:
                 economy.prices[power] = price
         return rates
+
+    @staticmethod
+    def _record_power_missed(
+        ctx: StageContext,
+        buyers: list[_Buyer],
+        sellers: list[tuple[_Run, int]],
+        result: auction.Result,
+    ) -> None:
+        """発電所の売り逃し（FM-49。W-271、設定 firms.power_invest）: 送電網で発電能力が足りなかった
+        分を、全力の近くで動いて出した分が全部売れた民営の発電所に、売れた割合で分けて残す
+        （ほかの財の modules/market の record_missed と同じ形。建て増しの合図）。
+
+        発電能力が足りなかった分 = 要る量 − 網の全部の発電所の全力の能力（設備の傷みは引き、燃料や
+        人手で止まった発電所も能力に数える）。燃料・人手・送電網・電気料金で届かなかった分は入れない
+        （発電所を増やしても届かないので）。届かなかった量（要る量 − 約定した量）を超えない。"""
+        config = ctx.config
+        need = sum(b.need for b in buyers)
+        able = sum(fac.scale(out, fac.equipment_cap(run.f)) for run, out in sellers)
+        short = max(0, min(need - able, need - result.volume))
+        keep = config.get("firms.invest_turns")
+        use = config.get("firms.invest_use")
+        for (run, out), sold in zip(sellers, result.sold, strict=True):
+            f = run.f
+            if f.owner != OWNER_PRIVATE or not is_self_supporting(f):
+                continue
+            offered = fac.scale(out, run.rate)
+            busy = run.rate >= min(fac.FULL, equipment.condition(f)) * use
+            missed = 0
+            if short > 0 and busy and 0 < offered <= sold and result.volume > 0 and out > 0:
+                missed = fac.ratio(short * sold // result.volume, out)
+            f.economy[MISSED] = [*f.economy.get(MISSED, []), missed][-keep:]
 
     @staticmethod
     def _short_power(

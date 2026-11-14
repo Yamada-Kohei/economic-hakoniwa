@@ -77,7 +77,7 @@ from hakoniwa_core.geo import distance, within
 from hakoniwa_core.modules import infrastructure
 from hakoniwa_core.modules.infrastructure import contracts, machines
 from hakoniwa_core.modules.market import FACILITY_HOLDS, SITE_HOLDS, SiteFunds, input_cost
-from hakoniwa_core.modules.population import FED, subsistence_persons
+from hakoniwa_core.modules.population import FED, farming, refresh_farming, subsistence_persons
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import OWNER_STATE, Facility, IslandState
 from hakoniwa_core.trade import staff
@@ -137,7 +137,7 @@ def back_to_fields(island: IslandState, ctx: StageContext, labor: dict[Pos, int]
     out = {}
     for pos, force in labor.items():
         tile = island.tile(*pos)
-        if not defs.settlements[fac.settlement_of(defs, tile.population)].get("subsistence"):
+        if not farming(defs, tile):
             continue
         count = int(force * share)
         if count > 0:
@@ -191,6 +191,8 @@ class Employment(IslandStage):
 
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
         defs, config = ctx.defs, ctx.config
+        # 自給の農業ができる村かの印（W-272。設定 population.farming_by_housing。切なら書かない）
+        refresh_farming(defs, config, island)
         if island.has_economy:
             settle_arrears(island)
         planned_now = planning.is_planned(island, defs)
