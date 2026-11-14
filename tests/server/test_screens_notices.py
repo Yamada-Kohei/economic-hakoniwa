@@ -702,14 +702,18 @@ def test_industrial_zone_hint_distinguishes_missing_from_unsuitable(world):
 
 
 def test_every_facility_status_has_owner_hint_and_summary_matches(world):
+    from hakoniwa_core import stops
     from hakoniwa_core.state import Facility
 
-    defs = get_game().defs
-    for key in defs.locales["ja"]["messages"]:
-        if key.startswith("status_") and not key.startswith("status_construction_"):
-            cause = key.removeprefix("status_")
-            facility = Facility(id=1, kind="farm", x=1, y=1, built=True, status=cause)
-            assert display.status_hint(facility), cause
+    # 理由の表（hakoniwa_core/stops.py）のどの行にも手がある。電力の行は「理由:電力」で出る
+    power = get_game().config.get("power.good")
+    causes = [
+        f"{key}:coal" if row.tail == stops.GOOD else f"{key}:education" if row.tail else key
+        for key, row in stops.REASONS.items()
+    ] + [f"{key}:{power}" for key in stops.POWER_ROWS]
+    for cause in causes:
+        facility = Facility(id=1, kind="farm", x=1, y=1, built=True, status=cause)
+        assert display.status_hint(facility), cause
     (owner, _, _), (island, _, _) = _players(world)
     row = island.facilities.filter(kind="farm").first()
     row.built = True

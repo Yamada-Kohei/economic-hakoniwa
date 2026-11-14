@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import IO, Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import gate, politics, reuse, warscene
+from hakoniwa_core import gate, politics, reuse, stops, warscene
 from hakoniwa_core.autoplan import plan_trade, plan_turn, plan_war, queue_orders
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
@@ -126,34 +126,8 @@ SETS = {
     ],
 }
 
-# 施設が全力で動かなかった理由（施設の status の「:」の前）のまとめ方
-CAUSES = {
-    "target": "sales",  # 売れ行きに合わせた
-    "no_demand": "sales",
-    "power_price": "sales",
-    "cargo": "sales",  # 港・商社の扱う荷が少ない
-    "business": "sales",  # 小さい銀行の預金と融資が少ない
-    "input": "inputs",
-    "input_price": "inputs",
-    "public_price": "inputs",
-    "power": "power",
-    "no_grid": "power",
-    "funds": "funds",
-    "wages": "funds",
-    "workers": "workers",
-    "engineers": "engineers",
-    "equipment": "equipment",  # 設備の傷み（2026-11-13 に分けた。前は halted に入っていた）
-}
-CAUSE_GROUPS = (
-    "sales",
-    "inputs",
-    "power",
-    "funds",
-    "workers",
-    "engineers",
-    "equipment",
-    "halted",
-)
+# 施設が全力で動かなかった理由のまとめ方は、理由の表（hakoniwa_core/stops.py）の組（W-34）
+CAUSE_GROUPS = stops.GROUPS
 
 # 誰が買ったかを数える財（設備と工事の資材。回6 の材料）
 WATCH = ("machinery", "steel", "building_materials", "transport_ship", "automobile")
@@ -309,10 +283,8 @@ def jobs(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, float
         if need <= 0 or not fac.located(f):
             continue
         out["jobs.capacity"] += need
-        if is_stopped(f) or f.status in (fac.STATUS_STARTING, "halted", "riot", "recipe_change"):
-            cause = "halted"
-        else:
-            cause = CAUSES.get(f.status.partition(":")[0], "halted")
+        # 閉鎖の途中・差し押さえの施設は、理由にかかわらず止まった施設（災害と同じ組）に数える
+        cause = stops.G_HALTED if is_stopped(f) else stops.show(config, f.status, f.ext).group
         lost = need * (fac.FULL - min(fac.FULL, max(0, f.operating_rate))) / fac.FULL
         if lost > 0:
             out[f"idle.{cause}"] += lost

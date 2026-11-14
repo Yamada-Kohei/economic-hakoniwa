@@ -53,7 +53,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger, politics
+from hakoniwa_core import ledger, politics, stops
 from hakoniwa_core.allocation import proportional
 from hakoniwa_core.economy import (
     CONSTRUCTION,
@@ -1201,7 +1201,7 @@ class Employment(IslandStage):
         least, carry = dismissal.floor(island, defs, config, f, regular)
         # 手当の月数のうちにまた要る人は解雇せずに抱える（雇い直すより安い。有期の人は抱えない）
         hold = min(regular, dismissal.recent_peak(island, defs, config, f, need))
-        if fac.furloughed(config, f.status):
+        if stops.furloughed(config, f.status):
             # 原料や電力が届かずに動けない間は、操業目標に要る人を解雇せずに休ませる（休業手当は
             # 賃金の段。届かないのが続けば操業目標が下がり、決まりの割合で減る）。休む人の席は、
             # 自然に辞めた人の分を雇い足さない
