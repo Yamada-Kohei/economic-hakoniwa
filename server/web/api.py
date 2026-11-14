@@ -589,6 +589,8 @@ def economy_overview(request, island_id: int):
             "summary": reports.stats_part(stats, summary_names),
             "strengths": rankings.island_strengths(island, stats),
             "choices": reports.stat_choices(island, mine),
+            # 幸福度の内訳（W-172。持ち主だけ。他国には None）
+            "happiness": reports.happiness_view(island, turn, stats, mine),
         }
     )
 

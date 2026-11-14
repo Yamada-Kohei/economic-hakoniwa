@@ -8,12 +8,14 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 
 from django.db.models import Max, Q
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger
+from hakoniwa_core import politics as core_politics
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.economy import (
     ENGINEERS,
@@ -29,7 +31,12 @@ from hakoniwa_core.economy import (
 )
 from hakoniwa_core.modules.failures import METHODS as RESOLUTION_METHODS
 from hakoniwa_core.modules.market import BUYER_GROUPS
-from hakoniwa_core.modules.population import subsistence_persons, tile_jobless
+from hakoniwa_core.modules.population import (
+    HAPPINESS_PARTS,
+    SETTLE_PARTS,
+    subsistence_persons,
+    tile_jobless,
+)
 from hakoniwa_core.naming import facility_name, place_of
 from hakoniwa_core.state import OWNER_PRIVATE, IslandState, Tile
 from hakoniwa_core.trade import abroad
@@ -311,6 +318,8 @@ def stat_label(name: str) -> tuple[str, str]:
         return f"{'収入' if side == 'in' else '支出'}・{flow_name(side, kind)}", "money"
     if head == "spent":
         return f"使った額・{budget_name(rest)}", "money"
+    if head == HAPPINESS_PART and rest in HAPPINESS_PART_NAMES:  # 幸福度の内訳（W-172）
+        return f"幸福度の内訳・{HAPPINESS_PART_NAMES[rest][0]}", ""
     if head == "budget_share":  # LB-45: 国庫の項目の予算が足りず、要る額に対して分けた割合
         return f"要る額に対して分けた割合・{budget_name(rest)}", "%"
     if head == "infra" and rest in defs.infrastructure:
@@ -416,6 +425,7 @@ def stat_choices(island: m.Island, mine: bool) -> list[dict[str, str]]:
 
 PRIVATE_PREFIXES = (
     "bank.",
+    "happiness_part.",  # 幸福度の内訳（W-172。幸福度そのものは誰にでも）
     "warehouse.to_state.",
     "warehouse.food_refill",
 )  # 持ち主だけに見せる統計
@@ -531,6 +541,160 @@ def _derive(table: dict[str, dict[int, float]]) -> None:
         table["fiscal.revenue"] = {t: revenue.get(t, 0.0) for t in turns}
         table["fiscal.spending"] = {t: spending.get(t, 0.0) for t in turns}
         table["fiscal.balance"] = {t: revenue.get(t, 0.0) - spending.get(t, 0.0) for t in turns}
+
+
+# 幸福度の内訳（W-172）: 統計 happiness_part.<項目> の項目 → 表示名と、直しに行く画面（URL の
+# 名前）。並びは画面の表の順（足す項目、下げる項目、0〜上限に収めた分）
+HAPPINESS_PART = "happiness_part"
+HAPPINESS_PART_NAMES = {
+    "base": ("基礎の点", None),
+    "food": ("今月の食料", "island_market"),
+    "food_quality": ("食事の質", "island_market"),
+    "jobs": ("働き口", "island_facilities"),
+    "power": ("電力", "island_facilities"),
+    "clothing": ("衣料", "island_market"),
+    "luxury": ("ぜいたく品", "island_market"),
+    "consumer_goods": ("消費財（前の版の重みから移す間だけ）", "island_market"),
+    "water": ("上下水道", None),
+    "education": ("教育", None),
+    "housing": ("住まいの広さ", None),
+    "pollution": ("汚染", "island_facilities"),
+    "real_wage": ("実質賃金の低下（1年前より）", "island_fiscal"),
+    "inflation": ("物価の上昇", None),
+    "hunger": ("過去の飢えの残り", "island_market"),
+    "arrears": ("賃金の遅配", "island_fiscal"),
+    "crowding": ("過密", None),
+    "cap": ("体制の上限で切った分", "island_politics"),
+    "floor": ("下限の 0 まで補った分", None),
+    "rounding": ("端数", None),
+}
+assert set(HAPPINESS_PART_NAMES) == {*HAPPINESS_PARTS, *SETTLE_PARTS}
+# 満点（足す項目）と、いちばん大きい減点（下げる項目）の重みの名前（population.happiness）
+HAPPINESS_PART_LIMITS = {
+    "real_wage": "real_wage_max",
+    "inflation": "inflation_max",
+    "hunger": "hunger_max",
+    "arrears": "arrears",
+    "crowding": "crowding_max",
+}
+HAPPINESS_MOVE = 0.05  # 内訳の「いちばん下げた項目」に挙げる、前から下がった点の下限
+
+
+def _points(value: float, plain: bool = False) -> str:
+    """内訳の点の文（0.05 未満は 0.0。plain でなければ符号を付ける）。"""
+    if abs(value) < HAPPINESS_MOVE:
+        return "0.0"
+    return f"{value:.1f}" if plain else f"{value:+.1f}"
+
+
+def _signed(value: float | None) -> str:
+    if value is None:
+        return "—"
+    if abs(value) < HAPPINESS_MOVE:
+        return "±0"
+    return f"{value:+.1f}"
+
+
+def happiness_cap(island: m.Island) -> int | None:
+    """体制の幸福度の上限（全体主義 80）。上限のない体制は None。"""
+    regime = SimpleNamespace(regime=island.regime or {})
+    return core_politics.traits(cast(IslandState, regime), get_game().defs).get("happiness_cap")
+
+
+def happiness_view(
+    island: m.Island, turn: int | None, stats: dict[str, float], mine: bool
+) -> dict[str, Any] | None:
+    """幸福度の内訳（W-172。持ち主だけ）: 項目ごとの点と、前のターン・1年前からの動き。
+
+    返す形: value（幸福度）、change・change_year（前のターン・1年前から。統計がなければ None）、
+    worst・worst_year（いちばん下げた項目の名前と点。なければ None）、rows（項目ごとの key・name・
+    value・change・change_year・limit（満点か、いちばん大きい減点。ないものは None）・page（直しに
+    行く画面の URL の名前）と、画面に出す文）、capped（体制の上限で頭打ちで、項目を上げても
+    幸福度が上がらない）。内訳の value を全部足すと幸福度になる。"""
+    if not mine or turn is None or "happiness" not in stats:
+        return None
+    prefix = f"{HAPPINESS_PART}."
+    now = {k.removeprefix(prefix): v for k, v in stats.items() if k.startswith(prefix)}
+    if not now:
+        return None
+    before: dict[int, dict[str, float]] = {turn - 1: {}, turn - TURNS_PER_YEAR: {}}
+    rows = island.stats.filter(
+        Q(name__startswith=prefix) | Q(name="happiness"), turn__in=list(before)
+    ).values_list("turn", "name", "value")
+    for at, name, value in rows:
+        before[at][name.removeprefix(prefix)] = value
+    weights = get_game().config.get("population.happiness")
+
+    def moved(at: int, key: str) -> float | None:
+        old = before[at]
+        if "happiness" not in old:
+            return None
+        if key == "happiness":
+            return stats["happiness"] - old["happiness"]
+        return now.get(key, 0.0) - old.get(key, 0.0)
+
+    out_rows = []
+    for key, (name, page) in HAPPINESS_PART_NAMES.items():
+        if (
+            key not in now
+            and key not in before[turn - 1]
+            and key not in before[turn - TURNS_PER_YEAR]
+        ):
+            continue
+        limit = (
+            weights.get(HAPPINESS_PART_LIMITS.get(key, key))
+            if key in weights or key in HAPPINESS_PART_LIMITS
+            else None
+        )
+        value = now.get(key, 0.0)
+        change = moved(turn - 1, key)
+        change_year = moved(turn - TURNS_PER_YEAR, key)
+        out_rows.append(
+            {
+                "key": key,
+                "name": name,
+                "value": value,
+                "change": change,
+                "change_year": change_year,
+                "limit": limit,
+                "page": page,
+                "text": _points(value, key == "base"),
+                "change_text": _signed(change),
+                "change_year_text": _signed(change_year),
+                # 下げた項目（上限・下限・端数の行は項目の動きの結果なので、色を付けない）
+                "down": key not in SETTLE_PARTS
+                and change is not None
+                and change <= -HAPPINESS_MOVE,
+            }
+        )
+
+    def worst(field: str) -> dict[str, Any] | None:
+        found = [
+            r
+            for r in out_rows
+            if r["key"] not in SETTLE_PARTS and r[field] is not None and r[field] <= -HAPPINESS_MOVE
+        ]
+        if not found:
+            return None
+        row = min(found, key=lambda r: r[field])
+        return {"key": row["key"], "name": row["name"], "change": row[field]}
+
+    change = moved(turn - 1, "happiness")
+    change_year = moved(turn - TURNS_PER_YEAR, "happiness")
+    return {
+        "value": stats["happiness"],
+        "text": f"{stats['happiness']:.1f}",
+        "change": change,
+        "change_year": change_year,
+        "change_text": _signed(change),
+        "change_year_text": _signed(change_year),
+        "worst": worst("change"),
+        "worst_year": worst("change_year"),
+        # 体制の上限で頭打ち（全体主義 80）: 項目を上げても幸福度は上がらない
+        "capped": now.get("cap", 0.0) <= -HAPPINESS_MOVE,
+        "cap_value": happiness_cap(island),
+        "rows": out_rows,
+    }
 
 
 def economy_charts() -> list[dict[str, Any]]:

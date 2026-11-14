@@ -175,6 +175,7 @@ def economy_page(request, island_id: int):
         charts=charts,
         choices=reports.stat_choices(island, context["mine"]),
         strengths=rankings.island_strengths(island, stats),
+        happiness=reports.happiness_view(island, context["stats_turn"], stats, context["mine"]),
     )
     return render(request, "web/economy.html", context)
 
