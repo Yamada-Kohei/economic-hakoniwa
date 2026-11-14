@@ -10,7 +10,7 @@ from dataclasses import replace
 from types import MappingProxyType
 from typing import Any
 
-from hakoniwa_core import nature, stock
+from hakoniwa_core import nature, stock, stops
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.geo import distance, is_coastal, within
@@ -25,7 +25,7 @@ from hakoniwa_core.state import (
 
 FULL = 1000  # 割合の 100%
 ENGINEER = "engineer"  # 技術者（島全体の人数として持つ働き手。フェーズ2-3）
-STATUS_STARTING = "starting"  # 工事が済んで、まだ動いたことがない（施設の status）
+STATUS_STARTING = stops.STARTING  # 工事が済んで、まだ動いたことがない（施設の status。表は stops）
 # 作り方の変更（フェーズ3-2）。命令と民営の見直しで ext["recipe_next"] に置き、次の市場の段で
 # 替える（新しい原料はその市場で買う）。替えた次のターン（ext["recipe_changed"]）は稼働率が半分
 RECIPE_NEXT = "recipe_next"
@@ -38,10 +38,6 @@ FIELDS = "fields"
 SOWN = "sown"
 CROP_READY = "crop_ready"  # 畑をみな新しい作物にし終えたターン（ext。民営の見直しが売れ行きを待つ）
 FINISHED = "finished"  # 工事が終わったターン（ext。回6）
-# 原料が手に入らずに動けない理由（施設の status の「:」の前）。input は品不足、input_price は
-# 原料が高くて採算が合わない、funds は原料を買うお金が足りない、public_price は学校と大学の教材が
-# 高くて買えない
-INPUT_SHORT = ("input", "input_price", "funds", "public_price")
 # 建て増し（段6 A3）: 施設の規模（ext。書いていなければ 1）。規模 n の施設は、働き手・原料・産出・
 # 設備・汚染が規模 1 の n 倍。建て増しの工事は、町の中の店と同じくマスを持たない負の位置に置き、
 # 働く場所（SITE）と建て増す施設の番号（EXPANDS）を ext に持つ。済むと建て増す施設に合わせる
@@ -64,22 +60,6 @@ FUEL_SHARE = (
 FERTILIZER = "chemicals"  # 肥料ありの畑が使う財
 # economy: 肥料ありの畑のうち、肥料が手元にある割合（1000 分の 1。なければ全部。FM-53）
 FERTILIZER_SHARE = "fertilizer_share"
-
-
-def short_of_inputs(status: str) -> bool:
-    """施設の status が、原料が手に入らずに動けないことを表すか。"""
-    return status.partition(":")[0] in INPUT_SHORT
-
-
-FURLOUGH = ("power", "no_grid", "input")  # 休業手当にする status（外から物が来ずに動けない）
-
-
-def furloughed(config: Any, status: str) -> bool:
-    """休業手当にする status か（FURLOUGH と、電力の割高・資金不足。回7 後半、modules/labor の
-    furlough_share）。原料が高い・買うお金がないのは施設の都合なので外す。"""
-    kind, _, good = status.partition(":")
-    power = config.get("power.good")
-    return kind in FURLOUGH or (kind in ("input_price", "funds") and good == power)
 
 
 def ratio(have: int, need: int) -> int:

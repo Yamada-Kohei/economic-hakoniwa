@@ -14,7 +14,7 @@ from typing import Any, cast
 from django.db.models import Max, Q
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger
+from hakoniwa_core import ledger, stops
 from hakoniwa_core import politics as core_politics
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.economy import (
@@ -222,6 +222,7 @@ _EXTRA_STATS = [
     ("politics.halted", "暴動による操業停止（1ターン）", ""),
     ("politics.destroyed", "暴動による損壊（1ターン）", ""),
     ("labor.mobilized", "労働動員の従事者数", "人"),
+    ("labor.guaranteed", "雇用の保障で国営の施設に配った人（1ターン）", "人"),
     ("plan.queue", "行列（家計が配給で買えなかった割合。小売の値段の額で）", "%"),
     ("plan.forced_saving", "強制貯蓄（配給で買えずに残ったお金。1ターン）", "money"),
     # 計画経済の二重の値段（PL-60）: 家計の買い物の 小売 − 卸 の差。価格の補助は帳簿の上の額
@@ -795,8 +796,8 @@ def with_fiscal(stats: dict[str, float]) -> dict[str, float]:
 
 # --- 市場 -----------------------------------------------------------------------------
 
-# 原料を買えずに止まった施設の状態（status の「種類:財」の種類）
-SHORT_STATUSES = ("input", "input_price", "funds", "public_price")
+# 原料を買えずに止まった施設の状態（status の「種類:財」の種類。理由の表 stops の原料待ちの行）
+SHORT_STATUSES = tuple(k for k, r in stops.REASONS.items() if r.input_short)
 
 
 def market_turn(island: m.Island) -> int | None:

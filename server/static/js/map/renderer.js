@@ -328,11 +328,12 @@ function drawFacility(ctx, f, map, defs, px, ground, theme, sprites) {
 }
 
 /** 止まっている施設には赤い印（絵の上にも描く）。top は印を置くひし形の上の頂点。
- * 稼働準備中（まだ動いたことがなく、次の更新で動き出す）は止まりではないので描かない（W-219）。
+ * 止まりかはサーバーの理由の表（hakoniwa_core/stops.py）で決めた f.stopped を読み、理由の一覧を
+ * ここに写さない（W-34）。稼働率 0 で、稼働準備中（W-219）・扱う荷や客に合わせた操業でないもの。
  * 売れ行きに合わせて 0 まで下げて止まった施設（生産停止中（買い注文不足））にも描き、下げても
  * 作り続けている生産調整中には描かない（UI-84）。 */
 export function drawStopped(ctx, f, defs, px, top, hh) {
-  if (f.kind === defs.housing || f.rate !== 0 || !f.status || f.status === "starting") return;
+  if (f.kind === defs.housing || !f.stopped) return;
   ctx.fillStyle = "#e53935";
   ctx.beginPath();
   ctx.arc(px, top + hh, Math.max(2, hh * 0.35), 0, Math.PI * 2);

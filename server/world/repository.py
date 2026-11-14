@@ -507,21 +507,28 @@ def replace_island_contents(islands: list[IslandState]) -> None:
 
 
 def load_island(row: m.Island) -> IslandState:
-    """1つの島のマスと施設を読む（画面で命令を確かめる用。施設の在庫と命令は読まない）。
+    """1つの島のマスと施設と施設の在庫を読む（画面で命令を確かめる用。命令は読まない）。
 
     国の倉庫も読む（倉庫の財を売る命令は、倉庫になければ通らない）。国債の銘柄も読む（国債の
-    利払いの停止の命令は、国債がなければ通らない）。
+    利払いの停止の命令は、国債がなければ通らない）。勘定の残高と融資も読む（国有化・民営化の
+    命令は、純資産の値段を国庫や資本家の預金で払えるかを確かめる。読まないと国庫が 0 に見え、
+    足りているのに「国庫が足りません」と出ていた。不具合報告 #14）。
     """
     island = island_from_row(row)
     for x, y, *rest in row.tiles.values_list("x", "y", *TILE_FIELDS):
         island.tiles[y * island.size + x] = Tile(x, y, **dict(zip(TILE_FIELDS, rest, strict=True)))
-    island.facilities = [facility_from_row(f) for f in row.facilities.order_by("number")]
-    warehouse = m.Stock.objects.filter(island=row, facility__isnull=True)
-    for good, made, qty in warehouse.order_by("good", "made_turn", "id").values_list(
-        "good", "made_turn", "quantity"
+    by_pk = {f.pk: facility_from_row(f) for f in row.facilities.order_by("number")}
+    island.facilities = list(by_pk.values())
+    stocks = m.Stock.objects.filter(island=row).order_by("facility_id", "good", "made_turn", "id")
+    for facility_id, good, made, qty in stocks.values_list(
+        "facility_id", "good", "made_turn", "quantity"
     ):
-        island.warehouse.setdefault(good, []).append([made, qty])
+        held = island.warehouse if facility_id is None else by_pk[facility_id].stock
+        held.setdefault(good, []).append([made, qty])
     island.bonds = [bond_from_row(b) for b in em.Bond.objects.filter(island=row).order_by("number")]
+    # 値段（純資産 = 設備 + 預金 + 在庫 − 借入 − 未払い）も実行のときと同じになるよう、融資も読む
+    load_money({island.id: island}, em.Account.objects.filter(island=row))
+    island.loans = [loan_from_row(x) for x in em.Loan.objects.filter(island=row).order_by("number")]
     return island
 
 

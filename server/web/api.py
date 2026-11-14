@@ -20,7 +20,7 @@ from django.templatetags.static import static
 from django.views.decorators.http import require_GET, require_http_methods
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import nature
+from hakoniwa_core import nature, stops
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import freight
 from hakoniwa_core.founding import land_terrains
@@ -414,6 +414,10 @@ def island_map(request, island_id: int):
             "size": (f.ext or {}).get("size", 1),
             "status": f.status,
             "rate": f.operating_rate,
+            # 地図の赤い点を出すか（理由の表 hakoniwa_core/stops.py。W-34）
+            "stopped": stops.stopped_mark(
+                get_game().config, f.status, f.operating_rate, f.ext or {}
+            ),
             **({"hidden": True} if (f.ext or {}).get("hidden") else {}),
         }
         for f in facility_rows  # マスを持つ施設だけ
@@ -1089,7 +1093,7 @@ def order_items(request, island_id: int):
     if body.get("confirm") is not True:
         notes = order_confirm.confirmations(order_confirm.Context(island, state), kind, payload)
         if notes:
-            text = display.describe_order(kind, payload)
+            text = display.describe_order(kind, payload, display.facility_labels(island))
             ask = {"index": 0, "kind": kind, "text": text, "notes": notes}
             return _json(
                 {"error": order_confirm.CONFIRM_TEXT, "confirm": [ask]},
@@ -1184,7 +1188,9 @@ def _confirmations(island: m.Island, state, items: list[dict[str, Any]]) -> list
             continue
         texts = order_confirm.confirmations(ctx, item.get("kind"), item.get("payload"))
         if texts:
-            text = display.describe_order(item["kind"], item.get("payload") or {})
+            text = display.describe_order(
+                item["kind"], item.get("payload") or {}, display.facility_labels(island)
+            )
             asks.append({"index": i, "kind": item["kind"], "text": text, "notes": texts})
     return asks
 
@@ -1404,7 +1410,16 @@ def world_trade(request):
 def world(request):
     w = m.World.objects.order_by("id").first()
     if w is None:
-        return _json({"grid": 0, "turn": 0, "islands": [], "recent": [], **_site_notes()})
+        return _json(
+            {
+                "grid": 0,
+                "turn": 0,
+                "islands": [],
+                "recent": [],
+                **_site_notes(),
+                "unseen_updates": top_page.unseen_updates(request.user),
+            }
+        )
     islands = w.islands.select_related("owner").order_by("id")
     ai_owners = keys.ai_owner_ids(w.turn)
     return _json(
@@ -1427,8 +1442,23 @@ def world(request):
             # トップの画面の「最近の出来事」と、管理人の書く欄（カウンタとキリ番は AI に要らない）
             "recent": top_page.recent_events(w),
             **_site_notes(),
+            # 見ていない更新履歴（画面の「更新のお知らせ」の窓と同じ。ログインしていなければ null）
+            "unseen_updates": top_page.unseen_updates(request.user),
         }
     )
+
+
+@require_http_methods(["POST"])
+def updates_seen(request):
+    """更新のお知らせを見たことにする（{"last": 更新履歴の番号}。UI-96）。答えは今の印。"""
+    if not request.user.is_authenticated:
+        return _json({"error": "ログインしてください"}, status=403)
+    try:
+        body = jsonbody.loads(request.body or b"{}")
+        last = int(body.get("last", 0))
+    except (ValueError, TypeError, AttributeError):
+        return _json({"error": "last は更新履歴の番号（整数）にしてください"}, status=400)
+    return _json({"last": top_page.mark_updates_seen(request.user, last)})
 
 
 def _site_notes() -> dict[str, Any]:

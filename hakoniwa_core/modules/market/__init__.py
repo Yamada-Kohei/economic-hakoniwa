@@ -52,7 +52,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger, politics, stock, trade
+from hakoniwa_core import ledger, politics, stock, stops, trade
 from hakoniwa_core.allocation import proportional
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
@@ -832,7 +832,7 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
         amount = estimate + round_money(gap * settings["inventory_adjust"])
         plan = max(plan, fac.ratio(max(0, amount), full))
     f.economy[COST_FLOOR] = floors
-    if fac.short_of_inputs(f.status) or f.status in ("power", "no_grid"):  # 仕入れか電力が足りない
+    if stops.caps_target(ctx.config, f.status):  # 仕入れか電力が足りない（表は stops）
         plan = min(plan, f.operating_rate + step)
     limit = round_money(settings["max_target_change"] * fac.FULL + 0.5)
     return max(target - limit, min(target + limit, plan))
@@ -2363,7 +2363,7 @@ class Market(IslandStage):
         if fac.is_halted(f, ctx.turn + 1):
             return 0
         worn = fac.equipment_cap(f)  # 設備が傷んで作れない分の原料は買わない（回6）
-        if f.status == fac.STATUS_STARTING:
+        if f.status == stops.STARTING:
             return min(target, worn)
         if f.workers < f.economy.get("wanted", 0):
             headroom = round_money(settings["target_step"] * fac.FULL + 0.5)
@@ -3374,6 +3374,13 @@ class Market(IslandStage):
         growing = []
         for plan, is_growth in ((fix, False), (grow, True)):
             for good, (qty, limit) in sorted(plan.items()):
+                # 予算で割り戻した量でも、代金と運賃の丸めで使えるお金を少し超えることがある
+                room = funds.available(island, payer)
+                cost = gross_cost(limit, qty, rate, 0)
+                if cost > room:
+                    qty = qty * max(0, room) // cost
+                    while qty > 0 and gross_cost(limit, qty, rate, 0) > room:
+                        qty -= 1
                 if qty <= 0:
                     continue
                 party = Party(HOUSEHOLD, household(layer), payer, rate, 0, layer="housing")
