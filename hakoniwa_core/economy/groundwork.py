@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, stock
+from hakoniwa_core import infra, stock, stops
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
@@ -84,7 +84,7 @@ def _school(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> F
             owner=OWNER_STATE,
             accounting=ACCOUNTING_TREASURY,
             built=True,
-            status=fac.STATUS_STARTING,
+            status=stops.STARTING,
         )
         assign_serial(island, f)
         island.facilities.append(f)

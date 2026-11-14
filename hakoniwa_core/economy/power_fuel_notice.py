@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import stock
+from hakoniwa_core import stock, stops
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import freight, is_seized, is_stopped, power_fuel
@@ -142,7 +142,7 @@ def after_market(island: IslandState, ctx: StageContext) -> None:
         if current_floor < reference * config.get("power.notice_reset"):
             state["price_notified"] = False
         burned = [r for r in rows if used.get(r["good"], 0) > 0]
-        if f.status == "power_price" or not burned or current_floor <= reference:
+        if f.status == stops.POWER_PRICE or not burned or current_floor <= reference:
             continue
         months = min(r["quantity"] / used[r["good"]] for r in burned)
         # ①と同じく直近の使用量で見て、在庫が尽きるのが `power.price_notice_turns` より先なら
