@@ -9,8 +9,10 @@
   借りていない国で、余りに比例して貸します。足りなければ、Z を発行した国の中央銀行が Z を新しく
   作って貸します（最後の手）。黒字の国に入った決済通貨が、赤字の国の輸入に回ります。
 - 借りられるのは、借りている額の合計（自国通貨に直す）が年の GDP の fx.swap_quota までです。発行
-  した国の中央銀行が新しく作って貸すのは、合わせてその国の年の GDP の fx.swap_issuer_share までで
-  す。使い切ると受け身の売りが止まり、その国の通貨は安くなります。
+  した国の中央銀行が新しく作って貸すのは、未返済の残りで、その通貨を決済通貨にする圏の加盟国（発行
+  した国を含め、二重に数えない）の年の GDP の合計（今のレートで発行した国の通貨に直す。レートのない
+  島は数えない）の fx.swap_issuer_share までです（FX-81。発行した国 1 島の大きさでなく、その通貨を
+  使う国の大きさで決める）。使い切ると受け身の売りが止まり、その国の通貨は安くなります。
 - 利子は、Z を発行した国の政策金利に fx.swap_spread を足した年率で毎ターン（ledger.interest）、
   借り手の中央銀行が持つ Z で貸し手に払います（仕訳の種類 swap_interest。所得収支）。払えない分は
   借りた額に足します。
@@ -113,9 +115,34 @@ def quota_room(island: IslandState, config: GameConfig) -> int | None:
     return max(0, part(gdp, to_basis(config.get("fx.swap_quota"))) - debt_value(island))
 
 
-def issuer_room(issuer: IslandState, config: GameConfig) -> int | None:
-    """発行した国の中央銀行が、まだ新しく作って貸せる額（自国通貨。GDP の記録がなければ None）。"""
-    gdp = debt.annual_gdp(issuer.economy)
+def users_gdp(world: WorldState, currency: int) -> int:
+    """通貨 currency を決済通貨にする圏の加盟国（発行した国を含め、2 つの圏に入っていても 1 度だけ）
+    の年の GDP の合計（発行した国の通貨に直す。FX-81）。加盟国の GDP は、その島の今の決済通貨の
+    レートで直し、レートのない島（まだその通貨を取引していない加盟国）は数えない。"""
+    members = {currency}
+    for b in blocs.blocs(world):
+        if b["currency"] == currency:
+            members |= set(b["members"])
+    total = 0
+    for i in sorted(members):
+        island = world.islands.get(i)
+        if island is None or not island.has_economy:
+            continue
+        gdp = debt.annual_gdp(island.economy)
+        if gdp <= 0:
+            continue
+        if i == currency:
+            total += gdp
+        elif fxrates.has_rate(island, currency):
+            total += fxrates.to_foreign(island, currency, gdp)
+    return total
+
+
+def issuer_room(world: WorldState, issuer: IslandState, config: GameConfig) -> int | None:
+    """発行した国の中央銀行が、まだ新しく作って貸せる額（自国通貨）。上限は、その通貨を使う国の
+    年の GDP の合計（users_gdp）の fx.swap_issuer_share から、作って貸している未返済の残りを引いた
+    額（返せば戻る）。GDP の記録がどこにもなければ None。"""
+    gdp = users_gdp(world, issuer.id)
     if gdp <= 0:
         return None
     return max(0, part(gdp, to_basis(config.get("fx.swap_issuer_share"))) - issued(issuer))
@@ -161,7 +188,7 @@ def available(world: WorldState, config: GameConfig, borrower: int, currency: in
     quota = None if room is None else fxrates.to_foreign(island, currency, room)
     supply = sum(spare for _, spare in lenders(world, config, borrower, currency))
     if issuer.has_economy:
-        made = issuer_room(issuer, config)
+        made = issuer_room(world, issuer, config)
         supply = None if made is None else supply + made
     if quota is None:
         return supply if supply is not None else 0
@@ -348,6 +375,6 @@ def view(world: WorldState, island: IslandState, config: GameConfig) -> dict[str
         "lent": rows(lent(island), "borrower"),
         "room": quota_room(island, config),
         "borrowed": debt_value(island),
-        "issuer_room": issuer_room(island, config) if issuer else None,
+        "issuer_room": issuer_room(world, island, config) if issuer else None,
         "issued": issued(island),
     }

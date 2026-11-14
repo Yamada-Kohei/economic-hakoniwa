@@ -13,7 +13,7 @@
     <tr><th>{% translate "借りられる限度額" %}</th><td class="num">{% if s.limit is not None %}{{ currency|currency_prefix }}{{ s.limit|floatformat:"0g" }} <small class="muted">{% blocktranslate with q=s.quota|floatformat:"0" %}（年の GDP の {{ q }}%）{% endblocktranslate %}</small>{% else %}<span class="muted">{% translate "まだ GDP の記録がなく、上限はありません" %}</span>{% endif %}</td></tr>
     <tr><th>{% translate "まだ借りられる額" %}</th><td class="num">{% if s.room is not None %}<strong>{{ currency|currency_prefix }}{{ s.room|floatformat:"0g" }}</strong>{% else %}<span class="muted">{% translate "上限なし" %}</span>{% endif %}</td></tr>
     <tr><th>{% translate "貸している額" %}</th><td class="num">{{ currency|currency_prefix }}{{ s.lent_total|floatformat:"0g" }}{% if s.lent_change is not None %} <small class="muted">{% blocktranslate with v=s.lent_change|floatformat:"0g" %}1ターンで {{ v }}{% endblocktranslate %}</small>{% endif %}</td></tr>
-    {% if s.issuer_room is not None %}<tr><th>{% translate "自国の通貨を作って貸せる残り" %}</th><td class="num">{{ currency|currency_prefix }}{{ s.issuer_room|floatformat:"0g" }} <small class="muted">{% blocktranslate with q=s.issuer_share|floatformat:"0" %}（年の GDP の {{ q }}% まで）{% endblocktranslate %}</small></td></tr>{% endif %}
+    {% if s.issuer_room is not None %}<tr><th>{% translate "自国の通貨を作って貸せる残り" %}</th><td class="num">{{ currency|currency_prefix }}{{ s.issuer_room|floatformat:"0g" }} <small class="muted">{% blocktranslate with q=s.issuer_share|floatformat:"0" %}（この通貨を決済に使う国の年の GDP の合計の {{ q }}% まで）{% endblocktranslate %}</small></td></tr>{% endif %}
   </table>
   <p class="hint">{% translate "借りられる残りが 0 になると、中央銀行は受け身の売りを止め、通貨が安くなります。内訳は下の「中央銀行どうしの融通」にあります。" %} <a href="#swaps">{% translate "内訳へ" %}</a></p>
 </section>
@@ -216,7 +216,7 @@
   <table class="info">
     <tr><th>{% translate "借りている額の合計" %}</th><td class="num">{{ currency|currency_prefix }}{{ s.borrowed|floatformat:"0g" }}</td></tr>
     <tr><th>{% translate "まだ借りられる額" %}</th><td class="num numeric-with-note">{% if s.room is not None %}<span class="numeric-value">{{ currency|currency_prefix }}{{ s.room|floatformat:"0g" }}</span>{% else %}<span class="muted">{% translate "まだ GDP の記録がなく、上限はありません" %}</span>{% endif %} <small class="muted">{% blocktranslate with q=s.quota|floatformat:"0" %}（年の GDP の {{ q }}% まで）{% endblocktranslate %}</small></td></tr>
-    {% if s.issuer_room is not None %}<tr><th>{% translate "自国の通貨を作って貸している額" %}</th><td class="num numeric-with-note"><span class="numeric-value">{{ currency|currency_prefix }}{{ s.issued|floatformat:"0g" }}</span> <small class="muted">{% blocktranslate with r=s.issuer_room|floatformat:"0g" c=currency|currency_prefix q=s.issuer_share|floatformat:"0" %}（まだ {{ c }}{{ r }}。年の GDP の {{ q }}% まで）{% endblocktranslate %}</small></td></tr>{% endif %}
+    {% if s.issuer_room is not None %}<tr><th>{% translate "自国の通貨を作って貸している額" %}</th><td class="num numeric-with-note"><span class="numeric-value">{{ currency|currency_prefix }}{{ s.issued|floatformat:"0g" }}</span> <small class="muted">{% blocktranslate with r=s.issuer_room|floatformat:"0g" c=currency|currency_prefix q=s.issuer_share|floatformat:"0" %}（まだ {{ c }}{{ r }}。この通貨を決済に使う国の年の GDP の合計の {{ q }}% まで）{% endblocktranslate %}</small></td></tr>{% endif %}
   </table>
   {% endwith %}
   <p class="hint">{% translate "為替で受け身の売りに要る外貨が中央銀行の手元に足りないと、中央銀行はその外貨を借ります。まず同じ貿易圏でその外貨を決済通貨にしている国のうち、手元に置く分より多く持つ国の中央銀行から、余りに比例して借り、足りなければ通貨を発行した国の中央銀行が新しく作って貸します。利子は発行した国の政策金利に少し上乗せした年率で毎ターン払い、手元の外貨が増えたら、発行した国から先に返します。借りられる上限に届くと受け身の売りが止まり、通貨が安くなります。貸している外貨は外貨準備に入ります。" %}</p>
