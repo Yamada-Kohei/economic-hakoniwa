@@ -42,7 +42,7 @@
 
 ## [2 島と町と人口](02-population.md)
 
-決まり 58 個、うち仮の決まりの表にあるもの 0 個。
+決まり 59 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -104,6 +104,7 @@
 | PO-56 | 計画経済の国営住宅（W-202）: 計画経済の国では家計は住宅の資材を買わず住宅ローンも借りない | 決定（W-190 の回2 で作った | tests/core/test_public_housing.py |
 | PO-57 | 飢えている家計（前のターンに食べきれなかったか飢えの蓄えが残る層）は、売りに出ていない食料のそれ… | 決定（2026-11-02） | tests/core/test_famine_recovery.py |
 | PO-58 | 飢えの蓄えが、次のターンに全部食べれば 0 に戻る大きさ（`hunger_step(S,0)=0`… | 決定（2026-11-05） | tests/core/test_famine_recovery.py、tests/server/test_codex_turn300_fixes.py |
+| PO-59 | 幸福度の内訳（W-172）: 式 `happiness` は項目ごとの点を返す式 `happin`… | 決定（2026-11-14） | tests/core/test_happiness_parts.py |
 
 ## [3 物と市場と値段](03-market.md)
 
@@ -582,7 +583,7 @@
 
 ## [11 画面と統計](11-ui.md)
 
-決まり 95 個、うち仮の決まりの表にあるもの 0 個。
+決まり 96 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -681,6 +682,7 @@
 | UI-93 | 生産調整中のわけ（W-250、2026-11-12）: 施設の状態が売れ行きの調整（target… | 決定 | tests/core/test_phase3_4.py、tests/server/test_screens_notices.py、tests/server/test_slowdown_reasons.py |
 | UI-94 | 市場の記録に、買い手と売り手の別（国営の施設・民営の施設・商社・海外の商人・家計・国の倉庫・政府… | 決定 | tests/core/test_market_groups.py、tests/server/test_good_page.py |
 | UI-95 | 品目ごとの輸出と輸入の額を統計 `export.<財>`・`import.<財>` に残す（W-… | 決定 | tests/core/test_market_groups.py、tests/server/test_trade_overview.py |
+| UI-96 | 幸福度の内訳（W-172、2026-11-14）: 経済の画面の「幸福度を調べる」に、持ち主だけ… | 決定 | tests/server/test_happiness_parts.py |
 
 ## [12 確かめ方](12-checks.md)
 
