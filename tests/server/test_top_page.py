@@ -448,3 +448,38 @@ def test_turn_schedule_tells_paused_updating_late_and_unscheduled(client, world)
     assert display.turn_schedule(w)["state"] == "paused"
     page = client.get("/").content.decode()
     assert "turn-schedule" in page
+
+
+def test_update_fixes_hide_and_reword_copied_lines(monkeypatch):
+    """top.yaml の update_fixes: 写した行を隠す・直す。管理画面で直した行と、ほかの行はそのまま。"""
+    SiteUpdate.objects.all().delete()
+    fixes = {
+        "update_fixes": [
+            {"text": "試験を直しました。", "hide": True},
+            {"text": "古い文です。", "to": "今の文です。"},
+            {"text": "管理画面で直す前の文です。", "to": "使われない文"},
+        ]
+    }
+    monkeypatch.setattr(top, "_yaml", lambda: fixes)
+    found = [
+        {"key": "git:aaa:2", "date": "2026-11-13", "text": "試験を直しました。"},
+        {"key": "git:bbb:2", "date": "2026-11-13", "text": "古い文です。"},
+        {"key": "git:ccc:2", "date": "2026-11-13", "text": "地図を大きくしました。"},
+    ]
+    monkeypatch.setattr(top, "git_updates", lambda: list(found))
+    SiteUpdate.objects.create(date=date(2026, 11, 12), text="管理画面で直した文です。")
+    assert top.sync_updates() == 3
+    assert SiteUpdate.objects.get(key="git:aaa:2").hidden
+    assert SiteUpdate.objects.get(key="git:bbb:2").text == "今の文です。"
+    assert not SiteUpdate.objects.get(key="git:ccc:2").hidden
+    assert SiteUpdate.objects.filter(text="管理画面で直した文です。").exists()
+    assert top.sync_updates() == 0  # 直した行を元の文で写し直さない
+    assert not SiteUpdate.objects.filter(text="古い文です。").exists()
+
+
+def test_update_fixes_in_top_yaml_are_well_formed():
+    """top.yaml の update_fixes は、どれも元の文と、隠すか直した文のどちらか 1 つを持つ。"""
+    top._yaml.cache_clear()
+    for fix in top._yaml().get("update_fixes") or []:
+        assert fix["text"]
+        assert bool(fix.get("hide")) != bool(fix.get("to"))
