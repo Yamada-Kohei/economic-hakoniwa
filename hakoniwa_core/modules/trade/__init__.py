@@ -2048,9 +2048,9 @@ class _Round:
         """FX-76: 財 good を買う前に取り置く決済通貨（外貨を使う順で good より先で、まだ板寄せの来て
         いない財の見込みの和）。取り置くのは順が `trade.plan_fx_reserved` までの財だけ（設備の機械の
         ように、要る額が稼ぎの何十倍もある財まで取り置くと、原料が買えなくなった）。順が
-        `planning.export.reserve_rank`（既定 4: 消費財）から下の財は、輸出の計画の外貨の蓄えの目標
-        （PL-62、本人の B）の分も残す（蓄えは燃料と主食・設備の資材のためのもの。国営工場の原料の
-        3 段まで止めると、綿花が買えず衣類の工場が止まった。国営施設の設備に使う財は残さない）。"""
+        `planning.export.reserve_rank`（既定 3: 原料と部品・消費財）から下の財は、輸出の計画の外貨の
+        蓄えの目標（PL-62、本人の B）の分も残す（蓄えは燃料と主食・設備の資材のためのもの。
+        国営施設の設備に使う財は残さない）。"""
         queue = self.fx_queue.get(key) or {}
         rank = fx_priority(self.defs, good)
         kept = self.config.get("trade.plan_fx_reserved")

@@ -31,9 +31,9 @@
   ``traders.PLAN_X`` に置く。どの商社にも扱える重さを超えては分けない。商社は島の市場に計画の分を
   別の注文で出し（扱える重さは計画の分に先に充てる）、その注文は食料も国営施設と同じ順位で配られる
   （本人の表の 1-2。modules/market）。生産目標の需要の履歴からは除く。
-- 蓄え（本人の B）: 蓄えが目標より少ない間は、外貨を使う順の planning.export.reserve_rank（既定 4:
-  消費財）から下の段の輸入に目標を超える分しか使わない（reserve_of。modules/trade の _fx_ahead）。
-  国営工場の原料（3 段）と、国営施設の設備に使う財（essential）は使える。
+- 蓄え（本人の B）: 蓄えが目標より少ない間は、外貨を使う順の planning.export.reserve_rank（既定 3:
+  原料と部品・消費財）から下の段の輸入に目標を超える分しか使わない（reserve_of。modules/trade の
+  _fx_ahead）。国営施設の設備に使う財（essential）は使える。
 - 中央銀行の外貨は使わない。
 
 島の状態は ``island.ext["plan"]["export"]``:

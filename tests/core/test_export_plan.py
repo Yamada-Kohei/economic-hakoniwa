@@ -201,9 +201,9 @@ def test_earn_is_need_plus_reserve_gap_minus_unsold(game, base):
     assert state["earn"][c] == max(0, expected)
 
 
-def test_reserve_below_target_keeps_fx_from_consumer_goods_only(game, base, monkeypatch):
-    """蓄えが目標より少ない間は、planning.export.reserve_rank（既定 4: 消費財）から下の段の輸入に
-    蓄えを使わない。原料（3 段）と 1・2 段は使える。"""
+def test_reserve_below_target_keeps_fx_from_materials_and_consumer_goods(game, base, monkeypatch):
+    """蓄えが目標より少ない間は、planning.export.reserve_rank（既定 3: 原料と部品・消費財）から下の
+    段の輸入に蓄えを使わない。1・2 段と、国営施設の設備に使う財は使える。"""
     world = copy.deepcopy(base)
     island = planned_islands(world)[0]
     [bloc] = blocs.member_of(world, island.id)
@@ -224,16 +224,17 @@ def test_reserve_below_target_keeps_fx_from_consumer_goods_only(game, base, monk
     key = (island.id, entity, currency)
     r.fx_queue = {}
     assert r._fx_ahead(key, "automobile") == holding  # 目標に届かない: 消費財には使わない
-    assert r._fx_ahead(key, "iron_ore") == 0  # 原料は国営工場が使うので止めない
+    assert r._fx_ahead(key, "iron_ore") == holding
     assert r._fx_ahead(key, "coal") == 0
     assert r._fx_ahead(key, "machinery") == 0
-    # 3 段まで守る設定では原料も止める。ただし国営施設の設備に使う財（木材など）は使える
-    # （本人の表の 3-1）
-    monkeypatch.setitem(game.config.raw["planning"]["export"], "reserve_rank", 3)
-    assert r._fx_ahead(key, "iron_ore") == holding
+    # 国営施設の設備に使う財（木材など）は 3 段でも蓄えを使える（本人の表の 3-1）
     export_plan.state_of(island)["essential"] = ["iron_ore"]
     assert r._fx_ahead(key, "iron_ore") == 0
     export_plan.state_of(island)["essential"] = []
+    # 消費財だけを止める設定では、原料にも使える
+    monkeypatch.setitem(game.config.raw["planning"]["export"], "reserve_rank", 4)
+    assert r._fx_ahead(key, "iron_ore") == 0
+    assert r._fx_ahead(key, "automobile") == holding
     export_plan.state_of(island)["reserve"] = {str(currency): holding // 4}
     assert r._fx_ahead(key, "automobile") == holding // 4  # 目標を超える分は使える
     # 市場経済の島は蓄えを残さない
