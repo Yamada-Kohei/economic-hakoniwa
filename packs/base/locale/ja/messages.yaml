@@ -228,6 +228,7 @@ facility_stopped_budget: "({x}, {y}) の{facility}が、年の予算の月割り
 facility_stopped_staff_plan: "({x}, {y}) の{facility}が、人員計画の枠で人が足りず停止しました"
 facility_stopped_input: "({x}, {y}) の{facility}が{good}不足で停止しました"
 facility_stopped_input_price: "({x}, {y}) の{facility}は、{good}が高く採算が合わないため停止しました"
+facility_stopped_unprofitable: "({x}, {y}) の{facility}は、今の{goods}の売り値では{good}の値段に見合わず、採算が合わないため停止しました"
 facility_stopped_funds: "({x}, {y}) の{facility}が資金不足で{good}を買えず停止しました"
 facility_stopped_public_price: "({x}, {y}) の{facility}は、教材の{good}が高く買えないため停止しました"
 facility_stopped_power: "({x}, {y}) の{facility}が電力不足で停止しました"
@@ -540,6 +541,9 @@ status_budget: "年の予算の月割りが足りない"
 status_staff_plan: "人員の枠"
 status_input: "原料不足"
 status_input_price: "原料が割高"
+# 電力でない原料が高くて買わなかった（倭国さんの案 2、2026-11-14）。売り値の側か原料の側かを決めつけず、
+# 両方の品を出す（server/web/display.py の status_text が「（製品: 〜、原料: 〜）」を足す）
+status_unprofitable: "今の売り値では採算が合わない"
 status_funds: "資金不足"
 status_public_price: "教材が高くて買えない"
 status_power: "電力不足"
