@@ -165,6 +165,23 @@ BIDS = "bids"
 # "steps": 値幅ずつ下げた回数, "start": 下げ始めの値段（運賃を払った後）, "offered"/"sold": 前の
 # ターンに値引きで出した量と売れた量}
 CLEARANCE = "clearance"
+# economy.ext: 財 → 島で最後に約定したターン（相場のない品の初値。MK-43）
+LAST_TRADE = "last_trade"
+
+
+def _traded_before(island: IslandState) -> set[str]:
+    """前からの世界（最後の約定の記録がない保存）で、売り買いの跡のある財（MK-43）。"""
+    from hakoniwa_core.economy.stats import PAID
+
+    economy = island.economy
+    goods = set(economy.ext.get(PAID, {}))
+    goods |= {g for g, history in economy.bought_history.items() if any(history)}
+    for f in island.facilities:
+        goods |= {g for g, q in stock.totals(f.stock).items() if q > 0}
+        goods |= {g for g, entry in f.economy.get("sales", {}).items() if entry[1] > 0}
+    return goods
+
+
 REBUILD = "rebuild"  # 首都の建物の建て替えの資材（フェーズ3-4。modules/politics）
 REPAIR = "repair"  # 傷んだ設備を直す資材（回6。economy/equipment.py）
 MERCHANT = "merchant"  # 海外の商人（フェーズ3-1）
@@ -4831,9 +4848,20 @@ class Market(IslandStage):
             price = prices.get(good, 1)
             if p is not None and p.export_bloc is not None and ask <= p.export_limit < price:
                 prices[good] = auction.band(price, width)[0]
+        unlisted = Market._unlisted(island, ctx, results)
         for good in sorted(wanted):
             if supply.get(good, 0) > 0:
                 continue
+            if good in unlisted:
+                # 相場のない品（MK-43）は、作る施設の原価に決まった儲けを乗せた値段（輸入が引き合う
+                # 値段があれば低いほう）まで1ターンで上げる。作る施設がなければ下の値幅ずつ
+                prospect = found.get(good)
+                first = Market._first_price(
+                    island, ctx, good, prices, rates, prospect.import_floor if prospect else 0
+                )
+                if first is not None:
+                    prices[good] = max(prices.get(good, 1), first)
+                    continue
             floors = Market._supply_floors(island, ctx, good, prices, rates)
             if good in found and found[good].import_floor > 0:
                 floors.append(found[good].import_floor)
@@ -4845,6 +4873,63 @@ class Market(IslandStage):
             price = prices.get(good, 1)
             if floors and min(floors) >= price:
                 prices[good] = auction.band(price, width)[1]
+
+    @staticmethod
+    def _unlisted(
+        island: IslandState, ctx: StageContext, results: dict[str, auction.Result]
+    ) -> set[str]:
+        """相場のない品（MK-43）: 直近 market.unlisted_turns ターンに島で一度も約定しなかった財。
+        計画経済の島は公定価格なので空。
+
+        財ごとの最後に約定したターンを economy.ext[LAST_TRADE] に残す（このターンに約定した財を
+        書いてから見る）。前からの世界で記録がなければ、売り買いの跡のある財（物価指数に入れた
+        最後の約定の値段、家計の買った量、施設の在庫、施設の売れた量）を、このターンに約定したと
+        置く。"""
+        economy = island.economy
+        table = economy.ext.get(LAST_TRADE)
+        if table is None:
+            table = dict.fromkeys(sorted(_traded_before(island)), ctx.turn)
+            economy.ext[LAST_TRADE] = table
+        for good, result in sorted(results.items()):
+            if result.volume > 0:
+                table[good] = ctx.turn
+        if planning.is_planned(island, ctx.defs):
+            return set()
+        turns = ctx.config.get("market.unlisted_turns")
+        return {g for g in ctx.defs.goods if ctx.turn - table.get(g, ctx.turn - turns) >= turns}
+
+    @staticmethod
+    def _first_price(
+        island: IslandState,
+        ctx: StageContext,
+        good: str,
+        prices: dict[str, int],
+        rates: dict[int, int],
+        imported: int,
+    ) -> int | None:
+        """相場のない品の初値（MK-43）: 島で今の作り方で good を作る施設の1単位の原価（unit_floor。
+        投入財と運賃・賃金・電気代・設備の傷み）の一番安いものに market.initial_prices.markup を
+        乗せた値段。輸入が引き合う値段 imported（0 はなし）があれば低いほう。混合経済の値段の上限が
+        あれば上限まで。作る施設がなければ None。"""
+        defs, config = ctx.defs, ctx.config
+        costs = [
+            unit_floor(defs, config, f, good, prices, f.economy.get("wage", 0), rates.get(f.id, 0))
+            for f in island.facilities
+            if f.built
+            and fac.on_map(f)
+            and not is_stopped(f)
+            and fac.recipe_of(defs, f)["outputs"].get(good)
+        ]
+        costs = [c for c in costs if c > 0]
+        if not costs:
+            return None
+        price = round_money(min(costs) * (1 + config.get("market.initial_prices.markup")))
+        if imported > 0:
+            price = min(price, imported)
+        cap = island.policy.price_cap.get(good)
+        if cap and politics.trait(island, defs, "price_controls", False):
+            price = min(price, cap)
+        return max(1, price)
 
     @staticmethod
     def _adapt_usual(

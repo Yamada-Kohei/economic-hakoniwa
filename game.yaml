@@ -239,6 +239,9 @@ market:
   expand_margin: 0.2    # 売り切れて、値段が変動費よりこの割合以上高いときに増産する
   max_target_change: 0.2  # 操業目標を1ターンに変える幅の上限（全力に対する割合）
   public_stock_turns: 3 # 公務の施設（学校と大学）が持っておく投入財（教材）のターン数
+  # 相場のない品（MK-43）: 島でこのターン数のあいだ一度も約定しなかった財は、品切れのとき、作る施設の
+  # 原価に initial_prices.markup を乗せた値段（輸入が引き合う値段があれば低いほう）まで1ターンで上げる
+  unlisted_turns: 24
   initial_prices:       # 初めの値段は定義のレシピから「原価＋上乗せ」で解く
     markup: 0.1         # 原価に上乗せする割合
     capital_rate: 0.05  # 設備の利子（年率）。減価償却は firms.depreciation_turns

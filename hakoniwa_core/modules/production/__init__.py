@@ -232,7 +232,7 @@ class Production(IslandStage):
                 if good != power:
                     stock.add(f.stock, good, amount, ctx.turn, defs.goods)
                     books.stock_moved(island, f.id, good, amount)
-            self._update_status(island, f, rate, cause)
+            self._update_status(island, f, rate, cause, sorted(run.recipe["outputs"]), power)
         for good, amount in sorted(produced.items()):
             island.stats[f"production.{good}"] = from_milli(amount)
         for good, amount in sorted(used_up.items()):
@@ -899,8 +899,18 @@ class Production(IslandStage):
     # --- 状態とログ ------------------------------------------------------------
 
     @staticmethod
-    def _update_status(island: IslandState, f: Facility, rate: int, cause: str) -> None:
+    def _update_status(
+        island: IslandState,
+        f: Facility,
+        rate: int,
+        cause: str,
+        products: list[str] | None = None,
+        power: str = "",
+    ) -> None:
         """稼働率と理由を書き、止まったとき・動き出したときにログを出す。
+
+        電力でない原料が高くて止まったときは、作る物 products の売り値と原料の両方を書く
+        （facility_stopped_unprofitable。売り値が安いのか原料が高いのかを決めつけない。2026-11-14）。
 
         止まっている間に理由が変わったとき（災害から売れ行きへ、など）も、止まっている間に1度
         だけその理由を知らせる（知らせた理由は ext["stop_causes"]。動き出したら消す）。
@@ -916,7 +926,10 @@ class Production(IslandStage):
         if rate == 0 and (stopped or (cause != before_status and cause not in (told or []))):
             kind, _, good = cause.partition(":")
             args = {**where, "good": good} if good else where
-            island.log.append(LogEntry(f"facility_stopped_{kind}", args))
+            key = f"facility_stopped_{kind}"
+            if kind == "input_price" and good and good != power and products:
+                key, args = "facility_stopped_unprofitable", {**args, "goods": products}
+            island.log.append(LogEntry(key, args))
             f.ext["stop_causes"] = [*(told or []), cause]
         elif rate > 0 and before_rate == 0:
             f.ext.pop("stop_causes", None)

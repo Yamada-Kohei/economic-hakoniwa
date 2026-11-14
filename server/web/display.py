@@ -949,6 +949,13 @@ def status_text(f: Facility) -> str:
         from server.web import slowdown  # slowdown は display を使うので、ここで読み込む
 
         return slowdown.stop_text(f) or message("status_target")
+    elif kind == "input_price" and good and good != get_game().config.get("power.good"):
+        # 売り値と原料の両方を出す（どちらが原因かは決めつけない。2026-11-14、倭国さんの案 2）
+        defs = get_game().defs
+        outputs = sorted(fac.recipe_of(defs, f)["outputs"])
+        products = "・".join(defs.name("goods", g) for g in outputs)
+        material = defs.name("goods", good)
+        return message("status_unprofitable") + f"（売り値: {products}、原料: {material}）"
     else:
         text = message(f"status_{kind}")
     if kind == "budget" and good:  # 年の予算の月割りが足りない（項目の名前。LB-45）
@@ -976,8 +983,9 @@ STATUS_HINTS = {
         "「国の倉庫のこのターンの売り買い」で原料を売り出せます。"
     ),
     "input_price": (
-        "原料の「値段の上限（公共料金など）の変更」を見直すか、"
-        "「二国間契約の申し込み」で原料を輸入できます。"
+        "売り値が安すぎるなら「補助金の変更」で生産補助を出せます。原料が高すぎるなら、原料の"
+        "「値段の上限（公共料金など）の変更」を見直すか、「二国間契約の申し込み」で原料を輸入できます。"
+        "島でまだ売り買いのない品は、作る費用から値段が付きます。"
     ),
     "funds": (
         "「補助金の変更」で生産補助を出すか、"
