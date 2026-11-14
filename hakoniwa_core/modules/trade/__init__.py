@@ -1527,7 +1527,7 @@ class _Round:
         for bloc in list(blocs.blocs(self.world)):
             members = [m for m in bloc["members"] if m in self.islands]
             self.fx_queue = self._plan_fx_queue(bloc, members)
-            for good in tradable_goods(self.defs):
+            for good in self._bloc_goods():
                 key = (bloc["id"], good)
                 for queue in self.fx_queue.values():  # この財の板寄せで、取り置きは要らなくなる
                     queue.pop(good, None)
@@ -1580,6 +1580,17 @@ class _Round:
                 unmet[key] = result.demand - volume
                 sellers[key] = len({id(a.facility) for a in asks})
         return unmet, sellers
+
+    def _bloc_goods(self) -> list[str]:
+        """圏の市場で板寄せする財の順。商社の外貨・扱える重さと船は、先に板寄せした財が先に使う。
+        `trade.bloc_order` が name（既定）なら財の名前の順。priority なら外貨を使う順（goods.yaml の
+        fx_priority: 燃料と主食 → 設備 → 原料と部品 → 消費財。同じ段は名前の順）で、どの体制の島の
+        商社も燃料と主食を先に買う（W-275 の広げの試し。名前の順では建材・衣料が魚・穀物・肉より
+        先に外貨と重さを使い、混合経済の島で主食が後回しになった。2026-11-15 島20 の調べ）。"""
+        goods = tradable_goods(self.defs)
+        if self.config.get("trade.bloc_order") == "priority":
+            return sorted(goods, key=lambda g: (fx_priority(self.defs, g), g))
+        return goods
 
     def _drop_blocked(
         self,
