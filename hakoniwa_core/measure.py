@@ -148,8 +148,18 @@ CAUSES = {
     "wages": "funds",
     "workers": "workers",
     "engineers": "engineers",
+    "equipment": "equipment",  # 設備の傷み（2026-11-13 に分けた。前は halted に入っていた）
 }
-CAUSE_GROUPS = ("sales", "inputs", "power", "funds", "workers", "engineers", "halted")
+CAUSE_GROUPS = (
+    "sales",
+    "inputs",
+    "power",
+    "funds",
+    "workers",
+    "engineers",
+    "equipment",
+    "halted",
+)
 
 # 誰が買ったかを数える財（設備と工事の資材。回6 の材料）
 WATCH = ("machinery", "steel", "building_materials", "transport_ship", "automobile")

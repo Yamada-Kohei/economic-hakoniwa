@@ -11,7 +11,7 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, ledger
+from hakoniwa_core import infra, ledger, politics
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.economy import (
     books,
@@ -1095,6 +1095,7 @@ ORDER_UNITS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = {
 CLAUSE_UNITS = ("good", ("quantity",), ("price",))
 ORDER_NESTED_UNITS: dict[str, tuple[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
     "propose_treaty": ("clauses", CLAUSE_UNITS),
+    "set_export_plan": ("plans", ("good", ("quantity",), ())),  # 輸出の計画（PL-62）
 }
 # 項目の下に「財 → 量」の表を持つ命令（W-182）。種類 → 項目。備蓄の目標（food などの補給も財）
 ORDER_GOOD_MAPS: dict[str, str] = {"set_defense": "reserve"}
@@ -1586,6 +1587,15 @@ def _describe_politics(kind: str, payload: dict[str, Any], name: str) -> str:
             cap = entry.get("cap")
             rows.append(f"{where} {'枠を外す' if cap is None else f'{cap:,} 人'}")
         return f"{name}: " + "、".join(rows)
+    if kind == "set_export_plan":
+        rows = []
+        for entry in payload.get("plans", []):
+            good = entry.get("good", "")
+            label = defs.name("goods", good) if good in defs.goods else good
+            qty = entry.get("quantity", 0)
+            unit = defs.unit_name(good) if good in defs.goods else ""
+            rows.append(f"{label} {'輸出しない' if not qty else f'{qty:,} {unit}'}")
+        return f"{name}: " + ("、".join(rows) or "名指しをやめる（全部の財を自動で選ぶ）")
     return ""
 
 
@@ -2044,6 +2054,21 @@ def latest_stats(island: m.Island) -> tuple[int | None, dict[str, float]]:
         return None, {}
     rows = island.stats.filter(turn=last).values_list("name", "value")
     return last, dict(rows)
+
+
+def admin_power(island: m.Island, stats: dict[str, float]) -> int:
+    """次のターンの行政力（画面・API・MCP に出す値）。
+
+    更新の後は記録（統計の admin_power）をそのまま使う。建国してから最初の更新の前は記録が無いので、
+    コアの計算（planning の admin_power）と同じく、最低の行政力に体制（権威主義 +1）と政情の
+    足し引きをした値を出す（建国の島の官庁にはまだ働く人がいない）。
+    """
+    if "admin_power" in stats:
+        return int(stats["admin_power"])
+    config = get_game().config
+    low = config.get("orders.base_admin_power")
+    high = config.get("orders.max_admin_power")
+    return politics.adjust_admin(island_from_row(island), get_game().defs, config, low, low, high)
 
 
 def summary(stats: dict[str, float], currency: str = "") -> list[dict[str, Any]]:

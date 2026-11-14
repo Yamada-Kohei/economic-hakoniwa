@@ -67,6 +67,7 @@ set_official_price_rules: 公定価格の決まりの変更
 set_retail_price: 小売の値段の変更
 set_priority_industries: 重点産業の変更
 set_staff_plan: 人員計画
+set_export_plan: 輸出の計画
 set_price_floor: 値段の下限の変更
 declare_war: 宣戦布告
 propose_treaty: 条約の提案

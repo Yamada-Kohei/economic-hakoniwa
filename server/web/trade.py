@@ -137,6 +137,7 @@ WHY_NAMES = {
     trade_stage.WHY_FUNDS: "払うお金（商社の預金）が足りない",
     trade_stage.WHY_QUOTA: "輸入の割り当ての上限まで買った",
     trade_stage.WHY_BLOCKADE: "封鎖で船出を断られた",
+    trade_stage.WHY_PRIORITY: "外貨を、燃料・主食や設備など先に使う物に取り置いた（計画経済）",
 }
 SHIPMENT_KINDS = {"bloc": "貿易圏", "contract": "二国間契約"}
 # 外貨の持ち高と非居住者の預金の持ち手（施設はまとめて「商社など」）
@@ -779,10 +780,8 @@ def fleet_view(island: m.Island, here: IslandState, stats: dict[str, float]) -> 
             # 直近の、船が足りずに輸入を減らしたターンの数（数えたターンのうち）
             "short_turns": sum(f.economy.get("ships_short", [])),
             "short_of": len(f.economy.get("ships_short", [])),
-            # 造船所に注文して、まだ届いていない輸送船（船の前注文。FX-60。圏のほかの国の造船所への
-            # 注文 FX-78 も）
-            "on_order": from_milli(ship_orders.all_on_order(here, f)),
-            "on_order_abroad": from_milli(f.economy.get(ships.ABROAD, 0)),
+            # 島の造船所に注文して、まだ届いていない輸送船（船の前注文。FX-60）
+            "on_order": from_milli(ship_orders.on_order(here, f)),
             # 圏の荷を運ぶ船の貸し借り（1ターンの運賃）
             "charter_income": stats.get("trade.charter_income", 0),
             "charter_paid": stats.get("trade.charter_paid", 0),

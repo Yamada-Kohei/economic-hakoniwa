@@ -2,8 +2,8 @@
 
 海運業（島に1つ、マスを持たない）は輸送船を設備として持ちます（``economy["fleet"]``: [使い始めた
 ターン, 1000 分の 1 隻] の組）。1 隻で 1 航海に trade.ship_capacity トン運べ、航海に出ている
-船の数に合わせて船員（trade.ship_crew）を雇います（港につないでいる船は少しの船員で守る）。市場で買った船（造船所の船や
-輸入した船）と前注文で届いた船は、在庫から船団に移して使い始めます。
+船の数に合わせて船員（trade.ship_crew）を雇います（港につないでいる船は少しの船員で守る）。市場で
+買った船（造船所の船や輸入した船）と前注文で届いた船は、在庫から船団に移して使い始めます。
 
 寿命（FX-11。2026-11-13 に直した）: trade.ship_life ターン使った船は、代わりの船が足りるまで使い続け
 ます。寿命の前の船（このターンに船団に入れた船を含む）で直近に航海に出ていた船の数が足りる分だけ、
@@ -55,8 +55,6 @@ from hakoniwa_core.units import (
 )
 
 MILLI = QUANTITY_SCALE
-# 海運業の economy: 前注文で届いた船 [量, 払った額]（船団に入れるときの設備の額）
-PAID = "ships_paid"
 
 
 # --- 船団 --------------------------------------------------------------------------
@@ -94,11 +92,6 @@ def occupy(f: Facility, shipment: int, load: int) -> None:
 
 def release(f: Facility, shipment: int) -> None:
     f.economy.get("busy", {}).pop(str(shipment), None)
-
-
-ABROAD = "ships_on_order_abroad"  # 海運業の economy: 圏のほかの島の造船所に注文して届いていない船
-# 海運業の economy: 島に造船所がなく、圏のほかの島の造船所に注文できる（FX-78）
-REACH = "yard_abroad"
 
 
 def used_ships(config: GameConfig, f: Facility) -> int:
@@ -147,24 +140,11 @@ def renewal(config: GameConfig, f: Facility, turn: int) -> int:
 
 
 def ships_wanted(config: GameConfig, f: Facility, turn: int) -> int:
-    """海運業が市場で買う輸送船（1000 分の 1 隻）。ships_needed と同じだが、圏のほかの島の造船所に
-    注文できる海運業（前の貿易の段で見た）は、市場では買わず、貿易の段で注文する（FX-78。市場の
-    買いと注文で同じ船を二重に頼まない）。"""
-    if f.economy.get(REACH):
-        return 0
-    return ships_needed(config, f, turn)
-
-
-def ships_needed(config: GameConfig, f: Facility, turn: int) -> int:
-    """海運業に足りない輸送船（1000 分の 1 隻。買って船団に入れる前の船と、圏のほかの島の造船所に
-    注文して届いていない船があれば、その分を引く）。
+    """海運業が市場で買う輸送船（1000 分の 1 隻。買って船団に入れる前の船があれば、その分を引く）。
 
     - 直近 trade.cost_turns ターンの半分以上で、船が足りずに荷を残していたら 1 隻（S2: 圏の市場や
       契約で約定した荷が、どの船にも載らなかったとき）。
     - 買い替えと買い増し（renewal。FX-11・FX-80）。
-
-    標準の計画は、島に造船所がなく、これが残っている島に造船所を建てる（autoplan。圏の造船所への
-    注文が外貨の都合で進まないときも、島で作れるように）。
     """
     want = 0
     history = f.economy.get("ships_short", [])
@@ -172,7 +152,7 @@ def ships_needed(config: GameConfig, f: Facility, turn: int) -> int:
     if len(history) >= turns and sum(history) * 2 >= len(history):
         want = MILLI
     want = max(want, renewal(config, f, turn))
-    have = stock.total(f.stock, config.get("trade.ship_good")) + f.economy.get(ABROAD, 0)
+    have = stock.total(f.stock, config.get("trade.ship_good"))
     return max(0, want - have)
 
 
@@ -213,12 +193,8 @@ def commission(island: IslandState, defs: Defs, config: GameConfig, turn: int) -
         return 0
     stock.take(f.stock, good, qty)
     # 船は設備（設備の額に足し、減価償却で費用にする）。GDP では買ったときの在庫の増えを、そのまま
-    # 設備への投資として残す（在庫の減りに数えない）。前注文で届いた船は払った額で、ほかは島の値段で
-    # 付ける（島に船の市場がないと、島の値段は初めのまま動かない）
-    paid_qty, paid_value = f.economy.pop(PAID, [0, 0])
-    if paid_qty > qty:  # 念のため（届いた船は同じターンにみな船団に入る）
-        paid_value, paid_qty = paid_value * qty // paid_qty, qty
-    value = paid_value + money_of(island.economy.prices.get(good, 0), qty - paid_qty)
+    # 設備への投資として残す（在庫の減りに数えない）
+    value = money_of(island.economy.prices.get(good, 0), qty)
     f.economy["capital"] = f.economy.get("capital", 0) + value
     add_ships(f, qty, turn)
     island.log.append(LogEntry("ships_commissioned", {"count": from_milli(qty)}))

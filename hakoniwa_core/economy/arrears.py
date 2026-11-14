@@ -155,10 +155,6 @@ def pay_claims(
             loans[name] -= share
         else:
             ledger.pay(island, payer, name, share, "ship_order_refund")
-            if ledger.is_nonresident(name):  # ほかの島の海運業の前払い（FX-78）
-                from hakoniwa_core.trade import money as fxmoney
-
-                fxmoney.pend(island, name, share, prepaid=True)
             orders[name] -= share
         left -= share
     claims[LOANS] = {b: v for b, v in loans.items() if v > 0}

@@ -1131,6 +1131,24 @@ def staff_plan_brief(island: m.Island, mine: bool) -> dict[str, Any] | None:
     }
 
 
+def export_plan_brief(island: m.Island, mine: bool) -> dict[str, Any] | None:
+    """輸出の計画（PL-62。計画経済の島の持ち主だけ）: 通貨ごとの要る外貨・持つ外貨・蓄えの目標・
+    稼ぐ額、計画のある財、名指しした財、輸出できる財がなくて止まっているか。全部は計画の画面
+    （report の plan）の export。"""
+    if not mine:
+        return None
+    core = island_from_row(island)
+    if not planning.is_planned(core, get_game().defs):
+        return None
+    view = politics_views.export_plan_view(island, (island.ext or {}).get(planning.KEY, {}))
+    return {
+        "money": view["money"],
+        "rows": view["rows"][:LIST_MAX],
+        "named": view["named"],
+        "stuck": view["stuck"],
+    }
+
+
 def budget_shares(stats: dict[str, float]) -> list[dict[str, Any]]:
     """国庫の項目の予算が足りず、同じ優先度の施設に要る額の割合で分けた項目（LB-45）と、要る額に
     対して分けた割合。"""
@@ -1206,6 +1224,7 @@ def summary(island: m.Island, mine: bool, viewer: int | None = None) -> dict[str
         "firms": firms_brief(island, latest, mine),
         "dismissal": dismissal_brief(island, latest, currency),
         "staff_plan": staff_plan_brief(island, mine),
+        "export_plan": export_plan_brief(island, mine),
         "budget_shares": budget_shares(latest),
         "retail": retail_brief(island, latest, currency),
         "population_changes": population_changes(latest),
@@ -1274,15 +1293,13 @@ def orders_brief(island: m.Island) -> dict[str, Any]:
     """命令の列と行政力、直近に実行したターンの命令の結果（持ち主だけ）。"""
     d = get_game().defs
     _, stats = display.latest_stats(island)
-    admin_power = stats.get("admin_power")
-    if admin_power is None:
-        admin_power = get_game().config.get("orders.base_admin_power")
+    admin_power = display.admin_power(island, stats)
     pending = island.orders.filter(status="pending").order_by("seq", "id")
     done = island.orders.exclude(status="pending")
     last = done.aggregate(t=Max("executed_turn"))["t"]
     labels = display.facility_labels(island)  # 施設への命令の文に種類と作る物を（W-262）
     return {
-        "admin_power": int(admin_power),
+        "admin_power": admin_power,
         "pending": [
             {
                 "id": o.id,  # 1 件ずつ消すときの番号（remove_order・DELETE .../items/<番号>）

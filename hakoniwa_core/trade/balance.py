@@ -19,13 +19,11 @@
 金融収支（資産の増加 − 負債の増加）:
 - 資産 assets.fx: 外貨の持ち高の増減。assets.bonds: 外国の国債を買った・売った・償還された額。
   assets.swaps: 中央銀行どうしの融通で貸した・返された額（swap.py）。assets.merchant: 海外の商人が
-  買った物の代金（島の外から入ったお金。W-186 回4）。assets.orders: 外国の造船所に払った船の前注文の
-  前払い（FX-78。引き渡しで輸入に振り替え、取り消しの返金で減る）
+  買った物の代金（島の外から入ったお金。W-186 回4）
 - 負債 liabilities.deposits: 外国の主体が持つ自国通貨（非居住者の預金）の増減。liabilities.bonds:
   外国が持つ自国の国債の増減。liabilities.swaps: 融通で借りた・返した額。liabilities.merchant:
   海外の商人に払ったお金（島の外で消えるので、負債が増えて消えたものとして入れ、経常収支と釣り
-  合わせる）。liabilities.orders: 外国の海運業から受けた船の前注文の前払い（FX-78。引き渡しで輸出に
-  振り替え、返金で減る）
+  合わせる）
 
 どの流れも経常収支の側と金融収支の側に同じ額を入れるので、経常収支 = 金融収支 になります（テストで
 確かめる）。非居住者の預金の増減と、外貨の持ち高の量の増減は、帳簿と外貨の持ち高の残高の増減とも
@@ -56,13 +54,12 @@ CURRENT = {
     "migrant_deposits": "transfers",
 }
 CURRENT_ITEMS = ("goods", "services", "income", "transfers")
-ASSET_ITEMS = ("assets.fx", "assets.bonds", "assets.swaps", "assets.merchant", "assets.orders")
+ASSET_ITEMS = ("assets.fx", "assets.bonds", "assets.swaps", "assets.merchant")
 LIABILITY_ITEMS = (
     "liabilities.deposits",
     "liabilities.bonds",
     "liabilities.swaps",
     "liabilities.merchant",
-    "liabilities.orders",
 )
 
 

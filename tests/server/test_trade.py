@@ -610,7 +610,7 @@ def test_ships_on_order_show_on_the_trade_page_and_api(client, world):
     data = client.get(f"/api/islands/{own.id}/trade").json()
     assert data["fleet"]["shipping"]["on_order"] == 2
     html = client.get(f"/islands/{own.id}/trade/fleet/").content.decode()
-    assert "造船所に 2 隻を注文しています。" in html
+    assert "島の造船所に 2 隻を注文しています。" in html
 
 
 def test_help_explains_how_traders_price_imported_goods(client, world):

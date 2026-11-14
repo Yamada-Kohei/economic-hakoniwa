@@ -116,7 +116,6 @@ from hakoniwa_core.state import (
 )
 from hakoniwa_core.trade import blocs as trade_blocs
 from hakoniwa_core.trade import merchant as trade_merchant
-from hakoniwa_core.trade import ships as trade_ships
 from hakoniwa_core.trade import traders as trade_traders
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE, money_of, to_milli
 
@@ -1021,11 +1020,6 @@ def _candidates(
     ship = config.get("trade.ship_good")
     record = markets.get(ship)
     short = record is not None and record.supply < record.demand
-    shipping = trade.shipping_of(island, config)
-    if shipping is not None and shipping.economy.get(trade_ships.REACH):
-        # 圏の造船所に注文する海運業は市場で買わないので、足りない船で見る（FX-78。前は市場の
-        # 足りなさだけを見たので、注文が外貨の都合で進まない島でも造船所を建てなかった）
-        short = short or trade_ships.ships_needed(config, shipping, turn) > 0
     if (short or yard) and _count(island, "shipyard") == 0:
         yards = list(_producers(defs, config, island, ship))
         yield from (c for c in yards if _inputs_at_hand(defs, config, *c, at_hand))

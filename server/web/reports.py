@@ -186,8 +186,6 @@ _EXTRA_STATS = [
     ("bop.liabilities.swaps", "金融収支・中央銀行が融通で借りた外貨の増加（負債）", "money"),
     ("bop.liabilities.merchant", "金融収支・海外の商人に払った額（負債）", "money"),
     ("bop.assets.merchant", "金融収支・海外の商人から受け取った額（資産）", "money"),
-    ("bop.assets.orders", "金融収支・外国の造船所に払った船の前払いの増加（資産）", "money"),
-    ("bop.liabilities.orders", "金融収支・外国の海運業から受けた船の前払いの増加（負債）", "money"),
     ("fx.reserves", "外貨準備（政府と中央銀行の外貨と外国の国債、融通で貸した外貨）", "money"),
     ("fx.swap.borrowed", "中央銀行が融通で借りている額（自国通貨に直す）", "money"),
     ("fx.swap.lent", "中央銀行が融通で貸している額（自国通貨に直す）", "money"),
