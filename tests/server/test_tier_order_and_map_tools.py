@@ -42,6 +42,9 @@ def test_every_page_loads_the_table_sorter_and_the_map_has_a_coordinate_box(worl
     page = Client().get(f"/islands/{island.id}/").content.decode()
     assert "js/table-sort.js" in page
     assert 'id="map-coord"' in page
+    # 目盛りと座標は既定で出さず、地図のボタンで出す（UI-85）
+    assert 'id="map-ruler-toggle"' in page
+    assert 'aria-pressed="false"' in page
     top = Client().get("/").content.decode()
     # トップの表も同じ部品で並べ替える（table-sort.js を先に読む）
     assert top.index("js/table-sort.js") < top.index("js/top-table.js")
