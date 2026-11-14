@@ -13,7 +13,7 @@ from typing import Any
 from django.db.models import Max, Q
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger
+from hakoniwa_core import ledger, stops
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.economy import (
     ENGINEERS,
@@ -632,8 +632,8 @@ def with_fiscal(stats: dict[str, float]) -> dict[str, float]:
 
 # --- 市場 -----------------------------------------------------------------------------
 
-# 原料を買えずに止まった施設の状態（status の「種類:財」の種類）
-SHORT_STATUSES = ("input", "input_price", "funds", "public_price")
+# 原料を買えずに止まった施設の状態（status の「種類:財」の種類。理由の表 stops の原料待ちの行）
+SHORT_STATUSES = tuple(k for k, r in stops.REASONS.items() if r.input_short)
 
 
 def market_turn(island: m.Island) -> int | None:

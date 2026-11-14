@@ -20,7 +20,7 @@ from django.templatetags.static import static
 from django.views.decorators.http import require_GET, require_http_methods
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import nature
+from hakoniwa_core import nature, stops
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import freight
 from hakoniwa_core.founding import land_terrains
@@ -414,6 +414,10 @@ def island_map(request, island_id: int):
             "size": (f.ext or {}).get("size", 1),
             "status": f.status,
             "rate": f.operating_rate,
+            # 地図の赤い点を出すか（理由の表 hakoniwa_core/stops.py。W-34）
+            "stopped": stops.stopped_mark(
+                get_game().config, f.status, f.operating_rate, f.ext or {}
+            ),
             **({"hidden": True} if (f.ext or {}).get("hidden") else {}),
         }
         for f in facility_rows  # マスを持つ施設だけ

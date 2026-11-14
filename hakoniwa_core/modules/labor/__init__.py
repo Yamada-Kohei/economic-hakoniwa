@@ -25,7 +25,7 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger
+from hakoniwa_core import ledger, stops
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
@@ -201,7 +201,7 @@ def furlough_share(defs: Defs, config: Any, f: Facility) -> int:
     ただし電力が高い・買うお金がない（input_price・funds の電力）は、電力不足と同じ休業手当のまま
     （PR #303 で「電力不足」の誤表示を分けたときに、賃金の扱いは変えないことにした。満額にすると、
     電気代も払えない施設の差し押さえが早まり、測りで企業の連鎖の差し押さえが増えた）。"""
-    if not f.built or not fac.furloughed(config, f.status):
+    if not f.built or not stops.furloughed(config, f.status):
         return BASIS
     able = fac.labor_ratio(defs, f)
     if able <= 0:
