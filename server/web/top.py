@@ -153,7 +153,20 @@ def sync_updates() -> int:
             SiteUpdate(key=r["key"], date=date.fromisoformat(r["date"]), text=r["text"][:200])
         )
     SiteUpdate.objects.bulk_create(new, ignore_conflicts=True)
+    _apply_update_fixes()
     return len(new)
+
+
+def _apply_update_fixes() -> None:
+    """top.yaml の update_fixes: 写した行のうち、遊ぶ人に関係のない行を隠し（hide）、
+    今の動きとずれた行を直す（to）。元の文のままの行にだけ効くので、管理画面で直した行は
+    そのまま。行は key で見分けるので、直した後に同じコミットから写し直すことはない。"""
+    for fix in _yaml().get("update_fixes") or []:
+        rows = SiteUpdate.objects.filter(text=str(fix["text"]))
+        if fix.get("hide"):
+            rows.filter(hidden=False).update(hidden=True)
+        elif fix.get("to"):
+            rows.update(text=str(fix["to"])[:200])
 
 
 def git_updates() -> list[dict[str, str]]:
