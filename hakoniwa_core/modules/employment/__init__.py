@@ -34,6 +34,8 @@ facilities.engineer_cap）。3 の後に余った技術者は、まだ埋まら�
 割り振り、1 で中心の通勤圏の人を雇い続け、ほかの施設が 2 と 3 で雇った後に、中心の通勤圏に残った
 失業者を雇います。店は引き抜かず、ほかの施設は賃金にかかわらず店から引き抜けます（多くの小さな店は、
 ほかに仕事のない人の受け皿になる。economy/services.py）。
+計画経済の島では、店が雇った後に通勤圏に残った失業者を、人を抱える国営の施設の空いた席に国が決めた
+賃金で配ります（雇用の保障。LB-46。_guarantee）。
 労働の動員（全体主義。フェーズ3-4）をしている島では、最後に残った失業者を、物を作る国営の施設の
 空いた席に島のどこからでも、動員の賃金で割り当てます（_mobilize）。
 施設ごと・マスごとに雇った人数は、施設の economy["staff"] に残します。雇われなかった人は失業し、
@@ -156,6 +158,7 @@ ATTRITION = "attrition"  # f.economy: 人を抱える施設の、辞める人の
 STAFF_CAPPED = planning.STAFF_CAPPED  # f.ext: 人員の枠で、生産目標に要る人を雇えなかった（PL-59）
 SHORT_MATERIALS = funds.SHORT_MATERIALS
 PENDING_MATERIALS = "pending_material_holds"  # island.scratch: 雇用の段の終わりに取り置く材料の代金
+GUARANTEED = "guaranteed"  # f.economy: このターンに雇用の保障で配った人数（LB-46）
 STAFF_LIMITS = "staff_limits"  # island.scratch: 施設の番号 → このターンの人員の枠の人数（動員も）
 
 
@@ -431,7 +434,10 @@ class Employment(IslandStage):
             services.hire(island, config, shop, plan, staff[fid], free)
         # 4. 余った技術者を、まだ埋まらない一般の席に島のどこからでも就かせる
         spare = self._spare_engineers(island, plans, general, staff, engineers)
-        # 5. 労働の動員（全体主義）: 残った失業者を、国営の施設の空いた席に島のどこからでも
+        # 5. 雇用の保障（計画経済。LB-46）: 通勤圏に残った失業者を、国営の施設の空いた席に
+        #    国が決めた賃金で配る（次のターンからは抱えた人として雇い続ける）
+        guaranteed = self._guarantee(island, ctx, plans, staff, engineers, spare, free)
+        # 6. 労働の動員（全体主義）: 残った失業者を、国営の施設の空いた席に島のどこからでも
         #    割り当てる
         mobilized = self._mobilize(island, ctx, plans, staff, engineers, spare, free, employed)
         # 雇えなかった分の賃金の取り置きを戻し、結果を書く
@@ -453,11 +459,13 @@ class Employment(IslandStage):
                     f.economy[key] = value
                 else:
                     f.economy.pop(key, None)
-            # 払えないまま働く人（遅配）は、雇えた人のうち賃金を取り置いた席を超えた分
+            # 払えないまま働く人（遅配）は、雇えた人のうち賃金を取り置いた席を超えた分（雇用の
+            # 保障で配った人は、配るときに賃金を取り置いたので数えない）
             paid_seats = general[f.id] - unpaid[f.id]
-            unhired = max(0, paid_seats - hired - spared)
+            regular = hired - guaranteed.get(f.id, 0)
+            unhired = max(0, paid_seats - regular - spared)
             contracts.release(island, payer_of(defs, config, f), f, unhired * wage)
-            owed = max(0, hired + spared - paid_seats)
+            owed = max(0, regular + spared - paid_seats)
             if owed:
                 f.economy["unpaid"] = owed
                 f.economy["arrears_months"] = f.economy.get("arrears_months", 0) + 1
@@ -940,6 +948,79 @@ class Employment(IslandStage):
             return got
 
         return hire
+
+    # --- 雇用の保障（LB-46） -----------------------------------------------------------
+
+    def _guarantee(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        plans: list[tuple[Facility, int]],
+        staff: dict[int, dict[Pos, int]],
+        engineers: dict[int, int],
+        spare: dict[int, int],
+        free: dict[Pos, int],
+    ) -> dict[int, int]:
+        """計画経済の島で、店が雇った後に通勤圏に残った失業者（村で自給の農業をしている人を除く）
+        を、人を抱える国営の施設（PL-57 の並び。物を作る施設と公共サービス）の空いた席（設備の
+        傷んだ分を除いた全力の人数まで。人員の枠 PL-59 があれば枠まで）に、優先度の高い施設から
+        （同じなら番号の小さい順）、通勤圏の近いマスの順に配る。賃金は施設の賃金（国が決めた賃金
+        LB-40）で、払い手のまだ取り置かれていない残りで払える人数までだけ配り、配った分の賃金を
+        取り置く。配った人は施設の働き手（economy["staff"]）に入れるので、次のターンからは抱えた人
+        として雇い続け、払えない月は抱えた人として先に手放される（_bounds の kept）。作る量は
+        操業目標のまま（隠れた失業）。施設ごとの人数を返し、economy["guaranteed"] に残す。"""
+        defs, config = ctx.defs, ctx.config
+        for f, _ in plans:
+            f.economy.pop(GUARANTEED, None)
+        if not planning.is_planned(island, defs):
+            return {}
+        share = fac.labor_share(defs, island)
+        idle = {}
+        for pos, count in free.items():
+            farming = int(subsistence_persons(defs, island, island.tile(*pos)) * share)
+            if count - farming > 0:
+                idle[pos] = count - farming
+        if not idle:
+            return {}
+        chosen = [
+            (f, wage)
+            for f, wage in plans
+            if wage > 0
+            and fac.on_map(f)
+            and self._hoards(island, ctx, f)
+            and (is_public_service(defs, f) or fac.recipe_of(defs, f).get("outputs"))
+        ]
+        chosen.sort(key=lambda p: (-fac.priority_of(defs, config, p[0]), p[0].id))
+        out: dict[int, int] = {}
+        for f, wage in chosen:
+            hired = sum(staff[f.id].values()) + engineers.get(f.id, 0) + spare.get(f.id, 0)
+            room = fac.scale(fac.workers_of(defs, f), fac.equipment_cap(f)) - hired
+            cap = island.scratch.get(STAFF_LIMITS, {}).get(f.id)
+            if cap is not None:
+                room = min(room, cap - hired)
+            if room <= 0:
+                continue
+            payer = payer_of(defs, config, f)
+            room = min(room, funds.available(island, payer) // wage)
+            taken = 0
+            for pos in sorted(
+                (p for p in self._area(island, ctx, f) if idle.get(p, 0) > 0),
+                key=lambda p: (self._dist(f, p), p[1], p[0]),
+            ):
+                take = min(idle[pos], room - taken)
+                if take <= 0:
+                    break
+                idle[pos] -= take
+                free[pos] -= take
+                staff[f.id][pos] = staff[f.id].get(pos, 0) + take
+                taken += take
+            if taken:
+                funds.commit(island, payer, taken * wage)
+                out[f.id] = taken
+                f.economy[GUARANTEED] = taken
+        if out:
+            island.stats["labor.guaranteed"] = sum(out.values())
+        return out
 
     # --- 労働の動員（フェーズ3-4） -----------------------------------------------------
 

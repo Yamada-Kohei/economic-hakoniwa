@@ -3374,6 +3374,13 @@ class Market(IslandStage):
         growing = []
         for plan, is_growth in ((fix, False), (grow, True)):
             for good, (qty, limit) in sorted(plan.items()):
+                # 予算で割り戻した量でも、代金と運賃の丸めで使えるお金を少し超えることがある
+                room = funds.available(island, payer)
+                cost = gross_cost(limit, qty, rate, 0)
+                if cost > room:
+                    qty = qty * max(0, room) // cost
+                    while qty > 0 and gross_cost(limit, qty, rate, 0) > room:
+                        qty -= 1
                 if qty <= 0:
                     continue
                 party = Party(HOUSEHOLD, household(layer), payer, rate, 0, layer="housing")
