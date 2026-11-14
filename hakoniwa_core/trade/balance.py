@@ -50,6 +50,7 @@ CURRENT = {
     "bond_interest": "income",
     "swap_interest": "income",
     "aid": "transfers",
+    "tender_penalty": "transfers",  # 入札の契約の罰金（W-268、FX-72）
     "remittance": "transfers",
     "migrant_deposits": "transfers",
 }

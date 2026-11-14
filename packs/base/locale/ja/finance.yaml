@@ -71,6 +71,7 @@ export_subsidy: 輸出補助金
 price_gap_subsidy: 価格差の補給金
 fx_intervention: 為替の介入
 aid: 援助
+tender_penalty: 入札の契約の罰金
 remittance: 仕送り
 migrant_deposits: 移民の持ち出した預金
 emigrant_seized: 出国した人の預金の引き取り

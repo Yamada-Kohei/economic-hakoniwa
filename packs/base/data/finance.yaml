@@ -88,6 +88,7 @@ export_subsidy:       {type: journal}   # 輸出補助金（政府 → 輸出し
 price_gap_subsidy:    {type: journal}   # 価格差の補給金（政府 → 輸入を公定価格で売った計画経済の国営の商社。2026-11-01）
 fx_intervention:      {type: journal}   # 為替の介入（中央銀行の外貨の売り買い）
 aid:                  {type: journal}   # お金の援助（送る国の政府 → 受け取る国の政府）
+tender_penalty:       {type: journal}   # 入札の契約の罰金（わけのある国の政府 → 損をした国の政府。払う国の通貨。W-268）
 # 国をまたぐ移民（バランス調整の回3。hakoniwa_core/modules/migration）
 remittance:           {type: journal}   # 移った人の仕送り（住んでいる島の一般の家計 → 元の島の一般の家計。住んでいる島の通貨）
 migrant_deposits:     {type: journal}   # 移る人が持ち出す預金（元の島の家計 → 行き先の家計。元の島の通貨）

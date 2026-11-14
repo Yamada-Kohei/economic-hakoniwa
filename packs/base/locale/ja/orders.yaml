@@ -43,6 +43,10 @@ take_over_bloc: 貿易圏の代表を引き継ぐ
 propose_contract: 二国間契約の申し込み
 accept_contract: 二国間契約を受ける
 cancel_contract: 二国間契約をやめる
+open_tender: 入札を出す
+bid_tender: 入札に札を入れる
+cancel_tender: 入札を取り下げる
+settle_tender_default: 入札の契約の罰金を決める
 set_tariff: 関税
 set_export_subsidy: 輸出補助
 set_import_quota: 輸入の割り当て

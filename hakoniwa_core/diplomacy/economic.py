@@ -24,6 +24,7 @@ from typing import Any
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.diplomacy import clauses as cl
 from hakoniwa_core.state import LogEntry, WorldState
+from hakoniwa_core.trade import tenders as tender_rules
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE
 
 # 移民の受け入れの政策が約束を満たす値（island.policy.immigration。"" は受け入れない）
@@ -31,8 +32,10 @@ ACCEPTS = {cl.FREE_MOVEMENT: ("open",), cl.REFUGEES: ("open", "refugees")}
 OPEN_TO = {cl.FREE_MOVEMENT: "open", cl.REFUGEES: "refugees"}
 DELIVERIES = ("market", "warehouse")
 # 契約の不足のうち、違反にするもの（輸送や港や禁輸は約束した国のせいとは言えない）
-SHORT_BY_SELLER = ("goods",)
-SHORT_BY_BUYER = ("money",)  # 外貨が買えなかった（為替の市場の厚み）のは買う国のせいにしない
+# 契約の不足のわけと、わけのある側は、入札の契約の罰金（FX-72）と同じ表（売り手は物と港、買い手は
+# お金と船。外貨が買えなかった（為替の市場の厚み）のと第三国の封鎖は誰のせいにもしない）
+SHORT_BY_SELLER = tender_rules.SHORT_BY_SELLER
+SHORT_BY_BUYER = tender_rules.SHORT_BY_BUYER
 
 
 def clean(

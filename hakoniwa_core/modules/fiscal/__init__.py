@@ -19,7 +19,7 @@ from hakoniwa_core.economy.debt import due
 from hakoniwa_core.modules import military
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import IslandState, LogEntry
-from hakoniwa_core.trade import traders
+from hakoniwa_core.trade import tenders, traders
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, money_of, part, to_basis
 
@@ -48,6 +48,8 @@ class Budget(IslandStage):
             money_of(limit, qty)
             for qty, limit in traders.contract_supply_plan(island, ctx.config).values()
         )
+        # 入札の契約の罰金の払い（FX-72）も、同じ契約の項目に取り置く
+        estimates[traders.CONTRACT_SUPPLY] += island.ext.get("trade", {}).get(tenders.DUE, 0)
         # 計画経済の価格の補助（PL-60）: 前のターンの差し引き後の不足に余裕を足した額（上の
         # 見積もり）に、払いきれずに持ち越した国の未払いを足す（次のターンに先に払う）
         owed = planning.owed_total(island)
