@@ -44,7 +44,13 @@ from typing import IO, Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import gate, politics, reuse, warscene
-from hakoniwa_core.autoplan import plan_trade, plan_turn, plan_war, queue_orders
+from hakoniwa_core.autoplan import (
+    plan_trade,
+    plan_turn,
+    plan_war,
+    queue_orders,
+    shipyard_islands,
+)
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
@@ -222,6 +228,8 @@ SERIES_STATS = (
 
 def queue_scenario_orders(world: WorldState, scenario: Scenario, defs: Defs, config: GameConfig):
     """次のターンの前に、場面の命令を並べる。"""
+    plan = scenario.orders == "plan"
+    yards = shipyard_islands(world, defs, config, world.turn + 1) if plan else set()
     for island in world.islands.values():
         orders = []
         # 計画経済の国は中央銀行を独立させられない（回5 のカード「両方」）
@@ -234,7 +242,7 @@ def queue_scenario_orders(world: WorldState, scenario: Scenario, defs: Defs, con
         if scenario.immigration and island.policy.immigration != scenario.immigration:
             orders.append(("set_immigration", {"mode": scenario.immigration}))
         if scenario.orders == "plan":
-            orders += plan_turn(island, defs, config, world.turn + 1)
+            orders += plan_turn(island, defs, config, world.turn + 1, island.id in yards)
         queue_orders(island, orders)
     if scenario.orders == "plan":
         for island_id, orders in plan_trade(world, defs, config).items():

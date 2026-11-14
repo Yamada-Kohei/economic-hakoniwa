@@ -247,7 +247,8 @@ def test_stock_of_a_closed_plant_goes_back_on_the_market(game, base):
 
 
 def test_ships_are_replaced_before_they_retire(game, base):
-    """寿命まで trade.ship_order_turns ターン以内の船は、使っている分だけ前もって買う。"""
+    """寿命まで trade.ship_order_turns ターン以内の船を除いた船団が、目標の船団（直近に使った船 ÷
+    trade.ship_target_use）に足りない分を前もって買う（FX-11・FX-80）。"""
     world = copy.deepcopy(base)
     island = next(i for i in world.islands.values() if shipping_of(i, game.config))
     f = shipping_of(island, game.config)
@@ -259,12 +260,16 @@ def test_ships_are_replaced_before_they_retire(game, base):
     f.economy["fleet"] = [[turn - life + 5, 2000], [turn, 1000]]  # 2隻が5ターン後に寿命
     load = config.get("trade.ship_capacity") * 2500  # 2.5 隻分を使っている
     f.economy["used"] = [load]
-    assert ships.ships_wanted(config, f, turn) == 1500  # 寿命の来ない1隻を除いた 1.5 隻
+    target = -(-2500 * 10000 // round(config.get("trade.ship_target_use") * 10000))
+    assert ships.fleet_target(config, f) == target
+    assert ships.ships_wanted(config, f, turn) == target - 1000  # 寿命の来ない1隻を除く
     f.economy["used"] = [0]
     assert ships.ships_wanted(config, f, turn) == 0  # 使っていない船は替えない
     f.economy["fleet"] = [[turn, 3000]]
     f.economy["used"] = [load]
-    assert ships.ships_wanted(config, f, turn) == 0  # 寿命はまだ先
+    assert ships.ships_wanted(config, f, turn) == target - 3000  # 混んでいるので買い増す
+    f.economy["fleet"] = [[turn, 4000]]
+    assert ships.ships_wanted(config, f, turn) == 0  # 目標に届いている
 
 
 # --- 自動車の材料 -----------------------------------------------------------------------
@@ -465,7 +470,8 @@ def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
     # に船を前もって注文する（FX-60。2026-11-10）。その前のターンまでは市場で1隻ずつ買いに出ていた
     ordered = orders.on_order(island, f)
     bought = wanted[-2] if ordered else wanted[-1]
-    assert wanted[0] == 0 and bought == QUANTITY_SCALE  # 足りない月が続いてから1隻
+    # 初めは直近に使った船の分（目標の船団 FX-80。1隻より少ない）だけ、足りない月が続いてから1隻
+    assert wanted[0] < QUANTITY_SCALE and bought >= QUANTITY_SCALE
     if ordered:
         assert wanted[-1] == 0 and ordered >= QUANTITY_SCALE
     else:

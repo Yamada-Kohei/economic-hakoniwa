@@ -20,7 +20,9 @@
    前のターンの市場で売りに出た量が買いたい量に届かなければ、それを作る施設（加工食品・肉・自動車・
    燃料も、売りに出た量が買いたい量に届かなければ作る施設）。必需品、ぜいたく品、自動車、燃料の順
 5'. 海運業が輸送船を買えずにいて島に造船所がなければ、造船所を1つ（回6。鋼鉄と機械が島で作られて
-   いるか貿易で手に入る島だけ）
+   いるか貿易で手に入る島だけ）。圏の船のうち YARD_LEAD ターン以内に寿命の来る船を、圏の造船所が
+   その間に作りきれなければ、shipyard_islands が選んだ島（圏で1島ずつ）も造船所を1つ建てる
+   （FX-78。2026-11-13。初めに配った船が寿命になるまで世界に造船所がなかった）
 6. 島の鉱業資源のうち、島のどの施設も使っていない物（ボーキサイト・原油など）は、それを使う施設を
    1つ建てる（輸出向け。フェーズ3-2。採る鉱山は、4 で足りない投入財として後から建つ）
 7. 入っている貿易圏の前のターンの市場で、買いたい量の一部しか買えなかった物を、島の中だけで作れる
@@ -167,6 +169,11 @@ EDUCATION_MARGIN = 1.3  # 教育費を、学校と大学を全力で動かす年
 # 標準の計画が水力発電所を建てるのは、見込める出力が全力のこの割合以上の場所だけ。それより水の少ない
 # 場所は、建てられても（施設の定義の min）割に合わないので、火力発電所に回す（W-148）
 WATER_MIN = 0.6
+# 造船所（FX-78）: 圏の船のうち、このターン数の間に寿命の来る船を圏の造船所が作りきれなければ、
+# 造船所を足す（寿命の前の買い替え trade.ship_order_turns の 24 ターンに、造船所を建てて船を作る間を
+# 足した長さ）
+YARD_LEAD = 60
+
 # 治安と国防（段6 A2）
 SECURITY_FROM = 24  # 警察署を建て始めるターン（食料・電力・資材の施設が先）
 SECURITY_MARGIN = 1.3  # 治安費を、警察署を全力で動かす年の費用のこの倍にする
@@ -175,20 +182,21 @@ BARRACKS = "barracks"
 
 
 def plan_turn(
-    island: IslandState, defs: Defs, config: GameConfig, turn: int
+    island: IslandState, defs: Defs, config: GameConfig, turn: int, yard: bool = False
 ) -> list[tuple[str, dict]]:
-    """ターン turn の処理の前に足す命令（種類, 中身）の並び。"""
+    """ターン turn の処理の前に足す命令（種類, 中身）の並び。yard は、圏の船の寿命に造船所が間に
+    合わないので、この島に造船所を建てたいか（shipyard_islands）。"""
     if any(o.status == ORDER_PENDING for o in island.orders):
         return []
     return (
         _warehouse_sales(island, defs, config)
         + _food_orders(island, defs, config, turn)
-        + _plan_rest(island, defs, config, turn)
+        + _plan_rest(island, defs, config, turn, yard)
     )
 
 
 def _plan_rest(
-    island: IslandState, defs: Defs, config: GameConfig, turn: int
+    island: IslandState, defs: Defs, config: GameConfig, turn: int, yard: bool = False
 ) -> list[tuple[str, dict]]:
     policies = (
         _labor_policy_order(island),
@@ -221,7 +229,7 @@ def _plan_rest(
     if len(sites) >= limit or starved:  # 資材が手に入らずに止まっている工事のためだけに建てる
         candidates: Iterator[tuple[str, str]] = _material_producers(island, defs, config)
     else:
-        candidates = _candidates(island, defs, config, turn)
+        candidates = _candidates(island, defs, config, turn, yard)
     for kind, recipe in candidates:
         if _underused(island, defs, config, kind, recipe) or not _materials_ok(
             island, defs, config, kind
@@ -880,7 +888,7 @@ def _made(island: IslandState, defs: Defs) -> set[str]:
 
 
 def _candidates(
-    island: IslandState, defs: Defs, config: GameConfig, turn: int
+    island: IslandState, defs: Defs, config: GameConfig, turn: int, yard: bool = False
 ) -> Iterator[tuple[str, str]]:
     """建てたい施設と作り方を、建てたい順に。"""
     supply, demand = _flows(island, defs, config)
@@ -1007,10 +1015,12 @@ def _candidates(
                 )
 
     # 海運業が輸送船を買えずにいて、島に造船所がなければ、造船所を1つ（回6。どの世界も造船所を
-    # 建てず、初めに配った船が寿命になると貿易が止まった）
+    # 建てず、初めに配った船が寿命になると貿易が止まった）。圏の船の寿命に圏の造船所が間に合わない
+    # ときに選ばれた島も（yard。FX-78）
     ship = config.get("trade.ship_good")
     record = markets.get(ship)
-    if record is not None and record.supply < record.demand and _count(island, "shipyard") == 0:
+    short = record is not None and record.supply < record.demand
+    if (short or yard) and _count(island, "shipyard") == 0:
         yards = list(_producers(defs, config, island, ship))
         yield from (c for c in yards if _inputs_at_hand(defs, config, *c, at_hand))
         # 造船所の投入財（機械など）を島で作っておらず貿易でも手に入らなければ、それを作る施設を
@@ -1409,6 +1419,54 @@ def _power_line(island: IslandState, defs: Defs, pos: tuple[int, int]) -> list[t
 # --- 貿易（フェーズ3-1） ---------------------------------------------------------------
 
 BLOC_NAMES = ("世界の貿易圏",)  # 貿易の始まった島ぜんぶで1つ
+
+
+def shipyard_islands(world: WorldState, defs: Defs, config: GameConfig, turn: int) -> set[int]:
+    """圏ごとに、造船所を建てる島（標準の計画。FX-78）: 圏の加盟国の海運業の船のうち YARD_LEAD
+    ターン以内に寿命の来る船（寿命を過ぎて使い続けている船を含む）を、圏の造船所（注文を受けられる
+    造船所）がその間に全力で作れる船（受けた注文の残りを引く）で替えきれなければ、造船所がなく、
+    造船所の投入財（鋼鉄・機械など）が手に入る加盟国のうち人口の多い順で1島（圏で造船所を工事中の
+    間は選ばない。圏の島がそろって建てないように1島ずつ）。"""
+    from hakoniwa_core.trade import orders as ship_orders
+
+    life = config.get("trade.ship_life")
+    ship = config.get("trade.ship_good")
+    chosen: set[int] = set()
+    for bloc in sorted(trade_blocs.blocs(world), key=lambda b: b["id"]):
+        members = [
+            world.islands[i]
+            for i in bloc["members"]
+            if i in world.islands and world.islands[i].has_economy
+        ]
+        if any(f.kind == "shipyard" and not f.built for m in members for f in m.facilities):
+            continue
+        retiring = 0
+        for m in members:
+            f = trade.shipping_of(m, config)
+            if f is not None:
+                retiring += sum(
+                    q for since, q in f.economy.get("fleet", []) if turn + YARD_LEAD - since >= life
+                )
+        if retiring <= 0:
+            continue
+        room = 0
+        for m in members:
+            for f in ship_orders.yards(m, defs, config):
+                out = fac.outputs_of(defs, f).get(ship, 0)
+                room += max(0, out * YARD_LEAD - ship_orders.backlog(f))
+        if room >= retiring:
+            continue
+        for m in sorted(members, key=lambda m: (-population_of(m), m.id)):
+            if m.id in chosen or _count(m, "shipyard") > 0:
+                continue
+            at_hand = _made(m, defs) | _traded(m, config)
+            if any(
+                _inputs_at_hand(defs, config, kind, rname, at_hand)
+                for kind, rname in _producers(defs, config, m, ship)
+            ):
+                chosen.add(m.id)
+                break
+    return chosen
 
 
 def plan_trade(

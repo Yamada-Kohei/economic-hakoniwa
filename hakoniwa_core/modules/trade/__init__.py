@@ -6,7 +6,8 @@
 1. 届いた荷を買い手の港で下ろす（下ろす港の使用料。港の積み下ろしの余裕を超えた荷は次のターンへ）。
    国の倉庫に入る腐る物（契約で買った食品など）と、契約で「市場に出す」と決めた物は、次のターンからの
    市場の段が売りに出す
-2. 海運業の船: 使えるターン数を過ぎた船を解体し、市場で買った船を船団に入れる
+2. 海運業の船: 市場で買った船と前注文で届いた船を船団に入れ、寿命を過ぎた船を代わりが足りる分だけ
+   解体する（FX-79）
 3. 圏の作成・加盟・設定、契約の申し込み・受け入れ・やめる（命令の段の申し送りを、島の番号の順に）
 4. 為替の板寄せ（島の通貨と、その島が使う決済通貨の組ごと。hakoniwa_core/trade/fx.py）。外貨建ての
    契約で政府がこのターンに払う外貨は、板寄せの前に中央銀行が持っている外貨から先に政府へ回し、
@@ -252,10 +253,10 @@ class _Round:
     def run(self) -> None:
         self._intercept()
         self._unload()
-        for i in self.ids:
+        for i in self.ids:  # 在庫の船を船団に入れてから、寿命の船を解体する（FX-79）
             island = self.world.islands[i]
-            ships.scrap(island, self.config, self.turn)
             ships.commission(island, self.defs, self.config, self.turn)
+            ships.scrap(island, self.config, self.turn)
         self._requests()
         self._fx()
         self._contracts()

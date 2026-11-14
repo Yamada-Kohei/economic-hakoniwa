@@ -157,14 +157,7 @@ def order_wanted(island: IslandState, config: GameConfig, f: Facility, turn: int
     """海運業 f が造船所に注文する船（1000 分の 1 隻。1隻単位）。"""
     from hakoniwa_core.trade import ships
 
-    life = config.get("trade.ship_life")
-    ahead = config.get("trade.ship_order_turns")
-    retiring = sum(q for since, q in f.economy.get("fleet", []) if turn + ahead - since >= life)
-    renew = 0
-    if retiring > 0:
-        used = ships.ships_of_load(config, max(f.economy.get("used", []), default=0))
-        renew = whole(min(retiring, used - (ships.fleet(f) - retiring)))
-    want = max(short_ships(config, f), renew)
+    want = max(short_ships(config, f), whole(ships.renewal(config, f, turn)))
     have = stock.total(f.stock, config.get("trade.ship_good")) + on_order(island, f)
     return whole(max(0, want - have))
 

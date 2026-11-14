@@ -2,9 +2,17 @@
 
 海運業（島に1つ、マスを持たない）は輸送船を設備として持ちます（``economy["fleet"]``: [使い始めた
 ターン, 1000 分の 1 隻] の組）。1 隻で 1 航海に trade.ship_capacity トン運べ、航海に出ている
-船の数に合わせて船員（trade.ship_crew）を雇います（港につないでいる船は少しの船員で守る）。船は
-trade.ship_life ターン使ったら解体します。市場で買った船（造船所の船や輸入した船）は、在庫から
-船団に移して使い始めます。
+船の数に合わせて船員（trade.ship_crew）を雇います（港につないでいる船は少しの船員で守る）。市場で
+買った船（造船所の船や輸入した船）と前注文で届いた船は、在庫から船団に移して使い始めます。
+
+寿命（FX-11。2026-11-13 に直した）: trade.ship_life ターン使った船は、代わりの船が足りるまで使い続け
+ます。寿命の前の船（このターンに船団に入れた船を含む）で直近に航海に出ていた船の数が足りる分だけ、
+古い順に解体します（寿命を過ぎた船そのものは足りる側に数えない）。寿命の trade.ship_life_limit 倍で
+必ず解体します。寿命を過ぎた船は傷みの費用（運賃の資本費）に数えません（償却済み）。
+
+買い替えと買い増し（FX-11・FX-80）: 目標の船団 = 直近に一番多く航海に出ていた船（ほかの国に貸した
+分を含む）÷ trade.ship_target_use。寿命まで trade.ship_order_turns ターン以内の船を除いた船団が
+目標に届かなければ、その分を買う（前注文する）。
 
 荷は買う側の島の船で運びます。船は空で売り手の港へ行き、積んで戻ります。往復の間（片道の 2 倍）は、
 実際に走る時間（区画 ÷ 船の速さ）の分の船を使います（``economy["busy"]``: 荷の番号 → 使っている
@@ -36,7 +44,15 @@ from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import books
 from hakoniwa_core.state import Facility, IslandState, LogEntry
 from hakoniwa_core.trade import port_of, shipping_of
-from hakoniwa_core.units import QUANTITY_SCALE, from_milli, money_of, round_money, to_milli
+from hakoniwa_core.units import (
+    BASIS,
+    QUANTITY_SCALE,
+    from_milli,
+    money_of,
+    round_money,
+    to_basis,
+    to_milli,
+)
 
 MILLI = QUANTITY_SCALE
 
@@ -78,27 +94,64 @@ def release(f: Facility, shipment: int) -> None:
     f.economy.get("busy", {}).pop(str(shipment), None)
 
 
+def used_ships(config: GameConfig, f: Facility) -> int:
+    """直近 trade.cost_turns ターンに一番多く航海に出ていた船（1000 分の 1 隻。ほかの国に貸して
+    航海に出た船も数える。借りた船で運んだ荷は貸した国の数）。"""
+    return ships_of_load(config, max(f.economy.get("used", []), default=0))
+
+
+def retiring(config: GameConfig, f: Facility, turn: int) -> int:
+    """寿命まで trade.ship_order_turns ターン以内の船と、寿命を過ぎて使い続けている船（1000 分の
+    1 隻）。"""
+    life = config.get("trade.ship_life")
+    ahead = config.get("trade.ship_order_turns")
+    return sum(q for since, q in f.economy.get("fleet", []) if turn + ahead - since >= life)
+
+
+# 海運業の economy: 載せられなかった荷を運ぶのに要った船の重さ（orders.SHORT_LOAD と同じ）
+SHORT_LOAD = "ships_short_load"
+
+
+def left_ships(config: GameConfig, f: Facility) -> int:
+    """直近 trade.cost_turns ターンに載せられなかった荷を運ぶのに要った船の、1ターンあたりの平均
+    （1000 分の 1 隻）。荷の重さ × 往復の区画 ÷ 船の速さで数えてあるので、毎ターン同じだけ荷が残る
+    なら、これだけの船が足りない。"""
+    loads = f.economy.get(SHORT_LOAD, [])
+    if not loads:
+        return 0
+    return sum(loads) // len(loads) // max(1, config.get("trade.ship_capacity"))
+
+
+def fleet_target(config: GameConfig, f: Facility) -> int:
+    """目標の船団（1000 分の 1 隻）: （直近に航海に出ていた船 ＋ 載せられなかった荷の船）÷ 目標の
+    混み具合（FX-80。船主は船が混んで運賃が上がると新造を頼む。使った分ちょうどしか替えないと、使う
+    分が減るたびに船団も減って戻らなかった）。載せられなかった荷を足すので、荷が残っている間は船が
+    0 隻でも目標は 0 にならない（2026-11-13。世界の船が全部消えると、貸した船を貸し手に数える形も
+    効かず、1200T の種 13 で船が 0 から戻らなかった）。"""
+    used = used_ships(config, f) + left_ships(config, f)
+    if used <= 0:
+        return 0
+    return -(-used * BASIS // max(1, to_basis(config.get("trade.ship_target_use"))))
+
+
+def renewal(config: GameConfig, f: Facility, turn: int) -> int:
+    """買い替えと買い増し（1000 分の 1 隻）: 寿命の来る船を除いた船団が、目標の船団に足りない分。"""
+    return max(0, fleet_target(config, f) - (fleet(f) - retiring(config, f, turn)))
+
+
 def ships_wanted(config: GameConfig, f: Facility, turn: int) -> int:
     """海運業が市場で買う輸送船（1000 分の 1 隻。買って船団に入れる前の船があれば、その分を引く）。
 
     - 直近 trade.cost_turns ターンの半分以上で、船が足りずに荷を残していたら 1 隻（S2: 圏の市場や
-      契約で約定した荷が、どの船にも載らなかったとき。前は空いている船を商社の狙う量と比べていた）。
-    - 先回りの買い替え（回6。Codex E31）: 寿命まで trade.ship_order_turns ターン以内の船があれば、
-      直近 trade.cost_turns ターンに一番多く航海に出ていた船の数から、寿命の来ない船の数を引いた
-      分を、寿命の来る船の数まで買う（使っていない船は替えない。S1 の後は、ほかの国に貸して航海に
-      出た船も数える）。
+      契約で約定した荷が、どの船にも載らなかったとき）。
+    - 買い替えと買い増し（renewal。FX-11・FX-80）。
     """
     want = 0
     history = f.economy.get("ships_short", [])
     turns = config.get("trade.cost_turns")
     if len(history) >= turns and sum(history) * 2 >= len(history):
         want = MILLI
-    life = config.get("trade.ship_life")
-    ahead = config.get("trade.ship_order_turns")
-    retiring = sum(q for since, q in f.economy.get("fleet", []) if turn + ahead - since >= life)
-    if retiring > 0:
-        used = ships_of_load(config, max(f.economy.get("used", []), default=0))
-        want = max(want, min(retiring, used - (fleet(f) - retiring)))
+    want = max(want, renewal(config, f, turn))
     have = stock.total(f.stock, config.get("trade.ship_good"))
     return max(0, want - have)
 
@@ -149,20 +202,37 @@ def commission(island: IslandState, defs: Defs, config: GameConfig, turn: int) -
 
 
 def scrap(island: IslandState, config: GameConfig, turn: int) -> int:
-    """使えるターン数を過ぎた船を解体する。解体した量を返す。"""
+    """寿命を過ぎた船を、代わりの船が足りる分だけ解体する（寿命の trade.ship_life_limit 倍の船は
+    必ず）。在庫の船を船団に入れた後に呼ぶ。解体した量を返し、使い続ける寿命を過ぎた船の量を
+    ``economy["overdue"]`` に残す（運賃の資本費から外す）。"""
     f = shipping_of(island, config)
     if f is None:
         return 0
     life = config.get("trade.ship_life")
+    limit = round_money(life * config.get("trade.ship_life_limit"))
+    entries = f.economy.get("fleet", [])
+    young = sum(q for since, q in entries if turn - since < life)
+    keep_old = max(0, used_ships(config, f) - young)  # 寿命を過ぎても使い続ける船
     before = fleet(f)
-    keep, gone = [], 0
-    for since, qty in f.economy.get("fleet", []):
-        if turn - since >= life:
-            gone += qty
-        else:
+    keep, gone, overdue = [], 0, 0
+    # 寿命を過ぎた船は新しい順に残す
+    for since, qty in sorted(entries, key=lambda e: -e[0]):
+        age = turn - since
+        if age < life:
             keep.append([since, qty])
+            continue
+        kept = 0 if age >= limit else min(qty, keep_old)
+        keep_old -= kept
+        overdue += kept
+        gone += qty - kept
+        if kept > 0:
+            keep.append([since, kept])
+    if overdue > 0:
+        f.economy["overdue"] = overdue
+    else:
+        f.economy.pop("overdue", None)
     if gone:
-        f.economy["fleet"] = keep
+        f.economy["fleet"] = sorted(keep, key=lambda e: e[0])
         # 解体した船の割合を設備の額と償却済みの額から除く（固定資産の除却。FX-74。前は除かず、
         # 1 隻になっても解体した船の分の減価償却が続いた）
         capital, done = f.economy.get("capital", 0), f.economy.get("depreciated", 0)
@@ -299,7 +369,10 @@ def close_turn(island: IslandState, config: GameConfig, carried: int, fuel_value
         return
     keep = config.get("trade.cost_turns")
     wage_bill = f.economy.get("wage", 0) * f.workers
-    wear = round_money(_ship_wear(island, config) * from_milli(fleet(f)))
+    # 寿命を過ぎて使い続けている船は償却済みなので、傷みに数えない（延べ隻数には数える）
+    wear = round_money(
+        _ship_wear(island, config) * from_milli(max(0, fleet(f) - f.economy.get("overdue", 0)))
+    )
     sunk = f.economy.pop("sunk_value", 0)  # 沈んだ船の値段も船の傷みと同じ費用（MI-35）
     costs = [*f.economy.get("costs", []), wage_bill + fuel_value + wear + sunk][-keep:]
     f.economy["used"] = [*f.economy.get("used", []), busy(f)][-keep:]
