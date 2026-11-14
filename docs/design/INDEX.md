@@ -42,7 +42,7 @@
 
 ## [2 島と町と人口](02-population.md)
 
-決まり 58 個、うち仮の決まりの表にあるもの 0 個。
+決まり 59 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -104,6 +104,7 @@
 | PO-56 | 計画経済の国営住宅（W-202）: 計画経済の国では家計は住宅の資材を買わず住宅ローンも借りない | 決定（W-190 の回2 で作った | tests/core/test_public_housing.py |
 | PO-57 | 飢えている家計（前のターンに食べきれなかったか飢えの蓄えが残る層）は、売りに出ていない食料のそれ… | 決定（2026-11-02） | tests/core/test_famine_recovery.py |
 | PO-58 | 飢えの蓄えが、次のターンに全部食べれば 0 に戻る大きさ（`hunger_step(S,0)=0`… | 決定（2026-11-05） | tests/core/test_famine_recovery.py、tests/server/test_codex_turn300_fixes.py |
+| PO-59 | 自給の農業ができる村かを建った住宅地の段階で決める（W-272 | 決定・実装済み（2026-11-14 | tests/core/test_power_invest.py |
 
 ## [3 物と市場と値段](03-market.md)
 
@@ -210,7 +211,7 @@
 
 ## [5 施設と企業](05-firms.md)
 
-決まり 71 個、うち仮の決まりの表にあるもの 0 個。
+決まり 73 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -285,6 +286,8 @@
 | FM-69 | 店の参入（2026-11-12、W-261）: 民営の店の参入は、工場の参入と別に1島1ターン1… | 決定（2026-11-12、本人のカード「推しの全部」） | tests/core/test_retail_posted.py |
 | FM-70 | 町の店の枠（2026-11-12、W-261）: 町に入る商店の数は、町の段階の数（`settl`… | 決定（2026-11-12、本人のカード「推しの全部」） | tests/core/test_balance_round7.py、tests/core/test_retail_posted.py |
 | FM-71 | 段階の作り方で建てる農場（W-257）: 機械化・近代化の作り方を選んで農場を建てる命令は、初め… | 決定 | tests/core/test_farm_build_grade.py、tests/server/test_migration.py |
+| FM-72 | 発電所の建て増しの合図（W-271 | 決定・実装済み（2026-11-14 | tests/core/test_power_invest.py |
+| FM-73 | 建て増しのために利益を残す（W-271）: 建て増し（FM-49・FM-72）が採算に合うのに持… | 決定・実装済み（2026-11-14 | tests/core/test_power_invest.py |
 
 ## [6 国の財政と政策](06-finance.md)
 
