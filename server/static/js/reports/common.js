@@ -208,6 +208,8 @@ export class ChartGroup {
     item.slider.max = String(last);
     item.slider.value = String(last);
     item.slider.disabled = item.pie.turns.length < 2;
+    // 記録がまだ 1 ターンもない（足したばかりの統計など）ときは、空の目盛りを出さない
+    item.slider.parentElement.hidden = !item.pie.turns.length;
     this.showTurn(item, last);
   }
 

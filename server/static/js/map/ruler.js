@@ -2,10 +2,31 @@
 // 目盛りは島の奥の2辺（y = 0 の辺に x、x = 0 の辺に y）の外に、STEP マスごとに番号を書く。
 // 拡大して辺が地図の外に出たら、その列（行）に沿って地図の縁の内側まで寄せて書く。
 // 字の大きさは拡大縮小によらず同じにする（画面の座標で描く）。
+// 目盛りと座標は既定では出さず、地図の右上の「座標」のボタンで出す。出すかどうかはブラウザに覚える
+// （島によらず1つ。覚えられない窓では毎回出さない）。
 
 import { tileToWorld } from "./projection.js";
 
 export const STEP = 5;
+export const RULER_KEY = "hakoniwa:map-ruler";
+
+/** 目盛りと座標を出すか。覚えていない・読めないときは出さない（既定）。 */
+export function readRulerShown(storage) {
+  try {
+    return storage?.getItem(RULER_KEY) === "on";
+  } catch {
+    return false;
+  }
+}
+
+/** 出すかどうかを覚える。覚えられなくても表示は切り替える。 */
+export function writeRulerShown(storage, shown) {
+  try {
+    storage?.setItem(RULER_KEY, shown ? "on" : "off");
+  } catch {
+    // プライベートの窓など
+  }
+}
 const OUTSIDE = 0.7; // 辺からマスの何個分外に書くか
 
 /** 拡大前の位置を、地図の画面の位置（CSS ピクセル）に。 */
