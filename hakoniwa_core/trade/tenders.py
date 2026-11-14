@@ -53,6 +53,8 @@ COLLECT = "collect"  # 取る
 FORGIVE = "forgive"  # 許す
 TERMINATE = "terminate"  # 取ったうえで、契約を終える
 CHOICES = (COLLECT, FORGIVE, TERMINATE)
+# 札を入れた国だけに見せるログ（札の値段と、札を入れたこと。FX-71）
+PRIVATE_LOGS = ("tender_bid", "tender_bid_withdrawn", "tender_request_failed")
 PENALTY = "tender_penalty"  # 仕訳の種類（国際収支の移転）
 DUE = "penalty_due"  # 島の貿易の状態: 次のターンに払う罰金（予算の段が契約の項目に取り置く）
 
@@ -148,12 +150,9 @@ def withdraw(world: WorldState, island: IslandState, t: dict[str, Any], turn: in
     if t["state"] != OPEN:
         return "reason_tender_closed"
     t["state"], t["closed"] = WITHDRAWN, turn
-    args = _args(world, t)
-    island.log.append(LogEntry("tender_withdrawn", args))
-    for bidder in sorted(int(k) for k in t["bids"]):
-        other = world.islands.get(bidder)
-        if other is not None:
-            other.log.append(LogEntry("tender_withdrawn", args))
+    # 札を入れた国には知らせない（公開のログに書くと、誰が札を入れたかが分かる。結果は入札の一覧に
+    # 出る）
+    island.log.append(LogEntry("tender_withdrawn", _args(world, t)))
     t["bids"] = {}
     return None
 
@@ -193,21 +192,22 @@ def award(
     効く）。結果は出した国と札を入れた国すべてに知らせる（落とした国と値段は誰にでも見せる）。"""
     from hakoniwa_core.trade import contracts
 
-    told = sorted({t["buyer"], *(int(k) for k in t["bids"])})
+    # 知らせるのは出した国と落とした国だけ（札を入れた国に書くと、公開のログから誰が札を入れたかが
+    # 分かる。落ちなかった国は入札の一覧の結果で分かる）
+    buyer = world.islands.get(t["buyer"])
     t["closed"] = turn
     if winner is None:
         t["state"] = LAPSED
         t["bids"] = {}
-        for i in told:
-            if i in world.islands:
-                world.islands[i].log.append(LogEntry("tender_lapsed", _args(world, t)))
+        if buyer is not None:
+            buyer.log.append(LogEntry("tender_lapsed", _args(world, t)))
         return None
     price = t["bids"][str(winner)]
     c = contracts.start_from_tender(world, t, winner, price, turn)
     t["state"], t["winner"], t["price"], t["contract"] = AWARDED, winner, price, c["id"]
     t["bids"] = {}  # 落ちなかった札は誰にも見せないので残さない
     args = {**_args(world, t), "winner": _name(world, winner), "price": price, "contract": c["id"]}
-    for i in told:
+    for i in sorted({t["buyer"], winner}):
         if i in world.islands:
             world.islands[i].log.append(LogEntry("tender_awarded", args))
     return c
@@ -369,10 +369,12 @@ def pending_for(world: WorldState, payee: int, contract_id: int) -> list[dict[st
 
 def _collect(world: WorldState, claim: dict[str, Any], turn: int) -> None:
     """罰金を取ると決める: わけのある国の通貨に今のレートで換えた払いにする（次のターンに払う）。"""
+    from hakoniwa_core.diplomacy import is_inactive
+
     payer = world.islands.get(claim["payer"])
     payee = world.islands.get(claim["payee"])
-    if payer is None or payee is None:
-        return
+    if payer is None or payee is None or is_inactive(payer):
+        return  # 休止中の国からは取らない（条約の違反と同じ）
     amount = claim["amount"]
     if claim["currency"] != payer.id:
         fxrates.ensure(world, payer, claim["currency"])

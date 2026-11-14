@@ -551,66 +551,85 @@ class _Round:
 
     def _requests(self) -> None:
         cancel_wait = self.config.get("trade.contract_cancel_turns")
-        queue: list[tuple[IslandState, dict[str, Any], int]] = []
+        taken = {
+            i: list(take_deferred(self.world.islands[i], REQUESTS)) for i in self.world.island_ids()
+        }
+        # 入札の契約のうち、このターンの初めに有効で、まだやめると決まっていないものの終わり（やめる
+        # 罰金は、この時点から見てやめる命令が終わりを早めたかで決める。島の順番によらない。FX-01）
+        before = {
+            c["id"]: c["end"]
+            for c in contracts.contracts(self.world)
+            if c.get("tender")
+            and c["state"] == contracts.ACTIVE
+            and c.get("cancelled_by") is None
+            and c.get("terminated_by") is None
+        }
+        cancelled: dict[int, set[int]] = {}  # 入札の契約 → このターンにやめる命令を出した国
+        # 取り下げを先に全島の分（FX-71。同じターンの札と入札の取り下げで、島の順番が効かない）
+        for i in self.world.island_ids():
+            for req, order_id in taken[i]:
+                if self._withdrawal(req):
+                    self._request(self.world.islands[i], req, order_id, cancel_wait, cancelled)
         for i in self.world.island_ids():
             island = self.world.islands[i]
             policy.write_notes(self.world, island)
-            for req, order_id in take_deferred(island, REQUESTS):
-                queue.append((island, req, order_id))
-        # 取り下げを先に全島の分（FX-71。同じターンの札と入札の取り下げで、島の順番が効かない）
-        first = [q for q in queue if self._withdrawal(q[1])]
-        rest = [q for q in queue if not self._withdrawal(q[1])]
-        cancelled: dict[int, set[int]] = {}  # 入札の契約 → このターンにやめる命令を出した国
-        # このターンの前から、やめると決まっていた入札の契約（後からのやめる命令に罰金はない）
-        ending = {c["id"] for c in contracts.contracts(self.world) if c.get("cancelled_by")}
-        for island, req, order_id in [*first, *rest]:
-            i = island.id
-            kind = req["kind"]
-            reason = None
-            if i not in self.islands:
-                reason = "reason_trade_not_ready"
-            elif kind == "send_aid":
-                reason = self._aid(island, req)
-            elif kind == "create_bloc":
-                blocs.create(self.world, island, req["name"], req.get("open", True), self.turn)
-            elif kind in ("propose_contract",):
-                if not tradable(self.defs, req["good"]):
-                    reason = "reason_not_tradable"
-                elif req["partner"] not in self.islands:
-                    reason = "reason_contract_partner"
-                else:
-                    reason = contracts.propose(self.world, island, req, self.turn)
-            elif kind in ("accept_contract", "cancel_contract"):
-                c = contracts.find(self.world, req["contract"])
-                if c is None:
-                    reason = "reason_contract_unknown"
-                elif kind == "accept_contract":
-                    reason = contracts.accept(self.world, island, c, self.turn, req.get("delivery"))
-                else:
-                    active = c["state"] == contracts.ACTIVE
-                    reason = contracts.cancel(self.world, island, c, self.turn, cancel_wait)
-                    if reason is None and active and c.get("tender"):
-                        cancelled.setdefault(c["id"], set()).add(i)
-            elif kind in TENDER_ORDERS:
-                reason = self._tender_request(island, kind, req)
-            else:
-                reason = self._bloc_request(island, kind, req)
-            if reason is not None:
-                fail_deferred(island, order_id, reason)
-                island.log.append(
-                    LogEntry("trade_request_failed", {"order": kind, "reason": reason})
-                )
+            for req, order_id in taken[i]:
+                if not self._withdrawal(req):
+                    self._request(island, req, order_id, cancel_wait, cancelled)
         # やめる命令で抜けた国への罰金（FX-72）。両方が同じターンにやめたら合意で終わる（取らない）
+        # ほかの国の取ったうえでやめる（settle）と同じターンでも、このターンの初めから見て決める。
+        # 期間の残りが予告より短く、やめる命令で終わりが早まらない契約は取らない
         for contract_id, by in sorted(cancelled.items()):
             c = contracts.find(self.world, contract_id)
-            # 終わりが早まった（解約が効いた）契約だけ。期間の残りが予告より短い契約は罰金なし
-            if (
-                c is not None
-                and len(by) == 1
-                and contract_id not in ending
-                and c.get("cancelled_by")
-            ):
+            if c is None or len(by) != 1 or contract_id not in before:
+                continue
+            end = before[contract_id]
+            if end is None or self.turn + 1 + cancel_wait < end:
                 tenders.cancel_claim(self.world, self.config, c, next(iter(by)), self.turn)
+
+    def _request(
+        self,
+        island: IslandState,
+        req: dict[str, Any],
+        order_id: int,
+        cancel_wait: int,
+        cancelled: dict[int, set[int]],
+    ) -> None:
+        i = island.id
+        kind = req["kind"]
+        reason = None
+        if i not in self.islands:
+            reason = "reason_trade_not_ready"
+        elif kind == "send_aid":
+            reason = self._aid(island, req)
+        elif kind == "create_bloc":
+            blocs.create(self.world, island, req["name"], req.get("open", True), self.turn)
+        elif kind in ("propose_contract",):
+            if not tradable(self.defs, req["good"]):
+                reason = "reason_not_tradable"
+            elif req["partner"] not in self.islands:
+                reason = "reason_contract_partner"
+            else:
+                reason = contracts.propose(self.world, island, req, self.turn)
+        elif kind in ("accept_contract", "cancel_contract"):
+            c = contracts.find(self.world, req["contract"])
+            if c is None:
+                reason = "reason_contract_unknown"
+            elif kind == "accept_contract":
+                reason = contracts.accept(self.world, island, c, self.turn, req.get("delivery"))
+            else:
+                reason = contracts.cancel(self.world, island, c, self.turn, cancel_wait)
+                if reason is None and c.get("tender"):
+                    cancelled.setdefault(c["id"], set()).add(i)
+        elif kind in TENDER_ORDERS:
+            reason = self._tender_request(island, kind, req)
+        else:
+            reason = self._bloc_request(island, kind, req)
+        if reason is not None:
+            fail_deferred(island, order_id, reason)
+            # 入札の命令の失敗は持ち主だけに見せる（札を入れようとしたことが分からないように）
+            log = "tender_request_failed" if kind in TENDER_ORDERS else "trade_request_failed"
+            island.log.append(LogEntry(log, {"order": kind, "reason": reason}))
 
     @staticmethod
     def _withdrawal(req: dict[str, Any]) -> bool:
@@ -693,7 +712,13 @@ class _Round:
         for d in sorted(tenders.debts(self.world), key=lambda d: d["id"]):
             payer = self.world.islands.get(d["payer"])
             payee = self.world.islands.get(d["payee"])
-            if d["due"] > self.turn or payer is None or payee is None or payer.id not in self.ids:
+            if (
+                d["due"] > self.turn
+                or payer is None
+                or payee is None
+                or payer.id not in self.ids
+                or is_inactive(payer)  # 休止中の国からは取らない（戻ったら払う）
+            ):
                 keep.append(d)
                 continue
             payer_funds = Payer(ledger.GOV, traders.CONTRACT_SUPPLY)
@@ -2490,7 +2515,11 @@ class _Round:
                 contract_view(c, i, self.turn) for c in contracts.of_island(self.world, i)
             ]
             # 次のターンに払う入札の罰金（予算の段が契約の項目に取り置く。FX-72）
-            state[tenders.DUE] = tenders.due_of(self.world, i, self.turn + 1)
+            due = tenders.due_of(self.world, i, self.turn + 1)
+            if due:
+                state[tenders.DUE] = due
+            else:
+                state.pop(tenders.DUE, None)
             shipping = shipping_of(island, self.config)
             if shipping is not None:
                 keep = self.config.get("trade.cost_turns")

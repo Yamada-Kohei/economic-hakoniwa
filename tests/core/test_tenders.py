@@ -88,15 +88,17 @@ def test_the_lowest_bid_wins_and_other_bids_stay_hidden(game, base):
     assert t["state"] == tenders.AWARDED and t["winner"] == c.id and t["price"] == 800
     assert t["bids"] == {}  # 落ちなかった札は残さない
     assert any(
-        e.kind == "trade_request_failed" and e.args["reason"] == "reason_tender_price"
+        e.kind == "tender_request_failed" and e.args["reason"] == "reason_tender_price"
         for e in d.log
     )
     k = contracts.find(world, t["contract"])
     assert k["tender"] == t["id"] and k["seller"] == c.id and k["buyer"] == a.id
     assert k["currency"] == a.id and k["price"] == 800
     assert k["start"] == world.turn + 1 and k["end"] == world.turn + 1 + t["turns"]
-    for island in (a, b, c):
+    for island in (a, c):
         assert any(e.kind == "tender_awarded" for e in island.log)
+    # 落ちなかった国には書かない（公開のログから誰が札を入れたかが分からないように）
+    assert not any(e.kind == "tender_awarded" for e in b.log)
     assert check(world) == []
 
 
@@ -139,7 +141,7 @@ def test_the_issuer_can_withdraw_before_the_deadline(game, base):
     assert t["state"] == tenders.WITHDRAWN and t["bids"] == {}
     # 取り下げを先に処理するので、同じターンの札は締め切られた入札への札になる
     assert any(
-        e.kind == "trade_request_failed" and e.args["reason"] == "reason_tender_closed"
+        e.kind == "tender_request_failed" and e.args["reason"] == "reason_tender_closed"
         for e in b.log
     )
 
@@ -171,7 +173,7 @@ def test_order_checks(game, base):
     late = max(1, game.config.get("trade.tender.max_open_turns") + 1)
     run(game, world, 1, _orders(world, {island.id: [("open_tender", {**good, "deadline": late})]}))
     assert any(
-        e.kind == "trade_request_failed" and e.args["reason"] == "reason_tender_deadline"
+        e.kind == "tender_request_failed" and e.args["reason"] == "reason_tender_deadline"
         for e in island.log
     )
 
@@ -258,7 +260,7 @@ def test_an_unpaid_penalty_bars_the_country_from_tenders(game, base):
         _orders(world, {b.id: [("bid_tender", {"tender": t["id"], "good": GOOD, "price": 900})]}),
     )
     assert any(
-        e.kind == "trade_request_failed" and e.args["reason"] == "reason_tender_barred"
+        e.kind == "tender_request_failed" and e.args["reason"] == "reason_tender_barred"
         for e in b.log
     )
     assert tenders.find(world, t["id"])["state"] == tenders.LAPSED
@@ -333,3 +335,32 @@ def test_nothing_is_kept_when_nobody_uses_tenders(game, base):
     state = world_state(world)
     assert not state.get("tenders") and not state.get("tender_claims")
     assert not state.get("tender_debts")
+
+
+def test_quitting_while_the_other_side_terminates_still_carries_the_penalty(game, base):
+    """売り手のやめる命令と、買い手の「取ったうえでやめる」が同じターンでも、やめる罰金のあるなしは
+    島の順番によらない（買い手の島 1 が先に処理されても、売り手にやめる罰金がかかる。FX-01）。"""
+    world = copy.deepcopy(base)
+    buyer, seller = world.islands[1], world.islands[2]
+    k = _awarded(game, world, buyer, seller, turns=30)
+    tenders.record_short(world, game.config, k, {"goods": k["qty"]}, world.turn)
+    orders = {
+        buyer.id: [("settle_tender_default", {"contract": k["id"], "choice": "terminate"})],
+        seller.id: [("cancel_contract", {"contract": k["id"]})],
+    }
+    run(game, world, 1, _orders(world, orders))
+    assert [c for c in tenders.claims(world) if c["why"] == "cancel" and c["payer"] == seller.id]
+    assert k["terminated_by"] == buyer.id
+
+
+def test_an_inactive_country_is_not_charged(game, base):
+    world = copy.deepcopy(base)
+    buyer, seller = world.islands[1], world.islands[2]
+    k = _awarded(game, world, buyer, seller)
+    tenders.record_short(world, game.config, k, {"goods": k["qty"]}, world.turn)
+    assert tenders.pending_for(world, buyer.id, k["id"])
+    seller.ext["inactive"] = True  # 請求の後に休止した
+    tenders.lapse_claims(world, world.turn + tenders.CLAIM_TURNS)
+    assert not [d for d in tenders.debts(world) if d["payer"] == seller.id]
+    tenders.record_short(world, game.config, k, {"goods": k["qty"]}, world.turn)
+    assert not tenders.pending_for(world, buyer.id, k["id"])  # 休止中は請求も残さない

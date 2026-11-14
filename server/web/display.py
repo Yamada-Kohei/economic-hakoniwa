@@ -1978,13 +1978,15 @@ def visible_pollution(pollution: int, ext: dict, visible: set[str], mine: bool) 
 
 
 def visible_logs(logs, mine: bool, island=None):
-    """ターンログの行のうち、見る人に見せるもの。軍の行（MI-55）と届いた公電の行（W-39）は持ち主だけ。隠した施設のマス
+    """ターンログの行のうち、見る人に見せるもの。軍の行（MI-55）と届いた公電の行（W-39）と入札の札の行
+    （W-268）は持ち主だけ。隠した施設のマス
     （MI-62）の行も持ち主だけ。"""
     if mine:
         return logs
     from hakoniwa_core.economy.standing import PRIVATE_LOGS as STANDING_LOGS
+    from hakoniwa_core.trade.tenders import PRIVATE_LOGS as TENDER_LOGS
 
-    logs = logs.exclude(kind__in=(*PRIVATE_LOGS, *STANDING_LOGS, LETTER_LOG))
+    logs = logs.exclude(kind__in=(*PRIVATE_LOGS, *STANDING_LOGS, *TENDER_LOGS, LETTER_LOG))
     if island is not None:
         for place in hidden_places(island):
             # x・y のキーが無い行は残す（キー無しは NULL になり、単純な exclude では消えてしまう）

@@ -576,7 +576,7 @@ open_tender:
 
 bid_tender:
   admin_cost: 1
-  secret: true
+  secret: always   # 札は伏せる（実行した後も、札を入れた国だけに見せる。FX-71）
   payload:
     type: object
     required: [tender, good]

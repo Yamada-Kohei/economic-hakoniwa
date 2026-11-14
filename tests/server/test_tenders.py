@@ -61,6 +61,23 @@ def test_bids_are_hidden_and_the_winner_is_shown_to_everyone(client, world):
     second = m.Island.objects.get(pk=second.pk)  # 世界の状態を読み直す
     other = trade_views.trade_data(second, True, "")["tenders"]["results"]
     assert other[0]["winner_name"] == result["winner_name"]
+    # 札は、実行した後も札を入れた国だけに見える（命令の一覧とターンログ）
+    second_orders = client.get(f"/api/islands/{second.id}/orders").json()
+    assert "bid_tender" not in str(second_orders)
+    log = client.get(f"/api/islands/{second.id}/log").content.decode()
+    assert "札を入れました" not in log and "tender_bid" not in log
+    assert "札を入れました" in display.message(
+        "tender_bid",
+        tender=tender_id,
+        buyer="島",
+        good="coal",
+        amount=2,
+        turns=6,
+        cap=1000,
+        deadline=1,
+        currency="通貨",
+        price=850,
+    )
     html = client.get(f"/islands/{own.id}/trade/contracts/").content.decode()
     assert 'id="tenders"' in html and 'data-order="open_tender"' in html
     assert f"入札 {tender_id}番で結んだ" in html
