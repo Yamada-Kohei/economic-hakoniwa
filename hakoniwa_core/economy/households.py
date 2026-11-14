@@ -289,7 +289,8 @@ def food_cost(island: IslandState, defs: Defs, config: GameConfig, persons: int)
 
 def living_keep(island: IslandState, defs: Defs, config: GameConfig) -> int:
     """資産を持つ層が出資・買い取りの前に手元に残す暮らしの分（FM-58。2026-11-15）: 次の市場の段で
-    使う見込みの額（式 consumption）と、層の人数分の1ターンの食べ物の額（food_cost）の多い方。
+    使う見込みの額（式 consumption）と、層の人数分の1ターンの食べ物の額（food_cost）の多い方に、
+    株を担保にした借入の次のターンの返済（pledge_service）を足した額。
 
     資本家階級の所得（配当・利子）は決算の段より後に入り、次のターンの市場の段の買い物は今ある
     預金から払う。預金を丸ごと出資に回すと、次のターンに食べ物を買えずに飢えた（計画経済から
@@ -299,10 +300,26 @@ def living_keep(island: IslandState, defs: Defs, config: GameConfig) -> int:
     from hakoniwa_core.economy.stats import inflation
 
     h = island.economy.households.get(OWNERS)
-    if h is None or h["persons"] <= 0:
+    if h is None:
         return 0
+    service = pledge_service(island, OWNERS)
+    if h["persons"] <= 0:
+        return service
     plan = consumption(island, OWNERS, config, inflation(island.economy))
-    return max(plan, food_cost(island, defs, config, h["persons"]))
+    return max(plan, food_cost(island, defs, config, h["persons"])) + service
+
+
+def pledge_service(island: IslandState, layer: str) -> int:
+    """層が株を担保にした借入の、次のターンの利子と元金の返済（銀行の段は市場の段の後・配当の
+    前なので、これも今の預金から払う）。"""
+    from hakoniwa_core.economy import banks
+
+    return sum(
+        ledger.interest(banks.outstanding(island, x), x.rate)
+        + min(banks.outstanding(island, x), x.installment)
+        for x in banks.loans_by_borrower(island, household(layer))
+        if x.purpose == banks.PLEDGE
+    )
 
 
 def owners_spare(island: IslandState, defs: Defs, config: GameConfig) -> int:

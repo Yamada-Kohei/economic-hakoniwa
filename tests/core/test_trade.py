@@ -918,7 +918,7 @@ def test_the_state_opens_a_trading_company_when_private_owners_cannot(game, monk
     world, island = _market_island(game)
     game.engine.run_turn(world)
     _foreclose_all_traders(island, game.config, world.turn)
-    monkeypatch.setattr(setup, "owners_can_fund", lambda island, config: False)
+    monkeypatch.setattr(setup, "owners_can_fund", lambda island, defs, config: False)
     wait = game.config.get("trade.entry_turns")
     first = world.turn + 1
     for turn in range(first, first + 2 * wait):

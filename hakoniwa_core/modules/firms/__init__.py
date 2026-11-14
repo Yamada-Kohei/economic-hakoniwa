@@ -1810,10 +1810,13 @@ class EntryExit(IslandStage):
             payer, firm = owner_entity(target), None
             share = amount - sum(p for _, p, _ in plan)
             have = ledger.money(island, payer)
+            if payer == household(OWNERS):  # 資本家階級は暮らしの分を残す（FM-58）
+                have = owners_spare(island, ctx.defs, ctx.config)
             if grade is not None and have < share and payer != household(OWNERS):
                 # 農場の企業の手元は小さいので、足りない分は資本家階級が企業に増資して出す
+                # （暮らしの分を残した預金から。FM-58）
                 top = share - have
-                if funds.available(island, Payer(household(OWNERS))) >= top:
+                if owners_spare(island, ctx.defs, ctx.config) >= top:
                     invest(island, household(OWNERS), payer, top)
                     have = share
             if have < share:
