@@ -1560,6 +1560,39 @@ class Market(IslandStage):
     # --- 公定価格と値段の規制（フェーズ3-4） ------------------------------------------------
 
     @staticmethod
+    def _plan_tier(
+        island: IslandState,
+        ctx: StageContext,
+        order: Order,
+        party: Party,
+        traders_: set[str],
+    ) -> tuple[int, str | None]:
+        """計画経済の公定価格の財で、買い注文の割当の順位と、家計の注文なら層の名前。"""
+        tier, layer = planning.STATE, None
+        f = party.facility
+        if party.fuel_reserve:
+            tier = min(FUEL_RESERVE_PRIORITY, ctx.config.get("warehouse.standing_priority"))
+        elif party.kind == HOUSEHOLD and party.layer != "housing":
+            tier, layer = planning.HOUSEHOLDS, party.layer
+        elif party.kind == STORE and order.priority == CONTRACT_PRIORITY:
+            # 二国間契約で売る分: 外国との約束なので、食料も国営施設と同じ順位
+            # （PL-62、本人の表の 1-2）
+            tier = planning.STATE
+        elif party.kind == STORE and order.priority == ctx.config.get(
+            "warehouse.standing_priority"
+        ):
+            tier = order.priority  # 決まった買いは配給・国営施設・輸出の後
+        elif f is not None and f.id in traders_:
+            # 商社の輸出: 輸出の計画の分（PL-62）は食料も国営施設と同じ順位、売れ残りの
+            # 分は一番後
+            tier = planning.STATE if party.export_plan else planning.EXPORTS
+        elif party.kind == MERCHANT:
+            tier = planning.EXPORTS  # 海外の商人の買い（W-186 回4）
+        elif f is not None and planning.is_priority(island, ctx.defs, f):
+            tier = planning.PRIORITY
+        return tier, layer
+
+    @staticmethod
     def _limits(
         island: IslandState,
         ctx: StageContext,
@@ -1581,28 +1614,7 @@ class Market(IslandStage):
             layers: list[str | None] = []
             traders_ = {f.id for f in trade.traders_of(island, ctx.config)}
             for order, party in book.buys:
-                tier, layer = planning.STATE, None
-                f = party.facility
-                if party.fuel_reserve:
-                    tier = min(FUEL_RESERVE_PRIORITY, ctx.config.get("warehouse.standing_priority"))
-                elif party.kind == HOUSEHOLD and party.layer != "housing":
-                    tier, layer = planning.HOUSEHOLDS, party.layer
-                elif party.kind == STORE and order.priority == CONTRACT_PRIORITY:
-                    # 二国間契約で売る分: 外国との約束なので、食料も国営施設と同じ順位
-                    # （PL-62、本人の表の 1-2）
-                    tier = planning.STATE
-                elif party.kind == STORE and order.priority == ctx.config.get(
-                    "warehouse.standing_priority"
-                ):
-                    tier = order.priority  # 決まった買いは配給・国営施設・輸出の後
-                elif f is not None and f.id in traders_:
-                    # 商社の輸出: 輸出の計画の分（PL-62）は食料も国営施設と同じ順位、売れ残りの
-                    # 分は一番後
-                    tier = planning.STATE if party.export_plan else planning.EXPORTS
-                elif party.kind == MERCHANT:
-                    tier = planning.EXPORTS  # 海外の商人の買い（W-186 回4）
-                elif f is not None and planning.is_priority(island, ctx.defs, f):
-                    tier = planning.PRIORITY
+                tier, layer = Market._plan_tier(island, ctx, order, party, traders_)
                 tiers.append(tier)
                 layers.append(layer)
             return (price, price), planning.allocator(tiers, layers, persons)
@@ -2749,6 +2761,40 @@ class Market(IslandStage):
             for layer in sorted(island.economy.households)
         }
         all_planned = sum(planned_of.values()) or 1
+
+        # 家計の前に並んだ買い注文（国の倉庫・施設の原料・商社）が取る分を除いた、家計に残る食料の
+        # 売りの量（LB-20）。家計は残りを見て好みの献立を組み、残りのない物の分はほかの食料に移す
+        # （主食が売り切れたら、店にある物を買う。見ずに頼むと、国の倉庫の備蓄の買い足しや工場に
+        # 先を越された分だけ飢え、ほかの食料は売れ残った）
+        # 引くのは、売りが足りないときに家計より先に約定する買いだけ。公定価格の財は割当の順位
+        # （国営施設・国の倉庫の備蓄は配給より先）、ほかの財は指値で比べる。家計はふだん値段の
+        # 1 割上まで出すので、それより高い指値か指値なしの買い、同じ指値で家計より優先順位の高い
+        # 買い。低い指値（国の倉庫の備蓄の買い足しは平年の値段まで）は、売りが足りないと何も
+        # 買えないので引かない
+        official = planning.official(island) if planning.is_planned(island, defs) else {}
+        traders_ = {f.id for f in trade.traders_of(island, config)} if official else set()
+
+        def ahead(order: Order, party: Party, good: str) -> bool:
+            if good in official:
+                tier, _ = self._plan_tier(island, ctx, order, party, traders_)
+                return tier > planning.HOUSEHOLDS
+            if order.limit is None:
+                return True
+            top = menu.limits[good]
+            return order.limit > top or (order.limit == top and order.priority > priority)
+
+        left_for_households = {
+            g: max(
+                0,
+                offered.get(g, 0)
+                - sum(
+                    o.quantity
+                    for o, party in (books_by_good[g].buys if g in books_by_good else ())
+                    if ahead(o, party, g)
+                ),
+            )
+            for g in foods
+        }
         hungry_settings = settings["hungry"]
         steps = hungry_settings["steps"]  # 食料の注文を分ける段（累積の割合。最後は 1）
         for layer in sorted(island.economy.households):
@@ -2823,7 +2869,7 @@ class Market(IslandStage):
             # 2. 食料: 売りに出ている量を上限に、一番安く満たす献立から、必需品の上限に収まる分だけ
             #    好みの献立へ寄せる（好みは層の所得で変わる。LB-20）。値幅の上端を指値にする
             need = needs_by_layer.get(layer, 0)
-            caps = {g: int(offered.get(g, 0) * share) for g in foods}
+            caps = {g: int(left_for_households[g] * share) for g in foods}
             food_budget = max(0, cap - paid - wear_cost) + received
             layer_menu = replace(menu, prefs=food_prefs(defs, config, income))
             if hungry:
