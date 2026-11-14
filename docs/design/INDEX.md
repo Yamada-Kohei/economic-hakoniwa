@@ -578,7 +578,7 @@
 | PL-58 | 管理画面で島を消すと、その島の終わっていない戦争と条約は次のターンの外交の段で終わる（戦争は ``… | 決定（2026-11-04 W-88） | tests/core/test_diplomacy.py、tests/core/test_military_war.py、tests/server/test_diplomacy.py |
 | PL-59 | 人員計画（2026-11-10 | 決定（2026-11-10 | tests/core/test_staff_plan.py |
 | PL-60 | 二重の値段（2026-11-12、W-231 | 決定（2026-11-12 | tests/core/test_phase3_4.py |
-| PL-62 | 輸出の計画（2026-11-13、計画経済の電気不足の案 3）: 国が、外貨を使う順の 1 段の… | 決定（2026-11-13、本人の表の 1-2・2-2・3-1 と B） | tests/core/test_export_plan.py |
+| PL-62 | 輸出の計画（2026-11-13、計画経済の電気不足の案 3）: 国が、外貨を使う順の 1 段の… | 決定（2026-11-13、本人の表の 1-2・2-2・3-1 と B | tests/core/test_export_plan.py |
 
 ## [11 画面と統計](11-ui.md)
 
@@ -684,7 +684,7 @@
 
 ## [12 確かめ方](12-checks.md)
 
-決まり 43 個、うち仮の決まりの表にあるもの 0 個。
+決まり 44 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -731,6 +731,7 @@
 | GT-40 | 標準の計画は、島で作っていない投入財でも、作る施設の投入財が手元にあれば手に入ると見て使う施設（… | 決定（回7 後半） | tests/core/test_balance_round7b.py |
 | GT-41 | 測りは、計算の中身（hakoniwa_core・game.yaml・packs・schemas）… | 決定 | tests/core/test_measure_reuse.py |
 | GT-43 | 試験は回す場所と順によらず同じ結果になる（Linux でも Windows の X870 でも、… | 決定 | tests/core/test_playtest_fixes.py、tests/server/test_board.py、tests/server/test_theme_sprites.py |
+| GT-44 | 経済の決まりを足す・変えるときは、同じコードで決まりを入れた世界と入れない世界を比べてから既定に… | 決定 |  |
 
 ## [15 軍事と戦争](15-military.md)
 

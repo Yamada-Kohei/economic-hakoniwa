@@ -943,6 +943,11 @@ def _goods_help(game) -> dict:
             "margin": percent(config.get("contractor.margin")),
             "machine_workers": config.get("contractor.machines.workers"),
         },
+        # 店の付け値（MK-42）: 変動費に乗せる粗利と、屋台の値段に対する上限
+        "retail": {
+            "markup": percent(config.get("retail.markup")),
+            "cap": percent(config.get("retail.posted_cap")),
+        },
         "shortage": {
             "share": percent(config.get("records.shortage.share")),
             "turns": config.get("records.shortage.turns"),

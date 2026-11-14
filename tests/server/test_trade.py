@@ -657,3 +657,14 @@ def test_an_indefinite_contract_row_can_be_cancelled_and_shows_no_end():
     c["end"] = 504
     [row] = trade_views.contract_rows([c], 1, 500, islands)
     assert row["end"] == 504 and not row["can_cancel"]
+
+
+def test_help_explains_the_export_plan_and_shop_prices(client, world):
+    """手引き（PL-62・FX-76・FX-77・MK-42）: 輸出の計画と、店の付け値（粗利と上限）を書く。"""
+    config = get_game().config
+    html = client.get("/help/").content.decode()
+    assert "輸出の計画（計画経済）" in html
+    assert "命令「輸出の計画」" in html
+    assert "原料と部品・消費財の輸入に蓄えを使いません" in html
+    assert f"{config.get('retail.markup') * 100:g}% の粗利を乗せた値札" in html
+    assert f"屋台の値段の {config.get('retail.posted_cap') * 100:g}% まで" in html
