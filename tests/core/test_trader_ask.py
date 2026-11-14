@@ -43,13 +43,20 @@ def traded(game):
 
 
 def _importer(game, world):
-    """輸入している財がある、市場経済の島の商社と財。"""
+    """輸入している財がある、市場経済の島の商社と財（狙う量があり、今も輸入が引き合う財。荷を売り
+    切った後に向きを決め直しても輸入のままの財を選ぶ）。"""
     for island in world.islands.values():
         if traders.is_planned(island):
             continue
+        found = traders.prospects(island, game.defs, game.config)
         for f in traders_of(island, game.config):
             for good, item in sorted(traders.goods_of(f).items()):
-                if item.get("dir") == traders.IMPORT and item.get("bm") is not None:
+                if (
+                    item.get("dir") == traders.IMPORT
+                    and item.get("bm") is not None
+                    and item.get("m")
+                    and traders.importable(found.get(good))
+                ):
                     return island, f, good, item
     pytest.skip("輸入している商社がない")
 
