@@ -2,8 +2,8 @@
 
 島の漁港と農場が会社ごと倒産して食べ物が市場から消えると、働き手がみな畑に戻り、市場で買いたい
 人がいなくなって、漁港も農場も建たないまま 100 ターン以上飢えが続いた。飢えている家計は、売りに
-出ていない食料のどれでも、それだけ売りに出ていれば買った量まで買いたい量に出す。畑に戻った人と
-その家族の分も足す。"""
+出ていない食料のどれでも、それだけ売りに出ていれば買った量まで買いたい量に出す（2026-11-15 から
+は食べられている家計も同じ式。LB-20）。畑に戻った人とその家族の分も足す。"""
 
 from __future__ import annotations
 
@@ -41,8 +41,10 @@ def test_hungry_households_want_any_staple_when_no_food_is_on_sale(game, warmed)
     fed = _wanted(game, world, island)
     island.economy.households[GENERAL][FED] = 0  # 前のターンに何も食べられなかった
     hungry = _wanted(game, world, island)
+    # 買いたい量は、その財だけ要る量いっぱい売りに出ていたとしたときの注文の量（LB-20）なので、
+    # 食べられている家計もどの主食も買いたい。飢えた家計は預金を崩す分だけ少なくない
     for good in STAPLES:
-        assert hungry.get(good, 0) > fed.get(good, 0)
+        assert hungry.get(good, 0) >= fed.get(good, 0) > 0
     # 畑に戻った人とその家族も、売りに出ていれば買う
     back = 10_000
     more = _wanted(game, world, island, back)

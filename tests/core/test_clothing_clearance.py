@@ -312,8 +312,9 @@ def test_island_price_ignores_the_bargain_sale(game, warmed, clearance_on):
     assert record.price >= auction.band(before, 1000)[0]
     assert island.economy.prices[good] >= auction.band(before, 1000)[0]
     # 値引きの売りで買い手が満たされたので、島の値段は前の値段より上がらない（値引きを除くと
-    # 買い手が満たされないことになり、値引きのあいだ毎ターン値幅ずつ上がっていた。11-10）
-    assert record.price <= before
+    # 買い手が満たされないことになり、値引きのあいだ毎ターン値幅ずつ上がっていた。11-10）。
+    # ターンの途中で売り手の指値（作る費用）が少し動いた分は見る（下の (3) の試験と同じ幅）
+    assert record.price <= before + before * config.get("market.band") / 100
 
 
 def test_selling_off_stops_when_the_ratio_is_zero(game, warmed, monkeypatch):
