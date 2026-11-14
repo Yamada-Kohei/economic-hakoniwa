@@ -578,7 +578,7 @@
 | PL-58 | 管理画面で島を消すと、その島の終わっていない戦争と条約は次のターンの外交の段で終わる（戦争は ``… | 決定（2026-11-04 W-88） | tests/core/test_diplomacy.py、tests/core/test_military_war.py、tests/server/test_diplomacy.py |
 | PL-59 | 人員計画（2026-11-10 | 決定（2026-11-10 | tests/core/test_staff_plan.py |
 | PL-60 | 二重の値段（2026-11-12、W-231 | 決定（2026-11-12 | tests/core/test_phase3_4.py |
-| PL-62 | 輸出の計画（2026-11-13、計画経済の電気不足の案 3）: 国が、外貨を使う順の 1 段の… | 決定（2026-11-13、本人の表の 1-2・2-2・3-1 と B） | tests/core/test_export_plan.py |
+| PL-62 | 輸出の計画（2026-11-13、計画経済の電気不足の案 3）: 国が、外貨を使う順の 1 段の… | 決定（2026-11-13、本人の表の 1-2・2-2・3-1 と B | tests/core/test_export_plan.py |
 
 ## [11 画面と統計](11-ui.md)
 
