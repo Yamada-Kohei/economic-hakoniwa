@@ -31,9 +31,9 @@
   ``traders.PLAN_X`` に置く。どの商社にも扱える重さを超えては分けない。商社は島の市場に計画の分を
   別の注文で出し（扱える重さは計画の分に先に充てる）、その注文は食料も国営施設と同じ順位で配られる
   （本人の表の 1-2。modules/market）。生産目標の需要の履歴からは除く。
-- 蓄え（本人の B）: 蓄えが目標より少ない間は、外貨を使う順の 3・4 段の輸入に目標を超える分しか使わな
-  い（reserve_of。modules/trade の _fx_ahead）。国営施設の設備に使う財（essential）は 3 段でも
-  使える。
+- 蓄え（本人の B）: 蓄えが目標より少ない間は、外貨を使う順の planning.export.reserve_rank（既定 4:
+  消費財）から下の段の輸入に目標を超える分しか使わない（reserve_of。modules/trade の _fx_ahead）。
+  国営工場の原料（3 段）と、国営施設の設備に使う財（essential）は使える。
 - 中央銀行の外貨は使わない。
 
 島の状態は ``island.ext["plan"]["export"]``:
@@ -94,9 +94,9 @@ def essential(island: IslandState, good: str) -> bool:
 def reserve_of(
     island: IslandState, config: GameConfig, entity: str, currency: int, turn: int | None = None
 ) -> int:
-    """本人の B: 主体 entity の通貨 currency の持ち高のうち、外貨を使う順の 3・4 段の輸入に使わず
-    残す額（蓄えの目標を、島の動いている国営の商社の持ち高の比で分けた分。持ち高まで）。計画経済で
-    ない島と自国の通貨は 0。"""
+    """本人の B: 主体 entity の通貨 currency の持ち高のうち、外貨を使う順の reserve_rank 段から下の
+    輸入に使わず残す額（蓄えの目標を、島の動いている国営の商社の持ち高の比で分けた分。持ち高まで）。
+    計画経済でない島と自国の通貨は 0。"""
     if currency == island.id or not traders.is_planned(island):
         return 0
     target = island.ext.get(planning.KEY, {}).get(KEY, {}).get("reserve", {}).get(str(currency), 0)
