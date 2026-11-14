@@ -8,7 +8,7 @@ import { BARS, FILL, overlayLegend, readOverlayMode, writeOverlayMode } from "./
 import { overlayList } from "./overlays/index.js";
 import { lift, tileToWorld, worldToTile } from "./projection.js";
 import { drawIsland } from "./renderer.js";
-import { drawRuler } from "./ruler.js";
+import { drawRuler, readRulerShown, writeRulerShown } from "./ruler.js";
 import { loadSprites } from "./sprites.js";
 import { OrderQueue } from "../island/orders.js";
 import { TilePanel } from "../island/panel.js";
@@ -55,6 +55,7 @@ const storage = (() => {
 const state = {
   selected: null, marked: new Set(), overlay: null, overlayMode: readOverlayMode(storage),
   sprites: new Map(), undergroundLabel: words().hidden,
+  ruler: readRulerShown(storage), // 縁の目盛りと座標（UI-85）。既定は出さない
 };
 let pending = false;
 
@@ -69,7 +70,7 @@ function redraw() {
     pending = false;
     try {
       drawIsland(ctx, map, defs, view, state);
-      drawRuler(ctx, map, view, theme);
+      if (state.ruler) drawRuler(ctx, map, view, theme);
       if (minimap) drawMinimap(minimap, map, defs, state.selected);
       placePopover();
       canvas.dataset.ready = "1";
@@ -205,19 +206,31 @@ function restoreView() {
   return true;
 }
 
-// 指（カーソル）の下のマスの座標を地図の隅に出す（UI-85）
+// 指（カーソル）の下のマスの座標を地図の隅に出す（UI-85）。縁の目盛りと一緒に「座標」のボタンで出し入れする
 const coord = document.getElementById("map-coord");
+const rulerToggle = document.getElementById("map-ruler-toggle");
 function tileAtScreen(sx, sy) {
   return worldToTile((sx - view.offsetX) / view.scale, (sy - view.offsetY) / view.scale, map, heightOf, theme);
 }
 if (coord) {
   canvas.addEventListener("pointermove", (e) => {
+    if (!state.ruler) return;
     const r = canvas.getBoundingClientRect();
     const tile = tileAtScreen(e.clientX - r.left, e.clientY - r.top);
     coord.hidden = !tile;
     if (tile) coord.textContent = `(${tile.x}, ${tile.y})`;
   });
   canvas.addEventListener("pointerleave", () => (coord.hidden = true));
+}
+if (rulerToggle) {
+  rulerToggle.setAttribute("aria-pressed", String(state.ruler));
+  rulerToggle.addEventListener("click", () => {
+    state.ruler = !state.ruler;
+    writeRulerShown(storage, state.ruler);
+    rulerToggle.setAttribute("aria-pressed", String(state.ruler));
+    if (!state.ruler && coord) coord.hidden = true;
+    redraw();
+  });
 }
 
 const controls = attachControls(canvas, view, {

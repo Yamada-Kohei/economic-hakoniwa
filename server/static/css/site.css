@@ -39,6 +39,8 @@ dialog.bug-report::backdrop { background: rgba(0, 0, 0, 0.4); }
 #island-map { display: block; width: 100%; height: min(82vh, 900px); touch-action: none; cursor: grab; }
 .map-buttons { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 4px; }
 .map-buttons button { width: 40px; height: 40px; font-size: 20px; }
+.map-buttons .map-ruler-toggle { font-size: 12px; padding: 0; }
+.map-buttons .map-ruler-toggle[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 .muted { color: #6a7aa0; }
 .error { color: #c62828; }
 .flash { list-style: none; padding: 8px 12px; margin: 8px 0; border: 1px solid var(--border); background: var(--panel); }
@@ -270,6 +272,7 @@ figure.chart select { max-width: 100%; }
 .pie-turn { display: flex; align-items: center; gap: 8px; font-size: 0.85em; color: #4f62a0; margin-bottom: 2px; }
 .pie-turn span { white-space: nowrap; min-width: 6.5em; }
 .pie-turn input { flex: 1; min-width: 0; }
+.pie-turn[hidden] { display: none; }
 .pie-legend { list-style: none; margin: 4px 0 0; padding: 0; font-size: 0.85em; }
 .pie-legend li { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; border-bottom: 1px solid #f0ede6; }
 .pie-legend .pie-value { white-space: nowrap; text-align: right; }
