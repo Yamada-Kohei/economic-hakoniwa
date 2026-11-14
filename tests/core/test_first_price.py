@@ -95,6 +95,34 @@ def test_good_unsold_for_two_years_is_unlisted_again(game):
     assert island.economy.prices["electronics"] == _cost_plus(game, island, plant)
 
 
+def test_unlisted_starts_exactly_at_the_turns_line(game):
+    """最後の約定から market.unlisted_turns − 1 ターンはまだ相場のある品（値幅ずつ）、ちょうどの
+    ターンから相場のない品（仮の線。掲示板のレビュー #495〜）。"""
+    island, _ = _plant_island(game)
+    ctx = _ctx_of(game, island)
+    turns = game.config.get("market.unlisted_turns")
+    island.economy.ext[LAST_TRADE] = {"electronics": ctx.turn - (turns - 1)}
+    assert "electronics" not in Market._unlisted(island, ctx, {})
+    island.economy.ext[LAST_TRADE] = {"electronics": ctx.turn - turns}
+    assert "electronics" in Market._unlisted(island, ctx, {})
+
+
+def test_costs_use_the_prices_before_this_turns_moves(game):
+    """同じターンに原料（機械）の値段も上げたとき、製品（電子機器）の初値の原価は、上げる前の
+    機械の値段で見る（つながった品を1ターンに重ねて跳ねさせない。次のターンに追う）。"""
+    island, plant = _plant_island(game)
+    add(island, "machinery_plant", 3, 3, owner=OWNER_PRIVATE).accounting = ACCOUNTING_SELF
+    ctx = _ctx_of(game, island)
+    prices = island.economy.prices
+    prices["machinery"] //= 4  # 機械も古く安い値段のまま品切れ（初値で上がる）
+    expected = _cost_plus(game, island, plant)
+    machinery = prices["machinery"]
+    island.scratch["wanted"] = {"electronics": 1000, "machinery": 1000}
+    Market._record(island, ctx, {}, {}, {})
+    assert prices["machinery"] > machinery  # 機械は上がった
+    assert prices["electronics"] == expected  # 電子機器は上げる前の機械の値段で見た
+
+
 def test_import_price_caps_the_first_price(game, monkeypatch):
     """商社の輸入が引き合う値段が原価＋1割より安ければ、そちら（輸入品より高くは売れない）。"""
     from hakoniwa_core.modules import market as market_module
@@ -113,6 +141,10 @@ def test_import_price_caps_the_first_price(game, monkeypatch):
     island.scratch["wanted"] = {"electronics": 1000}
     Market._record(island, ctx, {}, {}, {})
     assert island.economy.prices["electronics"] == imported
+    # 輸入の値段まで上げても輸入されず品切れが続く（外貨・船が足りないなど）なら、次は輸入の値段で
+    # 抑えず原価＋1割まで
+    Market._record(island, ctx, {}, {}, {})
+    assert island.economy.prices["electronics"] == target
 
 
 def test_price_cap_stops_the_first_price(game):

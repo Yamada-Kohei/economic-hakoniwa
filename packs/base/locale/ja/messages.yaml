@@ -542,8 +542,8 @@ status_staff_plan: "人員の枠"
 status_input: "原料不足"
 status_input_price: "原料が割高"
 # 電力でない原料が高くて買わなかった（倭国さんの案 2、2026-11-14）。売り値の側か原料の側かを決めつけず、
-# 両方の品を出す（server/web/display.py の status_text が「（売り値: 〜、原料: 〜）」を足す）
-status_unprofitable: "売り値で原料代が出ない"
+# 両方の品を出す（server/web/display.py の status_text が「（製品: 〜、原料: 〜）」を足す）
+status_unprofitable: "今の売り値では採算が合わない"
 status_funds: "資金不足"
 status_public_price: "教材が高くて買えない"
 status_power: "電力不足"

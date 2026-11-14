@@ -25,7 +25,7 @@ def _plant(status):
 @pytest.mark.django_db
 def test_status_names_both_the_product_and_the_material():
     text = display.status_text(_plant("input_price:machinery"))
-    assert text == "売り値で原料代が出ない（売り値: 電子機器、原料: 機械）"
+    assert text == "今の売り値では採算が合わない（製品: 電子機器、原料: 機械）"
     hint = display.status_hint(_plant("input_price:machinery"))
     assert "生産補助" in hint and "輸入" in hint
 

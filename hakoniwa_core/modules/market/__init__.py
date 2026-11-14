@@ -170,14 +170,17 @@ LAST_TRADE = "last_trade"
 
 
 def _traded_before(island: IslandState) -> set[str]:
-    """前からの世界（最後の約定の記録がない保存）で、売り買いの跡のある財（MK-43）。"""
+    """前からの世界（最後の約定の記録がない保存）で、売り買いの跡のある財（MK-43）: 物価指数に
+    入れた最後の約定の値段、家計の買った量、施設の売れた量のどれかがある財。いつ約定したかは
+    分からないので、記録を始めたターンに約定したと置く（相場のない品になるのは最大
+    market.unlisted_turns ターン後）。"""
     from hakoniwa_core.economy.stats import PAID
 
     economy = island.economy
     goods = set(economy.ext.get(PAID, {}))
     goods |= {g for g, history in economy.bought_history.items() if any(history)}
     for f in island.facilities:
-        goods |= {g for g, q in stock.totals(f.stock).items() if q > 0}
+        # 在庫は建国や倉庫から来ることもあるので、約定の跡に数えない（掲示板のレビュー #495〜）
         goods |= {g for g, entry in f.economy.get("sales", {}).items() if entry[1] > 0}
     return goods
 
@@ -4849,6 +4852,7 @@ class Market(IslandStage):
             if p is not None and p.export_bloc is not None and ask <= p.export_limit < price:
                 prices[good] = auction.band(price, width)[0]
         unlisted = Market._unlisted(island, ctx, results)
+        before = dict(prices)  # 初値の原価は、このターンに値段を動かす前の値段で見る
         for good in sorted(wanted):
             if supply.get(good, 0) > 0:
                 continue
@@ -4857,7 +4861,7 @@ class Market(IslandStage):
                 # 値段があれば低いほう）まで1ターンで上げる。作る施設がなければ下の値幅ずつ
                 prospect = found.get(good)
                 first = Market._first_price(
-                    island, ctx, good, prices, rates, prospect.import_floor if prospect else 0
+                    island, ctx, good, before, rates, prospect.import_floor if prospect else 0
                 )
                 if first is not None:
                     prices[good] = max(prices.get(good, 1), first)
@@ -4909,8 +4913,9 @@ class Market(IslandStage):
     ) -> int | None:
         """相場のない品の初値（MK-43）: 島で今の作り方で good を作る施設の1単位の原価（unit_floor。
         投入財と運賃・賃金・電気代・設備の傷み）の一番安いものに market.initial_prices.markup を
-        乗せた値段。輸入が引き合う値段 imported（0 はなし）があれば低いほう。混合経済の値段の上限が
-        あれば上限まで。作る施設がなければ None。"""
+        乗せた値段。輸入が引き合う値段 imported（0 はなし）があれば低いほう。ただし島の値段がもう
+        輸入の値段以上なのに品切れが続いている（外貨・船・量の都合で実際には輸入されない）なら、
+        輸入の値段では抑えない。混合経済の値段の上限があれば上限まで。作る施設がなければ None。"""
         defs, config = ctx.defs, ctx.config
         costs = [
             unit_floor(defs, config, f, good, prices, f.economy.get("wage", 0), rates.get(f.id, 0))
@@ -4924,7 +4929,7 @@ class Market(IslandStage):
         if not costs:
             return None
         price = round_money(min(costs) * (1 + config.get("market.initial_prices.markup")))
-        if imported > 0:
+        if 0 < imported and prices.get(good, 1) < imported:
             price = min(price, imported)
         cap = island.policy.price_cap.get(good)
         if cap and politics.trait(island, defs, "price_controls", False):

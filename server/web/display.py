@@ -955,7 +955,7 @@ def status_text(f: Facility) -> str:
         outputs = sorted(fac.recipe_of(defs, f)["outputs"])
         products = "・".join(defs.name("goods", g) for g in outputs)
         material = defs.name("goods", good)
-        return message("status_unprofitable") + f"（売り値: {products}、原料: {material}）"
+        return message("status_unprofitable") + f"（製品: {products}、原料: {material}）"
     else:
         text = message(f"status_{kind}")
     if kind == "budget" and good:  # 年の予算の月割りが足りない（項目の名前。LB-45）
@@ -1038,6 +1038,8 @@ STATUS_HINTS = {
         "「工業団地・オフィス街の指定」で地形・資源・通勤圏の合う空き地を工業団地にできます。"
     ),
 }
+# 状態の名前 status_unprofitable（電力でない原料が高い input_price の文）の手は input_price と同じ
+STATUS_HINTS["unprofitable"] = STATUS_HINTS["input_price"]
 
 
 def status_hint(f: Facility) -> str:
