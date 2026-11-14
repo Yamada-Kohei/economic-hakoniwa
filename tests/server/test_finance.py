@@ -480,3 +480,22 @@ def test_help_ties_the_mine_limit_to_exploration(client, world):
     """手引き（MI-68・FM-66）: 探鉱で見つけた資源も鉱山の上限に数える。"""
     html = client.get("/help/").content.decode()
     assert "鉱脈や探鉱で見つけた分と合わせて3種類になれば3つ" in html
+
+
+def test_nationalize_check_reads_the_treasury(client, world):
+    """命令の確かめは国庫の残高を読んでから、国有化の値段を払えるかを見る（不具合報告 #14: 島の
+    勘定を読まずに国庫が 0 に見え、足りているのに「国庫が足りません」と出ていた）。"""
+    from hakoniwa_core import ledger
+    from server.economy.models import Account
+
+    island = _own_island(client)
+    private = _market_island_sites(island)["private"]
+    order = {"kind": "nationalize", "payload": {"x": private.x, "y": private.y}}
+    url = f"/api/islands/{island.id}/orders/check"
+    treasury = Account.objects.filter(island=island, name=ledger.TREASURY_ACCOUNT)
+    assert treasury.exists()
+    treasury.update(balance=10**12)
+    assert client.post(url, order, content_type="application/json").json()["ok"] is True
+    treasury.update(balance=0)
+    short = client.post(url, order, content_type="application/json").json()
+    assert short["ok"] is False and short["text"].startswith("国庫が足りません")
