@@ -20,7 +20,7 @@
             {% for c in trade.contracts %}
             <tr>
               <td>{{ c.id }}</td>
-              <td>{{ c.state_name }}{% if c.aid %}<br><small class="muted">{% translate "物の援助" %}</small>{% endif %}{% if c.state == "proposed" %}<br><small class="muted">{% if c.proposed_by_me %}{% translate "相手の返事待ち" %}{% else %}{% translate "相手からの申し込み" %}{% endif %}</small>{% endif %}</td>
+              <td>{{ c.state_name }}{% if c.aid %}<br><small class="muted">{% translate "物の援助" %}</small>{% endif %}{% if c.tender %}<br><small class="muted">{% blocktranslate with n=c.tender %}入札 {{ n }}番で結んだ{% endblocktranslate %}</small>{% endif %}{% if c.state == "proposed" %}<br><small class="muted">{% if c.proposed_by_me %}{% translate "相手の返事待ち" %}{% else %}{% translate "相手からの申し込み" %}{% endif %}</small>{% endif %}</td>
               <td><a href="{% url 'island_trade' c.partner %}">{{ c.partner_name }}</a></td>
               <td>{{ c.side_name }}</td>
               <td>{{ c.good_name }}</td>
@@ -47,6 +47,81 @@
       <p class="hint">{% if trade.partners %}<a href="{% url 'island_trade' island.id %}#actions">{% translate "新しい契約の申し込みは、概要の「貿易に打てる手」から" %}</a>{% else %}{% translate "契約を申し込める相手の国がまだありません。" %}{% endif %}</p>
       <p class="trade-notice" aria-live="polite"></p>
     </section>
+
+    {% with td=trade.tenders %}
+    <section class="panel" id="tenders">
+      <h2>{% translate "入札" %}</h2>
+      {% if td.barred %}<p class="warning">{% translate "未払いの入札の罰金があるため、払い終わるまで入札を出すことも札を入れることもできません。" %}</p>{% endif %}
+      {% if td.open %}
+      <div class="table-scroll">
+        <table class="goods tenders-table">
+          <thead><tr>
+            <th>{% translate "番号" %}</th><th>{% translate "出した国" %}</th><th>{% translate "資源" %}</th><th>{% translate "1ターンの量" %}</th>
+            <th>{% translate "期間" %}</th><th>{% translate "上限（1単位）" %}</th><th>{% translate "札の下限" %}</th><th>{% translate "締め切り" %}</th><th>{% translate "こちらの札" %}</th><th></th>
+          </tr></thead>
+          <tbody>
+            {% for t in td.open %}
+            <tr>
+              <td>{{ t.id }}</td>
+              <td>{% if t.mine %}{% translate "自国" %}{% if t.delivery_name %}<br><small class="muted">{{ t.delivery_name }}</small>{% endif %}{% else %}<a href="{% url 'island_trade' t.buyer %}">{{ t.buyer_name }}</a>{% endif %}</td>
+              <td>{{ t.good_name }}</td>
+              <td>{{ t.quantity|floatformat:"-3g" }} {{ t.unit }}</td>
+              <td>{% blocktranslate with n=t.turns %}{{ n }} ターン{% endblocktranslate %}</td>
+              <td>{{ t.currency_symbol|currency_prefix }}{{ t.cap|floatformat:"-1g" }}<br><small class="muted">{{ t.currency_name }}</small></td>
+              <td>{{ t.currency_symbol|currency_prefix }}{{ t.floor|floatformat:"-1g" }}</td>
+              <td>{{ t.deadline|turn_date }}</td>
+              <td>{% if t.my_bid is not None %}{{ t.currency_symbol|currency_prefix }}{{ t.my_bid|floatformat:"-1g" }}{% else %}-{% endif %}</td>
+              <td>
+                {% if t.can_bid %}<form class="inline" data-order="bid_tender"><input type="hidden" name="tender" value="{{ t.id }}"><input type="hidden" name="good" value="{{ t.good }}"><input name="price" type="number" min="{{ t.floor }}" max="{{ t.cap }}" step="any" required aria-label="{% translate "札の値段（1単位）" %}"> <button type="submit">{% if t.my_bid is not None %}{% translate "出し直す" %}{% else %}{% translate "札を入れる" %}{% endif %}</button></form>{% if t.my_bid is not None %}<form class="inline" data-order="bid_tender"><input type="hidden" name="tender" value="{{ t.id }}"><input type="hidden" name="good" value="{{ t.good }}"><button type="submit">{% translate "札を取り下げる" %}</button></form>{% endif %}{% endif %}
+                {% if t.can_withdraw %}<form class="inline" data-order="cancel_tender"><input type="hidden" name="tender" value="{{ t.id }}"><button type="submit">{% translate "取り下げる" %}</button></form>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="muted">{% translate "受付中の入札はありません。" %}</p>
+      {% endif %}
+      {% if td.results %}
+      <h3>{% translate "締め切った入札" %}</h3>
+      <ul class="plain">
+        {% for t in td.results %}<li>{% blocktranslate with id=t.id buyer=t.buyer_name good=t.good_name state=t.state_name when=t.closed|turn_date %}{{ when }} {{ id }}番（{{ buyer }}の{{ good }}）: {{ state }}{% endblocktranslate %}{% if t.winner %}{% blocktranslate with w=t.winner_name s=t.currency_symbol|currency_prefix p=t.price|floatformat:"-1g" u=t.unit c=t.contract %} — {{ w }}が 1{{ u }} {{ s }}{{ p }} で落とし、契約 {{ c }}番{% endblocktranslate %}{% endif %}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      {% if td.claims_to_decide %}
+      <h3>{% translate "罰金を決める" %}</h3>
+      <ul class="plain">
+        {% for g in td.claims_to_decide %}<li>{% blocktranslate with c=g.contract p=g.partner_name good=g.good_name s=g.currency_symbol|currency_prefix a=g.amount|floatformat:"0g" whys=g.whys|join:"・" t=g.collect_turn|turn_date %}契約 {{ c }}番（{{ p }}・{{ good }}）: {{ p }}に {{ s }}{{ a }} の罰金を請求できます（{{ whys }}）。決めないと{{ t }}に取ります。{% endblocktranslate %}
+          <form class="inline" data-order="settle_tender_default"><input type="hidden" name="contract" value="{{ g.contract }}"><select name="choice" aria-label="{% translate "罰金をどうするか" %}"><option value="collect">{% translate "取る" %}</option><option value="forgive">{% translate "許す" %}</option><option value="terminate">{% translate "取ったうえで契約をやめる" %}</option></select> <button type="submit">{% translate "決める" %}</button></form></li>{% endfor %}
+      </ul>
+      {% endif %}
+      {% if td.claims_against or td.debts or td.credits %}
+      <h3>{% translate "罰金と未払い" %}</h3>
+      <ul class="plain">
+        {% for g in td.claims_against %}<li>{% blocktranslate with c=g.contract p=g.partner_name s=g.currency_symbol|currency_prefix a=g.amount|floatformat:"0g" whys=g.whys|join:"・" t=g.collect_turn|turn_date %}契約 {{ c }}番: {{ p }}がこちらに {{ s }}{{ a }} の罰金を請求できます（{{ whys }}。{{ p }}が決めないと{{ t }}に取られます）{% endblocktranslate %}</li>{% endfor %}
+        {% for d in td.debts %}<li{% if d.late %} class="warning"{% endif %}>{% blocktranslate with c=d.contract p=d.partner_name s=d.currency_symbol|currency_prefix a=d.amount|floatformat:"0g" %}契約 {{ c }}番: {{ p }}へ払う罰金 {{ s }}{{ a }}{% endblocktranslate %}{% if d.late %}{% translate "（未払い。払い終わるまで入札に加われません）" %}{% else %}{% blocktranslate with t=d.due|turn_date %}（{{ t }}に払います）{% endblocktranslate %}{% endif %}</li>{% endfor %}
+        {% for d in td.credits %}<li>{% blocktranslate with c=d.contract p=d.partner_name s=d.currency_symbol|currency_prefix a=d.amount|floatformat:"0g" %}契約 {{ c }}番: {{ p }}から受け取る罰金 {{ s }}{{ a }}{% endblocktranslate %}{% if d.late %}{% translate "（相手の未払い）" %}{% endif %}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      {% if not td.barred %}
+      <form class="actions" data-order="open_tender">
+        <strong>{% translate "入札を出す（こちらが買う）" %}</strong>
+        <label>{% translate "資源" %} <select name="good" required>
+          {% for g in trade.goods %}<option value="{{ g.good }}">{{ g.name }}（{{ g.unit }}{% if g.home_price %}・{% blocktranslate with currency=currency|currency_prefix p=g.home_price|floatformat:"-1g" %}島の値段 {{ currency }}{{ p }}{% endblocktranslate %}{% endif %}）</option>{% endfor %}
+        </select></label>
+        <label>{% translate "1ターンの量" %} <input name="quantity" type="number" min="0.1" step="0.1" required></label>
+        <label>{% translate "期間（ターン）" %} <input name="turns" type="number" min="1" max="600" step="1" value="12" required></label>
+        <label>{% translate "上限の値段（1単位、自国の通貨）" %} <input name="cap" type="number" min="0" step="any" required></label>
+        <label>{% translate "締め切り（何ターン後）" %} <input name="deadline" type="number" min="1" max="{{ td.max_open_turns }}" step="1" value="2" required></label>
+        <label>{% translate "届いた物" %} <select name="delivery"><option value="market">{% translate "市場に出す" %}</option><option value="warehouse">{% translate "国の倉庫に置く" %}</option></select></label>
+        <button type="submit">{% translate "命令に追加" %}</button>
+      </form>
+      {% endif %}
+      <p class="hint">{% blocktranslate with f=td.floor_percent p=td.penalty_percent n=td.claim_turns t=trade.cancel_turns %}入札は役所の一般競争入札の形です。出した国の通貨で払い、締め切りのターンにいちばん安い札の国と、その値段で二国間契約を結びます（次のターンから効き、同じ値段ならくじ）。札は伏せ、出した国にも、ほかの国の札も札の数も見せません。落とした国と値段はすべての国に見えます。上限の {{ f }}% より安い札は入れられません（最低制限価格）。重さのある資源は、出す国にも札を入れる国にも港が要ります。入札で結んだ契約は、届かなかった量の代金の {{ p }}% を、わけのある国（売る国の品物と港、買う国のお金と船。当事者どうしの戦争の封鎖は宣戦した国、禁輸は出した国。第三国の封鎖は誰のわけでもない）から罰金として取れます。損をした国が取る・許す・取ったうえで契約をやめるを選び、{{ n }} ターン決めないと取ります。期間の途中でやめた国には、1ターンの代金 × {{ t }} ターン分の同じ割合の罰金がかかります（両方が同じターンにやめたときは合意で終わり、かかりません）。取った罰金は次のターンに払う国の通貨で払い、払えない分は未払いとして残り、払い終わるまで入札に加われません。{% endblocktranslate %}</p>
+      <p class="trade-notice" aria-live="polite"></p>
+    </section>
+    {% endwith %}
 
     <details class="panel trade-back" id="trade-policy">
       <summary><h2>{% translate "産業政策と援助" %}</h2> <small class="muted">{% translate "関税・輸出補助・輸入の割り当て・禁輸・援助（開くと出ます）" %}</small></summary>

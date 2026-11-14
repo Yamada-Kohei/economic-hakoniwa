@@ -76,9 +76,11 @@ def test_the_lowest_bid_wins_and_other_bids_stay_hidden(game, base):
         _orders(
             world,
             {
-                b.id: [("bid_tender", {"tender": t["id"], "price": 900})],
-                c.id: [("bid_tender", {"tender": t["id"], "price": 800})],
-                d.id: [("bid_tender", {"tender": t["id"], "price": low - 1})],  # 下限より安い
+                b.id: [("bid_tender", {"tender": t["id"], "good": GOOD, "price": 900})],
+                c.id: [("bid_tender", {"tender": t["id"], "good": GOOD, "price": 800})],
+                d.id: [
+                    ("bid_tender", {"tender": t["id"], "good": GOOD, "price": low - 1})
+                ],  # 下限より安い
             },
         ),
     )
@@ -105,9 +107,9 @@ def test_ties_are_drawn_by_lot_and_withdrawals_go_first(game, base):
     # 締め切りのターンに、b と c が同じ値段、d は札を入れてから同じターンに取り下げる
     t["bids"][str(d.id)] = 750
     orders = {
-        b.id: [("bid_tender", {"tender": t["id"], "price": 800})],
-        c.id: [("bid_tender", {"tender": t["id"], "price": 800})],
-        d.id: [("bid_tender", {"tender": t["id"]})],
+        b.id: [("bid_tender", {"tender": t["id"], "good": GOOD, "price": 800})],
+        c.id: [("bid_tender", {"tender": t["id"], "good": GOOD, "price": 800})],
+        d.id: [("bid_tender", {"tender": t["id"], "good": GOOD})],
     }
     twin = copy.deepcopy(world)
     run(game, world, 1, _orders(world, orders))
@@ -129,7 +131,7 @@ def test_the_issuer_can_withdraw_before_the_deadline(game, base):
             world,
             {
                 a.id: [("cancel_tender", {"tender": t["id"]})],
-                b.id: [("bid_tender", {"tender": t["id"], "price": 900})],
+                b.id: [("bid_tender", {"tender": t["id"], "good": GOOD, "price": 900})],
             },
         ),
     )
@@ -161,8 +163,9 @@ def test_order_checks(game, base):
     assert ok("open_tender", good)
     assert not ok("open_tender", {**good, "turns": 0})
     assert not ok("open_tender", {**good, "indefinite": True})
-    assert ok("bid_tender", {"tender": 1, "price": 5})
-    assert ok("bid_tender", {"tender": 1})
+    assert ok("bid_tender", {"tender": 1, "good": GOOD, "price": 5})
+    assert ok("bid_tender", {"tender": 1, "good": GOOD})
+    assert not ok("bid_tender", {"tender": 1, "price": 5})
     assert ok("settle_tender_default", {"contract": 1, "choice": "forgive"})
     assert not ok("settle_tender_default", {"contract": 1, "choice": "later"})
     late = max(1, game.config.get("trade.tender.max_open_turns") + 1)
@@ -190,7 +193,7 @@ def _awarded(game, world, buyer, seller, price=None, qty=2, turns=6):
     """入札を出して seller に落とさせ、契約を返す（落とした次のターンから効く）。"""
     cap = buyer.economy.prices[GOOD] * 2
     t = _open(game, world, buyer, cap, deadline=1, qty=qty, turns=turns)
-    bid = {"tender": t["id"], "price": price or cap}
+    bid = {"tender": t["id"], "good": GOOD, "price": price or cap}
     run(game, world, 1, _orders(world, {seller.id: [("bid_tender", bid)]}))
     t = tenders.find(world, t["id"])
     assert t["winner"] == seller.id
@@ -248,7 +251,12 @@ def test_an_unpaid_penalty_bars_the_country_from_tenders(game, base):
     debt = next(d for d in tenders.debts(world) if d["id"] == 99)
     assert debt["late"] and tenders.barred(world, b.id)
     assert any(e.kind == "tender_penalty_unpaid" for e in b.log)
-    run(game, world, 1, _orders(world, {b.id: [("bid_tender", {"tender": t["id"], "price": 900})]}))
+    run(
+        game,
+        world,
+        1,
+        _orders(world, {b.id: [("bid_tender", {"tender": t["id"], "good": GOOD, "price": 900})]}),
+    )
     assert any(
         e.kind == "trade_request_failed" and e.args["reason"] == "reason_tender_barred"
         for e in b.log

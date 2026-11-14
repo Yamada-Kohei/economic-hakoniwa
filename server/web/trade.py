@@ -47,6 +47,7 @@ from hakoniwa_core.trade import contracts as contract_states
 from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.trade import money as fxmoney
 from hakoniwa_core.trade import orders as ship_orders
+from hakoniwa_core.trade import tenders as tender_rules
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE, from_milli
 from server.economy.models import Account
 from server.game import get_game
@@ -160,10 +161,15 @@ BOND_HOLDER_NAMES = {ledger.GOV: "政府", ledger.CB: "中央銀行", abroad.BAN
 # --- 世界 ------------------------------------------------------------------------------
 
 
+TENDER_KEYS = ("tenders", "tender_claims", "tender_debts")  # 入札（W-268）
+
+
 def world_state(world: m.World) -> dict[str, list[dict[str, Any]]]:
-    """世界の貿易の状態（読むだけ。まだなければ空の並び）。"""
+    """世界の貿易の状態（読むだけ。まだなければ空の並び）。入札の伏せた札は、tender_rows だけが
+    自分の札を読む。"""
     state = (world.ext or {}).get(KEY) or {}
-    return {key: state.get(key, []) for key in ("blocs", "contracts", "shipments")}
+    keys = ("blocs", "contracts", "shipments", *TENDER_KEYS)
+    return {key: state.get(key, []) for key in keys}
 
 
 def directory(world: m.World) -> dict[int, dict[str, Any]]:
@@ -424,6 +430,7 @@ def trade_data(
         if g in allowed
     ]
     data["cancel_turns"] = config.get("trade.contract_cancel_turns")
+    data["tenders"] = tender_rows(state, island.id, world.turn, islands, data["port"])
     data["policy"] = policy_view(world, here, islands)
     data["overview"] = overview(data, stats, currency)
     data["orders"] = trade_orders(island)
@@ -442,6 +449,10 @@ TRADE_ORDERS = (
     "propose_contract",
     "accept_contract",
     "cancel_contract",
+    "open_tender",
+    "bid_tender",
+    "cancel_tender",
+    "settle_tender_default",
     "create_bloc",
     "join_bloc",
     "leave_bloc",
@@ -478,6 +489,13 @@ def overview(data: dict[str, Any], stats: dict[str, float], currency: str) -> di
         "offered": sum(1 for c in proposed if c["can_accept"]),  # 相手からの申し込み
         "waiting": sum(1 for c in proposed if c["proposed_by_me"]),  # 相手の返事待ち
         "short": sum(1 for c in active if c["short_any"]),  # 直近に届けきれなかった契約
+    }
+    tenders_now = data["tenders"]
+    out["tenders"] = {
+        "mine": sum(1 for t in tenders_now["open"] if t["mine"]),  # 出している入札
+        "bid": sum(1 for t in tenders_now["open"] if t["my_bid"] is not None),  # 札を入れた入札
+        "to_decide": len(tenders_now["claims_to_decide"]),  # 罰金を決める契約
+        "barred": tenders_now["barred"],  # 未払いの罰金で入札に加われない
     }
     out["shipments"] = {
         "count": len(moving),
@@ -647,6 +665,7 @@ def contract_rows(
                 "currency_symbol": islands.get(view["currency"], {}).get("symbol", ""),
                 "turns": c.get("turns"),
                 "indefinite": view["indefinite"],  # 無期限の契約（FX-68）
+                "tender": view["tender"],  # 入札で結んだ契約の入札の番号（W-268。届かない分に罰金）
                 "start": view["start"] or None,
                 "end": view["end"] or None,
                 "active": view["active"],
@@ -680,6 +699,149 @@ def contract_rows(
         )
     order = {contract_states.PROPOSED: 0, contract_states.ACTIVE: 1, contract_states.ENDED: 2}
     return sorted(rows, key=lambda r: (order.get(r["state"], 3), r["id"]))
+
+
+TENDER_STATE_NAMES = {
+    tender_rules.OPEN: "受付中",
+    tender_rules.AWARDED: "落札",
+    tender_rules.LAPSED: "不調（流れた）",
+    tender_rules.WITHDRAWN: "取り下げ",
+}
+TENDER_WHY_NAMES = {
+    "goods": "売る国の品物が足りない",
+    "port": "売る国の港が足りない",
+    "money": "買う国のお金が足りない",
+    "ships": "買う国の船が足りない",
+    "blockade": "当事者どうしの戦争の封鎖",
+    "embargo": "禁輸",
+    "cancel": "期間の途中でやめた",
+}
+
+
+def tender_rows(
+    state: dict[str, list[dict[str, Any]]],
+    island_id: int,
+    turn: int,
+    islands: dict[int, dict[str, Any]],
+    port: bool,
+) -> dict[str, Any]:
+    """入札（W-268、FX-71・FX-72）の一覧と、罰金・未払い（持ち主に見せる）。turn は世界の今の
+    ターン。
+
+    受付中の入札と、閉じた入札の結果（落とした国と値段）は誰にでも見せる。札は伏せ、自分の札だけ
+    返す（出した国にも、ほかの国の札も札の数も見せない）。"""
+    game = get_game()
+    defs, config = game.defs, game.config
+    barred = any(d["payer"] == island_id and d["late"] for d in state["tender_debts"])
+
+    def money_name(i: int) -> dict[str, Any]:
+        return {
+            "currency": i,
+            "currency_name": _currency(islands, i),
+            "currency_symbol": islands.get(i, {}).get("symbol", ""),
+        }
+
+    open_rows, results = [], []
+    for t in sorted(state["tenders"], key=lambda t: t["id"]):
+        good = t["good"]
+        heavy = defs.goods.get(good, {}).get("freight_weight", 0) > 0
+        mine = t["buyer"] == island_id
+        row = {
+            "id": t["id"],
+            "state": t["state"],
+            "state_name": TENDER_STATE_NAMES.get(t["state"], t["state"]),
+            "buyer": t["buyer"],
+            "buyer_name": _name(islands, t["buyer"]),
+            "mine": mine,
+            "good": good,
+            "good_name": defs.name("goods", good),
+            "unit": defs.unit_name(good),
+            "quantity": _amount(good, t["qty"]),
+            "turns": t["turns"],
+            "cap": display.price(good, t["cap"]),
+            "floor": display.price(good, tender_rules.floor_price(config, t["cap"])),
+            **money_name(t["buyer"]),
+            "deadline": t["deadline"],
+            "delivery_name": DELIVERY_NAMES.get(t["delivery"], "") if mine else "",
+        }
+        if t["state"] == tender_rules.OPEN:
+            bid = t["bids"].get(str(island_id))
+            row["my_bid"] = display.price(good, bid) if bid is not None else None
+            row["can_bid"] = not mine and not barred and (port or not heavy)
+            row["can_withdraw"] = mine
+            open_rows.append(row)
+        else:
+            row["closed"] = t["closed"]
+            row["winner"] = t["winner"]
+            row["winner_name"] = _name(islands, t["winner"]) if t["winner"] else ""
+            row["price"] = display.price(good, t["price"]) if t["price"] is not None else None
+            row["contract"] = t["contract"]
+            results.append(row)
+    contracts_by_id = {c["id"]: c for c in state["contracts"]}
+
+    def claim_groups(side: str) -> list[dict[str, Any]]:
+        groups: dict[int, dict[str, Any]] = {}
+        for claim in sorted(state["tender_claims"], key=lambda c: c["id"]):
+            if claim[side] != island_id:
+                continue
+            other = claim["payer"] if side == "payee" else claim["payee"]
+            g = groups.setdefault(
+                claim["contract"],
+                {
+                    "contract": claim["contract"],
+                    "partner": other,
+                    "partner_name": _name(islands, other),
+                    "amount": 0,
+                    "count": 0,
+                    "whys": [],
+                    "first_turn": claim["turn"],
+                    **money_name(claim["currency"]),
+                },
+            )
+            g["amount"] += claim["amount"]
+            g["count"] += 1
+            name = TENDER_WHY_NAMES.get(claim["why"], claim["why"])
+            if name not in g["whys"]:
+                g["whys"].append(name)
+        for g in groups.values():
+            g["collect_turn"] = g.pop("first_turn") + tender_rules.CLAIM_TURNS  # 決めないと取る
+            c = contracts_by_id.get(g["contract"])
+            g["good_name"] = defs.name("goods", c["good"]) if c else ""
+        return list(groups.values())
+
+    def debt_rows(side: str) -> list[dict[str, Any]]:
+        rows = []
+        for d in sorted(state["tender_debts"], key=lambda d: d["id"]):
+            if d[side] != island_id:
+                continue
+            other = d["payee"] if side == "payer" else d["payer"]
+            rows.append(
+                {
+                    "contract": d["contract"],
+                    "partner": other,
+                    "partner_name": _name(islands, other),
+                    "amount": d["amount"],
+                    "due": d["due"],
+                    "late": d["late"],
+                    **money_name(d["payer"]),
+                }
+            )
+        return rows
+
+    return {
+        "open": open_rows,
+        "results": results,
+        "claims_to_decide": claim_groups("payee"),  # こちらが取る・許す・やめるを選ぶ罰金
+        "claims_against": claim_groups("payer"),  # 相手が決める、こちらへの罰金
+        "debts": debt_rows("payer"),  # こちらが払う罰金（late は払いきれず未払い）
+        "credits": debt_rows("payee"),  # こちらが受け取る罰金
+        "barred": barred,
+        "turn": turn,
+        "max_open_turns": config.get("trade.tender.max_open_turns"),
+        "floor_percent": round(config.get("trade.tender.floor") * 100),  # 札の下限（上限の %）
+        "penalty_percent": round(config.get("trade.tender.penalty_rate") * 100),  # 罰金の割合
+        "claim_turns": tender_rules.CLAIM_TURNS,
+    }
 
 
 def trader_rows(

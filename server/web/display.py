@@ -1081,6 +1081,8 @@ ORDER_UNITS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = {
     "warehouse_trade": ("good", ("quantity",), ("limit",)),
     "set_warehouse_standing": ("good", ("quantity",), ("limit", "release")),
     "propose_contract": ("good", ("quantity",), ("price",)),
+    "open_tender": ("good", ("quantity",), ("cap",)),  # 入札（W-268）
+    "bid_tender": ("good", (), ("price",)),
     "set_export_subsidy": ("good", (), ("amount",)),
     "set_import_quota": ("good", ("quantity",), ()),
     "send_aid": ("good", ("quantity",), ()),
@@ -1474,7 +1476,36 @@ def _describe_trade(kind: str, payload: dict[str, Any], name: str) -> str:
         return f"{name}: 契約 {payload.get('contract')} 番（{DELIVERIES[payload['delivery']]}）"
     if kind in ("accept_contract", "cancel_contract"):
         return f"{name}: 契約 {payload.get('contract')} 番"
-    return _describe_policy(kind, payload, name)
+    return _describe_tender(kind, payload, name) or _describe_policy(kind, payload, name)
+
+
+TENDER_CHOICES = {"collect": "取る", "forgive": "許す", "terminate": "取ったうえで契約をやめる"}
+
+
+def _describe_tender(kind: str, payload: dict[str, Any], name: str) -> str:
+    """入札の命令（W-268）の説明。ほかの命令は ""。"""
+    defs = get_game().defs
+    good = payload.get("good", "")
+    unit = defs.unit_name(good) if good in defs.goods else ""
+    good_name = defs.name("goods", good) if good in defs.goods else good
+    if kind == "open_tender":
+        delivery = DELIVERIES.get(payload.get("delivery", ""), "")
+        return (
+            f"{name}: {good_name}を毎ターン {payload.get('quantity', 0):g} {unit}、"
+            f"{payload.get('turns', 0)} ターン（上限 1{unit} {payload.get('cap', 0):,}・"
+            f"{payload.get('deadline', 0)} ターン後に締め切り"
+            f"{'・' + delivery if delivery else ''}）"
+        )
+    if kind == "bid_tender":
+        if payload.get("price") is None:
+            return f"{name}: 入札 {payload.get('tender')} 番の札を取り下げる"
+        return f"{name}: 入札 {payload.get('tender')} 番に 1{unit} {payload['price']:,}"
+    if kind == "cancel_tender":
+        return f"{name}: 入札 {payload.get('tender')} 番"
+    if kind == "settle_tender_default":
+        choice = TENDER_CHOICES.get(payload.get("choice", ""), "")
+        return f"{name}: 契約 {payload.get('contract')} 番の罰金を{choice}"
+    return ""
 
 
 def _describe_policy(kind: str, payload: dict[str, Any], name: str) -> str:

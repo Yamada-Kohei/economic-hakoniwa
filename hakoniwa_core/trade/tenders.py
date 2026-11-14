@@ -56,11 +56,13 @@ CHOICES = (COLLECT, FORGIVE, TERMINATE)
 PENALTY = "tender_penalty"  # 仕訳の種類（国際収支の移転）
 DUE = "penalty_due"  # 島の貿易の状態: 次のターンに払う罰金（予算の段が契約の項目に取り置く）
 
-# 契約の不足のわけと、わけのある側（条約の契約の条項の見張りと同じ表。FX-72）。上限の順に分ける:
-# 当事者でない国のわけ（第三国の封鎖・外貨の市場の厚み）→ 売り手（物と港）→ 買い手（お金と船）
+# 契約の不足のわけと、わけのある側（入札の罰金と、条約の契約の条項の見張りで 1 つの表。FX-72・
+# PL-47）。上限の順に分ける: 当事者でない国のわけ（第三国の封鎖・外貨の市場の厚み）→ 売り手（物と
+# 港）→ 買い手（お金と船）。条約の条項は、船と港を約束した国のせいにしない（PL-47。TREATY_FAULTS）
 SHORT_BY_NOBODY = ("blockade", "fx")
 SHORT_BY_SELLER = ("goods", "port")
 SHORT_BY_BUYER = ("money", "ships")
+TREATY_FAULTS = ("goods", "money")
 
 
 def tenders(world: WorldState) -> list[dict[str, Any]]:

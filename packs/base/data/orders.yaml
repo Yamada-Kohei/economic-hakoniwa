@@ -579,10 +579,11 @@ bid_tender:
   secret: true
   payload:
     type: object
-    required: [tender]
+    required: [tender, good]
     additionalProperties: false
     properties:
       tender: {type: integer, minimum: 1}
+      good: {type: string}                  # 入札の品目（入札と違えば断る。値段の単位を決める）
       # 1 単位の値段（出した国の通貨。上限 × trade.tender.floor の切り上げ〜上限）。省くと札を取り下げる
       price: {type: integer, minimum: 1}
 

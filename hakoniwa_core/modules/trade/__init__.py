@@ -641,6 +641,8 @@ class _Round:
             return "reason_tender_unknown"
         if kind == "cancel_tender":
             return tenders.withdraw(self.world, island, t, self.turn)
+        if req.get("good") != t["good"]:
+            return "reason_tender_good"
         price = req.get("price")
         if price is not None:
             reason = self._tender_entry(island, t["good"])
@@ -2778,6 +2780,13 @@ def check_tender_ref(island: IslandState, payload: dict[str, Any], defs: Defs) -
     _check_started(island)
     if not isinstance(payload.get("tender"), int):
         raise OrderFailed("reason_invalid_payload")
+
+
+def check_bid_tender(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    """札を入れる（値段を省くと取り下げ）。値段の幅と品目は貿易の段で入札と比べる。"""
+    check_tender_ref(island, payload, defs)
+    if not isinstance(payload.get("good"), str):
+        raise OrderFailed("reason_invalid_payload")
     price = payload.get("price")
     if price is not None and (not isinstance(price, int) or price <= 0):
         raise OrderFailed("reason_invalid_payload")
@@ -2811,7 +2820,7 @@ ORDERS = {
     "cancel_contract": check_contract_ref,
     "send_aid": check_aid,
     "open_tender": check_open_tender,
-    "bid_tender": check_tender_ref,
+    "bid_tender": check_bid_tender,
     "cancel_tender": check_tender_ref,
     "settle_tender_default": check_settle_tender,
 }
