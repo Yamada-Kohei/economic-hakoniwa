@@ -482,7 +482,9 @@ def test_initial_prices_use_recipes_the_island_can_run(game):
     everywhere = initial_prices(defs, config)
     no_stone = initial_prices(defs, config, ["coal", "iron_ore"])
     assert no_stone["building_materials"] > everywhere["building_materials"]
-    every_resource = ["bauxite", "coal", "crude_oil", "iron_ore", "stone"]
+    # 鉱業資源を全部持つ島は、どの島でも同じ値段と同じ（銅のない島は、電子機器をアルミの作り方の
+    # 原価で解くので、電子機器を使う財の値段が少し上がる。MI-69）
+    every_resource = sorted(g for g, d in defs.goods.items() if d.get("mining"))
     assert initial_prices(defs, config, every_resource) == everywhere
     plant = Facility(id=1, kind="building_materials_plant", x=0, y=0, recipe="wood")
     wage = config.get("labor.initial_wage")

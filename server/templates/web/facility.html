@@ -1,0 +1,194 @@
+{% extends "base.html" %}{% load i18n static calendar_tags %}
+{% block title %}{{ island.name }} {{ title }} - {% translate "経済版箱庭諸国" %}{% endblock %}
+{% block content %}
+{# 施設のページ（UI-72・UI-73）。中身は server/web/facility_page.py。上が「見る」所、下が「打てる手」の箱 #}
+{% include "web/report_header.html" %}
+
+<section class="panel" id="facility-view" data-number="{{ number }}">
+  <h2>{{ name }} <small class="heading-date">{% blocktranslate with n=number %}施設番号 {{ n }}{% endblocktranslate %}</small></h2>
+  <p>
+    {% if on_map %}<a href="{% url 'island' island.id %}?x={{ x }}&amp;y={{ y }}">{% blocktranslate %}地図でマス ({{ x }}, {{ y }}) を見る{% endblocktranslate %}</a>
+    {% else %}<span class="muted">{% translate "マスを持たない施設です（地図には出ません）" %}</span>{% endif %}
+    ・ <a href="{% url 'island_facilities' island.id %}">{% translate "施設の一覧へ" %}</a>
+  </p>
+  <div class="table-scroll">
+    <table class="info">
+      {% for r in rows %}<tr><th>{{ r.label }}</th><td>{{ r.text }}</td></tr>{% endfor %}
+      {% if hint %}<tr><th>{% translate "できること" %}</th><td>{{ hint }}</td></tr>{% endif %}
+    </table>
+  </div>
+  {% with s=facility.slowdown %}{% if s %}
+  <section class="slowdown" id="slowdown">
+    <h3>{% if s.stopped %}{% translate "生産を止めたわけ" %}{% else %}{% translate "生産調整中のわけ" %}{% endif %}{% if s.good_name %}（{{ s.good_name }}）{% endif %} <small class="muted">{% blocktranslate with t=s.target %}操業目標 {{ t }}%{% endblocktranslate %}</small></h3>
+    <ul class="slowdown-reasons">{% for r in s.reasons %}<li>{{ r.text }}</li>{% endfor %}</ul>
+  </section>
+  {% endif %}{% endwith %}
+</section>
+
+{% if mine %}
+{% if facility.books or facility.loans or facility.bank %}
+<section class="panel">
+  <h2>{% translate "収支と借入" %}{% if facility.books %} <small class="heading-date">{% blocktranslate with turn=facility.books.turn|turn_date %}{{ turn }}の決算{% endblocktranslate %}</small>{% endif %}</h2>
+  {% if facility.books %}
+  <table class="info">
+    {% for r in facility.books.rows %}<tr><th>{{ r.label }}</th><td class="num">{{ r.text }}</td></tr>{% endfor %}
+    <tr><th>{% blocktranslate with turns=facility.books.turns %}損益（直近 {{ turns }} ターンの合計）{% endblocktranslate %}</th><td class="num">{{ facility.books.profit_total }}</td></tr>
+    {% if facility.books.deposit is not None %}<tr><th>{{ facility.books.deposit_label|default:"預金" }}</th><td class="num">{{ facility.books.deposit }}</td></tr>{% endif %}
+    {% if facility.books.debt %}<tr><th>{% translate "借入" %}</th><td class="num">{{ facility.books.debt }}</td></tr>{% endif %}
+  </table>
+  {% endif %}
+  {% if facility.loans %}
+  <h3>{% translate "借入" %}</h3>
+  <table class="info">
+    {% for l in facility.loans %}<tr><th>{{ l.lender }}・{{ l.purpose }}</th><td>{{ l.balance }}（{% translate "年利" %} {{ l.rate }}{% if l.arrears %}・{% blocktranslate with n=l.arrears %}返済の遅れ {{ n }} 回{% endblocktranslate %}{% endif %}）</td></tr>{% endfor %}
+  </table>
+  {% endif %}
+  {% if facility.bank %}
+  <h3>{% translate "銀行の帳簿" %}</h3>
+  <table class="info">
+    {% if facility.bank.deposits is not None %}<tr><th>{% translate "預金" %}</th><td class="num">{{ facility.bank.deposits }}</td></tr>{% endif %}
+    {% if facility.bank.loans is not None %}<tr><th>{% translate "融資" %}</th><td class="num">{{ facility.bank.loans }}</td></tr>{% endif %}
+    {% if facility.bank.net_worth is not None %}<tr><th>{% translate "自己資本" %}</th><td class="num">{{ facility.bank.net_worth }}</td></tr>{% endif %}
+    {% if facility.bank.capital_ratio %}<tr><th>{% translate "自己資本比率" %}</th><td class="num">{{ facility.bank.capital_ratio }}（{% translate "規制" %} {{ facility.bank.regulatory_ratio }} {% translate "以上" %}）</td></tr>{% endif %}
+    <tr><th>{% translate "預金金利（年）" %}</th><td class="num">{{ facility.bank.deposit_rate }}</td></tr>
+  </table>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if has_books %}
+<section class="panel" id="book-detail" data-url="{% url 'api_facility_book' island.id 0 %}" data-number="{{ number }}"
+         data-turn="{{ stats_turn|default_if_none:0 }}" data-currency="{{ currency }}">
+  <div class="section-head">
+    <h2 data-slot="title">{% translate "帳簿の推移" %}</h2>
+    {% include "web/chart_range.html" %}
+  </div>
+  <div class="charts">
+    <figure class="chart" data-chart="flows"><figcaption>{% translate "収支（1ターン）" %}</figcaption></figure>
+    <figure class="chart" data-chart="balance"><figcaption>{% translate "預金・借入・在庫の値打ち" %}</figcaption></figure>
+  </div>
+  <div data-slot="table" class="table-scroll"></div>
+</section>
+{% endif %}
+
+<section class="panel" id="last-turn">
+  <h2>{% translate "前のターンの結果" %}</h2>
+  {% if results or logs %}
+  <ul class="plain-list">
+    {% for o in results %}<li class="{{ o.status }}">{% if o.status == "done" %}{% translate "実行" %}{% else %}{% translate "失敗" %}{% endif %} {{ o.text }}{% if o.reason %}: {{ o.reason }}{% endif %}</li>{% endfor %}
+    {% for e in logs %}<li>{{ e.text }}</li>{% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">{% translate "この施設についての記録はありません。" %}</p>
+  {% endif %}
+  <p><a href="{% url 'turn_log' island.id %}">{% translate "ターンログをすべて見る" %}</a></p>
+</section>
+
+<section class="panel action-box" id="actions" data-x="{{ x }}" data-y="{{ y }}">
+  <h2>{% translate "打てる手" %}</h2>
+  <h3>{% translate "この施設に出ている命令" %}</h3>
+  {% if orders %}
+  <ul class="plain-list">{% for o in orders %}<li>{{ o.text }}</li>{% endfor %}</ul>
+  {% else %}
+  <p class="muted">{% translate "ありません。" %}</p>
+  {% endif %}
+  {% if settings %}
+  <h3>{% translate "動いている設定" %}</h3>
+  <ul class="plain-list">{% for s in settings %}<li>{{ s }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  {% if "build" in actions %}
+  <form class="actions facility-action" data-order="build">
+    <h3>{{ facility.expand.label }}</h3>
+    <input type="hidden" name="facility" value="{{ facility.expand.facility }}">
+    <p class="hint">{% translate "資材" %} {% for g in facility.expand.materials %}{{ g.name }} {{ g.amount }}{% if g.unit %} {{ g.unit }}{% endif %}{% if not forloop.last %}・{% endif %}{% empty %}{% translate "なし" %}{% endfor %} ・ {% blocktranslate with turns=facility.expand.turns %}工期 {{ turns }} ターン{% endblocktranslate %}</p>
+    {% if facility.expand.problem %}<p class="warning">{% translate "現状では建設できません" %}: {{ facility.expand.problem }}</p>{% endif %}
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  {% endif %}
+  {% if "set_priority" in actions %}
+  <form class="actions facility-action" data-order="set_priority">
+    <h3>{% translate "優先度" %}（{% translate "今" %}: {{ facility.priority }}）</h3>
+    {% if facility.priority_hint %}<p class="hint">{{ facility.priority_hint }}</p>{% endif %}
+    <select name="priority" data-int>{% for p in "0123456789" %}<option value="{{ p }}"{% if p == facility.priority|stringformat:"d" %} selected{% endif %}>{{ p }}</option>{% endfor %}</select>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  {% endif %}
+  {% if "change_recipe" in actions %}
+  <form class="actions facility-action" data-order="change_recipe">
+    <h3>{% translate "生産方式の切り替え" %}（{% translate "今" %}: {{ facility.recipe_name }}）</h3>
+    {% if recipe_form.electronics %}<p class="hint">{% translate "電子機器を使う作り方は毎ターン電子機器を使い、手元にないまま続くと基本の作り方に戻ります。" %}</p>{% endif %}
+    <select name="recipe" aria-label="{% translate '生産方式' %}">{% for r in recipe_form.choices %}<option value="{{ r.recipe }}">{{ r.label }}（{% for g in r.inputs %}{{ g.name }} {{ g.amount }}{% if not forloop.last %}・{% endif %}{% empty %}{% translate "なし" %}{% endfor %} → {% for g in r.outputs %}{{ g.name }} {{ g.amount }}{% if not forloop.last %}・{% endif %}{% empty %}{% translate "なし" %}{% endfor %}）</option>{% endfor %}</select>
+    <p class="hint">{% translate "次のターンの市場の前に切り替わり、そのターンは稼働率が半分になります。" %}</p>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  {% endif %}
+  {% if "set_accounting" in actions %}
+  <form class="actions facility-action" data-order="set_accounting">
+    <h3>{% translate "会計方式の変更" %}（{% translate "今" %}: {{ facility.accounting_name }}）</h3>
+    <p class="hint">{% if facility.accounting_target == "treasury" %}{% translate "施設の預金は国庫に戻り、売上も費用も国庫で出し入れします。" %}{% else %}{% translate "政府が運転資金を出資し、施設が自分の預金で売上と費用を出し入れします。利益から法人税と国庫への納付を払います。" %}{% endif %}</p>
+    <input type="hidden" name="accounting" value="{{ facility.accounting_target }}">
+    <button type="submit">{% blocktranslate with name=facility.accounting_target_name %}{{ name }}に変更（命令に追加）{% endblocktranslate %}</button>
+  </form>
+  {% endif %}
+  {% for kind in actions %}{% if kind == "nationalize" or kind == "privatize" %}
+  <form class="actions facility-action" data-order="{{ kind }}">
+    <h3>{{ facility.ownership_target_name }}（{% translate "今" %}: {{ facility.owner_name }}）</h3>
+    <p class="hint">{% if kind == "nationalize" %}{% translate "純資産（資産 − 借入）の額で政府が買い取り、借入も引き継ぎます。差し押さえ中の施設は、銀行から売り値で買います。国庫が足りなければ実行できません。" %}{% else %}{% translate "純資産の額で資本家階級に売ります。国庫直轄の施設は、先に運転資金を出資して独立採算にします。" %}{% endif %}</p>
+    <button type="submit">{{ facility.ownership_target_name }}（{% translate "命令に追加" %}）</button>
+  </form>
+  {% endif %}{% endfor %}
+  {% if "set_subsidy" in actions %}
+  <form class="actions facility-action" data-order="set_subsidy">
+    <h3>{% translate "この施設への補助金" %}</h3>
+    <label>{% translate "種類" %} <select name="kind"><option value="production">{% translate "生産補助" %}</option><option value="bailout">{% translate "救済補助" %}</option></select></label>
+    <ul class="hint">
+      <li>{% translate "生産補助: 売上の割合を、補助金の予算から毎ターン出します。" %}</li>
+      <li>{% translate "救済補助: 赤字の分を、補助金の予算から毎ターン埋めます（割合は 0 でやめる、ほかの値はどれも同じです）。" %}</li>
+    </ul>
+    <label>{% translate "割合（%、0 でやめる）" %} <input name="rate" type="number" min="0" max="100" step="0.1" required></label>
+    <label>{% translate "期間（ターン）" %} <input name="turns" type="number" min="1" max="1200" step="1" value="12" required data-int></label>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  {% endif %}
+  {% if "emergency_loan" in actions %}
+  <form class="actions facility-action" data-order="emergency_loan">
+    <h3>{% translate "緊急の貸し出し" %}{% if facility.bank.emergency %}（{% translate "今の上限" %}: {{ facility.bank.emergency }}）{% endif %}</h3>
+    <p class="hint">{% translate "準備預金が足りないとき、中央銀行が担保の足りない分も毎ターンこの額まで貸します。0 で取り消します。" %}</p>
+    <label>{% translate "上限額" %} <input name="amount" type="number" min="0" step="1" required data-int></label>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  {% endif %}
+  {% if "resolve_bank" in actions %}
+  <form class="actions facility-action" data-order="resolve_bank">
+    <h3>{% translate "破綻した銀行の処理（行政力を使いません）" %}</h3>
+    <p class="hint">{% translate "次のターンまでに選ばなければ「引き継ぎ」（引き継ぐ銀行がなければ「救済」）になります。" %}</p>
+    {% for id, label in facility.resolve_methods.items %}<label><input type="radio" name="method" value="{{ id }}"{% if id == "transfer" %} checked{% endif %}> {{ label }}{% if id == "bailout" %}: <span class="hint">{% translate "政府が自己資本を規制の値まで（資金繰りの破綻なら足りない準備預金も）注入し、国営銀行として残します。" %}</span>{% elif id == "transfer" %}: <span class="hint">{% translate "預金・融資・国債・銀行間の貸し借りを、健全な銀行のうち預金の最も多い銀行に移します。損失は保護されない預金と、この銀行に貸していた銀行が同じ割合で負い、足りない分を政府が払います（預金保険）。" %}</span>{% elif id == "liquidation" %}: <span class="hint">{% translate "融資を額面より安く健全な銀行に売ったとして損失を数え、引き継ぎと同じく移します。損失は引き継ぎより大きくなります。" %}</span>{% endif %}</label>{% endfor %}
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  {% endif %}
+  {% if "rename_facility" in actions %}
+  <form class="actions facility-action" data-order="rename_facility">
+    <h3>{% translate "施設名の変更" %}</h3>
+    <input name="name" maxlength="32" value="{{ facility.custom_name|default:'' }}" placeholder="{% translate '空欄なら自動の名称' %}" data-keep-empty>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  {% endif %}
+  {% if "demolish" in actions %}
+  <form class="actions facility-action" data-order="demolish">
+    <h3>{% translate "撤去" %}</h3>
+    <p class="hint">{% translate "施設を取り壊してマスを空けます。戻せません。" %}</p>
+    <button type="submit">{% translate "撤去（命令に追加）" %}</button>
+  </form>
+  {% endif %}
+  {% if recipe_form.private %}<p class="hint">{% translate "国営の施設は生産方式の切り替えを命令に追加できます。民営の工場は持ち主の企業が採算を見て自分で替えるため、画面からは替えられません。" %}</p>{% endif %}
+  {% if not actions %}<p class="muted">{% translate "この施設に出せる命令はありません。" %}</p>{% endif %}
+  <p class="facility-notice" aria-live="polite"></p>
+  <p class="hint">{% translate "工事・区域・送電線・住宅・地名・部隊の移動など、場所を見て決める命令は地図で出します。" %}{% if on_map %} <a href="{% url 'island' island.id %}?x={{ x }}&amp;y={{ y }}">{% translate "地図でこのマスを開く" %}</a>{% endif %}</p>
+  <aside id="orders" class="report-orders" data-url="{% url 'api_orders' island.id %}" data-defs="{% url 'api_defs' %}"
+         data-forms="" data-heading="{% translate '命令の列（次のターン）' %}"></aside>
+</section>
+{% csrf_token %}
+<script type="module" src="{% static 'js/reports/facilities.js' %}"></script>
+{% endif %}
+{% endblock %}

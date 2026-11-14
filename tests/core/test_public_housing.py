@@ -262,7 +262,10 @@ def test_the_world_runs_with_public_housing_and_the_books_balance(game, base):
     market.policy.budget["housing"] = 10**9
     ctx = context(game, world)
     build_housing(market, {"x": pos[0], "y": pos[1], "level": "city"}, ctx)
-    run_checked(game, world, 24)
+    # 資材の木材が国に回るのは、ほかの工事との取り合いと島の木材の出方しだいで、世界の道筋で変わる
+    # （2026-11-12 に商社の外貨の買い方を直した後は、木材がそろうまで 27 ターンかかった）ので、
+    # 3 年回して見る
+    run_checked(game, world, 36)
     assert check(world) == []
     # 国が住宅費で資材を市場で買い、床を足して、国の床の家賃が国庫に入る
     assert pub.floor_of(home) > 0

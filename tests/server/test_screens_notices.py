@@ -315,7 +315,7 @@ def test_shipping_shows_tons_and_fuel_heading(world):
     assert _answer(ai, "report", island=island.id, page="trade")["fleet"]["shipping"] == row
     browser = Client()
     browser.force_login(owner)
-    page = browser.get(f"/islands/{island.id}/trade/").content.decode()
+    page = browser.get(f"/islands/{island.id}/trade/fleet/").content.decode()
     assert "航海に使っている量" in page and "空いている量" in page and "25%" in page
     assert "隻分" not in page
     assert "船の燃料: 石炭" in page and "船の燃料: 石油燃料" in page
@@ -438,8 +438,12 @@ def test_farm_selected_recipe_build_estimate_and_standing_labels(world):
     assert manual["workers"] == 500
     assert mechanized["workers"] == fac.workers_needed(game.defs, "farm", "luxury_crop_mechanized")
     assert mechanized["workers"] < manual["workers"]
-    assert "農場の段階は手作業のまま" in mechanized["build_hint"]
-    assert "工期・建設労働者・資材は手作業と同じ" in mechanized["build_hint"]
+    # 段階の作り方は初めからその段階で建ち、段階までの工事の工期と資材を足す（W-257）
+    assert "初めから機械化の段階で建ちます" in mechanized["build_hint"]
+    turns, materials = fac.build_spec(game.defs, "farm", "luxury_crop_mechanized")
+    assert mechanized["construction"]["turns"] == turns
+    assert mechanized["construction"]["materials"] == api._shown_amounts(materials)
+    assert "construction" not in manual
     panel = Path("server/static/js/island/panel.js").read_text(encoding="utf-8")
     assert "this.buildInfo(form.elements.facility.value, form.elements.recipe?.value)" in panel
     orders = Path("server/static/js/island/orders.js").read_text(encoding="utf-8")
@@ -452,7 +456,7 @@ def test_warehouse_standing_noscript_label_and_start_explanation(world):
     (owner, _, _), (island, _, _) = _players(world)
     mine = Client()
     mine.force_login(owner)
-    page = mine.get(f"/islands/{island.id}/market/").content.decode()
+    page = mine.get(f"/islands/{island.id}/market/grain/").content.decode()  # 品目のページの箱
     fallback = re.search(r"<noscript>(.*?)</noscript>", page, re.S).group(1)
     assert "1ターンの売り買いの量／備蓄の目標量" in fallback
     assert "置いた次のターンから動きます" in fallback

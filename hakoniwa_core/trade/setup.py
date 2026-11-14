@@ -249,7 +249,7 @@ def entry(
     if not any(f.built and not is_stopped(f) for f in current) and all(f.built for f in current):
         return _reopen(island, defs, config, turn)
     island_state(island).pop("trader_gone", None)
-    limit = defs.facilities[kind].get("max_per_island")
+    limit = fac.island_limit(defs, island, kind)
     if planned or (limit is not None and len(current) >= limit):
         return None
     if any(not f.built for f in current):

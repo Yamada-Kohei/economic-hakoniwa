@@ -28,6 +28,7 @@ from hakoniwa_core.economy import (
     services,
 )
 from hakoniwa_core.modules.failures import METHODS as RESOLUTION_METHODS
+from hakoniwa_core.modules.market import BUYER_GROUPS
 from hakoniwa_core.modules.population import subsistence_persons, tile_jobless
 from hakoniwa_core.naming import facility_name, place_of
 from hakoniwa_core.state import OWNER_PRIVATE, IslandState, Tile
@@ -125,7 +126,12 @@ _EXTRA_STATS = [
     ("engineers.trained", "技術者の新規養成数（1ターン）", "人"),
     ("engineers.retired", "技術者の退職者数（1ターン）", "人"),
     ("infra.queued", "インフラの工事の列のマス", " マス"),
-    ("works.workers", "公共事業の従事者数", "人"),
+    ("works.workers", "公共事業の従事者数（直営と土木業者）", "人"),
+    ("works.direct", "公共事業の直営の作業員", "人"),
+    ("works.contracted", "土木業者が届けた工事（直営の作業員の人数に直して）", "人"),
+    ("contractor.price", "土木業者の工事の単価（届けた量で重みをつけた平均）", "money"),
+    ("contractor.machines", "土木業者の重機（台）", " 台"),
+    ("contractor.machines_working", "土木業者の動いた重機（台）", " 台"),
     ("firms.private_sites", "民間の建設中の事業所数", ""),
     ("firms.abandoned", "民間の建設中止件数（1ターン）", ""),
     ("fiscal.revenue", "財政の収入（国債の発行を除く）", "money"),
@@ -250,7 +256,6 @@ _EXTRA_STATS = [
     ("firms.largest_share", "一番大きい企業の施設の割合", "percent"),
     ("firms.support", "企業の中で施設に回したお金（1ターン）", "money"),
     ("firms.cash", "民営の企業の預金の合計", "money"),
-    ("firms.cascade", "企業ごとの倒産で差し押さえた施設（1ターン）", ""),
     ("firms.restructured", "企業の立て直しで閉めた施設（1ターン）", ""),
     # 回7 後半: 企業の中のお金の融通・休業・銀行の合併
     ("firms.pooled", "企業の中でほかの施設の手元から回したお金（1ターン）", "money"),
@@ -266,6 +271,8 @@ _EXTRA_STATS = [
     ("retail.direct", "店で買いきれず直売・屋台で買った小売り（1ターン）", "good:retail"),
     ("retail.direct_sales", "直売・屋台の小売りの売上（1ターン）", "money"),
     ("population.overcrowded", "過密居住者数（住宅の上限を超えて住む人）", "人"),
+    ("export.freight", "輸出・他国に貸した船の運賃", "money"),
+    ("import.freight", "輸入・他国の船を借りた運賃", "money"),
 ]
 _STATS = {key: (label, unit) for key, label, unit in [*display.SUMMARY_STATS, *_EXTRA_STATS]}
 # 名前の頭が財のもの（後ろに財の名前が続く）
@@ -277,6 +284,9 @@ _GOODS_STATS = {
     "stock.": ("{good}の国の倉庫の在庫", "good"),
     "works.stock.": ("公共事業の資材の在庫（{good}）", "good"),
     "warehouse.to_state.": ("国の倉庫から国営の施設に渡した{good}（1ターン）", "good"),
+    # 品目ごとの輸出と輸入の額（W-72）。円グラフは頭の「輸出・」をそろえて外し、品目の名前で出す
+    "export.": ("輸出・{good}", "money"),
+    "import.": ("輸入・{good}", "money"),
 }
 # 計算で作る系列（統計の表にはなく、ほかの統計から作る）。層の1人あたりの所得は
 # layer.<層>.income_per_person
@@ -753,8 +763,50 @@ def market_series(
         turn = latest.turn if latest is not None else None
         data["trades"] = trades(island, state, good, turn) if turn is not None else []
         data["short"] = short_facilities(island, state, good)
+        data["groups"] = market_groups(good, latest)
         data["warehouse_standing"] = display.warehouse_standing(island).get(good)
     return data
+
+
+# 市場の記録の買い手と売り手の別の名前（W-72・W-258。並びは hakoniwa_core.modules.market の
+# BUYER_GROUPS）
+GROUP_NAMES = {
+    "state": "国営の施設",
+    "private": "民営の施設",
+    "trader": "商社（輸出入）",
+    "merchant": "海外の商人",
+    "household": "家計",
+    "warehouse": "国の倉庫",
+    "government": "政府の工事",
+}
+
+
+def market_groups(good: str, record: MarketRecord | None) -> list[dict[str, Any]]:
+    """直近のターンの市場の、買い手と売り手の別ごとの注文の量と約定した量（W-72・W-258）。誰が
+    買えなかったか・誰が売れ残したかを見る。買い手と売り手のどちらにも出なかった別は除く。別を
+    残す前の記録は空。施設の工事と修理の資材は、その施設の国営・民営に数える。"""
+    if record is None:
+        return []
+    buyers, sellers = record.buyers or {}, record.sellers or {}
+    rows = []
+    for group in BUYER_GROUPS:
+        buy, sell = buyers.get(group), sellers.get(group)
+        if not buy and not sell:
+            continue
+        ordered, bought = buy or (0, 0)
+        offered, sold = sell or (0, 0)
+        rows.append(
+            {
+                "group": group,
+                "name": GROUP_NAMES[group],
+                "buy": _qty(good, ordered),
+                "bought": _qty(good, bought),
+                "unfilled": _qty(good, max(0, ordered - bought)),
+                "sell": _qty(good, offered),
+                "sold": _qty(good, sold),
+            }
+        )
+    return rows
 
 
 def _qty(good: str, milli: int) -> float:
@@ -1271,6 +1323,19 @@ def fiscal_view(
         "position": stat_rows(
             stats,
             ["treasury", "debt", "bonds.central_bank", "net_public_debt", "debt_ratio"],
+            currency,
+        ),
+        # 公共事業の人手（W-270）: 直営の作業員・土木業者が届けた工事・業者の単価
+        "works": stat_rows(
+            stats,
+            [
+                "works.workers",
+                "works.direct",
+                "works.contracted",
+                "contractor.price",
+                "contractor.machines",
+                "contractor.machines_working",
+            ],
             currency,
         ),
     }

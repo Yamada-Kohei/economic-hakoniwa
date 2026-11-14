@@ -107,6 +107,8 @@ mine:
   industry: mining
   terrain: [mountain]
   max_per_island: 2       # 1つの国が持てる数（工事中も数える）
+  # 持っている鉱業資源のうち鉱山で掘れるものが 3 種なら 3 つまで（FM-66。2 と大きい方）
+  limit_by_resources: true
   construction: {turns: 4, labor: 400, materials: {wood: 10, building_materials: 5}}
   workers: 800
   priority: 5
@@ -365,6 +367,13 @@ electronics_plant:
     default:
       inputs: {copper: 1, chemicals: 0.6, machinery: 0.4, electricity: 3}
       outputs: {electronics: 2}
+    # 銅の代わりにアルミを使う（MI-69。W-234）: 同じ電気を通すアルミの線は銅の約 1.6 倍の太さで、重さは
+    # 約半分（密度が約 3 分の 1）。つなぎ目と端子の手間（はんだ付けしにくく、接点が傷みやすい）で機械と電力が
+    # 少し多い。始めの値段では変動費の利益（賃金の前）が銅の作り方の約 8 割で、銅が始めの値段の約 1.4 倍を
+    # 超えるとこちらが得になる（現実でも銅の高い時期には電線や巻線がアルミに替わった）
+    aluminium:
+      inputs: {aluminium: 0.5, chemicals: 0.6, machinery: 0.5, electricity: 3.5}
+      outputs: {electronics: 2}
   sprite: electronics_plant
 
 arms_plant:
@@ -421,6 +430,31 @@ nuclear_facility:
       inputs: {uranium_ore: 7, chemicals: 0.9, machinery: 0.35, electronics: 0.35, electricity: 50}
       outputs: {nuclear_warhead: 0.167}
   sprite: nuclear_facility
+
+# 探鉱隊（MI-68。W-234）。命令「探鉱」（explore）でだけ置く国の施設で、島がまだ持っていない鉱業資源を
+# 探す。地質の専門家と掘削や運搬の働き手を雇い、試掘の機械の傷みと燃料を使って、何も作らない。
+# 賃金と仕入れは学校と同じに予算の公共事業費（construction）から払う（何も作らない施設は値段を競り上げる
+# 元手がないため）。公務の施設なので、地質の専門家も学校の教員と同じく一般の賃金で雇う（技術者の席は
+# 公務でない施設だけ）。島に 1 つ・建て増しなし・国営だけ。工事はキャンプを張る分だけで短い。
+# 全力で 1 ターン動いたときの費用は、倍 1 の島で賃金が約 3 万、機械が約 2 万、燃料が約 0.5 万（始めの
+# 値段）。倍 20 の試験の島では 1 ターン約 110 万、explore.turns の 36 ターンで約 4,000 万（年の GDP の
+# 約 1.7%、公共事業費の月割りの約 4%）。人口 50 万ほどの国の資源の探鉱の計画（数年で GDP の 1〜2%）と
+# 同じくらいの重さ
+exploration_team:
+  max_size: 1
+  category: primary
+  terrain: [plain, mountain]   # 実際に置けるのは、探す資源を掘る施設の建つ地形のマスだけ（命令で見る）
+  private: false
+  max_per_island: 1
+  buildable: false
+  public_service: true
+  budget: construction
+  construction: {turns: 1, labor: 100, materials: {wood: 2}}
+  workers: 30
+  priority: 7
+  recipes:
+    default:
+      inputs: {machinery: 0.005, fuel: 0.03}
 
 # 繊維工場（フェーズ3-2）。綿から衣料を作ります。人手は多く、技術者は要りません。
 textile_mill:
@@ -675,6 +709,20 @@ transport:
   recipes:
     default: {}
 
+# 土木業者（W-270）。公共事業（インフラの工事と維持）を請け負い、自分の社員で工事をします。注文の分だけ
+# 一般の労働者を通勤圏から雇い、工事は島のどのマスでもします（現場へ通う）。売るのは持ち越せない「工事」で、
+# 市場には出さず公共事業との請負で売ります（hakoniwa_core/modules/infrastructure/contracts.py）。
+contractor:
+  max_size: 1
+  category: construction
+  terrain: [plain]
+  max_per_island: 5
+  construction: {turns: 2, labor: 150, materials: {building_materials: 6, machinery: 1}}
+  workers: 150
+  priority: 5
+  recipes:
+    default: {}
+
 # 港（フェーズ3-1）。島の外との物の出入りはすべて港を通ります。国が建て（民営では建たない）、島に1つ。
 # 荷の積み下ろしは 1 ターンに game.yaml の trade.port_capacity トンまで。働く人は扱った荷の量に合わせて
 # 雇い（trade.port_labor）、荷 1 トンごとに使用料を受け取ります。
@@ -746,14 +794,16 @@ trading:
   sprite: trading
 
 # 商店（回7）。町の中の小さな店（八百屋・衣料品店・雑貨店・スーパーなど）で、マスを取らず町のマスに属します
-# （町の段階ごとに入れる数は settlements.yaml の shops）。売り場の働き（小売り）と少しのサービスを出し、電力と
-# 包装などの消費財を少し使います。企業が採算で開き、退きます。お客は通勤圏に住む人だけです。
+# （町の段階ごとの数は settlements.yaml の shops）。小売りと少しのサービスを出し、電力と
+# 包装などの消費財を少し使います。包装がなくても動きます。企業が採算で開き、退きます。お客は通勤圏の人です。
+# 建設費は働く人1人あたりで製鉄所の4割ほど（現実の小売りの設備は製造業より軽い。FM-68）。
 shop:
   category: commerce
+  optional_inputs: [consumer_goods]
   terrain: [plain]
   tileless: true
   site: town
-  construction: {turns: 2, labor: 40, materials: {building_materials: 2}}
+  construction: {turns: 2, labor: 40, materials: {building_materials: 0.5}}
   workers: 40
   priority: 3
   recipes:
@@ -764,11 +814,13 @@ shop:
 # 百貨店（回7）。商業地のマスに建つ大きな店で、衣料・消費財などの小売りとサービスを出します。働く人が多く、
 # 1人あたりの量も商店より多い（規模の経済）。電力を多く使います。企業が採算で建て、国は出店を規制できます
 # （命令 set_retail_policy）。お客は車を持つ家計なら島じゅうから、ない家計は通勤圏に住む人です。
+# 建設費は働く人1人あたりで商店の1.4倍ほど（大きな建物の分。FM-68）。
 department_store:
   category: commerce
+  optional_inputs: [consumer_goods]
   terrain: [plain]
   zone: commercial
-  construction: {turns: 6, labor: 400, materials: {building_materials: 30, steel: 5}}
+  construction: {turns: 6, labor: 200, materials: {building_materials: 3, steel: 0.5}}
   workers: 300
   priority: 3
   factors: {infra: 0.3}

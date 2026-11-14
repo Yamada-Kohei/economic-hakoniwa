@@ -11,6 +11,7 @@
 | 独立採算の施設（運送業を含む） | 施設 ``fac:<番号>`` |
 | 銀行 | 銀行 ``bank:<番号>`` |
 | 国庫直轄の施設 | 政府（支出の項目 state_facilities） |
+| 国庫直轄の土木業者 | 政府（支出の項目 construction） |
 | 公務員の施設（中央省庁など） | 政府（支出の項目 civil_servants） |
 | 工事中の施設（国の工事） | 政府（支出の項目 construction） |
 | 工事中の民営工場（民間の参入。フェーズ2-2） | 施設 ``fac:<番号>``（出資と建設資金の融資） |
@@ -71,6 +72,11 @@ def is_bank(config: GameConfig, f: Facility) -> bool:
 
 def is_transport(config: GameConfig, f: Facility) -> bool:
     return f.kind == config.get("freight.facility")
+
+
+def is_contractor(config: GameConfig, f: Facility) -> bool:
+    """土木業者（W-270。公共事業を請け負う。modules/infrastructure/contracts.py）。"""
+    return f.kind == config.get("contractor.facility")
 
 
 def is_public_service(defs: Defs, f: Facility) -> bool:
@@ -145,6 +151,8 @@ def payer_of(defs: Defs, config: GameConfig, f: Facility) -> Payer:
         return Payer(facility_entity(f.id))
     if is_public_service(defs, f):  # 学校と大学は教育費（定義の budget）
         return Payer(ledger.GOV, defs.facilities[f.kind].get("budget", CIVIL_SERVANTS))
+    if is_contractor(config, f):  # 国庫直轄の土木業者は公共事業費から直に払う（IN-35）
+        return Payer(ledger.GOV, CONSTRUCTION)
     return Payer(ledger.GOV, STATE_FACILITIES)
 
 

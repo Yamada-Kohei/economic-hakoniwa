@@ -117,23 +117,58 @@ def test_blocs_form_and_goods_are_shipped(game, traded):
 
 
 def test_freight_rate_is_per_ton_and_cell(game, traded):
-    """運賃は荷 1 トン × 区画 1 つあたり: 運んだ量（1000 分の 1）と下限（船を半分使った量）を同じ
-    単位で数える。"""
+    """運賃は荷 1 トン × 区画 1 つあたり: （1 + 上乗せ）×（運航費 + 資本費 × min(1, 2u)）÷ 1 隻を
+    全部使ったときに運ぶ量（FX-74）。船が余れば運航費まで下がり、半分より多く使えば船の傷みまで
+    回収する全部の費用で止まる（足りないときの割増は付けない）。"""
     world = copy.deepcopy(traded[0])
     island = world.islands[1]
     f = shipping_of(island, game.config)
-    for key in ("costs", "carried", "used"):
-        f.economy.pop(key, None)
-    f.workers = 0
     settings = game.config.get("trade")
-    half = ships.fleet(f) * settings["ship_capacity"] * settings["ship_speed"] // 4  # 1000 分の 1
-    for carried in (half // 10, 2 * half):
-        f.economy.pop("costs", None)
-        f.economy.pop("carried", None)
+    markup = 1 + settings["cost_markup"]
+    full = settings["ship_capacity"] * settings["ship_speed"] / 2  # 1 隻 1 ターン（トン × 区画）
+    run_cost = ships._ship_run_cost(island, game.config)
+    wear = ships._ship_wear(island, game.config)
+    rates = {}
+    for use in (0, 0.5, 1, 2):
+        for key in ("costs", "carried", "used", "capital_costs", "fleets"):
+            f.economy.pop(key, None)
+        carried = round(ships.fleet(f) * full * use)  # 1000 分の 1
         ships.close_turn(island, game.config, carried, 0)
-        cost = f.economy["costs"][-1]
-        tons = max(carried, half) / QUANTITY_SCALE
-        assert abs(f.economy["rate"] - cost / tons * (1 + settings["cost_markup"])) <= 1
+        capital = f.economy["capital_costs"][-1] * QUANTITY_SCALE / ships.fleet(f)
+        expected = (run_cost + capital * min(1, 2 * use)) / full * markup
+        assert abs(f.economy["rate"] - expected) <= 1
+        rates[use] = f.economy["rate"]
+        assert abs(capital - wear) <= 1
+    assert rates[0] < rates[0.5] == rates[1] == rates[2]
+    # 半分より多く使えば全部の費用（運航費 + 傷み）
+    assert abs(rates[1] - (run_cost + wear) / full * markup) <= 1
+
+
+def test_scrapping_a_ship_keeps_the_rate_and_writes_off_its_capital(game, traded):
+    """寿命で解体した船は、その割合だけ設備の額と償却済みの額から除き、運賃は解体の後も跳ねない
+    （延べ隻数はその時の船団で数える。FX-74）。船がなくなっても 0 で割らない。"""
+    world = copy.deepcopy(traded[0])
+    island = world.islands[1]
+    f = shipping_of(island, game.config)
+    for key in ("costs", "carried", "used", "capital_costs", "fleets"):
+        f.economy.pop(key, None)
+    life = game.config.get("trade.ship_life")
+    turn = world.turn
+    f.economy["fleet"] = [[turn - life, 1000], [turn, 1000]]  # 1 隻は寿命
+    f.economy["capital"], f.economy["depreciated"] = 4000, 1000
+    for _ in range(3):
+        ships.close_turn(island, game.config, 0, 0)
+    before = f.economy["rate"]
+    assert ships.scrap(island, game.config, turn) == 1000
+    assert (f.economy["capital"], f.economy["depreciated"]) == (2000, 500)
+    ships.close_turn(island, game.config, 0, 0)
+    assert abs(f.economy["rate"] - before) <= 1
+    f.economy["fleet"] = []
+    f.economy["fleets"] = [0]
+    f.economy["capital_costs"] = [0]
+    f.economy["carried"] = [0]
+    ships.close_turn(island, game.config, 0, 0)
+    assert f.economy["rate"] >= 1
 
 
 def test_shipping_keeps_its_ship_shortages_apart(game, traded):
@@ -436,6 +471,72 @@ def test_contract_cannot_be_accepted_by_the_proposer(game, traded):
     assert c["end"] == world.turn + 1 + wait
 
 
+def _indefinite(world, a, b, good="coal"):
+    payload = {
+        "partner": b.id,
+        "side": "buy",
+        "good": good,
+        "quantity": 1,
+        "price": 10,
+        "indefinite": True,
+    }
+    assert contracts.propose(world, a, payload, world.turn) is None
+    c = contracts.contracts(world)[-1]
+    assert c["indefinite"] and c["turns"] is None
+    assert contracts.accept(world, b, c, world.turn) is None
+    return c
+
+
+def test_an_indefinite_contract_runs_until_a_cancel_order(game, traded):
+    """無期限の契約（FX-68）は満期がなく、やめる命令から trade.contract_cancel_turns ターン後に
+    終わる。終わりの決まっていない間の end は None（大きな数で代えない）。"""
+    world = copy.deepcopy(traded[0])
+    a, b = world.islands[1], world.islands[2]
+    c = _indefinite(world, a, b)
+    start = world.turn + 1
+    assert c["state"] == contracts.ACTIVE and c["start"] == start and c["end"] is None
+    far = start + 10_000
+    contracts.close(world, far)
+    assert c["state"] == contracts.ACTIVE
+    assert c in contracts.active(world, far)
+    view = contract_view(c, a.id, far)
+    assert view["active"] and view["indefinite"] and view["end"] is None
+    wait = game.config.get("trade.contract_cancel_turns")
+    assert contracts.cancel(world, b, c, far, wait) is None
+    assert c["end"] == far + 1 + wait and c["cancelled_by"] == b.id
+    contracts.close(world, far + wait)
+    assert c["state"] == contracts.ENDED
+    assert c not in contracts.active(world, far + wait + 1)
+
+
+def test_an_indefinite_contract_ends_when_a_party_leaves_the_world(game, traded):
+    """当事者の島が世界から消えたら、無期限の契約も終わる（記録はしばらく残る）。"""
+    world = copy.deepcopy(traded[0])
+    a, b = world.islands[1], world.islands[2]
+    c = _indefinite(world, a, b)
+    del world.islands[b.id]
+    contracts.close(world, world.turn + 1)
+    assert c["state"] == contracts.ENDED and c["end"] == world.turn + 2
+    assert any(e.kind == "contract_ended" for e in a.log)
+
+
+def test_a_contract_order_takes_turns_or_indefinite_but_not_both(game, traded):
+    from hakoniwa_core.orders import check_order
+
+    world = copy.deepcopy(traded[0])
+    island = world.islands[1]
+    base = {"partner": 2, "side": "buy", "good": "coal", "quantity": 1, "price": 10}
+
+    def ok(payload):
+        return check_order(game.defs, game.registry, island, "propose_contract", payload).ok
+
+    assert ok({**base, "turns": 3})
+    assert ok({**base, "indefinite": True})
+    assert not ok(base)
+    assert not ok({**base, "turns": 3, "indefinite": True})
+    assert not ok({**base, "indefinite": False})
+
+
 # --- 貿易圏 ---------------------------------------------------------------------------------
 
 
@@ -565,13 +666,14 @@ def test_trade_facilities_hiring_for_their_cargo_are_not_short_of_workers(game, 
                 seen = replace(
                     f, economy={**f.economy, "trade": {**state, "volume": state["volume"][:-1]}}
                 )
-            assert f.workers >= staff.wanted(game.config, game.defs, seen)
             # 雇うときに雇いたい人数に届かなかった（島の通勤圏に失業者がいなかった）ときの「労働者
-            # 不足」は正しい知らせ（解雇の決まりで工場が人を抱えると、島の働き手が減る）
+            # 不足」は正しい知らせ（解雇の決まりで工場が人を抱えると、島の働き手が減る。輸入の荷の
+            # 持つ量 FX-66 で港の荷が増え、港でも起きる）
             if f.status == "workers":
                 assert f.workers < f.economy["wanted"]
-            else:
-                assert f.status in ("", "cargo")
+                continue
+            assert f.workers >= staff.wanted(game.config, game.defs, seen)
+            assert f.status in ("", "cargo")
     assert format_log(game.defs, "status_cargo", {}) == "扱う荷に合わせて操業"
 
 

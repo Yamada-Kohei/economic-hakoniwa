@@ -28,6 +28,7 @@ from hakoniwa_core.economy import (
     groundwork,
     household,
     is_bank,
+    is_contractor,
     is_self_supporting,
     is_transport,
     owner_entity,
@@ -178,20 +179,24 @@ def next_payments(island: IslandState, defs: Defs, config: GameConfig, f: Facili
         return max(f.economy.get("wanted", 0) * wage, freight_rates.payroll(island, config))
     if services.is_services(config, f):  # 商業・サービス業は雇う人数の目安の賃金（バランス調整）
         return services.next_payments(f)
+    if is_contractor(config, f):  # 土木業者は雇っている人の賃金（W-270）
+        return max(f.economy.get("wanted", 0), f.workers) * wage
     if "trade" in f.economy and f.kind == config.get("trade.trader_facility"):
         from hakoniwa_core.trade import fx, traders  # trade は economy を読むので、ここで読む
 
         spent = f.economy["trade"].get("spent", [])
+        home = sum(spent) // len(spent) if spent else 0
         if traders.is_planned(island):
             abroad = sum(
                 fx.to_own(island, int(c), traders.abroad_average(f, int(c)))
                 for c in f.economy["trade"].get("abroad", {})
             )
+            # 輸出の計画（PL-62）の財を島の市場で買う代金も、計画の量で見込む（直近の平均だけでは、
+            # 計画が増えた月に買うお金が足りない）
+            home = max(home, traders.plan_spend(island, f))
         else:
             abroad = traders.import_need_own(island, f)
-        return (
-            f.economy.get("wanted", 0) * wage + (sum(spent) // len(spent) if spent else 0) + abroad
-        )
+        return f.economy.get("wanted", 0) * wage + home + abroad
     rate = freight_rates.facility_rates(island, defs, config).get(f.id, 0)
     cost = operating_cost(defs, config, f, island.economy.prices, wage, rate)
     # 解雇の決まりで抱えている人（LB-43。economy/dismissal.py の HELD）の賃金も払う

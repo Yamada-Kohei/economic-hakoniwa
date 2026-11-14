@@ -38,7 +38,7 @@
       <tbody>
         {% for r in p.rows %}
         <tr>
-          <td><a href="{% url 'island_market' island.id %}?good={{ r.good }}">{{ r.name }}</a>{% if r.held %} <small class="muted">{% translate "（据え置く財）" %}</small>{% endif %}</td>
+          <td><a href="{% url 'market_good' island.id r.good %}">{{ r.name }}</a>{% if r.held %} <small class="muted">{% translate "（据え置く財）" %}</small>{% endif %}</td>
           <td>{{ currency|currency_prefix }}{{ r.price|floatformat:"-1g" }}{% if r.manual %} <small class="muted">{% translate "（命令で決めた値段）" %}</small>{% endif %}</td>
           <td>{% if r.retail %}{{ currency|currency_prefix }}{{ r.retail|floatformat:"-1g" }}{% if r.retail_manual %} <small class="muted">{% translate "（命令で決めた値段）" %}</small>{% endif %}{% endif %}</td>
           <td>{% if r.retail_gap is not None %}{% if r.retail_gap < 0 %}<span class="warning">{{ r.retail_gap }}%（{% translate "補助" %}）</span>{% else %}+{{ r.retail_gap }}%{% endif %}{% endif %}</td>
@@ -123,6 +123,69 @@
     <label>{% translate "新しい工事" %} <input name="build_priority" type="number" min="0" max="9" step="1" placeholder="{{ p.works.build_priority }}"></label>
     <button type="submit">{% translate "命令に追加" %}</button>
   </form>
+  <p class="order-notice" aria-live="polite"></p>
+</section>
+
+<section class="panel" id="export-plan">
+  <h2>{% translate "輸出の計画" %}</h2>
+  <p class="hint">{% translate "国営の商社が輸入に使えるのは、輸出で稼いだ外貨だけです。国は、燃料と主食の輸入（入った量と行列）と国営施設の設備が毎月傷む分の資材を圏の値段で外貨に直して要る外貨を見積もり、輸入の数か月分の外貨の蓄えに届くまでの積み増しを足し、売れ残りの輸出の稼ぎを引いた額を稼ぐ輸出を、余った設備のある財から外貨の効率（圏の値段 ÷ 原価）の高い順に選んで生産目標に足します。輸出の計画の分は、足りないとき食料も家計の配給より先に配ります。蓄えが目標より少ない間は、原料と部品・消費財の輸入に蓄えを使いません。" %}</p>
+  {% if p.export.stuck %}<p class="warning">{% translate "外貨を稼ぎたいのに、輸出できる財がありません（余った設備がないか、貿易圏に買い手がいません）。" %}</p>{% endif %}
+  {% if p.export.money %}
+  <div class="table-scroll">
+    <table class="goods plan-table">
+      <thead><tr>
+        <th>{% translate "通貨" %}</th><th>{% translate "要る外貨（1ターン）" %}</th><th>{% translate "うち燃料と主食" %}</th><th>{% translate "うち設備の資材" %}</th><th>{% translate "持っている外貨" %}</th><th>{% translate "蓄えの目標" %}</th><th>{% translate "稼ぐ額（1ターン）" %}</th>
+      </tr></thead>
+      <tbody>
+        {% for r in p.export.money %}
+        <tr><td>{{ r.currency_name }}</td><td>{{ r.need|floatformat:"0g" }}</td><td>{{ r.fuel|floatformat:"0g" }}</td><td>{{ r.equipment|floatformat:"0g" }}</td><td>{{ r.held|floatformat:"0g" }}</td><td>{{ r.reserve|floatformat:"0g" }}</td><td>{{ r.earn|floatformat:"0g" }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">{% translate "外貨の要る輸入はありません（港がない・貿易圏に入っていない・自国の通貨の圏だけのときも）。" %}</p>
+  {% endif %}
+  {% if p.export.rows %}
+  <div class="table-scroll">
+    <table class="goods plan-table">
+      <thead><tr>
+        <th>{% translate "財" %}</th><th>{% translate "計画の量（1ターン）" %}</th><th>{% translate "圏で売れた量" %}</th><th>{% translate "圏の値段（1単位）" %}</th><th>{% translate "外貨の効率" %}</th><th>{% translate "名指し" %}</th>
+      </tr></thead>
+      <tbody>
+        {% for r in p.export.rows %}
+        <tr>
+          <td><a href="{% url 'market_good' island.id r.good %}">{{ r.name }}</a></td>
+          <td>{{ r.plan|floatformat:"1g" }} {{ r.unit }}</td>
+          <td>{{ r.sold|floatformat:"1g" }} {{ r.unit }}</td>
+          <td>{% if r.price %}{{ r.price|floatformat:"-1g" }} {{ r.currency_name }}{% endif %}</td>
+          <td>{% if r.efficiency is not None %}{{ r.efficiency|floatformat:"2" }}{% endif %}</td>
+          <td>{% if r.named is not None %}{% if r.named %}{{ r.named|floatformat:"1g" }} {{ r.unit }}{% else %}{% translate "輸出しない" %}{% endif %}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  <form class="actions" data-order="set_export_plan" data-export-plan>
+    <strong>{% translate "輸出の計画を名指しする（行政力 1。書いた財だけを名指しし、空欄の財は国が自動で選びます。全部空欄で出すと名指しをやめます）" %}</strong>
+    <div class="table-scroll">
+      <table class="goods plan-table">
+        <thead><tr><th>{% translate "財" %}</th><th>{% translate "1ターンの量" %}</th><th>{% translate "輸出しない" %}</th></tr></thead>
+        <tbody>
+          {% for g in p.export.goods %}
+          <tr>
+            <td>{{ g.name }}</td>
+            <td><input type="number" min="0" step="any" name="quantity" data-good="{{ g.id }}"{% if g.named %} value="{{ g.named }}"{% endif %}> {{ g.unit }}</td>
+            <td><input type="checkbox" name="none" data-good="{{ g.id }}"{% if g.named is not None and not g.named %} checked{% endif %}></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="submit">{% translate "命令に追加" %}</button>
+  </form>
+  <p class="hint">{% translate "名指しした量は、余った設備と商社の扱える重さの分だけ輸出し、圏で売れる見込みでは減らしません（売れなければ荷が圏で売れ残ります）。「輸出しない」にした財は、売れ残りだけを今までどおり輸出します。" %}</p>
   <p class="order-notice" aria-live="polite"></p>
 </section>
 

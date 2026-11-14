@@ -164,6 +164,11 @@ class Records(IslandStage):
         stats["trade.exports"] = trade.get("exports", 0)
         stats["trade.imports"] = trade.get("imports", 0)
         stats["trade.balance"] = trade.get("exports", 0) - trade.get("imports", 0)
+        # 品目ごとの輸出と輸入の額（W-72。export.<財>・import.<財>。0 は書かない。他国の船を借りた
+        # 運賃は export.freight・import.freight）。合計は trade.exports・trade.imports に合う
+        for item, amount in books.sector(island, books.TRADE_GOODS).items():
+            side, _, good = item.partition(".")
+            stats[f"{side.removesuffix('s')}.{good}"] = amount
         balance.write_stats(island)  # 経常収支と金融収支（フェーズ3-3）
         stats.update(_finances(island))
         stats.update(_banking(island, ctx))

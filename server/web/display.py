@@ -11,7 +11,7 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, ledger
+from hakoniwa_core import infra, ledger, politics
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.economy import (
     books,
@@ -21,6 +21,7 @@ from hakoniwa_core.economy import (
     facility_entity,
     in_receivership,
     is_bank,
+    is_contractor,
     is_private_site,
     is_self_supporting,
     power_fuel,
@@ -330,7 +331,7 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
             info["space_wanted"] = round(here.want / population, 1)
         # 町の商店（回7）: 入っている数と、町の段階で入る数
         info["shops"] = fac.shops_at(island, fac.position(f))
-        info["shop_slots"] = fac.shop_slots(defs, f)
+        info["shop_slots"] = fac.shop_slots(defs, f, full)
         levels = defs.settlement_levels()
         if levels.index(level) + 1 < len(levels):
             following = levels[levels.index(level) + 1]
@@ -348,6 +349,8 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         info["accounting_target_name"] = message(f"accounting_{target}")
     if f.economy.get("wage"):
         info["wage"] = f.economy["wage"]
+    if f.built and is_contractor(config, f):
+        info["contract"] = contract_info(island, f)
     info.update(engineers_info(f, fdef))
     info.update(equipment_info(defs, config, f))
     if fdef.get("education"):
@@ -401,6 +404,29 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         if island.has_economy:
             info.update(facility_finance(row, f, island, currency, mine))
     return info
+
+
+def contract_info(island: IslandState, f: Facility) -> dict[str, Any]:
+    """土木業者（W-270）の欄: このターンに受けた工事（維持・新しい工事）・届けた工事・全力（直営の
+    作業員の人数に直した単位）・単価と予定価格（工事 1 単位）・国庫直轄か。"""
+    from hakoniwa_core.modules.infrastructure import contracts, machines
+
+    game = get_game()
+    defs, config = game.defs, game.config
+    orders = f.economy.get(contracts.ORDERS, [0, 0])
+    out: dict[str, Any] = {
+        "upkeep": round(orders[contracts.UPKEEP] / 1000, 1),
+        "build": round(orders[contracts.BUILD] / 1000, 1),
+        "delivered": round(f.economy.get(contracts.DELIVERED, 0) / 1000, 1),
+        "full": round(contracts.full(defs, config, f) / 1000, 1),
+        "treasury": contracts.treasury(f),
+        "machines": round(machines.owned(f) / machines.MILLI, 2),
+        "machines_working": round(f.economy.get(machines.WORKING, 0) / machines.MILLI, 2),
+    }
+    if not contracts.treasury(f) and island.has_economy:
+        out["price"] = contracts.price_of(island, config, f)
+        out["ceiling"] = contracts.ceiling(island, config)
+    return out
 
 
 def expand_info(defs, island: IslandState, f: Facility) -> dict[str, Any] | None:
@@ -994,6 +1020,9 @@ STATUS_HINTS = {
         "切り替えたターンは稼働が下がります。次の更新まで待ち、新しい方式の原料を確かめてください。"
     ),
     "cargo": "「二国間契約の申し込み」で貿易する荷を増やせます。",
+    "orders": (
+        "「インフラの工事」や「予算の変更」の公共事業費で、土木業者の受ける工事を増やせます。"
+    ),
     "business": "「銀行の政策の変更」や「金融政策の変更」で融資の条件を見直せます。",
     "construction": "工事に要る資材と人手がそろえば進みます。",
     "repair": "「予算の変更」で公共事業費を確保し、修理の資材を供給できます。",
@@ -1066,6 +1095,7 @@ ORDER_UNITS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = {
 CLAUSE_UNITS = ("good", ("quantity",), ("price",))
 ORDER_NESTED_UNITS: dict[str, tuple[str, tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
     "propose_treaty": ("clauses", CLAUSE_UNITS),
+    "set_export_plan": ("plans", ("good", ("quantity",), ())),  # 輸出の計画（PL-62）
 }
 # 項目の下に「財 → 量」の表を持つ命令（W-182）。種類 → 項目。備蓄の目標（food などの補給も財）
 ORDER_GOOD_MAPS: dict[str, str] = {"set_defense": "reserve"}
@@ -1237,6 +1267,8 @@ def describe_order(
     if kind == "build":
         facility = _build_label(defs, payload.get("facility", ""), payload.get("recipe"))
         return f"{name}: {facility} {where}"
+    if kind == "explore":
+        return f"{name}: {defs.name('goods', payload.get('resource', ''))} {where}"
     if kind == "build_housing":
         if "level" in payload:
             return f"{name}: {where} {defs.name('settlements', payload['level'])}まで"
@@ -1431,10 +1463,11 @@ def _describe_trade(kind: str, payload: dict[str, Any], name: str) -> str:
         side = SIDES.get(payload.get("side", ""), "")
         currency = currency_name(payload["currency"]) if "currency" in payload else "自国通貨"
         delivery = DELIVERIES.get(payload.get("delivery", ""), "")
+        period = "無期限" if payload.get("indefinite") else f"{payload.get('turns', 0)} ターン"
         return (
             f"{name}: {island_name(payload.get('partner'))}に{defs.name('goods', good)}を"
             f"毎ターン {payload.get('quantity', 0):g} {unit}{side}"
-            f"（1{unit} {payload.get('price', 0):,}・{currency}・{payload.get('turns', 0)} ターン"
+            f"（1{unit} {payload.get('price', 0):,}・{currency}・{period}"
             f"{'・' + delivery if delivery else ''}）"
         )
     if kind == "accept_contract" and payload.get("delivery") in DELIVERIES:
@@ -1554,6 +1587,15 @@ def _describe_politics(kind: str, payload: dict[str, Any], name: str) -> str:
             cap = entry.get("cap")
             rows.append(f"{where} {'枠を外す' if cap is None else f'{cap:,} 人'}")
         return f"{name}: " + "、".join(rows)
+    if kind == "set_export_plan":
+        rows = []
+        for entry in payload.get("plans", []):
+            good = entry.get("good", "")
+            label = defs.name("goods", good) if good in defs.goods else good
+            qty = entry.get("quantity", 0)
+            unit = defs.unit_name(good) if good in defs.goods else ""
+            rows.append(f"{label} {'輸出しない' if not qty else f'{qty:,} {unit}'}")
+        return f"{name}: " + ("、".join(rows) or "名指しをやめる（全部の財を自動で選ぶ）")
     return ""
 
 
@@ -2012,6 +2054,21 @@ def latest_stats(island: m.Island) -> tuple[int | None, dict[str, float]]:
         return None, {}
     rows = island.stats.filter(turn=last).values_list("name", "value")
     return last, dict(rows)
+
+
+def admin_power(island: m.Island, stats: dict[str, float]) -> int:
+    """次のターンの行政力（画面・API・MCP に出す値）。
+
+    更新の後は記録（統計の admin_power）をそのまま使う。建国してから最初の更新の前は記録が無いので、
+    コアの計算（planning の admin_power）と同じく、最低の行政力に体制（権威主義 +1）と政情の
+    足し引きをした値を出す（建国の島の官庁にはまだ働く人がいない）。
+    """
+    if "admin_power" in stats:
+        return int(stats["admin_power"])
+    config = get_game().config
+    low = config.get("orders.base_admin_power")
+    high = config.get("orders.max_admin_power")
+    return politics.adjust_admin(island_from_row(island), get_game().defs, config, low, low, high)
 
 
 def summary(stats: dict[str, float], currency: str = "") -> list[dict[str, Any]]:

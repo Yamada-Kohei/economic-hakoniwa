@@ -10,19 +10,25 @@
 - 輸出: 圏の前の値段を為替で自国通貨に直し、取り分（trade.trader_cut）と港の使用料を引いて、輸出補助
   （フェーズ3-3）を足した値段まで買う（運賃は買い手の指値の中で払う）。
   量は「狙う量 − 手元の輸出の荷」。
-- 輸入した物: 仕入れ値（圏の代金・船の運賃・港の使用料）を下限に売る。trade.clearance_turns ターン
-  続けて1つも売れなかったら、値幅の下端まで下げて売る（仕入れ値の CLEARANCE_FLOOR の割合まで）。
+- 輸入した物: 帳簿の値（手元の荷の平均の仕入れ値）と仕入れ直しの値（買う圏で前のターンに約定した
+  値段 × 今のレート ＋ 関税・運賃・港の使用料）の安い方を下限に売る（低価法。FX-63）。手元の荷が
+  「狙う量 × market.inventory_turns × market.clearance_ratio」を超えたまま trade.clearance_turns
+  続いたら、超えた分だけをアウトレット（市場の段の2回目の板寄せ。MK-41）に出し、売れ残るターンごとに値幅ずつ
+  下げる。止まりは下限の market.clearance_floor 倍と輸出し直して引き合う値の高い方で、そこでも
+  trade.clearance_turns の 2 倍のターン売れ残れば、その分を輸出の荷に替えて圏で売る（FX-64）。
 - 輸出の荷が、指値を外しても圏で trade.clearance_turns の 2 倍のターン売れ残ったら、島の市場に戻して
   指値なしで売る。
 
 貿易圏の市場（貿易の段。hakoniwa_core/modules/trade）:
 - 輸出の荷を、仕入れ値に取り分と積む港の使用料を足した値段（決済通貨に直す）を指値に売る。
   trade.clearance_turns ターン売れ残ったら、指値を外す。
-- 輸入: 島の市場の前の値段から、取り分・船の運賃・下ろす港の使用料を引き、関税（フェーズ3-3。圏内の
-  関税をなくした圏ではかからない）の分を割り引いて決済通貨に直した値段を指値に買う。
-  量は「狙う量 − 手元と運ぶ途中の輸入の荷」で、空いている船、持っている決済通貨、
-  商社の扱える重さ（trade.trader_capacity）で頭打ちになる。運賃の見込みは、圏の加盟国のうち近い
-  半分までの平均の距離で見る。
+- 輸入: 島の市場の前の値段から、取り分・船の運賃（借りた船の運賃の直近の実績を含む。FX-63）・
+  下ろす港の使用料を引き、関税（フェーズ3-3。圏内の関税をなくした圏ではかからない）の分を割り引いて
+  決済通貨に直した値段を指値に買う。
+  量は「狙う量 ＋（持つ量 − 手元と運ぶ途中の輸入の荷）× market.inventory_adjust」（FX-66）で、空いて
+  いる船、持っている決済通貨、商社の扱える重さ（trade.trader_capacity）で頭打ちになる。決済通貨と
+  扱える重さが足りなければ、財の名前の順でなく、1 単位のお金あたりの儲けの大きい財から配る
+  （FX-67）。運賃の見込みは、圏の加盟国のうち近い半分までの平均の距離で見る。
 
 島の市場で前のターンに買い手のいなかった物は輸入せず、島の売り手が売りに出していなかった物は輸出
 しません。狙う量は島の市場の買いたい量（輸入）と、島の売り手の売りたい量（輸出）までです。島の売り手
@@ -30,13 +36,19 @@
 ません（home_supply。島で作っておらず在庫もない物を、海外の商人の売れ残りを見て輸出しようとして
 いた。試し遊び1回目）。
 
-狙う量（財ごと）は毎ターン、売れた量と足りない量の分け前に trade.target_speed の割合だけ近づけます
-（荷が島と圏の間で行ったり来たりしないように）。輸出の足りない量は圏の市場の買えなかった量を、
-輸入の足りない量は島の市場の買えなかった量を、同じ財を扱う商社の数で分けたものです。値段の差が
-あって、手元の荷を売り切ったときは、全力の 1 割ずつ多めに狙います（始めのうちは売れた量も足りない
-量もないため。売れずに手元の荷がないだけのときは増やさない）。島の値段が輸入の原価を
-PUSH_MARGIN より上回るときは、島の市場の買いたい量より多めに狙います（売りを増やして値段を
-原価のほうへ下げる）。
+狙う量（財ごと。1ターンに流れる量）は毎ターン、売れた量と足りない量の分け前に trade.target_speed の
+割合だけ近づけます（荷が島と圏の間で行ったり来たりしないように）。輸出の足りない量は圏の市場の買え
+なかった量を、輸入の足りない量は島の市場で約定の値段以上を付けたのに買えなかった量（本当の品不足。
+FX-65）を、同じ財を扱う商社の数で分けたものです。輸入の荷が持ちすぎの線（FX-64）を超えている間は、
+輸入の狙う量を据え置きます。値段の差があって、手元の荷を売り切ったときは、全力の 1 割ずつ多めに
+狙います（始めのうちは売れた量も足りない量もないため。売れずに手元の荷がないだけのときは増やさ
+ない）。島の値段が輸入の原価より高くても、島の市場の買いたい量より多めには狙いません（売りが余れば
+売り値の下限 FX-63 まで商社の指値が下がるので。FX-66）。
+
+輸入の荷は、手元と運ぶ途中を合わせて「狙う量（島の買いたい量まで）×（注文してから島で売れるまでの
+ターン数 ＋ 在庫の目安）」まで持ちます（持つ量。FX-66）。かかるターン数は自社の荷の（着いたターン
+− 積んだターン ＋ 1）の直近 trade.entry_turns 回の平均で、実績がないうちは 2 × 一番近い加盟国までの
+片道 ＋ 1 です。
 
 計画経済の島（フェーズ3-4。公定価格のある島）の商社は、値段の差ではなく、島の市場で買えなかった
 量（行列）のある財を、圏の値段で一番安い圏から輸入し、島の売り手の売れ残った財を輸出します（貿易の
@@ -57,7 +69,8 @@ PUSH_MARGIN より上回るときは、島の市場の買いたい量より多�
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
 from typing import Any
 
 from hakoniwa_core import ledger, stock
@@ -68,6 +81,7 @@ from hakoniwa_core.market import auction
 from hakoniwa_core.state import Facility, IslandState, MarketRecord
 from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.trade import (
+    fx_priority,
     island_state,
     policy,
     port_of,
@@ -77,19 +91,30 @@ from hakoniwa_core.trade import (
     unit_weight,
 )
 from hakoniwa_core.trade import money as fxmoney
-from hakoniwa_core.units import BASIS, QUANTITY_SCALE, part, round_money, to_basis
+from hakoniwa_core.trade.merchant import BLOCKADE as BLOCKADE_KEY
+from hakoniwa_core.units import BASIS, QUANTITY_SCALE, money_of, part, round_money, to_basis
 
 EXPORT = "x"
 IMPORT = "m"
+# 財の状態: 輸出の計画（PL-62）でこの商社が受け持つ量（計画経済の島。economy/export_plan.py）
+PLAN_X = "px"
 PROBE = 0.1  # 値段の差があって売り切ったときに、多めに狙う量（全力に対する割合）
 # 商社の状態: 次のターンの1ターン分の輸入の見込み（決済通貨の番号の文字列 → 額。FX-61。貿易の段の
 # 記録で書き、銀行の段の次の支払いの見込みが読む）
 IMPORT_NEED = "import_need"
-# 島の値段が輸入の原価（取り分を含む）をこの割合より上回るときは、買い手の量より多めに入れる
-PUSH_MARGIN = 0.2
-# 売れ残った輸入の荷を値幅の下端まで下げて売るときも、仕入れ値のこの割合より安くは売らない
-# （買い手の指値が島の値段と一緒に下がると、下端も毎ターン下がり、値段が 0 近くまで崩れるため）
-CLEARANCE_FLOOR = 0.5
+# island.scratch: 財 → 島の市場で約定の値段以上を付けたのに買えなかった量（本当の品不足。市場の段が
+# 書く。FX-65）
+TRUE_SHORT = "trade_true_short"
+# 財の状態: 持ちすぎの分の値下げ（FX-64）。{"turns": 線を超えたターン数, "line": 線, "steps":
+# 値下げの段, "start": 値下げを始めた指値, "stop": 止まりの値, "stuck": 止まりで売れ残ったターン数}
+OUTLET = "outlet"
+# 財の状態: 輸出の荷に替えて圏で売る量（FX-64。持ちすぎの分が止まりの値でも売れなかった）と、
+# 売る圏、圏で売れ残ったターン数
+REEXPORT = "reexport"
+REEXPORT_BLOC = "reexport_bloc"
+REEXPORT_AGE = "reexport_age"
+# 島の貿易の状態: (圏, 財) ごとの借りた船の運賃と買った量の直近 trade.cost_turns ターン分（FX-63）
+CHARTER = "charter_seen"
 
 
 def is_planned(island: IslandState) -> bool:
@@ -126,6 +151,7 @@ def contract_supply_plan(island: IslandState, config: GameConfig) -> dict[str, t
 
 
 PRICE_GAPS = "trade.price_gap_subsidies"  # 統計: 政府が国営の商社に払った価格差の補給金（1ターン）
+PRICE_GAP_SHORT = "price_gap_short"  # island.scratch: このターンに価格差の補給金を払いきれなかった
 
 
 def cover_price_gap(
@@ -144,6 +170,8 @@ def cover_price_gap(
         return
     payer = Payer(ledger.GOV, GOV_TRADE)
     paid = min(gap, funds.available(island, payer))
+    if paid < gap:  # 払いきれなかった（輸出の計画は次のターンに稼ぐ額を上げない。PL-62）
+        island.scratch[PRICE_GAP_SHORT] = True
     if paid <= 0:
         return
     funds.pay(island, payer, entity, paid, "price_gap_subsidy")
@@ -155,6 +183,16 @@ ANY_RATE = 10**15  # 計画経済の輸入: どのレートでも引き合う（
 # island.scratch: 財 → [島の外から来た売り（海外の商人と商社）の量, そのうち売れた量]
 # （市場の段が書く）
 FOREIGN_SUPPLY = "foreign_supply"
+# island.scratch: 財 → 商社の輸出の買いのうち買えなかった量（市場の段が書く。島の行列から除く）
+TRADER_SHORT = "trader_short"
+
+
+def home_unmet(island: IslandState, record: MarketRecord | None) -> int:
+    """島の市場で買えなかった量のうち、商社自身の輸出の買いを除いた分（輸入が要る量。PL-62）。"""
+    if record is None:
+        return 0
+    own = island.scratch.get(TRADER_SHORT, {}).get(record.good, 0)
+    return max(0, record.demand - record.volume - own)
 
 
 @dataclass
@@ -172,6 +210,13 @@ class Prospect:
     import_limit: int = 0  # 圏で払える一番高い値段（決済通貨）
     import_rate: int = 0  # 輸入が引き合う一番高いレート（× BASIS）
     import_floor: int = 0  # 輸入が引き合う一番安い島の値段（自国通貨。0 は圏に売りがない）
+    # 圏 → 1 単位を仕入れ直す値（自国通貨。前のターンに約定した値段 × 今のレート ＋ 関税・運賃・
+    # 港の使用料。取り分は入れない。前のターンに約定した圏だけ。封鎖・禁輸の圏は除く。FX-63）
+    restock: dict[int, int] = field(default_factory=dict)
+    no_restock: set[int] = field(default_factory=set)  # 封鎖・禁輸で仕入れ直せない圏
+    # 圏 → 輸入した荷をその圏で輸出し直して手元に残る 1 単位の値（自国通貨。圏の値段 × 今のレート −
+    # 取り分 − 港の使用料。輸出補助は入れない。FX-64 の値下げの止まり）
+    resale: dict[int, int] = field(default_factory=dict)
 
 
 def state_of(f: Facility) -> dict[str, Any]:
@@ -185,7 +230,9 @@ def goods_of(f: Facility) -> dict[str, dict[str, Any]]:
 
 def entry(f: Facility, good: str) -> dict[str, Any]:
     """財の状態: dir（向き）、x・m（輸出と輸入の狙う量）、held（[持っている量（運ぶ途中を含む）,
-    その仕入れ値]）、transit（運ぶ途中の量）、age（売れ残ったターン数）、bx・bm（使う圏）。"""
+    その仕入れ値]）、transit（運ぶ途中の量）、age（売れ残ったターン数）、bx・bm（使う圏）、hold（輸入の
+    荷の持つ量。FX-66）、leads（注文から売れるまでのターン数の実績）、restock（最後の仕入れ直しの値。
+    FX-63）、outlet・reexport（持ちすぎの分の値下げと輸出し直し。FX-64）。"""
     item = goods_of(f).setdefault(good, {})
     item.setdefault("x", 0)
     item.setdefault("m", 0)
@@ -193,6 +240,23 @@ def entry(f: Facility, good: str) -> dict[str, Any]:
     item.setdefault("transit", 0)
     item.setdefault("age", 0)
     return item
+
+
+# economy.ext: 国の穀物の備蓄を輸入で積む形（W-239。FS-25。modules/market の _reserve_limit）の
+# 買い足しの指値
+RESERVE_IMPORT = "reserve_import"
+
+
+def home_price(island: IslandState, config: GameConfig, good: str) -> int:
+    """商社が輸入・輸出を決めるときに見る島の値段。国の穀物の備蓄を輸入で積む形の間は、穀物は島の
+    値段と倉庫の買い足しの指値の高いほう（W-239。政府の決まった買いがあれば、輸入業者はその値段で
+    仕入れる。売りのない財の島の値段は作り始める値段の中で一番低いものまでしか上がらないので、農場の
+    参入の値段が輸入の原価より安い島では、島の値段だけを見ると輸入されなかった）。"""
+    home = island.economy.prices.get(good, 0)
+    bid = island.economy.ext.get(RESERVE_IMPORT, 0)
+    if bid and good == config.get("food_reserve.good"):
+        return max(home, bid)
+    return home
 
 
 def views(island: IslandState) -> dict[str, dict[str, Any]]:
@@ -209,24 +273,27 @@ def capacity_units(defs: Defs, config: GameConfig, good: str) -> int:
     return cap * QUANTITY_SCALE // unit
 
 
-def prospects(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, Prospect]:
-    """財ごとの輸出と輸入の見込み。港がないか、圏に入っていなければ空。"""
+def prospects(
+    island: IslandState, defs: Defs, config: GameConfig, only: str | None = None
+) -> dict[str, Prospect]:
+    """財ごとの輸出と輸入の見込み。港がないか、圏に入っていなければ空。only を渡すとその財だけ。"""
     if port_of(island, config) is None or not views(island):
         return {}
     cut = to_basis(config.get("trade.trader_cut"))
     fee = ships.port_fee(island, config)
     freight = ships.freight_rate(island, config)
-    prices = island.economy.prices
     planned = is_planned(island)
     bloc_band = to_basis(config.get("trade.bloc_band"))
     listed = _listed_exports(island, config)
+    # 港が封鎖されている島は、どの財も仕入れ直せない（FX-63。帳簿の値で売る）
+    blockaded = bool(island_state(island).get(BLOCKADE_KEY))
     out: dict[str, Prospect] = {}
-    for good in tradable_goods(defs):
+    for good in [only] if only is not None else tradable_goods(defs):
         p = Prospect(good)
         export_rank: tuple[bool, int] | None = None  # 輸出の圏の選び方（荷を出した圏か, 指値）
         unit = unit_weight(defs, good)
         fee_unit = fee * unit // QUANTITY_SCALE
-        home = prices.get(good, 0)
+        home = home_price(island, config, good)
         subsidy = policy.export_subsidy(island, good)  # 輸出補助（フェーズ3-3）
         tariff = policy.tariff_rate(island, good)  # 関税（フェーズ3-3）
         best: tuple[bool, float] | None = None  # 輸入の圏の選び方（売りがあったか, 指値との開き）
@@ -251,10 +318,23 @@ def prospects(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, 
                     * BASIS
                     // max(1, price * (BASIS - cut))
                 )
+            # 運賃は自国の船の見込みに、借りた船の運賃（戦争の割増を含む）の直近の実績の 1 単位
+            # あたりを足す（FX-63。CIF 建てで比べる。前は借りた船の運賃を数えずに買い、届いてから
+            # 原価が島の値段を超えた荷を抱えた）
+            # 自国の船の運賃は、自国の船で運んだ割合の分だけ（借りた船で運んだ分に重ねない）
             freight_unit = freight * unit * view.get("cells", 1) // QUANTITY_SCALE
+            share = view.get("charter_share", {}).get(good, 0)
+            freight_unit = freight_unit * (BASIS - share) // BASIS
+            freight_unit += view.get("charter", {}).get(good, 0) * e // BASIS
+            p.resale[int(key)] = max(0, value - part(value, cut) - fee_unit)
             rate = 0 if view.get("no_tariff") else tariff
             duty = policy.with_tariff(value, rate)  # 圏の値段に関税を足した値
-            landed = (duty + freight_unit + fee_unit) * BASIS // max(1, BASIS - cut) + 1
+            restock = duty + freight_unit + fee_unit  # 1 単位を仕入れ直す値（取り分なし）
+            landed = restock * BASIS // max(1, BASIS - cut) + 1
+            if blockaded or good in view.get("embargoed", ()):
+                p.no_restock.add(int(key))
+            elif good in view.get("traded", ()):
+                p.restock[int(key)] = restock
             # 輸入が引き合う値段は、前のターンに圏の市場に売りがあった財だけ（フェーズ3-2。誰も
             # 作っていない自動車で、島の値段と圏の買いの指値が互いを追いかけて上がり続けたため）
             on_sale = good in view.get("supply", ())
@@ -307,13 +387,15 @@ def importable(p: Prospect | None) -> bool:
 @dataclass
 class HomeOrder:
     """商社が島の市場に出す注文。limit は買いなら運賃を含めて払える額、売りなら手元に残したい額
-    （None は指値なし）。"""
+    （None は指値なし）。clearance は持ちすぎの分の値下げの売り（アウトレットに出す。FX-64）。"""
 
     facility: Facility
     good: str
     side: str
     qty: int
     limit: int | None
+    plan: bool = False  # 計画経済の輸出の計画の分の買い（PL-62。配る順が国営施設と同じ）
+    clearance: bool = False
 
 
 def home_orders(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> list[HomeOrder]:
@@ -330,24 +412,36 @@ def home_orders(island: IslandState, defs: Defs, config: GameConfig, turn: int) 
     out: list[HomeOrder] = []
     for f in traders:
         budget = config.get("trade.trader_capacity") * QUANTITY_SCALE  # 扱える重さの残り
+        if (
+            planned
+        ):  # 輸出の荷より先に、1 段の財（燃料と主食）の輸入の見込みの重さを取り置く（FX-77）
+            budget -= first_import_weight(island, defs, f)
+        buys: list[tuple[str, int, int, int]] = []  # (財, 買う量, そのうち計画の分, 指値)
         for good, item in sorted(goods_of(f).items()):
             held = stock.total(f.stock, good)
             low, high = auction.band(prices.get(good, 1), width)
             if item.get("dir") == IMPORT:
+                # 輸出の荷に替えた分（FX-64）は港に置いて圏で売る
+                held -= min(held, item.get(REEXPORT, 0))
                 if held <= 0:
                     continue
                 expiring = stock.expiring(f.stock, good, turn, defs.goods)
+                expiring = min(expiring, held)
                 if expiring:
                     out.append(HomeOrder(f, good, "sell", expiring, None))
                 if held - expiring > 0:
-                    cost = unit_cost(f, good)
                     if planned:  # 公定価格で売る（仕入れ値によらず）
                         out.append(HomeOrder(f, good, "sell", held - expiring, 0))
                         continue
-                    if item["age"] >= clearance:
-                        limit = max(low, round_money(cost * CLEARANCE_FLOOR))
-                    else:
-                        limit = min(high, max(cost, low))
+                    floor = sell_floor(f, good, item, found.get(good))
+                    limit = min(high, max(floor, low))
+                    cut = _clearance_order(
+                        config, item, found.get(good), floor, limit, held - expiring
+                    )
+                    if cut is not None:
+                        out.append(HomeOrder(f, good, "sell", cut[0], cut[1], clearance=True))
+                    # 荷はみな、ふだんの指値でふだんの板寄せ（1回目）に出す。値下げの売りは、1回目で
+                    # 売れ残った分のうち超えた分だけを2回目に出し直すもの（MK-41 と同じ）
                     out.append(HomeOrder(f, good, "sell", held - expiring, limit))
                 continue
             if item.get("dir") == EXPORT and held > 0 and item["age"] >= 2 * clearance:
@@ -361,10 +455,8 @@ def home_orders(island: IslandState, defs: Defs, config: GameConfig, turn: int) 
             elif item.get("dir") != EXPORT or not exportable(p, low):
                 continue
             assert p is not None
-            unit = unit_weight(defs, good)
-            want = min(item["x"], capacity_units(defs, config, good)) - item["held"][0]
-            if unit > 0:
-                want = min(want, budget * QUANTITY_SCALE // unit)
+            planned_x = item.get(PLAN_X, 0) if planned else 0
+            want = min(item["x"] + planned_x, capacity_units(defs, config, good)) - item["held"][0]
             if want <= 0:
                 continue
             # 計画経済は値幅の上端（公定価格）に運賃の上限を足した額まで払う
@@ -373,9 +465,202 @@ def home_orders(island: IslandState, defs: Defs, config: GameConfig, turn: int) 
                 if planned
                 else p.export_limit
             )
-            out.append(HomeOrder(f, good, "buy", want, limit))
-            budget -= want * unit // QUANTITY_SCALE
-    return out
+            buys.append((good, want, min(want, planned_x), limit))
+        # 輸出の計画の分（PL-62）と売れ残りの分は、配る順が違うので別の注文にする（FX-77）。扱える
+        # 重さは計画の分に先に充てる（財の名前の順で先の売れ残りの荷に取られないように）
+        rest: list[tuple[str, int, int]] = []
+        for good, want, plan_qty, limit in buys:
+            unit = unit_weight(defs, good)
+            if unit > 0:
+                plan_qty = min(plan_qty, max(0, budget) * QUANTITY_SCALE // unit)
+            if plan_qty > 0:
+                out.append(HomeOrder(f, good, "buy", plan_qty, limit, plan=True))
+                budget -= plan_qty * unit // QUANTITY_SCALE
+            rest.append((good, want - plan_qty, limit))
+        for good, qty, limit in rest:
+            unit = unit_weight(defs, good)
+            if unit > 0:
+                qty = min(qty, max(0, budget) * QUANTITY_SCALE // unit)
+            if qty > 0:
+                out.append(HomeOrder(f, good, "buy", qty, limit))
+                budget -= qty * unit // QUANTITY_SCALE
+    # 輸出の計画の分（PL-62）を先に出す: 市場の段は注文の順に商社のお金を取り置くので、後に回すと
+    # 売れ残りの輸出の買いにお金を先に取られ、計画の分を買えなかった
+    return sorted(out, key=lambda o: not o.plan)
+
+
+def first_import_weight(island: IslandState, defs: Defs, f: Facility) -> int:
+    """商社が輸入している 1 段の財（外貨を使う順の 1。燃料と主食。FX-76）の、狙う量の残りの重さ
+    （1000 分の 1 トン）。計画経済の島で輸出の荷より先に取り置く（FX-77。重くて安い鉄鉱石や石の
+    輸出で扱える重さが埋まり、石炭が入らなくならないように）。外貨の圏の分は、商社の持つ外貨で
+    買える量まで（買えない分の重さを取り置いて、外貨を稼ぐ輸出の荷を締め出さない）。"""
+    entity = facility_entity(f.id)
+    blocs_seen = views(island)
+    money: dict[int, int] = {}  # 通貨 → 残りの持ち高（同じ通貨の財で順に使う）
+    total = 0
+    for good, item in sorted(goods_of(f).items()):
+        if item.get("dir") != IMPORT or fx_priority(defs, good) != 1:
+            continue
+        want = item["m"] - item["held"][0]
+        if want <= 0:
+            continue
+        view = blocs_seen.get(str(item.get("bm")), {})
+        currency = view.get("currency")
+        price = view.get("prices", {}).get(good, 0)
+        if currency is not None and currency != island.id and price > 0:
+            if currency not in money:
+                money[currency] = fxmoney.holding(island, entity, currency)
+            want = min(want, money[currency] * QUANTITY_SCALE // price)
+            money[currency] -= money_of(price, want)
+        if want > 0:
+            total += want * unit_weight(defs, good) // QUANTITY_SCALE
+    return total
+
+
+def sell_floor(f: Facility, good: str, item: dict[str, Any], p: Prospect | None) -> int:
+    """輸入した荷を島で売る指値の下限（FX-63。低価法）: 帳簿の値（手元と運ぶ途中の荷の平均の仕入れ
+    値）と、仕入れ直しの値の安い方。仕入れ直しの値は、買う圏（item["bm"]）で前のターンに約定して
+    いればその値を荷ごとに残し、約定がない（買う圏がなくなったときも）ければ残した最後の値を使う。
+    一度も値がなければ帳簿の値。
+    封鎖・禁輸で仕入れ直せない財と、港か圏がない島は帳簿の値（残した値も使わない）。"""
+    book = unit_cost(f, good)
+    bloc = item.get("bm")
+    if p is None or (bloc is not None and not _can_restock(p, bloc)):  # 港も圏もない・封鎖・禁輸
+        item.pop("restock", None)
+    elif bloc is not None and bloc in p.restock:
+        item["restock"] = p.restock[bloc]
+    restock = item.get("restock")
+    if restock is None or restock <= 0:
+        return book
+    return min(book, restock) if book > 0 else restock
+
+
+def _can_restock(p: Prospect, bloc: int) -> bool:
+    """封鎖・禁輸で止まっていないか（圏で約定がなかっただけなら残した値を使う）。"""
+    return bloc not in p.no_restock
+
+
+def _clearance_order(
+    config: GameConfig,
+    item: dict[str, Any],
+    p: Prospect | None,
+    floor: int,
+    limit: int,
+    offer: int,
+) -> tuple[int, int] | None:
+    """持ちすぎの分の値下げの売り（FX-64）: (量, 指値)。出さなければ None。
+
+    手元の荷が持ちすぎの線を超えたまま trade.clearance_turns 続いた（record_home_sales が数える）
+    ら、線を超えた分を出す。指値はふだんの指値 limit（下限 floor。値幅の下端の方が高ければ下端）
+    から始め、売れ残るターンごとに market.band ずつ下げ、「floor × market.clearance_floor」と輸出し
+    直して手元に残る値（輸出し直す圏の Prospect.resale。輸出補助なし）の高い方で止める。"""
+    state = item.get(OUTLET)
+    if not state or state["turns"] < config.get("trade.clearance_turns"):
+        return None
+    qty = offer - state["line"]
+    if qty <= 0:
+        return None
+    if "start" not in state:
+        state["start"] = limit
+        state["steps"] = 0
+    stop = round_money(floor * config.get("market.clearance_floor"))
+    bloc = resale_bloc(item)
+    if p is not None and bloc is not None:
+        stop = max(stop, p.resale.get(bloc, 0))
+    price = round_money(state["start"] * (1 - config.get("market.band")) ** state["steps"])
+    state["stop"] = stop
+    return qty, max(1, stop, min(limit, price))
+
+
+def record_home_sales(
+    island: IslandState,
+    defs: Defs,
+    config: GameConfig,
+    f: Facility,
+    good: str,
+    sales: tuple[int, int, int, int],
+) -> None:
+    """市場の段の後に、輸入した荷の売れ残りを数える（FX-64）。sales は (ふだんの指値で出した量,
+    売れた量, 値下げで出した量, 売れた量)。傷みかけの指値なしの売りと、市場の段の後に着く荷は
+    数えない。
+
+    売れ残り（ふだんの指値で出して、どちらの板寄せでも売れなかった量）が持ちすぎの線（狙う量 ×
+    market.inventory_turns × market.clearance_ratio。値下げを始めた後は始めたときの線）を超えて
+    いれば数え、超えていなければ値下げをやめる。値下げで出した分が売れ残れば値下げの段を1つ進め、止まりの
+    値で売れ残ったターンが trade.clearance_turns の 2 倍になれば、超えた分を輸出の荷に替える。
+    clearance_ratio が 0 か計画経済の島なら値下げしない。"""
+    item = goods_of(f).get(good)
+    if item is None or item.get("dir") != IMPORT:
+        return
+    offered, sold, cut_offered, cut_sold = sales
+    ratio = config.get("market.clearance_ratio")
+    state = item.get(OUTLET)
+    if not ratio or is_planned(island):
+        item.pop(OUTLET, None)
+        return
+    if state is None:
+        turns = stock.target_turns(config.get("market.inventory_turns"), defs.goods, good)
+        line = round_money(item["m"] * turns * ratio)
+    else:
+        line = state["line"]
+    left = offered - sold - cut_sold
+    if left <= line:
+        item.pop(OUTLET, None)
+        return
+    if state is None:
+        state = item[OUTLET] = {"turns": 0, "line": line}
+    state["turns"] += 1
+    if cut_offered > 0 and cut_sold < cut_offered and "start" in state:
+        price = round_money(state["start"] * (1 - config.get("market.band")) ** state["steps"])
+        if price <= state.get("stop", 0):  # 止まりの値で売れ残った
+            state["stuck"] = state.get("stuck", 0) + 1
+        else:
+            state["steps"] += 1
+    if state.get("stuck", 0) >= 2 * config.get("trade.clearance_turns"):
+        bloc = resale_bloc(item)
+        if bloc is None:  # 輸出し直す圏がない: 止まりの値で売りに出し続ける
+            return
+        item[REEXPORT] = item.get(REEXPORT, 0) + left - line
+        item[REEXPORT_BLOC] = bloc
+        item[REEXPORT_AGE] = 0
+        item.pop(OUTLET, None)
+
+
+def resale_bloc(item: dict[str, Any]) -> int | None:
+    """持ちすぎの分を輸出し直す圏: 輸出し直している圏、なければ荷を買う圏、なければ輸出の見込みの
+    一番よい圏（FX-64）。"""
+    for key in (REEXPORT_BLOC, "bm", "bx"):
+        if item.get(key) is not None:
+            return item[key]
+    return None
+
+
+def keep_reexport(config: GameConfig, item: dict[str, Any], sold: int, held: int) -> None:
+    """輸出し直す荷の見直し（貿易の段の終わり）: 荷がなくなれば外す。圏で trade.clearance_turns の
+    2 倍のターン 1 つも売れなければ、島の市場に戻す（輸出の荷が島に戻る決まりと同じ。圏を抜けた・
+    圏に買い手がいないときに、荷が島でも圏でも売れないまま残らないように）。"""
+    if not item.get(REEXPORT):
+        return
+    if held <= 0:
+        for key in (REEXPORT, REEXPORT_BLOC, REEXPORT_AGE):
+            item.pop(key, None)
+        return
+    item[REEXPORT] = min(item[REEXPORT], held)
+    item[REEXPORT_AGE] = 0 if sold > 0 else item.get(REEXPORT_AGE, 0) + 1
+    if item[REEXPORT_AGE] >= 2 * config.get("trade.clearance_turns"):
+        for key in (REEXPORT, REEXPORT_BLOC, REEXPORT_AGE):
+            item.pop(key, None)
+
+
+def true_shortage(island: IslandState, record: MarketRecord | None) -> int:
+    """島の市場の本当の品不足（FX-65）: 約定の値段以上を付けたのに買えなかった量（市場の段の
+    TRUE_SHORT）。市場の段の記録がなければ、買いたい量 − 約定した量。"""
+    if record is None:
+        return 0
+    found = island.scratch.get(TRUE_SHORT)
+    if found is None:
+        return max(0, record.demand - record.volume)
+    return max(0, found.get(record.good, 0))
 
 
 def bought_home(f: Facility, good: str, qty: int, cost: int) -> None:
@@ -446,13 +731,12 @@ def update_targets(
     speed = config.get("trade.target_speed")
     records = {m.good: m for m in island.markets}
     importers: dict[str, int] = {}
-    for f in traders:  # 足りない分は動いている商社で分ける
+    for f in traders:  # 足りない分は動いている商社で分ける（荷が余っている商社は除く。FX-65）
         if f.id not in working:
             continue
         for good, item in goods_of(f).items():
-            if item.get("dir") == IMPORT:
+            if item.get("dir") == IMPORT and not surplus(item):
                 importers[good] = importers.get(good, 0) + 1
-    prices = island.economy.prices
     planned = is_planned(island)
     exporters: dict[str, int] = {}
     for f in traders:
@@ -471,7 +755,7 @@ def update_targets(
             continue
         for good in tradable_goods(defs):
             p = found.get(good)
-            home = prices.get(good, 0)
+            home = home_price(island, config, good)
             record = records.get(good)
             supply, left_over = home_supply(island, record)
             # 計画経済の島は、売れ残った物を値段によらず輸出する。公定価格は圏の値段より高いことが
@@ -498,8 +782,7 @@ def update_targets(
                 can_import = (
                     p is not None
                     and p.import_bloc is not None
-                    and record is not None
-                    and record.demand > record.volume
+                    and home_unmet(island, record) > 0  # 商社自身の輸出の買いは除く（PL-62）
                 )
             direction = item.get("dir")
             if held <= 0:  # 荷が残っている間は向きを変えない（売り切ってから）
@@ -526,24 +809,51 @@ def update_targets(
                     want_x = max(want_x, item["x"] + probe)
                 want_x = min(want_x, supply)
                 if planned:  # 圏で売れる量まで。売れ残りを輸出する商社で分けた分を超えない
-                    plan_x = sold_bloc.get(good, 0) + left_over // max(1, exporters.get(good, 1))
+                    # 圏で売れた量のうち輸出の計画の分（PL-62）は、売れ残りの狙う量に入れない
+                    sold_unsold = max(0, sold_bloc.get(good, 0) - item.get(PLAN_X, 0))
+                    plan_x = sold_unsold + left_over // max(1, exporters.get(good, 1))
                     want_x = min(want_x, plan_x)
-            if direction == IMPORT and can_import:
+            frozen = False
+            if direction == IMPORT and can_import and not planned and surplus(item):
+                # 荷が持ちすぎの線を超えている間は、狙う量を据え置く（下げも積み増しもしない。
+                # FX-65。売れ残りを品不足と読んで借りてまで積み増さず、売り切ってから 1 割ずつ
+                # 立ち上げ直して振れもしない）
+                frozen = True
+            elif direction == IMPORT and can_import:
                 assert record is not None
-                unmet = max(0, record.demand - record.volume)
+                if planned:  # 商社自身の輸出の買いの届かない分は除く（PL-62）
+                    unmet = home_unmet(island, record)
+                else:
+                    # 足りない量は、約定の値段以上を付けたのに買えなかった量（本当の品不足。FX-65。
+                    # 自分の売りの指値が高くて買われなかった分を品不足に数えない）
+                    unmet = true_shortage(island, record)
                 share = unmet // max(1, importers.get(good, 1))
                 want_m = sold_home_.get(good, 0) + share
                 left = stock.total(f.stock, good) + item["transit"]
                 if _probing(item["m"], sold_home_.get(good, 0), left):
                     want_m = max(want_m, item["m"] + probe)
                 want_m = min(want_m, record.demand)
-                if not planned and _import_margin(p) > PUSH_MARGIN and left < record.demand:
-                    # 島の値段が輸入の原価よりずっと高い: 買い手の量より多めに入れて売り値を
-                    # 下げる（その値段で買われている量だけを狙うと、売りが買いに届かず値段が
-                    # 下がらないため）
-                    want_m = max(want_m, record.demand + probe)
+                # 島の値段が輸入の原価より高くても、買いたい量より多めには入れない（前は売りを
+                # 増やして値段を下げるため多めに狙ったが、売り値の下限を仕入れ直しの値にした
+                # （FX-63）ので、売りが余れば商社の指値が値幅ずつ下がる。多めに入れると、島の製油所
+                # の燃料が売れ残る島で燃料を買いたい量の 8 倍まで積み、燃料の値段が崩れて製油所が
+                # 原油を買えず取引が止まった。2026-11-13 の 5〜7 回目の full と調べ 4。FX-66）
             item["x"] = _approach(item["x"], min(cap, want_x), speed, cap)
-            item["m"] = _approach(item["m"], min(cap, want_m), speed, cap)
+            if not frozen:
+                item["m"] = _approach(item["m"], min(cap, want_m), speed, cap)
+            # 輸入の荷の持つ量（FX-66）: 狙う量 ×（注文してから島で売れるまで ＋ 在庫の目安）。
+            # 引き合わなくなったらすぐ 0
+            if direction == IMPORT and (can_import or frozen):
+                turns = holding_turns(island, defs, config, item, good)
+                # 流れる分は、狙う量と島の買いたい量の少ない方（買いたい量より多い分は何ターン分も
+                # 持たない。持つ量が島の買いたい量の 8 倍を超え、荷がまとめて着いて値段が崩れた）
+                flow = item["m"] if record is None else min(item["m"], record.demand)
+                item["hold"] = round_money(flow * turns)
+            elif direction == IMPORT:
+                item["hold"] = 0
+            else:
+                item.pop("hold", None)
+            keep_reexport(config, item, sold_bloc.get(good, 0), stock.total(f.stock, good))
             # 売れ残ったターン数: 荷があるのにこのターンに1つも売れなかったら数え、売れたら 0 に戻す
             # （荷が続けて入っても、売れている間は値を選ばずに売り急がない）
             sold_now = (sold_bloc if direction == EXPORT else sold_home_).get(good, 0)
@@ -553,6 +863,81 @@ def update_targets(
                 item["age"] = 0
             if not item["x"] and not item["m"] and held <= 0 and item["transit"] <= 0:
                 goods_of(f).pop(good, None)
+
+
+def surplus(item: dict[str, Any]) -> bool:
+    """輸入の荷が持ちすぎの線を超えている（値下げを数えている）か、輸出し直す荷がある（FX-64・
+    FX-65）。"""
+    return bool(item.get(OUTLET)) or item.get(REEXPORT, 0) > 0
+
+
+def lead_turns(
+    island: IslandState, config: GameConfig, item: dict[str, Any], weightless: bool = False
+) -> float:
+    """輸入の注文から島で売れるまでのターン数の見込み（FX-66）: 自社の荷の（着いたターン − 積んだ
+    ターン ＋ 1）の直近の平均（item["leads"]。貿易の段の荷下ろしが書く）。実績がないうちは、使う圏
+    の一番近いほかの加盟国まで、船は往復（2 × 片道 ＋ 1）、重さのない財は片道 ＋ 1。"""
+    leads = item.get("leads")
+    if leads:
+        return sum(leads) / len(leads)
+    view = views(island).get(str(item.get("bm")), {})
+    oneway = max(1, math.ceil(view.get("near", 1) / config.get("trade.ship_speed") - 1e-9))
+    return float(oneway + 1 if weightless else 2 * oneway + 1)
+
+
+def holding_turns(
+    island: IslandState, defs: Defs, config: GameConfig, item: dict[str, Any], good: str
+) -> float:
+    """輸入の荷の持つ量が、1ターンに流れる量の何ターン分か（FX-66）: 注文から島で売れるまでの
+    ターン数 ＋ 在庫の目安（施設と同じ market.inventory_turns。傷む物は短い）。"""
+    weightless = unit_weight(defs, good) <= 0
+    shelf = stock.target_turns(config.get("market.inventory_turns"), defs.goods, good)
+    return lead_turns(island, config, item, weightless) + shelf
+
+
+def import_want(config: GameConfig, item: dict[str, Any], planned: bool = False) -> int:
+    """輸入の注文の量（FX-66）: 狙う量 ＋（持つ量 − 手元と運ぶ途中の荷）× market.inventory_adjust
+    （施設の操業目標と同じ形。足りない分を一度に埋めない）。0 より少なくはしない。手元の荷が持ちすぎ
+    の線を超えている間（surplus）は注文しない（売れない物を追加で仕入れない。FX-64・FX-65）。
+    計画経済の島（planned）の商社は前のまま「狙う量 − 手元と運ぶ途中の荷」。"""
+    m = item.get("m", 0)
+    if planned:
+        return max(0, m - item["held"][0])
+    if m <= 0 or surplus(item):
+        return 0
+    hold = item.get("hold", m)
+    gap = hold - item["held"][0]
+    return max(0, m + round_money(gap * config.get("market.inventory_adjust")))
+
+
+def share_by_rank(
+    flows: list[int], fills: list[int], units: list[int], budget: int, ranks: list[float]
+) -> list[int]:
+    """足りない budget を、儲けの大きい注文から配る（FX-67）: まず 1 ターンに流れる分 flows を
+    ranks（1 単位のお金あたりの儲け）の大きい順に、余りを足りない分を埋める注文 fills に同じ順に。
+    同じ値の注文は並びの順。足りていればそのまま。割り振った量を返す。"""
+    budget = max(0, budget)
+    got = [0] * len(flows)
+    order = sorted(range(len(flows)), key=lambda k: -ranks[k])
+    for qty in (flows, fills):
+        for k in order:
+            if qty[k] <= 0 or budget <= 0:
+                continue
+            need = qty[k] * units[k] // QUANTITY_SCALE
+            if need <= budget:
+                got[k] += qty[k]
+                budget -= need
+            else:
+                part_qty = budget * QUANTITY_SCALE // max(1, units[k])
+                got[k] += part_qty
+                budget = 0
+    return got
+
+
+def keep_lead(config: GameConfig, item: dict[str, Any], turns: int) -> None:
+    """届いた輸入の荷の、注文から島で売れるまでのターン数を残す（直近 trade.entry_turns 回）。"""
+    keep = config.get("trade.entry_turns")
+    item["leads"] = [*item.get("leads", []), max(1, turns)][-keep:]
 
 
 def home_supply(island: IslandState, record: MarketRecord | None) -> tuple[int, int]:
@@ -637,10 +1022,17 @@ def add_volume(f: Facility, load: int) -> None:
     record["volume"] = record.get("volume", 0) + load
 
 
-def exported(f: Facility, good: str, qty: int) -> None:
-    """このターンに圏で売った量を足す（狙う量の見直しに使う）。"""
-    record = state_of(f).setdefault("turn", {}).setdefault("exported", {})
+def exported(
+    f: Facility, good: str, qty: int, currency: int | None = None, amount: int = 0
+) -> None:
+    """このターンに圏で売った量を足す（狙う量の見直しに使う）。currency と amount は受け取った決済
+    通貨と額（計画経済の輸出の計画が、売れ残りの輸出の稼ぎを数えるのに使う。PL-62）。"""
+    turn = state_of(f).setdefault("turn", {})
+    record = turn.setdefault("exported", {})
     record[good] = record.get(good, 0) + qty
+    if currency is not None and amount > 0:
+        got = turn.setdefault("proceeds", {}).setdefault(good, {})
+        got[str(currency)] = got.get(str(currency), 0) + amount
 
 
 def volume_share(config: GameConfig, f: Facility) -> float:
@@ -660,6 +1052,18 @@ def missed_average(f: Facility) -> tuple[int, int]:
         sum(p for p, _ in history) // len(history),
         sum(c for _, c in history) // len(history),
     )
+
+
+def plan_spend(island: IslandState, f: Facility) -> int:
+    """輸出の計画（PL-62）でこの商社が受け持つ量を、島の今の値段（公定価格）で買う代金（自国通貨）。
+    手元の輸出の荷は除く。"""
+    prices = island.economy.prices
+    total = 0
+    for good, item in goods_of(f).items():
+        want = item.get(PLAN_X, 0) + item.get("x", 0) - item.get("held", [0, 0])[0]
+        if item.get(PLAN_X, 0) > 0 and want > 0:
+            total += want * prices.get(good, 0) // QUANTITY_SCALE
+    return total
 
 
 def spend_estimate(f: Facility) -> int:

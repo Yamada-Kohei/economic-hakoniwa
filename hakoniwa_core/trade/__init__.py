@@ -181,6 +181,14 @@ def tradable_goods(defs: Defs) -> list[str]:
     return sorted(g for g in defs.goods if tradable(defs, g) and not defs.goods[g].get("arms"))
 
 
+FX_PRIORITY_DEFAULT = 3  # goods.yaml に fx_priority のない財（原料と部品と同じ順）
+
+
+def fx_priority(defs: Defs, good: str) -> int:
+    """計画経済の国営の商社が少ない外貨を使う順（1 が先。goods.yaml の fx_priority。FX-76）。"""
+    return int(defs.goods.get(good, {}).get("fx_priority", FX_PRIORITY_DEFAULT))
+
+
 def contract_goods(defs: Defs) -> list[str]:
     """国どうしの契約と物の援助に使える財（軍事品を含む。MI-17）。"""
     return sorted(g for g in defs.goods if tradable(defs, g))

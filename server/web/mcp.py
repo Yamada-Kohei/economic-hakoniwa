@@ -206,7 +206,9 @@ REPORTS = {
     "none 未観測。約定でない値段は売買量 0 で、observed_turn が最後に約定したターン）・売買量・"
     "買えなかった量・国の倉庫の在庫。持ち主には国の倉庫から国営の施設に渡した量 to_state と、"
     "止まった施設の国営・民営 owner_name。good を決めるとその財の推移と約定（穀物の政府の組には"
-    "備蓄の入れ替えなどの note）。画面と同じく、その財の国の倉庫の売り買い warehouse_trade と"
+    "備蓄の入れ替えなどの note）と、持ち主には買い手と売り手の別（国営・民営の施設・商社・海外の"
+    "商人・家計・国の倉庫・政府の工事）ごとの注文・約定・買えなかった量 groups。"
+    "画面と同じく、その財の国の倉庫の売り買い warehouse_trade と"
     "決まった売り買い warehouse_standing と、資源ごとの補助金 set_subsidy は set_orders で出す。"
     "決まった売り買いの設定・前の結果は品目ごとの warehouse_standing に入る）",
     "facilities": "施設（町ごとの労働力・失業と買いに行く店の場所 towns、産業ごとの従業者数 "
@@ -216,13 +218,17 @@ REPORTS = {
     "他国には企業の名前・所有・施設の数と種類・働く人 firms）",
     "fiscal": "財政（国庫の収入と支出・予算・税率・国債の一覧）",
     "finance": "金融（中央銀行の方針・金利・融資。持ち主には銀行ごとの帳簿と金融の政策）",
-    "trade": "貿易（輸出入・貿易圏。持ち主には契約（送り出した量 shipped・まだ海の上の量 at_sea と"
+    "trade": "貿易（概要 overview（入っている貿易圏・輸出入と収支、持ち主には運ぶ途中の荷の重さと"
+    "契約の数）・輸出入・貿易圏。持ち主には、いますべきこと todo（summary の todo の貿易の行）・"
+    "貿易の命令の待っている列と前のターンの結果 orders・契約（送り出した量 shipped・"
+    "まだ海の上の量 at_sea と"
     "着く見込みのターン arrive_first〜arrive_last）・商社・船団（貸した船の運賃の収入 "
     "charter_income・借りた船に払った運賃 charter_paid）・運ぶ途中の荷（ほかの国から"
     "借りた船なら carrier_name、ほかの国に貸した船で運ぶ荷は direction=lent）・産業政策・"
     "海外の商人 merchant・船の貸し出し lend_ships（命令 set_ship_lending）"
     "（あと何ターン来るか turns_left、量を減らし始めるターン taper_start、今の量の割合 share（%）、"
-    "値段の倍率 multiplier（島の物価を含む））",
+    "値段の倍率 multiplier（島の物価を含む）。物がないときの食料の商人が来ていれば merchant.food に"
+    "来始めたターン since・売りに出した量 quantity・売れた量 sold・値段 price）",
     "fx": "為替と国際収支（レートごとに前のターンに市場で売りと買いに出ていた外貨の量 offered・"
     "wanted（中央銀行の注文を除く。介入で買えるのは売りに出ている分だけ）。持ち主には外貨の持ち高と"
     "為替の政策と、中央銀行どうしの融通 swaps（借りている額 borrowed・限度額 limit・まだ借りられる"
@@ -864,8 +870,10 @@ TOOLS = [
         "財の値段と"
         "買えなかった量と国の倉庫の在庫（stock）、商業・サービス業の店（services）、人口の増減のわけ（population_changes）、"
         "飢えている家計の層とそのわけ（hunger）、火力発電所の燃料在庫の月数と目標（fuel_reserves）、"
-        "満期の近い国債、直近のターンの出来事、燃料が尽きる前の知らせを含む注意。"
-        "自分の島なら赤字の施設・命令の列と、直近に命令を実行したターン（last_turn）の結果・"
+        "満期の近い国債、直近のターンの出来事、燃料が尽きる前の知らせを含む注意、"
+        "貿易の 1 行（trade。輸出・輸入と海外の商人に払った額）。"
+        "自分の島なら今月すべきこと（todo。ホームと同じ急ぐ順の行で、kind・text・行き先の url）・"
+        "赤字の施設・命令の列と、直近に命令を実行したターン（last_turn）の結果・"
         "未読の公電、軍（military。兵の数・士気・練度・賃金の遅れ・国防費・"
         "国として買った食べ物や弾薬の結果 purchases・体制の選び直し待ち reselect"
         "（until までに choose_regime を出さないと今の体制のまま固まる）。"
@@ -921,7 +929,8 @@ TOOLS = [
         "自分の島なら施設の帳簿と命令に使う値も。施設の expand は、同じマスに同じ施設を建てる"
         "命令 build（建て増し・農場の次の段階への工事）の資材と工期、今は通らないわけ problem。"
         "自分の施設が生産調整中・生産停止中なら、目標を下げたわけ（在庫の何ターン分か・売れ残り・"
-        "付け値と費用・安い輸入）と打てる手 slowdown。",
+        "付け値と費用・安い輸入）と打てる手 slowdown。施設ごとの命令の一覧（actions）は、"
+        "画面と同じく施設のページ（api_get /api/islands/<島>/facilities/<施設番号>）にある。",
         _tile,
         {"x": {"type": "integer"}, "y": {"type": "integer"}, "island": ISLAND},
         ("x", "y"),
@@ -1392,7 +1401,7 @@ TOOLS = [
         "api_get",
         "API を読む",
         "ほかの道具にない JSON API を読む（GET。/api/ で始まる場所だけ）。例: "
-        "/api/islands/4/facilities/12/book（施設の帳簿の推移）、/api/world/trade（世界の貿易）、/api/world/fleets（世界の艦隊）、/api/islands/4/military（軍。ほかの国には兵の総数と見えた艦隊）。",
+        "/api/islands/4/facilities/12（施設のページ）、/api/islands/4/facilities/12/book（施設の帳簿の推移）、/api/world/trade（世界の貿易）、/api/world/fleets（世界の艦隊）、/api/islands/4/military（軍。ほかの国には兵の総数と見えた艦隊）。",
         _api_get,
         {"path": {"type": "string", "description": "/api/ で始まる場所（?の後ろも書ける）"}},
         ("path",),
@@ -1419,15 +1428,23 @@ SCREENS: dict[str, tuple[str, ...]] = {
     "help_chain": ("defs",),  # 産業のつながりの元は施設の作り方: defs(section="facilities")
     "terms": ("guide",),  # 利用規約は guide(which=terms)
     "island": ("summary", "map", "tile"),  # 地図の重ね表示は map の overlay
-    "home": ("summary",),  # 次にすること・注意・主な変化・国勢・資源・出来事
+    "home": ("summary",),  # 今月すべきこと（todo）・注意・主な変化・国勢と貿易の 1 行・資源・出来事
     "turn_log": ("turn_log", "changes"),
     "island_economy": ("report", "stats"),
     "island_market": ("report",),
+    "market_good": ("report", "api_get"),  # 品目のページ: 市場の report と品目の API
     "island_chain": ("report",),
     "island_facilities": ("report", "api_get"),  # 施設の帳簿の推移は api_get
+    # 施設のページは api_get /api/islands/<島>/facilities/<番号>（出せる命令は actions）
+    "facility_page": ("api_get", "tile", "set_orders"),
     "island_fiscal": ("report",),
     "island_finance": ("report",),
-    "island_trade": ("report",),
+    "island_trade": ("report",),  # 概要（overview）と、いますべきこと（todo）・貿易の命令（orders）
+    # 貿易のタブ（契約・貿易圏・船と港・海外の商人）は、どれも report の page=trade の一部
+    "trade_contracts": ("report",),
+    "trade_blocs": ("report",),
+    "trade_fleet": ("report",),
+    "trade_merchant": ("report",),
     "island_fx": ("report",),
     "island_politics": ("report",),
     "island_plan": ("report",),

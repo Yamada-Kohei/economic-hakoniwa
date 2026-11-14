@@ -77,6 +77,7 @@ from hakoniwa_core.economy import (
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.geo import distance, within
 from hakoniwa_core.modules import infrastructure
+from hakoniwa_core.modules.infrastructure import contracts, machines
 from hakoniwa_core.modules.market import FACILITY_HOLDS, SITE_HOLDS, SiteFunds, input_cost
 from hakoniwa_core.modules.population import FED, subsistence_persons
 from hakoniwa_core.registry import IslandStage, Registry
@@ -235,9 +236,11 @@ class Employment(IslandStage):
             f.economy["wage"] = wage
             plans.append((f, wage))
         planned = planning.is_planned(island, defs)
+        # 公共事業が要る人手を土木業者に注文する（施設が雇いたい人数を決める前。IN-31）
+        infrastructure.order_contracts(island, ctx)
         # 雇う順: 賃金の高い順（同じなら優先度の高い順、番号の順）。計画経済の島は優先度の高い順
         # （同じなら賃金の高い順、番号の順。賃金は国が決めた数字で、人を引く力を表さない。PL-59）
-        plans.sort(key=lambda p: self._hire_key(ctx, planned, p))
+        plans.sort(key=lambda p: self._hire_key(island, ctx, planned, p))
         staff: dict[int, dict[Pos, int]] = {}
         works_wage = self._site_wage(island, ctx)
         # 雇いたい人数を決める（取り置く前に、施設ごとに）
@@ -276,6 +279,7 @@ class Employment(IslandStage):
             )
         # 賃金（と工事の資材・国庫の施設の材料）を取り置く。順は _reserve_steps
         self._reserve_all(island, ctx, plans, terms, planned, works_wage)
+        self._trim_contractors(island, ctx, terms, needs)
         wanted = {fid: t.want + t.unpaid for fid, t in terms.items()}
         seats = {fid: t.seats for fid, t in terms.items()}  # 技術者の席
         unpaid = {fid: t.unpaid for fid, t in terms.items()}  # 払えないまま働き続ける人（回3）
@@ -460,7 +464,7 @@ class Employment(IslandStage):
             paid_seats = general[f.id] - unpaid[f.id]
             regular = hired - guaranteed.get(f.id, 0)
             unhired = max(0, paid_seats - regular - spared)
-            funds.release(island, payer_of(defs, config, f), unhired * wage)
+            contracts.release(island, payer_of(defs, config, f), f, unhired * wage)
             owed = max(0, regular + spared - paid_seats)
             if owed:
                 f.economy["unpaid"] = owed
@@ -507,6 +511,8 @@ class Employment(IslandStage):
                 f.economy.pop("arrears_months", None)
         # 国庫の項目の組の材料の代金は、賃金と遅配を埋めた後に取り置く（LB-45）
         self._hold_materials(island)
+        # 土木業者が雇えた人で届ける工事を決め直し、通勤圏に残った失業者を次の注文の見込みに残す
+        contracts.finish_hiring(island, defs, config, free)
         for tile in island.tiles:
             count = employed.get((tile.x, tile.y), 0)
             if count:
@@ -521,10 +527,48 @@ class Employment(IslandStage):
     # --- 賃金の取り置き ---------------------------------------------------------------
 
     @staticmethod
-    def _hire_key(ctx: StageContext, planned: bool, p: tuple[Facility, int]) -> tuple:
+    def _priority(island: IslandState, ctx: StageContext, f: Facility) -> int:
+        """雇う順と取り置く順に使う優先度。計画経済の島の土木業者は、受けた注文の工事の優先度の位置で
+        雇う（維持の注文があれば維持の優先度。IN-37）。"""
+        if contracts.is_contractor(ctx.config, f):
+            orders = f.economy.get(contracts.ORDERS, [0, 0])
+            upkeep = infrastructure.priority(island, ctx.config, True)
+            build = infrastructure.priority(island, ctx.config, False)
+            if orders[contracts.UPKEEP] and orders[contracts.BUILD]:
+                return max(upkeep, build)
+            if orders[contracts.UPKEEP]:
+                return upkeep
+            if orders[contracts.BUILD]:
+                return build
+        return fac.priority_of(ctx.defs, ctx.config, f)
+
+    @staticmethod
+    def _hire_key(
+        island: IslandState, ctx: StageContext, planned: bool, p: tuple[Facility, int]
+    ) -> tuple:
         f, wage = p
-        priority = fac.priority_of(ctx.defs, ctx.config, f)
+        priority = Employment._priority(island, ctx, f)
         return (-priority, -wage, f.id) if planned else (-wage, -priority, f.id)
+
+    @staticmethod
+    def _trim_contractors(
+        island: IslandState, ctx: StageContext, terms: dict[int, _Terms], needs: dict[int, int]
+    ) -> None:
+        """公共事業費が足りずに土木業者への注文を減らしたら、業者の雇いたい人数もその分まで減らし、
+        賃金の取り置きを戻す（解雇の決まりで残す人は残す。IN-31）。"""
+        for t in terms.values():
+            if not contracts.is_contractor(ctx.config, t.f) or not t.f.built:
+                continue
+            need = contracts.wanted(island, ctx.config, t.f)
+            if need >= t.need:
+                continue
+            demand = max(need, t.demand if t.demand > t.need else 0)
+            if t.want > demand:
+                contracts.release(island, t.payer, t.f, (t.want - demand) * t.wage)
+                t.want = demand
+            t.need = need
+            t.demand = min(t.demand, max(demand, need))
+            needs[t.f.id] = min(needs[t.f.id], need)
 
     def _reserve_all(
         self,
@@ -559,7 +603,7 @@ class Employment(IslandStage):
         for f, _ in plans:
             t = terms[f.id]
             if economy and f.built and t.payer.entity == ledger.GOV:
-                key = (t.payer.item or "", fac.priority_of(defs, config, f))
+                key = (t.payer.item or "", self._priority(island, ctx, f))
                 groups.setdefault(key, []).append(t)
             else:
                 singles.append(t)
@@ -570,7 +614,7 @@ class Employment(IslandStage):
             for (_, priority), members in groups.items():
                 steps.append(((-priority, 0, rank(members[0]), 0), "group", members))
             for i, t in enumerate(singles):
-                steps.append(((-fac.priority_of(defs, config, t.f), 1, 0, i), "one", t))
+                steps.append(((-self._priority(island, ctx, t.f), 1, 0, i), "one", t))
             steps.append(((-upkeep, 2, 0, 0), "upkeep", None))
             steps.append(((-upkeep, 2, 0, 1), "repairs", None))
             steps.append(((-build, 2, 1, 0), "build", None))
@@ -611,12 +655,14 @@ class Employment(IslandStage):
     ) -> None:
         """1つの施設の賃金を、払い手の使えるお金の分まで取り置く（工事は資材の代金も続けて）。"""
         money = funds.available(island, t.payer)
+        # 独立採算の土木業者は、取り置かれた注文の代金を払える賃金に数える（IN-32）
+        cover = contracts.receivable(island, ctx.config, t.f) if t.f.built else 0
         want = t.demand
         if t.per_worker > 0:
-            want = min(want, money // t.per_worker)
+            want = min(want, (money + cover) // t.per_worker)
         # 年の予算の月割りで止まっている（お金はある）ときは遅配にしない
         short = money >= funds.available(island, t.payer, capped=False)
-        self._settle(island, ctx, t, max(0, want), short, None)
+        self._settle(island, ctx, t, max(0, want), short, None, cover)
         if not t.f.built and sites is not None:
             # 工事は、市場で買う資材の代金も続けて取り置く（作業員の賃金と資材の代金の両方に、
             # 優先度の高い工事から公共事業費を充てる）
@@ -731,9 +777,12 @@ class Employment(IslandStage):
         want: int,
         treasury: bool,
         budget: str | None,
+        cover: int = 0,
     ) -> None:
         """雇う人数 want の賃金（技術者の席の上乗せを含む）を取り置き、遅配で残る人と技術者の席を
         決める。treasury は国庫（独立採算は手元）の残りで止まっているか（偽なら年の予算の月割り）。
+        cover は受け取る代金で払える額（土木業者）で、手元で足りない分はそこから払う（賃金の段で
+        代金を受け取ってから取り置く）。
         """
         defs, config = ctx.defs, ctx.config
         f = t.f
@@ -753,7 +802,12 @@ class Employment(IslandStage):
         engineer_wage = fac.engineer_wage_of(config, f, t.wage) if t.seats else t.wage
         if t.seats:
             f.economy["engineer_wage"] = engineer_wage
-        funds.commit(island, t.payer, want * t.wage + t.seats * (engineer_wage - t.wage))
+        total = want * t.wage + t.seats * (engineer_wage - t.wage)
+        if cover > 0:
+            own = min(total, funds.available(island, t.payer))
+            contracts.set_covered(island, f, total - own)
+            total = own
+        funds.commit(island, t.payer, total)
         # 賃金を払うお金が足りずに雇いたい分を雇えなかったことは、施設の状態に出す（人手不足と
         # 分けて、国庫が空で止まった施設が「労働者不足」と出ないように）。年の予算の月割りで減らした
         # ときは項目の名前を残す（LB-45）。抱えた人を手放しただけなら、払えなかったとは出さない
@@ -793,7 +847,7 @@ class Employment(IslandStage):
         out: list = []
         i = 0
         for f, wage in plans:
-            priority = fac.priority_of(ctx.defs, config, f)
+            priority = self._priority(island, ctx, f)
             while i < len(marks) and marks[i][0] > priority:
                 out.append(marks[i][1])
                 i += 1
@@ -861,9 +915,15 @@ class Employment(IslandStage):
         done: dict[str, dict[Pos, int]] = {}
         first = [True]
 
+        firms = [f.id for f, _ in plans if contracts.is_contractor(config, f)]
+
         def hire(mark: str | None) -> dict[Pos, int]:
             if "staff" in done:
                 return done["staff"]
+            # 土木業者がここまでに雇えた人で届ける工事を決め、その分を除いて直営で雇う（IN-32）
+            infrastructure.contracted(
+                island, ctx, {fid: sum(staff[fid].values()) for fid in firms if fid in staff}
+            )
             goal, final = None, True
             if mark == "first":
                 upkeep, total = infrastructure.split(island)
@@ -1159,6 +1219,11 @@ class Employment(IslandStage):
             return drivers - replaced
         if services.is_services(config, f):  # 商業・サービス業は売上に合わせて（バランス調整）
             return f.economy.get(services.SEATS, 0)
+        if f.built and contracts.is_contractor(config, f):  # 土木業者は受けた工事に合わせて
+            # 燃料のある重機（IN-34）で替えた作業員の分は雇わない
+            crew = contracts.wanted(island, config, f)
+            machines.commission(island, config, f)
+            return crew - machines.drive(island, config, f, crew)
         cargo = staff.wanted(config, ctx.defs, f)  # 港・海運業・商社は扱う荷に合わせて（3-1）
         if cargo is not None:
             return cargo

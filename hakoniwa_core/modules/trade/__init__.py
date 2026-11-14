@@ -41,7 +41,7 @@ from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.diplomacy import treaties as diplomacy_treaties
 from hakoniwa_core.diplomacy import war
-from hakoniwa_core.economy import SUBSIDIES, Payer, books, entity_of, funds
+from hakoniwa_core.economy import SUBSIDIES, Payer, books, entity_of, export_plan, funds
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
 from hakoniwa_core.military import naval
@@ -55,6 +55,7 @@ from hakoniwa_core.trade import (
     blocs,
     contracts,
     currency_label,
+    fx_priority,
     is_trader,
     island_state,
     merchant,
@@ -104,6 +105,7 @@ WHY_BUYERS = "buyers"  # 圏の買いが足りないか、買いの指値が安�
 WHY_FUNDS = "funds"  # 払うお金（商社の預金）が足りない（決済通貨が自国の通貨のとき）
 WHY_QUOTA = "quota"  # 輸入の割り当て（フェーズ3-3）の上限まで買った
 WHY_BLOCKADE = "blockade"  # 封鎖で船出を断られた（MI-34。船が足りないのとは分ける。W-187）
+WHY_PRIORITY = "fx_priority"  # 計画経済の商社が、外貨を使う順で先の財に外貨を取り置いた（FX-76）
 
 
 def gov_payer() -> Payer:
@@ -134,6 +136,18 @@ class _ImportTerms:
     fee_unit: int  # 1 単位の港の使用料（自国通貨）
     cost: int  # 1 単位の輸入の原価（自国通貨。圏の値段・関税・運賃・使用料）
     profit: int  # 島の値段 − 原価（自国通貨。FX-62 の取り逃した儲け）
+    # 1 単位の借りた船の運賃の見込み（決済通貨。決済通貨で払うので、外貨の見込みと割り振りに足す）
+    charter: int = 0
+
+
+@dataclass
+class _Allocated:
+    """商社の輸入の注文に割り振った量（FX-67。_allocate）。"""
+
+    qty: int  # 割り振った量（船・割り当て・決済通貨・扱える重さで縮めた後）
+    cut_capacity: int  # 1ターンに流れる分のうち、扱える重さで削った量（FX-62）
+    cut_money: int  # 1ターンに流れる分のうち、決済通貨（自分のお金）で削った量（FX-62）
+    why: str | None  # 縮めたわけ（扱える重さ・決済通貨）
 
 
 @dataclass
@@ -155,7 +169,8 @@ class _IslandTurn:
     trips: int = 2  # 輸入の往復の見込みのターン数（燃料の見積もり）
     shipments: list[int] = field(default_factory=list)
     turnover: dict[int, int] = field(default_factory=dict)  # 通貨 → 島の主体が払い・受け取った額
-    # (圏, 財) → [借りた船の運賃（決済通貨）, 買った量]（次のターンの外貨の見込みに使う）
+    # (圏, 財) → [借りた船の運賃（決済通貨）, 買った量, そのうち借りた船で運んだ量]（次のターン
+    # からの輸入の原価。FX-63）
     charter: dict[tuple[int, str], list[int]] = field(default_factory=dict)
 
     def settled(self, currency: int, amount: int) -> None:
@@ -229,6 +244,10 @@ class _Round:
         self.fx_limited: dict[int, set[str]] = {}
         # (島, 商社) → 財 → (取り逃した量, 1 単位の儲け, 1 単位の原価)（FX-62）
         self.missed: dict[tuple[int, int], dict[str, tuple[int, int, int]]] = {}
+        # (島, 主体, 通貨) → 財 → 計画経済の国営の商社が、その財のために取り置いている外貨（FX-76）
+        self.fx_queue: dict[tuple[int, str, int], dict[str, int]] = {}
+        # (島, 商社, 財) → 輸入の注文に割り振った量（FX-67。圏の市場の前に _allocate が決める）
+        self.alloc: dict[tuple[int, int, str], _Allocated] = {}
 
     def run(self) -> None:
         self._intercept()
@@ -395,6 +414,8 @@ class _Round:
             stock.put_batches(f.stock, good, batches)
             item = traders.entry(f, good)
             item["transit"] = max(0, item["transit"] - qty)
+            # 注文（積んだターン）から島で売れる（次のターンの市場の段）までのターン数（FX-66）
+            traders.keep_lead(self.config, item, self.turn - s.get("loaded", self.turn) + 1)
             paid = self._pay_fee(island, Payer(entity_of(self.config, f)), port, fee, f)
             traders.add_cost(f, good, paid)
             traders.add_cost(f, good, self._tariff(island, s, f, qty))
@@ -772,8 +793,8 @@ class _Round:
         ships_now: bool = True,
     ) -> list[tuple[int, int, int, int, int]]:
         """商社の輸入の見込み（FX-61）: 輸入している財ごとに (決済通貨, 1 ターン分の量,
-        fx.keep_turns ターン分の量, 指値, 輸入が引き合う一番高いレート)。量は「狙う量 − 手元と運ぶ
-        途中の荷」を、圏の市場の注文と同じ頭打ち（輸入の割り当ての残り・圏の船で運べる量・扱える
+        fx.keep_turns ターン分の量, 指値, 輸入が引き合う一番高いレート)。量は注文の量（FX-66）を
+        狙う量までにしたものを、圏の市場の注文と同じ頭打ち（輸入の割り当ての残り・圏の船で運べる量・扱える
         重さの残り）で縮める。2 ターン目からは狙う量を、割り当てと扱える重さ（財の間で分ける）で
         縮めた分（空いた船の数は次のターンには変わるので見ない）。ships_now でなければ 1 ターン分も
         空いた船の数で縮めない（_import_room）。quota_used（財 → 島のほかの商社が見込んだ量）に、
@@ -786,8 +807,7 @@ class _Round:
         for good, item in traders.goods_of(f).items():  # 輸出の荷も扱える重さを使う
             if item.get("dir") == traders.EXPORT:
                 left -= weight(self.defs, good, stock.total(f.stock, good))
-        later = left  # 2 ターン目からの扱える重さの残り
-        out = []
+        rows = []  # (財, 決済通貨, 1 ターン目の量, 2 ターン目からの量, 指値, 引き合うレート)
         for good, item in sorted(traders.goods_of(f).items()):
             if item.get("dir") != traders.IMPORT or not item["m"] or item.get("bm") is None:
                 continue
@@ -803,28 +823,43 @@ class _Round:
             quota = policy.quota(island, good)
             if quota is not None:
                 quota = max(0, quota - quota_used.get(good, 0))
-            want = max(0, item["m"] - item["held"][0])
-            first, _, _ = self._import_room(
-                island, good, bloc, want, max(0, left), quota, False, ships_now
-            )
+            big = 10**18  # 扱える重さは下で財の間に割り振る（FX-67）
+            # 外貨は 1 ターンに流れる分（狙う量）までしか前もって買わない。持つ量を埋める分
+            # （FX-66）は、持っている外貨の余りで買う（埋める分まで外貨を買うと、外貨の足りない島で
+            # 埋まらないまま毎ターン自国通貨を売り続け、通貨が前の 2〜9 倍の速さで下がり、食料も
+            # 輸入できなくなった。2026-11-12 の full と調べ 2・3）
+            want = min(traders.import_want(self.config, item), item["m"])
+            first, _, _ = self._import_room(island, good, bloc, want, big, quota, False, ships_now)
+            # 2 ターン目からは 1 ターンに流れる分（狙う量）で数える（FX-66）
             each, _, _ = self._import_room(
-                island,
-                good,
-                bloc,
-                item["m"],
-                max(0, later),
-                policy.quota(island, good),
-                False,
-                False,
+                island, good, bloc, item["m"], big, policy.quota(island, good), False, False
             )
             if first <= 0 and each <= 0:
                 continue
-            left -= weight(self.defs, good, first)
-            later -= weight(self.defs, good, each)
-            quota_used[good] = quota_used.get(good, 0) + first
-            out.append(
-                (bloc["currency"], first, first + each * (keep - 1), terms.limit, p.import_rate)
+            # 外貨の見込みは、品物の代金に決済通貨で払う借りた船の運賃を足す
+            price = terms.limit + terms.charter
+            rank = terms.profit / max(1, terms.cost)
+            rows.append(
+                (good, bloc["currency"], first, each, price, p.import_rate, item["m"], rank)
             )
+        units = [unit_weight(self.defs, r[0]) for r in rows]
+        ranks = [r[7] for r in rows]
+        firsts = traders.share_by_rank(
+            [min(r[2], r[6]) for r in rows],
+            [max(0, r[2] - r[6]) for r in rows],
+            units,
+            left,
+            ranks,
+        )
+        eaches = traders.share_by_rank([r[3] for r in rows], [0] * len(rows), units, left, ranks)
+        out = []
+        for (good, currency, _, _, limit, rate, _, _), first, each in zip(
+            rows, firsts, eaches, strict=True
+        ):
+            if first <= 0 and each <= 0:
+                continue
+            quota_used[good] = quota_used.get(good, 0) + first
+            out.append((currency, first, first + each * (keep - 1), limit, rate))
         return out
 
     def _import_needs(
@@ -924,7 +959,7 @@ class _Round:
                 state[traders.IMPORT_NEED] = need
 
     def _keep_missed(self, island: IslandState) -> None:
-        """このターンに取り逃した儲けと仕入れ（FX-62）を、財ごとに島の市場の買えなかった量までに
+        """このターンに取り逃した儲けと仕入れ（FX-62）を、財ごとに島の市場の本当の品不足（FX-65）までに
         縮めて商社に書く（商社ごとの多めの狙いで膨らまないように）。"""
         records = {m.good: m for m in island.markets}
         by_good: dict[str, int] = {}
@@ -936,8 +971,8 @@ class _Round:
             goods = self.missed.get((island.id, f.id), {})
             profit = cost = 0
             for good, (qty, unit_profit, unit_cost) in sorted(goods.items()):
-                record = records.get(good)
-                unmet = max(0, record.demand - record.volume) if record is not None else 0
+                # 島の市場の本当の品不足（約定の値段以上で買えなかった量。FX-65）までに縮める
+                unmet = traders.true_shortage(island, records.get(good))
                 qty = qty * min(unmet, by_good[good]) // max(1, by_good[good])
                 profit += money_of(unit_profit, qty)
                 cost += money_of(unit_cost, qty)
@@ -1135,9 +1170,9 @@ class _Round:
             payer=gov_payer(),
         )
         books.add_sector(seller, books.WAREHOUSE, "sales", value)
-        books.add_sector(seller, books.TRADE, "exports", value)
+        books.add_trade(seller, "exports", good, value)
         books.add_sector(buyer, books.WAREHOUSE, "purchases", cost)
-        books.add_sector(buyer, books.TRADE, "imports", cost)
+        books.add_trade(buyer, "imports", good, cost)
         self.islands[seller.id].exports += value
         self.islands[buyer.id].imports += cost
         self.islands[seller.id].settled(currency, amount)
@@ -1357,7 +1392,7 @@ class _Round:
             payer=payer,
         )
         books.add(carrier, shipping.id, books.SALES, value)
-        books.add_sector(carrier, books.TRADE, "exports", value)
+        books.add_trade(carrier, "exports", books.FREIGHT_ITEM, value)
         # 貸した船の運賃の収入（船の国の通貨）と、借りた船に払った運賃（買い手の通貨）
         carrier.stats["trade.charter_income"] = carrier.stats.get("trade.charter_income", 0) + value
         buyer.stats["trade.charter_paid"] = buyer.stats.get("trade.charter_paid", 0) + cost
@@ -1366,7 +1401,7 @@ class _Round:
             traders.spent_abroad(f, currency, amount)
         else:
             books.add_sector(buyer, books.GOVERNMENT, "freight", cost)
-        books.add_sector(buyer, books.TRADE, "imports", cost)
+        books.add_trade(buyer, "imports", books.FREIGHT_ITEM, cost)
         self.islands[carrier.id].settled(currency, amount)
         self.islands[buyer.id].settled(currency, amount)
         return cost
@@ -1485,13 +1520,17 @@ class _Round:
         unmet: dict[tuple[int, str], int] = {}
         sellers: dict[tuple[int, str], int] = {}
         self._plan_imports()
+        self._allocate()
         width = to_basis(self.config.get("trade.bloc_band"))
         budgets: dict[int, int] = {}  # 商社ごとの扱える重さの残り
         money_left: dict[tuple[int, str, int], int] = {}  # (島, 主体, 通貨) → 使える額の残り
         for bloc in list(blocs.blocs(self.world)):
             members = [m for m in bloc["members"] if m in self.islands]
+            self.fx_queue = self._plan_fx_queue(bloc, members)
             for good in tradable_goods(self.defs):
                 key = (bloc["id"], good)
+                for queue in self.fx_queue.values():  # この財の板寄せで、取り置きは要らなくなる
+                    queue.pop(good, None)
                 buys, sells, bids, asks = self._bloc_orders(
                     bloc, members, good, budgets, money_left
                 )
@@ -1636,7 +1675,19 @@ class _Round:
                     asks.append(_Bid(m, f, entity, good))
                     budgets[f.id + m * 10**6] = left - weight(self.defs, good, qty)
                     self.islands[m].port_used += weight(self.defs, good, qty)  # 積む分を取っておく
-                elif item.get("dir") == traders.IMPORT and item.get("bm") == bloc["id"]:
+                    continue
+                if (
+                    item.get("dir") == traders.IMPORT
+                    and item.get(traders.REEXPORT_BLOC) == bloc["id"]
+                ):
+                    order = self._reexport_order(island, f, item, good, bloc, left)
+                    if order is not None:  # 輸出の荷に替えた持ちすぎの分（FX-64）
+                        sells.append(order)
+                        asks.append(_Bid(m, f, entity, good))
+                        left -= weight(self.defs, good, order.quantity)
+                        budgets[f.id + m * 10**6] = left
+                        self.islands[m].port_used += weight(self.defs, good, order.quantity)
+                if item.get("dir") == traders.IMPORT and item.get("bm") == bloc["id"]:
                     order = self._import_order(
                         island, f, entity, item, good, bloc, left, money_left
                     )
@@ -1651,6 +1702,134 @@ class _Round:
         for order, ask in zip(sells, asks, strict=True):
             self.islands[ask.island].port_used -= weight(self.defs, good, order.quantity)
         return buys, sells, bids, asks
+
+    def _reexport_order(
+        self,
+        island: IslandState,
+        f: Facility,
+        item: dict[str, Any],
+        good: str,
+        bloc: dict[str, Any],
+        left: int,
+    ) -> Order | None:
+        """持ちすぎの分が止まりの値でも島で売れず、輸出の荷に替えた分（FX-64。item["reexport"]）の
+        圏の市場の売り。荷を買った圏で、圏の今の値段を指値に売る（値段を受け入れる側。指値なしの
+        売りは買いが値幅の上端にそろう圏で値段だけを下げるため。F8 と同じ）。"""
+        qty = min(item.get(traders.REEXPORT, 0), stock.total(f.stock, good))
+        qty = min(qty, self._port_room(island, good))
+        unit = unit_weight(self.defs, good)
+        if unit > 0:
+            qty = min(qty, left * QUANTITY_SCALE // unit)
+        if qty <= 0:
+            return None
+        price = blocs.fixed_price(bloc, good) or blocs.reference(self.world, bloc, good)
+        if not price:
+            return None
+        return Order(qty, price)
+
+    def _allocate(self) -> None:
+        """FX-67: 圏の市場の前に、商社ごとの輸入の注文を全部の圏・財について集め、決済通貨と扱える
+        重さが足りなければ、財の名前の順でなく、儲けの割合（島の値段 − 原価）÷ 原価の大きい注文から
+        配る（self.alloc。限られた元手は一番儲かる物に回す。割合で薄く配ると、外貨の足りない島で
+        食料まで全部の財が細り、値段が何倍にもなった。2026-11-12 の full）。
+
+        注文の量は FX-66 の量を、船（空いた船の全部で運べる量）と輸入の割り当てで縮めたもの。まず
+        決済通貨（持ち主ごと・通貨ごとの使えるお金。_import_order と同じく、島の通貨なら賃金と輸出の
+        仕入れの見込みを残した預金から運賃と使用料も払う）で、1 ターンに流れる分をその順に、余りを
+        足りない分を埋める注文に同じ順に配る。外貨で縮んだ量のまま、扱える重さ（輸出の荷の分を引いた
+        残り）を同じ形で割り振る。約定しなかった分の重さは、今どおり板寄せの後に戻す（_refund）。
+        計画経済の島の商社は割り振らない（注文は前のまま）。"""
+        self.alloc = {}
+        cap = self.config.get("trade.trader_capacity") * QUANTITY_SCALE
+        for i in self.ids:
+            island = self.world.islands[i]
+            if traders.is_planned(island):
+                # 計画経済の島の商社は前のまま（儲けの順で配ると、公定価格が輸入の原価より安い原料・
+                # 部品が後回しになり、化学品・自動車の工場が止まって品切れが増えた。2026-11-13 の
+                # full と部分ごとに外した比べで、増えた品切れの半分が計画経済の島だった）
+                continue
+            # 持ち主・通貨ごとの注文: (商社, 財, 量, 流れる分, 1 単位のお金)
+            groups: dict[tuple[str, int], list[tuple[Facility, str, int, int, int]]] = {}
+            for f in traders_of(island, self.config, self.turn):
+                entity = entity_of(self.config, f)
+                for good, item in sorted(traders.goods_of(f).items()):
+                    if item.get("dir") != traders.IMPORT or item.get("bm") is None:
+                        continue
+                    bloc = blocs.find(self.world, item["bm"])
+                    if bloc is None:
+                        continue
+                    terms, _ = self._import_terms(island, good, bloc)
+                    if terms is None:
+                        continue
+                    want = traders.import_want(self.config, item, traders.is_planned(island))
+                    if want <= 0:
+                        continue
+                    want, _, _ = self._import_room(
+                        island, good, bloc, want, 10**18, policy.quota(island, good), False
+                    )
+                    if want <= 0:
+                        continue
+                    currency = bloc["currency"]
+                    unit = terms.limit
+                    if currency == island.id:  # 運賃と使用料も同じお金から払う
+                        unit += terms.freight_unit + terms.fee_unit
+                    else:  # 借りた船の運賃は決済通貨で払う
+                        unit += terms.charter
+                    flow = min(want, item["m"])
+                    rank = terms.profit / max(1, terms.cost)
+                    groups.setdefault((entity, currency), []).append(
+                        (f, good, want, flow, unit, rank)
+                    )
+            money_cut: dict[tuple[int, str], tuple[int, int, str | None]] = {}
+            ranks: dict[tuple[int, str], float] = {}
+            for (entity, currency), rows in sorted(groups.items()):
+                if currency == island.id:
+                    reserve = self.reserve.get((i, entity), 0)
+                    money = max(0, funds.available(island, Payer(entity)) - reserve)
+                else:
+                    money = fxmoney.holding(island, entity, currency)
+                got = traders.share_by_rank(
+                    [r[3] for r in rows],
+                    [r[2] - r[3] for r in rows],
+                    [r[4] for r in rows],
+                    money,
+                    [r[5] for r in rows],
+                )
+                why = WHY_FUNDS if currency == island.id else WHY_MONEY
+                for (f, good, want, flow, _, rank), qty in zip(rows, got, strict=True):
+                    money_cut[(f.id, good)] = (
+                        qty,
+                        max(0, flow - qty),
+                        why if qty < want else None,
+                    )
+                    ranks[(f.id, good)] = rank
+            for f in traders_of(island, self.config, self.turn):
+                left = cap
+                for good, item in traders.goods_of(f).items():  # 輸出の荷も扱える重さを使う
+                    if item.get("dir") == traders.EXPORT:
+                        left -= weight(self.defs, good, stock.total(f.stock, good))
+                rows2 = [
+                    (good, *money_cut[(f.id, good)], traders.goods_of(f)[good]["m"])
+                    for good in sorted(traders.goods_of(f))
+                    if (f.id, good) in money_cut
+                ]
+                if not rows2:
+                    continue
+                flows = [min(qty, m) for _, qty, _, _, m in rows2]
+                got = traders.share_by_rank(
+                    flows,
+                    [qty - fl for (_, qty, _, _, _), fl in zip(rows2, flows, strict=True)],
+                    [unit_weight(self.defs, r[0]) for r in rows2],
+                    left,
+                    [ranks[(f.id, r[0])] for r in rows2],
+                )
+                for (good, qty, cut_money, why, _), fl, final in zip(
+                    rows2, flows, got, strict=True
+                ):
+                    cut_capacity = max(0, fl - final)
+                    if final < qty:
+                        why = WHY_CAPACITY
+                    self.alloc[(i, f.id, good)] = _Allocated(final, cut_capacity, cut_money, why)
 
     def _import_terms(
         self, island: IslandState, good: str, bloc: dict[str, Any]
@@ -1676,6 +1855,12 @@ class _Round:
         freight_unit = (
             ships.freight_rate(island, self.config) * unit * view.get("cells", 1) // QUANTITY_SCALE
         )
+        # 借りた船の運賃（戦争の割増を含む）の直近の実績の 1 単位あたり（FX-63。traders.prospects
+        # と同じ。自国の船の運賃は自国の船で運んだ割合の分だけ）
+        share = view.get("charter_share", {}).get(good, 0)
+        freight_unit = freight_unit * (BASIS - share) // BASIS
+        charter = view.get("charter", {}).get(good, 0)
+        freight_unit += charter * e // BASIS
         fee_unit = ships.port_fee(island, self.config) * unit // QUANTITY_SCALE
         own = home - part(home, cut) - freight_unit - fee_unit
         tariff = 0 if blocs.no_tariff(bloc) else policy.tariff_rate(island, good)
@@ -1691,7 +1876,8 @@ class _Round:
         _, high = auction.band(reference, to_basis(self.config.get("trade.bloc_band")))
         # 1 単位の輸入の原価（自国通貨。圏の値段・関税・運賃・使用料）と、島の値段との差（FX-62）
         cost = price * duty_rate // BASIS + freight_unit + fee_unit
-        return _ImportTerms(min(limit, high), freight_unit, fee_unit, cost, home - cost), None
+        terms = _ImportTerms(min(limit, high), freight_unit, fee_unit, cost, home - cost, charter)
+        return terms, None
 
     def _import_room(
         self,
@@ -1703,16 +1889,19 @@ class _Round:
         quota: int | None,
         effects: bool = True,
         ships_now: bool = True,
+        flow: int | None = None,
     ) -> tuple[int, str | None, int]:
         """輸入の量 want を、船・扱える重さの残り left・輸入の割り当ての残り quota で縮める。
         (量, わけ, 扱える重さで削った量（割り当てでも買えない分は除く。FX-62）) を返す。effects
         なら、船が足りないことを海運業の見込みに書く（板寄せの前の注文のとき。外貨の見込み FX-61
         では書かない）。ships_now でなければ、空いた船の数では縮めない（港がなければ 0。出た船は
         次のターンの荷下ろしで戻るので、記録の段で次のターンの見込みを出すときと、何ターン分かの
-        見込みのとき）。"""
+        見込みのとき）。flow（1 ターンに流れる分）を渡すと、船の不足と扱える重さで削った量はその分
+        までで数える（FX-66。持つ量を埋める分の注文で船を買い増さない）。"""
         why = None
         cut_capacity = 0
         unit = unit_weight(self.defs, good)
+        counted = want if flow is None else min(want, flow)
         if unit > 0:
             if port_of(island, self.config) is None:  # 港がない
                 want, why = 0, WHY_SHIPS
@@ -1721,17 +1910,18 @@ class _Round:
             # 船が足りない（S2）
             reach = self._reach(island, bloc, good) if ships_now else want
             if reach < want:
-                if effects and port_of(island, self.config) is not None:
+                if effects and port_of(island, self.config) is not None and reach < counted:
                     self.islands[island.id].ship_short = True
                     # 載せられなかった荷は、商社が扱える重さまで（それより多い分は船では直らない）
                     source = self._nearest_member(island, bloc)
                     room = left * QUANTITY_SCALE // unit
                     if source is not None:
-                        self._short_load(island, source, good, min(want, room) - reach)
+                        self._short_load(island, source, good, min(counted, room) - reach)
                 want, why = reach, WHY_SHIPS
+                counted = min(counted, want)
             room = left * QUANTITY_SCALE // unit
             if room < want:
-                cut_capacity = max(0, (want if quota is None else min(want, quota)) - room)
+                cut_capacity = max(0, (counted if quota is None else min(counted, quota)) - room)
                 want, why = room, WHY_CAPACITY
         if quota is not None and quota < want:
             want, why = max(0, quota), WHY_QUOTA
@@ -1760,11 +1950,22 @@ class _Round:
             return None
         currency = bloc["currency"]
         limit = terms.limit
-        want = item["m"] - item["held"][0]
+        want = traders.import_want(self.config, item, traders.is_planned(island))  # FX-66
         if want <= 0:
             return None
+        flow = min(want, item["m"])  # 1 ターンに流れる分
         quota = self.quota_left.get((island.id, good))
-        want, why, cut_capacity = self._import_room(island, good, bloc, want, left, quota)
+        want, why, cut_capacity = self._import_room(
+            island, good, bloc, want, left, quota, flow=flow
+        )
+        # 決済通貨と扱える重さは、圏の市場の前に財の間で儲けの大きい順に割り振った量まで（FX-67）
+        plan = self.alloc.get((island.id, f.id, good))
+        cut_money = 0
+        if plan is not None and plan.qty < want:
+            want = plan.qty
+            why = plan.why or why
+            cut_capacity = max(cut_capacity, plan.cut_capacity)
+            cut_money = plan.cut_money
         key = (island.id, entity, currency)
         if key not in money_left:
             if island.id == currency:  # 賃金と輸出の仕入れの見込みは残す（FX-61）
@@ -1772,15 +1973,21 @@ class _Round:
                 money_left[key] = max(0, funds.available(island, Payer(entity)) - reserve)
             else:
                 money_left[key] = fxmoney.holding(island, entity, currency)
-        money = money_left[key]
+        ahead = self._fx_ahead(key, good)
+        money = max(0, money_left[key] - ahead)
         if island.id == currency:  # 運賃と使用料も同じお金から払う
             unit_extra = (terms.freight_unit + terms.fee_unit) * BASIS // max(1, limit)
             money = money * BASIS // (BASIS + unit_extra)
-        cut_money = 0
+        elif terms.charter > 0:  # 借りた船の運賃も同じ外貨から払う（FX-63）
+            money = money * BASIS // (BASIS + terms.charter * BASIS // max(1, limit))
         if money * QUANTITY_SCALE // limit < want:
             short = WHY_FUNDS if island.id == currency else WHY_MONEY
-            cut_money = want - money * QUANTITY_SCALE // limit
+            if ahead > 0 and money_left[key] * QUANTITY_SCALE // limit >= want:
+                short = WHY_PRIORITY  # 取り置きがなければ買えた（FX-76）
+            cut_money += want - money * QUANTITY_SCALE // limit
             want, why = money * QUANTITY_SCALE // limit, short
+        cut_capacity = min(cut_capacity, flow)
+        cut_money = min(cut_money, max(0, flow - cut_capacity))
         self._note_missed(island, f, entity, good, terms, cut_capacity, cut_money, currency)
         if why is not None:
             item["why"] = why
@@ -1788,6 +1995,74 @@ class _Round:
             return None
         money_left[key] -= money_of(limit, want)
         return Order(want, limit)
+
+    def _plan_fx_queue(
+        self, bloc: dict[str, Any], members: list[int]
+    ) -> dict[tuple[int, str, int], dict[str, int]]:
+        """FX-76: 計画経済の島の国営の商社が、圏 bloc で財ごとに輸入に要る決済通貨の見込み。圏の
+        市場は財の名前の順に回るので、名前の順で先に来る財を買うとき、外貨を使う順（goods.yaml の
+        fx_priority）で先の財の分をこの見込みから取り置く（_fx_ahead）。市場経済・混合経済の島は
+        数えない。
+
+        見込みは、島・主体ごとに狙う量の残りを足し、前のターンに圏で売りに出た量と輸入の割り当てで
+        縮め、空いた船と扱える重さで縮めて、圏の市場に出す指値（_import_terms）で値を付けた額。前の
+        ターンに圏で約定がなかった財（売りの値段が値幅に入らない・船が出ないなど）と、前のターンに
+        封鎖で船出を断られた財は数えない（入らない財のために外貨を寝かせない）。"""
+        currency = bloc["currency"]
+        cap = self.config.get("trade.trader_capacity") * QUANTITY_SCALE
+        supply = bloc.get("supply", {})
+        volume = bloc.get("volume", {})
+        wants: dict[tuple[int, str, int], dict[str, list[int]]] = {}  # 鍵 → 財 → [量, 扱える重さ]
+        for m in members:
+            island = self.world.islands[m]
+            if not traders.is_planned(island):
+                continue
+            for f in traders_of(island, self.config, self.turn):
+                entity = entity_of(self.config, f)
+                for good, item in sorted(traders.goods_of(f).items()):
+                    if item.get("dir") != traders.IMPORT or item.get("bm") != bloc["id"]:
+                        continue
+                    if item.get("why") == WHY_BLOCKADE or volume.get(good, 0) <= 0:
+                        continue
+                    want = item["m"] - item["held"][0]
+                    if want > 0:
+                        row = wants.setdefault((m, entity, currency), {}).setdefault(good, [0, 0])
+                        row[0] += want
+                        row[1] += cap
+        out: dict[tuple[int, str, int], dict[str, int]] = {}
+        for key, goods in sorted(wants.items()):
+            island = self.world.islands[key[0]]
+            for good, (want, room) in sorted(goods.items()):
+                terms, _ = self._import_terms(island, good, bloc)
+                if terms is None:
+                    continue
+                quota = self.quota_left.get((key[0], good), policy.quota(island, good))
+                want, _, _ = self._import_room(
+                    island, good, bloc, min(want, supply.get(good, 0)), room, quota, effects=False
+                )
+                if want > 0:
+                    out.setdefault(key, {})[good] = money_of(terms.limit, want)
+        return out
+
+    def _fx_ahead(self, key: tuple[int, str, int], good: str) -> int:
+        """FX-76: 財 good を買う前に取り置く決済通貨（外貨を使う順で good より先で、まだ板寄せの来て
+        いない財の見込みの和）。取り置くのは順が `trade.plan_fx_reserved` までの財だけ（設備の機械の
+        ように、要る額が稼ぎの何十倍もある財まで取り置くと、原料が買えなくなった）。3・4 段（原料と
+        部品・消費財）の財は、輸出の計画の外貨の蓄えの目標（PL-62、本人の B）の分も残す（蓄えは
+        燃料と主食・設備の資材のためのもの。国営施設の設備に使う財は 3 段でも残さない）。"""
+        queue = self.fx_queue.get(key) or {}
+        rank = fx_priority(self.defs, good)
+        kept = self.config.get("trade.plan_fx_reserved")
+        ahead = sum(
+            v
+            for g, v in queue.items()
+            if fx_priority(self.defs, g) < rank and fx_priority(self.defs, g) <= kept
+        )
+        island = self.world.islands[key[0]]
+        if rank >= 3 and not export_plan.essential(island, good):  # 設備の資材（木材など）は使える
+            reserve = export_plan.reserve_of(island, self.config, key[1], key[2], self.turn)
+            ahead = max(ahead, reserve)
+        return ahead
 
     def _refund(
         self,
@@ -1866,7 +2141,16 @@ class _Round:
             there = self.world.islands[asks[s].island]
             return route_cells(here, there) if here.id != there.id else 0
 
+        # 輸出し直す荷（FX-64。売り手の荷が輸入の向き）は、同じ島の輸入に戻さない
+        resold = {
+            k
+            for k, a in enumerate(asks)
+            if traders.goods_of(a.facility).get(good, {}).get("dir") == traders.IMPORT
+        }
+
         def allowed(b: int, s: int) -> bool:
+            if s in resold and bids[b].island == asks[s].island:
+                return False
             return not policy.blocked(self.world, bids[b].island, asks[s].island, good)
 
         for b, s, qty in auction.match_nearest(result.bought, result.sold, distance, allowed):
@@ -1907,12 +2191,13 @@ class _Round:
             if qty <= 0:
                 continue
             # 借りた船の運賃を、次のターンの外貨の見込みに入れる（1 単位あたりにして圏の様子へ）
-            seen = self.islands[buyer.id].charter.setdefault((bloc["id"], good), [0, 0])
+            seen = self.islands[buyer.id].charter.setdefault((bloc["id"], good), [0, 0, 0])
             seen[0] += sum(
                 self._foreign_freight(carrier, buyer, seller, good, q, currency)
                 for carrier, q in parts
             )
             seen[1] += qty
+            seen[2] += sum(q for carrier, q in parts if carrier.id != buyer.id)
             amount = money_of(price, qty)
             value = amount if seller.id == currency else fxrates.to_own(seller, currency, amount)
             cost = fxmoney.transfer(
@@ -1932,18 +2217,26 @@ class _Round:
             settled[b] = settled.get(b, 0) + moved
             books.stock_moved(seller, sf.id, good, -moved)
             books.add(seller, sf.id, books.SALES, value)
-            books.add_sector(seller, books.TRADE, "exports", value)
-            taken = traders.take_cost(traders.entry(sf, good), moved)
+            books.add_trade(seller, "exports", good, value)
+            sold_item = traders.entry(sf, good)
+            taken = traders.take_cost(sold_item, moved)
             traders.cover_price_gap(seller, sf, ask.entity, taken, value)
-            traders.exported(sf, good, moved)
+            traders.exported(sf, good, moved, currency, money_of(price, moved))
             traders.add_volume(sf, weight(self.defs, good, moved))
             self.islands[seller.id].exports += value
             self.islands[seller.id].settled(currency, amount)
-            self._export_subsidy(seller, sf, ask.entity, good, moved)
+            if sold_item.get("dir") == traders.IMPORT:  # 輸出し直した持ちすぎの分（FX-64）
+                left_over = sold_item.get(traders.REEXPORT, 0) - moved
+                if left_over > 0:
+                    sold_item[traders.REEXPORT] = left_over
+                else:
+                    sold_item.pop(traders.REEXPORT, None)
+            else:  # 輸出補助は島の売り手から買って輸出した荷だけ（輸入した物の輸出し直しは除く）
+                self._export_subsidy(seller, sf, ask.entity, good, moved)
             matched += moved
             # 買い手: 仕入れと輸入に数え、運ぶ途中の荷も在庫に数える
             books.add(buyer, bf.id, books.PURCHASES, cost)
-            books.add_sector(buyer, books.TRADE, "imports", cost)
+            books.add_trade(buyer, "imports", good, cost)
             books.stock_moved(buyer, bf.id, good, moved)
             item = traders.entry(bf, good)
             item["held"][0] += moved
@@ -2000,21 +2293,37 @@ class _Round:
     def _close(
         self, bloc_unmet: dict[tuple[int, str], int], bloc_sellers: dict[tuple[int, str], int]
     ) -> None:
+        planned_by_bloc = export_plan.shares(self.world)  # 前のターンの輸出の計画（PL-62）
         for i in self.ids:
             island = self.world.islands[i]
             here = self.islands[i]
             ships.close_turn(island, self.config, here.carried, here.fuel_value)
             ships.close_port(island, self.config, here.handled)
             self._keep_missed(island)
+            seen = export_plan.observe(island, self.config)
             traders.update_targets(
                 island, self.defs, self.config, bloc_unmet, bloc_sellers, self.turn
             )
-            self._site(island)
             fxrates.keep_turnover(island, self.config, here.turnover)
+            self._keep_charter(island, here)
             state = island_state(island)
             state["blocs"] = {
                 str(b["id"]): self._view(b, i, here) for b in blocs.member_of(self.world, i)
             }
+            # 計画経済の輸出の計画（PL-62）: 圏の様子を書いた後に、次のターンの量を決めて商社に
+            # 分ける
+            export_plan.update(
+                self.world,
+                island,
+                self.defs,
+                self.config,
+                self.turn,
+                seen,
+                bloc_unmet,
+                bloc_sellers,
+                planned_by_bloc,
+            )
+            self._site(island)
             self._keep_import_needs(island)
             state["contracts"] = [
                 contract_view(c, i, self.turn) for c in contracts.of_island(self.world, i)
@@ -2028,18 +2337,68 @@ class _Round:
                 shipping.economy[ship_orders.SHORT_LOAD] = loads[-keep:]
             self._stats(island, here)
 
+    def _keep_charter(self, island: IslandState, here: _IslandTurn) -> None:
+        """借りた船の運賃と買った量（圏・財ごと）を、直近 trade.cost_turns ターン分残す（FX-63。
+        運賃と港の使用料を決めるのと同じターン数。買わなかったターンも 0 で数え、そのターン数の間に
+        買わなければ消える。1 ターンだけ数えると、運賃で引き合わず買わなかった次のターンに運賃を
+        忘れてまた買い、1 ターンおきに振れるため）。"""
+        keep = self.config.get("trade.cost_turns")
+        state = island_state(island)
+        seen = state.get(traders.CHARTER, {})
+        now = {f"{b}:{good}": row for (b, good), row in here.charter.items()}
+        out = {}
+        for key in sorted(set(seen) | set(now)):
+            history = [*seen.get(key, []), list(now.get(key, [0, 0, 0]))][-keep:]
+            if any(row[0] > 0 for row in history):
+                out[key] = history
+        if out:
+            state[traders.CHARTER] = out
+        else:
+            state.pop(traders.CHARTER, None)
+
     def _view(self, bloc: dict[str, Any], island_id: int, here: _IslandTurn) -> dict[str, Any]:
-        """圏の様子に、このターンに借りた船の運賃（財ごとに、買った 1 単位あたりの決済通貨。自分の
-        船で運んだ分も買った量に入れた平均）を足す（次のターンの外貨の見込み。traders.import_needs）。"""
+        """圏の様子に、借りた船の運賃（財ごとに、直近 trade.cost_turns ターンに買った 1 単位あたりの
+        決済通貨。戦争の割増を含み、自分の船で運んだ分も買った量に入れた平均）と、借りた船で運んだ
+        割合を足す（次のターンの
+        商社の原価。FX-63）。島がほかのどの加盟国とも禁輸で組めない財（embargoed。仕入れ直せない）
+        も足す。"""
         view = blocs.view_of(self.world, bloc, island_id)
-        charter = {
-            good: freight * QUANTITY_SCALE // qty
-            for (b, good), (freight, qty) in sorted(here.charter.items())
-            if b == bloc["id"] and freight > 0 and qty > 0
-        }
+        island = self.world.islands[island_id]
+        charter, share = {}, {}
+        prefix = f"{bloc['id']}:"
+        for key, history in sorted(island_state(island).get(traders.CHARTER, {}).items()):
+            if not key.startswith(prefix):
+                continue
+            freight = sum(row[0] for row in history)
+            qty = sum(row[1] for row in history)
+            chartered = sum(row[2] if len(row) > 2 else 0 for row in history)
+            if freight > 0 and qty > 0:
+                good = key[len(prefix) :]
+                charter[good] = freight * QUANTITY_SCALE // qty
+                share[good] = min(BASIS, chartered * BASIS // qty)
         if charter:
             view["charter"] = charter
+            # 借りた船で運んだ割合（1万分の1。自国の船の運賃の見込みをその分減らす）
+            view["charter_share"] = share
+        embargoed = self._embargoed(bloc, island_id)
+        if embargoed:
+            view["embargoed"] = embargoed
         return view
+
+    def _embargoed(self, bloc: dict[str, Any], island_id: int) -> list[str]:
+        """島が、圏のほかのどの加盟国とも禁輸で取引できない財（FX-63）。"""
+        others = [m for m in bloc["members"] if m != island_id and m in self.world.islands]
+        key = str(island_id)
+        if not others or not (
+            self.world.islands[island_id].policy.embargoes
+            or any(key in self.world.islands[m].policy.embargoes for m in others)
+        ):
+            return []
+        return [
+            good
+            for good in tradable_goods(self.defs)
+            if all(policy.blocked(self.world, island_id, m, good) for m in others)
+        ]
 
     def _site(self, island: IslandState) -> None:
         """商社の島の中の運賃を、港のマスから、扱う財で数えるようにする（economy/freight.py）。"""
@@ -2051,8 +2410,9 @@ class _Round:
                 f.economy.pop("site", None)
             goods = []
             for good, item in sorted(traders.goods_of(f).items()):
-                if item.get("dir") == traders.EXPORT and item["x"] > 0:
-                    goods.append([good, item["x"], False])
+                load = item["x"] + item.get(traders.PLAN_X, 0)  # 輸出の計画の分も（PL-62）
+                if item.get("dir") == traders.EXPORT and load > 0:
+                    goods.append([good, load, False])
                 elif item.get("dir") == traders.IMPORT and item["m"] > 0:
                     goods.append([good, item["m"], True])
             f.economy["freight_goods"] = goods
@@ -2102,8 +2462,9 @@ def contract_view(c: dict[str, Any], island_id: int, turn: int) -> dict[str, Any
         "currency": c["currency"],
         "state": c["state"],
         "start": c["start"],
-        "end": c["end"],
-        "active": c["state"] == contracts.ACTIVE and c["start"] <= turn + 1 < c["end"],
+        "end": c["end"],  # 無期限で終わりの決まっていない契約は None（FX-68）
+        "indefinite": bool(c.get("indefinite")),
+        "active": contracts.running(c, turn + 1),
         "delivered": c["delivered"],
         "short": c["short"],
         "short_why": c.get("short_why") if c["short"] > 0 else None,  # 直近の不足のわけ
@@ -2191,7 +2552,13 @@ def check_contract(island: IslandState, payload: dict[str, Any], defs: Defs) -> 
         raise OrderFailed("reason_contract_partner")
     if payload.get("side") not in ("sell", "buy"):
         raise OrderFailed("reason_invalid_payload")
-    if payload.get("quantity", 0) <= 0 or payload.get("turns", 0) <= 0:
+    if payload.get("quantity", 0) <= 0:
+        raise OrderFailed("reason_invalid_payload")
+    # 期間か無期限（FX-68）のどちらか一方
+    if payload.get("indefinite"):
+        if "turns" in payload:
+            raise OrderFailed("reason_invalid_payload")
+    elif payload.get("turns", 0) <= 0:
         raise OrderFailed("reason_invalid_payload")
     if payload.get("price", -1) < 0:
         raise OrderFailed("reason_invalid_payload")

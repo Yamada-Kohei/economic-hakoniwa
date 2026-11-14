@@ -124,6 +124,10 @@ class MarketRecord(models.Model):
     supply = models.BigIntegerField("売りたかった量")
     # 値段の種類（trade 約定・quote 気配・carry 持ち越し。空は種類を残す前の記録。W-227）
     kind = models.CharField("値段の種類", max_length=8, blank=True, default="")
+    # 買い手と売り手の別（国営・民営・商社・海外の商人・家計・国の倉庫・政府）ごとの
+    # [注文した量, 約定した量]（W-72・W-258。空は別を残す前の記録）
+    buyers = models.JSONField("買い手の別ごとの量", default=dict, blank=True)
+    sellers = models.JSONField("売り手の別ごとの量", default=dict, blank=True)
 
     class Meta:
         verbose_name = verbose_name_plural = "市場の記録"

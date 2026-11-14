@@ -103,6 +103,12 @@ MCP は `saved: false`）。読んでよければ、同じ列に `"confirm": tru
 {"kind":"build_power_line","payload":{"tiles":[[13,12],[14,12],[15,12]]}}
 ```
 
+探鉱（MI-68）は、島にない鉱業資源（ウラン鉱石を除く）を 1 つ選び、それを掘る施設（鉱山・採石場・油井）の建つ地形の空いたマスに探鉱隊を置きます。探せる資源と置ける地形は、国の要約の `island.exploration.explorable` にあります。賃金と機械・燃料は公共事業費（予算の `construction`）から払い、全力で動いて `island.exploration.turns` ターンで終わります。島の地質に鉱床があれば資源に加わり、なければその資源はもう探せません。やめるときは探鉱隊のマスに `demolish` を出します（払ったお金は戻りません）。
+
+```json
+{"kind":"explore","payload":{"resource":"bauxite","x":20,"y":9}}
+```
+
 町（住宅地）は自動でできますが、国の命令で国の床（公営住宅）を足せます。町のマスか、町を置ける空いた平地を選び、足す床の数 `floors`（最低の広さで住める人数）か、床を届かせる段階 `level`（その段階の上限まで）のどちらか1つを書きます。国が予算の `housing`（住宅費）で資材を市場で買い、1ターンに床を少しずつ足します。通勤圏に空いた平地があっても、高層の段階まで育てられます（上下水道の条件は同じ）。住む人は、国の床の家賃を国庫に払います。
 
 ```json
@@ -180,6 +186,9 @@ MCP は `saved: false`）。読んでよければ、同じ列に `"confirm": tru
 ```json
 {"kind":"propose_contract","payload":{"partner":5,"side":"buy","good":"grain","quantity":10,"price":100,"currency":5,"turns":12,"delivery":"market"}}
 ```
+
+期間の代わりに `"indefinite": true` を書くと無期限の契約になります（`turns` は書きません）。
+満期がなく、どちらかが `cancel_contract` を出してから `trade.contract_cancel_turns` ターン後に終わります。
 
 相手の提案を買い手として受ける例です。契約番号は `get api/islands/4/trade` で確認します。
 提案した命令と同時に、まだ存在しない契約番号を指定してはいけません。
