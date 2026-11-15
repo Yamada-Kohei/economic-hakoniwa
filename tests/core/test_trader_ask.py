@@ -43,13 +43,20 @@ def traded(game):
 
 
 def _importer(game, world):
-    """輸入している財がある、市場経済の島の商社と財。"""
+    """輸入している財がある、市場経済の島の商社と財（狙う量があり、今も輸入が引き合う財。荷を売り
+    切った後に向きを決め直しても輸入のままの財を選ぶ）。"""
     for island in world.islands.values():
         if traders.is_planned(island):
             continue
+        found = traders.prospects(island, game.defs, game.config)
         for f in traders_of(island, game.config):
             for good, item in sorted(traders.goods_of(f).items()):
-                if item.get("dir") == traders.IMPORT and item.get("bm") is not None:
+                if (
+                    item.get("dir") == traders.IMPORT
+                    and item.get("bm") is not None
+                    and item.get("m")
+                    and traders.importable(found.get(good))
+                ):
                     return island, f, good, item
     pytest.skip("輸入している商社がない")
 
@@ -112,6 +119,10 @@ def test_foreign_currency_is_bought_ahead_only_for_the_flow(game, traded):
     for item in traders.goods_of(f).values():
         if item.get("dir") == traders.IMPORT and item.get("m"):
             item["hold"], item["held"] = item["m"] * 10, [0, 0]
+            # 手元の荷がないので、持ちすぎの値下げと輸出し直しもない（世界の小さな違いで、前の
+            # ターンまでの持ちすぎの印が残っている財がある）
+            item.pop(traders.OUTLET, None)
+            item.pop(traders.REEXPORT, None)
             assert traders.import_want(game.config, item) > item["m"]
             flows += item["m"]
     plan = r._import_plan(island, f, {})

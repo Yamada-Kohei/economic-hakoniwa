@@ -211,7 +211,7 @@
 
 ## [5 施設と企業](05-firms.md)
 
-決まり 71 個、うち仮の決まりの表にあるもの 0 個。
+決まり 72 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -272,7 +272,7 @@
 | FM-55 | 創業融資: 実績のない会社（資本家階級が新しく起こす会社と、建国の後にできて決めたターン数たたな… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
 | FM-56 | 資本家階級の預金で新しい会社の出資に足りなければ、持っている民営の会社の株（会社の預金と施設の純… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
 | FM-57 | 生産補助（売上の率 r）を受ける施設の売り値の下限は、1単位の変動費 ÷ (1 + r)（補助の… | 決定（2026-11-07） | tests/core/test_phase3_4.py |
-| FM-58 | 民営の参入（FM-17・FM-56 の後）と民営化（FM-26）の出資や代金が資本家階級の預金で… | 決定（2026-11-08） | tests/core/test_owners_cap.py |
+| FM-58 | 民営の参入（FM-17・FM-56 の後）と民営化（FM-26）の出資や代金が資本家階級の預金で… | 決定（2026-11-08、暮らしの分は 2026-11-15） | tests/core/test_owners_cap.py |
 | FM-59 | 管財人（W-18・W-200・W-254 の直し）: 倒産した施設は、差し押さえた銀行が管財人と… | 決定（2026-11-10） | tests/core/test_receivership.py |
 | FM-60 | 居抜きの売り（W-18・W-200 の直し）: 差し押さえた施設と閉鎖に入った施設は、売りに出て… | 決定（2026-11-10） | tests/core/test_receivership.py |
 | FM-61 | 工業団地のない国の工場（W-256）: 民営の工場（`firms.open_land` でない施… | 決定（2026-11-10） | tests/core/test_balance_round6.py、tests/core/test_open_land_factory.py |
@@ -286,6 +286,7 @@
 | FM-69 | 店の参入（2026-11-12、W-261）: 民営の店の参入は、工場の参入と別に1島1ターン1… | 決定（2026-11-12、本人のカード「推しの全部」） | tests/core/test_retail_posted.py |
 | FM-70 | 町の店の枠（2026-11-12、W-261）: 町に入る商店の数は、町の段階の数（`settl`… | 決定（2026-11-12、本人のカード「推しの全部」） | tests/core/test_balance_round7.py、tests/core/test_retail_posted.py |
 | FM-71 | 段階の作り方で建てる農場（W-257）: 機械化・近代化の作り方を選んで農場を建てる命令は、初め… | 決定 | tests/core/test_farm_build_grade.py、tests/server/test_migration.py |
+| FM-74 | 発電所の働き手（2026-11-14、本人「電力会社としてだもんな」「全部一気にやっていい」）:… | 決定 | tests/core/test_power_staff.py |
 
 ## [6 国の財政と政策](06-finance.md)
 
@@ -719,7 +720,7 @@
 | GT-24 | 長い試し回し（測り・関門・夜の点検）で崩れが main より増えたら、増えた分を直してからマージ… | 決定 |  |
 | GT-25 | 規模の目標: 既定の 50 島で 1 回のターン更新を 5 分以内にする | 決定 | （未確認） |
 | GT-26 | 標準の計画は測りと自動の試験と開発用のサンプルの島だけで使い、サーバーの世界の国は動かさない（命… | 決定 | tests/core/test_gate.py |
-| GT-27 | 標準の計画は毎ターン上から見て最初に足りないもの（食料・発電・工事の資材・投入財・消費財・使って… | 決定 | tests/core/test_autoplan_budget.py、tests/core/test_gate.py |
+| GT-27 | 標準の計画は毎ターン上から見て最初に足りないもの（食料・発電・工事の資材・投入財・消費財・使って… | 決定 | tests/core/test_autoplan_budget.py、tests/core/test_gate.py、tests/core/test_infrastructure.py |
 | GT-28 | 標準の計画の世界の側: 貿易の始まった島ぜんぶで 1 つの誰でも入れる貿易圏を作る（決済通貨は人… | 決定 | tests/core/test_trade.py |
 | GT-29 | 標準の計画の飢饉の手: 食べ物の充足が下がった月は国営の農場を穀物に替え、国の倉庫の食べ物を出し… | 決定 | tests/core/test_balance_round5.py |
 | GT-37 | 標準の計画の財政の手: 国が賃金を払いきれなければ所得税と消費税を少しずつ上げ、ゆとりが戻れば建… | 決定 | tests/core/test_balance_round5.py |
