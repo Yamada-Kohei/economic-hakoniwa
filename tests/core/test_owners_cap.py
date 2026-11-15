@@ -137,16 +137,24 @@ def test_change_from_planned_starts_owners_from_what_they_own(game, base):
     owners = island.economy.households[OWNERS]
     assert owners["persons"] == 0 and owners[CAP] == 0
     hungry = []
+    entered = False
     for _ in range(24):
         run_checked(game, world, 1)
         owners = island.economy.households[OWNERS]
         assert owners["persons"] <= share_target(owners, population(island))
         hungry.append(owners.get("hunger", 0.0))
+        # 参入の印と株は、工事が終わるか、資材が入らずに取りやめると外れるので、毎ターン見る
+        # （標準の計画の建てる順が変わり、建材の品薄で参入した店の工事が 24 ターン目より前に
+        # 取りやめになった。W-274）
+        if any(f.ext.get("private_entry") for f in island.facilities):
+            entered = (
+                entered
+                or sum(ledger.holdings(island, household(OWNERS), ledger.EQUITY).values()) > 0
+            )
     # 出資した人が資本家階級に入って出資した（資本家階級が株を持つ）。軽い店だけの参入だと、工事中の
     # 施設の株は財産で暮らせる人数（LB-42）に数えないので、出資した人は次のターンに一般の層へ戻る
     # ことがある。人数ではなく株で見る
-    assert any(f.ext.get("private_entry") for f in island.facilities)
-    assert sum(ledger.holdings(island, household(OWNERS), ledger.EQUITY).values()) > 0
+    assert entered
     assert max(hungry) < 1.0
 
 

@@ -199,11 +199,14 @@ def test_rescue_refills_the_treasury_for_next_turn(game, warmed):
     open_books(island)
     spending = sum(v for k, v in funds.spent(island).items() if k != BONDS)
     buffer = game.config.get("bonds.buffer_turns")
-    target = spending * (1 + buffer) + debt.due(island, ctx.turn + 1, redemptions=False)
     debt_before = debt.total_debt(island)
     failures.Failures().run_island(island, ctx)
     log = next(e for e in island.log if e.kind == "bank_bailed_out")
     assert log.args["amount"] > 0
+    # 次のターンの利払いは、救済のために出した国債の分も含めて、救済の後に見る（救済の前の利払いで
+    # 見ると、救済の国債の利子の分だけ目標を超えて見える。標準の計画の建てる順が変わった世界で、
+    # その分が 1 割を超えた。W-274）
+    target = spending * (1 + buffer) + debt.due(island, ctx.turn + 1, redemptions=False)
     money = ledger.money(island, ledger.GOV)
     # 国債は入札の組ごとにまとめて出すので、目標を少し（1 割まで）超えることがある。世界の流れで
     # 国庫の額が変わると超え方が変わるので、上は 1 割までにする（超えすぎは出しすぎ）

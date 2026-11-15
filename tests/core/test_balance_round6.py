@@ -123,6 +123,10 @@ def test_state_facilities_are_repaired_from_the_construction_budget(game, base):
     island, f = island_with(world, game, OWNER_STATE)
     wear_down(game, f, 0.5)
     f.economy["target"] = fac.FULL
+    # 直す資材を国の倉庫に置く（設備の割合は一番減った資材で決まる。標準の計画の建てる順が変わり、
+    # 選ばれる施設が建材の品薄な島の製鉄所になって、市場で建材が買えずに直らなかった。W-274）
+    for good, qty in equipment.kit(game.defs, f.kind).items():
+        stock.add(island.warehouse, good, qty, world.turn, game.defs.goods)
     capital = f.economy.get("capital", 0)
     before = equipment.condition(f)
     run_checked(game, world, 3)
@@ -235,9 +239,10 @@ def test_stock_of_a_closed_plant_goes_back_on_the_market(game, base):
     stock.add(f.stock, "wood", 7000, world.turn, game.defs.goods)
     held = stock.total(f.stock, "wood")
     before = stock.total(island.warehouse, "wood")
+    offered = trade.to_market(island).get("wood", 0)  # ほかの閉じた施設から引き取って売りに出た分
     remove_facility(island, context(game, world), f)
     assert stock.total(island.warehouse, "wood") == before + held
-    assert trade.to_market(island)["wood"] == held
+    assert trade.to_market(island)["wood"] == offered + held
     run_checked(game, world, 1)
     record = next(m for m in island.markets if m.good == "wood")
     assert record.supply >= held  # 国が引き取った木材が売りに出ている

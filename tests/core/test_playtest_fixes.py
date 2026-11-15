@@ -193,6 +193,9 @@ def test_entry_block_is_recorded_and_logged_once(game, warmed):
         "owners_short",
         "loan_short_of_coverage",
         "no_bank",
+        # 工業団地の外に建てられるマスはあるが、近くに雇える人が足りない（標準の計画が製鉄所・
+        # 機械工場・鉱山を早く建てるようになり、40 ターン目の島で人手が埋まった。W-274）
+        "no_workers",
     }
     assert len(logged) == 1  # わけが変わらなければ、ログは1度だけ
     text = format_log(game.defs, logged[0].kind, logged[0].args)
