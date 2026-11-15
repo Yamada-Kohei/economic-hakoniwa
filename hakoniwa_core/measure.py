@@ -27,7 +27,11 @@ compare は2つの結果を並べます。
 
 --store の置き場は、指紋・組の名前・Python と道具の版を鍵に結果を読み書きします。
 回している間だけ札を持ち、ほかの batch は結果を待ちます。完了の印と中身が合う結果だけを
-写すので、書きかけや壊れた結果は使いません。
+写すので、書きかけや壊れた結果は使いません。main の測りは、main が変わった後に最初に頼んだ
+batch が 1 回だけ回し、ほかの batch は置き場から写します（設計書 12 確かめ方 GT-45）。
+
+    python -m hakoniwa_core.measure batch --set quick --out-dir runs/main --store <置き場>
+    python -m hakoniwa_core.measure clean --store <置き場> --days 14
 """
 
 from __future__ import annotations
@@ -752,6 +756,7 @@ def batch(
     running: list[tuple[str, subprocess.Popen, IO[str]]] = []
     pending: list[tuple[str, int, int]] = []
     held: dict[str, float] = {}
+    began: dict[str, float] = {}
     failed = 0
     try:
         while waiting or running or pending:
@@ -793,6 +798,7 @@ def batch(
                     log.close()
                     raise
                 running.append((name, process, log))
+                began[name] = time.monotonic()
                 print(f"始めた: {name}", flush=True)
             time.sleep(1)
             if result_store is not None:
@@ -813,6 +819,17 @@ def batch(
                 name, process, log = item
                 returncode = process.poll()
                 if returncode is None:
+                    limit = reuse.RUN_LIMIT_SECONDS
+                    if (
+                        result_store is not None
+                        and name in began
+                        and time.monotonic() - began[name] > limit
+                    ):
+                        # 固まった処理が札を持ち続けると、ほかの batch がずっと待つ。止めて、
+                        # 次の回りで終わりを見てから札を外す
+                        del began[name]  # 止めるのは 1 度だけ
+                        process.kill()
+                        print(f"止めた: {name}（{limit / 3600:.0f} 時間を超えた）", flush=True)
                     continue
                 running.remove(item)
                 log.close()
@@ -1166,6 +1183,11 @@ def main(argv: list[str] | None = None) -> int:
         metavar="NAME",
         help="置き場の札に書く名前（スレッドの名前など）",
     )
+    clean = sub.add_parser(
+        "clean", help="結果の置き場の、長く使っていない版と古い一時のファイルを消す"
+    )
+    clean.add_argument("--store", default=os.environ.get(reuse.STORE_ENV, ""), metavar="DIR")
+    clean.add_argument("--days", type=float, default=14.0, help="この日数より使っていない版を消す")
     cmp = sub.add_parser("compare", help="2つの結果を比べる")
     cmp.add_argument("base")
     cmp.add_argument("new")
@@ -1188,6 +1210,12 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(show(Path(args.out_dir)))
         return 1 if failed else 0
+    if args.command == "clean":
+        if not args.store:
+            parser.error("--store か環境変数 " + reuse.STORE_ENV + " で置き場を渡してください")
+        removed = reuse.prune(Path(args.store), args.days)
+        print("\n".join(f"消した: {name}" for name in removed) or "消す物はない")
+        return 0
     if args.command == "compare":
         print(compare(Path(args.base), Path(args.new)))
         return 0

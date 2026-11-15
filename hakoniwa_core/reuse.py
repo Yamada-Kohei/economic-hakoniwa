@@ -4,13 +4,15 @@
 batch で同じ組の結果が見つかり、指紋が今の中身と同じなら、その結果をそのまま使う。指紋が違う・
 書いていない・ファイルが壊れているときは、使わずに回す（回しすぎる側に倒す）。
 
-読み書きする置き場では、指紋・組の名前・Python と道具の版を鍵にする。実行中は札を持ち、
-結果を置き終えてから、バイト数とハッシュを書いた完了の印を置く。札は計算を節約するためだけで、
-写してよいかは完了の印と結果の中身で確かめる。
+読み書きする置き場（measure batch --store、設計書 12 確かめ方 GT-45）では、指紋・組の名前・Python と
+道具の版を鍵にする。実行中は札を持ち、結果を中身のハッシュ入りの名前で置き終えてから、ファイルの
+名前とハッシュを書いた完了の印を置く。札は計算を節約するためだけで、写してよいかは完了の印と
+結果の中身で確かめる。
 
 指紋に入れるもの: hakoniwa_core/ の全部（測りと関門の道具も。結果の形を決めるため）、game.yaml、
 そこから指される定義データ（packs_dirs）とスキーマ（schemas_dir）。改行は LF にそろえて数える
-（Windows の作業ツリーと同じ指紋になるように）。入れないもの: server/・tests/・docs/・Python の
+（Windows の作業ツリーと同じ指紋になるように）。国の大きさの倍を環境変数 HK_SCALE で替えている
+ときは、その倍も入れる。入れないもの: server/・tests/・docs/・Python の
 版（3.12・3.13・3.14 で状態の指紋が一致することを確かめてある）。
 """
 
@@ -20,6 +22,8 @@ import hashlib
 import importlib.metadata
 import json
 import os
+import re
+import shutil
 import socket
 import sys
 import time
@@ -29,6 +33,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from hakoniwa_core import scale
 from hakoniwa_core.config import default_config_path, load_config
 
 PACKAGE = Path(__file__).resolve().parent
@@ -36,6 +41,8 @@ STORE_ENV = "HAKONIWA_MEASURE_STORE"  # 置き場の場所（--store の既定�
 OWNER_ENV = "HAKONIWA_MEASURE_OWNER"  # 札に書く名前（--owner の既定）
 STALE_SECONDS = 600.0  # 札の時刻がこれより古ければ、止まったとみて引き継ぐ
 BEAT_SECONDS = 30.0  # 回している間、札の時刻を新しくする間隔
+RUN_LIMIT_SECONDS = 6 * 3600.0  # 置き場を使う batch は、これより長く回る組を固まったとみて止める
+_KEY = re.compile(r"^[0-9a-f]{64}-py")  # 置き場の中の、版ごとのフォルダの名前
 _sleep = time.sleep  # 試験が time.sleep を差し替えても、置き換えのやり直しは本当に待つ
 
 # 数えないファイル（Python が作る写し）
@@ -76,9 +83,16 @@ def code_fingerprint(config_path: str | Path | None = None) -> str:
     """いま動いている計算の中身（コード・設定・定義データ）の指紋。"""
     path = Path(config_path) if config_path else default_config_path()
     config = load_config(path)
-    return fingerprint_paths(
+    fingerprint = fingerprint_paths(
         [PACKAGE, path.resolve(), *config.packs_dirs, config.schemas_dir], config.base_dir
     )
+    # 国の大きさの倍を環境変数で替えていると、同じファイルでも結果が変わる（hakoniwa_core/scale.py）
+    override = os.environ.get(scale.ENV)
+    if override:
+        fingerprint = hashlib.sha256(
+            f"{fingerprint}\0{scale.ENV}={float(override)!r}".encode()
+        ).hexdigest()
+    return fingerprint
 
 
 def find(
@@ -178,16 +192,9 @@ class Store:
         return {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
 
     @staticmethod
-    def _copy_series(source: Path, target: Path) -> dict[str, Any]:
-        """大きい時系列は一度に抱えず、写したバイトそのものを数える。"""
-        digest = hashlib.sha256()
-        size = 0
-        with source.open("rb") as src, target.open("wb") as dst:
-            while block := src.read(1024 * 1024):
-                dst.write(block)
-                digest.update(block)
-                size += len(block)
-        return {"sha256": digest.hexdigest(), "bytes": size}
+    def _file_name(name: str, stamp: dict[str, Any], suffix: str) -> str:
+        """結果のファイルの名前。中身のハッシュを入れるので、同じ名前の中身は変わらない。"""
+        return f"{name}.{stamp['sha256'][:16]}.{suffix}"
 
     def _result(self, raw: bytes, name: str) -> dict[str, Any]:
         data = json.loads(raw.decode("utf-8"))
@@ -200,6 +207,7 @@ class Store:
         return data
 
     def _done(self, name: str) -> dict[str, Any]:
+        """完了の印を読む。形・組の名前・指紋・版が合わなければ ValueError か KeyError。"""
         data = json.loads((self.folder / f"{name}.done.json").read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             raise ValueError("完了の印が JSON の辞書ではない")
@@ -221,101 +229,143 @@ class Store:
                 or not isinstance(stamp.get("sha256"), str)
                 or not isinstance(stamp.get("bytes"), int)
                 or stamp["bytes"] < 0
+                or not isinstance(stamp.get("file"), str)
+                or stamp["file"] != self._file_name(name, stamp, kind)
             ):
-                raise ValueError("完了の印のハッシュかバイト数を読めない")
+                raise ValueError("完了の印のファイル名・ハッシュ・バイト数を読めない")
         return data
 
+    def _copy(self, source: Path, target: Path) -> dict[str, Any]:
+        """source を target に写し、写したバイトそのもののハッシュとバイト数を返す。"""
+        digest = hashlib.sha256()
+        size = 0
+        with source.open("rb") as src, target.open("wb") as dst:
+            while block := src.read(1024 * 1024):
+                dst.write(block)
+                digest.update(block)
+                size += len(block)
+        return {"sha256": digest.hexdigest(), "bytes": size}
+
+    def _matches(self, stamp: dict[str, Any]) -> bool:
+        """印の欄が指すファイルが置き場にあり、バイト数とハッシュが合うか。"""
+        digest = hashlib.sha256()
+        size = 0
+        try:
+            with (self.folder / stamp["file"]).open("rb") as src:
+                while block := src.read(1024 * 1024):
+                    digest.update(block)
+                    size += len(block)
+        except OSError:
+            return False
+        return size == stamp["bytes"] and digest.hexdigest() == stamp["sha256"]
+
+    def _verified(self, name: str) -> dict[str, Any] | None:
+        """印が読めて、印の指す結果が置き場にあり中身が合うときだけ、その印。"""
+        try:
+            done = self._done(name)
+            raw = (self.folder / done["files"]["json"]["file"]).read_bytes()
+            if self._stamp(raw) != {k: done["files"]["json"][k] for k in ("sha256", "bytes")}:
+                return None
+            self._result(raw, name)
+            return done
+        except (OSError, ValueError, KeyError):
+            return None
+
     def fetch(self, name: str, out_dir: Path, series: bool) -> tuple[bool, str]:
-        """印と中身が全部合った結果だけを out_dir に写す。"""
+        """印と中身が全部合った結果だけを out_dir に写す。
+
+        出力先の一時の名前に写し、写したバイトそのものを印と照らしてから、本当の名前に置く。
+        """
         temporary: list[Path] = []
+        marker = self.folder / f"{name}.done.json"
         try:
             try:
                 done = self._done(name)
             except FileNotFoundError:
                 return False, "置き場に結果がない"
-            raw = (self.folder / f"{name}.json").read_bytes()
-            if self._stamp(raw) != done["files"]["json"]:
-                return False, "結果が印と合わない"
-            self._result(raw, name)
-            if series and "jsonl" not in done["files"]:
+            files = done["files"]
+            if series and "jsonl" not in files:
                 return False, "置き場に時系列がない"
             out_dir.mkdir(parents=True, exist_ok=True)
             result = self._temporary(out_dir / f"{name}.json")
             temporary.append(result)
-            result.write_bytes(raw)
+            stamp = self._copy(self.folder / files["json"]["file"], result)
+            if stamp != {k: files["json"][k] for k in ("sha256", "bytes")}:
+                return False, "結果が印と合わない"
+            self._result(result.read_bytes(), name)
             if series:
                 timeline = self._temporary(out_dir / f"{name}.jsonl")
                 temporary.append(timeline)
-                if not (self.folder / f"{name}.jsonl").is_file():
-                    return False, "置き場に時系列がない"
-                stamp = self._copy_series(self.folder / f"{name}.jsonl", timeline)
-                if stamp != done["files"]["jsonl"]:
+                stamp = self._copy(self.folder / files["jsonl"]["file"], timeline)
+                if stamp != {k: files["jsonl"][k] for k in ("sha256", "bytes")}:
                     return False, "時系列が印と合わない"
             log = self._temporary(out_dir / f"{name}.log")
             temporary.append(log)
             log.write_text(f"使い回し: {self.folder}\n", encoding="utf-8")
-            # 検証した一時ファイルを使う。検証のあとに元のファイルを開き直さない。
             if series:
                 os.replace(timeline, out_dir / f"{name}.jsonl")
             os.replace(result, out_dir / f"{name}.json")
             os.replace(log, out_dir / f"{name}.log")
-            return True, ""
         except (OSError, ValueError, KeyError) as exc:
             return False, f"置き場から写せない（{exc}）"
         finally:
             self._cleanup(temporary)
-
-    def _place(self, raw: bytes, target: Path, name: str, temporary: list[Path]) -> bytes:
-        """結果を置き、置き場に残ったバイトを返す。先に置かれた結果は書き換えない。
-
-        2 本が同じ組を二重に回して同時に置いても、先に置いた方の結果が残り、どちらの印もその
-        結果のハッシュを書く（結果の `seconds` は回すたびに違うので、後から置き換えると印と
-        合わなくなる）。os.link は置き先がもうあれば失敗するので、置くのは 1 本だけになる。
-        """
-        broken = False
         try:
-            stored = target.read_bytes()
-            self._result(stored, name)
-            return stored
-        except FileNotFoundError:
+            os.utime(marker, None)  # 使った時刻を残す（古い版の片付けの目安）
+        except OSError:
             pass
-        except (ValueError, KeyError):
-            broken = True  # 壊れた結果は置き直す
-        result = self._temporary(target)
-        temporary.append(result)
-        result.write_bytes(raw)
-        if broken:
-            self._replace(result, target)
-            return raw
-        try:
-            os.link(result, target)
-            return raw
-        except FileExistsError:
-            stored = target.read_bytes()
-            self._result(stored, name)
-            return stored
+        return True, ""
+
+    def _put(self, name: str, kind: str, source: Path, temporary: list[Path], placed: list[Path]):
+        """source を、中身のハッシュ入りの名前で置き場に置き、印に書く欄を返す。
+
+        名前に中身のハッシュが入るので、置いたファイルは後から書き換わらない。同じ中身がもう
+        あれば置かない。
+        """
+        staged = self._temporary(self.folder / f"{name}.{kind}")
+        temporary.append(staged)
+        stamp = self._copy(source, staged)
+        target = self.folder / self._file_name(name, stamp, kind)
+        if not target.is_file() or target.stat().st_size != stamp["bytes"]:
+            self._replace(staged, target)
+            placed.append(target)
+        return {"file": target.name, **stamp}
 
     def publish(self, name: str, out_dir: Path, series: bool) -> tuple[bool, str]:
         """結果を置いてから印を置く。すでにある結果には時系列だけを足す。
 
-        置き場の印と中身が合っていれば何もしない。合っていなければ（壊れた・印がない）作り直す。
+        結果と時系列は、中身のハッシュ入りの変わらない名前で書き終えてから、印（ファイルの名前と
+        ハッシュ）だけを最後に置き換える。同じ組を二重に回した 2 本が同時に置いても、印はいつも
+        自分の指すファイルと合う（結果の `seconds` は回すたびに違うので、同じ名前に上書きすると
+        印と食い違う）。印と中身が合わない・印が壊れている置き場は、ここで作り直す。
         """
         temporary: list[Path] = []
+        placed: list[Path] = []
         try:
-            raw = (out_dir / f"{name}.json").read_bytes()
-            self._result(raw, name)
+            source = out_dir / f"{name}.json"
+            self._result(source.read_bytes(), name)
             if series and not (out_dir / f"{name}.jsonl").is_file():
                 return False, "結果に時系列がない"
-            target = self.folder / f"{name}.json"
-            changed = False
-            try:
-                done = self._done(name)
-                if self._stamp(target.read_bytes()) != done["files"]["json"]:
-                    done = None
-            except (FileNotFoundError, ValueError, KeyError):
-                done = None
-            if done is None:
-                stored = self._place(raw, target, name, temporary)
+            current = self._verified(name)
+            files = dict(current["files"]) if current is not None else {}
+            if "jsonl" in files and series and not self._matches(files["jsonl"]):
+                del files["jsonl"]
+            if "json" in files and (not series or "jsonl" in files):
+                return True, ""
+            if "json" not in files:
+                files["json"] = self._put(name, "json", source, temporary, placed)
+            if series and "jsonl" not in files:
+                files["jsonl"] = self._put(
+                    name, "jsonl", out_dir / f"{name}.jsonl", temporary, placed
+                )
+            # 置く直前に印を読み直す。遅れて来た publish が、先に置かれた印（時系列つきなど）を
+            # 悪くしないよう、もう置いてある物を先に使う
+            latest = self._verified(name)
+            if latest is not None:
+                for kind, stamp in latest["files"].items():
+                    if kind == "json" or self._matches(stamp):
+                        files[kind] = stamp
+            if latest is None or files != latest["files"]:
                 done = {
                     "name": name,
                     "fingerprint": self.fingerprint,
@@ -323,41 +373,20 @@ class Store:
                     "owner": self.owner,
                     "host": self.host,
                     "finished": datetime.now(UTC).isoformat(),
-                    "files": {"json": self._stamp(stored)},
+                    "files": files,
                 }
-                changed = True
-            if series and not self._series_matches(name, done):
-                timeline = self._temporary(self.folder / f"{name}.jsonl")
-                temporary.append(timeline)
-                done["files"]["jsonl"] = self._copy_series(out_dir / f"{name}.jsonl", timeline)
-                self._replace(timeline, self.folder / f"{name}.jsonl")
-                changed = True
-            if changed:
                 marker = self._temporary(self.folder / f"{name}.done.json")
                 temporary.append(marker)
                 marker.write_text(json.dumps(done, ensure_ascii=False), encoding="utf-8")
                 self._replace(marker, self.folder / f"{name}.done.json")
+            used = {stamp["file"] for stamp in files.values()}
+            self._cleanup(path for path in placed if path.name not in used)
             return True, ""
         except (OSError, ValueError, KeyError) as exc:
+            self._cleanup(placed)
             return False, f"置き場に置けない（{exc}）"
         finally:
             self._cleanup(temporary)
-
-    def _series_matches(self, name: str, done: dict[str, Any]) -> bool:
-        """置き場の時系列が印と合っているか。"""
-        stamp = done["files"].get("jsonl")
-        if stamp is None:
-            return False
-        digest = hashlib.sha256()
-        size = 0
-        try:
-            with (self.folder / f"{name}.jsonl").open("rb") as src:
-                while block := src.read(1024 * 1024):
-                    digest.update(block)
-                    size += len(block)
-        except FileNotFoundError:
-            return False
-        return {"sha256": digest.hexdigest(), "bytes": size} == stamp
 
     def _description(self, name: str) -> str:
         try:
@@ -446,3 +475,35 @@ class Store:
             pass
         finally:
             self._tokens.pop(name, None)
+
+
+def prune(root: Path, days: float) -> list[str]:
+    """置き場の片付け: days 日より長く使っていない版のフォルダと、古い一時のファイルを消す。
+
+    「使った」は、置いた・写した・札を立てた時刻（完了の印と札の更新時刻）で見る。消した物の
+    名前を返す。消している間に読みに来た batch は、写せなかった扱いで自分で回す。
+    """
+    removed: list[str] = []
+    now = time.time()
+    if not root.is_dir():
+        return removed
+    for folder in sorted(p for p in root.iterdir() if p.is_dir() and _KEY.match(p.name)):
+        marks = [*folder.glob("*.done.json"), *folder.glob("*.lock")]
+        try:
+            used = max((p.stat().st_mtime for p in marks), default=folder.stat().st_mtime)
+        except OSError:
+            continue
+        if now - used > days * 86400:
+            shutil.rmtree(folder, ignore_errors=True)
+            removed.append(folder.name)
+            continue
+        for path in folder.iterdir():  # 落ちた batch が残した一時のファイル
+            if ".tmp-" not in path.name and ".stale-" not in path.name:
+                continue
+            try:
+                if now - path.stat().st_mtime > 86400:
+                    path.unlink()
+                    removed.append(f"{folder.name}/{path.name}")
+            except OSError:
+                pass
+    return removed
