@@ -26,7 +26,8 @@ digests は simulate --digests で書いた指紋を比べ、共通のターン�
 
 --reuse に前の結果のフォルダを渡すと、計算の中身（hakoniwa_core・game.yaml・packs・schemas）が
 前と同じ組は回さず、その結果を写します（hakoniwa_core/reuse.py）。main の結果を何度も回し直さずに
-済みます。
+済みます。`measure fingerprint` は今の計算の中身の指紋を出します。main と同じなら（画面・文書だけの
+直しなど）、その版は測らずに main の結果を使えます（W-236 H-2）。
 
 --store の置き場は、指紋・組の名前・Python と道具の版を鍵に結果を読み書きします。
 回している間だけ札を持ち、ほかの batch は結果を待ちます。完了の印と中身が合う結果だけを
@@ -720,6 +721,33 @@ def run_name(scenario: str, seed: int, turns: int) -> str:
     return f"{scenario}-s{seed}-t{turns}"
 
 
+# 1 ターンの秒の目安（HAL で 1 組 1 コア、c2d2639 の通しの平均）。回す順を決めるためだけに使う
+# （長い組から先に始めると、並べる本数が組の数より少ないときに全体が早く終わる。W-236 H-5）。
+# 結果には響かない（各組は別々の処理で、始める順は世界に入らない）。
+TURN_SECONDS = {
+    "open": 8.5,
+    "independent": 8.6,
+    "plan": 7.9,
+    "none": 3.4,
+    "war": 1.25,
+    "small": 0.43,
+}
+
+
+def expected_seconds(scenario: str, turns: int) -> float:
+    """組の重さの目安（秒）。目安のない場面は島の数から見積もる（50 島で 1 ターン約 8 秒）。"""
+    per_turn = TURN_SECONDS.get(scenario)
+    if per_turn is None:
+        islands = SCENARIOS[scenario].islands if scenario in SCENARIOS else 50
+        per_turn = 8.0 * islands / 50
+    return per_turn * turns
+
+
+def longest_first(names: Iterable[tuple[str, int, int]]) -> list[tuple[str, int, int]]:
+    """重い組から並べる（同じ重さなら元の順のまま）。"""
+    return sorted(names, key=lambda n: -expected_seconds(n[0], n[2]))
+
+
 def batch(
     names: Iterable[tuple[str, int, int]],
     out_dir: Path,
@@ -730,6 +758,9 @@ def batch(
     owner: str = "",
 ) -> int:
     """場面・種・ターン数の組を、jobs 本ずつ別の処理で回す。結果は out_dir/<名前>.json。
+
+    重い組から先に始める（longest_first）。並べる本数が少ないときに、一番長い組が後回しになって
+    全体が延びないように。
 
     reuse_dirs の中に同じ組の結果があり、その指紋が今の計算の中身と同じなら、回さずに写す。
     """
@@ -756,6 +787,7 @@ def batch(
             print(f"置き場から写した: {name}", flush=True)
             continue
         waiting.append((scenario, seed, turns))
+    waiting = longest_first(waiting)
     running: list[tuple[str, subprocess.Popen, IO[str]]] = []
     pending: list[tuple[str, int, int]] = []
     held: dict[str, float] = {}
@@ -1239,6 +1271,10 @@ def main(argv: list[str] | None = None) -> int:
     digests.add_argument("new", metavar="B")
     see = sub.add_parser("show", help="結果の要点を並べる")
     see.add_argument("path")
+    sub.add_parser(
+        "fingerprint",
+        help="計算の中身の指紋を出す（main と同じなら、その版は測らずに main の結果を使える）",
+    )
     args = parser.parse_args(argv)
     if args.command == "digests":
         try:
@@ -1271,6 +1307,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "compare":
         print(compare(Path(args.base), Path(args.new)))
+        return 0
+    if args.command == "fingerprint":
+        print(reuse.code_fingerprint())
         return 0
     print(show(Path(args.path)))
     return 0
