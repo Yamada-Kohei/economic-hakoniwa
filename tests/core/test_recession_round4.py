@@ -8,6 +8,7 @@ import copy
 from hakoniwa_core import infra
 from hakoniwa_core.economy import Payer, funds, retail
 from hakoniwa_core.economy.prices import initial_prices
+from hakoniwa_core.geo import within
 from hakoniwa_core.ledger import CB
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
@@ -189,6 +190,11 @@ def test_ministry_counts_the_works_from_the_target_to_full(game, base, monkeypat
         key=lambda p: (p[1], p[0]),
     )
     x, y = place
+    # 周りのマスの道路は仕上がっている（標準の計画の建てる順が変わり、まだ道路の引かれていない隣の
+    # マスが並ぶようになった。W-274）
+    level = infra.FULL
+    for nx, ny in within(island, place, 1):
+        infra.set_level(island.tile(nx, ny), "road", level, level)
     tile = island.tile(x, y)
     infra.set_level(tile, "road", 300, 600)  # 目標 60% から 30% まで傷んだ
     assert works.road_tiles(island, game.defs, game.config, place) == [(x, y)]
