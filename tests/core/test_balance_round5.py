@@ -276,7 +276,13 @@ def test_independent_central_bank_buys_from_short_banks_and_sells_back(game, war
     # 準備預金を最低限より大きく下げる（預金の流出の代わり。持ち高の多くを売らせる）
     short = banks.excess_reserves(island, game.config, bank) + held * 2 // 3
     ledger.pay(island, bank, ledger.GOV, short, "tax_income")
-    assert banks.excess_reserves(island, game.config, bank) < 0
+    lacking = banks.excess_reserves(island, game.config, bank)
+    assert lacking < 0
+    terms = game.config.get("bonds.bucket_terms")
+    owned = debt.holdings_of(island, bank)
+    cheapest = min(
+        debt.bond_price(island, b, ctx.turn, terms) for b in island.bonds if b.id in owned
+    )
     yields = list(island.economy.finance["yields"])
     Bonds()._secondary(island, ctx)
     bought = sum(debt.holdings_of(island, ledger.CB).values()) - cb_before
@@ -285,7 +291,10 @@ def test_independent_central_bank_buys_from_short_banks_and_sells_back(game, war
     assert island.economy.finance["yields"] == yields
     assert sum(debt.holdings_of(island, bank).values()) == held - bought
     assert island.log[-1].kind == "cb_open_market_bought"
-    assert banks.excess_reserves(island, game.config, bank) >= -held // 100  # 売った代金で戻った
+    # 売った代金で戻った。戻らないのは額面より安く売った分だけ（利回りが利率より高いと額面を割る。
+    # 標準の計画の建てる順が変わり、40 ターン目の利回りが上がって値引きが 1% を超えた。W-274）
+    recovered = banks.excess_reserves(island, game.config, bank) - lacking
+    assert recovered >= bought * cheapest * 0.99
     # 足りない銀行がなければ、持ち高の減った銀行が余りのお金で買う分を売り戻す
     ledger.pay(island, ledger.CB, bank, held, "cb_loan")
     island.scratch.pop("bond_stats", None)

@@ -66,3 +66,11 @@ def own_island(request) -> dict:
         return {}
     island = Island.objects.filter(owner=request.user).values("id", "name").first()
     return {"own_island": island}
+
+
+def site_news(request) -> dict:
+    """更新のお知らせ（UI-96）: ログインした人が見ていない更新履歴。見出しの下の窓で1度だけ出す。"""
+    from server.web.top import unseen_updates
+
+    news = unseen_updates(request.user)
+    return {"site_news": news} if news else {}

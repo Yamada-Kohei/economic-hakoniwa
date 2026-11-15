@@ -17,9 +17,12 @@
     python -m hakoniwa_core.measure batch --set quick --out-dir runs/r2
     python -m hakoniwa_core.measure batch --set full --out-dir runs/r2-full
     python -m hakoniwa_core.measure compare runs/main runs/r2
+    python -m hakoniwa_core.measure digests runs/main.jsonl runs/new.jsonl
 
 quick は比べるための組（種1・2、300ターン）、full は回の終わりに1回だけ回す組（種1〜4、500ターン）。
 compare は2つの結果を並べます。
+digests は simulate --digests で書いた指紋を比べ、共通のターンで最初にずれた番号を出します。
+片方にしかないターンは件数だけを出し、ずれには数えません。
 
 --reuse に前の結果のフォルダを渡すと、計算の中身（hakoniwa_core・game.yaml・packs・schemas）が
 前と同じ組は回さず、その結果を写します（hakoniwa_core/reuse.py）。main の結果を何度も回し直さずに
@@ -43,7 +46,7 @@ from pathlib import Path
 from typing import IO, Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import gate, politics, reuse, warscene
+from hakoniwa_core import gate, politics, reuse, stops, warscene
 from hakoniwa_core.autoplan import (
     plan_trade,
     plan_turn,
@@ -132,34 +135,8 @@ SETS = {
     ],
 }
 
-# 施設が全力で動かなかった理由（施設の status の「:」の前）のまとめ方
-CAUSES = {
-    "target": "sales",  # 売れ行きに合わせた
-    "no_demand": "sales",
-    "power_price": "sales",
-    "cargo": "sales",  # 港・商社の扱う荷が少ない
-    "business": "sales",  # 小さい銀行の預金と融資が少ない
-    "input": "inputs",
-    "input_price": "inputs",
-    "public_price": "inputs",
-    "power": "power",
-    "no_grid": "power",
-    "funds": "funds",
-    "wages": "funds",
-    "workers": "workers",
-    "engineers": "engineers",
-    "equipment": "equipment",  # 設備の傷み（2026-11-13 に分けた。前は halted に入っていた）
-}
-CAUSE_GROUPS = (
-    "sales",
-    "inputs",
-    "power",
-    "funds",
-    "workers",
-    "engineers",
-    "equipment",
-    "halted",
-)
+# 施設が全力で動かなかった理由のまとめ方は、理由の表（hakoniwa_core/stops.py）の組（W-34）
+CAUSE_GROUPS = stops.GROUPS
 
 # 誰が買ったかを数える財（設備と工事の資材。回6 の材料）
 WATCH = ("machinery", "steel", "building_materials", "transport_ship", "automobile")
@@ -317,10 +294,8 @@ def jobs(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, float
         if need <= 0 or not fac.located(f):
             continue
         out["jobs.capacity"] += need
-        if is_stopped(f) or f.status in (fac.STATUS_STARTING, "halted", "riot", "recipe_change"):
-            cause = "halted"
-        else:
-            cause = CAUSES.get(f.status.partition(":")[0], "halted")
+        # 閉鎖の途中・差し押さえの施設は、理由にかかわらず止まった施設（災害と同じ組）に数える
+        cause = stops.G_HALTED if is_stopped(f) else stops.show(config, f.status, f.ext).group
         lost = need * (fac.FULL - min(fac.FULL, max(0, f.operating_rate))) / fac.FULL
         if lost > 0:
             out[f"idle.{cause}"] += lost
@@ -1105,6 +1080,46 @@ def _show_war(war: Mapping[str, Any]) -> list[str]:
     return out
 
 
+def _load_digests(path: Path) -> dict[int, str]:
+    """ずれを見逃さないよう、ターン番号の重複や行の形を確かめて指紋を読む。"""
+    digests = {}
+    with path.open(encoding="utf-8") as source:
+        for number, line in enumerate(source, 1):
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError as exc:
+                raise ValueError(f"{path}: {number} 行目の JSON を読めません") from exc
+            if (
+                not isinstance(row, dict)
+                or type(row.get("turn")) is not int
+                or not isinstance(row.get("digest"), str)
+                or not row["digest"]
+            ):
+                raise ValueError(
+                    f"{path}: {number} 行目には整数の turn と文字列の digest が必要です"
+                )
+            turn = row["turn"]
+            if turn in digests:
+                raise ValueError(f"{path}: {number} 行目のターン {turn} が重複しています")
+            digests[turn] = row["digest"]
+    return digests
+
+
+def compare_digests(base: Path, new: Path) -> tuple[str, int]:
+    """共通のターンの指紋を比べ、最初のずれと片方だけの件数を知らせる。"""
+    a, b = _load_digests(base), _load_digests(new)
+    common = sorted(a.keys() & b.keys())
+    first = next((turn for turn in common if a[turn] != b[turn]), None)
+    lines = [
+        f"全部同じ（{len(common)} ターン）" if first is None else f"最初にずれたターン: {first}",
+        f"A にしかないターン: {len(a.keys() - b.keys())}",
+        f"B にしかないターン: {len(b.keys() - a.keys())}",
+    ]
+    return "\n".join(lines), 0 if first is None else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1124,9 +1139,19 @@ def main(argv: list[str] | None = None) -> int:
     cmp = sub.add_parser("compare", help="2つの結果を比べる")
     cmp.add_argument("base")
     cmp.add_argument("new")
+    digests = sub.add_parser("digests", help="各ターンの指紋を比べ、最初にずれたターンを出す")
+    digests.add_argument("base", metavar="A")
+    digests.add_argument("new", metavar="B")
     see = sub.add_parser("show", help="結果の要点を並べる")
     see.add_argument("path")
     args = parser.parse_args(argv)
+    if args.command == "digests":
+        try:
+            output, code = compare_digests(Path(args.base), Path(args.new))
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
+        print(output)
+        return code
     if args.command == "batch":
         names = SETS[args.set]
         if args.only:

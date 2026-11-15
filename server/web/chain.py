@@ -16,6 +16,7 @@ from collections import defaultdict
 from typing import Any
 
 from hakoniwa_core import facilities as fac
+from hakoniwa_core import stops
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.modules.records import shortfall
 from hakoniwa_core.naming import facility_name
@@ -30,36 +31,29 @@ STREAK_TURNS = 12  # 品不足の続いたターン数を数える上限
 TIERS = [(1, "原料"), (2, "中間財"), (3, "最終財")]
 MERCHANT = "merchant"  # 海外の商人（約定の記録の売り手）
 
-# 止まっている工場のわけ（施設の status の頭）→ 分け方
-CAUSES = {
-    "input": "materials",
-    "input_price": "materials",
-    "funds": "materials",
-    "public_price": "materials",
-    "power": "power",
-    "no_grid": "power",
-    "workers": "workers",
-    "wages": "workers",
-    "budget": "workers",
-    "staff_plan": "workers",
-    "engineers": "engineers",
-    "target": "unsold",
-    "no_demand": "unsold",
-    "power_price": "unsold",
-    "halted": "other",
-    "riot": "other",
-    "recipe_change": "other",
-}
+# 止まっている工場のわけの分け方は、理由の表（hakoniwa_core/stops.py）の組（W-34）。工事は別
 CAUSE_NAMES = {
-    "materials": "材料を待っている",
-    "power": "電力を待っている",
-    "workers": "働き手が足りない",
-    "engineers": "技術者が足りない",
-    "unsold": "売れ行きに合わせて減らしている",
-    "other": "災害・生産方式の切り替え",
+    stops.INPUTS: "材料を待っている",
+    stops.G_POWER: "電力を待っている",
+    stops.G_FUNDS: "お金が足りない",
+    stops.G_WORKERS: "働き手が足りない",
+    stops.G_ENGINEERS: "技術者が足りない",
+    stops.G_EQUIPMENT: "設備が傷んでいる",
+    stops.SALES: "売れ行きに合わせて減らしている",
+    stops.G_HALTED: "災害で止まっている",
+    stops.WAR: "戦争・暴動で止まっている",
+    stops.OTHER: "生産方式の切り替え・その他",
     "construction": "工事が資材や資金を待っている",
 }
-CAUSE_ORDER = ["materials", "power", "workers", "engineers", "unsold", "other", "construction"]
+CAUSE_ORDER = [g for g in stops.GROUPS if g in CAUSE_NAMES] + ["construction"]
+
+
+def _reason(config, f) -> stops.Reason | None:
+    """止まり・調整の一覧に出す理由の行。準備中・扱う荷や客に合わせた操業・理由なしは出さない。"""
+    if not f.status:
+        return None
+    row = stops.show(config, f.status, f.ext)
+    return row if row.stop_mark else None
 
 
 def chain_view(
@@ -92,7 +86,8 @@ def chain_view(
         if fac.is_housing(config, f):
             continue
         recipe = fac.recipe_of(defs, f)
-        stopped = row.built and CAUSES.get(row.status.partition(":")[0]) not in (None, "unsold")
+        why = _reason(config, f) if row.built else None
+        stopped = why is not None and why.group != stops.SALES
         for table, goods in ((makers, recipe["outputs"]), (users, recipe["inputs"])):
             for good in goods:
                 counts = table[good][row.kind]
@@ -210,10 +205,10 @@ def _stalled(defs, config, state, facilities) -> list[dict[str, Any]]:
                 continue
             cause, good = "construction", ""
         else:
-            head, _, good = (row.status or "").partition(":")
-            cause = CAUSES.get(head)
-            if cause is None:
+            why = _reason(config, f)
+            if why is None:
                 continue
+            cause, good = why.group, stops.short_good(row.status) if why.tail == stops.GOOD else ""
         groups[cause].append(
             {
                 "number": row.number,

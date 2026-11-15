@@ -72,7 +72,7 @@ from dataclasses import replace
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger, stock, trade
+from hakoniwa_core import ledger, stock, stops, trade
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
@@ -109,7 +109,7 @@ from hakoniwa_core.economy import (
     standing,
 )
 from hakoniwa_core.economy import freight as freight_rates
-from hakoniwa_core.economy.households import draw_founders, founders_room
+from hakoniwa_core.economy.households import draw_founders, founders_room, owners_spare
 from hakoniwa_core.economy.prices import (
     construction_cost,
     site_cost,
@@ -1588,7 +1588,6 @@ class EntryExit(IslandStage):
         config = ctx.config
         island.scratch.pop(ENTRY_PLEDGE, None)
         want = amount - round_money(amount * config.get("firms.equity_share"))
-        owners = Payer(household(OWNERS))
         if OWNERS not in island.economy.households:
             return ("no_owners", {})
         offers = []
@@ -1624,7 +1623,8 @@ class EntryExit(IslandStage):
                 return capacity
             return startup
 
-        have = funds.available(island, owners)
+        # 資本家階級は暮らしの分（次のターンの消費の見込みと食べ物の額）を残した預金から出す
+        have = owners_spare(island, ctx.defs, config)
         pledge_plan: list[tuple[str, int, int]] = []
         investor: tuple[str, int | None] | None = None
         if target is not None:  # 建て増し: 出資するのは建て増す施設の持ち主（手元は _build で見る）
@@ -1644,7 +1644,13 @@ class EntryExit(IslandStage):
                 return sum(p for _, p, _ in pledge_plan) - keep
 
             investor = companies.choose_investor(
-                island, ctx.defs, kind, lambda n: amount - loan_for(n), pledge_room, exclude
+                island,
+                ctx.defs,
+                kind,
+                lambda n: amount - loan_for(n),
+                pledge_room,
+                exclude,
+                config,
             )
             loan = startup if investor is None else loan_for(investor[1])
             if investor is not None:
@@ -1804,10 +1810,13 @@ class EntryExit(IslandStage):
             payer, firm = owner_entity(target), None
             share = amount - sum(p for _, p, _ in plan)
             have = ledger.money(island, payer)
+            if payer == household(OWNERS):  # 資本家階級は暮らしの分を残す（FM-58）
+                have = owners_spare(island, ctx.defs, ctx.config)
             if grade is not None and have < share and payer != household(OWNERS):
                 # 農場の企業の手元は小さいので、足りない分は資本家階級が企業に増資して出す
+                # （暮らしの分を残した預金から。FM-58）
                 top = share - have
-                if funds.available(island, Payer(household(OWNERS))) >= top:
+                if owners_spare(island, ctx.defs, ctx.config) >= top:
                     invest(island, household(OWNERS), payer, top)
                     have = share
             if have < share:
@@ -1852,7 +1861,7 @@ class EntryExit(IslandStage):
         entity = facility_entity(f.id)
         if target is None:
             self._borrow_on_shares(island, ctx, payer)
-            _owners_ready(island, payer, amount - sum(p for _, p, _ in plan))
+            _owners_ready(island, ctx, payer, amount - sum(p for _, p, _ in plan))
         invest(island, payer, entity, amount - sum(p for _, p, _ in plan))
         if target is None:
             companies.invested(island, firm, f, ctx.turn)
@@ -2013,7 +2022,7 @@ class EntryExit(IslandStage):
             cancel_equity(island, entity)
             companies.leave(island, f)
         self._borrow_on_shares(island, ctx, payer)
-        _owners_ready(island, payer, amount - sum(p for _, p, _ in plan))
+        _owners_ready(island, ctx, payer, amount - sum(p for _, p, _ in plan))
         invest(island, payer, entity, amount - sum(p for _, p, _ in plan))
         turns = config.get("loans.construction_turns")
         grace = ctx.turn + 1 + config.get("loans.grace_turns")
@@ -2098,15 +2107,14 @@ class EntryExit(IslandStage):
                 if fac.placement_problem(ctx.defs, island, kind, tile.x, tile.y) is None:
                     spot = (tile.x, tile.y)
                     break
-        owners = Payer(household(OWNERS))
         if spot is None:
             return ("no_office", {})
         if OWNERS not in island.economy.households:
             return ("no_owners", {})
-        have = funds.available(island, owners)
-        if have + founders_room(island) < capital or capital <= 0:
+        have = owners_spare(island, ctx.defs, config)
+        if have + founders_room(island, ctx.defs, config) < capital or capital <= 0:
             return ("owners_short", {"need": capital, "have": have})
-        draw_founders(island, capital, have)
+        draw_founders(island, ctx.defs, config, capital, have)
         finance.pop("bank_license", None)
         bank = open_bank(island, ctx, spot, OWNER_PRIVATE)
         invest(island, household(OWNERS), ledger.bank_entity(bank.id), capital)
@@ -2271,7 +2279,7 @@ def restart(
     f.economy["capital"] = price
     step = round_money(ctx.config.get("market.target_step") * fac.FULL + 0.5)
     f.economy["target"] = step
-    f.status = fac.STATUS_STARTING
+    f.status = stops.STARTING
     freight_rates.forget(island)
 
 
@@ -2374,11 +2382,20 @@ def nationalize(island: IslandState, payload: dict[str, Any], ctx: StageContext)
     )
 
 
-def _owners_ready(island: IslandState, payer: str, equity: int) -> None:
-    """資本家階級が出資するとき、預金で足りない分を一般の層の預金から出す人を資本家階級へ移す
-    （FM-58。出資する者を選ぶとき companies.choose_investor が founders_room で見込んだ分）。"""
+def _owners_ready(island: IslandState, ctx: StageContext, payer: str, equity: int) -> None:
+    """資本家階級が出資するとき、暮らしの分を残した預金（owners_spare）で足りない分を一般の層の
+    預金から出す人を資本家階級へ移す（FM-58。出資する者を選ぶとき companies.choose_investor が
+    founders_room で見込んだ分）。"""
     if payer == household(OWNERS):
-        draw_founders(island, equity, funds.available(island, Payer(household(OWNERS))))
+        have = owners_spare(island, ctx.defs, ctx.config)
+        draw_founders(island, ctx.defs, ctx.config, equity, have)
+
+
+def spare_and_founders(island: IslandState, ctx: StageContext) -> int:
+    """資本家階級が出資・買い取りに出せる額: 暮らしの分を残した預金と、一般の層から移って出す人の
+    預金（FM-58）。"""
+    defs, config = ctx.defs, ctx.config
+    return owners_spare(island, defs, config) + founders_room(island, defs, config)
 
 
 def check_privatize(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
@@ -2392,7 +2409,8 @@ def check_privatize(island: IslandState, payload: dict[str, Any], defs: Defs) ->
     # 議会にかける前に、資本家の預金で今の純資産を払えるかを見る（国庫直轄の施設は実行のときに
     # 運転資金を出資するので、値段はそのぶん高くなる。実行のときに見直す）
     price = banks.net_assets(island, f, facility_entity(f.id))
-    if funds.available(island, Payer(household(OWNERS))) + founders_room(island) < price:
+    have = funds.available(island, Payer(household(OWNERS)))
+    if have + founders_room(island, defs, None) < price:
         raise OrderFailed("reason_owners_short", amount=price)
 
 
@@ -2409,16 +2427,16 @@ def privatize(island: IslandState, payload: dict[str, Any], ctx: StageContext) -
     # 払えないときは、会計を変えて出資する前に断る（断った後に独立採算のまま残さない）
     extra = operating_capital(island, ctx.defs, ctx.config, f, capital) if treasury else 0
     price = banks.net_assets(island, f, entity, extra)
-    if funds.available(island, owners) + founders_room(island) < price:
+    if spare_and_founders(island, ctx) < price:
         raise OrderFailed("reason_owners_short", amount=price)
     if treasury:
         f.accounting = ACCOUNTING_SELF
         fund_facility(island, ctx.defs, ctx.config, f, capital)
     price = banks.net_assets(island, f, entity)
-    if funds.available(island, owners) + founders_room(island) < price:
+    if spare_and_founders(island, ctx) < price:
         raise OrderFailed("reason_owners_short", amount=price)
     # 資本家階級の預金で足りない分は、一般の層の預金から出す人が資本家階級へ移って払う（FM-58）
-    draw_founders(island, price, funds.available(island, owners))
+    draw_founders(island, ctx.defs, ctx.config, price, owners_spare(island, ctx.defs, ctx.config))
     funds.pay(island, owners, ledger.GOV, price, "privatization")
     _move_equity(island, entity, ledger.GOV, household(OWNERS))
     f.owner = OWNER_PRIVATE
@@ -2555,13 +2573,13 @@ def privatize_firm(island: IslandState, payload: dict[str, Any], ctx: StageConte
     price = sum(
         banks.net_assets(island, f, facility_entity(f.id), extra.get(f.id, 0)) for f in sold
     )
-    if funds.available(island, owners) < price:
+    if owners_spare(island, ctx.defs, ctx.config) < price:  # 暮らしの分を残す
         raise OrderFailed("reason_owners_short", amount=price)
     for f in treasury:
         f.accounting = ACCOUNTING_SELF
         fund_facility(island, ctx.defs, ctx.config, f, capital)
     price = sum(banks.net_assets(island, f, facility_entity(f.id)) for f in sold)
-    if funds.available(island, owners) < price:
+    if owners_spare(island, ctx.defs, ctx.config) < price:  # 暮らしの分を残す
         raise OrderFailed("reason_owners_short", amount=price)
     funds.pay(island, owners, ledger.GOV, price, "privatization")
     firm = companies.new_firm(island, OWNER_PRIVATE, ctx.turn)

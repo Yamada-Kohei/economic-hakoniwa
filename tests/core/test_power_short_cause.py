@@ -96,6 +96,11 @@ def test_autoplan_looks_at_the_rate_of_factories_that_will_not_pay_for_power():
 
     from hakoniwa_core.autoplan import _waits_for_input
 
-    assert not _waits_for_input(SimpleNamespace(status="input_price:electricity"), "electricity")
-    assert not _waits_for_input(SimpleNamespace(status="funds:electricity"), "electricity")
-    assert _waits_for_input(SimpleNamespace(status="input_price:coal"), "electricity")
+    config = load_game().config
+
+    def waits(status):
+        return _waits_for_input(config, SimpleNamespace(status=status), "electricity")
+
+    assert not waits("input_price:electricity")
+    assert not waits("funds:electricity")
+    assert waits("input_price:coal")

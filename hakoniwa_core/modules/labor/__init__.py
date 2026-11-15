@@ -25,7 +25,7 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger
+from hakoniwa_core import ledger, stops
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
@@ -54,6 +54,9 @@ from hakoniwa_core.economy.households import (
     jobless_layer,
     set_jobless,
 )
+from hakoniwa_core.economy.households import (
+    food_cost as households_food_cost,
+)
 from hakoniwa_core.economy.prices import variable_profit
 from hakoniwa_core.economy.stats import inflation
 from hakoniwa_core.modules import infrastructure
@@ -65,8 +68,6 @@ from hakoniwa_core.state import Facility, IslandState, LogEntry
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import (
     BASIS,
-    QUANTITY_SCALE,
-    money_of,
     part,
     scale_price,
     to_basis,
@@ -201,7 +202,7 @@ def furlough_share(defs: Defs, config: Any, f: Facility) -> int:
     ただし電力が高い・買うお金がない（input_price・funds の電力）は、電力不足と同じ休業手当のまま
     （PR #303 で「電力不足」の誤表示を分けたときに、賃金の扱いは変えないことにした。満額にすると、
     電気代も払えない施設の差し押さえが早まり、測りで企業の連鎖の差し押さえが増えた）。"""
-    if not f.built or not fac.furloughed(config, f.status):
+    if not f.built or not stops.furloughed(config, f.status):
         return BASIS
     able = fac.labor_ratio(defs, f)
     if able <= 0:
@@ -219,22 +220,8 @@ def has_own_wage(defs: Defs, f: Facility) -> bool:
 
 def food_cost(island: IslandState, ctx: StageContext, persons: int) -> int:
     """persons 人の1ターンの食べ物を、前のターンの値段でいちばん安く買う額（消費税と家計の運賃を
-    含む）。値段のない島では 0。"""
-    defs = ctx.defs
-    need = to_milli(persons * ctx.config.get("population.food_per_person"))
-    prices = island.economy.prices
-    rate = island.economy.freight.get("household", 0)
-    best = 0
-    for good, gdef in sorted(defs.goods.items()):
-        if "food" not in gdef or prices.get(good, 0) <= 0:
-            continue
-        qty = -(-need * QUANTITY_SCALE // to_milli(gdef["food"]["nutrition"]))
-        # 計画経済の島は家計が払う小売の値段で（PL-60。ほかの島は消費税の率）
-        tax = planning.rate_of(island, ctx.config, good)
-        amount = money_of(prices[good], qty) * (BASIS + rate + tax) // BASIS
-        if best == 0 or amount < best:
-            best = amount
-    return best
+    含む。economy/households.py の food_cost）。値段のない島では 0。"""
+    return households_food_cost(island, ctx.defs, ctx.config, persons)
 
 
 class Payroll(IslandStage):
