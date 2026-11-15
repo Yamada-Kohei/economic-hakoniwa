@@ -196,6 +196,7 @@ _EXTRA_STATS = [
     ("fx.reserves", "外貨準備（政府と中央銀行の外貨と外国の国債、融通で貸した外貨）", "money"),
     ("fx.swap.borrowed", "中央銀行が融通で借りている額（自国通貨に直す）", "money"),
     ("fx.swap.lent", "中央銀行が融通で貸している額（自国通貨に直す）", "money"),
+    ("fx.swap.waived", "融通の貸しで免除した利子の累計（自国通貨に直す）", "money"),
     ("foreign_bonds.gov", "政府が持つ外国の国債（時価）", "money"),
     ("foreign_bonds.cb", "中央銀行が持つ外国の国債（時価）", "money"),
     ("foreign_bonds.banks", "市中銀行が持つ外国の国債（時価）", "money"),
