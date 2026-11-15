@@ -107,7 +107,7 @@ from hakoniwa_core.economy.prices import initial_prices, unit_cost
 from hakoniwa_core.exploration import base_resources
 from hakoniwa_core.geo import components, distance, shortest_path, within
 from hakoniwa_core.modules import infrastructure as public_works
-from hakoniwa_core.modules.firms import private_allowed
+from hakoniwa_core.modules.firms import private_allowed, state_crop_choices
 from hakoniwa_core.modules.market import MERCHANT
 from hakoniwa_core.state import (
     ORDER_PENDING,
@@ -194,9 +194,10 @@ def plan_turn(
     合わないので、この島に造船所を建てたいか（shipyard_islands）。"""
     if any(o.status == ORDER_PENDING for o in island.orders):
         return []
+    food = _food_orders(island, defs, config, turn)
     return (
         _warehouse_sales(island, defs, config)
-        + _food_orders(island, defs, config, turn)
+        + (food or _crop_orders(island, defs, config, turn))
         + _plan_rest(island, defs, config, turn, yard)
     )
 
@@ -531,6 +532,19 @@ def _food_orders(
         payload = {"good": GRAIN, "side": "buy", "quantity": buy / QUANTITY_SCALE, "limit": limit}
         orders.append(("warehouse_trade", payload))
     return orders
+
+
+def _crop_orders(
+    island: IslandState, defs: Defs, config: GameConfig, turn: int
+) -> list[tuple[str, dict]]:
+    """市場経済・混合経済の島の国営の農場の作物の見直し（firms.state_crop_choices）。飢饉の手を
+    打つ月は見ない（飢饉の手が国営の農場を穀物に替える。_food_orders）。"""
+    if not island.has_economy:
+        return []
+    return [
+        ("change_recipe", {"x": f.x, "y": f.y, "recipe": recipe})
+        for f, recipe in state_crop_choices(island, defs, config, turn)
+    ]
 
 
 def _grain_recipe(defs: Defs, island: IslandState, f: Any) -> str | None:

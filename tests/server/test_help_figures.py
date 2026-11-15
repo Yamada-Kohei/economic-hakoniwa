@@ -68,3 +68,27 @@ def test_food_table_comes_from_the_goods_data(client, world):
         ("肉", "1.2", "0.8", "3"),
         ("食品", "1.5", "1", "6"),
     ]
+
+
+@pytest.mark.django_db
+def test_diet_shares_come_from_the_food_target(client, world):
+    """家計の献立の構成比（LB-20）は household.food_target から出す。標準の所得は base、
+    food_target_rich_income 倍は rich、その平方根の倍は両者のちょうど中間（倍率の log の割合）。"""
+    from server.game import get_game
+
+    config = get_game().config
+    target = config.get("household.food_target")
+    rich = config.get("household.food_target_rich_income")
+    page = client.get("/help/").content.decode()
+    section = page[page.index('id="diet"') : page.index('id="clothing"')]
+    table = section[section.index("diet-table") :]
+    rows = re.findall(r"<tr><th>([^<]+)</th>((?:<td>[\d.]+</td>)+)</tr>", table)
+    shares = [[float(v) for v in re.findall(r"<td>([\d.]+)</td>", cells)] for _, cells in rows]
+    order = ["grain", "fish", "meat", "food"]  # 質の低い順（食べ物の表と同じ）
+    labels = ["標準の所得", f"標準の {rich**0.5:g} 倍", f"標準の {rich:g} 倍"]
+    assert [label for label, _ in rows] == labels
+    assert shares[0] == pytest.approx([target["base"][g] * 100 for g in order], abs=0.05)
+    assert shares[2] == pytest.approx([target["rich"][g] * 100 for g in order], abs=0.05)
+    middle = [(target["base"][g] + target["rich"][g]) / 2 * 100 for g in order]
+    assert shares[1] == pytest.approx(middle, abs=0.05)
+    assert "img/help/diet-steps.svg" in section and "img/help/diet-shortage.svg" in section

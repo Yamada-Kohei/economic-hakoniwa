@@ -605,6 +605,8 @@ def test_people_who_fled_to_villages_return_when_towns_need_workers(game, base):
     people = [t for t in island.tiles if t.population > 0]
     village = next(t for t in people if _farming(game.defs, t))
     town = next(t for t in people if not _farming(game.defs, t))
+    for t in island.tiles:  # ならしの世界の飢えで、ほかの村に逃れた人がいれば外して数える
+        t.ext.pop(FLED, None)
     fled = village.population // 2
     village.ext[FLED] = fled
     for h in island.economy.households.values():

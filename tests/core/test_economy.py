@@ -11,9 +11,12 @@ from hakoniwa_core.economy import Payer, funds
 from hakoniwa_core.game import load_game
 from hakoniwa_core.market import auction
 from hakoniwa_core.modules.market import (
+    FoodMenu,
     Market,
     consumer_tiers,
-    food_by_quality,
+    food_cheapest,
+    food_orders,
+    food_prefs,
     food_split,
     gross_cost,
     late_weight,
@@ -214,29 +217,54 @@ def test_ledger_rejects_malformed_posts(books):
 
 
 def test_food_split_prefers_cheap_goods_within_offers():
+    """好みの献立 D: 好みが同じなら安い財を多く、少し高いだけの財にもかなり割り振る（LB-20）。"""
     values = {"grain": 1.0, "fish": 1.2}
     nutritions = {"grain": 1000, "fish": 1000}
-    got = food_split(100_000, values, nutritions, {"grain": 80_000, "fish": 80_000}, 4)
-    assert got["grain"] > got["fish"] > 0  # 少し高いだけの財にも少しは割り振る
+    prefs = {"grain": 0.5, "fish": 0.5}
+    got = food_split(100_000, values, nutritions, {"grain": 80_000, "fish": 80_000}, prefs, 1)
+    assert got["grain"] > got["fish"] > 0
     assert sum(got.values()) == 100_000
     assert got["grain"] <= 80_000 and got["fish"] <= 80_000
+    # 重みは a ×（値段の比）^(−e): 1 : 1/1.2
+    assert abs(got["fish"] / got["grain"] - 1 / 1.2) < 0.01
+
+
+def test_food_split_buys_a_small_offer_up_to_the_preference():
+    """少しだけ売りに出た財も、好みの分までは買い切る（売りの量は上限としてだけ使う。前の式は
+    重みに売りの量を掛け、大和帝国 T101 の魚 84.5 トンのうち 0.4 トンしか買われなかった。#16）。
+    止まった分は残りの財で分け直す。"""
+    values = {"grain": 1.0, "fish": 1.0, "food": 1.0}
+    nutritions = {"grain": 1000, "fish": 1000, "food": 1000}
+    prefs = {"grain": 0.45, "fish": 0.10, "food": 0.45}
+    caps = {"grain": 10**9, "fish": 2_000, "food": 10**9}
+    got = food_split(100_000, values, nutritions, caps, prefs, 1)
+    assert got["fish"] == 2_000  # 好みの分（1 割＝10,000）より少ないので売りの量を買い切る
+    assert sum(got.values()) == 100_000
+    assert abs(got["grain"] - got["food"]) <= 1  # 止まった分は残りで同じ重みで分け直す
 
 
 def test_food_split_puts_shortfall_on_cheapest():
     values = {"grain": 1.0, "fish": 2.0}
     nutritions = {"grain": 1000, "fish": 500}
-    got = food_split(100_000, values, nutritions, {"grain": 10_000, "fish": 20_000}, 4)
+    got = food_split(100_000, values, nutritions, {"grain": 10_000, "fish": 20_000}, {}, 1)
     # 売りに出ている分（栄養で 10_000 + 10_000）を詰めて、残りは一番安い財に足す
     assert got["fish"] == 20_000
     assert got["grain"] == 90_000
 
 
-def test_food_by_quality_fills_high_quality_first():
-    qualities = {"grain": 1.0, "food": 1.5}
-    values = {"grain": 1.0, "food": 1.2}
+def test_food_cheapest_fills_cheapest_per_nutrition_first():
+    """一番安く満たす献立 L: 栄養あたりの値段（質を足さない）の安い順に、売りの量まで詰める。"""
+    values = {"grain": 1.0, "food": 0.8}  # 質を足すと加工食品が安い
+    costs = {"grain": 1.2, "food": 1.6}  # 栄養あたりは穀物が安い
     nutritions = {"grain": 1000, "food": 1000}
-    got = food_by_quality(50_000, qualities, values, nutritions, {"food": 30_000, "grain": 100_000})
-    assert got == {"food": 30_000, "grain": 20_000}
+    caps = {"food": 100_000, "grain": 30_000}
+    assert food_cheapest(50_000, values, costs, nutritions, caps) == {
+        "grain": 30_000,
+        "food": 20_000,
+    }
+    # 足りない分は、売りに出ている財のうち質を足した値段の一番安い財に足す
+    got = food_cheapest(50_000, values, costs, nutritions, {"grain": 30_000})
+    assert got == {"grain": 50_000}
 
 
 def test_upgrade_food_mixes_within_budget():
@@ -247,6 +275,81 @@ def test_upgrade_food_mixes_within_budget():
     mixed = upgrade_food(cheap, best, unit, 2000)
     assert mixed == {"grain": 5_000, "food": 5_000}
     assert upgrade_food(cheap, {"food": 10_000}, {"grain": 300, "food": 100}, 0) == {"food": 10_000}
+
+
+def _shares(basket, nutritions):
+    total = sum(q * nutritions[g] for g, q in basket.items())
+    return {g: q * nutritions[g] / total for g, q in basket.items()}
+
+
+def _start_menu(game, prefs):
+    from hakoniwa_core.economy.prices import initial_prices
+
+    defs = game.defs
+    start = initial_prices(defs, game.config)
+    foods = sorted(g for g, d in defs.goods.items() if "food" in d)
+    nutritions = {g: int(defs.goods[g]["food"]["nutrition"] * 1000) for g in foods}
+    qualities = {g: defs.goods[g]["food"].get("quality", 0) for g in foods}
+    values = {
+        g: start[g] / (defs.goods[g]["food"]["nutrition"] * (1 + qualities[g])) for g in foods
+    }
+    return FoodMenu(
+        values=values,
+        nutritions=nutritions,
+        qualities=qualities,
+        unit={g: start[g] for g in foods},
+        limits={g: start[g] for g in foods},
+        rate=0,
+        tax=0,
+        elasticity=game.config.get("household.food_elasticity"),
+        prefs=prefs,
+    )
+
+
+def test_food_prefs_reach_the_target_at_start_prices(game):
+    """島の初めの値段で、たっぷり食べられる家計の栄養の割合が目標（household.food_target）になる。
+    所得の高い層ほど穀物の割合が低い（rich の目標へ寄る）。"""
+    target = game.config.get("household.food_target")
+    rich = game.config.get("household.food_target_rich_income")
+    plenty = 10**12
+    grains = []
+    for income, goal in ((1.0, target["base"]), (2.0, None), (rich, target["rich"])):
+        menu = _start_menu(game, food_prefs(game.defs, game.config, income))
+        caps = dict.fromkeys(menu.values, plenty)
+        orders = food_orders(1_000_000, caps, menu, plenty, plenty)
+        shares = _shares({g: q for g, (q, _) in orders.items()}, menu.nutritions)
+        if goal is not None:
+            for good, share in goal.items():
+                assert abs(shares.get(good, 0) - share) < 0.005, (income, good, shares)
+        assert shares["fish"] > 0
+        grains.append(shares["grain"])
+    assert grains[0] > grains[1] > grains[2]
+
+
+def test_wanted_food_matches_the_order_once_it_is_offered(game):
+    """売りに出ていない財の買いたい量は、その財だけ要る量いっぱい売りに出ていたとしたときの注文の
+    量（同じ式）。売りに出れば、その量を注文する（前はどの財もたっぷりある献立で数え、売りに出た
+    ときの注文と数百倍ずれた）。"""
+    menu = _start_menu(game, food_prefs(game.defs, game.config, 1.0))
+    need = 1_000_000
+    caps = {"grain": 2 * need, "food": 2 * need, "meat": 2 * need, "fish": 0}
+    budget = 10**12
+    enough = need * 1000 // menu.nutritions["fish"]
+    wanted = food_orders(need, {**caps, "fish": enough}, menu, budget, budget)["fish"][0]
+    offered = food_orders(need, {**caps, "fish": 2 * need}, menu, budget, budget)["fish"][0]
+    assert wanted > 0
+    assert abs(wanted - offered) <= 1
+
+
+def test_food_orders_reach_the_need_for_a_tiny_layer(game):
+    """人数の少ない層（要る栄養が 1000 分の 1 の単位で数個）でも、4 つの食料に分けた丸めで要る量を
+    割らない（資本家階級ができたばかりの島で、毎ターン少しずつ飢えた）。"""
+    menu = _start_menu(game, food_prefs(game.defs, game.config, 1.0))
+    caps = dict.fromkeys(menu.values, 1000)
+    for need in range(1, 40):
+        plan = food_orders(need, caps, menu, 10**9, 10**9)
+        got = sum(q * menu.nutritions[g] // 1000 for g, (q, _) in plan.items())
+        assert got >= need, (need, plan)
 
 
 def test_consumer_tiers_spend_about_the_budget():
