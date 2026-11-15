@@ -258,17 +258,63 @@ def test_transport_buys_trucks_when_they_cost_less_than_drivers(game, warmed):
     config = game.config
     f = _transport(island)
     f.economy["wage"] = 1000
-    f.economy["wanted"] = 120
     f.economy.pop(trucks.TRUCKS, None)
+    f.economy.pop(trucks.HISTORY, None)
     island.economy.prices["automobile"] = 30_000
     island.economy.prices["fuel"] = 200_000
     assert trucks.pays(island, config, 1000)
+    # 雇いたい運転手の記録が firms.invest_turns ターン分たまるまでは買わない（C1）
+    for drivers in (300, 120, 200, 150, 400):
+        trucks.remember(config, f, drivers)
+    assert "automobile" not in trucks.orders(island, config, f)
+    trucks.remember(config, f, 250)
     wanted = trucks.orders(island, config, f)
-    # 欲しいのは 120 人 × 半分 ÷ 3 人 = 20 台、その 1 割
+    # 欲しいのは一番少ないターンの 120 人 × 半分 ÷ 3 人 = 20 台、その 1 割
     assert wanted == {"automobile": 2000}
     island.economy.prices["automobile"] = 3_000_000  # 高ければ運転手を雇う
     assert not trucks.pays(island, config, 1000)
     assert "automobile" not in trucks.orders(island, config, f)
+
+
+def test_transport_buys_trucks_only_with_three_turns_of_payments_left(game, warmed):
+    # C1: 運送業も、買った後に freight.trucks.fuel_turns ターン分の賃金（トラックで替えない運転手の
+    # 分）・燃料・返済が手元に残る分だけ買う。止まっている間は雇いたい運転手 0 を記録する
+    from hakoniwa_core import ledger
+    from hakoniwa_core.economy import facility_entity, funds, payer_of
+    from hakoniwa_core.modules.market import Market
+    from tests.core.test_recession_round1 import context
+
+    world = copy.deepcopy(warmed)
+    island = island_of(world, "market")
+    config = game.config
+    f = _transport(island)
+    payer = payer_of(game.defs, config, f)
+    entity = facility_entity(f.id)
+    assert payer.entity == entity  # 独立採算の運送業
+    island.economy.prices["automobile"] = 30_000
+    island.economy.prices["fuel"] = 0
+    f.economy["wage"] = 1000
+    f.economy["wanted"] = 60
+    turns = config.get("freight.trucks.fuel_turns")
+    ledger.pay(island, entity, ledger.GOV, funds.available(island, payer), "tax_corporate")
+    due = banks_due(island, entity, world.turn)
+    plan = {"automobile": (10 * QUANTITY_SCALE, 30_000)}
+
+    def room():
+        out = Market._equipment_room(
+            island, context(game, world.turn), f, payer, plan, "automobile", 0, turns, 60_000, 0
+        )
+        return out.get("automobile", (0, 0))[0]
+
+    assert room() == 0
+    ledger.pay(island, ledger.GOV, entity, turns * (60_000 + due) + 90_000, "capital_injection")
+    assert room() == 3 * QUANTITY_SCALE
+
+
+def banks_due(island, entity, turn):
+    from hakoniwa_core.economy import banks
+
+    return banks.payments_due(island, entity, turn)
 
 
 def test_trucks_replace_drivers_only_while_they_have_fuel(game, warmed):
