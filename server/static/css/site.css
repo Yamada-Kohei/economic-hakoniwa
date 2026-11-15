@@ -458,7 +458,9 @@ table.goods.country-timeline td:nth-child(n+2), table.goods.country-timeline th:
 
 /* 手引きの図（tools/help_diagrams/diagrams.py が作る SVG）。幅 480 の縦長で、狭い画面では縮む */
 figure.diagram { margin: 12px auto; max-width: 480px; }
-figure.diagram img { display: block; width: 100%; height: auto; border: 1px solid var(--rule); background: #fff; }
+/* 図の SVG は中に暗いときの色を持つ（prefers-color-scheme）。<img> の color-scheme が図の明暗を決めるので、
+   画面に暗い色ができるまでは明るいに留める（画面の暗い色を入れるときは、ここを画面の明暗に合わせる） */
+figure.diagram img { color-scheme: light; display: block; width: 100%; height: auto; border: 1px solid var(--rule); background: #fff; }
 figure.diagram figcaption { font-size: 0.9em; margin-top: 4px; }
 figure.diagram details { margin-top: 2px; }
 figure.diagram summary { cursor: pointer; color: var(--accent); }
@@ -519,3 +521,20 @@ dialog.site-news h2 { margin: 0 0 6px; font-size: 1.1em; }
 .site-news-list { margin: 6px 0; padding-left: 1.2em; }
 .site-news-list li { margin: 4px 0; }
 .site-news-list time { margin-right: 6px; color: #6a7aa0; font-size: 0.9em; }
+/* 手引きの「家計の献立」の構成比の帯（game.yaml の household.food_target から出す）。品目の色は
+   手引きの図（tools/help_diagrams の GRAIN・FISH・MEAT・FOOD）と同じ中間の色で、明るい地でも暗い地でも
+   読める。帯の上の字は濃い色に固定する */
+.diet-bars { border: 1px solid var(--rule); background: var(--panel); padding: 8px 10px; }
+.diet-row { margin: 4px 0 10px; }
+.diet-label { display: block; font-size: 0.9em; font-weight: bold; margin-bottom: 2px; }
+.diet-bar { display: flex; height: 2.6em; border: 1px solid var(--fg); }
+.diet-bar span { display: flex; align-items: center; justify-content: center; text-align: center;
+  font-size: 0.78em; line-height: 1.15; color: #14161a; overflow: hidden; white-space: nowrap;
+  border-right: 1px solid rgba(0, 0, 0, 0.35); }
+.diet-bar span:last-child { border-right: 0; }
+.diet-grain { background: #e8c04a; }
+.diet-fish { background: #5aa7e0; }
+.diet-meat { background: #d9776f; }
+.diet-food { background: #9b8ae0; }
+table.info.diet-table th { width: auto; }
+.diet-table td { text-align: right; width: 16%; }
