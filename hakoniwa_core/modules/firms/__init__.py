@@ -69,6 +69,7 @@ banking.entry_roe_margin」を超え、政策金利が今の銀行の預金金�
 from __future__ import annotations
 
 import math
+from collections.abc import Iterator
 from dataclasses import replace
 from typing import Any
 
@@ -514,8 +515,10 @@ class EntryExit(IslandStage):
     @classmethod
     def _recipe_choices(
         cls, island: IslandState, ctx: StageContext, owner: str, crops_only: bool = False
-    ) -> list[tuple[Facility, str]]:
-        """持ち主 owner の施設のうち、この見直しの順番の施設が替える作り方（施設, 作り方）の並び。
+    ) -> Iterator[tuple[Facility, str]]:
+        """持ち主 owner の施設のうち、この見直しの順番の施設が替える作り方（施設, 作り方）を順に
+        出す。呼び手が RECIPE_NEXT を書いてから次の施設を見るので、同じターンに前の施設が替えると
+        決めた作物は、次の施設の見直しで替えたばかりの作物に数える（_switched_into）。
         crops_only なら畑の作物（育つ期間のある作り方）だけを見る（国営の農場。
         state_crop_choices）。"""
         defs, config = ctx.defs, ctx.config
@@ -526,7 +529,6 @@ class EntryExit(IslandStage):
         supplied: set[str] = set()
         rates: dict[int, int] = {}
         missing = _missing(island.economy.finance)
-        out: list[tuple[Facility, str]] = []
         for f in sorted(island.facilities, key=lambda f: f.id):
             recipes = defs.facilities[f.kind]["recipes"]
             urgent = any(g in missing for r in recipes.values() for g in r["outputs"])
@@ -557,8 +559,7 @@ class EntryExit(IslandStage):
                 continue
             choice = max(sorted(profits), key=lambda name: profits[name])
             if choice != f.recipe and profits[choice] - now > part(abs(now), margin):
-                out.append((f, choice))
-        return out
+                yield f, choice
 
     @staticmethod
     def _switched_into(island: IslandState, ctx: StageContext) -> set[str]:
