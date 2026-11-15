@@ -15,8 +15,8 @@ import copy
 import pytest
 
 from hakoniwa_core import ledger, stock
+from hakoniwa_core.economy import Payer, entity_of, facility_entity, funds
 from hakoniwa_core.economy import banks as bank_book
-from hakoniwa_core.economy import entity_of, facility_entity
 from hakoniwa_core.economy.start import next_payments
 from hakoniwa_core.game import load_game
 from hakoniwa_core.modules import banking as banking_stage
@@ -413,3 +413,60 @@ def test_later_turns_share_the_trading_capacity_between_goods(game, traded, monk
     # 見込みの 2 ターン目からの量は、割り振った量のまま
     later = sorted((total - first) // max(1, keep - 1) for _, first, total, _, _ in plan)
     assert later == sorted(q for q in got if q > 0)
+
+
+# --- 外貨の会議 #1041 の試し: このターンの輸入の代金は 1 本の指値（fx.import_due） ----------------
+
+
+def test_single_buy_is_one_order_at_the_lower_of_band_top_and_limit(game, traded):
+    world = copy.deepcopy(traded)
+    island, f, currency = _importer(game, world)
+    entity = entity_of(game.config, f)
+    width = fxrates.band_width(game.config)
+    reference = fxrates.rate(island, currency)
+    high = reference + reference * width // 10_000
+    ledger.pay(island, ledger.GOV, entity, 10**9, "capital_injection")
+    for limit, top in ((None, high), (high + 50, high), (reference + 3, reference + 3)):
+        book = fxrates.Book(depth=1_000)
+        added = fxrates.add_buy(
+            island, book, entity, Payer(entity), 1_000, reference, width, limit, single=True
+        )
+        assert added == 1_000
+        assert [(o.quantity, o.limit, o.priority) for o, _, _ in book.buys] == [(1_000, top, 0)]
+        for payer, amount in book.held:
+            funds.release(island, payer, amount)
+
+
+@pytest.mark.parametrize("on", [False, True])
+def test_this_turns_import_is_bought_with_one_order_when_import_due(game, traded, monkeypatch, on):
+    """fx.import_due なら、このターンの輸入の代金（持ち高で足りない分）は 1 本の指値で、次の
+    ターンからの分だけを段に分けて買う。切ってあれば前のまま全部を段に分ける。"""
+    world = copy.deepcopy(traded)
+    island, f, currency = _importer(game, world)
+    entity = entity_of(game.config, f)
+    ledger.pay(island, ledger.GOV, entity, 10**10, "capital_injection")  # お金で頭打ちにしない
+    have = fxmoney.holding(island, entity, currency)
+    if have > 0:  # 持ち高は発行した島の中央銀行へ戻し、今のターンの代金を全部買う形にする
+        fxmoney.transfer(world, currency, (island.id, entity), (currency, ledger.CB), have, "trade")
+    monkeypatch.setitem(game.config.raw["fx"], "import_due", on)
+    calls = []
+    original = fxrates.add_buy
+
+    def add_buy(island_, book, who, payer, qty, *args, **kwargs):
+        if who == entity and island_.id == island.id and book is not None:
+            calls.append((qty, kwargs.get("single", False)))
+        return original(island_, book, who, payer, qty, *args, **kwargs)
+
+    monkeypatch.setattr(fxrates, "add_buy", add_buy)
+    r = _round(game, world)
+    _, step, now = r._import_needs_split(island, f, {})
+    have = fxmoney.holding(island, entity, currency)
+    short_now = max(0, sum(a for a, _ in now.get(currency, [])) - have)
+    r = _round(game, world)
+    r._fx()
+    singles = [q for q, single in calls if single]
+    if not on:
+        assert not singles
+    else:
+        assert short_now > 0, "試しの世界の商社が今のターンの代金の外貨を持ちすぎている"
+        assert singles and sum(singles) <= max(short_now, step.get(currency, 0))

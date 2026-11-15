@@ -165,9 +165,12 @@ def add_buy(
     width: int,
     limit: int | None = None,
     due: bool = False,
+    single: bool = False,
 ) -> int:
-    """通貨を qty 買う注文を段に分けて足す。指値は前のレートから、値幅の上端か limit（払ってよい
-    一番高いレート）の低いほうまで。払える自国通貨までに減らし、その分を取り置く。足した量を返す。
+    """通貨を qty 買う注文を段に分けて足す（single なら段に分けず、上の指値の1つの注文。順位は
+    ほかの買いと同じ。商社のこのターンの輸入の代金。fx.import_due）。指値は前のレートから、
+    値幅の上端か limit（払ってよい一番高いレート）の低いほうまで。払える自国通貨までに減らし、
+    その分を取り置く。足した量を返す。
 
     due はこのターンに払う代金（政府の契約）の分: 段に分けず、値幅の上端の1つの指値にして、ほかの
     買いより先に配る（段に分けると、低い段の指値が売りの段に届かず、厚みの分があっても6割ほどしか
@@ -188,7 +191,7 @@ def add_buy(
     if due:
         book.buys.append((Order(qty, top, priority=1), entity, payer))
         return qty
-    if top <= reference:
+    if single or top <= reference:
         book.buys.append((Order(qty, top), entity, payer))
         return qty
     for j, part_qty in _split(qty):
