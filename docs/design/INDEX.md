@@ -202,7 +202,7 @@
 | LB-39 | 売りに出ていたのに家計が1つも買わないターンが `household.reprice_turns`… | 決定（回7 後半 | tests/core/test_balance_round7b.py |
 | LB-40 | 計画経済の島の施設の賃金は、国が決める: 物価の上がった分と人手の足りなさでは動かさず（LB-0… | 決定（2026-11-01 の価格の決まり方の見直し） | tests/core/test_pricing_fix1.py |
 | LB-41 | 資本家階級は所得のうち使う割合も、財産から取り崩す割合も働く層より小さい（上位1%は所得の5割ほ… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
-| LB-42 | 資本家階級の人数の上限を、人口の段で亡くなった人を引いた後に数え直して層に持ち、人数を割り振るど… | 決定（2026-11-08） | tests/core/test_owners_cap.py |
+| LB-42 | 資本家階級の人数の上限を、人口の段で亡くなった人を引いた後に数え直して層に持ち、人数を割り振るど… | 決定（2026-11-08、式は 2026-11-15） | tests/core/test_owners_cap.py |
 | LB-43 | 解雇の決まり（2026-11-10、W-251）: 施設（民営・国営の独立採算・国庫直轄 | 決定（2026-11-10 | tests/core/test_dismissal.py |
 | LB-44 | 衣料は持ち物（2026-11-10、W-26 の直し）: 家計の層は衣料を1人あたりの持つ量（``… | 決定（2026-11-10 | tests/core/test_clothing_clearance.py |
 | LB-45 | 国庫の項目の予算が足りないときの分け方（2026-11-10 | 決定（2026-11-10 | tests/core/test_staff_plan.py |
