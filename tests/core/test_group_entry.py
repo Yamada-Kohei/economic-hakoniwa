@@ -227,6 +227,14 @@ def test_parts_plant_enters_first_and_the_assembler_follows_in_its_firm(game, ba
     high = price * 3
     island.economy.prices["automobile"] = high
     island.economy.price_history["automobile"] = [high] * 12
+    # 自動車のほかの参入の合図を消す（試験のため。ほかの工場が先に建つと 1 ターン 1 つの参入に
+    # 割り込む）
+    real_fill = EntryExit._fill
+
+    def only_autos(recipe, *args):
+        return real_fill(recipe, *args) if "automobile" in recipe["outputs"] else 0.0
+
+    monkeypatch.setattr(EntryExit, "_fill", staticmethod(only_autos))
     # 資本家階級に、部品工場と自動車工場を建てる出資の分を持たせる（試験のため）
     owners = household(OWNERS)
     bank = banks.active_banks(island)[0]
