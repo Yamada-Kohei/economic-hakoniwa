@@ -4219,7 +4219,7 @@ class Market(IslandStage):
                     funds.commit(island, payer, party.reserved)
                     self._add(books_by_good, good, "buy", Order(qty, limit), party)
                     if plan is vessels:
-                        ship_loans.bid_placed(island, party)
+                        ship_loans.bid_placed(island, party, shipping, good)
 
     def _contract_orders(
         self,

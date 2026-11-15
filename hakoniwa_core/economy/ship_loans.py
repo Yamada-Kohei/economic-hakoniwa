@@ -47,7 +47,7 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger
+from hakoniwa_core import ledger, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.economy import (
     STATE_FACILITIES,
@@ -62,6 +62,7 @@ from hakoniwa_core.economy import (
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.prices import variable_profit
 from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE, Facility, IslandState
+from hakoniwa_core.trade import ships
 from hakoniwa_core.units import QUANTITY_SCALE, money_of, part, to_basis
 
 MILLI = QUANTITY_SCALE
@@ -114,8 +115,18 @@ def ship_debt(island: IslandState, f: Facility) -> int:
 
 
 def collateral(island: IslandState, f: Facility) -> int:
-    """担保: 持っている船の帳簿の値打ち（傷みを引いた値）＋ 未引き渡しの注文の代金。"""
-    return banks.book_capital(f) + sum(_order_value(o) for o in open_orders(island, f))
+    """担保: 持っている船の帳簿の値打ち（傷みを引いた値）＋ 買って船団に入れる前の船の取得原価 ＋
+    未引き渡しの注文の代金。"""
+    return (
+        banks.book_capital(f)
+        + ships.stocked_cost(f)
+        + sum(_order_value(o) for o in open_orders(island, f))
+    )
+
+
+def _excess(island: IslandState, config: GameConfig, f: Facility) -> int:
+    """船の借りの合計が担保の上限（今回の代金なし）を超えている額。"""
+    return max(0, ship_debt(island, f) - int(collateral(island, f) * ltv(config)))
 
 
 def ltv_room(island: IslandState, config: GameConfig, f: Facility, value: int) -> int:
@@ -469,11 +480,13 @@ def draw(island: IslandState, ctx: Any, f: Facility, qty: int) -> None:
     island.scratch[DRAWN] = {"lent": lent, "value": value, "party": None, "reserved": 0}
 
 
-def bid_placed(island: IslandState, party: Any) -> None:
-    """船の買い注文の取り置きを覚える（約定の後に、買えた代金を取り置きの減りで数える）。"""
-    drawn = island.scratch.get(DRAWN)
-    if drawn is not None:
-        drawn["party"], drawn["reserved"] = party, party.reserved
+def bid_placed(island: IslandState, party: Any, f: Facility, good: str) -> None:
+    """船の買い注文の取り置きと、注文の前の在庫の船を覚える（約定の後に、買えた代金を取り置きの
+    減りで、買えた数を在庫の増えで数える。枠から貸していなくても数える: 船を取得原価で帳簿に
+    入れるため）。"""
+    drawn = island.scratch.setdefault(DRAWN, {"lent": 0, "value": 0})
+    drawn["party"], drawn["reserved"] = party, party.reserved
+    drawn["had"] = stock.total(f.stock, good)
 
 
 def note_spent(island: IslandState) -> None:
@@ -491,11 +504,19 @@ def settle(island: IslandState, ctx: Any, f: Facility | None) -> None:
     if f is None:
         return
     f.economy.pop(CREDIT, None)
-    if drawn is None or drawn["lent"] <= 0:
+    if drawn is None:
+        return
+    spent = drawn.get("spent", 0)
+    good = ctx.config.get("trade.ship_good")
+    bought = stock.total(f.stock, good) - drawn.get("had", 0)
+    if spent > 0 and bought > 0:
+        ships.add_cost(f, bought, spent)  # 運賃込みの取得原価で船団に入れる（担保もこの額）
+    if drawn["lent"] <= 0:
         return
     lent, value = drawn["lent"], max(1, drawn["value"])
-    spent = drawn.get("spent", 0)
     keep = min(lent, lent * min(spent, value) // value)
+    # 担保の上限を超える分は残さない（取得原価で数えた担保。前に沈んだ船の不足があれば、その分も）
+    keep = min(keep, max(0, lent - _excess(island, ctx.config, f)))
     back = lent - keep
     entity = facility_entity(f.id)
     loans = sorted(
@@ -515,7 +536,7 @@ def settle(island: IslandState, ctx: Any, f: Facility | None) -> None:
     _add(island, "lent", kept)
     _add(island, "returned", returned)
     if kept > 0:
-        check_limit(island, ctx.config, f, min(spent, value))
+        check_limit(island, ctx.config, f, 0)
 
 
 # --- 前注文 ------------------------------------------------------------------------
@@ -547,6 +568,10 @@ def finance_payment(
 ) -> int:
     """注文 o の代金のうち、自分で払う頭金の後の amount を、銀行が買い手に貸す（注文のときに決めた
     financed まで。お金はすぐ造船所への支払いに使う）。貸した額を返す。"""
+    # 沈没や取り壊しで担保の上限を超えていれば、超えた分を注文の借りから外す（自分で払う）
+    over = _excess(island, ctx.config, f)
+    if over > 0:
+        o["financed"] = max(o.get("lent", 0), o.get("financed", 0) - over)
     want = min(amount, o.get("financed", 0) - o.get("lent", 0))
     if want <= 0:
         return 0

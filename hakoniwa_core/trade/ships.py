@@ -232,6 +232,21 @@ def lose_ships(island: IslandState, config: GameConfig, f: Facility, qty: int) -
     return taken
 
 
+# 海運業の economy: 買って（届いて）船団に入れる前の船の [量, 取得原価]（W-281）
+COST = "ships_cost"
+
+
+def add_cost(f: Facility, qty: int, cost: int) -> None:
+    """買った（届いた）船 qty の取得原価 cost（市場の代金と運賃、前注文の代金）を覚える。"""
+    held = f.economy.get(COST, [0, 0])
+    f.economy[COST] = [held[0] + qty, held[1] + cost]
+
+
+def stocked_cost(f: Facility) -> int:
+    """買って船団に入れる前の船の取得原価。"""
+    return f.economy.get(COST, [0, 0])[1]
+
+
 def commission(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> int:
     """海運業の在庫にある輸送船（市場で買った船）を船団に移す。移した量を返す。"""
     f = shipping_of(island, config)
@@ -243,8 +258,13 @@ def commission(island: IslandState, defs: Defs, config: GameConfig, turn: int) -
         return 0
     stock.take(f.stock, good, qty)
     # 船は設備（設備の額に足し、減価償却で費用にする）。GDP では買ったときの在庫の増えを、そのまま
-    # 設備への投資として残す（在庫の減りに数えない）
-    value = money_of(island.economy.prices.get(good, 0), qty)
+    # 設備への投資として残す（在庫の減りに数えない）。設備の額は取得原価（市場の代金と運賃、前注文の
+    # 代金。W-281: 船の借りの担保をこの額で見る）。原価を覚えていない船は島の値段で入れる
+    held_qty, held_cost = f.economy.pop(COST, [0, 0])
+    costed = min(qty, held_qty)
+    value = (held_cost * costed // held_qty if held_qty else 0) + money_of(
+        island.economy.prices.get(good, 0), qty - costed
+    )
     f.economy["capital"] = f.economy.get("capital", 0) + value
     add_ships(f, qty, turn)
     f.economy.pop(LOST, None)

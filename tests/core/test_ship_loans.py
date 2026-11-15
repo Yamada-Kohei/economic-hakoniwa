@@ -165,8 +165,9 @@ def test_unbought_ships_loan_is_returned_the_same_turn(game, base):
     # 買い注文の取り置き（借りたお金は船の代金にだけ使う）。半分だけ買えた
     party = Party("facility", entity, None, 0, 0, f)
     party.reserved = credit["value"]
-    ship_loans.bid_placed(island, party)
+    ship_loans.bid_placed(island, party, f, GOOD)
     party.reserved = credit["value"] // 2
+    stock.add(f.stock, GOOD, MILLI, world.turn, game.defs.goods)  # 約定で 1 隻が届いた
     ship_loans.note_spent(island)
     ship_loans.settle(island, ctx, f)
     held = sum(banks.outstanding(island, x) for x in _ship_loans(island, f))
@@ -175,7 +176,78 @@ def test_unbought_ships_loan_is_returned_the_same_turn(game, base):
     assert ship_loans.CREDIT not in f.economy  # 枠は使い切り
     assert island.stats.get("ship_loans.over_limit", 0) == 0
     assert not ledger.check(island, island.scratch["opening_accounts"])
-    del config
+    # 買えた船は払った額（運賃込みの取得原価）で船団に入り、担保もこの額で数える
+    spent = credit["value"] - credit["value"] // 2
+    assert f.economy[ships.COST] == [MILLI, spent]
+    capital = f.economy.get("capital", 0)
+    ships.commission(island, game.defs, config, world.turn)
+    assert f.economy["capital"] == capital + spent and ships.COST not in f.economy
+
+
+def test_no_new_loan_over_the_limit_after_ships_sank(game, base):
+    """沈没で担保の上限を超えている海運業には、市場の枠の借りも前注文の代金の借りも上限を超えて
+    残さない（超えた分は自分で払う）。"""
+    world, island, f = _setup(game, base)
+    config = game.config
+    bank = banks.active_banks(island)[0]
+    entity = facility_entity(f.id)
+    turn = world.turn + 1
+    term = config.get("loans.ship_turns")
+    amount = int(banks.book_capital(f) * config.get("loans.ship_ltv"))
+    banks.lend(island, bank, entity, amount, banks.SHIP, term, turn, 500, turn + 1)
+    ships.lose_ships(island, config, f, ships.fleet(f) // 2)
+    over = ship_loans.ship_debt(island, f) - int(
+        ship_loans.collateral(island, f) * config.get("loans.ship_ltv")
+    )
+    assert over > 0
+    # 市場: 枠から 1 隻分を貸して 1 隻買えても、上限を超える分は返す
+    open_books(island)
+    ctx = _ctx(game, world, "market")
+    value = ship_loans.unit_value(island, config)
+    loan = int(value * config.get("loans.ship_ltv"))
+    f.economy[ship_loans.CREDIT] = {
+        "qty": MILLI,
+        "replace": MILLI,
+        "loan": loan,
+        "value": value,
+        "down": 0,
+        "due": 0,
+    }
+    ledger.pay(island, ledger.GOV, entity, value, "grant")
+    ship_loans.draw(island, ctx, f, MILLI)
+    party = Party("facility", entity, None, 0, 0, f)
+    party.reserved = value
+    ship_loans.bid_placed(island, party, f, GOOD)
+    party.reserved = 0
+    stock.add(f.stock, GOOD, MILLI, world.turn, game.defs.goods)
+    ship_loans.note_spent(island)
+    ship_loans.settle(island, ctx, f)
+    assert island.stats.get("ship_loans.over_limit", 0) == 0
+    limit = int(ship_loans.collateral(island, f) * config.get("loans.ship_ltv"))
+    assert ship_loans.ship_debt(island, f) <= max(limit, amount) + 1
+    # 前注文: 残りの船も沈んだ後は、注文の借りから上限を超えた分を外す
+    ships.lose_ships(island, config, f, ships.fleet(f))
+    yard = _yard(game, island)
+    price = island.economy.prices[GOOD]
+    o = {
+        "buyer": f.id,
+        "payer": entity,
+        "item": "",
+        "qty": MILLI,
+        "built": 0,
+        "price": price,
+        "paid": 0,
+        "placed": turn,
+        "due": turn + 5,
+        "financed": money_of(price, MILLI) * 4 // 5,
+    }
+    yard.economy[orders.ORDERS] = [o]
+    excess = ship_loans._excess(island, config, f)
+    assert excess > 0
+    want = o["financed"]
+    lent = ship_loans.finance_payment(island, ctx, f, o, want)
+    assert lent == max(0, want - excess)
+    assert island.stats.get("ship_loans.over_limit", 0) == 0
 
 
 def test_frame_is_not_lent_before_the_market(game, base):
