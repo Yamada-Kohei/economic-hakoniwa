@@ -26,7 +26,7 @@ import random
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import monuments, stock
+from hakoniwa_core import monuments, stock, stops
 from hakoniwa_core.diplomacy import war
 from hakoniwa_core.military import army, forces
 from hakoniwa_core.state import IslandState, LogEntry, WorldState
@@ -505,7 +505,7 @@ def _ruin(loc: IslandState, ctx: StageContext, facility) -> None:
     facility.built = False
     facility.progress = max(0, total - round(total * 0.5))
     facility.workers = 0
-    facility.status = ""
+    facility.status = stops.NONE
     facility.ext["repair"] = True
     facility.ext.pop("halted_until", None)
     facility.ext.pop("halt_reason", None)

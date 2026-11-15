@@ -72,7 +72,7 @@ from dataclasses import replace
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger, stock, trade
+from hakoniwa_core import ledger, stock, stops, trade
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
@@ -2271,7 +2271,7 @@ def restart(
     f.economy["capital"] = price
     step = round_money(ctx.config.get("market.target_step") * fac.FULL + 0.5)
     f.economy["target"] = step
-    f.status = fac.STATUS_STARTING
+    f.status = stops.STARTING
     freight_rates.forget(island)
 
 

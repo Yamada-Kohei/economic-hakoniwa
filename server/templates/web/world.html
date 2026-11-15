@@ -7,6 +7,8 @@
 {% include "web/world_nav.html" with current="world" %}
 {% if world %}
   <p class="muted">{% blocktranslate with turn=world.turn|turn_date %}{{ turn }}。島の形と町・施設を1マス1点で描いています。区画を押すとその島の画面へ移ります。{% endblocktranslate %}</p>
+  {# 他国どうしの航路の線（不具合報告 #17）。既定は出さず、押すと出す。出すかどうかはブラウザに覚える #}
+  <p class="map-tools"><button type="button" id="world-routes-toggle" class="toggle-button" aria-pressed="false" hidden>{% translate "他国の航路を出す" %}</button></p>
   <div id="world-grid" class="world-grid" style="--grid: {{ rows|length }}"
        data-defs="{% url 'api_defs' %}" data-shapes="{% url 'api_world_shapes' %}"
        data-trade="{% url 'api_world_trade' %}" data-fleets="{% url 'api_world_fleets' %}">
@@ -41,7 +43,7 @@
   {% endif %}
   <section id="world-trade" class="panel" aria-labelledby="world-trade-title" hidden>
     <h2 id="world-trade-title">{% translate "貿易圏と航路" %}</h2>
-    <p class="hint">{% translate "島の区画の縁の色が加盟している貿易圏です（2つ以上の圏に入っている島は縁が重なります）。白い丸は港のある島、線は船で運ぶ途中の荷のある航路で、太いほど船が多く、矢じりが荷の向かう先です。荷の中身は自国の荷だけ表示します。" %}</p>
+    <p class="hint">{% translate "島の区画の縁の色が加盟している貿易圏です（2つ以上の圏に入っている島は縁が重なります）。白い丸は港のある島、線は船で運ぶ途中の荷のある航路で、太いほど船が多く、矢じりが荷の向かう先です。自国の航路は黄色でいつも出し、他国の航路は地図の上の「他国の航路を出す」を押すと出ます。荷の中身は自国の荷だけ表示します。" %}</p>
     <div data-slot="blocs"></div>
     <details>
       <summary>{% translate "航路の一覧" %}</summary>

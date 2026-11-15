@@ -43,7 +43,7 @@ import math
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger, politics, stock
+from hakoniwa_core import ledger, politics, stock, stops
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.dates import is_year_end
 from hakoniwa_core.defs import Defs
@@ -503,7 +503,7 @@ def damage(island: IslandState, ctx: StageContext, f: Facility) -> None:
     f.built = False
     f.progress = max(0, total - round(total * share))
     f.workers = 0
-    f.status = ""
+    f.status = stops.NONE
     f.ext["repair"] = True
     f.ext.pop("halted_until", None)
     f.ext.pop("halt_reason", None)

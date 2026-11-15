@@ -35,14 +35,41 @@ from hakoniwa_core.economy.households import close_income
 from hakoniwa_core.economy.stats import inflation, update_cpi
 from hakoniwa_core.military.forces import soldiers as military_soldiers
 from hakoniwa_core.modules.labor import engineer_unemployment, has_own_wage
-from hakoniwa_core.modules.population import subsistence_persons
+from hakoniwa_core.modules.population import HAPPINESS_PARTS, SETTLE_PARTS, subsistence_persons
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import IslandState, LogEntry
 from hakoniwa_core.trade import balance
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, QUANTITY_SCALE, from_milli, to_basis
 
+PART_EPSILON = 1e-9  # 幸福度の内訳で、これより小さい点は書かない（0 と同じ）
+
 SHORTAGE = "shortage"  # economy.ext: 品不足の続いている財 → ターン数（フェーズ3-2）
+
+
+def _happiness_parts(
+    island: IslandState, persons: dict[str, int], weight: int, stats: dict[str, float]
+) -> None:
+    """幸福度の内訳（W-172）: 層ごとの項目の点を、幸福度と同じ重み（層の人数）で混ぜて
+    happiness_part.<項目> に書く。0 の項目は書かない。足した点と幸福度の差は、体制の上限で頭打ちに
+    した分（cap）・0 を下回った分（floor）・丸めの端数（rounding。混ぜたときの誤差も入れる）。
+    内訳を全部足すと幸福度と同じになる。"""
+    found = island.scratch.get("layer_happiness_parts", {})
+    keys = (*HAPPINESS_PARTS, *SETTLE_PARTS)
+    total = [0.0] * len(keys)
+    for name, parts in sorted(found.items()):
+        share = persons.get(name, 0)
+        if share:
+            for i, v in enumerate(parts):
+                total[i] += v * share
+    values = dict(zip(keys, (v / weight for v in total), strict=True))
+    added = 0.0
+    for value in values.values():
+        added += value
+    values["rounding"] += stats["happiness"] - added
+    for key, value in values.items():
+        if abs(value) > PART_EPSILON:
+            stats[f"happiness_part.{key}"] = value
 
 
 class LedgerCheckFailed(Exception):
@@ -92,6 +119,7 @@ class Records(IslandStage):
         weight = sum(persons.get(n, 0) for n in layers)
         if weight:
             stats["happiness"] = sum(v * persons.get(n, 0) for n, v in layers.items()) / weight
+            _happiness_parts(island, persons, weight, stats)
         else:
             mood = sum(t.ext.get("happiness", 0) * t.population for t in island.tiles)
             stats["happiness"] = mood / population if population else 0.0

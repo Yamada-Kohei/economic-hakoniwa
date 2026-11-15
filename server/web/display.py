@@ -5,13 +5,13 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import replace
-from typing import Any
+from typing import Any, NamedTuple
 
 from django.db.models import Q, Sum
 from django.utils import timezone
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, ledger, politics
+from hakoniwa_core import infra, ledger, politics, stops
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.economy import (
     books,
@@ -902,7 +902,7 @@ def facility_books(row: m.Facility, f: Facility, currency: str = "") -> dict[str
 
 # 施設の ext["halt_reason"]（止まったわけ）のうち、状態の文を分けるもの。暴動は施設の状態が
 # 「riot」になる（status_riot）ので、ここには入れない
-HALT_REASONS = ("war", "missile", "occupied")
+HALT_REASONS = stops.WAR_REASONS  # 戦争・ミサイル・占領で止めたわけ（理由の表 stops）
 
 
 def priority_hint(island: IslandState) -> str:
@@ -939,21 +939,23 @@ def status_text(f: Facility) -> str:
         return message("status_construction")
     if not f.status:
         return ""
-    kind, _, good = f.status.partition(":")
-    reason = f.ext.get("halt_reason")
-    # 戦争・ミサイル・占領で止まったのは災害ではない
-    if kind == "halted" and reason in HALT_REASONS:
-        text = message(f"halt_reason_{reason}")
-    elif kind == "target" and f.operating_rate <= 0:
+    config = get_game().config
+    kind, good = stops.split(f.status)
+    row = stops.show(config, f.status, f.ext)  # 理由の表（W-34）
+    if row is stops.WAR_HALT:  # 戦争・ミサイル・占領で止まったのは災害ではない
+        text = message(f"halt_reason_{f.ext.get('halt_reason')}")
+    elif kind == stops.TARGET and f.operating_rate <= 0:
         # 作る量を 0 まで下げて止まった（UI-84）。作り続けている間の「生産調整中」と分ける
         from server.web import slowdown  # slowdown は display を使うので、ここで読み込む
 
         return slowdown.stop_text(f) or message("status_target")
     else:
-        text = message(f"status_{kind}")
-    if kind == "budget" and good:  # 年の予算の月割りが足りない（項目の名前。LB-45）
+        text = message(row.text_key)
+    if row.on_power:  # 電力の行は文に電力が入っている
+        return text
+    if row.tail == stops.ITEM and good:  # 年の予算の月割りが足りない（項目の名前。LB-45）
         return text + f"（{message(f'budget_{good}')}）"
-    if good:
+    if good and row.tail == stops.GOOD:
         text += f"（{get_game().defs.name('goods', good)}）"
     return text
 
@@ -1047,18 +1049,10 @@ def status_hint(f: Facility) -> str:
         if f.ext.get("no_workers_turns"):
             return STATUS_HINTS["workers"]
         return STATUS_HINTS["repair" if f.ext.get("repair") else "construction"]
-    kind = f.status.partition(":")[0]
-    if kind == "halted":
-        reason = f.ext.get("halt_reason")
-        if reason in HALT_REASONS:
-            return (
-                "外交の画面で戦争と占領の状況を確かめ、「条約の提案」で停戦や講和を申し込めます。"
-            )
-    if kind in ("input_price", "funds") and f.status.partition(":")[2] == get_game().config.get(
-        "power.good"
-    ):
-        return STATUS_HINTS[f"{kind}_power"]  # 電力は輸入できない
-    return STATUS_HINTS.get(kind, "")
+    row = stops.show(get_game().config, f.status, f.ext)  # 理由の表（W-34）
+    if row is stops.WAR_HALT:
+        return "外交の画面で戦争と占領の状況を確かめ、「条約の提案」で停戦や講和を申し込めます。"
+    return STATUS_HINTS.get(row.hint_key, "")
 
 
 def goods_list(amounts: dict[str, int]) -> list[dict[str, Any]]:
@@ -1218,12 +1212,22 @@ FACILITY_ORDERS = frozenset(
 )
 
 
-def facility_labels(island: m.Island) -> dict[tuple[int, int], str]:
-    """島のマスごとの施設の種類の表示名（作る物を添える。町は除く）。命令の文に使う（W-262）。"""
+class FacilityLabel(NamedTuple):
+    """命令の文に添える、マスの施設の表示名（text）と種類（kind）。"""
+
+    text: str
+    kind: str
+
+
+def facility_labels(island: m.Island) -> dict[tuple[int, int], FacilityLabel]:
+    """島のマスごとの施設の種類の表示名（作る物を添える。町は除く）と種類。命令の文に使う（W-262）。
+    種類は、生産方式の変更の命令の行き先の方式の名前を引くのに使う（方式の名前「default」は
+    農場にも火力発電所にもあるので、施設の種類が分からないと「穀物」と出てしまう。
+    不具合報告 #12）。"""
     defs = get_game().defs
     housing = fac.housing_kind(get_game().config)
     return {
-        (x, y): kind_label(defs, kind, recipe)
+        (x, y): FacilityLabel(kind_label(defs, kind, recipe), kind)
         for kind, recipe, x, y in island.facilities.exclude(kind=housing)
         .filter(x__gte=0, y__gte=0)
         .values_list("kind", "recipe", "x", "y")
@@ -1251,7 +1255,7 @@ def _build_label(defs: Any, kind: str, recipe: str | None) -> str:
 def describe_order(
     kind: str,
     payload: dict[str, Any],
-    labels: dict[tuple[int, int], str] | None = None,
+    labels: dict[tuple[int, int], FacilityLabel] | None = None,
 ) -> str:
     """命令の列に出す、命令の中身の短い説明（量と値段は見せる単位で）。labels（facility_labels）を
     渡すと、施設への命令の文に施設の種類と作る物を添える（W-262）。"""
@@ -1260,10 +1264,9 @@ def describe_order(
     payload = order_payload(kind, payload, to_game=False)
     name = defs.name("orders", kind)
     where = f"({payload['x']}, {payload['y']})" if "x" in payload and "y" in payload else ""
-    if where and kind in FACILITY_ORDERS and labels:
-        label = labels.get((payload["x"], payload["y"]))
-        if label:
-            where = f"{label} {where}"
+    label = labels.get((payload["x"], payload["y"])) if where and labels else None
+    if label and kind in FACILITY_ORDERS:
+        where = f"{label.text} {where}"
     if kind == "build":
         facility = _build_label(defs, payload.get("facility", ""), payload.get("recipe"))
         return f"{name}: {facility} {where}"
@@ -1286,10 +1289,18 @@ def describe_order(
     if kind == "set_accounting":
         return f"{name}: {where} → {message('accounting_' + payload.get('accounting', ''))}"
     if kind == "change_recipe":
-        # 命令には施設の種類がないので、その名前の生産方式を持つ施設から表示名を引く
+        # 命令には施設の種類がないので、マスの施設（labels）から引く。分からなければ、その名前の
+        # 方式を持つ施設が1種類だけのときに限ってそこから引く（「default」などは多くの施設にあり、
+        # 先に見つかった農場の「穀物」と出ていた。不具合報告 #12）
         recipe = payload.get("recipe", "")
-        owner = next((k for k, d in defs.facilities.items() if recipe in d["recipes"]), None)
-        shown = defs.recipe_name(owner, recipe) if owner else recipe
+        owners = [k for k, d in defs.facilities.items() if recipe in d["recipes"]]
+        owner = label.kind if label and label.kind in owners else None
+        if owner is None and len(owners) == 1:
+            owner = owners[0]
+        if owner:
+            shown = defs.recipe_name(owner, recipe)
+        else:
+            shown = "基本の作り方" if recipe == "default" else recipe
         return f"{name}: {where} → {shown}"
     if kind in ("rename_island", "rename_facility", "rename_place"):
         new = payload.get("name", "")
