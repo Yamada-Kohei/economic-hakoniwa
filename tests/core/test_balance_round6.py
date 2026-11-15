@@ -265,10 +265,10 @@ def test_ships_are_replaced_before_they_retire(game, base):
     assert ships.ships_wanted(config, f, turn) == target - 1000  # 寿命の来ない1隻を除く
     f.economy["used"] = [0]
     assert ships.ships_wanted(config, f, turn) == 0  # 使っていない船は替えない
-    f.economy["fleet"] = [[turn, 3000]]
+    f.economy["fleet"] = [[turn, 2000]]
     f.economy["used"] = [load]
-    assert ships.ships_wanted(config, f, turn) == target - 3000  # 混んでいるので買い増す
-    f.economy["fleet"] = [[turn, 4000]]
+    assert ships.ships_wanted(config, f, turn) == target - 2000  # 使う分に足りないので買い増す
+    f.economy["fleet"] = [[turn, target]]
     assert ships.ships_wanted(config, f, turn) == 0  # 目標に届いている
 
 

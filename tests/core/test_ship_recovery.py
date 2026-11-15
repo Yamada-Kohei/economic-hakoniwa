@@ -144,9 +144,10 @@ def test_left_cargo_keeps_the_target_fleet_above_zero_without_ships(game, base):
     turns = config.get("trade.cost_turns")
     f.economy["fleet"] = []
     f.economy["used"] = [0] * turns
-    # 1.5 隻分の荷が毎ターン残る（_setup）。目標の混み具合で割って 2 隻
+    # 1.5 隻分の荷が毎ターン残る（_setup）。目標の混み具合で割る
     assert ships.left_ships(config, f) == 1500
-    assert ships.fleet_target(config, f) == -(-1500 * 4 // 3)
+    use = round(config.get("trade.ship_target_use") * 10000)
+    assert ships.fleet_target(config, f) == -(-1500 * 10000 // use) > 0
     assert ships.renewal(config, f, world.turn + 1) == ships.fleet_target(config, f)
     f.economy[orders.SHORT_LOAD] = [0] * turns
     assert ships.fleet_target(config, f) == 0
