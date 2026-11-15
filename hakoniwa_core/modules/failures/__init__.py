@@ -90,7 +90,11 @@ class Failures(IslandStage):
                 # 倒れるのは返済の遅れが限度に届いた施設だけで、貸し手はその施設（借入の担保）だけを
                 # 差し押さえる。同じ企業のほかの施設の借入は早めない（FM-65。前は FM-40 の
                 # クロスデフォルトで、同じ企業の借入のある施設もみな倒れていた）
-                if any(x.arrears >= limit for x in banks.loans_by_borrower(island, entity)):
+                late = [x for x in banks.loans_by_borrower(island, entity) if x.arrears >= limit]
+                if late:
+                    if any(x.purpose == banks.SHIP for x in late):  # 船の借りの遅れ（W-281）
+                        stats = island.stats
+                        stats["ship_loans.failed"] = stats.get("ship_loans.failed", 0) + 1
                     bankrupt(island, ctx, f)
         before = funds.government_money(island)  # 政府の預金からの引き出しは使った額に数えない
         spent = dict(funds.spent(island))  # 救済の前の支出（救済の額は次のターンの見込みでない）

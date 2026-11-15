@@ -109,7 +109,12 @@ def test_ships_past_their_life_add_no_wear_to_the_freight(game, base):
     f.economy["fleet"] = [[world.turn, 2000]]
     f.economy["overdue"] = MILLI
     ships.close_turn(island, config, 0, 0)
-    wear = island.economy.prices[GOOD] / config.get("trade.ship_life")
+    price = island.economy.prices[GOOD]
+    # 傷みと船の利子（W-281。FX-83）
+    wear = (
+        price / config.get("trade.ship_life")
+        + price * config.get("market.initial_prices.capital_rate") / 12
+    )
     assert abs(f.economy["capital_costs"][-1] - wear) <= 1  # 1隻分だけ
 
 

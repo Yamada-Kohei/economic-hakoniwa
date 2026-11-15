@@ -36,7 +36,6 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
@@ -54,14 +53,15 @@ from hakoniwa_core.economy import (
     is_self_supporting,
     owner_entity,
     receivership,
+    ship_loans,
 )
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.households import add_income, layer_of
 from hakoniwa_core.economy.prices import variable_profit
-from hakoniwa_core.economy.start import next_payments
+from hakoniwa_core.economy.start import next_payments, ship_payments
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE, Facility, IslandState, Loan, LogEntry
-from hakoniwa_core.trade import is_trader, traders
+from hakoniwa_core.trade import is_trader, shipping_of, traders
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import BASIS, part, to_basis
 
@@ -100,6 +100,7 @@ class Banking(IslandStage):
             number = banks.bank_number(bank)
             self._deposit_interest(island, bank, number)
             self._reserve_interest(island, ctx, bank, number)
+        self._ship_loans(island, ctx)
         self._working_capital(island, ctx, lent)
         self._switch_deposits(island, ctx)
         self._update_rates(island, ctx, lent)
@@ -347,17 +348,26 @@ class Banking(IslandStage):
             owner = owner_entity(f)
             if owner == ledger.GOV:
                 payer = Payer(owner, STATE_FACILITIES)
-            elif (
-                self._viable(island, ctx, f)
-                or f.economy.get("ships_wanted", 0) > 0
-                or f.economy.get("ship_order_due", 0) > 0
-            ):
-                # 船を買いたい（造船所に注文した）海運業は、船がなければ稼げないので、変動費の
-                # 利益を見ずに出資する（回6・FX-60）
+            elif self._viable(island, ctx, f):
+                # 海運業の船の頭金と、審査に通らなかった買い替えの出資は _ship_loans で済ませてある
+                # （W-281。前は船を買いたい海運業に、変動費の利益を見ずに出資していた）
                 payer = Payer(owner)
             else:
                 continue
             self._inject(island, f, payer, short)
+
+    @staticmethod
+    def _ship_loans(island: IslandState, ctx: StageContext) -> None:
+        """海運業の次のターンの船の枠（船の借りの審査）と頭金（W-281。economy/ship_loans.py）。
+        運転資金の前に決め、頭金は次の支払いの見込みに入れる。"""
+        f = shipping_of(island, ctx.config)
+        if f is None:
+            return
+        f.economy.pop(ship_loans.CREDIT, None)
+        if in_receivership(f) or not is_self_supporting(f) or not in_business(f):
+            return
+        other = next_payments(island, ctx.defs, ctx.config, f) - ship_payments(ctx.config, f)
+        ship_loans.arrange(island, ctx, f, other)
 
     @staticmethod
     def _inject(island: IslandState, f: Facility, payer: Payer, amount: int) -> None:
@@ -469,17 +479,9 @@ class Banking(IslandStage):
         settings = config.get("loans")
         entity = facility_entity(f.id)
         rate = offers[0][0]
-        history = banks.ebitda(f)[-config.get("firms.ebitda_turns") :]
-        young = ctx.turn - f.economy.get("entered", -(10**9)) <= settings["grace_turns"]
-        if history and not young:
-            earnings = sum(history) / len(history)
-        else:
-            # 記録がないか、民営工場が動き出して据え置きの間（立ち上がりの赤字は見ない）:
-            # 今の値段の変動費の利益を、できたばかりなら操業目標の分、据え置きの間は全力の分だけ見る
-            freight = freight_rates.facility_rates(island, ctx.defs, config).get(f.id, 0)
-            wage = f.economy.get("wage", 0)
-            profit = variable_profit(ctx.defs, config, f, island.economy.prices, wage, freight)
-            earnings = profit if young else fac.scale(profit, f.economy.get("target", fac.FULL))
+        # 記録がないか、民営工場が動き出して据え置きの間は、今の値段の変動費の利益で見る
+        # （立ち上がりの赤字は見ない。船の借りの審査と同じ式）
+        earnings = ship_loans.earnings(island, ctx, f)
         service = banks.debt_service(island, entity, ctx.turn) + ledger.interest(amount, rate)
         if service > 0 and earnings < settings["coverage"] * service:
             # 利益で返せなくても、売れ残りの在庫を担保に運転資金だけは貸す（在庫を売って返す）

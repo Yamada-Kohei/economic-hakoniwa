@@ -209,20 +209,19 @@ def next_payments(island: IslandState, defs: Defs, config: GameConfig, f: Facili
 
 
 def _ships_to_buy(island: IslandState, config: GameConfig, f: Facility) -> int:
-    """海運業が買いたい輸送船（市場の段で決めた ``economy["ships_wanted"]``）の代金（今の値段で）。
-    次の支払いに足し、手元の資金で足りなければ運転資金を借りるか持ち主が出し、配当で外に出さない
-    （回6。船の傷みの分を運賃で集めても、手元の資金の目安を超えた分は配当で出ていき、寿命の船を
-    買い替えられなかった）。"""
+    """海運業の次の支払いに入れる船の代金（配当で外に出さない。回6）。"""
+    return ship_payments(config, f)
+
+
+def ship_payments(config: GameConfig, f: Facility) -> int:
+    """海運業が次のターンに自分で払う船の代金: 銀行の段で決めた枠の頭金と、造船所への前注文の自分で
+    払う分（W-281。economy/ship_loans.py。船の代金の残りは船の借りで、市場で買う直前に貸すので入れ
+    ない。前は代金の全部を入れ、足りない分を運転資金の短い借りで借りていた）。"""
     if f.kind != config.get("trade.shipping_facility"):
         return 0
-    # 船の前注文の次のターンの代金と、払えずに注文できなかった手付け（FX-60。trade/orders.py）
-    ordered = f.economy.get("ship_order_due", 0)
-    want = f.economy.get("ships_wanted", 0)
-    if want <= 0:
-        return ordered
-    # 買い注文の指値（値幅の上端）で見る
-    price = island.economy.prices.get(config.get("trade.ship_good"), 0)
-    return ordered + money_of(price + part(price, to_basis(config.get("market.band"))), want)
+    from hakoniwa_core.economy import ship_loans  # ship_loans は start を読む物を読むので、ここで
+
+    return ship_loans.payments(f)
 
 
 # --- 銀行と運送業 -----------------------------------------------------------------

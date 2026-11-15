@@ -162,18 +162,40 @@ def order_wanted(island: IslandState, config: GameConfig, f: Facility, turn: int
     return whole(max(0, want - have))
 
 
-def place(island: IslandState, defs: Defs, config: GameConfig, f: Facility, turn: int) -> int:
+def place(
+    island: IslandState,
+    defs: Defs,
+    config: GameConfig,
+    f: Facility,
+    turn: int,
+    ctx: Any = None,
+) -> int:
     """海運業 f が島の造船所に船を注文し、手付けを払う。注文した量を返す。造船所がなければ -1
-    （市場で買う）。手付けが払えずに注文できなかった分の手付けは、次の支払いの見込みに足す。"""
+    （市場で買う）。手付けが払えずに注文できなかった分の手付けは、次の支払いの見込みに足す。
+
+    ctx（段の文脈）があれば、船の借りの審査をする（W-281。economy/ship_loans.py）: 買い増しで通ら
+    ない分は注文せず、通った分の代金の loans.ship_ltv まで（担保の上限まで）を注文の借り
+    （financed）にする。手付けの足りない分を次の支払いの見込みに足すのは、買い替えの分だけ。"""
     candidates = yards(island, defs, config)
     if not candidates:
         return -1
     want = order_wanted(island, config, f, turn)
     if want <= 0:
         return 0
-    yard = min(candidates, key=lambda y: (_due_turn(defs, config, y, want, turn), y.id))
     price = island.economy.prices.get(config.get("trade.ship_good"), 0)
     payer = payer_of(defs, config, f)
+    financed, replace = 0, want
+    if ctx is not None and payer.entity == entity_of(config, f):
+        from hakoniwa_core.economy import ship_loans  # economy は trade を読むので、ここで読む
+        from hakoniwa_core.trade import ships
+
+        replace = min(want, whole(ships.replacement(config, f, turn)))
+        want, replace, financed = ship_loans.order_review(
+            island, ctx, f, price, replace, want - replace
+        )
+        if want <= 0:
+            return 0
+    yard = min(candidates, key=lambda y: (_due_turn(defs, config, y, want, turn), y.id))
     payee = entity_of(config, yard)
     deposit = config.get("trade.order_deposit")
     per_ship = round_money(money_of(price, MILLI) * deposit)
@@ -181,7 +203,9 @@ def place(island: IslandState, defs: Defs, config: GameConfig, f: Facility, turn
     if payer.entity != payee and per_ship > 0:
         qty = min(want, funds.available(island, payer) // per_ship * MILLI)
     if qty < want:
-        f.economy[DUE] = f.economy.get(DUE, 0) + per_ship * (want - qty) // MILLI
+        unpaid = min(want - qty, replace) if ctx is not None else want - qty
+        f.economy[DUE] = f.economy.get(DUE, 0) + per_ship * unpaid // MILLI
+        financed = financed * qty // want
     if qty <= 0:
         return 0
     order = {
@@ -195,8 +219,10 @@ def place(island: IslandState, defs: Defs, config: GameConfig, f: Facility, turn
         "placed": turn,
         "due": _due_turn(defs, config, yard, qty, turn),
     }
+    if financed > 0:
+        order["financed"] = financed  # 銀行が貸す額（船の借り。W-281）
     yard.economy.setdefault(ORDERS, []).append(order)
-    _collect(island, config, yard, order, _scheduled(config, order, 0))
+    _collect(island, config, yard, order, _scheduled(config, order, 0), ctx)
     island.log.append(
         LogEntry(
             "ship_order_placed",
@@ -214,16 +240,34 @@ def _buyer_payer(o: dict[str, Any]) -> Payer:
 
 
 def _collect(
-    island: IslandState, config: GameConfig, yard: Facility, o: dict[str, Any], due: int
+    island: IslandState,
+    config: GameConfig,
+    yard: Facility,
+    o: dict[str, Any],
+    due: int,
+    ctx: Any = None,
 ) -> None:
-    """注文 o の払うべき額 due まで、買い手が払える分を払う。"""
+    """注文 o の払うべき額 due まで、買い手が払える分を払う。注文の借り（financed。W-281）があれば、
+    頭金を払った後の分は、銀行が買い手に貸して造船所へ直に払う（借りたお金はほかに使わない）。"""
     owed = due - o["paid"]
     if owed <= 0:
         return
     payer = _buyer_payer(o)
     payee = entity_of(config, yard)
     if payer.entity != payee:
-        owed = min(owed, funds.available(island, payer))
+        lent = 0
+        buyer = island.facility(o["buyer"])
+        if ctx is not None and o.get("financed") and buyer is not None:
+            from hakoniwa_core.economy import ship_loans  # economy は trade を読むので、ここで読む
+
+            money = funds.available(island, payer)
+            own = min(money, max(0, min(owed, ship_loans.own_share(o, due) - o["paid"])))
+            lent = ship_loans.finance_payment(island, ctx, buyer, o, owed - own)
+            # 銀行が貸しきれなかった分（銀行の体力が落ちたとき）は、払える分を自分で払う
+            own += min(money - own, owed - own - lent)
+            owed = own + lent
+        else:
+            owed = min(owed, funds.available(island, payer))
         funds.pay(island, payer, payee, owed, PAYMENT)
     o["paid"] += max(0, owed)
 
@@ -240,23 +284,24 @@ def _refund(
     payee: str,
     amount: int,
     claims: dict[str, Any] | None,
-) -> None:
+) -> int:
     """前払い amount を造船所の預金から返す。返しきれない分は claims（差し押さえの請求）か、造船所の
-    借りに残す。"""
+    借りに残す。返した額を返す。"""
     from hakoniwa_core.economy import arrears
 
     payer = _yard_payer(config, yard)
     if amount <= 0 or payer.entity == payee:
-        return
+        return 0
     paid = min(amount, funds.available(island, payer))
     funds.pay(island, payer, payee, paid, REFUND)
     left = amount - paid
     if left <= 0:
-        return
+        return paid
     table = claims.setdefault(arrears.ORDERS, {}) if claims is not None else None
     if table is None:
         table = yard.economy.setdefault(REFUNDS, {})
     table[payee] = table.get(payee, 0) + left
+    return paid
 
 
 def _claims_of(yard: Facility) -> dict[str, Any] | None:
@@ -280,7 +325,15 @@ def _cancel(
     if not yard.economy[ORDERS]:
         yard.economy.pop(ORDERS)
     if refund:
-        _refund(island, config, yard, o["payer"], o["paid"], claims)
+        back = _refund(island, config, yard, o["payer"], o["paid"], claims)
+        if o.get("loans"):  # 返ってきた前払いで、まず注文の船の借りを返す（W-281）
+            from hakoniwa_core.economy import ship_loans  # economy は trade を読むので、ここで読む
+
+            ship_loans.cancelled(island, o, back)
+    elif o.get("loans"):
+        from hakoniwa_core.economy import ship_loans
+
+        ship_loans.cancelled(island, o, 0)
     island.log.append(
         LogEntry(
             "ship_order_cancelled" if refund else "ship_order_defaulted",
@@ -310,9 +363,10 @@ def claims_on_bankruptcy(yard: Facility) -> dict[str, int]:
     return {p: v for p, v in sorted(yard.economy.pop(REFUNDS, {}).items()) if v > 0}
 
 
-def run(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> None:
+def run(island: IslandState, defs: Defs, config: GameConfig, turn: int, ctx: Any = None) -> None:
     """市場の段の初め: 前注文の取り消し・船の取り置き・代金の支払い・引き渡し（作った船は生産の段で
-    造船所の在庫に入っている）。海運業の次の支払いの見込み（DUE）も決め直す。"""
+    造船所の在庫に入っている）。海運業の次の支払いの見込み（DUE。自分で払う分）も決め直す。ctx が
+    あれば、注文の借りを貸して払う（W-281）。"""
     good = config.get("trade.ship_good")
     late = config.get("trade.order_late_turns")
     shipping = shipping_of(island, config)
@@ -341,11 +395,11 @@ def run(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> None:
             free -= take
         for o in list(orders_of(yard)):
             if o["built"] < o["qty"]:
-                _collect(island, config, yard, o, _scheduled(config, o, o["built"]))
+                _collect(island, config, yard, o, _scheduled(config, o, o["built"]), ctx)
                 continue
-            _collect(island, config, yard, o, _value(o))
+            _collect(island, config, yard, o, _value(o), ctx)
             if o["paid"] >= _value(o):
-                _deliver(island, defs, config, yard, o)
+                _deliver(island, defs, config, yard, o, turn)
         if shipping is not None:
             shipping.economy[DUE] = shipping.economy.get(DUE, 0) + _next_due(
                 defs, config, yard, shipping.id
@@ -381,16 +435,28 @@ def _next_due(defs: Defs, config: GameConfig, yard: Facility, buyer: int) -> int
         room -= add
         built = o["built"] + add
         due = _value(o) if built >= o["qty"] else _scheduled(config, o, built)
-        if o["buyer"] == buyer:
-            total += max(0, due - o["paid"])
+        if o["buyer"] == buyer:  # 注文の借りで払う分は除く（W-281）
+            total += max(0, _own_due(o, due) - _own_due(o, o["paid"]))
     return total
 
 
+def _own_due(o: dict[str, Any], due: int) -> int:
+    """注文 o の累計 due のうち、買い手が自分で払う分（注文の借りがなければ全部）。"""
+    financed = o.get("financed", 0)
+    return due if financed <= 0 else min(due, _value(o) - financed)
+
+
 def _deliver(
-    island: IslandState, defs: Defs, config: GameConfig, yard: Facility, o: dict[str, Any]
+    island: IslandState,
+    defs: Defs,
+    config: GameConfig,
+    yard: Facility,
+    o: dict[str, Any],
+    turn: int | None = None,
 ) -> None:
     """作り上げて代金を払い終えた注文の船を海運業に渡す（次の貿易の段で船団に入る）。帳簿には、
-    渡したときに注文の値段で売り買いしたとして付ける。"""
+    渡したときに注文の値段で売り買いしたとして付ける。注文の借りは、引き渡しのターンから元金を
+    返す（W-281）。"""
     good = config.get("trade.ship_good")
     buyer = island.facility(o["buyer"])
     assert buyer is not None
@@ -409,6 +475,10 @@ def _deliver(
     # また注文する）
     buyer.economy.pop("ships_short", None)
     buyer.economy.pop(SHORT_LOAD, None)
+    if o.get("loans") and turn is not None:
+        from hakoniwa_core.economy import ship_loans  # economy は trade を読むので、ここで読む
+
+        ship_loans.delivered(island, o, turn)
     island.log.append(
         LogEntry("ship_order_delivered", {"count": from_milli(qty), "x": yard.x, "y": yard.y})
     )

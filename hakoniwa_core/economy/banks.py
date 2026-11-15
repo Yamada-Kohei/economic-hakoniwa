@@ -41,6 +41,10 @@ PLEDGE = "pledge"  # 株を担保にした借入（資本家階級が借りる�
 # 分割で
 # 返さず、施設が売れたとき・取り壊すとき・国に移るときに、ほかの請求より先に一度に返す
 RECEIVER = "receiver"
+# 船の借り（W-281。2026-11-15）: 海運業が船を買う代金の loans.ship_ltv までを、船を担保に
+# loans.construction_turns ターンで返す。元金は毎ターン同じ額。市場で買った船は次のターンから、
+# 造船所に前注文した船は引き渡しのターンから元金を返す（それまでは利子だけ。economy/ship_loans.py）
+SHIP = "ship"
 
 FINANCE_VERSION = 2  # economy.finance["version"]: 2 はフェーズ2-2 の金融が始まった島
 
@@ -471,6 +475,27 @@ def lend(
                 loan.term = max(1, (held * left + amount * term) // loan.principal)
                 loan.start, loan.rate = turn, rate
                 loan.installment = -(-loan.principal // loan.term)
+                return loan
+    if purpose == SHIP and (repay_from is None or repay_from <= turn + 1):
+        # 返し始めた船の借りは、同じ銀行の返し始めた船の借りに足して1件にまとめ、残りの期間を残高の
+        # 重みで混ぜ直す（住宅ローンと同じ。毎ターン少しずつ船を買っても件数が積もらない）。引き渡し
+        # 前の注文の借り（返し始めが先）はまとめない
+        for loan in island.loans:
+            if (
+                loan.lender == lender
+                and loan.borrower == borrower
+                and loan.purpose == SHIP
+                and loan.repay_from <= turn + 1
+            ):
+                held = outstanding(island, loan)
+                left = remaining_turns(loan, turn)
+                ledger.create(island, lender, ledger.loan_item(loan.id), borrower, amount, "loan")
+                ledger.pay(island, lender, borrower, amount, "loan")
+                loan.principal = held + amount
+                loan.term = max(1, (held * left + amount * term) // loan.principal)
+                loan.start, loan.rate = turn, rate
+                loan.installment = -(-loan.principal // loan.term)
+                loan.repay_from = turn + 1
                 return loan
     if purpose == WORKING:
         for loan in island.loans:

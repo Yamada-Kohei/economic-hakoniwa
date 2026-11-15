@@ -189,6 +189,8 @@ def test_turns_run_with_orders_and_the_books_balance(game, base):
     world, island, f, yard = _setup(game, base)
     config = game.config
     good = config.get("trade.ship_good")
+    # 買い増しの注文は船の借りの審査に通る稼ぎが要る（W-281。できたばかりの海運業は稼ぎが 0）
+    f.economy["ebitda"] = [island.economy.prices[good]] * config.get("firms.ebitda_turns")
     run(game, world, 1)
     f = shipping_of(island, config)
     yard = island.facility(yard.id)

@@ -24,8 +24,9 @@ trade.ship_fuel に財が複数あれば、どれか1つで動きます（フェ
 
 運賃は「荷 1 トン × 区画 1 つ」あたりで、（1 + trade.cost_markup）×（運航費 ＋ 資本費 ×
 min(1, 2u)）÷ 1 隻を 1 ターン全部使ったときに運ぶ量です（タブ 9 FX-74。2026-11-12、W-233）。運航費は
-1 隻 1 ターンの船員の賃金と一番安い燃料、資本費は直近 trade.cost_turns ターンの船の傷みと沈んだ船の
-値段 ÷ 延べ隻数、u は同じターンの運んだ量 ÷ 船団を全部使ったときの量。船が余れば運航費まで下がり、
+1 隻 1 ターンの船員の賃金と一番安い燃料、資本費は直近 trade.cost_turns ターンの船の傷みと、船に
+寝かせたお金の利子（market.initial_prices.capital_rate。W-281）と、沈んだ船の値段 ÷ 延べ隻数、u は
+同じターンの運んだ量 ÷ 船団を全部使ったときの量。船が余れば運航費まで下がり、
 半分より多く使えば、船の傷みまで回収する全部の費用で止まります。
 
 港は荷の積み下ろしを 1 ターンに trade.port_capacity トンまで扱い、直近の扱った量の平均 ×
@@ -40,6 +41,7 @@ from typing import Any
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import stock
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import books
 from hakoniwa_core.state import Facility, IslandState, LogEntry
@@ -139,6 +141,14 @@ def renewal(config: GameConfig, f: Facility, turn: int) -> int:
     return max(0, fleet_target(config, f) - (fleet(f) - retiring(config, f, turn)))
 
 
+def replacement(config: GameConfig, f: Facility, turn: int) -> int:
+    """買い替え（W-281。1000 分の 1 隻）: 寿命の来る船（retiring）のうち、直近に航海に出ていた船を
+    保つのに要る分（寿命の来ない船で足りない分）。使っていなかった船の寿命は数えない。買い増し
+    （ships_wanted の残り）と分けて、船の借りの審査の線を変える。"""
+    old = retiring(config, f, turn)
+    return min(old, max(0, used_ships(config, f) - (fleet(f) - old)))
+
+
 def ships_wanted(config: GameConfig, f: Facility, turn: int) -> int:
     """海運業が市場で買う輸送船（1000 分の 1 隻。買って船団に入れる前の船があれば、その分を引く）。
 
@@ -164,6 +174,9 @@ def ships_of_load(config: GameConfig, load: int) -> int:
 def lose_ships(island: IslandState, config: GameConfig, f: Facility, qty: int) -> int:
     """沈んだ船 qty（1000 分の 1 隻）を古い順に船団から除く。設備の額と償却済みの額から沈んだ船の
     割合を除き、まだ償却していなかった分を船の傷みと同じ費用に数えて運賃に乗せる（close_turn）。除いた量を返す。"""
+    from hakoniwa_core.economy import ship_loans  # economy は trade を読むので、ここで読む
+
+    held = ship_loans.collateral(island, f)
     before = fleet(f)
     taken = 0
     keep = []
@@ -179,6 +192,8 @@ def lose_ships(island: IslandState, config: GameConfig, f: Facility, qty: int) -
         f.economy["capital"] = capital - gone_capital
         f.economy["depreciated"] = done - gone_done
         f.economy["sunk_value"] = f.economy.get("sunk_value", 0) + max(0, gone_capital - gone_done)
+        # 沈んでも船の借りは残る（返済は続く）。担保が足りなくなった額を数える（W-281）
+        ship_loans.note_loss(island, config, f, held)
     return taken
 
 
@@ -235,9 +250,13 @@ def scrap(island: IslandState, config: GameConfig, turn: int) -> int:
         f.economy["fleet"] = sorted(keep, key=lambda e: e[0])
         # 解体した船の割合を設備の額と償却済みの額から除く（固定資産の除却。FX-74。前は除かず、
         # 1 隻になっても解体した船の分の減価償却が続いた）
+        from hakoniwa_core.economy import ship_loans  # economy は trade を読むので、ここで読む
+
+        held = ship_loans.collateral(island, f)
         capital, done = f.economy.get("capital", 0), f.economy.get("depreciated", 0)
         f.economy["capital"] = capital - capital * gone // before
         f.economy["depreciated"] = done - done * gone // before
+        ship_loans.note_loss(island, config, f, held)  # 取り壊しても船の借りは残る（W-281）
         island.log.append(LogEntry("ships_scrapped", {"count": from_milli(gone)}))
     return gone
 
@@ -356,10 +375,12 @@ def _ship_run_cost(island: IslandState, config: GameConfig) -> float:
 
 
 def _ship_wear(island: IslandState, config: GameConfig) -> float:
-    """船 1 隻の 1 ターンの傷み（今の船の値段 ÷ 寿命）。"""
-    return island.economy.prices.get(config.get("trade.ship_good"), 0) / config.get(
-        "trade.ship_life"
-    )
+    """船 1 隻の 1 ターンの資本費: 傷み（今の船の値段 ÷ 寿命）と、船に寝かせたお金の利子（今の船の
+    値段 × market.initial_prices.capital_rate の 1 ターン分。重機・トラック・設備と同じ率）。
+    利子を入れないと、運賃の稼ぎでは船の借りの利子も払えなかった（W-281。2026-11-15 本人 OK）。"""
+    price = island.economy.prices.get(config.get("trade.ship_good"), 0)
+    rate = config.get("market.initial_prices.capital_rate") / TURNS_PER_YEAR
+    return price / config.get("trade.ship_life") + price * rate
 
 
 def close_turn(island: IslandState, config: GameConfig, carried: int, fuel_value: int) -> None:
@@ -369,7 +390,7 @@ def close_turn(island: IslandState, config: GameConfig, carried: int, fuel_value
         return
     keep = config.get("trade.cost_turns")
     wage_bill = f.economy.get("wage", 0) * f.workers
-    # 寿命を過ぎて使い続けている船は償却済みなので、傷みに数えない（延べ隻数には数える）
+    # 寿命を過ぎて使い続けている船は償却済みなので、傷みと利子に数えない（延べ隻数には数える）
     wear = round_money(
         _ship_wear(island, config) * from_milli(max(0, fleet(f) - f.economy.get("overdue", 0)))
     )

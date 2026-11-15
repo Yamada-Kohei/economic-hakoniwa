@@ -83,6 +83,7 @@ from hakoniwa_core.economy import (
     reserve,
     retail,
     services,
+    ship_loans,
     standing,
     trucks,
 )
@@ -1057,7 +1058,7 @@ class Market(IslandStage):
             f.economy.pop("fuel_restock_short", None)
         # 船の前注文（FX-60）: 取り消し・作った船の取り置き・代金の支払い・引き渡し（造船所が売りに
         # 出す前に、注文の分を取り置く）
-        ship_orders.run(island, defs, config, ctx.turn)
+        ship_orders.run(island, defs, config, ctx.turn, ctx)
         self._supply_sites_from_warehouse(island, ctx)
         books_by_good: dict[str, Book] = {}
         if trade.started(island):  # 物がないときの海外の食料商人が来るか（FX-73。W-239）
@@ -1097,6 +1098,7 @@ class Market(IslandStage):
         for f, good, qty, cost in island.scratch.pop(REPAIR, []):  # 直す資材を設備に入れる（回6）
             equipment.install(defs, f, good, qty, cost)
         self._trade_settled(island, ctx, rates)
+        ship_loans.note_spent(island)  # 船の借りで買った額も、取り置きを戻す前に数える（W-281）
         drawn = island.scratch.get(MORTGAGE_DRAWN)
         if drawn:  # 住宅ローンで買った額は、取り置きを戻す前に数える（回3）
             island.scratch[MORTGAGE_DRAWN] = {
@@ -1111,6 +1113,8 @@ class Market(IslandStage):
                 funds.release(island, MERCHANT_GAP, party.reserved)
                 party.reserved = 0
         self._settle_mortgage(island, ctx)
+        # 船の借りは、買えた船の代金の分だけ残し、残りをこのターンのうちに返す（W-281）
+        ship_loans.settle(island, ctx, trade.shipping_of(island, config))
         self._supply_facilities_from_warehouse(island, ctx)
         self._treasury_fuel_reserves(island, ctx, books_by_good, results, rates, official, persons)
         for book in books_by_good.values():
@@ -4097,17 +4101,25 @@ class Market(IslandStage):
             # しない）。なければ市場で買う
             placed = -1
             if not is_seized(shipping):
-                placed = ship_orders.place(island, defs, config, shipping, ctx.turn)
+                placed = ship_orders.place(island, defs, config, shipping, ctx.turn, ctx)
             want = ships.ships_wanted(config, shipping, ctx.turn) if placed < 0 else 0
-            # 買いたい船の代金を次の支払いに数え、足りなければ運転資金か持ち主の出資で賄う（回6）
+            # 次のターンに買いたい船（とそのうちの買い替え）を、銀行の段の船の借りの審査に渡す
+            # （W-281）。このターンに買うのは、前のターンの銀行の段で通した枠まで
+            buy = ship_loans.market_qty(shipping, want)
             shipping.economy["ships_wanted"] = want
-            if want > 0:
+            shipping.economy["ships_replace"] = min(
+                want, ships.replacement(config, shipping, ctx.turn)
+            )
+            if buy > 0:
                 good = config.get("trade.ship_good")
-                vessels[good] = (want, auction.band(prices.get(good, 1), width)[1])
+                vessels[good] = (buy, auction.band(prices.get(good, 1), width)[1])
             name = facility_entity(shipping.id)
             # 燃料を先に取り置き、残りのお金で船を買う（船の買い替えで燃料が削られ、船が出せずに
-            # 「船が足りない」になって、また船を買う回り方にならないように。回6）
+            # 「船が足りない」になって、また船を買う回り方にならないように。回6）。船の借りは燃料を
+            # 取り置いた後、船の買い注文の直前に貸す（借りたお金は船の代金にだけ使う。W-281）
             for plan in (fuel, vessels):
+                if plan is vessels and buy > 0:
+                    ship_loans.draw(island, ctx, shipping, buy)
                 for good, (qty, limit) in sorted(
                     self._afford(island, payer, plan, hh_rate, 0).items()
                 ):
@@ -4115,6 +4127,8 @@ class Market(IslandStage):
                     party.reserved = gross_cost(limit, qty, hh_rate, 0)
                     funds.commit(island, payer, party.reserved)
                     self._add(books_by_good, good, "buy", Order(qty, limit), party)
+                    if plan is vessels:
+                        ship_loans.bid_placed(island, party)
 
     def _contract_orders(
         self,
