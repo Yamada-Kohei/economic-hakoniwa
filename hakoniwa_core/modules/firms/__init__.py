@@ -69,6 +69,7 @@ banking.entry_roe_margin」を超え、政策金利が今の銀行の預金金�
 from __future__ import annotations
 
 import math
+from collections.abc import Iterator
 from dataclasses import replace
 from typing import Any
 
@@ -508,6 +509,18 @@ class EntryExit(IslandStage):
         島で品切れの財（_missing。直近 firms.price_turns ターン1つも売りに出ず、買いたい人のいた
         財）を作れる作り方のある施設は、順番を待たずに毎ターン見直す（回4。穀物が島から消えても、
         綿に替えた農場が1年後の見直しまで穀物に戻らず、そのあいだに町が飢えた）。"""
+        for f, choice in self._recipe_choices(island, ctx, OWNER_PRIVATE):
+            f.ext[fac.RECIPE_NEXT] = choice
+
+    @classmethod
+    def _recipe_choices(
+        cls, island: IslandState, ctx: StageContext, owner: str, crops_only: bool = False
+    ) -> Iterator[tuple[Facility, str]]:
+        """持ち主 owner の施設のうち、この見直しの順番の施設が替える作り方（施設, 作り方）を順に
+        出す。呼び手が RECIPE_NEXT を書いてから次の施設を見るので、同じターンに前の施設が替えると
+        決めた作物は、次の施設の見直しで替えたばかりの作物に数える（_switched_into）。
+        crops_only なら畑の作物（育つ期間のある作り方）だけを見る（国営の農場。
+        state_crop_choices）。"""
         defs, config = ctx.defs, ctx.config
         settings = config.get("firms")
         margin = to_basis(settings["recipe_margin"])
@@ -521,27 +534,32 @@ class EntryExit(IslandStage):
             urgent = any(g in missing for r in recipes.values() for g in r["outputs"])
             if (
                 len(recipes) < 2
-                or f.owner != OWNER_PRIVATE
+                or f.owner != owner
                 or not f.built
                 or not fac.on_map(f)
                 or is_stopped(f)  # 管財人が動かしている施設は見直す（FM-59）
                 or fac.RECIPE_NEXT in f.ext
+                or (crops_only and not fac.grow_turns(defs, f.kind, f.recipe))
                 or ((ctx.turn + f.id) % settings["recipe_turns"] and not urgent)
             ):
                 continue
             if prices is None:
                 prices = average_prices(island, settings["price_turns"])
-                imports = self._import_prices(island, ctx)
-                supplied = self._supplied(island, ctx)
+                imports = cls._import_prices(island, ctx)
+                supplied = cls._supplied(island, ctx)
                 rates = freight_rates.facility_rates(island, defs, config)
-            busy = self._switched_into(island, ctx)
-            profits = self._recipe_profits(
+            busy = cls._switched_into(island, ctx)
+            profits = cls._recipe_profits(
                 island, ctx, f, prices, supplied, rates.get(f.id, 0), busy, missing, imports
             )
+            if crops_only:
+                profits = {n: v for n, v in profits.items() if fac.grow_turns(defs, f.kind, n)}
             now = profits.get(f.recipe, 0)
+            if not profits:
+                continue
             choice = max(sorted(profits), key=lambda name: profits[name])
             if choice != f.recipe and profits[choice] - now > part(abs(now), margin):
-                f.ext[fac.RECIPE_NEXT] = choice
+                yield f, choice
 
     @staticmethod
     def _switched_into(island: IslandState, ctx: StageContext) -> set[str]:
@@ -2965,3 +2983,49 @@ def _sole_food(island: IslandState, defs: Defs, f: Facility) -> set[str]:
         if not made:
             break
     return made
+
+
+STAPLE = "grain"  # 主食（国営の農場の見直しが、足りないときに離れない作物）
+
+
+def state_crop_choices(
+    island: IslandState, defs: Defs, config: GameConfig, turn: int
+) -> list[tuple[Facility, str]]:
+    """標準の計画が国営の農場の作物を替える（施設, 作り方）の並び（ターン turn の命令に足す）。
+
+    市場経済・混合経済の島の国営の農場も、民営の農場と同じ見直し（_recipe_choices。
+    firms.recipe_turns ターンごとの変動費の利益、品切れの財、替えたばかりの作物を選ばない）で作物を
+    選ぶ（1つの島の 300 ターンの試験。国の綿の農場が服の工場の買う量の 8 倍まで綿を積み、値段が
+    初めの 0.23 倍まで落ちても綿を作り続けた。民営の農場なら替えている。掲示板の会議 #825）。
+    計画経済の島は計画で決めるので見ない。国営の施設の作り方は命令でしか替わらないので、
+    人の国の農場はこの見直しで替わらない（標準の計画の命令だけ）。
+
+    - 主食の守り（片方向）: 島の食べ物が足りないか（food.ratio が 1 未満）、主食が品切れのあいだは、
+      主食を作る農場をほかの作物に替えない。採算で主食へ替えるのは止めない（足りないときに主食へ
+      戻るのを遅らせない）。
+    - 一斉に移らない: 畑を蒔き直している途中か、蒔き直し終えて firms.price_turns ターンたたない
+      農場は見直さない（作物の周期に合わせる）。1ターンに替えるのは国営の農場1つまで。民営の
+      見直しと同じく、ほかの施設が替えたばかりの作物は選ばない（_switched_into）。"""
+    if is_planned(defs, island):
+        return []
+    ctx = StageContext(
+        defs=defs,
+        config=config,
+        registry=None,  # type: ignore[arg-type]  # 見直しは読むだけで段も命令も使わない
+        formulas={},
+        turn=turn,
+        seed=0,
+        stage="autoplan",
+        before=None,
+    )
+    recent = turn - config.get("firms.price_turns")
+    ratio = island.stats.get("food.ratio")
+    short = (ratio is not None and ratio < 1) or STAPLE in _missing(island.economy.finance)
+    for f, choice in EntryExit._recipe_choices(island, ctx, OWNER_STATE, crops_only=True):
+        if fac.FIELDS in f.economy or f.ext.get(fac.CROP_READY, -(10**9)) > recent:
+            continue
+        outputs = defs.facilities[f.kind]["recipes"][choice]["outputs"]
+        if short and STAPLE in fac.recipe_of(defs, f)["outputs"] and STAPLE not in outputs:
+            continue
+        return [(f, choice)]
+    return []

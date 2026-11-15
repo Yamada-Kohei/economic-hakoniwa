@@ -256,6 +256,16 @@ def island_row(
         for kind in ("production", "volume"):
             if f"{kind}.{good}" in s:
                 row[f"{kind}.{good}"] = s[f"{kind}.{good}"]
+    # 食料の値段・作った量・売買の量（LB-20 の好みの献立で、どの食料がどれだけ食べられるか）
+    for good in sorted(g for g, d in defs.goods.items() if "food" in d):
+        for kind in ("price", "production", "volume"):
+            if f"{kind}.{good}" in s:
+                row[f"{kind}.{good}"] = s[f"{kind}.{good}"]
+    # このターンに倒産・閉鎖した施設の数（施設の種類ごと）
+    for entry in island.log:
+        if entry.kind in ("facility_bankrupt", "facility_closed"):
+            key = f"{entry.kind.removeprefix('facility_')}.{entry.args.get('facility')}"
+            row[key] = row.get(key, 0) + 1
     row["output.real"] = gate.real_output(s, prices)
     good = config.get("services")["good"]  # うちサービス（回4）
     row["output.real.services"] = s.get(f"production.{good}", 0) * prices.get(good, 0)

@@ -184,6 +184,8 @@ def test_earn_is_need_plus_reserve_gap_minus_unsold(game, base):
     p = trade_traders.prospects(island, game.defs, config)["coal"]
     c = str(p.import_currency)
     state = export_plan.state_of(island)
+    # 量は直近のターンの平均なので、ほかの財の履歴が 1 ターン進む分の動きを除く（履歴を空にする）
+    state.setdefault("wants", {}).clear()
     export_plan.update(world, island, game.defs, config, world.turn, no_seen(), {}, {}, {})
     before = state["need"].get(c, 0)
     seen = no_seen()
