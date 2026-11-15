@@ -112,6 +112,10 @@ def test_foreign_currency_is_bought_ahead_only_for_the_flow(game, traded):
     for item in traders.goods_of(f).values():
         if item.get("dir") == traders.IMPORT and item.get("m"):
             item["hold"], item["held"] = item["m"] * 10, [0, 0]
+            # 手元の荷がないので、持ちすぎの値下げと輸出し直しもない（世界の小さな違いで、前の
+            # ターンまでの持ちすぎの印が残っている財がある）
+            item.pop(traders.OUTLET, None)
+            item.pop(traders.REEXPORT, None)
             assert traders.import_want(game.config, item) > item["m"]
             flows += item["m"]
     plan = r._import_plan(island, f, {})
