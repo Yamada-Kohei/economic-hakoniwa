@@ -298,6 +298,7 @@ firm_restructured: "{firm}が立て直しのため、({x}, {y}) の{facility}を
 facility_closing: "({x}, {y}) の{facility}が採算が合わず閉鎖に入り、居抜きで売りに出しました"
 facility_closed: "({x}, {y}) の{facility}が閉鎖しました"
 private_site_abandoned: "({x}, {y}) の{facility}の工事が進まないまま続き、民間が建設をやめました"
+group_entry_dissolved: "({x}, {y}) の{facility}といっしょに建つはずだった工場が期限までに建たず、{facility}はいつもの採算で続けるかを決めます"
 foreclosure_sold: "売りに出ていた ({x}, {y}) の{facility}が {price:,} で売れ、新しい持ち主のもとで動きます"
 foreclosure_demolished: "買い手のつかなかった ({x}, {y}) の{facility}を取り壊しました"
 private_entry: "民間の資本が ({x}, {y}) に{facility}の建設を始めました（資金 {amount:,}）"
