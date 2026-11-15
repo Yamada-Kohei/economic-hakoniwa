@@ -4272,11 +4272,58 @@ class Market(IslandStage):
                 plan[good] = (qty, limit)
         payer = payer_of(defs, config, f)
         name = facility_entity(f.id)
+        car = config.get("freight.trucks.good")
+        if car in plan:
+            bill = trucks.fuel_bill(island, config, trucks.owned(f) + plan[car][0])
+            turns = config.get("freight.trucks.fuel_turns")
+            plan = self._equipment_room(island, ctx, f, payer, plan, car, rate, turns, bill)
         for good, (qty, limit) in sorted(self._afford(island, payer, plan, rate, 0).items()):
             party = Party(FACILITY, name, payer, rate, 0, f)
             party.reserved = gross_cost(limit, qty, rate, 0)
             funds.commit(island, payer, party.reserved)
             self._add(books_by_good, good, "buy", Order(qty, limit), party)
+
+    @staticmethod
+    def _equipment_room(
+        island: IslandState,
+        ctx: StageContext,
+        f: Facility,
+        payer: Payer,
+        plan: dict[str, tuple[int, int]],
+        good: str,
+        rate: int,
+        turns: int,
+        fuel_bill: int,
+    ) -> dict[str, tuple[int, int]]:
+        """重機・トラック good の注文を、買った後も手元に turns ターン分の支払い（賃金の
+        見込み・買った後の台数の燃料 fuel_bill・このターンの借りの返済 banks.payments_due）
+        と、同じ plan のほかの財（燃料）の代金が残る量までにする（C1）。足りなければ傷んだ
+        分の買い直しも延ばす（減った分は人で受ける）。
+
+        独立採算の施設（施設が自分で払う）だけに掛ける。国庫直轄の業者は公共事業費から直に
+        払い、倒れないので今どおり。民営の企業の施設は、足りない分を企業の預金から回す
+        （設備の直しの _repair_orders と同じ。企業の預金は、ほかの施設が次の支払いの
+        firms.operating_turns ターン分を手元に残した上の余りなので、兄弟の施設の手元には
+        手を付けない）。回したのに買えなかった分は、企業の資金の段で企業へ上がる。"""
+        entity = facility_entity(f.id)
+        if good not in plan or payer.entity != entity:
+            return plan
+        defs, config = ctx.defs, ctx.config
+        keep = turns * (
+            next_payments(island, defs, config, f)
+            + fuel_bill
+            + banks.payments_due(island, entity, ctx.turn)
+        )
+        qty, limit = plan[good]
+        others = sum(gross_cost(lim, q, rate, 0) for g, (q, lim) in plan.items() if g != good)
+        need = keep + others + gross_cost(limit, qty, rate, 0)
+        companies.draw(island, f, need - funds.available(island, payer))
+        room = funds.available(island, payer) - keep - others
+        can = min(qty, qty_for(max(0, room) * BASIS // (BASIS + rate), limit))
+        out = {g: v for g, v in plan.items() if g != good}
+        if can > 0:
+            out[good] = (can, limit)
+        return out
 
     def _machine_orders(
         self,
@@ -4292,24 +4339,26 @@ class Market(IslandStage):
         width = to_basis(config.get("market.band"))
         prices = island.economy.prices
         wanted = island.scratch.setdefault("wanted", {})
-        each = contracts.per_worker(config)
+        machine = config.get("contractor.machines.good")
+        turns = config.get("contractor.capital_turns")
         for f in contracts.contractors(island, config):
             if not f.built or is_stopped(f):
                 continue
-            ordered = sum(f.economy.get(contracts.ORDERS, [0, 0]))
-            crew = -(-ordered // each)
             plan = {}
-            for good, qty in sorted(machines.orders(island, config, f, crew).items()):
+            for good, qty in sorted(machines.orders(island, config, f).items()):
                 if offered.get(good, 0) <= 0:
                     wanted[good] = wanted.get(good, 0) + qty
                     continue
                 limit = auction.band(prices.get(good, 1), width)[1]
-                if good != config.get("contractor.machines.good"):
+                if good != machine:
                     limit = min(limit, machines.fuel_limit(island, config, f, good))
                 if limit > 0:
                     plan[good] = (qty, limit)
             payer = payer_of(defs, config, f)
             name = facility_entity(f.id)
+            if machine in plan:
+                bill = machines.fuel_bill(island, config, machines.owned(f) + plan[machine][0])
+                plan = self._equipment_room(island, ctx, f, payer, plan, machine, rate, turns, bill)
             for good, (qty, limit) in sorted(self._afford(island, payer, plan, rate, 0).items()):
                 party = Party(FACILITY, name, payer, rate, 0, f)
                 party.reserved = gross_cost(limit, qty, rate, 0)

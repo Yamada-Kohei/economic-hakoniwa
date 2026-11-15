@@ -244,11 +244,140 @@ def test_contractor_buys_machines_when_they_cost_less_than_workers(game):
     island.economy.prices["machinery"] = 2_000_000
     island.economy.prices["fuel"] = 200_000
     assert machines.pays(island, config, 2000)
+    remember(config, f, [400] * 6)
     # 欲しいのは 400 人 × 半分 ÷ 40 人 = 5 台、その 1 割
-    assert machines.orders(island, config, f, 400) == {"machinery": 500}
+    assert machines.orders(island, config, f) == {"machinery": 500}
     island.economy.prices["machinery"] = 20_000_000  # 高ければ人を雇う
     assert not machines.pays(island, config, 2000)
-    assert "machinery" not in machines.orders(island, config, f, 400)
+    assert "machinery" not in machines.orders(island, config, f)
+
+
+def remember(config, f, crews):
+    for crew in crews:
+        machines.remember(config, f, crew)
+
+
+def test_new_contractor_waits_for_six_turns_of_orders_and_sizes_by_the_lowest(game):
+    # C1: 欲しい台数は直近 contractor.entry_turns ターンで一番少ない注文で決める（ふだん続く仕事は
+    # 重機、波の分は人）。できたばかりの業者は記録がたまるまで買わない
+    island = market_island(game)
+    config = game.config
+    f = private_contractor(game, island)
+    f.economy["wage"] = 2000
+    island.economy.prices["machinery"] = 2_000_000
+    island.economy.prices["fuel"] = 200_000
+    remember(config, f, [3000, 1739, 3000, 2994, 3000])
+    assert "machinery" not in machines.orders(island, config, f)
+    remember(config, f, [3000])
+    # 一番少ない 1739 人 × 半分 ÷ 40 人 = 21.7375 台、その 1 割
+    assert machines.orders(island, config, f) == {"machinery": 2174}
+    # 記録は entry_turns ターン分だけ残す（古い 3000 が落ちても 1739 が残る）
+    assert len(f.economy[machines.HISTORY]) == config.get("contractor.entry_turns")
+
+
+def test_finish_hiring_records_the_orders_for_the_machine_history(game):
+    island = market_island(game)
+    f = private_contractor(game, island)
+    queue_road(game, island)
+    run(game, island, WORKS, turns=2)  # 1 ターン目は資材が移るだけで、注文は 0
+    each = contracts.per_worker(game.config)
+    history = f.economy[machines.HISTORY]
+    assert history[0] == 0
+    assert history[-1] == -(-sum(f.economy[contracts.ORDERS]) // each) > 0
+
+
+def _machine_room(game, island, f, qty=10 * QUANTITY_SCALE, turn=1):
+    from hakoniwa_core.economy import payer_of
+    from hakoniwa_core.modules.market import Market
+
+    payer = payer_of(game.defs, game.config, f)
+    plan = {"machinery": (qty, island.economy.prices["machinery"])}
+    turns = game.config.get("contractor.capital_turns")
+    room = Market._equipment_room(
+        island, context(game, turn), f, payer, plan, "machinery", 0, turns, 0
+    )
+    return room.get("machinery", (0, 0))[0]
+
+
+def test_contractor_buys_machines_only_with_three_turns_of_payments_left(game):
+    # C1: 買った後も手元に contractor.capital_turns ターン分の賃金・燃料・返済が残る分だけ買う。
+    # 公開世界の倭国の業者（T105: 3000 人、賃金 1454、手元 433 万）は、手元が 1 ターン分の賃金しか
+    # なく、前の決まりでは毎ターン重機を買って 2 ターンで手元が尽き、返済が遅れて倒れた
+    island = market_island(game)
+    config = game.config
+    f = private_contractor(game, island, cash=4_334_630)
+    f.workers = 3000
+    f.economy["wage"] = 1454
+    island.economy.prices["machinery"] = 4_000_000
+    assert _machine_room(game, island, f) == 0
+    # 3 ターン分の賃金（3000 × 1454 × 3）と 2 台分の代金を超えて持てば、その分だけ買う
+    wages = 3000 * 1454 * config.get("contractor.capital_turns")
+    ledger.pay(
+        island,
+        ledger.GOV,
+        facility_entity(f.id),
+        wages - 4_334_630 + 8_000_000,
+        "capital_injection",
+    )
+    assert _machine_room(game, island, f) == 2 * QUANTITY_SCALE
+    # 取り置いた分（賃金の取り置きなど）は使えるお金に数えない
+    funds.commit(island, funds.Payer(facility_entity(f.id)), 4_000_000)
+    assert _machine_room(game, island, f) == QUANTITY_SCALE
+
+
+def test_machine_budget_keeps_the_loan_payments_due(game):
+    # C1: このターンに返す借りの利子と元金（運転資金の分割の返済も）も 3 ターン分残す
+    from hakoniwa_core.economy import banks
+
+    island = market_island(game)
+    config = game.config
+    f = private_contractor(game, island)
+    f.workers = 100
+    f.economy["wage"] = 1000
+    turns = config.get("contractor.capital_turns")
+    island.economy.prices["machinery"] = 1_000_000
+    entity = facility_entity(f.id)
+    bank = banks.bank_list(island)[0]
+    banks.lend(island, bank, entity, 600_000, banks.WORKING, 6, 1, 0)
+    due = banks.payments_due(island, entity, 2)
+    assert due >= 100_000  # 6 ターンで返す運転資金の 1 回分
+    have = funds.available(island, funds.Payer(entity))
+    ledger.pay(
+        island, ledger.GOV, entity, turns * (100_000 + due) + 1_000_000 - have, "capital_injection"
+    )
+    assert _machine_room(game, island, f, turn=2) == QUANTITY_SCALE
+
+
+def test_company_funds_buy_machines_without_touching_the_sibling_facilitys_cash(game):
+    # C1: 民営の企業の業者は、足りない分を企業の預金から回して買う（設備の直しと同じ）。同じ企業の
+    # ほかの施設の手元には手を付けない
+    from hakoniwa_core.economy import companies as co
+
+    island = market_island(game)
+    f = private_contractor(game, island)
+    sibling = private_contractor(game, island, x=9, y=9, cash=5_000_000)
+    number = co.new_firm(island, OWNER_PRIVATE, 1)
+    co.join(island, f, number)
+    co.join(island, sibling, number)
+    f.workers = 100
+    f.economy["wage"] = 1000
+    island.economy.prices["machinery"] = 1_000_000
+    turns = game.config.get("contractor.capital_turns")
+    ledger.pay(
+        island, ledger.GOV, co.entity(number), turns * 100_000 + 1_500_000, "capital_injection"
+    )
+    assert _machine_room(game, island, f) == 1_500
+    assert ledger.money(island, facility_entity(sibling.id)) == 5_000_000
+    assert ledger.money(island, co.entity(number)) == 0
+
+
+def test_treasury_contractor_buys_machines_from_public_works_as_before(game):
+    # 国庫直轄の業者は公共事業費から直に払い、倒れないので、お金の残し方は掛けない
+    # （記録の決まりは同じ）
+    island = market_island(game)
+    f = add(island, "contractor", 8, 8, accounting=ACCOUNTING_TREASURY)
+    island.economy.prices["machinery"] = 1_000_000
+    assert _machine_room(game, island, f) == 10 * QUANTITY_SCALE
 
 
 def test_machines_replace_workers_only_while_they_have_fuel(game):
@@ -289,3 +418,30 @@ def test_machines_deliver_works_with_the_staff(game):
         (f.workers + machines.replaced(f)) * contracts.per_worker(game.config),
     )
     assert island.stats["contractor.machines"] > 0
+
+
+def test_new_contractor_does_not_spend_its_working_capital_on_machines(game):
+    # C1 の再現: 公開世界の 5 社（T105 に置かれた業者。例: 倭国の業者は 3000 人・賃金 1454・手元
+    # 433 万・運転資金の返済 4.8 万）は、売りに出ていた機械を手元を見ずに毎ターン買い、2〜3 ターンで
+    # 手元が 0 になって運転資金の返済が遅れ、倒れた。手元が支払いの数ターン分に届かない業者は、
+    # 機械が売りに出ていても買わず、その月の返済も遅れない（前の決まりでは、この島でも倭国の T105 の
+    # 在庫と同じ 3.75 台の機械を 1 ターン目に買った）
+    from hakoniwa_core.economy import banks
+
+    island = market_island(game)
+    config = game.config
+    f = private_contractor(game, island, cash=4_334_630)
+    f.workers = 3000
+    f.economy["wage"] = 1454
+    f.economy[contracts.ORDERS] = [3_000_000, 0]
+    remember(config, f, [3000] * 6)  # 注文の記録もそろっている
+    entity = facility_entity(f.id)
+    banks.lend(island, banks.bank_list(island)[0], entity, 288_333, banks.WORKING, 6, 0, 0)
+    plant = add(island, "machinery_plant", 10, 10)
+    stock.add(plant.stock, "machinery", 50 * QUANTITY_SCALE, 0, game.defs.goods)
+    island.economy.prices["machinery"] = 400_000  # 人を雇うより安い
+    assert machines.pays(island, config, 1454)
+    run(game, island, ["market", "banking"])
+    assert machines.owned(f) + stock.total(f.stock, "machinery") == 0
+    assert all(x.arrears == 0 for x in banks.loans_by_borrower(island, entity))
+    assert ledger.money(island, entity) > 0

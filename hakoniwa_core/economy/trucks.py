@@ -7,9 +7,17 @@ freight.trucks.fuel の燃料を使い、年 freight.trucks.wear の割合が傷
 収入 × freight.labor_share ÷ 賃金）の freight.trucks.max_share までです。
 
 買うかどうかは、1台を1ターン使う費用（値段 ×（設備の利子 + 傷み）÷ 12 + 燃料）と、替えられる運転手の
-賃金を比べて決めます。安ければ、欲しい台数（雇いたい人数 × max_share ÷ drivers）との差の
-freight.trucks.catch_up の割合と、傷む分を買います。燃料は、持っているトラックの
-freight.trucks.fuel_turns ターン分を持っておきます。
+賃金を比べて決めます。安ければ、欲しい台数との差の freight.trucks.catch_up の割合と、
+傷む分を買います。欲しい台数は、直近 firms.invest_turns ターン（設備投資の見る期間）で
+雇いたい運転手の一番少ないターンの × max_share ÷ drivers です（ふだん続く仕事は
+トラックで、波の分は人で受ける。土木業者の重機と同じ。C1）。記録がたまるまでは
+買いません。燃料は、持っているトラックの freight.trucks.fuel_turns ターン分を持って
+おきます。
+
+独立採算の運送業は、買った後も手元（取り置いた分を除く）に freight.trucks.fuel_turns
+ターン分の支払い（賃金・トラックの燃料・このターンの借りの返済）が残る分だけ買います
+（燃料と同じく「何ターン分を持っておくか」の幅。modules/market の _equipment_room。
+C1）。足りなければ傷んだ分の買い直しも延ばし、減ったトラックの分は人で受けます。
 
 市場で買った自動車は、雇用の段で在庫からトラックに移して使い始めます（設備の額に足し、減価償却で
 費用にする。輸送船と同じく、GDP では買ったときの在庫の増えを設備への投資として残す）。
@@ -27,6 +35,8 @@ from hakoniwa_core.units import QUANTITY_SCALE, money_of, round_money, to_milli
 MILLI = QUANTITY_SCALE
 TRUCKS = "trucks"  # 運送業の economy: 持っているトラック（1000 分の 1 台）
 WORKING = "trucks_working"  # 運送業の economy: このターンに動いたトラック（1000 分の 1 台）
+# 運送業の economy: 直近の雇いたい運転手（人。古い順、invest_turns 個まで）
+HISTORY = "driver_history"
 
 
 def _settings(config: GameConfig) -> dict:
@@ -127,14 +137,40 @@ def fuel_limit(island: IslandState, config: GameConfig, f: Facility, good: str) 
     return max(0, int(room / per_truck))
 
 
+def remember(config: GameConfig, f: Facility, drivers: int) -> None:
+    """このターンの雇いたい運転手 drivers（トラックの分を含む）を、直近 firms.invest_turns ターンの
+    記録に足す（雇用の段。C1）。"""
+    turns = config.get("firms.invest_turns")
+    f.economy[HISTORY] = [*f.economy.get(HISTORY, []), max(0, drivers)][-turns:]
+
+
+def steady_drivers(config: GameConfig, f: Facility) -> int | None:
+    """直近 firms.invest_turns ターンで一番少なかった雇いたい運転手（ふだん続く仕事）。記録が
+    たまっていなければ None（C1）。"""
+    turns = config.get("firms.invest_turns")
+    history = f.economy.get(HISTORY, [])[-turns:]
+    if len(history) < turns:
+        return None
+    return min(history)
+
+
+def fuel_bill(island: IslandState, config: GameConfig, trucks: int) -> int:
+    """トラック trucks（1000 分の 1 台）を 1 ターン動かす燃料の代金（今の値段で）。"""
+    prices = island.economy.prices
+    per = sum(prices.get(g, 0) * q for g, q in _settings(config)["fuel"].items())
+    return round_money(per * trucks / MILLI + 0.999)
+
+
 def orders(island: IslandState, config: GameConfig, f: Facility) -> dict[str, int]:
-    """運送業が市場で買いたい自動車と燃料（1000 分の 1）。"""
+    """運送業が市場で買いたい自動車と燃料（1000 分の 1）。欲しい台数は、直近 firms.invest_turns
+    ターンで一番少なかった雇いたい運転手から決める（steady_drivers。C1）。使えるお金での上限は
+    modules/market が掛ける。"""
     settings = _settings(config)
     out: dict[str, int] = {}
     wage = f.economy.get("wage", 0)
     have = owned(f)
-    if wage > 0 and pays(island, config, wage):
-        drivers = f.economy.get("wanted", 0) + f.economy.get("drivers_replaced", 0)
+    drivers = steady_drivers(config, f)
+    if drivers is not None and wage > 0 and pays(island, config, wage):
         desired = round_money(drivers * settings["max_share"] * MILLI / settings["drivers"])
         gap = max(0, desired - have)
         wear = round_money(have * settings["wear"] / YEAR + 0.5)

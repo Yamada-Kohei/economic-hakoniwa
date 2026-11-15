@@ -1226,6 +1226,7 @@ class Employment(IslandStage):
             drivers = freight.payroll(island, config) // max(1, wage)
             if not f.built:
                 return drivers
+            trucks.remember(config, f, drivers)  # トラックの欲しい台数の記録（C1）
             trucks.commission(island, config, f)
             replaced = trucks.drive(island, config, f, drivers)
             if replaced:

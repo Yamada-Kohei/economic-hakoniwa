@@ -258,13 +258,18 @@ def test_transport_buys_trucks_when_they_cost_less_than_drivers(game, warmed):
     config = game.config
     f = _transport(island)
     f.economy["wage"] = 1000
-    f.economy["wanted"] = 120
     f.economy.pop(trucks.TRUCKS, None)
+    f.economy.pop(trucks.HISTORY, None)
     island.economy.prices["automobile"] = 30_000
     island.economy.prices["fuel"] = 200_000
     assert trucks.pays(island, config, 1000)
+    # 雇いたい運転手の記録が firms.invest_turns ターン分たまるまでは買わない（C1）
+    for drivers in (300, 120, 200, 150, 400):
+        trucks.remember(config, f, drivers)
+    assert "automobile" not in trucks.orders(island, config, f)
+    trucks.remember(config, f, 250)
     wanted = trucks.orders(island, config, f)
-    # 欲しいのは 120 人 × 半分 ÷ 3 人 = 20 台、その 1 割
+    # 欲しいのは一番少ないターンの 120 人 × 半分 ÷ 3 人 = 20 台、その 1 割
     assert wanted == {"automobile": 2000}
     island.economy.prices["automobile"] = 3_000_000  # 高ければ運転手を雇う
     assert not trucks.pays(island, config, 1000)

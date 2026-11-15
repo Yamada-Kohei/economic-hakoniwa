@@ -8,9 +8,17 @@ contractor.machines.max_share までです。運送業のトラック（設計�
 同じ形です。
 
 買うかどうかは、1 台を 1 ターン使う費用（値段 ×（設備の利子 ＋ 傷み）÷ 12 ＋ 燃料）と、替えられる
-作業員の賃金を比べて決めます。安ければ、欲しい台数（要る人数 × max_share ÷ workers）との差の
-contractor.machines.catch_up の割合と、傷む分を買います。燃料は、持っている重機の
+作業員の賃金を比べて決めます。安ければ、欲しい台数との差の contractor.machines.catch_up の割合と、
+傷む分を買います。欲しい台数は、直近 contractor.entry_turns ターンに受けた注文に要る人数の一番少ない
+ターンの × max_share ÷ workers です（ふだん続く仕事は重機で、波の分は人で受ける。C1）。記録が
+entry_turns ターン分たまるまで（できたばかりの業者）は買いません。燃料は、持っている重機の
 contractor.machines.fuel_turns ターン分を持っておきます。
+
+独立採算の業者は、買った後も手元（取り置いた分を除き、民営の企業の施設は企業の預金を合わせる）に
+contractor.capital_turns ターン分の支払い（賃金・重機の燃料・このターンの借りの返済）が残る分
+だけ買います（modules/market の _equipment_room。C1）。足りなければ傷んだ分の買い直しも延ばし、
+減った重機の分は人で受けます（帳簿の減価償却は続く）。公開世界で、置かれたばかりの業者が手元を
+見ずに毎ターン重機を買い、2〜3 ターンで手元が尽きて運転資金の返済が遅れ、倒れたため。
 
 市場で買った機械は、雇用の段で在庫から重機に移して使い始めます（設備の額に足し、減価償却で費用に
 する。GDP では買ったときの在庫の増えを設備への投資として残す）。重機は業者の全力にも足します。
@@ -30,6 +38,8 @@ MACHINES = "machines"  # 業者の economy: 持っている重機（1000 分の 
 WORKING = "machines_working"  # 業者の economy: このターンに動いた重機（1000 分の 1 台）
 REPLACED = "machines_replaced"  # 業者の economy: このターンに重機で替えた作業員（人）
 UNIT_COST = "machine_cost"  # 業者の economy: 重機の変動費（作業員 1 人・ターン分に直した額）
+# 業者の economy: 直近の受けた注文に要る人数（人。古い順、entry_turns 個まで）
+HISTORY = "contract_crews"
 
 
 def settings(config: GameConfig) -> dict:
@@ -148,14 +158,40 @@ def fuel_limit(island: IslandState, config: GameConfig, f: Facility, good: str) 
     return max(0, int(room / per))
 
 
-def orders(island: IslandState, config: GameConfig, f: Facility, crew: int) -> dict[str, int]:
-    """業者が市場で買いたい機械と燃料（1000 分の 1）。crew は受けた注文に
-    要る人数（重機の分を含む）。"""
+def remember(config: GameConfig, f: Facility, crew: int) -> None:
+    """このターンに受けた注文に要る人数 crew（重機の分を含む）を、直近 contractor.entry_turns
+    ターンの記録に足す（雇用の段の終わり。C1）。"""
+    turns = config.get("contractor.entry_turns")
+    f.economy[HISTORY] = [*f.economy.get(HISTORY, []), max(0, crew)][-turns:]
+
+
+def steady_crew(config: GameConfig, f: Facility) -> int | None:
+    """直近 contractor.entry_turns ターンで一番少なかった注文に要る人数（ふだん続く仕事）。記録が
+    たまっていなければ None（できたばかりの業者は重機を買わない。C1）。"""
+    turns = config.get("contractor.entry_turns")
+    history = f.economy.get(HISTORY, [])[-turns:]
+    if len(history) < turns:
+        return None
+    return min(history)
+
+
+def fuel_bill(island: IslandState, config: GameConfig, machines: int) -> int:
+    """重機 machines（1000 分の 1 台）を 1 ターン動かす燃料の代金（今の値段で）。"""
+    prices = island.economy.prices
+    per = sum(prices.get(g, 0) * q for g, q in settings(config)["fuel"].items())
+    return round_money(per * machines / MILLI + 0.999)
+
+
+def orders(island: IslandState, config: GameConfig, f: Facility) -> dict[str, int]:
+    """業者が市場で買いたい機械と燃料（1000 分の 1）。欲しい台数は、直近 contractor.entry_turns
+    ターンで一番少なかった注文に要る人数から決める（steady_crew。C1）。使えるお金での上限は
+    modules/market が掛ける。"""
     s = settings(config)
     out: dict[str, int] = {}
     wage = f.economy.get("wage", 0)
     have = owned(f)
-    if wage > 0 and pays(island, config, wage):
+    crew = steady_crew(config, f)
+    if crew is not None and wage > 0 and pays(island, config, wage):
         desired = round_money(crew * s["max_share"] * MILLI / s["workers"])
         gap = max(0, desired - have)
         wear = round_money(have * s["wear"] / YEAR + 0.5)
