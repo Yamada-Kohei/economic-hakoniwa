@@ -253,9 +253,9 @@ def test_worn_facility_buying_less_by_plan_shows_sales(game):
 
 def test_measure_counts_worn_equipment_on_its_own():
     """測りの稼働の内訳は、設備の傷みを止まった施設と分けて数える。"""
-    from hakoniwa_core import measure
+    from hakoniwa_core import measure, stops
 
-    assert measure.CAUSES["equipment"] == "equipment"
+    assert stops.REASONS["equipment"].group == "equipment"
     assert "equipment" in measure.CAUSE_GROUPS
 
 

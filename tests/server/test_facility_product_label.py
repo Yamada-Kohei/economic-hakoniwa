@@ -48,6 +48,25 @@ def test_build_order_text_names_the_product() -> None:
     )
 
 
+def test_change_recipe_text_names_the_method_of_the_facility_on_the_tile() -> None:
+    """生産方式の変更の命令の文は、マスの施設の方式の名前を出す（不具合報告 #12: 方式の名前
+    「default」は農場にも火力発電所にもあり、火力発電所を石炭にする命令が「穀物」と出ていた）。"""
+    defs = get_game().defs
+    payload = {"x": 3, "y": 4, "recipe": "default"}
+    plant = {(3, 4): display.FacilityLabel("火力発電所", "thermal_power_plant")}
+    coal = defs.recipe_name("thermal_power_plant", "default")
+    text = display.describe_order("change_recipe", payload, plant)
+    assert text == f"生産方式の変更: 火力発電所 (3, 4) → {coal}"
+    assert "穀物" not in text
+    # 施設が分からないときは、どの施設の方式とも決めずに「基本の作り方」と出す
+    assert display.describe_order("change_recipe", payload).endswith("→ 基本の作り方")
+    # 名前が1種類の施設にしかない方式は、施設が分からなくてもその名前
+    fuel = defs.recipe_name("thermal_power_plant", "fuel")
+    owners = [k for k, d in defs.facilities.items() if "fuel" in d["recipes"]]
+    if owners == ["thermal_power_plant"]:
+        assert display.describe_order("change_recipe", {**payload, "recipe": "fuel"}).endswith(fuel)
+
+
 @pytest.fixture
 def mine_island() -> tuple[m.Island, m.Facility, Client, Client]:
     cache.clear()

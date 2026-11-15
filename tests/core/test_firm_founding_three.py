@@ -13,7 +13,7 @@ import pytest
 from hakoniwa_core import ledger
 from hakoniwa_core.economy import GENERAL, OWNERS, Payer, banks, funds, household, layers
 from hakoniwa_core.economy import companies as co
-from hakoniwa_core.economy.households import wealth_propensity
+from hakoniwa_core.economy.households import living_keep, owners_spare, wealth_propensity
 from hakoniwa_core.modules.banking import Banking
 from hakoniwa_core.modules.firms import ENTRY_PLEDGE, EntryExit
 from hakoniwa_core.state.generate import generate_world
@@ -170,13 +170,17 @@ def test_capitalists_borrow_on_their_shares_to_found_a_firm(game, base):
     assert isinstance(plan, list)
     assert island.scratch["entry_investor"] == (household(OWNERS), None)
     pledge = island.scratch[ENTRY_PLEDGE]
-    have = funds.available(island, Payer(household(OWNERS)))
+    # 出資に使えるのは暮らしの分を残した預金（FM-58。2026-11-15）
+    money = funds.available(island, Payer(household(OWNERS)))
+    living = min(money, living_keep(island, game.defs, config))
+    have = owners_spare(island, game.defs, config)
+    assert have == money - living
     need = amount - sum(p for _, p, _ in plan)
     keep = EntryExit._pledge_keep(island, ctx, need, pledge)
     assert sum(p for _, p, _ in pledge) == need - have + keep  # 次の返済の分を手元に残す
     EntryExit._borrow_on_shares(island, ctx, household(OWNERS))
     assert _pledged(island) - before == sum(p for _, p, _ in pledge) > 0
-    assert ledger.money(island, household(OWNERS)) == need + keep
+    assert ledger.money(island, household(OWNERS)) == need + keep + living
     assert ENTRY_PLEDGE not in island.scratch
     books_ok(game, island)
 
@@ -185,7 +189,9 @@ def test_no_pledge_when_the_owners_have_enough(game, base):
     """預金で出せるなら株を担保に借りない。誰も出せなければ、借りられる額をわけに書く。"""
     world, island, ctx, f, number, other = _setup(game, base)
     amount = 2_000_000
-    _set_owners(island, amount)
+    # 出資に回せるのは暮らしの分（FM-58）を残した預金なので、その分を足して置く（暮らしの分は
+    # 食べ物の値段で変わる。LB-20 の献立で穀物寄りの食べ方になり、2,000,000 では足りなくなった）
+    _set_owners(island, amount + living_keep(island, game.defs, game.config))
     plan = EntryExit()._finance(island, ctx, amount, 10**12, other)
     assert isinstance(plan, list) and island.scratch[ENTRY_PLEDGE] == []
     reason, args = EntryExit()._finance(island, ctx, 10**15, 10**15, other)

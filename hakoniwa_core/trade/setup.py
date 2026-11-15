@@ -18,7 +18,7 @@ firms.operating_turns ターン分。国が出すときは、1つにつき国庫
 from __future__ import annotations
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger, stock
+from hakoniwa_core import ledger, stock, stops
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
@@ -89,12 +89,16 @@ def _owner(defs: Defs, island: IslandState, kind: str) -> str:
     return OWNER_STATE if state else OWNER_PRIVATE
 
 
-def _fund(island: IslandState, f: Facility, amount: int) -> int:
+def _fund(island: IslandState, defs: Defs, config: GameConfig, f: Facility, amount: int) -> int:
     """持ち主が施設に運転資金を出資する（持ち主の使えるお金まで。国は国庫の使えるお金の
-    GOV_SHARE まで）。出資した額を返す。"""
+    GOV_SHARE まで。資本家階級は暮らしの分を残した預金まで。FM-58）。出資した額を返す。"""
+    from hakoniwa_core.economy.households import owners_spare
+
     owner = owner_entity(f)
     payer = Payer(owner) if owner != ledger.GOV else Payer(ledger.GOV, "trade")
     have = funds.available(island, payer)
+    if owner == household(OWNERS):
+        have = owners_spare(island, defs, config)
     if owner == ledger.GOV:
         have = round_money(have * GOV_SHARE)
     amount = min(amount, have)
@@ -113,7 +117,7 @@ def _new(island: IslandState, kind: str, pos: tuple[int, int], owner: str, accou
         accounting=accounting,
         built=True,
         # マスのある施設（港・商社）は、初めて動いたときに「稼働を開始しました」と出す
-        status=fac.STATUS_STARTING if pos[0] >= 0 and pos[1] >= 0 else "",
+        status=stops.STARTING if pos[0] >= 0 and pos[1] >= 0 else stops.NONE,
     )
     assign_serial(island, f)
     island.facilities.append(f)
@@ -156,7 +160,7 @@ def place_shipping(island: IslandState, defs: Defs, config: GameConfig, turn: in
         ),
         default=0,
     )
-    _fund(island, f, per_turn * config.get("firms.operating_turns"))
+    _fund(island, defs, config, f, per_turn * config.get("firms.operating_turns"))
     return f
 
 
@@ -170,7 +174,7 @@ def place_port(island: IslandState, defs: Defs, config: GameConfig) -> Facility 
             wage = island.economy.average_wage or config.get("labor.initial_wage")
             init_facility(island, defs, config, f, dict(island.economy.prices), wage)
             if accounting == ACCOUNTING_SELF:
-                _fund(island, f, wage * defs.facilities[kind]["workers"] // 2)
+                _fund(island, defs, config, f, wage * defs.facilities[kind]["workers"] // 2)
             island.log.append(LogEntry("port_placed", {"x": pos[0], "y": pos[1]}))
             return f
     island.log.append(LogEntry("port_not_placed", {}))
@@ -213,17 +217,19 @@ def open_trader(
     f = _new(island, kind, pos, owner, ACCOUNTING_SELF)
     wage = island.economy.average_wage or config.get("labor.initial_wage")
     init_facility(island, defs, config, f, dict(island.economy.prices), wage)
-    _fund(island, f, wage * config.get("trade.trader_capital"))
+    _fund(island, defs, config, f, wage * config.get("trade.trader_capital"))
     return f
 
 
-def owners_can_fund(island: IslandState, config: GameConfig) -> bool:
-    """民営の商社を開く出資が、資産を持つ層の預金でまかなえるか。"""
+def owners_can_fund(island: IslandState, defs: Defs, config: GameConfig) -> bool:
+    """民営の商社を開く出資が、資産を持つ層の暮らしの分を残した預金でまかなえるか（FM-58）。"""
+    from hakoniwa_core.economy.households import owners_spare
+
     if OWNERS not in island.economy.households:
         return False
     wage = island.economy.average_wage or config.get("labor.initial_wage")
     need = wage * config.get("trade.trader_capital")
-    return funds.available(island, Payer(household(OWNERS))) >= need
+    return owners_spare(island, defs, config) >= need
 
 
 def entry(
@@ -262,7 +268,7 @@ def entry(
         island, defs, config
     ):
         return None
-    if not owners_can_fund(island, config):
+    if not owners_can_fund(island, defs, config):
         return None
     spot = _free_office(island, defs, kind)
     if spot is None:
@@ -301,7 +307,7 @@ def _reopen(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> F
         return None
     kind = config.get("trade.trader_facility")
     owner = _owner(defs, island, kind)
-    if owner == OWNER_PRIVATE and not owners_can_fund(island, config):
+    if owner == OWNER_PRIVATE and not owners_can_fund(island, defs, config):
         # 民間に商社を開く資金がないまま、さらに entry_turns ターンたったら、国が国営の貿易会社
         # として開く（資金のない民間に代わる、現実の国営貿易会社。W-140。民間の資金が戻れば、
         # 民間の商社が増える参入は entry の続きの条件で開く）

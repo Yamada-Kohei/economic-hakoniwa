@@ -72,7 +72,12 @@ table.goods tbody tr:nth-child(even), table.facilities tbody tr:nth-child(even) 
 table.goods td:nth-child(n+2), table.goods th:nth-child(n+2) { text-align: right; }
 .table-scroll { overflow-x: auto; max-width: 100%; }
 .table-scroll th { white-space: nowrap; }
-table.market-table th, table.market-table td { white-space: nowrap; }
+table.market-table td { white-space: nowrap; }
+/* 見出しは折り返して表の幅を抑え、資源の列は横に送っても残す（不具合報告 #5: 右の列が隠れて読みにくい） */
+table.market-table thead th { white-space: normal; vertical-align: bottom; min-width: 3.5em; }
+table.market-table tr > :first-child { position: sticky; left: 0; z-index: 1; background: var(--panel); }
+table.market-table thead tr > :first-child { background: var(--head); }
+table.market-table tbody tr:nth-child(even) > :first-child { background: var(--pale); }
 
 /* 島の画面 */
 .island-header h1 { margin-bottom: 0; }
@@ -96,6 +101,9 @@ table.market-table th, table.market-table td { white-space: nowrap; }
 .island-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
 .island-stats .panel { margin: 0; }
 .map-tools { margin: 4px 0; }
+.capacity-bar { display: block; height: 10px; margin-top: 4px; max-width: 360px; background: #cfe3c4; border: 1px solid #9bb88c; border-radius: 3px; overflow: hidden; }
+.capacity-bar .capacity-busy { display: block; height: 100%; background: var(--accent); }
+.toggle-button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 /* マスの欄から足した命令の結果。地図の左上に重ねて出し、下のマスはそのまま押せるようにする */
 .map-notice { position: absolute; z-index: 4; left: 8px; right: 56px; top: 8px; margin: 0; padding: 4px 8px; font-size: 0.9em;
   background: rgba(255, 255, 255, 0.92); border-radius: 4px; pointer-events: none; }
@@ -450,7 +458,9 @@ table.goods.country-timeline td:nth-child(n+2), table.goods.country-timeline th:
 
 /* 手引きの図（tools/help_diagrams/diagrams.py が作る SVG）。幅 480 の縦長で、狭い画面では縮む */
 figure.diagram { margin: 12px auto; max-width: 480px; }
-figure.diagram img { display: block; width: 100%; height: auto; border: 1px solid var(--rule); background: #fff; }
+/* 図の SVG は中に暗いときの色を持つ（prefers-color-scheme）。<img> の color-scheme が図の明暗を決めるので、
+   画面に暗い色ができるまでは明るいに留める（画面の暗い色を入れるときは、ここを画面の明暗に合わせる） */
+figure.diagram img { color-scheme: light; display: block; width: 100%; height: auto; border: 1px solid var(--rule); background: #fff; }
 figure.diagram figcaption { font-size: 0.9em; margin-top: 4px; }
 figure.diagram details { margin-top: 2px; }
 figure.diagram summary { cursor: pointer; color: var(--accent); }
@@ -503,3 +513,28 @@ th[aria-sort="descending"] > button.sort-head::after { content: " ▼"; font-siz
 .map-coord { position: absolute; right: 8px; bottom: 8px; margin: 0; padding: 2px 8px; font-size: 0.9em;
   color: #fff; background: rgba(10, 30, 60, 0.75); border-radius: 4px; pointer-events: none;
   font-variant-numeric: tabular-nums; }
+/* 更新のお知らせ（UI-96）。見ていない更新履歴を、画面を開いたときに1度だけ出す窓。 */
+dialog.site-news { width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow: auto;
+  padding: 12px 16px; border: 1px solid var(--border); background: var(--panel, #fff); color: var(--fg); }
+dialog.site-news::backdrop { background: rgba(0, 0, 0, 0.4); }
+dialog.site-news h2 { margin: 0 0 6px; font-size: 1.1em; }
+.site-news-list { margin: 6px 0; padding-left: 1.2em; }
+.site-news-list li { margin: 4px 0; }
+.site-news-list time { margin-right: 6px; color: #6a7aa0; font-size: 0.9em; }
+/* 手引きの「家計の献立」の構成比の帯（game.yaml の household.food_target から出す）。品目の色は
+   手引きの図（tools/help_diagrams の GRAIN・FISH・MEAT・FOOD）と同じ中間の色で、明るい地でも暗い地でも
+   読める。帯の上の字は濃い色に固定する */
+.diet-bars { border: 1px solid var(--rule); background: var(--panel); padding: 8px 10px; }
+.diet-row { margin: 4px 0 10px; }
+.diet-label { display: block; font-size: 0.9em; font-weight: bold; margin-bottom: 2px; }
+.diet-bar { display: flex; height: 2.6em; border: 1px solid var(--fg); }
+.diet-bar span { display: flex; align-items: center; justify-content: center; text-align: center;
+  font-size: 0.78em; line-height: 1.15; color: #14161a; overflow: hidden; white-space: nowrap;
+  border-right: 1px solid rgba(0, 0, 0, 0.35); }
+.diet-bar span:last-child { border-right: 0; }
+.diet-grain { background: #e8c04a; }
+.diet-fish { background: #5aa7e0; }
+.diet-meat { background: #d9776f; }
+.diet-food { background: #9b8ae0; }
+table.info.diet-table th { width: auto; }
+.diet-table td { text-align: right; width: 16%; }

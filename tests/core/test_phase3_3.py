@@ -692,8 +692,10 @@ def test_swap_borrowing_stops_at_the_quota(game, base):
     borrower.economy.gdp_history = [0] * 11 + [1]  # 上限は 0
     assert swap.available(world, game.config, borrower.id, c) == 0
     assert swap.draw(world, game.config, borrower.id, c, 10_000) == 0
-    issuer.economy.gdp_history = [0] * 11 + [1]  # 発行した国も新しく作れない（上限は 0）
     borrower.economy.gdp_history = [10**12] * 12
+    room = swap.issuer_room(world, issuer, game.config)
+    swap._book(world, c, borrower.id, c, room)  # 発行した国も上限まで作って貸した（残りは 0）
+    assert swap.issuer_room(world, issuer, game.config) == 0
     assert swap.available(world, game.config, borrower.id, c) == sum(
         spare for _, spare in swap.lenders(world, game.config, borrower.id, c)
     )
@@ -737,10 +739,182 @@ def test_issuer_central_bank_no_longer_hoards_member_currencies(game, base):
         issuer = world.islands[b["currency"]]
         held = sum(fxmoney.holding(issuer, ledger.CB, m) for m in b["members"] if m != issuer.id)
         assert held == 0
-        gdp = debt.annual_gdp(issuer.economy)
+        gdp = swap.users_gdp(world, issuer.id)  # その通貨を決済通貨にする加盟国の GDP（FX-81）
         share = to_basis(game.config.get("fx.swap_issuer_share"))
         assert swap.issued(issuer) <= gdp * share // BASIS + gdp // 100  # 利子を足した分の余裕
         assert issuer.stats["fx.swap.lent"] >= swap.issued(issuer)
+
+
+# --- 発行した国が作って貸す上限（FX-81） -------------------------------------------------
+
+
+def _users(world, gdp=1_000_000):
+    """試験のため、決済通貨のある圏の加盟国の年の GDP を 12 × gdp × (島の番号 + 1) にそろえ、
+    加盟国の決済通貨のレートを 1 対 1 にし、発行した国の貸しを消す。(発行した島, 圏) を返す。"""
+    issuer, _, _ = _bloc_trio(world)
+    c = issuer.id
+    bloc = next(b for b in blocs.blocs(world) if b["currency"] == c)
+    for island in world.islands.values():
+        island.economy.gdp_history = [gdp * (island.id + 1)] * 12
+        if island.id != c:
+            fxrates.rates(island)[str(c)] = BASIS
+    _clean_swaps(world, *world.islands.values())
+    return issuer, bloc
+
+
+def _annual(island):
+    return debt.annual_gdp(island.economy)
+
+
+def test_issuer_room_counts_the_gdp_of_the_currency_users(game, base):
+    """(a) 発行した国が作って貸せる上限は、その通貨を決済通貨にする圏の加盟国（発行した国を含む）の
+    年の GDP の合計 × fx.swap_issuer_share。発行した国 1 島の GDP より大きい。"""
+    world = copy.deepcopy(base)
+    issuer, bloc = _users(world)
+    share = to_basis(game.config.get("fx.swap_issuer_share"))
+    members = set(bloc["members"]) | {issuer.id}
+    assert len(members) >= 3
+    total = sum(_annual(world.islands[i]) for i in members)
+    assert swap.users_gdp(world, issuer.id) == total
+    assert swap.issuer_room(world, issuer, game.config) == total * share // BASIS
+    assert swap.issuer_room(world, issuer, game.config) > _annual(issuer) * share // BASIS
+    # 画面にも同じ残りが出る
+    assert swap.view(world, issuer, game.config)["issuer_room"] == total * share // BASIS
+
+
+def test_issuer_room_counts_a_member_of_two_blocs_once(game, base):
+    """(d) 2 つの圏が同じ通貨を決済通貨にしていても、両方に入っている国は 1 度だけ数える。"""
+    world = copy.deepcopy(base)
+    issuer, bloc = _users(world)
+    before = swap.users_gdp(world, issuer.id)
+    second = copy.deepcopy(bloc)
+    second["id"] = max(b["id"] for b in blocs.blocs(world)) + 1
+    second["members"] = [m for m in bloc["members"] if m != issuer.id][:2]
+    blocs.blocs(world).append(second)
+    assert swap.users_gdp(world, issuer.id) == before
+
+
+def test_issuer_room_drops_a_member_that_left(game, base):
+    """(c) 圏を抜けた島は合計に入らない。"""
+    world = copy.deepcopy(base)
+    issuer, bloc = _users(world)
+    before = swap.users_gdp(world, issuer.id)
+    gone = world.islands[max(m for m in bloc["members"] if m != issuer.id)]
+    others = [b for b in blocs.blocs(world) if b["currency"] == issuer.id and b is not bloc]
+    assert all(gone.id not in b["members"] for b in others)
+    assert blocs.leave(gone, bloc) is None
+    blocs.settle_leaves(world)
+    assert swap.users_gdp(world, issuer.id) == before - _annual(gone)
+
+
+def test_issuer_room_skips_members_without_a_rate(game, base):
+    """(e) 加盟国の GDP は、その島の今の決済通貨のレートで発行した国の通貨に直して足し、レートのない
+    島（まだその通貨を取引していない加盟国）は数えない。"""
+    world = copy.deepcopy(base)
+    issuer, bloc = _users(world)
+    c = issuer.id
+    before = swap.users_gdp(world, c)
+    cheap, unrated = [world.islands[m] for m in sorted(bloc["members"]) if m != c][:2]
+    fxrates.rates(cheap)[str(c)] = 2 * BASIS  # 決済通貨 1 が自国通貨 2: GDP は半分の値
+    del fxrates.rates(unrated)[str(c)]
+    assert not fxrates.has_rate(unrated, c)
+    expected = before - _annual(cheap) + _annual(cheap) // 2 - _annual(unrated)
+    assert swap.users_gdp(world, c) == expected
+
+
+def test_borrower_quota_still_binds_before_the_wider_issuer_room(game, base):
+    """(b) 借り手の枠（自国の年の GDP の fx.swap_quota）は今のまま先に効く。"""
+    world = copy.deepcopy(base)
+    issuer, bloc = _users(world)
+    c = issuer.id
+    borrower = world.islands[min(m for m in bloc["members"] if m != c)]
+    quota = to_basis(game.config.get("fx.swap_quota"))
+    limit = fxrates.to_foreign(borrower, c, _annual(borrower) * quota // BASIS)
+    assert swap.issuer_room(world, issuer, game.config) > limit  # 発行した国の上限は広い
+    got = swap.draw(world, game.config, borrower.id, c, limit * 10)
+    assert got <= limit + 1
+    assert swap.quota_room(borrower, game.config) <= fxrates.to_own(borrower, c, 1)
+    assert swap.available(world, game.config, borrower.id, c) <= 1
+    assert swap.reconcile(world) == []
+
+
+def test_issuer_room_counts_what_is_still_owed(game, base):
+    """上限は作って貸した額の未返済の残りで数え、返せば戻る。"""
+    world = copy.deepcopy(base)
+    issuer, bloc = _users(world)
+    c = issuer.id
+    borrower = world.islands[min(m for m in bloc["members"] if m != c)]
+    full = swap.issuer_room(world, issuer, game.config)
+    swap._book(world, c, borrower.id, c, 40_000)
+    assert swap.issuer_room(world, issuer, game.config) == full - 40_000
+    swap._pay_back(world, borrower, c, c, 0)  # 0 は記録を変えない
+    _give_fx(world, borrower, ledger.CB, c, 40_000)
+    swap._pay_back(world, borrower, c, c, 40_000)
+    assert swap.issued(issuer) == 0
+    assert swap.issuer_room(world, issuer, game.config) == full
+    assert swap.reconcile(world) == []
+
+
+# --- 払えない利子を借りに足すのは枠の残りまで（FX-82） ---------------------------------------
+
+
+def _issuer_loan(world, game, gdp):
+    """試験のため、借り手の年の GDP を 12 × gdp にし、決済通貨の持ちを 0 にして、発行した国だけから
+    借りている形にする。(発行した島, 借り手, 通貨, 利率) を返す。"""
+    issuer, borrower, _ = _bloc_trio(world)
+    c = issuer.id
+    _clean_swaps(world, *world.islands.values())
+    borrower.economy.gdp_history = [gdp] * 12
+    _take_fx(world, borrower, ledger.CB, c, fxmoney.holding(borrower, ledger.CB, c))
+    return issuer, borrower, c, swap.rate(world, game.config, c)
+
+
+def test_unpaid_interest_is_added_only_up_to_the_quota(game, base):
+    """払えない利子は、借り手の枠の残り（同じ時点の決済通貨の値）までだけ借りに足し、残りは免除して
+    貸し手の島に借り手ごとに記録する。免除した分は所得収支に入れない（国際収支は釣り合ったまま）。"""
+    world = copy.deepcopy(base)
+    issuer, borrower, c, rate = _issuer_loan(world, game, 10**9)
+    full = fxrates.to_foreign(borrower, c, swap.quota_room(borrower, game.config))
+    loan = full - ledger.interest(full, rate) // 2
+    swap._book(world, c, borrower.id, c, loan)
+    room = fxrates.to_foreign(borrower, c, swap.quota_room(borrower, game.config))
+    due = ledger.interest(loan, rate)
+    assert 0 < room < due
+    swap.service(world, game.config)
+    assert swap.owed(borrower)[str(c)][str(c)] == loan + room
+    assert swap.waived(issuer)[str(c)][str(borrower.id)] == due - room
+    assert swap.waived_value(issuer) == due - room  # 発行国は自国の通貨で貸した
+    assert borrower.scratch[balance.KEY]["income"] == -balance.value_of(world, borrower, c, room)
+    assert swap.reconcile(world) == [] and check(world) == []
+
+
+def test_unpaid_interest_is_waived_when_the_borrower_is_over_the_quota(game, base):
+    """借りが枠を超えている（GDP が縮んだ・通貨が安くなった）借り手は、払えない利子を借りに
+    足さない。"""
+    world = copy.deepcopy(base)
+    issuer, borrower, c, rate = _issuer_loan(world, game, 1)  # 枠はほぼ 0
+    swap._book(world, c, borrower.id, c, 100_000)
+    assert swap.quota_room(borrower, game.config) == 0
+    for _ in range(3):
+        swap.service(world, game.config)
+    assert swap.owed(borrower)[str(c)][str(c)] == 100_000  # 積もらない
+    assert swap.waived(issuer)[str(c)][str(borrower.id)] == 3 * ledger.interest(100_000, rate)
+    assert swap.reconcile(world) == [] and check(world) == []
+
+
+def test_interest_and_principal_are_still_paid_over_the_quota(game, base):
+    """枠を超えていても、手元の決済通貨で払える利子は払い、余りで元本を返す（外貨が入れば
+    借りは減る）。"""
+    world = copy.deepcopy(base)
+    issuer, borrower, c, rate = _issuer_loan(world, game, 1)
+    swap._book(world, c, borrower.id, c, 100_000)
+    due = ledger.interest(100_000, rate)
+    keep = fxrates.turnover(borrower, c)
+    _give_fx(world, borrower, ledger.CB, c, keep + due + 30_000)
+    swap.service(world, game.config)
+    assert swap.owed(borrower)[str(c)][str(c)] == 70_000  # 利子を払い、30,000 を返した
+    assert not swap.waived(issuer)
+    assert swap.reconcile(world) == [] and check(world) == []
 
 
 def test_world_check_finds_swap_mismatch(game, base):
@@ -916,7 +1090,9 @@ def test_banks_plan_foreign_currency_only_when_it_pays_and_capital_is_free(game,
 def test_central_bank_order_buys_foreign_bonds_over_turns(game, base):
     world = copy.deepcopy(base)
     holder, issuer = _pair(world)
-    _give_fx(world, holder, ledger.CB, issuer.id, 200_000)
+    # 中央銀行の外貨は、貿易の段で商社の輸入の支払いにも売られる（国債の段より前）。その分を
+    # 売っても残る額を渡す（建国から 40 ターンの世界の輸入の多さで、200,000 では尽きることがある）
+    _give_fx(world, holder, ledger.CB, issuer.id, 2_000_000)
     holder.policy.foreign_bonds = {"cb": {str(issuer.id): 20_000}}
     bought = []
     run_checked(

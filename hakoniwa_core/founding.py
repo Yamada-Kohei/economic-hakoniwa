@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, nature, stock
+from hakoniwa_core import infra, nature, stock, stops
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
@@ -582,7 +582,7 @@ def _add_facility(
         owner=OWNER_STATE if state else OWNER_PRIVATE,
         accounting=default_accounting(defs, island, kind, OWNER_STATE if state else OWNER_PRIVATE),
         built=True,
-        status=fac.STATUS_STARTING,
+        status=stops.STARTING,
     )
     assign_serial(island, f)
     island.facilities.append(f)

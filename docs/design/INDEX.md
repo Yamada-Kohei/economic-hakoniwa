@@ -42,7 +42,7 @@
 
 ## [2 島と町と人口](02-population.md)
 
-決まり 58 個、うち仮の決まりの表にあるもの 0 個。
+決まり 59 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -104,10 +104,11 @@
 | PO-56 | 計画経済の国営住宅（W-202）: 計画経済の国では家計は住宅の資材を買わず住宅ローンも借りない | 決定（W-190 の回2 で作った | tests/core/test_public_housing.py |
 | PO-57 | 飢えている家計（前のターンに食べきれなかったか飢えの蓄えが残る層）は、売りに出ていない食料のそれ… | 決定（2026-11-02） | tests/core/test_famine_recovery.py |
 | PO-58 | 飢えの蓄えが、次のターンに全部食べれば 0 に戻る大きさ（`hunger_step(S,0)=0`… | 決定（2026-11-05） | tests/core/test_famine_recovery.py、tests/server/test_codex_turn300_fixes.py |
+| PO-59 | 幸福度の内訳（W-172）: 式 `happiness` は項目ごとの点を返す式 `happin`… | 決定（2026-11-14） | tests/core/test_happiness_parts.py |
 
 ## [3 物と市場と値段](03-market.md)
 
-決まり 42 個、うち仮の決まりの表にあるもの 2 個。
+決まり 43 個、うち仮の決まりの表にあるもの 2 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -123,7 +124,7 @@
 | MK-10 | 持ち越せない売れ残りを翌ターンに指値なしで売った分は、値段が変動費を下回った幅が値幅に届くまで、… | 決定 | tests/core/test_economy.py |
 | MK-11 | 市場の段の後に、持ち越せる期間（goods.yaml の `shelf_life`）を過ぎた在庫… | 決定 | tests/core/test_playtest4_fixes.py、tests/core/test_rules.py |
 | MK-12 | 原料が足りずに稼働率が下がった施設は、前のターンに買うつもりだった分の原料がそろっていれば、止ま… | 決定 | tests/core/test_playtest3_fixes.py |
-| MK-13 | 品切れの財（買いたい人がいるのに売りに出なかった財）は、島で作り始められる一番安い値段が今の値段… | 決定 | tests/core/test_balance_round4.py、tests/core/test_recession_round2.py |
+| MK-13 | 品切れの財（買いたい人がいるのに売りに出なかった財）は、島で作り始められる一番安い値段が今の値段… | 決定（上限・下限の分は 2026-11-15） | tests/core/test_balance_round4.py、tests/core/test_phase3_4.py、tests/core/test_recession_round2.py |
 | MK-14 | 島に買い手がなく売りだけの財は、圏で輸出が引き合う値段まで値幅ずつ下がる | 決定 | tests/core/test_trade.py |
 | MK-15 | 家計は食料を、少ししか買えない段ほど高い指値で買う | 決定 | tests/core/test_balance_round3.py |
 | MK-16 | 値幅の上端で買い続ける買い手（家計の車の燃料、工事とインフラの資材）は、いつもの値段の一番上の段… | 仮（仮の決まりの表あり） | tests/core/test_phase3_2.py |
@@ -153,6 +154,7 @@
 | MK-40 | 混合経済で値段の上限を付けた財は、施設の在庫を上限の値段で売る（作った費用は払い済み） | 決定（2026-11-07） | tests/core/test_phase3_4.py |
 | MK-41 | 売れ残りの値引き（2026-11-10、W-245、2026-11-11 にアウトレット形に作り… | 決定（2026-11-10、アウトレット形は 2026-11-11） | tests/core/test_clothing_clearance.py |
 | MK-42 | 店の付け値（2026-11-12、W-261）: 市場経済と混合経済の島の店（商店・百貨店 | 決定（2026-11-12、本人のカード「推しの全部」 | tests/core/test_retail_posted.py |
+| MK-43 | 市場経済・混合経済の島の国営の農場も、民営と同じ作物の見直し（`firms.recipe_tur`… | 決定 | tests/core/test_state_crops.py |
 
 ## [4 仕事と家計](04-labor.md)
 
@@ -179,7 +181,7 @@
 | LB-17 | 収入は、働く層が賃金・失業手当・預金の利子、資本家階級が配当と預金の利子 | 決定 | （未確認） |
 | LB-18 | 層が使う額（式 `consumption`）は、直近の可処分所得の平均に層ごとの割合を掛けた分と… | 決定 | （未確認） |
 | LB-19 | 使う順は、電気代（生産の段で払った分を差し引く | 決定 | tests/core/test_phase3_2.py |
-| LB-20 | 食料は必要な量を、質を足した栄養あたりの値段の安い順に財ごとに割り振り、前のターンに売りに出てい… | 決定 | tests/core/test_economy.py |
+| LB-20 | 食料は必要な量（栄養）を、好みの献立に分けて買う | 決定 | tests/core/test_economy.py |
 | LB-21 | 前のターンに食べきれなかったか飢えの蓄えが残る家計は、預金の一部を足して食費の限りにし、要る量の… | 決定 | tests/core/test_balance_round3.py |
 | LB-22 | 食料が足りないときは、食費のうち足りない割合の分をサービスにもぜいたく品にも使わず手元に残す | 決定 | tests/core/test_balance_round4.py |
 | LB-23 | 消費財の注文は「いつもの値段」（家計が買ったターンだけの直近の平均）の段に分けた指値で出し、今の… | 仮（仮の決まりの表あり） | tests/core/test_economy.py、tests/core/test_playtest5_fixes.py |
@@ -204,13 +206,13 @@
 | LB-42 | 資本家階級の人数の上限を、人口の段で亡くなった人を引いた後に数え直して層に持ち、人数を割り振るど… | 決定（2026-11-08） | tests/core/test_owners_cap.py |
 | LB-43 | 解雇の決まり（2026-11-10、W-251）: 施設（民営・国営の独立採算・国庫直轄 | 決定（2026-11-10 | tests/core/test_dismissal.py |
 | LB-44 | 衣料は持ち物（2026-11-10、W-26 の直し）: 家計の層は衣料を1人あたりの持つ量（``… | 決定（2026-11-10 | tests/core/test_clothing_clearance.py |
-| LB-45 | 国庫の項目の予算が足りないときの分け方（2026-11-10 | 決定（2026-11-10 | tests/core/test_staff_plan.py |
-| LB-46 | 雇用の保障（2026-11-12、W-231 の日々の仕事の割り当て | 後回し（今の main の計画経済の島の失業を測り、摩擦的な失業を超えて残れば入れる） | （未確認） |
+| LB-45 | 国庫の項目の予算が足りないときの分け方（2026-11-10 | 決定（2026-11-10 | tests/core/test_public_expansion.py、tests/core/test_staff_plan.py |
+| LB-46 | 雇用の保障（2026-11-12、W-231 の日々の仕事の割り当て | 決定（2026-11-12 | tests/core/test_job_guarantee.py |
 | LB-47 | 家計は電気を買える分だけ買う（2026-11-12、停電の調べの案 3）: 家計の層は生産の段の… | 決定（設定 `power.household_curve` で切／入 | tests/core/test_household_power_curve.py |
 
 ## [5 施設と企業](05-firms.md)
 
-決まり 71 個、うち仮の決まりの表にあるもの 0 個。
+決まり 73 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -260,7 +262,7 @@
 | FM-44 | 組の参入: 原料が島で作られていなくても、島にある原料で作れる民営の施設があれば、その施設を先に… | 決定（回7 後半、2026-11-02） | tests/core/test_balance_round7b.py |
 | FM-45 | 水力発電所の出力は、集水域（半径 4 マス | 決定（W-148） | tests/core/test_hydro.py |
 | FM-46 | 施設と企業の自動の名前は、生まれたときに一度だけ決めて残す（民営の企業は創業者の姓か生まれた地名… | 決定（仮: 創業者と地元の出資の割合） | tests/core/test_company_names.py |
-| FM-47 | 施設の規模（段6 A3、W-85）: 同じ施設の建っているマスに同じ施設を建てる命令は、建て増し… | 決定 | tests/core/test_scale.py |
+| FM-47 | 施設の規模（段6 A3、W-85）: 同じ施設の建っているマスに同じ施設を建てる命令は、建て増し… | 決定 | tests/core/test_public_expansion.py、tests/core/test_scale.py |
 | FM-48 | 損益の在庫の増減は原価法・低価法で数える: 施設の作る物は「1 単位の原価（変動費と設備の傷み）… | 決定 | tests/core/test_recession_round1.py |
 | FM-49 | 設備投資（W-186 の直し 回3）: 民営の独立採算の施設が、直近 `firms.invest`… | 決定（回3） | tests/core/test_recession_round3.py |
 | FM-50 | 農場の段階（W-190）: 農場は規模でなく段階で集約する（max_size 1 のまま） | 決定（W-190 の回で作る） | （作る回で） |
@@ -271,7 +273,7 @@
 | FM-55 | 創業融資: 実績のない会社（資本家階級が新しく起こす会社と、建国の後にできて決めたターン数たたな… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
 | FM-56 | 資本家階級の預金で新しい会社の出資に足りなければ、持っている民営の会社の株（会社の預金と施設の純… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
 | FM-57 | 生産補助（売上の率 r）を受ける施設の売り値の下限は、1単位の変動費 ÷ (1 + r)（補助の… | 決定（2026-11-07） | tests/core/test_phase3_4.py |
-| FM-58 | 民営の参入（FM-17・FM-56 の後）と民営化（FM-26）の出資や代金が資本家階級の預金で… | 決定（2026-11-08） | tests/core/test_owners_cap.py |
+| FM-58 | 民営の参入（FM-17・FM-56 の後）と民営化（FM-26）の出資や代金が資本家階級の預金で… | 決定（2026-11-08、暮らしの分は 2026-11-15） | tests/core/test_owners_cap.py |
 | FM-59 | 管財人（W-18・W-200・W-254 の直し）: 倒産した施設は、差し押さえた銀行が管財人と… | 決定（2026-11-10） | tests/core/test_receivership.py |
 | FM-60 | 居抜きの売り（W-18・W-200 の直し）: 差し押さえた施設と閉鎖に入った施設は、売りに出て… | 決定（2026-11-10） | tests/core/test_receivership.py |
 | FM-61 | 工業団地のない国の工場（W-256）: 民営の工場（`firms.open_land` でない施… | 決定（2026-11-10） | tests/core/test_balance_round6.py、tests/core/test_open_land_factory.py |
@@ -285,6 +287,8 @@
 | FM-69 | 店の参入（2026-11-12、W-261）: 民営の店の参入は、工場の参入と別に1島1ターン1… | 決定（2026-11-12、本人のカード「推しの全部」） | tests/core/test_retail_posted.py |
 | FM-70 | 町の店の枠（2026-11-12、W-261）: 町に入る商店の数は、町の段階の数（`settl`… | 決定（2026-11-12、本人のカード「推しの全部」） | tests/core/test_balance_round7.py、tests/core/test_retail_posted.py |
 | FM-71 | 段階の作り方で建てる農場（W-257）: 機械化・近代化の作り方を選んで農場を建てる命令は、初め… | 決定 | tests/core/test_farm_build_grade.py、tests/server/test_migration.py |
+| FM-72 | 組の参入の値段と採算（W-26 の自動車の値段の外れ）: 原料が島で作られていない工場（自動車工… | 決定（2026-11-15） | tests/core/test_group_entry.py |
+| FM-74 | 発電所の働き手（2026-11-14、本人「電力会社としてだもんな」「全部一気にやっていい」）:… | 決定 | tests/core/test_power_staff.py |
 
 ## [6 国の財政と政策](06-finance.md)
 
@@ -427,7 +431,7 @@
 
 ## [9 貿易と為替](09-trade.md)
 
-決まり 80 個、うち仮の決まりの表にあるもの 4 個。
+決まり 82 個、うち仮の決まりの表にあるもの 5 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -466,7 +470,7 @@
 | FX-33 | 同じ通貨の組のレートは1つ（島 A の板で決まったレートの逆数を島 B の板にも入れる） | 決定 | （未確認） |
 | FX-34 | 受け身の買いは、中央銀行の外国の資産から融通で借りている額を引いた正味が年の GDP の決めた割… | 仮（仮の決まりの表あり） | tests/core/test_phase3_3.py |
 | FX-35 | 中央銀行どうしの融通: 受け身の売りに要る外貨が足りない中央銀行は、同じ圏で余っている加盟国の中… | 決定 | tests/core/test_phase3_3.py、tests/core/test_trade.py |
-| FX-36 | 融通で借りられるのは年の GDP の決めた割合まで、発行国が作って貸すのはその国の年の GDP … | 仮（仮の決まりの表あり） | tests/core/test_phase3_3.py |
+| FX-36 | 融通で借りられるのは年の GDP の決めた割合まで、発行国が作って貸すのはその国の年の GDP … | 仮（発行国が作って貸す上限の数え方は 2026-11-15 に FX-81 で置き換えた）（仮の決まりの表あり） | tests/core/test_phase3_3.py |
 | FX-37 | 介入: 中央銀行は命令で通貨ごとに毎ターン買う・売る額を決め、買いは値幅の上端・売りは下端の指値 | 決定 | tests/core/test_phase3_3.py |
 | FX-38 | 固定相場: 決めたレートの幅の端で、下に量の限りのない買い、上に持っている外貨の全部の売りを出す | 決定 | tests/core/test_phase3_3.py |
 | FX-39 | 中央銀行が独立しているときは、介入・固定相場・中央銀行の外国の国債の命令をやめる | 決定 | tests/core/test_phase3_3.py |
@@ -511,10 +515,12 @@
 | FX-78 | 船の前注文を圏の造船所に広げる（2026-11-13）: 島に造船所がない（差し押さえ・止まりを… | 決定（2026-11-13、本人のカード「1〜4 を全部」 | （実装で足す） |
 | FX-79 | 寿命を過ぎた船は、代わりの船が届くまで使い続ける（2026-11-13）: 寿命を過ぎた船は、寿… | 決定（2026-11-13、本人のカード「1〜4 を全部」 | （実装で足す） |
 | FX-80 | 船が混んできたら買い増す（2026-11-13）: 海運業の目標の船団を、直近 `trade.c`… | 決定（2026-11-13、本人のカード「1〜4 を全部」 | （実装で足す） |
+| FX-81 | 決済通貨を発行した国が作って貸す上限を、その通貨を使う国の大きさで決める（2026-11-15、… | 決定（2026-11-15、本人のカード「案 1 で進める」） | tests/core/test_phase3_3.py |
+| FX-82 | 融通の払えない利子を借りに足すのは、借り手の枠の残りまで（2026-11-15、FX-81 の後… | 仮（仮の決まりの表あり）（仮の決まりの表あり） | tests/core/test_phase3_3.py |
 
 ## [10 政治と体制](10-politics.md)
 
-決まり 61 個、うち仮の決まりの表にあるもの 2 個。
+決まり 62 個、うち仮の決まりの表にあるもの 2 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -579,10 +585,11 @@
 | PL-59 | 人員計画（2026-11-10 | 決定（2026-11-10 | tests/core/test_staff_plan.py |
 | PL-60 | 二重の値段（2026-11-12、W-231 | 決定（2026-11-12 | tests/core/test_phase3_4.py |
 | PL-62 | 輸出の計画（2026-11-13、計画経済の電気不足の案 3）: 国が、外貨を使う順の 1 段の… | 決定（2026-11-13、本人の表の 1-2・2-2・3-1 と B | tests/core/test_export_plan.py |
+| PL-63 | 運営からの告知の知らせ（2026-11-15、セビーリャさん「運営からのメッセージ…赤い印を出し… | 決定 | tests/server/test_site_notices.py |
 
 ## [11 画面と統計](11-ui.md)
 
-決まり 95 個、うち仮の決まりの表にあるもの 0 個。
+決まり 97 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -681,10 +688,12 @@
 | UI-93 | 生産調整中のわけ（W-250、2026-11-12）: 施設の状態が売れ行きの調整（target… | 決定 | tests/core/test_phase3_4.py、tests/server/test_screens_notices.py、tests/server/test_slowdown_reasons.py |
 | UI-94 | 市場の記録に、買い手と売り手の別（国営の施設・民営の施設・商社・海外の商人・家計・国の倉庫・政府… | 決定 | tests/core/test_market_groups.py、tests/server/test_good_page.py |
 | UI-95 | 品目ごとの輸出と輸入の額を統計 `export.<財>`・`import.<財>` に残す（W-… | 決定 | tests/core/test_market_groups.py、tests/server/test_trade_overview.py |
+| UI-96 | 更新のお知らせ（2026-11-15、セビーリャさん「更新があった時には最初アクセスした時だけポ… | 決定 | tests/server/test_site_notices.py |
+| UI-97 | 幸福度の内訳（W-172、2026-11-14）: 経済の画面の「幸福度を調べる」に、持ち主だけ… | 決定 | tests/server/test_happiness_parts.py |
 
 ## [12 確かめ方](12-checks.md)
 
-決まり 44 個、うち仮の決まりの表にあるもの 0 個。
+決まり 46 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -714,7 +723,7 @@
 | GT-24 | 長い試し回し（測り・関門・夜の点検）で崩れが main より増えたら、増えた分を直してからマージ… | 決定 |  |
 | GT-25 | 規模の目標: 既定の 50 島で 1 回のターン更新を 5 分以内にする | 決定 | （未確認） |
 | GT-26 | 標準の計画は測りと自動の試験と開発用のサンプルの島だけで使い、サーバーの世界の国は動かさない（命… | 決定 | tests/core/test_gate.py |
-| GT-27 | 標準の計画は毎ターン上から見て最初に足りないもの（食料・発電・工事の資材・投入財・消費財・使って… | 決定 | tests/core/test_autoplan_budget.py、tests/core/test_gate.py |
+| GT-27 | 標準の計画は毎ターン上から見て最初に足りないもの（食料・発電・工事の資材・投入財・消費財・使って… | 決定 | tests/core/test_autoplan_budget.py、tests/core/test_gate.py、tests/core/test_infrastructure.py |
 | GT-28 | 標準の計画の世界の側: 貿易の始まった島ぜんぶで 1 つの誰でも入れる貿易圏を作る（決済通貨は人… | 決定 | tests/core/test_trade.py |
 | GT-29 | 標準の計画の飢饉の手: 食べ物の充足が下がった月は国営の農場を穀物に替え、国の倉庫の食べ物を出し… | 決定 | tests/core/test_balance_round5.py |
 | GT-37 | 標準の計画の財政の手: 国が賃金を払いきれなければ所得税と消費税を少しずつ上げ、ゆとりが戻れば建… | 決定 | tests/core/test_balance_round5.py |
@@ -725,13 +734,15 @@
 | GT-34 | 崩れた世界の写し: 崩れごとに、崩れが始まったターンの少し前（`gate.py` の `SNAP`… | 決定 | tests/core/test_collapse.py |
 | GT-35 | 試験の書き方: 仕組みの試験は、その仕組みを作った場面（足りない・0・一部だけなど）を組み立てて… | 決定 |  |
 | GT-36 | 島の種類ごとに全画面を開く試験: 建国直後・人のいない島・銀行のない島・計画経済・戦争中・占領・… | 決定 | tests/server/test_all_screens.py |
-| GT-42 | 同じ形を 1 か所で作る（止まった理由を持ち主と原因の表から出す、名前と座標の文を 1 つの関数… | 後回し（タブ 14 W-34） |  |
+| GT-42 | 施設が全力で動かなかった理由（施設の status）は、理由の表 `hakoniwa_core/`… | 決定 | tests/core/test_stops.py、tests/server/test_stop_texts.py |
 | GT-38 | 回7 の目安と見張り: 働く人のうちサービス（商業・金融・運輸・商社・公務・教育・治安）で働く割… | 決定 | tests/core/test_balance_round7.py |
 | GT-39 | 関門の値段の幅は、サービスと小売りだけ物価指数でなく平均賃金の伸びで割って見る（賃金が物の値段よ… | 決定（回7 後半） | tests/core/test_gate.py |
 | GT-40 | 標準の計画は、島で作っていない投入財でも、作る施設の投入財が手元にあれば手に入ると見て使う施設（… | 決定（回7 後半） | tests/core/test_balance_round7b.py |
 | GT-41 | 測りは、計算の中身（hakoniwa_core・game.yaml・packs・schemas）… | 決定 | tests/core/test_measure_reuse.py |
 | GT-43 | 試験は回す場所と順によらず同じ結果になる（Linux でも Windows の X870 でも、… | 決定 | tests/core/test_playtest_fixes.py、tests/server/test_board.py、tests/server/test_theme_sprites.py |
 | GT-44 | 経済の決まりを足す・変えるときは、同じコードで決まりを入れた世界と入れない世界を比べてから既定に… | 決定 |  |
+| GT-45 | 測りの結果の置き場: `measure batch --store <置き場>`（または環境変数… | 決定 | tests/core/test_measure_store.py |
+| GT-46 | 1 島 300 ターンの関門の試験の、品不足への切り替え（2026-11-15 掲示板の会議）:… | 決定 | tests/core/test_gate.py |
 
 ## [15 軍事と戦争](15-military.md)
 

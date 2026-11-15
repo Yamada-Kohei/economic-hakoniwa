@@ -17,13 +17,25 @@
     python -m hakoniwa_core.measure batch --set quick --out-dir runs/r2
     python -m hakoniwa_core.measure batch --set full --out-dir runs/r2-full
     python -m hakoniwa_core.measure compare runs/main runs/r2
+    python -m hakoniwa_core.measure digests runs/main.jsonl runs/new.jsonl
 
 quick は比べるための組（種1・2、300ターン）、full は回の終わりに1回だけ回す組（種1〜4、500ターン）。
 compare は2つの結果を並べます。
+digests は simulate --digests で書いた指紋を比べ、共通のターンで最初にずれた番号を出します。
+片方にしかないターンは件数だけを出し、ずれには数えません。
 
 --reuse に前の結果のフォルダを渡すと、計算の中身（hakoniwa_core・game.yaml・packs・schemas）が
 前と同じ組は回さず、その結果を写します（hakoniwa_core/reuse.py）。main の結果を何度も回し直さずに
-済みます。
+済みます。`measure fingerprint` は今の計算の中身の指紋を出します。main と同じなら（画面・文書だけの
+直しなど）、その版は測らずに main の結果を使えます（W-236 H-2）。
+
+--store の置き場は、指紋・組の名前・Python と道具の版を鍵に結果を読み書きします。
+回している間だけ札を持ち、ほかの batch は結果を待ちます。完了の印と中身が合う結果だけを
+写すので、書きかけや壊れた結果は使いません。main の測りは、main が変わった後に最初に頼んだ
+batch が 1 回だけ回し、ほかの batch は置き場から写します（設計書 12 確かめ方 GT-45）。
+
+    python -m hakoniwa_core.measure batch --set quick --out-dir runs/main --store <置き場>
+    python -m hakoniwa_core.measure clean --store <置き場> --days 14
 """
 
 from __future__ import annotations
@@ -43,7 +55,7 @@ from pathlib import Path
 from typing import IO, Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import gate, politics, reuse, warscene
+from hakoniwa_core import gate, politics, reuse, stops, warscene
 from hakoniwa_core.autoplan import plan_trade, plan_turn, plan_war, queue_orders
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
@@ -126,34 +138,8 @@ SETS = {
     ],
 }
 
-# 施設が全力で動かなかった理由（施設の status の「:」の前）のまとめ方
-CAUSES = {
-    "target": "sales",  # 売れ行きに合わせた
-    "no_demand": "sales",
-    "power_price": "sales",
-    "cargo": "sales",  # 港・商社の扱う荷が少ない
-    "business": "sales",  # 小さい銀行の預金と融資が少ない
-    "input": "inputs",
-    "input_price": "inputs",
-    "public_price": "inputs",
-    "power": "power",
-    "no_grid": "power",
-    "funds": "funds",
-    "wages": "funds",
-    "workers": "workers",
-    "engineers": "engineers",
-    "equipment": "equipment",  # 設備の傷み（2026-11-13 に分けた。前は halted に入っていた）
-}
-CAUSE_GROUPS = (
-    "sales",
-    "inputs",
-    "power",
-    "funds",
-    "workers",
-    "engineers",
-    "equipment",
-    "halted",
-)
+# 施設が全力で動かなかった理由のまとめ方は、理由の表（hakoniwa_core/stops.py）の組（W-34）
+CAUSE_GROUPS = stops.GROUPS
 
 # 誰が買ったかを数える財（設備と工事の資材。回6 の材料）
 WATCH = ("machinery", "steel", "building_materials", "transport_ship", "automobile")
@@ -270,6 +256,16 @@ def island_row(
         for kind in ("production", "volume"):
             if f"{kind}.{good}" in s:
                 row[f"{kind}.{good}"] = s[f"{kind}.{good}"]
+    # 食料の値段・作った量・売買の量（LB-20 の好みの献立で、どの食料がどれだけ食べられるか）
+    for good in sorted(g for g, d in defs.goods.items() if "food" in d):
+        for kind in ("price", "production", "volume"):
+            if f"{kind}.{good}" in s:
+                row[f"{kind}.{good}"] = s[f"{kind}.{good}"]
+    # このターンに倒産・閉鎖した施設の数（施設の種類ごと）
+    for entry in island.log:
+        if entry.kind in ("facility_bankrupt", "facility_closed"):
+            key = f"{entry.kind.removeprefix('facility_')}.{entry.args.get('facility')}"
+            row[key] = row.get(key, 0) + 1
     row["output.real"] = gate.real_output(s, prices)
     good = config.get("services")["good"]  # うちサービス（回4）
     row["output.real.services"] = s.get(f"production.{good}", 0) * prices.get(good, 0)
@@ -309,10 +305,8 @@ def jobs(island: IslandState, defs: Defs, config: GameConfig) -> dict[str, float
         if need <= 0 or not fac.located(f):
             continue
         out["jobs.capacity"] += need
-        if is_stopped(f) or f.status in (fac.STATUS_STARTING, "halted", "riot", "recipe_change"):
-            cause = "halted"
-        else:
-            cause = CAUSES.get(f.status.partition(":")[0], "halted")
+        # 閉鎖の途中・差し押さえの施設は、理由にかかわらず止まった施設（災害と同じ組）に数える
+        cause = stops.G_HALTED if is_stopped(f) else stops.show(config, f.status, f.ext).group
         lost = need * (fac.FULL - min(fac.FULL, max(0, f.operating_rate))) / fac.FULL
         if lost > 0:
             out[f"idle.{cause}"] += lost
@@ -737,14 +731,46 @@ def run_name(scenario: str, seed: int, turns: int) -> str:
     return f"{scenario}-s{seed}-t{turns}"
 
 
+# 1 ターンの秒の目安（HAL で 1 組 1 コア、c2d2639 の通しの平均）。回す順を決めるためだけに使う
+# （長い組から先に始めると、並べる本数が組の数より少ないときに全体が早く終わる。W-236 H-5）。
+# 結果には響かない（各組は別々の処理で、始める順は世界に入らない）。
+TURN_SECONDS = {
+    "open": 8.5,
+    "independent": 8.6,
+    "plan": 7.9,
+    "none": 3.4,
+    "war": 1.25,
+    "small": 0.43,
+}
+
+
+def expected_seconds(scenario: str, turns: int) -> float:
+    """組の重さの目安（秒）。目安のない場面は島の数から見積もる（50 島で 1 ターン約 8 秒）。"""
+    per_turn = TURN_SECONDS.get(scenario)
+    if per_turn is None:
+        islands = SCENARIOS[scenario].islands if scenario in SCENARIOS else 50
+        per_turn = 8.0 * islands / 50
+    return per_turn * turns
+
+
+def longest_first(names: Iterable[tuple[str, int, int]]) -> list[tuple[str, int, int]]:
+    """重い組から並べる（同じ重さなら元の順のまま）。"""
+    return sorted(names, key=lambda n: -expected_seconds(n[0], n[2]))
+
+
 def batch(
     names: Iterable[tuple[str, int, int]],
     out_dir: Path,
     jobs: int,
     series: bool,
     reuse_dirs: Sequence[Path] = (),
+    store: Path | None = None,
+    owner: str = "",
 ) -> int:
     """場面・種・ターン数の組を、jobs 本ずつ別の処理で回す。結果は out_dir/<名前>.json。
+
+    重い組から先に始める（longest_first）。並べる本数が少ないときに、一番長い組が後回しになって
+    全体が延びないように。
 
     reuse_dirs の中に同じ組の結果があり、その指紋が今の計算の中身と同じなら、回さずに写す。
     """
@@ -752,9 +778,12 @@ def batch(
         raise ValueError(f"--jobs は 1 以上にしてください（{jobs}）")
     out_dir.mkdir(parents=True, exist_ok=True)
     waiting = []
-    if reuse_dirs:
+    result_store = None
+    if reuse_dirs or store is not None:
         fingerprint = reuse.code_fingerprint()
         print(f"計算の中身の指紋: {fingerprint[:12]}", flush=True)
+        if store is not None:
+            result_store = reuse.Store(store, fingerprint, owner)
     for scenario, seed, turns in names:
         name = run_name(scenario, seed, turns)
         if reuse_dirs:
@@ -764,36 +793,109 @@ def batch(
                 print(f"使い回した: {name}（元: {found.parent}）", flush=True)
                 continue
             print(f"使い回せない: {name}（{why}）", flush=True)
+        if result_store is not None and result_store.fetch(name, out_dir, series)[0]:
+            print(f"置き場から写した: {name}", flush=True)
+            continue
         waiting.append((scenario, seed, turns))
+    waiting = longest_first(waiting)
     running: list[tuple[str, subprocess.Popen, IO[str]]] = []
+    pending: list[tuple[str, int, int]] = []
+    held: dict[str, float] = {}
+    began: dict[str, float] = {}
     failed = 0
-    while waiting or running:
-        while waiting and len(running) < jobs:
-            scenario, seed, turns = waiting.pop(0)
-            name = run_name(scenario, seed, turns)
-            command = [
-                sys.executable,
-                "-m",
-                "hakoniwa_core.simulate",
-                *("--scenario", scenario, "--seed", str(seed), "--turns", str(turns)),
-                *("--gate", "--out", str(out_dir / f"{name}.json")),
-            ]
-            if series:
-                command += ["--series", str(out_dir / f"{name}.jsonl")]
-            log = open(out_dir / f"{name}.log", "w", encoding="utf-8")  # 処理が終わったら閉じる
-            process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
-            running.append((name, process, log))
-            print(f"始めた: {name}", flush=True)
-        time.sleep(1)
-        for item in list(running):
-            name, process, log = item
-            if process.poll() is None:
-                continue
-            running.remove(item)
-            log.close()
-            ok = (out_dir / f"{name}.json").exists()
-            failed += 0 if ok else 1
-            print(f"{'終わった' if ok else '失敗した'}: {name}", flush=True)
+    try:
+        while waiting or running or pending:
+            while waiting and len(running) < jobs:
+                scenario, seed, turns = waiting.pop(0)
+                name = run_name(scenario, seed, turns)
+                if result_store is not None:
+                    if result_store.fetch(name, out_dir, series)[0]:
+                        print(f"置き場から写した: {name}", flush=True)
+                        continue
+                    claimed, why = result_store.claim(name)
+                    if not claimed:
+                        pending.append((scenario, seed, turns))
+                        print(f"待つ: {name}（{why} が回している）", flush=True)
+                        continue
+                    held[name] = time.monotonic()
+                    if result_store.fetch(name, out_dir, series)[0]:
+                        result_store.release(name)
+                        held.pop(name)
+                        print(f"置き場から写した: {name}", flush=True)
+                        continue
+                command = [
+                    sys.executable,
+                    "-m",
+                    "hakoniwa_core.simulate",
+                    *("--scenario", scenario, "--seed", str(seed), "--turns", str(turns)),
+                    *("--gate", "--out", str(out_dir / f"{name}.json")),
+                ]
+                if series:
+                    command += ["--series", str(out_dir / f"{name}.jsonl")]
+                if result_store is not None:
+                    # 前の回の結果が出力先に残っていると、今回の処理が途中で落ちても結果がある
+                    # ように見える。置き場に置くのは今回の処理が書いた結果だけにする
+                    (out_dir / f"{name}.json").unlink(missing_ok=True)
+                log = open(out_dir / f"{name}.log", "w", encoding="utf-8")  # 処理が終わったら閉じる
+                try:
+                    process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
+                except BaseException:
+                    log.close()
+                    raise
+                running.append((name, process, log))
+                began[name] = time.monotonic()
+                print(f"始めた: {name}", flush=True)
+            time.sleep(1)
+            if result_store is not None:
+                now = time.monotonic()
+                for name, last_beat in held.items():
+                    if now - last_beat >= reuse.BEAT_SECONDS:
+                        result_store.beat(name)
+                        held[name] = now
+                for item in list(pending):
+                    name = run_name(*item)
+                    if result_store.fetch(name, out_dir, series)[0]:
+                        pending.remove(item)
+                        print(f"置き場から写した: {name}", flush=True)
+                    elif result_store.free(name):
+                        pending.remove(item)
+                        waiting.insert(0, item)
+            for item in list(running):
+                name, process, log = item
+                returncode = process.poll()
+                if returncode is None:
+                    limit = reuse.RUN_LIMIT_SECONDS
+                    if (
+                        result_store is not None
+                        and name in began
+                        and time.monotonic() - began[name] > limit
+                    ):
+                        # 固まった処理が札を持ち続けると、ほかの batch がずっと待つ。止めて、
+                        # 次の回りで終わりを見てから札を外す
+                        del began[name]  # 止めるのは 1 度だけ
+                        process.kill()
+                        print(f"止めた: {name}（{limit / 3600:.0f} 時間を超えた）", flush=True)
+                    continue
+                running.remove(item)
+                log.close()
+                ok = (out_dir / f"{name}.json").exists()
+                failed += 0 if ok else 1
+                print(f"{'終わった' if ok else '失敗した'}: {name}", flush=True)
+                if result_store is not None:
+                    # simulate --gate は、目安の外れや崩れがあると 1 で終わる（結果は書いてある）。
+                    # 結果は最後のターンの後に書くので、今回の結果があれば最後まで回っている
+                    if ok and returncode in (0, 1):
+                        published, why = result_store.publish(name, out_dir, series)
+                        if published:
+                            print(f"置き場に置いた: {name}", flush=True)
+                        else:
+                            print(f"置き場に置けない: {name}（{why}）", flush=True)
+                    result_store.release(name)
+                    held.pop(name, None)
+    finally:
+        if result_store is not None:
+            for name in held:
+                result_store.release(name)
     return failed
 
 
@@ -1097,6 +1199,46 @@ def _show_war(war: Mapping[str, Any]) -> list[str]:
     return out
 
 
+def _load_digests(path: Path) -> dict[int, str]:
+    """ずれを見逃さないよう、ターン番号の重複や行の形を確かめて指紋を読む。"""
+    digests = {}
+    with path.open(encoding="utf-8") as source:
+        for number, line in enumerate(source, 1):
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError as exc:
+                raise ValueError(f"{path}: {number} 行目の JSON を読めません") from exc
+            if (
+                not isinstance(row, dict)
+                or type(row.get("turn")) is not int
+                or not isinstance(row.get("digest"), str)
+                or not row["digest"]
+            ):
+                raise ValueError(
+                    f"{path}: {number} 行目には整数の turn と文字列の digest が必要です"
+                )
+            turn = row["turn"]
+            if turn in digests:
+                raise ValueError(f"{path}: {number} 行目のターン {turn} が重複しています")
+            digests[turn] = row["digest"]
+    return digests
+
+
+def compare_digests(base: Path, new: Path) -> tuple[str, int]:
+    """共通のターンの指紋を比べ、最初のずれと片方だけの件数を知らせる。"""
+    a, b = _load_digests(base), _load_digests(new)
+    common = sorted(a.keys() & b.keys())
+    first = next((turn for turn in common if a[turn] != b[turn]), None)
+    lines = [
+        f"全部同じ（{len(common)} ターン）" if first is None else f"最初にずれたターン: {first}",
+        f"A にしかないターン: {len(a.keys() - b.keys())}",
+        f"B にしかないターン: {len(b.keys() - a.keys())}",
+    ]
+    return "\n".join(lines), 0 if first is None else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1113,24 +1255,71 @@ def main(argv: list[str] | None = None) -> int:
         metavar="DIR",
         help="前の結果のフォルダ。計算の中身が今と同じ組は回さずに写す（何本でも指せる）",
     )
+    run.add_argument(
+        "--store",
+        default=os.environ.get(reuse.STORE_ENV, ""),
+        metavar="DIR",
+        help="結果の置き場。同じ計算の中身の結果があれば写し、なければ回して置く"
+        "（何本の batch から同時に使ってもよい）",
+    )
+    run.add_argument(
+        "--owner",
+        default=os.environ.get(reuse.OWNER_ENV, ""),
+        metavar="NAME",
+        help="置き場の札に書く名前（スレッドの名前など）",
+    )
+    clean = sub.add_parser(
+        "clean", help="結果の置き場の、長く使っていない版と古い一時のファイルを消す"
+    )
+    clean.add_argument("--store", default=os.environ.get(reuse.STORE_ENV, ""), metavar="DIR")
+    clean.add_argument("--days", type=float, default=14.0, help="この日数より使っていない版を消す")
     cmp = sub.add_parser("compare", help="2つの結果を比べる")
     cmp.add_argument("base")
     cmp.add_argument("new")
+    digests = sub.add_parser("digests", help="各ターンの指紋を比べ、最初にずれたターンを出す")
+    digests.add_argument("base", metavar="A")
+    digests.add_argument("new", metavar="B")
     see = sub.add_parser("show", help="結果の要点を並べる")
     see.add_argument("path")
+    sub.add_parser(
+        "fingerprint",
+        help="計算の中身の指紋を出す（main と同じなら、その版は測らずに main の結果を使える）",
+    )
     args = parser.parse_args(argv)
+    if args.command == "digests":
+        try:
+            output, code = compare_digests(Path(args.base), Path(args.new))
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
+        print(output)
+        return code
     if args.command == "batch":
         names = SETS[args.set]
         if args.only:
             keep = set(args.only.split(","))
             names = [n for n in names if n[0] in keep]
         failed = batch(
-            names, Path(args.out_dir), args.jobs, args.series, [Path(d) for d in args.reuse]
+            names,
+            Path(args.out_dir),
+            args.jobs,
+            args.series,
+            [Path(d) for d in args.reuse],
+            Path(args.store) if args.store else None,
+            args.owner,
         )
         print(show(Path(args.out_dir)))
         return 1 if failed else 0
+    if args.command == "clean":
+        if not args.store:
+            parser.error("--store か環境変数 " + reuse.STORE_ENV + " で置き場を渡してください")
+        removed = reuse.prune(Path(args.store), args.days)
+        print("\n".join(f"消した: {name}" for name in removed) or "消す物はない")
+        return 0
     if args.command == "compare":
         print(compare(Path(args.base), Path(args.new)))
+        return 0
+    if args.command == "fingerprint":
+        print(reuse.code_fingerprint())
         return 0
     print(show(Path(args.path)))
     return 0

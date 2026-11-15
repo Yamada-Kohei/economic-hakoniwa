@@ -61,8 +61,10 @@ def produce(game, base, config, economy="market", tax=None):
 
 def test_households_buy_what_they_can_when_the_bill_tops_their_share(game, base):
     """電気料金が使う額の割合で払える値段を超えても、層の全員が 0 にはならず、払える分だけ買う。"""
-    off, _ = produce(game, base, settings(game, False, share=0.02))
-    on, _ = produce(game, base, settings(game, True, share=0.02))
+    # 割合は電気料金が払える値段を超える大きさにする（発電所の働き手を電力会社 1 社分にして電気の
+    # 原価がおよそ半分になったので、0.02 では払えてしまう）
+    off, _ = produce(game, base, settings(game, False, share=0.01))
+    on, _ = produce(game, base, settings(game, True, share=0.01))
     assert off.stats["power.household.general"] == 0  # 前の形: 指値が料金を下回り、全員が 0
     assert 0 < on.stats["power.household.general"] < 1
     assert on.stats["power.used"] > off.stats["power.used"]
