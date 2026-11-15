@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from django.conf import settings as django_settings
 from django.core.paginator import Paginator
 from django.http import Http404, HttpResponse
@@ -978,6 +980,52 @@ def _goods_help(game) -> dict:
             )
         ],
         "food_reserve_turns": config.get("food_reserve.turns"),
+        "diet": _diet_help(game),
+    }
+
+
+def _diet_help(game) -> dict:
+    """手引きの「家計の献立」（LB-20）に出す、所得ごとの献立の目標の割合と値段への反応。
+
+    目標は household.food_target の base（ふつうの所得）と rich（その
+    household.food_target_rich_income 倍）で、間は所得の倍率の log の割合で取る（market の
+    food_prefs と同じ）。島の初めの値段で食料費の足りる家計は、ちょうどこの割合で食べる。
+    """
+    config, defs = game.config, game.defs
+    settings = config.get("household")
+    target = settings["food_target"]
+    rich = settings["food_target_rich_income"]
+    foods = [
+        g
+        for g, _ in sorted(
+            ((g, d) for g, d in defs.goods.items() if d.get("food")),
+            key=lambda item: (item[1]["food"].get("quality", 0), item[0]),
+        )
+    ]
+
+    def row(times: float) -> dict:
+        t = min(1.0, math.log(times) / math.log(rich)) if times > 1 and rich > 1 else 0.0
+        shares = {
+            g: (1 - t) * target["base"].get(g, 0.0) + t * target["rich"].get(g, 0.0) for g in foods
+        }
+        total = sum(shares.values()) or 1.0
+        return {
+            "times": f"{times:g}",
+            "parts": [
+                {
+                    "good": g,
+                    "name": defs.name("goods", g),
+                    "share": f"{round(shares[g] / total * 100, 1):g}",
+                }
+                for g in foods
+                if shares[g] > 0
+            ],
+        }
+
+    return {
+        "rows": [row(1.0), row(math.sqrt(rich)), row(float(rich))],
+        "rich_income": f"{rich:g}",
+        "elasticity": f"{settings['food_elasticity']:g}",
     }
 
 
