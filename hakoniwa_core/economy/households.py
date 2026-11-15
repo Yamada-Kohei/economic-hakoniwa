@@ -263,10 +263,95 @@ def update_owners_cap(island: IslandState, config: GameConfig, population: int) 
             h[CAP] = cap
 
 
-def draw_founders(island: IslandState, need: int, available: int) -> int:
-    """資産を持つ層の出資に使える額 available が need に足りなければ、足りない分を一般の層の預金
-    から出す人を、その預金と一緒に資産を持つ層へ移す（働く人の貯蓄からの起業。FM-58）。移る人は
-    住民の割合の人数まで（founders_room）。移した人数を返す。"""
+def food_cost(island: IslandState, defs: Defs, config: GameConfig, persons: int) -> int:
+    """persons 人の1ターンの食べ物を、前のターンの値段でいちばん安く買う額（消費税と家計の運賃を
+    含む）。値段のない島では 0。"""
+    from hakoniwa_core.economy import plan as planning
+    from hakoniwa_core.units import QUANTITY_SCALE, money_of, to_milli
+
+    if persons <= 0:
+        return 0
+    need = to_milli(persons * config.get("population.food_per_person"))
+    prices = island.economy.prices
+    rate = island.economy.freight.get("household", 0)
+    best = 0
+    for good, gdef in sorted(defs.goods.items()):
+        if "food" not in gdef or prices.get(good, 0) <= 0:
+            continue
+        qty = -(-need * QUANTITY_SCALE // to_milli(gdef["food"]["nutrition"]))
+        # 計画経済の島は家計が払う小売の値段で（PL-60。ほかの島は消費税の率）
+        tax = planning.rate_of(island, config, good)
+        amount = money_of(prices[good], qty) * (BASIS + rate + tax) // BASIS
+        if best == 0 or amount < best:
+            best = amount
+    return best
+
+
+def living_keep(island: IslandState, defs: Defs, config: GameConfig) -> int:
+    """資産を持つ層が出資・買い取りの前に手元に残す暮らしの分（FM-58。2026-11-15）: 次の市場の段で
+    使う見込みの額（式 consumption）と、層の人数分の1ターンの食べ物の額（food_cost）の多い方に、
+    株を担保にした借入の次のターンの返済（pledge_service）を足した額。
+
+    資本家階級の所得（配当・利子）は決算の段より後に入り、次のターンの市場の段の買い物は今ある
+    預金から払う。預金を丸ごと出資に回すと、次のターンに食べ物を買えずに飢えた（計画経済から
+    移った島で、出資のたびに1ターンおきに飢えの蓄えがたまった。2026-11-14 の PR #416・#417 の
+    試験）。現実の家計も、来月の暮らしの分を残した貯蓄から事業に出す。"""
+    from hakoniwa_core.economy import OWNERS
+    from hakoniwa_core.economy.stats import inflation
+
+    h = island.economy.households.get(OWNERS)
+    if h is None:
+        return 0
+    service = pledge_service(island, OWNERS)
+    if h["persons"] <= 0:
+        return service
+    plan = consumption(island, OWNERS, config, inflation(island.economy))
+    return max(plan, food_cost(island, defs, config, h["persons"])) + service
+
+
+def pledge_service(island: IslandState, layer: str) -> int:
+    """層が株を担保にした借入の、次のターンの利子と元金の返済（銀行の段は市場の段の後・配当の
+    前なので、これも今の預金から払う）。"""
+    from hakoniwa_core.economy import banks
+
+    return sum(
+        ledger.interest(banks.outstanding(island, x), x.rate)
+        + min(banks.outstanding(island, x), x.installment)
+        for x in banks.loans_by_borrower(island, household(layer))
+        if x.purpose == banks.PLEDGE
+    )
+
+
+def owners_spare(island: IslandState, defs: Defs, config: GameConfig) -> int:
+    """資産を持つ層が出資・買い取りに使える預金: 使えるお金（取り置きを除く）から暮らしの分
+    （living_keep）を引いた額。"""
+    from hakoniwa_core.economy import OWNERS, Payer, funds
+
+    if OWNERS not in island.economy.households:
+        return 0
+    have = funds.available(island, Payer(household(OWNERS)))
+    return max(0, have - living_keep(island, defs, config))
+
+
+def _founder_brings(island: IslandState, defs: Defs, config: GameConfig | None) -> int:
+    """一般の層から資産を持つ層へ移る1人が出資に出せる預金: 一般の層の1人あたりの預金から、
+    その人の1ターンの食べ物の額を残した分（FM-58。移った人も次のターンに食べる）。config が
+    None（設定のない命令の前の確かめ）なら食べ物の分を引かない（実行のときに引いて見直す）。"""
+    general = island.economy.households[GENERAL]
+    if general["persons"] <= 0:
+        return 0
+    per = ledger.money(island, household(GENERAL)) // general["persons"]
+    food = food_cost(island, defs, config, 1) if config is not None else 0
+    return max(0, per - food)
+
+
+def draw_founders(
+    island: IslandState, defs: Defs, config: GameConfig, need: int, available: int
+) -> int:
+    """資産を持つ層の出資に使える額 available（暮らしの分を引いた owners_spare）が need に足りな
+    ければ、足りない分を一般の層の預金から出す人を、その預金と一緒に資産を持つ層へ移す（働く人の貯蓄からの
+    起業。FM-58）。1人が出すのは1人あたりの預金から自分の食べ物の分を残した額（_founder_brings）。
+    移る人は住民の割合の人数まで（founders_room）。移した人数を返す。"""
     from hakoniwa_core.economy import OWNERS
 
     short = need - available
@@ -276,12 +361,12 @@ def draw_founders(island: IslandState, need: int, available: int) -> int:
     owners, general = households[OWNERS], households[GENERAL]
     if general["persons"] <= 0:
         return 0
-    per = ledger.money(island, household(GENERAL)) // general["persons"]
-    if per <= 0:
+    brings = _founder_brings(island, defs, config)
+    if brings <= 0:
         return 0
     population = sum(x["persons"] for x in households.values())
     room = min(general["persons"], max(0, share_target(owners, population) - owners["persons"]))
-    moved = min(room, -(-short // per))
+    moved = min(room, -(-short // brings))
     if moved <= 0:
         return 0
     owners["persons"] += moved
@@ -292,9 +377,9 @@ def draw_founders(island: IslandState, need: int, available: int) -> int:
     return moved
 
 
-def founders_room(island: IslandState) -> int:
-    """一般の層から資産を持つ層へ移って出資できる預金（FM-58。住民の割合の人数まで、1人あたりの
-    預金で）。"""
+def founders_room(island: IslandState, defs: Defs, config: GameConfig | None) -> int:
+    """一般の層から資産を持つ層へ移って出資できる預金（FM-58。住民の割合の人数まで、1人が自分の
+    食べ物の分を残して出せる額で。_founder_brings）。"""
     from hakoniwa_core.economy import OWNERS, Payer, funds
 
     households = island.economy.households
@@ -307,9 +392,8 @@ def founders_room(island: IslandState) -> int:
     room = min(general["persons"], max(0, share_target(owners, population) - owners["persons"]))
     if room <= 0:
         return 0
-    money = ledger.money(island, household(GENERAL))
     spare = funds.available(island, Payer(household(GENERAL)))
-    return min(spare, money * room // general["persons"])
+    return min(spare, _founder_brings(island, defs, config) * room)
 
 
 def set_workers(island: IslandState, defs: Defs, kind: str, count: int) -> None:
