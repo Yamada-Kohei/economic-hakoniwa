@@ -178,7 +178,7 @@ def test_unbought_ships_loan_is_returned_the_same_turn(game, base):
 
 
 def test_frame_is_not_lent_before_the_market(game, base):
-    """枠は銀行の段では貸さない（お金を賃金などほかの支払いに使えないように。掲示板 #858・#871）。"""
+    """枠は銀行の段では貸さない（お金を賃金などほかの支払いに使えないように。掲示板 #858）。"""
     world, island, f = _setup(game, base)
     f.economy["ships_wanted"] = MILLI
     f.economy["ships_replace"] = MILLI

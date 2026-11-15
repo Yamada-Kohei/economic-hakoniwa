@@ -26,7 +26,7 @@ import random
 import pytest
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import gate, veins
+from hakoniwa_core import gate, stock, veins
 from hakoniwa_core.autoplan import plan_trade, plan_turn, queue_orders
 from hakoniwa_core.founding import found_island
 from hakoniwa_core.game import load_game
@@ -34,6 +34,7 @@ from hakoniwa_core.simulate import world_digest
 from hakoniwa_core.state import WorldState
 from hakoniwa_core.state.generate import generate_land, generate_world, random_plan
 from hakoniwa_core.state.serialize import world_from_dict, world_to_dict
+from hakoniwa_core.trade import merchant as trade_merchant
 from hakoniwa_core.units import from_milli
 
 TURNS = 300
@@ -83,6 +84,12 @@ def test_supply_chain_runs_for_300_turns(game, seed):
     bad_stock = []
     short = []  # 食べ物が足りなかったターン
     starved = 0
+    offered: dict[int, dict[str, int]] = {}  # ターン → 商人が売りに出した量（財 → 1000 分の 1）
+    needed: dict[int, dict[str, int]] = {}  # ターン → 島の建った施設が全力で要る量（1000 分の 1）
+    stored: dict[int, set[str]] = {}  # ターン → 国の倉庫に荷のある商人の財
+    farms: dict[
+        int, list[tuple[int, int, int]]
+    ] = {}  # 機械化した農場の（燃料の手元, 人手, 燃料のある人手）
 
     def check(island):
         for key, value in island.stats.items():
@@ -110,6 +117,36 @@ def test_supply_chain_runs_for_300_turns(game, seed):
         for f in island.facilities:
             for g, batches in f.stock.items():
                 bad_stock.extend((f.kind, g, q) for _, q in batches if q <= 0)
+        # 品不足の確かめ（GT-46）: 商人の売りの予定、島の施設が全力で要る量、国の倉庫の荷、
+        # 機械化した農場の燃料の手元と要る人手
+        sale = {
+            g: q for g, q, _ in trade_merchant.offers(island, game.defs, game.config, world.turn)
+        }
+        offered[world.turn] = sale
+        needed[world.turn] = {
+            g: sum(
+                fac.recipe_of(game.defs, f, fuelled=False)["inputs"].get(g, 0)
+                for f in island.facilities
+                if f.built
+            )
+            for g in sale
+        }
+        stored[world.turn] = {g for g in sale if stock.total(island.warehouse, g) > 0}
+        farms[world.turn] = [
+            (
+                f.economy.get(fac.FUEL_SHARE, fac.FULL),
+                fac.machine_ratio(f),
+                fac.workers_of(game.defs, f),
+                fac.scaled_workers(
+                    game.defs, f.kind, fac.recipe_of(game.defs, f, fuelled=False).get("labor", 1.0)
+                )
+                * fac.size_of(f),
+            )
+            for f in island.facilities
+            if f.built
+            and fac.GRADE in f.ext
+            and fac.recipe_of(game.defs, f, fuelled=False)["inputs"].get(fac.FUEL, 0) > 0
+        ]
         populations.append(island.stats["population"])
         nonlocal starved
         starved += island.stats.get("population.starved", 0)
@@ -165,7 +202,42 @@ def test_supply_chain_runs_for_300_turns(game, seed):
         for m in recorder.failures(start=leave + MERCHANT_CALM)
         if not any(f"）: {g} の値段が" in m for g in unmade)
     ]
-    priced = [*recorder.failures(end=leave - tail - 1), *after]
+    # 品不足に切り替える財（GT-46。2026-11-15 掲示板の会議）: 島で作らず、去る商人のほかに売り手も
+    # 国の倉庫の放出もない財は、商人の売りの予定が島の施設の要る量を去るまで続けて下回り始めたターン
+    # から、値段の目安の代わりに品不足の確かめに切り替える。輸入がほぼ止まれば値段が初めの 4 倍を
+    # 超えるのは現実の動きで（種 2 の燃料は商人の売りが初めの 1 割 2 分のとき超えた）、そこで見る
+    # のは値段でなく、足りない分の手当て（燃料なら畑が手作業に戻って人手が増える）。境目は値段や
+    # 落ちたターンからは決めない
+    scarce = {
+        g: t0
+        for g in unmade
+        if (t0 := _shortage_from(offered, needed, g, leave)) is not None
+        and not any(g in stored.get(t, ()) for t in range(t0, leave))
+    }
+    priced = [
+        m
+        for m in recorder.failures(end=leave - tail - 1)
+        if not any(f"）: {g} の値段が" in m for g in scarce)
+    ]
+    notes = []  # 品不足の判定と、品不足の間に値段が目安を外れたこと（記録に残す。試験は落とさない）
+    last = leave - 1
+    for g in sorted(needed.get(last, {})):
+        if needed[last][g] > 0:
+            stored_turns = [t for t in sorted(stored) if g in stored[t] and t >= last - 60]
+            notes.append(
+                f"品不足の判定 {g}: 島で作った {produced.get(g, 0)}、T{last} の売り "
+                f"{offered[last].get(g, 0)}・要る量 {needed[last][g]}、始まり "
+                f"{_shortage_from(offered, needed, g, leave)}、"
+                f"国の倉庫に荷のあるターン {stored_turns[:5]}"
+            )
+    for g, t0 in scarce.items():
+        mark = f"）: {g} の値段が"
+        priced += [m for m in recorder.failures(end=min(t0, leave - tail) - 1) if mark in m]
+        notes += [f"品不足 T{t0}〜: {m}" for m in recorder.failures(start=t0) if mark in m]
+    print("\n".join(notes))
+    if fac.FUEL in scarce:
+        _check_fuel_shortage(farms, scarce[fac.FUEL], leave)
+    priced += after
     # 島でまだ作っていない原料（鉱山が建つ前の鉄鉱石など）は、初めの倉庫の荷が尽きると値段が上がる。
     # 鉱山を使う工場が先に建つと起こる（標準の計画の順の弱さ、main でもある）ので、その原料の値段は
     # 島で初めて作ってから MERCHANT_CALM ターン後まで見ない（2026-11-13 本人のカード「試験を直す」）
@@ -182,6 +254,52 @@ def test_supply_chain_runs_for_300_turns(game, seed):
     failures = [m for m in recorder.failures() if any(h in m for h in hard) and "の値段が" not in m]
     failures += [m for m in priced if "の値段が" in m]
     assert [m for m in failures if not any(f"）: {g} の値段が" in m for g in food)] == []
+
+
+def _shortage_from(
+    offered: dict[int, dict[str, int]], needed: dict[int, dict[str, int]], good: str, leave: int
+) -> int | None:
+    """商人が去る（leave）前のターンまで、商人の売りの予定が島の施設の全力で要る量を続けて下回る
+    ようになった最初のターン（GT-46）。商人が去る前のターンに下回っていなければ None。"""
+    start = None
+    for t in range(leave - 1, 0, -1):
+        need = needed.get(t, {}).get(good, 0)
+        if need <= 0 or offered.get(t, {}).get(good, 0) >= need:
+            break
+        start = t
+    return start
+
+
+def _check_fuel_shortage(
+    farms: dict[int, list[tuple[int, int, int, int]]], start: int, leave: int
+) -> None:
+    """燃料の品不足の間の確かめ（GT-46）: 燃料の足りない農場があり、足りない分の畑は手作業に戻って
+    その農場の要る人手が増える（機械の傷みの方が大きい農場は、もう傷みの分が手作業なので増えない）。
+    品不足が進むと手作業の畑の割合が増える。燃料を買った量と手元で賄えていること（在庫がマイナスに
+    ならない）は bad_stock で見ている。"""
+    window = [t for t in range(start, leave) if farms.get(t)]
+    rows = [(t, *row) for t in window for row in farms[t]]
+    lacking = [r for r in rows if r[1] < fac.FULL]
+    binding = [r for r in lacking if r[1] < r[2]]  # 燃料の手元が機械の設備より少ない
+
+    def manual(t: int) -> float:
+        kept = sum(min(share, machines) for share, machines, _, _ in farms[t])
+        return 1 - kept / (fac.FULL * len(farms[t]))
+
+    assert window, "燃料の品不足の間に、燃料を使う機械化した農場がない"
+    print(
+        f"燃料の品不足 T{start}〜T{leave - 1}: 農場とターン {len(rows)}、"
+        f"燃料の足りない {len(lacking)}、そのうち燃料が手作業の割合を決めた {len(binding)}、"
+        f"手作業の畑の割合 {manual(window[0]):.3f} → {manual(window[-1]):.3f}"
+    )
+    print(
+        "  例（ターン, 燃料の手元, 機械, 人手, 燃料が足りたときの人手）:",
+        binding[:3] or lacking[:3],
+    )
+    assert lacking, "商人の燃料が要る量を下回ったのに、燃料の足りない農場がない"
+    assert all(w >= full for *_, w, full in lacking), "燃料が足りないのに要る人手が減った"
+    assert any(w > full for *_, w, full in binding), "燃料の足りない畑が手作業に戻っていない"
+    assert manual(window[-1]) > manual(window[0]), "品不足が進んでも手作業の畑が増えない"
 
 
 def test_same_seed_same_result(game):
