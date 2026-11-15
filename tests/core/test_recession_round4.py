@@ -144,7 +144,8 @@ def test_ministry_queues_one_site_of_works_within_the_budget(game, base):
     # 上下水道の足りない町を1つ作る
     housing = next(f for f in island.facilities if f.kind == game.config.get("housing.facility"))
     housing.ext["water_short"] = True
-    # 維持の目標も 0 にする（目標まで戻すのは維持の工事で、役所の事業は目標から上の分。IN-28）
+    # 上下水道を引いていない町にする（維持の目標も 0。目標が残っていると、維持の工事が戻すので
+    # 新しい工事には並べない。建国から 40 ターンの間にこの町へ上下水道を引いていることがある）
     infra.set_level(island.tile(housing.x, housing.y), "water", 0, 0)
     island.scratch[works.WORKS] = {"wage": 100}
     state = funds.fiscal_state(island)

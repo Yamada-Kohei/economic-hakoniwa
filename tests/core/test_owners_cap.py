@@ -20,8 +20,11 @@ from hakoniwa_core.economy.households import (
     SUPPORT,
     consumption,
     draw_founders,
+    food_cost,
+    living_keep,
     move_people,
     owners_room,
+    owners_spare,
     pledged,
     share_target,
     split_persons,
@@ -151,15 +154,20 @@ def test_change_from_planned_starts_owners_from_what_they_own(game, base):
 
 
 def test_founders_bring_their_savings_from_workers(game, base):
-    """資本家階級の預金で足りない出資は、一般の層の1人あたりの預金を持つ人が移って出す（FM-58）。"""
+    """資本家階級の預金で足りない出資は、一般の層の1人あたりの預金を持つ人が移って出す（FM-58）。
+    1人が出すのは、1人あたりの預金から自分の1ターンの食べ物の額を残した分（2026-11-15）。"""
     world = copy.deepcopy(base)
     island = island_of(world, "planned")
     politics_stage.change_economy(island, {"economy": "mixed"}, context(game, world))
     hh = island.economy.households
     open_books(island)
     per = ledger.money(island, household(GENERAL)) // hh[GENERAL]["persons"]
-    need = per * 10 + 1
-    moved = draw_founders(island, need, ledger.money(island, household(OWNERS)))
+    food = food_cost(island, game.defs, game.config, 1)
+    assert 0 < food < per
+    need = (per - food) * 10 + 1
+    moved = draw_founders(
+        island, game.defs, game.config, need, ledger.money(island, household(OWNERS))
+    )
     assert moved == 11
     assert hh[OWNERS]["persons"] == 11 and hh[OWNERS][CAP] == 11
     assert ledger.money(island, household(OWNERS)) >= need
@@ -168,7 +176,39 @@ def test_founders_bring_their_savings_from_workers(game, base):
     delta = share_target(hh[OWNERS], population(island)) - hh[OWNERS]["persons"]
     hh[OWNERS]["persons"] += delta
     hh[GENERAL]["persons"] -= delta
-    assert draw_founders(island, 10**12, 0) == 0
+    assert draw_founders(island, game.defs, game.config, 10**12, 0) == 0
+
+
+def test_owners_keep_next_turns_living_before_investing(game, base):
+    """資本家階級が出資・買い取りに使えるのは、暮らしの分（次のターンの消費の見込みと人数分の
+    食べ物の額の多い方）を残した預金だけ（FM-58。2026-11-15）。配当は決算の段より後に入るので、
+    預金を丸ごと出資に回すと次のターンの市場で食べ物を買えずに飢えた（PR #416・#417 の試験）。"""
+    world = copy.deepcopy(base)
+    island = island_of(world, "market")
+    config, defs = game.config, game.defs
+    hh = island.economy.households
+    open_books(island)
+    persons = hh[OWNERS]["persons"]
+    keep = living_keep(island, defs, config)
+    planned = consumption(island, OWNERS, config, 0.0)
+    assert keep >= food_cost(island, defs, config, persons) > 0
+    assert keep >= planned * 0.9  # 物価上昇率の違いの分だけずれる
+    have = ledger.money(island, household(OWNERS))
+    assert owners_spare(island, defs, config) == max(0, have - keep)
+    # 預金が暮らしの分に届かなければ出資に回せず、超えた分だけ回せる
+    drain(island, OWNERS)
+    assert owners_spare(island, defs, config) == 0
+    keep = living_keep(island, defs, config)
+    ledger.pay(island, ledger.GOV, household(OWNERS), keep, "grant")
+    keep = living_keep(island, defs, config)  # 預金が増えると取り崩す分（c2）も少し増える
+    assert owners_spare(island, defs, config) == max(
+        0, ledger.money(island, household(OWNERS)) - keep
+    )
+    ledger.pay(island, ledger.GOV, household(OWNERS), 1_000_000, "grant")
+    spare = owners_spare(island, defs, config)
+    assert 0 < spare < 1_000_000
+    assert spare == ledger.money(island, household(OWNERS)) - living_keep(island, defs, config)
+    books_ok(game, island)
 
 
 def test_starving_owners_receive_family_support(game, base, monkeypatch):
