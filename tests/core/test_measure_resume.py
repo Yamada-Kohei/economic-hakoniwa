@@ -165,6 +165,55 @@ def test_recorder_and_meter_come_back_the_same(game):
     assert again.watch.result() == meter.watch.result()
 
 
+def sets_in(value, name="") -> set[str]:
+    """写しの形（encode の後）の中で、set・frozenset が入っている欄の名前。"""
+    found: set[str] = set()
+    if isinstance(value, dict):
+        tag = value.get("!")
+        if tag in ("set", "frozenset"):
+            found.add(name)
+        if tag in ("dict", "counter"):
+            for key, item in value["v"]:
+                found |= sets_in(key, name) | sets_in(item, name)
+        elif tag is not None:
+            found |= sets_in(value["v"], name)
+        else:
+            for key, item in value.items():
+                found |= sets_in(item, key if not key.lstrip("-").isdigit() else name)
+    elif isinstance(value, list):
+        for item in value:
+            found |= sets_in(item, name)
+    return found
+
+
+# 測りの途中の状態にある set。どれも「入っているか」を聞くだけで、順に回して数えたり書いたりしない
+ONLY_ASKED = {"labor_goods", "made", "traded"}
+
+
+def test_sets_in_the_saved_state_are_never_walked_in_order(game):
+    """写しから戻した set は、回す順が元と同じとは限らない（文字列の hash の種でも変わる）。
+
+    途中の状態に set の欄を足したら、ここが落ちる。順に回して計算・判定・出力に使うなら、使う所で
+    並べ替える（か list・dict で持つ）。「入っているか」を聞くだけなら、上の名前に足す。
+    """
+    for name in ("small", "war"):
+        scenario = measure.SCENARIOS[name]
+        world = generate_world(1, scenario.islands, game.config, game.defs)
+        recorder = gate.Recorder(world, game.defs, game.config)
+        meter = measure.Measure(world, game.defs, game.config, war=scenario.war)
+        for _ in range(2):
+            measure.queue_scenario_orders(world, scenario, game.defs, game.config)
+            game.engine.run_turn(world)
+            recorder.record(world)
+            meter.record(world)
+        state = {"recorder": recorder.state(), "meter": meter.state()}
+        assert sets_in(state) == ONLY_ASKED
+        # 結果の JSON と世界の写しには set がない（json にそのまま書ける形だけ）
+        result = measure.result(scenario, 1, 2, 2, recorder, meter, 0.0, world_digest(world), world)
+        json.dumps(result, allow_nan=True)
+        json.dumps(world_to_dict(world), allow_nan=True)
+
+
 def test_war_watch_state_keeps_the_pairs(game):
     watch = warscene.Watch(True, game.defs, game.config)
     watch.pairs = [(3, 5), (8, 2)]
@@ -296,6 +345,14 @@ def read(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def snapshot_text(path: Path) -> str:
+    """写しの中身の文字（欄の順もそのまま）。かかった秒だけは回すたびに違うので外す。"""
+    with gzip.open(path, "rt", encoding="utf-8") as f:
+        data = json.load(f)
+    del data["measure"]["seconds"]
+    return json.dumps(data, ensure_ascii=False)
+
+
 def same_but(data: dict) -> dict:
     return {k: v for k, v in data.items() if k not in NOT_COMPARED}
 
@@ -317,14 +374,16 @@ def first_part(tmp_path: Path, scenario: str, turns: int) -> Path:
 def test_resumed_run_gives_the_same_result_as_a_straight_run(tmp_path, scenario):
     straight = simulate(
         ["--scenario", scenario, "--seed", "1", "--turns", "8", "--gate"]
-        + ["--out", str(tmp_path / "a.json"), "--series", str(tmp_path / "a.jsonl")],
+        + ["--out", str(tmp_path / "a.json"), "--series", str(tmp_path / "a.jsonl")]
+        + ["--save", str(tmp_path / "a8.json.gz")],
         "1",
     )
     assert (tmp_path / "a.json").exists(), straight.stdout + straight.stderr
     snap = first_part(tmp_path, scenario, 5)
     rest = simulate(
         ["--scenario", scenario, "--load", str(snap), "--turns", "3", "--gate"]
-        + ["--out", str(tmp_path / "b.json"), "--series", str(tmp_path / "b.jsonl")],
+        + ["--out", str(tmp_path / "b.json"), "--series", str(tmp_path / "b.jsonl")]
+        + ["--save", str(tmp_path / "b8.json.gz")],
         "2",
     )
     assert (tmp_path / "b.json").exists(), rest.stdout + rest.stderr
@@ -335,6 +394,8 @@ def test_resumed_run_gives_the_same_result_as_a_straight_run(tmp_path, scenario)
     assert b["resumed"]["from"] == 5 and b["seconds"] >= b["resumed"]["seconds"]
     assert "resumed" not in a
     assert (tmp_path / "b.jsonl").read_bytes() == (tmp_path / "a.jsonl").read_bytes()
+    # 最後の写し（世界と測りの途中の状態）も、欄の順まで同じ。結果に出ない順の違いもここで分かる
+    assert snapshot_text(tmp_path / "b8.json.gz") == snapshot_text(tmp_path / "a8.json.gz")
     # 初めの 5 ターンの結果は、5 ターンだけ回した物（quick にあたる）のまま
     assert read(tmp_path / "b-first.json")["turns"] == 5
 

@@ -7,7 +7,11 @@
   （--load --turns T-S）。続きのプロセスは文字列の hash の種（PYTHONHASHSEED）を変える
 
 比べる物: 結果の JSON（seconds と resumed の欄のほか全部）、島×ターンの時系列（バイトまで）、
-各ターンの世界の指紋（simulate に --digests があるとき）。1 つでも違えば終了コード 1。
+各ターンの世界の指紋（simulate に --digests があるとき）、最後のターンの写し（世界と測りの途中の
+状態。かかった秒のほか、欄の順まで）。1 つでも違えば終了コード 1。
+
+写しは結果とは別に比べます。途中の状態の中の順（dict に入れた順など）が hash の種で変わっても、
+結果の JSON には出ないことがあるためです。
 
     # full の 500 ターンの組を、300 ターン目で切って比べる（重いので家の計算機で）
     python tools/measure/resume_check.py --set full --split 300 --out-dir runs/resume-check --jobs 8
@@ -34,6 +38,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import os
 import subprocess
@@ -97,6 +102,7 @@ def run_straight(pair: Pair, out: Path, digests: bool) -> None:
     base = out / pair.name
     args = ["--scenario", pair.scenario, "--seed", str(pair.seed), "--turns", str(pair.turns)]
     args += ["--gate", "--out", f"{base}.straight.json", "--series", f"{base}.straight.jsonl"]
+    args += ["--save", f"{base}.straight.snap.json.gz"]
     if digests:
         args += ["--digests", f"{base}.straight.digests"]
     _, pair.seconds["straight"] = simulate(args, Path(f"{base}.straight.log"), "1")
@@ -115,7 +121,7 @@ def run_resumed(pair: Pair, out: Path, digests: bool) -> None:
         if snap:
             args += ["--load", snap]
         if last:
-            args += ["--out", f"{base}.resumed.json"]
+            args += ["--out", f"{base}.resumed.json", "--save", f"{base}.resumed.snap.json.gz"]
         else:
             # 切る所でも結果を書く（quick が結果と写しの両方を書くのと同じ形）
             snap = f"{base}.t{end}.snap.json.gz"
@@ -186,6 +192,32 @@ def compare_series(a: Path, b: Path) -> str | None:
     return None
 
 
+def read_snapshot(path: Path) -> dict | None:
+    """写しの中身。かかった秒（回すたびに違う）は外す。"""
+    try:
+        with gzip.open(path, "rt", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError, EOFError):
+        return None
+    if isinstance(data.get("measure"), dict):
+        data["measure"].pop("seconds", None)
+    return data
+
+
+def compare_snapshots(a_path: Path, b_path: Path) -> tuple[str, bool]:
+    """最後のターンの写しを比べた結果の文と、違ったかどうか。"""
+    if not a_path.exists() or not b_path.exists():
+        return "最後の写しは比べていない（通しか続きの写しがない）", False
+    a, b = read_snapshot(a_path), read_snapshot(b_path)
+    if a is None or b is None:
+        return "最後の写しを読めない", True
+    # 文字にして比べる（欄の順も見る）。違うときだけ、どこが違うかを探す
+    if json.dumps(a, ensure_ascii=False) == json.dumps(b, ensure_ascii=False):
+        return "最後の写しも同じ", False
+    found = differences(a, b) or ["（文字にすると違う）"]
+    return "最後の写しが違う: " + " / ".join(found), True
+
+
 def read_digests(*paths: Path) -> dict[int, str]:
     out: dict[int, str] = {}
     for path in paths:
@@ -247,6 +279,10 @@ def check(
             pair.notes.append(f"各ターンの指紋 {len(x)} ターン同じ")
     else:
         pair.notes.append("各ターンの指紋は比べていない（最後の指紋は結果の JSON の中）")
+    text, wrong_snapshot = compare_snapshots(
+        Path(f"{base}.straight.snap.json.gz"), Path(f"{base}.resumed.snap.json.gz")
+    )
+    (pair.problems if wrong_snapshot else pair.notes).append(text)
     if "rest" in pair.seconds:
         pair.notes.append(
             f"通し {a.get('seconds', 0):.0f} 秒、続きだけ {b['resumed'].get('seconds', 0):.0f} 秒"
