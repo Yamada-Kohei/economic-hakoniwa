@@ -232,6 +232,8 @@ class Employment(IslandStage):
                 f.economy.pop(dismissal.FIXED_TERM, None)
                 f.workers = 0
                 f.ext.pop("short_wages", None)
+                if f.built and is_transport(config, f):
+                    trucks.remember(config, f, 0)  # 止まった間は雇いたい運転手 0（C1）
                 continue
             f.economy["wage"] = wage
             plans.append((f, wage))

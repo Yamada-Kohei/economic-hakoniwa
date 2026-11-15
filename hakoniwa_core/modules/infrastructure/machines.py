@@ -161,25 +161,30 @@ def fuel_limit(island: IslandState, config: GameConfig, f: Facility, good: str) 
 def remember(config: GameConfig, f: Facility, crew: int) -> None:
     """このターンに受けた注文に要る人数 crew（重機の分を含む）を、直近 contractor.entry_turns
     ターンの記録に足す（雇用の段の終わり。C1）。"""
-    turns = config.get("contractor.entry_turns")
+    turns = max(1, config.get("contractor.entry_turns"))
     f.economy[HISTORY] = [*f.economy.get(HISTORY, []), max(0, crew)][-turns:]
 
 
 def steady_crew(config: GameConfig, f: Facility) -> int | None:
     """直近 contractor.entry_turns ターンで一番少なかった注文に要る人数（ふだん続く仕事）。記録が
     たまっていなければ None（できたばかりの業者は重機を買わない。C1）。"""
-    turns = config.get("contractor.entry_turns")
+    turns = max(1, config.get("contractor.entry_turns"))
     history = f.economy.get(HISTORY, [])[-turns:]
     if len(history) < turns:
         return None
     return min(history)
 
 
-def fuel_bill(island: IslandState, config: GameConfig, machines: int) -> int:
-    """重機 machines（1000 分の 1 台）を 1 ターン動かす燃料の代金（今の値段で）。"""
+def fuel_cash(
+    island: IslandState, config: GameConfig, f: Facility, machines: int, turns: int
+) -> int:
+    """重機 machines（1000 分の 1 台）を turns ターン動かす燃料のうち、手元の燃料で足りない
+    分の代金（今の値段で。手元の燃料はもう払ってあるので、お金で残すのは足りない分だけ。C1）。"""
     prices = island.economy.prices
-    per = sum(prices.get(g, 0) * q for g, q in settings(config)["fuel"].items())
-    return round_money(per * machines / MILLI + 0.999)
+    fuel = settings(config)["fuel"]
+    per = sum(prices.get(g, 0) * q for g, q in fuel.items())
+    held = sum(money_of(prices.get(g, 0), stock.total(f.stock, g)) for g in fuel)
+    return max(0, round_money(per * machines * turns / MILLI + 0.999) - held)
 
 
 def orders(island: IslandState, config: GameConfig, f: Facility) -> dict[str, int]:

@@ -287,14 +287,22 @@ def test_finish_hiring_records_the_orders_for_the_machine_history(game):
 
 
 def _machine_room(game, island, f, qty=10 * QUANTITY_SCALE, turn=1):
+    """重機 qty を買おうとしたときに買える量（市場の段の _equipment_room）。燃料の残し方は
+    test_machine_budget_keeps_fuel_only_beyond_the_stock で見るので、ここでは燃料を 0 円にする。"""
     from hakoniwa_core.economy import payer_of
     from hakoniwa_core.modules.market import Market
+
+    island.economy.prices["fuel"] = 0
 
     payer = payer_of(game.defs, game.config, f)
     plan = {"machinery": (qty, island.economy.prices["machinery"])}
     turns = game.config.get("contractor.capital_turns")
+    from hakoniwa_core.economy.start import next_payments
+
+    wages = next_payments(island, game.defs, game.config, f)
+    fuel = machines.fuel_cash(island, game.config, f, machines.owned(f) + qty, turns)
     room = Market._equipment_room(
-        island, context(game, turn), f, payer, plan, "machinery", 0, turns, 0
+        island, context(game, turn), f, payer, plan, "machinery", 0, turns, wages, fuel
     )
     return room.get("machinery", (0, 0))[0]
 
@@ -368,7 +376,14 @@ def test_company_funds_buy_machines_without_touching_the_sibling_facilitys_cash(
     )
     assert _machine_room(game, island, f) == 1_500
     assert ledger.money(island, facility_entity(sibling.id)) == 5_000_000
-    assert ledger.money(island, co.entity(number)) == 0
+    # 回すのは買う代金だけ。残す 3 ターン分は企業に置いたまま（銀行の段でほかの施設が使える）
+    assert ledger.money(island, facility_entity(f.id)) == 1_500_000
+    assert ledger.money(island, co.entity(number)) == turns * 100_000
+    # 企業と合わせても 3 ターン分に届かなければ、企業のお金は動かさない
+    ledger.pay(island, facility_entity(f.id), co.entity(number), 1_500_000, "firm_sweep")
+    ledger.pay(island, co.entity(number), ledger.GOV, 1_500_000 + 1, "tax_corporate")
+    assert _machine_room(game, island, f) == 0
+    assert ledger.money(island, co.entity(number)) == turns * 100_000 - 1
 
 
 def test_treasury_contractor_buys_machines_from_public_works_as_before(game):
@@ -445,3 +460,18 @@ def test_new_contractor_does_not_spend_its_working_capital_on_machines(game):
     assert machines.owned(f) + stock.total(f.stock, "machinery") == 0
     assert all(x.arrears == 0 for x in banks.loans_by_borrower(island, entity))
     assert ledger.money(island, entity) > 0
+
+
+def test_machine_budget_keeps_fuel_only_beyond_the_stock(game):
+    # C1: 燃料は、買った後の台数を 3 ターン動かす分のうち、手元の燃料で足りない分だけお金で残す
+    island = market_island(game)
+    config = game.config
+    f = private_contractor(game, island)
+    island.economy.prices["fuel"] = 200_000
+    turns = config.get("contractor.capital_turns")
+    # 10 台 × 1 ターン 0.01 × 3 ターン = 0.3 単位 × 20 万 = 6 万
+    assert machines.fuel_cash(island, config, f, 10 * QUANTITY_SCALE, turns) == 60_000
+    stock.add(f.stock, "fuel", 200, 0, game.defs.goods)  # 0.2 単位はもう持っている
+    assert machines.fuel_cash(island, config, f, 10 * QUANTITY_SCALE, turns) == 20_000
+    stock.add(f.stock, "fuel", 500, 0, game.defs.goods)
+    assert machines.fuel_cash(island, config, f, 10 * QUANTITY_SCALE, turns) == 0
