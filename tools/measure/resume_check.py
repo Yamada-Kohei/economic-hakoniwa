@@ -19,6 +19,9 @@
     # 変わっていない
     python tools/measure/resume_check.py --split 300 --straight runs/main-full --other-code \\
         --out-dir runs/rc
+    # 回し終えた --out-dir を、回し直さずにもう一度比べる（上の --straight と組み合わせる）
+    python tools/measure/resume_check.py --split 300 --out-dir runs/resume-check --keep \\
+        --straight runs/main-full --other-code
     # 短い確かめ（場面:種:ターン:切る所）
     python tools/measure/resume_check.py --pairs small:1:8:5,war:1:8:5 --out-dir /tmp/rc
 
@@ -257,6 +260,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 1)
+    parser.add_argument(
+        "--keep", action="store_true", help="--out-dir にもう結果がある組は回さず、比べだけやり直す"
+    )
     parser.add_argument("--straight", help="通しの結果のフォルダ（あれば通しを回さない）")
     parser.add_argument(
         "--other-code",
@@ -275,9 +281,11 @@ def main(argv: list[str] | None = None) -> int:
     # 長い組から先に始める（最後に長い組だけが残って待つのを避ける）
     work = []
     for pair in sorted(pairs, key=lambda p: -p.turns * measure.SCENARIOS[p.scenario].islands):
-        if straight_dir is None:
+        base = out / pair.name
+        if straight_dir is None and not (args.keep and Path(f"{base}.straight.json").exists()):
             work.append((run_straight, pair))
-        work.append((run_resumed, pair))
+        if not (args.keep and Path(f"{base}.resumed.json").exists()):
+            work.append((run_resumed, pair))
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
         for job in [pool.submit(run, pair, out, digests) for run, pair in work]:
             job.result()
