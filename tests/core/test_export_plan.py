@@ -298,7 +298,9 @@ def test_planned_islands_get_an_export_plan_in_a_short_run(game, base):
         plan = export_plan.plans(island)
         goals = planning.state_of(island).get("goals", {})
         for good, qty in plan.items():
-            assert goals.get(good, 0) >= qty
+            # 生産目標に入るのは、計画の量から商社がもう持っている輸出の荷を引いた「これから作る量」
+            # （plan.export_planned）。荷が計画の量に届いていれば、その財は目標に入らない
+            assert goals.get(good, 0) >= planning.export_planned(island, good)
             assert (
                 sum(
                     trade_traders.goods_of(f).get(good, {}).get(trade_traders.PLAN_X, 0)
