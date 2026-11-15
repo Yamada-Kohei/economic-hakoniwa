@@ -35,7 +35,7 @@ from hakoniwa_core.state import WorldState
 from hakoniwa_core.state.generate import generate_land, generate_world, random_plan
 from hakoniwa_core.state.serialize import world_from_dict, world_to_dict
 from hakoniwa_core.trade import merchant as trade_merchant
-from hakoniwa_core.units import from_milli, to_milli
+from hakoniwa_core.units import from_milli
 
 TURNS = 300
 MERCHANT_CALM = 12  # 海外の商人が去った後、値段を見ないターン数（貿易のない 1 島の世界）
@@ -85,7 +85,7 @@ def test_supply_chain_runs_for_300_turns(game, seed):
     short = []  # 食べ物が足りなかったターン
     starved = 0
     offered: dict[int, dict[str, int]] = {}  # ターン → 商人が売りに出した量（財 → 1000 分の 1）
-    needed: dict[int, dict[str, int]] = {}  # ターン → 島の建った施設が全力で要る量
+    needed: dict[int, dict[str, int]] = {}  # ターン → 島の建った施設が全力で要る量（1000 分の 1）
     stored: dict[int, set[str]] = {}  # ターン → 国の倉庫に荷のある商人の財
     farms: dict[
         int, list[tuple[int, int, int]]
@@ -125,7 +125,7 @@ def test_supply_chain_runs_for_300_turns(game, seed):
         offered[world.turn] = sale
         needed[world.turn] = {
             g: sum(
-                to_milli(fac.recipe_of(game.defs, f, fuelled=False)["inputs"].get(g, 0))
+                fac.recipe_of(game.defs, f, fuelled=False)["inputs"].get(g, 0)
                 for f in island.facilities
                 if f.built
             )
