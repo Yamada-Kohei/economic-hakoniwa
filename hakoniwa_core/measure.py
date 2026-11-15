@@ -24,6 +24,10 @@ compare は2つの結果を並べます。
 --reuse に前の結果のフォルダを渡すと、計算の中身（hakoniwa_core・game.yaml・packs・schemas）が
 前と同じ組は回さず、その結果を写します（hakoniwa_core/reuse.py）。main の結果を何度も回し直さずに
 済みます。
+
+--store の置き場は、指紋・組の名前・Python と道具の版を鍵に結果を読み書きします。
+回している間だけ札を持ち、ほかの batch は結果を待ちます。完了の印と中身が合う結果だけを
+写すので、書きかけや壊れた結果は使いません。
 """
 
 from __future__ import annotations
@@ -715,6 +719,8 @@ def batch(
     jobs: int,
     series: bool,
     reuse_dirs: Sequence[Path] = (),
+    store: Path | None = None,
+    owner: str = "",
 ) -> int:
     """場面・種・ターン数の組を、jobs 本ずつ別の処理で回す。結果は out_dir/<名前>.json。
 
@@ -724,9 +730,12 @@ def batch(
         raise ValueError(f"--jobs は 1 以上にしてください（{jobs}）")
     out_dir.mkdir(parents=True, exist_ok=True)
     waiting = []
-    if reuse_dirs:
+    result_store = None
+    if reuse_dirs or store is not None:
         fingerprint = reuse.code_fingerprint()
         print(f"計算の中身の指紋: {fingerprint[:12]}", flush=True)
+        if store is not None:
+            result_store = reuse.Store(store, fingerprint, owner)
     for scenario, seed, turns in names:
         name = run_name(scenario, seed, turns)
         if reuse_dirs:
@@ -736,36 +745,95 @@ def batch(
                 print(f"使い回した: {name}（元: {found.parent}）", flush=True)
                 continue
             print(f"使い回せない: {name}（{why}）", flush=True)
+        if result_store is not None and result_store.fetch(name, out_dir, series)[0]:
+            print(f"置き場から写した: {name}", flush=True)
+            continue
         waiting.append((scenario, seed, turns))
     running: list[tuple[str, subprocess.Popen, IO[str]]] = []
+    pending: list[tuple[str, int, int]] = []
+    held: dict[str, float] = {}
     failed = 0
-    while waiting or running:
-        while waiting and len(running) < jobs:
-            scenario, seed, turns = waiting.pop(0)
-            name = run_name(scenario, seed, turns)
-            command = [
-                sys.executable,
-                "-m",
-                "hakoniwa_core.simulate",
-                *("--scenario", scenario, "--seed", str(seed), "--turns", str(turns)),
-                *("--gate", "--out", str(out_dir / f"{name}.json")),
-            ]
-            if series:
-                command += ["--series", str(out_dir / f"{name}.jsonl")]
-            log = open(out_dir / f"{name}.log", "w", encoding="utf-8")  # 処理が終わったら閉じる
-            process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
-            running.append((name, process, log))
-            print(f"始めた: {name}", flush=True)
-        time.sleep(1)
-        for item in list(running):
-            name, process, log = item
-            if process.poll() is None:
-                continue
-            running.remove(item)
-            log.close()
-            ok = (out_dir / f"{name}.json").exists()
-            failed += 0 if ok else 1
-            print(f"{'終わった' if ok else '失敗した'}: {name}", flush=True)
+    try:
+        while waiting or running or pending:
+            while waiting and len(running) < jobs:
+                scenario, seed, turns = waiting.pop(0)
+                name = run_name(scenario, seed, turns)
+                if result_store is not None:
+                    if result_store.fetch(name, out_dir, series)[0]:
+                        print(f"置き場から写した: {name}", flush=True)
+                        continue
+                    claimed, why = result_store.claim(name)
+                    if not claimed:
+                        pending.append((scenario, seed, turns))
+                        print(f"待つ: {name}（{why} が回している）", flush=True)
+                        continue
+                    held[name] = time.monotonic()
+                    if result_store.fetch(name, out_dir, series)[0]:
+                        result_store.release(name)
+                        held.pop(name)
+                        print(f"置き場から写した: {name}", flush=True)
+                        continue
+                command = [
+                    sys.executable,
+                    "-m",
+                    "hakoniwa_core.simulate",
+                    *("--scenario", scenario, "--seed", str(seed), "--turns", str(turns)),
+                    *("--gate", "--out", str(out_dir / f"{name}.json")),
+                ]
+                if series:
+                    command += ["--series", str(out_dir / f"{name}.jsonl")]
+                if result_store is not None:
+                    # 前の回の結果が出力先に残っていると、今回の処理が途中で落ちても結果がある
+                    # ように見える。置き場に置くのは今回の処理が書いた結果だけにする
+                    (out_dir / f"{name}.json").unlink(missing_ok=True)
+                log = open(out_dir / f"{name}.log", "w", encoding="utf-8")  # 処理が終わったら閉じる
+                try:
+                    process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
+                except BaseException:
+                    log.close()
+                    raise
+                running.append((name, process, log))
+                print(f"始めた: {name}", flush=True)
+            time.sleep(1)
+            if result_store is not None:
+                now = time.monotonic()
+                for name, last_beat in held.items():
+                    if now - last_beat >= reuse.BEAT_SECONDS:
+                        result_store.beat(name)
+                        held[name] = now
+                for item in list(pending):
+                    name = run_name(*item)
+                    if result_store.fetch(name, out_dir, series)[0]:
+                        pending.remove(item)
+                        print(f"置き場から写した: {name}", flush=True)
+                    elif result_store.free(name):
+                        pending.remove(item)
+                        waiting.insert(0, item)
+            for item in list(running):
+                name, process, log = item
+                returncode = process.poll()
+                if returncode is None:
+                    continue
+                running.remove(item)
+                log.close()
+                ok = (out_dir / f"{name}.json").exists()
+                failed += 0 if ok else 1
+                print(f"{'終わった' if ok else '失敗した'}: {name}", flush=True)
+                if result_store is not None:
+                    # simulate --gate は、目安の外れや崩れがあると 1 で終わる（結果は書いてある）。
+                    # 結果は最後のターンの後に書くので、今回の結果があれば最後まで回っている
+                    if ok and returncode in (0, 1):
+                        published, why = result_store.publish(name, out_dir, series)
+                        if published:
+                            print(f"置き場に置いた: {name}", flush=True)
+                        else:
+                            print(f"置き場に置けない: {name}（{why}）", flush=True)
+                    result_store.release(name)
+                    held.pop(name, None)
+    finally:
+        if result_store is not None:
+            for name in held:
+                result_store.release(name)
     return failed
 
 
@@ -1085,6 +1153,19 @@ def main(argv: list[str] | None = None) -> int:
         metavar="DIR",
         help="前の結果のフォルダ。計算の中身が今と同じ組は回さずに写す（何本でも指せる）",
     )
+    run.add_argument(
+        "--store",
+        default=os.environ.get(reuse.STORE_ENV, ""),
+        metavar="DIR",
+        help="結果の置き場。同じ計算の中身の結果があれば写し、なければ回して置く"
+        "（何本の batch から同時に使ってもよい）",
+    )
+    run.add_argument(
+        "--owner",
+        default=os.environ.get(reuse.OWNER_ENV, ""),
+        metavar="NAME",
+        help="置き場の札に書く名前（スレッドの名前など）",
+    )
     cmp = sub.add_parser("compare", help="2つの結果を比べる")
     cmp.add_argument("base")
     cmp.add_argument("new")
@@ -1097,7 +1178,13 @@ def main(argv: list[str] | None = None) -> int:
             keep = set(args.only.split(","))
             names = [n for n in names if n[0] in keep]
         failed = batch(
-            names, Path(args.out_dir), args.jobs, args.series, [Path(d) for d in args.reuse]
+            names,
+            Path(args.out_dir),
+            args.jobs,
+            args.series,
+            [Path(d) for d in args.reuse],
+            Path(args.store) if args.store else None,
+            args.owner,
         )
         print(show(Path(args.out_dir)))
         return 1 if failed else 0

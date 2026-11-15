@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 
 import pytest
@@ -189,6 +190,77 @@ def test_the_series_can_be_added_later_without_touching_the_result(tmp_path):
     assert (store.folder / f"{NAME}.done.json").read_bytes() == before
 
 
+def test_two_publishers_of_the_same_run_leave_a_matching_mark(tmp_path):
+    """二重に回した 2 本が同時に置いても、先に置いた結果が残り、印はその結果と合う。"""
+    mine, theirs, out = tmp_path / "mine", tmp_path / "theirs", tmp_path / "out"
+    write_run(mine, seconds=1.0)
+    write_run(theirs, seconds=2.0)  # 同じ組だが、かかった秒が違う
+    out.mkdir()
+    a = reuse.Store(tmp_path / "store", "F", owner="A")
+    b = reuse.Store(tmp_path / "store", "F", owner="B")
+    # B が結果を置き、印を置く前に A が来た
+    (b.folder / f"{NAME}.json").write_bytes((theirs / f"{NAME}.json").read_bytes())
+    assert a.publish(NAME, mine, False) == (True, "")
+    assert read(a.folder / f"{NAME}.json")["seconds"] == 2.0  # 先に置かれた結果を書き換えない
+    assert b.publish(NAME, theirs, False) == (True, "")
+    assert a.fetch(NAME, out, False) == (True, "")
+    assert read(out / f"{NAME}.json")["seconds"] == 2.0
+
+
+def test_publish_repairs_a_store_whose_mark_and_result_differ(tmp_path):
+    made, other, out = tmp_path / "made", tmp_path / "other", tmp_path / "out"
+    write_run(made, seconds=1.0)
+    write_run(other, seconds=2.0)
+    out.mkdir()
+    store = reuse.Store(tmp_path / "store", "F")
+    assert store.publish(NAME, made, False)[0]
+    # 印は 1.0 秒の結果のまま、結果だけ別の回の物に置き換わった
+    (store.folder / f"{NAME}.json").write_bytes((other / f"{NAME}.json").read_bytes())
+    assert store.fetch(NAME, out, False)[0] is False
+    assert store.publish(NAME, made, False) == (True, "")
+    assert store.fetch(NAME, out, False) == (True, "")
+    # 結果が壊れているときは、置き直す
+    (store.folder / f"{NAME}.json").write_text('{"scenario": "sma', encoding="utf-8")
+    assert store.fetch(NAME, out, False)[0] is False
+    assert store.publish(NAME, made, False) == (True, "")
+    assert store.fetch(NAME, out, False) == (True, "")
+    assert read(out / f"{NAME}.json")["seconds"] == 1.0
+    # 時系列が印と合わないときも、置き直す
+    write_run(made, seconds=1.0, series=True)
+    assert store.publish(NAME, made, True)[0]
+    (store.folder / f"{NAME}.jsonl").write_text("broken\n", encoding="utf-8")
+    assert store.fetch(NAME, out, True)[0] is False
+    assert store.publish(NAME, made, True) == (True, "")
+    assert store.fetch(NAME, out, True) == (True, "")
+
+
+def test_many_publishers_at_once_leave_a_usable_result(tmp_path):
+    """同じ組を 8 本が同時に置くのを 10 回。どの回も、置いた後は写せる。"""
+    for round_ in range(10):
+        root = tmp_path / f"store{round_}"
+        folders = []
+        for i in range(8):
+            folders.append(tmp_path / f"made{round_}-{i}")
+            write_run(folders[-1], seconds=float(i), series=True)
+        results: list[tuple[bool, str]] = []
+        gate = threading.Barrier(len(folders))
+
+        def publish(folder, root=root, gate=gate, results=results):
+            store = reuse.Store(root, "F")
+            gate.wait()
+            results.append(store.publish(NAME, folder, True))
+
+        threads = [threading.Thread(target=publish, args=(f,)) for f in folders]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        assert results == [(True, "")] * len(folders)
+        out = tmp_path / f"out{round_}"
+        assert reuse.Store(root, "F").fetch(NAME, out, True) == (True, "")
+        assert not [p.name for p in reuse.Store(root, "F").folder.iterdir() if ".tmp-" in p.name]
+
+
 # --- 札 -----------------------------------------------------------------------------------
 
 
@@ -252,9 +324,12 @@ class FakeProcess:
     fingerprint = ""
     code = 0  # 終わりの値
     finished = True
+    writes = True  # 結果を書いてから終わるか
 
     def __init__(self, command, stdout=None, stderr=None):
         FakeProcess.started.append(command)
+        if not FakeProcess.writes:
+            return
         value = {flag: command[command.index(flag) + 1] for flag in ("--scenario", "--seed")}
         data = {
             "scenario": value["--scenario"],
@@ -279,6 +354,7 @@ def fake_runs(monkeypatch, fingerprint):
     FakeProcess.fingerprint = fingerprint
     FakeProcess.code = 0
     FakeProcess.finished = True
+    FakeProcess.writes = True
     monkeypatch.setattr(subprocess, "Popen", FakeProcess)
     monkeypatch.setattr(measure.time, "sleep", lambda _: None)
     return FakeProcess.started
@@ -378,12 +454,29 @@ def test_batch_runs_itself_when_the_holder_gives_up(tmp_path, fake_runs, fingerp
     assert seeds(fake_runs) == ["1"]
 
 
+def test_a_run_with_gate_findings_is_put_in_the_store(tmp_path, fake_runs, fingerprint):
+    FakeProcess.code = 1  # simulate --gate は、目安の外れや崩れがあると 1 で終わる
+    assert measure.batch(RUNS[:1], tmp_path / "out", 1, False, store=tmp_path / "store") == 0
+    assert reuse.Store(tmp_path / "store", fingerprint).fetch(NAME, tmp_path, False)[0] is True
+
+
 def test_a_failed_run_is_not_put_in_the_store(tmp_path, fake_runs, fingerprint):
-    FakeProcess.code = 1  # 結果は書いたが、処理は失敗で終わった
+    FakeProcess.code = -9  # 結果は書いたが、処理は外から止められた
     measure.batch(RUNS[:1], tmp_path / "out", 1, False, store=tmp_path / "store")
     store = reuse.Store(tmp_path / "store", fingerprint)
     assert store.fetch(NAME, tmp_path, False)[0] is False
     assert store.free(NAME)  # 札は外してある
+
+
+def test_an_old_result_in_the_out_folder_does_not_hide_a_crash(tmp_path, fake_runs, fingerprint):
+    out = tmp_path / "out"
+    write_run(out, fingerprint=fingerprint, series=True, marker="前の回")  # 前の batch の結果
+    FakeProcess.writes = False  # 今回の処理は、結果を書く前に落ちた
+    FakeProcess.code = 1
+    assert measure.batch(RUNS[:1], out, 1, True, store=tmp_path / "store") == 1
+    store = reuse.Store(tmp_path / "store", fingerprint)
+    assert store.fetch(NAME, tmp_path, True)[0] is False
+    assert store.free(NAME)
 
 
 def test_a_result_of_another_fingerprint_is_not_put_in_the_store(tmp_path, fake_runs, fingerprint):
