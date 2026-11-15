@@ -107,6 +107,11 @@ def test_a_factory_that_keeps_missing_sales_expands_in_place(game, base):
         p * 3 for p in island.economy.price_history["consumer_goods"]
     ]
     ledger.pay(island, ledger.GOV, owner_entity(f), 10**10, "subsidy")
+    # 原料は足りている（品切れの原料があれば建て増さない。世界の小さな違いで原料が1ターン品切れに
+    # なることがある）
+    shortages = island.economy.finance.get("shortages", {})
+    for good in game.defs.facilities[f.kind]["recipes"][f.recipe]["inputs"]:
+        shortages.pop(good, None)
     ctx = context(game, world)
     turns = game.config.get("firms.invest_turns")
     f.economy[MISSED] = [0] * turns
