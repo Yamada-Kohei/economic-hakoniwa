@@ -15,6 +15,10 @@
     python tools/measure/resume_check.py --set full --split 150 --out-dir runs/resume-check-150
     # 通しの結果がもうあるとき（同じ版の full の結果のフォルダ）は、続きだけ回して結果を比べる
     python tools/measure/resume_check.py --split 300 --straight runs/full --out-dir runs/rc
+    # 通しの結果が前の版（main）の物のとき。指紋の欄のほかが同じなら、この直しで通しの結果も
+    # 変わっていない
+    python tools/measure/resume_check.py --split 300 --straight runs/main-full --other-code \\
+        --out-dir runs/rc
     # 短い確かめ（場面:種:ターン:切る所）
     python tools/measure/resume_check.py --pairs small:1:8:5,war:1:8:5 --out-dir /tmp/rc
 
@@ -174,7 +178,9 @@ def read_digests(*paths: Path) -> dict[int, str]:
     return out
 
 
-def check(pair: Pair, out: Path, straight_dir: Path | None, digests: bool) -> None:
+def check(
+    pair: Pair, out: Path, straight_dir: Path | None, digests: bool, other_code: bool = False
+) -> None:
     base = out / pair.name
     if straight_dir is None:
         a_path = Path(f"{base}.straight.json")
@@ -187,7 +193,10 @@ def check(pair: Pair, out: Path, straight_dir: Path | None, digests: bool) -> No
         pair.problems.append("続きの結果がない（.rest.log）")
     if a is None or b is None:
         return
-    if a.get("code_fingerprint") != b.get("code_fingerprint"):
+    if other_code:  # 通しは前の版の結果。指紋の欄は違って当たり前なので比べない
+        a, b = a | {"code_fingerprint": ""}, b | {"code_fingerprint": ""}
+        pair.notes.append("通しは別の版の結果")
+    elif a.get("code_fingerprint") != b.get("code_fingerprint"):
         pair.problems.append("通しと続きで計算の中身の指紋が違う（版をそろえて回す）")
         return
     found = differences(compared(a), compared(b))
@@ -249,6 +258,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 1)
     parser.add_argument("--straight", help="通しの結果のフォルダ（あれば通しを回さない）")
+    parser.add_argument(
+        "--other-code",
+        action="store_true",
+        help="--straight が別の版（main など）の結果のとき。指紋の欄を比べない",
+    )
     args = parser.parse_args(argv)
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -269,7 +283,7 @@ def main(argv: list[str] | None = None) -> int:
             job.result()
     lines = ["| 組 | 結果 | 中身 |", "|---|---|---|"]
     for pair in pairs:
-        check(pair, out, straight_dir, digests)
+        check(pair, out, straight_dir, digests, args.other_code)
         verdict = "違う" if pair.problems else "同じ"
         lines.append(f"| {pair.name} | {verdict} | {'。'.join(pair.problems + pair.notes)} |")
     failed = sum(1 for p in pairs if p.problems)

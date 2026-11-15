@@ -15,7 +15,7 @@ import json
 import os
 import subprocess
 import sys
-from collections import Counter
+from collections import Counter, OrderedDict, defaultdict, namedtuple
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -47,6 +47,9 @@ def through_json(value):
 
 
 # --- 途中の状態を JSON にして戻す ----------------------------------------------------------
+
+
+Point = namedtuple("Point", "x y")
 
 
 @dataclass
@@ -88,6 +91,10 @@ def test_state_refuses_what_it_cannot_bring_back():
         snapstate.encode({"file": object()})
     with pytest.raises(TypeError):
         snapstate.encode(Sample(first=1))  # 渡していないクラス
+    # 派生の型は、戻すと元の型でなくなるので写さない
+    for value in (defaultdict(int), OrderedDict(), Point(1, 2)):
+        with pytest.raises(TypeError):
+            snapstate.encode({"value": value})
     with pytest.raises(ValueError):
         snapstate.decode({"!": "data", "t": "Sample", "v": {"first": 1}})
     with pytest.raises(ValueError):
@@ -274,10 +281,15 @@ def test_a_snapshot_of_other_code_or_scene_is_not_resumed(tmp_path):
     other = simulate(["--scenario", "plan", "--load", str(snap), "--turns", "1", *out], "1")
     assert other.returncode == 2 and not (tmp_path / "c.json").exists()
     # 計算の中身が違う
+    fingerprint = read_snapshot(str(snap))[1]["code_fingerprint"]
     rewrite(snap, lambda d: d["measure"].update(code_fingerprint="0" * 64))
     stale = simulate(["--scenario", "small", "--load", str(snap), "--turns", "1", *out], "1")
     assert stale.returncode == 2 and not (tmp_path / "c.json").exists()
     assert stale.stderr.strip()
+    # 国の大きさの倍が違う（環境変数でも替わり、指紋には入らない）
+    rewrite(snap, lambda d: d["measure"].update(code_fingerprint=fingerprint, people=2.0))
+    scaled = simulate(["--scenario", "small", "--load", str(snap), "--turns", "1", *out], "1")
+    assert scaled.returncode == 2 and not (tmp_path / "c.json").exists()
     # --gate だけ（崩れを調べる使い方）なら、途中の状態を使わずに今までどおり続ける
     gate_only = simulate(
         ["--scenario", "small", "--load", str(snap), "--turns", "1", "--gate"], "1"
