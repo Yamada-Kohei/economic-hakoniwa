@@ -135,6 +135,7 @@ def test_supply_chain_runs_for_300_turns(game, seed):
         farms[world.turn] = [
             (
                 f.economy.get(fac.FUEL_SHARE, fac.FULL),
+                fac.machine_ratio(f),
                 fac.workers_of(game.defs, f),
                 fac.scaled_workers(
                     game.defs, f.kind, fac.recipe_of(game.defs, f, fuelled=False).get("labor", 1.0)
@@ -233,9 +234,9 @@ def test_supply_chain_runs_for_300_turns(game, seed):
         mark = f"）: {g} の値段が"
         priced += [m for m in recorder.failures(end=min(t0, leave - tail) - 1) if mark in m]
         notes += [f"品不足 T{t0}〜: {m}" for m in recorder.failures(start=t0) if mark in m]
-        if g == fac.FUEL:
-            _check_fuel_shortage(farms, t0, leave)
     print("\n".join(notes))
+    if fac.FUEL in scarce:
+        _check_fuel_shortage(farms, scarce[fac.FUEL], leave)
     priced += after
     # 島でまだ作っていない原料（鉱山が建つ前の鉄鉱石など）は、初めの倉庫の荷が尽きると値段が上がる。
     # 鉱山を使う工場が先に建つと起こる（標準の計画の順の弱さ、main でもある）ので、その原料の値段は
@@ -270,20 +271,34 @@ def _shortage_from(
 
 
 def _check_fuel_shortage(
-    farms: dict[int, list[tuple[int, int, int]]], start: int, leave: int
+    farms: dict[int, list[tuple[int, int, int, int]]], start: int, leave: int
 ) -> None:
-    """燃料の品不足の間の確かめ（GT-46）: 足りない分の畑は手作業に戻り、その農場の要る人手が増える。
+    """燃料の品不足の間の確かめ（GT-46）: 燃料の足りない農場があり、足りない分の畑は手作業に戻って
+    その農場の要る人手が増える（機械の傷みの方が大きい農場は、もう傷みの分が手作業なので増えない）。
     品不足が進むと手作業の畑の割合が増える。燃料を買った量と手元で賄えていること（在庫がマイナスに
     ならない）は bad_stock で見ている。"""
     window = [t for t in range(start, leave) if farms.get(t)]
-    assert window, "燃料の品不足の間に、燃料を使う機械化した農場がない"
-    lacking = [(t, w, full) for t in window for share, w, full in farms[t] if share < fac.FULL]
-    assert lacking, "商人の燃料が要る量を下回ったのに、燃料の足りない農場がない"
-    assert all(w > full for _, w, full in lacking), "燃料の足りない畑が手作業に戻っていない"
+    rows = [(t, *row) for t in window for row in farms[t]]
+    lacking = [r for r in rows if r[1] < fac.FULL]
+    binding = [r for r in lacking if r[1] < r[2]]  # 燃料の手元が機械の設備より少ない
 
     def manual(t: int) -> float:
-        return sum(fac.FULL - share for share, _, _ in farms[t]) / (fac.FULL * len(farms[t]))
+        kept = sum(min(share, machines) for share, machines, _, _ in farms[t])
+        return 1 - kept / (fac.FULL * len(farms[t]))
 
+    assert window, "燃料の品不足の間に、燃料を使う機械化した農場がない"
+    print(
+        f"燃料の品不足 T{start}〜T{leave - 1}: 農場とターン {len(rows)}、"
+        f"燃料の足りない {len(lacking)}、そのうち燃料が手作業の割合を決めた {len(binding)}、"
+        f"手作業の畑の割合 {manual(window[0]):.3f} → {manual(window[-1]):.3f}"
+    )
+    print(
+        "  例（ターン, 燃料の手元, 機械, 人手, 燃料が足りたときの人手）:",
+        binding[:3] or lacking[:3],
+    )
+    assert lacking, "商人の燃料が要る量を下回ったのに、燃料の足りない農場がない"
+    assert all(w >= full for *_, w, full in lacking), "燃料が足りないのに要る人手が減った"
+    assert any(w > full for *_, w, full in binding), "燃料の足りない畑が手作業に戻っていない"
     assert manual(window[-1]) > manual(window[0]), "品不足が進んでも手作業の畑が増えない"
 
 
