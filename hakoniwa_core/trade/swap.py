@@ -15,7 +15,10 @@
   使う国の大きさで決める）。使い切ると受け身の売りが止まり、その国の通貨は安くなります。
 - 利子は、Z を発行した国の政策金利に fx.swap_spread を足した年率で毎ターン（ledger.interest）、
   借り手の中央銀行が持つ Z で貸し手に払います（仕訳の種類 swap_interest。所得収支）。払えない分は
-  借りた額に足します。
+  借りた額に足しますが、足すのは借り手の枠の残り（同じ時点の Z の値）までで、残りは免除します
+  （FX-82。仮）。免除した利子は貸し手の利子の収入にしません（未収の利子は帳簿に載せていないので、
+  資産を消す損でもない）。出回った Z は消さず、免除した額は貸し手の島に借り手ごとに記録します
+  （``island.ext["trade"]["swap_waived"]``: 通貨 → 借り手の島 → 額の累計）。
 - 借り手の中央銀行が手元に置く分（同じ平均の 1 ターン分）より多く Z を持ったら、発行した国から先に
   返し、残りを貸し手の国に貸した額に比例して返します。
 
@@ -42,6 +45,7 @@ from hakoniwa_core.units import part, to_basis
 
 OWED = "swap_owed"  # island.ext["trade"]: 通貨 → 貸し手の島 → 借りている額
 LENT = "swap_lent"  # island.ext["trade"]: 通貨 → 借り手の島 → 貸している額
+WAIVED = "swap_waived"  # island.ext["trade"]: 通貨 → 借り手の島 → 免除した利子の累計（FX-82）
 KIND = "fx_swap"  # 貸し借りと返済の仕訳の種類（金融収支）
 INTEREST = "swap_interest"  # 利子の仕訳の種類（所得収支）
 
@@ -52,6 +56,18 @@ def owed(island: IslandState) -> dict[str, dict[str, int]]:
 
 def lent(island: IslandState) -> dict[str, dict[str, int]]:
     return island_state(island).setdefault(LENT, {})
+
+
+def waived(island: IslandState) -> dict[str, dict[str, int]]:
+    """貸し手の島が免除した利子の累計（通貨 → 借り手の島 → 額。FX-82）。"""
+    return island_state(island).setdefault(WAIVED, {})
+
+
+def waived_value(island: IslandState) -> int:
+    """免除した利子の累計（自国通貨に直す。発行国が自国の通貨で貸した分はそのまま）。"""
+    return sum(
+        fxrates.to_own(island, int(key), sum(rows.values())) for key, rows in waived(island).items()
+    )
 
 
 def debt_in(island: IslandState, currency: int) -> int:
@@ -256,6 +272,9 @@ def service(world: WorldState, config: GameConfig) -> None:
 
 def _interest(world: WorldState, config: GameConfig, island: IslandState, currency: int) -> None:
     annual = rate(world, config, currency)
+    # 払えない利子を借りに足せるのは、借り手の枠の残りまで（同じ時点の通貨 currency の値。FX-82）
+    room = quota_room(island, config)
+    room_fx = None if room is None else fxrates.to_foreign(island, currency, room)
     for key, principal in sorted(owed(island).get(str(currency), {}).items(), key=_by_id):
         lender = int(key)
         due = ledger.interest(principal, annual)
@@ -276,11 +295,19 @@ def _interest(world: WorldState, config: GameConfig, island: IslandState, curren
                 else None,
             )
         unpaid = due - paid
-        if unpaid > 0:  # 払えない利子は借りた額に足す（所得収支の支払いと、負債の増加）
-            _book(world, lender, island.id, currency, unpaid)
-            _record(world, lender, island.id, currency, unpaid, 1)
+        if unpaid <= 0:
+            continue
+        added = unpaid if room_fx is None else min(unpaid, max(room_fx, 0))
+        if added > 0:  # 払えない利子は借りた額に足す（所得収支の支払いと、負債の増加）
+            _book(world, lender, island.id, currency, added)
+            _record(world, lender, island.id, currency, added, 1)
             for who, sign in ((island, -1), (world.islands[lender], 1)):
-                balance.add(who, "income", sign * balance.value_of(world, who, currency, unpaid))
+                balance.add(who, "income", sign * balance.value_of(world, who, currency, added))
+            if room_fx is not None:
+                room_fx -= added
+        if unpaid > added:  # 枠を超える分は免除する（貸し手の利子の収入にしない。記録だけ残す）
+            row = waived(world.islands[lender]).setdefault(str(currency), {})
+            row[str(island.id)] = row.get(str(island.id), 0) + unpaid - added
 
 
 def _repay(world: WorldState, config: GameConfig, island: IslandState, currency: int) -> None:
