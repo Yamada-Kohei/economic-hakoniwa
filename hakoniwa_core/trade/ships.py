@@ -141,12 +141,50 @@ def renewal(config: GameConfig, f: Facility, turn: int) -> int:
     return max(0, fleet_target(config, f) - (fleet(f) - retiring(config, f, turn)))
 
 
-def replacement(config: GameConfig, f: Facility, turn: int) -> int:
+def replacement(config: GameConfig, f: Facility, turn: int, ordered: int = 0) -> int:
     """買い替え（W-281。1000 分の 1 隻）: 寿命の来る船（retiring）のうち、直近に航海に出ていた船を
     保つのに要る分（寿命の来ない船で足りない分）。使っていなかった船の寿命は数えない。買い増し
     （ships_wanted の残り）と分けて、船の借りの審査の線を変える。"""
+    if fleet(f) <= 0:
+        # 船を全部失った海運業（沈没・拿捕・寿命の限りの解体。LOST）が、積み残しのために買う最初の
+        # 1 隻は買い替えと同じに扱う（稼ぎの記録がなく、買い増しの審査には通らない。現実に船を失った
+        # 船主が自己資金で買い直すのと同じ）。積み残しは ships_wanted と同じ決まり（short_lately）。
+        # 新しく作った海運業と、使わない船を自分で解体して 0 隻になった海運業は買い増しのまま。
+        # 在庫の船と未引き渡しの注文（ordered）を含めて 1 隻まで（掲示板 #893）
+        if not recovering(config, f):
+            return 0
+        return max(0, MILLI - stock.total(f.stock, config.get("trade.ship_good")) - ordered)
     old = retiring(config, f, turn)
     return min(old, max(0, used_ships(config, f) - (fleet(f) - old)))
+
+
+# 海運業の economy: 船を失って（沈没・拿捕・寿命の限りの解体）から、次の船を船団に入れるまで残す
+# 記録 {"why": "sunk" か "worn", "used": 失う前に航海に出ていた船（1000 分の 1 隻）}。使わない船を
+# 自分で解体したら {"why": "scrapped"}（復旧の扱いにしない）
+LOST = "ships_lost"
+
+
+def mark_lost(config: GameConfig, f: Facility, why: str) -> None:
+    f.economy[LOST] = {"why": why, "used": used_ships(config, f)}
+
+
+def recovering(config: GameConfig, f: Facility) -> bool:
+    """船を全部失った海運業の買い直しか（W-281）: 0 隻で、航海に出ていた船を沈没・拿捕・寿命の
+    限りの解体で失い、直近に船が足りずに荷を残している（short_lately）。"""
+    lost = f.economy.get(LOST)
+    return (
+        fleet(f) <= 0
+        and isinstance(lost, dict)
+        and lost.get("why") in ("sunk", "worn")
+        and lost.get("used", 0) > 0
+        and short_lately(config, f)
+    )
+
+
+def short_lately(config: GameConfig, f: Facility) -> bool:
+    """直近 trade.cost_turns ターンの半分以上で、船が足りずに荷を残していたか（S2）。"""
+    history = f.economy.get("ships_short", [])
+    return len(history) >= config.get("trade.cost_turns") and sum(history) * 2 >= len(history)
 
 
 def ships_wanted(config: GameConfig, f: Facility, turn: int) -> int:
@@ -156,11 +194,7 @@ def ships_wanted(config: GameConfig, f: Facility, turn: int) -> int:
       契約で約定した荷が、どの船にも載らなかったとき）。
     - 買い替えと買い増し（renewal。FX-11・FX-80）。
     """
-    want = 0
-    history = f.economy.get("ships_short", [])
-    turns = config.get("trade.cost_turns")
-    if len(history) >= turns and sum(history) * 2 >= len(history):
-        want = MILLI
+    want = MILLI if short_lately(config, f) else 0
     want = max(want, renewal(config, f, turn))
     have = stock.total(f.stock, config.get("trade.ship_good"))
     return max(0, want - have)
@@ -192,6 +226,7 @@ def lose_ships(island: IslandState, config: GameConfig, f: Facility, qty: int) -
         f.economy["capital"] = capital - gone_capital
         f.economy["depreciated"] = done - gone_done
         f.economy["sunk_value"] = f.economy.get("sunk_value", 0) + max(0, gone_capital - gone_done)
+        mark_lost(config, f, "sunk")
         # 沈んでも船の借りは残る（返済は続く）。担保が足りなくなった額を数える（W-281）
         ship_loans.note_loss(island, config, f, held)
     return taken
@@ -212,6 +247,7 @@ def commission(island: IslandState, defs: Defs, config: GameConfig, turn: int) -
     value = money_of(island.economy.prices.get(good, 0), qty)
     f.economy["capital"] = f.economy.get("capital", 0) + value
     add_ships(f, qty, turn)
+    f.economy.pop(LOST, None)
     island.log.append(LogEntry("ships_commissioned", {"count": from_milli(qty)}))
     return qty
 
@@ -229,7 +265,7 @@ def scrap(island: IslandState, config: GameConfig, turn: int) -> int:
     young = sum(q for since, q in entries if turn - since < life)
     keep_old = max(0, used_ships(config, f) - young)  # 寿命を過ぎても使い続ける船
     before = fleet(f)
-    keep, gone, overdue = [], 0, 0
+    keep, gone, overdue, worn = [], 0, 0, 0
     # 寿命を過ぎた船は新しい順に残す
     for since, qty in sorted(entries, key=lambda e: -e[0]):
         age = turn - since
@@ -237,6 +273,8 @@ def scrap(island: IslandState, config: GameConfig, turn: int) -> int:
             keep.append([since, qty])
             continue
         kept = 0 if age >= limit else min(qty, keep_old)
+        if age >= limit:
+            worn += qty
         keep_old -= kept
         overdue += kept
         gone += qty - kept
@@ -246,6 +284,10 @@ def scrap(island: IslandState, config: GameConfig, turn: int) -> int:
         f.economy["overdue"] = overdue
     else:
         f.economy.pop("overdue", None)
+    if worn:
+        mark_lost(config, f, "worn")  # 寿命の限りの解体は失った船
+    elif gone:
+        mark_lost(config, f, "scrapped")  # 使わない船を自分で解体した（復旧の扱いにしない）
     if gone:
         f.economy["fleet"] = sorted(keep, key=lambda e: e[0])
         # 解体した船の割合を設備の額と償却済みの額から除く（固定資産の除却。FX-74。前は除かず、

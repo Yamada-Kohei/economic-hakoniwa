@@ -4196,7 +4196,10 @@ class Market(IslandStage):
             buy = ship_loans.market_qty(shipping, want)
             shipping.economy["ships_wanted"] = want
             shipping.economy["ships_replace"] = min(
-                want, ships.replacement(config, shipping, ctx.turn)
+                want,
+                ships.replacement(
+                    config, shipping, ctx.turn, ship_orders.on_order(island, shipping)
+                ),
             )
             if buy > 0:
                 good = config.get("trade.ship_good")

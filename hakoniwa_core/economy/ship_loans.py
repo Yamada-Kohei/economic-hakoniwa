@@ -1,10 +1,11 @@
 """船の借り（W-281。2026-11-15。束 C1）。
 
 海運業が船を買う代金の loans.ship_ltv（8 割）までを、船を担保にした長い借り（用途 banks.SHIP）で
-借ります。返し方は建設資金と同じで、loans.construction_turns ターン（10 年）で毎ターン同じ額の
-元金を返します。頭金（残りの 2 割）は自分で用意します。現実の船舶融資（船を担保に船価の 6〜8 割、
-5〜12 年）の形です。前は船の代金を運転資金（6 ターンで返す短い借り）で借り、返せずに海運業が
-倒れていた。
+借ります。元金は loans.ship_turns ターン（20 年。寿命 25 年の 8 割）で毎ターン同じ額を返します
+（現実の船舶融資は船を担保に船価の 6〜8 割。5〜7 年で残りをまとめて返す形が多く、元金の割り
+振りは 15〜18 年が普通。前は 10 年で、1 隻の稼ぎより返済が重かった。掲示板の案 3）。頭金（残りの
+2 割）は自分で用意します。前は船の代金を運転資金（6 ターンで返す短い借り）で借り、返せずに海運業
+が倒れていた。
 
 流れ:
 
@@ -37,7 +38,8 @@
 島の stats（ターンごとの値。測りの調べが足して数える）: ship_loans.lent（貸した額）・outstanding
 （残高）・returned（買えずにそのターンに返した額）・refused_replace・refused_expand（審査で断った
 船の数）・over_limit（新しい貸しで上限を超えた件数。0 のはず）・shortfall（沈没・取り壊しで担保が
-足りなくなった額）・arrears（船の借りの返済が遅れている海運業の数）・failed（船の借りの遅れで倒れた数）。
+足りなくなった額）・arrears（船の借りの返済が遅れている海運業の数）・failed（船の借りの遅れで倒れた
+数）・reviews ほか（審査の稼ぎ ÷ 返済の比。Review.note）。
 """
 
 from __future__ import annotations
@@ -180,7 +182,7 @@ def _bank_room(island: IslandState, ctx: Any, f: Facility, offers: list[tuple[in
 def _pending_service(island: IslandState, ctx: Any, f: Facility, rate: int) -> int:
     """引き渡しの後に返し始める注文の借り（今の残高の分の元金と、まだ貸していない分の元金と利子）。"""
     entity = facility_entity(f.id)
-    term = ctx.config.get("loans.construction_turns")
+    term = ctx.config.get("loans.ship_turns")
     total = 0
     for loan in ship_loans_of(island, entity):
         if ctx.turn + 1 < loan.repay_from:
@@ -215,12 +217,32 @@ class Review:
         """qty を買うときに借りる額（担保の上限の前）。"""
         return int(self.unit_value * qty / MILLI * ltv(self.config))
 
+    def service(self, qty: int) -> int:
+        """qty を借りて買ったときの毎ターンの返済（今ある借りの返済 ＋ 今回の元金と利子）。"""
+        loan = self.loan(qty)
+        term = self.config.get("loans.ship_turns")
+        return self.base + -(-loan // term) + ledger.interest(loan, self.rate)
+
+    def note(self, qty: int) -> None:
+        """審査の「稼ぎ ÷ 返済」の比を数える（数えるだけで、審査には使わない。掲示板の決め 4）。
+        reviews（件数）・review_earnings・review_service（足した額。比は足した額どうしの割り算）・
+        review_below_1・review_below_1_2（比が 1.0・1.2 に届かなかった件数）。"""
+        if self.planned or qty <= 0 or not self.has_bank:
+            return
+        service = self.service(qty)
+        _add(self.island, "reviews", 1)
+        _add(self.island, "review_earnings", round(self.earnings))
+        _add(self.island, "review_service", service)
+        if service > 0:
+            ratio = self.earnings / service
+            _add(self.island, "review_below_1", 1 if ratio < 1.0 else 0)
+            _add(self.island, "review_below_1_2", 1 if ratio < 1.2 else 0)
+
     def passes(self, qty: int, coverage: float, leverage: bool) -> bool:
         if self.planned or qty <= 0:
             return True
         loan = self.loan(qty)
-        term = self.config.get("loans.construction_turns")
-        service = self.base + -(-loan // term) + ledger.interest(loan, self.rate)
+        service = self.service(qty)
         if service > 0 and self.earnings < coverage * service:
             return False
         if leverage:
@@ -245,6 +267,7 @@ class Review:
     def split(self, replace: int, expand: int, step: int) -> tuple[int, int]:
         """（借りて買い替える数, 借りて買い増す数）。通らなかった買い替えは持ち主の出資で買う。"""
         settings = self.config.get("loans")
+        self.note(replace + expand)
         ok_replace = self.most(0, replace, settings["ship_replace_coverage"], False, step)
         ok_expand = self.most(ok_replace, expand, settings["coverage"], True, step)
         return ok_replace, ok_expand
@@ -376,7 +399,7 @@ def lend_now(
     config = ctx.config
     entity = facility_entity(f.id)
     planned = is_planned(ctx.defs, island)
-    term = config.get("loans.construction_turns")
+    term = config.get("loans.ship_turns")
     left = amount
     for rate, bank in _offers(island, ctx, entity, amount):
         piece = left

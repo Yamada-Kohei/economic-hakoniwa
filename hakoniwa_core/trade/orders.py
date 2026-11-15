@@ -189,7 +189,7 @@ def place(
         from hakoniwa_core.economy import ship_loans  # economy は trade を読むので、ここで読む
         from hakoniwa_core.trade import ships
 
-        replace = min(want, whole(ships.replacement(config, f, turn)))
+        replace = min(want, whole(ships.replacement(config, f, turn, on_order(island, f))))
         want, replace, financed = ship_loans.order_review(
             island, ctx, f, price, replace, want - replace
         )

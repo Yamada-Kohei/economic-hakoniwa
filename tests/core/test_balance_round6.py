@@ -16,7 +16,7 @@ import pytest
 
 from hakoniwa_core import autoplan, ledger, stock, trade
 from hakoniwa_core import facilities as fac
-from hakoniwa_core.economy import OWNERS, equipment, facility_entity, household
+from hakoniwa_core.economy import OWNERS, equipment, facility_entity, household, ship_loans
 from hakoniwa_core.economy.prices import initial_prices
 from hakoniwa_core.modules.accounts import Accounts
 from hakoniwa_core.modules.events import Events
@@ -435,15 +435,17 @@ def _all_facilities(world):
 
 def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
     """船を全部失った島: 帳簿と国際収支が合ったままターンが回り、輸出は買い手の船で続く。ほかの国が
-    船を貸さず、船が足りない月が続くと海運業が船を買いに出て、手元の資金で足りない代金は持ち主が出す（船は運賃で
-    稼ぐ前に買うので、変動費の利益を見ない）。どの島も船を作っていなければ、標準の計画が造船所を
-    建てる。"""
+    船を貸さず、船が足りない月が続くと海運業が船を買いに出て、手元の資金で足りない代金は持ち主が
+    出す（船は運賃で稼ぐ前に買うので、変動費の利益を見ない。船を失った海運業の最初の 1 隻は
+    買い替えの扱い。W-281）。どの島も船を作っていなければ、標準の計画が造船所を建てる。"""
     world = copy.deepcopy(base)
     island = next(
         i for i in world.islands.values() if shipping_of(i, game.config) and i.has_economy
     )
     f = shipping_of(island, game.config)
-    f.economy["fleet"] = []
+    # 船は沈んで全部失う（W-281: 航海に出ていた船を失った海運業の最初の 1 隻は買い替えと同じ扱い）
+    ships.lose_ships(island, game.config, f, ships.fleet(f))
+    assert f.economy[ships.LOST]["why"] == "sunk" and f.economy[ships.LOST]["used"] > 0
     # 圏のほかの国が船を貸すと、荷はその船で運べて船が足りないと数えない（FX-56・FX-57）。ここでは
     # 船を買いに出るところを見るので、ほかの国は貸さない（命令 set_ship_lending）
     for other in world.islands.values():
@@ -480,8 +482,13 @@ def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
     if ordered:
         assert wanted[-1] == 0 and ordered >= QUANTITY_SCALE
     else:
-        price = island.economy.prices[good]
-        assert ledger.money(island, facility_entity(f.id)) >= money_of(price, wanted[-1])
+        # 船を失った海運業の最初の 1 隻は買い替えと同じ扱い（W-281）。稼ぎの記録がないので銀行は
+        # 貸さず、代金は持ち主が出せる分だけ出す（この島の持ち主は製鉄所にも出していて、1 隻の 8 割
+        # ほどしか出せない。出せた分だけの数を買いに出る）
+        credit = f.economy[ship_loans.CREDIT]
+        assert credit["loan"] == 0 and 0 < credit["qty"] <= QUANTITY_SCALE
+        assert credit["replace"] == credit["qty"] and credit["down"] == credit["value"]
+        assert ledger.money(island, facility_entity(f.id)) >= credit["down"]
         market = next(m for m in island.markets if m.good == good)
         assert market.demand >= QUANTITY_SCALE // 2 and market.supply == 0
     turn = world.turn
