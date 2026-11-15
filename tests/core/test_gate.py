@@ -218,7 +218,17 @@ def test_supply_chain_runs_for_300_turns(game, seed):
         for m in recorder.failures(end=leave - tail - 1)
         if not any(f"）: {g} の値段が" in m for g in scarce)
     ]
-    notes = []  # 品不足の間に値段が目安を外れたこと（記録に残す。試験は落とさない）
+    notes = []  # 品不足の判定と、品不足の間に値段が目安を外れたこと（記録に残す。試験は落とさない）
+    last = leave - 1
+    for g in sorted(needed.get(last, {})):
+        if needed[last][g] > 0:
+            stored_turns = [t for t in sorted(stored) if g in stored[t] and t >= last - 60]
+            notes.append(
+                f"品不足の判定 {g}: 島で作った {produced.get(g, 0)}、T{last} の売り "
+                f"{offered[last].get(g, 0)}・要る量 {needed[last][g]}、始まり "
+                f"{_shortage_from(offered, needed, g, leave)}、"
+                f"国の倉庫に荷のあるターン {stored_turns[:5]}"
+            )
     for g, t0 in scarce.items():
         mark = f"）: {g} の値段が"
         priced += [m for m in recorder.failures(end=min(t0, leave - tail) - 1) if mark in m]
