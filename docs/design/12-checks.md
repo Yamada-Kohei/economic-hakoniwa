@@ -12,7 +12,7 @@
 - 規模の測り方と記録: [docs/scale.md](../scale.md)
 - 試し遊び: [docs/playtest.md](../playtest.md)、`tools/playtest/hk.py`
 - 設計書の索引と設定の一覧: `tools/spec/design_index.py`、`tools/spec/settings.py`
-- 試験: tests/core/test_engine.py、tests/core/test_gate.py、tests/core/test_measure.py、tests/core/test_measure_reuse.py、tests/core/test_collapse.py、tests/core/test_shocks.py、tests/core/test_nightly.py、tests/core/test_economy.py、tests/core/test_phase3_3.py、tests/core/test_phase3_4.py、tests/core/test_spec_design.py、tests/core/test_docs_match.py、tests/core/test_spec_settings.py、tests/server/test_phase1.py、tests/server/test_turns.py
+- 試験: tests/core/test_engine.py、tests/core/test_gate.py、tests/core/test_measure.py、tests/core/test_measure_reuse.py、tests/core/test_measure_store.py、tests/core/test_collapse.py、tests/core/test_shocks.py、tests/core/test_nightly.py、tests/core/test_economy.py、tests/core/test_phase3_3.py、tests/core/test_phase3_4.py、tests/core/test_spec_design.py、tests/core/test_docs_match.py、tests/core/test_spec_settings.py、tests/server/test_phase1.py、tests/server/test_turns.py
 
 ## つながり
 
@@ -68,6 +68,7 @@
 | GT-41 | 測りは、計算の中身（hakoniwa_core・game.yaml・packs・schemas）の指紋が前と同じ組を回し直さず、前の結果を使えるようにする。結果の JSON に指紋を書き、`measure batch --reuse` が同じ組で指紋が同じ結果だけを写す。指紋が違う・書いていない・時系列がない・壊れているときは回す。改行の違いと Python の写しは数えない | 決定 |  | tests/core/test_measure_reuse.py |
 | GT-43 | 試験は回す場所と順によらず同じ結果になる（Linux でも Windows の X870 でも、1 本だけでも全部を並べても）。ファイルの読み書きには utf-8 を書き、置き場所は試験のファイルから決め、続けて作った物の時刻の前後に頼らない。場面が起きないときは飛ばさず、場面を組み立てて確かめる（飛ばすのは DB の種類など環境が足りないときだけ） | 決定 |  | tests/server/test_board.py::test_old_threads_fall_into_the_log, tests/server/test_theme_sprites.py, tests/core/test_playtest_fixes.py::test_capital_subsidy_is_paid_at_entry |
 | GT-44 | 経済の決まりを足す・変えるときは、同じコードで決まりを入れた世界と入れない世界を比べてから既定にする: (1) 新しい決まりや動きの大きい変更は game.yaml の設定で切れるように作り、既定は「切」（今の動きのまま）で main に入れる (2) 既定を「入」にするのは別の PR にし、X870 で同じ種の「切」と「入」を `measure compare` で比べた崩れの表（GT-33）を本文に貼る。崩れ・ターンの停止・企業の連鎖倒産・飢饉が「切」より増えたら既定にしない (3) 1 つの PR で既定を変える経済の決まりは 1 つ (4) 決まりの試験は設定の値を試験の中で入れて場面を組み立て（GT-35）、既定の切り替えで落ちないようにする（例 `tests/core/test_clothing_clearance.py` の `monkeypatch.setitem(game.config.get("market"), "clearance_ratio", 2)`）。2026-11-10〜11 に解雇の決まり（LB-43）と売れ残りの値引き（MK-41）を既定で入れてから比べ、連鎖倒産と差し押さえが増えて止める・戻すを繰り返したため | 決定 |  |  |
+| GT-45 | 測りの結果の置き場: `measure batch --store <置き場>`（または環境変数 `HAKONIWA_MEASURE_STORE`）は、結果を 1 か所にためて、どの出力先の batch からも使い回す。鍵は計算の中身の指紋（GT-41）＋組の名前（場面・種・ターン数）＋Python と道具（PyYAML・jsonschema）の版。置き場に同じ鍵の結果があれば写し、なければ回して置く。同じ組を 2 本が同時に回さないよう、回している間だけ札（持ち主の名前と始めた時刻）を立て、ほかの batch は待って置かれた結果を写す。時刻の止まった札は引き継ぐ。書きかけは使わない: 一時の名前で書いてから置き、最後に完了の印（中身の sha256 つき）を付け、写すときは印と中身が合うか確かめる。印がない・合わない・指紋が違うときは使わず回す。失敗した処理の結果と、回している間に指紋が変わった結果は置かない。札は計算の節約のためだけの物で、札が壊れても二重に回るだけにする。置き場の場所はリポジトリに書かない | 決定 | `reuse.py` の `STALE_SECONDS`・`BEAT_SECONDS` | tests/core/test_measure_store.py |
 
 ### 仮の決まり
 
@@ -160,6 +161,13 @@
 - **組**（`measure.SETS`）: quick は回ごとの比べ（標準の計画の種 1・2 の 300 ターンと、ほかの場面）、full は回の終わりに一度だけ（標準の計画と少ない島と移民の世界は種 1〜4 か 1・2 の 500 ターン、命令なしと独立は 300 ターン）。300 ターンは初めに配った船の寿命の直前で終わるので、full で 500 ターンも見ます（Codex B04・E31）。
 - 結果は `python -m hakoniwa_core.measure compare` で 2 つを並べます。元にする結果は共有フォルダの balance/runs/ に置きます。
 - **結果の使い回し**（GT-41）: 結果の JSON に、回したときの計算の中身の指紋（`code_fingerprint`）を書きます。`measure batch --reuse <前の結果のフォルダ>` は、同じ組の結果で指紋が今と同じものを回さずに写します（`.log` に写した元を書く）。main の結果を何度も回し直さずに済みます。指紋は `hakoniwa_core/` の全部、`game.yaml`、`packs_dirs` と `schemas_dir` の中身で、改行は LF にそろえて数えます。`server/`・`tests/`・`docs/` と Python の版は数えません（3.12・3.13・3.14 で状態の指紋が一致することを確かめてある）。指紋が違う・書いていない・時系列がない・壊れているときは使わず回します（回しすぎる側に倒す）。
+- **結果の置き場**（GT-45）: `measure batch --store <置き場>` は、結果を 1 か所にためて読み書きします（`--reuse` は読むだけ）。main の測りは、main が変わったあと最初に頼んだ batch が 1 回だけ回し、ほかの batch は置き場から写します。
+  - 鍵: 置き場の中のフォルダの名前が「計算の中身の指紋＋Python と道具の版」、その中のファイルの名前が組の名前（`plan-s1-t300` の形）。OS は鍵に入れません（Windows と Linux で結果が同じことを確かめてある）。文字の並びの乱数（PYTHONHASHSEED）を変えても結果は同じです（2026-11-15 に確かめた）。
+  - 札（`<組>.lock`）: 回している間だけ立て、持ち主の名前（`--owner` か環境変数 `HAKONIWA_MEASURE_OWNER`）と始めた時刻を書きます。回している間は 30 秒ごとに札の時刻を新しくします。ほかの batch は、札のある組を回さずに待ち、結果が置かれたら写します。札の時刻が 10 分より古ければ、止まったとみて引き継ぎます。札は計算の節約のためだけの物で、札が壊れても同じ組が二重に回るだけです（同じ版の結果は同じ）。
+  - 完了の印（`<組>.done.json`）: 結果は一時の名前で書いてから置き、最後に印を付けます。印には結果のファイルの sha256 を書きます。写すときは、印があり、指紋と版が合い、中身が印と合う物だけを使います。合わなければ使わず回します。
+  - 置かない物: 失敗で終わった処理の結果、回している間に計算の中身が変わった結果、`--reuse` で写しただけの結果。
+  - 時系列（`--series`）は、頼まれた batch が回したときだけ置きます。時系列のない結果に後から足すときは、結果の JSON は書き換えず、時系列と印だけを足します。
+  - 置き場の場所と機械の名前はリポジトリに書きません（引数か環境変数で渡す）。
 
 ### 揺さぶりの試験
 
