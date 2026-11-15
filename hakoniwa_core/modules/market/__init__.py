@@ -165,6 +165,9 @@ BIDS = "bids"
 # "steps": 値幅ずつ下げた回数, "start": 下げ始めの値段（運賃を払った後）, "offered"/"sold": 前の
 # ターンに値引きで出した量と売れた量}
 CLEARANCE = "clearance"
+# economy.ext: 値段の上限が低く、上限以下で採算の合う売り手の候補がない財 → 一番安い候補の値段
+# （上限で止める前。知らせを始まりの1度だけにする。不具合報告 #16）
+NO_SELLERS = "cap_no_sellers"
 # economy.ext: 財 → 島で最後に約定したターン（相場のない品の初値。MK-43）
 LAST_TRADE = "last_trade"
 
@@ -4794,9 +4797,9 @@ class Market(IslandStage):
         for good in sorted(set(results) | set(wanted)):
             result = results.get(good)
             if result is None:  # 売りも買いの注文もなかったが、あれば買いたい人がいた
-                island.markets.append(
-                    MarketRecord(good, prices.get(good, 1), 0, wanted[good], 0, PRICE_CARRY)
-                )
+                carried = Market._within_controls(island, ctx, good, prices.get(good, 1))
+                prices[good] = carried
+                island.markets.append(MarketRecord(good, carried, 0, wanted[good], 0, PRICE_CARRY))
                 continue
             signal = Market._consumption_result(books_by_good.get(good), result)
             own = signal.demand - Market._out_of_money(books_by_good.get(good), result)
@@ -4805,6 +4808,8 @@ class Market(IslandStage):
             # 値引きの売りがあったときは、ふだんの板寄せ（1回目）の値段を市場の値段とする（MK-41。
             # _outlet。在庫処分の安値は相場に数えない）
             price = island.scratch.get(CLEARANCE, {}).get(good, result.price)
+            if result.volume <= 0:  # 約定のない月の持ち越し・気配も、統制の値幅の外に残さない
+                price = Market._within_controls(island, ctx, good, price)
             record = MarketRecord(good, price, result.volume, demand, result.supply, _kind(result))
             book = books_by_good.get(good)
             if book is not None:
@@ -4857,7 +4862,10 @@ class Market(IslandStage):
             p = found.get(good)
             price = prices.get(good, 1)
             if p is not None and p.export_bloc is not None and ask <= p.export_limit < price:
-                prices[good] = auction.band(price, width)[0]
+                # 下限（price_floor）より下では売れないので、下げる先は下限まで（不具合報告 #16）
+                lowered = auction.band(price, width)[0]
+                prices[good] = Market._within_controls(island, ctx, good, lowered)
+        no_sellers: dict[str, int] = {}  # 上限が低くて売り手の候補がない財 → 一番安い候補の値段
         unlisted = Market._unlisted(island, ctx, results)
         before = dict(prices)  # 初値の原価は、このターンに値段を動かす前の値段で見る
         for good in sorted(wanted):
@@ -4871,7 +4879,15 @@ class Market(IslandStage):
                     island, ctx, good, before, rates, prospect.import_floor if prospect else 0
                 )
                 if first is not None:
-                    prices[good] = max(prices.get(good, 1), first)
+                    # 値段の統制（混合経済の上限・下限）の中に収める。上限が作る費用より低ければ
+                    # 下の値幅ずつと同じく知らせる
+                    first = max(prices.get(good, 1), first)
+                    prices[good] = Market._within_controls(island, ctx, good, first)
+                    cap, _ = Market._controls(island, ctx, good)
+                    if cap:
+                        floors = Market._supply_floors(island, ctx, good, before, rates)
+                        if floors and min(floors) > cap:
+                            no_sellers[good] = min(floors)
                     continue
             floors = Market._supply_floors(island, ctx, good, prices, rates)
             if good in found and found[good].import_floor > 0:
@@ -4883,7 +4899,54 @@ class Market(IslandStage):
                 floors.append(entering)
             price = prices.get(good, 1)
             if floors and min(floors) >= price:
-                prices[good] = auction.band(price, width)[1]
+                price = auction.band(price, width)[1]
+            # 上限（price_cap）より上の値段は売り手が付けられないので、探る先は上限まで
+            # （不具合報告 #16: 上限を見ずに1ターンに1割ずつ上がり、魚が上限の 800 を超えて
+            # 1,065 まで上がった）。上限が売り手の候補の値段より低くて売り手が出てこないときは、
+            # 品不足のまま上限で止まる（知らせる）
+            prices[good] = Market._within_controls(island, ctx, good, price)
+            cap, _ = Market._controls(island, ctx, good)
+            if cap and floors and min(floors) > cap:
+                no_sellers[good] = min(floors)
+        Market._notice_no_sellers(island, no_sellers)
+
+    @staticmethod
+    def _controls(island: IslandState, ctx: StageContext, good: str) -> tuple[int, int]:
+        """財 good の値段の統制（上限, 下限。なければ 0）。板寄せの値幅（_band_and_allocator）と
+        同じく、値段の統制のある体制（price_controls）の島だけ。公定価格の財は除く。"""
+        if not politics.trait(island, ctx.defs, "price_controls", False):
+            return 0, 0
+        if planning.is_planned(island, ctx.defs) and good in planning.official(island):
+            return 0, 0
+        policy = island.policy
+        return policy.price_cap.get(good) or 0, policy.price_floor.get(good) or 0
+
+    @staticmethod
+    def _within_controls(island: IslandState, ctx: StageContext, good: str, price: int) -> int:
+        """売りの指値と同じく、値段を統制の上限と下限の間に収める（不具合報告 #16。約定のない月の
+        値段の探りと持ち越しが、法律で付けられない値段に出ないように）。"""
+        cap, floor = Market._controls(island, ctx, good)
+        if cap:
+            price = min(price, cap)
+        if floor:
+            price = max(price, floor)
+        return price
+
+    @staticmethod
+    def _notice_no_sellers(island: IslandState, lowest: dict[str, int]) -> None:
+        """上限が低く、今の試算で上限以下で採算の合う売り手の候補がない財を知らせる（続いている間は
+        始まりの1度だけ）。lowest は上限で止める前の、一番安い候補の値段。"""
+        before = island.economy.ext.get(NO_SELLERS, {})
+        for good, price in sorted(lowest.items()):
+            if good not in before:
+                cap = island.policy.price_cap.get(good, 0)
+                island.log.append(
+                    LogEntry("price_cap_no_sellers", {"good": good, "cap": cap, "lowest": price})
+                )
+        if lowest:
+            island.economy.ext[NO_SELLERS] = dict(lowest)
+        else:
+            island.economy.ext.pop(NO_SELLERS, None)
 
     @staticmethod
     def _unlisted(
@@ -4922,7 +4985,8 @@ class Market(IslandStage):
         投入財と運賃・賃金・電気代・設備の傷み）の一番安いものに market.initial_prices.markup を
         乗せた値段。輸入が引き合う値段 imported（0 はなし）があれば低いほう。ただし島の値段がもう
         輸入の値段以上なのに品切れが続いている（外貨・船・量の都合で実際には輸入されない）なら、
-        輸入の値段では抑えない。混合経済の値段の上限があれば上限まで。作る施設がなければ None。"""
+        輸入の値段では抑えない（値段の統制の上限・下限は呼ぶ側で収める）。作る施設がなければ
+        None。"""
         defs, config = ctx.defs, ctx.config
         costs = [
             unit_floor(defs, config, f, good, prices, f.economy.get("wage", 0), rates.get(f.id, 0))
@@ -4938,9 +5002,6 @@ class Market(IslandStage):
         price = round_money(min(costs) * (1 + config.get("market.initial_prices.markup")))
         if 0 < imported and prices.get(good, 1) < imported:
             price = min(price, imported)
-        cap = island.policy.price_cap.get(good)
-        if cap and politics.trait(island, defs, "price_controls", False):
-            price = min(price, cap)
         return max(1, price)
 
     @staticmethod

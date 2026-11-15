@@ -44,6 +44,7 @@ price_cap_set: "{good}の公共料金の上限を 1{unit}あたり {price:,} に
 price_cap_cleared: "{good}の公共料金の上限を解除しました"
 goods_price_cap_set: "{good}の値段の上限を 1{unit}あたり {price:,} にしました"
 goods_price_cap_cleared: "{good}の値段の上限をなくしました"
+price_cap_no_sellers: "{good}の値段の上限（1{unit}あたり {cap:,}）では、今の試算で採算が合う売り手の候補がありません（一番安い候補は1{unit}あたり約 {lowest:,}）。上限を上げる・生産の補助・国の倉庫の放出で対応できます"
 warehouse_buy_ordered: "国の倉庫で{good} {amount:g} {unit}の買い注文を出しました"
 warehouse_released: "島で作っていない{good}を施設が買えないため、国の倉庫の備蓄を売りに出しました（備蓄の放出の決まり）"
 warehouse_release_on: "備蓄の放出の決まりを始めました（島で作っていない物を施設が買えなければ、国の倉庫の余りを売りに出します）"
