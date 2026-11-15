@@ -720,7 +720,7 @@
 | GT-24 | 長い試し回し（測り・関門・夜の点検）で崩れが main より増えたら、増えた分を直してからマージ… | 決定 |  |
 | GT-25 | 規模の目標: 既定の 50 島で 1 回のターン更新を 5 分以内にする | 決定 | （未確認） |
 | GT-26 | 標準の計画は測りと自動の試験と開発用のサンプルの島だけで使い、サーバーの世界の国は動かさない（命… | 決定 | tests/core/test_gate.py |
-| GT-27 | 標準の計画は毎ターン上から見て最初に足りないもの（食料・発電・工事の資材・投入財・消費財・使って… | 決定 | tests/core/test_autoplan_budget.py、tests/core/test_gate.py |
+| GT-27 | 標準の計画は毎ターン上から見て最初に足りないもの（食料・発電・工事の資材・投入財・消費財・使って… | 決定 | tests/core/test_autoplan_budget.py、tests/core/test_gate.py、tests/core/test_infrastructure.py |
 | GT-28 | 標準の計画の世界の側: 貿易の始まった島ぜんぶで 1 つの誰でも入れる貿易圏を作る（決済通貨は人… | 決定 | tests/core/test_trade.py |
 | GT-29 | 標準の計画の飢饉の手: 食べ物の充足が下がった月は国営の農場を穀物に替え、国の倉庫の食べ物を出し… | 決定 | tests/core/test_balance_round5.py |
 | GT-37 | 標準の計画の財政の手: 国が賃金を払いきれなければ所得税と消費税を少しずつ上げ、ゆとりが戻れば建… | 決定 | tests/core/test_balance_round5.py |
