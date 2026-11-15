@@ -67,14 +67,20 @@ def _round(game, world):
 
 
 def _importer(game, world, foreign=True):
-    """輸入している財がある、市場経済の島の商社（foreign なら決済通貨が外貨の島）。"""
+    """輸入している財がある、市場経済の島の商社（foreign なら決済通貨が外貨の島）。今の見込みで
+    輸入が引き合う財のある商社だけを選ぶ（前のターンまで輸入していても、今は引き合わない島がある。
+    試しの世界の動きが少し変わるだけで選ぶ島が変わらないように）。"""
     for island in world.islands.values():
         if traders.is_planned(island):
             continue
+        found = traders.prospects(island, game.defs, game.config)
         for f in traders_of(island, game.config):
-            for item in traders.goods_of(f).values():
+            for good, item in traders.goods_of(f).items():
                 bloc = item.get("bm")
                 if item.get("dir") != traders.IMPORT or bloc is None or item["m"] <= 0:
+                    continue
+                p = found.get(good)
+                if p is None or not traders.importable(p) or p.import_bloc != bloc:
                     continue
                 from hakoniwa_core.trade import blocs
 
