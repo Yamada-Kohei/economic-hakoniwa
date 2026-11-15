@@ -3,7 +3,8 @@
 - 途中の状態（関門の記録・測りの足し上げ・戦争の見張り）は、JSON を挟んでも型も値も元に戻る
 - 「途中で写し → 別のプロセスで続き」の結果が、通しで回した結果と同じ（結果の JSON・時系列・指紋）
 - 写しに入れない物（scratch・journal・books）は、次のターンの命令作りの前に空になっている
-- 計算の中身や場面が違う写し、行数の合わない時系列からは続けない（使う側が通しで回し直す）
+- 計算の中身・場面・種が違う写し、行数か中身の合わない時系列からは続けない（使う側が通しで回し直す）
+- 島と世界の欄は、写しに入るか、命令作りの前に空にするかのどちらか（欄を足したら決める）
 
 ここは小さな世界の数ターンだけ。全組（300 → 500 ターンなど）の比べは tools/measure/resume_check.py。
 """
@@ -12,17 +13,19 @@ from __future__ import annotations
 
 import gzip
 import json
+import math
 import os
 import subprocess
 import sys
 from collections import Counter, OrderedDict, defaultdict, namedtuple
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 import pytest
 
 from hakoniwa_core import gate, measure, snapstate, warscene
 from hakoniwa_core.game import load_game
+from hakoniwa_core.modules.market import MERCHANT
 from hakoniwa_core.simulate import (
     load_snapshot,
     read_snapshot,
@@ -30,7 +33,11 @@ from hakoniwa_core.simulate import (
     world_digest,
 )
 from hakoniwa_core.simulate import main as simulate_main
+from hakoniwa_core.state import IslandState, WorldState
 from hakoniwa_core.state.generate import generate_world
+from hakoniwa_core.state.serialize import island_to_dict, world_to_dict
+from hakoniwa_core.trade import island_state
+from hakoniwa_core.trade import merchant as trade_merchant
 
 REPO = Path(__file__).resolve().parents[2]
 NOT_COMPARED = ("seconds", "resumed")  # 通しと続きで違ってよい欄
@@ -78,6 +85,15 @@ def test_state_keeps_types_values_and_order_through_json():
     assert type(back["what"]) is Counter and type(back["hits"]["famine"].what) is Counter
     assert type(back["falls"][0]) is tuple and type(back["frozen"]) is frozenset
     assert back["flag"] is True and type(back["one"]) is int
+
+
+def test_state_keeps_infinity_and_nan():
+    """無限大と NaN は、Python の json の書き方（Infinity・NaN）のまま書いて、そのまま戻す。
+
+    結果の JSON も同じ書き方なので、写しだけ別の扱いにしない。
+    """
+    back = snapstate.decode(through_json(snapstate.encode([math.inf, -math.inf, math.nan])))
+    assert back[:2] == [math.inf, -math.inf] and math.isnan(back[2])
 
 
 def test_state_writes_the_same_text_whatever_the_set_order():
@@ -130,6 +146,9 @@ def test_recorder_and_meter_come_back_the_same(game):
     meter.watch.first.setdefault("battle", {})[2] = 3
 
     saved = through_json({"recorder": recorder.state(), "meter": meter.state()})
+    # 結果を作っても途中の状態は変わらない（写しを書くのが結果の前でも後でも同じ写しになる）
+    measure.result(scenario, 1, 4, 4, recorder, meter, 0.0, world_digest(world), world)
+    assert through_json({"recorder": recorder.state(), "meter": meter.state()}) == saved
     other = gate.Recorder(world, game.defs, game.config)
     other.restore(saved["recorder"])
     assert compared(other, ("defs", "config")) == compared(recorder, ("defs", "config"))
@@ -182,6 +201,60 @@ def test_snapshot_keeps_the_last_turn_trades(game, tmp_path):
     with gzip.open(tmp_path / "w.json.gz", "rt", encoding="utf-8") as f:
         assert "trades" in json.load(f)
     assert world_digest(load_snapshot(str(tmp_path / "w.json"))) == world_digest(world)
+
+
+SAVED_BESIDE = {"stats", "markets", "trades"}  # 世界の写しとは別に、写しのファイルに書く
+EMPTIED = {"scratch", "journal", "books"}  # 写さず、命令作りの前に空にする
+
+
+def test_every_field_is_either_saved_or_emptied(game):
+    """島と世界の欄は、写しに入るか、命令作りの前に空にするかのどちらか。
+
+    欄を足したら、ここが落ちる。写しに入れるか、空にするかを決めて simulate を直す。
+    """
+    world = generate_world(1, 2, game.config, game.defs)
+    island = world.islands[world.island_ids()[0]]
+    in_world = set(island_to_dict(island))
+    assert {f.name for f in fields(IslandState)} == in_world | SAVED_BESIDE | EMPTIED
+    assert not in_world & (SAVED_BESIDE | EMPTIED)
+    assert {"log", "orders", "policy", "ext", "accounts", "loans", "bonds"} <= in_world
+    assert {f.name for f in fields(WorldState)} == set(world_to_dict(world))
+
+
+def test_resuming_while_the_merchant_is_leaving_continues_the_same_world(game, tmp_path):
+    """商人が量を減らしている間、標準の計画は前のターンに商人から買った物を見る（約定を読む）。
+
+    その間の写しから続けても、通しと同じ世界になること。120〜240 ターン目に当たる場面を、商人の
+    来た時を前にずらして数ターンで作る。
+    """
+    scenario = measure.SCENARIOS["small"]
+
+    def run(world, turns):
+        for _ in range(turns):
+            measure.queue_scenario_orders(world, scenario, game.defs, game.config)
+            game.engine.run_turn(world)
+            for island in world.islands.values():  # simulate と同じ（写さない物は空にする）
+                island.scratch.clear()
+                island.journal.clear()
+                island.books.clear()
+
+    world = generate_world(1, 4, game.config, game.defs)
+    run(world, 2)
+    middle = (
+        game.config.get("foreign_merchant.taper_from") + game.config.get("foreign_merchant.turns")
+    ) // 2
+    for island in world.islands.values():
+        island_state(island)["merchant_from"] = world.turn - middle
+    run(world, 2)
+    share = [trade_merchant.taper(i, game.config, world.turn + 1) for i in world.islands.values()]
+    assert all(0 < x < 1 for x in share)
+    assert any(t.seller == MERCHANT for i in world.islands.values() for t in i.trades)
+    path = str(tmp_path / "leaving.json.gz")
+    save_snapshot(world, path)
+    resumed = load_snapshot(path)
+    run(world, 3)
+    run(resumed, 3)
+    assert world_digest(resumed) == world_digest(world)
 
 
 def test_planning_never_sees_what_the_snapshot_leaves_out(tmp_path, monkeypatch):
@@ -266,6 +339,30 @@ def test_resumed_run_gives_the_same_result_as_a_straight_run(tmp_path, scenario)
     assert read(tmp_path / "b-first.json")["turns"] == 5
 
 
+def test_resuming_twice_gives_the_same_result_as_a_straight_run(tmp_path):
+    """3 ターン → 続き 2 ターン（また写す）→ 続き 3 ターンが、通しの 8 ターンと同じ。"""
+    straight = simulate(
+        ["--scenario", "small", "--seed", "2", "--turns", "8", "--gate"]
+        + ["--out", str(tmp_path / "a.json"), "--series", str(tmp_path / "a.jsonl")],
+        "1",
+    )
+    assert (tmp_path / "a.json").exists(), straight.stdout + straight.stderr
+    common = ["--scenario", "small", "--gate", "--series", str(tmp_path / "b.jsonl")]
+    first, second = str(tmp_path / "b3.json.gz"), str(tmp_path / "b5.json.gz")
+    simulate([*common, "--seed", "2", "--turns", "3", "--save", first], "1")
+    simulate([*common, "--load", first, "--turns", "2", "--save", second], "2")
+    last = simulate(
+        [*common, "--load", second, "--seed", "2", "--turns", "3"]
+        + ["--out", str(tmp_path / "b.json")],
+        "3",
+    )
+    assert (tmp_path / "b.json").exists(), last.stdout + last.stderr
+    a, b = read(tmp_path / "a.json"), read(tmp_path / "b.json")
+    assert same_but(b) == same_but(a)
+    assert b["seed"] == 2 and b["turns"] == 8 and b["resumed"]["from"] == 5
+    assert (tmp_path / "b.jsonl").read_bytes() == (tmp_path / "a.jsonl").read_bytes()
+
+
 def rewrite(snap: Path, change) -> None:
     with gzip.open(snap, "rt", encoding="utf-8") as f:
         data = json.load(f)
@@ -280,6 +377,16 @@ def test_a_snapshot_of_other_code_or_scene_is_not_resumed(tmp_path):
     # 場面が違う
     other = simulate(["--scenario", "plan", "--load", str(snap), "--turns", "1", *out], "1")
     assert other.returncode == 2 and not (tmp_path / "c.json").exists()
+    # 種が違う（--load のとき --seed は確かめに使う。書かなければ写しの種のまま）
+    seeded = simulate(
+        ["--scenario", "small", "--load", str(snap), "--seed", "2", "--turns", "1", *out], "1"
+    )
+    assert seeded.returncode == 2 and not (tmp_path / "c.json").exists()
+    # 測りの途中の状態が、写しの世界のターンと合わない
+    rewrite(snap, lambda d: d["measure"].update(turn=1))
+    moved = simulate(["--scenario", "small", "--load", str(snap), "--turns", "1", *out], "1")
+    assert moved.returncode == 2 and not (tmp_path / "c.json").exists()
+    rewrite(snap, lambda d: d["measure"].update(turn=2))
     # 計算の中身が違う
     fingerprint = read_snapshot(str(snap))[1]["code_fingerprint"]
     rewrite(snap, lambda d: d["measure"].update(code_fingerprint="0" * 64))
@@ -311,6 +418,15 @@ def test_series_is_resumed_only_when_its_lines_match(tmp_path):
     wrong = simulate([*args, *out, "--series", str(longer)], "1")
     assert wrong.returncode == 2 and not (tmp_path / "c.json").exists()
     assert longer.read_bytes().endswith(b"{}\n")  # 使わないときは書き足さない
+    # 行数は同じでも中身が違う（別の回の時系列）
+    other = tmp_path / "other.jsonl"
+    other.write_bytes((tmp_path / "b.jsonl").read_bytes().replace(b'"t": 1,', b'"t": 9,'))
+    before = other.read_bytes()
+    assert before != (tmp_path / "b.jsonl").read_bytes()
+    assert before.count(b"\n") == (tmp_path / "b.jsonl").read_bytes().count(b"\n")
+    swapped = simulate([*args, *out, "--series", str(other)], "1")
+    assert swapped.returncode == 2 and other.read_bytes() == before
+    assert not (tmp_path / "c.json").exists()
     # 時系列なしで作った写しからは、時系列を続けられない
     rewrite(snap, lambda d: d["measure"].update(series_lines=None))
     without = simulate([*args, *out, "--series", str(tmp_path / "b.jsonl")], "1")

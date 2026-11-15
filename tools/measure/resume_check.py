@@ -22,8 +22,11 @@
     # 回し終えた --out-dir を、回し直さずにもう一度比べる（上の --straight と組み合わせる）
     python tools/measure/resume_check.py --split 300 --out-dir runs/resume-check --keep \\
         --straight runs/main-full --other-code
-    # 短い確かめ（場面:種:ターン:切る所）
-    python tools/measure/resume_check.py --pairs small:1:8:5,war:1:8:5 --out-dir /tmp/rc
+    # 何回も切って続ける（商人が量を減らし始める 120 ターン目と去る 240 ターン目の前後）
+    python tools/measure/resume_check.py --set quick --only small --split 110,130,230,250 \\
+        --out-dir runs/rc-merchant
+    # 短い確かめ（場面:種:ターン:切る所。切る所は + でつないで何回でも）
+    python tools/measure/resume_check.py --pairs small:1:8:5,war:1:8:3+5 --out-dir /tmp/rc
 
 結果は --out-dir の resume-check.md にも書きます。
 """
@@ -55,14 +58,15 @@ class Pair:
     scenario: str
     seed: int
     turns: int
-    split: int
+    splits: tuple[int, ...]  # 写しを書いて切るターン（小さい順。何回でも）
     problems: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     seconds: dict[str, float] = field(default_factory=dict)
 
     @property
     def name(self) -> str:
-        return f"{measure.run_name(self.scenario, self.seed, self.turns)}-from{self.split}"
+        cuts = "-".join(str(t) for t in self.splits)
+        return f"{measure.run_name(self.scenario, self.seed, self.turns)}-from{cuts}"
 
 
 def simulate(args: list[str], log: Path, hash_seed: str) -> tuple[int, float]:
@@ -99,24 +103,37 @@ def run_straight(pair: Pair, out: Path, digests: bool) -> None:
 
 
 def run_resumed(pair: Pair, out: Path, digests: bool) -> None:
+    """切る所ごとに写しを書き、次は新しいプロセスでその写しから続ける。"""
     base = out / pair.name
-    snap = f"{base}.snap.json.gz"
-    first = ["--scenario", pair.scenario, "--seed", str(pair.seed), "--turns", str(pair.split)]
-    first += ["--gate", "--out", f"{base}.first.json", "--series", f"{base}.resumed.jsonl"]
-    first += ["--save", snap]
-    if digests:
-        first += ["--digests", f"{base}.first.digests"]
-    _, pair.seconds["first"] = simulate(first, Path(f"{base}.first.log"), "1")
-    if not Path(snap).exists():
-        pair.problems.append("初めの分が写しを書かずに終わった（.first.log）")
-        return
-    rest = ["--scenario", pair.scenario, "--load", snap, "--turns", str(pair.turns - pair.split)]
-    rest += ["--gate", "--out", f"{base}.resumed.json", "--series", f"{base}.resumed.jsonl"]
-    if digests:
-        rest += ["--digests", f"{base}.rest.digests"]
-    code, pair.seconds["rest"] = simulate(rest, Path(f"{base}.rest.log"), "2")
-    if code == 2:
-        pair.problems.append("続きが写しを使わなかった（.rest.log）")
+    series = ["--gate", "--series", f"{base}.resumed.jsonl"]
+    done, snap = 0, ""
+    pair.seconds["rest"] = 0.0
+    for number, end in enumerate([*pair.splits, pair.turns]):
+        last = end == pair.turns
+        args = ["--scenario", pair.scenario, "--seed", str(pair.seed), "--turns", str(end - done)]
+        args += series
+        if snap:
+            args += ["--load", snap]
+        if last:
+            args += ["--out", f"{base}.resumed.json"]
+        else:
+            # 切る所でも結果を書く（quick が結果と写しの両方を書くのと同じ形）
+            snap = f"{base}.t{end}.snap.json.gz"
+            args += ["--out", f"{base}.t{end}.json", "--save", snap]
+        if digests:
+            args += ["--digests", f"{base}.part{number}.digests"]
+        # 続きのプロセスは、文字列の hash の種を初めの分と変える
+        code, seconds = simulate(args, Path(f"{base}.part{number}.log"), str(number + 1))
+        pair.seconds["first" if number == 0 else "rest"] = (
+            pair.seconds.get("first" if number == 0 else "rest", 0.0) + seconds
+        )
+        if code == 2:
+            pair.problems.append(f"続きが写しを使わなかった（.part{number}.log）")
+            return
+        if not last and not Path(snap).exists():
+            pair.problems.append(f"{end} ターン目の写しを書かずに終わった（.part{number}.log）")
+            return
+        done = end
 
 
 def differences(a: Any, b: Any, path: str = "") -> list[str]:
@@ -193,7 +210,7 @@ def check(
     if a is None:
         pair.problems.append(f"通しの結果がない（{a_path.name}）")
     if b is None:
-        pair.problems.append("続きの結果がない（.rest.log）")
+        pair.problems.append("続きの結果がない（.part*.log）")
     if a is None or b is None:
         return
     if other_code:  # 通しは前の版の結果。指紋の欄は違って当たり前なので比べない
@@ -205,8 +222,8 @@ def check(
     found = differences(compared(a), compared(b))
     if found:
         pair.problems.append("結果の JSON が違う: " + " / ".join(found))
-    if (b.get("resumed") or {}).get("from") != pair.split:
-        pair.problems.append(f"続きの結果に resumed.from={pair.split} がない")
+    if (b.get("resumed") or {}).get("from") != pair.splits[-1]:
+        pair.problems.append(f"続きの結果に resumed.from={pair.splits[-1]} がない")
     a_series, b_series = Path(f"{base}.straight.jsonl"), Path(f"{base}.resumed.jsonl")
     if straight_dir is not None:
         a_series = a_path.with_suffix(".jsonl")
@@ -218,7 +235,8 @@ def check(
         pair.notes.append("時系列は比べていない（通しの時系列がない）")
     if digests and straight_dir is None:
         x = read_digests(Path(f"{base}.straight.digests"))
-        y = read_digests(Path(f"{base}.first.digests"), Path(f"{base}.rest.digests"))
+        parts = range(len(pair.splits) + 1)
+        y = read_digests(*(Path(f"{base}.part{n}.digests") for n in parts))
         wrong = sorted(t for t in x if x[t] != y.get(t))
         if wrong or len(x) != pair.turns:
             first = wrong[0] if wrong else "（行が足りない）"
@@ -235,28 +253,39 @@ def check(
         )
 
 
+def cuts_of(text: str, separator: str) -> tuple[int, ...]:
+    cuts = tuple(int(t) for t in text.split(separator))
+    if not cuts or list(cuts) != sorted(set(cuts)) or cuts[0] < 1:
+        raise SystemExit(f"切る所は 1 以上の数を小さい順に書いてください（{text}）")
+    return cuts
+
+
 def pairs_of(args: argparse.Namespace) -> list[Pair]:
     if args.pairs:
         out = []
         for text in args.pairs.split(","):
-            scenario, seed, turns, split = text.split(":")
-            out.append(Pair(scenario, int(seed), int(turns), int(split)))
+            scenario, seed, turns, cuts = text.split(":")
+            out.append(Pair(scenario, int(seed), int(turns), cuts_of(cuts, "+")))
         return out
+    splits = cuts_of(args.split, ",")
     keep = set(args.only.split(",")) if args.only else None
     return [
-        Pair(scenario, seed, turns, args.split)
+        Pair(scenario, seed, turns, splits)
         for scenario, seed, turns in measure.SETS[args.set]
-        if turns > args.split and (keep is None or scenario in keep)
+        if turns > splits[-1] and (keep is None or scenario in keep)
     ]
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--set", choices=sorted(measure.SETS), default="full")
-    parser.add_argument("--split", type=int, default=300, help="写しを書くターン（切る所）")
+    parser.add_argument(
+        "--split", default="300", help="写しを書くターン（切る所）。カンマで区切ると何回も切る"
+    )
     parser.add_argument("--only", help="場面の名前をカンマで区切って、その場面だけ")
     parser.add_argument(
-        "--pairs", help="場面:種:ターン:切る所 をカンマで区切って（--set の代わり）"
+        "--pairs",
+        help="場面:種:ターン:切る所 をカンマで区切って（--set の代わり。切る所は + でつなぐ）",
     )
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 1)
@@ -270,6 +299,8 @@ def main(argv: list[str] | None = None) -> int:
         help="--straight が別の版（main など）の結果のとき。指紋の欄を比べない",
     )
     args = parser.parse_args(argv)
+    if args.jobs < 1:
+        parser.error(f"--jobs は 1 以上にしてください（{args.jobs}）")
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     straight_dir = Path(args.straight) if args.straight else None
@@ -286,7 +317,7 @@ def main(argv: list[str] | None = None) -> int:
             work.append((run_straight, pair))
         if not (args.keep and Path(f"{base}.resumed.json").exists()):
             work.append((run_resumed, pair))
-    with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
+    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         for job in [pool.submit(run, pair, out, digests) for run, pair in work]:
             job.result()
     lines = ["| 組 | 結果 | 中身 |", "|---|---|---|"]

@@ -28,10 +28,10 @@
     python -m hakoniwa_core.simulate --scenario plan --load plan-s1-t300.snap.json.gz \\
         --turns 200 --gate --out plan-s1-t500.json
 
-続けてよいのは、同じ場面を同じ計算の中身（指紋）で回した写しだけです。違う写しに --out か
+続けてよいのは、同じ場面・同じ種を同じ計算の中身（指紋）で回した写しだけです。違う写しに --out か
 --series を付けると、何も回さずに終了コード 2 で止まります（使う側が通しで回し直す）。--series は、
-初めの分の時系列のファイルに書き足します（行数が写しの記録と合うときだけ）。--gate だけなら、
-これまでどおり写しの世界から新しい記録で続けます（崩れを調べる使い方）。
+初めの分の時系列のファイルに書き足します（行数と中身の指紋が写しの記録と合うときだけ）。
+--gate だけなら、これまでどおり写しの世界から新しい記録で続けます（崩れを調べる使い方）。
 """
 
 from __future__ import annotations
@@ -98,8 +98,21 @@ def load_snapshot(path: str) -> WorldState:
     return read_snapshot(path)[0]
 
 
+def _file_sha256(path: str) -> str:
+    """ファイルの中身の指紋（時系列は大きいので、少しずつ読む）。"""
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _resume_reason(
-    data: Mapping[str, Any], args: argparse.Namespace, scenario: str, people: float
+    data: Mapping[str, Any],
+    args: argparse.Namespace,
+    scenario: str,
+    people: float,
+    world: WorldState,
 ) -> str:
     """測りを続けられなければ、そのわけを返す。時系列はまだ開き直さない。
 
@@ -108,6 +121,10 @@ def _resume_reason(
     """
     if data.get("scenario") != scenario:
         return "場面が違う"
+    if args.seed is not None and data.get("seed") != args.seed:
+        return "種（seed）が違う"
+    if data.get("seed") != world.seed or data.get("turn") != world.turn:
+        return "測りの途中の状態が、写しの世界の種かターンと合わない"
     if data.get("code_fingerprint") != reuse.code_fingerprint(args.config):
         return "計算の中身の指紋（code_fingerprint）が違う"
     if data.get("people") != people:
@@ -120,15 +137,18 @@ def _resume_reason(
         if data.get("zones_every") != args.zones_every:
             return "町と村の内わけを書く間隔（zones_every）が違う"
     if args.series:
-        if data.get("series_lines") is None:
-            return "時系列の行数（series_lines）がない"
+        if data.get("series_lines") is None or data.get("series_sha256") is None:
+            return "時系列の行数と中身の指紋（series_lines・series_sha256）がない"
         try:
             with open(args.series, encoding="utf-8") as f:
                 lines = sum(1 for _ in f)
+            content = _file_sha256(args.series)
         except (OSError, UnicodeError):
             return "続きに使う時系列のファイルがないか、読めない"
         if lines != data["series_lines"]:
             return "時系列の行数が写しの series_lines と違う"
+        if content != data["series_sha256"]:  # 行数が同じでも、別の回の時系列には書き足さない
+            return "時系列の中身が写しの series_sha256 と違う"
     return ""
 
 
@@ -136,7 +156,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--islands", type=int, default=None, help="島の数（既定は場面の数、50）")
     parser.add_argument("--turns", type=int, default=10)
-    parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="世界の種（既定は 1）。--load のときは世界を作らず、写しの種と同じかを確かめるだけ",
+    )
     parser.add_argument("--config", default=None, help="game.yaml の場所")
     parser.add_argument("--autoplan", action="store_true", help="標準の計画で命令を並べる")
     parser.add_argument(
@@ -159,6 +184,7 @@ def main(argv: list[str] | None = None) -> int:
 
     scenario = measure.SCENARIOS[args.scenario or ("plan" if args.autoplan else "none")]
     islands = args.islands or scenario.islands
+    seed = 1 if args.seed is None else args.seed
     game = load_game(args.config)
     started = time.perf_counter()
     saved_measure = None
@@ -167,7 +193,7 @@ def main(argv: list[str] | None = None) -> int:
         islands = len(world.islands)
         print(f"写しを読みました: ターン {world.turn}、{islands} 島")
     else:
-        world = generate_world(args.seed, islands, game.config, game.defs)
+        world = generate_world(seed, islands, game.config, game.defs)
         print(f"世界を作りました: {islands} 島（{time.perf_counter() - started:.2f} 秒）")
     print(f"場面: {scenario.title}")
 
@@ -176,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
     people = scale.people(game.config)
     # 写しに測りの途中の状態があり、測り（関門・結果・時系列）を求めているなら、続きとして扱う
     if saved_measure is not None and (recorder is not None or args.series):
-        reason = _resume_reason(saved_measure, args, scenario.name, people)
+        reason = _resume_reason(saved_measure, args, scenario.name, people, world)
         if reason:
             if args.out or args.series:
                 print(f"写しの測りの途中の状態は使えません（{reason}）", file=sys.stderr)
@@ -242,13 +268,14 @@ def main(argv: list[str] | None = None) -> int:
                 "recorder": recorder.state() if recorder is not None else None,
                 "meter": meter.state() if meter is not None else None,
                 "series_lines": meter.lines if meter is not None and args.series else None,
+                "series_sha256": _file_sha256(args.series) if args.series else None,
             }
         save_snapshot(world, args.save, measure_state)
         print(f"写しを書きました: {args.save}")
     if args.out and recorder is not None and meter is not None:
         data = measure.result(
             scenario,
-            world.seed if resumed is not None else args.seed,
+            world.seed if resumed is not None else seed,
             world.turn if resumed is not None else args.turns,
             islands,
             recorder,
@@ -274,7 +301,7 @@ def main(argv: list[str] | None = None) -> int:
         for c in collapses:
             print("  " + c["line"])
             if not args.load:
-                print("    写し: " + measure.snapshot_command(scenario.name, args.seed, c["first"]))
+                print("    写し: " + measure.snapshot_command(scenario.name, seed, c["first"]))
         failures = recorder.failures(START, kinds=scenario.kinds)
         counted = "全部" if scenario.kinds is None else "、".join(scenario.kinds)
         print(f"目安から外れたところ（この場面で数える目安: {counted}）: {len(failures)} 件")
