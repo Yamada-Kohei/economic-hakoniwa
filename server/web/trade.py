@@ -92,6 +92,7 @@ FX_STATS = [
     "fx.reserves",
     "fx.swap.borrowed",
     "fx.swap.lent",
+    "fx.swap.waived",
     "bonds.foreign",
 ]
 # 国際収支の内訳（フェーズ3-3。誰にでも。hakoniwa_core/trade/balance.py）
