@@ -920,7 +920,13 @@ def clearance_sale(
     指値（運賃を払った後に残る額）は、1単位の変動費 floor（今の値段の値幅の下端 low のほうが高ければ
     そこ。一度に大きく下げない）から始め、値引きの分が売れ残るターンごとに market.band ずつ下げ、
     変動費の market.clearance_floor 倍で止める。在庫が倍を下回るか、値引きしない売り手（eligible が
-    偽: 国庫直轄・公定価格・値段の上限と下限の財）や持ち越せる期間のある物は、数え直す。"""
+    偽: 国庫直轄・公定価格・値段の上限と下限の財）は、数え直す。
+
+    持ち越せる期間のある物（食べ物など）は見切り売り（W-285）: 売れ行きの見込みのとおり古い順に
+    売れても、持ち越せる期間を過ぎて捨てることになる量（stock.doomed）を、待たずにそのターンから
+    出す（量は毎ターン数え直す）。捨てれば何も戻らないので、指値は変動費でなく値幅の下端から始め、
+    売れ残るターンごとに market.band ずつ下げ、下限は 1（原価を下回っても捨てるよりよい）。
+    値段の上限の財も出す（値引きは上限の内側。下限と公定価格の財は eligible が偽）。"""
     state = f.economy.get(CLEARANCE, {})
     settings = ctx.config.get("market")
     expected = f.economy.get("expected", {}).get(good)
@@ -930,7 +936,10 @@ def clearance_sale(
     # 1つの値段の板寄せに入れ、ふだんの値段で売れていた分まで安値に置き換えて倒産の連鎖が増えた。
     # 2026-11-11 からはアウトレット形: Market._outlet）
     on = bool(settings["clearance_ratio"])
-    if on and eligible and life is None and expected is not None and floor > 0:
+    perishable = life is not None and life > 0
+    if on and eligible and perishable and expected is not None:
+        line = held - stock.doomed(f.stock, good, ctx.turn, ctx.defs.goods, expected)
+    elif on and eligible and life is None and expected is not None and floor > 0:
         # 値引きを始めた後は、始めたときの線のまま見る（値引きの売りに先を越されて、ふだんの指値の
         # 分が売れず、売れ行きの見込みが縮んで線が下がり、在庫が全部値引きに回らないように）
         line = state.get(good, {}).get("line")
@@ -945,16 +954,19 @@ def clearance_sale(
         return None
     entry = f.economy.setdefault(CLEARANCE, {}).setdefault(good, {"turns": 0, "steps": 0})
     entry["turns"] += 1
-    if entry["turns"] < settings["clearance_turns"]:
+    if not perishable and entry["turns"] < settings["clearance_turns"]:
         return None
     if "start" not in entry:
-        entry["start"] = max(floor, low * (BASIS - freight) // BASIS)
-        entry["line"] = line
+        low_net = low * (BASIS - freight) // BASIS
+        entry["start"] = low_net if perishable else max(floor, low_net)
+        if not perishable:  # 見切り売りの量は毎ターン数え直す
+            entry["line"] = line
     elif entry.get("sold", 0) < entry.get("offered", 0):  # 前のターンの値引きの分が売れ残った
         entry["steps"] += 1
     entry["offered"] = entry["sold"] = 0
     price = entry["start"] * (1 - settings["band"]) ** entry["steps"]
-    net = max(round_money(floor * settings["clearance_floor"]), round_money(price))
+    least = 1 if perishable else round_money(floor * settings["clearance_floor"])
+    net = max(least, round_money(price))
     return held - line, -(-max(1, net) * BASIS // max(1, BASIS - freight))
 
 
@@ -2087,10 +2099,13 @@ class Market(IslandStage):
                     )
                     limit = seller_limit(ask, rate, high)
                     held = total - expiring
+                    # 見切り売り（持ち越せる期間のある物。W-285）は値段の上限の財も出す（値引きは
+                    # 上限の内側）。下限と公定価格の財は出さない
+                    perishable = bool(defs.goods[good].get("shelf_life"))
                     eligible = (
                         is_self_supporting(f)
                         and good not in official
-                        and not caps.get(good)
+                        and (perishable or not caps.get(good))
                         and not island.policy.price_floor.get(good)
                     )
                     sale = clearance_sale(ctx, f, good, held, floor, low, rate, eligible)
