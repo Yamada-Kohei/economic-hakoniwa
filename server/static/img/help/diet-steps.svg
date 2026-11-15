@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 640" width="480" height="640" font-family='"Noto Sans JP","Hiragino Kaku Gothic ProN","Meiryo","WenQuanYi Zen Hei",sans-serif' role="img" aria-labelledby="t d">
+<title id="t">家計の献立の決まり方</title><desc id="d">家計の層は、毎月要る栄養を、一番安く満たす献立と好みの献立の間で、食料費の上限に合わせて決める。好みの献立は、好みの重みと値段の割安・割高で品目に分ける。売りの量（家計の取り分）を上限にし、売り切れた品目の分はほかの品目で分け直してから、指値を付けて市場へ注文する。売りに出ていない品目も同じ式で買いたい量を記録する。飢えた家計は預金を足して買い上がる。</desc>
+<style>@media (prefers-color-scheme: dark){[fill="#ffffff"]{fill:#1d2026}[stroke="#ffffff"]{stroke:#1d2026}[fill="#fbfdff"]{fill:#20242b}[stroke="#fbfdff"]{stroke:#20242b}[fill="#f4f8ff"]{fill:#252b37}[stroke="#f4f8ff"]{stroke:#252b37}[fill="#c9d9ff"]{fill:#2c3a58}[stroke="#c9d9ff"]{stroke:#2c3a58}[fill="#eaf1ff"]{fill:#273047}[stroke="#eaf1ff"]{stroke:#273047}[fill="#eef7ec"]{fill:#1f2d24}[stroke="#eef7ec"]{stroke:#1f2d24}[fill="#fff1d0"]{fill:#3a2f18}[stroke="#fff1d0"]{stroke:#3a2f18}[fill="#e2f4e5"]{fill:#1d3324}[stroke="#e2f4e5"]{stroke:#1d3324}[fill="#fde7e7"]{fill:#3e2124}[stroke="#fde7e7"]{stroke:#3e2124}[fill="#fff8cc"]{fill:#3a3515}[stroke="#fff8cc"]{stroke:#3a3515}[fill="#102a6b"]{fill:#dfe6fb}[stroke="#102a6b"]{stroke:#dfe6fb}[fill="#1f4fa8"]{fill:#8fb4ff}[stroke="#1f4fa8"]{stroke:#8fb4ff}[fill="#6f8fd0"]{fill:#7b95d6}[stroke="#6f8fd0"]{stroke:#7b95d6}[fill="#5a6a90"]{fill:#a9b4cc}[stroke="#5a6a90"]{stroke:#a9b4cc}[fill="#8a4b00"]{fill:#f2b85c}[stroke="#8a4b00"]{stroke:#f2b85c}[fill="#1b6b2f"]{fill:#86d394}[stroke="#1b6b2f"]{stroke:#86d394}[fill="#a32020"]{fill:#ff8f8f}[stroke="#a32020"]{stroke:#ff8f8f}[fill="#8a7a00"]{fill:#e0cf55}[stroke="#8a7a00"]{stroke:#e0cf55}}</style>
+<rect width="480" height="640" fill="#ffffff"/>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<rect x="10" y="12" width="460" height="52" rx="6" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="240.0" y="33.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">要る栄養</text>
+<text x="240.0" y="52.8" font-size="13" text-anchor="middle" fill="#102a6b">層の人数 × 1人1か月に食べる量</text>
+<line x1="120" y1="64" x2="120" y2="96" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="360" y1="64" x2="360" y2="96" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="10" y="96" width="220" height="100" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="120.0" y="123.0" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">一番安く満たす献立</text>
+<text x="120.0" y="141.9" font-size="13" text-anchor="middle" fill="#102a6b">栄養あたりの値段の</text>
+<text x="120.0" y="160.8" font-size="13" text-anchor="middle" fill="#102a6b">安い品目から順に</text>
+<text x="120.0" y="179.7" font-size="13" text-anchor="middle" fill="#102a6b">売りの量まで詰める</text>
+<rect x="250" y="96" width="220" height="100" rx="6" fill="#e2f4e5" stroke="#1b6b2f" stroke-width="1.5"/>
+<text x="360.0" y="123.0" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">好みの献立</text>
+<text x="360.0" y="141.9" font-size="13" text-anchor="middle" fill="#102a6b">品目ごとの好みの重み</text>
+<text x="360.0" y="160.8" font-size="13" text-anchor="middle" fill="#102a6b">×（割高なら減らし、</text>
+<text x="360.0" y="179.7" font-size="13" text-anchor="middle" fill="#102a6b">割安なら増やす）</text>
+<rect x="250" y="206" width="220" height="64" rx="6" fill="#ffffff" stroke="#1b6b2f" stroke-width="1.5" stroke-dasharray="5 3"/>
+<text x="360.0" y="225.4" font-size="13" text-anchor="middle" fill="#102a6b" font-weight="bold">好みの重みは所得で替わる</text>
+<text x="360.0" y="242.9" font-size="13" text-anchor="middle" fill="#102a6b">豊かな層ほど穀物を減らし</text>
+<text x="360.0" y="260.5" font-size="13" text-anchor="middle" fill="#102a6b">肉・魚・食品を増やす</text>
+<line x1="120" y1="196" x2="120" y2="290" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<path d="M360,270 L360,280 L300,280 L300,290" fill="none" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="10" y="290" width="460" height="70" rx="6" fill="#f4f8ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="240.0" y="311.4" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">食料費の上限に合わせて、安い献立から好みの献立へ寄せる</text>
+<text x="240.0" y="330.3" font-size="13" text-anchor="middle" fill="#102a6b">上限が足りれば好みの献立どおり、足りなければその間</text>
+<text x="240.0" y="349.2" font-size="13" text-anchor="middle" fill="#102a6b">好みの献立で足りれば、残りの額は手元に残す</text>
+<line x1="240" y1="360" x2="240" y2="386" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="10" y="386" width="460" height="70" rx="6" fill="#fff1d0" stroke="#8a4b00" stroke-width="1.5"/>
+<text x="240.0" y="407.4" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">売りの量（家計の取り分）を上限にする</text>
+<text x="240.0" y="426.3" font-size="13" text-anchor="middle" fill="#102a6b">売り切れた品目で食べられない分は</text>
+<text x="240.0" y="445.2" font-size="13" text-anchor="middle" fill="#102a6b">残りの品目に同じ重みで分け直す</text>
+<line x1="240" y1="456" x2="240" y2="482" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="10" y="482" width="460" height="52" rx="6" fill="#c9d9ff" stroke="#6f8fd0" stroke-width="1.5"/>
+<text x="240.0" y="503.9" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">指値を付けて島の市場へ注文する</text>
+<text x="240.0" y="522.8" font-size="13" text-anchor="middle" fill="#102a6b">品不足なら、同じ食料費で買える量まで高く買う</text>
+<rect x="10" y="546" width="225" height="82" rx="6" fill="#ffffff" stroke="#6f8fd0" stroke-width="1.5" stroke-dasharray="5 3"/>
+<text x="122.5" y="565.6" font-size="13" text-anchor="middle" fill="#102a6b" font-weight="bold">売りに出ていない品目</text>
+<text x="122.5" y="583.2" font-size="13" text-anchor="middle" fill="#102a6b">同じ式で買いたい量を</text>
+<text x="122.5" y="600.7" font-size="13" text-anchor="middle" fill="#102a6b">記録し、作り手と商社を</text>
+<text x="122.5" y="618.3" font-size="13" text-anchor="middle" fill="#102a6b">呼ぶ合図にする</text>
+<rect x="245" y="546" width="225" height="82" rx="6" fill="#fde7e7" stroke="#a32020" stroke-width="1.5"/>
+<text x="357.5" y="565.6" font-size="13" text-anchor="middle" fill="#102a6b" font-weight="bold">飢えた家計</text>
+<text x="357.5" y="583.2" font-size="13" text-anchor="middle" fill="#102a6b">預金を足した食料費で</text>
+<text x="357.5" y="600.7" font-size="13" text-anchor="middle" fill="#102a6b">ほかの層の分にも手を</text>
+<text x="357.5" y="618.3" font-size="13" text-anchor="middle" fill="#102a6b">伸ばして買い上がる</text>
+</svg>
