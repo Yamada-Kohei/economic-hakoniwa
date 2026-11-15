@@ -245,7 +245,10 @@ thermal_power_plant:
   industry: energy
   terrain: [plain]
   construction: {turns: 5, labor: 600, materials: {building_materials: 25, steel: 10, machinery: 5}}
-  workers: {general: 550, engineer: 50}
+  # 働き手は電力会社 1 社分として数える（PW-xx）: 発電所の運転員・保守員（一般 16・技術者 8）に、
+  # 送電線と変電所の保守・配電・検針と料金の分（1 単位の電気あたり約 1.2 人。一般 24・技術者 12）を足す。
+  # ゲームには送配電と電気の販売をする施設がないので、ここで数える
+  workers: {general: 40, engineer: 20}
   priority: 8
   pollution: {amount: 6, radius: 2}
   factors: {infra: 0.4, education: 0.3}
@@ -269,7 +272,9 @@ hydro_power_plant:
   industry: energy
   terrain: [mountain]
   construction: {turns: 8, labor: 1000, materials: {building_materials: 60, steel: 10, machinery: 5}}
-  workers: {general: 270, engineer: 30}
+  # 電力会社 1 社分（火力と同じ数え方）: 発電所は遠隔で動かし、燃料も灰もないので見回りと保守の班だけ
+  # （一般 3・技術者 3）。送配電と販売の分（一般 15・技術者 9）は作る電気に比例し、火力と同じだけ要る
+  workers: {general: 18, engineer: 12}
   priority: 8
   factors: {infra: 0.2, education: 0.3, water: 1}
   water:

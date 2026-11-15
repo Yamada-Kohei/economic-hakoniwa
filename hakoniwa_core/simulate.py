@@ -9,6 +9,8 @@
 バランス調整の回2 から、--scenario で場面（標準の計画・命令なし・中央銀行を独立させた国・少ない島の
 世界。hakoniwa_core/measure.py）を選べます。--out で結果のまとめを JSON に（measure compare で
 比べる）、--series で島×ターンの時系列（失業の内わけなど）を JSON Lines に書きます。
+--digests で各ターンの終わりの指紋を JSON Lines に書き、measure digests でずれの始まりを
+調べられます。重い指紋の計算は、この指定があるときだけ毎ターン行います。
 
 崩れを調べるため（やり直しの報告の I5）、--save で最後のターンの世界を写しのファイルに書き、
 --load で写しから続けられます。同じ種・同じ版なら同じ世界になるので、崩れの初めの数ターン前まで
@@ -84,6 +86,9 @@ def main(argv: list[str] | None = None) -> int:
         "--series", default=None, help="島×ターンの時系列を書く JSON Lines のファイル"
     )
     parser.add_argument(
+        "--digests", default=None, help="各ターンの終わりの指紋を書く JSON Lines のファイル"
+    )
+    parser.add_argument(
         "--zones-every", type=int, default=12, help="時系列に町と村ごとの内わけを書く間隔（ターン）"
     )
     parser.add_argument("--save", default=None, help="最後のターンの世界の写しを書くファイル")
@@ -108,12 +113,16 @@ def main(argv: list[str] | None = None) -> int:
         series = None
         if args.series:
             series = stack.enter_context(open(args.series, "w", encoding="utf-8"))
+        digests = None
+        if args.digests:
+            digests = stack.enter_context(open(args.digests, "w", encoding="utf-8"))
         meter = None
         if args.out or series is not None:
             meter = measure.Measure(
                 world, game.defs, game.config, series, args.zones_every, scenario.war
             )
         per_turn = []
+        digest = None
         for _ in range(args.turns):
             measure.queue_scenario_orders(world, scenario, game.defs, game.config)
             report = game.engine.run_turn(world)
@@ -122,6 +131,9 @@ def main(argv: list[str] | None = None) -> int:
                 recorder.record(world)
             if meter is not None:
                 meter.record(world)
+            if digests is not None:
+                digest = world_digest(world)
+                digests.write(json.dumps({"turn": world.turn, "digest": digest}) + "\n")
     seconds = time.perf_counter() - started
     print(
         f"{args.turns} ターン: 1ターンの平均 {statistics.mean(per_turn) * 1000:.1f} ms、"
@@ -132,7 +144,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"人口の合計 {population}、施設の数 {facilities}")
     slowest = max(report.seconds, key=report.seconds.get) if report.seconds else "-"
     print(f"最後のターンで一番時間のかかった段: {slowest}")
-    digest = world_digest(world)
+    if digest is None:
+        digest = world_digest(world)
     print(f"ターン {world.turn} の状態の指紋: {digest}")
     if args.save:
         save_snapshot(world, args.save)
