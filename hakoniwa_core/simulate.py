@@ -16,23 +16,42 @@
 
     python -m hakoniwa_core.simulate --scenario plan --seed 1 --turns 137 --save s1-t137.json
     python -m hakoniwa_core.simulate --scenario plan --load s1-t137.json --turns 10 --gate
+
+測り（--gate・--out・--series）を付けて --save すると、写しに測りの途中の状態（関門の記録・測りの
+足し上げ・戦争の見張り）も入ります（C3 W-236 H-3）。その写しを --load して --out を付けると、
+残りのターンだけを回して、通しで回したのと同じ結果の JSON を書きます（違うのは seconds と、
+どこから続けたかを書く resumed の欄だけ）。quick（300 ターン）の最後の写しから full（500 ターン）
+の残りを回すのに使います。名前が .gz で終わる写しは gzip で読み書きします。
+
+    python -m hakoniwa_core.simulate --scenario plan --seed 1 --turns 300 --gate \\
+        --out plan-s1-t300.json --save plan-s1-t300.snap.json.gz
+    python -m hakoniwa_core.simulate --scenario plan --load plan-s1-t300.snap.json.gz \\
+        --turns 200 --gate --out plan-s1-t500.json
+
+続けてよいのは、同じ場面を同じ計算の中身（指紋）で回した写しだけです。違う写しに --out か
+--series を付けると、何も回さずに終了コード 2 で止まります（使う側が通しで回し直す）。--series は、
+初めの分の時系列のファイルに書き足します（行数が写しの記録と合うときだけ）。--gate だけなら、
+これまでどおり写しの世界から新しい記録で続けます（崩れを調べる使い方）。
 """
 
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 import statistics
 import sys
 import time
+from collections.abc import Mapping
 from contextlib import ExitStack
 from dataclasses import asdict
+from typing import Any
 
-from hakoniwa_core import measure
+from hakoniwa_core import measure, reuse, scale
 from hakoniwa_core.game import load_game
 from hakoniwa_core.gate import START, Recorder
-from hakoniwa_core.state import MarketRecord, WorldState
+from hakoniwa_core.state import MarketRecord, TradeRecord, WorldState
 from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.state.serialize import world_from_dict, world_to_dict
 
@@ -43,26 +62,74 @@ def world_digest(world: WorldState) -> str:
     return hashlib.sha256(data.encode()).hexdigest()
 
 
-def save_snapshot(world: WorldState, path: str) -> None:
-    """世界の写しを書く。標準の計画が読む前のターンの統計と市場の記録も一緒に書く（サーバーでは
-    これらは状態の写しでなく表にある）。"""
+def save_snapshot(
+    world: WorldState, path: str, measure_state: Mapping[str, Any] | None = None
+) -> None:
+    """世界の写しを書く。前のターンの統計・市場・約定と、測りの途中の状態も一緒に書く
+    （サーバーでは統計・市場・約定は状態の写しでなく表にある）。"""
     data = {
         "world": world_to_dict(world),
         "stats": {str(i.id): i.stats for i in world.islands.values()},
         "markets": {str(i.id): [asdict(m) for m in i.markets] for i in world.islands.values()},
+        "trades": {str(i.id): [asdict(t) for t in i.trades] for i in world.islands.values()},
     }
-    with open(path, "w", encoding="utf-8") as f:
+    if measure_state is not None:
+        data["measure"] = measure_state
+    opener = gzip.open if path.endswith(".gz") else open
+    with opener(path, "wt", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
 
 
-def load_snapshot(path: str) -> WorldState:
-    with open(path, encoding="utf-8") as f:
+def read_snapshot(path: str) -> tuple[WorldState, dict[str, Any] | None]:
+    """世界の写しと、あれば測りの途中の状態を読む。"""
+    opener = gzip.open if path.endswith(".gz") else open
+    with opener(path, "rt", encoding="utf-8") as f:
         data = json.load(f)
     world = world_from_dict(data["world"])
     for iid, island in world.islands.items():
         island.stats = dict(data["stats"].get(str(iid), {}))
         island.markets = [MarketRecord(**m) for m in data["markets"].get(str(iid), [])]
-    return world
+        island.trades = [TradeRecord(**t) for t in data.get("trades", {}).get(str(iid), [])]
+    return world, data.get("measure")
+
+
+def load_snapshot(path: str) -> WorldState:
+    """世界の写しだけを読む（これまでの呼び出し用）。"""
+    return read_snapshot(path)[0]
+
+
+def _resume_reason(
+    data: Mapping[str, Any], args: argparse.Namespace, scenario: str, people: float
+) -> str:
+    """測りを続けられなければ、そのわけを返す。時系列はまだ開き直さない。
+
+    続けてよいのは、同じ場面を同じ計算の中身で回した写しだけ（違えば通しで回し直す。回しすぎる
+    側に倒す）。国の大きさの倍は環境変数でも替わり、指紋に入らないので、別に確かめる。
+    """
+    if data.get("scenario") != scenario:
+        return "場面が違う"
+    if data.get("code_fingerprint") != reuse.code_fingerprint(args.config):
+        return "計算の中身の指紋（code_fingerprint）が違う"
+    if data.get("people") != people:
+        return "国の大きさの倍（people）が違う"
+    if (args.gate or args.out) and data.get("recorder") is None:
+        return "関門の記録の途中の状態（recorder）がない"
+    if args.out or args.series:
+        if data.get("meter") is None:
+            return "測りの途中の状態（meter）がない"
+        if data.get("zones_every") != args.zones_every:
+            return "町と村の内わけを書く間隔（zones_every）が違う"
+    if args.series:
+        if data.get("series_lines") is None:
+            return "時系列の行数（series_lines）がない"
+        try:
+            with open(args.series, encoding="utf-8") as f:
+                lines = sum(1 for _ in f)
+        except (OSError, UnicodeError):
+            return "続きに使う時系列のファイルがないか、読めない"
+        if lines != data["series_lines"]:
+            return "時系列の行数が写しの series_lines と違う"
+    return ""
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -94,8 +161,9 @@ def main(argv: list[str] | None = None) -> int:
     islands = args.islands or scenario.islands
     game = load_game(args.config)
     started = time.perf_counter()
+    saved_measure = None
     if args.load:
-        world = load_snapshot(args.load)
+        world, saved_measure = read_snapshot(args.load)
         islands = len(world.islands)
         print(f"写しを読みました: ターン {world.turn}、{islands} 島")
     else:
@@ -104,15 +172,33 @@ def main(argv: list[str] | None = None) -> int:
     print(f"場面: {scenario.title}")
 
     recorder = Recorder(world, game.defs, game.config) if args.gate or args.out else None
+    resumed = None
+    people = scale.people(game.config)
+    # 写しに測りの途中の状態があり、測り（関門・結果・時系列）を求めているなら、続きとして扱う
+    if saved_measure is not None and (recorder is not None or args.series):
+        reason = _resume_reason(saved_measure, args, scenario.name, people)
+        if reason:
+            if args.out or args.series:
+                print(f"写しの測りの途中の状態は使えません（{reason}）", file=sys.stderr)
+                return 2
+            print(f"写しの測りの途中の状態は使わない（{reason}）", file=sys.stderr)
+        else:
+            resumed = saved_measure
+            if recorder is not None:
+                recorder.restore(resumed["recorder"])
+            print(f"測りの途中の状態を読みました: ターン {resumed['turn']} から")
     with ExitStack() as stack:
         series = None
         if args.series:
-            series = stack.enter_context(open(args.series, "w", encoding="utf-8"))
+            mode = "a" if resumed is not None else "w"
+            series = stack.enter_context(open(args.series, mode, encoding="utf-8"))
         meter = None
         if args.out or series is not None:
             meter = measure.Measure(
                 world, game.defs, game.config, series, args.zones_every, scenario.war
             )
+            if resumed is not None:
+                meter.restore(resumed["meter"])
         per_turn = []
         for _ in range(args.turns):
             measure.queue_scenario_orders(world, scenario, game.defs, game.config)
@@ -122,7 +208,15 @@ def main(argv: list[str] | None = None) -> int:
                 recorder.record(world)
             if meter is not None:
                 meter.record(world)
+            # この3つは写しに入れず、次の run_turn の初めにも消える。その前の命令作り
+            # （queue_scenario_orders）が読んでも、通しと続きで同じ空の状態になるようにする。
+            # stats・markets・trades は写しに入るので消さない。
+            for island in world.islands.values():
+                island.scratch.clear()
+                island.journal.clear()
+                island.books.clear()
     seconds = time.perf_counter() - started
+    total_seconds = seconds + (resumed["seconds"] if resumed is not None else 0)
     print(
         f"{args.turns} ターン: 1ターンの平均 {statistics.mean(per_turn) * 1000:.1f} ms、"
         f"最大 {max(per_turn) * 1000:.1f} ms"
@@ -135,11 +229,34 @@ def main(argv: list[str] | None = None) -> int:
     digest = world_digest(world)
     print(f"ターン {world.turn} の状態の指紋: {digest}")
     if args.save:
-        save_snapshot(world, args.save)
+        measure_state = None
+        if recorder is not None or meter is not None:
+            measure_state = {
+                "scenario": scenario.name,
+                "seed": world.seed,
+                "turn": world.turn,
+                "code_fingerprint": reuse.code_fingerprint(args.config),
+                "people": people,
+                "zones_every": args.zones_every,
+                "seconds": total_seconds,
+                "recorder": recorder.state() if recorder is not None else None,
+                "meter": meter.state() if meter is not None else None,
+                "series_lines": meter.lines if meter is not None and args.series else None,
+            }
+        save_snapshot(world, args.save, measure_state)
         print(f"写しを書きました: {args.save}")
     if args.out and recorder is not None and meter is not None:
         data = measure.result(
-            scenario, args.seed, args.turns, islands, recorder, meter, seconds, digest, world
+            scenario,
+            world.seed if resumed is not None else args.seed,
+            world.turn if resumed is not None else args.turns,
+            islands,
+            recorder,
+            meter,
+            total_seconds,
+            digest,
+            world,
+            resumed={"from": resumed["turn"], "seconds": seconds} if resumed is not None else None,
         )
         with open(args.out, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=1)
