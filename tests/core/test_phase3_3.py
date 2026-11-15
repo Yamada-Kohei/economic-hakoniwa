@@ -1028,7 +1028,9 @@ def test_banks_plan_foreign_currency_only_when_it_pays_and_capital_is_free(game,
 def test_central_bank_order_buys_foreign_bonds_over_turns(game, base):
     world = copy.deepcopy(base)
     holder, issuer = _pair(world)
-    _give_fx(world, holder, ledger.CB, issuer.id, 200_000)
+    # 中央銀行の外貨は、貿易の段で商社の輸入の支払いにも売られる（国債の段より前）。その分を
+    # 売っても残る額を渡す（建国から 40 ターンの世界の輸入の多さで、200,000 では尽きることがある）
+    _give_fx(world, holder, ledger.CB, issuer.id, 2_000_000)
     holder.policy.foreign_bonds = {"cb": {str(issuer.id): 20_000}}
     bought = []
     run_checked(
