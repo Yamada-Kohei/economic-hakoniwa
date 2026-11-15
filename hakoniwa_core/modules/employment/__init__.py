@@ -1307,6 +1307,10 @@ class Employment(IslandStage):
             # 自然に辞めた人の分を雇い足さない
             idle = regular - dismissal.natural_leavers(config, prior)
             hold = max(hold, min(idle, fac.labor_demand(defs, f, ctx.turn)))
+        # 抱えるのは設計の人数（全力）まで: それを超える人は席がなく二度と要らない（人数の数え方を
+        # 変えた後に前の数え方で記録した要る人数が残っていても抱えない。FM-74 の後の倭国、LB-43）。
+        # 下限 least と違い設備の傷んだ分は引かない: 傷んだ設備は直せばまた要る人だから
+        hold = min(hold, fac.workers_of(defs, f))
         if need >= max(least, hold):  # 減らす速さの上限にも、抱える人数にもかからない
             f.economy.pop(dismissal.CARRY, None)
             return need, BOUND_DISMISSAL
