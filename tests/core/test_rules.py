@@ -516,7 +516,7 @@ def test_facility_hires_only_for_inputs_on_hand(game):
     stock.add(plant.stock, "wood", 3000, 0, game.defs.goods)
     run(game, island, ["employment", "production"])
     assert (plant.operating_rate, plant.status) == (250, "funds:wood")
-    assert format_log(game.defs, "status_input_price", {}) == "原料が割高"
+    assert format_log(game.defs, "status_input_price", {}) == "今の売り値では採算が合わない"
 
 
 def test_inputs_are_bought_ahead_of_a_rising_target(game):

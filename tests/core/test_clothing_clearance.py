@@ -287,7 +287,7 @@ def test_selling_off_keeps_the_line_it_started_with(game, warmed, clearance_on):
     assert again.quantity == cut.quantity and sum(o.quantity for o in rest) == 100 * Q
 
 
-def test_island_price_ignores_the_bargain_sale(game, warmed, clearance_on):
+def test_island_price_ignores_the_bargain_sale(game, warmed, clearance_on, monkeypatch):
     """値引きの分は2回目（アウトレット）で売れ、島の値段はふだんの板寄せ（1回目）の値段を残す
     （ほかの売り手の指値・採算の見方・家計のいつもの値段を在庫処分の安値で引き下げない）。"""
     world = copy.deepcopy(warmed)
@@ -303,6 +303,18 @@ def test_island_price_ignores_the_bargain_sale(game, warmed, clearance_on):
     f.economy[CLEARANCE][good]["line"] = 0
     f.economy[CLEARANCE][good]["turns"] = config.get("market.clearance_turns")
     before = island.economy.prices.get(good)
+    # ふだんの売り（値引きでない）の指値を控える。売り手の指値は前の値段に運賃を足した額なので、
+    # 世界によっては前の値段を少し超え、ふだんの板寄せはその指値で約定する
+    asks: list[int] = []
+    clear = Market._clear
+
+    def spy(self, island_, ctx, good_, books_by_good, *args, **kwargs):
+        if island_ is island and good_ == good:
+            book = books_by_good[good_]
+            asks.extend(o.limit for o, p in book.sells if not p.clearance and o.limit)
+        return clear(self, island_, ctx, good_, books_by_good, *args, **kwargs)
+
+    monkeypatch.setattr(Market, "_clear", spy)
     game.engine.run_turn(world)
     entry = f.economy.get(CLEARANCE, {}).get(good)
     record = next(m for m in island.markets if m.good == good)
@@ -311,9 +323,10 @@ def test_island_price_ignores_the_bargain_sale(game, warmed, clearance_on):
     assert record.price == island.economy.prices[good]
     assert record.price >= auction.band(before, 1000)[0]
     assert island.economy.prices[good] >= auction.band(before, 1000)[0]
-    # 値引きの売りで買い手が満たされたので、島の値段は前の値段より上がらない（値引きを除くと
-    # 買い手が満たされないことになり、値引きのあいだ毎ターン値幅ずつ上がっていた。11-10）
-    assert record.price <= before
+    # 値引きの売りで買い手が満たされたので、島の値段は前の値段（ふだんの売りの指値がそれより上なら
+    # その指値）より上がらず、買えなかった買い手の付け値までせり上がらない（値引きを除くと買い手が
+    # 満たされないことになり、値引きのあいだ毎ターン値幅ずつ上がっていた。11-10）
+    assert asks and record.price <= max(before, *asks)
 
 
 def test_selling_off_stops_when_the_ratio_is_zero(game, warmed, monkeypatch):
