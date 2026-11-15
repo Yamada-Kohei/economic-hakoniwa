@@ -211,7 +211,7 @@
 
 ## [5 施設と企業](05-firms.md)
 
-決まり 71 個、うち仮の決まりの表にあるもの 0 個。
+決まり 72 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -286,6 +286,7 @@
 | FM-69 | 店の参入（2026-11-12、W-261）: 民営の店の参入は、工場の参入と別に1島1ターン1… | 決定（2026-11-12、本人のカード「推しの全部」） | tests/core/test_retail_posted.py |
 | FM-70 | 町の店の枠（2026-11-12、W-261）: 町に入る商店の数は、町の段階の数（`settl`… | 決定（2026-11-12、本人のカード「推しの全部」） | tests/core/test_balance_round7.py、tests/core/test_retail_posted.py |
 | FM-71 | 段階の作り方で建てる農場（W-257）: 機械化・近代化の作り方を選んで農場を建てる命令は、初め… | 決定 | tests/core/test_farm_build_grade.py、tests/server/test_migration.py |
+| FM-74 | 発電所の働き手（2026-11-14、本人「電力会社としてだもんな」「全部一気にやっていい」）:… | 決定 | tests/core/test_power_staff.py |
 
 ## [6 国の財政と政策](06-finance.md)
 
@@ -719,7 +720,7 @@
 | GT-24 | 長い試し回し（測り・関門・夜の点検）で崩れが main より増えたら、増えた分を直してからマージ… | 決定 |  |
 | GT-25 | 規模の目標: 既定の 50 島で 1 回のターン更新を 5 分以内にする | 決定 | （未確認） |
 | GT-26 | 標準の計画は測りと自動の試験と開発用のサンプルの島だけで使い、サーバーの世界の国は動かさない（命… | 決定 | tests/core/test_gate.py |
-| GT-27 | 標準の計画は毎ターン上から見て最初に足りないもの（食料・発電・工事の資材・投入財・消費財・使って… | 決定 | tests/core/test_autoplan_budget.py、tests/core/test_gate.py |
+| GT-27 | 標準の計画は毎ターン上から見て最初に足りないもの（食料・発電・工事の資材・投入財・消費財・使って… | 決定 | tests/core/test_autoplan_budget.py、tests/core/test_gate.py、tests/core/test_infrastructure.py |
 | GT-28 | 標準の計画の世界の側: 貿易の始まった島ぜんぶで 1 つの誰でも入れる貿易圏を作る（決済通貨は人… | 決定 | tests/core/test_trade.py |
 | GT-29 | 標準の計画の飢饉の手: 食べ物の充足が下がった月は国営の農場を穀物に替え、国の倉庫の食べ物を出し… | 決定 | tests/core/test_balance_round5.py |
 | GT-37 | 標準の計画の財政の手: 国が賃金を払いきれなければ所得税と消費税を少しずつ上げ、ゆとりが戻れば建… | 決定 | tests/core/test_balance_round5.py |

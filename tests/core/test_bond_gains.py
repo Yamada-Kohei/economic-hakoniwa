@@ -92,7 +92,10 @@ def test_selling_a_bond_realizes_the_gain(game, warmed):
     island = island_of(world, "market")
     ctx = context(game, world)
     bank = _bond_bank(game, island, ctx.turn)
-    _shift_yields(island, -300)
+    # 利回りを 0 まで下げて、どの銘柄も取得原価より値上がりさせる（3 ポイント下げるだけだと、
+    # 標準の計画の建てる順が変わった 40 ターン目の世界では、高い値段で買った銘柄が原価に届かな
+    # かった。W-274）
+    _shift_yields(island, -10_000)
     edges = game.config.get("bonds.buckets")
     by_id = {b.id: b for b in island.bonds}
     held = Bonds._by_bucket(island, bank, ctx.turn, edges, by_id)
