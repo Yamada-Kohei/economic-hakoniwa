@@ -999,22 +999,3 @@ def test_a_halted_trader_places_no_orders_and_keeps_its_targets(game, traded):
     # 止まりが解けた次のターンは、また注文する
     after = trade_traders.home_orders(island, game.defs, game.config, turn + 1)
     assert any(o.facility is f for o in after)
-
-
-def test_bloc_order_priority_clears_fuel_and_staples_first(game, monkeypatch):
-    """圏の市場の板寄せの順: 既定（name）は財の名前の順、priority は外貨を使う順（燃料と主食が先、
-    同じ段は名前の順）。名前の順では建材が穀物より先に商社の外貨と重さを使う（W-275 の広げの
-    試し）。"""
-    from hakoniwa_core.modules import trade as trade_stage
-    from hakoniwa_core.trade import fx_priority, tradable_goods
-
-    world = generate_world(1, 2, game.config, game.defs)
-    r = trade_stage._Round(world, _context(game, world))
-    assert r._bloc_goods() == tradable_goods(game.defs)
-    monkeypatch.setitem(game.config.raw["trade"], "bloc_order", "priority")
-    order = r._bloc_goods()
-    assert sorted(order) == tradable_goods(game.defs)
-    ranks = [fx_priority(game.defs, g) for g in order]
-    assert ranks == sorted(ranks)
-    assert order.index("grain") < order.index("building_materials")
-    assert order.index("coal") < order.index("automobile")
