@@ -123,10 +123,10 @@ def test_state_facilities_are_repaired_from_the_construction_budget(game, base):
     island, f = island_with(world, game, OWNER_STATE)
     wear_down(game, f, 0.5)
     f.economy["target"] = fac.FULL
-    # 直す資材を国の倉庫に置く（設備の割合は一番減った資材で決まる。標準の計画の建てる順が変わり、
-    # 選ばれる施設が建材の品薄な島の製鉄所になって、市場で建材が買えずに直らなかった。W-274）
-    for good, qty in equipment.kit(game.defs, f.kind).items():
-        stock.add(island.warehouse, good, qty, world.turn, game.defs.goods)
+    # 直す資材を国の倉庫に置く（市場で品切れの資材があると、ほかの資材だけ買っても直らないので
+    # 待つ。建国から 40 ターンの世界の品切れのぐあいで、市場に資材が出ないことがある）
+    for good, want in equipment.wants(game.defs, game.config, f).items():
+        stock.add(island.warehouse, good, want, world.turn, game.defs.goods)
     capital = f.economy.get("capital", 0)
     before = equipment.condition(f)
     run_checked(game, world, 3)
