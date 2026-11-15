@@ -373,6 +373,9 @@ def test_standard_plan_prepares_for_the_merchants_leaving(game, warmed, monkeypa
     from hakoniwa_core.trade import merchant
 
     defs, config = game.defs, game.config
+    # 連鎖の口火（製鉄所と機械工場を早めに建てる。W-274）は別の試験で見る。ここでは外して、商人の
+    # 決まりのほかでは作る施設が挙がらない物を探す（機械工場を除くと、口火が機械工場を挙げる）
+    monkeypatch.setattr(autoplan, "_chain_starters", lambda *args: iter(()))
 
     def planned(island, share: float) -> list[tuple[str, str]]:
         monkeypatch.setattr(merchant, "taper", lambda *args: share)
