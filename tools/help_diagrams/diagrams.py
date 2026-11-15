@@ -17,6 +17,40 @@ WARM, WARM_BG = "#8a4b00", "#fff1d0"
 GOOD, GOOD_BG = "#1b6b2f", "#e2f4e5"
 BAD, BAD_BG = "#a32020", "#fde7e7"
 GREY = "#5a6a90"
+# 食べ物の品目の色（明るいときも暗いときも同じ中間の色。上に載せる文字は INK）
+GRAIN, FISH, MEAT, FOOD = "#e8c04a", "#5aa7e0", "#d9776f", "#9b8ae0"
+INK = "#14161a"
+TAKEN = "#9aa3b5"
+
+# 暗いとき（端末の明暗設定が暗）の色の置き換え。図は <img> で読むので、SVG の中の
+# @media (prefers-color-scheme: dark) で替える。地と枠と文字の色だけを夜の色にし、絵の中間の色は残す
+DARK = {
+    "#ffffff": "#1d2026",  # 地（黒に近い灰）
+    "#fbfdff": "#20242b",
+    PALE: "#252b37",
+    HEAD: "#2c3a58",
+    "#eaf1ff": "#273047",
+    "#eef7ec": "#1f2d24",
+    WARM_BG: "#3a2f18",
+    GOOD_BG: "#1d3324",
+    BAD_BG: "#3e2124",
+    "#fff8cc": "#3a3515",
+    FG: "#dfe6fb",
+    ACC: "#8fb4ff",
+    BORDER: "#7b95d6",
+    GREY: "#a9b4cc",
+    WARM: "#f2b85c",
+    GOOD: "#86d394",
+    BAD: "#ff8f8f",
+    "#8a7a00": "#e0cf55",
+}
+
+
+def dark_style():
+    rules = "".join(
+        f'[fill="{a}"]{{fill:{b}}}[stroke="{a}"]{{stroke:{b}}}' for a, b in DARK.items()
+    )
+    return f"<style>@media (prefers-color-scheme: dark){{{rules}}}</style>"
 
 
 def esc(s):
@@ -113,6 +147,7 @@ class Svg:
             f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {self.w} {self.h}" width="{self.w}" height="{self.h}" '
             f'font-family=\'{FONT}\' role="img" aria-labelledby="t d">\n'
             f'<title id="t">{esc(self.title)}</title><desc id="d">{esc(self.desc)}</desc>\n'
+            f"{dark_style()}\n"
             f'<rect width="{self.w}" height="{self.h}" fill="#ffffff"/>\n{defs}\n{body}\n</svg>\n'
         )
 
@@ -726,7 +761,7 @@ def food():
         480,
         576,
         "食べ物の作られ方と食べ方",
-        "農場が穀物を、漁港が魚を作る。牧場は穀物を餌に肉を、食品工場は穀物と電力から食品を作る。穀物・魚・肉・食品の4つは島の市場で売り買いされ、住民はどれでも食べ、兵は食品を食べ、国の倉庫は穀物を蓄える。売れ残りは日持ちを過ぎると捨てられる。",
+        "農場が穀物を、漁港が魚を作る。牧場は穀物を餌に肉を、食品工場は穀物と電力から食品を作る。穀物・魚・肉・食品の4つは島の市場で売り買いされ、住民は好みの献立で4つに分けて食べ、兵は食品を食べ、国の倉庫は穀物を蓄える。売れ残りは日持ちを過ぎると捨てられる。",
     )
     s.box(40, 36, 140, 46, ["農場", "平地で穀物を育てる"], fill=HEAD, size=14)
     s.box(320, 36, 150, 46, ["漁港", "海沿いで魚をとる"], fill=HEAD, size=14)
@@ -756,7 +791,7 @@ def food():
         420,
         146,
         80,
-        ["住民（家計）", "4つのどれでも", "お金に合わせて", "質の高い物へ"],
+        ["住民（家計）", "好みの献立で", "4つに分けて食べる", "豊かなほど穀物は減る"],
         fill=GOOD_BG,
         stroke=GOOD,
         size=14,
@@ -795,6 +830,190 @@ def food():
     return s
 
 
+def diet():
+    s = Svg(
+        480,
+        640,
+        "家計の献立の決まり方",
+        "家計の層は、毎月要る栄養を、一番安く満たす献立と好みの献立の間で、食料費の上限に合わせて決める。好みの献立は、好みの重みと値段の割安・割高で品目に分ける。売りの量（家計の取り分）を上限にし、売り切れた品目の分はほかの品目で分け直してから、指値を付けて市場へ注文する。売りに出ていない品目も同じ式で買いたい量を記録する。飢えた家計は預金を足して買い上がる。",
+    )
+    s.box(10, 12, 460, 52, ["要る栄養", "層の人数 × 1人1か月に食べる量"], fill=HEAD, size=14)
+    s.arrow(120, 64, 120, 96)
+    s.arrow(360, 64, 360, 96)
+    s.box(
+        10,
+        96,
+        220,
+        100,
+        ["一番安く満たす献立", "栄養あたりの値段の", "安い品目から順に", "売りの量まで詰める"],
+        fill=PALE,
+        size=14,
+    )
+    s.box(
+        250,
+        96,
+        220,
+        100,
+        ["好みの献立", "品目ごとの好みの重み", "×（割高なら減らし、", "割安なら増やす）"],
+        fill=GOOD_BG,
+        stroke=GOOD,
+        size=14,
+    )
+    s.box(
+        250,
+        206,
+        220,
+        64,
+        ["好みの重みは所得で替わる", "豊かな層ほど穀物を減らし", "肉・魚・食品を増やす"],
+        fill="#ffffff",
+        stroke=GOOD,
+        size=13,
+        dash="5 3",
+    )
+    s.arrow(120, 196, 120, 290)
+    s.path("M360,270 L360,280 L300,280 L300,290", head=True)
+    s.box(
+        10,
+        290,
+        460,
+        70,
+        [
+            "食料費の上限に合わせて、安い献立から好みの献立へ寄せる",
+            "上限が足りれば好みの献立どおり、足りなければその間",
+            "好みの献立で足りれば、残りの額は手元に残す",
+        ],
+        fill=PALE,
+        size=14,
+    )
+    s.arrow(240, 360, 240, 386)
+    s.box(
+        10,
+        386,
+        460,
+        70,
+        [
+            "売りの量（家計の取り分）を上限にする",
+            "売り切れた品目で食べられない分は",
+            "残りの品目に同じ重みで分け直す",
+        ],
+        fill=WARM_BG,
+        stroke=WARM,
+        size=14,
+    )
+    s.arrow(240, 456, 240, 482)
+    s.box(
+        10,
+        482,
+        460,
+        52,
+        ["指値を付けて島の市場へ注文する", "品不足なら、同じ食料費で買える量まで高く買う"],
+        fill=HEAD,
+        size=14,
+    )
+    s.box(
+        10,
+        546,
+        225,
+        82,
+        [
+            "売りに出ていない品目",
+            "同じ式で買いたい量を",
+            "記録し、作り手と商社を",
+            "呼ぶ合図にする",
+        ],
+        fill="#ffffff",
+        stroke=BORDER,
+        size=13,
+        dash="5 3",
+    )
+    s.box(
+        245,
+        546,
+        225,
+        82,
+        ["飢えた家計", "預金を足した食料費で", "ほかの層の分にも手を", "伸ばして買い上がる"],
+        fill=BAD_BG,
+        stroke=BAD,
+        size=13,
+    )
+    return s
+
+
+def diet_shortage():
+    s = Svg(
+        480,
+        560,
+        "主食が先に買われた月の献立の振り替え",
+        "品不足の月は、国営施設・工場・商社・国の倉庫の買いのうち家計より先に約定する分を、売りに出た量から引いた残りが家計の取り分になる。穀物が先に買われて取り分が好みの量に届かないと、届かない分の栄養を、店に残った魚・肉・食品に同じ重みで分け直す。食べる栄養の合計は変わらない。図の長さは例。",
+    )
+    s.text(240, 28, "1. 店に並んだ量と、家計の取り分", 15, bold=True)
+    goods = [("穀物", GRAIN), ("魚", FISH), ("肉", MEAT), ("食品", FOOD)]
+    heights = [150, 70, 60, 110]
+    taken = [100, 0, 0, 20]
+    base_y = 214
+    for i, ((name, color), h, t) in enumerate(zip(goods, heights, taken, strict=True)):
+        x = 40 + i * 110
+        top = base_y - h
+        if t:
+            s.add(
+                f'<rect x="{x}" y="{top}" width="70" height="{t}" fill="{TAKEN}" stroke="{FG}" stroke-width="1" stroke-dasharray="4 3"/>'
+            )
+        s.add(
+            f'<rect x="{x}" y="{top + t}" width="70" height="{h - t}" fill="{color}" stroke="{FG}" stroke-width="1"/>'
+        )
+        s.text(x + 35, base_y + 20, name, 14, bold=True)
+    s.add(f'<line x1="20" y1="{base_y}" x2="460" y2="{base_y}" stroke="{FG}" stroke-width="1.5"/>')
+    s.box(
+        150,
+        52,
+        170,
+        52,
+        ["先に約定する買い", "国の倉庫・工場・商社"],
+        fill="#ffffff",
+        stroke=GREY,
+        size=13,
+        dash="4 3",
+    )
+    s.arrow(150, 78, 112, 100, color=GREY)
+    s.arrow(320, 86, 368, 108, color=GREY)
+    s.text(240, 258, "色の部分が家計の取り分。灰色は家計より先に約定する", 13, color=GREY)
+
+    s.text(240, 300, "2. 家計の献立（食べる栄養の内訳）", 15, bold=True)
+    rows = [
+        ("ふだんの月", [45, 10, 10, 35]),
+        ("主食が先に買われた月", [25, 13.6, 13.6, 47.7]),
+    ]
+    for r, (label, parts) in enumerate(rows):
+        y = 330 + r * 84
+        s.text(20, y + 4, label, 14, "start", bold=True)
+        x = 20.0
+        total = sum(parts)
+        for (name, color), part in zip(goods, parts, strict=True):
+            w = 440 * part / total
+            s.add(
+                f'<rect x="{x:.1f}" y="{y + 14}" width="{w:.1f}" height="34" fill="{color}" stroke="{FG}" stroke-width="1"/>'
+            )
+            if w > 34:
+                s.text(round(x + w / 2, 1), y + 37, name, 13, color=INK, bold=True)
+            x += w
+    s.arrow(240, 384, 240, 410)
+    s.box(
+        10,
+        496,
+        460,
+        52,
+        [
+            "穀物で食べられない分を、魚・肉・食品に同じ重みで分け直す",
+            "食べる栄養の合計は同じ。品目を替えて食べ続ける",
+        ],
+        fill=GOOD_BG,
+        stroke=GOOD,
+        size=13,
+        first_bold=False,
+    )
+    return s
+
+
 DIAGRAMS = {
     "overview": overview,
     "turn-flow": turn,
@@ -807,6 +1026,8 @@ DIAGRAMS = {
     "trade-routes": trade,
     "bond-issue": bonds,
     "food-flow": food,
+    "diet-steps": diet,
+    "diet-shortage": diet_shortage,
 }
 
 
