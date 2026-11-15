@@ -280,6 +280,9 @@ def test_food_is_bought_before_wages_when_the_budget_is_short(game, world):
 
     def made() -> None:
         factory.economy.pop("closing", None)
+        # 売れ残りの古い在庫は外す（古い順に売れるので、家計の買う加工食品が少ない世界では、傷みかけ
+        # の食べ物を国の倉庫が買い、倉庫で傷んで兵の分が欠けた）
+        factory.stock.pop("food", None)
         stock.add(factory.stock, "food", 40 * QUANTITY_SCALE, world.turn, game.defs.goods)
 
     made()

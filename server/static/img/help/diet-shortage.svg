@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 560" width="480" height="560" font-family='"Noto Sans JP","Hiragino Kaku Gothic ProN","Meiryo","WenQuanYi Zen Hei",sans-serif' role="img" aria-labelledby="t d">
+<title id="t">主食が先に買われた月の献立の振り替え</title><desc id="d">品不足の月は、国営施設・工場・商社・国の倉庫の買いのうち家計より先に約定する分を、売りに出た量から引いた残りが家計の取り分になる。穀物が先に買われて取り分が好みの量に届かないと、届かない分の栄養を、店に残った魚・肉・食品に同じ重みで分け直す。食べる栄養の合計は変わらない。図の長さは例。</desc>
+<style>@media (prefers-color-scheme: dark){[fill="#ffffff"]{fill:#1d2026}[stroke="#ffffff"]{stroke:#1d2026}[fill="#fbfdff"]{fill:#20242b}[stroke="#fbfdff"]{stroke:#20242b}[fill="#f4f8ff"]{fill:#252b37}[stroke="#f4f8ff"]{stroke:#252b37}[fill="#c9d9ff"]{fill:#2c3a58}[stroke="#c9d9ff"]{stroke:#2c3a58}[fill="#eaf1ff"]{fill:#273047}[stroke="#eaf1ff"]{stroke:#273047}[fill="#eef7ec"]{fill:#1f2d24}[stroke="#eef7ec"]{stroke:#1f2d24}[fill="#fff1d0"]{fill:#3a2f18}[stroke="#fff1d0"]{stroke:#3a2f18}[fill="#e2f4e5"]{fill:#1d3324}[stroke="#e2f4e5"]{stroke:#1d3324}[fill="#fde7e7"]{fill:#3e2124}[stroke="#fde7e7"]{stroke:#3e2124}[fill="#fff8cc"]{fill:#3a3515}[stroke="#fff8cc"]{stroke:#3a3515}[fill="#102a6b"]{fill:#dfe6fb}[stroke="#102a6b"]{stroke:#dfe6fb}[fill="#1f4fa8"]{fill:#8fb4ff}[stroke="#1f4fa8"]{stroke:#8fb4ff}[fill="#6f8fd0"]{fill:#7b95d6}[stroke="#6f8fd0"]{stroke:#7b95d6}[fill="#5a6a90"]{fill:#a9b4cc}[stroke="#5a6a90"]{stroke:#a9b4cc}[fill="#8a4b00"]{fill:#f2b85c}[stroke="#8a4b00"]{stroke:#f2b85c}[fill="#1b6b2f"]{fill:#86d394}[stroke="#1b6b2f"]{stroke:#86d394}[fill="#a32020"]{fill:#ff8f8f}[stroke="#a32020"]{stroke:#ff8f8f}[fill="#8a7a00"]{fill:#e0cf55}[stroke="#8a7a00"]{stroke:#e0cf55}}</style>
+<rect width="480" height="560" fill="#ffffff"/>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<text x="240" y="28" font-size="15" text-anchor="middle" fill="#102a6b" font-weight="bold">1. 店に並んだ量と、家計の取り分</text>
+<rect x="40" y="64" width="70" height="100" fill="#9aa3b5" stroke="#102a6b" stroke-width="1" stroke-dasharray="4 3"/>
+<rect x="40" y="164" width="70" height="50" fill="#e8c04a" stroke="#102a6b" stroke-width="1"/>
+<text x="75" y="234" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">穀物</text>
+<rect x="150" y="144" width="70" height="70" fill="#5aa7e0" stroke="#102a6b" stroke-width="1"/>
+<text x="185" y="234" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">魚</text>
+<rect x="260" y="154" width="70" height="60" fill="#d9776f" stroke="#102a6b" stroke-width="1"/>
+<text x="295" y="234" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">肉</text>
+<rect x="370" y="104" width="70" height="20" fill="#9aa3b5" stroke="#102a6b" stroke-width="1" stroke-dasharray="4 3"/>
+<rect x="370" y="124" width="70" height="90" fill="#9b8ae0" stroke="#102a6b" stroke-width="1"/>
+<text x="405" y="234" font-size="14" text-anchor="middle" fill="#102a6b" font-weight="bold">食品</text>
+<line x1="20" y1="214" x2="460" y2="214" stroke="#102a6b" stroke-width="1.5"/>
+<rect x="150" y="52" width="170" height="52" rx="6" fill="#ffffff" stroke="#5a6a90" stroke-width="1.5" stroke-dasharray="4 3"/>
+<text x="235.0" y="74.2" font-size="13" text-anchor="middle" fill="#102a6b" font-weight="bold">先に約定する買い</text>
+<text x="235.0" y="91.7" font-size="13" text-anchor="middle" fill="#102a6b">国の倉庫・工場・商社</text>
+<line x1="150" y1="78" x2="112" y2="100" stroke="#5a6a90" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="320" y1="86" x2="368" y2="108" stroke="#5a6a90" stroke-width="2" marker-end="url(#ah)"/>
+<text x="240" y="258" font-size="13" text-anchor="middle" fill="#5a6a90">色の部分が家計の取り分。灰色は家計より先に約定する</text>
+<text x="240" y="300" font-size="15" text-anchor="middle" fill="#102a6b" font-weight="bold">2. 家計の献立（食べる栄養の内訳）</text>
+<text x="20" y="334" font-size="14" text-anchor="start" fill="#102a6b" font-weight="bold">ふだんの月</text>
+<rect x="20.0" y="344" width="198.0" height="34" fill="#e8c04a" stroke="#102a6b" stroke-width="1"/>
+<text x="119.0" y="367" font-size="13" text-anchor="middle" fill="#14161a" font-weight="bold">穀物</text>
+<rect x="218.0" y="344" width="44.0" height="34" fill="#5aa7e0" stroke="#102a6b" stroke-width="1"/>
+<text x="240.0" y="367" font-size="13" text-anchor="middle" fill="#14161a" font-weight="bold">魚</text>
+<rect x="262.0" y="344" width="44.0" height="34" fill="#d9776f" stroke="#102a6b" stroke-width="1"/>
+<text x="284.0" y="367" font-size="13" text-anchor="middle" fill="#14161a" font-weight="bold">肉</text>
+<rect x="306.0" y="344" width="154.0" height="34" fill="#9b8ae0" stroke="#102a6b" stroke-width="1"/>
+<text x="383.0" y="367" font-size="13" text-anchor="middle" fill="#14161a" font-weight="bold">食品</text>
+<text x="20" y="418" font-size="14" text-anchor="start" fill="#102a6b" font-weight="bold">主食が先に買われた月</text>
+<rect x="20.0" y="428" width="110.1" height="34" fill="#e8c04a" stroke="#102a6b" stroke-width="1"/>
+<text x="75.1" y="451" font-size="13" text-anchor="middle" fill="#14161a" font-weight="bold">穀物</text>
+<rect x="130.1" y="428" width="59.9" height="34" fill="#5aa7e0" stroke="#102a6b" stroke-width="1"/>
+<text x="160.1" y="451" font-size="13" text-anchor="middle" fill="#14161a" font-weight="bold">魚</text>
+<rect x="190.0" y="428" width="59.9" height="34" fill="#d9776f" stroke="#102a6b" stroke-width="1"/>
+<text x="220.0" y="451" font-size="13" text-anchor="middle" fill="#14161a" font-weight="bold">肉</text>
+<rect x="249.9" y="428" width="210.1" height="34" fill="#9b8ae0" stroke="#102a6b" stroke-width="1"/>
+<text x="355.0" y="451" font-size="13" text-anchor="middle" fill="#14161a" font-weight="bold">食品</text>
+<line x1="240" y1="384" x2="240" y2="410" stroke="#1f4fa8" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="10" y="496" width="460" height="52" rx="6" fill="#e2f4e5" stroke="#1b6b2f" stroke-width="1.5"/>
+<text x="240.0" y="518.2" font-size="13" text-anchor="middle" fill="#102a6b">穀物で食べられない分を、魚・肉・食品に同じ重みで分け直す</text>
+<text x="240.0" y="535.7" font-size="13" text-anchor="middle" fill="#102a6b">食べる栄養の合計は同じ。品目を替えて食べ続ける</text>
+</svg>
