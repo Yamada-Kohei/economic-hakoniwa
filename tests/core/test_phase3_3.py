@@ -684,7 +684,7 @@ def test_swap_borrowing_stops_at_the_quota(game, base):
     使い切ると、受け身の売りは持っている分だけになる。
     """
     world = copy.deepcopy(base)
-    issuer, borrower, _ = _bloc_trio(world)
+    issuer, borrower, third = _bloc_trio(world)
     c = issuer.id
     _clean_swaps(world, borrower)
     borrower.economy.gdp_history = [10**12] * 12
@@ -694,7 +694,9 @@ def test_swap_borrowing_stops_at_the_quota(game, base):
     assert swap.draw(world, game.config, borrower.id, c, 10_000) == 0
     borrower.economy.gdp_history = [10**12] * 12
     room = swap.issuer_room(world, issuer, game.config)
-    swap._book(world, c, borrower.id, c, room)  # 発行した国も上限まで作って貸した（残りは 0）
+    # 発行した国は上限まで作って、ほかの加盟国に貸した（残りは 0）。借り手自身に貸すと、作れる額の
+    # 大きさ（圏の GDP で決まる）しだいで借り手の上限まで食い、上限の確かめと混ざる
+    swap._book(world, c, third.id, c, room)
     assert swap.issuer_room(world, issuer, game.config) == 0
     assert swap.available(world, game.config, borrower.id, c) == sum(
         spare for _, spare in swap.lenders(world, game.config, borrower.id, c)

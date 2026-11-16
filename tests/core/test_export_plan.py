@@ -11,6 +11,7 @@ import copy
 
 import pytest
 
+from hakoniwa_core import stock
 from hakoniwa_core.economy import entity_of, export_plan
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.modules import trade as trade_stage
@@ -57,8 +58,19 @@ def room_of(island, game, good):
     return room
 
 
+def stale_cargo(island, config, good):
+    """商社が圏で売れ残った輸出の荷を持っている（売れずに数えたターンがある）。長く売れ残った荷は
+    島の市場に戻して売り、そのターンは買い足さない（traders.home_orders）ので、輸出の計画の買いを
+    見る試験には使えない。"""
+    return any(
+        stock.total(f.stock, good) > 0 and trade_traders.goods_of(f).get(good, {}).get("age", 0) > 0
+        for f in traders_of(island, config)
+    )
+
+
 def exportable(world, game, goods=("wood", "grain", "fish", "stone", "iron_ore")):
-    """余りがあり、外貨の圏へ輸出でき、行列がなく輸入もしていない (計画経済の島, 財)。"""
+    """余りがあり、外貨の圏へ輸出でき、行列がなく輸入もしておらず、売れ残った輸出の荷もない
+    (計画経済の島, 財)。"""
     config = game.config
     for island in planned_islands(world):
         found = trade_traders.prospects(island, game.defs, config)
@@ -71,6 +83,7 @@ def exportable(world, game, goods=("wood", "grain", "fish", "stone", "iron_ore")
                 and room_of(island, game, g) > 0
                 and not planning.state_of(island).get("queues", {}).get(g)
                 and g not in trade_traders.imported(island, config)
+                and not stale_cargo(island, config, g)
             ):
                 return island, g
     raise AssertionError("輸出できる余りのある財がない")

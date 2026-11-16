@@ -363,6 +363,42 @@ def _demolish(ctx: Context, p: dict[str, Any]) -> list[str]:
     ]
 
 
+def _force_relocate(ctx: Context, p: dict[str, Any]) -> list[str]:
+    """強制移住（W-286）: 出る所と着く所の人口・住める数・過密の度合いの変わりと、運ぶ費用と
+    政情の下がり。"""
+    from hakoniwa_core.modules.population import crowding, relocation
+    from hakoniwa_core.registry import OrderFailed
+
+    game = get_game()
+    try:
+        plan = relocation.plan(game.defs, game.config, ctx.state, p)
+    except OrderFailed:
+        return []  # 断るわけは命令の確かめ（check_order）と実行のときに出る
+    src_pop, src_cap, dst_pop, dst_cap = plan.before
+    n = plan.count
+
+    def side(pos: tuple[int, int], before: int, after: int, cap: int) -> str:
+        return (
+            f"({pos[0]}, {pos[1]}) 人口 {before:,} → {after:,}（住める数 {cap:,}、過密の度合い "
+            f"{crowding(before, cap):.2f} → {crowding(after, cap):.2f}）"
+        )
+
+    m = game.config.get("migration")
+    people = sum(t.population for t in ctx.state.tiles if t.population > 0)
+    drop = min(m["trapped_max"], m["trapped"] * n * 100 / max(1, people))
+    asked = p.get("count")
+    clipped = f"（頼んだ {asked:,} 人のうち）" if isinstance(asked, int) and asked > n else ""
+    leave = side(plan.source, src_pop, src_pop - n, src_cap)
+    reach = side(plan.target, dst_pop, dst_pop + n, dst_cap)
+    cost = display.money_text(plan.cost, ctx.currency)
+    return [
+        f"{n:,} 人{clipped}を強制的に移します。出る所 {leave}。着く所 {reach}。",
+        f"運ぶ費用は国庫から {cost}（道のり {plan.steps:g} マス）。"
+        f"移る月は働かず、政情の目標は 1 年のあいだ最大 {drop:.1f} 下がります（出国を止められて"
+        "出られない人と合わせて上限まで）。着いた先の過密には今の決まりが効きます。戻せません。",
+    ]
+
+
 def _disband_unit(ctx: Context, p: dict[str, Any]) -> list[str]:
     return [f"部隊（{p.get('unit')} 番）を解散します。兵は未配属に、装備は国の倉庫に戻ります。"]
 
@@ -415,6 +451,7 @@ RULES = {
     "set_retail_price": _retail_price,
     "set_export_subsidy": _export_subsidy,
     "demolish": _demolish,
+    "force_relocate": _force_relocate,
     "disband_unit": _disband_unit,
     "declare_war": _declare_war,
     "cancel_contract": _cancel_contract,

@@ -42,7 +42,7 @@
 
 ## [2 島と町と人口](02-population.md)
 
-決まり 59 個、うち仮の決まりの表にあるもの 0 個。
+決まり 60 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -105,10 +105,11 @@
 | PO-57 | 飢えている家計（前のターンに食べきれなかったか飢えの蓄えが残る層）は、売りに出ていない食料のそれ… | 決定（2026-11-02） | tests/core/test_famine_recovery.py |
 | PO-58 | 飢えの蓄えが、次のターンに全部食べれば 0 に戻る大きさ（`hunger_step(S,0)=0`… | 決定（2026-11-05） | tests/core/test_famine_recovery.py、tests/server/test_codex_turn300_fixes.py |
 | PO-59 | 幸福度の内訳（W-172）: 式 `happiness` は項目ごとの点を返す式 `happin`… | 決定（2026-11-14） | tests/core/test_happiness_parts.py |
+| PO-60 | 強制移住（W-286）: 権威主義・全体主義の国（体制の特色 `forced_relocatio`… | 決定（2026-11-16） | tests/core/test_forced_relocation.py、tests/server/test_order_confirm.py |
 
 ## [3 物と市場と値段](03-market.md)
 
-決まり 44 個、うち仮の決まりの表にあるもの 2 個。
+決まり 45 個、うち仮の決まりの表にあるもの 2 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -156,6 +157,7 @@
 | MK-42 | 店の付け値（2026-11-12、W-261）: 市場経済と混合経済の島の店（商店・百貨店 | 決定（2026-11-12、本人のカード「推しの全部」 | tests/core/test_retail_posted.py |
 | MK-43 | 市場経済・混合経済の島の国営の農場も、民営と同じ作物の見直し（`firms.recipe_tur`… | 決定 | tests/core/test_state_crops.py |
 | MK-44 | トラックの買い方（C1 | 決定（2026-11-15 実装） | tests/core/test_phase3_2.py |
+| MK-45 | 民営の工事の資材の買い上がり（2026-11-16、W-292 | 決定 | tests/core/test_site_bids.py |
 
 ## [4 仕事と家計](04-labor.md)
 
@@ -213,7 +215,7 @@
 
 ## [5 施設と企業](05-firms.md)
 
-決まり 73 個、うち仮の決まりの表にあるもの 0 個。
+決まり 74 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -290,6 +292,7 @@
 | FM-71 | 段階の作り方で建てる農場（W-257）: 機械化・近代化の作り方を選んで農場を建てる命令は、初め… | 決定 | tests/core/test_farm_build_grade.py、tests/server/test_migration.py |
 | FM-72 | 組の参入の値段と採算（W-26 の自動車の値段の外れ）: 原料が島で作られていない工場（自動車工… | 決定（2026-11-15） | tests/core/test_group_entry.py |
 | FM-74 | 発電所の働き手（2026-11-14、本人「電力会社としてだもんな」「全部一気にやっていい」）:… | 決定 | tests/core/test_power_staff.py |
+| FM-75 | 工事の資材をその場で作る（2026-11-16、W-289 | 決定 | tests/core/test_own_materials.py |
 
 ## [6 国の財政と政策](06-finance.md)
 
@@ -695,7 +698,7 @@
 
 ## [12 確かめ方](12-checks.md)
 
-決まり 46 個、うち仮の決まりの表にあるもの 0 個。
+決まり 47 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -745,6 +748,7 @@
 | GT-44 | 経済の決まりを足す・変えるときは、同じコードで決まりを入れた世界と入れない世界を比べてから既定に… | 決定 |  |
 | GT-45 | 測りの結果の置き場: `measure batch --store <置き場>`（または環境変数… | 決定 | tests/core/test_measure_store.py |
 | GT-46 | 1 島 300 ターンの関門の試験の、品不足への切り替え（2026-11-15 掲示板の会議）:… | 決定 | tests/core/test_gate.py |
+| GT-47 | 測りは、途中の写しから続きを回して、通しで回したのと同じ結果を出せるようにする（quick の … | 決定 | tests/core/test_measure_resume.py |
 
 ## [15 軍事と戦争](15-military.md)
 

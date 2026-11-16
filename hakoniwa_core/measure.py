@@ -55,7 +55,7 @@ from pathlib import Path
 from typing import IO, Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import gate, politics, reuse, stops, warscene
+from hakoniwa_core import gate, politics, reuse, snapstate, stops, warscene
 from hakoniwa_core.autoplan import plan_trade, plan_turn, plan_war, queue_orders
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
@@ -475,10 +475,23 @@ class Measure:
             i.id: initial_prices(defs, config, i.resources) for i in world.islands.values()
         }
         self.series = series
+        self.lines: int = 0
         self.zones_every = zones_every
         self.totals: dict[int, Counter] = {}  # ターン → 世界全体の合計
         self.fleet: dict[int, dict[int, float]] = {}  # 島 → ターン → 輸送船
         self.independent_since: dict[int, int] = {}  # 島 → 中央銀行が独立したターン
+
+    def state(self) -> dict[str, Any]:
+        """定義・設定・開いたファイルを除く、測りと見張りの途中の状態を写す。"""
+        return {
+            "meter": snapstate.dump(self, ("defs", "config", "series", "watch")),
+            "war": self.watch.state(),
+        }
+
+    def restore(self, data: Mapping[str, Any]) -> None:
+        """写しから測りと見張りの途中の状態を戻す。"""
+        snapstate.restore(self, data["meter"])
+        self.watch.restore(data["war"])
 
     def record(self, world: WorldState) -> None:
         self.watch.record(world)
@@ -501,6 +514,7 @@ class Measure:
                 if self.zones_every and world.turn % self.zones_every == 0:
                     line["zones"] = zones(island, self.defs, self.config)
                 self.series.write(json.dumps(line, ensure_ascii=False) + "\n")
+                self.lines += 1
         self.totals[world.turn] = total
 
     def window(self, start: int, end: int) -> dict[str, float]:
@@ -683,6 +697,7 @@ def result(
     seconds: float,
     digest: str,
     world: WorldState,
+    resumed: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """一回の結果のまとめ（JSON に書いて compare で比べる）。
 
@@ -703,7 +718,7 @@ def result(
             "gate": {"kinds": scenario.kinds, "failures": len(counted), "lines": counted},
             "measure": measure.window(gate.START, end),
         }
-    return {
+    data = {
         "scenario": scenario.name,
         "title": scenario.title,
         "seed": seed,
@@ -722,6 +737,9 @@ def result(
         "windows": windows,
         "curve": measure.curve(),
     }
+    if resumed is not None:
+        data["resumed"] = dict(resumed)
+    return data
 
 
 # --- まとめて回す・比べる ------------------------------------------------------------
