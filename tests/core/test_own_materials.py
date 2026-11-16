@@ -6,7 +6,7 @@ import pytest
 
 from hakoniwa_core import autoplan, stock
 from hakoniwa_core import facilities as fac
-from hakoniwa_core.economy.prices import construction_cost
+from hakoniwa_core.economy import productivity
 from hakoniwa_core.game import load_game
 from hakoniwa_core.modules.construction import build
 from hakoniwa_core.state import MarketRecord
@@ -49,32 +49,31 @@ def test_lumber_camp_cuts_its_own_wood_when_none_is_on_sale(game):
     assert set(own["materials"]) == {"wood"}
     assert "wood" not in fac.materials_of(game.defs, f)  # 木材は買わない
     assert own["labor"] > 0 and fac.site_labor(f) == own["labor"]
+    # 島の係数（生産性）は人手の側で 1 度だけ効く（林業場の産出と同じ係数）
+    recipe = game.defs.facilities["lumber_camp"]["recipes"]["default"]
+    rate = productivity.productivity(island, game.defs, game.config, recipe, 10, 10)
+    need = fac.own_material_labor(
+        game.defs, "lumber_camp", "default", "wood", own["materials"]["wood"], rate
+    )
+    turns = fac.total_progress(game.defs, f) // fac.FULL
+    assert own["labor"] == -(-need // turns)
     assert (
         fac.construction_labor(game.defs, f)
         > game.defs.facilities["lumber_camp"]["construction"]["labor"]
     )
 
 
-def test_buys_wood_when_on_sale_and_cheaper(game):
+def test_buys_wood_whenever_it_is_on_sale(game):
+    """売り（輸入を含む）があれば、人手が安くても買う（掲示板 #1115。作るか買うかは値段で
+    選ばない）。"""
     island = _forest_island(game)
-    x, y = 10, 10
-    island.economy.prices["wood"] = 1
-    island.economy.average_wage = 10**6  # 人手が高い
-    island.markets.append(MarketRecord("wood", 1, 0, 0, 10**6, "trade"))
+    island.economy.average_wage = 1  # 人手がとても安い
+    island.markets.append(MarketRecord("wood", 10**6, 0, 0, 1, "trade"))
     ctx = SimpleNamespace(defs=game.defs, config=game.config, turn=1)
-    build(island, {"facility": "lumber_camp", "x": x, "y": y}, ctx)
+    build(island, {"facility": "lumber_camp", "x": 10, "y": 10}, ctx)
     f = island.facilities[-1]
     assert fac.OWN_MATERIALS not in f.ext
     assert "wood" in fac.materials_of(game.defs, f)
-
-
-def test_cost_takes_the_cheaper_way(game):
-    defs = game.defs
-    dear = construction_cost(defs, "lumber_camp", {"wood": 10**9}, 100.0)
-    labor = defs.facilities["lumber_camp"]["construction"]
-    qty = fac.own_materials(defs, "lumber_camp")["wood"]
-    cut = fac.own_material_labor(defs, "lumber_camp", "default", "wood", qty) * 100.0
-    assert dear == pytest.approx(cut + labor["labor"] * labor["turns"] * 100.0)
 
 
 def test_state_plan_does_not_wait_for_wood_to_build_a_lumber_camp(game):
@@ -100,6 +99,7 @@ def test_lumber_camp_is_built_without_any_wood_and_then_supplies_wood(game):
         f.workers = fac.construction_labor(game.defs, f)  # 雇えた分（雇用の段の代わり）
         Construction().run_island(island, ctx)
     assert f.built and stock.total(f.stock, "wood") == 0
+    assert island.tile(10, 10).terrain == "forest"  # 森を減らす仕組みは今のコードにないので減らない
     assert fac.OWN_MATERIALS not in f.ext
     # 建った伐採場が動けば、島に木材が出る
     f.status = ""
