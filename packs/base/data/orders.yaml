@@ -78,6 +78,19 @@ build_housing:
       floors: {type: integer, minimum: 1}   # 足す床の数（最低の広さで住める人数）。level と、どちらか1つを書く
       level: {type: string}                 # 床を届かせる段階の名前（その段階の上限まで。settlements.yaml）
 
+force_relocate:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [x, y, to_x, to_y, count]
+    additionalProperties: false
+    properties:
+      x: {type: integer, minimum: 0}        # 出る所（過密の町か、住宅地のないマス）
+      y: {type: integer, minimum: 0}
+      to_x: {type: integer, minimum: 0}     # 着く所（今ある町）
+      to_y: {type: integer, minimum: 0}
+      count: {type: integer, minimum: 1}    # 移す人数（過密の分まで）
+
 demolish:
   admin_cost: 1
   payload:

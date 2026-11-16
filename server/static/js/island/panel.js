@@ -370,6 +370,7 @@ export class TilePanel {
     const isHousing = f.kind === this.defs.housing;
     const parts = [];
     if (isHousing) parts.push(this.housingForm(f));
+    if (isHousing && f.relocate && f.crowded > 0) parts.push(this.relocateForm(f));
     if (isHousing && f.shop_slots) {
       // 町の商店（回7）: 町のマスを選んで建てる。入る数は町の段階で決まる
       const full = (f.shops || 0) >= f.shop_slots;
@@ -411,6 +412,23 @@ export class TilePanel {
         <h4>${heading}</h4>
         <p class="hint">国が住宅費の予算で資材を市場で買い、毎月少しずつ床を足します。住む人は国の床の家賃を国庫に払います。通勤圏に空いた平地があっても、高層の段階まで育てられます。</p>
         <label>足す床（最低の広さで住める人数） <input name="floors" type="number" min="1" step="1" required></label>
+        <button type="submit">命令に追加</button>
+      </form>`;
+  }
+
+  /** 強制移住（命令 force_relocate。W-286）。権威主義・全体主義の国で、過密の町の人を指した町へ移す。 */
+  relocateForm(f) {
+    const towns = (this.map.facilities || [])
+      .filter((g) => g.kind === this.defs.housing && !(g.x === this.tile.x && g.y === this.tile.y))
+      .map((g) => `<option value="${g.x},${g.y}">${escapeHtml(this.defs.settlements?.[g.level]?.name || "町")} (${g.x}, ${g.y})</option>`)
+      .join("");
+    if (!towns) return "";
+    return `
+      <form class="actions" data-form="relocate">
+        <h4>強制移住（住める数を超えた ${f.crowded.toLocaleString()} 人まで）</h4>
+        <p class="hint">国が運ぶ費用を国庫から運送業に払い、指した町へ移します。移る月は働かず、1 年のあいだ政情の目標が下がります。着いた町が住める数を超えれば、そこが過密になります。空きのある町へは、命じなくても人が自分で移ります。</p>
+        <label>移す先 <select name="target">${towns}</select></label>
+        <label>人数 <input name="count" type="number" min="1" max="${f.crowded}" step="1" value="${f.crowded}" required></label>
         <button type="submit">命令に追加</button>
       </form>`;
   }
@@ -650,6 +668,9 @@ export class TilePanel {
       this.addOrder("build", payload);
     } else if (form.dataset.form === "place") {
       if (name) this.addOrder("rename_place", { x, y, name });
+    } else if (form.dataset.form === "relocate") {
+      const [toX, toY] = String(data.get("target")).split(",").map(Number);
+      this.addOrder("force_relocate", { x, y, to_x: toX, to_y: toY, count: Math.round(Number(data.get("count"))) });
     } else if (form.dataset.form === "housing") {
       this.addOrder("build_housing", { x, y, floors: Math.round(Number(data.get("floors"))) });
     }

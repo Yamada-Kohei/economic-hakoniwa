@@ -30,9 +30,10 @@ def test_random_orders_pass_the_same_check_as_the_screen(game):
     rng = random.Random(1)
     maker = nightly.OrderMaker(game, world, rng)
     kinds = set()
-    # 命令の種類が増えても1種類あたりの引く回数が減らないように、回数は種類の数の6倍（前は 300、
-    # 4倍。4倍では種類を1つ足すと引く順がずれ、通る命令の取りこぼしが余裕の 13 を超えた。PL-62）
-    for _ in range(len(maker.kinds) * 6):
+    # 命令の種類が増えても1種類あたりの引く回数が減らないように、回数は種類の数の10倍（前は 300、
+    # 4倍、6倍。種類を1つ足すと引く順がずれ、6倍では強制移住 W-286 を足したときに国有化・決算の
+    # 扱い・輸出の計画の3つを引き損ねて余裕の 13 を超えた。PL-62。10倍でも 1 秒ほど）
+    for _ in range(len(maker.kinds) * 10):
         island = world.islands[rng.choice(world.island_ids())]
         orders, errors = maker.orders(island, 2)
         assert errors == []
