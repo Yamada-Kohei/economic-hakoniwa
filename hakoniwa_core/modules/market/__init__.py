@@ -661,6 +661,11 @@ def hungry_food_orders(
     全部を食費の限りに収める（2026-11-10。前は最初の段を飢える前の値段の数倍で取り置いて食費を使い
     切り、ふだんの値段の何倍もの食費がある層でも要る量の半分しか注文せずに飢えた。約定は板寄せの
     値段なので、指値を高く置いても払う額は変わらず、取り置きだけが注文の量を削っていた）。
+    今の値幅の上端でも全部は買えないとき（食費の限りがその額より少ない）は、上乗せをせず、上端の
+    指値で食費の限りいっぱいまで量を注文する（2026-11-15。W-280。前は食費の限りが 6% 足りない
+    だけで、最初の段を飢える前の値段の数倍で取り置いて要る量の 17% しか注文せず、食費の 8 割近くを
+    残したまま飢えた。飢えた家計は食費を使い切って量を確保し、高値を付けて買い負かすのはお金に
+    余裕のある家計。食費の限りが増えるほど上乗せが戻るので、注文の量に崖がない）。
     """
     if need <= 0 or budget <= 0:
         return []
@@ -706,8 +711,10 @@ def hungry_food_orders(
 
     full = total(lambda limits, g: limits[g])
     low = total(lambda limits, g: min(limits[g], menu.limits[g]))
-    if low < budget < full:  # 上乗せを同じ割合で縮めて、要る量の全部を食費の限りに収める
-        keep = (budget - low) / (full - low)
+    if budget < full and low < full:
+        # 上乗せを同じ割合で縮めて、要る量の全部を食費の限りに収める。今の値幅の上端でも全部は
+        # 買えないとき（budget <= low）は上乗せを 0 にして、上端で買えるだけの量を注文する
+        keep = max(0.0, (budget - low) / (full - low))
         for _, _, limits in stages:
             for g in basket:
                 base = min(limits[g], menu.limits[g])

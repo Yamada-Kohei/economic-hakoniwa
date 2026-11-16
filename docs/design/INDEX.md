@@ -42,7 +42,7 @@
 
 ## [2 島と町と人口](02-population.md)
 
-決まり 59 個、うち仮の決まりの表にあるもの 0 個。
+決まり 60 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -105,6 +105,7 @@
 | PO-57 | 飢えている家計（前のターンに食べきれなかったか飢えの蓄えが残る層）は、売りに出ていない食料のそれ… | 決定（2026-11-02） | tests/core/test_famine_recovery.py |
 | PO-58 | 飢えの蓄えが、次のターンに全部食べれば 0 に戻る大きさ（`hunger_step(S,0)=0`… | 決定（2026-11-05） | tests/core/test_famine_recovery.py、tests/server/test_codex_turn300_fixes.py |
 | PO-59 | 幸福度の内訳（W-172）: 式 `happiness` は項目ごとの点を返す式 `happin`… | 決定（2026-11-14） | tests/core/test_happiness_parts.py |
+| PO-60 | 強制移住（W-286）: 権威主義・全体主義の国（体制の特色 `forced_relocatio`… | 決定（2026-11-16） | tests/core/test_forced_relocation.py、tests/server/test_order_confirm.py |
 
 ## [3 物と市場と値段](03-market.md)
 
@@ -204,7 +205,7 @@
 | LB-39 | 売りに出ていたのに家計が1つも買わないターンが `household.reprice_turns`… | 決定（回7 後半 | tests/core/test_balance_round7b.py |
 | LB-40 | 計画経済の島の施設の賃金は、国が決める: 物価の上がった分と人手の足りなさでは動かさず（LB-0… | 決定（2026-11-01 の価格の決まり方の見直し） | tests/core/test_pricing_fix1.py |
 | LB-41 | 資本家階級は所得のうち使う割合も、財産から取り崩す割合も働く層より小さい（上位1%は所得の5割ほ… | 決定（2026-11-03） | tests/core/test_firm_founding_three.py |
-| LB-42 | 資本家階級の人数の上限を、人口の段で亡くなった人を引いた後に数え直して層に持ち、人数を割り振るど… | 決定（2026-11-08） | tests/core/test_owners_cap.py |
+| LB-42 | 資本家階級の人数の上限を、人口の段で亡くなった人を引いた後に数え直して層に持ち、人数を割り振るど… | 決定（2026-11-08、式は 2026-11-15） | tests/core/test_owners_cap.py |
 | LB-43 | 解雇の決まり（2026-11-10、W-251）: 施設（民営・国営の独立採算・国庫直轄 | 決定（2026-11-10 | tests/core/test_dismissal.py |
 | LB-44 | 衣料は持ち物（2026-11-10、W-26 の直し）: 家計の層は衣料を1人あたりの持つ量（``… | 決定（2026-11-10 | tests/core/test_clothing_clearance.py |
 | LB-45 | 国庫の項目の予算が足りないときの分け方（2026-11-10 | 決定（2026-11-10 | tests/core/test_public_expansion.py、tests/core/test_staff_plan.py |
