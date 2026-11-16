@@ -393,7 +393,9 @@ def _check_peg(
 ) -> None:
     """固定相場の確かめ: 持っている外貨を全部売っても、上の端より高い買いが残ったか、レートが上の端
     を超えた（準備が尽きた）なら、固定を外して変動相場に戻し、ログで知らせる。"""
-    if not peg.defends or fxmoney.holding(island, ledger.CB, currency) > 0:
+    have = fxmoney.holding(island, ledger.CB, currency)
+    # 決済で自国通貨の最小単位に届かない端数は、相場の防衛に使えない。
+    if not peg.defends or to_own(island, currency, have) > 0:
         return
     sold_all = peg.sell_index is None or result.sold[peg.sell_index] >= (
         book.sells[peg.sell_index][0].quantity
