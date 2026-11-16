@@ -14,10 +14,16 @@ from __future__ import annotations
 import gzip
 import json
 import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
 from hakoniwa_core import measure, reuse
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools" / "measure"))
+
+import same_results  # noqa: E402
 
 SHORT, LONG = ("small", 1, 3), ("small", 1, 5)
 SHORT_NAME, LONG_NAME = "small-s1-t3", "small-s1-t5"
@@ -420,6 +426,15 @@ def test_a_resumed_batch_gives_the_same_result_as_a_straight_batch(tmp_path, set
     assert (tmp_path / "b" / f"{LONG_NAME}.jsonl").read_bytes() == (
         tmp_path / "c" / f"{LONG_NAME}.jsonl"
     ).read_bytes()
+    # フォルダどうしを比べる道具（家の計算機で full を比べるのに使う）でも同じ
+    lines, failed = same_results.check(tmp_path / "b", tmp_path / "c")
+    assert failed == 0 and f"| {LONG_NAME} | 同じ |" in "\n".join(lines)
+    assert "3 ターン目から続き" in "\n".join(lines) and "時系列も同じ" in "\n".join(lines)
+    changed = straight | {"digest": "x"}
+    (tmp_path / "c" / f"{LONG_NAME}.json").write_text(json.dumps(changed), encoding="utf-8")
+    lines, failed = same_results.check(tmp_path / "b", tmp_path / "c")
+    assert failed == 1 and ".digest" in "\n".join(lines)
+    assert same_results.check(tmp_path / "b", tmp_path / "a")[1] == 2  # 組が片方にしかない
     # 置き場から写しても同じ結果
     assert measure.batch([LONG], tmp_path / "d", 1, True, store=root) == 0
     assert read(tmp_path / "d" / f"{LONG_NAME}.json") == resumed
