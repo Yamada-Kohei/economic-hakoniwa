@@ -768,6 +768,8 @@ class _Round:
                     # 受け身の売りに足りない分は、中央銀行どうしの融通で借りる（swap.py）
                     borrow_room=swap.available(self.world, self.config, i, currency),
                     borrow=partial(swap.draw, self.world, self.config, i, currency),
+                    damp=bool(self.config.get("fx.damp_fills")),
+                    dealer_tiers=int(self.config.get("fx.dealer_tiers")),
                 )
                 reference = fxrates.rate(island, currency)
                 for entity in sorted(payers):
