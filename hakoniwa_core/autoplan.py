@@ -887,7 +887,7 @@ def _materials_ok(island: IslandState, defs: Defs, config: GameConfig, kind: str
     keep = {} if outputs & first else _chain_keep(island, defs, config)
     short = {g for g, qty in reserved.items() if stock.total(island.warehouse, g) < qty}
     helps = bool(outputs & short)
-    for good, qty in defs.facilities[kind]["construction"].get("materials", {}).items():
+    for good, qty in _bought_materials(defs, kind).items():
         have = stock.total(island.warehouse, good) - reserved.get(good, 0) - keep.get(good, 0)
         if have >= qty or good in made:
             continue
@@ -915,7 +915,7 @@ def _chain_keep(island: IslandState, defs: Defs, config: GameConfig) -> dict[str
     keep: dict[str, int] = {}
     for good in sorted(_missing_materials(island, defs)):
         for kind, _ in _producers(defs, config, island, good):
-            for g, qty in defs.facilities[kind]["construction"].get("materials", {}).items():
+            for g, qty in _bought_materials(defs, kind).items():
                 if g not in made:
                     keep[g] = max(keep.get(g, 0), qty)
             break
@@ -969,7 +969,7 @@ def _chain_starters(
         return first[good]
 
     def materials(c: tuple[str, str] | None) -> set[str]:
-        return set(defs.facilities[c[0]]["construction"].get("materials", {})) if c else set()
+        return set(_bought_materials(defs, c[0])) if c else set()
 
     starters = {}
     for good in sorted(_missing_materials(island, defs)):
@@ -1254,7 +1254,7 @@ def _build_or_supply(
     present = {good for f in island.facilities for good in fac.recipe_of(defs, f)["outputs"]}
     lacking = [
         good
-        for good, qty in sorted(defs.facilities[kind]["construction"].get("materials", {}).items())
+        for good, qty in sorted(_bought_materials(defs, kind).items())
         if good not in present and stock.total(island.warehouse, good) < qty
     ]
     if lacking:
@@ -1267,7 +1267,18 @@ def _build_or_supply(
 
 
 def _materials_of(defs: Defs, kind: str) -> set[str]:
-    return set(defs.facilities[kind]["construction"].get("materials", {}))
+    return set(_bought_materials(defs, kind))
+
+
+def _bought_materials(defs: Defs, kind: str) -> dict[str, int]:
+    """施設 kind の工事の資材のうち、買うか倉庫から出す物（その場で作れる資材を除く。W-289。森の
+    伐採場は木材がなくても、切った木で建てられる）。"""
+    own = fac.own_materials(defs, kind)
+    return {
+        g: q
+        for g, q in defs.facilities[kind]["construction"].get("materials", {}).items()
+        if g not in own
+    }
 
 
 def _in_hand(
@@ -1282,7 +1293,7 @@ def _in_hand(
     reserved = _reserved_materials(island, defs)
     made = _made(island, defs)
     keep = keep or {}
-    for good, qty in defs.facilities[kind]["construction"].get("materials", {}).items():
+    for good, qty in _bought_materials(defs, kind).items():
         have = stock.total(island.warehouse, good) - reserved.get(good, 0) - keep.get(good, 0)
         if have < qty and good not in made:
             return False
