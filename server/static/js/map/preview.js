@@ -39,6 +39,12 @@ function buildMap(defs) {
   const office = Object.keys(defs.facilities).find((k) => defs.facilities[k].category === "admin");
   const sample = Object.keys(defs.facilities).find((k) => defs.facilities[k].category === "industry");
   items.push({ label: "工事中", terrain: "plain", facility: { kind: sample, built: false } });
+  // 工事中の絵を種類で分けた施設（theme.construction_looks）は、種類ごとに 1 つずつ並べる
+  const looks = defs.theme?.construction_looks || {};
+  for (const look of new Set(Object.values(looks))) {
+    const kind = Object.keys(looks).find((k) => looks[k] === look && defs.facilities[k]);
+    if (kind) items.push({ label: `工事中（${defs.facilities[kind].name}）`, terrain: landTerrain(defs.facilities[kind]), facility: { kind, built: false } });
+  }
   items.push({ label: "止まっている", terrain: "plain", facility: { kind: sample, built: true, rate: 0, status: "no_input" } });
   items.push({ label: "首都", terrain: "plain", facility: { kind: office, built: true }, capital: true });
   items.push({ label: "送電線", terrain: "plain", power: true });

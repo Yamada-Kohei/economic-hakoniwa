@@ -4566,6 +4566,88 @@ def lot_fence(a: float, b: float, n: int = 2, h: float = 2.6) -> list[Prim]:
     return prims
 
 
+def site_hut(u0: float, v0: float, u1: float, v1: float, z0: float = 0.6) -> list[Prim]:
+    """プレハブの現場事務所: 青い壁、白い屋根、壁に貼った窓。"""
+    return [
+        box(u0, v0, u1, v1, z0, 5.5, SITE_HUT),
+        box(u0, v0, u1, v1, z0 + 5.5, 0.6, WHITE),
+        *pane_row("v", v1, u0 + 0.02, u1 - 0.02, [z0 + 1.8], 2.2, 2, 0.05, GLASS2),
+        *pane_row("u", u1, v0 + 0.02, v1 - 0.02, [z0 + 1.8], 2.2, 1, 0.06, GLASS2),
+    ]
+
+
+def construction_field() -> list[Prim]:
+    """工事中（農場・牧場・林業場）: 耕し始めた畑の畝、木の骨組みだけの納屋、積んだ杭と板、
+    土を運ぶダンプカー。ビルの骨組みやクレーンは描かない。"""
+    furrow = "#8a6a42"
+    prims = [*tiered(0, box(0.05, 0.05, 0.95, 0.95, 0, 0.5, DIRT, DIRT_TOP))]
+    prims += tiered(
+        0,
+        *[
+            patch([(0.08, v), (0.92, v), (0.92, v + 0.025), (0.08, v + 0.025)], furrow, 0.55)
+            for v in (0.52, 0.6, 0.68, 0.76, 0.84)
+        ],
+    )
+    # 木の骨組みの納屋（奥の右）: 柱と、上の縁の梁だけ
+    u0, v0, u1, v1 = 0.5, 0.12, 0.86, 0.38
+    t = 0.02
+    prims += [
+        box(u, v, u + t, v + t, 0.5, 9, WOOD)
+        for u in (u0, (u0 + u1) / 2 - t / 2, u1 - t)
+        for v in (v0, v1 - t)
+    ]
+    prims += [
+        box(u0, v0, u1, v0 + t, 9.5, 1, WOOD),
+        box(u0, v1 - t, u1, v1, 9.5, 1, WOOD),
+        box(u0, v0 + t, u0 + t, v1 - t, 9.5, 1, WOOD),
+        box(u1 - t, v0 + t, u1, v1 - t, 9.5, 1, WOOD),
+    ]
+    # 積んだ杭と板（奥の左）、トラクター（手前）
+    prims += [
+        *[box(0.12, 0.14 + 0.06 * k, 0.4, 0.18 + 0.06 * k, 0.5, 1.4, "#b08350") for k in range(3)],
+        box(0.14, 0.32, 0.38, 0.4, 0.5, 2.2, "#c49a6c", "#d8c7a8"),
+        *dump_truck(0.56, 0.6, 0.5),
+    ]
+    return prims
+
+
+def construction_dig() -> list[Prim]:
+    """工事中（鉱山・採石場・油井・水力発電所。山にも建つ）: 段々に切り崩した岩の斜面、
+    油圧ショベル、ダンプカー、砂利の山、現場事務所。"""
+    return [
+        *tiered(0, box(0.05, 0.05, 0.95, 0.95, 0, 0.6, ROCK, "#ada290")),
+        box(0.08, 0.08, 0.92, 0.26, 0.6, 16, ROCK, STONE),
+        box(0.08, 0.26, 0.6, 0.4, 0.6, 8, ROCK, STONE),
+        cone(0.22, 0.84, 0.1, 7, z0=0.6, c="#b3ab9d"),
+        *excavator(0.18, 0.44, 0.6),
+        *dump_truck(0.5, 0.56, 0.6),
+        *site_hut(0.7, 0.3, 0.9, 0.46),
+    ]
+
+
+def construction_harbor() -> list[Prim]:
+    """工事中（港・漁港・造船所・軍港）: 岸壁に沈めるコンクリートの函（ケーソン）と消波ブロック、
+    積んだ鋼の杭、杭を打つクローラークレーン、現場事務所。"""
+    return [
+        *tiered(0, box(0.05, 0.05, 0.95, 0.95, 0, 0.6, CONCRETE, PAVEMENT)),
+        box(0.1, 0.1, 0.34, 0.3, 0.6, 9, CONCRETE, "#d5d0c6"),
+        box(0.1, 0.36, 0.34, 0.56, 0.6, 9, CONCRETE, "#d5d0c6"),
+        *[
+            box(u, v, u + 0.05, v + 0.05, 0.6, 2.4, "#bdb7ac")
+            for u, v in ((0.12, 0.66), (0.2, 0.68), (0.14, 0.76), (0.24, 0.78), (0.18, 0.86))
+        ],
+        *[box(0.42, 0.7 + 0.04 * k, 0.7, 0.73 + 0.04 * k, 0.6, 1.6, RUST) for k in range(3)],
+        # クローラークレーン（奥の右）: 履帯、黄色い車体、空へ伸びる腕
+        box(0.56, 0.16, 0.76, 0.19, 0.6, 2, TIRE),
+        box(0.56, 0.28, 0.76, 0.31, 0.6, 2, TIRE),
+        box(0.58, 0.19, 0.74, 0.28, 0.6, 1.2, IRON),
+        box(0.6, 0.19, 0.74, 0.28, 2.6, 4, MACHINE_YELLOW),
+        *pane_row("u", 0.74, 0.2, 0.25, [3.6], 2.2, 1, 0.04, GLASS2),
+        *tiered(2, strut((0.64, 0.235, 6.6), (0.4, 0.235, 34), 1.2, MACHINE_YELLOW)),
+        *site_hut(0.42, 0.42, 0.62, 0.58),
+    ]
+
+
 def zone_lot(zone: str) -> list[Prim]:
     """区域の指定（まだ何も建っていないマス）: マスの縁の簡単な柵と、手前の看板 1 枚。
     区域の種類は看板の色だけで見分ける（文字は書かない）。"""
@@ -4583,6 +4665,9 @@ SHAPES.update(
     {
         "facility/contractor": contractor(),
         "construction": construction_site(),
+        "construction@field": construction_field(),
+        "construction@dig": construction_dig(),
+        "construction@harbor": construction_harbor(),
         **{f"overlay/zone_{z}": zone_lot(z) for z in ZONE_SIGNS},
     }
 )

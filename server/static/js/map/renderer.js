@@ -227,7 +227,11 @@ function drawBlock(ctx, px, py, h, colors, theme, sprite) {
  * （capital/議事堂-王宮 など。map.capital_buildings を軸の順に "-" でつなぐ）、なければ capital/ の絵。
  */
 function facilitySprite(f, defs, map, isCapital, sprites, theme) {
-  if (!f.built) return sprites.get("construction");
+  if (!f.built) {
+    // 工事中は施設の種類の絵（theme.construction_looks。農場は畑、鉱山は岩の斜面、港は岸壁の工事）
+    const look = theme?.construction_looks?.[f.kind];
+    return (look && sprites.get(`construction@${look}`)) || sprites.get("construction");
+  }
   if (f.kind === defs.housing) {
     const level = defs.settlements[f.level] ? f.level : Object.keys(defs.settlements)[0];
     return sprites.get(`housing/${level}`);
