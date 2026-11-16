@@ -124,18 +124,26 @@ def is_trade_facility(config: GameConfig, f: Facility) -> bool:
 
 
 def port_of(island: IslandState, config: GameConfig) -> Facility | None:
-    """動いている港（建っていて、閉鎖中・差し押さえ中でない。なければ None）。"""
-    for f in sorted(island.facilities, key=lambda f: f.id):
-        if is_port(config, f) and f.built and not is_stopped(f):
-            return f
-    return None
+    """動いている港（建っていて、閉鎖中・差し押さえ中でない。なければ None）。いくつもあれば番号の
+    一番小さい港。施設を並べ替えずに 1 回なめて選ぶ（W-236 K-1。貿易の段が 1 ターンに何万回も
+    呼ぶ）。"""
+    kind = config.get("trade.port_facility")
+    best: Facility | None = None
+    for f in island.facilities:
+        if f.kind == kind and f.built and not is_stopped(f) and (best is None or f.id < best.id):
+            best = f
+    return best
 
 
 def shipping_of(island: IslandState, config: GameConfig) -> Facility | None:
-    for f in sorted(island.facilities, key=lambda f: f.id):
-        if is_shipping(config, f):
-            return f
-    return None
+    """海運業（種類だけで選ぶ。港と違い、建っているか・止まっているかは見ない。なければ None）。
+    いくつもあれば番号の一番小さい物を、並べ替えずに 1 回なめて選ぶ（W-236 K-1）。"""
+    kind = config.get("trade.shipping_facility")
+    best: Facility | None = None
+    for f in island.facilities:
+        if f.kind == kind and (best is None or f.id < best.id):
+            best = f
+    return best
 
 
 def traders_of(island: IslandState, config: GameConfig, turn: int | None = None) -> list[Facility]:

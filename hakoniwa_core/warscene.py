@@ -30,9 +30,10 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Mapping
 from typing import Any
 
-from hakoniwa_core import autoplan, scale, stock
+from hakoniwa_core import autoplan, scale, snapstate, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.diplomacy import war
@@ -333,6 +334,14 @@ class Watch:
         self.pairs: list[tuple[int, int]] = []
         self.wars: dict[str, dict[str, Any]] = {}  # 戦争の組（攻める島-守る島）→ 状態
         self.rebel_turns: Counter = Counter()  # 島 → 反乱軍のいたターン数
+
+    def state(self) -> dict[str, Any]:
+        """定義と設定を除く、見張りの途中の状態を写す。"""
+        return snapstate.dump(self, ("defs", "config"))
+
+    def restore(self, data: Mapping[str, Any]) -> None:
+        """写しから見張りの途中の状態を戻す。"""
+        snapstate.restore(self, data)
 
     def record(self, world: WorldState) -> None:
         from hakoniwa_core.military import civil_war

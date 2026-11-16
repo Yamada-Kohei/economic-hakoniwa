@@ -52,6 +52,10 @@ GRADE_TO = "grade_to"
 # 使う。直しの前から工事中だった農場（移行で段階だけそろえた）は持たず、手作業の資材で建つ
 GRADE_BUILD = "grade_build"
 SITE_WORK = "site_work"  # ext: 空き地に建てる民営の工場の造成 {labor, materials}（FM-61）
+# ext: 工事の資材のうち、建てる施設の作り方が産む物を、工事の人手でその場で作る分（W-289。森の
+# 伐採場が切った木で小屋を建てる）
+# {"materials": {財: 量（1000 分の 1）}, "labor": 1 ターンに足す人手}
+OWN_MATERIALS = "own_materials"
 MACHINES = "machines"
 FUEL = "fuel"  # 機械化した畑が毎ターン使う燃料の財
 FUEL_SHARE = (
@@ -780,13 +784,47 @@ def materials_of(defs: Defs, f: Facility) -> dict[str, int]:
     if site:
         for good, qty in site.get("materials", {}).items():
             out[good] = out.get(good, 0) + int(qty)
+    own = f.ext.get(OWN_MATERIALS)
+    if own:  # その場で作る資材は買わない（W-289）
+        for good, qty in own.get("materials", {}).items():
+            left = out.get(good, 0) - int(qty)
+            if left > 0:
+                out[good] = left
+            else:
+                out.pop(good, None)
     return out
 
 
 def site_labor(f: Facility) -> int:
-    """空き地の工場の造成の作業員（FM-61。造成のない工事は 0）。"""
+    """工事の人手に足す作業員: 空き地の工場の造成（FM-61）と、資材をその場で作る分（W-289）。
+    どちらもない工事は 0。"""
     site = f.ext.get(SITE_WORK)
-    return int(site.get("labor", 0)) if site else 0
+    own = f.ext.get(OWN_MATERIALS)
+    return (int(site.get("labor", 0)) if site else 0) + (int(own.get("labor", 0)) if own else 0)
+
+
+def own_materials(defs: Defs, kind: str, recipe: str | None = None) -> dict[str, int]:
+    """施設 kind の工事の資材のうち、その施設の作り方（recipe。なければどれか）が産む物と、その量
+    （1000 分の 1。W-289）。工事の人手がその場で作れる（森の伐採場の木材）。"""
+    fdef = defs.facilities[kind]
+    recipes = [fdef["recipes"][recipe]] if recipe in fdef["recipes"] else fdef["recipes"].values()
+    made = {g for r in recipes if not r.get("inputs") for g in r["outputs"]}
+    return {
+        g: q for g, q in fdef["construction"].get("materials", {}).items() if g in made and q > 0
+    }
+
+
+def own_material_labor(
+    defs: Defs, kind: str, recipe: str, good: str, qty: int, productivity: int = FULL
+) -> int:
+    """資材 good を qty（1000 分の 1）だけ、施設 kind の作り方 recipe の働き方でその場で作るのに
+    要る人手（人・ターン。W-289）: 量 × 全力の働き手 ÷ 全力の産出 ÷ 生産性。作り方の数字だけから
+    出す。"""
+    out = defs.facilities[kind]["recipes"][recipe]["outputs"].get(good, 0)
+    if out <= 0 or productivity <= 0:
+        return 0
+    workers = workers_needed(defs, kind, recipe)
+    return -(-qty * workers * FULL // (out * productivity))
 
 
 def construction_labor(defs: Defs, f: Facility) -> int:
