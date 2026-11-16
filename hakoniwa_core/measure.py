@@ -33,6 +33,9 @@ digests は simulate --digests で書いた指紋を比べ、共通のターン�
 回している間だけ札を持ち、ほかの batch は結果を待ちます。完了の印と中身が合う結果だけを
 写すので、書きかけや壊れた結果は使いません。main の測りは、main が変わった後に最初に頼んだ
 batch が 1 回だけ回し、ほかの batch は置き場から写します（設計書 12 確かめ方 GT-45）。
+同じ場面・種で長い組が SETS にあるときは、最後の写しも置きます。長い組は置き場にある短い組の
+写しから残りだけを回します（候補は長い順）。続けられなければ通しで 1 回だけ回し直し、初回のログを
+<名前>.resume.log に残します。--no-resume で通しの実行を選べます。置き場なしでは写しを使いません。
 
     python -m hakoniwa_core.measure batch --set quick --out-dir runs/main --store <置き場>
     python -m hakoniwa_core.measure clean --store <置き場> --days 14
@@ -749,6 +752,26 @@ def run_name(scenario: str, seed: int, turns: int) -> str:
     return f"{scenario}-s{seed}-t{turns}"
 
 
+def shorter_runs(scenario: str, seed: int, turns: int) -> list[int]:
+    """SETS にある同じ場面・種の短い組のターン数（重複なし、長い順）。"""
+    return sorted(
+        {
+            t
+            for runs in SETS.values()
+            for s, n, t in runs
+            if (s, n) == (scenario, seed) and t < turns
+        },
+        reverse=True,
+    )
+
+
+def has_longer_run(scenario: str, seed: int, turns: int) -> bool:
+    """SETS に同じ場面・種でもっと長い組があるか。"""
+    return any(
+        (s, n) == (scenario, seed) and t > turns for runs in SETS.values() for s, n, t in runs
+    )
+
+
 # 1 ターンの秒の目安（HAL で 1 組 1 コア、c2d2639 の通しの平均）。回す順を決めるためだけに使う
 # （長い組から先に始めると、並べる本数が組の数より少ないときに全体が早く終わる。W-236 H-5）。
 # 結果には響かない（各組は別々の処理で、始める順は世界に入らない）。
@@ -784,6 +807,7 @@ def batch(
     reuse_dirs: Sequence[Path] = (),
     store: Path | None = None,
     owner: str = "",
+    resume: bool = True,
 ) -> int:
     """場面・種・ターン数の組を、jobs 本ずつ別の処理で回す。結果は out_dir/<名前>.json。
 
@@ -791,6 +815,9 @@ def batch(
     全体が延びないように。
 
     reuse_dirs の中に同じ組の結果があり、その指紋が今の計算の中身と同じなら、回さずに写す。
+    store があり resume が真なら、短い組の写しから続ける。続きの実行に失敗した組は、初めから
+    1 回だけ回し直す。長い組が SETS にあるときは、次に使う最後の写しも store に置く。
+    返す値は、最後まで失敗した組の数（続きにできず通しで回し直して済んだ組は数えない）。
     """
     if jobs < 1:  # 0 以下だと1本も回らず、終わらない
         raise ValueError(f"--jobs は 1 以上にしてください（{jobs}）")
@@ -820,6 +847,9 @@ def batch(
     pending: list[tuple[str, int, int]] = []
     held: dict[str, float] = {}
     began: dict[str, float] = {}
+    resumed: dict[str, tuple[str, int, int]] = {}
+    retried: set[str] = set()
+    continued = fell_back = 0  # 続きから回して済んだ組、続きにできず通しで回し直した組
     failed = 0
     try:
         while waiting or running or pending:
@@ -841,19 +871,43 @@ def batch(
                         held.pop(name)
                         print(f"置き場から写した: {name}", flush=True)
                         continue
+                remaining = turns
+                snapshot = None
+                if result_store is not None:
+                    # 前の回の出力を今回の結果や写しと間違えない。時系列は続ける元から写し直す。
+                    for suffix in ("json", "jsonl", "snap.json.gz"):
+                        (out_dir / f"{name}.{suffix}").unlink(missing_ok=True)
+                    if resume and name not in retried:
+                        for t in shorter_runs(scenario, seed, turns):
+                            before = run_name(scenario, seed, t)
+                            source_dir = out_dir / "resume"
+                            source_snap = source_dir / f"{before}.snap.json.gz"
+                            if not result_store.fetch(before, source_dir, series)[0]:
+                                continue
+                            if not result_store.fetch_snapshot(before, source_snap)[0]:
+                                continue
+                            if series:
+                                shutil.copy2(
+                                    source_dir / f"{before}.jsonl", out_dir / f"{name}.jsonl"
+                                )
+                            snapshot = source_snap
+                            remaining = turns - t
+                            resumed[name] = (scenario, seed, turns)
+                            print(f"続きから始める: {name}（{t} ターンから）", flush=True)
+                            break
                 command = [
                     sys.executable,
                     "-m",
                     "hakoniwa_core.simulate",
-                    *("--scenario", scenario, "--seed", str(seed), "--turns", str(turns)),
+                    *("--scenario", scenario, "--seed", str(seed), "--turns", str(remaining)),
                     *("--gate", "--out", str(out_dir / f"{name}.json")),
                 ]
                 if series:
                     command += ["--series", str(out_dir / f"{name}.jsonl")]
-                if result_store is not None:
-                    # 前の回の結果が出力先に残っていると、今回の処理が途中で落ちても結果がある
-                    # ように見える。置き場に置くのは今回の処理が書いた結果だけにする
-                    (out_dir / f"{name}.json").unlink(missing_ok=True)
+                if snapshot is not None:
+                    command += ["--load", str(snapshot)]
+                if result_store is not None and has_longer_run(scenario, seed, turns):
+                    command += ["--save", str(out_dir / f"{name}.snap.json.gz")]
                 log = open(out_dir / f"{name}.log", "w", encoding="utf-8")  # 処理が終わったら閉じる
                 try:
                     process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
@@ -897,13 +951,53 @@ def batch(
                 running.remove(item)
                 log.close()
                 ok = (out_dir / f"{name}.json").exists()
+                resumed_run = resumed.pop(name, None)
+                if resumed_run is not None:
+                    # 続きは、終わり方（0 か、目安の外れの 1）と、結果が頼んだ組の物で、続きの
+                    # 印（resumed）が付いていることまで見る。測りの途中の状態がない古い写しから
+                    # は、simulate が通しと同じ結果を作れない
+                    ok = ok and returncode in (0, 1)
+                    if ok:
+                        try:
+                            data = json.loads(
+                                (out_dir / f"{name}.json").read_text(encoding="utf-8")
+                            )
+                            ok = (
+                                isinstance(data, dict)
+                                and (data.get("scenario"), data.get("seed"), data.get("turns"))
+                                == resumed_run
+                                and isinstance(data.get("resumed"), dict)
+                            )
+                        except (OSError, ValueError):
+                            ok = False
+                    if not ok:
+                        (out_dir / f"{name}.log").replace(out_dir / f"{name}.resume.log")
+                        for suffix in ("json", "jsonl", "snap.json.gz"):
+                            (out_dir / f"{name}.{suffix}").unlink(missing_ok=True)
+                        retried.add(name)
+                        waiting.insert(0, resumed_run)
+                        began.pop(name, None)
+                        result_store.release(name)
+                        held.pop(name, None)
+                        fell_back += 1
+                        print(
+                            f"続きから回せない: {name}（終了コード {returncode}。"
+                            "初めから 1 回だけ回し直す）",
+                            flush=True,
+                        )
+                        continue
                 failed += 0 if ok else 1
-                print(f"{'終わった' if ok else '失敗した'}: {name}", flush=True)
+                status = "終わった" if ok else "失敗した"
+                if ok and resumed_run is not None:
+                    status = "続きから終わった"
+                    continued += 1
+                print(f"{status}: {name}", flush=True)
+                began.pop(name, None)
                 if result_store is not None:
                     # simulate --gate は、目安の外れや崩れがあると 1 で終わる（結果は書いてある）。
                     # 結果は最後のターンの後に書くので、今回の結果があれば最後まで回っている
                     if ok and returncode in (0, 1):
-                        published, why = result_store.publish(name, out_dir, series)
+                        published, why = result_store.publish(name, out_dir, series, snapshot=True)
                         if published:
                             print(f"置き場に置いた: {name}", flush=True)
                         else:
@@ -914,6 +1008,10 @@ def batch(
         if result_store is not None:
             for name in held:
                 result_store.release(name)
+    if continued or fell_back:
+        print(
+            f"続きから回した組 {continued}、続きにできず通しで回し直した組 {fell_back}", flush=True
+        )
     return failed
 
 
@@ -1267,6 +1365,9 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--series", action="store_true", help="島×ターンの時系列も書く（大きい）")
     run.add_argument("--only", help="場面の名前をカンマで区切って、その場面だけ回す")
     run.add_argument(
+        "--no-resume", action="store_true", help="短い組の写しからは続けず、初めから回す"
+    )
+    run.add_argument(
         "--reuse",
         action="append",
         default=[],
@@ -1324,6 +1425,7 @@ def main(argv: list[str] | None = None) -> int:
             [Path(d) for d in args.reuse],
             Path(args.store) if args.store else None,
             args.owner,
+            not args.no_resume,
         )
         print(show(Path(args.out_dir)))
         return 1 if failed else 0
