@@ -240,6 +240,21 @@ def entry_return(
     return (YEAR * (profit + subsidy) - worn) * (1 - tax) / capital
 
 
+def site_value(island: IslandState, ctx: StageContext, f: Facility, freight: int) -> float | None:
+    """民営の工事 f の事業に払える建設費 V（W-292）: 参入の見込み entry_return が参入に要る利益率
+    （EntryExit._threshold）にちょうど届く建設費。entry_return = 分子 ÷ 建設費 なので
+    V = 分子 ÷ 要る利益率。分子（12 ×（変動費の利益 ＋ 生産補助）− 設備の年の傷み）×（1 − 法人税率）
+    は参入と同じ式で、建てるマスの生産性と運賃、直近 firms.price_turns の平均の値段で出す
+    （発注の前に出し、そのターンの指値の間は動かさない）。建て増しの工事は規模の分。銀行がなく
+    参入できない島は None。"""
+    threshold = EntryExit._threshold(island, ctx)
+    if threshold == float("inf") or threshold <= 0:
+        return None
+    prices = average_prices(island, ctx.config.get("firms.price_turns"))
+    numerator = entry_return(island, ctx, f.kind, f.recipe, prices, freight, 1, fac.position(f))
+    return numerator * fac.size_of(f) / threshold
+
+
 # 組で建てた原料の工場の印（FM-72）: {"kind": 使う工場, "recipe": 作り方, "until": 期限のターン,
 # "partner": 続いて建った使う工場の番号}。使う工場が動き出すまで、原料の工場の撤退を数えない
 GROUP_FOR = "group_for"

@@ -377,6 +377,8 @@ class Construction(IslandStage):
             fac.SITE_WORK,
             fac.OWN_MATERIALS,
             fac.GRADE_BUILD,
+            "site_short",  # 民営の工事の買い負けと指値（W-292。market の SITE_SHORT・SITE_BIDS）
+            "site_bids",
         ):
             f.ext.pop(key, None)
         for key in ("no_materials_turns", "no_workers_turns", "stalled_turns"):
