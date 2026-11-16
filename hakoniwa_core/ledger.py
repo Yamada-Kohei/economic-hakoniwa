@@ -61,6 +61,11 @@ MONEY_ITEMS = {
     "nonresident": (NONRESIDENT,),
 }
 
+# 品目 → お金の量の種類（MONEY_ITEMS は定数なので、ここで1回だけ逆引きを作る）
+_ITEM_TO_MONEY_KEY: dict[str, str] = {
+    item: key for key, items in MONEY_ITEMS.items() for item in items
+}
+
 
 class LedgerError(Exception):
     pass
@@ -394,10 +399,35 @@ def aggregates(accounts: dict[str, int]) -> dict[str, int]:
         holder, item, _ = parse(name)
         if holder == GOV and item == DEPOSIT:  # 政府の預金はお金の量に数えない（国庫と同じ）
             continue
-        for key, items in MONEY_ITEMS.items():
-            if item in items:
-                totals[key] += value
+        key = _ITEM_TO_MONEY_KEY.get(item)
+        if key is not None:
+            totals[key] += value
     return totals
+
+
+def _add_created(out: dict[str, dict[str, int]], name: str, signed_amount: int, kind: str) -> None:
+    """出し手の勘定でない側の仕訳を、生まれた・消えた額の集計に足す。"""
+    holder, item, _ = parse(name)
+    if item == ISSUED or (holder == GOV and item == DEPOSIT):
+        return
+    key = _ITEM_TO_MONEY_KEY.get(item)
+    if key is None:
+        return
+    by_kind = out[key]
+    by_kind[kind] = by_kind.get(kind, 0) + signed_amount
+
+
+def _created_entry(out: dict[str, dict[str, int]], entry: JournalEntry) -> None:
+    """仕訳1件を、生まれた・消えた額の集計に足す（出し手の勘定を使う仕訳だけ）。
+
+    借り方と貸し方のうち、出し手の勘定（issued）でない方がお金の量の側。借り方を先に見て、
+    出し手の勘定でなければ貸し方を見る。名前を分けるのは、お金の生まれる・消える仕訳の
+    反対側だけ1回（それ以外は出し手の勘定かどうかの見分けだけで済ませる）。
+    """
+    if is_issued(entry.debit):
+        _add_created(out, entry.credit, -entry.amount, entry.kind)
+    elif is_issued(entry.credit):
+        _add_created(out, entry.debit, entry.amount, entry.kind)
 
 
 def created_by_kind(journal: Iterable[JournalEntry]) -> dict[str, dict[str, int]]:
@@ -407,15 +437,32 @@ def created_by_kind(journal: Iterable[JournalEntry]) -> dict[str, dict[str, int]
     """
     out: dict[str, dict[str, int]] = {key: {} for key in MONEY_ITEMS}
     for e in journal:
-        for name, sign in ((e.debit, 1), (e.credit, -1)):
-            holder, item, _ = parse(name)
-            if item == ISSUED or (holder == GOV and item == DEPOSIT):
-                continue
-            for key, items in MONEY_ITEMS.items():
-                if item in items and is_issued(e.credit if sign == 1 else e.debit):
-                    by_kind = out[key]
-                    by_kind[e.kind] = by_kind.get(e.kind, 0) + sign * e.amount
+        _created_entry(out, e)
     return out
+
+
+def _scan_closing(
+    closing: dict[str, int],
+) -> tuple[dict[str, int], dict[tuple[str, str], int], list[str]]:
+    """今の残高を1回なめて、お金の量の合計・持ち物ごとの合計・マイナスの勘定を返す。
+
+    前はお金の量の合計と、持ち物ごとの合計・マイナスの確かめで2回なめていたが、1回のなめで
+    全部出す。マイナスの文は、残高の並びのまま返す（確かめで出す順番を変えないため）。
+    """
+    totals = dict.fromkeys(MONEY_ITEMS, 0)
+    rows: dict[tuple[str, str], int] = {}
+    negatives: list[str] = []
+    for name, value in closing.items():
+        holder, item, _ = parse(name)
+        if not (holder == GOV and item == DEPOSIT):
+            money_key = _ITEM_TO_MONEY_KEY.get(item)
+            if money_key is not None:
+                totals[money_key] += value
+        key = instrument(name)
+        rows[key] = rows.get(key, 0) + value
+        if item in (DEPOSIT, TREASURY, NONRESIDENT) and value < 0:
+            negatives.append(f"勘定 {name} がマイナスです（{value}）")
+    return totals, rows, negatives
 
 
 def check(
@@ -433,6 +480,7 @@ def check(
     problems: list[str] = []
     known = set(kinds) if kinds is not None else None
     replay = dict(opening)
+    created: dict[str, dict[str, int]] = {key: {} for key in MONEY_ITEMS}
     for e in island.journal:
         if e.amount <= 0 or instrument(e.debit) != instrument(e.credit):
             problems.append(f"形の正しくない仕訳: {e}")
@@ -440,6 +488,7 @@ def check(
             problems.append(f"定義されていない仕訳の種類: {e.kind}")
         replay[e.debit] = replay.get(e.debit, 0) + e.amount
         replay[e.credit] = replay.get(e.credit, 0) - e.amount
+        _created_entry(created, e)
     closing = island.accounts
     # 全部の勘定を並べると重いので、合わない勘定だけを名前の順に並べる
     wrong = [name for name in replay if replay[name] != closing.get(name, 0)]
@@ -450,21 +499,15 @@ def check(
                 f"勘定 {name} の残高 {closing.get(name, 0)} が、前の残高と仕訳から求めた"
                 f" {replay.get(name, 0)} と違います"
             )
-    before, after = aggregates(opening), aggregates(closing)
-    created = created_by_kind(island.journal)
+    before = aggregates(opening)
+    after, rows, negatives = _scan_closing(closing)
     for key in MONEY_ITEMS:
         if after[key] - before[key] != sum(created[key].values()):
             problems.append(
                 f"{key} の増減 {after[key] - before[key]} が、生まれた・消えた額"
                 f" {sum(created[key].values())} と一致しません"
             )
-    rows: dict[tuple[str, str], int] = {}
-    for name, value in closing.items():
-        key = instrument(name)
-        rows[key] = rows.get(key, 0) + value
-        holder, item, _ = parse(name)
-        if item in (DEPOSIT, TREASURY, NONRESIDENT) and value < 0:
-            problems.append(f"勘定 {name} がマイナスです（{value}）")
+    problems.extend(negatives)
     for key, total in sorted(rows.items()):
         if total != 0:
             problems.append(f"持ち物 {key} の残高の合計が 0 になりません（{total}）")

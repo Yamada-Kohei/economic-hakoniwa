@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger
+from hakoniwa_core import ledger, stops
 from hakoniwa_core.economy import (
     Payer,
     arrears,
@@ -269,3 +269,22 @@ def test_facilities_short_of_inputs_furlough_instead_of_dismissing(game):
     run(game, island, ["employment"])
     rate = config.get("labor.dismissal")["normal"]["rate"] + config.get("labor.attrition")
     assert mill.workers == full - int(full * rate)
+
+
+def test_held_workers_stop_at_the_design_staff_after_a_recount(game):
+    """抱えるのは設計の人数（全力）まで: 人数の数え方を変えた後（FM-74 の発電所）に前の数え方で
+    記録した要る人数が残っていても、席のない人は抱えない（2026-11-15、公開の世界の倭国）。
+    原料が届かずに休ませるとき（休業）も全力を超えない。"""
+    for status in ("", "input:iron_ore"):
+        island, mill, full = _mill(game)
+        before = full * 5  # 前の数え方の人数のまま
+        mill.workers = before
+        mill.economy["staff"] = {"5,6": before}
+        mill.economy[dismissal.NEEDS] = [before, before]  # 前の数え方で要った人数の記録
+        if status:
+            mill.economy["target"] = 1000
+            mill.stock.clear()
+            mill.status = status
+        assert stops.furloughed(game.config, mill.status) == bool(status)
+        demand, kind = Employment()._bounds(island, context(game), mill, 0)
+        assert kind == "dismissal" and demand == full, status

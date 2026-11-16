@@ -907,7 +907,7 @@ def _add_owners(island: IslandState, ctx: StageContext) -> None:
     households[OWNERS] = {"persons": 0, "share": spec["share"], "income": []}
     # 計画経済の間は株も配当もないので、財産と所得で暮らせる人数（LB-42）から始める。所得の記録が
     # まだないので、所得 0 として数える（ふつうは 0 人。出資は一般の層の預金からも出せる。FM-58）
-    room = owners_room(island, ctx.config, OWNERS, income=0)
+    room = owners_room(island, ctx.defs, ctx.config, OWNERS, income=0)
     if room is not None:
         households[OWNERS][CAP] = room
     population = sum(h["persons"] for h in households.values())
