@@ -23,7 +23,7 @@ from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.trade import blocs, island_state, merchant, traders, traders_of
 from hakoniwa_core.trade import fx as fxrates
 from hakoniwa_core.turn.context import StageContext
-from hakoniwa_core.units import BASIS, QUANTITY_SCALE
+from hakoniwa_core.units import BASIS, QUANTITY_SCALE, money_of
 
 from .test_trade import run
 
@@ -400,10 +400,10 @@ def test_home_orders_send_the_markdown_to_the_outlet_and_sell_the_rest_as_usual(
     world = copy.deepcopy(traded)
     island, f, good, item = _importer(game, world)
     stock_now = traders.stock.total(f.stock, good)
-    if stock_now <= 0:
+    if stock_now <= 0:  # 売り切っていれば、島の値段で仕入れた荷を持たせる（仕入れ値が下限）
         traders.stock.add(f.stock, good, 10_000, world.turn, game.defs.goods)
         item["held"][0] += 10_000
-        item["held"][1] += 10_000 * 1000
+        item["held"][1] += money_of(island.economy.prices.get(good, 1), 10_000)
     item.pop(traders.REEXPORT, None)
     item[traders.OUTLET] = {"turns": 9, "line": 0}
     orders = [
