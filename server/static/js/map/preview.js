@@ -43,6 +43,9 @@ function buildMap(defs) {
   items.push({ label: "首都", terrain: "plain", facility: { kind: office, built: true }, capital: true });
   items.push({ label: "送電線", terrain: "plain", power: true });
   items.push({ label: "開発禁止", terrain: "plain", zone: "no_development" });
+  items.push({ label: "工業団地", terrain: "plain", zone: "industrial" });
+  items.push({ label: "オフィス街", terrain: "plain", zone: "office" });
+  items.push({ label: "商業地", terrain: "plain", zone: "commercial" });
 
   const cols = Math.ceil(Math.sqrt(items.length));
   const n = cols * 2 + 1;

@@ -123,6 +123,9 @@ def _allowed_keys(theme: dict | None = None) -> set[str]:
             "overlay/trench_front",
             "overlay/occupied",
             "overlay/contaminated",
+            "overlay/zone_industrial",  # 区域の指定（何も建っていないマス）
+            "overlay/zone_office",
+            "overlay/zone_commercial",
             "unit/rebels",  # 反乱軍（部隊の一覧に入らない。4-4）
         }
         | {f"unit/{a}" for a, spec in d.army.items() if spec["arm"] == "land"}

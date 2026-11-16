@@ -55,6 +55,8 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
         }
       }
       if (map.zone?.[i] === "no_development") drawHatch(ctx, px, top, theme);
+      // 区域の指定（工業団地・オフィス街・商業地）: まだ何も建っていないマスに柵と看板（docs/map-art.md）
+      if (!f && ZONE_LOTS.has(map.zone?.[i])) drawOverlay(ctx, sprites.get(`overlay/zone_${map.zone[i]}`), px, top, theme);
       if (map.power_line?.[i] && !facilityAt.has(i)) drawPowerLine(ctx, map, x, y, px, top, theme, facilityAt);
       // 陣地（塹壕）: 奥の2辺を施設・住宅より先に、手前の2辺をあとに描く（docs/map-art.md）
       const trench = map.trench?.[i];
@@ -163,6 +165,9 @@ function drawUnderground(ctx, px, top, theme, label) {
 }
 
 /** マスいっぱいの重ねる絵（overlay/）。基準点を上面のひし形の下の頂点に合わせる。 */
+// 柵と看板の絵を描く区域（overlay/zone_<区域>）
+const ZONE_LOTS = new Set(["industrial", "office", "commercial"]);
+
 function drawOverlay(ctx, sprite, px, top, theme) {
   if (sprite) drawSprite(ctx, sprite, px, top + theme.tile_height);
 }

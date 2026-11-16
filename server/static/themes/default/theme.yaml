@@ -173,6 +173,12 @@ sprites:
   overlay/trench_front: sprites/overlay/trench_front.svg
   overlay/occupied: sprites/overlay/occupied.svg      # 建物のあと
   overlay/contaminated: sprites/overlay/contaminated.svg  # 地形のあと・建物より先
+  # 土木業者（W-270）・工事中（どの施設にも共通）・区域の指定（何も建っていないマスの柵と看板。地形のあと）
+  facility/contractor: sprites/facility/contractor.svg
+  construction: sprites/construction.svg
+  overlay/zone_industrial: sprites/overlay/zone_industrial.svg
+  overlay/zone_office: sprites/overlay/zone_office.svg
+  overlay/zone_commercial: sprites/overlay/zone_commercial.svg
   unit/infantry: {file: sprites/unit/infantry.svg, anchor: [14, 28]}
   fleet/frigate: {file: sprites/fleet/frigate.svg, anchor: [12, 10]}
   facility/arms_plant: sprites/facility/arms_plant.svg
