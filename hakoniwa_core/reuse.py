@@ -371,7 +371,8 @@ class Store:
         置いても、印はいつも自分の指すファイルと合う。結果の `seconds` は回すたびに違うので、
         同じ名前に上書きすると印と食い違う。印と中身が合わない・印が壊れている置き場は、
         ここで作り直す。
-        snapshot を頼んでも、出力先に写しがなければ結果だけを置く。
+        snapshot を頼んでも、出力先に写しがなければ結果だけを置く。時系列を初めて足すときは、
+        写しも今回の物に替える（写しは自分の回の時系列を覚えているため）。
         """
         temporary: list[Path] = []
         placed: list[Path] = []
@@ -391,6 +392,12 @@ class Store:
             for kind in sources.keys() - {"json"}:
                 if kind in files and not self._matches(files[kind]):
                     del files[kind]
+            # 写しは、自分の回の時系列の行数と中身を覚えている。時系列を今回初めて足すなら、前から
+            # ある写し（時系列なしの回の物）からは時系列つきの続きを回せないので、今回の写しに替える
+            renewed: set[str] = set()
+            if {"jsonl", "snap"} <= sources.keys() and "jsonl" not in files and "snap" in files:
+                del files["snap"]
+                renewed.add("snap")
             if sources.keys() <= files.keys():
                 return True, ""
             for kind, path in sources.items():
@@ -401,6 +408,8 @@ class Store:
             latest = self._verified(name)
             if latest is not None:
                 for kind, stamp in latest["files"].items():
+                    if kind in renewed:
+                        continue
                     if kind == "json" or self._matches(stamp):
                         files[kind] = stamp
             if latest is None or files != latest["files"]:

@@ -50,9 +50,9 @@ def read_snapshot(path):
         return json.load(f)
 
 
-def write_snapshot(path, turn):
+def write_snapshot(path, turn, series_lines=None):
     with gzip.open(path, "wt", encoding="utf-8") as f:
-        json.dump({"measure": {"turn": turn}}, f)
+        json.dump({"measure": {"turn": turn, "series_lines": series_lines}}, f)
 
 
 def value(command, flag):
@@ -85,7 +85,11 @@ class FakeRun:
                         f.write('{"t": "half"}\n')
                 self.code = 1
                 return
-            before = read_snapshot(value(command, "--load"))["measure"]["turn"]
+            saved = read_snapshot(value(command, "--load"))["measure"]
+            if "--series" in command and saved["series_lines"] is None:
+                self.code = 2  # 時系列なしの回の写しからは、時系列つきで続けられない（本物と同じ）
+                return
+            before = saved["turn"]
             if FakeRun.plain_result:
                 before = 0
         elif FakeRun.crash_straight:
@@ -106,7 +110,9 @@ class FakeRun:
             with open(value(command, "--series"), "a" if before else "w", encoding="utf-8") as f:
                 f.writelines(f'{{"t": {t}}}\n' for t in range(before + 1, turns + 1))
         if "--save" in command:
-            write_snapshot(value(command, "--save"), turns)
+            write_snapshot(
+                value(command, "--save"), turns, turns if "--series" in command else None
+            )
 
     def poll(self):
         return self.code
@@ -372,6 +378,29 @@ def test_a_shorter_run_without_its_series_is_not_continued_with_series(
     assert measure.batch([LONG], tmp_path / "c", 1, False, store=root, resume=True) == 0
     assert "--load" not in fake_runs[-1]  # 上の通しの結果が置き場にあるので、回さずに写す
     assert len(fake_runs) == 2
+
+
+def test_the_snapshot_is_renewed_when_the_series_is_added(tmp_path, fake_runs, fingerprint):
+    """時系列なしで回した後に時系列つきで回し直したら、置き場の写しも時系列つきの回の物に替わる。
+
+    写しは自分の回の時系列の行数と中身を覚えていて、時系列なしの回の写しからは時系列つきで
+    続けられない。替えないと、時系列つきの長い組が毎回「続きから回せない」になる。
+    """
+    root = tmp_path / "store"
+    measure.batch([SHORT], tmp_path / "a", 1, False, store=root)
+    assert read_snapshot(stored(root, fingerprint, SHORT_NAME, "snap"))["measure"] == {
+        "turn": 3,
+        "series_lines": None,
+    }
+    measure.batch([SHORT], tmp_path / "b", 1, True, store=root)  # 時系列がないので回し直す
+    assert len(fake_runs) == 2
+    assert read_snapshot(stored(root, fingerprint, SHORT_NAME, "snap"))["measure"] == {
+        "turn": 3,
+        "series_lines": 3,
+    }
+    assert measure.batch([LONG], tmp_path / "c", 1, True, store=root) == 0
+    assert len(fake_runs) == 3 and "--load" in fake_runs[-1]  # 回し直しなしで続きから
+    assert read(tmp_path / "c" / f"{LONG_NAME}.json")["resumed"] == {"from": 3}
 
 
 def test_no_resume_runs_straight(tmp_path, fake_runs):
