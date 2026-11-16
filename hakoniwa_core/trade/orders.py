@@ -478,7 +478,7 @@ def _deliver(
     if o.get("loans") and turn is not None:
         from hakoniwa_core.economy import ship_loans  # economy は trade を読むので、ここで読む
 
-        ship_loans.delivered(island, o, turn)
+        ship_loans.delivered(island, config, o, turn)
     island.log.append(
         LogEntry("ship_order_delivered", {"count": from_milli(qty), "x": yard.x, "y": yard.y})
     )

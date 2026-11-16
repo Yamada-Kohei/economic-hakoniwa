@@ -39,7 +39,11 @@
 （残高）・returned（買えずにそのターンに返した額）・refused_replace・refused_expand（審査で断った
 船の数）・over_limit（新しい貸しで上限を超えた件数。0 のはず）・shortfall（沈没・取り壊しで担保が
 足りなくなった額）・arrears（船の借りの返済が遅れている海運業の数）・failed（船の借りの遅れで倒れた
-数）・reviews ほか（審査の稼ぎ ÷ 返済の比。Review.note）。
+数）・reviews ほか（審査の稼ぎ ÷ 返済の比。Review.note）・deferred（返済猶予をした件数）・
+defer_refused（元金が払えず、時価か船の寿命の線で猶予しなかった件数。遅れに数える）・
+arrears_after_defer・failed_after_defer（猶予をしたことのある海運業の遅れと倒産）・defer_capped・
+defer_cap_left（猶予の上限に届いた借りの件数と、そのときの残り）・loss_after_defer（猶予をしたことの
+ある海運業が倒れて貸し倒れにした船の借り）。
 """
 
 from __future__ import annotations
@@ -72,6 +76,16 @@ FAR = 10**9  # 前注文の借りの返し始め（引き渡しのターンに�
 ORDERS = "ship_orders"  # 造船所の economy: 受けた前注文（trade/orders.py の ORDERS）
 DUE = "ship_order_due"  # 海運業の economy: 次のターンに自分で払う前注文の代金（trade/orders.py）
 STAT = "ship_loans."
+DEFERRED = "ship_deferred"  # 海運業の economy: 船の借りの返済猶予をした回数
+# 海運業の economy: 船の借りごとの猶予の上限 {借りの番号: ターン}。借りた日に担保にした船の寿命の
+# 終わりで決め、後から同じ借りに船を足しても延ばさない（掲示板 #1108・#1109）
+DEFER_END = "ship_defer_end"
+CAPPED = "ship_defer_capped"  # 海運業の economy: 猶予が上限に届いた借りの番号（数えるのは 1 回）
+
+
+def _set_end(f: Facility, loan: Any, end: int) -> None:
+    ends = f.economy.setdefault(DEFER_END, {})
+    ends.setdefault(str(loan.id), end)
 
 
 def _add(island: IslandState, key: str, value: int | float) -> None:
@@ -384,8 +398,15 @@ def _record(island: IslandState, config: GameConfig, f: Facility) -> None:
     entity = facility_entity(f.id)
     loans = ship_loans_of(island, entity)
     _add(island, "outstanding", sum(banks.outstanding(island, x) for x in loans))
+    ids = {str(x.id) for x in loans}
+    if DEFER_END in f.economy:  # 返し終わった借りの上限は忘れる
+        f.economy[DEFER_END] = {k: v for k, v in f.economy[DEFER_END].items() if k in ids}
+    if CAPPED in f.economy:
+        f.economy[CAPPED] = [k for k in f.economy[CAPPED] if k in ids]
     if any(x.arrears > 0 for x in loans):
         _add(island, "arrears", 1)
+        if f.economy.get(DEFERRED):
+            _add(island, "arrears_after_defer", 1)  # 猶予が明けた後の遅れ
 
 
 def payments(f: Facility) -> int:
@@ -430,7 +451,11 @@ def lend_now(
         if order is not None:
             _lend_order(island, order, bank, entity, piece, term, ctx.turn, rate)
         else:
-            banks.lend(island, bank, entity, piece, banks.SHIP, term, ctx.turn, rate, repay_from)
+            loan = banks.lend(
+                island, bank, entity, piece, banks.SHIP, term, ctx.turn, rate, repay_from
+            )
+            if loan is not None:  # 今買う船の寿命の終わり（まとめた借りは前の上限のまま）
+                _set_end(f, loan, ctx.turn + config.get("trade.ship_life"))
         left -= piece
         if left <= 0:
             break
@@ -588,12 +613,15 @@ def own_share(o: dict[str, Any], due: int) -> int:
     return min(due, _order_value(o) - financed)
 
 
-def delivered(island: IslandState, o: dict[str, Any], turn: int) -> None:
-    """引き渡した注文の借りは、引き渡しのターンから元金を返す。"""
+def delivered(island: IslandState, config: GameConfig, o: dict[str, Any], turn: int) -> None:
+    """引き渡した注文の借りは、引き渡しのターンから元金を返す。猶予の上限は届いた船の寿命の終わり。"""
     ids = set(o.get("loans", []))
     for loan in island.loans:
         if loan.id in ids:
             loan.repay_from = turn
+            f = banks.borrower_facility(island, loan.borrower)
+            if f is not None:
+                _set_end(f, loan, turn + config.get("trade.ship_life"))
 
 
 def cancelled(island: IslandState, o: dict[str, Any], refunded: int) -> None:
@@ -609,6 +637,44 @@ def cancelled(island: IslandState, o: dict[str, Any], refunded: int) -> None:
             refunded -= amount
         loan.installment = -(-max(0, loan.principal) // max(1, loan.term))
         loan.repay_from = 0
+
+
+# --- 返済猶予 ----------------------------------------------------------------------
+
+
+def defer(island: IslandState, ctx: Any, loan: Any) -> bool:
+    """船の借りの返済猶予（W-281。掲示板 #1094〜#1100・#1108・#1109）: 利子は払えたが元金を払えな
+    かった海運業に、船の時価が船の借りの残り（合計）を上回る間は、遅れに数えず返し終わりを延ばす
+    （毎ターンの元金は変えない。払えなかった元金はそのまま残り、返し終わりがその分遅れる）。延ばした
+    後の返し終わりが、その借りの猶予の上限（借りた日に担保にした船の寿命の終わり。DEFER_END。後から
+    船を足しても延びない）を超えるなら猶予しない（現実の海運不況で銀行がする返済猶予。担保の船が
+    なくなる日より後へは延ばさない）。上限に届いた借りは、そのときの残りを defer_cap_left に数える
+    （1 回だけ）。猶予したかを返す。"""
+    config = ctx.config
+    f = banks.borrower_facility(island, loan.borrower)
+    if f is None or loan.installment <= 0:
+        return False
+    if not f.economy.get("fleet"):
+        return False
+    if ship_debt(island, f) >= collateral(island, config, f, ctx.turn):
+        _add(island, "defer_refused", 1)
+        return False
+    left = banks.outstanding(island, loan)
+    end = ctx.turn + -(-left // loan.installment)
+    cap = f.economy.get(DEFER_END, {}).get(str(loan.id))
+    if cap is None or end > cap:
+        _add(island, "defer_refused", 1)
+        capped = f.economy.setdefault(CAPPED, [])
+        if cap is not None and str(loan.id) not in capped:
+            capped.append(str(loan.id))
+            _add(island, "defer_capped", 1)
+            _add(island, "defer_cap_left", left)
+        return False
+    loan.arrears = 0
+    loan.term += 1
+    f.economy[DEFERRED] = f.economy.get(DEFERRED, 0) + 1
+    _add(island, "deferred", 1)
+    return True
 
 
 # --- 船を失ったとき ----------------------------------------------------------------

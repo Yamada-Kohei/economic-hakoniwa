@@ -434,6 +434,44 @@ def test_ship_purchase_is_not_in_the_operating_cash_flow(game, base):
     assert Accounts._ship_capex(island, game.config) == {f.id: money_of(price, MILLI)}
 
 
+def test_ship_loan_principal_is_deferred_while_the_ships_cover_it(game, base):
+    """利子は払えたが元金を払えなかった船の借りは、船の時価が残りを上回り、返し終わりがその借りの
+    猶予の上限（借りた日に担保にした船の寿命の終わり）を超えない間は、遅れに数えず返し終わりを
+    延ばす（返済猶予）。後から新しい船を足しても上限は延びない。"""
+    world, island, f = _setup(game, base)
+    config = game.config
+    life = config.get("trade.ship_life")
+    turn = world.turn + 1
+    f.economy["fleet"] = [[turn, 2 * MILLI]]  # 新しい船 2 隻
+    bank = banks.active_banks(island)[0]
+    entity = facility_entity(f.id)
+    term = config.get("loans.ship_turns")
+    value = ships.market_value(island, config, f, turn)
+    loan = banks.lend(island, bank, entity, value // 2, banks.SHIP, term, turn, 500, turn + 1)
+    ship_loans._set_end(f, loan, turn + life)
+    ship_loans._set_end(f, loan, turn + 2 * life)  # 同じ借りに後から足しても上限は変えない
+    assert f.economy[ship_loans.DEFER_END][str(loan.id)] == turn + life
+    ctx = _ctx(game, world, "banking")
+    loan.arrears = 1
+    assert ship_loans.defer(island, ctx, loan)
+    assert loan.arrears == 0 and loan.term == term + 1
+    assert island.stats["ship_loans.deferred"] == 1
+    assert f.economy[ship_loans.DEFERRED] == 1
+    # 返し終わりが上限を超えるなら猶予しない（新しい船を足しても延びない）。残りを 1 回だけ数える
+    f.economy["fleet"].append([turn + 100, MILLI])
+    loan.arrears = 1
+    loan.installment = 1
+    assert not ship_loans.defer(island, ctx, loan) and loan.arrears == 1
+    assert not ship_loans.defer(island, ctx, loan)
+    assert island.stats["ship_loans.defer_capped"] == 1
+    assert island.stats["ship_loans.defer_cap_left"] == banks.outstanding(island, loan)
+    # 時価が残りを下回れば猶予しない
+    loan.installment = -(-loan.principal // loan.term)
+    f.economy["fleet"] = [[turn - life + 1, 2 * MILLI]]  # 寿命の近い船だけ
+    assert not ship_loans.defer(island, ctx, loan) and loan.arrears == 1
+    assert island.stats["ship_loans.defer_refused"] == 3
+
+
 def test_turns_run_with_ship_loans_and_the_books_balance(game, base):
     """船の借りを含めてターンが回り、帳簿の確かめ（記録の段）が通る。"""
     world, island, f = _setup(game, base)

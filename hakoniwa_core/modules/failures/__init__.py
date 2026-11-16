@@ -95,6 +95,9 @@ class Failures(IslandStage):
                     if any(x.purpose == banks.SHIP for x in late):  # 船の借りの遅れ（W-281）
                         stats = island.stats
                         stats["ship_loans.failed"] = stats.get("ship_loans.failed", 0) + 1
+                        if f.economy.get("ship_deferred"):  # 猶予が明けた後の倒産
+                            key = "ship_loans.failed_after_defer"
+                            stats[key] = stats.get(key, 0) + 1
                     bankrupt(island, ctx, f)
         before = funds.government_money(island)  # 政府の預金からの引き出しは使った額に数えない
         spent = dict(funds.spent(island))  # 救済の前の支出（救済の額は次のターンの見込みでない）
@@ -196,6 +199,9 @@ def bankrupt(island: IslandState, ctx: StageContext, f: Facility, run: bool | No
         lender_totals[loan.lender] = lender_totals.get(loan.lender, 0) + owed[loan.id]
         left = banks.outstanding(island, loan)
         lost[loan.lender] = lost.get(loan.lender, 0) + left
+        if loan.purpose == banks.SHIP and left > 0 and f.economy.get("ship_deferred"):
+            key = "ship_loans.loss_after_defer"  # 猶予した船の借りの回収の損（W-281）
+            island.stats[key] = island.stats.get(key, 0) + left
         banks.write_off(island, loan, left)
     banks.drop_settled(island)
     claims = arrears.write_off(island, entity)

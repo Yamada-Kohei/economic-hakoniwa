@@ -199,7 +199,9 @@ class Banking(IslandStage):
                     # 国営施設は、借りきれない分を政府が出資して埋める（国庫が足りなければ遅れる）
                     self._inject(island, f, Payer(ledger.GOV, STATE_FACILITIES), short)
             for loan, interest, principal in rows:
-                self._pay_loan(island, loan, interest, principal)
+                paid_interest = self._pay_loan(island, loan, interest, principal)
+                if loan.purpose == banks.SHIP and loan.arrears > 0 and paid_interest:
+                    ship_loans.defer(island, ctx, loan)  # 船の借りの返済猶予（W-281）
                 if loan.purpose in (banks.MORTGAGE, banks.PLEDGE):
                     self._write_off_mortgage(island, ctx, loan)
 
@@ -247,7 +249,8 @@ class Banking(IslandStage):
         stats[key] = stats.get(key, 0) + left
 
     @staticmethod
-    def _pay_loan(island: IslandState, loan: Loan, interest: int, principal: int) -> None:
+    def _pay_loan(island: IslandState, loan: Loan, interest: int, principal: int) -> bool:
+        """利子と元金を払う（払えた分だけ）。利子を全部払えたかを返す。"""
         borrower = loan.borrower
         money = funds.available(island, Payer(borrower))
         paid_interest = min(interest, money)
@@ -270,6 +273,7 @@ class Banking(IslandStage):
             loan.arrears += 1
         else:
             loan.arrears = 0
+        return paid_interest >= interest
 
     @staticmethod
     def _refinance(island: IslandState, ctx: StageContext, loan: Loan, short: int) -> None:
