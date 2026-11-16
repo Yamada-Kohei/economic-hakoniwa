@@ -5,6 +5,10 @@
 1 組でも違うか、片方にしかなければ終了コード 1。
 
     python tools/measure/same_results.py runs/full-resumed runs/full-straight
+    # 片方が別の版（main など）の結果のとき。指紋の欄を比べない
+    python tools/measure/same_results.py runs/full-resumed runs/main-full --other-code
+    # 両方にある組だけ比べる（片方が --only で一部の場面だけのとき）
+    python tools/measure/same_results.py runs/full-resumed runs/main-full --common
 """
 
 from __future__ import annotations
@@ -18,9 +22,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from resume_check import compare_series, compared, differences, read_json  # noqa: E402
 
 
-def check(a_dir: Path, b_dir: Path) -> tuple[list[str], int]:
+def check(
+    a_dir: Path, b_dir: Path, other_code: bool = False, common: bool = False
+) -> tuple[list[str], int]:
     """表の行と、違う組の数。"""
-    names = sorted({p.stem for folder in (a_dir, b_dir) for p in folder.glob("*.json")})
+    found_a = {p.stem for p in a_dir.glob("*.json")}
+    found_b = {p.stem for p in b_dir.glob("*.json")}
+    names = sorted(found_a & found_b if common else found_a | found_b)
     lines = ["| 組 | 結果 | 中身 |", "|---|---|---|"]
     failed = 0
     for name in names:
@@ -29,6 +37,8 @@ def check(a_dir: Path, b_dir: Path) -> tuple[list[str], int]:
         if a is None or b is None:
             problems.append("片方にしか結果がない（か読めない）")
         else:
+            if other_code:  # 指紋の欄は違って当たり前なので比べない
+                a, b = a | {"code_fingerprint": ""}, b | {"code_fingerprint": ""}
             found = differences(compared(a), compared(b))
             if found:
                 problems.append("結果の JSON が違う: " + " / ".join(found))
@@ -56,8 +66,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("first")
     parser.add_argument("second")
+    parser.add_argument(
+        "--other-code", action="store_true", help="片方が別の版の結果のとき。指紋の欄を比べない"
+    )
+    parser.add_argument("--common", action="store_true", help="両方にある組だけ比べる")
     args = parser.parse_args(argv)
-    lines, failed = check(Path(args.first), Path(args.second))
+    lines, failed = check(Path(args.first), Path(args.second), args.other_code, args.common)
     print("\n".join(lines))
     if len(lines) == 4:  # 表の頭と終わりの行だけ
         print("比べる結果がありません")

@@ -435,6 +435,11 @@ def test_a_resumed_batch_gives_the_same_result_as_a_straight_batch(tmp_path, set
     lines, failed = same_results.check(tmp_path / "b", tmp_path / "c")
     assert failed == 1 and ".digest" in "\n".join(lines)
     assert same_results.check(tmp_path / "b", tmp_path / "a")[1] == 2  # 組が片方にしかない
+    assert same_results.check(tmp_path / "b", tmp_path / "a", common=True)[1] == 0
+    other = changed | {"digest": straight["digest"], "code_fingerprint": "main"}
+    (tmp_path / "c" / f"{LONG_NAME}.json").write_text(json.dumps(other), encoding="utf-8")
+    assert same_results.check(tmp_path / "b", tmp_path / "c")[1] == 1
+    assert same_results.check(tmp_path / "b", tmp_path / "c", other_code=True)[1] == 0
     # 置き場から写しても同じ結果
     assert measure.batch([LONG], tmp_path / "d", 1, True, store=root) == 0
     assert read(tmp_path / "d" / f"{LONG_NAME}.json") == resumed
