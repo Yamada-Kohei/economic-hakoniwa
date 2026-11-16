@@ -21,6 +21,8 @@
 #   price_controls: どの財にも値段の上限と下限を決められる（混合経済。ほかの体制は電気料金の上限だけ）
 #   exit_control: 出国をどこまで制限できるか（free: 制限できない・permit: 許可制まで・ban: 禁止まで。
 #     書いていなければ禁止まで。バランス調整の回3。hakoniwa_core/modules/migration）
+#   forced_relocation: 過密の町の人を、指した町へ強制的に移す命令 force_relocate を出せる（W-286。
+#     hakoniwa_core/modules/population/relocation.py）
 
 # 政治の仕組み
 democracy:
@@ -30,11 +32,11 @@ democracy:
 authoritarian:
   axis: politics
   capital_building: official_residence
-  traits: {stability_bonus: 0, stability_turns_up: 6, stability_turns_down: 6, admin_bonus: 1, works_turns: 0.75, exit_control: permit}
+  traits: {stability_bonus: 0, stability_turns_up: 6, stability_turns_down: 6, admin_bonus: 1, works_turns: 0.75, exit_control: permit, forced_relocation: true}
 totalitarian:
   axis: politics
   capital_building: party_headquarters
-  traits: {stability_bonus: -5, stability_turns_up: 4, stability_turns_down: 4, mobilization: true, happiness_cap: 80, exit_control: ban}
+  traits: {stability_bonus: -5, stability_turns_up: 4, stability_turns_down: 4, mobilization: true, happiness_cap: 80, exit_control: ban, forced_relocation: true}
 
 # 国家元首の形
 monarchy:

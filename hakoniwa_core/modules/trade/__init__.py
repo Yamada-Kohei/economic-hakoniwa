@@ -2466,6 +2466,7 @@ class _Round:
         stats["fx.holdings"] = fxmoney.total_value(island, fxrates.rates(island))
         stats["fx.swap.borrowed"] = swap.debt_value(island)  # 融通で借りている額（自国通貨）
         stats["fx.swap.lent"] = swap.claims_value(island, foreign_only=False)
+        stats["fx.swap.waived"] = swap.waived_value(island)  # 免除した利子の累計（貸し手。FX-82）
         stats.setdefault("trade.merchant", 0)
         stats.setdefault("trade.merchant_sold", 0)
         stats.setdefault("trade.charter_income", 0)

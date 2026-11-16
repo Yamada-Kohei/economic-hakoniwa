@@ -206,6 +206,50 @@ def test_hungry_bids_stay_within_the_food_budget(game):
     assert hungry_food_orders(need, {}, {}, menu, {}, 0, 0, settings["steps"], 0.5) == []
 
 
+def test_hungry_households_short_of_money_spend_it_all_at_the_band(game):
+    """今の値幅の上端でも要る量を買えない飢えた家計は、上乗せをせず、上端の指値で食費の限りいっぱい
+    まで量を注文する（W-280。2026-11-15）。前は食費の限りが 6% 足りないだけで、最初の段を飢える前の
+    値段の数倍で取り置いて要る量の 17% しか注文せず、食費の 8 割近くを残したまま飢えた（約定は
+    板寄せの値段なので、高い指値は取り置きを食うだけ）。食費の限りが増えると注文の量は減らない。"""
+    settings = game.config.get("household.hungry")
+    steps, elasticity = settings["steps"], settings["elasticity"]
+    menu = _menu()
+    need = 100 * QUANTITY_SCALE
+    whole = gross_cost(100, need, menu.rate, menu.tax["grain"])  # 値幅の上端で全部買う額
+
+    def order(budget):
+        orders = hungry_food_orders(
+            need,
+            {"grain": need},
+            {"grain": need},
+            menu,
+            {"grain": 100},
+            0,
+            budget,
+            steps,
+            elasticity,
+        )
+        cost = sum(gross_cost(limit, q, menu.rate, menu.tax[g]) for g, q, limit in orders)
+        return sum(q for _, q, _ in orders), cost, {limit for _, _, limit in orders}
+
+    # 6% 足りない: 要る量の 9 割以上を、上端の指値だけで注文し、食費をほぼ使い切る
+    qty, cost, limits = order(whole * 94 // 100)
+    assert qty >= need * 0.93
+    assert limits == {100}
+    assert whole * 0.93 <= cost <= whole * 94 // 100
+    # 半分しかなければ、半分を注文する
+    qty, cost, limits = order(whole // 2)
+    assert need * 0.49 <= qty <= need * 0.5
+    assert limits == {100}
+    # 食費の限りが増えるほど注文の量は増え（崖がない）、上端で全部買える額を超えたら全部を注文して
+    # 上乗せが戻る
+    budgets = [whole * k // 100 for k in (10, 30, 50, 80, 94, 99, 100, 101, 110, 150, 300, 2000)]
+    quantities = [order(b)[0] for b in budgets]
+    assert quantities == sorted(quantities)
+    assert order(whole * 110 // 100)[0] == pytest.approx(need, rel=0.01)
+    assert max(order(whole * 110 // 100)[2]) > 100
+
+
 def test_hungry_households_that_can_pay_the_band_order_all_they_need(game):
     """飢えた家計の食費の限りが、全部の段を上乗せした指値で取り置くには足りないが、今の値幅の上端で
     なら要る量を全部買えるときは、上乗せを縮めて要る量の全部を注文する（2026-11-10。前は最初の段を

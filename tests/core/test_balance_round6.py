@@ -239,9 +239,10 @@ def test_stock_of_a_closed_plant_goes_back_on_the_market(game, base):
     stock.add(f.stock, "wood", 7000, world.turn, game.defs.goods)
     held = stock.total(f.stock, "wood")
     before = stock.total(island.warehouse, "wood")
+    offered = trade.to_market(island).get("wood", 0)  # ほかの閉じた施設から引き取って売りに出た分
     remove_facility(island, context(game, world), f)
     assert stock.total(island.warehouse, "wood") == before + held
-    assert trade.to_market(island)["wood"] == held
+    assert trade.to_market(island)["wood"] == offered + held
     run_checked(game, world, 1)
     record = next(m for m in island.markets if m.good == "wood")
     assert record.supply >= held  # 国が引き取った木材が売りに出ている

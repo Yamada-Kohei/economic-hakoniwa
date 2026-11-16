@@ -232,6 +232,8 @@ class Employment(IslandStage):
                 f.economy.pop(dismissal.FIXED_TERM, None)
                 f.workers = 0
                 f.ext.pop("short_wages", None)
+                if f.built and is_transport(config, f):
+                    trucks.remember(config, f, 0)  # 止まった間は雇いたい運転手 0（C1）
                 continue
             f.economy["wage"] = wage
             plans.append((f, wage))
@@ -691,8 +693,21 @@ class Employment(IslandStage):
         treasury = money >= funds.available(island, payer, capped=False)
         for t in group:
             t.f.ext.pop(SHORT_MATERIALS, None)
-        materials = {
+        # 市場の段で買う材料の代金の見込み（手元の在庫で足りない分。取り置きに使う）
+        buying = {
             t.f.id: input_cost(island, ctx, t.f, rates.get(t.f.id, 0)) if t.need > 0 else 0
+            for t in group
+        }
+        # 予算を賃金と材料に分けるときの材料の見込み。公務の施設（学校・大学・探査隊）は材料を
+        # 数ターン分持つので、手元の在庫を引かず、その月に使う分の代金で分ける（在庫のあるうちは
+        # 見込みが 0 になって項目を賃金に使い切り、在庫が尽きた月に休校同然になるのを繰り返して
+        # いた）。買う量は今までどおり（数ターン分まで）で、使わなかった分は項目に残る
+        materials = {
+            t.f.id: (
+                input_cost(island, ctx, t.f, rates.get(t.f.id, 0), on_hand=False)
+                if is_public_service(ctx.defs, t.f)
+                else buying[t.f.id]
+            )
             for t in group
         }
 
@@ -736,7 +751,10 @@ class Employment(IslandStage):
             self._settle(island, ctx, t, want[t.f.id], treasury, budget)
         if not island.has_economy:
             return
-        asks = [(t.f.id, mats(t, min(t.want, t.need))) for t in group]
+        asks = [
+            (t.f.id, buying[t.f.id] * min(t.want, t.need) // t.need if t.need > 0 else 0)
+            for t in group
+        ]
         asks = [(fid, amount) for fid, amount in asks if amount > 0]
         if not asks:
             return
@@ -1210,6 +1228,7 @@ class Employment(IslandStage):
             drivers = freight.payroll(island, config) // max(1, wage)
             if not f.built:
                 return drivers
+            trucks.remember(config, f, drivers)  # トラックの欲しい台数の記録（C1）
             trucks.commission(island, config, f)
             replaced = trucks.drive(island, config, f, drivers)
             if replaced:
@@ -1288,6 +1307,10 @@ class Employment(IslandStage):
             # 自然に辞めた人の分を雇い足さない
             idle = regular - dismissal.natural_leavers(config, prior)
             hold = max(hold, min(idle, fac.labor_demand(defs, f, ctx.turn)))
+        # 抱えるのは設計の人数（全力）まで: それを超える人は席がなく二度と要らない（人数の数え方を
+        # 変えた後に前の数え方で記録した要る人数が残っていても抱えない。FM-74 の後の倭国、LB-43）。
+        # 下限 least と違い設備の傷んだ分は引かない: 傷んだ設備は直せばまた要る人だから
+        hold = min(hold, fac.workers_of(defs, f))
         if need >= max(least, hold):  # 減らす速さの上限にも、抱える人数にもかからない
             f.economy.pop(dismissal.CARRY, None)
             return need, BOUND_DISMISSAL

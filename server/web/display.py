@@ -332,6 +332,11 @@ def facility_info(row: m.Facility, island: IslandState, mine: bool = False) -> d
         # 町の商店（回7）: 入っている数と、町の段階で入る数
         info["shops"] = fac.shops_at(island, fac.position(f))
         info["shop_slots"] = fac.shop_slots(defs, f, full)
+        # 強制移住（W-286）: 住める数（傷みを見た上限）を超えて住む人と、体制が命令を許すか
+        from hakoniwa_core.modules.population import relocation
+
+        info["crowded"] = max(0, population - fac.housing_capacity(defs, f))
+        info["relocate"] = relocation.allowed(full, defs)
         levels = defs.settlement_levels()
         if levels.index(level) + 1 < len(levels):
             following = levels[levels.index(level) + 1]
@@ -1272,6 +1277,9 @@ def describe_order(
         return f"{name}: {facility} {where}"
     if kind == "explore":
         return f"{name}: {defs.name('goods', payload.get('resource', ''))} {where}"
+    if kind == "force_relocate":
+        to = f"({payload.get('to_x')}, {payload.get('to_y')})"
+        return f"{name}: {where} → {to} {payload.get('count', 0):,} 人"
     if kind == "build_housing":
         if "level" in payload:
             return f"{name}: {where} {defs.name('settlements', payload['level'])}まで"

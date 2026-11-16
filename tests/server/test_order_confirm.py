@@ -205,3 +205,33 @@ def test_mcp_set_orders_returns_confirm_and_saves_with_confirm(played):
     assert browser.get(f"/api/islands/{own.id}/orders").json()["orders"] == []
     saved = json.loads(_tool(ai, "set_orders", orders=[order], confirm=True))
     assert [o["kind"] for o in saved["orders"]] == ["demolish"]
+
+
+def test_forced_relocation_shows_both_towns_cost_and_stability(client, world):
+    """強制移住（W-286）は戻せないので、出る所と着く所の人口・住める数・過密の変わりを見せて聞く。"""
+    from hakoniwa_core import facilities as fac
+    from hakoniwa_core.game import load_game
+    from hakoniwa_core.modules.population import homes_of
+    from server.world.repository import load_island
+
+    island = _own_island(client)
+    state = load_island(island)
+    game = load_game()
+    state.regime["politics"] = "authoritarian"
+    homes = sorted(homes_of(state, game.config).items())
+    (src, home), (dst, _) = homes[0], homes[-1]
+    state.tile(*src).population = fac.housing_capacity(game.defs, home) + 400
+    payload = {"x": src[0], "y": src[1], "to_x": dst[0], "to_y": dst[1], "count": 1000}
+    notes = order_confirm.confirmations(
+        order_confirm.Context(island, state), "force_relocate", payload
+    )
+    assert len(notes) == 2
+    assert "400 人（頼んだ 1,000 人のうち）" in notes[0]
+    assert f"({src[0]}, {src[1]}) 人口" in notes[0] and f"({dst[0]}, {dst[1]}) 人口" in notes[0]
+    assert "運ぶ費用" in notes[1] and "戻せません" in notes[1]
+    # 民主主義の国では命令が断られるので、確かめの文は出さない
+    state.regime["politics"] = "democracy"
+    assert (
+        order_confirm.confirmations(order_confirm.Context(island, state), "force_relocate", payload)
+        == []
+    )

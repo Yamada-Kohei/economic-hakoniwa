@@ -401,6 +401,7 @@ def choose_investor(
     equity_of: int | Callable[[int | None], int],
     pledge: Callable[[], int] | None = None,
     exclude: int | None = None,
+    prefer: int | None = None,
     config: GameConfig | None = None,
 ) -> tuple[str, int | None] | None:
     """新しい施設（kind）の出資を出す者。equity_of(企業の番号) はその企業が出すときの出資の額、
@@ -425,6 +426,9 @@ def choose_investor(
     企業の中では預金の多い順・番号の順。(払う主体, 企業の番号か None) を返し、誰も出せなければ
     None。
 
+    prefer の企業（組で建てた原料の工場の企業。FM-72）は、預金で出せれば 1 より先に出す。出せな
+    ければいつもの順で選び、資本家階級が出すなら、呼ぶ側が建てた施設をその企業に入れる（増資）。
+
     前は預金で出せる企業があれば、業種がつながらなくても（3 の財閥）その企業が出し、資本家階級が
     新しい企業を起こすのはどの企業も出せないときだけだったので、建国の後に新しい企業がほとんど
     生まれなかった（公開の世界のターン 34 で 0 社。2026-11-02 の調べ）。"""
@@ -433,6 +437,11 @@ def choose_investor(
     if isinstance(equity_of, int):
         fixed = equity_of
         equity_of = lambda _number: fixed  # noqa: E731
+    if prefer is not None and prefer != exclude:
+        rec = record(island, prefer)
+        if rec is not None and rec[OWNER] == OWNER_PRIVATE:
+            if spare(island, prefer) >= max(1, equity_of(prefer)):
+                return entity(prefer), prefer
     best: tuple[tuple[int, int, int], int] | None = None
     for key, rec in island.economy.firms.items():
         if rec[OWNER] != OWNER_PRIVATE:

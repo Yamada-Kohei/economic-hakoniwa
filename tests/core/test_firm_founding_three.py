@@ -189,7 +189,9 @@ def test_no_pledge_when_the_owners_have_enough(game, base):
     """預金で出せるなら株を担保に借りない。誰も出せなければ、借りられる額をわけに書く。"""
     world, island, ctx, f, number, other = _setup(game, base)
     amount = 2_000_000
-    _set_owners(island, amount)
+    # 出資に回せるのは暮らしの分（FM-58）を残した預金なので、その分を足して置く（暮らしの分は
+    # 食べ物の値段で変わる。LB-20 の献立で穀物寄りの食べ方になり、2,000,000 では足りなくなった）
+    _set_owners(island, amount + living_keep(island, game.defs, game.config))
     plan = EntryExit()._finance(island, ctx, amount, 10**12, other)
     assert isinstance(plan, list) and island.scratch[ENTRY_PLEDGE] == []
     reason, args = EntryExit()._finance(island, ctx, 10**15, 10**15, other)
