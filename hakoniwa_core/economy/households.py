@@ -39,6 +39,11 @@ from hakoniwa_core.units import BASIS, round_money, to_basis
 
 SUPPORT = "family_support"  # island.scratch: 層 → 支え合いで受け取り、食べ物に先に使う額（回7）
 CAP = "cap"  # 資産を持つ層の人数の上限（LB-42）
+# 資産を持つ層が受けた家族の支えの記録（層の状態。所得の記録と同じターン数。暮らせる人数の式で
+# だけ所得から引く。LB-42。W-280）
+SUPPORTED = "supported"
+# 1人1ターンの食べ物の額を数えるときの人数（1人分だと額の端数が大きいので、まとめて数えて割る）
+FOOD_SAMPLE = 1000
 
 
 def has_private_owners(defs: Defs, island: IslandState) -> bool:
@@ -180,20 +185,34 @@ def pledged(island: IslandState, layer: str) -> int:
 
 
 def owners_room(
-    island: IslandState, config: GameConfig, layer: str, income: float | None = None
+    island: IslandState,
+    defs: Defs,
+    config: GameConfig,
+    layer: str,
+    income: float | None = None,
 ) -> int | None:
     """資産を持つ層が財産と所得で暮らせる人数（LB-42）。上限がなければ None。
 
-    1人が使える額（層の所得の直近の平均 I + 取り崩す割合 c2 × 財産、の1人あたり）が、一般の層の
-    1人あたりの所得の直近の平均 g に届く人数。層を出る人は預金だけを1人あたりで持ち出し、株と株を
-    担保にした借入 P は層に残る。預金のうち借入の返済の取り置き R = min(預金, P) も層に残るので、
-    持ち出せる1人あたりの預金を m とすると、釣り合う人数 = (I + c2 × (株の値打ち − P + R)) ÷
-    (g − c2 × m)。層が0人のときの m は、戻ってくる一般の層の1人あたりの預金。分母が 0 以下
-    （預金の取り崩しだけで一般の所得に届く）なら上限なし。income を渡さなければ層の所得の記録の
-    平均で、記録がなければ（建国のターン）上限なし。
-    """
-    from hakoniwa_core.economy.companies import owners_collateral
+    1人が使える額（層の資産の所得の直近の平均 I + 取り崩す割合 c2 × 預金、の1人あたり）が、暮らしの
+    物差し T に届く人数。T は一般の層の1人あたりの所得の直近の平均 g と、1人1ターンのいちばん安い
+    食べ物の額（food_cost。税と運賃を含む）の大きい方（自給の村が多く所得税の高い島では g が食べ物の
+    額を下回り、資産の収入で食べ物も買えない人が「暮らせる」と数えられた。W-280）。c2 は利子では
+    なく、財産から1ターンに取り崩して使う割合（年4%ほど）。
 
+    層を出る人は預金だけを1人あたりで持ち出し、株と株を担保にした借入 P は層に残る。預金のうち
+    借入の返済の取り置き R = min(預金, P) も層に残るので、持ち出せる1人あたりの預金を m とすると、
+    釣り合う人数 = (I + c2 × R) ÷ (T − c2 × m)。層が0人のときの m は、戻ってくる一般の層の1人
+    あたりの預金。分母が 0 以下（預金の取り崩しだけで T に届く）なら上限なし。
+
+    株の値打ち（会社の純資産）は数えない。株を売る市場も、暮らしのために株を担保に借りる道もなく
+    （担保の借入は出資のときだけ）、株が暮らしのお金になるのは配当として所得に入った分だけ。前は
+    c2 × 株の値打ちを使える額に数え、配当のない会社の帳簿の値打ちで暮らせる人数がふくらんで上限が
+    外れた（W-280）。受けた家族の支え（LB-35）も資産の所得ではないので I から引く（支えを受ける
+    ほど資本家階級に残れる循環を切る。所得の記録そのものは変えない）。
+
+    income を渡さなければ層の所得の記録の平均（支えを引く）で、記録がなければ（建国のターン）上限
+    なし。
+    """
     households = island.economy.households
     h = households[layer]
     keep = config.get("household.income_turns")
@@ -201,7 +220,8 @@ def owners_room(
         history = h["income"][-keep:]
         if not history:
             return None
-        income = sum(history) / len(history)
+        given = h.get(SUPPORTED, [])[-len(history) :]
+        income = (sum(history) - sum(given)) / len(history)
     general = households.get(GENERAL)
     if general is None or general["persons"] <= 0:
         return None
@@ -217,14 +237,15 @@ def owners_room(
         movable = (deposits - kept) / h["persons"]
     else:
         movable = ledger.money(island, household(GENERAL)) / general["persons"]
-    denominator = per_general - c2 * movable
+    living = max(per_general, food_cost(island, defs, config, FOOD_SAMPLE) / FOOD_SAMPLE)
+    denominator = living - c2 * movable
     if denominator <= 0:
         return None
-    numerator = income + c2 * (owners_collateral(island) - debt + kept)
+    numerator = income + c2 * kept
     return max(0, int(numerator // denominator))
 
 
-def update_owners_cap(island: IslandState, config: GameConfig, population: int) -> None:
+def update_owners_cap(island: IslandState, defs: Defs, config: GameConfig, population: int) -> None:
     """人口の段で、資産を持つ層の人数の上限（CAP）を数え直す（LB-42。亡くなった人を引いた後、
     人数を割り振り直す前に呼ぶ）。
 
@@ -241,7 +262,7 @@ def update_owners_cap(island: IslandState, config: GameConfig, population: int) 
         # 計画経済から移ったばかりで所得の記録がまだない層（上限を持って置いた。politics の
         # _add_owners）は、所得 0 として数える
         income = 0 if h.get(CAP) is not None and not h["income"] else None
-        room = owners_room(island, config, name, income)
+        room = owners_room(island, defs, config, name, income)
         target = share_target(h, population)
         if room is None:
             h.pop(CAP, None)
@@ -492,8 +513,15 @@ def add_income(island: IslandState, layer: str, amount: int) -> None:
 def close_income(island: IslandState, keep: int) -> None:
     """ターンの終わりに、このターンの可処分所得を層ごとの記録に足す。"""
     income = island.scratch.get("income", {})
+    support = island.scratch.get(SUPPORT, {})
     for name, h in island.economy.households.items():
         h["income"] = [*h["income"], income.get(name, 0)][-keep:]
+        if "share" in h:  # 資産を持つ層: 受けた支えを別に持つ（暮らせる人数の式でだけ引く。LB-42）
+            given = [*h.get(SUPPORTED, []), support.get(name, 0)][-keep:]
+            if any(given):
+                h[SUPPORTED] = given
+            else:
+                h.pop(SUPPORTED, None)
 
 
 def layer_of(entity: str) -> str | None:

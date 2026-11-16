@@ -861,7 +861,7 @@ class Population(IslandStage):
                 deaths[name] = deaths.get(name, 0) + count
             remove_dead(island, defs, deaths)
             population = sum(t.population for t in island.tiles)
-            update_owners_cap(island, ctx.config, population)
+            update_owners_cap(island, defs, ctx.config, population)
             changes = split_persons(island, defs, population)
             move_people(island, changes)
             if island.economy.happiness_blend > 0:
