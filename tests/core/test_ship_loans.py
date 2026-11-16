@@ -165,7 +165,7 @@ def test_unbought_ships_loan_is_returned_the_same_turn(game, base):
     # 買い注文の取り置き（借りたお金は船の代金にだけ使う）。半分だけ買えた
     party = Party("facility", entity, None, 0, 0, f)
     party.reserved = credit["value"]
-    ship_loans.bid_placed(island, party, f, GOOD)
+    ship_loans.bid_placed(island, party)
     party.reserved = credit["value"] // 2
     stock.add(f.stock, GOOD, MILLI, world.turn, game.defs.goods)  # 約定で 1 隻が届いた
     ship_loans.note_spent(island)
@@ -176,12 +176,7 @@ def test_unbought_ships_loan_is_returned_the_same_turn(game, base):
     assert ship_loans.CREDIT not in f.economy  # 枠は使い切り
     assert island.stats.get("ship_loans.over_limit", 0) == 0
     assert not ledger.check(island, island.scratch["opening_accounts"])
-    # 買えた船は払った額（運賃込みの取得原価）で船団に入り、担保もこの額で数える
-    spent = credit["value"] - credit["value"] // 2
-    assert f.economy[ships.COST] == [MILLI, spent]
-    capital = f.economy.get("capital", 0)
-    ships.commission(island, game.defs, config, world.turn)
-    assert f.economy["capital"] == capital + spent and ships.COST not in f.economy
+    del config
 
 
 def test_no_new_loan_over_the_limit_after_ships_sank(game, base):
@@ -195,9 +190,9 @@ def test_no_new_loan_over_the_limit_after_ships_sank(game, base):
     term = config.get("loans.ship_turns")
     amount = int(banks.book_capital(f) * config.get("loans.ship_ltv"))
     banks.lend(island, bank, entity, amount, banks.SHIP, term, turn, 500, turn + 1)
-    ships.lose_ships(island, config, f, ships.fleet(f) // 2)
+    ships.lose_ships(island, config, f, ships.fleet(f) // 2, world.turn)
     over = ship_loans.ship_debt(island, f) - int(
-        ship_loans.collateral(island, f) * config.get("loans.ship_ltv")
+        ship_loans.collateral(island, config, f, world.turn) * config.get("loans.ship_ltv")
     )
     assert over > 0
     # 市場: 枠から 1 隻分を貸して 1 隻買えても、上限を超える分は返す
@@ -217,16 +212,16 @@ def test_no_new_loan_over_the_limit_after_ships_sank(game, base):
     ship_loans.draw(island, ctx, f, MILLI)
     party = Party("facility", entity, None, 0, 0, f)
     party.reserved = value
-    ship_loans.bid_placed(island, party, f, GOOD)
+    ship_loans.bid_placed(island, party)
     party.reserved = 0
     stock.add(f.stock, GOOD, MILLI, world.turn, game.defs.goods)
     ship_loans.note_spent(island)
     ship_loans.settle(island, ctx, f)
     assert island.stats.get("ship_loans.over_limit", 0) == 0
-    limit = int(ship_loans.collateral(island, f) * config.get("loans.ship_ltv"))
+    limit = int(ship_loans.collateral(island, config, f, world.turn) * config.get("loans.ship_ltv"))
     assert ship_loans.ship_debt(island, f) <= max(limit, amount) + 1
     # 前注文: 残りの船も沈んだ後は、注文の借りから上限を超えた分を外す
-    ships.lose_ships(island, config, f, ships.fleet(f))
+    ships.lose_ships(island, config, f, ships.fleet(f), world.turn)
     yard = _yard(game, island)
     price = island.economy.prices[GOOD]
     o = {
@@ -242,7 +237,7 @@ def test_no_new_loan_over_the_limit_after_ships_sank(game, base):
         "financed": money_of(price, MILLI) * 4 // 5,
     }
     yard.economy[orders.ORDERS] = [o]
-    excess = ship_loans._excess(island, config, f)
+    excess = ship_loans._excess(island, config, f, ctx.turn)
     assert excess > 0
     want = o["financed"]
     lent = ship_loans.finance_payment(island, ctx, f, o, want)
@@ -410,6 +405,33 @@ def test_review_counts_earnings_over_service(game, base):
     ratio = stats["ship_loans.review_earnings"] / stats["ship_loans.review_service"]
     assert stats.get("ship_loans.review_below_1", 0) == (1 if ratio < 1.0 else 0)
     assert stats.get("ship_loans.review_below_1_2", 0) == (1 if ratio < 1.2 else 0)
+
+
+def test_collateral_is_the_market_value_by_remaining_life(game, base):
+    """担保は船の時価（今の値段 × 寿命の残りの割合）。古い船を解体しても、新しい船の値打ちは減らない
+    （帳簿の値打ちは船団をまとめて減価償却し、解体で平均を除く）。"""
+    world, island, f = _setup(game, base)
+    config = game.config
+    life = config.get("trade.ship_life")
+    turn = 10 * life
+    price = island.economy.prices[GOOD]
+    f.economy["fleet"] = [[turn - life + 10, MILLI], [turn, MILLI]]  # 寿命まで 10 ターンと新しい船
+    value = ships.market_value(island, config, f, turn)
+    assert value == pytest.approx(price + price * 10 / life, abs=2)
+    ships.lose_ships(island, config, f, MILLI, turn)  # 古い順に除く
+    assert ships.market_value(island, config, f, turn) == pytest.approx(price, abs=2)
+
+
+def test_ship_purchase_is_not_in_the_operating_cash_flow(game, base):
+    """海運業が買って船団に入れる船は設備投資で、審査の稼ぎ（営業の現金収支）から外す。"""
+    from hakoniwa_core.economy import books
+    from hakoniwa_core.modules.accounts import Accounts
+
+    world, island, f = _setup(game, base)
+    open_books(island)
+    books.stock_moved(island, f.id, GOOD, MILLI)
+    price = island.economy.prices[GOOD]
+    assert Accounts._ship_capex(island, game.config) == {f.id: money_of(price, MILLI)}
 
 
 def test_turns_run_with_ship_loans_and_the_books_balance(game, base):

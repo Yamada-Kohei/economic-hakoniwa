@@ -475,9 +475,6 @@ def _deliver(
     # また注文する）
     buyer.economy.pop("ships_short", None)
     buyer.economy.pop(SHORT_LOAD, None)
-    from hakoniwa_core.trade import ships
-
-    ships.add_cost(buyer, qty, value)  # 注文の代金を取得原価にして船団に入れる（W-281）
     if o.get("loans") and turn is not None:
         from hakoniwa_core.economy import ship_loans  # economy は trade を読むので、ここで読む
 

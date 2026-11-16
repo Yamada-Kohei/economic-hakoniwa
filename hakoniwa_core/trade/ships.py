@@ -205,12 +205,15 @@ def ships_of_load(config: GameConfig, load: int) -> int:
     return load // max(1, config.get("trade.ship_capacity"))
 
 
-def lose_ships(island: IslandState, config: GameConfig, f: Facility, qty: int) -> int:
+def lose_ships(
+    island: IslandState, config: GameConfig, f: Facility, qty: int, turn: int | None = None
+) -> int:
     """沈んだ船 qty（1000 分の 1 隻）を古い順に船団から除く。設備の額と償却済みの額から沈んだ船の
     割合を除き、まだ償却していなかった分を船の傷みと同じ費用に数えて運賃に乗せる（close_turn）。除いた量を返す。"""
     from hakoniwa_core.economy import ship_loans  # economy は trade を読むので、ここで読む
 
-    held = ship_loans.collateral(island, f)
+    now = turn if turn is not None else max((e[0] for e in f.economy.get("fleet", [])), default=0)
+    held = ship_loans.collateral(island, config, f, now)
     before = fleet(f)
     taken = 0
     keep = []
@@ -228,23 +231,19 @@ def lose_ships(island: IslandState, config: GameConfig, f: Facility, qty: int) -
         f.economy["sunk_value"] = f.economy.get("sunk_value", 0) + max(0, gone_capital - gone_done)
         mark_lost(config, f, "sunk")
         # 沈んでも船の借りは残る（返済は続く）。担保が足りなくなった額を数える（W-281）
-        ship_loans.note_loss(island, config, f, held)
+        ship_loans.note_loss(island, config, f, held, now)
     return taken
 
 
-# 海運業の economy: 買って（届いて）船団に入れる前の船の [量, 取得原価]（W-281）
-COST = "ships_cost"
-
-
-def add_cost(f: Facility, qty: int, cost: int) -> None:
-    """買った（届いた）船 qty の取得原価 cost（市場の代金と運賃、前注文の代金）を覚える。"""
-    held = f.economy.get(COST, [0, 0])
-    f.economy[COST] = [held[0] + qty, held[1] + cost]
-
-
-def stocked_cost(f: Facility) -> int:
-    """買って船団に入れる前の船の取得原価。"""
-    return f.economy.get(COST, [0, 0])[1]
+def market_value(island: IslandState, config: GameConfig, f: Facility, turn: int) -> int:
+    """船の時価（W-281。船の借りの担保）: 船団の船は今の船の値段 × 寿命の残りの割合、買って船団に
+    入れる前の在庫の船は今の船の値段。帳簿の値打ち（船団をまとめて減価償却し、解体のときも平均で除く）
+    と違い、寿命の来た古い船を解体しても新しい船の値打ちは減らない。"""
+    good = config.get("trade.ship_good")
+    price = island.economy.prices.get(good, 0)
+    life = max(1, config.get("trade.ship_life"))
+    left = sum(q * max(0, life - (turn - since)) for since, q in f.economy.get("fleet", []))
+    return money_of(price, left) // life + money_of(price, stock.total(f.stock, good))
 
 
 def commission(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> int:
@@ -258,13 +257,8 @@ def commission(island: IslandState, defs: Defs, config: GameConfig, turn: int) -
         return 0
     stock.take(f.stock, good, qty)
     # 船は設備（設備の額に足し、減価償却で費用にする）。GDP では買ったときの在庫の増えを、そのまま
-    # 設備への投資として残す（在庫の減りに数えない）。設備の額は取得原価（市場の代金と運賃、前注文の
-    # 代金。W-281: 船の借りの担保をこの額で見る）。原価を覚えていない船は島の値段で入れる
-    held_qty, held_cost = f.economy.pop(COST, [0, 0])
-    costed = min(qty, held_qty)
-    value = (held_cost * costed // held_qty if held_qty else 0) + money_of(
-        island.economy.prices.get(good, 0), qty - costed
-    )
+    # 設備への投資として残す（在庫の減りに数えない）
+    value = money_of(island.economy.prices.get(good, 0), qty)
     f.economy["capital"] = f.economy.get("capital", 0) + value
     add_ships(f, qty, turn)
     f.economy.pop(LOST, None)
@@ -314,11 +308,11 @@ def scrap(island: IslandState, config: GameConfig, turn: int) -> int:
         # 1 隻になっても解体した船の分の減価償却が続いた）
         from hakoniwa_core.economy import ship_loans  # economy は trade を読むので、ここで読む
 
-        held = ship_loans.collateral(island, f)
+        held = ship_loans.collateral(island, config, f, turn)
         capital, done = f.economy.get("capital", 0), f.economy.get("depreciated", 0)
         f.economy["capital"] = capital - capital * gone // before
         f.economy["depreciated"] = done - done * gone // before
-        ship_loans.note_loss(island, config, f, held)  # 取り壊しても船の借りは残る（W-281）
+        ship_loans.note_loss(island, config, f, held, turn)  # 取り壊しても借りは残る（W-281）
         island.log.append(LogEntry("ships_scrapped", {"count": from_milli(gone)}))
     return gone
 

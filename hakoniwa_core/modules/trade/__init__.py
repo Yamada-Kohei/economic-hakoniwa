@@ -336,7 +336,7 @@ class _Round:
         if release:
             ships.release(shipping, s["id"])
         lost = max(1, ships.ships_of_load(self.config, s["load"]))
-        return ships.lose_ships(carrier, self.config, shipping, lost)
+        return ships.lose_ships(carrier, self.config, shipping, lost, self.turn)
 
     def _sink_ship(self, island: IslandState, s: dict[str, Any]) -> None:
         count = self._lose_ships(island, s, release=False)
