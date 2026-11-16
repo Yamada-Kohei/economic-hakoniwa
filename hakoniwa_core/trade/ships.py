@@ -112,6 +112,9 @@ def retiring(config: GameConfig, f: Facility, turn: int) -> int:
 
 # 海運業の economy: 載せられなかった荷を運ぶのに要った船の重さ（orders.SHORT_LOAD と同じ）
 SHORT_LOAD = "ships_short_load"
+# 島の貿易の状態: 船が足りずに荷を残した記録の写し {"ships_short": [...], SHORT_LOAD: [...]}。
+# 海運業がいない間も取り続け、開き直した海運業が引き継ぐ（W-281）
+SHORT_KEPT = "ships_short_kept"
 
 
 def left_ships(config: GameConfig, f: Facility) -> int:
@@ -160,7 +163,8 @@ def replacement(config: GameConfig, f: Facility, turn: int, ordered: int = 0) ->
 
 # 海運業の economy: 船を失って（沈没・拿捕・寿命の限りの解体）から、次の船を船団に入れるまで残す
 # 記録 {"why": "sunk" か "worn", "used": 失う前に航海に出ていた船（1000 分の 1 隻）}。使わない船を
-# 自分で解体したら {"why": "scrapped"}（復旧の扱いにしない）
+# 自分で解体したら {"why": "scrapped"}（復旧の扱いにしない）。前の海運業が倒れて開き直した海運業は
+# {"why": "failed"}（trade/setup.py の reopen_shipping）
 LOST = "ships_lost"
 
 
@@ -175,7 +179,7 @@ def recovering(config: GameConfig, f: Facility) -> bool:
     return (
         fleet(f) <= 0
         and isinstance(lost, dict)
-        and lost.get("why") in ("sunk", "worn")
+        and lost.get("why") in ("sunk", "worn", "failed")
         and lost.get("used", 0) > 0
         and short_lately(config, f)
     )

@@ -472,6 +472,56 @@ def test_ship_loan_principal_is_deferred_while_the_ships_cover_it(game, base):
     assert island.stats["ship_loans.defer_refused"] == 3
 
 
+def test_shipping_reopens_after_entry_turns_and_inherits_the_island_short_record(game, base):
+    """海運業がなくなった島に、商社の輸入の見込みがあれば trade.entry_turns ターン後に海運業を開き
+    直す。会社がいない間も島で取り続けた積み残しの記録を引き継ぎ、船が足りずに荷を残していれば最初の
+    1 隻は復旧の枠（買い替え）。残していなければ買い増し（通常の審査）。"""
+    from hakoniwa_core.trade import island_state, setup, traders, traders_of
+
+    world, island, f = _setup(game, base)
+    config = game.config
+    defs = game.defs
+    island.facilities.remove(f)
+    for t in traders_of(island, config, world.turn):
+        traders.state_of(t)[traders.IMPORT_NEED] = {"grain": MILLI}
+    keep = config.get("trade.cost_turns")
+    island_state(island)[ships.SHORT_KEPT] = {
+        "ships_short": [1] * keep,
+        ships.SHORT_LOAD: [0] * keep,
+    }
+    turn = world.turn
+    assert setup.reopen_shipping(island, defs, config, turn) is None  # 待ち始め
+    wait = config.get("trade.entry_turns")
+    assert setup.reopen_shipping(island, defs, config, turn + wait - 1) is None
+    island.economy.average_wage = island.economy.average_wage or 1
+    opened = setup.reopen_shipping(island, defs, config, turn + 2 * wait)
+    assert opened is not None and shipping_of(island, config) is opened
+    assert opened.economy["ships_short"] == [1] * keep
+    assert ships.recovering(config, opened)
+    assert ships.replacement(config, opened, turn + 2 * wait) == MILLI
+    # 船が足りずに荷を残していなければ、復旧の枠は使わない
+    opened.economy["ships_short"] = [0] * keep
+    assert not ships.recovering(config, opened)
+    assert ships.replacement(config, opened, turn + 2 * wait) == 0
+    # 海運業がいれば開かない
+    assert setup.reopen_shipping(island, defs, config, turn + 3 * wait) is None
+
+
+def test_island_keeps_the_short_record_while_there_is_no_shipping(game, base):
+    """海運業がいない間も、貿易の段は島に積み残しの記録（同じ定義）を取り続ける。"""
+    from hakoniwa_core.trade import island_state
+
+    world, island, f = _setup(game, base)
+    config = game.config
+    island_state(island)[ships.SHORT_KEPT] = {"ships_short": [1, 1], ships.SHORT_LOAD: [5, 5]}
+    island.facilities.remove(f)
+    run(game, world, 1)
+    kept = island_state(island)[ships.SHORT_KEPT]
+    assert len(kept["ships_short"]) == 3 and kept["ships_short"][:2] == [1, 1]
+    assert len(kept[ships.SHORT_LOAD]) == 3
+    assert shipping_of(island, config) is None or shipping_of(island, config) is not f
+
+
 def test_turns_run_with_ship_loans_and_the_books_balance(game, base):
     """船の借りを含めてターンが回り、帳簿の確かめ（記録の段）が通る。"""
     world, island, f = _setup(game, base)

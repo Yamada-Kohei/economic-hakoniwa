@@ -47,7 +47,7 @@ from hakoniwa_core.state import (
     LogEntry,
 )
 from hakoniwa_core.trade import island_state, port_of, shipping_of, ships, started, traders_of
-from hakoniwa_core.units import money_of, round_money, to_milli
+from hakoniwa_core.units import QUANTITY_SCALE, money_of, round_money, to_milli
 
 GOV_SHARE = 0.1  # 国が貿易の施設1つに出す運転資金は、国庫の使えるお金のこの割合まで
 # 海運業の位置。マスを持たない施設は負の位置に置く。運送業が (-1, -1) を使い、サーバーは島の中で
@@ -322,6 +322,51 @@ def _reopen(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> F
         state.pop("trader_gone", None)
         key = "trader_opened" if owner == OWNER_PRIVATE else "trader_opened_state"
         island.log.append(LogEntry(key, {"x": spot[0], "y": spot[1]}))
+    return f
+
+
+def reopen_shipping(
+    island: IslandState, defs: Defs, config: GameConfig, turn: int
+) -> Facility | None:
+    """海運業がなくなった島（倒産して取り壊された）に、荷があるのに運び手がいなければ（商社の
+    輸入の見込み traders.IMPORT_NEED がある）、trade.entry_turns ターン後に経済体制の既定の
+    持ち主で海運業を開き直す（W-281。商社の開き直し W-140 と同じ形。前は二度と開かず、その島は
+    船なしのままだった）。民営で資産を持つ層が出資できないまま、さらに entry_turns ターンたったら
+    国営で開く。船は持たずに始め、会社がいない間も島で取り続けた積み残しの記録（ships.SHORT_KEPT）
+    を引き継ぐ。最初の 1 隻は、その記録で船が足りずに荷を残していれば、船を失った海運業の買い直しと
+    同じ扱い（ships.recovering。印 why="failed"。復旧の枠）、残していなければ出資と通常の審査。"""
+    from hakoniwa_core.trade import traders  # traders.py がこのモジュールを読まないように
+
+    state = island_state(island)
+    if not started(island) or port_of(island, config) is None:
+        return None
+    if shipping_of(island, config) is not None:
+        state.pop("shipping_gone", None)
+        return None
+    working = traders_of(island, config, turn)
+    if not any(traders.state_of(x).get(traders.IMPORT_NEED) for x in working):
+        return None
+    gone = state.setdefault("shipping_gone", turn)
+    entry_turns = config.get("trade.entry_turns")
+    if turn - gone < entry_turns:
+        return None
+    kind = config.get("trade.shipping_facility")
+    owner = _owner(defs, island, kind)
+    if owner == OWNER_PRIVATE and not owners_can_fund(island, defs, config):
+        if turn - gone < 2 * entry_turns:
+            return None
+        owner = OWNER_STATE
+    f = _new(island, kind, SHIPPING_POS, owner, ACCOUNTING_SELF)
+    wage = island.economy.average_wage or config.get("labor.initial_wage")
+    init_facility(island, defs, config, f, dict(island.economy.prices), wage)
+    f.economy[ships.LOST] = {"why": "failed", "used": QUANTITY_SCALE}
+    for key, history in state.get(ships.SHORT_KEPT, {}).items():  # 会社がいない間の積み残し
+        f.economy[key] = list(history)
+    _fund(island, defs, config, f, wage * config.get("trade.trader_capital"))
+    state.pop("shipping_gone", None)
+    island.log.append(
+        LogEntry("shipping_opened" if owner == OWNER_PRIVATE else "shipping_opened_state", {})
+    )
     return f
 
 
