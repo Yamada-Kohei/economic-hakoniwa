@@ -664,6 +664,11 @@ class _Round:
         width = fxrates.band_width(self.config)
         keep = self.config.get("fx.keep_turns")
         import_due = bool(self.config.get("fx.import_due"))
+        # 商社の余った外貨の売り方（外貨の会議 #1160 の試し）: floor_tiers は今のまま（輸出の採算の
+        # 境を下限に段に分ける）、tiers は下限を外す、market は下限も段もなく値幅の下端の1つの指値
+        surplus = self.config.get("fx.surplus_sell")
+        if surplus not in ("floor_tiers", "tiers", "market"):
+            raise ValueError(f"fx.surplus_sell は floor_tiers・tiers・market のどれか: {surplus}")
         active = contracts.active(self.world, self.turn)
         for i in self.ids:
             island = self.world.islands[i]
@@ -675,6 +680,9 @@ class _Round:
             short: dict[str, int] = {}  # 主体 → 賃金に足りない自国通貨
             keep_all: set[str] = set()  # 余った外貨を売らない主体（計画経済の商社。フェーズ3-4）
             payers: dict[str, Payer] = {}
+            trader_set: set[str] = (
+                set()
+            )  # 商社の主体（余った外貨の売り方 fx.surplus_sell を当てる）
             found = traders.prospects(island, self.defs, self.config)
             wage = island.economy.average_wage or self.config.get("labor.initial_wage")
             caps: dict[str, dict[int, int]] = {}  # 主体 → 通貨 → 輸入のために買ってよい外貨
@@ -684,8 +692,9 @@ class _Round:
             for f in traders_of(island, self.config, self.turn):  # 止まった商社は両替しない
                 entity = entity_of(self.config, f)
                 payers[entity] = Payer(entity)
+                trader_set.add(entity)
                 cash = funds.available(island, payers[entity])
-                floors[entity] = traders.export_floors(f, found)
+                floors[entity] = traders.export_floors(f, found) if surplus == "floor_tiers" else {}
                 wages = traders.workers_wanted(self.config, self.defs, f) * wage * keep
                 short[entity] = max(0, wages - cash)
                 if traders.is_planned(island):  # 計画経済は外貨を売らず、買わない
@@ -788,6 +797,7 @@ class _Round:
                         entity in keep_all,
                         caps.get(entity, {}).get(currency),
                         urgent.get(entity, {}).get(currency, []),
+                        surplus == "market" and entity in trader_set,
                     )
                     if short.get(entity, 0) > 0:  # 売る分は、次の通貨の分から引く
                         have = fxmoney.holding(island, entity, currency)
@@ -1096,6 +1106,7 @@ class _Round:
         keep: bool = False,
         cap: int | None = None,
         now_needs: list[tuple[int, int | None]] = (),
+        sell_single: bool = False,
     ) -> None:
         """1つの主体の、1つの通貨の注文。持ち高をこのターンに払う代金 due（政府の契約）と引き合う
         輸入から順に当て、足りない分を買い、余った分を売る。due の足りない分は、値幅の上端の1つの
@@ -1104,7 +1115,9 @@ class _Round:
         cap は needs のために買ってよい量の上限（商社の1ターン分と使えるお金。FX-61）。
         now_needs（fx.import_due）はこのターンの輸入の代金: needs より先に持ち高を当て、足りない分は
         段に分けず、値幅の上端と引き合う一番高いレートの低いほうの1つの指値で買う（順位はほかの
-        買いと同じ）。cap は now_needs と needs の両方に効く。"""
+        買いと同じ）。cap は now_needs と needs の両方に効く。sell_single（fx.surplus_sell が
+        market の商社）なら、余った分は段に分けず、受け取ってよい一番低いレートの1つの指値で
+        売る。"""
         have = fxmoney.holding(island, entity, currency)
         if short > 0 and have > 0:  # 賃金を払う自国通貨が足りない: 足りない分は値を選ばず売る
             urgent = min(have, -(-short * BASIS // max(1, reference)))
@@ -1115,7 +1128,9 @@ class _Round:
         total = due + sum(amount for amount, _ in now_needs) + sum(amount for amount, _ in needs)
         if have > total:
             if not keep:
-                fxrates.add_sell(book, entity, payer, have - total, reference, width, floor)
+                fxrates.add_sell(
+                    book, entity, payer, have - total, reference, width, floor, single=sell_single
+                )
             return
         left = have - min(have, due)
         if due > have:

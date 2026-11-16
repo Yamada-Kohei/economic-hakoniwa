@@ -470,3 +470,48 @@ def test_this_turns_import_is_bought_with_one_order_when_import_due(game, traded
     else:
         assert short_now > 0, "試しの世界の商社が今のターンの代金の外貨を持ちすぎている"
         assert singles and sum(singles) <= max(short_now, step.get(currency, 0))
+
+
+# --- 外貨の会議 #1160 の試し: 商社の余った外貨の売り方（fx.surplus_sell） ----------------------
+
+
+@pytest.mark.parametrize("mode", ["floor_tiers", "tiers", "market"])
+def test_surplus_fx_sell_mode(game, traded, monkeypatch, mode):
+    """floor_tiers は今のまま（輸出の採算の境を下限に段）、tiers は下限を外し、market は下限も段も
+    なく1つの指値で、商社の余った外貨を売る。"""
+    world = copy.deepcopy(traded)
+    island, f, currency = _importer(game, world)
+    entity = entity_of(game.config, f)
+    fxmoney._add(island, entity, currency, 10**12, 0)  # 見込みを大きく超える外貨を持たせる
+    monkeypatch.setitem(game.config.raw["fx"], "surplus_sell", mode)
+    calls = []
+    original = fxrates.add_sell
+
+    def add_sell(book, who, payer, qty, reference, width, floor=None, single=False):
+        if who == entity and qty >= 10**11:
+            calls.append((floor, single))
+        return original(book, who, payer, qty, reference, width, floor, single)
+
+    monkeypatch.setattr(fxrates, "add_sell", add_sell)
+    r = _round(game, world)
+    r._fx()
+    assert len(calls) == 1
+    floor, single = calls[0]
+    if mode == "floor_tiers":
+        assert not single
+        assert floor == traders.export_floors(f, r.found[island.id]).get(currency)
+    else:
+        assert floor is None
+        assert single == (mode == "market")
+
+
+def test_single_sell_is_one_order_at_the_band_bottom(game, traded):
+    world = copy.deepcopy(traded)
+    island, f, currency = _importer(game, world)
+    entity = entity_of(game.config, f)
+    width = fxrates.band_width(game.config)
+    reference = fxrates.rate(island, currency)
+    low = fxrates.auction.band(reference, width)[0]
+    book = fxrates.Book(depth=1_000)
+    fxrates.add_sell(book, entity, Payer(entity), 1_000, reference, width, None, single=True)
+    assert [(o.quantity, o.limit) for o, _, _ in book.sells] == [(1_000, low)]
