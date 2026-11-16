@@ -161,7 +161,7 @@
 
 ## [4 仕事と家計](04-labor.md)
 
-決まり 47 個、うち仮の決まりの表にあるもの 3 個。
+決まり 48 個、うち仮の決まりの表にあるもの 3 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -212,6 +212,7 @@
 | LB-45 | 国庫の項目の予算が足りないときの分け方（2026-11-10 | 決定（2026-11-10 | tests/core/test_public_expansion.py、tests/core/test_staff_plan.py |
 | LB-46 | 雇用の保障（2026-11-12、W-231 の日々の仕事の割り当て | 決定（2026-11-12 | tests/core/test_job_guarantee.py |
 | LB-47 | 家計は電気を買える分だけ買う（2026-11-12、停電の調べの案 3）: 家計の層は生産の段の… | 決定（設定 `power.household_curve` で切／入 | tests/core/test_household_power_curve.py |
+| LB-48 | 解雇手当の受け取り手（2026-11-16）: 解雇手当は、受け取るときにまだ仕事のない人（失業… | 決定（2026-11-16） | tests/core/test_dismissal.py |
 
 ## [5 施設と企業](05-firms.md)
 
