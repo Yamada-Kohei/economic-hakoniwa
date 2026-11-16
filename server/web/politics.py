@@ -47,6 +47,7 @@ EVENT_NAMES = {
     "transition": "体制を変えた後の混乱期間",
     "office": "首都の政府の建物が壊れている",
     "trapped": "出国を止められて出られない人",
+    "relocation": "強制移住で移した人",
     "conscription": "徴兵した兵",
     "war_rally": "宣戦の後の団結",
     "war_weariness": "戦死者が増えたことによる厭戦",

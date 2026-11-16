@@ -677,6 +677,9 @@ class Population(IslandStage):
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
         defs, config = ctx.defs, ctx.config
         rng = ctx.rng(island.id)
+        from hakoniwa_core.modules.population import relocation
+
+        relocation.arrive(island)  # 強制移住で移動中の人が着く（W-286）
         layers = _layer_facts(island, ctx)
         households = island.economy.households
         fed = {
@@ -1883,6 +1886,15 @@ def register(registry: Registry) -> None:
     registry.add_stage(Housing())
     registry.add_order(
         OrderHandler("build_housing", execute=build_housing, check=check_build_housing)
+    )
+    from hakoniwa_core.modules.population import relocation
+
+    registry.add_order(
+        OrderHandler(
+            "force_relocate",
+            execute=relocation.force_relocate,
+            check=relocation.check_force_relocate,
+        )
     )
     registry.add_formula("food_need", food_need)
     registry.add_formula("happiness_parts", happiness_parts)
