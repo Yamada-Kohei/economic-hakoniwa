@@ -48,7 +48,8 @@
         "luxury_variety": {"type": "number", "minimum": 0},
         "entry_margin": {"type": "number"},
         "price_controls": {"type": "boolean"},
-        "exit_control": {"enum": ["free", "permit", "ban"]}
+        "exit_control": {"enum": ["free", "permit", "ban"]},
+        "forced_relocation": {"type": "boolean"}
       }
     },
     "override": {"const": true}
