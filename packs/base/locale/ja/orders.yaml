@@ -4,6 +4,7 @@ rename_facility: 施設名の変更
 build: 施設の建設
 demolish: 撤去
 build_housing: 住宅の建設（国の床）
+force_relocate: 強制移住
 explore: 探鉱
 build_power_line: 送電線の敷設
 build_infrastructure: インフラの工事

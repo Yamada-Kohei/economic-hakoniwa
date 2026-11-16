@@ -42,7 +42,7 @@
 
 ## [2 島と町と人口](02-population.md)
 
-決まり 59 個、うち仮の決まりの表にあるもの 0 個。
+決まり 60 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -105,6 +105,7 @@
 | PO-57 | 飢えている家計（前のターンに食べきれなかったか飢えの蓄えが残る層）は、売りに出ていない食料のそれ… | 決定（2026-11-02） | tests/core/test_famine_recovery.py |
 | PO-58 | 飢えの蓄えが、次のターンに全部食べれば 0 に戻る大きさ（`hunger_step(S,0)=0`… | 決定（2026-11-05） | tests/core/test_famine_recovery.py、tests/server/test_codex_turn300_fixes.py |
 | PO-59 | 幸福度の内訳（W-172）: 式 `happiness` は項目ごとの点を返す式 `happin`… | 決定（2026-11-14） | tests/core/test_happiness_parts.py |
+| PO-60 | 強制移住（W-286）: 権威主義・全体主義の国（体制の特色 `forced_relocatio`… | 決定（2026-11-16） | tests/core/test_forced_relocation.py、tests/server/test_order_confirm.py |
 
 ## [3 物と市場と値段](03-market.md)
 
@@ -697,7 +698,7 @@
 
 ## [12 確かめ方](12-checks.md)
 
-決まり 46 個、うち仮の決まりの表にあるもの 0 個。
+決まり 47 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -747,6 +748,7 @@
 | GT-44 | 経済の決まりを足す・変えるときは、同じコードで決まりを入れた世界と入れない世界を比べてから既定に… | 決定 |  |
 | GT-45 | 測りの結果の置き場: `measure batch --store <置き場>`（または環境変数… | 決定 | tests/core/test_measure_store.py |
 | GT-46 | 1 島 300 ターンの関門の試験の、品不足への切り替え（2026-11-15 掲示板の会議）:… | 決定 | tests/core/test_gate.py |
+| GT-47 | 測りは、途中の写しから続きを回して、通しで回したのと同じ結果を出せるようにする（quick の … | 決定 | tests/core/test_measure_resume.py |
 
 ## [15 軍事と戦争](15-military.md)
 
