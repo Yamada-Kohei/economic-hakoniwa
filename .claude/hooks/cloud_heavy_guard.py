@@ -16,6 +16,10 @@
 3. hakoniwa_core.measure の batch・quick・full。
 4. ターンを回す自作の台本（命令の文か、名指しした .py の中身に run_turn がある）に、
    TURN_LIMIT 以上の数を渡している。
+5. 通しと続きを比べる道具（tools/measure/resume_check.py）で、--pairs に TURN_LIMIT より短い組だけを
+   書いていない（--set は quick・full の組を別の処理で回すので、中身に run_turn がなく 4 では
+   止まらない。2026-11-15 に引数の確かめのつもりで --set full を打ち、150〜300 ターンの組が
+   クラウドで 4 分ほど回った）。
 """
 
 from __future__ import annotations
@@ -94,6 +98,26 @@ def simulate_problem(command: str, tokens: list[str]) -> str | None:
     return None
 
 
+def resume_check_problem(tokens: list[str]) -> str | None:
+    """通しと続きを比べる道具は、--pairs で短い組だけを名指ししたときだけ通す。"""
+    if not any(t.replace("\\", "/").endswith("tools/measure/resume_check.py") for t in tokens):
+        return None
+    pairs = None
+    for i, t in enumerate(tokens):
+        if t == "--pairs" and i + 1 < len(tokens):
+            pairs = tokens[i + 1]
+        elif t.startswith("--pairs="):
+            pairs = t.split("=", 1)[1]
+    if pairs is None:
+        return "通しと続きを比べる道具が、quick・full の組をまとめて回します（--pairs がない）。"
+    for pair in pairs.split(","):
+        parts = pair.split(":")
+        turns = parts[2] if len(parts) > 2 else ""
+        if not turns.isdigit() or int(turns) >= TURN_LIMIT:
+            return f"通しと続きを比べる道具の組 {pair} が {TURN_LIMIT} ターン以上か、読めません。"
+    return None
+
+
 def script_problem(command: str, tokens: list[str]) -> str | None:
     texts = [command]
     for path in scripts(command):
@@ -117,6 +141,7 @@ def problem(command: str) -> str | None:
     for check in (
         lambda: pytest_problem(tokens),
         lambda: simulate_problem(command, tokens),
+        lambda: resume_check_problem(tokens),
         lambda: script_problem(command, tokens),
     ):
         found = check()

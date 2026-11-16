@@ -63,6 +63,7 @@ from hakoniwa_core.economy import (
     GENERAL,
     WAREHOUSE,
     Payer,
+    arrears,
     banks,
     books,
     companies,
@@ -660,6 +661,11 @@ def hungry_food_orders(
     全部を食費の限りに収める（2026-11-10。前は最初の段を飢える前の値段の数倍で取り置いて食費を使い
     切り、ふだんの値段の何倍もの食費がある層でも要る量の半分しか注文せずに飢えた。約定は板寄せの
     値段なので、指値を高く置いても払う額は変わらず、取り置きだけが注文の量を削っていた）。
+    今の値幅の上端でも全部は買えないとき（食費の限りがその額より少ない）は、上乗せをせず、上端の
+    指値で食費の限りいっぱいまで量を注文する（2026-11-15。W-280。前は食費の限りが 6% 足りない
+    だけで、最初の段を飢える前の値段の数倍で取り置いて要る量の 17% しか注文せず、食費の 8 割近くを
+    残したまま飢えた。飢えた家計は食費を使い切って量を確保し、高値を付けて買い負かすのはお金に
+    余裕のある家計。食費の限りが増えるほど上乗せが戻るので、注文の量に崖がない）。
     """
     if need <= 0 or budget <= 0:
         return []
@@ -705,8 +711,10 @@ def hungry_food_orders(
 
     full = total(lambda limits, g: limits[g])
     low = total(lambda limits, g: min(limits[g], menu.limits[g]))
-    if low < budget < full:  # 上乗せを同じ割合で縮めて、要る量の全部を食費の限りに収める
-        keep = (budget - low) / (full - low)
+    if budget < full and low < full:
+        # 上乗せを同じ割合で縮めて、要る量の全部を食費の限りに収める。今の値幅の上端でも全部は
+        # 買えないとき（budget <= low）は上乗せを 0 にして、上端で買えるだけの量を注文する
+        keep = max(0.0, (budget - low) / (full - low))
         for _, _, limits in stages:
             for g in basket:
                 base = min(limits[g], menu.limits[g])
@@ -4272,11 +4280,62 @@ class Market(IslandStage):
                 plan[good] = (qty, limit)
         payer = payer_of(defs, config, f)
         name = facility_entity(f.id)
+        car = config.get("freight.trucks.good")
+        if car in plan:
+            turns = config.get("freight.trucks.fuel_turns")
+            fuel = trucks.fuel_cash(island, config, f, trucks.owned(f) + plan[car][0], turns)
+            # 賃金はトラックで替えない運転手の分（運賃の収入に合わせた payroll は
+            # トラックの分も含む）
+            wages = f.economy.get("wanted", 0) * f.economy.get("wage", 0)
+            plan = self._equipment_room(island, ctx, f, payer, plan, car, rate, turns, wages, fuel)
         for good, (qty, limit) in sorted(self._afford(island, payer, plan, rate, 0).items()):
             party = Party(FACILITY, name, payer, rate, 0, f)
             party.reserved = gross_cost(limit, qty, rate, 0)
             funds.commit(island, payer, party.reserved)
             self._add(books_by_good, good, "buy", Order(qty, limit), party)
+
+    @staticmethod
+    def _equipment_room(
+        island: IslandState,
+        ctx: StageContext,
+        f: Facility,
+        payer: Payer,
+        plan: dict[str, tuple[int, int]],
+        good: str,
+        rate: int,
+        turns: int,
+        wages: int,
+        fuel: int,
+    ) -> dict[str, tuple[int, int]]:
+        """重機・トラック good の注文を、買った後も手元に turns ターン分の支払い（1 ターンの賃金
+        wages・このターンの借りの返済 banks.payments_due）と、買った後の台数を turns ターン
+        動かす燃料のうち手元の燃料で足りない分 fuel と、未払いの賃金と税と、同じ plan のほかの財
+        （燃料）の代金が残る量までにする（C1）。足りなければ傷んだ分の買い直しも延ばす（減った
+        分は人で受ける）。
+
+        独立採算の施設（施設が自分で払う）だけに掛ける。国庫直轄の業者は公共事業費から直に
+        払い、倒れないので今どおり。民営の企業の施設は、企業の預金も合わせて見て、買える分の
+        代金だけを企業から回す（設備の直しの _repair_orders と同じ。残す分は企業に置いたまま
+        にし、銀行の段でほかの施設が使えるようにする。ほかの施設の手元には手を付けない）。"""
+        entity = facility_entity(f.id)
+        if good not in plan or payer.entity != entity:
+            return plan
+        due = banks.payments_due(island, entity, ctx.turn)
+        owed = arrears.total(island, entity) + arrears.total(island, entity, arrears.TAX_ARREARS)
+        keep = turns * (wages + due) + fuel + owed
+        qty, limit = plan[good]
+        others = sum(gross_cost(lim, q, rate, 0) for g, (q, lim) in plan.items() if g != good)
+        number = companies.private_firm_of(island, f)
+        firm = companies.spare(island, number) if number is not None else 0
+        have = funds.available(island, payer)
+        room = have + firm - keep - others
+        can = min(qty, qty_for(max(0, room) * BASIS // (BASIS + rate), limit))
+        out = {g: v for g, v in plan.items() if g != good}
+        if can <= 0:
+            return out
+        companies.draw(island, f, others + gross_cost(limit, can, rate, 0) - have)
+        out[good] = (can, limit)
+        return out
 
     def _machine_orders(
         self,
@@ -4292,24 +4351,30 @@ class Market(IslandStage):
         width = to_basis(config.get("market.band"))
         prices = island.economy.prices
         wanted = island.scratch.setdefault("wanted", {})
-        each = contracts.per_worker(config)
+        machine = config.get("contractor.machines.good")
+        turns = config.get("contractor.capital_turns")
         for f in contracts.contractors(island, config):
             if not f.built or is_stopped(f):
                 continue
-            ordered = sum(f.economy.get(contracts.ORDERS, [0, 0]))
-            crew = -(-ordered // each)
             plan = {}
-            for good, qty in sorted(machines.orders(island, config, f, crew).items()):
+            for good, qty in sorted(machines.orders(island, config, f).items()):
                 if offered.get(good, 0) <= 0:
                     wanted[good] = wanted.get(good, 0) + qty
                     continue
                 limit = auction.band(prices.get(good, 1), width)[1]
-                if good != config.get("contractor.machines.good"):
+                if good != machine:
                     limit = min(limit, machines.fuel_limit(island, config, f, good))
                 if limit > 0:
                     plan[good] = (qty, limit)
             payer = payer_of(defs, config, f)
             name = facility_entity(f.id)
+            if machine in plan:
+                after = machines.owned(f) + plan[machine][0]
+                fuel = machines.fuel_cash(island, config, f, after, turns)
+                wages = next_payments(island, defs, config, f)
+                plan = self._equipment_room(
+                    island, ctx, f, payer, plan, machine, rate, turns, wages, fuel
+                )
             for good, (qty, limit) in sorted(self._afford(island, payer, plan, rate, 0).items()):
                 party = Party(FACILITY, name, payer, rate, 0, f)
                 party.reserved = gross_cost(limit, qty, rate, 0)
