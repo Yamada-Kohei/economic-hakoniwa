@@ -38,7 +38,7 @@ from hakoniwa_core.economy import (
     retail,
 )
 from hakoniwa_core.economy import plan as planning
-from hakoniwa_core.economy.prices import site_material_cost
+from hakoniwa_core.economy.prices import plan_own_materials, site_material_cost
 from hakoniwa_core.economy.start import fund_facility, init_facility, operating_capital
 from hakoniwa_core.modules import infrastructure
 from hakoniwa_core.naming import assign_serial
@@ -125,6 +125,7 @@ def build(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> No
         monuments.stamp(ctx.defs, island, f, ctx.turn, payload.get("note", ""))
     assign_serial(island, f)
     if island.has_economy:
+        plan_own_materials(island, ctx.defs, ctx.config, f)  # 資材をその場で作るか（W-289）
         f.ext["material_estimate"] = site_material_cost(island, ctx.defs, ctx.config, f)
     island.facilities.append(f)
     island.log.append(LogEntry("construction_started", {"facility": kind, "x": x, "y": y}))
@@ -374,6 +375,7 @@ class Construction(IslandStage):
             "build_total",
             "materials_factor",
             fac.SITE_WORK,
+            fac.OWN_MATERIALS,
             fac.GRADE_BUILD,
         ):
             f.ext.pop(key, None)

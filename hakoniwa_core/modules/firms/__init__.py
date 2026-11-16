@@ -114,6 +114,7 @@ from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.households import draw_founders, founders_room, owners_spare
 from hakoniwa_core.economy.prices import (
     construction_cost,
+    plan_own_materials,
     site_cost,
     site_material_cost,
     unit_cost,
@@ -886,8 +887,8 @@ class EntryExit(IslandStage):
             """新しい工場の工事の資材が島で手に入り、見込みの利益率 × 売れる見込みの割合が参入に
             要る利益率を超えるか。"""
             materials = defs.facilities[kind]["construction"].get("materials", {})
-            if set(materials) - supplied - on_sale:
-                return False
+            if set(materials) - supplied - on_sale - set(fac.own_materials(defs, kind, rname)):
+                return False  # その場で作れる資材（W-289）は手に入らなくても建てられる
             full = round_money(construction_cost(defs, kind, prices, wage))
             capital = full - min(part(full, capital_subsidy(island, kind, recipe)), room)
             estimate = ctx.formula("entry_return")(
@@ -989,7 +990,8 @@ class EntryExit(IslandStage):
                     blocks.append((estimate, kind, "unprofitable", args))
                 break
             materials = defs.facilities[kind]["construction"].get("materials", {})
-            unavailable = sorted(set(materials) - supplied - on_sale)
+            own = set(fac.own_materials(defs, kind, rname))  # その場で作れる資材（W-289）
+            unavailable = sorted(set(materials) - supplied - on_sale - own)
             if unavailable:  # 工事の資材が島で作られておらず、売りに出てもいない
                 blocks.append((estimate, kind, "materials", {"goods": unavailable}))
                 continue
@@ -1181,7 +1183,7 @@ class EntryExit(IslandStage):
             ):
                 continue
             materials = defs.facilities[f.kind]["construction"].get("materials", {})
-            if set(materials) - supplied - on_sale:
+            if set(materials) - supplied - on_sale - set(fac.own_materials(defs, f.kind, f.recipe)):
                 continue
             need = fac.workers_needed(defs, f.kind)
             radius = fac.commute_radius(defs, config, f.kind)
@@ -2134,6 +2136,7 @@ class EntryExit(IslandStage):
                 f.economy["firm"] = target.economy["firm"]
         else:
             assign_serial(island, f)
+        plan_own_materials(island, defs, config, f)  # 資材をその場で作るか（W-289）
         f.ext["material_estimate"] = site_material_cost(island, defs, config, f)
         island.facilities.append(f)
         entity = facility_entity(f.id)

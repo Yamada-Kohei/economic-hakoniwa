@@ -25,7 +25,7 @@ from hakoniwa_core.defs.kinds import is_variant
 from hakoniwa_core.economy import equipment, experience, is_bank, is_self_supporting, power_fuel
 from hakoniwa_core.exploration import base_resources
 from hakoniwa_core.market import auction
-from hakoniwa_core.state import Facility, IslandState
+from hakoniwa_core.state import OWNER_PRIVATE, Facility, IslandState
 from hakoniwa_core.units import (
     BASIS,
     QUANTITY_SCALE,
@@ -42,9 +42,18 @@ Prices = Mapping[str, int]
 def construction_cost(defs: Defs, kind: str, prices: Prices, wage: float) -> float:
     """施設 kind の建設費（資材の代金と、工事の人手の賃金）。"""
     construction = defs.facilities[kind]["construction"]
-    materials = sum(
-        prices.get(g, 0) * q / QUANTITY_SCALE for g, q in construction.get("materials", {}).items()
-    )
+    own = fac.own_materials(defs, kind)
+    materials = 0.0
+    for g, q in construction.get("materials", {}).items():
+        bought = prices.get(g, 0) * q / QUANTITY_SCALE
+        if g in own:  # その場で作れる資材は、買うのと作るのの安い方（W-289）
+            made = min(
+                fac.own_material_labor(defs, kind, r, g, q)
+                for r, recipe in defs.facilities[kind]["recipes"].items()
+                if recipe["outputs"].get(g) and not recipe.get("inputs")
+            )
+            bought = min(bought, made * wage)
+        materials += bought
     return materials + construction.get("labor", 0) * construction["turns"] * wage
 
 
@@ -553,3 +562,46 @@ def add_missing_prices(island: IslandState, defs: Defs, config: GameConfig) -> l
         prices[good] = price
         island.economy.price_history[good] = [price]
     return missing
+
+
+def plan_own_materials(island: IslandState, defs: Defs, config: GameConfig, f: Facility) -> None:
+    """着工する工事 f の資材のうち、建てる施設の作り方が産む物（fac.own_materials。森の伐採場の
+    木材）を、買うか工事の人手でその場で作るかを決める（W-289。開拓地の最初の小屋は、その場で切った
+    木で建てる）。
+
+    島の市場に売りが出ていない（国営は国の倉庫にもない）資材は、買えないのでその場で作る。売りが
+    あれば、買う代金（工事の資材の買いの指値 material_limit × 量）と、その場で作る人手の賃金（作り方
+    の働き手 ÷ 産出 × 量を、建てるマスの生産性で割った人・ターン × 島の平均の賃金）の安い方。作る分
+    の人手は工期のターン数で割って、1 ターンの工事の人手に足す（fac.site_labor）。"""
+    if f.built or f.ext.get("repair") or fac.GRADE_TO in f.ext or not fac.located(f):
+        return
+    own = fac.own_materials(defs, f.kind, f.recipe)
+    if not own:
+        return
+    from hakoniwa_core.economy import productivity  # productivity は facilities を読むので、ここで
+
+    x, y = fac.position(f)
+    recipe = defs.facilities[f.kind]["recipes"][f.recipe]
+    rate = productivity.productivity(island, defs, config, recipe, x, y)
+    width = to_basis(config.get("market.band"))
+    wage = island.economy.average_wage
+    offered = {m.good for m in island.markets if m.supply > 0}
+    state = f.owner != OWNER_PRIVATE
+    made: dict[str, int] = {}
+    labor = 0
+    for good, qty in sorted(own.items()):
+        qty = qty * fac.size_of(f)
+        need = fac.own_material_labor(defs, f.kind, f.recipe, good, qty, rate)
+        if need <= 0:
+            continue
+        in_hand = state and stock.total(island.warehouse, good) >= qty
+        if good in offered or in_hand:
+            buy = money_of(material_limit(island, config, good, width), qty)
+            if need * wage >= buy:
+                continue
+        made[good] = qty
+        labor += need
+    if not made:
+        return
+    turns = max(1, fac.total_progress(defs, f) // fac.FULL)
+    f.ext[fac.OWN_MATERIALS] = {"materials": made, "labor": -(-labor // turns)}
