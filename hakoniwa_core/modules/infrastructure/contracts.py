@@ -344,6 +344,8 @@ def finish_hiring(
         f.economy[DELIVERED] = sum(state.get("delivered", {}).get(f.id, [0, 0]))
         if f.id not in state.get("orders", {}):
             f.economy[ORDERS] = [0, 0]
+        # 重機の欲しい台数は、直近の注文の一番少ないターンで決める（C1）
+        machines.remember(config, f, -(-sum(f.economy[ORDERS]) // per_worker(config)))
 
 
 # --- 賃金の段 -----------------------------------------------------------------------
