@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from hakoniwa_core import autoplan
+from hakoniwa_core import autoplan, stock
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.economy.prices import construction_cost
 from hakoniwa_core.game import load_game
@@ -80,3 +80,30 @@ def test_cost_takes_the_cheaper_way(game):
 def test_state_plan_does_not_wait_for_wood_to_build_a_lumber_camp(game):
     assert "wood" not in autoplan._bought_materials(game.defs, "lumber_camp")
     assert "wood" in autoplan._bought_materials(game.defs, "farm")
+
+
+def test_lumber_camp_is_built_without_any_wood_and_then_supplies_wood(game):
+    """木材 0・売りなし・輸入なし・森ありの島で、伐採場が切った木で建ち、木材を作り始める
+    （W-289）。"""
+    from hakoniwa_core.modules.construction import Construction
+    from hakoniwa_core.modules.production import Production
+    from tests.core.test_finance import context
+
+    island = _forest_island(game)
+    island.warehouse = {}
+    assert all(stock.total(f.stock, "wood") == 0 for f in island.facilities)
+    ctx = SimpleNamespace(defs=game.defs, config=game.config, turn=1, rng=None)
+    build(island, {"facility": "lumber_camp", "x": 10, "y": 10}, ctx)
+    f = island.facilities[-1]
+    turns = fac.total_progress(game.defs, f) // fac.FULL
+    for _ in range(turns):
+        f.workers = fac.construction_labor(game.defs, f)  # 雇えた分（雇用の段の代わり）
+        Construction().run_island(island, ctx)
+    assert f.built and stock.total(f.stock, "wood") == 0
+    assert fac.OWN_MATERIALS not in f.ext
+    # 建った伐採場が動けば、島に木材が出る
+    f.status = ""
+    f.workers = fac.workers_needed(game.defs, "lumber_camp")
+    f.economy["target"] = fac.FULL
+    Production().run_island(island, context(game, SimpleNamespace(turn=1, seed=1), "production"))
+    assert stock.total(f.stock, "wood") > 0

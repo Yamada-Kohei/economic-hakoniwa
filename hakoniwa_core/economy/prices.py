@@ -597,7 +597,12 @@ def plan_own_materials(island: IslandState, defs: Defs, config: GameConfig, f: F
         in_hand = state and stock.total(island.warehouse, good) >= qty
         if good in offered or in_hand:
             buy = money_of(material_limit(island, config, good, width), qty)
-            if need * wage >= buy:
+            # 作る費用は、伐採場が作るのと同じ 1 単位の原価: 人手の賃金に、設備の費用（建設費の
+            # 利子と傷み）を同じ量の分だけ足す（人手だけで比べると、設備の費用と売り手の取り分の
+            # 分だけ、売りがあってもいつも作る方が安く出た）
+            out = fac.scale(recipe["outputs"][good], rate)
+            tools = capital_cost(defs, config, f.kind, island.economy.prices, wage) * qty / out
+            if need * wage + tools >= buy:
                 continue
         made[good] = qty
         labor += need
