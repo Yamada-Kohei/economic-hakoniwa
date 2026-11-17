@@ -68,6 +68,10 @@ def _defs():
 
 def _allowed_keys(theme: dict | None = None) -> set[str]:
     d = _defs()
+    # 工事中の絵を施設の種類で分ける（theme.yaml の construction_looks）。名前は施設であること
+    construction_looks = (theme or {}).get("construction_looks") or {}
+    for fid in construction_looks:
+        assert fid in d.facilities, f"construction_looks の {fid}: 施設ではありません"
     sprites = {f.get("sprite", fid) for fid, f in d.facilities.items() if not f.get("tileless")}
     coastal = {f.get("sprite", fid) for fid, f in d.facilities.items() if f.get("coastal")}
     # 段階のある施設（農場。FM-50）は段階 1 からの絵 facility/<名>@g<段階>
@@ -118,11 +122,15 @@ def _allowed_keys(theme: dict | None = None) -> set[str]:
         | {f"capital/{c}" for c in _capital_combos()}
         | {f"housing/{s}" for s in d.settlements}
         | {"construction"}
+        | {f"construction@{look}" for look in construction_looks.values()}
         | {
             "overlay/trench_back",
             "overlay/trench_front",
             "overlay/occupied",
             "overlay/contaminated",
+            "overlay/zone_industrial",  # 区域の指定（何も建っていないマス）
+            "overlay/zone_office",
+            "overlay/zone_commercial",
             "unit/rebels",  # 反乱軍（部隊の一覧に入らない。4-4）
         }
         | {f"unit/{a}" for a, spec in d.army.items() if spec["arm"] == "land"}
