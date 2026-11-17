@@ -44,6 +44,7 @@ BEAT_SECONDS = 30.0  # 回している間、札の時刻を新しくする間隔
 RUN_LIMIT_SECONDS = 6 * 3600.0  # 置き場を使う batch は、これより長く回る組を固まったとみて止める
 _KEY = re.compile(r"^[0-9a-f]{64}-py")  # 置き場の中の、版ごとのフォルダの名前
 _sleep = time.sleep  # 試験が time.sleep を差し替えても、置き換えのやり直しは本当に待つ
+_STORE_SUFFIXES = {"json": "json", "jsonl": "jsonl", "snap": "snap.json.gz"}
 
 # 数えないファイル（Python が作る写し）
 _SKIP_PARTS = {"__pycache__"}
@@ -192,9 +193,9 @@ class Store:
         return {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
 
     @staticmethod
-    def _file_name(name: str, stamp: dict[str, Any], suffix: str) -> str:
+    def _file_name(name: str, stamp: dict[str, Any], kind: str) -> str:
         """結果のファイルの名前。中身のハッシュを入れるので、同じ名前の中身は変わらない。"""
-        return f"{name}.{stamp['sha256'][:16]}.{suffix}"
+        return f"{name}.{stamp['sha256'][:16]}.{_STORE_SUFFIXES[kind]}"
 
     def _result(self, raw: bytes, name: str) -> dict[str, Any]:
         data = json.loads(raw.decode("utf-8"))
@@ -220,7 +221,7 @@ class Store:
         files = data["files"]
         if not isinstance(files, dict) or "json" not in files:
             raise ValueError("完了の印に結果の欄がない")
-        for kind in ("json", "jsonl"):
+        for kind in _STORE_SUFFIXES:
             if kind not in files:
                 continue
             stamp = files[kind]
@@ -316,28 +317,62 @@ class Store:
             pass
         return True, ""
 
+    def fetch_snapshot(self, name: str, target: Path) -> tuple[bool, str]:
+        """最後のターンの写し（simulate --save）を、印と合うときだけ target に置く。"""
+        temporary: list[Path] = []
+        marker = self.folder / f"{name}.done.json"
+        try:
+            try:
+                done = self._done(name)
+            except FileNotFoundError:
+                return False, "置き場に結果がない"
+            if "snap" not in done["files"]:
+                return False, "置き場に写しがない"
+            expected = done["files"]["snap"]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            staged = self._temporary(target)
+            temporary.append(staged)
+            stamp = self._copy(self.folder / expected["file"], staged)
+            if stamp != {k: expected[k] for k in ("sha256", "bytes")}:
+                return False, "写しが印と合わない"
+            self._replace(staged, target)
+        except (OSError, ValueError, KeyError) as exc:
+            return False, f"置き場から写しを写せない（{exc}）"
+        finally:
+            self._cleanup(temporary)
+        try:
+            os.utime(marker, None)
+        except OSError:
+            pass
+        return True, ""
+
     def _put(self, name: str, kind: str, source: Path, temporary: list[Path], placed: list[Path]):
         """source を、中身のハッシュ入りの名前で置き場に置き、印に書く欄を返す。
 
         名前に中身のハッシュが入るので、置いたファイルは後から書き換わらない。同じ中身がもう
         あれば置かない。
         """
-        staged = self._temporary(self.folder / f"{name}.{kind}")
+        staged = self._temporary(self.folder / f"{name}.{_STORE_SUFFIXES[kind]}")
         temporary.append(staged)
         stamp = self._copy(source, staged)
         target = self.folder / self._file_name(name, stamp, kind)
-        if not target.is_file() or target.stat().st_size != stamp["bytes"]:
+        if not self._matches({"file": target.name, **stamp}):
             self._replace(staged, target)
             placed.append(target)
         return {"file": target.name, **stamp}
 
-    def publish(self, name: str, out_dir: Path, series: bool) -> tuple[bool, str]:
-        """結果を置いてから印を置く。すでにある結果には時系列だけを足す。
+    def publish(
+        self, name: str, out_dir: Path, series: bool, snapshot: bool = False
+    ) -> tuple[bool, str]:
+        """結果を置いてから印を置く。すでにある結果には時系列と写しを足す。
 
-        結果と時系列は、中身のハッシュ入りの変わらない名前で書き終えてから、印（ファイルの名前と
-        ハッシュ）だけを最後に置き換える。同じ組を二重に回した 2 本が同時に置いても、印はいつも
-        自分の指すファイルと合う（結果の `seconds` は回すたびに違うので、同じ名前に上書きすると
-        印と食い違う）。印と中身が合わない・印が壊れている置き場は、ここで作り直す。
+        結果・時系列・写しは、中身のハッシュ入りの変わらない名前で書き終えてから、
+        印（ファイルの名前とハッシュ）だけを最後に置き換える。同じ組を二重に回した 2 本が同時に
+        置いても、印はいつも自分の指すファイルと合う。結果の `seconds` は回すたびに違うので、
+        同じ名前に上書きすると印と食い違う。印と中身が合わない・印が壊れている置き場は、
+        ここで作り直す。
+        snapshot を頼んでも、出力先に写しがなければ結果だけを置く。時系列を初めて足すときは、
+        写しも今回の物に替える（写しは自分の回の時系列を覚えているため）。
         """
         temporary: list[Path] = []
         placed: list[Path] = []
@@ -346,23 +381,35 @@ class Store:
             self._result(source.read_bytes(), name)
             if series and not (out_dir / f"{name}.jsonl").is_file():
                 return False, "結果に時系列がない"
+            sources = {"json": source}
+            if series:
+                sources["jsonl"] = out_dir / f"{name}.jsonl"
+            snap = out_dir / f"{name}.{_STORE_SUFFIXES['snap']}"
+            if snapshot and snap.is_file():
+                sources["snap"] = snap
             current = self._verified(name)
             files = dict(current["files"]) if current is not None else {}
-            if "jsonl" in files and series and not self._matches(files["jsonl"]):
-                del files["jsonl"]
-            if "json" in files and (not series or "jsonl" in files):
+            for kind in sources.keys() - {"json"}:
+                if kind in files and not self._matches(files[kind]):
+                    del files[kind]
+            # 写しは、自分の回の時系列の行数と中身を覚えている。時系列を今回初めて足すなら、前から
+            # ある写し（時系列なしの回の物）からは時系列つきの続きを回せないので、今回の写しに替える
+            renewed: set[str] = set()
+            if {"jsonl", "snap"} <= sources.keys() and "jsonl" not in files and "snap" in files:
+                del files["snap"]
+                renewed.add("snap")
+            if sources.keys() <= files.keys():
                 return True, ""
-            if "json" not in files:
-                files["json"] = self._put(name, "json", source, temporary, placed)
-            if series and "jsonl" not in files:
-                files["jsonl"] = self._put(
-                    name, "jsonl", out_dir / f"{name}.jsonl", temporary, placed
-                )
+            for kind, path in sources.items():
+                if kind not in files:
+                    files[kind] = self._put(name, kind, path, temporary, placed)
             # 置く直前に印を読み直す。遅れて来た publish が、先に置かれた印（時系列つきなど）を
             # 悪くしないよう、もう置いてある物を先に使う
             latest = self._verified(name)
             if latest is not None:
                 for kind, stamp in latest["files"].items():
+                    if kind in renewed:
+                        continue
                     if kind == "json" or self._matches(stamp):
                         files[kind] = stamp
             if latest is None or files != latest["files"]:
