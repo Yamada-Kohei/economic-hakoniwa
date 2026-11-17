@@ -114,6 +114,7 @@ from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.households import draw_founders, founders_room, owners_spare
 from hakoniwa_core.economy.prices import (
     construction_cost,
+    expected_price,
     plan_own_materials,
     site_cost,
     site_material_cost,
@@ -495,14 +496,15 @@ class EntryExit(IslandStage):
 
     @staticmethod
     def _record_shortages(island: IslandState, ctx: StageContext) -> None:
-        """財ごとの、買いたい量に売りに出た量が足りなかった量と、買いたい量と、売りに出た量（直近
-        firms.price_turns ターン）。"""
+        """財ごとの、買いたい量に売りに出た量が足りなかった量と、買いたい量と、売りに出た量と、
+        売れた量（直近 firms.price_turns ターン）。"""
         keep = ctx.config.get("firms.price_turns")
         finance = island.economy.finance
         for key, amount in (
             ("shortages", lambda m: max(0, m.demand - m.supply)),
             ("demand", lambda m: m.demand),
             ("supply", lambda m: m.supply),
+            ("sold", lambda m: m.volume),  # 売れた量（見込みの値段 prices.expected_price）
         ):
             history = finance.setdefault(key, {})
             seen = set()
@@ -662,7 +664,18 @@ class EntryExit(IslandStage):
             ):
                 continue
             probe = productivity.probe(island, defs, config, f.kind, name, (f.x, f.y), size)
-            costed = EntryExit._costed(prices, imports or {}, recipe)
+            grow = fac.grow_turns(defs, f.kind, name)
+            priced = prices
+            if grow > 0:  # 畑の作物は取れるころの見込みの値段で比べる（掲示板 #1238 の案 A）
+                priced = {
+                    **prices,
+                    **{
+                        g: expected_price(island, g, grow, defs, config)
+                        for g in recipe["outputs"]
+                        if g != power
+                    },
+                }
+            costed = EntryExit._costed(priced, imports or {}, recipe)
             out[name] = variable_profit(defs, config, probe, costed, wage, rate)
         return out
 

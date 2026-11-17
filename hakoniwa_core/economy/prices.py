@@ -592,3 +592,74 @@ def plan_own_materials(island: IslandState, defs: Defs, config: GameConfig, f: F
         return
     turns = max(1, fac.total_progress(defs, f) // fac.FULL)
     f.ext[fac.OWN_MATERIALS] = {"materials": made, "labor": -(-labor // turns)}
+
+
+def expected_price(
+    island: IslandState, good: str, ahead: int, defs: Defs, config: GameConfig
+) -> int:
+    """ahead ターン先の見込みの値段 p*（掲示板 #1238。作付けの見直しと、買い置きの見込み W-285 の 3b
+    で共通の部品）。
+
+    直近 firms.price_turns ターンの平均の値段から始め、島の市場の流れがこのまま続いたとき、市場の
+    値段の見直し（modules/market の price_update と offered_beyond_stock と同じ決まり。
+    market.price_speed・market.band・在庫の目安 market.inventory_turns）で値段がどう動くかを
+    ahead ターン先まで追う。流れは finance の直近の記録から出す:
+
+    - 買いたい量 D: 直近の買いたい量のうち、売れ残りの出たターン（品切れでないターン）の平均。どの
+      ターンも売り切れたなら、いちばん多いターン（品切れで買えずに減った買いを、需要の減りと読まない）。
+    - 1ターンに新しく市場に来る量 P: 売りに出た量の増え ＋ 売れた量の平均（売りに出た量 = 持ち越した
+      在庫 ＋ 新しく来た量）。
+    - 今の持ち越しの在庫: 前のターンの、売りに出た量 − 売れた量。
+
+    在庫が尽きて買いたい量に届かないターンは値段が上がり、在庫が目安を超えて余るターンは下がる。
+    どちらでもなければ動かさない（市場の決まりと同じ）。流れが釣り合っていれば p* は平均の値段の
+    まま。現実: 先物の値段は、作物が取れるころの在庫の見込み（在庫率）を映し、農家はそれを見て
+    作付けを決める（今の値段の平均だけを見ると、在庫が減り続けていても値段が止まっている間は
+    気づけない。test_gate の種 2 で、穀物の在庫が尽きる 6 ターン前に島で一番大きい穀物の畑が
+    嗜好作物に替えた）。
+    """
+    turns = config.get("firms.price_turns")
+    economy = island.economy
+    history = economy.price_history.get(good, [])[-turns:]
+    price = max(1, sum(history) // len(history)) if history else economy.prices.get(good, 1)
+    if ahead <= 0:
+        return price
+    finance = economy.finance
+    demand = finance.get("demand", {}).get(good, [])
+    supply = finance.get("supply", {}).get(good, [])
+    n = min(len(demand), len(supply))
+    if n <= 0:
+        return price
+    demand, supply = demand[-n:], supply[-n:]
+    sold = finance.get("sold", {}).get(good, [])[-n:]
+    if len(sold) < n:  # 売れた量の記録の前の島: 買いたい量と売りに出た量の少ない方
+        sold = [min(d, s) for d, s in zip(demand, supply, strict=True)]
+    # 売れ残りの出たターン（買いたい人がみな買えた）だけで平均する
+    met = [d for d, s, q in zip(demand, supply, sold, strict=True) if s > q]
+    wanted = sum(met) / len(met) if met else float(max(demand))
+    if wanted <= 0:
+        return price
+    arrivals = [supply[i + 1] - supply[i] + sold[i] for i in range(n - 1)]
+    inflow = max(0.0, sum(arrivals) / len(arrivals)) if arrivals else float(sold[-1])
+    carried = max(0, supply[-1] - sold[-1])
+    keep = wanted * stock.target_turns(config.get("market.inventory_turns"), defs.goods, good)
+    k = config.get("market.price_speed")
+    width = config.get("market.band")
+    held = float(carried)
+    for _ in range(ahead):
+        offered = held + inflow
+        if offered <= 0:
+            continue  # 売りに出なければ値段は動かない（price_update）
+        if offered <= wanted:
+            short = (wanted - offered) / wanted  # 全部売れて、買えなかった割合だけ上げる
+            change = k * short / (1 + short)
+            held = 0.0
+        else:
+            unsold = offered - wanted
+            held = unsold
+            if unsold <= keep:
+                continue
+            beyond = offered - keep
+            change = k * (wanted - beyond) / max(beyond, wanted)
+        price = scale_price(price, 1 + max(-width, min(width, change)))
+    return max(1, price)
