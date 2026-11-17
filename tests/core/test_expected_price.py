@@ -114,3 +114,67 @@ def test_a_big_farm_sees_its_own_crop_fill_the_shortage_where_it_moves(game):
     short = ([36_000] * 6, [30_000] * 6, [30_000] * 6)  # 3 万来て売り切れ、6 千足りない
     assert "luxury" in (_choice(game, BALANCED, short, selling=0.01, dear=(1, 1)) or "")
     assert _choice(game, BALANCED, short, selling=1.0, dear=(1, 1)) is None
+
+
+def _cotton_island(game, demand, supply, sold):
+    island = with_economy(game, make_island(game))
+    for good in ("cotton", GOOD):
+        island.economy.price_history[good] = [1000] * 6
+    island.economy.finance.update(
+        {
+            "demand": {g: list(demand) for g in ("cotton", GOOD)},
+            "supply": {g: list(supply) for g in ("cotton", GOOD)},
+            "sold": {g: list(sold) for g in ("cotton", GOOD)},
+        }
+    )
+    return island
+
+
+def test_crops_sown_on_other_farms_count_from_their_harvest(game):
+    """ほかの畑が蒔いてまだ取れていない作物は、収穫の始まるターンから来る量に足す（掲示板 #1349 の
+    1。test_gate 種 1 で、3 つの畑が続けて綿に入り、取れた後に綿が余った）。替えると決めたばかりの
+    畑は、前の作物が1ターンに収穫の分ずつ減り、育つ期間の後に新しい作物が来る。見直している畑
+    自身（skip）は数えない。"""
+    from tests.core.test_rules import add
+
+    supply = [100_000, 92_000, 84_000, 76_000, 68_000, 60_000]  # 在庫が毎ターン 8 千減る
+    island = _cotton_island(game, [40_000] * 6, supply, [40_000] * 6)
+    farm = add(island, "farm", 6, 6, recipe="cotton")
+    farm.economy[fac.FIELDS] = {"default": 0}
+    farm.economy[fac.SOWN] = [["cotton", 1000, 12]]  # ターン 12 に綿の畑が取れ始める
+    defs, config = game.defs, game.config
+
+    def p(good, ahead, turn=None, skip=None):
+        return expected_price(island, good, ahead, defs, config, 0.0, turn, skip)
+
+    assert p("cotton", 12) > 1000  # 蒔いた綿を見なければ、在庫が尽きて上がる
+    assert p("cotton", 12, turn=10) < p("cotton", 12)
+    assert p("cotton", 12, turn=10, skip=farm) == p("cotton", 12)
+
+    island.facilities.remove(farm)
+    switching = add(island, "farm", 7, 7, recipe="default")
+    switching.ext[fac.RECIPE_NEXT] = "cotton"  # 穀物から綿へ替えると決めた
+    assert p("cotton", 6, turn=10) == p("cotton", 6)  # 育つ 6 ターンのうちは綿は来ない
+    assert p("cotton", 12, turn=10) < p("cotton", 12)
+    assert p(GOOD, 8, turn=10) > p(GOOD, 8)  # 穀物は蒔き直す分ずつ減る
+
+
+def test_a_mill_short_of_cotton_still_needs_what_its_sales_call_for(game):
+    """原料が足りずに操業を絞った工場の注文の減りを、需要の減りと読まない（掲示板 #1349 の 2）。
+    買いたい量は、工場が作る物の売れ行きの見込みで動く稼働率の分の原料までは数える。売れ行きが
+    落ちて見込みが下がった工場は、その分だけ少なく数える（会議の確かめ: 高すぎないか）。"""
+    from tests.core.test_rules import add
+
+    island = _cotton_island(game, [4_000] * 6, [4_000] * 6, [4_000] * 6)  # 4 千来て売り切れ
+    mill = add(island, "textile_mill", 6, 6)
+    full = fac.outputs_of(game.defs, mill)["clothing"]
+    need = fac.recipe_of(game.defs, mill, fuelled=False)["inputs"]["cotton"]
+    assert need > 4_000
+
+    def p():
+        return expected_price(island, "cotton", 6, game.defs, game.config)
+
+    mill.economy["expected"] = {"clothing": full}  # 服は全力の分売れる見込み
+    assert p() > 1000
+    mill.economy["expected"] = {"clothing": full * 4_000 // need}  # 服の売れ行きが落ちた
+    assert p() == 1000

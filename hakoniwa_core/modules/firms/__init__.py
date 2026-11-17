@@ -668,12 +668,15 @@ class EntryExit(IslandStage):
             priced = prices
             if grow > 0:
                 # 畑の作物は取れるころの見込みの値段で比べる（掲示板 #1238 の案 A）。替えた先の
-                # 作物は、自分が売りに出す分も島の流れに足して見る（#1294。大きい畑が移ると下がる）
+                # 作物は、自分が売りに出す分も島の流れに足して見る（#1294。大きい畑が移ると
+                # 下がる）。ほかの畑が蒔いてまだ取れていない分も足す（#1349）
                 own = _own_supply(defs, f, probe) if name != f.recipe else {}
                 priced = {
                     **prices,
                     **{
-                        g: expected_price(island, g, grow, defs, config, own.get(g, 0.0))
+                        g: expected_price(
+                            island, g, grow, defs, config, own.get(g, 0.0), ctx.turn, f
+                        )
                         for g in recipe["outputs"]
                         if g != power
                     },
