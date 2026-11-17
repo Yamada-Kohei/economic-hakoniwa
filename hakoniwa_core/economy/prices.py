@@ -25,7 +25,7 @@ from hakoniwa_core.defs.kinds import is_variant
 from hakoniwa_core.economy import equipment, experience, is_bank, is_self_supporting, power_fuel
 from hakoniwa_core.exploration import base_resources
 from hakoniwa_core.market import auction
-from hakoniwa_core.state import Facility, IslandState
+from hakoniwa_core.state import OWNER_PRIVATE, Facility, IslandState
 from hakoniwa_core.units import (
     BASIS,
     QUANTITY_SCALE,
@@ -553,3 +553,42 @@ def add_missing_prices(island: IslandState, defs: Defs, config: GameConfig) -> l
         prices[good] = price
         island.economy.price_history[good] = [price]
     return missing
+
+
+def plan_own_materials(island: IslandState, defs: Defs, config: GameConfig, f: Facility) -> None:
+    """着工する工事 f の資材のうち、建てる施設の作り方が産む物（fac.own_materials。森の伐採場の
+    木材）が島で手に入らないとき、工事の人手でその場で作ると決める（W-289。開拓地の最初の小屋は、
+    その場で切った木で建てる）。
+
+    手に入らないとは、島の市場に売り（輸入を含む）が出ておらず、国営の工事なら国の倉庫にもないこと。
+    売りがあれば今までどおり買う（市場があるときに作るか買うかを値段で選ぶのは、値段と生産性の根拠が
+    そろってから。掲示板 #1115）。作る人手は、作り方の働き手 ÷ 産出 × 量を、建てるマスの生産性
+    （林業場の産出と同じ島の係数）で割った人・ターンで、工期のターン数で割って 1 ターンの工事の
+    人手に足す（fac.site_labor）。森のマスに木の量はなく林業場も森を減らさないので、切っても森は減らない。"""
+    if f.built or f.ext.get("repair") or fac.GRADE_TO in f.ext or not fac.located(f):
+        return
+    own = fac.own_materials(defs, f.kind, f.recipe)
+    if not own:
+        return
+    from hakoniwa_core.economy import productivity  # productivity は facilities を読むので、ここで
+
+    x, y = fac.position(f)
+    recipe = defs.facilities[f.kind]["recipes"][f.recipe]
+    rate = productivity.productivity(island, defs, config, recipe, x, y)
+    offered = {m.good for m in island.markets if m.supply > 0}
+    state = f.owner != OWNER_PRIVATE
+    made: dict[str, int] = {}
+    labor = 0
+    for good, qty in sorted(own.items()):
+        qty = qty * fac.size_of(f)
+        if good in offered or (state and stock.total(island.warehouse, good) >= qty):
+            continue  # 買える（売りがあるか、国の倉庫にある）
+        need = fac.own_material_labor(defs, f.kind, f.recipe, good, qty, rate)
+        if need <= 0:
+            continue
+        made[good] = qty
+        labor += need
+    if not made:
+        return
+    turns = max(1, fac.total_progress(defs, f) // fac.FULL)
+    f.ext[fac.OWN_MATERIALS] = {"materials": made, "labor": -(-labor // turns)}

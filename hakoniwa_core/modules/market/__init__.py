@@ -165,6 +165,11 @@ UNFUNDED = "unfunded"  # 国の工事が公共事業費で買えず、注文し�
 # 施設の economy: 投入財の買いの指値を出したターンと指値（{"turn", "limits": 財 → 指値}）。
 # 買い負けたら次のターンに少しずつ上げる
 BIDS = "bids"
+# 民営の工事の ext（W-292）: 前のターンに買い負けた資材とわけ {財: "price" か "supply"}
+# （_record_shortages）
+SITE_SHORT = "site_short"
+# 民営の工事の ext（W-292）: 前のターンに出した資材の指値 {"turn": ターン, "limits": {財: 指値}}
+SITE_BIDS = "site_bids"
 # 施設の economy: 売れ残りの値引き（MK-41）。財 → {"turns": ふだんの在庫の倍を超えて続いたターン,
 # "steps": 値幅ずつ下げた回数, "start": 下げ始めの値段（運賃を払った後）, "offered"/"sold": 前の
 # ターンに値引きで出した量と売れた量}
@@ -929,7 +934,13 @@ def clearance_sale(
     指値（運賃を払った後に残る額）は、1単位の変動費 floor（今の値段の値幅の下端 low のほうが高ければ
     そこ。一度に大きく下げない）から始め、値引きの分が売れ残るターンごとに market.band ずつ下げ、
     変動費の market.clearance_floor 倍で止める。在庫が倍を下回るか、値引きしない売り手（eligible が
-    偽: 国庫直轄・公定価格・値段の上限と下限の財）や持ち越せる期間のある物は、数え直す。"""
+    偽: 国庫直轄・公定価格・値段の上限と下限の財）は、数え直す。
+
+    持ち越せる期間のある物（食べ物など）は見切り売り（W-285）: 売れ行きの見込みのとおり古い順に
+    売れても、持ち越せる期間を過ぎて捨てることになる量（stock.doomed）を、待たずにそのターンから
+    出す（量は毎ターン数え直す）。捨てれば何も戻らないので、指値は変動費でなく値幅の下端から始め、
+    売れ残るターンごとに market.band ずつ下げ、下限は 1（原価を下回っても捨てるよりよい）。
+    値段の上限の財も出す（値引きは上限の内側。下限と公定価格の財は eligible が偽）。"""
     state = f.economy.get(CLEARANCE, {})
     settings = ctx.config.get("market")
     expected = f.economy.get("expected", {}).get(good)
@@ -939,7 +950,10 @@ def clearance_sale(
     # 1つの値段の板寄せに入れ、ふだんの値段で売れていた分まで安値に置き換えて倒産の連鎖が増えた。
     # 2026-11-11 からはアウトレット形: Market._outlet）
     on = bool(settings["clearance_ratio"])
-    if on and eligible and life is None and expected is not None and floor > 0:
+    perishable = life is not None and life > 0
+    if on and eligible and perishable and expected is not None:
+        line = held - stock.doomed(f.stock, good, ctx.turn, ctx.defs.goods, expected)
+    elif on and eligible and life is None and expected is not None and floor > 0:
         # 値引きを始めた後は、始めたときの線のまま見る（値引きの売りに先を越されて、ふだんの指値の
         # 分が売れず、売れ行きの見込みが縮んで線が下がり、在庫が全部値引きに回らないように）
         line = state.get(good, {}).get("line")
@@ -954,16 +968,19 @@ def clearance_sale(
         return None
     entry = f.economy.setdefault(CLEARANCE, {}).setdefault(good, {"turns": 0, "steps": 0})
     entry["turns"] += 1
-    if entry["turns"] < settings["clearance_turns"]:
+    if not perishable and entry["turns"] < settings["clearance_turns"]:
         return None
     if "start" not in entry:
-        entry["start"] = max(floor, low * (BASIS - freight) // BASIS)
-        entry["line"] = line
+        low_net = low * (BASIS - freight) // BASIS
+        entry["start"] = low_net if perishable else max(floor, low_net)
+        if not perishable:  # 見切り売りの量は毎ターン数え直す
+            entry["line"] = line
     elif entry.get("sold", 0) < entry.get("offered", 0):  # 前のターンの値引きの分が売れ残った
         entry["steps"] += 1
     entry["offered"] = entry["sold"] = 0
     price = entry["start"] * (1 - settings["band"]) ** entry["steps"]
-    net = max(round_money(floor * settings["clearance_floor"]), round_money(price))
+    least = 1 if perishable else round_money(floor * settings["clearance_floor"])
+    net = max(least, round_money(price))
     return held - line, -(-max(1, net) * BASIS // max(1, BASIS - freight))
 
 
@@ -2099,10 +2116,13 @@ class Market(IslandStage):
                     )
                     limit = seller_limit(ask, rate, high)
                     held = total - expiring
+                    # 見切り売り（持ち越せる期間のある物。W-285）は値段の上限の財も出す（値引きは
+                    # 上限の内側）。下限と公定価格の財は出さない
+                    perishable = bool(defs.goods[good].get("shelf_life"))
                     eligible = (
                         is_self_supporting(f)
                         and good not in official
-                        and not caps.get(good)
+                        and (perishable or not caps.get(good))
                         and not island.policy.price_floor.get(good)
                     )
                     sale = clearance_sale(ctx, f, good, held, floor, low, rate, eligible)
@@ -2633,6 +2653,9 @@ class Market(IslandStage):
             f.ext.pop("short_funds", None)
             rate = rates.get(f.id, 0)
             payer = payer_of(defs, config, f)
+            outbid = {g for g, why in f.ext.pop(SITE_SHORT, {}).items() if why == "price"}
+            placed = f.ext.pop(SITE_BIDS, {})
+            last = placed.get("limits", {}) if placed.get("turn") == ctx.turn - 1 else {}
             plan = {}
             for good, qty in sorted(fac.step_materials(ctx.defs, f).items()):
                 want = qty - stock.total(f.stock, good)
@@ -2641,6 +2664,13 @@ class Market(IslandStage):
                 want = self._room(island, offered, claimed, payer, good, want)
                 if want > 0:
                     plan[good] = (want, material_limit(island, config, good, width))
+            if f.owner == OWNER_PRIVATE and fac.GRADE_TO not in f.ext:
+                if outbid & set(plan):
+                    plan = self._site_raise(island, ctx, f, plan, last, outbid, rate, width)
+                f.ext[SITE_BIDS] = {
+                    "turn": ctx.turn,
+                    "limits": {g: lim for g, (_, lim) in sorted(plan.items())},
+                }
             priority = fac.priority_of(defs, config, f)
             afforded = self._afford(island, payer, plan, rate, 0)
             if payer.entity == ledger.GOV:
@@ -2657,6 +2687,56 @@ class Market(IslandStage):
                 self._add(books_by_good, good, "buy", Order(qty, limit, priority), party)
                 claimed[(payer, good)] = claimed.get((payer, good), 0) + qty
         self._works_orders(island, ctx, books_by_good, offered, hh_rate, claimed, upkeep=False)
+
+    @classmethod
+    def _site_raise(
+        cls,
+        island: IslandState,
+        ctx: StageContext,
+        f: Facility,
+        plan: dict[str, tuple[int, int]],
+        last: dict[str, int],
+        outbid: set[str],
+        freight: int,
+        width: int,
+    ) -> dict[str, tuple[int, int]]:
+        """民営の工事が前のターンに値段のわけで買い負けた資材の指値を、工場の原料と同じく前の指値の
+        market.band 増しへ上げる（W-292。_step_up）。上げるのは、残りの工事の費用（残りの人手の
+        賃金と、残りの資材をこのターンの指値で買う額）が、この事業に払える額（firms.site_value）に
+        収まる分まで。払える額は全部の資材で共通に持ち、上げる資材で同じ割合に分ける（資材ごとに
+        別々に上限を出すと、同じターンに全部約定して払える額を超える）。使ったお金（買ってある資材
+        と済んだ工程）は数えない（続けるかやめるかの判断）。"""
+        from hakoniwa_core.modules.firms import site_value  # firms は market を読むので、ここで
+
+        value = site_value(island, ctx, f, freight)
+        if value is None:
+            return plan
+        defs = ctx.defs
+        total = fac.total_progress(defs, f)
+        left = max(0, total - f.progress)
+        labor = fac.construction_labor(defs, f) * left / fac.FULL * island.economy.average_wage
+        remaining = {}
+        for good, qty in fac.materials_of(defs, f).items():
+            used = qty * f.progress // total
+            remaining[good] = max(0, qty - used - stock.total(f.stock, good))
+        base = {
+            g: plan[g][1] if g in plan else material_limit(island, ctx.config, g, width)
+            for g in remaining
+        }
+        room = value - labor - sum(money_of(base[g], q) for g, q in remaining.items())
+        up = {
+            g: cls._step_up(lim, 10**15, last.get(g), width) - lim
+            for g, (_, lim) in plan.items()
+            if g in outbid
+        }
+        extra = sum(money_of(d, remaining.get(g, 0)) for g, d in up.items() if d > 0)
+        if room <= 0 or extra <= 0:
+            return plan
+        share = min(1.0, room / extra)
+        return {
+            g: (qty, lim + int(up.get(g, 0) * share) if up.get(g, 0) > 0 else lim)
+            for g, (qty, lim) in plan.items()
+        }
 
     @staticmethod
     def _unfunded(
@@ -4447,13 +4527,17 @@ class Market(IslandStage):
             for i, (order, party) in enumerate(book.buys):
                 f = party.facility
                 usable = result.bought[i] - stale.get(good, {}).get(i, 0)
-                if party.kind != FACILITY or f is None or usable >= order.quantity:
+                if party.kind not in (FACILITY, SITE) or f is None or usable >= order.quantity:
                     continue
                 limit = auction.buy_limit(order, result.high)
                 expensive = (result.supply > 0 and limit < result.price) or (
                     cheapest is not None and limit < cheapest
                 )
                 reason = "price" if expensive else "supply"
+                if party.kind == SITE:  # 工事の資材（W-292。民営の工事が次のターンに指値を上げる）
+                    if not f.built:
+                        f.ext.setdefault(SITE_SHORT, {})[good] = reason
+                    continue
                 if party.fuel_reserve:
                     f.economy.setdefault("fuel_restock_short", {}).setdefault(good, reason)
                 else:

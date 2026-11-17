@@ -114,6 +114,7 @@ from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.households import draw_founders, founders_room, owners_spare
 from hakoniwa_core.economy.prices import (
     construction_cost,
+    plan_own_materials,
     site_cost,
     site_material_cost,
     unit_cost,
@@ -237,6 +238,21 @@ def entry_return(
     tax = island.policy.corporate_tax / BASIS
     worn = equipment.yearly_wear(ctx.defs, ctx.config, kind, prices)
     return (YEAR * (profit + subsidy) - worn) * (1 - tax) / capital
+
+
+def site_value(island: IslandState, ctx: StageContext, f: Facility, freight: int) -> float | None:
+    """民営の工事 f の事業に払える建設費 V（W-292）: 参入の見込み entry_return が参入に要る利益率
+    （EntryExit._threshold）にちょうど届く建設費。entry_return = 分子 ÷ 建設費 なので
+    V = 分子 ÷ 要る利益率。分子（12 ×（変動費の利益 ＋ 生産補助）− 設備の年の傷み）×（1 − 法人税率）
+    は参入と同じ式で、建てるマスの生産性と運賃、直近 firms.price_turns の平均の値段で出す
+    （発注の前に出し、そのターンの指値の間は動かさない）。建て増しの工事は規模の分。銀行がなく
+    参入できない島は None。"""
+    threshold = EntryExit._threshold(island, ctx)
+    if threshold == float("inf") or threshold <= 0:
+        return None
+    prices = average_prices(island, ctx.config.get("firms.price_turns"))
+    numerator = entry_return(island, ctx, f.kind, f.recipe, prices, freight, 1, fac.position(f))
+    return numerator * fac.size_of(f) / threshold
 
 
 # 組で建てた原料の工場の印（FM-72）: {"kind": 使う工場, "recipe": 作り方, "until": 期限のターン,
@@ -887,8 +903,8 @@ class EntryExit(IslandStage):
             """新しい工場の工事の資材が島で手に入り、見込みの利益率 × 売れる見込みの割合が参入に
             要る利益率を超えるか。"""
             materials = defs.facilities[kind]["construction"].get("materials", {})
-            if set(materials) - supplied - on_sale:
-                return False
+            if set(materials) - supplied - on_sale - set(fac.own_materials(defs, kind, rname)):
+                return False  # その場で作れる資材（W-289）は手に入らなくても建てられる
             full = round_money(construction_cost(defs, kind, prices, wage))
             capital = full - min(part(full, capital_subsidy(island, kind, recipe)), room)
             estimate = ctx.formula("entry_return")(
@@ -990,7 +1006,8 @@ class EntryExit(IslandStage):
                     blocks.append((estimate, kind, "unprofitable", args))
                 break
             materials = defs.facilities[kind]["construction"].get("materials", {})
-            unavailable = sorted(set(materials) - supplied - on_sale)
+            own = set(fac.own_materials(defs, kind, rname))  # その場で作れる資材（W-289）
+            unavailable = sorted(set(materials) - supplied - on_sale - own)
             if unavailable:  # 工事の資材が島で作られておらず、売りに出てもいない
                 blocks.append((estimate, kind, "materials", {"goods": unavailable}))
                 continue
@@ -1182,7 +1199,7 @@ class EntryExit(IslandStage):
             ):
                 continue
             materials = defs.facilities[f.kind]["construction"].get("materials", {})
-            if set(materials) - supplied - on_sale:
+            if set(materials) - supplied - on_sale - set(fac.own_materials(defs, f.kind, f.recipe)):
                 continue
             need = fac.workers_needed(defs, f.kind)
             radius = fac.commute_radius(defs, config, f.kind)
@@ -2135,6 +2152,7 @@ class EntryExit(IslandStage):
                 f.economy["firm"] = target.economy["firm"]
         else:
             assign_serial(island, f)
+        plan_own_materials(island, defs, config, f)  # 資材をその場で作るか（W-289）
         f.ext["material_estimate"] = site_material_cost(island, defs, config, f)
         island.facilities.append(f)
         entity = facility_entity(f.id)

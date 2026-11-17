@@ -39,10 +39,19 @@ function buildMap(defs) {
   const office = Object.keys(defs.facilities).find((k) => defs.facilities[k].category === "admin");
   const sample = Object.keys(defs.facilities).find((k) => defs.facilities[k].category === "industry");
   items.push({ label: "工事中", terrain: "plain", facility: { kind: sample, built: false } });
+  // 工事中の絵を種類で分けた施設（theme.construction_looks）は、種類ごとに 1 つずつ並べる
+  const looks = defs.theme?.construction_looks || {};
+  for (const look of new Set(Object.values(looks))) {
+    const kind = Object.keys(looks).find((k) => looks[k] === look && defs.facilities[k]);
+    if (kind) items.push({ label: `工事中（${defs.facilities[kind].name}）`, terrain: landTerrain(defs.facilities[kind]), facility: { kind, built: false } });
+  }
   items.push({ label: "止まっている", terrain: "plain", facility: { kind: sample, built: true, rate: 0, status: "no_input" } });
   items.push({ label: "首都", terrain: "plain", facility: { kind: office, built: true }, capital: true });
   items.push({ label: "送電線", terrain: "plain", power: true });
   items.push({ label: "開発禁止", terrain: "plain", zone: "no_development" });
+  items.push({ label: "工業団地", terrain: "plain", zone: "industrial" });
+  items.push({ label: "オフィス街", terrain: "plain", zone: "office" });
+  items.push({ label: "商業地", terrain: "plain", zone: "commercial" });
 
   const cols = Math.ceil(Math.sqrt(items.length));
   const n = cols * 2 + 1;

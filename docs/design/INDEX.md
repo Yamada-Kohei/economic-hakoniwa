@@ -109,7 +109,7 @@
 
 ## [3 物と市場と値段](03-market.md)
 
-決まり 44 個、うち仮の決まりの表にあるもの 2 個。
+決まり 45 個、うち仮の決まりの表にあるもの 2 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -153,10 +153,11 @@
 | MK-38 | 国営の施設（学校と大学も）は、市場で買いきれなかった次のターンの投入財を国の倉庫から使う | 決定 | tests/core/test_state_inputs_from_warehouse.py |
 | MK-39 | 備蓄の放出の決まり: 島のどの施設も作っていない物を、前のターンに市場で買えなかった施設があれば… | 決定 | tests/core/test_state_inputs_from_warehouse.py、tests/core/test_warehouse_standing.py |
 | MK-40 | 混合経済で値段の上限を付けた財は、施設の在庫を上限の値段で売る（作った費用は払い済み） | 決定（2026-11-07） | tests/core/test_phase3_4.py |
-| MK-41 | 売れ残りの値引き（2026-11-10、W-245、2026-11-11 にアウトレット形に作り… | 決定（2026-11-10、アウトレット形は 2026-11-11） | tests/core/test_clothing_clearance.py |
+| MK-41 | 売れ残りの値引き（2026-11-10、W-245、2026-11-11 にアウトレット形に作り… | 決定（2026-11-10、アウトレット形は 2026-11-11） | tests/core/test_clothing_clearance.py、tests/core/test_perishable_markdown.py |
 | MK-42 | 店の付け値（2026-11-12、W-261）: 市場経済と混合経済の島の店（商店・百貨店 | 決定（2026-11-12、本人のカード「推しの全部」 | tests/core/test_retail_posted.py |
 | MK-43 | 市場経済・混合経済の島の国営の農場も、民営と同じ作物の見直し（`firms.recipe_tur`… | 決定 | tests/core/test_state_crops.py |
 | MK-44 | トラックの買い方（C1 | 決定（2026-11-15 実装） | tests/core/test_phase3_2.py |
+| MK-45 | 民営の工事の資材の買い上がり（2026-11-16、W-292 | 決定 | tests/core/test_site_bids.py |
 
 ## [4 仕事と家計](04-labor.md)
 
@@ -214,7 +215,7 @@
 
 ## [5 施設と企業](05-firms.md)
 
-決まり 73 個、うち仮の決まりの表にあるもの 0 個。
+決まり 74 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -291,6 +292,7 @@
 | FM-71 | 段階の作り方で建てる農場（W-257）: 機械化・近代化の作り方を選んで農場を建てる命令は、初め… | 決定 | tests/core/test_farm_build_grade.py、tests/server/test_migration.py |
 | FM-72 | 組の参入の値段と採算（W-26 の自動車の値段の外れ）: 原料が島で作られていない工場（自動車工… | 決定（2026-11-15） | tests/core/test_group_entry.py |
 | FM-74 | 発電所の働き手（2026-11-14、本人「電力会社としてだもんな」「全部一気にやっていい」）:… | 決定 | tests/core/test_power_staff.py |
+| FM-75 | 工事の資材をその場で作る（2026-11-16、W-289 | 決定 | tests/core/test_own_materials.py |
 
 ## [6 国の財政と政策](06-finance.md)
 

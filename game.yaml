@@ -231,7 +231,8 @@ market:
   # 売れ残るターンごとに band ずつ下げた指値で売り、変動費の clearance_floor 倍で止める（在庫処分は原価の
   # 半分ほどまで）。値引きの売りは、ふだんの板寄せで買えなかった買い手の残りにだけ2回目の板寄せで売る
   # （アウトレット、2026-11-11）。値引きで売れた分は売れ行きの見込みに数えない。clearance_ratio が 0 なら
-  # 値引きしない
+  # 値引きしない。持ち越せる期間のある物は見切り売り（W-285）: 見込みどおり売れても傷む量を、待たずに
+  # 値幅の下端から band ずつ下げて売る（下限 1。clearance_turns・clearance_floor は使わない）
   clearance_ratio: 2
   clearance_turns: 3
   clearance_floor: 0.5
