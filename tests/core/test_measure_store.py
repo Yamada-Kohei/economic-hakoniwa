@@ -638,7 +638,7 @@ def test_reuse_folders_are_looked_at_before_the_store(tmp_path, fake_runs, finge
 def batch_calls(monkeypatch):
     calls = []
 
-    def batch(names, out_dir, jobs, series, reuse_dirs=(), store=None, owner=""):
+    def batch(names, out_dir, jobs, series, reuse_dirs=(), store=None, owner="", resume=True):
         calls.append({"store": store, "owner": owner, "reuse": list(reuse_dirs)})
         return 0
 
