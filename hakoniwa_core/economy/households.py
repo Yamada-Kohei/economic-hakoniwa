@@ -113,6 +113,12 @@ def set_jobless(island: IslandState, persons: int) -> int:
         jobless["persons"] = target
         general["persons"] = pool - target
         move_people(island, {JOBLESS: moved})
+    if target == 0:
+        # 誰もいない層の預金は持ち主がいないので、一般の層に戻す（これまで解雇手当が誰もいない層に
+        # 入り、次に人が入って出るまで残っていた）
+        left = ledger.money(island, household(JOBLESS))
+        if left > 0:
+            ledger.pay(island, household(JOBLESS), household(GENERAL), left, "layer_transfer")
     return moved
 
 

@@ -114,6 +114,7 @@ from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy.households import draw_founders, founders_room, owners_spare
 from hakoniwa_core.economy.prices import (
     construction_cost,
+    expected_price,
     plan_own_materials,
     site_cost,
     site_material_cost,
@@ -495,14 +496,15 @@ class EntryExit(IslandStage):
 
     @staticmethod
     def _record_shortages(island: IslandState, ctx: StageContext) -> None:
-        """財ごとの、買いたい量に売りに出た量が足りなかった量と、買いたい量と、売りに出た量（直近
-        firms.price_turns ターン）。"""
+        """財ごとの、買いたい量に売りに出た量が足りなかった量と、買いたい量と、売りに出た量と、
+        売れた量（直近 firms.price_turns ターン）。"""
         keep = ctx.config.get("firms.price_turns")
         finance = island.economy.finance
         for key, amount in (
             ("shortages", lambda m: max(0, m.demand - m.supply)),
             ("demand", lambda m: m.demand),
             ("supply", lambda m: m.supply),
+            ("sold", lambda m: m.volume),  # 売れた量（見込みの値段 prices.expected_price）
         ):
             history = finance.setdefault(key, {})
             seen = set()
@@ -662,7 +664,24 @@ class EntryExit(IslandStage):
             ):
                 continue
             probe = productivity.probe(island, defs, config, f.kind, name, (f.x, f.y), size)
-            costed = EntryExit._costed(prices, imports or {}, recipe)
+            grow = fac.grow_turns(defs, f.kind, name)
+            priced = prices
+            if grow > 0:
+                # 畑の作物は取れるころの見込みの値段で比べる（掲示板 #1238 の案 A）。替えた先の
+                # 作物は、自分が売りに出す分も島の流れに足して見る（#1294。大きい畑が移ると
+                # 下がる）。ほかの畑が蒔いてまだ取れていない分も足す（#1349）
+                own = _own_supply(defs, f, probe) if name != f.recipe else {}
+                priced = {
+                    **prices,
+                    **{
+                        g: expected_price(
+                            island, g, grow, defs, config, own.get(g, 0.0), ctx.turn, f
+                        )
+                        for g in recipe["outputs"]
+                        if g != power
+                    },
+                }
+            costed = EntryExit._costed(priced, imports or {}, recipe)
             out[name] = variable_profit(defs, config, probe, costed, wage, rate)
         return out
 
@@ -2986,6 +3005,22 @@ def register(registry: Registry) -> None:
     registry.add_order(
         OrderHandler("set_retail_policy", execute=set_retail_policy, check=check_retail_policy)
     )
+
+
+def _own_supply(defs: Defs, f: Facility, probe: Facility) -> dict[str, float]:
+    """施設 f が作り方を probe に替えたときに、島の市場に 1ターンに来る量が変わる分（財 → 1000 分の
+    1）。今売りに出している量は売れ行きの見込み（economy["expected"]）で、替えた後は probe の全力の
+    産出に、今の全力の産出に対する見込みの割合を掛けた量で見る（人手や設備で全力で動けない畑は、
+    替えた後も同じ割合）。"""
+    now = fac.outputs_of(defs, fac.steady(f))
+    expected = f.economy.get("expected", {})
+    full = sum(now.values())
+    sold = sum(expected.get(g, 0) for g in now)
+    ratio = min(1.0, sold / full) if full > 0 else 0.0
+    change: dict[str, float] = {g: -float(expected.get(g, 0)) for g in now}
+    for g, qty in fac.outputs_of(defs, probe).items():
+        change[g] = change.get(g, 0.0) + qty * ratio
+    return change
 
 
 def _sole_food(island: IslandState, defs: Defs, f: Facility) -> set[str]:

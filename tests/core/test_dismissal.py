@@ -6,6 +6,8 @@ from __future__ import annotations
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stops
 from hakoniwa_core.economy import (
+    GENERAL,
+    JOBLESS,
     Payer,
     arrears,
     dismissal,
@@ -14,7 +16,7 @@ from hakoniwa_core.economy import (
     household,
     payer_of,
 )
-from hakoniwa_core.economy.households import jobless_layer
+from hakoniwa_core.economy.households import jobless_layer, set_jobless
 from hakoniwa_core.modules.employment import Employment
 from hakoniwa_core.modules.labor import set_labor_policy
 from hakoniwa_core.modules.production import Production
@@ -288,3 +290,44 @@ def test_held_workers_stop_at_the_design_staff_after_a_recount(game):
         assert stops.furloughed(game.config, mill.status) == bool(status)
         demand, kind = Employment()._bounds(island, context(game), mill, 0)
         assert kind == "dismissal" and demand == full, status
+
+
+def _jobless_workers(game, island, count):
+    """町のマスの仕事のない一般の労働者を count 人にする（自給の農業の人はいない町）。"""
+    from hakoniwa_core.modules.population import tile_jobless
+
+    tile = island.tile(5, 6)
+    share = fac.labor_share(game.defs, island)
+    tile.ext["employed"] = fac.labor_force(game.defs, island, tile, share) - count
+    assert tile_jobless(game.defs, island, tile, share) == count
+
+
+def test_severance_of_people_hired_again_goes_to_the_working_households(game):
+    """解雇した人のうち、手当を受け取るときにもう仕事のある人の分は一般の層に、仕事のない人の分
+    だけ失業している家計の層に払う。ターンの中で同じ仕事のない人を二度数えない（公開の世界の
+    ターン 117: 失業者が 10 人の層に数百万の手当が入り、1人あたりの所得が 56 万になった）。"""
+    island, mill, full = _mill(game)
+    mill.economy["wage"] = 10
+    _jobless_workers(game, island, 3)
+    jobless, general = household(JOBLESS), household(GENERAL)
+    assert jobless_layer(island) == JOBLESS
+    before = ledger.money(island, jobless), ledger.money(island, general)
+    assert dismissal.pay(island, game.defs, game.config, mill, 10) == 10 * 10 * 2
+    assert ledger.money(island, jobless) == before[0] + 3 * 10 * 2
+    assert ledger.money(island, general) == before[1] + 7 * 10 * 2
+    # 次の施設の解雇: 仕事のない 3 人は数え終わったので、全員の分が一般の層
+    dismissal.pay(island, game.defs, game.config, mill, 5)
+    assert ledger.money(island, jobless) == before[0] + 3 * 10 * 2
+    assert ledger.money(island, general) == before[1] + 12 * 10 * 2
+
+
+def test_an_empty_jobless_layer_gives_its_deposits_back(game):
+    """失業している家計が 0 人になったら、層に残った預金は一般の層に戻す（持ち主がいない）。"""
+    island, _, _ = _mill(game)
+    jobless, general = household(JOBLESS), household(GENERAL)
+    set_jobless(island, 0)
+    ledger.pay(island, ledger.GOV, jobless, 500, "capital_injection")
+    before = ledger.money(island, general)
+    set_jobless(island, 0)
+    assert ledger.money(island, jobless) == 0
+    assert ledger.money(island, general) == before + 500
