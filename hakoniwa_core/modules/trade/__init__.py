@@ -663,14 +663,11 @@ class _Round:
         分だけを前もって買う。市場の厚みには、このターンに効く契約の代金を足す（fxrates.depth）。"""
         width = fxrates.band_width(self.config)
         keep = self.config.get("fx.keep_turns")
-        import_due = bool(self.config.get("fx.import_due"))
         active = contracts.active(self.world, self.turn)
         for i in self.ids:
             island = self.world.islands[i]
             # 主体 → 通貨 → [(要る額, 払ってよい一番高いレート。None は値幅の上端)]
             needs: dict[str, dict[int, list[tuple[int, int | None]]]] = {}
-            # 主体 → 通貨 → このターンの輸入の代金 [(額, 引き合う一番高いレート)]（fx.import_due）
-            urgent: dict[str, dict[int, list[tuple[int, int | None]]]] = {}
             floors: dict[str, dict[int, int]] = {}  # 主体 → 通貨 → 受け取ってよい一番低いレート
             short: dict[str, int] = {}  # 主体 → 賃金に足りない自国通貨
             keep_all: set[str] = set()  # 余った外貨を売らない主体（計画経済の商社。フェーズ3-4）
@@ -692,20 +689,8 @@ class _Round:
                     keep_all.add(entity)
                     needs[entity] = {}
                     continue
-                full, step, now = self._import_needs_split(island, f, quota_used)
+                full, step = self._import_needs(island, f, quota_used)
                 needs[entity] = full
-                if import_due:
-                    # このターンの輸入の代金は 1 本の指値で買い、残り（次のターンからの分）だけを
-                    # 段に分ける（外貨の会議 #1041。段に分けると下の段が中央銀行の売りに届かず、
-                    # 要る外貨の 2〜3 割しか買えなかった）
-                    urgent[entity] = now
-                    needs[entity] = {
-                        c: [
-                            (max(0, amount - n), limit)
-                            for (amount, limit), (n, _) in zip(items, now[c], strict=True)
-                        ]
-                        for c, items in full.items()
-                    }
                 # 外貨を買うのは、賃金と輸出の仕入れの見込みを残したお金だけ（FX-61）。通貨ごとの
                 # 見込みの比で分ける。このターンの賃金と仕入れは払った後で、次のターンの分は
                 # 銀行の段が次の支払いの見込みで貸すので、残すのは fx.keep_turns ターン分の
@@ -785,7 +770,6 @@ class _Round:
                         due.get(currency, 0) if entity == ledger.GOV else 0,
                         entity in keep_all,
                         caps.get(entity, {}).get(currency),
-                        urgent.get(entity, {}).get(currency, []),
                     )
                     if short.get(entity, 0) > 0:  # 売る分は、次の通貨の分から引く
                         have = fxmoney.holding(island, entity, currency)
@@ -888,32 +872,14 @@ class _Round:
         """外貨の見込み（FX-61）: 通貨ごとの [(fx.keep_turns ターン分の額, 引き合う一番高いレート)]
         と、通貨ごとの1ターン分の額（決済通貨）。島の通貨の圏の分も入れる（使えるお金を分ける比に
         使う。為替では買わない）。"""
-        full, step, _ = self._import_needs_split(island, f, quota_used, ships_now)
-        return full, step
-
-    def _import_needs_split(
-        self,
-        island: IslandState,
-        f: Facility,
-        quota_used: dict[str, int],
-        ships_now: bool = True,
-    ) -> tuple[
-        dict[int, list[tuple[int, int | None]]],
-        dict[int, int],
-        dict[int, list[tuple[int, int | None]]],
-    ]:
-        """_import_needs と、通貨ごとの [(このターンの輸入の代金, 引き合う一番高いレート)]（full と
-        同じ並び）。"""
         full: dict[int, list[tuple[int, int | None]]] = {}
         step: dict[int, int] = {}
-        now: dict[int, list[tuple[int, int | None]]] = {}
         for currency, first, total, limit, rate in self._import_plan(
             island, f, quota_used, ships_now
         ):
             full.setdefault(currency, []).append((money_of(limit, total), rate))
-            now.setdefault(currency, []).append((money_of(limit, first), rate))
             step[currency] = step.get(currency, 0) + money_of(limit, first)
-        return full, step, now
+        return full, step
 
     @staticmethod
     def _fx_caps(
@@ -1093,24 +1059,19 @@ class _Round:
         due: int = 0,
         keep: bool = False,
         cap: int | None = None,
-        now_needs: list[tuple[int, int | None]] = (),
     ) -> None:
         """1つの主体の、1つの通貨の注文。持ち高をこのターンに払う代金 due（政府の契約）と引き合う
         輸入から順に当て、足りない分を買い、余った分を売る。due の足りない分は、値幅の上端の1つの
         指値で、ほかの買いより先に買う（fxrates.add_buy）。keep（計画経済の商社）なら、余った分を
         売らず、輸入のための外貨も買わない（輸入は持っている外貨の範囲。設計「計画経済（3-4）」）。
-        cap は needs のために買ってよい量の上限（商社の1ターン分と使えるお金。FX-61）。
-        now_needs（fx.import_due）はこのターンの輸入の代金: needs より先に持ち高を当て、足りない分は
-        段に分けず、値幅の上端と引き合う一番高いレートの低いほうの1つの指値で買う（順位はほかの
-        買いと同じ）。cap は now_needs と needs の両方に効く。"""
+        cap は needs のために買ってよい量の上限（商社の1ターン分と使えるお金。FX-61）。"""
         have = fxmoney.holding(island, entity, currency)
         if short > 0 and have > 0:  # 賃金を払う自国通貨が足りない: 足りない分は値を選ばず売る
             urgent = min(have, -(-short * BASIS // max(1, reference)))
             fxrates.add_sell(book, entity, payer, urgent, reference, width)
             have -= urgent
             needs = []
-            now_needs = []
-        total = due + sum(amount for amount, _ in now_needs) + sum(amount for amount, _ in needs)
+        total = due + sum(amount for amount, _ in needs)
         if have > total:
             if not keep:
                 fxrates.add_sell(book, entity, payer, have - total, reference, width, floor)
@@ -1120,16 +1081,12 @@ class _Round:
             fxrates.add_buy(island, book, entity, payer, due - have, reference, width, due=True)
         if keep:
             return
-        orders = [(a, lim, True) for a, lim in now_needs] + [(a, lim, False) for a, lim in needs]
-        # このターンの代金を先に、同じ組の中は引き合うレートの高い順
-        for amount, limit, single in sorted(orders, key=lambda n: (not n[2], -(n[1] or 10**18))):
+        for amount, limit in sorted(needs, key=lambda n: -(n[1] or 10**18)):
             cover = min(left, amount)
             left -= cover
             want = amount - cover if cap is None else min(amount - cover, cap)
             if want > 0 and (limit is None or limit > reference):
-                fxrates.add_buy(
-                    island, book, entity, payer, want, reference, width, limit, single=single
-                )
+                fxrates.add_buy(island, book, entity, payer, want, reference, width, limit)
                 if cap is not None:
                     cap -= want
 
