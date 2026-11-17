@@ -210,6 +210,33 @@ def average_prices(island: IslandState, turns: int) -> dict[str, int]:
     return out
 
 
+def trade_signals(
+    island: IslandState, config: GameConfig
+) -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
+    """参入の採算に使う、財ごとの輸出の値段・輸出の圏の買えなかった量・輸入して島に届く値段の、
+    直近 firms.price_turns ターンの平均（#1307。firms.entry_export が切れていれば空）。
+
+    輸出の値段と輸入の値段は、直近のどのターンにもあった財だけ（1 ターンだけの値段で建てない）。"""
+    if not config.get("firms.entry_export"):
+        return {}, {}, {}
+    keep = config.get("firms.price_turns")
+    finance = island.economy.finance
+
+    def steady(name: str) -> dict[str, int]:
+        out = {}
+        for good, history in finance.get(name, {}).items():
+            if len(history) >= keep and all(v > 0 for v in history):
+                out[good] = sum(history) // len(history)
+        return out
+
+    room = {
+        g: sum(h) // len(h)
+        for g, h in finance.get(trade_traders.EXPORT_ROOM, {}).items()
+        if h and any(h)
+    }
+    return steady(trade_traders.EXPORT_VALUE), room, steady(trade_traders.IMPORT_COST)
+
+
 def entry_return(
     island: IslandState,
     ctx: StageContext,
@@ -886,29 +913,42 @@ class EntryExit(IslandStage):
         # 原料の工場の組, 使う工場の売れる見込みの割合)
         groups: dict[tuple[str, str], tuple[float, str, str, dict[str, Any], float]] = {}
 
-        def add(kind: str, rname: str, recipe: dict[str, Any], fill: float) -> None:
+        # 輸出の値段・圏の買えなかった量・輸入して届く値段（#1307。firms.entry_export）
+        export_value, export_room, import_cost = trade_signals(island, config)
+
+        def add(
+            kind: str,
+            rname: str,
+            recipe: dict[str, Any],
+            fill: float,
+            seen: dict[str, int] | None = None,
+        ) -> None:
             if shops is not None and (shelf in recipe["outputs"]) != shops:
                 return  # 店の参入と工場の参入は別の回で数える（FM-69）
+            seen = prices if seen is None else seen
             full = round_money(construction_cost(defs, kind, prices, wage))
             rate = capital_subsidy(island, kind, recipe)
             subsidy = min(part(full, rate), room)  # 先に払える分だけを補助として見る
             capital = full - subsidy
-            estimate = ctx.formula("entry_return")(
-                island, ctx, kind, rname, prices, typical, capital
-            )
+            estimate = ctx.formula("entry_return")(island, ctx, kind, rname, seen, typical, capital)
             candidates.append((estimate * fill, kind, rname, capital, fill, rate, subsidy))
 
-        def viable(kind: str, rname: str, recipe: dict[str, Any], fill: float) -> bool:
+        def viable(
+            kind: str,
+            rname: str,
+            recipe: dict[str, Any],
+            fill: float,
+            seen: dict[str, int] | None = None,
+        ) -> bool:
             """新しい工場の工事の資材が島で手に入り、見込みの利益率 × 売れる見込みの割合が参入に
             要る利益率を超えるか。"""
+            seen = prices if seen is None else seen
             materials = defs.facilities[kind]["construction"].get("materials", {})
             if set(materials) - supplied - on_sale - set(fac.own_materials(defs, kind, rname)):
                 return False  # その場で作れる資材（W-289）は手に入らなくても建てられる
             full = round_money(construction_cost(defs, kind, prices, wage))
             capital = full - min(part(full, capital_subsidy(island, kind, recipe)), room)
-            estimate = ctx.formula("entry_return")(
-                island, ctx, kind, rname, prices, typical, capital
-            )
+            estimate = ctx.formula("entry_return")(island, ctx, kind, rname, seen, typical, capital)
             return estimate * fill > self._threshold(island, ctx)
 
         for kind, fdef in sorted(defs.facilities.items()):
@@ -925,20 +965,37 @@ class EntryExit(IslandStage):
                     continue  # 電子機器を使う作り方は、建ててから見直しで選ぶ
                 if shops is not None and (shelf in recipe["outputs"]) != shops:
                     continue  # 店と工場は別の回で見る（FM-69）
-                cost = unit_cost(defs, config, kind, recipe, prices, wage)
+                # 島で作られていない原料のうち、圏から輸入して届く値段がある物は、その値段で原価に
+                # 入れて手に入る原料と見る（#1307。firms.entry_export のときだけ）
+                needed = set(recipe.get("inputs", {})) - set(recipe.get("optional_inputs", ()))
+                imported = {g for g in needed - supplied - coming if g in import_cost}
+                seen = prices
+                if imported:
+                    seen = {
+                        **prices,
+                        **{g: max(prices.get(g, 0), import_cost[g]) for g in imported},
+                    }
+                cost = unit_cost(defs, config, kind, recipe, seen, wage)
                 if shelf in recipe["outputs"]:  # 店は小売りの合図だけで見る（FM-69）
                     fill = self._shop_fill(
-                        island, ctx, recipe, shortages, demand, capacity, prices, cost
+                        island, ctx, recipe, shortages, demand, capacity, seen, cost
                     )
                 else:
-                    fill = self._fill(recipe, shortages, demand, capacity, prices, cost, settings)
+                    fill = self._fill(recipe, shortages, demand, capacity, seen, cost, settings)
+                    abroad, sold_abroad = self._export_fill(
+                        recipe, capacity, cost, settings, export_value, export_room
+                    )
+                    if abroad > fill:  # 島の合図より大きければ、作る物の値段も輸出の値段で見る
+                        fill = abroad
+                        seen = {
+                            **seen,
+                            **{g: max(seen.get(g, 0), v) for g, v in sold_abroad.items()},
+                        }
                 if fill <= 0:
                     continue  # 参入の合図（品切れか高い値段）がない
+                # 店の包装などの消耗品は、なくても動くので待たない（FM-67）
                 missing = sorted(
-                    set(recipe.get("inputs", {}))
-                    - set(recipe.get("optional_inputs", ()))
-                    - supplied
-                    - coming
+                    needed - supplied - coming - imported
                 )  # 店の包装などの消耗品は、なくても動くので待たない（FM-67）
                 if missing:  # 原料が島で作られていない
                     # 島で作れる原料なら、先に原料の工場を建てる（組の参入。回7 後半）
@@ -967,7 +1024,7 @@ class EntryExit(IslandStage):
                 if short:  # 原料が品切れ続きで、新しい工場は原料を買えない
                     # 新しい工場が採算に合うなら、原料の工場もいっしょに候補にする（組の参入を
                     # 品切れにも。2026-11-02）
-                    if viable(kind, rname, recipe, fill):
+                    if viable(kind, rname, recipe, fill, seen):
                         # 国営も含めて原料の工場が工事中の原料は待つ（coming）
                         for mkind, mname, mfill in self._short_makers(
                             island, ctx, recipe, fill, shortages, supplied, busy | coming
@@ -986,7 +1043,7 @@ class EntryExit(IslandStage):
                 if capped:  # 原料に空きがなく、作る施設もこれ以上建てられない
                     blocks.append((0.0, kind, "inputs_capped", {"good": capped}))
                     continue
-                add(kind, rname, recipe, fill)
+                add(kind, rname, recipe, fill, seen)
         for (mkind, mname), group in groups.items():
             # 組の原料の工場は、組の見込みで並べる
             for i, c in enumerate(candidates):
@@ -1415,6 +1472,30 @@ class EntryExit(IslandStage):
             if sum(1 for short in history if short >= gap) >= settings["shortage_turns"]:
                 best = max(best, min(1.0, sum(history) / len(history) / qty))
         return best
+
+    @staticmethod
+    def _export_fill(
+        recipe: dict[str, Any],
+        capacity: dict[str, int],
+        cost: float,
+        settings: dict[str, Any],
+        export_value: dict[str, int],
+        export_room: dict[str, int],
+    ) -> tuple[float, dict[str, int]]:
+        """輸出で売れると見込む割合と、その財の輸出の値段（#1307。firms.entry_export）。
+
+        輸出の値段（直近 firms.price_turns ターンの平均。島で輸出の商社が払える値段）が原価の
+        firms.cost_ratio 倍を超え、輸出の圏に買えなかった買い手がいれば、その量の平均を、
+        今ある施設と新しい工場の全力の合計で割った割合（1 まで）だけ売れると見る（島の合図の
+        _fill と同じ形）。"""
+        best = 0.0
+        sold: dict[str, int] = {}
+        for g, qty in recipe["outputs"].items():
+            value = export_value.get(g, 0)
+            if value > settings["cost_ratio"] * cost and export_room.get(g, 0) > 0:
+                best = max(best, min(1.0, export_room[g] / (capacity.get(g, 0) + qty)))
+                sold[g] = value
+        return best, sold
 
     @staticmethod
     def _capacity(island: IslandState, ctx: StageContext, side: str = "outputs") -> dict[str, int]:

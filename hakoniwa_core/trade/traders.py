@@ -745,6 +745,7 @@ def update_targets(
         for good, item in goods_of(f).items():
             if item.get("dir") == EXPORT:
                 exporters[good] = exporters.get(good, 0) + 1
+    margin_on = bool(config.get("trade.export_margin")) and not planned
     for f in traders:
         turn = state_of(f).pop("turn", {})
         sold_bloc = turn.get("exported", {})
@@ -807,6 +808,14 @@ def update_targets(
                 want_x = sold_bloc.get(good, 0) + share
                 if _probing(item["x"], sold_bloc.get(good, 0), stock.total(f.stock, good)):
                     want_x = max(want_x, item["x"] + probe)
+                if margin_on and _export_margin(p, home) > 0:
+                    # 儲けの幅のある輸出（#1307）: 島で売れ残った物を買い集めて、圏で買えなかった
+                    # 買い手に売りに行く。足すのは、島の売れ残りと圏の買えなかった量の小さい方を、
+                    # 島のこの財の輸出の商社で分けた分まで（前は売れた量と、圏の買えなかった量を圏の
+                    # 売り手すべてで割った分け前だけを狙い、島の売りの 6 割が売れ残っても狙う量は
+                    # 島の売りの 15% ほどだった。2026-11-17 の調べ）
+                    room = min(left_over, bloc_unmet.get(key, 0)) // max(1, exporters.get(good, 1))
+                    want_x = max(want_x, sold_bloc.get(good, 0) + room)
                 want_x = min(want_x, supply)
                 if planned:  # 圏で売れる量まで。売れ残りを輸出する商社で分けた分を超えない
                     # 圏で売れた量のうち輸出の計画の分（PL-62）は、売れ残りの狙う量に入れない
@@ -863,6 +872,40 @@ def update_targets(
                 item["age"] = 0
             if not item["x"] and not item["m"] and held <= 0 and item["transit"] <= 0:
                 goods_of(f).pop(good, None)
+
+
+# 新しい会社の参入が輸出の見込みを見るための記録（economy.finance。#1307。firms.entry_export）
+EXPORT_VALUE = "export_value"  # 財 → 直近の、島で輸出の商社が払える値段（export_limit）
+EXPORT_ROOM = "export_room"  # 財 → 直近の、輸出の圏で買えなかった量
+IMPORT_COST = "import_cost"  # 財 → 直近の、輸入して島に届く値段（import_floor。0 は売りなし）
+
+
+def keep_export_history(
+    island: IslandState,
+    defs: Defs,
+    config: GameConfig,
+    bloc_unmet: dict[tuple[int, str], int],
+) -> None:
+    """貿易の段の終わりに、財ごとの輸出の値段・圏の買えなかった量・輸入の値段を、直近
+    firms.price_turns ターン分残す（参入の採算に輸出の値段を入れる。#1307）。"""
+    keep = config.get("firms.price_turns")
+    finance = island.economy.finance
+    found = prospects(island, defs, config)
+
+    def room(p: Prospect) -> int:
+        return bloc_unmet.get((p.export_bloc, p.good), 0) if p.export_bloc is not None else 0
+
+    for name, value in (
+        (EXPORT_VALUE, lambda p: p.export_limit if p.export_bloc is not None else 0),
+        (EXPORT_ROOM, room),
+        (IMPORT_COST, lambda p: p.import_floor),
+    ):
+        history = finance.setdefault(name, {})
+        for good in sorted(set(history) | set(found)):
+            p = found.get(good)
+            history[good] = [*history.get(good, []), value(p) if p is not None else 0][-keep:]
+            if not any(history[good]):
+                del history[good]
 
 
 def surplus(item: dict[str, Any]) -> bool:
