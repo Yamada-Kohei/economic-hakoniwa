@@ -100,6 +100,30 @@ def expiring(
     return sum(qty for made, qty in stock.get(good, ()) if turn - made >= life)
 
 
+def doomed(
+    stock: Stock, good: str, turn: int, goods_defs: Mapping[str, Mapping[str, Any]], pace: int
+) -> int:
+    """ターン turn の売りから先、1ターンに pace ずつ古い順に売れるとしたとき、売れきらずに持ち越せる
+    期間を過ぎてしまう量（見切り売りの量。W-285）。このターンの終わりに捨てられる組（expiring）は
+    数えない（指値なしで出すので）が、このターンの売れる分は先に使う。持ち越せる期間のない財は 0。
+
+    shelf_life が L の組（作られたターン m）は、ターン m + L の売りまで出せる（spoil と同じ）。"""
+    life = goods_defs.get(good, {}).get("shelf_life")
+    if life is None:
+        return 0
+    pace = max(0, pace)
+    used = out = 0
+    for made, qty in sorted(stock.get(good, ())):
+        last = made + life
+        if last < turn:
+            continue
+        take = min(qty, max(0, pace * (last - turn + 1) - used))
+        used += take
+        if last > turn:
+            out += qty - take
+    return out
+
+
 def target_turns(turns: float, goods_defs: Mapping[str, Mapping[str, Any]], good: str) -> float:
     """在庫の目安（売れ行きの何ターン分か）: turns（market.inventory_turns）。持ち越せる期間の短い
     物は、その半分（(期間 − 1) ÷ 2 ターン）まで、持ち越せない物（期間 0）は 0（売れ残りを捨て

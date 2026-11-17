@@ -62,6 +62,20 @@ def _pledged(island):
     )
 
 
+def _clear_pledges(island):
+    """資本家階級の株を担保にした今の借入を、政府から渡したお金で返して 0 にする（世界の道筋で
+    前のターンまでに借りた分が大口融資の規制の残りを使い、試験の借入が入らないことがある）。"""
+    owners = household(OWNERS)
+    for loan in banks.loans_by_borrower(island, owners):
+        if loan.purpose != banks.PLEDGE:
+            continue
+        left = banks.outstanding(island, loan)
+        ledger.pay(island, ledger.GOV, owners, left, "grant")
+        banks.repay(island, loan, left)
+    banks.drop_settled(island)
+    assert _pledged(island) == 0
+
+
 def _set_owners(island, amount):
     """資本家階級の預金を amount にする（政府とのやり取りで）。"""
     owners = household(OWNERS)
@@ -160,6 +174,7 @@ def test_capitalists_borrow_on_their_shares_to_found_a_firm(game, base):
     config = game.config
     amount = 2_000_000
     equity = round_money(amount * config.get("firms.startup_equity_share"))
+    _clear_pledges(island)
     _set_owners(island, equity // 4)
     firm = co.entity(number)
     ledger.pay(island, firm, ledger.GOV, co.spare(island, number), "subsidy")

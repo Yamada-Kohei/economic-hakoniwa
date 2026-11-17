@@ -32,6 +32,10 @@ def test_heavy_commands_are_stopped():
         "python -m hakoniwa_core.simulate --turns=120",
         "python -m hakoniwa_core.measure batch --preset full",
         "python -c \"sys.argv=['t','160']; world=1; game.engine.run_turn(world)\"",
+        # 通しと続きを比べる道具は、中に run_turn がなくても quick・full の組を回す
+        "python tools/measure/resume_check.py --set full --split 150 --out-dir runs/rc",
+        "python tools/measure/resume_check.py --out-dir runs/rc --jobs 0",
+        "python tools/measure/resume_check.py --pairs small:1:8:5,war:1:300:150 --out-dir rc",
     ):
         assert guard.problem(command), command
 
@@ -45,6 +49,7 @@ def test_short_checks_pass():
         "ruff check hakoniwa_core tests",
         "python tools/spec/design_index.py check",
         "git log --oneline -300",
+        "python tools/measure/resume_check.py --pairs small:1:12:3+6,war:1:12:6 --out-dir rc",
     ):
         assert guard.problem(command) is None, command
 
