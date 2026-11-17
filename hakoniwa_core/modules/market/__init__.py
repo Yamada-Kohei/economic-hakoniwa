@@ -2275,7 +2275,7 @@ class Market(IslandStage):
                 or fac.is_halted(f, ctx.turn + 1)
             ):
                 continue
-            expected = self._input_plan(ctx, f)
+            expected = self._input_plan(ctx, f, ahead=True)
             if expected <= 0:
                 continue
             inputs = fac.recipe_of(defs, f)["inputs"]
@@ -2577,8 +2577,10 @@ class Market(IslandStage):
         crop_stock.record(island, good, view, qty, 0, (f.id, qty, money))
 
     @staticmethod
-    def _input_plan(ctx: StageContext, f: Facility) -> int:
-        """次のターンに動くつもりの稼働率（1000 分の 1）。原料はこの分を買う（_input_needs）。"""
+    def _input_plan(ctx: StageContext, f: Facility, ahead: bool = False) -> int:
+        """次のターンに動くつもりの稼働率（1000 分の 1）。原料はこの分を買う（_input_needs）。
+        ahead が真なら、操業目標の上がる分（market.max_target_change）も先に見る（燃料。燃料は
+        原料の在庫の目安 MK-47 でなく、備え FM-63 と先の分で持つ）。"""
         settings = ctx.config.get("market")
         target = f.economy.get("target", fac.FULL)
         if fac.is_halted(f, ctx.turn + 1):
@@ -2589,7 +2591,8 @@ class Market(IslandStage):
         if f.workers < f.economy.get("wanted", 0):
             headroom = round_money(settings["target_step"] * fac.FULL + 0.5)
             return min(target, worn, fac.labor_ratio(ctx.defs, f) + headroom)
-        return min(fac.FULL, worn, target)
+        change = round_money(settings["max_target_change"] * fac.FULL + 0.5) if ahead else 0
+        return min(fac.FULL, worn, target + change)
 
     @staticmethod
     def _input_needs(
@@ -2615,8 +2618,10 @@ class Market(IslandStage):
             # ならないように）
             expected *= settings["public_stock_turns"]
         buffer = stockpile and not public
-        # 燃料は備えの決まり（FM-63。_fuel_orders）で別に持つので、目安を足さない
-        fuels = power_fuel.fuel_goods(ctx.defs, f) if buffer else set()
+        # 燃料は備えの決まり（FM-63。_fuel_orders）で別に持つので、目安を足さず、今までどおり
+        # 操業目標の上がる分まで先に買う（目安を足すと備えと二重になる）
+        fuels = power_fuel.fuel_goods(ctx.defs, f)
+        ahead = Market._input_plan(ctx, f, ahead=True) if fuels else expected
         needs = []
         # 燃料は手元の割合で減らさず、全部の機械の畑の分を買う（FM-51）
         for good, qty in sorted(fac.recipe_of(ctx.defs, f, fuelled=False)["inputs"].items()):
@@ -2626,7 +2631,7 @@ class Market(IslandStage):
             have = stock.total(f.stock, good) - stock.expiring(
                 f.stock, good, ctx.turn, ctx.defs.goods
             )
-            use = fac.scale(qty, expected)
+            use = fac.scale(qty, ahead if good in fuels else expected)
             if not on_hand:
                 want = use
             else:

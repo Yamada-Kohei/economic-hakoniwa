@@ -410,6 +410,7 @@ def test_later_turns_share_the_trading_capacity_between_goods(game, traded, monk
     assert plan and shared
     got, units = shared[-1]
     assert sum(q * u // 1000 for q, u in zip(got, units, strict=True)) <= cap
-    # 見込みの 2 ターン目からの量は、割り振った量のまま
+    # 見込みの 2 ターン目からの量は、割り振った量のまま（割り振りが 0 の財は、1 ターン目の分だけで
+    # 見込みに載ることがある。2026-11-18 の MK-47・MK-48 の道筋で出た）
     later = sorted((total - first) // max(1, keep - 1) for _, first, total, _, _ in plan)
-    assert later == sorted(q for q in got if q > 0)
+    assert [q for q in later if q > 0] == sorted(q for q in got if q > 0)
