@@ -214,16 +214,14 @@ def add_sell(
     reference: int,
     width: int,
     floor: int | None = None,
-    single: bool = False,
 ) -> int:
-    """通貨を qty 売る注文を段に分けて足す（qty は持ち高までにしておくこと。single なら段に分けず、
-    下の指値の1つの注文。商社の余った外貨。fx.surplus_sell）。指値は前のレートから、
+    """通貨を qty 売る注文を段に分けて足す（qty は持ち高までにしておくこと）。指値は前のレートから、
     値幅の下端か floor（受け取ってよい一番低いレート）の高いほうまで。"""
     if qty <= 0:
         return 0
     low = auction.band(reference, width)[0]
     bottom = low if floor is None else max(low, floor)
-    if single or bottom >= reference:
+    if bottom >= reference:
         book.sells.append((Order(qty, bottom), entity, payer))
         return qty
     for j, part_qty in _split(qty):
