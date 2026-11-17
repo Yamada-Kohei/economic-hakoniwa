@@ -448,9 +448,11 @@ def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
     # 持ち主（資本家階級）が手元にお金を持っている島で見る。株式市場がない間（W-53）は、資本家階級は
     # 株の値打ちも合わせた財産から使い、はじめのうちは手元の預金が尽きやすい（LB-41。2026-11-03）。
     # 2026-11-10 に工事が海外の商人の売り値でも資材を買うようにした後は、この島で民営の製鉄所が
-    # 早く建ち始め、持ち主がそちらに 4 千万ほど出すので、船の 10 隻分を渡しておく
+    # 早く建ち始め、持ち主がそちらに 4 千万ほど出すので、船の 10 隻分を渡しておく。2026-11-18 に
+    # 原料を在庫の目安まで仕入れるようにした（MK-47）後は、持ち主がほかの施設の在庫の運転資金にも
+    # 3 千万ほど多く出すので、15 隻分にする
     price = island.economy.prices[good]
-    ledger.pay(island, ledger.GOV, household(OWNERS), money_of(price, 10 * QUANTITY_SCALE), "grant")
+    ledger.pay(island, ledger.GOV, household(OWNERS), money_of(price, 15 * QUANTITY_SCALE), "grant")
     exports, wanted = [], []
 
     def each(w):
