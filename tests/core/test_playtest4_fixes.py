@@ -60,7 +60,8 @@ def test_factory_buys_grain_that_keeps_until_it_is_used(game):
     turn = 1  # 試験の世界は、ターン 0 から回してターン 1 になる
     life = game.defs.goods["grain"]["shelf_life"]
     near.stock = {"grain": [[turn - life, 6000], [turn, 2000]]}
-    far.stock = {"grain": [[turn, 20_000]]}
+    # 新しい穀物は工場の買いたい量（使う分と原料の在庫の目安。MK-47）より多くある
+    far.stock = {"grain": [[turn, 40_000]]}
     factory.stock = {}
     run(game, island, ["market"])
     bought = sum(t.quantity for t in island.trades if t.buyer == f"fac:{factory.id}")

@@ -50,7 +50,6 @@ def test_a_draining_stock_is_held(game):
     """在庫が尽きた後に値段が上がる見込みなら、持つ費用を引いても今より高いので持つ（t* > 0）。"""
     view = crop_stock.outlook(_island(game, DRAINING), _ctx(game), GOOD)
     assert view["t"] > 1 and view["sell"] is None
-    assert view["limit"] > view["p"]
     assert view["ratio"] < 1  # 見通しの比 p ÷ p*(H): 値上がりを見込む
 
 
@@ -67,6 +66,19 @@ def test_a_balanced_market_is_not_held_beyond_the_usual_stock(game):
     island.policy.deposit_rate = 300
     view = crop_stock.outlook(island, _ctx(game), GOOD)
     assert view["t"] == 0 and view["sell"] < view["p"]
+
+
+def test_the_best_hold_is_the_largest_gain_and_the_cost_compounds(game):
+    """t* は儲け p*(t) − p − c(t) が一番大きい t（黒字が続く一番長い t ではない）。持つ費用は預金の
+    利子と同じ複利（掲示板 #1366）。"""
+    island = _island(game, DRAINING)
+    island.policy.deposit_rate = 1200  # 年 12%、月 1%
+    assert abs(crop_stock.cost(1000, island, 2) - 1000 * (1.01**2 - 1)) < 1e-9
+    view = crop_stock.outlook(island, _ctx(game), GOOD)
+    path = expected_path(island, GOOD, 5, game.defs, game.config, turn=1)
+    gains = [v - 1000 - crop_stock.cost(1000, island, t) for t, v in enumerate(path, start=1)]
+    assert gains[view["t"] - 1] == max(gains)
+    assert view["t"] - 1 == gains.index(max(gains))  # 同じ儲けなら短い方
 
 
 def test_the_extra_goal_is_what_the_usual_stock_does_not_cover(game):

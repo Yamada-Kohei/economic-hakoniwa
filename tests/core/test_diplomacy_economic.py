@@ -41,6 +41,10 @@ def base(game):
     run(game, world, 12)
     for island in world.islands.values():
         island.regime["politics"] = "authoritarian"
+        # 標準の計画が並べてまだ済んでいない命令は除く（先頭の命令が後回しになると、後ろに並べた
+        # 試験の命令が動かない。12 ターン目に済んでいない命令があるかは道筋で変わる。2026-11-18 の
+        # MK-47・MK-48 で島 1 に工事の命令が残った）
+        island.orders = [o for o in island.orders if o.status != "pending"]
     return world
 
 

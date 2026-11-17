@@ -2552,9 +2552,9 @@ class Market(IslandStage):
         have: int,
     ) -> None:
         """見込みで持つ作物の買い置き（MK-48）。目安 max(0, u × (t* − 1) − S*) と、手元のふだんの
-        分を超えた量との差を market.inventory_adjust の割合ずつ埋める。指値は今の値段（t* の見込みの
-        値段 − 持つ費用は今の値段より高いので、今の値段より高くは買わない）。ふだんの注文を取り
-        置いた後に残るお金だけで、燃料の買い足しと同じ最後の順位で買う（借りては買わない）。"""
+        分を超えた量との差を market.inventory_adjust の割合ずつ埋める。指値は今の値段。ふだんの
+        注文を取り置いた後に残るお金だけで、燃料の買い足しと同じ最後の順位で買う（借りては
+        買わない。掲示板 #1366）。"""
         goal = crop_stock.extra_goal(use, normal - use, view["t"])
         if goal <= 0:
             return
@@ -2562,11 +2562,11 @@ class Market(IslandStage):
         qty = round_money(max(0, gap) * ctx.config.get("market.inventory_adjust"))
         if qty <= 0:
             return
-        limit = min(view["limit"], island.economy.prices.get(good, 0))
-        limit = max(limit, 0)
+        limit = view["p"]  # 今の値段で買う（見込みはそれより高い）
         if limit <= 0:
             return
-        qty = min(qty, qty_for(funds.available(island, payer), limit))
+        money = funds.available(island, payer)
+        qty = min(qty, qty_for(money, limit))
         if qty <= 0:
             return
         party = Party(FACILITY, facility_entity(f.id), payer, 0, 0, f)
@@ -2574,7 +2574,7 @@ class Market(IslandStage):
         funds.commit(island, payer, party.reserved)
         priority = min(FUEL_RESERVE_PRIORITY, ctx.config.get("warehouse.standing_priority"))
         self._add(books_by_good, good, "buy", Order(qty, limit, priority), party)
-        crop_stock.record(island, good, view, qty, 0)
+        crop_stock.record(island, good, view, qty, 0, (f.id, qty, money))
 
     @staticmethod
     def _input_plan(ctx: StageContext, f: Facility) -> int:
@@ -2615,6 +2615,8 @@ class Market(IslandStage):
             # ならないように）
             expected *= settings["public_stock_turns"]
         buffer = stockpile and not public
+        # 燃料は備えの決まり（FM-63。_fuel_orders）で別に持つので、目安を足さない
+        fuels = power_fuel.fuel_goods(ctx.defs, f) if buffer else set()
         needs = []
         # 燃料は手元の割合で減らさず、全部の機械の畑の分を買う（FM-51）
         for good, qty in sorted(fac.recipe_of(ctx.defs, f, fuelled=False)["inputs"].items()):
@@ -2629,7 +2631,7 @@ class Market(IslandStage):
                 want = use
             else:
                 want = max(0, use - have)
-                if buffer:
+                if buffer and good not in fuels:
                     rest = max(0, have - use)
                     goal = round_money(
                         use * stock.target_turns(settings["inventory_turns"], ctx.defs.goods, good)
