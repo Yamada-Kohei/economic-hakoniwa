@@ -414,7 +414,11 @@ def test_home_orders_send_the_markdown_to_the_outlet_and_sell_the_rest_as_usual(
     cut = [o for o in orders if o.clearance]
     usual = [o for o in orders if not o.clearance and o.limit is not None]
     assert cut and usual
-    assert cut[0].limit <= usual[0].limit
+    # 値下げの指値はふだんの指値から下げる。ただし、輸出し直して残る値（または原価の下限）がふだんの
+    # 指値より高いときは、そこで止める（島の値段が輸出し直す値より下がった世界。W-285 の直し 1 で
+    # 家計の買い方が変わり、試験の世界がそうなった）
+    stop = item[traders.OUTLET]["stop"]
+    assert cut[0].limit <= usual[0].limit or cut[0].limit == stop
     # 輸出の荷に替えた分は島で売らない
     item.pop(traders.OUTLET)
     total = sum(o.qty for o in orders if not o.clearance)

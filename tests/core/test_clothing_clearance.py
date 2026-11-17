@@ -313,9 +313,10 @@ def test_island_price_ignores_the_bargain_sale(game, warmed, clearance_on):
     assert island.economy.prices[good] >= auction.band(before, 1000)[0]
     # 値引きの売りで買い手が満たされたので、島の値段は値幅（10%）ずつ上がらない（値引きを除くと
     # 買い手が満たされないことになり、値引きのあいだ毎ターン値幅ずつ上がっていた。11-10）。ほかの
-    # 売り手の指値は費用で少し動くので、1% までの動きは見ない（標準の計画の建てる順が変わった
-    # 世界で、ほかの売り手の指値で 0.02% 上がった。W-274）
-    assert record.price <= auction.band(before, 100)[1]
+    # 売り手やこの売り手のふだんの指値は費用で動くので、値幅の上端に届かないことだけを見る（島の値段
+    # が売り手の費用より下にある世界では、ふだんの売りの指値で約定して数% 上がる。W-274 で 0.02%、
+    # W-285 の直し 1 で家計の買い方が変わった世界で 3.9%。どちらも値引きとは関わらない）
+    assert record.price < auction.band(before, 1000)[1]
 
 
 def test_selling_off_stops_when_the_ratio_is_zero(game, warmed, monkeypatch):

@@ -48,7 +48,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -148,7 +148,9 @@ from hakoniwa_core.units import (
     to_milli,
 )
 
-ANCHOR = "anchor"  # 家計の層の状態: 飢える前の食料の値段（値幅の上端。回3）
+ANCHOR = (
+    "anchor"  # 家計の層の状態: 飢える前の食料の値段（回3。W-285 から使わない。古い記録を消すだけ）
+)
 
 # 注文を出す者の種類
 FACILITY = "facility"
@@ -644,41 +646,75 @@ def hungry_food_orders(
     shares: dict[str, int],
     offered: dict[str, int],
     menu: FoodMenu,
-    anchors: dict[str, int],
-    usual: int,
     budget: int,
     steps: list[float],
-    elasticity: float,
 ) -> list[tuple[str, int, int]]:
-    """飢えている家計の食料の注文（財, 量, 指値）の並び（回3）。急ぐ段から並べる。
+    """飢えている家計の食料の注文（財, 量, 指値）の並び（回3。W-285 で作り直した）。急ぐ段から
+    並べる。
 
     まず要る量 need を、ふだんと同じく人数の割合の分（shares）で好みの献立（food_split）
     にし、足りない分は、売りに出ている量（offered）の残りの多い財から足す（ほかの層の分にも手を
     伸ばす。足す先を主な食料に絞り、売りに出た量の少ない財の値段だけが跳ね上がらないように）。
-    それを要る量の累積の割合 steps の段に分け、段 j（要る量の F_j まで食べられる）の指値を、飢える
-    前の値段（anchors。飢えていないターンの値幅の上端）の F_j ^ (−1/elasticity) 倍にする（食料の
-    需要は値段にあまり反応しないので、少ししか食べられない段ほど高くても買う。基準を今の値段に
-    すると、上がった値段が基準になって上がり続ける）。ふだんの食費 usual で今の値段の値幅の上端
-    まで買える段は、飢えていないときと同じく上端より安くはしない。どの段も、前の段までの取り置きと
-    合わせて食費の限り budget（預金を崩す分を含む）に収まる分までにする（お金のない家計から買えなく
-    なり、値段は買える人の分まで上がって止まる）。
-    全部の段をその指値で取り置くと食費の限りを超えるが、今の値幅の上端（段の指値のほうが低ければ
-    その指値）でなら全部を買えるときは、どの段も上乗せ（指値 − 上端）を同じ割合で縮めて、要る量の
-    全部を食費の限りに収める（2026-11-10。前は最初の段を飢える前の値段の数倍で取り置いて食費を使い
-    切り、ふだんの値段の何倍もの食費がある層でも要る量の半分しか注文せずに飢えた。約定は板寄せの
-    値段なので、指値を高く置いても払う額は変わらず、取り置きだけが注文の量を削っていた）。
-    今の値幅の上端でも全部は買えないとき（食費の限りがその額より少ない）は、上乗せをせず、上端の
-    指値で食費の限りいっぱいまで量を注文する（2026-11-15。W-280。前は食費の限りが 6% 足りない
-    だけで、最初の段を飢える前の値段の数倍で取り置いて要る量の 17% しか注文せず、食費の 8 割近くを
-    残したまま飢えた。飢えた家計は食費を使い切って量を確保し、高値を付けて買い負かすのはお金に
-    余裕のある家計。食費の限りが増えるほど上乗せが戻るので、注文の量に崖がない）。
+    その献立 b を要る量の累積の割合 steps の段に分け（段 j の量は (F_j − F_{j−1}) × b）、段 j の
+    指値を、今の値段の値幅の上端（menu.limits。このターンに市場が動ける一番上）×
+    min(1, B ÷ (F_j × W)) にする。B は食費の限り budget（預金を崩す分を含む）、W は献立の全部を
+    上端で買う額。上端で全部は買えない層（B < W）は、B ÷ W の所にも段を置く（上端で約定すれば食費の
+    限りいっぱいまで買える。W-280）。
+
+    要る量の全部を上端で買える層は全部の段を上端で出し（今の値段の近くまで買い上がる）、足りない層は
+    払える値段まで段の指値が下がる（値段が上がるほど、お金の少ない層から締め出される。Sen の見方）。
+    どの財がどの1つの値段で約定しても、約定する段の額の合計は B を超えない（段 j の指値 p_j で段 j
+    までが約定すると F_j × b × p_j ≦ B。財をまたいでも、財ごとの額が B ÷ W × その財の上端の額を
+    超えないので合計で B 以下）。前は指値の基準を「飢える前の値段」にしていたが、飢えていない
+    ターンにしか書き換わらず、長い飢饉では今の値段よりずっと低いまま残り、お金のある層まで要る量の
+    半分しか買えなかった（none 種 1 T277 島 5）。
     """
     if need <= 0 or budget <= 0:
         return []
+    basket = hungry_basket(need, shares, offered, menu)
+    whole = sum(gross_cost(menu.limits[g], q, menu.rate, menu.tax[g]) for g, q in basket.items())
+    if not basket or whole <= 0:
+        return []
+    orders: list[tuple[str, int, int]] = []
+    placed = dict.fromkeys(basket, 0)  # 財ごとに、前の段までに注文した量
+    # 上端で全部は買えない層は、上端で買える所（B ÷ W）にも段を置く（上端で約定したとき食費の限り
+    # いっぱいまで買える。W-280。段の切れ目だけだと、その間の分のお金が残って飢えた）
+    reach = budget / whole
+    marks = sorted(set(steps) | ({reach} if 0 < reach < 1 else set()))
+    for upto in marks:
+        if upto <= 0:
+            continue
+        scale = min(1.0, budget / (upto * whole))
+        # 段の量は累積の量の差にする（段ごとに切り捨てると、人数の少ない層は小さい段が 0 になり、
+        # 要る量の半分ほどしか注文しないまま飢え続けた。試し遊び1回目の報告の 2）
+        for good, qty in basket.items():
+            amount = round_money(qty * upto) - placed[good]
+            if amount <= 0:
+                continue
+            placed[good] += amount
+            orders.append((good, amount, max(1, int(menu.limits[good] * scale))))
+    # 量の丸めで、どれかの財の段の払いの上限（curve_cost）の合計が食費の限りを超えたら、超えなく
+    # なるまで、その財の一番安い段から 1 単位ずつ削る
+    while orders and _hungry_cost(orders, menu) > budget:
+        k = max(range(len(orders)), key=lambda i: (orders[i][1] > 0, -orders[i][2], i))
+        good, amount, limit = orders[k]
+        orders[k] = (good, amount - 1, limit)
+        orders = [o for o in orders if o[1] > 0]
+    return orders
+
+
+def hungry_basket(
+    need: int, shares: dict[str, int], offered: dict[str, int], menu: FoodMenu
+) -> dict[str, int]:
+    """飢えている家計の献立（財 → 量）。要る量 need を人数の割合の分（shares）で好みの献立
+    （food_split）にし、足りない分は、売りに出ている量（offered）の残りの多い財から足す。値段の
+    指値（menu.limits）には寄らない。"""
 
     def nutrition(basket: dict[str, int]) -> int:
         return sum(q * menu.nutritions[g] // QUANTITY_SCALE for g, q in basket.items())
 
+    if need <= 0:
+        return {}
     split = food_split(need, menu.values, menu.nutritions, shares, menu.prefs, menu.elasticity)
     basket = {g: min(q, shares.get(g, 0)) for g, q in split.items()}
     short = need - nutrition(basket)
@@ -690,68 +726,35 @@ def hungry_food_orders(
         basket[good] = basket.get(good, 0) + qty
         short -= qty * menu.nutritions[good] // QUANTITY_SCALE
     basket = {g: q for g, q in sorted(basket.items()) if q > 0}
-    whole = sum(gross_cost(menu.limits[g], q, menu.rate, menu.tax[g]) for g, q in basket.items())
-    if nutrition(basket) <= 0 or whole <= 0:
-        return []
-    stages: list[tuple[float, float, dict[str, int]]] = []  # (段の始め, 段の終わり, 指値)
-    done = 0.0
-    for upto in steps:
-        portion = upto - done
-        start, done = done, upto
-        if portion <= 0:
-            continue
-        scale = upto ** (-1 / elasticity)
-        floor = upto * whole <= usual  # ふだんの食費で今の値幅の上端まで買える段
-        limits = {}
-        for g in basket:
-            limit = scale_price(anchors.get(g, menu.limits[g]), scale)
-            limits[g] = max(limit, menu.limits[g]) if floor else limit
-        stages.append((start, upto, limits))
+    return basket if nutrition(basket) > 0 else {}
 
-    def total(pick: Callable[[dict[str, int], str], int]) -> int:
-        return sum(
-            gross_cost(pick(limits, g), round_money(q * (end - begin)), menu.rate, menu.tax[g])
-            for begin, end, limits in stages
-            for g, q in basket.items()
-        )
 
-    full = total(lambda limits, g: limits[g])
-    low = total(lambda limits, g: min(limits[g], menu.limits[g]))
-    if budget < full and low < full:
-        # 上乗せを同じ割合で縮めて、要る量の全部を食費の限りに収める。今の値幅の上端でも全部は
-        # 買えないとき（budget <= low）は上乗せを 0 にして、上端で買えるだけの量を注文する
-        keep = max(0.0, (budget - low) / (full - low))
-        for _, _, limits in stages:
-            for g in basket:
-                base = min(limits[g], menu.limits[g])
-                limits[g] = base + int((limits[g] - base) * keep)
-    orders: list[tuple[str, int, int]] = []
-    reserved = 0
-    placed = dict.fromkeys(basket, 0)  # 財ごとに、前の段までに注文した量
-    for start, upto, limits in stages:
-        portion = upto - start
-        cost = sum(gross_cost(limits[g], q, menu.rate, menu.tax[g]) for g, q in basket.items())
-        fit = min(portion, (budget - reserved) / cost) if cost > 0 else 0.0
-        if fit <= 0:
+def hungry_ceiling(top: int, asks: list[tuple[int, int]], want: int) -> tuple[int, int | None]:
+    """飢えた家計の指値の上限と、上限に使った値札（なければ None）。asks は値引きでない売りの
+    （付け値, 量）、want は島の飢えた家計がその財を買う量の合計。売りを安い順に並べ、量の合計が
+    want に届く所の付け値（全部の売りで届かなければ一番高い付け値）と、値幅の上端 top の高いほう。
+    量の少ない極端な値札が1つあるだけでは上限は上がらない（掲示板、2026-11-16）。"""
+    if want <= 0 or not asks:
+        return top, None
+    total = 0
+    tag = None
+    for limit, qty in sorted(asks):
+        total += qty
+        tag = limit
+        if total >= want:
             break
-        # 段の量は累積の量の差にする（段ごとに切り捨てると、人数の少ない層は小さい段が 0 になり、
-        # 要る量の半分ほどしか注文しないまま飢え続けた。試し遊び1回目の報告の 2）
-        reach = upto if fit >= portion else start + fit
-        for good, qty in basket.items():
-            amount = round_money(qty * reach) - placed[good]
-            # 差にすると切り捨ての 1 単位が戻るので、食費の限りを超える分は削る
-            while (
-                amount > 0
-                and reserved + gross_cost(limits[good], amount, menu.rate, menu.tax[good]) > budget
-            ):
-                amount -= 1
-            if amount > 0:
-                placed[good] += amount
-                orders.append((good, amount, limits[good]))
-                reserved += gross_cost(limits[good], amount, menu.rate, menu.tax[good])
-        if fit < portion:
-            break
-    return orders
+    return max(top, tag), tag
+
+
+def _hungry_cost(orders: list[tuple[str, int, int]], menu: FoodMenu) -> int:
+    """飢えた家計の段の注文の、財ごとにどの値段で約定しても払う額の上限（curve_cost）の合計。"""
+    by_good: dict[str, list[tuple[int, int]]] = {}
+    for good, qty, limit in orders:
+        by_good.setdefault(good, []).append((qty, limit))
+    return sum(
+        curve_cost(sorted(t, key=lambda o: -o[1]), menu.rate, menu.tax[g])
+        for g, t in by_good.items()
+    )
 
 
 # --- 名前付きの式 -----------------------------------------------------------------
@@ -1282,6 +1285,14 @@ class Market(IslandStage):
         low, _ = auction.band(reference, to_basis(ctx.config.get("market.band")))
         default = min(low, bounds[1])
         sells = [o if o.limit is not None else replace(o, limit=default) for o, _ in first.sells]
+        if ctx.defs.goods[good].get("food"):
+            # 前のターンの値段で約定できた量（W-285 の 1-C の見張り）: 前の値段以上の指値の買いと、
+            # 前の値段以下の指値の売りの小さいほう
+            buys = sum(
+                o.quantity for o, _ in first.buys if auction.buy_limit(o, reference) >= reference
+            )
+            asks = sum(o.quantity for o in sells if auction.sell_limit(o) <= reference)
+            island.stats[f"market.{good}.at_prev"] = from_milli(min(buys, asks))
         result = auction.clear(
             [o for o, _ in first.buys],
             sells,
@@ -1435,6 +1446,16 @@ class Market(IslandStage):
                 if need > money and money > 0:  # 切り捨ての端数で届かないときは 1 ずつ減らす
                     money -= 1
         return left
+
+    @staticmethod
+    def _layer_hungry(island: IslandState, config: GameConfig, layer: str) -> bool:
+        """家計の層が飢えているか（回3。前のターンに食べきれなかったか、回復にまだかかる蓄えが
+        ある）。"""
+        state = island.economy.households[layer]
+        threshold = config.get("household")["hungry"]["threshold"]
+        if state.get(FED, fac.FULL) < to_milli(threshold):
+            return True
+        return still_hungry(state.get(HUNGER, 0), config.get("population.hunger"))
 
     # --- 小売り（回7。economy/retail.py） ------------------------------------------------------
 
@@ -2901,6 +2922,41 @@ class Market(IslandStage):
         }
         hungry_settings = settings["hungry"]
         steps = hungry_settings["steps"]  # 食料の注文を分ける段（累積の割合。最後は 1）
+        # 飢えた家計の指値の上限（W-285）: 値幅の上端か、値引きでない売りを安い順に並べて、島の
+        # 飢えた家計の献立の量の合計に届く所の値札の高いほう。値札を見て、要る分が買える所の値段
+        # まで出す（物が足りず、島の外の商人のように値幅の上端より高く売る者しか残っていなくても、
+        # お金のある家計は買える。払えない層は食費の限りで指値が下がる）。献立は指値に寄らないので
+        # 先に数える（好みの重みは小売りの取り分けの前の使う額の所得で見る）
+        hungry_want: dict[str, int] = {}
+        for layer in sorted(island.economy.households):
+            if not self._layer_hungry(island, config, layer):
+                continue
+            share = persons[layer] / total_persons
+            income = needs.real_income(island, config, planned_of[layer], persons[layer])
+            basket = hungry_basket(
+                needs_by_layer.get(layer, 0),
+                {g: int(left_for_households[g] * share) for g in foods},
+                offered,
+                replace(menu, prefs=food_prefs(defs, config, income)),
+            )
+            for g, q in basket.items():
+                hungry_want[g] = hungry_want.get(g, 0) + q
+        ceilings = {
+            g: hungry_ceiling(
+                menu.limits[g],
+                [
+                    (o.limit, o.quantity)
+                    for o, party in (books_by_good[g].sells if g in books_by_good else ())
+                    if o.limit is not None and not party.clearance
+                ],
+                hungry_want.get(g, 0),
+            )
+            for g in foods
+        }
+        for g, (_, tag) in ceilings.items():
+            if tag is not None:  # 上限に使った値札（1-C の見張り）
+                island.stats[f"market.{g}.hungry_tag"] = tag
+        hungry_menu = replace(menu, limits={g: c for g, (c, _) in ceilings.items()})
         for layer in sorted(island.economy.households):
             payer = Payer(household(layer))
             # 品物に付く小売りの代金（回7）を先に取り分け、残りで品物とサービスを買う
@@ -2927,8 +2983,7 @@ class Market(IslandStage):
             # 預金を崩してでも食料を先に買い、ほかの層の分にも手を伸ばして値幅の上端を超えて
             # 買い上がる（お金のない家計から買えなくなる）
             state = island.economy.households[layer]
-            hungry = state.get(FED, fac.FULL) < to_milli(hungry_settings["threshold"])
-            hungry = hungry or still_hungry(state.get(HUNGER, 0), config.get("population.hunger"))
+            hungry = self._layer_hungry(island, config, layer)
             if hungry:
                 extra = part(
                     ledger.money(island, household(layer)), to_basis(hungry_settings["savings"])
@@ -2975,27 +3030,22 @@ class Market(IslandStage):
             need = needs_by_layer.get(layer, 0)
             caps = {g: int(left_for_households[g] * share) for g in foods}
             food_budget = max(0, cap - paid - wear_cost) + received
-            layer_menu = replace(menu, prefs=food_prefs(defs, config, income))
+            prefs = food_prefs(defs, config, income)
+            layer_menu = replace(menu, prefs=prefs)
             if hungry:
-                # 飢える前の値段（飢えていないターンに残した値幅の上端）を基準に買い上がる
-                anchors = {**menu.limits, **state.get(ANCHOR, {})}
+                layer_menu = replace(hungry_menu, prefs=prefs)
+                # 食費の限り（預金を崩す分を含む）で、今の値段の値幅の上端まで買い上がる。払えない
+                # 段は払える値段まで下げる（W-285。前の「飢える前の値段」は使わない）。budget は
+                # 取り置き済みのお金を除いた使えるお金までなので、払った分と取り置きは引いてある
                 tiers = hungry_food_orders(
-                    need,
-                    caps,
-                    offered,
-                    layer_menu,
-                    anchors,
-                    food_budget,
-                    budget,
-                    hungry_settings["steps"],
-                    hungry_settings["elasticity"],
+                    need, caps, offered, layer_menu, budget, hungry_settings["steps"]
                 )
+                state.pop(ANCHOR, None)
                 food_budget = budget
                 plan = {}
             else:
                 tiers = []
                 plan = food_orders(need, caps, layer_menu, food_budget, budget)
-                state[ANCHOR] = {g: menu.limits[g] for g in foods if offered.get(g, 0) > 0}
             wish = need
             if hungry and desire is None and layer == GENERAL:
                 # 食べ物が買えずに畑に戻った働き手とその家族（modules/employment の back_to_fields）
@@ -3025,12 +3075,22 @@ class Market(IslandStage):
                         desire[good] = desire.get(good, 0) + qty
             food_cost = sum(gross_cost(lim, q, rate, taxes[g]) for g, (q, lim) in plan.items())
             if tiers:  # 飢えた家計は食費を先に取る（食料に使い切らなかった分は預金に残る）
-                food_cost = min(
-                    budget, sum(gross_cost(lim, q, rate, taxes[g]) for g, q, lim in tiers)
-                )
+                food_cost = min(budget, _hungry_cost(tiers, layer_menu))
+                # 財ごとに段を1つの取り置き（curve_cost）で出す（Party.pool。どの値段で約定しても
+                # 払いはその中に収まる。段ごとに取り置くと食費の限りを超える）
+                by_good: dict[str, list[tuple[int, int]]] = {}
                 for good, qty, limit in tiers:
-                    self._household_buy(
-                        island, books_by_good, good, qty, limit, rate, taxes[good], layer, priority
+                    by_good.setdefault(good, []).append((qty, limit))
+                for good, curve in sorted(by_good.items()):
+                    self._household_curve(
+                        island,
+                        books_by_good,
+                        good,
+                        sorted(curve, key=lambda o: -o[1]),
+                        rate,
+                        taxes[good],
+                        layer,
+                        priority,
                     )
             left = budget - food_cost
             if wear_cost > left and wear_cost > 0:
