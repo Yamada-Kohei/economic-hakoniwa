@@ -67,6 +67,7 @@ from hakoniwa_core.economy import (
     banks,
     books,
     companies,
+    crop_stock,
     entity_of,
     equipment,
     facility_entity,
@@ -2075,6 +2076,8 @@ class Market(IslandStage):
         holds = island.scratch.pop(FACILITY_HOLDS, {})
         shelf = retail.good_of(config)
         stall = self._direct_unit(island, config)
+        crop_stock.reset(island)
+        grown = crop_stock.crops(defs)
         for f in sorted(island.facilities, key=lambda f: f.id):
             # 雇用の段で取り置いた材料の代金を、この施設の買い注文の直前に戻す（LB-45）。項目の
             # 予算を比例で分けたターンは、買い注文と指値の引き上げに使えるのを分けられた額までにする
@@ -2175,6 +2178,16 @@ class Market(IslandStage):
                         limit = min(limit, caps[good])
                     order = Order(total - expiring, limit)
                 self._add(books_by_good, good, "sell", order, seller)
+            hoard = (
+                self._crop_goods(island, ctx, f, recipe, grown, official)
+                if cap is None and is_self_supporting(f)
+                else {}
+            )
+            for good, (view, _, normal, have) in sorted(hoard.items()):
+                if view["sell"] is not None and have > normal:  # 見込みが落ちた: 余りを売る
+                    order = Order(have - normal, view["sell"])
+                    self._add(books_by_good, good, "sell", order, seller)
+                    crop_stock.record(island, good, view, 0, have - normal)
             needs = self._input_needs(ctx, f, power)
             outbid = {g for g, why in f.economy.pop("short", {}).items() if why == "price"}
             placed = f.economy.pop(BIDS, {})
@@ -2216,6 +2229,8 @@ class Market(IslandStage):
                 party.reserved = gross_cost(limit, qty, rate, 0)
                 funds.commit(island, payer, party.reserved)
                 self._add(books_by_good, good, "buy", Order(qty, limit, priority), party)
+            for good, (view, use, normal, have) in sorted(hoard.items()):
+                self._crop_buy(island, ctx, books_by_good, f, payer, good, view, use, normal, have)
         for hold_payer, amount, _ in holds.values():  # 施設がなくなっていた分
             funds.release(island, hold_payer, amount)
 
@@ -2490,6 +2505,78 @@ class Market(IslandStage):
         return raised
 
     @staticmethod
+    def _crop_goods(
+        island: IslandState,
+        ctx: StageContext,
+        f: Facility,
+        recipe: dict[str, Any],
+        grown: dict[str, int],
+        official: dict[str, int],
+    ) -> dict[str, tuple[dict[str, Any], int, int, int]]:
+        """施設 f が原料に使う作物ごとの (見込み, 次のターンに使う量 u, ふだんの分 N = u ＋ S*,
+        手元の在庫)（MK-48）。公定価格の財と、学校・大学は持たない。"""
+        if is_public_service(ctx.defs, f):
+            return {}
+        expected = Market._input_plan(ctx, f)
+        if expected <= 0:
+            return {}
+        settings = ctx.config.get("market")
+        out = {}
+        for good, qty in sorted(recipe["inputs"].items()):
+            if good not in grown or good in official:
+                continue
+            use = fac.scale(qty, expected)
+            if use <= 0:
+                continue
+            turns = stock.target_turns(settings["inventory_turns"], ctx.defs.goods, good)
+            normal = use + round_money(use * turns)
+            have = stock.total(f.stock, good) - stock.expiring(
+                f.stock, good, ctx.turn, ctx.defs.goods
+            )
+            view = crop_stock.outlook(island, ctx, good)
+            crop_stock.record(island, good, view, 0, 0)  # 注文がなくても見込みは残す
+            out[good] = (view, use, normal, have)
+        return out
+
+    def _crop_buy(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        books_by_good: dict[str, Book],
+        f: Facility,
+        payer: Payer,
+        good: str,
+        view: dict[str, Any],
+        use: int,
+        normal: int,
+        have: int,
+    ) -> None:
+        """見込みで持つ作物の買い置き（MK-48）。目安 max(0, u × (t* − 1) − S*) と、手元のふだんの
+        分を超えた量との差を market.inventory_adjust の割合ずつ埋める。指値は今の値段（t* の見込みの
+        値段 − 持つ費用は今の値段より高いので、今の値段より高くは買わない）。ふだんの注文を取り
+        置いた後に残るお金だけで、燃料の買い足しと同じ最後の順位で買う（借りては買わない）。"""
+        goal = crop_stock.extra_goal(use, normal - use, view["t"])
+        if goal <= 0:
+            return
+        gap = goal - max(0, have - normal)
+        qty = round_money(max(0, gap) * ctx.config.get("market.inventory_adjust"))
+        if qty <= 0:
+            return
+        limit = min(view["limit"], island.economy.prices.get(good, 0))
+        limit = max(limit, 0)
+        if limit <= 0:
+            return
+        qty = min(qty, qty_for(funds.available(island, payer), limit))
+        if qty <= 0:
+            return
+        party = Party(FACILITY, facility_entity(f.id), payer, 0, 0, f)
+        party.reserved = gross_cost(limit, qty, 0, 0)
+        funds.commit(island, payer, party.reserved)
+        priority = min(FUEL_RESERVE_PRIORITY, ctx.config.get("warehouse.standing_priority"))
+        self._add(books_by_good, good, "buy", Order(qty, limit, priority), party)
+        crop_stock.record(island, good, view, qty, 0)
+
+    @staticmethod
     def _input_plan(ctx: StageContext, f: Facility) -> int:
         """次のターンに動くつもりの稼働率（1000 分の 1）。原料はこの分を買う（_input_needs）。"""
         settings = ctx.config.get("market")
@@ -2502,27 +2589,32 @@ class Market(IslandStage):
         if f.workers < f.economy.get("wanted", 0):
             headroom = round_money(settings["target_step"] * fac.FULL + 0.5)
             return min(target, worn, fac.labor_ratio(ctx.defs, f) + headroom)
-        change = round_money(settings["max_target_change"] * fac.FULL + 0.5)
-        return min(fac.FULL, worn, target + change)
+        return min(fac.FULL, worn, target)
 
     @staticmethod
     def _input_needs(
         ctx: StageContext, f: Facility, power: str, stockpile: bool = True, on_hand: bool = True
     ) -> list[tuple[str, int]]:
-        """次のターンに要る投入財のうち手元にない分。
+        """次のターンに要る投入財のうち手元にない分（MK-47。W-285 の 3a）。
 
-        操業目標はこの段の終わりに見直すので、上がる分（market.max_target_change まで）も先に
-        買っておく（目標を上げた次のターンに原料が足りず、人を雇えないまま目標を下げ直して、
-        のこぎりの歯のように増えたり減ったりしないように）。雇いたいだけ雇えなかった施設は、
-        今の人手より少し多い分（market.target_step）まで。学校と大学は market.public_stock_turns
-        ターン分（stockpile が偽なら、積み増しを除いた次のターンの分だけ。LB-45 の要る額の見込み）。
+        次のターンに使う量 u（操業目標の分。雇いたいだけ雇えなかった施設は、今の人手より少し多い分
+        market.target_step まで）の足りない分に、原料の在庫の目安 S* = u × 在庫のターン数
+        （製品と同じ market.inventory_turns。持ち越せる期間の短い物は短く）との差の
+        market.inventory_adjust の割合を足す。手元の在庫は先に u に充て、残りだけを目安と比べる
+        （二重に引かない）。製品が売れ残れば操業目標が下がり、u と S* が下がるので、売れ残りのある
+        工場は原料を買わない。前は操業目標の上がる分（market.max_target_change）を毎ターン先に
+        買っていて、売れ残りがあっても原料を買い増した。
+        学校と大学は market.public_stock_turns ターン分。stockpile が偽なら、積み増し（目安との
+        差と学校の数ターン分）を除いた次のターンの分だけ（LB-45 の要る額の見込み）。
         """
         settings = ctx.config.get("market")
         expected = Market._input_plan(ctx, f)
-        if stockpile and is_public_service(ctx.defs, f):
+        public = is_public_service(ctx.defs, f)
+        if stockpile and public:
             # 学校と大学は教材を数ターン分持っておく（消費財が1、2ターン買えないだけで休校に
             # ならないように）
             expected *= settings["public_stock_turns"]
+        buffer = stockpile and not public
         needs = []
         # 燃料は手元の割合で減らさず、全部の機械の畑の分を買う（FM-51）
         for good, qty in sorted(fac.recipe_of(ctx.defs, f, fuelled=False)["inputs"].items()):
@@ -2532,7 +2624,17 @@ class Market(IslandStage):
             have = stock.total(f.stock, good) - stock.expiring(
                 f.stock, good, ctx.turn, ctx.defs.goods
             )
-            want = fac.scale(qty, expected) - (have if on_hand else 0)
+            use = fac.scale(qty, expected)
+            if not on_hand:
+                want = use
+            else:
+                want = max(0, use - have)
+                if buffer:
+                    rest = max(0, have - use)
+                    goal = round_money(
+                        use * stock.target_turns(settings["inventory_turns"], ctx.defs.goods, good)
+                    )
+                    want += max(0, round_money((goal - rest) * settings["inventory_adjust"]))
             if want > 0:
                 needs.append((good, want))
         return needs

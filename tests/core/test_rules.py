@@ -519,8 +519,10 @@ def test_facility_hires_only_for_inputs_on_hand(game):
     assert format_log(game.defs, "status_input_price", {}) == "原料が割高"
 
 
-def test_inputs_are_bought_ahead_of_a_rising_target(game):
-    """操業目標は市場の後に上がるので、上がる分（max_target_change）まで先に仕入れる。
+def test_inputs_are_bought_up_to_a_stock_target(game):
+    """原料は次のターンに使う量 u（操業目標の分）の足りない分と、在庫の目安 S* = u × 在庫の
+    ターン数との差の inventory_adjust の割合を買う（MK-47。W-285 の 3a）。手元の在庫は先に u に
+    充てる。目安まで持っていれば買わない（前は目標の上がる分を毎ターン先に買っていた）。
     雇いたいだけ雇えなかった施設は、今の人手より少し多い分まで。"""
     island = make_island(game)
     plant = add(island, "building_materials_plant", 6, 6, recipe="wood")
@@ -529,9 +531,27 @@ def test_inputs_are_bought_ahead_of_a_rising_target(game):
     plant.economy.update(target=400, wanted=400)
     plant.workers = 400
     ctx = SimpleNamespace(defs=game.defs, config=game.config, turn=1)
-    assert Market._input_needs(ctx, plant, "electricity") == [("wood", 12_000 * 600 // 1000)]
+    turns = stock.target_turns(game.config.get("market.inventory_turns"), game.defs.goods, "wood")
+    adjust = game.config.get("market.inventory_adjust")
+
+    def wants(use, have):
+        rest = max(0, have - use)
+        return max(0, use - have) + max(0, int((int(use * turns) - rest) * adjust))
+
+    use = 12_000 * 400 // 1000
+    assert Market._input_needs(ctx, plant, "electricity") == [("wood", wants(use, 0))]
+    stock.add(plant.stock, "wood", use, 0, game.defs.goods)  # 使う分は手元にある
+    assert Market._input_needs(ctx, plant, "electricity") == [("wood", wants(use, use))]
+    stock.add(plant.stock, "wood", int(use * turns), 0, game.defs.goods)  # 目安まである
+    assert Market._input_needs(ctx, plant, "electricity") == []
+    # 次のターンの分の見込み（LB-45）には目安との差を足さない
+    assert Market._input_needs(ctx, plant, "electricity", stockpile=False, on_hand=False) == [
+        ("wood", use)
+    ]
+    plant.stock.clear()
     plant.workers = 200  # 400 人雇いたかったが 200 人しか来なかった
-    assert Market._input_needs(ctx, plant, "electricity") == [("wood", 12_000 * 300 // 1000)]
+    use = 12_000 * 300 // 1000
+    assert Market._input_needs(ctx, plant, "electricity") == [("wood", wants(use, 0))]
 
 
 def test_market_records_why_inputs_were_not_bought(game):
