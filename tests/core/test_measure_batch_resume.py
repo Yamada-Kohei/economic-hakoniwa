@@ -160,14 +160,15 @@ def test_shorter_and_longer_runs_come_from_all_the_sets(monkeypatch):
 
 
 def test_quick_and_full_share_the_runs_we_expect():
-    """本物の組: quick の 300 ターンから full の 500 ターンへ続けられるのは 7 組。"""
+    """本物の組: full の 500 ターンの 10 組は、どれも quick の 300 ターンから続けられる。"""
     resumable = [
         (scenario, seed)
         for scenario, seed, turns in measure.SETS["full"]
         if measure.shorter_runs(scenario, seed, turns)
     ]
-    small = [("small", seed) for seed in (1, 2, 3, 4)]
-    assert resumable == [("plan", 1), ("plan", 2), *small, ("open", 1)]
+    long_runs = [(scenario, seed) for scenario, seed, turns in measure.SETS["full"] if turns == 500]
+    assert len(long_runs) == 10
+    assert resumable == long_runs
     for scenario, seed, turns in measure.SETS["quick"]:
         assert measure.has_longer_run(scenario, seed, turns) == ((scenario, seed) in resumable)
 

@@ -19,7 +19,7 @@
     python -m hakoniwa_core.measure compare runs/main runs/r2
     python -m hakoniwa_core.measure digests runs/main.jsonl runs/new.jsonl
 
-quick は比べるための組（種1・2、300ターン）、full は回の終わりに1回だけ回す組（種1〜4、500ターン）。
+quick は比べるための組（300ターン）、full は回の終わりに1回だけ回す組（種1〜4、500ターン）。
 compare は2つの結果を並べます。
 digests は simulate --digests で書いた指紋を比べ、共通のターンで最初にずれた番号を出します。
 片方にしかないターンは件数だけを出し、ずれには数えません。
@@ -116,15 +116,17 @@ SCENARIOS = {
     )
 }
 
-# 一度に回す組（場面, 種, ターン数）。quick は回ごとの比べ、full は回の終わりに一度
+# 一度に回す組（場面, 種, ターン数）。quick は回ごとの比べ、full は回の終わりに一度。
+# full の 500 ターンの組は、どれも同じ場面・同じ種の 300 ターンの組を quick に持つ
+# （置き場の quick の写しから残りの 200 ターンだけを回せるように。GT-47）
 SETS = {
     "quick": [
-        ("plan", 1, 300),
-        ("plan", 2, 300),
+        *[("plan", seed, 300) for seed in (1, 2, 3, 4)],
         ("none", 1, 300),
         ("independent", 1, 300),
         *[("small", seed, 300) for seed in (1, 2, 3, 4)],
         ("open", 1, 300),
+        ("open", 2, 300),
         ("war", 1, 300),
     ],
     "full": [

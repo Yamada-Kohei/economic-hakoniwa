@@ -236,7 +236,7 @@ python -m hakoniwa_core.simulate --islands 50 --turns 300 --autoplan --gate  # �
 #       open（どの島も移民を受け入れる世界。回3）
 python -m hakoniwa_core.simulate --scenario plan --seed 1 --turns 300 --gate \
     --out runs/plan-s1.json --series runs/plan-s1.jsonl
-python -m hakoniwa_core.measure batch --set quick --out-dir runs/new   # 回ごとの比べ（種1・2、300ターン）
+python -m hakoniwa_core.measure batch --set quick --out-dir runs/new   # 回ごとの比べ（300ターン）
 python -m hakoniwa_core.measure batch --set full --out-dir runs/full   # 回の終わりに一度（種1〜4、500ターン）
 python -m hakoniwa_core.measure batch --set quick --out-dir runs/new --reuse runs/main  # 計算の中身が runs/main と同じ組は回さず写す
 python -m hakoniwa_core.measure compare runs/base runs/new            # 2つの結果を表に並べる
