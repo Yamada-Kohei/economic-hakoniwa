@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from hakoniwa_core import facilities as fac
 from hakoniwa_core.economy.prices import expected_price
 from tests.core.test_rules import game as game  # noqa: F401  （試験の部品を使い回す）
 from tests.core.test_rules import make_island, with_economy
@@ -57,40 +58,59 @@ def test_a_glut_lowers_the_price(game):
     assert _p(game, island, 6) < 1000
 
 
-def test_a_farm_keeps_grain_when_the_stock_runs_out_before_its_harvest(game):
-    """test_gate 種 2 の T293 の場面（掲示板 #1238 の (d)）: 嗜好作物が直近の平均の値段では穀物より
-    もうかって見えても、島の穀物の在庫が穀物の育つ期間のうちに尽きる流れなら、民営の畑は穀物の
-    ままにする。流れが釣り合っていれば今までどおり嗜好作物に替える。"""
+def _choice(game, supply, luxury_flows=None, selling=0.0, dear=(5, 4)):
+    """穀物の民営の畑 1 つ（ほかに国営の穀物の畑）の島で、作物の見直しが選ぶ作り方（替えなければ
+    None）。supply は穀物の売りに出た量の記録、luxury_flows は嗜好作物の（買いたい量・売りに出た
+    量・売れた量）、selling は畑が全力の産出の何割を売りに出しているか、dear は嗜好作物の値段を
+    初めの値段の何倍にするか（分子, 分母）。"""
     from hakoniwa_core.modules.firms import EntryExit
     from hakoniwa_core.state import ACCOUNTING_SELF, OWNER_PRIVATE, OWNER_STATE
     from tests.core.test_balance_round4 import _ctx_of
     from tests.core.test_rules import add, home
 
-    def choices(supply):
-        island = make_island(game)
-        home(game, island, 4, 4, 1000, "village")
-        home(game, island, 9, 9, 4000)
-        with_economy(game, island)
-        farm = add(island, "farm", 6, 6, recipe="default", owner=OWNER_PRIVATE)
-        farm.accounting = ACCOUNTING_SELF
-        add(island, "farm", 7, 7, recipe="default", owner=OWNER_STATE)  # 穀物の作り手はほかにも
-        economy = island.economy
-        grain, luxury = economy.prices["grain"], economy.prices["luxury_crop"]
-        economy.prices["luxury_crop"] = luxury = luxury * 5 // 4  # 嗜好作物がよく売れている
-        economy.price_history.update({"grain": [grain] * 6, "luxury_crop": [luxury] * 6})
-        economy.finance.update(
-            {
-                "demand": {"grain": [100_000] * 6, "luxury_crop": [1_000_000] * 6},
-                "supply": {"grain": list(supply), "luxury_crop": [0] * 6},
-                "sold": {"grain": [100_000] * 6, "luxury_crop": [0] * 6},
-            }
-        )
-        turn = -farm.id % game.config.get("firms.recipe_turns")  # この畑の見直しの順番
-        ctx = _ctx_of(game, island, turn)
-        picked = EntryExit._recipe_choices(island, ctx, OWNER_PRIVATE)
-        return next((r for f, r in picked if f is farm), None)
+    island = make_island(game)
+    home(game, island, 4, 4, 1000, "village")
+    home(game, island, 9, 9, 4000)
+    with_economy(game, island)
+    farm = add(island, "farm", 6, 6, recipe="default", owner=OWNER_PRIVATE)
+    farm.accounting = ACCOUNTING_SELF
+    add(island, "farm", 7, 7, recipe="default", owner=OWNER_STATE)  # 穀物の作り手はほかにも
+    economy = island.economy
+    grain, luxury = economy.prices["grain"], economy.prices["luxury_crop"]
+    economy.prices["luxury_crop"] = luxury = luxury * dear[0] // dear[1]
+    economy.price_history.update({"grain": [grain] * 6, "luxury_crop": [luxury] * 6})
+    flows = luxury_flows or ([1_000_000] * 6, [0] * 6, [0] * 6)
+    economy.finance.update(
+        {
+            "demand": {"grain": [100_000] * 6, "luxury_crop": list(flows[0])},
+            "supply": {"grain": list(supply), "luxury_crop": list(flows[1])},
+            "sold": {"grain": [100_000] * 6, "luxury_crop": list(flows[2])},
+        }
+    )
+    if selling:
+        farm.economy["expected"] = {"grain": fac.outputs_of(game.defs, farm)["grain"] * selling}
+    turn = (-farm.id - 1) % game.config.get("firms.recipe_turns")  # 次のターンがこの畑の見直し
+    picked = EntryExit._recipe_choices(island, _ctx_of(game, island, turn), OWNER_PRIVATE)
+    return next((r for f, r in picked if f is farm), None)
 
-    balanced = [150_000] * 6  # 毎ターン 10 万来て 10 万売れ、5 万持ち越す
-    assert choices(balanced) is not None and "luxury" in choices(balanced)
+
+BALANCED = [150_000] * 6  # 毎ターン 10 万来て 10 万売れ、5 万持ち越す
+
+
+def test_a_farm_keeps_grain_when_the_stock_runs_out_before_its_harvest(game):
+    """test_gate 種 2 の T293 の場面（掲示板 #1238 の (d)）: 嗜好作物が直近の平均の値段では穀物より
+    もうかって見えても、島の穀物の在庫が穀物の育つ期間のうちに尽きる流れなら、民営の畑は穀物の
+    ままにする。流れが釣り合っていれば今までどおり嗜好作物に替える。"""
+    assert "luxury" in (_choice(game, BALANCED) or "")
     draining = [400_000, 350_000, 300_000, 250_000, 200_000, 150_000]  # 来る量 5 万で在庫が減る
-    assert choices(draining) is None
+    assert _choice(game, draining) is None
+
+
+def test_a_big_farm_sees_its_own_crop_fill_the_shortage_where_it_moves(game):
+    """替えた先の作物の見込みの値段は、自分が売りに出す分も足した流れで見る（掲示板 #1294。test_gate
+    種 1 の T294: 島の穀物をほぼ 1 つで作る畑が替えた）。嗜好作物が品切れ続きで、平均の値段では
+    穀物と変わらないとき、売っている量のごく小さい畑には品切れが続いて値段が上がると見えて替えるが、
+    全力で売っている大きい畑は、自分が移れば品切れが埋まって値段が上がらないと見て替えない。"""
+    short = ([36_000] * 6, [30_000] * 6, [30_000] * 6)  # 3 万来て売り切れ、6 千足りない
+    assert "luxury" in (_choice(game, BALANCED, short, selling=0.01, dear=(1, 1)) or "")
+    assert _choice(game, BALANCED, short, selling=1.0, dear=(1, 1)) is None

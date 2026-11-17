@@ -595,7 +595,12 @@ def plan_own_materials(island: IslandState, defs: Defs, config: GameConfig, f: F
 
 
 def expected_price(
-    island: IslandState, good: str, ahead: int, defs: Defs, config: GameConfig
+    island: IslandState,
+    good: str,
+    ahead: int,
+    defs: Defs,
+    config: GameConfig,
+    shift: float = 0.0,
 ) -> int:
     """ahead ターン先の見込みの値段 p*（掲示板 #1238。作付けの見直しと、買い置きの見込み W-285 の 3b
     で共通の部品）。
@@ -610,6 +615,9 @@ def expected_price(
     - 1ターンに新しく市場に来る量 P: 売りに出た量の増え ＋ 売れた量の平均（売りに出た量 = 持ち越した
       在庫 ＋ 新しく来た量）。
     - 今の持ち越しの在庫: 前のターンの、売りに出た量 − 売れた量。
+
+    shift は、呼び手が自分の動きで変える 1ターンに来る量（1000 分の 1。作付けを替えて新しく
+    売りに出す量は正、やめる量は負。掲示板 #1294: 大きい作り手は自分の動きが値段に響くのを見る）。
 
     在庫が尽きて買いたい量に届かないターンは値段が上がり、在庫が目安を超えて余るターンは下がる。
     どちらでもなければ動かさない（市場の決まりと同じ）。流れが釣り合っていれば p* は平均の値段の
@@ -641,6 +649,7 @@ def expected_price(
         return price
     arrivals = [supply[i + 1] - supply[i] + sold[i] for i in range(n - 1)]
     inflow = max(0.0, sum(arrivals) / len(arrivals)) if arrivals else float(sold[-1])
+    inflow = max(0.0, inflow + shift)
     carried = max(0, supply[-1] - sold[-1])
     keep = wanted * stock.target_turns(config.get("market.inventory_turns"), defs.goods, good)
     k = config.get("market.price_speed")
