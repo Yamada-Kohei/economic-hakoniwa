@@ -179,6 +179,51 @@ def test_unbought_ships_loan_is_returned_the_same_turn(game, base):
     del config
 
 
+@pytest.mark.parametrize("bid", [False, True])
+def test_frame_is_returned_whole_when_no_ship_is_bought(game, base, bid):
+    """買い注文を出せなかった・出したが 1 隻も買えなかったときは、枠の借りを全部そのターンのうちに
+    返し、借りは残らない（借りのお金は買い注文の取り置きの中でだけ使う。掲示板 #1240）。"""
+    world, island, f = _setup(game, base)
+    f.economy["ships_wanted"] = 2 * MILLI
+    f.economy["ships_replace"] = 2 * MILLI
+    ship_loans.arrange(island, _ctx(game, world, "banking"), f, 0)
+    credit = dict(f.economy[ship_loans.CREDIT])
+    open_books(island)
+    ctx = _ctx(game, world, "market")
+    entity = facility_entity(f.id)
+    before = ledger.money(island, entity)
+    ship_loans.draw(island, ctx, f, 2 * MILLI)
+    assert ledger.money(island, entity) > before
+    if bid:
+        party = Party("facility", entity, None, 0, 0, f)
+        party.reserved = credit["value"]
+        ship_loans.bid_placed(island, party)  # 約定せず、取り置きはそのまま戻る
+    ship_loans.note_spent(island)
+    ship_loans.settle(island, ctx, f)
+    assert sum(banks.outstanding(island, x) for x in _ship_loans(island, f)) == 0
+    assert ledger.money(island, entity) == before
+    assert island.stats.get("ship_loans.unreturned", 0) == 0
+    assert not ledger.check(island, island.scratch["opening_accounts"])
+
+
+def test_shipping_without_ships_is_reviewed_on_the_first_ships_freight(game, base):
+    """船のない海運業の審査の稼ぎは、稼ぎの記録（船がない間の物）ではなく、最初の 1 隻で載せられ
+    なかった荷を運んだときの今の運賃の見込み（#849）。荷を残していなければ 0。"""
+    world, island, f = _setup(game, base)
+    config = game.config
+    ctx = _ctx(game, world, "banking")
+    f.economy["fleet"] = []
+    f.economy["ebitda"] = [0] * config.get("firms.ebitda_turns")
+    f.economy[ships.SHORT_LOAD] = []
+    assert ship_loans.earnings(island, ctx, f) == 0
+    keep = config.get("trade.cost_turns")
+    f.economy[ships.SHORT_LOAD] = [config.get("trade.ship_capacity") * MILLI] * keep  # 1 隻分
+    one = ship_loans.earnings(island, ctx, f)
+    price = island.economy.prices[GOOD]
+    wear = price / config.get("trade.ship_life")
+    assert one >= wear  # 船の傷みを回収できる運賃（1 隻を全部使う）
+
+
 def test_no_new_loan_over_the_limit_after_ships_sank(game, base):
     """沈没で担保の上限を超えている海運業には、市場の枠の借りも前注文の代金の借りも上限を超えて
     残さない（超えた分は自分で払う）。"""

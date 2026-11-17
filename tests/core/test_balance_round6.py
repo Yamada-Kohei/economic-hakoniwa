@@ -482,12 +482,12 @@ def test_an_island_that_lost_every_ship_orders_new_ones(game, base):
     if ordered:
         assert wanted[-1] == 0 and ordered >= QUANTITY_SCALE
     else:
-        # 船を失った海運業の最初の 1 隻は買い替えと同じ扱い（W-281）。稼ぎの記録がないので銀行は
-        # 貸さず、代金は持ち主が出せる分だけ出す（この島の持ち主は製鉄所にも出していて、1 隻の 8 割
-        # ほどしか出せない。出せた分だけの数を買いに出る）
+        # 船を失った海運業の最初の 1 隻は買い替えと同じ扱い（W-281）。船のない海運業の稼ぎは、
+        # 最初の 1 隻で荷を運んだときの今の運賃の見込みで審査する（#849）。通れば代金の 8 割までを
+        # 船の借りで、残りは頭金で払う
         credit = f.economy[ship_loans.CREDIT]
-        assert credit["loan"] == 0 and 0 < credit["qty"] <= QUANTITY_SCALE
-        assert credit["replace"] == credit["qty"] and credit["down"] == credit["value"]
+        assert 0 < credit["qty"] <= QUANTITY_SCALE and credit["replace"] == credit["qty"]
+        assert credit["loan"] + credit["down"] >= credit["value"] - 1
         assert ledger.money(island, facility_entity(f.id)) >= credit["down"]
         market = next(m for m in island.markets if m.good == good)
         assert market.demand >= QUANTITY_SCALE // 2 and market.supply == 0

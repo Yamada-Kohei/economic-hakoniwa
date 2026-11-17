@@ -410,6 +410,20 @@ def _estimate(island: IslandState, config: GameConfig, f: Facility) -> int:
     return _rate(config, _ship_run_cost(island, config), wear, 0.5)
 
 
+def prospect_earnings(island: IslandState, config: GameConfig, f: Facility) -> float:
+    """船を 1 隻も持たない海運業が、最初の 1 隻で 1 ターンに稼げる見込み（運航の利益 ＋ 資本費の
+    回収。W-281。掲示板 #849「新しい海運業の稼ぎは今の運賃の見込みで出す」）。1 隻の使い具合 u は
+    直近に船が足りずに載せられなかった荷を運ぶのに要った船（left_ships。1 隻まで）で見て、運賃は
+    同じ u での今の値段の見積もり（_rate。船の傷みと利子を含む）。稼ぎ ＝ 運賃 × 運んだ量 − 運航費
+    × u。荷を残していなければ 0（船を買っても運ぶ物がない）。"""
+    use = min(1.0, left_ships(config, f) / MILLI)
+    if use <= 0:
+        return 0.0
+    run = _ship_run_cost(island, config)
+    rate = _rate(config, run, _ship_wear(island, config), use)
+    return rate * _full_use(config) * use - run * use
+
+
 def _full_use(config: GameConfig) -> float:
     """1 隻を 1 ターン全部使ったときに運ぶ量（トン × 区画）。往復で片道の 2 倍走るので、速さの
     半分。"""
