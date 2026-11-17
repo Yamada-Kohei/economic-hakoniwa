@@ -153,12 +153,6 @@ class Book:
     borrow: Callable[[int], int] | None = None
     peg_band: int = 100  # 固定相場の幅（1万分の1。fx.peg_band）
     intervening: bool = False  # 中央銀行が介入している（受け身の注文を出さない）
-    # 約定があっても、基準のレートの動きを片側だけのときと同じ比（約定量 ÷（約定量 + 市場の
-    # 厚み））で抑える（fx.damp_fills。外貨の会議 #1068 の試し。約定は約定価格のまま）
-    damp: bool = False
-    # 中央銀行の受け身の注文の段の数（fx.dealer_tiers。外貨の会議 #1070 の試し ①。量の合計は市場の
-    # 厚みのまま。一番近い段は前のレート ± 値幅 ÷ 段の数）
-    dealer_tiers: int = 5
 
 
 def add_buy(
@@ -310,16 +304,10 @@ def clear(
         )
         _realized(island, seller, own - cost)
         island.trades.append(TradeRecord(f"fx:{currency}", buyer, seller, qty, own))
-    rate_after = price
-    if book.damp and result.volume > 0 and peg is None and not book.intervening:
-        # 中央銀行の受け身の売り（買い）は前のレートより高い（安い）側にしかないので、少しの
-        # 買い（売り）でも値幅の 5 分の 1 は動いていた。片側だけのときの _step と同じく、約定量と
-        # 市場の厚みの比で動く
-        rate_after = _step(reference, price, result.volume, book.depth)
-    rates(island)[str(currency)] = rate_after
+    rates(island)[str(currency)] = price
     other = world.islands.get(currency)
     if other is not None and has_rate(other, island.id):  # 同じ組のレートは1つ
-        rates(other)[str(island.id)] = inverse(rate_after)
+        rates(other)[str(island.id)] = inverse(price)
     stats = island.stats
     stats[f"fx.dealt.{currency}"] = stats.get(f"fx.dealt.{currency}", 0) + dealt
     if intervened or currency_key(currency) in island.policy.fx_intervention or peg is not None:
@@ -428,9 +416,9 @@ def _check_peg(
 def dealer_orders(
     island: IslandState, currency: int, book: Book, reference: int, width: int
 ) -> None:
-    """中央銀行の受け身の注文（フェーズ3-1）。前のレートより安い側に、市場の厚みの分を
-    book.dealer_tiers 段（既定 TIERS）に分けて買い、前のレートより高い側に、通貨 currency を同じだけ
-    売る（持っている分と、借りられる分 book.borrow_room まで）。
+    """中央銀行の受け身の注文（フェーズ3-1）。前のレートより安い側に、市場の厚みの分を TIERS 段に
+    分けて買い、前のレートより高い側に、通貨 currency を同じだけ売る（持っている分と、借りられる
+    分 book.borrow_room まで）。
     レートが値幅の端まで動くと厚みの分だけ引き受けるので、ふだんの取引に比べて少しの偏りなら少し
     だけ動き、輸出の稼ぎを島で両替できる（買った分は中央銀行の外貨の持ち高になり、自国通貨が
     増える。売った分は自国通貨が減る）。"""
@@ -441,23 +429,22 @@ def dealer_orders(
     payer = Payer(ledger.CB)
     have = fxmoney.holding(island, ledger.CB, currency) + book.borrow_room  # 借りて売れる分も
     room = book.reserve_room  # 上限まで買える量（None は上限なし）
-    tiers = max(1, book.dealer_tiers)
-    for j in range(1, tiers + 1):
-        # 段に分けた余り（段の数未満）は、いちばん遠い段に足す（余りを出さずにいると、厚みちょうどの
+    for j in range(1, TIERS + 1):
+        # 段に分けた余り（TIERS 未満）は、いちばん遠い段に足す（余りを出さずにいると、厚みちょうどの
         # 額を両替する契約の支払いが数円足りず、0.001 トン届かなかった。Codex の試し遊び）
-        qty = depth // tiers + (depth % tiers if j == tiers else 0)
+        qty = depth // TIERS + (depth % TIERS if j == TIERS else 0)
         if qty <= 0:
             break
         buy = qty if room is None else max(0, min(qty, room))
         if buy > 0:
-            price = reference - (reference - low) * j // tiers
+            price = reference - (reference - low) * j // TIERS
             book.buys.append((Order(buy, price), ledger.CB, payer))
             if room is not None:
                 room -= buy
         sell = min(qty, have)
         if sell > 0:
             book.sells.append(
-                (Order(sell, reference + (high - reference) * j // tiers), ledger.CB, payer)
+                (Order(sell, reference + (high - reference) * j // TIERS), ledger.CB, payer)
             )
             have -= sell
 
