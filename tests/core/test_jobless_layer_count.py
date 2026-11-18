@@ -41,6 +41,49 @@ def test_people_leaving_a_layer_take_this_turns_income_with_them(game):
     assert income[GENERAL] == general + 9_000
 
 
+def _claims(island, layer):
+    from hakoniwa_core.economy import arrears, household
+
+    return sum(
+        value
+        for name, value in island.accounts.items()
+        if name.startswith(f"{household(layer)}/{arrears.WAGE_ARREARS}/") and value > 0
+    )
+
+
+def test_unpaid_severance_claims_go_with_the_people(game):
+    """払えなかった解雇手当（未払い賃金の請求）は、その人について回る。90 人が職を得て一般の層へ
+    戻れば、請求の 9 割も一般の層へ移り、後で払われても少ない人数の層の所得にならない（公開の世界、
+    ターン 127: 2 人の層に 581 万）。"""
+    from hakoniwa_core.economy import arrears, entity_of, household
+
+    island, mill, _ = _mill(game)
+    set_jobless(island, 100)
+    arrears.add_wages(island, entity_of(game.config, mill), household(JOBLESS), 10_000)
+    general = _claims(island, GENERAL)
+    set_jobless(island, 10)
+    assert _claims(island, JOBLESS) == 1_000
+    assert _claims(island, GENERAL) == general + 9_000
+    # 請求の額そのものは変わらない
+    assert arrears.total(island, entity_of(game.config, mill)) >= 10_000
+
+
+def test_an_empty_jobless_layer_hands_its_income_and_claims_to_the_general_layer(game):
+    """失業者の層が 0 人になったら、層に入っていた所得（手当を受けた人が同じターンに職を得た）と
+    未払い賃金の請求も一般の層へ移す。0 人の層に所得が残らない（公開の世界、ターン 128・129）。"""
+    from hakoniwa_core.economy import arrears, entity_of, household
+
+    island, mill, _ = _mill(game)
+    set_jobless(island, 0)
+    add_income(island, JOBLESS, 5_000)  # 0 人の層に入った手当
+    arrears.add_wages(island, entity_of(game.config, mill), household(JOBLESS), 7_000)
+    general = island.scratch["income"].get(GENERAL, 0)
+    set_jobless(island, 0)
+    assert not island.scratch["income"].get(JOBLESS)
+    assert island.scratch["income"][GENERAL] == general + 5_000
+    assert _claims(island, JOBLESS) == 0
+
+
 def _jobless_workers_on(game, island):
     """失業率と同じ数え方の、仕事のない一般の労働者の数（マスごとの tile_jobless の和）。"""
     from hakoniwa_core import facilities as fac
