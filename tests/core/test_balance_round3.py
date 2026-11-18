@@ -12,6 +12,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.economy import (
     GENERAL,
+    JOBLESS,
     OWNERS,
     Payer,
     arrears,
@@ -304,7 +305,9 @@ def test_unpaid_wages_stay_owed_and_are_paid_first_when_money_comes(game, warmed
     assert island.stats["arrears.workers"] > 0
     assert f.workers >= staff // 2  # 1か月目はほとんど辞めない
     held = arrears.owed(island, entity)
-    assert set(held) <= {household(GENERAL), household("engineers")}
+    # 未払いは働いた人の家計が持つ。そのターンに職を失った人は自分の分を持って失業者の層へ移る
+    # （W-294。請求は人について回る）ので、失業者の層も持ち手になる（本人 OK 2026-11-19）
+    assert set(held) <= {household(GENERAL), household("engineers"), household(JOBLESS)}
     # お金が入れば先に払う
     ledger.pay(island, owners, entity, 10 * owed, "capital_injection")
     before = ledger.money(island, household(GENERAL))
