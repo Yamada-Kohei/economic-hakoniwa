@@ -947,6 +947,9 @@ planning:
     # 4（消費財だけ）にすると戦争の世界で衣類の工場の綿花は買えたが、燃料に回る外貨が減って計画経済の停電が
     # 戻った（2026-11-14 の測り。本人のカードで 3 のまま）
     reserve_rank: 3
+    # 蓄えの目標を超えた外貨を自国の中央銀行に預け、為替の段の間は融通の貸し手の余りに入れる（FX-83。
+    # 掲示板 #1513 の (a) の候補 1。試し中で既定は切る）
+    deposit_surplus: false
 
 # 外交（フェーズ4-1。hakoniwa_core/diplomacy と hakoniwa_core/modules/diplomacy）
 diplomacy:
