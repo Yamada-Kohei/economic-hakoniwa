@@ -224,6 +224,9 @@ class Party:
     pool: Party | None = None
     clearance: bool = False  # 施設の売れ残りの値引きの売り（MK-41。売れ行きの見込みに数えない）
     fuel_reserve: bool = False  # 火力発電所の燃料の買い足し（需要・品不足・買い上がりから除く）
+    # 原料の在庫の積み増しの分（MK-47 の目安との差。MK-49）: 今の値段までで買い上がらず、品不足と
+    # 買い上がりの合図から除く（品薄のあいだは在庫を崩し、落ち着けば積み直す）
+    restock: bool = False
     # 計画経済の商社の輸出の計画の分の買い（PL-62。配る順は国営施設と同じ、生産目標の需要から除く）
     export_plan: bool = False
 
@@ -1398,7 +1401,7 @@ class Market(IslandStage):
             return any(
                 got[k] < o.quantity and auction.buy_limit(o, first.high) >= first.price
                 for k, (o, _) in enumerate(book.buys)
-                if not book.buys[k][1].fuel_reserve
+                if not book.buys[k][1].fuel_reserve and not book.buys[k][1].restock
             )
 
         kept = first.price
@@ -1628,7 +1631,7 @@ class Market(IslandStage):
         """計画経済の公定価格の財で、買い注文の割当の順位と、家計の注文なら層の名前。"""
         tier, layer = planning.STATE, None
         f = party.facility
-        if party.fuel_reserve:
+        if party.fuel_reserve or party.restock:  # 備えと積み増しは、配る順の一番後
             tier = min(FUEL_RESERVE_PRIORITY, ctx.config.get("warehouse.standing_priority"))
         elif party.kind == HOUSEHOLD and party.layer != "housing":
             tier, layer = planning.HOUSEHOLDS, party.layer
@@ -2175,7 +2178,9 @@ class Market(IslandStage):
                         limit = min(limit, caps[good])
                     order = Order(total - expiring, limit)
                 self._add(books_by_good, good, "sell", order, seller)
-            needs = self._input_needs(ctx, f, power)
+            buffers: dict[str, int] = {}
+            needs = self._input_needs(ctx, f, power, True, True, buffers)
+            wants = dict(needs)
             outbid = {g for g, why in f.economy.pop("short", {}).items() if why == "price"}
             placed = f.economy.pop(BIDS, {})
             # 前のターンに出した指値だけを見る（壊れて直していた間などの古い指値で上げない）
@@ -2205,17 +2210,31 @@ class Market(IslandStage):
                 "turn": ctx.turn,
                 "limits": {g: lim for g, (_, lim) in sorted(plan.items())},
             }
-            priority = fac.priority_of(defs, config, f)
+            # 原料の買いは家計と同じ順位（MK-49）: 同じ値段で並べば、家計と工場は注文の量の比で
+            # 分ける（MK-03 の順位で全部取らない。施設の優先順位は雇用と電力で使う）
+            priority = config.get("market.household_priority")
             for good, (qty, limit) in sorted(plan.items()):
                 if limit <= 0:  # どの値段でも採算が合わない原料は注文しない（指値 0 の買いが気配を
                     # 押し下げ、売りのある財の値段が毎ターン値幅ずつ下がり続けた。2026-10-31）
                     f.economy.setdefault("short", {})[good] = "price"
                     continue
-                party = Party(FACILITY, name, payer, rate, 0, f)
-                party.public = is_public_service(defs, f)
-                party.reserved = gross_cost(limit, qty, rate, 0)
-                funds.commit(island, payer, party.reserved)
-                self._add(books_by_good, good, "buy", Order(qty, limit, priority), party)
+                # 在庫の積み増しの分（MK-49）は、お金で減らした割合を同じに掛けて分け、今の値段
+                # （島の前のターンの約定価格。板寄せの基準の値段と同じ）までで買い上がらない
+                extra = buffers.get(good, 0) * qty // max(1, wants.get(good, qty))
+                use = qty - extra
+                restock_limit = min(limit, prices.get(good, 0))
+                for part_qty, part_limit, is_restock in (
+                    (use, limit, False),
+                    (extra, restock_limit, True),
+                ):
+                    if part_qty <= 0 or part_limit <= 0:
+                        continue
+                    party = Party(FACILITY, name, payer, rate, 0, f, restock=is_restock)
+                    party.public = is_public_service(defs, f)
+                    party.reserved = gross_cost(part_limit, part_qty, rate, 0)
+                    funds.commit(island, payer, party.reserved)
+                    order = Order(part_qty, part_limit, priority)
+                    self._add(books_by_good, good, "buy", order, party)
         for hold_payer, amount, _ in holds.values():  # 施設がなくなっていた分
             funds.release(island, hold_payer, amount)
 
@@ -2509,7 +2528,12 @@ class Market(IslandStage):
 
     @staticmethod
     def _input_needs(
-        ctx: StageContext, f: Facility, power: str, stockpile: bool = True, on_hand: bool = True
+        ctx: StageContext,
+        f: Facility,
+        power: str,
+        stockpile: bool = True,
+        on_hand: bool = True,
+        buffers: dict[str, int] | None = None,
     ) -> list[tuple[str, int]]:
         """次のターンに要る投入財のうち手元にない分（MK-47。W-285 の 3a）。
 
@@ -2522,6 +2546,8 @@ class Market(IslandStage):
         買っていて、売れ残りがあっても原料を買い増した。
         学校と大学は market.public_stock_turns ターン分。stockpile が偽なら、積み増し（目安との
         差と学校の数ターン分）を除いた次のターンの分だけ（LB-45 の要る額の見込み）。
+        buffers を渡すと、そのうち目安との差の積み増しの分を財ごとに入れる（MK-49。今の値段まで
+        で買い、買い上がらない）。
         """
         settings = ctx.config.get("market")
         expected = Market._input_plan(ctx, f)
@@ -2554,7 +2580,10 @@ class Market(IslandStage):
                     goal = round_money(
                         use * stock.target_turns(settings["inventory_turns"], ctx.defs.goods, good)
                     )
-                    want += max(0, round_money((goal - rest) * settings["inventory_adjust"]))
+                    extra = max(0, round_money((goal - rest) * settings["inventory_adjust"]))
+                    want += extra
+                    if buffers is not None and extra > 0:
+                        buffers[good] = extra
             if want > 0:
                 needs.append((good, want))
         return needs
@@ -4594,6 +4623,8 @@ class Market(IslandStage):
                 usable = result.bought[i] - stale.get(good, {}).get(i, 0)
                 if party.kind not in (FACILITY, SITE) or f is None or usable >= order.quantity:
                     continue
+                if party.restock:  # 積み増しの買い残しは品不足でも買い上がりの合図でもない
+                    continue
                 limit = auction.buy_limit(order, result.high)
                 expensive = (result.supply > 0 and limit < result.price) or (
                     cheapest is not None and limit < cheapest
@@ -5005,6 +5036,7 @@ class Market(IslandStage):
                     order.quantity - result.bought[i]
                     for i, (order, party) in enumerate(book.buys)
                     if not party.fuel_reserve
+                    and not party.restock
                     and party.kind != MERCHANT
                     and result.bought[i] < order.quantity
                     and (
@@ -5398,6 +5430,7 @@ class Market(IslandStage):
                 for i, (order, party) in enumerate(book.buys)
                 if result.bought[i] < order.quantity
                 and not party.fuel_reserve
+                and not party.restock
                 and not (
                     party.kind == MERCHANT and auction.buy_limit(order, result.high) < result.price
                 )
