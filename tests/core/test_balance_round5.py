@@ -168,8 +168,7 @@ def test_plan_raises_taxes_when_the_state_cannot_pay_wages(game, warmed):
 
 
 def test_plan_turns_state_farms_to_grain_and_opens_the_warehouse_in_a_famine(game, warmed):
-    """食べ物が足りない月、標準の計画は国営の農場を穀物に替え、国の倉庫の食べ物を出し、穀物を高めの
-    指値で買い入れる。"""
+    """食べ物が足りない月、標準の計画は国営の農場を穀物に替え、国の倉庫の食べ物を出す。"""
     from hakoniwa_core import autoplan, stock
 
     island = copy.deepcopy(island_of(warmed, "planned"))
@@ -182,9 +181,27 @@ def test_plan_turns_state_farms_to_grain_and_opens_the_warehouse_in_a_famine(gam
     kinds = [(k, p.get("side"), p.get("good"), p.get("recipe")) for k, p in orders]
     assert ("change_recipe", None, None, "default") in kinds
     assert ("warehouse_trade", "sell", "fish", None) in kinds
+    # 輸入の道がない（圏に穀物の売りがない）島は、島の中の売りを買い上げない（W-285）
+    assert not any(k == "warehouse_trade" and p["side"] == "buy" for k, p in orders)
+
+
+def test_famine_grain_buy_is_placed_at_the_import_price(game, warmed, monkeypatch):
+    """飢饉の月の穀物の買い入れは、圏の市場から輸入が引き合う値段を指値にする（W-285。前は今の値段の
+    1.5 倍で島の中の売りを買い上げ、穀物を増やさずに値段だけをつり上げていた）。"""
+    from hakoniwa_core import autoplan
+    from hakoniwa_core.trade import traders
+
+    island = copy.deepcopy(island_of(warmed, "planned"))
+    island.stats["food.ratio"] = 0.8
+    island.stats["food.need"] = 100.0
+    floor = island.economy.prices["grain"] * 6 // 5
+    seen = traders.Prospect("grain")
+    seen.import_floor = floor
+    monkeypatch.setattr(traders, "prospects", lambda *a, **k: {"grain": seen})
+    orders = autoplan._food_orders(island, game.defs, game.config, 50)
     buy = next(p for k, p in orders if k == "warehouse_trade" and p["side"] == "buy")
     assert buy["good"] == "grain"
-    assert buy["limit"] > island.economy.prices["grain"]
+    assert buy["limit"] == floor + -(-floor // 1000)  # 丸めの分だけ上
     assert buy["quantity"] == 20.0  # 足りない2割
 
 

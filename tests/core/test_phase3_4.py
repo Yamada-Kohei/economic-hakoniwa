@@ -442,11 +442,20 @@ def test_change_from_planned_keeps_state_facilities_and_lets_firms_in(game, base
     assert planning.KEY not in island.ext
     assert OWNERS in island.economy.households
     assert not ledger.holdings(island, household(OWNERS), ledger.EQUITY)
-    run(game, world, 24)
+    seen = {"entry": False, "equity": False}
+
+    def look(_world):
+        seen["entry"] |= any(f.ext.get("private_entry") for f in island.facilities)
+        held = ledger.holdings(island, household(OWNERS), ledger.EQUITY)
+        seen["equity"] |= sum(held.values()) > 0
+
+    run(game, world, 24, each_turn=look)
     # 民間が参入し、資本家階級が出資する（FM-58）。出資した人の人数は、出資が軽い店だけだと財産で
-    # 暮らせる人数（LB-42）が 0 のまま次のターンに一般の層へ戻ることがあるので、株の持ち主で見る
-    assert any(f.ext.get("private_entry") for f in island.facilities)
-    assert sum(ledger.holdings(island, household(OWNERS), ledger.EQUITY).values()) > 0
+    # 暮らせる人数（LB-42）が 0 のまま次のターンに一般の層へ戻ることがあるので、株の持ち主で見る。
+    # 参入した店は数ターンで畳むこともある（main でも 24 ターンのうちに店が入っては畳む）ので、
+    # 最後のターンに残っているかでなく、24 ターンのうちに参入と出資があったかを見る
+    assert seen["entry"]
+    assert seen["equity"]
 
 
 # --- 計画経済 ---------------------------------------------------------------------------

@@ -241,26 +241,20 @@ def test_small_hungry_layers_order_all_they_need(game):
     """飢えた家計の食料の注文は、段の量を累積の差で決めるので、人数の少ない層でも合計がちょうど要る
     量になる（段ごとに切り捨てると、要る量 8 単位の層は 3 単位しか注文せず、飢え続けた。試し遊び
     1回目の報告の 2）。お金で途中までのときも、食費の限りは超えない。"""
-    from hakoniwa_core.modules.market import gross_cost, hungry_food_orders
+    from hakoniwa_core.modules.market import _hungry_cost, hungry_food_orders
     from hakoniwa_core.modules.population import food_short_reason
     from tests.core.test_balance_round3 import _menu
 
-    settings = game.config.get("household.hungry")
-    steps, elasticity = settings["steps"], settings["elasticity"]
+    steps = game.config.get("household.hungry")["steps"]
     menu = _menu()
     price = 100_000  # 1 単位（1000 分の 1）が 100 になる値段
     menu.limits["grain"] = price
-    anchors = {"grain": price}
     for need in (5, 8, 13):
-        orders = hungry_food_orders(
-            need, {"grain": need}, {"grain": need}, menu, anchors, 0, 10**9, steps, elasticity
-        )
+        orders = hungry_food_orders(need, {"grain": need}, {"grain": need}, menu, 10**9, steps)
         assert sum(q for _, q, _ in orders) == need, (need, orders)
-    budget = 900
-    orders = hungry_food_orders(
-        8, {"grain": 8}, {"grain": 8}, menu, anchors, 0, budget, steps, elasticity
-    )
-    assert 0 < sum(gross_cost(lim, q, menu.rate, menu.tax[g]) for g, q, lim in orders) <= budget
+    budget = 600  # 上端で 8 単位を買う額 800 に足りない
+    orders = hungry_food_orders(8, {"grain": 8}, {"grain": 8}, menu, budget, steps)
+    assert 0 < _hungry_cost(orders, menu) <= budget
     # 取り分の切り捨てで数単位欠けただけなら、「物がない」ではなく「買い負けた」
     summary = {"need": 1000, "ordered": 999, "offered": 998, "cost": 10, "budget": 1000}
     assert food_short_reason(summary) == "outbid"

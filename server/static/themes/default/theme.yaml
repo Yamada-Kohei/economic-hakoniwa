@@ -69,6 +69,20 @@ sprite_looks:
   farm: [cotton, luxury_crop]                                 # 作物
   mine: [iron_ore, bauxite, copper_ore, uranium_ore]          # 掘る物
   thermal_power_plant: [fuel]                                 # 燃料
+# 工事中の絵を施設の種類で分ける: ここに書いた施設は construction@<種類> の絵（なければ construction）。
+# 書いていない施設（工場・ビル・軍の施設など）は construction（建てかけの骨組みとタワークレーン）
+construction_looks:
+  farm: field                 # 耕し始めた畑と木の骨組みの納屋
+  ranch: field
+  lumber_camp: field
+  mine: dig                   # 切り崩した岩の斜面とショベル
+  quarry: dig
+  oil_well: dig
+  hydro_power_plant: dig
+  port: harbor                # ケーソンと消波ブロック、杭打ちのクレーン
+  fishing_port: harbor
+  shipyard: harbor
+  naval_base: harbor
 # 建て増しの規模（FM-47）の絵の区切り: 規模がこの数以上なら facility/<名>@s2・@s3・@s4 の絵
 # （規模 1 は名前のままの絵。2〜4・5〜7・8〜10 の 4 段）
 size_tiers: [2, 5, 8]
@@ -173,6 +187,15 @@ sprites:
   overlay/trench_front: sprites/overlay/trench_front.svg
   overlay/occupied: sprites/overlay/occupied.svg      # 建物のあと
   overlay/contaminated: sprites/overlay/contaminated.svg  # 地形のあと・建物より先
+  # 土木業者（W-270）・工事中（どの施設にも共通）・区域の指定（何も建っていないマスの柵と看板。地形のあと）
+  facility/contractor: sprites/facility/contractor.svg
+  construction: sprites/construction.svg
+  construction@field: sprites/construction@field.svg
+  construction@dig: sprites/construction@dig.svg
+  construction@harbor: sprites/construction@harbor.svg
+  overlay/zone_industrial: sprites/overlay/zone_industrial.svg
+  overlay/zone_office: sprites/overlay/zone_office.svg
+  overlay/zone_commercial: sprites/overlay/zone_commercial.svg
   unit/infantry: {file: sprites/unit/infantry.svg, anchor: [14, 28]}
   fleet/frigate: {file: sprites/fleet/frigate.svg, anchor: [12, 10]}
   facility/arms_plant: sprites/facility/arms_plant.svg

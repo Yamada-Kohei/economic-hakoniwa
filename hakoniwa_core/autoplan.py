@@ -81,7 +81,10 @@ FISCAL_LIMIT を超えたら公共事業費と同じ率で減らします（EDUC
 支出の SURPLUS_TURNS ターン分があれば、建国のときの税率まで TAX_STEP ずつ戻します。
 飢饉の手（回5。設計書 12 確かめ方 GT-29）: 食べ物の充足が FAMINE_RATIO を下回った月は、国営の
 農場のうち穀物以外を作っているものを穀物に替え、国の倉庫の食べ物をすべて市場に出し、足りない分の
-穀物を今の値段の EMERGENCY_PRICE 倍の指値で国の倉庫に買い入れます（値段が上がれば商社が輸入する）。
+穀物を、圏の市場から輸入が引き合う値段（商社の輸入の見込みの import_floor）の指値で国の倉庫に
+買い入れます（W-285。前は今の値段の 1.5 倍で島の中の売りを買い上げ、次の月に出すのを繰り返して、
+穀物の量を増やさずに値段だけをつり上げていた）。輸入の道がない島は買わない
+（海外の食料商人 FX-73 が来る）。
 国の倉庫の年の予算は、その買い入れに足りるまで上げます。ふだんの月の穀物の蓄えと入れ替えは、計画に
 よらず国の穀物の備蓄（economy/reserve.py。W-186 の直し 回1）がします。
 電気料金が初めの値段の POWER_CAP 倍を超えたら、そこを公共料金の上限にします。
@@ -153,7 +156,6 @@ TAX_STEP = 2  # 一度に上げ下げする税率（ポイント）
 TAX_MAX = {"income_tax": 30, "consumption_tax": 20}  # 上げる上限（%）
 SURPLUS_TURNS = 6  # 国庫に支出のこのターン数分があれば、税を戻してよい
 FAMINE_RATIO = 0.95  # 食べ物の充足がこれを下回った月は飢饉の手を打つ
-EMERGENCY_PRICE = 1.5  # 飢饉の月の穀物の買い入れの指値（今の値段のこの倍）
 GRAIN = "grain"
 WORKS_RANGE = (0.2, 2.0)  # 基本に対する倍率の下限と上限
 STARVED_RAISE = 0.25  # 国の工事が公共事業費を待って止まっている間、見直しのたびに増やす割合
@@ -507,7 +509,6 @@ def _food_orders(
     if ratio >= FAMINE_RATIO:
         return []
     need = to_milli(island.stats.get("food.need", 0))  # 1ターンに食べる量（穀物に直さない）
-    price = island.economy.prices[GRAIN]
     orders: list[tuple[str, dict]] = []
     for f in island.facilities:
         recipe = _grain_recipe(defs, island, f)
@@ -524,7 +525,7 @@ def _food_orders(
                 )
             )
     buy = round(need * (1 - ratio))
-    limit = int(price * EMERGENCY_PRICE)
+    limit = _famine_import_limit(island, defs, config)
     if buy > 0 and limit > 0:
         budget = money_of(limit, buy) * TURNS_PER_YEAR
         if island.policy.budget.get("warehouse", 0) < budget:
@@ -532,6 +533,18 @@ def _food_orders(
         payload = {"good": GRAIN, "side": "buy", "quantity": buy / QUANTITY_SCALE, "limit": limit}
         orders.append(("warehouse_trade", payload))
     return orders
+
+
+def _famine_import_limit(island: IslandState, defs: Defs, config: GameConfig) -> int:
+    """飢饉の月の穀物の買い入れの指値: 圏の市場から輸入が引き合う一番安い島の値段（W-285）。
+
+    国の倉庫が島の中の売りを高値で買い上げても穀物の量は増えず、値段だけが上がる。輸入が引き合う
+    値段で買えば、島の値段がそこまで上がったときに商社が圏の市場から運んでくる。港がない・圏に入って
+    いない・圏に穀物の売りがない島は 0（買わない）。丸めの分だけ千分の1上に置く（国の備蓄の
+    _reserve_limit と同じ）。"""
+    p = trade_traders.prospects(island, defs, config, only=GRAIN).get(GRAIN)
+    floor = p.import_floor if p is not None else 0
+    return floor + -(-floor // 1000) if floor > 0 else 0
 
 
 def _crop_orders(
@@ -895,7 +908,7 @@ def _materials_ok(island: IslandState, defs: Defs, config: GameConfig, kind: str
     keep = {} if outputs & first else _chain_keep(island, defs, config)
     short = {g for g, qty in reserved.items() if stock.total(island.warehouse, g) < qty}
     helps = bool(outputs & short)
-    for good, qty in defs.facilities[kind]["construction"].get("materials", {}).items():
+    for good, qty in _bought_materials(defs, kind).items():
         have = stock.total(island.warehouse, good) - reserved.get(good, 0) - keep.get(good, 0)
         if have >= qty or good in made:
             continue
@@ -923,7 +936,7 @@ def _chain_keep(island: IslandState, defs: Defs, config: GameConfig) -> dict[str
     keep: dict[str, int] = {}
     for good in sorted(_missing_materials(island, defs)):
         for kind, _ in _producers(defs, config, island, good):
-            for g, qty in defs.facilities[kind]["construction"].get("materials", {}).items():
+            for g, qty in _bought_materials(defs, kind).items():
                 if g not in made:
                     keep[g] = max(keep.get(g, 0), qty)
             break
@@ -977,7 +990,7 @@ def _chain_starters(
         return first[good]
 
     def materials(c: tuple[str, str] | None) -> set[str]:
-        return set(defs.facilities[c[0]]["construction"].get("materials", {})) if c else set()
+        return set(_bought_materials(defs, c[0])) if c else set()
 
     starters = {}
     for good in sorted(_missing_materials(island, defs)):
@@ -1264,7 +1277,7 @@ def _build_or_supply(
     present = {good for f in island.facilities for good in fac.recipe_of(defs, f)["outputs"]}
     lacking = [
         good
-        for good, qty in sorted(defs.facilities[kind]["construction"].get("materials", {}).items())
+        for good, qty in sorted(_bought_materials(defs, kind).items())
         if good not in present and stock.total(island.warehouse, good) < qty
     ]
     if lacking:
@@ -1277,7 +1290,18 @@ def _build_or_supply(
 
 
 def _materials_of(defs: Defs, kind: str) -> set[str]:
-    return set(defs.facilities[kind]["construction"].get("materials", {}))
+    return set(_bought_materials(defs, kind))
+
+
+def _bought_materials(defs: Defs, kind: str) -> dict[str, int]:
+    """施設 kind の工事の資材のうち、買うか倉庫から出す物（その場で作れる資材を除く。W-289。森の
+    伐採場は木材がなくても、切った木で建てられる）。"""
+    own = fac.own_materials(defs, kind)
+    return {
+        g: q
+        for g, q in defs.facilities[kind]["construction"].get("materials", {}).items()
+        if g not in own
+    }
 
 
 def _in_hand(
@@ -1292,7 +1316,7 @@ def _in_hand(
     reserved = _reserved_materials(island, defs)
     made = _made(island, defs)
     keep = keep or {}
-    for good, qty in defs.facilities[kind]["construction"].get("materials", {}).items():
+    for good, qty in _bought_materials(defs, kind).items():
         have = stock.total(island.warehouse, good) - reserved.get(good, 0) - keep.get(good, 0)
         if have < qty and good not in made:
             return False
