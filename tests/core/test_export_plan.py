@@ -334,3 +334,58 @@ def test_leaving_the_plan_drops_the_export_plan(game, base):
     for f in traders_of(island, game.config):
         for item in trade_traders.goods_of(f).values():
             assert trade_traders.PLAN_X not in item
+
+
+def test_surplus_over_the_reserve_is_deposited_at_the_central_bank_and_comes_back(
+    game, base, monkeypatch
+):
+    """FX-83: 蓄えの目標を超えた外貨は自国の中央銀行に預け（為替の段の間は融通の貸し手の余りに
+    入る）、為替の段の後に、中央銀行の持ち高の範囲で戻す。貸し出された分は請求のまま残る。"""
+    from hakoniwa_core import ledger
+    from hakoniwa_core.trade import swap
+
+    world = copy.deepcopy(base)
+    island = planned_islands(world)[0]
+    [bloc] = blocs.member_of(world, island.id)
+    currency = bloc["currency"]
+    if currency == island.id:
+        pytest.skip("自国の通貨の圏")
+    entities = export_plan._entities(island, game.config)
+
+    def held():
+        return sum(fxmoney.holding(island, e, currency) for e in entities)
+
+    def cb():
+        return fxmoney.holding(island, ledger.CB, currency)
+
+    total, cb_before = held(), cb()
+    if total <= 0:
+        pytest.skip("外貨の持ち高がない")
+    target = total // 4
+    export_plan.state_of(island)["reserve"] = {str(currency): target}
+    export_plan.deposit_surplus(world, island, game.config)  # 既定は切る
+    assert held() == total and cb() == cb_before
+    monkeypatch.setitem(game.config.raw["planning"]["export"], "deposit_surplus", True)
+    export_plan.deposit_surplus(world, island, game.config)
+    kept = held()
+    assert target - len(entities) <= kept <= target  # 目標の分（主体の比で分けた端数）だけ残す
+    deposit = total - kept
+    assert cb() == cb_before + deposit
+    assert export_plan.deposited(island) == {str(currency): deposit}
+    assert not fxmoney.reconcile(world)
+    # 為替の段の後に戻す: 全部残っていれば全部戻る
+    export_plan.withdraw_deposits(world, island)
+    assert held() == total and cb() == cb_before
+    assert export_plan.deposited(island) == {}
+    # 中央銀行が融通で貸した分は、戻せずに請求のまま残る
+    export_plan.deposit_surplus(world, island, game.config)
+    borrower = next(
+        i for i in world.islands.values() if i.has_economy and i.id not in (island.id, currency)
+    )
+    lent = cb_before + deposit // 2
+    swap._lend(world, island.id, borrower.id, currency, lent)
+    export_plan.withdraw_deposits(world, island)
+    assert held() == kept + deposit - deposit // 2
+    assert export_plan.deposited(island) == {str(currency): deposit // 2}
+    assert cb() == 0
+    assert not fxmoney.reconcile(world)

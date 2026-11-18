@@ -95,6 +95,7 @@ migrant_deposits:     {type: journal}   # 移る人が持ち出す預金（元�
 emigrant_seized:      {type: journal}   # 国を出た人が持ち出せなかった預金（家計 → 政府）
 fx_swap:              {type: journal}   # 中央銀行どうしの融通の貸し借りと返済（貸す国の中央銀行 → 借りる国の中央銀行）
 swap_interest:        {type: journal}   # 中央銀行どうしの融通の利子（借りた国の中央銀行 → 貸した国の中央銀行）
+fx_deposit:           {type: journal}   # 計画経済の国営の商社が蓄えを超えた外貨を自国の中央銀行に預ける・戻す（発行した島の帳簿の非居住者の預金。FX-83）
 
 # 国債の期間
 bond_1y:  {type: bond_term, turns: 12, premium: 0.0025}
