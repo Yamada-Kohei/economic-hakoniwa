@@ -39,6 +39,7 @@ from hakoniwa_core.modules.population import (
     HAPPINESS_PARTS,
     SETTLE_PARTS,
     jobless_persons,
+    refresh_farming,
     subsistence_persons,
 )
 from hakoniwa_core.registry import IslandStage, Registry
@@ -85,6 +86,9 @@ class Records(IslandStage):
     name = "records"
 
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
+        # 人口と住宅地の段で変わったマスの、自給の農業ができる村かの印を書き直す（W-272。切なら
+        # 何もしない）。失業者の層の数え直し（W-294）より先に
+        refresh_farming(ctx.defs, ctx.config, island)
         if island.has_economy:
             # 失業している家計の層を、失業率と同じ時点・同じ数え方で数え直す（W-294）。層は賃金の
             # 段で雇用の段の結果から決めるが、その後の人口の段で、飢えた町の人が村へ逃げ、村の人が
