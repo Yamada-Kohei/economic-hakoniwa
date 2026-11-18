@@ -635,41 +635,18 @@ def expected_price(
     気づけない。test_gate の種 2 で、穀物の在庫が尽きる 6 ターン前に島で一番大きい穀物の畑が
     嗜好作物に替えた）。
     """
-    path = expected_path(island, good, ahead, defs, config, shift, turn, skip)
-    return path[-1] if path else _start_price(island, good, config)
-
-
-def _start_price(island: IslandState, good: str, config: GameConfig) -> int:
-    """見込みの値段の出発点: 直近 firms.price_turns ターンの平均の値段。"""
     turns = config.get("firms.price_turns")
     economy = island.economy
     history = economy.price_history.get(good, [])[-turns:]
-    return max(1, sum(history) // len(history)) if history else economy.prices.get(good, 1)
-
-
-def expected_path(
-    island: IslandState,
-    good: str,
-    ahead: int,
-    defs: Defs,
-    config: GameConfig,
-    shift: float = 0.0,
-    turn: int | None = None,
-    skip: Facility | None = None,
-) -> list[int]:
-    """1..ahead ターン先の見込みの値段 p* の列（expected_price と同じ決まり。expected_price は
-    その最後）。流れの記録がなければ、出発点の値段のまま並べる。作物の買い置き（W-285 の 3b）が、
-    持つターン数ごとの見込みを比べるのに使う。"""
-    price = _start_price(island, good, config)
+    price = max(1, sum(history) // len(history)) if history else economy.prices.get(good, 1)
     if ahead <= 0:
-        return []
-    economy = island.economy
+        return price
     finance = economy.finance
     demand = finance.get("demand", {}).get(good, [])
     supply = finance.get("supply", {}).get(good, [])
     n = min(len(demand), len(supply))
     if n <= 0:
-        return [price] * ahead
+        return price
     demand, supply = demand[-n:], supply[-n:]
     sold = finance.get("sold", {}).get(good, [])[-n:]
     if len(sold) < n:  # 売れた量の記録の前の島: 買いたい量と売りに出た量の少ない方
@@ -679,7 +656,7 @@ def expected_path(
     wanted = sum(met) / len(met) if met else float(max(demand))
     wanted = max(wanted, _input_need(island, defs, config, good))
     if wanted <= 0:
-        return [price] * ahead
+        return price
     arrivals = [supply[i + 1] - supply[i] + sold[i] for i in range(n - 1)]
     inflow = max(0.0, sum(arrivals) / len(arrivals)) if arrivals else float(sold[-1])
     inflow = max(0.0, inflow + shift)
@@ -691,24 +668,23 @@ def expected_path(
     pending = [0.0] * ahead
     if turn is not None:
         pending = _pending_supply(island, defs, good, turn, ahead, skip)
-    path = []
     for step in range(ahead):
         offered = held + max(0.0, inflow + pending[step])
-        change = 0.0  # 売りに出なければ値段は動かない（price_update）
-        if 0 < offered <= wanted:
+        if offered <= 0:
+            continue  # 売りに出なければ値段は動かない（price_update）
+        if offered <= wanted:
             short = (wanted - offered) / wanted  # 全部売れて、買えなかった割合だけ上げる
             change = k * short / (1 + short)
             held = 0.0
-        elif offered > wanted:
+        else:
             unsold = offered - wanted
             held = unsold
-            if unsold > keep:
-                beyond = offered - keep
-                change = k * (wanted - beyond) / max(beyond, wanted)
-        if change:
-            price = scale_price(price, 1 + max(-width, min(width, change)))
-        path.append(max(1, price))
-    return path
+            if unsold <= keep:
+                continue
+            beyond = offered - keep
+            change = k * (wanted - beyond) / max(beyond, wanted)
+        price = scale_price(price, 1 + max(-width, min(width, change)))
+    return max(1, price)
 
 
 def _input_need(island: IslandState, defs: Defs, config: GameConfig, good: str) -> float:

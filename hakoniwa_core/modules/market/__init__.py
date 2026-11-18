@@ -67,7 +67,6 @@ from hakoniwa_core.economy import (
     banks,
     books,
     companies,
-    crop_stock,
     entity_of,
     equipment,
     facility_entity,
@@ -2076,8 +2075,6 @@ class Market(IslandStage):
         holds = island.scratch.pop(FACILITY_HOLDS, {})
         shelf = retail.good_of(config)
         stall = self._direct_unit(island, config)
-        crop_stock.reset(island)
-        grown = crop_stock.crops(defs)
         for f in sorted(island.facilities, key=lambda f: f.id):
             # 雇用の段で取り置いた材料の代金を、この施設の買い注文の直前に戻す（LB-45）。項目の
             # 予算を比例で分けたターンは、買い注文と指値の引き上げに使えるのを分けられた額までにする
@@ -2178,16 +2175,6 @@ class Market(IslandStage):
                         limit = min(limit, caps[good])
                     order = Order(total - expiring, limit)
                 self._add(books_by_good, good, "sell", order, seller)
-            hoard = (
-                self._crop_goods(island, ctx, f, recipe, grown, official)
-                if cap is None and is_self_supporting(f)
-                else {}
-            )
-            for good, (view, _, normal, have) in sorted(hoard.items()):
-                if view["sell"] is not None and have > normal:  # 見込みが落ちた: 余りを売る
-                    order = Order(have - normal, view["sell"])
-                    self._add(books_by_good, good, "sell", order, seller)
-                    crop_stock.record(island, good, view, 0, have - normal)
             needs = self._input_needs(ctx, f, power)
             outbid = {g for g, why in f.economy.pop("short", {}).items() if why == "price"}
             placed = f.economy.pop(BIDS, {})
@@ -2229,8 +2216,6 @@ class Market(IslandStage):
                 party.reserved = gross_cost(limit, qty, rate, 0)
                 funds.commit(island, payer, party.reserved)
                 self._add(books_by_good, good, "buy", Order(qty, limit, priority), party)
-            for good, (view, use, normal, have) in sorted(hoard.items()):
-                self._crop_buy(island, ctx, books_by_good, f, payer, good, view, use, normal, have)
         for hold_payer, amount, _ in holds.values():  # 施設がなくなっていた分
             funds.release(island, hold_payer, amount)
 
@@ -2503,78 +2488,6 @@ class Market(IslandStage):
         if sum(gross_cost(lim, q, freight, 0) for q, lim in raised.values()) > cost + spare:
             return plan
         return raised
-
-    @staticmethod
-    def _crop_goods(
-        island: IslandState,
-        ctx: StageContext,
-        f: Facility,
-        recipe: dict[str, Any],
-        grown: dict[str, int],
-        official: dict[str, int],
-    ) -> dict[str, tuple[dict[str, Any], int, int, int]]:
-        """施設 f が原料に使う作物ごとの (見込み, 次のターンに使う量 u, ふだんの分 N = u ＋ S*,
-        手元の在庫)（MK-48）。公定価格の財と、学校・大学は持たない。"""
-        if is_public_service(ctx.defs, f):
-            return {}
-        expected = Market._input_plan(ctx, f)
-        if expected <= 0:
-            return {}
-        settings = ctx.config.get("market")
-        out = {}
-        for good, qty in sorted(recipe["inputs"].items()):
-            if good not in grown or good in official:
-                continue
-            use = fac.scale(qty, expected)
-            if use <= 0:
-                continue
-            turns = stock.target_turns(settings["inventory_turns"], ctx.defs.goods, good)
-            normal = use + round_money(use * turns)
-            have = stock.total(f.stock, good) - stock.expiring(
-                f.stock, good, ctx.turn, ctx.defs.goods
-            )
-            view = crop_stock.outlook(island, ctx, good)
-            crop_stock.record(island, good, view, 0, 0)  # 注文がなくても見込みは残す
-            out[good] = (view, use, normal, have)
-        return out
-
-    def _crop_buy(
-        self,
-        island: IslandState,
-        ctx: StageContext,
-        books_by_good: dict[str, Book],
-        f: Facility,
-        payer: Payer,
-        good: str,
-        view: dict[str, Any],
-        use: int,
-        normal: int,
-        have: int,
-    ) -> None:
-        """見込みで持つ作物の買い置き（MK-48）。目安 max(0, u × (t* − 1) − S*) と、手元のふだんの
-        分を超えた量との差を market.inventory_adjust の割合ずつ埋める。指値は今の値段。ふだんの
-        注文を取り置いた後に残るお金だけで、燃料の買い足しと同じ最後の順位で買う（借りては
-        買わない。掲示板 #1366）。"""
-        goal = crop_stock.extra_goal(use, normal - use, view["t"])
-        if goal <= 0:
-            return
-        gap = goal - max(0, have - normal)
-        qty = round_money(max(0, gap) * ctx.config.get("market.inventory_adjust"))
-        if qty <= 0:
-            return
-        limit = view["p"]  # 今の値段で買う（見込みはそれより高い）
-        if limit <= 0:
-            return
-        money = funds.available(island, payer)
-        qty = min(qty, qty_for(money, limit))
-        if qty <= 0:
-            return
-        party = Party(FACILITY, facility_entity(f.id), payer, 0, 0, f)
-        party.reserved = gross_cost(limit, qty, 0, 0)
-        funds.commit(island, payer, party.reserved)
-        priority = min(FUEL_RESERVE_PRIORITY, ctx.config.get("warehouse.standing_priority"))
-        self._add(books_by_good, good, "buy", Order(qty, limit, priority), party)
-        crop_stock.record(island, good, view, qty, 0, (f.id, qty, money))
 
     @staticmethod
     def _input_plan(ctx: StageContext, f: Facility, ahead: bool = False) -> int:
