@@ -12,7 +12,7 @@ founding_factor）の生産性で作るとみて、1単位あたりの原価を�
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
 from typing import Any
 
@@ -635,18 +635,44 @@ def expected_price(
     気づけない。test_gate の種 2 で、穀物の在庫が尽きる 6 ターン前に島で一番大きい穀物の畑が
     嗜好作物に替えた）。
     """
+    path = expected_path(island, good, ahead, defs, config, shift, turn, skip)
+    return path[-1] if path else _start_price(island, good, config)
+
+
+def _start_price(island: IslandState, good: str, config: GameConfig) -> int:
+    """見込みの値段の出発点: 直近 firms.price_turns ターンの平均の値段。"""
     turns = config.get("firms.price_turns")
     economy = island.economy
     history = economy.price_history.get(good, [])[-turns:]
-    price = max(1, sum(history) // len(history)) if history else economy.prices.get(good, 1)
+    return max(1, sum(history) // len(history)) if history else economy.prices.get(good, 1)
+
+
+def expected_path(
+    island: IslandState,
+    good: str,
+    ahead: int,
+    defs: Defs,
+    config: GameConfig,
+    shift: float = 0.0,
+    turn: int | None = None,
+    skip: Facility | None = None,
+    seen: Callable[[Facility], bool] | None = None,
+) -> list[int]:
+    """1..ahead ターン先の見込みの値段 p* の列（expected_price と同じ決まり。expected_price は
+    その最後）。流れの記録がなければ、出発点の値段のまま並べる。作物の売り惜しみ（MK-48。W-285 の
+    3b）が、持つターン数ごとの見込みを比べるのに使う。seen を渡すと、作り方を替えている途中の分
+    （_pending_supply）は seen が真の施設だけを数える（持ち手に見える畑だけ。市場の値段と量の記録は
+    誰にでも見える）。"""
+    price = _start_price(island, good, config)
     if ahead <= 0:
-        return price
+        return []
+    economy = island.economy
     finance = economy.finance
     demand = finance.get("demand", {}).get(good, [])
     supply = finance.get("supply", {}).get(good, [])
     n = min(len(demand), len(supply))
     if n <= 0:
-        return price
+        return [price] * ahead
     demand, supply = demand[-n:], supply[-n:]
     sold = finance.get("sold", {}).get(good, [])[-n:]
     if len(sold) < n:  # 売れた量の記録の前の島: 買いたい量と売りに出た量の少ない方
@@ -656,7 +682,7 @@ def expected_price(
     wanted = sum(met) / len(met) if met else float(max(demand))
     wanted = max(wanted, _input_need(island, defs, config, good))
     if wanted <= 0:
-        return price
+        return [price] * ahead
     arrivals = [supply[i + 1] - supply[i] + sold[i] for i in range(n - 1)]
     inflow = max(0.0, sum(arrivals) / len(arrivals)) if arrivals else float(sold[-1])
     inflow = max(0.0, inflow + shift)
@@ -667,24 +693,25 @@ def expected_price(
     held = float(carried)
     pending = [0.0] * ahead
     if turn is not None:
-        pending = _pending_supply(island, defs, good, turn, ahead, skip)
+        pending = _pending_supply(island, defs, good, turn, ahead, skip, seen)
+    path = []
     for step in range(ahead):
         offered = held + max(0.0, inflow + pending[step])
-        if offered <= 0:
-            continue  # 売りに出なければ値段は動かない（price_update）
-        if offered <= wanted:
+        change = 0.0  # 売りに出なければ値段は動かない（price_update）
+        if 0 < offered <= wanted:
             short = (wanted - offered) / wanted  # 全部売れて、買えなかった割合だけ上げる
             change = k * short / (1 + short)
             held = 0.0
-        else:
+        elif offered > wanted:
             unsold = offered - wanted
             held = unsold
-            if unsold <= keep:
-                continue
-            beyond = offered - keep
-            change = k * (wanted - beyond) / max(beyond, wanted)
-        price = scale_price(price, 1 + max(-width, min(width, change)))
-    return max(1, price)
+            if unsold > keep:
+                beyond = offered - keep
+                change = k * (wanted - beyond) / max(beyond, wanted)
+        if change:
+            price = scale_price(price, 1 + max(-width, min(width, change)))
+        path.append(max(1, price))
+    return path
 
 
 def _input_need(island: IslandState, defs: Defs, config: GameConfig, good: str) -> float:
@@ -712,7 +739,13 @@ def _input_need(island: IslandState, defs: Defs, config: GameConfig, good: str) 
 
 
 def _pending_supply(
-    island: IslandState, defs: Defs, good: str, turn: int, ahead: int, skip: Facility | None
+    island: IslandState,
+    defs: Defs,
+    good: str,
+    turn: int,
+    ahead: int,
+    skip: Facility | None,
+    seen: Callable[[Facility], bool] | None = None,
 ) -> list[float]:
     """ほかの施設が作り方を替えている途中で、これから good の 1ターンに来る量が今より変わる分
     （1..ahead ターン先。1000 分の 1）。畑の作り替え（facilities.step_fields）の進み方をなぞる:
@@ -735,7 +768,7 @@ def _pending_supply(
             out[i] += sign * amount * running
 
     for f in island.facilities:
-        if f is skip or not f.built:
+        if f is skip or not f.built or (seen is not None and not seen(f)):
             continue
         nxt = f.ext.get(fac.RECIPE_NEXT)
         fields = f.economy.get(fac.FIELDS)

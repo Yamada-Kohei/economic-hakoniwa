@@ -67,6 +67,7 @@ from hakoniwa_core.economy import (
     banks,
     books,
     companies,
+    crop_hold,
     entity_of,
     equipment,
     facility_entity,
@@ -223,6 +224,7 @@ class Party:
     # 取り置きを分け合う注文（家計の食料の段。最初の段がまとめて取り置き、払いはそこから引く）
     pool: Party | None = None
     clearance: bool = False  # 施設の売れ残りの値引きの売り（MK-41。売れ行きの見込みに数えない）
+    withheld: bool = False  # 作物の売り惜しみの分を下限の指値で出した売り（MK-48。同じく数えない）
     fuel_reserve: bool = False  # 火力発電所の燃料の買い足し（需要・品不足・買い上がりから除く）
     # 計画経済の商社の輸出の計画の分の買い（PL-62。配る順は国営施設と同じ、生産目標の需要から除く）
     export_plan: bool = False
@@ -873,6 +875,8 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
         unmet = record.demand - record.volume if record is not None else 0
         before = expected.get(good, fac.scale(full, target))
         held = stock.total(f.stock, good) - ship_orders.reserved(ctx.config, f, good)
+        # 売り惜しみで持った分（MK-48）は、売る在庫の目安と比べない（持つ間も作り続ける）
+        held -= min(max(0, held), f.economy.get(crop_hold.WITHHELD, {}).get(good, 0))
         floor = subsidized_floor(
             island, ctx.defs, ctx.config, f, good, prices, wage, rate, ctx.turn
         )
@@ -2075,6 +2079,8 @@ class Market(IslandStage):
         holds = island.scratch.pop(FACILITY_HOLDS, {})
         shelf = retail.good_of(config)
         stall = self._direct_unit(island, config)
+        crop_hold.reset(island)
+        grown = crop_hold.crops(defs)
         for f in sorted(island.facilities, key=lambda f: f.id):
             # 雇用の段で取り置いた材料の代金を、この施設の買い注文の直前に戻す（LB-45）。項目の
             # 予算を比例で分けたターンは、買い注文と指値の引き上げに使えるのを分けられた額までにする
@@ -2148,6 +2154,18 @@ class Market(IslandStage):
                         party = replace(seller, clearance=True)
                         order = Order(qty, min(limit, cut))
                         self._add(books_by_good, good, "sell", order, party)
+                    # 作物の売り惜しみ（MK-48）: 先に値が上がると見れば、倉に入る分を下限の指値で
+                    # 出すか、出さずに持つ（値引きで出す分は持たない）
+                    if (
+                        good in grown
+                        and eligible
+                        and not caps.get(good)
+                        and fac.grow_turns(defs, f.kind, f.recipe) > 0
+                    ):
+                        free = held - (sale[0] if sale is not None else 0)
+                        held -= self._crop_hold(
+                            island, ctx, books_by_good, f, seller, good, grown, limit, high, free
+                        )
                     # 在庫はみな、ふだんの指値でふだんの板寄せ（1回目）に出す。値引きの売りは、
                     # 1回目で売れ残った分のうち超えた分だけを2回目に出し直すもの（_outlet）
                     if held > 0:
@@ -2488,6 +2506,39 @@ class Market(IslandStage):
         if sum(gross_cost(lim, q, freight, 0) for q, lim in raised.values()) > cost + spare:
             return plan
         return raised
+
+    def _crop_hold(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        books_by_good: dict[str, Book],
+        f: Facility,
+        seller: Party,
+        good: str,
+        grown: dict[str, int],
+        limit: int,
+        high: int,
+        held: int,
+    ) -> int:
+        """農場の作物の売り惜しみ（MK-48。crop_hold）。持つ量を返す（下限の指値で出した分も含む。
+        その分はふだんの売りから除く）。"""
+        why = crop_hold.released(island, good, ctx.config)
+        if why is not None:
+            crop_hold.note_release(island, good, why)
+            return 0
+        turns = crop_hold.horizon(ctx.defs, good, grown)
+        if turns <= 0 or held <= 0:
+            return 0
+        path = crop_hold.farm_path(island, ctx, f, good, turns)
+        capacity = crop_hold.farm_capacity(ctx.defs, f, good, turns)
+        kept, floor = crop_hold.plan(island, ctx.config, good, held, limit, high, path, capacity)
+        if kept <= 0:
+            return 0
+        if floor is not None:
+            party = replace(seller, withheld=True)
+            self._add(books_by_good, good, "sell", Order(kept, floor), party)
+        crop_hold.record(island, good, f, kept, floor, path)
+        return kept
 
     @staticmethod
     def _input_plan(ctx: StageContext, f: Facility, ahead: bool = False) -> int:
@@ -5418,6 +5469,12 @@ class Market(IslandStage):
                     if entry is not None:
                         entry["offered"] = entry.get("offered", 0) + order.quantity
                         entry["sold"] = entry.get("sold", 0) + result.sold[i]
+                    continue
+                if party.withheld:  # 売り惜しみの分（MK-48）も数えない。記録だけ残す
+                    row = island.economy.ext.get(crop_hold.EXT, {}).get(good)
+                    if row is not None:
+                        row["offered"] = row.get("offered", 0) + order.quantity
+                        row["sold"] = row.get("sold", 0) + result.sold[i]
                     continue
                 if order.limit is None:
                     entry = late.setdefault(party.facility.id, [0, 0])
