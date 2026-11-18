@@ -1081,6 +1081,7 @@ def _trade_help(game) -> dict:
         "port_capacity": config.get("trade.port_capacity") * defs.weight_scale(),
         "trader_cut": f"{config.get('trade.trader_cut') * 100:g}",
         "trader_max": defs.facilities[config.get("trade.trader_facility")].get("max_per_island"),
+        "trader_capacity": config.get("trade.trader_capacity") * defs.weight_scale(),
         "bloc_band": f"{config.get('trade.bloc_band') * 100:g}",
         "cancel_turns": config.get("trade.contract_cancel_turns"),
         "proposal_turns": contracts.KEEP_ENDED,
