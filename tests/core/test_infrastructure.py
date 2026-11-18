@@ -479,6 +479,65 @@ def test_plan_keeps_the_machinery_to_start_the_steel_chain(game):
     assert autoplan._materials_ok(island, game.defs, game.config, "bank")  # 機械 1 なら残りで足りる
 
 
+def test_plan_starts_the_steel_chain_from_the_steel_mill(game):
+    island = make_island(game)  # 石炭と鉄鉱石の島
+    home(game, island, 5, 6, 8000)
+    with_economy(game, island)
+    island.warehouse = {}
+    for good, qty in (("machinery", 20_000), ("steel", 40_000), ("building_materials", 200_000)):
+        stock.add(island.warehouse, good, qty, 0, game.defs.goods)
+
+    def starters():
+        return [kind for kind, _ in autoplan._chain_starters(island, game.defs, game.config)]
+
+    # 鋼鉄も機械も島で作っていない。上流の製鉄所を先に（機械工場が初めの鋼鉄を使い切ると、
+    # 製鉄所の機械が出てこない。W-274）
+    assert starters() == ["steel_mill"]
+    add(island, "steel_mill", 9, 9, built=False)
+    assert starters() == ["machinery_plant"]  # 製鉄所の工事が始まったら、機械工場
+    add(island, "machinery_plant", 10, 9, built=False)
+    assert starters() == []
+    # 鉄鉱石のない島では製鉄所を動かせないので、口火は切らない
+    island.resources = ["coal"]
+    island.facilities = [f for f in island.facilities if f.built]
+    assert starters() == []
+
+
+def test_plan_builds_the_mine_before_the_steel_mill(game):
+    island = make_island(game)  # 石炭と鉄鉱石の島
+    home(game, island, 5, 6, 8000)
+    with_economy(game, island)
+
+    def order(kind):
+        return list(autoplan._raw_first(island, game.defs, game.config, iter([(kind, "default")])))
+
+    # 島で掘っていない鉱業資源を使う施設は、鉱山を先に（W-274）
+    mill = ("steel_mill", "default")
+    assert order("steel_mill") == [("mine", "coal"), ("mine", "iron_ore"), mill]
+    add(island, "mine", 12, 12, recipe="coal", built=False)  # 工事中の鉱山も掘っていると見る
+    assert order("steel_mill") == [("mine", "iron_ore"), mill]
+    assert order("machinery_plant") == [("machinery_plant", "default")]  # 鉱業資源を使わない
+
+
+def test_plan_waits_for_machinery_made_from_the_first_steel(game):
+    island = make_island(game)
+    home(game, island, 5, 6, 8000)
+    add(island, "machinery_plant", 9, 9, stock={"steel": 4000})  # 初めの倉庫の鋼鉄で動いている
+    with_economy(game, island)
+    island.warehouse = {}
+    for good, qty in (("machinery", 2000), ("building_materials", 200_000)):
+        stock.add(island.warehouse, good, qty, 0, game.defs.goods)
+    # 島の機械は、製鉄所がないと鋼鉄が尽きて止まる。島で作っているとは見ず、倉庫に製鉄所の分
+    # （機械 5）がそろうまで着工しない（種 2 の 1 島で工事が 93% で止まった。W-274）
+    assert not autoplan._materials_ok(island, game.defs, game.config, "steel_mill")
+    stock.add(island.warehouse, "machinery", 3000, 0, game.defs.goods)
+    assert autoplan._materials_ok(island, game.defs, game.config, "steel_mill")
+    # 機械工場の機械を当てにする施設のうち、製鉄所のほかは今までどおり（島で作っている）
+    island.warehouse = {}
+    stock.add(island.warehouse, "building_materials", 200_000, 0, game.defs.goods)
+    assert autoplan._materials_ok(island, game.defs, game.config, "consumer_goods_factory")
+
+
 def test_plan_builds_building_materials_before_a_university_it_cannot_supply(game):
     island = make_island(game)
     home(game, island, 5, 6, 8000)

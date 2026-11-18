@@ -248,6 +248,12 @@ class _Round:
         self.fx_queue: dict[tuple[int, str, int], dict[str, int]] = {}
         # (島, 商社, 財) → 輸入の注文に割り振った量（FX-67。圏の市場の前に _allocate が決める）
         self.alloc: dict[tuple[int, int, str], _Allocated] = {}
+        # 島 → 動いている港・海運業の施設（W-236 K-2。船と港の余裕を数える所が 1 ターンに何万回も
+        # 探すので、この段の 1 回の中だけ、初めに探した施設への参照を持つ。貿易の段は施設を足さず、
+        # 除かず、建った・閉鎖・差し押さえの印も書かないので、探し直しても同じ施設になる。持つのは
+        # 参照だけで、船の空きや燃料は毎回その施設から数え直す）
+        self._ports: dict[int, Facility | None] = {}
+        self._shippings: dict[int, Facility | None] = {}
 
     def run(self) -> None:
         self._intercept()
@@ -1197,11 +1203,27 @@ class _Round:
 
     # --- 船と港の余裕 -------------------------------------------------------------------
 
+    def _port(self, island: IslandState) -> Facility | None:
+        """島の動いている港（port_of と同じ。この段の 1 回の中で 1 度だけ探す。W-236 K-2）。"""
+        try:
+            return self._ports[island.id]
+        except KeyError:
+            port = self._ports[island.id] = port_of(island, self.config)
+            return port
+
+    def _shipping(self, island: IslandState) -> Facility | None:
+        """島の海運業（shipping_of と同じ。この段の 1 回の中で 1 度だけ探す。W-236 K-2）。"""
+        try:
+            return self._shippings[island.id]
+        except KeyError:
+            shipping = self._shippings[island.id] = shipping_of(island, self.config)
+            return shipping
+
     def _ship_room(self, buyer: IslandState, seller: IslandState, good: str) -> int:
         """買い手の島の空いている船と燃料で、seller から運べる量（1000 分の 1 単位）。"""
         if unit_weight(self.defs, good) <= 0:
             return 10**15  # 船は自分で航海して届く
-        if port_of(buyer, self.config) is None:
+        if self._port(buyer) is None:
             return 0
         if naval.blocked(self.world, self.defs, self.config, self.turn, buyer.id, seller.id, good):
             return 0  # 封鎖に止められた（出入りする船を止める）
@@ -1213,8 +1235,8 @@ class _Round:
         """carrier の島の空いている船と燃料で、seller から buyer へ運べる量（1000 分の 1 単位）。
         S1: 出した船は ships.occupy で使っている重さに入るので、空きは ships.free だけで数える（前は
         このターンに出した重さをもう一度引いていた）。"""
-        f = shipping_of(carrier, self.config)
-        if f is None or port_of(carrier, self.config) is None:
+        f = self._shipping(carrier)
+        if f is None or self._port(carrier) is None:
             return 0
         oneway = one_way_turns(self.config, buyer, seller)
         trip = 2 * oneway
@@ -1230,7 +1252,7 @@ class _Round:
         国（船を貸さない国、買い手と戦っている国、買い手との間でその財を禁輸している国）は除く）。"""
         if unit_weight(self.defs, good) <= 0:
             return 10**15
-        if port_of(buyer, self.config) is None:
+        if self._port(buyer) is None:
             return 0
         source = self._nearest_member(buyer, bloc)
         if source is None:
@@ -1275,7 +1297,7 @@ class _Round:
         運賃を決済通貨で払う）。[(運ぶ国の島, 量)] を返す。どの船にも載らない分は入れない。"""
         if unit_weight(self.defs, good) <= 0:
             return [(buyer, qty)]  # 船は自分で航海して届く
-        if port_of(buyer, self.config) is None:
+        if self._port(buyer) is None:
             return []
         # 売り手の船もほかの国の船も、貸す国（命令 set_ship_lending で止めていない国）のものだけ
         carriers = (
@@ -1903,14 +1925,14 @@ class _Round:
         unit = unit_weight(self.defs, good)
         counted = want if flow is None else min(want, flow)
         if unit > 0:
-            if port_of(island, self.config) is None:  # 港がない
+            if self._port(island) is None:  # 港がない
                 want, why = 0, WHY_SHIPS
             # 板寄せの前に、自分の船と圏で借りられる空いた船の全部でも運べない分は注文しない
             # （載らない注文が板寄せに残って値段を上げないように）。それでも足りなければ、本当に
             # 船が足りない（S2）
             reach = self._reach(island, bloc, good) if ships_now else want
             if reach < want:
-                if effects and port_of(island, self.config) is not None and reach < counted:
+                if effects and self._port(island) is not None and reach < counted:
                     self.islands[island.id].ship_short = True
                     # 載せられなかった荷は、商社が扱える重さまで（それより多い分は船では直らない）
                     source = self._nearest_member(island, bloc)
@@ -2444,6 +2466,7 @@ class _Round:
         stats["fx.holdings"] = fxmoney.total_value(island, fxrates.rates(island))
         stats["fx.swap.borrowed"] = swap.debt_value(island)  # 融通で借りている額（自国通貨）
         stats["fx.swap.lent"] = swap.claims_value(island, foreign_only=False)
+        stats["fx.swap.waived"] = swap.waived_value(island)  # 免除した利子の累計（貸し手。FX-82）
         stats.setdefault("trade.merchant", 0)
         stats.setdefault("trade.merchant_sold", 0)
         stats.setdefault("trade.charter_income", 0)

@@ -157,7 +157,12 @@ def test_shop_entry_is_counted_apart_from_factories(monkeypatch, game, sample):
     """店だけの回は店だけを、工場の回は店のほかだけを建てる（1島1ターンに工場と店を1つずつ）。"""
     island, ctx, built = entry_setup(monkeypatch, game, sample)
     turns = game.config.get("firms.price_turns")
-    island.economy.finance["shortages"] = {"retail": [10**9] * turns, "steel": [10**9] * turns}
+    # 工場の合図は消費財（鋼鉄だと、標準の計画が早く建てた国営の製鉄所が石炭を使っていて、民営の
+    # 製鉄所が原料の取り分の上限で入れない。W-274）
+    island.economy.finance["shortages"] = {
+        "retail": [10**9] * turns,
+        "consumer_goods": [10**9] * turns,
+    }
     entry = EntryExit()
     assert entry._try_enter(island, ctx, [], shops=True)
     assert built and all(

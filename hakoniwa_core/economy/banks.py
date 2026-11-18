@@ -594,6 +594,26 @@ def debt_service(island: IslandState, borrower: str, turn: int) -> int:
     return total
 
 
+def payments_due(island: IslandState, borrower: str, turn: int) -> int:
+    """借り手がこのターンの銀行の段で払う額（今の金利の利子 ＋ 返す時期に入った元金。運転資金の
+    分割の返済も入れる。管財人の運転資金は利子を残高に足すので入れない。modules/banking の
+    _service_loans と同じ数え方）。重機・トラックを買う前に残すお金に使う（C1）。"""
+    total = 0
+    for loan in loans_by_borrower(island, borrower):
+        if loan.purpose == RECEIVER:
+            continue
+        balance = outstanding(island, loan)
+        if balance <= 0:
+            continue
+        total += ledger.interest(balance, loan.rate)
+        installment = loan.installment
+        if loan.purpose == MORTGAGE:
+            installment = -(-balance // remaining_turns(loan, turn))
+        if turn >= loan.repay_from:
+            total += min(balance, installment)
+    return total
+
+
 def loan_rate(island: IslandState, ctx: Any, bank: str, borrower: str, extra: int = 0) -> int:
     """融資の金利: r_L = r_P + m + ρ × D ÷ A（名前付きの式 loan_rate の既定）。
 

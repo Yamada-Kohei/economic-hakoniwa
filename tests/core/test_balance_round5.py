@@ -168,8 +168,7 @@ def test_plan_raises_taxes_when_the_state_cannot_pay_wages(game, warmed):
 
 
 def test_plan_turns_state_farms_to_grain_and_opens_the_warehouse_in_a_famine(game, warmed):
-    """食べ物が足りない月、標準の計画は国営の農場を穀物に替え、国の倉庫の食べ物を出し、穀物を高めの
-    指値で買い入れる。"""
+    """食べ物が足りない月、標準の計画は国営の農場を穀物に替え、国の倉庫の食べ物を出す。"""
     from hakoniwa_core import autoplan, stock
 
     island = copy.deepcopy(island_of(warmed, "planned"))
@@ -182,9 +181,27 @@ def test_plan_turns_state_farms_to_grain_and_opens_the_warehouse_in_a_famine(gam
     kinds = [(k, p.get("side"), p.get("good"), p.get("recipe")) for k, p in orders]
     assert ("change_recipe", None, None, "default") in kinds
     assert ("warehouse_trade", "sell", "fish", None) in kinds
+    # 輸入の道がない（圏に穀物の売りがない）島は、島の中の売りを買い上げない（W-285）
+    assert not any(k == "warehouse_trade" and p["side"] == "buy" for k, p in orders)
+
+
+def test_famine_grain_buy_is_placed_at_the_import_price(game, warmed, monkeypatch):
+    """飢饉の月の穀物の買い入れは、圏の市場から輸入が引き合う値段を指値にする（W-285。前は今の値段の
+    1.5 倍で島の中の売りを買い上げ、穀物を増やさずに値段だけをつり上げていた）。"""
+    from hakoniwa_core import autoplan
+    from hakoniwa_core.trade import traders
+
+    island = copy.deepcopy(island_of(warmed, "planned"))
+    island.stats["food.ratio"] = 0.8
+    island.stats["food.need"] = 100.0
+    floor = island.economy.prices["grain"] * 6 // 5
+    seen = traders.Prospect("grain")
+    seen.import_floor = floor
+    monkeypatch.setattr(traders, "prospects", lambda *a, **k: {"grain": seen})
+    orders = autoplan._food_orders(island, game.defs, game.config, 50)
     buy = next(p for k, p in orders if k == "warehouse_trade" and p["side"] == "buy")
     assert buy["good"] == "grain"
-    assert buy["limit"] > island.economy.prices["grain"]
+    assert buy["limit"] == floor + -(-floor // 1000)  # 丸めの分だけ上
     assert buy["quantity"] == 20.0  # 足りない2割
 
 
@@ -276,7 +293,13 @@ def test_independent_central_bank_buys_from_short_banks_and_sells_back(game, war
     # 準備預金を最低限より大きく下げる（預金の流出の代わり。持ち高の多くを売らせる）
     short = banks.excess_reserves(island, game.config, bank) + held * 2 // 3
     ledger.pay(island, bank, ledger.GOV, short, "tax_income")
-    assert banks.excess_reserves(island, game.config, bank) < 0
+    lacking = banks.excess_reserves(island, game.config, bank)
+    assert lacking < 0
+    terms = game.config.get("bonds.bucket_terms")
+    owned = debt.holdings_of(island, bank)
+    cheapest = min(
+        debt.bond_price(island, b, ctx.turn, terms) for b in island.bonds if b.id in owned
+    )
     yields = list(island.economy.finance["yields"])
     Bonds()._secondary(island, ctx)
     bought = sum(debt.holdings_of(island, ledger.CB).values()) - cb_before
@@ -285,7 +308,10 @@ def test_independent_central_bank_buys_from_short_banks_and_sells_back(game, war
     assert island.economy.finance["yields"] == yields
     assert sum(debt.holdings_of(island, bank).values()) == held - bought
     assert island.log[-1].kind == "cb_open_market_bought"
-    assert banks.excess_reserves(island, game.config, bank) >= -held // 100  # 売った代金で戻った
+    # 売った代金で戻った。戻らないのは額面より安く売った分だけ（利回りが利率より高いと額面を割る。
+    # 標準の計画の建てる順が変わり、40 ターン目の利回りが上がって値引きが 1% を超えた。W-274）
+    recovered = banks.excess_reserves(island, game.config, bank) - lacking
+    assert recovered >= bought * cheapest * 0.99
     # 足りない銀行がなければ、持ち高の減った銀行が余りのお金で買う分を売り戻す
     ledger.pay(island, ledger.CB, bank, held, "cb_loan")
     island.scratch.pop("bond_stats", None)

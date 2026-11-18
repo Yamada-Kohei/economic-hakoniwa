@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from hakoniwa_core import stops
 from hakoniwa_core.game import load_game
 from hakoniwa_core.log import format_log
 
@@ -34,14 +35,10 @@ def test_every_literal_log_kind_has_a_message(defs):
 
 
 def test_every_stop_cause_has_a_log_message(defs):
-    """施設が止まったときのログ facility_stopped_<理由> は、施設の status の理由ごとに要る。"""
+    """施設が止まったときのログ facility_stopped_<理由> は、理由の表（hakoniwa_core/stops.py）の
+    理由ごとに要る（生産の段は status の頭でログを出すので、電力の行は頭の理由のログを使う）。"""
     messages = _messages(defs)
-    causes = {
-        name.removeprefix("status_")
-        for name in messages
-        if name.startswith("status_")
-        and not name.removeprefix("status_").startswith(NOT_RUN_CAUSES)
-    }
+    causes = {key for key in stops.REASONS if not key.startswith(NOT_RUN_CAUSES)}
     assert {"riot", "halted", "workers", "power"} <= causes
     assert sorted(c for c in causes if f"facility_stopped_{c}" not in messages) == []
 

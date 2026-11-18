@@ -34,8 +34,9 @@ import statistics
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
-from hakoniwa_core import ledger
+from hakoniwa_core import ledger, snapstate, stops
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
@@ -250,6 +251,7 @@ class Recorder:
 
     def __init__(self, world: WorldState, defs: Defs, config: GameConfig) -> None:
         self.defs = defs
+        self.config = config
         self.retail = retail.good_of(config)
         # 人の手間が値段の財（サービスと小売り）は、物価でなく賃金に対する値段で見る（回7 後半。
         # 賃金が物の値段より速く上がると、人の手間の値段は物価に対して上がる。現実のボーモル効果）
@@ -273,6 +275,14 @@ class Recorder:
         self.titles: dict[str, int] = {}  # 最後に記録したターンの称号（産業 → 島。フェーズ3-3）
         self.watch = {iid: Watch() for iid in self.islands}
         self.base_income = config.get("household.base_income")
+
+    def state(self) -> dict[str, Any]:
+        """定義と設定を除く、測りの途中の状態を写す。"""
+        return snapstate.dump(self, ("defs", "config"), (IslandRecord, Watch, Hit))
+
+    def restore(self, data: Mapping[str, Any]) -> None:
+        """写しから測りの途中の状態を戻す。"""
+        snapstate.restore(self, data, (IslandRecord, Watch, Hit))
 
     def record(self, world: WorldState) -> None:
         self.turns.append(world.turn)
@@ -414,9 +424,13 @@ class Recorder:
                     switched[f.kind] += 1
                 recipes[f.id] = f.recipe
             working = d.get("workers", 0) > 0 and d.get("category") != "housing" and located(f)
-            # 管財人のもとの施設は、採算が合わない間は運転資金を借りずに止まる（FM-59）
+            # 管財人のもとの施設は、採算が合わない間は運転資金を借りずに止まる（FM-59）。理由が
+            # 空か、理由の表（stops）にない名前なら、理由の出ない停止（W-34）
             silent = (
-                not is_stopped(f) and not is_seized(f) and f.operating_rate <= 0 and not f.status
+                not is_stopped(f)
+                and not is_seized(f)
+                and f.operating_rate <= 0
+                and stops.show(self.config, f.status).key in (stops.BLANK.key, stops.UNKNOWN.key)
             )
             if working:
                 w.held("silent_stop", str(f.id), silent, turn, SILENT_TURNS, f.kind)

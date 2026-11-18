@@ -8,6 +8,7 @@ import copy
 from hakoniwa_core import infra
 from hakoniwa_core.economy import Payer, funds, retail
 from hakoniwa_core.economy.prices import initial_prices
+from hakoniwa_core.geo import within
 from hakoniwa_core.ledger import CB
 from hakoniwa_core.market import auction
 from hakoniwa_core.market.auction import Order
@@ -142,9 +143,14 @@ def test_ministry_queues_one_site_of_works_within_the_budget(game, base):
     ctx = context(game, world)
     _empty_queue(island)
     # 上下水道の足りない町を1つ作る
-    housing = next(f for f in island.facilities if f.kind == game.config.get("housing.facility"))
+    towns = [f for f in island.facilities if f.kind == game.config.get("housing.facility")]
+    housing = towns[0]
+    for town in towns[1:]:  # ほかの町は足りている（40 ターンの道筋で足りない町が残ることがある）
+        town.ext.pop("water_short", None)
     housing.ext["water_short"] = True
-    infra.set_level(island.tile(housing.x, housing.y), "water", 0)
+    # 上下水道を引いていない町にする（維持の目標も 0。目標が残っていると、維持の工事が戻すので
+    # 新しい工事には並べない。建国から 40 ターンの間にこの町へ上下水道を引いていることがある）
+    infra.set_level(island.tile(housing.x, housing.y), "water", 0, 0)
     island.scratch[works.WORKS] = {"wage": 100}
     state = funds.fiscal_state(island)
     state["caps"] = {"construction": 10**12}
@@ -187,6 +193,11 @@ def test_ministry_counts_the_works_from_the_target_to_full(game, base, monkeypat
         key=lambda p: (p[1], p[0]),
     )
     x, y = place
+    # 周りのマスの道路は仕上がっている（標準の計画の建てる順が変わり、まだ道路の引かれていない隣の
+    # マスが並ぶようになった。W-274）
+    level = infra.FULL
+    for nx, ny in within(island, place, 1):
+        infra.set_level(island.tile(nx, ny), "road", level, level)
     tile = island.tile(x, y)
     infra.set_level(tile, "road", 300, 600)  # 目標 60% から 30% まで傷んだ
     assert works.road_tiles(island, game.defs, game.config, place) == [(x, y)]

@@ -12,6 +12,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.economy import (
     GENERAL,
+    JOBLESS,
     OWNERS,
     Payer,
     arrears,
@@ -22,7 +23,12 @@ from hakoniwa_core.economy import (
 )
 from hakoniwa_core.modules import failures
 from hakoniwa_core.modules.firms import remove_facility
-from hakoniwa_core.modules.market import FoodMenu, gross_cost, hungry_food_orders
+from hakoniwa_core.modules.market import (
+    FoodMenu,
+    gross_cost,
+    hungry_ceiling,
+    hungry_food_orders,
+)
 from hakoniwa_core.modules.population import (
     HUNGER,
     Population,
@@ -157,75 +163,121 @@ def _menu():
     )
 
 
-def test_hungry_households_bid_above_the_band_by_how_much_they_lack(game):
-    """飢えた家計は、要る量の段ごとに、少ししか食べられない段ほど高い指値で買う（飢える前の値段 ×
-    割合 ^ (−1/弾力性)）。指値は飢える前の値段を基準にし、今の値段にはつられない。"""
-    settings = game.config.get("household.hungry")
-    steps, elasticity = settings["steps"], settings["elasticity"]
+def _spent_at(orders, prices, menu):
+    """財ごとに1つの値段 prices[g] で約定したとき（指値がその値段以上の段が約定）に払う額の合計。"""
+    return sum(
+        gross_cost(prices[g], q, menu.rate, menu.tax[g])
+        for g, q, limit in orders
+        if limit >= prices[g]
+    )
+
+
+def test_hungry_households_that_can_pay_bid_the_band_top_for_all_they_need(game):
+    """飢えた家計は、食費の限りで要る量の全部を今の値段の値幅の上端で買えるなら、全部の段を上端で
+    出す（W-285。前は「飢える前の値段」を基準にし、長い飢饉ではそれが今の値段よりずっと低く、お金の
+    ある層まで要る量の半分しか買えなかった）。基準は今の上端なので、値段が上がれば指値も上がる。"""
+    steps = game.config.get("household.hungry")["steps"]
     menu = _menu()
     need = 100 * QUANTITY_SCALE
-    shares = {"grain": need}
-    offered = {"grain": need}
-    orders = hungry_food_orders(
-        need, shares, offered, menu, {"grain": 100}, 0, 10**12, steps, elasticity
-    )
-    limits = [limit for _, _, limit in orders]
-    assert limits == sorted(limits, reverse=True)
-    assert limits[0] == pytest.approx(100 * steps[0] ** (-1 / elasticity), rel=0.01)
-    assert limits[-1] == 100
-    assert sum(q for _, q, _ in orders) == pytest.approx(need, rel=0.01)
-    # 値幅の上端がすでに上がっていても、基準は飢える前の値段のまま（上がり続けない）
-    menu.limits["grain"] = 300
-    raised = hungry_food_orders(
-        need, shares, offered, menu, {"grain": 100}, 0, 10**12, steps, elasticity
-    )
-    assert [limit for _, _, limit in raised] == limits
-
-
-def test_hungry_bids_stay_within_the_food_budget(game):
-    """どの段も、食費の限り（預金を崩す分を含む）に収まる分までしか買わない。今の値幅の上端でも
-    要る量を買えないお金のない家計は、要る量の一部しか買えない。"""
-    settings = game.config.get("household.hungry")
-    menu = _menu()
-    need = 100 * QUANTITY_SCALE
-    budget = 5_000  # 値幅の上端（100）で要る量を買う額 10,000 の半分
-    orders = hungry_food_orders(
-        need,
-        {"grain": need},
-        {"grain": need},
-        menu,
-        {"grain": 100},
-        0,
-        budget,
-        settings["steps"],
-        settings["elasticity"],
-    )
-    cost = sum(gross_cost(limit, q, menu.rate, menu.tax[g]) for g, q, limit in orders)
-    assert 0 < cost <= budget
-    assert sum(q for _, q, _ in orders) < need
-    assert hungry_food_orders(need, {}, {}, menu, {}, 0, 0, settings["steps"], 0.5) == []
-
-
-def test_hungry_households_that_can_pay_the_band_order_all_they_need(game):
-    """飢えた家計の食費の限りが、全部の段を上乗せした指値で取り置くには足りないが、今の値幅の上端で
-    なら要る量を全部買えるときは、上乗せを縮めて要る量の全部を注文する（2026-11-10。前は最初の段を
-    数倍の指値で取り置いて食費を使い切り、ふだんの値段の 3 倍の食費があっても要る量の半分ほどしか
-    注文しなかった。資本家階級が預金を持ったまま飢えた）。指値は値幅の上端より下げず、急ぐ段ほど
-    高いまま。"""
-    settings = game.config.get("household.hungry")
-    steps, elasticity = settings["steps"], settings["elasticity"]
-    menu = _menu()
-    need = 100 * QUANTITY_SCALE
-    budget = 30_000  # 値幅の上端で要る量を買う額 10,000 の 3 倍
-    orders = hungry_food_orders(
-        need, {"grain": need}, {"grain": need}, menu, {"grain": 100}, 0, budget, steps, elasticity
-    )
-    cost = sum(gross_cost(limit, q, menu.rate, menu.tax[g]) for g, q, limit in orders)
-    assert cost <= budget
+    orders = hungry_food_orders(need, {"grain": need}, {"grain": need}, menu, 10**12, steps)
+    assert [limit for _, _, limit in orders] == [100] * len(steps)
     assert sum(q for _, q, _ in orders) == need
+    menu.limits["grain"] = 300
+    raised = hungry_food_orders(need, {"grain": need}, {"grain": need}, menu, 10**12, steps)
+    assert [limit for _, _, limit in raised] == [300] * len(steps)
+
+
+def test_hungry_bids_drop_to_what_the_food_budget_can_pay(game):
+    """食費の限りが上端で要る量を買う額に足りない家計は、要る量の全部を注文するが、段 j の指値を
+    「上端 × 食費の限り ÷ (F_j × 上端で全部を買う額)」まで下げる（値段が上がるほど買える量が減り、
+    お金の少ない層から締め出される）。どの1つの値段で約定しても払う額は食費の限りを超えず、取り置き
+    （curve_cost）も超えない。"""
+    from hakoniwa_core.modules.market import _hungry_cost
+
+    steps = game.config.get("household.hungry")["steps"]
+    menu = _menu()
+    need = 100 * QUANTITY_SCALE
+    budget = 5_000  # 上端（100）で要る量を買う額 10,000 の半分
+    orders = hungry_food_orders(need, {"grain": need}, {"grain": need}, menu, budget, steps)
     limits = [limit for _, _, limit in orders]
-    assert limits == sorted(limits, reverse=True)
-    assert limits[0] > 100 and limits[-1] >= 100
+    assert limits == sorted(limits, reverse=True) and limits[0] == 100  # 半分までは上端で払える
+    assert limits[-1] == 50  # 全部なら半分の値段まで
+    assert sum(q for _, q, _ in orders) == need
+    for price in range(1, 101):
+        assert _spent_at(orders, {"grain": price}, menu) <= budget
+    assert 0 < _hungry_cost(orders, menu) <= budget
+    assert hungry_food_orders(need, {}, {}, menu, 0, steps) == []
+
+
+def test_hungry_households_short_of_money_spend_it_all_at_the_band(game):
+    """今の値幅の上端でも要る量を買えない飢えた家計は、上端で約定したとき食費の限りいっぱいまで
+    買える（W-280 の穴。食費の限り ÷ 上端で全部を買う額 の所に段を足す）。前は食費の限りが 6%
+    足りないだけで要る量の 17% しか注文せず、食費の 8 割近くを残したまま飢えた。食費の限りが
+    増えるほど、上端で買える量は減らない（崖がない）。"""
+    steps = game.config.get("household.hungry")["steps"]
+    menu = _menu()
+    need = 100 * QUANTITY_SCALE
+    whole = gross_cost(100, need, menu.rate, menu.tax["grain"])  # 値幅の上端で全部買う額
+
+    def at_top(budget):
+        orders = hungry_food_orders(need, {"grain": need}, {"grain": need}, menu, budget, steps)
+        got = sum(q for _, q, limit in orders if limit >= 100)
+        return got, _spent_at(orders, {"grain": 100}, menu), sum(q for _, q, _ in orders)
+
+    # 6% 足りない: 上端で要る量の 9 割以上を買い、食費をほぼ使い切る。注文は要る量の全部
+    got, spent, ordered = at_top(whole * 94 // 100)
+    assert got >= need * 0.93 and ordered == need
+    assert whole * 0.93 <= spent <= whole * 94 // 100
+    # 半分しかなければ、上端で半分
+    got, _, _ = at_top(whole // 2)
+    assert need * 0.49 <= got <= need * 0.5
+    budgets = [whole * k // 100 for k in (10, 30, 50, 80, 94, 99, 100, 101, 110, 150, 300, 2000)]
+    tops = [at_top(b)[0] for b in budgets]
+    assert tops == sorted(tops) and tops[-1] == need
+
+
+def test_hungry_ceiling_is_the_tag_where_the_asks_cover_what_the_hungry_buy():
+    """飢えた家計の指値の上限は、売りを安い順に並べて飢えた家計の買う量に届く所の値札と、値幅の
+    上端の高いほう（W-285）。量の少ない極端な値札が1つあるだけでは上がらない。"""
+    top = 110
+    # 島の売りで足りる: 上端のまま（高い値札が少しあっても上がらない）
+    assert hungry_ceiling(top, [(100, 5000), (900, 10)], 4000) == (top, 100)
+    # 島の売りが足りず、海外の商人（150）の分まで要る: 商人の値札まで
+    assert hungry_ceiling(top, [(100, 1000), (150, 5000), (900, 10)], 4000) == (150, 150)
+    # 全部の売りでも届かない: 一番高い値札まで
+    assert hungry_ceiling(top, [(100, 1000), (150, 500)], 4000) == (150, 150)
+    # 飢えた家計がいない・売りがない: 上端
+    assert hungry_ceiling(top, [(150, 5000)], 0) == (top, None)
+    assert hungry_ceiling(top, [], 4000) == (top, None)
+
+
+def test_hungry_bids_over_several_foods_stay_within_the_budget_at_any_prices(game):
+    """献立が複数の財でも、財ごとにどの値段で約定しても（財をまたいで違う値段でも）払う額の合計は
+    食費の限りを超えない（W-285 の予算の守り）。"""
+    from hakoniwa_core.modules.market import _hungry_cost
+
+    steps = game.config.get("household.hungry")["steps"]
+    menu = FoodMenu(
+        values={"grain": 1.0, "fish": 1.5},
+        nutritions={"grain": QUANTITY_SCALE, "fish": QUANTITY_SCALE},
+        qualities={"grain": 0.0, "fish": 0.0},
+        unit={"grain": 100, "fish": 150},
+        limits={"grain": 100, "fish": 150},
+        rate=40,
+        tax=500,
+        elasticity=0.5,
+    )
+    need = 100 * QUANTITY_SCALE
+    half = need // 2
+    shares = {"grain": half, "fish": half}
+    for budget in (2_000, 6_000, 9_000, 10**9):
+        orders = hungry_food_orders(need, shares, shares, menu, budget, steps)
+        assert _hungry_cost(orders, menu) <= budget
+        grain = sorted({lim for g, _, lim in orders if g == "grain"} | {1})
+        fish = sorted({lim for g, _, lim in orders if g == "fish"} | {1})
+        for p in grain:
+            for q in fish:
+                assert _spent_at(orders, {"grain": p, "fish": q}, menu) <= budget
 
 
 # --- 賃金の遅配 ---------------------------------------------------------------------------
@@ -253,7 +305,9 @@ def test_unpaid_wages_stay_owed_and_are_paid_first_when_money_comes(game, warmed
     assert island.stats["arrears.workers"] > 0
     assert f.workers >= staff // 2  # 1か月目はほとんど辞めない
     held = arrears.owed(island, entity)
-    assert set(held) <= {household(GENERAL), household("engineers")}
+    # 未払いは働いた人の家計が持つ。そのターンに職を失った人は自分の分を持って失業者の層へ移る
+    # （W-294。請求は人について回る）ので、失業者の層も持ち手になる（本人 OK 2026-11-19）
+    assert set(held) <= {household(GENERAL), household("engineers"), household(JOBLESS)}
     # お金が入れば先に払う
     ledger.pay(island, owners, entity, 10 * owed, "capital_injection")
     before = ledger.money(island, household(GENERAL))

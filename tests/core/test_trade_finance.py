@@ -67,14 +67,20 @@ def _round(game, world):
 
 
 def _importer(game, world, foreign=True):
-    """輸入している財がある、市場経済の島の商社（foreign なら決済通貨が外貨の島）。"""
+    """輸入している財がある、市場経済の島の商社（foreign なら決済通貨が外貨の島）。今の見込みで
+    輸入が引き合う財のある商社だけを選ぶ（前のターンまで輸入していても、今は引き合わない島がある。
+    試しの世界の動きが少し変わるだけで選ぶ島が変わらないように）。"""
     for island in world.islands.values():
         if traders.is_planned(island):
             continue
+        found = traders.prospects(island, game.defs, game.config)
         for f in traders_of(island, game.config):
-            for item in traders.goods_of(f).values():
+            for good, item in traders.goods_of(f).items():
                 bloc = item.get("bm")
                 if item.get("dir") != traders.IMPORT or bloc is None or item["m"] <= 0:
+                    continue
+                p = found.get(good)
+                if p is None or not traders.importable(p) or p.import_bloc != bloc:
                     continue
                 from hakoniwa_core.trade import blocs
 
@@ -404,6 +410,7 @@ def test_later_turns_share_the_trading_capacity_between_goods(game, traded, monk
     assert plan and shared
     got, units = shared[-1]
     assert sum(q * u // 1000 for q, u in zip(got, units, strict=True)) <= cap
-    # 見込みの 2 ターン目からの量は、割り振った量のまま
+    # 見込みの 2 ターン目からの量は、割り振った量のまま（割り振りが 0 の財は、1 ターン目の分だけで
+    # 見込みに載ることがある。2026-11-18 の MK-47・MK-48 の道筋で出た）
     later = sorted((total - first) // max(1, keep - 1) for _, first, total, _, _ in plan)
-    assert later == sorted(q for q in got if q > 0)
+    assert [q for q in later if q > 0] == sorted(q for q in got if q > 0)

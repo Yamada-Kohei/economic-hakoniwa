@@ -1,9 +1,8 @@
-"""W-271・W-272 の切り替え（既定は切。GT-44）。
+"""W-271 の切り替え（既定は切。GT-44）。
 
 W-271（発電所が増えない）: 送電網で発電能力が足りなくても、発電所には売り逃しの合図が残らず
 （firms.power_invest）、建て増しの出資が足りなくても利益は配当で出ていった（firms.invest_retain）。
-W-272（失業の層の行き来）: 自給の農業ができる村かをマスの人数だけで毎ターン決めていたので、
-町の下限の前後のマスの働き手が自給の農家と失業者を行き来した（population.farming_by_housing）。"""
+"""
 
 from __future__ import annotations
 
@@ -24,7 +23,6 @@ from hakoniwa_core.economy.books import PROFIT
 from hakoniwa_core.modules.accounts import Accounts
 from hakoniwa_core.modules.firms import EntryExit
 from hakoniwa_core.modules.market import MISSED
-from hakoniwa_core.modules.population import FARMING, farming, refresh_farming, village_size
 from hakoniwa_core.state import OWNER_PRIVATE
 from tests.core.test_finance import context
 from tests.core.test_phase3_3 import base as base  # noqa: F401  （試験の部品を使い回す）
@@ -175,55 +173,3 @@ def test_dividend_holds_back_only_the_shortfall(game, base, switch):  # noqa: F8
     assert island.stats["firms.invest_retained"] == 10**8
     _, more = _dividend(game, base, 10**12)  # 配当より多く足りなければ、配当は全部残す
     assert more == 0
-
-
-# --- 自給の農業ができる村か（W-272。population.farming_by_housing） -------------------------
-
-
-def _village(game, population):  # noqa: F811
-    island = make_island(game)
-    home(game, island, 6, 6, population, level="village")
-    return island, island.tile(6, 6)
-
-
-def test_village_housing_keeps_farming_above_the_town_size(game, switch):  # noqa: F811
-    town = village_size(game.defs) + 1
-    island, tile = _village(game, town + 10)
-    refresh_farming(game.defs, game.config, island)
-    assert FARMING not in tile.ext
-    assert not farming(game.defs, tile)  # 切: 人数だけで町になり、自給の農業をしない
-
-    switch("population", "farming_by_housing")
-    refresh_farming(game.defs, game.config, island)
-    assert tile.ext[FARMING] is True
-    assert farming(game.defs, tile)  # 建った住宅地はまだ村の段階
-
-
-def test_tile_without_housing_switches_with_a_margin(game, switch):  # noqa: F811
-    switch("population", "farming_by_housing")
-    town = village_size(game.defs) + 1
-    back = game.config.get("population.farming_back_ratio")
-    island = make_island(game)
-    tile = island.tile(6, 6)
-    tile.population = town
-    refresh_farming(game.defs, game.config, island)
-    assert tile.ext[FARMING] is False  # 初めは人数で（町）
-    tile.population = town - 1
-    refresh_farming(game.defs, game.config, island)
-    assert tile.ext[FARMING] is False  # 下限をわずかに切っただけでは町のまま
-    tile.population = int(town * back) - 1
-    refresh_farming(game.defs, game.config, island)
-    assert tile.ext[FARMING] is True  # 下限の 0.9 倍を切ると村
-    tile.population = town - 1
-    refresh_farming(game.defs, game.config, island)
-    assert tile.ext[FARMING] is True  # 戻るのは町の下限から
-    tile.population = town
-    refresh_farming(game.defs, game.config, island)
-    assert tile.ext[FARMING] is False
-
-
-def test_switching_off_clears_the_marks(game, switch):  # noqa: F811
-    island, tile = _village(game, 100)
-    tile.ext[FARMING] = False
-    refresh_farming(game.defs, game.config, island)
-    assert FARMING not in tile.ext

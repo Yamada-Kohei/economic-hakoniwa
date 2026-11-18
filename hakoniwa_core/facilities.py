@@ -10,7 +10,7 @@ from dataclasses import replace
 from types import MappingProxyType
 from typing import Any
 
-from hakoniwa_core import nature, stock
+from hakoniwa_core import nature, stock, stops
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.geo import distance, is_coastal, within
@@ -25,7 +25,7 @@ from hakoniwa_core.state import (
 
 FULL = 1000  # 割合の 100%
 ENGINEER = "engineer"  # 技術者（島全体の人数として持つ働き手。フェーズ2-3）
-STATUS_STARTING = "starting"  # 工事が済んで、まだ動いたことがない（施設の status）
+STATUS_STARTING = stops.STARTING  # 工事が済んで、まだ動いたことがない（施設の status。表は stops）
 # 作り方の変更（フェーズ3-2）。命令と民営の見直しで ext["recipe_next"] に置き、次の市場の段で
 # 替える（新しい原料はその市場で買う）。替えた次のターン（ext["recipe_changed"]）は稼働率が半分
 RECIPE_NEXT = "recipe_next"
@@ -38,10 +38,6 @@ FIELDS = "fields"
 SOWN = "sown"
 CROP_READY = "crop_ready"  # 畑をみな新しい作物にし終えたターン（ext。民営の見直しが売れ行きを待つ）
 FINISHED = "finished"  # 工事が終わったターン（ext。回6）
-# 原料が手に入らずに動けない理由（施設の status の「:」の前）。input は品不足、input_price は
-# 原料が高くて採算が合わない、funds は原料を買うお金が足りない、public_price は学校と大学の教材が
-# 高くて買えない
-INPUT_SHORT = ("input", "input_price", "funds", "public_price")
 # 建て増し（段6 A3）: 施設の規模（ext。書いていなければ 1）。規模 n の施設は、働き手・原料・産出・
 # 設備・汚染が規模 1 の n 倍。建て増しの工事は、町の中の店と同じくマスを持たない負の位置に置き、
 # 働く場所（SITE）と建て増す施設の番号（EXPANDS）を ext に持つ。済むと建て増す施設に合わせる
@@ -56,6 +52,10 @@ GRADE_TO = "grade_to"
 # 使う。直しの前から工事中だった農場（移行で段階だけそろえた）は持たず、手作業の資材で建つ
 GRADE_BUILD = "grade_build"
 SITE_WORK = "site_work"  # ext: 空き地に建てる民営の工場の造成 {labor, materials}（FM-61）
+# ext: 工事の資材のうち、建てる施設の作り方が産む物を、工事の人手でその場で作る分（W-289。森の
+# 伐採場が切った木で小屋を建てる）
+# {"materials": {財: 量（1000 分の 1）}, "labor": 1 ターンに足す人手}
+OWN_MATERIALS = "own_materials"
 MACHINES = "machines"
 FUEL = "fuel"  # 機械化した畑が毎ターン使う燃料の財
 FUEL_SHARE = (
@@ -64,22 +64,6 @@ FUEL_SHARE = (
 FERTILIZER = "chemicals"  # 肥料ありの畑が使う財
 # economy: 肥料ありの畑のうち、肥料が手元にある割合（1000 分の 1。なければ全部。FM-53）
 FERTILIZER_SHARE = "fertilizer_share"
-
-
-def short_of_inputs(status: str) -> bool:
-    """施設の status が、原料が手に入らずに動けないことを表すか。"""
-    return status.partition(":")[0] in INPUT_SHORT
-
-
-FURLOUGH = ("power", "no_grid", "input")  # 休業手当にする status（外から物が来ずに動けない）
-
-
-def furloughed(config: Any, status: str) -> bool:
-    """休業手当にする status か（FURLOUGH と、電力の割高・資金不足。回7 後半、modules/labor の
-    furlough_share）。原料が高い・買うお金がないのは施設の都合なので外す。"""
-    kind, _, good = status.partition(":")
-    power = config.get("power.good")
-    return kind in FURLOUGH or (kind in ("input_price", "funds") and good == power)
 
 
 def ratio(have: int, need: int) -> int:
@@ -800,13 +784,47 @@ def materials_of(defs: Defs, f: Facility) -> dict[str, int]:
     if site:
         for good, qty in site.get("materials", {}).items():
             out[good] = out.get(good, 0) + int(qty)
+    own = f.ext.get(OWN_MATERIALS)
+    if own:  # その場で作る資材は買わない（W-289）
+        for good, qty in own.get("materials", {}).items():
+            left = out.get(good, 0) - int(qty)
+            if left > 0:
+                out[good] = left
+            else:
+                out.pop(good, None)
     return out
 
 
 def site_labor(f: Facility) -> int:
-    """空き地の工場の造成の作業員（FM-61。造成のない工事は 0）。"""
+    """工事の人手に足す作業員: 空き地の工場の造成（FM-61）と、資材をその場で作る分（W-289）。
+    どちらもない工事は 0。"""
     site = f.ext.get(SITE_WORK)
-    return int(site.get("labor", 0)) if site else 0
+    own = f.ext.get(OWN_MATERIALS)
+    return (int(site.get("labor", 0)) if site else 0) + (int(own.get("labor", 0)) if own else 0)
+
+
+def own_materials(defs: Defs, kind: str, recipe: str | None = None) -> dict[str, int]:
+    """施設 kind の工事の資材のうち、その施設の作り方（recipe。なければどれか）が産む物と、その量
+    （1000 分の 1。W-289）。工事の人手がその場で作れる（森の伐採場の木材）。"""
+    fdef = defs.facilities[kind]
+    recipes = [fdef["recipes"][recipe]] if recipe in fdef["recipes"] else fdef["recipes"].values()
+    made = {g for r in recipes if not r.get("inputs") for g in r["outputs"]}
+    return {
+        g: q for g, q in fdef["construction"].get("materials", {}).items() if g in made and q > 0
+    }
+
+
+def own_material_labor(
+    defs: Defs, kind: str, recipe: str, good: str, qty: int, productivity: int = FULL
+) -> int:
+    """資材 good を qty（1000 分の 1）だけ、施設 kind の作り方 recipe の働き方でその場で作るのに
+    要る人手（人・ターン。W-289）: 量 × 全力の働き手 ÷ 全力の産出 ÷ 生産性。作り方の数字だけから
+    出す。"""
+    out = defs.facilities[kind]["recipes"][recipe]["outputs"].get(good, 0)
+    if out <= 0 or productivity <= 0:
+        return 0
+    workers = workers_needed(defs, kind, recipe)
+    return -(-qty * workers * FULL // (out * productivity))
 
 
 def construction_labor(defs: Defs, f: Facility) -> int:

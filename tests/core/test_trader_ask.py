@@ -43,13 +43,23 @@ def traded(game):
 
 
 def _importer(game, world):
-    """輸入している財がある、市場経済の島の商社と財。"""
+    """輸入している財がある、市場経済の島の商社と財（狙う量があり、今も輸入が引き合う財。荷を売り
+    切った後に向きを決め直しても輸入のままの財を選ぶ）。"""
     for island in world.islands.values():
         if traders.is_planned(island):
             continue
+        found = traders.prospects(island, game.defs, game.config)
+        # 島に買いたい人がいる財（買いたい量が 0 の財は、狙う量の見直しで輸入が引き合わないと読む）
+        wanted = {m.good for m in island.markets if m.demand > 0}
         for f in traders_of(island, game.config):
             for good, item in sorted(traders.goods_of(f).items()):
-                if item.get("dir") == traders.IMPORT and item.get("bm") is not None:
+                if (
+                    item.get("dir") == traders.IMPORT
+                    and item.get("bm") is not None
+                    and item.get("m")
+                    and traders.importable(found.get(good))
+                    and good in wanted
+                ):
                     return island, f, good, item
     pytest.skip("輸入している商社がない")
 
@@ -112,6 +122,10 @@ def test_foreign_currency_is_bought_ahead_only_for_the_flow(game, traded):
     for item in traders.goods_of(f).values():
         if item.get("dir") == traders.IMPORT and item.get("m"):
             item["hold"], item["held"] = item["m"] * 10, [0, 0]
+            # 手元の荷がないので、持ちすぎの値下げと輸出し直しもない（世界の小さな違いで、前の
+            # ターンまでの持ちすぎの印が残っている財がある）
+            item.pop(traders.OUTLET, None)
+            item.pop(traders.REEXPORT, None)
             assert traders.import_want(game.config, item) > item["m"]
             flows += item["m"]
     plan = r._import_plan(island, f, {})
@@ -403,7 +417,11 @@ def test_home_orders_send_the_markdown_to_the_outlet_and_sell_the_rest_as_usual(
     cut = [o for o in orders if o.clearance]
     usual = [o for o in orders if not o.clearance and o.limit is not None]
     assert cut and usual
-    assert cut[0].limit <= usual[0].limit
+    # 値下げの指値はふだんの指値から下げる。ただし、輸出し直して残る値（または原価の下限）がふだんの
+    # 指値より高いときは、そこで止める（島の値段が輸出し直す値より下がった世界。W-285 の直し 1 で
+    # 家計の買い方が変わり、試験の世界がそうなった）
+    stop = item[traders.OUTLET]["stop"]
+    assert cut[0].limit <= usual[0].limit or cut[0].limit == stop
     # 輸出の荷に替えた分は島で売らない
     item.pop(traders.OUTLET)
     total = sum(o.qty for o in orders if not o.clearance)

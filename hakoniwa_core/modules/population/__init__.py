@@ -67,6 +67,19 @@ HAPPINESS_FACTS = (
     "education",
     "housing",
 )
+# 幸福度の項目（W-172。式 happiness_parts の並び。統計 happiness_part.<名前>）
+HAPPINESS_PARTS = (
+    *HAPPINESS_FACTS,
+    "pollution",
+    "real_wage",
+    "inflation",
+    "hunger",
+    "arrears",
+    "crowding",
+)
+# 項目の点の和と幸福度の差の内訳（W-172。settle_detail）: 体制の上限で頭打ち・0 を下回った分・
+# 丸めの端数
+SETTLE_PARTS = ("cap", "floor", "rounding")
 OLD_CONSUMER_GOOD = "consumer_goods"  # フェーズ3-1 までの幸福度の「消費財」で数える財
 HUNGER = "hunger"  # 層の飢えの蓄え（economy.households[層]。栄養の不足が何か月分たまったか）
 # 層の生き残った人が、この飢えのあいだに耐えたいちばん大きい蓄え（余力のそれより小さい人はもう
@@ -95,60 +108,10 @@ def _rand_round(value: float, rng: random.Random) -> int:
     return whole + (1 if rng.random() < value - whole else 0)
 
 
-# マスの ext: 自給の農業ができる村か（W-272。population.farming_by_housing のときだけ書く）
-FARMING = "farming"
-
-
 def _farming(defs: Defs, tile: Tile) -> bool:
-    """自給の農業ができる集落（村）か。population.farming_by_housing が入なら、雇用の段と記録の段の
-    初めに refresh_farming が決めた印（建った住宅地の段階）を使い、切ならマスの人数で決める。"""
-    known = tile.ext.get(FARMING)
-    if known is not None:
-        return bool(known)
+    """自給の農業ができる集落（村）か。"""
     level = fac.settlement_of(defs, tile.population)
     return bool(defs.settlements[level].get("subsistence"))
-
-
-farming = _farming  # ほかの段（雇用の段の畑に戻る）から使う名前
-
-
-def refresh_farming(defs: Defs, config: GameConfig, island: IslandState) -> None:
-    """自給の農業ができる村かの印をマスに書く（W-272。PO-21・LB-26。
-    設定 population.farming_by_housing）。
-
-    住宅地の建ったマスは、建った段階（床を足す工事でしか変わらない）で決める。人数のわずかな
-    上下で村と町を毎ターン行き来し、仕事のない人が自給の農家と失業者を行き来しないように
-    （LAN の世界 8003 の島3 で、人口 5 万前後の 1 マスの 2.4 万人の働き手が毎ターン入れ替わり、
-    失業の層が 26 人と 4.8 万人、食べた割合が 0.97 と 0.77 を行き来した）。住宅地のないマスは
-    人数で決め、村→町は町の下限の人数で、町→村は下限の population.farming_back_ratio 倍を
-    切ったときに替える。切なら印を書かない（前に書いた印は消す）。"""
-    if not config.get("population.farming_by_housing"):
-        for tile in island.tiles:
-            if FARMING in tile.ext:
-                del tile.ext[FARMING]
-        return
-    homes = {
-        (f.x, f.y): f for f in island.facilities if fac.is_housing(config, f) and fac.on_map(f)
-    }
-    town = village_size(defs) + 1
-    back = config.get("population.farming_back_ratio")
-    for tile in island.tiles:
-        home = homes.get((tile.x, tile.y))
-        if home is not None:
-            value = _built_farming(defs, home)
-        elif tile.population <= 0:
-            tile.ext.pop(FARMING, None)
-            continue
-        else:
-            before = tile.ext.get(FARMING)
-            if before is None:
-                level = fac.settlement_of(defs, tile.population)
-                value = bool(defs.settlements[level].get("subsistence"))
-            elif before:
-                value = tile.population < town
-            else:
-                value = tile.population < town * back
-        tile.ext[FARMING] = value
 
 
 def _built_farming(defs: Defs, home: Facility) -> bool:
@@ -395,8 +358,10 @@ def _blend_notice(island: IslandState, ctx: StageContext) -> None:
     island.log.append(LogEntry("happiness_weights_changed", args))
 
 
-def happiness(island: IslandState, facts: dict[str, Any], ctx: StageContext) -> int:
-    """幸福度（0〜100）。
+def happiness_parts(
+    island: IslandState, facts: dict[str, Any], ctx: StageContext
+) -> tuple[float, ...]:
+    """幸福度の項目ごとの点（W-172）。並びは HAPPINESS_PARTS で、下げる項目は負の数。
 
     facts: food・jobs・power・consumer_goods・clothing・luxury・water・education・housing
     （1000 分の 1。housing は住まいの広さ: 住む人の望む広さに対する床の割合。書かなければ満点）、
@@ -405,39 +370,62 @@ def happiness(island: IslandState, facts: dict[str, Any], ctx: StageContext) -> 
     整備度、education は島の教育水準。clothing と luxury はフェーズ3-2 の衣料とぜいたく品
     （economy/needs.py）、consumer_goods はフェーズ3-1 までの消費財（移し替えの間だけ重みが
     残る）。
-    実質賃金が1年前より下がった分と、物価上昇率が目安を超えた分、飢えの蓄えと賃金の遅配（回3）を
-    減点する。上限は体制の
-    happiness_cap（全体主義 80。フェーズ3-4）。
+    実質賃金が1年前より下がった分と、物価上昇率が目安を超えた分、飢えの蓄えと賃金の遅配（回3）、
+    過密（回5）を減点する。0〜上限に収めるのは settle_happiness。マスごとに収めるので、島の
+    幸福度は項目を上げても上がらないことがある（上限の島では、上げた分が頭打ちの分に消える）。
     """
     w = happiness_weights(island, ctx)
-    value = (
-        w["base"]
-        + w["food"] * facts["food"] / fac.FULL
-        + w["jobs"] * facts["jobs"] / fac.FULL
-        + w["power"] * facts["power"] / fac.FULL
-        + w["food_quality"] * facts["quality"]
-        + w.get("consumer_goods", 0) * facts.get("consumer_goods", 0) / fac.FULL
-        + w.get("clothing", 0) * facts.get("clothing", 0) / fac.FULL
-        + w.get("luxury", 0) * facts.get("luxury", 0) / fac.FULL
-        + w.get("water", 0) * facts.get("water", 0) / fac.FULL
-        + w.get("education", 0) * facts.get("education", 0) / fac.FULL
-        + w.get("housing", 0) * facts.get("housing", fac.FULL) / fac.FULL
-        - w["pollution_per_point"] * facts["pollution"]
-    )
     fall = -real_wage_change(island.economy) * 100
-    if fall > 0:
-        value -= min(w["real_wage_max"], w["real_wage_per_point"] * fall)
     over = (inflation(island.economy) - w["inflation_threshold"]) * 100
-    if over > 0:
-        value -= min(w["inflation_max"], w["inflation_per_point"] * over)
-    # 飢えの蓄え（回3）: 食べられるようになっても、体が戻るまで暮らしは苦しい
-    value -= min(w.get("hunger_max", 0), w.get("hunger", 0) * facts.get(HUNGER, 0.0))
-    # 賃金の遅配（回3）: 働いても払われない人の割合
-    value -= w.get("arrears", 0) * facts.get("arrears", 0.0)
-    # 過密（回5）: 住む所の上限を超えて詰めて住むマス
-    value -= min(w.get("crowding_max", 0), w.get("crowding", 0) * facts.get("crowding", 0.0))
-    # 体制の幸福度の上限（全体主義 80。フェーズ3-4）
-    return max(0, min(politics.happiness_cap(island, ctx.defs), round(value)))
+    return (
+        w["base"],
+        w["food"] * facts["food"] / fac.FULL,
+        w["jobs"] * facts["jobs"] / fac.FULL,
+        w["power"] * facts["power"] / fac.FULL,
+        w["food_quality"] * facts["quality"],
+        w.get("consumer_goods", 0) * facts.get("consumer_goods", 0) / fac.FULL,
+        w.get("clothing", 0) * facts.get("clothing", 0) / fac.FULL,
+        w.get("luxury", 0) * facts.get("luxury", 0) / fac.FULL,
+        w.get("water", 0) * facts.get("water", 0) / fac.FULL,
+        w.get("education", 0) * facts.get("education", 0) / fac.FULL,
+        w.get("housing", 0) * facts.get("housing", fac.FULL) / fac.FULL,
+        -(w["pollution_per_point"] * facts["pollution"]),
+        -min(w["real_wage_max"], w["real_wage_per_point"] * fall) if fall > 0 else 0.0,
+        -min(w["inflation_max"], w["inflation_per_point"] * over) if over > 0 else 0.0,
+        # 飢えの蓄え（回3）: 食べられるようになっても、体が戻るまで暮らしは苦しい
+        -min(w.get("hunger_max", 0), w.get("hunger", 0) * facts.get(HUNGER, 0.0)),
+        # 賃金の遅配（回3）: 働いても払われない人の割合
+        -(w.get("arrears", 0) * facts.get("arrears", 0.0)),
+        # 過密（回5）: 住む所の上限を超えて詰めて住むマス
+        -min(w.get("crowding_max", 0), w.get("crowding", 0) * facts.get("crowding", 0.0)),
+    )
+
+
+def settle_happiness(island: IslandState, parts: tuple[float, ...], ctx: StageContext) -> int:
+    """項目ごとの点を足して、0〜体制の上限（全体主義 80。フェーズ3-4）に収める。
+
+    前から1つずつ足す（sum() は Python 3.12 から足し方が違い、端数が変わることがある）。並びと
+    足し方は W-172 の前の式と同じなので、値は前と1ビットも変わらない。"""
+    return settle_detail(island, parts, ctx)[0]
+
+
+def settle_detail(
+    island: IslandState, parts: tuple[float, ...], ctx: StageContext
+) -> tuple[int, tuple[float, float, float]]:
+    """settle_happiness の値と、項目の点の和からの差の内訳（W-172。SETTLE_PARTS の並び）:
+    体制の上限で頭打ちにした分（0 以下）、0 を下回った分を 0 にした分（0 以上）、丸めの端数。"""
+    value = 0
+    for part in parts:
+        value += part
+    rounded = round(value)
+    settled = max(0, min(politics.happiness_cap(island, ctx.defs), rounded))
+    gap = settled - rounded
+    return settled, (min(0, gap), max(0, gap), rounded - value)
+
+
+def happiness(island: IslandState, facts: dict[str, Any], ctx: StageContext) -> int:
+    """幸福度（0〜100）。項目ごとの点（式 happiness_parts）を足して 0〜上限に収める。"""
+    return settle_happiness(island, ctx.formula("happiness_parts")(island, facts, ctx), ctx)
 
 
 def _idle(defs: Defs, island: IslandState, tile: Tile) -> int:
@@ -689,6 +677,9 @@ class Population(IslandStage):
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
         defs, config = ctx.defs, ctx.config
         rng = ctx.rng(island.id)
+        from hakoniwa_core.modules.population import relocation
+
+        relocation.arrive(island)  # 強制移住で移動中の人が着く（W-286）
         layers = _layer_facts(island, ctx)
         households = island.economy.households
         fed = {
@@ -719,6 +710,9 @@ class Population(IslandStage):
         reserve = config.get("population.hunger")["reserve_min"]
         fertile = {n: max(0.0, 1 - f[HUNGER] / reserve) for n, f in layers.items()}
         moods: dict[str, list[float]] = {}
+        # 層ごとの、幸福度の項目の点の重み付きの和（W-172。moods と同じ重み）
+        parts_sum: dict[str, list[float]] = {}
+        parts_of = ctx.formula("happiness_parts")
         power_sum = pollution_sum = water_sum = housing_sum = people = 0
         education = island.economy.education
         # 亡くなる人を、層ごとにその層の住むマスへ割り振る（村で自給の農業をしている人は除く）
@@ -767,9 +761,8 @@ class Population(IslandStage):
             workers = max(0, placed.get(GENERAL, {}).get(pos, tile.population))
             # マスの幸福度（地図・町の育ち・人の移り先）: 一般の労働者の、仕事のある家計と失業して
             # いる家計を、マスに住む人数で混ぜる
-            mood = ctx.formula("happiness")(
-                island, {**local, **_mix(general, jobless, workers, idle)}, ctx
-            )
+            parts = parts_of(island, {**local, **_mix(general, jobless, workers, idle)}, ctx)
+            mood, extra = settle_detail(island, parts, ctx)
             tile.ext["happiness"] = mood
             if jobless is not None:
                 # 層の幸福度: 仕事のある家計は仕事が満点、失業している家計は 0
@@ -779,16 +772,17 @@ class Population(IslandStage):
                 ):
                     if weight <= 0:
                         continue
-                    value = ctx.formula("happiness")(
-                        island, {**local, **_facts(facts), "jobs": jobs}, ctx
-                    )
+                    layer_parts = parts_of(island, {**local, **_facts(facts), "jobs": jobs}, ctx)
+                    value, layer_extra = settle_detail(island, layer_parts, ctx)
                     entry = moods.setdefault(name, [0, 0])
                     entry[0] += value * weight
                     entry[1] += weight
+                    _add_parts(parts_sum, name, (*layer_parts, *layer_extra), weight)
             else:
                 entry = moods.setdefault(GENERAL, [0, 0])
                 entry[0] += mood * tile.population
                 entry[1] += tile.population
+                _add_parts(parts_sum, GENERAL, (*parts, *extra), tile.population)
             power_sum += local["power"] * tile.population
             pollution_sum += tile.pollution * tile.population
             water_sum += local["water"] * tile.population
@@ -837,6 +831,9 @@ class Population(IslandStage):
                     unhoused[pos] = births - room
             tile.population = max(0, pop)
         moods_by_layer = {n: v / w for n, (v, w) in moods.items() if w > 0}
+        parts_by_layer = {
+            n: [v / moods[n][1] for v in parts_sum[n]] for n in moods_by_layer if n in parts_sum
+        }
         for layer, f in sorted(layers.items()):
             if layer in (GENERAL, JOBLESS) or not people:
                 continue
@@ -849,8 +846,11 @@ class Population(IslandStage):
                 "education": education,
                 "housing": housing_sum // people,
             }
-            moods_by_layer[layer] = ctx.formula("happiness")(island, facts, ctx)
+            layer_parts = parts_of(island, facts, ctx)
+            moods_by_layer[layer], layer_extra = settle_detail(island, layer_parts, ctx)
+            parts_by_layer[layer] = [*layer_parts, *layer_extra]
         island.scratch["layer_happiness"] = moods_by_layer
+        island.scratch["layer_happiness_parts"] = parts_by_layer
         island.scratch["layer_facts"] = layers
         self._migrate(island, ctx, rng, homes, unhoused)
         stats = island.stats
@@ -864,7 +864,7 @@ class Population(IslandStage):
                 deaths[name] = deaths.get(name, 0) + count
             remove_dead(island, defs, deaths)
             population = sum(t.population for t in island.tiles)
-            update_owners_cap(island, ctx.config, population)
+            update_owners_cap(island, defs, ctx.config, population)
             changes = split_persons(island, defs, population)
             move_people(island, changes)
             if island.economy.happiness_blend > 0:
@@ -1234,6 +1234,18 @@ def _round_shares(total: int, shares: dict[str, float]) -> dict[str, int]:
     if total <= 0 or not weights:
         return {}
     return {n: c for n, c in proportional(total, weights).items() if c > 0}
+
+
+def _add_parts(
+    sums: dict[str, list[float]], layer: str, parts: tuple[float, ...], weight: float
+) -> None:
+    """層の幸福度の項目の点に重み weight を掛けて足す（W-172）。"""
+    acc = sums.get(layer)
+    if acc is None:
+        sums[layer] = [v * weight for v in parts]
+        return
+    for i, v in enumerate(parts):
+        acc[i] += v * weight
 
 
 def _facts(f: dict[str, Any]) -> dict[str, Any]:
@@ -1875,7 +1887,17 @@ def register(registry: Registry) -> None:
     registry.add_order(
         OrderHandler("build_housing", execute=build_housing, check=check_build_housing)
     )
+    from hakoniwa_core.modules.population import relocation
+
+    registry.add_order(
+        OrderHandler(
+            "force_relocate",
+            execute=relocation.force_relocate,
+            check=relocation.check_force_relocate,
+        )
+    )
     registry.add_formula("food_need", food_need)
+    registry.add_formula("happiness_parts", happiness_parts)
     registry.add_formula("happiness", happiness)
     registry.add_formula("hunger_deaths", hunger_deaths)
     registry.add_formula("birth_rate", birth_rate)

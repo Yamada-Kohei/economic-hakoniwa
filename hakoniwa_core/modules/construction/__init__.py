@@ -16,7 +16,8 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, ledger, monuments, stock
+from hakoniwa_core import infra, ledger, monuments, stock, stops
+from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     CONSTRUCTION,
@@ -37,7 +38,7 @@ from hakoniwa_core.economy import (
     retail,
 )
 from hakoniwa_core.economy import plan as planning
-from hakoniwa_core.economy.prices import site_material_cost
+from hakoniwa_core.economy.prices import plan_own_materials, site_material_cost
 from hakoniwa_core.economy.start import fund_facility, init_facility, operating_capital
 from hakoniwa_core.modules import infrastructure
 from hakoniwa_core.naming import assign_serial
@@ -124,6 +125,7 @@ def build(island: IslandState, payload: dict[str, Any], ctx: StageContext) -> No
         monuments.stamp(ctx.defs, island, f, ctx.turn, payload.get("note", ""))
     assign_serial(island, f)
     if island.has_economy:
+        plan_own_materials(island, ctx.defs, ctx.config, f)  # 資材をその場で作るか（W-289）
         f.ext["material_estimate"] = site_material_cost(island, ctx.defs, ctx.config, f)
     island.facilities.append(f)
     island.log.append(LogEntry("construction_started", {"facility": kind, "x": x, "y": y}))
@@ -365,7 +367,7 @@ class Construction(IslandStage):
             return
         f.built = True
         f.workers = 0
-        f.status = fac.STATUS_STARTING
+        f.status = stops.STARTING
         for key in (
             "waiting",
             "short_funds",
@@ -373,7 +375,10 @@ class Construction(IslandStage):
             "build_total",
             "materials_factor",
             fac.SITE_WORK,
+            fac.OWN_MATERIALS,
             fac.GRADE_BUILD,
+            "site_short",  # 民営の工事の買い負けと指値（W-292。market の SITE_SHORT・SITE_BIDS）
+            "site_bids",
         ):
             f.ext.pop(key, None)
         for key in ("no_materials_turns", "no_workers_turns", "stalled_turns"):
@@ -404,6 +409,20 @@ class Construction(IslandStage):
             _start_private(island, ctx, f)
         elif is_self_supporting(f):
             fund_facility(island, ctx.defs, ctx.config, f, Payer(ledger.GOV, CONSTRUCTION))
+
+
+def rescale_target(defs: Defs, config: GameConfig, f: Facility, size: int) -> None:
+    """建て増しで規模が size になった施設 f の操業目標を割り直す（段6 A3）。
+
+    操業目標は全力に対する割合なので、規模が増えた分だけ割り直す（作る量を一度に跳ねさせず、
+    売れ行きを見ながら上げる。W-186 回3）。割り直すのは、市場の段の終わりに売れ行きで目標を
+    上げ直す施設（電気のほかの物を作る施設）だけ。物を作らない施設（学校・大学・警察・軍の施設）は
+    上げ直す道がないので割り直さず、建て増した分の人を予算の許す分だけすぐ雇う。発電所は毎ターン
+    電気の需要から目標を決め直す（power_target）ので割り直さない。"""
+    power = config.get("power.good")
+    outputs = fac.recipe_of(defs, f)["outputs"]
+    if "target" in f.economy and any(g != power for g in outputs):
+        f.economy["target"] = f.economy["target"] * (size - 1) // size
 
 
 def _merge_expansion(island: IslandState, site: Facility, ctx: StageContext) -> None:
@@ -441,10 +460,7 @@ def _merge_expansion(island: IslandState, site: Facility, ctx: StageContext) -> 
     if grade is None:
         size = fac.size_of(target) + 1
         target.ext[fac.SIZE] = size
-        if "target" in target.economy:
-            # 操業目標は全力に対する割合なので、規模が増えた分だけ割り直す（作る量を一度に
-            # 跳ねさせず、売れ行きを見ながら上げる。W-186 回3）
-            target.economy["target"] = target.economy["target"] * (size - 1) // size
+        rescale_target(defs, ctx.config, target, size)
     else:  # 農場の段階を上げる工事（W-190）
         size = fac.size_of(target)
         _raise_grade(island, defs, target, int(grade))

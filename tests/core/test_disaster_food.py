@@ -204,10 +204,11 @@ def test_food_merchant_comes_when_food_runs_out_and_brings_the_missing_grain(gam
 
 
 def test_food_merchant_stays_while_its_grain_sells_and_leaves_when_food_is_back(game, warmed):
-    """来た商人は、前のターンに穀物が売れ、ほかの売り手に売れ残りがない間は来続ける（飢えが解けた
-    ターンに去ると、次のターンにまた飢えるため）。穀物が売れなくなるか、ほかの売り手に売れ残りが
-    出たら来ない。飢えていない島、お金のない飢え（買えなかった栄養がない）、ほかの売り手に売れ残りの
-    ある島には来ない。前のターンの記録のない島にも来ない。"""
+    """来た商人は、前のターンに穀物が売れた間は来続ける（飢えが解けたターンに去ると、次のターンに
+    また飢えるため）。ほかの売り手に売れ残りがあっても去らない（その値段や層の取り分では家計が買え
+    なかった分のことがあり、去ると 1 ターンおきに来る・去るを繰り返した。掲示板 #713）。穀物が売れ
+    なくなったら来ない。飢えていない島、お金のない飢え（買えなかった栄養がない）、ほかの売り手に
+    売れ残りのある島には来始めない。前のターンの記録のない島にも来ない。"""
     world = copy.deepcopy(warmed)
     island = island_of(world, "market")
     turn = world.turn + 1
@@ -227,9 +228,15 @@ def test_food_merchant_stays_while_its_grain_sells_and_leaves_when_food_is_back(
     food_merchant.remember(island, 0, False, 500, 2.0, (800, 100), False)
     assert food_merchant.decide(island, False, turn + 1)
     assert state["since"] == turn and state["cpi"] == 1.5
-    # 島の売り手に売れ残りが出た → 来ない
+    # 島の売り手に売れ残りが出ても、商人の穀物が売れていれば来続ける（飢えていても、いなくても）
     food_merchant.remember(island, 0, True, 500, 2.0, (800, 100), False)
-    assert not food_merchant.decide(island, False, turn + 2)
+    assert food_merchant.decide(island, False, turn + 2)
+    food_merchant.remember(island, 300, True, 500, 2.0, (800, 100), False)
+    assert food_merchant.decide(island, True, turn + 3)
+    assert state["since"] == turn and state["cpi"] == 1.5
+    # 商人の穀物が売れなかった（島の穀物のほうが安くなった）→ 来ない
+    food_merchant.remember(island, 0, True, 0, 2.0, (800, 100), False)
+    assert not food_merchant.decide(island, False, turn + 4)
     assert not food_merchant.active(island) and "since" not in state
     # 商人の穀物が売れなかった → 来ない
     _hungry_seen(island, 1000)

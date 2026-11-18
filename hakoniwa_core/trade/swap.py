@@ -9,11 +9,16 @@
   借りていない国で、余りに比例して貸します。足りなければ、Z を発行した国の中央銀行が Z を新しく
   作って貸します（最後の手）。黒字の国に入った決済通貨が、赤字の国の輸入に回ります。
 - 借りられるのは、借りている額の合計（自国通貨に直す）が年の GDP の fx.swap_quota までです。発行
-  した国の中央銀行が新しく作って貸すのは、合わせてその国の年の GDP の fx.swap_issuer_share までで
-  す。使い切ると受け身の売りが止まり、その国の通貨は安くなります。
+  した国の中央銀行が新しく作って貸すのは、未返済の残りで、その通貨を決済通貨にする圏の加盟国（発行
+  した国を含め、二重に数えない）の年の GDP の合計（今のレートで発行した国の通貨に直す。レートのない
+  島は数えない）の fx.swap_issuer_share までです（FX-81。発行した国 1 島の大きさでなく、その通貨を
+  使う国の大きさで決める）。使い切ると受け身の売りが止まり、その国の通貨は安くなります。
 - 利子は、Z を発行した国の政策金利に fx.swap_spread を足した年率で毎ターン（ledger.interest）、
   借り手の中央銀行が持つ Z で貸し手に払います（仕訳の種類 swap_interest。所得収支）。払えない分は
-  借りた額に足します。
+  借りた額に足しますが、足すのは借り手の枠の残り（同じ時点の Z の値）までで、残りは免除します
+  （FX-82。仮）。免除した利子は貸し手の利子の収入にしません（未収の利子は帳簿に載せていないので、
+  資産を消す損でもない）。出回った Z は消さず、免除した額は貸し手の島に借り手ごとに記録します
+  （``island.ext["trade"]["swap_waived"]``: 通貨 → 借り手の島 → 額の累計）。
 - 借り手の中央銀行が手元に置く分（同じ平均の 1 ターン分）より多く Z を持ったら、発行した国から先に
   返し、残りを貸し手の国に貸した額に比例して返します。
 
@@ -40,6 +45,7 @@ from hakoniwa_core.units import part, to_basis
 
 OWED = "swap_owed"  # island.ext["trade"]: 通貨 → 貸し手の島 → 借りている額
 LENT = "swap_lent"  # island.ext["trade"]: 通貨 → 借り手の島 → 貸している額
+WAIVED = "swap_waived"  # island.ext["trade"]: 通貨 → 借り手の島 → 免除した利子の累計（FX-82）
 KIND = "fx_swap"  # 貸し借りと返済の仕訳の種類（金融収支）
 INTEREST = "swap_interest"  # 利子の仕訳の種類（所得収支）
 
@@ -50,6 +56,18 @@ def owed(island: IslandState) -> dict[str, dict[str, int]]:
 
 def lent(island: IslandState) -> dict[str, dict[str, int]]:
     return island_state(island).setdefault(LENT, {})
+
+
+def waived(island: IslandState) -> dict[str, dict[str, int]]:
+    """貸し手の島が免除した利子の累計（通貨 → 借り手の島 → 額。FX-82）。"""
+    return island_state(island).setdefault(WAIVED, {})
+
+
+def waived_value(island: IslandState) -> int:
+    """免除した利子の累計（自国通貨に直す。発行国が自国の通貨で貸した分はそのまま）。"""
+    return sum(
+        fxrates.to_own(island, int(key), sum(rows.values())) for key, rows in waived(island).items()
+    )
 
 
 def debt_in(island: IslandState, currency: int) -> int:
@@ -113,9 +131,34 @@ def quota_room(island: IslandState, config: GameConfig) -> int | None:
     return max(0, part(gdp, to_basis(config.get("fx.swap_quota"))) - debt_value(island))
 
 
-def issuer_room(issuer: IslandState, config: GameConfig) -> int | None:
-    """発行した国の中央銀行が、まだ新しく作って貸せる額（自国通貨。GDP の記録がなければ None）。"""
-    gdp = debt.annual_gdp(issuer.economy)
+def users_gdp(world: WorldState, currency: int) -> int:
+    """通貨 currency を決済通貨にする圏の加盟国（発行した国を含め、2 つの圏に入っていても 1 度だけ）
+    の年の GDP の合計（発行した国の通貨に直す。FX-81）。加盟国の GDP は、その島の今の決済通貨の
+    レートで直し、レートのない島（まだその通貨を取引していない加盟国）は数えない。"""
+    members = {currency}
+    for b in blocs.blocs(world):
+        if b["currency"] == currency:
+            members |= set(b["members"])
+    total = 0
+    for i in sorted(members):
+        island = world.islands.get(i)
+        if island is None or not island.has_economy:
+            continue
+        gdp = debt.annual_gdp(island.economy)
+        if gdp <= 0:
+            continue
+        if i == currency:
+            total += gdp
+        elif fxrates.has_rate(island, currency):
+            total += fxrates.to_foreign(island, currency, gdp)
+    return total
+
+
+def issuer_room(world: WorldState, issuer: IslandState, config: GameConfig) -> int | None:
+    """発行した国の中央銀行が、まだ新しく作って貸せる額（自国通貨）。上限は、その通貨を使う国の
+    年の GDP の合計（users_gdp）の fx.swap_issuer_share から、作って貸している未返済の残りを引いた
+    額（返せば戻る）。GDP の記録がどこにもなければ None。"""
+    gdp = users_gdp(world, issuer.id)
     if gdp <= 0:
         return None
     return max(0, part(gdp, to_basis(config.get("fx.swap_issuer_share"))) - issued(issuer))
@@ -161,7 +204,7 @@ def available(world: WorldState, config: GameConfig, borrower: int, currency: in
     quota = None if room is None else fxrates.to_foreign(island, currency, room)
     supply = sum(spare for _, spare in lenders(world, config, borrower, currency))
     if issuer.has_economy:
-        made = issuer_room(issuer, config)
+        made = issuer_room(world, issuer, config)
         supply = None if made is None else supply + made
     if quota is None:
         return supply if supply is not None else 0
@@ -229,6 +272,9 @@ def service(world: WorldState, config: GameConfig) -> None:
 
 def _interest(world: WorldState, config: GameConfig, island: IslandState, currency: int) -> None:
     annual = rate(world, config, currency)
+    # 払えない利子を借りに足せるのは、借り手の枠の残りまで（同じ時点の通貨 currency の値。FX-82）
+    room = quota_room(island, config)
+    room_fx = None if room is None else fxrates.to_foreign(island, currency, room)
     for key, principal in sorted(owed(island).get(str(currency), {}).items(), key=_by_id):
         lender = int(key)
         due = ledger.interest(principal, annual)
@@ -249,11 +295,19 @@ def _interest(world: WorldState, config: GameConfig, island: IslandState, curren
                 else None,
             )
         unpaid = due - paid
-        if unpaid > 0:  # 払えない利子は借りた額に足す（所得収支の支払いと、負債の増加）
-            _book(world, lender, island.id, currency, unpaid)
-            _record(world, lender, island.id, currency, unpaid, 1)
+        if unpaid <= 0:
+            continue
+        added = unpaid if room_fx is None else min(unpaid, max(room_fx, 0))
+        if added > 0:  # 払えない利子は借りた額に足す（所得収支の支払いと、負債の増加）
+            _book(world, lender, island.id, currency, added)
+            _record(world, lender, island.id, currency, added, 1)
             for who, sign in ((island, -1), (world.islands[lender], 1)):
-                balance.add(who, "income", sign * balance.value_of(world, who, currency, unpaid))
+                balance.add(who, "income", sign * balance.value_of(world, who, currency, added))
+            if room_fx is not None:
+                room_fx -= added
+        if unpaid > added:  # 枠を超える分は免除する（貸し手の利子の収入にしない。記録だけ残す）
+            row = waived(world.islands[lender]).setdefault(str(currency), {})
+            row[str(island.id)] = row.get(str(island.id), 0) + unpaid - added
 
 
 def _repay(world: WorldState, config: GameConfig, island: IslandState, currency: int) -> None:
@@ -348,6 +402,6 @@ def view(world: WorldState, island: IslandState, config: GameConfig) -> dict[str
         "lent": rows(lent(island), "borrower"),
         "room": quota_room(island, config),
         "borrowed": debt_value(island),
-        "issuer_room": issuer_room(island, config) if issuer else None,
+        "issuer_room": issuer_room(world, island, config) if issuer else None,
         "issued": issued(island),
     }

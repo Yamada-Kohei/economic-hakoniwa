@@ -5,10 +5,10 @@
 ## コードの場所と試験
 
 - 建国と地形: `hakoniwa_core/founding.py`（`auto_terrain`・`found_island`・`place_start`）、`hakoniwa_core/geo.py`、`hakoniwa_core/nature.py`、名前は `hakoniwa_core/naming.py`
-- 人口・飢え・幸福度・町: `hakoniwa_core/modules/population/`（`food_need`・`hunger_step`・`birth_rate`・`death_rate`・`happiness`、段 `population` と `housing`）
-- 島の中の移り住み: `hakoniwa_core/economy/households.py` の `move_people`。国をまたぐ移民: `hakoniwa_core/modules/migration/`（段 `migration`）
+- 人口・飢え・幸福度・町: `hakoniwa_core/modules/population/`（`food_need`・`hunger_step`・`birth_rate`・`death_rate`・`happiness`・`happiness_parts`、段 `population` と `housing`）
+- 島の中の移り住み: `hakoniwa_core/economy/households.py` の `move_people`。強制移住: `hakoniwa_core/modules/population/relocation.py`（命令 `force_relocate`。W-286）。国をまたぐ移民: `hakoniwa_core/modules/migration/`（段 `migration`）
 - 汚染と災害: `hakoniwa_core/modules/events/`
-- 試験: tests/core/test_founding.py、tests/core/test_migration.py、tests/core/test_rules.py
+- 試験: tests/core/test_founding.py、tests/core/test_migration.py、tests/core/test_forced_relocation.py、tests/core/test_rules.py
 
 ## つながり
 
@@ -78,7 +78,8 @@
 | PO-56 | 計画経済の国営住宅（W-202）: 計画経済の国では家計は住宅の資材を買わず住宅ローンも借りない。町ができる・床を足す・手入れの資材は国が住宅費で買い、床は国の床として層の人数に比例して割り当て、住む層は家賃を払う。住宅費が足りなければ町は育たず、空きがなければ過密になる（ソ連の住宅の待ち列）。体制が変わっても床の持ち主はそのまま（払い下げは後回し W-207）。前からある計画経済の世界の家計の床は家計のまま | 決定（W-190 の回2 で作った。標準の計画の住宅費と、0 のまま町が要るときの知らせは次の回） | `fiscal.budget.housing`, `fiscal.budget_planned.housing`, `housing.public_rent` | tests/core/test_public_housing.py::test_public_builds_use_the_state_stock_and_a_new_village_is_public, tests/core/test_public_housing.py::test_in_a_planned_country_households_buy_no_housing_but_in_a_market_one_they_do |
 | PO-57 | 飢えている家計（前のターンに食べきれなかったか飢えの蓄えが残る層）は、売りに出ていない食料のそれぞれを、それだけ売りに出ていれば買った量まで「買いたい量」に出す。一般の層は、食べ物が買えずに畑に戻った働き手とその家族（PO-28）の分も足す。差し押さえ中か閉鎖の途中の施設は、品切れの値段の上がりを止める「作り始める値段」に数えない | 決定（2026-11-02） | `population.food_per_person` | tests/core/test_famine_recovery.py::test_hungry_households_want_any_staple_when_no_food_is_on_sale |
 | PO-58 | 飢えの蓄えが、次のターンに全部食べれば 0 に戻る大きさ（`hunger_step(S,0)=0`）なら、知らせ・市場の買い上がり・移民の見方では飢えていないとみなす。幸福度の減点は量のまま | 決定（2026-11-05） | `population.hunger.tolerance`, `population.hunger.recovery` | tests/core/test_famine_recovery.py::test_hunger_stock_controls_market_and_migration, tests/core/test_famine_recovery.py::test_still_hungry_uses_recovery_settings, tests/server/test_codex_turn300_fixes.py::test_hunger_notice_ignores_recovered_stock |
-| PO-59 | 自給の農業ができる村かを建った住宅地の段階で決める（W-272。PO-21・LB-26）: マスの人数だけで毎ターン村か町かを決めると、町の下限の前後のマスは人数のわずかな上下で村と町を行き来し、仕事のない人が自給の農家と失業者を行き来した（LAN の世界 8003 の島3 の 1 マスで、2.4 万人の働き手が入れ替わり、失業の層が 26 人と 4.8 万人、食べた割合が 0.97 と 0.77 を行き来した）。設定が入なら、住宅地の建ったマスは建った段階（床を足す工事でしか変わらない）で決める。住宅地のないマスは人数で決め、村→町は町の下限の人数で、町→村は下限の `population.farming_back_ratio` 倍を切ったときに替える。決めた印は雇用の段と記録の段の初めに書き直す。切なら印を書かず、今までどおりマスの人数で毎ターン決める | 決定・実装済み（2026-11-14。設定 `population.farming_by_housing` で切／入。既定は切で、X870 の full で比べてから既定を入にする） | `population.farming_by_housing`, `population.farming_back_ratio` | tests/core/test_power_invest.py::test_village_housing_keeps_farming_above_the_town_size, ::test_tile_without_housing_switches_with_a_margin, ::test_switching_off_clears_the_marks |
+| PO-59 | 幸福度の内訳（W-172）: 式 `happiness` は項目ごとの点を返す式 `happiness_parts` と、点を前から順に足して丸め、0〜体制の上限に収める所に分ける（値は分ける前と同じ）。層とマスの点を幸福度と同じ人数の重みで混ぜ、統計 `happiness_part.<項目>` に書く。上限で切った分（cap）・0 まで補った分（floor）・丸めの端数（rounding）はマスごとに分けて足す（上限のマスと 0 のマスが打ち消し合わない）。内訳を全部足すと幸福度になる | 決定（2026-11-14） | `population.happiness` | tests/core/test_happiness_parts.py |
+| PO-60 | 強制移住（W-286）: 権威主義・全体主義の国（体制の特色 `forced_relocation`）は、命令 `force_relocate` で、住める数を超えて住む人（住宅地のないマスは全員）を、指した今ある町へ移せる。自分で選ぶ形は置かない（空きのある町へは人が自分で移る）。住める数を超えて入れてよく、超えた分には過密の決まりがそのまま効く。自給の村へは村のままでいられる人数まで。運ぶ費用は 人数 × 平均賃金 × min(`freight.max_rate`, `freight.per_step` × 道のり) を国庫から運送業へ。命令のターンはどのマスにもいない（働かない）で、消費と人口の段の初めに着く。直近 12 ターンに移した人の住民に対する割合を、出国を止められて出られない人の割合に足して政情の目標から引く（上限は合わせて一度だけ。タブ 10 PL-05）。幸福度には足さない。1 ターンの上限は置かず、新しい死亡の決まりは足さない | 決定（2026-11-16） | `freight.per_step`, `freight.max_rate`, `migration.trapped`, `migration.trapped_max` | tests/core/test_forced_relocation.py, tests/server/test_order_confirm.py::test_forced_relocation_shows_both_towns_cost_and_stability |
 
 ### 仮の決まり
 
@@ -175,6 +176,15 @@
 
 人は毎ターン少しずつ島の中を移ります。仕事のない人のうち `population.migration_rate` の割合が、人手の足りない施設の通勤圏にある空いた町へ移ります。行き先は、人手の足りない所に近い町から、同じなら幸福度の高い町です。住む所の上限を超えた人（生まれたマスに空きがなかった人も）は、空いている町へ入れ、入れなければ消えずに元のマスに詰めて住みます（過密）。ただし自給の村が村のままでいられる人数を超える分は、いちばん近い町（人数でも町と見られる住宅地。なければ建った段階が町の住宅地）へ出ます（土地の足りない農村からあふれた人が町へ出る。村が人数で町と見られて村じゅうが一度に自給をやめないように）。住む所のないマスの人はいちばん近い住宅地へ移り、島に住宅地が 1 つもなければ国を出ます。町が育つのは、この移り住みで町の人数が上限に近づくからです。
 
+### 強制移住（W-286）
+
+権威主義と全体主義の国は、過密の町の人を、指した町へ強制的に移せます（命令「強制移住」、PO-60）。空きのある町へは人が毎ターン自分で移るので、強制移住が意味を持つのは、島に空きがないのに国が人の置き場所を決めるときです。現実ではソ連の国内旅券で大都市から人を出す動きや特別移住地へ送る動き、中国の上山下郷（町にあふれた若者を村へ送る。1968〜80 年に約 1700 万人）に当たり、着いた先は詰め込みになって亡くなる人が増えました。
+
+- 移せるのは住める数を超えた分（町を潰して人が残っているマスは全員）だけで、働き手の配り直しには使えません。着く所は今ある町で、住める数を超えて入れると、超えた分に今の過密の決まり（亡くなる人が増え、生まれる人が減り、幸福度が下がる）が効きます。自給の村へは、村のままでいられる人数までです（超えた分は今の決まりで町へ押し出されるため）。
+- 運ぶ費用は、島の中の運賃の率（道のり × `freight.per_step`、`freight.max_rate` まで）を、移す人の 1 か月の平均賃金に掛けた額で、国庫から島の運送業へ払います。命令のターンは、移る人はどのマスにもいないので働きません（家計の人数は変わらず、食べ物は買います）。
+- 政情は、直近 12 ターンに移した人の住民に対する割合を、出国を止められて出られない人の割合に足し、1% あたり `migration.trapped`、合わせて `migration.trapped_max` まで目標から引きます。一度に移しても小分けにしても、12 ターンの内なら下がりは同じです。力で動かされる重さは政情の出来事に置き、幸福度には足しません（政情の式が幸福度を読むので、同じ重さを二度数えないため）。暮らしの落ち（働けない月・着いた先の過密・仕事のなさ）は今の幸福度の項目で出ます。
+- 命令の前に、出る所と着く所の人口・住める数・過密の度合いの変わりと、運ぶ費用・政情の下がりの見込みを確かめの文で見せます（画面・JSON API・MCP で同じ）。民主制の補償つきの立ち退きは後回しです（W-287）。
+
 ### 食料と飢えの蓄え
 
 次のターンに全部食べれば飢えの蓄えが 0 に戻る大きさ（`hunger_step(S,0)=0`）なら、知らせ・市場の買い上がり・移民の見方では飢えていないとみなし、幸福度の減点は蓄えの量のまま計算する（PO-58）。
@@ -212,6 +222,8 @@
 幸福度は 0〜100 で、式 `happiness` で家計の層ごとに出し、島の幸福度は人数で平均します。項目は土台 `population.happiness.base` に、食料（必要な量に対して食べられた割合）・働き口（そのマスの労働者のうち仕事のある割合。仕事のある家計は満点、失業している家計は 0、資本家階級はいつも満点）・電力（届いた割合）・食事の質・衣料・ぜいたく品（種類が多いほど高い）・上下水道（そのマスの整備度）・教育（島の教育水準）・住まいの広さ（1 人あたりの広さの望む広さに対する割合。W-190 の回で作る。重みは土台から移す）を、それぞれ足りている割合 × 重み（`population.happiness` の各項目）で足したものです。減点は、汚染 1 あたり `population.happiness.pollution_per_point`、実質賃金が 1 年前より下がった 1% ごと（上限 `population.happiness.real_wage_max`）、物価上昇率が `population.happiness.inflation_threshold` を超えた 1% ごと（上限 `population.happiness.inflation_max`）、飢えの蓄え、賃金の遅配（払われなかった働き手の割合 × `population.happiness.arrears`）です。上限は体制の happiness_cap（全体主義。タブ 10）。
 
 一般の層はマスごとに出し（働き口・電力・汚染・上下水道はマスの値）、仕事のある家計と失業している家計をマスに住む人数で混ぜた値がマスの幸福度になります（地図・町の育ち・人の移り先に使う）。ほかの層は島全体で出します。前のフェーズから移し替えた島は、重みをその時の重み（`population.happiness_phase1`・`population.happiness_phase2`・`population.happiness_phase3_1`）から `population.blend_turns` かけて移し、移し始めのターンに重みが変わることを知らせます（知らせないと、何もしていないのに幸福度が動いて見える）。幸福度は政情の目標に効きます（タブ 10）。
+
+項目ごとの点は、式 `happiness_parts` が返し、前から順に足して丸め、0〜体制の上限に収めたものが幸福度です（PO-59）。層とマスの点を幸福度と同じ重みで混ぜて統計 `happiness_part.<項目>` に残し、持ち主は経済の画面で前のターン・1 年前からの動きと一緒に見られます（UI-97）。マスごとに収めるので、上限に当たっているマスでは項目を上げても幸福度は上がらず、上げた分は「体制の上限で切った分」の行に消えます。
 
 ### 汚染と災害
 
@@ -272,6 +284,7 @@
 | 0 になる（住宅費 0・預金も借りられる額も 0） | 床を足さない。傷みが進めば住める人数が減る（PO-50）。計画経済の島で住宅費が 0 のまま町が要るときは知らせる | 傷みの速さ | 予算を付ける・所得が戻る | 荒れた住宅地 | `fiscal.budget.housing` |
 | 足りない（土地も床も足りない、W-190） | 通勤圏に空いた平地のない大都市が高層へ床を足す。空いた平地があれば横に広がる。上下水道が足りなければ育たず過密 | 床を足すたび | 上下水道を整える・命令で建てる | 東京・香港の高層化、郊外化 | `housing.floor_step` |
 | 層を移る（失業など） | 人と一緒に床の持ち分・預金・住宅ローンが移る。失業の層は広い家に住んだまま返済に困る | 遅れが `loans.arrears_limit` 回続けば焦げ付き | 職に就けば戻る | 失業と住宅ローンの焦げ付き | `loans.arrears_limit` |
+| 足りない（島じゅうに空きがない、W-286） | 権威主義・全体主義の国は、過密の分の人を指した町へ強制的に移せる。運ぶ費用（国庫）・移る月は働かない・1 年の政情の下がり。着いた先の過密には今の決まり | 命令のターンに移り、政情の下がりは 12 ターン | 町が育つ・村を開く。空きができれば人は自分で移る（戻る人も出る） | ソ連の特別移住者（1930〜50 年代に約 600 万人）、上山下郷 | `freight.per_step`, `migration.trapped` |
 | 体制が変わる | 床の持ち主はそのまま。新しい床は新しい体制の形（計画経済は国、市場・混合は家計）で建つ。払い下げは入れない（W-207） | | | 東欧の住宅の払い下げ | |
 
 ## 前提と依存

@@ -401,6 +401,8 @@ def choose_investor(
     equity_of: int | Callable[[int | None], int],
     pledge: Callable[[], int] | None = None,
     exclude: int | None = None,
+    prefer: int | None = None,
+    config: GameConfig | None = None,
 ) -> tuple[str, int | None] | None:
     """新しい施設（kind）の出資を出す者。equity_of(企業の番号) はその企業が出すときの出資の額、
     equity_of(None) は資本家階級が新しい企業を起こすときの出資の額（創業融資で多め。2026-11-03）。
@@ -408,6 +410,9 @@ def choose_investor(
     pledge() は資本家階級が株を担保に借りられる額（呼ぶのは預金で足りないときだけ）。
     exclude の企業は出さない（居抜きの売りで、倒産・閉鎖した施設の元の企業。わざと倒産させて安く
     買い戻せないように。FM-60）。
+    config を渡すと、資本家階級は暮らしの分（次のターンの消費の見込みと人数分の食べ物の額。
+    households.living_keep）を残した預金だけを出資に使える（2026-11-15）。渡さない呼び方（試験）は
+    使えるお金を全部数える。
 
     1. 同じ種類の施設を持つ民営の企業（チェーンの出店・同じ業種の増設。作り方を知っている会社）と、
        新しい企業を起こす資本家階級のうち、出資に使える預金の多い方（同じなら企業）。お金を多く
@@ -421,6 +426,9 @@ def choose_investor(
     企業の中では預金の多い順・番号の順。(払う主体, 企業の番号か None) を返し、誰も出せなければ
     None。
 
+    prefer の企業（組で建てた原料の工場の企業。FM-72）は、預金で出せれば 1 より先に出す。出せな
+    ければいつもの順で選び、資本家階級が出すなら、呼ぶ側が建てた施設をその企業に入れる（増資）。
+
     前は預金で出せる企業があれば、業種がつながらなくても（3 の財閥）その企業が出し、資本家階級が
     新しい企業を起こすのはどの企業も出せないときだけだったので、建国の後に新しい企業がほとんど
     生まれなかった（公開の世界のターン 34 で 0 社。2026-11-02 の調べ）。"""
@@ -429,6 +437,11 @@ def choose_investor(
     if isinstance(equity_of, int):
         fixed = equity_of
         equity_of = lambda _number: fixed  # noqa: E731
+    if prefer is not None and prefer != exclude:
+        rec = record(island, prefer)
+        if rec is not None and rec[OWNER] == OWNER_PRIVATE:
+            if spare(island, prefer) >= max(1, equity_of(prefer)):
+                return entity(prefer), prefer
     best: tuple[tuple[int, int, int], int] | None = None
     for key, rec in island.economy.firms.items():
         if rec[OWNER] != OWNER_PRIVATE:
@@ -447,7 +460,14 @@ def choose_investor(
         if best is None or score < best[0]:
             best = (score, number)
     has_owners = OWNERS in island.economy.households
-    owners = funds.available(island, Payer(household(OWNERS))) if has_owners else 0
+    if not has_owners:
+        owners = 0
+    elif config is not None:
+        from hakoniwa_core.economy.households import owners_spare
+
+        owners = owners_spare(island, defs, config)
+    else:
+        owners = funds.available(island, Payer(household(OWNERS)))
     equity = equity_of(None)
     if best is not None and best[0][0] == 0 and (owners < equity or -best[0][1] >= owners):
         return entity(best[1]), best[1]
@@ -462,7 +482,7 @@ def choose_investor(
     if has_owners:
         from hakoniwa_core.economy.households import founders_room
 
-        if owners + founders_room(island) >= equity:
+        if owners + founders_room(island, defs, config) >= equity:
             return household(OWNERS), None
     return None
 

@@ -11,6 +11,7 @@ import copy
 
 import pytest
 
+from hakoniwa_core import stock
 from hakoniwa_core.economy import entity_of, export_plan
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.modules import trade as trade_stage
@@ -57,8 +58,19 @@ def room_of(island, game, good):
     return room
 
 
+def stale_cargo(island, config, good):
+    """商社が圏で売れ残った輸出の荷を持っている（売れずに数えたターンがある）。長く売れ残った荷は
+    島の市場に戻して売り、そのターンは買い足さない（traders.home_orders）ので、輸出の計画の買いを
+    見る試験には使えない。"""
+    return any(
+        stock.total(f.stock, good) > 0 and trade_traders.goods_of(f).get(good, {}).get("age", 0) > 0
+        for f in traders_of(island, config)
+    )
+
+
 def exportable(world, game, goods=("wood", "grain", "fish", "stone", "iron_ore")):
-    """余りがあり、外貨の圏へ輸出でき、行列がなく輸入もしていない (計画経済の島, 財)。"""
+    """余りがあり、外貨の圏へ輸出でき、行列がなく輸入もしておらず、売れ残った輸出の荷もない
+    (計画経済の島, 財)。"""
     config = game.config
     for island in planned_islands(world):
         found = trade_traders.prospects(island, game.defs, config)
@@ -71,6 +83,7 @@ def exportable(world, game, goods=("wood", "grain", "fish", "stone", "iron_ore")
                 and room_of(island, game, g) > 0
                 and not planning.state_of(island).get("queues", {}).get(g)
                 and g not in trade_traders.imported(island, config)
+                and not stale_cargo(island, config, g)
             ):
                 return island, g
     raise AssertionError("輸出できる余りのある財がない")
@@ -184,6 +197,8 @@ def test_earn_is_need_plus_reserve_gap_minus_unsold(game, base):
     p = trade_traders.prospects(island, game.defs, config)["coal"]
     c = str(p.import_currency)
     state = export_plan.state_of(island)
+    # 量は直近のターンの平均なので、ほかの財の履歴が 1 ターン進む分の動きを除く（履歴を空にする）
+    state.setdefault("wants", {}).clear()
     export_plan.update(world, island, game.defs, config, world.turn, no_seen(), {}, {}, {})
     before = state["need"].get(c, 0)
     seen = no_seen()
@@ -296,7 +311,9 @@ def test_planned_islands_get_an_export_plan_in_a_short_run(game, base):
         plan = export_plan.plans(island)
         goals = planning.state_of(island).get("goals", {})
         for good, qty in plan.items():
-            assert goals.get(good, 0) >= qty
+            # 生産目標に入るのは、計画の量から商社がもう持っている輸出の荷を引いた「これから作る量」
+            # （plan.export_planned）。荷が計画の量に届いていれば、その財は目標に入らない
+            assert goals.get(good, 0) >= planning.export_planned(island, good)
             assert (
                 sum(
                     trade_traders.goods_of(f).get(good, {}).get(trade_traders.PLAN_X, 0)

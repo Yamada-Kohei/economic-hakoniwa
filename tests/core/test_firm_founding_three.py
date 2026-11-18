@@ -13,7 +13,7 @@ import pytest
 from hakoniwa_core import ledger
 from hakoniwa_core.economy import GENERAL, OWNERS, Payer, banks, funds, household, layers
 from hakoniwa_core.economy import companies as co
-from hakoniwa_core.economy.households import wealth_propensity
+from hakoniwa_core.economy.households import living_keep, owners_spare, wealth_propensity
 from hakoniwa_core.modules.banking import Banking
 from hakoniwa_core.modules.firms import ENTRY_PLEDGE, EntryExit
 from hakoniwa_core.state.generate import generate_world
@@ -60,6 +60,20 @@ def _pledged(island):
         for x in banks.loans_by_borrower(island, household(OWNERS))
         if x.purpose == banks.PLEDGE
     )
+
+
+def _clear_pledges(island):
+    """資本家階級の株を担保にした今の借入を、政府から渡したお金で返して 0 にする（世界の道筋で
+    前のターンまでに借りた分が大口融資の規制の残りを使い、試験の借入が入らないことがある）。"""
+    owners = household(OWNERS)
+    for loan in banks.loans_by_borrower(island, owners):
+        if loan.purpose != banks.PLEDGE:
+            continue
+        left = banks.outstanding(island, loan)
+        ledger.pay(island, ledger.GOV, owners, left, "grant")
+        banks.repay(island, loan, left)
+    banks.drop_settled(island)
+    assert _pledged(island) == 0
 
 
 def _set_owners(island, amount):
@@ -160,6 +174,7 @@ def test_capitalists_borrow_on_their_shares_to_found_a_firm(game, base):
     config = game.config
     amount = 2_000_000
     equity = round_money(amount * config.get("firms.startup_equity_share"))
+    _clear_pledges(island)
     _set_owners(island, equity // 4)
     firm = co.entity(number)
     ledger.pay(island, firm, ledger.GOV, co.spare(island, number), "subsidy")
@@ -170,13 +185,17 @@ def test_capitalists_borrow_on_their_shares_to_found_a_firm(game, base):
     assert isinstance(plan, list)
     assert island.scratch["entry_investor"] == (household(OWNERS), None)
     pledge = island.scratch[ENTRY_PLEDGE]
-    have = funds.available(island, Payer(household(OWNERS)))
+    # 出資に使えるのは暮らしの分を残した預金（FM-58。2026-11-15）
+    money = funds.available(island, Payer(household(OWNERS)))
+    living = min(money, living_keep(island, game.defs, config))
+    have = owners_spare(island, game.defs, config)
+    assert have == money - living
     need = amount - sum(p for _, p, _ in plan)
     keep = EntryExit._pledge_keep(island, ctx, need, pledge)
     assert sum(p for _, p, _ in pledge) == need - have + keep  # 次の返済の分を手元に残す
     EntryExit._borrow_on_shares(island, ctx, household(OWNERS))
     assert _pledged(island) - before == sum(p for _, p, _ in pledge) > 0
-    assert ledger.money(island, household(OWNERS)) == need + keep
+    assert ledger.money(island, household(OWNERS)) == need + keep + living
     assert ENTRY_PLEDGE not in island.scratch
     books_ok(game, island)
 
@@ -185,7 +204,9 @@ def test_no_pledge_when_the_owners_have_enough(game, base):
     """預金で出せるなら株を担保に借りない。誰も出せなければ、借りられる額をわけに書く。"""
     world, island, ctx, f, number, other = _setup(game, base)
     amount = 2_000_000
-    _set_owners(island, amount)
+    # 出資に回せるのは暮らしの分（FM-58）を残した預金なので、その分を足して置く（暮らしの分は
+    # 食べ物の値段で変わる。LB-20 の献立で穀物寄りの食べ方になり、2,000,000 では足りなくなった）
+    _set_owners(island, amount + living_keep(island, game.defs, game.config))
     plan = EntryExit()._finance(island, ctx, amount, 10**12, other)
     assert isinstance(plan, list) and island.scratch[ENTRY_PLEDGE] == []
     reason, args = EntryExit()._finance(island, ctx, 10**15, 10**15, other)

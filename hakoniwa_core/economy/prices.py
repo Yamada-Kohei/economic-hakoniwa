@@ -25,7 +25,7 @@ from hakoniwa_core.defs.kinds import is_variant
 from hakoniwa_core.economy import equipment, experience, is_bank, is_self_supporting, power_fuel
 from hakoniwa_core.exploration import base_resources
 from hakoniwa_core.market import auction
-from hakoniwa_core.state import Facility, IslandState
+from hakoniwa_core.state import OWNER_PRIVATE, Facility, IslandState
 from hakoniwa_core.units import (
     BASIS,
     QUANTITY_SCALE,
@@ -553,3 +553,211 @@ def add_missing_prices(island: IslandState, defs: Defs, config: GameConfig) -> l
         prices[good] = price
         island.economy.price_history[good] = [price]
     return missing
+
+
+def plan_own_materials(island: IslandState, defs: Defs, config: GameConfig, f: Facility) -> None:
+    """着工する工事 f の資材のうち、建てる施設の作り方が産む物（fac.own_materials。森の伐採場の
+    木材）が島で手に入らないとき、工事の人手でその場で作ると決める（W-289。開拓地の最初の小屋は、
+    その場で切った木で建てる）。
+
+    手に入らないとは、島の市場に売り（輸入を含む）が出ておらず、国営の工事なら国の倉庫にもないこと。
+    売りがあれば今までどおり買う（市場があるときに作るか買うかを値段で選ぶのは、値段と生産性の根拠が
+    そろってから。掲示板 #1115）。作る人手は、作り方の働き手 ÷ 産出 × 量を、建てるマスの生産性
+    （林業場の産出と同じ島の係数）で割った人・ターンで、工期のターン数で割って 1 ターンの工事の
+    人手に足す（fac.site_labor）。森のマスに木の量はなく林業場も森を減らさないので、切っても森は減らない。"""
+    if f.built or f.ext.get("repair") or fac.GRADE_TO in f.ext or not fac.located(f):
+        return
+    own = fac.own_materials(defs, f.kind, f.recipe)
+    if not own:
+        return
+    from hakoniwa_core.economy import productivity  # productivity は facilities を読むので、ここで
+
+    x, y = fac.position(f)
+    recipe = defs.facilities[f.kind]["recipes"][f.recipe]
+    rate = productivity.productivity(island, defs, config, recipe, x, y)
+    offered = {m.good for m in island.markets if m.supply > 0}
+    state = f.owner != OWNER_PRIVATE
+    made: dict[str, int] = {}
+    labor = 0
+    for good, qty in sorted(own.items()):
+        qty = qty * fac.size_of(f)
+        if good in offered or (state and stock.total(island.warehouse, good) >= qty):
+            continue  # 買える（売りがあるか、国の倉庫にある）
+        need = fac.own_material_labor(defs, f.kind, f.recipe, good, qty, rate)
+        if need <= 0:
+            continue
+        made[good] = qty
+        labor += need
+    if not made:
+        return
+    turns = max(1, fac.total_progress(defs, f) // fac.FULL)
+    f.ext[fac.OWN_MATERIALS] = {"materials": made, "labor": -(-labor // turns)}
+
+
+def expected_price(
+    island: IslandState,
+    good: str,
+    ahead: int,
+    defs: Defs,
+    config: GameConfig,
+    shift: float = 0.0,
+    turn: int | None = None,
+    skip: Facility | None = None,
+) -> int:
+    """ahead ターン先の見込みの値段 p*（掲示板 #1238。作付けの見直しと、買い置きの見込み W-285 の 3b
+    で共通の部品）。
+
+    直近 firms.price_turns ターンの平均の値段から始め、島の市場の流れがこのまま続いたとき、市場の
+    値段の見直し（modules/market の price_update と offered_beyond_stock と同じ決まり。
+    market.price_speed・market.band・在庫の目安 market.inventory_turns）で値段がどう動くかを
+    ahead ターン先まで追う。流れは finance の直近の記録から出す:
+
+    - 買いたい量 D: 直近の買いたい量のうち、売れ残りの出たターン（品切れでないターン）の平均。どの
+      ターンも売り切れたなら、いちばん多いターン（品切れで買えずに減った買いを、需要の減りと読まない）。
+      島の施設がこの財を原料に使う量（売れ行きの見込みで動く稼働率の分。_input_need）より少なければ
+      そちら（掲示板 #1349 の 2: 原料が足りずに操業を絞った工場の注文の減りを、需要の減りと
+      読まない）。
+    - 1ターンに新しく市場に来る量 P: 売りに出た量の増え ＋ 売れた量の平均（売りに出た量 = 持ち越した
+      在庫 ＋ 新しく来た量）。
+    - 今の持ち越しの在庫: 前のターンの、売りに出た量 − 売れた量。
+
+    shift は、呼び手が自分の動きで変える 1ターンに来る量（1000 分の 1。作付けを替えて新しく
+    売りに出す量は正、やめる量は負。掲示板 #1294: 大きい作り手は自分の動きが値段に響くのを見る）。
+
+    turn を渡すと、ほかの施設が作り方を替えている途中の分（蒔いてまだ取れていない畑・替えると
+    決めた作り方。_pending_supply）を、収穫の始まるターンから来る量に足す（掲示板 #1349 の 1:
+    先物の値段は作付けの面積を見る。skip は見直している施設自身で、その分は shift で見る）。
+
+    在庫が尽きて買いたい量に届かないターンは値段が上がり、在庫が目安を超えて余るターンは下がる。
+    どちらでもなければ動かさない（市場の決まりと同じ）。流れが釣り合っていれば p* は平均の値段の
+    まま。現実: 先物の値段は、作物が取れるころの在庫の見込み（在庫率）を映し、農家はそれを見て
+    作付けを決める（今の値段の平均だけを見ると、在庫が減り続けていても値段が止まっている間は
+    気づけない。test_gate の種 2 で、穀物の在庫が尽きる 6 ターン前に島で一番大きい穀物の畑が
+    嗜好作物に替えた）。
+    """
+    turns = config.get("firms.price_turns")
+    economy = island.economy
+    history = economy.price_history.get(good, [])[-turns:]
+    price = max(1, sum(history) // len(history)) if history else economy.prices.get(good, 1)
+    if ahead <= 0:
+        return price
+    finance = economy.finance
+    demand = finance.get("demand", {}).get(good, [])
+    supply = finance.get("supply", {}).get(good, [])
+    n = min(len(demand), len(supply))
+    if n <= 0:
+        return price
+    demand, supply = demand[-n:], supply[-n:]
+    sold = finance.get("sold", {}).get(good, [])[-n:]
+    if len(sold) < n:  # 売れた量の記録の前の島: 買いたい量と売りに出た量の少ない方
+        sold = [min(d, s) for d, s in zip(demand, supply, strict=True)]
+    # 売れ残りの出たターン（買いたい人がみな買えた）だけで平均する
+    met = [d for d, s, q in zip(demand, supply, sold, strict=True) if s > q]
+    wanted = sum(met) / len(met) if met else float(max(demand))
+    wanted = max(wanted, _input_need(island, defs, config, good))
+    if wanted <= 0:
+        return price
+    arrivals = [supply[i + 1] - supply[i] + sold[i] for i in range(n - 1)]
+    inflow = max(0.0, sum(arrivals) / len(arrivals)) if arrivals else float(sold[-1])
+    inflow = max(0.0, inflow + shift)
+    carried = max(0, supply[-1] - sold[-1])
+    keep = wanted * stock.target_turns(config.get("market.inventory_turns"), defs.goods, good)
+    k = config.get("market.price_speed")
+    width = config.get("market.band")
+    held = float(carried)
+    pending = [0.0] * ahead
+    if turn is not None:
+        pending = _pending_supply(island, defs, good, turn, ahead, skip)
+    for step in range(ahead):
+        offered = held + max(0.0, inflow + pending[step])
+        if offered <= 0:
+            continue  # 売りに出なければ値段は動かない（price_update）
+        if offered <= wanted:
+            short = (wanted - offered) / wanted  # 全部売れて、買えなかった割合だけ上げる
+            change = k * short / (1 + short)
+            held = 0.0
+        else:
+            unsold = offered - wanted
+            held = unsold
+            if unsold <= keep:
+                continue
+            beyond = offered - keep
+            change = k * (wanted - beyond) / max(beyond, wanted)
+        price = scale_price(price, 1 + max(-width, min(width, change)))
+    return max(1, price)
+
+
+def _input_need(island: IslandState, defs: Defs, config: GameConfig, good: str) -> float:
+    """島の施設が good を原料に 1ターンに使う量（1000 分の 1）。原料が足りずに操業目標を絞った
+    施設も、自分の作る物の売れ行きの見込み（economy["expected"]）に合わせた稼働率で使う量に数える
+    （工場は、原料さえあれば売れる分を作りたい）。売れ行きが落ちて見込みが下がった施設は、その分
+    少なく数える（掲示板 #1349 の確かめ）。作る物のない施設（学校など）は操業目標の分。設備の傷みで
+    動けない分は数えない。"""
+    power = config.get("power.good")
+    total = 0.0
+    for f in island.facilities:
+        if not f.built or not fac.located(f):
+            continue
+        qty = fac.recipe_of(defs, f, fuelled=False)["inputs"].get(good, 0)
+        if qty <= 0:
+            continue
+        outputs = {g: q for g, q in fac.outputs_of(defs, f).items() if g != power and q > 0}
+        expected = f.economy.get("expected", {})
+        if outputs:
+            rate = max(min(fac.FULL, expected.get(g, 0) * fac.FULL / q) for g, q in outputs.items())
+        else:
+            rate = f.economy.get("target", fac.FULL)
+        total += qty * min(rate, fac.equipment_cap(f)) / fac.FULL
+    return total
+
+
+def _pending_supply(
+    island: IslandState, defs: Defs, good: str, turn: int, ahead: int, skip: Facility | None
+) -> list[float]:
+    """ほかの施設が作り方を替えている途中で、これから good の 1ターンに来る量が今より変わる分
+    （1..ahead ターン先。1000 分の 1）。畑の作り替え（facilities.step_fields）の進み方をなぞる:
+    蒔いて育っている畑（economy["sown"]）は収穫の始まるターンから足し、まだ前の作物の畑は1ターンに
+    前の作物の収穫の分ずつ蒔き直して（その分の前の作物は翌ターンから来なくなる）、育つ期間の後に
+    新しい作物が取れる。替えると決めてまだ替えていない施設（ext["recipe_next"]）は、次のターンから
+    同じように替わると見る。量は全力の産出に操業目標の割合を掛ける。"""
+    out = [0.0] * ahead
+    recipes_of = defs.facilities
+
+    def add(offset: int, f: Facility, recipe: str, share: float, sign: float) -> None:
+        if offset < 1 or offset > ahead:
+            return
+        qty = recipes_of[f.kind]["recipes"][recipe]["outputs"].get(good, 0)
+        if qty <= 0:
+            return
+        running = min(fac.FULL, f.economy.get("target", fac.FULL)) / fac.FULL
+        amount = qty * fac.productivity_of(f) / fac.FULL * fac.size_of(f) * share / fac.FULL
+        for i in range(offset - 1, ahead):
+            out[i] += sign * amount * running
+
+    for f in island.facilities:
+        if f is skip or not f.built:
+            continue
+        nxt = f.ext.get(fac.RECIPE_NEXT)
+        fields = f.economy.get(fac.FIELDS)
+        if nxt is None and fields is None:
+            continue
+        new = nxt if nxt is not None else f.recipe
+        if new not in recipes_of[f.kind]["recipes"]:
+            continue
+        crop = fac.crop_of(defs, f.kind, new)
+        for name, share, harvest in f.economy.get(fac.SOWN, []):
+            if nxt is None or fac.crop_of(defs, f.kind, name) == crop:
+                add(max(1, int(harvest) - turn), f, name, share, 1.0)
+        grow = fac.grow_turns(defs, f.kind, new)
+        for name, share in sorted((fields or {f.recipe: fac.FULL}).items()):
+            if share <= 0 or fac.crop_of(defs, f.kind, name) == crop:
+                continue
+            per = -(-fac.FULL // max(1, fac.grow_turns(defs, f.kind, name)))
+            left, k = share, 1
+            while left > 0 and k <= ahead:
+                amount = min(left, per)
+                add(k, f, name, amount, -1.0)
+                add(k + grow, f, new, amount, 1.0)
+                left -= amount
+                k += 1
+    return out

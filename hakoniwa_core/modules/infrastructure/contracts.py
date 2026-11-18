@@ -35,7 +35,7 @@ from __future__ import annotations
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger
+from hakoniwa_core import ledger, stops
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
@@ -344,6 +344,8 @@ def finish_hiring(
         f.economy[DELIVERED] = sum(state.get("delivered", {}).get(f.id, [0, 0]))
         if f.id not in state.get("orders", {}):
             f.economy[ORDERS] = [0, 0]
+        # 重機の欲しい台数は、直近の注文の一番少ないターンで決める（C1）
+        machines.remember(config, f, -(-sum(f.economy[ORDERS]) // per_worker(config)))
 
 
 # --- 賃金の段 -----------------------------------------------------------------------
@@ -502,7 +504,7 @@ def open_contractor(
         owner=owner,
         accounting=accounting,
         built=True,
-        status=fac.STATUS_STARTING,
+        status=stops.STARTING,
     )
     assign_serial(island, f)
     island.facilities.append(f)
@@ -511,7 +513,12 @@ def open_contractor(
     if is_self_supporting(f):
         source = owner_entity(f)
         payer = Payer(source) if source != ledger.GOV else Payer(ledger.GOV, CONSTRUCTION)
-        amount = round_money(min(capital(defs, config, island), funds.available(island, payer)))
+        have = funds.available(island, payer)
+        if source == household(OWNERS):  # 資本家階級は暮らしの分を残す（FM-58）
+            from hakoniwa_core.economy.households import owners_spare
+
+            have = owners_spare(island, defs, config)
+        amount = round_money(min(capital(defs, config, island), have))
         if amount > 0:
             invest(island, source, facility_entity(f.id), amount)
     island.log.append(LogEntry(log, {"x": pos[0], "y": pos[1]}))
@@ -588,8 +595,10 @@ def entry(island: IslandState, defs: Defs, config: GameConfig, planned: bool) ->
     wage = island.economy.average_wage or config.get("labor.initial_wage")
     if ceiling(island, config) * per_worker(config) // 1000 <= wage:
         return None  # 予定価格では賃金を払えない
-    if funds.available(island, Payer(household(OWNERS))) < capital(defs, config, island):
-        return None
+    from hakoniwa_core.economy.households import owners_spare
+
+    if owners_spare(island, defs, config) < capital(defs, config, island):
+        return None  # 資本家階級の暮らしの分を残した預金で出せない（FM-58）
     pos = spot(island, defs, config)
     if pos is None:
         return None

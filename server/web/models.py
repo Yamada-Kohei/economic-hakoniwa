@@ -83,3 +83,20 @@ class SiteUpdate(models.Model):
 
     def __str__(self) -> str:
         return f"{self.date} {self.text}"
+
+
+class UpdateMark(models.Model):
+    """遊ぶ人が、更新履歴（SiteUpdate）のどこまでを「更新のお知らせ」の窓で見たか。
+
+    窓は、見ていない更新履歴があるときだけ、最初に開いた画面に1度出す。"""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="update_mark"
+    )
+    last_update = models.PositiveIntegerField("見た更新履歴の番号（id）", default=0)
+
+    class Meta:
+        verbose_name = verbose_name_plural = "更新のお知らせを見た印"
+
+    def __str__(self) -> str:
+        return f"{self.user} {self.last_update}"

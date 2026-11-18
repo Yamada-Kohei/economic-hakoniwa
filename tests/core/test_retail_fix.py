@@ -42,7 +42,7 @@ def entry_setup(monkeypatch, game, sample):
     monkeypatch.setitem(ctx.formulas, "entry_return", lambda *a: 10)
     built = []
 
-    def build(self, island, ctx, kind, recipe, pos, *args):
+    def build(self, island, ctx, kind, recipe, pos, *args, **kwargs):
         f = Facility(id=island.next_facility_id(), kind=kind, recipe=recipe, x=-30, y=-30)
         island.facilities.append(f)
         built.append(kind)

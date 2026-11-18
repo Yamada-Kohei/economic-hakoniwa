@@ -237,15 +237,28 @@ def report(request, thread_id: int, number: int):
 
 @require_http_methods(["GET", "POST"])
 def notices(request):
-    """自分の書き込みへの返信（新しい順）。GET は読むだけ、POST は見えたぶんを既読にして返す
-    （ほかのサイトから GET で踏まれて既読にならないように）。"""
+    """自分の書き込みへの返信（新しい順）と、まだ見ていない運営からの告知（announcements）。
+    GET は読むだけ、POST は見えたぶんを既読にして返す（ほかのサイトから GET で踏まれて既読に
+    ならないように）。"""
     if not request.user.is_authenticated:
         return _error("ログインしてください", 403)
-    rows = services.notices(request.user, mark=request.method == "POST")
+    mark = request.method == "POST"
+    rows = services.notices(request.user, mark=mark)
+    announced = services.announcements(request.user, mark=mark)
     unread = services.unread_count(request.user)
     for row in rows:
         row["post"] = _post_json(row["post"])
-    return _json({"unread": unread, "notices": rows})
+    for row in announced:
+        row["created_at"] = row["created_at"].isoformat()
+        del row["page"]
+    return _json(
+        {
+            "unread": unread,
+            "notices": rows,
+            "unread_announcements": services.unread_announcements(request.user),
+            "announcements": announced,
+        }
+    )
 
 
 @require_http_methods(["GET", "POST"])

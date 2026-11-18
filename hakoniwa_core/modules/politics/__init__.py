@@ -11,7 +11,9 @@
    含む）、
    E は出来事の補正（債務不履行は −15 から 36 ターンかけて戻る、体制を変えた後の混乱期間は −10、
    首都の政府の建物が壊れている間は −10、出国を止められて出られない人がいれば、1年に住民の
-   1% あたり −2・最大 −20。回3 の移民の段 modules/migration）。報道と集会を統制していれば、
+   1% あたり −2・最大 −20。回3 の移民の段 modules/migration。強制移住で直近 1 年に移した人の
+   割合も足し、上限は合わせて一度だけ。W-286 の modules/population/relocation.py）。
+   報道と集会を統制していれば、
    その分（制限 +5・統制 +10）も足す。
 2. 政情を「目標との差 × 動きやすさ」だけ動かす（動きやすさは体制の stability_turns_up・
    stability_turns_down の逆数）。初めてのターン（建国と移し替え）は目標から始める（いきなり暴動に
@@ -43,7 +45,7 @@ import math
 from typing import Any
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import ledger, politics, stock
+from hakoniwa_core import ledger, politics, stock, stops
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.dates import is_year_end
 from hakoniwa_core.defs import Defs
@@ -173,11 +175,19 @@ def events_bonus(island: IslandState, ctx: StageContext) -> dict[str, float]:
         out["conscription"] = -min(c["max"], c["stability"] * cons * 100 / max(1, whole))
     out.update(war_bonus(island, ctx))
     from hakoniwa_core.modules.migration import trapped_share  # 移民の段がこの段を読むので
+    from hakoniwa_core.modules.population import relocation
 
+    # 出られない人と、強制移住で移した人（W-286）: どちらも 1 年の住民に対する割合を足し、上限を
+    # 一度だけ掛けて、内訳は割合の比で分ける（小分けにしても、二つを合わせても軽くならない）
     trapped = trapped_share(island)
-    if trapped > 0:
+    moved = relocation.recent_share(island, ctx.turn)
+    if trapped + moved > 0:
         m = ctx.config.get("migration")
-        out["trapped"] = -min(m["trapped_max"], m["trapped"] * trapped * 100)
+        total = -min(m["trapped_max"], m["trapped"] * (trapped + moved) * 100)
+        if trapped > 0:
+            out["trapped"] = total * trapped / (trapped + moved)
+        if moved > 0:
+            out["relocation"] = total * moved / (trapped + moved)
     return out
 
 
@@ -503,7 +513,7 @@ def damage(island: IslandState, ctx: StageContext, f: Facility) -> None:
     f.built = False
     f.progress = max(0, total - round(total * share))
     f.workers = 0
-    f.status = ""
+    f.status = stops.NONE
     f.ext["repair"] = True
     f.ext.pop("halted_until", None)
     f.ext.pop("halt_reason", None)
@@ -907,7 +917,7 @@ def _add_owners(island: IslandState, ctx: StageContext) -> None:
     households[OWNERS] = {"persons": 0, "share": spec["share"], "income": []}
     # 計画経済の間は株も配当もないので、財産と所得で暮らせる人数（LB-42）から始める。所得の記録が
     # まだないので、所得 0 として数える（ふつうは 0 人。出資は一般の層の預金からも出せる。FM-58）
-    room = owners_room(island, ctx.config, OWNERS, income=0)
+    room = owners_room(island, ctx.defs, ctx.config, OWNERS, income=0)
     if room is not None:
         households[OWNERS][CAP] = room
     population = sum(h["persons"] for h in households.values())

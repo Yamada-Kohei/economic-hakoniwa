@@ -189,6 +189,23 @@ def _stocked_seller(game, island):
     raise AssertionError("持ち越せる物を作る独立採算の施設がない")
 
 
+def _short_of(island, f, good):
+    """f のほかの売り手の good の在庫を除き、島を品薄にする（40 ターン目の島で品薄かは道筋で
+    変わる。2026-11-18 の MK-47・MK-48 で消費財の品薄がなくなった）。"""
+    for other in island.facilities:
+        if other is not f:
+            other.stock.pop(good, None)
+    island.warehouse.pop(good, None)
+
+
+def _dear(island, f, good, ask=None):
+    """f のふだんの売りの希望価格を上げ、1回目で買わずに残る買い手を作る（値引きの売りの 2回目に
+    買い手が残るか、ふだんの売り手の指値と買い手の付け値の並びは道筋で変わる。2026-11-18 の
+    MK-47・MK-48 で 40 ターン目の消費財の買い手がみな 1回目で買えた）。ask を渡さなければ今の値段の
+    3 倍。"""
+    f.economy.setdefault("ask", {})[good] = ask or island.economy.prices.get(good, 1) * 3
+
+
 def _clearance_order(game, world, island, f, good):
     books = {}
     Market()._facility_orders(island, context(game, world), books, {})
@@ -303,6 +320,9 @@ def test_island_price_ignores_the_bargain_sale(game, warmed, clearance_on):
     f.economy[CLEARANCE][good]["line"] = 0
     f.economy[CLEARANCE][good]["turns"] = config.get("market.clearance_turns")
     before = island.economy.prices.get(good)
+    # ふだんの指値は値幅の中（今の値段と上端の真ん中）に置く。1回目の売り手がこの売り手だけに
+    # なる道筋（2026-11-18 の W-294）でも、上端を超える指値で 1回目の値段が上端に張り付かない
+    _dear(island, f, good, (before + auction.band(before, 1000)[1]) // 2)
     game.engine.run_turn(world)
     entry = f.economy.get(CLEARANCE, {}).get(good)
     record = next(m for m in island.markets if m.good == good)
@@ -311,9 +331,12 @@ def test_island_price_ignores_the_bargain_sale(game, warmed, clearance_on):
     assert record.price == island.economy.prices[good]
     assert record.price >= auction.band(before, 1000)[0]
     assert island.economy.prices[good] >= auction.band(before, 1000)[0]
-    # 値引きの売りで買い手が満たされたので、島の値段は前の値段より上がらない（値引きを除くと
-    # 買い手が満たされないことになり、値引きのあいだ毎ターン値幅ずつ上がっていた。11-10）
-    assert record.price <= before
+    # 値引きの売りで買い手が満たされたので、島の値段は値幅（10%）ずつ上がらない（値引きを除くと
+    # 買い手が満たされないことになり、値引きのあいだ毎ターン値幅ずつ上がっていた。11-10）。ほかの
+    # 売り手やこの売り手のふだんの指値は費用で動くので、値幅の上端に届かないことだけを見る（島の値段
+    # が売り手の費用より下にある世界では、ふだんの売りの指値で約定して数% 上がる。W-274 で 0.02%、
+    # W-285 の直し 1 で家計の買い方が変わった世界で 3.9%。どちらも値引きとは関わらない）
+    assert record.price < auction.band(before, 1000)[1]
 
 
 def test_selling_off_stops_when_the_ratio_is_zero(game, warmed, monkeypatch):
@@ -426,6 +449,7 @@ def test_outlet_pays_each_round_at_its_own_price(game, warmed, clearance_on):
     island = island_of(world, "market")
     f, good = _stocked_seller(game, island)
     _force_clearance(game, world, island, f, good)
+    _dear(island, f, good)
     game.engine.run_turn(world)
     record = next(m for m in island.markets if m.good == good)
     sold = island.stats.get(f"clearance.sold.{good}", 0)
@@ -459,6 +483,7 @@ def test_island_price_does_not_climb_while_the_outlet_fills_the_shortage(
     world = copy.deepcopy(warmed)
     island = island_of(world, "market")
     f, good = _stocked_seller(game, island)
+    _short_of(island, f, good)
     held = 0
     for _ in range(4):
         _force_clearance(game, world, island, f, good)
