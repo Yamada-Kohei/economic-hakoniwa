@@ -2323,7 +2323,7 @@ class _Round:
         for i in self.ids:
             island = self.world.islands[i]
             here = self.islands[i]
-            ships.close_turn(island, self.config, here.carried, here.fuel_value)
+            ships.close_turn(island, self.config, here.carried, here.fuel_value, self.turn)
             ships.close_port(island, self.config, here.handled)
             self._keep_missed(island)
             seen = export_plan.observe(island, self.config)
