@@ -701,7 +701,7 @@
 
 ## [12 確かめ方](12-checks.md)
 
-決まり 47 個、うち仮の決まりの表にあるもの 0 個。
+決まり 48 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -752,6 +752,7 @@
 | GT-45 | 測りの結果の置き場: `measure batch --store <置き場>`（または環境変数… | 決定 | tests/core/test_measure_store.py |
 | GT-46 | 1 島 300 ターンの関門の試験の、品不足への切り替え（2026-11-15 掲示板の会議）:… | 決定 | tests/core/test_gate.py |
 | GT-47 | 測りは、途中の写しから続きを回して、通しで回したのと同じ結果を出せるようにする（quick の … | 決定 | tests/core/test_measure_resume.py |
+| GT-48 | 1 島 300 ターンの関門の試験の、原料の行き止まりで作れない財（GT-46 の広げ | 決定 | tests/core/test_gate.py、tests/core/test_gate_dead_end.py |
 
 ## [15 軍事と戦争](15-military.md)
 
