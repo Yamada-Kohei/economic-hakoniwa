@@ -2329,8 +2329,6 @@ class _Round:
             traders.update_targets(
                 island, self.defs, self.config, bloc_unmet, bloc_sellers, self.turn
             )
-            if self.config.get("firms.entry_export"):
-                traders.keep_export_history(island, self.defs, self.config, bloc_unmet)
             fxrates.keep_turnover(island, self.config, here.turnover)
             self._keep_charter(island, here)
             state = island_state(island)
