@@ -657,13 +657,16 @@ def expected_path(
     turn: int | None = None,
     skip: Facility | None = None,
     seen: Callable[[Facility], bool] | None = None,
+    start: int | None = None,
+    stock_held: float = 0.0,
 ) -> list[int]:
     """1..ahead ターン先の見込みの値段 p* の列（expected_price と同じ決まり。expected_price は
     その最後）。流れの記録がなければ、出発点の値段のまま並べる。作物の売り惜しみ（MK-48。W-285 の
     3b）が、持つターン数ごとの見込みを比べるのに使う。seen を渡すと、作り方を替えている途中の分
     （_pending_supply）は seen が真の施設だけを数える（持ち手に見える畑だけ。市場の値段と量の記録は
-    誰にでも見える）。"""
-    price = _start_price(island, good, config)
+    誰にでも見える）。start を渡すとその値段から（既定は直近の平均の値段）、stock_held は呼び手が
+    売りに出さずに持っていた量（市場の記録の売りに出た量に入っていない。持ち越しの在庫に足す）。"""
+    price = start if start is not None else _start_price(island, good, config)
     if ahead <= 0:
         return []
     economy = island.economy
@@ -690,7 +693,7 @@ def expected_path(
     keep = wanted * stock.target_turns(config.get("market.inventory_turns"), defs.goods, good)
     k = config.get("market.price_speed")
     width = config.get("market.band")
-    held = float(carried)
+    held = float(carried) + stock_held
     pending = [0.0] * ahead
     if turn is not None:
         pending = _pending_supply(island, defs, good, turn, ahead, skip, seen)

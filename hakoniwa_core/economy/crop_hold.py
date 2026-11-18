@@ -40,6 +40,8 @@ from hakoniwa_core.units import BASIS
 
 EXT = "crop_hold"  # economy.ext の記録: 財 → そのターンの持った量・売りに出した量・放出
 WITHHELD = "withheld"  # 施設の economy: 財 → このターンに持った量（操業目標で在庫から除く）
+OFF = "withheld_off"  # 施設の economy: 財 → このターンに売りに出さなかった量
+PREV = "withheld_prev"  # 施設の economy: 財 → 前のターンに売りに出さなかった量（見込みに足す）
 
 
 def crops(defs: Any) -> dict[str, int]:
@@ -89,14 +91,26 @@ def value(path: list[int], rate: float) -> int:
 
 
 def farm_path(island: IslandState, ctx: Any, f: Facility, good: str, turns: int) -> list[int]:
-    """農場に見える見込み: 市場の記録と、自分と通勤圏の中の畑の作り替えだけ。"""
+    """農場に見える見込み: 市場の記録と、自分と通勤圏の中の畑の作り替えだけ。今の値段から出し、
+    前のターンに自分が売りに出さなかった量は持ち越しの在庫に足す（市場の記録の品薄は自分の売り
+    惜しみの分もあり、それを先の値上がりと読まない）。"""
     radius = fac.commute_radius(ctx.defs, ctx.config, f.kind)
     here = (f.x, f.y)
 
     def seen(other: Facility) -> bool:
         return other is f or (fac.located(other) and distance(here, (other.x, other.y)) <= radius)
 
-    return expected_path(island, good, turns, ctx.defs, ctx.config, turn=ctx.turn, seen=seen)
+    return expected_path(
+        island,
+        good,
+        turns,
+        ctx.defs,
+        ctx.config,
+        turn=ctx.turn,
+        seen=seen,
+        start=island.economy.prices.get(good) or None,
+        stock_held=f.economy.get(PREV, {}).get(good, 0),
+    )
 
 
 def farm_capacity(defs: Any, f: Facility, good: str, turns: int) -> int:
@@ -145,6 +159,8 @@ def record(
         row["withheld"] += kept
     row["holders"][str(holder.id)] = [kept, floor, path[-1] if path else None]
     holder.economy.setdefault(WITHHELD, {})[good] = kept
+    if floor is None:
+        holder.economy.setdefault(OFF, {})[good] = kept
 
 
 def note_release(island: IslandState, good: str, why: str) -> None:
@@ -156,3 +172,8 @@ def reset(island: IslandState) -> None:
     island.economy.ext.pop(EXT, None)
     for f in island.facilities:
         f.economy.pop(WITHHELD, None)
+        off = f.economy.pop(OFF, None)
+        if off:
+            f.economy[PREV] = off
+        else:
+            f.economy.pop(PREV, None)

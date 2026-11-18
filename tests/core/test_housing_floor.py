@@ -176,8 +176,11 @@ def _lacking_village(game, world):
     pos, home = _village(game, island)
     spec = game.config.get("housing.space")
     status = dwelling_status(game.defs, game.config, island, homes_of(island, game.config))
-    # 床を望みの 7 割にして、足りなくする
+    # 床を望みの 7 割にして、足りなくする。前の床で積んだ住み替えの残り（FLOOR_DUE。資材が買えずに
+    # 年の分までたまる）は前の床の足りなさの分なので消す（道筋で残りがあると、12 ターンで年の分の
+    # 倍近くまで足される。2026-11-18 の MK-48 で 40 ターン目のこの村に残りがあった）
     home.ext[fac.FLOOR] = int(status[pos].want / spec["min"] * 0.7)
+    home.ext.pop(fac.FLOOR_DUE, None)
     island.economy.housing["stock"] = {}
     return island, pos, home
 
