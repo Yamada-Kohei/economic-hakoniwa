@@ -39,3 +39,43 @@ def test_people_leaving_a_layer_take_this_turns_income_with_them(game):
     income = island.scratch["income"]
     assert income[JOBLESS] == 1_000
     assert income[GENERAL] == general + 9_000
+
+
+def _jobless_workers_on(game, island):
+    """失業率と同じ数え方の、仕事のない一般の労働者の数（マスごとの tile_jobless の和）。"""
+    from hakoniwa_core import facilities as fac
+    from hakoniwa_core.modules.population import tile_jobless
+
+    share = fac.labor_share(game.defs, island)
+    return sum(tile_jobless(game.defs, island, t, share) for t in island.tiles if t.population > 0)
+
+
+def test_the_jobless_layer_matches_unemployment_every_turn(game):
+    """受け入れの条件（掲示板 #1464）: 標準の計画で 10 ターン続けて回し、どのターンも記録の時点で、
+    失業している家計の層の人数が失業者の数（とその家族）と合い、失業率の統計の仕事のない人の数が
+    層を数えた人数と合う。"""
+    from hakoniwa_core.state.generate import generate_world
+    from tests.core.test_finance import run
+
+    world = generate_world(1, 3, game.config, game.defs)
+    seen = 0
+    for _ in range(10):
+        run(game, world, 1)
+        for island in world.islands.values():
+            if not island.has_economy or JOBLESS not in island.economy.households:
+                continue
+            stats = island.stats
+            layer = stats[f"layer.{JOBLESS}.persons"]
+            counted = jobless_persons(game.defs, island)
+            assert layer == counted, (
+                f"数え方の不一致: ターン {world.turn} 島 {island.id} の失業している家計の層 "
+                f"{layer} 人、失業者とその家族 {counted} 人"
+            )
+            idle = stats["labor"] - stats["employed"] - stats["subsistence"]
+            workers = _jobless_workers_on(game, island)
+            assert idle == workers, (
+                f"数え方の不一致: ターン {world.turn} 島 {island.id} の失業率の仕事のない人 "
+                f"{idle} 人、層を数えた仕事のない人 {workers} 人"
+            )
+            seen += layer > 0
+    assert seen > 0  # 失業者のいるターンがあった
