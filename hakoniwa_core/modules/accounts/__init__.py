@@ -55,6 +55,7 @@ from hakoniwa_core import ledger
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
+    INVEST_SHORT,
     OWNERS,
     STATE_FACILITIES,
     SUBSIDIES,
@@ -364,6 +365,14 @@ class Accounts(IslandStage):
             if cash > settings["cash_turns"] * cost + borrowed and profit - tax > 0:
                 dividend = max(dividend, cash - settings["cash_turns"] * cost - borrowed)
             dividend = min(dividend, max(0, cash - keep))
+            if ctx.config.get("firms.invest_retain") and dividend > 0:
+                # 建て増しの出資が足りない分だけ配当から残す（W-271。FM-49。足りない分を超える配当は
+                # 今どおり払う。足りない分は参入と撤退の段が毎ターン見直す）
+                held = min(dividend, f.economy.get(INVEST_SHORT, 0))
+                if held > 0:
+                    dividend -= held
+                    stats = island.stats
+                    stats["firms.invest_retained"] = stats.get("firms.invest_retained", 0) + held
         if arrears.total(island, payer.entity) or arrears.total(
             island, payer.entity, arrears.TAX_ARREARS
         ):

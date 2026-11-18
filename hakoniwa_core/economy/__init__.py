@@ -100,6 +100,7 @@ def is_self_supporting(f: Facility) -> bool:
 
 
 SEIZED = "foreclosed"  # f.economy: 倒産して銀行が差し押さえ、売りに出している印（差し押さえの記録）
+INVEST_SHORT = "invest_short"  # 施設の economy: 建て増しの出資の足りない分（配当から残す。W-271）
 
 
 def is_seized(f: Facility) -> bool:

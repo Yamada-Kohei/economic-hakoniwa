@@ -218,7 +218,7 @@
 
 ## [5 施設と企業](05-firms.md)
 
-決まり 74 個、うち仮の決まりの表にあるもの 0 個。
+決まり 76 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -294,8 +294,10 @@
 | FM-70 | 町の店の枠（2026-11-12、W-261）: 町に入る商店の数は、町の段階の数（`settl`… | 決定（2026-11-12、本人のカード「推しの全部」） | tests/core/test_balance_round7.py、tests/core/test_retail_posted.py |
 | FM-71 | 段階の作り方で建てる農場（W-257）: 機械化・近代化の作り方を選んで農場を建てる命令は、初め… | 決定 | tests/core/test_farm_build_grade.py、tests/server/test_migration.py |
 | FM-72 | 組の参入の値段と採算（W-26 の自動車の値段の外れ）: 原料が島で作られていない工場（自動車工… | 決定（2026-11-15） | tests/core/test_group_entry.py |
+| FM-73 | 建て増しのために利益を残す（W-271）: 建て増し（FM-49・FM-76）が採算に合うのに持… | 決定・実装済み（2026-11-14 | tests/core/test_power_invest.py |
 | FM-74 | 発電所の働き手（2026-11-14、本人「電力会社としてだもんな」「全部一気にやっていい」）:… | 決定 | tests/core/test_power_staff.py |
 | FM-75 | 工事の資材をその場で作る（2026-11-16、W-289 | 決定 | tests/core/test_own_materials.py |
+| FM-76 | 発電所の建て増しの合図（W-271 | 決定・実装済み（2026-11-14 | tests/core/test_power_invest.py |
 
 ## [6 国の財政と政策](06-finance.md)
 
