@@ -666,16 +666,35 @@ def expected_path(
     （_pending_supply）は seen が真の施設だけを数える（持ち手に見える畑だけ。市場の値段と量の記録は
     誰にでも見える）。start を渡すとその値段から（既定は直近の平均の値段）、stock_held は呼び手が
     売りに出さずに持っていた量（市場の記録の売りに出た量に入っていない。持ち越しの在庫に足す）。"""
-    price = start if start is not None else _start_price(island, good, config)
+    return path_by_stock(island, good, ahead, defs, config, shift, turn, skip, seen, start)(
+        stock_held
+    )
+
+
+def path_by_stock(
+    island: IslandState,
+    good: str,
+    ahead: int,
+    defs: Defs,
+    config: GameConfig,
+    shift: float = 0.0,
+    turn: int | None = None,
+    skip: Facility | None = None,
+    seen: Callable[[Facility], bool] | None = None,
+    start: int | None = None,
+) -> Callable[[float], list[int]]:
+    """expected_path を、持ち越しの在庫に足す量（stock_held）ごとに出す関数（記録の読みと作り替えの
+    途中の分は 1 度だけ数える）。売り惜しみが、どれだけ持てば先の品薄が埋まるかを探すのに使う。"""
+    price0 = start if start is not None else _start_price(island, good, config)
     if ahead <= 0:
-        return []
+        return lambda stock_held=0.0: []
     economy = island.economy
     finance = economy.finance
     demand = finance.get("demand", {}).get(good, [])
     supply = finance.get("supply", {}).get(good, [])
     n = min(len(demand), len(supply))
     if n <= 0:
-        return [price] * ahead
+        return lambda stock_held=0.0: [price0] * ahead
     demand, supply = demand[-n:], supply[-n:]
     sold = finance.get("sold", {}).get(good, [])[-n:]
     if len(sold) < n:  # 売れた量の記録の前の島: 買いたい量と売りに出た量の少ない方
@@ -685,7 +704,7 @@ def expected_path(
     wanted = sum(met) / len(met) if met else float(max(demand))
     wanted = max(wanted, _input_need(island, defs, config, good))
     if wanted <= 0:
-        return [price] * ahead
+        return lambda stock_held=0.0: [price0] * ahead
     arrivals = [supply[i + 1] - supply[i] + sold[i] for i in range(n - 1)]
     inflow = max(0.0, sum(arrivals) / len(arrivals)) if arrivals else float(sold[-1])
     inflow = max(0.0, inflow + shift)
@@ -693,28 +712,33 @@ def expected_path(
     keep = wanted * stock.target_turns(config.get("market.inventory_turns"), defs.goods, good)
     k = config.get("market.price_speed")
     width = config.get("market.band")
-    held = float(carried) + stock_held
     pending = [0.0] * ahead
     if turn is not None:
         pending = _pending_supply(island, defs, good, turn, ahead, skip, seen)
-    path = []
-    for step in range(ahead):
-        offered = held + max(0.0, inflow + pending[step])
-        change = 0.0  # 売りに出なければ値段は動かない（price_update）
-        if 0 < offered <= wanted:
-            short = (wanted - offered) / wanted  # 全部売れて、買えなかった割合だけ上げる
-            change = k * short / (1 + short)
-            held = 0.0
-        elif offered > wanted:
-            unsold = offered - wanted
-            held = unsold
-            if unsold > keep:
-                beyond = offered - keep
-                change = k * (wanted - beyond) / max(beyond, wanted)
-        if change:
-            price = scale_price(price, 1 + max(-width, min(width, change)))
-        path.append(max(1, price))
-    return path
+
+    def path_of(stock_held: float = 0.0) -> list[int]:
+        price = price0
+        held = float(carried) + stock_held
+        path = []
+        for step in range(ahead):
+            offered = held + max(0.0, inflow + pending[step])
+            change = 0.0  # 売りに出なければ値段は動かない（price_update）
+            if 0 < offered <= wanted:
+                short = (wanted - offered) / wanted  # 全部売れて、買えなかった割合だけ上げる
+                change = k * short / (1 + short)
+                held = 0.0
+            elif offered > wanted:
+                unsold = offered - wanted
+                held = unsold
+                if unsold > keep:
+                    beyond = offered - keep
+                    change = k * (wanted - beyond) / max(beyond, wanted)
+            if change:
+                price = scale_price(price, 1 + max(-width, min(width, change)))
+            path.append(max(1, price))
+        return path
+
+    return path_of
 
 
 def _input_need(island: IslandState, defs: Defs, config: GameConfig, good: str) -> float:

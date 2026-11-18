@@ -2160,6 +2160,7 @@ class Market(IslandStage):
                         good in grown
                         and eligible
                         and not caps.get(good)
+                        and not planning.is_planned(island, defs)
                         and fac.grow_turns(defs, f.kind, f.recipe) > 0
                     ):
                         free = held - (sale[0] if sale is not None else 0)
@@ -2537,7 +2538,7 @@ class Market(IslandStage):
         if floor is not None:
             party = replace(seller, withheld=True)
             self._add(books_by_good, good, "sell", Order(kept, floor), party)
-        crop_hold.record(island, good, f, kept, floor, path)
+        crop_hold.record(island, good, f, kept, floor, path(0.0))
         return kept
 
     @staticmethod

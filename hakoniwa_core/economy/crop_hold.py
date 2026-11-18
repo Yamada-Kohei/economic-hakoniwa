@@ -17,8 +17,12 @@
      ふだんの指値で売る。
   2. 値段が見込みより高ければ売る: 下限 V は割り引いた p* なので、今の値段が V を超えれば売れる
      （別の上乗せの数は置かない）。
-  3. 放出: 島の家計が前のターンに食べ物を食べきれなかった（food.ratio < 1）か、値段が前のターンに
+  3. 放出: 島の家計のどれかの層が前のターンに食べ物を食べきれなかった（層の fed が 1 未満。島の
+     統計 food.ratio はターンの初めに消え、記録の段まで出ないので使えない）か、値段が前のターンに
      値幅以上跳ねたら、持たずにみな売りに出す（飢えと値の跳ねは誰にでも見える）。
+- 持つ量: 倉の大きさまでみな持つのではなく、持てば先の品薄が埋まる分まで。持つ量 q を足した見込み
+  （q は次のターンから売りに出る）の V(q) が今の値段を超える間だけ持つ（競争的な貯蔵: 持つ人が増える
+  ほど先の値段が下がり、割り引いた先の値段が今の値段に並んだところで持つのをやめる）。
 - V が値幅の上端以上なら、持つ分は売りに出さない。上端より下なら、V を指値に別の注文で出す。持つ分の
   売れ残りは、希望価格の見直し（MK-07）・操業目標（MK-09）・見切り売り（MK-41）に数えない。
 - 公定価格・値段の上限と下限の財、国庫直轄の施設、計画経済の島は持たない。
@@ -29,11 +33,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.dates import TURNS_PER_YEAR
-from hakoniwa_core.economy.prices import expected_path
+from hakoniwa_core.economy.prices import path_by_stock
 from hakoniwa_core.geo import distance
 from hakoniwa_core.state import Facility, IslandState
 from hakoniwa_core.units import BASIS
@@ -73,8 +78,12 @@ def monthly_rate(island: IslandState) -> float:
 
 def released(island: IslandState, good: str, config: Any) -> str | None:
     """放出の合図（歯止め 3）。合図があればそのわけ、なければ None。"""
-    ratio = island.stats.get("food.ratio")
-    if ratio is not None and ratio < 1:
+    from hakoniwa_core.modules.population import FED
+
+    if any(
+        h.get("persons", 0) > 0 and h.get(FED, fac.FULL) < fac.FULL
+        for h in island.economy.households.values()
+    ):
         return "hunger"
     history = island.economy.price_history.get(good, [])
     if len(history) >= 2 and history[-2] > 0:
@@ -90,17 +99,20 @@ def value(path: list[int], rate: float) -> int:
     return int(max(p / (1 + rate) ** t for t, p in enumerate(path, start=1)))
 
 
-def farm_path(island: IslandState, ctx: Any, f: Facility, good: str, turns: int) -> list[int]:
-    """農場に見える見込み: 市場の記録と、自分と通勤圏の中の畑の作り替えだけ。今の値段から出し、
-    前のターンに自分が売りに出さなかった量は持ち越しの在庫に足す（市場の記録の品薄は自分の売り
-    惜しみの分もあり、それを先の値上がりと読まない）。"""
+def farm_path(
+    island: IslandState, ctx: Any, f: Facility, good: str, turns: int
+) -> Callable[[float], list[int]]:
+    """農場に見える見込み（持つ量 q → 見込みの列）: 市場の記録と、自分と通勤圏の中の畑の作り替え
+    だけ。今の値段から出し、前のターンに自分が売りに出さなかった量と、このターンに持つ量 q は持ち
+    越しの在庫に足す（市場の記録の品薄は自分の売り惜しみの分もあり、それを先の値上がりと読まない。
+    持った分は次のターンから売りに出る）。"""
     radius = fac.commute_radius(ctx.defs, ctx.config, f.kind)
     here = (f.x, f.y)
 
     def seen(other: Facility) -> bool:
         return other is f or (fac.located(other) and distance(here, (other.x, other.y)) <= radius)
 
-    return expected_path(
+    path_of = path_by_stock(
         island,
         good,
         turns,
@@ -109,8 +121,9 @@ def farm_path(island: IslandState, ctx: Any, f: Facility, good: str, turns: int)
         turn=ctx.turn,
         seen=seen,
         start=island.economy.prices.get(good) or None,
-        stock_held=f.economy.get(PREV, {}).get(good, 0),
     )
+    prev = f.economy.get(PREV, {}).get(good, 0)
+    return lambda q=0.0: path_of(prev + q)
 
 
 def farm_capacity(defs: Any, f: Facility, good: str, turns: int) -> int:
@@ -126,19 +139,35 @@ def plan(
     held: int,
     limit: int,
     high: int,
-    path: list[int],
+    path_of: Callable[[float], list[int]],
     capacity: int,
 ) -> tuple[int, int | None]:
     """持つ量と、その分の指値（None なら売りに出さない）。持たなければ (0, None)。
 
-    持つのは、割り引いた見込み V が今の島の値段とふだんの指値 limit の両方より高いときだけ（ふだんの
-    指値が値段より低い売り手が、見込みが平らでも持つことにならないように）。"""
+    持つのは、割り引いた見込み V が今の島の値段とふだんの指値 limit の両方（bar）より高いときだけ
+    （ふだんの指値が値段より低い売り手が、見込みが平らでも持つことにならないように）。持つ量は、倉に
+    入る分（held と capacity の少ない方）のうち、それだけ持っても V(q) がまだ bar を超える一番多い量
+    （path_of(q) は q を足した見込み。q が増えるほど見込みは下がる）。指値は初めの 1 単位の値
+    V(0)。"""
     if held <= 0 or capacity <= 0 or released(island, good, config) is not None:
         return 0, None
-    floor = value(path, monthly_rate(island))
-    if floor <= max(limit, island.economy.prices.get(good, 0)):
+    rate = monthly_rate(island)
+    bar = max(limit, island.economy.prices.get(good, 0))
+    floor = value(path_of(0.0), rate)
+    if floor <= bar:
         return 0, None
-    keep = min(held, capacity)
+    room = min(held, capacity)
+    if value(path_of(float(room)), rate) > bar:
+        keep = room
+    else:
+        lo, hi = 0, room  # V(lo) > bar ≥ V(hi)
+        while hi - lo > max(1, room // 256):
+            mid = (lo + hi) // 2
+            if value(path_of(float(mid)), rate) > bar:
+                lo = mid
+            else:
+                hi = mid
+        keep = hi  # 品薄を埋めるのに足りる量（1 つ少なければ、まだ持つ方が得）
     return keep, (None if floor >= high else floor)
 
 
