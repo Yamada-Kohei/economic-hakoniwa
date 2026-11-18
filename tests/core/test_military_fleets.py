@@ -65,9 +65,12 @@ def order(game, world, *orders, island_id=1):
 
 
 def refused(game, world, *orders):
-    """命令を処理して、断られたわけ（reason の名前）を返す。"""
+    """命令を処理して、断られたわけ（reason の名前）を返す。試験の世界の標準の計画が並べたほかの
+    命令（倉庫の売り買いなど）の断りは数えない（道筋で変わる。2026-11-18 の MK-47・MK-48 で倉庫の
+    売りが在庫切れで断られた）。"""
     island = world.islands[1]
     queue_orders(island, list(orders))
+    kinds = {kind for kind, _ in orders}
     reasons: set[str] = set()
     for _ in range(3):
         step(game, world)
@@ -75,6 +78,7 @@ def refused(game, world, *orders):
             e.args["reason"]
             for e in island.log
             if e.kind in ("unit_order_failed", "order_failed")  # 命令の確かめで断られた分も
+            and e.args.get("order") in kinds
         }
     return reasons
 
