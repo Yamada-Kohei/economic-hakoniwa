@@ -449,7 +449,8 @@ def move_people(island: IslandState, changes: dict[str, int]) -> None:
     """層を移った人の預金と住宅ローンを、元の層の1人あたりの額で一緒に移す（仕訳で付け替える）。
 
     share（と workers）の層の人数が増えた分は一般の層から、減った分は一般の層へ移ったと考える。
-    飢えの蓄え（hunger）も、移った人の分を人数で混ぜる（人口の段）。
+    飢えの蓄え（hunger）も、移った人の分を人数で混ぜる（人口の段）。このターンにすでに受けた
+    可処分所得も、元の層の1人あたりの額で一緒に移す（_move_income。W-294）。
     """
     households = island.economy.households
     for name in sorted(changes):
@@ -472,7 +473,22 @@ def move_people(island: IslandState, changes: dict[str, int]) -> None:
 
         banks.move_mortgages(island, payer, household(target), abs(moved), persons)
         _move_bought(island, source, target, abs(moved), persons)
+        _move_income(island, source, target, abs(moved), persons)
         needs.move_clothes(households[source], households[target], abs(moved), persons)
+
+
+def _move_income(island: IslandState, source: str, target: str, moved: int, persons: int) -> None:
+    """このターンの層の可処分所得（island.scratch の income）のうち、層を移った moved 人の分を、元の
+    層の1人あたりの額で移った先へ移す（W-294）。所得は受け取った人について回る。移さないと、
+    賃金の段で失業手当を受けた人が記録の前に一般の層へ移ったとき、手当が少ない人数の層に残って、
+    1人あたりの所得が跳ねる（#455 の解雇手当と同じ型）。persons は移る前の元の層の人数。"""
+    income = island.scratch.get("income")
+    if not income or not income.get(source) or persons <= 0:
+        return
+    piece = int(income[source] * moved / persons)  # 0 に向けて切り捨て（負の所得も同じ）
+    if piece:
+        income[source] -= piece
+        income[target] = income.get(target, 0) + piece
 
 
 def _move_bought(island: IslandState, source: str, target: str, moved: int, persons: int) -> None:

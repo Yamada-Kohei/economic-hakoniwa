@@ -182,7 +182,7 @@
 | LB-13 | 倒産と撤退のとき、未払い賃金は未払いの税と貸し手より先に払われる（分け方の全体はタブ 5） | 決定 | tests/core/test_balance_round3.py |
 | LB-14 | 家計の層は、一般の労働者（家族と村の住民を含む）・失業している家計・技術者（家族を含む）・資本家… | 決定 | tests/core/test_balance_round4.py |
 | LB-15 | 失業している家計の人数は賃金の段の初めに雇用の結果から数え直し（村で自給する人は除く）、仕事を失… | 決定 | tests/core/test_balance_round4.py |
-| LB-16 | 層を移る人（育った技術者・引退・失業と再就職・人口の増減の割り振り）は、元の層の1人あたりの預金… | 決定 | tests/core/test_balance_round4.py |
+| LB-16 | 層を移る人（育った技術者・引退・失業と再就職・人口の増減の割り振り）は、元の層の1人あたりの預金… | 決定 | tests/core/test_balance_round4.py、tests/core/test_jobless_layer_count.py |
 | LB-17 | 収入は、働く層が賃金・失業手当・預金の利子、資本家階級が配当と預金の利子 | 決定 | （未確認） |
 | LB-18 | 層が使う額（式 `consumption`）は、直近の可処分所得の平均に層ごとの割合を掛けた分と… | 決定 | （未確認） |
 | LB-19 | 使う順は、電気代（生産の段で払った分を差し引く | 決定 | tests/core/test_phase3_2.py |
