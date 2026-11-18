@@ -2260,7 +2260,7 @@ class Market(IslandStage):
                 or fac.is_halted(f, ctx.turn + 1)
             ):
                 continue
-            expected = self._input_plan(ctx, f)
+            expected = self._input_plan(ctx, f, ahead=True)
             if expected <= 0:
                 continue
             inputs = fac.recipe_of(defs, f)["inputs"]
@@ -2490,8 +2490,10 @@ class Market(IslandStage):
         return raised
 
     @staticmethod
-    def _input_plan(ctx: StageContext, f: Facility) -> int:
-        """次のターンに動くつもりの稼働率（1000 分の 1）。原料はこの分を買う（_input_needs）。"""
+    def _input_plan(ctx: StageContext, f: Facility, ahead: bool = False) -> int:
+        """次のターンに動くつもりの稼働率（1000 分の 1）。原料はこの分を買う（_input_needs）。
+        ahead が真なら、操業目標の上がる分（market.max_target_change）も先に見る（燃料。燃料は
+        原料の在庫の目安 MK-47 でなく、備え FM-63 と先の分で持つ）。"""
         settings = ctx.config.get("market")
         target = f.economy.get("target", fac.FULL)
         if fac.is_halted(f, ctx.turn + 1):
@@ -2502,27 +2504,37 @@ class Market(IslandStage):
         if f.workers < f.economy.get("wanted", 0):
             headroom = round_money(settings["target_step"] * fac.FULL + 0.5)
             return min(target, worn, fac.labor_ratio(ctx.defs, f) + headroom)
-        change = round_money(settings["max_target_change"] * fac.FULL + 0.5)
+        change = round_money(settings["max_target_change"] * fac.FULL + 0.5) if ahead else 0
         return min(fac.FULL, worn, target + change)
 
     @staticmethod
     def _input_needs(
         ctx: StageContext, f: Facility, power: str, stockpile: bool = True, on_hand: bool = True
     ) -> list[tuple[str, int]]:
-        """次のターンに要る投入財のうち手元にない分。
+        """次のターンに要る投入財のうち手元にない分（MK-47。W-285 の 3a）。
 
-        操業目標はこの段の終わりに見直すので、上がる分（market.max_target_change まで）も先に
-        買っておく（目標を上げた次のターンに原料が足りず、人を雇えないまま目標を下げ直して、
-        のこぎりの歯のように増えたり減ったりしないように）。雇いたいだけ雇えなかった施設は、
-        今の人手より少し多い分（market.target_step）まで。学校と大学は market.public_stock_turns
-        ターン分（stockpile が偽なら、積み増しを除いた次のターンの分だけ。LB-45 の要る額の見込み）。
+        次のターンに使う量 u（操業目標の分。雇いたいだけ雇えなかった施設は、今の人手より少し多い分
+        market.target_step まで）の足りない分に、原料の在庫の目安 S* = u × 在庫のターン数
+        （製品と同じ market.inventory_turns。持ち越せる期間の短い物は短く）との差の
+        market.inventory_adjust の割合を足す。手元の在庫は先に u に充て、残りだけを目安と比べる
+        （二重に引かない）。製品が売れ残れば操業目標が下がり、u と S* が下がるので、売れ残りのある
+        工場は原料を買わない。前は操業目標の上がる分（market.max_target_change）を毎ターン先に
+        買っていて、売れ残りがあっても原料を買い増した。
+        学校と大学は market.public_stock_turns ターン分。stockpile が偽なら、積み増し（目安との
+        差と学校の数ターン分）を除いた次のターンの分だけ（LB-45 の要る額の見込み）。
         """
         settings = ctx.config.get("market")
         expected = Market._input_plan(ctx, f)
-        if stockpile and is_public_service(ctx.defs, f):
+        public = is_public_service(ctx.defs, f)
+        if stockpile and public:
             # 学校と大学は教材を数ターン分持っておく（消費財が1、2ターン買えないだけで休校に
             # ならないように）
             expected *= settings["public_stock_turns"]
+        buffer = stockpile and not public
+        # 燃料は備えの決まり（FM-63。_fuel_orders）で別に持つので、目安を足さず、今までどおり
+        # 操業目標の上がる分まで先に買う（目安を足すと備えと二重になる）
+        fuels = power_fuel.fuel_goods(ctx.defs, f)
+        ahead = Market._input_plan(ctx, f, ahead=True) if fuels else expected
         needs = []
         # 燃料は手元の割合で減らさず、全部の機械の畑の分を買う（FM-51）
         for good, qty in sorted(fac.recipe_of(ctx.defs, f, fuelled=False)["inputs"].items()):
@@ -2532,7 +2544,17 @@ class Market(IslandStage):
             have = stock.total(f.stock, good) - stock.expiring(
                 f.stock, good, ctx.turn, ctx.defs.goods
             )
-            want = fac.scale(qty, expected) - (have if on_hand else 0)
+            use = fac.scale(qty, ahead if good in fuels else expected)
+            if not on_hand:
+                want = use
+            else:
+                want = max(0, use - have)
+                if buffer and good not in fuels:
+                    rest = max(0, have - use)
+                    goal = round_money(
+                        use * stock.target_turns(settings["inventory_turns"], ctx.defs.goods, good)
+                    )
+                    want += max(0, round_money((goal - rest) * settings["inventory_adjust"]))
             if want > 0:
                 needs.append((good, want))
         return needs
