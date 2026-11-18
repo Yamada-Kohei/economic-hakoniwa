@@ -189,6 +189,22 @@ def _stocked_seller(game, island):
     raise AssertionError("持ち越せる物を作る独立採算の施設がない")
 
 
+def _short_of(island, f, good):
+    """f のほかの売り手の good の在庫を除き、島を品薄にする（40 ターン目の島で品薄かは道筋で
+    変わる。2026-11-18 の MK-47・MK-48 で消費財の品薄がなくなった）。"""
+    for other in island.facilities:
+        if other is not f:
+            other.stock.pop(good, None)
+    island.warehouse.pop(good, None)
+
+
+def _dear(island, f, good):
+    """f のふだんの売りの希望価格を上げ、1回目で買わずに残る買い手を作る（値引きの売りの 2回目に
+    買い手が残るか、ふだんの売り手の指値と買い手の付け値の並びは道筋で変わる。2026-11-18 の
+    MK-47・MK-48 で 40 ターン目の消費財の買い手がみな 1回目で買えた）。"""
+    f.economy.setdefault("ask", {})[good] = island.economy.prices.get(good, 1) * 3
+
+
 def _clearance_order(game, world, island, f, good):
     books = {}
     Market()._facility_orders(island, context(game, world), books, {})
@@ -302,6 +318,7 @@ def test_island_price_ignores_the_bargain_sale(game, warmed, clearance_on):
     f.economy[CLEARANCE][good]["start"] = 1  # 値引きの指値を 1 まで下げておく
     f.economy[CLEARANCE][good]["line"] = 0
     f.economy[CLEARANCE][good]["turns"] = config.get("market.clearance_turns")
+    _dear(island, f, good)
     before = island.economy.prices.get(good)
     game.engine.run_turn(world)
     entry = f.economy.get(CLEARANCE, {}).get(good)
@@ -429,6 +446,7 @@ def test_outlet_pays_each_round_at_its_own_price(game, warmed, clearance_on):
     island = island_of(world, "market")
     f, good = _stocked_seller(game, island)
     _force_clearance(game, world, island, f, good)
+    _dear(island, f, good)
     game.engine.run_turn(world)
     record = next(m for m in island.markets if m.good == good)
     sold = island.stats.get(f"clearance.sold.{good}", 0)
@@ -462,6 +480,7 @@ def test_island_price_does_not_climb_while_the_outlet_fills_the_shortage(
     world = copy.deepcopy(warmed)
     island = island_of(world, "market")
     f, good = _stocked_seller(game, island)
+    _short_of(island, f, good)
     held = 0
     for _ in range(4):
         _force_clearance(game, world, island, f, good)

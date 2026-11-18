@@ -143,7 +143,10 @@ def test_ministry_queues_one_site_of_works_within_the_budget(game, base):
     ctx = context(game, world)
     _empty_queue(island)
     # 上下水道の足りない町を1つ作る
-    housing = next(f for f in island.facilities if f.kind == game.config.get("housing.facility"))
+    towns = [f for f in island.facilities if f.kind == game.config.get("housing.facility")]
+    housing = towns[0]
+    for town in towns[1:]:  # ほかの町は足りている（40 ターンの道筋で足りない町が残ることがある）
+        town.ext.pop("water_short", None)
     housing.ext["water_short"] = True
     # 上下水道を引いていない町にする（維持の目標も 0。目標が残っていると、維持の工事が戻すので
     # 新しい工事には並べない。建国から 40 ターンの間にこの町へ上下水道を引いていることがある）
