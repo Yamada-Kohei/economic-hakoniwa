@@ -7,8 +7,9 @@ dismissal、決めていなければ weak）の段ごとの割合（labor.dismis
 （economy["held"] に、操業目標に要る人数を超えて抱えている人数を残す）。
 
 解雇した人（自然に辞める人の分を超えて減らした人）には、その施設の月の賃金 × 段の月数
-（labor.dismissal の months）の解雇手当を、仕事を失った家計の層に払います（技術者の席の人は技術者の
-層に、技術者の賃金で）。払えない分は未払い賃金（倒産の分け方で一番先）にします。閉鎖・取り壊しは割合
+（labor.dismissal の months）の解雇手当を払います。受け取るときにまだ仕事のない人の分は失業している
+家計の層に、同じターンにほかの施設に雇われた人の分は一般の層に払います（still_jobless。技術者の席の
+人は技術者の層に、技術者の賃金で）。払えない分は未払い賃金（倒産の分け方で一番先）にします。閉鎖・取り壊しは割合
 によらず全員を解雇し、手当を払います（on_removal）。
 
 決まりにかかるのは、建っていて動いている施設のうち、計画経済の島で人を抱える国営施設（PL-57）・
@@ -40,6 +41,7 @@ from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
     ENGINEERS,
+    GENERAL,
     Payer,
     arrears,
     books,
@@ -61,6 +63,8 @@ CARRY = "dismissal_carry"  # f.economy: 減らせる人数の端数（次のタ�
 NEEDS = "dismissal_needs"  # f.economy: 直近の月の雇いたい人数（新しい月が後ろ。手当の月数分）
 FIXED_TERM = "fixed_term"  # f.economy: 有期の人数（入った月ごと。新しい月が後ろ）
 SEVERANCE = "severance"  # 仕訳の種類（解雇手当。施設・政府 → 家計）
+# island.scratch: このターンに解雇手当を払った人のうち、まだ仕事のない人に数えられる残りの人数
+STILL_JOBLESS = "severance_still_jobless"
 
 
 def level(island: IslandState, defs: Defs) -> str:
@@ -168,9 +172,11 @@ def pay(
         return 0
     payer = payer_of(defs, config, f)
     engineer_wage = fac.engineer_wage_of(config, f, wage) if engineers else 0
+    still = still_jobless(island, defs, general)
     total = 0
     for layer, count, monthly in (
-        (jobless_layer(island), general, wage),
+        (jobless_layer(island), still, wage),
+        (GENERAL, general - still, wage),
         (ENGINEERS, engineers, engineer_wage),
     ):
         amount = round(count * monthly * months)
@@ -205,6 +211,30 @@ def _sources(payer: Payer) -> tuple[Payer, ...]:
     if payer.entity == ledger.GOV and payer.item:
         return payer, Payer(ledger.GOV)
     return (payer,)
+
+
+def still_jobless(island: IslandState, defs: Defs, general: int) -> int:
+    """解雇した一般の人 general のうち、手当を受け取るときにまだ仕事のない人の数。
+
+    解雇された人の多くは、同じ雇用の段でほかの施設に雇われる（失業率がほぼ 0 の島で、1ターンに
+    数千人を解雇していた）。手当はその人のお金なので、もう働いている人の分は一般の層（仕事のある
+    家計）に、仕事のない人の分だけを失業している家計の層に払う。仕事のない人の数は、失業している
+    家計の人数と同じ数え方（マスの仕事のない一般の労働者。tile_jobless）で、ターンの中で手当を
+    払うたびに減らしていく（同じ人に二度数えない）。これまでは全員の分を失業している家計の層に
+    払っていたので、数人の層に数百万の手当が入り、1人あたりの所得が働く人の数百倍になっていた
+    （公開の世界、ターン 117）。失業している家計の層のない島では一般の層なので、分けない。
+    """
+    if general <= 0 or jobless_layer(island) == GENERAL:
+        return general
+    room = island.scratch.get(STILL_JOBLESS)
+    if room is None:
+        from hakoniwa_core.modules.population import tile_jobless  # modules は economy を読む
+
+        share = fac.labor_share(defs, island)
+        room = sum(tile_jobless(defs, island, t, share) for t in island.tiles if t.population > 0)
+    still = max(0, min(general, room))
+    island.scratch[STILL_JOBLESS] = room - still
+    return still
 
 
 def on_removal(island: IslandState, defs: Defs, config: GameConfig, f: Facility, turn: int) -> None:

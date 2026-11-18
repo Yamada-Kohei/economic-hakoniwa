@@ -174,6 +174,13 @@ def test_entry_block_is_recorded_and_logged_once(game, warmed):
     for good in goods:
         for key in ("shortages", "demand"):
             island.economy.finance.get(key, {}).pop(good, None)
+    # 工業団地の要る工場（機械工場）の合図は置いておく。40 ターン目の島にその合図が残るかは、
+    # それまでの道筋で変わる（2026-11-17 の GT-29 で、試しの AI の飢饉の買い入れが輸入値の指値に
+    # なり、機械の合図が消えた）。ここで見たいのは「合図はあるのに建たないとき、わけを残して
+    # ログは1度だけ」なので、合図はこの試験で置く
+    want = [10_000] * 6
+    island.economy.finance.setdefault("shortages", {})["machinery"] = list(want)
+    island.economy.finance.setdefault("demand", {})["machinery"] = list(want)
     island.log.clear()  # 前のターンのログも
     ctx = context(game, world)
     entry = EntryExit()
