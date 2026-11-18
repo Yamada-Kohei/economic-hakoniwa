@@ -20,6 +20,8 @@
     python -m hakoniwa_core.measure digests runs/main.jsonl runs/new.jsonl
 
 quick は比べるための組（種1・2、300ターン）、full は回の終わりに1回だけ回す組（種1〜4、500ターン）。
+full まで回す版は、quick の代わりに quick-for-full（quick の組と、full の続きの元になる 3 組）を
+full と同じ置き場（--store）で先に回します。full の 500 ターンの組は残りだけで済みます。
 compare は2つの結果を並べます。
 digests は simulate --digests で書いた指紋を比べ、共通のターンで最初にずれた番号を出します。
 片方にしかないターンは件数だけを出し、ずれには数えません。
@@ -140,6 +142,11 @@ SETS = {
         ("war", 2, 300),
     ],
 }
+
+# full まで回す版で、quick の代わりに回す組。quick に、full の 500 ターンの組のうち quick に
+# 相手のない 3 組の 300 ターンを足す。同じ置き場で回しておくと、full の 500 ターンの 10 組は
+# どれも残りの 200 ターンだけで済む（GT-47）。quick の組の結果は quick と同じ名前で出る
+SETS["quick-for-full"] = [*SETS["quick"], ("plan", 3, 300), ("plan", 4, 300), ("open", 2, 300)]
 
 # 施設が全力で動かなかった理由のまとめ方は、理由の表（hakoniwa_core/stops.py）の組（W-34）
 CAUSE_GROUPS = stops.GROUPS

@@ -49,6 +49,8 @@ def _importer(game, world):
         if traders.is_planned(island):
             continue
         found = traders.prospects(island, game.defs, game.config)
+        # 島に買いたい人がいる財（買いたい量が 0 の財は、狙う量の見直しで輸入が引き合わないと読む）
+        wanted = {m.good for m in island.markets if m.demand > 0}
         for f in traders_of(island, game.config):
             for good, item in sorted(traders.goods_of(f).items()):
                 if (
@@ -56,6 +58,7 @@ def _importer(game, world):
                     and item.get("bm") is not None
                     and item.get("m")
                     and traders.importable(found.get(good))
+                    and good in wanted
                 ):
                     return island, f, good, item
     pytest.skip("輸入している商社がない")

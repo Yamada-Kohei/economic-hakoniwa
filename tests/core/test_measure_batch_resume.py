@@ -160,14 +160,24 @@ def test_shorter_and_longer_runs_come_from_all_the_sets(monkeypatch):
 
 
 def test_quick_and_full_share_the_runs_we_expect():
-    """本物の組: quick の 300 ターンから full の 500 ターンへ続けられるのは 7 組。"""
+    """本物の組: quick の 300 ターンから full の 500 ターンへ続けられるのは 7 組。
+
+    quick-for-full（quick と、相手のない 3 組）を回しておけば、500 ターンの 10 組の全部。
+    """
     resumable = [
         (scenario, seed)
         for scenario, seed, turns in measure.SETS["full"]
         if measure.shorter_runs(scenario, seed, turns)
     ]
+    long_runs = [(scenario, seed) for scenario, seed, turns in measure.SETS["full"] if turns == 500]
+    assert len(long_runs) == 10
+    assert resumable == long_runs
+    before = measure.SETS["quick-for-full"]
+    assert before[:10] == measure.SETS["quick"] and len(before) == 13  # quick の組はそのまま
+    assert {(scenario, seed) for scenario, seed, turns in before if turns == 300} >= set(long_runs)
+    only_quick = [(s, n) for s, n, t in measure.SETS["quick"] if (s, n) in long_runs]
     small = [("small", seed) for seed in (1, 2, 3, 4)]
-    assert resumable == [("plan", 1), ("plan", 2), *small, ("open", 1)]
+    assert only_quick == [("plan", 1), ("plan", 2), *small, ("open", 1)]  # quick だけなら 7 組
     for scenario, seed, turns in measure.SETS["quick"]:
         assert measure.has_longer_run(scenario, seed, turns) == ((scenario, seed) in resumable)
 
