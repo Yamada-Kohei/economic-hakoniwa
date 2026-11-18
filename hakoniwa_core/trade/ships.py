@@ -24,8 +24,9 @@ trade.ship_fuel に財が複数あれば、どれか1つで動きます（フェ
 
 運賃は「荷 1 トン × 区画 1 つ」あたりで、（1 + trade.cost_markup）×（運航費 ＋ 資本費 ×
 min(1, 2u)）÷ 1 隻を 1 ターン全部使ったときに運ぶ量です（タブ 9 FX-74。2026-11-12、W-233）。運航費は
-1 隻 1 ターンの船員の賃金と一番安い燃料、資本費は直近 trade.cost_turns ターンの船の傷みと沈んだ船の
-値段 ÷ 延べ隻数、u は同じターンの運んだ量 ÷ 船団を全部使ったときの量。船が余れば運航費まで下がり、
+1 隻 1 ターンの船員の賃金と一番安い燃料、資本費は直近 trade.cost_turns ターンの船の傷みと、船に
+寝かせたお金の利子（market.initial_prices.capital_rate。FX-83）と、沈んだ船の値段 ÷ 延べ隻数、u は
+同じターンの運んだ量 ÷ 船団を全部使ったときの量。船が余れば運航費まで下がり、
 半分より多く使えば、船の傷みまで回収する全部の費用で止まります。
 
 港は荷の積み下ろしを 1 ターンに trade.port_capacity トンまで扱い、直近の扱った量の平均 ×
@@ -40,6 +41,7 @@ from typing import Any
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import stock
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import books
 from hakoniwa_core.state import Facility, IslandState, LogEntry
@@ -110,6 +112,9 @@ def retiring(config: GameConfig, f: Facility, turn: int) -> int:
 
 # 海運業の economy: 載せられなかった荷を運ぶのに要った船の重さ（orders.SHORT_LOAD と同じ）
 SHORT_LOAD = "ships_short_load"
+# 島の貿易の状態: 船が足りずに荷を残した記録の写し {"ships_short": [...], SHORT_LOAD: [...]}。
+# 海運業がいない間も取り続け、開き直した海運業が引き継ぐ（FX-84）
+SHORT_KEPT = "ships_short_kept"
 
 
 def left_ships(config: GameConfig, f: Facility) -> int:
@@ -356,10 +361,13 @@ def _ship_run_cost(island: IslandState, config: GameConfig) -> float:
 
 
 def _ship_wear(island: IslandState, config: GameConfig) -> float:
-    """船 1 隻の 1 ターンの傷み（今の船の値段 ÷ 寿命）。"""
-    return island.economy.prices.get(config.get("trade.ship_good"), 0) / config.get(
-        "trade.ship_life"
-    )
+    """船 1 隻の 1 ターンの資本費: 傷み（今の船の値段 ÷ 寿命）と、船に寝かせたお金の利子（今の船の
+    値段 × market.initial_prices.capital_rate の 1 ターン分。重機・トラック・設備と同じ率。FX-83。
+    2026-11-15 本人 OK）。自分のお金で買った船も、そのお金をほかに使えば利子が付くので費用に
+    数える。"""
+    price = island.economy.prices.get(config.get("trade.ship_good"), 0)
+    rate = config.get("market.initial_prices.capital_rate") / TURNS_PER_YEAR
+    return price / config.get("trade.ship_life") + price * rate
 
 
 def close_turn(island: IslandState, config: GameConfig, carried: int, fuel_value: int) -> None:

@@ -325,6 +325,50 @@ def _reopen(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> F
     return f
 
 
+def reopen_shipping(
+    island: IslandState, defs: Defs, config: GameConfig, turn: int
+) -> Facility | None:
+    """海運業がなくなった島（倒産して取り壊された）に、荷があるのに運び手がいなければ（商社の
+    輸入の見込み traders.IMPORT_NEED がある）、trade.entry_turns ターン後に経済体制の既定の
+    持ち主で海運業を開き直す（W-281・FX-84。商社の開き直し W-140 と同じ形。前は二度と開かず、その
+    島は船なしのままだった）。民営で資産を持つ層が出資できないまま、さらに entry_turns ターン
+    たったら国営で開く。船は持たずに始め、会社がいない間も島で取り続けた積み残しの記録（ships.SHORT_KEPT）
+    を引き継ぐので、荷を残していれば ships_wanted で最初の 1 隻を、開業の資金と持ち主の出資で買う
+    （船の借りは採らなかった。掲示板 #1438）。"""
+    from hakoniwa_core.trade import traders  # traders.py がこのモジュールを読まないように
+
+    state = island_state(island)
+    if not started(island) or port_of(island, config) is None:
+        return None
+    if shipping_of(island, config) is not None:
+        state.pop("shipping_gone", None)
+        return None
+    working = traders_of(island, config, turn)
+    if not any(traders.state_of(x).get(traders.IMPORT_NEED) for x in working):
+        return None
+    gone = state.setdefault("shipping_gone", turn)
+    entry_turns = config.get("trade.entry_turns")
+    if turn - gone < entry_turns:
+        return None
+    kind = config.get("trade.shipping_facility")
+    owner = _owner(defs, island, kind)
+    if owner == OWNER_PRIVATE and not owners_can_fund(island, defs, config):
+        if turn - gone < 2 * entry_turns:
+            return None
+        owner = OWNER_STATE
+    f = _new(island, kind, SHIPPING_POS, owner, ACCOUNTING_SELF)
+    wage = island.economy.average_wage or config.get("labor.initial_wage")
+    init_facility(island, defs, config, f, dict(island.economy.prices), wage)
+    for key, history in state.get(ships.SHORT_KEPT, {}).items():  # 会社がいない間の積み残し
+        f.economy[key] = list(history)
+    _fund(island, defs, config, f, wage * config.get("trade.trader_capital"))
+    state.pop("shipping_gone", None)
+    island.log.append(
+        LogEntry("shipping_opened" if owner == OWNER_PRIVATE else "shipping_opened_state", {})
+    )
+    return f
+
+
 def _free_office(island: IslandState, defs: Defs, kind: str) -> tuple[int, int] | None:
     occupied = island.facilities_by_tile()
     for tile in island.tiles:
