@@ -133,6 +133,7 @@ class Accounts(IslandStage):
             island.stats["equipment.condition"] = sum(conditions) / len(conditions) / fac.FULL
         self._subsidies(island, ctx, rows)
         settings = config.get("firms")
+        capex = self._ship_capex(island, config)
         for f, items in rows:
             ebitda = (
                 books.value_added(items)
@@ -152,8 +153,10 @@ class Accounts(IslandStage):
             bank = is_bank(config, f)
             if is_self_supporting(f) or bank:
                 items[books.TAX], items[books.DIVIDEND] = self._settle(island, ctx, f, items)
-                # 融資の審査で見る営業の現金収支（売れずに積み上がった在庫は返済に使えない）
-                cash = ebitda - items.get(books.INVENTORY, 0)
+                # 融資の審査で見る営業の現金収支（売れずに積み上がった在庫は返済に使えない）。
+                # 海運業が買って船団に入れる船は設備投資で、営業の現金収支に入れない（W-281。
+                # 入れると、船を買ったターンから稼ぎの平均が船の代金の分だけ負になった）
+                cash = ebitda - (items.get(books.INVENTORY, 0) - capex.get(f.id, 0))
                 keep = settings["ebitda_turns"]
                 f.economy["ebitda"] = [*f.economy.get("ebitda", []), cash][-keep:]
             if bank:
@@ -174,6 +177,19 @@ class Accounts(IslandStage):
         cb_realized = realized.get(ledger.CB, 0)
         cb_valuation = valuation[ledger.CB] - cb_realized if ledger.CB in valuation else 0
         self._central_bank(island, cb_realized, cb_valuation)
+
+    @staticmethod
+    def _ship_capex(island: IslandState, config: Any) -> dict[int, int]:
+        """海運業の在庫に入った輸送船（市場で買った・前注文で届いた船。この後船団に入る）の値打ち。"""
+        good = config.get("trade.ship_good")
+        kind = config.get("trade.shipping_facility")
+        price = island.economy.prices.get(good, 0)
+        out = {}
+        for facility, goods in books.stock_flows(island).items():
+            f = island.facility(facility)
+            if f is not None and f.kind == kind and goods.get(good, 0) > 0:
+                out[facility] = money_of(price, goods[good])
+        return out
 
     @staticmethod
     def _book_inventory(island: IslandState, ctx: StageContext) -> dict[int, int]:

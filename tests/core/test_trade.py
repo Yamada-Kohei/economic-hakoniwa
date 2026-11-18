@@ -127,13 +127,13 @@ def test_freight_rate_is_per_ton_and_cell(game, traded):
     markup = 1 + settings["cost_markup"]
     full = settings["ship_capacity"] * settings["ship_speed"] / 2  # 1 隻 1 ターン（トン × 区画）
     run_cost = ships._ship_run_cost(island, game.config)
-    wear = ships._ship_wear(island, game.config)
+    wear = ships.fleet_capital(island, game.config, f, world.turn) * QUANTITY_SCALE / ships.fleet(f)
     rates = {}
     for use in (0, 0.5, 1, 2):
         for key in ("costs", "carried", "used", "capital_costs", "fleets"):
             f.economy.pop(key, None)
         carried = round(ships.fleet(f) * full * use)  # 1000 分の 1
-        ships.close_turn(island, game.config, carried, 0)
+        ships.close_turn(island, game.config, carried, 0, world.turn)
         capital = f.economy["capital_costs"][-1] * QUANTITY_SCALE / ships.fleet(f)
         expected = (run_cost + capital * min(1, 2 * use)) / full * markup
         assert abs(f.economy["rate"] - expected) <= 1
@@ -157,17 +157,17 @@ def test_scrapping_a_ship_keeps_the_rate_and_writes_off_its_capital(game, traded
     f.economy["fleet"] = [[turn - life, 1000], [turn, 1000]]  # 1 隻は寿命
     f.economy["capital"], f.economy["depreciated"] = 4000, 1000
     for _ in range(3):
-        ships.close_turn(island, game.config, 0, 0)
+        ships.close_turn(island, game.config, 0, 0, turn)
     before = f.economy["rate"]
     assert ships.scrap(island, game.config, turn) == 1000
     assert (f.economy["capital"], f.economy["depreciated"]) == (2000, 500)
-    ships.close_turn(island, game.config, 0, 0)
+    ships.close_turn(island, game.config, 0, 0, turn)
     assert abs(f.economy["rate"] - before) <= 1
     f.economy["fleet"] = []
     f.economy["fleets"] = [0]
     f.economy["capital_costs"] = [0]
     f.economy["carried"] = [0]
-    ships.close_turn(island, game.config, 0, 0)
+    ships.close_turn(island, game.config, 0, 0, turn)
     assert f.economy["rate"] >= 1
 
 

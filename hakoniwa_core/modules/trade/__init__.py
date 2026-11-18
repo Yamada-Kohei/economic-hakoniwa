@@ -6,7 +6,8 @@
 1. 届いた荷を買い手の港で下ろす（下ろす港の使用料。港の積み下ろしの余裕を超えた荷は次のターンへ）。
    国の倉庫に入る腐る物（契約で買った食品など）と、契約で「市場に出す」と決めた物は、次のターンからの
    市場の段が売りに出す
-2. 海運業の船: 使えるターン数を過ぎた船を解体し、市場で買った船を船団に入れる
+2. 海運業の船: 市場で買った船と前注文で届いた船を船団に入れ、寿命を過ぎた船を代わりが足りる分だけ
+   解体する（FX-79）
 3. 圏の作成・加盟・設定、契約の申し込み・受け入れ・やめる（命令の段の申し送りを、島の番号の順に）
 4. 為替の板寄せ（島の通貨と、その島が使う決済通貨の組ごと。hakoniwa_core/trade/fx.py）。外貨建ての
    契約で政府がこのターンに払う外貨は、板寄せの前に中央銀行が持っている外貨から先に政府へ回し、
@@ -258,10 +259,10 @@ class _Round:
     def run(self) -> None:
         self._intercept()
         self._unload()
-        for i in self.ids:
+        for i in self.ids:  # 在庫の船を船団に入れてから、寿命の船を解体する（FX-79）
             island = self.world.islands[i]
-            ships.scrap(island, self.config, self.turn)
             ships.commission(island, self.defs, self.config, self.turn)
+            ships.scrap(island, self.config, self.turn)
         self._requests()
         self._fx()
         self._contracts()
@@ -2322,7 +2323,7 @@ class _Round:
         for i in self.ids:
             island = self.world.islands[i]
             here = self.islands[i]
-            ships.close_turn(island, self.config, here.carried, here.fuel_value)
+            ships.close_turn(island, self.config, here.carried, here.fuel_value, self.turn)
             ships.close_port(island, self.config, here.handled)
             self._keep_missed(island)
             seen = export_plan.observe(island, self.config)
@@ -2353,14 +2354,34 @@ class _Round:
             state["contracts"] = [
                 contract_view(c, i, self.turn) for c in contracts.of_island(self.world, i)
             ]
-            shipping = shipping_of(island, self.config)
-            if shipping is not None:
-                keep = self.config.get("trade.cost_turns")
-                history = [*shipping.economy.get("ships_short", []), int(here.ship_short)]
-                shipping.economy["ships_short"] = history[-keep:]
-                loads = [*shipping.economy.get(ship_orders.SHORT_LOAD, []), here.ship_short_load]
-                shipping.economy[ship_orders.SHORT_LOAD] = loads[-keep:]
+            self._keep_short(island, here)
             self._stats(island, here)
+
+    def _keep_short(self, island: IslandState, here: _IslandTurn) -> None:
+        """船が足りずに約定した荷を運べなかったか（S2）と、その荷の船の重さを、直近
+        trade.cost_turns ターン分残す。海運業があれば海運業に書き、島にも同じ写しを残す。海運業が
+        いない間（倒れて取り壊された）は、島の写しに同じ定義で取り続ける（W-281。掲示板 #1109。
+        開き直した海運業はこの写しを引き継ぎ、ships_wanted がその時点の窓で最初の 1 隻を見る。港の
+        ない島は船では直らないので数えない）。"""
+        shipping = shipping_of(island, self.config)
+        state = island_state(island)
+        if shipping is not None:
+            holder = shipping.economy
+        elif port_of(island, self.config) is not None:
+            holder = state.setdefault(ships.SHORT_KEPT, {})
+        else:
+            state.pop(ships.SHORT_KEPT, None)
+            return
+        keep = self.config.get("trade.cost_turns")
+        history = [*holder.get("ships_short", []), int(here.ship_short)]
+        holder["ships_short"] = history[-keep:]
+        loads = [*holder.get(ship_orders.SHORT_LOAD, []), here.ship_short_load]
+        holder[ship_orders.SHORT_LOAD] = loads[-keep:]
+        if holder is not state.get(ships.SHORT_KEPT):
+            state[ships.SHORT_KEPT] = {
+                "ships_short": list(holder["ships_short"]),
+                ship_orders.SHORT_LOAD: list(holder[ship_orders.SHORT_LOAD]),
+            }
 
     def _keep_charter(self, island: IslandState, here: _IslandTurn) -> None:
         """借りた船の運賃と買った量（圏・財ごと）を、直近 trade.cost_turns ターン分残す（FX-63。
