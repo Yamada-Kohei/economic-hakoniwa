@@ -136,7 +136,8 @@ def refresh_farming(defs: Defs, config: GameConfig, island: IslandState) -> None
     ない人が自給の農家と失業者を行き来した（LAN の写しを 30 ターン回すと、8003 島 3 の 1 マスが
     6 回入れ替わり、自給 0〜19,352 人・失業者 1〜10,093 人。quick の 1 本で 111 マス 296 回）。
     住宅地の建ったマスは建った段階（床を足す工事でしか変わらない）で決める。村か町かは、その時々の
-    人数ではなく土地の使い方で決まる。住宅地のないマスは前の印を引き継ぎ、村から町へは人数が町の
+    人数ではなく土地の使い方で決まる。町の段階の住宅地でも、人数が村の住宅地の上限を切ったら村に
+    戻す（_housed_farming）。住宅地のないマスは前の印を引き継ぎ、村から町へは人数が町の
     下限に届いたときだけ移り、町の印は人がいなくなるまで残す（固定の幅は持たない）。切なら印を
     書かず、前に書いた印は消す。"""
     if not config.get("population.farming_by_housing"):
@@ -149,11 +150,35 @@ def refresh_farming(defs: Defs, config: GameConfig, island: IslandState) -> None
     for tile in island.tiles:
         home = homes.get((tile.x, tile.y))
         if home is not None:
-            tile.ext[FARMING] = _built_farming(defs, home)
+            tile.ext[FARMING] = _housed_farming(defs, home, tile)
         elif tile.population <= 0:
             tile.ext.pop(FARMING, None)
         elif tile.ext.get(FARMING, True):
             tile.ext[FARMING] = _farming_by_size(defs, tile.population)
+
+
+def _housed_farming(defs: Defs, home: Facility, tile: Tile) -> bool:
+    """住宅地の建ったマスが村か（refresh_farming）。村の段階の住宅地は村。町より上の段階の住宅地は
+    町だが、人数が村の住宅地の上限（village_capacity）を切ったら村に戻し、町の下限に届いたら町に
+    する。その間は前の印のまま。どちらの線も定義（settlements）の数で、新しい数は置かない。
+
+    人が減って村の住宅地に収まる数になった町では、仕事のない人は畑に戻れる（戻さないと、過疎の町の
+    失業が固定する。full の比べで、失業率の振れが入で 3 割ほど増え、自給の人数が半分ほどになった）。
+    人数がわずかに上下するだけでは、2 つの線の間を行き来しない。"""
+    if _built_farming(defs, home):
+        return True
+    if tile.population < village_capacity(defs):
+        return True
+    if tile.population > village_size(defs):
+        return False
+    before = tile.ext.get(FARMING)
+    return False if before is None else bool(before)
+
+
+def village_capacity(defs: Defs) -> int:
+    """村（自給の農業ができる段階）の住宅地に住める人数の上限。"""
+    sizes = [d["capacity"] for d in defs.settlements.values() if d.get("subsistence")]
+    return max(sizes, default=0)
 
 
 def _built_farming(defs: Defs, home: Facility) -> bool:

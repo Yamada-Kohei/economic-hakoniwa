@@ -89,3 +89,30 @@ def test_the_world_runs_with_the_switch_on(game, switch):  # noqa: F811
         if island.has_economy and JOBLESS in island.economy.households:
             layer = island.stats[f"layer.{JOBLESS}.persons"]
             assert layer == jobless_persons(game.defs, island)
+
+
+def test_a_shrunk_town_goes_back_to_farming(game, switch):  # noqa: F811
+    """町の段階の住宅地でも、人数が村の住宅地の上限を切ったら村に戻り（過疎の町の失業を固定させない）、
+    町の下限に届くまで村のまま。その間は前の印を引き継ぎ、人数のわずかな上下では入れ替わらない。"""
+    from hakoniwa_core.modules.population import village_capacity
+
+    switch()
+    cap, town = village_capacity(game.defs), village_size(game.defs) + 1
+    assert cap < town  # どちらも定義（settlements）の数
+    island = make_island(game)
+    home(game, island, 6, 6, town + 5000, level="town")
+    tile = island.tile(6, 6)
+    refresh_farming(game.defs, game.config, island)
+    assert tile.ext[FARMING] is False
+    tile.population = cap  # 村の上限ちょうどは、まだ町
+    refresh_farming(game.defs, game.config, island)
+    assert tile.ext[FARMING] is False
+    tile.population = cap - 1
+    refresh_farming(game.defs, game.config, island)
+    assert tile.ext[FARMING] is True  # 村の上限を切って村に戻る
+    tile.population = town - 1
+    refresh_farming(game.defs, game.config, island)
+    assert tile.ext[FARMING] is True  # 町の下限まで村のまま
+    tile.population = town
+    refresh_farming(game.defs, game.config, island)
+    assert tile.ext[FARMING] is False
