@@ -198,11 +198,12 @@ def _short_of(island, f, good):
     island.warehouse.pop(good, None)
 
 
-def _dear(island, f, good):
+def _dear(island, f, good, ask=None):
     """f のふだんの売りの希望価格を上げ、1回目で買わずに残る買い手を作る（値引きの売りの 2回目に
     買い手が残るか、ふだんの売り手の指値と買い手の付け値の並びは道筋で変わる。2026-11-18 の
-    MK-47・MK-48 で 40 ターン目の消費財の買い手がみな 1回目で買えた）。"""
-    f.economy.setdefault("ask", {})[good] = island.economy.prices.get(good, 1) * 3
+    MK-47・MK-48 で 40 ターン目の消費財の買い手がみな 1回目で買えた）。ask を渡さなければ今の値段の
+    3 倍。"""
+    f.economy.setdefault("ask", {})[good] = ask or island.economy.prices.get(good, 1) * 3
 
 
 def _clearance_order(game, world, island, f, good):
@@ -318,8 +319,10 @@ def test_island_price_ignores_the_bargain_sale(game, warmed, clearance_on):
     f.economy[CLEARANCE][good]["start"] = 1  # 値引きの指値を 1 まで下げておく
     f.economy[CLEARANCE][good]["line"] = 0
     f.economy[CLEARANCE][good]["turns"] = config.get("market.clearance_turns")
-    _dear(island, f, good)
     before = island.economy.prices.get(good)
+    # ふだんの指値は値幅の中（今の値段と上端の真ん中）に置く。1回目の売り手がこの売り手だけに
+    # なる道筋（2026-11-18 の W-294）でも、上端を超える指値で 1回目の値段が上端に張り付かない
+    _dear(island, f, good, (before + auction.band(before, 1000)[1]) // 2)
     game.engine.run_turn(world)
     entry = f.economy.get(CLEARANCE, {}).get(good)
     record = next(m for m in island.markets if m.good == good)

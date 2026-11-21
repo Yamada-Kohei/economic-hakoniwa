@@ -182,7 +182,7 @@
 | LB-13 | 倒産と撤退のとき、未払い賃金は未払いの税と貸し手より先に払われる（分け方の全体はタブ 5） | 決定 | tests/core/test_balance_round3.py |
 | LB-14 | 家計の層は、一般の労働者（家族と村の住民を含む）・失業している家計・技術者（家族を含む）・資本家… | 決定 | tests/core/test_balance_round4.py |
 | LB-15 | 失業している家計の人数は賃金の段の初めに雇用の結果から数え直し（村で自給する人は除く）、仕事を失… | 決定 | tests/core/test_balance_round4.py |
-| LB-16 | 層を移る人（育った技術者・引退・失業と再就職・人口の増減の割り振り）は、元の層の1人あたりの預金… | 決定 | tests/core/test_balance_round4.py |
+| LB-16 | 層を移る人（育った技術者・引退・失業と再就職・人口の増減の割り振り）は、元の層の1人あたりの預金… | 決定 | tests/core/test_balance_round4.py、tests/core/test_jobless_layer_count.py |
 | LB-17 | 収入は、働く層が賃金・失業手当・預金の利子、資本家階級が配当と預金の利子 | 決定 | （未確認） |
 | LB-18 | 層が使う額（式 `consumption`）は、直近の可処分所得の平均に層ごとの割合を掛けた分と… | 決定 | （未確認） |
 | LB-19 | 使う順は、電気代（生産の段で払った分を差し引く | 決定 | tests/core/test_phase3_2.py |
@@ -702,7 +702,7 @@
 
 ## [12 確かめ方](12-checks.md)
 
-決まり 47 個、うち仮の決まりの表にあるもの 0 個。
+決まり 48 個、うち仮の決まりの表にあるもの 0 個。
 
 | 番号 | 決まり（頭） | 状態 | 試験 |
 | --- | --- | --- | --- |
@@ -753,6 +753,7 @@
 | GT-45 | 測りの結果の置き場: `measure batch --store <置き場>`（または環境変数… | 決定 | tests/core/test_measure_store.py |
 | GT-46 | 1 島 300 ターンの関門の試験の、品不足への切り替え（2026-11-15 掲示板の会議）:… | 決定 | tests/core/test_gate.py |
 | GT-47 | 測りは、途中の写しから続きを回して、通しで回したのと同じ結果を出せるようにする（quick の … | 決定 | tests/core/test_measure_resume.py |
+| GT-48 | 1 島 300 ターンの関門の試験の、原料の行き止まりで作れない財（GT-46 の広げ | 決定 | tests/core/test_gate.py、tests/core/test_gate_dead_end.py |
 
 ## [15 軍事と戦争](15-military.md)
 

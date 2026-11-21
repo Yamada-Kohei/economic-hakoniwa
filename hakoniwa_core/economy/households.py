@@ -119,6 +119,10 @@ def set_jobless(island: IslandState, persons: int) -> int:
         left = ledger.money(island, household(JOBLESS))
         if left > 0:
             ledger.pay(island, household(JOBLESS), household(GENERAL), left, "layer_transfer")
+        # 誰もいない層に入った所得（手当を受けた人が同じターンに職を得た）と、層に残った未払い賃金の
+        # 請求も、持ち主のいる一般の層へ移す（W-294。公開の世界、ターン 128・129 の 0 人の層の所得）
+        _move_income(island, JOBLESS, GENERAL, 1, 1)
+        _move_claims(island, JOBLESS, GENERAL, 1, 1)
     return moved
 
 
@@ -449,7 +453,9 @@ def move_people(island: IslandState, changes: dict[str, int]) -> None:
     """層を移った人の預金と住宅ローンを、元の層の1人あたりの額で一緒に移す（仕訳で付け替える）。
 
     share（と workers）の層の人数が増えた分は一般の層から、減った分は一般の層へ移ったと考える。
-    飢えの蓄え（hunger）も、移った人の分を人数で混ぜる（人口の段）。
+    飢えの蓄え（hunger）も、移った人の分を人数で混ぜる（人口の段）。このターンにすでに受けた
+    可処分所得と、層が持つ未払い賃金の請求も、元の層の1人あたりの額で一緒に移す（_move_income・
+    _move_claims。W-294）。
     """
     households = island.economy.households
     for name in sorted(changes):
@@ -472,7 +478,48 @@ def move_people(island: IslandState, changes: dict[str, int]) -> None:
 
         banks.move_mortgages(island, payer, household(target), abs(moved), persons)
         _move_bought(island, source, target, abs(moved), persons)
+        _move_income(island, source, target, abs(moved), persons)
+        _move_claims(island, source, target, abs(moved), persons)
         needs.move_clothes(households[source], households[target], abs(moved), persons)
+
+
+# arrears.WAGE_ARREARS と同じ名前（arrears がこのモジュールを読むので写す）
+WAGE_ARREARS = "wage_arrears"
+
+
+def _move_claims(island: IslandState, source: str, target: str, moved: int, persons: int) -> None:
+    """層が持つ未払い賃金の請求（払えなかった解雇手当・賃金）のうち、層を移った moved 人の分を、元の
+    層の1人あたりの額で移った先へ付け替える（W-294）。請求はその人のものなので、人について回る。
+    移さないと、職を得て一般の層へ戻った人の請求が失業者の層に残り、後で払われたときに、その時の
+    少ない人数（0 人のことも）の層の所得になって、1人あたりの所得が跳ねる（公開の世界、ターン 127〜
+    129）。persons は移る前の元の層の人数。"""
+    if persons <= 0 or moved <= 0:
+        return
+    holder = household(source)
+    prefix = f"{holder}/{WAGE_ARREARS}/"
+    for name, value in sorted(island.accounts.items()):
+        if value <= 0 or not name.startswith(prefix):
+            continue
+        issuer = ledger.parse(name)[2]
+        amount = value * min(moved, persons) // persons
+        if amount > 0:
+            ledger.transfer(
+                island, WAGE_ARREARS, issuer, holder, household(target), amount, "layer_transfer"
+            )
+
+
+def _move_income(island: IslandState, source: str, target: str, moved: int, persons: int) -> None:
+    """このターンの層の可処分所得（island.scratch の income）のうち、層を移った moved 人の分を、元の
+    層の1人あたりの額で移った先へ移す（W-294）。所得は受け取った人について回る。移さないと、
+    賃金の段で失業手当を受けた人が記録の前に一般の層へ移ったとき、手当が少ない人数の層に残って、
+    1人あたりの所得が跳ねる（#455 の解雇手当と同じ型）。persons は移る前の元の層の人数。"""
+    income = island.scratch.get("income")
+    if not income or not income.get(source) or persons <= 0:
+        return
+    piece = int(income[source] * moved / persons)  # 0 に向けて切り捨て（負の所得も同じ）
+    if piece:
+        income[source] -= piece
+        income[target] = income.get(target, 0) + piece
 
 
 def _move_bought(island: IslandState, source: str, target: str, moved: int, persons: int) -> None:
