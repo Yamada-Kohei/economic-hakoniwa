@@ -46,6 +46,15 @@
 - wants: 財 → 要る外貨に数えた量の履歴、sold: 財 → 圏で売れた量の履歴、cargo: 財 → 商社の持つ
   輸出の荷、essential: 蓄えを使ってよい設備の資材
 - idle: 稼ぐ額があるのに候補のないターンの数、noticed: そのことを知らせた
+- deposit: 主体 → 通貨 → 自国の中央銀行に預けている外貨の量（預けた分の請求。FX-83）
+
+蓄えの目標を超えた外貨は自国の中央銀行に預ける（planning.export.deposit_surplus。FX-83）: 貿易の段の
+終わり（計画を決めた後）に、国営の商社の主体ごとの持ち高が蓄えの目標の分（reserve_of）を超える分を
+中央銀行に移し、次のターンの為替の段の後に、預けた分を中央銀行の持ち高の範囲で戻す（deposit_surplus・
+withdraw_deposits）。為替の段の間は中央銀行の持ち高なので、融通の貸し手の余り（swap.lenders）に入る。
+貸し出されて中央銀行に残っていない分は請求のまま残り、返されたら戻す。新しい数は置かない（目標は今の
+蓄えの目標）。現実では、ソ連の外国貿易銀行が余ったドルを西側の銀行に預け、それが貸し出された形
+（ユーロダラー）。
 """
 
 from __future__ import annotations
@@ -54,6 +63,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from hakoniwa_core import facilities as fac
+from hakoniwa_core import ledger
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
@@ -118,6 +128,83 @@ def _entities(island: IslandState, config: GameConfig, turn: int | None = None) 
         e = entity_of(config, f)
         if e not in out:
             out.append(e)
+    return out
+
+
+DEPOSIT = "deposit"
+
+
+def deposit_surplus(
+    world: WorldState, island: IslandState, config: GameConfig, turn: int | None = None
+) -> None:
+    """FX-83: 国営の商社の主体ごとに、外貨の持ち高のうち蓄えの目標の分（reserve_of）を超える分を
+    自国の中央銀行に預ける（預けた量を請求として残す）。計画経済でない島と設定が切れているときは
+    何もしない。"""
+    if not config.get("planning.export.deposit_surplus") or not traders.is_planned(island):
+        return
+    claims = state_of(island).setdefault(DEPOSIT, {})
+    for entity in _entities(island, config, turn):
+        for key, cur in sorted(fxmoney.holdings(island).get(entity, {}).items()):
+            currency = int(key)
+            if currency == island.id or currency not in world.islands:
+                continue
+            over = cur[0] - reserve_of(island, config, entity, currency, turn)
+            if over <= 0:
+                continue
+            value = fxmoney.cost_of(island, entity, currency, over)
+            fxmoney.transfer(
+                world,
+                currency,
+                (island.id, entity),
+                (island.id, ledger.CB),
+                over,
+                "fx_deposit",
+                value,
+            )
+            mine = claims.setdefault(entity, {})
+            mine[key] = mine.get(key, 0) + over
+    if not any(claims.values()):
+        state_of(island).pop(DEPOSIT, None)
+
+
+def withdraw_deposits(world: WorldState, island: IslandState) -> None:
+    """FX-83: 預けた外貨を、中央銀行の持ち高の範囲で主体に戻す（貸し出されて残っていない分は請求の
+    まま）。為替の段の後に呼ぶ。計画経済でなくなった島も、残っている請求は戻す。"""
+    state = island.ext.get(planning.KEY, {}).get(KEY, {})
+    claims = state.get(DEPOSIT)
+    if not claims:
+        return
+    for entity in sorted(claims):
+        mine = claims[entity]
+        for key in sorted(mine):
+            currency = int(key)
+            take = min(mine[key], fxmoney.holding(island, ledger.CB, currency))
+            if take > 0:
+                value = fxmoney.cost_of(island, ledger.CB, currency, take)
+                fxmoney.transfer(
+                    world,
+                    currency,
+                    (island.id, ledger.CB),
+                    (island.id, entity),
+                    take,
+                    "fx_deposit",
+                    value,
+                )
+                mine[key] -= take
+            if mine[key] <= 0:
+                del mine[key]
+        if not mine:
+            del claims[entity]
+    if not claims:
+        state.pop(DEPOSIT, None)
+
+
+def deposited(island: IslandState) -> dict[str, int]:
+    """通貨 → 中央銀行に預けている外貨の量の合計（請求。FX-83）。"""
+    out: dict[str, int] = {}
+    for mine in island.ext.get(planning.KEY, {}).get(KEY, {}).get(DEPOSIT, {}).values():
+        for key, amount in mine.items():
+            out[key] = out.get(key, 0) + amount
     return out
 
 
