@@ -336,8 +336,6 @@ port_not_placed: "港を置ける海辺の空いた平地がなく、港を開�
 trader_not_placed: "商社を置ける空いたオフィス街がなく、商社を開けませんでした"
 trader_opened: "({x}, {y}) に民営の商社が開業しました"
 trader_opened_state: "({x}, {y}) に国営の商社が開業しました"
-shipping_opened: "海運業がなくなっていたため、民営の海運業が開業しました（船は買い直します）"
-shipping_opened_state: "海運業がなくなっていたため、国営の海運業が開業しました（船は買い直します）"
 ships_commissioned: "海運業が輸送船を {count:g} 隻就航させました"
 ships_scrapped: "海運業が古くなった輸送船を {count:g} 隻廃船にしました"
 ship_order_placed: "海運業が ({x}, {y}) の造船所に輸送船を {count:g} 隻注文し、手付けを払いました（{turns} ターンほどで届く見込み）"

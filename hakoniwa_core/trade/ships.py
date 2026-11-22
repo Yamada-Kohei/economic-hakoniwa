@@ -41,7 +41,6 @@ from typing import Any
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import stock
 from hakoniwa_core.config import GameConfig
-from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import books
 from hakoniwa_core.state import Facility, IslandState, LogEntry
@@ -112,9 +111,6 @@ def retiring(config: GameConfig, f: Facility, turn: int) -> int:
 
 # 海運業の economy: 載せられなかった荷を運ぶのに要った船の重さ（orders.SHORT_LOAD と同じ）
 SHORT_LOAD = "ships_short_load"
-# 島の貿易の状態: 船が足りずに荷を残した記録の写し {"ships_short": [...], SHORT_LOAD: [...]}。
-# 海運業がいない間も取り続け、開き直した海運業が引き継ぐ（FX-85）
-SHORT_KEPT = "ships_short_kept"
 
 
 def left_ships(config: GameConfig, f: Facility) -> int:
@@ -368,12 +364,6 @@ def _ship_wear(island: IslandState, config: GameConfig) -> float:
     return island.economy.prices.get(config.get("trade.ship_good"), 0) / config.get(
         "trade.ship_life"
     )
-
-
-def _turn_rate(config: GameConfig) -> float:
-    """寝かせたお金の 1 ターンの利子率（market.initial_prices.capital_rate。重機・トラック・設備と
-    同じ率）。海運業を開き直す資金の見積もり（trade/setup.py の shipping_capital）が使う。"""
-    return config.get("market.initial_prices.capital_rate") / TURNS_PER_YEAR
 
 
 def fleet_wear(island: IslandState, config: GameConfig, f: Facility, turn: int) -> int:

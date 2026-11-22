@@ -2357,34 +2357,14 @@ class _Round:
             state["contracts"] = [
                 contract_view(c, i, self.turn) for c in contracts.of_island(self.world, i)
             ]
-            self._keep_short(island, here)
+            shipping = shipping_of(island, self.config)
+            if shipping is not None:
+                keep = self.config.get("trade.cost_turns")
+                history = [*shipping.economy.get("ships_short", []), int(here.ship_short)]
+                shipping.economy["ships_short"] = history[-keep:]
+                loads = [*shipping.economy.get(ship_orders.SHORT_LOAD, []), here.ship_short_load]
+                shipping.economy[ship_orders.SHORT_LOAD] = loads[-keep:]
             self._stats(island, here)
-
-    def _keep_short(self, island: IslandState, here: _IslandTurn) -> None:
-        """船が足りずに約定した荷を運べなかったか（S2）と、その荷の船の重さを、直近
-        trade.cost_turns ターン分残す。海運業があれば海運業に書き、島にも同じ写しを残す。海運業が
-        いない間（倒れて取り壊された）は、島の写しに同じ定義で取り続ける（W-281。掲示板 #1109。
-        開き直した海運業はこの写しを引き継ぎ、ships_wanted がその時点の窓で最初の 1 隻を見る。港の
-        ない島は船では直らないので数えない）。"""
-        shipping = shipping_of(island, self.config)
-        state = island_state(island)
-        if shipping is not None:
-            holder = shipping.economy
-        elif port_of(island, self.config) is not None:
-            holder = state.setdefault(ships.SHORT_KEPT, {})
-        else:
-            state.pop(ships.SHORT_KEPT, None)
-            return
-        keep = self.config.get("trade.cost_turns")
-        history = [*holder.get("ships_short", []), int(here.ship_short)]
-        holder["ships_short"] = history[-keep:]
-        loads = [*holder.get(ship_orders.SHORT_LOAD, []), here.ship_short_load]
-        holder[ship_orders.SHORT_LOAD] = loads[-keep:]
-        if holder is not state.get(ships.SHORT_KEPT):
-            state[ships.SHORT_KEPT] = {
-                "ships_short": list(holder["ships_short"]),
-                ship_orders.SHORT_LOAD: list(holder[ship_orders.SHORT_LOAD]),
-            }
 
     def _keep_charter(self, island: IslandState, here: _IslandTurn) -> None:
         """借りた船の運賃と買った量（圏・財ごと）を、直近 trade.cost_turns ターン分残す（FX-63。
