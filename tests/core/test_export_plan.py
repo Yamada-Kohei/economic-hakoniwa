@@ -399,11 +399,11 @@ def test_surplus_over_the_reserve_is_deposited_at_the_central_bank_and_comes_bac
 def test_short_planned_island_borrows_by_swap_and_pays_the_central_bank_back_first(game, base):
     """FX-86: 外貨の足りない計画の島は、中央銀行が融通で借りて国営の商社に渡す（国の中のメモに
     残す）。商社は蓄えの目標を超えた外貨を、預ける前にまず中央銀行に戻し、中央銀行は融通を返せる。
-    既定は切り（borrow_rank 0）。"""
+    既定は順 1（燃料と主食）まで（borrow_rank 1）。"""
     from hakoniwa_core import ledger
     from hakoniwa_core.trade import swap
 
-    assert game.config.get("planning.export.borrow_rank") == 0
+    assert game.config.get("planning.export.borrow_rank") == 1
     world = copy.deepcopy(base)
     island = planned_islands(world)[0]
     [bloc] = blocs.member_of(world, island.id)
