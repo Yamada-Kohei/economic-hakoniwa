@@ -30,6 +30,7 @@ def _village(game, population):  # noqa: F811
 def test_village_housing_keeps_farming_above_the_town_size(game, switch):  # noqa: F811
     """村の段階の住宅地は、人数が町の下限を超えても自給の農業を続ける（切なら人数で町になる）。"""
     town = village_size(game.defs) + 1
+    switch(False)
     island, tile = _village(game, town + 10)
     refresh_farming(game.defs, game.config, island)
     assert FARMING not in tile.ext
@@ -66,6 +67,7 @@ def test_tile_without_housing_keeps_its_mark(game, switch):  # noqa: F811
 
 
 def test_switching_off_clears_the_marks(game, switch):  # noqa: F811
+    switch(False)
     island, tile = _village(game, 100)
     tile.ext[FARMING] = False
     refresh_farming(game.defs, game.config, island)
