@@ -246,6 +246,9 @@ class _Round:
         self.missed: dict[tuple[int, int], dict[str, tuple[int, int, int]]] = {}
         # (島, 主体, 通貨) → 財 → 計画経済の国営の商社が、その財のために取り置いている外貨（FX-76）
         self.fx_queue: dict[tuple[int, str, int], dict[str, int]] = {}
+        # (島, 主体, 通貨) → 計画経済の島の中央銀行がこのターンに融通で借りて国営の商社に渡した外貨
+        # （外貨を使う順が borrow_rank より下の財には使わない。FX-86）
+        self.plan_loan: dict[tuple[int, str, int], int] = {}
         # (島, 商社, 財) → 輸入の注文に割り振った量（FX-67。圏の市場の前に _allocate が決める）
         self.alloc: dict[tuple[int, int, str], _Allocated] = {}
         # 島 → 動いている港・海運業の施設（W-236 K-2。船と港の余裕を数える所が 1 ターンに何万回も
@@ -1545,6 +1548,7 @@ class _Round:
         sellers: dict[tuple[int, str], int] = {}
         self._plan_imports()
         self._allocate()
+        self._plan_borrow()
         width = to_basis(self.config.get("trade.bloc_band"))
         budgets: dict[int, int] = {}  # 商社ごとの扱える重さの残り
         money_left: dict[tuple[int, str, int], int] = {}  # (島, 主体, 通貨) → 使える額の残り
@@ -1632,6 +1636,74 @@ class _Round:
             [bids[i] for i in keep_b],
             [asks[i] for i in keep_s],
         )
+
+    def _plan_borrow(self) -> None:
+        """FX-86: 計画経済の島の中央銀行が、国営の商社の優先する輸入（外貨を使う順が
+        planning.export.borrow_rank 段まで。reserve_rank より上だけ）に足りない外貨を融通で借りて
+        商社に渡す（export_plan.borrow_for_imports）。圏の市場の前、市場の島の融通（為替の段）の後。
+        段ごとに、全部の計画の島で順 1 の分を先に借り、残りの枠で順 2 を借りる。足りない額は、その段
+        までの注文の額（_import_order と同じ量と指値。借りた船の運賃を含む）の合計から商社の持ち高を
+        引いた分。島の stats に段ごとの借りたい額・借りた額・借りきれなかった額（自国通貨）と、
+        止まった枠の種類の回数を書く。"""
+        self.plan_loan = {}
+        guarded = self.config.get("planning.export.reserve_rank")
+        top = min(int(self.config.get("planning.export.borrow_rank") or 0), guarded - 1)
+        if top <= 0:
+            return
+        needs: dict[tuple[int, str, int], dict[int, int]] = {}
+        for i in self.ids:
+            island = self.world.islands[i]
+            if not traders.is_planned(island):
+                continue
+            for key in [k for k in island.stats if k.startswith(export_plan.BORROW + ".")]:
+                del island.stats[key]
+            for f in traders_of(island, self.config, self.turn):
+                entity = entity_of(self.config, f)
+                for good, item in sorted(traders.goods_of(f).items()):
+                    if item.get("dir") != traders.IMPORT or item.get("bm") is None:
+                        continue
+                    rank = fx_priority(self.defs, good)
+                    if rank > top:
+                        continue
+                    bloc = blocs.find(self.world, item["bm"])
+                    if bloc is None or bloc["currency"] == i:
+                        continue
+                    terms, _ = self._import_terms(island, good, bloc)
+                    if terms is None:
+                        continue
+                    want = traders.import_want(self.config, item, True)
+                    if want <= 0:
+                        continue
+                    want, _, _ = self._import_room(
+                        island, good, bloc, want, 10**18, policy.quota(island, good), False
+                    )
+                    if want <= 0:
+                        continue
+                    row = needs.setdefault((i, entity, bloc["currency"]), {})
+                    row[rank] = row.get(rank, 0) + money_of(terms.limit + terms.charter, want)
+        got_so_far: dict[tuple[int, str, int], int] = {}
+        for rank in range(1, top + 1):
+            for key, row in sorted(needs.items()):
+                i, entity, currency = key
+                island = self.world.islands[i]
+                upto = sum(v for r, v in row.items() if r <= rank)
+                have = fxmoney.holding(island, entity, currency)
+                # 借りた分は持ち高に入っているので、前の段までに借りた分は引かない
+                need = max(0, upto - have)
+                if need <= 0:
+                    continue
+                got, why = export_plan.borrow_for_imports(
+                    self.world, island, self.config, entity, currency, need
+                )
+                got_so_far[key] = got_so_far.get(key, 0) + got
+                self.plan_loan[key] = got_so_far[key]
+                stats = island.stats
+                for name, amount in (("want", need), ("got", got), ("short", need - got)):
+                    k = f"{export_plan.BORROW}.{name}.{rank}"
+                    stats[k] = stats.get(k, 0) + fxrates.to_own(island, currency, amount)
+                if why is not None:
+                    k = f"{export_plan.BORROW}.stop.{why}"
+                    stats[k] = stats.get(k, 0) + 1
 
     def _plan_imports(self) -> None:
         """S1: 港のある島は、輸入の注文を船の数で前もって減らさない。圏の市場の荷は、約定した後に
@@ -2089,6 +2161,10 @@ class _Round:
         if rank >= guarded and not export_plan.essential(island, good):
             reserve = export_plan.reserve_of(island, self.config, key[1], key[2], self.turn)
             ahead = max(ahead, reserve)
+        # 優先する輸入のために借りた外貨（FX-86）は、それより下の段の財に使わない
+        top = int(self.config.get("planning.export.borrow_rank") or 0)
+        if rank > top:
+            ahead += self.plan_loan.get(key, 0)
         return ahead
 
     def _refund(

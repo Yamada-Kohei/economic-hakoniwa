@@ -47,6 +47,8 @@
   輸出の荷、essential: 蓄えを使ってよい設備の資材
 - idle: 稼ぐ額があるのに候補のないターンの数、noticed: そのことを知らせた
 - deposit: 主体 → 通貨 → 自国の中央銀行に預けている外貨の量（預けた分の請求。FX-83）
+- loan: 主体 → 通貨 → 中央銀行が融通で借りて国営の商社に渡した外貨のうち、商社がまだ中央銀行に
+  戻していない量（国の中のメモ。FX-86）
 
 蓄えの目標を超えた外貨は自国の中央銀行に預ける（planning.export.deposit_surplus。FX-83）: 貿易の段の
 終わり（計画を決めた後）に、国営の商社の主体ごとの持ち高が蓄えの目標の分（reserve_of）を超える分を
@@ -55,6 +57,19 @@ withdraw_deposits）。為替の段の間は中央銀行の持ち高なので、
 貸し出されて中央銀行に残っていない分は請求のまま残り、返されたら戻す。新しい数は置かない（目標は今の
 蓄えの目標）。現実では、ソ連の外国貿易銀行が余ったドルを西側の銀行に預け、それが貸し出された形
 （ユーロダラー）。
+
+外貨の足りない計画の島は、優先する輸入のために融通を借りる（planning.export.borrow_rank。
+FX-86。掲示板 W-299 の 2）: 圏の市場の前に、国営の商社の外貨を使う順が borrow_rank 段まで
+（1 燃料と主食、2 設備。reserve_rank より上だけ）の輸入の注文の額が持ち高を超える分を、島の
+中央銀行が融通（swap.draw）で借り、商社に渡す（borrow_for_imports）。市場の島の融通は為替の段で
+先に済んでいる。順 1 の分を全部の計画の島で先に借り、残りで順 2 を借りる。借りた分は、その段
+より下の財の輸入には使わない（modules/trade の _fx_ahead）。借りられる枠・貸し手・利子・返し方
+は今の融通のまま（新しい数は置かない）。枠で借りられなかった分は注文に出ず（輸入の圧縮）、
+止まった枠の種類（quota＝借り手の枠 fx.swap_quota、supply＝貸し手の余りと発行した島の枠）を
+記録する。商社は、蓄えの目標を超えた外貨をまず中央銀行に戻し（メモを減らす。国の中の付け
+替え）、残りを預ける。中央銀行は、持ち高が手元に置く分を超えたら融通を返す。現実では、コメコン
+の国際経済協力銀行が振替ルーブルの決済で赤字の加盟国に短期の信用を与え、黒字国の余りが赤字国
+の燃料・主食・設備の輸入に回った形。
 """
 
 from __future__ import annotations
@@ -132,6 +147,9 @@ def _entities(island: IslandState, config: GameConfig, turn: int | None = None) 
 
 
 DEPOSIT = "deposit"
+LOAN = "loan"
+# island.stats の頭: want.<段>・got.<段>・short.<段>（自国通貨）、stop.<枠>（回数）。FX-86
+BORROW = "fx.plan_borrow"
 
 
 def deposit_surplus(
@@ -140,7 +158,11 @@ def deposit_surplus(
     """FX-83: 国営の商社の主体ごとに、外貨の持ち高のうち蓄えの目標の分（reserve_of）を超える分を
     自国の中央銀行に預ける（預けた量を請求として残す）。計画経済でない島と設定が切れているときは
     何もしない。"""
-    if not config.get("planning.export.deposit_surplus") or not traders.is_planned(island):
+    if not traders.is_planned(island):
+        return
+    deposit = bool(config.get("planning.export.deposit_surplus"))
+    loans = state_of(island).get(LOAN, {})
+    if not deposit and not loans:
         return
     claims = state_of(island).setdefault(DEPOSIT, {})
     for entity in _entities(island, config, turn):
@@ -150,6 +172,9 @@ def deposit_surplus(
                 continue
             over = cur[0] - reserve_of(island, config, entity, currency, turn)
             if over <= 0:
+                continue
+            over -= _pay_loan(world, island, entity, currency, over)  # 借りた分を先に戻す（FX-86）
+            if over <= 0 or not deposit:
                 continue
             value = fxmoney.cost_of(island, entity, currency, over)
             fxmoney.transfer(
@@ -165,6 +190,71 @@ def deposit_surplus(
             mine[key] = mine.get(key, 0) + over
     if not any(claims.values()):
         state_of(island).pop(DEPOSIT, None)
+    if not loans:
+        state_of(island).pop(LOAN, None)
+
+
+def _pay_loan(
+    world: WorldState, island: IslandState, entity: str, currency: int, amount: int
+) -> int:
+    """FX-86: 国営の商社が、中央銀行から渡された融通の外貨を amount まで中央銀行に戻す（国の中の付け
+    替え）。戻した量を返す。"""
+    loans = state_of(island).get(LOAN, {})
+    mine = loans.get(entity, {})
+    key = str(currency)
+    pay = min(amount, mine.get(key, 0))
+    if pay <= 0:
+        return 0
+    value = fxmoney.cost_of(island, entity, currency, pay)
+    fxmoney.transfer(
+        world, currency, (island.id, entity), (island.id, ledger.CB), pay, "fx_plan_loan", value
+    )
+    mine[key] -= pay
+    if mine[key] <= 0:
+        del mine[key]
+    if not mine:
+        loans.pop(entity, None)
+    return pay
+
+
+def borrow_for_imports(
+    world: WorldState,
+    island: IslandState,
+    config: GameConfig,
+    entity: str,
+    currency: int,
+    amount: int,
+) -> tuple[int, str | None]:
+    """FX-86: 島の中央銀行が通貨 currency を融通で amount まで借り、国営の商社の主体 entity に渡す。
+    (渡した量, 借りきれなかったときの枠の種類 "quota" か "supply") を返す。"""
+    from hakoniwa_core.trade import swap  # swap は economy を読むので、ここで読む
+
+    if amount <= 0:
+        return 0, None
+    room = swap.available(world, config, island.id, currency)
+    why = None
+    if room < amount:
+        quota = swap.quota_room(island, config)
+        quota_fx = None if quota is None else fxrates.to_foreign(island, currency, quota)
+        why = "quota" if quota_fx is not None and quota_fx <= room else "supply"
+    got = swap.draw(world, config, island.id, currency, min(amount, room)) if room > 0 else 0
+    if got > 0:
+        value = fxmoney.cost_of(island, ledger.CB, currency, got)
+        fxmoney.transfer(
+            world, currency, (island.id, ledger.CB), (island.id, entity), got, "fx_plan_loan", value
+        )
+        mine = state_of(island).setdefault(LOAN, {}).setdefault(entity, {})
+        mine[str(currency)] = mine.get(str(currency), 0) + got
+    return got, why
+
+
+def loaned(island: IslandState) -> dict[str, int]:
+    """通貨 → 中央銀行から国営の商社に渡した融通の外貨のうち、まだ戻していない量の合計（FX-86）。"""
+    out: dict[str, int] = {}
+    for mine in island.ext.get(planning.KEY, {}).get(KEY, {}).get(LOAN, {}).values():
+        for key, amount in mine.items():
+            out[key] = out.get(key, 0) + amount
+    return out
 
 
 def withdraw_deposits(world: WorldState, island: IslandState) -> None:

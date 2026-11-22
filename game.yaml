@@ -955,6 +955,10 @@ planning:
     # 掲示板 #1513 の (a) の候補 1。X870 の比べ（plan 種 1〜5・full）で害がなく、圏の融通の貸し手が作って貸す発行した島
     # から計画の島の預けた分に替わったので入れる。2026-11-22）
     deposit_surplus: true
+    # 外貨の足りない計画の島の中央銀行が、融通（fx.swap_*）で借りて国営の商社に渡し、外貨を使う順がこの段まで
+    # の輸入（1 燃料と主食、2 設備。reserve_rank より上だけ）に充てる（FX-86。掲示板 W-299 の 2）。0 は借りない。
+    # 借りた外貨はこの段より下の財に使わない。比べ（0・1・2）の後に既定を決める
+    borrow_rank: 0
 
 # 外交（フェーズ4-1。hakoniwa_core/diplomacy と hakoniwa_core/modules/diplomacy）
 diplomacy:

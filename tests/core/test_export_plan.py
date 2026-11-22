@@ -394,3 +394,49 @@ def test_surplus_over_the_reserve_is_deposited_at_the_central_bank_and_comes_bac
     assert export_plan.deposited(island) == {str(currency): deposit // 2}
     assert cb() == 0
     assert not fxmoney.reconcile(world)
+
+
+def test_short_planned_island_borrows_by_swap_and_pays_the_central_bank_back_first(game, base):
+    """FX-86: 外貨の足りない計画の島は、中央銀行が融通で借りて国営の商社に渡す（国の中のメモに
+    残す）。商社は蓄えの目標を超えた外貨を、預ける前にまず中央銀行に戻し、中央銀行は融通を返せる。
+    既定は切り（borrow_rank 0）。"""
+    from hakoniwa_core import ledger
+    from hakoniwa_core.trade import swap
+
+    assert game.config.get("planning.export.borrow_rank") == 0
+    world = copy.deepcopy(base)
+    island = planned_islands(world)[0]
+    [bloc] = blocs.member_of(world, island.id)
+    currency = bloc["currency"]
+    if currency == island.id:
+        pytest.skip("自国の通貨の圏")
+    export_plan.withdraw_deposits(world, island)
+    export_plan.state_of(island).pop(export_plan.DEPOSIT, None)
+    entity = export_plan._entities(island, game.config)[0]
+    room = swap.available(world, game.config, island.id, currency)
+    if room <= 2:
+        pytest.skip("借りられる余地がない")
+    before = fxmoney.holding(island, entity, currency)
+    ask = room // 2
+    got, why = export_plan.borrow_for_imports(world, island, game.config, entity, currency, ask)
+    assert got == ask and why is None
+    assert fxmoney.holding(island, entity, currency) == before + got
+    assert swap.debt_in(island, currency) >= got
+    assert export_plan.loaned(island) == {str(currency): got}
+    assert not fxmoney.reconcile(world)
+    # 枠を超えて頼むと、借りられた分だけ渡し、止まった枠の種類を返す
+    more, why = export_plan.borrow_for_imports(
+        world, island, game.config, entity, currency, room * 10
+    )
+    assert more <= room - got + 1 and why in ("quota", "supply")
+    # 目標を超えた分は、預ける前に中央銀行に戻す（メモが減り、請求は残らない）
+    export_plan.state_of(island)["reserve"] = {str(currency): 0}
+    owe = got + more
+    cb_before = fxmoney.holding(island, ledger.CB, currency)
+    export_plan.deposit_surplus(world, island, game.config)
+    held = fxmoney.holding(island, entity, currency)
+    back = min(owe, before + owe)
+    assert fxmoney.holding(island, ledger.CB, currency) == cb_before + before + owe - held
+    assert export_plan.loaned(island).get(str(currency), 0) == owe - back
+    assert export_plan.deposited(island).get(str(currency), 0) == before + owe - back - held
+    assert not fxmoney.reconcile(world)
