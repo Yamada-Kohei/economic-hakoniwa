@@ -330,7 +330,7 @@ def reopen_shipping(
 ) -> Facility | None:
     """海運業がなくなった島（倒産して取り壊された）に、荷があるのに運び手がいなければ（商社の
     輸入の見込み traders.IMPORT_NEED がある）、trade.entry_turns ターン後に経済体制の既定の
-    持ち主で海運業を開き直す（W-281・FX-84。前は二度と開かず、その島は船なしのままだった）。
+    持ち主で海運業を開き直す（W-281・FX-85。前は二度と開かず、その島は船なしのままだった）。
 
     開くのは、持ち主が開業の資金（shipping_capital: 船 1 隻と、その船を
     trade.shipping_capital_turns ターン走らせる運航費と船の利子）を出せるときだけ（掲示板 #1563。
@@ -378,7 +378,7 @@ def reopen_shipping(
 
 def shipping_capital(island: IslandState, config: GameConfig) -> int:
     """海運業を開き直す資金: 今の値段の船 1 隻と、その船を trade.shipping_capital_turns ターン
-    走らせる運航費（船員の賃金と一番安い燃料）と新しい船の利子（FX-84）。"""
+    走らせる運航費（船員の賃金と一番安い燃料）と新しい船の利子（FX-85）。"""
     price = island.economy.prices.get(config.get("trade.ship_good"), 0)
     per_turn = ships._ship_run_cost(island, config) + price * ships._turn_rate(config)
     return round_money(price + per_turn * config.get("trade.shipping_capital_turns"))

@@ -25,7 +25,7 @@ trade.ship_fuel に財が複数あれば、どれか1つで動きます（フェ
 運賃は「荷 1 トン × 区画 1 つ」あたりで、（1 + trade.cost_markup）×（運航費 ＋ 資本費 ×
 min(1, 2u)）÷ 1 隻を 1 ターン全部使ったときに運ぶ量です（タブ 9 FX-74。2026-11-12、W-233）。運航費は
 1 隻 1 ターンの船員の賃金と一番安い燃料、資本費は直近 trade.cost_turns ターンの船の傷みと、船に
-寝かせたお金の利子（償却した後の帳簿価額 × market.initial_prices.capital_rate。FX-83）と、
+寝かせたお金の利子（償却した後の帳簿価額 × market.initial_prices.capital_rate。FX-84）と、
 沈んだ船の値段 ÷ 延べ隻数、u は同じターンの運んだ量 ÷ 船団を全部使ったときの量。船が余れば
 運航費まで下がり、半分より多く使えば、船の傷みまで回収する全部の費用で止まります。
 
@@ -113,7 +113,7 @@ def retiring(config: GameConfig, f: Facility, turn: int) -> int:
 # 海運業の economy: 載せられなかった荷を運ぶのに要った船の重さ（orders.SHORT_LOAD と同じ）
 SHORT_LOAD = "ships_short_load"
 # 島の貿易の状態: 船が足りずに荷を残した記録の写し {"ships_short": [...], SHORT_LOAD: [...]}。
-# 海運業がいない間も取り続け、開き直した海運業が引き継ぐ（FX-84）
+# 海運業がいない間も取り続け、開き直した海運業が引き継ぐ（FX-85）
 SHORT_KEPT = "ships_short_kept"
 
 
@@ -363,21 +363,21 @@ def _ship_run_cost(island: IslandState, config: GameConfig) -> float:
 def _ship_wear(island: IslandState, config: GameConfig) -> float:
     """船 1 隻の 1 ターンの資本費の見積もり（船の年がわからないとき）: 傷み（今の船の値段 ÷
     寿命）と、船に寝かせたお金の利子（船の一生の平均の帳簿価額 = 今の値段の半分 × capital_rate の
-    1 ターン分。FX-83）。"""
+    1 ターン分。FX-84）。"""
     price = island.economy.prices.get(config.get("trade.ship_good"), 0)
     return price / config.get("trade.ship_life") + price / 2 * _turn_rate(config)
 
 
 def _turn_rate(config: GameConfig) -> float:
     """船に寝かせたお金の 1 ターンの利子率（market.initial_prices.capital_rate。重機・トラック・
-    設備と同じ率。FX-83。2026-11-15 本人 OK）。"""
+    設備と同じ率。FX-84。2026-11-15 本人 OK）。"""
     return config.get("market.initial_prices.capital_rate") / TURNS_PER_YEAR
 
 
 def fleet_capital(island: IslandState, config: GameConfig, f: Facility, turn: int) -> float:
     """船団の 1 ターンの資本費: 寿命の前の船ごとに、傷み（今の船の値段 ÷ 寿命）と利子（帳簿価額 =
     今の値段 ×（1 − 年 ÷ 寿命）× 1 ターンの率）。自分のお金で買った船も、そのお金をほかに使えば
-    利子が付くので費用に数える。利子は償却した後の帳簿価額にかかるので、古い船ほど小さい（FX-83。
+    利子が付くので費用に数える。利子は償却した後の帳簿価額にかかるので、古い船ほど小さい（FX-84。
     2026-11-18 の切り分けで、新品の値段にかけた利子は運賃を上げすぎ、手立てのない島が倍に増えた）。
     寿命を過ぎて使い続けている船は償却済みなので数えない。"""
     price = island.economy.prices.get(config.get("trade.ship_good"), 0)
@@ -389,6 +389,16 @@ def fleet_capital(island: IslandState, config: GameConfig, f: Facility, turn: in
         if left > 0:
             total += from_milli(qty) * price * (1 / life + rate * left)
     return total
+
+
+def fleet_wear(island: IslandState, config: GameConfig, f: Facility, turn: int) -> int:
+    """船団の 1 ターンの傷み（寿命の前の船 × 今の船の値段 ÷ 寿命）。船を保つために毎ターン積み
+    立てる買い替えの額（維持の設備投資）として、融資の審査の営業の現金収支から引く（W-281。
+    掲示板 #1563）。"""
+    price = island.economy.prices.get(config.get("trade.ship_good"), 0)
+    life = config.get("trade.ship_life")
+    young = sum(q for since, q in f.economy.get("fleet", []) if turn - since < life)
+    return round_money(from_milli(young) * price / life)
 
 
 def close_turn(

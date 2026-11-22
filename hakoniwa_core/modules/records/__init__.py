@@ -31,11 +31,17 @@ from hakoniwa_core.economy import (
 )
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy.debt import annual_gdp, total_debt
-from hakoniwa_core.economy.households import close_income
+from hakoniwa_core.economy.households import close_income, set_jobless
 from hakoniwa_core.economy.stats import inflation, update_cpi
 from hakoniwa_core.military.forces import soldiers as military_soldiers
 from hakoniwa_core.modules.labor import engineer_unemployment, has_own_wage
-from hakoniwa_core.modules.population import HAPPINESS_PARTS, SETTLE_PARTS, subsistence_persons
+from hakoniwa_core.modules.population import (
+    HAPPINESS_PARTS,
+    SETTLE_PARTS,
+    jobless_persons,
+    refresh_farming,
+    subsistence_persons,
+)
 from hakoniwa_core.registry import IslandStage, Registry
 from hakoniwa_core.state import IslandState, LogEntry
 from hakoniwa_core.trade import balance
@@ -80,6 +86,16 @@ class Records(IslandStage):
     name = "records"
 
     def run_island(self, island: IslandState, ctx: StageContext) -> None:
+        # 人口と住宅地の段で変わったマスの、自給の農業ができる村かの印を書き直す（W-272。切なら
+        # 何もしない）。失業者の層の数え直し（W-294）より先に
+        refresh_farming(ctx.defs, ctx.config, island)
+        if island.has_economy:
+            # 失業している家計の層を、失業率と同じ時点・同じ数え方で数え直す（W-294）。層は賃金の
+            # 段で雇用の段の結果から決めるが、その後の人口の段で、飢えた町の人が村へ逃げ、村の人が
+            # 町へ戻る（移民・災害も）。数え直さないと、層の人数が1つ前の状態のまま記録され、
+            # 失業率がほぼ 0 のターンに層が数万人になった（LAN の世界 8003）。移る人は預金と
+            # このターンの所得を持って移る（move_people）
+            set_jobless(island, jobless_persons(ctx.defs, island))
         self._people(island, ctx)
         if island.has_economy:
             self._economy(island, ctx)

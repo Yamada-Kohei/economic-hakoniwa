@@ -1,8 +1,8 @@
 """所有の船だけで海運業が成り立つこと（W-281 の残り。掲示板 #1438。船の長い借りは採らなかった）。
 
-- 運賃の資本費に船の利子を入れる（FX-83）。
+- 運賃の資本費に船の利子を入れる（FX-84）。
 - 海運業が買って船団に入れる船は設備投資で、営業の現金収支に入れない。
-- 海運業がなくなった島に開き直す。会社がいない間も島で積み残しの記録を取り続けて引き継ぐ（FX-84）。
+- 海運業がなくなった島に開き直す。会社がいない間も島で積み残しの記録を取り続けて引き継ぐ（FX-85）。
 - 船の借り（用途 ship）は 1 件もできない。
 """
 
@@ -40,7 +40,7 @@ def base(game):
 
 def test_freight_capital_cost_includes_the_interest_on_the_book_value_of_the_ship(game, base):
     """運賃の資本費の船の利子は、償却した後の帳簿価額（新品の値段 ×（1 − 年 ÷ 寿命））にかかる。
-    寿命を過ぎた船は数えない。年がわからない見積もりは一生の平均（新品の半分）で見る（FX-83）。"""
+    寿命を過ぎた船は数えない。年がわからない見積もりは一生の平均（新品の半分）で見る（FX-84）。"""
     world = copy.deepcopy(base)
     island = world.islands[1]
     config = game.config
@@ -73,6 +73,30 @@ def test_ship_purchase_is_not_in_the_operating_cash_flow(game, base):
     books.stock_moved(island, f.id, GOOD, MILLI)
     price = island.economy.prices[GOOD]
     assert Accounts._ship_capex(island, game.config) == {f.id: money_of(price, MILLI)}
+
+
+def test_review_cash_flow_takes_the_ship_upkeep_every_turn(game, base, monkeypatch):
+    """代金の代わりに、船を保つ買い替えの額（寿命の前の船 × 今の値段 ÷ 寿命）を毎ターン営業の
+    現金収支から引く（維持の設備投資。掲示板 #1563）。寿命を過ぎた船は数えない。"""
+    config = game.config
+    world = copy.deepcopy(base)
+    island = world.islands[1]
+    f = shipping_of(island, config)
+    price = island.economy.prices[GOOD]
+    life = config.get("trade.ship_life")
+    turn = world.turn
+    f.economy["fleet"] = [[turn, 2 * MILLI], [turn - life, MILLI]]
+    assert ships.fleet_wear(island, config, f, turn) == round(2 * price / life)
+    # 1 ターン回して、引いた版と引かない版の審査の現金収支の差が傷みと同じ
+    plain = copy.deepcopy(base)
+    run(game, world, 1)
+    monkeypatch.setattr(ships, "fleet_wear", lambda *a: 0)
+    plain_f = shipping_of(plain.islands[1], config)
+    plain_f.economy["fleet"] = [[turn, 2 * MILLI], [turn - life, MILLI]]
+    run(game, plain, 1)
+    got = plain_f.economy["ebitda"][-1] - shipping_of(island, config).economy["ebitda"][-1]
+    want = round(2 * island.economy.prices[GOOD] / life)
+    assert abs(got - want) <= 1
 
 
 def test_shipping_reopens_after_entry_turns_and_inherits_the_island_short_record(
@@ -109,7 +133,7 @@ def test_shipping_reopens_only_when_its_owner_can_fund_a_ship_and_its_running(
     game, base, monkeypatch
 ):
     """開き直すのは、持ち主が船 1 隻とその船を trade.shipping_capital_turns ターン走らせる運航費と
-    利子を出せるときだけ。出せなければ国営の待ちを過ぎても開かない。開けば、その額を出資する（FX-84）。"""
+    利子を出せるときだけ。出せなければ国営の待ちを過ぎても開かない。開けば、その額を出資する（FX-85）。"""
     from hakoniwa_core import ledger
     from hakoniwa_core.economy import facility_entity
 

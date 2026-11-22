@@ -110,7 +110,7 @@ def test_ships_past_their_life_add_no_wear_to_the_freight(game, base):
     f.economy["fleet"] = [[world.turn - life, 1000], [world.turn, 1000]]  # 1 隻は寿命を過ぎた
     ships.close_turn(island, config, 0, 0, world.turn)
     price = island.economy.prices[GOOD]
-    # 新しい船の傷みと、新しい船の帳簿価額（新品の値段）の利子（W-281。FX-83）
+    # 新しい船の傷みと、新しい船の帳簿価額（新品の値段）の利子（W-281。FX-84）
     wear = price / life + price * config.get("market.initial_prices.capital_rate") / 12
     assert abs(f.economy["capital_costs"][-1] - wear) <= 1  # 1隻分だけ
 

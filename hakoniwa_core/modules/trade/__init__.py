@@ -265,6 +265,8 @@ class _Round:
             ships.scrap(island, self.config, self.turn)
         self._requests()
         self._fx()
+        for i in self.ids:  # 計画経済の島が中央銀行に預けた外貨を戻す（FX-83）
+            export_plan.withdraw_deposits(self.world, self.world.islands[i])
         self._contracts()
         bloc_unmet, bloc_sellers = self._blocs()
         blocs.settle_leaves(self.world)
@@ -2349,6 +2351,7 @@ class _Round:
                 bloc_sellers,
                 planned_by_bloc,
             )
+            export_plan.deposit_surplus(self.world, island, self.config, self.turn)
             self._site(island)
             self._keep_import_needs(island)
             state["contracts"] = [

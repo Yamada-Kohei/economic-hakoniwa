@@ -26,7 +26,7 @@ import random
 import pytest
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import gate, stock, veins
+from hakoniwa_core import gate, stock, stops, veins
 from hakoniwa_core.autoplan import plan_trade, plan_turn, queue_orders
 from hakoniwa_core.founding import found_island
 from hakoniwa_core.game import load_game
@@ -90,6 +90,8 @@ def test_supply_chain_runs_for_300_turns(game, seed):
     farms: dict[
         int, list[tuple[int, int, int]]
     ] = {}  # 機械化した農場の（燃料の手元, 人手, 燃料のある人手）
+    makers: dict[int, dict[str, list[tuple]]] = {}  # ターン → 財 → 作り手の様子（_makers）
+    held: dict[int, set[str]] = {}  # ターン → 国の倉庫に荷のある財
 
     def check(island):
         for key, value in island.stats.items():
@@ -132,6 +134,8 @@ def test_supply_chain_runs_for_300_turns(game, seed):
             for g in sale
         }
         stored[world.turn] = {g for g in sale if stock.total(island.warehouse, g) > 0}
+        makers[world.turn] = _makers(game.defs, island)
+        held[world.turn] = {g for g in island.warehouse if stock.total(island.warehouse, g) > 0}
         farms[world.turn] = [
             (
                 f.economy.get(fac.FUEL_SHARE, fac.FULL),
@@ -158,6 +162,15 @@ def test_supply_chain_runs_for_300_turns(game, seed):
     run_with_plan(game, world, TURNS, check)
 
     assert world.turn == TURNS
+    # 原料の行き止まりで作れない財（GT-46 の広げ。2026-11-18 掲示板の会議、W-294）: その間の値段の
+    # 外れは落ちにせず、記録に残す。値段の目安を見る前に、その間の値段の記録を目安から外す
+    merchant = game.config.get("foreign_merchant")
+    leave = island.ext["trade"]["merchant_from"] + merchant["turns"]
+    window, blank = _merchant_window(offered, leave)
+    stuck = _dead_end_turns(game.defs, island.resources, offered, held, makers, window)
+    dead_notes = _excuse_dead_end(recorder.islands[island.id], recorder.initial[island.id], stuck)
+    print(f"商人の不在を見る窓 {window} ターン（商人が去る前の、売りのない間の最長 {blank} + 1）")
+    print("\n".join(dead_notes))
     # 生産の連鎖: 鉄鉱石 → 鋼鉄 → 機械 → 機械を使った新しい工場
     assert produced.get("iron_ore", 0) > 0
     assert produced.get("steel", 0) > 0
@@ -190,8 +203,6 @@ def test_supply_chain_runs_for_300_turns(game, seed):
     # （タブ 9 FX-27）。この世界は貿易の相手のいない 1 島で、島で作れない商人の品目（燃料など）は
     # 商人の最後の少ない荷を高い値段で奪い合い、物価が跳ねる（輸入が止まったときの現実の値動き）。
     # 前の形（120 ターンで急に去る）では、去った後はその品目が売り買いされず、値段に数えなかった
-    merchant = game.config.get("foreign_merchant")
-    leave = island.ext["trade"]["merchant_from"] + merchant["turns"]
     tail = (merchant["turns"] - merchant["taper_from"]) // 10
     # 商人が去った後、島で作っていない品目は、施設に残った少しの荷（燃料 0.001 など）を施設どうしで
     # 売り買いするだけで、値段は商人の最後の値段のまま残る。その値段は見ない（FM-54 で立て直しが
@@ -254,6 +265,143 @@ def test_supply_chain_runs_for_300_turns(game, seed):
     failures = [m for m in recorder.failures() if any(h in m for h in hard) and "の値段が" not in m]
     failures += [m for m in priced if "の値段が" in m]
     assert [m for m in failures if not any(f"）: {g} の値段が" in m for g in food)] == []
+
+
+def _makers(defs, island) -> dict[str, list[tuple]]:
+    """財ごとの、島の建った作り手の様子（施設, 止まった訳, 稼働率, 止めた原料の手元, 全力で
+    1 ターンに要るその原料）。止まった訳が原料の品切れでなければ、手元と要る量は 0。"""
+    out: dict[str, list[tuple]] = {}
+    for f in island.facilities:
+        if not f.built:
+            continue
+        made = [g for g, q in fac.outputs_of(defs, f).items() if q > 0]
+        if not made:
+            continue
+        head, good = stops.split(f.status)
+        have = need = 0
+        if head == stops.INPUT and good:
+            have = stock.total(f.stock, good)
+            need = fac.recipe_of(defs, f)["inputs"].get(good, 0)
+        for g in made:
+            out.setdefault(g, []).append((f.kind, f.status, f.operating_rate, have, need))
+    return out
+
+
+def _merchant_window(offered: dict[int, dict[str, int]], leave: int) -> tuple[int, int]:
+    """商人の不在を見る窓のターン数と、その根拠（商人が去る前に、どれかの財で売りのない間が続いた
+    最長のターン数）。窓はふだんの空白の最長より 1 ターン長い。この世界の商人は去るまで毎ターン
+    来るので、ふだんの空白は 0 になる（多島の世界の来訪の間隔も、その世界の記録から同じ形で
+    決める）。"""
+    blank = 0
+    goods = {g for sale in offered.values() for g in sale}
+    for g in goods:
+        turns = sorted(t for t, sale in offered.items() if t < leave and sale.get(g, 0) > 0)
+        blank = max([blank] + [b - a - 1 for a, b in zip(turns, turns[1:], strict=False)])
+    return blank + 1, blank
+
+
+def _dead_goods(defs, resources, open_goods: set[str]) -> set[str]:
+    """島で手に入らない財: 外から入らず（open_goods にない）、島の資源で作れる作り方がない財。
+    作り方の原料が 1 つでも手に入らなければ、その作り方では作れない。島の資源が要る作り方（油井の
+    原油）は、資源がなければ使えない。原料が輪になっている所は、作れる側に倒す（行き止まりだけを拾う）。"""
+    recipes: dict[str, list] = {}
+    for fdef in defs.facilities.values():
+        for recipe in fdef.get("recipes", {}).values():
+            for g in recipe.get("outputs", {}):
+                recipes.setdefault(g, []).append(recipe)
+    memo: dict[str, bool] = {}
+
+    def obtainable(good: str, path: frozenset[str]) -> bool:
+        if good in open_goods:
+            return True
+        if good in memo:
+            return memo[good]
+        if good in path:
+            return True
+        inner = path | {good}
+        found = any(
+            r.get("requires_resource") in (None, *resources)
+            and all(obtainable(q, inner) for q in r.get("inputs", {}))
+            for r in recipes.get(good, [])
+        )
+        if not path:
+            memo[good] = found  # 輪の途中の答え（作れる側に倒した）は残さない
+        return found
+
+    return {g for g in defs.goods if not obtainable(g, frozenset())}
+
+
+def _dead_end_turns(
+    defs,
+    resources,
+    offered: dict[int, dict[str, int]],
+    held: dict[int, set[str]],
+    makers: dict[int, dict[str, list[tuple]]],
+    window: int,
+) -> dict[str, dict[int, tuple[str, list[tuple]]]]:
+    """原料の行き止まりで作れない財と、そのターン（財 → ターン → (止めた原料, 作り手の様子)）。
+
+    当てるのは次がそろったターンだけ（2026-11-18 掲示板の会議）:
+    ① その財も止めた原料も、島に作る手段がない（_dead_goods。今の生産が 0 なだけでは当てない）
+    ② 商人の不在は window ターンの窓で見る（窓の間に商人の売りがあれば手に入る）。国の倉庫に荷が
+       あっても手に入る
+    ③ 島の建った作り手がみな、その原料の品切れ（施設の止まった訳 input:原料）で全力を下回り、
+       手元のその原料が全力の 1 ターン分にも足りない。人手・電力・お金のせいの止まりは当てない
+    """
+    out: dict[str, dict[int, tuple[str, list[tuple]]]] = {}
+    cache: dict[frozenset[str], set[str]] = {}
+    for t in sorted(makers):
+        came = {g for s in range(t - window + 1, t + 1) for g, q in offered.get(s, {}).items() if q}
+        open_goods = frozenset(came | held.get(t, set()))
+        if open_goods not in cache:
+            cache[open_goods] = _dead_goods(defs, resources, set(open_goods))
+        dead = cache[open_goods]
+        for g, rows in makers[t].items():
+            if g not in dead:
+                continue
+            inputs = {stops.split(status)[1] for _, status, *_ in rows}
+            if all(
+                stops.split(status)[0] == stops.INPUT
+                and stops.split(status)[1] in dead
+                and rate < fac.FULL
+                and have < need
+                for _, status, rate, have, need in rows
+            ):
+                out.setdefault(g, {})[t] = ("・".join(sorted(inputs)), rows)
+    return out
+
+
+def _excuse_dead_end(rec, initial: dict[str, int], stuck: dict) -> list[str]:
+    """原料の行き止まりで作れない間の値段の記録を、値段の目安から外し（rec.price_ratio から抜く）、
+    構造化した記録（値段の外れ・止めた原料・作り手の稼働率と手元・回復の有無）を返す。"""
+    low, high = gate.PRICE_RANGE
+    notes = []
+    for g, by_turn in sorted(stuck.items()):
+        ratios = rec.price_ratio.get(g, {})
+        taken = {t: ratios.pop(t) for t in sorted(by_turn) if t in ratios}
+        out = [r for r in taken.values() if not low <= r <= high]
+        turns = sorted(by_turn)
+        rows = [row for t in turns for row in by_turn[t][1]]
+        rates = [rate / fac.FULL for _, _, rate, _, _ in rows]
+        haves = [have for *_, have, _ in rows]
+        inputs = sorted({by_turn[t][0] for t in turns})
+        last = turns[-1]
+        later = sorted(t for t in ratios if t > last)
+        if later:
+            end = taken.get(last, ratios.get(later[0]))
+            recovery = (
+                f"供給が戻った後 T{later[0]}〜T{later[-1]} の比 {ratios[later[0]]:.2f}→"
+                f"{ratios[later[-1]]:.2f}（行き止まりの終わり {end or 0:.2f}）"
+            )
+        else:
+            recovery = "終わりまで戻らず"
+        notes.append(
+            f"原料の行き止まり {g}: T{turns[0]}〜T{last}（{len(turns)} ターン）、止めた原料 "
+            f"{'・'.join(inputs)}、初値 {initial.get(g, 0)}、外れ {len(out)} ターン・最大 "
+            f"{max(taken.values(), default=0):.2f} 倍、作り手の稼働率 {min(rates):.3f}〜"
+            f"{max(rates):.3f}・原料の手元 {min(haves)}〜{max(haves)}、{recovery}"
+        )
+    return notes
 
 
 def _shortage_from(
