@@ -14,7 +14,7 @@ import json
 import pytest
 
 from hakoniwa_core import ledger, stock
-from hakoniwa_core.economy import books, debt, experience
+from hakoniwa_core.economy import books, debt, experience, export_plan
 from hakoniwa_core.gate import Recorder
 from hakoniwa_core.log import format_log
 from hakoniwa_core.modules import experience as rankings
@@ -649,6 +649,10 @@ def test_central_bank_borrows_from_a_bloc_surplus_before_the_issuer(game, base):
     issuer, borrower, lender = _bloc_trio(world)
     c = issuer.id
     _clean_swaps(world, issuer, borrower, lender)
+    # 計画経済の島が貿易の段の終わりに中央銀行に預けた外貨（FX-83）は、次の為替の段の後に戻る
+    # 分なので、先に戻して手元の余りだけを見る
+    for island in world.islands.values():
+        export_plan.withdraw_deposits(world, island)
     borrower.economy.gdp_history = [10**12] * 12  # 上限まで遠い
     keep = fxrates.turnover(lender, c) * game.config.get("fx.swap_keep_turns")
     have = fxmoney.holding(lender, ledger.CB, c)
