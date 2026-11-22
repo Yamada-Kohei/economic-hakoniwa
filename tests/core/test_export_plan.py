@@ -351,6 +351,9 @@ def test_surplus_over_the_reserve_is_deposited_at_the_central_bank_and_comes_bac
     if currency == island.id:
         pytest.skip("自国の通貨の圏")
     entities = export_plan._entities(island, game.config)
+    # 既定で入れているので、元の世界にも預けた分がある: 戻してから請求を消し、この試験の分だけを見る
+    export_plan.withdraw_deposits(world, island)
+    export_plan.state_of(island).pop(export_plan.DEPOSIT, None)
 
     def held():
         return sum(fxmoney.holding(island, e, currency) for e in entities)
@@ -363,7 +366,9 @@ def test_surplus_over_the_reserve_is_deposited_at_the_central_bank_and_comes_bac
         pytest.skip("外貨の持ち高がない")
     target = total // 4
     export_plan.state_of(island)["reserve"] = {str(currency): target}
-    export_plan.deposit_surplus(world, island, game.config)  # 既定は切る
+    assert game.config.get("planning.export.deposit_surplus") is True  # 既定で入れる
+    monkeypatch.setitem(game.config.raw["planning"]["export"], "deposit_surplus", False)
+    export_plan.deposit_surplus(world, island, game.config)  # 切っていれば何もしない
     assert held() == total and cb() == cb_before
     monkeypatch.setitem(game.config.raw["planning"]["export"], "deposit_surplus", True)
     export_plan.deposit_surplus(world, island, game.config)
