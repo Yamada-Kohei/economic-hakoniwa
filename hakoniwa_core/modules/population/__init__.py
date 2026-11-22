@@ -906,8 +906,12 @@ class Population(IslandStage):
             crowd = crowding(tile.population, capacity)
             labor = fac.labor_force(defs, island, tile)
             working = tile.ext.get("employed", 0)
-            if subsistence_persons(defs, island, tile):
+            if _farming(defs, tile) and subsistence_persons(defs, island, tile):
                 working = labor  # 村で自給の農業をしている人は、仕事がないとは数えない
+            elif not _farming(defs, tile):
+                # 町では畑に戻った人（TOWN_FARMERS）の分だけ。1 人でも畑にいればマス全体を
+                # 仕事のある扱いにしない（W-272 PO-62）
+                working += min(tile.ext.get(TOWN_FARMERS, 0), max(0, labor - working))
             local = {
                 "jobs": fac.ratio(working, labor) if labor else fac.FULL,
                 "power": tile.ext.get("power", 0),

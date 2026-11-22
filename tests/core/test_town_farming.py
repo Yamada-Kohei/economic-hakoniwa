@@ -176,3 +176,46 @@ def test_fractions_carry_over_in_hundredths(game, rate):  # noqa: F811
     tile.ext["employed"] = force  # U = 0
     ((_, unhired, _, moved, carry),) = town_farm_moves(game.defs, island, 10, share).values()
     assert (unhired, moved, carry) == (0, 0, 0)
+
+
+def test_a_few_town_farmers_do_not_make_the_whole_tile_employed(game, rate):  # noqa: F811
+    """幸福度の「仕事」は、町では畑に戻った人の分だけ仕事のある扱いにする。前は 1 人でも畑にいれば
+    マス全体が仕事のある扱いになっていた（W-272 PO-62 の測りで見つけた）。"""
+    import copy
+
+    from hakoniwa_core.modules.population import Population, _farming
+    from hakoniwa_core.state.generate import generate_world
+    from tests.core.test_finance import context, run
+
+    rate(25)
+    world = generate_world(1, 3, game.config, game.defs)
+    run(game, world, 3)
+
+    def towns(w):
+        return [
+            (i, t)
+            for i in w.islands.values()
+            if i.has_economy
+            for t in i.tiles
+            if t.population > 0 and not _farming(game.defs, t)
+        ]
+
+    island, tile = max(towns(world), key=lambda it: it[1].population)
+    share = fac.labor_share(game.defs, island)
+    force = fac.labor_force(game.defs, island, tile, share)
+    tile.ext["employed"] = force // 2  # 半分が仕事なし
+
+    def mood(farmers):
+        w = copy.deepcopy(world)
+        i = w.islands[island.id]
+        t = i.tile(tile.x, tile.y)
+        if farmers:
+            t.ext[TOWN_FARMERS] = farmers
+        else:
+            t.ext.pop(TOWN_FARMERS, None)
+        Population().run_island(i, context(game, w, "population"))
+        return t.ext["happiness"]
+
+    none, one, half = mood(0), mood(1), mood(force - force // 2)
+    assert abs(one - none) <= 1  # 1 人だけ畑にいても、ほとんど変わらない
+    assert half > one  # 仕事のない人が全員畑にいれば、仕事のある扱い
