@@ -12,7 +12,6 @@ import copy
 
 import pytest
 
-from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.economy import banks
 from hakoniwa_core.game import load_game
 from hakoniwa_core.state.generate import generate_world
@@ -38,27 +37,19 @@ def base(game):
     return world
 
 
-def test_freight_capital_cost_includes_the_interest_on_the_book_value_of_the_ship(game, base):
-    """運賃の資本費の船の利子は、償却した後の帳簿価額（新品の値段 ×（1 − 年 ÷ 寿命））にかかる。
-    寿命を過ぎた船は数えない。年がわからない見積もりは一生の平均（新品の半分）で見る（FX-84）。"""
+def test_freight_capital_cost_is_the_wear_of_the_ships_before_their_life(game, base):
+    """運賃の資本費は、寿命の前の船の傷み（今の値段 ÷ 寿命）だけ。船の利子（FX-84）は 2026-11-22 に
+    保留した（本人「とりあえず外そうか」。利子が運賃に乗って船を手放した島が戻らなかった）。"""
     world = copy.deepcopy(base)
     island = world.islands[1]
     config = game.config
     f = shipping_of(island, config)
     price = island.economy.prices[GOOD]
     life = config.get("trade.ship_life")
-    rate = config.get("market.initial_prices.capital_rate") / TURNS_PER_YEAR
     turn = world.turn
-    f.economy["fleet"] = [[turn, MILLI]]
-    new = price / life + price * rate
-    assert ships.fleet_capital(island, config, f, turn) == pytest.approx(new)
-    f.economy["fleet"] = [[turn - life // 2, MILLI]]
-    half = price / life + price * rate * (1 - (life // 2) / life)
-    assert ships.fleet_capital(island, config, f, turn) == pytest.approx(half)
-    f.economy["fleet"] = [[turn - life, MILLI]]
-    assert ships.fleet_capital(island, config, f, turn) == 0
-    want = price / life + price / 2 * rate
-    assert ships._ship_wear(island, config) == pytest.approx(want)
+    f.economy["fleet"] = [[turn, MILLI], [turn - life // 2, MILLI], [turn - life, MILLI]]
+    assert ships.fleet_wear(island, config, f, turn) == round(2 * price / life)
+    assert ships._ship_wear(island, config) == pytest.approx(price / life)
 
 
 def test_ship_purchase_is_not_in_the_operating_cash_flow(game, base):

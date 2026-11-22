@@ -127,7 +127,7 @@ def test_freight_rate_is_per_ton_and_cell(game, traded):
     markup = 1 + settings["cost_markup"]
     full = settings["ship_capacity"] * settings["ship_speed"] / 2  # 1 隻 1 ターン（トン × 区画）
     run_cost = ships._ship_run_cost(island, game.config)
-    wear = ships.fleet_capital(island, game.config, f, world.turn) * QUANTITY_SCALE / ships.fleet(f)
+    wear = ships.fleet_wear(island, game.config, f, world.turn) * QUANTITY_SCALE / ships.fleet(f)
     rates = {}
     for use in (0, 0.5, 1, 2):
         for key in ("costs", "carried", "used", "capital_costs", "fleets"):
