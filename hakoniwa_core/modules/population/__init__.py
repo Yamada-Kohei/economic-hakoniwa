@@ -209,13 +209,106 @@ def village_size(defs: Defs) -> int:
 def subsistence_persons(
     defs: Defs, island: IslandState, tile: Tile, share: float | None = None
 ) -> int:
-    """自給の農業で食べている人の数（村の、仕事のない働き手とその家族）。share は labor_share。"""
+    """自給の農業で食べている人の数（村の、仕事のない働き手とその家族。町では、畑に戻った働き手
+    （TOWN_FARMERS、settle_town_farmers）とその家族）。share は labor_share。"""
     if share is None:
         share = fac.labor_share(defs, island)
-    if not _farming(defs, tile) or share <= 0:
+    if share <= 0:
         return 0
-    unemployed = fac.labor_force(defs, island, tile, share) - tile.ext.get("employed", 0)
-    return min(tile.population, int(max(0, unemployed) / share))
+    unemployed = max(0, fac.labor_force(defs, island, tile, share) - tile.ext.get("employed", 0))
+    if not _farming(defs, tile):
+        unemployed = min(unemployed, tile.ext.get(TOWN_FARMERS, 0))
+    return min(tile.population, int(unemployed / share))
+
+
+# マスの ext: 町（自給の農業ができない段階）のマスで、自給の農業をしている一般の働き手の数（PO-62）
+TOWN_FARMERS = "town_farmers"
+TOWN_FARMING_CARRY = "town_farming_carry"  # 畑に戻る人の端数（1/100 人。PO-62）
+
+
+def farm_room(defs: Defs, share: float) -> int:
+    """1 マスの畑で自給の農業をして食べていける一般の働き手の数（PO-62）。村の住宅地に住める人数
+    （village_capacity）の働き手で、新しい数は置かない。"""
+    return int(village_capacity(defs) * share)
+
+
+def town_farm_moves(
+    defs: Defs, island: IslandState, percent: int, share: float
+) -> dict[Pos, tuple[int, int, int, int, int]]:
+    """町のマスごとの (残る畑の人 kept, 雇われず畑にもいない人 U, 畑の受け入れの余り V,
+    移る人 moved, 次へ繰り越す端数 carry)。会議 #2662・#2686・#2717・#2737 の決め方。
+
+    ターンの初めの値（雇用の段の結果）だけで、全部のマスを先に決める（マスの順に左右されず、同じ
+    ターンに空いた分は翌ターンから）。村のマスは今までどおり仕事のない人が全員畑にいるので扱わない。
+    端数は 1/100 人の整数で持つ: total = 繰り越し + U × percent、moved = min(total // 100, V)、
+    繰り越し = (total − moved × 100) % 100。V が 0 なら繰り越しは据え置き、U が 0 なら 0 に戻す。
+    0 ≤ moved ≤ min(U, V)。"""
+    room = farm_room(defs, share)
+    out = {}
+    for tile in island.tiles:
+        if tile.population <= 0 or _farming(defs, tile):
+            continue
+        idle = max(0, fac.labor_force(defs, island, tile, share) - tile.ext.get("employed", 0))
+        kept = min(tile.ext.get(TOWN_FARMERS, 0), idle, room)
+        unhired = idle - kept
+        space = max(0, room - kept)
+        carry = tile.ext.get(TOWN_FARMING_CARRY, 0)
+        if unhired <= 0:
+            moved, carry = 0, 0
+        elif space <= 0:
+            moved = 0
+        else:
+            total = carry + unhired * percent
+            moved = min(total // 100, space)
+            carry = (total - moved * 100) % 100
+        out[(tile.x, tile.y)] = (kept, unhired, space, moved, carry)
+    return out
+
+
+def settle_town_farmers(defs: Defs, config: GameConfig, island: IslandState) -> None:
+    """町のマスの、仕事のない人が少しずつ自給の農業に戻る（W-272。PO-62。設定
+    population.town_farming_percent。0 なら今までどおり、町では誰も自給しない）。
+
+    村か町かはマスの人数で毎ターン決める。今までは、町の下限の前後のマスで、人数のわずかな上下の
+    たびに仕事のない人が全員、自給の農家と失業者の間を移った（quick の 1 本で 111 マス 296 回）。
+    住宅地の段階で決める形（PO-61）は往復を消したが、町の段階の住宅地が 48,000〜50,000 人の間で
+    町のまま残り、仕事のない人が畑に戻れずに失業が固定した（会議 #2351〜#2759）。
+
+    ここでは、町でも、雇われず畑にもいない人（U）の percent % が、そのマスの畑の受け入れの余り
+    （V、farm_room から今畑にいる人を引いた分。格を問わず同じ上限）まで、毎ターン畑に戻る
+    （town_farm_moves）。畑にいる人は、雇われれば畑を離れる（仕事のない人の数を超えない）。村の
+    マスでは、今までどおり仕事のない人が全員畑にいるので、その人数を覚えておき、町に変わっても畑の
+    人はそのまま残る（一度に失業者にならない）。現実にも、町が縮んで仕事を失った人は、その月の
+    うちに全員が畑に戻るのではなく、少しずつ戻る。"""
+    percent = int(config.get("population.town_farming_percent") or 0)
+    if percent <= 0 or not island.has_economy:
+        for tile in island.tiles:
+            tile.ext.pop(TOWN_FARMERS, None)
+            tile.ext.pop(TOWN_FARMING_CARRY, None)
+        return
+    share = fac.labor_share(defs, island)
+    room = farm_room(defs, share)
+    plan = town_farm_moves(defs, island, percent, share)
+    moved_total = 0
+    for tile in island.tiles:
+        pos = (tile.x, tile.y)
+        carry = 0
+        if tile.population <= 0:
+            farmers = 0
+        elif pos in plan:
+            kept, _, _, moved, carry = plan[pos]
+            farmers = kept + moved
+            moved_total += moved
+        else:  # 村: 仕事のない人は全員畑にいる（町に変わったときに残る人数として覚える）
+            idle = max(0, fac.labor_force(defs, island, tile, share) - tile.ext.get("employed", 0))
+            farmers = min(idle, room)
+        for key, value in ((TOWN_FARMERS, farmers), (TOWN_FARMING_CARRY, carry)):
+            if value > 0:
+                tile.ext[key] = value
+            else:
+                tile.ext.pop(key, None)
+    if moved_total:
+        island.stats["labor.town_farming_moved"] = moved_total
 
 
 def tile_jobless(defs: Defs, island: IslandState, tile: Tile, share: float | None = None) -> int:
