@@ -11,6 +11,7 @@ import pytest
 from hakoniwa_core import facilities as fac
 from hakoniwa_core.modules.population import (
     TOWN_FARMERS,
+    farm_plots,
     farm_room,
     settle_town_farmers,
     subsistence_persons,
@@ -39,6 +40,19 @@ def _town(game, population, employed=0):  # noqa: F811
     return island, tile
 
 
+def _fields(island, plots):
+    """空き地の区画を plots だけにする（ほかの人のいない平地は森に）。"""
+    keep = set(plots)
+    for t in island.tiles:
+        if t.terrain == "plain" and t.population <= 0 and (t.x, t.y) not in keep:
+            t.terrain = "forest"
+
+
+def _moves(game, island, percent):  # noqa: F811
+    share = fac.labor_share(game.defs, island)
+    return town_farm_moves(game.defs, game.config, island, percent, share)
+
+
 def _idle(game, island, tile):  # noqa: F811
     share = fac.labor_share(game.defs, island)
     return fac.labor_force(game.defs, island, tile, share) - tile.ext["employed"]
@@ -55,17 +69,29 @@ def test_off_keeps_towns_without_farmers(game, rate):  # noqa: F811
     assert subsistence_persons(game.defs, island, tile) == 0
 
 
+def test_plots_are_open_plains_near_nobody(game):  # noqa: F811
+    """区画は、用途の指定のない、人の住んでいない、施設のない平地。"""
+    island, _ = _town(game, village_size(game.defs) + 10_000)
+    plots = set(farm_plots(game.defs, game.config, island))
+    assert (6, 6) not in plots  # 町のマス
+    assert (7, 6) in plots
+    assert (0, 0) not in plots  # 海
+    island.tile(7, 6).zone = "industrial"
+    assert (7, 6) not in farm_plots(game.defs, game.config, island)
+
+
 def test_a_share_of_the_unhired_go_back_to_the_fields(game, rate):  # noqa: F811
-    """雇われず畑にもいない人（U）の割合が、畑の受け入れの余り（V）まで移る。
+    """雇われず畑にもいない人（U）の割合が、通勤圏の区画の空き（V）まで移る。
     0 ≤ moved ≤ min(U, V)。"""
     rate(25)
     town = village_size(game.defs) + 10_000
     island, tile = _town(game, town, employed=1000)
+    _fields(island, [(7, 6)])
     share = fac.labor_share(game.defs, island)
     before = tile_jobless(game.defs, island, tile, share)
-    ((kept, unhired, space, moved, _),) = town_farm_moves(game.defs, island, 25, share).values()
+    ((kept, unhired, space, moved, _),) = _moves(game, island, 25).values()
     assert kept == 0 and unhired == _idle(game, island, tile)
-    assert space == farm_room(game.defs, share)
+    assert space == farm_room(game.defs, share)  # 1 区画
     assert moved == min(unhired * 25 // 100, space)
     assert 0 <= moved <= min(unhired, space)
     settle_town_farmers(game.defs, game.config, island)
@@ -74,41 +100,102 @@ def test_a_share_of_the_unhired_go_back_to_the_fields(game, rate):  # noqa: F811
     assert island.stats["labor.town_farming_moved"] == moved
 
 
-def test_the_room_on_the_fields_caps_the_move(game, rate):  # noqa: F811
+def test_no_open_land_no_farmers(game, rate):  # noqa: F811
+    """通勤圏に空き地がなければ、誰も畑に戻れず、畑にいた人も畑を離れる（区画が埋まった）。"""
+    rate(50)
+    island, tile = _town(game, village_size(game.defs) + 10_000)
+    _fields(island, [(12, 12)])  # 通勤圏の外
+    tile.ext[TOWN_FARMERS] = 500
+    ((kept, _, space, moved, _),) = _moves(game, island, 50).values()
+    assert (kept, space, moved) == (0, 0, 0)
+    settle_town_farmers(game.defs, game.config, island)
+    assert TOWN_FARMERS not in tile.ext
+
+
+def test_the_room_on_the_plots_caps_the_move(game, rate):  # noqa: F811
     rate(50)
     town = village_size(game.defs) + 10_000
     island, tile = _town(game, town)
+    _fields(island, [(7, 6), (5, 6)])
     share = fac.labor_share(game.defs, island)
-    room = farm_room(game.defs, share)
+    room = 2 * farm_room(game.defs, share)
     tile.ext[TOWN_FARMERS] = room - 5
-    ((kept, unhired, space, moved, _),) = town_farm_moves(game.defs, island, 50, share).values()
+    ((kept, unhired, space, moved, _),) = _moves(game, island, 50).values()
     assert (kept, space, moved) == (room - 5, 5, 5)
     assert 0 <= moved <= min(unhired, space)
     settle_town_farmers(game.defs, game.config, island)
     assert tile.ext[TOWN_FARMERS] == room
+    ((kept, _, space, moved, _),) = _moves(game, island, 50).values()
+    assert (kept, space, moved) == (room, 0, 0)  # 満ちたら新しく移る人は 0
 
 
 def test_hired_farmers_leave_the_fields(game, rate):  # noqa: F811
-    """畑にいる人は、雇われれば畑を離れる（仕事のない人の数を超えない）。"""
+    """畑にいる人は、雇われれば畑を離れる（仕事のない人の数を超えない）。空いた区画には次の人が入る。"""
     rate(10)
     town = village_size(game.defs) + 10_000
     island, tile = _town(game, town)
+    _fields(island, [(7, 6)])
     share = fac.labor_share(game.defs, island)
     force = fac.labor_force(game.defs, island, tile, share)
     tile.ext[TOWN_FARMERS] = 3000
     tile.ext["employed"] = force - 1000  # 仕事のない人は 1,000 人だけ
-    ((kept, unhired, _, moved, _),) = town_farm_moves(game.defs, island, 10, share).values()
+    ((kept, unhired, _, moved, _),) = _moves(game, island, 10).values()
     assert (kept, unhired, moved) == (1000, 0, 0)
     persons = subsistence_persons(game.defs, island, tile, share)
     assert persons == min(tile.population, int(1000 / share))
     assert tile_jobless(game.defs, island, tile, share) == 0
 
 
+def test_towns_share_a_plot_by_how_many_want_to_come(game, rate):  # noqa: F811
+    """2 つの町が 1 つの区画を分け合うときは、移りたい人数に比例して分ける。今畑にいる人が先。"""
+    rate(50)
+    town = village_size(game.defs) + 10_000
+    island = make_island(game)
+    island.economy.started = 0
+    home(game, island, 5, 6, town, level="town")
+    home(game, island, 9, 6, town, level="town")
+    _fields(island, [(7, 6)])  # 2 つの町のどちらの通勤圏にもある
+    share = fac.labor_share(game.defs, island)
+    room = farm_room(game.defs, share)
+    force = fac.labor_force(game.defs, island, island.tile(5, 6), share)
+    island.tile(5, 6).ext["employed"] = force - 3 * room  # 移りたい人 1.5 区画分（V の 1 区画まで）
+    island.tile(9, 6).ext["employed"] = force - room  # 0.5 区画分
+    plan = _moves(game, island, 50)
+    a, b = plan[(5, 6)][3], plan[(9, 6)][3]
+    assert a + b == room
+    assert abs(a - 2 * b) <= 2  # 希望 1 区画と 0.5 区画の比
+    for pos in plan:
+        island.tile(*pos).ext[TOWN_FARMERS] = plan[pos][3]
+    plan = _moves(game, island, 50)
+    assert (plan[(5, 6)][0], plan[(9, 6)][0]) == (a, b)  # 今いる人が残り
+    assert plan[(5, 6)][3] == plan[(9, 6)][3] == 0  # 満ちているので新しく入れない
+
+
+def test_plots_are_swapped_so_both_towns_fit(game, rate):  # noqa: F811
+    """町 A は区画 P と Q に、町 B は P だけに届くとき、A が P に入っていても Q へ移って、B が P に
+    入れる（区画の振り替え）。"""
+    rate(100)
+    town = village_size(game.defs) + 10_000
+    island = make_island(game)
+    island.economy.started = 0
+    home(game, island, 4, 6, town, level="town")  # A
+    home(game, island, 10, 6, town, level="town")  # B
+    _fields(island, [(7, 6), (2, 6)])  # P（両方から 3 マス）と Q（A だけ）
+    share = fac.labor_share(game.defs, island)
+    room = farm_room(game.defs, share)
+    force = fac.labor_force(game.defs, island, island.tile(4, 6), share)
+    for pos in ((4, 6), (10, 6)):
+        island.tile(*pos).ext["employed"] = force - room
+    plan = _moves(game, island, 100)
+    assert plan[(4, 6)][3] == room and plan[(10, 6)][3] == room
+
+
 def test_a_village_that_becomes_a_town_keeps_its_farmers(game, rate):  # noqa: F811
-    """村では仕事のない人が全員畑にいる。人数が増えて町になっても、その人たちは一度に失業者にならない。"""
+    """村では仕事のない人が全員畑にいる。町になっても、周りの区画に入れる分は一度に失業者にならない。"""
     rate(10)
     size = village_size(game.defs)
     island, tile = _town(game, size - 1000, employed=0)
+    _fields(island, [(7, 6), (5, 6)])
     share = fac.labor_share(game.defs, island)
     settle_town_farmers(game.defs, game.config, island)
     farmers = tile.ext[TOWN_FARMERS]
@@ -121,7 +208,8 @@ def test_a_village_that_becomes_a_town_keeps_its_farmers(game, rate):  # noqa: F
 
 
 def test_the_order_of_the_tiles_does_not_matter(game, rate):  # noqa: F811
-    """マスの順を反対にしても、移る人数は同じ（ターンの初めの値だけで決める）。"""
+    """マスの順を反対にしても、移る人数は同じ（ターンの初めの値と位置だけで決める）。区画を分け合う
+    町があっても同じ。"""
     rate(25)
     town = village_size(game.defs) + 10_000
 
@@ -132,6 +220,7 @@ def test_the_order_of_the_tiles_does_not_matter(game, rate):  # noqa: F811
             home(game, island, x, y, town + 1000 * i, level="town")
             island.tile(x, y).ext["employed"] = 500 * i
             island.tile(x, y).ext[TOWN_FARMERS] = 200 * i
+        _fields(island, [(5, 5), (7, 7), (6, 4), (9, 9)])
         if reverse:
             island.tiles.reverse()
         settle_town_farmers(game.defs, game.config, island)
@@ -162,19 +251,26 @@ def test_fractions_carry_over_in_hundredths(game, rate):  # noqa: F811
     rate(10)
     town = village_size(game.defs) + 10_000
     island, tile = _town(game, town)
+    _fields(island, [(7, 6)])
     share = fac.labor_share(game.defs, island)
     force = fac.labor_force(game.defs, island, tile, share)
     tile.ext["employed"] = force - 7  # U = 7 人
     tile.ext["town_farming_carry"] = 50
-    ((_, unhired, _, moved, carry),) = town_farm_moves(game.defs, island, 10, share).values()
+    ((_, unhired, _, moved, carry),) = town_farm_moves(
+        game.defs, game.config, island, 10, share
+    ).values()
     assert unhired == 7 and (moved, carry) == (1, 20)  # 50 + 70 = 120 → 1 人、残り 20
     tile.ext[TOWN_FARMERS] = farm_room(game.defs, share)  # 余りなし
     tile.ext["employed"] = 0
-    ((_, _, space, moved, carry),) = town_farm_moves(game.defs, island, 10, share).values()
+    ((_, _, space, moved, carry),) = town_farm_moves(
+        game.defs, game.config, island, 10, share
+    ).values()
     assert (space, moved, carry) == (0, 0, 50)
     tile.ext.pop(TOWN_FARMERS)
     tile.ext["employed"] = force  # U = 0
-    ((_, unhired, _, moved, carry),) = town_farm_moves(game.defs, island, 10, share).values()
+    ((_, unhired, _, moved, carry),) = town_farm_moves(
+        game.defs, game.config, island, 10, share
+    ).values()
     assert (unhired, moved, carry) == (0, 0, 0)
 
 
