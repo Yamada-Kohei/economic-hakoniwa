@@ -148,7 +148,7 @@ from hakoniwa_core.state import (
     IslandState,
     LogEntry,
 )
-from hakoniwa_core.trade import merchant, send_to_market
+from hakoniwa_core.trade import merchant, offtake, send_to_market
 from hakoniwa_core.trade import orders as ship_orders
 from hakoniwa_core.trade import setup as trade_setup
 from hakoniwa_core.trade import traders as trade_traders
@@ -514,6 +514,12 @@ class EntryExit(IslandStage):
             for good in list(history):
                 if good not in seen:
                     history[good] = [*history[good], 0][-keep:]
+        # 商社の引き取り契約を島の作り手が引き受けられなかった量（W-307）は、買いたい量と品切れに
+        # 重み 1 で足す（参入の合図。市場に出ない輸出向けの需要）
+        for good, qty in island.scratch.get(offtake.UNMET, {}).items():
+            for key in ("shortages", "demand"):
+                history = finance.setdefault(key, {}).setdefault(good, [0])
+                history[-1] += qty
 
     # --- 撤退 -------------------------------------------------------------------------
 
