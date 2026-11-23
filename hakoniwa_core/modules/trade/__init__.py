@@ -794,6 +794,7 @@ class _Round:
                 if record is not None:  # このターンの契約の払いのために、政府が板で買えた分
                     bought = fxmoney.holding(island, ledger.GOV, currency) - before
                     record.market = max(0, min(bought, record.need - record.had - record.reserve))
+        self._plan_debt_service()  # 計画経済の借り手の債務の支払い（FX-86 の案 2）
         swap.service(self.world, self.config)  # 融通の利払いと返済
 
     def _import_plan(
@@ -1637,26 +1638,14 @@ class _Round:
             [asks[i] for i in keep_s],
         )
 
-    def _plan_borrow(self) -> None:
-        """FX-86: 計画経済の島の中央銀行が、国営の商社の優先する輸入（外貨を使う順が
-        planning.export.borrow_rank 段まで。reserve_rank より上だけ）に足りない外貨を融通で借りて
-        商社に渡す（export_plan.borrow_for_imports）。圏の市場の前、市場の島の融通（為替の段）の後。
-        段ごとに、全部の計画の島で順 1 の分を先に借り、残りの枠で順 2 を借りる。足りない額は、その段
-        までの注文の額（_import_order と同じ量と指値。借りた船の運賃を含む）の合計から商社の持ち高を
-        引いた分。島の stats に段ごとの借りたい額・借りた額・借りきれなかった額（自国通貨）と、
-        止まった枠の種類の回数を書く。"""
-        self.plan_loan = {}
-        guarded = self.config.get("planning.export.reserve_rank")
-        top = min(int(self.config.get("planning.export.borrow_rank") or 0), guarded - 1)
-        if top <= 0:
-            return
+    def _plan_needs(self, top: int) -> dict[tuple[int, str, int], dict[int, int]]:
+        """FX-86: 計画経済の島の国営の商社の、外貨を使う順が top 段までの輸入の注文の額
+        （_import_order と同じ量と指値。借りた船の運賃を含む）。(島, 主体, 通貨) → 段 → 額。"""
         needs: dict[tuple[int, str, int], dict[int, int]] = {}
         for i in self.ids:
             island = self.world.islands[i]
             if not traders.is_planned(island):
                 continue
-            for key in [k for k in island.stats if k.startswith(export_plan.BORROW + ".")]:
-                del island.stats[key]
             for f in traders_of(island, self.config, self.turn):
                 entity = entity_of(self.config, f)
                 for good, item in sorted(traders.goods_of(f).items()):
@@ -1681,6 +1670,30 @@ class _Round:
                         continue
                     row = needs.setdefault((i, entity, bloc["currency"]), {})
                     row[rank] = row.get(rank, 0) + money_of(terms.limit + terms.charter, want)
+        return needs
+
+    def _plan_borrow(self) -> None:
+        """FX-86: 計画経済の島の中央銀行が、国営の商社の優先する輸入（外貨を使う順が
+        planning.export.borrow_rank 段まで。reserve_rank より上だけ）に足りない外貨を融通で借りて
+        商社に渡す（export_plan.borrow_for_imports）。圏の市場の前、市場の島の融通（為替の段）の後。
+        段ごとに、全部の計画の島で順 1 の分を先に借り、残りの枠で順 2 を借りる。足りない額は、その段
+        までの注文の額（_plan_needs）の合計から商社の持ち高を引いた分。
+        planning.export.borrow_age_limit（案 1）なら、1 年を超えた元本（swap.overdue）が残っている
+        借り手は新しく借りない。島の stats に、段ごとの借りたい額・借りた額・借りきれなかった額
+        （自国通貨）と、止まった枠の種類（quota・supply・age）の回数を書く。"""
+        self.plan_loan = {}
+        guarded = self.config.get("planning.export.reserve_rank")
+        top = min(int(self.config.get("planning.export.borrow_rank") or 0), guarded - 1)
+        if top <= 0:
+            return
+        for i in self.ids:
+            island = self.world.islands[i]
+            if traders.is_planned(island):
+                for key in [k for k in island.stats if k.startswith(export_plan.BORROW + ".")]:
+                    if not key.startswith(export_plan.BORROW + ".service"):
+                        del island.stats[key]
+        needs = self._plan_needs(top)
+        aged = bool(self.config.get("planning.export.borrow_age_limit"))
         got_so_far: dict[tuple[int, str, int], int] = {}
         for rank in range(1, top + 1):
             for key, row in sorted(needs.items()):
@@ -1692,9 +1705,12 @@ class _Round:
                 need = max(0, upto - have)
                 if need <= 0:
                     continue
-                got, why = export_plan.borrow_for_imports(
-                    self.world, island, self.config, entity, currency, need
-                )
+                if aged and swap.overdue(self.world, island, currency) > 0:
+                    got, why = 0, "age"  # 1 年を超えた借りを返すまで新しく借りない（案 1）
+                else:
+                    got, why = export_plan.borrow_for_imports(
+                        self.world, island, self.config, entity, currency, need
+                    )
                 got_so_far[key] = got_so_far.get(key, 0) + got
                 self.plan_loan[key] = got_so_far[key]
                 stats = island.stats
@@ -1704,6 +1720,56 @@ class _Round:
                 if why is not None:
                     k = f"{export_plan.BORROW}.stop.{why}"
                     stats[k] = stats.get(k, 0) + 1
+
+    def _plan_debt_service(self) -> None:
+        """FX-86 の案 2（planning.export.debt_service）: 融通を借りている計画経済の島は、融通の
+        利払いと返済（swap.service）の前に、国営の商社の外貨から、その通貨の燃料と主食の注文の額
+        （外貨を使う順 1 段。_plan_needs）を残した分で、このターンの利子と 1 年を超えた元本
+        （swap.overdue）に足りない分を中央銀行に回す。払う順は、燃料・主食の最低限 → 利子 →
+        1 年を超えた元本 → 残り（外貨計画では債務の支払いが蓄えより先）。回した分は、まず中央銀行
+        から渡された融通の外貨のメモを減らす。中央銀行は手元に置く分を残さずに返す（swap._repay）。
+        島の stats に回した額（自国通貨）を書く。"""
+        if not self.config.get("planning.export.debt_service"):
+            return
+        borrowers = [
+            self.world.islands[i]
+            for i in self.ids
+            if traders.is_planned(self.world.islands[i]) and swap.owed(self.world.islands[i])
+        ]
+        if not borrowers:
+            return
+        needs = self._plan_needs(1)
+        for island in borrowers:
+            island.stats.pop(f"{export_plan.BORROW}.service", None)
+            export_plan.withdraw_deposits(self.world, island)  # 借り手は融通の貸し手にならない
+            for key in sorted(swap.owed(island), key=int):
+                currency = int(key)
+                annual = swap.rate(self.world, self.config, currency)
+                due = sum(
+                    ledger.interest(v, annual) for v in swap.owed(island).get(key, {}).values()
+                )
+                fund = max(
+                    0,
+                    due
+                    + swap.overdue(self.world, island, currency)
+                    - fxmoney.holding(island, ledger.CB, currency),
+                )
+                for entity in export_plan._entities(island, self.config, self.turn):
+                    if fund <= 0:
+                        break
+                    minimum = needs.get((island.id, entity, currency), {}).get(1, 0)
+                    free = fxmoney.holding(island, entity, currency) - minimum
+                    pay = min(fund, max(0, free))
+                    if pay <= 0:
+                        continue
+                    moved = export_plan.pay_to_central_bank(
+                        self.world, island, entity, currency, pay
+                    )
+                    fund -= moved
+                    k = f"{export_plan.BORROW}.service"
+                    island.stats[k] = island.stats.get(k, 0) + fxrates.to_own(
+                        island, currency, moved
+                    )
 
     def _plan_imports(self) -> None:
         """S1: 港のある島は、輸入の注文を船の数で前もって減らさない。圏の市場の荷は、約定した後に

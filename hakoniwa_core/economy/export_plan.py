@@ -148,7 +148,8 @@ def _entities(island: IslandState, config: GameConfig, turn: int | None = None) 
 
 DEPOSIT = "deposit"
 LOAN = "loan"
-# island.stats の頭: want.<段>・got.<段>・short.<段>（自国通貨）、stop.<枠>（回数）。FX-86
+# island.stats の頭（FX-86）: want.<段>・got.<段>・short.<段>（自国通貨）、stop.<枠>（回数）、
+# service（債務の支払いに中央銀行へ回した額。案 2）
 BORROW = "fx.plan_borrow"
 
 
@@ -215,6 +216,33 @@ def _pay_loan(
     if not mine:
         loans.pop(entity, None)
     return pay
+
+
+def pay_to_central_bank(
+    world: WorldState, island: IslandState, entity: str, currency: int, amount: int
+) -> int:
+    """FX-86 の案 2: 国営の商社の主体 entity が、融通の債務の支払いのために外貨 amount を
+    中央銀行に回す（まず中央銀行から渡された融通の外貨のメモを減らし、残りはそのまま回す。国の
+    中の付け替え）。回した量を返す。"""
+    amount = min(amount, fxmoney.holding(island, entity, currency))
+    if amount <= 0:
+        return 0
+    moved = _pay_loan(world, island, entity, currency, amount)
+    rest = amount - moved
+    if rest > 0:
+        value = fxmoney.cost_of(island, entity, currency, rest)
+        fxmoney.transfer(
+            world,
+            currency,
+            (island.id, entity),
+            (island.id, ledger.CB),
+            rest,
+            "fx_plan_loan",
+            value,
+        )
+    if not state_of(island).get(LOAN):
+        state_of(island).pop(LOAN, None)
+    return amount
 
 
 def borrow_for_imports(
