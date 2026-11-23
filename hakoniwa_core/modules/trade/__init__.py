@@ -249,6 +249,9 @@ class _Round:
         # (島, 主体, 通貨) → 計画経済の島の中央銀行がこのターンに融通で借りて国営の商社に渡した外貨
         # （外貨を使う順が borrow_rank より下の財には使わない。FX-86）
         self.plan_loan: dict[tuple[int, str, int], int] = {}
+        # (島, 主体, 通貨) → 債務の支払い（FX-86 の案 2）で国営の商社に残した燃料と主食の注文の額
+        # （支払いで回したターンだけ。外貨を使う順が borrow_rank より下の財には使わない）
+        self.plan_kept: dict[tuple[int, str, int], int] = {}
         # (島, 商社, 財) → 輸入の注文に割り振った量（FX-67。圏の市場の前に _allocate が決める）
         self.alloc: dict[tuple[int, int, str], _Allocated] = {}
         # 島 → 動いている港・海運業の施設（W-236 K-2。船と港の余裕を数える所が 1 ターンに何万回も
@@ -1728,7 +1731,9 @@ class _Round:
         （swap.overdue）に足りない分を中央銀行に回す。払う順は、燃料・主食の最低限 → 利子 →
         1 年を超えた元本 → 残り（外貨計画では債務の支払いが蓄えより先）。回した分は、まず中央銀行
         から渡された融通の外貨のメモを減らす。中央銀行は手元に置く分を残さずに返す（swap._repay）。
-        島の stats に回した額（自国通貨）を書く。"""
+        島の stats に回した額（自国通貨）を書く。回した商社に残した燃料と主食の分は、財の名前の順で
+        先に来る下の段の財（設備など）に使わない（self.plan_kept、_fx_ahead）。"""
+        self.plan_kept = {}
         if not self.config.get("planning.export.debt_service"):
             return
         borrowers = [
@@ -1766,6 +1771,7 @@ class _Round:
                         self.world, island, entity, currency, pay
                     )
                     fund -= moved
+                    self.plan_kept[(island.id, entity, currency)] = minimum
                     k = f"{export_plan.BORROW}.service"
                     island.stats[k] = island.stats.get(k, 0) + fxrates.to_own(
                         island, currency, moved
@@ -2227,10 +2233,17 @@ class _Round:
         if rank >= guarded and not export_plan.essential(island, good):
             reserve = export_plan.reserve_of(island, self.config, key[1], key[2], self.turn)
             ahead = max(ahead, reserve)
-        # 優先する輸入のために借りた外貨（FX-86）は、それより下の段の財に使わない
+        # 優先する輸入のために借りた外貨（FX-86）は、それより下の段の財に使わない。債務の支払い
+        # （案 2）で燃料と主食の分だけ残した商社は、まだ板寄せの来ていない燃料と主食の見込みも
+        # 取り置く（財の名前の順で先に来る設備などが、残した分を使ってしまわないように。借りた分と
+        # 合わせて残した分まで）
         top = int(self.config.get("planning.export.borrow_rank") or 0)
         if rank > top:
-            ahead += self.plan_loan.get(key, 0)
+            extra = self.plan_loan.get(key, 0)
+            if key in self.plan_kept and kept < top:
+                first = sum(v for g, v in queue.items() if kept < fx_priority(self.defs, g) <= top)
+                extra = max(extra, min(first, self.plan_kept[key] + extra))
+            ahead += extra
         return ahead
 
     def _refund(

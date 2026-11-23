@@ -504,6 +504,14 @@ def test_old_swap_principal_stops_new_borrowing_and_debt_service_pays_from_the_t
     assert fxmoney.holding(island, entity, currency) == minimum + debt - paid
     assert fxmoney.holding(island, ledger.CB, currency) == paid
     assert island.stats[f"{export_plan.BORROW}.service"] > 0
+    # 残した燃料と主食の分は、名前の順で先に来る設備（順 2）に使わない（まだ来ていない燃料と主食の
+    # 見込みまで）
+    assert r.plan_kept[key] == minimum
+    r.fx_queue = {key: {"coal": minimum // 2}}
+    assert r._fx_ahead(key, "machinery") == minimum // 2
+    r.fx_queue = {key: {"coal": minimum * 5}}
+    assert r._fx_ahead(key, "machinery") == minimum
+    assert r._fx_ahead(key, "coal") == 0
     # 中央銀行は手元に置く分を残さずに返す
     swap.service(world, game.config)
     assert swap.debt_in(island, currency) < debt
