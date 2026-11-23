@@ -7,6 +7,7 @@
 
 GDP（生産の側）= 施設の付加価値（売上 − 仕入れ − 電気代 − 払った運賃 + 在庫の増減）
                ＋ 工事の作業員の賃金 ＋ 公務員の賃金
+               ＋ 自給の農家が作って市場で売った物（家計の生産。PO-62 第 2 段）
 GDP（支出の側）= 家計の消費（食料・消費財・電気・運賃）＋ 住宅の資材
                ＋ 工事（資材・運賃・作業員の賃金・土木業者への請負の代金）＋ 施設の在庫の増減
                ＋ 国の倉庫の買い入れ − 売り渡し ＋ 公務員の賃金
@@ -54,6 +55,7 @@ GOVERNMENT = "government"  # 項目: wages（公務員）、goods・freight（�
 # valuation（国債のまだ売っていない評価損益の増減）
 CENTRAL_BANK = "central_bank"
 TRADE = "trade"  # 項目: exports（輸出）、imports（輸入）。フェーズ3-1
+SUBSISTENCE = "subsistence"  # 項目: sales（自給の農家が作って市場で売った穀物。PO-62 第 2 段）
 # TRADE の品目ごとの内訳（W-72）。項目: exports.<財>・imports.<財>。他国の船を借りた運賃の収入は
 # 財でないので exports.freight
 TRADE_GOODS = "trade_goods"
@@ -147,6 +149,7 @@ def gdp(island: IslandState, inventory: Mapping[int, int]) -> tuple[int, int]:
     gov = sector(island, GOVERNMENT)
     trade = sector(island, TRADE)
     production += site.get("wages", 0) + gov.get("wages", 0)
+    production += sector(island, SUBSISTENCE).get("sales", 0)  # 家計が作って売った分
     spending = (
         hh.get("goods", 0)
         + hh.get("electricity", 0)

@@ -315,3 +315,121 @@ def test_a_few_town_farmers_do_not_make_the_whole_tile_employed(game, rate):  # 
     none, one, half = mood(0), mood(1), mood(force - force // 2)
     assert abs(one - none) <= 1  # 1 人だけ畑にいても、ほとんど変わらない
     assert half > one  # 仕事のない人が全員畑にいれば、仕事のある扱い
+
+
+# --- PO-62 第 2 段: 自給の農家が最低限の分だけ売る（population.subsistence_sales） -------------
+
+
+@pytest.fixture
+def sales(game, monkeypatch):  # noqa: F811
+    monkeypatch.setitem(game.config.get("population"), "subsistence_sales", True)
+
+
+def _village(game, population):  # noqa: F811
+    island = make_island(game)
+    island.economy.started = 0
+    home(game, island, 6, 6, population, level="village")
+    island.economy.prices["grain"] = 20_000
+    island.economy.prices["clothing"] = 300_000
+    return island, island.tile(6, 6)
+
+
+def test_no_sales_when_off(game, rate):  # noqa: F811
+    from hakoniwa_core.modules.population import FARM_CAPACITY, subsistence_offer
+
+    rate(0)
+    island, tile = _village(game, village_size(game.defs) // 2)
+    tile.ext[FARM_CAPACITY] = 999
+    settle_town_farmers(game.defs, game.config, island)
+    assert FARM_CAPACITY not in tile.ext
+    assert subsistence_offer(game.defs, game.config, island) == 0
+
+
+def test_a_village_grows_up_to_one_farm(game, rate, sales):  # noqa: F811
+    """村の作れる量は、農場の既定の作り方 × 肥沃度 × 気候 × min(1, 働き手 ÷ 農場の働き手)。"""
+    from hakoniwa_core import nature
+    from hakoniwa_core.modules.population import FARM_CAPACITY
+
+    rate(0)
+    recipe = game.defs.facilities["farm"]["recipes"]["default"]
+    out = recipe["outputs"]["grain"] * nature.recipe_multiplier(
+        game.defs, game.config, make_island(game), recipe
+    )
+    workers = fac.workers_needed(game.defs, "farm")
+    island, tile = _village(game, village_size(game.defs) // 2)
+    share = fac.labor_share(game.defs, island)
+    settle_town_farmers(game.defs, game.config, island)
+    farmers = int(subsistence_persons(game.defs, island, tile, share) * share)
+    fert = nature.fertility(tile) / fac.FULL
+    assert tile.ext[FARM_CAPACITY] == int(out * min(1.0, farmers / workers) * fert)
+    tile.ext["employed"] = fac.labor_force(game.defs, island, tile, share) - workers // 2
+    settle_town_farmers(game.defs, game.config, island)
+    assert tile.ext[FARM_CAPACITY] == int(out * 0.5 * fert)  # 働き手が農場の半分なら半分
+
+
+def test_farmers_sell_only_what_buys_the_minimum(game, rate, sales):  # noqa: F811
+    """売る量 = min(作れる量 − 食べる量, 人数 × 衣料の買い替えの代金 ÷ 穀物の値段)。"""
+    from hakoniwa_core.modules.population import FARM_CAPACITY, subsistence_offer
+    from hakoniwa_core.units import to_milli
+
+    rate(0)
+    island, tile = _village(game, village_size(game.defs) // 2)
+    share = fac.labor_share(game.defs, island)
+    persons = subsistence_persons(game.defs, island, tile, share)
+    hh = game.config.get("household")
+    clothes = hh["targets"]["clothing"] * hh["clothing"]["wear"] / 12
+    cash = to_milli(persons * clothes) * 300_000 // 20_000
+    need = to_milli(persons * game.config.get("population.food_per_person"))
+    tile.ext[FARM_CAPACITY] = need + 10 * cash  # 余りは十分
+    assert subsistence_offer(game.defs, game.config, island) == cash
+    tile.ext[FARM_CAPACITY] = need + cash // 2  # 余りが少なければ余りだけ
+    assert subsistence_offer(game.defs, game.config, island) == cash // 2
+    tile.ext[FARM_CAPACITY] = need // 2  # 食べる量に届かなければ売らない
+    assert subsistence_offer(game.defs, game.config, island) == 0
+    tile.ext[FARM_CAPACITY] = need + cash
+    island.economy.prices.pop("clothing")
+    assert subsistence_offer(game.defs, game.config, island) == 0  # 値段がなければ売らない
+
+
+def test_towns_sharing_a_plot_split_its_crop(game, rate, sales):  # noqa: F811
+    """町の作れる量は、入った区画の作れる量を、その区画に入った人数の割合で分ける。"""
+    from hakoniwa_core import nature
+    from hakoniwa_core.modules.population import FARM_CAPACITY, settle_farm_capacity
+
+    rate(50)
+    town = village_size(game.defs) + 10_000
+    island = make_island(game)
+    island.economy.started = 0
+    home(game, island, 5, 6, town, level="town")
+    home(game, island, 9, 6, town, level="town")
+    _fields(island, [(7, 6)])
+    recipe = game.defs.facilities["farm"]["recipes"]["default"]
+    out = recipe["outputs"]["grain"] * nature.recipe_multiplier(
+        game.defs, game.config, island, recipe
+    )
+    out *= nature.fertility(island.tile(7, 6)) / fac.FULL
+    workers = fac.workers_needed(game.defs, "farm")
+    settle_farm_capacity(
+        game.defs, game.config, island, {((5, 6), (7, 6)): workers, ((9, 6), (7, 6)): workers}
+    )
+    a, b = island.tile(5, 6).ext[FARM_CAPACITY], island.tile(9, 6).ext[FARM_CAPACITY]
+    assert a == b == int(out) // 2  # 2 倍の人が入っても、1 区画の作れる量は農場 1 つ分
+
+
+def test_the_world_runs_with_sales(game, rate, sales):  # noqa: F811
+    """入れて回しても止まらず（帳簿は記録の段が確かめる）、売れた量は出した量以下で、GDP の生産の
+    側と支出の側が合う（家計が作って売った分を生産の側に数える）。"""
+    from hakoniwa_core.state.generate import generate_world
+    from tests.core.test_finance import run
+
+    rate(50)
+    world = generate_world(1, 3, game.config, game.defs)
+    offered = sold = 0.0
+    for _ in range(4):
+        run(game, world, 1)
+        for island in world.islands.values():
+            offered += island.stats.get("subsistence.offered", 0)
+            sold += island.stats.get("subsistence.sold", 0) / 1000
+            if island.has_economy:
+                assert island.stats["gdp"] == island.stats["gdp.spending"]
+    assert offered > 0 and 0 < sold <= offered + 1
