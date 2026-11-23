@@ -512,6 +512,14 @@ def test_old_swap_principal_stops_new_borrowing_and_debt_service_pays_from_the_t
     r.fx_queue = {key: {"coal": minimum * 5}}
     assert r._fx_ahead(key, "machinery") == minimum
     assert r._fx_ahead(key, "coal") == 0
+    # 支払いのないターンでも、借りた商社は、まだ来ていない燃料と主食の見込みを全部取り置く
+    # （借りる額は持ち高を足して見込みに届く分なので、持ち高を設備に使うと借りても足りない）
+    kept_now, r.plan_kept = r.plan_kept, {}
+    r.plan_loan = {key: 10}
+    assert r._fx_ahead(key, "machinery") == minimum * 5
+    r.plan_loan = {key: 0}
+    assert r._fx_ahead(key, "machinery") == 0  # 借りていなければ取り置かない（既定の名前の順）
+    r.plan_kept = kept_now
     # 中央銀行は手元に置く分を残さずに返す
     swap.service(world, game.config)
     assert swap.debt_in(island, currency) < debt
