@@ -209,244 +209,16 @@ def village_size(defs: Defs) -> int:
 def subsistence_persons(
     defs: Defs, island: IslandState, tile: Tile, share: float | None = None
 ) -> int:
-    """自給の農業で食べている人の数（村の、仕事のない働き手とその家族。町では、畑に戻った働き手
-    （TOWN_FARMERS、settle_town_farmers）とその家族）。share は labor_share。"""
+    """自給の農業で食べている人の数（村の、仕事のない働き手とその家族）。share は labor_share。"""
     if share is None:
         share = fac.labor_share(defs, island)
-    if share <= 0:
+    if not _farming(defs, tile) or share <= 0:
         return 0
-    unemployed = max(0, fac.labor_force(defs, island, tile, share) - tile.ext.get("employed", 0))
-    if not _farming(defs, tile):
-        unemployed = min(unemployed, tile.ext.get(TOWN_FARMERS, 0))
-    return min(tile.population, int(unemployed / share))
+    unemployed = fac.labor_force(defs, island, tile, share) - tile.ext.get("employed", 0)
+    return min(tile.population, int(max(0, unemployed) / share))
 
 
-# マスの ext: 町（自給の農業ができない段階）のマスで、自給の農業をしている一般の働き手の数（PO-62）
-TOWN_FARMERS = "town_farmers"
-TOWN_FARMING_CARRY = "town_farming_carry"  # 畑に戻る人の端数（1/100 人。PO-62）
-
-
-def farm_room(defs: Defs, share: float) -> int:
-    """1 マスの畑で自給の農業をして食べていける一般の働き手の数（PO-62）。村の住宅地に住める人数
-    （village_capacity）の働き手で、新しい数は置かない。村のマスと、町の周りの空き地の 1 区画の
-    上限。"""
-    return int(village_capacity(defs) * share)
-
-
-def farm_plots(defs: Defs, config: GameConfig, island: IslandState) -> list[Pos]:
-    """町の人が畑にできる区画（PO-62 第 1 段）: 耕せる地形（climate.fertility_terrain）の、用途の
-    指定のない、人の住んでいない、施設のない空き地のマス（firms の空き地と同じ見方）。占領された
-    マスは除く。y, x の順。"""
-    terrain = config.get("climate.fertility_terrain")
-    taken = island.facilities_by_tile()
-    return [
-        (t.x, t.y)
-        for t in sorted(island.tiles, key=lambda t: (t.y, t.x))
-        if t.terrain == terrain
-        and t.zone == ZONE_NONE
-        and t.population <= 0
-        and (t.x, t.y) not in taken
-        and not t.ext.get("occupied")
-    ]
-
-
-_PLOT_ROUNDS = 8  # 足りない分を、空きの残る区画へ頼み直す回数の上限
-
-
-def _by_place(pos: Pos) -> tuple[int, int]:
-    return (pos[1], pos[0])
-
-
-def _split(amount: int, weights: list[tuple[Pos, int]]) -> dict[Pos, int]:
-    """amount を weights の比で分ける（足りていても比のまま。端数は並びの前から 1 ずつ）。"""
-    total = sum(w for _, w in weights)
-    if total <= 0:
-        return {}
-    out = {k: amount * w // total for k, w in weights}
-    rest = amount - sum(out.values())
-    for k, _ in weights[:rest]:
-        out[k] += 1
-    return out
-
-
-def _share_plots(
-    wants: dict[Pos, int],
-    reach: dict[Pos, list[Pos]],
-    free: dict[Pos, int],
-    held: dict[tuple[Pos, Pos], int],
-) -> dict[Pos, int]:
-    """町ごとの希望人数 wants を、届く区画（reach）の空き free に割り振り、町ごとに入れた人数を
-    返す。free と、(町, 区画) ごとの畑の人 held を書き換える。
-
-    1. 毎回、全部の町が一度に、まだ足りない人数を届く区画に頼む。区画ごとの頼み方は「空き ÷ その
-       区画を頼める町の数」に比例（ほかの町と分け合わない区画から先に埋まる）。区画は空きを、頼んだ
-       人数に比例して分ける（allocation.proportional。端数は位置の順）。満ちた区画を頼んだ分は、
-       次の回に空きの残る区画へ頼み直す。
-    2. 区画の振り替え: まだ足りない町は、届く区画にいるほかの町の人を、その町だけが届く空いた区画へ
-       移してもらい、空いた分に入る（入る人の合計は変わらず、届く区画が少ない町も入れる）。
-    町と区画は位置の順に並べて扱うので、マスの並びに左右されない。"""
-    got = {pos: 0 for pos in wants}
-    for _ in range(_PLOT_ROUNDS):
-        need = {t: wants[t] - got[t] for t in wants if wants[t] > got[t]}
-        crowd: dict[Pos, int] = {}
-        for town in need:
-            for p in reach.get(town, ()):
-                if free[p] > 0:
-                    crowd[p] = crowd.get(p, 0) + 1
-        asks: dict[Pos, list[tuple[Pos, int]]] = {}
-        for town in sorted(need, key=_by_place):
-            weights = [(p, -(-free[p] // crowd[p])) for p in reach.get(town, ()) if free[p] > 0]
-            for plot, n in _split(need[town], weights).items():
-                if n > 0:
-                    asks.setdefault(plot, []).append((town, n))
-        if not asks:
-            break
-        for plot in sorted(asks, key=_by_place):
-            for town, n in proportional(free[plot], asks[plot]).items():
-                if n > 0:
-                    got[town] += n
-                    free[plot] -= n
-                    held[(town, plot)] = held.get((town, plot), 0) + n
-    for town in sorted(wants, key=_by_place):
-        for plot in reach.get(town, ()):
-            for other in sorted(wants, key=_by_place):
-                lack = wants[town] - got[town]
-                if lack <= 0:
-                    break
-                there = held.get((other, plot), 0)
-                if other == town or there <= 0:
-                    continue
-                for spare in reach.get(other, ()):
-                    x = min(lack, there, free[spare])
-                    if spare == plot or x <= 0:
-                        continue
-                    held[(other, plot)] -= x
-                    held[(other, spare)] = held.get((other, spare), 0) + x
-                    free[spare] -= x
-                    held[(town, plot)] = held.get((town, plot), 0) + x
-                    got[town] += x
-                    lack -= x
-                    there -= x
-    return got
-
-
-def town_farm_moves(
-    defs: Defs,
-    config: GameConfig,
-    island: IslandState,
-    percent: int,
-    share: float,
-    held: dict[tuple[Pos, Pos], int] | None = None,
-) -> dict[Pos, tuple[int, int, int, int, int]]:
-    """町のマスごとの (残る畑の人 kept, 雇われず畑にもいない人 U, 畑の受け入れの余り V,
-    移る人 moved, 次へ繰り越す端数 carry)。会議 #2662〜#2759 の決め方と、V を土地から決める第 1 段。
-
-    V は、通勤圏（labor.commute_radius）の中の空き地の区画（farm_plots。1 区画に farm_room 人）の
-    うち、今畑にいる人の後に空いている分。区画はほかの町と分け合う: 先に今畑にいる人（雇われずに
-    残る人）を区画に割り振り（_share_plots。区画が減って入りきらない人は畑を離れる）、空いた分を
-    新しく移りたい人に希望の人数に比例して割り振る。満ちていれば新しく移る人は 0 で、雇われて畑を
-    離れた人の分が次のターンに空く。
-
-    ターンの初めの値（雇用の段の結果）だけで、全部のマスを先に決める（マスの順に左右されず、同じ
-    ターンに空いた分は翌ターンから）。村のマスは今までどおり仕事のない人が全員そのマスの畑にいるので
-    扱わない（区画も使わない）。端数は 1/100 人の整数で持つ: total = 繰り越し + U × percent、
-    移りたい人 = min(total // 100, U, V)、繰り越し = total % 100。V が 0 なら繰り越しは据え置き、
-    U が 0 なら 0 に戻す。0 ≤ moved ≤ min(U, V)。"""
-    room = farm_room(defs, share)
-    radius = config.get("labor.commute_radius")
-    plots = set(farm_plots(defs, config, island))
-    free = {p: room for p in plots}
-    idle: dict[Pos, int] = {}
-    stock: dict[Pos, int] = {}
-    reach: dict[Pos, list[Pos]] = {}
-    for tile in island.tiles:
-        if tile.population <= 0 or _farming(defs, tile):
-            continue
-        pos = (tile.x, tile.y)
-        idle[pos] = max(0, fac.labor_force(defs, island, tile, share) - tile.ext.get("employed", 0))
-        stock[pos] = min(tile.ext.get(TOWN_FARMERS, 0), idle[pos])
-        reach[pos] = sorted((p for p in within(island, pos, radius) if p in plots), key=_by_place)
-    if held is None:
-        held = {}  # (町, 区画) ごとの畑の人（渡されれば書き込んで返す。作れる量に使う）
-    kept = _share_plots(stock, reach, free, held)
-    space = {pos: sum(free[p] for p in reach[pos]) for pos in idle}
-    wants: dict[Pos, int] = {}
-    carries: dict[Pos, int] = {}
-    for pos in idle:
-        tile = island.tile(*pos)
-        unhired = idle[pos] - kept[pos]
-        carry = tile.ext.get(TOWN_FARMING_CARRY, 0)
-        want = 0
-        if unhired <= 0:
-            carry = 0
-        elif space[pos] > 0:
-            total = carry + unhired * percent
-            want = min(total // 100, unhired, space[pos])
-            carry = total % 100
-        wants[pos] = want
-        carries[pos] = carry
-    moved = _share_plots(wants, reach, free, held)
-    return {
-        pos: (kept[pos], idle[pos] - kept[pos], space[pos], moved[pos], carries[pos])
-        for pos in idle
-    }
-
-
-def settle_town_farmers(defs: Defs, config: GameConfig, island: IslandState) -> None:
-    """町のマスの、仕事のない人が少しずつ自給の農業に戻る（W-272。PO-62。設定
-    population.town_farming_percent。0 なら今までどおり、町では誰も自給しない）。
-
-    村か町かはマスの人数で毎ターン決める。今までは、町の下限の前後のマスで、人数のわずかな上下の
-    たびに仕事のない人が全員、自給の農家と失業者の間を移った（quick の 1 本で 111 マス 296 回）。
-    住宅地の段階で決める形（PO-61）は往復を消したが、町の段階の住宅地が 48,000〜50,000 人の間で
-    町のまま残り、仕事のない人が畑に戻れずに失業が固定した（会議 #2351〜#2759）。
-
-    ここでは、町でも、雇われず畑にもいない人（U）の percent % が、通勤圏の空き地の区画の受け入れの
-    余り（V。town_farm_moves）まで、毎ターン畑に戻る。畑にいる人は、雇われれば畑を離れる（仕事の
-    ない人の数を超えない）。村のマスでは、今までどおり仕事のない人が全員そのマスの畑にいるので、その
-    人数を覚えておく。町に変わると、その人たちは周りの空き地の区画に入れる分だけ畑に残る。
-
-    現実にも、町が縮んで仕事を失った人は、その月のうちに全員が畑に戻るのではなく、少しずつ、町の
-    周りの空いた土地を耕せる分だけ戻る。前の形（町のマスごとに村 1 つ分の畑）は土地を見ず、open
-    種 1 の 50% で町の畑の人が 107 万人まで増え続けた（x870-w272-tf-wage-20261122）。"""
-    percent = int(config.get("population.town_farming_percent") or 0)
-    if percent <= 0 or not island.has_economy:
-        for tile in island.tiles:
-            tile.ext.pop(TOWN_FARMERS, None)
-            tile.ext.pop(TOWN_FARMING_CARRY, None)
-        settle_farm_capacity(defs, config, island, {})
-        return
-    share = fac.labor_share(defs, island)
-    room = farm_room(defs, share)
-    held: dict[tuple[Pos, Pos], int] = {}
-    plan = town_farm_moves(defs, config, island, percent, share, held)
-    moved_total = farmers_total = 0
-    for tile in island.tiles:
-        pos = (tile.x, tile.y)
-        carry = 0
-        if tile.population <= 0:
-            farmers = 0
-        elif pos in plan:
-            kept, _, _, moved, carry = plan[pos]
-            farmers = kept + moved
-            moved_total += moved
-            farmers_total += farmers
-        else:  # 村: 仕事のない人は全員畑にいる（町に変わったときに残る人数として覚える）
-            idle = max(0, fac.labor_force(defs, island, tile, share) - tile.ext.get("employed", 0))
-            farmers = min(idle, room)
-        for key, value in ((TOWN_FARMERS, farmers), (TOWN_FARMING_CARRY, carry)):
-            if value > 0:
-                tile.ext[key] = value
-            else:
-                tile.ext.pop(key, None)
-    if moved_total:
-        island.stats["labor.town_farming_moved"] = moved_total
-    if farmers_total:
-        island.stats["labor.town_farmers"] = farmers_total
-    settle_farm_capacity(defs, config, island, held)
-
-
-# マスの ext: 自給の農家が作れる穀物の量（1000 分の 1 単位、1 ターン）。PO-62 第 2 段
+# マスの ext: 自給の農家が作れる穀物の量（1000 分の 1 単位、1 ターン）。PO-63
 # （population.subsistence_sales が入のときだけ書く）。市場の段が、余りを売る量の上限に使う
 FARM_CAPACITY = "farm_capacity"
 
@@ -478,36 +250,16 @@ def _land_output(
     return int(recipe["outputs"][good] * rate)
 
 
-def settle_farm_capacity(
-    defs: Defs, config: GameConfig, island: IslandState, held: dict[tuple[Pos, Pos], int]
-) -> None:
-    """自給の農家が作れる量をマスごとに書く（PO-62 第 2 段。population.subsistence_sales）。
-
-    村は自分のマスの畑で、仕事のない働き手（自給の人の働き手）が作る。町は、畑に入った区画
-    （held。town_farm_moves の割り振り）ごとに、その区画に入った全部の町の人で作れる量を、
-    入った人数の割合で分ける。切なら書かず、前に書いた量は消す。"""
-    if not config.get("population.subsistence_sales") or not island.has_economy:
-        for tile in island.tiles:
-            tile.ext.pop(FARM_CAPACITY, None)
-        return
+def settle_farm_capacity(defs: Defs, config: GameConfig, island: IslandState) -> None:
+    """自給の農家が作れる量を村のマスに書く（PO-63。population.subsistence_sales）。村の仕事の
+    ない働き手（自給の人の働き手）が、自分のマスの畑で作る。切なら書かず、前に書いた量は消す。"""
+    on = config.get("population.subsistence_sales") and island.has_economy
     share = fac.labor_share(defs, island)
-    made: dict[Pos, int] = {}
-    on_plot: dict[Pos, int] = {}
-    for (_, plot), n in held.items():
-        on_plot[plot] = on_plot.get(plot, 0) + n
-    for (town, plot), n in sorted(held.items()):
-        total = on_plot[plot]
-        if n > 0 and total > 0:
-            out = _land_output(defs, config, island, island.tile(*plot), total)
-            made[town] = made.get(town, 0) + out * n // total
     for tile in island.tiles:
-        pos = (tile.x, tile.y)
         value = 0
-        if tile.population > 0 and _farming(defs, tile):
+        if on and tile.population > 0 and _farming(defs, tile):
             persons = subsistence_persons(defs, island, tile, share)
             value = _land_output(defs, config, island, tile, int(persons * share))
-        elif tile.population > 0:
-            value = made.get(pos, 0)
         if value > 0:
             tile.ext[FARM_CAPACITY] = value
         else:
@@ -515,14 +267,14 @@ def settle_farm_capacity(
 
 
 def subsistence_offer(defs: Defs, config: GameConfig, island: IslandState) -> int:
-    """自給の農家が、このターンに市場に売りに出す量（1000 分の 1 単位。PO-62 第 2 段。会議 #3324）。
+    """自給の農家が、このターンに市場に売りに出す量（1000 分の 1 単位。PO-63。会議 #3309・#3324）。
 
     小農は作れるだけ作って売るのではなく、食べる分と、食べ物以外の最低限（衣料の傷んだ分の
     買い替え: household.targets.clothing × household.clothing.wear ÷ 12 か月）を買うお金の分だけ
     作る（チャヤーノフの労働と消費の釣り合い）。マスごとに
       売る量 = min(作れる量 − 食べる量, 人数 × 最低限の代金 ÷ 穀物の値段)（0 未満は 0）。
     作れる量の残りは作らない（売れ残りを持たない）。作れる量が食べる量に届かないマスは、今は
-    売りも買いもしない（6 本の測りでは 0 マス）。値段がなければ売らない。"""
+    売りも買いもしない（12 本の比べでは 0 マス）。値段がなければ売らない。"""
     if not config.get("population.subsistence_sales") or not island.has_economy:
         return 0
     good = subsistence_good(defs)
@@ -1143,12 +895,8 @@ class Population(IslandStage):
             crowd = crowding(tile.population, capacity)
             labor = fac.labor_force(defs, island, tile)
             working = tile.ext.get("employed", 0)
-            if _farming(defs, tile) and subsistence_persons(defs, island, tile):
+            if subsistence_persons(defs, island, tile):
                 working = labor  # 村で自給の農業をしている人は、仕事がないとは数えない
-            elif not _farming(defs, tile):
-                # 町では畑に戻った人（TOWN_FARMERS）の分だけ。1 人でも畑にいればマス全体を
-                # 仕事のある扱いにしない（W-272 PO-62）
-                working += min(tile.ext.get(TOWN_FARMERS, 0), max(0, labor - working))
             local = {
                 "jobs": fac.ratio(working, labor) if labor else fac.FULL,
                 "power": tile.ext.get("power", 0),

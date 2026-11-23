@@ -183,7 +183,7 @@ NO_SELLERS = "cap_no_sellers"
 REBUILD = "rebuild"  # 首都の建物の建て替えの資材（フェーズ3-4。modules/politics）
 REPAIR = "repair"  # 傷んだ設備を直す資材（回6。economy/equipment.py）
 MERCHANT = "merchant"  # 海外の商人（フェーズ3-1）
-# 自給の農家の余りの売り（PO-62 第 2 段。一般の層の家計が売り手。このターンに作った物を渡す）
+# 自給の農家の余りの売り（PO-63。一般の層の家計が売り手。このターンに作った物を渡す）
 SUBSISTENCE = "subsistence"
 # 工事の資材の買い手（指値は material_limit。積算のし直しを数える。2026-11-01）
 MATERIAL_BUYERS = frozenset({SITE, WORKS, PUBLIC_HOUSING, REBUILD, REPAIR})
@@ -3730,9 +3730,9 @@ class Market(IslandStage):
     def _subsistence_orders(
         self, island: IslandState, ctx: StageContext, books_by_good: dict[str, Book]
     ) -> None:
-        """自給の農家の余りの売り（PO-62 第 2 段。population.subsistence_sales）。
+        """自給の農家の余りの売り（PO-63。population.subsistence_sales）。
 
-        村と町の自給の農家は、食べる分と食べ物以外の最低限を買うお金の分だけ穀物を作り
+        村の自給の農家は、食べる分と食べ物以外の最低限を買うお金の分だけ穀物を作り
         （modules/population の subsistence_offer）、一般の層の家計として、前の値段の値幅の下端で
         売りに出す（値段を受け入れる売り手。会議 #3309・#3324）。売れ残った分は作らなかったことに
         する（持ち越さない）。代金は一般の層の所得。運賃は払わない（自分で近くの市場へ運ぶ）。"""
