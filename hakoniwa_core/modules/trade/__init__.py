@@ -2233,15 +2233,17 @@ class _Round:
         if rank >= guarded and not export_plan.essential(island, good):
             reserve = export_plan.reserve_of(island, self.config, key[1], key[2], self.turn)
             ahead = max(ahead, reserve)
-        # 優先する輸入のために借りた外貨（FX-86）は、それより下の段の財に使わない。このターンに
-        # 借りた商社と、債務の支払い（案 2）で燃料と主食の分だけ残した商社は、まだ板寄せの来て
-        # いない優先する輸入（燃料と主食）の見込みも取り置く（財の名前の順で先に来る設備などが、
-        # 自分の持ち高の分を使ってしまい、借りた分だけでは燃料と主食が買えなくならないように。
-        # 借りる額は持ち高を足して見込みに届く分なので。残した商社は借りた分と合わせて残した分まで）
+        # 優先する輸入のために借りた外貨（FX-86）は、それより下の段の財に使わない。債務の支払い
+        # （案 2）を入れたときは、このターンに借りた商社と、支払いで燃料と主食の分だけ残した商社は、
+        # まだ板寄せの来ていない優先する輸入（燃料と主食）の見込みも取り置く（財の名前の順で先に
+        # 来る設備などが、自分の持ち高の分を使ってしまい、借りた分だけでは燃料と主食が買えなく
+        # ならないように。借りる額は持ち高を足して見込みに届く分なので。残した商社は借りた分と
+        # 合わせて残した分まで）。案 2 を切れば前の形（借りた分だけ）に戻る
         top = int(self.config.get("planning.export.borrow_rank") or 0)
         if rank > top:
             extra = self.plan_loan.get(key, 0)
-            if kept < top and (key in self.plan_kept or extra > 0):
+            serviced = bool(self.config.get("planning.export.debt_service"))
+            if kept < top and (key in self.plan_kept or (serviced and extra > 0)):
                 first = sum(v for g, v in queue.items() if kept < fx_priority(self.defs, g) <= top)
                 if key in self.plan_kept:
                     first = min(first, self.plan_kept[key] + extra)
