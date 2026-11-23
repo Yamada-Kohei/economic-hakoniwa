@@ -90,6 +90,7 @@ from hakoniwa_core.state import (
     IslandState,
     LogEntry,
 )
+from hakoniwa_core.trade import shipping_of, ships
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import money_of, part, to_basis
 
@@ -133,6 +134,11 @@ class Accounts(IslandStage):
             island.stats["equipment.condition"] = sum(conditions) / len(conditions) / fac.FULL
         self._subsidies(island, ctx, rows)
         settings = config.get("firms")
+        capex = self._ship_capex(island, config)
+        shipping = shipping_of(island, config)
+        upkeep = (
+            {shipping.id: ships.fleet_wear(island, config, shipping, ctx.turn)} if shipping else {}
+        )
         for f, items in rows:
             ebitda = (
                 books.value_added(items)
@@ -152,8 +158,17 @@ class Accounts(IslandStage):
             bank = is_bank(config, f)
             if is_self_supporting(f) or bank:
                 items[books.TAX], items[books.DIVIDEND] = self._settle(island, ctx, f, items)
-                # 融資の審査で見る営業の現金収支（売れずに積み上がった在庫は返済に使えない）
-                cash = ebitda - items.get(books.INVENTORY, 0)
+                # 融資の審査で見る営業の現金収支（売れずに積み上がった在庫は返済に使えない）。
+                # 海運業が買って船団に入れる船は設備投資で、その時の代金は営業の現金収支に入れず
+                # （W-281。入れると、船を買ったターンから稼ぎの平均が船の代金の分だけ負になった）、
+                # 代わりに船を保つ買い替えの額（船団の傷み）を毎ターン引く（維持の設備投資。銀行は
+                # EBITDA から維持の設備投資を引いた額で返せるかを見る。掲示板 #1563: 引かずにいると
+                # 審査が稼ぎを大きく見て貸しすぎ、倒れた海運業の借りが B の 7 倍になった）
+                cash = (
+                    ebitda
+                    - (items.get(books.INVENTORY, 0) - capex.get(f.id, 0))
+                    - upkeep.get(f.id, 0)
+                )
                 keep = settings["ebitda_turns"]
                 f.economy["ebitda"] = [*f.economy.get("ebitda", []), cash][-keep:]
             if bank:
@@ -174,6 +189,19 @@ class Accounts(IslandStage):
         cb_realized = realized.get(ledger.CB, 0)
         cb_valuation = valuation[ledger.CB] - cb_realized if ledger.CB in valuation else 0
         self._central_bank(island, cb_realized, cb_valuation)
+
+    @staticmethod
+    def _ship_capex(island: IslandState, config: Any) -> dict[int, int]:
+        """海運業の在庫に入った輸送船（市場で買った・前注文で届いた船。この後船団に入る）の値打ち。"""
+        good = config.get("trade.ship_good")
+        kind = config.get("trade.shipping_facility")
+        price = island.economy.prices.get(good, 0)
+        out = {}
+        for facility, goods in books.stock_flows(island).items():
+            f = island.facility(facility)
+            if f is not None and f.kind == kind and goods.get(good, 0) > 0:
+                out[facility] = money_of(price, goods[good])
+        return out
 
     @staticmethod
     def _book_inventory(island: IslandState, ctx: StageContext) -> dict[int, int]:
