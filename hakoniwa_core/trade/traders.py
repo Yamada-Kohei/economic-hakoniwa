@@ -121,6 +121,8 @@ OFFTAKE_DELIVERED = "offtake_delivered"
 # 財の状態: 頭打ちにする前の輸出の狙う量（W-307。島の売り手の売りたい量で抑えない。引き取り契約の
 # 量の上限）
 UNCAPPED_X = "xo"
+# 財の状態: 前のターンに圏で売れた輸出の量（W-307。引き取り契約の量は、これが続いた分まで）
+EXPORTED = "xs"
 
 
 def is_planned(island: IslandState) -> bool:
@@ -849,11 +851,12 @@ def update_targets(
                 # の燃料が売れ残る島で燃料を買いたい量の 8 倍まで積み、燃料の値段が崩れて製油所が
                 # 原油を買えず取引が止まった。2026-11-13 の 5〜7 回目の full と調べ 4。FX-66）
             item["x"] = _approach(item["x"], min(cap, want_x), speed, cap)
-            if offtake_on:  # 頭打ちにする前の狙う量（W-307。引き取り契約の量の上限）
+            if offtake_on:  # 頭打ちにする前の狙う量と圏で売れた量（W-307。引き取り契約の量）
                 goal = uncapped if direction == EXPORT and can_export else 0
                 item[UNCAPPED_X] = _approach(
                     item.get(UNCAPPED_X, item["x"]), min(cap, goal), speed, cap
                 )
+                item[EXPORTED] = sold_bloc.get(good, 0)
             if not frozen:
                 item["m"] = _approach(item["m"], min(cap, want_m), speed, cap)
             # 輸入の荷の持つ量（FX-66）: 狙う量 ×（注文してから島で売れるまで ＋ 在庫の目安）。

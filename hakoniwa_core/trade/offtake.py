@@ -79,6 +79,8 @@ UNMET = "offtake_unmet"
 # island.scratch: 財 → このターンに契約で商社に渡した量（traders.update_targets が島の売り手の
 # 売りたい量に足す。契約で引き取った分が市場に出なくなり、輸出をやめたと読まないように）
 DELIVERED = traders.OFFTAKE_DELIVERED
+# 商社の財の状態: 頭打ちにする前の輸出の狙う量の直近 contract_cancel_turns ターン分（_target）
+SEEN = "offtake_seen"
 
 
 def enabled(config: GameConfig) -> bool:
@@ -148,6 +150,41 @@ def _schedule(c: dict[str, Any], turn: int, qty: int) -> None:
         c["change"] = [change[0] if change else turn, max(0, qty)]
 
 
+def _target(item: dict[str, Any] | None, cancel: int) -> int:
+    """商社が契約で引き取りたい量: 圏で実際に売れた輸出の量（頭打ち前の狙う量まで）の、直近
+    contract_cancel_turns ターンの一番小さい値（予告の長さと同じ間ずっと売れている量）。
+    2026-11-23 の比べで、頭打ち前の狙う量（試しの上乗せを含み、圏で売れる量より多い）で結んだ
+    契約の荷が商社に積み上がり、市場での買いがなくなって、作り手から見た売れ行きがかえって減った
+    （x870-offtake-diag）。売れる見込みのうち島の売り手の売りたい量で抑えた分は、契約にせず
+    投資の合図にする（_signal）。"""
+    if item is None:
+        return 0
+    exporting = item.get("dir") == traders.EXPORT
+    now = min(item.get(traders.UNCAPPED_X, 0), item.get(traders.EXPORTED, 0)) if exporting else 0
+    seen = item.setdefault(SEEN, [])
+    seen.append(now)
+    del seen[: max(0, len(seen) - cancel)]
+    return min(seen) if len(seen) >= cancel else 0
+
+
+def _signal(
+    island: IslandState, defs: Defs, config: GameConfig, good: str, qty: int, unmet: dict[str, int]
+) -> None:
+    """引き受けられない輸出の買いの量 qty を、作り手の売り逃し（設備投資の合図）と島の品切れの
+    記録（参入の合図）に重み 1 で足す。"""
+    if qty <= 0:
+        return
+    unmet[good] = unmet.get(good, 0) + qty
+    makers = [m for m in island.facilities if _can_make(defs, config, m, good)]
+    outputs = {m.id: fac.outputs_of(defs, m).get(good, 0) for m in makers}
+    whole = sum(outputs.values())
+    for m in makers:
+        if whole <= 0:
+            break
+        refused = m.economy.setdefault(REFUSED, {})
+        refused[good] = refused.get(good, 0) + qty * outputs[m.id] // whole
+
+
 def propose(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> None:
     """市場の段の初め: 予告の効いた契約を縮め・やめ、商社の申し込みを作り手が引き受ける。"""
     if not enabled(config) or traders.is_planned(island):
@@ -185,8 +222,22 @@ def propose(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> N
                 key=lambda c: c["id"],
             )
             item = traders.goods_of(f).get(good)
-            exporting = item is not None and item.get("dir") == traders.EXPORT
-            target = item.get(traders.UNCAPPED_X, 0) if exporting and item is not None else 0
+            target = _target(item, cancel)
+            p = found.get(good)
+            if (
+                item is not None
+                and item.get("dir") == traders.EXPORT
+                and traders.exportable(p, traders.home_price(island, config, good))
+            ):
+                # 圏で売れる見込みのうち、島の売り手の売りたい量で抑えた分（頭打ち前 − 頭打ち後）
+                _signal(
+                    island,
+                    defs,
+                    config,
+                    good,
+                    item.get(traders.UNCAPPED_X, 0) - item.get("x", 0),
+                    unmet,
+                )
             total = sum(_effective(c) for c in mine)
             if total > target:  # 新しい契約から縮める（予告して contract_cancel_turns 後）
                 over = total - target
@@ -203,7 +254,6 @@ def propose(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> N
                     total += c["qty"] - _effective(c)
                     del c["change"]
             ask = target - sum(_effective(c) for c in mine)
-            p = found.get(good)
             if ask <= 0 or not traders.exportable(p, traders.home_price(island, config, good)):
                 continue
             makers = [m for m in island.facilities if _can_make(defs, config, m, good)]
@@ -229,17 +279,8 @@ def propose(island: IslandState, defs: Defs, config: GameConfig, turn: int) -> N
                     rows.append(c)
                     mine.append(c)
                 ask -= take
-            if ask <= 0:
-                continue
             # 引き受けられなかった分は、作り手の売り逃しと島の品切れの記録に重み 1 で足す
-            unmet[good] = unmet.get(good, 0) + ask
-            outputs = {m.id: fac.outputs_of(defs, m).get(good, 0) for m in makers}
-            whole = sum(outputs.values())
-            for m in makers:
-                if whole <= 0:
-                    break
-                refused = m.economy.setdefault(REFUSED, {})
-                refused[good] = refused.get(good, 0) + ask * outputs[m.id] // whole
+            _signal(island, defs, config, good, ask, unmet)
     stats = island.stats
     for c in rows:
         k = f"offtake.qty.{c['good']}"

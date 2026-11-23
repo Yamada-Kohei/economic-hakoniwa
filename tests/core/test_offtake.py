@@ -22,7 +22,7 @@ from hakoniwa_core.trade import money as fxmoney
 from hakoniwa_core.trade import offtake, traders
 from tests.core.test_trade import _context, run
 
-TURNS = 9
+TURNS = 12
 
 
 @pytest.fixture(scope="module")
@@ -48,6 +48,13 @@ def base(game):
 def on(game, monkeypatch):
     monkeypatch.setitem(game.config.raw["trade"]["offtake"], "enabled", True)
     return game
+
+
+def aim(item, qty, cancel):
+    """商社の頭打ち前の狙う量を、直近 contract_cancel_turns ターンずっと qty だったことにする。"""
+    item[traders.UNCAPPED_X] = item[traders.EXPORTED] = qty
+    item[offtake.SEEN] = [qty] * (cancel - 1)
+    item["x"] = qty  # 頭打ちで抑えた分（投資の合図）は見ない
 
 
 def with_contract(world):
@@ -102,17 +109,21 @@ def test_lower_target_cuts_the_newest_contract_after_notice(on, base):
     cancel = on.config.get("trade.contract_cancel_turns")
     for x in offtake.contracts(island):
         x.pop("change", None)
-    item[traders.UNCAPPED_X] = 0
+    aim(item, 0, cancel)
     offtake.propose(island, on.defs, on.config, turn)
     assert c["change"] == [turn + cancel, 0]
     before = c["qty"]
     offtake.propose(island, on.defs, on.config, turn + 1)
     assert c["qty"] == before  # 予告の間は今の量のまま
-    # 狙う量が戻れば予告を取り消す
+    # 狙う量が一度でも下がった間は、戻っても（直近の一番小さい値が下がったまま）取り消さない
     item[traders.UNCAPPED_X] = before
     offtake.propose(island, on.defs, on.config, turn + 1)
+    assert "change" in c
+    # 狙う量が戻れば予告を取り消す
+    aim(item, before, cancel)
+    offtake.propose(island, on.defs, on.config, turn + 1)
     assert "change" not in c
-    item[traders.UNCAPPED_X] = 0
+    aim(item, 0, cancel)
     offtake.propose(island, on.defs, on.config, turn + 2)
     offtake.propose(island, on.defs, on.config, turn + 2 + cancel)
     assert c not in offtake.contracts(island)
@@ -142,7 +153,11 @@ def test_refused_offtake_counts_as_missed_sales_and_shortage(on, base, monkeypat
     trader = next(f for f in island.facilities if f.id == c["trader"])
     maker = next(f for f in island.facilities if f.id == c["maker"])
     item = traders.goods_of(trader)["coal"]
-    item[traders.UNCAPPED_X] = sum(x["qty"] for x in offtake.contracts(island)) + 5000
+    aim(
+        item,
+        sum(x["qty"] for x in offtake.contracts(island)) + 5000,
+        on.config.get("trade.contract_cancel_turns"),
+    )
     monkeypatch.setattr(offtake, "spare", lambda *a: 0)
     monkeypatch.setattr(traders, "exportable", lambda *a: True)
     island.scratch.pop(offtake.UNMET, None)
@@ -154,3 +169,41 @@ def test_refused_offtake_counts_as_missed_sales_and_shortage(on, base, monkeypat
     maker.economy[market.MISSED] = []
     market.record_missed(island, maker, _context(on, world))
     assert maker.economy[market.MISSED][-1] >= fac.ratio(refused, full)
+
+
+def test_contract_follows_sustained_exports_and_the_capped_part_signals_investment(
+    on, base, monkeypatch
+):
+    """契約の量は、圏で売れた輸出の量（頭打ち前の狙う量まで）の直近 contract_cancel_turns ターンの
+    一番小さい値まで（2026-11-23 の比べで、頭打ち前の狙う量で結んだ契約の荷が商社に積み上がり、
+    作り手の売れ行きが減った）。島の売り手の売りたい量で抑えた分（頭打ち前 − 頭打ち後）は契約に
+    せず、作り手の売り逃しと島の品切れの記録に足す。"""
+    cancel = on.config.get("trade.contract_cancel_turns")
+    item = {"dir": traders.EXPORT, "x": 100}
+    for sold in [500] * (cancel - 1):
+        item[traders.UNCAPPED_X], item[traders.EXPORTED] = 900, sold
+        assert offtake._target(item, cancel) == 0  # まだ予告の長さの分ない
+    item[traders.EXPORTED] = 300
+    assert offtake._target(item, cancel) == 300  # 一番小さい値
+    item[traders.EXPORTED] = 2000
+    assert offtake._target(item, cancel) == 300
+    for _ in range(cancel):
+        item[traders.EXPORTED] = 2000
+        last = offtake._target(item, cancel)
+    assert last == 900  # 頭打ち前の狙う量まで
+    item["dir"] = traders.IMPORT
+    for _ in range(cancel):
+        offtake._target(item, cancel)
+    assert offtake._target(item, cancel) == 0  # 輸出しない間は 0
+
+    world = copy.deepcopy(base)
+    island, c = with_contract(world)
+    trader = next(f for f in island.facilities if f.id == c["trader"])
+    item = traders.goods_of(trader)["coal"]
+    total = sum(x["qty"] for x in offtake.contracts(island) if x["trader"] == trader.id)
+    aim(item, total, cancel)
+    item[traders.UNCAPPED_X] = item["x"] + 700  # 島の売り手の売りたい量で 700 抑えた
+    monkeypatch.setattr(traders, "exportable", lambda *a: True)
+    island.scratch.pop(offtake.UNMET, None)
+    offtake.propose(island, on.defs, on.config, world.turn + 1)
+    assert island.scratch[offtake.UNMET]["coal"] >= 700
