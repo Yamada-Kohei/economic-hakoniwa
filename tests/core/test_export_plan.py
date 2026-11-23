@@ -513,7 +513,8 @@ def test_old_swap_principal_stops_new_borrowing_and_debt_service_pays_from_the_t
     assert r._fx_ahead(key, "machinery") == minimum
     assert r._fx_ahead(key, "coal") == 0
     # 案 2 のときは、支払いのないターンでも、借りた商社は、まだ来ていない燃料と主食の見込みを
-    # 全部取り置く（借りる額は持ち高を足して見込みに届く分なので、持ち高を設備に使うと借りても足りない）
+    # 全部取り置く（借りる額は持ち高を足して見込みに届く分なので、持ち高を設備に使うと
+    # 借りても足りない）
     kept_now, r.plan_kept = r.plan_kept, {}
     r.plan_loan = {key: 10}
     assert r._fx_ahead(key, "machinery") == minimum * 5
