@@ -31,6 +31,12 @@
 - 足りなかったとき: 違約金は置かない。作り手が作れなかった・商社が払えなかった分を記録し、
   trade.contract_cancel_turns ターン続けて足りなければ、その間に渡せた量の平均まで縮める（0 なら
   終わる）。
+- 余りの売り方: 契約を結んでいる商社は、圏で売れ残った荷も指値なしで圏に投げ売りせず、仕入れ値
+  （契約の値段と運賃）を下限にして売り続ける（modules/trade の輸出の売り。会議 #4536 の案 a）。
+  売れ残りが長く続けば、今の決まりどおり島の市場に戻して売る（traders.home_orders）。2026-11-24 の
+  追跡 2 で、契約で受け取った余りを指値なしで圏に売り、圏の値段が下がって契約のない輸出の島が
+  引き合わずに抜けていた（種 1 で 13 島中 6 島がその順）。現実の引き取り契約の買い手も、余りは
+  安値で投げずに在庫として持つか、国内に回す。
 - 作る側: 操業目標に、契約の量から前のターンに商社が市場で買った量を引いた分（重み 1）を足す
   （modules/market の operating_target。committed_extra）。
 
@@ -103,6 +109,11 @@ def _rows(island: IslandState) -> list[dict[str, Any]]:
 def _next_id(island: IslandState) -> int:
     rows = contracts(island)
     return max((c["id"] for c in rows), default=0) + 1
+
+
+def holds(island: IslandState, config: GameConfig, f: Facility, good: str) -> bool:
+    """商社 f が財 good の引き取り契約を結んでいるか（輸出の荷の売り方を変える。下の floor）。"""
+    return enabled(config) and any(c["trader"] == f.id and c["good"] == good for c in _rows(island))
 
 
 def committed(island: IslandState, f: Facility, good: str) -> int:

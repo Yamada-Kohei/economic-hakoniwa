@@ -60,6 +60,7 @@ from hakoniwa_core.trade import (
     island_state,
     merchant,
     next_id,
+    offtake,
     one_way_turns,
     policy,
     port_of,
@@ -1835,7 +1836,8 @@ class _Round:
                         limit = blocs.fixed_price(bloc, good) or blocs.reference(
                             self.world, bloc, good
                         )
-                    elif item["age"] < clearance:
+                    elif item["age"] < clearance or offtake.holds(island, self.config, f, good):
+                        # 引き取り契約の荷は、売れ残っても仕入れ値を下限に売る（W-307 の案 a）
                         own = traders.unit_cost(f, good)
                         own = max(1, own + part(own, cut) + fee_unit - subsidy)  # 輸出補助を見込む
                         limit = max(1, -(-own * BASIS // max(1, e)))

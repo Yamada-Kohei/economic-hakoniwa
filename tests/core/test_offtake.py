@@ -20,6 +20,7 @@ from hakoniwa_core.modules import market
 from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.trade import money as fxmoney
 from hakoniwa_core.trade import offtake, traders
+from hakoniwa_core.units import QUANTITY_SCALE
 from tests.core.test_trade import _context, run
 
 TURNS = 12
@@ -207,3 +208,35 @@ def test_contract_follows_sustained_exports_and_the_capped_part_signals_investme
     island.scratch.pop(offtake.UNMET, None)
     offtake.propose(island, on.defs, on.config, world.turn + 1)
     assert island.scratch[offtake.UNMET]["coal"] >= 700
+
+
+def test_contract_cargo_is_not_dumped_into_the_bloc(on, base):
+    """契約を結んだ商社の輸出の荷は、圏で売れ残りが続いても指値なしで売らず、仕入れ値を下限に売る
+    （会議 #4536 の案 a。契約の余りを投げ売りすると、圏の値段が下がって契約のない輸出の島が
+    抜けた）。契約のない商社は今までどおり、売れ残りが clearance_turns 続けば指値を外す。"""
+    from hakoniwa_core.modules import trade as trade_stage
+    from hakoniwa_core.trade import blocs
+    from tests.core.test_trade import _context
+
+    world = copy.deepcopy(base)
+    island, c = with_contract(world)
+    f = next(x for x in island.facilities if x.id == c["trader"])
+    [bloc, *_] = blocs.member_of(world, island.id)
+    item = traders.entry(f, "coal")
+    clearance = on.config.get("trade.clearance_turns")
+    item.update({"dir": traders.EXPORT, "bx": bloc["id"], "age": clearance})
+    if stock.total(f.stock, "coal") <= 0:
+        stock.add(f.stock, "coal", 10 * QUANTITY_SCALE, world.turn, on.defs.goods)
+    item["held"] = [stock.total(f.stock, "coal"), item["held"][1] or 1]
+
+    def order_of():
+        r = trade_stage._Round(world, _context(on, world))
+        members = [m for m in bloc["members"] if m in r.islands]
+        _, sells, _, asks = r._bloc_orders(bloc, members, "coal", {}, {})
+        return [o for o, a in zip(sells, asks, strict=True) if a.facility is f]
+
+    [order] = order_of()
+    assert order.limit is not None and order.limit > 0
+    offtake.contracts(island)[:] = [x for x in offtake.contracts(island) if x["trader"] != f.id]
+    [order] = order_of()
+    assert order.limit is None
