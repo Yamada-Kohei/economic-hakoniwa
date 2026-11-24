@@ -196,15 +196,13 @@ def uncovered(island: IslandState, ctx: StageContext) -> float:
 def holding_cap(island: IslandState, ctx: StageContext, bank: str) -> int | None:
     """銀行が持つこの国の国債の上限（国債の会議 #3981 の B）: 不履行で切られると見込む損
     （持ち高 × bonds.haircut × u）が、自己資本の余り（自己資本 − 規制の比率 × 融資）を超えない額。
-    bonds.rollover_pricing が切か u が 0 なら上限なし（None）。u が 1（余力が何も残らない）なら
-    札を入れない（0。会議 #4023）。"""
+    bonds.rollover_pricing が切か u が 0 なら上限なし（None）。u が 1 でも特別に扱わない（上限に
+    届かない分の借り換えは、借り換えの危機の不足分だけの不履行に落ちる。会議 #4033）。"""
     if not ctx.config.get("bonds.rollover_pricing"):
         return None
     u = uncovered(island, ctx)
     if u <= 0:
         return None
-    if u >= 1:
-        return 0
     worth = banks.net_worth(island, ctx.config, bank, ctx.turn)
     spare = max(0, worth - int(banks.regulatory(ctx.config) * banks.loans_of(island, bank)))
     return int(spare / (ctx.config.get("bonds.haircut") * u))

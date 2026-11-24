@@ -175,8 +175,8 @@ def test_banks_stop_buying_once_the_expected_loss_eats_their_spare_capital(game,
 
 
 def test_rising_uncovered_share_raises_the_premium_and_shrinks_the_bank_limit(game, monkeypatch):
-    """合成の 4 島（会議 #4025）: u = 0・0.5・0.9・1.0 で、上乗せは u とともに増え、銀行の上限は
-    下がり、u = 1 では入札に札が入らず全額が売れ残る。"""
+    """合成の 4 島（会議 #4025・#4033）: u = 0・0.5・0.9・1.0 で、上乗せは u とともに増え（u = 1
+    でも有限）、銀行の上限は下がり、入札で上限を超えて買わない（届かない分は売れ残る）。"""
     island, ctx, _, bank, _ = setup(game, monkeypatch, 0)
     island.economy.finance.pop("default_turn")
     monkeypatch.setitem(game.config.raw["bonds"], "rollover_pricing", True)
@@ -186,6 +186,8 @@ def test_rising_uncovered_share_raises_the_premium_and_shrinks_the_bank_limit(ga
         rows.append((bond_yield(island, 12, ctx), holding_cap(island, ctx, bank)))
     yields = [y for y, _ in rows]
     assert yields == sorted(yields) and len(set(yields)) == 4
-    assert rows[0][1] is None and rows[1][1] > rows[2][1] > rows[3][1] == 0
-    filled, _ = Bonds._auction(island, ctx, 1_000_000, yields[-1])
-    assert not any(ledger.is_bank(b) for b in filled)
+    assert rows[0][1] is None and rows[1][1] > rows[2][1] > rows[3][1] > 0
+    held = sum(debt.holdings_of(island, bank).values())
+    filled, _ = Bonds._auction(island, ctx, 10**12, yields[-1])
+    assert filled.get(bank, 0) <= max(0, rows[3][1] - held)
+    assert sum(filled.values()) < 10**12  # 届かない分は売れ残る
