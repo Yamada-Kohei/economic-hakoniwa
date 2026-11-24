@@ -1,0 +1,26 @@
+{
+ "name": "w272-gate-fuel-store-1124",
+ "commit": "6356ffa458afa41cc605374f974ae446271daf1c",
+ "pool": "linux",
+ "files": [
+  "fuel_store_probe.py",
+  "fuel_store_plugin.py"
+ ],
+ "patches": [],
+ "runs": [
+  {
+   "name": "on",
+   "args": [
+    "--out",
+    "fuel-store-on.jsonl",
+    "--log",
+    "gate-pytest-on.txt"
+   ],
+   "summary": [
+    "fuel-store-on.jsonl",
+    "gate-pytest-on.txt"
+   ],
+   "large": []
+  }
+ ]
+}
