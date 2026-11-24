@@ -210,6 +210,26 @@ def subsistence_persons(
     return min(tile.population, int(max(0, unemployed) / share))
 
 
+def _to_town(defs: Defs, floor: int, upper: str | None) -> bool:
+    """床 floor に 1 足すと、村（自給の農業をする段階）から町の段階へ上がるか。"""
+    if upper is None:
+        return False
+    here = defs.settlements[fac.level_of_floor(defs, floor)]
+    return bool(here.get("subsistence")) and not defs.settlements[upper].get("subsistence")
+
+
+def _upgrade_want(defs: Defs, island: IslandState, tile: Tile, want: float, share: float) -> float:
+    """村→町の一段を決めるときの望む広さ。自給の農業で食べている人（村の仕事のない働き手とその家族）
+    の分を外す: want ×（1 − 自給の人 ÷ 人口）。自給の農家は町の仕事を求めて床を望むのではないので、
+    村に人が増えただけでは町に育てない（W-272 ④、会議 #4164。
+    housing.upgrade_without_subsistence）。"""
+    pop = tile.population
+    if pop <= 0:
+        return want
+    sub = subsistence_persons(defs, island, tile, share)
+    return want * (1 - min(sub, pop) / pop)
+
+
 # マスの ext: 自給の農家が作れる穀物の量（1000 分の 1 単位、1 ターン）。PO-63
 # （population.subsistence_sales が入のときだけ書く）。市場の段が、余りを売る量の上限に使う
 FARM_CAPACITY = "farm_capacity"
@@ -1615,7 +1635,15 @@ class Housing(IslandStage):
             if grown < h["max_upgrades_per_turn"]:
                 land_open = self._empty_site(island, defs, kind, area) is not None
                 pos = self._growable(
-                    island, defs, homes, near, status, h["fill_ratio"], dry, land_open
+                    island,
+                    defs,
+                    homes,
+                    near,
+                    status,
+                    h["fill_ratio"],
+                    dry,
+                    land_open,
+                    share if h.get("upgrade_without_subsistence") else None,
                 )
                 if pos is not None:
                     home = homes[pos]
@@ -1925,17 +1953,22 @@ class Housing(IslandStage):
         fill_ratio: float,
         dry: set[Pos],
         land_open: bool = True,
+        share: float | None = None,
     ) -> Pos | None:
         """床を足す町のマス。住む人が望む広さで使う床が今の床の fill_ratio を超えた、最上段でない
         マス。次の段階に入るのに要る上下水道（settlements.yaml の water）が足りないマスは飛ばして
         dry に入れる（お金の経済の島だけ）。land_short の段階（高層）へは、通勤圏に空いた平地が
-        あれば（land_open）育たない（横に広がる。PO-54）。"""
+        あれば（land_open）育たない（横に広がる。PO-54）。share（labor_share）を渡すと
+        （housing.upgrade_without_subsistence）、村→町の一段だけ、望む広さから自給の人の分を外す。"""
         for pos in near:
             floor = fac.floor_of(defs, homes[pos])
             upper = fac.level_after(defs, floor)
             if upper is None:
                 continue
-            if status[pos].want < status[pos].nominal * fill_ratio:
+            want = status[pos].want
+            if share is not None and _to_town(defs, floor, upper):
+                want = _upgrade_want(defs, island, island.tile(*pos), want, share)
+            if want < status[pos].nominal * fill_ratio:
                 continue
             if upper != fac.level_of_floor(defs, floor):
                 if land_open and defs.settlements[upper].get("land_short"):
@@ -1960,6 +1993,8 @@ class Housing(IslandStage):
         引っ越すか建て替える世帯の割合）を、毎ターンの 12 分の 1 ずつ、住むマスに足す。失業している
         家計は買わない（広さの足りなさは幸福度に残る）。床は家計が買った資材から足し、足りなければ
         要る資材を economy.housing["move"]（層ごと）に書いて次のターンに買う。広すぎても売らない。
+        housing.upgrade_without_subsistence が入なら、村→町の一段は、自給の人の分を外した望みで
+        決める。
         """
         defs = ctx.defs
         spec = h["space"]
@@ -1970,6 +2005,8 @@ class Housing(IslandStage):
         housing = island.economy.housing
         held = housing["stock"]
         move: dict[str, dict[str, int]] = housing["move"]
+        without_sub = bool(h.get("upgrade_without_subsistence"))
+        share = fac.labor_share(defs, island) if without_sub else 0.0
         order = sorted(
             (pos for pos, d in status.items() if pos in homes and d.want > d.nominal),
             key=lambda p: (-(status[p].want - status[p].nominal) / status[p].want, p[1], p[0]),
@@ -1981,11 +2018,18 @@ class Housing(IslandStage):
             if not buyers or floor >= top:
                 home.ext.pop(fac.FLOOR_DUE, None)
                 continue
-            lack = (d.want - d.nominal) / spec["min"] * sum(buyers.values()) / d.want
-            # 買えていない分は年の分までためる（資材が売りに出るまでの間に積み上げすぎない）
-            due = min(home.ext.get(fac.FLOOR_DUE, 0.0) + lack * rate, lack * spec["move_rate"])
             level = fac.level_of_floor(defs, floor)
             upper = fac.level_after(defs, floor)
+            want = d.want
+            if without_sub and upper != level and _to_town(defs, floor, upper):
+                # 村→町の一段は、自給の人の分を外した望みで決める（_growable と同じ形）
+                want = _upgrade_want(defs, island, island.tile(*pos), want, share)
+                if want <= d.nominal:
+                    home.ext.pop(fac.FLOOR_DUE, None)
+                    continue
+            lack = (want - d.nominal) / spec["min"] * sum(buyers.values()) / d.want
+            # 買えていない分は年の分までためる（資材が売りに出るまでの間に積み上げすぎない）
+            due = min(home.ext.get(fac.FLOOR_DUE, 0.0) + lack * rate, lack * spec["move_rate"])
             room = top - floor
             if upper != level:  # 段階の上限にいる: 次の段階に入るのに上下水道が要る
                 if defs.settlements[upper].get("land_short") and Housing._empty_site(
