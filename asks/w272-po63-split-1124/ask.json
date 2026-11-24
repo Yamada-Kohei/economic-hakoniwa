@@ -1,0 +1,126 @@
+{
+ "name": "w272-po63-split-1124",
+ "commit": "68998def428c9c29634991763a79d342da1bca57",
+ "pool": "any",
+ "files": [
+  "po63_watch.py",
+  "split_sum.py"
+ ],
+ "patches": [],
+ "runs": [
+  {
+   "name": "po63s-plan-s1-t500-on",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--on",
+    "1",
+    "--out",
+    "po63s-plan-s1-t500-on.jsonl.gz"
+   ],
+   "summary": [
+    "po63s-plan-s1-t500-on.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "po63s-independent-s1-t300-on",
+   "args": [
+    "--scenario",
+    "independent",
+    "--seed",
+    "1",
+    "--turns",
+    "300",
+    "--on",
+    "1",
+    "--out",
+    "po63s-independent-s1-t300-on.jsonl.gz"
+   ],
+   "summary": [
+    "po63s-independent-s1-t300-on.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "po63s-small-s1-t500-on",
+   "args": [
+    "--scenario",
+    "small",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--on",
+    "1",
+    "--out",
+    "po63s-small-s1-t500-on.jsonl.gz"
+   ],
+   "summary": [
+    "po63s-small-s1-t500-on.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "po63s-plan-s1-t500-off",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--on",
+    "0",
+    "--out",
+    "po63s-plan-s1-t500-off.jsonl.gz"
+   ],
+   "summary": [
+    "po63s-plan-s1-t500-off.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "po63s-independent-s1-t300-off",
+   "args": [
+    "--scenario",
+    "independent",
+    "--seed",
+    "1",
+    "--turns",
+    "300",
+    "--on",
+    "0",
+    "--out",
+    "po63s-independent-s1-t300-off.jsonl.gz"
+   ],
+   "summary": [
+    "po63s-independent-s1-t300-off.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "po63s-small-s1-t500-off",
+   "args": [
+    "--scenario",
+    "small",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--on",
+    "0",
+    "--out",
+    "po63s-small-s1-t500-off.jsonl.gz"
+   ],
+   "summary": [
+    "po63s-small-s1-t500-off.jsonl.gz"
+   ],
+   "large": []
+  }
+ ]
+}
