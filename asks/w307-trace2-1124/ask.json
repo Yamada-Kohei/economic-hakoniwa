@@ -1,0 +1,73 @@
+{
+ "name": "w307-trace2-1124",
+ "commit": "4cc2d6fd64027537826923ea778badb78fec9480",
+ "pool": "any",
+ "files": [
+  "offtake_trace2.py"
+ ],
+ "patches": [],
+ "runs": [
+  {
+   "name": "off-s1",
+   "args": [
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--out",
+    "w307t2-off-s1.jsonl.gz"
+   ],
+   "summary": [
+    "w307t2-off-s1.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "on-s1",
+   "args": [
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307t2-on-s1.jsonl.gz"
+   ],
+   "summary": [
+    "w307t2-on-s1.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "off-s2",
+   "args": [
+    "--seed",
+    "2",
+    "--turns",
+    "500",
+    "--out",
+    "w307t2-off-s2.jsonl.gz"
+   ],
+   "summary": [
+    "w307t2-off-s2.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "on-s2",
+   "args": [
+    "--seed",
+    "2",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307t2-on-s2.jsonl.gz"
+   ],
+   "summary": [
+    "w307t2-on-s2.jsonl.gz"
+   ],
+   "large": []
+  }
+ ]
+}
