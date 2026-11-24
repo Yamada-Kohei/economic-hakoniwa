@@ -12,6 +12,7 @@ from hakoniwa_core.modules.bonds import (
     holding_cap,
     rollover_crisis,
     uncovered,
+    yield_cap,
 )
 from hakoniwa_core.state import WorldState
 from hakoniwa_core.units import to_basis
@@ -191,3 +192,33 @@ def test_rising_uncovered_share_raises_the_premium_and_shrinks_the_bank_limit(ga
     filled, _ = Bonds._auction(island, ctx, 10**12, yields[-1])
     assert filled.get(bank, 0) <= max(0, rows[3][1] - held)
     assert sum(filled.values()) < 10**12  # 届かない分は売れ残る
+
+
+def test_pricing_needs_the_rollover_crisis_and_a_central_bank_that_does_not_back_it(
+    game, monkeypatch
+):
+    """C3・B は、中央銀行が借り換えを買い支えない国だけに掛ける（2026-11-24 の比べ: A が切のまま
+    C3・B だけ入れると、買い支えが桁違いに膨らんだ）。上限を外すのも A と C3・B が両方入のとき
+    だけ。"""
+    island, ctx, _, bank, _ = setup(game, monkeypatch, 0)
+    monkeypatch.setitem(game.config.raw["bonds"], "rollover_pricing", True)
+    need(island, ctx, 1000, 500)
+    assert uncovered(island, ctx) == pytest.approx(0.5)
+    island.policy.cb_independent, island.policy.bond_unsold = False, "underwrite"
+    assert uncovered(island, ctx) == 0.0
+    assert holding_cap(island, ctx, bank) is None
+    monkeypatch.setitem(game.config.raw["bonds"], "rollover_crisis", False)
+    assert yield_cap(game.config) == to_basis(game.config.get("bonds.max_yield"))
+
+
+def test_repeated_defaults_do_not_stack_the_default_premium(game, monkeypatch):
+    """不足分だけの不履行が続いても、区分の利回りに δ を重ねない（前の δ の残りから戻す分だけ）。"""
+    island, ctx, _, bank, _ = setup(game, monkeypatch, 0)
+    island.economy.finance.pop("default_turn")
+    island.economy.finance["yields"] = [300, 300, 300, 300]
+    stage = Bonds()
+    jump = to_basis(game.config.get("bonds.default_premium"))
+    stage._penalize(island, ctx, 1, {bank})
+    assert island.economy.finance["yields"] == [300 + jump] * 4
+    stage._penalize(island, ctx, 1, {bank})  # 同じターンにもう一度
+    assert island.economy.finance["yields"] == [300 + jump] * 4

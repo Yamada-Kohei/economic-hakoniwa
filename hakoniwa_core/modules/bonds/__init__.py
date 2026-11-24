@@ -139,9 +139,9 @@ NO_CAP = 10 * BASIS  # 総資金需要で測るときの利回りの上限（100
 
 
 def yield_cap(config: GameConfig) -> int:
-    """利回りの上限（1万分の1）。bonds.rollover_pricing が入なら上限を外す（買い手が消えることで
-    止まる。B）、切なら bonds.max_yield。"""
-    if config.get("bonds.rollover_pricing"):
+    """利回りの上限（1万分の1）。bonds.rollover_pricing と bonds.rollover_crisis がどちらも入なら
+    上限を外す（買い手が消えることで止まる。B）、それ以外は bonds.max_yield。"""
+    if config.get("bonds.rollover_pricing") and config.get("bonds.rollover_crisis"):
         return NO_CAP
     return to_basis(config.get("bonds.max_yield"))
 
@@ -187,7 +187,12 @@ def rollover_need(island: IslandState, ctx: StageContext) -> dict[str, int]:
 
 def uncovered(island: IslandState, ctx: StageContext) -> float:
     """総資金需要のうち、買い手の余力と緊縮で埋まらない割合 u（0〜1）。買い手は、埋まらない分が
-    不履行で切られる（bonds.haircut）と見込む。"""
+    不履行で切られる（bonds.haircut）と見込む。中央銀行が借り換えを買い支える国（rollover_crisis が
+    偽）では 0: 埋まらない分は切られず、危うさは引き受けのお金の増えと物価に出る（κ の上乗せ）。
+    2026-11-24 の比べ（x870-rollover-c2）で、A を切のまま C3・B だけ入れると、B で銀行が買わない分を
+    中央銀行が上限なしの利回りで買い続け、買い支えが桁違いに膨らんだ。"""
+    if not rollover_crisis(island, ctx):
+        return 0.0
     need = rollover_need(island, ctx)
     if need["gfn"] <= 0:
         return 0.0
@@ -689,9 +694,13 @@ class Bonds(WorldStage):
             return  # 市中・外国の債権者に損がなければ、新しい不履行の罰は付けない
         config = ctx.config
         finance = island.economy.finance
+        # 上乗せ δ は重ねない: 前の不履行の δ の残りから、新しい不履行の δ に戻す分だけ上げる
+        # （default_premium と同じ形）。2026-11-24 の比べで、A の不足分だけの不履行が毎ターン
+        # 続くと、区分の利回りに 15% ずつ積み上がり、上限を外した島で 765% に張り付いた
+        before = default_premium(island, ctx) - credit.premium(island, ctx.turn, config)
         finance["default_turn"] = ctx.turn
         top = yield_cap(config)
-        jump = to_basis(config.get("bonds.default_premium"))
+        jump = to_basis(max(0.0, config.get("bonds.default_premium") - before))
         finance["yields"] = [min(top, y + jump) for y in finance.get("yields") or []]
         crunch = ctx.turn + config.get("banking.default_crunch_turns")
         if is_planned(ctx.defs, island):
