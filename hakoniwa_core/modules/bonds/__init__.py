@@ -8,9 +8,9 @@
    ならないように）。
 4. 今のターンの利払いと償還に国庫が足りなければ、足りない分を入札で発行する（借り換え）。借り換えで
    売れ残った分は、独立した中央銀行も、売れ残りを引き受けない政策の国も、中央銀行が買い支える
-   （バランス調整。借り換えの売れ残りだけで不履行にしない）。bonds.rollover_crisis が入なら、買い支える
-   のは売れ残りを引き受ける政策の、独立していない中央銀行だけ。ほかの国は売れ残りを次のターンの削れる
-   支出でしのぎ、それでも払えない分だけ不履行にする（_roll_over。設計 BK-52）。
+   （バランス調整。借り換えの売れ残りだけで不履行にしない）。bonds.rollover_crisis が入なら、買い
+   支えるのは売れ残りを引き受ける政策の、独立していない中央銀行だけ。ほかの国は売れ残りを次のターンの
+   削れる支出でしのぎ、それでも払えない分だけ不履行にする（_roll_over・_short_pay。設計 BK-52）。
 5. 銘柄ごとに利子を払い、満期の銘柄は額面を返して消す。不履行は命令 set_bond_payment で選んだとき
    だけ: 中央銀行以外の額面を bonds.haircut だけ切り下げ（持ち手の損）、残りを同じ期間で出し直す。
    切り下げた額が 0 なら新しい罰は付けない。不履行の記録は
@@ -399,11 +399,13 @@ class Bonds(WorldStage):
         削れる支出に充てた分は、次のターンの予算の段で支払いの順番の後ろの項目から削られる
         （fiscal.payment_order）。1つの事件として記録に残す（ログ bond_rollover_austerity と
         bond_rollover_default）。"""
-        due = debt.due(island, ctx.turn)
+        # 中央銀行への利子は同じターンの納付で国庫に戻るので、借り換えと緊縮の額に入れない
+        due = debt.due(island, ctx.turn) - _cb_interest(island, ctx.turn)
         if due <= 0:
             return
         spent = funds.spent(island)
         interest = debt.due(island, ctx.turn + 1, redemptions=False)
+        interest -= _cb_interest(island, ctx.turn + 1)
         planned = sum(v for k, v in spent.items() if k != BONDS) + interest
         must = funds.must_items(ctx.config.get("fiscal"))
         kept = sum(spent.get(k, 0) for k in must if k != BONDS) + interest
@@ -478,14 +480,67 @@ class Bonds(WorldStage):
         if cut > 0 and ledger.is_bank(holder):
             hit.add(holder)
 
+    def _short_pay(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        payer: Payer,
+        bond: Bond,
+        interest: dict[str, int],
+        mature: bool,
+        short: dict[str, int],
+        hit: set[str],
+    ) -> bool:
+        """借り換えの危機で、銘柄の利払いと償還に国庫が足りないとき、足りない分だけ払わない（interest
+        を書き換える）。払わない順は、中央銀行への利子（同じターンの納付で国庫に戻るので差し引く）、
+        市中の持ち手への利子（持ち手の損）、市中の持ち手の元本（切り捨て）、中央銀行の元本（同じ期間で
+        出し直す）。返すのは、このターンに償還するか。"""
+        gap = sum(interest.values()) + (debt.outstanding(island, bond) if mature else 0)
+        gap -= funds.available(island, payer)
+        cb = max(0, min(gap, interest.get(ledger.CB, 0)))
+        if cb:
+            interest[ledger.CB] -= cb
+        short["netted"] += cb
+        gap -= cb
+        for holder in sorted(interest):
+            if gap <= 0:
+                break
+            skip = min(gap, interest[holder])
+            interest[holder] -= skip
+            gap -= skip
+            short["lost"] += skip
+            if skip > 0 and ledger.is_bank(holder):
+                hit.add(holder)
+        if not mature or gap <= 0:
+            return mature
+        for holder, face in sorted(debt.holders(island, bond).items()):
+            if gap <= 0:
+                break
+            if holder == ledger.CB:
+                continue
+            cut = min(gap, face)
+            self._cut(island, bond, holder, cut, hit)
+            gap -= cut
+            short["lost"] += cut
+        if gap <= 0:
+            return True
+        bond.issued = ctx.turn  # 残りは中央銀行の持ち分だけ。同じ期間で出し直す
+        bond.face = debt.outstanding(island, bond)
+        return False
+
     def _pay(self, island: IslandState, ctx: StageContext, payer: Payer) -> None:
         unpaid: list[Bond] = []
         redeemed: dict[int, int] = {}  # 期間（ターン）→ 償還した額面
+        crisis = rollover_crisis(island, ctx)
+        short = {"lost": 0, "netted": 0}
+        hit: set[str] = set()
         for bond in sorted(island.bonds, key=lambda b: b.id):
             interest = debt.interest_due(island, bond, ctx.turn)
             mature = ctx.turn >= bond.maturity
             due = sum(interest.values()) + (debt.outstanding(island, bond) if mature else 0)
-            if due > funds.available(island, payer):
+            if crisis and due > funds.available(island, payer):
+                mature = self._short_pay(island, ctx, payer, bond, interest, mature, short, hit)
+            elif due > funds.available(island, payer):
                 unpaid.append(bond)
                 continue
             for holder, amount in sorted(interest.items()):
@@ -512,6 +567,12 @@ class Bonds(WorldStage):
             if term is not None:
                 args["term"] = term
             island.log.append(LogEntry("bonds_redeemed" if term else "bonds_redeemed_any", args))
+        if short["lost"]:
+            island.log.append(LogEntry("bond_coupon_default", {"amount": short["lost"]}))
+            self._penalize(island, ctx, short["lost"], hit)
+        if short["netted"]:
+            stats = island.scratch.setdefault("bond_stats", {})
+            stats["cb_netted"] = stats.get("cb_netted", 0) + short["netted"]
         if unpaid:
             self._default(island, ctx, unpaid, "bond_default")
         island.bonds = [b for b in island.bonds if debt.outstanding(island, b) > 0]
@@ -1139,6 +1200,11 @@ def _log_foreign(world: WorldState, foreign: dict[int, list[abroad.Bid]]) -> Non
                 "target": bid.target,
             }
             holder.log.append(LogEntry(kind, args))
+
+
+def _cb_interest(island: IslandState, turn: int) -> int:
+    """ターン turn に中央銀行に払う利子（今の持ち手のまま）。"""
+    return sum(debt.interest_due(island, b, turn).get(ledger.CB, 0) for b in island.bonds)
 
 
 def _term_name(defs: Defs, turns: int) -> str | None:

@@ -5,7 +5,7 @@ import pytest
 
 from hakoniwa_core import ledger
 from hakoniwa_core.economy import BONDS, Payer, debt, funds
-from hakoniwa_core.modules.bonds import Bonds, rollover_crisis
+from hakoniwa_core.modules.bonds import Bonds, _cb_interest, rollover_crisis
 from hakoniwa_core.state import WorldState
 from tests.core.test_finance import context
 from tests.core.test_rules import GENERAL, home, household, make_island, with_economy
@@ -35,9 +35,12 @@ def setup(game, monkeypatch, short):
     state = funds.fiscal_state(island)
     state["reserved"], state["caps"] = {}, {}
     state["used"] = {"civil_servants": WAGES, "construction": WORKS}
-    interest = debt.due(island, ctx.turn + 1, redemptions=False)
+    # 中央銀行への利子（建国のときの国債）は納付で戻るので、借り換えと緊縮の額に入れない
+    interest = debt.due(island, ctx.turn + 1, redemptions=False) - _cb_interest(
+        island, ctx.turn + 1
+    )
     planned = WAGES + WORKS + interest
-    keep = planned + debt.due(island, ctx.turn) - short
+    keep = planned + debt.due(island, ctx.turn) - _cb_interest(island, ctx.turn) - short
     payer = Payer(ledger.GOV, BONDS)
     extra = funds.available(island, payer) - keep
     ledger.pay(island, ledger.GOV, household(GENERAL), extra, "test")
@@ -88,7 +91,8 @@ def test_only_the_shortfall_beyond_cuttable_spending_defaults(game, monkeypatch)
     kinds = [e.kind for e in island.log]
     assert "bond_default" not in kinds  # 不履行の罰（利回りの上乗せと市場の閉鎖）だけ付く
     assert any(k.startswith("bond_default_penalty") for k in kinds)
-    assert funds.available(island, payer) >= WAGES  # 公務員の賃金の分は国庫に残る
+    # 公務員の賃金の分は国庫に残る（中央銀行への利子は払えれば払い、決算の段の納付で戻る）
+    assert funds.available(island, payer) + _cb_interest(island, ctx.turn) >= WAGES
 
 
 @pytest.mark.parametrize(
@@ -104,3 +108,23 @@ def test_only_a_dependent_central_bank_that_underwrites_backs_the_rollover(
     assert rollover_crisis(island, ctx) is on
     monkeypatch.setitem(game.config.raw["bonds"], "rollover_crisis", False)
     assert not rollover_crisis(island, ctx)
+
+
+def test_unpaid_interest_defaults_only_the_shortfall_and_nets_the_central_bank(game, monkeypatch):
+    """利払いに国庫が足りなければ、中央銀行への利子は納付と差し引き、市中の持ち手には足りない分だけ
+    払わない（銘柄の額面を半分にする不履行にしない）。"""
+    island, ctx, _, _, payer = setup(game, monkeypatch, 0)
+    bank = ledger.bank_entity(island.economy.banks[0])
+    bond = debt.underwrite(island, FACE, 24, 1200, ctx.turn - 2)  # 満期はまだ先
+    ledger.transfer(island, ledger.bond_item(bond.id), ledger.GOV, ledger.CB, bank, FACE, "test")
+    debt.bought(island, bank, bond.id, FACE)
+    owed = debt.interest_due(island, bond, ctx.turn)[bank]
+    assert owed > 0
+    island.bonds = [bond]  # 満期の銘柄と建国のときの国債は外す
+    cash = funds.available(island, payer)
+    ledger.pay(island, ledger.GOV, household(GENERAL), cash - owed // 3, "test")
+    Bonds()._pay(island, ctx, payer)
+    assert debt.holders(island, bond) == {bank: FACE}
+    [lost] = [e.args["amount"] for e in island.log if e.kind == "bond_coupon_default"]
+    assert lost == owed - owed // 3
+    assert "bond_default" not in [e.kind for e in island.log]
