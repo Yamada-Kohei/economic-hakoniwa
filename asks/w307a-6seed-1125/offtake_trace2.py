@@ -5,12 +5,14 @@ W-307 の追跡（読むだけ）: 市場経済の島の石炭の商社 1 つず
 切と入で並べる。商社の買いの合計が入りで 2〜4 割減る訳を見る（w307-offtake-result.md の 11-24 の節）。
 
 走り（生の記録を jsonl.gz に残す。後の足しは --report だけかけ直す）:
-    py -3.12 -X utf8 offtake_trace.py --seed 1 --turns 500 --out w307t-off-s1.jsonl.gz
-    py -3.12 -X utf8 offtake_trace.py --seed 1 --turns 500 --on --out w307t-on-s1.jsonl.gz
+    py -3.12 -X utf8 offtake_trace2.py --seed 1 --turns 500 --out w307t-off-s1.jsonl.gz
+    py -3.12 -X utf8 offtake_trace2.py --seed 1 --turns 500 --on --out w307t-on-s1.jsonl.gz
 集計:
-    py -3.12 -X utf8 offtake_trace.py --report w307t-off-s1.jsonl.gz w307t-on-s1.jsonl.gz --from 301
+    py -3.12 -X utf8 offtake_trace2.py --report w307t-off-s1.jsonl.gz w307t-on-s1.jsonl.gz --from 301
 
 1 行 = 1 ターン {"t": ターン, "i": {島: {"mk": {...}, "tr": {商社: {...}}, "c": [...]}}}
+記録は全ターン・全商社分を書く（石炭の商社がそのターンに動かなくても、0 の行を残す。売り 0 が
+何ターン続いたかを、記録なしと区別して数えられるようにするため）。
 商社ごと（石炭を扱っている商社だけ）:
   pre_x/pre_xo/pre_xs: 貿易の段の見直しの前の狙う量・頭打ち前の狙う量・圏で売れた量（前のターン）
   x/xo/xs/dir: 見直しの後
@@ -18,6 +20,13 @@ W-307 の追跡（読むだけ）: 市場経済の島の石炭の商社 1 つず
   exp: このターンに圏で売れた量, hsold: 島の市場で売った量（輸入の売りと、輸出の荷の島への戻し）
   want: 市場の段で出した輸出向けの買いの量（x − 契約の受け取りを含む荷）, back: 島に戻す売りの量
   spot: 島の市場で買えた量, ct: 契約で受け取った量, age: 売れ残りのターン数, probe: 多めに狙ったか
+  ev: このターンの販売イベント（圏で売れた 1 件ごと。量・値段・指値の有無はこの行の中だけで揃い、
+    前後のターンの値では補わない）:
+    q: 売れた量, px: 1 単位あたりの値段（決済通貨。取れないときは null）, cur: 決済通貨の番号
+    lim: その売りに付いていた指値（決済通貨）, lm: 指値の有無（1 = 指値あり、0 = 指値なし、
+      null = 台本が拾えなかった。そのときは lmiss: "script" を同じ行に残す）
+    miss: 値段が欠けたわけ（"data" = ゲーム側の記録に額が残っていない、"script" = exp の合計と
+      イベントの量が合わず、台本が拾えなかった分を足した行）
 島ごと mk: 石炭の市場の supply・demand・volume・price、作り手の在庫・見込み・目標の合計、作り手の数
 c: 契約 [商社, 作り手, qty, 予告の量 or -1, short]
 """
@@ -54,11 +63,76 @@ def run(args: argparse.Namespace) -> int:
     world = generate_world(args.seed, scenario.islands, config, defs)
 
     rec: dict = defaultdict(lambda: defaultdict(dict))  # 島 → 商社 → 値
+    events: dict = defaultdict(list)  # (島, 商社) → このターンの販売イベント
+    ask_limits: dict = {}  # (島, 商社, 財) → そのターンに圏へ出した売りの指値（None は指値なし）
 
     def coal_traders(island):
         return [
             f for f in island.facilities if is_trader(config, f) and GOOD in traders.goods_of(f)
         ]
+
+    # 施設のオブジェクト → 島の番号（輸出の精算は施設しか渡さないので、島を引くために要る）
+    home_island: dict = {}
+
+    def island_of(f) -> int | None:
+        if id(f) not in home_island:
+            for isl in world.islands.values():
+                for x in isl.facilities:
+                    home_island[id(x)] = isl.id
+        return home_island.get(id(f))
+
+    orig_exported = traders.exported
+
+    def exported(f, good, *args, **kwargs):
+        orig_exported(f, good, *args, **kwargs)
+        qty = args[0] if args else kwargs.get("qty", 0)
+        currency = args[1] if len(args) > 1 else kwargs.get("currency")
+        amount = args[2] if len(args) > 2 else kwargs.get("amount", 0)
+        if good != GOOD or not qty or qty <= 0:
+            return
+        isl = island_of(f)
+        if isl is None:
+            return
+        ev: dict = {"q": qty, "cur": currency}
+        if currency is not None and amount > 0:
+            ev["px"] = amount * 1000 // qty  # units.unit_price と同じ（決済通貨、1 単位あたり）
+        else:
+            # ゲーム側の記録に額が残っていない（データ側の欠け）
+            ev["px"] = None
+            ev["miss"] = "data"
+        key = (isl, f.id, good)
+        if key in ask_limits:
+            ev["lim"] = ask_limits[key]
+            ev["lm"] = 1 if ask_limits[key] is not None else 0
+        else:
+            ev["lim"] = None
+            ev["lm"] = None
+            ev["lmiss"] = "script"
+        events[(isl, f.id)].append(ev)
+
+    traders.exported = exported
+
+    # 圏へ出した売りの指値そのものを拾う（売りの注文は _bloc_orders の中だけで作られる）
+    try:
+        from hakoniwa_core.modules import trade as trade_mod
+
+        orig_bloc_orders = trade_mod.Trade._bloc_orders
+
+        def bloc_orders(self, *args, **kwargs):
+            out = orig_bloc_orders(self, *args, **kwargs)
+            good = args[2] if len(args) > 2 else kwargs.get("good")
+            if good == GOOD:
+                try:
+                    sells, asks = out[1], out[3]
+                    for order, ask in zip(sells, asks):
+                        ask_limits[(ask.island, ask.facility.id, ask.good)] = order.limit
+                except Exception:
+                    pass  # 拾えなかった分は ev 側で lmiss として残る
+            return out
+
+        trade_mod.Trade._bloc_orders = bloc_orders
+    except Exception:
+        pass  # 指値が拾えない形なら、ev の lm は null（lmiss: script）になる
 
     orig_orders = traders.home_orders
 
@@ -148,6 +222,8 @@ def run(args: argparse.Namespace) -> int:
     with _open(args.out, "wt") as out:
         for _ in range(args.turns):
             rec.clear()
+            events.clear()
+            ask_limits.clear()
             measure.queue_scenario_orders(world, scenario, defs, config)
             game.engine.run_turn(world)
             row: dict = {"t": world.turn, "i": {}}
@@ -173,9 +249,27 @@ def run(args: argparse.Namespace) -> int:
                         sell[names[t.seller]] += t.quantity
                 why = rec[i].pop("_why", None)
                 tr = {}
-                for fid, r in rec[i].items():
+                # 全ターン・全商社の行にする（動かなかった商社も 0 で残す）
+                fids = {f.id for f in trs} | set(rec[i])
+                for fid in sorted(fids):
+                    r = rec[i].get(fid)
+                    if r is None:
+                        r = {
+                            "pre_x": 0, "pre_xo": 0, "pre_xs": 0, "held0": 0, "left": 0,
+                            "exp": 0, "hsold": 0, "age": 0, "probe": 0,
+                            "x": 0, "xo": 0, "xs": 0, "dir": "-",
+                        }
                     r["spot"] = spot.get(fid, 0) - r.get("ct", 0)
                     r["tsell"] = sell.get(fid, 0)
+                    evs = list(events.get((i, fid), []))
+                    gap = r.get("exp", 0) - sum(e["q"] for e in evs)
+                    if gap > 0:
+                        # exp の合計とイベントの量が合わない分（台本が拾えなかった売り）
+                        evs.append(
+                            {"q": gap, "px": None, "cur": None, "lim": None,
+                             "lm": None, "miss": "script"}
+                        )
+                    r["ev"] = evs
                     tr[str(fid)] = r
                 m = next((x for x in island.markets if x.good == GOOD), None)
                 row["i"][str(i)] = {
