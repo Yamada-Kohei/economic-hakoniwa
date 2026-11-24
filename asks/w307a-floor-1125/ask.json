@@ -1,0 +1,158 @@
+{
+ "name": "w307a-floor-1125",
+ "commit": "e199cf2215cca3a1a02f76c1328120896f3a68e4",
+ "pool": "any",
+ "files": [
+  "w307a_run.py",
+  "offtake_probe_v2.py",
+  "offtake_trace2.py"
+ ],
+ "patches": [],
+ "runs": [
+  {
+   "name": "probe-off-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--out",
+    "w307a-off-s1.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-off-s1.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "probe-on-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307a-on-s1.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-on-s1.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "probe-off-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "2",
+    "--turns",
+    "500",
+    "--out",
+    "w307a-off-s2.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-off-s2.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "probe-on-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "2",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307a-on-s2.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-on-s2.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "probe-off-s9",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "9",
+    "--turns",
+    "500",
+    "--out",
+    "w307a-off-s9.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-off-s9.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "probe-on-s9",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "9",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307a-on-s9.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-on-s9.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "trace-on-s1",
+   "args": [
+    "trace",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307a-trace-on-s1.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-trace-on-s1.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "trace-on-s2",
+   "args": [
+    "trace",
+    "--seed",
+    "2",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307a-trace-on-s2.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-trace-on-s2.jsonl.gz"
+   ],
+   "large": []
+  }
+ ]
+}
