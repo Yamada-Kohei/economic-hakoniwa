@@ -1,0 +1,23 @@
+{
+ "name": "reqb-on-1125",
+ "commit": "c0dd979cb15c228d9b489b0810723803fd526cdc",
+ "pool": "any",
+ "files": [
+  "measure_quick.py"
+ ],
+ "patches": [
+  "reqb-on.diff"
+ ],
+ "runs": [
+  {
+   "name": "q-on",
+   "args": [
+    "q-on"
+   ],
+   "summary": [
+    "q-on.zip"
+   ],
+   "large": []
+  }
+ ]
+}
