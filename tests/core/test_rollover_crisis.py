@@ -222,3 +222,16 @@ def test_repeated_defaults_do_not_stack_the_default_premium(game, monkeypatch):
     assert island.economy.finance["yields"] == [300 + jump] * 4
     stage._penalize(island, ctx, 1, {bank})  # 同じターンにもう一度
     assert island.economy.finance["yields"] == [300 + jump] * 4
+
+
+def test_a_sold_out_rollover_does_not_default_for_a_thin_treasury(game, monkeypatch):
+    """借り換えが全部売れれば、国庫が次のターンの支出に届かなくても満期の元本は不履行にしない
+    （届かない分は基礎的収支の赤字で、ふだんの新しい発行でまかなう）。"""
+    island, ctx, bond, bank, payer = setup(game, monkeypatch, FACE + WORKS // 2)
+    island.economy.finance.pop("default_turn")  # 銀行は入札に来る
+    planned = funds.available(island, payer) + WORKS // 2  # 国庫は次のターンの支出に届かない
+    stage = Bonds()
+    stage._roll_over(island, ctx, payer)
+    assert funds.available(island, payer) >= planned - WORKS // 2 + FACE  # 全部売れた
+    assert crisis(island) == []
+    assert island.scratch.get("bond_stats", {}).get("rollover_default", 0) == 0

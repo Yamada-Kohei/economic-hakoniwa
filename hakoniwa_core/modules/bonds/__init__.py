@@ -500,7 +500,11 @@ class Bonds(WorldStage):
         need = due - min(due, max(0, cash - planned))
         raised = self.raise_funds(island, ctx, need, "bonds_refinanced") if need > 0 else 0
         cash = funds.available(island, payer)
-        short = max(0, due - max(0, cash - planned))
+        # 足りないのは借り換えの売れ残りの分だけ。国庫が初めから次のターンの支出に届かない分（基礎的
+        # 収支の赤字）は、満期の元本の不履行にせず、ふだんの新しい発行（top_up）でまかなう。
+        # 2026-11-24 の比べ（c3）で、入札が全部売れたのに国庫が支出に届かない分を緊縮と不履行に
+        # 回し、借り換えの危うさのない島（u = 0）でも不履行が起きていた
+        short = max(0, need - raised)
         if short <= 0:
             return
         room = max(0, min(cash, planned) - kept)  # 削れる支出のうち、いま国庫にある分
