@@ -8,7 +8,9 @@
    ならないように）。
 4. 今のターンの利払いと償還に国庫が足りなければ、足りない分を入札で発行する（借り換え）。借り換えで
    売れ残った分は、独立した中央銀行も、売れ残りを引き受けない政策の国も、中央銀行が買い支える
-   （バランス調整。借り換えの売れ残りだけで不履行にしない）。
+   （バランス調整。借り換えの売れ残りだけで不履行にしない）。bonds.rollover_crisis が入なら、買い支える
+   のは売れ残りを引き受ける政策の、独立していない中央銀行だけ。ほかの国は売れ残りを次のターンの削れる
+   支出でしのぎ、それでも払えない分だけ不履行にする（_roll_over。設計 BK-52）。
 5. 銘柄ごとに利子を払い、満期の銘柄は額面を返して消す。不履行は命令 set_bond_payment で選んだとき
    だけ: 中央銀行以外の額面を bonds.haircut だけ切り下げ（持ち手の損）、残りを同じ期間で出し直す。
    切り下げた額が 0 なら新しい罰は付けない。不履行の記録は
@@ -123,6 +125,15 @@ def _burden(island: IslandState, ctx: StageContext) -> float:
         cached = (ctx.turn, debt.burden(island))
         island.scratch["bond_burden"] = cached
     return cached[1]
+
+
+def rollover_crisis(island: IslandState, ctx: StageContext) -> bool:
+    """借り換えの売れ残りを中央銀行が買い支えない国か（bonds.rollover_crisis が入で、売れ残りの
+    政策が「引き受ける」で独立していない中央銀行の国を除く。その国は新しい発行と同じく引き受ける）。"""
+    if not ctx.config.get("bonds.rollover_crisis"):
+        return False
+    policy = island.policy
+    return policy.cb_independent or policy.bond_unsold != UNDERWRITE
 
 
 def bond_assets(island: IslandState, bank: str) -> int:
@@ -262,10 +273,13 @@ class Bonds(WorldStage):
             )
         payer = Payer(ledger.GOV, BONDS)
         self._roll_central_bank(island, ctx)
-        short = debt.due(island, ctx.turn) - funds.available(island, payer)
-        if short > 0:
-            self.raise_funds(island, ctx, short, "bonds_refinanced")
-        self._make_up(island, ctx, debt.due(island, ctx.turn) - funds.available(island, payer))
+        if rollover_crisis(island, ctx):
+            self._roll_over(island, ctx, payer)
+        else:
+            short = debt.due(island, ctx.turn) - funds.available(island, payer)
+            if short > 0:
+                self.raise_funds(island, ctx, short, "bonds_refinanced")
+            self._make_up(island, ctx, debt.due(island, ctx.turn) - funds.available(island, payer))
         self._pay(island, ctx, payer)
         self._ordered(island, ctx)
         self._secondary(island, ctx)
@@ -376,6 +390,94 @@ class Bonds(WorldStage):
         stats["underwritten"] = stats.get("underwritten", 0) + short
         island.log.append(LogEntry("bonds_backstop", {"amount": short, "term": term}))
 
+    def _roll_over(self, island: IslandState, ctx: StageContext, payer: Payer) -> None:
+        """借り換えの危機（bonds.rollover_crisis。中央銀行が買い支えない国）: 満期の元本と利払いを、
+        次のターンの支出に要るお金を残して払えるだけ入札で借り換える。売れ残りは、まず次のターンの
+        削れる支出（fiscal.rescue_after の組より後ろの項目の、このターンに使った額）に充てて緊縮で
+        しのぎ、それでも払えない分だけ、満期の銘柄の中央銀行以外の持ち手に払わない（不履行）。
+
+        削れる支出に充てた分は、次のターンの予算の段で支払いの順番の後ろの項目から削られる
+        （fiscal.payment_order）。1つの事件として記録に残す（ログ bond_rollover_austerity と
+        bond_rollover_default）。"""
+        due = debt.due(island, ctx.turn)
+        if due <= 0:
+            return
+        spent = funds.spent(island)
+        interest = debt.due(island, ctx.turn + 1, redemptions=False)
+        planned = sum(v for k, v in spent.items() if k != BONDS) + interest
+        must = funds.must_items(ctx.config.get("fiscal"))
+        kept = sum(spent.get(k, 0) for k in must if k != BONDS) + interest
+        cash = funds.available(island, payer)
+        need = due - min(due, max(0, cash - planned))
+        raised = self.raise_funds(island, ctx, need, "bonds_refinanced") if need > 0 else 0
+        cash = funds.available(island, payer)
+        short = max(0, due - max(0, cash - planned))
+        if short <= 0:
+            return
+        room = max(0, min(cash, planned) - kept)  # 削れる支出のうち、いま国庫にある分
+        cut = min(short, room)
+        unpaid = self._write_off(island, ctx, short - cut)
+        principal = sum(debt.outstanding(island, b) for b in island.bonds if ctx.turn >= b.maturity)
+        stats = island.scratch.setdefault("bond_stats", {})
+        stats["rollover_short"] = stats.get("rollover_short", 0) + short
+        stats["austerity"] = stats.get("austerity", 0) + cut
+        stats["rollover_default"] = stats.get("rollover_default", 0) + unpaid
+        island.log.append(
+            LogEntry(
+                "bond_rollover_default" if unpaid else "bond_rollover_austerity",
+                {
+                    "principal": principal + unpaid,
+                    "raised": raised,
+                    "room": room,
+                    "cut": cut,
+                    "central_bank": 0,
+                    "default": unpaid,
+                },
+            )
+        )
+
+    def _write_off(self, island: IslandState, ctx: StageContext, amount: int) -> int:
+        """払えない amount を、満期の銘柄の中央銀行以外の持ち手の額面から額面の割合で切り捨てる
+        （古い銘柄から。端数は名前の順に1ずつ）。切り捨てた額を返し、損があれば不履行の罰を付ける。"""
+        if amount <= 0:
+            return 0
+        owed = [
+            (bond, holder, face)
+            for bond in sorted(island.bonds, key=lambda b: b.id)
+            if ctx.turn >= bond.maturity
+            for holder, face in sorted(debt.holders(island, bond).items())
+            if holder != ledger.CB and face > 0
+        ]
+        whole = sum(face for _, _, face in owed)
+        amount = min(amount, whole)
+        if amount <= 0:
+            return 0
+        cuts = [face * amount // whole for _, _, face in owed]
+        rest = amount - sum(cuts)
+        for i, (_, _, face) in enumerate(owed):
+            if rest <= 0:
+                break
+            if cuts[i] < face:
+                cuts[i] += 1
+                rest -= 1
+        hit: set[str] = set()
+        for (bond, holder, _), cut in zip(owed, cuts, strict=True):
+            if cut > 0:
+                self._cut(island, bond, holder, cut, hit)
+        self._penalize(island, ctx, amount, hit)
+        return amount
+
+    def _cut(self, island: IslandState, bond: Bond, holder: str, cut: int, hit: set[str]) -> None:
+        """持ち手 holder の銘柄 bond の額面を cut だけ切り捨てる（持ち手の損）。"""
+        item = ledger.bond_item(bond.id)
+        if abroad.parse_holder(holder) is not None:
+            abroad.write_down(self._world(), island, holder, cut)
+        else:
+            debt.released(island, holder, bond.id, cut, debt.holders(island, bond)[holder], 0)
+        ledger.cancel(island, holder, item, ledger.GOV, cut, "bond_default")
+        if cut > 0 and ledger.is_bank(holder):
+            hit.add(holder)
+
     def _pay(self, island: IslandState, ctx: StageContext, payer: Payer) -> None:
         unpaid: list[Bond] = []
         redeemed: dict[int, int] = {}  # 期間（ターン）→ 償還した額面
@@ -423,29 +525,26 @@ class Bonds(WorldStage):
         罰として、銀行はしばらく国債を買わなくなり（market_closed）、損をした銀行は新しい融資を
         止める（economy["crunch_until"]）。どちらもログで知らせる。
         """
-        config = ctx.config
-        haircut = to_basis(config.get("bonds.haircut"))
+        haircut = to_basis(ctx.config.get("bonds.haircut"))
         lost = 0
         hit: set[str] = set()  # 損をした銀行
         for bond in bonds:
-            item = ledger.bond_item(bond.id)
             for holder, face in sorted(debt.holders(island, bond).items()):
                 if holder == ledger.CB:
                     continue
                 cut = part(face, haircut)
-                if abroad.parse_holder(holder) is not None:
-                    abroad.write_down(self._world(), island, holder, cut)
-                else:
-                    debt.released(island, holder, bond.id, cut, face, 0)
-                ledger.cancel(island, holder, item, ledger.GOV, cut, "bond_default")
+                self._cut(island, bond, holder, cut, hit)
                 lost += cut
-                if cut > 0 and ledger.is_bank(holder):
-                    hit.add(holder)
             bond.issued = ctx.turn
             bond.face = debt.outstanding(island, bond)
         island.log.append(LogEntry(kind, {"amount": lost, "count": len(bonds)}))
+        self._penalize(island, ctx, lost, hit)
+
+    def _penalize(self, island: IslandState, ctx: StageContext, lost: int, hit: set[str]) -> None:
+        """不履行の罰: 利回りの上乗せ、銀行が国債を買わない期間、損をした銀行の貸し渋り。"""
         if lost == 0:
             return  # 市中・外国の債権者に損がなければ、新しい不履行の罰は付けない
+        config = ctx.config
         finance = island.economy.finance
         finance["default_turn"] = ctx.turn
         top = to_basis(config.get("bonds.max_yield"))
@@ -509,7 +608,7 @@ class Bonds(WorldStage):
         policy = island.policy
         underwrite = 0
         by_policy = policy.bond_unsold == UNDERWRITE and not policy.cb_independent
-        refinancing = kind == "bonds_refinanced"
+        refinancing = kind == "bonds_refinanced" and not rollover_crisis(island, ctx)
         if sold < face and (by_policy or refinancing):
             # 借り換えの売れ残りは、政策によらず中央銀行が買い支える（借り換えだけで不履行にしない）
             underwrite = face - sold
@@ -1016,6 +1115,9 @@ class Bonds(WorldStage):
         stats["bonds.cb_sold"] = extra.get("cb_sold", 0)
         stats["bonds.central_bank"] = sum(debt.holdings_of(island, ledger.CB).values())
         stats["bonds.bought_abroad"] = extra.get("abroad", 0)
+        stats["bonds.rollover_short"] = extra.get("rollover_short", 0)
+        stats["bonds.austerity"] = extra.get("austerity", 0)
+        stats["bonds.rollover_default"] = extra.get("rollover_default", 0)
 
 
 def _log_foreign(world: WorldState, foreign: dict[int, list[abroad.Bid]]) -> None:

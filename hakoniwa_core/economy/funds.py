@@ -56,6 +56,15 @@ def items(order: Sequence[str | Sequence[str]]) -> list[str]:
     return [item for group in groups(order) for item in group]
 
 
+def must_items(fiscal: Mapping[str, Any]) -> list[str]:
+    """先に払う支出の項目: 支払いの順番（fiscal.payment_order）で fiscal.rescue_after の入った組
+    までの項目（公務員の賃金など。銀行の救済と借り換えの危機でも次のターンの分を国庫に残す）。"""
+    order = groups(fiscal["payment_order"])
+    last = fiscal.get("rescue_after")
+    ends = [i for i, group in enumerate(order) if last in group]
+    return [item for group in order[: ends[0] + 1] for item in group] if ends else []
+
+
 def open_treasury(
     island: IslandState,
     estimates: Mapping[str, int],
