@@ -342,3 +342,16 @@ def test_a_lockout_is_restructured_only_once(game, monkeypatch):
     kinds = [e.kind for e in island2.log]
     assert "bond_restructured" not in kinds
     assert [e.kind for e in crisis(island2)] == ["bond_rollover_default"]
+
+
+def test_a_restructure_passes_the_ledger_check(game, monkeypatch):
+    """G2: 組み替えの仕訳（bond_restructured）は定義された種類で、組み替えた後も帳簿が合う
+    （c6 の independent が帳簿の確かめで止まった。2026-11-25）。"""
+    island, ctx, _, _, _, payer = _restructure_setup(game, monkeypatch)
+    island.journal.clear()
+    opening = dict(island.accounts)
+    stage = Bonds()
+    stage._roll_over(island, ctx, payer)
+    stage._pay(island, ctx, payer)
+    assert "bond_restructured" in [e.kind for e in island.log]
+    assert ledger.check(island, opening, game.defs.journal_kinds()) == []
