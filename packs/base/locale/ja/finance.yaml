@@ -78,6 +78,7 @@ emigrant_seized: 出国した人の預金の引き取り
 fx_swap: 中央銀行どうしの融通
 swap_interest: 中央銀行どうしの融通の利子
 fx_deposit: 外貨の預け入れと引き出し（計画経済）
+fx_plan_loan: 融通で借りた外貨の受け渡し（計画経済）
 bond_1y: 1年国債
 bond_5y: 5年国債
 bond_10y: 10年国債

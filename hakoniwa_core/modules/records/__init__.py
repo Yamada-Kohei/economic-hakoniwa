@@ -40,6 +40,7 @@ from hakoniwa_core.modules.population import (
     SETTLE_PARTS,
     jobless_persons,
     refresh_farming,
+    settle_farm_capacity,
     subsistence_persons,
 )
 from hakoniwa_core.registry import IslandStage, Registry
@@ -89,6 +90,8 @@ class Records(IslandStage):
         # 人口と住宅地の段で変わったマスの、自給の農業ができる村かの印を書き直す（W-272。切なら
         # 何もしない）。失業者の層の数え直し（W-294）より先に
         refresh_farming(ctx.defs, ctx.config, island)
+        # 村の自給の農家が作れる量（PO-63。切なら何もしない）。市場の段が次のターンに使う
+        settle_farm_capacity(ctx.defs, ctx.config, island)
         if island.has_economy:
             # 失業している家計の層を、失業率と同じ時点・同じ数え方で数え直す（W-294）。層は賃金の
             # 段で雇用の段の結果から決めるが、その後の人口の段で、飢えた町の人が村へ逃げ、村の人が

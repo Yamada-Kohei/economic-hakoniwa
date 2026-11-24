@@ -31,7 +31,7 @@ import random
 from typing import Any, NamedTuple
 
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import infra, ledger, politics, stock
+from hakoniwa_core import infra, ledger, nature, politics, stock
 from hakoniwa_core.allocation import proportional
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR as YEAR
@@ -216,6 +216,88 @@ def subsistence_persons(
         return 0
     unemployed = fac.labor_force(defs, island, tile, share) - tile.ext.get("employed", 0)
     return min(tile.population, int(max(0, unemployed) / share))
+
+
+# マスの ext: 自給の農家が作れる穀物の量（1000 分の 1 単位、1 ターン）。PO-63
+# （population.subsistence_sales が入のときだけ書く）。市場の段が、余りを売る量の上限に使う
+FARM_CAPACITY = "farm_capacity"
+
+
+def _farm_recipe(defs: Defs) -> tuple[str, Any]:
+    """自給の農家が作る物と作り方: 農場の既定の作り方（肥料も機械も使わない手作業）の最初の産出。"""
+    recipe = defs.facilities["farm"]["recipes"]["default"]
+    return next(iter(recipe["outputs"])), recipe
+
+
+def subsistence_good(defs: Defs) -> str:
+    """自給の農家が余りを売る財（農場の既定の作り方の産出。穀物）。"""
+    return _farm_recipe(defs)[0]
+
+
+def _land_output(
+    defs: Defs, config: GameConfig, island: IslandState, tile: Tile, people: int
+) -> int:
+    """1 マスの畑で people 人の働き手が作れる量（1000 分の 1 単位）: 農場の既定の作り方の産出 ×
+    肥沃度 × 気候の倍率 × min(1, 人数 ÷ 農場の働き手)。農場の働き手より多く入っても増えない
+    （土地の量で頭打ち）。"""
+    good, recipe = _farm_recipe(defs)
+    workers = fac.workers_needed(defs, "farm")
+    if people <= 0 or workers <= 0:
+        return 0
+    rate = min(1.0, people / workers)
+    rate *= nature.fertility(tile) / fac.FULL
+    rate *= nature.recipe_multiplier(defs, config, island, recipe)
+    return int(recipe["outputs"][good] * rate)
+
+
+def settle_farm_capacity(defs: Defs, config: GameConfig, island: IslandState) -> None:
+    """自給の農家が作れる量を村のマスに書く（PO-63。population.subsistence_sales）。村の仕事の
+    ない働き手（自給の人の働き手）が、自分のマスの畑で作る。切なら書かず、前に書いた量は消す。"""
+    on = config.get("population.subsistence_sales") and island.has_economy
+    share = fac.labor_share(defs, island)
+    for tile in island.tiles:
+        value = 0
+        if on and tile.population > 0 and _farming(defs, tile):
+            persons = subsistence_persons(defs, island, tile, share)
+            value = _land_output(defs, config, island, tile, int(persons * share))
+        if value > 0:
+            tile.ext[FARM_CAPACITY] = value
+        else:
+            tile.ext.pop(FARM_CAPACITY, None)
+
+
+def subsistence_offer(defs: Defs, config: GameConfig, island: IslandState) -> int:
+    """自給の農家が、このターンに市場に売りに出す量（1000 分の 1 単位。PO-63。会議 #3309・#3324）。
+
+    小農は作れるだけ作って売るのではなく、食べる分と、食べ物以外の最低限（衣料の傷んだ分の
+    買い替え: household.targets.clothing × household.clothing.wear ÷ 12 か月）を買うお金の分だけ
+    作る（チャヤーノフの労働と消費の釣り合い）。マスごとに
+      売る量 = min(作れる量 − 食べる量, 人数 × 最低限の代金 ÷ 穀物の値段)（0 未満は 0）。
+    作れる量の残りは作らない（売れ残りを持たない）。作れる量が食べる量に届かないマスは、今は
+    売りも買いもしない（12 本の比べでは 0 マス）。値段がなければ売らない。"""
+    if not config.get("population.subsistence_sales") or not island.has_economy:
+        return 0
+    good = subsistence_good(defs)
+    grain = island.economy.prices.get(good, 0)
+    cloth = island.economy.prices.get("clothing", 0)
+    if grain <= 0 or cloth <= 0:
+        return 0
+    hh = config.get("household")
+    clothes = hh["targets"]["clothing"] * hh["clothing"]["wear"] / YEAR
+    per = config.get("population.food_per_person")
+    share = fac.labor_share(defs, island)
+    total = 0
+    for tile in island.tiles:
+        capacity = tile.ext.get(FARM_CAPACITY, 0)
+        if tile.population <= 0 or capacity <= 0:
+            continue
+        persons = subsistence_persons(defs, island, tile, share)
+        spare = capacity - to_milli(persons * per)
+        if spare <= 0:
+            continue
+        cash = to_milli(persons * clothes) * cloth // grain
+        total += min(spare, cash)
+    return total
 
 
 def tile_jobless(defs: Defs, island: IslandState, tile: Tile, share: float | None = None) -> int:

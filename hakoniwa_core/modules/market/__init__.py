@@ -91,7 +91,7 @@ from hakoniwa_core.economy import (
 from hakoniwa_core.economy import freight as freight_rates
 from hakoniwa_core.economy import plan as planning
 from hakoniwa_core.economy import public_housing as pub
-from hakoniwa_core.economy.households import SUPPORT, consumption
+from hakoniwa_core.economy.households import SUPPORT, add_income, consumption
 from hakoniwa_core.economy.prices import (
     SITE_USUAL,
     adapt_materials,
@@ -120,6 +120,8 @@ from hakoniwa_core.modules.population import (
     jobless_family,
     layer_food_needs,
     still_hungry,
+    subsistence_good,
+    subsistence_offer,
 )
 from hakoniwa_core.registry import IslandStage, OrderFailed, OrderHandler, Registry
 from hakoniwa_core.state import (
@@ -131,7 +133,7 @@ from hakoniwa_core.state import (
     TradeRecord,
 )
 from hakoniwa_core.state.model import PRICE_CARRY, PRICE_QUOTE, PRICE_TRADE
-from hakoniwa_core.trade import balance, food_merchant, merchant, ships, traders
+from hakoniwa_core.trade import balance, food_merchant, merchant, offtake, ships, traders
 from hakoniwa_core.trade import orders as ship_orders
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import (
@@ -181,6 +183,8 @@ NO_SELLERS = "cap_no_sellers"
 REBUILD = "rebuild"  # 首都の建物の建て替えの資材（フェーズ3-4。modules/politics）
 REPAIR = "repair"  # 傷んだ設備を直す資材（回6。economy/equipment.py）
 MERCHANT = "merchant"  # 海外の商人（フェーズ3-1）
+# 自給の農家の余りの売り（PO-63。一般の層の家計が売り手。このターンに作った物を渡す）
+SUBSISTENCE = "subsistence"
 # 工事の資材の買い手（指値は material_limit。積算のし直しを数える。2026-11-01）
 MATERIAL_BUYERS = frozenset({SITE, WORKS, PUBLIC_HOUSING, REBUILD, REPAIR})
 SITE_BOUGHT = "site_bought"  # island.scratch: このターンに工事の資材の買い手が約定した量（財 → 量）
@@ -258,7 +262,7 @@ BUYER_GROUPS = (
 
 def party_group(config: GameConfig, party: Party) -> str:
     """注文を出した者の別（BUYER_GROUPS のどれか）。"""
-    if party.kind == HOUSEHOLD:
+    if party.kind in (HOUSEHOLD, SUBSISTENCE):
         return GROUP_HOUSEHOLD
     if party.kind == STORE:
         return GROUP_WAREHOUSE
@@ -910,6 +914,8 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
         expected[good] = estimate
         gap = round_money(estimate * inventory_turns(ctx, good)) - held
         amount = estimate + round_money(gap * settings["inventory_adjust"])
+        # 商社と結んだ引き取り契約の量（W-307。重み 1。前のターンに商社が市場で買った分は引く）
+        amount += offtake.committed_extra(island, f, good)
         plan = max(plan, fac.ratio(max(0, amount), full))
     f.economy[COST_FLOOR] = floors
     if stops.caps_target(ctx.config, f.status):  # 仕入れか電力が足りない（表は stops）
@@ -1016,6 +1022,11 @@ def record_missed(island: IslandState, f: Facility, ctx: StageContext) -> None:
             continue
         unmet = max(0, record.demand - record.volume)
         missed = max(missed, fac.ratio(unmet * sold // record.volume, full))
+    for good, refused in f.economy.get(offtake.REFUSED, {}).items():
+        # 引き取り契約を引き受けられなかった量（W-307。余る分がないので売り逃しと同じ。重み 1）
+        full = fac.outputs_of(ctx.defs, f).get(good, 0)
+        if full and refused > 0:
+            missed = max(missed, fac.ratio(refused, full))
     history = [*f.economy.get(MISSED, []), missed][-config.get("firms.invest_turns") :]
     f.economy[MISSED] = history
 
@@ -1147,6 +1158,9 @@ class Market(IslandStage):
         # 船の前注文（FX-60）: 取り消し・作った船の取り置き・代金の支払い・引き渡し（造船所が売りに
         # 出す前に、注文の分を取り置く）
         ship_orders.run(island, defs, config, ctx.turn)
+        # 商社と作り手の引き取り契約（W-307）: 申し込みと引き受け、作り手が売りに出す前の納品
+        offtake.propose(island, defs, config, ctx.turn)
+        offtake.deliver(island, defs, config, ctx.turn)
         self._supply_sites_from_warehouse(island, ctx)
         books_by_good: dict[str, Book] = {}
         if trade.started(island):  # 物がないときの海外の食料商人が来るか（FX-73。W-239）
@@ -1156,6 +1170,7 @@ class Market(IslandStage):
         self._facility_orders(island, ctx, books_by_good, rates)
         self._services_orders(island, ctx, books_by_good, official)
         self._trade_orders(island, ctx, books_by_good, rates, hh_rate)
+        self._subsistence_orders(island, ctx, books_by_good)
         offered = {  # 買い手は、いま売りに出ている量を見て注文する（ない物にお金を取り置かない）
             # 値引きの売り（MK-41）は、ふだんの売りに出した在庫の出し直しなので数えない
             good: sum(order.quantity for order, party in book.sells if not party.clearance)
@@ -1186,6 +1201,7 @@ class Market(IslandStage):
         for f, good, qty, cost in island.scratch.pop(REPAIR, []):  # 直す資材を設備に入れる（回6）
             equipment.install(defs, f, good, qty, cost)
         self._trade_settled(island, ctx, rates)
+        offtake.settle(island, defs, config, results, transport)  # 引き取り契約の精算（W-307）
         drawn = island.scratch.get(MORTGAGE_DRAWN)
         if drawn:  # 住宅ローンで買った額は、取り置きを戻す前に数える（回3）
             island.scratch[MORTGAGE_DRAWN] = {
@@ -2324,7 +2340,7 @@ class Market(IslandStage):
                 before = 0 if party.clearance else order.quantity
                 remaining[party.name] = remaining.get(party.name, 0) + before - sold[i]
             for _, party in book.sells:
-                if party.kind != MERCHANT:
+                if party.kind not in (MERCHANT, SUBSISTENCE):
                     # MK-38 が1巡目の後に倉庫から取り出した分も、2巡目では売れない。
                     held = party.facility.stock if party.facility is not None else island.warehouse
                     remaining[party.name] = min(remaining[party.name], stock.total(held, good))
@@ -3722,6 +3738,25 @@ class Market(IslandStage):
                 extra -= back
             stats["loans.mortgage_new"] = stats.get("loans.mortgage_new", 0) + drawn - max(0, extra)
 
+    def _subsistence_orders(
+        self, island: IslandState, ctx: StageContext, books_by_good: dict[str, Book]
+    ) -> None:
+        """自給の農家の余りの売り（PO-63。population.subsistence_sales）。
+
+        村の自給の農家は、食べる分と食べ物以外の最低限を買うお金の分だけ穀物を作り
+        （modules/population の subsistence_offer）、一般の層の家計として、前の値段の値幅の下端で
+        売りに出す（値段を受け入れる売り手。会議 #3309・#3324）。売れ残った分は作らなかったことに
+        する（持ち越さない）。代金は一般の層の所得。運賃は払わない（自分で近くの市場へ運ぶ）。"""
+        qty = subsistence_offer(ctx.defs, ctx.config, island)
+        if qty <= 0:
+            return
+        good = subsistence_good(ctx.defs)
+        reference = island.economy.prices.get(good, 1)
+        low, _ = auction.band(reference, to_basis(ctx.config.get("market.band")))
+        party = Party(SUBSISTENCE, household(GENERAL), Payer(household(GENERAL)), layer=GENERAL)
+        self._add(books_by_good, good, "sell", Order(qty, low), party)
+        island.stats["subsistence.offered"] = from_milli(qty)
+
     def _warehouse_orders(
         self, island: IslandState, ctx: StageContext, books_by_good: dict[str, Book]
     ) -> None:
@@ -4742,6 +4777,12 @@ class Market(IslandStage):
                     total = island.stats.get("trade.merchant_gap", 0) + gap
                     island.stats["trade.merchant_gap"] = total
                 balance.merchant(island, paid_out)  # 国際収支（フェーズ3-3）
+            elif seller.kind == SUBSISTENCE:
+                # 自給の農家が作って売った分は家計の生産（GDP の生産の側）と、一般の層の所得
+                books.add_sector(island, books.SUBSISTENCE, "sales", amount)
+                add_income(island, GENERAL, amount)
+                stats = island.stats
+                stats["subsistence.sold"] = stats.get("subsistence.sold", 0) + qty
             else:
                 books.add_sector(island, books.WAREHOUSE, "sales", amount)
             if buyer.kind == MERCHANT:  # 海外の商人の代金は島の外から入る（輸出。W-186 回4）
@@ -4816,7 +4857,7 @@ class Market(IslandStage):
         last_until: int | None = None,
         ctx: StageContext | None = None,
     ) -> list:
-        if seller.kind == MERCHANT:  # 海外の商人は、このターンに持ってきた物を渡す
+        if seller.kind in (MERCHANT, SUBSISTENCE):  # 海外の商人・自給の農家は、このターンの物を渡す
             assert ctx is not None
             brought: dict[str, list[list[int]]] = {}
             stock.add(brought, good, qty, ctx.turn, ctx.defs.goods)
