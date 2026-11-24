@@ -41,6 +41,7 @@ def world_state(world: WorldState) -> dict[str, Any]:
     state.setdefault("seq", {"bloc": 0, "contract": 0, "shipment": 0})
     state.setdefault("blocs", [])
     state.setdefault("contracts", [])
+    state.setdefault("contract_changes", [])
     state.setdefault("shipments", [])
     return state
 

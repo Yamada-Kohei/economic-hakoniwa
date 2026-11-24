@@ -193,7 +193,7 @@ def test_standing_pauses_for_manual_and_opposite_but_not_military_buy(
     assert ("paused" in item["last"]) == paused
 
 
-def test_imported_sales_suspend_standing_buys_and_mk39_skips_settings(game):
+def test_imported_sales_are_netted_against_standing_buys_and_mk39_skips_settings(game):
     from hakoniwa_core import trade
 
     island = island_for(game)
@@ -201,13 +201,48 @@ def test_imported_sales_suspend_standing_buys_and_mk39_skips_settings(game):
     item = put(game, island, "coal")
     trade.send_to_market(island, "coal", 1000)
     book = orders(game, island)["coal"]
-    assert not book.buys and item["last"]["paused"] == "opposite"
+    # 届いた 1 を決まった買い 10 に充て、残りの買い 9 だけが市場に出る（止めない。#4403）
+    assert book.buys[0][0].quantity == 9000 and not book.sells
+    assert item["last"].get("paused") is None
+    assert item["last"]["offset"] == {"received": 1000, "applied": 1000, "offered": 0}
+    entry = next(e for e in island.log if e.kind == "contract_market_offset")
+    assert entry.args == {"good": "coal", "received": 1, "applied": 1, "offered": 0}
     trade.to_market(island).clear()
     clear(island)
     plant = add(island, "thermal_power_plant", 6, 5)
     plant.economy["short"] = {"coal": "no_sellers"}
     book = orders(game, island)["coal"]
     assert not book.sells
+
+
+@pytest.mark.parametrize(
+    "received,buy_qty,sell_left,buy_left",
+    [
+        (1000, 10, 0, 9000),  # 届いた量が決まった買いより少ない: 足りない分だけ買う
+        (10000, 10, 0, 0),  # 同じ: どちらも残らない
+        (20000, 10, 10000, 0),  # 多い: 残りだけ市場に出し、買いは出さない（二重買い防止）
+    ],
+)
+def test_contract_market_netting_three_cases(game, received, buy_qty, sell_left, buy_left):
+    from hakoniwa_core import trade
+
+    island = island_for(game)
+    stock.add(island.warehouse, "coal", 100000, 0, game.defs.goods)
+    item = put(game, island, "coal", quantity=buy_qty)
+    trade.send_to_market(island, "coal", received)
+    book = orders(game, island)["coal"]
+    sells = [o.quantity for o, _ in book.sells]
+    buys = [o.quantity for o, _ in book.buys]
+    assert sells == ([sell_left] if sell_left else [])
+    assert buys == ([buy_left] if buy_left else [])
+    applied = received - sell_left
+    assert item["last"]["offset"] == {
+        "received": received,
+        "applied": applied,
+        "offered": sell_left,
+    }
+    entry = next(e for e in island.log if e.kind == "contract_market_offset")
+    assert entry.args["applied"] == applied / 1000
 
 
 def test_standing_is_last_at_market_upper_edge_and_planned_allocation(game):

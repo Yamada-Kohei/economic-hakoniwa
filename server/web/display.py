@@ -1493,6 +1493,22 @@ def _describe_trade(kind: str, payload: dict[str, Any], name: str) -> str:
         return f"{name}: 契約 {payload.get('contract')} 番（{DELIVERIES[payload['delivery']]}）"
     if kind in ("accept_contract", "cancel_contract"):
         return f"{name}: 契約 {payload.get('contract')} 番"
+    if kind == "set_contract_delivery" and payload.get("delivery") in DELIVERIES:
+        return f"{name}: 契約 {payload.get('contract')} 番（{DELIVERIES[payload['delivery']]}）"
+    if kind == "propose_contract_change":
+        parts = []
+        if payload.get("quantity") is not None:
+            parts.append(f"量 {payload['quantity']:g}")
+        if payload.get("price") is not None:
+            parts.append(f"値段 {payload['price']:,}")
+        if payload.get("indefinite"):
+            parts.append("無期限")
+        elif payload.get("turns") is not None:
+            parts.append(f"期間 {payload['turns']} ターン")
+        detail = "・".join(parts) if parts else "申し込みの取り下げ"
+        return f"{name}: 契約 {payload.get('contract')} 番（{detail}）"
+    if kind == "accept_contract_change":
+        return f"{name}: 変更 {payload.get('change')} 番"
     return _describe_policy(kind, payload, name)
 
 

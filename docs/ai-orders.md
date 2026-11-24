@@ -197,6 +197,21 @@ MCP は `saved: false`）。読んでよければ、同じ列に `"confirm": tru
 {"kind":"accept_contract","payload":{"contract":7,"delivery":"market"}}
 ```
 
+結んだままの契約は、届いた物の行き先だけなら買い手が相手の承諾なしに替えられます（海の上の荷の行き先も替わります）。
+
+```json
+{"kind":"set_contract_delivery","payload":{"contract":7,"delivery":"warehouse"}}
+```
+
+量・値段・期間を変えたいときは、変更を申し込み、相手が申し込みの番号を名指しして受けると、受けたターンの次のターンから新しい条件になります。受けるまでは前の条件が続きます。変えたい項目だけ書きます（何も書かずに出すと自分の申し込みの取り下げ）。
+
+```json
+{"kind":"propose_contract_change","payload":{"contract":7,"quantity":12,"price":110}}
+{"kind":"accept_contract_change","payload":{"change":3}}
+```
+
+契約で届いて市場に出す物は、同じ品の決まった買い（国の倉庫の決まった買い）と先に差し引かれます。受け取った量が買いの量より少なければ足りない分だけ買い、多ければ残りだけ市場に出します。内訳はターンログに「契約で受け取った X／決まった買いへ充てた Y／市場に出した Z」で残ります。
+
 商社の貿易を始める入口の一つは、開放された貿易圏への加入です。番号は貿易の API で読みます。
 
 ```json

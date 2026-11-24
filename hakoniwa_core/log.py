@@ -13,6 +13,7 @@ from hakoniwa_core.defs import Defs
 _ARG_KINDS = {
     "order": "orders",
     "reason": "messages",
+    "delivery": "messages",
     "facility": "facilities",
     "good": "goods",
     "terrain": "terrain",
