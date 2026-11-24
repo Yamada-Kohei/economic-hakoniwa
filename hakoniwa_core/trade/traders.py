@@ -73,6 +73,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
+from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
@@ -272,10 +273,17 @@ def views(island: IslandState) -> dict[str, dict[str, Any]]:
     return island_state(island).get("blocs", {})
 
 
-def capacity_units(defs: Defs, config: GameConfig, good: str) -> int:
-    """商社1社が1ターンに扱える量（財 good の 1000 分の 1 単位）。"""
+def capacity(config: GameConfig, f: Facility | None = None) -> int:
+    """商社 f が 1 ターンに扱える重さ（1000 分の 1 トン。輸出と輸入の合計）。建て増した商社は規模の
+    分だけ扱える（W-308。支店・倉庫と人を足した分）。f を渡さなければ規模 1 の商社の分。"""
+    size = fac.size_of(f) if f is not None else 1
+    return config.get("trade.trader_capacity") * QUANTITY_SCALE * size
+
+
+def capacity_units(defs: Defs, config: GameConfig, good: str, f: Facility | None = None) -> int:
+    """商社 f が1ターンに扱える量（財 good の 1000 分の 1 単位）。"""
     unit = unit_weight(defs, good)
-    cap = config.get("trade.trader_capacity") * QUANTITY_SCALE
+    cap = capacity(config, f)
     if unit <= 0:
         return cap
     return cap * QUANTITY_SCALE // unit
@@ -419,7 +427,7 @@ def home_orders(island: IslandState, defs: Defs, config: GameConfig, turn: int) 
     planned = is_planned(island)
     out: list[HomeOrder] = []
     for f in traders:
-        budget = config.get("trade.trader_capacity") * QUANTITY_SCALE  # 扱える重さの残り
+        budget = capacity(config, f)  # 扱える重さの残り
         if (
             planned
         ):  # 輸出の荷より先に、1 段の財（燃料と主食）の輸入の見込みの重さを取り置く（FX-77）
@@ -464,7 +472,8 @@ def home_orders(island: IslandState, defs: Defs, config: GameConfig, turn: int) 
                 continue
             assert p is not None
             planned_x = item.get(PLAN_X, 0) if planned else 0
-            want = min(item["x"] + planned_x, capacity_units(defs, config, good)) - item["held"][0]
+            room = capacity_units(defs, config, good, f)
+            want = min(item["x"] + planned_x, room) - item["held"][0]
             if want <= 0:
                 continue
             # 計画経済は値幅の上端（公定価格）に運賃の上限を足した額まで払う
@@ -781,7 +790,7 @@ def update_targets(
             ):
                 continue
             item = entry(f, good)
-            cap = capacity_units(defs, config, good)
+            cap = capacity_units(defs, config, good, f)
             probe = round_money(cap * PROBE)
             held = item["held"][0]
             # 島で買い手のいない物は輸入せず、島の売り手が売りに出していない物は輸出しない（海外の
@@ -1014,6 +1023,8 @@ def _keep_history(config: GameConfig, f: Facility, turn: dict[str, Any]) -> None
     state["spent"] = [*state.get("spent", []), turn.get("spent", 0)][-keep:]
     # 取り逃した輸入の儲けと仕入れ（FX-62。貿易の段の _keep_missed）
     state["missed"] = [*state.get("missed", []), turn.get("missed", [0, 0])][-keep:]
+    # そのうち扱える重さで取り逃した分（商社の建て増しの根拠。W-308）
+    state["missed_cap"] = [*state.get("missed_cap", []), turn.get("missed_cap", [0, 0])][-keep:]
     abroad = state.setdefault("abroad", {})
     spent = turn.get("abroad", {})
     for key in sorted(set(abroad) | set(spent)):
@@ -1058,7 +1069,7 @@ def volume_share(config: GameConfig, f: Facility) -> float:
     history = state_of(f).get("volume", [])
     if not history:
         return 0.0
-    return sum(history) / len(history) / (config.get("trade.trader_capacity") * QUANTITY_SCALE)
+    return sum(history) / len(history) / capacity(config, f)
 
 
 def missed_average(f: Facility) -> tuple[int, int]:
@@ -1070,6 +1081,12 @@ def missed_average(f: Facility) -> tuple[int, int]:
         sum(p for p, _ in history) // len(history),
         sum(c for _, c in history) // len(history),
     )
+
+
+def missed_capacity(f: Facility) -> list[tuple[int, int]]:
+    """直近 trade.entry_turns ターンの、扱える重さで取り逃した輸入の儲けと仕入れ（自国通貨。
+    W-308）。"""
+    return [(p, c) for p, c in state_of(f).get("missed_cap", [])]
 
 
 def plan_spend(island: IslandState, f: Facility) -> int:
@@ -1093,7 +1110,8 @@ def spend_estimate(f: Facility) -> int:
 def workers_wanted(config: GameConfig, defs: Defs, f: Facility) -> int:
     """商社が雇いたい人数: 定義の人数 × 直近の扱った重さの割合（少なくとも trade.staff_floor。荷が
     ないまま圏にも入れない商社が、定義の人数の 1 割の賃金を払い続けて赤字だった。W-157）。"""
-    full = defs.facilities[f.kind]["workers"]
+    # 建て増した商社は規模の分の人数（W-308）
+    full = defs.facilities[f.kind]["workers"] * fac.size_of(f)
     share = max(config.get("trade.staff_floor"), min(1.0, volume_share(config, f)))
     return max(1, round_money(full * share + 0.5))
 

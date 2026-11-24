@@ -627,9 +627,7 @@ def _choose(
     band = to_basis(config.get("trade.bloc_band"))
     recent = config.get("planning.demand_turns")
     weight_left = sum(
-        config.get("trade.trader_capacity") * QUANTITY_SCALE
-        - traders.first_import_weight(island, defs, f)
-        for f in working
+        traders.capacity(config, f) - traders.first_import_weight(island, defs, f) for f in working
     )
     feeds = _queued_inputs(island, defs, queues)
     sold_history = state.get("sold", {})
@@ -825,8 +823,10 @@ def _assign(
             item.pop(traders.PLAN_X, None)
     if not working:
         return
-    full = config.get("trade.trader_capacity") * QUANTITY_SCALE
-    room = {f.id: full - traders.first_import_weight(island, defs, f) for f in working}
+    room = {
+        f.id: traders.capacity(config, f) - traders.first_import_weight(island, defs, f)
+        for f in working
+    }
     for good, qty in sorted(plan.items()):
         p = found.get(good)
         if p is None or p.export_bloc is None:
