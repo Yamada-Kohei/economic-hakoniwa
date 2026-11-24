@@ -1,0 +1,299 @@
+{
+ "name": "w272-full-off-1124",
+ "commit": "68998def428c9c29634991763a79d342da1bca57",
+ "pool": "any",
+ "files": [
+  "sim_one.py"
+ ],
+ "patches": [],
+ "runs": [
+  {
+   "name": "plan-s1-t500",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--turns",
+    "500"
+   ],
+   "summary": [
+    "plan-s1-t500.json",
+    "plan-s1-t500.exit"
+   ],
+   "large": [
+    "raw"
+   ]
+  },
+  {
+   "name": "plan-s2-t500",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "2",
+    "--turns",
+    "500"
+   ],
+   "summary": [
+    "plan-s2-t500.json",
+    "plan-s2-t500.exit"
+   ],
+   "large": [
+    "raw"
+   ]
+  },
+  {
+   "name": "plan-s3-t500",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "3",
+    "--turns",
+    "500"
+   ],
+   "summary": [
+    "plan-s3-t500.json",
+    "plan-s3-t500.exit"
+   ],
+   "large": [
+    "raw"
+   ]
+  },
+  {
+   "name": "plan-s4-t500",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "4",
+    "--turns",
+    "500"
+   ],
+   "summary": [
+    "plan-s4-t500.json",
+    "plan-s4-t500.exit"
+   ],
+   "large": [
+    "raw"
+   ]
+  },
+  {
+   "name": "none-s1-t300",
+   "args": [
+    "--scenario",
+    "none",
+    "--seed",
+    "1",
+    "--turns",
+    "300"
+   ],
+   "summary": [
+    "none-s1-t300.json",
+    "none-s1-t300.exit"
+   ],
+   "large": [
+    "raw"
+   ]
+  },
+  {
+   "name": "none-s2-t300",
+   "args": [
+    "--scenario",
+    "none",
+    "--seed",
+    "2",
+    "--turns",
+    "300"
+   ],
+   "summary": [
+    "none-s2-t300.json",
+    "none-s2-t300.exit"
+   ],
+   "large": [
+    "raw"
+   ]
+  },
+  {
+   "name": "independent-s1-t300",
+   "args": [
+    "--scenario",
+    "independent",
+    "--seed",
+    "1",
+    "--turns",
+    "300"
+   ],
+   "summary": [
+    "independent-s1-t300.json",
+    "independent-s1-t300.exit"
+   ],
+   "large": [
+    "raw"
+   ]
+  },
+  {
+   "name": "independent-s2-t300",
+   "args": [
+    "--scenario",
+    "independent",
+    "--seed",
+    "2",
+    "--turns",
+    "300"
+   ],
+   "summary": [
+    "independent-s2-t300.json",
+    "independent-s2-t300.exit"
+   ],
+   "large": [
+    "raw"
+   ]
+  },
+  {
+   "name": "small-s1-t500",
+   "args": [
+    "--scenario",
+    "small",
+    "--seed",
+    "1",
+    "--turns",
+    "500"
+   ],
+   "summary": [
+    "small-s1-t500.json",
+    "small-s1-t500.exit"
+   ],
+   "large": [
+    "raw"
+   ]
+  },
+  {
+   "name": "small-s2-t500",
+   "args": [
+    "--scenario",
+    "small",
+    "--seed",
+    "2",
+    "--turns",
+    "500"
+   ],
+   "summary": [
+    "small-s2-t500.json",
+    "small-s2-t500.exit"
+   ],
+   "large": [
+    "raw"
+   ]
+  },
+  {
+   "name": "small-s3-t500",
+   "args": [
+    "--scenario",
+    "small",
+    "--seed",
+    "3",
+    "--turns",
+    "500"
+   ],
+   "summary": [
+    "small-s3-t500.json",
+    "small-s3-t500.exit"
+   ],
+   "large": [
+    "raw"
+   ]
+  },
+  {
+   "name": "small-s4-t500",
+   "args": [
+    "--scenario",
+    "small",
+    "--seed",
+    "4",
+    "--turns",
+    "500"
+   ],
+   "summary": [
+    "small-s4-t500.json",
+    "small-s4-t500.exit"
+   ],
+   "large": [
+    "raw"
+   ]
+  },
+  {
+   "name": "open-s1-t500",
+   "args": [
+    "--scenario",
+    "open",
+    "--seed",
+    "1",
+    "--turns",
+    "500"
+   ],
+   "summary": [
+    "open-s1-t500.json",
+    "open-s1-t500.exit"
+   ],
+   "large": [
+    "raw"
+   ]
+  },
+  {
+   "name": "open-s2-t500",
+   "args": [
+    "--scenario",
+    "open",
+    "--seed",
+    "2",
+    "--turns",
+    "500"
+   ],
+   "summary": [
+    "open-s2-t500.json",
+    "open-s2-t500.exit"
+   ],
+   "large": [
+    "raw"
+   ]
+  },
+  {
+   "name": "war-s1-t300",
+   "args": [
+    "--scenario",
+    "war",
+    "--seed",
+    "1",
+    "--turns",
+    "300"
+   ],
+   "summary": [
+    "war-s1-t300.json",
+    "war-s1-t300.exit"
+   ],
+   "large": [
+    "raw"
+   ]
+  },
+  {
+   "name": "war-s2-t300",
+   "args": [
+    "--scenario",
+    "war",
+    "--seed",
+    "2",
+    "--turns",
+    "300"
+   ],
+   "summary": [
+    "war-s2-t300.json",
+    "war-s2-t300.exit"
+   ],
+   "large": [
+    "raw"
+   ]
+  }
+ ]
+}

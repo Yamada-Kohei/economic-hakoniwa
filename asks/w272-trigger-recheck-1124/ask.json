@@ -1,0 +1,137 @@
+{
+ "name": "w272-trigger-recheck-1124",
+ "commit": "68998def428c9c29634991763a79d342da1bca57",
+ "pool": "any",
+ "files": [
+  "w272_trigger_run.py",
+  "w272_trigger_sum.py"
+ ],
+ "patches": [],
+ "runs": [
+  {
+   "name": "selftest",
+   "args": [
+    "--selftest",
+    "selftest.txt"
+   ],
+   "summary": [
+    "selftest.txt"
+   ],
+   "large": []
+  },
+  {
+   "name": "s1-now",
+   "args": [
+    "--mode",
+    "now",
+    "--scenario",
+    "none",
+    "--seed",
+    "1",
+    "--turns",
+    "300",
+    "--out",
+    "tr-s1-now.jsonl.gz"
+   ],
+   "summary": [
+    "tr-s1-now.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "s1-stage",
+   "args": [
+    "--mode",
+    "stage",
+    "--scenario",
+    "none",
+    "--seed",
+    "1",
+    "--turns",
+    "300",
+    "--out",
+    "tr-s1-stage.jsonl.gz"
+   ],
+   "summary": [
+    "tr-s1-stage.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "s1-trigger",
+   "args": [
+    "--mode",
+    "trigger",
+    "--scenario",
+    "none",
+    "--seed",
+    "1",
+    "--turns",
+    "300",
+    "--out",
+    "tr-s1-trigger.jsonl.gz"
+   ],
+   "summary": [
+    "tr-s1-trigger.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "s2-now",
+   "args": [
+    "--mode",
+    "now",
+    "--scenario",
+    "none",
+    "--seed",
+    "2",
+    "--turns",
+    "300",
+    "--out",
+    "tr-s2-now.jsonl.gz"
+   ],
+   "summary": [
+    "tr-s2-now.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "s2-stage",
+   "args": [
+    "--mode",
+    "stage",
+    "--scenario",
+    "none",
+    "--seed",
+    "2",
+    "--turns",
+    "300",
+    "--out",
+    "tr-s2-stage.jsonl.gz"
+   ],
+   "summary": [
+    "tr-s2-stage.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "s2-trigger",
+   "args": [
+    "--mode",
+    "trigger",
+    "--scenario",
+    "none",
+    "--seed",
+    "2",
+    "--turns",
+    "300",
+    "--out",
+    "tr-s2-trigger.jsonl.gz"
+   ],
+   "summary": [
+    "tr-s2-trigger.jsonl.gz"
+   ],
+   "large": []
+  }
+ ]
+}
