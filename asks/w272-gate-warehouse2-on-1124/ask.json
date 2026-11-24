@@ -1,0 +1,46 @@
+{
+ "name": "w272-gate-warehouse2-on-1124",
+ "commit": "68998def428c9c29634991763a79d342da1bca57",
+ "pool": "linux",
+ "files": [
+  "wh2_probe.py",
+  "wh2_plugin.py"
+ ],
+ "patches": [
+  "on.diff"
+ ],
+ "runs": [
+  {
+   "name": "wh2-on-s1",
+   "args": [
+    "--seed",
+    "1",
+    "--raw",
+    "wh2-on-s1.json",
+    "--log",
+    "wh2-on-s1.txt"
+   ],
+   "summary": [
+    "wh2-on-s1.json",
+    "wh2-on-s1.txt"
+   ],
+   "large": []
+  },
+  {
+   "name": "wh2-on-s2",
+   "args": [
+    "--seed",
+    "2",
+    "--raw",
+    "wh2-on-s2.json",
+    "--log",
+    "wh2-on-s2.txt"
+   ],
+   "summary": [
+    "wh2-on-s2.json",
+    "wh2-on-s2.txt"
+   ],
+   "large": []
+  }
+ ]
+}
