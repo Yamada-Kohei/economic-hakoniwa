@@ -394,3 +394,139 @@ def test_surplus_over_the_reserve_is_deposited_at_the_central_bank_and_comes_bac
     assert export_plan.deposited(island) == {str(currency): deposit // 2}
     assert cb() == 0
     assert not fxmoney.reconcile(world)
+
+
+def test_short_planned_island_borrows_by_swap_and_pays_the_central_bank_back_first(game, base):
+    """FX-86: 外貨の足りない計画の島は、中央銀行が融通で借りて国営の商社に渡す（国の中のメモに
+    残す）。商社は蓄えの目標を超えた外貨を、預ける前にまず中央銀行に戻し、中央銀行は融通を返せる。
+    既定は順 1（燃料と主食）まで（borrow_rank 1）。"""
+    from hakoniwa_core import ledger
+    from hakoniwa_core.trade import swap
+
+    assert game.config.get("planning.export.borrow_rank") == 1
+    world = copy.deepcopy(base)
+    island = planned_islands(world)[0]
+    [bloc] = blocs.member_of(world, island.id)
+    currency = bloc["currency"]
+    if currency == island.id:
+        pytest.skip("自国の通貨の圏")
+    export_plan.withdraw_deposits(world, island)
+    export_plan.state_of(island).pop(export_plan.DEPOSIT, None)
+    entity = export_plan._entities(island, game.config)[0]
+    room = swap.available(world, game.config, island.id, currency)
+    if room <= 2:
+        pytest.skip("借りられる余地がない")
+    before = fxmoney.holding(island, entity, currency)
+    ask = room // 2
+    got, why = export_plan.borrow_for_imports(world, island, game.config, entity, currency, ask)
+    assert got == ask and why is None
+    assert fxmoney.holding(island, entity, currency) == before + got
+    assert swap.debt_in(island, currency) >= got
+    assert export_plan.loaned(island) == {str(currency): got}
+    assert not fxmoney.reconcile(world)
+    # 枠を超えて頼むと、借りられた分だけ渡し、止まった枠の種類を返す
+    more, why = export_plan.borrow_for_imports(
+        world, island, game.config, entity, currency, room * 10
+    )
+    assert more <= room - got + 1 and why in ("quota", "supply")
+    # 目標を超えた分は、預ける前に中央銀行に戻す（メモが減り、請求は残らない）
+    export_plan.state_of(island)["reserve"] = {str(currency): 0}
+    owe = got + more
+    cb_before = fxmoney.holding(island, ledger.CB, currency)
+    export_plan.deposit_surplus(world, island, game.config)
+    held = fxmoney.holding(island, entity, currency)
+    back = min(owe, before + owe)
+    assert fxmoney.holding(island, ledger.CB, currency) == cb_before + before + owe - held
+    assert export_plan.loaned(island).get(str(currency), 0) == owe - back
+    assert export_plan.deposited(island).get(str(currency), 0) == before + owe - back - held
+    assert not fxmoney.reconcile(world)
+
+
+def test_old_swap_principal_stops_new_borrowing_and_debt_service_pays_from_the_trader(
+    game, base, monkeypatch
+):
+    """FX-86 の案 1・2（掲示板 #3308）: 返済は古い元本から消えるとみなし、1 年を超えた元本
+    （swap.overdue）が残っている計画の島は、borrow_age_limit なら新しく借りない。debt_service なら
+    利払いと返済の前に、国営の商社の外貨から燃料と主食の注文の額を残した分で、利子と 1 年を超えた
+    元本を中央銀行に回す。borrow_age_limit は既定は切り、debt_service は既定は入（会議 #4102）。"""
+    from hakoniwa_core import ledger
+    from hakoniwa_core.dates import TURNS_PER_YEAR
+    from hakoniwa_core.trade import swap
+
+    exp = game.config.raw["planning"]["export"]
+    assert exp["borrow_age_limit"] is False and exp["debt_service"] is True
+    monkeypatch.setitem(exp, "debt_service", False)  # 案 1 を案 2 なしで見る
+    world = copy.deepcopy(base)
+    island = planned_islands(world)[0]
+    [bloc] = blocs.member_of(world, island.id)
+    currency = bloc["currency"]
+    if currency == island.id:
+        pytest.skip("自国の通貨の圏")
+    export_plan.withdraw_deposits(world, island)
+    export_plan.state_of(island).pop(export_plan.DEPOSIT, None)
+    entity = export_plan._entities(island, game.config)[0]
+    room = swap.available(world, game.config, island.id, currency)
+    if room <= 4:
+        pytest.skip("借りられる余地がない")
+    old = swap.overdue(world, island, currency)
+    got, _ = export_plan.borrow_for_imports(world, island, game.config, entity, currency, room // 2)
+    assert got > 0
+    assert swap.overdue(world, island, currency) == old  # 借りたばかりの元本は 1 年を超えない
+    world.turn += TURNS_PER_YEAR
+    debt = swap.debt_in(island, currency)
+    assert swap.overdue(world, island, currency) == debt  # 1 年たてば全部が古い元本
+
+    # 案 1: 古い元本があれば、足りなくても新しく借りない
+    monkeypatch.setitem(exp, "borrow_age_limit", True)
+    r = trade_stage._Round(world, _context(game, world))
+    key = (island.id, entity, currency)
+    short = fxmoney.holding(island, entity, currency) + 1000
+    monkeypatch.setattr(r, "_plan_needs", lambda top: {key: {1: short}})
+    r._plan_borrow()
+    assert swap.debt_in(island, currency) == debt
+    assert island.stats[f"{export_plan.BORROW}.stop.age"] == 1
+    assert r.plan_loan[key] == 0
+
+    # 案 2: 商社は燃料と主食の分を残して、利子と古い元本を中央銀行に回す（持ち高は手で置くので、
+    # ここから先は帳簿との突き合わせを見ない）
+    monkeypatch.setitem(exp, "debt_service", True)
+    for e in export_plan._entities(island, game.config):
+        fxmoney.holdings(island).get(e, {}).pop(str(currency), None)
+    fxmoney.holdings(island).get(ledger.CB, {}).pop(str(currency), None)
+    minimum = 1000
+    held = minimum + debt
+    fxmoney.holdings(island).setdefault(entity, {})[str(currency)] = [held, held]
+    monkeypatch.setattr(r, "_plan_needs", lambda top: {key: {1: minimum}})
+    r._plan_debt_service()
+    annual = swap.rate(world, game.config, currency)
+    owed = swap.owed(island).get(str(currency), {})
+    due = sum(ledger.interest(v, annual) for v in owed.values())
+    paid = min(debt, due + debt)
+    assert fxmoney.holding(island, entity, currency) == minimum + debt - paid
+    assert fxmoney.holding(island, ledger.CB, currency) == paid
+    assert island.stats[f"{export_plan.BORROW}.service"] > 0
+    # 残した燃料と主食の分は、名前の順で先に来る設備（順 2）に使わない（まだ来ていない燃料と主食の
+    # 見込みまで）
+    assert r.plan_kept[key] == minimum
+    r.fx_queue = {key: {"coal": minimum // 2}}
+    assert r._fx_ahead(key, "machinery") == minimum // 2
+    r.fx_queue = {key: {"coal": minimum * 5}}
+    assert r._fx_ahead(key, "machinery") == minimum
+    assert r._fx_ahead(key, "coal") == 0
+    # 案 2 のときは、支払いのないターンでも、借りた商社は、まだ来ていない燃料と主食の見込みを
+    # 全部取り置く（借りる額は持ち高を足して見込みに届く分なので、持ち高を設備に使うと
+    # 借りても足りない）
+    kept_now, r.plan_kept = r.plan_kept, {}
+    r.plan_loan = {key: 10}
+    assert r._fx_ahead(key, "machinery") == minimum * 5
+    r.plan_loan = {key: 0}
+    assert r._fx_ahead(key, "machinery") == 0  # 借りていなければ取り置かない（既定の名前の順）
+    # 案 2 を切れば、借りたターンも借りた分だけ（前の形）
+    monkeypatch.setitem(exp, "debt_service", False)
+    r.plan_loan = {key: 10}
+    assert r._fx_ahead(key, "machinery") == 10
+    monkeypatch.setitem(exp, "debt_service", True)
+    r.plan_kept = kept_now
+    # 中央銀行は手元に置く分を残さずに返す
+    swap.service(world, game.config)
+    assert swap.debt_in(island, currency) < debt

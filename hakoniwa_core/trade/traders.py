@@ -115,6 +115,14 @@ REEXPORT_BLOC = "reexport_bloc"
 REEXPORT_AGE = "reexport_age"
 # 島の貿易の状態: (圏, 財) ごとの借りた船の運賃と買った量の直近 trade.cost_turns ターン分（FX-63）
 CHARTER = "charter_seen"
+# island.scratch: 財 → このターンに引き取り契約（W-307。trade/offtake.py）で商社に渡した量。島の
+# 売り手の売りたい量に足す（契約で引き取った分は市場に出ないので、足さないと輸出をやめたと読む）
+OFFTAKE_DELIVERED = "offtake_delivered"
+# 財の状態: 頭打ちにする前の輸出の狙う量（W-307。島の売り手の売りたい量で抑えない。引き取り契約の
+# 量の上限）
+UNCAPPED_X = "xo"
+# 財の状態: 前のターンに圏で売れた輸出の量（W-307。引き取り契約の量は、これが続いた分まで）
+EXPORTED = "xs"
 
 
 def is_planned(island: IslandState) -> bool:
@@ -738,6 +746,8 @@ def update_targets(
             if item.get("dir") == IMPORT and not surplus(item):
                 importers[good] = importers.get(good, 0) + 1
     planned = is_planned(island)
+    offtake_on = not planned and bool(config.get("trade.offtake.enabled"))
+    delivered = island.scratch.get(OFFTAKE_DELIVERED, {})
     exporters: dict[str, int] = {}
     for f in traders:
         if f.id not in working:
@@ -758,6 +768,7 @@ def update_targets(
             home = home_price(island, config, good)
             record = records.get(good)
             supply, left_over = home_supply(island, record)
+            supply += delivered.get(good, 0)  # 引き取り契約で受け取った分（W-307）
             # 計画経済の島は、売れ残った物を値段によらず輸出する。公定価格は圏の値段より高いことが
             # 多く、値段で見ると初めて扱う物を輸出できず、国内に買い手のない物（ボーキサイトと
             # アルミ）を作る施設が動かなかった（フェーズ3-4）
@@ -799,7 +810,7 @@ def update_targets(
             item["dir"] = direction
             if p is not None:
                 item["bx"], item["bm"] = p.export_bloc, p.import_bloc
-            want_x = want_m = 0
+            want_x = want_m = uncapped = 0
             if direction == EXPORT and can_export:
                 assert p is not None
                 key = (p.export_bloc, good)
@@ -807,6 +818,7 @@ def update_targets(
                 want_x = sold_bloc.get(good, 0) + share
                 if _probing(item["x"], sold_bloc.get(good, 0), stock.total(f.stock, good)):
                     want_x = max(want_x, item["x"] + probe)
+                uncapped = want_x
                 want_x = min(want_x, supply)
                 if planned:  # 圏で売れる量まで。売れ残りを輸出する商社で分けた分を超えない
                     # 圏で売れた量のうち輸出の計画の分（PL-62）は、売れ残りの狙う量に入れない
@@ -839,6 +851,12 @@ def update_targets(
                 # の燃料が売れ残る島で燃料を買いたい量の 8 倍まで積み、燃料の値段が崩れて製油所が
                 # 原油を買えず取引が止まった。2026-11-13 の 5〜7 回目の full と調べ 4。FX-66）
             item["x"] = _approach(item["x"], min(cap, want_x), speed, cap)
+            if offtake_on:  # 頭打ちにする前の狙う量と圏で売れた量（W-307。引き取り契約の量）
+                goal = uncapped if direction == EXPORT and can_export else 0
+                item[UNCAPPED_X] = _approach(
+                    item.get(UNCAPPED_X, item["x"]), min(cap, goal), speed, cap
+                )
+                item[EXPORTED] = sold_bloc.get(good, 0)
             if not frozen:
                 item["m"] = _approach(item["m"], min(cap, want_m), speed, cap)
             # 輸入の荷の持つ量（FX-66）: 狙う量 ×（注文してから島で売れるまで ＋ 在庫の目安）。

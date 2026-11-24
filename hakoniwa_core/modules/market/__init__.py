@@ -133,7 +133,7 @@ from hakoniwa_core.state import (
     TradeRecord,
 )
 from hakoniwa_core.state.model import PRICE_CARRY, PRICE_QUOTE, PRICE_TRADE
-from hakoniwa_core.trade import balance, food_merchant, merchant, ships, traders
+from hakoniwa_core.trade import balance, food_merchant, merchant, offtake, ships, traders
 from hakoniwa_core.trade import orders as ship_orders
 from hakoniwa_core.turn.context import StageContext
 from hakoniwa_core.units import (
@@ -914,6 +914,8 @@ def operating_target(island: IslandState, f: Facility, ctx: StageContext) -> int
         expected[good] = estimate
         gap = round_money(estimate * inventory_turns(ctx, good)) - held
         amount = estimate + round_money(gap * settings["inventory_adjust"])
+        # 商社と結んだ引き取り契約の量（W-307。重み 1。前のターンに商社が市場で買った分は引く）
+        amount += offtake.committed_extra(island, f, good)
         plan = max(plan, fac.ratio(max(0, amount), full))
     f.economy[COST_FLOOR] = floors
     if stops.caps_target(ctx.config, f.status):  # 仕入れか電力が足りない（表は stops）
@@ -1020,6 +1022,11 @@ def record_missed(island: IslandState, f: Facility, ctx: StageContext) -> None:
             continue
         unmet = max(0, record.demand - record.volume)
         missed = max(missed, fac.ratio(unmet * sold // record.volume, full))
+    for good, refused in f.economy.get(offtake.REFUSED, {}).items():
+        # 引き取り契約を引き受けられなかった量（W-307。余る分がないので売り逃しと同じ。重み 1）
+        full = fac.outputs_of(ctx.defs, f).get(good, 0)
+        if full and refused > 0:
+            missed = max(missed, fac.ratio(refused, full))
     history = [*f.economy.get(MISSED, []), missed][-config.get("firms.invest_turns") :]
     f.economy[MISSED] = history
 
@@ -1151,6 +1158,9 @@ class Market(IslandStage):
         # 船の前注文（FX-60）: 取り消し・作った船の取り置き・代金の支払い・引き渡し（造船所が売りに
         # 出す前に、注文の分を取り置く）
         ship_orders.run(island, defs, config, ctx.turn)
+        # 商社と作り手の引き取り契約（W-307）: 申し込みと引き受け、作り手が売りに出す前の納品
+        offtake.propose(island, defs, config, ctx.turn)
+        offtake.deliver(island, defs, config, ctx.turn)
         self._supply_sites_from_warehouse(island, ctx)
         books_by_good: dict[str, Book] = {}
         if trade.started(island):  # 物がないときの海外の食料商人が来るか（FX-73。W-239）
@@ -1191,6 +1201,7 @@ class Market(IslandStage):
         for f, good, qty, cost in island.scratch.pop(REPAIR, []):  # 直す資材を設備に入れる（回6）
             equipment.install(defs, f, good, qty, cost)
         self._trade_settled(island, ctx, rates)
+        offtake.settle(island, defs, config, results, transport)  # 引き取り契約の精算（W-307）
         drawn = island.scratch.get(MORTGAGE_DRAWN)
         if drawn:  # 住宅ローンで買った額は、取り置きを戻す前に数える（回3）
             island.scratch[MORTGAGE_DRAWN] = {
