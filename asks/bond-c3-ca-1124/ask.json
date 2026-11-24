@@ -1,0 +1,90 @@
+{
+ "name": "bond-c3-ca-1124",
+ "commit": "852681f289e1d519de6600e27d150f6606ba003d",
+ "pool": "any",
+ "files": [
+  "bond_c3_run.py",
+  "bond_c_probe.py"
+ ],
+ "patches": [
+  "bonds-ca-on.diff"
+ ],
+ "runs": [
+  {
+   "name": "ca-ind-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--out",
+    "ca-ind-s1.jsonl.gz"
+   ],
+   "summary": [
+    "ca-ind-s1.jsonl.gz",
+    "ca-ind-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "ca-ind-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "2",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--out",
+    "ca-ind-s2.jsonl.gz"
+   ],
+   "summary": [
+    "ca-ind-s2.jsonl.gz",
+    "ca-ind-s2.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "ca-plan-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--out",
+    "ca-plan-s1.jsonl.gz"
+   ],
+   "summary": [
+    "ca-plan-s1.jsonl.gz",
+    "ca-plan-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-ca",
+   "args": [
+    "quick",
+    "q-ca"
+   ],
+   "summary": [
+    "q-ca.zip"
+   ],
+   "large": [
+    "q-ca"
+   ]
+  }
+ ]
+}

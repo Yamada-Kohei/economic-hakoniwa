@@ -1,0 +1,102 @@
+{
+ "name": "bond-c3-off-1124",
+ "commit": "852681f289e1d519de6600e27d150f6606ba003d",
+ "pool": "any",
+ "files": [
+  "bond_c3_run.py",
+  "bond_c_probe.py"
+ ],
+ "patches": [],
+ "runs": [
+  {
+   "name": "off-ind-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--out",
+    "off-ind-s1.jsonl.gz"
+   ],
+   "summary": [
+    "off-ind-s1.jsonl.gz",
+    "off-ind-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "off-ind-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "2",
+    "--turns",
+    "500",
+    "--out",
+    "off-ind-s2.jsonl.gz"
+   ],
+   "summary": [
+    "off-ind-s2.jsonl.gz",
+    "off-ind-s2.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "off-plan-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--out",
+    "off-plan-s1.jsonl.gz"
+   ],
+   "summary": [
+    "off-plan-s1.jsonl.gz",
+    "off-plan-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "c-ind-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--pricing",
+    "--out",
+    "c-ind-s1.jsonl.gz"
+   ],
+   "summary": [
+    "c-ind-s1.jsonl.gz",
+    "c-ind-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-off",
+   "args": [
+    "quick",
+    "q-off"
+   ],
+   "summary": [
+    "q-off.zip"
+   ],
+   "large": [
+    "q-off"
+   ]
+  }
+ ]
+}
