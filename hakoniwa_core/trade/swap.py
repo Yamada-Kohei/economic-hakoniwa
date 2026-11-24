@@ -35,6 +35,7 @@ from typing import Any
 
 from hakoniwa_core import ledger
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.diplomacy import treaties as diplomacy_treaties
 from hakoniwa_core.economy import debt
 from hakoniwa_core.state import IslandState, WorldState
@@ -45,6 +46,10 @@ from hakoniwa_core.units import part, to_basis
 
 OWED = "swap_owed"  # island.ext["trade"]: 通貨 → 貸し手の島 → 借りている額
 LENT = "swap_lent"  # island.ext["trade"]: 通貨 → 借り手の島 → 貸している額
+# island.ext["trade"]: 通貨 → [[ターン, 額], ...]。計画経済の借り手が直近 1 年に元本に足した額
+# （借りた額と、払えずに足した利子）。返済は古い元本から消えるとみなし、借りの残高からこの和を
+# 引いた分を「1 年を超えた元本」とする（FX-86）
+ADDED = "swap_added"
 WAIVED = "swap_waived"  # island.ext["trade"]: 通貨 → 借り手の島 → 免除した利子の累計（FX-82）
 KIND = "fx_swap"  # 貸し借りと返済の仕訳の種類（金融収支）
 INTEREST = "swap_interest"  # 利子の仕訳の種類（所得収支）
@@ -99,8 +104,33 @@ def issued(issuer: IslandState) -> int:
     return sum(lent(issuer).get(str(issuer.id), {}).values())
 
 
+def _planned(island: IslandState) -> bool:
+    from hakoniwa_core.trade import traders  # traders は swap を読まないが、読む順を気にしないよう
+
+    return traders.is_planned(island)
+
+
+def overdue(world: WorldState, island: IslandState, currency: int) -> int:
+    """FX-86: 計画経済の借り手が通貨 currency で借りている元本のうち、1 年（TURNS_PER_YEAR）を超えた
+    分（返済は古い元本から消えるとみなす。借りの残高 − 直近 1 年に足した元本）。"""
+    rows = island_state(island).get(ADDED, {}).get(str(currency), [])
+    recent = sum(a for t, a in rows if t > world.turn - TURNS_PER_YEAR)
+    return max(0, debt_in(island, currency) - recent)
+
+
+def _note_added(world: WorldState, borrower: int, currency: int, amount: int) -> None:
+    island = world.islands[borrower]
+    if not _planned(island):
+        return
+    rows = island_state(island).setdefault(ADDED, {}).setdefault(str(currency), [])
+    rows.append([world.turn, amount])
+    rows[:] = [r for r in rows if r[0] > world.turn - TURNS_PER_YEAR]
+
+
 def _book(world: WorldState, lender: int, borrower: int, currency: int, amount: int) -> None:
     """貸し借りの記録を両方の島で amount だけ増やす（マイナスで減らす。0 になったら消す）。"""
+    if amount > 0:
+        _note_added(world, borrower, currency, amount)
     for island_id, table, other in (
         (borrower, OWED, lender),
         (lender, LENT, borrower),
@@ -112,6 +142,11 @@ def _book(world: WorldState, lender: int, borrower: int, currency: int, amount: 
             del row[str(other)]
         if not row:
             del mine[str(currency)]
+            if table == OWED:  # 返し終えたら、足した元本の記録も消す
+                added = island_state(world.islands[island_id]).get(ADDED, {})
+                added.pop(str(currency), None)
+                if not added:
+                    island_state(world.islands[island_id]).pop(ADDED, None)
 
 
 def _record(
@@ -311,7 +346,10 @@ def _interest(world: WorldState, config: GameConfig, island: IslandState, curren
 
 
 def _repay(world: WorldState, config: GameConfig, island: IslandState, currency: int) -> None:
-    spare = fxmoney.holding(island, ledger.CB, currency) - _keep(island, currency, 1)
+    # 計画経済の中央銀行は為替の受け身の注文を出さないので、債務の支払い
+    # （planning.export.debt_service。FX-86 の案 2）を入れているときは、手元に置く分を残さずに返す
+    turns = 0 if config.get("planning.export.debt_service") and _planned(island) else 1
+    spare = fxmoney.holding(island, ledger.CB, currency) - _keep(island, currency, turns)
     if spare <= 0:
         return
     loans = owed(island).get(str(currency), {})
