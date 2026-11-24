@@ -268,3 +268,76 @@ def test_capacity_does_not_count_spending_that_could_be_cut(game, monkeypatch):
     n = rollover_need(island, ctx)
     assert n["cuttable"] >= WORKS
     assert n["capacity"] == n["maturing"] + n["budget"] * 12
+
+
+def _restructure_setup(game, monkeypatch):
+    """G2 の比べ: 市場の開いている島で、借り換えが売れず削れる支出でも足りない。銀行は満期の銘柄の
+    ほかに、満期の先の銘柄も持つ。"""
+    monkeypatch.setitem(game.config.raw["bonds"], "default_exchange", True)
+    island, ctx, bond, bank, payer = setup(game, monkeypatch, WORKS + 200_000)
+    island.economy.finance.pop("default_turn")
+    monkeypatch.setattr("hakoniwa_core.modules.bonds.auction_budget", lambda *a: 0)
+    later = debt.underwrite(island, FACE, 24, 300, ctx.turn - 2)
+    ledger.transfer(island, ledger.bond_item(later.id), ledger.GOV, ledger.CB, bank, FACE, "test")
+    debt.bought(island, bank, later.id, FACE)
+    ledger.pay(island, ledger.GOV, household(GENERAL), FACE, "test")  # 引き受けで入った分は戻す
+    return island, ctx, bond, later, bank, payer
+
+
+def test_the_first_shortfall_default_restructures_the_market_debt(game, monkeypatch):
+    """G2: 最初の足りない分の不履行で、市中の国債を満期の物も含めて一度に haircut だけ切り下げ、
+    残りを 5 年と 10 年の国債に同じ額ずつ替える。中央銀行の持ち分は替えない。不履行は 1 回だけ
+    数える（_write_off の切り捨ては通らない）。"""
+    island, ctx, bond, later, bank, payer = _restructure_setup(game, monkeypatch)
+    cb_before = debt.holdings_of(island, ledger.CB)
+    total_before = debt.total_debt(island)
+    market = [
+        (h, f) for b in island.bonds for h, f in debt.holders(island, b).items() if h != ledger.CB
+    ]
+    assert (bank, FACE) in market  # 満期の銘柄と満期の先の銘柄（建国のときの国債の市中の分も）
+    cut = sum(f // 2 for _, f in market)  # haircut 0.5
+    rests = {}
+    for h, f in market:
+        rests[h] = rests.get(h, 0) + f - f // 2
+    yields = {t: bond_yield(island, t, ctx) for t in (60, 120)}
+    stage = Bonds()
+    stage._roll_over(island, ctx, payer)
+    kinds = [e.kind for e in island.log]
+    assert kinds.count("bond_restructured") == 1
+    assert "bond_rollover_default" not in kinds
+    assert sum(k.startswith("bond_default_penalty") for k in kinds) == 1
+    assert island.scratch["bond_stats"]["rollover_default"] == cut
+    assert island.economy.finance["default_turn"] == ctx.turn
+    assert bond not in island.bonds and later not in island.bonds
+    new = sorted((b for b in island.bonds if b.issued == ctx.turn), key=lambda b: b.term)
+    assert [b.term for b in new] == [60, 120]
+    for h, rest in rests.items():  # 持ち手ごとに残りを同じ額ずつ（端数は 10 年に）
+        assert debt.holders(island, new[0]).get(h) == rest // 2
+        assert debt.holders(island, new[1]).get(h) == rest - rest // 2
+    assert all(ledger.CB not in debt.holders(island, b) for b in new)
+    for b in new:  # 不履行の上乗せは付けない（替える前の市場の利回りのまま）
+        assert b.rate == yields[b.term]
+    assert debt.holdings_of(island, ledger.CB) == cb_before
+    assert debt.total_debt(island) == total_before - cut
+    assert island.economy.finance[debt.REALIZED][bank] < 0
+    stage._pay(island, ctx, payer)
+    assert "bond_coupon_default" not in [e.kind for e in island.log]
+
+
+def test_a_lockout_is_restructured_only_once(game, monkeypatch):
+    """G2: 同じ締め出しの中では一度だけ組み替える。締め出しの途中でまだ組み替えていなければ
+    組み替えるが、締め出しは延ばさない（G1）。組み替えた後の足りない分は今までどおり切り捨てる。"""
+    island, ctx, bond, later, bank, payer = _restructure_setup(game, monkeypatch)
+    island.economy.finance["default_turn"] = ctx.turn - 1  # 締め出しの途中（まだ組み替えていない）
+    Bonds()._roll_over(island, ctx, payer)
+    assert [e.kind for e in island.log if e.kind == "bond_restructured"] == ["bond_restructured"]
+    assert island.economy.finance["default_turn"] == ctx.turn - 1
+    assert not any(e.kind.startswith("bond_default_penalty") for e in island.log)
+
+    island2, ctx2, bond2, _, bank2, payer2 = _restructure_setup(game, monkeypatch)
+    island2.economy.finance["default_turn"] = ctx2.turn - 1
+    island2.economy.finance["restructured"] = ctx2.turn - 1  # この締め出しはもう組み替えた
+    Bonds()._roll_over(island2, ctx2, payer2)
+    kinds = [e.kind for e in island2.log]
+    assert "bond_restructured" not in kinds
+    assert [e.kind for e in crisis(island2)] == ["bond_rollover_default"]

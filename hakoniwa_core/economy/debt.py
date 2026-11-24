@@ -300,6 +300,22 @@ def traded(
     bought(island, buyer, number, amount)
 
 
+def exchanged(island: IslandState, holder: str, old: int, new: int, face: int, held: int) -> None:
+    """持ち手が、持っていた銘柄 old の額面 held のうち face を銘柄 new に替えた（債務の組み替え）。
+    取得原価をそのまま移す（損益は切り下げのときに数え、替えたことでは出さない）。"""
+    if face <= 0 or held <= 0:
+        return
+    table = island.economy.finance.setdefault(COST, {})
+    costs = table.setdefault(holder, {})
+    cost = costs.get(str(old), held)
+    moved = cost if face >= held else cost * face // held
+    if face >= held:
+        costs.pop(str(old), None)
+    else:
+        costs[str(old)] = cost - moved
+    costs[str(new)] = costs.get(str(new), 0) + moved
+
+
 def move_costs(island: IslandState, source: str, target: str) -> None:
     """持ち手 source の取得原価と、まだ決算に入れていない実現損益を target に移す（銀行の
     破綻処理）。"""

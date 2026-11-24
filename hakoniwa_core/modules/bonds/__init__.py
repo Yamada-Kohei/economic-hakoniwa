@@ -13,6 +13,8 @@
    削れる支出でしのぎ、それでも払えない分だけ不履行にする（_roll_over・_short_pay。設計 BK-52）。
    bonds.rollover_pricing が入なら、利回りは 1 年の総資金需要のうち余力で埋まらない割合で上乗せし、
    銀行は見込みの損が自己資本の余りを超える分を買わない（rollover_need・holding_cap。設計 BK-53）。
+   bonds.default_exchange が入なら、締め出しの中で最初の足りない分の不履行は、切り捨ての代わりに
+   市中の国債をまとめて額面を減らした 5 年と 10 年の国債に組み替える（_restructure。設計 BK-54）。
 5. 銘柄ごとに利子を払い、満期の銘柄は額面を返して消す。不履行は命令 set_bond_payment で選んだとき
    だけ: 中央銀行以外の額面を bonds.haircut だけ切り下げ（持ち手の損）、残りを同じ期間で出し直す。
    切り下げた額が 0 なら新しい罰は付けない。不履行の記録は
@@ -136,6 +138,8 @@ def _burden(island: IslandState, ctx: StageContext) -> float:
 
 
 NO_CAP = 10 * BASIS  # 総資金需要で測るときの利回りの上限（1000%。実質は上限なし。会議 #4021）
+RESTRUCTURED = "restructured"  # economy.finance: 組み替えた締め出しの default_turn（G2）
+RESTRUCTURE_TERMS = ("bond_5y", "bond_10y")  # 組み替えの先（同じ額ずつ）
 
 
 def yield_cap(config: GameConfig) -> int:
@@ -511,8 +515,16 @@ class Bonds(WorldStage):
             return
         room = max(0, min(cash, planned) - kept)  # 削れる支出のうち、いま国庫にある分
         cut = min(short, room)
-        unpaid = self._write_off(island, ctx, short - cut)
         principal = sum(debt.outstanding(island, b) for b in island.bonds if ctx.turn >= b.maturity)
+        if short > cut and self._restructures(island, ctx):
+            # G2: 組み替えで市中の満期がなくなるので、売れ残りを緊縮や切り捨てで埋める要はない。
+            # 不履行の額は組み替えの切り下げとして 1 回だけ数える（_write_off は通らない）
+            stats = island.scratch.setdefault("bond_stats", {})
+            stats["rollover_short"] = stats.get("rollover_short", 0) + short
+            lost = self._restructure(island, ctx, set(), 0, principal, raised)
+            stats["rollover_default"] = stats.get("rollover_default", 0) + lost
+            return
+        unpaid = self._write_off(island, ctx, short - cut)
         stats = island.scratch.setdefault("bond_stats", {})
         stats["rollover_short"] = stats.get("rollover_short", 0) + short
         stats["austerity"] = stats.get("austerity", 0) + cut
@@ -561,6 +573,107 @@ class Bonds(WorldStage):
                 self._cut(island, bond, holder, cut, hit)
         self._penalize(island, ctx, amount, hit, shortfall=True)
         return amount
+
+    @staticmethod
+    def _restructures(island: IslandState, ctx: StageContext) -> bool:
+        """足りない分の不履行を、切り捨ての代わりに債務の組み替えにするか（bonds.default_exchange
+        が入で、今の締め出しの続きの中でまだ組み替えていない。締め出しを始めたターンも含む）。"""
+        if not ctx.config.get("bonds.default_exchange"):
+            return False
+        finance = island.economy.finance
+        if not debt.market_closed(island, ctx.config, ctx.turn):
+            return True
+        return finance.get(RESTRUCTURED) != finance.get("default_turn")
+
+    def _restructure(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        hit: set[str],
+        lost: int,
+        principal: int,
+        raised: int,
+    ) -> int:
+        """債務の組み替え（国債の会議 #3981 の G2、#4605・#4615。2012 年のギリシャの組み替え）:
+        中央銀行以外の持ち手（外国の持ち手も）の国債を、満期の銘柄も含めて一度に額面を
+        bonds.haircut だけ切り下げ、残りを bond_5y と bond_10y に同じ額ずつ替える。利率はその期間の
+        市場の利回りから不履行の上乗せ δ を除いた値（新しい数を置かない）。中央銀行の持ち分は
+        替えない（満期に今のとおり乗り換える）。このターンに出した銘柄は替えない。替えた銘柄の
+        このターンの利子は払わない（新しい銘柄の利払いは次のターンから）。
+
+        替えた後は市中の満期が 5 年来ないので、締め出しの間に満期のたびにまた不履行になる
+        くり返しが起きない。不履行の罰は 1 回だけ付ける（締め出しを始めていなければ始める）。
+        lost はこのターンにすでに払わなかった額（同じ罰に入れる）。切り下げた額を返す。"""
+        haircut = to_basis(ctx.config.get("bonds.haircut"))
+        terms = ctx.defs.bond_terms()
+        swaps: list[tuple[Bond, str, int]] = []  # 替える銘柄・持ち手・切り下げた後の額面
+        cut_total = 0
+        for bond in sorted(island.bonds, key=lambda b: b.id):
+            if bond.issued >= ctx.turn:
+                continue
+            for holder, face in sorted(debt.holders(island, bond).items()):
+                if holder == ledger.CB or face <= 0:
+                    continue
+                cut = part(face, haircut)
+                if cut > 0:
+                    self._cut(island, bond, holder, cut, hit)
+                cut_total += cut
+                if face - cut > 0:
+                    swaps.append((bond, holder, face - cut))
+        swapped = sum(rest for _, _, rest in swaps)
+        # 不履行の上乗せ δ だけ除く（条約の違反の信用の傷は残す）
+        delta = to_basis(
+            default_premium(island, ctx) - credit.premium(island, ctx.turn, ctx.config)
+        )
+        new: list[Bond] = []
+        for name in RESTRUCTURE_TERMS:
+            turns = terms[name]["turns"]
+            rate = max(0, ctx.formula("bond_yield")(island, turns, ctx) - delta)
+            new.append(debt.issue_bond(island, 0, turns, rate, ctx.turn))
+        for bond, holder, rest in swaps:
+            half = rest // 2
+            parts = ((new[0], half), (new[1], rest - half))
+            held = debt.holders(island, bond)[holder]
+            for target, face in parts:
+                if face <= 0:
+                    continue
+                if (
+                    abroad.parse_holder(holder) is None
+                ):  # 外国の持ち手の帳簿は島ごとの合計で替わらない
+                    debt.exchanged(island, holder, bond.id, target.id, face, held)
+                    held -= face
+                ledger.cancel(
+                    island, holder, ledger.bond_item(bond.id), ledger.GOV, face, "bond_restructured"
+                )
+                ledger.create(
+                    island,
+                    holder,
+                    ledger.bond_item(target.id),
+                    ledger.GOV,
+                    face,
+                    "bond_restructured",
+                )
+                target.face += face
+        island.bonds = [b for b in island.bonds if debt.outstanding(island, b) > 0]
+        island.log.append(
+            LogEntry(
+                "bond_restructured",
+                {
+                    "principal": principal,
+                    "raised": raised,
+                    "amount": cut_total + swapped,
+                    "cut": cut_total,
+                    "rate5": new[0].rate * 100 / BASIS,
+                    "rate10": new[1].rate * 100 / BASIS,
+                },
+            )
+        )
+        stats = island.scratch.setdefault("bond_stats", {})
+        stats["restructured"] = stats.get("restructured", 0) + swapped
+        self._penalize(island, ctx, lost + cut_total, hit, shortfall=True)
+        # 締め出しを始めたのがこのターンの罰なら、その締め出しの中ではもう組み替えない
+        island.economy.finance[RESTRUCTURED] = island.economy.finance.get("default_turn")
+        return cut_total
 
     def _cut(self, island: IslandState, bond: Bond, holder: str, cut: int, hit: set[str]) -> None:
         """持ち手 holder の銘柄 bond の額面を cut だけ切り捨てる（持ち手の損）。"""
@@ -631,6 +744,11 @@ class Bonds(WorldStage):
             interest = debt.interest_due(island, bond, ctx.turn)
             mature = ctx.turn >= bond.maturity
             due = sum(interest.values()) + (debt.outstanding(island, bond) if mature else 0)
+            if crisis and due > funds.available(island, payer) and self._restructures(island, ctx):
+                # G2: 足りない最初の銘柄で、市中の国債をまとめて組み替えてから払い直す
+                self._restructure(island, ctx, hit, 0, 0, 0)
+                interest = debt.interest_due(island, bond, ctx.turn)
+                due = sum(interest.values()) + (debt.outstanding(island, bond) if mature else 0)
             if crisis and due > funds.available(island, payer):
                 mature = self._short_pay(island, ctx, payer, bond, interest, mature, short, hit)
             elif due > funds.available(island, payer):
