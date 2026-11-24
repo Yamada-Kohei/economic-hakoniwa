@@ -255,3 +255,16 @@ def test_the_first_shortfall_default_still_closes_the_market(game, monkeypatch):
     Bonds()._roll_over(island, ctx, payer)
     assert island.economy.finance["default_turn"] == ctx.turn
     assert any(e.kind.startswith("bond_default_penalty") for e in island.log)
+
+
+def test_capacity_does_not_count_spending_that_could_be_cut(game, monkeypatch):
+    """F-0a: 余力は返される市中の元本と銀行の入札に回せるお金だけ。削れる支出は数えない（まだ
+    決めていない緊縮は返す力に数えない。数えると、前もって削っても u が下がらない）。"""
+    from hakoniwa_core.modules.bonds import rollover_need
+
+    island, ctx, _, _, _ = setup(game, monkeypatch, 0)
+    island.economy.spending["construction"] = WORKS
+    island.scratch.pop("bond_need", None)
+    n = rollover_need(island, ctx)
+    assert n["cuttable"] >= WORKS
+    assert n["capacity"] == n["maturing"] + n["budget"] * 12

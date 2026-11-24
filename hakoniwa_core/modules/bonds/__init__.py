@@ -155,8 +155,10 @@ def rollover_need(island: IslandState, ctx: StageContext) -> dict[str, int]:
     gfn: 次の 12 ターンに満期の市中の元本 ＋ 市中への利払い × 12 ＋ 基礎的収支の赤字（前のターンの
     国債以外の支出 × 12 − 年の収入。正のときだけ）。
     capacity: 返される市中の元本（同じ買い手が買い直す、ふつうの借り換え）＋ 銀行の入札に回せる
-    お金（そのターンの空きの準備）× 12 ＋ 削れる支出（fiscal.rescue_after の組より後ろの項目の前の
-    ターンの額）× 12。
+    お金（そのターンの空きの準備）× 12。削れる支出（fiscal.rescue_after の組より後ろの項目の前の
+    ターンの額。cuttable）は余力に数えない（国債の会議 #3981 の F-0a、#4548。市場はまだ決めて
+    いない緊縮を返す力に数えない。数えると、前もって削っても u が下がらなかった）。削れる支出は、
+    危機のときに A が実際に使う道として残る。
     debt: 借りの総額（中央銀行の分を含む）。revenue: 年の収入。"""
     cached = island.scratch.get("bond_need")
     if cached is not None and cached[0] == ctx.turn:
@@ -174,7 +176,7 @@ def rollover_need(island: IslandState, ctx: StageContext) -> dict[str, int]:
     interest = debt.market_interest(island) * YEAR_TURNS
     need = {
         "gfn": maturing + interest + deficit,
-        "capacity": maturing + (budget + cuttable) * YEAR_TURNS,
+        "capacity": maturing + budget * YEAR_TURNS,
         "maturing": maturing,
         "interest": interest,
         "deficit": deficit,
