@@ -82,14 +82,24 @@ def test_central_bank_buys_beyond_the_band_from_banks_willing_to_sell(game, base
     assert sum(debt.holdings_of(island, ledger.CB).values()) > 0
 
 
-def _busy_factory(game, world):
+def _busy_factory(game, world, hire=False):
+    """民営の消費財工場。hire なら、建て増しに雇える人が通勤圏にいる工場（_expansion_spots の
+    条件）。"""
+    from hakoniwa_core.modules.firms import services
     from hakoniwa_core.state import OWNER_PRIVATE
 
     for island in world.islands.values():
         if not island.has_economy or island.regime.get("economy") == "planned":
             continue
+        shop = services.staff_by_tile(island, game.config)
         for f in sorted(island.facilities, key=lambda x: x.id):
             if f.kind == "consumer_goods_factory" and f.owner == OWNER_PRIVATE and f.built:
+                if hire:
+                    need = fac.workers_needed(game.defs, f.kind)
+                    radius = fac.commute_radius(game.defs, game.config, f.kind)
+                    near = EntryExit._idle_near(island, game.defs, (f.x, f.y), radius, shop)
+                    if near * 2 < need:
+                        continue
                 return island, f
     raise AssertionError("民営の消費財工場がない")
 
@@ -98,7 +108,8 @@ def test_a_factory_that_keeps_missing_sales_expands_in_place(game, base):
     """W-186 回3: 全力で動いて売り切れても売り逃しが続いた民営の工場は、採算が合えばその場で建て
     増す（新しい土地は要らない）。売り逃しがなければ建て増さず、工事中は重ねない。"""
     world = copy.deepcopy(base)
-    island, f = _busy_factory(game, world)
+    # 通勤圏に雇える人がいる工場で見る（村と町の分け方で、町の人の住み方は世界ごとに変わる）
+    island, f = _busy_factory(game, world, hire=True)
     f.economy.pop("entered", None)
     for key in (equipment.EQUIPMENT, equipment.CONDITION):  # 設備は新品（直す途中ではない）
         f.economy.pop(key, None)
