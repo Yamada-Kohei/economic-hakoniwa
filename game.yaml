@@ -977,8 +977,8 @@ planning:
     borrow_age_limit: false
     # FX-86 の案 2: 融通を借りている計画の島は、利払いと返済の前に、国営の商社の外貨から燃料と主食の注文の額を残した
     # 分で、利子と 1 年を超えた元本を中央銀行に回して払う（払う順: 燃料・主食の最低限 → 利子 → 1 年超の元本 → 残り。
-    # 掲示板 #3308。比べの後に既定を決める）
-    debt_service: false
+    # 掲示板 #3308。会議 W-299 の 2（#3858・#4102）で既定を入に決めた）
+    debt_service: true
 
 # 外交（フェーズ4-1。hakoniwa_core/diplomacy と hakoniwa_core/modules/diplomacy）
 diplomacy:

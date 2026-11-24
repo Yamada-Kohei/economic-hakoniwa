@@ -448,13 +448,14 @@ def test_old_swap_principal_stops_new_borrowing_and_debt_service_pays_from_the_t
     """FX-86 の案 1・2（掲示板 #3308）: 返済は古い元本から消えるとみなし、1 年を超えた元本
     （swap.overdue）が残っている計画の島は、borrow_age_limit なら新しく借りない。debt_service なら
     利払いと返済の前に、国営の商社の外貨から燃料と主食の注文の額を残した分で、利子と 1 年を超えた
-    元本を中央銀行に回す。どちらも既定は切り。"""
+    元本を中央銀行に回す。borrow_age_limit は既定は切り、debt_service は既定は入（会議 #4102）。"""
     from hakoniwa_core import ledger
     from hakoniwa_core.dates import TURNS_PER_YEAR
     from hakoniwa_core.trade import swap
 
     exp = game.config.raw["planning"]["export"]
-    assert exp["borrow_age_limit"] is False and exp["debt_service"] is False
+    assert exp["borrow_age_limit"] is False and exp["debt_service"] is True
+    monkeypatch.setitem(exp, "debt_service", False)  # 案 1 を案 2 なしで見る
     world = copy.deepcopy(base)
     island = planned_islands(world)[0]
     [bloc] = blocs.member_of(world, island.id)
