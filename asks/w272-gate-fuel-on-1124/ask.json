@@ -1,0 +1,37 @@
+{
+ "name": "w272-gate-fuel-on-1124",
+ "commit": "6356ffa458afa41cc605374f974ae446271daf1c",
+ "pool": "any",
+ "files": [
+  "gate_fuel_probe.py"
+ ],
+ "patches": [],
+ "runs": [
+  {
+   "name": "pytest",
+   "args": [
+    "--mode",
+    "pytest",
+    "--out",
+    "gate-pytest.txt"
+   ],
+   "summary": [
+    "gate-pytest.txt"
+   ],
+   "large": []
+  },
+  {
+   "name": "record",
+   "args": [
+    "--mode",
+    "record",
+    "--out",
+    "gate-record.jsonl.gz"
+   ],
+   "summary": [
+    "gate-record.jsonl.gz"
+   ],
+   "large": []
+  }
+ ]
+}
