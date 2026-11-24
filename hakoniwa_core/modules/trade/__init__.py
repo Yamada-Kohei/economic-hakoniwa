@@ -247,7 +247,7 @@ class _Round:
         # 島 → 外貨を自分の使えるお金の分しか買えなかった商社（FX-62 で取り逃しに数える）
         self.fx_limited: dict[int, set[str]] = {}
         # (島, 商社) → 財 → (取り逃した量, 1 単位の儲け, 1 単位の原価)（FX-62）
-        self.missed: dict[tuple[int, int], dict[str, tuple[int, int, int]]] = {}
+        self.missed: dict[tuple[int, int], dict[str, tuple[int, int, int, int]]] = {}
         # (島, 主体, 通貨) → 財 → 計画経済の国営の商社が、その財のために取り置いている外貨（FX-76）
         self.fx_queue: dict[tuple[int, str, int], dict[str, int]] = {}
         # (島, 主体, 通貨) → 計画経済の島の中央銀行がこのターンに融通で借りて国営の商社に渡した外貨
@@ -870,7 +870,7 @@ class _Round:
             return []
         keep = self.config.get("fx.keep_turns")
         found = self.found.get(island.id) or {}
-        left = self.config.get("trade.trader_capacity") * QUANTITY_SCALE
+        left = traders.capacity(self.config, f)
         for good, item in traders.goods_of(f).items():  # 輸出の荷も扱える重さを使う
             if item.get("dir") == traders.EXPORT:
                 left -= weight(self.defs, good, stock.total(f.stock, good))
@@ -1006,6 +1006,7 @@ class _Round:
                 missed,
                 terms.profit,
                 terms.cost,
+                cut_capacity,  # そのうち扱える重さで削った量（商社の建て増しの根拠。W-308）
             )
 
     def _keep_import_needs(self, island: IslandState) -> None:
@@ -1032,19 +1033,24 @@ class _Round:
         by_good: dict[str, int] = {}
         for (iid, _), goods in self.missed.items():
             if iid == island.id:
-                for good, (qty, _, _) in goods.items():
+                for good, (qty, _, _, _) in goods.items():
                     by_good[good] = by_good.get(good, 0) + qty
         for f in traders_of(island, self.config):
             goods = self.missed.get((island.id, f.id), {})
-            profit = cost = 0
-            for good, (qty, unit_profit, unit_cost) in sorted(goods.items()):
+            profit = cost = cap_profit = cap_cost = 0
+            for good, (qty, unit_profit, unit_cost, cut) in sorted(goods.items()):
                 # 島の市場の本当の品不足（約定の値段以上で買えなかった量。FX-65）までに縮める
                 unmet = traders.true_shortage(island, records.get(good))
-                qty = qty * min(unmet, by_good[good]) // max(1, by_good[good])
-                profit += money_of(unit_profit, qty)
-                cost += money_of(unit_cost, qty)
+                shrunk = qty * min(unmet, by_good[good]) // max(1, by_good[good])
+                profit += money_of(unit_profit, shrunk)
+                cost += money_of(unit_cost, shrunk)
+                # 扱える重さで削った分だけ（W-308。お金の分は建て増しても解けない）
+                cut = shrunk * min(cut, qty) // max(1, qty)
+                cap_profit += money_of(unit_profit, cut)
+                cap_cost += money_of(unit_cost, cut)
             turn = traders.state_of(f).setdefault("turn", {})
             turn["missed"] = [profit, cost]
+            turn["missed_cap"] = [cap_profit, cap_cost]
 
     def _from_reserve(self, island: IslandState, currency: int, due: int) -> _ContractFx:
         """国の契約のこのターンの払いに要る外貨 due のうち、政府の手持ちで足りない分を、中央銀行が
@@ -1854,7 +1860,6 @@ class _Round:
         currency = bloc["currency"]
         cut = to_basis(self.config.get("trade.trader_cut"))
         clearance = self.config.get("trade.clearance_turns")
-        cap = self.config.get("trade.trader_capacity") * QUANTITY_SCALE
         unit = unit_weight(self.defs, good)
         buys: list[Order] = []
         sells: list[Order] = []
@@ -1873,7 +1878,7 @@ class _Round:
                 if item is None:
                     continue
                 entity = entity_of(self.config, f)
-                left = budgets.setdefault(f.id + m * 10**6, cap)
+                left = budgets.setdefault(f.id + m * 10**6, traders.capacity(self.config, f))
                 if item.get("dir") == traders.EXPORT and item.get("bx") == bloc["id"]:
                     item.pop("why", None)
                     item.pop(MARKET_WHY, None)
@@ -1965,7 +1970,6 @@ class _Round:
         残り）を同じ形で割り振る。約定しなかった分の重さは、今どおり板寄せの後に戻す（_refund）。
         計画経済の島の商社は割り振らない（注文は前のまま）。"""
         self.alloc = {}
-        cap = self.config.get("trade.trader_capacity") * QUANTITY_SCALE
         for i in self.ids:
             island = self.world.islands[i]
             if traders.is_planned(island):
@@ -2029,7 +2033,7 @@ class _Round:
                     )
                     ranks[(f.id, good)] = rank
             for f in traders_of(island, self.config, self.turn):
-                left = cap
+                left = traders.capacity(self.config, f)
                 for good, item in traders.goods_of(f).items():  # 輸出の荷も扱える重さを使う
                     if item.get("dir") == traders.EXPORT:
                         left -= weight(self.defs, good, stock.total(f.stock, good))
@@ -2235,7 +2239,6 @@ class _Round:
         ターンに圏で約定がなかった財（売りの値段が値幅に入らない・船が出ないなど）と、前のターンに
         封鎖で船出を断られた財は数えない（入らない財のために外貨を寝かせない）。"""
         currency = bloc["currency"]
-        cap = self.config.get("trade.trader_capacity") * QUANTITY_SCALE
         supply = bloc.get("supply", {})
         volume = bloc.get("volume", {})
         wants: dict[tuple[int, str, int], dict[str, list[int]]] = {}  # 鍵 → 財 → [量, 扱える重さ]
@@ -2254,7 +2257,7 @@ class _Round:
                     if want > 0:
                         row = wants.setdefault((m, entity, currency), {}).setdefault(good, [0, 0])
                         row[0] += want
-                        row[1] += cap
+                        row[1] += traders.capacity(self.config, f)
         out: dict[tuple[int, str, int], dict[str, int]] = {}
         for key, goods in sorted(wants.items()):
             island = self.world.islands[key[0]]
