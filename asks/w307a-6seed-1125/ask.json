@@ -1,0 +1,124 @@
+{
+ "name": "w307a-6seed-1125",
+ "commit": "e199cf2215cca3a1a02f76c1328120896f3a68e4",
+ "pool": "any",
+ "files": [
+  "w307a_run.py",
+  "offtake_probe_v2.py",
+  "offtake_trace2.py"
+ ],
+ "patches": [],
+ "runs": [
+  {
+   "name": "probe-off-s3",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "3",
+    "--turns",
+    "500",
+    "--out",
+    "w307a-off-s3.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-off-s3.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "probe-on-s3",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "3",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307a-on-s3.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-on-s3.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "probe-off-s4",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "4",
+    "--turns",
+    "500",
+    "--out",
+    "w307a-off-s4.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-off-s4.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "probe-on-s4",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "4",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307a-on-s4.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-on-s4.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "probe-off-s5",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "5",
+    "--turns",
+    "500",
+    "--out",
+    "w307a-off-s5.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-off-s5.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "probe-on-s5",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "5",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307a-on-s5.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-on-s5.jsonl.gz"
+   ],
+   "large": []
+  }
+ ]
+}
