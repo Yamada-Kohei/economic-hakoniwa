@@ -1,0 +1,184 @@
+{
+ "name": "w272-gate-warehouse-off-1124",
+ "commit": "68998def428c9c29634991763a79d342da1bca57",
+ "pool": "linux",
+ "files": [
+  "wh_probe.py",
+  "wh_plugin.py"
+ ],
+ "patches": [
+  "warehouse.diff"
+ ],
+ "runs": [
+  {
+   "name": "wh-off-s1-0",
+   "args": [
+    "--seed",
+    "1",
+    "--wh",
+    "0",
+    "--need",
+    "5",
+    "--log",
+    "wh-off-s1-0.txt"
+   ],
+   "summary": [
+    "wh-off-s1-0.txt"
+   ],
+   "large": []
+  },
+  {
+   "name": "wh-off-s1-0.5",
+   "args": [
+    "--seed",
+    "1",
+    "--wh",
+    "0.5",
+    "--need",
+    "5",
+    "--log",
+    "wh-off-s1-0.5.txt"
+   ],
+   "summary": [
+    "wh-off-s1-0.5.txt"
+   ],
+   "large": []
+  },
+  {
+   "name": "wh-off-s1-1",
+   "args": [
+    "--seed",
+    "1",
+    "--wh",
+    "1",
+    "--need",
+    "5",
+    "--log",
+    "wh-off-s1-1.txt"
+   ],
+   "summary": [
+    "wh-off-s1-1.txt"
+   ],
+   "large": []
+  },
+  {
+   "name": "wh-off-s1-2",
+   "args": [
+    "--seed",
+    "1",
+    "--wh",
+    "2",
+    "--need",
+    "5",
+    "--log",
+    "wh-off-s1-2.txt"
+   ],
+   "summary": [
+    "wh-off-s1-2.txt"
+   ],
+   "large": []
+  },
+  {
+   "name": "wh-off-s1-3",
+   "args": [
+    "--seed",
+    "1",
+    "--wh",
+    "3",
+    "--need",
+    "5",
+    "--log",
+    "wh-off-s1-3.txt"
+   ],
+   "summary": [
+    "wh-off-s1-3.txt"
+   ],
+   "large": []
+  },
+  {
+   "name": "wh-off-s2-0",
+   "args": [
+    "--seed",
+    "2",
+    "--wh",
+    "0",
+    "--need",
+    "5",
+    "--log",
+    "wh-off-s2-0.txt"
+   ],
+   "summary": [
+    "wh-off-s2-0.txt"
+   ],
+   "large": []
+  },
+  {
+   "name": "wh-off-s2-0.5",
+   "args": [
+    "--seed",
+    "2",
+    "--wh",
+    "0.5",
+    "--need",
+    "5",
+    "--log",
+    "wh-off-s2-0.5.txt"
+   ],
+   "summary": [
+    "wh-off-s2-0.5.txt"
+   ],
+   "large": []
+  },
+  {
+   "name": "wh-off-s2-1",
+   "args": [
+    "--seed",
+    "2",
+    "--wh",
+    "1",
+    "--need",
+    "5",
+    "--log",
+    "wh-off-s2-1.txt"
+   ],
+   "summary": [
+    "wh-off-s2-1.txt"
+   ],
+   "large": []
+  },
+  {
+   "name": "wh-off-s2-2",
+   "args": [
+    "--seed",
+    "2",
+    "--wh",
+    "2",
+    "--need",
+    "5",
+    "--log",
+    "wh-off-s2-2.txt"
+   ],
+   "summary": [
+    "wh-off-s2-2.txt"
+   ],
+   "large": []
+  },
+  {
+   "name": "wh-off-s2-3",
+   "args": [
+    "--seed",
+    "2",
+    "--wh",
+    "3",
+    "--need",
+    "5",
+    "--log",
+    "wh-off-s2-3.txt"
+   ],
+   "summary": [
+    "wh-off-s2-3.txt"
+   ],
+   "large": []
+  }
+ ]
+}

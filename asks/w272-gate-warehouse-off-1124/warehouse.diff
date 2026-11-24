@@ -1,0 +1,85 @@
+diff --git a/tests/core/test_gate.py b/tests/core/test_gate.py
+index aeaa8985..a19635f5 100644
+--- a/tests/core/test_gate.py
++++ b/tests/core/test_gate.py
+@@ -39,6 +39,11 @@ from hakoniwa_core.units import from_milli
+ 
+ TURNS = 300
+ MERCHANT_CALM = 12  # 海外の商人が去った後、値段を見ないターン数（貿易のない 1 島の世界）
++# 品不足の切り替え（GT-46）で、国の倉庫を売り手に数えるのは、倉庫の荷が島の施設の要る量の
++# WAREHOUSE_TURNS ターン分以上あるときだけ。要る量はそのターンまでの NEED_TURNS ターンの平均
++# （少しの荷が 1 ターンだけ倉庫にあっても売り手にはならない。会議 #4423・#4426）
++WAREHOUSE_TURNS = 1.0
++NEED_TURNS = 5
+ 
+ 
+ @pytest.fixture(scope="module")
+@@ -86,7 +91,7 @@ def test_supply_chain_runs_for_300_turns(game, seed):
+     starved = 0
+     offered: dict[int, dict[str, int]] = {}  # ターン → 商人が売りに出した量（財 → 1000 分の 1）
+     needed: dict[int, dict[str, int]] = {}  # ターン → 島の建った施設が全力で要る量（1000 分の 1）
+-    stored: dict[int, set[str]] = {}  # ターン → 国の倉庫に荷のある商人の財
++    stored: dict[int, dict[str, int]] = {}  # ターン → 国の倉庫にある商人の財の量（1000 分の 1）
+     farms: dict[
+         int, list[tuple[int, int, int]]
+     ] = {}  # 機械化した農場の（燃料の手元, 人手, 燃料のある人手）
+@@ -133,7 +138,7 @@ def test_supply_chain_runs_for_300_turns(game, seed):
+             )
+             for g in sale
+         }
+-        stored[world.turn] = {g for g in sale if stock.total(island.warehouse, g) > 0}
++        stored[world.turn] = {g: q for g in sale if (q := stock.total(island.warehouse, g)) > 0}
+         makers[world.turn] = _makers(game.defs, island)
+         held[world.turn] = {g for g in island.warehouse if stock.total(island.warehouse, g) > 0}
+         farms[world.turn] = [
+@@ -223,7 +228,7 @@ def test_supply_chain_runs_for_300_turns(game, seed):
+         g: t0
+         for g in unmade
+         if (t0 := _shortage_from(offered, needed, g, leave)) is not None
+-        and not any(g in stored.get(t, ()) for t in range(t0, leave))
++        and not any(_warehouse_sells(stored, needed, g, t) for t in range(t0, leave))
+     }
+     priced = [
+         m
+@@ -234,12 +239,17 @@ def test_supply_chain_runs_for_300_turns(game, seed):
+     last = leave - 1
+     for g in sorted(needed.get(last, {})):
+         if needed[last][g] > 0:
+-            stored_turns = [t for t in sorted(stored) if g in stored[t] and t >= last - 60]
++            stored_turns = [
++                (t, stored[t][g], round(_average_need(needed, g, t)))
++                for t in sorted(stored)
++                if g in stored[t] and t >= last - 60
++            ]
+             notes.append(
+                 f"品不足の判定 {g}: 島で作った {produced.get(g, 0)}、T{last} の売り "
+                 f"{offered[last].get(g, 0)}・要る量 {needed[last][g]}、始まり "
+                 f"{_shortage_from(offered, needed, g, leave)}、"
+-                f"国の倉庫に荷のあるターン {stored_turns[:5]}"
++                f"国の倉庫に荷のあるターン（ターン, 荷, 要る量の {NEED_TURNS} ターン平均） "
++                f"{stored_turns[:5]}、売り手に数える荷は平均の {WAREHOUSE_TURNS} ターン分から"
+             )
+     for g, t0 in scarce.items():
+         mark = f"）: {g} の値段が"
+@@ -418,6 +428,21 @@ def _shortage_from(
+     return start
+ 
+ 
++def _average_need(needed: dict[int, dict[str, int]], good: str, turn: int) -> float:
++    """そのターンまでの NEED_TURNS ターンの、島の施設が全力で要る量の平均（1000 分の 1）。"""
++    turns = [t for t in range(turn - NEED_TURNS + 1, turn + 1) if t in needed]
++    return sum(needed[t].get(good, 0) for t in turns) / len(turns) if turns else 0.0
++
++
++def _warehouse_sells(
++    stored: dict[int, dict[str, int]], needed: dict[int, dict[str, int]], good: str, turn: int
++) -> bool:
++    """国の倉庫を、そのターンの品目 good の売り手に数えるか: 倉庫の荷が要る量の平均の
++    WAREHOUSE_TURNS ターン分以上（GT-46 の「国の倉庫の放出」。会議 #4423）。"""
++    held = stored.get(turn, {}).get(good, 0)
++    return held > 0 and held >= WAREHOUSE_TURNS * _average_need(needed, good, turn)
++
++
+ def _check_fuel_shortage(
+     farms: dict[int, list[tuple[int, int, int, int]]], start: int, leave: int
+ ) -> None:
