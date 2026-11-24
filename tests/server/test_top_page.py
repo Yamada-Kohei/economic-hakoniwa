@@ -391,15 +391,16 @@ def test_updates_come_from_commit_lines():
 
 def test_sync_copies_once_and_keeps_admin_edits(client, world, monkeypatch):
     SiteUpdate.objects.all().delete()
-    found = [{"key": "git:aaa:2", "date": "2026-10-19", "text": "表にしました。"}]
+    # 日付は top.yaml の updates（本番に入った日付の分）より後に置く
+    found = [{"key": "git:aaa:2", "date": "2099-10-19", "text": "表にしました。"}]
     monkeypatch.setattr(top, "git_updates", lambda: list(found))
     assert top.sync_updates() > 0  # コミットの行と top.yaml の昔の分
     row = SiteUpdate.objects.get(key="git:aaa:2")
     row.text = "トップを表にしました。"  # 管理画面で直す
     row.save()
     assert top.sync_updates() == 0  # 直した行を作り直さない
-    SiteUpdate.objects.create(date=date(2026, 10, 20), text="管理画面で足したお知らせ")
-    SiteUpdate.objects.create(date=date(2026, 10, 21), text="隠した行", hidden=True)
+    SiteUpdate.objects.create(date=date(2099, 10, 20), text="管理画面で足したお知らせ")
+    SiteUpdate.objects.create(date=date(2099, 10, 21), text="隠した行", hidden=True)
     texts = [u["text"] for u in client.get("/").context["updates"]]
     assert texts[:2] == ["管理画面で足したお知らせ", "トップを表にしました。"]
     assert "隠した行" not in texts and "表にしました。" not in texts
