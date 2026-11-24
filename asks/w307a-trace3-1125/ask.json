@@ -1,0 +1,114 @@
+{
+ "name": "w307a-trace3-1125",
+ "commit": "e199cf2215cca3a1a02f76c1328120896f3a68e4",
+ "pool": "any",
+ "files": [
+  "w307a_run.py",
+  "offtake_trace3.py"
+ ],
+ "patches": [],
+ "runs": [
+  {
+   "name": "trace3-on-s1",
+   "args": [
+    "trace3",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307a-t3-on-s1.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-t3-on-s1.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "trace3-on-s2",
+   "args": [
+    "trace3",
+    "--seed",
+    "2",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307a-t3-on-s2.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-t3-on-s2.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "trace3-on-s3",
+   "args": [
+    "trace3",
+    "--seed",
+    "3",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307a-t3-on-s3.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-t3-on-s3.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "trace3-on-s4",
+   "args": [
+    "trace3",
+    "--seed",
+    "4",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307a-t3-on-s4.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-t3-on-s4.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "trace3-on-s5",
+   "args": [
+    "trace3",
+    "--seed",
+    "5",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307a-t3-on-s5.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-t3-on-s5.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "trace3-on-s9",
+   "args": [
+    "trace3",
+    "--seed",
+    "9",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307a-t3-on-s9.jsonl.gz"
+   ],
+   "summary": [
+    "w307a-t3-on-s9.jsonl.gz"
+   ],
+   "large": []
+  }
+ ]
+}
