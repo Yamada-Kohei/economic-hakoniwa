@@ -25,11 +25,12 @@ import random
 
 import pytest
 
+from hakoniwa_core import autoplan, gate, stock, stops, veins
 from hakoniwa_core import facilities as fac
-from hakoniwa_core import gate, stock, stops, veins
 from hakoniwa_core.autoplan import plan_trade, plan_turn, queue_orders
 from hakoniwa_core.founding import found_island
 from hakoniwa_core.game import load_game
+from hakoniwa_core.modules.market import Market, standing
 from hakoniwa_core.simulate import world_digest
 from hakoniwa_core.state import WorldState
 from hakoniwa_core.state.generate import generate_land, generate_world, random_plan
@@ -39,6 +40,13 @@ from hakoniwa_core.units import from_milli
 
 TURNS = 300
 MERCHANT_CALM = 12  # 海外の商人が去った後、値段を見ないターン数（貿易のない 1 島の世界）
+# 品不足の切り替え（GT-46）での国の倉庫（会議 #4423・#4429・#4433・#4437）: 倉庫が売り手になるのは、
+# 売りに出せる荷（放出の決まりと同じ数え方）がそのターンの要る量の WAREHOUSE_TURNS ターン分以上の
+# とき。品不足に入るのは 1 ターン、抜けるのは足りているターンが WAREHOUSE_RUN ターン続いたとき。
+# 要る量が NEED_MIN 未満のターンは判定せず、品不足の状態を変えない
+WAREHOUSE_TURNS = 1
+WAREHOUSE_RUN = 3
+NEED_MIN = 1000  # 1000 分の 1 単位（1 単位）
 
 
 @pytest.fixture(scope="module")
@@ -86,7 +94,7 @@ def test_supply_chain_runs_for_300_turns(game, seed):
     starved = 0
     offered: dict[int, dict[str, int]] = {}  # ターン → 商人が売りに出した量（財 → 1000 分の 1）
     needed: dict[int, dict[str, int]] = {}  # ターン → 島の建った施設が全力で要る量（1000 分の 1）
-    stored: dict[int, set[str]] = {}  # ターン → 国の倉庫に荷のある商人の財
+    stored: dict[int, dict[str, int]] = {}  # ターン → 国の倉庫の売りに出せる商人の財の量
     farms: dict[
         int, list[tuple[int, int, int]]
     ] = {}  # 機械化した農場の（燃料の手元, 人手, 燃料のある人手）
@@ -133,7 +141,7 @@ def test_supply_chain_runs_for_300_turns(game, seed):
             )
             for g in sale
         }
-        stored[world.turn] = {g for g in sale if stock.total(island.warehouse, g) > 0}
+        stored[world.turn] = _sellable(game.defs, game.config, island, sale)
         makers[world.turn] = _makers(game.defs, island)
         held[world.turn] = {g for g in island.warehouse if stock.total(island.warehouse, g) > 0}
         farms[world.turn] = [
@@ -219,12 +227,11 @@ def test_supply_chain_runs_for_300_turns(game, seed):
     # 超えるのは現実の動きで（種 2 の燃料は商人の売りが初めの 1 割 2 分のとき超えた）、そこで見る
     # のは値段でなく、足りない分の手当て（燃料なら畑が手作業に戻って人手が増える）。境目は値段や
     # 落ちたターンからは決めない
+    # 国の倉庫に売りに出せる荷が戻って足りるターンが続けば、品不足を抜けて値段を見る（#4429）
     scarce = {
-        g: t0
-        for g in unmade
-        if (t0 := _shortage_from(offered, needed, g, leave)) is not None
-        and not any(g in stored.get(t, ()) for t in range(t0, leave))
+        g: t0 for g in unmade if (t0 := _shortage_from(offered, needed, g, leave)) is not None
     }
+    short_turns = {g: _shortage_turns(stored, needed, g, t0, leave) for g, t0 in scarce.items()}
     priced = [
         m
         for m in recorder.failures(end=leave - tail - 1)
@@ -234,20 +241,31 @@ def test_supply_chain_runs_for_300_turns(game, seed):
     last = leave - 1
     for g in sorted(needed.get(last, {})):
         if needed[last][g] > 0:
-            stored_turns = [t for t in sorted(stored) if g in stored[t] and t >= last - 60]
+            stored_turns = [
+                (t, stored[t][g], needed.get(t, {}).get(g, 0))
+                for t in sorted(stored)
+                if g in stored[t] and t >= last - 60
+            ]
             notes.append(
                 f"品不足の判定 {g}: 島で作った {produced.get(g, 0)}、T{last} の売り "
                 f"{offered[last].get(g, 0)}・要る量 {needed[last][g]}、始まり "
                 f"{_shortage_from(offered, needed, g, leave)}、"
-                f"国の倉庫に荷のあるターン {stored_turns[:5]}"
+                f"国の倉庫に売りに出せる荷のあるターン（ターン, 荷, 要る量） {stored_turns[:5]}"
             )
     for g, t0 in scarce.items():
         mark = f"）: {g} の値段が"
-        priced += [m for m in recorder.failures(end=min(t0, leave - tail) - 1) if mark in m]
+        # 品不足でないターン（t0 の前と、倉庫の荷で抜けた間）は値段を見る
+        normal = [t for t in range(gate.START, leave - tail) if t not in short_turns[g]]
+        for lo, hi in _spans(normal):
+            priced += [m for m in recorder.failures(start=lo, end=hi) if mark in m]
         notes += [f"品不足 T{t0}〜: {m}" for m in recorder.failures(start=t0) if mark in m]
+        if len(short_turns[g]) < leave - t0:
+            notes.append(
+                f"{g} は倉庫の荷で品不足を抜けたターンがある: 品不足のターン {len(short_turns[g])}"
+            )
     print("\n".join(notes))
-    if fac.FUEL in scarce:
-        _check_fuel_shortage(farms, scarce[fac.FUEL], leave)
+    if fac.FUEL in scarce and (fuel_run := _last_run(short_turns[fac.FUEL], leave)) is not None:
+        _check_fuel_shortage(farms, fuel_run, leave)
     priced += after
     # 島でまだ作っていない原料（鉱山が建つ前の鉄鉱石など）は、初めの倉庫の荷が尽きると値段が上がる。
     # 鉱山を使う工場が先に建つと起こる（標準の計画の順の弱さ、main でもある）ので、その原料の値段は
@@ -416,6 +434,73 @@ def _shortage_from(
             break
         start = t
     return start
+
+
+def _sellable(defs, config, island, goods) -> dict[str, int]:
+    """国の倉庫の、売りに出せる荷（1000 分の 1）: 備蓄の放出の決まり（Market._release_orders）と
+    同じく、放出が止まっていれば 0、工事・インフラ・設備の直しの資材と国の穀物の備蓄と定めた
+    売り買いの品目は 0、軍の取り置きを引く。荷のない財は入れない。"""
+    if not island.policy.warehouse_release:
+        return {}
+    skip = Market._construction_goods(defs) | set(standing.settings(island))
+    skip.add(config.get("food_reserve")["good"])
+    keep = autoplan._military_keep(island, config)
+    out = {}
+    for g in goods:
+        if g in skip:
+            continue
+        q = stock.total(island.warehouse, g) - keep.get(g, 0)
+        if q > 0:
+            out[g] = q
+    return out
+
+
+def _shortage_turns(
+    stored: dict[int, dict[str, int]],
+    needed: dict[int, dict[str, int]],
+    good: str,
+    start: int,
+    leave: int,
+) -> set[int]:
+    """品不足のターン（GT-46、会議 #4429・#4433・#4437）: start で品不足に入り、国の倉庫の売りに
+    出せる荷がそのターンの要る量の WAREHOUSE_TURNS ターン分以上のターンが WAREHOUSE_RUN ターン
+    続いたら、そのターンから抜ける。抜けた後は、足りないターンが 1 回あればそのターンから入る。
+    要る量が NEED_MIN 未満のターンは判定せず、状態を変えない。"""
+    short, run, out = True, 0, set()
+    for t in range(start, leave):
+        need = needed.get(t, {}).get(good, 0)
+        if need >= NEED_MIN:
+            held = stored.get(t, {}).get(good, 0)
+            enough = held >= WAREHOUSE_TURNS * need
+            run = run + 1 if short and enough else 0
+            if short and run >= WAREHOUSE_RUN:
+                short, run = False, 0
+            elif not short and not enough:
+                short = True
+        if short:
+            out.add(t)
+    return out
+
+
+def _spans(turns: list[int]) -> list[tuple[int, int]]:
+    """続いたターンの並びを (始め, 終わり) に分ける。"""
+    spans: list[list[int]] = []
+    for t in turns:
+        if spans and t == spans[-1][1] + 1:
+            spans[-1][1] = t
+        else:
+            spans.append([t, t])
+    return [(a, b) for a, b in spans]
+
+
+def _last_run(turns: set[int], leave: int) -> int | None:
+    """去る前のターン（leave − 1）まで続く品不足の並びの始め。去る前に品不足でなければ None。"""
+    if leave - 1 not in turns:
+        return None
+    t = leave - 1
+    while t - 1 in turns:
+        t -= 1
+    return t
 
 
 def _check_fuel_shortage(

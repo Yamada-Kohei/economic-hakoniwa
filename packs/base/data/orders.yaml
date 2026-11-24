@@ -569,6 +569,43 @@ cancel_contract:
     properties:
       contract: {type: integer, minimum: 1}
 
+# 受け取り方の切り替え（FX-69）: 買い手だけが、相手の承諾なしにすぐ替えられる。海の上の荷の
+# 行き先も書き換わる。条約の契約は替えられない
+set_contract_delivery:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [contract, delivery]
+    additionalProperties: false
+    properties:
+      contract: {type: integer, minimum: 1}
+      delivery: {enum: [market, warehouse]}
+
+# 条件の変更の申し込み（FX-70）: 量・値段・期間のうち変えたい物だけ書く（書かない物は今のまま）。
+# 何も書かずに出すと自分の申し込みの取り下げ。相手が accept_contract_change で受けるまで、
+# 前の条件が続く。量を 0 にはできない（やめる命令を使う）。物の援助・条約の契約は変えられない
+propose_contract_change:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [contract]
+    additionalProperties: false
+    properties:
+      contract: {type: integer, minimum: 1}
+      quantity: {type: number, exclusiveMinimum: 0}  # 1ターンの量
+      price: {type: integer, minimum: 0}             # 1 単位の値段（契約の通貨）
+      turns: {type: integer, minimum: 1, maximum: 600}  # 効くターンから数え直す期間
+      indefinite: {const: true}                     # 無期限に変える（turns とはどちらか一方）
+
+accept_contract_change:
+  admin_cost: 1
+  payload:
+    type: object
+    required: [change]
+    additionalProperties: false
+    properties:
+      change: {type: integer, minimum: 1}  # 相手の変更の申し込みの番号
+
 # --- 産業政策と国際金融（フェーズ3-3） ---------------------------------------------------
 set_tariff:
   admin_cost: 1

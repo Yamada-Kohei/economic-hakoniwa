@@ -163,6 +163,7 @@ HOUSEHOLD = "household"
 STORE = "warehouse"
 # 命令で出した国の倉庫の注文（財, 売り買い, 命令の量, 出した注文）。板寄せの後に結果をログに出す
 WAREHOUSE_PLACED = "warehouse_placed"
+MARKET_SELLS = "contract_market_sells"  # scratch: 市場に出す契約の品の売り注文（財 → 注文）
 WAREHOUSE_BUDGET = "warehouse"  # 年の予算の項目（国の倉庫の買い入れ費）
 UNFUNDED = "unfunded"  # 国の工事が公共事業費で買えず、注文しなかった資材の量（財 → 量）
 # 施設の economy: 投入財の買いの指値を出したターンと指値（{"turn", "limits": 財 → 指値}）。
@@ -3785,7 +3786,12 @@ class Market(IslandStage):
             # 傷みやすい物は値段を問わず、契約で「市場に出す」と決めた物と閉じた施設から引き取った
             # 物は島の値段で売りに出す（値崩れさせずに、売れるだけ毎ターン出す）
             perishable = ctx.defs.goods[good].get("shelf_life")
-            sell(good, qty, None if perishable else island.economy.prices.get(good), IMPORTED)
+            order = sell(
+                good, qty, None if perishable else island.economy.prices.get(good), IMPORTED
+            )
+            if order is not None:
+                # 決まった買いとの差し引き（_standing_orders）が縮められるよう、注文を覚えておく
+                island.scratch.setdefault(MARKET_SELLS, {})[good] = order
         for item in orders:
             good, qty, limit = item["good"], item["quantity"], item["limit"]
             if item["side"] == "sell":
@@ -3870,7 +3876,10 @@ class Market(IslandStage):
             hungry = is_grain and self._anyone_hungry(island, ctx)
             releasing = releasing or hungry
             side = "sell" if kind == "sell" or releasing else "buy"
-            if (side == "buy" and selling) or (side == "sell" and buying):
+            # 市場に出す契約の品がある買いは、止めずに差し引く（会議 #4403 の締め）。
+            # 差し引ける売り注文がない売り（命令の売りなど）とは、今までどおり両方は出さない
+            nettable = island.scratch.get(MARKET_SELLS, {}).get(good)
+            if (side == "buy" and selling and nettable is None) or (side == "sell" and buying):
                 item["last"]["paused"] = "opposite"
                 if kind == "reserve":
                     standing.note_release(island, good, item, False)
@@ -3921,6 +3930,41 @@ class Market(IslandStage):
                 continue
             else:
                 want = item["quantity"]
+            if want > 0 and nettable is not None and nettable.quantity > 0:
+                # 先に差し引く: 契約で受け取った量を決まった買いに充て、残りだけを市場に出す。
+                # 残売 = max(届いた量 − 買量, 0)、残買 = max(買量 − 届いた量, 0) で、どちらか
+                # 一方だけが残る（二重に買わない。会議 #4406 の式）。注文は凍結データクラス
+                # なので、板の上で差し替える
+                received = nettable.quantity
+                applied = min(received, want)
+                left = received - applied
+                book = books_by_good.get(good)
+                if book is not None:
+                    for idx, (order, party) in enumerate(book.sells):
+                        if order is nettable:
+                            if left > 0:
+                                book.sells[idx] = (replace(order, quantity=left), party)
+                            else:
+                                del book.sells[idx]
+                            break
+                offered[good] = max(0, offered.get(good, 0) - applied)
+                want -= applied
+                item["last"]["offset"] = {
+                    "received": received,
+                    "applied": applied,
+                    "offered": left,
+                }
+                island.log.append(
+                    LogEntry(
+                        "contract_market_offset",
+                        {
+                            "good": good,
+                            "received": from_milli(received),
+                            "applied": from_milli(applied),
+                            "offered": from_milli(left),
+                        },
+                    )
+                )
             if want > 0:
                 plans[good] = (want, limit)
 

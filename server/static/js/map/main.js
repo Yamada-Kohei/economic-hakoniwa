@@ -9,7 +9,7 @@ import { overlayList } from "./overlays/index.js";
 import { lift, tileToWorld, worldToTile } from "./projection.js";
 import { drawIsland } from "./renderer.js";
 import { drawRuler, readRulerShown, writeRulerShown } from "./ruler.js";
-import { loadSprites } from "./sprites.js";
+import { loadSprites, spritePriorityKeys } from "./sprites.js";
 import { OrderQueue } from "../island/orders.js";
 import { TilePanel } from "../island/panel.js";
 import { MissileTarget } from "../island/missiles.js";
@@ -342,11 +342,9 @@ if (map.mine) {
   });
 }
 
-// 絵は読み込めたら描き直す（読み込むまでは色の箱で描く）
-loadSprites(theme).then((sprites) => {
-  state.sprites = sprites;
-  redraw();
-});
+// 絵は 1 枚読めるごとに描き直す（読み込むまでは色の箱で描く）。この島で使う絵を先に読み、
+// 残りはあとに回す。redraw は requestAnimationFrame でまとめられるので描き直しは増えすぎない
+loadSprites(theme, { into: state.sprites, priority: spritePriorityKeys(theme, map, defs), onLoad: () => redraw() });
 
 // ターンログのリンクなどから ?x=..&y=.. で来たら、そのマスを選ぶ
 const params = new URLSearchParams(location.search);
