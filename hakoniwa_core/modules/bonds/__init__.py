@@ -518,11 +518,11 @@ class Bonds(WorldStage):
         principal = sum(debt.outstanding(island, b) for b in island.bonds if ctx.turn >= b.maturity)
         if short > cut and self._restructures(island, ctx):
             # G2: 組み替えで市中の満期がなくなるので、売れ残りを緊縮や切り捨てで埋める要はない。
-            # 不履行の額は組み替えの切り下げとして 1 回だけ数える（_write_off は通らない）
+            # 不履行の額は組み替えの切り下げ（bonds.restructure_cut）として 1 回だけ数える
+            # （_write_off は通らず、bonds.rollover_default には入れない）
             stats = island.scratch.setdefault("bond_stats", {})
             stats["rollover_short"] = stats.get("rollover_short", 0) + short
-            lost = self._restructure(island, ctx, set(), 0, principal, raised)
-            stats["rollover_default"] = stats.get("rollover_default", 0) + lost
+            self._restructure(island, ctx, set(), 0, principal, raised)
             return
         unpaid = self._write_off(island, ctx, short - cut)
         stats = island.scratch.setdefault("bond_stats", {})
@@ -670,6 +670,7 @@ class Bonds(WorldStage):
         )
         stats = island.scratch.setdefault("bond_stats", {})
         stats["restructured"] = stats.get("restructured", 0) + swapped
+        stats["restructure_cut"] = stats.get("restructure_cut", 0) + cut_total
         self._penalize(island, ctx, lost + cut_total, hit, shortfall=True)
         # 締め出しを始めたのがこのターンの罰なら、その締め出しの中ではもう組み替えない
         island.economy.finance[RESTRUCTURED] = island.economy.finance.get("default_turn")
@@ -1429,6 +1430,8 @@ class Bonds(WorldStage):
         stats["bonds.rollover_short"] = extra.get("rollover_short", 0)
         stats["bonds.austerity"] = extra.get("austerity", 0)
         stats["bonds.rollover_default"] = extra.get("rollover_default", 0)
+        stats["bonds.restructured"] = extra.get("restructured", 0)  # 組み替えで替えた額（G2）
+        stats["bonds.restructure_cut"] = extra.get("restructure_cut", 0)  # 組み替えで切り下げた額
 
 
 def _log_foreign(world: WorldState, foreign: dict[int, list[abroad.Bid]]) -> None:

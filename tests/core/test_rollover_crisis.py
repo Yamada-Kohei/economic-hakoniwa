@@ -306,7 +306,8 @@ def test_the_first_shortfall_default_restructures_the_market_debt(game, monkeypa
     assert kinds.count("bond_restructured") == 1
     assert "bond_rollover_default" not in kinds
     assert sum(k.startswith("bond_default_penalty") for k in kinds) == 1
-    assert island.scratch["bond_stats"]["rollover_default"] == cut
+    assert island.scratch["bond_stats"]["restructure_cut"] == cut
+    assert island.scratch["bond_stats"].get("rollover_default", 0) == 0  # 二重に数えない
     assert island.economy.finance["default_turn"] == ctx.turn
     assert bond not in island.bonds and later not in island.bonds
     new = sorted((b for b in island.bonds if b.issued == ctx.turn), key=lambda b: b.term)
