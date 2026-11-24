@@ -1297,6 +1297,10 @@ class Population(IslandStage):
         island.stats["population.return_to_land.candidates"] = sum(idle_town.values()) - gone
         island.stats["population.return_to_land.quota"] = sum(leaving.values())
         island.stats["population.returned_to_land"] = moved
+        # 行き先の空き残（帰農の後に、村が受け入れられる人数の合計。詰まりが満杯か別の上限かを見る）
+        island.stats["population.return_to_land.room_left"] = sum(
+            room(pos) for pos in homes if pos in free and _farming(defs, island.tile(*pos))
+        )
         return moved
 
     @staticmethod

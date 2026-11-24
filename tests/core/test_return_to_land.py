@@ -75,6 +75,7 @@ def test_those_left_after_the_town_moves_go_to_the_nearest_village(game):  # noq
     assert island.stats["population.return_to_land.candidates"] == idle[TOWN] - 5
     assert island.stats["population.return_to_land.quota"] == n
     assert island.stats["population.returned_to_land"] == n
+    assert island.stats["population.return_to_land.room_left"] > 0  # 行き先の空き残
 
 
 def test_jobless_near_jobs_go_at_the_migration_rate_without_arrivals(game):  # noqa: F811
