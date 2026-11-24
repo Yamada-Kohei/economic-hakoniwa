@@ -1,6 +1,37 @@
 {% extends "base.html" %}{% load i18n static calendar_tags display_tags %}
 {% block title %}{{ island.name }} - {% translate "経済版箱庭諸国" %}{% endblock %}
 {% block content %}
+{# 地図の JS は import をたどると往復が段になるので、先読みを並べて 1 回にまとめる #}
+<link rel="modulepreload" href="{% static 'js/map/main.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/controls.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/minimap.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/overlays/bars.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/overlays/index.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/overlays/freight.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/overlays/scale.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/overlays/happiness.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/overlays/infra.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/overlays/pollution.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/overlays/population.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/overlays/power.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/overlays/works.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/overlays/zone.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/projection.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/renderer.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/sprites.js' %}">
+<link rel="modulepreload" href="{% static 'js/map/ruler.js' %}">
+<link rel="modulepreload" href="{% static 'js/island/orders.js' %}">
+<link rel="modulepreload" href="{% static 'js/calendar.js' %}">
+<link rel="modulepreload" href="{% static 'js/island/api.js' %}">
+<link rel="modulepreload" href="{% static 'js/island/panel.js' %}">
+<link rel="modulepreload" href="{% static 'js/island/military.js' %}">
+<link rel="modulepreload" href="{% static 'js/military/common.js' %}">
+<link rel="modulepreload" href="{% static 'js/island/recipes.js' %}">
+<link rel="modulepreload" href="{% static 'js/island/slowdown.js' %}">
+<link rel="modulepreload" href="{% static 'js/island/missiles.js' %}">
+{# 定義と地図の API も先に取り始める #}
+<link rel="preload" as="fetch" href="{% url 'api_defs' %}" crossorigin>
+<link rel="preload" as="fetch" href="{% url 'api_island_map' island.id %}" crossorigin>
 <link rel="stylesheet" href="{% static 'css/military.css' %}">
 {% include "web/military_text.html" %}
 {% include "web/recipe_text.html" %}

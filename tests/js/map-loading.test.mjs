@@ -48,6 +48,7 @@ function environment({ failedUrl, failedDraw = false } = {}) {
     MissileTarget: class {}, TilePanel: class {},
     drawIsland() { if (failedDraw) throw new Error("描けません"); drawings += 1; },
     drawMinimap() {}, drawRuler() {}, readRulerShown: () => false, writeRulerShown() {}, loadSprites: async () => new Map(),
+    spritePriorityKeys: () => new Set(),
   };
   return { context: vm.createContext(context), element, frames, timers,
     get reloads() { return reloads; }, get drawings() { return drawings; } };
