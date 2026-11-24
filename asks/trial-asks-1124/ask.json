@@ -1,0 +1,11 @@
+{
+  "name": "trial-asks-1124",
+  "commit": "main",
+  "pool": "any",
+  "files": ["trial_probe.py"],
+  "patches": [],
+  "runs": [
+    {"name": "s1", "args": ["--seed", "1", "--out", "s1.json"], "summary": ["s1.json"], "large": ["raw"]},
+    {"name": "s2", "args": ["--seed", "2", "--out", "s2.json"], "summary": ["s2.json"], "large": ["raw"]}
+  ]
+}
