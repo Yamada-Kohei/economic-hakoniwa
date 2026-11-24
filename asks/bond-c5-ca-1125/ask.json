@@ -1,0 +1,90 @@
+{
+ "name": "bond-c5-ca-1125",
+ "commit": "90d8f95bc2efe9ad5a9c1b0d3f9c49bb535efc9c",
+ "pool": "any",
+ "files": [
+  "bond_c3_run.py",
+  "bond_c_probe.py"
+ ],
+ "patches": [
+  "bonds-ca-on.diff"
+ ],
+ "runs": [
+  {
+   "name": "c5-ind-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--out",
+    "c5-ind-s1.jsonl.gz"
+   ],
+   "summary": [
+    "c5-ind-s1.jsonl.gz",
+    "c5-ind-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "c5-ind-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "2",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--out",
+    "c5-ind-s2.jsonl.gz"
+   ],
+   "summary": [
+    "c5-ind-s2.jsonl.gz",
+    "c5-ind-s2.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "c5-plan-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--out",
+    "c5-plan-s1.jsonl.gz"
+   ],
+   "summary": [
+    "c5-plan-s1.jsonl.gz",
+    "c5-plan-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-c5",
+   "args": [
+    "quick",
+    "q-c5"
+   ],
+   "summary": [
+    "q-c5.zip"
+   ],
+   "large": [
+    "q-c5"
+   ]
+  }
+ ]
+}
