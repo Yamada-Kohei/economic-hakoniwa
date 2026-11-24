@@ -11,6 +11,8 @@
    （バランス調整。借り換えの売れ残りだけで不履行にしない）。bonds.rollover_crisis が入なら、買い
    支えるのは売れ残りを引き受ける政策の、独立していない中央銀行だけ。ほかの国は売れ残りを次のターンの
    削れる支出でしのぎ、それでも払えない分だけ不履行にする（_roll_over・_short_pay。設計 BK-52）。
+   bonds.rollover_pricing が入なら、利回りは 1 年の総資金需要のうち余力で埋まらない割合で上乗せし、
+   銀行は見込みの損が自己資本の余りを超える分を買わない（rollover_need・holding_cap。設計 BK-53）。
 5. 銘柄ごとに利子を払い、満期の銘柄は額面を返して消す。不履行は命令 set_bond_payment で選んだとき
    だけ: 中央銀行以外の額面を bonds.haircut だけ切り下げ（持ち手の損）、残りを同じ期間で出し直す。
    切り下げた額が 0 なら新しい罰は付けない。不履行の記録は
@@ -55,6 +57,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from hakoniwa_core import ledger
+from hakoniwa_core.config import GameConfig
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.diplomacy import credit
 from hakoniwa_core.economy import BONDS, Payer, banks, books, debt, funds
@@ -104,7 +107,7 @@ def bond_yield(island: IslandState, turns: int, ctx: StageContext) -> int:
     λ_T は期間 turns の上乗せ、I/R は返す力の比（中央銀行以外に払う利子 ÷ 国の収入。年。
     hakoniwa_core/economy/debt.py の burden。中央銀行の持ち分は市場の外。回5）、σ と閾値は
     bonds.burden_sigma と bonds.burden_threshold、δ は過去の債務不履行の上乗せ、β は中央銀行が
-    独立していれば bonds.independence_discount。0 から bonds.max_yield の間に収める。銀行ごとに
+    独立していれば bonds.independence_discount。0 から上限（yield_cap）の間に収める。銀行ごとに
     求める利回りは、これに国債への偏りの上乗せを足す（bank_yield）。
     """
     settings = ctx.config.get("bonds")
@@ -113,9 +116,13 @@ def bond_yield(island: IslandState, turns: int, ctx: StageContext) -> int:
     target = ctx.config.get("central_bank.inflation_target")
     rate += settings["kappa"] * max(0.0, inflation(island.economy) - target)
     rate += default_premium(island, ctx)
+    if settings.get("rollover_pricing"):
+        # 埋まらない分が haircut だけ切られる見込みの損 h·u を、残りの (1 − h·u) で埋め合わせる
+        loss = settings["haircut"] * uncovered(island, ctx)
+        rate += loss / (1 - loss)
     if island.policy.cb_independent:
         rate -= settings["independence_discount"]
-    return to_basis(max(0.0, min(settings["max_yield"], rate)))
+    return max(0, min(yield_cap(ctx.config), to_basis(rate)))
 
 
 def _burden(island: IslandState, ctx: StageContext) -> float:
@@ -125,6 +132,82 @@ def _burden(island: IslandState, ctx: StageContext) -> float:
         cached = (ctx.turn, debt.burden(island))
         island.scratch["bond_burden"] = cached
     return cached[1]
+
+
+NO_CAP = 10 * BASIS  # 総資金需要で測るときの利回りの上限（1000%。実質は上限なし。会議 #4021）
+
+
+def yield_cap(config: GameConfig) -> int:
+    """利回りの上限（1万分の1）。bonds.rollover_pricing が入なら上限を外す（買い手が消えることで
+    止まる。B）、切なら bonds.max_yield。"""
+    if config.get("bonds.rollover_pricing"):
+        return NO_CAP
+    return to_basis(config.get("bonds.max_yield"))
+
+
+YEAR_TURNS = 12  # 1 年のターン数（総資金需要と買い手の余力を 1 年で見る）
+
+
+def rollover_need(island: IslandState, ctx: StageContext) -> dict[str, int]:
+    """1 年の総資金需要と買い手の余力（国債の会議 #3981 の C3。ターンに一度だけ数える）。
+
+    gfn: 次の 12 ターンに満期の市中の元本 ＋ 市中への利払い × 12 ＋ 基礎的収支の赤字（前のターンの
+    国債以外の支出 × 12 − 年の収入。正のときだけ）。
+    capacity: 返される市中の元本（同じ買い手が買い直す、ふつうの借り換え）＋ 銀行の入札に回せる
+    お金（そのターンの空きの準備）× 12 ＋ 削れる支出（fiscal.rescue_after の組より後ろの項目の前の
+    ターンの額）× 12。
+    debt: 借りの総額（中央銀行の分を含む）。revenue: 年の収入。"""
+    cached = island.scratch.get("bond_need")
+    if cached is not None and cached[0] == ctx.turn:
+        return cached[1]
+    maturing = 0
+    for bond in island.bonds:
+        if bond.maturity < ctx.turn + YEAR_TURNS:
+            maturing += sum(v for h, v in debt.holders(island, bond).items() if h != ledger.CB)
+    spending = {k: v for k, v in island.economy.spending.items() if k != BONDS}
+    revenue = debt.annual_revenue(island.economy)
+    deficit = max(0, sum(spending.values()) * YEAR_TURNS - revenue)
+    must = set(funds.must_items(ctx.config.get("fiscal")))
+    cuttable = sum(v for k, v in spending.items() if k not in must)
+    budget = sum(auction_budget(island, ctx, b) for b in banks.active_banks(island))
+    interest = debt.market_interest(island) * YEAR_TURNS
+    need = {
+        "gfn": maturing + interest + deficit,
+        "capacity": maturing + (budget + cuttable) * YEAR_TURNS,
+        "maturing": maturing,
+        "interest": interest,
+        "deficit": deficit,
+        "budget": budget,
+        "cuttable": cuttable,
+    }
+    island.scratch["bond_need"] = (ctx.turn, need)
+    return need
+
+
+def uncovered(island: IslandState, ctx: StageContext) -> float:
+    """総資金需要のうち、買い手の余力と緊縮で埋まらない割合 u（0〜1）。買い手は、埋まらない分が
+    不履行で切られる（bonds.haircut）と見込む。"""
+    need = rollover_need(island, ctx)
+    if need["gfn"] <= 0:
+        return 0.0
+    return min(1.0, max(0, need["gfn"] - need["capacity"]) / need["gfn"])
+
+
+def holding_cap(island: IslandState, ctx: StageContext, bank: str) -> int | None:
+    """銀行が持つこの国の国債の上限（国債の会議 #3981 の B）: 不履行で切られると見込む損
+    （持ち高 × bonds.haircut × u）が、自己資本の余り（自己資本 − 規制の比率 × 融資）を超えない額。
+    bonds.rollover_pricing が切か u が 0 なら上限なし（None）。u が 1（余力が何も残らない）なら
+    札を入れない（0。会議 #4023）。"""
+    if not ctx.config.get("bonds.rollover_pricing"):
+        return None
+    u = uncovered(island, ctx)
+    if u <= 0:
+        return None
+    if u >= 1:
+        return 0
+    worth = banks.net_worth(island, ctx.config, bank, ctx.turn)
+    spare = max(0, worth - int(banks.regulatory(ctx.config) * banks.loans_of(island, bank)))
+    return int(spare / (ctx.config.get("bonds.haircut") * u))
 
 
 def rollover_crisis(island: IslandState, ctx: StageContext) -> bool:
@@ -341,7 +424,7 @@ class Bonds(WorldStage):
         change = island.policy.policy_rate - finance.get(
             "last_policy_rate", island.policy.policy_rate
         )
-        top = to_basis(ctx.config.get("bonds.max_yield"))
+        top = yield_cap(ctx.config)
         finance["yields"] = [max(0, min(top, y + change)) for y in yields]
 
     @staticmethod
@@ -608,7 +691,7 @@ class Bonds(WorldStage):
         config = ctx.config
         finance = island.economy.finance
         finance["default_turn"] = ctx.turn
-        top = to_basis(config.get("bonds.max_yield"))
+        top = yield_cap(config)
         jump = to_basis(config.get("bonds.default_premium"))
         finance["yields"] = [min(top, y + jump) for y in finance.get("yields") or []]
         crunch = ctx.turn + config.get("banking.default_crunch_turns")
@@ -752,7 +835,7 @@ class Bonds(WorldStage):
         低い段（wanted）に入れる（フェーズ3-3）。"""
         config = ctx.config
         steps = config.get("banking.auction_steps")
-        top = to_basis(config.get("bonds.max_yield"))
+        top = yield_cap(config)
         free, premium = concentration(ctx, island)
         bids: dict[int, dict[str, int]] = {}
         for bank in banks.active_banks(island):
@@ -761,6 +844,9 @@ class Bonds(WorldStage):
             if budget <= 0 or assets <= 0:
                 continue
             held = sum(debt.holdings_of(island, bank).values())
+            cap = holding_cap(island, ctx, bank)
+            if cap is not None:  # 見込みの損が自己資本の余りを超える分は買わない（B）
+                budget = min(budget, max(0, cap - held))
             amount = budget // steps
             for step in range(1, steps + 1):
                 if amount <= 0:
@@ -843,7 +929,7 @@ class Bonds(WorldStage):
         }
         wanted = [ctx.formula("bond_yield")(island, t, ctx) for t in terms]
         premium = to_basis(config.get("banking.sell_premium"))
-        top = to_basis(config.get("bonds.max_yield"))
+        top = yield_cap(config)
         free, slope = concentration(ctx, island)
         closed = debt.market_closed(island, config, ctx.turn)  # 不履行の後は、銀行は買わない
         shortfall = [0] * count  # 準備預金が足りずに指値なしで売りに出た額面（区分ごと）
@@ -859,6 +945,9 @@ class Bonds(WorldStage):
                 sum(target_holding(assets, yields[k], wanted[k], free, slope) for k in range(count))
                 // count
             )
+            cap = holding_cap(island, ctx, bank)
+            if cap is not None:
+                target = min(target, cap)
             if short > 0 and total > 0:  # 準備預金が足りない: 指値なしで売る
                 for k in range(count):
                     qty = min(held[k], -(-short * held[k] // total))
@@ -897,7 +986,7 @@ class Bonds(WorldStage):
             self._open_market(holdings[ledger.CB], omo, shortfall, sellers, buyers, wanted, yields)
         self._foreign_orders(island, ctx, sellers, buyers, wanted, closed, by_id)
         band = to_basis(config.get("bonds.trade_band"))
-        top = to_basis(config.get("bonds.max_yield"))
+        top = yield_cap(config)
         cb_done = 0  # 中央銀行が売り買いした額面
         cb_bought = [0] * count  # 区分ごとに中央銀行が買った額面
         cb_moved = {"bought": 0, "sold": 0}
@@ -1079,7 +1168,7 @@ class Bonds(WorldStage):
         （bond_yield ＋ 値下がりの率）を指値にする。債務不履行の後（closed）は買わない。"""
         edges = ctx.config.get("bonds.buckets")
         count = len(edges) + 1
-        top = to_basis(ctx.config.get("bonds.max_yield"))
+        top = yield_cap(ctx.config)
         for name, bid in sorted(self.bids.items()):
             if bid.sell > 0:
                 held = self._by_bucket(island, name, ctx.turn, edges, by_id)
@@ -1176,6 +1265,12 @@ class Bonds(WorldStage):
         stats["bonds.cb_sold"] = extra.get("cb_sold", 0)
         stats["bonds.central_bank"] = sum(debt.holdings_of(island, ledger.CB).values())
         stats["bonds.bought_abroad"] = extra.get("abroad", 0)
+        need = island.scratch.get("bond_need")
+        if need is not None:
+            stats["bonds.gfn"] = need[1]["gfn"]
+            stats["bonds.capacity"] = need[1]["capacity"]
+        revenue = debt.annual_revenue(island.economy)
+        stats["bonds.debt_revenue"] = debt.total_debt(island) / revenue if revenue > 0 else 0.0
         stats["bonds.rollover_short"] = extra.get("rollover_short", 0)
         stats["bonds.austerity"] = extra.get("austerity", 0)
         stats["bonds.rollover_default"] = extra.get("rollover_default", 0)

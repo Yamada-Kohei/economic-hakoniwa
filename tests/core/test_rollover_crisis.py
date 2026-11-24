@@ -4,9 +4,17 @@
 import pytest
 
 from hakoniwa_core import ledger
-from hakoniwa_core.economy import BONDS, Payer, debt, funds
-from hakoniwa_core.modules.bonds import Bonds, _cb_interest, rollover_crisis
+from hakoniwa_core.economy import BONDS, Payer, banks, debt, funds
+from hakoniwa_core.modules.bonds import (
+    Bonds,
+    _cb_interest,
+    bond_yield,
+    holding_cap,
+    rollover_crisis,
+    uncovered,
+)
 from hakoniwa_core.state import WorldState
+from hakoniwa_core.units import to_basis
 from tests.core.test_finance import context
 from tests.core.test_rules import GENERAL, home, household, make_island, with_economy
 from tests.core.test_rules import game as game  # noqa: F401
@@ -128,3 +136,56 @@ def test_unpaid_interest_defaults_only_the_shortfall_and_nets_the_central_bank(g
     [lost] = [e.args["amount"] for e in island.log if e.kind == "bond_coupon_default"]
     assert lost == owed - owed // 3
     assert "bond_default" not in [e.kind for e in island.log]
+
+
+def need(island, ctx, gfn, capacity):
+    island.scratch["bond_need"] = (ctx.turn, {"gfn": gfn, "capacity": capacity})
+
+
+def test_uncovered_rollover_prices_the_expected_haircut(game, monkeypatch):
+    """C（総資金需要で測る重さ）: 埋まらない割合 u の分を、切られる見込みの損 h = haircut × u の
+    埋め合わせ h ÷ (1 − h) として利回りに上乗せする。切なら今と同じ。"""
+    island, ctx, _, _, _ = setup(game, monkeypatch, 0)
+    island.economy.finance.pop("default_turn")
+    need(island, ctx, 1000, 800)  # u = 0.2
+    base = bond_yield(island, 12, ctx)
+    monkeypatch.setitem(game.config.raw["bonds"], "rollover_pricing", True)
+    assert uncovered(island, ctx) == pytest.approx(0.2)
+    loss = game.config.get("bonds.haircut") * 0.2
+    assert bond_yield(island, 12, ctx) - base == pytest.approx(to_basis(loss / (1 - loss)), abs=2)
+    need(island, ctx, 1000, 1200)
+    assert bond_yield(island, 12, ctx) == base
+
+
+def test_banks_stop_buying_once_the_expected_loss_eats_their_spare_capital(game, monkeypatch):
+    """B: 銀行は、持ち高 × haircut × u が自己資本の余り（自己資本 − 規制の比率 × 融資）を超える分を
+    入札で買わない。u が 0 なら上限はない。"""
+    island, ctx, _, bank, _ = setup(game, monkeypatch, 0)
+    monkeypatch.setitem(game.config.raw["bonds"], "rollover_pricing", True)
+    need(island, ctx, 1000, 1000)
+    assert holding_cap(island, ctx, bank) is None
+    need(island, ctx, 1000, 500)  # u = 0.5
+    worth = banks.net_worth(island, game.config, bank, ctx.turn)
+    spare = worth - int(banks.regulatory(game.config) * banks.loans_of(island, bank))
+    cap = holding_cap(island, ctx, bank)
+    assert cap == int(max(0, spare) / (game.config.get("bonds.haircut") * 0.5))
+    held = sum(debt.holdings_of(island, bank).values())
+    filled, _ = Bonds._auction(island, ctx, 10**12, bond_yield(island, 12, ctx))
+    assert filled.get(bank, 0) <= max(0, cap - held)
+
+
+def test_rising_uncovered_share_raises_the_premium_and_shrinks_the_bank_limit(game, monkeypatch):
+    """合成の 4 島（会議 #4025）: u = 0・0.5・0.9・1.0 で、上乗せは u とともに増え、銀行の上限は
+    下がり、u = 1 では入札に札が入らず全額が売れ残る。"""
+    island, ctx, _, bank, _ = setup(game, monkeypatch, 0)
+    island.economy.finance.pop("default_turn")
+    monkeypatch.setitem(game.config.raw["bonds"], "rollover_pricing", True)
+    rows = []
+    for gap in (0, 500, 900, 1000):
+        need(island, ctx, 1000, 1000 - gap)
+        rows.append((bond_yield(island, 12, ctx), holding_cap(island, ctx, bank)))
+    yields = [y for y, _ in rows]
+    assert yields == sorted(yields) and len(set(yields)) == 4
+    assert rows[0][1] is None and rows[1][1] > rows[2][1] > rows[3][1] == 0
+    filled, _ = Bonds._auction(island, ctx, 1_000_000, yields[-1])
+    assert not any(ledger.is_bank(b) for b in filled)

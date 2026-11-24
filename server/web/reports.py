@@ -29,6 +29,7 @@ from hakoniwa_core.economy import (
     is_public_service,
     services,
 )
+from hakoniwa_core.modules.bonds import yield_cap
 from hakoniwa_core.modules.failures import METHODS as RESOLUTION_METHODS
 from hakoniwa_core.modules.market import BUYER_GROUPS
 from hakoniwa_core.modules.population import (
@@ -40,7 +41,7 @@ from hakoniwa_core.modules.population import (
 from hakoniwa_core.naming import facility_name, place_of
 from hakoniwa_core.state import OWNER_PRIVATE, IslandState, Tile
 from hakoniwa_core.trade import abroad
-from hakoniwa_core.units import from_milli, to_basis
+from hakoniwa_core.units import from_milli
 from server.economy.models import Account, FacilityBook, MarketRecord, Trade
 from server.game import get_game
 from server.web import budget_guide, display, slowdown
@@ -1406,7 +1407,7 @@ def facility_book(
 
 def yield_data(island: m.Island) -> dict[str, Any]:
     """保存された国債の区分ごとの利回りと、上限に張り付いた区分（誰にでも）。"""
-    maximum = to_basis(get_game().config.get("bonds.max_yield"))
+    maximum = yield_cap(get_game().config)
     values = (island.economy or {}).get("finance", {}).get("yields", [])
     rows = [
         {
