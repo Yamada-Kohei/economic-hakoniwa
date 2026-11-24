@@ -557,6 +557,7 @@ class _Round:
 
     def _requests(self) -> None:
         cancel_wait = self.config.get("trade.contract_cancel_turns")
+        voided = self._mutual_change_accepts()
         for i in self.world.island_ids():
             island = self.world.islands[i]
             policy.write_notes(self.world, island)
@@ -586,6 +587,28 @@ class _Round:
                         )
                     else:
                         reason = contracts.cancel(self.world, island, c, self.turn, cancel_wait)
+                elif kind == "set_contract_delivery":
+                    c = contracts.find(self.world, req["contract"])
+                    if c is None:
+                        reason = "reason_contract_unknown"
+                    else:
+                        reason = contracts.set_delivery(self.world, island, c, req["delivery"])
+                elif kind == "propose_contract_change":
+                    c = contracts.find(self.world, req["contract"])
+                    if c is None:
+                        reason = "reason_contract_unknown"
+                    else:
+                        reason = contracts.propose_change(self.world, island, c, req, self.turn)
+                elif kind == "accept_contract_change":
+                    ch = contracts.find_change(self.world, req["change"])
+                    if ch is None and req["change"] in voided:
+                        pass  # 相手と受け合ったので、効かせず消えた（_mutual_change_accepts）
+                    elif ch is None:
+                        reason = "reason_contract_unknown"
+                    elif ch["id"] in voided:
+                        contracts.void_change(self.world, ch)
+                    else:
+                        reason = contracts.accept_change(self.world, island, ch, self.turn)
                 else:
                     reason = self._bloc_request(island, kind, req)
                 if reason is not None:
@@ -593,6 +616,31 @@ class _Round:
                     island.log.append(
                         LogEntry("trade_request_failed", {"order": kind, "reason": reason})
                     )
+
+    def _mutual_change_accepts(self) -> set[int]:
+        """同じターンに両方の国が相手の変更の申し込みを受けた契約では、どちらの申し込みも
+        効かせない（FX-70。島の順番によらないよう、処理の前に申し送りを全部見る）。
+        効かせない申し込みの番号の組を返す。"""
+        accepts = []
+        for i in self.world.island_ids():
+            island = self.world.islands[i]
+            for req in island.scratch.get(REQUESTS, []):
+                if req.get("kind") != "accept_contract_change":
+                    continue
+                ch = contracts.find_change(self.world, req.get("change", -1))
+                if ch is not None:
+                    accepts.append((ch["contract"], i, ch["proposer"], ch["id"]))
+        voided: set[int] = set()
+        for contract_id, accepter, proposer, change_id in accepts:
+            for other_contract, other_accepter, other_proposer, other_id in accepts:
+                if (
+                    other_contract == contract_id
+                    and other_accepter == proposer
+                    and other_proposer == accepter
+                    and other_id != change_id
+                ):
+                    voided.update((change_id, other_id))
+        return voided
 
     def _bloc_request(self, island: IslandState, kind: str, req: dict[str, Any]) -> str | None:
         bloc = blocs.find(self.world, req.get("bloc", -1))
@@ -2524,7 +2572,24 @@ class _Round:
             self._site(island)
             self._keep_import_needs(island)
             state["contracts"] = [
-                contract_view(c, i, self.turn) for c in contracts.of_island(self.world, i)
+                {
+                    **contract_view(c, i, self.turn),
+                    # 申し込み中の条件の変更（FX-70。誰から・何を変えるか。画面・JSON・MCP で同じ）
+                    "changes": [
+                        {
+                            "id": ch["id"],
+                            "proposer": ch["proposer"],
+                            "qty": ch["qty"],
+                            "price": ch["price"],
+                            "turns": ch["turns"],
+                            "indefinite": ch["indefinite"],
+                            "created": ch["created"],
+                        }
+                        for ch in contracts.changes_of(self.world, c["id"])
+                        if ch.get("accepted") is None
+                    ],
+                }
+                for c in contracts.of_island(self.world, i)
             ]
             shipping = shipping_of(island, self.config)
             if shipping is not None:
@@ -2777,6 +2842,38 @@ def check_contract_ref(island: IslandState, payload: dict[str, Any], defs: Defs)
         raise OrderFailed("reason_invalid_payload")
 
 
+def check_contract_delivery(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    """受け取り方の切り替え（FX-69）: 契約の番号と行き先が要る。"""
+    _check_started(island)
+    if not isinstance(payload.get("contract"), int):
+        raise OrderFailed("reason_invalid_payload")
+    if payload.get("delivery") not in contracts.DELIVERIES:
+        raise OrderFailed("reason_invalid_payload")
+
+
+def check_contract_change(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    """条件の変更の申し込み（FX-70）: 変える項目だけ書く。何も書かなければ取り下げ。
+    期間は turns か indefinite のどちらか一方（propose_contract と同じ）。"""
+    _check_started(island)
+    if not isinstance(payload.get("contract"), int):
+        raise OrderFailed("reason_invalid_payload")
+    if payload.get("quantity") is not None and payload["quantity"] <= 0:
+        raise OrderFailed("reason_invalid_payload")  # 量を 0 にする変更はできない
+    if payload.get("price") is not None and payload["price"] < 0:
+        raise OrderFailed("reason_invalid_payload")
+    if payload.get("indefinite"):
+        if "turns" in payload:
+            raise OrderFailed("reason_invalid_payload")
+    elif payload.get("turns") is not None and payload["turns"] <= 0:
+        raise OrderFailed("reason_invalid_payload")
+
+
+def check_contract_change_ref(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
+    _check_started(island)
+    if not isinstance(payload.get("change"), int):
+        raise OrderFailed("reason_invalid_payload")
+
+
 def check_aid(island: IslandState, payload: dict[str, Any], defs: Defs) -> None:
     """援助（フェーズ3-3）: お金（amount と通貨）か物（good・quantity・turns）のどちらか。"""
     _check_started(island)
@@ -2813,6 +2910,9 @@ ORDERS = {
     "propose_contract": check_contract,
     "accept_contract": check_contract_ref,
     "cancel_contract": check_contract_ref,
+    "set_contract_delivery": check_contract_delivery,
+    "propose_contract_change": check_contract_change,
+    "accept_contract_change": check_contract_change_ref,
     "send_aid": check_aid,
 }
 

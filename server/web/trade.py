@@ -176,7 +176,9 @@ BOND_HOLDER_NAMES = {ledger.GOV: "政府", ledger.CB: "中央銀行", abroad.BAN
 def world_state(world: m.World) -> dict[str, list[dict[str, Any]]]:
     """世界の貿易の状態（読むだけ。まだなければ空の並び）。"""
     state = (world.ext or {}).get(KEY) or {}
-    return {key: state.get(key, []) for key in ("blocs", "contracts", "shipments")}
+    return {
+        key: state.get(key, []) for key in ("blocs", "contracts", "shipments", "contract_changes")
+    }
 
 
 def directory(world: m.World) -> dict[int, dict[str, Any]]:
@@ -413,7 +415,12 @@ def trade_data(
         if island.id not in b["members"]
     ]
     data["contracts"] = contract_rows(
-        state["contracts"], island.id, world.turn, islands, state["shipments"]
+        state["contracts"],
+        island.id,
+        world.turn,
+        islands,
+        state["shipments"],
+        state["contract_changes"],
     )
     data["traders"] = trader_rows(here, islands, state["blocs"])
     data["fleet"] = fleet_view(island, here, stats)
@@ -455,6 +462,9 @@ TRADE_ORDERS = (
     "propose_contract",
     "accept_contract",
     "cancel_contract",
+    "set_contract_delivery",
+    "propose_contract_change",
+    "accept_contract_change",
     "create_bloc",
     "join_bloc",
     "leave_bloc",
@@ -609,6 +619,7 @@ def contract_rows(
     turn: int,
     islands: dict[int, dict[str, Any]],
     shipments: list[dict[str, Any]] | None = None,
+    contract_changes: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """島が当事者の二国間契約（申し込み中・有効・終わったもの）。turn は世界の今のターン。
 
@@ -689,6 +700,28 @@ def contract_rows(
                     state == contract_states.ACTIVE
                     and (view["end"] is None or view["end"] > turn + 1 + wait)
                 ),
+                # 受け取り方の切り替え（FX-69）: 買う側だけ・有効な契約だけ（条約の契約は除く）
+                "can_set_delivery": state == contract_states.ACTIVE
+                and view["side"] == "buy"
+                and not c.get("treaty"),
+                # 申し込み中の条件の変更（FX-70。相手のものだけ受けられる）
+                "changes": [
+                    {
+                        "id": ch["id"],
+                        "mine": ch["proposer"] == island_id,
+                        "proposer_name": _name(islands, ch["proposer"]),
+                        "quantity": _amount(view["good"], ch["qty"])
+                        if ch.get("qty") is not None
+                        else None,
+                        "price": display.price(view["good"], ch["price"])
+                        if ch.get("price") is not None
+                        else None,
+                        "turns": ch.get("turns"),
+                        "indefinite": bool(ch.get("indefinite")),
+                    }
+                    for ch in contract_changes or []
+                    if ch["contract"] == c["id"] and ch.get("accepted") is None
+                ],
             }
         )
     order = {contract_states.PROPOSED: 0, contract_states.ACTIVE: 1, contract_states.ENDED: 2}
