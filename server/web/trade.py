@@ -141,6 +141,18 @@ WHY_NAMES = {
     trade_stage.WHY_PRIORITY: "外貨を、燃料・主食や設備など先に使う物に取り置いた（計画経済）",
 }
 SHIPMENT_KINDS = {"bloc": "貿易圏", "contract": "二国間契約"}
+
+
+def _why_text(item: dict[str, Any]) -> str:
+    """届かなかったわけ。注文を出す前のわけと、板寄せで約定しきらなかったわけ（W-308 案 4a）が
+    違えば両方。"""
+    before = WHY_NAMES.get(item.get("why"), "")
+    after = WHY_NAMES.get(item.get(trade_stage.MARKET_WHY), "")
+    if after and before and after != before:
+        return f"{before}。出した注文も、{after}"
+    return before or after
+
+
 # 外貨の持ち高と非居住者の預金の持ち手（施設はまとめて「商社など」）
 FACILITIES = "facilities"
 HOLDER_NAMES = {
@@ -721,7 +733,7 @@ def trader_rows(
                     "age": item.get("age", 0),  # 売れ残ったターン数
                     "bloc": bloc,
                     "bloc_name": names.get(bloc, "") if bloc is not None else "",
-                    "why": WHY_NAMES.get(item.get("why"), "") if direction else "",
+                    "why": _why_text(item) if direction else "",
                 }
             )
         out.append(

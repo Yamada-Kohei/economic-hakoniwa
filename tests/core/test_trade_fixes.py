@@ -168,3 +168,27 @@ def test_bids_that_find_no_sellers_do_not_count_as_short_of_ships(game, traded):
     assert raised > 0
     run(game, world, 1)
     assert shipping_of(island, game.config).economy["ships_short"][-1] == 0
+
+
+def test_unfilled_bids_keep_the_reason_before_the_auction_and_add_the_market_reason(game, traded):  # noqa: F811
+    """W-308 案 4a: 注文を出す前のわけ（扱える重さ・決済通貨など）がある財でも、板寄せで約定し
+    きらなかったときは、前のわけを消さずに板寄せの後のわけ（圏の売り）を足す（前は前のわけだけが
+    残り、扱える重さで止まったように見えた）。"""
+    world = copy.deepcopy(traded[0])
+    island = world.islands[1]
+    for f in traders_of(island, game.config, world.turn):
+        for item in traders.goods_of(f).values():
+            if item.get("dir") == traders.IMPORT:
+                # 扱える重さにもお金にも収まらない量
+                item["m"] = item["m"] * 50 + 200 * QUANTITY_SCALE
+    run(game, world, 1)
+    items = [
+        item
+        for f in traders_of(island, game.config, world.turn)
+        for item in traders.goods_of(f).values()
+        if item.get("dir") == traders.IMPORT
+    ]
+    after = [item for item in items if trade_stage.MARKET_WHY in item]
+    assert after
+    assert all(item[trade_stage.MARKET_WHY] == trade_stage.WHY_SELLERS for item in after)
+    assert any(item.get("why") not in (None, trade_stage.WHY_SELLERS) for item in after)

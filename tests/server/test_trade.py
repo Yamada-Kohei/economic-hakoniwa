@@ -372,6 +372,20 @@ def test_every_import_shortfall_reason_has_a_name():
     assert reasons and reasons == set(trade_views.WHY_NAMES)
 
 
+def test_trade_screen_shows_both_reasons_when_the_order_also_went_unfilled():
+    """W-308 案 4a: 注文を出す前のわけと、板寄せで約定しきらなかったわけが違えば、両方を出す。"""
+    from hakoniwa_core.modules import trade as trade_stage
+
+    cap = trade_views.WHY_NAMES[trade_stage.WHY_CAPACITY]
+    sellers = trade_views.WHY_NAMES[trade_stage.WHY_SELLERS]
+    both = {"why": trade_stage.WHY_CAPACITY, trade_stage.MARKET_WHY: trade_stage.WHY_SELLERS}
+    text = trade_views._why_text(both)
+    assert cap in text and sellers in text
+    assert trade_views._why_text({"why": trade_stage.WHY_CAPACITY}) == cap
+    same = {"why": trade_stage.WHY_SELLERS, trade_stage.MARKET_WHY: trade_stage.WHY_SELLERS}
+    assert trade_views._why_text(same) == sellers
+
+
 def test_island_pages_link_to_trade_and_fx(client, world):
     island = m.Island.objects.order_by("id").first()
     for url in (f"/islands/{island.id}/", f"/islands/{island.id}/finance/"):

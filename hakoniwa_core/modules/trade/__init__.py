@@ -106,6 +106,10 @@ WHY_FUNDS = "funds"  # 払うお金（商社の預金）が足りない（決済
 WHY_QUOTA = "quota"  # 輸入の割り当て（フェーズ3-3）の上限まで買った
 WHY_BLOCKADE = "blockade"  # 封鎖で船出を断られた（MI-34。船が足りないのとは分ける。W-187）
 WHY_PRIORITY = "fx_priority"  # 計画経済の商社が、外貨を使う順で先の財に外貨を取り置いた（FX-76）
+# 板寄せの後のわけ（W-308 案 4a）。item["why"] は注文を出す前のわけ（扱える重さ・決済通貨など）で、
+# 注文が板寄せで約定しきらなかったときは、そのわけを消さずに、板寄せの後のわけをここに残す
+# （前は前のわけがあると約定しなかったことが書かれず、扱える重さで止まったように見えた）
+MARKET_WHY = "why_market"
 
 
 def gov_payer() -> Payer:
@@ -1587,6 +1591,8 @@ class _Round:
                     price = min(result.high, max(result.low, price))
                 for order, bid, got in zip(buys, bids, result.bought, strict=True):
                     item = traders.entry(bid.facility, good)
+                    if got < order.quantity:
+                        item[MARKET_WHY] = WHY_SELLERS
                     if got < order.quantity and "why" not in item:
                         item["why"] = WHY_SELLERS
                     elif got >= order.quantity and item.get("why") == WHY_SHIPS:
@@ -1597,6 +1603,8 @@ class _Round:
                         self.islands[bid.island].ship_short = True
                 for order, ask, got in zip(sells, asks, result.sold, strict=True):
                     item = traders.entry(ask.facility, good)
+                    if got < order.quantity:
+                        item[MARKET_WHY] = WHY_BUYERS
                     if got < order.quantity and "why" not in item:
                         item["why"] = WHY_BUYERS
                 volume = 0
@@ -1820,6 +1828,7 @@ class _Round:
                 left = budgets.setdefault(f.id + m * 10**6, cap)
                 if item.get("dir") == traders.EXPORT and item.get("bx") == bloc["id"]:
                     item.pop("why", None)
+                    item.pop(MARKET_WHY, None)
                     qty = min(stock.total(f.stock, good), self._port_room(island, good))
                     if unit > 0:
                         qty = min(qty, left * QUANTITY_SCALE // unit)
@@ -2111,6 +2120,7 @@ class _Round:
         item["why"] に書く（貿易の画面。届いたら消す）。商社が自分のお金か扱える重さで買えなかった
         引き合う量は、取り逃した儲けとして数える（FX-62。_note_missed）。"""
         item.pop("why", None)
+        item.pop(MARKET_WHY, None)
         terms, why = self._import_terms(island, good, bloc)
         if terms is None:
             if why is not None:
