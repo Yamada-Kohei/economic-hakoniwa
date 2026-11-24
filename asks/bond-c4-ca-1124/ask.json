@@ -1,0 +1,90 @@
+{
+ "name": "bond-c4-ca-1124",
+ "commit": "ba35ef19b5d78fd468a6a6a241af2fdaeaa36b3b",
+ "pool": "any",
+ "files": [
+  "bond_c3_run.py",
+  "bond_c_probe.py"
+ ],
+ "patches": [
+  "bonds-ca-on.diff"
+ ],
+ "runs": [
+  {
+   "name": "c4-ind-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--out",
+    "c4-ind-s1.jsonl.gz"
+   ],
+   "summary": [
+    "c4-ind-s1.jsonl.gz",
+    "c4-ind-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "c4-ind-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "2",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--out",
+    "c4-ind-s2.jsonl.gz"
+   ],
+   "summary": [
+    "c4-ind-s2.jsonl.gz",
+    "c4-ind-s2.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "c4-plan-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--out",
+    "c4-plan-s1.jsonl.gz"
+   ],
+   "summary": [
+    "c4-plan-s1.jsonl.gz",
+    "c4-plan-s1.gate.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "q-c4",
+   "args": [
+    "quick",
+    "q-c4"
+   ],
+   "summary": [
+    "q-c4.zip"
+   ],
+   "large": [
+    "q-c4"
+   ]
+  }
+ ]
+}
