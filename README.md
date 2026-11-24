@@ -18,6 +18,7 @@
   "pool": "any",
   "files": ["probe.py"],
   "patches": [],
+  "needs": [],
   "runs": [
     {"name": "s1-now", "args": ["--seed", "1", "--turns", "300", "--out", "s1-now.json"],
      "summary": ["s1-now.json"], "large": ["raw"]}
@@ -27,6 +28,7 @@
 
 - `commit`: 回す版。40 桁の commit か枝の名前（`main` など）。
 - `pool`: 回してよい計算機の組。`any`（どれでも）・`linux`・`windows` のどれか。
+- `needs`: 任意。要る物の並び。今は `"pytest"`（試験の部品を読む台本。`--selftest` を含む run がある頼みは自動でこれが付く）。
 - `files`: 写す台本。1 つ目を回します。台本は作業ツリーの `uketsuke-run/` に置かれ、作業ツリーの直下で回ります。
 - `patches`: 作業ツリーに当てる手元の直し（任意）。
 - `runs`: 1 本ずつの引数と出力。`summary` は結果として集める小さな物、`large` は計算機の手元に 14 日残す生の記録（フォルダ可）。出力の名前は作業ツリーからの相対で書きます。
