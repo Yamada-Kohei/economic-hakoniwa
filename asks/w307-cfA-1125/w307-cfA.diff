@@ -1,0 +1,19 @@
+diff --git a/hakoniwa_core/modules/trade/__init__.py b/hakoniwa_core/modules/trade/__init__.py
+index 06fc7812..324813e0 100644
+--- a/hakoniwa_core/modules/trade/__init__.py
++++ b/hakoniwa_core/modules/trade/__init__.py
+@@ -1836,7 +1836,13 @@ class _Round:
+                         limit = blocs.fixed_price(bloc, good) or blocs.reference(
+                             self.world, bloc, good
+                         )
+-                    elif item["age"] < clearance or offtake.holds(island, self.config, f, good):
++                    elif offtake.holds(island, self.config, f, good):
++                        # 反実 A（W-307 会議 #4644。測りだけ）: 契約の荷は圏の今の値段を指値に売る（値段を
++                        # 受け入れる側。投げ売りも原価の下限もしない）
++                        limit = blocs.fixed_price(bloc, good) or blocs.reference(
++                            self.world, bloc, good
++                        )
++                    elif item["age"] < clearance:
+                         # 引き取り契約の荷は、売れ残っても仕入れ値を下限に売る（W-307 の案 a）
+                         own = traders.unit_cost(f, good)
+                         own = max(1, own + part(own, cut) + fee_unit - subsidy)  # 輸出補助を見込む

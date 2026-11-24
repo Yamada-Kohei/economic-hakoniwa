@@ -1,0 +1,123 @@
+{
+ "name": "w307-cfA-1125",
+ "commit": "e199cf2215cca3a1a02f76c1328120896f3a68e4",
+ "pool": "any",
+ "files": [
+  "w307a_run.py",
+  "offtake_probe_v2.py",
+  "offtake_trace3.py"
+ ],
+ "patches": [
+  "w307-cfA.diff"
+ ],
+ "runs": [
+  {
+   "name": "cfA-probe-on-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307cfA-probe-on-s1.jsonl.gz"
+   ],
+   "summary": [
+    "w307cfA-probe-on-s1.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "cfA-trace3-on-s1",
+   "args": [
+    "trace3",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307cfA-trace3-on-s1.jsonl.gz"
+   ],
+   "summary": [
+    "w307cfA-trace3-on-s1.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "cfA-probe-on-s4",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "4",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307cfA-probe-on-s4.jsonl.gz"
+   ],
+   "summary": [
+    "w307cfA-probe-on-s4.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "cfA-trace3-on-s4",
+   "args": [
+    "trace3",
+    "--seed",
+    "4",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307cfA-trace3-on-s4.jsonl.gz"
+   ],
+   "summary": [
+    "w307cfA-trace3-on-s4.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "cfA-probe-on-s5",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "5",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307cfA-probe-on-s5.jsonl.gz"
+   ],
+   "summary": [
+    "w307cfA-probe-on-s5.jsonl.gz"
+   ],
+   "large": []
+  },
+  {
+   "name": "cfA-trace3-on-s5",
+   "args": [
+    "trace3",
+    "--seed",
+    "5",
+    "--turns",
+    "500",
+    "--on",
+    "--out",
+    "w307cfA-trace3-on-s5.jsonl.gz"
+   ],
+   "summary": [
+    "w307cfA-trace3-on-s5.jsonl.gz"
+   ],
+   "large": []
+  }
+ ]
+}
