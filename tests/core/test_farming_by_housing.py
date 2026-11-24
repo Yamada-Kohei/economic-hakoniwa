@@ -93,28 +93,36 @@ def test_the_world_runs_with_the_switch_on(game, switch):  # noqa: F811
             assert layer == jobless_persons(game.defs, island)
 
 
-def test_a_shrunk_town_goes_back_to_farming(game, switch):  # noqa: F811
-    """町の段階の住宅地でも、人数が村の住宅地の上限を切ったら村に戻り（過疎の町の失業を固定させない）、
-    町の下限に届くまで村のまま。その間は前の印を引き継ぎ、人数のわずかな上下では入れ替わらない。"""
+def test_town_housing_stays_a_town_whatever_its_size(game, switch):  # noqa: F811
+    """町の段階の住宅地は、人数が村の住宅地の上限や町の下限を切っても町のまま（人数の幅は使わない。
+    会議 #4109）。人の減った町の仕事のない人は、帰農（population.return_to_land）で村へ移る。"""
     from hakoniwa_core.modules.population import village_capacity
 
     switch()
     cap, town = village_capacity(game.defs), village_size(game.defs) + 1
-    assert cap < town  # どちらも定義（settlements）の数
     island = make_island(game)
-    home(game, island, 6, 6, town + 5000, level="town")
+    home(game, island, 6, 6, town, level="town")
     tile = island.tile(6, 6)
-    refresh_farming(game.defs, game.config, island)
-    assert tile.ext[FARMING] is False
-    tile.population = cap  # 村の上限ちょうどは、まだ町
-    refresh_farming(game.defs, game.config, island)
-    assert tile.ext[FARMING] is False
-    tile.population = cap - 1
-    refresh_farming(game.defs, game.config, island)
-    assert tile.ext[FARMING] is True  # 村の上限を切って村に戻る
-    tile.population = town - 1
-    refresh_farming(game.defs, game.config, island)
-    assert tile.ext[FARMING] is True  # 町の下限まで村のまま
-    tile.population = town
-    refresh_farming(game.defs, game.config, island)
-    assert tile.ext[FARMING] is False
+    for population in (town, town - 1, cap, cap - 1, 1):
+        tile.population = population
+        refresh_farming(game.defs, game.config, island)
+        assert tile.ext[FARMING] is False, population
+        assert not farming(game.defs, tile)
+
+
+def test_two_months_of_the_same_size_follow_the_housing_stage(game, switch):  # noqa: F811
+    """人数は両月とも町の下限のすぐ下のまま、前月は村の住宅地・当月は町の住宅地なら、前月は村・当月は
+    町（段階が変わったときの一度の入れ替わりは、意図した動き）。切なら両月とも人数で村。"""
+    town = village_size(game.defs) + 1
+    island, tile = _village(game, town - 100)
+    marks = {}
+    for value in (True, False):
+        switch(value)
+        island.facilities[-1].ext["level"] = "village"
+        refresh_farming(game.defs, game.config, island)
+        before = farming(game.defs, tile)
+        island.facilities[-1].ext["level"] = "town"
+        refresh_farming(game.defs, game.config, island)
+        marks[value] = (before, farming(game.defs, tile))
+    assert marks[True] == (True, False)
+    assert marks[False] == (True, True)
