@@ -557,7 +557,7 @@ class Bonds(WorldStage):
         for (bond, holder, _), cut in zip(owed, cuts, strict=True):
             if cut > 0:
                 self._cut(island, bond, holder, cut, hit)
-        self._penalize(island, ctx, amount, hit)
+        self._penalize(island, ctx, amount, hit, shortfall=True)
         return amount
 
     def _cut(self, island: IslandState, bond: Bond, holder: str, cut: int, hit: set[str]) -> None:
@@ -660,7 +660,7 @@ class Bonds(WorldStage):
             island.log.append(LogEntry("bonds_redeemed" if term else "bonds_redeemed_any", args))
         if short["lost"]:
             island.log.append(LogEntry("bond_coupon_default", {"amount": short["lost"]}))
-            self._penalize(island, ctx, short["lost"], hit)
+            self._penalize(island, ctx, short["lost"], hit, shortfall=True)
         if short["netted"]:
             stats = island.scratch.setdefault("bond_stats", {})
             stats["cb_netted"] = stats.get("cb_netted", 0) + short["netted"]
@@ -692,12 +692,27 @@ class Bonds(WorldStage):
         island.log.append(LogEntry(kind, {"amount": lost, "count": len(bonds)}))
         self._penalize(island, ctx, lost, hit)
 
-    def _penalize(self, island: IslandState, ctx: StageContext, lost: int, hit: set[str]) -> None:
-        """不履行の罰: 利回りの上乗せ、銀行が国債を買わない期間、損をした銀行の貸し渋り。"""
+    def _penalize(
+        self,
+        island: IslandState,
+        ctx: StageContext,
+        lost: int,
+        hit: set[str],
+        shortfall: bool = False,
+    ) -> None:
+        """不履行の罰: 利回りの上乗せ、銀行が国債を買わない期間、損をした銀行の貸し渋り。
+
+        shortfall は、借り換えの危機と利払いの不足で、足りない分だけ払わなかった不履行。市場が
+        閉じている間のその不履行は、閉じる期間を延ばさず上乗せも足さない（国債の会議 #3981 の G1。
+        締め出しは最初の不履行から数える。延ばすと、満期のたびに売れずにまた不履行になり、市場が
+        開かなかった）。損をした銀行の貸し渋りは付ける。"""
         if lost == 0:
             return  # 市中・外国の債権者に損がなければ、新しい不履行の罰は付けない
         config = ctx.config
         finance = island.economy.finance
+        if shortfall and debt.market_closed(island, config, ctx.turn):
+            self._crunch(island, ctx, hit)
+            return
         # 上乗せ δ は重ねない: 前の不履行の δ の残りから、新しい不履行の δ に戻す分だけ上げる
         # （default_premium と同じ形）。2026-11-24 の比べで、A の不足分だけの不履行が毎ターン
         # 続くと、区分の利回りに 15% ずつ積み上がり、上限を外した島で 765% に張り付いた
@@ -706,13 +721,9 @@ class Bonds(WorldStage):
         top = yield_cap(config)
         jump = to_basis(max(0.0, config.get("bonds.default_premium") - before))
         finance["yields"] = [min(top, y + jump) for y in finance.get("yields") or []]
-        crunch = ctx.turn + config.get("banking.default_crunch_turns")
+        crunch = self._crunch(island, ctx, hit)
         if is_planned(ctx.defs, island):
-            hit = set()  # 計画経済の国営銀行は政府の決めたとおりに貸す
-        for bank in sorted(hit):
-            f = banks.facility_of(island, bank)
-            if f is not None:
-                f.economy["crunch_until"] = max(crunch, f.economy.get("crunch_until", 0))
+            hit = set()
         args: dict[str, Any] = {  # 文面のターンは、まだ罰の続く最後のターン
             "turn": ctx.turn + config.get("bonds.default_exclusion_turns") - 1,
             "premium": round(config.get("bonds.default_premium") * 100, 2),
@@ -721,6 +732,18 @@ class Bonds(WorldStage):
         if hit:
             args.update({"banks": len(hit), "crunch": crunch - 1})
         island.log.append(LogEntry("bond_default_penalty" + ("" if hit else "_no_banks"), args))
+
+    @staticmethod
+    def _crunch(island: IslandState, ctx: StageContext, hit: set[str]) -> int:
+        """損をした銀行の貸し渋り（新しい融資を止める）。止める最後の次のターンを返す。"""
+        crunch = ctx.turn + ctx.config.get("banking.default_crunch_turns")
+        if is_planned(ctx.defs, island):
+            return crunch  # 計画経済の国営銀行は政府の決めたとおりに貸す
+        for bank in sorted(hit):
+            f = banks.facility_of(island, bank)
+            if f is not None:
+                f.economy["crunch_until"] = max(crunch, f.economy.get("crunch_until", 0))
+        return crunch
 
     # --- 発行 -------------------------------------------------------------------------
 

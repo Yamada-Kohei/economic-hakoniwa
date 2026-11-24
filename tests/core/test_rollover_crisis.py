@@ -94,12 +94,13 @@ def test_only_the_shortfall_beyond_cuttable_spending_defaults(game, monkeypatch)
     assert (event.args["cut"], event.args["default"]) == (WORKS, lost)
     assert debt.holders(island, bond) == {bank: FACE - lost}  # 払えない分だけ切り捨て
     assert island.economy.finance[debt.REALIZED][bank] == -lost
-    assert island.economy.finance["default_turn"] == ctx.turn
+    assert island.economy.finance["default_turn"] == ctx.turn - 1  # G1: 閉じる期間は延ばさない
     stage._pay(island, ctx, payer)
     assert bond not in island.bonds  # 残りは全額返した（銘柄ごとの不履行にならない）
     kinds = [e.kind for e in island.log]
-    assert "bond_default" not in kinds  # 不履行の罰（利回りの上乗せと市場の閉鎖）だけ付く
-    assert any(k.startswith("bond_default_penalty") for k in kinds)
+    assert "bond_default" not in kinds  # 銘柄ごとの不履行にしない
+    # 市場が閉じている間の不足分だけの不履行なので、新しい罰（上乗せと閉じる期間）は付けない（G1）
+    assert not any(k.startswith("bond_default_penalty") for k in kinds)
     # 公務員の賃金の分は国庫に残る（中央銀行への利子は払えれば払い、決算の段の納付で戻る）
     assert funds.available(island, payer) + _cb_interest(island, ctx.turn) >= WAGES
 
@@ -235,3 +236,22 @@ def test_a_sold_out_rollover_does_not_default_for_a_thin_treasury(game, monkeypa
     assert funds.available(island, payer) >= planned - WORKS // 2 + FACE  # 全部売れた
     assert crisis(island) == []
     assert island.scratch.get("bond_stats", {}).get("rollover_default", 0) == 0
+
+
+def test_a_shortfall_default_inside_the_lockout_does_not_extend_it(game, monkeypatch):
+    """G1: 市場が閉じている間の、足りない分だけの不履行では、閉じる期間を延ばさない。"""
+    island, ctx, bond, bank, payer = setup(game, monkeypatch, WORKS + 200_000)
+    before = island.economy.finance["default_turn"]
+    Bonds()._roll_over(island, ctx, payer)
+    assert [e.kind for e in crisis(island)] == ["bond_rollover_default"]
+    assert island.economy.finance["default_turn"] == before
+
+
+def test_the_first_shortfall_default_still_closes_the_market(game, monkeypatch):
+    """市場が開いているときの不足分だけの不履行は、今までどおり罰を付けて市場を閉じる。"""
+    island, ctx, bond, bank, payer = setup(game, monkeypatch, WORKS + 200_000)
+    island.economy.finance.pop("default_turn")
+    monkeypatch.setattr("hakoniwa_core.modules.bonds.auction_budget", lambda *a: 0)
+    Bonds()._roll_over(island, ctx, payer)
+    assert island.economy.finance["default_turn"] == ctx.turn
+    assert any(e.kind.startswith("bond_default_penalty") for e in island.log)
