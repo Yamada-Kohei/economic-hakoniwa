@@ -37,7 +37,8 @@ def _village(game):  # noqa: F811
     return island, island.tile(6, 6)
 
 
-def test_no_sales_when_off(game):  # noqa: F811
+def test_no_sales_when_off(game, monkeypatch):  # noqa: F811
+    monkeypatch.setitem(game.config.get("population"), "subsistence_sales", False)
     island, tile = _village(game)
     tile.ext[FARM_CAPACITY] = 999
     settle_farm_capacity(game.defs, game.config, island)
