@@ -1,0 +1,147 @@
+{
+ "name": "w281-p11-a-1124",
+ "commit": "bfd500294c4d2eccbffdb4bd21fbe0a2248382ed",
+ "pool": "any",
+ "files": [
+  "w281_probe11.py"
+ ],
+ "patches": [],
+ "runs": [
+  {
+   "name": "plan-s17-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "17",
+    "--turns",
+    "1200",
+    "--out",
+    "probe11-A-plan-s17-t1200.json"
+   ],
+   "summary": [
+    "probe11-A-plan-s17-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s18-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "18",
+    "--turns",
+    "1200",
+    "--out",
+    "probe11-A-plan-s18-t1200.json"
+   ],
+   "summary": [
+    "probe11-A-plan-s18-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s19-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "19",
+    "--turns",
+    "1200",
+    "--out",
+    "probe11-A-plan-s19-t1200.json"
+   ],
+   "summary": [
+    "probe11-A-plan-s19-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s20-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "20",
+    "--turns",
+    "1200",
+    "--out",
+    "probe11-A-plan-s20-t1200.json"
+   ],
+   "summary": [
+    "probe11-A-plan-s20-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s21-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "21",
+    "--turns",
+    "1200",
+    "--out",
+    "probe11-A-plan-s21-t1200.json"
+   ],
+   "summary": [
+    "probe11-A-plan-s21-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s22-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "22",
+    "--turns",
+    "1200",
+    "--out",
+    "probe11-A-plan-s22-t1200.json"
+   ],
+   "summary": [
+    "probe11-A-plan-s22-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s23-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "23",
+    "--turns",
+    "1200",
+    "--out",
+    "probe11-A-plan-s23-t1200.json"
+   ],
+   "summary": [
+    "probe11-A-plan-s23-t1200.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "plan-s24-t1200",
+   "args": [
+    "--scenario",
+    "plan",
+    "--seed",
+    "24",
+    "--turns",
+    "1200",
+    "--out",
+    "probe11-A-plan-s24-t1200.json"
+   ],
+   "summary": [
+    "probe11-A-plan-s24-t1200.json"
+   ],
+   "large": []
+  }
+ ]
+}
