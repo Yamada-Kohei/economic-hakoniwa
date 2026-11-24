@@ -594,6 +594,24 @@ def plan_own_materials(island: IslandState, defs: Defs, config: GameConfig, f: F
     f.ext[fac.OWN_MATERIALS] = {"materials": made, "labor": -(-labor // turns)}
 
 
+def expected_series(
+    finance: dict[str, Any], good: str, demand: list[int] | None = None
+) -> list[int]:
+    """見込み需要（MK-48）の系列を、買いたい量 demand の系列と同じ並び・長さで返す。
+
+    見込みの記録（finance["expected_demand"]）は、切り替えが入った後のターンからしかない。
+    記録のない古い行は、その行の買いたい量で補う（0 と記録された行は 0 のまま）。読み込むときに
+    昔の行を書き換えはしない。"""
+    if demand is None:
+        demand = finance.get("demand", {}).get(good, [])
+    recorded = finance.get("expected_demand", {}).get(good, [])
+    if not demand:
+        return []
+    if len(recorded) >= len(demand):
+        return list(recorded[-len(demand) :])
+    return [*demand[: len(demand) - len(recorded)], *recorded]
+
+
 def expected_price(
     island: IslandState,
     good: str,
@@ -643,6 +661,10 @@ def expected_price(
         return price
     finance = economy.finance
     demand = finance.get("demand", {}).get(good, [])
+    if config.get("market.expected_demand"):
+        # 見込み需要（MK-48）: 買いたい量の代わりに、家計の第一希望で見る（記録のない行は
+        # その行の買いたい量で補う。expected_series）
+        demand = expected_series(finance, good, demand)
     supply = finance.get("supply", {}).get(good, [])
     n = min(len(demand), len(supply))
     if n <= 0:

@@ -115,6 +115,7 @@ from hakoniwa_core.economy.households import draw_founders, founders_room, owner
 from hakoniwa_core.economy.prices import (
     construction_cost,
     expected_price,
+    expected_series,
     plan_own_materials,
     site_cost,
     site_material_cost,
@@ -391,8 +392,7 @@ def entry_price(island: IslandState, ctx: StageContext, good: str) -> int | None
     supplied = EntryExit._supplied(island, ctx)
     estimate = ctx.formula("entry_return")
     settings = config.get("firms")
-    shortages = island.economy.finance.get("shortages", {})
-    demand = island.economy.finance.get("demand", {})
+    demand, shortages = _demand_view(island, config)
     capacity = EntryExit._capacity(island, ctx)
     busy = EntryExit._pipeline(island, ctx)
     best = None
@@ -515,11 +515,28 @@ class EntryExit(IslandStage):
             for good in list(history):
                 if good not in seen:
                     history[good] = [*history[good], 0][-keep:]
+        # 見込み需要（MK-48）: 切り替えが入のターンだけ記録する（切のターンは行そのものを
+        # 足さない。読み手は記録のない行をその行の買いたい量で補う）。見込みのない記録
+        # （作り手の違う記録）は、その行の買いたい量で補って足す
+        if ctx.config.get("market.expected_demand"):
+            history = finance.setdefault("expected_demand", {})
+            seen = set()
+            for m in island.markets:
+                value = m.expected_demand if m.expected_demand is not None else m.demand
+                history[m.good] = [*history.get(m.good, []), value][-keep:]
+                seen.add(m.good)
+            for good in list(history):
+                if good not in seen:
+                    history[good] = [*history[good], 0][-keep:]
         # 商社の引き取り契約を島の作り手が引き受けられなかった量（W-307）は、買いたい量と品切れに
         # 重み 1 で足す（参入の合図。市場に出ない輸出向けの需要）
         for good, qty in island.scratch.get(offtake.UNMET, {}).items():
             for key in ("shortages", "demand"):
                 history = finance.setdefault(key, {}).setdefault(good, [0])
+                history[-1] += qty
+            # 引き取りは家計以外の注文なので、見込み需要にも同じに足す（MK-48）
+            if ctx.config.get("market.expected_demand"):
+                history = finance.setdefault("expected_demand", {}).setdefault(good, [0])
                 history[-1] += qty
 
     # --- 撤退 -------------------------------------------------------------------------
@@ -553,7 +570,8 @@ class EntryExit(IslandStage):
         imports: dict[str, int] = {}
         supplied: set[str] = set()
         rates: dict[int, int] = {}
-        missing = _missing(island.economy.finance)
+        demand, _shortages = _demand_view(island, ctx.config)
+        missing = _missing(island.economy.finance, demand)
         for f in sorted(island.facilities, key=lambda f: f.id):
             recipes = defs.facilities[f.kind]["recipes"]
             urgent = any(g in missing for r in recipes.values() for g in r["outputs"])
@@ -644,7 +662,7 @@ class EntryExit(IslandStage):
         power = config.get("power.good")
         gap = config.get("firms.entry_gap")
         finance = island.economy.finance
-        demand = finance.get("demand", {})
+        demand, _shortages = _demand_view(island, ctx.config)
         now = fac.recipe_of(defs, f)["inputs"]
         size = fac.size_of(f)  # 建て増した施設は、替えた後も規模の分だけ使い、作る（段6 A3）
         made = fac.field_goods(defs, f)  # 畑を作り替えている途中の前の作物も、作っている物と見る
@@ -658,12 +676,12 @@ class EntryExit(IslandStage):
                 or set(recipe["inputs"]) - supplied
                 or not all(g == power or any(demand.get(g, [])) for g in recipe["outputs"])
                 or any(
-                    _spare(finance, g) < qty * size - now.get(g, 0)
+                    _spare(finance, g, demand) < qty * size - now.get(g, 0)
                     for g, qty in recipe["inputs"].items()
                     if g != power and qty * size > now.get(g, 0)
                 )
                 or any(
-                    -_spare(finance, g) < qty * size * gap
+                    -_spare(finance, g, demand) < qty * size * gap
                     for g, qty in recipe["outputs"].items()
                     if g != power and g not in made and g not in (missing or ())
                 )
@@ -897,8 +915,7 @@ class EntryExit(IslandStage):
         wage = island.economy.average_wage
         rates = freight_rates.facility_rates(island, defs, config)
         typical = sum(rates.values()) // len(rates) if rates else 0
-        shortages = island.economy.finance.get("shortages", {})
-        demand = island.economy.finance.get("demand", {})
+        demand, shortages = _demand_view(island, ctx.config)
         capacity = self._capacity(island, ctx)
         uses = self._capacity(island, ctx, "inputs")
         busy = self._pipeline(island, ctx)
@@ -1181,10 +1198,9 @@ class EntryExit(IslandStage):
         prices = average_prices(island, settings["price_turns"])
         wage = island.economy.average_wage
         rates = freight_rates.facility_rates(island, defs, config)
-        shortages = island.economy.finance.get("shortages", {})
+        demand, shortages = _demand_view(island, ctx.config)
         capacity = self._capacity(island, ctx)
         uses = self._capacity(island, ctx, "inputs")
-        demand = island.economy.finance.get("demand", {})
         building = {
             g
             for x in island.facilities
@@ -1394,7 +1410,7 @@ class EntryExit(IslandStage):
         """財ごとの、市場が新たに引き取れる量の目安: 直近の買いたい量の平均 − 動いている施設の
         全力の産出 − 段階を上げている途中の農場の、上がり終えたら増える産出。"""
         defs = ctx.defs
-        demand = island.economy.finance.get("demand", {})
+        demand, _shortages = _demand_view(island, ctx.config)
         room = {g: sum(h) // len(h) for g, h in demand.items() if h}
         for g, q in self._capacity(island, ctx).items():
             room[g] = room.get(g, 0) - q
@@ -2243,8 +2259,7 @@ class EntryExit(IslandStage):
         prices = average_prices(island, settings["price_turns"])
         wage = island.economy.average_wage
         rates = freight_rates.facility_rates(island, defs, config)
-        shortages = island.economy.finance.get("shortages", {})
-        demand = island.economy.finance.get("demand", {})
+        demand, shortages = _demand_view(island, ctx.config)
         capacity = self._capacity(island, ctx)
         supplied = self._supplied(island, ctx)
         tax = island.policy.corporate_tax / BASIS
@@ -2467,23 +2482,41 @@ class EntryExit(IslandStage):
         return share * earned / deposits - payroll
 
 
-def _missing(finance: dict[str, Any]) -> set[str]:
+def _missing(finance: dict[str, Any], demand: dict[str, Any] | None = None) -> set[str]:
     """島で品切れの財: 直近 firms.price_turns ターン（記録の長さ）に1つも売りに出ず、買いたい人の
-    いた財（回4）。"""
+    いた財（回4）。demand を渡すと、その見方（見込み需要。MK-48）で買いたい人を見る。"""
     supply = finance.get("supply", {})
-    return {
-        g
-        for g, wanted in finance.get("demand", {}).items()
-        if any(wanted) and not any(supply.get(g, []))
-    }
+    if demand is None:
+        demand = finance.get("demand", {})
+    return {g for g, wanted in demand.items() if any(wanted) and not any(supply.get(g, []))}
 
 
-def _spare(finance: dict[str, Any], good: str) -> float:
-    """直近の、島の市場に売りに出た量の平均 − 買いたい量の平均（1000 分の 1）。"""
+def _spare(finance: dict[str, Any], good: str, demand: dict[str, Any] | None = None) -> float:
+    """直近の、島の市場に売りに出た量の平均 − 買いたい量の平均（1000 分の 1）。demand を渡すと、
+    その見方（見込み需要。MK-48）で買いたい量を見る。"""
     supply = finance.get("supply", {}).get(good, [])
-    demand = finance.get("demand", {}).get(good, [])
+    wanted = (demand if demand is not None else finance.get("demand", {})).get(good, [])
     average = sum(supply) / len(supply) if supply else 0.0
-    return average - (sum(demand) / len(demand) if demand else 0.0)
+    return average - (sum(wanted) / len(wanted) if wanted else 0.0)
+
+
+def _demand_view(island: IslandState, config: GameConfig) -> tuple[dict[str, Any], dict[str, Any]]:
+    """参入・作り方の見直し・建て増しが読む、買いたい量と品切れの履歴（MK-48）。
+
+    切り替え market.expected_demand が入なら、買いたい量の代わりに見込み需要（記録のない行は
+    その行の買いたい量で補う。prices.expected_series）を、品切れは見込み需要から売りに出た量を
+    引いたものを返す。切なら今までどおりの記録をそのまま返す。"""
+    finance = island.economy.finance
+    demand = finance.get("demand", {})
+    if not config.get("market.expected_demand"):
+        return demand, finance.get("shortages", {})
+    supply = finance.get("supply", {})
+    expected = {g: expected_series(finance, g, h) for g, h in demand.items()}
+    shortages = {
+        g: [max(0, e - s) for e, s in zip(hist, supply.get(g, []), strict=False)]
+        for g, hist in expected.items()
+    }
+    return expected, shortages
 
 
 def open_bank(island: IslandState, ctx: StageContext, pos: tuple[int, int], owner: str) -> Facility:
@@ -3080,7 +3113,8 @@ def state_crop_choices(
     )
     recent = turn - config.get("firms.price_turns")
     ratio = island.stats.get("food.ratio")
-    short = (ratio is not None and ratio < 1) or STAPLE in _missing(island.economy.finance)
+    demand, _shortages = _demand_view(island, config)
+    short = (ratio is not None and ratio < 1) or STAPLE in _missing(island.economy.finance, demand)
     for f, choice in EntryExit._recipe_choices(island, ctx, OWNER_STATE, crops_only=True):
         if fac.FIELDS in f.economy or f.ext.get(fac.CROP_READY, -(10**9)) > recent:
             continue
