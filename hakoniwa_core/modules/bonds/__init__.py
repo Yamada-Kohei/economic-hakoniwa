@@ -58,6 +58,7 @@ from typing import Any
 
 from hakoniwa_core import ledger
 from hakoniwa_core.config import GameConfig
+from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.diplomacy import credit
 from hakoniwa_core.economy import BONDS, Payer, banks, books, debt, funds
@@ -145,7 +146,7 @@ def yield_cap(config: GameConfig) -> int:
     return to_basis(config.get("bonds.max_yield"))
 
 
-YEAR_TURNS = 12  # 1 年のターン数（総資金需要と買い手の余力を 1 年で見る）
+YEAR_TURNS = TURNS_PER_YEAR  # 総資金需要と買い手の余力を 1 年で見る
 
 
 def rollover_need(island: IslandState, ctx: StageContext) -> dict[str, int]:
