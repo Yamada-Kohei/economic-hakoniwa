@@ -138,6 +138,29 @@ jobs:
       - name: docs/ を読む試験
         run: pytest tests/core/test_spec_design.py tests/core/test_docs_match.py
 
+  # 「更新履歴:」の行の確かめ。PR のコミットの「更新履歴:」の行は本番のお知らせに
+  # そのまま写るので、書かない理由のメモや内側の言葉（PR・コミット・試験・テスト）が
+  # 入っていたら落とす。台本自体は標準ライブラリだけなので、入れる作業は要らない。
+  changelog:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 「更新履歴:」の行の禁止語
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 tools/spec/check_changelog.py "$BASE_SHA..$HEAD_SHA"
+      - name: チェック自体の試験
+        run: |
+          pip install -e ".[dev]"
+          python3 -m pytest tests/core/test_check_changelog.py -q
+
   lint:
     needs: changes
     if: needs.changes.outputs.lint == 'true'
