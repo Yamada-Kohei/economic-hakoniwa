@@ -17,12 +17,15 @@ firms.operating_turns ターン分。国が出すときは、1つにつき国庫
 
 from __future__ import annotations
 
+from typing import Any
+
 from hakoniwa_core import facilities as fac
 from hakoniwa_core import ledger, stock, stops
 from hakoniwa_core.config import GameConfig
 from hakoniwa_core.dates import TURNS_PER_YEAR
 from hakoniwa_core.defs import Defs
 from hakoniwa_core.economy import (
+    CONSTRUCTION,
     OWNERS,
     Payer,
     banks,
@@ -277,6 +280,64 @@ def entry(
     if f is not None:
         island.log.append(LogEntry("trader_opened", {"x": spot[0], "y": spot[1]}))
     return f
+
+
+def expand(island: IslandState, ctx: Any, planned: bool) -> Facility | None:
+    """商社の建て増し（W-308。参入と撤退の段）。島で 1 ターンに 1 社まで。
+
+    扱える重さで取り逃した引き合う輸入（trade/__init__.py の _keep_missed の missed_cap。
+    お金で買えなかった分は入れない。建て増しても解けないため）が、直近 trade.entry_turns
+    ターンの半分以上のターンにあり、その儲けを年に直して、建て増しの費用（工事の資材と人手の
+    1.1 倍）と取り逃した仕入れの自己資金の和で割った利回りが、民営工場の参入と同じ線（借りる
+    金利 + firms.entry_margin）を超え、規模が trade.trader_max_size に届いていなければ、
+    建て増しの工事を始める。民営の商社は持ち主（資産を持つ層）が暮らしの分を残した預金で工事の
+    代金を出資できなければ、国営の商社は国の建設の予算が足りなければ見送る。計画経済の島では
+    建て増さない（第 1 版）。"""
+    from hakoniwa_core.economy.households import owners_spare
+    from hakoniwa_core.economy.prices import construction_cost
+    from hakoniwa_core.modules.construction import start_expansion
+    from hakoniwa_core.trade import traders  # traders.py がこのモジュールを読まないように
+
+    config, defs = ctx.config, ctx.defs
+    if planned or not config.get("trade.trader_expand") or not started(island):
+        return None
+    kind = config.get("trade.trader_facility")
+    limit = config.get("trade.trader_max_size")
+    turns = config.get("trade.entry_turns")
+    wage = island.economy.average_wage or config.get("labor.initial_wage")
+    cost = round_money(construction_cost(defs, kind, island.economy.prices, wage))
+    amount = cost + cost // 10  # 資材の値上がりに備えて 1 割多め（民営工場の工事と同じ）
+    own_share = 1 - config.get("loans.trade_ratio")
+    line = banks.entry_rate(island, defs, config)
+    for f in sorted(traders_of(island, config), key=lambda x: x.id):
+        if f.kind != kind or not f.built or "closing" in f.economy or "foreclosed" in f.economy:
+            continue
+        if fac.size_of(f) + fac.pending_expansions(island, f) >= limit:
+            continue
+        history = traders.missed_capacity(f)
+        if len(history) < turns or sum(1 for p, _ in history if p > 0) * 2 < turns:
+            continue
+        profit = sum(p for p, _ in history) // len(history)
+        missed_cost = sum(c for _, c in history) // len(history)
+        capital = amount + round_money(missed_cost * own_share)
+        if profit * TURNS_PER_YEAR / max(1, capital) <= line:
+            continue
+        owner = owner_entity(f)
+        if f.owner == OWNER_PRIVATE:
+            have = owners_spare(island, defs, config) if owner == household(OWNERS) else 0
+            if owner != household(OWNERS):
+                have = funds.available(island, Payer(owner))
+        else:
+            have = funds.available(island, Payer(ledger.GOV, CONSTRUCTION))
+        if have < amount:
+            continue
+        site = start_expansion(island, ctx, f)
+        if f.owner == OWNER_PRIVATE:
+            # 民営の工事は持ち主が出資したお金で払う（民営工場の建て増しと同じ）
+            site.ext["private_entry"] = True
+            invest(island, owner, facility_entity(site.id), amount)
+        return site
+    return None
 
 
 def _missed_pays(island: IslandState, defs: Defs, config: GameConfig) -> bool:

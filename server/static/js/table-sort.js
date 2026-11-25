@@ -31,7 +31,13 @@
     if (!m) return NaN;
     // 数の前に字が多い（「第3農場」など）ものは数に数えない（通貨の記号と括弧だけはよい）
     const before = clean.slice(0, m.index).replace(/[¥$€£₩元円(（]/g, "");
-    return before.length > 1 ? NaN : Number(m[0]);
+    if (before.length <= 1) return Number(m[0]);
+    // 通貨の名前が前に付いた金額（「大和圓1,000」「-大和圓1,000」）は、数が字の最後まで
+    // 届いていれば数に読む（後ろに字が続く名前は読まない）
+    if (m.index + m[0].length === clean.length) {
+      return (clean.startsWith("-") ? -1 : 1) * Math.abs(Number(m[0]));
+    }
+    return NaN;
   }
 
   /**

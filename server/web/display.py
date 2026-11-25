@@ -1493,6 +1493,22 @@ def _describe_trade(kind: str, payload: dict[str, Any], name: str) -> str:
         return f"{name}: 契約 {payload.get('contract')} 番（{DELIVERIES[payload['delivery']]}）"
     if kind in ("accept_contract", "cancel_contract"):
         return f"{name}: 契約 {payload.get('contract')} 番"
+    if kind == "set_contract_delivery" and payload.get("delivery") in DELIVERIES:
+        return f"{name}: 契約 {payload.get('contract')} 番（{DELIVERIES[payload['delivery']]}）"
+    if kind == "propose_contract_change":
+        parts = []
+        if payload.get("quantity") is not None:
+            parts.append(f"量 {payload['quantity']:g}")
+        if payload.get("price") is not None:
+            parts.append(f"値段 {payload['price']:,}")
+        if payload.get("indefinite"):
+            parts.append("無期限")
+        elif payload.get("turns") is not None:
+            parts.append(f"期間 {payload['turns']} ターン")
+        detail = "・".join(parts) if parts else "申し込みの取り下げ"
+        return f"{name}: 契約 {payload.get('contract')} 番（{detail}）"
+    if kind == "accept_contract_change":
+        return f"{name}: 変更 {payload.get('change')} 番"
     return _describe_policy(kind, payload, name)
 
 
@@ -2104,9 +2120,18 @@ WEIGHT_UNIT = " トン"
 WEIGHT_PRICE_STATS = ("freight.ship_rate",)
 
 
-def tons(milli: int) -> float:
-    """1000 分の 1 トンの船の荷の重さを、見せるトンに（小数第1位まで）。"""
-    return round(from_milli(milli) * get_game().defs.weight_scale(), 1)
+def tons(milli: int, good: str | None = None) -> float:
+    """1000 分の 1 トンの船の荷の重さを、見せるトンに（小数第1位まで）。
+
+    good を渡すと、その財の見せる量に重さを合わせる（その財の display_scale を掛ける）:
+    トンで数える財は今までどおり 25 倍で見せる量のトンと一致し、1 つずつ数える財
+    （自動車など、倍率 1）はゲームの重さ（量 × freight_weight）がそのまま見せる重さに
+    なる。good が無い所（複数の財の合計・船団の積める量など、財を特定できない表示）は
+    トンで数える財の倍率（weight_scale）のまま。
+    """
+    defs = get_game().defs
+    scale = defs.display_scale(good) if good is not None else defs.weight_scale()
+    return round(from_milli(milli) * scale, 1)
 
 
 def weight_price(value: float) -> float:

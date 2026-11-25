@@ -14,6 +14,7 @@ from hakoniwa_core.military import army
 from server.game import get_game
 from server.turns.services import run_turn
 from server.web import display
+from server.web import trade as trade_views
 from server.world import models as m
 from tests.server.test_phase1 import _own_island
 
@@ -276,6 +277,45 @@ def test_military_api_shows_reserve_cargo_and_capacity_in_shown_units(client, wo
     assert mine["reserve"]["food"] == 100
     fleet = mine["fleets"][0]
     assert fleet["goods"] == {"food": 100} and fleet["capacity"] == 2 * 40 * 25
+
+
+# --- 船荷の見せる重さは財ごと（1 つずつ数える財の 25 倍の直し） ---
+
+
+def test_cargo_weight_is_shown_per_good(world):
+    """船荷の見せる重さ = 見せる量 × freight_weight。トンで数える財は見せる量のトンと
+    一致し、1 つずつ数える財（自動車など）は 25 倍されない。財を特定できない表示
+    （合計・船団の積める量など）は今までどおりトンで数える財の倍率。"""
+    defs = get_game().defs
+    for good, spec in defs.goods.items():
+        weight = spec.get("freight_weight")
+        if weight is None:
+            continue
+        milli = round(weight * 1000)  # その財 1 単位ぶんの荷の重さ（1000 分の 1 トン）
+        expected = round(defs.shown_amount(good, 1) * weight, 1)
+        assert display.tons(milli, good) == pytest.approx(expected, abs=1e-9), good
+    assert display.tons(1500, "automobile") == 1.5  # 自動車 1 台（25 倍だと 37.5 トン）
+    assert display.tons(1000, "grain") == 25.0  # 穀物 1 単位 = 見せる量 25 トン
+    assert display.tons(1000) == 25.0  # 財を渡さなければ今までどおり
+
+
+def test_shipment_row_load_uses_the_goods_own_scale(world):
+    """運ぶ途中の荷の行: 自動車 10 台の荷は 15 トンと出る（25 倍の 375 トンではない）。"""
+    islands = trade_views.directory(m.World.objects.get())
+    a, b = sorted(islands)[:2]
+    s = {
+        "id": 1,
+        "from": a,
+        "to": b,
+        "kind": "contract",
+        "good": "automobile",
+        "batches": [[0, 10000]],
+        "load": 15000,
+        "loaded": 1,
+        "arrive": 3,
+    }
+    [row] = trade_views.shipment_rows([s], a, islands)
+    assert row["amount"] == 10 and row["load"] == 15.0
 
 
 def test_an_order_refused_in_a_later_stage_shows_as_failed_with_the_reason(client, world):

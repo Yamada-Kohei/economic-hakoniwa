@@ -352,6 +352,8 @@ def test_trade_pages_for_owner_and_others(client, world, page):
     elif page == "trade/contracts":
         # 買う側として受ける契約には、届いた物の行き先を選ぶ欄が付く
         assert '<select name="delivery"' in html and "届いた物は国の倉庫に置く" in html
+        # 条件の変更の申し込み欄は、有効な契約にだけ出る（この世界の契約は申し込み中）
+        assert 'data-order="propose_contract_change"' not in html
     elif page == "trade/merchant":
         assert 'id="merchant"' in html
     elif page == "fx":
@@ -370,6 +372,20 @@ def test_every_import_shortfall_reason_has_a_name():
 
     reasons = {v for k, v in vars(trade_stage).items() if k.startswith("WHY_")}
     assert reasons and reasons == set(trade_views.WHY_NAMES)
+
+
+def test_trade_screen_shows_both_reasons_when_the_order_also_went_unfilled():
+    """W-308 案 4a: 注文を出す前のわけと、板寄せで約定しきらなかったわけが違えば、両方を出す。"""
+    from hakoniwa_core.modules import trade as trade_stage
+
+    cap = trade_views.WHY_NAMES[trade_stage.WHY_CAPACITY]
+    sellers = trade_views.WHY_NAMES[trade_stage.WHY_SELLERS]
+    both = {"why": trade_stage.WHY_CAPACITY, trade_stage.MARKET_WHY: trade_stage.WHY_SELLERS}
+    text = trade_views._why_text(both)
+    assert cap in text and sellers in text
+    assert trade_views._why_text({"why": trade_stage.WHY_CAPACITY}) == cap
+    same = {"why": trade_stage.WHY_SELLERS, trade_stage.MARKET_WHY: trade_stage.WHY_SELLERS}
+    assert trade_views._why_text(same) == sellers
 
 
 def test_island_pages_link_to_trade_and_fx(client, world):
@@ -533,6 +549,8 @@ def test_trade_orders_are_accepted(client, world):
         ),
         ("accept_contract", {"contract": 1}),
         ("cancel_contract", {"contract": 1}),
+        ("propose_contract_change", {"contract": 1, "quantity": 2}),
+        ("accept_contract_change", {"change": 1}),
     ]
     # 圏を抜ける・契約をやめるは戻せない命令なので、確かめた印を付ける（UI-75）
     body = {"orders": [{"kind": k, "payload": p} for k, p in orders], "confirm": True}
@@ -657,6 +675,78 @@ def test_an_indefinite_contract_row_can_be_cancelled_and_shows_no_end():
     c["end"] = 504
     [row] = trade_views.contract_rows([c], 1, 500, islands)
     assert row["end"] == 504 and not row["can_cancel"]
+
+
+def test_contract_change_form_only_for_changeable_active_contracts():
+    """条件の変更の申し込み欄（FX-70）: 有効で、物の援助でも条約の契約でもなく、やめる命令も
+    出ていない契約にだけ出す（core の propose_change の判定に合わせる）。"""
+    islands = {1: {"name": "A", "currency": "a"}, 2: {"name": "B", "currency": "b"}}
+    base = {
+        "id": 7,
+        "seller": 2,
+        "buyer": 1,
+        "proposer": 1,
+        "good": "coal",
+        "qty": 1000,
+        "price": 10,
+        "currency": 1,
+        "turns": 12,
+        "state": "active",
+        "created": 3,
+        "start": 4,
+        "end": 16,
+        "delivered": 0,
+        "paid": 0,
+        "short": 0,
+        "delivery": "market",
+    }
+
+    def flag(**over):
+        [row] = trade_views.contract_rows([{**base, **over}], 1, 500, islands)
+        return row["can_propose_change"]
+
+    assert flag() is True
+    assert flag(state="proposed") is False
+    assert flag(state="ended") is False
+    assert flag(aid=True) is False
+    assert flag(treaty=1) is False
+    assert flag(cancelled_by=1) is False
+
+
+def test_contract_change_form_on_an_active_contract(client, world):
+    """有効な契約の行に変更の申し込み欄が出て、送ると propose_contract_change が入り、次のターンに
+    自分の変更の申し込みとして契約の行に出る。"""
+    own, second, _ = _trading_world(client)
+    body = {"orders": [{"kind": "accept_contract", "payload": {"contract": 1}}]}
+    res = client.put(f"/api/islands/{own.id}/orders", body, content_type="application/json")
+    assert res.status_code == 200, res.content.decode()
+    run_turn(force=True)
+
+    [contract] = client.get(f"/api/islands/{own.id}/trade").json()["contracts"]
+    assert contract["state"] == "active" and contract["can_propose_change"] is True
+    html = client.get(f"/islands/{own.id}/trade/contracts/").content.decode()
+    assert 'data-order="propose_contract_change"' in html
+    for name in ("contract", "quantity", "price", "turns", "indefinite"):
+        assert f'name="{name}"' in html
+
+    body = {
+        "orders": [
+            {
+                "kind": "propose_contract_change",
+                "payload": {"contract": 1, "quantity": 3, "price": 600},
+            }
+        ]
+    }
+    res = client.put(f"/api/islands/{own.id}/orders", body, content_type="application/json")
+    assert res.status_code == 200, res.content.decode()
+    assert res.json()["warnings"] == []
+    order = Order.objects.get(island=own, kind="propose_contract_change", status="pending")
+    assert order.payload == {"contract": 1, "quantity": 3, "price": 600}
+
+    run_turn(force=True)
+    [contract] = client.get(f"/api/islands/{own.id}/trade").json()["contracts"]
+    [change] = contract["changes"]
+    assert change["mine"] is True and change["quantity"] == 75.0 and change["price"] == 24
 
 
 def test_help_explains_the_export_plan_and_shop_prices(client, world):

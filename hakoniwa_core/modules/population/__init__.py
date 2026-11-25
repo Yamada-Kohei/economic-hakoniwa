@@ -135,11 +135,10 @@ def refresh_farming(defs: Defs, config: GameConfig, island: IslandState) -> None
     人数だけで毎ターン決めると、町の下限の前後のマスは人数のわずかな上下で村と町を行き来し、仕事の
     ない人が自給の農家と失業者を行き来した（LAN の写しを 30 ターン回すと、8003 島 3 の 1 マスが
     6 回入れ替わり、自給 0〜19,352 人・失業者 1〜10,093 人。quick の 1 本で 111 マス 296 回）。
-    住宅地の建ったマスは建った段階（床を足す工事でしか変わらない）で決める。村か町かは、その時々の
-    人数ではなく土地の使い方で決まる。町の段階の住宅地でも、人数が村の住宅地の上限を切ったら村に
-    戻す（_housed_farming）。住宅地のないマスは前の印を引き継ぎ、村から町へは人数が町の
-    下限に届いたときだけ移り、町の印は人がいなくなるまで残す（固定の幅は持たない）。切なら印を
-    書かず、前に書いた印は消す。"""
+    住宅地の建ったマスは建った段階（床を足す工事でしか変わらない）だけで決める（_housed_farming）。
+    村か町かは、その時々の人数ではなく土地の使い方で決まる。住宅地のないマスは前の印を引き継ぎ、
+    村から町へは人数が町の下限に届いたときだけ移り、町の印は人がいなくなるまで残す（固定の幅は
+    持たない）。切なら印を書かず、前に書いた印は消す。"""
     if not config.get("population.farming_by_housing"):
         for tile in island.tiles:
             tile.ext.pop(FARMING, None)
@@ -158,21 +157,14 @@ def refresh_farming(defs: Defs, config: GameConfig, island: IslandState) -> None
 
 
 def _housed_farming(defs: Defs, home: Facility, tile: Tile) -> bool:
-    """住宅地の建ったマスが村か（refresh_farming）。村の段階の住宅地は村。町より上の段階の住宅地は
-    町だが、人数が村の住宅地の上限（village_capacity）を切ったら村に戻し、町の下限に届いたら町に
-    する。その間は前の印のまま。どちらの線も定義（settlements）の数で、新しい数は置かない。
+    """住宅地の建ったマスが村か（refresh_farming）。建った段階だけで決め、人数は見ない（W-272 ④。
+    会議 #4108）。村の段階の住宅地は村、町より上の段階の住宅地は町。
 
-    人が減って村の住宅地に収まる数になった町では、仕事のない人は畑に戻れる（戻さないと、過疎の町の
-    失業が固定する。full の比べで、失業率の振れが入で 3 割ほど増え、自給の人数が半分ほどになった）。
-    人数がわずかに上下するだけでは、2 つの線の間を行き来しない。"""
-    if _built_farming(defs, home):
-        return True
-    if tile.population < village_capacity(defs):
-        return True
-    if tile.population > village_size(defs):
-        return False
-    before = tile.ext.get(FARMING)
-    return False if before is None else bool(before)
+    人が減った町の仕事のない人は、その場で自給の農家に数え替えるのではなく、村へ移り住んで畑に
+    戻る（帰農。population.return_to_land。Population._return_to_land）。前は人数が村の住宅地の上限を
+    切った町を村に戻していたが、48,000〜50,000 人の帯で失業が固定し、人数の線で数え方が一度に
+    変わる崖も残った。"""
+    return _built_farming(defs, home)
 
 
 def village_capacity(defs: Defs) -> int:
@@ -218,6 +210,26 @@ def subsistence_persons(
     return min(tile.population, int(max(0, unemployed) / share))
 
 
+def _to_town(defs: Defs, floor: int, upper: str | None) -> bool:
+    """床 floor に 1 足すと、村（自給の農業をする段階）から町の段階へ上がるか。"""
+    if upper is None:
+        return False
+    here = defs.settlements[fac.level_of_floor(defs, floor)]
+    return bool(here.get("subsistence")) and not defs.settlements[upper].get("subsistence")
+
+
+def _upgrade_want(defs: Defs, island: IslandState, tile: Tile, want: float, share: float) -> float:
+    """村→町の一段を決めるときの望む広さ。自給の農業で食べている人（村の仕事のない働き手とその家族）
+    の分を外す: want ×（1 − 自給の人 ÷ 人口）。自給の農家は町の仕事を求めて床を望むのではないので、
+    村に人が増えただけでは町に育てない（W-272 ④、会議 #4164。
+    housing.upgrade_without_subsistence）。"""
+    pop = tile.population
+    if pop <= 0:
+        return want
+    sub = subsistence_persons(defs, island, tile, share)
+    return want * (1 - min(sub, pop) / pop)
+
+
 # マスの ext: 自給の農家が作れる穀物の量（1000 分の 1 単位、1 ターン）。PO-63
 # （population.subsistence_sales が入のときだけ書く）。市場の段が、余りを売る量の上限に使う
 FARM_CAPACITY = "farm_capacity"
@@ -235,11 +247,12 @@ def subsistence_good(defs: Defs) -> str:
 
 
 def _land_output(
-    defs: Defs, config: GameConfig, island: IslandState, tile: Tile, people: int
+    defs: Defs, config: GameConfig, island: IslandState, tile: Tile, people: float
 ) -> int:
     """1 マスの畑で people 人の働き手が作れる量（1000 分の 1 単位）: 農場の既定の作り方の産出 ×
     肥沃度 × 気候の倍率 × min(1, 人数 ÷ 農場の働き手)。農場の働き手より多く入っても増えない
-    （土地の量で頭打ち）。"""
+    （土地の量で頭打ち）。people は端数を残したまま渡してよい（PO-63: 自給の人の働き手への
+    換算で 1 人未満を 0 に切り捨てない）。"""
     good, recipe = _farm_recipe(defs)
     workers = fac.workers_needed(defs, "farm")
     if people <= 0 or workers <= 0:
@@ -259,7 +272,10 @@ def settle_farm_capacity(defs: Defs, config: GameConfig, island: IslandState) ->
         value = 0
         if on and tile.population > 0 and _farming(defs, tile):
             persons = subsistence_persons(defs, island, tile, share)
-            value = _land_output(defs, config, island, tile, int(persons * share))
+            # 働き手への換算で端数を切り捨てない（PO-63）。int(persons * share) だと、
+            # 仕事のない働き手が 1 人いるマスでも換算が 0.9… → 0 になり、作れる量が
+            # 0 になって食べる量に届かなかった。
+            value = _land_output(defs, config, island, tile, persons * share)
         if value > 0:
             tile.ext[FARM_CAPACITY] = value
         else:
@@ -298,6 +314,41 @@ def subsistence_offer(defs: Defs, config: GameConfig, island: IslandState) -> in
         cash = to_milli(persons * clothes) * cloth // grain
         total += min(spare, cash)
     return total
+
+
+def _town_idle(
+    defs: Defs, island: IslandState, homes: dict[Pos, Facility], share: float
+) -> dict[Pos, int]:
+    """町の住宅地のマスごとの、仕事のない人とその家族の人数（帰農の候補。W-272 ④）。"""
+    out = {}
+    for pos, home in homes.items():
+        tile = island.tile(*pos)
+        if tile.population <= 0 or _built_farming(defs, home) or _farming(defs, tile):
+            continue
+        persons = min(tile.population, int(tile_jobless(defs, island, tile, share) / share))
+        if persons > 0:
+            out[pos] = persons
+    return out
+
+
+def _land_room(
+    defs: Defs, config: GameConfig, island: IslandState, tile: Tile, share: float
+) -> int:
+    """村のマスの土地が、今の自給の人に加えて食べさせられる人数（帰農の行き先の上限。W-272 ④）。
+    畑の作れる量（農場の働き手の分まで入ったとき。_land_output）から、今の自給の人の食べる分を
+    引いた残り ÷ 1 人の食べる量。今の自給の人は、人数の切り捨て（subsistence_persons の int）を
+    通さず、仕事のない働き手から割合で割り戻した端数つきの人数で引く（PO-63 の揃え: 作れる量への
+    換算の往復で端数を落とさない。subsistence_persons 自体の数え方は変えない）。切り捨てた人数で
+    引くと、端数の分だけ空きが多めに出ていた。"""
+    per = to_milli(config.get("population.food_per_person"))
+    if per <= 0:
+        return 0
+    most = _land_output(defs, config, island, tile, fac.workers_needed(defs, "farm"))
+    farmers = 0.0
+    if share > 0 and _farming(defs, tile):
+        unemployed = fac.labor_force(defs, island, tile, share) - tile.ext.get("employed", 0)
+        farmers = min(tile.population, max(0, unemployed) / share)
+    return max(0, int((most - farmers * per) // per))
 
 
 def tile_jobless(defs: Defs, island: IslandState, tile: Tile, share: float | None = None) -> int:
@@ -1104,6 +1155,8 @@ class Population(IslandStage):
         unhoused は、生まれたマスに住む所がなかった家族（回4）。ほかの人を移した後に、まだ空いている
         町へ入れる（人手の足りない所に近い町から）。上限を超えた人と入れなかった家族は、空いた町が
         なければ消えずに詰めて住む（過密。_crowd_in。回5）。
+        population.return_to_land が入なら、町の仕事のない人のうち、働き口の近くの町へ移れずに残った
+        人は、空きのある村へ移り住む（帰農。_return_to_land）。
         """
         defs, config = ctx.defs, ctx.config
         share = fac.labor_share(defs, island)
@@ -1124,6 +1177,11 @@ class Population(IslandStage):
                 if pos in homes:
                     pull[pos] = pull.get(pos, 0) + persons
         rate = config.get("population.migration_rate")
+        to_land = bool(config.get("population.return_to_land"))
+        # 帰農の候補（W-272 ④）は、就労の後・移り住みの前に町の住宅地ごとに数えておく（このターンに
+        # 移ってきた人は、次のターンの就労を経てから候補に入る）
+        idle_town = _town_idle(defs, island, homes, share) if to_land else {}
+        stayed: dict[Pos, int] = {}  # 帰農の枠: 働き口の近くの町へ移れずに残った人
         movers: list[tuple[Pos, int, bool]] = []  # (元のマス, 人数, 住む所がないか)
         for tile in island.tiles:
             pos = (tile.x, tile.y)
@@ -1150,7 +1208,9 @@ class Population(IslandStage):
             ),
         )
         left_island = 0
+        went: dict[Pos, int] = {}  # 帰農の内訳: 町の住宅地から町へ移った人
         for source, count, homeless in movers:
+            start = count
             for pos in targets:
                 if count <= 0:
                     break
@@ -1171,8 +1231,12 @@ class Population(IslandStage):
             if count > 0:
                 if homeless:
                     left_island += self._crowd_in(defs, island, homes, free, source, count)
+                elif source in idle_town:
+                    stayed[source] = stayed.get(source, 0) + count  # 帰農の枠（まだ戻さない）
                 else:
                     island.tile(*source).population += count  # 移る先がなければ元のマスに残る
+            if not homeless and source in idle_town:
+                went[source] = went.get(source, 0) + start - count
         for source, count in sorted((unhoused or {}).items(), key=lambda kv: (kv[0][1], kv[0][0])):
             for pos in targets:
                 if count <= 0:
@@ -1188,7 +1252,88 @@ class Population(IslandStage):
         if left_island:
             island.log.append(LogEntry("residents_left", {"count": left_island}))
         self._return_to_towns(island, ctx, rng, free, pull, needed)
+        if to_land:
+            self._return_to_land(island, ctx, rng, homes, free, pull, idle_town, stayed, went)
         self._flee_famine(island, ctx, rng, free)
+
+    @staticmethod
+    def _return_to_land(
+        island: IslandState,
+        ctx: StageContext,
+        rng: random.Random,
+        homes: dict[Pos, Facility],
+        free: dict[Pos, int],
+        pull: dict[Pos, int],
+        idle_town: dict[Pos, int],
+        stayed: dict[Pos, int],
+        went: dict[Pos, int] | None = None,
+    ) -> int:
+        """町の仕事のない人が、空きのある村へ移り住んで自給の農業に戻る（帰農。W-272 ④。会議 #4109。
+        population.return_to_land）。移った人数を返す。
+
+        候補は、町の住宅地に住む仕事のない人とその家族（idle_town。就労の後・移り住みの前に数えた
+        人数で、このターンに移ってきた人は入らない）のうち、働き口の近くの町へ移らずに残った人。
+        移り住みの枠は町行きと同じ population.migration_rate を共に使う（同じターンに率を二重に
+        かけない）: 働き口から遠い町は、町へ移れずに残った分（stayed）が帰農の枠、人手の足りない
+        仕事に近い町（pull がある）は、町行きがないので候補の migration_rate の割合が枠。
+        行き先は近い村（住宅地の段階が村）から、住む所の空き（free。ほかの移り住みと共用）・村の
+        ままでいられる人数（village_size）・村の土地が食べさせられる人数（_land_room）の分まで。
+        仕事の有無は条件にしない。移れなかった人は元のマスに残る。飢饉で逃れた人（fled）とは別で、
+        町へ戻る印は付けない（町に仕事ができれば、村の仕事のない人として、ふつうの移り住みで出る）。
+
+        現実でも、仕事のない都市の人は、親類の農地へ戻って食いつなぐ（2008 年の中国の出稼ぎの
+        帰郷、戦後の日本の帰農）。町の人数が線を割ったときにその場の全員を農家に数え替えるのでは
+        なく、人が移り住む流れとして時間をかけて動かす。"""
+        defs, config = ctx.defs, ctx.config
+        rate = config.get("population.migration_rate")
+        leaving = dict(stayed)
+        for pos, persons in sorted(idle_town.items(), key=lambda kv: (kv[0][1], kv[0][0])):
+            if pos in leaving or pull.get(pos, 0) <= 0 or persons <= 0:
+                continue
+            tile = island.tile(*pos)
+            count = min(tile.population, persons, _rand_round(persons * rate, rng))
+            if count > 0:
+                tile.population -= count
+                leaving[pos] = count
+        share = fac.labor_share(defs, island)
+        size = village_size(defs)
+
+        def room(pos: Pos) -> int:
+            tile = island.tile(*pos)
+            land = _land_room(defs, config, island, tile, share)
+            return max(0, min(free[pos], size - tile.population, land))
+
+        villages = [
+            pos
+            for pos in sorted(homes, key=lambda p: (p[1], p[0]))
+            if pos in free and _farming(defs, island.tile(*pos)) and room(pos) > 0
+        ]
+        moved = 0
+        for source in sorted(leaving, key=lambda p: (p[1], p[0])):
+            count = leaving[source]
+            for target in sorted(villages, key=lambda v: (distance(source, v), v[1], v[0])):
+                if count <= 0:
+                    break
+                move = min(count, room(target))
+                if move <= 0:
+                    continue
+                island.tile(*target).population += move
+                free[target] -= move
+                count -= move
+                moved += move
+            if count > 0:
+                island.tile(*source).population += count  # 移れる村がなければ元のマスに残る
+            villages = [v for v in villages if room(v) > 0]
+        # 帰農の内訳（会議 #4109）: 候補（町行きの後も町の住宅地に残る仕事のない人）、枠、移った人
+        gone = sum((went or {}).values())
+        island.stats["population.return_to_land.candidates"] = sum(idle_town.values()) - gone
+        island.stats["population.return_to_land.quota"] = sum(leaving.values())
+        island.stats["population.returned_to_land"] = moved
+        # 行き先の空き残（帰農の後に、村が受け入れられる人数の合計。詰まりが満杯か別の上限かを見る）
+        island.stats["population.return_to_land.room_left"] = sum(
+            room(pos) for pos in homes if pos in free and _farming(defs, island.tile(*pos))
+        )
+        return moved
 
     @staticmethod
     def _crowd_in(
@@ -1502,7 +1647,15 @@ class Housing(IslandStage):
             if grown < h["max_upgrades_per_turn"]:
                 land_open = self._empty_site(island, defs, kind, area) is not None
                 pos = self._growable(
-                    island, defs, homes, near, status, h["fill_ratio"], dry, land_open
+                    island,
+                    defs,
+                    homes,
+                    near,
+                    status,
+                    h["fill_ratio"],
+                    dry,
+                    land_open,
+                    share if h.get("upgrade_without_subsistence") else None,
                 )
                 if pos is not None:
                     home = homes[pos]
@@ -1812,17 +1965,22 @@ class Housing(IslandStage):
         fill_ratio: float,
         dry: set[Pos],
         land_open: bool = True,
+        share: float | None = None,
     ) -> Pos | None:
         """床を足す町のマス。住む人が望む広さで使う床が今の床の fill_ratio を超えた、最上段でない
         マス。次の段階に入るのに要る上下水道（settlements.yaml の water）が足りないマスは飛ばして
         dry に入れる（お金の経済の島だけ）。land_short の段階（高層）へは、通勤圏に空いた平地が
-        あれば（land_open）育たない（横に広がる。PO-54）。"""
+        あれば（land_open）育たない（横に広がる。PO-54）。share（labor_share）を渡すと
+        （housing.upgrade_without_subsistence）、村→町の一段だけ、望む広さから自給の人の分を外す。"""
         for pos in near:
             floor = fac.floor_of(defs, homes[pos])
             upper = fac.level_after(defs, floor)
             if upper is None:
                 continue
-            if status[pos].want < status[pos].nominal * fill_ratio:
+            want = status[pos].want
+            if share is not None and _to_town(defs, floor, upper):
+                want = _upgrade_want(defs, island, island.tile(*pos), want, share)
+            if want < status[pos].nominal * fill_ratio:
                 continue
             if upper != fac.level_of_floor(defs, floor):
                 if land_open and defs.settlements[upper].get("land_short"):
@@ -1847,6 +2005,8 @@ class Housing(IslandStage):
         引っ越すか建て替える世帯の割合）を、毎ターンの 12 分の 1 ずつ、住むマスに足す。失業している
         家計は買わない（広さの足りなさは幸福度に残る）。床は家計が買った資材から足し、足りなければ
         要る資材を economy.housing["move"]（層ごと）に書いて次のターンに買う。広すぎても売らない。
+        housing.upgrade_without_subsistence が入なら、村→町の一段は、自給の人の分を外した望みで
+        決める。
         """
         defs = ctx.defs
         spec = h["space"]
@@ -1857,6 +2017,8 @@ class Housing(IslandStage):
         housing = island.economy.housing
         held = housing["stock"]
         move: dict[str, dict[str, int]] = housing["move"]
+        without_sub = bool(h.get("upgrade_without_subsistence"))
+        share = fac.labor_share(defs, island) if without_sub else 0.0
         order = sorted(
             (pos for pos, d in status.items() if pos in homes and d.want > d.nominal),
             key=lambda p: (-(status[p].want - status[p].nominal) / status[p].want, p[1], p[0]),
@@ -1868,11 +2030,18 @@ class Housing(IslandStage):
             if not buyers or floor >= top:
                 home.ext.pop(fac.FLOOR_DUE, None)
                 continue
-            lack = (d.want - d.nominal) / spec["min"] * sum(buyers.values()) / d.want
-            # 買えていない分は年の分までためる（資材が売りに出るまでの間に積み上げすぎない）
-            due = min(home.ext.get(fac.FLOOR_DUE, 0.0) + lack * rate, lack * spec["move_rate"])
             level = fac.level_of_floor(defs, floor)
             upper = fac.level_after(defs, floor)
+            want = d.want
+            if without_sub and upper != level and _to_town(defs, floor, upper):
+                # 村→町の一段は、自給の人の分を外した望みで決める（_growable と同じ形）
+                want = _upgrade_want(defs, island, island.tile(*pos), want, share)
+                if want <= d.nominal:
+                    home.ext.pop(fac.FLOOR_DUE, None)
+                    continue
+            lack = (want - d.nominal) / spec["min"] * sum(buyers.values()) / d.want
+            # 買えていない分は年の分までためる（資材が売りに出るまでの間に積み上げすぎない）
+            due = min(home.ext.get(fac.FLOOR_DUE, 0.0) + lack * rate, lack * spec["move_rate"])
             room = top - floor
             if upper != level:  # 段階の上限にいる: 次の段階に入るのに上下水道が要る
                 if defs.settlements[upper].get("land_short") and Housing._empty_site(

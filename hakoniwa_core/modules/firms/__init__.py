@@ -481,6 +481,7 @@ class EntryExit(IslandStage):
             self._raise_grades(island, ctx)
         self._bank_entry(island, ctx)
         trade_setup.entry(island, ctx.defs, ctx.config, is_planned(ctx.defs, island), ctx.turn)
+        trade_setup.expand(island, ctx, is_planned(ctx.defs, island))  # 商社の建て増し（W-308）
         # 土木業者の参入（W-270。埋まらなかった工事が続けば、資産を持つ層が出資して開く。IN-35）
         contracts.settle_new(island, ctx.config)
         contracts.entry(island, ctx.defs, ctx.config, is_planned(ctx.defs, island))

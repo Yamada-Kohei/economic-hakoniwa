@@ -27,6 +27,15 @@ test("ますの字を数に読む（通貨・桁の区切り・%・単位・注�
   assert.equal(numberOf("0 / 20000"), 0);
 });
 
+test("通貨の名前が前に付いた金額も数に読む（W-304）", () => {
+  const { numberOf } = load();
+  assert.equal(numberOf("大和圓200"), 200);
+  assert.equal(numberOf("大和圓1,000"), 1000);
+  assert.equal(numberOf("-大和圓1,000"), -1000);
+  // 文字の並びでは「1,000」が先に来てしまうので、数として比べられること
+  assert.ok(numberOf("大和圓200") < numberOf("大和圓1,000"));
+});
+
 test("空や「-」は値なし（いつも最後）、名前は数にしない", () => {
   const { numberOf } = load();
   assert.equal(numberOf(""), null);

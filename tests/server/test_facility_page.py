@@ -197,3 +197,28 @@ def test_recipe_form_on_the_page_names_the_effects(client, owned):
     html = client.get(f"/islands/{island.id}/facilities/{farm.number}/").content.decode()
     assert 'data-order="change_recipe"' not in html and "画面からは替えられません" in html
     assert facility_page.recipe_label("school", "basic", "基本") == "基本"
+
+
+def _view_info(**over):
+    info = {
+        "kind_name": "工場",
+        "owner_name": "国営",
+        "accounting_name": "国庫直轄",
+        "built": True,
+        "workers": 10,
+        "workers_needed": 10,
+        "operating_rate": 1.0,
+        "equipment": 1.0,
+    }
+    info.update(over)
+    return info
+
+
+def test_equipment_percent_is_floored_below_100():
+    """設備の割合は 100 未満を切り捨てる（99.7% が「100%（傷んだ分は作れません）」と出ない）。"""
+    rows = {r["label"]: r["text"] for r in facility_page.view_rows(_view_info(equipment=0.997))}
+    assert rows["設備"] == "99%（傷んだ分は作れません）"
+    rows = {r["label"]: r["text"] for r in facility_page.view_rows(_view_info(equipment=1.0))}
+    assert rows["設備"] == "100%"
+    # 浮動小数の誤差で 58% が 57% にならないこと
+    assert facility_page._pct(0.58) == "58%"

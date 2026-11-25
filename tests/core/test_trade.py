@@ -537,6 +537,136 @@ def test_a_contract_order_takes_turns_or_indefinite_but_not_both(game, traded):
     assert not ok({**base, "indefinite": False})
 
 
+def test_buyer_switches_delivery_alone_and_in_transit_cargo_follows(game, traded):
+    """受け取り方の切り替え（FX-69）: 買い手だけが承諾なしに替えられ、海の上の荷の行き先も
+    書き換わる。売り手は替えられない。"""
+    world = copy.deepcopy(traded[0])
+    a, b = world.islands[1], world.islands[2]  # a が買い手、b が売り手
+    c = _indefinite(world, a, b)
+    assert contracts.delivery_of(c) == contracts.MARKET
+    sailing = {
+        "id": 999,
+        "kind": "contract",
+        "ref": c["id"],
+        "from": b.id,
+        "to": a.id,
+        "delivery": contracts.MARKET,
+    }
+    world_state(world)["shipments"].append(sailing)
+    assert contracts.set_delivery(world, b, c, contracts.WAREHOUSE) == "reason_contract_delivery"
+    assert contracts.set_delivery(world, a, c, contracts.WAREHOUSE) is None
+    assert c["delivery"] == contracts.WAREHOUSE and sailing["delivery"] == contracts.WAREHOUSE
+    assert any(e.kind == "contract_delivery_changed" for e in b.log)
+    text = format_log(
+        game.defs,
+        "contract_delivery_changed",
+        next(e for e in a.log if e.kind == "contract_delivery_changed").args,
+    )
+    assert "国の倉庫に置く" in text
+
+
+def test_contract_change_applies_only_after_acceptance(game, traded):
+    """条件の変更（FX-70）: 申し込みだけでは前の条件のまま。相手が受けると、受けたターンの
+    履行の後に新しい条件になる（期間は次のターンから数え直す）。"""
+    world = copy.deepcopy(traded[0])
+    a, b = world.islands[1], world.islands[2]
+    c = _indefinite(world, a, b)
+    turn = world.turn
+    payload = {"quantity": 3, "price": 25, "turns": 5}
+    assert contracts.propose_change(world, a, c, payload, turn) is None
+    (ch,) = contracts.changes_of(world, c["id"])
+    assert ch["qty"] == 3 * QUANTITY_SCALE and ch["price"] == 25 and ch["turns"] == 5
+    contracts.close(world, turn)  # 受けていない申し込みは効かない
+    assert c["qty"] == QUANTITY_SCALE and c["price"] == 10 and c["end"] is None
+    assert contracts.accept_change(world, a, ch, turn) == "reason_contract_party"
+    assert contracts.accept_change(world, b, ch, turn) is None
+    assert c["qty"] == QUANTITY_SCALE  # 受けたターンの履行は前の条件のまま
+    contracts.close(world, turn)
+    assert c["qty"] == 3 * QUANTITY_SCALE and c["price"] == 25
+    assert c["end"] == turn + 1 + 5 and not c["indefinite"]
+    assert contracts.changes_of(world, c["id"]) == []
+    assert any(e.kind == "contract_changed" for e in a.log)
+
+
+def test_contract_change_expires_and_cancel_blocks_changes(game, traded):
+    """受けられない申し込みは 12 ターンで消える。やめる命令を出した契約は変えられない。"""
+    world = copy.deepcopy(traded[0])
+    a, b = world.islands[1], world.islands[2]
+    c = _indefinite(world, a, b)
+    turn = world.turn
+    assert contracts.propose_change(world, a, c, {"price": 1}, turn) is None
+    contracts.close(world, turn + 12)
+    assert contracts.changes_of(world, c["id"]) == []
+    wait = game.config.get("trade.contract_cancel_turns")
+    assert contracts.cancel(world, b, c, turn, wait) is None
+    assert contracts.propose_change(world, a, c, {"price": 1}, turn) == "reason_contract_change"
+    # 取り下げ（何も書かない申し込み）は、申し込んだ本人の分だけ消える
+    c2 = _indefinite(world, a, b, good="steel")
+    assert contracts.propose_change(world, a, c2, {"price": 1}, turn) is None
+    assert contracts.propose_change(world, a, c2, {}, turn) is None
+    assert contracts.changes_of(world, c2["id"]) == []
+
+
+def test_contract_change_orders_run_through_the_trade_stage(game, traded):
+    """命令 set_contract_delivery と propose/accept_contract_change が、貿易の段の申し送りで
+    そのまま効く（命令・画面・MCP で同じ命令）。"""
+    world = copy.deepcopy(traded[0])
+    seller, buyer = world.islands[1], world.islands[2]
+    good = "building_materials"
+    stock.add(seller.warehouse, good, 200 * QUANTITY_SCALE, world.turn, game.defs.goods)
+    proposal = {
+        "partner": buyer.id,
+        "side": "sell",
+        "good": good,
+        "quantity": 2,
+        "price": buyer.economy.prices[good],
+        "turns": 12,
+    }
+
+    def offer(island):
+        return [("propose_contract", proposal)] if island is seller else []
+
+    run(game, world, 1, extra=offer)
+    (c,) = contracts.of_island(world, seller.id)
+
+    def accept(island):
+        return [("accept_contract", {"contract": c["id"]})] if island is buyer else []
+
+    run(game, world, 1, extra=accept)
+    c = contracts.find(world, c["id"])
+    assert c["state"] == contracts.ACTIVE and contracts.delivery_of(c) == contracts.MARKET
+
+    def switch(island):
+        if island is buyer:
+            return [("set_contract_delivery", {"contract": c["id"], "delivery": "warehouse"})]
+        return []
+
+    run(game, world, 1, extra=switch)
+    assert contracts.delivery_of(c) == contracts.WAREHOUSE  # 処分は単独で即時
+
+    def propose(island):
+        if island is buyer:
+            return [("propose_contract_change", {"contract": c["id"], "quantity": 5})]
+        return []
+
+    run(game, world, 1, extra=propose)
+    (ch,) = contracts.changes_of(world, c["id"])
+    assert c["qty"] == 2 * QUANTITY_SCALE  # 量は相手の了承まで前のまま
+
+    def accept_change(island):
+        return [("accept_contract_change", {"change": ch["id"]})] if island is seller else []
+
+    shipped = c["delivered"]
+    run(game, world, 1, extra=accept_change)
+    # 受けたターンの履行は前の条件（2 のまま届き）、ターンの終わりに新しい条件になる
+    assert c["delivered"] - shipped == 2 * QUANTITY_SCALE
+    assert c["qty"] == 5 * QUANTITY_SCALE
+    shipped = c["delivered"]
+    run(game, world, 1)
+    assert c["delivered"] - shipped == 5 * QUANTITY_SCALE  # 次のターンから新しい量で届く
+    assert check(world) == []
+
+
 # --- 貿易圏 ---------------------------------------------------------------------------------
 
 

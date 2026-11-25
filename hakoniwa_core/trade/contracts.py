@@ -27,6 +27,18 @@ cancelled_by（解約を申し入れた島）・short_why・short_turn（直近�
 条約の見張りが読む）・fx（直近のターンに
 外貨が足りず届かなかったとき、買い手の政府がその通貨をどこからいくら用意できたか。turn・need・
 had・reserve・market・short。どれも買い手の島で、このターンにその通貨で払う契約の分の合計）。
+
+届いた物の行き先は、買い手が命令 set_contract_delivery で結んだまま替えられます（FX-69。相手の
+承諾は要らず、命令を処理したときに海の上の荷の行き先も書き換えます。条約の契約は替えられません）。
+量・値段・期間の変更は、申し込みを相手が受けて初めて効きます（FX-70）。申し込みは
+``world.ext["trade"]["contract_changes"]`` に辞書で持ちます:
+id・contract・proposer（申し込んだ島）・
+qty・price・turns・indefinite（変えない項目は None）・created（申し込んだターン）・accepted
+（受けたターンの番号。受けていなければ None）。契約ごとに国ごとに 1 つで、出し直すと置き換わり、
+何も書かずに出すと取り下げます。受けた変更は、受けたターンの履行が前の条件で済んだ後、
+contracts.close の満期を見る前に効かせます。受けなければ 12 ターンで消えます。物の援助・条約の
+契約は条件を変えられません。やめる命令を出した契約（cancelled_by がある契約）は変更を申し込めず
+受けられず、申し込み中の変更も消えます。
 """
 
 from __future__ import annotations
@@ -196,6 +208,7 @@ def cancel(
         if contract["end"] is None or new_end < contract["end"]:
             contract["end"] = new_end
             contract.setdefault("cancelled_by", island.id)
+            drop_changes(world, contract["id"])  # やめる契約は変えられない（FX-70）
     else:
         return "reason_contract_state"
     for side in ("seller", "buyer"):
@@ -203,6 +216,197 @@ def cancel(
             LogEntry("contract_cancelled", {**_args(world, contract), "turns": wait})
         )
     return None
+
+
+def set_delivery(
+    world: WorldState, island: IslandState, contract: dict[str, Any], delivery: str
+) -> str | None:
+    """届いた物の行き先を、買い手が結んだまま替える（FX-69。相手の承諾は要らない）。
+
+    替えたとき、その契約の海の上の荷の行き先も書き換えるので、次のターンに着く荷から効く。
+    前に届いた物は動かさない。条約の契約は条約を結び直すので替えられない。"""
+    if island.id != contract["buyer"]:
+        return "reason_contract_delivery"
+    if contract["state"] != ACTIVE:
+        return "reason_contract_state"
+    if contract.get("treaty") is not None:
+        return "reason_contract_change"
+    contract["delivery"] = delivery
+    for s in world_state(world).get("shipments", []):
+        if s.get("kind") == "contract" and s.get("ref") == contract["id"]:
+            s["delivery"] = delivery
+    for side in ("seller", "buyer"):
+        world.islands[contract[side]].log.append(
+            LogEntry(
+                "contract_delivery_changed",
+                {**_args(world, contract), "delivery": delivery},
+            )
+        )
+    return None
+
+
+def changes(world: WorldState) -> list[dict[str, Any]]:
+    return world_state(world).setdefault("contract_changes", [])
+
+
+def find_change(world: WorldState, change_id: int) -> dict[str, Any] | None:
+    for ch in changes(world):
+        if ch["id"] == change_id:
+            return ch
+    return None
+
+
+def changes_of(world: WorldState, contract_id: int) -> list[dict[str, Any]]:
+    return [ch for ch in changes(world) if ch["contract"] == contract_id]
+
+
+def drop_changes(world: WorldState, contract_id: int) -> None:
+    kept = [ch for ch in changes(world) if ch["contract"] != contract_id]
+    if len(kept) != len(changes(world)):
+        world_state(world)["contract_changes"] = kept
+
+
+def _changeable(contract: dict[str, Any]) -> bool:
+    """条件を変えられる契約か（物の援助・条約の契約は変えられない。FX-70）。"""
+    return not contract.get("aid") and contract.get("treaty") is None
+
+
+def propose_change(
+    world: WorldState,
+    island: IslandState,
+    contract: dict[str, Any],
+    payload: dict[str, Any],
+    turn: int,
+) -> str | None:
+    """量・値段・期間の変更の申し込み（FX-70）。変えたい項目だけ書く。何も書かなければ自分の
+    申し込みの取り下げ。相手が受けるまで、今の条件のまま続く。"""
+    if island.id not in (contract["seller"], contract["buyer"]):
+        return "reason_contract_party"
+    fields = {key: payload.get(key) for key in ("quantity", "price", "turns", "indefinite")}
+    if all(value is None for value in fields.values()):
+        kept = [
+            ch
+            for ch in changes(world)
+            if not (ch["contract"] == contract["id"] and ch["proposer"] == island.id)
+        ]
+        world_state(world)["contract_changes"] = kept
+        return None
+    if contract["state"] != ACTIVE or not _changeable(contract):
+        return "reason_contract_change"
+    if contract.get("cancelled_by") is not None:
+        return "reason_contract_change"  # やめる命令を出した契約は変えられない
+    if fields["quantity"] is not None and fields["quantity"] <= 0:
+        return "reason_contract_change"  # 量を 0 にしたいときは、やめる命令を使う
+    change = {
+        "id": next_id(world_state(world), "contract_change"),
+        "contract": contract["id"],
+        "proposer": island.id,
+        "qty": round(fields["quantity"] * QUANTITY_SCALE)
+        if fields["quantity"] is not None
+        else None,
+        "price": fields["price"],
+        "turns": None if fields["indefinite"] else fields["turns"],
+        "indefinite": bool(fields["indefinite"]),
+        "created": turn,
+        "accepted": None,
+    }
+    kept = [
+        ch
+        for ch in changes(world)
+        if not (ch["contract"] == contract["id"] and ch["proposer"] == island.id)
+    ]
+    kept.append(change)
+    world_state(world)["contract_changes"] = kept
+    for side in ("seller", "buyer"):
+        world.islands[contract[side]].log.append(
+            LogEntry("contract_change_proposed", change_args(world, contract, change))
+        )
+    return None
+
+
+def accept_change(
+    world: WorldState, island: IslandState, change: dict[str, Any], turn: int
+) -> str | None:
+    """変更の申し込みを受ける（FX-70）。効かせるのは受けたターンの履行の後（close）で、
+    それまでは前の条件のまま。どちらかの申し込みが受けられると、両方の申し込みが消える。"""
+    contract = find(world, change["contract"])
+    if contract is None:
+        return "reason_contract_unknown"
+    if island.id not in (contract["seller"], contract["buyer"]) or island.id == change["proposer"]:
+        return "reason_contract_party"
+    if contract["state"] != ACTIVE or contract.get("cancelled_by") is not None:
+        return "reason_contract_change"
+    change["accepted"] = turn
+    kept = [
+        ch
+        for ch in changes(world)
+        if not (ch["contract"] == contract["id"] and ch["id"] != change["id"])
+    ]
+    world_state(world)["contract_changes"] = kept
+    for side in ("seller", "buyer"):
+        world.islands[contract[side]].log.append(
+            LogEntry("contract_change_accepted", change_args(world, contract, change))
+        )
+    return None
+
+
+def void_change(world: WorldState, change: dict[str, Any]) -> None:
+    """同じターンに両方の国が相手の申し込みを受けたとき、その申し込みを効かせず消す（FX-70）。"""
+    contract = find(world, change["contract"])
+    kept = [ch for ch in changes(world) if ch["id"] != change["id"]]
+    world_state(world)["contract_changes"] = kept
+    if contract is None:
+        return
+    for side in ("seller", "buyer"):
+        island = world.islands.get(contract[side])
+        if island is not None:
+            island.log.append(
+                LogEntry("contract_change_voided", change_args(world, contract, change))
+            )
+
+
+def _apply_change(
+    world: WorldState, contract: dict[str, Any], change: dict[str, Any], turn: int
+) -> None:
+    """受けた変更を効かせる（受けたターンの終わりに、満期を見る前に呼ぶ）。新しい期間は
+    次のターンから数え直す。"""
+    if change["qty"] is not None:
+        contract["qty"] = change["qty"]
+    if change["price"] is not None:
+        contract["price"] = change["price"]
+    if change["indefinite"]:
+        contract["turns"] = None
+        contract["indefinite"] = True
+        contract["end"] = None
+    elif change["turns"] is not None:
+        contract["turns"] = change["turns"]
+        contract["indefinite"] = False
+        contract["end"] = turn + 1 + change["turns"]
+    for side in ("seller", "buyer"):
+        island = world.islands.get(contract[side])
+        if island is not None:
+            island.log.append(LogEntry("contract_changed", change_args(world, contract, change)))
+
+
+def change_args(world: WorldState, c: dict[str, Any], ch: dict[str, Any]) -> dict[str, Any]:
+    """変更の申し込みのログの引数（変える項目だけ、遊び手の単位で出す）。"""
+    args: dict[str, Any] = {**_args(world, c), "change": ch["id"]}
+    proposer = world.islands.get(ch["proposer"])
+    args["proposer"] = proposer.name if proposer is not None else str(ch["proposer"])
+    # 変える項目だけ出す（契約の今の量・値段と取り違えないよう、変えない項目は外す）
+    if ch["qty"] is not None:
+        args["amount"] = from_milli(ch["qty"])
+    else:
+        args.pop("amount", None)
+    if ch["price"] is not None:
+        args["price"] = ch["price"]
+    else:
+        args.pop("price", None)
+    if ch["indefinite"]:
+        args["period"] = "indefinite"
+    elif ch["turns"] is not None:
+        args["turns"] = ch["turns"]
+    return args
 
 
 def start_from_treaty(
@@ -241,6 +445,20 @@ def start_from_treaty(
 def close(world: WorldState, turn: int) -> None:
     """期間の終わった契約を終わりにし、終わってしばらくたった契約を消す。当事者の島が世界から消えた
     有効な契約も終わりにする（無期限の契約が残り続けないように。FX-68）。"""
+    # 受けた変更は、受けたターンの履行が前の条件で済んだ後に、満期を見る前に効かせる（FX-70）
+    for ch in list(changes(world)):
+        if ch.get("accepted") is None:
+            continue
+        contract = find(world, ch["contract"])
+        kept = [x for x in changes(world) if x["id"] != ch["id"]]
+        world_state(world)["contract_changes"] = kept
+        if contract is not None and contract["state"] == ACTIVE:
+            _apply_change(world, contract, ch, turn)
+    # 受けられなかった変更の申し込みは 12 ターンか契約の終わりで消す（FX-70）
+    live = {c["id"] for c in contracts(world) if c["state"] == ACTIVE}
+    world_state(world)["contract_changes"] = [
+        ch for ch in changes(world) if ch["contract"] in live and turn - ch["created"] < KEEP_ENDED
+    ]
     keep = []
     for c in contracts(world):
         gone = c["seller"] not in world.islands or c["buyer"] not in world.islands
