@@ -3,6 +3,7 @@
 // ほかのマスを押すとそのマスの情報だけに替わる。地図を動かすと窓もマスに付いて動く。
 
 import { attachControls } from "./controls.js";
+import { changeMarks, readChangesShown, writeChangesShown } from "./changes.js";
 import { drawMinimap, minimapTile } from "./minimap.js";
 import { BARS, FILL, overlayLegend, readOverlayMode, writeOverlayMode } from "./overlays/bars.js";
 import { overlayList } from "./overlays/index.js";
@@ -56,6 +57,7 @@ const state = {
   selected: null, marked: new Set(), overlay: null, overlayMode: readOverlayMode(storage),
   sprites: new Map(), undergroundLabel: words().hidden,
   ruler: readRulerShown(storage), // 縁の目盛りと座標（UI-85）。既定は出さない
+  changes: readChangesShown(storage), changeMarks: null, // 前のターンから変わったマスの印（案3 の静止版）。既定は出さない
 };
 let pending = false;
 
@@ -283,6 +285,33 @@ async function showOverlay(id) {
 if (overlaySelect) {
   for (const o of overlays) overlaySelect.add(new Option(o.label, o.id));
   overlaySelect.addEventListener("change", () => showOverlay(overlaySelect.value));
+}
+
+// 前のターンから変わったマスの印（案3 の静止版）。材料は初めて出したときに地図の API から読む。
+// 出すかどうかは覚え、次に開いたときも使う（座標の目盛りと同じ流儀）
+const changesToggle = document.getElementById("map-changes");
+const changesLegend = document.getElementById("changes-legend");
+async function applyChanges() {
+  if (changesLegend) changesLegend.hidden = !state.changes;
+  if (state.changes && map.changed === undefined) {
+    try {
+      const extra = await fetch(`${canvas.dataset.api}?changes=1`).then((r) => r.json());
+      map.changed = extra.changed || [];
+    } catch {
+      map.changed = [];
+    }
+  }
+  state.changeMarks = state.changes ? changeMarks(map) : null;
+  redraw();
+}
+if (changesToggle) {
+  changesToggle.checked = state.changes;
+  changesToggle.addEventListener("change", () => {
+    state.changes = changesToggle.checked;
+    writeChangesShown(storage, state.changes);
+    applyChanges();
+  });
+  if (state.changes) applyChanges();
 }
 
 // 棒と塗り分けの切り替え（UI-79）。選んだ表し方は覚え、次に開いたときも使う
