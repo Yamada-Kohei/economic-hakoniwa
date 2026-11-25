@@ -248,6 +248,9 @@ sprites:
   facility/refinery@s2: sprites/facility/refinery@s2.svg
   facility/refinery@s3: sprites/facility/refinery@s3.svg
   facility/refinery@s4: sprites/facility/refinery@s4.svg
+  facility/school@s2: sprites/facility/school@s2.svg
+  facility/school@s3: sprites/facility/school@s3.svg
+  facility/school@s4: sprites/facility/school@s4.svg
   facility/steel_mill@s2: sprites/facility/steel_mill@s2.svg
   facility/steel_mill@s3: sprites/facility/steel_mill@s3.svg
   facility/steel_mill@s4: sprites/facility/steel_mill@s4.svg

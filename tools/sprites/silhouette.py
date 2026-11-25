@@ -4673,6 +4673,40 @@ SHAPES.update(
 )
 
 
+def school(t):
+    """学校の建て増し（FM-47）。名前のままの絵の姿（クリームの校舎と白い時計塔）を保ち、
+    段が上がるほど校舎の棟を増やして背を高くする。段 2 は切妻の体育館が別棟で増える。"""
+    roof = "#7f97ad"  # 名前のままの絵の校舎の屋根の色
+    tower_roof = "#4f6f8f"  # 時計塔と体育館の屋根の色
+    if t == 2:
+        return [
+            box(0.10, 0.13, 0.44, 0.86, 0, 18, CREAM, roof),
+            box(0.46, 0.52, 0.90, 0.86, 0, 18, CREAM, roof),
+            box(0.48, 0.14, 0.90, 0.46, 0, 11, WHITE),
+            gable(0.48, 0.14, 0.90, 0.46, 11, 5, "u", tower_roof, WHITE),
+            box(0.24, 0.38, 0.35, 0.49, 18, 12, WHITE),
+            hip(0.24, 0.38, 0.35, 0.49, 30, 7, tower_roof),
+        ]
+    if t == 3:
+        return [
+            box(0.08, 0.10, 0.40, 0.88, 0, 22, CREAM, roof),
+            box(0.40, 0.10, 0.92, 0.40, 0, 22, CREAM, roof),
+            box(0.54, 0.50, 0.92, 0.88, 0, 22, CREAM, roof),
+            box(0.42, 0.54, 0.54, 0.86, 0, 16, CREAM, roof),
+            box(0.21, 0.36, 0.33, 0.48, 22, 14, WHITE),
+            hip(0.21, 0.36, 0.33, 0.48, 36, 8, tower_roof),
+        ]
+    # 段 4: 敷地いっぱいに 3 棟と講堂、時計塔も高く
+    return [
+        box(0.06, 0.08, 0.38, 0.90, 0, 26, CREAM, roof),
+        box(0.38, 0.08, 0.94, 0.38, 0, 26, CREAM, roof),
+        box(0.58, 0.46, 0.94, 0.90, 0, 26, CREAM, roof),
+        box(0.40, 0.52, 0.58, 0.88, 0, 19, CREAM, roof),
+        box(0.19, 0.34, 0.32, 0.47, 26, 16, WHITE),
+        hip(0.19, 0.34, 0.32, 0.47, 42, 9, tower_roof),
+    ]
+
+
 SIZE_TIERS = {
     "steel_mill": steel_mill,
     "machinery_plant": machinery_plant,
@@ -4689,6 +4723,7 @@ SIZE_TIERS = {
     "copper_smelter": copper_smelter,
     "electronics_plant": electronics_plant,
     "missile_plant": missile_plant,
+    "school": school,
 }
 for _name, _tiers in SIZE_TIERS.items():
     for _t in (2, 3, 4):
