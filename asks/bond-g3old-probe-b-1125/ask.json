@@ -1,0 +1,139 @@
+{
+ "name": "bond-g3old-probe-b-1125",
+ "commit": "e9193be44bdd1b8f6bc79e9d8bbb3a184a4f2858",
+ "pool": "any",
+ "files": [
+  "bond_c3_run.py",
+  "bond_c_probe.py"
+ ],
+ "patches": [
+  "bonds-g3old-on.diff"
+ ],
+ "runs": [
+  {
+   "name": "g3old-ind-s3",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "3",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--exchange",
+    "--cap",
+    "--austerity",
+    "--out",
+    "g3old-ind-s3.jsonl.gz"
+   ],
+   "summary": [
+    "g3old-ind-s3.jsonl.gz",
+    "g3old-ind-s1.gate.json",
+    "g3old-ind-s1.quick-check.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "g3old-ind-s4",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "4",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--exchange",
+    "--cap",
+    "--austerity",
+    "--out",
+    "g3old-ind-s4.jsonl.gz"
+   ],
+   "summary": [
+    "g3old-ind-s4.jsonl.gz",
+    "g3old-ind-s1.gate.json",
+    "g3old-ind-s1.quick-check.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "g3old-ind-s5",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "5",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--exchange",
+    "--cap",
+    "--austerity",
+    "--out",
+    "g3old-ind-s5.jsonl.gz"
+   ],
+   "summary": [
+    "g3old-ind-s5.jsonl.gz",
+    "g3old-ind-s1.gate.json",
+    "g3old-ind-s1.quick-check.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "g3old-plan-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "2",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--exchange",
+    "--cap",
+    "--austerity",
+    "--out",
+    "g3old-plan-s2.jsonl.gz"
+   ],
+   "summary": [
+    "g3old-plan-s2.jsonl.gz",
+    "g3old-ind-s1.gate.json",
+    "g3old-ind-s1.quick-check.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "g3old-plan-s3",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "3",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--exchange",
+    "--cap",
+    "--austerity",
+    "--out",
+    "g3old-plan-s3.jsonl.gz"
+   ],
+   "summary": [
+    "g3old-plan-s3.jsonl.gz",
+    "g3old-ind-s1.gate.json",
+    "g3old-ind-s1.quick-check.json"
+   ],
+   "large": []
+  }
+ ]
+}
