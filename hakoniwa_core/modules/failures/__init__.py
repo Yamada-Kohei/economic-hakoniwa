@@ -315,10 +315,7 @@ def rescue_room(island: IslandState, ctx: StageContext) -> int:
     from hakoniwa_core.economy.debt import due
 
     fiscal = ctx.config.get("fiscal")
-    order = funds.groups(fiscal["payment_order"])
-    last = fiscal.get("rescue_after")
-    ends = [i for i, group in enumerate(order) if last in group]
-    items = [item for group in order[: ends[0] + 1] for item in group] if ends else []
+    items = funds.must_items(fiscal)
     spent = funds.spent(island)
     keep = sum(spent.get(item, 0) for item in items if item != BONDS)
     if BONDS in items:

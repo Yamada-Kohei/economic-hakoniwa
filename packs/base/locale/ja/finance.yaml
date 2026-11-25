@@ -52,6 +52,7 @@ bond_interest: 国債の利払い
 bond_redemption: 国債の償還
 bond_trade: 国債の売買
 bond_default: 国債の不履行
+bond_restructured: 国債の組み替え
 layer_transfer: 層の移動
 housing_rent: 国の床の家賃
 wage_arrears: 賃金の未払い

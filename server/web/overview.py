@@ -20,6 +20,7 @@ from hakoniwa_core import facilities as fac
 from hakoniwa_core import politics as core_politics
 from hakoniwa_core.economy import books, is_seized, is_stopped, power_fuel_notice, retail
 from hakoniwa_core.economy import plan as planning
+from hakoniwa_core.modules.bonds import yield_cap
 from hakoniwa_core.modules.population import still_hungry
 from hakoniwa_core.naming import facility_name
 from hakoniwa_core.state import (
@@ -499,7 +500,7 @@ def _alerts(
     公定価格になる）。"""
     out = []
     if yields and yields["yield_capped"]:
-        maximum = get_game().config.get("bonds.max_yield") * 100
+        maximum = yield_cap(get_game().config) / 100
         out.append(
             Alert(
                 "yield_capped",

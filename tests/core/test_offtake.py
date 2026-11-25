@@ -20,6 +20,7 @@ from hakoniwa_core.modules import market
 from hakoniwa_core.state.generate import generate_world
 from hakoniwa_core.trade import money as fxmoney
 from hakoniwa_core.trade import offtake, traders
+from hakoniwa_core.units import QUANTITY_SCALE
 from tests.core.test_trade import _context, run
 
 TURNS = 12
@@ -207,3 +208,126 @@ def test_contract_follows_sustained_exports_and_the_capped_part_signals_investme
     island.scratch.pop(offtake.UNMET, None)
     offtake.propose(island, on.defs, on.config, world.turn + 1)
     assert island.scratch[offtake.UNMET]["coal"] >= 700
+
+
+def test_contract_cargo_is_not_dumped_into_the_bloc(on, base):
+    """契約を結んだ商社の輸出の荷は、圏で売れ残りが続いても指値なしで売らず、仕入れ値を下限に売る
+    （会議 #4536 の案 a。契約の余りを投げ売りすると、圏の値段が下がって契約のない輸出の島が
+    抜けた）。契約のない商社は今までどおり、売れ残りが clearance_turns 続けば指値を外す。"""
+    from hakoniwa_core.modules import trade as trade_stage
+    from hakoniwa_core.trade import blocs
+    from tests.core.test_trade import _context
+
+    world = copy.deepcopy(base)
+    island, c = with_contract(world)
+    f = next(x for x in island.facilities if x.id == c["trader"])
+    [bloc, *_] = blocs.member_of(world, island.id)
+    item = traders.entry(f, "coal")
+    clearance = on.config.get("trade.clearance_turns")
+    item.update({"dir": traders.EXPORT, "bx": bloc["id"], "age": clearance})
+    if stock.total(f.stock, "coal") <= 0:
+        stock.add(f.stock, "coal", 10 * QUANTITY_SCALE, world.turn, on.defs.goods)
+    item["held"] = [stock.total(f.stock, "coal"), item["held"][1] or 1]
+
+    def order_of():
+        r = trade_stage._Round(world, _context(on, world))
+        members = [m for m in bloc["members"] if m in r.islands]
+        _, sells, _, asks = r._bloc_orders(bloc, members, "coal", {}, {})
+        return [o for o, a in zip(sells, asks, strict=True) if a.facility is f]
+
+    [order] = order_of()
+    assert order.limit is not None and order.limit > 0
+    offtake.contracts(island)[:] = [x for x in offtake.contracts(island) if x["trader"] != f.id]
+    [order] = order_of()
+    assert order.limit is None
+
+
+def _craft_bloc_imports(on, world):
+    """圏の石炭の輸入の場面: 島 2（石炭を作る施設がない）の商社はもともと輸入していて、島 1・5
+    （建った炭鉱がある）の商社を輸入に仕立てる。指値が圏の値幅の上端に届くよう、島の石炭の
+    値段と決済通貨の持ちをそろえる。"""
+    from hakoniwa_core import ledger
+    from hakoniwa_core.economy import entity_of
+    from hakoniwa_core.trade import blocs
+
+    [bloc, *_] = blocs.member_of(world, 2)
+    for iid in (1, 5):
+        island = world.islands[iid]
+        assert any(
+            g.built and "coal" in fac.outputs_of(on.defs, g) for g in island.facilities
+        )  # 作る施設のある島
+        f = next(x for x in island.facilities if x.kind == "trading")
+        item = traders.entry(f, "coal")
+        item.update(
+            {"dir": traders.IMPORT, "bm": bloc["id"], "m": 10_000 * iid, "hold": 10_000 * iid}
+        )
+        item["held"] = [0, 0]
+        island.economy.prices["coal"] = 93_190
+        fxmoney.transfer(
+            world,
+            bloc["currency"],
+            (bloc["currency"], ledger.CB),
+            (iid, entity_of(on.config, f)),
+            2_000_000_000,
+            "trade",
+        )
+    assert not any(
+        g.built and "coal" in fac.outputs_of(on.defs, g) for g in world.islands[2].facilities
+    )  # 島 2 は作る施設のない島（輸入に頼る島）
+    return bloc
+
+
+def _bloc_buy_orders(on, world, bloc):
+    from hakoniwa_core.modules import trade as trade_stage
+
+    r = trade_stage._Round(world, _context(on, world))
+    members = [m for m in bloc["members"] if m in r.islands]
+    buys, _, bids, _ = r._bloc_orders(bloc, members, "coal", {}, {})
+    return buys, bids
+
+
+def test_import_first_lifts_priority_of_islands_without_a_maker(on, base, monkeypatch):
+    """trade.offtake.import_first（W-307 の cfB。会議 #4742）: 切では輸入注文の優先は変わらない。
+    入れると、その財を作る建った施設のない島（輸入に頼る島）の輸入注文だけ、優先が 1 上がる。"""
+    world = copy.deepcopy(base)
+    bloc = _craft_bloc_imports(on, world)
+    buys, bids = _bloc_buy_orders(on, world, bloc)
+    orders = {b.island: o for o, b in zip(buys, bids, strict=True)}
+    assert {1, 2, 5} <= set(orders)
+    assert all(o.priority == 0 for o in orders.values())  # 切（既定）
+    monkeypatch.setitem(on.config.raw["trade"]["offtake"], "import_first", True)
+    buys, bids = _bloc_buy_orders(on, world, bloc)
+    orders = {b.island: o for o, b in zip(buys, bids, strict=True)}
+    assert orders[2].priority == 1  # 作る施設のない島だけ上がる
+    assert orders[1].priority == 0 and orders[5].priority == 0
+
+
+def test_import_first_fills_import_dependent_islands_first(on, base, monkeypatch):
+    """入のとき、圏の売りが足りなければ、作る施設のない島の輸入注文が先に全部約定し、作る施設の
+    ある島は残りを量に比例で分ける（板寄せは優先の高い順、同じ優先の中は量に比例）。"""
+    from hakoniwa_core.market import auction
+    from hakoniwa_core.market.auction import Order
+    from hakoniwa_core.trade import blocs
+    from hakoniwa_core.units import to_basis
+
+    monkeypatch.setitem(on.config.raw["trade"]["offtake"], "import_first", True)
+    world = copy.deepcopy(base)
+    bloc = _craft_bloc_imports(on, world)
+    buys, bids = _bloc_buy_orders(on, world, bloc)
+    qty = {b.island: o.quantity for o, b in zip(buys, bids, strict=True)}
+    # 売りは、作る施設のない島の分と、作る施設のある島の分の半分だけ
+    supply = qty[2] + (qty[1] + qty[5]) // 2
+    result = auction.clear(
+        buys,
+        [Order(supply, None)],
+        blocs.reference(world, bloc, "coal"),
+        to_basis(on.config.get("trade.bloc_band")),
+    )
+    bought = {b.island: got for b, got in zip(bids, result.bought, strict=True)}
+    assert bought[2] == qty[2]  # 輸入に頼る島が先に全部
+    rest = supply - bought[2]
+    assert bought[1] + bought[5] == rest  # 残りは作る施設のある島で
+    total = qty[1] + qty[5]
+    for iid in (1, 5):  # 量に比例（割り切れない余りは 1 まで）
+        share = qty[iid] * rest // total
+        assert share <= bought[iid] <= share + 1
