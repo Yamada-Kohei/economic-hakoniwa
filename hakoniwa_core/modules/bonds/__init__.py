@@ -15,7 +15,11 @@
    銀行は見込みの損が自己資本の余りを超える分を買わない（rollover_need・holding_cap。設計 BK-53）。
    bonds.default_exchange が入なら、直近 bonds.default_exclusion_turns ターンに不履行の無いときの
    足りない分の不履行は、切り捨ての代わりに市中の国債をまとめて額面を減らした国債のラダーに
-   組み替える（_restructure。設計 BK-54）。
+   組み替える（_restructure。設計 BK-54）。bonds.restructure_cap も入なら、組み替えの切り下げを
+   銀行ごとに、切り下げ後の自己資本が最低線（規制の比率 × 融資。瞬間の融資で固定）を下回らない
+   分までに抑え、止めた分は期間の延長・利率の引き下げ・今の扱いで受けて記録に残す（G3a。設計
+   BK-55）。bonds.coupon_austerity も入なら、利払いに国庫が足りないときも、元本の不足のときと
+   同じく削れる支出の取り置きを先に使って払い、残りの不足だけを払わない（G3c。設計 BK-55）。
 5. 銘柄ごとに利子を払い、満期の銘柄は額面を返して消す。不履行は命令 set_bond_payment で選んだとき
    だけ: 中央銀行以外の額面を bonds.haircut だけ切り下げ（持ち手の損）、残りを同じ期間で出し直す。
    切り下げた額が 0 なら新しい罰は付けない。不履行の記録は
@@ -219,6 +223,24 @@ def holding_cap(island: IslandState, ctx: StageContext, bank: str) -> int | None
     worth = banks.net_worth(island, ctx.config, bank, ctx.turn)
     spare = max(0, worth - int(banks.regulatory(ctx.config) * banks.loans_of(island, bank)))
     return int(spare / (ctx.config.get("bonds.haircut") * u))
+
+
+def capped_cut(capital_before: int, line_at: Any, holdings: int, intended: int) -> int:
+    """切り下げの上限（国債の会議 G3a、#5034・#5039。設計 BK-55）: 切り下げた後の自己資本が
+    最低線を下回らない最大の切り下げ額。line_at は「切り下げ額 → その額まで切った後の最低線」。
+    今のコードでは最低線の分母は融資だけ（capital_ratio）なので、切り下げの瞬間に線は動かず
+    line_at は一定だが、式は線が動く一般形で解く（線が切り下げ額に対して増えもしない前提で、
+    切り下げ後の自己資本は単調に下がるので二分で解ける）。持ち高と本来の切り下げ額も上限に
+    する。線は瞬間の融資で固定する（決定 #5039 の 1。保守側）。"""
+    top = max(0, min(intended, holdings))
+    lo, hi = 0, top
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if capital_before - mid >= line_at(mid):
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo
 
 
 def rollover_crisis(island: IslandState, ctx: StageContext) -> bool:
@@ -590,6 +612,62 @@ class Bonds(WorldStage):
             return True
         return ctx.turn - last > ctx.config.get("bonds.default_exclusion_turns")
 
+    def _restructure_cap(self, island: IslandState, ctx: StageContext) -> dict[str, Any]:
+        """G3a の上限の材料（国債の会議 #5039・#5041。設計 BK-55）: 銀行ごとに、切り下げる前の
+        自己資本・最低線（規制の比率 × 融資、瞬間の融資で固定）・その差・この島の国債の持ち高・
+        本来の切り下げ額・線で解いた許せる切り下げ額と、預金の額と融資を止めているかを数える。
+        あわせて、一律の率で下げる場合の物差し h_max（銀行ごとの「余り ÷ 持ち高」の最小値。
+        銀行の持ち手が無ければ設定の切り下げ率＝上限なし）を返す。
+
+        止めた分の受け方は、銀行の組で分ける: 線より上に資本のある銀行は期間の延長（ラダーに
+        乗せる）、線以下だが自己資本が残っている銀行は利率の引き下げ（止めた分だけ利率を
+        bonds.haircut の割合で下げたラダーに替える）、切る前から自己資本が 0 以下の銀行
+        （h_max = 0 の組、#5042 の 2）は今の扱いに残す。"""
+        haircut = to_basis(ctx.config.get("bonds.haircut"))
+        ratio = banks.regulatory(ctx.config)
+        intended: dict[str, int] = {}
+        holdings: dict[str, int] = {}
+        for bond in sorted(island.bonds, key=lambda b: b.id):
+            for holder, face in sorted(debt.holders(island, bond).items()):
+                if holder == ledger.CB or face <= 0 or not ledger.is_bank(holder):
+                    continue
+                holdings[holder] = holdings.get(holder, 0) + face
+                intended[holder] = intended.get(holder, 0) + part(face, haircut)
+        records: list[dict[str, Any]] = []
+        allowance: dict[str, int] = {}
+        h_max: float | None = None
+        for bank in sorted(holdings):
+            capital = banks.net_worth(island, ctx.config, bank, ctx.turn)
+            line = int(ratio * banks.loans_of(island, bank))
+            held_face = holdings[bank]
+            want = intended[bank]
+            allowance[bank] = capped_cut(capital, lambda _x, line=line: line, held_face, want)
+            own_hmax = max(0, capital - line) / held_face if held_face > 0 else 0.0
+            h_max = own_hmax if h_max is None else min(h_max, own_hmax)
+            group = "nocap" if capital <= 0 else ("rate" if capital <= line else "line")
+            records.append(
+                {
+                    "bank": bank,
+                    "capital_before": capital,
+                    "min_line": line,
+                    "gap": capital - line,
+                    "holdings": held_face,
+                    "h_max": own_hmax,
+                    "intended": want,
+                    "actual": 0,
+                    "stopped": 0,
+                    "group": group,
+                    "deposits": banks.deposits_of(island, bank),
+                    "lending_stopped": banks.lending_stopped(island, bank, ctx.turn),
+                }
+            )
+        return {
+            "allowance": allowance,
+            "actual": {},
+            "records": records,
+            "h_max": float(ctx.config.get("bonds.haircut")) if h_max is None else h_max,
+        }
+
     def _restructure(
         self,
         island: IslandState,
@@ -611,9 +689,18 @@ class Bonds(WorldStage):
 
         替えた後は市中の満期がラダーの最初の満期まで来ないので、締め出しの間に満期のたびにまた
         不履行になるくり返しが起きない。不履行の罰は 1 回だけ付ける（締め出しを始めていなければ
-        始める）。lost はこのターンにすでに払わなかった額（同じ罰に入れる）。切り下げた額を返す。"""
+        始める）。lost はこのターンにすでに払わなかった額（同じ罰に入れる）。切り下げた額を返す。
+
+        bonds.restructure_cap が入なら G3a（設計 BK-55）: 銀行ごとの切り下げを、切り下げ後の
+        自己資本が最低線を下回らない分までに抑える（_restructure_cap）。止めた分は、銀行の組に
+        応じて期間の延長（ふつうのラダー）・利率の引き下げ（利率を下げたラダー）・今の扱い
+        （ふつうのラダーに替えるが、受け方としては「残した額」に数える）で受け、組み替えごとに
+        記録に残す。銀行以外の持ち手は今までどおり切る。"""
         haircut = to_basis(ctx.config.get("bonds.haircut"))
         terms = ctx.defs.bond_terms()
+        cap = (
+            self._restructure_cap(island, ctx) if ctx.config.get("bonds.restructure_cap") else None
+        )
         swaps: list[tuple[Bond, str, int]] = []  # 替える銘柄・持ち手・切り下げた後の額面
         cut_total = 0
         for bond in sorted(island.bonds, key=lambda b: b.id):
@@ -621,6 +708,10 @@ class Bonds(WorldStage):
                 if holder == ledger.CB or face <= 0:
                     continue
                 cut = part(face, haircut)
+                if cap is not None and holder in cap["allowance"]:
+                    cut = min(cut, cap["allowance"][holder])
+                    cap["allowance"][holder] -= cut
+                    cap["actual"][holder] = cap["actual"].get(holder, 0) + cut
                 if cut > 0:
                     self._cut(island, bond, holder, cut, hit)
                 cut_total += cut
@@ -637,18 +728,34 @@ class Bonds(WorldStage):
             longest + 1,
             TURNS_PER_YEAR,
         )
-        new: list[Bond] = []
-        for turns in ladder:
-            rate = max(0, ctx.formula("bond_yield")(island, turns, ctx) - delta)
-            new.append(debt.issue_bond(island, 0, turns, rate, ctx.turn))
-        for bond, holder, rest in swaps:
-            share = rest // len(new)
-            parts = tuple(
-                (target, share if i < len(new) - 1 else rest - share * (len(new) - 1))
-                for i, target in enumerate(new)
-            )
-            held = debt.holders(island, bond)[holder]
-            for target, face in parts:
+        rates = [max(0, ctx.formula("bond_yield")(island, turns, ctx) - delta) for turns in ladder]
+        new: list[Bond] = [
+            debt.issue_bond(island, 0, turns, rate, ctx.turn)
+            for turns, rate in zip(ladder, rates, strict=True)
+        ]
+        # G3a: 利率の引き下げで受ける分（線以下だが自己資本の残っている銀行の、止めた分）は、
+        # 利率を bonds.haircut の割合だけ下げた同じラダーに替える
+        received: dict[str, int] = {"extended": 0, "rate_cut": 0, "left": 0}
+        low_left: dict[str, int] = {}
+        if cap is not None:
+            for record in cap["records"]:
+                record["actual"] = cap["actual"].get(record["bank"], 0)
+                record["stopped"] = record["intended"] - record["actual"]
+                if record["group"] == "rate" and record["stopped"] > 0:
+                    low_left[record["bank"]] = record["stopped"]
+        low: list[Bond] = []
+        if low_left:
+            low = [
+                debt.issue_bond(island, 0, turns, rate - part(rate, haircut), ctx.turn)
+                for turns, rate in zip(ladder, rates, strict=True)
+            ]
+
+        def distribute(bond: Bond, holder: str, amount: int, targets: list[Bond], held: int) -> int:
+            """持ち手の額面 amount を、ラダー targets に同じ額ずつ替える（端数は最後の銘柄へ）。
+            取得原価の移しに使う held（替える前の持ち高）の残りを返す。"""
+            share = amount // len(targets)
+            for i, target in enumerate(targets):
+                face = share if i < len(targets) - 1 else amount - share * (len(targets) - 1)
                 if face <= 0:
                     continue
                 if (
@@ -668,23 +775,62 @@ class Bonds(WorldStage):
                     "bond_restructured",
                 )
                 target.face += face
+            return held
+
+        for bond, holder, rest in swaps:
+            held = debt.holders(island, bond)[holder]
+            low_part = min(rest, low_left.get(holder, 0))
+            if low_part > 0:
+                low_left[holder] -= low_part
+                held = distribute(bond, holder, low_part, low, held)
+            if rest - low_part > 0:
+                held = distribute(bond, holder, rest - low_part, new, held)
         island.bonds = [b for b in island.bonds if debt.outstanding(island, b) > 0]
-        island.log.append(
-            LogEntry(
-                "bond_restructured",
-                {
-                    "principal": principal,
-                    "raised": raised,
-                    "amount": cut_total + swapped,
-                    "cut": cut_total,
-                    "rate_low": new[0].rate * 100 / BASIS,
-                    "rate_high": new[-1].rate * 100 / BASIS,
-                },
-            )
-        )
+        args: dict[str, Any] = {
+            "principal": principal,
+            "raised": raised,
+            "amount": cut_total + swapped,
+            "cut": cut_total,
+            "rate_low": new[0].rate * 100 / BASIS,
+            "rate_high": new[-1].rate * 100 / BASIS,
+        }
         stats = island.scratch.setdefault("bond_stats", {})
         stats["restructured"] = stats.get("restructured", 0) + swapped
         stats["restructure_cut"] = stats.get("restructure_cut", 0) + cut_total
+        if cap is not None:
+            # 止めた分の受け方の集計（銀行の組ごと: line → 期間の延長、rate → 利率の引き下げ、
+            # nocap → 今の扱いに残す。#5042 の 2 で、自己資本 0 以下の組は分けて数える）
+            for record in cap["records"]:
+                key = {"line": "extended", "rate": "rate_cut", "nocap": "left"}[record["group"]]
+                received[key] += record["stopped"]
+            stats["restructure_stopped"] = stats.get("restructure_stopped", 0) + sum(
+                received.values()
+            )
+            stats["restructure_extended"] = (
+                stats.get("restructure_extended", 0) + received["extended"]
+            )
+            stats["restructure_rate_cut"] = (
+                stats.get("restructure_rate_cut", 0) + received["rate_cut"]
+            )
+            stats["restructure_left"] = stats.get("restructure_left", 0) + received["left"]
+            stats["restructure_stopped_nocap"] = stats.get("restructure_stopped_nocap", 0) + sum(
+                r["stopped"] for r in cap["records"] if r["group"] == "nocap"
+            )
+            stats["restructure_hmax"] = cap["h_max"]
+            stats.setdefault("restructure_banks", []).extend(cap["records"])
+            all_rates = [b.rate for b in new + low]
+            args.update(
+                {
+                    "stopped": sum(received.values()),
+                    "extended": received["extended"],
+                    "rate_cut": received["rate_cut"],
+                    "left": received["left"],
+                    "h_max": cap["h_max"] * 100,
+                    "rate_low": min(all_rates) * 100 / BASIS,
+                    "rate_high": max(all_rates) * 100 / BASIS,
+                }
+            )
+        island.log.append(LogEntry("bond_restructured", args))
         self._penalize(island, ctx, lost + cut_total, hit, shortfall=True)
         return cut_total
 
@@ -747,6 +893,39 @@ class Bonds(WorldStage):
         bond.face = debt.outstanding(island, bond)
         return False
 
+    def _release_cuttable(
+        self, island: IslandState, ctx: StageContext, payer: Payer, gap: int
+    ) -> int:
+        """G3c（国債の会議 #5030・#5039。設計 BK-55）: 利払いに国庫が足りないときも、元本の
+        不足のとき（_roll_over の緊縮）と同じ順序で、削れる支出の取り置きを先に使う。支払いの
+        順番の後ろの項目（fiscal.rescue_after の組より後ろ＝先に払う項目でないもの、国債の
+        項目自身は除く）の取り置きの残りを、後ろの項目から gap まで崩して国庫の自由なお金に
+        戻す。崩した額は緊縮（bond_stats の austerity）として数え、内訳に coupon_austerity
+        でも残す。崩した額を返す。"""
+        if gap <= 0:
+            return 0
+        state = funds.fiscal_state(island)
+        reserved, used = state["reserved"], state["used"]
+        must = set(funds.must_items(ctx.config.get("fiscal")))
+        freed = 0
+        for item in reversed(funds.items(ctx.config.get("fiscal.payment_order"))):
+            if gap <= 0:
+                break
+            if item in must or item == BONDS:
+                continue
+            room = max(0, reserved.get(item, 0) - used.get(item, 0))
+            take = min(gap, room)
+            if take <= 0:
+                continue
+            reserved[item] = reserved.get(item, 0) - take
+            gap -= take
+            freed += take
+        if freed:
+            stats = island.scratch.setdefault("bond_stats", {})
+            stats["austerity"] = stats.get("austerity", 0) + freed
+            stats["coupon_austerity"] = stats.get("coupon_austerity", 0) + freed
+        return freed
+
     def _pay(self, island: IslandState, ctx: StageContext, payer: Payer) -> None:
         unpaid: list[Bond] = []
         redeemed: dict[int, int] = {}  # 期間（ターン）→ 償還した額面
@@ -762,6 +941,13 @@ class Bonds(WorldStage):
                 self._restructure(island, ctx, hit, 0, 0, 0)
                 interest = debt.interest_due(island, bond, ctx.turn)
                 due = sum(interest.values()) + (debt.outstanding(island, bond) if mature else 0)
+            if (
+                crisis
+                and due > funds.available(island, payer)
+                and ctx.config.get("bonds.coupon_austerity")
+            ):
+                # G3c: 払わない前に、削れる支出の取り置きを先に使う（残りの不足だけ払わない）
+                self._release_cuttable(island, ctx, payer, due - funds.available(island, payer))
             if crisis and due > funds.available(island, payer):
                 mature = self._short_pay(island, ctx, payer, bond, interest, mature, short, hit)
             elif due > funds.available(island, payer):
@@ -1447,6 +1633,15 @@ class Bonds(WorldStage):
         stats["bonds.rollover_default"] = extra.get("rollover_default", 0)
         stats["bonds.restructured"] = extra.get("restructured", 0)  # 組み替えで替えた額（G2）
         stats["bonds.restructure_cut"] = extra.get("restructure_cut", 0)  # 組み替えで切り下げた額
+        # G3a（設計 BK-55）: 上限で止めた額と受け方の内訳、自己資本 0 以下の組の止めた額、h_max
+        stats["bonds.restructure_stopped"] = extra.get("restructure_stopped", 0)
+        stats["bonds.restructure_extended"] = extra.get("restructure_extended", 0)
+        stats["bonds.restructure_rate_cut"] = extra.get("restructure_rate_cut", 0)
+        stats["bonds.restructure_left"] = extra.get("restructure_left", 0)
+        stats["bonds.restructure_stopped_nocap"] = extra.get("restructure_stopped_nocap", 0)
+        stats["bonds.restructure_hmax"] = extra.get("restructure_hmax", 0.0)
+        # G3c（設計 BK-55）: 利払いの不足で先に使った削れる支出の取り置き
+        stats["bonds.coupon_austerity"] = extra.get("coupon_austerity", 0)
 
 
 def _log_foreign(world: WorldState, foreign: dict[int, list[abroad.Bid]]) -> None:
