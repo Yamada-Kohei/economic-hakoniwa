@@ -74,9 +74,23 @@ DIPLOMACY_KINDS = (
 )
 
 
+# 年表で節目として目立たせる出来事（国の歴史の転機: 建国・憲法の改正・戦争の始まりと終わりと、
+# 建国記念日・人口と GDP の節目）
+MILESTONE_KINDS = (
+    "island_founded",
+    "constitution_amended",
+    "war_declared",
+    "war_declared_on",
+    "war_ended",
+    "anniversary_founding",
+    "milestone_population",
+    "milestone_gdp",
+)
+
+
 def timeline(island: m.Island, profile: Profile | None) -> list[dict[str, Any]]:
     """この国の年表（古い順）: ターンログの主な出来事（建国・選挙・憲法の改正など）と、外交の出来事
-    （宣戦・停戦・講和・条約）。"""
+    （宣戦・停戦・講和・条約）。各行に、紀年ごとの区切り（period）と節目かどうか（milestone）を付ける。"""
     kinds = TurnLog.objects.filter(top.headline_filter() | Q(kind__in=DIPLOMACY_KINDS))
     logs = list(kinds.filter(island=island).order_by("-turn", "-id")[:TIMELINE])
     logs.reverse()
@@ -84,6 +98,8 @@ def timeline(island: m.Island, profile: Profile | None) -> list[dict[str, Any]]:
         {
             "turn": log.turn,
             "date": services.date_text(island, profile, log.turn),
+            "period": services.period_text(island, profile, log.turn),
+            "milestone": log.kind in MILESTONE_KINDS,
             "text": entry["text"],
         }
         for log, entry in zip(logs, display.log_entries(logs), strict=True)
@@ -91,8 +107,15 @@ def timeline(island: m.Island, profile: Profile | None) -> list[dict[str, Any]]:
 
 
 def timeline_text(rows: list[dict[str, Any]]) -> str:
-    """年表を、外の wiki にそのまま貼れる文にする（1 行に 1 つの出来事）。"""
-    return "\n".join(f"* {r['date']}: {r['text']}" for r in rows)
+    """年表を、外の wiki にそのまま貼れる文にする（区切りの見出し＋1 行に 1 つの出来事）。"""
+    lines: list[str] = []
+    period: str | None = None
+    for r in rows:
+        if r["period"] != period:
+            period = r["period"]
+            lines.append(f"== {period} ==")
+        lines.append(f"* {r['date']}: {r['text']}")
+    return "\n".join(lines)
 
 
 def notes(island: m.Island, profile: Profile | None) -> list[dict[str, Any]]:

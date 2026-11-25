@@ -98,6 +98,25 @@ def date_text(island: Island, profile: Profile | None, turn: int) -> str:
     return _fmt(world.name, *date, gannen=False)
 
 
+def period_text(island: Island, profile: Profile | None, turn: int) -> str:
+    """ターン turn が属する、年表の区切りの名前（その国の選んだ紀年で）。元号ならその元号の名前、
+    建国紀元・世界の暦なら「○○N年」。紀年が始まる前のターンは、世界の暦の年で書く。"""
+    kind = profile.era_kind if profile else "world"
+    world = get_game().calendar
+    if kind == "founding":
+        date = Calendar(FOUNDING_NAME, 1, founded_turn(island)).date(turn)
+        if date:
+            return f"{FOUNDING_NAME}{date[0]}年"
+    elif kind == "regnal" and profile and profile.eras:
+        eras = [e for e in profile.eras if e["start_turn"] <= turn]
+        if eras:
+            return eras[-1]["name"]
+    date = world.date(turn) if world else None
+    if world is None or date is None:
+        return f"ターン {turn}"
+    return f"{world.name}{date[0]}年"
+
+
 def _clean_era_name(name: Any) -> str:
     name = _plain(name.strip(), "元号") if isinstance(name, str) else ""
     if not name:
