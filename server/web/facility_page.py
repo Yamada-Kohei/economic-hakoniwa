@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from django.db.models import Max
@@ -45,7 +46,11 @@ def _goods(items: list[dict[str, Any]]) -> str:
 
 
 def _pct(value: float) -> str:
-    return f"{round(value * 100)}%"
+    percent = value * 100
+    if percent < 100:
+        # 100 未満は切り捨て（99.7% が四捨五入で「100%（傷んだ分は作れません）」と出るのを防ぐ）
+        percent = math.floor(percent + 1e-9)
+    return f"{round(percent)}%"
 
 
 def view_rows(info: dict[str, Any]) -> list[dict[str, str]]:
