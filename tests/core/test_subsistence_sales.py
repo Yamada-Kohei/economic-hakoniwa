@@ -64,6 +64,33 @@ def test_a_village_grows_up_to_one_farm(game, sales):  # noqa: F811
     assert tile.ext[FARM_CAPACITY] == int(out * 0.5 * fert)  # 働き手が農場の半分なら半分
 
 
+def test_fractional_farm_worker_still_reaches(game, sales):  # noqa: F811
+    """PO-63 の直し: 仕事のない働き手が 1 人いるマスで、自給の人への換算が 0.98 人に
+    なっても、切り捨てずに残せば作れる量が食べる量に届く（以前は int() で 0 人になり、
+    作れる量が 0 で届かなかった）。"""
+    island, tile = _village(game)
+    island.economy.households["owners"] = {"share": 0.02}  # 働く割合が 0.5 × 0.98 = 0.49 に下がる
+    share = fac.labor_share(game.defs, island)
+    force = fac.labor_force(game.defs, island, tile, share)
+    tile.ext["employed"] = force - 1  # 仕事のない働き手は 1 人だけ
+    persons = subsistence_persons(game.defs, island, tile, share)
+    assert persons > 0 and int(persons * share) == 0  # 切り捨てると働き手 0 になる形
+    settle_farm_capacity(game.defs, game.config, island)
+    need = to_milli(persons * game.config.get("population.food_per_person"))
+    assert tile.ext[FARM_CAPACITY] >= need
+
+
+def test_no_farm_worker_still_does_not_reach(game, sales):  # noqa: F811
+    """PO-63 の直し: 仕事のない働き手が本当にいないマス（全員が勤めに出ている）は、
+    直した後も自給の人は 0 で、作れる量は書かれない（届かないまま）。"""
+    island, tile = _village(game)
+    share = fac.labor_share(game.defs, island)
+    tile.ext["employed"] = fac.labor_force(game.defs, island, tile, share)
+    assert subsistence_persons(game.defs, island, tile, share) == 0
+    settle_farm_capacity(game.defs, game.config, island)
+    assert FARM_CAPACITY not in tile.ext
+
+
 def test_towns_do_not_farm(game, sales):  # noqa: F811
     """町のマスには作れる量を書かない（町の畑 PO-62 は採らなかった）。"""
     island = make_island(game)

@@ -247,11 +247,12 @@ def subsistence_good(defs: Defs) -> str:
 
 
 def _land_output(
-    defs: Defs, config: GameConfig, island: IslandState, tile: Tile, people: int
+    defs: Defs, config: GameConfig, island: IslandState, tile: Tile, people: float
 ) -> int:
     """1 マスの畑で people 人の働き手が作れる量（1000 分の 1 単位）: 農場の既定の作り方の産出 ×
     肥沃度 × 気候の倍率 × min(1, 人数 ÷ 農場の働き手)。農場の働き手より多く入っても増えない
-    （土地の量で頭打ち）。"""
+    （土地の量で頭打ち）。people は端数を残したまま渡してよい（PO-63: 自給の人の働き手への
+    換算で 1 人未満を 0 に切り捨てない）。"""
     good, recipe = _farm_recipe(defs)
     workers = fac.workers_needed(defs, "farm")
     if people <= 0 or workers <= 0:
@@ -271,7 +272,10 @@ def settle_farm_capacity(defs: Defs, config: GameConfig, island: IslandState) ->
         value = 0
         if on and tile.population > 0 and _farming(defs, tile):
             persons = subsistence_persons(defs, island, tile, share)
-            value = _land_output(defs, config, island, tile, int(persons * share))
+            # 働き手への換算で端数を切り捨てない（PO-63）。int(persons * share) だと、
+            # 仕事のない働き手が 1 人いるマスでも換算が 0.9… → 0 になり、作れる量が
+            # 0 になって食べる量に届かなかった。
+            value = _land_output(defs, config, island, tile, persons * share)
         if value > 0:
             tile.ext[FARM_CAPACITY] = value
         else:
