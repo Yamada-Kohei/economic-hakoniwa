@@ -59,6 +59,12 @@ SUBSISTENCE = "subsistence"  # 項目: sales（自給の農家が作って市場
 # TRADE の品目ごとの内訳（W-72）。項目: exports.<財>・imports.<財>。他国の船を借りた運賃の収入は
 # 財でないので exports.freight
 TRADE_GOODS = "trade_goods"
+# TRADE の相手ごとの内訳（#5455）。項目: <相手>.exports・<相手>.imports と、その品目ごとの
+# <相手>.exports.<財>・<相手>.imports.<財>。<相手> は相手の島の番号か、相手が決まらない
+# 圏の市場は "bloc"、海外の商人は "merchant"
+TRADE_PARTNERS = "trade_partners"
+PARTNER_BLOC = "bloc"
+PARTNER_MERCHANT = "merchant"
 FREIGHT_ITEM = "freight"
 FX_REALIZED = "fx_realized"  # 施設の外貨を売った損益（為替の実現損益。フェーズ3-1）
 
@@ -84,6 +90,14 @@ def add_trade(island: IslandState, item: str, good: str, amount: int) -> None:
     """貿易（TRADE）の項目 item（exports・imports）と、その品目ごとの内訳（TRADE_GOODS）に足す。"""
     add_sector(island, TRADE, item, amount)
     add_sector(island, TRADE_GOODS, f"{item}.{good}", amount)
+
+
+def add_partner_trade(island: IslandState, partner: str, item: str, good: str, amount: int) -> None:
+    """貿易の相手ごとの内訳（TRADE_PARTNERS）に足す（#5455）。add_trade と同じ額を、相手と
+    品目ごとに分けて記録するだけで、計算は変えない。"""
+    if amount:
+        add_sector(island, TRADE_PARTNERS, f"{partner}.{item}", amount)
+        add_sector(island, TRADE_PARTNERS, f"{partner}.{item}.{good}", amount)
 
 
 def stock_moved(island: IslandState, facility: int, good: str, qty: int) -> None:
