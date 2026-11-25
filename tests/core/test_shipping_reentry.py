@@ -21,16 +21,29 @@ from hakoniwa_core.economy import (
     funds,
     household,
     in_receivership,
+    is_on_sale,
     is_stopped,
     receivership,
 )
 from hakoniwa_core.modules import failures
 from hakoniwa_core.modules.firms import EntryExit
 from hakoniwa_core.state import OWNER_PRIVATE, OWNER_STATE
-from hakoniwa_core.trade import island_state, port_of, reentry, shipping_of, ships
+from hakoniwa_core.state.generate import generate_world
+from hakoniwa_core.trade import cells as route_cells
+from hakoniwa_core.trade import (
+    contracts,
+    island_state,
+    port_of,
+    reentry,
+    shipping_of,
+    ships,
+    weight,
+)
+from hakoniwa_core.units import QUANTITY_SCALE
 from tests.core.test_finance import context, island_of
 from tests.core.test_finance import game as game  # noqa: F401  （試験の部品を使い回す）
 from tests.core.test_finance import warmed as warmed  # noqa: F401
+from tests.core.test_trade import run as trade_run
 
 
 @pytest.fixture()
@@ -89,6 +102,7 @@ def test_receivership_sale_inherits_the_fleet_at_the_settlement_batches(game, wa
     f.economy["fleet"] = [[old, 1000], [young, 1000]]
     f.economy["capital"] = unit * 2
     f.economy["depreciated"] = 0
+    f.stock = {}  # 在庫の値打ちを 0 にして、買い手の代金を売り値そのものにする（清算の差分用）
     bank = banks.active_banks(island)[0]
     # 残りの借入（請求）が売り値を上回る形にする
     _seize_shipping(game, world, island, claims={arrears.LOANS: {bank: unit * 100}})
@@ -103,6 +117,17 @@ def test_receivership_sale_inherits_the_fleet_at_the_settlement_batches(game, wa
     price = receivership.price_at(config, book, f.economy["foreclosed"]["since"], turn)
     assert receivership.asking_price(config, f, turn) == price
     assert price < unit * 100  # 売り値は残りの借入を下回る
+    # 清算の差分（#5527・#5534・#5542）: 売りに出ているのはこの施設だけで買い手候補を 1 者に
+    # 絞り、成約の前後で旧社の請求・買い手の使えるお金・仕訳を読む
+    assert [x.id for x in island.facilities if is_on_sale(x)] == [f.id]
+    seized = f.economy["foreclosed"]
+    loans_before = sum(seized["claims"][arrears.LOANS].values())
+    assert loans_before == unit * 100
+    assert not seized["claims"].get(arrears.WAGES) and not seized["claims"].get(arrears.TAXES)
+    owners = household(OWNERS)
+    available_before = funds.available(island, Payer(owners))
+    transfers_before = len(island_state(island).get("shipping_transfers", []))
+    journal_before = len(island.journal)
     assert EntryExit()._sell_on_sale(island, ctx, 1) == 1
     assert not in_receivership(f) and f.owner == OWNER_PRIVATE
     assert f.economy["fleet"] == [[young, 1000]]  # 退役した組は戻らず、残った組は元の年数
@@ -112,6 +137,24 @@ def test_receivership_sale_inherits_the_fleet_at_the_settlement_batches(game, wa
     entry = island_state(island)["shipping_transfers"][-1]
     assert entry["facility"] == f.id and entry["turn"] == turn
     assert entry["fleet"] == [[young, 1000]] and entry["buyer"]
+    # 清算（#5508・#5527・#5532〜#5544）: 買い手は資本家階級だけ（唯一の買い手）で、代金は全額が
+    # 旧社の借入へ回り、買い手の使えるお金は売り値の分だけ減る（清算額を買い手側に二重に数えない）
+    transfers = island_state(island)["shipping_transfers"]
+    assert len(transfers) == transfers_before + 1 and entry["buyer"] == owners
+    holders = {
+        ledger.parse(name)[0]
+        for name, value in island.accounts.items()
+        if name.endswith(f"/{ledger.EQUITY}/{facility_entity(f.id)}") and value > 0
+    }
+    assert holders == {owners}  # 出資しているのは買い手だけ
+    loans_after = sum(seized["claims"][arrears.LOANS].values())
+    assert loans_before - loans_after == price  # 借入の帳簿の減り＝債権者の受け取り合計（#5534）
+    assert funds.available(island, Payer(owners)) == available_before - price
+    # 現金の側（#5542）: 成約の区間の仕訳で隔離して見る。銀行が受け取る支払いは、その銀行の
+    # 預金の発行勘定が借方になる（施設の預金が消えて銀行の取り分になる）形で残る
+    receipts = [e for e in island.journal[journal_before:] if e.kind == "foreclosure_sale"]
+    assert sum(e.amount for e in receipts) == price
+    assert all(e.debit == ledger.issued(bank, ledger.DEPOSIT) for e in receipts)
 
 
 def test_state_takeover_is_a_separate_path(game, warmed, on):  # noqa: F811
@@ -261,3 +304,50 @@ def test_successor_needs_leftover_demand(game, warmed, on):  # noqa: F811
     ctx = context(game, world, "entry_exit")
     assert reentry.place_successor(island, ctx) is None
     assert shipping_of(island, game.config) is None
+
+
+def test_short_load_comes_only_from_what_could_not_be_carried(game, on):  # noqa: F811
+    """残荷の作られ方（#5507・#5529・#5535）: 船腹が注文の一部しか積めないターンでは、残荷は
+    （需要 − 実際に運んだ分）から作られ、運んだ分は含まれない。全量運べたターンは残荷が 0 で、
+    次のターンの判定（前のターンの分）にも何も残らない。"""
+    world = generate_world(7, 4, game.config, game.defs)
+    trade_run(game, world, 3)
+    seller, buyer = world.islands[1], world.islands[2]
+    good = "building_materials"
+    stock.add(seller.warehouse, good, 2000 * QUANTITY_SCALE, world.turn, game.defs.goods)
+    bf = shipping_of(buyer, game.config)
+    bf.economy["fleet"] = [[world.turn, 125]]  # 船腹を絞って、一部しか積めない形にする
+    bf.economy["busy"] = {}
+    payload = {
+        "partner": buyer.id,
+        "side": "sell",
+        "good": good,
+        "quantity": 30,
+        "price": 10,
+        "currency": buyer.id,
+        "turns": 6,
+    }
+    assert contracts.propose(world, seller, payload, world.turn) is None
+    c = contracts.contracts(world)[-1]
+    assert contracts.accept(world, buyer, c, world.turn) is None
+    want = 30 * QUANTITY_SCALE
+    trade_run(game, world, 1)
+    c = contracts.find(world, c["id"])
+    assert c["short_why"] == "ships" and 0 < c["short"] < want
+    assert c["delivered"] == want - c["short"]  # 実際に運んだ分
+    expected = (
+        weight(game.defs, good, c["short"])
+        * 2
+        * route_cells(buyer, seller)
+        // max(1, game.config.get("trade.ship_speed"))
+    )
+    assert expected > 0
+    assert island_state(buyer)[reentry.SHORT_LOAD] == expected  # 残荷は運べなかった分だけ
+    # 船腹を戻せば全量運べて、そのターンの残荷は 0 になる
+    shipping_of(buyer, game.config).economy["fleet"] = [[world.turn, 100000]]
+    trade_run(game, world, 1)
+    c = contracts.find(world, c["id"])
+    assert c["short"] == 0 and island_state(buyer)[reentry.SHORT_LOAD] == 0
+    # 次のターンの判定（前のターンの分）にも、全量運べたターンの分は何も残らない
+    trade_run(game, world, 1)
+    assert island_state(buyer)[reentry.SHORT_PREV] == 0
