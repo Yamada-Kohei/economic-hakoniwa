@@ -88,3 +88,24 @@ export function spritePriorityKeys(theme, map, defs) {
 export function drawSprite(ctx, sprite, x, y) {
   ctx.drawImage(sprite.img, x - sprite.ax, y - sprite.ay, sprite.w, sprite.h);
 }
+
+/**
+ * その国の旗の画像（上げた PNG か仮の旗）を読む。首都のマスに立てる旗に使う。
+ * 読めたら { img, w, h }（画像そのものの大きさ）を onLoad に渡して Promise もそれで解決し、
+ * 読めなければ null で解決する（旗なしで描く）。
+ */
+export function loadFlag(url, onLoad) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const flag = { img, w: img.naturalWidth, h: img.naturalHeight };
+      if (onLoad) onLoad(flag);
+      resolve(flag);
+    };
+    img.onerror = () => {
+      console.warn(`旗を読み込めませんでした: ${url}`);
+      resolve(null);
+    };
+    img.src = url;
+  });
+}

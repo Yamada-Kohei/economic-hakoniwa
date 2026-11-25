@@ -10,7 +10,9 @@ import { drawSprite } from "./sprites.js";
  * options: selected（選んだマス {x, y}）、marked（印を付けるマスの Set "x,y"）、
  *          overlay（重ねて表示する情報。overlays/ のモジュール）、
  *          overlayMode（"bars" で量のある重ね表示を棒にする。ほかは塗り分け。UI-79）、
- *          sprites（sprites.js の loadSprites が返す絵。ないものは色の箱で描く）
+ *          sprites（sprites.js の loadSprites が返す絵。ないものは色の箱で描く）、
+ *          flag（その国の旗の画像 { img, w, h }。sprites.js の loadFlag が返す。
+ *                あれば首都のマスに小さく立てる）
  */
 export function drawIsland(ctx, map, defs, view, options = {}) {
   const theme = defs.theme;
@@ -61,7 +63,11 @@ export function drawIsland(ctx, map, defs, view, options = {}) {
       // 陣地（塹壕）: 奥の2辺を施設・住宅より先に、手前の2辺をあとに描く（docs/map-art.md）
       const trench = map.trench?.[i];
       if (trench) drawOverlay(ctx, sprites.get("overlay/trench_back"), px, top, theme);
-      if (f) drawFacility(ctx, f, map, defs, px, top, theme, sprites);
+      if (f) drawFacility(ctx, f, map, defs, px, top, theme, sprites, options.flag);
+      // 首都のマスに建物がないときは、地面に直接旗を立てる
+      if (!f && options.flag && map.capital && map.capital[0] === x && map.capital[1] === y) {
+        drawCapitalFlag(ctx, options.flag, px, top + theme.tile_height / 2, theme);
+      }
       if (f?.hidden && map.mine) drawUnderground(ctx, px, top, theme, options.undergroundLabel || "");
       if (trench) drawOverlay(ctx, sprites.get("overlay/trench_front"), px, top, theme);
       if (map.occupied?.[i]) {
@@ -291,13 +297,18 @@ function coastalSprite(f, defs, map, name, sprites) {
   return null;
 }
 
-/** 施設: 絵があれば絵、なければ色付きの箱。住宅の高さは住宅地の段階、工事中は枠だけ。 */
-function drawFacility(ctx, f, map, defs, px, ground, theme, sprites) {
+/** 施設: 絵があれば絵、なければ色付きの箱。住宅の高さは住宅地の段階、工事中は枠だけ。
+ * 首都の建物が建っていて旗の画像（flag）があれば、建物の上に旗を立てる。 */
+function drawFacility(ctx, f, map, defs, px, ground, theme, sprites, flag) {
   const isCapital = map.capital && map.capital[0] === f.x && map.capital[1] === f.y;
   const sprite = facilitySprite(f, defs, map, isCapital, sprites, theme);
   if (sprite) {
     drawSprite(ctx, sprite, px, ground + theme.tile_height);
     if (f.built) drawStopped(ctx, f, defs, px, ground, theme.tile_height / 2);
+    if (isCapital && f.built && flag) {
+      // 絵の上の余白ぶん、竿の下端を屋根に少し沈める
+      drawCapitalFlag(ctx, flag, px, ground + theme.tile_height - sprite.h + FLAG_SINK, theme);
+    }
     return;
   }
   const style = theme.facilities?.[f.kind] || theme.facility_fallback;
@@ -334,6 +345,45 @@ function drawFacility(ctx, f, map, defs, px, ground, theme, sprites) {
   diamondPath(ctx, px, top, hw, hh);
   ctx.fill();
   drawStopped(ctx, f, defs, px, top, hh);
+  if (isCapital && flag) drawCapitalFlag(ctx, flag, px, top + hh, theme);
+}
+
+// 首都の旗の竿の下端を、建物のてっぺんに少し沈める量（ピクセル）
+const FLAG_SINK = 3;
+
+/**
+ * 首都の旗を描くときの大きさ。幅はマスの幅の半分、縦は画像の縦横比どおり。
+ * 背の高い画像はマスの高さまでに収め、幅もそれに合わせて縮める。
+ */
+export function capitalFlagSize(flag, theme) {
+  let w = theme.tile_width / 2;
+  let h = (w * flag.h) / flag.w;
+  if (h > theme.tile_height) {
+    h = theme.tile_height;
+    w = (h * flag.w) / flag.h;
+  }
+  return { w, h };
+}
+
+/**
+ * 首都の旗: (px, base) を竿の下端として竿を立て、竿の上のほうから右へ旗を広げる（静止画）。
+ * 旗の後ろに白い縁を置き、建物や空の色に埋もれて見えなくならないようにする。
+ */
+export function drawCapitalFlag(ctx, flag, px, base, theme) {
+  if (!flag || !flag.w || !flag.h) return;
+  const { w, h } = capitalFlagSize(flag, theme);
+  const poleTop = base - h - 4;
+  ctx.save();
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(px - 1, poleTop + 1, w + 2, h + 2);
+  ctx.drawImage(flag.img, px, poleTop + 2, w, h);
+  ctx.strokeStyle = "#4a3520";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(px, base);
+  ctx.lineTo(px, poleTop);
+  ctx.stroke();
+  ctx.restore();
 }
 
 /** 止まっている施設には赤い印（絵の上にも描く）。top は印を置くひし形の上の頂点。
