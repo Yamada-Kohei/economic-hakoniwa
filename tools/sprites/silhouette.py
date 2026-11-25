@@ -4673,6 +4673,41 @@ SHAPES.update(
 )
 
 
+def university(t):
+    """大学の建て増し（FM-47）。名前のままの絵の姿（レンガの本館と高い塔、スレートの屋根）を保ち、
+    段が上がるほど棟を増やして背を高くする。段 2 は講堂が正面のあき地に増える。"""
+    if t == 2:
+        return [
+            box(0.08, 0.10, 0.92, 0.42, 0, 21, BRICK),
+            gable(0.08, 0.10, 0.92, 0.42, 21, 8, "u", ROOF_SLATE, BRICK),
+            box(0.42, 0.50, 0.58, 0.66, 0, 45, BRICK),
+            hip(0.42, 0.50, 0.58, 0.66, 45, 13, ROOF_SLATE),
+            box(0.08, 0.54, 0.36, 0.90, 0, 15, BRICK, CONCRETE),
+            box(0.64, 0.54, 0.92, 0.90, 0, 15, BRICK, CONCRETE),
+            box(0.38, 0.68, 0.62, 0.92, 0, 12, BRICK, CONCRETE),
+        ]
+    if t == 3:
+        return [
+            box(0.06, 0.08, 0.94, 0.42, 0, 24, BRICK),
+            gable(0.06, 0.08, 0.94, 0.42, 24, 8, "u", ROOF_SLATE, BRICK),
+            box(0.42, 0.50, 0.58, 0.66, 0, 50, BRICK),
+            hip(0.42, 0.50, 0.58, 0.66, 50, 14, ROOF_SLATE),
+            box(0.06, 0.52, 0.38, 0.92, 0, 18, BRICK, CONCRETE),
+            box(0.62, 0.52, 0.94, 0.92, 0, 18, BRICK, CONCRETE),
+            box(0.40, 0.68, 0.60, 0.92, 0, 13, BRICK, CONCRETE),
+        ]
+    # 段 4: 敷地いっぱいに棟が広がり、塔もひときわ高く
+    return [
+        box(0.05, 0.06, 0.95, 0.42, 0, 27, BRICK),
+        gable(0.05, 0.06, 0.95, 0.42, 27, 9, "u", ROOF_SLATE, BRICK),
+        box(0.42, 0.50, 0.58, 0.66, 0, 56, BRICK),
+        hip(0.42, 0.50, 0.58, 0.66, 56, 16, ROOF_SLATE),
+        box(0.05, 0.50, 0.39, 0.93, 0, 21, BRICK, CONCRETE),
+        box(0.61, 0.50, 0.95, 0.93, 0, 21, BRICK, CONCRETE),
+        box(0.40, 0.66, 0.60, 0.93, 0, 16, BRICK, CONCRETE),
+    ]
+
+
 SIZE_TIERS = {
     "steel_mill": steel_mill,
     "machinery_plant": machinery_plant,
@@ -4689,6 +4724,7 @@ SIZE_TIERS = {
     "copper_smelter": copper_smelter,
     "electronics_plant": electronics_plant,
     "missile_plant": missile_plant,
+    "university": university,
 }
 for _name, _tiers in SIZE_TIERS.items():
     for _t in (2, 3, 4):

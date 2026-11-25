@@ -260,6 +260,9 @@ sprites:
   facility/thermal_power_plant@s2: sprites/facility/thermal_power_plant@s2.svg
   facility/thermal_power_plant@s3: sprites/facility/thermal_power_plant@s3.svg
   facility/thermal_power_plant@s4: sprites/facility/thermal_power_plant@s4.svg
+  facility/university@s2: sprites/facility/university@s2.svg
+  facility/university@s3: sprites/facility/university@s3.svg
+  facility/university@s4: sprites/facility/university@s4.svg
 
 # 絵のファイルは置いたが、使う施設や描く仕組みがまだ入っていないもの（軍事の絵。docs/map-art.md）。
 # ゲームの描画は読まない。入ったら、その行を上の sprites へ移す（海沿いの anchor はここに書いてある値のまま）

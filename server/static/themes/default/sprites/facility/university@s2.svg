@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="74" viewBox="0 0 64 74">
+<g transform="translate(0 42)" stroke-linejoin="round" stroke-width="0.4">
+<polygon points="21.12,8.00 48.00,21.44 48.00,0.44 21.12,-13.00" fill="#8a4f3d" stroke="#8a4f3d"/>
+<polygon points="58.24,16.32 48.00,21.44 48.00,0.44 58.24,-4.68" fill="#6f3f31" stroke="#6f3f31"/>
+<polygon points="31.36,-18.12 58.24,-4.68 48.00,0.44 21.12,-13.00" fill="#a8604a" stroke="#a8604a"/>
+<polygon points="31.36,-18.12 58.24,-4.68 53.12,-10.12 26.24,-23.56" fill="#46515c" stroke="#46515c"/>
+<polygon points="21.12,-13.00 48.00,0.44 53.12,-10.12 26.24,-23.56" fill="#576472" stroke="#576472"/>
+<polygon points="58.24,-4.68 48.00,0.44 53.12,-10.12" fill="#6f3f31" stroke="#6f3f31"/>
+<polygon points="5.76,15.68 14.72,20.16 14.72,5.16 5.76,0.68" fill="#8a4f3d" stroke="#8a4f3d"/>
+<polygon points="26.24,14.40 14.72,20.16 14.72,5.16 26.24,-0.60" fill="#6f3f31" stroke="#6f3f31"/>
+<polygon points="17.28,-5.08 26.24,-0.60 14.72,5.16 5.76,0.68" fill="#c9c3b8" stroke="#c9c3b8"/>
+<polygon points="24.32,17.28 29.44,19.84 29.44,-25.16 24.32,-27.72" fill="#8a4f3d" stroke="#8a4f3d"/>
+<polygon points="34.56,17.28 29.44,19.84 29.44,-25.16 34.56,-27.72" fill="#6f3f31" stroke="#6f3f31"/>
+<polygon points="29.44,-30.28 34.56,-27.72 29.44,-25.16 24.32,-27.72" fill="#a8604a" stroke="#a8604a"/>
+<polygon points="24.32,-27.72 29.44,-25.16 29.44,-40.72" fill="#576472" stroke="#576472"/>
+<polygon points="34.56,-27.72 29.44,-25.16 29.44,-40.72" fill="#46515c" stroke="#46515c"/>
+<polygon points="14.72,20.80 22.40,24.64 22.40,12.64 14.72,8.80" fill="#8a4f3d" stroke="#8a4f3d"/>
+<polygon points="30.08,20.80 22.40,24.64 22.40,12.64 30.08,8.80" fill="#6f3f31" stroke="#6f3f31"/>
+<polygon points="22.40,4.96 30.08,8.80 22.40,12.64 14.72,8.80" fill="#c9c3b8" stroke="#c9c3b8"/>
+<polygon points="23.68,24.64 32.64,29.12 32.64,14.12 23.68,9.64" fill="#8a4f3d" stroke="#8a4f3d"/>
+<polygon points="44.16,23.36 32.64,29.12 32.64,14.12 44.16,8.36" fill="#6f3f31" stroke="#6f3f31"/>
+<polygon points="35.20,3.88 44.16,8.36 32.64,14.12 23.68,9.64" fill="#c9c3b8" stroke="#c9c3b8"/>
+</g>
+</svg>
