@@ -47,10 +47,12 @@
     {% if trade.partner_stats %}
     <section class="panel" id="trade-partners">
       <h2>{% translate "貿易の相手国" %}{% if stats_turn is not None %} <small class="heading-date">{{ stats_turn|turn_date }}</small>{% endif %}</h2>
+      <div class="table-scroll">
       <table class="info trade-partners">
         <tr><th>{% translate "相手" %}</th><th>{% translate "輸出" %}</th><th>{% translate "輸入" %}</th><th>{% translate "輸出（直近1年）" %}</th><th>{% translate "輸入（直近1年）" %}</th><th>{% translate "主な品目（直近1年）" %}</th></tr>
         {% for row in trade.partner_stats %}<tr><th>{{ row.name }}</th><td class="num">{{ row.exports_turn }}</td><td class="num">{{ row.imports_turn }}</td><td class="num">{{ row.exports_year }}</td><td class="num">{{ row.imports_year }}</td><td>{% for g in row.goods %}{{ g.name }}{% if not forloop.last %}・{% endif %}{% endfor %}</td></tr>{% endfor %}
       </table>
+      </div>
       <p class="hint">{% translate "二国間契約と他国の船の運賃は相手の国ごと、海外の商人との売り買いは「海外の商人」の行にまとめます。貿易圏の市場で売り買いした分は相手の国ごとに分けられないので、「圏の市場（相手は混ざる）」の行にまとめます。輸出と輸入は集計ターンの分、直近1年は12ターンの合計です。" %}</p>
     </section>
     {% endif %}
