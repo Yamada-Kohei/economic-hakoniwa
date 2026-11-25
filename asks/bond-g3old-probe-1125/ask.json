@@ -1,0 +1,89 @@
+{
+ "name": "bond-g3old-probe-1125",
+ "commit": "e9193be44bdd1b8f6bc79e9d8bbb3a184a4f2858",
+ "pool": "any",
+ "files": [
+  "bond_c3_run.py",
+  "bond_c_probe.py"
+ ],
+ "patches": [
+  "bonds-g3old-on.diff"
+ ],
+ "runs": [
+  {
+   "name": "g3old-ind-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--exchange",
+    "--cap",
+    "--austerity",
+    "--out",
+    "g3old-ind-s1.jsonl.gz"
+   ],
+   "summary": [
+    "g3old-ind-s1.jsonl.gz",
+    "g3old-ind-s1.gate.json",
+    "g3old-ind-s1.quick-check.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "g3old-ind-s2",
+   "args": [
+    "probe",
+    "--scenario",
+    "independent",
+    "--seed",
+    "2",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--exchange",
+    "--cap",
+    "--austerity",
+    "--out",
+    "g3old-ind-s2.jsonl.gz"
+   ],
+   "summary": [
+    "g3old-ind-s2.jsonl.gz",
+    "g3old-ind-s2.gate.json",
+    "g3old-ind-s2.quick-check.json"
+   ],
+   "large": []
+  },
+  {
+   "name": "g3old-plan-s1",
+   "args": [
+    "probe",
+    "--scenario",
+    "plan",
+    "--seed",
+    "1",
+    "--turns",
+    "500",
+    "--pricing",
+    "--crisis",
+    "--exchange",
+    "--cap",
+    "--austerity",
+    "--out",
+    "g3old-plan-s1.jsonl.gz"
+   ],
+   "summary": [
+    "g3old-plan-s1.jsonl.gz",
+    "g3old-plan-s1.gate.json",
+    "g3old-plan-s1.quick-check.json"
+   ],
+   "large": []
+  }
+ ]
+}
