@@ -2120,9 +2120,18 @@ WEIGHT_UNIT = " トン"
 WEIGHT_PRICE_STATS = ("freight.ship_rate",)
 
 
-def tons(milli: int) -> float:
-    """1000 分の 1 トンの船の荷の重さを、見せるトンに（小数第1位まで）。"""
-    return round(from_milli(milli) * get_game().defs.weight_scale(), 1)
+def tons(milli: int, good: str | None = None) -> float:
+    """1000 分の 1 トンの船の荷の重さを、見せるトンに（小数第1位まで）。
+
+    good を渡すと、その財の見せる量に重さを合わせる（その財の display_scale を掛ける）:
+    トンで数える財は今までどおり 25 倍で見せる量のトンと一致し、1 つずつ数える財
+    （自動車など、倍率 1）はゲームの重さ（量 × freight_weight）がそのまま見せる重さに
+    なる。good が無い所（複数の財の合計・船団の積める量など、財を特定できない表示）は
+    トンで数える財の倍率（weight_scale）のまま。
+    """
+    defs = get_game().defs
+    scale = defs.display_scale(good) if good is not None else defs.weight_scale()
+    return round(from_milli(milli) * scale, 1)
 
 
 def weight_price(value: float) -> float:
