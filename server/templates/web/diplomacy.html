@@ -20,7 +20,7 @@
   <div class="report-main">
 <section class="panel" id="wars">
   <h2>{% translate "戦争の状態" %} <small class="heading-date">{{ d.turn|turn_date }}</small></h2>
-  {% include "hall/war_list.html" with wars=d.wars %}
+  {% include "hall/war_list.html" with wars=d.wars show_flags=1 %}
   {% if mine %}
   <details class="diplomacy-compose">
     <summary>{% translate "宣戦布告の命令" %}</summary>
@@ -39,7 +39,7 @@
   <h2>{% translate "効いている条約" %}</h2>
   {% for t in d.treaties %}
   <article class="diplomacy-card" id="treaty-{{ t.id }}">
-    {% include "hall/treaty_details.html" with proposal_turns=d.rules.proposal_turns %}
+    {% include "hall/treaty_details.html" with proposal_turns=d.rules.proposal_turns show_flags=1 %}
     {% if mine and not t.notice %}{% if t.clauses.0.type != "peace" or t.clauses|length > 1 %}
     <form class="actions" data-order="denounce_treaty">
       <input type="hidden" name="treaty" value="{{ t.id }}"><button type="submit"{% for c in t.clauses %}{% if c.type == "peace" and c.reparations and c.reparations.state != "paid" and c.reparations.state != "defaulted" %} disabled{% endif %}{% endfor %}>{% translate "破棄の予告を命令に追加" %}</button>
@@ -57,7 +57,7 @@
   <h3>{% translate "届いた提案" %}（{{ d.incoming|length }}）</h3>
   {% for t in d.incoming %}
   <article class="diplomacy-card">
-    {% include "hall/treaty_details.html" with proposal_turns=d.rules.proposal_turns %}
+    {% include "hall/treaty_details.html" with proposal_turns=d.rules.proposal_turns show_flags=1 %}
     <div class="diplomacy-buttons">
       <form class="actions" data-order="sign_treaty"><input type="hidden" name="treaty" value="{{ t.id }}"><button type="submit" class="primary">{% translate "署名を命令に追加" %}</button></form>
       <form class="actions" data-order="refuse_treaty"><input type="hidden" name="treaty" value="{{ t.id }}"><button type="submit">{% translate "断りを命令に追加" %}</button></form>
@@ -67,7 +67,7 @@
   <h3>{% translate "出した提案" %}（{{ d.outgoing|length }}）</h3>
   {% for t in d.outgoing %}
   <article class="diplomacy-card">
-    {% include "hall/treaty_details.html" with proposal_turns=d.rules.proposal_turns %}
+    {% include "hall/treaty_details.html" with proposal_turns=d.rules.proposal_turns show_flags=1 %}
     <form class="actions" data-order="withdraw_treaty"><input type="hidden" name="treaty" value="{{ t.id }}"><button type="submit">{% translate "取り下げを命令に追加" %}</button></form><p class="order-notice" role="status"></p>
   </article>
   {% empty %}<p class="diplomacy-empty">{% translate "返事待ちの提案はありません。" %}</p>{% endfor %}
@@ -87,7 +87,7 @@
 </section>
 <section class="panel" id="closed">
   <h2>{% translate "終わった条約" %}</h2>
-  {% for t in d.closed %}<details class="diplomacy-history"><summary>{{ t.title }} <small>（{{ t.state_name }}）</small></summary><div class="diplomacy-card">{% include "hall/treaty_details.html" %}</div></details>
+  {% for t in d.closed %}<details class="diplomacy-history"><summary>{{ t.title }} <small>（{{ t.state_name }}）</small></summary><div class="diplomacy-card">{% include "hall/treaty_details.html" with show_flags=1 %}</div></details>
   {% empty %}<p class="diplomacy-empty">{% translate "終わった条約はありません。" %}</p>{% endfor %}
 </section>
   </div>

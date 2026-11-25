@@ -27,7 +27,7 @@
       <thead><tr><th>{% translate "順位" %}</th><th>{% translate "国" %}</th><th>{% translate "値" %}</th></tr></thead>
       <tbody>
         {% for r in c.rows %}
-        <tr data-ranked="{{ r.rank|yesno:'1,0' }}"><td>{% if r.rank %}{{ r.rank }}{% else %}-{% endif %}</td><td><a href="{% url 'island_economy' r.island %}">{{ r.name }}</a></td><td>{% if r.rank %}{{ r.text }}{% else %}<span class="muted">{% translate "為替レートがなく直せない" %}</span>{% endif %}</td></tr>
+        <tr data-ranked="{{ r.rank|yesno:'1,0' }}"><td>{% if r.rank %}{{ r.rank }}{% else %}-{% endif %}</td><td><a class="country-link" href="{% url 'island_economy' r.island %}"><img class="table-flag" src="{% url 'island_flag' r.island %}" alt="" width="24" height="16" loading="lazy"><span>{{ r.name }}</span></a></td><td>{% if r.rank %}{{ r.text }}{% else %}<span class="muted">{% translate "為替レートがなく直せない" %}</span>{% endif %}</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -48,8 +48,8 @@
         {% for i in data.industries %}
         <tr>
           <td>{{ i.name }}</td><td>{{ i.title }}</td>
-          <td>{% if i.holder %}<a href="{% url 'island_economy' i.holder %}">{{ i.holder_name }}</a>{% else %}<span class="muted">{% translate "まだいない" %}</span>{% endif %}</td>
-          <td>{% for t in i.top %}{{ t.rank }}. <a href="{% url 'island_economy' t.island %}">{{ t.name }}</a> <small class="muted">{% blocktranslate with n=t.turns|floatformat:"-1g" %}{{ n }} ターン分{% endblocktranslate %}</small>{% if not forloop.last %}<br>{% endif %}{% empty %}<span class="muted">-</span>{% endfor %}</td>
+          <td>{% if i.holder %}<a class="country-link" href="{% url 'island_economy' i.holder %}"><img class="table-flag" src="{% url 'island_flag' i.holder %}" alt="" width="24" height="16" loading="lazy"><span>{{ i.holder_name }}</span></a>{% else %}<span class="muted">{% translate "まだいない" %}</span>{% endif %}</td>
+          <td>{% for t in i.top %}{{ t.rank }}. <a class="country-link" href="{% url 'island_economy' t.island %}"><img class="table-flag" src="{% url 'island_flag' t.island %}" alt="" width="24" height="16" loading="lazy"><span>{{ t.name }}</span></a> <small class="muted">{% blocktranslate with n=t.turns|floatformat:"-1g" %}{{ n }} ターン分{% endblocktranslate %}</small>{% if not forloop.last %}<br>{% endif %}{% empty %}<span class="muted">-</span>{% endfor %}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -68,7 +68,7 @@
         {% for f in data.firms %}
         <tr>
           <td>{{ f.rank }}</td><td>{{ f.name }}</td>
-          <td><a href="{% url 'island_facilities' f.island %}">{{ f.island_name }}</a></td>
+          <td><a class="country-link" href="{% url 'island_facilities' f.island %}"><img class="table-flag" src="{% url 'island_flag' f.island %}" alt="" width="24" height="16" loading="lazy"><span>{{ f.island_name }}</span></a></td>
           <td>{{ f.owner_name }}</td>
           <td>{{ f.count }}<br><small class="muted">{{ f.kinds }}</small></td>
           <td class="num">{{ f.workers }}</td>
