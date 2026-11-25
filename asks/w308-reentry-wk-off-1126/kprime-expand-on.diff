@@ -1,0 +1,98 @@
+diff --git a/game.yaml b/game.yaml
+index a824a1a3..09bdbe65 100644
+--- a/game.yaml
++++ b/game.yaml
+@@ -329,7 +329,7 @@ trade:
+   # 半分以上のターンにあり、その儲けが建て増しの費用に引き合えば、支店・倉庫と人を足して規模を 1 つ上げる
+   # （扱える重さと人数が規模の分だけ増える）。民営は持ち主が出資できなければ、国営は予算が足りなければ見送る。
+   # 計画経済の島は入れない。第 1 版は 1 社 1 回まで（trader_max_size: 2）。既定は切（測りの後に入れ替える）
+-  trader_expand: false
++  trader_expand: true
+   trader_max_size: 2
+   # 海運業の再参入（W-308）: 倒れた海運の会社を、管財人の売りで船団ごと引き継ぎ（国営の島では政府が
+   # 引き取り）、買い手が付かずに取り壊されたら船を国の倉庫に残し、運ぶ荷が残る港には後継の会社を置く。
+diff --git a/hakoniwa_core/modules/accounts/__init__.py b/hakoniwa_core/modules/accounts/__init__.py
+index 434357ae..6463a511 100644
+--- a/hakoniwa_core/modules/accounts/__init__.py
++++ b/hakoniwa_core/modules/accounts/__init__.py
+@@ -90,6 +90,7 @@ from hakoniwa_core.state import (
+     IslandState,
+     LogEntry,
+ )
++from hakoniwa_core.trade import shipping_of, ships
+ from hakoniwa_core.turn.context import StageContext
+ from hakoniwa_core.units import money_of, part, to_basis
+ 
+@@ -133,6 +134,11 @@ class Accounts(IslandStage):
+             island.stats["equipment.condition"] = sum(conditions) / len(conditions) / fac.FULL
+         self._subsidies(island, ctx, rows)
+         settings = config.get("firms")
++        capex = self._ship_capex(island, config)
++        shipping = shipping_of(island, config)
++        upkeep = (
++            {shipping.id: ships.fleet_wear(island, config, shipping, ctx.turn)} if shipping else {}
++        )
+         for f, items in rows:
+             ebitda = (
+                 books.value_added(items)
+@@ -152,8 +158,17 @@ class Accounts(IslandStage):
+             bank = is_bank(config, f)
+             if is_self_supporting(f) or bank:
+                 items[books.TAX], items[books.DIVIDEND] = self._settle(island, ctx, f, items)
+-                # 融資の審査で見る営業の現金収支（売れずに積み上がった在庫は返済に使えない）
+-                cash = ebitda - items.get(books.INVENTORY, 0)
++                # 融資の審査で見る営業の現金収支（売れずに積み上がった在庫は返済に使えない）。
++                # 海運業が買って船団に入れる船は設備投資で、その時の代金は営業の現金収支に入れず
++                # （W-281。入れると、船を買ったターンから稼ぎの平均が船の代金の分だけ負になった）、
++                # 代わりに船を保つ買い替えの額（船団の傷み）を毎ターン引く（維持の設備投資。銀行は
++                # EBITDA から維持の設備投資を引いた額で返せるかを見る。掲示板 #1563: 引かずにいると
++                # 審査が稼ぎを大きく見て貸しすぎ、倒れた海運業の借りが B の 7 倍になった）
++                cash = (
++                    ebitda
++                    - (items.get(books.INVENTORY, 0) - capex.get(f.id, 0))
++                    - upkeep.get(f.id, 0)
++                )
+                 keep = settings["ebitda_turns"]
+                 f.economy["ebitda"] = [*f.economy.get("ebitda", []), cash][-keep:]
+             if bank:
+@@ -175,6 +190,19 @@ class Accounts(IslandStage):
+         cb_valuation = valuation[ledger.CB] - cb_realized if ledger.CB in valuation else 0
+         self._central_bank(island, cb_realized, cb_valuation)
+ 
++    @staticmethod
++    def _ship_capex(island: IslandState, config: Any) -> dict[int, int]:
++        """海運業の在庫に入った輸送船（市場で買った・前注文で届いた船。この後船団に入る）の値打ち。"""
++        good = config.get("trade.ship_good")
++        kind = config.get("trade.shipping_facility")
++        price = island.economy.prices.get(good, 0)
++        out = {}
++        for facility, goods in books.stock_flows(island).items():
++            f = island.facility(facility)
++            if f is not None and f.kind == kind and goods.get(good, 0) > 0:
++                out[facility] = money_of(price, goods[good])
++        return out
++
+     @staticmethod
+     def _book_inventory(island: IslandState, ctx: StageContext) -> dict[int, int]:
+         """施設ごとの損益の在庫の増減（原価法・低価法。作る物は1単位の原価とそのターンの値段の
+diff --git a/hakoniwa_core/trade/ships.py b/hakoniwa_core/trade/ships.py
+index 0d002b1c..8d6321a6 100644
+--- a/hakoniwa_core/trade/ships.py
++++ b/hakoniwa_core/trade/ships.py
+@@ -292,6 +292,16 @@ def _ship_wear(island: IslandState, config: GameConfig) -> float:
+     )
+ 
+ 
++def fleet_wear(island: IslandState, config: GameConfig, f: Facility, turn: int) -> int:
++    """船団の 1 ターンの傷み（寿命の前の船 × 今の船の値段 ÷ 寿命）。船を保つために毎ターン積み
++    立てる買い替えの額（維持の設備投資）として、融資の審査の営業の現金収支から引く（W-281。
++    掲示板 #1563）。"""
++    price = island.economy.prices.get(config.get("trade.ship_good"), 0)
++    life = config.get("trade.ship_life")
++    young = sum(q for since, q in f.economy.get("fleet", []) if turn - since < life)
++    return round_money(from_milli(young) * price / life)
++
++
+ def close_turn(island: IslandState, config: GameConfig, carried: int, fuel_value: int) -> None:
+     """船の運賃を見直す。carried はこのターンに運び出した量（トン × 区画。1000 分の 1）。"""
+     f = shipping_of(island, config)
