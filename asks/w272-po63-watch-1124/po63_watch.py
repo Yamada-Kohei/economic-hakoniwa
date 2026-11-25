@@ -56,7 +56,7 @@ def island_row(island):
         if persons <= 0:
             continue
         need = to_milli(persons * per)
-        cap = popmod._land_output(defs, config, island, tile, int(persons * share))
+        cap = popmod._land_output(defs, config, island, tile, persons * share)  # PO-63 の直しに揃え、端数を残したままかけ直す
         tiles += 1
         cap_sum += cap
         need_sum += need
