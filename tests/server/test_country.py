@@ -117,6 +117,59 @@ def test_provisional_flag_is_stable_and_differs_between_countries():
     assert a != b
 
 
+# 型を足す前からある 5 つの型の見本（新しい型の割り当てに当たらない国）。
+# 型を足しても、これらの国の仮の旗は変わらないこと。値は中身（body）の部分。
+_PROVISIONAL_FLAG_SAMPLES = {
+    (3, "見本3国"): (
+        '<rect width="90" height="20" fill="#c0392b"/>'
+        '<rect y="20" width="90" height="20" fill="#ca6f1e"/>'
+        '<rect y="40" width="90" height="20" fill="#1e8449"/>'
+    ),
+    (8, "見本8国"): (
+        '<rect width="30" height="60" fill="#ca6f1e"/>'
+        '<rect x="30" width="30" height="60" fill="#7d3c98"/>'
+        '<rect x="60" width="30" height="60" fill="#1e8449"/>'
+    ),
+    (10, "見本10国"): (
+        '<rect width="90" height="60" fill="#148f77"/>'
+        '<circle cx="45" cy="30" r="17" fill="#2874a6"/>'
+    ),
+    (9, "見本9国"): (
+        '<rect width="90" height="60" fill="#c0392b"/>'
+        '<rect x="24" width="14" height="60" fill="#148f77"/>'
+        '<rect y="23" width="90" height="14" fill="#148f77"/>'
+    ),
+    (5, "見本5国"): (
+        '<rect width="90" height="60" fill="#c0392b"/>'
+        '<polygon points="0,60 90,0 90,60" fill="#f2f3f4"/>'
+        '<circle cx="26" cy="20" r="8" fill="#2874a6"/>'
+    ),
+}
+_FLAG_FRAME = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 60" width="90" height="60">'
+    "{}"
+    '<rect width="90" height="60" fill="none" stroke="#00000033"/></svg>'
+)
+
+
+def test_provisional_flag_existing_shapes_do_not_change():
+    for (island_id, name), body in _PROVISIONAL_FLAG_SAMPLES.items():
+        assert png.provisional_flag(island_id, name) == _FLAG_FRAME.format(body)
+
+
+def test_provisional_flag_new_shapes_appear():
+    # 足した 4 つの型（横の帯と星・地に星・山並みと日・紋章）が、それぞれ実在の国に出ること
+    markers = {
+        (22, "見本22国"): 'points="45,20 ',
+        (15, "見本15国"): 'points="45,14 ',
+        (1, "見本1国"): 'points="0,60 24,28 46,60"',
+        (2, "見本2国"): 'd="M45 8 L69 15',
+    }
+    for (island_id, name), marker in markers.items():
+        svg = png.provisional_flag(island_id, name)
+        assert marker in svg and "script" not in svg
+
+
 # --- 紀年 -------------------------------------------------------------------------------------
 
 
