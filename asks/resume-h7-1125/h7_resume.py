@@ -6,12 +6,14 @@
   full:   最初から 1200 ターン
   resume: 500 ターン → 写しを取り、作り直して → 残り 700 ターン
 
-写しは本番のバックアップと同じ道で取る: hakoniwa_core.state.serialize の
-world_to_dict で dict にし、JSON を往復させて（バックアップは DB の JSON に
-残る）world_from_dict で作り直す（server/turns の _make_backup / load_backup
-と同じ組）。写しに入らない物（stats・scratch・journal・trades・markets・
-books は serialize の _TRANSIENT で外れる）は、毎ターン作り直される前提で、
-それでも 1200 ターン目の数が一致するかを見るのがこの測り。
+写しは測りの写しで取る: 世界の写し（world_to_dict）の横に、前のターンの
+統計・市場・約定も一緒に持つ dict（hakoniwa_core.simulate の snapshot_dict）
+を JSON を往復させて world_from_snapshot_dict で作り直す。もとは本番の
+バックアップと同じ道（world_to_dict だけ）で取っていたが、測りの命令作り
+（標準の計画）は前のターンの統計・市場・約定を読んで次の命令を作るため、
+その道では復元直後の命令が通しとずれた（#5391 の決め 2: 測りの道具側の
+欠けとして直す。ゲームの計算と本番の写しは変えない）。scratch・journal・
+books は命令作りの前に空になる前提で運ばない。
 
 resume では、写しを取るターンで往復の直前・直後に simulate.world_digest
 （写しに入る欄の指紋）を取り、割れたらその場で止まる。指紋が合うのに
@@ -63,9 +65,8 @@ def _final_stats(world) -> dict:
 def run(args: argparse.Namespace) -> int:
     from hakoniwa_core import measure
     from hakoniwa_core.game import load_game
-    from hakoniwa_core.simulate import world_digest
+    from hakoniwa_core.simulate import snapshot_dict, world_digest, world_from_snapshot_dict
     from hakoniwa_core.state.generate import generate_world
-    from hakoniwa_core.state.serialize import world_from_dict, world_to_dict
 
     if args.mode == "resume" and not (0 < args.snapshot_at < args.turns):
         raise SystemExit("--snapshot-at は 1 〜 --turns-1 で指定してください")
@@ -80,8 +81,8 @@ def run(args: argparse.Namespace) -> int:
         game.engine.run_turn(world)
         if args.mode == "resume" and not snapshotted and step == args.snapshot_at:
             digest_before = world_digest(world)
-            data = json.loads(json.dumps(world_to_dict(world)))
-            world = world_from_dict(data)
+            data = json.loads(json.dumps(snapshot_dict(world)))
+            world, _ = world_from_snapshot_dict(data)
             digest_after = world_digest(world)
             if digest_before != digest_after:
                 raise SystemExit(
